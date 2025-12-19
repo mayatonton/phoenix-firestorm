@@ -822,17 +822,22 @@ class Windows_x86_64_Manifest(ViewerManifest):
             print("vpk stderr: %s" % result.stderr)
             raise ManifestError("Velopack packaging failed with code %d" % result.returncode)
 
-        # Set output file name - Velopack uses format: {packId}-{version}-win-setup.exe
-        # But for compatibility with existing build system, we use our naming
-        self.package_file = self.installer_base_name() + '_Setup.exe'
+        # Velopack outputs to a Releases directory
+        releases_dir = os.path.join(os.path.dirname(pack_dir), 'Releases')
 
-        # Velopack outputs to a Releases directory, we may need to move/rename the setup
-        # Velopack format: {packId}-win-Setup.exe
-        velopack_setup = os.path.join(os.path.dirname(pack_dir), 'Releases', '%s-win-Setup.exe' % pack_id)
-        our_setup = os.path.join(os.path.dirname(pack_dir), self.package_file)
-        if os.path.exists(velopack_setup) and velopack_setup != our_setup:
+        # Move the setup exe INTO pack_dir so it's included in the Windows-app artifact
+        # Use hyphen format (-Setup.exe) to avoid the *_Setup.exe exclusion pattern in viewer_app
+        # Velopack creates: {packId}-win-Setup.exe
+        velopack_setup = os.path.join(releases_dir, '%s-win-Setup.exe' % pack_id)
+        # Keep Velopack naming convention (hyphen, not underscore)
+        self.package_file = '%s-Setup.exe' % pack_id
+        our_setup = os.path.join(pack_dir, self.package_file)
+        if os.path.exists(velopack_setup):
             shutil.move(velopack_setup, our_setup)
             print("Moved %s to %s" % (velopack_setup, our_setup))
+
+        # Output the Releases directory path for artifact upload (contains nupkg, RELEASES for updates)
+        self.set_github_output('velopack_releases', releases_dir)
 
     def nsis_package_finish(self):
         """Package the viewer using NSIS installer (legacy)"""

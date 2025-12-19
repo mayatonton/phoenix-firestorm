@@ -4,6 +4,10 @@
 
 include_guard()
 
+# USE_VELOPACK controls whether to use Velopack for Windows installer packaging (instead of NSIS)
+# This is separate from the ll::velopack library which is always linked on Windows
+option(USE_VELOPACK "Use Velopack for Windows installer packaging" OFF)
+
 # TODO: Add Mac and Linux support
 # Only available on Windows (so far)
 if (WINDOWS)

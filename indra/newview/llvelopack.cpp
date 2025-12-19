@@ -60,8 +60,8 @@ static std::wstring get_install_dir()
 
 static std::wstring get_app_name()
 {
-    // TODO: Read from build_data.json
-    return L"Second Life";
+    // LL_VIEWER_CHANNEL is defined at compile time via CMake (e.g., "Second Life Test")
+    return LL_TO_WSTRING(LL_VIEWER_CHANNEL);
 }
 
 static std::wstring get_app_name_oneword()
