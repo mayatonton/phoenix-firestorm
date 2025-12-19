@@ -43,6 +43,7 @@ include(TinyEXR)
 include(ThreeJS)
 include(Tracy)
 include(UI)
+include(Velopack)
 include(ViewerMiscLibs)
 include(ViewerManager)
 include(VisualLeakDetector)
@@ -1520,6 +1521,7 @@ if (WINDOWS)
 
     list(APPEND viewer_SOURCE_FILES
          llappviewerwin32.cpp
+         llvelopack.cpp
          llwindebug.cpp
          )
     set_source_files_properties(
@@ -1530,6 +1532,7 @@ if (WINDOWS)
 
     list(APPEND viewer_HEADER_FILES
          llappviewerwin32.h
+         llvelopack.h
          llwindebug.h
          )
 
@@ -2064,6 +2067,10 @@ target_link_libraries(${VIEWER_BINARY_NAME}
 
 if (USE_DISCORD)
    target_link_libraries(${VIEWER_BINARY_NAME} ll::discord_sdk )
+endif ()
+
+if (TARGET ll::velopack)
+   target_link_libraries(${VIEWER_BINARY_NAME} ll::velopack )
 endif ()
 
 if( TARGET ll::intel_memops )
