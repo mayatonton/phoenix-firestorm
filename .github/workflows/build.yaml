@@ -136,6 +136,11 @@ jobs:
         with:
           token: ${{ github.token }}
 
+      - name: Install Velopack CLI
+        if: runner.os == 'Windows' && (github.event.inputs.installer_type || 'velopack') == 'velopack'
+        shell: bash
+        run: dotnet tool install -g vpk
+
       - name: Build
         id: build
         shell: bash
