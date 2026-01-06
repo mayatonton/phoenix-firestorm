@@ -3507,7 +3507,7 @@ void handle_object_tex_refresh(LLViewerObject* object, LLSelectNode* node)
     // Refresh sculpt texture
     if (object->isSculpted())
     {
-        LLSculptParams *sculpt_params = (LLSculptParams *)object->getParameterEntry(LLNetworkData::PARAMS_SCULPT);
+        LLSculptParams *sculpt_params = object->getSculptParams();
         if (sculpt_params)
         {
             LLUUID sculpt_uuid = sculpt_params->getSculptTexture();

@@ -7413,6 +7413,17 @@
       <key>Value</key>
       <integer>1</integer>
     </map>
+    <key>MapShowGridCoords</key>
+    <map>
+      <key>Comment</key>
+      <string>Shows/hides the grid coordinates of each region on the world map.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>MiniMapAutoCenter</key>
     <map>
       <key>Comment</key>
@@ -23901,17 +23912,6 @@ Change of this parameter will affect the layout of buttons in notification toast
       <string>U32</string>
       <key>Value</key>
       <integer>100</integer>
-    </map>
-    <key>FSShowRegionGridCoordinates</key>
-    <map>
-      <key>Comment</key>
-      <string>Show the grid coordinates of each region in the world map.</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>0</integer>
     </map>
     <key>FSTextureDefaultSaveAsFormat</key>
     <map>
