@@ -2,6 +2,14 @@ name: Build
 
 on:
   workflow_dispatch:
+    inputs:
+      installer_type:
+        description: 'Windows installer type'
+        type: choice
+        options:
+          - velopack
+          - nsis
+        default: 'velopack'
   pull_request:
   push:
     branches: ["main", "release/*", "project/*"]
@@ -84,6 +92,8 @@ jobs:
       # Only set variants to the one configuration: don't let build.sh loop
       # over variants, let GitHub distribute variants over multiple hosts.
       variants: ${{ matrix.configuration }}
+      # Pass USE_VELOPACK to CMake when using Velopack installer (default) - Windows only
+      autobuild_configure_parameters: ${{ contains(matrix.runner, 'windows') && (github.event.inputs.installer_type || 'velopack') == 'velopack' && '-- -DUSE_VELOPACK:BOOL=ON' || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -125,6 +135,11 @@ jobs:
         uses: secondlife/viewer-build-util/which-branch@v2
         with:
           token: ${{ github.token }}
+
+      - name: Install Velopack CLI
+        if: runner.os == 'Windows' && (github.event.inputs.installer_type || 'velopack') == 'velopack'
+        shell: bash
+        run: dotnet tool install -g vpk
 
       - name: Build
         id: build
@@ -271,6 +286,14 @@ jobs:
           path: |
             ${{ steps.build.outputs.viewer_app }}
 
+      # Upload Velopack Releases directory (contains nupkg and RELEASES for updates)
+      - name: Upload Velopack releases
+        if: steps.build.outputs.velopack_releases
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ steps.build.outputs.artifact }}-releases"
+          path: ${{ steps.build.outputs.velopack_releases }}
+
       # The other upload of nontrivial size is the symbol file. Use a distinct
       # artifact for that too.
       - name: Upload symbol file
@@ -310,13 +333,14 @@ jobs:
     steps:
       - name: Sign and package Windows viewer
         if: env.AZURE_KEY_VAULT_URI && env.AZURE_CERT_NAME && env.AZURE_CLIENT_ID && env.AZURE_CLIENT_SECRET && env.AZURE_TENANT_ID
-        uses: secondlife/viewer-build-util/sign-pkg-windows@v2.0.4
+        uses: secondlife/viewer-build-util/sign-pkg-windows@geenz/velopack
         with:
           vault_uri: "${{ env.AZURE_KEY_VAULT_URI }}"
           cert_name: "${{ env.AZURE_CERT_NAME }}"
           client_id: "${{ env.AZURE_CLIENT_ID }}"
           client_secret: "${{ env.AZURE_CLIENT_SECRET }}"
           tenant_id: "${{ env.AZURE_TENANT_ID }}"
+          installer_type: "${{ github.event.inputs.installer_type || 'velopack' }}"
 
   sign-and-package-mac:
     env:

@@ -974,6 +974,83 @@ class Windows_x86_64_Manifest(ViewerManifest):
         
 
     def package_finish(self):
+        # Check if we should use Velopack instead of NSIS
+        # Note: as of 2026.01's release, we will be building with Velopack's one click install.
+        # We maintain the legacy NSIS packaging mainly for TPVs at this point.
+        if self.args.get('velopack', 'OFF') == 'ON':
+            self.velopack_package_finish()
+            return
+
+        # NSIS packaging (legacy)
+        self.nsis_package_finish()
+
+    def velopack_package_finish(self):
+        # packId determines install folder: %LocalAppData%\{packId}
+        # Uses same naming as NSIS INSTNAME for channel separation
+        pack_id = self.app_name_oneword()  # "SecondLife", "SecondLifeBeta", etc.
+        # Velopack requires SemVer2 (3-part: major.minor.patch), viewer has 4 parts
+        # TODO: Treat patch as build number.
+        pack_version = '.'.join(self.args['version'][:3])
+        pack_title = self.app_name()  # Display name with spaces
+        pack_dir = self.get_dst_prefix()
+        main_exe = self.final_exe()
+
+        # Icon path - use ll_icon.ico which has PNG-embedded icons that Velopack can parse
+        # (install_icon.ico causes parsing errors in Velopack's ICO library)
+        icon_path = os.path.join(self.get_src_prefix(), 'res', 'll_icon.ico')
+
+        # Splash image (we should probably add one - uncomment later when we have one)
+        # splash_path = os.path.join(self.get_src_prefix(), 'installers', 'windows', 'splash.png')
+
+        # Build vpk command
+        vpk_args = [
+            'vpk', 'pack',
+            '--packId', pack_id,
+            '--packVersion', pack_version,
+            '--packDir', pack_dir,
+            '--mainExe', main_exe,
+            '--packTitle', pack_title,
+        ]
+
+        # Add icon if exists
+        # TODO: Convert all of our icons into something vpk works better with.
+        # We have some bitmap data in our icons that it really doesn't like.
+        if os.path.exists(icon_path):
+            vpk_args.extend(['--icon', icon_path])
+
+        # Add splash image when it exists
+        # if os.path.exists(splash_path):
+        #    vpk_args.extend(['--splashImage', splash_path])
+
+        print("Running Velopack packaging: %s" % ' '.join(vpk_args))
+
+        # Run vpk command
+        import subprocess
+        result = subprocess.run(vpk_args, cwd=os.path.dirname(pack_dir), capture_output=True, text=True)
+        if result.returncode != 0:
+            print("vpk stdout: %s" % result.stdout)
+            print("vpk stderr: %s" % result.stderr)
+            raise ManifestError("Velopack packaging failed with code %d" % result.returncode)
+
+        # Velopack outputs to a Releases directory
+        releases_dir = os.path.join(os.path.dirname(pack_dir), 'Releases')
+
+        # Move the setup exe INTO pack_dir so it's included in the Windows-app artifact
+        # Use hyphen format (-Setup.exe) to avoid the *_Setup.exe exclusion pattern in viewer_app
+        # Velopack creates: {packId}-win-Setup.exe
+        velopack_setup = os.path.join(releases_dir, '%s-win-Setup.exe' % pack_id)
+        # Keep Velopack naming convention (hyphen, not underscore)
+        self.package_file = '%s-Setup.exe' % pack_id
+        our_setup = os.path.join(pack_dir, self.package_file)
+        if os.path.exists(velopack_setup):
+            shutil.move(velopack_setup, our_setup)
+            print("Moved %s to %s" % (velopack_setup, our_setup))
+
+        # Output the Releases directory path for artifact upload (contains nupkg, RELEASES for updates)
+        self.set_github_output('velopack_releases', releases_dir)
+
+    def nsis_package_finish(self):
+        """Package the viewer using NSIS installer (legacy)"""
         # a standard map of strings for replacing in the templates
         substitution_strings = {
             'version' : '.'.join(self.args['version']),
@@ -2272,6 +2349,7 @@ if __name__ == "__main__":
         dict(name='fmodstudio', description="""Indication if fmod studio libraries are needed""", default='OFF'),
         dict(name='openal', description="""Indication openal libraries are needed""", default='OFF'),
         dict(name='tracy', description="""Indication tracy profiler is enabled""", default='OFF'),
+        dict(name='velopack', description="""Use Velopack installer instead of NSIS""", default='OFF'),
         dict(name='avx2', description="""Indication avx2 instruction set is enabled""", default='OFF'),
         ]
     try:
