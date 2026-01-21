@@ -4,12 +4,9 @@
 
 include_guard()
 
-# USE_VELOPACK controls whether to use Velopack for Windows installer packaging (instead of NSIS)
-# This is separate from the ll::velopack library which is always linked on Windows
-option(USE_VELOPACK "Use Velopack for Windows installer packaging" OFF)
+# USE_VELOPACK controls whether to use Velopack for installer packaging (instead of NSIS/DMG)
+option(USE_VELOPACK "Use Velopack for installer packaging" OFF)
 
-# TODO: Add Mac and Linux support
-# Only available on Windows (so far)
 if (WINDOWS)
     include(Prebuilt)
     use_prebuilt_binary(velopack)
@@ -38,4 +35,29 @@ if (WINDOWS)
     )
 
     target_compile_definitions(ll::velopack INTERFACE LL_VELOPACK=1)
+
+elseif (DARWIN)
+    include(Prebuilt)
+    use_prebuilt_binary(velopack)
+
+    add_library(ll::velopack INTERFACE IMPORTED)
+
+    target_include_directories(ll::velopack SYSTEM INTERFACE
+        ${LIBS_PREBUILT_DIR}/include/velopack
+    )
+
+    target_link_libraries(ll::velopack INTERFACE
+        ${ARCH_PREBUILT_DIRS_RELEASE}/libvelopack_libc.a
+    )
+
+    # macOS system frameworks required by Velopack
+    target_link_libraries(ll::velopack INTERFACE
+        "-framework Foundation"
+        "-framework Security"
+        "-framework SystemConfiguration"
+        "-framework AppKit"
+    )
+
+    target_compile_definitions(ll::velopack INTERFACE LL_VELOPACK=1)
+
 endif()

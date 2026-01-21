@@ -29,26 +29,35 @@
 #include "llviewerprecompiledheaders.h"
 #include "llvelopack.h"
 
+#include "Velopack.h"
+
+#if LL_WINDOWS
 #include <windows.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <shlwapi.h>
 #include <objbase.h>
 
-#include "Velopack.h"
-
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "shell32.lib")
+#endif // LL_WINDOWS
 
-static const wchar_t* PROTOCOL_SECONDLIFE = L"secondlife";
-static const wchar_t* PROTOCOL_GRID_INFO = L"x-grid-location-info";
-static const wchar_t* VIEWER_EXE_NAME = L"SecondLifeViewer.exe";
-
+// Common state
 static std::string sUpdateUrl;
 static std::function<void(int)> sProgressCallback;
 static vpkc_update_manager_t* sUpdateManager = nullptr;
 static vpkc_update_info_t* sPendingUpdate = nullptr;
+
+//
+// Platform-specific helpers and hooks
+//
+
+#if LL_WINDOWS
+
+static const wchar_t* PROTOCOL_SECONDLIFE = L"secondlife";
+static const wchar_t* PROTOCOL_GRID_INFO = L"x-grid-location-info";
+static const wchar_t* VIEWER_EXE_NAME = L"SecondLifeViewer.exe";
 
 static std::wstring get_install_dir()
 {
@@ -275,6 +284,35 @@ static void on_log_message(void* user_data, const char* level, const char* messa
     OutputDebugStringA("\n");
 }
 
+#elif LL_DARWIN
+
+// macOS-specific hooks
+// TODO: Implement protocol handler registration via Launch Services
+// TODO: Implement app bundle management
+
+static void on_after_install(void* user_data, const char* app_version)
+{
+    // macOS handles protocol registration via Info.plist CFBundleURLTypes
+    // No additional registration needed at runtime
+    LL_INFOS("Velopack") << "macOS post-install hook called for version: " << app_version << LL_ENDL;
+}
+
+static void on_before_uninstall(void* user_data, const char* app_version)
+{
+    LL_INFOS("Velopack") << "macOS pre-uninstall hook called for version: " << app_version << LL_ENDL;
+}
+
+static void on_log_message(void* user_data, const char* level, const char* message)
+{
+    LL_INFOS("Velopack") << "[" << level << "] " << message << LL_ENDL;
+}
+
+#endif // LL_WINDOWS / LL_DARWIN
+
+//
+// Common progress callback
+//
+
 static void on_progress(void* user_data, size_t progress)
 {
     if (sProgressCallback)
@@ -283,11 +321,19 @@ static void on_progress(void* user_data, size_t progress)
     }
 }
 
+//
+// Public API - Cross-platform
+//
+
 bool velopack_initialize()
 {
     vpkc_set_logger(on_log_message, nullptr);
+
+#if LL_WINDOWS || LL_DARWIN
     vpkc_app_set_hook_after_install(on_after_install);
     vpkc_app_set_hook_before_uninstall(on_before_uninstall);
+#endif
+
     vpkc_app_run(nullptr);
     return true;
 }
@@ -296,6 +342,7 @@ void velopack_check_for_updates()
 {
     if (sUpdateUrl.empty())
     {
+        LL_DEBUGS("Velopack") << "No update URL set, skipping update check" << LL_ENDL;
         return;
     }
 
@@ -307,6 +354,7 @@ void velopack_check_for_updates()
 
         if (!vpkc_new_update_manager(sUpdateUrl.c_str(), &options, nullptr, &sUpdateManager))
         {
+            LL_WARNS("Velopack") << "Failed to create update manager" << LL_ENDL;
             return;
         }
     }
@@ -316,6 +364,7 @@ void velopack_check_for_updates()
 
     if (result == UPDATE_AVAILABLE && update_info)
     {
+        LL_INFOS("Velopack") << "Update available, downloading..." << LL_ENDL;
         if (vpkc_download_updates(sUpdateManager, update_info, on_progress, nullptr))
         {
             if (sPendingUpdate)
@@ -323,11 +372,17 @@ void velopack_check_for_updates()
                 vpkc_free_update_info(sPendingUpdate);
             }
             sPendingUpdate = update_info;
+            LL_INFOS("Velopack") << "Update downloaded and pending" << LL_ENDL;
         }
         else
         {
+            LL_WARNS("Velopack") << "Failed to download update" << LL_ENDL;
             vpkc_free_update_info(update_info);
         }
+    }
+    else
+    {
+        LL_DEBUGS("Velopack") << "No update available (result=" << result << ")" << LL_ENDL;
     }
 }
 
@@ -356,9 +411,11 @@ void velopack_apply_pending_update(bool restart)
 {
     if (!sUpdateManager || !sPendingUpdate || !sPendingUpdate->TargetFullRelease)
     {
+        LL_WARNS("Velopack") << "Cannot apply update: no pending update or manager" << LL_ENDL;
         return;
     }
 
+    LL_INFOS("Velopack") << "Applying pending update (restart=" << restart << ")" << LL_ENDL;
     vpkc_wait_exit_then_apply_updates(sUpdateManager,
                                        sPendingUpdate->TargetFullRelease,
                                        false,
@@ -369,6 +426,7 @@ void velopack_apply_pending_update(bool restart)
 void velopack_set_update_url(const std::string& url)
 {
     sUpdateUrl = url;
+    LL_INFOS("Velopack") << "Update URL set to: " << url << LL_ENDL;
 }
 
 void velopack_set_progress_callback(std::function<void(int)> callback)

@@ -92,8 +92,8 @@ jobs:
       # Only set variants to the one configuration: don't let build.sh loop
       # over variants, let GitHub distribute variants over multiple hosts.
       variants: ${{ matrix.configuration }}
-      # Pass USE_VELOPACK to CMake when using Velopack installer (default) - Windows only
-      autobuild_configure_parameters: ${{ contains(matrix.runner, 'windows') && (github.event.inputs.installer_type || 'velopack') == 'velopack' && '-- -DUSE_VELOPACK:BOOL=ON' || '' }}
+      # Pass USE_VELOPACK to CMake when using Velopack installer (default) - Windows and macOS
+      autobuild_configure_parameters: ${{ (contains(matrix.runner, 'windows') || contains(matrix.runner, 'macos')) && (github.event.inputs.installer_type || 'velopack') == 'velopack' && '-- -DUSE_VELOPACK:BOOL=ON' || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -137,7 +137,7 @@ jobs:
           token: ${{ github.token }}
 
       - name: Install Velopack CLI
-        if: runner.os == 'Windows' && (github.event.inputs.installer_type || 'velopack') == 'velopack'
+        if: (runner.os == 'Windows' || runner.os == 'macOS') && (github.event.inputs.installer_type || 'velopack') == 'velopack'
         shell: bash
         run: dotnet tool install -g vpk
 
@@ -463,6 +463,10 @@ jobs:
         with:
           pattern: "*-metadata"
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*-releases"
+
       - name: Rename metadata
         run: |
           cp Windows-metadata/autobuild-package.xml Windows-autobuild-package.xml
@@ -488,12 +492,14 @@ jobs:
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
           append_body: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
           files: |
             macOS-installer/*.dmg
             Windows-installer/*.exe
             *-autobuild-package.xml
             *-viewer_version.txt
+            Windows-releases/*
+            macOS-releases/*
 
       - name: post release URL
         run: |

@@ -1203,6 +1203,61 @@ class Darwin_x86_64_Manifest(ViewerManifest):
                             arcname=self.app_name() + ".app")
             self.set_github_output_path('viewer_app', tarpath)
 
+        # Generate Velopack update packages if enabled
+        # This creates the nupkg and RELEASES files needed for auto-updates
+        # Distribution is still via DMG, but updates use Velopack
+        if self.args.get('velopack', 'OFF') == 'ON':
+            self.velopack_package_finish()
+
+    def velopack_package_finish(self):
+        """Generate Velopack update packages for macOS"""
+        # packId determines install identification
+        pack_id = self.app_name_oneword()  # "SecondLife", "SecondLifeBeta", etc.
+        # Velopack requires SemVer2 (3-part: major.minor.patch), viewer has 4 parts
+        pack_version = '.'.join(self.args['version'][:3])
+        pack_title = self.app_name()  # Display name with spaces
+        # The .app bundle path
+        pack_dir = self.get_dst_prefix()
+
+        # Icon path for macOS
+        icon_path = os.path.join(self.get_src_prefix(), 'res', 'secondlife.icns')
+
+        # Build vpk command for macOS
+        vpk_args = [
+            'vpk', 'pack',
+            '--packId', pack_id,
+            '--packVersion', pack_version,
+            '--packDir', pack_dir,
+            '--packTitle', pack_title,
+            '--mainExe', self.channel(),  # The executable inside the .app bundle
+        ]
+
+        # Add icon if exists
+        if os.path.exists(icon_path):
+            vpk_args.extend(['--icon', icon_path])
+
+        print("Running Velopack packaging for macOS: %s" % ' '.join(vpk_args))
+
+        # Run vpk command
+        import subprocess
+        result = subprocess.run(vpk_args, cwd=os.path.dirname(pack_dir), capture_output=True, text=True)
+        if result.returncode != 0:
+            print("vpk stdout: %s" % result.stdout)
+            print("vpk stderr: %s" % result.stderr)
+            # Don't fail the build - Velopack packaging is supplementary to DMG
+            print("Warning: Velopack packaging failed with code %d" % result.returncode)
+            return
+
+        # Velopack outputs to a Releases directory
+        releases_dir = os.path.join(os.path.dirname(pack_dir), 'Releases')
+
+        # Output the Releases directory path for artifact upload (contains nupkg, RELEASES for updates)
+        if os.path.exists(releases_dir):
+            self.set_github_output('velopack_releases', releases_dir)
+            print("Velopack releases directory: %s" % releases_dir)
+        else:
+            print("Warning: Velopack releases directory not found: %s" % releases_dir)
+
 
 class LinuxManifest(ViewerManifest):
     build_data_json_platform = 'lnx'
