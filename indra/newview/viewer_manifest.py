@@ -1210,59 +1210,90 @@ class Darwin_x86_64_Manifest(ViewerManifest):
             self.velopack_package_finish()
 
     def velopack_package_finish(self):
-        """Generate Velopack update packages for macOS"""
+        """Generate Velopack update packages for macOS.
+
+        This creates the nupkg and releases.json files needed for auto-updates.
+        Distribution is still via DMG - Velopack only handles the update infrastructure.
+        """
         # packId determines install identification - same as Windows for consistency
         pack_id = self.app_name_oneword()  # "SecondLife", "SecondLifeBeta", etc.
         # Velopack requires SemVer2 (3-part: major.minor.patch), viewer has 4 parts
         pack_version = '.'.join(self.args['version'][:3])
         pack_title = self.app_name()  # Display name with spaces
 
-        # The .app bundle path (e.g., "Second Life Release.app")
+        # The .app bundle path (e.g., "/path/to/Second Life Release.app")
         app_bundle = self.get_dst_prefix()
-        # Parent directory containing the .app bundle
-        pack_dir = os.path.dirname(app_bundle)
-        # The executable inside Contents/MacOS/ has the same name as the channel
-        main_exe = self.channel()
+        # Parent directory containing the .app bundle - this is where we run vpk from
+        # and where the Releases directory will be created
+        work_dir = os.path.dirname(app_bundle)
         # Bundle ID from args (e.g., "com.secondlife.viewer")
         bundle_id = self.args.get('bundleid', 'com.secondlife.indra.viewer')
 
+        # Output directory for releases
+        releases_dir = os.path.join(work_dir, 'Releases')
+
         # Icon path for macOS
-        icon_path = os.path.join(self.get_src_prefix(), 'res', 'secondlife.icns')
+        icon_path = os.path.join(self.get_src_prefix(), self.icon_path(), 'secondlife.icns')
 
         # Build vpk command for macOS
+        # See: https://docs.velopack.io/reference/cli/content/vpk-osx
         vpk_args = [
             'vpk', 'pack',
             '--packId', pack_id,
             '--packVersion', pack_version,
             '--packDir', app_bundle,
             '--packTitle', pack_title,
-            '--mainExe', main_exe,
             '--bundleId', bundle_id,
+            '--outputDir', releases_dir,
+            '--noInst',  # Don't generate .pkg installer - we use DMG for distribution
+            '--noPortable',  # Don't generate portable zip
+            '--verbose',  # Show detailed output
         ]
 
         # Add icon if exists
         if os.path.exists(icon_path):
             vpk_args.extend(['--icon', icon_path])
 
-        print("Running Velopack packaging for macOS: %s" % ' '.join(vpk_args))
+        print("Running Velopack packaging for macOS:")
+        print("  Command: %s" % ' '.join(vpk_args))
+        print("  Working directory: %s" % work_dir)
+        print("  App bundle: %s" % app_bundle)
 
         # Run vpk command
-        import subprocess
-        result = subprocess.run(vpk_args, cwd=pack_dir, capture_output=True, text=True)
+        result = subprocess.run(vpk_args, cwd=work_dir, capture_output=True, text=True)
+
+        # Always print output for debugging
+        if result.stdout:
+            print("vpk stdout:\n%s" % result.stdout)
+        if result.stderr:
+            print("vpk stderr:\n%s" % result.stderr)
+
         if result.returncode != 0:
-            print("vpk stdout: %s" % result.stdout)
-            print("vpk stderr: %s" % result.stderr)
             raise ManifestError("Velopack packaging failed with code %d" % result.returncode)
 
-        # Velopack outputs to a Releases directory
-        releases_dir = os.path.join(pack_dir, 'Releases')
-
-        # Output the Releases directory path for artifact upload (contains nupkg, releases.json for updates)
-        if os.path.exists(releases_dir):
-            self.set_github_output('velopack_releases', releases_dir)
-            print("Velopack releases directory: %s" % releases_dir)
-        else:
+        # Verify the Releases directory was created and contains expected files
+        if not os.path.exists(releases_dir):
             raise ManifestError("Velopack releases directory not found: %s" % releases_dir)
+
+        # List what was created
+        releases_contents = os.listdir(releases_dir)
+        print("Velopack releases directory contents: %s" % releases_contents)
+
+        # Verify we have the expected files (nupkg and releases JSON)
+        nupkg_files = [f for f in releases_contents if f.endswith('.nupkg')]
+        json_files = [f for f in releases_contents if f.endswith('.json')]
+
+        if not nupkg_files:
+            raise ManifestError("No .nupkg files found in releases directory")
+        if not json_files:
+            raise ManifestError("No releases JSON files found in releases directory")
+
+        print("Generated %d nupkg file(s): %s" % (len(nupkg_files), nupkg_files))
+        print("Generated %d JSON file(s): %s" % (len(json_files), json_files))
+
+        # Output the Releases directory path for artifact upload
+        self.set_github_output('velopack_releases', releases_dir)
+        print("Velopack releases directory: %s" % releases_dir)
 
 
 class LinuxManifest(ViewerManifest):
