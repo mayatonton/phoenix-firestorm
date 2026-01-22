@@ -1246,7 +1246,6 @@ class Darwin_x86_64_Manifest(ViewerManifest):
             '--bundleId', bundle_id,
             '--outputDir', releases_dir,
             '--noInst',  # Don't generate .pkg installer - we use DMG for distribution
-            '--noPortable',  # Don't generate portable zip
             '--verbose',  # Show detailed output
         ]
 
