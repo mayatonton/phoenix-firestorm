@@ -1235,6 +1235,9 @@ class Darwin_x86_64_Manifest(ViewerManifest):
         # Icon path for macOS
         icon_path = os.path.join(self.get_src_prefix(), self.icon_path(), 'secondlife.icns')
 
+        # The main executable inside Contents/MacOS/ is named after the channel
+        main_exe = self.channel()
+
         # Build vpk command for macOS
         # See: https://docs.velopack.io/reference/cli/content/vpk-osx
         vpk_args = [
@@ -1243,6 +1246,7 @@ class Darwin_x86_64_Manifest(ViewerManifest):
             '--packVersion', pack_version,
             '--packDir', app_bundle,
             '--packTitle', pack_title,
+            '--mainExe', main_exe,  # Executable name inside Contents/MacOS/
             '--bundleId', bundle_id,
             '--outputDir', releases_dir,
             '--noInst',  # Don't generate .pkg installer - we use DMG for distribution
@@ -1257,6 +1261,7 @@ class Darwin_x86_64_Manifest(ViewerManifest):
         print("  Command: %s" % ' '.join(vpk_args))
         print("  Working directory: %s" % work_dir)
         print("  App bundle: %s" % app_bundle)
+        print("  Main executable: %s" % main_exe)
 
         # Run vpk command
         result = subprocess.run(vpk_args, cwd=work_dir, capture_output=True, text=True)
