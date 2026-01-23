@@ -1229,8 +1229,11 @@ class Darwin_x86_64_Manifest(ViewerManifest):
         # Bundle ID from args (e.g., "com.secondlife.viewer")
         bundle_id = self.args.get('bundleid', 'com.secondlife.indra.viewer')
 
-        # Output directory for releases
+        # Output directory for releases - clean it first to avoid version conflicts
         releases_dir = os.path.join(work_dir, 'Releases')
+        if os.path.exists(releases_dir):
+            print("Cleaning existing Releases directory: %s" % releases_dir)
+            shutil.rmtree(releases_dir)
 
         # Icon path for macOS
         icon_path = os.path.join(self.get_src_prefix(), self.icon_path(), 'secondlife.icns')
