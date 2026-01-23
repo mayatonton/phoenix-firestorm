@@ -826,12 +826,13 @@ class Windows_x86_64_Manifest(ViewerManifest):
         releases_dir = os.path.join(os.path.dirname(pack_dir), 'Releases')
 
         # Move the setup exe INTO pack_dir so it's included in the Windows-app artifact
-        # Use hyphen format (-Setup.exe) to avoid the *_Setup.exe exclusion pattern in viewer_app
+        # IMPORTANT: Use hyphen format (-Setup.exe) to avoid the *_Setup.exe exclusion pattern
+        # in viewer_app output (line ~538). The underscore pattern excludes NSIS installers
+        # which are rebuilt during signing, but Velopack installers are created here.
         # Velopack creates: {packId}-win-Setup.exe
         velopack_setup = os.path.join(releases_dir, '%s-win-Setup.exe' % pack_id)
-        # Use same naming convention as NSIS installer for consistency
-        # Format: Second_Life_26_1_0_53294_x86_64_Setup.exe
-        self.package_file = self.installer_base_name() + '_Setup.exe'
+        # Use versioned name with hyphen: Second_Life_26_1_0_53294_x86_64-Setup.exe
+        self.package_file = self.installer_base_name() + '-Setup.exe'
         our_setup = os.path.join(pack_dir, self.package_file)
         if os.path.exists(velopack_setup):
             shutil.move(velopack_setup, our_setup)
