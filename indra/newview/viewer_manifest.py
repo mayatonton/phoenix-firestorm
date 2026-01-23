@@ -829,8 +829,9 @@ class Windows_x86_64_Manifest(ViewerManifest):
         # Use hyphen format (-Setup.exe) to avoid the *_Setup.exe exclusion pattern in viewer_app
         # Velopack creates: {packId}-win-Setup.exe
         velopack_setup = os.path.join(releases_dir, '%s-win-Setup.exe' % pack_id)
-        # Keep Velopack naming convention (hyphen, not underscore)
-        self.package_file = '%s-Setup.exe' % pack_id
+        # Use same naming convention as NSIS installer for consistency
+        # Format: Second_Life_26_1_0_53294_x86_64_Setup.exe
+        self.package_file = self.installer_base_name() + '_Setup.exe'
         our_setup = os.path.join(pack_dir, self.package_file)
         if os.path.exists(velopack_setup):
             shutil.move(velopack_setup, our_setup)
