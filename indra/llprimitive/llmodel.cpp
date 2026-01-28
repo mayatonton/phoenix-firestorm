@@ -1634,6 +1634,7 @@ LLMeshSkinInfo::LLMeshSkinInfo():
     mInvalidJointsScrubbed(false),
     mJointNumsInitialized(false)
 {
+    mBindShapeMatrix = LLMatrix4a::identity(); // <FS:Beq/> [FIRE-36135] Ensure bind shape matrix is explicitly initialised to identity.
 }
 
 LLMeshSkinInfo::LLMeshSkinInfo(LLSD& skin):
@@ -1642,6 +1643,7 @@ LLMeshSkinInfo::LLMeshSkinInfo(LLSD& skin):
     mInvalidJointsScrubbed(false),
     mJointNumsInitialized(false)
 {
+    mBindShapeMatrix = LLMatrix4a::identity(); // <FS:Beq/> [FIRE-36135] Ensure bind shape matrix is explicitly initialised to identity.
     fromLLSD(skin);
 }
 
@@ -1652,6 +1654,7 @@ LLMeshSkinInfo::LLMeshSkinInfo(const LLUUID& mesh_id, LLSD& skin) :
     mInvalidJointsScrubbed(false),
     mJointNumsInitialized(false)
 {
+    mBindShapeMatrix = LLMatrix4a::identity(); // <FS:Beq/> [FIRE-36135] Ensure bind shape matrix is explicitly initialised to identity.
     fromLLSD(skin);
 }
 

@@ -57,8 +57,7 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
     daeElement*  collada_document_root  = nullptr;
     daeDatabase* collada_db             = nullptr;
     std::string  filename               = data->getFilename(lod);
-    mLod                                = lod;
-    mLoadingLog.clear();
+    setLod(lod);
 
     // open file and check if opened
     if (gSavedSettings.getBOOL("ImporterPreprocessDAE"))
@@ -189,10 +188,8 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
             if (object_success)
             {
                 pushLog("DAE Importer", "Object loaded successfully.");
-                current_object->computeObjectBoundingBox();
-                current_object->computeObjectTransform(scene_transform_base);
-                current_object->normalizeFaceValues(mLod);
-                // normalizeFaceValues is necessary for skin calculations down below,
+                postProcessObject(*current_object, scene_transform_base, true);
+                // normalization is necessary for skin calculations down below,
                 // but we also have to do it once per each lod so we'll call it foreach lod.
 
                 auto& object_vector = data->getObjectVector();
@@ -228,7 +225,7 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
             if (object_success)
             {
                 pushLog("DAE Importer", "Object loaded successfully.");
-                current_object_ptr->normalizeFaceValues(mLod);
+                postProcessObject(*current_object_ptr, scene_transform_base, false);
             }
 
             else
@@ -468,27 +465,6 @@ bool LLLocalMeshImportDAE::processObject(domMesh* current_mesh, LLLocalMeshObjec
     return !submesh_failure_found;
 }
 
-// Function to load the JointMap
-static JointMap loadJointMap()
-{
-    JointMap joint_map = gAgentAvatarp->getJointAliases();
-
-    // unfortunately getSortedJointNames clears the ref vector, and we need two extra lists.
-    std::vector<std::string> extra_names, more_extra_names;
-    gAgentAvatarp->getSortedJointNames(1, extra_names);
-    gAgentAvatarp->getSortedJointNames(2, more_extra_names);
-    extra_names.reserve(more_extra_names.size());
-    extra_names.insert(extra_names.end(), more_extra_names.begin(), more_extra_names.end());
-
-    // add the extras to jointmap
-    for (const auto& extra_name : extra_names)
-    {
-        joint_map[extra_name] = extra_name;
-    }
-
-    return joint_map;
-}
-
 // this function is a mess even after refactoring, omnissiah help whichever tech priest delves into this mess.
 bool LLLocalMeshImportDAE::processSkin(daeDatabase* collada_db, daeElement* collada_document_root, domMesh* current_mesh, domSkin* current_skin,
     std::unique_ptr<LLLocalMeshObject>& current_object)
@@ -498,10 +474,6 @@ bool LLLocalMeshImportDAE::processSkin(daeDatabase* collada_db, daeElement* coll
     //===========================================================
 
     pushLog("DAE Importer", "Preparing transformations and bind shape matrix.");
-
-    // grab transformations
-    LLVector4 inverse_translation = current_object->getObjectTranslation() * -1.f;
-    LLVector4 objct_size = current_object->getObjectSize();
 
     // this is basically the data_out but for skinning data
     LLPointer<LLMeshSkinInfo> skininfop = current_object->getObjectMeshSkinInfo();
@@ -519,12 +491,7 @@ bool LLLocalMeshImportDAE::processSkin(daeDatabase* collada_db, daeElement* coll
         }
     }
     // basically copy-pasted from linden magic
-    LLMatrix4 normalized_transformation;
-    LLMatrix4 mesh_scale;
-    normalized_transformation.setTranslation(LLVector3(inverse_translation));
-    mesh_scale.initScale(LLVector3(objct_size));
-    mesh_scale *= normalized_transformation;
-    normalized_transformation = mesh_scale;
+    LLMatrix4 normalized_transformation = FSLocalMeshImportBase::buildNormalizedTransformation(*current_object);
 
     glm::mat4 inv_mat = glm::make_mat4((F32*)normalized_transformation.mMatrix);
     inv_mat = glm::inverse(inv_mat);
@@ -553,7 +520,7 @@ bool LLLocalMeshImportDAE::processSkin(daeDatabase* collada_db, daeElement* coll
 
     LL_DEBUGS("LocalMesh") << "Loading Joint Map." << LL_ENDL;
     // setup joint map
-    JointMap joint_map = loadJointMap();
+    JointMap joint_map = FSLocalMeshImportBase::loadJointMap();
 
     //=======================================================
     // find or re-create a skeleton, deal with joint offsets
@@ -1053,11 +1020,7 @@ bool LLLocalMeshImportDAE::processSkin(daeDatabase* collada_db, daeElement* coll
     }
 
     // combine mBindShapeMatrix and mInvBindMatrix into mBindPoseMatrix
-    skininfop->mBindPoseMatrix.resize(skininfop->mInvBindMatrix.size());
-    for (U32 i = 0; i < skininfop->mInvBindMatrix.size(); ++i)
-    {
-        matMul(skininfop->mBindShapeMatrix, skininfop->mInvBindMatrix[i], skininfop->mBindPoseMatrix[i]);
-    }
+    FSLocalMeshImportBase::buildBindPoseMatrix(skininfop);
 
     skininfop->updateHash();
     LL_DEBUGS("LocalMesh") << "hash: " << skininfop->mHash << LL_ENDL;
@@ -1806,17 +1769,4 @@ bool LLLocalMeshImportDAE::readMesh_Polylist(LLLocalMeshFace* data_out, const do
     }
 
     return true;
-}
-
-void LLLocalMeshImportDAE::pushLog(const std::string& who, const std::string& what, bool is_error)
-{
-    std::string log_msg = "[ " + who + " ] ";
-    if (is_error)
-    {
-        log_msg += "[ ERROR ] ";
-    }
-
-    log_msg += what;
-    mLoadingLog.push_back(log_msg);
-    LL_INFOS("LocalMesh") << log_msg << LL_ENDL;
 }

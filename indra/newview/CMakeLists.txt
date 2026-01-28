@@ -199,7 +199,9 @@ set(viewer_SOURCE_FILES
     llagentwearablesfetch.cpp
     vjlocalmesh.cpp
     vjfloaterlocalmesh.cpp
+    fslocalmeshimportbase.cpp
     vjlocalmeshimportdae.cpp
+    fslocalmeshimportgltf.cpp
 
     gltfscenemanager.cpp
     # <FS:Ansariel> Group GLTF files into their subfolders
@@ -1057,7 +1059,9 @@ set(viewer_HEADER_FILES
     omnifilterengine.h
     vjlocalmesh.h
     vjfloaterlocalmesh.h
+    fslocalmeshimportbase.h
     vjlocalmeshimportdae.h
+    fslocalmeshimportgltf.h
 
     gltfscenemanager.h
     groupchatlistener.h
@@ -3150,4 +3154,3 @@ if (LL_TESTS)
 endif (LL_TESTS)
 
 check_message_template(${VIEWER_BINARY_NAME})
-

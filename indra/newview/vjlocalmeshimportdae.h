@@ -26,7 +26,8 @@
 
 #pragma once
 
-#include "vjlocalmesh.h"
+#include "fslocalmeshimportbase.h"
+#include <map>
 
  // collada dom magic
 #include <dom/domMesh.h>
@@ -51,13 +52,16 @@ class LLLocalMeshFileData;
     let them do it by hand, or eat cake, or something.
 */
 
-class LLLocalMeshImportDAE
+class LLLocalMeshImportDAE : public FSLocalMeshImportBase
 {
+public:
+    using JointMap = FSLocalMeshImportBase::JointMap;
+
 public:
     // use default constructor/destructor if we can get away with it.
 
 public:
-    typedef std::pair<bool, std::vector<std::string>> loadFile_return;
+    using loadFile_return = FSLocalMeshImportBase::loadFile_return;
     loadFile_return loadFile(LLLocalMeshFile* data, LLLocalMeshFileLOD lod);
     bool processObject(domMesh* current_mesh, LLLocalMeshObject* current_object);
     bool processSkin(daeDatabase* collada_db, daeElement* collada_document_root, domMesh* current_mesh, domSkin* current_skin, std::unique_ptr<LLLocalMeshObject>& current_object);
@@ -74,10 +78,5 @@ public:
     bool readMesh_Triangle(LLLocalMeshFace* data_out, const domTrianglesRef& data_in);
     bool readMesh_Polylist(LLLocalMeshFace* data_out, const domPolylistRef& data_in);
 
-    void pushLog(const std::string& who, const std::string& what, bool is_error=false);
-
 private:
-    LLLocalMeshFileLOD mLod;
-    std::vector<std::string> mLoadingLog;
 };
-

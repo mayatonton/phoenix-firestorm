@@ -49,7 +49,7 @@
 
 // local mesh importers
 #include "vjlocalmeshimportdae.h"
-
+#include "fslocalmeshimportgltf.h"
 
 /*==========================================*/
 /*  LLLocalMeshFace: aka submesh denoted by */
@@ -228,10 +228,11 @@ void LLLocalMeshObject::computeObjectTransform(const LLMatrix4& scene_transform)
 
     // object scale is the inverse of the object size
     mObjectScale.set(1.f, 1.f, 1.f,1.f);
-    for (S32 vec_iter = 0; vec_iter < 4; ++vec_iter)
+    for (S32 vec_iter = 0; vec_iter < 3; ++vec_iter)
     {
         mObjectScale[vec_iter] /= mObjectSize[vec_iter];
     }
+    mObjectScale[3] = 1.f;
 }
 
 void LLLocalMeshObject::normalizeFaceValues(LLLocalMeshFileLOD lod_iter)
@@ -256,7 +257,7 @@ void LLLocalMeshObject::normalizeFaceValues(LLLocalMeshFileLOD lod_iter)
         current_submesh_bbox.second += mObjectTranslation;
 
         LL_INFOS("LocalMesh") << "before squish:" << current_submesh_bbox.first << " " << current_submesh_bbox.second << LL_ENDL;
-        for (S32 vec_iter = 0; vec_iter < 4; ++vec_iter)
+        for (S32 vec_iter = 0; vec_iter < 3; ++vec_iter)
         {
             current_submesh_bbox.first.mV[vec_iter] *= mObjectScale.mV[vec_iter];
             current_submesh_bbox.second.mV[vec_iter] *= mObjectScale.mV[vec_iter];
@@ -268,7 +269,7 @@ void LLLocalMeshObject::normalizeFaceValues(LLLocalMeshFileLOD lod_iter)
         for (auto& current_position : current_face_positions)
         {
             current_position += mObjectTranslation;
-            for (S32 vec_iter = 0; vec_iter < 4; ++vec_iter)
+            for (S32 vec_iter = 0; vec_iter < 3; ++vec_iter)
             {
                 current_position.mV[vec_iter] *= mObjectScale.mV[vec_iter];
             }
@@ -289,7 +290,7 @@ void LLLocalMeshObject::normalizeFaceValues(LLLocalMeshFileLOD lod_iter)
                 continue;
             }
 
-            for (int vec_iter = 0; vec_iter < 4; ++vec_iter)
+            for (int vec_iter = 0; vec_iter < 3; ++vec_iter)
             {
                 current_normal.mV[vec_iter] *= mObjectSize.mV[vec_iter];
             }
@@ -472,6 +473,11 @@ LLLocalMeshFile::LLLocalMeshFile(const std::string& filename, bool try_lods)
         mExtension = LLLocalMeshFileExtension::EXTEN_DAE;
         pushLog("LLLocalMeshFile", "Extension found: COLLADA");
     }
+    else if (boost::iequals(exten_str, ".gltf") || boost::iequals(exten_str, ".glb"))
+    {
+        mExtension = LLLocalMeshFileExtension::EXTEN_GLTF;
+        pushLog("LLLocalMeshFile", "Extension found: GLTF");
+    }
     // add more ifs for different types, in lieu of a better approach?
 
     // if no extensions found, stop.
@@ -609,24 +615,36 @@ void LLLocalMeshFile::reloadLocalMeshObjects(bool initial_load)
             }
 
             log.push_back("[ LLLocalMeshFile ] Attempting to load file for LOD " + std::to_string(lod_idx));
+            auto handle_import = [&](auto& importer)
+            {
+                auto importer_result = importer.loadFile(this, current_lod);
+                lod_success[lod_idx] = importer_result.first;
+
+                // NOTE: if not success - do not indicate change as not to affect existing vobjects?
+                if (lod_success[lod_idx])
+                {
+                    change_happened = true;
+                }
+
+                const auto& importer_log = importer_result.second;
+                log.reserve(log.size() + importer_log.size());
+                log.insert(log.end(), importer_log.begin(), importer_log.end());
+            };
+
             switch (mExtension)
             {
                 case LLLocalMeshFileExtension::EXTEN_DAE:
                 {
                     // pass it over to dae loader
                     LLLocalMeshImportDAE importer;
-                    auto importer_result = importer.loadFile(this, current_lod);
-                    lod_success[lod_idx] = importer_result.first;
-
-                    // NOTE: if not success - do not indicate change as not to affect existing vobjects?
-                    if (lod_success[lod_idx])
-                    {
-                        change_happened = true;
-                    }
-
-                    const auto& importer_log = importer_result.second;
-                    log.reserve(log.size() + importer_log.size());
-                    log.insert(log.end(), importer_log.begin(), importer_log.end());
+                    handle_import(importer);
+                    break;
+                }
+                case LLLocalMeshFileExtension::EXTEN_GLTF:
+                {
+                    // pass it over to gltf loader
+                    FSLocalMeshImportGLTF importer;
+                    handle_import(importer);
                     break;
                 }
 
@@ -1118,4 +1136,3 @@ std::vector<std::string> LLLocalMeshSystem::getFileLog(const LLUUID& local_file_
 
     return {};
 }
-

@@ -62,7 +62,7 @@ private:
 };
 
 LLFloaterLocalMeshFilePicker::LLFloaterLocalMeshFilePicker(LLFloaterLocalMesh* parent_floater)
-    : LLFilePickerThread(LLFilePicker::FFLOAD_COLLADA)
+    : LLFilePickerThread(LLFilePicker::FFLOAD_MODEL)
 {
     mParentFloater = parent_floater;
 }
@@ -712,5 +712,4 @@ LLUUID LLFloaterLocalMesh::getCurrentSelectionIfValid() const
     result = mLastSelectedObject;
     return result;
 }
-
 

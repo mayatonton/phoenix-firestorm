@@ -151,6 +151,7 @@ public:
     enum class LLLocalMeshFileExtension
     {
         EXTEN_DAE,
+        EXTEN_GLTF,
         EXTEN_NONE
     };
 
