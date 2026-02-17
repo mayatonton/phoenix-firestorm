@@ -3190,11 +3190,11 @@ Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors</string>
               <key>creds</key>
               <string>github</string>
               <key>hash</key>
-              <string>77d82909367f116c60edd073f584d0c53e6ea591</string>
+              <string>81a97ec4fc491011726097e6dc8359f537fa7935</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://api.github.com/repos/secondlife-3p/3p-velopack/releases/assets/330718186</string>
+              <string>https://api.github.com/repos/secondlife-3p/3p-velopack/releases/assets/343914203</string>
             </map>
             <key>name</key>
             <string>windows64</string>
@@ -3206,11 +3206,11 @@ Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors</string>
               <key>creds</key>
               <string>github</string>
               <key>hash</key>
-              <string>3cabca6840973bbb3a90bf0cc3390bc86e745379</string>
+              <string>17b1373f15b33cd86ca30743a383bf4de63d5c09</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://api.github.com/repos/secondlife-3p/3p-velopack/releases/assets/330718181</string>
+              <string>https://api.github.com/repos/secondlife-3p/3p-velopack/releases/assets/343914198</string>
             </map>
             <key>name</key>
             <string>darwin64</string>
@@ -3223,7 +3223,7 @@ Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors</string>
         <key>copyright</key>
         <string>Velopack Ltd.</string>
         <key>version</key>
-        <string>a2592d1.20376699173</string>
+        <string>a2592d1.21222737470</string>
         <key>name</key>
         <string>velopack</string>
         <key>description</key>

@@ -28,27 +28,38 @@
 
 #include "llviewerprecompiledheaders.h"
 #include "llvelopack.h"
+#include "llstring.h"
 
+#include "Velopack.h"
+
+#if LL_WINDOWS
 #include <windows.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <shlwapi.h>
 #include <objbase.h>
-
-#include "Velopack.h"
+#include <filesystem>
 
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "shell32.lib")
+#endif // LL_WINDOWS
 
-static const wchar_t* PROTOCOL_SECONDLIFE = L"secondlife";
-static const wchar_t* PROTOCOL_GRID_INFO = L"x-grid-location-info";
-static const wchar_t* VIEWER_EXE_NAME = L"SecondLifeViewer.exe";
-
+// Common state
 static std::string sUpdateUrl;
 static std::function<void(int)> sProgressCallback;
 static vpkc_update_manager_t* sUpdateManager = nullptr;
 static vpkc_update_info_t* sPendingUpdate = nullptr;
+
+//
+// Platform-specific helpers and hooks
+//
+
+#if LL_WINDOWS
+
+static const wchar_t* PROTOCOL_SECONDLIFE = L"secondlife";
+static const wchar_t* PROTOCOL_GRID_INFO = L"x-grid-location-info";
+static const wchar_t* VIEWER_EXE_NAME = L"SecondLifeViewer.exe";
 
 static std::wstring get_install_dir()
 {
@@ -166,6 +177,89 @@ static void register_protocol_handler(const std::wstring& protocol,
     }
 }
 
+static void parse_version(const wchar_t* version_str, int& major, int& minor, int& patch, uint64_t& build)
+{
+    major = minor = patch = 0;
+    build = 0;
+    if (!version_str) return;
+    // Use swscanf for wide strings
+    swscanf(version_str, L"%d.%d.%d.%llu", &major, &minor, &patch, &build);
+}
+
+bool get_nsis_uninstaller_path(wchar_t* path_buffer, DWORD bufSize, S32 cur_major_ver, S32 cur_minor_ver, S32 cur_patch_ver, U64 cur_build_ver)
+{
+    // Test for presence of NSIS viewer registration, then
+    // attempt to read uninstall info
+    std::wstring app_name_oneword = get_app_name_oneword();
+    std::wstring uninstall_key_path = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + app_name_oneword;
+    HKEY hkey;
+    LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, uninstall_key_path.c_str(), 0, KEY_READ, &hkey);
+    if (result != ERROR_SUCCESS)
+    {
+        return false;
+    }
+
+    // Read DisplayVersion
+    wchar_t version_buf[64] = { 0 };
+    DWORD version_buf_size = sizeof(version_buf);
+    DWORD type = 0;
+    LONG ver_rv = RegGetValueW(hkey, nullptr, L"DisplayVersion", RRF_RT_REG_SZ, &type, version_buf, &version_buf_size);
+
+    if (ver_rv != ERROR_SUCCESS)
+    {
+        RegCloseKey(hkey);
+        return false;
+    }
+
+    int nsis_major = 0, nsis_minor = 0, nsis_patch = 0;
+    uint64_t nsis_build = 0;
+    parse_version(version_buf, nsis_major, nsis_minor, nsis_patch, nsis_build);
+
+    // Compare numerically
+    if ((nsis_major > cur_major_ver) ||
+        (nsis_major == cur_major_ver && nsis_minor > cur_minor_ver) ||
+        (nsis_major == cur_major_ver && nsis_minor == cur_minor_ver && nsis_patch > cur_patch_ver) ||
+         // Assume that bigger build number means newer version, which is not always true but works for our purposes
+        (nsis_major == cur_major_ver && nsis_minor == cur_minor_ver && nsis_patch == cur_patch_ver && nsis_build > cur_build_ver))
+    {
+        LL_INFOS() << "Found installed nsis version that is newer" << nsis_major << "." << nsis_minor << "." << nsis_patch << LL_ENDL;
+        RegCloseKey(hkey);
+        return false;
+    }
+
+    LONG rv = RegGetValueW(hkey, nullptr, L"UninstallString", RRF_RT_REG_SZ, &type, path_buffer, &bufSize);
+    RegCloseKey(hkey);
+    if (rv != ERROR_SUCCESS)
+    {
+        return false;
+    }
+    size_t len = wcslen(path_buffer);
+    if (len > 0)
+    {
+        if (path_buffer[0] == L'\"')
+        {
+            // Likely to contain leading "
+            memmove(path_buffer, path_buffer + 1, len * sizeof(wchar_t));
+        }
+        wchar_t* pos = wcsstr(path_buffer, L"uninst.exe");
+        if (pos)
+        {
+            // Likely to contain trailing "
+            pos[wcslen(L"uninst.exe")] = L'\0';
+        }
+    }
+    std::error_code ec;
+    std::filesystem::path path(path_buffer);
+    if (!std::filesystem::exists(path, ec))
+    {
+        return false;
+    }
+
+    // Todo: check codesigning?
+
+    return true;
+}
+
 static void unregister_protocol_handler(const std::wstring& protocol)
 {
     std::wstring key_path = L"SOFTWARE\\Classes\\" + protocol;
@@ -196,6 +290,18 @@ static void register_uninstall_info(const std::wstring& install_dir,
                       (BYTE*)uninstall_cmd.c_str(), (DWORD)((uninstall_cmd.size() + 1) * sizeof(wchar_t)));
         RegSetValueExW(hkey, L"DisplayIcon", 0, REG_SZ,
                       (BYTE*)exe_path.c_str(), (DWORD)((exe_path.size() + 1) * sizeof(wchar_t)));
+
+        std::wstring link_url = L"https://support.secondlife.com/contact-support/";
+        RegSetValueExW(hkey, L"HelpLink", 0, REG_SZ,
+            (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
+
+        link_url = L"https://secondlife.com/whatis/";
+        RegSetValueExW(hkey, L"URLInfoAbout", 0, REG_SZ,
+            (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
+
+        link_url = L"http://secondlife.com/support/downloads/";
+        RegSetValueExW(hkey, L"URLUpdateInfo", 0, REG_SZ,
+            (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
 
         DWORD no_modify = 1;
         RegSetValueExW(hkey, L"NoModify", 0, REG_DWORD, (BYTE*)&no_modify, sizeof(DWORD));
@@ -275,6 +381,35 @@ static void on_log_message(void* user_data, const char* level, const char* messa
     OutputDebugStringA("\n");
 }
 
+#elif LL_DARWIN
+
+// macOS-specific hooks
+// TODO: Implement protocol handler registration via Launch Services
+// TODO: Implement app bundle management
+
+static void on_after_install(void* user_data, const char* app_version)
+{
+    // macOS handles protocol registration via Info.plist CFBundleURLTypes
+    // No additional registration needed at runtime
+    LL_INFOS("Velopack") << "macOS post-install hook called for version: " << app_version << LL_ENDL;
+}
+
+static void on_before_uninstall(void* user_data, const char* app_version)
+{
+    LL_INFOS("Velopack") << "macOS pre-uninstall hook called for version: " << app_version << LL_ENDL;
+}
+
+static void on_log_message(void* user_data, const char* level, const char* message)
+{
+    LL_INFOS("Velopack") << "[" << level << "] " << message << LL_ENDL;
+}
+
+#endif // LL_WINDOWS / LL_DARWIN
+
+//
+// Common progress callback
+//
+
 static void on_progress(void* user_data, size_t progress)
 {
     if (sProgressCallback)
@@ -283,11 +418,19 @@ static void on_progress(void* user_data, size_t progress)
     }
 }
 
+//
+// Public API - Cross-platform
+//
+
 bool velopack_initialize()
 {
     vpkc_set_logger(on_log_message, nullptr);
+
+#if LL_WINDOWS || LL_DARWIN
     vpkc_app_set_hook_after_install(on_after_install);
     vpkc_app_set_hook_before_uninstall(on_before_uninstall);
+#endif
+
     vpkc_app_run(nullptr);
     return true;
 }
@@ -296,6 +439,7 @@ void velopack_check_for_updates()
 {
     if (sUpdateUrl.empty())
     {
+        LL_DEBUGS("Velopack") << "No update URL set, skipping update check" << LL_ENDL;
         return;
     }
 
@@ -307,6 +451,7 @@ void velopack_check_for_updates()
 
         if (!vpkc_new_update_manager(sUpdateUrl.c_str(), &options, nullptr, &sUpdateManager))
         {
+            LL_WARNS("Velopack") << "Failed to create update manager" << LL_ENDL;
             return;
         }
     }
@@ -316,6 +461,7 @@ void velopack_check_for_updates()
 
     if (result == UPDATE_AVAILABLE && update_info)
     {
+        LL_INFOS("Velopack") << "Update available, downloading..." << LL_ENDL;
         if (vpkc_download_updates(sUpdateManager, update_info, on_progress, nullptr))
         {
             if (sPendingUpdate)
@@ -323,11 +469,17 @@ void velopack_check_for_updates()
                 vpkc_free_update_info(sPendingUpdate);
             }
             sPendingUpdate = update_info;
+            LL_INFOS("Velopack") << "Update downloaded and pending" << LL_ENDL;
         }
         else
         {
+            LL_WARNS("Velopack") << "Failed to download update" << LL_ENDL;
             vpkc_free_update_info(update_info);
         }
+    }
+    else
+    {
+        LL_DEBUGS("Velopack") << "No update available (result=" << result << ")" << LL_ENDL;
     }
 }
 
@@ -356,9 +508,11 @@ void velopack_apply_pending_update(bool restart)
 {
     if (!sUpdateManager || !sPendingUpdate || !sPendingUpdate->TargetFullRelease)
     {
+        LL_WARNS("Velopack") << "Cannot apply update: no pending update or manager" << LL_ENDL;
         return;
     }
 
+    LL_INFOS("Velopack") << "Applying pending update (restart=" << restart << ")" << LL_ENDL;
     vpkc_wait_exit_then_apply_updates(sUpdateManager,
                                        sPendingUpdate->TargetFullRelease,
                                        false,
@@ -369,6 +523,7 @@ void velopack_apply_pending_update(bool restart)
 void velopack_set_update_url(const std::string& url)
 {
     sUpdateUrl = url;
+    LL_INFOS("Velopack") << "Update URL set to: " << url << LL_ENDL;
 }
 
 void velopack_set_progress_callback(std::function<void(int)> callback)

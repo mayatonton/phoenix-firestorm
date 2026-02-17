@@ -1,6 +1,6 @@
 /**
- * @file llvelopack.h
- * @brief Velopack installer and update framework integration
+ * @file llvvmquery.h
+ * @brief Query the Viewer Version Manager (VVM) for update information
  *
  * $LicenseInfo:firstyear=2025&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -24,26 +24,19 @@
  * $/LicenseInfo$
  */
 
-#ifndef LL_LLVELOPACK_H
-#define LL_LLVELOPACK_H
+#ifndef LL_LLVVMQUERY_H
+#define LL_LLVVMQUERY_H
 
-#if LL_VELOPACK
+/**
+ * Initialize the VVM update check.
+ *
+ * This launches a coroutine that queries the Viewer Version Manager (VVM)
+ * to check for available updates. If an update is available, it configures
+ * Velopack with the update URL and initiates the update check/download.
+ *
+ * The release notes URL from the VVM response is posted to the "relnotes"
+ * event pump for display.
+ */
+void initVVMUpdateCheck();
 
-#include <string>
-#include <functional>
-
-bool velopack_initialize();
-void velopack_check_for_updates();
-std::string velopack_get_current_version();
-bool velopack_is_update_pending();
-void velopack_apply_pending_update(bool restart = true);
-void velopack_set_update_url(const std::string& url);
-void velopack_set_progress_callback(std::function<void(int)> callback);
-
-#if LL_WINDOWS
-bool get_nsis_uninstaller_path(wchar_t* path_buffer, DWORD bufSize, S32 cur_major_ver, S32 cur_minor_ver, S32 cur_patch_ver, U64 cur_build_ver);
-#endif
-
-#endif // LL_VELOPACK
-#endif
-// EOF
+#endif // LL_LLVVMQUERY_H

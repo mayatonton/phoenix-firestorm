@@ -787,6 +787,7 @@ set(viewer_SOURCE_FILES
     llurllineeditorctrl.cpp
     llurlwhitelist.cpp
     llversioninfo.cpp
+    llvvmquery.cpp
     llviewchildren.cpp
     llviewerassetstats.cpp
     llviewerassetstorage.cpp
@@ -1639,6 +1640,7 @@ set(viewer_HEADER_FILES
     llurllineeditorctrl.h
     llurlwhitelist.h
     llversioninfo.h
+    llvvmquery.h
     llviewchildren.h
     llviewerassetstats.h
     llviewerassetstorage.h
@@ -1845,6 +1847,8 @@ if (DARWIN)
   LIST(APPEND viewer_SOURCE_FILES llappviewermacosx-objc.h)
   LIST(APPEND viewer_SOURCE_FILES llfilepicker_mac.mm)
   LIST(APPEND viewer_HEADER_FILES llfilepicker_mac.h)
+  LIST(APPEND viewer_SOURCE_FILES llvelopack.cpp)
+  LIST(APPEND viewer_HEADER_FILES llvelopack.h)
 
   set_source_files_properties(
     llappviewermacosx-objc.mm
@@ -2878,6 +2882,7 @@ if (DARWIN)
           --arch=${ARCH}
           --artwork=${ARTWORK_DIR}
           "--bugsplat=${BUGSPLAT_DB}"
+          --bundleid=${MACOSX_BUNDLE_GUI_IDENTIFIER}
           "--discord=${USE_DISCORD}"
           "--fmodstudio=${USE_FMODSTUDIO}"
           "--openal=${USE_OPENAL}"
