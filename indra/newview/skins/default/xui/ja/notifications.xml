@@ -4205,6 +4205,9 @@ https://wiki.firestormviewer.org/fs_voice
 名前には、「:」または「|」を除く任意のアスキー文字を含めることができます。
 		<usetemplate name="okbutton" yestext="ＯＫ"/>
 	</notification>
+	<notification name="NewAONameCantExist">
+		この名前のアニメーションセットはすでに存在します。
+	</notification>
 	<notification name="RemoveAOSet">
 		リストからＡＯセット「[AO_SET_NAME]」を削除してもよろしいですか？
 		<usetemplate name="okcancelbuttons" notext="キャンセル" yestext="削除する"/>
@@ -5767,4 +5770,11 @@ https://wiki.firestormviewer.org/antivirus_whitelisting
 [ERROR_MESSAGE]（[ERROR_CODE]）
 	</notification>
 	<!-- </FS:Zi> -->
+	<!-- <FS:TJ>-->
+	<notification name="ChatHistoryIsMissing">
+チャットの会話履歴ファイルが見つかりません。このチャットの会話履歴が存在しないか、保存されていません。
+「初期設定」＞「プライバシー」＞「会話の記録とテキスト」で会話履歴の保存を有効にすることができます。
+		<usetemplate name="okbutton" yestext="ＯＫ"/>
+	</notification>
+	<!-- </FS:TJ>-->
 </notifications>

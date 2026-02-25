@@ -1280,9 +1280,9 @@
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>d9b763952986b176de253e804ffe16ee</string>
+              <string>68b1eae7b0f0b1c689f867ccc0045816</string>
               <key>url</key>
-              <string>file:///opt/firestorm/kdu-8.6-darwin64-252732257.tar.bz2</string>
+              <string>file:///opt/firestorm/kdu-8.6.1-darwin64-260220143.tar.bz2</string>
             </map>
             <key>name</key>
             <string>darwin64</string>
@@ -1292,9 +1292,9 @@
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>989865df0a7730ec89666e648916ddb1</string>
+              <string>b06b152529a216491b954bc91850de0c</string>
               <key>url</key>
-              <string>file:///opt/firestorm/kdu-8.6-linux64-252731650.tar.bz2</string>
+              <string>file:///opt/firestorm/kdu-8.6.1-linux64-260220142.tar.bz2</string>
             </map>
             <key>name</key>
             <string>linux64</string>
@@ -1304,9 +1304,9 @@
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>ab733beda1aa6b2b5ee756df57758846</string>
+              <string>7b042bef7b06f122ac9755c02ee40f7d</string>
               <key>url</key>
-              <string>file:///c:/cygwin/opt/firestorm/kdu-8.6-windows64-252731650.tar.bz2</string>
+              <string>file:///c:/cygwin/opt/firestorm/kdu-8.6.1-windows64-260220142.tar.bz2</string>
             </map>
             <key>name</key>
             <string>windows64</string>
@@ -2898,11 +2898,11 @@ Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors</string>
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>f77b90faf4505af9aef5d5356af7442be87ccc39</string>
+              <string>7338377a9c6913bc8768d446fe627b8176bc89d4</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://github.com/RyeMutt/3p-webrtc-build/releases/download/m137.1/webrtc-m137.1.18519550447-darwin64-18519550447.tar.zst</string>
+              <string>https://github.com/secondlife/3p-webrtc-build/releases/download/m137.7151.04.23/webrtc-m137.7151.04.23.22004231636-darwin64-22004231636.tar.zst</string>
             </map>
             <key>name</key>
             <string>darwin64</string>
@@ -2912,11 +2912,11 @@ Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors</string>
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>cd14e4b8320f9f3ece86388f7394dfee11255b0f</string>
+              <string>a2df83ed8d7fc1374398d7a37633bae17f5d68a1</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://github.com/RyeMutt/3p-webrtc-build/releases/download/m137.1/webrtc-m137.1.18519550447-linux64-18519550447.tar.zst</string>
+              <string>https://github.com/secondlife/3p-webrtc-build/releases/download/m137.7151.04.23/webrtc-m137.7151.04.23.22004231636-linux64-22004231636.tar.zst</string>
             </map>
             <key>name</key>
             <string>linux64</string>
@@ -2926,11 +2926,11 @@ Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors</string>
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>952e58eed658d81e54f6137a5fa554e40119fc5d</string>
+              <string>665c2447c794a88542fab30638f0013bea58480c</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://github.com/RyeMutt/3p-webrtc-build/releases/download/m137.1/webrtc-m137.1.18519550447-windows64-18519550447.tar.zst</string>
+              <string>https://github.com/secondlife/3p-webrtc-build/releases/download/m137.7151.04.23/webrtc-m137.7151.04.23.22004231636-windows64-22004231636.tar.zst</string>
             </map>
             <key>name</key>
             <string>windows64</string>
@@ -2943,7 +2943,7 @@ Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors</string>
         <key>copyright</key>
         <string>Copyright (c) 2011, The WebRTC project authors. All rights reserved.</string>
         <key>version</key>
-        <string>m137.7151.04.20-universal.17630578914</string>
+        <string>m137.7151.04.23.22004231636</string>
         <key>name</key>
         <string>webrtc</string>
         <key>vcs_branch</key>
