@@ -59,7 +59,10 @@ static vpkc_update_info_t* sPendingUpdate = nullptr;
 
 static const wchar_t* PROTOCOL_SECONDLIFE = L"secondlife";
 static const wchar_t* PROTOCOL_GRID_INFO = L"x-grid-location-info";
-static const wchar_t* VIEWER_EXE_NAME = L"SecondLifeViewer.exe";
+static std::wstring get_viewer_exe_name()
+{
+    return ll_convert<std::wstring>(gDirUtilp->getExecutableFilename());
+}
 
 static std::wstring get_install_dir()
 {
@@ -277,7 +280,7 @@ static void register_uninstall_info(const std::wstring& install_dir,
     if (RegCreateKeyExW(HKEY_CURRENT_USER, key_path.c_str(), 0, NULL,
                         REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hkey, NULL) == ERROR_SUCCESS)
     {
-        std::wstring exe_path = install_dir + L"\\" + VIEWER_EXE_NAME;
+        std::wstring exe_path = install_dir + L"\\" + get_viewer_exe_name();
         std::wstring uninstall_cmd = L"\"" + install_dir + L"\\Update.exe\" --uninstall";
 
         RegSetValueExW(hkey, L"DisplayName", 0, REG_SZ,
@@ -323,7 +326,7 @@ static void unregister_uninstall_info()
 
 static void create_shortcuts(const std::wstring& install_dir, const std::wstring& app_name)
 {
-    std::wstring exe_path = install_dir + L"\\" + VIEWER_EXE_NAME;
+    std::wstring exe_path = install_dir + L"\\" + get_viewer_exe_name();
     std::wstring start_menu_dir = get_start_menu_path() + L"\\" + app_name;
     std::wstring desktop_path = get_desktop_path();
 
@@ -350,7 +353,7 @@ static void on_after_install(void* user_data, const char* app_version)
 {
     std::wstring install_dir = get_install_dir();
     std::wstring app_name = get_app_name();
-    std::wstring exe_path = install_dir + L"\\" + VIEWER_EXE_NAME;
+    std::wstring exe_path = install_dir + L"\\" + get_viewer_exe_name();
 
     int len = MultiByteToWideChar(CP_UTF8, 0, app_version, -1, NULL, 0);
     std::wstring version(len, 0);

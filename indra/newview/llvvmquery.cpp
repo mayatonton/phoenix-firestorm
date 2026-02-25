@@ -128,13 +128,19 @@ namespace
         if (platforms.has(platform))
         {
             std::string update_url = platforms[platform]["url"].asString();
+#if LL_VELOPACK
+            std::string velopack_url = platforms[platform]["velopack_url"].asString();
+            if (!velopack_url.empty())
+            {
+                LL_INFOS("VVM") << "Velopack update URL: " << velopack_url << LL_ENDL;
+                velopack_set_update_url(velopack_url);
+                velopack_check_for_updates();
+            }
+            else
+#endif
             if (!update_url.empty())
             {
                 LL_INFOS("VVM") << "Update available at: " << update_url << LL_ENDL;
-#if LL_VELOPACK
-                velopack_set_update_url(update_url);
-                velopack_check_for_updates();
-#endif
             }
         }
         else
