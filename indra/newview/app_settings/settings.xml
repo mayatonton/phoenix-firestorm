@@ -2252,6 +2252,17 @@
         <key>Value</key>
         <string>https://lecs-viewer-web-components.s3.amazonaws.com/v3.0/[GRID_LOWERCASE]/vawp/index.html</string>
     </map>
+    <key>AvatarAlignMini</key>
+    <map>
+      <key>Comment</key>
+      <string>Use the compact mini compass floater instead of the full compass.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <!--AvatarBakedTextureUploadTimeout is in use by QA-->
     <key>AvatarBakedTextureUploadTimeout</key>
     <map>

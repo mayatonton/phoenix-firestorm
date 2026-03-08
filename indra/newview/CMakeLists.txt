@@ -116,6 +116,7 @@ set(viewer_SOURCE_FILES
     fsfloateraddtocontactset.cpp
     fsfavoritegroups.cpp
     fsfloaterassetblacklist.cpp
+    fsfloateravataralign.cpp
     fsfloateravatarrendersettings.cpp
     fsfloaterblocklist.cpp
     fsfloatercontacts.cpp
@@ -982,6 +983,7 @@ set(viewer_HEADER_FILES
     fsfloaterim.h
     fsfloaterimcontainer.h
     fsfloaternearbychat.h
+    fsfloateravataralign.h
     fsfloaterpartialinventory.h
     fsfloaterplacedetails.h
     fsfloaterposer.h
