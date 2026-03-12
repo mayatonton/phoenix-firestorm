@@ -287,8 +287,16 @@ static std::wstring get_install_dir()
 
 static std::wstring get_app_name()
 {
-    // LL_VIEWER_CHANNEL is defined at compile time via CMake (e.g., "Second Life Test")
-    return LL_TO_WSTRING(LL_VIEWER_CHANNEL);
+    // Match viewer_manifest.py app_name() logic: release channel uses "Viewer"
+    // suffix instead of "Release" for display purposes (shortcuts, uninstall, etc.)
+    std::wstring channel = LL_TO_WSTRING(LL_VIEWER_CHANNEL);
+    std::wstring release_suffix = L" Release";
+    if (channel.size() >= release_suffix.size() &&
+        channel.compare(channel.size() - release_suffix.size(), release_suffix.size(), release_suffix) == 0)
+    {
+        channel.replace(channel.size() - release_suffix.size(), release_suffix.size(), L" Viewer");
+    }
+    return channel;
 }
 
 static std::wstring get_app_name_oneword()
