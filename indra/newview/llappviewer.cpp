@@ -1671,8 +1671,9 @@ bool LLAppViewer::cleanup()
     if (velopack_is_update_pending())
     {
         LL_INFOS("AppInit") << "Applying pending Velopack update on shutdown..." << LL_ENDL;
-        velopack_apply_pending_update(true);  // restart=true
+        velopack_apply_pending_update(velopack_should_restart_after_update());
     }
+    velopack_cleanup();
 #endif
 
     //ditch LLVOAvatarSelf instance
