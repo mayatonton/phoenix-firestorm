@@ -795,6 +795,9 @@ class Windows_x86_64_Manifest(ViewerManifest):
             # Default --exclude already covers *.pdb; this adds .map, .bat, .exp, .lib,
             # .tar.xz (symbol tarballs), and the NSIS/Velopack setup exes.
             '--exclude', r'.*\.pdb|.*\.map|.*\.bat|.*\.exp|.*\.lib|.*\.nsi|.*\.tar\.xz|secondlife-bin\..*|.*_Setup\.exe|.*-Setup\.exe',
+            # Suppress Velopack's built-in shortcut creation; we create our own
+            # shortcuts in llvelopack.cpp on_after_install hook instead.
+            '--shortcuts', '',
         ]
 
         # Add icon if exists
