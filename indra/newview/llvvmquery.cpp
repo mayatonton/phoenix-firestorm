@@ -142,7 +142,8 @@ namespace
             std::string update_url = platforms[platform]["url"].asString();
 #if LL_VELOPACK
             std::string velopack_url = platforms[platform]["velopack_url"].asString();
-            if (!velopack_url.empty())
+            U32 updater_service = gSavedSettings.getU32("UpdaterServiceSetting");
+            if (!velopack_url.empty() && (update_required || updater_service != 0))
             {
                 LL_INFOS("VVM") << "Velopack update URL: " << velopack_url
                                 << " required: " << update_required << LL_ENDL;
@@ -154,6 +155,11 @@ namespace
                     {
                         velopack_check_for_updates(update_required, update_version, relnotes);
                     });
+            }
+            else if (!velopack_url.empty())
+            {
+                LL_INFOS("VVM") << "Optional update to " << result["version"].asString()
+                                << " skipped (UpdaterServiceSetting=0)" << LL_ENDL;
             }
             else
 #endif
