@@ -494,7 +494,9 @@ static void register_uninstall_info(const std::wstring& install_dir,
                         REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hkey, NULL) == ERROR_SUCCESS)
     {
         std::wstring exe_path = install_dir + L"\\" + get_viewer_exe_name();
-        std::wstring uninstall_cmd = L"\"" + install_dir + L"\\Update.exe\" --uninstall";
+        // Update.exe lives one level above the current\ directory where the viewer exe runs
+        std::filesystem::path update_exe = std::filesystem::path(install_dir).parent_path() / L"Update.exe";
+        std::wstring uninstall_cmd = L"\"" + update_exe.wstring() + L"\" --uninstall";
 
         RegSetValueExW(hkey, L"DisplayName", 0, REG_SZ,
                       (BYTE*)app_name.c_str(), (DWORD)((app_name.size() + 1) * sizeof(wchar_t)));
