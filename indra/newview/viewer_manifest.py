@@ -776,8 +776,9 @@ class Windows_x86_64_Manifest(ViewerManifest):
         pack_dir = self.get_dst_prefix()
         main_exe = self.final_exe()
 
-        # Channel-specific icon for the installer/Setup.exe
-        icon_path = os.path.join(self.get_src_prefix(), self.icon_path(), 'secondlife.ico')
+        # Channel-specific icon — CMake copies the correct channel's secondlife.ico
+        # to res/ll_icon.ico at configure time (see newview/CMakeLists.txt)
+        icon_path = os.path.join(self.get_src_prefix(), 'res', 'll_icon.ico')
 
         # Splash image (we should probably add one - uncomment later when we have one)
         # splash_path = os.path.join(self.get_src_prefix(), 'installers', 'windows', 'splash.png')
