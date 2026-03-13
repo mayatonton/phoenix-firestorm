@@ -776,9 +776,12 @@ class Windows_x86_64_Manifest(ViewerManifest):
         pack_dir = self.get_dst_prefix()
         main_exe = self.final_exe()
 
-        # Channel-specific icon — CMake copies the correct channel's secondlife.ico
-        # to res/ll_icon.ico at configure time (see newview/CMakeLists.txt)
+        # Channel-specific icon for the Velopack installer.
+        # CMake copies icons/{channel}/secondlife.ico to res/ll_icon.ico at configure time.
+        # Try the CMake-generated copy first, fall back to the source icon.
         icon_path = os.path.join(self.get_src_prefix(), 'res', 'll_icon.ico')
+        if not os.path.exists(icon_path):
+            icon_path = os.path.join(self.get_src_prefix(), self.icon_path(), 'secondlife.ico')
 
         # Splash image (we should probably add one - uncomment later when we have one)
         # splash_path = os.path.join(self.get_src_prefix(), 'installers', 'windows', 'splash.png')
@@ -800,11 +803,12 @@ class Windows_x86_64_Manifest(ViewerManifest):
             '--shortcuts', '',
         ]
 
-        # Add icon if exists
-        # TODO: Convert all of our icons into something vpk works better with.
-        # We have some bitmap data in our icons that it really doesn't like.
+        # Add icon — CMake copies the channel-appropriate secondlife.ico to res/ll_icon.ico
         if os.path.exists(icon_path):
+            print("Using icon: %s" % icon_path)
             vpk_args.extend(['--icon', icon_path])
+        else:
+            print("WARNING: Icon not found at %s — Setup.exe will have no icon" % icon_path)
 
         # Add splash image when it exists
         # if os.path.exists(splash_path):
