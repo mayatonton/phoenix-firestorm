@@ -807,6 +807,8 @@ class Windows_x86_64_Manifest(ViewerManifest):
             self.set_github_output('velopack_icon', icon_filename)
             self.set_github_output('velopack_installer_base', installer_base)
             self.set_github_output('velopack_exclude', exclude_pattern)
+            # Set package_file so llmanifest's touched.bat logic doesn't crash
+            self.package_file = installer_base + '_Setup.exe'
             print("CI mode: Velopack packaging deferred to sign step")
             return
 
