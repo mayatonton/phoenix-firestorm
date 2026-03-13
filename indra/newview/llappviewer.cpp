@@ -771,7 +771,6 @@ LLAppViewer::LLAppViewer()
     mPurgeCacheOnExit(false),
     mPurgeUserDataOnExit(false),
     mSecondInstance(false),
-    mUpdaterNotFound(false),
     mSavedFinalSnapshot(false),
     mSavePerAccountSettings(false),     // don't save settings on logout unless login succeeded.
     mQuitRequested(false),
@@ -1358,11 +1357,10 @@ bool LLAppViewer::init()
 
     // <FS:Ansariel> Disable updater
 ////#if LL_RELEASE_FOR_DOWNLOAD
-//    // Launch VVM update check (replaces SLVersionChecker)
+//    // Launch VVM update check
 //    if (!gSavedSettings.getBOOL("CmdLineSkipUpdater") && !gNonInteractive)
 //    {
 //        initVVMUpdateCheck();
-//        mUpdaterNotFound = false;
 //    }
 //    else
 //    {
@@ -2006,8 +2004,9 @@ bool LLAppViewer::cleanup()
     if (velopack_is_update_pending())
     {
         LL_INFOS("AppInit") << "Applying pending Velopack update on shutdown..." << LL_ENDL;
-        velopack_apply_pending_update(true);  // restart=true
+        velopack_apply_pending_update(velopack_should_restart_after_update());
     }
+    velopack_cleanup();
 #endif
 
     //ditch LLVOAvatarSelf instance
@@ -3857,16 +3856,6 @@ bool LLAppViewer::initWindow()
     LL_INFOS("AppInit") << "Window initialization done." << LL_ENDL;
 
     return true;
-}
-
-bool LLAppViewer::isUpdaterMissing()
-{
-    return mUpdaterNotFound;
-}
-
-bool LLAppViewer::waitForUpdater()
-{
-    return !gSavedSettings.getBOOL("CmdLineSkipUpdater") && !mUpdaterNotFound && !gNonInteractive;
 }
 
 void LLAppViewer::writeDebugInfo(bool isStatic)

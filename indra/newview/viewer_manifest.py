@@ -627,31 +627,35 @@ class Windows_x86_64_Manifest(ViewerManifest):
         if self.is_packaging_viewer():
             # Find firestorm-bin.exe in the 'configuration' dir, then rename it to the result of final_exe.
             self.path(src='%s/firestorm-bin.exe' % self.args['configuration'], dst=self.final_exe())
-            # Emit the whole app image as one of the GitHub step outputs. We
-            # want the whole app -- but NOT the extraneous build products that
-            # get tossed into the same directory, such as the installer and
-            # the symbols tarball, so add exclusions. When we feed
-            # upload-artifact multiple absolute pathnames, even just for
-            # exclusion, it ends up creating several extraneous directory
-            # levels within the artifact -- so try using only relative paths.
-            # One problem: as of right now, our current directory os.getcwd()
-            # is not the same as the initial working directory for this job
-            # step, meaning paths relative to our os.getcwd() won't work for
-            # the subsequent upload-artifact step. We're a couple directory
-            # levels down. Try adjusting for those when specifying the base
-            # for self.relpath().
+
             # <FS:Ansariel> Undo Github-Build stuff - I don't think we need this
-            #appbase = self.relpath(
-            #    self.get_dst_prefix(),
-            #    base=os.path.join(os.getcwd(), os.pardir, os.pardir))
-            #self.set_github_output('viewer_app', appbase,
-            #                       # except for this stuff
-            #                       *(('!' + os.path.join(appbase, pattern))
-            #                         for pattern in (
-            #                                 'secondlife-bin.*',
-            #                                 '*_Setup.exe',
-            #                                 '*.bat',
-            #                                 '*.tar.xz')))
+            # GITHUB_OUTPUT = os.getenv('GITHUB_OUTPUT')
+            # if GITHUB_OUTPUT:
+                # # Emit the whole app image as one of the GitHub step outputs. We
+                # # want the whole app -- but NOT the extraneous build products that
+                # # get tossed into the same directory, such as the installer and
+                # # the symbols tarball, so add exclusions. When we feed
+                # # upload-artifact multiple absolute pathnames, even just for
+                # # exclusion, it ends up creating several extraneous directory
+                # # levels within the artifact -- so try using only relative paths.
+                # # One problem: as of right now, our current directory os.getcwd()
+                # # is not the same as the initial working directory for this job
+                # # step, meaning paths relative to our os.getcwd() won't work for
+                # # the subsequent upload-artifact step. We're a couple directory
+                # # levels down. Try adjusting for those when specifying the base
+                # # for self.relpath().
+                # appbase = self.relpath(
+                    # self.get_dst_prefix(),
+                    # base=os.path.join(os.getcwd(), os.pardir, os.pardir),
+                    # symlink=True)
+                # self.set_github_output('viewer_app', appbase,
+                                    # # except for this stuff
+                                    # *(('!' + os.path.join(appbase, pattern))
+                                        # for pattern in (
+                                                # 'secondlife-bin.*',
+                                                # '*_Setup.exe',
+                                                # '*.bat',
+                                                # '*.tar.xz')))
             # </FS:Ansariel>
 
             # <FS:Ansariel> Remove VMP
@@ -988,16 +992,17 @@ class Windows_x86_64_Manifest(ViewerManifest):
         # packId determines install folder: %LocalAppData%\{packId}
         # Uses same naming as NSIS INSTNAME for channel separation
         pack_id = self.app_name_oneword()  # "SecondLife", "SecondLifeBeta", etc.
-        # Velopack requires SemVer2 (3-part: major.minor.patch), viewer has 4 parts
-        # TODO: Treat patch as build number.
+        # Velopack requires SemVer2. Use major.minor.patch-buildnumber so that
+        # Velopack can distinguish builds and order them correctly.
         pack_version = '.'.join(self.args['version'][:3])
+        if len(self.args['version']) > 3 and self.args['version'][3]:
+            pack_version += '-' + self.args['version'][3]
         pack_title = self.app_name()  # Display name with spaces
         pack_dir = self.get_dst_prefix()
         main_exe = self.final_exe()
 
-        # Icon path - use ll_icon.ico which has PNG-embedded icons that Velopack can parse
-        # (install_icon.ico causes parsing errors in Velopack's ICO library)
-        icon_path = os.path.join(self.get_src_prefix(), 'res', 'll_icon.ico')
+        # Channel-specific icon for the installer/Setup.exe
+        icon_path = os.path.join(self.get_src_prefix(), self.icon_path(), 'secondlife.ico')
 
         # Splash image (we should probably add one - uncomment later when we have one)
         # splash_path = os.path.join(self.get_src_prefix(), 'installers', 'windows', 'splash.png')
@@ -1010,6 +1015,13 @@ class Windows_x86_64_Manifest(ViewerManifest):
             '--packDir', pack_dir,
             '--mainExe', main_exe,
             '--packTitle', pack_title,
+            # Exclude build artifacts that end up in packDir but aren't part of the viewer.
+            # Default --exclude already covers *.pdb; this adds .map, .bat, .exp, .lib,
+            # .tar.xz (symbol tarballs), and the NSIS/Velopack setup exes.
+            '--exclude', r'.*\.pdb|.*\.map|.*\.bat|.*\.exp|.*\.lib|.*\.nsi|.*\.tar\.xz|secondlife-bin\..*|.*_Setup\.exe|.*-Setup\.exe',
+            # Suppress Velopack's built-in shortcut creation; we create our own
+            # shortcuts in llvelopack.cpp on_after_install hook instead.
+            '--shortcuts', '',
         ]
 
         # Add icon if exists
@@ -1041,12 +1053,19 @@ class Windows_x86_64_Manifest(ViewerManifest):
         # which are rebuilt during signing, but Velopack installers are created here.
         # Velopack creates: {packId}-win-Setup.exe
         velopack_setup = os.path.join(releases_dir, '%s-win-Setup.exe' % pack_id)
-        # Use versioned name with hyphen: Second_Life_26_1_0_53294_x86_64-Setup.exe
         self.package_file = self.installer_base_name() + '-Setup.exe'
         our_setup = os.path.join(pack_dir, self.package_file)
         if os.path.exists(velopack_setup):
             shutil.move(velopack_setup, our_setup)
             print("Moved %s to %s" % (velopack_setup, our_setup))
+
+        # Rename the portable zip to include the version number
+        # Velopack creates: {packId}-win-Portable.zip
+        velopack_portable = os.path.join(releases_dir, '%s-win-Portable.zip' % pack_id)
+        if os.path.exists(velopack_portable):
+            our_portable = os.path.join(releases_dir, self.installer_base_name() + '-Portable.zip')
+            shutil.move(velopack_portable, our_portable)
+            print("Moved %s to %s" % (velopack_portable, our_portable))
 
         # Output the Releases directory path for artifact upload (contains nupkg, RELEASES for updates)
         self.set_github_output('velopack_releases', releases_dir)
@@ -1081,7 +1100,7 @@ class Windows_x86_64_Manifest(ViewerManifest):
         substitution_strings['icon_suffix'] = ("_os" if (self.fs_is_opensim()) else "") # <FS:Ansariel> FIRE-24335: Use different icon for OpenSim version
 
         version_vars = """
-        !define INSTEXE "SLVersionChecker.exe"
+        !define INSTEXE "%(final_exe)s"
         !define VERSION "%(version_short)s"
         !define VERSION_LONG "%(version)s"
         !define VERSION_DASHES "%(version_dashes)s"
@@ -1965,8 +1984,11 @@ class Darwin_x86_64_Manifest(ViewerManifest):
         """
         # packId determines install identification - same as Windows for consistency
         pack_id = self.app_name_oneword()  # "SecondLife", "SecondLifeBeta", etc.
-        # Velopack requires SemVer2 (3-part: major.minor.patch), viewer has 4 parts
+        # Velopack requires SemVer2. Use major.minor.patch-buildnumber so that
+        # Velopack can distinguish builds and order them correctly.
         pack_version = '.'.join(self.args['version'][:3])
+        if len(self.args['version']) > 3 and self.args['version'][3]:
+            pack_version += '-' + self.args['version'][3]
         pack_title = self.app_name()  # Display name with spaces
 
         # The .app bundle path (e.g., "/path/to/Second Life Release.app")
