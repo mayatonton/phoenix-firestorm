@@ -819,9 +819,11 @@ class Windows_x86_64_Manifest(ViewerManifest):
         # Run vpk command
         import subprocess
         result = subprocess.run(vpk_args, cwd=os.path.dirname(pack_dir), capture_output=True, text=True)
-        if result.returncode != 0:
+        if result.stdout:
             print("vpk stdout: %s" % result.stdout)
+        if result.stderr:
             print("vpk stderr: %s" % result.stderr)
+        if result.returncode != 0:
             raise ManifestError("Velopack packaging failed with code %d" % result.returncode)
 
         # Velopack outputs to a Releases directory
