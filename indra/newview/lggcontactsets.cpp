@@ -762,7 +762,7 @@ uuid_vec_t LGGContactSets::getListOfPseudonymAvs() const
 
     for (const auto& [id, pseudonym] : mPseudonyms)
     {
-        pseudonyms.emplace_back(pseudonym);
+        pseudonyms.emplace_back(id);
     }
 
     return pseudonyms;
