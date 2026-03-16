@@ -93,6 +93,7 @@ public:
     void removeNonFriendFromList(const LLUUID& non_friend_id, bool save_changes = true);
     bool isNonFriend(const LLUUID& non_friend_id) const;
     bool isFriendInAnySet(const LLUUID& friend_id) const;
+    uuid_vec_t getFriendsInAnySet() const;
     uuid_vec_t getListOfNonFriends() const;
     uuid_vec_t getListOfPseudonymAvs() const;
 
@@ -145,7 +146,6 @@ public:
 private:
     void toneDownColor(LLColor4& color) const;
     uuid_vec_t getFriendsInSet(std::string_view set_name) const;
-    uuid_vec_t getFriendsInAnySet() const;
 
     void setPseudonym(const LLUUID& friend_id, std::string_view pseudonym);
     bool hasVisuallyDifferentPseudonym(const LLUUID& friend_id) const;

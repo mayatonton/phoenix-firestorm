@@ -140,17 +140,7 @@ void FSPanelContactSets::generateAvatarList(const std::string& contact_set)
 
     if (contact_set == CS_SET_ALL_SETS)
     {
-        avatars = LGGContactSets::getInstance()->getListOfNonFriends();
-
-        // "All sets" includes buddies
-        LLAvatarTracker::buddy_map_t all_buddies;
-        LLAvatarTracker::instance().copyBuddyList(all_buddies);
-        for (LLAvatarTracker::buddy_map_t::const_iterator buddy = all_buddies.begin();
-             buddy != all_buddies.end();
-             ++buddy)
-        {
-            avatars.push_back(buddy->first);
-        }
+        avatars = LGGContactSets::getInstance()->getFriendsInAnySet();
     }
     else if (contact_set == CS_SET_NO_SETS)
     {
