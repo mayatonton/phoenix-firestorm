@@ -201,6 +201,7 @@ private:
     boost::signals2::connection mFriedsFilterCommitConnection;
     boost::signals2::connection mGroupsFilterCommitConnection;
     boost::signals2::connection mRecentFilterCommitConnection;
+    boost::signals2::connection mContactSetsFilterCommitConnection; // <FS:PP> FIRE-17568: Search in Contact Sets
 
     // [FS:CR] Contact sets
     bool                    onContactSetsEnable(const LLSD& userdata);

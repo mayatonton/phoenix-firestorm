@@ -661,6 +661,7 @@ LLPanelPeople::~LLPanelPeople()
     mRecentFilterCommitConnection.disconnect();
 
     // [FS:CR] Contact sets
+    mContactSetsFilterCommitConnection.disconnect();
     if (mContactSetChangedConnection.connected())
         mContactSetChangedConnection.disconnect();
     LLAvatarTracker::instance().removeObserver(this);
@@ -787,6 +788,13 @@ bool LLPanelPeople::postBuild()
     mFriedsFilterCommitConnection = friends_tab->getChild<LLFilterEditor>("friends_filter_input")->setCommitCallback(boost::bind(&LLPanelPeople::onFilterEdit, this, _2));
     mRecentFilterCommitConnection = recent_tab->getChild<LLFilterEditor>("recent_filter_input")->setCommitCallback(boost::bind(&LLPanelPeople::onFilterEdit, this, _2));
     mGroupsFilterCommitConnection = group_tab->getChild<LLFilterEditor>("groups_filter_input")->setCommitCallback(boost::bind(&LLPanelPeople::onFilterEdit, this, _2));
+
+    // <FS:PP> FIRE-17568: Search in Contact Sets
+    if (LLFilterEditor* contact_sets_filter = getChild<LLFilterEditor>("contact_sets_filter_input", true))
+    {
+        mContactSetsFilterCommitConnection = contact_sets_filter->setCommitCallback(boost::bind(&LLPanelPeople::onFilterEdit, this, _2));
+    }
+    // </FS:PP>
 
     // <FS:Ansariel> Use Firestorm radar menu handler
     //mNearbyList->setContextMenu(&LLPanelPeopleMenus::gNearbyPeopleContextMenu);
@@ -1298,6 +1306,15 @@ void LLPanelPeople::onFilterEdit(const std::string& search_string)
     {
         mRecentList->setNameFilter(filter);
     }
+    // <FS:PP> FIRE-17568: Search in Contact Sets
+    else if (cur_tab == CONTACT_SETS_TAB_NAME)
+    {
+        if (mContactSetList)
+        {
+            mContactSetList->setNameFilter(filter);
+        }
+    }
+    // </FS:PP>
 }
 
 void LLPanelPeople::onGroupLimitInfo()
@@ -2183,6 +2200,16 @@ bool LLPanelPeople::handleKeyHere(KEY key, MASK mask)
             getChild<LLFilterEditor>("recent_filter_input")->setFocus(true);
             return true;
         }
+        // <FS:PP> FIRE-17568: Search in Contact Sets
+        else if (cur_tab == CONTACT_SETS_TAB_NAME)
+        {
+            if (LLFilterEditor* filter_editor = getChild<LLFilterEditor>("contact_sets_filter_input", true))
+            {
+                filter_editor->setFocus(true);
+                return true;
+            }
+        }
+        // </FS:PP>
     }
 
     return LLPanel::handleKeyHere(key, mask);

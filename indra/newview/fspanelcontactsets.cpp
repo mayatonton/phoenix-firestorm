@@ -38,6 +38,7 @@
 #include "llcallingcard.h"
 #include "llfloateravatarpicker.h"
 #include "llfloaterreg.h"
+#include "llfiltereditor.h"
 #include "llnotificationsutil.h"
 #include "llpanelpeoplemenus.h"
 #include "llslurl.h"
@@ -102,6 +103,11 @@ bool FSPanelContactSets::postBuild()
     mContactSetCombo = getChild<LLComboBox>("combo_sets");
     mContactSetCombo->setCommitCallback(boost::bind(&FSPanelContactSets::refreshSetList, this));
     refreshContactSets();
+
+    if (LLFilterEditor* filter = getChild<LLFilterEditor>("contact_sets_filter_input", false))
+    {
+        filter->setCommitCallback(boost::bind(&FSPanelContactSets::onFilterEdit, this, _2));
+    }
 
     mAvatarList = getChild<LLAvatarList>("contact_list");
     mAvatarList->setCommitCallback(boost::bind(&FSPanelContactSets::onSelectAvatar, this));
@@ -408,5 +414,24 @@ void FSPanelContactSets::onClickRemoveDisplayName()
         {
             contact_sets.removeDisplayName(id);
         }
+    }
+}
+
+void FSPanelContactSets::onFilterEdit(const std::string& search_string)
+{
+    std::string trimmed_search = search_string;
+    LLStringUtil::trimHead(trimmed_search);
+
+    std::string search_upper = trimmed_search;
+    LLStringUtil::toUpper(search_upper);
+    if (mFilterSubString == search_upper)
+    {
+        return;
+    }
+
+    mFilterSubString = search_upper;
+    if (mAvatarList)
+    {
+        mAvatarList->setNameFilter(trimmed_search);
     }
 }

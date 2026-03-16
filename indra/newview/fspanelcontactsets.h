@@ -63,6 +63,7 @@ private:
     void onClickRemoveDisplayName();
     void onClickSetPseudonym();
     void onClickRemovePseudonym();
+    void onFilterEdit(const std::string& search_string);
 
     void refreshContactSets();
     void resetControls();
@@ -76,6 +77,7 @@ private:
 
     LLComboBox* mContactSetCombo{ nullptr };
     LLAvatarList* mAvatarList{ nullptr };
+    std::string mFilterSubString{};
 };
 
 #endif // FS_PANELCONTACTSETS_H
