@@ -465,6 +465,17 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>FSContactSetsColorizeFriends</key>
+    <map>
+      <key>Comment</key>
+      <string>Whether to color a friends list entry based on their friends groups</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
   <key>FSMuteAllGroups</key>
   <map>
     <key>Comment</key>

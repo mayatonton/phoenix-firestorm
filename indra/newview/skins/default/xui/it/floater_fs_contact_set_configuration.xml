@@ -31,5 +31,6 @@
 		<check_box label="Colore tag nome in base al set" name="FSContactSetsColorizeNameTag"/>
 		<check_box label="Colore lista radar in base al set" name="FSContactSetsColorizeRadar"/>
 		<check_box label="Colore chat in base al set" name="FSContactSetsColorizeChat"/>
+		<check_box label="Colore lista amici in base al set" name="FSContactSetsColorizeFriends"/>
 	</panel>
 </floater>

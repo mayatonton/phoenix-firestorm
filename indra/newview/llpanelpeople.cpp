@@ -796,6 +796,11 @@ bool LLPanelPeople::postBuild()
     }
     // </FS:PP>
 
+    // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+    mOnlineFriendList->setUseContactSetColors(true);
+    mAllFriendList->setUseContactSetColors(true);
+    // </FS:PP>
+
     // <FS:Ansariel> Use Firestorm radar menu handler
     //mNearbyList->setContextMenu(&LLPanelPeopleMenus::gNearbyPeopleContextMenu);
     // </FS:Ansariel>
@@ -1858,6 +1863,17 @@ bool LLPanelPeople::updateNearbyArrivalTime()
 // [FS:CR] Contact sets
 void LLPanelPeople::updateContactSets(LGGContactSets::EContactSetUpdate type)
 {
+    // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+    if (mOnlineFriendList)
+    {
+        mOnlineFriendList->refreshNames();
+    }
+    if (mAllFriendList)
+    {
+        mAllFriendList->refreshNames();
+    }
+    // </FS:PP>
+
     switch (type)
     {
         case LGGContactSets::UPDATED_LISTS:

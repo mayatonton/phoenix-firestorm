@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater
- height="400"
+ height="412"
  width="380"
  layout="topleft"
  can_resize="false"
@@ -77,7 +77,7 @@ Contact Set Settings:
     <panel
      name="bottom_panel"
      top_pad="0"
-     height="260"
+     height="272"
      width="380"
      border_visible="true"
      bevel_style="none">
@@ -181,5 +181,13 @@ Custom Colors:
      name="FSContactSetsColorizeChat"
      width="270"
      control_name="FSContactSetsColorizeChat"/>
+    <check_box
+     follows="left|top"
+     height="12"
+     initial_value="false"
+     label="Color friends list entry based on their Contact Set"
+     name="FSContactSetsColorizeFriends"
+     width="270"
+     control_name="FSContactSetsColorizeFriends"/>
     </panel>
 </floater>

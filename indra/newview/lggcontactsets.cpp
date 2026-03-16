@@ -512,6 +512,7 @@ bool LGGContactSets::hasFriendColorThatShouldShow(const LLUUID& friend_id, Conta
     static LLCachedControl<bool> fsContactSetsColorizeTag(gSavedSettings,"FSContactSetsColorizeNameTag", false);
     static LLCachedControl<bool> fsContactSetsColorizeRadar(gSavedSettings,"FSContactSetsColorizeRadar", false);
     static LLCachedControl<bool> fsContactSetsColorizeMiniMap(gSavedSettings,"FSContactSetsColorizeMiniMap", false);
+    static LLCachedControl<bool> fsContactSetsColorizeFriends(gSavedSettings,"FSContactSetsColorizeFriends", false);
 
     switch (type)
     {
@@ -530,6 +531,10 @@ bool LGGContactSets::hasFriendColorThatShouldShow(const LLUUID& friend_id, Conta
             break;
         case ContactSetType::MINIMAP:
             if (!fsContactSetsColorizeMiniMap)
+                return false;
+            break;
+        case ContactSetType::FRIENDS:
+            if (!fsContactSetsColorizeFriends)
                 return false;
             break;
     };

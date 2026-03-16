@@ -193,6 +193,7 @@ LLAvatarList::LLAvatarList(const Params& p)
 , mShowVoiceVolume(p.show_voice_volume)
 , mShowUsername(gSavedSettings.getBOOL("NameTagShowUsernames"))
 , mShowDisplayName(gSavedSettings.getBOOL("UseDisplayNames"))
+, mUseContactSetColors(false) // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
 {
     setCommitOnSelectionChange(true);
 
@@ -211,10 +212,20 @@ LLAvatarList::LLAvatarList(const Params& p)
     // <FS:Ansariel> FIRE-1089: List needs to update also if we change the username setting
     gSavedSettings.getControl("NameTagShowUsernames")->getSignal()->connect(boost::bind(&LLAvatarList::handleDisplayNamesOptionChanged, this));
 
+    // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+    gSavedSettings.getControl("FSContactSetsColorizeFriends")->getSignal()->connect(boost::bind(&LLAvatarList::refreshNames, this));
+
     // <FS:Ansariel> Update voice volume slider on RLVa shownames restriction update
     mRlvBehaviorCallbackConnection = gRlvHandler.setBehaviourCallback(boost::bind(&LLAvatarList::updateRlvRestrictions, this, _1, _2));
 }
 
+// <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+void LLAvatarList::setUseContactSetColors(bool use_colors)
+{
+    mUseContactSetColors = use_colors;
+    mNeedUpdateNames = true;
+}
+// </FS:PP>
 
 void LLAvatarList::handleDisplayNamesOptionChanged()
 {
@@ -494,6 +505,7 @@ void LLAvatarList::updateAvatarNames()
     for( std::vector<LLPanel*>::const_iterator it = items.begin(); it != items.end(); it++)
     {
         LLAvatarListItem* item = static_cast<LLAvatarListItem*>(*it);
+        item->setUseContactSetColors(mUseContactSetColors); // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
         item->setShowCompleteName(mShowCompleteName, mForceCompleteName);
         item->updateAvatarName();
     }
@@ -594,6 +606,7 @@ void LLAvatarList::addNewItem(const LLUUID& id, const std::string& name, bool is
     item->setShowPermissions(mShowPermissions);
     item->showUsername(mShowUsername);
     item->showDisplayName(mShowDisplayName);
+    item->setUseContactSetColors(mUseContactSetColors); // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
 
     item->setDoubleClickCallback(boost::bind(&LLAvatarList::onItemDoubleClicked, this, _1, _2, _3, _4));
     item->setMouseDownCallback(boost::bind(&LLAvatarList::onItemClicked, this, _1, _2, _3, _4));

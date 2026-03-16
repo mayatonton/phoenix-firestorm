@@ -32,5 +32,6 @@
 		<check_box label="Namens-Tag basierend auf Kontakt-Set einfärben" name="FSContactSetsColorizeNameTag"/>
 		<check_box label="Radar-Eintrag basierend auf Kontakt-Set einfärben" name="FSContactSetsColorizeRadar"/>
 		<check_box label="Chat basierend auf Kontakt-Set einfärben" name="FSContactSetsColorizeChat"/>
+		<check_box label="Freundesliste basierend auf Kontakt-Set einfärben" name="FSContactSetsColorizeFriends"/>
 	</panel>
 </floater>

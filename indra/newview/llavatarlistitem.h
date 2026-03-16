@@ -41,6 +41,7 @@ class LLOutputMonitorCtrl;
 class LLAvatarName;
 class LLIconCtrl;
 class LLUICtrl;
+enum class ContactSetType; // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
 
 class LLAvatarListItem : public LLPanel, public LLFriendObserver
 {
@@ -117,6 +118,7 @@ public:
     void showLastInteractionTime(bool show);
     void setAvatarIconVisible(bool visible);
     void setShowCompleteName(bool show, bool force = false) { mShowCompleteName = show; mForceCompleteName = force;};
+    void setUseContactSetColors(bool use_colors); // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
 // [RLVa:KB] - Checked: RLVa-1.2.0
     void setRlvCheckShowNames(bool fRlvCheckShowNames);
     void updateRlvRestrictions();
@@ -266,6 +268,7 @@ private:
 
     bool mShowCompleteName;
     bool mForceCompleteName;
+    bool mUseContactSetColors{ false }; // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
     std::string mGreyOutUsername;
 
     void fetchAvatarName();

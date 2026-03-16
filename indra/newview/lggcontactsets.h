@@ -32,7 +32,8 @@ enum class ContactSetType
     IM,
     TAG,
     RADAR,
-    MINIMAP
+    MINIMAP,
+    FRIENDS
 };
 
 constexpr char CS_SET_ALL_SETS[] = "All Sets";

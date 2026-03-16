@@ -32,5 +32,6 @@
 		<check_box label="Koloruj tag imienia bazując na zestawie kontaktów" name="FSContactSetsColorizeNameTag" />
 		<check_box label="Koloruj wpis w radarze bazując na zestawie kontaktów" name="FSContactSetsColorizeRadar" />
 		<check_box label="Koloruj czat bazując na zestawie kontaktów" name="FSContactSetsColorizeChat" />
+		<check_box label="Koloruj wpis na liście znajomych bazując na zestawie kontaktów" name="FSContactSetsColorizeFriends" />
 	</panel>
 </floater>
