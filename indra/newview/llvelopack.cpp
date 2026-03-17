@@ -659,9 +659,10 @@ static void on_vpk_log(void* p_user_data,
 // Version comparison helper
 //
 
-static bool is_below_version(const std::string& vvm_version)
+// Compare running version against a VVM version string "major.minor.patch.build".
+// Returns -1 if running < vvm, 0 if equal, 1 if running > vvm.
+static int compare_running_version(const std::string& vvm_version)
 {
-    // Parse VVM version "major.minor.patch.build" and compare against running version
     S32 major = 0, minor = 0, patch = 0;
     U64 build = 0;
     sscanf(vvm_version.c_str(), "%d.%d.%d.%llu", &major, &minor, &patch, &build);
@@ -672,10 +673,11 @@ static bool is_below_version(const std::string& vvm_version)
     S32 cur_patch = vi.getPatch();
     U64 cur_build = vi.getBuild();
 
-    if (cur_major != major) return cur_major < major;
-    if (cur_minor != minor) return cur_minor < minor;
-    if (cur_patch != patch) return cur_patch < patch;
-    return cur_build < build;
+    if (cur_major != major) return cur_major < major ? -1 : 1;
+    if (cur_minor != minor) return cur_minor < minor ? -1 : 1;
+    if (cur_patch != patch) return cur_patch < patch ? -1 : 1;
+    if (cur_build != build) return cur_build < build ? -1 : 1;
+    return 0;
 }
 
 //
@@ -877,9 +879,12 @@ void velopack_check_for_updates(const std::string& required_version, const std::
         return;
     }
 
-    // Determine if a required version means we need to allow downgrades
+    // Allow downgrades only for rollbacks: VVM requires a version that's
+    // strictly lower than what we're running (e.g., a retracted build).
     bool has_required = !required_version.empty();
-    ensure_update_manager(has_required);
+    int ver_cmp = has_required ? compare_running_version(required_version) : 0;
+    bool allow_downgrade = ver_cmp > 0; // running > required → rollback scenario
+    ensure_update_manager(allow_downgrade);
     if (!sUpdateManager)
         return;
 
@@ -909,7 +914,7 @@ void velopack_check_for_updates(const std::string& required_version, const std::
     sPendingCheckInfo = update_info;
 
     // Determine if this is mandatory: running version is below VVM's required floor
-    bool is_required = has_required && is_below_version(required_version);
+    bool is_required = ver_cmp < 0; // running < required → must update
     sIsRequired = is_required;
 
     if (is_required)
