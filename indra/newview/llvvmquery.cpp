@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 #include "llvvmquery.h"
 
+#include <tuple>
 #include "llcorehttputil.h"
 #include "llcoros.h"
 #include "llevents.h"
@@ -143,13 +144,28 @@ namespace
 #if LL_VELOPACK
             std::string velopack_url = platforms[platform]["velopack_url"].asString();
             U32 updater_service = gSavedSettings.getU32("UpdaterServiceSetting");
-            if (!velopack_url.empty() && (update_required || updater_service != 0))
+            std::string update_version = result["version"].asString();
+            const LLVersionInfo& vi = LLVersionInfo::instance();
+            S32 cur[] = { vi.getMajor(), vi.getMinor(), vi.getPatch() };
+            U64 cur_build = vi.getBuild();
+            S32 upd[] = { 0, 0, 0 };
+            U64 upd_build = 0;
+            sscanf(update_version.c_str(), "%d.%d.%d.%llu",
+                   &upd[0], &upd[1], &upd[2], &upd_build);
+            bool is_newer = std::tie(upd[0], upd[1], upd[2], upd_build)
+                          > std::tie(cur[0], cur[1], cur[2], cur_build);
+            if (!velopack_url.empty() && !is_newer && !update_required)
+            {
+                LL_INFOS("VVM") << "VVM version " << update_version
+                                << " is not newer than running version " << version
+                                << ", skipping optional update" << LL_ENDL;
+            }
+            else if (!velopack_url.empty() && (update_required || updater_service != 0))
             {
                 LL_INFOS("VVM") << "Velopack update URL: " << velopack_url
                                 << " required: " << update_required << LL_ENDL;
                 velopack_set_update_url(velopack_url);
 
-                std::string update_version = result["version"].asString();
                 LLCoros::instance().launch("VelopackUpdateCheck",
                     [update_required, update_version, relnotes]()
                     {

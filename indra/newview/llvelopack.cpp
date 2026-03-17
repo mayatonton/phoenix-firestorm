@@ -669,7 +669,7 @@ bool velopack_initialize()
     return true;
 }
 
-static void velopack_download_update()
+static void velopack_download_update(bool allow_downgrade = false)
 {
     if (sUpdateUrl.empty())
     {
@@ -680,7 +680,7 @@ static void velopack_download_update()
     if (!sUpdateManager)
     {
         vpkc_update_options_t options = {};
-        options.AllowVersionDowngrade = false;
+        options.AllowVersionDowngrade = allow_downgrade;
         options.ExplicitChannel = nullptr;
 
         if (!sUpdateSource)
@@ -798,7 +798,7 @@ static void on_required_update_response(const LLSD& notification, const LLSD& re
     show_downloading_notification(version);
     LLCoros::instance().launch("VelopackRequiredUpdate", []()
     {
-        velopack_download_update();
+        velopack_download_update(true /* allow_downgrade for rollbacks */);
         dismiss_downloading_notification();
         if (velopack_is_update_pending())
         {
