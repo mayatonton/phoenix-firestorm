@@ -175,7 +175,7 @@ namespace Details
         // httpOpts->setRetries(0);
         const U32 llcore_retries = event_poll_core_retries();
         httpOpts->setRetries(llcore_retries);
-        LL_INFOS("LLEventPollImpl") << "<" << counter << "> Event poll llcore retries set to "
+        LL_DEBUGS("LLEventPollImpl") << "<" << counter << "> Event poll llcore retries set to "
             << llcore_retries << " for " << mSenderIp << LL_ENDL;
         // </FS:Beq>
         // <FS:Ansariel> Restore pre-coro behavior (60s timeout, no retries)
