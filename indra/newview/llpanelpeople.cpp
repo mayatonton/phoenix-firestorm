@@ -2072,6 +2072,10 @@ void LLPanelPeople::onContactSetsMenuItemClicked(const LLSD& userdata)
         }
         LLNotificationsUtil::add((selected_size > 1 ? "RemoveContactsFromSet" : "RemoveContactFromSet"), args, payload, &LGGContactSets::handleRemoveAvatarFromSetCallback);
     }
+    else if (chosen_item == "move_contact")
+    {
+        moveSelectedContactsToSet();
+    }
     else if (chosen_item == "set_config")
     {
         LLFloater* root_floater = gFloaterView->getParentFloater(this);
@@ -2162,6 +2166,29 @@ void LLPanelPeople::handlePickerCallback(const uuid_vec_t& ids, const std::strin
     }
 
     LGGContactSets::instance().addToSet(ids, set);
+}
+
+void LLPanelPeople::moveSelectedContactsToSet()
+{
+    if (!mContactSetCombo)
+    {
+        return;
+    }
+
+    const std::string source_set = mContactSetCombo->getValue().asString();
+    if (LGGContactSets::getInstance()->isInternalSetName(source_set))
+    {
+        return;
+    }
+
+    uuid_vec_t selected_uuids;
+    getCurrentItemIDs(selected_uuids);
+    if (selected_uuids.empty())
+    {
+        return;
+    }
+
+    LLAvatarActions::moveToContactSet(selected_uuids, source_set);
 }
 // [/FS:CR]
 

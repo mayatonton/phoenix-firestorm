@@ -207,6 +207,7 @@ private:
     bool                    onContactSetsEnable(const LLSD& userdata);
     void                    onContactSetsMenuItemClicked(const LLSD& userdata);
     void                    handlePickerCallback(const uuid_vec_t& ids, const std::string& set);
+    void                    moveSelectedContactsToSet();
     void                    refreshContactSets();
     void                    generateContactList(const std::string& contact_set);
     void                    generateCurrentContactList();

@@ -92,6 +92,7 @@ bool FSPanelContactSets::postBuild()
     childSetAction("remove_set_btn",        boost::bind(&FSPanelContactSets::onClickRemoveSet,          this));
     childSetAction("config_btn",            boost::bind(&FSPanelContactSets::onClickConfigureSet,       this, _1));
     childSetAction("add_btn",               boost::bind(&FSPanelContactSets::onClickAddAvatar,          this, _1));
+    childSetAction("move_btn",              boost::bind(&FSPanelContactSets::onClickMoveAvatar,         this));
     childSetAction("remove_btn",            boost::bind(&FSPanelContactSets::onClickRemoveAvatar,       this));
     childSetAction("profile_btn",           boost::bind(&FSPanelContactSets::onClickOpenProfile,        this));
     childSetAction("start_im_btn",          boost::bind(&FSPanelContactSets::onClickStartIM,            this));
@@ -196,6 +197,7 @@ void FSPanelContactSets::resetControls()
     childSetEnabled("remove_set_btn", mutable_set);
     childSetEnabled("config_btn", mutable_set);
     childSetEnabled("add_btn", mutable_set);
+    childSetEnabled("move_btn", (mutable_set && has_selection));
     childSetEnabled("remove_btn", (mutable_set && has_selection));
     childSetEnabled("profile_btn", has_selection);
     childSetEnabled("start_im_btn", has_selection);
@@ -323,6 +325,22 @@ void FSPanelContactSets::onClickRemoveAvatar()
         payload["ids"].append(id);
     }
     LLNotificationsUtil::add((selected_size > 1 ? "RemoveContactsFromSet" : "RemoveContactFromSet"), args, payload, &LGGContactSets::handleRemoveAvatarFromSetCallback);
+}
+
+void FSPanelContactSets::onClickMoveAvatar()
+{
+    if (!(mContactSetCombo && !mAvatarSelections.empty()))
+    {
+        return;
+    }
+
+    const std::string set = mContactSetCombo->getValue().asString();
+    if (LGGContactSets::getInstance()->isInternalSetName(set))
+    {
+        return;
+    }
+
+    LLAvatarActions::moveToContactSet(mAvatarSelections, set);
 }
 
 void FSPanelContactSets::onClickAddSet()
