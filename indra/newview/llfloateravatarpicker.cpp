@@ -566,7 +566,7 @@ void LLFloaterAvatarPicker::populateFriend()
     // </FS:Ansariel>
 }
 
-// <FS:PP> End bracket only; FIRE-34809 Contact Sets support in avatar picker
+// <FS:PP> FIRE-34809 Contact Sets support in avatar picker
 void LLFloaterAvatarPicker::populateContactSets()
 {
     LLComboBox* contact_sets_combo = getChild<LLComboBox>("ContactSetSelector");
