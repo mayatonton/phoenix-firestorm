@@ -1135,8 +1135,20 @@ bool LGGContactSets::handleSetAvatarPseudonymCallback(const LLSD& notification, 
     if (S32 option = LLNotificationsUtil::getSelectedOption(notification, response); option == 0)
     {
         const std::string pseudonym(response["message"].asString());
-        const LLUUID id(notification["payload"]["id"].asUUID());
-        LGGContactSets::getInstance()->setPseudonym(id, pseudonym);
+        LGGContactSets* contact_sets = LGGContactSets::getInstance();
+        if (notification["payload"].has("ids"))
+        {
+            for (const auto& item : llsd::inArray(notification["payload"]["ids"]))
+            {
+                const LLUUID id(item.asUUID());
+                contact_sets->setPseudonym(id, pseudonym);
+            }
+        }
+        else
+        {
+            const LLUUID id(notification["payload"]["id"].asUUID());
+            contact_sets->setPseudonym(id, pseudonym);
+        }
     }
     return false;
 }

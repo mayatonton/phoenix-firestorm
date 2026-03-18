@@ -13972,6 +13972,27 @@ Enter an alias for [AVATAR]:
 
   <notification
    icon="alertmodal.tga"
+   name="SetAvatarPseudonymMultiple"
+   type="alertmodal">
+    <tag>contact set</tag>
+Enter an alias for [COUNT] avatars:
+    <tag>confirm</tag>
+    <form name="form">
+      <input name="message" type="text" default="true" />
+      <button
+       default="true"
+       index="0"
+       name="Create"
+       text="Create"/>
+      <button
+       index="1"
+       name="Cancel"
+       text="Cancel"/>
+    </form>
+  </notification>
+
+  <notification
+   icon="alertmodal.tga"
    name="RenameContactSetFailure"
    type="alertmodal">
     <tag>contact set</tag>

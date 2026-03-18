@@ -202,7 +202,7 @@ void FSPanelContactSets::resetControls()
     childSetEnabled("profile_btn", has_selection);
     childSetEnabled("start_im_btn", has_selection);
     childSetEnabled("offer_teleport_btn", has_selection);   // Should probably check if they're online...
-    childSetEnabled("set_pseudonym_btn", (mAvatarSelections.size() == 1));
+    childSetEnabled("set_pseudonym_btn", has_selection);
     childSetEnabled("remove_pseudonym_btn", (has_selection
                                              && LGGContactSets::getInstance()->hasPseudonym(mAvatarSelections)));
     childSetEnabled("remove_displayname_btn", (has_selection
@@ -395,10 +395,26 @@ void FSPanelContactSets::onClickOfferTeleport()
 
 void FSPanelContactSets::onClickSetPseudonym()
 {
+    if (mAvatarSelections.empty())
+    {
+        return;
+    }
+
     LLSD payload, args;
-    args["AVATAR"] = LLSLURL("agent", mAvatarSelections.front(), "about").getSLURLString();
-    payload["id"] = mAvatarSelections.front();
-    LLNotificationsUtil::add("SetAvatarPseudonym", args, payload, &LGGContactSets::handleSetAvatarPseudonymCallback);
+    if (mAvatarSelections.size() == 1)
+    {
+        args["AVATAR"] = LLSLURL("agent", mAvatarSelections.front(), "about").getSLURLString();
+        payload["id"] = mAvatarSelections.front();
+    }
+    else
+    {
+        args["COUNT"] = llformat("%d", static_cast<S32>(mAvatarSelections.size()));
+        for (const LLUUID& id : mAvatarSelections)
+        {
+            payload["ids"].append(id);
+        }
+    }
+    LLNotificationsUtil::add((mAvatarSelections.size() > 1 ? "SetAvatarPseudonymMultiple" : "SetAvatarPseudonym"), args, payload, &LGGContactSets::handleSetAvatarPseudonymCallback);
 }
 
 void FSPanelContactSets::onClickRemovePseudonym()

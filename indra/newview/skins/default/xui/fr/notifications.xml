@@ -5374,6 +5374,13 @@ Vous ne pouvez pas annuler cette action.
 			<button name="Cancel" text="Annuler"/>
 		</form>
 	</notification>
+	<notification name="SetAvatarPseudonymMultiple">
+		Entrez un alias pour [COUNT] avatars :
+		<form name="form">
+			<button name="Create" text="Créer"/>
+			<button name="Cancel" text="Annuler"/>
+		</form>
+	</notification>
 	<notification name="RenameContactSetFailure">
 		Impossible de renommer le groupe &apos;[SET]&apos; en &apos;[NEW_NAME]&apos; car un groupe portant le même nom existe déjà ou le nouveau nom n'est pas valide.
 	</notification>

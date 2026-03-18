@@ -5479,6 +5479,13 @@ switch語句在沒有預設標籤情況下的行為不正確已被修正。
 			<button name="Cancel" text="取消"/>
 		</form>
 	</notification>
+	<notification name="SetAvatarPseudonymMultiple">
+		為 [COUNT] 位化身輸入別名：
+		<form name="form">
+			<button name="Create" text="建立"/>
+			<button name="Cancel" text="取消"/>
+		</form>
+	</notification>
 	<notification name="RenameContactSetFailure">
 		無法將聯絡人分組 「[SET]」 重新命名為 「[NEW_NAME]」，因為已存在同名的聯絡人分組或新名稱無效。
 	</notification>

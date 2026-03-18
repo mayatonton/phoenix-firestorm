@@ -2124,9 +2124,20 @@ void LLPanelPeople::onContactSetsMenuItemClicked(const LLSD& userdata)
         if (selected_uuids.empty()) return;
 
         LLSD payload, args;
-        args["AVATAR"] = LLSLURL("agent", selected_uuids.front(), "about").getSLURLString();
-        payload["id"] = selected_uuids.front();
-        LLNotificationsUtil::add("SetAvatarPseudonym", args, payload, &LGGContactSets::handleSetAvatarPseudonymCallback);
+        if (selected_uuids.size() == 1)
+        {
+            args["AVATAR"] = LLSLURL("agent", selected_uuids.front(), "about").getSLURLString();
+            payload["id"] = selected_uuids.front();
+        }
+        else
+        {
+            args["COUNT"] = llformat("%d", static_cast<S32>(selected_uuids.size()));
+            for (const LLUUID& id : selected_uuids)
+            {
+                payload["ids"].append(id);
+            }
+        }
+        LLNotificationsUtil::add((selected_uuids.size() > 1 ? "SetAvatarPseudonymMultiple" : "SetAvatarPseudonym"), args, payload, &LGGContactSets::handleSetAvatarPseudonymCallback);
     }
     else if (chosen_item == "remove_pseudonym")
     {

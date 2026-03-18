@@ -5299,6 +5299,13 @@ https://wiki.firestormviewer.org/fs_voice
 			<button name="Cancel" text="Отмена"/>
 		</form>
 	</notification>
+	<notification name="SetAvatarPseudonymMultiple">
+		Введите псевдоним для [COUNT] аватаров:
+		<form name="form">
+			<button name="Create" text="Создать"/>
+			<button name="Cancel" text="Отмена"/>
+		</form>
+	</notification>
 	<notification name="RenameContactSetFailure">
 		Невозможно переименовать &apos;[SET]&apos; в &apos;[NEW_NAME]&apos;: Набор с таким именем уже существует, или новое имя является недействительным.
 	</notification>

@@ -5078,6 +5078,13 @@ L'azione non può essere annullata.
 			<button name="Cancel" text="Annulla"/>
 		</form>
 	</notification>
+	<notification name="SetAvatarPseudonymMultiple">
+		Inserire un alias per [COUNT] avatar:
+		<form name="form">
+			<button name="Create" text="Crea"/>
+			<button name="Cancel" text="Annulla"/>
+		</form>
+	</notification>
 	<notification name="RenameContactSetFailure">
 		Non è stato possible rinominare il set di contatti &apos;[SET]&apos; come &apos;[NEW_NAME]&apos;. Esiste già un set con lo stesso nome, oppure il nuovo nome non è valido.
 	</notification>

@@ -5773,6 +5773,13 @@ Der Wert, der für das gleichzeitige Laden von Mesh-Objekten gesetzt wurde ([VAL
 			<button name="Cancel" text="Abbrechen"/>
 		</form>
 	</notification>
+	<notification name="SetAvatarPseudonymMultiple">
+		Alias für [COUNT] Avatare eingeben:
+		<form name="form">
+			<button name="Create" text="Erstellen"/>
+			<button name="Cancel" text="Abbrechen"/>
+		</form>
+	</notification>
 	<notification name="RenameContactSetFailure">
 		Kontakt-Set „[SET]“ konnte nicht in „[NEW_NAME]“ umbenannt werden, da entweder bereits ein Kontakt-Set mit demselben Namen existiert oder der neue Name ungültig ist.
 	</notification>

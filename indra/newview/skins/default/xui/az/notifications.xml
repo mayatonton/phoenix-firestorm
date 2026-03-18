@@ -5086,6 +5086,13 @@ Bu əməliyyatı geri qaytara bilməzsiniz.
 			<button name="Cancel" text="Ləğv et"/>
 		</form>
 	</notification>
+	<notification name="SetAvatarPseudonymMultiple">
+		[COUNT] avatar üçün ləqəb daxil edin:
+		<form name="form">
+			<button name="Create" text="Yarat"/>
+			<button name="Cancel" text="Ləğv et"/>
+		</form>
+	</notification>
 	<notification name="RenameContactSetFailure">
 		&apos;[SET]&apos; dəstinin adını &apos;[NEW_NAME]&apos; olaraq dəyişmək mümkün olmadı, çünki eyni adlı dəst artıq mövcuddur və ya yeni ad etibarsızdır.
 	</notification>
