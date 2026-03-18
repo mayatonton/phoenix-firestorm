@@ -111,6 +111,8 @@ bool FSPanelContactSets::postBuild()
     }
 
     mAvatarList = getChild<LLAvatarList>("contact_list");
+    mAvatarList->setUseContactSetColors(true);
+    mAvatarList->setUseContactSetListStyle(true);
     mAvatarList->setCommitCallback(boost::bind(&FSPanelContactSets::onSelectAvatar, this));
     mAvatarList->setItemDoubleClickCallback(boost::bind(&FSPanelContactSets::onClickStartIM, this));
     mAvatarList->setNoItemsCommentText(getString("empty_list"));

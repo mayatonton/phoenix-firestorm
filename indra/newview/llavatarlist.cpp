@@ -194,6 +194,7 @@ LLAvatarList::LLAvatarList(const Params& p)
 , mShowUsername(gSavedSettings.getBOOL("NameTagShowUsernames"))
 , mShowDisplayName(gSavedSettings.getBOOL("UseDisplayNames"))
 , mUseContactSetColors(false) // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+, mUseContactSetListStyle(false) // <FS:PP> FIRE-31733: Make contact sets lists more readable
 {
     setCommitOnSelectionChange(true);
 
@@ -223,6 +224,12 @@ LLAvatarList::LLAvatarList(const Params& p)
 void LLAvatarList::setUseContactSetColors(bool use_colors)
 {
     mUseContactSetColors = use_colors;
+    mNeedUpdateNames = true;
+}
+
+void LLAvatarList::setUseContactSetListStyle(bool use_style)
+{
+    mUseContactSetListStyle = use_style;
     mNeedUpdateNames = true;
 }
 // </FS:PP>
@@ -506,6 +513,7 @@ void LLAvatarList::updateAvatarNames()
     {
         LLAvatarListItem* item = static_cast<LLAvatarListItem*>(*it);
         item->setUseContactSetColors(mUseContactSetColors); // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+        item->setUseContactSetListStyle(mUseContactSetListStyle); // <FS:PP> FIRE-31733: Make contact sets lists more readable
         item->setShowCompleteName(mShowCompleteName, mForceCompleteName);
         item->updateAvatarName();
     }
@@ -607,6 +615,7 @@ void LLAvatarList::addNewItem(const LLUUID& id, const std::string& name, bool is
     item->showUsername(mShowUsername);
     item->showDisplayName(mShowDisplayName);
     item->setUseContactSetColors(mUseContactSetColors); // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+    item->setUseContactSetListStyle(mUseContactSetListStyle); // <FS:PP> FIRE-31733: Make contact sets lists more readable
 
     item->setDoubleClickCallback(boost::bind(&LLAvatarList::onItemDoubleClicked, this, _1, _2, _3, _4));
     item->setMouseDownCallback(boost::bind(&LLAvatarList::onItemClicked, this, _1, _2, _3, _4));

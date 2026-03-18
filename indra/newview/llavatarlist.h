@@ -86,6 +86,7 @@ public:
     void showUsername(bool visible);
     void showVoiceVolume(bool visible);
     void setUseContactSetColors(bool use_colors); // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+    void setUseContactSetListStyle(bool use_style); // <FS:PP> FIRE-31733: Make contact sets lists more readable
     // <FS:Ansariel> [FS Communication UI]
     //void sortByName();
     void sortByName(bool agent_on_top = false);
@@ -163,6 +164,7 @@ private:
     bool mShowDisplayName;
     bool mShowUsername;
     bool mUseContactSetColors; // <FS:PP> FIRE-32748 Colorize Friends List with Contact Sets
+    bool mUseContactSetListStyle; // <FS:PP> FIRE-31733: Make contact sets lists more readable
 
     LLTimer*                mLITUpdateTimer; // last interaction time update timer
     std::string             mIconParamName;

@@ -861,6 +861,8 @@ bool LLPanelPeople::postBuild()
     mContactSetList = getChild<LLAvatarList>("contact_list");
     if (mContactSetList)
     {
+        mContactSetList->setUseContactSetColors(true);
+        mContactSetList->setUseContactSetListStyle(true);
         mContactSetList->setCommitCallback(boost::bind(&LLPanelPeople::updateButtons, this));
         mContactSetList->setItemDoubleClickCallback(boost::bind(&LLPanelPeople::onAvatarListDoubleClicked, this, _1));
         mContactSetList->setNoItemsCommentText(getString("empty_list"));
