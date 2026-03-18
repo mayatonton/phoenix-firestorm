@@ -113,6 +113,7 @@ bool FSPanelContactSets::postBuild()
     mAvatarList = getChild<LLAvatarList>("contact_list");
     mAvatarList->setUseContactSetColors(true);
     mAvatarList->setUseContactSetListStyle(true);
+    mAvatarList->setAvatarDropCallback(boost::bind(&FSPanelContactSets::handleAvatarDrop, this, _1, _2));
     mAvatarList->setCommitCallback(boost::bind(&FSPanelContactSets::onSelectAvatar, this));
     mAvatarList->setItemDoubleClickCallback(boost::bind(&FSPanelContactSets::onClickStartIM, this));
     mAvatarList->setNoItemsCommentText(getString("empty_list"));
@@ -286,6 +287,28 @@ bool FSPanelContactSets::shouldSortByOnlineStatus() const
     }
 
     return LGGContactSets::getInstance()->getSortByOnlineStatusForSet(selected_set);
+}
+
+bool FSPanelContactSets::handleAvatarDrop(const LLUUID& avatar_id, bool drop)
+{
+    if (!mContactSetCombo || avatar_id.isNull())
+    {
+        return false;
+    }
+
+    const std::string set_name = mContactSetCombo->getValue().asString();
+    if (LGGContactSets::getInstance()->isInternalSetName(set_name))
+    {
+        return false;
+    }
+
+    if (drop)
+    {
+        uuid_vec_t ids{ avatar_id };
+        LGGContactSets::instance().addToSet(ids, set_name);
+    }
+
+    return true;
 }
 
 void FSPanelContactSets::onClickAddAvatar(LLUICtrl* ctrl)

@@ -863,6 +863,7 @@ bool LLPanelPeople::postBuild()
     {
         mContactSetList->setUseContactSetColors(true);
         mContactSetList->setUseContactSetListStyle(true);
+        mContactSetList->setAvatarDropCallback(boost::bind(&LLPanelPeople::handleAvatarDropToCurrentContactSet, this, _1, _2));
         mContactSetList->setCommitCallback(boost::bind(&LLPanelPeople::updateButtons, this));
         mContactSetList->setItemDoubleClickCallback(boost::bind(&LLPanelPeople::onAvatarListDoubleClicked, this, _1));
         mContactSetList->setNoItemsCommentText(getString("empty_list"));
@@ -1987,6 +1988,28 @@ bool LLPanelPeople::shouldSortByOnlineStatusForCurrentSet() const
     }
 
     return LGGContactSets::getInstance()->getSortByOnlineStatusForSet(set_name);
+}
+
+bool LLPanelPeople::handleAvatarDropToCurrentContactSet(const LLUUID& avatar_id, bool drop)
+{
+    if (!mContactSetCombo || avatar_id.isNull())
+    {
+        return false;
+    }
+
+    const std::string set_name = mContactSetCombo->getValue().asString();
+    if (LGGContactSets::getInstance()->isInternalSetName(set_name))
+    {
+        return false;
+    }
+
+    if (drop)
+    {
+        uuid_vec_t ids{ avatar_id };
+        LGGContactSets::instance().addToSet(ids, set_name);
+    }
+
+    return true;
 }
 
 bool LLPanelPeople::onContactSetsEnable(const LLSD& userdata)

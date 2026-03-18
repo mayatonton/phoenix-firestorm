@@ -27,6 +27,8 @@
 #ifndef LL_LLAVATARLIST_H
 #define LL_LLAVATARLIST_H
 
+#include <functional> // <FS:PP> FIRE-31146 Contact Sets - drag-and-drop support
+
 #include "llflatlistview.h"
 #include "llavatarlistitem.h"
 #include "rlvdefines.h"
@@ -48,6 +50,8 @@ class LLAvatarList : public LLFlatListViewEx
 {
     LOG_CLASS(LLAvatarList);
 public:
+    using avatar_drop_cb_t = std::function<bool(const LLUUID&, bool)>; // <FS:PP> FIRE-31146 Contact Sets - drag-and-drop support
+
     struct Params : public LLInitParam::Block<Params, LLFlatListViewEx::Params>
     {
         Optional<bool>  ignore_online_status, // show all items as online
@@ -101,6 +105,11 @@ public:
     /*virtual*/ bool handleMouseDown( S32 x, S32 y, MASK mask );
     /*virtual*/ bool handleMouseUp(S32 x, S32 y, MASK mask);
     /*virtual*/ bool handleHover(S32 x, S32 y, MASK mask);
+
+    // <FS:PP> FIRE-31146 Contact Sets - drag-and-drop support
+    bool handleDragAndDrop(S32 x, S32 y, MASK mask, bool drop, EDragAndDropType cargo_type, void* cargo_data, EAcceptance* accept, std::string& tooltip_msg) override;
+    void setAvatarDropCallback(const avatar_drop_cb_t& cb) { mAvatarDropCallback = cb; }
+    // </FS:PP>
 
     // Return true if filter has at least one match.
     bool filterHasMatches();
@@ -177,6 +186,7 @@ private:
     commit_signal_t mRefreshCompleteSignal;
     mouse_signal_t mItemDoubleClickSignal;
     mouse_signal_t mItemClickedSignal;
+    avatar_drop_cb_t mAvatarDropCallback; // <FS:PP> FIRE-31146 Contact Sets - drag-and-drop support
 
     // <FS:Ansariel> Update voice volume slider on RLVa shownames restriction update
     boost::signals2::connection mRlvBehaviorCallbackConnection;

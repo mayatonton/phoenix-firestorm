@@ -213,6 +213,7 @@ private:
     void                    generateCurrentContactList();
     void                    updateContactSetListSorting();
     bool                    shouldSortByOnlineStatusForCurrentSet() const;
+    bool                    handleAvatarDropToCurrentContactSet(const LLUUID& avatar_id, bool drop);
 
     void                    updateContactSets(LGGContactSets::EContactSetUpdate type);
     boost::signals2::connection mContactSetChangedConnection;

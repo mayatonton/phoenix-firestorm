@@ -65,6 +65,7 @@ private:
     void onClickSetPseudonym();
     void onClickRemovePseudonym();
     void onFilterEdit(const std::string& search_string);
+    bool handleAvatarDrop(const LLUUID& avatar_id, bool drop);
 
     void refreshContactSets();
     void resetControls();
