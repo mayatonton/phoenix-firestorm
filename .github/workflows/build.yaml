@@ -61,6 +61,7 @@ jobs:
       relnotes:       ${{ steps.which-branch.outputs.relnotes }}
       imagename:      ${{ steps.build.outputs.imagename }}
       configuration:  ${{ matrix.configuration }}
+      # Windows Velopack outputs (passed to sign-pkg-windows)
       velopack_pack_id:       ${{ steps.build.outputs.velopack_pack_id }}
       velopack_pack_version:  ${{ steps.build.outputs.velopack_pack_version }}
       velopack_pack_title:    ${{ steps.build.outputs.velopack_pack_title }}
@@ -68,6 +69,12 @@ jobs:
       velopack_exclude:       ${{ steps.build.outputs.velopack_exclude }}
       velopack_icon:          ${{ steps.build.outputs.velopack_icon }}
       velopack_installer_base: ${{ steps.build.outputs.velopack_installer_base }}
+      # macOS Velopack outputs (passed to sign-pkg-mac)
+      velopack_mac_pack_id:      ${{ steps.build.outputs.velopack_mac_pack_id }}
+      velopack_mac_pack_version: ${{ steps.build.outputs.velopack_mac_pack_version }}
+      velopack_mac_pack_title:   ${{ steps.build.outputs.velopack_mac_pack_title }}
+      velopack_mac_main_exe:     ${{ steps.build.outputs.velopack_mac_main_exe }}
+      velopack_mac_bundle_id:    ${{ steps.build.outputs.velopack_mac_bundle_id }}
     env:
       AUTOBUILD_ADDRSIZE: 64
       AUTOBUILD_BUILD_ID: ${{ github.run_id }}
@@ -395,6 +402,11 @@ jobs:
           note_user: ${{ steps.note-creds.outputs.note_user }}
           note_pass: ${{ steps.note-creds.outputs.note_pass }}
           note_team: ${{ steps.note-creds.outputs.note_team }}
+          velopack_pack_id: "${{ needs.build.outputs.velopack_mac_pack_id }}"
+          velopack_pack_version: "${{ needs.build.outputs.velopack_mac_pack_version }}"
+          velopack_pack_title: "${{ needs.build.outputs.velopack_mac_pack_title }}"
+          velopack_main_exe: "${{ needs.build.outputs.velopack_mac_main_exe }}"
+          velopack_bundle_id: "${{ needs.build.outputs.velopack_mac_bundle_id }}"
 
   post-windows-symbols:
     env:
