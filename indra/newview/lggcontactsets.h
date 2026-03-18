@@ -36,6 +36,13 @@ enum class ContactSetType
     FRIENDS
 };
 
+enum class ContactSetAutoresponseMode
+{
+    BUSY,
+    AUTORESPONSE,
+    AUTORESPONSE_NONFRIENDS
+};
+
 constexpr char CS_SET_ALL_SETS[] = "All Sets";
 constexpr char CS_SET_NO_SETS[] = "No Sets";
 constexpr char CS_SET_EXTRA_AVS[] = "extraAvs";
@@ -103,6 +110,9 @@ public:
     bool getNotifyForSet(std::string_view set_name) const;
     void setSortByOnlineStatusForSet(std::string_view set_name, bool sort_by_online_status);
     bool getSortByOnlineStatusForSet(std::string_view set_name) const;
+    void setAutoresponseForSet(std::string_view set_name, ContactSetAutoresponseMode mode, bool enabled, std::string_view response);
+    void getAutoresponseForSet(std::string_view set_name, ContactSetAutoresponseMode mode, bool& enabled, std::string& response) const;
+    bool getAutoresponseForFriend(const LLUUID& friend_id, ContactSetAutoresponseMode mode, std::string& response) const;
 
     bool callbackAliasReset(const LLSD& notification, const LLSD& response);
 
@@ -122,6 +132,12 @@ public:
         bool            mNotify;
         bool            mSortByOnlineStatus;
         LLColor4        mColor;
+        bool            mAutoresponseBusyEnabled;
+        std::string     mAutoresponseBusy;
+        bool            mAutoresponseModeEnabled;
+        std::string     mAutoresponseMode;
+        bool            mAutoresponseNonFriendsEnabled;
+        std::string     mAutoresponseNonFriends;
     };
     ContactSet* getContactSet(std::string_view set_name) const;
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater
  height="412"
- width="380"
+ width="900"
  layout="topleft"
  can_resize="false"
  legacy_header_height="18"
@@ -16,7 +16,7 @@
      top="18"
      left="0"
      height="120"
-     width="380"
+     width="450"
      border_visible="true"
      bevel_style="none">
     <text
@@ -78,7 +78,7 @@ Contact Set Settings:
      name="bottom_panel"
      top_pad="0"
      height="272"
-     width="380"
+     width="450"
      border_visible="true"
      bevel_style="none">
     <text
@@ -189,5 +189,78 @@ Custom Colors:
      name="FSContactSetsColorizeFriends"
      width="270"
      control_name="FSContactSetsColorizeFriends"/>
+    </panel>
+    <panel
+     name="side_panel"
+     top="18"
+     left="450"
+     height="392"
+     width="448"
+     border_visible="true"
+     bevel_style="none">
+
+    <check_box
+     height="16"
+     label="Use custom Busy-mode autoresponse for this set"
+     layout="topleft"
+     left="10"
+     top="10"
+     initial_value="false"
+     name="set_autoresponse_busy_enabled"
+     width="520" />
+    <text_editor
+     use_ellipses="false"
+     commit_on_focus_lost="true"
+     follows="left|top|right"
+     height="100"
+     layout="topleft"
+     left="25"
+     top_pad="5"
+     name="set_autoresponse_busy"
+     right="-12"
+     word_wrap="true" />
+
+    <check_box
+     height="16"
+     label="Use custom Autoresponse-mode message for this set"
+     layout="topleft"
+     left_delta="-15"
+     top_pad="6"
+     initial_value="false"
+     name="set_autoresponse_mode_enabled"
+     width="520" />
+    <text_editor
+     use_ellipses="false"
+     commit_on_focus_lost="true"
+     follows="left|top|right"
+     height="100"
+     layout="topleft"
+     left_delta="15"
+     top_pad="5"
+     name="set_autoresponse_mode"
+     right="-12"
+     word_wrap="true" />
+
+    <check_box
+     height="16"
+     label="Use custom Non-friends autoresponse for this set"
+     layout="topleft"
+     left_delta="-15"
+     top_pad="6"
+     initial_value="false"
+     name="set_autoresponse_nonfriends_enabled"
+     width="520" />
+    <text_editor
+     use_ellipses="false"
+     commit_on_focus_lost="true"
+     follows="left|top|right"
+     height="100"
+     layout="topleft"
+     left_delta="15"
+     top_pad="5"
+     name="set_autoresponse_nonfriends"
+     right="-12"
+     word_wrap="true" />
+
     </panel>
 </floater>

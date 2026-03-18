@@ -43,6 +43,48 @@
 constexpr F32 COLOR_DAMPENING = 0.8f;
 constexpr char CONTACT_SETS_FILE[] = "settings_friends_groups.xml";
 
+namespace
+{
+    struct contact_set_autoresponse_ref_t
+    {
+        bool* enabled;
+        std::string* message;
+    };
+    struct const_contact_set_autoresponse_ref_t
+    {
+        const bool* enabled;
+        const std::string* message;
+    };
+    contact_set_autoresponse_ref_t get_autoresponse_ref(LGGContactSets::ContactSet* set, ContactSetAutoresponseMode mode)
+    {
+        switch (mode)
+        {
+            case ContactSetAutoresponseMode::BUSY:
+                return { &set->mAutoresponseBusyEnabled, &set->mAutoresponseBusy };
+            case ContactSetAutoresponseMode::AUTORESPONSE:
+                return { &set->mAutoresponseModeEnabled, &set->mAutoresponseMode };
+            case ContactSetAutoresponseMode::AUTORESPONSE_NONFRIENDS:
+                return { &set->mAutoresponseNonFriendsEnabled, &set->mAutoresponseNonFriends };
+        }
+
+        return { nullptr, nullptr };
+    }
+    const_contact_set_autoresponse_ref_t get_autoresponse_ref(const LGGContactSets::ContactSet* set, ContactSetAutoresponseMode mode)
+    {
+        switch (mode)
+        {
+            case ContactSetAutoresponseMode::BUSY:
+                return { &set->mAutoresponseBusyEnabled, &set->mAutoresponseBusy };
+            case ContactSetAutoresponseMode::AUTORESPONSE:
+                return { &set->mAutoresponseModeEnabled, &set->mAutoresponseMode };
+            case ContactSetAutoresponseMode::AUTORESPONSE_NONFRIENDS:
+                return { &set->mAutoresponseNonFriendsEnabled, &set->mAutoresponseNonFriends };
+        }
+
+        return { nullptr, nullptr };
+    }
+}
+
 LGGContactSets::LGGContactSets()
 {
 }
@@ -111,6 +153,12 @@ LLSD LGGContactSets::exportContactSet(std::string_view set_name)
         ret["color"] = set->mColor.getValue();
         ret["notices"] = set->mNotify;
         ret["sort_by_online_status"] = set->mSortByOnlineStatus;
+        ret["autoresponse_busy_enabled"] = set->mAutoresponseBusyEnabled;
+        ret["autoresponse_busy"] = set->mAutoresponseBusy;
+        ret["autoresponse_mode_enabled"] = set->mAutoresponseModeEnabled;
+        ret["autoresponse_mode"] = set->mAutoresponseMode;
+        ret["autoresponse_nonfriends_enabled"] = set->mAutoresponseNonFriendsEnabled;
+        ret["autoresponse_nonfriends"] = set->mAutoresponseNonFriends;
         for (const auto& friend_id : set->mFriends)
         {
             ret["friends"][friend_id.asString()] = "";
@@ -214,6 +262,12 @@ LLSD LGGContactSets::exportToLLSD()
         output[name]["color"] = set->mColor.getValue();
         output[name]["notify"] = set->mNotify;
         output[name]["sort_by_online_status"] = set->mSortByOnlineStatus;
+        output[name]["autoresponse_busy_enabled"] = set->mAutoresponseBusyEnabled;
+        output[name]["autoresponse_busy"] = set->mAutoresponseBusy;
+        output[name]["autoresponse_mode_enabled"] = set->mAutoresponseModeEnabled;
+        output[name]["autoresponse_mode"] = set->mAutoresponseMode;
+        output[name]["autoresponse_nonfriends_enabled"] = set->mAutoresponseNonFriendsEnabled;
+        output[name]["autoresponse_nonfriends"] = set->mAutoresponseNonFriends;
         for (const auto& friend_id : set->mFriends)
         {
             output[name]["friends"][friend_id.asString()] = "";
@@ -284,6 +338,39 @@ void LGGContactSets::importFromLLSD(const LLSD& data)
                 sort_by_online_status = set_data["sort_by_online_status"].asBoolean();
             }
             new_set->mSortByOnlineStatus = sort_by_online_status;
+
+            bool autoresponse_busy_enabled = false;
+            if (set_data.has("autoresponse_busy_enabled"))
+            {
+                autoresponse_busy_enabled = set_data["autoresponse_busy_enabled"].asBoolean();
+            }
+            new_set->mAutoresponseBusyEnabled = autoresponse_busy_enabled;
+            if (set_data.has("autoresponse_busy"))
+            {
+                new_set->mAutoresponseBusy = LLStringFn::strip_invalid_xml(set_data["autoresponse_busy"].asString());
+            }
+
+            bool autoresponse_mode_enabled = false;
+            if (set_data.has("autoresponse_mode_enabled"))
+            {
+                autoresponse_mode_enabled = set_data["autoresponse_mode_enabled"].asBoolean();
+            }
+            new_set->mAutoresponseModeEnabled = autoresponse_mode_enabled;
+            if (set_data.has("autoresponse_mode"))
+            {
+                new_set->mAutoresponseMode = LLStringFn::strip_invalid_xml(set_data["autoresponse_mode"].asString());
+            }
+
+            bool autoresponse_nonfriends_enabled = false;
+            if (set_data.has("autoresponse_nonfriends_enabled"))
+            {
+                autoresponse_nonfriends_enabled = set_data["autoresponse_nonfriends_enabled"].asBoolean();
+            }
+            new_set->mAutoresponseNonFriendsEnabled = autoresponse_nonfriends_enabled;
+            if (set_data.has("autoresponse_nonfriends"))
+            {
+                new_set->mAutoresponseNonFriends = LLStringFn::strip_invalid_xml(set_data["autoresponse_nonfriends"].asString());
+            }
 
             if (set_data.has("friends"))
             {
@@ -946,6 +1033,12 @@ void LGGContactSets::addSet(std::string_view set_name)
         set->mColor = LLColor4::red;
         set->mNotify = false;
         set->mSortByOnlineStatus = false;
+        set->mAutoresponseBusyEnabled = false;
+        set->mAutoresponseBusy.clear();
+        set->mAutoresponseModeEnabled = false;
+        set->mAutoresponseMode.clear();
+        set->mAutoresponseNonFriendsEnabled = false;
+        set->mAutoresponseNonFriends.clear();
         mContactSets[set_name.data()] = set;
         saveToDisk();
         mChangedSignal(UPDATED_LISTS);
@@ -1035,6 +1128,66 @@ bool LGGContactSets::getSortByOnlineStatusForSet(std::string_view set_name) cons
         return set->mSortByOnlineStatus;
     }
     return false;
+}
+
+void LGGContactSets::setAutoresponseForSet(std::string_view set_name, ContactSetAutoresponseMode mode, bool enabled, std::string_view response)
+{
+    if (ContactSet* set = getContactSet(set_name); set)
+    {
+        contact_set_autoresponse_ref_t autoresponse = get_autoresponse_ref(set, mode);
+        if (autoresponse.enabled && autoresponse.message)
+        {
+            *autoresponse.enabled = enabled;
+            *autoresponse.message = LLStringFn::strip_invalid_xml(std::string(response));
+            saveToDisk();
+        }
+    }
+}
+
+void LGGContactSets::getAutoresponseForSet(std::string_view set_name, ContactSetAutoresponseMode mode, bool& enabled, std::string& response) const
+{
+    enabled = false;
+    response.clear();
+    if (const ContactSet* set = getContactSet(set_name); set)
+    {
+        const_contact_set_autoresponse_ref_t autoresponse = get_autoresponse_ref(set, mode);
+        if (autoresponse.enabled && autoresponse.message)
+        {
+            enabled = *autoresponse.enabled;
+            response = *autoresponse.message;
+        }
+    }
+}
+
+bool LGGContactSets::getAutoresponseForFriend(const LLUUID& friend_id, ContactSetAutoresponseMode mode, std::string& response) const
+{
+    response.clear();
+    U32 best_set_size = U32_MAX;
+    bool found = false;
+    for (const auto& set_name : getFriendSets(friend_id))
+    {
+        const ContactSet* set = getContactSet(set_name);
+        if (!set)
+        {
+            continue;
+        }
+
+        const_contact_set_autoresponse_ref_t autoresponse = get_autoresponse_ref(set, mode);
+        if (!autoresponse.enabled || !autoresponse.message || !(*autoresponse.enabled) || autoresponse.message->empty())
+        {
+            continue;
+        }
+
+        const U32 set_size = static_cast<U32>(set->mFriends.size());
+        if (!found || set_size < best_set_size)
+        {
+            response = *autoresponse.message;
+            best_set_size = set_size;
+            found = true;
+        }
+    }
+
+    return found;
 }
 
 void LGGContactSets::setSetColor(std::string_view set_name, const LLColor4& color)

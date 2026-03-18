@@ -33,4 +33,12 @@
 		<check_box label="チャットをコンタクトリストに指定した色で表示する" name="FSContactSetsColorizeChat"/>
 		<check_box label="フレンドリストをコンタクトセットに指定した色で表示する" name="FSContactSetsColorizeFriends"/>
 	</panel>
+	<panel name="side_panel" left="450">
+		<check_box label="このセットにカスタム不在（取り込み中）自動応答を使用する" name="set_autoresponse_busy_enabled"/>
+		<text_editor name="set_autoresponse_busy"/>
+		<check_box label="このセットにカスタム自動応答メッセージを使用する" name="set_autoresponse_mode_enabled"/>
+		<text_editor name="set_autoresponse_mode"/>
+		<check_box label="このセットにカスタム非フレンド自動応答を使用する" name="set_autoresponse_nonfriends_enabled"/>
+		<text_editor name="set_autoresponse_nonfriends"/>
+	</panel>
 </floater>

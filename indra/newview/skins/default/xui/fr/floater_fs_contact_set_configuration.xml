@@ -23,4 +23,12 @@
 		<check_box label="Couleur des messages basée sur le cercle" name="FSContactSetsColorizeChat"/>
 		<check_box label="Couleur de la liste d'amis basée sur le cercle" name="FSContactSetsColorizeFriends"/>
 	</panel>
+	<panel name="side_panel" left="450">
+		<check_box label="Utiliser une réponse auto Occupé personnalisée pour ce cercle" name="set_autoresponse_busy_enabled"/>
+		<text_editor name="set_autoresponse_busy"/>
+		<check_box label="Utiliser une réponse auto personnalisée pour ce cercle" name="set_autoresponse_mode_enabled"/>
+		<text_editor name="set_autoresponse_mode"/>
+		<check_box label="Utiliser une réponse auto personnalisée pour les non-amis dans ce cercle" name="set_autoresponse_nonfriends_enabled"/>
+		<text_editor name="set_autoresponse_nonfriends"/>
+	</panel>
 </floater>
