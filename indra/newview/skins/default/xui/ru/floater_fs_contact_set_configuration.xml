@@ -34,12 +34,9 @@
 		<check_box label="Цвет в чате на основе набора контактов" name="FSContactSetsColorizeChat" />
 		<check_box label="Цвет записи в списке друзей на основе набора контактов" name="FSContactSetsColorizeFriends" />
 	</panel>
-	<panel name="side_panel" left="450">
+	<panel name="side_panel">
 		<check_box label="Использовать для этого набора свой автоответ в режиме «Занят»" name="set_autoresponse_busy_enabled" />
-		<text_editor name="set_autoresponse_busy" />
 		<check_box label="Использовать для этого набора своё сообщение автоответа" name="set_autoresponse_mode_enabled" />
-		<text_editor name="set_autoresponse_mode" />
 		<check_box label="Использовать для этого набора свой автоответ для не-друзей" name="set_autoresponse_nonfriends_enabled" />
-		<text_editor name="set_autoresponse_nonfriends" />
 	</panel>
 </floater>

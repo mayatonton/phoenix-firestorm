@@ -34,12 +34,9 @@
 		<check_box label="基於聯絡人分組在聊天中顯示不同顏色" name="FSContactSetsColorizeChat" />
 		<check_box label="基於聯絡人分組在好友清單中顯示不同顏色" name="FSContactSetsColorizeFriends" />
 	</panel>
-	<panel name="side_panel" left="450">
+	<panel name="side_panel">
 		<check_box label="此分組使用自訂忙碌模式自動回覆" name="set_autoresponse_busy_enabled" />
-		<text_editor name="set_autoresponse_busy" />
 		<check_box label="此分組使用自訂自動回覆訊息" name="set_autoresponse_mode_enabled" />
-		<text_editor name="set_autoresponse_mode" />
 		<check_box label="此分組使用自訂非好友自動回覆" name="set_autoresponse_nonfriends_enabled" />
-		<text_editor name="set_autoresponse_nonfriends" />
 	</panel>
 </floater>

@@ -34,12 +34,9 @@
 		<check_box label="Kontaktlar dəstinə əsaslanan ümumi söhbətdə rəng" name="FSContactSetsColorizeChat" />
 		<check_box label="Kontaktlar dəstinə əsaslanan dost siyahısı rəngi" name="FSContactSetsColorizeFriends" />
 	</panel>
-	<panel name="side_panel" left="450">
+	<panel name="side_panel">
 		<check_box label="Bu dəst üçün fərdi Məşğulam rejimi avtomatik cavabından istifadə et" name="set_autoresponse_busy_enabled" />
-		<text_editor name="set_autoresponse_busy" />
 		<check_box label="Bu dəst üçün fərdi avtomatik cavab mesajından istifadə et" name="set_autoresponse_mode_enabled" />
-		<text_editor name="set_autoresponse_mode" />
 		<check_box label="Bu dəst üçün qeyri-dostlara fərdi avtomatik cavabdan istifadə et" name="set_autoresponse_nonfriends_enabled" />
-		<text_editor name="set_autoresponse_nonfriends" />
 	</panel>
 </floater>
