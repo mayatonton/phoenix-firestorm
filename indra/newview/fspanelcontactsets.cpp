@@ -61,10 +61,8 @@ protected:
             return online_1;
         }
 
-        std::string name1 = avatar_item1->getAvatarName();
-        std::string name2 = avatar_item2->getAvatarName();
-        LLStringUtil::toUpper(name1);
-        LLStringUtil::toUpper(name2);
+        std::string name1 = getComparableName(avatar_item1);
+        std::string name2 = getComparableName(avatar_item2);
         return name1 < name2;
     }
 };

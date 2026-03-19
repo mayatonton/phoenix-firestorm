@@ -140,12 +140,16 @@ protected:
 
         if (online1 == online2)
         {
-            std::string name1 = item1->getAvatarName();
-            std::string name2 = item2->getAvatarName();
+            // <FS:PP> FIRE-36478: Ignore alias quotation marks when comparing names from contact sets
+            // std::string name1 = item1->getAvatarName();
+            // std::string name2 = item2->getAvatarName();
 
-            LLStringUtil::toUpper(name1);
-            LLStringUtil::toUpper(name2);
+            // LLStringUtil::toUpper(name1);
+            // LLStringUtil::toUpper(name2);
 
+            std::string name1 = getComparableName(item1);
+            std::string name2 = getComparableName(item2);
+            // </FS:PP>
             return name1 < name2;
         }
 
@@ -167,12 +171,8 @@ protected:
 
         if (online1 == online2)
         {
-            std::string name1 = item1->getAvatarName();
-            std::string name2 = item2->getAvatarName();
-
-            LLStringUtil::toUpper(name1);
-            LLStringUtil::toUpper(name2);
-
+            std::string name1 = getComparableName(item1);
+            std::string name2 = getComparableName(item2);
             return name1 < name2;
         }
 
@@ -270,12 +270,16 @@ protected:
 
         if (arr_time1 == arr_time2)
         {
-            std::string name1 = item1->getAvatarName();
-            std::string name2 = item2->getAvatarName();
+            // <FS:PP> FIRE-36478: Ignore alias quotation marks when comparing names from contact sets
+            // std::string name1 = item1->getAvatarName();
+            // std::string name2 = item2->getAvatarName();
 
-            LLStringUtil::toUpper(name1);
-            LLStringUtil::toUpper(name2);
+            // LLStringUtil::toUpper(name1);
+            // LLStringUtil::toUpper(name2);
 
+            std::string name1 = getComparableName(item1);
+            std::string name2 = getComparableName(item2);
+            // </FS:PP>
             return name1 < name2;
         }
 

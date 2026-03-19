@@ -48,6 +48,7 @@
 #include "llvoiceclient.h"
 #include "llviewercontrol.h"    // for gSavedSettings
 #include "lltooldraganddrop.h"
+#include "lggcontactsets.h" // <FS:PP> FIRE-36478: Ignore alias quotation marks when comparing names from contact sets
 // [RLVa:KB] - Checked: 2010-06-04 (RLVa-1.2.2a)
 #include "rlvhandler.h"
 #include "rlvactions.h"
@@ -826,14 +827,32 @@ bool LLAvatarItemComparator::compare(const LLPanel* item1, const LLPanel* item2)
 
 bool LLAvatarItemNameComparator::doCompare(const LLAvatarListItem* avatar_item1, const LLAvatarListItem* avatar_item2) const
 {
-    std::string name1 = avatar_item1->getAvatarName();
-    std::string name2 = avatar_item2->getAvatarName();
+    // <FS:PP> FIRE-36478: Ignore alias quotation marks when comparing names from contact sets
+    // std::string name1 = avatar_item1->getAvatarName();
+    // std::string name2 = avatar_item2->getAvatarName();
 
-    LLStringUtil::toUpper(name1);
-    LLStringUtil::toUpper(name2);
+    // LLStringUtil::toUpper(name1);
+    // LLStringUtil::toUpper(name2);
 
+    std::string name1 = getComparableName(avatar_item1);
+    std::string name2 = getComparableName(avatar_item2);
+    // </FS:PP>
     return name1 < name2;
 }
+
+// <FS:PP> FIRE-36478: Ignore alias quotation marks when comparing names from contact sets
+std::string LLAvatarItemComparator::getComparableName(const LLAvatarListItem* avatar_item)
+{
+    std::string name = avatar_item->getAvatarName();
+    if (LGGContactSets::getInstance()->hasPseudonym(avatar_item->getAvatarId()) && !name.empty() && (name.front() == '\'' || name.front() == '"'))
+    {
+        name.erase(0, 1);
+    }
+    LLStringUtil::toUpper(name);
+    return name;
+}
+// </FS:PP>
+
 bool LLAvatarItemAgentOnTopComparator::doCompare(const LLAvatarListItem* avatar_item1, const LLAvatarListItem* avatar_item2) const
 {
     //keep agent on top, if first is agent,

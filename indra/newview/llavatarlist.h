@@ -206,6 +206,7 @@ public:
     virtual bool compare(const LLPanel* item1, const LLPanel* item2) const;
 
 protected:
+    static std::string getComparableName(const LLAvatarListItem* avatar_item); // <FS:PP> FIRE-36478: Ignore alias quotation marks when comparing names from contact sets
 
     /**
      * Returns true if avatar_item1 < avatar_item2, false otherwise
