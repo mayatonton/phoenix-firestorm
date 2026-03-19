@@ -169,7 +169,7 @@ Custom Colors:
     <check_box
      follows="left|top"
      height="12"
-     label="Color radar list entry based on their Contact Set"
+     label="Color radar and nearby people lists based on their Contact Set"
      name="FSContactSetsColorizeRadar"
      width="270"
      control_name="FSContactSetsColorizeRadar"/>

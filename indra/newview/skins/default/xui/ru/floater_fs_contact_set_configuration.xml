@@ -30,7 +30,7 @@
 		</text>
 		<check_box label="Цвет значка на мини карте на основе набора контактов" name="FSContactSetsColorizeMiniMap" />
 		<check_box label="Цвет тега имени на основе набора контактов" name="FSContactSetsColorizeNameTag" />
-		<check_box label="Цвет записи на радаре на основе набора контактов" name="FSContactSetsColorizeRadar" />
+		<check_box label="Цвет записей на радаре и в списке «Рядом» на основе набора контактов" name="FSContactSetsColorizeRadar" />
 		<check_box label="Цвет в чате на основе набора контактов" name="FSContactSetsColorizeChat" />
 		<check_box label="Цвет записи в списке друзей на основе набора контактов" name="FSContactSetsColorizeFriends" />
 	</panel>
