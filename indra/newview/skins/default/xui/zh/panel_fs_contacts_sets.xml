@@ -18,6 +18,7 @@
 	<button name="config_btn" tool_tip="設定所選聯絡人分組" />
 	<button name="add_set_btn" tool_tip="新增新的聯絡人分組" />
 	<button name="remove_set_btn" tool_tip="移除所選聯絡人分組" />
+	<filter_editor label="依人員篩選" name="contact_sets_filter_input"/>
 	<button label="新增..." name="add_btn" tool_tip="向當前聯絡人分組新增一個化身" />
 	<button label="移動..." name="move_btn" tool_tip="將此化身移動到另一個聯絡人分組" />
 	<button label="移除..." name="remove_btn" tool_tip="從當前聯絡人分組中移除化身" />
