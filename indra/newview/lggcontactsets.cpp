@@ -1030,7 +1030,7 @@ void LGGContactSets::addSet(std::string_view set_name)
     {
         ContactSet* set = new ContactSet();
         set->mName = set_name;
-        set->mColor = LLColor4::red;
+        set->mColor = getDefaultColor();
         set->mNotify = false;
         set->mSortByOnlineStatus = false;
         set->mAutoresponseBusyEnabled = false;
