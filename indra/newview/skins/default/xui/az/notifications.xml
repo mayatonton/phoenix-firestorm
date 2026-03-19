@@ -1218,7 +1218,8 @@ Sizin aktiv qrupunuz üçün torpaq almaq hüququnuz yoxdur.
 		</form>
 	</notification>
 	<notification name="InvalidAutoReplaceEntry">
-		Açar söz tək sözdən ibarət olmalıdır və əvəzetmə sahəsi boş ola bilməz.
+		Açar söz tək sözdən ibarət olmalıdır və əvəzetmə sahəsi boş ola bilməz. Açar sözdə icazə verilən durğu işarələri: 
+( ) . , - _
 	</notification>
 	<notification name="InvalidAutoReplaceList">
 		Yanlış əvəzetmə siyahısı.

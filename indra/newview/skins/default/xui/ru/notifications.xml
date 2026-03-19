@@ -1241,7 +1241,8 @@
 		</form>
 	</notification>
 	<notification name="InvalidAutoReplaceEntry">
-		Ключевое слово должно быть одним словом, а поле замены не может быть пустым.
+		Ключевое слово должно быть одним словом, а поле замены не может быть пустым. Разрешенная пунктуация в ключевом слове: 
+( ) . , - _
 	</notification>
 	<notification name="InvalidAutoReplaceList">
 		Недопустимый список замены.

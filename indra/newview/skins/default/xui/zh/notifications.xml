@@ -1344,7 +1344,8 @@
 		</form>
 	</notification>
 	<notification name="InvalidAutoReplaceEntry">
-		關鍵字必須是一個字，替換字不得空白。
+		關鍵字必須是一個字，替換字不得空白。關鍵字允許的標點符號：
+( ) . , - _
 	</notification>
 	<notification name="InvalidAutoReplaceList">
 		該替換清單無效。

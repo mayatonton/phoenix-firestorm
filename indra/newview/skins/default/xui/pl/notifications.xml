@@ -1249,7 +1249,8 @@ Czy na pewno chcesz usunąć tę listę?
 		</form>
 	</notification>
 	<notification name="InvalidAutoReplaceEntry">
-		Słowo kluczowe musi być pojedynczym ciągiem, a zamiennik nie może być pusty.
+		Słowo kluczowe musi być pojedynczym ciągiem, a zamiennik nie może być pusty. Dozwolona interpunkcja w słowie kluczowym: 
+( ) . , - _
 	</notification>
 	<notification name="InvalidAutoReplaceList">
 		Lista zamienników nie jest prawidłowa.

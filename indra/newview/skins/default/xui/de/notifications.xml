@@ -1319,7 +1319,8 @@ Sind Sie sicher, dass Sie diese Liste löschen möchten?
 		</form>
 	</notification>
 	<notification name="InvalidAutoReplaceEntry">
-		Das Schlüsselwort muss ein einziges Wort sein; die Ersetzungszeichenfolge darf nicht leer sein.
+		Das Schlüsselwort muss ein einziges Wort sein; die Ersetzungszeichenfolge darf nicht leer sein. Erlaubte Satzzeichen im Schlüsselwort: 
+( ) . , - _
 	</notification>
 	<notification name="InvalidAutoReplaceList">
 		Diese Ersetzungsliste ist nicht gültig.

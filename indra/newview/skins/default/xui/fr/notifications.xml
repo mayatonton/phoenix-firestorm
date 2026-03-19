@@ -1312,7 +1312,8 @@ Saisissez un nouveau nom unique :
 		</form>
 	</notification>
 	<notification name="InvalidAutoReplaceEntry">
-		Le mot-clé doit être constitué d&apos;un seul mot et sa valeur de remplacement doit être renseignée.
+		Le mot-clé doit être constitué d&apos;un seul mot et sa valeur de remplacement doit être renseignée. Ponctuation autorisée dans le mot-clé : 
+( ) . , - _
 	</notification>
 	<notification name="InvalidAutoReplaceList">
 		Liste de remplacement non valide.
