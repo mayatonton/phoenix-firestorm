@@ -771,15 +771,17 @@ void LLFloaterGesture::playGesture(LLUUID item_id)
 
 // <FS:ND> Try to update an item that already exists. Return true on success, false if such an item does not exist yet.
 
-#define COL_TRIGGER 0
-#define COL_SHORTCUT 1
-#define COL_KEY 2
-#define COL_NAME 3
+#define COL_ACTIVE 0
+#define COL_NAME 1
+#define COL_TRIGGER 2
+#define COL_KEY 3
+#define COL_SHORTCUT 4
 
-#define UI_COL_NAME 0
-#define UI_COL_TRIGGER 1
-#define UI_COL_KEY 2
-#define UI_COL_SHORTCUT 3
+#define UI_COL_ACTIVE 0
+#define UI_COL_NAME 1
+#define UI_COL_TRIGGER 2
+#define UI_COL_KEY 3
+#define UI_COL_SHORTCUT 4
 
 bool LLFloaterGesture::updateItem( LLUUID const &aItem, LLSD const &aData )
 {
@@ -793,11 +795,14 @@ bool LLFloaterGesture::updateItem( LLUUID const &aItem, LLSD const &aData )
     if( !pItem )
         return false;
 
-    std::string sDummyShortcut = "---";
-    std::string sDummyKey = "~~~";
+    const std::string sDummyShortcut = "---";
+    const std::string sDummyKey = "~~~";
 
     if( aData[ "columns" ][ COL_NAME ][ "value" ] != "" )
         pItem->getColumn( UI_COL_NAME )->setValue( aData[ "columns" ][ COL_NAME ][ "value" ] );
+
+    if( aData[ "columns" ][ COL_TRIGGER ][ "value" ] != "" )
+        pItem->getColumn( UI_COL_TRIGGER )->setValue( aData[ "columns" ][ COL_TRIGGER ][ "value" ] );
 
     if( aData[ "columns" ][ COL_SHORTCUT ][ "value" ] != sDummyShortcut )
         pItem->getColumn( UI_COL_SHORTCUT )->setValue( aData[ "columns" ][ COL_SHORTCUT ][ "value" ] );
@@ -808,6 +813,9 @@ bool LLFloaterGesture::updateItem( LLUUID const &aItem, LLSD const &aData )
     pItem->getColumn( UI_COL_NAME )->setValue( aData[ "columns" ][ COL_NAME ][ "value" ] );
 
     LLFontGL::StyleFlags oStyle = LLGestureMgr::getInstance()->isGestureActive(aItem) ? LLFontGL::BOLD : LLFontGL::NORMAL;
+
+    pItem->getColumn(UI_COL_ACTIVE)->setValue(LLGestureMgr::getInstance()->isGestureActive(aItem) ? "Activate_Checkmark" : "");
+    pItem->getColumn(UI_COL_ACTIVE)->setIconSize(10);
 
     LLScrollListText *pTextItem = dynamic_cast< LLScrollListText* >( pItem->getColumn( UI_COL_NAME ) );
 
