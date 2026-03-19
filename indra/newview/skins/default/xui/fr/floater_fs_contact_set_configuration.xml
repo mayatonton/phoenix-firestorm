@@ -24,8 +24,8 @@
 		<check_box label="Couleur de la liste d'amis basée sur le cercle" name="FSContactSetsColorizeFriends"/>
 	</panel>
 	<panel name="side_panel">
-		<check_box label="Utiliser une réponse auto Occupé personnalisée pour ce cercle" name="set_autoresponse_busy_enabled"/>
-		<check_box label="Utiliser une réponse auto personnalisée pour ce cercle" name="set_autoresponse_mode_enabled"/>
-		<check_box label="Utiliser une réponse auto personnalisée pour les non-amis dans ce cercle" name="set_autoresponse_nonfriends_enabled"/>
+		<check_box label="Personnaliser la réponse automatique de statut Occupé(e) pour ce cercle" name="set_autoresponse_busy_enabled"/>
+		<check_box label="Personnaliser la réponse automatique pour ce cercle" name="set_autoresponse_mode_enabled"/>
+		<check_box label="Personnaliser la réponse automatique aux non-amis pour ce cercle" name="set_autoresponse_nonfriends_enabled"/>
 	</panel>
 </floater>

@@ -5344,7 +5344,7 @@ Vous ne pouvez pas annuler cette action.
 		Créer un nouveau groupe de contacts avec le nom :
 		<form name="form">
 			<input name="message">
-				Nouveau groupe de contacts
+				Nouveau cercle de contacts
 			</input>
 			<button name="Create" text="Créer"/>
 			<button name="Cancel" text="Annuler"/>
