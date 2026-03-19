@@ -812,10 +812,15 @@ bool LLFloaterGesture::updateItem( LLUUID const &aItem, LLSD const &aData )
 
     pItem->getColumn( UI_COL_NAME )->setValue( aData[ "columns" ][ COL_NAME ][ "value" ] );
 
-    LLFontGL::StyleFlags oStyle = LLGestureMgr::getInstance()->isGestureActive(aItem) ? LLFontGL::BOLD : LLFontGL::NORMAL;
+    bool is_gesture_active = LLGestureMgr::getInstance()->isGestureActive(aItem);
+    LLFontGL::StyleFlags oStyle = is_gesture_active ? LLFontGL::BOLD : LLFontGL::NORMAL;
 
-    pItem->getColumn(UI_COL_ACTIVE)->setValue(LLGestureMgr::getInstance()->isGestureActive(aItem) ? "Activate_Checkmark" : "");
-    pItem->getColumn(UI_COL_ACTIVE)->setIconSize(10);
+    pItem->getColumn(UI_COL_ACTIVE)->setValue(is_gesture_active ? "Activate_Checkmark" : "");
+    LLScrollListIcon* icon = dynamic_cast<LLScrollListIcon*>(pItem->getColumn(UI_COL_ACTIVE));
+    if (is_gesture_active && icon)
+    {
+        icon->setIconSize(10);
+    }
 
     LLScrollListText *pTextItem = dynamic_cast< LLScrollListText* >( pItem->getColumn( UI_COL_NAME ) );
 
