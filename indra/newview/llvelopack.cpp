@@ -702,9 +702,96 @@ static void ensure_update_manager(bool allow_downgrade)
             nullptr);
     }
 
+    vpkc_locator_config_t* locator_ptr = nullptr;
+
+#if LL_DARWIN
+    // Try auto-detection first (works when the app bundle was packaged by vpk
+    // and has UpdateMac + sq.version already present)
     if (!vpkc_new_update_manager_with_source(sUpdateSource, &options, nullptr, &sUpdateManager))
     {
-        LL_WARNS("Velopack") << "Failed to create update manager" << LL_ENDL;
+        char err[512];
+        vpkc_get_last_error(err, sizeof(err));
+        LL_INFOS("Velopack") << "Auto-detect failed (" << ll_safe_string(err)
+                             << "), falling back to explicit locator" << LL_ENDL;
+
+        // Auto-detection failed — construct an explicit locator.
+        // This handles legacy DMG installs that don't have Velopack's
+        // install state (UpdateMac, sq.version) in the bundle.
+        vpkc_locator_config_t locator = {};
+
+        // The executable lives at <bundle>/Contents/MacOS/<exe>
+        // The app bundle root is two levels up from the executable directory.
+        std::string exe_dir = gDirUtilp->getExecutableDir();
+        std::string bundle_root = exe_dir + "/../..";
+        char resolved[PATH_MAX];
+        if (realpath(bundle_root.c_str(), resolved))
+        {
+            bundle_root = resolved;
+        }
+
+        // Construct a version string in Velopack SemVer format: major.minor.patch-build
+        const LLVersionInfo& vi = LLVersionInfo::instance();
+        std::string current_version = llformat("%d.%d.%d-%llu",
+            vi.getMajor(), vi.getMinor(), vi.getPatch(), vi.getBuild());
+
+        // Create a minimal sq.version manifest so Velopack knows our version.
+        // Proper vpk-packaged builds have this in the bundle already.
+        std::string manifest_path = gDirUtilp->getExpandedFilename(LL_PATH_TEMP, "sq.version");
+        {
+            std::string app_name = LLVersionInfo::instance().getChannel();
+            std::string pack_id = app_name;
+            pack_id.erase(std::remove(pack_id.begin(), pack_id.end(), ' '), pack_id.end());
+
+            std::string nuspec = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+                "<package xmlns=\"http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd\">\n"
+                "  <metadata>\n"
+                "    <id>" + pack_id + "</id>\n"
+                "    <version>" + current_version + "</version>\n"
+                "    <title>" + app_name + "</title>\n"
+                "  </metadata>\n"
+                "</package>\n";
+
+            llofstream manifest_file(manifest_path, std::ios::trunc);
+            if (manifest_file.is_open())
+            {
+                manifest_file << nuspec;
+                manifest_file.close();
+            }
+        }
+
+        std::string packages_dir = gDirUtilp->getExpandedFilename(LL_PATH_TEMP, "velopack-packages");
+        LLFile::mkdir(packages_dir);
+
+        locator.RootAppDir = const_cast<char*>(bundle_root.c_str());
+        locator.CurrentBinaryDir = const_cast<char*>(exe_dir.c_str());
+        locator.ManifestPath = const_cast<char*>(manifest_path.c_str());
+        locator.PackagesDir = const_cast<char*>(packages_dir.c_str());
+        locator.UpdateExePath = nullptr;
+        locator.IsPortable = false;
+
+        locator_ptr = &locator;
+
+        LL_INFOS("Velopack") << "Explicit locator: RootAppDir=" << bundle_root
+                             << " CurrentBinaryDir=" << exe_dir
+                             << " Version=" << current_version << LL_ENDL;
+
+        if (!vpkc_new_update_manager_with_source(sUpdateSource, &options, locator_ptr, &sUpdateManager))
+        {
+            char err2[512];
+            vpkc_get_last_error(err2, sizeof(err2));
+            LL_WARNS("Velopack") << "Failed to create update manager: " << ll_safe_string(err2) << LL_ENDL;
+        }
+    }
+    return;
+#endif
+
+    // Windows: Velopack auto-detection works because the viewer is installed
+    // by Velopack's Setup.exe which creates the proper install structure.
+    if (!vpkc_new_update_manager_with_source(sUpdateSource, &options, nullptr, &sUpdateManager))
+    {
+        char err[512];
+        vpkc_get_last_error(err, sizeof(err));
+        LL_WARNS("Velopack") << "Failed to create update manager: " << ll_safe_string(err) << LL_ENDL;
     }
 }
 
