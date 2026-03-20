@@ -924,7 +924,7 @@ void FSPanelLogin::loadLoginPage()
     params["login_content_version"] = gSavedSettings.getString("LoginContentVersion");
 
     // skin
-    params["skin"] = gSavedSettings.getString("FSInternalSkinCurrent");
+    params["skin"] = gSavedSettings.getString("FSInternalSkinCurrent") + " " + gSavedSettings.getString("FSInternalSkinCurrentTheme");
 
     // No version popup
     if (gSavedSettings.getBOOL("FSNoVersionPopup"))
