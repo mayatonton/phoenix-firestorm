@@ -161,34 +161,43 @@ static std::string clean_name_from_task_im(const std::string& msg,
 }
 
 // <FS> FS autoresponse feature
-static std::string get_autoresponse_text_for_avatar(const LLUUID& from_id, bool is_do_not_disturb, bool is_autorespond, bool is_autorespond_nonfriends, bool is_afk, bool send_away_response, bool is_friend)
+std::string LLIMProcessing::getAutoresponseTextForAvatar(const LLUUID& from_id, bool is_do_not_disturb, bool is_autorespond, bool is_autorespond_nonfriends, bool is_afk, bool send_away_response, bool is_friend)
 {
     std::string response;
     if (is_do_not_disturb)
     {
-        response = gSavedPerAccountSettings.getString("DoNotDisturbModeResponse");
         std::string override_response;
         if (LGGContactSets::getInstance()->getAutoresponseForFriend(from_id, ContactSetAutoresponseMode::BUSY, override_response))
         {
             response = override_response;
         }
+        else
+        {
+            response = gSavedPerAccountSettings.getString("DoNotDisturbModeResponse");
+        }
     }
     else if (is_autorespond_nonfriends && !is_friend)
     {
-        response = gSavedPerAccountSettings.getString("FSAutorespondNonFriendsResponse");
         std::string override_response;
         if (LGGContactSets::getInstance()->getAutoresponseForFriend(from_id, ContactSetAutoresponseMode::AUTORESPONSE_NONFRIENDS, override_response))
         {
             response = override_response;
         }
+        else
+        {
+            response = gSavedPerAccountSettings.getString("FSAutorespondNonFriendsResponse");
+        }
     }
     else if (is_autorespond)
     {
-        response = gSavedPerAccountSettings.getString("FSAutorespondModeResponse");
         std::string override_response;
         if (LGGContactSets::getInstance()->getAutoresponseForFriend(from_id, ContactSetAutoresponseMode::AUTORESPONSE, override_response))
         {
             response = override_response;
+        }
+        else
+        {
+            response = gSavedPerAccountSettings.getString("FSAutorespondModeResponse");
         }
     }
     else if (is_afk && send_away_response)
@@ -988,7 +997,7 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
                     // <FS:Ansariel> FS autoresponse feature
                     std::string my_name;
                     LLAgentUI::buildFullname(my_name);
-                    response = get_autoresponse_text_for_avatar(from_id, is_do_not_disturb, is_autorespond, is_autorespond_nonfriends, is_afk, FSSendAwayAvatarResponse, is_friend);
+                    response = LLIMProcessing::getAutoresponseTextForAvatar(from_id, is_do_not_disturb, is_autorespond, is_autorespond_nonfriends, is_afk, FSSendAwayAvatarResponse, is_friend);
                     pack_instant_message(
                         gMessageSystem,
                         gAgent.getID(),
@@ -1996,7 +2005,7 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
                     std::string my_name;
                     std::string response;
                     LLAgentUI::buildFullname(my_name);
-                    response = get_autoresponse_text_for_avatar(from_id, is_do_not_disturb, is_autorespond, is_autorespond_nonfriends, is_afk, FSSendAwayAvatarResponse, is_friend);
+                    response = LLIMProcessing::getAutoresponseTextForAvatar(from_id, is_do_not_disturb, is_autorespond, is_autorespond_nonfriends, is_afk, FSSendAwayAvatarResponse, is_friend);
 
                     if (!response.empty())
                     {
