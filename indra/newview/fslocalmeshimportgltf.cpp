@@ -36,6 +36,7 @@
 #include "llvoavatarself.h"
 #include "llmatrix4a.h"
 #include "lljointdata.h"
+#include "llviewercontrol.h"
 
 // glTF headers
 #include "gltf/asset.h"
@@ -52,6 +53,8 @@
 
 namespace
 {
+    using local_joint_map_t = std::map<std::string, std::string, std::less<>>;
+
     // Premade rotation matrix, GLTF is Y-up while SL is Z-up
     const glm::mat4 kCoordSystemRotation(
         1.f, 0.f, 0.f, 0.f,
@@ -84,6 +87,77 @@ namespace
         {
             collectMeshNodes(asset, child_idx, mesh_nodes);
         }
+    }
+
+    void computeCombinedNodeTransform(const LL::GLTF::Asset& asset, S32 node_index, glm::mat4& combined_transform)
+    {
+        if (node_index < 0 || node_index >= static_cast<S32>(asset.mNodes.size()))
+        {
+            combined_transform = glm::mat4(1.f);
+            return;
+        }
+
+        const LL::GLTF::Node& node = asset.mNodes[node_index];
+        combined_transform = node.mMatrix;
+
+        for (size_t i = 0; i < asset.mNodes.size(); ++i)
+        {
+            const LL::GLTF::Node& potential_parent = asset.mNodes[i];
+            auto parent_it = std::find(potential_parent.mChildren.begin(), potential_parent.mChildren.end(), node_index);
+            if (parent_it != potential_parent.mChildren.end())
+            {
+                glm::mat4 parent_transform(1.f);
+                computeCombinedNodeTransform(asset, static_cast<S32>(i), parent_transform);
+                combined_transform = parent_transform * combined_transform;
+                return;
+            }
+        }
+    }
+
+    std::string normalizeJointName(const local_joint_map_t& joint_map, const std::string& joint_name)
+    {
+        auto joint_it = joint_map.find(joint_name);
+        return joint_it != joint_map.end() ? joint_it->second : joint_name;
+    }
+
+    std::vector<S32> buildJointIndexRemap(const LL::GLTF::Asset& asset,
+                                          const LL::GLTF::Skin& skin,
+                                          const local_joint_map_t& joint_map,
+                                          LLPointer<LLMeshSkinInfo> canonical_skin)
+    {
+        std::vector<S32> joint_index_remap(skin.mJoints.size(), -1);
+        if (canonical_skin.isNull() || canonical_skin->mJointNames.empty())
+        {
+            for (size_t i = 0; i < joint_index_remap.size(); ++i)
+            {
+                joint_index_remap[i] = static_cast<S32>(i);
+            }
+            return joint_index_remap;
+        }
+
+        std::map<std::string, S32, std::less<>> canonical_indices;
+        for (size_t i = 0; i < canonical_skin->mJointNames.size(); ++i)
+        {
+            canonical_indices.emplace(canonical_skin->mJointNames[i], static_cast<S32>(i));
+        }
+
+        for (size_t i = 0; i < skin.mJoints.size(); ++i)
+        {
+            const S32 joint_node_idx = skin.mJoints[i];
+            if (joint_node_idx < 0 || joint_node_idx >= static_cast<S32>(asset.mNodes.size()))
+            {
+                continue;
+            }
+
+            const std::string joint_name = normalizeJointName(joint_map, asset.mNodes[joint_node_idx].mName);
+            auto canonical_it = canonical_indices.find(joint_name);
+            if (canonical_it != canonical_indices.end())
+            {
+                joint_index_remap[i] = canonical_it->second;
+            }
+        }
+
+        return joint_index_remap;
     }
 
     bool buildTriangleIndexArray(const LL::GLTF::Primitive& prim, std::vector<U32>& indices_out, std::string& error_out)
@@ -213,7 +287,7 @@ namespace
 
     bool checkForXYrotation(const LL::GLTF::Asset& asset,
                             const LL::GLTF::Skin& skin,
-                            const std::map<std::string, std::string, std::less<>>& joint_map)
+                            const local_joint_map_t& joint_map)
     {
         constexpr char right_shoulder[] = "mShoulderRight";
         constexpr char left_shoulder[] = "mShoulderLeft";
@@ -529,19 +603,48 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
         return false;
     }
 
+    auto& object_faces = object->getFaces(mLod);
+    object_faces.clear();
+
     S32 skin_idx = node.mSkin;
+    bool apply_xy_rotation = false;
+    std::vector<S32> joint_index_remap;
     if (skin_idx >= 0 && skin_idx < static_cast<S32>(asset.mSkins.size()))
     {
-        initSkinInfo(asset, skin_idx, object);
+        const auto joint_map = FSLocalMeshImportBase::loadJointMap();
+        const LL::GLTF::Skin& skin = asset.mSkins[skin_idx];
+
+        apply_xy_rotation = checkForXYrotation(asset, skin, joint_map);
+
+        LLPointer<LLMeshSkinInfo> canonical_skin = object->getObjectMeshSkinInfo();
+        if (mLod == LLLocalMeshFileLOD::LOCAL_LOD_HIGH
+            || canonical_skin.isNull()
+            || canonical_skin->mJointNames.empty())
+        {
+            initSkinInfo(asset, skin_idx, object);
+            canonical_skin = object->getObjectMeshSkinInfo();
+        }
+
+        joint_index_remap = buildJointIndexRemap(asset, skin, joint_map, canonical_skin);
     }
     else
     {
         skin_idx = -1;
     }
 
+    const S32 node_idx = static_cast<S32>(&node - asset.mNodes.data());
+    glm::mat4 mesh_transform(1.f);
+    computeCombinedNodeTransform(asset, node_idx, mesh_transform);
+    mesh_transform = kCoordSystemRotation * mesh_transform;
+    if (apply_xy_rotation)
+    {
+        mesh_transform = kCoordSystemRotationXY * mesh_transform;
+    }
+
+    const bool flip_winding = glm::determinant(mesh_transform) < 0.f;
+
     bool submesh_failure_found = false;
     bool stop_loading_additional_faces = false;
-    auto& object_faces = object->getFaces(mLod);
 
     for (size_t prim_idx = 0; prim_idx < mesh.mPrimitives.size(); ++prim_idx)
     {
@@ -558,7 +661,7 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
         }
 
         const LL::GLTF::Primitive& prim = mesh.mPrimitives[prim_idx];
-        bool face_ok = appendPrimitiveToObject(asset, prim, object, skin_idx);
+        bool face_ok = appendPrimitiveToObject(asset, prim, mesh_transform, flip_winding, joint_index_remap, object, skin_idx);
         if (!face_ok)
         {
             submesh_failure_found = true;
@@ -568,7 +671,13 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
     return !submesh_failure_found;
 }
 
-bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset, const LL::GLTF::Primitive& prim, LLLocalMeshObject* object, S32 skin_idx)
+bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset,
+                                                    const LL::GLTF::Primitive& prim,
+                                                    const glm::mat4& mesh_transform,
+                                                    bool flip_winding,
+                                                    const std::vector<S32>& joint_index_remap,
+                                                    LLLocalMeshObject* object,
+                                                    S32 skin_idx)
 {
     auto current_submesh = std::make_unique<LLLocalMeshFace>();
 
@@ -595,8 +704,7 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
         }
     }
 
-    const glm::mat4 transform = kCoordSystemRotation;
-    const glm::mat3 normal_transform = glm::transpose(glm::inverse(glm::mat3(transform)));
+    const glm::mat3 normal_transform = glm::transpose(glm::inverse(glm::mat3(mesh_transform)));
 
     auto& list_positions = current_submesh->getPositions();
     auto& list_normals = current_submesh->getNormals();
@@ -610,7 +718,7 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
     for (size_t vert_idx = 0; vert_idx < prim.mPositions.size(); ++vert_idx)
     {
         const LLVector4a& pos = prim.mPositions[vert_idx];
-        glm::vec4 transformed_pos = transform * glm::vec4(pos[0], pos[1], pos[2], 1.f);
+        glm::vec4 transformed_pos = mesh_transform * glm::vec4(pos[0], pos[1], pos[2], 1.f);
 
         LLVector4 llpos;
         llpos.set(transformed_pos.x, transformed_pos.y, transformed_pos.z, 0.f);
@@ -646,9 +754,11 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
     }
 
     list_indices.reserve(triangle_indices.size());
-    for (U32 idx : triangle_indices)
+    for (size_t idx = 0; idx < triangle_indices.size(); idx += 3)
     {
-        list_indices.push_back(static_cast<S32>(idx));
+        list_indices.push_back(static_cast<S32>(triangle_indices[idx]));
+        list_indices.push_back(static_cast<S32>(triangle_indices[idx + (flip_winding ? 2 : 1)]));
+        list_indices.push_back(static_cast<S32>(triangle_indices[idx + (flip_winding ? 1 : 2)]));
     }
 
     // weights and joints
@@ -703,14 +813,27 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
             LLLocalMeshFace::LLLocalMeshSkinUnit unit{};
             for (size_t j = 0; j < 4; ++j)
             {
-                if (joint_indices[j] < 0 || joint_indices[j] >= static_cast<int>(skin.mJoints.size()) || weight_values[j] <= 0.f)
+                S32 remapped_joint = joint_indices[j];
+                if (!joint_index_remap.empty())
+                {
+                    if (remapped_joint < 0 || remapped_joint >= static_cast<S32>(joint_index_remap.size()))
+                    {
+                        remapped_joint = -1;
+                    }
+                    else
+                    {
+                        remapped_joint = joint_index_remap[remapped_joint];
+                    }
+                }
+
+                if (remapped_joint < 0 || weight_values[j] <= 0.f)
                 {
                     unit.mJointIndices[j] = -1;
                     unit.mJointWeights[j] = 0.f;
                 }
                 else
                 {
-                    unit.mJointIndices[j] = joint_indices[j];
+                    unit.mJointIndices[j] = remapped_joint;
                     unit.mJointWeights[j] = llclamp(weight_values[j], 0.f, 0.999f);
                 }
             }
@@ -816,6 +939,10 @@ void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
     skininfop->mJointNums.clear();
     skininfop->mInvBindMatrix.clear();
     skininfop->mAlternateBindMatrix.clear();
+    skininfop->mInvalidJointsScrubbed = false;
+    skininfop->mJointNumsInitialized = false;
+
+    static LLCachedControl<bool> apply_joint_offsets(gSavedSettings, "FSLocalMeshApplyJointOffsets");
 
     for (size_t i = 0; i < skin.mJoints.size(); ++i)
     {
@@ -826,10 +953,7 @@ void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
             joint_name = asset.mNodes[joint_node_idx].mName;
         }
 
-        if (joint_map.find(joint_name) != joint_map.end())
-        {
-            joint_name = joint_map[joint_name];
-        }
+        joint_name = normalizeJointName(joint_map, joint_name);
 
         skininfop->mJointNames.push_back(joint_name);
         skininfop->mJointNums.push_back(-1);
@@ -852,6 +976,18 @@ void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
 
         LLMatrix4 inv_bind_ll(glm::value_ptr(final_inverse_bind));
         skininfop->mInvBindMatrix.push_back(LLMatrix4a(inv_bind_ll));
+
+        if (apply_joint_offsets && can_build_overrides)
+        {
+            LLMatrix4 alternate_bind(inv_bind_ll);
+            auto joint_it = joints_data.find(joint_node_idx);
+            if (joint_it != joints_data.end())
+            {
+                LLMatrix4 override_transform(glm::value_ptr(joint_it->second.mOverrideMatrix));
+                alternate_bind.setTranslation(override_transform.getTranslation());
+            }
+            skininfop->mAlternateBindMatrix.push_back(LLMatrix4a(alternate_bind));
+        }
     }
 
     object->setObjectMeshSkinInfo(skininfop);

@@ -28,6 +28,9 @@
 
 #include "fslocalmeshimportbase.h"
 
+// GLM headers
+#include <glm/mat4x4.hpp>
+
 // STL headers
 #include <string>
 #include <vector>
@@ -51,7 +54,13 @@ public:
 
 private:
     bool processNodeMesh(const LL::GLTF::Asset& asset, const LL::GLTF::Node& node, LLLocalMeshObject* object);
-    bool appendPrimitiveToObject(const LL::GLTF::Asset& asset, const LL::GLTF::Primitive& prim, LLLocalMeshObject* object, S32 skin_idx);
+    bool appendPrimitiveToObject(const LL::GLTF::Asset& asset,
+                                 const LL::GLTF::Primitive& prim,
+                                 const glm::mat4& mesh_transform,
+                                 bool flip_winding,
+                                 const std::vector<S32>& joint_index_remap,
+                                 LLLocalMeshObject* object,
+                                 S32 skin_idx);
     void initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_idx, LLLocalMeshObject* object);
     void finalizeSkinInfo(LLLocalMeshObject* object) const;
 private:
