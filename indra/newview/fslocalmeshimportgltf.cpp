@@ -50,6 +50,8 @@
 
 // STL headers
 #include <algorithm>
+#include <set>
+#include <sstream>
 
 namespace
 {
@@ -609,12 +611,24 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
     S32 skin_idx = node.mSkin;
     bool apply_xy_rotation = false;
     std::vector<S32> joint_index_remap;
+    std::vector<std::string> skin_joint_names;
     if (skin_idx >= 0 && skin_idx < static_cast<S32>(asset.mSkins.size()))
     {
         const auto joint_map = FSLocalMeshImportBase::loadJointMap();
         const LL::GLTF::Skin& skin = asset.mSkins[skin_idx];
 
         apply_xy_rotation = checkForXYrotation(asset, skin, joint_map);
+
+        skin_joint_names.reserve(skin.mJoints.size());
+        for (S32 joint_node_idx : skin.mJoints)
+        {
+            std::string joint_name;
+            if (joint_node_idx >= 0 && joint_node_idx < static_cast<S32>(asset.mNodes.size()))
+            {
+                joint_name = asset.mNodes[joint_node_idx].mName;
+            }
+            skin_joint_names.push_back(normalizeJointName(joint_map, joint_name));
+        }
 
         LLPointer<LLMeshSkinInfo> canonical_skin = object->getObjectMeshSkinInfo();
         if (mLod == LLLocalMeshFileLOD::LOCAL_LOD_HIGH
@@ -661,7 +675,14 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
         }
 
         const LL::GLTF::Primitive& prim = mesh.mPrimitives[prim_idx];
-        bool face_ok = appendPrimitiveToObject(asset, prim, mesh_transform, flip_winding, joint_index_remap, object, skin_idx);
+        bool face_ok = appendPrimitiveToObject(asset,
+                                               prim,
+                                               mesh_transform,
+                                               flip_winding,
+                                               joint_index_remap,
+                                               skin_joint_names,
+                                               object,
+                                               skin_idx);
         if (!face_ok)
         {
             submesh_failure_found = true;
@@ -676,6 +697,7 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
                                                     const glm::mat4& mesh_transform,
                                                     bool flip_winding,
                                                     const std::vector<S32>& joint_index_remap,
+                                                    const std::vector<std::string>& skin_joint_names,
                                                     LLLocalMeshObject* object,
                                                     S32 skin_idx)
 {
@@ -780,6 +802,9 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
 
         auto& list_skin = current_submesh->getSkin();
         list_skin.reserve(prim.mWeights.size());
+        S32 dropped_weighted_influences = 0;
+        S32 affected_vertices = 0;
+        std::set<std::string, std::less<>> dropped_joint_names;
 
         for (size_t vert_idx = 0; vert_idx < prim.mWeights.size(); ++vert_idx)
         {
@@ -811,6 +836,7 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
             }
 
             LLLocalMeshFace::LLLocalMeshSkinUnit unit{};
+            bool vertex_dropped_joint = false;
             for (size_t j = 0; j < 4; ++j)
             {
                 S32 remapped_joint = joint_indices[j];
@@ -826,6 +852,16 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
                     }
                 }
 
+                if (weight_values[j] > 0.f && remapped_joint < 0)
+                {
+                    ++dropped_weighted_influences;
+                    vertex_dropped_joint = true;
+                    if (joint_indices[j] >= 0 && joint_indices[j] < static_cast<S32>(skin_joint_names.size()))
+                    {
+                        dropped_joint_names.emplace(skin_joint_names[joint_indices[j]]);
+                    }
+                }
+
                 if (remapped_joint < 0 || weight_values[j] <= 0.f)
                 {
                     unit.mJointIndices[j] = -1;
@@ -838,7 +874,41 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
                 }
             }
 
+            if (vertex_dropped_joint)
+            {
+                ++affected_vertices;
+            }
+
             list_skin.emplace_back(unit);
+        }
+
+        if (dropped_weighted_influences > 0)
+        {
+            std::ostringstream joint_stream;
+            bool first_joint = true;
+            for (const auto& joint_name : dropped_joint_names)
+            {
+                if (!first_joint)
+                {
+                    joint_stream << ", ";
+                }
+                joint_stream << joint_name;
+                first_joint = false;
+            }
+
+            std::string warning = "LOD" + std::to_string(mLod)
+                + " object \"" + object->getObjectName()
+                + "\" dropped " + std::to_string(dropped_weighted_influences)
+                + " weighted joint influence(s) across " + std::to_string(affected_vertices)
+                + " vertex/vertices while remapping to the high LOD skin";
+
+            if (!dropped_joint_names.empty())
+            {
+                warning += " [" + joint_stream.str() + "]";
+            }
+
+            pushLog("GLTF Importer", "WARNING: " + warning);
+            LL_WARNS("LocalMesh") << warning << LL_ENDL;
         }
     }
     else if (skin_idx >= 0)

@@ -59,6 +59,7 @@ private:
                                  const glm::mat4& mesh_transform,
                                  bool flip_winding,
                                  const std::vector<S32>& joint_index_remap,
+                                 const std::vector<std::string>& skin_joint_names,
                                  LLLocalMeshObject* object,
                                  S32 skin_idx);
     void initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_idx, LLLocalMeshObject* object);
