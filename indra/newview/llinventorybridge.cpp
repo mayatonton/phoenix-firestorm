@@ -4901,6 +4901,8 @@ void LLFolderBridge::buildContextMenuOptions(U32 flags, menuentry_vec_t&   items
     const LLUUID &marketplace_listings_id = model->findCategoryUUIDForType(LLFolderType::FT_MARKETPLACE_LISTINGS);
     const LLUUID &outfits_id = model->findCategoryUUIDForType(LLFolderType::FT_MY_OUTFITS);
 
+    const bool is_mp_listings_folder = isMarketplaceListingsFolder(); // <FS:PP> FIRE-36377 Do not show duplicated "new folder" in MP listings window context menu
+
     // <FS:Ansariel> FIRE-11628: Option to delete broken links from AO folder
     if (mUUID == AOEngine::instance().getAOFolder())
     {
@@ -4946,7 +4948,10 @@ void LLFolderBridge::buildContextMenuOptions(U32 flags, menuentry_vec_t&   items
     {
         disabled_items.push_back(std::string("New Folder"));
     }
-    if (isMarketplaceListingsFolder())
+    // <FS:PP> FIRE-36377 Do not show duplicated "new folder" in MP listings window context menu
+    // if (isMarketplaceListingsFolder())
+    if (is_mp_listings_folder)
+    // </FS:PP>
     {
         addMarketplaceContextMenuOptions(flags, items, disabled_items);
         if (LLMarketplaceData::instance().isUpdating(mUUID))
@@ -5084,10 +5089,20 @@ void LLFolderBridge::buildContextMenuOptions(U32 flags, menuentry_vec_t&   items
                         // Do not allow to create 2-level subfolder in the Calling Card/Friends folder. EXT-694.
                         if (!LLFriendCardsManager::instance().isCategoryInFriendFolder(cat))
                         {
-                            items.push_back(std::string("New Folder"));
-                            menu_items_added = true;
+                            // <FS:PP> FIRE-36377 Do not show duplicated "new folder" in MP listings window context menu
+                            // items.push_back(std::string("New Folder"));
+                            // menu_items_added = true;
+                            if (!is_mp_listings_folder)
+                            {
+                                items.push_back(std::string("New Folder"));
+                                menu_items_added = true;
+                            }
+                            // </FS:PP>
                         }
-                        if (!isMarketplaceListingsFolder())
+                        // <FS:PP> FIRE-36377 Do not show duplicated "new folder" in MP listings window context menu
+                        // if (!isMarketplaceListingsFolder())
+                        if (!is_mp_listings_folder)
+                        // </FS:PP>
                         {
                             items.push_back(std::string("upload_options"));
                             items.push_back(std::string("upload_def"));
