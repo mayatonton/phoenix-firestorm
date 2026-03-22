@@ -35,8 +35,8 @@
 		<check_box label="Koloruj wpis na liście znajomych bazując na zestawie kontaktów" name="FSContactSetsColorizeFriends" />
 	</panel>
 	<panel name="side_panel">
-		<check_box label="Użyj niestandardowej odpowiedzi auto dla trybu Zajęty dla tego zestawu" name="set_autoresponse_busy_enabled" />
-		<check_box label="Użyj niestandardowej wiadomości auto-odpowiedzi dla tego zestawu" name="set_autoresponse_mode_enabled" />
-		<check_box label="Użyj niestandardowej auto-odpowiedzi dla nieznajomych w tym zestawie" name="set_autoresponse_nonfriends_enabled" />
+		<check_box label="Użyj niestandardowej autoodpowiedzi dla trybu Zajęty w tym zestawie" name="set_autoresponse_busy_enabled" />
+		<check_box label="Użyj niestandardowej wiadomości autoodpowiedzi w tym zestawie" name="set_autoresponse_mode_enabled" />
+		<check_box label="Użyj niestandardowej autoodpowiedzi dla nieznajomych w tym zestawie" name="set_autoresponse_nonfriends_enabled" />
 	</panel>
 </floater>
