@@ -72,6 +72,22 @@ namespace
         0.f, 0.f, 0.f, 1.f
     );
 
+    glm::mat4 buildViewerBasisTransform(bool apply_xy_rotation)
+    {
+        glm::mat4 basis = kCoordSystemRotation;
+        if (apply_xy_rotation)
+        {
+            basis = kCoordSystemRotationXY * basis;
+        }
+        return basis;
+    }
+
+    glm::mat4 convertTransformToViewerBasis(const glm::mat4& transform, bool apply_xy_rotation)
+    {
+        const glm::mat4 basis = buildViewerBasisTransform(apply_xy_rotation);
+        return basis * transform * glm::inverse(basis);
+    }
+
     void collectMeshNodes(const LL::GLTF::Asset& asset, S32 node_idx, std::vector<S32>& mesh_nodes)
     {
         if (node_idx < 0 || node_idx >= static_cast<S32>(asset.mNodes.size()))
@@ -357,11 +373,7 @@ namespace
             node.mIsOverrideValid = true;
             node.mViewerRestMatrix = viewer_data.mRestMatrix;
 
-            glm::mat4 gltf_joint_rest_pose = kCoordSystemRotation * node.mGltfRestMatrix;
-            if (apply_xy_rotation)
-            {
-                gltf_joint_rest_pose = kCoordSystemRotationXY * gltf_joint_rest_pose;
-            }
+            glm::mat4 gltf_joint_rest_pose = convertTransformToViewerBasis(node.mGltfRestMatrix, apply_xy_rotation);
 
             glm::mat4 translated_joint;
             if (viewer_data.mIsJoint)
@@ -386,16 +398,18 @@ namespace
                                                   glm::vec3(0, 0, 0),
                                                   glm::vec4(0, 0, 0, 1));
 
-            glm::mat4 overriden_joint = node.mOverrideMatrix;
             if (viewer_data.mIsJoint)
             {
-                rest = parent_rest * overriden_joint;
+                // Keep the full local TRS for bind/rest propagation. Using the
+                // translation-only override here causes parent rotations to be
+                // re-encoded as rotated child translations down the chain.
+                rest = parent_rest * translated_joint;
                 node.mOverrideRestMatrix = rest;
             }
             else
             {
-                overriden_joint = glm::scale(overriden_joint, viewer_data.mScale);
-                node.mOverrideRestMatrix = parent_support_rest * overriden_joint;
+                rest = parent_support_rest * translated_joint;
+                node.mOverrideRestMatrix = rest;
                 rest = node.mOverrideRestMatrix;
             }
         }
@@ -416,7 +430,9 @@ namespace
         }
     }
 
-    glm::mat4 computeGltfToViewerSkeletonTransform(const joints_data_map_t& joints_data_map, S32 gltf_node_index)
+    glm::mat4 computeGltfToViewerSkeletonTransform(const joints_data_map_t& joints_data_map,
+                                                   S32 gltf_node_index,
+                                                   bool apply_xy_rotation)
     {
         const auto it = joints_data_map.find(gltf_node_index);
         if (it == joints_data_map.end())
@@ -430,8 +446,7 @@ namespace
             return glm::mat4(1.0f);
         }
 
-        const glm::mat4& gltf_joint_rest_pose = node_data.mGltfRestMatrix;
-        glm::mat4 rest_pose = kCoordSystemRotation * gltf_joint_rest_pose;
+        glm::mat4 rest_pose = convertTransformToViewerBasis(node_data.mGltfRestMatrix, apply_xy_rotation);
         return node_data.mOverrideRestMatrix * glm::inverse(rest_pose);
     }
 
@@ -1034,11 +1049,11 @@ void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
             original_bind = glm::inverse(skin.mInverseBindMatricesData[i]);
         }
 
-        glm::mat4 rotated_bind = kCoordSystemRotation * original_bind;
+        glm::mat4 rotated_bind = convertTransformToViewerBasis(original_bind, apply_xy_rotation);
         glm::mat4 skeleton_transform = glm::mat4(1.0f);
         if (can_build_overrides)
         {
-            skeleton_transform = computeGltfToViewerSkeletonTransform(joints_data, joint_node_idx);
+            skeleton_transform = computeGltfToViewerSkeletonTransform(joints_data, joint_node_idx, apply_xy_rotation);
         }
 
         glm::mat4 translated_bind = skeleton_transform * rotated_bind;
