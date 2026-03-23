@@ -56,7 +56,11 @@ FSNearbyChatControl::FSNearbyChatControl(const FSNearbyChatControl::Params& p) :
     setCommitOnFocusLost(false);
     setPassDelete(true);
     setFont(LLViewerChat::getChatFont());
+
     enableSingleLineMode(true);
+    mVPad = 0;
+    mVAlign = LLFontGL::VCENTER;
+    mTextVAlign = LLFontGL::VCENTER;
 
     setShowChatMentionPicker(!RlvActions::isRlvEnabled() || RlvActions::canShowName(RlvActions::SNC_DEFAULT));
     mRlvBehaviorCallbackConnection = gRlvHandler.setBehaviourToggleCallback(
@@ -134,6 +138,14 @@ void FSNearbyChatControl::setTextPadding(S32 left, S32 right)
 void FSNearbyChatControl::applyTextPadding()
 {
     LLRect base_rect = mScroller ? mScroller->getContentWindowRect() : getLocalRect();
+
+    const LLRect local_rect = getLocalRect();
+    if (base_rect.getHeight() < local_rect.getHeight())
+    {
+        base_rect.mTop = local_rect.mTop;
+        base_rect.mBottom = local_rect.mBottom;
+    }
+
     base_rect.mLeft = llmin(base_rect.mRight, base_rect.mLeft + mTextPadLeft);
     base_rect.mRight = llmax(base_rect.mLeft, base_rect.mRight - mTextPadRight);
 
