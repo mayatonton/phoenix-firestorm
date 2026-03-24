@@ -3886,7 +3886,12 @@ void LLModelPreview::genBuffers(S32 lod, bool include_skin_weights)
 
         base_iter++;
 
-        bool skinned = include_skin_weights && !mdl->mSkinWeights.empty();
+        // <FS:Beq> Skinning is disabled by shared rig validation when the
+        // loader flags too many or unknown joints. Keep the preview unskinned
+        // so invalid rigs do not render with a broken matrix palette.
+        // bool skinned = include_skin_weights && !mdl->mSkinWeights.empty();
+        bool skinned = include_skin_weights && isLegacyRigValid() && !mdl->mSkinWeights.empty();
+        // </FS:Beq>
 
         LLMatrix4a mat_normal;
         if (skinned)
@@ -4445,14 +4450,36 @@ bool LLModelPreview::render()
                 // mFMP->childSetValue("show_skin_weight", show_skin_weight); // <FS:Beq/> BUG-229632
 
             }
-            else if ((flags & LEGACY_RIG_FLAG_TOO_MANY_JOINTS) > 0)
+            // <FS:Beq> Any invalid legacy rig stays visible in preview, but
+            // it must not keep skinning enabled after validation fails.
+            // else if ((flags & LEGACY_RIG_FLAG_TOO_MANY_JOINTS) > 0)
+            // {
+            //     mFMP->childSetVisible("skin_too_many_joints", true);
+            // }
+            // else if ((flags & LEGACY_RIG_FLAG_UNKNOWN_JOINT) > 0)
+            // {
+            //     mFMP->childSetVisible("skin_unknown_joint", true);
+            else if ((flags & (LEGACY_RIG_FLAG_TOO_MANY_JOINTS | LEGACY_RIG_FLAG_UNKNOWN_JOINT)) > 0)
             {
-                mFMP->childSetVisible("skin_too_many_joints", true);
+                if ((flags & LEGACY_RIG_FLAG_TOO_MANY_JOINTS) > 0)
+                {
+                    mFMP->childSetVisible("skin_too_many_joints", true);
+                }
+                if ((flags & LEGACY_RIG_FLAG_UNKNOWN_JOINT) > 0)
+                {
+                    mFMP->childSetVisible("skin_unknown_joint", true);
+                }
+                mFMP->childSetValue("upload_skin", false);
+                upload_skin = false;
+                mViewOption["show_skin_weight"] = false;
+                show_skin_weight = false;
+                mFMP->childSetValue("show_skin_weight", false);
+                fmp->setViewOptionEnabled("show_skin_weight", false);
+                fmp->setViewOptionEnabled("show_joint_overrides", false);
+                fmp->setViewOptionEnabled("show_joint_positions", false);
+                mFMP->childDisable("upload_skin");
             }
-            else if ((flags & LEGACY_RIG_FLAG_UNKNOWN_JOINT) > 0)
-            {
-                mFMP->childSetVisible("skin_unknown_joint", true);
-            }
+            // </FS:Beq>
             // <FS:Beq> defensive code to wanr for incorrect flags - no behavioural change
             else
             {
@@ -4941,7 +4968,11 @@ bool LLModelPreview::render()
                     LLModelInstance& instance = *model_iter;
                     LLModel* model = instance.mModel;
 
-                    if (!model->mSkinWeights.empty())
+                    // <FS:Beq> Shared rig validation disables preview skinning
+                    // for invalid rigs even if weight data is present.
+                    // if (!model->mSkinWeights.empty())
+                    if (isLegacyRigValid() && !model->mSkinWeights.empty())
+                    // </FS:Beq>
                     {
                         const LLMeshSkinInfo *skin = &model->mSkinInfo;
                         LLSkinningUtil::initJointNums(&model->mSkinInfo, getPreviewAvatar());// inits skin->mJointNums if nessesary
