@@ -1629,32 +1629,42 @@ bool LLModel::loadDecomposition(LLSD& header, std::istream& is)
 }
 
 LLMeshSkinInfo::LLMeshSkinInfo():
+    mBindShapeMatrix(LLMatrix4a::identity()), // <FS:Beq/> Keep LLMeshSkinInfo default state in one place
     mPelvisOffset(0.0),
     mLockScaleIfJointPosition(false),
     mInvalidJointsScrubbed(false),
     mJointNumsInitialized(false)
 {
-    mBindShapeMatrix = LLMatrix4a::identity(); // <FS:Beq/> [FIRE-36135] Ensure bind shape matrix is explicitly initialised to identity.
 }
 
+
 LLMeshSkinInfo::LLMeshSkinInfo(LLSD& skin):
-    mPelvisOffset(0.0),
-    mLockScaleIfJointPosition(false),
-    mInvalidJointsScrubbed(false),
-    mJointNumsInitialized(false)
+// <FS:Beq> Keep LLMeshSkinInfo default state in one place
+//     mPelvisOffset(0.0),
+//     mLockScaleIfJointPosition(false),
+//     mInvalidJointsScrubbed(false),
+//     mJointNumsInitialized(false)
+// {
+//     mBindShapeMatrix = LLMatrix4a::identity();
+    LLMeshSkinInfo()
 {
-    mBindShapeMatrix = LLMatrix4a::identity(); // <FS:Beq/> [FIRE-36135] Ensure bind shape matrix is explicitly initialised to identity.
+// </FS:Beq>
     fromLLSD(skin);
 }
 
 LLMeshSkinInfo::LLMeshSkinInfo(const LLUUID& mesh_id, LLSD& skin) :
-    mMeshID(mesh_id),
-    mPelvisOffset(0.0),
-    mLockScaleIfJointPosition(false),
-    mInvalidJointsScrubbed(false),
-    mJointNumsInitialized(false)
+// <FS:Beq> Keep LLMeshSkinInfo default state in one place
+//     mMeshID(mesh_id),
+//     mPelvisOffset(0.0),
+//     mLockScaleIfJointPosition(false),
+//     mInvalidJointsScrubbed(false),
+//     mJointNumsInitialized(false)
+// {
+//     mBindShapeMatrix = LLMatrix4a::identity();
+    LLMeshSkinInfo()
 {
-    mBindShapeMatrix = LLMatrix4a::identity(); // <FS:Beq/> [FIRE-36135] Ensure bind shape matrix is explicitly initialised to identity.
+// </FS:Beq>
+    mMeshID = mesh_id;
     fromLLSD(skin);
 }
 
@@ -2391,4 +2401,3 @@ bool LLImportMaterial::operator<(const LLImportMaterial &rhs) const
 
     return mFullbright < rhs.mFullbright;
 }
-
