@@ -44,6 +44,7 @@
 
 // glm headers
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -863,13 +864,19 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
             std::array<int, 4> joint_indices{};
             if (joint_component_type == LL::GLTF::Accessor::ComponentType::UNSIGNED_SHORT)
             {
-                const U16* data = reinterpret_cast<const U16*>(&prim.mJoints[vert_idx]);
-                joint_indices = { data[0], data[1], data[2], data[3] };
+                const glm::u16vec4 unpacked_joints = glm::unpackUint4x16(prim.mJoints[vert_idx]);
+                joint_indices = { static_cast<int>(unpacked_joints.x),
+                                  static_cast<int>(unpacked_joints.y),
+                                  static_cast<int>(unpacked_joints.z),
+                                  static_cast<int>(unpacked_joints.w) };
             }
             else
             {
-                const U8* data = reinterpret_cast<const U8*>(&prim.mJoints[vert_idx]);
-                joint_indices = { data[0], data[1], data[2], data[3] };
+                const glm::u8vec4 unpacked_joints = glm::unpackUint4x8(static_cast<U32>(prim.mJoints[vert_idx] & 0xFFFFFFFF));
+                joint_indices = { static_cast<int>(unpacked_joints.x),
+                                  static_cast<int>(unpacked_joints.y),
+                                  static_cast<int>(unpacked_joints.z),
+                                  static_cast<int>(unpacked_joints.w) };
             }
 
             float weight_values[4] = { weights[0], weights[1], weights[2], weights[3] };
