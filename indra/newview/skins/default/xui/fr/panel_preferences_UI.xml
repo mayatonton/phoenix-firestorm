@@ -89,7 +89,7 @@
 			<check_box label="Afficher la recherche des menus" name="show_search_menu_check"/>
 			<check_box label="Afficher le solde de devises" name="FSShowCurrencyBalanceInStatusbar"/>
 			<check_box label="Affiche des infobulles lors du survol des icônes de la barre de statut avec la souris" name="FSStatusBarMenuButtonPopupOnRollover"/>
-			<text name="statusbar_timeformat_textbox">Format de l'horloge :</text>
+			<text name="statusbar_timeformat_textbox">Format heure :</text>
 			<combo_box name="FSStatusBarTimeFormat" tool_tip="Sélectionne le format de l'heure utilisé dans la barre de menu principale.">
 				<combo_box.item label="Langue par défaut" name="Language"/>
 				<combo_box.item label="12 Heures" name="12_Hour"/>
