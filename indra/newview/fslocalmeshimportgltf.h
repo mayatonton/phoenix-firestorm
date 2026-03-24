@@ -65,4 +65,5 @@ private:
     bool initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_idx, LLLocalMeshObject* object);
     void finalizeSkinInfo(LLLocalMeshObject* object) const;
 private:
+    std::vector<S32> mParentMap;
 };

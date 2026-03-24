@@ -88,6 +88,35 @@ namespace
         return basis * transform * glm::inverse(basis);
     }
 
+    std::vector<S32> buildParentMap(const LL::GLTF::Asset& asset)
+    {
+        std::vector<S32> parent_map(asset.mNodes.size(), -1);
+        for (size_t i = 0; i < asset.mNodes.size(); ++i)
+        {
+            for (S32 child_idx : asset.mNodes[i].mChildren)
+            {
+                if (child_idx >= 0 && child_idx < static_cast<S32>(parent_map.size()))
+                {
+                    parent_map[child_idx] = static_cast<S32>(i);
+                }
+            }
+        }
+        return parent_map;
+    }
+
+    std::vector<bool> buildSkinJointMembership(const LL::GLTF::Asset& asset, const LL::GLTF::Skin& skin)
+    {
+        std::vector<bool> is_skin_joint(asset.mNodes.size(), false);
+        for (S32 joint_node_idx : skin.mJoints)
+        {
+            if (joint_node_idx >= 0 && joint_node_idx < static_cast<S32>(is_skin_joint.size()))
+            {
+                is_skin_joint[joint_node_idx] = true;
+            }
+        }
+        return is_skin_joint;
+    }
+
     void collectMeshNodes(const LL::GLTF::Asset& asset, S32 node_idx, std::vector<S32>& mesh_nodes)
     {
         if (node_idx < 0 || node_idx >= static_cast<S32>(asset.mNodes.size()))
@@ -107,7 +136,10 @@ namespace
         }
     }
 
-    void computeCombinedNodeTransform(const LL::GLTF::Asset& asset, S32 node_index, glm::mat4& combined_transform)
+    void computeCombinedNodeTransform(const LL::GLTF::Asset& asset,
+                                      const std::vector<S32>& parent_map,
+                                      S32 node_index,
+                                      glm::mat4& combined_transform)
     {
         if (node_index < 0 || node_index >= static_cast<S32>(asset.mNodes.size()))
         {
@@ -115,20 +147,12 @@ namespace
             return;
         }
 
-        const LL::GLTF::Node& node = asset.mNodes[node_index];
-        combined_transform = node.mMatrix;
-
-        for (size_t i = 0; i < asset.mNodes.size(); ++i)
+        combined_transform = asset.mNodes[node_index].mMatrix;
+        S32 parent_idx = (node_index < static_cast<S32>(parent_map.size())) ? parent_map[node_index] : -1;
+        while (parent_idx >= 0 && parent_idx < static_cast<S32>(asset.mNodes.size()))
         {
-            const LL::GLTF::Node& potential_parent = asset.mNodes[i];
-            auto parent_it = std::find(potential_parent.mChildren.begin(), potential_parent.mChildren.end(), node_index);
-            if (parent_it != potential_parent.mChildren.end())
-            {
-                glm::mat4 parent_transform(1.f);
-                computeCombinedNodeTransform(asset, static_cast<S32>(i), parent_transform);
-                combined_transform = parent_transform * combined_transform;
-                return;
-            }
+            combined_transform = asset.mNodes[parent_idx].mMatrix * combined_transform;
+            parent_idx = (parent_idx < static_cast<S32>(parent_map.size())) ? parent_map[parent_idx] : -1;
         }
     }
 
@@ -277,36 +301,36 @@ namespace
     using joints_data_map_t = std::map<S32, JointNodeData>;
     using joints_name_to_node_map_t = std::map<std::string, S32, std::less<>>;
 
-    glm::mat4 buildGltfRestMatrix(const LL::GLTF::Asset& asset, const LL::GLTF::Skin& skin, S32 joint_node_index)
+    glm::mat4 buildGltfRestMatrix(const LL::GLTF::Asset& asset,
+                                  const std::vector<S32>& parent_map,
+                                  const std::vector<bool>& is_skin_joint,
+                                  S32 joint_node_index)
     {
         if (joint_node_index < 0 || joint_node_index >= static_cast<S32>(asset.mNodes.size()))
         {
             return glm::mat4(1.0f);
         }
 
-        const auto& node = asset.mNodes[joint_node_index];
-
-        for (size_t i = 0; i < asset.mNodes.size(); ++i)
+        glm::mat4 rest_matrix = asset.mNodes[joint_node_index].mMatrix;
+        S32 parent_idx = (joint_node_index < static_cast<S32>(parent_map.size())) ? parent_map[joint_node_index] : -1;
+        while (parent_idx >= 0
+               && parent_idx < static_cast<S32>(asset.mNodes.size())
+               && parent_idx < static_cast<S32>(is_skin_joint.size())
+               && is_skin_joint[parent_idx])
         {
-            const auto& potential_parent = asset.mNodes[i];
-            auto it = std::find(potential_parent.mChildren.begin(), potential_parent.mChildren.end(), joint_node_index);
-            if (it != potential_parent.mChildren.end())
-            {
-                if (std::find(skin.mJoints.begin(), skin.mJoints.end(), static_cast<S32>(i)) != skin.mJoints.end())
-                {
-                    return buildGltfRestMatrix(asset, skin, static_cast<S32>(i)) * node.mMatrix;
-                }
-                break;
-            }
+            rest_matrix = asset.mNodes[parent_idx].mMatrix * rest_matrix;
+            parent_idx = (parent_idx < static_cast<S32>(parent_map.size())) ? parent_map[parent_idx] : -1;
         }
 
-        return node.mMatrix;
+        return rest_matrix;
     }
 
     bool checkForXYrotation(const LL::GLTF::Asset& asset,
                             const LL::GLTF::Skin& skin,
+                            const std::vector<S32>& parent_map,
                             const local_joint_map_t& joint_map)
     {
+        const std::vector<bool> is_skin_joint = buildSkinJointMembership(asset, skin);
         constexpr char right_shoulder[] = "mShoulderRight";
         constexpr char left_shoulder[] = "mShoulderLeft";
 
@@ -338,7 +362,7 @@ namespace
                 continue;
             }
 
-            glm::mat4 gltf_joint_rest = buildGltfRestMatrix(asset, skin, joint_node_idx);
+            glm::mat4 gltf_joint_rest = buildGltfRestMatrix(asset, parent_map, is_skin_joint, joint_node_idx);
             glm::mat4 test_mat = glm::inverse(gltf_joint_rest) * skin.mInverseBindMatricesData[i];
 
             const bool is_xy_rotated =
@@ -482,6 +506,8 @@ FSLocalMeshImportGLTF::loadFile_return FSLocalMeshImportGLTF::loadFile(LLLocalMe
     {
         node.makeMatrixValid();
     }
+
+    mParentMap = buildParentMap(asset);
 
     if (asset.mScenes.empty())
     {
@@ -632,7 +658,7 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
         const auto joint_map = FSLocalMeshImportBase::loadJointMap();
         const LL::GLTF::Skin& skin = asset.mSkins[skin_idx];
 
-        apply_xy_rotation = checkForXYrotation(asset, skin, joint_map);
+        apply_xy_rotation = checkForXYrotation(asset, skin, mParentMap, joint_map);
 
         skin_joint_names.reserve(skin.mJoints.size());
         for (S32 joint_node_idx : skin.mJoints)
@@ -669,7 +695,7 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
 
     const S32 node_idx = static_cast<S32>(&node - asset.mNodes.data());
     glm::mat4 mesh_transform(1.f);
-    computeCombinedNodeTransform(asset, node_idx, mesh_transform);
+    computeCombinedNodeTransform(asset, mParentMap, node_idx, mesh_transform);
     mesh_transform = kCoordSystemRotation * mesh_transform;
     if (apply_xy_rotation)
     {
@@ -967,8 +993,9 @@ bool FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
 
     auto joint_map = FSLocalMeshImportBase::loadJointMap();
     const LL::GLTF::Skin& skin = asset.mSkins[skin_idx];
-    const bool apply_xy_rotation = checkForXYrotation(asset, skin, joint_map);
+    const bool apply_xy_rotation = checkForXYrotation(asset, skin, mParentMap, joint_map);
     U32 recognized_joint_count = 0;
+    const std::vector<bool> is_skin_joint = buildSkinJointMembership(asset, skin);
     for (S32 joint_node_idx : skin.mJoints)
     {
         if (joint_node_idx >= 0
@@ -1001,7 +1028,7 @@ bool FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
             const LL::GLTF::Node& joint_node = asset.mNodes[joint_node_idx];
             JointNodeData& data = joints_data[joint_node_idx];
             data.mNodeIdx = joint_node_idx;
-            data.mGltfRestMatrix = buildGltfRestMatrix(asset, skin, joint_node_idx);
+            data.mGltfRestMatrix = buildGltfRestMatrix(asset, mParentMap, is_skin_joint, joint_node_idx);
             data.mGltfMatrix = joint_node.mMatrix;
             data.mOverrideMatrix = glm::mat4(1.f);
 
