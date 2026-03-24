@@ -926,7 +926,8 @@ void FSFloaterNearbyChat::sendChat( EChatType type )
     // and go out of chat mode.
     const bool in_mouselook = gAgentCamera.cameraMouselook();
     const bool closeChatOnReturn = gSavedSettings.getBOOL("CloseChatOnReturn") 
-                         && !(!in_mouselook && gSavedSettings.getBOOL("FSCloseChatOnReturnInMouselook"));
+                         && !(!in_mouselook && gSavedSettings.getBOOL("FSCloseChatOnReturnInMouselook"))
+                         && !gSavedSettings.getBOOL("FSCloseChatOnReturnOnlyBar");
     if (closeChatOnReturn && gSavedSettings.getBOOL("FSUnfocusChatHistoryOnReturn"))
     {
         stopChat();
