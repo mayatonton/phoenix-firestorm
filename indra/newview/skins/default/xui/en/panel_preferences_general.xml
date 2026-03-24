@@ -534,7 +534,7 @@
     mouse_opaque="false"
     name="time_format_clock_note"
     width="500">
-      Clock format for the top bar is in User Interface - Top Bars.
+      Clock format for the top bar is in Interface - Top Bars.
    </text>
 
 <!--away/logout-->
