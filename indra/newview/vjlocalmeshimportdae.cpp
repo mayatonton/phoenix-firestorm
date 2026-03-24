@@ -368,9 +368,13 @@ bool LLLocalMeshImportDAE::processObject(domMesh* current_mesh, LLLocalMeshObjec
 
     pushLog("DAE Importer", "Potentially " + std::to_string(total_faces_found) + " object faces found.");
 
-    if (total_faces_found > 8)
+    if (total_faces_found > LL_SCULPT_MESH_MAX_FACES)
     {
-        pushLog("DAE Importer", "NOTE: object contains more than 8 faces, but ONLY up to 8 faces will be loaded.");
+        pushLog("DAE Importer", "NOTE: object contains more than "
+            + std::to_string(LL_SCULPT_MESH_MAX_FACES)
+            + " faces, but ONLY up to "
+            + std::to_string(LL_SCULPT_MESH_MAX_FACES)
+            + " faces will be loaded.");
     }
 
     bool submesh_failure_found = false;
@@ -378,9 +382,11 @@ bool LLLocalMeshImportDAE::processObject(domMesh* current_mesh, LLLocalMeshObjec
     auto lambda_process_submesh = [&](size_t idx, submesh_type array_type)
     {
         // check for face overflow
-        if (object_faces.size() == 8)
+        if (object_faces.size() >= LL_SCULPT_MESH_MAX_FACES)
         {
-            pushLog("DAE Importer", "NOTE: reached the limit of 8 faces per object, ignoring the rest.");
+            pushLog("DAE Importer", "NOTE: reached the limit of "
+                + std::to_string(LL_SCULPT_MESH_MAX_FACES)
+                + " faces per object, ignoring the rest.");
             stop_loading_additional_faces = true;
             return;
         }

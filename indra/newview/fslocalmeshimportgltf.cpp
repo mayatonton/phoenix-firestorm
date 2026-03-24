@@ -688,9 +688,11 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
             break;
         }
 
-        if (object_faces.size() >= 8)
+        if (object_faces.size() >= LL_SCULPT_MESH_MAX_FACES)
         {
-            pushLog("GLTF Importer", "NOTE: reached the limit of 8 faces per object, ignoring the rest.");
+            pushLog("GLTF Importer", "NOTE: reached the limit of "
+                + std::to_string(LL_SCULPT_MESH_MAX_FACES)
+                + " faces per object, ignoring the rest.");
             stop_loading_additional_faces = true;
             break;
         }
