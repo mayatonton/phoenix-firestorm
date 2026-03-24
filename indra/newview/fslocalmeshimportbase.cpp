@@ -28,6 +28,7 @@
 #include "fslocalmeshimportbase.h"
 
 #include "llerror.h"
+#include "llskinningutil.h"
 #include "llvoavatarself.h"
 
 void FSLocalMeshImportBase::setLod(LLLocalMeshFileLOD lod)
@@ -62,6 +63,49 @@ void FSLocalMeshImportBase::postProcessObject(LLLocalMeshObject& object, const L
     }
 
     object.normalizeFaceValues(mLod);
+}
+
+bool FSLocalMeshImportBase::enforceRigJointLimit(const std::string& who,
+                                                 LLLocalMeshObject& object,
+                                                 LLPointer<LLMeshSkinInfo> skininfop,
+                                                 U32 recognized_joint_count)
+{
+    const S32 max_joints = LLSkinningUtil::getMaxJointCount();
+    if ((S32)recognized_joint_count <= max_joints)
+    {
+        return true;
+    }
+
+    const std::string warning = "WARNING: Skinning disabled for object \"" + object.getObjectName()
+        + "\" due to too many joints: " + std::to_string(recognized_joint_count)
+        + ", maximum: " + std::to_string(max_joints) + ".";
+    pushLog(who, warning);
+    LL_WARNS("LocalMesh") << who << ": " << warning << LL_ENDL;
+
+    if (skininfop.notNull())
+    {
+        skininfop->mJointNames.clear();
+        skininfop->mJointNums.clear();
+        skininfop->mInvBindMatrix.clear();
+        skininfop->mAlternateBindMatrix.clear();
+        skininfop->mBindPoseMatrix.clear();
+        skininfop->mBindShapeMatrix = LLMatrix4a::identity();
+        skininfop->mInvalidJointsScrubbed = false;
+        skininfop->mJointNumsInitialized = false;
+        skininfop->updateHash();
+    }
+
+    object.setObjectMeshSkinInfo(LLPointer<LLMeshSkinInfo>());
+
+    for (S32 lod = 0; lod < LOCAL_NUM_LODS; ++lod)
+    {
+        for (auto& face : object.getFaces(static_cast<LLLocalMeshFileLOD>(lod)))
+        {
+            face->getSkin().clear();
+        }
+    }
+
+    return false;
 }
 
 FSLocalMeshImportBase::JointMap FSLocalMeshImportBase::loadJointMap()

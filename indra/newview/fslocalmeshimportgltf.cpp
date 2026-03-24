@@ -650,11 +650,17 @@ bool FSLocalMeshImportGLTF::processNodeMesh(const LL::GLTF::Asset& asset, const 
             || canonical_skin.isNull()
             || canonical_skin->mJointNames.empty())
         {
-            initSkinInfo(asset, skin_idx, object);
+            if (!initSkinInfo(asset, skin_idx, object))
+            {
+                skin_idx = -1;
+            }
             canonical_skin = object->getObjectMeshSkinInfo();
         }
 
-        joint_index_remap = buildJointIndexRemap(asset, skin, joint_map, canonical_skin);
+        if (skin_idx >= 0)
+        {
+            joint_index_remap = buildJointIndexRemap(asset, skin, joint_map, canonical_skin);
+        }
     }
     else
     {
@@ -935,11 +941,11 @@ bool FSLocalMeshImportGLTF::appendPrimitiveToObject(const LL::GLTF::Asset& asset
     return true;
 }
 
-void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_idx, LLLocalMeshObject* object)
+bool FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_idx, LLLocalMeshObject* object)
 {
     if (!object || skin_idx < 0 || skin_idx >= static_cast<S32>(asset.mSkins.size()))
     {
-        return;
+        return false;
     }
 
     LLPointer<LLMeshSkinInfo> skininfop = object->getObjectMeshSkinInfo();
@@ -953,13 +959,23 @@ void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
         catch (const std::bad_alloc& ex)
         {
             LL_WARNS() << "Failed to allocate skin info with exception: " << ex.what() << LL_ENDL;
-            return;
+            return false;
         }
     }
 
     auto joint_map = FSLocalMeshImportBase::loadJointMap();
     const LL::GLTF::Skin& skin = asset.mSkins[skin_idx];
     const bool apply_xy_rotation = checkForXYrotation(asset, skin, joint_map);
+    U32 recognized_joint_count = 0;
+    for (S32 joint_node_idx : skin.mJoints)
+    {
+        if (joint_node_idx >= 0
+            && joint_node_idx < static_cast<S32>(asset.mNodes.size())
+            && joint_map.find(asset.mNodes[joint_node_idx].mName) != joint_map.end())
+        {
+            ++recognized_joint_count;
+        }
+    }
 
     joints_data_map_t joints_data;
     joints_name_to_node_map_t names_to_nodes;
@@ -1014,6 +1030,11 @@ void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
         {
             buildOverrideMatrix(viewer_data, joints_data, names_to_nodes, identity, identity, apply_xy_rotation);
         }
+    }
+
+    if (!enforceRigJointLimit("GLTF Importer", *object, skininfop, recognized_joint_count))
+    {
+        return false;
     }
 
     // Always reset bind shape before rebuilding skin data so reloads do not reuse stale matrices.
@@ -1076,6 +1097,7 @@ void FSLocalMeshImportGLTF::initSkinInfo(const LL::GLTF::Asset& asset, S32 skin_
     }
 
     object->setObjectMeshSkinInfo(skininfop);
+    return true;
 }
 
 void FSLocalMeshImportGLTF::finalizeSkinInfo(LLLocalMeshObject* object) const

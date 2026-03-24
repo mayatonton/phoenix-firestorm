@@ -43,6 +43,10 @@ protected:
     void setLod(LLLocalMeshFileLOD lod);
     void pushLog(const std::string& who, const std::string& what, bool is_error = false);
     void postProcessObject(LLLocalMeshObject& object, const LLMatrix4& scene_transform, bool compute_bounds);
+    bool enforceRigJointLimit(const std::string& who,
+                              LLLocalMeshObject& object,
+                              LLPointer<LLMeshSkinInfo> skininfop,
+                              U32 recognized_joint_count);
 
     static JointMap loadJointMap();
     static LLMatrix4 buildNormalizedTransformation(const LLLocalMeshObject& object);

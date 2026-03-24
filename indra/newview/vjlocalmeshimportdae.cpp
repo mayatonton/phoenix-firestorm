@@ -718,6 +718,15 @@ bool LLLocalMeshImportDAE::processSkin(daeDatabase* collada_db, daeElement* coll
             }
         }
     }
+
+    if (!enforceRigJointLimit("DAE Importer",
+                              *current_object,
+                              skininfop,
+                              static_cast<U32>(skininfop->mJointNames.size())))
+    {
+        return false;
+    }
+
     static LLCachedControl<bool> apply_joint_offsets(gSavedSettings, "FSLocalMeshApplyJointOffsets");
     if (apply_joint_offsets)
     {
