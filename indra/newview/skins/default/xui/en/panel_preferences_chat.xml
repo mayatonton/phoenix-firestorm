@@ -1067,14 +1067,14 @@
 		 tool_tip="When 'Deselect chat after sending a message' is checked, only deselect chat in mouselook."
 		 enabled_control="CloseChatOnReturn" />
 		<check_box
-		 control_name="FSCloseChatOnReturnOnlyBar"
+		 control_name="FSCloseChatOnReturnOnlyForNearbyChatControl"
 		 label="Only for nearby chat bar"
 		 layout="topleft"
 		 top_pad="1"
 		 left="30"
 		 height="16"
 		 width="400"
-		 name="FSCloseChatOnReturnOnlyBar"
+		 name="FSCloseChatOnReturnOnlyForNearbyChatControl"
 		 tool_tip="When 'Deselect chat after sending a message' is checked, only deselect for the nearby chat bar."
 		 enabled_control="CloseChatOnReturn" />
  		<check_box

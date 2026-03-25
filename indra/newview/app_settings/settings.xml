@@ -3317,7 +3317,7 @@
       <key>Value</key>
       <integer>1</integer>
     </map>
-    <key>FSCloseChatOnReturnOnlyBar</key>
+    <key>FSCloseChatOnReturnOnlyForNearbyChatControl</key>
     <map>
       <key>Comment</key>
       <string>When CloseChatOnReturn is enabled, only deselect nearby chat bar</string>
