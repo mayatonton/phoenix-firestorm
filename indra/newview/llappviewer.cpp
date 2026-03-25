@@ -444,8 +444,16 @@ const std::string LOGOUT_MARKER_FILE_NAME(SAFE_FILE_NAME_PREFIX + ".logout_marke
 static std::string gLaunchFileOnQuit;
 
 // Used on Win32 for other apps to identify our window (eg, win_setup)
+#if LL_VELOPACK
+// Velopack is deliberately different fron NSIS to not prevent nsis uninstall
+const char* const VIEWER_WINDOW_CLASSNAME = "Second\u00A0Life"; // no break space
+#else
+// NSIS relies on this to detect if viewer is up.
+// NSIS's method is somewhat unreliable since window
+// can close long before cleanup is done
 // Note: Changing this breaks compatibility with SLURL handling, try to avoid it.
 const char* const VIEWER_WINDOW_CLASSNAME = "Second Life";
+#endif
 
 //----------------------------------------------------------------------------
 

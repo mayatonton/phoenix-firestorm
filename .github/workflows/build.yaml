@@ -61,6 +61,20 @@ jobs:
       relnotes:       ${{ steps.which-branch.outputs.relnotes }}
       imagename:      ${{ steps.build.outputs.imagename }}
       configuration:  ${{ matrix.configuration }}
+      # Windows Velopack outputs (passed to sign-pkg-windows)
+      velopack_pack_id:       ${{ steps.build.outputs.velopack_pack_id }}
+      velopack_pack_version:  ${{ steps.build.outputs.velopack_pack_version }}
+      velopack_pack_title:    ${{ steps.build.outputs.velopack_pack_title }}
+      velopack_main_exe:      ${{ steps.build.outputs.velopack_main_exe }}
+      velopack_exclude:       ${{ steps.build.outputs.velopack_exclude }}
+      velopack_icon:          ${{ steps.build.outputs.velopack_icon }}
+      velopack_installer_base: ${{ steps.build.outputs.velopack_installer_base }}
+      # macOS Velopack outputs (passed to sign-pkg-mac)
+      velopack_mac_pack_id:      ${{ steps.build.outputs.velopack_mac_pack_id }}
+      velopack_mac_pack_version: ${{ steps.build.outputs.velopack_mac_pack_version }}
+      velopack_mac_pack_title:   ${{ steps.build.outputs.velopack_mac_pack_title }}
+      velopack_mac_main_exe:     ${{ steps.build.outputs.velopack_mac_main_exe }}
+      velopack_mac_bundle_id:    ${{ steps.build.outputs.velopack_mac_bundle_id }}
     env:
       AUTOBUILD_ADDRSIZE: 64
       AUTOBUILD_BUILD_ID: ${{ github.run_id }}
@@ -292,14 +306,6 @@ jobs:
           path: |
             ${{ steps.build.outputs.viewer_app }}
 
-      # Upload Velopack Releases directory (contains nupkg and RELEASES for updates)
-      - name: Upload Velopack releases
-        if: steps.build.outputs.velopack_releases
-        uses: actions/upload-artifact@v4
-        with:
-          name: "${{ steps.build.outputs.artifact }}-releases"
-          path: ${{ steps.build.outputs.velopack_releases }}
-
       # The other upload of nontrivial size is the symbol file. Use a distinct
       # artifact for that too.
       - name: Upload symbol file
@@ -347,6 +353,13 @@ jobs:
           client_secret: "${{ env.AZURE_CLIENT_SECRET }}"
           tenant_id: "${{ env.AZURE_TENANT_ID }}"
           installer_type: "${{ github.event.inputs.installer_type || 'velopack' }}"
+          velopack_pack_id: "${{ needs.build.outputs.velopack_pack_id }}"
+          velopack_pack_version: "${{ needs.build.outputs.velopack_pack_version }}"
+          velopack_pack_title: "${{ needs.build.outputs.velopack_pack_title }}"
+          velopack_main_exe: "${{ needs.build.outputs.velopack_main_exe }}"
+          velopack_exclude: "${{ needs.build.outputs.velopack_exclude }}"
+          velopack_icon: "${{ needs.build.outputs.velopack_icon }}"
+          velopack_installer_base: "${{ needs.build.outputs.velopack_installer_base }}"
 
   sign-and-package-mac:
     env:
@@ -379,7 +392,7 @@ jobs:
 
       - name: Sign and package Mac viewer
         if: env.SIGNING_CERT_MACOS && env.SIGNING_CERT_MACOS_IDENTITY && env.SIGNING_CERT_MACOS_PASSWORD && steps.note-creds.outputs.note_user && steps.note-creds.outputs.note_pass && steps.note-creds.outputs.note_team
-        uses: secondlife/viewer-build-util/sign-pkg-mac@v2
+        uses: secondlife/viewer-build-util/sign-pkg-mac@geenz/velopack
         with:
           channel: ${{ needs.build.outputs.viewer_channel }}
           imagename: ${{ needs.build.outputs.imagename }}
@@ -389,6 +402,11 @@ jobs:
           note_user: ${{ steps.note-creds.outputs.note_user }}
           note_pass: ${{ steps.note-creds.outputs.note_pass }}
           note_team: ${{ steps.note-creds.outputs.note_team }}
+          velopack_pack_id: "${{ needs.build.outputs.velopack_mac_pack_id }}"
+          velopack_pack_version: "${{ needs.build.outputs.velopack_mac_pack_version }}"
+          velopack_pack_title: "${{ needs.build.outputs.velopack_mac_pack_title }}"
+          velopack_main_exe: "${{ needs.build.outputs.velopack_mac_main_exe }}"
+          velopack_bundle_id: "${{ needs.build.outputs.velopack_mac_bundle_id }}"
 
   post-windows-symbols:
     env:

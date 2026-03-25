@@ -3560,17 +3560,24 @@ void release_notes_coro(const std::string url)
 void uninstall_nsis_if_required()
 {
 #if LL_VELOPACK && LL_WINDOWS
-    // Todo: perhaps use marker files?
-    // Debug variable isn't specific to one channel
-    // and something channel specific is needed.
     std::string last_install_ver = gSavedSettings.getString("LastInstallVersion");
-    LLVersionInfo* ver_inst = LLVersionInfo::getInstance();
-    if (ver_inst->getChannelAndVersion() == last_install_ver)
+    if (!last_install_ver.empty())
     {
         return;
     }
+    LLVersionInfo* ver_inst = LLVersionInfo::getInstance();
     gSavedSettings.setString("LastInstallVersion",
         ver_inst->getChannelAndVersion());
+
+    if (LLNotifications::instance().getIgnored("PromptRemoveNsisInstallation"))
+    {
+        // By default 'ignore' returns default button, which is uninstall
+        // for PromptRemoveNsisInstallation, but while we want the button
+        // to be the default, we don't want a scary UAC without a notice
+        // as a default action, so if this notification is ignored,
+        // we will treat it as if user is going to cancel the uninstall.
+        return;
+    }
 
     LL_INFOS() << "Looking for previous NSIS installs" << LL_ENDL;
 
