@@ -137,6 +137,12 @@ Sitúa el cursor del ratón sobre el campo de UUID para mostrar su valor por def
 			<button name="Prev_UISndMoneyChangeUp" label="P" tool_tip="Probar sonido."/>
 			<button name="Def_UISndMoneyChangeUp" label="R" tool_tip="Restablecer al UUID por defecto."/>
 			<check_box label="Reproducir" name="PlayModeUISndMoneyChangeUp"/>
+			<text tool_tip="Sonido a reproducir cuando otro avatar habla en el chat local." name="textFSNearbyChat">
+				Nuevo mensaje chat local:
+			</text>
+			<button name="Prev_UISndNearbyChat" label="P" tool_tip="Probar sonido."/>
+			<button name="Def_UISndNearbyChat" label="R" tool_tip="Restablecer al UUID por defecto."/>
+			<check_box label="Reproducir" name="PlayModeUISndNearbyChat"/>
 			<text tool_tip="Sonido a reproducir al recibir un MI. Esta configuración es compartida por Chat &gt; Notificaciones &gt; 'Cuando se reciban MIs'." name="textFSNewIncomingIMSession">
 				Recepción de MI:
 			</text>
@@ -206,12 +212,6 @@ Sitúa el cursor del ratón sobre el campo de UUID para mostrar su valor por def
 			<button name="Prev_UISndSnapshot" label="P" tool_tip="Probar sonido."/>
 			<button name="Def_UISndSnapshot" label="R" tool_tip="Restablecer al UUID por defecto."/>
 			<check_box label="Silenciar" name="QuietSnapshotsToDiskCheckBox"/>
-			<text tool_tip="Sonido a reproducir con las pisadas por defecto. Requiere reiniciar para aplicar los cambios." name="textFSFootsteps">
-				Sonido de pasos:
-			</text>
-			<button name="Prev_UISndFootsteps" label="P" tool_tip="Probar sonido."/>
-			<button name="Def_UISndFootsteps" label="R" tool_tip="Restablecer al UUID por defecto."/>
-			<check_box label="Reproducir" name="PlayModeUISndFootsteps"/>
 		</panel>
 		<panel label="Sonidos de IU 2" name="UI Sounds tab 2">
 			<text name="textFSExplanation_tab2">
@@ -356,6 +356,12 @@ Sitúa el cursor del ratón sobre el campo de UUID para mostrar su valor por def
 			<button name="Prev_UISndGroupNotice" label="P" tool_tip="Probar sonido."/>
 			<button name="Def_UISndGroupNotice" label="R" tool_tip="Restablecer al UUID por defecto."/>
 			<check_box label="Reproducir" name="PlayModeUISndGroupNotice"/>
+			<text tool_tip="Sonido a reproducir con las pisadas por defecto. Requiere reiniciar para aplicar los cambios." name="textFSFootsteps">
+				Sonido de pasos:
+			</text>
+			<button name="Prev_UISndFootsteps" label="P" tool_tip="Probar sonido."/>
+			<button name="Def_UISndFootsteps" label="R" tool_tip="Restablecer al UUID por defecto."/>
+			<check_box label="Reproducir" name="PlayModeUISndFootsteps"/>
 			<text tool_tip="Sonido a reproducir por operaciones inválidas." name="textFSInvalidOp">
 				Operación inválida:
 			</text>

@@ -192,6 +192,12 @@ Passare sui campi UUID per leggere le impostazioni predefinite.
 			<button name="Prev_UISndMoneyChangeUp" label="S" tool_tip="Anteprima suono."/>
 			<button name="Def_UISndMoneyChangeUp" label="R" tool_tip="Ripristina suono predefinito."/>
 			<check_box label="Attiva suono" name="PlayModeUISndMoneyChangeUp"/>
+			<text tool_tip="UUID del suono riprodotto quando un altro avatar parla nella chat locale." name="textFSNearbyChat">
+				Nuovo mess. chat locale:
+			</text>
+			<button name="Prev_UISndNearbyChat" label="S" tool_tip="Anteprima suono."/>
+			<button name="Def_UISndNearbyChat" label="R" tool_tip="Ripristina suono predefinito."/>
+			<check_box label="Attiva suono" name="PlayModeUISndNearbyChat"/>
 			<text tool_tip="UUID del suono eseguito quando arriva un messaggio IM. L&apos;impostazione è condivisa con Chat &gt; Notifiche" name="textFSNewIncomingIMSession">
 				IM in arrivo:
 			</text>
@@ -262,12 +268,6 @@ Passare sui campi UUID per leggere le impostazioni predefinite.
 			<button name="Def_UISndSnapshot" label="R" tool_tip="Ripristina suono predefinito."/>
 			<check_box label="Disattiva suono" name="QuietSnapshotsToDiskCheckBox"/>
 			<check_box label="Attiva suono" name="PlayModeUISndMovelockToggle"/>
-			<text tool_tip="UUID del suono per i passi. La modifica richiede il riavvio." name="textFSFootsteps">
-				Passi predefiniti:
-			</text>
-			<button name="Prev_UISndFootsteps" label="S" tool_tip="Anteprima suono."/>
-			<button name="Def_UISndFootsteps" label="R" tool_tip="Ripristina suono predefinito."/>
-			<check_box label="Attiva suono" name="PlayModeUISndFootsteps" />
 		</panel>
 		<panel label="Suoni UI 2" name="UI Sounds tab 2">
 			<text name="textFSExplanation_tab2">
@@ -435,6 +435,12 @@ Passare sui campi UUID per leggere le impostazioni predefinite.
 			</text>
 			<button name="Prev_UISndMovelockToggle" label="S" tool_tip="Anteprima suono."/>
 			<button name="Def_UISndMovelockToggle" label="R" tool_tip="Ripristina suono predefinito."/>
+			<text tool_tip="UUID del suono per i passi. La modifica richiede il riavvio." name="textFSFootsteps">
+				Passi predefiniti:
+			</text>
+			<button name="Prev_UISndFootsteps" label="S" tool_tip="Anteprima suono."/>
+			<button name="Def_UISndFootsteps" label="R" tool_tip="Ripristina suono predefinito."/>
+			<check_box label="Attiva suono" name="PlayModeUISndFootsteps" />
 			<text tool_tip="UUID del suono per il raggio tracciante. Accelera quando l&apos;avatar si avvicina alla destinazione." name="textFSTrackerBeacon">
 				Raggio tracciante:
 			</text>

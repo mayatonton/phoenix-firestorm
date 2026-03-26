@@ -157,6 +157,10 @@
 			<button name="Prev_UISndMoneyChangeUp" label="▶" tool_tip="播放此聲音。" />
 			<button name="Def_UISndMoneyChangeUp" label="↻" tool_tip="重設。" />
 			<check_box label="啟用" name="PlayModeUISndMoneyChangeUp" />
+			<text tool_tip="當其他角色在本地聊天發言時播放的音效UUID。" name="textFSNearbyChat">本地聊天新訊息：</text>
+			<button name="Prev_UISndNearbyChat" label="▶" tool_tip="播放此聲音。" />
+			<button name="Def_UISndNearbyChat" label="↻" tool_tip="重設。" />
+			<check_box label="啟用" name="PlayModeUISndNearbyChat" />
 			<text tool_tip="接收新私聊音效的UUID。此設定與 '聊天 &gt; 通知 &gt; '收到新訊息時播放提示音：私聊' 共享。" name="textFSNewIncomingIMSession">新私聊：</text>
 			<button name="Prev_UISndNewIncomingIMSession" label="▶" tool_tip="播放此聲音。" />
 			<button name="Def_UISndNewIncomingIMSession" label="↻" tool_tip="重設。" />
@@ -212,10 +216,6 @@
 			<button name="Prev_UISndSnapshot" label="▶" tool_tip="播放此聲音。" />
 			<button name="Def_UISndSnapshot" label="↻" tool_tip="重設。" />
 			<check_box label="禁用" name="QuietSnapshotsToDiskCheckBox" />
-			<text tool_tip="腳步聲音效的 UUID。需要重新啟動才能生效。" name="textFSFootsteps">腳步聲：</text>
-			<button name="Prev_UISndFootsteps" label="▶" tool_tip="播放此聲音。" />
-			<button name="Def_UISndFootsteps" label="↻" tool_tip="重設。" />
-			<check_box label="啟用" name="PlayModeUISndFootsteps" />
 		</panel>
 		<panel label="聲音 2" name="UI Sounds tab 2">
 			<text name="textFSExplanation_tab2">您可以在此處修改界面產生的每個聲音，並決定是否啟用它們。</text>
@@ -330,6 +330,10 @@
 			<button name="Prev_UISndMovelockToggle" label="▶" tool_tip="播放此聲音。" />
 			<button name="Def_UISndMovelockToggle" label="↻" tool_tip="重設。" />
 			<check_box label="啟用" name="PlayModeUISndMovelockToggle" />
+			<text tool_tip="腳步聲音效的 UUID。需要重新啟動才能生效。" name="textFSFootsteps">腳步聲：</text>
+			<button name="Prev_UISndFootsteps" label="▶" tool_tip="播放此聲音。" />
+			<button name="Def_UISndFootsteps" label="↻" tool_tip="重設。" />
+			<check_box label="啟用" name="PlayModeUISndFootsteps" />
 			<text tool_tip="追蹤標記啟用音效的UUID。隨著角色接近目的地，聲音會變得更頻繁。" name="textFSTrackerBeacon">追蹤標記：</text>
 			<button name="Prev_UISndTrackerBeacon" label="▶" tool_tip="播放此聲音。" />
 			<button name="Def_UISndTrackerBeacon" label="↻" tool_tip="重設。" />

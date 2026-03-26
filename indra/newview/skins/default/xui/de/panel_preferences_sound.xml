@@ -222,6 +222,13 @@ Der jeweilige Standardwert wird im Hovertip des UUID-Feldes angezeigt.
 		<button label="S" name="Def_UISndMoneyChangeUp" tool_tip="Auf Standardwert zurücksetzen."/>
 		<check_box label="Abspielen" name="PlayModeUISndMoneyChangeUp"/>
 
+		<text tool_tip="UUID des Klangs, wenn ein anderer Avatar im Chat in der Nähe spricht." name="textFSNearbyChat">
+			Neue Nahchat-Nachricht:
+		</text>
+		<button label="V" name="Prev_UISndNearbyChat" tool_tip="Vorschau zu diesem Klang."/>
+		<button label="S" name="Def_UISndNearbyChat" tool_tip="Auf Standardwert zurücksetzen."/>
+		<check_box label="Abspielen" name="PlayModeUISndNearbyChat"/>
+
 		<text tool_tip="UUID des Klangs bei eingehenden Instant Messages. Diese Einstellung ist gekoppelt mit Chat &gt; Benachrichtigungen &gt; 'Beim Eintreffen von Instant Messages:'." name="textFSNewIncomingIMSession">
 			Eingeh. Instant Messages:
 		</text>
@@ -307,12 +314,6 @@ Der jeweilige Standardwert wird im Hovertip des UUID-Feldes angezeigt.
 		<button label="S" name="Def_UISndSnapshot" tool_tip="Auf Standardwert zurücksetzen."/>
 		<check_box label="Stummschalten" name="QuietSnapshotsToDiskCheckBox"/>
 
-		<text tool_tip="UUID des Klangs für Schritte. Erfordert Neustart." name="textFSFootsteps">
-			Schritte:
-		</text>
-		<button label="V" name="Prev_UISndFootsteps" tool_tip="Vorschau zu diesem Klang."/>
-		<button label="S" name="Def_UISndFootsteps" tool_tip="Auf Standardwert zurücksetzen."/>
-		<check_box label="Abspielen" name="PlayModeUISndFootsteps"/>
 	</panel>
 
 	<!-- UI Sounds 2 -->
@@ -518,6 +519,13 @@ Der jeweilige Standardwert wird im Hovertip des UUID-Feldes angezeigt.
 		<button label="V" name="Prev_UISndMovelockToggle" tool_tip="Vorschau zu diesem Klang."/>
 		<button label="S" name="Def_UISndMovelockToggle" tool_tip="Auf Standardwert zurücksetzen."/>
 		<check_box label="Abspielen" name="PlayModeUISndMovelockToggle"/>
+
+		<text tool_tip="UUID des Klangs für Schritte. Erfordert Neustart." name="textFSFootsteps">
+			Schritte:
+		</text>
+		<button label="V" name="Prev_UISndFootsteps" tool_tip="Vorschau zu diesem Klang."/>
+		<button label="S" name="Def_UISndFootsteps" tool_tip="Auf Standardwert zurücksetzen."/>
+		<check_box label="Abspielen" name="PlayModeUISndFootsteps"/>
 
 		<text tool_tip="UUID des Klangs für für den Leitstrahl, falls aktiv. Je näher das Ziel ist, desto häufiger ertönt der Klang." name="textFSTrackerBeacon">
 			Leitstrahl:

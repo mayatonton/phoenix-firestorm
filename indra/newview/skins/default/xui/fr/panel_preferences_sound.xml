@@ -197,6 +197,12 @@ Passez votre curseur de souris sur le champ UUID pour afficher sa valeur par dé
 			<button name="Prev_UISndMoneyChangeUp" tool_tip="Jouer ce son."/>
 			<button name="Def_UISndMoneyChangeUp" tool_tip="Réinitialiser."/>
 			<check_box label="Activer" name="PlayModeUISndMoneyChangeUp"/>
+			<text tool_tip="UUID du son joué lorsqu'un autre avatar parle dans le chat local." name="textFSNearbyChat">
+				Nouv. message chat local :
+			</text>
+			<button name="Prev_UISndNearbyChat" tool_tip="Jouer ce son."/>
+			<button name="Def_UISndNearbyChat" tool_tip="Réinitialiser."/>
+			<check_box label="Activer" name="PlayModeUISndNearbyChat"/>
 			<text tool_tip="UUID du son joué lors de l'arrivée d'un nouvel IM. Ce réglage est commun avec Conversations &gt; Notifications &gt; 'Annonces lors de la réception d'un nouveau message : IMs'." name="textFSNewIncomingIMSession">
 				IM entrant :
 			</text>
@@ -272,12 +278,6 @@ Passez votre curseur de souris sur le champ UUID pour afficher sa valeur par dé
 			<button name="Prev_UISndSnapshot" tool_tip="Jouer ce son."/>
 			<button name="Def_UISndSnapshot" tool_tip="Réinitialiser."/>
 			<check_box label="Désactiver" name="QuietSnapshotsToDiskCheckBox"/>
-			<text tool_tip="UUID du son joué pour les bruits de pas. Requiert un redémarrage pour être effectif." name="textFSFootsteps">
-				Bruits de pas :
-			</text>
-			<button name="Prev_UISndFootsteps" tool_tip="Jouer ce son."/>
-			<button name="Def_UISndFootsteps" tool_tip="Réinitialiser."/>
-			<check_box label="Activer" name="PlayModeUISndFootsteps"/>
 		</panel>
 		<panel label="Sons 2" name="UI Sounds tab 2">
 			<text name="textFSExplanation_tab2">
@@ -452,6 +452,12 @@ Passez votre curseur de souris sur le champ UUID pour afficher sa valeur par dé
 			<button name="Prev_UISndMovelockToggle" tool_tip="Jouer ce son."/>
 			<button name="Def_UISndMovelockToggle" tool_tip="Réinitialiser."/>
 			<check_box label="Activer" name="PlayModeUISndMovelockToggle"/>
+			<text tool_tip="UUID du son joué pour les bruits de pas. Requiert un redémarrage pour être effectif." name="textFSFootsteps">
+				Bruits de pas :
+			</text>
+			<button name="Prev_UISndFootsteps" tool_tip="Jouer ce son."/>
+			<button name="Def_UISndFootsteps" tool_tip="Réinitialiser."/>
+			<check_box label="Activer" name="PlayModeUISndFootsteps"/>
 			<text tool_tip="UUID du son joué quand la balise de détection est active. Le son est plus fréquent à mesure que l'avatar se rapproche de la destination." width="180" name="textFSTrackerBeacon">
 				Balise de détection :
 			</text>

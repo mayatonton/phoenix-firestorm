@@ -211,6 +211,12 @@
 			<button name="Prev_UISndMoneyChangeUp" tool_tip="このサウンドをプレビューします。"/>
 			<button name="Def_UISndMoneyChangeUp" tool_tip="デフォルトのＵＵＩＤにリセットします。"/>
 			<check_box label="このサウンドを再生" name="PlayModeUISndMoneyChangeUp"/>
+			<text tool_tip="近くのチャットで他のアバターが発言した時に再生するサウンドのＵＵＩＤを指定します。" name="textFSNearbyChat">
+				近くのチャット新着メッセ：
+			</text>
+			<button name="Prev_UISndNearbyChat" tool_tip="このサウンドをプレビューします。"/>
+			<button name="Def_UISndNearbyChat" tool_tip="デフォルトのＵＵＩＤにリセットします。"/>
+			<check_box label="このサウンドを再生" name="PlayModeUISndNearbyChat"/>
 			<text tool_tip="ＩＭを受信した時に再生するサウンドのＵＵＩＤを指定します。この設定は「チャット」＞「通知」にある「ＩＭを受信した時」と共通になっています。" name="textFSNewIncomingIMSession">
 				ＩＭを受信した時：
 			</text>
@@ -286,12 +292,6 @@
 			<button name="Prev_UISndSnapshot" tool_tip="このサウンドをプレビューします。"/>
 			<button name="Def_UISndSnapshot" tool_tip="デフォルトのＵＵＩＤにリセットします。"/>
 			<check_box label="サウンドを再生しない" name="QuietSnapshotsToDiskCheckBox"/>
-			<text tool_tip="足音のデフォルトサウンドUUIDです。変更した内容を有効にするには再起動が必要です。" name="textFSFootsteps">
-				デフォルトの足音：
-			</text>
-			<button name="Prev_UISndFootsteps" tool_tip="このサウンドをプレビューします。"/>
-			<button name="Def_UISndFootsteps" tool_tip="デフォルトのＵＵＩＤにリセットします。"/>
-			<check_box label="このサウンドを再生" name="PlayModeUISndFootsteps"/>
 		</panel>
 		<!-- UI Sounds 2 -->
 		<panel label="ＵＩサウンド２" name="UI Sounds tab 2">
@@ -468,6 +468,12 @@
 			<button name="Prev_UISndMovelockToggle" tool_tip="このサウンドをプレビューします。"/>
 			<button name="Def_UISndMovelockToggle" tool_tip="デフォルトのＵＵＩＤにリセットします。"/>
 			<check_box label="このサウンドを再生" name="PlayModeUISndMovelockToggle"/>
+			<text tool_tip="足音のデフォルトサウンドUUIDです。変更した内容を有効にするには再起動が必要です。" name="textFSFootsteps">
+				デフォルトの足音：
+			</text>
+			<button name="Prev_UISndFootsteps" tool_tip="このサウンドをプレビューします。"/>
+			<button name="Def_UISndFootsteps" tool_tip="デフォルトのＵＵＩＤにリセットします。"/>
+			<check_box label="このサウンドを再生" name="PlayModeUISndFootsteps"/>
 			<text tool_tip="追跡ビーコンが有効になっている時に再生されるサウンドのＵＵＩＤを指定します。アバターが目的地に近付くほど再生周期が短くなります。" name="textFSTrackerBeacon">
 				追跡ビーコン：
 			</text>

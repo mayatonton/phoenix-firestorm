@@ -16689,6 +16689,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <string>4174f859-0d3d-c517-c424-72923dc21f65</string>
     </map>
+    <key>UISndNearbyChat</key>
+    <map>
+      <key>Comment</key>
+      <string>Sound file for nearby chat messages from other avatars (uuid for sound asset)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>a3f48b85-c29f-1f97-ebb6-644b7c053512</string>
+    </map>
     <key>UISndNewIncomingIMSession</key>
     <map>
       <key>Comment</key>
@@ -22504,6 +22515,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <string>Boolean</string>
       <key>Value</key>
       <integer>1</integer>
+    </map>
+    <key>PlayModeUISndNearbyChat</key>
+    <map>
+      <key>Comment</key>
+      <string>Holds state for Prefs &gt; Sound/Media &gt; UI Sounds - UISndNearbyChat.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
     </map>
     <key>PlayModeUISndNewIncomingIMSession</key>
     <map>

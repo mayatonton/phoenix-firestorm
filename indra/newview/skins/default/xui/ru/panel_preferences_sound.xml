@@ -205,6 +205,13 @@
 			<button name="Def_UISndMoneyChangeUp" tool_tip="Сброс к UUID по умолчанию."/>
 			<check_box label="Включить звук" name="PlayModeUISndMoneyChangeUp"/>
 
+			<text tool_tip="UUID звука, который воспроизводится, когда другой аватар пишет в общем чате." name="textFSNearbyChat">
+				Новое сообщ. общего чата:
+			</text>
+			<button name="Prev_UISndNearbyChat" tool_tip="Прослушать этот звук."/>
+			<button name="Def_UISndNearbyChat" tool_tip="Сброс к UUID по умолчанию."/>
+			<check_box label="Включить звук" name="PlayModeUISndNearbyChat"/>
+
 			<text tool_tip="UUID звука воспроизводимый на входящее личное сообщение." name="textFSNewIncomingIMSession">
 				Входящее ЛС:
 			</text>
@@ -282,13 +289,6 @@
 			<button name="Prev_UISndSnapshot" tool_tip="Прослушать этот звук."/>
 			<button name="Def_UISndSnapshot" tool_tip="Сброс к UUID по умолчанию."/>
 			<check_box label="Отключение звука" name="QuietSnapshotsToDiskCheckBox"/>
-
-			<text tool_tip="UUID звука воспроизводимый при ходьбе." name="textFSFootsteps">
-				Шаги по умолчанию:
-			</text>
-			<button name="Prev_UISndFootsteps" tool_tip="Прослушать этот звук."/>
-			<button name="Def_UISndFootsteps" tool_tip="Сброс к UUID по умолчанию."/>
-			<check_box label="Включить звук" name="PlayModeUISndFootsteps"/>
 
 		</panel>
 		<panel label="Интерфейс 2" name="UI Sounds tab 2">
@@ -485,6 +485,13 @@
 			<button name="Prev_UISndMovelockToggle" tool_tip="Прослушать этот звук."/>
 			<button name="Def_UISndMovelockToggle" tool_tip="Сброс к UUID по умолчанию."/>
 			<check_box label="Включить звук" name="PlayModeUISndMovelockToggle"/>
+
+			<text tool_tip="UUID звука воспроизводимый при ходьбе." name="textFSFootsteps">
+				Шаги по умолчанию:
+			</text>
+			<button name="Prev_UISndFootsteps" tool_tip="Прослушать этот звук."/>
+			<button name="Def_UISndFootsteps" tool_tip="Сброс к UUID по умолчанию."/>
+			<check_box label="Включить звук" name="PlayModeUISndFootsteps"/>
 
 			<text tool_tip="UUID звука воспроизводится когда маяк трекера активен. Учащается когда аватар ближе к месту назначения." name="textFSTrackerBeacon">
 				Трекерный маяк:
