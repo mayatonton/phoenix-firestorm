@@ -152,16 +152,23 @@ void FSNearbyChatControl::applyTextPadding()
     }
 }
 
-void FSNearbyChatControl::autohide()
+void FSNearbyChatControl::autohide(bool after_send)
 {
     if (isDefault())
     {
-        if (gSavedSettings.getBOOL("CloseChatOnReturn"))
+        const bool in_mouselook = gAgentCamera.cameraMouselook();
+        const bool closeChatOnReturn = gSavedSettings.getBOOL("CloseChatOnReturn") 
+                         && !(!in_mouselook && gSavedSettings.getBOOL("FSCloseChatOnReturnInMouselook"));
+        const bool autohideChatBar = gSavedSettings.getBOOL("AutohideChatBar");
+        bool hide_chatbar = false;
+
+        if (closeChatOnReturn)
         {
             setFocus(false);
+            hide_chatbar = autohideChatBar;
         }
 
-        if (gAgentCamera.cameraMouselook() || gSavedSettings.getBOOL("AutohideChatBar"))
+        if (hide_chatbar || (!after_send && autohideChatBar))
         {
             FSNearbyChat::instance().showDefaultChatBar(false);
         }
@@ -184,7 +191,7 @@ bool FSNearbyChatControl::handleKeyHere(KEY key, MASK mask)
     if (key == KEY_ESCAPE && mask == MASK_NONE)
     {
         // we let ESC key go through to the rest of the UI code, so don't set handled = true
-        autohide();
+        autohide(false);
         gAgent.stopTyping();
     }
     else if (KEY_RETURN == key)
@@ -230,7 +237,7 @@ bool FSNearbyChatControl::handleKeyHere(KEY key, MASK mask)
         FSNearbyChat::instance().sendChat(getConvertedText(), type);
 
         setText(LLStringExplicit(""));
-        autohide();
+        autohide(true);
         return true;
     }
 

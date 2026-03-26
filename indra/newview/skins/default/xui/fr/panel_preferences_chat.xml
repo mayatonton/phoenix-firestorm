@@ -133,6 +133,8 @@
 			<check_box name="FSShowChatType" label="Afficher un bouton Parler / Chuchoter / Crier dans la fenêtre du Chat local"/>
 			<check_box label="Masquer la barre de conversation principale" name="AutohideChatBar" tool_tip="Masque la barre de conversation en bas à gauche de l'écran et l'affiche lorsque votre souris passe au-dessus de la zone."/>
 			<check_box label="Désélectionner la zone de saisie après l'envoi d'un message" name="CloseChatOnReturn"/>
+			<check_box label="Seulement en première personne" name="FSCloseChatOnReturnInMouselook" tool_tip="Lorsque l'option 'Désélectionner le chat après l'envoi d'un message' est cochée, seulement déselectionner le chat en première personne"/>
+			<check_box label="Seulement la barre de chat" name="FSCloseChatOnReturnOnlyForNearbyChatControl" tool_tip="Lorsque les options 'Désélectionner le chat après l'envoi d'un message' est cochée, seulement déselectionner la barre de chat"/>
 			<check_box label="Désélectionner l'historique du Chat également" name="FSUnfocusChatHistoryOnReturn"/>
 			<text name="textUseKeyboardShortcuts">Utiliser les raccourcis clavier :</text>
 			<check_box name="FSUseCtrlShout" label="Ctrl+Entrée (Crier)" tool_tip="Utiliser le raccourci Ctrl+Entrée pour crier dans le Chat local."/>
