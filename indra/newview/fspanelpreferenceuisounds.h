@@ -71,7 +71,7 @@ private:
     std::string getPanelString(std::string_view name) const;
 
     S32 getSelectedIndex() const;
-    const UISoundEntry* getSelectedEntry() const;
+    std::optional<UISoundEntry> getSelectedEntry() const;
 
     LLScrollListCtrl*  mSoundsList = nullptr;
     LLFilterEditor*    mFilter = nullptr;

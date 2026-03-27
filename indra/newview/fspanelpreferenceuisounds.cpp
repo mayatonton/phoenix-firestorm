@@ -266,8 +266,8 @@ void FSPanelPreferenceUISounds::refreshEditor()
         return;
     }
 
-    const UISoundEntry* entry = getSelectedEntry();
-    const bool has_sel = (entry != nullptr);
+    const auto entry = getSelectedEntry();
+    const bool has_sel = entry.has_value();
 
     mUUIDEditor->setEnabled(has_sel);
 
@@ -352,7 +352,7 @@ void FSPanelPreferenceUISounds::onUpdateFilter()
 
 void FSPanelPreferenceUISounds::onCommitUUID()
 {
-    const UISoundEntry* entry = getSelectedEntry();
+    const auto entry = getSelectedEntry();
     if (!entry || !mUUIDEditor)
     {
         return;
@@ -362,7 +362,7 @@ void FSPanelPreferenceUISounds::onCommitUUID()
 
 void FSPanelPreferenceUISounds::onCommitPlayCheck()
 {
-    const UISoundEntry* entry = getSelectedEntry();
+    const auto entry = getSelectedEntry();
     if (!entry || entry->uses_combo || !mPlayCheck)
     {
         return;
@@ -384,7 +384,7 @@ void FSPanelPreferenceUISounds::onCommitPlayCheck()
 
 void FSPanelPreferenceUISounds::onCommitPlayCombo()
 {
-    const UISoundEntry* entry = getSelectedEntry();
+    const auto entry = getSelectedEntry();
     if (!entry || !entry->uses_combo || !mPlayCombo)
     {
         return;
@@ -405,7 +405,7 @@ void FSPanelPreferenceUISounds::onCommitPlayCombo()
 
 void FSPanelPreferenceUISounds::onPreviewSound()
 {
-    const UISoundEntry* entry = getSelectedEntry();
+    const auto entry = getSelectedEntry();
     if (entry)
     {
         make_ui_sound(entry->sound_setting.c_str(), true);
@@ -414,7 +414,7 @@ void FSPanelPreferenceUISounds::onPreviewSound()
 
 void FSPanelPreferenceUISounds::onResetSound()
 {
-    const UISoundEntry* entry = getSelectedEntry();
+    const auto entry = getSelectedEntry();
     if (!entry)
     {
         return;
@@ -461,7 +461,7 @@ void FSPanelPreferenceUISounds::onDoubleClick()
 
 void FSPanelPreferenceUISounds::onRightClick(LLUICtrl* ctrl, S32 x, S32 y, MASK mask)
 {
-    const UISoundEntry* entry = getSelectedEntry();
+    const auto entry = getSelectedEntry();
     if (!entry)
     {
         return;
@@ -478,7 +478,7 @@ void FSPanelPreferenceUISounds::onRightClick(LLUICtrl* ctrl, S32 x, S32 y, MASK 
 
 void FSPanelPreferenceUISounds::onCopyUUID()
 {
-    const UISoundEntry* entry = getSelectedEntry();
+    const auto entry = getSelectedEntry();
     if (!entry)
     {
         return;
@@ -615,12 +615,12 @@ S32 FSPanelPreferenceUISounds::getSelectedIndex() const
     return selected->getValue().asInteger();
 }
 
-const FSPanelPreferenceUISounds::UISoundEntry* FSPanelPreferenceUISounds::getSelectedEntry() const
+std::optional<FSPanelPreferenceUISounds::UISoundEntry> FSPanelPreferenceUISounds::getSelectedEntry() const
 {
     S32 idx = getSelectedIndex();
     if (idx < 0 || idx >= static_cast<S32>(mEntries.size()))
     {
-        return nullptr;
+        return {};
     }
-    return &mEntries[idx];
+    return mEntries[idx];
 }
