@@ -64,7 +64,6 @@ private:
     void onRightClick(LLUICtrl* ctrl, S32 x, S32 y, MASK mask);
     void onCopyUUID();
     void applyLocalizedLabels();
-    void hideLegacyPanels();
 
     std::string resolveEntryLabel(UISoundEntry& entry);
     std::string getModeLabel(const UISoundEntry& entry) const;

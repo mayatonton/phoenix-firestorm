@@ -94,7 +94,6 @@ bool FSPanelPreferenceUISounds::postBuild()
     applyLocalizedLabels();
     buildList();
     refreshEditor();
-    hideLegacyPanels();
 
     return LLPanelPreference::postBuild();
 }
@@ -540,23 +539,6 @@ void FSPanelPreferenceUISounds::applyLocalizedLabels()
             }
         }
         mPlayCombo->updateLabel();
-    }
-}
-
-void FSPanelPreferenceUISounds::hideLegacyPanels()
-{
-    LLTabContainer* tabs = dynamic_cast<LLTabContainer*>(getParent());
-    if (!tabs)
-    {
-        return;
-    }
-    if (LLPanel* tab2 = tabs->findChild<LLPanel>("UI Sounds tab 2"))
-    {
-        tabs->removeTabPanel(tab2);
-    }
-    if (LLPanel* tab3 = tabs->findChild<LLPanel>("UI Sounds tab 3"))
-    {
-        tabs->removeTabPanel(tab3);
     }
 }
 
