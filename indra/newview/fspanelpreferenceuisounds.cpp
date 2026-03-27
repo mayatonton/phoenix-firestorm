@@ -30,7 +30,6 @@
 #include "llmenugl.h"
 #include "llscrolllistcell.h"
 #include "llscrolllistctrl.h"
-#include "lltabcontainer.h"
 #include "lltextbox.h"
 #include "llui.h"
 #include "llviewercontrol.h"
@@ -42,9 +41,9 @@
 
 static LLPanelInjector<FSPanelPreferenceUISounds> t_pref_ui_sounds("fs_panel_preference_ui_sounds");
 
-static const S32 COL_LABEL  = 0;
-static const S32 COL_CHECK  = 1;
-static const S32 COL_STATUS = 2;
+static constexpr S32 COL_LABEL  = 0;
+static constexpr S32 COL_CHECK  = 1;
+static constexpr S32 COL_STATUS = 2;
 
 // ---------------------------------------------------------------------------
 
@@ -114,15 +113,15 @@ void FSPanelPreferenceUISounds::refreshList()
 // ---------------------------------------------------------------------------
 
 FSPanelPreferenceUISounds::UISoundEntry FSPanelPreferenceUISounds::makeEntry(
-    const char* sound,
-    const char* label_override,
+    std::string_view sound,
+    const std::optional<std::string_view>& label_override,
     bool combo,
     bool inverted)
 {
     UISoundEntry e;
     e.sound_setting    = sound;
     e.playmode_setting = "PlayMode" + e.sound_setting;
-    e.label_control    = label_override ? label_override : ("textFS" + e.sound_setting.substr(5));
+    e.label_control    = label_override.value_or("textFS" + e.sound_setting.substr(5));
     e.uses_combo       = combo;
     e.inverted_bool    = inverted;
     return e;
@@ -149,16 +148,16 @@ void FSPanelPreferenceUISounds::buildList()
             makeEntry("UISndMoneyChangeDown"),
             makeEntry("UISndMoneyChangeUp"),
             makeEntry("UISndNearbyChat"),
-            makeEntry("UISndNewIncomingIMSession", nullptr, true),
-            makeEntry("UISndNewIncomingGroupIMSession", nullptr, true),
-            makeEntry("UISndNewIncomingConfIMSession", nullptr, true),
+            makeEntry("UISndNewIncomingIMSession", std::nullopt, true),
+            makeEntry("UISndNewIncomingGroupIMSession", std::nullopt, true),
+            makeEntry("UISndNewIncomingConfIMSession", std::nullopt, true),
             makeEntry("UISndStartIM"),
             makeEntry("UISndChatMention"),
             makeEntry("UISndObjectCreate"),
             makeEntry("UISndObjectDelete"),
             makeEntry("UISndObjectRezIn"),
             makeEntry("UISndObjectRezOut"),
-            makeEntry("UISndSnapshot", nullptr, false, true),
+            makeEntry("UISndSnapshot", std::nullopt, false, true),
             makeEntry("UISndTeleportOut"),
             makeEntry("UISndPieMenuAppear"),
             makeEntry("UISndPieMenuHide"),
@@ -196,7 +195,7 @@ void FSPanelPreferenceUISounds::buildList()
 
     mSoundsList->deleteAllItems();
 
-    for (S32 i = 0; i < static_cast<S32>(mEntries.size()); ++i)
+    for (size_t i = 0; i < mEntries.size(); ++i)
     {
         UISoundEntry& entry = mEntries[i];
 
@@ -213,6 +212,7 @@ void FSPanelPreferenceUISounds::buildList()
         entry.display_label = resolveEntryLabel(entry);
 
         LLSD row;
+        row["id"] = LLSD::Integer(i);
         row["columns"][COL_LABEL]["column"] = "ui_sound_label";
         row["columns"][COL_LABEL]["value"]  = entry.display_label;
 
@@ -235,18 +235,13 @@ void FSPanelPreferenceUISounds::buildList()
         }
 
         LLScrollListItem* item = mSoundsList->addElement(row);
-        if (item)
-        {
-            item->setUserdata(reinterpret_cast<void*>(static_cast<intptr_t>(i)));
-        }
     }
 
     if (prev_sel >= 0)
     {
-        std::vector<LLScrollListItem*> items = mSoundsList->getAllData();
-        for (LLScrollListItem* row : items)
+        for (LLScrollListItem* row : mSoundsList->getAllData())
         {
-            if (row && static_cast<S32>(reinterpret_cast<intptr_t>(row->getUserdata())) == prev_sel)
+            if (row && row->getValue().asInteger() == prev_sel)
             {
                 mSoundsList->selectNthItem(mSoundsList->getItemIndex(row));
                 break;
@@ -321,10 +316,9 @@ void FSPanelPreferenceUISounds::onSelectSound()
         return;
     }
 
-    LLScrollListItem* selected = mSoundsList->getFirstSelected();
-    if (selected)
+    if (LLScrollListItem* selected = mSoundsList->getFirstSelected())
     {
-        S32 idx = static_cast<S32>(reinterpret_cast<intptr_t>(selected->getUserdata()));
+        S32 idx = selected->getValue().asInteger();
         if (idx >= 0 && idx < static_cast<S32>(mEntries.size()))
         {
             const UISoundEntry& entry = mEntries[idx];
@@ -336,11 +330,11 @@ void FSPanelPreferenceUISounds::onSelectSound()
                 if (checked != was_enabled)
                 {
                     gSavedSettings.setBOOL(entry.playmode_setting, entry.inverted_bool ? !checked : checked);
+                }
                     if (LLScrollListText* text_cell = dynamic_cast<LLScrollListText*>(selected->getColumn(COL_STATUS)))
                     {
                         text_cell->setText(getModeLabel(entry));
                     }
-                }
             }
         }
     }
@@ -527,10 +521,13 @@ void FSPanelPreferenceUISounds::applyLocalizedLabels()
             {"3", "ui_sound_playmode_not_focus"},
             {"0", "ui_sound_playmode_mute"},
         };
+
         for (const auto& r : rows)
         {
             LLScrollListItem* item = mPlayCombo->getItemByValue(LLSD(r.value));
-            if (!item) continue;
+            if (!item)
+                continue;
+
             LLScrollListCell* cell = item->getColumn(0);
             if (LLScrollListText* tc = dynamic_cast<LLScrollListText*>(cell))
             {
@@ -542,7 +539,7 @@ void FSPanelPreferenceUISounds::applyLocalizedLabels()
     }
 }
 
-std::string FSPanelPreferenceUISounds::getPanelString(const std::string& name) const
+std::string FSPanelPreferenceUISounds::getPanelString(std::string_view name) const
 {
     if (hasString(name))
     {
@@ -561,7 +558,7 @@ std::string FSPanelPreferenceUISounds::getPanelString(const std::string& name) c
     return LLStringUtil::null;
 }
 
-std::string FSPanelPreferenceUISounds::resolveEntryLabel(UISoundEntry& entry)
+std::string FSPanelPreferenceUISounds::resolveEntryLabel(const UISoundEntry& entry) const
 {
     std::string label = getPanelString(entry.label_control);
     if (label.empty())
@@ -583,10 +580,15 @@ std::string FSPanelPreferenceUISounds::getModeLabel(const UISoundEntry& entry) c
         const U32 mode = gSavedSettings.getU32(entry.playmode_setting);
         switch (mode)
         {
-            case 1: return getPanelString("ui_sound_playmode_new_session");
-            case 2: return getPanelString("ui_sound_playmode_every_message");
-            case 3: return getPanelString("ui_sound_playmode_not_focus");
-            case 0: default: return getPanelString("ui_sound_playmode_mute");
+            case 1:
+                return getPanelString("ui_sound_playmode_new_session");
+            case 2:
+                return getPanelString("ui_sound_playmode_every_message");
+            case 3:
+                return getPanelString("ui_sound_playmode_not_focus");
+            case 0:
+            default:
+                return getPanelString("ui_sound_playmode_mute");
         }
     }
 
@@ -610,7 +612,7 @@ S32 FSPanelPreferenceUISounds::getSelectedIndex() const
     {
         return -1;
     }
-    return static_cast<S32>(reinterpret_cast<intptr_t>(selected->getUserdata()));
+    return selected->getValue().asInteger();
 }
 
 const FSPanelPreferenceUISounds::UISoundEntry* FSPanelPreferenceUISounds::getSelectedEntry() const

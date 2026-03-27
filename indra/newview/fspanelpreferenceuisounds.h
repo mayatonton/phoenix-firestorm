@@ -21,6 +21,7 @@
 #define FS_PANEL_PREFERENCE_UI_SOUNDS_H
 
 #include "llfloaterpreference.h"
+#include <optional>
 #include <vector>
 
 class LLCheckBoxCtrl;
@@ -51,7 +52,7 @@ private:
     };
 
     void buildList();
-    static UISoundEntry makeEntry(const char* sound, const char* label_override = nullptr, bool combo = false, bool inverted = false);
+    static UISoundEntry makeEntry(std::string_view sound, const std::optional<std::string_view>& label_override = std::nullopt, bool combo = false, bool inverted = false);
     void refreshEditor();
     void onSelectSound();
     void onUpdateFilter();
@@ -65,9 +66,9 @@ private:
     void onCopyUUID();
     void applyLocalizedLabels();
 
-    std::string resolveEntryLabel(UISoundEntry& entry);
+    std::string resolveEntryLabel(const UISoundEntry& entry) const;
     std::string getModeLabel(const UISoundEntry& entry) const;
-    std::string getPanelString(const std::string& name) const;
+    std::string getPanelString(std::string_view name) const;
 
     S32 getSelectedIndex() const;
     const UISoundEntry* getSelectedEntry() const;

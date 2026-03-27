@@ -39,7 +39,6 @@
 #include "llsearcheditor.h"
 #include "llsetkeybinddialog.h"
 #include "llkeyconflict.h"
-#include <vector>  // <FS:PP> UI Sounds
 
 #include "llaudioengine.h" // <FS:Ansariel> Output device selection
 
