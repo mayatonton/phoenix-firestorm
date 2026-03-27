@@ -330,11 +330,11 @@ void FSPanelPreferenceUISounds::onSelectSound()
                 if (checked != was_enabled)
                 {
                     gSavedSettings.setBOOL(entry.playmode_setting, entry.inverted_bool ? !checked : checked);
-                }
                     if (LLScrollListText* text_cell = dynamic_cast<LLScrollListText*>(selected->getColumn(COL_STATUS)))
                     {
                         text_cell->setText(getModeLabel(entry));
                     }
+                }
             }
         }
     }
