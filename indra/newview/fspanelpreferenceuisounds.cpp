@@ -461,6 +461,9 @@ void FSPanelPreferenceUISounds::onDoubleClick()
 
 void FSPanelPreferenceUISounds::onRightClick(LLUICtrl* ctrl, S32 x, S32 y, MASK mask)
 {
+    mSoundsList->selectItemAt(x, y, mask);
+    refreshEditor();
+
     const auto entry = getSelectedEntry();
     if (!entry)
     {
