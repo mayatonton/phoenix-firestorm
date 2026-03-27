@@ -162,6 +162,7 @@ set(viewer_SOURCE_FILES
     fspanelface.cpp
     fspanelimcontrolpanel.cpp
     fspanellogin.cpp
+    fspanelpreferenceuisounds.cpp
     fspanelprefs.cpp
     fspanelradar.cpp
     fsparticipantlist.cpp
@@ -1018,6 +1019,7 @@ set(viewer_HEADER_FILES
     fspanelface.h
     fspanelimcontrolpanel.h
     fspanellogin.h
+    fspanelpreferenceuisounds.h
     fspanelprefs.h
     fspanelradar.h
     fsparticipantlist.h
