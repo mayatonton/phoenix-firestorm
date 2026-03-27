@@ -234,7 +234,7 @@ void FSPanelPreferenceUISounds::buildList()
             row["columns"][COL_STATUS]["value"]  = getModeLabel(entry);
         }
 
-        LLScrollListItem* item = mSoundsList->addElement(row);
+        mSoundsList->addElement(row);
     }
 
     if (prev_sel >= 0)
