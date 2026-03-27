@@ -1,356 +1,1641 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<panel label="Sounds" name="Preference Media panel">
-<panel.string name="middle_mouse">
-	Mittlere Maustaste
-</panel.string>
-<panel.string name="button4_mouse">
-	Maustaste 4
-</panel.string>
-<panel.string name="button5_mouse">
-	Maustaste 5
-</panel.string>
-<panel.string name="ui_sound_copy_uuid">
-	Klang-UUID kopieren
-</panel.string>
-<panel.string name="ui_sound_select_prompt">
-	UI-Klang auswählen
-</panel.string>
-<panel.string name="ui_sound_play_this">
-	Abspielen
-</panel.string>
-<panel.string name="ui_sound_mute_this">
-	Stummschalten
-</panel.string>
-<panel.string name="ui_sound_playmode_new_session">
-	Bei neuer IM
-</panel.string>
-<panel.string name="ui_sound_playmode_every_message">
-	Bei jeder IM
-</panel.string>
-<panel.string name="ui_sound_playmode_not_focus">
-	Wenn kein Fokus
-</panel.string>
-<panel.string name="ui_sound_playmode_mute">
-	Stummschalten
-</panel.string>
-<panel.string name="textFSChatMention">
-	Chat-Erwähnung:
-</panel.string>
-<panel.string name="textFSBadKeystroke">
-	Ungültige Tastatureingabe:
-</panel.string>
-<panel.string name="textFSClick">
-	Mausklick:
-</panel.string>
-<panel.string name="textFSClickRelease">
-	Loslassen Mausknopf:
-</panel.string>
-<panel.string name="textFSFootsteps">
-	Schritte:
-</panel.string>
-<panel.string name="textFSFriendOffline">
-	Ausloggen Freund:
-</panel.string>
-<panel.string name="textFSFriendOnline">
-	Einloggen Freund:
-</panel.string>
-<panel.string name="textFSFriendshipOffer">
-	Freundschafts-Angebote:
-</panel.string>
-<panel.string name="textFSGroupInvitation">
-	Gruppeneinladungen:
-</panel.string>
-<panel.string name="textFSGroupNotice">
-	Gruppennachrichten:
-</panel.string>
-<panel.string name="textFSHealthReductionF">
-	Treffer weiblicher Avatar:
-</panel.string>
-<panel.string name="textFSHealthReductionM">
-	Treffer männlicher Avatar:
-</panel.string>
-<panel.string name="textFSIncomingVoiceCall">
-	Eingehende Voice-Anrufe:
-</panel.string>
-<panel.string name="textFSInvalidOp">
-	Ungültige Aktion:
-</panel.string>
-<panel.string name="textFSInventoryOffer">
-	Inventarangebote:
-</panel.string>
-<panel.string name="textFSMicToggle">
-	Mikrofon-Umschaltung:
-</panel.string>
-<panel.string name="textFSMoneyChangeDown">
-	Geldausgang:
-</panel.string>
-<panel.string name="textFSMoneyChangeUp">
-	Geldeingang:
-</panel.string>
-<panel.string name="textFSMovelockToggle">
-	Movelock ein-/ausschalten:
-</panel.string>
-<panel.string name="textFSNearbyChat">
-	Neue Nahchat-Nachricht:
-</panel.string>
-<panel.string name="textFSNewIncomingConfIMSession">
-	AdHoc-Messages:
-</panel.string>
-<panel.string name="textFSNewIncomingGroupIMSession">
-	Eingeh. Gruppenchats:
-</panel.string>
-<panel.string name="textFSNewIncomingIMSession">
-	Eingeh. Instant Messages:
-</panel.string>
-<panel.string name="textFSObjectCreate">
-	Objekterstellung:
-</panel.string>
-<panel.string name="textFSObjectDelete">
-	Objektlöschung:
-</panel.string>
-<panel.string name="textFSObjectRezIn">
-	Objekt rezzen:
-</panel.string>
-<panel.string name="textFSObjectRezOut">
-	Objekt derezzen:
-</panel.string>
-<panel.string name="textFSPieMenuAppear">
-	Öffnen Pie-Menü:
-</panel.string>
-<panel.string name="textFSPieMenuHide">
-	Schließen Pie-Menü:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight0">
-	Pie-Menü Option 1:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight1">
-	Pie-Menü Option 2:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight2">
-	Pie-Menü Option 3:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight3">
-	Pie-Menü Option 4:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight4">
-	Pie-Menü Option 5:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight5">
-	Pie-Menü Option 6:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight6">
-	Pie-Menü Option 7:
-</panel.string>
-<panel.string name="textFSPieMenuSliceHighlight7">
-	Pie-Menü Option 8:
-</panel.string>
-<panel.string name="textFSQuestionExperience">
-	Erlebnisnachrichten:
-</panel.string>
-<panel.string name="textFSRestart">
-	Regionsneustart:
-</panel.string>
-<panel.string name="textFSRestartOpenSim">
-	Regionsneustart (OpenSim):
-</panel.string>
-<panel.string name="textFSScriptFloaterClose">
-	Schließen Skript-Dialog:
-</panel.string>
-<panel.string name="textFSScriptFloaterOpen">
-	Öffnen Skript-Dialog:
-</panel.string>
-<panel.string name="textFSSnapshot">
-	Erstellen Schnappschuß:
-</panel.string>
-<panel.string name="textFSAlert">
-	Warnung (Standard):
-</panel.string>
-<panel.string name="textFSStartIM">
-	Start IM-Sitzung:
-</panel.string>
-<panel.string name="textFSTeleportOffer">
-	Teleport-Angebote:
-</panel.string>
-<panel.string name="textFSTeleportOut">
-	Teleportieren:
-</panel.string>
-<panel.string name="textFSTrackerBeacon">
-	Leitstrahl:
-</panel.string>
-<panel.string name="textFSTyping">
-	Nachricht schreiben:
-</panel.string>
-<panel.string name="textFSWindowClose">
-	Schließen eines Fensters:
-</panel.string>
-<panel.string name="textFSWindowOpen">
-	Öffnen eines Fensters:
-</panel.string>
-<tab_container label="Firestorm Prefs" name="tabs">
-	<!-- Sounds -->
-	<panel label="Klänge" name="Media Sounds Panel">
-		<slider label="Master-Lautstärke" name="System Volume"/>
-		<check_box name="mute_when_minimized" label="Stummschalten, wenn minimiert"/>
-		<slider label="Schaltflächen" name="UI Volume"/>
-		<slider label="Umgebung" name="Wind Volume"/>
-		<check_box label="Klänge bei Kollisionen abspielen" name="collisions_audio_play_btn" tool_tip="Markieren, um Klänge bei Kollisionen zu hören"/>
-		<slider label="Klänge" name="SFX Volume"/>
-		<check_box label="Klänge von Gesten aktivieren" name="gesture_audio_play_btn" tool_tip="Markieren, um Klänge von Gesten zu hören"/>
-		<slider label="Musik" name="Music Volume"/>
-		<check_box label="Aktiviert" name="enable_music"/>
-		<slider label="Medien" name="Media Volume"/>
-		<check_box label="Aktiviert" name="enable_media"/>
-		<slider label="Voice-Chat" name="Voice Volume"/>
-		<check_box label="Aktiviert" name="enable_voice_check_volume"/>
-		<text name="Listen media from" width="170">
-			Medien und Klänge hören von:
-		</text>
-		<radio_group name="media_ear_location">
-			<radio_item label="Kamera-Position" name="0"/>
-			<radio_item label="Avatar-Position" name="1"/>
-		</radio_group>
-		<text name="auto_unmute_label">
-			Stummschaltung nach Teleport automatisch aufheben:
-		</text>
-		<check_box name="FSAutoUnmuteAmbient" label="Umgebung" tool_tip="Automatisch Stummschaltung für Umgebungsgeräusche nach Teleport aufheben, falls stummgeschaltet (Standard: Aus)"/>
-		<check_box name="FSAutoUnmuteSounds" label="Klänge" tool_tip="Automatisch Stummschaltung für Klänge nach Teleport aufheben, falls stummgeschaltet (Standard: Aus)"/>
-		<text name="friends_logon_sounds_label">
-			Klang abspielen wenn sich Freunde:
-		</text>
-		<check_box label="Einloggen" name="friends_notify_online_sound"/>
-		<check_box label="Ausloggen" name="friends_notify_offline_sound"/>
-		<text name="money_change_threshold_label" tool_tip="Spielt einen Soundbenachrichtung ab, wenn der angegebene Geldbetrag empfangen oder ausgegeben wird." width="160">
-			Schwellwert für L$-Änderung:
-		</text>
-		<panel name="output_device_settings_panel">
-			<panel.string name="output_default_text">
-				Standard
-			</panel.string>
-			<panel.string name="output_no_device">
-				Kein Gerät vorhanden
-			</panel.string>
-			<panel.string name="output_name_no_device">
-				Unbenanntes Gerät
-			</panel.string>
-			<panel.string name="output_device_unavailable">
-				Gerät nicht verfügbar
-			</panel.string>
-			<text name="output_label">
-				Ausgabegerät:
-			</text>
-		</panel>
+<panel
+ border="true"
+ follows="all"
+ height="480"
+ layout="topleft"
+ left="1"
+ top="1"
+ width="540"
+ label="Sounds"
+ name="Preference Media panel">
+    <panel.string
+     name="middle_mouse">
+     Middle Mouse
+    </panel.string>
+    <panel.string
+     name="button4_mouse">
+     Mouse Button 4
+    </panel.string>
+    <panel.string
+     name="button5_mouse">
+     Mouse Button 5
+    </panel.string>
+    <panel.string
+     name="ui_sound_copy_uuid">
+     Copy sound UUID
+    </panel.string>
+    <panel.string
+     name="ui_sound_select_prompt">
+     Select a UI sound
+    </panel.string>
+    <panel.string
+     name="ui_sound_play_this">
+     Play this sound
+    </panel.string>
+    <panel.string
+     name="ui_sound_mute_this">
+     Mute this sound
+    </panel.string>
+    <panel.string
+     name="ui_sound_playmode_new_session">
+     Play only on new session
+    </panel.string>
+    <panel.string
+     name="ui_sound_playmode_every_message">
+     Play on every message
+    </panel.string>
+    <panel.string
+     name="ui_sound_playmode_not_focus">
+     Play only if not in focus
+    </panel.string>
+    <panel.string
+     name="ui_sound_playmode_mute">
+     Mute this sound
+    </panel.string>
+    <panel.string
+     name="textFSChatMention">
+     Chat mentions:
+    </panel.string>
+    <panel.string
+     name="textFSBadKeystroke">
+     Invalid keystroke:
+    </panel.string>
+    <panel.string
+     name="textFSClick">
+     Mouse button click:
+    </panel.string>
+    <panel.string
+     name="textFSClickRelease">
+     Mouse button release:
+    </panel.string>
+    <panel.string
+     name="textFSFootsteps">
+     Default footsteps:
+    </panel.string>
+    <panel.string
+     name="textFSFriendOffline">
+     Friend goes offline:
+    </panel.string>
+    <panel.string
+     name="textFSFriendOnline">
+     Friend comes online:
+    </panel.string>
+    <panel.string
+     name="textFSFriendshipOffer">
+     Friendship offer:
+    </panel.string>
+    <panel.string
+     name="textFSGroupInvitation">
+     Group invitation:
+    </panel.string>
+    <panel.string
+     name="textFSGroupNotice">
+     Group notice:
+    </panel.string>
+    <panel.string
+     name="textFSHealthReductionF">
+     Female avatar hurt:
+    </panel.string>
+    <panel.string
+     name="textFSHealthReductionM">
+     Male avatar hurt:
+    </panel.string>
+    <panel.string
+     name="textFSIncomingVoiceCall">
+     Voice call:
+    </panel.string>
+    <panel.string
+     name="textFSInvalidOp">
+     Invalid operation:
+    </panel.string>
+    <panel.string
+     name="textFSInventoryOffer">
+     Inventory offer:
+    </panel.string>
+    <panel.string
+     name="textFSMicToggle">
+     Microphone toggle:
+    </panel.string>
+    <panel.string
+     name="textFSMoneyChangeDown">
+     Money balance decrease:
+    </panel.string>
+    <panel.string
+     name="textFSMoneyChangeUp">
+     Money balance increase:
+    </panel.string>
+    <panel.string
+     name="textFSMovelockToggle">
+     Toggling movelock:
+    </panel.string>
+    <panel.string
+     name="textFSNearbyChat">
+     New Nearby Chat Message:
+    </panel.string>
+    <panel.string
+     name="textFSNewIncomingConfIMSession">
+     Ad-hoc Instant Message:
+    </panel.string>
+    <panel.string
+     name="textFSNewIncomingGroupIMSession">
+     Group Instant Message:
+    </panel.string>
+    <panel.string
+     name="textFSNewIncomingIMSession">
+     Incoming Instant Message:
+    </panel.string>
+    <panel.string
+     name="textFSObjectCreate">
+     Object creation:
+    </panel.string>
+    <panel.string
+     name="textFSObjectDelete">
+     Object deletion:
+    </panel.string>
+    <panel.string
+     name="textFSObjectRezIn">
+     Object rezzing:
+    </panel.string>
+    <panel.string
+     name="textFSObjectRezOut">
+     Object derezzing:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuAppear">
+     Pie Menu appear:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuHide">
+     Pie Menu disappear:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight0">
+     Pie Menu option 1:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight1">
+     Pie Menu option 2:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight2">
+     Pie Menu option 3:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight3">
+     Pie Menu option 4:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight4">
+     Pie Menu option 5:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight5">
+     Pie Menu option 6:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight6">
+     Pie Menu option 7:
+    </panel.string>
+    <panel.string
+     name="textFSPieMenuSliceHighlight7">
+     Pie Menu option 8:
+    </panel.string>
+    <panel.string
+     name="textFSQuestionExperience">
+     New Experience:
+    </panel.string>
+    <panel.string
+     name="textFSRestart">
+     Region restart:
+    </panel.string>
+    <panel.string
+     name="textFSRestartOpenSim">
+     Region restart (OpenSim):
+    </panel.string>
+    <panel.string
+     name="textFSScriptFloaterClose">
+     Script dialog closes:
+    </panel.string>
+    <panel.string
+     name="textFSScriptFloaterOpen">
+     Script dialog opens:
+    </panel.string>
+    <panel.string
+     name="textFSSnapshot">
+     Taking snapshot:
+    </panel.string>
+    <panel.string
+     name="textFSAlert">
+     Default alert:
+    </panel.string>
+    <panel.string
+     name="textFSStartIM">
+     Starting IM session:
+    </panel.string>
+    <panel.string
+     name="textFSTeleportOffer">
+     Teleport offer:
+    </panel.string>
+    <panel.string
+     name="textFSTeleportOut">
+     Teleportation:
+    </panel.string>
+    <panel.string
+     name="textFSTrackerBeacon">
+     Tracker beacon:
+    </panel.string>
+    <panel.string
+     name="textFSTyping">
+     Typing a message:
+    </panel.string>
+    <panel.string
+     name="textFSWindowClose">
+     Closing a window:
+    </panel.string>
+    <panel.string
+     name="textFSWindowOpen">
+     Opening a window:
+    </panel.string>
 
-	</panel>
+<tab_container
+ label="Firestorm Prefs"
+ layout="topleft"
+ follows="all"
+ top="5"
+ bottom="-1"
+ left="1"
+ right="-1"
+ name="tabs"
+ tab_min_width="50"
+ tab_position="top" >
 
-	<!-- Media -->
-	<panel label="Medien" name="Media Media Panel">
-		<text width="190" name="media_autoplay_label">
-			Automatische Medien-Wiedergabe
-		</text>
-		<combo_box name="media_auto_play_combo" width="100">
-			<item label="Deaktiviert" name="autoplay_disabled"/>
-			<item label="Aktiviert" name="autoplay_enabled"/>
-			<!--<item label="Nachfragen" name="autoplay_ask"/>-->
-		</combo_box>
-		<check_box name="media_allowscript_btn" tool_tip="Erlaubt bzw. verbietet Scripten die Kontrolle über die Medienwiedergabe" label="Skripte erlauben Medien abzuspielen" />
-		<check_box label="Medien, die an andere Avatare angehängt sind, wiedergeben." name="media_show_on_others_btn" tool_tip="Diese Option deaktivieren, um Medien für andere Avataren, die sich in der Nähe befinden, auszublenden."/>
-		<check_box label="Medien, die am eigenen HUD angehängt sind, automatisch wiedergeben." name="media_huds_autoplay" tool_tip="Diese Option deaktivieren, um für Medien an eigenen HUD-Objekten die Standard-Abspieleinstellungen für Medien anzuwenden."/>
-		<check_box name="media_filter" tool_tip="Aktiviert den Medienfilter, der abhängig der Medien-URL die Wiedergabe erlaubt oder verbietet." label="Medienfilter aktivieren (erhöhte Sicherheit)"/>
-		<button label="Listen bearbeiten..." name="edit_media_lists_button"/>
-		<text name="Media Rolloff">
-			Lautstärkeabfall-Distanz für Medien-Quellen:
-		</text>
-		<slider label="Wird leiser ab:" name="MediaRollOffMin" tool_tip="Minimale Distanz von der Soundquelle, ab der die Lautstärke abzufallen beginnt."/>
-		<text name="media_firstinteract_label" tool_tip="Diese Einstellung legt fest, welche Medien - nachdem diese geladen wurden - keinen erstmaligen Klick zur Interaktion benötigen. Dadurch wird das Klick-Event direkt zum Medium durchgereicht, ohne zuvor den Fokus erlangen zu müssen." width="140">
-			Medien Erst-Interaktion:
-		</text>
-		<check_box name="media_first_click_all" label="Alle Medien auf Objekten (MOAP)"/>
-		<check_box name="media_first_click_any" label="Objekte von Jedermann"/>
-		<check_box name="media_first_click_hud" label="Nur getragene HUDs"/>
-		<check_box name="media_first_click_own" label="Eigene Objekte"/>
-		<check_box name="media_first_click_group" label="Gruppen-Objekte"/>
-		<check_box name="media_first_click_friend" label="Objekte von Freunden"/>
-		<check_box name="media_first_click_land" label="Objekte des Landbesitzers"/>
-		<text name="MinMeters">
-			Meter
-		</text>
-		<slider label="Wird lauter ab:" name="MediaRollOffMax" tool_tip="Maximale Distanz von der Soundquelle, ab der sie stummgeschaltet wird."/>
-		<text name="MaxMeters">
-			Meter
-		</text>
-	</panel>
-	
-	<!-- Music -->
-	<panel label="Musik" name="Media Music Panel">
-		<check_box label="Automatische Audio-Wiedergabe zulassen" name="audio_auto_play_btn" tool_tip="Hier aktivieren, um Audio-Streams automatisch wiederzugeben."/>
-		<check_box name="FSFadeAudioStream" tool_tip="Aktiviert Fading, wenn sich der Parzellen-Audiostream ändert" label="Parzellen-Audiostream-Fading aktivieren:"/>
-		<slider label="Einblenden:" width="270" label_width="70" name="FSAudioMusicFadeIn" tool_tip="Einblenddauer für Parzellen-Audiostream."/>
-		<text left_delta="275" name="FSAudioMusicFadeInSeconds">
-			Sekunden
-		</text>
-		<slider label="Ausblenden:" width="270" label_width="70" name="FSAudioMusicFadeOut" tool_tip="Ausblenddauer für Parzellen-Audiostream."/>
-		<text left_delta="275" name="FSAudioMusicFadeOutSeconds">
-			Sekunden
-		</text>
-		<text name="show_stream_metadata_text">
-			Musikstream-Titel anzeigen:
-		</text>
-		<radio_group name="show_stream_metadata">
-			<radio_item label="Aus" name="radio_off"/>
-			<radio_item label="Toasts" name="radio_toasts"/>
-			<radio_item label="Chat in der Nähe" name="radio_chat"/>
-		</radio_group>
-		<check_box name="StreamMetadataAnnounceToChat" label="Stream-Titel an diesen Kanal senden:" width="230"/>
-	</panel>
+    <!-- Sounds -->
+    <panel
+     top_pad="5"
+     bottom="-1"
+     left="1"
+     right="-1"
+     follows="all"
+     label="Sounds"
+     name="Media Sounds Panel" >
 
-	<!-- Voice -->
-	<panel label="Voice-Chat" name="Media Voice tab">
-		<check_box label="Voice-Chat aktivieren" name="enable_voice_check" width="140"/>
-		<button name="reset_voice_button" tool_tip="Voice-Chat zurücksetzen"/>
-		<radio_group name="ear_location">
-			<radio_item label="Voice-Chat von Kameraposition aus hören" name="0"/>
-			<radio_item label="Voice-Chat von Avatarposition aus hören" name="1"/>
-			<radio_item label="Voice-Chat in der Nähe in gleicher Lautstärke hören (nur OpenSim)" name="2"/>
-		</radio_group>
-		<check_box label="Avatarlippen beim Sprechen bewegen" name="enable_lip_sync"/>
-		<check_box label="Zeige Voice-Indikator über Avataren" name="FSShowVoiceVisualizer" tool_tip="Wenn diese Option aktiviert ist, wird der Voice-Indikator (weißer Punkt) über Avataren angezeigt."/>
-		<check_box label="Zeige Voice-Indikator über eigenen Avatar" name="FSShowMyOwnVoiceVisualizer"/>
-		<check_box label="Zeige Voice-Indikator mit Punkt" name="FSShowVoiceVisualizerWithDot" tool_tip="Wenn diese Option aktiviert ist, wird der weiße Punkt im Voice-Indikator mit angezeigt. Falls deaktiviert, werden nur die Wellen-Symbole beim Sprechen angezeigt."/>
-		<check_box label="Zeige Voice-Indikator und Lippenbewegungen in P2P- und Gruppenchats" name="Show_Voice_Visualizers_In_Calls" tool_tip="Wenn diese Option aktiviert ist, werden der Voice-Indikator und Lippen Bewegungen auch im P2P- sowie im Gruppenchat angezeigt."/>
-		<check_box label="Zeige Voice-Kanal-Status auf Gesprächs-Reitern" name="FSShowConversationVoiceStateIndicator" tool_tip="Zeigt den Status des aktuellen Voice-Kanals auf den Reitern im Gespräche-Fenster"/>
-		<check_box label="Automatisch alle eingehenden Gruppenanrufe abweisen" name="VoiceCallsRejectGroup"/>
-		<check_box label="Automatisch alle eingehenden Konferenzanrufe abweisen" name="VoiceCallsRejectAdHoc"/>
-		<check_box label="Automatisch alle eingehenden Privatanrufe abweisen" name="VoiceCallsRejectP2P"/>
-		<check_box label="Sprachfunktion beim Drücken des Buttons in der Symbolleiste ein-/ausschalten" name="push_to_talk_toggle_check" tool_tip="Wenn der Umschaltmodus aktiviert ist, drücken Sie die Auslöse-Taste EINMAL, um Ihr Mikrofon ein- oder auszuschalten. Wenn der Umschaltmodus nicht aktiviert ist, ist das Mikrofon nur dann eingeschaltet, wenn Sie die Auslösetaste gedrückt halten."/>
-		<check_box label="Automatische Verstärkungsregelung" name="voice_automatic_gain_control"/>
-		<check_box label="Echo-Unterdrückung" name="enable_echo_cancellation"/>
-		<text name="noise_suppression_label" width="123">
-			Rauschunterdrückung:
-		</text>
-		<combo_box name="noise_suppression_combo">
-			<item label="Aus" name="noise_suppression_none"/>
-			<item label="Niedrig" name="noise_suppression_low"/>
-			<item label="Mittel" name="noise_suppression_moderate"/>
-			<item label="Hoch" name="noise_suppression_high"/>
-			<item label="Maximum" name="noise_suppression_max"/>
-		</combo_box>
-		<button label="Geräte-Einstellungen" name="device_settings_btn"/>
-	</panel>
+        <slider
+         control_name="AudioLevelMaster"
+         follows="left|top"
+         font.style="BOLD"
+         height="15"
+         increment="0.025"
+         initial_value="0.5"
+         label="Master volume"
+         label_width="120"
+         layout="topleft"
+         left="0"
+         name="System Volume"
+         show_text="false"
+         slider_label.halign="right"
+         top="10"
+         volume="true"
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteAudio" />
+        </slider>
+        <button
+         control_name="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16">
+          <button.commit_callback
+          function="Pref.SetSounds"/>
+        </button>
+        <check_box
+         control_name="MuteWhenMinimized"
+         height="15"
+         initial_value="true"
+         label="Mute when minimized"
+         layout="topleft"
+         name="mute_when_minimized"
+         top_delta="3"
+         left_pad="5"
+         width="235" />
+        <slider
+         control_name="AudioLevelUI"
+         disabled_control="MuteAudio"
+         follows="left|top"
+         height="15"
+         increment="0.025"
+         initial_value="0.5"
+         label="Buttons"
+         label_width="120"
+         layout="topleft"
+         left="0"
+         name="UI Volume"
+         show_text="false"
+         slider_label.halign="right"
+         top_pad="4"
+         volume="true"
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteUI" />
+        </slider>
+        <button
+         control_name="MuteUI"
+         disabled_control="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16" />
+        <slider
+         control_name="AudioLevelAmbient"
+         disabled_control="MuteAudio"
+         follows="left|top"
+         height="15"
+         increment="0.025"
+         initial_value="0.5"
+         label="Ambient"
+         label_width="120"
+         layout="topleft"
+         left="0"
+         name="Wind Volume"
+         show_text="false"
+         slider_label.halign="right"
+         top_pad="4"
+         volume="true"
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteAmbient" />
+        </slider>
+        <button
+         control_name="MuteAmbient"
+         disabled_control="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16" />
+        <check_box
+         name="collisions_audio_play_btn"
+         control_name="EnableCollisionSounds"
+         disabled_control="MuteAudio"
+         height="16"
+         layout="topleft"
+         left_pad="5"
+         tool_tip="Check this to hear default sounds from collisions"
+         label="Play sounds from collisions"
+         top_delta="2"
+         width="350"/>
+        <slider
+         control_name="AudioLevelSFX"
+         disabled_control="MuteAudio"
+         follows="left|top"
+         height="15"
+         increment="0.025"
+         initial_value="0.5"
+         label="Sound Effects"
+         label_width="120"
+         slider_label.halign="right"
+         layout="topleft"
+         left="0"
+         name="SFX Volume"
+         show_text="false"
+         top_pad="2"
+         volume="true"
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteSounds" />
+        </slider>
+        <button
+         control_name="MuteSounds"
+         disabled_control="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16">
+          <button.commit_callback
+          function="Pref.SetSounds"/>
+        </button>
+        <check_box
+         name="gesture_audio_play_btn"
+         control_name="EnableGestureSounds"
+         disabled_control="MuteAudio"
+         height="16"
+         layout="topleft"
+         left_pad="5"
+         tool_tip="Check this to hear sounds from gestures"
+         label="Play sounds from gestures"
+         top_delta="2"
+         width="350"/>
+        <slider
+         control_name="AudioLevelMusic"
+         disabled_control="MuteAudio"
+         follows="left|top"
+         height="15"
+         increment="0.025"
+         initial_value="0.5"
+         label="Streaming music"
+         label_width="120"
+         layout="topleft"
+         left="0"
+         name="Music Volume"
+         slider_label.halign="right"
+         show_text="false"
+         top_pad="2"
+         volume="true"
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteMusic" />
+        </slider>
+        <button
+         control_name="MuteMusic"
+         disabled_control="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16" />
+        <check_box
+         control_name="AudioStreamingMusic"
+         height="16"
+         label="Enabled"
+         layout="topleft"
+         left_pad="5"
+         name="enable_music"
+         top_delta="2"
+         width="350">
+        <!--
+            <check_box.commit_callback
+             function="Pref.updateMediaAutoPlayCheckbox"/>
+        -->
+        </check_box>
+        <slider
+         control_name="AudioLevelMedia"
+         disabled_control="MuteAudio"
+         follows="left|top"
+         height="16"
+         increment="0.025"
+         initial_value="0.5"
+         label="Media"
+         label_width="120"
+         layout="topleft"
+         left="0"
+         name="Media Volume"
+         show_text="false"
+         slider_label.halign="right"
+         top_pad="2"
+         volume="true"
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteMedia" />
+        </slider>
+        <button
+         control_name="MuteMedia"
+         disabled_control="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16" />
+        <check_box
+         label_text.halign="left"
+         follows="left|top"
+         height="16"
+         control_name ="AudioStreamingMedia"
+         label="Enabled"
+         layout="topleft"
+         top_delta="2"
+         left_pad="5"
+         name="enable_media"
+         width="110">
+        <!--
+            <check_box.commit_callback
+             function="Pref.updateMediaAutoPlayCheckbox"/>
+        -->
+        </check_box>
+        <slider
+         control_name="AudioLevelVoice"
+         disabled_control="MuteAudio"
+         follows="left|top"
+         height="16"
+         increment="0.025"
+         initial_value="0.5"
+         label="Voice Chat"
+         label_width="120"
+         layout="topleft"
+         left="0"
+         top_pad="2"
+         name="Voice Volume"
+         show_text="false"
+         slider_label.halign="right"
+         volume="true"
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteVoice" />
+        </slider>
+        <button
+         control_name="MuteVoice"
+         disabled_control="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16" />
+        <check_box
+         label_text.halign="left"
+         follows="left|top"
+         height="16"
+         control_name ="EnableVoiceChat"
+         disabled_control="CmdLineDisableVoice"
+         label="Enabled"
+         layout="topleft"
+         top_delta="2"
+         left_pad="5"
+         name="enable_voice_check_volume"
+         width="110"/>
 
-	<!-- UI Sounds -->
-	<panel label="UI-Klänge" name="UI Sounds tab">
-		<text name="textFSExplanation_tab1">
-			Hier können die Klänge der Benutzeroberfläche geändert, aktiviert oder deaktiviert werden.
-Der jeweilige Standardwert wird im Hovertip des UUID-Feldes angezeigt.
-		</text>
-		<filter_editor name="ui_sound_filter" label="UI-Klänge filtern" />
-		<scroll_list name="ui_sounds_list">
-			<column label="Klang" name="ui_sound_label" />
-			<column label="Status" name="ui_sound_status" />
-		</scroll_list>
-		<button name="ui_sound_preview" tool_tip="Vorschau zu diesem Klang." />
-		<button name="ui_sound_default" tool_tip="Auf Standardwert zurücksetzen." />
-	</panel>
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         layout="topleft"
+         left="26"
+         top_pad="15"
+         name="Listen media from"
+         height="15"
+         word_wrap="true"
+         width="170">
+          Hear media and sounds from:
+        </text>
+        <radio_group
+         control_name="MediaSoundsEarLocation"
+         follows="left|top"
+         top_delta="-6"
+         layout="topleft"
+         left_pad="10"
+         width="360"
+         height="20"
+         name="media_ear_location">
+          <radio_item
+           height="19"
+           label="Camera position"
+           follows="left|top"
+           layout="topleft"
+           name="0"
+           width="120"/>
+          <radio_item
+           height="19"
+           follows="left|top"
+           label="Avatar position"
+           layout="topleft"
+           left_pad="5"
+           name="1"
+           top_delta="0"
+           width="200" />
+        </radio_group>  
+        <text
+         type="string"
+         length="1"
+         follows="top|left"
+         height="15"
+         layout="topleft"
+         left="26"
+         top_pad="10"
+         name="auto_unmute_label"
+         width="430">
+            Automatically unmute after teleport:
+        </text>
+        <check_box
+         control_name="FSAutoUnmuteAmbient"
+         name="FSAutoUnmuteAmbient"
+         label="Ambient"
+         tool_tip="Automatically unmute Ambient after teleporting, if muted (default: off)"
+         layout="topleft"
+         top_pad="5"
+         left_delta="5"
+         height="16"
+         width="85" />
+        <check_box
+         control_name="FSAutoUnmuteSounds"
+         name="FSAutoUnmuteSounds"
+         label="Sound Effects"
+         tool_tip="Automatically unmute Sound Effects after teleporting, if muted (default: off)"
+         layout="topleft"
+         left_pad="0"
+         height="18"
+         width="85" />
+      
+      <text
+         type="string"
+         length="1"
+         follows="top|left"
+         height="15"
+         layout="topleft"
+         left="26"
+         top_pad="15"
+         name="friends_logon_sounds_label"
+         width="225">
+            Play a sound when my friends:
+        </text>
+        <check_box
+         control_name="PlayModeUISndFriendOnline"
+         name="friends_notify_online_sound"
+         label="Log in"
+         layout="topleft"
+         top_pad="5"
+         left_delta="5"
+         height="16"
+         width="85" />
+        <check_box
+         control_name="PlayModeUISndFriendOffline"
+         name="friends_notify_offline_sound"
+         label="Log out"
+         layout="topleft"
+         left_pad="0"
+         height="18"
+         width="85" />
 
-	</tab_container>
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         height="10"
+         layout="topleft"
+         left="26"
+         name="money_change_threshold_label"
+         tool_tip="Plays a sound when money is spent or received higher then the amount set here."
+         mouse_opaque="false"
+         top_pad="10"
+         width="117">
+            L$ change threshold:
+        </text>
+        <spinner
+         control_name="UISndMoneyChangeThreshold"
+         enabled="true"
+         decimal_digits="0"
+         layout="topleft"
+         follows="left|top"
+         height="18"
+         top_pad="7"
+         left_delta="5"
+         increment="10"
+         initial_value="10"
+         max_val="10000"
+         min_val="0"
+         name="money_change_threshold"
+         width="75" />
+
+        <panel
+         background_visible="false"
+         border="false"
+         follows="top|left|right"
+         height="100"
+         layout="topleft"
+         left="10"
+         right="-5"
+         name="output_device_settings_panel"
+         top_pad="5">
+            <panel.string
+             name="output_default_text">
+             Default
+            </panel.string>
+            <panel.string
+             name="output_no_device">
+             No device available
+            </panel.string>
+            <panel.string
+             name="output_name_no_device">
+             Unnamed device
+            </panel.string>
+            <panel.string
+             name="output_device_unavailable">
+             Unavailable device
+            </panel.string>
+            <icon
+             height="18"
+             image_name="Parcel_Voice_Light"
+             left_delta="4"
+             name="output_speaker_icon"
+             mouse_opaque="false"
+             top="7"
+             visible="true"
+             width="18" />
+            <text
+             type="string"
+             length="1"
+             follows="left|top"
+             height="16"
+             layout="topleft"
+             left_pad="3"
+             name="output_label"
+             width="90">
+                Output device:
+            </text>
+            <combo_box
+             height="23"
+             layout="topleft"
+             left_pad="0"
+             max_chars="128"
+             name="sound_output_device"
+             top_delta="-5"
+             right="-5" />
+        </panel>
+    </panel>
+
+    <!-- Media -->
+    <panel
+     top_pad="5"
+     bottom="-1"
+     left="1"
+     right="-1"
+     follows="all"
+     label="Media"
+     name="Media Media Panel" >
+
+      <text
+          follows="left|top"
+          layout="topleft"
+          height="15"
+          left="28"
+          top_pad="10"
+          width="90"
+          name="media_autoplay_label">
+        Media auto-play
+      </text>
+      <combo_box
+          control_name="ParcelMediaAutoPlayEnable"
+          enabled_control="AudioStreamingMedia"
+          follows="left|top"
+          layout="topleft"
+          height="23"
+          left_pad="7"
+          top_delta="-4"
+          name="media_auto_play_combo"
+          width="100">
+        <item
+            label="Disabled"
+            name="autoplay_disabled"
+            value="0"/>
+        <item
+            label="Enabled"
+            name="autoplay_enabled"
+            value="1"/>
+        <!--<item
+            label="Ask"
+            name="autoplay_ask"
+            value="2"/>-->
+      </combo_box>
+      <check_box
+         name="media_allowscript_btn"
+         control_name="PermAllowScriptedMedia"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         width="230"
+         tool_tip="This settings allows / disallows scripted prims from controlling your media connections"
+         label="Allow inworld scripts to play media"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_show_on_others_btn"
+         control_name="MediaShowOnOthers"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         width="230"
+         tool_tip="Uncheck this to hide media attached to other avatars nearby"
+         label="Play media attached to other avatars"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_huds_autoplay"
+         control_name="MediaAutoPlayHuds"
+         enabled_control="AudioStreamingMedia"
+         follows="left|top"
+         layout="topleft"
+         tool_tip="Uncheck this to make HUDs follow the standard media auto-play setting"
+         label="Auto-play media attached to your HUD"
+         left="25"
+         top_pad="3"
+         width="230"
+         height="16"/>
+        <check_box
+         name="media_filter"
+         control_name="MediaEnableFilter"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         tool_tip="Check this to enable the filter that allows you to choose whether to play media from a specific host"
+         label="Enable media filter (increased security)"
+         top_pad="3"
+         left="25"/>
+        <button
+         enabled_control="MediaEnableFilter"
+         layout="topleft"
+         follows="left|top"
+         height="23"
+         label="Manage Media Sites"
+         top_pad="3"
+         name="edit_media_lists_button"
+         width="200">
+            <button.commit_callback
+             function="Floater.Show"
+             parameter="media_lists" />
+        </button>
+
+        <text
+         follows="left|top"
+         layout="topleft"
+         height="15"
+         left="25"
+         top_pad="15"
+         width="275"
+         tool_tip="This setting controls which media (once loaded) does not require a first click to focus before interaction can begin. This allows clicks to be passed directly to media bypassing the focus click requirement."
+         name="media_firstinteract_label">
+            Media first-interact:
+        </text>
+        <check_box
+         name="media_first_click_all"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         label="All MOAP"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_first_click_any"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         label="Anyone's objects"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_first_click_hud"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         label="Worn HUDs only"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_first_click_own"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         label="Owned objects"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_first_click_group"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         label="Group objects"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_first_click_friend"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         label="Friend objects"
+         top_pad="3"
+         left="25"/>
+        <check_box
+         name="media_first_click_land"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         label="Landowner objects"
+         top_pad="3"
+         left="25"/>
+
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         height="10"
+         layout="topleft"
+         left="25"
+         name="Media Rolloff"
+         mouse_opaque="false"
+         top_pad="10"
+         width="450">
+            Media source volume rolloff distance:
+        </text>
+        <slider
+         can_edit_text="true"
+         control_name="MediaRollOffMin"
+         decimal_digits="0"
+         label="Starts getting quieter at:"
+         follows="left|top"
+         height="15"
+         increment="1"
+         initial_value="5"
+         layout="topleft"
+         left="45"
+         max_val="512"
+         min_val="1"
+         name="MediaRollOffMin"
+         top_delta="20"
+         width="380"
+         label_width="165"
+         tool_tip="Minimum distance from the source for rolloff to begin taking effect."/>
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         height="10"
+         layout="topleft"
+         left_delta="385"
+         name="MinMeters"
+         mouse_opaque="false"
+         top_delta="2"
+         width="90">
+            meters
+        </text>
+        <slider
+         can_edit_text="true"
+         control_name="MediaRollOffMax"
+         decimal_digits="0"
+         label="Completely disappears at:"
+         follows="left|top"
+         height="15"
+         increment="1"
+         initial_value="30"
+         layout="topleft"
+         left="45"
+         max_val="512"
+         min_val="1"
+         name="MediaRollOffMax"
+         top_delta="17"
+         width="380"
+         label_width="165"
+         tool_tip="Maximum distance from the source for rolloff to completely mute the sound."/>
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         height="10"
+         layout="topleft"
+         left_delta="385"
+         name="MaxMeters"
+         mouse_opaque="false"
+         top_delta="2"
+         width="90">
+            meters
+        </text>
+
+    </panel>
+
+    <!-- Music -->
+    <panel
+     top_pad="5"
+     bottom="-1"
+     left="1"
+     right="-1"
+     follows="all"
+     label="Music"
+     name="Media Music Panel" >
+
+        <check_box
+         name="audio_auto_play_btn"
+         control_name="FSParcelMusicAutoPlay"
+         enabled_control="AudioStreamingMusic"
+         layout="topleft"
+         height="16"
+         width="230"
+         tool_tip="Check this to automatically start audio streams."
+         label="Allow audio streams to auto-play"
+         top_pad="10"
+         left="25"/>
+
+        <check_box
+         name="FSFadeAudioStream"
+         control_name="FSFadeAudioStream"
+         follows="left|top"
+         layout="topleft"
+         height="16"
+         tool_tip="Check this if fading should be used when the parcel audio stream changes"
+         label="Enable Parcel Audio Fading:"
+         top_pad="3"
+         left="25"/>
+        <slider
+         can_edit_text="true"
+         control_name="FSAudioMusicFadeIn"
+         decimal_digits="2"
+         enabled_control="FSFadeAudioStream"
+         label="Fade in:"
+         follows="left|top"
+         height="15"
+         increment="0.05"
+         initial_value="3"
+         layout="topleft"
+         left="45"
+         max_val="10"
+         min_val="0"
+         name="FSAudioMusicFadeIn"
+         top_delta="20"
+         width="250"
+         label_width="50"
+         tool_tip="Audio fade in time for parcel audio."/>
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         height="10"
+         layout="topleft"
+         left_delta="255"
+         name="FSAudioMusicFadeInSeconds"
+         mouse_opaque="false"
+         top_delta="2"
+         width="90">
+            seconds
+        </text>
+        <slider
+         can_edit_text="true"
+         control_name="FSAudioMusicFadeOut"
+         decimal_digits="2"
+         enabled_control="FSFadeAudioStream"
+         label="Fade out:"
+         follows="left|top"
+         height="15"
+         increment="0.05"
+         initial_value="2"
+         layout="topleft"
+         left="45"
+         max_val="10"
+         min_val="0"
+         name="FSAudioMusicFadeOut"
+         top_delta="17"
+         width="250"
+         label_width="50"
+         tool_tip="Audio fade out time for parcel audio."/>
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         height="10"
+         layout="topleft"
+         left_delta="255"
+         name="FSAudioMusicFadeOutSeconds"
+         mouse_opaque="false"
+         top_delta="2"
+         width="90">
+            seconds
+        </text>
+
+        <text
+         type="string"
+         length="1"
+         follows="left|top"
+         height="20"
+         layout="topleft"
+         left="26"
+         name="show_stream_metadata_text"
+         top_pad="20"
+         width="250">
+            Show stream title notifications:
+        </text>
+        <radio_group
+         control_name="ShowStreamMetadata"
+         height="20"
+         width="350"
+         layout="topleft"
+         top_pad="1"
+         left_delta="20"
+         name="show_stream_metadata">
+            <radio_item
+                label="Off"
+                name="radio_off"
+                top="0"
+                layout="topleft"
+                height="16"
+                left="0"
+                value="0"
+                width="50" />
+            <radio_item
+                label="Toasts"
+                left_pad="1"
+                layout="topleft"
+                height="16"
+                name="radio_toasts"
+                value="1"
+                width="65" />
+            <radio_item
+                label="Nearby Chat"
+                left_pad="1"
+                layout="topleft"
+                height="16"
+                name="radio_chat"
+                value="2"
+                width="70" />
+        </radio_group>
+        <check_box
+         top_pad="3"
+         control_name="StreamMetadataAnnounceToChat"
+         name="StreamMetadataAnnounceToChat"
+         label="Send stream title to channel:"
+         layout="topleft"
+         height="18"
+         width="180" />
+        <spinner
+         top_delta="-4"
+         control_name="StreamMetadataAnnounceChannel"
+         enabled_control="StreamMetadataAnnounceToChat"
+         decimal_digits="0"
+         layout="topleft"
+         follows="left|top"
+         height="18"
+         left_pad="5"
+         increment="1"
+         initial_value="362394"
+         max_val="16777216"
+         min_val="1"
+         name="StreamMetadataAnnounceChannel"
+         width="90" />
+
+    </panel>
+
+    <!-- Voice -->
+    <panel
+     top_pad="5"
+     bottom="-1"
+     left="1"
+     right="-1"
+     follows="all"
+     label="Voice"
+     name="Media Voice tab" >
+
+        <check_box
+         label_text.halign="left"
+         follows="left|top"
+         height="16"
+         control_name ="EnableVoiceChat"
+         disabled_control="CmdLineDisableVoice"
+         label="Enable Voice"
+         layout="topleft"
+         top_pad="10"
+         left="25"
+         name="enable_voice_check"
+         width="90"/>
+         <button
+         enabled_control="EnableVoiceChat"
+         disabled_control="CmdLineDisableVoice"
+         follows="top|left"
+         halign="center"
+         height="23"
+         image_overlay="Refresh_Off"
+         layout="topleft"
+         tool_tip="Reset Voice"
+         name="reset_voice_button"
+         left_pad="5"
+         width="25">
+           <button.commit_callback
+            function="Pref.ResetVoice" />
+        </button>
+        <radio_group
+         enabled_control="EnableVoiceChat"
+         control_name="VoiceEarLocation"
+         follows="left|top"
+         layout="topleft"
+         left="25"
+         width="400"
+         height="60"
+         top_pad="0"
+         name="ear_location">
+            <radio_item
+             height="19"
+             label="Hear Voice from Camera position"
+             follows="left|top"
+             layout="topleft"
+             name="0"
+             width="150"/>
+             <radio_item
+             height="19"
+             follows="left|top"
+             label="Hear Voice from Avatar position"
+             layout="topleft"
+             name="1"
+             top_pad="-2"
+             width="150" />
+             <radio_item
+              enabled="false"
+              height="19"
+              follows="left|top"
+              label="Hear Nearby Voices at full volume (Open Sim Only)"
+              layout="topleft"
+              name="2"
+              top_pad="-2"
+              width="150" />
+        </radio_group>
+
+        <check_box
+         enabled_control="EnableVoiceChat"
+         control_name="LipSyncEnabled"
+         follows="left|top"
+         height="15"
+         label="Move avatar lips when speaking"
+         layout="topleft"
+         left="25"
+         name="enable_lip_sync"
+         top_pad="3"
+         width="237"/>
+        <check_box
+         enabled_control="EnableVoiceChat"
+         control_name="VoiceVisualizerEnabled"
+         follows="left|top"
+         height="15"
+         label="Show voice visualizers over avatars"
+         tool_tip="Shows Voice Indicator (white dot) over avatars"
+         layout="topleft"
+         left="25"
+         name="FSShowVoiceVisualizer"
+         top_pad="2"
+         width="237"/>
+        <check_box
+         enabled_control="EnableVoiceChat"
+         control_name="FSShowMyOwnVoiceVisualizer"
+         follows="left|top"
+         height="15"
+         label="Show voice visualizer over my own avatar"
+         layout="topleft"
+         left="35"
+         name="FSShowMyOwnVoiceVisualizer"
+         top_pad="2"
+         width="237"/>
+        <check_box
+         enabled_control="EnableVoiceChat"
+         control_name="FSShowVoiceVisualizerWithDot"
+         follows="left|top"
+         height="15"
+         label="Show the dot as part of the voice visualizer"
+         tool_tip="If enabled, the dot is shown as part of the voice visualizer. If disabled, it only shows voice waves."
+         layout="topleft"
+         left="35"
+         name="FSShowVoiceVisualizerWithDot"
+         top_pad="2"
+         width="237"/>
+        <check_box
+         enabled_control="EnableVoiceChat"
+         control_name="ShowVoiceVisualizersInCalls"
+         follows="left|top"
+         height="15"
+         label="Show voice visualizers in calls"
+         tool_tip="Shows Voice Indicator and move lips in world while being in private and group calls"
+         layout="topleft"
+         left="25"
+         name="Show_Voice_Visualizers_In_Calls"
+         top_pad="5"
+         width="237"/>
+        <check_box
+         enabled_control="EnableVoiceChat"
+         control_name="FSShowConversationVoiceStateIndicator"
+         follows="left|top"
+         height="15"
+         label="Show voice channel state in conversation tabs"
+         tool_tip="Shows the current voice channel state in the tabs in the conversations window"
+         layout="topleft"
+         left="25"
+         name="FSShowConversationVoiceStateIndicator"
+         top_pad="2"
+         width="237"/>
+
+        <check_box
+         enabled_control="EnableVoiceChat"
+         follows="left|top"
+         control_name="VoiceCallsRejectGroup"
+         height="15"
+         label="Automatically reject all incoming group voice calls"
+         layout="topleft"
+         left="25"
+         name="VoiceCallsRejectGroup"
+         width="237"
+         top_pad="7"/>
+        <check_box
+         enabled_control="EnableVoiceChat"
+         follows="left|top"
+         control_name="VoiceCallsRejectAdHoc"
+         height="15"
+         label="Automatically reject all incoming conference (ad-hoc) voice calls"
+         layout="topleft"
+         left="25"
+         name="VoiceCallsRejectAdHoc"
+         width="237"
+         top_pad="2"/>
+        <check_box
+         enabled_control="EnableVoiceChat"
+         follows="left|top"
+         control_name="VoiceCallsRejectP2P"
+         height="15"
+         label="Automatically reject all incoming P2P (avatar with avatar) voice calls"
+         layout="topleft"
+         left="25"
+         name="VoiceCallsRejectP2P"
+         width="237"
+         top_pad="2"/>
+
+        <check_box
+         follows="top|left"
+         enabled_control="EnableVoiceChat"
+         control_name="PushToTalkToggle"
+         height="15"
+         label="Toggle speak on/off with toolbar button"
+         layout="topleft"
+         left="25"
+         name="push_to_talk_toggle_check"
+         width="237"
+         tool_tip="When in toggle mode, press and release the trigger key ONCE to switch your microphone on or off. When not in toggle mode, the microphone broadcasts your voice only while the trigger is being held down."
+         top_pad="7"/>
+        <check_box
+         follows="top|left"
+         control_name="VoiceAutomaticGainControl"
+         height="15"
+         tool_tip="Check to enable automatic gain control"
+         label="Automatic Gain Control"
+         layout="topleft"
+         name="voice_automatic_gain_control"
+         left="25"
+         top_pad="2"
+         width="237"/>
+        <check_box
+         follows="top|left"
+         control_name="VoiceEchoCancellation"
+         height="15"
+         tool_tip="Check to enable voice echo cancellation"
+         label="Echo Cancellation"
+         layout="topleft"
+         left="25"
+         name="enable_echo_cancellation"
+         top_pad="2"
+         width="237"/>
+        <text
+         follows="top|left"
+         layout="topleft"
+         height="15"
+         left="25"
+         top_pad="2"
+         width="105"
+         name="noise_suppression_label">
+          Noise Suppression:
+        </text>
+        <combo_box
+         control_name="VoiceNoiseSuppressionLevel"
+         layout="topleft"
+         height="15"
+         left_pad="0"
+         name="noise_suppression_combo"
+         width="90">
+          <item
+           label="Off"
+           name="noise_suppression_none"
+           value="0"/>
+          <item
+           label="Low"
+           name="noise_suppression_low"
+           value="1"/>
+          <item
+           label="Moderate"
+           name="noise_suppression_moderate"
+           value="2"/>
+          <item
+           label="High"
+           name="noise_suppression_high"
+           value="3"/>
+          <item
+           label="Max"
+           name="noise_suppression_max"
+           value="4"/>
+        </combo_box>
+
+        <button
+         control_name="ShowDeviceSettings"
+         follows="left|top"
+         height="16"
+         is_toggle="true"
+         label="Audio Device Settings"
+         halign="left"
+         pad_left="16"
+         pad_bottom="2"
+         image_unselected="Accordion_ArrowClosed_Off"
+         image_selected="Accordion_ArrowOpened_Off"
+         scale_image="false"
+         layout="topleft"
+         left="20"
+         top_pad="6"
+         name="device_settings_btn"
+         width="190">
+        </button>
+        <panel
+         background_visible="false"
+         bg_alpha_color="DkGray"
+         filename="panel_sound_devices.xml"
+         visiblity_control="ShowDeviceSettings"
+         border="false"
+         follows="top|left|right"
+         height="100"
+         label="Device Settings"
+         layout="topleft"
+         left="10"
+         right="-5"
+         name="device_settings_panel"
+         class="panel_voice_device_settings"
+         top_pad="5"/>
+    </panel>
+
+    <!-- UI Sounds -->
+    <panel
+     class="fs_panel_preference_ui_sounds"
+     top_pad="5"
+     bottom="-1"
+     left="1"
+     right="-1"
+     follows="all"
+     label="UI Sounds"
+     name="UI Sounds tab">
+
+        <text
+         layout="topleft"
+         follows="left|top"
+         top_pad="10"
+         left="5"
+         height="25"
+         width="520"
+         name="textFSExplanation_tab1">
+            Here you can change (by providing sound UUIDs), enable or disable default interface sounds.
+Hover your mouse cursor over UUID field to show its default value.
+        </text>
+
+        <filter_editor
+         follows="left|top|right"
+         height="22"
+         left="5"
+         right="-5"
+         top_pad="8"
+         label="Filter UI sounds"
+         name="ui_sound_filter"
+         text_pad_left="6">
+           <filter_editor.commit_callback
+            function="Pref.UpdateUISoundFilter" />
+        </filter_editor>
+
+        <scroll_list
+         follows="left|top|right"
+         height="300"
+         layout="topleft"
+         left="5"
+         right="-5"
+         multi_select="false"
+         draw_heading="true"
+         name="ui_sounds_list"
+         top_pad="8">
+           <column label="Sound" name="ui_sound_label" width="260" />
+           <column label="" name="ui_sound_check" width="22" />
+           <column label="Status" name="ui_sound_status" width="220" />
+           <scroll_list.commit_callback
+            function="Pref.SelectUISound" />
+        </scroll_list>
+
+        <text
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         top_pad="4"
+         height="16"
+         width="260"
+         name="ui_sound_selected_label">
+        </text>
+        <text
+         follows="top|right"
+         layout="topleft"
+         right="-5"
+         top_delta="0"
+         height="16"
+         width="250"
+         halign="right"
+         font="SansSerifSmall"
+         text_color="LtGray_50"
+         name="ui_sound_setting_name">
+        </text>
+        <line_editor
+         follows="left|top|right"
+         left="5"
+         top_pad="4"
+         height="20"
+         right="-46"
+         max_length_chars="256"
+         name="ui_sound_uuid">
+          <line_editor.commit_callback
+           function="Pref.CommitUISoundUUID" />
+        </line_editor>
+        <button
+         follows="top|right"
+         name="ui_sound_preview"
+         height="20"
+         label="P"
+         layout="topleft"
+         left_pad="2"
+         width="20"
+         tool_tip="Preview this sound.">
+          <button.commit_callback
+           function="Pref.PreviewSelectedUISound" />
+        </button>
+        <button
+         follows="top|right"
+         name="ui_sound_default"
+         height="20"
+         label="D"
+         layout="topleft"
+         left_pad="2"
+         width="20"
+         tool_tip="Reset to the default UUID.">
+          <button.commit_callback
+           function="Pref.ResetSelectedUISound" />
+        </button>
+        <check_box
+         follows="left|top"
+         height="20"
+         left="5"
+         top_pad="4"
+         label="Play this sound"
+         name="ui_sound_play_checkbox"
+         width="250">
+          <check_box.commit_callback
+           function="Pref.CommitUISoundPlayCheck" />
+        </check_box>
+        <combo_box
+         follows="left|top"
+         height="20"
+         left="5"
+         top_delta="0"
+         name="ui_sound_play_combo"
+         width="250">
+          <combo_box.item
+           label="Play only on new session"
+           name="1"
+           value="1"/>
+          <combo_box.item
+           label="Play on every message"
+           name="2"
+           value="2"/>
+          <combo_box.item
+           label="Play only if not in focus"
+           name="3"
+           value="3"/>
+          <combo_box.item
+           label="Mute this sound"
+           name="0"
+           value="0"/>
+          <combo_box.commit_callback
+           function="Pref.CommitUISoundPlayCombo" />
+        </combo_box>
+
+    </panel>
+
+</tab_container>
 </panel>
