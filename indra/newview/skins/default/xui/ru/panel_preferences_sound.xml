@@ -12,9 +12,6 @@
 	<panel.string name="ui_sound_play_this">
 		Включить звук
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		Отключение звука
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		Воспроизвести только на новую сессию
 	</panel.string>

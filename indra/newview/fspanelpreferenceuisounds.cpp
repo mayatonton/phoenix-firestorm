@@ -598,7 +598,7 @@ std::string FSPanelPreferenceUISounds::getModeLabel(const UISoundEntry& entry) c
     const bool enabled = gSavedSettings.getBOOL(entry.playmode_setting);
     if (entry.inverted_bool)
     {
-        return enabled ? getPanelString("ui_sound_mute_this") : getPanelString("ui_sound_play_this");
+        return enabled ? getPanelString("ui_sound_playmode_mute") : getPanelString("ui_sound_play_this");
     }
 
     return enabled ? getPanelString("ui_sound_play_this") : getPanelString("ui_sound_playmode_mute");

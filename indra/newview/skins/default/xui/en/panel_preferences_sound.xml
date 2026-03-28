@@ -34,10 +34,6 @@
      Play this sound
     </panel.string>
     <panel.string
-     name="ui_sound_mute_this">
-     Mute this sound
-    </panel.string>
-    <panel.string
      name="ui_sound_playmode_new_session">
      Play only on new session
     </panel.string>

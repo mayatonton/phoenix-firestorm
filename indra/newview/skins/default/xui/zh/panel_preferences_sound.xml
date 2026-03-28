@@ -18,9 +18,6 @@
 	<panel.string name="ui_sound_play_this">
 		啟用
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		禁用
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		新訊息
 	</panel.string>

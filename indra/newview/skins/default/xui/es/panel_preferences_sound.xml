@@ -9,9 +9,6 @@
 	<panel.string name="ui_sound_play_this">
 		Reproducir
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		Silenciar
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		Sólo si inicia sesión
 	</panel.string>

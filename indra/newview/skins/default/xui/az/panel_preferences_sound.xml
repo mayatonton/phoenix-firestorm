@@ -12,9 +12,6 @@
 	<panel.string name="ui_sound_play_this">
 		Səsi yandır
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		Səsin söndürülməsi
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		Yalnız yeni sessiyada oxudun
 	</panel.string>

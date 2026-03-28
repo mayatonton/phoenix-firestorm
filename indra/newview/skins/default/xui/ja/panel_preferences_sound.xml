@@ -19,9 +19,6 @@
 	<panel.string name="ui_sound_play_this">
 		このサウンドを再生
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		サウンドを再生しない
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		新しいＩＭセッションの時だけ音を鳴らす
 	</panel.string>

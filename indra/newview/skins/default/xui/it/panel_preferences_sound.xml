@@ -18,9 +18,6 @@
 	<panel.string name="ui_sound_play_this">
 		Attiva suono
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		Disattiva suono
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		Solo a inizio sessione
 	</panel.string>

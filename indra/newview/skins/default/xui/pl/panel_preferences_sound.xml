@@ -18,9 +18,6 @@
 	<panel.string name="ui_sound_play_this">
 		Odtwarzaj dźwięk
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		Wyciszaj dźwięk
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		Odtw. dźwięk tylko na nowej sesji
 	</panel.string>

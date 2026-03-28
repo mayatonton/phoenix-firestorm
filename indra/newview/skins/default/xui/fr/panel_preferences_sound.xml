@@ -12,9 +12,6 @@
 	<panel.string name="ui_sound_play_this">
 		Activer
 	</panel.string>
-	<panel.string name="ui_sound_mute_this">
-		Désactiver
-	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
 		Nouvelle session
 	</panel.string>
