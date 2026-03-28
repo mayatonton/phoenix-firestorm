@@ -1528,6 +1528,7 @@ Hover your mouse cursor over UUID field to show its default value.
          right="-5"
          multi_select="false"
          draw_heading="true"
+         row_padding="5"
          name="ui_sounds_list"
          top_pad="8">
            <column label="Sound" name="ui_sound_label" width="260" />
