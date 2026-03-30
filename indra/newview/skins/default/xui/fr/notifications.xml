@@ -5761,15 +5761,17 @@ Message d'erreur :
 Vous pouvez activer l'enregistrement des transcriptions dans Préférences &gt; Confidentialité &gt; Journaux et transcriptions.
 	</notification>
 
-<!-- Firestorm Region Group Titles -->
-  <notification name="FSSetTitleRegion">
-Entrez le nom exact d'une région à assigner au titre de groupe sélectionné.
+	<notification name="FSSetTitleRegion">
+		Entrez le nom exact d'une région à assigner au titre de groupe sélectionné.
 Le nom sera vérifié avant l'enregistrement de l'assignation.
-  </notification>
-
-  <notification name="FSSetTitleRegionNotFound">
-La région '[REGION]' n'a pas été trouvée. Veuillez vérifier le nom et réessayer.
-  </notification>
-<!-- Firestorm Region Group Titles -->
+		<form name="form">
+			<button name="OK" text="OK"/>
+			<button name="Cancel" text="Annuler"/>
+		</form>
+	</notification>
+	<notification name="FSSetTitleRegionNotFound">
+		La région '[REGION]' n'a pas été trouvée. Veuillez vérifier le nom et réessayer.
+		<usetemplate name="okbutton" yestext="OK"/>
+	</notification>
 
 </notifications>

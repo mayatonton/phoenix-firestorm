@@ -5706,15 +5706,17 @@ https://wiki.firestormviewer.org/antivirus_whitelisting
 	</notification>
 
 
-<!-- Firestorm Region Group Titles -->
-  <notification name="FSSetTitleRegion">
-Введите точное название региона для привязки к выбранному титулу группы.
+	<notification name="FSSetTitleRegion">
+		Введите точное название региона для привязки к выбранному титулу группы.
 Название будет проверено перед сохранением.
-  </notification>
-
-  <notification name="FSSetTitleRegionNotFound">
-Регион «[REGION]» не найден. Пожалуйста, проверьте название и попробуйте снова.
-  </notification>
-<!-- Firestorm Region Group Titles -->
+		<form name="form">
+			<button name="OK" text="OK"/>
+			<button name="Cancel" text="Отмена"/>
+		</form>
+	</notification>
+	<notification name="FSSetTitleRegionNotFound">
+		Регион «[REGION]» не найден. Пожалуйста, проверьте название и попробуйте снова.
+		<usetemplate name="okbutton" yestext="OK"/>
+	</notification>
 
 </notifications>

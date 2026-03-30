@@ -6009,15 +6009,17 @@ Fehlermeldung:
 Sie können das Speichern von Verläufen einschalten unter Einstellungen &gt; Privatsphäre &gt; Protokoll und Verläufe
 	</notification>
 
-<!-- Firestorm Region Group Titles -->
-  <notification name="FSSetTitleRegion">
-Geben Sie den genauen Namen einer Region ein, um ihn dem ausgewählten Gruppentitel zuzuweisen.
+	<notification name="FSSetTitleRegion">
+		Geben Sie den genauen Namen einer Region ein, um ihn dem ausgewählten Gruppentitel zuzuweisen.
 Der Name wird überprüft, bevor die Zuweisung gespeichert wird.
-  </notification>
-
-  <notification name="FSSetTitleRegionNotFound">
-Die Region '[REGION]' konnte nicht gefunden werden. Bitte überprüfen Sie den Namen und versuchen Sie es erneut.
-  </notification>
-<!-- Firestorm Region Group Titles -->
+		<form name="form">
+			<button name="OK" text="OK"/>
+			<button name="Cancel" text="Abbrechen"/>
+		</form>
+	</notification>
+	<notification name="FSSetTitleRegionNotFound">
+		Die Region '[REGION]' konnte nicht gefunden werden. Bitte überprüfen Sie den Namen und versuchen Sie es erneut.
+		<usetemplate name="okbutton" yestext="OK"/>
+	</notification>
 
 </notifications>

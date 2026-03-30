@@ -5630,15 +5630,15 @@ Komunikat błędu:
 Zapisywanie rozmów możesz włączyć w Preferencje &gt; Prywatność &gt; Logi rozmów.
 	</notification>
 
-<!-- Firestorm Region Group Titles -->
-  <notification name="FSSetTitleRegion">
-Wpisz dokładną nazwę regionu, aby przypisać go do wybranego tytułu grupy.
+	<notification name="FSSetTitleRegion">
+		Wpisz dokładną nazwę regionu, aby przypisać go do wybranego tytułu grupy.
 Nazwa zostanie zweryfikowana przed zapisaniem przypisania.
-  </notification>
-
-  <notification name="FSSetTitleRegionNotFound">
-Region '[REGION]' nie został znaleziony. Sprawdź nazwę i spróbuj ponownie.
-  </notification>
-<!-- Firestorm Region Group Titles -->
+		<form name="form">
+			<button name="Cancel" text="Anuluj"/>
+		</form>
+	</notification>
+	<notification name="FSSetTitleRegionNotFound">
+		Region '[REGION]' nie został znaleziony. Sprawdź nazwę i spróbuj ponownie.
+	</notification>
 
 </notifications>

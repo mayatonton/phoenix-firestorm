@@ -5903,15 +5903,17 @@ https://wiki.firestormviewer.org/antivirus_whitelisting
 		<usetemplate name="okbutton" yestext="確定"/>
 	</notification>
 
-<!-- Firestorm Region Group Titles -->
-  <notification name="FSSetTitleRegion">
-請輸入要指定給選擇群組頭銜的區域的確切名稱。
+	<notification name="FSSetTitleRegion">
+		請輸入要指定給選擇群組頭銜的區域的確切名稱。
 在儲存指定之前，會先驗證名稱。
-  </notification>
-
-  <notification name="FSSetTitleRegionNotFound">
-找不到區域「[REGION]」。請檢查名稱後重試。
-  </notification>
-<!-- Firestorm Region Group Titles -->
+		<form name="form">
+			<button name="OK" text="確定"/>
+			<button name="Cancel" text="取消"/>
+		</form>
+	</notification>
+	<notification name="FSSetTitleRegionNotFound">
+		找不到區域「[REGION]」。請檢查名稱後重試。
+		<usetemplate name="okbutton" yestext="確定"/>
+	</notification>
 
 </notifications>
