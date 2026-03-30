@@ -11,10 +11,10 @@
 		マウスボタン５
 	</panel.string>
 	<panel.string name="ui_sound_copy_uuid">
-		サウンドUUIDをコピー
+		サウンドのＵＵＩＤをコピー
 	</panel.string>
 	<panel.string name="ui_sound_select_prompt">
-		UIサウンドを選択
+		ＵＩサウンドを選択
 	</panel.string>
 	<panel.string name="ui_sound_play_this">
 		このサウンドを再生
@@ -23,25 +23,25 @@
 		新しいＩＭセッションの時だけ音を鳴らす
 	</panel.string>
 	<panel.string name="ui_sound_playmode_every_message">
-		メッセージを受信する度に音を鳴らす
+		メッセージを受信する毎に音を鳴らす
 	</panel.string>
 	<panel.string name="ui_sound_playmode_not_focus">
-		フォーカスが当たってなければ音を鳴らす
+		フォーカスが当たってない場合音を鳴らす
 	</panel.string>
 	<panel.string name="ui_sound_playmode_mute">
-		通知音は鳴らさない
+		通知音を鳴らさない
 	</panel.string>
 	<panel.string name="textFSChatMention">
 		チャットのメンション先：
 	</panel.string>
 	<panel.string name="textFSBadKeystroke">
-		無効なキー打鍵音：
+		無効なキーの打鍵音：
 	</panel.string>
 	<panel.string name="textFSClick">
 		マウスボタンのクリック：
 	</panel.string>
 	<panel.string name="textFSClickRelease">
-		マウスボタンのリリース：
+		マウスボタンのクリック解除：
 	</panel.string>
 	<panel.string name="textFSFootsteps">
 		デフォルトの足音：
@@ -74,7 +74,7 @@
 		無効な操作：
 	</panel.string>
 	<panel.string name="textFSInventoryOffer">
-		インベントリに受け取った：
+		インベントリを受け取った：
 	</panel.string>
 	<panel.string name="textFSMicToggle">
 		マイクロフォン切り替え：
@@ -89,7 +89,7 @@
 		移動ロック：
 	</panel.string>
 	<panel.string name="textFSNearbyChat">
-		近くのチャット新着メッセ：
+		近くのチャットに新着メッセージが届いた時：
 	</panel.string>
 	<panel.string name="textFSNewIncomingConfIMSession">
 		会話ＩＭを受信した時：
@@ -101,13 +101,13 @@
 		ＩＭを受信した時：
 	</panel.string>
 	<panel.string name="textFSObjectCreate">
-		オブジェクト作成：
+		オブジェクトの作成：
 	</panel.string>
 	<panel.string name="textFSObjectDelete">
-		オブジェクト削除：
+		オブジェクトの削除：
 	</panel.string>
 	<panel.string name="textFSObjectRezIn">
-		オブジェクトRez：
+		オブジェクトのRez：
 	</panel.string>
 	<panel.string name="textFSObjectRezOut">
 		オブジェクトのDeRez：

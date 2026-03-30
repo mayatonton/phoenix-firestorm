@@ -1332,7 +1332,7 @@ L$が不足しているので、このグループに参加することができ
 		</form>
 	</notification>
 	<notification name="InvalidAutoReplaceEntry">
-		キーワードは一語でなければならず、置換は空にできません。キーワードで使える句読点:
+		キーワードは、単語一つでなければならず、置換文字列を空白にすることはできません。キーワードで使用可能な句読点：
 ( ) . , - _
 	</notification>
 	<notification name="InvalidAutoReplaceList">
