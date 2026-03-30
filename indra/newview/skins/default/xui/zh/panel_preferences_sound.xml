@@ -10,28 +10,28 @@
 		滑鼠按鍵 5
 	</panel.string>
 	<panel.string name="ui_sound_copy_uuid">
-		複製音效UUID
+		複製音效 UUID
 	</panel.string>
 	<panel.string name="ui_sound_select_prompt">
 		選擇介面音效
 	</panel.string>
 	<panel.string name="ui_sound_play_this">
-		啟用
+		播放此音效
 	</panel.string>
 	<panel.string name="ui_sound_playmode_new_session">
-		新訊息
+		僅在新會話時播放
 	</panel.string>
 	<panel.string name="ui_sound_playmode_every_message">
-		每條訊息
+		每條訊息都播放
 	</panel.string>
 	<panel.string name="ui_sound_playmode_not_focus">
-		如果在後臺
+		在背景時播放
 	</panel.string>
 	<panel.string name="ui_sound_playmode_mute">
-		禁用
+		靜音此音效
 	</panel.string>
 	<panel.string name="textFSChatMention">
-		聊天中提及：
+		聊天提及：
 	</panel.string>
 	<panel.string name="textFSBadKeystroke">
 		無效按鍵：
@@ -43,10 +43,10 @@
 		滑鼠釋放：
 	</panel.string>
 	<panel.string name="textFSFootsteps">
-		腳步聲：
+		預設腳步聲：
 	</panel.string>
 	<panel.string name="textFSFriendOffline">
-		好友下線：
+		好友離線：
 	</panel.string>
 	<panel.string name="textFSFriendOnline">
 		好友上線：
@@ -61,19 +61,19 @@
 		群組通知：
 	</panel.string>
 	<panel.string name="textFSHealthReductionF">
-		女性受傷：
+		女性角色受傷：
 	</panel.string>
 	<panel.string name="textFSHealthReductionM">
-		男性受傷：
+		男性角色受傷：
 	</panel.string>
 	<panel.string name="textFSIncomingVoiceCall">
-		語音呼叫：
+		語音通話：
 	</panel.string>
 	<panel.string name="textFSInvalidOp">
 		無效操作：
 	</panel.string>
 	<panel.string name="textFSInventoryOffer">
-		庫存物件提供：
+		庫存物品提供：
 	</panel.string>
 	<panel.string name="textFSMicToggle">
 		麥克風切換：
@@ -82,16 +82,16 @@
 		支付貨幣：
 	</panel.string>
 	<panel.string name="textFSMoneyChangeUp">
-		得到貨幣：
+		獲得貨幣：
 	</panel.string>
 	<panel.string name="textFSMovelockToggle">
-		啟用/禁用鎖定：
+		啟用/停用移動鎖定：
 	</panel.string>
 	<panel.string name="textFSNearbyChat">
-		本地聊天新訊息：
+		附近聊天新訊息：
 	</panel.string>
 	<panel.string name="textFSNewIncomingConfIMSession">
-		會議：
+		新臨時會議：
 	</panel.string>
 	<panel.string name="textFSNewIncomingGroupIMSession">
 		新群組聊天：
@@ -109,37 +109,37 @@
 		放置物件：
 	</panel.string>
 	<panel.string name="textFSObjectRezOut">
-		撿起物件：
+		拾取物件：
 	</panel.string>
 	<panel.string name="textFSPieMenuAppear">
-		圓形選單出現：
+		環形選單出現：
 	</panel.string>
 	<panel.string name="textFSPieMenuHide">
-		圓形選單隱藏：
+		環形選單隱藏：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight0">
-		圓形選單選項 1：
+		環形選單選項 1：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight1">
-		圓形選單選項 2：
+		環形選單選項 2：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight2">
-		圓形選單選項 3：
+		環形選單選項 3：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight3">
-		圓形選單選項 4：
+		環形選單選項 4：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight4">
-		圓形選單選項 5：
+		環形選單選項 5：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight5">
-		圓形選單選項 6：
+		環形選單選項 6：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight6">
-		圓形選單選項 7：
+		環形選單選項 7：
 	</panel.string>
 	<panel.string name="textFSPieMenuSliceHighlight7">
-		圓形選單選項 8：
+		環形選單選項 8：
 	</panel.string>
 	<panel.string name="textFSQuestionExperience">
 		新體驗：
@@ -154,7 +154,7 @@
 		腳本彈窗關閉：
 	</panel.string>
 	<panel.string name="textFSScriptFloaterOpen">
-		指令碼彈窗打開：
+		腳本彈窗開啟：
 	</panel.string>
 	<panel.string name="textFSSnapshot">
 		拍照：
@@ -166,7 +166,7 @@
 		開始私聊：
 	</panel.string>
 	<panel.string name="textFSTeleportOffer">
-		傳送請求：
+		傳送邀請：
 	</panel.string>
 	<panel.string name="textFSTeleportOut">
 		傳送：
@@ -181,7 +181,7 @@
 		關閉視窗：
 	</panel.string>
 	<panel.string name="textFSWindowOpen">
-		打開視窗：
+		開啟視窗：
 	</panel.string>
 	<tab_container label="Firestorm 偏好設定" name="tabs">
 		<panel label="常規" name="Media Sounds Panel">
