@@ -5007,4 +5007,16 @@ No se podrá deshacer.
 	<notification name="ExodusFlickrUploadComplete">
 		Tu instantánea puede ser vista ahora [https://www.flickr.com/photos/me/[ID] aquí].
 	</notification>
+
+<!-- Firestorm Region Group Titles -->
+  <notification name="FSSetTitleRegion">
+Ingrese el nombre exacto de una región para asignar al título de grupo seleccionado.
+El nombre será verificado antes de guardar la asignación.
+  </notification>
+
+  <notification name="FSSetTitleRegionNotFound">
+No se encontró la región '[REGION]'. Por favor, verifique el nombre e intente de nuevo.
+  </notification>
+<!-- Firestorm Region Group Titles -->
+
 </notifications>

@@ -5760,4 +5760,16 @@ Message d'erreur :
 		Le fichier contenant la transcription du chat est manquant. Soit il n'y a pas de transcription pour ce chat, soit les transcriptions ne sont pas enregistrées.
 Vous pouvez activer l'enregistrement des transcriptions dans Préférences &gt; Confidentialité &gt; Journaux et transcriptions.
 	</notification>
+
+<!-- Firestorm Region Group Titles -->
+  <notification name="FSSetTitleRegion">
+Entrez le nom exact d'une région à assigner au titre de groupe sélectionné.
+Le nom sera vérifié avant l'enregistrement de l'assignation.
+  </notification>
+
+  <notification name="FSSetTitleRegionNotFound">
+La région '[REGION]' n'a pas été trouvée. Veuillez vérifier le nom et réessayer.
+  </notification>
+<!-- Firestorm Region Group Titles -->
+
 </notifications>

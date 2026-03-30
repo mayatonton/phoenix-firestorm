@@ -123,6 +123,7 @@ set(viewer_SOURCE_FILES
     fsfloaterexport.cpp
     fsfloatergroup.cpp
     fsfloatergrouptitles.cpp
+    fsgrouptitleregionmgr.cpp
     fsfloaterimport.cpp
     fsfloaterim.cpp
     fsfloaterimcontainer.cpp
@@ -979,6 +980,7 @@ set(viewer_HEADER_FILES
     fsfloaterexport.h
     fsfloatergroup.h
     fsfloatergrouptitles.h
+    fsgrouptitleregionmgr.h
     fsfloaterimport.h
     fsfloaterim.h
     fsfloaterimcontainer.h
