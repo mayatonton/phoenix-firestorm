@@ -395,7 +395,7 @@ void FSFloaterGroupTitles::onClearRegion()
         return;
     }
 
-    // Multiple regions — build a popup menu
+    // Multiple regions, build a popup menu
     if (LLContextMenu* old_menu = mClearRegionMenuHandle.get())
     {
         gMenuHolder->removeChild(old_menu);
