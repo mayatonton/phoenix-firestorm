@@ -87,6 +87,25 @@ static const glm::mat4 coord_system_rotationxy(
     0.f, 0.f, 0.f, 1.f
 );
 
+// <FS:Beq> Use a full basis change for transform matrices. Pre-multiplying is
+// correct for point positions but not for joint rest/bind matrices.
+static glm::mat4 build_viewer_basis_transform(bool apply_xy_rotation)
+{
+    glm::mat4 basis = coord_system_rotation;
+    if (apply_xy_rotation)
+    {
+        basis = coord_system_rotationxy * basis;
+    }
+    return basis;
+}
+
+static glm::mat4 convert_transform_to_viewer_basis(const glm::mat4& transform, bool apply_xy_rotation)
+{
+    const glm::mat4 basis = build_viewer_basis_transform(apply_xy_rotation);
+    return basis * transform * glm::inverse(basis);
+}
+// </FS:Beq>
+
 static const S32 VERTEX_SPLIT_SAFETY_MARGIN = 3 * 3 + 1; // 10 vertices: 3 complete triangles plus remapping overhead
 static const S32 VERTEX_LIMIT = USHRT_MAX - VERTEX_SPLIT_SAFETY_MARGIN;
 
@@ -1139,6 +1158,19 @@ bool LLGLTFLoader::populateModelFromMesh(LLModel* pModel, const std::string& bas
         LL::GLTF::Skin& gltf_skin = mGLTFAsset.mSkins[skinIdx];
         LLMeshSkinInfo& skin_info = pModel->mSkinInfo;
         S32 valid_joints_count = mValidJointsCount[skinIdx];
+        // <FS:Beq> Apply the shared legacy rig critique before any glTF-specific
+        // pruning so glTF preview/upload follows the same hard joint cap as DAE.
+        std::vector<std::string> recognized_joint_names;
+        recognized_joint_names.reserve(valid_joints_count);
+        for (const std::string& joint_name : mJointNames[skinIdx])
+        {
+            if (!joint_name.empty())
+            {
+                recognized_joint_names.push_back(joint_name);
+            }
+        }
+        critiqueRigForUploadApplicability(recognized_joint_names);
+        // </FS:Beq>
 
         S32 replacement_index = 0;
         std::vector<S32> gltfindex_to_joitindex_map;
@@ -1372,7 +1404,12 @@ void LLGLTFLoader::populateJointsFromSkin(S32 skin_idx)
         {
             // Transalte existing bind matrix to viewer's overriden skeleton
             glm::mat4 original_bind_matrix = glm::inverse(skin.mInverseBindMatricesData[i]);
-            glm::mat4 rotated_original = coord_system_rotation * original_bind_matrix;
+            // <FS:Beq> Transform matrices need a basis change, not a simple
+            // left multiply, otherwise non-T-pose rigs can pick up a 90 degree
+            // axis error in the converted bind state.
+            // glm::mat4 rotated_original = coord_system_rotation * original_bind_matrix;
+            glm::mat4 rotated_original = convert_transform_to_viewer_basis(original_bind_matrix, mApplyXYRotation);
+            // </FS:Beq>
             glm::mat4 skeleton_transform = computeGltfToViewerSkeletonTransform(joints_data, joint, legal_name);
             glm::mat4 tranlated_original = skeleton_transform * rotated_original;
             glm::mat4 final_inverse_bind_matrix = glm::inverse(tranlated_original);
@@ -1463,11 +1500,15 @@ void LLGLTFLoader::buildOverrideMatrix(LLJointData& viewer_data, joints_data_map
         node.mIsOverrideValid = true;
         node.mViewerRestMatrix = viewer_data.mRestMatrix;
 
-        glm::mat4 gltf_joint_rest_pose = coord_system_rotation * node.mGltfRestMatrix;
-        if (mApplyXYRotation)
-        {
-            gltf_joint_rest_pose = coord_system_rotationxy * gltf_joint_rest_pose;
-        }
+        // <FS:Beq> Convert joint rest matrices with a full basis change so the
+        // bind/rest chain stays in a consistent viewer-space frame.
+        // glm::mat4 gltf_joint_rest_pose = coord_system_rotation * node.mGltfRestMatrix;
+        // if (mApplyXYRotation)
+        // {
+        //     gltf_joint_rest_pose = coord_system_rotationxy * gltf_joint_rest_pose;
+        // }
+        glm::mat4 gltf_joint_rest_pose = convert_transform_to_viewer_basis(node.mGltfRestMatrix, mApplyXYRotation);
+        // </FS:Beq>
 
         glm::mat4 translated_joint;
         // Example:
@@ -1495,14 +1536,20 @@ void LLGLTFLoader::buildOverrideMatrix(LLJointData& viewer_data, joints_data_map
         // fortunately normal bones use only translation, without rotation or scale
         node.mOverrideMatrix = glm::recompose(glm::vec3(1, 1, 1), glm::identity<glm::quat>(), translation_override, glm::vec3(0, 0, 0), glm::vec4(0, 0, 0, 1));
 
-        glm::mat4 overriden_joint = node.mOverrideMatrix;
-
-        // todo: if gltf bone had rotation or scale, they probably should be saved here
-        // then applied to bind matrix
-        rest = parent_rest * overriden_joint;
+        // <FS:Beq> Keep the full local TRS for bind/rest propagation.
+        // glm::mat4 overriden_joint = node.mOverrideMatrix;
+        // // todo: if gltf bone had rotation or scale, they probably should be saved here
+        // // then applied to bind matrix
+        // rest = parent_rest * overriden_joint;
+        // </FS:Beq>
         if (viewer_data.mIsJoint)
         {
+            // <FS:Beq> Keep the full local TRS for bind/rest propagation.
+            // Using the translation-only override here re-encodes parent
+            // rotation into child translations and causes the sawtooth arm bug.
+            rest = parent_rest * translated_joint;
             node.mOverrideRestMatrix = rest;
+            // </FS:Beq>
         }
         else
         {
@@ -1512,8 +1559,13 @@ void LLGLTFLoader::buildOverrideMatrix(LLJointData& viewer_data, joints_data_map
             // then subsctruct them from bind matrix
             // Todo: get models that use collision bones, made by different programs
 
-            overriden_joint = glm::scale(overriden_joint, viewer_data.mScale);
-            node.mOverrideRestMatrix = parent_support_rest * overriden_joint;
+            // <FS:Beq> Match the standard-joint path and preserve the full local
+            // transform in the propagated rest state.
+            // overriden_joint = glm::scale(overriden_joint, viewer_data.mScale);
+            // node.mOverrideRestMatrix = parent_support_rest * overriden_joint;
+            rest = parent_support_rest * translated_joint;
+            node.mOverrideRestMatrix = rest;
+            // </FS:Beq>
         }
     }
     else
@@ -1559,7 +1611,13 @@ glm::mat4 LLGLTFLoader::buildGltfRestMatrix(S32 joint_node_index, const LL::GLTF
         if (it != potential_parent.mChildren.end())
         {
             // Found parent
-            if (std::find(gltf_skin.mJoints.begin(), gltf_skin.mJoints.end(), joint_node_index) != gltf_skin.mJoints.end())
+            // <FS:Beq> Recurse only while the parent is also part of the skin
+            // joint set. The previous test accidentally checked the child node
+            // again and folded non-joint parents into the reconstructed rest
+            // chain.
+            // if (std::find(gltf_skin.mJoints.begin(), gltf_skin.mJoints.end(), joint_node_index) != gltf_skin.mJoints.end())
+            if (std::find(gltf_skin.mJoints.begin(), gltf_skin.mJoints.end(), static_cast<S32>(i)) != gltf_skin.mJoints.end())
+            // </FS:Beq>
             {
                 // parent is a joint - recursively combine transform
                 // assumes that matrix is already valid
@@ -1604,8 +1662,12 @@ glm::mat4 LLGLTFLoader::computeGltfToViewerSkeletonTransform(const joints_data_m
     }
 
     // Get the GLTF joint's rest pose (in GLTF coordinate system)
-    const glm::mat4 &gltf_joint_rest_pose = node_data.mGltfRestMatrix;
-    glm::mat4 rest_pose = coord_system_rotation * gltf_joint_rest_pose;
+    // <FS:Beq> Keep the rest-pose conversion consistent with the bind/rest
+    // construction used above.
+    // const glm::mat4 &gltf_joint_rest_pose = node_data.mGltfRestMatrix;
+    // glm::mat4 rest_pose = coord_system_rotation * gltf_joint_rest_pose;
+    glm::mat4 rest_pose = convert_transform_to_viewer_basis(node_data.mGltfRestMatrix, mApplyXYRotation);
+    // </FS:Beq>
 
     LL_INFOS("GLTF_DEBUG") << "rest matrix for joint " << joint_name << ": ";
 
