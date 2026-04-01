@@ -45,7 +45,9 @@
 #include <dom/domInstance_controller.h>
 #include <dom/domNode.h>
 
-LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMeshFile* data, LLLocalMeshFileLOD lod)
+LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(const std::string& filename,
+                                                                     LLLocalMeshFileLOD lod,
+                                                                     std::vector<std::unique_ptr<LLLocalMeshObject>>& object_vector)
 {
     pushLog("DAE Importer", "Starting");
     LL_DEBUGS("LocalMesh") << "DAE Importer: Starting" << LL_ENDL;
@@ -56,7 +58,6 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
     daeDocument* collada_document       = nullptr;
     daeElement*  collada_document_root  = nullptr;
     daeDatabase* collada_db             = nullptr;
-    std::string  filename               = data->getFilename(lod);
     setLod(lod);
 
     // open file and check if opened
@@ -192,7 +193,6 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
                 // normalization is necessary for skin calculations down below,
                 // but we also have to do it once per each lod so we'll call it foreach lod.
 
-                auto& object_vector = data->getObjectVector();
                 object_vector.push_back(std::move(current_object));
                 mesh_usage_tracker.push_back(mesh_current);
             }
@@ -206,7 +206,6 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
         // parsing a lower lod file, into objects made during LOD3 parsing
         else
         {
-            auto& object_vector = data->getObjectVector();
             if (object_vector.size() <= mesh_index)
             {
                 pushLog("DAE Importer", "LOD" + std::to_string(mLod) + " is requesting an object that LOD3 did not have or failed to load, skipping.");
@@ -236,7 +235,7 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
     }
 
     // check if we managed to load any objects at all, if not - no point continuing.
-    if (data->getObjectVector().empty())
+    if (object_vector.empty())
     {
         pushLog("DAE Importer", "No objects have been successfully loaded, stopping.");
         return loadFile_return(false, mLoadingLog);
@@ -291,7 +290,6 @@ LLLocalMeshImportDAE::loadFile_return LLLocalMeshImportDAE::loadFile(LLLocalMesh
             continue;
         }
 
-        auto& object_vector = data->getObjectVector();
         if (current_object_iter >= object_vector.size())
         {
             pushLog("DAE Importer", "Requested object out of bounds, skipping.");

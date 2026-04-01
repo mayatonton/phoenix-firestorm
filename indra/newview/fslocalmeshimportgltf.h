@@ -50,7 +50,9 @@ class FSLocalMeshImportGLTF : public FSLocalMeshImportBase
 public:
     using loadFile_return = FSLocalMeshImportBase::loadFile_return;
     FSLocalMeshImportGLTF();
-    loadFile_return loadFile(LLLocalMeshFile* data, LLLocalMeshFileLOD lod);
+    loadFile_return loadFile(const std::string& filename,
+                             LLLocalMeshFileLOD lod,
+                             std::vector<std::unique_ptr<LLLocalMeshObject>>& object_vector);
 
 private:
     bool processNodeMesh(const LL::GLTF::Asset& asset, const LL::GLTF::Node& node, LLLocalMeshObject* object);

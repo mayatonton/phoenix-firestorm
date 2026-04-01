@@ -482,19 +482,14 @@ FSLocalMeshImportGLTF::FSLocalMeshImportGLTF()
     mLogToInfo = false;
 }
 
-FSLocalMeshImportGLTF::loadFile_return FSLocalMeshImportGLTF::loadFile(LLLocalMeshFile* data, LLLocalMeshFileLOD lod)
+FSLocalMeshImportGLTF::loadFile_return FSLocalMeshImportGLTF::loadFile(const std::string& filename,
+                                                                       LLLocalMeshFileLOD lod,
+                                                                       std::vector<std::unique_ptr<LLLocalMeshObject>>& object_vector)
 {
     pushLog("GLTF Importer", "Starting");
     LL_DEBUGS("LocalMesh") << "GLTF Importer: Starting" << LL_ENDL;
 
-    if (!data)
-    {
-        pushLog("GLTF Importer", "Local mesh data pointer is null.", true);
-        return loadFile_return(false, mLoadingLog);
-    }
-
     LL::GLTF::Asset asset;
-    std::string filename = data->getFilename(lod);
     setLod(lod);
 
     if (!asset.load(filename, false))
@@ -535,8 +530,6 @@ FSLocalMeshImportGLTF::loadFile_return FSLocalMeshImportGLTF::loadFile(LLLocalMe
         pushLog("GLTF Importer", "GLTF asset contains no mesh nodes.");
         return loadFile_return(false, mLoadingLog);
     }
-
-    auto& object_vector = data->getObjectVector();
 
     for (size_t object_idx = 0; object_idx < mesh_nodes.size(); ++object_idx)
     {

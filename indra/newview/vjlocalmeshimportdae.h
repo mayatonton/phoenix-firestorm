@@ -62,7 +62,9 @@ public:
 
 public:
     using loadFile_return = FSLocalMeshImportBase::loadFile_return;
-    loadFile_return loadFile(LLLocalMeshFile* data, LLLocalMeshFileLOD lod);
+    loadFile_return loadFile(const std::string& filename,
+                             LLLocalMeshFileLOD lod,
+                             std::vector<std::unique_ptr<LLLocalMeshObject>>& object_vector);
     bool processObject(domMesh* current_mesh, LLLocalMeshObject* current_object);
     bool processSkin(daeDatabase* collada_db, daeElement* collada_document_root, domMesh* current_mesh, domSkin* current_skin, std::unique_ptr<LLLocalMeshObject>& current_object);
     bool processSkeletonJoint(domNode* current_node, std::map<std::string, std::string, std::less<>>& joint_map, std::map<std::string, LLMatrix4>& joint_transforms, bool recurse_children = false);
