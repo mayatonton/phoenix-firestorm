@@ -123,12 +123,43 @@
         width="300"
         label="Apply joint offsets."
         tool_tip="Apply any joint offsets in the mesh, by default these are ignored." />
+      <check_box name="checkbox_auto_reload"
+        height="15"
+        control_name="FSLocalMeshAutoReload"
+        follows="top|left"
+        top_pad="5"
+        left="8"
+        width="300"
+        label="Auto-reload changed files."
+        tool_tip="Watch local mesh files on disk and reload them automatically when they change." />
+      <text name="auto_reload_period_label"
+        follows="left|top"
+        layout="topleft"
+        left="8"
+        height="12"
+        top_pad="8"
+        width="130">
+          Scan period (sec):
+      </text>
+      <spinner name="auto_reload_period"
+        control_name="FSLocalMeshAutoReloadPeriod"
+        decimal_digits="2"
+        increment="0.25"
+        min_val="0.25"
+        max_val="60"
+        follows="left|top"
+        layout="topleft"
+        left_pad="5"
+        top_delta="-4"
+        width="80"
+        height="20"
+        tool_tip="How often to scan watched local mesh files for changes." />
       <text name="lod_suffix_label"
         follows="left|top"
         layout="topleft"
         left="8"
         height="12"
-        top_pad="5"
+        top_pad="8"
         width="110">
           LOD Suffixes:
       </text>
@@ -297,7 +328,8 @@
     left="200"
     top_delta="0"
     width="90"
-    visible="true" />
+    visible="true"
+    checkbox_control="FSLocalMeshAutoReload" />
   <button name="btn_clear"
     height="18"
     label="Clear"
