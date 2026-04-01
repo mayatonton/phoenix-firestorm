@@ -129,6 +129,18 @@ void LLLocalMeshFace::logFaceInfo() const
     }
 }
 
+std::unique_ptr<LLLocalMeshFace> LLLocalMeshFace::clone() const
+{
+    auto cloned_face = std::make_unique<LLLocalMeshFace>();
+    cloned_face->mIndices = mIndices;
+    cloned_face->mPositions = mPositions;
+    cloned_face->mNormals = mNormals;
+    cloned_face->mUVs = mUVs;
+    cloned_face->mSkin = mSkin;
+    cloned_face->mFaceBoundingBox = mFaceBoundingBox;
+    return cloned_face;
+}
+
 /*==========================================*/
 /*  LLLocalMeshObject: collection of faces  */
 /*  has object name, transform & skininfo,  */
@@ -143,6 +155,37 @@ LLLocalMeshObject::LLLocalMeshObject(std::string_view name):
 }
 
 LLLocalMeshObject::~LLLocalMeshObject() = default;
+
+std::unique_ptr<LLLocalMeshObject> LLLocalMeshObject::clone() const
+{
+    auto cloned_object = std::make_unique<LLLocalMeshObject>(mObjectName);
+
+    for (S32 lod_iter = LOCAL_LOD_LOWEST; lod_iter < LOCAL_NUM_LODS; ++lod_iter)
+    {
+        auto current_lod = static_cast<LLLocalMeshFileLOD>(lod_iter);
+        auto& cloned_faces = cloned_object->getFaces(current_lod);
+        const auto& source_faces = mFaces[lod_iter];
+        cloned_faces.reserve(source_faces.size());
+        for (const auto& face : source_faces)
+        {
+            cloned_faces.push_back(face ? face->clone() : nullptr);
+        }
+    }
+
+    cloned_object->mObjectBoundingBox = mObjectBoundingBox;
+    cloned_object->mObjectTranslation = mObjectTranslation;
+    cloned_object->mObjectSize = mObjectSize;
+    cloned_object->mObjectScale = mObjectScale;
+    cloned_object->mSculptID = mSculptID;
+    cloned_object->mVolumeParams = mVolumeParams;
+
+    if (mMeshSkinInfoPtr.notNull())
+    {
+        cloned_object->mMeshSkinInfoPtr = new LLMeshSkinInfo(*mMeshSkinInfoPtr);
+    }
+
+    return cloned_object;
+}
 
 void LLLocalMeshObject::logObjectInfo() const
 {
