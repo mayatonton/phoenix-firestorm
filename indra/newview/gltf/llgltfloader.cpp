@@ -1139,19 +1139,6 @@ bool LLGLTFLoader::populateModelFromMesh(LLModel* pModel, const std::string& bas
         LL::GLTF::Skin& gltf_skin = mGLTFAsset.mSkins[skinIdx];
         LLMeshSkinInfo& skin_info = pModel->mSkinInfo;
         S32 valid_joints_count = mValidJointsCount[skinIdx];
-        // <FS:Beq> Apply the shared legacy rig critique before any glTF-specific
-        // pruning so glTF preview/upload follows the same hard joint cap as DAE.
-        std::vector<std::string> recognized_joint_names;
-        recognized_joint_names.reserve(valid_joints_count);
-        for (const std::string& joint_name : mJointNames[skinIdx])
-        {
-            if (!joint_name.empty())
-            {
-                recognized_joint_names.push_back(joint_name);
-            }
-        }
-        critiqueRigForUploadApplicability(recognized_joint_names);
-        // </FS:Beq>
 
         S32 replacement_index = 0;
         std::vector<S32> gltfindex_to_joitindex_map;
