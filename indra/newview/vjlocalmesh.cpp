@@ -28,6 +28,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llcallbacklist.h"
+#include "lleventtimer.h"
 #include "llsdutil.h"
 #include "llviewerobjectlist.h"
 #include "llvovolume.h"
@@ -1221,10 +1222,33 @@ LLLocalMeshSystem::LLLocalMeshSystem()
     mLoadedFileList.clear();
     mFileAsyncsOngoing = false;
     mFloaterPtr = nullptr;
+    mAutoReloadTimer = nullptr;
+
+    mAutoReloadConnection = gSavedSettings.getControl("FSLocalMeshAutoReload")->getCommitSignal()->connect(
+        [this](LLControlVariable*, const LLSD&, const LLSD&)
+        {
+            refreshAutoReloadTimer();
+        });
+
+    mAutoReloadPeriodConnection = gSavedSettings.getControl("FSLocalMeshAutoReloadPeriod")->getCommitSignal()->connect(
+        [this](LLControlVariable*, const LLSD&, const LLSD&)
+        {
+            refreshAutoReloadTimer();
+        });
+
+    refreshAutoReloadTimer();
 }
 
 LLLocalMeshSystem::~LLLocalMeshSystem()
 {
+    if (mAutoReloadTimer)
+    {
+        delete mAutoReloadTimer;
+        mAutoReloadTimer = nullptr;
+    }
+    mAutoReloadConnection.disconnect();
+    mAutoReloadPeriodConnection.disconnect();
+
     /* clear files, triggers releasing donor objects
        and destructs any held localmesh objects. */
     mLoadedFileList.clear();
@@ -1235,6 +1259,7 @@ void LLLocalMeshSystem::addFile(const std::string& filename, bool try_lods)
     auto loaded_file = std::make_unique<LLLocalMeshFile>(filename, try_lods);
     mLoadedFileList.push_back(std::move(loaded_file));
     triggerFloaterRefresh(false);
+    refreshAutoReloadTimer();
 
     triggerCheckFileAsyncStatus();
 }
@@ -1270,6 +1295,7 @@ void LLLocalMeshSystem::deleteFile(const LLUUID& local_file_id)
     if (delete_done)
     {
         triggerFloaterRefresh();
+        refreshAutoReloadTimer();
     }
 }
 
@@ -1291,7 +1317,7 @@ void LLLocalMeshSystem::reloadFile(const LLUUID& local_file_id)
             }
 
             // found the requested by id file, it's not loading, let's make it loading.
-            current_file->reloadLocalMeshObjects();
+            current_file->reloadLocalMeshObjects(false, true, false);
             reload_started = true;
         }
     }
@@ -1391,6 +1417,50 @@ void LLLocalMeshSystem::checkFileAsyncStatus()
     if (need_ui_update)
     {
         triggerFloaterRefresh();
+    }
+}
+
+void LLLocalMeshSystem::refreshAutoReloadTimer()
+{
+    if (mAutoReloadTimer)
+    {
+        delete mAutoReloadTimer;
+        mAutoReloadTimer = nullptr;
+    }
+
+    if (!gSavedSettings.getBOOL("FSLocalMeshAutoReload") || mLoadedFileList.empty())
+    {
+        return;
+    }
+
+    const F32 period = llmax(0.1f, gSavedSettings.getF32("FSLocalMeshAutoReloadPeriod"));
+    mAutoReloadTimer = LLEventTimer::run_every(period, [this]()
+    {
+        checkAutoReloadFiles();
+    });
+}
+
+void LLLocalMeshSystem::checkAutoReloadFiles()
+{
+    if (!gSavedSettings.getBOOL("FSLocalMeshAutoReload"))
+    {
+        refreshAutoReloadTimer();
+        return;
+    }
+
+    bool reload_started = false;
+    for (auto& current_file : mLoadedFileList)
+    {
+        if (current_file->needsReload())
+        {
+            current_file->reloadLocalMeshObjects(false, false, true);
+            reload_started = true;
+        }
+    }
+
+    if (reload_started)
+    {
+        triggerCheckFileAsyncStatus();
     }
 }
 

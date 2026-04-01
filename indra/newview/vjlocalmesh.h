@@ -30,9 +30,11 @@
 #include "llmodel.h" // LLMeshSkinInfo
 
 // STL headers
+#include <boost/signals2/connection.hpp>
 #include <future>
 
 class LLFloaterLocalMesh;
+class LLEventTimer;
 
 enum LLLocalMeshFileLOD
 {
@@ -271,6 +273,8 @@ public:
     // high level async support
     void triggerCheckFileAsyncStatus();
     void checkFileAsyncStatus();
+    void refreshAutoReloadTimer();
+    void checkAutoReloadFiles();
 
     // floater two-way communication
     void                                              registerFloaterPointer(LLFloaterLocalMesh* floater_ptr);
@@ -286,4 +290,7 @@ private:
     std::vector<std::unique_ptr<LLLocalMeshFile>> mLoadedFileList;
     bool                                          mFileAsyncsOngoing;
     LLFloaterLocalMesh*                           mFloaterPtr;
+    LLEventTimer*                                 mAutoReloadTimer;
+    boost::signals2::connection                   mAutoReloadConnection;
+    boost::signals2::connection                   mAutoReloadPeriodConnection;
 };
