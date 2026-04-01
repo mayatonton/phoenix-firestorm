@@ -169,8 +169,21 @@ public:
     struct LLLocalMeshLoaderReply
     {
         bool                     mChanged;
+        bool                     mLoaded;
+        bool                     mPreserveActiveOnFailure;
+        bool                     mAutoReload;
         std::vector<std::string> mLog;
         std::array<bool, 4>      mStatus;
+        std::array<std::string, LOCAL_NUM_LODS> mFilenames;
+        std::array<LLSD, LOCAL_NUM_LODS>        mLastModified;
+        std::vector<std::unique_ptr<LLLocalMeshObject>> mLoadedObjectList;
+    };
+
+    struct LLLocalMeshReloadBinding
+    {
+        LLUUID      mSculptID;
+        S32         mObjectIndex;
+        std::string mObjectName;
     };
 
     // life cycle management
@@ -182,10 +195,12 @@ public:
     LLLocalMeshFile& operator=(const LLLocalMeshFile& local_mesh_file) = delete;
 
     // file loading
-    void                                             reloadLocalMeshObjects(bool initial_load = false);
+    void                                             reloadLocalMeshObjects(bool initial_load = false,
+                                                                          bool force_reload = true,
+                                                                          bool auto_reload = false);
     LLLocalMeshFileStatus                            reloadLocalMeshObjectsCheck();
     void                                             reloadLocalMeshObjectsCallback();
-    bool                                             updateLastModified(LLLocalMeshFileLOD lod);
+    bool                                             needsReload() const;
     std::vector<std::unique_ptr<LLLocalMeshObject>>& getObjectVector() { return mLoadedObjectList; };
 
     // info getters
@@ -202,6 +217,20 @@ public:
     void pushLog(const std::string& who, const std::string& what, bool is_error = false);
 
 private:
+    bool readLastModified(const std::string& filename, LLSD& last_modified) const;
+    void discoverLodFilenames(const std::array<std::string, LOCAL_NUM_LODS>& seed_filenames,
+                              std::array<std::string, LOCAL_NUM_LODS>& discovered_filenames) const;
+    bool detectReloadChanges(const std::array<std::string, LOCAL_NUM_LODS>& candidate_filenames,
+                             const std::array<LLSD, LOCAL_NUM_LODS>& candidate_last_modified,
+                             std::array<bool, LOCAL_NUM_LODS>& changed_lods) const;
+    std::vector<std::unique_ptr<LLLocalMeshObject>> cloneLoadedObjects() const;
+    std::vector<LLLocalMeshReloadBinding>           collectReloadBindings() const;
+    bool resolveBindingObjectIndex(const LLLocalMeshReloadBinding& binding,
+                                   const std::vector<std::unique_ptr<LLLocalMeshObject>>& object_list,
+                                   S32& object_index) const;
+    bool canApplyReloadBindings(const std::vector<std::unique_ptr<LLLocalMeshObject>>& object_list,
+                                std::string& failure_reason) const;
+
     std::array<std::string, LOCAL_NUM_LODS> mFilenames;
     std::array<LLSD, LOCAL_NUM_LODS>        mLastModified;
     std::array<bool, LOCAL_NUM_LODS>        mLoadedSuccessfully;
@@ -215,7 +244,7 @@ private:
 
     std::future<LLLocalMeshLoaderReply>             mAsyncFuture;
     std::vector<std::unique_ptr<LLLocalMeshObject>> mLoadedObjectList;
-    std::vector<LLUUID>                             mSavedObjectSculptIDs;
+    std::vector<LLLocalMeshReloadBinding>           mSavedObjectBindings;
 };
 
 /*=============================*/
