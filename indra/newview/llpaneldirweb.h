@@ -54,6 +54,9 @@ public:
 
     void setFloaterDirectory(LLFloaterDirectory* floater) { mFloaterDirectory = floater; }
 
+    // <FS:Ansariel> Select default search element on tab change
+    /*virtual*/ bool focusFirstItem(bool prefer_text_fields = false, bool focus_flash = true);
+
 protected:
     static void onClickHome( void* data );
 

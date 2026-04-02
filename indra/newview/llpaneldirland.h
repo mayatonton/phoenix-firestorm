@@ -42,6 +42,9 @@ public:
 
     void performQuery();
 
+    // <FS:Ansariel> Select default search element on tab change
+    /*virtual*/ bool focusFirstItem(bool prefer_text_fields = false, bool focus_flash = true);
+
 protected:
     void onClickSort();
     static void onCommitPrice(LLUICtrl* ctrl, void* data);
