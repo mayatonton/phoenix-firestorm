@@ -51,7 +51,7 @@
 			<menu_item_check label="Movelock" name="Move Lock"/>
 			<menu_item_check label="Pre-Sprung-Animation ignorieren" name="Avatar Ignore Prejump"/>
 			<menu_item_call label="Zu nächstem Avatar drehen" name="AvatarFaceNearest"/>
-			<menu_item_check label="Avatar-Ausrichtung" name="Avatar alignment"/>
+			<menu_item_check label="Avatar-Ausrichtung" name="AvatarAlign"/>
 		</menu>
 		<menu_item_check label="Steuerung" name="Movement Controls"/>
 		<menu_item_check label="Kamerasteuerung" name="Camera Controls"/>
