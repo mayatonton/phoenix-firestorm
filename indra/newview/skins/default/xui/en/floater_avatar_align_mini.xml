@@ -37,13 +37,13 @@
         image_overlay="Single_Folder_Back"
         top="2" left="4" width="18" height="18"
         label=""
-        tool_tip="Rotate your avatar 1° on the left" />
+        tool_tip="Rotate your avatar 1° to the left" />
     <button
         name="btn_rotate_right_1"
         image_overlay="Single_Folder_Forward"
         top="2" left_pad="2" width="18" height="18"
         label=""
-        tool_tip="Rotate your avatar 1° on the right" />
+        tool_tip="Rotate your avatar 1° to the right" />
     <button
         name="btn_avatar"
         image_overlay="Command_FaceNearest_Icon"
