@@ -455,7 +455,7 @@ jobs:
       
 
       - name: Post Bugsplat Symbols
-        uses: BugSplat-Git/symbol-upload@main
+        uses: beqjanus/symbol-upload@main
         with:
           clientId: ${{ 
             steps.version.outputs.viewer_release_type == 'Release' && secrets.BUGSPLAT_RELEASE_ID || 
