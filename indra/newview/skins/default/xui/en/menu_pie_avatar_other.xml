@@ -122,7 +122,6 @@
         </pie_slice>
 <!-- [/FS:Chanayane] -->
 
-        <pie_separator/>
         <pie_slice
             label="Eject..."
             name="Eject..."
