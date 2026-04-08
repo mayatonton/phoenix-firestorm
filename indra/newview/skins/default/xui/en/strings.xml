@@ -2849,6 +2849,8 @@ name="Command_360_Capture_Label">360° Snapshot</string>
   <!-- [FS:Chanayane] Compass floater -->
   <string name="Command_AvatarAlign_Tooltip">Align your avatar to a cardinal direction or face the nearest avatar</string>
   <string name="Command_FaceNearest_Tooltip">Turn to face the nearest avatar within 20m</string>
+  <string name="FSAvatarAlignToggleMini">Mini</string>
+  <string name="FSAvatarAlignToggleFull">Full</string>
   <!-- [/FS:Chanayane] -->
   <string name="Command_Group_Titles_Tooltip">Change active group tag</string>
   <string name="Command_Wearable_Favorites_Tooltip">Open the list of favorite wearables</string>
