@@ -117,6 +117,7 @@ set(viewer_SOURCE_FILES
     fsfloateraddtocontactset.cpp
     fsfavoritegroups.cpp
     fsfloaterassetblacklist.cpp
+    fsfloateravataralign.cpp
     fsfloateravatarrendersettings.cpp
     fsfloaterblocklist.cpp
     fsfloatercontacts.cpp
@@ -124,6 +125,7 @@ set(viewer_SOURCE_FILES
     fsfloaterexport.cpp
     fsfloatergroup.cpp
     fsfloatergrouptitles.cpp
+    fsgrouptitleregionmgr.cpp
     fsfloaterimport.cpp
     fsfloaterim.cpp
     fsfloaterimcontainer.cpp
@@ -163,6 +165,7 @@ set(viewer_SOURCE_FILES
     fspanelface.cpp
     fspanelimcontrolpanel.cpp
     fspanellogin.cpp
+    fspanelpreferenceuisounds.cpp
     fspanelprefs.cpp
     fspanelradar.cpp
     fsparticipantlist.cpp
@@ -198,7 +201,9 @@ set(viewer_SOURCE_FILES
     llagentwearablesfetch.cpp
     vjlocalmesh.cpp
     vjfloaterlocalmesh.cpp
+    fslocalmeshimportbase.cpp
     vjlocalmeshimportdae.cpp
+    fslocalmeshimportgltf.cpp
 
     gltfscenemanager.cpp
     # <FS:Ansariel> Group GLTF files into their subfolders
@@ -980,10 +985,12 @@ set(viewer_HEADER_FILES
     fsfloaterexport.h
     fsfloatergroup.h
     fsfloatergrouptitles.h
+    fsgrouptitleregionmgr.h
     fsfloaterimport.h
     fsfloaterim.h
     fsfloaterimcontainer.h
     fsfloaternearbychat.h
+    fsfloateravataralign.h
     fsfloaterpartialinventory.h
     fsfloaterplacedetails.h
     fsfloaterposer.h
@@ -1020,6 +1027,7 @@ set(viewer_HEADER_FILES
     fspanelface.h
     fspanelimcontrolpanel.h
     fspanellogin.h
+    fspanelpreferenceuisounds.h
     fspanelprefs.h
     fspanelradar.h
     fsparticipantlist.h
@@ -1055,7 +1063,9 @@ set(viewer_HEADER_FILES
     omnifilterengine.h
     vjlocalmesh.h
     vjfloaterlocalmesh.h
+    fslocalmeshimportbase.h
     vjlocalmeshimportdae.h
+    fslocalmeshimportgltf.h
 
     gltfscenemanager.h
     groupchatlistener.h
@@ -3160,4 +3170,3 @@ if (LL_TESTS)
 endif (LL_TESTS)
 
 check_message_template(${VIEWER_BINARY_NAME})
-

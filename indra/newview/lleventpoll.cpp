@@ -77,9 +77,9 @@ namespace Details
     // We will wait RETRY_SECONDS + (errorCount * RETRY_SECONDS_INC) before retrying after an error.
     // This means we attempt to recover relatively quickly but back off giving more time to recover
     // until we finally give up after MAX_EVENT_POLL_HTTP_ERRORS attempts.
-    constexpr F32 EVENT_POLL_ERROR_RETRY_SECONDS = 15.f; // ~ half of a normal timeout.
-    constexpr F32 EVENT_POLL_ERROR_RETRY_SECONDS_INC = 5.f; // ~ half of a normal timeout.
-    constexpr S32 MAX_EVENT_POLL_HTTP_ERRORS = 10; // ~5 minutes, by the above rules.
+    constexpr F32 EVENT_POLL_ERROR_RETRY_SECONDS = 1.f;
+    constexpr F32 EVENT_POLL_ERROR_RETRY_SECONDS_INC = 3.f;
+    constexpr S32 MAX_EVENT_POLL_ERRORS = 15; // ~5 minutes, by the above rules.
     constexpr F64 MIN_SECONDS_PASSED = 10.0; // Minimum time we expect the server to hold the request.
 
     int LLEventPollImpl::sNextCounter = 1;
@@ -287,36 +287,25 @@ namespace Details
                 }
                 else if (!status.isHttpStatus())
                 {
-                    /// Some LLCore or LIBCurl error was returned.  This is unlikely to be recoverable
-                    // <FS:Beq> FIRE-36454 TP Disconnects in 7.2.3
-                    // LL_WARNS("LLEventPollImpl") << "<" << counter << "> Critical error from poll request returned from libraries.  Canceling coroutine." << LL_ENDL;
-                    LL_WARNS("LLEventPollImpl") << "<" << counter
-                        << "> Critical error from poll request returned from libraries.  Canceling coroutine."
-                        << " status: " << status.toTerseString()
-                        << ", time passed: " << message_time.getElapsedSeconds()
-                        << ", llcore retries: " << llcore_retries
-                        << ", sender: " << mSenderIp << LL_ENDL;
-                    // </FS:Beq>
-                    break;
+                    // Some LLCore or LIBCurl error was returned.
+                    LL_WARNS("LLEventPollImpl") << "<" << counter << "> Error from poll request returned from libraries. " << status.toTerseString() << LL_ENDL;
                 }
-                LL_WARNS("LLEventPollImpl") << "<" << counter << "> Error result from LLCoreHttpUtil::HttpCoroHandler. Code "
-                    // <FS:Beq> FIRE-36454 TP Disconnects in 7.2.3
-                    // << status.toTerseString() << ": '" << httpResults["message"] << "'" << LL_ENDL;
-                    << status.toTerseString() << ": '" << httpResults["message"]
-                    << "', time passed: " << message_time.getElapsedSeconds()
-                    << ", llcore retries: " << llcore_retries
-                    << ", sender: " << mSenderIp << LL_ENDL;
-                    // </FS:Beq>
+                else
+                {
+                    LL_WARNS("LLEventPollImpl") << "<" << counter << "> Error result from LLCoreHttpUtil::HttpCoroHandler. Code "
+                        << status.toTerseString() << ": '" << httpResults["message"] << "'" << LL_ENDL;
+                }
 
-                if (errorCount < MAX_EVENT_POLL_HTTP_ERRORS)
+                if (errorCount < MAX_EVENT_POLL_ERRORS)
                 {   // An unanticipated error has been received from our poll
                     // request. Calculate a timeout and wait for it to expire(sleep)
-                    // before trying again.  The sleep time is increased by 5 seconds
+                    // before trying again.  The sleep time is increased by 3 seconds
                     // for each consecutive error.
-                    ++errorCount;
 
                     F32 waitToRetry = EVENT_POLL_ERROR_RETRY_SECONDS
                         + errorCount * EVENT_POLL_ERROR_RETRY_SECONDS_INC;
+
+                    ++errorCount;
 
                     LL_WARNS("LLEventPollImpl") << "<" << counter << "> Retrying in " << waitToRetry <<
                         // <FS:Beq> FIRE-36454 TP Disconnects in 7.2.3
