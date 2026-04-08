@@ -658,21 +658,6 @@ class Windows_x86_64_Manifest(ViewerManifest):
                                                 # '*.tar.xz')))
             # </FS:Ansariel>
 
-            # <FS:Ansariel> Remove VMP
-            #with self.prefix(src=os.path.join(pkgdir, "VMP")):
-                # include the compiled launcher scripts so that it gets included in the file_list
-            #    self.path('SLVersionChecker.exe')
-
-            #with self.prefix(dst="vmp_icons"):
-            #    with self.prefix(src=self.icon_path()):
-            #        self.path("secondlife.ico")
-                #VMP  Tkinter icons
-            #    with self.prefix(src="vmp_icons"):
-            #        self.path("*.png")
-            #        self.path("*.gif")
-
-            # </FS:Ansariel> Remove VMP
-
         # Plugin host application
         self.path2basename(os.path.join(os.pardir,
                                         'llplugin', 'slplugin', self.args['configuration']),
@@ -1995,6 +1980,12 @@ class Darwin_x86_64_Manifest(ViewerManifest):
         self.package_file = finalname
         self.remove(sparsename)
         self.fs_save_osx_symbols()
+
+        # Generate Velopack update packages if enabled
+        # This creates the nupkg and RELEASES files needed for auto-updates
+        # Distribution is still via DMG, but updates use Velopack
+        if self.args.get('velopack', 'OFF') == 'ON':
+            self.velopack_package_finish()
 
         # Generate Velopack update packages if enabled
         # This creates the nupkg and RELEASES files needed for auto-updates

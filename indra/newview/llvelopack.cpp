@@ -405,6 +405,50 @@ static void register_protocol_handler(const std::wstring& protocol,
     }
 }
 
+void clear_nsis_links()
+{
+    wchar_t path[MAX_PATH];
+
+    // 1. The 'start' shortcuts set by nsis would be global, like app shortcut:
+    // C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Second Life Viewer\Second Life Viewer.lnk
+    // But it isn't just one link, it's a whole directory that needs to be removed.
+    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_COMMON_PROGRAMS, NULL, 0, path)))
+    {
+        std::wstring start_menu_path = path;
+        std::wstring folder_path   = start_menu_path + L"\\" + get_app_name();
+
+        std::error_code ec;
+        std::filesystem::path dir(folder_path);
+        if (std::filesystem::exists(dir, ec))
+        {
+            std::filesystem::remove_all(dir, ec);
+            if (ec)
+            {
+                LL_WARNS("Velopack") << "Failed to remove NSIS start menu directory: "
+                    << ll_convert_wide_to_string(folder_path) << LL_ENDL;
+            }
+        }
+    }
+
+    // 2. Desktop link, also a global one.
+    // C:\Users\Public\Desktop
+    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_COMMON_DESKTOPDIRECTORY, NULL, 0, path)))
+    {
+        std::wstring desktop_path = path;
+        std::wstring shortcut_path = desktop_path + L"\\" + get_app_name() + L".lnk";
+        if (!DeleteFileW(shortcut_path.c_str()))
+        {
+            DWORD error = GetLastError();
+            if (error != ERROR_FILE_NOT_FOUND)
+            {
+                LL_WARNS("Velopack") << "Failed to delete NSIS desktop shortcut: "
+                    << ll_convert_wide_to_string(shortcut_path)
+                    << " (error: " << error << ")" << LL_ENDL;
+            }
+        }
+    }
+}
+
 static void parse_version(const wchar_t* version_str, int& major, int& minor, int& patch, uint64_t& build)
 {
     major = minor = patch = 0;
@@ -414,7 +458,11 @@ static void parse_version(const wchar_t* version_str, int& major, int& minor, in
     swscanf(version_str, L"%d.%d.%d.%llu", &major, &minor, &patch, &build);
 }
 
-bool get_nsis_uninstaller_path(wchar_t* path_buffer, DWORD bufSize, S32 cur_major_ver, S32 cur_minor_ver, S32 cur_patch_ver, U64 cur_build_ver)
+bool get_nsis_version(
+    int& nsis_major,
+    int& nsis_minor,
+    int& nsis_patch,
+    uint64_t& nsis_build)
 {
     // Test for presence of NSIS viewer registration, then
     // attempt to read uninstall info
@@ -439,23 +487,12 @@ bool get_nsis_uninstaller_path(wchar_t* path_buffer, DWORD bufSize, S32 cur_majo
         return false;
     }
 
-    int nsis_major = 0, nsis_minor = 0, nsis_patch = 0;
-    uint64_t nsis_build = 0;
     parse_version(version_buf, nsis_major, nsis_minor, nsis_patch, nsis_build);
 
-    // Compare numerically
-    if ((nsis_major > cur_major_ver) ||
-        (nsis_major == cur_major_ver && nsis_minor > cur_minor_ver) ||
-        (nsis_major == cur_major_ver && nsis_minor == cur_minor_ver && nsis_patch > cur_patch_ver) ||
-         // Assume that bigger build number means newer version, which is not always true but works for our purposes
-        (nsis_major == cur_major_ver && nsis_minor == cur_minor_ver && nsis_patch == cur_patch_ver && nsis_build > cur_build_ver))
-    {
-        LL_INFOS() << "Found installed nsis version that is newer" << nsis_major << "." << nsis_minor << "." << nsis_patch << LL_ENDL;
-        RegCloseKey(hkey);
-        return false;
-    }
-
-    LONG rv = RegGetValueW(hkey, nullptr, L"UninstallString", RRF_RT_REG_SZ, &type, path_buffer, &bufSize);
+    // Make sure it actually exists and not a dead entry.
+    wchar_t path_buffer[MAX_PATH] = { 0 };
+    DWORD path_buf_size = sizeof(path_buffer);
+    LONG rv = RegGetValueW(hkey, nullptr, L"UninstallString", RRF_RT_REG_SZ, &type, path_buffer, &path_buf_size);
     RegCloseKey(hkey);
     if (rv != ERROR_SUCCESS)
     {
@@ -499,10 +536,15 @@ static void register_uninstall_info(const std::wstring& install_dir,
                                     const std::wstring& version)
 {
     std::wstring app_name_oneword = get_app_name_oneword();
+    // Clears velopack's recently created 'uninstall' registry entry.
+    // We are going to use a custom one.
+    // Note that velopack doesn't know about our custom entry.
+    std::wstring key_path = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + app_name_oneword;
+    RegDeleteTreeW(HKEY_CURRENT_USER, key_path.c_str());
     // Use a unique key name to avoid conflicts with any existing NSIS-based uninstall info,
-    // which can cause nly one of the two entries to show up in the Add/Remove Programs list.
+    // which can cause only one of the two entries to show up in the Add/Remove Programs list.
     // The UI will show DisplayName, so the key name itself is not important to be user-friendly.
-    std::wstring key_path = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Vlpk" + app_name_oneword;
+    key_path = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Vlpk" + app_name_oneword;
     HKEY hkey;
 
     if (RegCreateKeyExW(HKEY_CURRENT_USER, key_path.c_str(), 0, NULL,
@@ -532,7 +574,7 @@ static void register_uninstall_info(const std::wstring& install_dir,
         RegSetValueExW(hkey, L"URLInfoAbout", 0, REG_SZ,
             (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
 
-        link_url = L"http://secondlife.com/support/downloads/";
+        link_url = L"https://secondlife.com/support/downloads/";
         RegSetValueExW(hkey, L"URLUpdateInfo", 0, REG_SZ,
             (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
 
@@ -540,7 +582,18 @@ static void register_uninstall_info(const std::wstring& install_dir,
         RegSetValueExW(hkey, L"NoModify", 0, REG_DWORD, (BYTE*)&no_modify, sizeof(DWORD));
         RegSetValueExW(hkey, L"NoRepair", 0, REG_DWORD, (BYTE*)&no_modify, sizeof(DWORD));
 
-        DWORD estimated_size = 120000;
+        // Format YYYYMMDD
+        wchar_t dateStr[9];
+        time_t t = time(NULL);
+        struct tm tm;
+        localtime_s(&tm, &t);
+        wcsftime(dateStr, 9, L"%Y%m%d", &tm);
+        RegSetValueExW(hkey, L"InstallDate", 0, REG_SZ, (BYTE*)dateStr, (DWORD)((wcslen(dateStr) + 1) * sizeof(wchar_t))); // Let Windows fill in the install date
+
+        // 800 MB, inaccurate, but for a rough idea.
+        // We can check folder size here, but it would take time and
+        // information is of low importance.
+        DWORD estimated_size = 800000;
         RegSetValueExW(hkey, L"EstimatedSize", 0, REG_DWORD, (BYTE*)&estimated_size, sizeof(DWORD));
 
         RegCloseKey(hkey);
@@ -579,19 +632,31 @@ static void remove_shortcuts(const std::wstring& app_name)
     DeleteFileW((desktop_path + L"\\" + app_name + L".lnk").c_str());
 }
 
+static void on_first_run(void* p_user_data, const char* app_version)
+{
+    // Velopack first executes 'after install' hook, then writes registry,
+    // then executes 'on first run' hook.
+    // As we need to clear velopack's 'uninstall' registry entry and use
+    // our own, clean it here instead of on_after_install.
+
+    std::wstring install_dir = get_install_dir();
+    std::wstring app_name = get_app_name();
+
+    int len = MultiByteToWideChar(CP_UTF8, 0, app_version, -1, NULL, 0);
+    std::wstring version(len, 0);
+    MultiByteToWideChar(CP_UTF8, 0, app_version, -1, &version[0], len);
+
+    register_uninstall_info(install_dir, app_name, version);
+}
+
 static void on_after_install(void* user_data, const char* app_version)
 {
     std::wstring install_dir = get_install_dir();
     std::wstring app_name = get_app_name();
     std::wstring exe_path = install_dir + L"\\" + get_viewer_exe_name();
 
-    int len = MultiByteToWideChar(CP_UTF8, 0, app_version, -1, NULL, 0);
-    std::wstring version(len, 0);
-    MultiByteToWideChar(CP_UTF8, 0, app_version, -1, &version[0], len);
-
     register_protocol_handler(PROTOCOL_SECONDLIFE, L"URL:Second Life", exe_path);
     register_protocol_handler(PROTOCOL_GRID_INFO, L"URL:Second Life", exe_path);
-    register_uninstall_info(install_dir, app_name, version);
     create_shortcuts(install_dir, app_name);
 }
 
@@ -619,6 +684,10 @@ static void on_log_message(void* user_data, const char* level, const char* messa
 // macOS-specific hooks
 // TODO: Implement protocol handler registration via Launch Services
 // TODO: Implement app bundle management
+
+static void on_first_run(void* user_data, const char* app_version)
+{
+}
 
 static void on_after_install(void* user_data, const char* app_version)
 {
@@ -808,6 +877,7 @@ bool velopack_initialize()
     vpkc_app_set_auto_apply_on_startup(false);
 
 #if LL_WINDOWS || LL_DARWIN
+    vpkc_app_set_hook_first_run(on_first_run);
     vpkc_app_set_hook_after_install(on_after_install);
     vpkc_app_set_hook_before_uninstall(on_before_uninstall);
 #endif
