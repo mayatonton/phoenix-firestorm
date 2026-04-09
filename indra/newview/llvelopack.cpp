@@ -298,13 +298,22 @@ static std::wstring get_app_name()
     // Match viewer_manifest.py app_name() logic: release channel uses "Viewer"
     // suffix instead of "Release" for display purposes (shortcuts, uninstall, etc.)
     std::wstring channel = LL_TO_WSTRING(LL_VIEWER_CHANNEL);
-    std::wstring release_suffix = L" Release";
-    if (channel.size() >= release_suffix.size() &&
-        channel.compare(channel.size() - release_suffix.size(), release_suffix.size(), release_suffix) == 0)
-    {
-        channel.replace(channel.size() - release_suffix.size(), release_suffix.size(), L" Viewer");
-    }
-    return channel;
+    // <FS:TJ> Get correct Firestorm app name
+    //std::wstring release_suffix = L" Release";
+    //if (channel.size() >= release_suffix.size() &&
+    //    channel.compare(channel.size() - release_suffix.size(), release_suffix.size(), release_suffix) == 0)
+    //{
+    //    channel.replace(channel.size() - release_suffix.size(), release_suffix.size(), L" Viewer");
+    //}
+    //return channel;
+    std::wstring prefix = L"Firestorm";
+    if (channel.starts_with(prefix))
+        channel.erase(0, prefix.size());
+#ifdef OPENSIM
+    prefix.append(L"OS");
+#endif
+    return prefix + channel;
+    // </FS:TJ>
 }
 
 static std::wstring get_app_name_oneword()
@@ -580,21 +589,33 @@ static void register_uninstall_info(const std::wstring& install_dir,
         RegSetValueExW(hkey, L"DisplayVersion", 0, REG_SZ,
                       (BYTE*)version.c_str(), (DWORD)((version.size() + 1) * sizeof(wchar_t)));
         RegSetValueExW(hkey, L"Publisher", 0, REG_SZ,
-                      (BYTE*)L"Linden Research, Inc.", 44);
+                      // <FS:TJ> Use Firestorm installation information
+                      //(BYTE*)L"Linden Research, Inc.", 44);
+                      (BYTE*)L"The Phoenix Firestorm Project, Inc.", 72);
+                      // </FS:TJ>
         RegSetValueExW(hkey, L"UninstallString", 0, REG_SZ,
                       (BYTE*)uninstall_cmd.c_str(), (DWORD)((uninstall_cmd.size() + 1) * sizeof(wchar_t)));
         RegSetValueExW(hkey, L"DisplayIcon", 0, REG_SZ,
                       (BYTE*)exe_path.c_str(), (DWORD)((exe_path.size() + 1) * sizeof(wchar_t)));
 
-        std::wstring link_url = L"https://support.secondlife.com/contact-support/";
+        // <FS:TJ> Use Firestorm installation information
+        //std::wstring link_url = L"https://support.secondlife.com/contact-support/";
+        std::wstring link_url = L"https://www.firestormviewer.org/support";
+        // </FS:TJ>
         RegSetValueExW(hkey, L"HelpLink", 0, REG_SZ,
             (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
 
-        link_url = L"https://secondlife.com/whatis/";
+        // <FS:TJ> Use Firestorm installation information
+        //link_url = L"https://secondlife.com/whatis/";
+        link_url = L"https://www.firestormviewer.org";
+        // </FS:TJ>
         RegSetValueExW(hkey, L"URLInfoAbout", 0, REG_SZ,
             (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
 
-        link_url = L"https://secondlife.com/support/downloads/";
+        // <FS:TJ> Use Firestorm installation information
+        //link_url = L"https://secondlife.com/support/downloads/";
+        link_url = L"https://www.firestormviewer.org/downloads";
+        // </FS:TJ>
         RegSetValueExW(hkey, L"URLUpdateInfo", 0, REG_SZ,
             (BYTE*)link_url.c_str(), (DWORD)((link_url.size() + 1) * sizeof(wchar_t)));
 
