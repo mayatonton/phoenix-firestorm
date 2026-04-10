@@ -16866,6 +16866,17 @@ Change of this parameter will affect the layout of buttons in notification toast
 			<key>Value</key>
 			<integer>0</integer>
 		</map>
+		<key>FSMenuBackgroundAlpha</key>
+		<map>
+			<key>Comment</key>
+			<string>Alpha (opacity) of menu backgrounds including context menus and the top menu bar (0.0 = fully transparent, 1.0 = fully opaque)</string>
+			<key>Persist</key>
+			<integer>1</integer>
+			<key>Type</key>
+			<string>F32</string>
+			<key>Value</key>
+			<real>0.9</real>
+		</map>
 		<key>PieMenuOpacity</key>
 		<map>
 			<key>Comment</key>
