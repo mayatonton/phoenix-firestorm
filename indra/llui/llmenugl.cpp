@@ -3274,10 +3274,10 @@ void LLMenuGL::draw( void )
     {
         // <FS:PP> Semi-transparent menu backgrounds
         // gl_rect_2d( 0, getRect().getHeight(), getRect().getWidth(), 0, mBackgroundColor.get() );
-        static LLCachedControl<F32> menu_bg_alpha(*LLUI::getInstance()->mSettingGroups["config"], "FSMenuBackgroundAlpha", 0.9f);
+        static LLUICachedControl<F32> menu_bg_alpha("FSMenuBackgroundAlpha");
         LLColor4 bg_color = mBackgroundColor.get();
         bg_color.mV[VALPHA] *= menu_bg_alpha;
-        gl_rect_2d( 0, getRect().getHeight(), getRect().getWidth(), 0, bg_color );
+        gl_rect_2d(0, getRect().getHeight(), getRect().getWidth(), 0, bg_color);
         // </FS:PP>
     }
     LLView::draw();
