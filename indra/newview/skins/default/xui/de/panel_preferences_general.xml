@@ -78,7 +78,7 @@
 		(Erfordert Neustart)
 	</text>
 	<text name="time_format_clock_note">
-		Uhrenformat für die obere Leiste unter Benutzerinterface - Top-Leisten.
+		Uhrenformat für die obere Leiste unter [secondlife:///app/openfloater/preferences?tab=ui&amp;subtab=UI-interface-top-bars Benutzerinterface - Top-Leisten].
 	</text>
 
 	<text name="title_afk_text" width="275">

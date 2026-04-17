@@ -72,7 +72,7 @@
 		（需重新啟動）
 	</text>
 	<text name="time_format_clock_note">
-		頂部列時鐘格式請至「使用者介面」-「頂部列」設定。
+		頂部列時鐘格式請至 [secondlife:///app/openfloater/preferences?tab=ui&amp;subtab=UI-interface-top-bars 使用者介面 - 頂部列] 設定。
 	</text>
 	<text name="title_afk_text">離開：</text>
 	<text name="title_afk_quit_text">離開多久後斷開連線：</text>

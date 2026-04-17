@@ -55,7 +55,7 @@
 		(Redémarrage requis)
 	</text>
 	<text name="time_format_clock_note">
-		Le format de l'heure pour la barre supérieure se trouve dans Interface - Barres supérieures.
+		Le format de l'heure pour la barre supérieure se trouve dans [secondlife:///app/openfloater/preferences?tab=ui&amp;subtab=UI-interface-top-bars Interface - Barres supérieures].
 	</text>
 	<text name="title_afk_text">Absent après :</text>
 	<text name="title_afk_quit_text">Déconnecter après avoir été absent :</text>
