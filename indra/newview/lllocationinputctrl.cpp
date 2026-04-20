@@ -784,8 +784,19 @@ void LLLocationInputCtrl::onLocationPrearrange(const LLSD& data)
                     value["global_pos"] = result->mGlobalPos.getValue();
                     std::string region_name = result->mTitle.substr(0, result->mTitle.find(','));
                     //TODO*: add Surl to teleportitem or parse region name from title
+                    // <FS:TJ> Fix Teleport and Location History for OpenSim
                     //value["tooltip"] = LLSLURL(region_name, result->mGlobalPos).getSLURLString();
-                    value["tooltip"] = LLSLURL(region_name, regionp->getOriginGlobal(), result->mGlobalPos).getSLURLString();
+                    if (LLGridManager::getInstance()->isInSecondLife())
+                    {
+                        value["tooltip"] = LLSLURL(region_name, regionp->getOriginGlobal(), result->mGlobalPos).getSLURLString();
+                    }
+                    else
+                    {
+                        std::string slurl = result->mSLURL.getSLURLString();
+                        value["tooltip"] = slurl;
+                        value["slurl"] = slurl;
+                    }
+                    // </FS:TJ>
                     addLocationHistoryEntry(result->getTitle(), value);
                 }
                 else
@@ -1106,6 +1117,7 @@ void LLLocationInputCtrl::rebuildLocationHistory(const std::string& filter)
         //location history can contain only typed locations
         value["item_type"] = TYPED_REGION_SLURL;
         value["global_pos"] = it->mGlobalPos.getValue();
+        value["slurl"] = it->mSLURL.getSLURLString(); // <FS:TJ/> Fix Teleport and Location History for OpenSim
         addLocationHistoryEntry(it->getLocation(), value);
     }
 }
