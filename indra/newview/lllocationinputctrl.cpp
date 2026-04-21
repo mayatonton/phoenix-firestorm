@@ -70,11 +70,7 @@
 
 #include "llmenuoptionpathfindingrebakenavmesh.h"   // <FS:Zi> Pathfinding rebake functions
 #include "llfloaterreg.h"
-// <FS:CR> Don't show pathfinding icons in OpenSim
-#ifdef OPENSIM
-#include "llviewernetwork.h"
-#endif // OPENSIM
-// </FS:CR>
+#include "llviewernetwork.h" // <FS/> Access to GridManager
 #include "fsfloaterplacedetails.h"
 
 #include "llmenuoptionpathfindingrebakenavmesh.h"

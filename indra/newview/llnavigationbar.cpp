@@ -732,10 +732,12 @@ void LLNavigationBar::onTeleportFinished(const LLVector3d& global_agent_pos)
     std::string grid = LLGridManager::getInstance()->getGrid();
     std::string current_grid = LFSimFeatureHandler::instance().hyperGridURL();
     LLSLURL slurl = LLSLURL(gAgent.getRegion()->getName(), gAgent.getRegion()->getOriginGlobal(), global_agent_pos);
+#ifdef OPENSIM
     if (!LLGridManager::getInstance()->isInSecondLife() && grid != current_grid)
     {
         slurl = LLSLURL(current_grid, gAgent.getRegion()->getName(), gAgent.getRegion()->getOriginGlobal(), global_agent_pos, true);
     }
+#endif
     std::string tooltip(slurl.getSLURLString());
     // </FS:Beq pp Oren>
 
