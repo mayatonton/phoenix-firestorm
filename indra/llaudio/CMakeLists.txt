@@ -6,6 +6,9 @@ include(00-Common)
 include(LLAudio)
 include(FMODSTUDIO)
 include(OPENAL)
+include(CURL)
+include(OpenSSL)
+include(NGHTTP2)
 include(LLCommon)
 include(LLWindow)
 
@@ -39,6 +42,7 @@ if (TARGET ll::fmodstudio)
          llfftconvolver.cpp
          llirloader.cpp
          llvenuereverbdsp.cpp
+         llstream3durlresolve.cpp
          fmod_codec_opus.cpp
          )
 
@@ -54,6 +58,7 @@ if (TARGET ll::fmodstudio)
          llfftconvolver.h
          llirloader.h
          llvenuereverbdsp.h
+         llstream3durlresolve.h
          fmod_codec_opus.h
          )
 endif ()
@@ -87,4 +92,12 @@ if( TARGET ll::openal )
 endif()
 if( TARGET ll::fmodstudio )
     target_link_libraries( llaudio ll::fmodstudio )
+endif()
+if( TARGET ll::libcurl )
+    # r11 P10: viewer-side URL pre-resolve (llstream3durlresolve.cpp).
+    # libcurl pulls in openssl + nghttp2 transitively; matching how
+    # llcorehttp wires them so the imported targets resolve in this
+    # cmake scope (otherwise newview's link line gets `-lll::openssl`
+    # / `-lll::nghttp2` as bare strings and the linker fails).
+    target_link_libraries( llaudio ll::libcurl ll::openssl ll::nghttp2 )
 endif()
