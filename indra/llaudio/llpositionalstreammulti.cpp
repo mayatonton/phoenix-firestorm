@@ -754,6 +754,15 @@ bool LLPositionalStreamMulti::makeChannelForBinding(size_t i)
     }
     checkFmod(sr.channel->set3DLevel(dsp_attached ? 0.0f : 1.0f),
               "Channel::set3DLevel(speaker)");
+    // r11 P5: per-binding gate state. Quiet by default (LL_DEBUGS), enable
+    // the "Stream3D" debug category to confirm whether a given speaker is
+    // running through the lite-HRTF DSP or FMOD's built-in panner.
+    LL_DEBUGS("Stream3D") << "makeChannelForBinding speaker=" << i
+                           << " binaural=" << (mBinauralEnabled ? "on" : "off")
+                           << " dsp=" << (sr.hrtf_dsp ? "ok" : "null")
+                           << " attached=" << (dsp_attached ? "yes" : "no")
+                           << " set3DLevel=" << (dsp_attached ? "0.0" : "1.0")
+                           << LL_ENDL;
     return true;
 }
 
