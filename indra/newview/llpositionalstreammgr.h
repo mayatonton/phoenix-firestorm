@@ -149,6 +149,16 @@ public:
         // nullopt = unspecified (defaults to on per spec §4.1.0).
         std::optional<bool> binaural;
 
+        // r11 P8: venue selection ({venue:NAME}). Source-side property —
+        // child prim values are silently ignored (spec §4.1 line 154).
+        // nullopt = unspecified (defaults to "dry" per spec §4.1.1).
+        // Validated at parse time against LLVenueReverbDsp::knownVenues();
+        // unknown values land in bad_venue_value below instead of here so
+        // the tag overall stays valid (spec §4.1 line 174 — silent-ignore +
+        // chat warn, not full-tag reject).
+        std::optional<std::string> venue;
+        std::optional<std::string> bad_venue_value;
+
         // Speaker declaration fields (set only when {ch:...} is present).
         std::optional<ChannelKind> ch;
         std::optional<F32> range_speaker;
@@ -207,6 +217,15 @@ public:
     // bring-up time. Spec §4.1.0 / §6 — debug value wins when not the
     // sentinel; otherwise the tag value (or `true` if unspecified) is used.
     static bool effectiveBinaural(std::optional<bool> tag_value);
+
+    // r11 P8: combine the publisher's {venue:NAME} tag with the debug
+    // override `Stream3DVenueOverride` (empty = follow tag, non-empty =
+    // force this venue) into the final name fed to LLVenueReverbDsp::
+    // setVenue(). Spec §4.5 — debug value wins when non-empty; otherwise
+    // the tag value (or "dry" if unspecified) is used. Returned name is
+    // not re-validated against the catalog here; callers handle unknown
+    // names via the setVenue return value (= notifies IRNotLoaded).
+    static std::string effectiveVenue(const std::optional<std::string>& tag_value);
 
 private:
     LLPositionalStreamMgr();
@@ -267,6 +286,19 @@ private:
         // this binding's stream. Combined with binaural_tag in the
         // fingerprint so a debug-toggle change between evals also rebuilds.
         bool binaural_effective_applied = true;
+        // r11 P8: publisher's {venue:NAME} tag value (nullopt = unspecified).
+        // Resolved via effectiveVenue() on every evaluate; the resolved
+        // name is pushed to the engine's bus-level VenueReverbDsp on
+        // transition. Tracked here separately from binaural because venue
+        // is engine-level (one DSP for the whole Stream3D bus) — changing
+        // it does NOT need a stream rebuild, just an atomic slot swap on
+        // the DSP. So venue is intentionally NOT in the rebuild fingerprint.
+        std::optional<std::string> venue_tag;
+        // Last name actually pushed to the engine's setVenue() on this
+        // binding's behalf. Compared against the new effective on each
+        // evaluate so we only push on change (avoids redundant atomic
+        // stores when desc-poll re-fires with the same value).
+        std::string venue_effective_applied = "dry";
         std::vector<SpeakerSlot> speakers;
         // Count of speakers truncated by the per-binding cap. Surfaced in
         // F4 throttled notification; F2-a only logs.
@@ -324,6 +356,12 @@ private:
         UnsupportedSourceFormat,
         // r11 P5: {binaural:...} value not on/off.
         BadBinaural,
+        // r11 P8: {venue:NAME} value not in LLVenueReverbDsp::knownVenues.
+        BadVenue,
+        // r11 P8: known venue name but its IR file failed to load at
+        // engine init (missing / wrong format / sample rate mismatch).
+        // Surfaced when setVenue() returns false at apply time.
+        IRNotLoaded,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for
@@ -347,6 +385,15 @@ private:
     // that use-after-free without auditing every call site.
     void evaluateLinkset(LLUUID root_id);
     void teardownDistributedBinding(const LLUUID& root_id);
+
+    // r11 P8: push the resolved venue name to the engine's bus-level
+    // VenueReverbDsp and update binding bookkeeping. Idempotent — bails
+    // out if the resolved name matches what we already pushed for this
+    // binding. On engine setVenue() failure for a non-"dry" name, fires
+    // an IRNotLoaded notification and forces "dry" so the bus stays
+    // audible (silent fallback per spec §4.5).
+    void applyVenueToBinding(DistributedStereoBinding& binding,
+                             const std::optional<std::string>& venue_tag);
 
     // r8 F2-b: push id onto mPriorityPollQueue if not already queued.
     // Linear scan dedup is fine — the queue is bounded by ~16 speakers per
