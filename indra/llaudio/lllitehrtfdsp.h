@@ -57,11 +57,15 @@ public:
 
     FMOD::DSP* getDsp() const { return mDsp; }
 
-    // Per-frame param push (main thread). P2 skeleton stores them but only
-    // distance gain reads source/listener pos; ITD/ILD/air abs land in P3.
+    // Per-frame param push (main thread). Lock-free single-writer atomics.
+    // Wired up by P4.
     void setListenerPos(const LLVector3& p);
     void setSourcePos(const LLVector3& p);
     void setRange(F32 max_dist);  // mSpeakers[i].range; min stays 1.0m
+    // r11 P3: listener orientation (at = forward axis, up = up axis). Used
+    // by ITD/ILD to derive azimuth/elevation of the source relative to the
+    // listener. Defaults are an orthogonal SL-frame sentinel; P4 overwrites.
+    void setListenerOrientation(const LLVector3& at, const LLVector3& up);
 
 private:
     static FMOD_RESULT F_CALL readCallback(FMOD_DSP_STATE* dsp_state,
@@ -82,8 +86,34 @@ private:
     std::atomic<F32> mSourceX { 0.f };
     std::atomic<F32> mSourceY { 0.f };
     std::atomic<F32> mSourceZ { 0.f };
+    // P3: listener orientation. Defaults at = +X (east), up = +Z (sky) so
+    // the basis is well-formed even before the first P4 push.
+    std::atomic<F32> mListenerAtX { 1.f };
+    std::atomic<F32> mListenerAtY { 0.f };
+    std::atomic<F32> mListenerAtZ { 0.f };
+    std::atomic<F32> mListenerUpX { 0.f };
+    std::atomic<F32> mListenerUpY { 0.f };
+    std::atomic<F32> mListenerUpZ { 1.f };
     std::atomic<F32> mMinDist { 1.0f };
     std::atomic<F32> mMaxDist { 30.0f };  // overwritten by speaker.range in P4
+
+    // ---- mixer-thread state (single-thread access, no atomics) ----
+    // Sample rate cached at create() (FMOD::System::getSoftwareFormat).
+    F32 mSampleRate { 44100.f };
+    // ITD delay line per ear (Lagrange 3rd-order fractional delay).
+    // Capacity must comfortably exceed max ITD ≈ (a/c)*(π/2 + 1) seconds.
+    // 0.66 ms × 96 kHz = 64 samples → 128 gives ample margin + 4-tap interp.
+    static constexpr int kDelayBufFrames = 128;
+    F32 mDelayL[kDelayBufFrames] {};
+    F32 mDelayR[kDelayBufFrames] {};
+    int mDelayWrite { 0 };
+    // Per-ear biquad state — air-absorption hi-shelf (knee 4 kHz, distance-driven)
+    F32 mAirZ1L { 0.f }, mAirZ2L { 0.f };
+    F32 mAirZ1R { 0.f }, mAirZ2R { 0.f };
+    // Per-ear biquad state — shadow + elevation hi-shelf (knee 2 kHz,
+    // azimuth-side + elevation driven; combined into one shelf per ear).
+    F32 mShadZ1L { 0.f }, mShadZ2L { 0.f };
+    F32 mShadZ1R { 0.f }, mShadZ2R { 0.f };
 };
 
 #endif // LL_LITEHRTFDSP_H
