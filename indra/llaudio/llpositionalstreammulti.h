@@ -46,6 +46,8 @@ namespace FMOD
     class System;
 }
 
+class LLLiteHrtfDsp;  // r11 P4: per-speaker lite-HRTF DSP (forward decl)
+
 // r8: multi-tail SPSC ring buffer for the distributed-stereo decode thread.
 //
 // Storage layout: capacity_frames × n_tracks F32 samples, interleaved per
@@ -243,6 +245,13 @@ private:
         FMOD::Sound* user_sound = nullptr;
         FMOD::Channel* channel = nullptr;
         std::unique_ptr<SpeakerCallback> cb;
+        // r11 P4: per-speaker lite-HRTF DSP. Created in createUserSounds()
+        // alongside user_sound, fed by per-frame param push from update().
+        // Not yet inserted into the FMOD signal chain — P5 will gate
+        // Channel::addDSP behind the {binaural} tag. unique_ptr lets the
+        // implicit SpeakerRuntime dtor stay valid in the .cpp where the
+        // LiteHrtfDsp type is complete.
+        std::unique_ptr<LLLiteHrtfDsp> hrtf_dsp;
     };
 
     static FMOD_RESULT F_CALL pcmReadCallback(FMOD_SOUND* sound, void* data, U32 datalen);

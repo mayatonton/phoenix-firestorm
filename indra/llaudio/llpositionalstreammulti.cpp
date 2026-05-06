@@ -28,6 +28,7 @@
 
 #include "llaudioengine.h"
 #include "llaudioengine_fmodstudio.h"
+#include "lllitehrtfdsp.h"
 #include "llstring.h"
 #include "lltimer.h"
 
@@ -429,6 +430,13 @@ void LLPositionalStreamMulti::setSpeakerPosition(size_t idx, const LLVector3& po
     {
         applyChannelAttributes(mSpeakerRuntime[idx].channel, pos, mSpeakers[idx].range);
     }
+    // r11 P4: keep the lite-HRTF source pos in sync with FMOD's set3DAttributes
+    // so the DSP and the built-in panner agree on geometry the instant the
+    // mgr moves a speaker (rather than waiting for the next update() tick).
+    if (idx < mSpeakerRuntime.size() && mSpeakerRuntime[idx].hrtf_dsp)
+    {
+        mSpeakerRuntime[idx].hrtf_dsp->setSourcePos(pos);
+    }
 }
 
 void LLPositionalStreamMulti::setVolume(F32 volume)
@@ -645,6 +653,25 @@ bool LLPositionalStreamMulti::createUserSounds()
 
         mSpeakerRuntime[i].user_sound = snd;
         mSpeakerRuntime[i].cb = std::move(cb);
+
+        // r11 P4: per-speaker lite-HRTF DSP. Created here so its lifecycle
+        // matches user_sound; seeded with the speaker's range + position so
+        // even before update() ticks, defaults are sane. Failure is
+        // non-fatal because the DSP isn't wired into the FMOD chain yet
+        // (P5 hooks Channel::addDSP behind the {binaural} tag) — audio
+        // still plays through FMOD's built-in panner.
+        auto dsp = std::make_unique<LLLiteHrtfDsp>();
+        if (dsp->create(system))
+        {
+            dsp->setSourcePos(mSpeakers[i].position);
+            dsp->setRange(mSpeakers[i].range);
+            mSpeakerRuntime[i].hrtf_dsp = std::move(dsp);
+        }
+        else
+        {
+            LL_WARNS("Stream3D") << "LiteHrtfDsp::create() failed for speaker "
+                                  << i << "; skipping per-speaker DSP" << LL_ENDL;
+        }
     }
     return true;
 }
@@ -1068,6 +1095,31 @@ void LLPositionalStreamMulti::update()
             mUnderrunCallbacks.store(0, std::memory_order_relaxed);
             LL_INFOS("Stream3D") << "Multi path playing: " << mUrl
                                   << " (" << mSpeakers.size() << " speakers)" << LL_ENDL;
+        }
+    }
+
+    // r11 P4: per-frame lite-HRTF param push. Listener pose is shared across
+    // every speaker's DSP; source pos / range come from the per-speaker
+    // SpeakerConfig (the same vector applyChannelAttributes feeds to FMOD's
+    // built-in panner, so the two stay coherent). Pushed unconditionally
+    // when DSPs exist — they're created in createUserSounds() during
+    // Buffering, so this is a no-op until then. Atomic stores are
+    // single-writer (main thread) / single-reader (mixer); ordering is
+    // relaxed because each param only matters as a snapshot at the next
+    // process() call.
+    if (!mSpeakerRuntime.empty() && gAudiop)
+    {
+        const LLVector3 lpos = gAudiop->getListenerPos();
+        const LLVector3 lat  = gAudiop->getListenerAt();
+        const LLVector3 lup  = gAudiop->getListenerUp();
+        for (size_t i = 0; i < mSpeakerRuntime.size() && i < mSpeakers.size(); ++i)
+        {
+            LLLiteHrtfDsp* dsp = mSpeakerRuntime[i].hrtf_dsp.get();
+            if (!dsp) continue;
+            dsp->setListenerPos(lpos);
+            dsp->setListenerOrientation(lat, lup);
+            dsp->setSourcePos(mSpeakers[i].position);
+            dsp->setRange(mSpeakers[i].range);
         }
     }
 
