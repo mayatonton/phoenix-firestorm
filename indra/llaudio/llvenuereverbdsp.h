@@ -2,12 +2,16 @@
  * @file llvenuereverbdsp.h
  * @brief AYAstorm r11 venue convolution reverb DSP (stereo IR convolver).
  *
- * P6 skeleton: stereo passthrough only — no convolution math, no IR loaded.
- * P7 adds the actual partitioned-convolution engine. P8 wires the DSP into
- * the Stream3D ChannelGroup behind {venue:...} / {wetgain:N} tags so the
- * mixed binaural bus is fed through one shared room IR (per-speaker DSPs
- * stay dry; reverb is bus-level for cost + correct early-reflection sum).
- * P9 bundles the default IR set.
+ * P7 status: parallel-mix convolution + double-buffered IR slot swap.
+ * P8 wires the DSP into the Stream3D ChannelGroup behind {venue:...} /
+ * {wetgain:N} tags. P9 bundles the default IR set.
+ *
+ * Slot model:
+ *   Two pre-initialized convolver slots live for the lifetime of the DSP.
+ *   The mixer thread reads `mActiveSlot` (acquire) once per process() call
+ *   and uses that slot for the entire block. The main thread loads/parses
+ *   a new IR, fully primes the inactive slot, then publishes the swap with
+ *   a release-store. No locks; no audio-thread allocation.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -63,16 +67,16 @@ public:
     FMOD::DSP* getDsp() const { return mDsp; }
 
     // Per-frame param push (main thread). Lock-free single-writer atomic.
-    // P6 stores only — readCallback ignores until P7 wires the convolver.
     void setWetGain(F32 g);  // 0.0 = dry, 1.0 = unity wet mix
     F32  getWetGain() const { return mWetGain.load(std::memory_order_relaxed); }
 
-    // P8 will swap the active IR by path; P6 stores the request only.
-    // Heavy work (file load + FFT prep) belongs off the audio thread, so
-    // future implementation will stage the IR on the main thread and hand
-    // off to the mixer through a ready-flag, not parse it inline here.
-    void setIRPath(const std::string& path);
-    const std::string& getIRPath() const { return mIRPath; }
+    // Loads the WAV synchronously on the calling (= main) thread, primes
+    // the inactive slot, and atomically swaps it active. Returns false and
+    // leaves the previous slot active on any failure (open / parse / sample
+    // rate mismatch). Empty path is treated as a no-op — use setWetGain(0)
+    // to mute the wet path.
+    bool setIRPath(const std::string& path);
+    const std::string& getIRPath() const { return mActiveIRPath; }
 
 private:
     static FMOD_RESULT F_CALL readCallback(FMOD_DSP_STATE* dsp_state,
@@ -83,32 +87,44 @@ private:
     void process(const float* in, float* out, unsigned int length,
                  int inchannels, int outchannels);
 
+    // Each Slot owns one full L+R partitioned-convolution state — IR
+    // partitions, input ring, prev-block tail. Two slots are pre-init'd so
+    // the swap path never allocates on the audio thread.
+    struct Slot
+    {
+        LLPartitionedConvolver convL;
+        LLPartitionedConvolver convR;
+    };
+
+    // Re-init both convolvers in `slot` from the given IR pair. Called only
+    // on the main thread (create() and setIRPath()).
+    bool primeSlot(Slot& slot, const F32* ir_l, int ir_l_len,
+                   const F32* ir_r, int ir_r_len);
+
     FMOD::System* mSystem { nullptr };
     FMOD::DSP* mDsp { nullptr };
     FMOD_DSP_DESCRIPTION* mDspDesc { nullptr };
 
     // Lock-free single-writer (main) / single-reader (mixer).
-    std::atomic<F32> mWetGain { 0.f };  // P6 default 0 = effectively dry
-    // IR path is only read by main thread (mixer just consults a ready flag
-    // once P7 lands), so a plain std::string is fine here.
-    std::string mIRPath;
+    std::atomic<F32> mWetGain { 0.f };
 
-    // Sample rate cached at create() (FMOD::System::getSoftwareFormat).
+    // Two slots, A/B. Mixer reads `mActiveSlot` (acquire); main thread
+    // primes the OTHER slot then publishes via release-store.
+    Slot mSlots[2];
+    std::atomic<Slot*> mActiveSlot { nullptr };
+    int mInactiveIndex { 1 };       // main-thread only
+
+    // Convolution block size — fixed at create() from FMOD's DSP buffer
+    // size. The read callback validates `length` against this and falls
+    // through to dry-only on the rare mid-stream change.
+    int mBlockSize { 0 };
     F32 mSampleRate { 44100.f };
 
-    // P7a: per-channel partitioned-overlap-save convolvers. Lazily init'd
-    // on the first read callback once FMOD reveals its actual block size
-    // (System::getDSPBufferSize would also work, but lazy init is cheaper
-    // than guessing wrong and re-allocating). Kernels default to a single
-    // unit-impulse sample → wet path is just a one-block delayed dry, so
-    // even before P7b/P7c provide real IRs the math is sane.
-    LLPartitionedConvolver mConvL;
-    LLPartitionedConvolver mConvR;
-    bool mConvInitialized { false };
-    int  mConvBlockSize { 0 };
-    // De-interleave/interleave temp buffers (mixer thread only — no atomics).
-    // Need both in & wet sets because LLPartitionedConvolver::processAdd does
-    // not support aliased in/out (the trailing prev-block save would clobber).
+    // Path of the IR currently active in mActiveSlot. Read by main thread
+    // only (mixer never touches), so a plain std::string is fine.
+    std::string mActiveIRPath;
+
+    // De-interleave/interleave temp buffers (mixer thread only).
     std::vector<F32> mScratchInL;
     std::vector<F32> mScratchInR;
     std::vector<F32> mScratchWetL;

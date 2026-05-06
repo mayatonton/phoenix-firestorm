@@ -1,6 +1,12 @@
 /**
  * @file llvenuereverbdsp.cpp
- * @brief AYAstorm r11 venue convolution reverb DSP — P6 skeleton.
+ * @brief AYAstorm r11 venue convolution reverb DSP — P7b.
+ *
+ * Two pre-init'd convolver slots; main thread loads + primes the inactive
+ * one and publishes via a release-store on the active pointer. Mixer thread
+ * does an acquire-load once per process() and runs the entire block on that
+ * snapshot. No locks; no audio-thread allocation past create(). See header
+ * for the slot-swap contract in detail.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -29,7 +35,17 @@
 #include "fmodstudio/fmod.hpp"
 #include "fmodstudio/fmod_errors.h"
 
+#include "llirloader.h"
+
 #include <cstring>
+
+namespace
+{
+    inline bool isPow2(int x)
+    {
+        return x > 0 && (x & (x - 1)) == 0;
+    }
+}
 
 LLVenueReverbDsp::LLVenueReverbDsp() = default;
 
@@ -76,6 +92,38 @@ bool LLVenueReverbDsp::create(FMOD::System* system)
         }
     }
 
+    // Discover FMOD's DSP block size up-front so we can pre-init the
+    // convolver slots and never allocate from the audio thread. Falls back
+    // to 1024 if FMOD can't tell us — that's a sane modern default and the
+    // read callback still guards against a mismatch.
+    unsigned int dsp_block = 1024;
+    int          dsp_numbuf = 0;
+    if (mSystem->getDSPBufferSize(&dsp_block, &dsp_numbuf) != FMOD_OK || !isPow2(static_cast<int>(dsp_block)))
+    {
+        dsp_block = 1024;
+    }
+    mBlockSize = static_cast<int>(dsp_block);
+
+    // Prime both slots with a unit-impulse IR (wet path = one-block-delayed
+    // dry) so the convolver is ready before any setIRPath call lands.
+    static const F32 kUnitImpulse = 1.f;
+    if (!primeSlot(mSlots[0], &kUnitImpulse, 1, &kUnitImpulse, 1) ||
+        !primeSlot(mSlots[1], &kUnitImpulse, 1, &kUnitImpulse, 1))
+    {
+        LL_WARNS("Stream3D") << "VenueReverbDsp: convolver pre-init failed at block="
+                             << mBlockSize << ", releasing DSP" << LL_ENDL;
+        release();
+        return false;
+    }
+    mActiveSlot.store(&mSlots[0], std::memory_order_release);
+    mInactiveIndex = 1;
+    mActiveIRPath.clear();
+
+    mScratchInL.assign(mBlockSize, 0.f);
+    mScratchInR.assign(mBlockSize, 0.f);
+    mScratchWetL.assign(mBlockSize, 0.f);
+    mScratchWetR.assign(mBlockSize, 0.f);
+
     return true;
 }
 
@@ -92,6 +140,7 @@ void LLVenueReverbDsp::release()
         mDspDesc = nullptr;
     }
     mSystem = nullptr;
+    mActiveSlot.store(nullptr, std::memory_order_release);
 }
 
 void LLVenueReverbDsp::setWetGain(F32 g)
@@ -99,11 +148,71 @@ void LLVenueReverbDsp::setWetGain(F32 g)
     mWetGain.store(g, std::memory_order_relaxed);
 }
 
-void LLVenueReverbDsp::setIRPath(const std::string& path)
+bool LLVenueReverbDsp::primeSlot(Slot& slot,
+                                 const F32* ir_l, int ir_l_len,
+                                 const F32* ir_r, int ir_r_len)
 {
-    // P6 stores only; P7 will trigger the actual file load + FFT prep on
-    // the main thread and hand the prepared IR to the mixer via ready flag.
-    mIRPath = path;
+    if (mBlockSize <= 0) return false;
+    if (!slot.convL.init(mBlockSize, ir_l, ir_l_len)) return false;
+    if (!slot.convR.init(mBlockSize, ir_r, ir_r_len)) return false;
+    return true;
+}
+
+bool LLVenueReverbDsp::setIRPath(const std::string& path)
+{
+    // Empty path is a no-op — wet-gain is the right knob for muting.
+    if (path.empty())
+    {
+        return false;
+    }
+    if (mBlockSize <= 0)
+    {
+        LL_WARNS("Stream3D") << "VenueReverbDsp::setIRPath called before create()" << LL_ENDL;
+        return false;
+    }
+
+    LLIRData ir;
+    LLIRLoader::Result lr = LLIRLoader::loadWav(path, ir);
+    if (lr != LLIRLoader::Result::Ok)
+    {
+        LL_WARNS("Stream3D") << "VenueReverbDsp: IR load failed for '" << path
+                             << "': " << LLIRLoader::resultString(lr) << LL_ENDL;
+        return false;
+    }
+
+    // Resampling is out of scope here — bundled IRs ship at the viewer's
+    // mixing rate. Mismatch is loud and explicit rather than silently wrong.
+    const int target_rate = static_cast<int>(mSampleRate + 0.5f);
+    if (ir.sample_rate != target_rate)
+    {
+        LL_WARNS("Stream3D") << "VenueReverbDsp: IR sample rate " << ir.sample_rate
+                             << " Hz does not match mixer rate " << target_rate
+                             << " Hz, IR not loaded" << LL_ENDL;
+        return false;
+    }
+
+    Slot& target = mSlots[mInactiveIndex];
+    if (!primeSlot(target,
+                   ir.samples_l.data(), static_cast<int>(ir.samples_l.size()),
+                   ir.samples_r.data(), static_cast<int>(ir.samples_r.size())))
+    {
+        LL_WARNS("Stream3D") << "VenueReverbDsp: convolver prime failed for '"
+                             << path << "'" << LL_ENDL;
+        return false;
+    }
+
+    // Publish the swap. release here pairs with the mixer's acquire-load
+    // in process(), so all of the partition tables written by primeSlot()
+    // are visible to the audio thread before it starts using them.
+    mActiveSlot.store(&target, std::memory_order_release);
+    mInactiveIndex ^= 1;
+    mActiveIRPath = path;
+
+    LL_INFOS("Stream3D") << "VenueReverbDsp: IR loaded path='" << path
+                         << "' rate=" << ir.sample_rate
+                         << " Hz frames=" << ir.samples_l.size()
+                         << " src_ch=" << ir.source_channels << LL_ENDL;
+    return true;
 }
 
 FMOD_RESULT F_CALL LLVenueReverbDsp::readCallback(FMOD_DSP_STATE* dsp_state,
@@ -130,11 +239,10 @@ FMOD_RESULT F_CALL LLVenueReverbDsp::readCallback(FMOD_DSP_STATE* dsp_state,
 void LLVenueReverbDsp::process(const float* in, float* out, unsigned int length,
                                int inchannels, int outchannels)
 {
-    // r11 P7a: parallel-mix model.
-    //   out[i] = dry[i] + wet_gain × (dry ⊛ ir)[i]
-    // Step 1 always copies dry to out so the bus is never silent — even if
-    // the convolvers are still in their lazy-init window or wet_gain == 0,
-    // the listener hears the same signal as the P6 passthrough path.
+    // r11 P7a: parallel-mix model.  out[i] = dry[i] + wet_gain × (dry ⊛ ir)[i]
+    // Step 1: always copy dry first so the bus is never silent — even if
+    // the wet path falls through (block-size mismatch, wet_gain==0, slot
+    // not yet ready), the listener hears the same signal as P6 passthrough.
     if (inchannels == outchannels)
     {
         std::memcpy(out, in, length * outchannels * sizeof(float));
@@ -158,32 +266,18 @@ void LLVenueReverbDsp::process(const float* in, float* out, unsigned int length,
     const F32 wet_gain = mWetGain.load(std::memory_order_relaxed);
     if (wet_gain == 0.f) return;
 
-    // We only attempt convolution when both sides are stereo and the block
-    // size is a power of 2 (radix-2 FFT requirement). Anything else falls
-    // through to dry-only — the bus stays correct, just no wet signal.
+    // Wet path requires stereo↔stereo and a length matching the block size
+    // pre-init'd in create(). FMOD almost never changes the block size
+    // mid-stream, but if it does we just stay dry-only for that block.
     if (inchannels != 2 || outchannels != 2) return;
     const int len = static_cast<int>(length);
-    if (len < 64 || (len & (len - 1)) != 0) return;
+    if (len != mBlockSize) return;
 
-    // Lazy init: FMOD reveals its actual block size at first call. Guard
-    // against a mid-stream change (rare) by re-init'ing if length differs.
-    if (!mConvInitialized || mConvBlockSize != len)
-    {
-        if (!mConvL.init(len, nullptr, 0) || !mConvR.init(len, nullptr, 0))
-        {
-            // Init failed — surface once and stay in dry-only mode.
-            LL_WARNS("Stream3D") << "VenueReverbDsp: convolver init failed at block="
-                                 << len << ", dry-only fallback" << LL_ENDL;
-            mConvInitialized = false;
-            return;
-        }
-        mScratchInL.assign(len, 0.f);
-        mScratchInR.assign(len, 0.f);
-        mScratchWetL.assign(len, 0.f);
-        mScratchWetR.assign(len, 0.f);
-        mConvBlockSize    = len;
-        mConvInitialized  = true;
-    }
+    // Snapshot the active slot for the duration of this block. acquire
+    // pairs with release in setIRPath()/create() so the IR partitions are
+    // visible before we use them.
+    Slot* slot = mActiveSlot.load(std::memory_order_acquire);
+    if (!slot) return;
 
     // De-interleave L/R from the FMOD interleaved stereo input.
     for (int i = 0; i < len; ++i)
@@ -192,15 +286,14 @@ void LLVenueReverbDsp::process(const float* in, float* out, unsigned int length,
         mScratchInR[i] = in[i * 2 + 1];
     }
 
-    // Each processAdd accumulates wet_gain × convolved into its 'out'
-    // buffer — we zero those first because we only want this block's wet,
-    // not whatever stale value the previous block left behind.
+    // processAdd() *adds* its result, so zero the wet scratch first — we
+    // only want this block's wet, not whatever stale value sat there.
     std::memset(mScratchWetL.data(), 0, len * sizeof(F32));
     std::memset(mScratchWetR.data(), 0, len * sizeof(F32));
-    mConvL.processAdd(mScratchInL.data(), mScratchWetL.data(), wet_gain);
-    mConvR.processAdd(mScratchInR.data(), mScratchWetR.data(), wet_gain);
+    slot->convL.processAdd(mScratchInL.data(), mScratchWetL.data(), wet_gain);
+    slot->convR.processAdd(mScratchInR.data(), mScratchWetR.data(), wet_gain);
 
-    // Re-interleave wet into output (parallel-mix add over the dry copy).
+    // Re-interleave wet over the dry copy (parallel-mix add).
     for (int i = 0; i < len; ++i)
     {
         out[i * 2 + 0] += mScratchWetL[i];

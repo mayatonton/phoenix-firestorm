@@ -37,6 +37,7 @@ if (TARGET ll::fmodstudio)
          llmultichanneldownmix.cpp
          lllitehrtfdsp.cpp
          llfftconvolver.cpp
+         llirloader.cpp
          llvenuereverbdsp.cpp
          fmod_codec_opus.cpp
          )
@@ -51,6 +52,7 @@ if (TARGET ll::fmodstudio)
          llmultichanneldownmix.h
          lllitehrtfdsp.h
          llfftconvolver.h
+         llirloader.h
          llvenuereverbdsp.h
          fmod_codec_opus.h
          )
