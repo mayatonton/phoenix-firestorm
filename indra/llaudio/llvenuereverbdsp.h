@@ -36,8 +36,11 @@
 
 #include <atomic>
 #include <string>
+#include <vector>
 
 #include "fmodstudio/fmod_common.h"
+
+#include "llfftconvolver.h"
 
 namespace FMOD
 {
@@ -92,6 +95,24 @@ private:
 
     // Sample rate cached at create() (FMOD::System::getSoftwareFormat).
     F32 mSampleRate { 44100.f };
+
+    // P7a: per-channel partitioned-overlap-save convolvers. Lazily init'd
+    // on the first read callback once FMOD reveals its actual block size
+    // (System::getDSPBufferSize would also work, but lazy init is cheaper
+    // than guessing wrong and re-allocating). Kernels default to a single
+    // unit-impulse sample → wet path is just a one-block delayed dry, so
+    // even before P7b/P7c provide real IRs the math is sane.
+    LLPartitionedConvolver mConvL;
+    LLPartitionedConvolver mConvR;
+    bool mConvInitialized { false };
+    int  mConvBlockSize { 0 };
+    // De-interleave/interleave temp buffers (mixer thread only — no atomics).
+    // Need both in & wet sets because LLPartitionedConvolver::processAdd does
+    // not support aliased in/out (the trailing prev-block save would clobber).
+    std::vector<F32> mScratchInL;
+    std::vector<F32> mScratchInR;
+    std::vector<F32> mScratchWetL;
+    std::vector<F32> mScratchWetR;
 };
 
 #endif // LL_VENUEREVERBDSP_H
