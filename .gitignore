@@ -131,3 +131,9 @@ firestorm.code-workspace
 
 checks.json
 .venv/
+
+# AYAstorm r11 — local-only IR/test-material staging dirs (output of
+# doc/r11/fetch_venue_irs.sh and doc/r11/gen_test_material.sh)
+out_r11_venue_ir/
+out_r11_test_material/
+out_r10_test_material/
