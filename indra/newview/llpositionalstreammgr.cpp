@@ -1062,6 +1062,12 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // start time. Persists across the stream's reconnect cascade because
     // makeChannelForBinding() reads it on every channel bring-up.
     stream->setBinauralEnabled(binaural_effective);
+    // r11 P10: viewer-side URL pre-resolve gate. Sentinel default -1 =
+    // enabled (libcurl follows HTTPS→HTTP cross-protocol redirects before
+    // FMOD::createStream sees the URL); 0 = disabled (FMOD-only, r10
+    // behavior). Read once at start and pushed via setter so the resolve
+    // path stays self-contained inside llaudio.
+    stream->setUrlPreResolveEnabled(gSavedSettings.getS32("Stream3DUrlPreResolve") != 0);
 
     std::vector<LLPositionalStreamMulti::SpeakerConfig> configs;
     configs.reserve(binding.speakers.size());

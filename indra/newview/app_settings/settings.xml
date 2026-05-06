@@ -27769,5 +27769,16 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>-1.0</real>
     </map>
+    <key>Stream3DUrlPreResolve</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r11: viewer-side URL pre-resolve toggle. -1 (default, sentinel) = enabled — libcurl follows HTTPS→HTTP cross-protocol redirects (typical of Cloudflare/CDN fronted Shoutcast/Icecast) before handing the URL to FMOD::createStream, which does not follow such redirects on its own. 0 = disabled (URL passed to FMOD raw, r10 behavior). Probe is HEAD with ranged-GET fallback, max 3 redirects, ~3 s worst-case timeout, HTTP/HTTPS scheme allowlist. Failure modes (timeout / network error / no redirect) are non-fatal — viewer falls back to the raw URL silently.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>-1</integer>
+    </map>
   </map>
 </llsd>

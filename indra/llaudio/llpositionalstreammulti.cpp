@@ -29,6 +29,7 @@
 #include "llaudioengine.h"
 #include "llaudioengine_fmodstudio.h"
 #include "lllitehrtfdsp.h"
+#include "llstream3durlresolve.h"
 #include "llstring.h"
 #include "lltimer.h"
 
@@ -326,7 +327,25 @@ bool LLPositionalStreamMulti::start(const std::string& url,
                                 | FMOD_NONBLOCKING
                                 | FMOD_IGNORETAGS;
 
-    if (checkFmod(system->createStream(clean_url.c_str(), source_mode, nullptr, &mSourceSound),
+    // r11 P10: viewer-side URL pre-resolve. FMOD netstream does not follow
+    // HTTPS→HTTP cross-protocol redirects (typical of Cloudflare/CDN
+    // fronted Shoutcast/Icecast). We probe via libcurl HEAD (with ranged
+    // GET fallback) and hand FMOD the post-redirect URL. mUrl stays as
+    // the original input so reconnect/log surfaces still show what the
+    // tag asked for.
+    std::string createstream_url = clean_url;
+    if (mUrlPreResolveEnabled)
+    {
+        std::string resolved;
+        if (LLStream3DUrlResolve::resolveStreamUrl(clean_url, resolved))
+        {
+            LL_INFOS("Stream3DUrlResolve") << "pre-resolved: " << clean_url
+                                             << " -> " << resolved << LL_ENDL;
+            createstream_url = resolved;
+        }
+    }
+
+    if (checkFmod(system->createStream(createstream_url.c_str(), source_mode, nullptr, &mSourceSound),
                   "createStream(source)"))
     {
         mSourceSound = nullptr;

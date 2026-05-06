@@ -214,6 +214,15 @@ public:
     void setBinauralEnabled(bool on) { mBinauralEnabled = on; }
     bool isBinauralEnabled() const { return mBinauralEnabled; }
 
+    // r11 P10: viewer-side URL pre-resolve toggle. When enabled (default),
+    // start() runs the source URL through LLStream3DUrlResolve before
+    // calling FMOD::createStream so HTTPS→HTTP cross-protocol redirects
+    // (Cloudflare/CDN fronted Shoutcast/Icecast) get followed up front.
+    // The mgr reads `Stream3DUrlPreResolve` from settings and pushes
+    // the resolved boolean here before each start(); set this before
+    // start() to take effect on the next stream open.
+    void setUrlPreResolveEnabled(bool on) { mUrlPreResolveEnabled = on; }
+
     // Per-frame: drives source state, transitions opening→buffering→playing.
     void update();
 
@@ -332,6 +341,10 @@ private:
     // by the mgr via setBinauralEnabled(); the mixer thread never reads
     // this — gating happens at channel bring-up on the main thread.
     bool mBinauralEnabled = false;
+    // r11 P10: viewer-side URL pre-resolve gate. Default true so a caller
+    // that forgets to call the setter still gets the redirect-following
+    // behavior (matches the settings.xml sentinel default of "enabled").
+    bool mUrlPreResolveEnabled = true;
     std::string mUrl;
 
     std::atomic<State> mState;
