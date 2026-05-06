@@ -35,6 +35,7 @@ if (TARGET ll::fmodstudio)
          llpositionalstreamstereo.cpp
          llpositionalstreammulti.cpp
          llmultichanneldownmix.cpp
+         lllitehrtfdsp.cpp
          fmod_codec_opus.cpp
          )
 
@@ -46,6 +47,7 @@ if (TARGET ll::fmodstudio)
          llpositionalstreamstereo.h
          llpositionalstreammulti.h
          llmultichanneldownmix.h
+         lllitehrtfdsp.h
          fmod_codec_opus.h
          )
 endif ()
