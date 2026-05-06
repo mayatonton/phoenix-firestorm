@@ -202,6 +202,18 @@ public:
     // Global volume multiplier on top of per-speaker volume.
     void setVolume(F32 volume);
 
+    // r11 P5: enable/disable the per-speaker lite-HRTF DSP (= the
+    // {binaural} tag's resolved effective value, computed by the mgr).
+    // When ON, makeChannelForBinding() inserts the DSP at the head of the
+    // FMOD chain and flips Channel::set3DLevel to 0.0f so the FMOD
+    // built-in panner stops attenuating; when OFF, the DSP stays
+    // detached and FMOD continues to do its own 3D panning (= r10
+    // behavior). Setting this between speaker bring-ups (e.g. caller
+    // changes its mind before start() succeeds) is fine; mid-stream
+    // toggles are handled by the mgr rebuilding the stream entirely.
+    void setBinauralEnabled(bool on) { mBinauralEnabled = on; }
+    bool isBinauralEnabled() const { return mBinauralEnabled; }
+
     // Per-frame: drives source state, transitions opening→buffering→playing.
     void update();
 
@@ -316,6 +328,10 @@ private:
     std::vector<SpeakerRuntime> mSpeakerRuntime;
 
     F32 mVolume;
+    // r11 P5: publisher's lite-HRTF intent (after debug override). Owned
+    // by the mgr via setBinauralEnabled(); the mixer thread never reads
+    // this — gating happens at channel bring-up on the main thread.
+    bool mBinauralEnabled = false;
     std::string mUrl;
 
     std::atomic<State> mState;

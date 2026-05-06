@@ -365,6 +365,22 @@ void LLPositionalStreamMulti::releaseAll()
 {
     llassert(!mDecodeThread.joinable());
 
+    // r11 P5: peel the LiteHrtfDsp off the channel chain BEFORE stopping,
+    // mirroring the wind-DSP cleanup pattern in LLAudioEngine_FMODSTUDIO.
+    // DSP::release() does detach internally, but removing while the
+    // channel is still valid is the documented order and avoids leaving a
+    // recycled-channel slot wired to a soon-to-be-released DSP.
+    for (auto& sr : mSpeakerRuntime)
+    {
+        if (sr.channel && sr.hrtf_dsp)
+        {
+            if (FMOD::DSP* dsp = sr.hrtf_dsp->getDsp())
+            {
+                checkFmod(sr.channel->removeDSP(dsp),
+                          "Channel::removeDSP(LiteHrtfDsp)");
+            }
+        }
+    }
     // Channels must be stopped before their backing OPENUSER sounds are
     // released; FMOD will warn (and may briefly stutter) otherwise.
     for (auto& sr : mSpeakerRuntime)
@@ -714,12 +730,30 @@ bool LLPositionalStreamMulti::makeChannelForBinding(size_t i)
     checkFmod(sr.channel->setVolume(mVolume * mSpeakers[i].volume),
               "Channel::setVolume(speaker)");
 
-    // r11 hook: lite-HRTF takeover. r10 keeps FMOD's built-in 3D panner fully
-    // on (1.0f), so AYAstorm placement uses the same panner the rest of the
-    // world uses. r11's LiteHrtfDsp (attached to the Stream3D ChannelGroup
-    // above) will flip this to 0.0f to disable FMOD's per-channel distance /
-    // pan attenuation and let the DSP own ITD + ILD shadow + air absorption.
-    checkFmod(sr.channel->set3DLevel(1.0f), "Channel::set3DLevel(speaker)");
+    // r11 P5: lite-HRTF takeover gated by mBinauralEnabled (= the publisher's
+    // {binaural} tag combined with the debug Stream3DBinauralRender override
+    // by the mgr). When ON, insert the per-speaker LiteHrtfDsp at the head
+    // of the channel chain (= source side, before the panner) and flip
+    // set3DLevel to 0.0f so FMOD's built-in panner stops doing its own
+    // distance / pan attenuation; the DSP owns ITD + ILD shadow + air
+    // absorption. When OFF, leave set3DLevel at 1.0f and skip addDSP — the
+    // path is bit-equivalent to r10. addDSP failure falls back to the
+    // built-in panner with set3DLevel(1.0f) so we never end up with a
+    // silent / un-spatialised channel.
+    bool dsp_attached = false;
+    if (mBinauralEnabled && sr.hrtf_dsp)
+    {
+        if (FMOD::DSP* dsp = sr.hrtf_dsp->getDsp())
+        {
+            if (!checkFmod(sr.channel->addDSP(0 /*head*/, dsp),
+                           "Channel::addDSP(LiteHrtfDsp)"))
+            {
+                dsp_attached = true;
+            }
+        }
+    }
+    checkFmod(sr.channel->set3DLevel(dsp_attached ? 0.0f : 1.0f),
+              "Channel::set3DLevel(speaker)");
     return true;
 }
 
