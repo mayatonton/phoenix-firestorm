@@ -130,25 +130,80 @@ FMOD_RESULT F_CALL LLVenueReverbDsp::readCallback(FMOD_DSP_STATE* dsp_state,
 void LLVenueReverbDsp::process(const float* in, float* out, unsigned int length,
                                int inchannels, int outchannels)
 {
-    // P6 skeleton: passthrough. Convolution math arrives in P7.
-    // When in/out channel counts agree, this is a single memcpy; otherwise
-    // we copy what we can and zero-fill the tail (defensive — the real path
-    // is always stereo in / stereo out per the channel-format set in create()).
+    // r11 P7a: parallel-mix model.
+    //   out[i] = dry[i] + wet_gain × (dry ⊛ ir)[i]
+    // Step 1 always copies dry to out so the bus is never silent — even if
+    // the convolvers are still in their lazy-init window or wet_gain == 0,
+    // the listener hears the same signal as the P6 passthrough path.
     if (inchannels == outchannels)
     {
         std::memcpy(out, in, length * outchannels * sizeof(float));
-        return;
     }
-    const int min_ch = (inchannels < outchannels) ? inchannels : outchannels;
-    for (unsigned int i = 0; i < length; ++i)
+    else
     {
-        for (int c = 0; c < min_ch; ++c)
+        const int min_ch = (inchannels < outchannels) ? inchannels : outchannels;
+        for (unsigned int i = 0; i < length; ++i)
         {
-            out[i * outchannels + c] = in[i * inchannels + c];
+            for (int c = 0; c < min_ch; ++c)
+            {
+                out[i * outchannels + c] = in[i * inchannels + c];
+            }
+            for (int c = min_ch; c < outchannels; ++c)
+            {
+                out[i * outchannels + c] = 0.f;
+            }
         }
-        for (int c = min_ch; c < outchannels; ++c)
+    }
+
+    const F32 wet_gain = mWetGain.load(std::memory_order_relaxed);
+    if (wet_gain == 0.f) return;
+
+    // We only attempt convolution when both sides are stereo and the block
+    // size is a power of 2 (radix-2 FFT requirement). Anything else falls
+    // through to dry-only — the bus stays correct, just no wet signal.
+    if (inchannels != 2 || outchannels != 2) return;
+    const int len = static_cast<int>(length);
+    if (len < 64 || (len & (len - 1)) != 0) return;
+
+    // Lazy init: FMOD reveals its actual block size at first call. Guard
+    // against a mid-stream change (rare) by re-init'ing if length differs.
+    if (!mConvInitialized || mConvBlockSize != len)
+    {
+        if (!mConvL.init(len, nullptr, 0) || !mConvR.init(len, nullptr, 0))
         {
-            out[i * outchannels + c] = 0.f;
+            // Init failed — surface once and stay in dry-only mode.
+            LL_WARNS("Stream3D") << "VenueReverbDsp: convolver init failed at block="
+                                 << len << ", dry-only fallback" << LL_ENDL;
+            mConvInitialized = false;
+            return;
         }
+        mScratchInL.assign(len, 0.f);
+        mScratchInR.assign(len, 0.f);
+        mScratchWetL.assign(len, 0.f);
+        mScratchWetR.assign(len, 0.f);
+        mConvBlockSize    = len;
+        mConvInitialized  = true;
+    }
+
+    // De-interleave L/R from the FMOD interleaved stereo input.
+    for (int i = 0; i < len; ++i)
+    {
+        mScratchInL[i] = in[i * 2 + 0];
+        mScratchInR[i] = in[i * 2 + 1];
+    }
+
+    // Each processAdd accumulates wet_gain × convolved into its 'out'
+    // buffer — we zero those first because we only want this block's wet,
+    // not whatever stale value the previous block left behind.
+    std::memset(mScratchWetL.data(), 0, len * sizeof(F32));
+    std::memset(mScratchWetR.data(), 0, len * sizeof(F32));
+    mConvL.processAdd(mScratchInL.data(), mScratchWetL.data(), wet_gain);
+    mConvR.processAdd(mScratchInR.data(), mScratchWetR.data(), wet_gain);
+
+    // Re-interleave wet into output (parallel-mix add over the dry copy).
+    for (int i = 0; i < len; ++i)
+    {
+        out[i * 2 + 0] += mScratchWetL[i];
+        out[i * 2 + 1] += mScratchWetR[i];
     }
 }
