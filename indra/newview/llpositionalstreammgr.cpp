@@ -395,6 +395,27 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadVolume, val);
                 }
             }
+            else if (key == "binaural")
+            {
+                // r11 P5: {binaural:on|off} (case-insensitive). Only
+                // meaningful on the root prim (= same prim as {url}); we
+                // still parse it on every prim so a malformed value
+                // surfaces a chat error regardless of where the typo is.
+                std::string lowered = val;
+                LLStringUtil::toLower(lowered);
+                if (lowered == "on" || lowered == "true" || lowered == "1")
+                {
+                    data.binaural = true;
+                }
+                else if (lowered == "off" || lowered == "false" || lowered == "0")
+                {
+                    data.binaural = false;
+                }
+                else
+                {
+                    setError(DistParseError::BadBinaural, val);
+                }
+            }
             // Unknown keys (incl. removed-in-r8 {l}/{r}/{min}/{max}) are
             // silently ignored — the spec is permissive about extra fields.
         });
@@ -534,8 +555,25 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         if (!detail.empty()) msg += " (" + detail + ")";
         msg += "。受入対象は 1/2ch ソース、または 6ch Vorbis/Opus/FLAC のみです";
         break;
+    case DistErrorKind::BadBinaural:
+        msg = "タグ書式エラー (prim " + id_short + "): binaural の値は on または off で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{binaural:off}]";
+        break;
     }
     notifyStream3D(msg);
+}
+
+// static
+bool LLPositionalStreamMgr::effectiveBinaural(std::optional<bool> tag_value)
+{
+    // r11 P5 / spec §6 precedence: debug override (sentinel `-1` = follow
+    // tag) wins over the publisher tag. Tag default is `on` when the
+    // publisher omits the {binaural:...} key (spec §4.1.0).
+    const S32 dbg = gSavedSettings.getS32("Stream3DBinauralRender");
+    if (dbg == 0) return false;        // force OFF
+    if (dbg >= 1) return true;         // force ON
+    return tag_value.value_or(true);   // sentinel -1 → follow tag
 }
 
 void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
@@ -590,11 +628,12 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         DistErrorKind k = DistErrorKind::BadCh;
         switch (dist.error)
         {
-        case DistParseError::BadCh:     k = DistErrorKind::BadCh;     break;
-        case DistParseError::BadRange:  k = DistErrorKind::BadRange;  break;
-        case DistParseError::BadVolume: k = DistErrorKind::BadVolume; break;
-        case DistParseError::EmptyUrl:  k = DistErrorKind::EmptyUrl;  break;
-        case DistParseError::Ok:        break; // unreachable
+        case DistParseError::BadCh:       k = DistErrorKind::BadCh;       break;
+        case DistParseError::BadRange:    k = DistErrorKind::BadRange;    break;
+        case DistParseError::BadVolume:   k = DistErrorKind::BadVolume;   break;
+        case DistParseError::EmptyUrl:    k = DistErrorKind::EmptyUrl;    break;
+        case DistParseError::BadBinaural: k = DistErrorKind::BadBinaural; break;
+        case DistParseError::Ok:          break; // unreachable
         }
         notifyDistributedError(id, k, dist.bad_value);
 
@@ -681,6 +720,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
     const F32 fallback_range = gSavedSettings.getF32("Stream3DRolloffMax");
     const F32 range_default = root_data.range_default.value_or(fallback_range);
+    // r11 P5: capture publisher's {binaural:on|off} tag and the resolved
+    // effective value (= debug override × tag value) up front so the
+    // fingerprint comparison below can detect either kind of change.
+    const std::optional<bool> binaural_tag = root_data.binaural;
+    const bool binaural_effective = effectiveBinaural(binaural_tag);
 
     std::vector<SpeakerSlot> speakers;
     auto collectSpeaker = [&](const LLUUID& prim_id, const DistStereoTagData& d)
@@ -765,7 +809,13 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         const auto& old_b = old_it->second;
         if (old_b.url == url
             && old_b.speakers.size() == speakers.size()
-            && old_b.stream)
+            && old_b.stream
+            // r11 P5: a tag-only flip ({binaural:on}↔{binaural:off}) or a
+            // debug-toggle change (Stream3DBinauralRender -1↔0↔1) must
+            // rebuild the FMOD stream so makeChannelForBinding() runs the
+            // gate again. Comparing the resolved effective is sufficient
+            // because effectiveBinaural() folds both inputs into one bool.
+            && old_b.binaural_effective_applied == binaural_effective)
         {
             fingerprint_match = true;
             for (size_t i = 0; i < speakers.size(); ++i)
@@ -789,6 +839,9 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         // the live stream untouched.
         old_it->second.range_default = range_default;
         old_it->second.dropped_speakers = dropped;
+        // r11 P5: also refresh binaural_tag so a debug toggle later this
+        // session that flips back to the sentinel still resolves correctly.
+        old_it->second.binaural_tag = binaural_tag;
         return;
     }
 
@@ -810,6 +863,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.root_id = root_id;
     binding.url = url;
     binding.range_default = range_default;
+    binding.binaural_tag = binaural_tag;
+    binding.binaural_effective_applied = binaural_effective;
     binding.speakers = std::move(speakers);
     binding.dropped_speakers = dropped;
 
@@ -829,6 +884,10 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.next_retry_time = 0.0;
     auto stream = std::make_unique<LLPositionalStreamMulti>();
     stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+    // r11 P5: publisher's lite-HRTF intent (× debug override) decided at
+    // start time. Persists across the stream's reconnect cascade because
+    // makeChannelForBinding() reads it on every channel bring-up.
+    stream->setBinauralEnabled(binaural_effective);
 
     std::vector<LLPositionalStreamMulti::SpeakerConfig> configs;
     configs.reserve(binding.speakers.size());

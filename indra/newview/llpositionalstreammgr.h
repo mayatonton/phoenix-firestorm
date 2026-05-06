@@ -144,6 +144,10 @@ public:
         // Source declaration fields (set only when {url:...} is present).
         std::optional<std::string> url;
         std::optional<F32> range_default;
+        // r11 P5: lite-HRTF toggle ({binaural:on|off}). Source-side property
+        // — meaningful only on the root prim (= same prim as {url}).
+        // nullopt = unspecified (defaults to on per spec §4.1.0).
+        std::optional<bool> binaural;
 
         // Speaker declaration fields (set only when {ch:...} is present).
         std::optional<ChannelKind> ch;
@@ -165,6 +169,8 @@ public:
         BadRange,     // {range:N} not > 0 or unparseable
         BadVolume,    // {volume:N} not in [0.0, 1.0] or unparseable
         EmptyUrl,     // {url:} empty
+        // r11 P5: {binaural:...} value not on/off (case-insensitive)
+        BadBinaural,
     };
 
     struct DistParseResult
@@ -194,6 +200,13 @@ public:
     // a member so parser unit tests and r10's 5.1 placement code share the
     // exact same alphabet without the parser leaking its lowercase trick.
     static std::optional<ChannelKind> parseChannelKind(std::string_view s);
+
+    // r11 P5: combine the publisher's {binaural:on|off} tag with the debug
+    // override `Stream3DBinauralRender` (-1 sentinel = follow tag, 0 = force
+    // OFF, 1+ = force ON) into the final on/off decision used at channel
+    // bring-up time. Spec §4.1.0 / §6 — debug value wins when not the
+    // sentinel; otherwise the tag value (or `true` if unspecified) is used.
+    static bool effectiveBinaural(std::optional<bool> tag_value);
 
 private:
     LLPositionalStreamMgr();
@@ -244,6 +257,16 @@ private:
         LLUUID root_id;
         std::string url;
         F32 range_default = 20.f;
+        // r11 P5: publisher's {binaural:on|off} tag value (nullopt =
+        // unspecified). Combined with the debug override at channel bring-up
+        // via effectiveBinaural(). Tracked here so a fingerprint comparison
+        // in evaluateLinkset can detect a tag-only edit (e.g.
+        // {binaural:off} → {binaural:on}) and rebuild the FMOD stream.
+        std::optional<bool> binaural_tag;
+        // Snapshot of effectiveBinaural() at the moment we last (re)started
+        // this binding's stream. Combined with binaural_tag in the
+        // fingerprint so a debug-toggle change between evals also rebuilds.
+        bool binaural_effective_applied = true;
         std::vector<SpeakerSlot> speakers;
         // Count of speakers truncated by the per-binding cap. Surfaced in
         // F4 throttled notification; F2-a only logs.
@@ -299,6 +322,8 @@ private:
         // mismatch summary captured by LLPositionalStreamMulti::failDetail()
         // (e.g. "channels=4" or "channels=6 codec_type=11").
         UnsupportedSourceFormat,
+        // r11 P5: {binaural:...} value not on/off.
+        BadBinaural,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for

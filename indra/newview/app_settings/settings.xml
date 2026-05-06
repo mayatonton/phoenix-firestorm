@@ -27736,5 +27736,16 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>Stream3DBinauralRender</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r11: Debug-only override for the lite-HRTF DSP on positional streams. -1 (default, sentinel) = follow the publisher's {binaural:on|off} tag (and treat unspecified as on). 0 = force OFF (FMOD's built-in panner only, r10-equivalent behavior). 1 = force ON (overrides {binaural:off}). Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>-1</integer>
+    </map>
   </map>
 </llsd>
