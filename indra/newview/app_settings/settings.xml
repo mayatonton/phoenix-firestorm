@@ -27758,5 +27758,16 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <string></string>
     </map>
+    <key>Stream3DVenueWetGain</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r11: Debug-only override for the venue reverb wet-mix multiplier. -1.0 (default, sentinel) = follow the publisher's {wetgain:N} tag (and treat unspecified as 1.0). Any value &gt;= 0.0 forces the wet-mix multiplier regardless of tag. Final value is clamped to [0.0, 2.0]; 0.0 is silent wet (= reverb fully suppressed even if a non-dry venue is selected). Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>-1.0</real>
+    </map>
   </map>
 </llsd>

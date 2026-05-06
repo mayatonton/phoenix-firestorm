@@ -30,6 +30,7 @@
 #include "v3math.h"
 
 #include <deque>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -159,6 +160,15 @@ public:
         std::optional<std::string> venue;
         std::optional<std::string> bad_venue_value;
 
+        // r11 P9: venue reverb wet/dry mix multiplier ({wetgain:N}).
+        // Source-side property — child prim values are silently ignored
+        // (same rule as {venue}). nullopt = unspecified (defaults to 1.0
+        // per spec §4.1.0 line 152). Numeric values outside [0.0, 2.0]
+        // are clamped at parse time (spec §4.1 line 152). Non-numeric
+        // input is a full-tag-reject error (BadWetGain) like {volume}
+        // and {binaural} — there is no separate "bad value" field.
+        std::optional<F32> wetgain;
+
         // Speaker declaration fields (set only when {ch:...} is present).
         std::optional<ChannelKind> ch;
         std::optional<F32> range_speaker;
@@ -181,6 +191,9 @@ public:
         EmptyUrl,     // {url:} empty
         // r11 P5: {binaural:...} value not on/off (case-insensitive)
         BadBinaural,
+        // r11 P9: {wetgain:N} value not parseable as F32 (out-of-range
+        // is clamped silently, not reported here)
+        BadWetGain,
     };
 
     struct DistParseResult
@@ -226,6 +239,14 @@ public:
     // not re-validated against the catalog here; callers handle unknown
     // names via the setVenue return value (= notifies IRNotLoaded).
     static std::string effectiveVenue(const std::optional<std::string>& tag_value);
+
+    // r11 P9: combine the publisher's {wetgain:N} tag with the debug
+    // override `Stream3DVenueWetGain`. Spec §4.5 line 385 — debug value
+    // wins when ≥ 0.0; otherwise the tag value (or 1.0 if unspecified)
+    // is used. Result is clamped to [0.0, 2.0]. The DSP's internal range
+    // is enforced by setWetGain() too, but clamping here keeps the
+    // binding's recorded value coherent with what was actually pushed.
+    static F32 effectiveWetGain(std::optional<F32> tag_value);
 
 private:
     LLPositionalStreamMgr();
@@ -286,6 +307,15 @@ private:
         // this binding's stream. Combined with binaural_tag in the
         // fingerprint so a debug-toggle change between evals also rebuilds.
         bool binaural_effective_applied = true;
+        // r11 P9: publisher's {wetgain:N} tag value (nullopt = unspecified,
+        // defaults to 1.0). Tracked alongside venue because the wet-mix
+        // multiplier is also engine-level (same DSP) and shares the
+        // "atomic store, no stream rebuild" flow.
+        std::optional<F32> wetgain_tag;
+        // Last value actually pushed to the engine's setWetGain() on
+        // this binding's behalf. Sentinel NaN means "never pushed yet" —
+        // any first applyWetGainToBinding() will go through.
+        F32 wetgain_effective_applied = std::numeric_limits<F32>::quiet_NaN();
         // r11 P8: publisher's {venue:NAME} tag value (nullopt = unspecified).
         // Resolved via effectiveVenue() on every evaluate; the resolved
         // name is pushed to the engine's bus-level VenueReverbDsp on
@@ -362,6 +392,10 @@ private:
         // engine init (missing / wrong format / sample rate mismatch).
         // Surfaced when setVenue() returns false at apply time.
         IRNotLoaded,
+        // r11 P9: {wetgain:N} value not parseable as F32 (e.g. "abc").
+        // Out-of-range numeric values (e.g. "5.0") are silently clamped
+        // to [0.0, 2.0] per spec §4.1 line 152, NOT reported here.
+        BadWetGain,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for
@@ -394,6 +428,13 @@ private:
     // audible (silent fallback per spec §4.5).
     void applyVenueToBinding(DistributedStereoBinding& binding,
                              const std::optional<std::string>& venue_tag);
+
+    // r11 P9: push the resolved wet-mix multiplier to the engine's
+    // bus-level VenueReverbDsp. Idempotent (skips when the new value
+    // matches the previously pushed one). Engine absent → records the
+    // value but does nothing (mirrors applyVenueToBinding semantics).
+    void applyWetGainToBinding(DistributedStereoBinding& binding,
+                               std::optional<F32> wetgain_tag);
 
     // r8 F2-b: push id onto mPriorityPollQueue if not already queued.
     // Linear scan dedup is fine — the queue is bounded by ~16 speakers per
