@@ -26,10 +26,13 @@
 
 #include "llpositionalstreammgr.h"
 
+#include "llaudioengine.h"
+#include "llaudioengine_fmodstudio.h"
 #include "llfasttimer.h"
 #include "llpositionalstream.h"
 #include "llpositionalstreammulti.h"
 #include "llpositionalstreamstereo.h"
+#include "llvenuereverbdsp.h"
 
 #include "llviewercontrol.h"
 #include "llviewerobject.h"
@@ -416,6 +419,26 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadBinaural, val);
                 }
             }
+            else if (key == "venue")
+            {
+                // r11 P8: {venue:NAME}. Validated against the bundled
+                // catalog (LLVenueReverbDsp::knownVenues, includes "dry").
+                // Spec §4.1 line 174 says unknown name is silent-ignore +
+                // chat warn — i.e. NOT a tag-rejecting error like the
+                // {binaural} branch above. So we capture the bad value
+                // separately and let evaluateLinkset notify on its own
+                // schedule, leaving data.venue at nullopt → effective
+                // resolves to "dry".
+                const auto& known = LLVenueReverbDsp::knownVenues();
+                if (std::find(known.begin(), known.end(), val) != known.end())
+                {
+                    data.venue = val;
+                }
+                else
+                {
+                    data.bad_venue_value = val;
+                }
+            }
             // Unknown keys (incl. removed-in-r8 {l}/{r}/{min}/{max}) are
             // silently ignored — the spec is permissive about extra fields.
         });
@@ -560,6 +583,16 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         if (!detail.empty()) msg += " (got '" + detail + "')";
         msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{binaural:off}]";
         break;
+    case DistErrorKind::BadVenue:
+        msg = "タグ書式エラー (root " + id_short + "): venue の値が認識できません";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。許容値: dry / room_small / room_medium / hall_small / hall_medium / hall_large / club / cathedral / outdoor";
+        break;
+    case DistErrorKind::IRNotLoaded:
+        msg = "再生エラー (root " + id_short + "): venue IR ファイルが読み込めませんでした";
+        if (!detail.empty()) msg += " (venue='" + detail + "')";
+        msg += "。dry にフォールバックします (app_settings/venue_ir/ の WAV を確認してください)";
+        break;
     }
     notifyStream3D(msg);
 }
@@ -574,6 +607,60 @@ bool LLPositionalStreamMgr::effectiveBinaural(std::optional<bool> tag_value)
     if (dbg == 0) return false;        // force OFF
     if (dbg >= 1) return true;         // force ON
     return tag_value.value_or(true);   // sentinel -1 → follow tag
+}
+
+// static
+std::string LLPositionalStreamMgr::effectiveVenue(const std::optional<std::string>& tag_value)
+{
+    // r11 P8 / spec §4.5: debug override wins when non-empty; otherwise
+    // the publisher tag (or "dry" default) is used. The override string
+    // is taken verbatim — invalid names will be rejected by setVenue()
+    // and surface as IRNotLoaded chat warnings (no separate validation
+    // here because both paths converge on the same failure handling).
+    const std::string dbg = gSavedSettings.getString("Stream3DVenueOverride");
+    if (!dbg.empty()) return dbg;
+    return tag_value.value_or("dry");
+}
+
+void LLPositionalStreamMgr::applyVenueToBinding(DistributedStereoBinding& binding,
+                                                const std::optional<std::string>& venue_tag)
+{
+    // r11 P8: refresh the binding's tag mirror first (cheap, no side
+    // effects) so a fingerprint-match path can re-record the latest
+    // tag value even if the resolved effective hasn't moved.
+    binding.venue_tag = venue_tag;
+
+    const std::string venue_effective = effectiveVenue(venue_tag);
+    if (binding.venue_effective_applied == venue_effective)
+    {
+        return;
+    }
+
+    LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop);
+    LLVenueReverbDsp* dsp = engine ? engine->getVenueReverbDsp() : nullptr;
+    if (!dsp)
+    {
+        // Engine not in FMOD mode (or DSP create failed at init): there's
+        // no bus-level reverb to push to. Record the resolved name so we
+        // don't loop on this branch every poll, and let the binding stay
+        // silent on the wet path (which is exactly what no-DSP means).
+        binding.venue_effective_applied = venue_effective;
+        return;
+    }
+
+    if (dsp->setVenue(venue_effective))
+    {
+        binding.venue_effective_applied = venue_effective;
+        return;
+    }
+
+    // setVenue() rejected the name. "dry" is documented to always
+    // succeed, so a failure here means a non-"dry" name whose IR slot
+    // was never primed (file missing / format reject / sample-rate
+    // mismatch at engine init). Notify and fall back.
+    notifyDistributedError(binding.root_id, DistErrorKind::IRNotLoaded, venue_effective);
+    dsp->setVenue("dry");
+    binding.venue_effective_applied = "dry";
 }
 
 void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
@@ -725,6 +812,16 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // fingerprint comparison below can detect either kind of change.
     const std::optional<bool> binaural_tag = root_data.binaural;
     const bool binaural_effective = effectiveBinaural(binaural_tag);
+    // r11 P8: capture the publisher's {venue:NAME} tag (parser-validated
+    // against the catalog) and surface a parser-rejected value once via
+    // chat. Children's bad_venue_value is intentionally not surfaced —
+    // venue is a root-level concept (§4.5), so notifying on a child would
+    // just be noise.
+    const std::optional<std::string> venue_tag = root_data.venue;
+    if (root_data.bad_venue_value)
+    {
+        notifyDistributedError(root_id, DistErrorKind::BadVenue, *root_data.bad_venue_value);
+    }
 
     std::vector<SpeakerSlot> speakers;
     auto collectSpeaker = [&](const LLUUID& prim_id, const DistStereoTagData& d)
@@ -842,6 +939,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         // r11 P5: also refresh binaural_tag so a debug toggle later this
         // session that flips back to the sentinel still resolves correctly.
         old_it->second.binaural_tag = binaural_tag;
+        // r11 P8: venue is engine-level (single bus DSP), so a tag-only
+        // change doesn't rebuild the stream — just push the resolved name
+        // to the DSP. applyVenueToBinding() is a no-op when the resolved
+        // value matches what we already pushed.
+        applyVenueToBinding(old_it->second, venue_tag);
         return;
     }
 
@@ -867,6 +969,10 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.binaural_effective_applied = binaural_effective;
     binding.speakers = std::move(speakers);
     binding.dropped_speakers = dropped;
+    // r11 P8: push venue selection before the stream comes up so the
+    // first audio block out of process() already convolves through the
+    // right slot (avoids a momentary "dry then wet" pop on first start).
+    applyVenueToBinding(binding, venue_tag);
 
     for (const auto& s : binding.speakers)
     {
@@ -1222,6 +1328,21 @@ void LLPositionalStreamMgr::teardownDistributedBinding(const LLUUID& root_id)
         if (pr_it != mPrimToRoot.end() && pr_it->second == root_id)
         {
             mPrimToRoot.erase(pr_it);
+        }
+    }
+    // r11 P8: revert the bus-level reverb to dry on teardown so a
+    // single-publisher session leaves the reverb tail closed; otherwise
+    // an unrelated future stream would inherit this binding's venue.
+    // Last-writer-wins under multi-publisher load is acceptable for r11
+    // (one DSP per bus) — spec §4.5 names this as a known limitation.
+    if (it->second.venue_effective_applied != "dry")
+    {
+        if (LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop))
+        {
+            if (LLVenueReverbDsp* dsp = engine->getVenueReverbDsp())
+            {
+                dsp->setVenue("dry");
+            }
         }
     }
     mDistributedBindings.erase(it);
