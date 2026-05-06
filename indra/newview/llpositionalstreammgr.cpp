@@ -439,6 +439,22 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     data.bad_venue_value = val;
                 }
             }
+            else if (key == "wetgain")
+            {
+                // r11 P9: {wetgain:N}. Spec §4.1 line 152 — F32 in
+                // [0.0, 2.0], values outside the range are clamped (not
+                // rejected). Non-numeric input is the only failure mode
+                // surfaced as BadWetGain.
+                F32 f;
+                if (tryParseFloat(val, f))
+                {
+                    data.wetgain = std::clamp(f, 0.f, 2.f);
+                }
+                else
+                {
+                    setError(DistParseError::BadWetGain, val);
+                }
+            }
             // Unknown keys (incl. removed-in-r8 {l}/{r}/{min}/{max}) are
             // silently ignored — the spec is permissive about extra fields.
         });
@@ -593,6 +609,11 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         if (!detail.empty()) msg += " (venue='" + detail + "')";
         msg += "。dry にフォールバックします (app_settings/venue_ir/ の WAV を確認してください)";
         break;
+    case DistErrorKind::BadWetGain:
+        msg = "タグ書式エラー (prim " + id_short + "): wetgain の値は数値で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += " (範囲外は 0.0〜2.0 にクランプされます)。例: [3dstream-stereo:{venue:hall_medium}{wetgain:1.0}]";
+        break;
     }
     notifyStream3D(msg);
 }
@@ -663,6 +684,43 @@ void LLPositionalStreamMgr::applyVenueToBinding(DistributedStereoBinding& bindin
     binding.venue_effective_applied = "dry";
 }
 
+// static
+F32 LLPositionalStreamMgr::effectiveWetGain(std::optional<F32> tag_value)
+{
+    // r11 P9 / spec §4.5 line 385: debug override wins when ≥ 0.0;
+    // sentinel `-1.0` (or any negative) means "follow tag". Tag default
+    // is 1.0 when {wetgain:...} is omitted (spec §4.1.0 line 152).
+    // Final value is clamped to [0.0, 2.0] — the same range parser
+    // clamps to, repeated here in case the debug value is out of range.
+    const F32 dbg = gSavedSettings.getF32("Stream3DVenueWetGain");
+    const F32 raw = (dbg >= 0.f) ? dbg : tag_value.value_or(1.f);
+    return std::clamp(raw, 0.f, 2.f);
+}
+
+void LLPositionalStreamMgr::applyWetGainToBinding(DistributedStereoBinding& binding,
+                                                  std::optional<F32> wetgain_tag)
+{
+    binding.wetgain_tag = wetgain_tag;
+
+    const F32 wetgain_effective = effectiveWetGain(wetgain_tag);
+    // NaN sentinel for "never pushed" — the != comparison below would
+    // be true against any number, so first call always goes through.
+    if (binding.wetgain_effective_applied == wetgain_effective)
+    {
+        return;
+    }
+
+    LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop);
+    LLVenueReverbDsp* dsp = engine ? engine->getVenueReverbDsp() : nullptr;
+    if (dsp)
+    {
+        dsp->setWetGain(wetgain_effective);
+    }
+    // Even when the engine isn't in FMOD mode, record the resolved
+    // value so we don't loop on this branch every poll cycle.
+    binding.wetgain_effective_applied = wetgain_effective;
+}
+
 void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
 {
     auto desc_it = mDescriptionCache.find(id);
@@ -720,6 +778,7 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         case DistParseError::BadVolume:   k = DistErrorKind::BadVolume;   break;
         case DistParseError::EmptyUrl:    k = DistErrorKind::EmptyUrl;    break;
         case DistParseError::BadBinaural: k = DistErrorKind::BadBinaural; break;
+        case DistParseError::BadWetGain:  k = DistErrorKind::BadWetGain;  break;
         case DistParseError::Ok:          break; // unreachable
         }
         notifyDistributedError(id, k, dist.bad_value);
@@ -822,6 +881,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     {
         notifyDistributedError(root_id, DistErrorKind::BadVenue, *root_data.bad_venue_value);
     }
+    // r11 P9: wetgain mirrors venue's apply flow (engine-level DSP,
+    // single-store atomic). No bad-value notification at this point —
+    // BadWetGain is full-tag-rejecting at parse time, so we never reach
+    // here with a malformed value (parse error returns nullopt data).
+    const std::optional<F32> wetgain_tag = root_data.wetgain;
 
     std::vector<SpeakerSlot> speakers;
     auto collectSpeaker = [&](const LLUUID& prim_id, const DistStereoTagData& d)
@@ -944,6 +1008,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         // to the DSP. applyVenueToBinding() is a no-op when the resolved
         // value matches what we already pushed.
         applyVenueToBinding(old_it->second, venue_tag);
+        // r11 P9: same single-store atomic flow for wetgain.
+        applyWetGainToBinding(old_it->second, wetgain_tag);
         return;
     }
 
@@ -973,6 +1039,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // first audio block out of process() already convolves through the
     // right slot (avoids a momentary "dry then wet" pop on first start).
     applyVenueToBinding(binding, venue_tag);
+    // r11 P9: push wetgain in the same window for the same reason.
+    applyWetGainToBinding(binding, wetgain_tag);
 
     for (const auto& s : binding.speakers)
     {
@@ -1335,14 +1403,18 @@ void LLPositionalStreamMgr::teardownDistributedBinding(const LLUUID& root_id)
     // an unrelated future stream would inherit this binding's venue.
     // Last-writer-wins under multi-publisher load is acceptable for r11
     // (one DSP per bus) — spec §4.5 names this as a known limitation.
-    if (it->second.venue_effective_applied != "dry")
+    // r11 P9: also drop wetgain back to 0.0 (silent wet path) for the
+    // same reason — a future binding will push its own value before
+    // its first audio block.
+    if (LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop))
     {
-        if (LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop))
+        if (LLVenueReverbDsp* dsp = engine->getVenueReverbDsp())
         {
-            if (LLVenueReverbDsp* dsp = engine->getVenueReverbDsp())
+            if (it->second.venue_effective_applied != "dry")
             {
                 dsp->setVenue("dry");
             }
+            dsp->setWetGain(0.f);
         }
     }
     mDistributedBindings.erase(it);
