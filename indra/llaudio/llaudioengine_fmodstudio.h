@@ -31,6 +31,8 @@
 #include "llaudioengine.h"
 #include "llwindgen.h"
 
+#include "llvenuereverbdsp.h"  // r11 P7c: value-type member, owned by engine
+
 //Stubs
 class LLAudioStreamManagerFMODSTUDIO;
 namespace FMOD
@@ -85,6 +87,12 @@ public:
     // group is parented to FMOD's master ChannelGroup by default.
     FMOD::ChannelGroup* getStream3DGroup() const { return mStream3DGroup; }
 
+    // r11 P7c: bus-level venue convolution reverb DSP attached to
+    // mStream3DGroup. Pre-loads all bundled IRs at init(); the active
+    // venue starts at "dry" (= bypass) until P8 wires {venue:NAME} tags.
+    // Returns nullptr when init() never ran or createDSP failed.
+    LLVenueReverbDsp* getVenueReverbDsp() { return mVenueReverbDsp.getDsp() ? &mVenueReverbDsp : nullptr; }
+
 protected:
     /*virtual*/ LLAudioBuffer *createBuffer(); // Get a free buffer, or flush an existing one if you have to.
     /*virtual*/ LLAudioChannel *createChannel(); // Create a new audio channel.
@@ -99,6 +107,7 @@ protected:
     FMOD::DSP *mWindDSP;
     FMOD::System *mSystem;
     FMOD::ChannelGroup *mStream3DGroup { nullptr }; // r11 P1
+    LLVenueReverbDsp mVenueReverbDsp;               // r11 P7c
     bool mEnableProfiler;
     U32 mResampleMethod;
 
