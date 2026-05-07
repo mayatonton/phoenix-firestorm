@@ -25,15 +25,18 @@
 #include "linden_common.h"
 #include "llstereoupmix.h"
 
+#include "llmath.h"
+
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 
 namespace
 {
     // 1/√2 — the DPL2 power-preserving normaliser. Spec §4.3.2:
     //   C  = (L + R) / √2, S  = (L - R) / √2,
     //   L' = L - C × bleed / √2, R' = R - C × bleed / √2.
+    // Doubles as α = sin(ω0)/(2Q) for the Butterworth LFE biquad
+    // (Q = 1/√2, so α = sin(ω0) × kInvSqrt2).
     constexpr F32 kInvSqrt2 = 0.7071067811865475f;
 
     // Hard cap on the rear-delay window. Spec §4.4 lists the user-visible
@@ -55,6 +58,44 @@ namespace
         std::size_t p = 1;
         while (p < n) p <<= 1;
         return p;
+    }
+
+    // RBJ Audio EQ Cookbook — 2nd-order Butterworth LPF (Direct Form II
+    // Transposed). Same convention as lllitehrtfdsp.cpp's hi-shelf:
+    // α = sin(ω0)/(2Q), Q = 1/√2 for Butterworth → α = sin(ω0) × 1/√2.
+    // Coefficients are pre-normalised by a0 so biquadStep does no division.
+    struct LpfCoeffs
+    {
+        F32 b0 { 1.f }, b1 { 0.f }, b2 { 0.f }, a1 { 0.f }, a2 { 0.f };
+    };
+
+    LpfCoeffs lfeLpfCoeffs(F32 fs, F32 fc)
+    {
+        if (fc <= 0.f || fs <= 0.f) return {};
+        const F32 omega = 2.f * F_PI * fc / fs;
+        const F32 cos_w = std::cos(omega);
+        const F32 sin_w = std::sin(omega);
+        const F32 alpha = sin_w * kInvSqrt2;          // Q = 1/√2
+
+        const F32 b0 = (1.f - cos_w) * 0.5f;
+        const F32 b1 =  1.f - cos_w;
+        const F32 b2 = b0;
+        const F32 a0 = 1.f + alpha;
+        const F32 a1 = -2.f * cos_w;
+        const F32 a2 = 1.f - alpha;
+        return { b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0 };
+    }
+
+    inline F32 biquadStep(const LpfCoeffs& c, F32 x, F32& z1, F32& z2)
+    {
+        // Direct Form II Transposed — preferred over plain DF-II for low
+        // cutoff / float coefficients because the state variables are
+        // sums of past inputs/outputs rather than intermediate w[n]
+        // values, which keeps quantisation noise bounded near fc.
+        const F32 y = c.b0 * x + z1;
+        z1 = c.b1 * x - c.a1 * y + z2;
+        z2 = c.b2 * x - c.a2 * y;
+        return y;
     }
 }
 
@@ -90,9 +131,11 @@ void LLStereoUpmix::upmix2chToSpeaker(const F32* in_2ch, F32* out_mono,
                                      std::size_t frames, UpmixRole role,
                                      State& state, const Params& params) const
 {
-    // Front / center / side are stateless; their loops just read in_2ch[]
-    // pairs and write the matrix-decoded scalar. Rear pulls through a
-    // per-speaker delay line. LFE stays silent until P3.
+    // Front / center are stateless; their loops just read in_2ch[] pairs
+    // and write the matrix-decoded scalar. Rear (SL/SR) pulls through a
+    // per-speaker delay line; LFE pulls through a 2nd-order LPF biquad.
+    // Both stateful roles persist their delay/filter state across calls
+    // via `state`.
     switch (role)
     {
     case UpmixRole::FL:
@@ -129,11 +172,29 @@ void LLStereoUpmix::upmix2chToSpeaker(const F32* in_2ch, F32* out_mono,
         break;
 
     case UpmixRole::LFE:
-        // P3 lands the biquad LPF on (L+R)/2. Until then leave LFE silent
-        // so a P2 listener doesn't get unfiltered low-mid bleeding into
-        // the sub channel.
-        std::memset(out_mono, 0, frames * sizeof(F32));
+    {
+        // Spec §4.3.5: LFE = (L + R) / 2 → 2nd-order Butterworth LPF at
+        // params.lfe_cutoff_hz (default 80 Hz). Coefficients are recomputed
+        // per call so a settings change picks up cleanly at the next chunk
+        // boundary; the cost is one sin / one cos / five multiplies per
+        // chunk, dwarfed by the per-sample loop. State is preserved across
+        // calls in state.lpf_state[] (z1, z2 of DF-II Transposed).
+        const F32 sr = static_cast<F32>(std::max(params.sample_rate, kMinSampleRate));
+        const LpfCoeffs c = lfeLpfCoeffs(sr, params.lfe_cutoff_hz);
+
+        F32 z1 = state.lpf_state[0];
+        F32 z2 = state.lpf_state[1];
+        for (std::size_t i = 0; i < frames; ++i)
+        {
+            const F32 L = in_2ch[i * 2];
+            const F32 R = in_2ch[i * 2 + 1];
+            const F32 x = (L + R) * 0.5f;
+            out_mono[i] = biquadStep(c, x, z1, z2);
+        }
+        state.lpf_state[0] = z1;
+        state.lpf_state[1] = z2;
         break;
+    }
 
     case UpmixRole::SL:
     case UpmixRole::SR:
