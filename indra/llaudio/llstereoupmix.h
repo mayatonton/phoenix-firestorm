@@ -42,7 +42,9 @@
 //
 // P2: front (FL/FR with center-bleed-removed L'/R'), center (C = (L+R)/√2),
 // and rear (SL/SR with delay-line decorrelation of S = (L-R)/√2) are live.
-// LFE still emits silence here — its biquad LPF lands in P3.
+// P3: LFE = (L + R)/2 → 2nd-order Butterworth LPF (default 80 Hz). All six
+// 5.1 roles are now functionally complete inside the helper; what remains
+// is wiring (P4 resolveReadOp branch, P5 tag, P6 settings push).
 class LLStereoUpmix
 {
 public:
@@ -61,9 +63,9 @@ public:
 
     // Tuning parameters (spec §4.4). Defaults match the spec table; P6 wires
     // Stream3DUpmixCenterBleed / Stream3DUpmixRearDelayMs / Stream3DUpmixLfeCutoff
-    // through here from settings.xml. `sample_rate` is required for the rear
-    // delay tap and (in P3) for the LFE biquad coefficients — the caller
-    // (pcmReadCallback) gets it from LLPositionalStreamMulti::mSampleRate.
+    // through here from settings.xml. `sample_rate` is required for both the
+    // rear delay tap (frame count) and the LFE biquad coefficients — the
+    // caller (pcmReadCallback) gets it from LLPositionalStreamMulti::mSampleRate.
     //
     // L/R rear delays are split symmetrically around the base
     // Stream3DUpmixRearDelayMs (default 16 ms) by a ±2 ms jitter so SL and
@@ -74,19 +76,21 @@ public:
         F32 center_bleed   = 1.0f;   // 0..1; 1.0 = full center extraction
         F32 rear_delay_ms_l = 18.0f; // base 16 + jitter +2
         F32 rear_delay_ms_r = 14.0f; // base 16 - jitter -2
-        F32 lfe_cutoff_hz   = 80.0f; // P3 will consume this
-        int sample_rate     = 44100; // for delay frame count + (P3) LPF coeffs
+        F32 lfe_cutoff_hz   = 80.0f; // 2nd-order Butterworth LPF cutoff
+        int sample_rate     = 44100; // delay frame count + LFE LPF coeffs
     };
 
     // Per-speaker mutable state, owned by the caller (one instance per
-    // SpeakerCallback). LFE uses lpf_state[] as a Direct Form II biquad
-    // (wired in P3), SL/SR use delay_buf as a delay line for Haas-style
-    // decorrelation, FL/FR/C are stateless. Allocated lazily on first use
-    // of a stateful role so passthrough callers pay nothing.
+    // SpeakerCallback). LFE uses lpf_state[] as a Direct Form II Transposed
+    // biquad, SL/SR use delay_buf as a delay line for Haas-style
+    // decorrelation, FL/FR/C are stateless. The delay line is allocated
+    // lazily on first SL/SR use; the biquad state lives inline so LFE pays
+    // nothing extra at construction.
     struct State
     {
-        // Direct Form II biquad state for the LFE LPF (P3). Two delay
-        // taps (z^-1, z^-2). Zero-initialised so the first sample is clean.
+        // Direct Form II Transposed biquad state for the LFE LPF.
+        // Two accumulator nodes (z1, z2 in the cookbook); zero-initialised
+        // so the first sample carries no startup transient.
         F32 lpf_state[2] = {0.f, 0.f};
 
         // Ls/Rs delay line. Sized in upmix2chToSpeaker() on first SL/SR
@@ -112,11 +116,15 @@ public:
     // `role`. `state` is mutable per-speaker storage; `params` is the
     // tuning bundle (P6 wires it from settings).
     //
-    // P2 behaviour: FL = L - C·bleed/√2, FR = R - C·bleed/√2,
-    //               C  = (L + R)/√2,
-    //               SL = delay(+S, rear_delay_ms_l), SR = delay(-S, rear_delay_ms_r),
-    //               where S = (L - R)/√2 and C used in FL/FR is the same (L+R)/√2.
-    //               LFE = silent (P3 implements (L+R)/2 → biquad LPF).
+    // Behaviour (P2 + P3):
+    //   FL  = L - C · bleed / √2,
+    //   FR  = R - C · bleed / √2,
+    //   C   = (L + R) / √2,
+    //   SL  = delay(+S, rear_delay_ms_l),
+    //   SR  = delay(-S, rear_delay_ms_r),
+    //   LFE = biquad_lpf((L + R) / 2, lfe_cutoff_hz),
+    // where S = (L - R) / √2 and the C used in the FL/FR center-bleed
+    // term is the same (L + R) / √2 produced for the C role.
     void upmix2chToSpeaker(const F32* in_2ch, F32* out_mono,
                            std::size_t frames, UpmixRole role,
                            State& state, const Params& params) const;
