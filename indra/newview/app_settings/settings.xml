@@ -27769,6 +27769,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>-1.0</real>
     </map>
+    <key>Stream3DUpmix</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r12: Debug-only override for the 2ch→5.1 upmix dispatch on positional streams. -1 (default, sentinel) = follow the publisher's {upmix:on|off} tag (and treat unspecified as off). 0 = force OFF (the 2ch source plays 2-spk stereo, r11-equivalent behavior). 1 = force ON (overrides {upmix:off}; auto-bypass on 6ch native source still applies — chat will note the bypass). Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>-1</integer>
+    </map>
     <key>Stream3DUrlPreResolve</key>
     <map>
       <key>Comment</key>
