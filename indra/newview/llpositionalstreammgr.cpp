@@ -1119,6 +1119,15 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // tag parser flips it; the explicit setter call is here so P5 only
     // needs to update the value being read, not introduce new plumbing.
     stream->setUpmixEnabled(binding.upmix_effective_applied);
+    // r12 P6: seed the live-tunable upmix knobs from settings before the
+    // FMOD callbacks start running, so the very first chunk is computed
+    // with the user's current values (not the helper's compile-time
+    // defaults). The per-poll push in update() picks up subsequent
+    // settings changes without rebuilding the stream.
+    stream->setUpmixTuning(
+        gSavedSettings.getF32("Stream3DUpmixLfeCutoff"),
+        gSavedSettings.getF32("Stream3DUpmixCenterBleed"),
+        gSavedSettings.getF32("Stream3DUpmixRearDelayMs"));
     // r11 P10: viewer-side URL pre-resolve gate. Sentinel default -1 =
     // enabled (libcurl follows HTTPS→HTTP cross-protocol redirects before
     // FMOD::createStream sees the URL); 0 = disabled (FMOD-only, r10
@@ -1924,6 +1933,16 @@ void LLPositionalStreamMgr::update()
                 b.stream->setSpeakerPosition(i, toFloatVec(sp->getPositionGlobal()));
             }
         }
+        // r12 P6: push the live-tunable upmix knobs every poll so a debug-
+        // settings edit picks up at the next FMOD chunk boundary without a
+        // stream rebuild. setUpmixTuning is a lock-free atomic write
+        // (cheap), and the values only matter when this binding actually
+        // dispatches OpKind::Upmix — but unconditional push is simpler and
+        // costs three settings reads + three atomic stores per binding.
+        b.stream->setUpmixTuning(
+            gSavedSettings.getF32("Stream3DUpmixLfeCutoff"),
+            gSavedSettings.getF32("Stream3DUpmixCenterBleed"),
+            gSavedSettings.getF32("Stream3DUpmixRearDelayMs"));
         b.stream->update();
     }
     for (const auto& r : dead_roots)

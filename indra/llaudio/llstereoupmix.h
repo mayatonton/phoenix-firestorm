@@ -61,11 +61,13 @@ public:
         SR,
     };
 
-    // Tuning parameters (spec §4.4). Defaults match the spec table; P6 wires
-    // Stream3DUpmixCenterBleed / Stream3DUpmixRearDelayMs / Stream3DUpmixLfeCutoff
-    // through here from settings.xml. `sample_rate` is required for both the
-    // rear delay tap (frame count) and the LFE biquad coefficients — the
-    // caller (pcmReadCallback) gets it from LLPositionalStreamMulti::mSampleRate.
+    // Tuning parameters (spec §4.4). Defaults match the spec table; the
+    // owning LLPositionalStreamMulti refreshes the bleed / delay / cutoff
+    // fields per FMOD callback from its own atomic snapshot of the
+    // Stream3DUpmix{LfeCutoff,CenterBleed,RearDelayMs} debug settings (P6).
+    // `sample_rate` is required for both the rear delay tap (frame count)
+    // and the LFE biquad coefficients — stamped once at createUserSounds()
+    // time and never rewritten.
     //
     // L/R rear delays are split symmetrically around the base
     // Stream3DUpmixRearDelayMs (default 16 ms) by a ±2 ms jitter so SL and
