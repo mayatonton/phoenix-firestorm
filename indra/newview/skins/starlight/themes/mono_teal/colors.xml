@@ -913,7 +913,7 @@
      reference="LtGray" />
     <color
      name="TextEmbeddedItemReadOnlyColor"
-     reference="EmphasisColor35" />
+     reference="EmphasisColor_35" />
     <color
      name="TextFgReadOnlyColor"
      reference="LtGray" />
