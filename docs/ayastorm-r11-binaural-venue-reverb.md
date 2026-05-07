@@ -126,7 +126,7 @@ binaural gate 状態 (タグ値 / debug 値 / 実効値) を `LL_DEBUGS("Stream3
 
 ---
 
-### P7: VenueReverb 完成 (a/b/c/c-B の 4 サブステップ)
+### P7: VenueReverb 完成 (a/b/c/c-B/c-C の 5 サブステップ)
 
 partitioned overlap-save convolution + WAV mini-reader + slot model + 8 venue IR 投入 + Stream3D group 末尾 attach。
 
@@ -150,7 +150,14 @@ partitioned overlap-save convolution + WAV mini-reader + slot model + 8 venue IR
 - `app_settings/venue_ir/CREDITS.md` に出典明記
 - `doc/r11/fetch_venue_irs.sh` で再現可能な DL/変換 helper
 
-**完了条件 (全 P7 step 完了時)**: 9 venue で会場感の段階差が出る / venue index 切替が live で反映 / IR ロード失敗時の chat 通知 throttle / CREDITS.md attribution 完備。
+**P7c-C — venue IR unity-gain 正規化** (`057591334a`):
+- `LLVenueReverbDsp::create()` 内に正規化 pass を追加。各 IR を Σs² == 1 per channel に scale し、convolution operator gain を unity に揃える。
+- 連続入力 RMS=R に対して wet 出力 RMS≈R が出るので、`{wetgain:N}` は純粋な dry/wet 比 (1.0 = wet equal to dry, 0.5 = half-mix) として効くようになり、venue を切り替えても標準値を retune する必要がない。
+- `loadVenueSlot()` を `stageVenueIR()` (load + Σs² 測定のみ) に分割し、`create()` を 2-pass 化 (Pass 1: 全 venue stage / Pass 2: norm = 1/√energy で in-place scale → primeSlot)。
+- 起動ログに per-venue `energy=X norm=Y` を出力 (検証用 trace)。
+- きっかけ: P12 検証中に「venue 横断で wetgain の標準値が決められない (cathedral overload / room 薄)」と判明。仕様 §4.4.6 で正規化基準を明文化。
+
+**完了条件 (全 P7 step 完了時)**: 9 venue で会場感の段階差が出る / venue index 切替が live で反映 / IR ロード失敗時の chat 通知 throttle / CREDITS.md attribution 完備 / unity-gain 正規化により venue 横断で wetgain 同一値が同じ濃さで効く。
 
 ---
 
@@ -274,19 +281,40 @@ partitioned overlap-save convolution + WAV mini-reader + slot model + 8 venue IR
 
 ---
 
+### P15: 配信者 LSL 拡張 + urlsave 廃止
+
+**目的**: 配信者が r11 の新タグ (`{binaural}` / `{venue}` / `{wetgain}`) を Desc 直接編集ではなく LSL menu / dialog から設定できるようにする。同時に LSL 内の `urlsave` 自動退避/復元機構を撤去し、書いた URL がそのまま反映される透明性モデルに揃える。
+
+**背景**: r11 viewer 側は P5/P8/P9 でタグ実装済みだが、配信者向け sample LSL (`doc/lsl/aya_3dstream_setup.lsl`) が r10 までのキー (url/ch/range/volume) しか UI を持たず、新タグだけは Desc 手書きが必要だった。配信者向け原則「viewer に追加した Desc タグは LSL から全部設定可能」(memory `feedback_lsl_mirrors_viewer_tags.md`) を満たすため P15 として後付け。urlsave 廃止は P12 検証中に「URL を変えたのに前 URL に戻る」報告があり、原因が LSL の自動退避/復元と判明したため同 commit で撤去。
+
+**ファイル**:
+- `doc/lsl/aya_3dstream_setup.lsl` (mode token / dialog / handler / fmtCurrent / buildTagBody / handleStop / handleStart)
+
+**実装**:
+- ROOT メニュー: 8 → 11 ボタン (Binaural / Venue / WetGain 追加)
+- 各 dialog の "Default" は `dropField` で当該タグを削除し viewer 側 default (= sentinel 経由で debug setting が効く状態) に戻す
+- `{wetgain:N}` の Custom は `llTextBox` で任意値入力 (LSL 仕様上、初期値はセット不可)
+- urlsave 廃止: Stop は `{url:}` を `dropField` するだけ、Start は url が既存なら no-op
+
+**完了条件**: 全 r11 タグが LSL menu / dialog から編集可 / Default ボタンで viewer default に戻せる / Stop/Start で urlsave 退避復元しない / 書き込んだ URL がそのまま Desc に維持される。
+
+**commit**: `dd23d7bf34`
+
+---
+
 ## 3. マイルストーン依存関係
 
 ```
 P0 ─→ P1 ─→ ┬─→ P2 ─→ P3 ─→ P4 ─→ P5 ──┐
             │                              │
-            └→ P6 ─→ P7 ─────────────────→ ├─→ P12 ─→ P13 ─→ P14
+            └→ P6 ─→ P7 ─────────────────→ ├─→ P12 ─→ P13 ─→ P14 ─→ P7c-C ─→ P15
                      P8 (P5 と並行可) ───→  │
                      P9 (P7/P8 完了後) ───→ │
                      P10 (P5/P8 と並行可) → │
                      P11 (P12 開始前まで) ┘
 ```
 
-P0 (仕様 + roadmap doc 同時更新) は本書策定と同タイミングで roadmap §3 を整合させ、以降を進める誰もが同じ前提で動ける状態を作った。P1 (Stream3D group 分離) は両 DSP の前提なので最先着、**P1 完了直後に R5 (master volume 伝播) の早期検証** を実施しリスクを潰した。P2-P5 (LiteHrtfDsp 系統) と P6-P9 (VenueReverbDsp 系統) は P1 完了後に独立並行可。P10 (URL pre-resolve) は当初 phase 表になく、検証段階での実需で追加。P12 (検証) は実装全完了後、P13 で回帰、P14 でクローズ。
+P0 (仕様 + roadmap doc 同時更新) は本書策定と同タイミングで roadmap §3 を整合させ、以降を進める誰もが同じ前提で動ける状態を作った。P1 (Stream3D group 分離) は両 DSP の前提なので最先着、**P1 完了直後に R5 (master volume 伝播) の早期検証** を実施しリスクを潰した。P2-P5 (LiteHrtfDsp 系統) と P6-P9 (VenueReverbDsp 系統) は P1 完了後に独立並行可。P10 (URL pre-resolve) は当初 phase 表になく、検証段階での実需で追加。P12 (検証) は実装全完了後、P13 で回帰、P14 でクローズ。**P7c-C (IR unity-gain 正規化) と P15 (配信者 LSL 拡張 + urlsave 廃止) は P14 後の追加 phase で、P12 検証中に判明した課題 (wetgain 標準値が venue 横断で決まらない / LSL から r11 タグを編集できない / URL 自動復元による配信者の混乱) を後追いで埋めるもの。**
 
 ---
 
@@ -296,7 +324,7 @@ P0 (仕様 + roadmap doc 同時更新) は本書策定と同タイミングで r
 
 安定性指標の実測値 (CPU / dropout / URL 切替成功率) は **spec §5.5** を、CPU の venue 別ブレークダウン / 既知制約は **spec §13.5** を参照。本セクションは「どの P でどの観点を埋めたか」の trace。
 
-### 4.1 r11 新規 (P2〜P11 で実装、P12/P13/P14 で検証)
+### 4.1 r11 新規 (P2〜P11 で実装、P12/P13/P14 で検証、P7c-C/P15 で後追い改善)
 
 - [x] **binaural 360° 追従** (voice_panning_test、avatar 回転): 配信者タグ `{binaural}` 未指定で頭の向き追従 (P12 step 1)
 - [x] **binaural on/off A/B**: vanilla 3D positioning が binaural off でも残る挙動を確認、voice/pink_noise では差は体感しにくいが PASS (P12 step 1, memory `feedback_binaural_off_residual_3d_positioning.md` 参照)
@@ -312,6 +340,9 @@ P0 (仕様 + roadmap doc 同時更新) は本書策定と同タイミングで r
 - [x] **5min dropout 0**: cathedral + binaural ON で 5 分連続再生、stutter / 無音化なし (P14)
 - [x] **URL 切替 ×10**: 5.1ch ↔ 2ch を 10 回切替で crash / 二重再生 / 残留音 / log エラー繰り返しなし (P14)
 - [⚠] **CPU r10 比 +10% 未満**: 計測値は spec §5.5 / §13.5 参照。spec 閾値を相対比で読むと hall_medium 以上で超過するが、絶対値・dropout 共に問題なく ship-with-note 判断 (P14)
+- [x] **venue 横断で wetgain が同じ濃さ**: IR unity-gain 正規化 (Σs²=1 per channel) により room_small / cathedral / outdoor で `{wetgain:1.0}` が同等の dry/wet 比に揃う (P7c-C)
+- [x] **配信者 LSL から r11 タグ全部編集可**: `aya_3dstream_setup.lsl` の menu / dialog から `{binaural}` / `{venue}` / `{wetgain}` を Default 含めて設定可、Desc 直接編集不要 (P15)
+- [x] **書いた URL がそのまま維持される**: LSL urlsave 自動復元を廃止、再生失敗時に裏で前 URL に戻らない (P15)
 
 ### 4.2 r10 / r9 / r8 互換 (回帰確認、P13)
 

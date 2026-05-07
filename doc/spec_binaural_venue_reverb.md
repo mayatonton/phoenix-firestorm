@@ -383,6 +383,7 @@ CPU 見積: stereo 3s IR で ~3-5% (CPU 4 GHz × 1 core) と想定。実機計�
 
 - 配置者タグ `{venue:dry}` または debug settings `Stream3DVenueOverride="dry"` のとき: DSP を bypass (= CPU ゼロ)
 - それ以外: wet を **タグ `{wetgain:N}`** (default 1.0) 倍して dry に加算。debug settings `Stream3DVenueWetGain` が `0.0` 以上なら **タグ値を上書き** (sentinel `-1.0` = タグ通り)
+- IR は §4.4.6 に従い unity-gain 正規化されているので、`{wetgain:1.0}` は「wet が dry と同レベル」という dry/wet 比を意味する (venue 横断で同じ濃さ)
 - dry signal は DSP 内で完全 bypass 出力に保持 (= zero-latency dry)
 
 #### 4.4.5 IR ファイルのバンドルと配置
@@ -396,6 +397,22 @@ CPU 見積: stereo 3s IR で ~3-5% (CPU 4 GHz × 1 core) と想定。実機計�
 - 全 9 種で合計 ~30 MB (3s × 9 venue × stereo × 32-bit = 推定値) を viewer install に同梱
 
 実機検証の結果次第で 9 種を絞る (例: small/medium/large/cathedral/outdoor の 5 種で十分なら削減)。
+
+#### 4.4.6 IR unity-gain 正規化
+
+各 IR を `LLVenueReverbDsp::create()` 内で **Σ sample² == 1 per channel** に in-place スケールする。convolution operator gain が unity になるので、連続入力 RMS=R に対して wet 出力 RMS≈R が出る。
+
+この正規化により:
+
+- `{wetgain:N}` が **純粋な dry/wet 比**として効く (`1.0` = wet が dry と同レベル、`0.5` = half-mix、`0.0` = 完全 dry)
+- venue 切替で wet レベルが急変しない (room_small / cathedral / outdoor が同じ wetgain で同じ濃さ)
+- 配信者は venue ごとに wetgain を retune する必要がない
+
+正規化基準は **per-IR 独立** (catalog 横断の anchor を取らない)。各 IR が単独で unity gain になるので、bundled IR 集合を入れ替えても他の IR の出力レベルに影響しない。
+
+正規化前 (raw IR) は IR の長さや録音レベルにより energy が venue 横断で 1〜2 桁ばらつき、`{wetgain:1.0}` で cathedral 系が overload / room 系が薄い、という体感差が出る (P12 検証で観測)。
+
+参考: 起動時のログ (`Stream3D` カテゴリ) に per-venue `energy=X norm=Y` が出力されるので、新規 IR を追加した際の検証 trace に使える。
 
 ### 4.5 debug settings 経由の強制 override (= 平時は不使用)
 
