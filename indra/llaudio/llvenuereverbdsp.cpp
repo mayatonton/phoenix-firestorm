@@ -7,6 +7,13 @@
  * file I/O and no allocation, so live venue switches never touch the audio
  * thread's allocator. See header for the slot model contract.
  *
+ * Unity-gain normalization runs at create() time: each IR's Σ sample² is
+ * measured, then every IR is scaled (in-place, before priming) so that
+ * Σ sample² == 1 per channel. Continuous input at RMS R then yields a wet
+ * output at RMS ≈ R, matching the dry path level — so {wetgain:N} acts
+ * as a clean dry/wet ratio (1.0 = wet equal to dry, 0.5 = half-mix) and
+ * publishers don't have to retune the gain when switching {venue:NAME}.
+ *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Second Life Viewer Source Code
  * Copyright (C) 2026, Phoenix Firestorm Project, Inc.
@@ -36,7 +43,9 @@
 
 #include "llirloader.h"
 
+#include <cmath>
 #include <cstring>
+#include <vector>
 
 namespace
 {
@@ -147,16 +156,49 @@ bool LLVenueReverbDsp::create(FMOD::System* system, const std::string& ir_dir)
     mScratchWetL.assign(mBlockSize, 0.f);
     mScratchWetR.assign(mBlockSize, 0.f);
 
-    // Pre-load every file-backed venue. Failures are non-fatal; the slot
-    // simply stays !loaded and refuses to be selected later.
-    int loaded_count = 0;
+    // Pre-load every file-backed venue in two passes so we can energy-
+    // normalize the catalog as a group before any convolver is primed.
+    // Pass 1: load + measure. Pass 2: scale each IR to the catalog mean
+    // energy and prime its slot. Failures are non-fatal; the slot simply
+    // stays !loaded and refuses to be selected later.
+    struct StagedIR { LLIRData ir; F64 energy { 0.0 }; bool ok { false }; };
+    std::vector<StagedIR> staged(kVenueSlotCount);
     for (int i = 0; i < kVenueSlotCount; ++i)
     {
         mSlots[i].name = kVenueDefs[i].name;
-        if (loadVenueSlot(i, ir_dir))
+        staged[i].ok = stageVenueIR(i, ir_dir, staged[i].ir, staged[i].energy);
+    }
+
+    // Unity-gain convolution: scale each IR so that Σ s² = 1 per channel.
+    // Continuous input at RMS R then produces wet output at RMS ≈ R, so
+    // the wet path matches the dry path's level and {wetgain:N} acts as a
+    // clean dry/wet ratio (1.0 = wet equal to dry, 0.5 = half-mix, etc.).
+    // No catalog-wide anchor needed — each IR is normalized independently
+    // against itself.
+    int loaded_count = 0;
+    for (int i = 0; i < kVenueSlotCount; ++i)
+    {
+        if (!staged[i].ok) continue;
+        const F32 norm = (staged[i].energy > 1e-12)
+                         ? static_cast<F32>(1.0 / std::sqrt(staged[i].energy))
+                         : 1.f;
+        for (F32& s : staged[i].ir.samples_l) s *= norm;
+        for (F32& s : staged[i].ir.samples_r) s *= norm;
+        if (!primeSlot(mSlots[i],
+                       staged[i].ir.samples_l.data(), static_cast<int>(staged[i].ir.samples_l.size()),
+                       staged[i].ir.samples_r.data(), static_cast<int>(staged[i].ir.samples_r.size())))
         {
-            ++loaded_count;
+            LL_WARNS("Stream3D") << "VenueReverbDsp: venue '" << kVenueDefs[i].name
+                                 << "' convolver prime failed" << LL_ENDL;
+            continue;
         }
+        mSlots[i].loaded = true;
+        ++loaded_count;
+        LL_INFOS("Stream3D") << "VenueReverbDsp: venue '" << kVenueDefs[i].name
+                             << "' loaded (" << staged[i].ir.samples_l.size()
+                             << " frames, src_ch=" << staged[i].ir.source_channels
+                             << ", energy=" << staged[i].energy
+                             << ", norm=" << norm << ")" << LL_ENDL;
     }
 
     // Default selection: "dry" (= bypass). P8 tag parser will switch.
@@ -201,11 +243,10 @@ bool LLVenueReverbDsp::primeSlot(Slot& slot,
     return true;
 }
 
-bool LLVenueReverbDsp::loadVenueSlot(int slot_idx, const std::string& ir_dir)
+bool LLVenueReverbDsp::stageVenueIR(int slot_idx, const std::string& ir_dir,
+                                    LLIRData& ir_out, F64& energy_out)
 {
     if (slot_idx < 0 || slot_idx >= kVenueSlotCount) return false;
-    Slot& slot = mSlots[slot_idx];
-    slot.loaded = false;
 
     // Build path. Caller is expected to pass an absolute dir (engine uses
     // gDirUtilp->getExpandedFilename); we just append the venue's filename.
@@ -216,8 +257,7 @@ bool LLVenueReverbDsp::loadVenueSlot(int slot_idx, const std::string& ir_dir)
     }
     path += kVenueDefs[slot_idx].file;
 
-    LLIRData ir;
-    LLIRLoader::Result lr = LLIRLoader::loadWav(path, ir);
+    LLIRLoader::Result lr = LLIRLoader::loadWav(path, ir_out);
     if (lr != LLIRLoader::Result::Ok)
     {
         // Quiet at INFO; venue files may legitimately be missing during
@@ -229,28 +269,24 @@ bool LLVenueReverbDsp::loadVenueSlot(int slot_idx, const std::string& ir_dir)
     }
 
     const int target_rate = static_cast<int>(mSampleRate + 0.5f);
-    if (ir.sample_rate != target_rate)
+    if (ir_out.sample_rate != target_rate)
     {
         LL_WARNS("Stream3D") << "VenueReverbDsp: venue '" << kVenueDefs[slot_idx].name
-                             << "' sample rate " << ir.sample_rate
+                             << "' sample rate " << ir_out.sample_rate
                              << " Hz != mixer rate " << target_rate
                              << " Hz, slot disabled" << LL_ENDL;
         return false;
     }
 
-    if (!primeSlot(slot,
-                   ir.samples_l.data(), static_cast<int>(ir.samples_l.size()),
-                   ir.samples_r.data(), static_cast<int>(ir.samples_r.size())))
-    {
-        LL_WARNS("Stream3D") << "VenueReverbDsp: venue '" << kVenueDefs[slot_idx].name
-                             << "' convolver prime failed" << LL_ENDL;
-        return false;
-    }
-
-    slot.loaded = true;
-    LL_INFOS("Stream3D") << "VenueReverbDsp: venue '" << kVenueDefs[slot_idx].name
-                         << "' loaded (" << ir.samples_l.size()
-                         << " frames, src_ch=" << ir.source_channels << ")" << LL_ENDL;
+    // Per-IR energy = average of L and R Σ sample² (mono-source IRs have
+    // L == R after the loader's mono→stereo expansion, so this still gives
+    // a clean per-channel value). create() uses this to scale every IR to
+    // the catalog mean.
+    F64 e_l = 0.0;
+    F64 e_r = 0.0;
+    for (F32 v : ir_out.samples_l) e_l += static_cast<F64>(v) * v;
+    for (F32 v : ir_out.samples_r) e_r += static_cast<F64>(v) * v;
+    energy_out = 0.5 * (e_l + e_r);
     return true;
 }
 
