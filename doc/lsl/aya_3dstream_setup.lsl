@@ -9,7 +9,8 @@
 //
 //  Tag form written to each prim's Description (per AYAstorm spec):
 //      [3dstream-stereo:{url:...}{ch:K}{range:N}{volume:V}
-//                       {binaural:on|off}{venue:NAME}{wetgain:G}]
+//                       {binaural:on|off}{venue:NAME}{wetgain:G}
+//                       {upmix:on|off}]
 //
 //  - URL is shared by the linkset; only the speaker(s) carrying {url:}
 //    cause AYAstorm to start/stop the stream. By convention this script
@@ -26,6 +27,11 @@
 //        {venue:NAME}       convolution reverb (dry/room_*/hall_*/
 //                           club/cathedral/outdoor); default = dry
 //        {wetgain:G}        venue mix amount (default = 1.0)
+//        {upmix:on|off}     2ch→5.1 upmix dispatch toggle (default = off)
+//                           — opt-in. When on, a 2-ch source feeds DPL2-
+//                           style matrix decode into FL/FR/C/LFE/SL/SR
+//                           speakers in the linkset. 5.1 / 6-ch source
+//                           always plays native (auto-bypass).
 //
 //  No URL retention: Stop drops {url:} entirely (no urlsave shadow),
 //  Start prompts only when {url:} is absent. What the user wrote is
@@ -64,6 +70,7 @@ string  M_BINAURAL     = "BINAURAL";
 string  M_VENUE        = "VENUE";
 string  M_WETGAIN      = "WETGAIN";
 string  M_WETGAIN_CUSTOM = "WETGAIN_CUSTOM";
+string  M_UPMIX        = "UPMIX";
 string  M_CONFIRM_NONE = "CONFIRM_NONE";
 string  M_CONFIRM_RM   = "CONFIRM_RM";
 
@@ -107,6 +114,13 @@ list VENUE_BUTTONS = [
 list WETGAIN_BUTTONS = [
     "0.5",  "1.0", "1.5",
     "2.0",  "Custom",
+    "Default", "Back"
+];
+
+// r12: 2ch→5.1 upmix dispatch on/off. Default = remove tag (viewer
+// default OFF, opt-in). Same shape as BINAURAL_BUTTONS.
+list UPMIX_BUTTONS = [
+    "On", "Off",
     "Default", "Back"
 ];
 
@@ -213,7 +227,7 @@ string buildTagBody(list fields)
     integer i;
     // Preferred field order for readability.
     list order = ["url", "ch", "range", "volume",
-                  "binaural", "venue", "wetgain"];
+                  "binaural", "venue", "wetgain", "upmix"];
     list seen  = [];
     for (i = 0; i < llGetListLength(order); ++i)
     {
@@ -346,16 +360,18 @@ string fmtCurrent(integer link)
     string bin    = getField(fields, "binaural");
     string ven    = getField(fields, "venue");
     string wet    = getField(fields, "wetgain");
+    string up     = getField(fields, "upmix");
     string s = "";
     if (url != "") s += "url=" + url + "\n";
     if (ch  != "") s += "ch=" + ch + "  ";
     else           s += "ch=(none)  ";
     if (rng != "") s += "range=" + rng + "m  ";
     if (vol != "") s += "volume=" + vol;
-    if (bin != "" || ven != "" || wet != "") s += "\n";
+    if (bin != "" || ven != "" || wet != "" || up != "") s += "\n";
     if (bin != "") s += "binaural=" + bin + "  ";
     if (ven != "") s += "venue=" + ven + "  ";
-    if (wet != "") s += "wetgain=" + wet;
+    if (wet != "") s += "wetgain=" + wet + "  ";
+    if (up  != "") s += "upmix=" + up;
     return s;
 }
 
@@ -395,7 +411,7 @@ showRootMenu()
     list buttons = ["Start", "Stop", "URL",
                     "Volume", "Range", "Ch",
                     "Binaural", "Venue", "WetGain",
-                    "Remove Tag", "Close"];
+                    "Upmix", "Remove Tag", "Close"];
     llDialog(gUser, body, buttons, DIALOG_CHAN);
 }
 
@@ -505,6 +521,20 @@ showWetGainCustom()
     llTextBox(gUser,
         "Enter custom wetgain (0.0 - 4.0). Empty input cancels.",
         DIALOG_CHAN);
+}
+
+// r12: 2ch→5.1 upmix dispatch toggle (root prim only).
+showUpmix()
+{
+    gMode = M_UPMIX;
+    string body = "Set upmix (2ch -> 5.1) for ROOT prim\n"
+                + "Current: " + getCurrentField(1, "upmix") + "\n\n"
+                + "On: dispatch a 2-ch source through DPL2-style matrix\n"
+                + "    decode into FL/FR/C/LFE/SL/SR speakers\n"
+                + "Off: 2-ch source plays as 2-spk stereo (r11 behavior)\n"
+                + "Default: remove tag (viewer default = off, opt-in)\n\n"
+                + "Note: 5.1 / 6-ch source ignores this and plays native.";
+    llDialog(gUser, body, UPMIX_BUTTONS, DIALOG_CHAN);
 }
 
 // ---------- Action handlers ----------
@@ -771,6 +801,35 @@ handleWetGainCustom(string text)
     clearMenu();
 }
 
+// r12: upmix on/off/default — same shape as binaural. Tag default in
+// the viewer is OFF (opt-in), so "Default" simply drops the field and
+// also lets the viewer-side debug Stream3DUpmix sentinel decide if the
+// listener has overridden anything.
+handleUpmix(string label)
+{
+    if (label == "Back") { showRootMenu(); return; }
+    if (label == "Default")
+    {
+        list fields = readFields(1);
+        fields = dropField(fields, "upmix");
+        if (writeFields(1, fields) == 0)
+        {
+            llRegionSayTo(gUser, 0, "Save failed (description too long).");
+            clearMenu();
+            return;
+        }
+        notifySaved();
+        clearMenu();
+        return;
+    }
+    string val = "";
+    if (label == "On")  val = "on";
+    else if (label == "Off") val = "off";
+    else { clearMenu(); return; }
+    applyField(1, "upmix", val);
+    clearMenu();
+}
+
 handleRemoveTag()
 {
     // Removing a speaker leaves the linkset with no playback prim?
@@ -842,6 +901,7 @@ default
             if (msg == "Binaural")   { showBinaural(); return; }
             if (msg == "Venue")      { showVenue(); return; }
             if (msg == "WetGain")    { showWetGain(); return; }
+            if (msg == "Upmix")      { showUpmix(); return; }
             if (msg == "Remove Tag") { handleRemoveTag(); return; }
             return;
         }
@@ -868,6 +928,7 @@ default
         if (gMode == M_VENUE)         { handleVenue(msg);         return; }
         if (gMode == M_WETGAIN)       { handleWetGain(msg);       return; }
         if (gMode == M_WETGAIN_CUSTOM){ handleWetGainCustom(msg); return; }
+        if (gMode == M_UPMIX)         { handleUpmix(msg);         return; }
 
         // ---- Confirm dialogs ----
         if (gMode == M_CONFIRM_NONE) { clearMenu(); return; }
