@@ -1062,6 +1062,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // start time. Persists across the stream's reconnect cascade because
     // makeChannelForBinding() reads it on every channel bring-up.
     stream->setBinauralEnabled(binaural_effective);
+    // r12 P4: publisher's {upmix} intent for resolveReadOp's 2ch dispatch
+    // decision. binding.upmix_effective_applied stays false until the P5
+    // tag parser flips it; the explicit setter call is here so P5 only
+    // needs to update the value being read, not introduce new plumbing.
+    stream->setUpmixEnabled(binding.upmix_effective_applied);
     // r11 P10: viewer-side URL pre-resolve gate. Sentinel default -1 =
     // enabled (libcurl follows HTTPS→HTTP cross-protocol redirects before
     // FMOD::createStream sees the URL); 0 = disabled (FMOD-only, r10
@@ -1126,8 +1131,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
     // r10 P5: structural change resets the diagnostic key so the next time
     // the rebuilt stream reaches Playing the diagnostic re-emits with the
-    // new (url, speaker_set, observed_channel_count) tuple.
+    // new (url, speaker_set, observed_channel_count) tuple. r12 P4: same
+    // treatment for the upmix auto-bypass notice — a rebuild is the only
+    // time we want to re-announce the fall-through.
     binding.last_diagnostic_key.clear();
+    binding.last_upmix_notice_key.clear();
 }
 
 void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
@@ -1252,6 +1260,32 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
         }
         notifyStream3D(line.str());
     }
+}
+
+void LLPositionalStreamMgr::emitUpmixAutoBypassNotice(DistributedStereoBinding& b)
+{
+    // Cheap-path early returns first — this is called every update tick
+    // for every binding that's reached Playing. Until P5 wires the tag
+    // parser the first guard alone short-circuits all of P4.
+    if (!b.upmix_effective_applied) return;
+    if (!b.stream || !b.stream->isPlaying()) return;
+    const int source_channels = b.stream->sourceChannels();
+    if (source_channels < 6) return;  // 1ch / 2ch get the dispatch they asked for
+
+    // Throttle key shape mirrors last_diagnostic_key (root#url#sch) plus
+    // a fixed "upmix-auto-bypass" tag. We don't fold upmix_effective_applied
+    // into the key because reaching this point already implies it's true;
+    // a fall back to false will come with a structural rebuild that clears
+    // the key in (re)buildDistributedBinding.
+    std::string key = b.root_id.asString() + "#" + b.url + "#"
+                      + std::to_string(source_channels) + "#upmix-auto-bypass";
+    if (b.last_upmix_notice_key == key) return;
+    b.last_upmix_notice_key = key;
+
+    std::ostringstream line;
+    line << "{upmix:on} requested but source is " << source_channels
+         << "ch native — keeping r10 placement (auto-bypass)";
+    notifyStream3D(line.str());
 }
 
 void LLPositionalStreamMgr::enqueuePriorityPoll(const LLUUID& id)
@@ -1822,6 +1856,13 @@ void LLPositionalStreamMgr::update()
         // once per (root, url, observed_channel_count, speaker_set) tuple.
         // Cheap on the no-op path — single key compare.
         emitRoutingDiagnostic(b);
+
+        // r12 P4: same idea for the upmix auto-bypass notice. Bails out
+        // immediately when the binding never asked for upmix (the common
+        // case), so the per-tick cost is one bool load. The first real
+        // caller appears in P5 once the tag parser sets
+        // upmix_effective_applied.
+        emitUpmixAutoBypassNotice(b);
 
         for (size_t i = 0; i < b.speakers.size(); ++i)
         {
