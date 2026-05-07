@@ -107,11 +107,11 @@
 - 仕様: `doc/spec_stereo_upmix.md`
 - 工程: `docs/ayastorm-r12-stereo-upmix.md`
 - 主要変更:
-  - **stereo→5.1 upmix DSP** (`llstereoupmixdsp.{h,cpp}` 新設): 2ch → 6ch (FL/FR/C/Ls/Rs/LFE)、DPL2 系 matrix decode + center bleed 除去 + rear decorrelation + LFE LPF (Butterworth biquad、80Hz default)
+  - **stereo→5.1 upmix helper class** (`llstereoupmix.{h,cpp}` 新設、`LLMultichannelDownmix` 並行構造): 2 track ring から speaker 役割 (FL/FR/C/LFE/SL/SR) ごとに 1ch を生成、DPL2 系 matrix decode + center bleed 除去 + rear decorrelation + LFE LPF (Butterworth biquad、80Hz default)。**`SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造) で `pcmReadCallback` から呼ぶ — P0 調査で FMOD DSP 経路 (A/B 案) は不適合と判明、C 案として確定 (詳細は `doc/r12/dsp_insertion_survey.md`)
   - **配信者タグ `{upmix:on|off}`** 追加 (default `off`): 配信者が opt-in した瞬間から 6 spk placement の体験を獲得
   - **5.1 native 配信の auto bypass**: source ch>=6 のとき `{upmix:on}` でも DSP 非挿入、chat 通知 1 回。二重処理防止
   - **debug settings 4 件**: `Stream3DUpmix` (sentinel `-1` = タグ通り) + パラメータ微調整 3 件 (`Stream3DUpmixLfeCutoff` 80Hz / `Stream3DUpmixCenterBleed` 1.0 / `Stream3DUpmixRearDelayMs` 16ms)。listener 平時は不使用、実装/検証用
-  - **DSP chain 順序**: stream → upmix (r12) → per-channel placement (r10) → lite-HRTF (r11) → venue reverb (r11)
+  - **データフロー順序**: source stream → mRing (per-track) → `pcmReadCallback` `OpKind::Upmix` dispatch (r12) → per-channel placement (r10) → lite-HRTF (r11) → Stream3D group → venue reverb (r11)
 - **アルゴリズムは決め打ち** (DPL2 系 matrix decode + 帯域分離): 配信者にも listener にも選ばせない (r5 / r11 流儀)。Logic 7 / SRS / ML 系は r13+ で再検討
 - **既存配置の自動恩恵**: r8/r10 で過去に置かれた全 prim は、配信者が `{upmix:on}` を明示的に追加した瞬間から 6 spk placement の体験を得る (再配置不要)
 - **r10/r11 受入条件すべて維持**: dropout / CPU / URL 切替 / 互換マトリクス / 回帰、すべて r11 から劣化なし
@@ -203,7 +203,7 @@
 | RR7 | r11 bundled IR (9 種) のライセンス確認が時間掛かる → 縮退 D (1〜2 種に絞って r11 出荷、残りは r11.x) | r11 (OpenAIR CC-BY 4.0 で 8 IR 確保、回避済) |
 | RR8 | r11 lite-HRTF (ITD+ILD shadow) の体感が薄い → 縮退 A (default off + opt-in 化) | r11 (主観 PASS で default on のまま出荷) |
 | RR9 | r11 venue reverb の CPU が +10pp 超 → 縮退 B (IR 上限 3s→2s、`hall_large`/`cathedral` mono 化、9→5 venue) | r11 (hall_medium 以上で +8〜10pp 、絶対値・dropout 共に問題なく ship-with-note 判断) |
-| **RR10** | **r12 P0 で StereoUpmixDsp 挿入位置 (A 案: stream-level group 入力段 / B 案: per-stream / per-binding) を確定できず P1 着手後に切替が必要** → P1.5 として再構築 phase を追加 (+2-3 日) | r12 |
+| ~~RR10~~ | ~~r12 P0 で StereoUpmixDsp 挿入位置 (A 案: stream-level group 入力段 / B 案: per-stream / per-binding) を確定できず P1 着手後に切替が必要~~ | **解消 (2026-05-07)**: r12 P0 第 2 弾で実コード調査の結果、A 案 / B 案ともに不適合 (per-speaker channel が mono、Stream3D group は source 2ch を見えない) と判明。代わりに **C 案 = `SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造) として確定 (`doc/r12/dsp_insertion_survey.md`)。Bs775 と並行構造で実装難易度小、P1.5 不要 |
 | **RR11** | **r12 DPL2 系 matrix decode の phase 依存性が想定以上に強く、特定の stereo 素材 (vocal が片側 only の cinematic mix 等) で center 抽出が不自然** → 縮退 (アルゴリズム多択化はせず、`{upmix:off}` を配信者がタグで明示することで個別 stream を回避) | r12 |
 | **RR12** | **r12 debug settings 3 件 (LfeCutoff / CenterBleed / RearDelayMs) の default 値が P11 検証で範囲超えで再 tune 必要** → P11.x として default 調整 phase を追加 (+0.5 日) | r12 |
 | **RR13** | **r12 source ch 判定が stream 開始タイミングで間に合わない** (codec layer の遅延) → ch 数判定 timeout を設定、判定不可なら upmix 無効 (= 安全側、5.1 として誤動作させない) | r12 |
@@ -293,3 +293,4 @@ r13 以降での更なる発展余地:
 - 2026-05-03: 初版作成 (r8 着手時点)。Layer 1/2 直交モデル、r7→r11 計画、工数見積り、リスク策定
 - 2026-05-06: r8/r9/r10/r10.x/r10.x-bugfix-1 完了状態を反映。**r11 案を Steam Audio + 任意 SOFA から「lite-HRTF + venue convolution reverb (配信者主導モデル)」に再定義**、SOFA per-source HRTF / Steam Audio は r12+ に降格。工数 19-33 日 → 9.5-10.5 日。Preferences UI 改修ゼロ + debug settings 4 件 + 配信者主導モデル方針を明記。リスク表に R5/IR ライセンス/lite-HRTF 体感/reverb CPU を追加、旧 RR1-3 (Steam Audio/SOFA 系) は r12+ 印つけ。仕様詳細は `doc/spec_binaural_venue_reverb.md` 参照。P0 (本書改訂) として `feature/aya-r11-p0-roadmap-update` ブランチで実施
 - 2026-05-07: r11 実装完了 (リリース判断保留中) を反映。**r12 案を SOFA per-source HRTF + Steam Audio から「stereo→5.1 upmix のみ」に再定義**、SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air absorption 客観 FFT は **r13+ に降格**。ロードマップ題名を `r7 → r11` から `r7 → r12` に拡張、Layer 0 (ソース整形) を §2 に追加、§3 r12 entry 新設、§4 r12 工数行 (5-7 日 / 1-2 週) と内訳追加、§5 RR1-3 を r13+ ラベル変更 + RR10-13 (DSP 挿入位置 / DPL2 phase 依存性 / default 値再 tune / source ch 判定 timeout) を r12 リスクとして追加、§5 工数圧縮 6-8 を追加、§6 依存関係に r12 を追加、§7 ユーザ価値に r12 完成時 stereo 配信での 6 spk 体験を追加、r13 以降を r12 以降から繰り下げ。仕様詳細は `doc/spec_stereo_upmix.md` / `docs/ayastorm-r12-stereo-upmix.md` 参照
+- 2026-05-07 (P0 第 2 弾): r12 P0 で実コード (`indra/llaudio/llpositionalstream*.{h,cpp}`、`llaudioengine_fmodstudio.cpp`) を読んで DSP 挿入位置を判定。当初 spec §4.2.1 の **A 案 (`createStream3DGroup` 入力段) / B 案 (per-binding `Channel::addDSP`) はいずれも実アーキテクチャに不適合** と判明 (per-speaker channel が mono `numchannels=1`、Stream3D group は per-speaker mono の合成しか見えず source 2ch 不可視)。代わりに **C 案 = `SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造、`pcmReadCallback` で 2 track ring から L/R を pull、speaker 役割で upmix matrix + 帯域分離 + state を適用して 1ch 出力) として確定。新規ヘルパは `LLStereoUpmix` (`indra/llaudio/llstereoupmix.{h,cpp}`、`LLMultichannelDownmix` 並行構造)。これに伴い §3 r12 entry の主要変更欄を `llstereoupmix.{h,cpp}` 名 + 「helper class」呼称 + データフロー記述に修正、§5 RR10 を解消マーク。詳細調査記録は `doc/r12/dsp_insertion_survey.md`
