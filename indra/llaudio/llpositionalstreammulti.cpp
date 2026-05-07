@@ -252,9 +252,29 @@ LLPositionalStreamMulti::LLPositionalStreamMulti()
     mSourceIsFloat(false),
     mSourceType(FMOD_SOUND_TYPE_UNKNOWN),
     mVolume(1.f),
+    mUpmixLfeCutoffHz(80.f),
+    mUpmixCenterBleed(1.f),
+    mUpmixRearDelayBaseMs(16.f),
     mState(State::Idle),
     mDecodeStop(false)
 {
+}
+
+void LLPositionalStreamMulti::setUpmixTuning(F32 lfe_cutoff_hz, F32 center_bleed,
+                                             F32 rear_delay_base_ms)
+{
+    // r12 P6: clamp to the same windows the settings.xml comments
+    // advertise so a hostile / mistyped value can't push the helper
+    // outside the validated coefficient range. Relaxed atomics suffice —
+    // the FMOD mixer thread re-reads on every callback, so a torn
+    // visibility window is at most one chunk (≤ 1024 frames ≈ 23 ms at
+    // 44.1 kHz) of stale value.
+    const F32 fc    = std::clamp(lfe_cutoff_hz,     20.f, 200.f);
+    const F32 bleed = std::clamp(center_bleed,       0.f,   1.f);
+    const F32 base  = std::clamp(rear_delay_base_ms, 0.f,  32.f);
+    mUpmixLfeCutoffHz.store(fc,    std::memory_order_relaxed);
+    mUpmixCenterBleed.store(bleed, std::memory_order_relaxed);
+    mUpmixRearDelayBaseMs.store(base, std::memory_order_relaxed);
 }
 
 LLPositionalStreamMulti::~LLPositionalStreamMulti()
@@ -574,6 +594,25 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         // produces this speaker's role-specific 1ch output. Per-speaker
         // upmix_state carries the SL/SR delay line and the LFE biquad
         // taps; upmix_params carries the bleed / delay / LFE-cutoff tuning.
+        //
+        // r12 P6: refresh the live-tunable knobs (LfeCutoff / CenterBleed /
+        // RearDelayMs) from the per-stream atomic snapshot. A relaxed load
+        // is sufficient because each parameter is independently consumed
+        // (no inter-knob ordering invariant); a value the main thread
+        // racingly stores during the load is materialised on the next
+        // chunk boundary, which the user perceives as a smooth ~20 ms
+        // ramp rather than a tearing artefact. sample_rate stays as
+        // stamped at createUserSounds() time.
+        const F32 lfe_fc = self->mUpmixLfeCutoffHz.load(std::memory_order_relaxed);
+        const F32 bleed  = self->mUpmixCenterBleed.load(std::memory_order_relaxed);
+        const F32 base   = self->mUpmixRearDelayBaseMs.load(std::memory_order_relaxed);
+        F32 l_ms = 0.f, r_ms = 0.f;
+        LLStereoUpmix::splitRearDelay(base, kRearDelayJitterMs, &l_ms, &r_ms);
+        cb->upmix_params.lfe_cutoff_hz   = lfe_fc;
+        cb->upmix_params.center_bleed    = bleed;
+        cb->upmix_params.rear_delay_ms_l = l_ms;
+        cb->upmix_params.rear_delay_ms_r = r_ms;
+
         const size_t chunk_cap = kReaderChunkFrames;
         F32* raw = cb->raw_scratch.data();
         size_t produced = 0;
@@ -763,11 +802,12 @@ bool LLPositionalStreamMulti::createUserSounds()
         else if (cb->op_kind == SpeakerCallback::OpKind::Upmix)
         {
             cb->raw_scratch.assign(kReaderChunkFrames * 2, 0.f);
-            // r12 P4: upmix_params defaults from settings.xml come in via
-            // P6; stamping mSampleRate here is the only piece resolveReadOp
-            // can't compute on its own (mSourceChannels is set before
-            // createUserSounds, but the speaker's sample rate plumbs
-            // through mSampleRate which is settled at format detection).
+            // r12 P4 + P6: stamp the only Params field that's per-stream-
+            // immutable (sample_rate). The live-tunable bleed / delay /
+            // cutoff fields are refreshed per callback from the per-stream
+            // atomic snapshot (see SpeakerCallback::OpKind::Upmix branch in
+            // pcmReadCallback) so a debug-settings edit takes effect on
+            // the next chunk boundary without a stream rebuild.
             cb->upmix_params.sample_rate = mSampleRate;
         }
         checkFmod(snd->setUserData(cb.get()), "Sound::setUserData");

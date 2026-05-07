@@ -229,6 +229,17 @@ public:
     void setUpmixEnabled(bool on) { mUpmixEnabled = on; }
     bool isUpmixEnabled() const { return mUpmixEnabled; }
 
+    // r12 P6: live-tunable knobs for the 2ch→5.1 upmix path. Pushed by
+    // the mgr each poll from Stream3DUpmixLfeCutoff /
+    // Stream3DUpmixCenterBleed / Stream3DUpmixRearDelayMs. Lock-free
+    // atomic write here, lock-free atomic read on the FMOD mixer thread
+    // (resolveReadOp's per-callback param refresh). The rear delay is
+    // split into per-speaker SL/SR taps by ±kRearDelayJitterMs at read
+    // time, not push time, so the jitter direction is implicit in the
+    // speaker's UpmixRole (SL gets +, SR gets −).
+    void setUpmixTuning(F32 lfe_cutoff_hz, F32 center_bleed,
+                        F32 rear_delay_base_ms);
+
     // r11 P10: viewer-side URL pre-resolve toggle. When enabled (default),
     // start() runs the source URL through LLStream3DUrlResolve before
     // calling FMOD::createStream so HTTPS→HTTP cross-protocol redirects
@@ -400,6 +411,15 @@ private:
     // resolveReadOp consults it once per speaker at createUserSounds()
     // and the mixer thread never looks at it again.
     bool mUpmixEnabled = false;
+
+    // r12 P6: live snapshot of the 3 Stream3DUpmix* tuning settings.
+    // Defaults match settings.xml so the very first FMOD callback already
+    // sees correct values even if setUpmixTuning() hasn't been called yet
+    // (atomic ctor doesn't take initializers in C++17, so the .cpp
+    // constructor seeds them).
+    std::atomic<F32> mUpmixLfeCutoffHz;
+    std::atomic<F32> mUpmixCenterBleed;
+    std::atomic<F32> mUpmixRearDelayBaseMs;
     // r11 P10: viewer-side URL pre-resolve gate. Default true so a caller
     // that forgets to call the setter still gets the redirect-following
     // behavior (matches the settings.xml sentinel default of "enabled").
@@ -468,6 +488,12 @@ private:
     // prebuffer warmup; emit the rolling counter every 10s thereafter.
     static constexpr F64 kUnderrunWarmupSec  = 1.0;
     static constexpr F64 kUnderrunLogPeriod  = 10.0;
+    // r12 P6: fixed L/R jitter applied around mUpmixRearDelayBaseMs to
+    // produce SL = base + jitter, SR = base − jitter. Per spec §4.3.4 /
+    // §4.4 the jitter is intentionally non-tunable (the user-visible knob
+    // is the base only); kept compile-time constant so the per-callback
+    // path doesn't pay an extra atomic load.
+    static constexpr F32 kRearDelayJitterMs  = 2.0f;
 };
 
 #endif // LL_POSITIONAL_STREAM_MULTI_H
