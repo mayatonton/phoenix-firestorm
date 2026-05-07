@@ -8,7 +8,8 @@
 //  Touch CHILD prim -> configure that child's Volume / range / ch
 //
 //  Tag form written to each prim's Description (per AYAstorm spec):
-//      [3dstream-stereo:{url:...}{range:N}{ch:K}{volume:V}]
+//      [3dstream-stereo:{url:...}{ch:K}{range:N}{volume:V}
+//                       {binaural:on|off}{venue:NAME}{wetgain:G}]
 //
 //  - URL is shared by the linkset; only the speaker(s) carrying {url:}
 //    cause AYAstorm to start/stop the stream. By convention this script
@@ -20,6 +21,17 @@
 //  - Setting Ch=None on a speaker turns it into a source-only prim.
 //    The script refuses to do this if it would leave the linkset with
 //    zero speakers (which is the only real "format error" condition).
+//  - r11 root-only fields:
+//        {binaural:on|off}  lite-HRTF DSP toggle (default = on)
+//        {venue:NAME}       convolution reverb (dry/room_*/hall_*/
+//                           club/cathedral/outdoor); default = dry
+//        {wetgain:G}        venue mix amount (default = 1.0)
+//
+//  No URL retention: Stop drops {url:} entirely (no urlsave shadow),
+//  Start prompts only when {url:} is absent. What the user wrote is
+//  what the Description holds, so a stream that fails to play is a
+//  visible signal that the URL or upstream server is the problem,
+//  rather than being silently masked by an auto-restored prior URL.
 //
 //  Tag-only replacement: any text in the prim Description outside the
 //  [3dstream-stereo:...] tag is preserved.
@@ -48,6 +60,10 @@ string  M_VOLUME       = "VOLUME";
 string  M_URL          = "URL";
 string  M_RANGE_CUSTOM = "RANGE_CUSTOM";
 string  M_VOL_CUSTOM   = "VOL_CUSTOM";
+string  M_BINAURAL     = "BINAURAL";
+string  M_VENUE        = "VENUE";
+string  M_WETGAIN      = "WETGAIN";
+string  M_WETGAIN_CUSTOM = "WETGAIN_CUSTOM";
 string  M_CONFIRM_NONE = "CONFIRM_NONE";
 string  M_CONFIRM_RM   = "CONFIRM_RM";
 
@@ -71,6 +87,27 @@ list VOLUME_BUTTONS = [
     "0.25", "0.50", "0.75",
     "1.00", "1.50", "2.00",
     "Custom", "Back"
+];
+
+// r11: lite-HRTF on/off. Default = remove tag (viewer default ON).
+list BINAURAL_BUTTONS = [
+    "On", "Off",
+    "Default", "Back"
+];
+
+// r11: venue convolution reverb (9 IR slots from spec §4.5).
+list VENUE_BUTTONS = [
+    "dry",        "room_small", "room_medium",
+    "hall_small", "hall_medium","hall_large",
+    "club",       "cathedral",  "outdoor",
+    "Default",    "Back"
+];
+
+// r11: wet gain presets (0.0 - 4.0). Custom button opens textbox.
+list WETGAIN_BUTTONS = [
+    "0.5",  "1.0", "1.5",
+    "2.0",  "Custom",
+    "Default", "Back"
 ];
 
 // ---------- Globals ----------
@@ -174,8 +211,9 @@ string buildTagBody(list fields)
     string body = "";
     integer n = llGetListLength(fields);
     integer i;
-    // Preferred field order for readability: url, ch, range, volume, then any others.
-    list order = ["url", "ch", "range", "volume"];
+    // Preferred field order for readability.
+    list order = ["url", "ch", "range", "volume",
+                  "binaural", "venue", "wetgain"];
     list seen  = [];
     for (i = 0; i < llGetListLength(order); ++i)
     {
@@ -305,12 +343,19 @@ string fmtCurrent(integer link)
     string ch     = getField(fields, "ch");
     string rng    = getField(fields, "range");
     string vol    = getField(fields, "volume");
+    string bin    = getField(fields, "binaural");
+    string ven    = getField(fields, "venue");
+    string wet    = getField(fields, "wetgain");
     string s = "";
     if (url != "") s += "url=" + url + "\n";
     if (ch  != "") s += "ch=" + ch + "  ";
     else           s += "ch=(none)  ";
     if (rng != "") s += "range=" + rng + "m  ";
     if (vol != "") s += "volume=" + vol;
+    if (bin != "" || ven != "" || wet != "") s += "\n";
+    if (bin != "") s += "binaural=" + bin + "  ";
+    if (ven != "") s += "venue=" + ven + "  ";
+    if (wet != "") s += "wetgain=" + wet;
     return s;
 }
 
@@ -347,7 +392,10 @@ showRootMenu()
                 + "Current:\n" + fmtCurrent(1)
                 + "\n\nLinkset speakers: " + (string)countSpeakers(0)
                 + "\n\nChoose a field to edit.";
-    list buttons = ["Start", "Stop", "URL", "Volume", "Range", "Ch", "Remove Tag", "Close"];
+    list buttons = ["Start", "Stop", "URL",
+                    "Volume", "Range", "Ch",
+                    "Binaural", "Venue", "WetGain",
+                    "Remove Tag", "Close"];
     llDialog(gUser, body, buttons, DIALOG_CHAN);
 }
 
@@ -410,6 +458,52 @@ showVolumeCustom()
     gMode = M_VOL_CUSTOM;
     llTextBox(gUser,
         "Enter custom volume (0.0 - 4.0). Empty input cancels.",
+        DIALOG_CHAN);
+}
+
+// r11: lite-HRTF on/off (root prim only).
+showBinaural()
+{
+    gMode = M_BINAURAL;
+    string body = "Set binaural (lite-HRTF) for ROOT prim\n"
+                + "Current: " + getCurrentField(1, "binaural") + "\n\n"
+                + "On: force lite-HRTF on\n"
+                + "Off: disable lite-HRTF (vanilla 3D positioning only)\n"
+                + "Default: remove tag (viewer default = on)";
+    llDialog(gUser, body, BINAURAL_BUTTONS, DIALOG_CHAN);
+}
+
+// r11: venue convolution reverb selection.
+showVenue()
+{
+    gMode = M_VENUE;
+    string body = "Select venue reverb for ROOT prim\n"
+                + "Current: " + getCurrentField(1, "venue") + "\n\n"
+                + "dry: no reverb\n"
+                + "room_*: small/medium room\n"
+                + "hall_*: concert hall (medium/large = CPU heavy)\n"
+                + "club: nightclub\n"
+                + "cathedral: long reverb (heaviest)\n"
+                + "outdoor: open-air\n"
+                + "Default: remove tag (= dry)";
+    llDialog(gUser, body, VENUE_BUTTONS, DIALOG_CHAN);
+}
+
+// r11: wet gain (venue mix amount).
+showWetGain()
+{
+    gMode = M_WETGAIN;
+    string body = "Set wet gain for ROOT prim\n"
+                + "Current: " + getCurrentField(1, "wetgain") + "\n\n"
+                + "1.0 = unity, higher = more reverb mix";
+    llDialog(gUser, body, WETGAIN_BUTTONS, DIALOG_CHAN);
+}
+
+showWetGainCustom()
+{
+    gMode = M_WETGAIN_CUSTOM;
+    llTextBox(gUser,
+        "Enter custom wetgain (0.0 - 4.0). Empty input cancels.",
         DIALOG_CHAN);
 }
 
@@ -476,13 +570,15 @@ handleChSelect(string ch)
     clearMenu();
 }
 
+// Stop: drop {url:} entirely. No urlsave retention — what the publisher
+// wrote is what stays in the Description (so a failed re-start is visible
+// as silence, not masked by an auto-restored previous URL).
 handleStop()
 {
     list fields = readFields(1);
     string url = getField(fields, "url");
     if (url == "") { clearMenu(); return; }
     fields = dropField(fields, "url");
-    fields = setField(fields, "urlsave", url);
     if (writeFields(1, fields) == 0)
     {
         llRegionSayTo(gUser, 0, "Save failed (description too long).");
@@ -493,26 +589,21 @@ handleStop()
     clearMenu();
 }
 
+// Start: if {url:} already present, do nothing (use URL to change it).
+// Otherwise prompt the user for a URL. No restore-from-urlsave.
 handleStart()
 {
     list fields = readFields(1);
-    string saved = getField(fields, "urlsave");
-    if (saved == "")
+    string current = getField(fields, "url");
+    if (current != "")
     {
-        // No saved URL — prompt for one.
-        showUrl();
-        return;
-    }
-    fields = dropField(fields, "urlsave");
-    fields = setField(fields, "url", saved);
-    if (writeFields(1, fields) == 0)
-    {
-        llRegionSayTo(gUser, 0, "Save failed (description too long).");
+        llRegionSayTo(gUser, 0,
+            "Stream is already configured (url=" + current + ").\n"
+          + "Use URL to change it, or Stop first.");
         clearMenu();
         return;
     }
-    notifySaved();
-    clearMenu();
+    showUrl();
 }
 
 handleRange(string label)
@@ -594,6 +685,92 @@ handleUrl(string text)
     clearMenu();
 }
 
+// r11: handlers for binaural/venue/wetgain submenus. All three live on
+// the ROOT prim only (spec §4.5/§4.6). "Default" drops the field so the
+// viewer falls back to its default (binaural on, venue dry, wetgain 1.0).
+handleBinaural(string label)
+{
+    if (label == "Back") { showRootMenu(); return; }
+    if (label == "Default")
+    {
+        list fields = readFields(1);
+        fields = dropField(fields, "binaural");
+        if (writeFields(1, fields) == 0)
+        {
+            llRegionSayTo(gUser, 0, "Save failed (description too long).");
+            clearMenu();
+            return;
+        }
+        notifySaved();
+        clearMenu();
+        return;
+    }
+    string val = "";
+    if (label == "On")  val = "on";
+    else if (label == "Off") val = "off";
+    else { clearMenu(); return; }
+    applyField(1, "binaural", val);
+    clearMenu();
+}
+
+handleVenue(string label)
+{
+    if (label == "Back") { showRootMenu(); return; }
+    if (label == "Default")
+    {
+        list fields = readFields(1);
+        fields = dropField(fields, "venue");
+        if (writeFields(1, fields) == 0)
+        {
+            llRegionSayTo(gUser, 0, "Save failed (description too long).");
+            clearMenu();
+            return;
+        }
+        notifySaved();
+        clearMenu();
+        return;
+    }
+    applyField(1, "venue", label);
+    clearMenu();
+}
+
+handleWetGain(string label)
+{
+    if (label == "Back") { showRootMenu(); return; }
+    if (label == "Custom") { showWetGainCustom(); return; }
+    if (label == "Default")
+    {
+        list fields = readFields(1);
+        fields = dropField(fields, "wetgain");
+        if (writeFields(1, fields) == 0)
+        {
+            llRegionSayTo(gUser, 0, "Save failed (description too long).");
+            clearMenu();
+            return;
+        }
+        notifySaved();
+        clearMenu();
+        return;
+    }
+    applyField(1, "wetgain", label);
+    clearMenu();
+}
+
+handleWetGainCustom(string text)
+{
+    text = llStringTrim(text, STRING_TRIM);
+    if (text == "") { clearMenu(); return; }
+    float v = (float)text;
+    if (v < 0.0 || v > 4.0)
+    {
+        llRegionSayTo(gUser, 0, "Wetgain must be between 0.0 and 4.0.");
+        clearMenu();
+        return;
+    }
+    applyField(1, "wetgain", text);
+    clearMenu();
+}
+
 handleRemoveTag()
 {
     // Removing a speaker leaves the linkset with no playback prim?
@@ -662,6 +839,9 @@ default
             if (msg == "Volume")     { showVolume(); return; }
             if (msg == "Range")      { showRange(); return; }
             if (msg == "Ch")         { showCh(); return; }
+            if (msg == "Binaural")   { showBinaural(); return; }
+            if (msg == "Venue")      { showVenue(); return; }
+            if (msg == "WetGain")    { showWetGain(); return; }
             if (msg == "Remove Tag") { handleRemoveTag(); return; }
             return;
         }
@@ -684,6 +864,10 @@ default
         if (gMode == M_RANGE_CUSTOM) { handleRangeCustom(msg); return; }
         if (gMode == M_VOL_CUSTOM)   { handleVolumeCustom(msg); return; }
         if (gMode == M_URL)        { handleUrl(msg);          return; }
+        if (gMode == M_BINAURAL)      { handleBinaural(msg);      return; }
+        if (gMode == M_VENUE)         { handleVenue(msg);         return; }
+        if (gMode == M_WETGAIN)       { handleWetGain(msg);       return; }
+        if (gMode == M_WETGAIN_CUSTOM){ handleWetGainCustom(msg); return; }
 
         // ---- Confirm dialogs ----
         if (gMode == M_CONFIRM_NONE) { clearMenu(); return; }

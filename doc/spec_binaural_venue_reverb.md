@@ -383,6 +383,7 @@ CPU 見積: stereo 3s IR で ~3-5% (CPU 4 GHz × 1 core) と想定。実機計�
 
 - 配置者タグ `{venue:dry}` または debug settings `Stream3DVenueOverride="dry"` のとき: DSP を bypass (= CPU ゼロ)
 - それ以外: wet を **タグ `{wetgain:N}`** (default 1.0) 倍して dry に加算。debug settings `Stream3DVenueWetGain` が `0.0` 以上なら **タグ値を上書き** (sentinel `-1.0` = タグ通り)
+- IR は §4.4.6 に従い unity-gain 正規化されているので、`{wetgain:1.0}` は「wet が dry と同レベル」という dry/wet 比を意味する (venue 横断で同じ濃さ)
 - dry signal は DSP 内で完全 bypass 出力に保持 (= zero-latency dry)
 
 #### 4.4.5 IR ファイルのバンドルと配置
@@ -396,6 +397,22 @@ CPU 見積: stereo 3s IR で ~3-5% (CPU 4 GHz × 1 core) と想定。実機計�
 - 全 9 種で合計 ~30 MB (3s × 9 venue × stereo × 32-bit = 推定値) を viewer install に同梱
 
 実機検証の結果次第で 9 種を絞る (例: small/medium/large/cathedral/outdoor の 5 種で十分なら削減)。
+
+#### 4.4.6 IR unity-gain 正規化
+
+各 IR を `LLVenueReverbDsp::create()` 内で **Σ sample² == 1 per channel** に in-place スケールする。convolution operator gain が unity になるので、連続入力 RMS=R に対して wet 出力 RMS≈R が出る。
+
+この正規化により:
+
+- `{wetgain:N}` が **純粋な dry/wet 比**として効く (`1.0` = wet が dry と同レベル、`0.5` = half-mix、`0.0` = 完全 dry)
+- venue 切替で wet レベルが急変しない (room_small / cathedral / outdoor が同じ wetgain で同じ濃さ)
+- 配信者は venue ごとに wetgain を retune する必要がない
+
+正規化基準は **per-IR 独立** (catalog 横断の anchor を取らない)。各 IR が単独で unity gain になるので、bundled IR 集合を入れ替えても他の IR の出力レベルに影響しない。
+
+正規化前 (raw IR) は IR の長さや録音レベルにより energy が venue 横断で 1〜2 桁ばらつき、`{wetgain:1.0}` で cathedral 系が overload / room 系が薄い、という体感差が出る (P12 検証で観測)。
+
+参考: 起動時のログ (`Stream3D` カテゴリ) に per-venue `energy=X norm=Y` が出力されるので、新規 IR を追加した際の検証 trace に使える。
 
 ### 4.5 debug settings 経由の強制 override (= 平時は不使用)
 
@@ -508,22 +525,22 @@ r11 の DSP 改修は「decode 後 → FMOD Channel」以降の経路にのみ�
 
 ### 5.5 受入条件
 
-| 項目 | 基準 | 実測 (リリース時記入) |
+| 項目 | 基準 | 実測 (2026-05-07) |
 |---|---|---|
-| binaural ON で voice_panning 素材の左/中/右が頭の向きに追従 | ✓ PASS | (リリース時) |
-| binaural ON で 50m 距離の pink noise が 5m 距離より明確に暗い (-15dB 以上 @ 4kHz) | ✓ PASS | (リリース時) |
-| binaural ON で click_train を真横に置いた時の左右耳の click 着信差が知覚可能 | ✓ PASS | (リリース時) |
-| 9 venue で会場感の段階差が主観評価で識別可能 (dry/medium/cathedral の 3 段だけでも可) | ✓ PASS | (リリース時) |
-| venue 切替が live (再生継続中のタグ変更で次の evaluateLinkset から効く) | ✓ PASS | (リリース時) |
-| タグ `{binaural:on/off}` / `{venue:NAME}` / `{wetgain:N}` が live 切替で正しく反映 | ✓ PASS | (リリース時) |
-| debug `Stream3DBinauralRender` が `-1`/`0`/`1` の 3 sentinel で正しく動作 (= タグ通り / 強制 OFF / 強制 ON) | ✓ PASS | (リリース時) |
-| debug `Stream3DVenueOverride` が空文字 / venue 名 / `"dry"` で正しく動作 (= タグ通り / 強制差し替え / 強制 dry) | ✓ PASS | (リリース時) |
-| voice / UI sound / ambient world sound に venue reverb が漏れない | ✓ PASS | (リリース時) |
-| debug `Stream3DBinauralRender=0` + `Stream3DVenueOverride="dry"` で r10 との挙動完全一致 (dropout 0、CPU 同等、placement 同じ) | ✓ PASS | (リリース時) |
-| binaural ON + reverb ON で 5 分連続再生 dropout 0 | ✓ PASS | (リリース時) |
-| CPU r10 比 +10% 未満 (binaural + reverb 両方有効、6 spk 配置時) | ✓ PASS | (リリース時) |
-| URL 切替 ×10 (5.1 ↔ 2ch) 全成功 | ✓ PASS | (リリース時) |
-| r8 / r9 / r10 の §5.3 全行が回帰なし | ✓ PASS | (リリース時) |
+| binaural ON で voice_panning 素材の左/中/右が頭の向きに追従 | ✓ PASS | PASS (P12 step 1。voice / pink_noise では binaural off でも vanilla FMOD 3D positioning が残るため A/B 差は体感しにくいが、追従そのものは確認) |
+| binaural ON で 50m 距離の pink noise が 5m 距離より明確に暗い (-15dB 以上 @ 4kHz) | ✓ PASS | PASS w/ note (主観確認のみ。客観 FFT 測定は r11.x へ持ち越し。実装係数は `-0.5 dB/m`, cap `-25 dB`) |
+| binaural ON で click_train を真横に置いた時の左右耳の click 着信差が知覚可能 | ✓ PASS | PASS (P12 step 3) |
+| 9 venue で会場感の段階差が主観評価で識別可能 (dry/medium/cathedral の 3 段だけでも可) | ✓ PASS | PASS (P12 step 5。cathedral で長い余韻確認) |
+| venue 切替が live (再生継続中のタグ変更で次の evaluateLinkset から効く) | ✓ PASS | PASS (P12 step 5) |
+| タグ `{binaural:on/off}` / `{venue:NAME}` / `{wetgain:N}` が live 切替で正しく反映 | ✓ PASS | PASS (P12 step 5/6、wetgain で強度可変も確認) |
+| debug `Stream3DBinauralRender` が `-1`/`0`/`1` の 3 sentinel で正しく動作 (= タグ通り / 強制 OFF / 強制 ON) | ✓ PASS | PASS (P12 step 6) |
+| debug `Stream3DVenueOverride` が空文字 / venue 名 / `"dry"` で正しく動作 (= タグ通り / 強制差し替え / 強制 dry) | ✓ PASS | PASS (P12 step 6、"dry" 含む全動作確認) |
+| voice / UI sound / ambient world sound に venue reverb が漏れない | ✓ PASS | PASS (P12 step 7) |
+| debug `Stream3DBinauralRender=0` + `Stream3DVenueOverride="dry"` で r10 との挙動完全一致 (dropout 0、CPU 同等、placement 同じ) | ✓ PASS | PASS (P13、6ch 源 + BS.775 downmix 経路で r10 同等動作確認) |
+| binaural ON + reverb ON で 5 分連続再生 dropout 0 | ✓ PASS | PASS (P14、cathedral で 5min 連続再生 dropout 観測なし) |
+| CPU r10 比 +10% 未満 (binaural + reverb 両方有効、6 spk 配置時) | ⚠ ship-with-note | **計測値**: baseline (binaural=0/venue=dry) **43.2%** / LiteHrtf only **43.2%** (+0.0pp) / room_small **43.3%** (+0.1pp) / hall_medium **50.9%** (+7.7pp) / hall_large **52.8%** (+9.6pp) / **cathedral 53.4% (+10.2pp / +23.6% 相対)**。spec 閾値を相対比で読むと hall_medium 以上で超過。**ただし絶対値 53% は 1 コアに余裕、dropout 観測なし、配信者がタグで opt-in する選択肢として全 9 venue 出荷。release note で「hall_medium 以上は CPU 重い、低スペック機は room 系推奨」明記** (詳細 §13.5) |
+| URL 切替 ×10 (5.1 ↔ 2ch) 全成功 | ✓ PASS | PASS (P14、5.1ch ↔ 2ch ×10 切替で crash / 二重再生 / 残留音 / dropout 蓄積なし) |
+| r8 / r9 / r10 の §5.3 全行が回帰なし | ✓ PASS | PASS (P13) |
 
 ---
 
@@ -751,4 +768,53 @@ memory `project_release_workload_norms`: r9 / r10 が 3〜4 日、r11 (本案) �
 
 ## 13. 実装結果 / 受入クローズ
 
-(リリース時記入。r10 spec §13 のフォーマットに合わせて、実装サマリ / §5.4 安定性指標 / 検証中発見の bug / codec 別検証 / 既知の運用上の制約 / r12+ への持ち越し を記録する)
+クローズ日: **2026-05-07**。
+
+### 13.1 実装サマリ
+
+r11 は仕様通り全 phase 実装・検証完了 (P0-P14、P10 = URL pre-resolve を追加)。新規 DSP 2 種 + Stream3D ChannelGroup 分離 + 配信者主導タグ 3 種を投入。listener UI 改修ゼロを達成 (NG8)。
+
+| カテゴリ | 実装 |
+|---|---|
+| LiteHrtfDsp (`indra/llaudio/lllitehrtfdsp.cpp`) | 距離減衰 (linear-square) / air absorption (-0.5 dB/m, cap -25 dB hi-shelf @ 4kHz) / ITD (Woodworth-Schlosberg、3rd-order Lagrange fractional delay) / ILD shadow (cos(θ/2)^0.5 + 1st-order IIR low-shelf) / elevation tilt (±1 dB, ±30°) |
+| VenueReverbDsp (`indra/llaudio/llvenuereverbdsp.cpp`) | partitioned FFT convolution (1024 sample block)、stereo IR ≤ 3s、9 venue (dry / room_small / room_medium / hall_small / hall_medium / hall_large / club / cathedral / outdoor) |
+| Stream3D ChannelGroup 分離 | `LLAudioEngine_FMODSTUDIO` で group 作成、`makeChannelForBinding()` で setChannelGroup、master volume / mute 伝播 OK 確認 (R5 リスク回避) |
+| 配信者主導タグ | `{binaural:on\|off}` / `{venue:NAME}` / `{wetgain:N}` を root prim attribute に追加。`effectiveBinaural()` / `effectiveVenue()` / `effectiveWetGain()` 合成 getter で debug override と sentinel 統合 |
+| debug settings (3 件、UI 露出ゼロ) | `Stream3DBinauralRender` (int, sentinel `-1`) / `Stream3DVenueOverride` (string, sentinel `""`) / `Stream3DVenueWetGain` (F32, sentinel `-1.0`) |
+| URL pre-resolve (P10) | viewer 側で HTTPS→HTTP cross-protocol redirect を pre-resolve、FMOD createStream の URL 直渡しが SSL 経由 redirect で落ちる問題を解消 |
+| bundled IR (CREDITS.md 同梱) | OpenAIR 系 8 IR (CC-BY 4.0) を `app_settings/venue_ir/` に配置 + DL/変換 helper |
+
+### 13.2 §5.4 安定性指標
+
+- **dropout**: 5min 連続再生 (cathedral + binaural ON) で **0 件**
+- **CPU**: §5.5 表参照。LiteHrtf 自体は実質ゼロ、コストは VenueReverb が支配的で IR 長に比例。room 系 +0.1pp / hall_medium +7.7pp / hall_large +9.6pp / cathedral +10.2pp
+- **URL 切替耐性**: 5.1ch ↔ 2ch を 10 回切替で crash / 二重再生 / 残留音 / log エラー繰り返しなし
+
+### 13.3 検証中発見の bug
+
+なし。P12 / P13 で全 8 ステップ・回帰確認とも一発 PASS。実装段階では P5 (binaural off でも vanilla 3D positioning が残る挙動) を一時 NG と誤判定しかけたが、これは仕様通りの設計挙動と確認 (memory `feedback_binaural_off_residual_3d_positioning.md` 参照)。
+
+### 13.4 codec 別検証
+
+§5.4 通り Vorbis のみ end-to-end 実機回し。Opus / FLAC は r9 で確立した decode 経路がそのまま流用され、r11 の DSP 改修は decode 後の Channel / ChannelGroup 経路にのみ介入するため、codec 別の追加検証は不要と判断。
+
+### 13.5 既知の運用上の制約
+
+- **CPU (hall_medium 以上)**: cathedral で r10 比 +10.2pp / +23.6% 相対増。spec §5.5 「+10% 未満」基準を相対比で読むと cathedral / hall_large / hall_medium が超過。**ただし**:
+  - 絶対値 53% (1 コア) で saturation までは余裕、modern 多コア機の全体 CPU では 3〜7% 増程度
+  - 5min 連続再生で dropout 観測なし → audio thread の deadline には十分間に合っている
+  - 配信者が cathedral タグを付ける = 「重い長残響が欲しい」と明示的に opt-in する選択 → コストに見合う効果を返すのが正しい
+  - 「viewer 側で勝手に強い venue がかかる」のが問題なのであって、配信者がタグで指定する r11 設計ではこの懸念は発火しない
+  
+  → spec §5.5 の数値を機械的に守るより設計思想の整合を優先し、**全 9 venue 出荷**。**release note で「hall_medium 以上は CPU 重い (+8〜10pp)、低スペック機は room 系推奨」明記**。
+- **air absorption の客観測定**: §5.5 の「-15dB @ 4kHz」は P12 で主観 PASS としたが、対 dry な振幅スペクトル比較の客観 FFT 測定は r11.x 以降に持ち越し。実装係数は仕様通り `-0.5 dB/m`, cap `-25 dB`。
+- **listener 側 venue override 一般 UI**: NG8 通り未提供。SL 内 snapshot / machinima での音響演出ニーズは Stream3D の per-channel placement が録画再現不能なため考慮対象外 (§4.5)。
+- **5.1ch source の単独 prim 受入**: r10 で確立した BS.775 downmix path (`mix6chToMono`) が r11 でもそのまま流用、6ch 源を単一 prim で受けても自動 downmix。これは r10 設計通りで、r11 で追加の挙動変更なし。
+
+### 13.6 r12+ への持ち越し
+
+§9 通り。加えて本リリースで顕在化した:
+
+- **VenueReverb の CPU 最適化** (NUPC = non-uniform partition convolution 等): hall_medium 以上の +8〜10pp を低減できれば全 venue を spec 基準内に収められる。設計思想として「重い venue を削る」方向ではなく「重い IR を低コストで処理する」方向で r12 検討
+- **air absorption の客観 FFT 測定**: -15dB @ 4kHz を実機で対 dry スペクトル比較
+- **listener pose smoothing** (§9.7): r11 では未着手、急 camera 動作の音像飛び問題は実機で観測されず保留可

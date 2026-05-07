@@ -28,6 +28,8 @@
 
 #include "llaudioengine.h"
 #include "llaudioengine_fmodstudio.h"
+#include "lllitehrtfdsp.h"
+#include "llstream3durlresolve.h"
 #include "llstring.h"
 #include "lltimer.h"
 
@@ -325,7 +327,25 @@ bool LLPositionalStreamMulti::start(const std::string& url,
                                 | FMOD_NONBLOCKING
                                 | FMOD_IGNORETAGS;
 
-    if (checkFmod(system->createStream(clean_url.c_str(), source_mode, nullptr, &mSourceSound),
+    // r11 P10: viewer-side URL pre-resolve. FMOD netstream does not follow
+    // HTTPS→HTTP cross-protocol redirects (typical of Cloudflare/CDN
+    // fronted Shoutcast/Icecast). We probe via libcurl HEAD (with ranged
+    // GET fallback) and hand FMOD the post-redirect URL. mUrl stays as
+    // the original input so reconnect/log surfaces still show what the
+    // tag asked for.
+    std::string createstream_url = clean_url;
+    if (mUrlPreResolveEnabled)
+    {
+        std::string resolved;
+        if (LLStream3DUrlResolve::resolveStreamUrl(clean_url, resolved))
+        {
+            LL_INFOS("Stream3DUrlResolve") << "pre-resolved: " << clean_url
+                                             << " -> " << resolved << LL_ENDL;
+            createstream_url = resolved;
+        }
+    }
+
+    if (checkFmod(system->createStream(createstream_url.c_str(), source_mode, nullptr, &mSourceSound),
                   "createStream(source)"))
     {
         mSourceSound = nullptr;
@@ -364,6 +384,22 @@ void LLPositionalStreamMulti::releaseAll()
 {
     llassert(!mDecodeThread.joinable());
 
+    // r11 P5: peel the LiteHrtfDsp off the channel chain BEFORE stopping,
+    // mirroring the wind-DSP cleanup pattern in LLAudioEngine_FMODSTUDIO.
+    // DSP::release() does detach internally, but removing while the
+    // channel is still valid is the documented order and avoids leaving a
+    // recycled-channel slot wired to a soon-to-be-released DSP.
+    for (auto& sr : mSpeakerRuntime)
+    {
+        if (sr.channel && sr.hrtf_dsp)
+        {
+            if (FMOD::DSP* dsp = sr.hrtf_dsp->getDsp())
+            {
+                checkFmod(sr.channel->removeDSP(dsp),
+                          "Channel::removeDSP(LiteHrtfDsp)");
+            }
+        }
+    }
     // Channels must be stopped before their backing OPENUSER sounds are
     // released; FMOD will warn (and may briefly stutter) otherwise.
     for (auto& sr : mSpeakerRuntime)
@@ -428,6 +464,13 @@ void LLPositionalStreamMulti::setSpeakerPosition(size_t idx, const LLVector3& po
     if (idx < mSpeakerRuntime.size() && mSpeakerRuntime[idx].channel)
     {
         applyChannelAttributes(mSpeakerRuntime[idx].channel, pos, mSpeakers[idx].range);
+    }
+    // r11 P4: keep the lite-HRTF source pos in sync with FMOD's set3DAttributes
+    // so the DSP and the built-in panner agree on geometry the instant the
+    // mgr moves a speaker (rather than waiting for the next update() tick).
+    if (idx < mSpeakerRuntime.size() && mSpeakerRuntime[idx].hrtf_dsp)
+    {
+        mSpeakerRuntime[idx].hrtf_dsp->setSourcePos(pos);
     }
 }
 
@@ -645,6 +688,25 @@ bool LLPositionalStreamMulti::createUserSounds()
 
         mSpeakerRuntime[i].user_sound = snd;
         mSpeakerRuntime[i].cb = std::move(cb);
+
+        // r11 P4: per-speaker lite-HRTF DSP. Created here so its lifecycle
+        // matches user_sound; seeded with the speaker's range + position so
+        // even before update() ticks, defaults are sane. Failure is
+        // non-fatal because the DSP isn't wired into the FMOD chain yet
+        // (P5 hooks Channel::addDSP behind the {binaural} tag) — audio
+        // still plays through FMOD's built-in panner.
+        auto dsp = std::make_unique<LLLiteHrtfDsp>();
+        if (dsp->create(system))
+        {
+            dsp->setSourcePos(mSpeakers[i].position);
+            dsp->setRange(mSpeakers[i].range);
+            mSpeakerRuntime[i].hrtf_dsp = std::move(dsp);
+        }
+        else
+        {
+            LL_WARNS("Stream3D") << "LiteHrtfDsp::create() failed for speaker "
+                                  << i << "; skipping per-speaker DSP" << LL_ENDL;
+        }
     }
     return true;
 }
@@ -687,12 +749,39 @@ bool LLPositionalStreamMulti::makeChannelForBinding(size_t i)
     checkFmod(sr.channel->setVolume(mVolume * mSpeakers[i].volume),
               "Channel::setVolume(speaker)");
 
-    // r11 hook: lite-HRTF takeover. r10 keeps FMOD's built-in 3D panner fully
-    // on (1.0f), so AYAstorm placement uses the same panner the rest of the
-    // world uses. r11's LiteHrtfDsp (attached to the Stream3D ChannelGroup
-    // above) will flip this to 0.0f to disable FMOD's per-channel distance /
-    // pan attenuation and let the DSP own ITD + ILD shadow + air absorption.
-    checkFmod(sr.channel->set3DLevel(1.0f), "Channel::set3DLevel(speaker)");
+    // r11 P5: lite-HRTF takeover gated by mBinauralEnabled (= the publisher's
+    // {binaural} tag combined with the debug Stream3DBinauralRender override
+    // by the mgr). When ON, insert the per-speaker LiteHrtfDsp at the head
+    // of the channel chain (= source side, before the panner) and flip
+    // set3DLevel to 0.0f so FMOD's built-in panner stops doing its own
+    // distance / pan attenuation; the DSP owns ITD + ILD shadow + air
+    // absorption. When OFF, leave set3DLevel at 1.0f and skip addDSP — the
+    // path is bit-equivalent to r10. addDSP failure falls back to the
+    // built-in panner with set3DLevel(1.0f) so we never end up with a
+    // silent / un-spatialised channel.
+    bool dsp_attached = false;
+    if (mBinauralEnabled && sr.hrtf_dsp)
+    {
+        if (FMOD::DSP* dsp = sr.hrtf_dsp->getDsp())
+        {
+            if (!checkFmod(sr.channel->addDSP(0 /*head*/, dsp),
+                           "Channel::addDSP(LiteHrtfDsp)"))
+            {
+                dsp_attached = true;
+            }
+        }
+    }
+    checkFmod(sr.channel->set3DLevel(dsp_attached ? 0.0f : 1.0f),
+              "Channel::set3DLevel(speaker)");
+    // r11 P5: per-binding gate state. Quiet by default (LL_DEBUGS), enable
+    // the "Stream3D" debug category to confirm whether a given speaker is
+    // running through the lite-HRTF DSP or FMOD's built-in panner.
+    LL_DEBUGS("Stream3D") << "makeChannelForBinding speaker=" << i
+                           << " binaural=" << (mBinauralEnabled ? "on" : "off")
+                           << " dsp=" << (sr.hrtf_dsp ? "ok" : "null")
+                           << " attached=" << (dsp_attached ? "yes" : "no")
+                           << " set3DLevel=" << (dsp_attached ? "0.0" : "1.0")
+                           << LL_ENDL;
     return true;
 }
 
@@ -1068,6 +1157,31 @@ void LLPositionalStreamMulti::update()
             mUnderrunCallbacks.store(0, std::memory_order_relaxed);
             LL_INFOS("Stream3D") << "Multi path playing: " << mUrl
                                   << " (" << mSpeakers.size() << " speakers)" << LL_ENDL;
+        }
+    }
+
+    // r11 P4: per-frame lite-HRTF param push. Listener pose is shared across
+    // every speaker's DSP; source pos / range come from the per-speaker
+    // SpeakerConfig (the same vector applyChannelAttributes feeds to FMOD's
+    // built-in panner, so the two stay coherent). Pushed unconditionally
+    // when DSPs exist — they're created in createUserSounds() during
+    // Buffering, so this is a no-op until then. Atomic stores are
+    // single-writer (main thread) / single-reader (mixer); ordering is
+    // relaxed because each param only matters as a snapshot at the next
+    // process() call.
+    if (!mSpeakerRuntime.empty() && gAudiop)
+    {
+        const LLVector3 lpos = gAudiop->getListenerPos();
+        const LLVector3 lat  = gAudiop->getListenerAt();
+        const LLVector3 lup  = gAudiop->getListenerUp();
+        for (size_t i = 0; i < mSpeakerRuntime.size() && i < mSpeakers.size(); ++i)
+        {
+            LLLiteHrtfDsp* dsp = mSpeakerRuntime[i].hrtf_dsp.get();
+            if (!dsp) continue;
+            dsp->setListenerPos(lpos);
+            dsp->setListenerOrientation(lat, lup);
+            dsp->setSourcePos(mSpeakers[i].position);
+            dsp->setRange(mSpeakers[i].range);
         }
     }
 

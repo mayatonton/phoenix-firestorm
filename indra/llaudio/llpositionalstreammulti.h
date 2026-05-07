@@ -46,6 +46,8 @@ namespace FMOD
     class System;
 }
 
+class LLLiteHrtfDsp;  // r11 P4: per-speaker lite-HRTF DSP (forward decl)
+
 // r8: multi-tail SPSC ring buffer for the distributed-stereo decode thread.
 //
 // Storage layout: capacity_frames × n_tracks F32 samples, interleaved per
@@ -200,6 +202,27 @@ public:
     // Global volume multiplier on top of per-speaker volume.
     void setVolume(F32 volume);
 
+    // r11 P5: enable/disable the per-speaker lite-HRTF DSP (= the
+    // {binaural} tag's resolved effective value, computed by the mgr).
+    // When ON, makeChannelForBinding() inserts the DSP at the head of the
+    // FMOD chain and flips Channel::set3DLevel to 0.0f so the FMOD
+    // built-in panner stops attenuating; when OFF, the DSP stays
+    // detached and FMOD continues to do its own 3D panning (= r10
+    // behavior). Setting this between speaker bring-ups (e.g. caller
+    // changes its mind before start() succeeds) is fine; mid-stream
+    // toggles are handled by the mgr rebuilding the stream entirely.
+    void setBinauralEnabled(bool on) { mBinauralEnabled = on; }
+    bool isBinauralEnabled() const { return mBinauralEnabled; }
+
+    // r11 P10: viewer-side URL pre-resolve toggle. When enabled (default),
+    // start() runs the source URL through LLStream3DUrlResolve before
+    // calling FMOD::createStream so HTTPS→HTTP cross-protocol redirects
+    // (Cloudflare/CDN fronted Shoutcast/Icecast) get followed up front.
+    // The mgr reads `Stream3DUrlPreResolve` from settings and pushes
+    // the resolved boolean here before each start(); set this before
+    // start() to take effect on the next stream open.
+    void setUrlPreResolveEnabled(bool on) { mUrlPreResolveEnabled = on; }
+
     // Per-frame: drives source state, transitions opening→buffering→playing.
     void update();
 
@@ -243,6 +266,13 @@ private:
         FMOD::Sound* user_sound = nullptr;
         FMOD::Channel* channel = nullptr;
         std::unique_ptr<SpeakerCallback> cb;
+        // r11 P4: per-speaker lite-HRTF DSP. Created in createUserSounds()
+        // alongside user_sound, fed by per-frame param push from update().
+        // Not yet inserted into the FMOD signal chain — P5 will gate
+        // Channel::addDSP behind the {binaural} tag. unique_ptr lets the
+        // implicit SpeakerRuntime dtor stay valid in the .cpp where the
+        // LiteHrtfDsp type is complete.
+        std::unique_ptr<LLLiteHrtfDsp> hrtf_dsp;
     };
 
     static FMOD_RESULT F_CALL pcmReadCallback(FMOD_SOUND* sound, void* data, U32 datalen);
@@ -307,6 +337,14 @@ private:
     std::vector<SpeakerRuntime> mSpeakerRuntime;
 
     F32 mVolume;
+    // r11 P5: publisher's lite-HRTF intent (after debug override). Owned
+    // by the mgr via setBinauralEnabled(); the mixer thread never reads
+    // this — gating happens at channel bring-up on the main thread.
+    bool mBinauralEnabled = false;
+    // r11 P10: viewer-side URL pre-resolve gate. Default true so a caller
+    // that forgets to call the setter still gets the redirect-following
+    // behavior (matches the settings.xml sentinel default of "enabled").
+    bool mUrlPreResolveEnabled = true;
     std::string mUrl;
 
     std::atomic<State> mState;
