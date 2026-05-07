@@ -215,6 +215,20 @@ public:
     void setBinauralEnabled(bool on) { mBinauralEnabled = on; }
     bool isBinauralEnabled() const { return mBinauralEnabled; }
 
+    // r12 P4: enable/disable the 2ch→5.1 upmix dispatch (= the publisher's
+    // {upmix} tag combined with the debug Stream3DUpmix override, computed
+    // by the mgr via effectiveUpmix()). When ON and the source is 2ch,
+    // resolveReadOp() routes every per-speaker callback through
+    // OpKind::Upmix instead of the r10 Track / StereoSum path; when the
+    // source is ≥ 6ch the flag is honored as a request but ignored at
+    // dispatch time (auto-bypass — r10 native placement always wins,
+    // mgr-side fires a one-shot chat notice). Like setBinauralEnabled,
+    // mid-stream toggles are handled by the mgr rebuilding the stream
+    // entirely so resolveReadOp's per-speaker decision is only consulted
+    // at createUserSounds() time.
+    void setUpmixEnabled(bool on) { mUpmixEnabled = on; }
+    bool isUpmixEnabled() const { return mUpmixEnabled; }
+
     // r11 P10: viewer-side URL pre-resolve toggle. When enabled (default),
     // start() runs the source URL through LLStream3DUrlResolve before
     // calling FMOD::createStream so HTTPS→HTTP cross-protocol redirects
@@ -248,12 +262,13 @@ private:
             Track,     // direct read of mRing track[op_track]
             StereoSum, // (track0 + track1)/2 — ch:M/C on 2ch source
             Bs775,     // mix6chToMono(op_role) — ch:L/R/M on 6ch source
-            // r12 P2: 2ch source + {upmix:on} → DPL2-style matrix decode +
-            // band split (FL/FR/C/LFE/SL/SR per role). Parallel to Bs775:
-            // a 2-track raw read followed by a stateless transform with
-            // per-speaker state (LPF / delay) carried in upmix_state.
-            // resolveReadOp() does not yet emit this in P2; P4 wires the
-            // mSourceChannels==2 + effectiveUpmix() branch.
+            // r12 P2 + P4: 2ch source + effectiveUpmix() == on →
+            // DPL2-style matrix decode + band split (FL/FR/C/LFE/SL/SR
+            // per role). Parallel to Bs775: a 2-track raw read followed
+            // by a stateless transform with per-speaker state (LPF /
+            // delay) carried in upmix_state. resolveReadOp() emits this
+            // when mSourceChannels == 2 && mUpmixEnabled; the per-speaker
+            // role lives in op_role_upmix below.
             Upmix,
         };
         OpKind op_kind = OpKind::Silent;
@@ -322,8 +337,19 @@ private:
 
     // r10 P4: resolve §4.2 compat matrix into a SpeakerCallback::OpKind +
     // parameters for one speaker, given the current mSourceChannels and
-    // mDownmix. Called once per speaker at createUserSounds() time.
+    // mDownmix. r12 P4: also consults mUpmixEnabled to pick OpKind::Upmix
+    // over the r10 Track / StereoSum path on 2ch sources. Called once per
+    // speaker at createUserSounds() time.
     void resolveReadOp(SpeakerCallback& cb, Channel ch) const;
+
+    // r12 P4: map a Channel placement value to the LLStereoUpmix::UpmixRole
+    // the upmix dispatch should produce for it. Spec §4.3.6 table:
+    //   FL/FR/C/LFE/SL/SR → identity,
+    //   L → FL, R → FR, M → C
+    // (legacy r5–r9 ch values absorbed into the closest 5.1 role so a
+    // pre-r10 desc still gets 2-spk stereo when {upmix:on}). Static
+    // because no member data is consulted.
+    static LLStereoUpmix::UpmixRole mapChToUpmixRole(Channel ch);
 
     void startDecodeThread();
     void stopDecodeThread();
@@ -369,6 +395,11 @@ private:
     // by the mgr via setBinauralEnabled(); the mixer thread never reads
     // this — gating happens at channel bring-up on the main thread.
     bool mBinauralEnabled = false;
+    // r12 P4: publisher's {upmix} intent (after debug override / auto-
+    // bypass on >= 6ch source). Owned by the mgr via setUpmixEnabled();
+    // resolveReadOp consults it once per speaker at createUserSounds()
+    // and the mixer thread never looks at it again.
+    bool mUpmixEnabled = false;
     // r11 P10: viewer-side URL pre-resolve gate. Default true so a caller
     // that forgets to call the setter still gets the redirect-following
     // behavior (matches the settings.xml sentinel default of "enabled").

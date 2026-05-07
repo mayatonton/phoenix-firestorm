@@ -572,8 +572,8 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         // r12 P2: parallel to Bs775 but with a 2-track raw read (ring is
         // 2-track for stereo source) and the LLStereoUpmix transform that
         // produces this speaker's role-specific 1ch output. Per-speaker
-        // upmix_state carries the SL/SR delay line (and, in P3, the LFE
-        // biquad taps); upmix_params carries the bleed / delay tuning.
+        // upmix_state carries the SL/SR delay line and the LFE biquad
+        // taps; upmix_params carries the bleed / delay / LFE-cutoff tuning.
         const size_t chunk_cap = kReaderChunkFrames;
         F32* raw = cb->raw_scratch.data();
         size_t produced = 0;
@@ -607,6 +607,30 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
     return FMOD_OK;
 }
 
+// static
+LLStereoUpmix::UpmixRole
+LLPositionalStreamMulti::mapChToUpmixRole(Channel ch)
+{
+    using R = LLStereoUpmix::UpmixRole;
+    switch (ch)
+    {
+    case Channel::FL:  return R::FL;
+    case Channel::FR:  return R::FR;
+    case Channel::C:   return R::C;
+    case Channel::LFE: return R::LFE;
+    case Channel::SL:  return R::SL;
+    case Channel::SR:  return R::SR;
+    // Spec §4.3.6 legacy fold-in: r5–r9 ch values are mapped to their
+    // closest 5.1 role so a pre-r10 desc with only L/R/M speakers still
+    // gets a sensible upmix (L = front-left, R = front-right, M = center)
+    // rather than silence.
+    case Channel::L:   return R::FL;
+    case Channel::R:   return R::FR;
+    case Channel::M:   return R::C;
+    }
+    return R::FL;  // unreachable; defensive
+}
+
 void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) const
 {
     // r10 P4: §4.2 compat matrix dispatch. mSourceChannels and mDownmix are
@@ -617,6 +641,11 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
 
     if (mSourceChannels == 6 && mDownmix.isSupported())
     {
+        // r12 P4 auto-bypass: even when the publisher requested {upmix:on},
+        // a 6ch native source falls through to the r10 placement / Bs775
+        // path verbatim. The mgr-side chat notice (emitUpmixAutoBypassNotice)
+        // explains the fall-through to the listener; here we simply ignore
+        // mUpmixEnabled so the dispatch is bit-identical to r10/r11.
         const auto& idx = mDownmix.indices();
         switch (ch)
         {
@@ -631,8 +660,20 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
         case Channel::SR:  cb.op_kind = Op::Track; cb.op_track = idx.SR;      return;
         }
     }
+    else if (mSourceChannels == 2 && mUpmixEnabled)
+    {
+        // r12 P4: every speaker — including legacy r5–r9 L/R/M placements —
+        // gets fanned out via the DPL2 matrix decode. The per-speaker
+        // role is mapped from Channel to UpmixRole; the actual matrix +
+        // band split lives in LLStereoUpmix::upmix2chToSpeaker().
+        cb.op_kind = Op::Upmix;
+        cb.op_role_upmix = mapChToUpmixRole(ch);
+        return;
+    }
     else if (mSourceChannels == 2)
     {
+        // r10 path: no upmix → 2-spk stereo (L/FL=track0, R/FR=track1,
+        // M/C=stereo sum, 5.1 placement values silent except FL/FR/C).
         switch (ch)
         {
         case Channel::L:
@@ -648,6 +689,11 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
     }
     else  // mSourceChannels == 1 (or unexpected — falls through to Silent)
     {
+        // r12 P4: 1ch sources do not get upmix dispatched even if
+        // mUpmixEnabled — DPL2 decode of a mono signal collapses to
+        // (FL=FR=L, C=L×√2, S=0) which is louder than r8/r10 mono and
+        // gains nothing acoustically. The r8 mono fan-out (every non-LFE
+        // role plays track 0) is the correct degenerate behavior.
         switch (ch)
         {
         case Channel::L:
@@ -662,7 +708,8 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
         }
     }
     // Defensive default — every (ch, src_ch) combination above hits a
-    // return; reaching here implies an unhandled channel value.
+    // return; reaching here implies an unhandled channel value or a
+    // 3/4/5/7/8 ch source slipping past the codec reject.
     cb.op_kind = Op::Silent;
 }
 
@@ -716,10 +763,11 @@ bool LLPositionalStreamMulti::createUserSounds()
         else if (cb->op_kind == SpeakerCallback::OpKind::Upmix)
         {
             cb->raw_scratch.assign(kReaderChunkFrames * 2, 0.f);
-            // r12 P2: upmix_params defaults from settings come in via P6;
-            // for now stamp the runtime sample_rate here so the SL/SR delay
-            // tap math (and the P3 LFE biquad coefficients) sees the right
-            // value the moment resolveReadOp starts emitting Upmix in P4.
+            // r12 P4: upmix_params defaults from settings.xml come in via
+            // P6; stamping mSampleRate here is the only piece resolveReadOp
+            // can't compute on its own (mSourceChannels is set before
+            // createUserSounds, but the speaker's sample rate plumbs
+            // through mSampleRate which is settled at format detection).
             cb->upmix_params.sample_rate = mSampleRate;
         }
         checkFmod(snd->setUserData(cb.get()), "Sound::setUserData");

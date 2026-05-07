@@ -351,6 +351,20 @@ private:
         // unchanged from the value last logged, the diagnostic is suppressed.
         // Empty until the first emission.
         std::string last_diagnostic_key;
+
+        // r12 P4: snapshot of the resolved {upmix} effective at the moment
+        // we last (re)started this binding's stream. False at construction
+        // (= no upmix request) and stays false until the P5 tag parser /
+        // debug Stream3DUpmix sentinel set it. The stream-side mUpmixEnabled
+        // is plumbed from this same value via setUpmixEnabled() at start.
+        bool upmix_effective_applied = false;
+
+        // r12 P4: throttle key for the auto-bypass chat notice (5.1 native
+        // source observed while upmix was requested). Same shape as
+        // last_diagnostic_key — same key, no re-emit. Emptied alongside
+        // last_diagnostic_key on structural rebuild so a fresh start
+        // (re)announces the bypass once.
+        std::string last_upmix_notice_key;
     };
 
     // r10 P5 / r10.x P2: routing-diagnostic emitter. Called from update()
@@ -366,6 +380,18 @@ private:
     // doesn't replay a stale snapshot for a binding that hasn't actually
     // changed since.
     void emitRoutingDiagnostic(DistributedStereoBinding& b);
+
+    // r12 P4: spec §4.2.2 auto-bypass notice. Fires once per (root, url,
+    // source_channels, upmix_effective) tuple when the publisher's
+    // {upmix:on} request collides with a multi-channel native source —
+    // i.e. the dispatch layer is silently keeping r10 placement / Bs775
+    // because the source already covers the 5.1 pipeline natively. Hooked
+    // into the same update tick as emitRoutingDiagnostic so a freshly
+    // played binding gets both notices ordered consistently. Throttled
+    // via b.last_upmix_notice_key (cleared on structural rebuild). Until
+    // P5 wires the upmix tag parser, b.upmix_effective_applied is always
+    // false and this is a single key compare on the no-op path.
+    void emitUpmixAutoBypassNotice(DistributedStereoBinding& b);
 
     // r8 F4: throttled error notification. Keyed by (prim_id, kind) so the
     // user gets one toast per failure mode per 30 seconds even if the parse /
