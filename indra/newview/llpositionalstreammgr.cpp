@@ -26,10 +26,13 @@
 
 #include "llpositionalstreammgr.h"
 
+#include "llaudioengine.h"
+#include "llaudioengine_fmodstudio.h"
 #include "llfasttimer.h"
 #include "llpositionalstream.h"
 #include "llpositionalstreammulti.h"
 #include "llpositionalstreamstereo.h"
+#include "llvenuereverbdsp.h"
 
 #include "llviewercontrol.h"
 #include "llviewerobject.h"
@@ -395,6 +398,63 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadVolume, val);
                 }
             }
+            else if (key == "binaural")
+            {
+                // r11 P5: {binaural:on|off} (case-insensitive). Only
+                // meaningful on the root prim (= same prim as {url}); we
+                // still parse it on every prim so a malformed value
+                // surfaces a chat error regardless of where the typo is.
+                std::string lowered = val;
+                LLStringUtil::toLower(lowered);
+                if (lowered == "on" || lowered == "true" || lowered == "1")
+                {
+                    data.binaural = true;
+                }
+                else if (lowered == "off" || lowered == "false" || lowered == "0")
+                {
+                    data.binaural = false;
+                }
+                else
+                {
+                    setError(DistParseError::BadBinaural, val);
+                }
+            }
+            else if (key == "venue")
+            {
+                // r11 P8: {venue:NAME}. Validated against the bundled
+                // catalog (LLVenueReverbDsp::knownVenues, includes "dry").
+                // Spec §4.1 line 174 says unknown name is silent-ignore +
+                // chat warn — i.e. NOT a tag-rejecting error like the
+                // {binaural} branch above. So we capture the bad value
+                // separately and let evaluateLinkset notify on its own
+                // schedule, leaving data.venue at nullopt → effective
+                // resolves to "dry".
+                const auto& known = LLVenueReverbDsp::knownVenues();
+                if (std::find(known.begin(), known.end(), val) != known.end())
+                {
+                    data.venue = val;
+                }
+                else
+                {
+                    data.bad_venue_value = val;
+                }
+            }
+            else if (key == "wetgain")
+            {
+                // r11 P9: {wetgain:N}. Spec §4.1 line 152 — F32 in
+                // [0.0, 2.0], values outside the range are clamped (not
+                // rejected). Non-numeric input is the only failure mode
+                // surfaced as BadWetGain.
+                F32 f;
+                if (tryParseFloat(val, f))
+                {
+                    data.wetgain = std::clamp(f, 0.f, 2.f);
+                }
+                else
+                {
+                    setError(DistParseError::BadWetGain, val);
+                }
+            }
             // Unknown keys (incl. removed-in-r8 {l}/{r}/{min}/{max}) are
             // silently ignored — the spec is permissive about extra fields.
         });
@@ -534,8 +594,131 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         if (!detail.empty()) msg += " (" + detail + ")";
         msg += "。受入対象は 1/2ch ソース、または 6ch Vorbis/Opus/FLAC のみです";
         break;
+    case DistErrorKind::BadBinaural:
+        msg = "タグ書式エラー (prim " + id_short + "): binaural の値は on または off で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{binaural:off}]";
+        break;
+    case DistErrorKind::BadVenue:
+        msg = "タグ書式エラー (root " + id_short + "): venue の値が認識できません";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。許容値: dry / room_small / room_medium / hall_small / hall_medium / hall_large / club / cathedral / outdoor";
+        break;
+    case DistErrorKind::IRNotLoaded:
+        msg = "再生エラー (root " + id_short + "): venue IR ファイルが読み込めませんでした";
+        if (!detail.empty()) msg += " (venue='" + detail + "')";
+        msg += "。dry にフォールバックします (app_settings/venue_ir/ の WAV を確認してください)";
+        break;
+    case DistErrorKind::BadWetGain:
+        msg = "タグ書式エラー (prim " + id_short + "): wetgain の値は数値で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += " (範囲外は 0.0〜2.0 にクランプされます)。例: [3dstream-stereo:{venue:hall_medium}{wetgain:1.0}]";
+        break;
     }
     notifyStream3D(msg);
+}
+
+// static
+bool LLPositionalStreamMgr::effectiveBinaural(std::optional<bool> tag_value)
+{
+    // r11 P5 / spec §6 precedence: debug override (sentinel `-1` = follow
+    // tag) wins over the publisher tag. Tag default is `on` when the
+    // publisher omits the {binaural:...} key (spec §4.1.0).
+    const S32 dbg = gSavedSettings.getS32("Stream3DBinauralRender");
+    if (dbg == 0) return false;        // force OFF
+    if (dbg >= 1) return true;         // force ON
+    return tag_value.value_or(true);   // sentinel -1 → follow tag
+}
+
+// static
+std::string LLPositionalStreamMgr::effectiveVenue(const std::optional<std::string>& tag_value)
+{
+    // r11 P8 / spec §4.5: debug override wins when non-empty; otherwise
+    // the publisher tag (or "dry" default) is used. The override string
+    // is taken verbatim — invalid names will be rejected by setVenue()
+    // and surface as IRNotLoaded chat warnings (no separate validation
+    // here because both paths converge on the same failure handling).
+    const std::string dbg = gSavedSettings.getString("Stream3DVenueOverride");
+    if (!dbg.empty()) return dbg;
+    return tag_value.value_or("dry");
+}
+
+void LLPositionalStreamMgr::applyVenueToBinding(DistributedStereoBinding& binding,
+                                                const std::optional<std::string>& venue_tag)
+{
+    // r11 P8: refresh the binding's tag mirror first (cheap, no side
+    // effects) so a fingerprint-match path can re-record the latest
+    // tag value even if the resolved effective hasn't moved.
+    binding.venue_tag = venue_tag;
+
+    const std::string venue_effective = effectiveVenue(venue_tag);
+    if (binding.venue_effective_applied == venue_effective)
+    {
+        return;
+    }
+
+    LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop);
+    LLVenueReverbDsp* dsp = engine ? engine->getVenueReverbDsp() : nullptr;
+    if (!dsp)
+    {
+        // Engine not in FMOD mode (or DSP create failed at init): there's
+        // no bus-level reverb to push to. Record the resolved name so we
+        // don't loop on this branch every poll, and let the binding stay
+        // silent on the wet path (which is exactly what no-DSP means).
+        binding.venue_effective_applied = venue_effective;
+        return;
+    }
+
+    if (dsp->setVenue(venue_effective))
+    {
+        binding.venue_effective_applied = venue_effective;
+        return;
+    }
+
+    // setVenue() rejected the name. "dry" is documented to always
+    // succeed, so a failure here means a non-"dry" name whose IR slot
+    // was never primed (file missing / format reject / sample-rate
+    // mismatch at engine init). Notify and fall back.
+    notifyDistributedError(binding.root_id, DistErrorKind::IRNotLoaded, venue_effective);
+    dsp->setVenue("dry");
+    binding.venue_effective_applied = "dry";
+}
+
+// static
+F32 LLPositionalStreamMgr::effectiveWetGain(std::optional<F32> tag_value)
+{
+    // r11 P9 / spec §4.5 line 385: debug override wins when ≥ 0.0;
+    // sentinel `-1.0` (or any negative) means "follow tag". Tag default
+    // is 1.0 when {wetgain:...} is omitted (spec §4.1.0 line 152).
+    // Final value is clamped to [0.0, 2.0] — the same range parser
+    // clamps to, repeated here in case the debug value is out of range.
+    const F32 dbg = gSavedSettings.getF32("Stream3DVenueWetGain");
+    const F32 raw = (dbg >= 0.f) ? dbg : tag_value.value_or(1.f);
+    return std::clamp(raw, 0.f, 2.f);
+}
+
+void LLPositionalStreamMgr::applyWetGainToBinding(DistributedStereoBinding& binding,
+                                                  std::optional<F32> wetgain_tag)
+{
+    binding.wetgain_tag = wetgain_tag;
+
+    const F32 wetgain_effective = effectiveWetGain(wetgain_tag);
+    // NaN sentinel for "never pushed" — the != comparison below would
+    // be true against any number, so first call always goes through.
+    if (binding.wetgain_effective_applied == wetgain_effective)
+    {
+        return;
+    }
+
+    LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop);
+    LLVenueReverbDsp* dsp = engine ? engine->getVenueReverbDsp() : nullptr;
+    if (dsp)
+    {
+        dsp->setWetGain(wetgain_effective);
+    }
+    // Even when the engine isn't in FMOD mode, record the resolved
+    // value so we don't loop on this branch every poll cycle.
+    binding.wetgain_effective_applied = wetgain_effective;
 }
 
 void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
@@ -590,11 +773,13 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         DistErrorKind k = DistErrorKind::BadCh;
         switch (dist.error)
         {
-        case DistParseError::BadCh:     k = DistErrorKind::BadCh;     break;
-        case DistParseError::BadRange:  k = DistErrorKind::BadRange;  break;
-        case DistParseError::BadVolume: k = DistErrorKind::BadVolume; break;
-        case DistParseError::EmptyUrl:  k = DistErrorKind::EmptyUrl;  break;
-        case DistParseError::Ok:        break; // unreachable
+        case DistParseError::BadCh:       k = DistErrorKind::BadCh;       break;
+        case DistParseError::BadRange:    k = DistErrorKind::BadRange;    break;
+        case DistParseError::BadVolume:   k = DistErrorKind::BadVolume;   break;
+        case DistParseError::EmptyUrl:    k = DistErrorKind::EmptyUrl;    break;
+        case DistParseError::BadBinaural: k = DistErrorKind::BadBinaural; break;
+        case DistParseError::BadWetGain:  k = DistErrorKind::BadWetGain;  break;
+        case DistParseError::Ok:          break; // unreachable
         }
         notifyDistributedError(id, k, dist.bad_value);
 
@@ -681,6 +866,26 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
     const F32 fallback_range = gSavedSettings.getF32("Stream3DRolloffMax");
     const F32 range_default = root_data.range_default.value_or(fallback_range);
+    // r11 P5: capture publisher's {binaural:on|off} tag and the resolved
+    // effective value (= debug override × tag value) up front so the
+    // fingerprint comparison below can detect either kind of change.
+    const std::optional<bool> binaural_tag = root_data.binaural;
+    const bool binaural_effective = effectiveBinaural(binaural_tag);
+    // r11 P8: capture the publisher's {venue:NAME} tag (parser-validated
+    // against the catalog) and surface a parser-rejected value once via
+    // chat. Children's bad_venue_value is intentionally not surfaced —
+    // venue is a root-level concept (§4.5), so notifying on a child would
+    // just be noise.
+    const std::optional<std::string> venue_tag = root_data.venue;
+    if (root_data.bad_venue_value)
+    {
+        notifyDistributedError(root_id, DistErrorKind::BadVenue, *root_data.bad_venue_value);
+    }
+    // r11 P9: wetgain mirrors venue's apply flow (engine-level DSP,
+    // single-store atomic). No bad-value notification at this point —
+    // BadWetGain is full-tag-rejecting at parse time, so we never reach
+    // here with a malformed value (parse error returns nullopt data).
+    const std::optional<F32> wetgain_tag = root_data.wetgain;
 
     std::vector<SpeakerSlot> speakers;
     auto collectSpeaker = [&](const LLUUID& prim_id, const DistStereoTagData& d)
@@ -765,7 +970,13 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         const auto& old_b = old_it->second;
         if (old_b.url == url
             && old_b.speakers.size() == speakers.size()
-            && old_b.stream)
+            && old_b.stream
+            // r11 P5: a tag-only flip ({binaural:on}↔{binaural:off}) or a
+            // debug-toggle change (Stream3DBinauralRender -1↔0↔1) must
+            // rebuild the FMOD stream so makeChannelForBinding() runs the
+            // gate again. Comparing the resolved effective is sufficient
+            // because effectiveBinaural() folds both inputs into one bool.
+            && old_b.binaural_effective_applied == binaural_effective)
         {
             fingerprint_match = true;
             for (size_t i = 0; i < speakers.size(); ++i)
@@ -789,6 +1000,16 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         // the live stream untouched.
         old_it->second.range_default = range_default;
         old_it->second.dropped_speakers = dropped;
+        // r11 P5: also refresh binaural_tag so a debug toggle later this
+        // session that flips back to the sentinel still resolves correctly.
+        old_it->second.binaural_tag = binaural_tag;
+        // r11 P8: venue is engine-level (single bus DSP), so a tag-only
+        // change doesn't rebuild the stream — just push the resolved name
+        // to the DSP. applyVenueToBinding() is a no-op when the resolved
+        // value matches what we already pushed.
+        applyVenueToBinding(old_it->second, venue_tag);
+        // r11 P9: same single-store atomic flow for wetgain.
+        applyWetGainToBinding(old_it->second, wetgain_tag);
         return;
     }
 
@@ -810,8 +1031,16 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.root_id = root_id;
     binding.url = url;
     binding.range_default = range_default;
+    binding.binaural_tag = binaural_tag;
+    binding.binaural_effective_applied = binaural_effective;
     binding.speakers = std::move(speakers);
     binding.dropped_speakers = dropped;
+    // r11 P8: push venue selection before the stream comes up so the
+    // first audio block out of process() already convolves through the
+    // right slot (avoids a momentary "dry then wet" pop on first start).
+    applyVenueToBinding(binding, venue_tag);
+    // r11 P9: push wetgain in the same window for the same reason.
+    applyWetGainToBinding(binding, wetgain_tag);
 
     for (const auto& s : binding.speakers)
     {
@@ -829,6 +1058,16 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.next_retry_time = 0.0;
     auto stream = std::make_unique<LLPositionalStreamMulti>();
     stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+    // r11 P5: publisher's lite-HRTF intent (× debug override) decided at
+    // start time. Persists across the stream's reconnect cascade because
+    // makeChannelForBinding() reads it on every channel bring-up.
+    stream->setBinauralEnabled(binaural_effective);
+    // r11 P10: viewer-side URL pre-resolve gate. Sentinel default -1 =
+    // enabled (libcurl follows HTTPS→HTTP cross-protocol redirects before
+    // FMOD::createStream sees the URL); 0 = disabled (FMOD-only, r10
+    // behavior). Read once at start and pushed via setter so the resolve
+    // path stays self-contained inside llaudio.
+    stream->setUrlPreResolveEnabled(gSavedSettings.getS32("Stream3DUrlPreResolve") != 0);
 
     std::vector<LLPositionalStreamMulti::SpeakerConfig> configs;
     configs.reserve(binding.speakers.size());
@@ -1163,6 +1402,25 @@ void LLPositionalStreamMgr::teardownDistributedBinding(const LLUUID& root_id)
         if (pr_it != mPrimToRoot.end() && pr_it->second == root_id)
         {
             mPrimToRoot.erase(pr_it);
+        }
+    }
+    // r11 P8: revert the bus-level reverb to dry on teardown so a
+    // single-publisher session leaves the reverb tail closed; otherwise
+    // an unrelated future stream would inherit this binding's venue.
+    // Last-writer-wins under multi-publisher load is acceptable for r11
+    // (one DSP per bus) — spec §4.5 names this as a known limitation.
+    // r11 P9: also drop wetgain back to 0.0 (silent wet path) for the
+    // same reason — a future binding will push its own value before
+    // its first audio block.
+    if (LLAudioEngine_FMODSTUDIO* engine = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop))
+    {
+        if (LLVenueReverbDsp* dsp = engine->getVenueReverbDsp())
+        {
+            if (it->second.venue_effective_applied != "dry")
+            {
+                dsp->setVenue("dry");
+            }
+            dsp->setWetGain(0.f);
         }
     }
     mDistributedBindings.erase(it);

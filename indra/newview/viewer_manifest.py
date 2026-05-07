@@ -133,7 +133,11 @@ class ViewerManifest(LLManifest,FSViewerManifest):
 
                 # <FS:AR> Poser Presets
                 self.path("poses")
-                
+
+                # AYAstorm r11 P7c: bundled venue impulse-response files for
+                # Stream3D venue convolution reverb (LLVenueReverbDsp).
+                self.path("venue_ir")
+
                 # <FS:Beq> package static_assets folder
                 if self.fs_is_opensim():
                     self.path("static_assets")

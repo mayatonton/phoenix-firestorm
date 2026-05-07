@@ -176,6 +176,11 @@ public:
 
     // For debugging usage
     virtual LLVector3 getListenerPos();
+    // r11 P4: orientation getters mirror getListenerPos so audio modules
+    // (LiteHrtfDsp param push) can read the listener basis without poking
+    // mListenerp directly. Returns zero vectors if no listener exists yet.
+    virtual LLVector3 getListenerAt();
+    virtual LLVector3 getListenerUp();
 
     LLAudioBuffer *getFreeBuffer(); // Get a free buffer, or flush an existing one if you have to.
     LLAudioChannel *getFreeChannel(const F32 priority); // Get a free channel or flush an existing one if your priority is higher

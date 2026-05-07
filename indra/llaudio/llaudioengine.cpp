@@ -860,6 +860,18 @@ LLVector3 LLAudioEngine::getListenerPos()
 }
 
 
+LLVector3 LLAudioEngine::getListenerAt()
+{
+    return mListenerp ? mListenerp->getAt() : LLVector3::zero;
+}
+
+
+LLVector3 LLAudioEngine::getListenerUp()
+{
+    return mListenerp ? mListenerp->getUp() : LLVector3::zero;
+}
+
+
 void LLAudioEngine::setListenerVelocity(LLVector3 aVec)
 {
     mListenerp->setVelocity(aVec);

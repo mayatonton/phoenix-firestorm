@@ -380,6 +380,28 @@ bool LLAudioEngine_FMODSTUDIO::init(void* userdata, const std::string &app_title
     Check_FMOD_Error(mSystem->createChannelGroup("Stream3D", &mStream3DGroup),
                      "FMOD::System::createChannelGroup(Stream3D)");
 
+    // r11 P7c: attach the venue convolution reverb DSP at the tail of the
+    // Stream3D bus. Pre-loads bundled IRs from app_settings/venue_ir/ at
+    // create() time so live venue switches are file-I/O-free. With no IR
+    // files installed, every slot is !loaded and the DSP runs in dry-bypass
+    // (active = "dry") — bus stays correct, just no wet signal.
+    if (mStream3DGroup)
+    {
+        const std::string ir_dir =
+            gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "venue_ir");
+        if (mVenueReverbDsp.create(mSystem, ir_dir))
+        {
+            Check_FMOD_Error(mStream3DGroup->addDSP(FMOD_CHANNELCONTROL_DSP_TAIL,
+                                                    mVenueReverbDsp.getDsp()),
+                             "ChannelGroup::addDSP(VenueReverbDsp)");
+        }
+        else
+        {
+            LL_WARNS("AppInit") << "r11 P7c: VenueReverbDsp.create() failed; "
+                                   "Stream3D bus runs without venue reverb" << LL_ENDL;
+        }
+    }
+
     LL_INFOS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() FMOD Studio initialized correctly" << LL_ENDL;
 
     {
@@ -558,6 +580,10 @@ void LLAudioEngine_FMODSTUDIO::shutdown()
     LLAudioEngine::shutdown();
 
     LL_INFOS("FMOD") << "LLAudioEngine_FMODSTUDIO::shutdown() closing FMOD Studio" << LL_ENDL;
+    // r11 P7c: release the venue reverb DSP before its host ChannelGroup.
+    // FMOD::DSP::release() detaches automatically, but doing it explicitly
+    // here keeps shutdown ordering obvious.
+    mVenueReverbDsp.release();
     if (mStream3DGroup)
     {
         // r11 P1: release the Stream3D bus before tearing down the system.

@@ -30,6 +30,7 @@
 #include "v3math.h"
 
 #include <deque>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -144,6 +145,29 @@ public:
         // Source declaration fields (set only when {url:...} is present).
         std::optional<std::string> url;
         std::optional<F32> range_default;
+        // r11 P5: lite-HRTF toggle ({binaural:on|off}). Source-side property
+        // — meaningful only on the root prim (= same prim as {url}).
+        // nullopt = unspecified (defaults to on per spec §4.1.0).
+        std::optional<bool> binaural;
+
+        // r11 P8: venue selection ({venue:NAME}). Source-side property —
+        // child prim values are silently ignored (spec §4.1 line 154).
+        // nullopt = unspecified (defaults to "dry" per spec §4.1.1).
+        // Validated at parse time against LLVenueReverbDsp::knownVenues();
+        // unknown values land in bad_venue_value below instead of here so
+        // the tag overall stays valid (spec §4.1 line 174 — silent-ignore +
+        // chat warn, not full-tag reject).
+        std::optional<std::string> venue;
+        std::optional<std::string> bad_venue_value;
+
+        // r11 P9: venue reverb wet/dry mix multiplier ({wetgain:N}).
+        // Source-side property — child prim values are silently ignored
+        // (same rule as {venue}). nullopt = unspecified (defaults to 1.0
+        // per spec §4.1.0 line 152). Numeric values outside [0.0, 2.0]
+        // are clamped at parse time (spec §4.1 line 152). Non-numeric
+        // input is a full-tag-reject error (BadWetGain) like {volume}
+        // and {binaural} — there is no separate "bad value" field.
+        std::optional<F32> wetgain;
 
         // Speaker declaration fields (set only when {ch:...} is present).
         std::optional<ChannelKind> ch;
@@ -165,6 +189,11 @@ public:
         BadRange,     // {range:N} not > 0 or unparseable
         BadVolume,    // {volume:N} not in [0.0, 1.0] or unparseable
         EmptyUrl,     // {url:} empty
+        // r11 P5: {binaural:...} value not on/off (case-insensitive)
+        BadBinaural,
+        // r11 P9: {wetgain:N} value not parseable as F32 (out-of-range
+        // is clamped silently, not reported here)
+        BadWetGain,
     };
 
     struct DistParseResult
@@ -194,6 +223,30 @@ public:
     // a member so parser unit tests and r10's 5.1 placement code share the
     // exact same alphabet without the parser leaking its lowercase trick.
     static std::optional<ChannelKind> parseChannelKind(std::string_view s);
+
+    // r11 P5: combine the publisher's {binaural:on|off} tag with the debug
+    // override `Stream3DBinauralRender` (-1 sentinel = follow tag, 0 = force
+    // OFF, 1+ = force ON) into the final on/off decision used at channel
+    // bring-up time. Spec §4.1.0 / §6 — debug value wins when not the
+    // sentinel; otherwise the tag value (or `true` if unspecified) is used.
+    static bool effectiveBinaural(std::optional<bool> tag_value);
+
+    // r11 P8: combine the publisher's {venue:NAME} tag with the debug
+    // override `Stream3DVenueOverride` (empty = follow tag, non-empty =
+    // force this venue) into the final name fed to LLVenueReverbDsp::
+    // setVenue(). Spec §4.5 — debug value wins when non-empty; otherwise
+    // the tag value (or "dry" if unspecified) is used. Returned name is
+    // not re-validated against the catalog here; callers handle unknown
+    // names via the setVenue return value (= notifies IRNotLoaded).
+    static std::string effectiveVenue(const std::optional<std::string>& tag_value);
+
+    // r11 P9: combine the publisher's {wetgain:N} tag with the debug
+    // override `Stream3DVenueWetGain`. Spec §4.5 line 385 — debug value
+    // wins when ≥ 0.0; otherwise the tag value (or 1.0 if unspecified)
+    // is used. Result is clamped to [0.0, 2.0]. The DSP's internal range
+    // is enforced by setWetGain() too, but clamping here keeps the
+    // binding's recorded value coherent with what was actually pushed.
+    static F32 effectiveWetGain(std::optional<F32> tag_value);
 
 private:
     LLPositionalStreamMgr();
@@ -244,6 +297,38 @@ private:
         LLUUID root_id;
         std::string url;
         F32 range_default = 20.f;
+        // r11 P5: publisher's {binaural:on|off} tag value (nullopt =
+        // unspecified). Combined with the debug override at channel bring-up
+        // via effectiveBinaural(). Tracked here so a fingerprint comparison
+        // in evaluateLinkset can detect a tag-only edit (e.g.
+        // {binaural:off} → {binaural:on}) and rebuild the FMOD stream.
+        std::optional<bool> binaural_tag;
+        // Snapshot of effectiveBinaural() at the moment we last (re)started
+        // this binding's stream. Combined with binaural_tag in the
+        // fingerprint so a debug-toggle change between evals also rebuilds.
+        bool binaural_effective_applied = true;
+        // r11 P9: publisher's {wetgain:N} tag value (nullopt = unspecified,
+        // defaults to 1.0). Tracked alongside venue because the wet-mix
+        // multiplier is also engine-level (same DSP) and shares the
+        // "atomic store, no stream rebuild" flow.
+        std::optional<F32> wetgain_tag;
+        // Last value actually pushed to the engine's setWetGain() on
+        // this binding's behalf. Sentinel NaN means "never pushed yet" —
+        // any first applyWetGainToBinding() will go through.
+        F32 wetgain_effective_applied = std::numeric_limits<F32>::quiet_NaN();
+        // r11 P8: publisher's {venue:NAME} tag value (nullopt = unspecified).
+        // Resolved via effectiveVenue() on every evaluate; the resolved
+        // name is pushed to the engine's bus-level VenueReverbDsp on
+        // transition. Tracked here separately from binaural because venue
+        // is engine-level (one DSP for the whole Stream3D bus) — changing
+        // it does NOT need a stream rebuild, just an atomic slot swap on
+        // the DSP. So venue is intentionally NOT in the rebuild fingerprint.
+        std::optional<std::string> venue_tag;
+        // Last name actually pushed to the engine's setVenue() on this
+        // binding's behalf. Compared against the new effective on each
+        // evaluate so we only push on change (avoids redundant atomic
+        // stores when desc-poll re-fires with the same value).
+        std::string venue_effective_applied = "dry";
         std::vector<SpeakerSlot> speakers;
         // Count of speakers truncated by the per-binding cap. Surfaced in
         // F4 throttled notification; F2-a only logs.
@@ -299,6 +384,18 @@ private:
         // mismatch summary captured by LLPositionalStreamMulti::failDetail()
         // (e.g. "channels=4" or "channels=6 codec_type=11").
         UnsupportedSourceFormat,
+        // r11 P5: {binaural:...} value not on/off.
+        BadBinaural,
+        // r11 P8: {venue:NAME} value not in LLVenueReverbDsp::knownVenues.
+        BadVenue,
+        // r11 P8: known venue name but its IR file failed to load at
+        // engine init (missing / wrong format / sample rate mismatch).
+        // Surfaced when setVenue() returns false at apply time.
+        IRNotLoaded,
+        // r11 P9: {wetgain:N} value not parseable as F32 (e.g. "abc").
+        // Out-of-range numeric values (e.g. "5.0") are silently clamped
+        // to [0.0, 2.0] per spec §4.1 line 152, NOT reported here.
+        BadWetGain,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for
@@ -322,6 +419,22 @@ private:
     // that use-after-free without auditing every call site.
     void evaluateLinkset(LLUUID root_id);
     void teardownDistributedBinding(const LLUUID& root_id);
+
+    // r11 P8: push the resolved venue name to the engine's bus-level
+    // VenueReverbDsp and update binding bookkeeping. Idempotent — bails
+    // out if the resolved name matches what we already pushed for this
+    // binding. On engine setVenue() failure for a non-"dry" name, fires
+    // an IRNotLoaded notification and forces "dry" so the bus stays
+    // audible (silent fallback per spec §4.5).
+    void applyVenueToBinding(DistributedStereoBinding& binding,
+                             const std::optional<std::string>& venue_tag);
+
+    // r11 P9: push the resolved wet-mix multiplier to the engine's
+    // bus-level VenueReverbDsp. Idempotent (skips when the new value
+    // matches the previously pushed one). Engine absent → records the
+    // value but does nothing (mirrors applyVenueToBinding semantics).
+    void applyWetGainToBinding(DistributedStereoBinding& binding,
+                               std::optional<F32> wetgain_tag);
 
     // r8 F2-b: push id onto mPriorityPollQueue if not already queued.
     // Linear scan dedup is fine — the queue is bounded by ~16 speakers per

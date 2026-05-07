@@ -20,6 +20,12 @@
 *.rtf binary
 *.ttf binary
 
+# Audio (PCM samples — never line-end-normalize)
+*.wav binary
+*.WAV binary
+*.ogg binary
+*.OGG binary
+
 # Executables
 *.dll binary
 *.exe binary
