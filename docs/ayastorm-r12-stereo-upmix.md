@@ -25,42 +25,51 @@ r10 で完成した **Layer 1 (per-channel placement)** と r11 で完成した 
 
 viewer-only の改修。配信側パイプラインは r9 / r10 / r11 流用。検証材料は r11 流儀で `doc/r12/` に sox/ffmpeg ベースのスクリプトを置く。
 
-### P0: 仕様確定 + roadmap doc 同時更新 + 実装箇所調査
+### P0: 仕様確定 + roadmap doc 同時更新 + 実装箇所調査 → C 案確定
 
-**目的**: 旧 r12 案 (SOFA + Steam Audio + 個人 HRTF + 公開 README + air absorption 客観測定) を spec / roadmap 双方で「stereo→5.1 upmix のみ」に置き換え、r13+ への降格を明文化。同時に StereoUpmixDsp の挿入位置 (A 案: stream-level group の入力段 / B 案: per-stream / per-binding) を実装調査で確定。
+**目的**: 旧 r12 案 (SOFA + Steam Audio + 個人 HRTF + 公開 README + air absorption 客観測定) を spec / roadmap 双方で「stereo→5.1 upmix のみ」に置き換え、r13+ への降格を明文化。同時に upmix 処理の挿入位置 (当初 spec §4.2.1 の A 案: stream-level group の入力段 / B 案: per-stream / per-binding DSP) を実コードで判定。
+
+**P0 調査結果** (2026-05-07): 実コード (`indra/llaudio/llpositionalstream*.{h,cpp}`、`llaudioengine_fmodstudio.cpp`) を読んで A 案 / B 案 はいずれも不適合と判明。per-speaker channel が mono (`numchannels=1`、`createUserSounds()`) で 2→6 materialize 不可 (B 案不可)、Stream3D group は per-speaker mono の合成しか見えず source 2ch に到達不可 (A 案不可)。代替として **C 案 = `SpeakerCallback::OpKind` 拡張** を確定: r10 で確立した Bs775 dispatch (6ch source → 1ch per speaker role) の並行構造として `OpKind::Upmix` を追加し、`pcmReadCallback` 内で 2 track ring から L/R を pull、speaker 役割 (FL/FR/C/LFE/SL/SR) に応じて upmix matrix + 帯域分離 + state を適用して 1ch 出力する。新規ヘルパは `LLStereoUpmix` (`LLMultichannelDownmix` の対称構造)。詳細は `doc/r12/dsp_insertion_survey.md`。
 
 **ファイル**:
 - `doc/spec_stereo_upmix.md` (新規、本書 §1 / §2 と同構成、初版)
 - `docs/ayastorm-stream3d-roadmap.md` §3 r12 (旧 SOFA / Steam Audio 案 → 新仕様、r13+ 項目追加)
-- 実装箇所調査メモ (in-conversation、commit には残さない)
+- `doc/r12/dsp_insertion_survey.md` (新規、P0 調査記録)
+- 上記 spec / impl record / roadmap への C 案反映 (P0 第 2 commit)
 
-**完了条件**: 仕様書 AYA レビュー通過 / roadmap §3 r12 が新仕様で読める / Preferences UI 改修ゼロ方針が明文化 / DSP 挿入位置の A/B 判断 (P1 着手前まで)。
+**完了条件**: 仕様書 AYA レビュー通過 / roadmap §3 r12 が新仕様で読める / Preferences UI 改修ゼロ方針が明文化 / DSP 挿入位置が C 案 (`OpKind::Upmix` 拡張) として確定 / spec §4.2.1 / §4.3 と本書 P1〜P5 が C 案で書き直されている。
 
-**commit**: (P0 一連、初版 / roadmap 更新 / メモリ更新)
+**commit**: (P0 第 1 弾 = 初版 spec / roadmap / メモリ、P0 第 2 弾 = 調査結果反映)
 
 ---
 
-### P1: StereoUpmixDsp skeleton (2ch passthrough、未配線)
+### P1: LLStereoUpmix helper class skeleton (LLMultichannelDownmix と並行構造)
 
-**目的**: FMOD `FMOD_DSP_DESCRIPTION` 形式の per-stream/group DSP 骨格を作る。最初は 2ch in → 6ch out passthrough (L→FL, R→FR、C/Ls/Rs/LFE は無音) で配線なし、ロジックは P2/P3 で実装。
+**目的**: r10 で確立した `LLMultichannelDownmix` (6ch→1ch per role) と並行構造のヘルパクラス `LLStereoUpmix` の骨格を作る。FMOD DSP ではなく、`pcmReadCallback` から呼ばれるピュア C++ クラス。最初はパススルー (FL→L, FR→R、C/Ls/Rs/LFE は 0) で実装、ロジックは P2/P3 で詰める。
 
 **ファイル**:
-- `indra/llaudio/llstereoupmixdsp.{h,cpp}` (新規)
+- `indra/llaudio/llstereoupmix.{h,cpp}` (新規)
+  - `enum class UpmixRole { FL, FR, C, LFE, SL, SR }`
+  - `bool isSupported()` (常に true、フォーマット依存なし)
+  - `void upmix2chToSpeaker(const F32* l, const F32* r, F32* out, size_t n_frames, UpmixRole role, State& state, ...)` (P2/P3 で本体実装)
+  - per-speaker `State` struct (LFE biquad LPF state、Ls/Rs delay buffer、stateless role はメモリゼロ)
 
-**完了条件**: DSP create / read callback / release が FMOD 経由で呼び出せる / 2ch in → 6ch out (FL/FR は L/R 通し、C/LFE/SL/SR は 0)。
+**完了条件**: ヘルパクラスがコンパイル通る / impulse / sine 入力で各 role の出力 ch shape が想定どおり (FL=L, FR=R passthrough、C/LFE/SL/SR=0) / ユニットテスト相当のスポット確認可能。
 
 **commit**: (TBD)
 
 ---
 
-### P2: Matrix decode + center bleed 除去 + rear decorrelation 実装
+### P2: pcmReadCallback に OpKind::Upmix dispatch 追加 + LLStereoUpmix::upmix2chToSpeaker 実装
 
-**目的**: spec §4.3.2〜§4.3.4 の DPL2 系 matrix decode 本体。`C = (L+R)/√2`、`S = (L-R)/√2`、`L' = L - C×bleed/√2`、`R' = R - C×bleed/√2`、Ls/Rs は S を short random delay (12〜20ms) で decorrelate。
+**目的**: spec §4.3.2〜§4.3.4 の DPL2 系 matrix decode 本体を `LLStereoUpmix::upmix2chToSpeaker` に実装し、`SpeakerCallback::pcmReadCallback` の switch に `case Upmix:` を追加 (Bs775 と並行構造)。`C = (L+R)/√2`、`S = (L-R)/√2`、`L' = L - C×bleed/√2`、`R' = R - C×bleed/√2`、Ls/Rs は S を short random delay (12〜20ms) で decorrelate。
 
 **ファイル**:
-- `indra/llaudio/llstereoupmixdsp.cpp` (read callback 拡張)
+- `indra/llaudio/llpositionalstreammulti.h` (`OpKind::Upmix` 追加、`UpmixRole op_role_upmix` field 追加 — Bs775 の `op_role_bs775` と並行)
+- `indra/llaudio/llpositionalstreammulti.cpp` (`pcmReadCallback` switch に `case Upmix:` 追加、2 track ring から readFramesRaw → `LLStereoUpmix::upmix2chToSpeaker` 呼び出し → 1ch 出力)
+- `indra/llaudio/llstereoupmix.cpp` (matrix decode 本体実装、role=FL/FR/C は stateless、SL/SR は delay line 使用)
 
-**完了条件**: 仕様 §4.3.2〜§4.3.4 の数式通り / `bleed` / `delay` がパラメータ化されており P6 で debug settings から触れる準備済み / 単体テスト (impulse response 形状目視) で center / S / L'/R' / Ls/Rs が想定通り。
+**完了条件**: 仕様 §4.3.2〜§4.3.4 の数式通り / `bleed` / `delay` がパラメータ化されており P6 で debug settings から触れる準備済み / r10 の Bs775 と同じ呼出単位 (`kReaderChunkFrames` = 1024 framings) で動作 / 単体テスト相当 (impulse response 形状目視) で center / S / L'/R' / Ls/Rs が想定通り。
 
 **commit**: (TBD)
 
@@ -68,26 +77,28 @@ viewer-only の改修。配信側パイプラインは r9 / r10 / r11 流用。�
 
 ### P3: LFE LPF (Butterworth biquad) 実装
 
-**目的**: spec §4.3.5 の LFE 経路。`LFE = LPF_cutoff((L+R)/2)`、cutoff default 80 Hz、Butterworth 2nd order biquad。bass management 補正は入れない。
+**目的**: spec §4.3.5 の LFE 経路。`LFE = LPF_cutoff((L+R)/2)`、cutoff default 80 Hz、Butterworth 2nd order biquad、Direct Form II 状態 (4 floats per speaker)。bass management 補正は入れない。
 
 **ファイル**:
-- `indra/llaudio/llstereoupmixdsp.cpp` (LFE LPF section 追加)
+- `indra/llaudio/llstereoupmix.cpp` (LFE role の処理に biquad LPF 追加、`State::lpf_state` 4 floats を Direct Form II で更新)
+- `indra/llaudio/llstereoupmix.h` (`State` struct に `lpf_state[4]` 追加)
 
-**完了条件**: cutoff default 80Hz で 60Hz 以下が通過、4kHz 以上が -40dB 以上落ちる (FFT 目視) / cutoff パラメータが P6 で debug settings から触れる準備済み。
+**完了条件**: cutoff default 80Hz で 60Hz 以下が通過、4kHz 以上が -40dB 以上落ちる (FFT 目視) / cutoff パラメータが P6 で debug settings から触れる準備済み / `State` がきっちり per-speaker (UpmixRole=LFE のときのみ使用) で thread race なし。
 
 **commit**: (TBD)
 
 ---
 
-### P4: source ch 数判定 + auto bypass
+### P4: resolveReadOp 分岐拡張 (auto bypass 含む)
 
-**目的**: spec §4.2.2 の判定経路。stream 開始時に codec layer (r9 確立) から ch 数を取得、`ch == 2 + {upmix:on}` のとき DSP 挿入、`ch >= 6` のときは `{upmix:on}` でも auto bypass + chat 通知 1 回。
+**目的**: spec §4.2.2 の判定経路。`createUserSounds()` の `resolveReadOp()` (per-speaker、stream 開始時 1 回) に「`mSourceChannels == 2 + effectiveUpmix() == on` で `OpKind::Upmix` + speaker `ch` 値から `UpmixRole` 設定」分岐を追加。`mSourceChannels >= 6` のときは upmix on でも C 案 dispatch を返さず r10 と同じ Bs775 / Track 経路を維持 (= auto bypass)。
 
 **ファイル**:
-- `indra/llaudio/llpositionalstreammulti.cpp` または `llaudioengine_fmodstudio.cpp` (P0 で確定した DSP 挿入箇所)
-- `indra/newview/llpositionalstreammgr.cpp` (5.1 native + upmix:on 時の chat 通知 throttle)
+- `indra/llaudio/llpositionalstreammulti.cpp` (`resolveReadOp` の `mSourceChannels == 2` 分岐を `effectiveUpmix()` で 2 ルートに分割)
+- `indra/llaudio/llpositionalstreammulti.h` (`mapChToUpmixRole(ch)` ヘルパ追加 — FL/FR/C/LFE/SL/SR/L/R/M を `UpmixRole` にマップ。L→FL、R→FR、M→C は spec §4.3.6 表どおり)
+- `indra/newview/llpositionalstreammgr.cpp` (5.1 native + `{upmix:on}` 時の chat 通知 throttle、stream 開始時 1 回)
 
-**完了条件**: source ch == 2 + `{upmix:on}` で DSP 挿入 / source ch >= 6 で `{upmix:on}` でも DSP 非挿入 + chat 通知 / source ch == 1 で DSP 非挿入 (mono 対象外) / source ch == 3/4/5 は到達しない (codec reject) が、到達した場合は安全側で passthrough。
+**完了条件**: source ch == 2 + `{upmix:on}` で `op_kind = Upmix` + 各 speaker に正しい role 割当 / source ch >= 6 で `{upmix:on}` でも r10 と同じ op (Bs775 / Track) + chat 通知 1 回 / source ch == 1 で `op_kind = Track 0` (mono 対象外、r8 経路維持) / source ch == 3/4/5 は到達しない (codec reject) が、到達した場合は安全側で Silent / Track にフォールバック。
 
 **commit**: (TBD)
 
@@ -95,14 +106,14 @@ viewer-only の改修。配信側パイプラインは r9 / r10 / r11 流用。�
 
 ### P5: `{upmix:on|off}` タグ parser + `Stream3DUpmix` debug 配線
 
-**目的**: 配信者タグ `{upmix:on|off}` parser、debug settings `Stream3DUpmix` (int, sentinel `-1`)、`effectiveUpmix()` 合成 getter、DSP 挿入/削除フックの実装。
+**目的**: 配信者タグ `{upmix:on|off}` parser、debug settings `Stream3DUpmix` (int, sentinel `-1`)、`effectiveUpmix()` 合成 getter、live toggle 時の rebuild 経路。C 案では DSP 挿入/削除ではなく **`resolveReadOp` 再評価による stream rebuild** で toggle が反映される (= placement rebuild と同じ tier、spec §4.5)。
 
 **ファイル**:
 - `indra/newview/llpositionalstreammgr.{h,cpp}` (parser、`mUpmix`、`effectiveUpmix()`)
-- `indra/newview/app_settings/settings.xml` (`Stream3DUpmix` 追加)
-- `indra/llaudio/llpositionalstreammulti.cpp` または挿入箇所の DSP attach/detach 経路
+- `indra/newview/app_settings/settings.xml` (`Stream3DUpmix` 追加、sentinel `-1`)
+- `indra/llaudio/llpositionalstreammulti.cpp` (live toggle 時の rebuild trigger — タグ変化を `evaluateLinkset()` が拾い、`resolveReadOp` 再実行で `OpKind::Upmix` ↔ r10 op を切替)
 
-**完了条件**: タグ未指定で upmix OFF (default) / `{upmix:on}` で ON / debug `=0/=1/=-1` の 3 sentinel が正しく動作 / `=0` + ChannelGroup 経路 = r10 / r11 完全一致 / live Desc 編集で次の `evaluateLinkset()` から rebuild が走る。
+**完了条件**: タグ未指定で upmix OFF (default) / `{upmix:on}` で ON / debug `=0/=1/=-1` の 3 sentinel が正しく動作 / `=0` 状態 = r10 / r11 完全一致 (resolveReadOp が r10 と同じ op を返す) / live Desc 編集で次の `evaluateLinkset()` から rebuild が走り `OpKind` が再割当てされる。
 
 **commit**: (TBD)
 
@@ -110,14 +121,14 @@ viewer-only の改修。配信側パイプラインは r9 / r10 / r11 流用。�
 
 ### P6: debug settings 3 件 (LfeCutoff / CenterBleed / RearDelayMs) 配線
 
-**目的**: spec §4.4 のパラメータ微調整 debug settings 3 件を `settings.xml` に追加し、StereoUpmixDsp が main thread から atomic-write で受け取る経路を作る (r11 P4 と同方針)。
+**目的**: spec §4.4 のパラメータ微調整 debug settings 3 件を `settings.xml` に追加し、`LLStereoUpmix` が main thread から atomic-write で受け取る経路を作る (r11 P4 と同方針、ただし対象は FMOD DSP ではなく helper class の atomic field)。
 
 **ファイル**:
 - `indra/newview/app_settings/settings.xml` (`Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs` 追加)
-- `indra/llaudio/llstereoupmixdsp.{h,cpp}` (atomic param fields + per-frame push 経路)
-- `indra/newview/llpositionalstreammgr.cpp` (debug settings 値を DSP に push)
+- `indra/llaudio/llstereoupmix.{h,cpp}` (`std::atomic<F32>` のグローバル param または per-stream の atomic fields + `upmix2chToSpeaker` で per-call snapshot 取得)
+- `indra/newview/llpositionalstreammgr.cpp` (debug settings 値を helper の atomic に push、stream 起動時 + 設定変更時)
 
-**完了条件**: `Stream3DUpmixLfeCutoff` を 80→120Hz に変えると LFE 帯域が広がる / `Stream3DUpmixCenterBleed` を 1.0→0.0 に変えると DPL1 互換 (phantom center 二重像) / `Stream3DUpmixRearDelayMs` を 16→8ms に変えると rear decorrelation が薄くなる / 3 件すべて lock-free atomic write で thread race なし。
+**完了条件**: `Stream3DUpmixLfeCutoff` を 80→120Hz に変えると LFE 帯域が広がる / `Stream3DUpmixCenterBleed` を 1.0→0.0 に変えると DPL1 互換 (phantom center 二重像) / `Stream3DUpmixRearDelayMs` を 16→8ms に変えると rear decorrelation が薄くなる / 3 件すべて lock-free atomic write で thread race なし (mixer thread は read-only snapshot)。
 
 **commit**: (TBD)
 
@@ -222,11 +233,11 @@ P0 ─→ P1 ─→ P2 ─→ P3 ─→ P4 ─→ P5 ─→ P6 ─┬─→ P9 �
                                   P8 ────→│ (P9 開始前まで、P5 完了後)
 ```
 
-P0 (仕様 + roadmap doc 同時更新 + 実装箇所調査) は本書策定と同時に実施。P1 (DSP skeleton) は P0 の挿入箇所判断 (A 案 / B 案) を前提とする。P2/P3 は P1 完了後に並行可だが、デバッグ容易性のため P2 → P3 を順次実装推奨。P4 (auto bypass) は P5 (タグ parser) と密結合だが、P4 を先に固めておくと P5 で「タグ ON でも 5.1 source なら DSP 挿入しない」を素直に書ける。P6 (debug 3 件) は P2/P3 のパラメータ化が完了している前提。P7 (検証材料) と P8 (LSL UI) は P6 までと並行可。P9 (検証実行) は P1〜P8 全完了後。P10 で回帰、P11 でクローズ。
+P0 (仕様 + roadmap doc 同時更新 + 実装箇所調査) は本書策定と同時に実施。**P0 第 2 弾で C 案 (`OpKind::Upmix` 拡張) を確定済み** (`doc/r12/dsp_insertion_survey.md`)、A 案 / B 案は廃案。P1 (`LLStereoUpmix` skeleton) は C 案前提で着手。P2/P3 は P1 完了後に並行可だが、デバッグ容易性のため P2 → P3 を順次実装推奨。P4 (resolveReadOp 分岐 + auto bypass) は P5 (タグ parser) と密結合だが、P4 を先に固めておくと P5 で「タグ ON でも 5.1 source なら upmix dispatch を返さない」を素直に書ける。P6 (debug 3 件) は P2/P3 のパラメータ化が完了している前提。P7 (検証材料) と P8 (LSL UI) は P6 までと並行可。P9 (検証実行) は P1〜P8 全完了後。P10 で回帰、P11 でクローズ。
 
 r11 と異なり、本リリースでは **追加 phase が想定外に発生する可能性** が以下の点で残る:
 
-- **R6 (DSP 挿入箇所 A/B 案)** が P0 で固まらず P1 着手後に切替が必要になるケース → P1.5 として再構築 phase を追加
+- ~~**R6 (DSP 挿入箇所 A/B 案)** が P0 で固まらず P1 着手後に切替が必要になるケース~~ → **P0 第 2 弾で C 案として既に解消** (A/B 案は実コード読解で不適合と判明、C 案は Bs775 dispatch の並行構造で実装難易度小)
 - **R2/R3/R4 (各 default 値の聴感調整)** が P11 close-out 時に R 項目で記載した範囲を超えて再 tune が必要になるケース → P11.x として default 調整 phase を追加
 - **P9 検証中に新タグ (例: bass-only mode 等) が必要と判明** したケース → 仕様書改定 + P12 として後追い phase を追加 (r11 P7c-C / P15 と同じ流儀)
 

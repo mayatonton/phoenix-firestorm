@@ -158,60 +158,81 @@ r12 で済ませておくと r13+ の SOFA / Steam Audio 着手時に手戻り�
 
 ### 4.2 viewer 内部経路
 
-#### 4.2.1 DSP 挿入位置 (channel chain)
+#### 4.2.1 挿入位置 — SpeakerCallback OpKind 拡張 (= C 案)
 
-upmix DSP は **per-channel placement の前段**、つまり stream → upmix DSP → per-channel split → r10 placement → r11 lite-HRTF → r11 venue reverb の順で挿入する。理由:
+**背景**: 当初の本書 (旧 §4.2.1) では「FMOD DSP として upmix を挿入する A 案 (group input) / B 案 (per-binding)」を候補としたが、P0 で実コードを読んだ結果、両案ともアーキテクチャ的に不適合と判明 (詳細: `doc/r12/dsp_insertion_survey.md`)。理由は以下:
 
-- per-channel placement (r10) は **入力 ch 数を前提** に動作 (6ch input → 6 prim output)。stereo source (2ch) を 6 spk に振りたい場合、upmix で先に 6ch に拡張してから placement に渡すのが最も整合的
-- r11 lite-HRTF / venue reverb は **per-channel に挿入** されるので、upmix の出力 6ch がそのまま r11 DSP chain に乗る (placement 以降は r11 と完全互換)
-- 5.1 native 配信 (source ch>=6) は upmix を auto bypass し、placement に直接渡るので r10/r11 と完全に同一経路
+- r10 の per-speaker channel は **mono** (`numchannels=1`、`createUserSounds()`)。FMOD DSP として channel に attach するものは 1ch in / 1ch out しかありえず、2→6 を materialize できない (B 案不可)
+- Stream3D ChannelGroup の入力は **6 個の per-speaker mono channel** であって、source の 2ch には到達できない (A 案不可)
+- 6 spk への split は既に `pcmReadCallback` 内で `OpKind` dispatch (Silent/Track/StereoSum/Bs775) として実装されている。upmix も同じ場所での dispatch 拡張が自然
 
-DSP 挿入の具体的箇所は実装フェーズで確定する。候補:
+**採用案 (C 案)**: `SpeakerCallback::OpKind` に `Upmix` を追加し、`pcmReadCallback` の dispatch で 2 track ring から L/R を pull、speaker 固有の役割 (FL/FR/C/LFE/SL/SR) に応じて upmix matrix + 帯域分離 + 状態 (LPF / delay) を適用して 1ch を生成する。これは r10 で確立した **Bs775 dispatch (6ch source → 1ch downmix per speaker role)** の対称構造。
 
-- **A 案**: `LLAudioEngine_FMODSTUDIO::createStream3DGroup()` で stream-level に upmix DSP を挿入 (= group の入力段)
-- **B 案**: `LLPositionalStreamMulti::makeChannelForBinding()` で per-stream / per-binding に挿入
+| 既存 (r10 Bs775) | 新規 (r12 Upmix) |
+|---|---|
+| ring tracks: 6 (FL/FR/C/LFE/SL/SR、6ch source as-is) | ring tracks: 2 (L/R、2ch source as-is) |
+| op_role: L / R / MonoLR (3 値) | op_role: FL / FR / C / LFE / SL / SR (6 値) |
+| transform: `LLMultichannelDownmix::mix6chToMono` | transform: `LLStereoUpmix::upmix2chToSpeaker` (新設) |
+| state: stateless (per-frame matrix) | state: per-speaker biquad LPF (LFE) / delay line (Ls/Rs) |
+| 入口: `createUserSounds()` で `resolveReadOp()` 確定 | 同左 |
 
-A 案は構造が単純だが「source ch 数による条件分岐」を group 全体で持つ必要がある。B 案は per-binding に閉じるので柔軟だが DSP インスタンス数が増える。**P0 の実装調査で確定**。
+**主要ファイル**:
+
+- 新規: `indra/llaudio/llstereoupmix.{h,cpp}` (`LLMultichannelDownmix` と並行構造のヘルパ)
+- 修正: `indra/llaudio/llpositionalstreammulti.{h,cpp}` (`OpKind::Upmix` 追加、`pcmReadCallback` switch 拡張、`resolveReadOp` 分岐拡張、`SpeakerCallback` に upmix state field)
+
+**選ばなかった案** (参考):
+
+- ~~A 案: `createStream3DGroup()` の group 入力段に DSP 挿入~~ → group は per-speaker mono channel の合成しか見えず source 2ch に到達不可
+- ~~B 案: `makeChannelForBinding()` で per-binding channel に DSP attach~~ → channel が mono なので 2→6 の materialize が不可能
 
 #### 4.2.2 source ch 数判定 / auto bypass
 
-source ch 数 (= codec が報告する channel count) は r9 で確立した経路 (`LLStream3DCodecInfo` 等) から取得。判定は upmix DSP 挿入時に 1 回行い、結果を per-binding に保存。runtime に変わらない (= stream 開始時に決まる) ので毎フレーム判定不要。
+source ch 数 (= codec が報告する channel count、`LLPositionalStreamStereo` で `mSourceSound->getFormat()` から取得し `mSourceChannels` に保存) は stream 開始時 (State::Buffering 完了直前) に確定し、以後 stream のライフタイム中は変わらない。判定は `createUserSounds()` の `resolveReadOp()` で 1 回行い、結果を per-speaker `SpeakerCallback::op_kind` に保存。mixer thread からの hot path での再評価は不要。
 
 判定ルール:
 
-- source ch == 1 (mono): upmix 無効 (mono source は r8 / r10 の mono ch 経路で処理、upmix 対象外)
-- source ch == 2 (stereo): タグ `{upmix:on}` のとき upmix DSP 挿入
-- source ch >= 6 (5.1 native): タグ `{upmix:on}` であっても upmix DSP 挿入しない (auto bypass)、chat 通知 1 回 (「5.1 配信に upmix:on が付いていますが、自動 bypass されました」相当)
+- `mSourceChannels == 1` (mono): upmix 経路に入らない。r8 mono ch の Track dispatch のまま (`op_kind = Track, op_track = 0`)。upmix 対象外
+- `mSourceChannels == 2` (stereo) + `effectiveUpmix() == on`: `op_kind = Upmix` を設定し、speaker の `ch` 値 (FL/FR/C/LFE/SL/SR/L/R/M) を upmix role にマップ
+- `mSourceChannels == 2` + `effectiveUpmix() == off` (default): r10 と同じ Op (Track 0 / Track 1 / StereoSum / Silent) を維持。完全 r10 互換
+- `mSourceChannels >= 6` (5.1 native): タグ `{upmix:on}` であっても **`op_kind = Upmix` を設定しない** (auto bypass)。r10 Bs775 / Track dispatch を維持。`{upmix:on}` が指定されていた場合のみ chat 通知 1 回 (「5.1 配信に upmix:on が付いていますが、自動 bypass されました」相当、mgr 側で発火)
 
-source ch == 3/4/5 のような半端な値は: r9 で codec layer がそもそも reject するので upmix までは到達しない。仮に到達した場合は upmix 無効 (= passthrough)。
+source ch == 3/4/5 のような半端な値は: r9 で codec layer がそもそも reject するので upmix までは到達しない。仮に到達した場合は upmix 経路に入らず Silent / Track などにフォールバック (= 安全側)。
 
 #### 4.2.3 r11 既存 DSP との順序
 
-DSP chain 順序:
+データフロー (= 信号が source から speaker output に至るまでの順序):
 
 ```
-stream
-  ↓
-[upmix DSP]              ← r12 新規 (source ch=2 + {upmix:on} のとき)
-  ↓
-per-channel placement     ← r10
-  ↓
-[lite-HRTF DSP]           ← r11 (per-channel)
-  ↓
-[venue reverb DSP]        ← r11 (Stream3D ChannelGroup 末尾)
-  ↓
-output
+[Source stream (FMOD createStream)]               ← 2ch or 6ch
+        ↓ pumpSource() / decode thread
+[mRing (per-track ring buffer)]                   ← 2 or 6 tracks
+        ↓ pcmReadCallback (mixer thread, per speaker)
+[OpKind dispatch]                                 ← r12 で Upmix 追加
+        ・Silent / Track / StereoSum / Bs775 (r10)
+        ・Upmix (r12 新規、stereo source + {upmix:on} のとき)
+        ↓ 1ch output
+[FMOD::Channel (mono, OPENUSER, per speaker)]
+        ↓ Channel::addDSP(head)
+[r11 LiteHrtfDsp]                                 ← per-channel mono in/out
+        ↓ Channel built-in panner (set3DLevel)
+[FMOD::ChannelGroup "Stream3D"]                   ← 6 mono channel の合成
+        ↓ Group::addDSP(tail)
+[r11 VenueReverbDsp]
+        ↓
+[Master group → output]
 ```
 
-upmix の 6ch 出力は r10 placement の通常入力と完全互換 (チャネルマスク = `FMOD_CHANNELMASK_5POINT1`)。lite-HRTF / venue reverb は per-channel に挿入されるので、6 prim それぞれに r11 と同じ処理が乗る。
+upmix の 1 speaker output は r10 Track / Bs775 と完全に同じ「per-speaker mono channel」として下流に流れる。lite-HRTF / venue reverb は upmix の有無を意識しない (= placement 以降は r11 と完全互換、r10/r11 受入条件すべて維持)。
 
-### 4.3 StereoUpmixDsp の処理
+### 4.3 LLStereoUpmix の処理
 
-#### 4.3.1 入力 / 出力
+#### 4.3.1 入力 / 出力 / 呼出単位
 
-- **入力**: 2ch (`FMOD_CHANNELMASK_STEREO`、L/R)
-- **出力**: 6ch (`FMOD_CHANNELMASK_5POINT1`、L/R/C/Ls/Rs/LFE)
-- block size: FMOD DSP buffer に追従 (r11 venue reverb と同じ流儀)
+- **入力**: 2ch float PCM (mRing の track 0 = L、track 1 = R から `readFramesRaw()` で pull)
+- **出力**: speaker 固有の 1ch float PCM (= role に応じて FL/FR/C/LFE/SL/SR のいずれか)
+- **呼出単位**: `pcmReadCallback` の `datalen / sizeof(F32)` フレーム数。Bs775 dispatch と同じく `kReaderChunkFrames` 単位 (1024) での内部チャンク処理
+- **state**: per-speaker (= per-`SpeakerCallback`)。LFE は biquad LPF state (Direct Form II、4 floats)、Ls/Rs は delay line buffer (16ms @ 44.1kHz ≈ 706 samples、固定 jitter で L/R ±2ms)、FL/FR/C は stateless
 
 #### 4.3.2 Matrix decode (DPL2 ベース)
 
@@ -267,9 +288,23 @@ cutoff の default は **80 Hz** (THX 推奨)。実装は biquad LPF (Butterwort
 
 LFE 出力レベル: `(L+R)/2` の振幅で LFE ch に流す。家庭 AV の bass management に相当する処理 (sub に振る分の振幅補正) は **入れない**。理由は SL 内の prim spk は物理的な sub 制約がないので、bass management は配置側の演出に委ねる。
 
-#### 4.3.6 出力 ch 配置 (r10 6 spk slot との整合)
+#### 4.3.6 出力 role と r10 6 spk slot との整合 + 旧 ch 値 (L/R/M) の扱い
 
-r10 の 6 spk placement は `{ch:FL}` / `{ch:FR}` / `{ch:C}` / `{ch:LFE}` / `{ch:SL}` / `{ch:SR}` の 6 slot を持つ。upmix DSP の出力 ch 順序は **FMOD `FMOD_CHANNELMASK_5POINT1`** に従う (FL, FR, C, LFE, SL, SR)。これは r10 placement の入力順序と完全一致するので、upmix 出力 → r10 placement 入力は順番ストレートに流れる。
+r10 の 6 spk placement は `{ch:FL}` / `{ch:FR}` / `{ch:C}` / `{ch:LFE}` / `{ch:SL}` / `{ch:SR}` の 6 slot を持つ。upmix の `op_role` (UpmixRole) は speaker の `ch` 値から `resolveReadOp()` 内で 1 対 1 に割り当てる:
+
+| speaker `ch` | UpmixRole | 出力計算 |
+|---|---|---|
+| `FL` | `FL` | `L - C × bleed / √2` |
+| `FR` | `FR` | `R - C × bleed / √2` |
+| `C` | `C` | `(L + R) / √2` |
+| `LFE` | `LFE` | `LPF((L+R)/2, cutoff)` |
+| `SL` | `SL` | `delay(S, base + jitter)` (S = (L-R)/√2) |
+| `SR` | `SR` | `delay(-S, base − jitter)` |
+| `L` (旧 r8 stereo) | `FL` | (= 旧 ch:L 配置の listener も DPL2 matrix decode の恩恵を受ける) |
+| `R` (旧 r8 stereo) | `FR` | 同上 |
+| `M` (旧 r8 mono) | `C` | (= mono 中心配置の listener は phantom center を center 役で受ける) |
+
+これにより r8 旧配置 (ch:L/R/M のみ) の listener も `{upmix:on}` で center bleed 除去 / rear decorrelation の恩恵を受ける (ただし 6 spk full surround を体感するには r10 配置が必要)。
 
 ### 4.4 debug settings 経由の強制 override (= 平時は不使用)
 
@@ -303,7 +338,7 @@ r11 までのタグ (`{venue}` / `{binaural}` / `{wetgain}` / `{ch}` / `{range}`
 
 配信ストリーム = stereo source、upmix で 6 spk に展開、各 spk に lite-HRTF + venue=hall_medium reverb (wetgain 1.2倍) が乗る。
 
-DSP chain 順序は §4.2.3 のとおり upmix → placement → lite-HRTF → venue reverb で、各 DSP は独立に animate (タグ live 編集で次の `evaluateLinkset()` から反映)。upmix の有効/無効が変わると DSP 挿入/削除が起こるので、これは r10 の placement rebuild と同じ tier (= stream rebuild が走る、live update ではない)。tag だけ on→off / off→on の toggle で rebuild 走るのは **意図通り**。
+データフローは §4.2.3 のとおり source → mRing → OpKind dispatch (upmix or r10) → per-channel → r11 lite-HRTF → r11 venue reverb で、upmix は `pcmReadCallback` 内で完結する。upmix の有効/無効が変わると `OpKind` 再割当てが必要なので、これは r10 の placement rebuild と同じ tier (= stream rebuild が走る、live update ではない)。tag だけ on→off / off→on の toggle で rebuild 走るのは **意図通り**。
 
 ### 4.6 r10 / r11 受入条件への影響
 
@@ -363,7 +398,7 @@ stereo upmix の効果を主観的に確認するための検証材料:
 | R3 | rear decorrelation で **rear が "強すぎ / 薄すぎ"** | 縮退 C: `Stream3DUpmixRearDelayMs` default を 12〜20ms 範囲で調整 (P11 検証で決定) |
 | R4 | LFE LPF 80Hz が **配信音源によってボワつく / スカスカ** | 縮退 D: `Stream3DUpmixLfeCutoff` default を 100〜120Hz に変更 (P11 検証で決定) |
 | R5 | source ch 判定が **stream 開始タイミングで間に合わない** (codec layer の遅延) | 縮退 E: ch 数判定 timeout を設定、判定不可なら upmix 無効 (= 安全側、5.1 として誤動作させない) |
-| R6 | upmix DSP 挿入箇所 (A 案 vs B 案) で **想定外の DSP chain 不整合** が発生 | P0 で実装調査、A 案不可なら B 案に切替 (構造選択の自由度を P0 で確保) |
+| ~~R6~~ | ~~upmix DSP 挿入箇所 (A 案 vs B 案) で **想定外の DSP chain 不整合** が発生~~ | **解消 (2026-05-07)**: P0 調査で C 案 (`SpeakerCallback::OpKind` 拡張) として確定、A/B 案は廃案 (詳細: `doc/r12/dsp_insertion_survey.md`)。Bs775 dispatch の並行構造で実装するため DSP chain 不整合の余地なし |
 
 ---
 
@@ -371,12 +406,12 @@ stereo upmix の効果を主観的に確認するための検証材料:
 
 詳細フェーズ分解と依存関係は `docs/ayastorm-r12-stereo-upmix.md` を参照。本書では概要のみ:
 
-- **P0**: 仕様確定 + roadmap doc 同時更新 + 実装箇所調査 (A 案 / B 案 確定)
-- **P1**: StereoUpmixDsp skeleton (2ch passthrough、未配線)
-- **P2**: Matrix decode + center bleed 除去 + rear decorrelation 実装
-- **P3**: LFE LPF (biquad) 実装
-- **P4**: source ch 数判定 + auto bypass
-- **P5**: `{upmix:on|off}` タグ parser + `Stream3DUpmix` debug 配線
+- **P0**: 仕様確定 + roadmap doc 同時更新 + 実装箇所調査 → **C 案 (`OpKind::Upmix` 拡張) として確定** (`doc/r12/dsp_insertion_survey.md`)
+- **P1**: `LLStereoUpmix` helper class skeleton (`LLMultichannelDownmix` と並行構造、未配線)
+- **P2**: `pcmReadCallback` に `OpKind::Upmix` dispatch + `LLStereoUpmix::upmix2chToSpeaker` (matrix decode + center bleed 除去 + rear decorrelation) 実装
+- **P3**: LFE LPF (biquad) 実装 (`LLStereoUpmix` 内、role=LFE のとき有効)
+- **P4**: `resolveReadOp` 分岐拡張 (`mSourceChannels == 2 + effectiveUpmix() == on` で `OpKind::Upmix` 設定、auto bypass は `mSourceChannels >= 6` で C 案 dispatch を返さない)
+- **P5**: `{upmix:on|off}` タグ parser + `Stream3DUpmix` debug 配線 (toggle 時は stream rebuild で resolveReadOp 再評価)
 - **P6**: debug settings 3 件 (LfeCutoff / CenterBleed / RearDelayMs) 配線
 - **P7**: 検証材料生成スクリプト
 - **P8**: 配信者 LSL に Upmix UI 追加
@@ -445,3 +480,4 @@ stereo upmix の効果を主観的に確認するための検証材料:
 ## 10. 変更履歴
 
 - 2026-05-07: 初版作成。r11 完了直後の議論で AYA さんから「世間の SL 配信はほぼ stereo、6 spk placement の元を取りたい」提案。旧 r12 計画 (SOFA per-source HRTF + Steam Audio) は本書策定で「stereo upmix のみ」に再定義、SOFA / Steam Audio / VenueReverb CPU 最適化 / air absorption 客観測定 / 個人 HRTF / 公開 README は r13+ に降格 (詳細は §2.2 / §9)。アルゴリズムは DPL2 系 matrix decode + 帯域分離で決め打ち (§2.3)。配信者主導モデル (r11 で確立) を維持、新タグ `{upmix:on|off}` (default off)、debug settings 4 件 (sentinel 1 件 + 微調整 3 件)。
+- 2026-05-07: P0 調査結果を反映。実コード (`indra/llaudio/llpositionalstream*.{h,cpp}`) を読んで DSP 挿入位置を確定。当初 §4.2.1 で候補とした A 案 (`createStream3DGroup` 入力段) / B 案 (`makeChannelForBinding` per-binding) はいずれも実アーキテクチャに不適合と判明 — per-speaker channel が mono (`numchannels=1`) で 2→6 materialize 不可、Stream3D group は per-speaker mono の合成しか見えず source 2ch に到達不可。代わりに r10 の `SpeakerCallback::OpKind` (Bs775 dispatch) を拡張する **C 案** として確定: `OpKind::Upmix` を追加し、`pcmReadCallback` 内で 2 track ring から 2ch を pull、speaker 役割に応じて upmix matrix + 帯域分離 + 状態を適用して 1ch 出力。新規ヘルパは `LLStereoUpmix` (`indra/llaudio/llstereoupmix.{h,cpp}`、`LLMultichannelDownmix` 並行構造)。これに伴い §4.2.1 / §4.2.2 / §4.2.3 / §4.3 (タイトル + §4.3.1 / §4.3.6) / §4.5 / §7 R6 を改訂。詳細は `doc/r12/dsp_insertion_survey.md`。
