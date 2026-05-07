@@ -50,6 +50,7 @@
 #include "fmodstudio/fmod_common.h"
 
 #include "llfftconvolver.h"
+#include "llirloader.h"
 
 namespace FMOD
 {
@@ -117,9 +118,14 @@ private:
     bool primeSlot(Slot& slot, const F32* ir_l, int ir_l_len,
                    const F32* ir_r, int ir_r_len);
 
-    // Tries to load one venue's WAV from <ir_dir>/<file>. Returns true on
-    // success and primes slot; false leaves slot.loaded = false.
-    bool loadVenueSlot(int slot_idx, const std::string& ir_dir);
+    // Loads one venue's WAV from <ir_dir>/<file> and measures its energy
+    // (= Σ sample²). Does NOT prime the convolver — create() runs this on
+    // every catalog entry first so the energies can be averaged, then
+    // applies the per-IR normalization gain before priming. Returns true
+    // when the IR is usable (loaded + sample-rate matches the mixer);
+    // energy_out is only valid when the function returns true.
+    bool stageVenueIR(int slot_idx, const std::string& ir_dir,
+                      LLIRData& ir_out, F64& energy_out);
 
     // Look up a non-dry venue name → slot index, or -1 if not in catalog.
     int findVenueSlot(const std::string& name) const;
