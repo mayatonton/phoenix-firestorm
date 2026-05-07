@@ -150,6 +150,13 @@ public:
         // nullopt = unspecified (defaults to on per spec §4.1.0).
         std::optional<bool> binaural;
 
+        // r12 P5: 2ch→5.1 upmix toggle ({upmix:on|off}). Source-side
+        // property — meaningful only on the root prim. nullopt =
+        // unspecified (defaults to off per spec §4.1, line 110/138/147 —
+        // upmix is opt-in because it changes the audible image of every
+        // existing 2ch broadcast). Same parser shape as {binaural}.
+        std::optional<bool> upmix;
+
         // r11 P8: venue selection ({venue:NAME}). Source-side property —
         // child prim values are silently ignored (spec §4.1 line 154).
         // nullopt = unspecified (defaults to "dry" per spec §4.1.1).
@@ -194,6 +201,10 @@ public:
         // r11 P9: {wetgain:N} value not parseable as F32 (out-of-range
         // is clamped silently, not reported here)
         BadWetGain,
+        // r12 P5: {upmix:...} value not on/off (case-insensitive). Same
+        // shape as BadBinaural — the tag is full-rejected so a typo
+        // doesn't silently fall back to "off" and confuse the publisher.
+        BadUpmix,
     };
 
     struct DistParseResult
@@ -247,6 +258,15 @@ public:
     // is enforced by setWetGain() too, but clamping here keeps the
     // binding's recorded value coherent with what was actually pushed.
     static F32 effectiveWetGain(std::optional<F32> tag_value);
+
+    // r12 P5: combine the publisher's {upmix:on|off} tag with the debug
+    // override `Stream3DUpmix` (-1 sentinel = follow tag, 0 = force OFF,
+    // 1+ = force ON) into the final on/off decision. Spec §4.1 / §6.3
+    // — debug value wins when not the sentinel; otherwise the tag value
+    // (or `false` if unspecified, because upmix is opt-in) is used.
+    // Auto-bypass on >= 6ch native sources is enforced separately at
+    // resolveReadOp dispatch time, not here.
+    static bool effectiveUpmix(std::optional<bool> tag_value);
 
 private:
     LLPositionalStreamMgr();
@@ -303,6 +323,13 @@ private:
         // in evaluateLinkset can detect a tag-only edit (e.g.
         // {binaural:off} → {binaural:on}) and rebuild the FMOD stream.
         std::optional<bool> binaural_tag;
+        // r12 P5: publisher's {upmix:on|off} tag value (nullopt =
+        // unspecified, treated as off by effectiveUpmix). Same fingerprint
+        // role as binaural_tag — a tag flip or debug-toggle change
+        // rebuilds the stream so resolveReadOp re-picks OpKind. Spec
+        // §4.5.x: upmix toggle is in the rebuild tier, not the engine-
+        // level live-update tier (which is venue / wetgain).
+        std::optional<bool> upmix_tag;
         // Snapshot of effectiveBinaural() at the moment we last (re)started
         // this binding's stream. Combined with binaural_tag in the
         // fingerprint so a debug-toggle change between evals also rebuilds.
@@ -412,6 +439,8 @@ private:
         UnsupportedSourceFormat,
         // r11 P5: {binaural:...} value not on/off.
         BadBinaural,
+        // r12 P5: {upmix:...} value not on/off.
+        BadUpmix,
         // r11 P8: {venue:NAME} value not in LLVenueReverbDsp::knownVenues.
         BadVenue,
         // r11 P8: known venue name but its IR file failed to load at
