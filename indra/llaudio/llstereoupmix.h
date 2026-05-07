@@ -40,9 +40,9 @@
 // from SpeakerCallback::pcmReadCallback on the FMOD mixer thread, dispatched
 // through SpeakerCallback::OpKind (Bs775 vs Upmix).
 //
-// P1: skeleton only. upmix2chToSpeaker() is currently a passthrough — FL and
-// FR forward L and R, the other roles emit silence. The full DPL2 matrix +
-// LFE biquad LPF + Ls/Rs delay-line decorrelation lands in P2/P3.
+// P2: front (FL/FR with center-bleed-removed L'/R'), center (C = (L+R)/√2),
+// and rear (SL/SR with delay-line decorrelation of S = (L-R)/√2) are live.
+// LFE still emits silence here — its biquad LPF lands in P3.
 class LLStereoUpmix
 {
 public:
@@ -59,20 +59,40 @@ public:
         SR,
     };
 
+    // Tuning parameters (spec §4.4). Defaults match the spec table; P6 wires
+    // Stream3DUpmixCenterBleed / Stream3DUpmixRearDelayMs / Stream3DUpmixLfeCutoff
+    // through here from settings.xml. `sample_rate` is required for the rear
+    // delay tap and (in P3) for the LFE biquad coefficients — the caller
+    // (pcmReadCallback) gets it from LLPositionalStreamMulti::mSampleRate.
+    //
+    // L/R rear delays are split symmetrically around the base
+    // Stream3DUpmixRearDelayMs (default 16 ms) by a ±2 ms jitter so SL and
+    // SR are decorrelated from each other; resolveReadOp computes the
+    // per-speaker value and stows it here.
+    struct Params
+    {
+        F32 center_bleed   = 1.0f;   // 0..1; 1.0 = full center extraction
+        F32 rear_delay_ms_l = 18.0f; // base 16 + jitter +2
+        F32 rear_delay_ms_r = 14.0f; // base 16 - jitter -2
+        F32 lfe_cutoff_hz   = 80.0f; // P3 will consume this
+        int sample_rate     = 44100; // for delay frame count + (P3) LPF coeffs
+    };
+
     // Per-speaker mutable state, owned by the caller (one instance per
-    // SpeakerCallback). LFE uses lpf_state[] as a Direct Form II biquad,
-    // SL/SR use delay_buf as a delay line for Haas-style decorrelation,
-    // FL/FR/C are stateless. Allocated lazily on first use of a stateful
-    // role so passthrough callers pay nothing.
+    // SpeakerCallback). LFE uses lpf_state[] as a Direct Form II biquad
+    // (wired in P3), SL/SR use delay_buf as a delay line for Haas-style
+    // decorrelation, FL/FR/C are stateless. Allocated lazily on first use
+    // of a stateful role so passthrough callers pay nothing.
     struct State
     {
         // Direct Form II biquad state for the LFE LPF (P3). Two delay
         // taps (z^-1, z^-2). Zero-initialised so the first sample is clean.
         F32 lpf_state[2] = {0.f, 0.f};
 
-        // Ls/Rs delay line (P2). Sized lazily in P2 when the rear delay
-        // setting is known; capacity covers the maximum decorrelation
-        // window allowed by Stream3DUpmixRearDelayMs (~32 ms @ 44.1 kHz).
+        // Ls/Rs delay line. Sized in upmix2chToSpeaker() on first SL/SR
+        // call so it matches the runtime sample_rate; capacity covers the
+        // maximum decorrelation window allowed by Stream3DUpmixRearDelayMs
+        // plus one chunk so reads never collide with writes.
         std::vector<F32> delay_buf;
         std::size_t      delay_write_idx = 0;
     };
@@ -80,25 +100,35 @@ public:
     LLStereoUpmix() = default;
 
     // r12: upmix is algorithmically format-agnostic (no codec-dependent
-    // channel ordering — caller already handed us track[0]=L, track[1]=R
+    // channel ordering — caller already handed us [L,R,L,R,...] interleaved
     // out of the multi-tail ring). Always supported, kept for API symmetry
     // with LLMultichannelDownmix::isSupported().
     bool isSupported() const { return true; }
 
-    // 2-channel deinterleaved F32 input → 1ch F32 output, one sample per
-    // frame. `in_l` / `in_r` come from LLMultiTailRing::readFramesRaw on
-    // tracks 0 and 1 respectively (= deinterleaved by construction; the
-    // ring stores tracks separately, not interleaved). `out_mono` receives
-    // `frames` samples for the speaker identified by `role`.
+    // 2-channel interleaved F32 input → 1ch F32 output, one output sample
+    // per frame. `in_2ch` is [L0,R0,L1,R1,...] of length `frames * 2` —
+    // the layout LLMultiTailRing::readFramesRaw produces on a 2-track ring.
+    // `out_mono` receives `frames` samples for the speaker identified by
+    // `role`. `state` is mutable per-speaker storage; `params` is the
+    // tuning bundle (P6 wires it from settings).
     //
-    // P1 behaviour (skeleton): FL passes L through, FR passes R through,
-    // C / LFE / SL / SR emit zeros. P2 swaps the front/center/side path
-    // for the DPL2 matrix; P3 wires up the LFE biquad.
-    void upmix2chToSpeaker(const F32* in_l, const F32* in_r, F32* out_mono,
+    // P2 behaviour: FL = L - C·bleed/√2, FR = R - C·bleed/√2,
+    //               C  = (L + R)/√2,
+    //               SL = delay(+S, rear_delay_ms_l), SR = delay(-S, rear_delay_ms_r),
+    //               where S = (L - R)/√2 and C used in FL/FR is the same (L+R)/√2.
+    //               LFE = silent (P3 implements (L+R)/2 → biquad LPF).
+    void upmix2chToSpeaker(const F32* in_2ch, F32* out_mono,
                            std::size_t frames, UpmixRole role,
-                           State& state) const;
+                           State& state, const Params& params) const;
 
     static const char* roleName(UpmixRole role);
+
+    // Map the spec §4.4 base + jitter convention into Params::rear_delay_ms_l/r.
+    // base_ms is Stream3DUpmixRearDelayMs (default 16); jitter_ms is the fixed
+    // ±2 ms split spec §4.3.4 calls for. Pulled out of the parser path so P4
+    // (resolveReadOp) and P6 (settings push) share the same arithmetic.
+    static void splitRearDelay(F32 base_ms, F32 jitter_ms,
+                               F32* out_l_ms, F32* out_r_ms);
 };
 
 #endif // LL_STEREO_UPMIX_H
