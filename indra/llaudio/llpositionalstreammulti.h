@@ -26,6 +26,7 @@
 #define LL_POSITIONAL_STREAM_MULTI_H
 
 #include "llmultichanneldownmix.h"
+#include "llstereoupmix.h"
 #include "stdtypes.h"
 #include "v3math.h"
 
@@ -247,16 +248,36 @@ private:
             Track,     // direct read of mRing track[op_track]
             StereoSum, // (track0 + track1)/2 — ch:M/C on 2ch source
             Bs775,     // mix6chToMono(op_role) — ch:L/R/M on 6ch source
+            // r12 P2: 2ch source + {upmix:on} → DPL2-style matrix decode +
+            // band split (FL/FR/C/LFE/SL/SR per role). Parallel to Bs775:
+            // a 2-track raw read followed by a stateless transform with
+            // per-speaker state (LPF / delay) carried in upmix_state.
+            // resolveReadOp() does not yet emit this in P2; P4 wires the
+            // mSourceChannels==2 + effectiveUpmix() branch.
+            Upmix,
         };
         OpKind op_kind = OpKind::Silent;
         int op_track = 0;
         LLMultichannelDownmix::MixRole op_role
             = LLMultichannelDownmix::MixRole::L;
 
-        // r10 P3: scratch for the 6ch raw-read → BS.775 mono path. Sized
-        // at createUserSounds() to kReaderChunkFrames × 6 floats when
-        // op_kind is Bs775; left empty otherwise. Only ever accessed by
-        // the FMOD mixer thread for this one speaker, so no
+        // r12 P2: per-speaker UpmixRole resolved from SpeakerConfig::ch.
+        // Only meaningful when op_kind == Upmix; otherwise ignored.
+        LLStereoUpmix::UpmixRole op_role_upmix
+            = LLStereoUpmix::UpmixRole::FL;
+
+        // r12 P2: per-speaker tuning + state for the Upmix op. params is
+        // populated at createUserSounds() (P4) from settings + per-speaker
+        // jitter; state holds the LPF taps (P3) and Ls/Rs delay line.
+        // Both stay zero-cost for non-Upmix speakers.
+        LLStereoUpmix::Params upmix_params;
+        LLStereoUpmix::State  upmix_state;
+
+        // r10 P3 (extended r12 P2): scratch for the raw-read → mono path.
+        // Sized at createUserSounds() to kReaderChunkFrames × 6 floats when
+        // op_kind is Bs775, kReaderChunkFrames × 2 floats when op_kind is
+        // Upmix; left empty for Track / StereoSum / Silent. Only ever
+        // accessed by the FMOD mixer thread for this one speaker, so no
         // synchronisation is needed.
         std::vector<F32> raw_scratch;
     };
@@ -323,6 +344,13 @@ private:
     // is still allocated with n_tracks = 2 — pumpSource() converts each 6ch
     // frame to interleaved L/R via mDownmix before writing.
     LLMultichannelDownmix mDownmix;
+
+    // r12 P2: stateless 2ch→1ch upmix helper, the C 案 counterpart to
+    // mDownmix. The instance carries no per-stream data (per-speaker LPF /
+    // delay lives in SpeakerCallback::upmix_state); kept as a member only
+    // for call-site symmetry with mDownmix and so future codec-aware
+    // routing (e.g. Atmos) has a natural extension point.
+    LLStereoUpmix mUpmix;
 
     // Ring is sized at Opening→Buffering. r10: 1ch / 2ch sources use a
     // 2-track ring (mono is duplicated into both tracks at write time so

@@ -566,6 +566,32 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         got = produced;
         break;
     }
+
+    case SpeakerCallback::OpKind::Upmix:
+    {
+        // r12 P2: parallel to Bs775 but with a 2-track raw read (ring is
+        // 2-track for stereo source) and the LLStereoUpmix transform that
+        // produces this speaker's role-specific 1ch output. Per-speaker
+        // upmix_state carries the SL/SR delay line (and, in P3, the LFE
+        // biquad taps); upmix_params carries the bleed / delay tuning.
+        const size_t chunk_cap = kReaderChunkFrames;
+        F32* raw = cb->raw_scratch.data();
+        size_t produced = 0;
+        while (produced < n)
+        {
+            const size_t this_chunk = std::min(n - produced, chunk_cap);
+            const size_t pulled = self->mRing.readFramesRaw(
+                cb->speaker_idx, raw, this_chunk);
+            if (pulled == 0) break;
+            self->mUpmix.upmix2chToSpeaker(raw, out + produced, pulled,
+                                           cb->op_role_upmix,
+                                           cb->upmix_state, cb->upmix_params);
+            produced += pulled;
+            if (pulled < this_chunk) break;  // ring drained
+        }
+        got = produced;
+        break;
+    }
     }
 
     if (got < n)
@@ -680,9 +706,21 @@ bool LLPositionalStreamMulti::createUserSounds()
         resolveReadOp(*cb, mSpeakers[i].ch);
         // r10 P3: raw-read scratch is only needed by the Bs775 op (6ch
         // source + ch:L/R/M). Track / StereoSum / Silent ops leave it empty.
+        // r12 P2: Upmix also raw-reads, but from a 2-track ring → 2 floats
+        // per frame. Sized at createUserSounds time so the mixer thread
+        // never allocates.
         if (cb->op_kind == SpeakerCallback::OpKind::Bs775)
         {
             cb->raw_scratch.assign(kReaderChunkFrames * 6, 0.f);
+        }
+        else if (cb->op_kind == SpeakerCallback::OpKind::Upmix)
+        {
+            cb->raw_scratch.assign(kReaderChunkFrames * 2, 0.f);
+            // r12 P2: upmix_params defaults from settings come in via P6;
+            // for now stamp the runtime sample_rate here so the SL/SR delay
+            // tap math (and the P3 LFE biquad coefficients) sees the right
+            // value the moment resolveReadOp starts emitting Upmix in P4.
+            cb->upmix_params.sample_rate = mSampleRate;
         }
         checkFmod(snd->setUserData(cb.get()), "Sound::setUserData");
 
