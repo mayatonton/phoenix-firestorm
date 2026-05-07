@@ -38,6 +38,7 @@ if (TARGET ll::fmodstudio)
          llpositionalstreamstereo.cpp
          llpositionalstreammulti.cpp
          llmultichanneldownmix.cpp
+         llstereoupmix.cpp
          lllitehrtfdsp.cpp
          llfftconvolver.cpp
          llirloader.cpp
@@ -54,6 +55,7 @@ if (TARGET ll::fmodstudio)
          llpositionalstreamstereo.h
          llpositionalstreammulti.h
          llmultichanneldownmix.h
+         llstereoupmix.h
          lllitehrtfdsp.h
          llfftconvolver.h
          llirloader.h
