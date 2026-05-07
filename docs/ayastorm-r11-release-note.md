@@ -14,7 +14,10 @@ GitHub release ページに貼り付ける用の短文案。リリース判断�
 
 - **lite-HRTF**: ITD (両耳時間差) + ILD shadow + air absorption (距離 HF 減衰) の DSP を per-channel に挿入。ヘッドホン視聴で「左の耳だけ大きい」感が「左から鳴っている」感へ。
 - **venue convolution reverb**: 9 種の会場 IR (`dry` / `room_small` / `room_medium` / `hall_small` / `hall_medium` / `hall_large` / `club` / `cathedral` / `outdoor`) を partitioned FFT 畳み込みで再現。素材は dry のまま、viewer 側で会場感を着替え。
+- **wetgain は dry/wet 比**: 全 IR が unity-gain 正規化されているので、`{wetgain:1.0}` = 「wet が dry と同レベル」、`0.5` = half-mix、として venue 横断で同じ感覚で効きます。venue を切り替えても wetgain を retune する必要なし。
 - **配信者主導タグ**: 親プリム Desc に `{binaural:on|off}` / `{venue:NAME}` / `{wetgain:N}` を追加。listener viewer は配信者の表現意図を忠実にレンダリング。listener 側 UI 改修ゼロ。
+- **配信者向け LSL 拡張** (`doc/lsl/aya_3dstream_setup.lsl`): r11 タグ (binaural / venue / wetgain) を menu / dialog から設定可能。Custom 値は textbox 入力。Default ボタンで viewer 側 default に戻せる (= debug setting が効く sentinel 状態)。
+- **書いた URL がそのまま維持される (urlsave 廃止)**: LSL の自動退避/復元を撤去。再生失敗時に裏で前 URL に戻らないので、配信者は「自分の入力したURLが反映されている」「再生されない = URL もしくはサーバ側に問題がある」を即座に判別できます。
 - **URL pre-resolve**: HTTPS→HTTP cross-protocol redirect を viewer 側で先解決、FMOD `createStream` 直渡しで落ちる問題を解消。
 
 ### 既存配置の扱い
