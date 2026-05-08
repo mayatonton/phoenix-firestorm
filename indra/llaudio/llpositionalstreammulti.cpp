@@ -255,6 +255,7 @@ LLPositionalStreamMulti::LLPositionalStreamMulti()
     mUpmixLfeCutoffHz(80.f),
     mUpmixCenterBleed(1.f),
     mUpmixRearDelayBaseMs(16.f),
+    mLfeGain(1.f),
     mState(State::Idle),
     mDecodeStop(false)
 {
@@ -612,6 +613,12 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         cb->upmix_params.center_bleed    = bleed;
         cb->upmix_params.rear_delay_ms_l = l_ms;
         cb->upmix_params.rear_delay_ms_r = r_ms;
+        // r12.1: same per-callback refresh for the LFE gain. Read every
+        // chunk so a mid-stream {lfegain:N} edit shows up on the next
+        // chunk boundary without rebuilding the stream. Only the LFE
+        // role consumes lfe_gain in upmix2chToSpeaker(); other roles
+        // ignore it so this store is harmless on FL/FR/C/SL/SR cb's.
+        cb->upmix_params.lfe_gain        = self->mLfeGain.load(std::memory_order_relaxed);
 
         const size_t chunk_cap = kReaderChunkFrames;
         F32* raw = cb->raw_scratch.data();
@@ -631,6 +638,21 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         got = produced;
         break;
     }
+    }
+
+    // r12.1: apply per-stream LFE gain to the 5.1-native LFE feed
+    // (Track op pulling the source's LFE channel directly). Upmix path
+    // already applied gain inside upmix2chToSpeaker via Params::lfe_gain;
+    // skip here to avoid double-application. Bs775 maps 6ch → mono for
+    // L/R/M roles only (LFE never goes through Bs775), so the only LFE
+    // path that reaches this scale is OpKind::Track.
+    if (cb->is_lfe && got > 0 && cb->op_kind == SpeakerCallback::OpKind::Track)
+    {
+        const F32 g = self->mLfeGain.load(std::memory_order_relaxed);
+        if (g != 1.f)
+        {
+            for (size_t i = 0; i < got; ++i) out[i] *= g;
+        }
     }
 
     if (got < n)
@@ -789,6 +811,13 @@ bool LLPositionalStreamMulti::createUserSounds()
         auto cb = std::make_unique<SpeakerCallback>();
         cb->self = this;
         cb->speaker_idx = i;
+        // r12.1: stamp the LFE flag once from the speaker config so the
+        // pcmReadCallback can apply mLfeGain to the LFE feed regardless
+        // of which op_kind ends up routing the audio (Track for 5.1
+        // native, Bs775 for 5.1 native via 6ch downmix mapping, Upmix
+        // for 2ch source — Upmix path uses upmix_params.lfe_gain instead
+        // so the test below isn't run there).
+        cb->is_lfe = (mSpeakers[i].ch == Channel::LFE);
         resolveReadOp(*cb, mSpeakers[i].ch);
         // r10 P3: raw-read scratch is only needed by the Bs775 op (6ch
         // source + ch:L/R/M). Track / StereoSum / Silent ops leave it empty.

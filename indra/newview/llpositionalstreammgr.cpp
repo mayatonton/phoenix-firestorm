@@ -513,6 +513,22 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadWetGain, val);
                 }
             }
+            else if (key == "lfegain" || key == "lg")
+            {
+                // r12.1: {lfegain:N}. F32 in [0.0, 3.0], values outside
+                // the range are clamped (not rejected). Source-side /
+                // root-only — child values silently ignored same as
+                // {wetgain}/{venue}. Non-numeric input is BadLfeGain.
+                F32 f;
+                if (tryParseFloat(val, f))
+                {
+                    data.lfegain = std::clamp(f, 0.f, 3.f);
+                }
+                else
+                {
+                    setError(DistParseError::BadLfeGain, val);
+                }
+            }
             // Unknown keys (incl. removed-in-r8 {l}/{r}/{min}/{max}) are
             // silently ignored — the spec is permissive about extra fields.
         });
@@ -677,6 +693,11 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         if (!detail.empty()) msg += " (got '" + detail + "')";
         msg += " (範囲外は 0.0〜2.0 にクランプされます)。例: [3dstream-stereo:{venue:hall_medium}{wetgain:1.0}]";
         break;
+    case DistErrorKind::BadLfeGain:
+        msg = "タグ書式エラー (prim " + id_short + "): lfegain の値は数値で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += " (範囲外は 0.0〜3.0 にクランプされます)。例: [3dstream-stereo:{url:http://example/stream.mp3}{lfegain:2.0}]";
+        break;
     }
     notifyStream3D(msg);
 }
@@ -764,11 +785,14 @@ F32 LLPositionalStreamMgr::effectiveWetGain(std::optional<F32> tag_value)
 {
     // r11 P9 / spec §4.5 line 385: debug override wins when ≥ 0.0;
     // sentinel `-1.0` (or any negative) means "follow tag". Tag default
-    // is 1.0 when {wetgain:...} is omitted (spec §4.1.0 line 152).
+    // is 0.2 when {wetgain:...} is omitted (r12.1: lowered from 1.0
+    // after live-listening — bus-tail stereo IR convolution sounds
+    // musically usable in roughly the 0.1–0.5 range; 1.0 was an
+    // engineering "unity wet" default that smeared the dry mix).
     // Final value is clamped to [0.0, 2.0] — the same range parser
     // clamps to, repeated here in case the debug value is out of range.
     const F32 dbg = gSavedSettings.getF32("Stream3DVenueWetGain");
-    const F32 raw = (dbg >= 0.f) ? dbg : tag_value.value_or(1.f);
+    const F32 raw = (dbg >= 0.f) ? dbg : tag_value.value_or(0.2f);
     return std::clamp(raw, 0.f, 2.f);
 }
 
@@ -794,6 +818,35 @@ void LLPositionalStreamMgr::applyWetGainToBinding(DistributedStereoBinding& bind
     // Even when the engine isn't in FMOD mode, record the resolved
     // value so we don't loop on this branch every poll cycle.
     binding.wetgain_effective_applied = wetgain_effective;
+}
+
+// static
+F32 LLPositionalStreamMgr::effectiveLfeGain(std::optional<F32> tag_value)
+{
+    // r12.1: same precedence as effectiveWetGain — debug override wins
+    // when >= 0.0; sentinel -1.0 (or any negative) means "follow tag".
+    // Tag default is 1.0 (passthrough) when {lfegain:...} omitted.
+    const F32 dbg = gSavedSettings.getF32("Stream3DLfeGain");
+    const F32 raw = (dbg >= 0.f) ? dbg : tag_value.value_or(1.f);
+    return std::clamp(raw, 0.f, 3.f);
+}
+
+void LLPositionalStreamMgr::applyLfeGainToBinding(DistributedStereoBinding& binding,
+                                                  std::optional<F32> lfegain_tag)
+{
+    binding.lfegain_tag = lfegain_tag;
+
+    const F32 lfegain_effective = effectiveLfeGain(lfegain_tag);
+    if (binding.lfegain_effective_applied == lfegain_effective)
+    {
+        return;
+    }
+
+    if (binding.stream)
+    {
+        binding.stream->setLfeGain(lfegain_effective);
+    }
+    binding.lfegain_effective_applied = lfegain_effective;
 }
 
 void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
@@ -855,6 +908,7 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         case DistParseError::BadBinaural: k = DistErrorKind::BadBinaural; break;
         case DistParseError::BadUpmix:    k = DistErrorKind::BadUpmix;    break;
         case DistParseError::BadWetGain:  k = DistErrorKind::BadWetGain;  break;
+        case DistParseError::BadLfeGain:  k = DistErrorKind::BadLfeGain;  break;
         case DistParseError::Ok:          break; // unreachable
         }
         notifyDistributedError(id, k, dist.bad_value);
@@ -967,6 +1021,12 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // BadWetGain is full-tag-rejecting at parse time, so we never reach
     // here with a malformed value (parse error returns nullopt data).
     const std::optional<F32> wetgain_tag = root_data.wetgain;
+
+    // r12.1: lfegain mirrors wetgain's apply flow (single-store atomic),
+    // but the target is per-stream (LLPositionalStreamMulti) instead of
+    // a bus-level DSP. Same parse-time rejection means we never reach
+    // here with a malformed value.
+    const std::optional<F32> lfegain_tag = root_data.lfegain;
 
     std::vector<SpeakerSlot> speakers;
     auto collectSpeaker = [&](const LLUUID& prim_id, const DistStereoTagData& d)
@@ -1097,6 +1157,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         applyVenueToBinding(old_it->second, venue_tag);
         // r11 P9: same single-store atomic flow for wetgain.
         applyWetGainToBinding(old_it->second, wetgain_tag);
+        // r12.1: same single-store atomic flow for lfegain (per-stream).
+        applyLfeGainToBinding(old_it->second, lfegain_tag);
         return;
     }
 
@@ -1130,6 +1192,10 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     applyVenueToBinding(binding, venue_tag);
     // r11 P9: push wetgain in the same window for the same reason.
     applyWetGainToBinding(binding, wetgain_tag);
+    // r12.1: lfegain pushes into the per-stream atomic; harmless if the
+    // stream isn't constructed yet — the binding mirror will re-push on
+    // the next evaluate cycle.
+    applyLfeGainToBinding(binding, lfegain_tag);
 
     for (const auto& s : binding.speakers)
     {
@@ -1165,6 +1231,15 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         gSavedSettings.getF32("Stream3DUpmixLfeCutoff"),
         gSavedSettings.getF32("Stream3DUpmixCenterBleed"),
         gSavedSettings.getF32("Stream3DUpmixRearDelayMs"));
+    // r12.1: seed the LFE gain from the binding's already-resolved
+    // lfegain_tag (applyLfeGainToBinding ran before the stream existed,
+    // so it only recorded the tag mirror; push the resolved value here
+    // and re-record so subsequent applies are no-ops until tag changes).
+    {
+        const F32 lfe_gain = effectiveLfeGain(binding.lfegain_tag);
+        stream->setLfeGain(lfe_gain);
+        binding.lfegain_effective_applied = lfe_gain;
+    }
     // r11 P10: viewer-side URL pre-resolve gate. Sentinel default -1 =
     // enabled (libcurl follows HTTPS→HTTP cross-protocol redirects before
     // FMOD::createStream sees the URL); 0 = disabled (FMOD-only, r10
@@ -1771,6 +1846,10 @@ void LLPositionalStreamMgr::update()
         }
 
         b.stream->setPosition(toFloatVec(obj->getPositionGlobal()));
+        // r12.1: same per-poll master-volume push as the distributed
+        // bindings loop below, so a Stream3DVolumeMaster edit propagates
+        // without waiting for the next reconnect.
+        b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
         b.stream->update();
         ++it;
     }
@@ -1980,6 +2059,24 @@ void LLPositionalStreamMgr::update()
             gSavedSettings.getF32("Stream3DUpmixLfeCutoff"),
             gSavedSettings.getF32("Stream3DUpmixCenterBleed"),
             gSavedSettings.getF32("Stream3DUpmixRearDelayMs"));
+        // r12.1: same idea for LFE gain — applyLfeGainToBinding is the
+        // event-driven path (Desc parse, new binding) and was missing the
+        // per-poll edge case where AYA edits Stream3DLfeGain in debug
+        // settings without touching the prim. Idempotent (early-returns
+        // when effective value unchanged) so cost is one settings read +
+        // a float compare on the no-op path.
+        applyLfeGainToBinding(b, b.lfegain_tag);
+        // r12.1: same per-poll trigger for the reverb knobs (venue +
+        // wet gain) and master volume. apply{Venue,WetGain}ToBinding
+        // both early-return when the effective value matches the
+        // last-applied snapshot, so changing Stream3DVenueOverride /
+        // Stream3DVenueWetGain in debug settings now propagates without
+        // requiring a prim Desc edit. Volume push is unconditional but
+        // setVolume is itself a single FMOD::Channel::setVolume call
+        // that's a no-op when unchanged.
+        applyVenueToBinding(b, b.venue_tag);
+        applyWetGainToBinding(b, b.wetgain_tag);
+        b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
         b.stream->update();
     }
     for (const auto& r : dead_roots)
