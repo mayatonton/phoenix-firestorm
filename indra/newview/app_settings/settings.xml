@@ -27761,7 +27761,18 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Stream3DVenueWetGain</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm r11: Debug-only override for the venue reverb wet-mix multiplier. -1.0 (default, sentinel) = follow the publisher's {wetgain:N} tag (and treat unspecified as 1.0). Any value &gt;= 0.0 forces the wet-mix multiplier regardless of tag. Final value is clamped to [0.0, 2.0]; 0.0 is silent wet (= reverb fully suppressed even if a non-dry venue is selected). Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
+      <string>AYAstorm r11: Debug-only override for the venue reverb wet-mix multiplier. -1.0 (default, sentinel) = follow the publisher's {wetgain:N} tag (and treat unspecified as 0.2 — r12.1 default, lowered from 1.0 after live-listening). Any value &gt;= 0.0 forces the wet-mix multiplier regardless of tag. Final value is clamped to [0.0, 2.0]; 0.0 is silent wet (= reverb fully suppressed even if a non-dry venue is selected). Musically usable range is roughly 0.1–0.5; values above that smear the dry mix. Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>-1.0</real>
+    </map>
+    <key>Stream3DLfeGain</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r12.1: Debug-only override for the LFE channel gain multiplier on positional streams. -1.0 (default, sentinel) = follow the publisher's {lfegain:N} tag (and treat unspecified as 1.0 = passthrough). Any value 0.0 or greater forces the LFE gain regardless of tag. Final value is clamped to 0.0 to 3.0 (1.0 = passthrough, 2.0 = +6dB). Applies to both Upmix path (after 80Hz LPF) and 5.1 native LFE feed. Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

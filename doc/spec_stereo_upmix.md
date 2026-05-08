@@ -352,9 +352,43 @@ URL を含めた典型的なタグ全体長は long form で 116 byte (URL 50 by
 
 r10 受入 (`spec_5_1ch_placement.md` §13) / r11 受入 (`spec_binaural_venue_reverb.md` §13) はすべて **upmix 無効状態 (= default off)** で従来通り維持される。upmix 有効状態は新規受入として §6 で追加。
 
----
+### 4.7 r12.1 拡張 — `{lfegain:N}` と live-tuning 修正
 
-## 5. 検証材料
+#### 4.7.1 `{lfegain:N}` (短縮形 `lg`)
+
+`{ch:LFE}` 経路、および `{upmix:on}` 時の **LFE 帯域** に対するゲイン倍率を root prim タグに追加する。
+
+| 項目 | 内容 |
+|---|---|
+| 適用範囲 | `{ch:LFE}` プリム経路、および `{upmix:on}` 時に upmix DSP が出力する LFE band |
+| 値域 | F32 [0.0〜4.0] |
+| default | `1.0` (= r12 互換、素材ままのレベル) |
+| 短縮形 | `lg` (§4.5 短縮形 alias 表に r12.1 で追加) |
+| 適用層 | `LLPositionalStreamMulti` 側で per-speaker callback の出力に乗算 (mix 後段)。dry/wet とは独立。 |
+
+`lfegain` はあくまで **LFE band の音量** を上下させる純粋な linear gain で、frequency response には触らない (LPF cutoff は `Stream3DUpmixLfeCutoff` が担う)。配信側 LFE bus が控えめな素材を viewer 側で持ち上げる、あるいは 6 番目の spk が物理サブウーファーでない配置で `0` にして低域漏れを止める、という運用を想定。
+
+#### 4.7.2 listener 側 sentinel `Stream3DLfeGain`
+
+§4.4 の debug settings に r12.1 で 1 件追加:
+
+| キー | 型 | default | 効果 |
+|---|---|---|---|
+| `Stream3DLfeGain` | F32 | `-1.0` (sentinel = タグ通り) | `0.0〜4.0` の値で `lfegain` を listener 側強制上書き |
+
+優先順位は r11 の `Stream3DVenueWetGain` と同形式 (sentinel = タグ通り、それ以外は強制値)。配信者主導モデルの救援枠で、一般 listener UI には載せない。
+
+#### 4.7.3 ライブチューニング回帰の修正
+
+r12 リリース時、以下の listener 側 debug settings は値変更後に **対象プリムを一度タッチ (Description 再パース) するまで反映されない** 仕様回帰があった:
+
+- `Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs`
+- `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain`
+- `Stream3DVolumeMaster`
+
+原因は `applyLfeGainToBinding` / `applyVenueToBinding` / `applyWetGainToBinding` および `setUpmixTuning` / `setVolume` 系の push が、Description parse / 新規 binding 生成時のイベント駆動経路からしか呼ばれていなかったこと。r12.1 で `LLPositionalStreamMgr::update()` のポーリングループ (`distributed bindings` 反復、および mono bindings 反復) に **per-poll push** を追加し、他の Live 設定と同じく「次フレーム反映」になっている。
+
+per-poll push 自体は idempotent setter (= 値が変わっていなければ早期 return) で書かれているため、追加コストは ChannelGroup setter の no-op 呼び出し 1 回分のみ。CPU プロファイルへの影響は計測下限以下。
 
 stereo upmix の効果を主観的に確認するための検証材料:
 
@@ -489,3 +523,4 @@ stereo upmix の効果を主観的に確認するための検証材料:
 
 - 2026-05-07: 初版作成。r11 完了直後の議論で AYA さんから「世間の SL 配信はほぼ stereo、6 spk placement の元を取りたい」提案。旧 r12 計画 (SOFA per-source HRTF + Steam Audio) は本書策定で「stereo upmix のみ」に再定義、SOFA / Steam Audio / VenueReverb CPU 最適化 / air absorption 客観測定 / 個人 HRTF / 公開 README は r13+ に降格 (詳細は §2.2 / §9)。アルゴリズムは DPL2 系 matrix decode + 帯域分離で決め打ち (§2.3)。配信者主導モデル (r11 で確立) を維持、新タグ `{upmix:on|off}` (default off)、debug settings 4 件 (sentinel 1 件 + 微調整 3 件)。
 - 2026-05-07: P0 調査結果を反映。実コード (`indra/llaudio/llpositionalstream*.{h,cpp}`) を読んで DSP 挿入位置を確定。当初 §4.2.1 で候補とした A 案 (`createStream3DGroup` 入力段) / B 案 (`makeChannelForBinding` per-binding) はいずれも実アーキテクチャに不適合と判明 — per-speaker channel が mono (`numchannels=1`) で 2→6 materialize 不可、Stream3D group は per-speaker mono の合成しか見えず source 2ch に到達不可。代わりに r10 の `SpeakerCallback::OpKind` (Bs775 dispatch) を拡張する **C 案** として確定: `OpKind::Upmix` を追加し、`pcmReadCallback` 内で 2 track ring から 2ch を pull、speaker 役割に応じて upmix matrix + 帯域分離 + 状態を適用して 1ch 出力。新規ヘルパは `LLStereoUpmix` (`indra/llaudio/llstereoupmix.{h,cpp}`、`LLMultichannelDownmix` 並行構造)。これに伴い §4.2.1 / §4.2.2 / §4.2.3 / §4.3 (タイトル + §4.3.1 / §4.3.6) / §4.5 / §7 R6 を改訂。詳細は `doc/r12/dsp_insertion_survey.md`。
+- 2026-05-09 (r12.1): §4.7 を追加。`{lfegain:N}` (短縮形 `lg`) を root prim タグに追加 (値域 0.0〜4.0、default 1.0)。listener 側 sentinel `Stream3DLfeGain` を debug settings に追加 (sentinel `-1.0` = タグ通り)。あわせて r12 リリース時の live-tuning 回帰 (`Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった件) を `LLPositionalStreamMgr::update()` の per-poll push 追加で修正。`wetgain` の default も実 listening 結果を反映して `1.0` → `0.2` に変更 (詳細は tag-guide §7.3 改訂履歴、本書の §4.5 r11 既存タグ並行動作の例値も参考)。

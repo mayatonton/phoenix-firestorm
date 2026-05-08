@@ -176,6 +176,14 @@ public:
         // and {binaural} — there is no separate "bad value" field.
         std::optional<F32> wetgain;
 
+        // r12.1: LFE band gain multiplier ({lfegain:N}). Applied to the
+        // LFE channel after the LPF in Upmix path, and to the LFE feed
+        // in 5.1 native path. Source-side / root-only (child values
+        // silently ignored, same as {wetgain}). nullopt = unspecified
+        // (defaults to 1.0 = passthrough). [0.0, 3.0]; clamped at parse
+        // time. Non-numeric input is full-tag-reject (BadLfeGain).
+        std::optional<F32> lfegain;
+
         // Speaker declaration fields (set only when {ch:...} is present).
         std::optional<ChannelKind> ch;
         std::optional<F32> range_speaker;
@@ -205,6 +213,9 @@ public:
         // shape as BadBinaural — the tag is full-rejected so a typo
         // doesn't silently fall back to "off" and confuse the publisher.
         BadUpmix,
+        // r12.1: {lfegain:N} value not parseable as F32 (out-of-range
+        // is clamped silently to [0.0, 3.0], not reported here).
+        BadLfeGain,
     };
 
     struct DistParseResult
@@ -267,6 +278,12 @@ public:
     // Auto-bypass on >= 6ch native sources is enforced separately at
     // resolveReadOp dispatch time, not here.
     static bool effectiveUpmix(std::optional<bool> tag_value);
+
+    // r12.1: combine the publisher's {lfegain:N} tag with the debug
+    // override `Stream3DLfeGain`. Same shape as effectiveWetGain — debug
+    // value wins when >= 0.0; otherwise the tag value (or 1.0 = pass-
+    // through if unspecified) is used. Result is clamped to [0.0, 3.0].
+    static F32 effectiveLfeGain(std::optional<F32> tag_value);
 
 private:
     LLPositionalStreamMgr();
@@ -343,6 +360,14 @@ private:
         // this binding's behalf. Sentinel NaN means "never pushed yet" —
         // any first applyWetGainToBinding() will go through.
         F32 wetgain_effective_applied = std::numeric_limits<F32>::quiet_NaN();
+        // r12.1: publisher's {lfegain:N} tag value (nullopt = unspecified,
+        // defaults to 1.0 = passthrough). Stream-level (per-binding) atomic
+        // store on the LLPositionalStreamMulti — same flow as wetgain but
+        // pushed to the stream object itself, not to a bus DSP.
+        std::optional<F32> lfegain_tag;
+        // Last value actually pushed to the stream's setLfeGain(). Sentinel
+        // NaN so the first applyLfeGainToBinding() always goes through.
+        F32 lfegain_effective_applied = std::numeric_limits<F32>::quiet_NaN();
         // r11 P8: publisher's {venue:NAME} tag value (nullopt = unspecified).
         // Resolved via effectiveVenue() on every evaluate; the resolved
         // name is pushed to the engine's bus-level VenueReverbDsp on
@@ -451,6 +476,9 @@ private:
         // Out-of-range numeric values (e.g. "5.0") are silently clamped
         // to [0.0, 2.0] per spec §4.1 line 152, NOT reported here.
         BadWetGain,
+        // r12.1: {lfegain:N} value not parseable as F32 (out-of-range
+        // is silently clamped to [0.0, 3.0], NOT reported here).
+        BadLfeGain,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for
@@ -490,6 +518,13 @@ private:
     // value but does nothing (mirrors applyVenueToBinding semantics).
     void applyWetGainToBinding(DistributedStereoBinding& binding,
                                std::optional<F32> wetgain_tag);
+
+    // r12.1: push the resolved LFE gain multiplier to the binding's
+    // stream object (LLPositionalStreamMulti::setLfeGain). Idempotent
+    // (skips when value unchanged). Stream absent (binding still being
+    // constructed) → records the value so the next call still pushes.
+    void applyLfeGainToBinding(DistributedStereoBinding& binding,
+                               std::optional<F32> lfegain_tag);
 
     // r8 F2-b: push id onto mPriorityPollQueue if not already queued.
     // Linear scan dedup is fine — the queue is bounded by ~16 speakers per

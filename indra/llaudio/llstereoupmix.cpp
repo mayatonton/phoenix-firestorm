@@ -184,12 +184,16 @@ void LLStereoUpmix::upmix2chToSpeaker(const F32* in_2ch, F32* out_mono,
 
         F32 z1 = state.lpf_state[0];
         F32 z2 = state.lpf_state[1];
+        // r12.1: gain applied AFTER the LPF so the band shape stays
+        // intact (saturation / clipping risk is on the caller side —
+        // this DSP is float and the FMOD bus mixer sees float too).
+        const F32 g = params.lfe_gain;
         for (std::size_t i = 0; i < frames; ++i)
         {
             const F32 L = in_2ch[i * 2];
             const F32 R = in_2ch[i * 2 + 1];
             const F32 x = (L + R) * 0.5f;
-            out_mono[i] = biquadStep(c, x, z1, z2);
+            out_mono[i] = biquadStep(c, x, z1, z2) * g;
         }
         state.lpf_state[0] = z1;
         state.lpf_state[1] = z2;

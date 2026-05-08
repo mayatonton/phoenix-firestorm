@@ -79,6 +79,10 @@ public:
         F32 rear_delay_ms_l = 18.0f; // base 16 + jitter +2
         F32 rear_delay_ms_r = 14.0f; // base 16 - jitter -2
         F32 lfe_cutoff_hz   = 80.0f; // 2nd-order Butterworth LPF cutoff
+        // r12.1: LFE band gain multiplier applied AFTER the LPF.
+        // 1.0 = passthrough (default), 2.0 = +6dB. Range [0.0, 3.0]
+        // is enforced upstream by the mgr.
+        F32 lfe_gain        = 1.0f;
         int sample_rate     = 44100; // delay frame count + LFE LPF coeffs
     };
 

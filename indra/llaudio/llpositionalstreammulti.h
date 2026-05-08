@@ -240,6 +240,14 @@ public:
     void setUpmixTuning(F32 lfe_cutoff_hz, F32 center_bleed,
                         F32 rear_delay_base_ms);
 
+    // r12.1: LFE channel gain multiplier. Pushed by the mgr from the
+    // {lfegain:N} tag combined with Stream3DLfeGain debug override
+    // (effectiveLfeGain). Read on the FMOD mixer thread by both the
+    // Upmix LFE branch (after the 80Hz LPF) and the 5.1 native LFE feed
+    // (Track op + cb->is_lfe). 1.0 = passthrough, 2.0 = +6dB. Final
+    // value is clamped to [0.0, 3.0] by the mgr; we trust the input.
+    void setLfeGain(F32 gain) { mLfeGain.store(gain, std::memory_order_relaxed); }
+
     // r11 P10: viewer-side URL pre-resolve toggle. When enabled (default),
     // start() runs the source URL through LLStream3DUrlResolve before
     // calling FMOD::createStream so HTTPS→HTTP cross-protocol redirects
@@ -306,6 +314,14 @@ private:
         // accessed by the FMOD mixer thread for this one speaker, so no
         // synchronisation is needed.
         std::vector<F32> raw_scratch;
+
+        // r12.1: true when the speaker's role is LFE (5.1 placement),
+        // regardless of op_kind. Used by pcmReadCallback to apply the
+        // per-stream mLfeGain to the LFE feed for both 5.1 native paths
+        // (Track / Bs775 with role=LFE) and the Upmix path (where the
+        // lfe_gain is plumbed through upmix_params instead). Stamped
+        // once at createUserSounds() from the SpeakerConfig::ch.
+        bool is_lfe = false;
     };
 
     struct SpeakerRuntime
@@ -420,6 +436,10 @@ private:
     std::atomic<F32> mUpmixLfeCutoffHz;
     std::atomic<F32> mUpmixCenterBleed;
     std::atomic<F32> mUpmixRearDelayBaseMs;
+    // r12.1: LFE channel gain multiplier (1.0 = passthrough). Read on
+    // the FMOD mixer thread per pcmReadCallback for both Upmix-path
+    // and 5.1-native LFE branches. Seeded to 1.0 in the .cpp ctor.
+    std::atomic<F32> mLfeGain;
     // r11 P10: viewer-side URL pre-resolve gate. Default true so a caller
     // that forgets to call the setter still gets the redirect-following
     // behavior (matches the settings.xml sentinel default of "enabled").

@@ -51,3 +51,14 @@ r8 / r9 / r10 既已布置的所有 prim **无需改动标签即可继续运行*
 - r12 规格: `doc/spec_stereo_upmix.md`
 - r12 实现记录: `docs/ayastorm-r12-stereo-upmix.md`
 - 路线图: `docs/ayastorm-stream3d-roadmap.md`
+
+---
+
+## r12.1 — LFE gain + 实时调参修正 (2026-05-09)
+
+实际试听反馈带来的小规模后续更新。
+
+- **`{lfegain:N}` (短形式 `lg`)**：`{ch:LFE}` 路径与 `{upmix:on}` 时的 LFE band 增益倍率 (0.0〜4.0，默认 1.0)。听者侧 sentinel `Stream3DLfeGain` 同步追加。详见 → [tag-guide §7.4](../doc/3dstream-tag-guide.zh.md#74-lfegainn-短形式-lgr121-新增) / 规格 `doc/spec_stereo_upmix.md` §4.7
+- **`wetgain` 默认值 `1.0` → `0.2`**：在 hall / cathedral 等长尾预设下 `1.0` 会让源声饱和；新默认反映了试听确认的音乐用途实用区间 0.1〜0.5。LSL UI 的 quick-pick 也重新刻度为 `0.1`〜`0.5` 的细刻度。详见 → [tag-guide §7.3](../doc/3dstream-tag-guide.zh.md#73-wetgainn-短形式-wg)
+- **听者侧 debug settings 实时调参修正**：r12 发布时 `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 出现回归 — 修改后必须触摸图元 (重新解析 Description) 才生效。r12.1 恢复了标准的"下一帧生效"语义。详见 → [tag-guide §12.3](../doc/3dstream-tag-guide.zh.md#123-设置的持久化与即时生效)
+- **已知限制**：bus-tail 配置的 VenueReverb 是 stereo IR convolver — 即使 6 扬声器布置，wet 也以固定的 master 立体声像形式被听到，而非 per-spk 独立残响。改进方案延至 r13+。详见 → `docs/ayastorm-r12-stereo-upmix.md` §6.4
