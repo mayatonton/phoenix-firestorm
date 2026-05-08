@@ -44,6 +44,9 @@
 #include "llviewermenu.h" // for gMenuHolder
 #include "llfloaterimnearbychathandler.h"
 #include "llchannelmanager.h"
+// <FS:AYA> r12: console suppression while the chat window is visible
+#include "llconsole.h"
+// </FS:AYA>
 #include "llchathistory.h"
 #include "llstylemap.h"
 #include "llavatarnamecache.h"
@@ -291,7 +294,44 @@ void LLFloaterIMNearbyChat::setVisible(bool visible)
     {
         removeScreenChat();
     }
+
+    // <FS:AYA> r12: mirror FSFloaterNearbyChat::setVisible — suppress the
+    // on-screen console's nearby chat session while this floater is visible
+    // so users selecting the LL chat path via AYAChatWindowStyle don't see
+    // nearby chat duplicated in the console overlay.
+    if (gConsole)
+    {
+        if (visible && isInVisibleChain())
+        {
+            gConsole->addSession(LLUUID::null);
+        }
+        else
+        {
+            gConsole->removeSession(LLUUID::null);
+        }
+    }
+    // </FS:AYA>
 }
+
+// <FS:AYA> r12: mirror FSFloaterNearbyChat::setMinimized so the console
+// suppression follows minimize/un-minimize transitions too.
+void LLFloaterIMNearbyChat::setMinimized(bool b)
+{
+    if (gConsole)
+    {
+        if (b)
+        {
+            gConsole->removeSession(LLUUID::null);
+        }
+        else
+        {
+            gConsole->addSession(LLUUID::null);
+        }
+    }
+
+    LLFloaterIMSessionTab::setMinimized(b);
+}
+// </FS:AYA>
 
 
 void LLFloaterIMNearbyChat::setVisibleAndFrontmost(bool take_focus, const LLSD& key)
