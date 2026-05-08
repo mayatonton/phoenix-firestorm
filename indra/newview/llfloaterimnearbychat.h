@@ -55,6 +55,11 @@ public:
     /*virtual*/ void onClose(bool app_quitting);
     /*virtual*/ void setVisible(bool visible);
     /*virtual*/ void setVisibleAndFrontmost(bool take_focus=true, const LLSD& key = LLSD());
+    // <FS:AYA> r12: mirror FSFloaterNearbyChat console suppression so the LL
+    // chat path (AYAChatWindowStyle) doesn't leave on-screen nearby chat
+    // duplicating the floater while it is open.
+    void setMinimized(bool b) override;
+    // </FS:AYA>
     /*virtual*/ void closeHostedFloater();
 
     void loadHistory();

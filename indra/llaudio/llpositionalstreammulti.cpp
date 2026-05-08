@@ -252,9 +252,29 @@ LLPositionalStreamMulti::LLPositionalStreamMulti()
     mSourceIsFloat(false),
     mSourceType(FMOD_SOUND_TYPE_UNKNOWN),
     mVolume(1.f),
+    mUpmixLfeCutoffHz(80.f),
+    mUpmixCenterBleed(1.f),
+    mUpmixRearDelayBaseMs(16.f),
     mState(State::Idle),
     mDecodeStop(false)
 {
+}
+
+void LLPositionalStreamMulti::setUpmixTuning(F32 lfe_cutoff_hz, F32 center_bleed,
+                                             F32 rear_delay_base_ms)
+{
+    // r12 P6: clamp to the same windows the settings.xml comments
+    // advertise so a hostile / mistyped value can't push the helper
+    // outside the validated coefficient range. Relaxed atomics suffice —
+    // the FMOD mixer thread re-reads on every callback, so a torn
+    // visibility window is at most one chunk (≤ 1024 frames ≈ 23 ms at
+    // 44.1 kHz) of stale value.
+    const F32 fc    = std::clamp(lfe_cutoff_hz,     20.f, 200.f);
+    const F32 bleed = std::clamp(center_bleed,       0.f,   1.f);
+    const F32 base  = std::clamp(rear_delay_base_ms, 0.f,  32.f);
+    mUpmixLfeCutoffHz.store(fc,    std::memory_order_relaxed);
+    mUpmixCenterBleed.store(bleed, std::memory_order_relaxed);
+    mUpmixRearDelayBaseMs.store(base, std::memory_order_relaxed);
 }
 
 LLPositionalStreamMulti::~LLPositionalStreamMulti()
@@ -566,6 +586,51 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         got = produced;
         break;
     }
+
+    case SpeakerCallback::OpKind::Upmix:
+    {
+        // r12 P2: parallel to Bs775 but with a 2-track raw read (ring is
+        // 2-track for stereo source) and the LLStereoUpmix transform that
+        // produces this speaker's role-specific 1ch output. Per-speaker
+        // upmix_state carries the SL/SR delay line and the LFE biquad
+        // taps; upmix_params carries the bleed / delay / LFE-cutoff tuning.
+        //
+        // r12 P6: refresh the live-tunable knobs (LfeCutoff / CenterBleed /
+        // RearDelayMs) from the per-stream atomic snapshot. A relaxed load
+        // is sufficient because each parameter is independently consumed
+        // (no inter-knob ordering invariant); a value the main thread
+        // racingly stores during the load is materialised on the next
+        // chunk boundary, which the user perceives as a smooth ~20 ms
+        // ramp rather than a tearing artefact. sample_rate stays as
+        // stamped at createUserSounds() time.
+        const F32 lfe_fc = self->mUpmixLfeCutoffHz.load(std::memory_order_relaxed);
+        const F32 bleed  = self->mUpmixCenterBleed.load(std::memory_order_relaxed);
+        const F32 base   = self->mUpmixRearDelayBaseMs.load(std::memory_order_relaxed);
+        F32 l_ms = 0.f, r_ms = 0.f;
+        LLStereoUpmix::splitRearDelay(base, kRearDelayJitterMs, &l_ms, &r_ms);
+        cb->upmix_params.lfe_cutoff_hz   = lfe_fc;
+        cb->upmix_params.center_bleed    = bleed;
+        cb->upmix_params.rear_delay_ms_l = l_ms;
+        cb->upmix_params.rear_delay_ms_r = r_ms;
+
+        const size_t chunk_cap = kReaderChunkFrames;
+        F32* raw = cb->raw_scratch.data();
+        size_t produced = 0;
+        while (produced < n)
+        {
+            const size_t this_chunk = std::min(n - produced, chunk_cap);
+            const size_t pulled = self->mRing.readFramesRaw(
+                cb->speaker_idx, raw, this_chunk);
+            if (pulled == 0) break;
+            self->mUpmix.upmix2chToSpeaker(raw, out + produced, pulled,
+                                           cb->op_role_upmix,
+                                           cb->upmix_state, cb->upmix_params);
+            produced += pulled;
+            if (pulled < this_chunk) break;  // ring drained
+        }
+        got = produced;
+        break;
+    }
     }
 
     if (got < n)
@@ -581,6 +646,30 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
     return FMOD_OK;
 }
 
+// static
+LLStereoUpmix::UpmixRole
+LLPositionalStreamMulti::mapChToUpmixRole(Channel ch)
+{
+    using R = LLStereoUpmix::UpmixRole;
+    switch (ch)
+    {
+    case Channel::FL:  return R::FL;
+    case Channel::FR:  return R::FR;
+    case Channel::C:   return R::C;
+    case Channel::LFE: return R::LFE;
+    case Channel::SL:  return R::SL;
+    case Channel::SR:  return R::SR;
+    // Spec §4.3.6 legacy fold-in: r5–r9 ch values are mapped to their
+    // closest 5.1 role so a pre-r10 desc with only L/R/M speakers still
+    // gets a sensible upmix (L = front-left, R = front-right, M = center)
+    // rather than silence.
+    case Channel::L:   return R::FL;
+    case Channel::R:   return R::FR;
+    case Channel::M:   return R::C;
+    }
+    return R::FL;  // unreachable; defensive
+}
+
 void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) const
 {
     // r10 P4: §4.2 compat matrix dispatch. mSourceChannels and mDownmix are
@@ -591,6 +680,11 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
 
     if (mSourceChannels == 6 && mDownmix.isSupported())
     {
+        // r12 P4 auto-bypass: even when the publisher requested {upmix:on},
+        // a 6ch native source falls through to the r10 placement / Bs775
+        // path verbatim. The mgr-side chat notice (emitUpmixAutoBypassNotice)
+        // explains the fall-through to the listener; here we simply ignore
+        // mUpmixEnabled so the dispatch is bit-identical to r10/r11.
         const auto& idx = mDownmix.indices();
         switch (ch)
         {
@@ -605,8 +699,20 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
         case Channel::SR:  cb.op_kind = Op::Track; cb.op_track = idx.SR;      return;
         }
     }
+    else if (mSourceChannels == 2 && mUpmixEnabled)
+    {
+        // r12 P4: every speaker — including legacy r5–r9 L/R/M placements —
+        // gets fanned out via the DPL2 matrix decode. The per-speaker
+        // role is mapped from Channel to UpmixRole; the actual matrix +
+        // band split lives in LLStereoUpmix::upmix2chToSpeaker().
+        cb.op_kind = Op::Upmix;
+        cb.op_role_upmix = mapChToUpmixRole(ch);
+        return;
+    }
     else if (mSourceChannels == 2)
     {
+        // r10 path: no upmix → 2-spk stereo (L/FL=track0, R/FR=track1,
+        // M/C=stereo sum, 5.1 placement values silent except FL/FR/C).
         switch (ch)
         {
         case Channel::L:
@@ -622,6 +728,11 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
     }
     else  // mSourceChannels == 1 (or unexpected — falls through to Silent)
     {
+        // r12 P4: 1ch sources do not get upmix dispatched even if
+        // mUpmixEnabled — DPL2 decode of a mono signal collapses to
+        // (FL=FR=L, C=L×√2, S=0) which is louder than r8/r10 mono and
+        // gains nothing acoustically. The r8 mono fan-out (every non-LFE
+        // role plays track 0) is the correct degenerate behavior.
         switch (ch)
         {
         case Channel::L:
@@ -636,7 +747,8 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
         }
     }
     // Defensive default — every (ch, src_ch) combination above hits a
-    // return; reaching here implies an unhandled channel value.
+    // return; reaching here implies an unhandled channel value or a
+    // 3/4/5/7/8 ch source slipping past the codec reject.
     cb.op_kind = Op::Silent;
 }
 
@@ -680,9 +792,23 @@ bool LLPositionalStreamMulti::createUserSounds()
         resolveReadOp(*cb, mSpeakers[i].ch);
         // r10 P3: raw-read scratch is only needed by the Bs775 op (6ch
         // source + ch:L/R/M). Track / StereoSum / Silent ops leave it empty.
+        // r12 P2: Upmix also raw-reads, but from a 2-track ring → 2 floats
+        // per frame. Sized at createUserSounds time so the mixer thread
+        // never allocates.
         if (cb->op_kind == SpeakerCallback::OpKind::Bs775)
         {
             cb->raw_scratch.assign(kReaderChunkFrames * 6, 0.f);
+        }
+        else if (cb->op_kind == SpeakerCallback::OpKind::Upmix)
+        {
+            cb->raw_scratch.assign(kReaderChunkFrames * 2, 0.f);
+            // r12 P4 + P6: stamp the only Params field that's per-stream-
+            // immutable (sample_rate). The live-tunable bleed / delay /
+            // cutoff fields are refreshed per callback from the per-stream
+            // atomic snapshot (see SpeakerCallback::OpKind::Upmix branch in
+            // pcmReadCallback) so a debug-settings edit takes effect on
+            // the next chunk boundary without a stream rebuild.
+            cb->upmix_params.sample_rate = mSampleRate;
         }
         checkFmod(snd->setUserData(cb.get()), "Sound::setUserData");
 

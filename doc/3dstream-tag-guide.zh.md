@@ -2,7 +2,7 @@
 
 > AYAstorm 的 **3D Stream** 功能用于把 HTTP 音频流以 3D 空间定位的方式从图元 (prim) 播放出来。本文档是其标签格式参考手册。
 >
-> 本文档基于 AYAstorm `r10` 时点的最终规格。今后 r11 / r12 等版本新增功能时，本文档将随之更新。
+> 本文档反映 AYAstorm `r12` 时点的最终规格，包含 r12 新增的功能：双耳化 (binaural) / 会场残响 (venue reverb) / stereo→5.1 上混 (upmix) / 标签短形式 (short-forms)。
 
 ---
 
@@ -14,14 +14,16 @@
 4. [标签总览](#4-标签总览)
 5. [单声道标签 `[3dstream:...]`](#5-单声道标签-3dstream)
 6. [分散立体声 / 会场布置标签 `[3dstream-stereo:...]`](#6-分散立体声--会场布置标签-3dstream-stereo)
-7. [`ch` (声道) 取值参考](#7-ch-声道-取值参考)
-8. [源声道数 × 标签值 兼容矩阵](#8-源声道数--标签值-兼容矩阵)
-9. [推流端 (制作源 URL)](#9-推流端-制作源-url)
-10. [Viewer 端设置](#10-viewer-端设置)
-11. [错误通知 / 诊断](#11-错误通知--诊断)
-12. [故障排查](#12-故障排查)
-13. [已知限制 / 规格说明](#13-已知限制--规格说明)
-14. [相关文档 / 内部规格书](#14-相关文档--内部规格书)
+7. [双耳化 / 会场残响 (r12)](#7-双耳化--会场残响-r12)
+8. [stereo→5.1 上混 (r12)](#8-stereo51-上混-r12)
+9. [`ch` (声道) 取值参考](#9-ch-声道-取值参考)
+10. [源声道数 × 标签值 兼容矩阵](#10-源声道数--标签值-兼容矩阵)
+11. [推流端 (制作源 URL)](#11-推流端-制作源-url)
+12. [Viewer 端设置](#12-viewer-端设置)
+13. [错误通知 / 诊断](#13-错误通知--诊断)
+14. [故障排查](#14-故障排查)
+15. [已知限制 / 规格说明](#15-已知限制--规格说明)
+16. [相关文档 / 内部规格书](#16-相关文档--内部规格书)
 
 ---
 
@@ -128,9 +130,61 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 
 ### 4.4 SL 的 Description 字数限制 (127 字节)
 
-LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含中文 / 日文等多字节字符时，按 UTF-8 编码很容易超过。因此长 URL 应当 **缩短**，或采用根写音源声明、子图元只写 `{ch:...}` 的分散方式 (§6) 来周转。
+LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含中文 / 日文等多字节字符时，按 UTF-8 编码很容易超过。因此长 URL 应当 **缩短**，或采用根写音源声明、子图元只写 `{ch:...}` 的分散方式 (§6) 来周转。**常用键名 / venue 取值还提供短形式** (见 §4.5)。
 
-### 4.5 标签生效时机
+### 4.5 键名 / venue 取值的短形式 (r12)
+
+`[3dstream-stereo:...]` 中，**3 个常用键** 与 **9 个 `venue` 取值全部** 在 r12 引入了 **短形式别名**。可让 Description 轻松塞进 SL 的 127 字节限制 (§4.4)。长形式与短形式 **完全等价** (内部规范化为同一形式)。新标签、既有标签都可任选其一，行为一致。
+
+#### 键名短形式
+
+| 长形式 | 短形式 | 含义 |
+|---|---|---|
+| `binaural` | `bin` | 双耳化 ON/OFF (§7.1) |
+| `venue` | `v` | 会场残响预设 (§7.2) |
+| `wetgain` | `wg` | 残响湿度等级 (§7.3) |
+
+其他键 (`url`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) 本来已较短，未追加别名。
+
+#### `venue` 取值短形式
+
+| 长形式 | 短形式 | RT60 (大致) |
+|---|---|---|
+| `dry` | `d` | — (无残响) |
+| `room_small` | `rs` | 0.3 s |
+| `room_medium` | `rm` | 0.6 s |
+| `hall_small` | `hs` | 1.0 s |
+| `hall_medium` | `hm` | 1.5 s |
+| `hall_large` | `hl` | 2.0 s |
+| `club` | `cl` | 0.8 s |
+| `cathedral` | `ct` | 3.0 s |
+| `outdoor` | `od` | 0.2 s |
+
+#### 字节数示例
+
+长形式 (133 字节 — 超过 127 字节限制)：
+
+```
+[3dstream-stereo:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{binaural:on}{venue:hall_medium}{wetgain:1.2}]
+```
+
+短形式 (110 字节 — 装得下，节省 23 字节)：
+
+```
+[3dstream-stereo:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{bin:on}{v:hm}{wg:1.2}]
+```
+
+#### LSL 辅助脚本的行为
+
+附带的 LSL `aya_3dstream_setup.lsl` (见 §16) **输入接受两种形式**、**输出 (Description 写入) 始终使用短形式**。通过 LSL 对话框配置的 Description 自动转换为短形式。
+
+#### 注意事项
+
+- 键名 **不区分大小写** (依 §4.3 通用规则)。`{BIN:on}`, `{bin:on}`, `{binaural:on}` 等价。
+- 同一标签内同时写两种形式时 (例：`{binaural:on}{bin:off}`)，只采用 **最先出现的那一个** (§4.3 通用规则)。
+- 路由诊断的 chat 输出与错误消息始终使用 **规范名 (长形式)** 以保持表述稳定。
+
+### 4.6 标签生效时机
 
 - AYAstorm **每隔 30 秒轮询** 一次范围内的图元 Description (`Stream3DPollInterval` 设置)。
 - 通过 LSL `llSetObjectDesc` 修改 Description 后，下一次轮询会重新评估并生效 (通常 5〜30 秒内)。
@@ -224,7 +278,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 | 同时含两者 (= 仅根) | 音源声明 + 自身也作为扬声器 |
 | 两者都没有 | 不做任何事 (不属于 binding 对象) |
 
-链接组中同时存在 **音源声明 (= 带 `{url}` 的根)** 和 **至少 1 个扬声器 (= 带 `{ch}` 的图元)** 时才会开始播放。扬声器为 0 个时会触发"结构错误"，并发出错误通知 (§11)。
+链接组中同时存在 **音源声明 (= 带 `{url}` 的根)** 和 **至少 1 个扬声器 (= 带 `{ch}` 的图元)** 时才会开始播放。扬声器为 0 个时会触发"结构错误"，并发出错误通知 (§13)。
 
 ### 6.3 键一览
 
@@ -234,12 +288,16 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 |---|---|---|---|---|
 | `url` | **必需** | 字符串 | — | 流 URL。空字符串视为错误 |
 | `range` | 可选 | F32 (m) | `Stream3DRolloffMax` (20.0) | 链接组内扬声器没有自己 `range` 时使用的默认衰减距离 |
+| `binaural` (`bin`) | 可选 | 枚举 | `off` | 双耳化 (耳机用 lite-HRTF) ON/OFF。详见 §7.1 |
+| `venue` (`v`) | 可选 | 枚举 | `dry` | 会场残响预设 (dry / room_small / ... / outdoor 共 9 种)。详见 §7.2 |
+| `wetgain` (`wg`) | 可选 | F32 [0.0〜2.0] | `1.0` | 残响湿度等级倍率。详见 §7.3 |
+| `upmix` | 可选 | 枚举 | `off` | stereo→5.1 上混 ON/OFF。详见 §8.1 |
 
 #### 6.3.2 扬声器声明键 (任意图元)
 
 | 键 | 必需 | 类型 | 默认值 | 含义 |
 |---|---|---|---|---|
-| `ch` | **必需** | 枚举 | — | 该图元负责的声道 (详见 §7) |
+| `ch` | **必需** | 枚举 | — | 该图元负责的声道 (详见 §9) |
 | `range` | 可选 | F32 (m) | 按 扬声器自身 → 根 `range` → `Stream3DRolloffMax` 顺序回退 | 该扬声器单独的衰减距离 |
 | `volume` | 可选 | F32 [0.0〜1.0] | 1.0 | 该扬声器单独的音量倍率 |
 
@@ -283,7 +341,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 - 根仅做音源声明，自身不发声 (没有 `{ch}`)
 - 子 #1、#2 分别承担 L/R，近距 50m，音量 100%
 - 子 #3、#4 把同一 L/R 以 70% 音量播出 (前段补充)
-- 扬声器数上限由 `Stream3DStereoMaxSpeakers` 设置控制，**默认 16 个**(§10)
+- 扬声器数上限由 `Stream3DStereoMaxSpeakers` 设置控制，**默认 16 个**(§12)
 
 ### 6.6 5.1ch 会场布置 (6 图元)
 
@@ -332,7 +390,254 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 
 ---
 
-## 7. `ch` (声道) 取值参考
+## 7. 双耳化 / 会场残响 (r12)
+
+> r12 新增 3 个键 (`binaural` / `venue` / `wetgain`)。它们对链接组中所有扬声器一致生效，仅在根图元上有意义，在既有的 3D 定位之上叠加更自然的"现场会场 / 厅堂感"。
+
+#### 为什么仅根有效？
+
+这些键描述的是 **推流者对该次演出的意图** — "这套内容按厅堂混音"／"今天的直播是双耳化录音" — 因此在源端一次性决定，而非每个扬声器各自决定。**3 个键全部仅在根有效** (写在子图元上将被静默忽略)。听者侧 UI 中 **不暴露任何项**：听者按推流者通过标签所定的状态收听 (§7.4)。
+
+### 7.1 `{binaural:on|off}` (短形式 `bin`)
+
+对每个扬声器施加 **简化版双耳 HRTF**。配合耳机时可改善定位 (前后 / 上下的判别力)。
+
+| 取值 | 含义 |
+|---|---|
+| `on` | 施加简化版 binaural HRTF (推荐用于耳机听众) |
+| `off` | 跳过 HRTF (仅 vanilla 3D 定位) |
+
+默认值：`off`。
+
+#### "lite binaural" 做了什么
+
+- 按 Woodworth-Schlosberg 公式计算 ITD (双耳间到达时间差) — 左右耳到达时间延迟
+- 按空气吸收做高频衰减 (−0.5 dB/m, 上限 −25 dB) — 远距离声源的高频暗化
+- **不做** ILD (双耳间响度差)、**不做** 频谱级 cone-of-confusion 修正 (那些属 r13+ SOFA 范畴)
+
+简言之，是基于 ITD 的空间化 + 距离驱动的高频衰减组成的低成本 HRTF。每扬声器 CPU 开销约 +0.4 个百分点 (r10 基准机测定)。
+
+#### 何时使用
+
+- **耳机听众** = `on`。空间感比 vanilla 3D 明显清晰。
+- **扬声器听众** = 任一皆可。扬声器播放时 ITD 偶尔会感觉相反 (本来是为耳朵设计的、不是给扬声器的)。听者侧救援见 §7.4 "例外情况"。
+- **本身已为双耳混音的素材** (推流的就是预混过的 binaural 轨) = 设为 `off` 以避免双重处理。
+
+### 7.2 `{venue:NAME}` (短形式 `v`)
+
+从 9 种 **会场残响预设** 中选一种。每种预设的 RT60、EQ、早期反射模式、CPU 成本皆已固定 — 选择最贴合会场的那一种。
+
+| 长形式 | 短形式 | RT60 | 用途 | CPU (增量) |
+|---|---|---|---|---|
+| `dry` | `d` | — | 无残响 (= r10 行为) | 0 (无 DSP) |
+| `room_small` | `rs` | 0.3 s | 小型工作室、卧室 | +0.1 pp |
+| `room_medium` | `rm` | 0.6 s | 中型工作室、谈话节目 | +0.1 pp |
+| `hall_small` | `hs` | 1.0 s | Live house、小剧场 | +0.5 pp |
+| `hall_medium` | `hm` | 1.5 s | 音乐厅、舞会厅 | +7.7 pp |
+| `hall_large` | `hl` | 2.0 s | 大型礼堂、歌剧院 | +9.6 pp |
+| `club` | `cl` | 0.8 s | 舞厅、密集早期反射 | +0.4 pp |
+| `cathedral` | `ct` | 3.0 s | 大教堂、长尾环境 | +10.2 pp |
+| `outdoor` | `od` | 0.2 s | 户外、极轻的早期反射 | +0.1 pp |
+
+默认值：`dry`。
+
+#### CPU 注意事项
+
+`hall_medium` / `hall_large` / `cathedral` (长尾会场) 的 CPU 消耗明显高于 `dry` / `room_*`。请按所需会场感选择 — 比如 live house 可用 `hall_small` 或 `club`，不必硬上 `hall_large`。"增量" 列是每个 binding 的开销 (不是每扬声器 × N)。详见 `doc/spec_binaural_venue_reverb.md`。
+
+### 7.3 `{wetgain:N}` (短形式 `wg`)
+
+**湿声 (残响成分)** 的倍率。范围：0.0–2.0。默认值：1.0。
+
+| 取值 | 效果 |
+|---|---|
+| `0.0` | 完全干声 (= 不论何种 preset 均与 `venue:dry` 等效) |
+| `0.8` | 湿度 80% — 长尾会场用以保留源声清晰度 |
+| `1.0` | 标准 (默认) |
+| `1.2` | 湿度 120% — 更多氛围、干声冲击力相应削弱 |
+| `2.0` | 湿度 200% — 厚重的环境淹没感 (极少使用) |
+
+干声成分固定 1.0，仅湿声受 `wetgain` 缩放。完全干声请用 `{venue:dry}` (与 `{wetgain:0.0}` 等效，但规格上更干净)。
+
+### 7.4 推流者主导模型
+
+这 3 个键采用 **根图元 Description 即真理 (root truth)** 模型 — **一般听众没有 Preferences / Debug Settings UI**。
+
+#### 为何无听者 UI？
+
+- 如果推流者决定"本场为厅堂、binaural ON"，但听者却能任意覆写，就会出现"同一场直播因听者不同而声音不同"的状况 — 艺术意图变得模糊。
+- AYAstorm 方针 (依 `r5 命名一致性` / `r11 推流者主导模型`) 是 **"不增加表现的不确定性"**。增加调节轴数会侵蚀运营一致性。
+
+#### 例外：扬声器收听时的听者侧救援
+
+使用 **扬声器而非耳机** 的听众，在收听 `{binaural:on}` 直播时可能感到 ITD 反作用。**仅为此救援目的** 提供一个 sentinel debug 设置 ─ `Stream3DBinauralRender = 0` 在听者侧强制 OFF (详见 §12.2)。同样地 `Stream3DVenueOverride` (空 = 跟随标签，`"dry"` = 强制全部残响 OFF)、`Stream3DVenueWetGain` (sentinel `-1.0` = 跟随标签) 也作为 debug 提供。它们都不在一般用户 UI 中暴露。
+
+### 7.5 组合示例
+
+#### 什么都不写 (= 默认)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}]
+```
+→ 等价于 `{bin:on}{v:d}{wg:1.0}`。Lite-HRTF 生效，但无残响 (r10 + 定位强化)。
+
+#### Live house (PA 取向、节奏型音乐)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:cl}{wg:1.0}]
+```
+→ club preset，密集反射，干湿等比。
+
+#### 大厅 (管弦乐)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:hl}{wg:0.8}]
+```
+→ hall_large，湿度调到 0.8× (长厅堂残响下保留源声清晰度)。
+
+#### 大教堂 (氛围 / 环境)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:ct}{wg:0.6}]
+```
+→ cathedral，湿度 0.6× (RT60 ~3s 较长，避免过厚)。
+
+#### 户外 (环境 / 漫步 BGM)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:od}{wg:1.0}]
+```
+→ outdoor，仅轻量早期反射 — 露天感。
+
+#### 已是双耳化的素材 (避免双重处理)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:off}{v:d}]
+```
+→ binaural OFF、无残响 (= r10 基线行为)。
+
+---
+
+## 8. stereo→5.1 上混 (r12)
+
+> r12 在 viewer 内 DSP 中加入 **stereo→5.1 上混 (upmix)**。把 2 声道源扩展成 6 声道 (FL / FR / C / LFE / SL / SR)，使得即便推流是普通立体声，也能享用 5.1 布置 (§6.6)。
+
+这是 r12 单项最大的新增。由于 SL 多数推流软件 (butt / Mixxx / OBS / SAM 等) 仅支持立体声、native 5.1 推流极其稀少，**没有 upmix 时 r10 建立的 6 扬声器布置实际上只有 5.1 native 推流才能体验到**。r12 从 viewer 端补上这个缺口。
+
+### 8.1 `{upmix:on|off}` (无短形式)
+
+是否将立体声源 upmix 为 5.1。
+
+| 取值 | 含义 |
+|---|---|
+| `on` | 通过 DPL2 系矩阵解码 + 频段分离把立体声 → 6 声道 |
+| `off` | 不做 upmix (= r10 行为 — stereo 仅以 L/R 播出) |
+
+默认值：`off`。由推流者主动开启 (opt-in)。
+
+#### 为何默认 off (opt-in)？
+
+- 立体声素材本来就是为立体声混音的。upmix 是诠释、不是重现。
+- 如果布置了 6 prim 的听者各自决定是否 upmix，会出现"同一场直播因听者不同而声音不同" — 与 §7.4 同样的不确定性问题。
+- 因此交由推流者通过标签决定。默认保留 r10 行为。
+
+### 8.2 算法 (DPL2 系矩阵解码 + 频段分离)
+
+内部算法固定 (NG1 — 无算法选择，不提供 "Logic 7 / SRS / ML upmix" 等选项)：
+
+1. **DPL2 矩阵解码** — 由 L+R 推导出 C 与 S (surround) 声道，生成 L′ / R′ / C / Lₛ / Rₛ
+2. **LFE 频段分离** — 对源的 mono 下混做低通 (cutoff `Stream3DUpmixLfeCutoff`，默认 80 Hz THX) 后送往 LFE
+3. **中央漏出消除** — 从 L′ / R′ 中减去 `Stream3DUpmixCenterBleed` × C，避免中央成像内容同时漏到 FL/FR (默认 1.0 = 完全消除)
+4. **后置 decorrelation** — 对 Lₛ / Rₛ 施加基础延迟 `Stream3DUpmixRearDelayMs` (默认 16ms)，并 ±2ms 抖动以避免后置左右间梳状滤波
+
+结果：FL = L′, FR = R′, C, LFE, SL = Lₛ′, SR = Rₛ′。
+
+#### 为何只有一种固定算法？
+
+- 依 AYAstorm "不增加表现不确定性" 方针，不暴露 `{upmix:dpl2|logic7|srs|...}` 这种标签值。推流者只选 ON / OFF；其余是确定性 DSP。
+- DPL2 文献完备、license 干净，跨流派结果稳定。Logic 7 / ML upmix 等留待 r13+ 在客观 FFT 与试听验证基础上重新评估。
+
+### 8.3 5.1 native 推流的自动 bypass
+
+源的实际声道数为 **6 或更多** 时，`{upmix:on}` 会被 **自动 bypass** (避免双重处理)，并在 chat 中通知一次：
+
+```
+3D Stream: source is already 5.1 (6ch) — upmix bypassed
+```
+
+这样推流者可以始终保留 `{upmix:on}` 标签，stereo 内容时上混生效、5.1 native 内容时自动 bypass，使用同一份 Description。切换内容时无需修改标签。
+
+### 8.4 微调 (3 个 debug 设置)
+
+DSP 内部参数 **不作为推流者标签暴露** — 而是作为听者侧 debug 设置。为保持推流者主导模型，推流者只选 on / off；内部参数视作"算法的一部分"固定不变。听者通常也不调整 — 仅供实现 / 验证或个人微调用。
+
+| Debug 设置 | 默认值 | 范围 | 含义 |
+|---|---|---|---|
+| `Stream3DUpmixLfeCutoff` | `80.0` Hz | 20–200 | LFE LPF cutoff 频率 |
+| `Stream3DUpmixCenterBleed` | `1.0` | 0.0–1.0 | 从前置 L/R 中减去的中央成分比例 (`0` = DPL1 兼容、`1` = 完全消除) |
+| `Stream3DUpmixRearDelayMs` | `16.0` ms | 0–32 | 后置 decorrelation 基础延迟 (L / R 间 ±2ms 抖动) |
+
+听者侧强制 OFF / ON 用 sentinel：
+
+| Debug 设置 | 默认值 | 含义 |
+|---|---|---|
+| `Stream3DUpmix` | `-1` (sentinel = 跟随标签) | `0` 忽略标签强制 OFF / `1` 强制 ON (5.1 native 自动 bypass 仍生效) |
+
+### 8.5 组合示例
+
+#### 默认行为 (无 upmix)
+
+```
+[3dstream-stereo:{url:http://example/stereo.ogg}{ch:L}]
+[3dstream-stereo:{ch:R}]
+```
+→ 与 r10 相同 (立体声源送往 L/R 2 个扬声器)。
+
+#### 6 扬声器布置 + upmix (r12 推荐格式)
+
+```
+根 Description:
+  [3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}]
+FL:  [3dstream-stereo:{ch:FL}]
+FR:  [3dstream-stereo:{ch:FR}]
+C:   [3dstream-stereo:{ch:C}]
+LFE: [3dstream-stereo:{ch:LFE}]
+SL:  [3dstream-stereo:{ch:SL}]
+SR:  [3dstream-stereo:{ch:SR}]
+```
+→ 立体声源被扩展为 6 声道，分别送往 6 个扬声器图元。
+
+#### upmix + binaural + venue (r12 全功能)
+
+```
+[3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}{bin:on}{v:hm}{wg:1.2}]
+```
+→ 立体声源扩展为 6 声道，每个扬声器再施加 lite-HRTF + hall_medium 残响 (湿度 1.2×)。最大化的会场感 + 耳机定位。
+
+#### r10 旧式布置 (`ch:L`/`ch:R` 限定) + upmix
+
+```
+根 Description:
+  [3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}]
+L 子: [3dstream-stereo:{ch:L}]
+R 子: [3dstream-stereo:{ch:R}]
+```
+→ 链接组中只有 L/R 扬声器时，upmix 内部仍计算但仅 L/R 路由出去。即 "上混信号的 L/R 声道送出，C / LFE / SL / SR 计算了但未路由" → 听感上 **几乎与不开 upmix 相同** (DPL2 的 L′ / R′ ≈ L / R 减去中央漏出)。
+
+→ 不算错，但只有 L/R 扬声器的布置 **开 upmix 没有意义**。请用 6 扬声器布置 (`ch:FL/FR/C/LFE/SL/SR`) 才能真正受益。
+
+#### 把 upmix 加到 5.1 native 推流 (自动 bypass)
+
+```
+根 Description:
+  [3dstream-stereo:{url:http://example/test_5_1.flac}{upmix:on}]
+FL:  [3dstream-stereo:{ch:FL}]   # 另外 5 个扬声器
+```
+→ 源本就是 6 声道，因此 upmix 自动 bypass (chat 通知一次)。每个扬声器直接播放源对应的声道。
+
+---
+
+## 9. `ch` (声道) 取值参考
 
 `{ch:值}` 可以指定以下 9 种。**不区分大小写** (`{ch:l}` 与 `{ch:L}` 等价)。
 
@@ -348,17 +653,17 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 | `SL` | Surround Left | 5.1ch 环绕左 |
 | `SR` | Surround Right | 5.1ch 环绕右 |
 
-源实际声道数与标签 `ch` 值不一致时，系统进行 **自动回退** 而不是报告"不一致" (§8)。例如对 2ch 源写 `{ch:FL}` 会播放 L。
+源实际声道数与标签 `ch` 值不一致时，系统进行 **自动回退** 而不是报告"不一致" (§10)。例如对 2ch 源写 `{ch:FL}` 会播放 L。
 
-非法值 (例如 `{ch:foo}`) 会触发 **格式错误** 通知 (§11)。
+非法值 (例如 `{ch:foo}`) 会触发 **格式错误** 通知 (§13)。
 
 ---
 
-## 8. 源声道数 × 标签值 兼容矩阵
+## 10. 源声道数 × 标签值 兼容矩阵
 
 扬声器图元实际播放什么，由 **源 URL 的声道数** 与 **写下的 `ch` 值** 的组合决定。
 
-### 8.1 兼容矩阵
+### 10.1 兼容矩阵
 
 | 源 | `{ch:L}` | `{ch:R}` | `{ch:M}` | `{ch:FL}` | `{ch:FR}` | `{ch:C}` | `{ch:LFE}` | `{ch:SL}` | `{ch:SR}` |
 |---|---|---|---|---|---|---|---|---|---|
@@ -368,10 +673,10 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 
 图例：
 - `L` / `R` / `FL` / `FR` / `C` / `LFE` / `SL` / `SR` 表示直接播放源对应声道
-- `BS.775 L` = 用 ITU-R BS.775 下混系数把 6ch 折叠到 L/R 2ch 的结果 (§8.2)
+- `BS.775 L` = 用 ITU-R BS.775 下混系数把 6ch 折叠到 L/R 2ch 的结果 (§10.2)
 - `静音` = 该扬声器不发声 (binding 仍保持，仅图元不出声)
 
-### 8.2 BS.775 下混系数 (6ch 源 → L/R)
+### 10.2 BS.775 下混系数 (6ch 源 → L/R)
 
 ```
 L_out = c × ( FL + 0.707·C + 0.707·SL + 0.5·LFE )
@@ -381,13 +686,13 @@ c = 1 / 2.914 ≈ 0.343 (防削波归一化)
 
 中置均匀分到左右、环绕加到同侧、LFE 平均加到两侧。
 
-### 8.3 同一源混合布置使用
+### 10.3 同一源混合布置使用
 
 如果把 5.1ch 源同时分配给 `{ch:L}` 与 `{ch:FL}`，L 图元播 BS.775 下混、FL 图元播 直取声道。容易混淆，因此推荐 **同一源在会场内使用同一系列的 ch (`L/R/M` 系 或 `FL/FR/...` 系，二选一)**。
 
-混合布置中发生回退时，可以通过 **routing 诊断 chat 通知** (§10.3 / §11.3) 确认每个 ch 实际行为。布置 5.1ch 会场时打开它能立刻发现配置失误。
+混合布置中发生回退时，可以通过 **routing 诊断 chat 通知** (§12.3 / §13.3) 确认每个 ch 实际行为。布置 5.1ch 会场时打开它能立刻发现配置失误。
 
-### 8.4 5.1ch 会场布置下播放 2ch / 1ch 源
+### 10.4 5.1ch 会场布置下播放 2ch / 1ch 源
 
 会场已部署 6 个扬声器图元 (`ch:FL` / `FR` / `C` / `LFE` / `SL` / `SR`)，把源 URL 从 5.1ch 推流切到 **普通立体声 (2ch) 推流** 或 **单声道 (1ch) 推流** 的场景。例如 "正式演出走 5.1ch、休息时间用普通立体声 BGM"，"DJ set 之间穿插 MC 单声道语音"等运营。
 
@@ -429,7 +734,7 @@ c = 1 / 2.914 ≈ 0.343 (防削波归一化)
 - **Preferences > Sound > Show channel routing diagnostics in chat** (复选框)
 - **Debug Settings: `Stream3DRoutingDiagnostic`** (`true` / `false`)
 
-打开后，5.1 布置 × 2ch / 1ch 源出现回退时，会以 **Local Chat 中你自己的发言形式** 按下述格式逐行输出 (`3D Stream:` 前缀由 §11.3 helper 自动添加):
+打开后，5.1 布置 × 2ch / 1ch 源出现回退时，会以 **Local Chat 中你自己的发言形式** 按下述格式逐行输出 (`3D Stream:` 前缀由 §13.3 helper 自动添加):
 
 **2ch 源 × 5.1 布置 (FL/FR/C/LFE/SL/SR 6 个 prim) 时**:
 
@@ -455,13 +760,13 @@ c = 1 / 2.914 ≈ 0.343 (防削波归一化)
 
 由此可一目了然地看出 "LFE / SL / SR 静音是规格行为，FL / FR / C 处于回退播放中"。
 
-通知按 `(root_id, url, observed_channel_count, prim_set_signature)` 作为 throttle 的键，因此布置或源声道数不变时同一通知不会重复发送。**推荐：仅在 5.1ch 会场布置 / 验证期间打开，正式运行时关闭 (`false`，默认值)**。详见 §11.3。
+通知按 `(root_id, url, observed_channel_count, prim_set_signature)` 作为 throttle 的键，因此布置或源声道数不变时同一通知不会重复发送。**推荐：仅在 5.1ch 会场布置 / 验证期间打开，正式运行时关闭 (`false`，默认值)**。详见 §13.3。
 
 #### 反方向: 2ch 布置下播放 5.1ch 源
 
 为参考起见整理反方向。仅用 `{ch:L}` / `{ch:R}` / `{ch:M}` 布置的立体声会场 (= 2ch 布置) 播放 5.1ch 源时:
 
-- L / R / M 图元用 **BS.775 下混** (§8.2) 把 5.1ch 折叠为 2ch 播放。FL / C / SL / LFE 都按系数加到 L 侧，FR / C / SR / LFE 都按系数加到 R 侧。
+- L / R / M 图元用 **BS.775 下混** (§10.2) 把 5.1ch 折叠为 2ch 播放。FL / C / SL / LFE 都按系数加到 L 侧，FR / C / SR / LFE 都按系数加到 R 侧。
 - 所有声道信号都通过 L / R 出来，因此 **没有声道会失声**。
 - `Stream3DRoutingDiagnostic` 打开时 Local Chat 输出示例:
 
@@ -477,30 +782,30 @@ c = 1 / 2.914 ≈ 0.343 (防削波归一化)
 
 ---
 
-## 9. 推流端 (制作源 URL)
+## 11. 推流端 (制作源 URL)
 
-### 9.1 支持的 codec / 容器
+### 11.1 支持的 codec / 容器
 
 | codec / 容器 | 1ch | 2ch | 6ch | 备注 |
 |---|---|---|---|---|
 | **MP3** | ✓ | ✓ | — | SHOUTcast / Icecast 的传统路径 |
 | **Vorbis (Ogg)** | ✓ | ✓ | ✓ | 6ch 也已实机验证 (r9 P10) |
-| **Opus (Ogg)** | ✓ | ✓ | △ | 6ch 用 Opus channel mapping family 1。**纯 HTTP / Icecast push 时 seek 失败** 可能无法打开 (§9.4) |
+| **Opus (Ogg)** | ✓ | ✓ | △ | 6ch 用 Opus channel mapping family 1。**纯 HTTP / Icecast push 时 seek 失败** 可能无法打开 (§11.4) |
 | **FLAC** | ✓ | ✓ | △ | 6ch 理论上支持，与 Opus 相同的 seek 限制 |
 | AAC (ADTS / HLS) | — | — | — | 不支持 |
 | AC-3 / E-AC-3 | — | — | — | 因 Dolby 授权问题不支持 |
 
 源 URL 接受 `http://` 或 `https://`。能维持 HTTP/1.1 keep-alive 的路径 (= SHOUTcast 兼容 streamer 或 ffmpeg 的 TCP 输出) 比单纯静态 HTTP 更稳定。
 
-### 9.2 1ch / 2ch 推流
+### 11.2 1ch / 2ch 推流
 
 普通 SHOUTcast / Icecast / 静态 HTTP 即可。MP3 / Vorbis / Opus / FLAC 均能正常工作。`oggenc` / ffmpeg / butt 等常规推流工具直接可用。
 
-### 9.3 5.1ch (Vorbis 6ch) 推流
+### 11.3 5.1ch (Vorbis 6ch) 推流
 
 要在 Viewer 端可靠地跑 5.1ch，推荐路径是 **Vorbis 6ch** (r9 P10 已实机验证)。
 
-#### 9.3.1 测试素材制作 (ffmpeg)
+#### 11.3.1 测试素材制作 (ffmpeg)
 
 ```bash
 # 各声道埋入唯一频率的 5.1 WAV (10 秒)
@@ -514,7 +819,7 @@ ffmpeg -f lavfi -i "sine=440:d=10" -f lavfi -i "sine=550:d=10" \
 ffmpeg -i test_5_1.wav -c:a libvorbis -q:a 5 test_5_1.ogg
 ```
 
-#### 9.3.2 静态 HTTP 提供 (验证用)
+#### 11.3.2 静态 HTTP 提供 (验证用)
 
 ```bash
 python3 -m http.server 8080
@@ -522,7 +827,7 @@ python3 -m http.server 8080
 
 URL: `http://<host>:8080/test_5_1.ogg`
 
-#### 9.3.3 实时推流 (ffmpeg → Icecast)
+#### 11.3.3 实时推流 (ffmpeg → Icecast)
 
 ```bash
 ffmpeg -re -i test_5_1.wav \
@@ -537,7 +842,7 @@ ffmpeg -re -i test_5_1.wav \
 - `-content_type audio/ogg` = 向 Icecast 申报 MIME (没有这个会被误判为 MP3)
 - `-ac 6 -ar 48000` = 维持 6ch 48kHz
 
-### 9.4 Opus 6ch / FLAC 6ch 的限制
+### 11.4 Opus 6ch / FLAC 6ch 的限制
 
 通过 **纯 HTTP** (例如 `python3 -m http.server`) 或 **Icecast push** 推送 Opus 6ch (channel mapping family 1) 或 FLAC 6ch 时，FMOD 的 parser 会发出 **seek 请求**，从而以 `FMOD_ERR_FILE_COULDNOTSEEK` 失败而无法打开。
 
@@ -549,7 +854,7 @@ ffmpeg -re -i test_5_1.wav \
 
 要确保能跑通，目前最短路径是选择 **Vorbis 6ch**。
 
-### 9.5 推流端工具的选择
+### 11.5 推流端工具的选择
 
 | 工具 | 用途 | 注意 |
 |---|---|---|
@@ -561,20 +866,20 @@ ffmpeg -re -i test_5_1.wav \
 
 ---
 
-## 10. Viewer 端设置
+## 12. Viewer 端设置
 
-### 10.1 通过 Preferences
+### 12.1 通过 Preferences
 
 **首选项 → Sound** 选项卡有以下控件：
 
 - **3D Stream** 滑条 — 全部流的主音量倍率 (`Stream3DVolumeMaster`)
 - **Enabled** 复选框 — 整个功能 ON/OFF (`Stream3DEnabled`)
-- **Show channel routing diagnostics in chat** — routing 诊断通知 (`Stream3DRoutingDiagnostic`，§11.3)
-- **Hear media and sounds from:** — 听者位置选择 Camera / Avatar (`MediaSoundsEarLocation`，§13.1)
+- **Show channel routing diagnostics in chat** — routing 诊断通知 (`Stream3DRoutingDiagnostic`，§13.3)
+- **Hear media and sounds from:** — 听者位置选择 Camera / Avatar (`MediaSoundsEarLocation`，§15.1)
 
 扬声器图标的 Volume 下拉菜单中也有同样的 "3D Stream" 滑条，可以在语音聊天附近即时调整音量。
 
-### 10.2 Debug Settings (高级调优)
+### 12.2 Debug Settings (高级调优)
 
 `Ctrl + Alt + D` 打开 Advanced 菜单 → Show Debug Settings 可以直接编辑各键。
 
@@ -590,7 +895,21 @@ ffmpeg -re -i test_5_1.wav \
 | `Stream3DPollInterval` | F32 (秒) | `30.0` | Description polling 间隔。LSL 改动标签的检测延迟由此决定。0 关闭主动 polling |
 | `Stream3DVolumeMaster` | F32 [0〜1] | `0.5` | 主音量倍率。与 Preferences 的 3D Stream 滑条同步 |
 | `Stream3DReconnectAttempts` | S32 | `3` | 流断开时自动重连尝试次数。每次重试等待 5 秒。0 关闭重连 |
-| `Stream3DRoutingDiagnostic` | bool | `false` | routing 诊断 chat 通知 ON/OFF (§11.3)。与 Preferences 的复选框同步 |
+| `Stream3DRoutingDiagnostic` | bool | `false` | routing 诊断 chat 通知 ON/OFF (§13.3)。与 Preferences 的复选框同步 |
+
+#### r11/r12 推流者主导模型: 听者侧 sentinel (无一般 UI)
+
+§7.4 / §8.4 已述，`binaural` / `venue` / `wetgain` / `upmix` 4 个键采用 **推流者标签即真理** 模型，**没有 Preferences UI**。仅为救援目的提供以下 sentinel 性 debug 设置。一般听众 **不要触动**。
+
+| 设置键 | 类型 | 默认值 | 含义 |
+|---|---|---|---|
+| `Stream3DBinauralRender` | S32 | `-1` (sentinel = 跟随标签) | `0` 在听者侧强制 OFF / `1` 强制 ON。用扬声器收听 `{binaural:on}` 直播时的救援用途 (详见 §7.4 例外) |
+| `Stream3DVenueOverride` | string | `""` (sentinel = 跟随标签) | 写 `"dry"` 等 venue 名时，所有直播都按该会场播放 (`"dry"` = 强制全部残响 OFF，典型用途) |
+| `Stream3DVenueWetGain` | F32 | `-1.0` (sentinel = 跟随标签) | `0.0–2.0` 范围内的值会强制覆写 wetgain |
+| `Stream3DUpmix` | S32 | `-1` (sentinel = 跟随标签) | `0` 忽略标签强制 OFF / `1` 强制 ON。5.1 native 自动 bypass 仍生效 (详见 §8.1 / §8.3) |
+| `Stream3DUpmixLfeCutoff` | F32 (Hz) | `80.0` | upmix DSP LFE LPF cutoff (20–200)。详见 §8.4 |
+| `Stream3DUpmixCenterBleed` | F32 | `1.0` | upmix DSP 中央漏出消除比例 (0.0–1.0)。详见 §8.4 |
+| `Stream3DUpmixRearDelayMs` | F32 (ms) | `16.0` | upmix DSP 后置 decorrelation 延迟 (0–32)。详见 §8.4 |
 
 #### 仅供 Debug 使用 (动作确认用)
 
@@ -600,7 +919,7 @@ ffmpeg -re -i test_5_1.wav \
 | `Stream3DDebugPlay` | bool | `true` 时在角色前方 5m 放置并播放单声道流 (无需写标签的快速测试) |
 | `Stream3DDebugStereoPlay` | bool | 立体声版的同样 debug 播放 |
 
-### 10.3 设置的持久化与即时生效
+### 12.3 设置的持久化与即时生效
 
 绝大多数设置都是 **"Live"** = 修改后下一帧起生效。无需重启 Viewer。例外:
 
@@ -609,9 +928,9 @@ ffmpeg -re -i test_5_1.wav \
 
 ---
 
-## 11. 错误通知 / 诊断
+## 13. 错误通知 / 诊断
 
-### 11.1 通知的呈现方式
+### 13.1 通知的呈现方式
 
 标签格式错误或结构错误会 **以本地 Chat 通知** 显示。前缀为 "3D Stream:"，作为系统消息呈现。
 
@@ -627,17 +946,17 @@ ffmpeg -re -i test_5_1.wav \
   请在各扬声器图元上写 [3dstream-stereo:{ch:L|R|M}]。
 ```
 
-### 11.2 30 秒抑制
+### 13.2 30 秒抑制
 
 同一图元 × 同一错误种类的通知会被 **抑制 30 秒**。这是为了防止你连续编辑标签时聊天被刷屏。30 秒后会再发出一次。
 
 被抑制的通知仍会写入 LL_DEBUGS 日志 (debug 用日志)，因此可以通过日志看到内部发生了什么。
 
-### 11.3 Routing 诊断 (5.1ch 布置)
+### 13.3 Routing 诊断 (5.1ch 布置)
 
 为 5.1ch / 多扬声器会场的 **构建 / 验证期间** 提供的诊断功能，在 Local Chat 中确认 "哪个 prim 在播什么 / 为什么静音"。**默认 OFF**，不显式开启就不会输出。
 
-#### 11.3.1 开启方法
+#### 13.3.1 开启方法
 
 下面任一方式均可启用 (两者同步):
 
@@ -646,7 +965,7 @@ ffmpeg -re -i test_5_1.wav \
 
 设置即时生效。无需重启 Viewer。
 
-#### 11.3.2 输出位置和格式
+#### 13.3.2 输出位置和格式
 
 打开后，回退发生时会以 **Local Chat 中你自己的发言形式** 按下述格式逐行输出:
 
@@ -656,7 +975,7 @@ ffmpeg -re -i test_5_1.wav \
 
 `3D Stream:` 前缀由 `notifyStream3D` helper 自动添加。聊天日志 (`Show in Chat`) 当然也会保留，验证后可以回看。**他人看不到** (仅在你自己的 Local Chat 中显示的伪发言)。
 
-#### 11.3.3 通知文言一览
+#### 13.3.3 通知文言一览
 
 | 情境 | Local Chat 中输出的行 |
 |---|---|
@@ -668,9 +987,9 @@ ffmpeg -re -i test_5_1.wav \
 | 1ch 源 × `ch:FL/FR/C` 图元 | `3D Stream: ch:FL prim playing M (source is 1ch)` (FR / C 同样格式) |
 | 1ch / 2ch 源 × `ch:LFE/SL/SR` 图元 | `3D Stream: ch:LFE prim silent (source is 2ch)` (1ch 时为 `1ch`，SL / SR 同样格式) |
 
-5.1ch 布置 × 2ch 源的具体输出示例参见 §8.4 的 "把回退情况输出到 Chat 的设置"。
+5.1ch 布置 × 2ch 源的具体输出示例参见 §10.4 的 "把回退情况输出到 Chat 的设置"。
 
-#### 11.3.4 throttle 与重新显示条件
+#### 13.3.4 throttle 与重新显示条件
 
 通知按 `(root_id, url, observed_channel_count, prim_set_signature)` 作为 throttle 的键。同一会场 / 同一源结构持续期间 **不会重复显示** (避免聊天被刷屏)。下列任一变化时重新评估并再次输出:
 
@@ -679,13 +998,13 @@ ffmpeg -re -i test_5_1.wav \
 - 会场扬声器图元结构改变 (添加 / 删除 prim 或改变 `ch` 值)
 - `Stream3DRoutingDiagnostic` 由 OFF 切到 ON 的瞬间
 
-#### 11.3.5 运营建议
+#### 13.3.5 运营建议
 
 - **会场搭建 / 布置验证期间打开** ON，在 Local Chat 中确认每个 prim 的回退行为
 - **正式运营 (现场演出等) 时关闭** OFF，保持聊天整洁
 - 默认 (OFF) 是面向正式运营的状态。仅在布置验证时手动打开。
 
-### 11.4 日志 (`LL_INFOS("Stream3D")`)
+### 13.4 日志 (`LL_INFOS("Stream3D")`)
 
 详细的运行日志记录在 AYAstorm 的日志文件中。
 
@@ -697,9 +1016,9 @@ ffmpeg -re -i test_5_1.wav \
 
 ---
 
-## 12. 故障排查
+## 14. 故障排查
 
-### 12.1 写了标签但没声音
+### 14.1 写了标签但没声音
 
 按顺序检查:
 
@@ -708,47 +1027,47 @@ ffmpeg -re -i test_5_1.wav \
 3. **`{url:...}` 协议是否为 http/https**: `file://` 或相对 URL 不可
 4. **`Stream3DEnabled` / `Stream3DDescriptionScan` 是否都为 true**: 在 Preferences > Sound 或 Debug Settings 确认
 5. **等待轮询**: LSL `llSetObjectDesc` 的修改最多等 30 秒 (= `Stream3DPollInterval`)
-6. **聊天里有没有错误通知**: 参考 §11 错误文言
+6. **聊天里有没有错误通知**: 参考 §13 错误文言
 7. **日志中是否出现 `LL_INFOS("Stream3D")` 的 reconnect attempt**: 可能是流 URL 已断
 
-### 12.2 立体声只出来一边
+### 14.2 立体声只出来一边
 
 - 根只写了 `{url}` 而子只写了 `{ch:R}` 时，没有图元负责 L 声道，会变成 "L 缺失" 状态。请在根并写 `{ch:L}`，或给另一个图元分配 `{ch:L}`
 - 故意把 `{ch:L}` 写到 2 个图元让两处同时出 L 是符合预期的，没问题
 - 打开 routing 诊断 (`Stream3DRoutingDiagnostic`) 后，可以在 chat 中看到每个 ch 实际播放什么
 
-### 12.3 5.1ch 源打不开 / 声音断断续续
+### 14.3 5.1ch 源打不开 / 声音断断续续
 
-- §9.4 的 seek 限制: Opus 6ch / FLAC 6ch 在纯 HTTP / Icecast push 上容易出现的问题。**改用 Vorbis 6ch**，或改走 SHOUTcast 兼容 streamer / ffmpeg primary
+- §11.4 的 seek 限制: Opus 6ch / FLAC 6ch 在纯 HTTP / Icecast push 上容易出现的问题。**改用 Vorbis 6ch**，或改走 SHOUTcast 兼容 streamer / ffmpeg primary
 - HTTP 切换后最初 5〜10 秒在 prebuffer 充填中可能出现 dropout 警告 (LAN 环境 408〜2045 frames/spk/s ≈ 0.8〜4% 程度)。稳态运行时会消失
 - 流码率过高 / 网络拥塞时的 dropout: 推流端降低码率 (推荐 ≤ 256kbps) / 减少同时 binding 数
 
-### 12.4 子图元写了标签但识别不到为扬声器
+### 14.4 子图元写了标签但识别不到为扬声器
 
 - 子图元的 Description 通过 Properties 通信获取。**首次进入链接组所在地区时可能稍有延迟** (数秒〜10 秒)
 - 通过 LSL `llSetObjectDesc` 改子图元的 Description 后，下一个 poll cycle (30 秒内) 生效
 - 检查 `{ch:...}` 的值有无拼写错误 (大小写无关，但拼错就无效)
 
-### 12.5 听者位置不对劲 (声音方向有点怪)
+### 14.5 听者位置不对劲 (声音方向有点怪)
 
 - 摄像机大幅移动时听者位置会跟随摄像机变化，定位也随之改变。希望固定在角色视角的话，把 Preferences > Sound 的 **"Hear media and sounds from:" 切到 Avatar** (`MediaSoundsEarLocation = 1`)
 - Camera / Avatar 切换对 3D Stream 同样起作用 (与地块 BGM、LSL `llPlaySound` 等共享设置)
 
-### 12.6 想同时播放多个 3D Stream
+### 14.6 想同时播放多个 3D Stream
 
 - 超过 `Stream3DMaxConcurrent` (默认 4) 后新 binding 会被拒绝。如需同时运行更多请提高该值 (8 / 16 量级仍实用)
 - 注意 1 binding = 1 解码线程 + N 个扬声器声道占用 CPU。20 并行 CPU 负担很大，按需增加
   
-### 12.7 删了标签声音还停不下来
+### 14.7 删了标签声音还停不下来
 
 - 重新评估的触发可能没发生。请把图元移动一下，或绕一圈等待下次 polling
 - 仍然停不下来时把 `Stream3DEnabled` 暂时切到 false 强制拆除所有 binding，再切回 true 重新发现
 
 ---
 
-## 13. 已知限制 / 规格说明
+## 15. 已知限制 / 规格说明
 
-### 13.1 听者位置基于摄像机或角色
+### 15.1 听者位置基于摄像机或角色
 
 3D Stream 用于声场计算的听者位置遵循 Preferences > Sound 的 **"Hear media and sounds from:"** 设置。
 
@@ -757,22 +1076,23 @@ ffmpeg -re -i test_5_1.wav \
 
 这个设置同时作用于 LSL `llPlaySound` / 地块 BGM / Media-on-a-Prim。
 
-### 13.2 1 链接组 = 1 流
+### 15.2 1 链接组 = 1 流
 
 每个链接组中只关心带 `{url}` 的根 "存在 / 不存在"。**不能在 1 个链接组里写多个 `{url}`** (子图元写 `{url}` 会被忽略)。
 
 要在 1 个会场里同时跑多个不同的流，请把链接组拆分摆放 (= 在 `Stream3DMaxConcurrent` 限额内持有多个 binding)。
 
-### 13.3 Description 字数 (127 字节)
+### 15.3 Description 字数 (127 字节)
 
 LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含中文 / 日文 / 韩文等的 URL 或说明文字按 UTF-8 编码很容易超过。
 
 变长时的对策:
 
+- **使用键名 / venue 取值的短形式** (§4.5)。`binaural`/`venue`/`wetgain` 用 `bin`/`v`/`wg`，9 种 venue 取值也都有 1〜2 字符别名，长形式与短形式完全等价。
 - 根上只写 `{url}`、子图元只写 `{ch}` 的分散方式 (这种情况下每个图元的 Description 都能保持简短)
 - 缩短 URL (URL shortener，或推流端把路径缩短)
 
-### 13.4 各 codec 的实测情况
+### 15.4 各 codec 的实测情况
 
 | codec | 1ch / 2ch | 6ch |
 |---|---|---|
@@ -783,26 +1103,26 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 希望可靠地跑 5.1ch 时请选择 **Vorbis 6ch**。
 
-### 13.5 LFE 没有特殊处理
+### 15.5 LFE 没有特殊处理
 
 5.1ch 的 LFE (低音炮) 在 Viewer 端不做 "低通滤波"、"2D 化" 等特殊处理，与其余 5 声道同样进行 3D 布置 + 距离衰减。如需低频限制请在推流端 mix 时完成。
 
 设想的运用方式是: 把物理意义上的低音炮形状的图元放在 SL 里的合适位置，让低频音从那里发出来。
 
-### 13.6 5.1ch 的自由视角模型
+### 15.6 5.1ch 的自由视角模型
 
 真实 5.1 (影院基准 / ITU-R BS.775) 以 **听者处于固定位置** 为前提，在每个 ch 中嵌入方向感。SL 的听者是自由视角的，因此 "sweet spot" 概念不适用。本功能追求的是 **"在会场多点重现 5.1 源"** 的 PA 风格构想，而不是影院环绕体验的复刻。
 
 听者在空间中走动时 5.1 mix 的预定定位当然会破坏，但 "会场感"、"面状响起的感觉" 仍然能充分体现。
 
-### 13.7 在其他 Viewer 中的行为
+### 15.7 在其他 Viewer 中的行为
 
 `[3dstream:...]` / `[3dstream-stereo:...]` 标签是 **AYAstorm 专属**。主线 Firestorm、官方 LL Viewer、Catznip 等其他 Viewer 完全忽略它们。
 
 - AYAstorm 用户: 按设计 3D 定位播放
 - 其他 Viewer 用户: 标签只作为说明文字的一部分显示，不出声 (与地块 BGM 独立运作，地块 BGM 已设置时仍可听到)
 
-### 13.8 同时上限
+### 15.8 同时上限
 
 | 上限 | 默认 |
 |---|---|
@@ -812,7 +1132,7 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 64 channel 量级处于 FMOD 余量内。需要更多请通过 debug settings 提高数值 (实机 CPU 负载确认必不可少)。
 
-### 13.9 音量合成
+### 15.9 音量合成
 
 最终音量 = `Stream3DVolumeMaster` × `{volume:N}` × FMOD 距离衰减 × Master Audio Slider × 各种静音状态。
 
@@ -820,7 +1140,7 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 ---
 
-## 14. 相关文档 / 内部规格书
+## 16. 相关文档 / 内部规格书
 
 本指南是 **面向使用者** 的格式参考。实现内部细节 (decode thread / FMOD 路径 / 环形 buffer / 关闭顺序等) 请参考下述规格书。
 
@@ -831,7 +1151,9 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 | `doc/spec_distributed_stereo.md` | r8 分散描述立体声规格 — `[3dstream-stereo:...]` 的 field 书式 |
 | `doc/spec_5_1ch_source.md` | r9 5.1ch 源接收规格 — Opus/FLAC 6ch decode 路径 + BS.775 下混 |
 | `doc/spec_5_1ch_placement.md` | r10 5.1ch 会场布置规格 — `ch=FL/FR/C/LFE/SL/SR` 扩展 + 兼容矩阵 |
-| `doc/spec_binaural_venue_reverb.md` | r11 (未发布) 双耳 + 会场混响规格 — 本指南只到 r10 为止 |
+| `doc/spec_binaural_venue_reverb.md` | r11 双耳 + 会场残响规格 (与 r12 一并发布) — 涵盖本指南 §7 |
+| `doc/spec_stereo_upmix.md` | r12 stereo→5.1 上混规格 — DPL2 + 4 步频段分离，涵盖本指南 §8 |
+| `docs/ayastorm-r12-stereo-upmix.md` | r12 phase 拆分 (P0–P11) 与验证设计 |
 | `docs/ayastorm-stream3d-roadmap.md` | 3D Stream 整体路线图 |
 
 ---
@@ -839,3 +1161,4 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 ## 修订历史
 
 - **2026-05-05 (初版)**: 作为 r10 时点的最终规格整理。汇总记述 r5 / r8 / r9 / r10 / r10.x 的累积规格。r11 及之后未发布所以不包含。
+- **2026-05-08 (r12)**: 加入 §4.5 (短形式)、§7 (双耳化 / 会场残响)、§8 (stereo→5.1 上混)。r11 与 r12 一并发布 (避免标签格式两阶段变更引起的混乱，r11 不单独发布)。后续章节改番 (§7–§14 → §9–§16)。§12.2 列出 r11/r12 听者侧 sentinel debug 设置；推流者主导模型保留 (一般用户无 Preferences UI)。

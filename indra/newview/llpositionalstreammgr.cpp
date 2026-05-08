@@ -267,6 +267,38 @@ LLPositionalStreamMgr::parseTag(const std::string& description)
     return data;
 }
 
+// r12 P9: short-name aliases for r11 reverb/binaural keys and venue values.
+// Object Description has a hard 127-byte cap (SL protocol). Long forms like
+// {binaural:on}{venue:hall_medium}{wetgain:1.5} eat 45 bytes alone; short
+// forms compress to 22 (saves 23 bytes, enough headroom for typical URLs).
+// Parser accepts both old and new; LSL writer emits short by default.
+namespace
+{
+    // venue value alias table: short token → canonical long name.
+    // Keep in sync with LLVenueReverbDsp::knownVenues() and the LSL setup
+    // script's VENUE_BUTTONS list.
+    static constexpr std::pair<std::string_view, std::string_view> kVenueAliases[] = {
+        {"d",  "dry"},
+        {"rs", "room_small"},
+        {"rm", "room_medium"},
+        {"hs", "hall_small"},
+        {"hm", "hall_medium"},
+        {"hl", "hall_large"},
+        {"cl", "club"},
+        {"ct", "cathedral"},
+        {"od", "outdoor"},
+    };
+
+    std::string resolveVenueAlias(const std::string& val)
+    {
+        for (const auto& [short_form, long_form] : kVenueAliases)
+        {
+            if (val == short_form) return std::string(long_form);
+        }
+        return val; // not an alias → pass through as-is
+    }
+}
+
 // static
 std::optional<LLPositionalStreamMgr::ChannelKind>
 LLPositionalStreamMgr::parseChannelKind(std::string_view s)
@@ -398,12 +430,13 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadVolume, val);
                 }
             }
-            else if (key == "binaural")
+            else if (key == "binaural" || key == "bin")
             {
                 // r11 P5: {binaural:on|off} (case-insensitive). Only
                 // meaningful on the root prim (= same prim as {url}); we
                 // still parse it on every prim so a malformed value
                 // surfaces a chat error regardless of where the typo is.
+                // r12 P9: short alias `bin` accepted for Desc 127-byte budget.
                 std::string lowered = val;
                 LLStringUtil::toLower(lowered);
                 if (lowered == "on" || lowered == "true" || lowered == "1")
@@ -419,7 +452,28 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadBinaural, val);
                 }
             }
-            else if (key == "venue")
+            else if (key == "upmix")
+            {
+                // r12 P5: {upmix:on|off} (case-insensitive). Same shape
+                // as binaural. Only meaningful on the root prim, but we
+                // still parse on every prim so a typo surfaces a chat
+                // error regardless of where it sits.
+                std::string lowered = val;
+                LLStringUtil::toLower(lowered);
+                if (lowered == "on" || lowered == "true" || lowered == "1")
+                {
+                    data.upmix = true;
+                }
+                else if (lowered == "off" || lowered == "false" || lowered == "0")
+                {
+                    data.upmix = false;
+                }
+                else
+                {
+                    setError(DistParseError::BadUpmix, val);
+                }
+            }
+            else if (key == "venue" || key == "v")
             {
                 // r11 P8: {venue:NAME}. Validated against the bundled
                 // catalog (LLVenueReverbDsp::knownVenues, includes "dry").
@@ -429,22 +483,26 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                 // separately and let evaluateLinkset notify on its own
                 // schedule, leaving data.venue at nullopt → effective
                 // resolves to "dry".
+                // r12 P9: short alias `v` accepted; venue value also
+                // accepts 2-char alias (hm, ct, ...) per kVenueAliases.
+                const std::string resolved = resolveVenueAlias(val);
                 const auto& known = LLVenueReverbDsp::knownVenues();
-                if (std::find(known.begin(), known.end(), val) != known.end())
+                if (std::find(known.begin(), known.end(), resolved) != known.end())
                 {
-                    data.venue = val;
+                    data.venue = resolved;
                 }
                 else
                 {
                     data.bad_venue_value = val;
                 }
             }
-            else if (key == "wetgain")
+            else if (key == "wetgain" || key == "wg")
             {
                 // r11 P9: {wetgain:N}. Spec §4.1 line 152 — F32 in
                 // [0.0, 2.0], values outside the range are clamped (not
                 // rejected). Non-numeric input is the only failure mode
                 // surfaced as BadWetGain.
+                // r12 P9: short alias `wg` accepted.
                 F32 f;
                 if (tryParseFloat(val, f))
                 {
@@ -599,6 +657,11 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         if (!detail.empty()) msg += " (got '" + detail + "')";
         msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{binaural:off}]";
         break;
+    case DistErrorKind::BadUpmix:
+        msg = "タグ書式エラー (prim " + id_short + "): upmix の値は on または off で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{upmix:on}]";
+        break;
     case DistErrorKind::BadVenue:
         msg = "タグ書式エラー (root " + id_short + "): venue の値が認識できません";
         if (!detail.empty()) msg += " (got '" + detail + "')";
@@ -628,6 +691,18 @@ bool LLPositionalStreamMgr::effectiveBinaural(std::optional<bool> tag_value)
     if (dbg == 0) return false;        // force OFF
     if (dbg >= 1) return true;         // force ON
     return tag_value.value_or(true);   // sentinel -1 → follow tag
+}
+
+// static
+bool LLPositionalStreamMgr::effectiveUpmix(std::optional<bool> tag_value)
+{
+    // r12 P5 / spec §6: same sentinel pattern as binaural, but tag default
+    // is OFF (opt-in) — listeners hear the publisher's stereo placement
+    // unchanged unless the publisher writes `{upmix:on}`.
+    const S32 dbg = gSavedSettings.getS32("Stream3DUpmix");
+    if (dbg == 0) return false;        // force OFF
+    if (dbg >= 1) return true;         // force ON
+    return tag_value.value_or(false);  // sentinel -1 → follow tag, default off
 }
 
 // static
@@ -778,6 +853,7 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         case DistParseError::BadVolume:   k = DistErrorKind::BadVolume;   break;
         case DistParseError::EmptyUrl:    k = DistErrorKind::EmptyUrl;    break;
         case DistParseError::BadBinaural: k = DistErrorKind::BadBinaural; break;
+        case DistParseError::BadUpmix:    k = DistErrorKind::BadUpmix;    break;
         case DistParseError::BadWetGain:  k = DistErrorKind::BadWetGain;  break;
         case DistParseError::Ok:          break; // unreachable
         }
@@ -871,6 +947,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // fingerprint comparison below can detect either kind of change.
     const std::optional<bool> binaural_tag = root_data.binaural;
     const bool binaural_effective = effectiveBinaural(binaural_tag);
+    // r12 P5: capture publisher's {upmix:on|off} tag and resolved
+    // effective the same way binaural does. Tag default is OFF (opt-in)
+    // so the legacy r5–r11 stereo placement is preserved when omitted.
+    const std::optional<bool> upmix_tag = root_data.upmix;
+    const bool upmix_effective = effectiveUpmix(upmix_tag);
     // r11 P8: capture the publisher's {venue:NAME} tag (parser-validated
     // against the catalog) and surface a parser-rejected value once via
     // chat. Children's bad_venue_value is intentionally not surfaced —
@@ -976,7 +1057,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
             // rebuild the FMOD stream so makeChannelForBinding() runs the
             // gate again. Comparing the resolved effective is sufficient
             // because effectiveBinaural() folds both inputs into one bool.
-            && old_b.binaural_effective_applied == binaural_effective)
+            && old_b.binaural_effective_applied == binaural_effective
+            // r12 P5: same fingerprint clause for {upmix:on|off}. Flipping
+            // the tag (or Stream3DUpmix sentinel) must rebuild so
+            // resolveReadOp re-emits OpKind::Upmix vs the r10 path.
+            && old_b.upmix_effective_applied == upmix_effective)
         {
             fingerprint_match = true;
             for (size_t i = 0; i < speakers.size(); ++i)
@@ -1003,6 +1088,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         // r11 P5: also refresh binaural_tag so a debug toggle later this
         // session that flips back to the sentinel still resolves correctly.
         old_it->second.binaural_tag = binaural_tag;
+        // r12 P5: same refresh for the upmix tag mirror.
+        old_it->second.upmix_tag = upmix_tag;
         // r11 P8: venue is engine-level (single bus DSP), so a tag-only
         // change doesn't rebuild the stream — just push the resolved name
         // to the DSP. applyVenueToBinding() is a no-op when the resolved
@@ -1033,6 +1120,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.range_default = range_default;
     binding.binaural_tag = binaural_tag;
     binding.binaural_effective_applied = binaural_effective;
+    binding.upmix_tag = upmix_tag;
+    binding.upmix_effective_applied = upmix_effective;
     binding.speakers = std::move(speakers);
     binding.dropped_speakers = dropped;
     // r11 P8: push venue selection before the stream comes up so the
@@ -1062,6 +1151,20 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // start time. Persists across the stream's reconnect cascade because
     // makeChannelForBinding() reads it on every channel bring-up.
     stream->setBinauralEnabled(binaural_effective);
+    // r12 P4: publisher's {upmix} intent for resolveReadOp's 2ch dispatch
+    // decision. binding.upmix_effective_applied stays false until the P5
+    // tag parser flips it; the explicit setter call is here so P5 only
+    // needs to update the value being read, not introduce new plumbing.
+    stream->setUpmixEnabled(binding.upmix_effective_applied);
+    // r12 P6: seed the live-tunable upmix knobs from settings before the
+    // FMOD callbacks start running, so the very first chunk is computed
+    // with the user's current values (not the helper's compile-time
+    // defaults). The per-poll push in update() picks up subsequent
+    // settings changes without rebuilding the stream.
+    stream->setUpmixTuning(
+        gSavedSettings.getF32("Stream3DUpmixLfeCutoff"),
+        gSavedSettings.getF32("Stream3DUpmixCenterBleed"),
+        gSavedSettings.getF32("Stream3DUpmixRearDelayMs"));
     // r11 P10: viewer-side URL pre-resolve gate. Sentinel default -1 =
     // enabled (libcurl follows HTTPS→HTTP cross-protocol redirects before
     // FMOD::createStream sees the URL); 0 = disabled (FMOD-only, r10
@@ -1126,8 +1229,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
     // r10 P5: structural change resets the diagnostic key so the next time
     // the rebuilt stream reaches Playing the diagnostic re-emits with the
-    // new (url, speaker_set, observed_channel_count) tuple.
+    // new (url, speaker_set, observed_channel_count) tuple. r12 P4: same
+    // treatment for the upmix auto-bypass notice — a rebuild is the only
+    // time we want to re-announce the fall-through.
     binding.last_diagnostic_key.clear();
+    binding.last_upmix_notice_key.clear();
 }
 
 void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
@@ -1252,6 +1358,32 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
         }
         notifyStream3D(line.str());
     }
+}
+
+void LLPositionalStreamMgr::emitUpmixAutoBypassNotice(DistributedStereoBinding& b)
+{
+    // Cheap-path early returns first — this is called every update tick
+    // for every binding that's reached Playing. Until P5 wires the tag
+    // parser the first guard alone short-circuits all of P4.
+    if (!b.upmix_effective_applied) return;
+    if (!b.stream || !b.stream->isPlaying()) return;
+    const int source_channels = b.stream->sourceChannels();
+    if (source_channels < 6) return;  // 1ch / 2ch get the dispatch they asked for
+
+    // Throttle key shape mirrors last_diagnostic_key (root#url#sch) plus
+    // a fixed "upmix-auto-bypass" tag. We don't fold upmix_effective_applied
+    // into the key because reaching this point already implies it's true;
+    // a fall back to false will come with a structural rebuild that clears
+    // the key in (re)buildDistributedBinding.
+    std::string key = b.root_id.asString() + "#" + b.url + "#"
+                      + std::to_string(source_channels) + "#upmix-auto-bypass";
+    if (b.last_upmix_notice_key == key) return;
+    b.last_upmix_notice_key = key;
+
+    std::ostringstream line;
+    line << "{upmix:on} requested but source is " << source_channels
+         << "ch native — keeping r10 placement (auto-bypass)";
+    notifyStream3D(line.str());
 }
 
 void LLPositionalStreamMgr::enqueuePriorityPoll(const LLUUID& id)
@@ -1823,6 +1955,13 @@ void LLPositionalStreamMgr::update()
         // Cheap on the no-op path — single key compare.
         emitRoutingDiagnostic(b);
 
+        // r12 P4: same idea for the upmix auto-bypass notice. Bails out
+        // immediately when the binding never asked for upmix (the common
+        // case), so the per-tick cost is one bool load. The first real
+        // caller appears in P5 once the tag parser sets
+        // upmix_effective_applied.
+        emitUpmixAutoBypassNotice(b);
+
         for (size_t i = 0; i < b.speakers.size(); ++i)
         {
             LLViewerObject* sp = gObjectList.findObject(b.speakers[i].prim_id);
@@ -1831,6 +1970,16 @@ void LLPositionalStreamMgr::update()
                 b.stream->setSpeakerPosition(i, toFloatVec(sp->getPositionGlobal()));
             }
         }
+        // r12 P6: push the live-tunable upmix knobs every poll so a debug-
+        // settings edit picks up at the next FMOD chunk boundary without a
+        // stream rebuild. setUpmixTuning is a lock-free atomic write
+        // (cheap), and the values only matter when this binding actually
+        // dispatches OpKind::Upmix — but unconditional push is simpler and
+        // costs three settings reads + three atomic stores per binding.
+        b.stream->setUpmixTuning(
+            gSavedSettings.getF32("Stream3DUpmixLfeCutoff"),
+            gSavedSettings.getF32("Stream3DUpmixCenterBleed"),
+            gSavedSettings.getF32("Stream3DUpmixRearDelayMs"));
         b.stream->update();
     }
     for (const auto& r : dead_roots)

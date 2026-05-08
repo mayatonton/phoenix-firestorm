@@ -26,6 +26,7 @@
 #define LL_POSITIONAL_STREAM_MULTI_H
 
 #include "llmultichanneldownmix.h"
+#include "llstereoupmix.h"
 #include "stdtypes.h"
 #include "v3math.h"
 
@@ -214,6 +215,31 @@ public:
     void setBinauralEnabled(bool on) { mBinauralEnabled = on; }
     bool isBinauralEnabled() const { return mBinauralEnabled; }
 
+    // r12 P4: enable/disable the 2ch→5.1 upmix dispatch (= the publisher's
+    // {upmix} tag combined with the debug Stream3DUpmix override, computed
+    // by the mgr via effectiveUpmix()). When ON and the source is 2ch,
+    // resolveReadOp() routes every per-speaker callback through
+    // OpKind::Upmix instead of the r10 Track / StereoSum path; when the
+    // source is ≥ 6ch the flag is honored as a request but ignored at
+    // dispatch time (auto-bypass — r10 native placement always wins,
+    // mgr-side fires a one-shot chat notice). Like setBinauralEnabled,
+    // mid-stream toggles are handled by the mgr rebuilding the stream
+    // entirely so resolveReadOp's per-speaker decision is only consulted
+    // at createUserSounds() time.
+    void setUpmixEnabled(bool on) { mUpmixEnabled = on; }
+    bool isUpmixEnabled() const { return mUpmixEnabled; }
+
+    // r12 P6: live-tunable knobs for the 2ch→5.1 upmix path. Pushed by
+    // the mgr each poll from Stream3DUpmixLfeCutoff /
+    // Stream3DUpmixCenterBleed / Stream3DUpmixRearDelayMs. Lock-free
+    // atomic write here, lock-free atomic read on the FMOD mixer thread
+    // (resolveReadOp's per-callback param refresh). The rear delay is
+    // split into per-speaker SL/SR taps by ±kRearDelayJitterMs at read
+    // time, not push time, so the jitter direction is implicit in the
+    // speaker's UpmixRole (SL gets +, SR gets −).
+    void setUpmixTuning(F32 lfe_cutoff_hz, F32 center_bleed,
+                        F32 rear_delay_base_ms);
+
     // r11 P10: viewer-side URL pre-resolve toggle. When enabled (default),
     // start() runs the source URL through LLStream3DUrlResolve before
     // calling FMOD::createStream so HTTPS→HTTP cross-protocol redirects
@@ -247,16 +273,37 @@ private:
             Track,     // direct read of mRing track[op_track]
             StereoSum, // (track0 + track1)/2 — ch:M/C on 2ch source
             Bs775,     // mix6chToMono(op_role) — ch:L/R/M on 6ch source
+            // r12 P2 + P4: 2ch source + effectiveUpmix() == on →
+            // DPL2-style matrix decode + band split (FL/FR/C/LFE/SL/SR
+            // per role). Parallel to Bs775: a 2-track raw read followed
+            // by a stateless transform with per-speaker state (LPF /
+            // delay) carried in upmix_state. resolveReadOp() emits this
+            // when mSourceChannels == 2 && mUpmixEnabled; the per-speaker
+            // role lives in op_role_upmix below.
+            Upmix,
         };
         OpKind op_kind = OpKind::Silent;
         int op_track = 0;
         LLMultichannelDownmix::MixRole op_role
             = LLMultichannelDownmix::MixRole::L;
 
-        // r10 P3: scratch for the 6ch raw-read → BS.775 mono path. Sized
-        // at createUserSounds() to kReaderChunkFrames × 6 floats when
-        // op_kind is Bs775; left empty otherwise. Only ever accessed by
-        // the FMOD mixer thread for this one speaker, so no
+        // r12 P2: per-speaker UpmixRole resolved from SpeakerConfig::ch.
+        // Only meaningful when op_kind == Upmix; otherwise ignored.
+        LLStereoUpmix::UpmixRole op_role_upmix
+            = LLStereoUpmix::UpmixRole::FL;
+
+        // r12 P2: per-speaker tuning + state for the Upmix op. params is
+        // populated at createUserSounds() (P4) from settings + per-speaker
+        // jitter; state holds the LPF taps (P3) and Ls/Rs delay line.
+        // Both stay zero-cost for non-Upmix speakers.
+        LLStereoUpmix::Params upmix_params;
+        LLStereoUpmix::State  upmix_state;
+
+        // r10 P3 (extended r12 P2): scratch for the raw-read → mono path.
+        // Sized at createUserSounds() to kReaderChunkFrames × 6 floats when
+        // op_kind is Bs775, kReaderChunkFrames × 2 floats when op_kind is
+        // Upmix; left empty for Track / StereoSum / Silent. Only ever
+        // accessed by the FMOD mixer thread for this one speaker, so no
         // synchronisation is needed.
         std::vector<F32> raw_scratch;
     };
@@ -301,8 +348,19 @@ private:
 
     // r10 P4: resolve §4.2 compat matrix into a SpeakerCallback::OpKind +
     // parameters for one speaker, given the current mSourceChannels and
-    // mDownmix. Called once per speaker at createUserSounds() time.
+    // mDownmix. r12 P4: also consults mUpmixEnabled to pick OpKind::Upmix
+    // over the r10 Track / StereoSum path on 2ch sources. Called once per
+    // speaker at createUserSounds() time.
     void resolveReadOp(SpeakerCallback& cb, Channel ch) const;
+
+    // r12 P4: map a Channel placement value to the LLStereoUpmix::UpmixRole
+    // the upmix dispatch should produce for it. Spec §4.3.6 table:
+    //   FL/FR/C/LFE/SL/SR → identity,
+    //   L → FL, R → FR, M → C
+    // (legacy r5–r9 ch values absorbed into the closest 5.1 role so a
+    // pre-r10 desc still gets 2-spk stereo when {upmix:on}). Static
+    // because no member data is consulted.
+    static LLStereoUpmix::UpmixRole mapChToUpmixRole(Channel ch);
 
     void startDecodeThread();
     void stopDecodeThread();
@@ -324,6 +382,13 @@ private:
     // frame to interleaved L/R via mDownmix before writing.
     LLMultichannelDownmix mDownmix;
 
+    // r12 P2: stateless 2ch→1ch upmix helper, the C 案 counterpart to
+    // mDownmix. The instance carries no per-stream data (per-speaker LPF /
+    // delay lives in SpeakerCallback::upmix_state); kept as a member only
+    // for call-site symmetry with mDownmix and so future codec-aware
+    // routing (e.g. Atmos) has a natural extension point.
+    LLStereoUpmix mUpmix;
+
     // Ring is sized at Opening→Buffering. r10: 1ch / 2ch sources use a
     // 2-track ring (mono is duplicated into both tracks at write time so
     // ch=L/R each see the full signal); 6ch sources use a 6-track ring with
@@ -341,6 +406,20 @@ private:
     // by the mgr via setBinauralEnabled(); the mixer thread never reads
     // this — gating happens at channel bring-up on the main thread.
     bool mBinauralEnabled = false;
+    // r12 P4: publisher's {upmix} intent (after debug override / auto-
+    // bypass on >= 6ch source). Owned by the mgr via setUpmixEnabled();
+    // resolveReadOp consults it once per speaker at createUserSounds()
+    // and the mixer thread never looks at it again.
+    bool mUpmixEnabled = false;
+
+    // r12 P6: live snapshot of the 3 Stream3DUpmix* tuning settings.
+    // Defaults match settings.xml so the very first FMOD callback already
+    // sees correct values even if setUpmixTuning() hasn't been called yet
+    // (atomic ctor doesn't take initializers in C++17, so the .cpp
+    // constructor seeds them).
+    std::atomic<F32> mUpmixLfeCutoffHz;
+    std::atomic<F32> mUpmixCenterBleed;
+    std::atomic<F32> mUpmixRearDelayBaseMs;
     // r11 P10: viewer-side URL pre-resolve gate. Default true so a caller
     // that forgets to call the setter still gets the redirect-following
     // behavior (matches the settings.xml sentinel default of "enabled").
@@ -409,6 +488,12 @@ private:
     // prebuffer warmup; emit the rolling counter every 10s thereafter.
     static constexpr F64 kUnderrunWarmupSec  = 1.0;
     static constexpr F64 kUnderrunLogPeriod  = 10.0;
+    // r12 P6: fixed L/R jitter applied around mUpmixRearDelayBaseMs to
+    // produce SL = base + jitter, SR = base − jitter. Per spec §4.3.4 /
+    // §4.4 the jitter is intentionally non-tunable (the user-visible knob
+    // is the base only); kept compile-time constant so the per-callback
+    // path doesn't pay an extra atomic load.
+    static constexpr F32 kRearDelayJitterMs  = 2.0f;
 };
 
 #endif // LL_POSITIONAL_STREAM_MULTI_H
