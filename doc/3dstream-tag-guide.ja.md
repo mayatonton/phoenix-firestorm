@@ -132,17 +132,18 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 
 LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。日本語を含む場合は UTF-8 換算でこれを超えやすいので、**長い URL は短縮する** か、ルートに音源宣言だけ書いて子プリムに `{ch:...}` だけ書く分散方式 (§6) でやりくりします。**頻出キー名と venue 値には短縮形** が用意されています (§4.5)。
 
-### 4.5 キー名・venue 値の短縮形 (r12)
+### 4.5 キー名・venue 値の短縮形 (r12 / r12.1)
 
-`[3dstream-stereo:...]` で使う **キー名のうち頻出 3 つ** と **`venue` の値 9 種** には r12 から **短縮エイリアス**を用意しています。SL の Description 127 byte 上限 (§4.4) に収めやすくするためのもので、長形式と短縮形は **完全等価** です (内部で同じ正規形に解決)。新規記述・既存記述どちらの形式で書いても動作は同じです。
+`[3dstream-stereo:...]` で使う **キー名のうち頻出 4 つ** と **`venue` の値 9 種** には r12 から **短縮エイリアス**を用意しています。SL の Description 127 byte 上限 (§4.4) に収めやすくするためのもので、長形式と短縮形は **完全等価** です (内部で同じ正規形に解決)。新規記述・既存記述どちらの形式で書いても動作は同じです。
 
-#### キー名の短縮 (3 件)
+#### キー名の短縮 (4 件)
 
 | 長形式 (canonical) | 短縮形 | 機能 (詳細) |
 |---|---|---|
 | `binaural` | `bin` | バイノーラル ON/OFF (§7.1) |
 | `venue` | `v` | 会場残響プリセット (§7.2) |
 | `wetgain` | `wg` | 残響ウェット成分の強さ (§7.3) |
+| `lfegain` | `lg` | LFE チャンネルゲイン倍率 (§7.4、r12.1 追加) |
 
 その他のキー (`url` / `ch` / `range` / `volume` / `min` / `max` / `upmix`) には短縮形はありません (元々短い、または使用頻度低)。
 
@@ -291,7 +292,8 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 | `range` | 任意 | F32 (m) | `Stream3DRolloffMax` (20.0) | リンクセット内のスピーカーが個別に `range` を持たないときの既定減衰距離 |
 | `binaural` | 任意 | bool | `off` | バイノーラル ON/OFF (詳細 §7.1)。短縮形 `bin` |
 | `venue` | 任意 | 列挙値 | `dry` | 会場残響プリセット 9 種 (詳細 §7.2)。短縮形 `v` |
-| `wetgain` | 任意 | F32 [0.0〜2.0] | `1.0` | 残響ウェット成分の倍率 (詳細 §7.3)。短縮形 `wg` |
+| `wetgain` | 任意 | F32 [0.0〜2.0] | `0.2` | 残響ウェット成分の倍率 (詳細 §7.3)。短縮形 `wg` |
+| `lfegain` | 任意 | F32 [0.0〜4.0] | `1.0` | LFE チャンネルゲイン倍率 (詳細 §7.4、r12.1 追加)。短縮形 `lg` |
 | `upmix` | 任意 | bool | `off` | stereo→5.1 アップミックス (詳細 §8)。短縮形なし |
 
 #### 6.3.2 スピーカー宣言キー (任意のプリム)
@@ -399,9 +401,10 @@ r10 までの 3D Stream は「dry な素材を多点配置で空間に置く」�
 |---|---|---|---|
 | `binaural` | `bin` | `on` | lite-HRTF (ITD + air absorption) によるヘッドホン定位強化 |
 | `venue` | `v` | `dry` | 9 種の会場残響プリセット (convolution reverb) |
-| `wetgain` | `wg` | `1.0` | 残響ウェット成分の倍率 (0.0〜2.0) |
+| `wetgain` | `wg` | `0.2` | 残響ウェット成分の倍率 (0.0〜2.0、音楽的レンジ 0.1〜0.5) |
+| `lfegain` | `lg` | `1.0` | LFE チャンネルのゲイン倍率 (0.0〜4.0、r12.1 追加) |
 
-**いずれも root プリムにのみ書きます** (子プリムに書いても無視)。listener 側 UI には現れません ─ **配信者がタグで決めたものをそのまま聴く** モデルです (§7.4)。
+**いずれも root プリムにのみ書きます** (子プリムに書いても無視)。listener 側 UI には現れません ─ **配信者がタグで決めたものをそのまま聴く** モデルです (§7.5)。
 
 ### 7.1 `{binaural:on|off}` (短縮形 `bin`)
 
@@ -461,22 +464,51 @@ venue 残響の **ウェット成分** (= reverb 出力) の倍率です。dry s
 | 値 | 効果 |
 |---|---|
 | `0.0` | 完全 dry (= venue=dry と同等。ただし DSP は挿入されたまま) |
-| `0.5` | wet が dry の半分のレベル (薄め) |
-| **`1.0` (既定)** | wet が dry と同じレベル (標準濃度) |
-| `1.5` | wet が dry の 1.5 倍 (濃いめ) |
+| `0.1` | wet ごく薄め |
+| **`0.2` (既定)** | wet 控えめ (音楽的に違和感の出ない標準) |
+| `0.3〜0.5` | wet 中庸〜やや濃いめ (musical range の上限目安) |
+| `1.0` 以上 | wet が dry と同等以上の濃度 (実用上はリバーブが過剰になりやすい) |
 | `2.0` | wet 2 倍 (上限) |
 
 #### 設計上のポイント
 
-各 venue の IR は **unity-gain 正規化** されているため、`{wg:1.0}` は venue を切り替えても **「wet と dry の比」が一定** に保たれます。`room_small` も `cathedral` も `wg:1.0` で同じ「dry/wet バランス」になります (cathedral だけ wet が爆音にならない)。
+各 venue の IR は **unity-gain 正規化** されているため、`{wg:0.2}` は venue を切り替えても **「wet と dry の比」が一定** に保たれます。`room_small` も `cathedral` も `wg:0.2` で同じ「dry/wet バランス」になります (cathedral だけ wet が爆音にならない)。
+
+> **既定値の根拠 (r12.1 で 1.0 → 0.2 に変更)**: 実装当初の `1.0` は「wet と dry が同レベル」を意味するため、ホール / カテドラルでは原音が飽和してしまい、配信用途として実用域から外れていました。実 listening で **音楽的に使えるレンジは 0.1〜0.5** であることが確認されたため、r12.1 で既定値を `0.2` に下げています。LSL UI のクイック選択も `0.1`〜`0.5` の細かい刻みに揃えています。
 
 #### `{venue:dry}` のとき
 
 `venue` が `dry` のときは reverb DSP が **完全 bypass** されるため、`wetgain` は **無視** されます。
 
-### 7.4 配信者主導モデル
+### 7.4 `{lfegain:N}` (短縮形 `lg`、r12.1 追加)
 
-これら 3 キーは **root prim Description が真実 (root truth)** ─ 一般 listener の Preferences / Debug Settings には対応 UI がありません。
+`{ch:LFE}` 経路、および `{upmix:on}` 時の **LFE 帯域** に対するゲイン倍率です。dry/wet とは独立に LFE のみを増減させます。
+
+| 値 | 効果 |
+|---|---|
+| `0.0` | LFE 完全ミュート (LFE プリムから何も出ない / upmix 時は低域強調 OFF) |
+| `0.5` | LFE 半減 |
+| **`1.0` (既定)** | 素材ままのレベル (r12 互換動作) |
+| `2.0` | LFE 2 倍 (低域を強調したい配置で常用域) |
+| `4.0` | LFE 4 倍 (上限、低域 PA 想定) |
+
+#### 想定用途
+
+- **5.1 native 配信** (`{ch:LFE}` プリムを置く配置) で、配信側の LFE バスが控えめに収録されている素材を viewer 側で持ち上げる
+- **`{upmix:on}` でステレオ → 5.1 展開** したとき、80 Hz LPF を通った成分が物足りない場合に強調する
+- 逆に LFE プリムをサブウーファー筐体ではなく汎用スピーカーに割り当てる配置で、`0` にして低域漏れを止める
+
+#### `{ch:LFE}` プリムが無い / upmix off のとき
+
+LFE 経路自体が動作しないため、`lfegain` は **意味を持ちません** (記述しても無視)。
+
+#### listener 側 sentinel
+
+debug settings `Stream3DLfeGain` (sentinel `-1.0` = タグ通り、それ以外 `0.0〜4.0` で強制上書き) も r12.1 で追加しています (詳細 §12.2)。配信者主導モデルの例外救済枠で、一般 listener UI には載せていません。
+
+### 7.5 配信者主導モデル
+
+これら 4 キー (`binaural` / `venue` / `wetgain` / `lfegain`) は **root prim Description が真実 (root truth)** ─ 一般 listener の Preferences / Debug Settings には対応 UI がありません。
 
 #### なぜ listener UI を提供しないのか
 
@@ -485,9 +517,9 @@ venue 残響の **ウェット成分** (= reverb 出力) の倍率です。dry s
 
 #### 例外: スピーカー視聴で binaural を切りたい個人
 
-ヘッドホンではなくスピーカーで視聴している listener が、`{binaural:on}` 配信を聴くと ITD が逆効果になる場合があります。この **救済目的** に限り Debug Settings に sentinel 1 件 ─ `Stream3DBinauralRender = 0` で listener 側強制 OFF できます (詳細 §12.2)。同様に `Stream3DVenueOverride` (空文字 = タグ通り、`"dry"` で全 reverb 強制 OFF) と `Stream3DVenueWetGain` (sentinel `-1.0` = タグ通り) も用意されていますが、いずれも一般利用者向け UI には載せていません。
+ヘッドホンではなくスピーカーで視聴している listener が、`{binaural:on}` 配信を聴くと ITD が逆効果になる場合があります。この **救済目的** に限り Debug Settings に sentinel 1 件 ─ `Stream3DBinauralRender = 0` で listener 側強制 OFF できます (詳細 §12.2)。同様に `Stream3DVenueOverride` (空文字 = タグ通り、`"dry"` で全 reverb 強制 OFF) / `Stream3DVenueWetGain` (sentinel `-1.0` = タグ通り) / `Stream3DLfeGain` (sentinel `-1.0` = タグ通り、r12.1) も用意されていますが、いずれも一般利用者向け UI には載せていません。
 
-### 7.5 組合せ例
+### 7.6 組合せ例
 
 #### 何も書かない (= 既定)
 
@@ -912,17 +944,20 @@ Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `py
 
 #### r11/r12 配信者主導モデル: listener 側 sentinel (一般 UI なし)
 
-§7.4 / §8.4 で説明したとおり、`binaural` / `venue` / `wetgain` / `upmix` は **配信者タグが真実**で、Preferences には UI を出していません。ただし救済目的に限り debug settings に sentinel を用意しています。一般 listener は触らないでください。
+§7.5 / §8.4 で説明したとおり、`binaural` / `venue` / `wetgain` / `lfegain` / `upmix` は **配信者タグが真実**で、Preferences には UI を出していません。ただし救済目的に限り debug settings に sentinel を用意しています。一般 listener は触らないでください。
 
 | 設定キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
-| `Stream3DBinauralRender` | S32 | `-1` (sentinel = タグ通り) | `0` で listener 側強制 OFF / `1` で強制 ON。スピーカー視聴で `{binaural:on}` 配信を聴くときの救済用 (詳細 §7.4 例外節) |
+| `Stream3DBinauralRender` | S32 | `-1` (sentinel = タグ通り) | `0` で listener 側強制 OFF / `1` で強制 ON。スピーカー視聴で `{binaural:on}` 配信を聴くときの救済用 (詳細 §7.5 例外節) |
 | `Stream3DVenueOverride` | 文字列 | `""` (sentinel = タグ通り) | `"dry"` 等の venue 名を入れると全配信を強制その venue で聴く (`"dry"` で全 reverb 強制 OFF が代表用途) |
 | `Stream3DVenueWetGain` | F32 | `-1.0` (sentinel = タグ通り) | `0.0〜2.0` の値で wet gain を強制上書き |
+| `Stream3DLfeGain` | F32 | `-1.0` (sentinel = タグ通り) | `0.0〜4.0` の値で LFE gain を強制上書き (r12.1 追加、詳細 §7.4) |
 | `Stream3DUpmix` | S32 | `-1` (sentinel = タグ通り) | `0` でタグ無視・強制 OFF / `1` で強制 ON。5.1 native の auto bypass は常に効く (詳細 §8.1 / §8.3) |
 | `Stream3DUpmixLfeCutoff` | F32 (Hz) | `80.0` | upmix DSP の LFE LPF cutoff (20〜200)。詳細 §8.4 |
 | `Stream3DUpmixCenterBleed` | F32 | `1.0` | upmix DSP の center bleed 除去率 (0.0〜1.0)。詳細 §8.4 |
 | `Stream3DUpmixRearDelayMs` | F32 (ms) | `16.0` | upmix DSP の rear decorrelation delay (0〜32)。詳細 §8.4 |
+
+> **r12.1 のライブチューニング修正**: r12 リリース時、上表の `Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` を変更しても、対象プリムに **タッチ (Description 再パース) するまで反映されない** 不具合がありました。r12.1 でポーリングループ側に push を追加し、値を変更した次フレームから即時反映されるよう修正しています (§12.3)。
 
 #### Debug 専用 (動作確認用)
 
@@ -938,6 +973,8 @@ Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `py
 
 - `Stream3DEnabled` を `false` → `true` に切替: 自動で再 bind されません。次の poll cycle (既定 30 秒以内) で再発見されます。
 - `Stream3DDescriptionScan` を切替: 即時に全 binding 解除 / 再発見の挙動。
+
+> **r12.1 で修正**: r12 リリース時、`Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` の各設定は、値変更後に **対象プリムを一度タッチ (Description 再パース) するまで反映されない** 仕様回帰がありました。r12.1 で `LLPositionalStreamMgr::update()` のポーリングループに per-poll push を追加し、これらも他の設定同様に「次フレーム反映」になっています。
 
 ---
 
@@ -1175,3 +1212,4 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 
 - **2026-05-05 (初版)**: r10 時点の最終仕様として整備。r5 / r8 / r9 / r10 / r10.x の累積仕様をまとめて記述。r11 以降は未リリースのため対象外。
 - **2026-05-08 (r12 改訂)**: r11 (バイノーラル / 会場残響 / wetgain) と r12 (stereo→5.1 upmix / タグ短縮形 `bin`/`v`/`wg` + venue 値短縮) を追記。r11 は独立リリースせず r12 に同梱配布する方針のため、ユーザー向けには r10 → r12 の 1 ジャンプとなる。§7 / §8 / §4.5 を新設、章番号 §7-§14 を §9-§16 に繰り下げ。
+- **2026-05-09 (r12.1 改訂)**: `{lfegain:N}` キー (短縮形 `lg`) を §7.4 として新設、旧 §7.4 配信者主導モデルを §7.5、旧 §7.5 組合せ例を §7.6 に繰り下げ。`wetgain` の既定値を `1.0` → `0.2` に変更 (実 listening での音楽的レンジ 0.1〜0.5 反映)。§12.2 に `Stream3DLfeGain` sentinel 追加。§12.2 / §12.3 にライブチューニング修正の注記を追加 (r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった回帰を修正)。
