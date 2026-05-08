@@ -2,7 +2,7 @@
 
 > Tag format reference for AYAstorm's **3D Stream** feature, which plays HTTP audio streams as 3D-positional audio from prims.
 >
-> This document reflects the final specification as of AYAstorm `r10`. It will be updated as features are added in r11 / r12 and beyond.
+> This document reflects the final specification as of AYAstorm `r12`. It includes the features added in r12: binaural / venue reverb / stereo→5.1 upmix / tag short-forms.
 
 ---
 
@@ -14,14 +14,16 @@
 4. [Tag Overview](#4-tag-overview)
 5. [Mono Tag `[3dstream:...]`](#5-mono-tag-3dstream)
 6. [Distributed Stereo / Venue Placement Tag `[3dstream-stereo:...]`](#6-distributed-stereo--venue-placement-tag-3dstream-stereo)
-7. [`ch` (Channel) Value Reference](#7-ch-channel-value-reference)
-8. [Source Channel Count × Tag Value Compatibility Matrix](#8-source-channel-count--tag-value-compatibility-matrix)
-9. [Streaming Side (Building Source URLs)](#9-streaming-side-building-source-urls)
-10. [Viewer-side Settings](#10-viewer-side-settings)
-11. [Error Notifications / Diagnostics](#11-error-notifications--diagnostics)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Known Limitations / Specification Notes](#13-known-limitations--specification-notes)
-14. [Related Documents / Internal Specifications](#14-related-documents--internal-specifications)
+7. [Binaural / Venue Reverb (r12)](#7-binaural--venue-reverb-r12)
+8. [stereo→5.1 upmix (r12)](#8-stereo51-upmix-r12)
+9. [`ch` (Channel) Value Reference](#9-ch-channel-value-reference)
+10. [Source Channel Count × Tag Value Compatibility Matrix](#10-source-channel-count--tag-value-compatibility-matrix)
+11. [Streaming Side (Building Source URLs)](#11-streaming-side-building-source-urls)
+12. [Viewer-side Settings](#12-viewer-side-settings)
+13. [Error Notifications / Diagnostics](#13-error-notifications--diagnostics)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Known Limitations / Specification Notes](#15-known-limitations--specification-notes)
+16. [Related Documents / Internal Specifications](#16-related-documents--internal-specifications)
 
 ---
 
@@ -128,9 +130,61 @@ Both tags also accept legacy prefixes (`[ayastream:...]` / `[ayastream-stereo:..
 
 ### 4.4 SL Description limit (127 bytes)
 
-The Description writable via LSL `llSetObjectDesc` has a **127-byte limit**. UTF-8 multibyte characters (e.g., Japanese) consume this quickly, so for long URLs either **shorten the URL** or use the distributed pattern (write `{url}` only on the root and `{ch:...}` only on child prims; see §6).
+The Description writable via LSL `llSetObjectDesc` has a **127-byte limit**. UTF-8 multibyte characters (e.g., Japanese) consume this quickly, so for long URLs either **shorten the URL** or use the distributed pattern (write `{url}` only on the root and `{ch:...}` only on child prims; see §6). **Short-forms are available for frequent keys and venue values** (see §4.5).
 
-### 4.5 Tag activation timing
+### 4.5 Short-forms for key names / venue values (r12)
+
+For `[3dstream-stereo:...]`, **3 frequent keys** and **all 9 `venue` values** have **short-form aliases** introduced in r12. They make the Description fit comfortably under SL's 127-byte limit (§4.4). Long-form and short-form are **fully equivalent** (resolved to the same canonical form internally). New tags and existing tags can use either form, and behavior is identical.
+
+#### Key short-forms
+
+| Long form | Short form | Meaning |
+|---|---|---|
+| `binaural` | `bin` | Binaural ON/OFF (§7.1) |
+| `venue` | `v` | Venue reverb preset (§7.2) |
+| `wetgain` | `wg` | Reverb wet level (§7.3) |
+
+Other keys (`url`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) are already short, so no aliases are added.
+
+#### `venue` value short-forms
+
+| Long form | Short form | RT60 (approx.) |
+|---|---|---|
+| `dry` | `d` | — (no reverb) |
+| `room_small` | `rs` | 0.3 s |
+| `room_medium` | `rm` | 0.6 s |
+| `hall_small` | `hs` | 1.0 s |
+| `hall_medium` | `hm` | 1.5 s |
+| `hall_large` | `hl` | 2.0 s |
+| `club` | `cl` | 0.8 s |
+| `cathedral` | `ct` | 3.0 s |
+| `outdoor` | `od` | 0.2 s |
+
+#### Byte count example
+
+Long form (133 bytes — over the 127-byte limit):
+
+```
+[3dstream-stereo:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{binaural:on}{venue:hall_medium}{wetgain:1.2}]
+```
+
+Short form (110 bytes — fits, 23 bytes saved):
+
+```
+[3dstream-stereo:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{bin:on}{v:hm}{wg:1.2}]
+```
+
+#### LSL helper behavior
+
+The bundled LSL `aya_3dstream_setup.lsl` (see §16) **accepts both forms on input** and **always writes short-form on output (Description writes)**. Descriptions configured via the LSL dialog are automatically converted to short-form.
+
+#### Notes
+
+- Key names are **case-insensitive** (per §4.3 common rule). `{BIN:on}`, `{bin:on}`, and `{binaural:on}` are all equivalent.
+- If both forms are written in the same tag (e.g., `{binaural:on}{bin:off}`), only the **first occurrence** is used (§4.3 common rule).
+- The route diagnostic chat output and error messages always use **canonical (long) names** to keep the wording stable.
+
+### 4.6 Tag activation timing
 
 - AYAstorm **polls in-range prim Descriptions every 30 seconds** (`Stream3DPollInterval` setting).
 - When you modify Description via LSL `llSetObjectDesc`, the next poll re-evaluates and applies the change (typically within 5–30 seconds).
@@ -224,7 +278,7 @@ Each prim takes on a role based on its tag fields:
 | Contains both (= root only) | Source declaration + also acts as speaker |
 | Contains neither | Does nothing (not part of the binding) |
 
-Playback only starts when the linkset has both **a source declaration (root with `{url}`)** and **at least one speaker (a prim with `{ch}`)**. If there are zero speakers, a "structural error" is raised and a notification is shown (§11).
+Playback only starts when the linkset has both **a source declaration (root with `{url}`)** and **at least one speaker (a prim with `{ch}`)**. If there are zero speakers, a "structural error" is raised and a notification is shown (§13).
 
 ### 6.3 Key reference
 
@@ -234,12 +288,16 @@ Playback only starts when the linkset has both **a source declaration (root with
 |---|---|---|---|---|
 | `url` | **required** | string | — | Stream URL. Empty string is an error |
 | `range` | optional | F32 (m) | `Stream3DRolloffMax` (20.0) | Default rolloff distance for speakers in the linkset that don't have their own `range` |
+| `binaural` | optional | bool | `off` | Binaural ON/OFF (details §7.1). Short-form `bin` |
+| `venue` | optional | enum | `dry` | Venue reverb preset, 9 values (details §7.2). Short-form `v` |
+| `wetgain` | optional | F32 [0.0–2.0] | `1.0` | Reverb wet-component gain (details §7.3). Short-form `wg` |
+| `upmix` | optional | bool | `off` | stereo→5.1 upmix (details §8). No short-form |
 
 #### 6.3.2 Speaker declaration keys (any prim)
 
 | Key | Required | Type | Default | Meaning |
 |---|---|---|---|---|
-| `ch` | **required** | enum | — | Channel this prim handles (see §7) |
+| `ch` | **required** | enum | — | Channel this prim handles (see §9) |
 | `range` | optional | F32 (m) | Falls back: speaker `range` → root `range` → `Stream3DRolloffMax` | Per-speaker rolloff distance |
 | `volume` | optional | F32 [0.0–1.0] | 1.0 | Per-speaker volume multiplier |
 
@@ -283,7 +341,7 @@ Child #4 Description:
 - Root only declares the source; it does not play (no `{ch}`)
 - Children #1, #2 carry L/R at 50m range, full volume
 - Children #3, #4 carry the same L/R at 70% volume (front-row support speakers)
-- The speaker count is capped at `Stream3DStereoMaxSpeakers` (**default 16**, see §10)
+- The speaker count is capped at `Stream3DStereoMaxSpeakers` (**default 16**, see §12)
 
 ### 6.6 5.1ch venue placement (6 prims)
 
@@ -332,7 +390,254 @@ The link order (link number 1, 2, 3, ...) of root vs children **does NOT affect 
 
 ---
 
-## 7. `ch` (Channel) Value Reference
+## 7. Binaural / Venue Reverb (r12)
+
+> Three new keys (`binaural` / `venue` / `wetgain`) are added in r12. They apply uniformly to all speakers in the linkset, are meaningful only on the root prim, and produce a more natural sense of "live venue / hall" on top of the existing 3D positional rendering.
+
+#### Why root-only?
+
+These keys describe the **broadcaster's intent for that performance** — "this content is mixed for a hall" / "today's broadcast is binaural" — so they are decided once at the source, not per-speaker. **All three are root-only** (writing them on a child prim is silently ignored). They are NOT exposed in any listener-side UI ─ listeners hear what the broadcaster decided via the tag (§7.4).
+
+### 7.1 `{binaural:on|off}` (short-form `bin`)
+
+Applies a **lite binaural HRTF** to each speaker. With headphones, this enhances localization (front/back / above/below disambiguation).
+
+| Value | Meaning |
+|---|---|
+| `on` | Apply lite binaural HRTF (recommended for headphone listeners) |
+| `off` | Bypass HRTF (vanilla 3D positioning only) |
+
+Default: `off`.
+
+#### What "lite binaural" does
+
+- ITD (interaural time difference) per Woodworth-Schlosberg formula — ear-to-ear arrival-time delay
+- HF rolloff per air absorption (−0.5 dB/m, capped at −25 dB) — high-frequency dimming for far sources
+- **No** ILD (interaural level difference), **no** spectral cone-of-confusion correction (those are r13+ SOFA territory)
+
+In short, it's a low-cost HRTF using ITD-based spatialization plus distance-based HF rolloff. CPU overhead per speaker: ~+0.4 percentage points (measured on r10 reference hardware).
+
+#### When to use
+
+- **Headphone listeners** = `on`. Spatial cues are much clearer than vanilla 3D.
+- **Speaker listeners** = either is fine. ITD on speakers can occasionally feel reversed (mixed for ears, not loudspeakers); see "Exception" in §7.4 for the listener-side rescue.
+- **Already-binaural source material** (broadcasting a pre-mixed binaural track) = `off` to avoid double-processing.
+
+### 7.2 `{venue:NAME}` (short-form `v`)
+
+Selects one of 9 **venue reverb presets**. Each preset has fixed RT60, EQ, early-reflection pattern, and CPU cost — pick the one that fits the venue.
+
+| Long form | Short form | RT60 | Use case | CPU (incremental) |
+|---|---|---|---|---|
+| `dry` | `d` | — | No reverb (= r10 behavior) | 0 (no DSP) |
+| `room_small` | `rs` | 0.3 s | Small studio, bedroom | +0.1 pp |
+| `room_medium` | `rm` | 0.6 s | Medium studio, talk show | +0.1 pp |
+| `hall_small` | `hs` | 1.0 s | Live house, small theater | +0.5 pp |
+| `hall_medium` | `hm` | 1.5 s | Concert hall, ballroom | +7.7 pp |
+| `hall_large` | `hl` | 2.0 s | Large hall, opera house | +9.6 pp |
+| `club` | `cl` | 0.8 s | Dance club, dense early reflections | +0.4 pp |
+| `cathedral` | `ct` | 3.0 s | Cathedral, long ambient tail | +10.2 pp |
+| `outdoor` | `od` | 0.2 s | Outdoor, very light early reflections only | +0.1 pp |
+
+Default: `dry`.
+
+#### CPU note
+
+`hall_medium` / `hall_large` / `cathedral` (long-tail venues) consume noticeably more CPU than `dry` / `room_*`. Choose based on the venue feel you need — e.g., a live house can use `hall_small` or `club` rather than `hall_large`. The "incremental" column is per-binding overhead (not per-speaker × N); details in `doc/spec_binaural_venue_reverb.md`.
+
+### 7.3 `{wetgain:N}` (short-form `wg`)
+
+Multiplier on the **wet (reverb) component**. Range: 0.0–2.0. Default: 1.0.
+
+| Value | Effect |
+|---|---|
+| `0.0` | Full dry (= same as `venue:dry` regardless of preset) |
+| `0.8` | Wet at 80% — useful for long-tail venues to keep source clarity |
+| `1.0` | Standard (default) |
+| `1.2` | Wet at 120% — more atmosphere, less dry punch |
+| `2.0` | Wet at 200% — heavily-drowned ambient feel (rarely useful) |
+
+The dry component is fixed at 1.0; only wet is scaled by `wetgain`. To go fully dry, use `{venue:dry}` (equivalent to `{wetgain:0.0}` but spec-clean).
+
+### 7.4 Broadcaster-driven model
+
+These three keys are **root-prim-Description-as-truth (root truth)** — there is **no Preferences / Debug Settings UI for general listeners**.
+
+#### Why no listener UI?
+
+- If broadcasters decide "this venue is hall, binaural ON" but listeners freely override the values, you get the situation where "the same broadcast sounds different depending on who's listening" — ambiguity in the artistic intent.
+- The AYAstorm policy (per `r5 naming consistency` / `r11 broadcaster-driven model`) is **"do not increase expressive ambiguity"**. Adding more tuning axes erodes operational consistency.
+
+#### Exception: listener-side rescue for speaker viewing
+
+A listener using **speakers, not headphones**, may find ITD counterproductive when listening to a `{binaural:on}` broadcast. For this **rescue purpose only**, one sentinel debug setting is provided ─ `Stream3DBinauralRender = 0` to force OFF on the listener side (details §12.2). Similarly `Stream3DVenueOverride` (empty = follow tag, `"dry"` to force all reverb OFF) and `Stream3DVenueWetGain` (sentinel `-1.0` = follow tag) are also provided. None of these are exposed in general-user UI.
+
+### 7.5 Combination examples
+
+#### Nothing written (= default)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}]
+```
+→ Equivalent to `{bin:on}{v:d}{wg:1.0}`. Lite-HRTF applies but no reverb (r10 + localization boost).
+
+#### Live house (PA-oriented, beat-driven music)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:cl}{wg:1.0}]
+```
+→ club preset, dense reflections, dry/wet at parity.
+
+#### Large hall (orchestra)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:hl}{wg:0.8}]
+```
+→ hall_large, wet pulled down to 0.8× (the long hall reverb leaves source clarity).
+
+#### Cathedral (ambient / environmental)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:ct}{wg:0.6}]
+```
+→ cathedral, wet at 0.6× (RT60 ~3 s is long, so don't make it too thick).
+
+#### Outdoor (environment / strolling BGM)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:od}{wg:1.0}]
+```
+→ outdoor, light early reflections only — open-air feel.
+
+#### Already-binaural material (avoid double processing)
+
+```
+[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:off}{v:d}]
+```
+→ binaural OFF, no reverb (= r10 baseline behavior).
+
+---
+
+## 8. stereo→5.1 upmix (r12)
+
+> r12 adds **stereo-to-5.1 upmix** as an in-viewer DSP. It expands a 2-channel source to 6 channels (FL / FR / C / LFE / SL / SR) so that 5.1 placement (§6.6) can be used even when the broadcast is plain stereo.
+
+This is the largest single addition in r12. Because most SL streaming software (butt / Mixxx / OBS / SAM, etc.) is stereo-only and 5.1-native broadcasting is rare, **without upmix the 6-speaker placement built in r10 was effectively only experienceable with 5.1-native broadcasts**. r12 closes that gap from the viewer side.
+
+### 8.1 `{upmix:on|off}` (no short-form)
+
+Whether to upmix a stereo source into 5.1.
+
+| Value | Meaning |
+|---|---|
+| `on` | Upmix stereo → 6 ch via DPL2-family matrix decode + band separation |
+| `off` | No upmix (= r10 behavior — stereo plays as L/R only) |
+
+Default: `off`. The broadcaster opts in.
+
+#### Why opt-in (default off)?
+
+- Stereo material was originally mixed for stereo. Upmix is interpretation, not reproduction.
+- If listeners with 6-prim placement decide independently whether to upmix, "the same broadcast sounds different per listener" — same ambiguity issue as §7.4.
+- So the broadcaster decides via tag. r10 behavior is preserved by default.
+
+### 8.2 Algorithm (DPL2-family matrix decode + band separation)
+
+The internal algorithm is fixed (NG1 — no algorithm choice, no "Logic 7 / SRS / ML upmix" option):
+
+1. **DPL2 matrix decode** — derive C and S (surround) channels from L+R, generating L′ / R′ / C / Lₛ / Rₛ
+2. **LFE band split** — low-pass the source mono mixdown (cutoff `Stream3DUpmixLfeCutoff`, default 80 Hz THX) and route to LFE
+3. **Center bleed removal** — subtract `Stream3DUpmixCenterBleed` × C from L′ / R′ so center-imaged content does not also leak out to FL/FR (default 1.0 = full removal)
+4. **Rear decorrelation** — base delay of `Stream3DUpmixRearDelayMs` (default 16 ms) on Lₛ / Rₛ, with ±2 ms jitter to avoid comb filtering between the rear pair
+
+Result: FL = L′, FR = R′, C, LFE, SL = Lₛ′, SR = Rₛ′.
+
+#### Why a single fixed algorithm?
+
+- Per AYAstorm's "do not increase expressive ambiguity" policy, we don't expose `{upmix:dpl2|logic7|srs|...}` as a tag value. Broadcasters pick ON or OFF; the rest is deterministic DSP.
+- DPL2 is well-understood, license-clean, and produces stable results across genres. Logic 7 / ML upmix etc. may be revisited in r13+ as objective FFT and listening tests permit.
+
+### 8.3 Auto-bypass for 5.1-native broadcasts
+
+If the source's actual channel count is **6 or higher**, `{upmix:on}` is **automatically bypassed** (no double-processing) and a chat notification is shown once:
+
+```
+3D Stream: source is already 5.1 (6ch) — upmix bypassed
+```
+
+This way, a broadcaster can leave `{upmix:on}` in the tag and use the same Description for both stereo (upmix runs) and 5.1-native (upmix bypassed) sources. No need to edit the tag when switching content.
+
+### 8.4 Fine-tuning (3 debug settings)
+
+DSP-internal parameters are **NOT exposed as broadcaster tags** — they are listener-side debug settings instead. To preserve the broadcaster-driven model, broadcasters only choose on/off; internal parameters are treated as "part of the algorithm" and held fixed. Listeners do not adjust these in normal use either — they're for implementation/verification or personal tuning.
+
+| Debug setting | Default | Range | Meaning |
+|---|---|---|---|
+| `Stream3DUpmixLfeCutoff` | `80.0` Hz | 20–200 | LFE LPF cutoff frequency |
+| `Stream3DUpmixCenterBleed` | `1.0` | 0.0–1.0 | Fraction of center component subtracted from front L/R (`0` = DPL1-compatible, `1` = full removal) |
+| `Stream3DUpmixRearDelayMs` | `16.0` ms | 0–32 | Rear decorrelation base delay (L / R differ by ±2 ms jitter) |
+
+For a listener-side force OFF / ON, one sentinel:
+
+| Debug setting | Default | Meaning |
+|---|---|---|
+| `Stream3DUpmix` | `-1` (sentinel = follow tag) | `0` ignores the tag and forces OFF / `1` forces ON (5.1-native auto-bypass still applies) |
+
+### 8.5 Combination examples
+
+#### Default behavior (no upmix)
+
+```
+[3dstream-stereo:{url:http://example/stereo.ogg}{ch:L}]
+[3dstream-stereo:{ch:R}]
+```
+→ Same as r10 (stereo source goes to L/R 2 spk).
+
+#### 6-spk placement + upmix (r12 recommended format)
+
+```
+Root Description:
+  [3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}]
+FL:  [3dstream-stereo:{ch:FL}]
+FR:  [3dstream-stereo:{ch:FR}]
+C:   [3dstream-stereo:{ch:C}]
+LFE: [3dstream-stereo:{ch:LFE}]
+SL:  [3dstream-stereo:{ch:SL}]
+SR:  [3dstream-stereo:{ch:SR}]
+```
+→ Stereo source is expanded to 6 channels and routed to the 6 speaker prims.
+
+#### upmix + binaural + venue (r12 full feature set)
+
+```
+[3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}{bin:on}{v:hm}{wg:1.2}]
+```
+→ Stereo source expanded to 6 ch, each speaker gets lite-HRTF + hall_medium reverb (wet 1.2×). Maximum venue feel + headphone localization.
+
+#### r10 legacy placement (`ch:L`/`ch:R` only) + upmix
+
+```
+Root Description:
+  [3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}]
+L child: [3dstream-stereo:{ch:L}]
+R child: [3dstream-stereo:{ch:R}]
+```
+→ With only L/R speakers in the linkset, upmix runs internally but only L/R is routed out. Effectively becomes "the L/R channels of the upmixed signal are emitted, while C / LFE / SL / SR are computed but unrouted" → in audible terms, **almost identical to no upmix** (DPL2's L′ / R′ ≈ L / R minus center bleed).
+
+→ Not wrong, but if the placement has only L/R speakers, **there is no point in turning upmix on**. Use the 6-spk placement (`ch:FL/FR/C/LFE/SL/SR`) to actually benefit.
+
+#### Putting upmix on a 5.1-native broadcast (auto-bypass)
+
+```
+Root Description:
+  [3dstream-stereo:{url:http://example/test_5_1.flac}{upmix:on}]
+FL:  [3dstream-stereo:{ch:FL}]   # 5 more speakers
+```
+→ Source has 6 channels, so upmix is auto-bypassed (chat notification once). Each speaker plays the source's corresponding channel directly.
+
+---
+
+## 9. `ch` (Channel) Value Reference
 
 `{ch:value}` accepts the following 9 values. **Case is not significant** (`{ch:l}` and `{ch:L}` are the same).
 
@@ -348,17 +653,17 @@ The link order (link number 1, 2, 3, ...) of root vs children **does NOT affect 
 | `SL` | Surround Left | 5.1ch surround left |
 | `SR` | Surround Right | 5.1ch surround right |
 
-When the source's actual channel count and the `ch` value don't match, the system performs an **automatic fallback** rather than reporting a mismatch (§8). For example, writing `{ch:FL}` on a stereo (2ch) source plays L.
+When the source's actual channel count and the `ch` value don't match, the system performs an **automatic fallback** rather than reporting a mismatch (§10). For example, writing `{ch:FL}` on a stereo (2ch) source plays L.
 
-Invalid values (e.g., `{ch:foo}`) raise a **format error** notification (§11).
+Invalid values (e.g., `{ch:foo}`) raise a **format error** notification (§13).
 
 ---
 
-## 8. Source Channel Count × Tag Value Compatibility Matrix
+## 10. Source Channel Count × Tag Value Compatibility Matrix
 
 What a speaker prim actually plays is determined by the combination of the **source URL's channel count** and the **`ch` value you wrote**.
 
-### 8.1 Compatibility matrix
+### 10.1 Compatibility matrix
 
 | Source | `{ch:L}` | `{ch:R}` | `{ch:M}` | `{ch:FL}` | `{ch:FR}` | `{ch:C}` | `{ch:LFE}` | `{ch:SL}` | `{ch:SR}` |
 |---|---|---|---|---|---|---|---|---|---|
@@ -368,10 +673,10 @@ What a speaker prim actually plays is determined by the combination of the **sou
 
 Legend:
 - `L` / `R` / `FL` / `FR` / `C` / `LFE` / `SL` / `SR` = direct playback of the corresponding source channel
-- `BS.775 L` = the value computed by ITU-R BS.775 downmix coefficients, folding 6ch into stereo L/R (see §8.2)
+- `BS.775 L` = the value computed by ITU-R BS.775 downmix coefficients, folding 6ch into stereo L/R (see §10.2)
 - `silent` = that speaker emits no sound (the binding is preserved, but no audio comes from the prim)
 
-### 8.2 BS.775 downmix coefficients (6ch source → L/R)
+### 10.2 BS.775 downmix coefficients (6ch source → L/R)
 
 ```
 L_out = c × ( FL + 0.707·C + 0.707·SL + 0.5·LFE )
@@ -381,13 +686,13 @@ c = 1 / 2.914 ≈ 0.343 (normalization for clipping prevention)
 
 Center is split equally L/R, surround is summed to its same side, LFE is mixed into both sides equally.
 
-### 8.3 Mixing both placement styles for the same source
+### 10.3 Mixing both placement styles for the same source
 
 If you assign a 5.1ch source to both `{ch:L}` and `{ch:FL}`, the L prim plays the BS.775 downmix while the FL prim plays direct. This is confusing, so the recommendation is to **stick to one channel family per source — either `L/R/M` or `FL/FR/...` — across a venue**.
 
-If a fallback occurs in mixed placements, the **routing diagnostic chat notification** (§10.3 / §11.3) lets you confirm what each ch is actually playing. Turning this ON during 5.1ch venue construction makes mistakes immediately visible.
+If a fallback occurs in mixed placements, the **routing diagnostic chat notification** (§12.3 / §13.3) lets you confirm what each ch is actually playing. Turning this ON during 5.1ch venue construction makes mistakes immediately visible.
 
-### 8.4 5.1ch venue placement playing a 2ch / 1ch source
+### 10.4 5.1ch venue placement playing a 2ch / 1ch source
 
 Suppose you have a 5.1ch venue with six speaker prims (`ch:FL` / `FR` / `C` / `LFE` / `SL` / `SR`) already deployed, and you switch the source URL from a 5.1ch broadcast to a **regular stereo (2ch) broadcast** or **mono (1ch) broadcast**. For example: "5.1ch during the live show, regular stereo BGM during breaks", or "MC mono voice between DJ sets".
 
@@ -429,7 +734,7 @@ A diagnostic switch is provided to confirm in **Local Chat** whether a silent pr
 - **Preferences > Sound > Show channel routing diagnostics in chat** (checkbox)
 - **Debug Settings: `Stream3DRoutingDiagnostic`** (`true` / `false`)
 
-When ON, fallback events for 5.1 placement × 2ch / 1ch source produce lines in **Local Chat as messages from yourself** in the form below (`3D Stream:` prefix added by the §11.3 helper):
+When ON, fallback events for 5.1 placement × 2ch / 1ch source produce lines in **Local Chat as messages from yourself** in the form below (`3D Stream:` prefix added by the §13.3 helper):
 
 **For a 2ch source × 5.1 placement (six prims FL/FR/C/LFE/SL/SR)**:
 
@@ -455,13 +760,13 @@ When ON, fallback events for 5.1 placement × 2ch / 1ch source produce lines in 
 
 This makes "LFE / SL / SR are silent by spec, FL / FR / C are operating in fallback" obvious at a glance.
 
-Notifications are throttled with a key of `(root_id, url, observed_channel_count, prim_set_signature)`, so the same notification is not repeated until the placement or source channel count changes. **Recommended: turn ON only during 5.1ch venue construction / verification; OFF (`false`, the default) for production**. See §11.3 for details.
+Notifications are throttled with a key of `(root_id, url, observed_channel_count, prim_set_signature)`, so the same notification is not repeated until the placement or source channel count changes. **Recommended: turn ON only during 5.1ch venue construction / verification; OFF (`false`, the default) for production**. See §13.3 for details.
 
 #### Reverse direction: 2ch placement playing a 5.1ch source
 
 For reference, the opposite direction. When a stereo venue (= 2ch placement using only `{ch:L}` / `{ch:R}` / `{ch:M}`) plays a 5.1ch source:
 
-- L / R / M prims play the **BS.775 downmix** (§8.2), folding 6ch into 2ch. FL / C / SL / LFE all sum into L with their coefficients; FR / C / SR / LFE all sum into R.
+- L / R / M prims play the **BS.775 downmix** (§10.2), folding 6ch into 2ch. FL / C / SL / LFE all sum into L with their coefficients; FR / C / SR / LFE all sum into R.
 - All channel signals are audible via L / R, so **no channels are dropped to silence**.
 - Local Chat output when `Stream3DRoutingDiagnostic` is ON:
 
@@ -477,30 +782,30 @@ You're notified per-channel that "no dedicated prim, so folded into BS.775 downm
 
 ---
 
-## 9. Streaming Side (Building Source URLs)
+## 11. Streaming Side (Building Source URLs)
 
-### 9.1 Supported codecs / containers
+### 11.1 Supported codecs / containers
 
 | Codec / container | 1ch | 2ch | 6ch | Notes |
 |---|---|---|---|---|
 | **MP3** | ✓ | ✓ | — | Traditional SHOUTcast / Icecast path |
 | **Vorbis (Ogg)** | ✓ | ✓ | ✓ | 6ch end-to-end verified (r9 P10) |
-| **Opus (Ogg)** | ✓ | ✓ | △ | 6ch uses Opus channel mapping family 1. **Plain HTTP / Icecast push may fail to open due to seek failure** (§9.4) |
+| **Opus (Ogg)** | ✓ | ✓ | △ | 6ch uses Opus channel mapping family 1. **Plain HTTP / Icecast push may fail to open due to seek failure** (§11.4) |
 | **FLAC** | ✓ | ✓ | △ | 6ch supported in theory; same seek limitation as Opus |
 | AAC (ADTS / HLS) | — | — | — | Not supported |
 | AC-3 / E-AC-3 | — | — | — | Not supported (Dolby licensing) |
 
 Source URLs may be `http://` or `https://`. A path that maintains HTTP/1.1 keep-alive (= a SHOUTcast-compatible streamer or ffmpeg's TCP output) tends to be more stable than plain static HTTP.
 
-### 9.2 1ch / 2ch streaming
+### 11.2 1ch / 2ch streaming
 
 Standard SHOUTcast / Icecast / static HTTP works fine. MP3 / Vorbis / Opus / FLAC all play without issues. Tools like `oggenc`, ffmpeg, or butt work as-is.
 
-### 9.3 5.1ch (Vorbis 6ch) streaming
+### 11.3 5.1ch (Vorbis 6ch) streaming
 
 The recommended path for reliable viewer-side 5.1ch playback is **Vorbis 6ch** (verified end-to-end in r9 P10).
 
-#### 9.3.1 Test material (ffmpeg)
+#### 11.3.1 Test material (ffmpeg)
 
 ```bash
 # 5.1 WAV with a unique frequency per ch (10 sec)
@@ -514,7 +819,7 @@ ffmpeg -f lavfi -i "sine=440:d=10" -f lavfi -i "sine=550:d=10" \
 ffmpeg -i test_5_1.wav -c:a libvorbis -q:a 5 test_5_1.ogg
 ```
 
-#### 9.3.2 Static HTTP serving (for verification)
+#### 11.3.2 Static HTTP serving (for verification)
 
 ```bash
 python3 -m http.server 8080
@@ -522,7 +827,7 @@ python3 -m http.server 8080
 
 URL: `http://<host>:8080/test_5_1.ogg`
 
-#### 9.3.3 Real-time streaming (ffmpeg → Icecast)
+#### 11.3.3 Real-time streaming (ffmpeg → Icecast)
 
 ```bash
 ffmpeg -re -i test_5_1.wav \
@@ -537,7 +842,7 @@ Key options:
 - `-content_type audio/ogg` = declare the MIME to Icecast (otherwise it may misidentify as MP3)
 - `-ac 6 -ar 48000` = preserve 6ch 48kHz
 
-### 9.4 Opus 6ch / FLAC 6ch limitations
+### 11.4 Opus 6ch / FLAC 6ch limitations
 
 When Opus 6ch (channel mapping family 1) or FLAC 6ch is delivered via **plain HTTP** (e.g., `python3 -m http.server`) or **Icecast push**, the FMOD parser may issue a **seek request** that fails with `FMOD_ERR_FILE_COULDNOTSEEK`, leaving the stream un-openable.
 
@@ -549,7 +854,7 @@ Workarounds:
 
 To be certain it will work, **Vorbis 6ch is the shortest reliable path right now**.
 
-### 9.5 Choosing a broadcast tool
+### 11.5 Choosing a broadcast tool
 
 | Tool | Use case | Notes |
 |---|---|---|
@@ -561,20 +866,20 @@ To be certain it will work, **Vorbis 6ch is the shortest reliable path right now
 
 ---
 
-## 10. Viewer-side Settings
+## 12. Viewer-side Settings
 
-### 10.1 Via Preferences
+### 12.1 Via Preferences
 
 The **Preferences → Sound** tab has these controls:
 
 - **3D Stream** slider — master volume multiplier for all streams (`Stream3DVolumeMaster`)
 - **Enabled** checkbox — overall feature ON/OFF (`Stream3DEnabled`)
-- **Show channel routing diagnostics in chat** — routing diagnostic notifications (`Stream3DRoutingDiagnostic`, see §11.3)
-- **Hear media and sounds from:** — listener position selector, Camera or Avatar (`MediaSoundsEarLocation`, see §13.1)
+- **Show channel routing diagnostics in chat** — routing diagnostic notifications (`Stream3DRoutingDiagnostic`, see §13.3)
+- **Hear media and sounds from:** — listener position selector, Camera or Avatar (`MediaSoundsEarLocation`, see §15.1)
 
 The same "3D Stream" slider also appears in the speaker icon's Volume dropdown for quick volume adjustment near the voice chat controls.
 
-### 10.2 Debug Settings (advanced tuning)
+### 12.2 Debug Settings (advanced tuning)
 
 `Ctrl + Alt + D` opens the Advanced menu → Show Debug Settings to edit any key directly.
 
@@ -590,7 +895,21 @@ The same "3D Stream" slider also appears in the speaker icon's Volume dropdown f
 | `Stream3DPollInterval` | F32 (sec) | `30.0` | Description polling interval. Affects how quickly LSL-mediated tag changes are picked up. 0 disables active polling |
 | `Stream3DVolumeMaster` | F32 [0–1] | `0.5` | Master volume multiplier. Same as the 3D Stream slider in Preferences |
 | `Stream3DReconnectAttempts` | S32 | `3` | Auto-reconnect attempts on stream disconnect. Each retry waits 5 seconds. 0 disables reconnect |
-| `Stream3DRoutingDiagnostic` | bool | `false` | Routing-diagnostic chat notifications ON/OFF (see §11.3). Synchronized with the Preferences checkbox |
+| `Stream3DRoutingDiagnostic` | bool | `false` | Routing-diagnostic chat notifications ON/OFF (see §13.3). Synchronized with the Preferences checkbox |
+
+#### r11/r12 broadcaster-driven model: listener-side sentinels (no general UI)
+
+As described in §7.4 / §8.4, the `binaural` / `venue` / `wetgain` / `upmix` keys are **broadcaster-tag-as-truth**, with no Preferences UI. For rescue purposes only, sentinel debug settings are provided. General listeners should not touch these.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `Stream3DBinauralRender` | S32 | `-1` (sentinel = follow tag) | `0` to force OFF on the listener side / `1` to force ON. Rescue use when listening to a `{binaural:on}` broadcast on speakers (details in §7.4 Exception) |
+| `Stream3DVenueOverride` | string | `""` (sentinel = follow tag) | A venue name like `"dry"` forces all broadcasts to play in that venue (`"dry"` = force all reverb OFF, the typical use) |
+| `Stream3DVenueWetGain` | F32 | `-1.0` (sentinel = follow tag) | A value in `0.0–2.0` forces a wet-gain override |
+| `Stream3DUpmix` | S32 | `-1` (sentinel = follow tag) | `0` ignores the tag and forces OFF / `1` forces ON. The 5.1-native auto-bypass still applies (details §8.1 / §8.3) |
+| `Stream3DUpmixLfeCutoff` | F32 (Hz) | `80.0` | upmix DSP LFE LPF cutoff (20–200). Details §8.4 |
+| `Stream3DUpmixCenterBleed` | F32 | `1.0` | upmix DSP center bleed removal fraction (0.0–1.0). Details §8.4 |
+| `Stream3DUpmixRearDelayMs` | F32 (ms) | `16.0` | upmix DSP rear decorrelation delay (0–32). Details §8.4 |
 
 #### Debug-only (for development verification)
 
@@ -600,7 +919,7 @@ The same "3D Stream" slider also appears in the speaker icon's Volume dropdown f
 | `Stream3DDebugPlay` | bool | When `true`, places & plays a mono stream 5m in front of the avatar (quick test, no tag editing required) |
 | `Stream3DDebugStereoPlay` | bool | Same for the stereo version |
 
-### 10.3 Persistence and immediate apply
+### 12.3 Persistence and immediate apply
 
 Most settings are **"Live"** — applied from the next frame after the value changes. No viewer restart needed. Exceptions:
 
@@ -609,9 +928,9 @@ Most settings are **"Live"** — applied from the next frame after the value cha
 
 ---
 
-## 11. Error Notifications / Diagnostics
+## 13. Error Notifications / Diagnostics
 
-### 11.1 How notifications appear
+### 13.1 How notifications appear
 
 Tag format errors and structural errors are **shown in Local Chat** as system messages, prefixed with "3D Stream:".
 
@@ -627,17 +946,17 @@ Tag format errors and structural errors are **shown in Local Chat** as system me
   Each speaker prim should have [3dstream-stereo:{ch:L|R|M}].
 ```
 
-### 11.2 30-second suppression
+### 13.2 30-second suppression
 
 The same prim × the same error kind is **suppressed for 30 seconds**, to avoid chat flooding while you edit tags. After 30s, the notification fires once again.
 
 Suppressed notifications still go to the LL_DEBUGS log (debug log channel), so you can confirm what's happening internally.
 
-### 11.3 Routing diagnostics (5.1ch placement)
+### 13.3 Routing diagnostics (5.1ch placement)
 
 A diagnostic feature for **construction / verification** of 5.1ch / multi-speaker venues, letting you confirm in Local Chat "what each prim is playing / why a prim is silent". **Default OFF** — does not emit unless explicitly enabled.
 
-#### 11.3.1 How to enable
+#### 13.3.1 How to enable
 
 Either of the following enables it (they are synchronized):
 
@@ -646,7 +965,7 @@ Either of the following enables it (they are synchronized):
 
 Applied immediately. No viewer restart needed.
 
-#### 11.3.2 Output destination and format
+#### 13.3.2 Output destination and format
 
 When ON, fallback events emit one line per occurrence in **Local Chat as messages from yourself**, in this form:
 
@@ -656,7 +975,7 @@ When ON, fallback events emit one line per occurrence in **Local Chat as message
 
 The `3D Stream:` prefix is added automatically by the `notifyStream3D` helper. They are stored in the chat log (`Show in Chat`) so you can review them after the test. **They are NOT visible to anyone else** (these are pseudo-messages displayed only in your own Local Chat).
 
-#### 11.3.3 Notification text reference
+#### 13.3.3 Notification text reference
 
 | Situation | Local Chat line |
 |---|---|
@@ -668,9 +987,9 @@ The `3D Stream:` prefix is added automatically by the `notifyStream3D` helper. T
 | 1ch source × `ch:FL/FR/C` prim | `3D Stream: ch:FL prim playing M (source is 1ch)` (FR / C use the same form) |
 | 1ch / 2ch source × `ch:LFE/SL/SR` prim | `3D Stream: ch:LFE prim silent (source is 2ch)` (or `1ch`; SL / SR use the same form) |
 
-For concrete sample output for "5.1 placement × 2ch source", see "Show fallback details in chat" in §8.4.
+For concrete sample output for "5.1 placement × 2ch source", see "Show fallback details in chat" in §10.4.
 
-#### 11.3.4 Throttle and re-display conditions
+#### 13.3.4 Throttle and re-display conditions
 
 Notifications are throttled with a key of `(root_id, url, observed_channel_count, prim_set_signature)`. While the same venue and the same source configuration are in effect, **lines do not repeat** (to avoid flooding the chat). Re-evaluation and re-emission happen when any of the following changes:
 
@@ -679,13 +998,13 @@ Notifications are throttled with a key of `(root_id, url, observed_channel_count
 - Speaker prim configuration changes (prim added / removed / `ch` value changed)
 - Right after toggling `Stream3DRoutingDiagnostic` from OFF to ON
 
-#### 11.3.5 Operational recommendation
+#### 13.3.5 Operational recommendation
 
 - **Turn ON during venue construction and placement verification** to confirm fallback behavior of each prim in Local Chat
 - **Turn OFF for production (live shows etc.)** to keep the chat clean
 - The default (OFF) is the production-intended state. Manually flip to ON only during placement verification.
 
-### 11.4 Logs (`LL_INFOS("Stream3D")`)
+### 13.4 Logs (`LL_INFOS("Stream3D")`)
 
 Detailed runtime logs are recorded in AYAstorm's log file:
 
@@ -697,9 +1016,9 @@ Grep for the `Stream3D` channel to see binding establishment / teardown / reconn
 
 ---
 
-## 12. Troubleshooting
+## 14. Troubleshooting
 
-### 12.1 Tag was written but no sound plays
+### 14.1 Tag was written but no sound plays
 
 Check in order:
 
@@ -708,47 +1027,47 @@ Check in order:
 3. **`{url:...}` scheme is http/https**: `file://` and relative URLs are not allowed
 4. **`Stream3DEnabled` / `Stream3DDescriptionScan` are both true**: Confirm in Preferences > Sound or Debug Settings
 5. **Wait for poll**: Changes via LSL `llSetObjectDesc` take up to 30 seconds (`Stream3DPollInterval`)
-6. **Look for an error notification in chat**: See §11
+6. **Look for an error notification in chat**: See §13
 7. **Look in logs for `LL_INFOS("Stream3D")` reconnect attempts**: Stream URL may be down
 
-### 12.2 Only one stereo channel plays
+### 14.2 Only one stereo channel plays
 
 - If the root has only `{url}` and the child only `{ch:R}`, no prim handles L → "L missing" state. Add `{ch:L}` to the root, or assign `{ch:L}` to another prim.
 - If you write `{ch:L}` to two prims on purpose to double-up the L speaker, that's intended and fine.
 - Turn ON the routing diagnostic (`Stream3DRoutingDiagnostic`) to see what each ch is actually playing, in chat.
 
-### 12.3 5.1ch source won't open / audio glitches
+### 14.3 5.1ch source won't open / audio glitches
 
-- §9.4 seek limitation: common with Opus 6ch / FLAC 6ch over plain HTTP / Icecast push. **Switch to Vorbis 6ch**, or route via a SHOUTcast-compatible streamer / ffmpeg primary.
+- §11.4 seek limitation: common with Opus 6ch / FLAC 6ch over plain HTTP / Icecast push. **Switch to Vorbis 6ch**, or route via a SHOUTcast-compatible streamer / ffmpeg primary.
 - The first 5–10 seconds after an HTTP switch may produce dropout warnings while the prebuffer fills (LAN: ~408–2045 frames/spk/s ≈ 0.8–4%). They subside in steady state.
 - Bitrate too high / network congested → dropouts: lower bitrate on broadcaster (≤ 256kbps recommended) / reduce concurrent bindings.
 
-### 12.4 Tag on a child prim but it's not recognized as a speaker
+### 14.4 Tag on a child prim but it's not recognized as a speaker
 
 - Child-prim Description is fetched via Properties messaging. The **first time you enter the linkset's region it can take a few seconds (up to ~10s)**.
 - After modifying child Description via LSL `llSetObjectDesc`, it applies on the next poll cycle (within 30s).
 - Confirm `{ch:...}` is not a typo (case-insensitive, but spelling errors are invalid).
 
-### 12.5 Listener position seems wrong (sound direction is off)
+### 14.5 Listener position seems wrong (sound direction is off)
 
 - When you camera-flick around, listener position follows camera, so the localization changes. To lock to avatar, set Preferences > Sound **"Hear media and sounds from:" to Avatar** (`MediaSoundsEarLocation = 1`).
 - This Camera/Avatar selector applies to 3D Stream as well (shared with parcel BGM, LSL `llPlaySound`, etc.).
 
-### 12.6 Want to play multiple 3D Streams at once
+### 14.6 Want to play multiple 3D Streams at once
 
 - New bindings are rejected once `Stream3DMaxConcurrent` (default 4) is reached. Increase the value if you need more concurrent streams (8 / 16 are practical).
 - Note that 1 binding = 1 decoder thread + N speaker channels of CPU cost. 20 concurrent will stress CPU; bump only as needed.
 
-### 12.7 Removed the tag but sound continues
+### 14.7 Removed the tag but sound continues
 
 - Re-evaluation may not have triggered. Move the prim once, or look around the area to wait for the next poll.
 - If still stuck, toggle `Stream3DEnabled` to false (force-release all bindings) then back to true (re-discover).
 
 ---
 
-## 13. Known Limitations / Specification Notes
+## 15. Known Limitations / Specification Notes
 
-### 13.1 Listener position is camera or avatar
+### 15.1 Listener position is camera or avatar
 
 The listener position used for 3D Stream's spatialization follows Preferences > Sound **"Hear media and sounds from:"**:
 
@@ -757,22 +1076,23 @@ The listener position used for 3D Stream's spatialization follows Preferences > 
 
 This is the same setting used by LSL `llPlaySound`, parcel BGM, and Media-on-a-Prim.
 
-### 13.2 1 linkset = 1 stream
+### 15.2 1 linkset = 1 stream
 
 What matters per linkset is whether a root with `{url}` "exists" or "doesn't exist". **Multiple `{url}` declarations in one linkset are not allowed** (`{url}` on a child prim is ignored).
 
 To run multiple distinct streams in one venue, split into separate linksets and place them — they coexist as separate bindings within `Stream3DMaxConcurrent`.
 
-### 13.3 Description byte limit (127)
+### 15.3 Description byte limit (127)
 
 The Description writable via LSL `llSetObjectDesc` is **limited to 127 bytes**. URLs and descriptions that contain Japanese (or any UTF-8 multibyte) easily exceed this.
 
 When it gets long:
 
+- **Use short-forms for keys / venue values** (§4.5). `binaural`/`venue`/`wetgain` become `bin`/`v`/`wg`, and the 9 venue values also have 1–2 character aliases. Long-form and short-form are fully equivalent.
 - Use the distributed pattern: write `{url}` on root only, `{ch}` on children only (each prim's Description stays short)
 - Shorten the URL (URL shortener, or a shorter path on the broadcaster side)
 
-### 13.4 Verified behavior per codec
+### 15.4 Verified behavior per codec
 
 | Codec | 1ch / 2ch | 6ch |
 |---|---|---|
@@ -783,26 +1103,26 @@ When it gets long:
 
 For reliable 5.1ch playback, choose **Vorbis 6ch**.
 
-### 13.5 No special LFE handling
+### 15.5 No special LFE handling
 
 5.1ch's LFE (subwoofer) is treated equivalently to the other 5 channels — no low-pass filter, no 2D-ization. It is 3D-positioned and distance-attenuated like the rest. If LFE band-limiting is needed, do it on the broadcaster mix.
 
 The intended pattern is: place a physical subwoofer-shaped prim in SL at the appropriate position and have low-frequency audio emit from there.
 
-### 13.6 5.1ch in a free-camera world
+### 15.6 5.1ch in a free-camera world
 
 A real 5.1 system (cinema standard / ITU-R BS.775) assumes **the listener is in a fixed position** and bakes directional cues per channel. SL's listener is free-camera, so the "sweet spot" concept does not apply. The intent of this feature is **"multi-point reproduction of a 5.1 source in a venue"**, in the spirit of venue PA — not the reproduction of cinematic surround.
 
 When the listener walks around the space, the intended 5.1 image will of course break, but the "venue feel / sense of sound covering an area" comes through clearly.
 
-### 13.7 Behavior in other Viewers
+### 15.7 Behavior in other Viewers
 
 `[3dstream:...]` / `[3dstream-stereo:...]` tags are **AYAstorm-specific**. Mainline Firestorm, official LL Viewer, Catznip, etc. ignore them entirely.
 
 - AYAstorm users: 3D-positional audio plays as designed
 - Other Viewer users: the tag just appears as text in the description, no audio plays (3D Stream is independent of parcel BGM, so any parcel BGM that's set up is still audible to them)
 
-### 13.8 Concurrency caps
+### 15.8 Concurrency caps
 
 | Cap | Default |
 |---|---|
@@ -812,7 +1132,7 @@ When the listener walks around the space, the intended 5.1 image will of course 
 
 Up to ~64 channels stays within FMOD headroom. If you need more, raise via debug settings (verify CPU load on real hardware first).
 
-### 13.9 Volume composition
+### 15.9 Volume composition
 
 Final volume = `Stream3DVolumeMaster` × `{volume:N}` × FMOD distance attenuation × Master Audio Slider × any mute states.
 
@@ -820,7 +1140,7 @@ Typically use `Stream3DVolumeMaster` (the 3D Stream slider in Preferences) for g
 
 ---
 
-## 14. Related Documents / Internal Specifications
+## 16. Related Documents / Internal Specifications
 
 This guide is the **user-facing** format reference. Implementation details (decode thread / FMOD path / ring buffer / shutdown order, etc.) are in the following internal specs.
 
@@ -831,7 +1151,9 @@ This guide is the **user-facing** format reference. Implementation details (deco
 | `doc/spec_distributed_stereo.md` | r8 distributed stereo spec — `[3dstream-stereo:...]` field syntax |
 | `doc/spec_5_1ch_source.md` | r9 5.1ch source ingestion spec — Opus/FLAC 6ch decode path + BS.775 downmix |
 | `doc/spec_5_1ch_placement.md` | r10 5.1ch venue placement spec — `ch=FL/FR/C/LFE/SL/SR` extension + compatibility matrix |
-| `doc/spec_binaural_venue_reverb.md` | r11 (unreleased) binaural + venue reverb spec — out of scope for this guide (r10 only) |
+| `doc/spec_binaural_venue_reverb.md` | r11 binaural + venue reverb spec (bundled into r12 release) — covers §7 of this guide |
+| `doc/spec_stereo_upmix.md` | r12 stereo→5.1 upmix spec — DPL2 + 4-step band separation, covers §8 of this guide |
+| `docs/ayastorm-r12-stereo-upmix.md` | r12 phase breakdown (P0–P11) and verification design |
 | `docs/ayastorm-stream3d-roadmap.md` | Overall 3D Stream roadmap |
 
 ---
@@ -839,3 +1161,4 @@ This guide is the **user-facing** format reference. Implementation details (deco
 ## Revision History
 
 - **2026-05-05 (initial)**: Compiled as the final spec at r10. Cumulative spec from r5 / r8 / r9 / r10 / r10.x. r11 and later not covered (unreleased).
+- **2026-05-08 (r12)**: Added §4.5 (short-forms), §7 (Binaural / Venue Reverb), §8 (stereo→5.1 upmix). r11 is bundled into r12 (not released independently — to avoid two-step tag-format change confusion). Renumbered later sections (§7–§14 → §9–§16). §12.2 lists r11/r12 listener-side sentinel debug settings; broadcaster-driven model preserved (no general Preferences UI).
