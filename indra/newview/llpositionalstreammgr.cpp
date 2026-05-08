@@ -1393,6 +1393,29 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
         }
     }
 
+    // r12.1: when upmix is effective on a 2ch source, every 5.1 placement
+    // prim (FL/FR/C/LFE/SL/SR) is fed by the DPL2 dispatch — the §4.2
+    // compat-fallback messages below ("ch:LFE prim silent" etc.) describe
+    // the r10 path that upmix replaces and would mislead the listener into
+    // thinking those speakers were disabled. Skip the per-prim block and
+    // emit a single positive notice instead. ch:L/R/M prims still get the
+    // upmix dispatch too but those weren't warned in the r10 path either.
+    if (b.upmix_effective_applied && source_channels == 2)
+    {
+        bool has_51_prim = false;
+        for (auto pc : { ChannelKind::FL, ChannelKind::FR, ChannelKind::C,
+                         ChannelKind::LFE, ChannelKind::SL, ChannelKind::SR })
+        {
+            if (ch_count[pc] > 0) { has_51_prim = true; break; }
+        }
+        if (has_51_prim)
+        {
+            notifyStream3D("DPL2 upmix active — 5.1 placement fan-out "
+                           "from 2ch source");
+        }
+        return;
+    }
+
     // (b) prim-side: dedicated 5.1 prim (FL/FR/C/LFE/SL/SR) on 1ch or 2ch
     // source → compat fallback per §4.2 matrix. ch:L/R/M prims always have
     // a sensible mapping and are not warned (§4.4.1 row 5 "通知不要").
