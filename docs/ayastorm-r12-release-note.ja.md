@@ -51,3 +51,14 @@ bundled venue IR は OpenAIR 系 (CC-BY 4.0)。出典は `app_settings/venue_ir/
 - r12 仕様: `doc/spec_stereo_upmix.md`
 - r12 実装記録: `docs/ayastorm-r12-stereo-upmix.md`
 - ロードマップ: `docs/ayastorm-stream3d-roadmap.md`
+
+---
+
+## r12.1 — LFE gain + ライブチューニング修正 (2026-05-09)
+
+実 listening フィードバックを受けた小規模アップデート。
+
+- **`{lfegain:N}` (短縮形 `lg`)**: `{ch:LFE}` プリムと `{upmix:on}` 時の LFE band に対するゲイン倍率 (0.0〜4.0、default 1.0)。listener 側 sentinel `Stream3DLfeGain` も同期追加。詳細 → [tag-guide §7.4](../doc/3dstream-tag-guide.ja.md#74-lfegainn-短縮形-lgr121-追加) / 仕様 `doc/spec_stereo_upmix.md` §4.7
+- **`wetgain` default `1.0` → `0.2`**: ホール / カテドラル等で `1.0` が音楽的に飽和することが確認されたため、musical range 0.1〜0.5 を反映した実用 default に変更。LSL UI の quick-pick も `0.1`〜`0.5` 細刻みに刷新。詳細 → [tag-guide §7.3](../doc/3dstream-tag-guide.ja.md#73-wetgainn-短縮形-wg)
+- **listener 側 debug settings の live-tuning 修正**: r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチ (Description 再パース) まで反映されない仕様回帰があった件を修正、他の Live 設定と同じ「次フレーム反映」に戻しています。詳細 → [tag-guide §12.3](../doc/3dstream-tag-guide.ja.md#123-設定の永続化と即時反映)
+- **既知の限界**: bus-tail 配置の VenueReverb は stereo IR convolver で、6 spk 配置でも wet が master stereo 像として聴こえます (per-spk の独立 reverb にはなりません)。改善案は r13+ で検討。詳細 → `docs/ayastorm-r12-stereo-upmix.md` §6.4

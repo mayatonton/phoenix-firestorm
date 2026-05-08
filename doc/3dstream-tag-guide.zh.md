@@ -132,9 +132,9 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 
 LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含中文 / 日文等多字节字符时，按 UTF-8 编码很容易超过。因此长 URL 应当 **缩短**，或采用根写音源声明、子图元只写 `{ch:...}` 的分散方式 (§6) 来周转。**常用键名 / venue 取值还提供短形式** (见 §4.5)。
 
-### 4.5 键名 / venue 取值的短形式 (r12)
+### 4.5 键名 / venue 取值的短形式 (r12 / r12.1)
 
-`[3dstream-stereo:...]` 中，**3 个常用键** 与 **9 个 `venue` 取值全部** 在 r12 引入了 **短形式别名**。可让 Description 轻松塞进 SL 的 127 字节限制 (§4.4)。长形式与短形式 **完全等价** (内部规范化为同一形式)。新标签、既有标签都可任选其一，行为一致。
+`[3dstream-stereo:...]` 中，**4 个常用键** 与 **9 个 `venue` 取值全部** 在 r12 引入了 **短形式别名**。可让 Description 轻松塞进 SL 的 127 字节限制 (§4.4)。长形式与短形式 **完全等价** (内部规范化为同一形式)。新标签、既有标签都可任选其一，行为一致。
 
 #### 键名短形式
 
@@ -143,6 +143,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 | `binaural` | `bin` | 双耳化 ON/OFF (§7.1) |
 | `venue` | `v` | 会场残响预设 (§7.2) |
 | `wetgain` | `wg` | 残响湿度等级 (§7.3) |
+| `lfegain` | `lg` | LFE 通道增益倍率 (§7.4，r12.1 新增) |
 
 其他键 (`url`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) 本来已较短，未追加别名。
 
@@ -290,7 +291,8 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 | `range` | 可选 | F32 (m) | `Stream3DRolloffMax` (20.0) | 链接组内扬声器没有自己 `range` 时使用的默认衰减距离 |
 | `binaural` (`bin`) | 可选 | 枚举 | `off` | 双耳化 (耳机用 lite-HRTF) ON/OFF。详见 §7.1 |
 | `venue` (`v`) | 可选 | 枚举 | `dry` | 会场残响预设 (dry / room_small / ... / outdoor 共 9 种)。详见 §7.2 |
-| `wetgain` (`wg`) | 可选 | F32 [0.0〜2.0] | `1.0` | 残响湿度等级倍率。详见 §7.3 |
+| `wetgain` (`wg`) | 可选 | F32 [0.0〜2.0] | `0.2` | 残响湿度等级倍率。详见 §7.3 |
+| `lfegain` (`lg`) | 可选 | F32 [0.0〜4.0] | `1.0` | LFE 通道增益倍率 (r12.1 新增)。详见 §7.4 |
 | `upmix` | 可选 | 枚举 | `off` | stereo→5.1 上混 ON/OFF。详见 §8.1 |
 
 #### 6.3.2 扬声器声明键 (任意图元)
@@ -392,11 +394,11 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 
 ## 7. 双耳化 / 会场残响 (r12)
 
-> r12 新增 3 个键 (`binaural` / `venue` / `wetgain`)。它们对链接组中所有扬声器一致生效，仅在根图元上有意义，在既有的 3D 定位之上叠加更自然的"现场会场 / 厅堂感"。
+> r12 新增 3 个键 (`binaural` / `venue` / `wetgain`)，r12.1 再追加 `lfegain`。它们对链接组中所有扬声器一致生效，仅在根图元上有意义，在既有的 3D 定位之上叠加更自然的"现场会场 / 厅堂感"。
 
 #### 为什么仅根有效？
 
-这些键描述的是 **推流者对该次演出的意图** — "这套内容按厅堂混音"／"今天的直播是双耳化录音" — 因此在源端一次性决定，而非每个扬声器各自决定。**3 个键全部仅在根有效** (写在子图元上将被静默忽略)。听者侧 UI 中 **不暴露任何项**：听者按推流者通过标签所定的状态收听 (§7.4)。
+这些键描述的是 **推流者对该次演出的意图** — "这套内容按厅堂混音"／"今天的直播是双耳化录音" — 因此在源端一次性决定，而非每个扬声器各自决定。**4 个键全部仅在根有效** (写在子图元上将被静默忽略)。听者侧 UI 中 **不暴露任何项**：听者按推流者通过标签所定的状态收听 (§7.5)。
 
 ### 7.1 `{binaural:on|off}` (短形式 `bin`)
 
@@ -420,7 +422,7 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 #### 何时使用
 
 - **耳机听众** = `on`。空间感比 vanilla 3D 明显清晰。
-- **扬声器听众** = 任一皆可。扬声器播放时 ITD 偶尔会感觉相反 (本来是为耳朵设计的、不是给扬声器的)。听者侧救援见 §7.4 "例外情况"。
+- **扬声器听众** = 任一皆可。扬声器播放时 ITD 偶尔会感觉相反 (本来是为耳朵设计的、不是给扬声器的)。听者侧救援见 §7.5 "例外情况"。
 - **本身已为双耳混音的素材** (推流的就是预混过的 binaural 轨) = 设为 `off` 以避免双重处理。
 
 ### 7.2 `{venue:NAME}` (短形式 `v`)
@@ -447,21 +449,50 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 
 ### 7.3 `{wetgain:N}` (短形式 `wg`)
 
-**湿声 (残响成分)** 的倍率。范围：0.0–2.0。默认值：1.0。
+**湿声 (残响成分)** 的倍率。范围：0.0–2.0。默认值：**0.2** (r12.1 由 1.0 改为 0.2)。
 
 | 取值 | 效果 |
 |---|---|
 | `0.0` | 完全干声 (= 不论何种 preset 均与 `venue:dry` 等效) |
-| `0.8` | 湿度 80% — 长尾会场用以保留源声清晰度 |
-| `1.0` | 标准 (默认) |
-| `1.2` | 湿度 120% — 更多氛围、干声冲击力相应削弱 |
+| `0.1` | 湿度极淡 |
+| **`0.2` (默认)** | 湿度偏淡 — 音乐用途的实用基准 |
+| `0.3〜0.5` | 中等到稍浓 (musical range 上限附近) |
+| `1.0` 以上 | 湿度与干声等比或更高 — 音乐场景下通常显得过浓 |
 | `2.0` | 湿度 200% — 厚重的环境淹没感 (极少使用) |
 
 干声成分固定 1.0，仅湿声受 `wetgain` 缩放。完全干声请用 `{venue:dry}` (与 `{wetgain:0.0}` 等效，但规格上更干净)。
 
-### 7.4 推流者主导模型
+> **r12.1 默认值变更 (1.0 → 0.2)**：原本 `1.0` ("湿干等比") 在 hall / cathedral 等长尾预设下源声会被吞没，已脱出音乐用途的实用区间。实际试听确认 **音乐上可用的范围是 0.1〜0.5**，因此 r12.1 将默认值下调到 `0.2`。同梱 LSL UI 的快选按钮也已重排到 `0.1`〜`0.5` 的细刻度。
 
-这 3 个键采用 **根图元 Description 即真理 (root truth)** 模型 — **一般听众没有 Preferences / Debug Settings UI**。
+### 7.4 `{lfegain:N}` (短形式 `lg`，r12.1 新增)
+
+针对 **LFE 通道** 的增益倍率 — 同时作用于 `{ch:LFE}` 路径与 `{upmix:on}` 时由 80 Hz LPF 产出的低频带。与干声 / 湿声相互独立。
+
+| 取值 | 效果 |
+|---|---|
+| `0.0` | LFE 静音 (LFE 图元无输出 / upmix 时无低频强调) |
+| `0.5` | LFE 减半 |
+| **`1.0` (默认)** | 与素材等同 (r12 兼容行为) |
+| `2.0` | LFE 双倍 (常用于希望强调低频的布局) |
+| `4.0` | LFE 4 倍 (上限，sub-PA 用途) |
+
+#### 适用场景
+
+- **5.1 native 直播** (有 `{ch:LFE}` 图元)：当源端 LFE 总线录制偏弱时由 viewer 侧抬升
+- **`{upmix:on}` 立体声 → 5.1 展开** 时，80 Hz LPF 段落感觉力道不足，可上推强调
+- 反之，将 LFE 图元挂在非低音炮的普通扬声器上时，可设为 `0` 以阻止低频泄漏
+
+#### LFE 路径未启用时
+
+没有 `{ch:LFE}` 图元且 upmix 关闭时，LFE 路径本身不工作，`lfegain` **无效** (写了也不生效但无害)。
+
+#### 听者侧 sentinel
+
+debug 设置 `Stream3DLfeGain` (sentinel `-1.0` = 跟随标签，否则 `0.0〜4.0` 强制覆写) 在 r12.1 同期追加 (详见 §12.2)。位于推流者主导模型救援槽，刻意不在一般听者 UI 中暴露。
+
+### 7.5 推流者主导模型
+
+这 4 个键 (`binaural` / `venue` / `wetgain` / `lfegain`) 采用 **根图元 Description 即真理 (root truth)** 模型 — **一般听众没有 Preferences / Debug Settings UI**。
 
 #### 为何无听者 UI？
 
@@ -470,9 +501,9 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 
 #### 例外：扬声器收听时的听者侧救援
 
-使用 **扬声器而非耳机** 的听众，在收听 `{binaural:on}` 直播时可能感到 ITD 反作用。**仅为此救援目的** 提供一个 sentinel debug 设置 ─ `Stream3DBinauralRender = 0` 在听者侧强制 OFF (详见 §12.2)。同样地 `Stream3DVenueOverride` (空 = 跟随标签，`"dry"` = 强制全部残响 OFF)、`Stream3DVenueWetGain` (sentinel `-1.0` = 跟随标签) 也作为 debug 提供。它们都不在一般用户 UI 中暴露。
+使用 **扬声器而非耳机** 的听众，在收听 `{binaural:on}` 直播时可能感到 ITD 反作用。**仅为此救援目的** 提供一个 sentinel debug 设置 ─ `Stream3DBinauralRender = 0` 在听者侧强制 OFF (详见 §12.2)。同样地 `Stream3DVenueOverride` (空 = 跟随标签，`"dry"` = 强制全部残响 OFF) / `Stream3DVenueWetGain` (sentinel `-1.0` = 跟随标签) / `Stream3DLfeGain` (sentinel `-1.0` = 跟随标签，r12.1) 也作为 debug 提供。它们都不在一般用户 UI 中暴露。
 
-### 7.5 组合示例
+### 7.6 组合示例
 
 #### 什么都不写 (= 默认)
 
@@ -538,7 +569,7 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 #### 为何默认 off (opt-in)？
 
 - 立体声素材本来就是为立体声混音的。upmix 是诠释、不是重现。
-- 如果布置了 6 prim 的听者各自决定是否 upmix，会出现"同一场直播因听者不同而声音不同" — 与 §7.4 同样的不确定性问题。
+- 如果布置了 6 prim 的听者各自决定是否 upmix，会出现"同一场直播因听者不同而声音不同" — 与 §7.5 同样的不确定性问题。
 - 因此交由推流者通过标签决定。默认保留 r10 行为。
 
 ### 8.2 算法 (DPL2 系矩阵解码 + 频段分离)
@@ -899,17 +930,20 @@ ffmpeg -re -i test_5_1.wav \
 
 #### r11/r12 推流者主导模型: 听者侧 sentinel (无一般 UI)
 
-§7.4 / §8.4 已述，`binaural` / `venue` / `wetgain` / `upmix` 4 个键采用 **推流者标签即真理** 模型，**没有 Preferences UI**。仅为救援目的提供以下 sentinel 性 debug 设置。一般听众 **不要触动**。
+§7.5 / §8.4 已述，`binaural` / `venue` / `wetgain` / `lfegain` / `upmix` 5 个键采用 **推流者标签即真理** 模型，**没有 Preferences UI**。仅为救援目的提供以下 sentinel 性 debug 设置。一般听众 **不要触动**。
 
 | 设置键 | 类型 | 默认值 | 含义 |
 |---|---|---|---|
-| `Stream3DBinauralRender` | S32 | `-1` (sentinel = 跟随标签) | `0` 在听者侧强制 OFF / `1` 强制 ON。用扬声器收听 `{binaural:on}` 直播时的救援用途 (详见 §7.4 例外) |
+| `Stream3DBinauralRender` | S32 | `-1` (sentinel = 跟随标签) | `0` 在听者侧强制 OFF / `1` 强制 ON。用扬声器收听 `{binaural:on}` 直播时的救援用途 (详见 §7.5 例外) |
 | `Stream3DVenueOverride` | string | `""` (sentinel = 跟随标签) | 写 `"dry"` 等 venue 名时，所有直播都按该会场播放 (`"dry"` = 强制全部残响 OFF，典型用途) |
 | `Stream3DVenueWetGain` | F32 | `-1.0` (sentinel = 跟随标签) | `0.0–2.0` 范围内的值会强制覆写 wetgain |
+| `Stream3DLfeGain` | F32 | `-1.0` (sentinel = 跟随标签) | `0.0–4.0` 范围内的值会强制覆写 LFE gain (r12.1 新增，详见 §7.4) |
 | `Stream3DUpmix` | S32 | `-1` (sentinel = 跟随标签) | `0` 忽略标签强制 OFF / `1` 强制 ON。5.1 native 自动 bypass 仍生效 (详见 §8.1 / §8.3) |
 | `Stream3DUpmixLfeCutoff` | F32 (Hz) | `80.0` | upmix DSP LFE LPF cutoff (20–200)。详见 §8.4 |
 | `Stream3DUpmixCenterBleed` | F32 | `1.0` | upmix DSP 中央漏出消除比例 (0.0–1.0)。详见 §8.4 |
 | `Stream3DUpmixRearDelayMs` | F32 (ms) | `16.0` | upmix DSP 后置 decorrelation 延迟 (0–32)。详见 §8.4 |
+
+> **r12.1 实时调参修正**：r12 发布时，上表中的 `Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 修改后必须 **触摸目标图元 (重新解析 Description) 才生效**。r12.1 已在 polling loop 端追加 per-poll push，使这些设置和其他设置一样从值修改后的下一帧起立即生效 (§12.3)。
 
 #### 仅供 Debug 使用 (动作确认用)
 
@@ -925,6 +959,8 @@ ffmpeg -re -i test_5_1.wav \
 
 - `Stream3DEnabled` 从 `false` 切回 `true` 时不会自动 re-bind。下一个 poll cycle (默认 30 秒以内) 再发现。
 - `Stream3DDescriptionScan` 切换会立刻拆除 / 重新发现所有 binding。
+
+> **r12.1 修正**：r12 发布时，`Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 出现回归 — 修改后必须 **触摸目标图元 (重新解析 Description) 才生效**。r12.1 已在 `LLPositionalStreamMgr::update()` 的 polling loop 中追加 per-poll push，使这些设置遵循标准的"下一帧生效"语义。
 
 ---
 
@@ -1162,3 +1198,4 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 - **2026-05-05 (初版)**: 作为 r10 时点的最终规格整理。汇总记述 r5 / r8 / r9 / r10 / r10.x 的累积规格。r11 及之后未发布所以不包含。
 - **2026-05-08 (r12)**: 加入 §4.5 (短形式)、§7 (双耳化 / 会场残响)、§8 (stereo→5.1 上混)。r11 与 r12 一并发布 (避免标签格式两阶段变更引起的混乱，r11 不单独发布)。后续章节改番 (§7–§14 → §9–§16)。§12.2 列出 r11/r12 听者侧 sentinel debug 设置；推流者主导模型保留 (一般用户无 Preferences UI)。
+- **2026-05-09 (r12.1)**：新增 §7.4 `{lfegain:N}` (短形式 `lg`)，原 §7.4 推流者主导模型顺延为 §7.5、原 §7.5 组合示例顺延为 §7.6。`wetgain` 默认值由 `1.0` 改为 `0.2` (反映实际试听确认的音乐用途实用区间 0.1〜0.5)。§12.2 追加 `Stream3DLfeGain` sentinel；§12.2 / §12.3 加入实时调参修正说明 (覆盖 r12 中 `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 修改后必须触摸图元才生效的回归)。

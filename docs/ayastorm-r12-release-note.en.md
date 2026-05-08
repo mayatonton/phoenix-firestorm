@@ -51,3 +51,14 @@ Bundled venue IRs are from OpenAIR (CC-BY 4.0). Sources in `app_settings/venue_i
 - r12 spec: `doc/spec_stereo_upmix.md`
 - r12 implementation log: `docs/ayastorm-r12-stereo-upmix.md`
 - Roadmap: `docs/ayastorm-stream3d-roadmap.md`
+
+---
+
+## r12.1 — LFE gain + live-tuning fix (2026-05-09)
+
+A small follow-up release driven by listening feedback.
+
+- **`{lfegain:N}` (short `lg`)**: gain multiplier for the `{ch:LFE}` route and the LFE band produced by `{upmix:on}` (range 0.0–4.0, default 1.0). The listener-side sentinel `Stream3DLfeGain` is added in lockstep. Details → [tag-guide §7.4](../doc/3dstream-tag-guide.en.md#74-lfegainn-short-form-lg-added-in-r121) / spec `doc/spec_stereo_upmix.md` §4.7
+- **`wetgain` default `1.0` → `0.2`**: `1.0` saturated the source on hall / cathedral presets; the new default reflects the practical musical range (0.1–0.5) confirmed by listening tests. The LSL UI quick-pick was also re-graded to fine `0.1`–`0.5` increments. Details → [tag-guide §7.3](../doc/3dstream-tag-guide.en.md#73-wetgainn-short-form-wg)
+- **Live-tuning fix for listener-side debug settings**: at r12 release, `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` regressed and only took effect after a prim touch (Description re-parse). r12.1 restores the standard "next-frame apply" semantics. Details → [tag-guide §12.3](../doc/3dstream-tag-guide.en.md#123-persistence-and-immediate-apply)
+- **Known limitation**: the bus-tail VenueReverb is a stereo IR convolver — even on a 6-speaker placement, the wet is heard as a fixed master-stereo image rather than per-speaker reverb. Improvement options are deferred to r13+. Details → `docs/ayastorm-r12-stereo-upmix.md` §6.4

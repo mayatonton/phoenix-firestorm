@@ -291,3 +291,39 @@ r11 と異なり、本リリースでは **追加 phase が想定外に発生す
 | r9 spec (前提) | `doc/spec_5_1ch_source.md` |
 | 検証材料生成 | `doc/r12/gen_upmix_test_material.sh` (P7 で作成予定) |
 | roadmap | `docs/ayastorm-stream3d-roadmap.md` §3 r12 |
+
+---
+
+## 6. r12.1 follow-on (2026-05-09)
+
+r12 リリース直後に AYA からの実 listening フィードバックで判明した 3 件を r12.1 として後追い対応。phase 番号は付けず単一 commit でまとめた (テスト規模が小さく phase 分割するメリットが薄い)。
+
+### 6.1 `{lfegain:N}` (短縮形 `lg`) 追加
+
+`{ch:LFE}` 経路と `{upmix:on}` 時の LFE band に対する root prim タグ (値域 0.0〜4.0、default 1.0)。spec §4.7.1 で定義、tag-guide §7.4 として詳細記述。listener 側 sentinel `Stream3DLfeGain` (sentinel `-1.0` = タグ通り) も同期追加 (spec §4.7.2)。
+
+実装は `LLPositionalStreamMulti` 側で per-speaker callback の出力に乗算 (mix 後段)。dry/wet とは独立 — frequency response には触らず純粋な linear gain。LSL setup script の dialog にも `lg` 設定を追加。
+
+### 6.2 `wetgain` default `1.0` → `0.2`
+
+実 listening で hall_medium / cathedral 等の長尾 venue では `1.0` が音楽的に飽和することが判明。musical range 0.1〜0.5 を反映して default を `0.2` に下げ、LSL UI の quick-pick も `0.5` / `1.0` / ... 系列から `0.1`〜`0.5` 細刻みに刷新。spec §4.7 / tag-guide §7.3 改訂履歴に明記。
+
+### 6.3 listener 側 debug settings の live-tuning 回帰修正
+
+r12 リリース時、以下 7 setting が値変更後にプリムタッチまで反映されない仕様回帰があった:
+
+- `Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs`
+- `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain`
+- `Stream3DVolumeMaster`
+
+原因は `applyLfeGainToBinding` / `applyVenueToBinding` / `applyWetGainToBinding` および `setUpmixTuning` / `setVolume` の push がイベント駆動経路 (Description parse / 新規 binding 生成) からしか呼ばれていなかったこと。`LLPositionalStreamMgr::update()` のポーリングループ (distributed bindings 反復および mono bindings 反復) に **per-poll push** を追加して「次フレーム反映」に戻した。push 自体は idempotent setter (= 値が変わっていなければ早期 return) なので追加コスト無視可。spec §4.7.3 / tag-guide §12.3 の注記に詳細記述。
+
+### 6.4 既知の限界 (r12.x / r13 へ繰越)
+
+bus-tail に置かれた `VenueReverbDsp` は **stereo IR convolver** で、`if (inchannels != 2 \|\| outchannels != 2) return;` の guard により Stream3DGroup の 2ch master mix に対してのみ wet を生成する。FMOD speaker mode は `llaudioengine_fmodstudio.cpp:356` で `STEREO` に固定されており、6 spk placement や upmix 経路の各 channel を独立に処理する設計にはなっていない。これにより、配信者が venue=hall_medium 等を有効化したとき「FL/FR からのみ reverb が聴こえ、C/SL/SR/LFE プリムには wet が乗らない」ように知覚されるケースが出る (実は 6 spk すべて同じ Stream3DGroup を経由しているが、wet が master stereo 像として固定されるため per-spk 的な空間表現が出ない)。
+
+設計上の architectural limitation として r12.1 では受け入れる。改善候補は r13+ で検討 (per-channel reverb / pre-3D send model / L/R wet decorrelation の 3 案)。
+
+### 6.5 commit
+
+`a6389421c8` (feature/r12.1-lfegain): 8 files changed, 525 insertions(+), 513 deletions(-)。viewer / LSL / settings.xml / コメント更新を一括。
