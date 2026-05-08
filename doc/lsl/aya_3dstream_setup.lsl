@@ -9,7 +9,19 @@
 //
 //  Tag form written to each prim's Description (per AYAstorm spec):
 //      [3dstream-stereo:{url:...}{ch:K}{range:N}{volume:V}
-//                       {binaural:on|off}{venue:NAME}{wetgain:G}]
+//                       {bin:on|off}{v:NAME}{wg:G}
+//                       {upmix:on|off}]
+//
+//  r12 short-form keys/values (canonical form, emitted by this script):
+//      bin         <- binaural
+//      v           <- venue
+//      wg          <- wetgain
+//      v values    <- d/rs/rm/hs/hm/hl/cl/ct/od
+//                     (=dry/room_small/room_medium/hall_small/hall_medium/
+//                       hall_large/club/cathedral/outdoor)
+//  Long forms remain accepted on read for legacy Desc tags. Compression
+//  saves ~23 bytes for full r11+r12 stacks (45 → 22), keeping the 127-byte
+//  Desc cap reachable when URL is also long.
 //
 //  - URL is shared by the linkset; only the speaker(s) carrying {url:}
 //    cause AYAstorm to start/stop the stream. By convention this script
@@ -26,6 +38,11 @@
 //        {venue:NAME}       convolution reverb (dry/room_*/hall_*/
 //                           club/cathedral/outdoor); default = dry
 //        {wetgain:G}        venue mix amount (default = 1.0)
+//        {upmix:on|off}     2ch→5.1 upmix dispatch toggle (default = off)
+//                           — opt-in. When on, a 2-ch source feeds DPL2-
+//                           style matrix decode into FL/FR/C/LFE/SL/SR
+//                           speakers in the linkset. 5.1 / 6-ch source
+//                           always plays native (auto-bypass).
 //
 //  No URL retention: Stop drops {url:} entirely (no urlsave shadow),
 //  Start prompts only when {url:} is absent. What the user wrote is
@@ -64,6 +81,7 @@ string  M_BINAURAL     = "BINAURAL";
 string  M_VENUE        = "VENUE";
 string  M_WETGAIN      = "WETGAIN";
 string  M_WETGAIN_CUSTOM = "WETGAIN_CUSTOM";
+string  M_UPMIX        = "UPMIX";
 string  M_CONFIRM_NONE = "CONFIRM_NONE";
 string  M_CONFIRM_RM   = "CONFIRM_RM";
 
@@ -110,6 +128,13 @@ list WETGAIN_BUTTONS = [
     "Default", "Back"
 ];
 
+// r12: 2ch→5.1 upmix dispatch on/off. Default = remove tag (viewer
+// default OFF, opt-in). Same shape as BINAURAL_BUTTONS.
+list UPMIX_BUTTONS = [
+    "On", "Off",
+    "Default", "Back"
+];
+
 // ---------- Globals ----------
 
 key      gUser;       // toucher (always owner)
@@ -144,6 +169,57 @@ integer findTagEnd(string s, integer start)
     return start + i;
 }
 
+// r12: Desc 127-byte budget compression. Internal field key/value use the
+// canonical long form (binaural / venue / wetgain, hall_medium, ...), so
+// every getField / setField / applyField site keeps working unchanged.
+// Translation happens only at the read boundary (parseFields) and the
+// write boundary (buildTagBody). Short forms also accepted on read so a
+// hand-edited Desc with `{bin:on}` still parses correctly.
+
+string normalizeKeyToLong(string k)
+{
+    if (k == "bin") return "binaural";
+    if (k == "v")   return "venue";
+    if (k == "wg")  return "wetgain";
+    return k;
+}
+
+string normalizeVenueValueToLong(string v)
+{
+    if (v == "d")  return "dry";
+    if (v == "rs") return "room_small";
+    if (v == "rm") return "room_medium";
+    if (v == "hs") return "hall_small";
+    if (v == "hm") return "hall_medium";
+    if (v == "hl") return "hall_large";
+    if (v == "cl") return "club";
+    if (v == "ct") return "cathedral";
+    if (v == "od") return "outdoor";
+    return v;
+}
+
+string emitShortKey(string k)
+{
+    if (k == "binaural") return "bin";
+    if (k == "venue")    return "v";
+    if (k == "wetgain")  return "wg";
+    return k;
+}
+
+string emitShortVenueValue(string v)
+{
+    if (v == "dry")         return "d";
+    if (v == "room_small")  return "rs";
+    if (v == "room_medium") return "rm";
+    if (v == "hall_small")  return "hs";
+    if (v == "hall_medium") return "hm";
+    if (v == "hall_large")  return "hl";
+    if (v == "club")        return "cl";
+    if (v == "cathedral")   return "ct";
+    if (v == "outdoor")     return "od";
+    return v;
+}
+
 // Read all {key:value} fields inside the tag body.
 // Returns strided list [key0, val0, key1, val1, ...].
 list parseFields(string body)
@@ -165,6 +241,10 @@ list parseFields(string body)
         {
             string k = llStringTrim(llGetSubString(inner, 0, colon - 1), STRING_TRIM);
             string v = llStringTrim(llGetSubString(inner, colon + 1, -1), STRING_TRIM);
+            // r12: normalize short-form keys/values to canonical long form
+            // so the rest of the script is oblivious to the wire format.
+            k = normalizeKeyToLong(k);
+            if (k == "venue") v = normalizeVenueValueToLong(v);
             out += [k, v];
         }
         i = cb + 1;
@@ -213,7 +293,7 @@ string buildTagBody(list fields)
     integer i;
     // Preferred field order for readability.
     list order = ["url", "ch", "range", "volume",
-                  "binaural", "venue", "wetgain"];
+                  "binaural", "venue", "wetgain", "upmix"];
     list seen  = [];
     for (i = 0; i < llGetListLength(order); ++i)
     {
@@ -221,7 +301,12 @@ string buildTagBody(list fields)
         string v = getField(fields, k);
         if (v != "")
         {
-            body += "{" + k + ":" + v + "}";
+            // r12: emit short forms for binaural/venue/wetgain to fit
+            // the 127-byte Desc budget. venue value also short-aliased.
+            string ek = emitShortKey(k);
+            string ev = v;
+            if (k == "venue") ev = emitShortVenueValue(v);
+            body += "{" + ek + ":" + ev + "}";
             seen += [k];
         }
     }
@@ -231,7 +316,11 @@ string buildTagBody(list fields)
         if (llListFindList(seen, [k]) == -1)
         {
             string v = llList2String(fields, i + 1);
-            body += "{" + k + ":" + v + "}";
+            // Same short-form emission for unknown-but-passthrough keys.
+            string ek = emitShortKey(k);
+            string ev = v;
+            if (k == "venue") ev = emitShortVenueValue(v);
+            body += "{" + ek + ":" + ev + "}";
         }
     }
     return body;
@@ -346,16 +435,18 @@ string fmtCurrent(integer link)
     string bin    = getField(fields, "binaural");
     string ven    = getField(fields, "venue");
     string wet    = getField(fields, "wetgain");
+    string up     = getField(fields, "upmix");
     string s = "";
     if (url != "") s += "url=" + url + "\n";
     if (ch  != "") s += "ch=" + ch + "  ";
     else           s += "ch=(none)  ";
     if (rng != "") s += "range=" + rng + "m  ";
     if (vol != "") s += "volume=" + vol;
-    if (bin != "" || ven != "" || wet != "") s += "\n";
+    if (bin != "" || ven != "" || wet != "" || up != "") s += "\n";
     if (bin != "") s += "binaural=" + bin + "  ";
     if (ven != "") s += "venue=" + ven + "  ";
-    if (wet != "") s += "wetgain=" + wet;
+    if (wet != "") s += "wetgain=" + wet + "  ";
+    if (up  != "") s += "upmix=" + up;
     return s;
 }
 
@@ -395,7 +486,7 @@ showRootMenu()
     list buttons = ["Start", "Stop", "URL",
                     "Volume", "Range", "Ch",
                     "Binaural", "Venue", "WetGain",
-                    "Remove Tag", "Close"];
+                    "Upmix", "Remove Tag", "Close"];
     llDialog(gUser, body, buttons, DIALOG_CHAN);
 }
 
@@ -505,6 +596,20 @@ showWetGainCustom()
     llTextBox(gUser,
         "Enter custom wetgain (0.0 - 4.0). Empty input cancels.",
         DIALOG_CHAN);
+}
+
+// r12: 2ch→5.1 upmix dispatch toggle (root prim only).
+showUpmix()
+{
+    gMode = M_UPMIX;
+    string body = "Set upmix (2ch -> 5.1) for ROOT prim\n"
+                + "Current: " + getCurrentField(1, "upmix") + "\n\n"
+                + "On: dispatch a 2-ch source through DPL2-style matrix\n"
+                + "    decode into FL/FR/C/LFE/SL/SR speakers\n"
+                + "Off: 2-ch source plays as 2-spk stereo (r11 behavior)\n"
+                + "Default: remove tag (viewer default = off, opt-in)\n\n"
+                + "Note: 5.1 / 6-ch source ignores this and plays native.";
+    llDialog(gUser, body, UPMIX_BUTTONS, DIALOG_CHAN);
 }
 
 // ---------- Action handlers ----------
@@ -771,6 +876,35 @@ handleWetGainCustom(string text)
     clearMenu();
 }
 
+// r12: upmix on/off/default — same shape as binaural. Tag default in
+// the viewer is OFF (opt-in), so "Default" simply drops the field and
+// also lets the viewer-side debug Stream3DUpmix sentinel decide if the
+// listener has overridden anything.
+handleUpmix(string label)
+{
+    if (label == "Back") { showRootMenu(); return; }
+    if (label == "Default")
+    {
+        list fields = readFields(1);
+        fields = dropField(fields, "upmix");
+        if (writeFields(1, fields) == 0)
+        {
+            llRegionSayTo(gUser, 0, "Save failed (description too long).");
+            clearMenu();
+            return;
+        }
+        notifySaved();
+        clearMenu();
+        return;
+    }
+    string val = "";
+    if (label == "On")  val = "on";
+    else if (label == "Off") val = "off";
+    else { clearMenu(); return; }
+    applyField(1, "upmix", val);
+    clearMenu();
+}
+
 handleRemoveTag()
 {
     // Removing a speaker leaves the linkset with no playback prim?
@@ -842,6 +976,7 @@ default
             if (msg == "Binaural")   { showBinaural(); return; }
             if (msg == "Venue")      { showVenue(); return; }
             if (msg == "WetGain")    { showWetGain(); return; }
+            if (msg == "Upmix")      { showUpmix(); return; }
             if (msg == "Remove Tag") { handleRemoveTag(); return; }
             return;
         }
@@ -868,6 +1003,7 @@ default
         if (gMode == M_VENUE)         { handleVenue(msg);         return; }
         if (gMode == M_WETGAIN)       { handleWetGain(msg);       return; }
         if (gMode == M_WETGAIN_CUSTOM){ handleWetGainCustom(msg); return; }
+        if (gMode == M_UPMIX)         { handleUpmix(msg);         return; }
 
         // ---- Confirm dialogs ----
         if (gMode == M_CONFIRM_NONE) { clearMenu(); return; }
