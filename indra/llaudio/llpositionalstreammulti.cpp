@@ -508,6 +508,18 @@ void LLPositionalStreamMulti::setVolume(F32 volume)
     }
 }
 
+void LLPositionalStreamMulti::setSpeakerVolume(size_t idx, F32 volume)
+{
+    if (idx >= mSpeakers.size()) return;
+    if (mSpeakers[idx].volume == volume) return;
+    mSpeakers[idx].volume = volume;
+    if (idx < mSpeakerRuntime.size() && mSpeakerRuntime[idx].channel)
+    {
+        checkFmod(mSpeakerRuntime[idx].channel->setVolume(mVolume * volume),
+                  "Channel::setVolume(speaker)");
+    }
+}
+
 void LLPositionalStreamMulti::applyChannelAttributes(FMOD::Channel* channel,
                                                      const LLVector3& pos,
                                                      F32 range)

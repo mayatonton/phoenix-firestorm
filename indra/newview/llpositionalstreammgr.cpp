@@ -1100,9 +1100,9 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
     // r8 F3-3: detect "no audible change" so we can keep the running stream
     // when an unrelated tag in the linkset is re-polled. Comparison covers
-    // url + element-wise speaker tuple (prim, ch, range, volume); position
-    // changes are propagated every tick by the update loop and never trigger
-    // a restart.
+    // url + element-wise speaker tuple (prim, ch, range); volume is excluded
+    // (r12.1: live-pushed via setSpeakerVolume per poll, no rebuild needed)
+    // and position is propagated every tick by the update loop.
     auto old_it = mDistributedBindings.find(root_id);
     const bool was_present = (old_it != mDistributedBindings.end());
     bool fingerprint_match = false;
@@ -1129,7 +1129,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
                 const auto& a = old_b.speakers[i];
                 const auto& c = speakers[i];
                 if (a.prim_id != c.prim_id || a.ch != c.ch
-                    || a.range != c.range || a.volume != c.volume)
+                    || a.range != c.range)
                 {
                     fingerprint_match = false;
                     break;
@@ -1145,6 +1145,14 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         // the live stream untouched.
         old_it->second.range_default = range_default;
         old_it->second.dropped_speakers = dropped;
+        // r12.1: mirror the latest per-speaker volume into the binding so
+        // the per-poll push in update() sees the new value. Indexes line
+        // up because the fingerprint compared prim_id / ch / range
+        // element-wise above and matched.
+        for (size_t i = 0; i < speakers.size(); ++i)
+        {
+            old_it->second.speakers[i].volume = speakers[i].volume;
+        }
         // r11 P5: also refresh binaural_tag so a debug toggle later this
         // session that flips back to the sentinel still resolves correctly.
         old_it->second.binaural_tag = binaural_tag;
@@ -2048,6 +2056,11 @@ void LLPositionalStreamMgr::update()
             {
                 b.stream->setSpeakerPosition(i, toFloatVec(sp->getPositionGlobal()));
             }
+            // r12.1: push the per-speaker {volume:N} value every poll so a
+            // tag edit propagates without rebuilding the FMOD stream.
+            // setSpeakerVolume is idempotent (early-returns when unchanged)
+            // so the steady-state cost is one float compare per speaker.
+            b.stream->setSpeakerVolume(i, b.speakers[i].volume);
         }
         // r12 P6: push the live-tunable upmix knobs every poll so a debug-
         // settings edit picks up at the next FMOD chunk boundary without a
