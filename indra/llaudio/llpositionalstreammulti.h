@@ -200,6 +200,14 @@ public:
     // the same way it set up the speaker vector in start()).
     void setSpeakerPosition(size_t idx, const LLVector3& pos);
 
+    // r12.1: live update of one speaker's per-channel volume (the tag
+    // {volume:N} value). Idempotent — early-returns when the cached
+    // mSpeakers[idx].volume already matches, so the per-poll push from
+    // the mgr costs one float compare in the steady state. Pushed via
+    // FMOD::Channel::setVolume(mVolume * volume) so master and per-spk
+    // multiply consistently with the start()-time path.
+    void setSpeakerVolume(size_t idx, F32 volume);
+
     // Global volume multiplier on top of per-speaker volume.
     void setVolume(F32 volume);
 
