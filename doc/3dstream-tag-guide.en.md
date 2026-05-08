@@ -132,9 +132,9 @@ Both tags also accept legacy prefixes (`[ayastream:...]` / `[ayastream-stereo:..
 
 The Description writable via LSL `llSetObjectDesc` has a **127-byte limit**. UTF-8 multibyte characters (e.g., Japanese) consume this quickly, so for long URLs either **shorten the URL** or use the distributed pattern (write `{url}` only on the root and `{ch:...}` only on child prims; see §6). **Short-forms are available for frequent keys and venue values** (see §4.5).
 
-### 4.5 Short-forms for key names / venue values (r12)
+### 4.5 Short-forms for key names / venue values (r12 / r12.1)
 
-For `[3dstream-stereo:...]`, **3 frequent keys** and **all 9 `venue` values** have **short-form aliases** introduced in r12. They make the Description fit comfortably under SL's 127-byte limit (§4.4). Long-form and short-form are **fully equivalent** (resolved to the same canonical form internally). New tags and existing tags can use either form, and behavior is identical.
+For `[3dstream-stereo:...]`, **4 frequent keys** and **all 9 `venue` values** have **short-form aliases** introduced in r12. They make the Description fit comfortably under SL's 127-byte limit (§4.4). Long-form and short-form are **fully equivalent** (resolved to the same canonical form internally). New tags and existing tags can use either form, and behavior is identical.
 
 #### Key short-forms
 
@@ -143,6 +143,7 @@ For `[3dstream-stereo:...]`, **3 frequent keys** and **all 9 `venue` values** ha
 | `binaural` | `bin` | Binaural ON/OFF (§7.1) |
 | `venue` | `v` | Venue reverb preset (§7.2) |
 | `wetgain` | `wg` | Reverb wet level (§7.3) |
+| `lfegain` | `lg` | LFE channel gain multiplier (§7.4, added in r12.1) |
 
 Other keys (`url`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) are already short, so no aliases are added.
 
@@ -290,7 +291,8 @@ Playback only starts when the linkset has both **a source declaration (root with
 | `range` | optional | F32 (m) | `Stream3DRolloffMax` (20.0) | Default rolloff distance for speakers in the linkset that don't have their own `range` |
 | `binaural` | optional | bool | `off` | Binaural ON/OFF (details §7.1). Short-form `bin` |
 | `venue` | optional | enum | `dry` | Venue reverb preset, 9 values (details §7.2). Short-form `v` |
-| `wetgain` | optional | F32 [0.0–2.0] | `1.0` | Reverb wet-component gain (details §7.3). Short-form `wg` |
+| `wetgain` | optional | F32 [0.0–2.0] | `0.2` | Reverb wet-component gain (details §7.3). Short-form `wg` |
+| `lfegain` | optional | F32 [0.0–4.0] | `1.0` | LFE channel gain multiplier (details §7.4, added in r12.1). Short-form `lg` |
 | `upmix` | optional | bool | `off` | stereo→5.1 upmix (details §8). No short-form |
 
 #### 6.3.2 Speaker declaration keys (any prim)
@@ -392,11 +394,11 @@ The link order (link number 1, 2, 3, ...) of root vs children **does NOT affect 
 
 ## 7. Binaural / Venue Reverb (r12)
 
-> Three new keys (`binaural` / `venue` / `wetgain`) are added in r12. They apply uniformly to all speakers in the linkset, are meaningful only on the root prim, and produce a more natural sense of "live venue / hall" on top of the existing 3D positional rendering.
+> Three new keys (`binaural` / `venue` / `wetgain`) are added in r12, plus `lfegain` in r12.1. They apply uniformly to all speakers in the linkset, are meaningful only on the root prim, and produce a more natural sense of "live venue / hall" on top of the existing 3D positional rendering.
 
 #### Why root-only?
 
-These keys describe the **broadcaster's intent for that performance** — "this content is mixed for a hall" / "today's broadcast is binaural" — so they are decided once at the source, not per-speaker. **All three are root-only** (writing them on a child prim is silently ignored). They are NOT exposed in any listener-side UI ─ listeners hear what the broadcaster decided via the tag (§7.4).
+These keys describe the **broadcaster's intent for that performance** — "this content is mixed for a hall" / "today's broadcast is binaural" — so they are decided once at the source, not per-speaker. **All four are root-only** (writing them on a child prim is silently ignored). They are NOT exposed in any listener-side UI ─ listeners hear what the broadcaster decided via the tag (§7.5).
 
 ### 7.1 `{binaural:on|off}` (short-form `bin`)
 
@@ -420,7 +422,7 @@ In short, it's a low-cost HRTF using ITD-based spatialization plus distance-base
 #### When to use
 
 - **Headphone listeners** = `on`. Spatial cues are much clearer than vanilla 3D.
-- **Speaker listeners** = either is fine. ITD on speakers can occasionally feel reversed (mixed for ears, not loudspeakers); see "Exception" in §7.4 for the listener-side rescue.
+- **Speaker listeners** = either is fine. ITD on speakers can occasionally feel reversed (mixed for ears, not loudspeakers); see "Exception" in §7.5 for the listener-side rescue.
 - **Already-binaural source material** (broadcasting a pre-mixed binaural track) = `off` to avoid double-processing.
 
 ### 7.2 `{venue:NAME}` (short-form `v`)
@@ -447,21 +449,50 @@ Default: `dry`.
 
 ### 7.3 `{wetgain:N}` (short-form `wg`)
 
-Multiplier on the **wet (reverb) component**. Range: 0.0–2.0. Default: 1.0.
+Multiplier on the **wet (reverb) component**. Range: 0.0–2.0. Default: **0.2** (changed from 1.0 in r12.1).
 
 | Value | Effect |
 |---|---|
 | `0.0` | Full dry (= same as `venue:dry` regardless of preset) |
-| `0.8` | Wet at 80% — useful for long-tail venues to keep source clarity |
-| `1.0` | Standard (default) |
-| `1.2` | Wet at 120% — more atmosphere, less dry punch |
+| `0.1` | Very subtle wet |
+| **`0.2` (default)** | Subtle wet — musically usable baseline |
+| `0.3–0.5` | Moderate to fairly thick wet (top of the musical range) |
+| `1.0` and above | Wet at parity-or-higher with dry — typically too saturated for music broadcasts |
 | `2.0` | Wet at 200% — heavily-drowned ambient feel (rarely useful) |
 
 The dry component is fixed at 1.0; only wet is scaled by `wetgain`. To go fully dry, use `{venue:dry}` (equivalent to `{wetgain:0.0}` but spec-clean).
 
-### 7.4 Broadcaster-driven model
+> **Default change in r12.1 (1.0 → 0.2)**: The original `1.0` ("wet at parity with dry") saturated the source on hall / cathedral presets and fell outside the musically usable range. Listening tests confirmed **0.1–0.5 is the practical musical range**, so the default was lowered to `0.2`. The bundled LSL UI quick-pick buttons were also re-graded to `0.1`–`0.5` in fine increments.
 
-These three keys are **root-prim-Description-as-truth (root truth)** — there is **no Preferences / Debug Settings UI for general listeners**.
+### 7.4 `{lfegain:N}` (short-form `lg`, added in r12.1)
+
+Gain multiplier applied to the **LFE channel** — both the `{ch:LFE}` route and the LFE band produced by `{upmix:on}`. Independent of dry/wet.
+
+| Value | Effect |
+|---|---|
+| `0.0` | LFE muted (no output from LFE prim / no low-end emphasis from upmix) |
+| `0.5` | LFE at half level |
+| **`1.0` (default)** | Source-level (r12-compatible behavior) |
+| `2.0` | LFE doubled (typical when emphasizing low-end is desired) |
+| `4.0` | LFE 4× (upper bound, sub-PA scenarios) |
+
+#### Use cases
+
+- **5.1 native broadcast** (with a `{ch:LFE}` prim): boost a quietly-recorded LFE bus on the listener side
+- **`{upmix:on}` stereo→5.1**: when the 80 Hz LPF band feels weak, push it up
+- Conversely, when the LFE prim is mounted on a non-subwoofer speaker, set to `0` to stop low-end leakage
+
+#### When LFE is not active
+
+If there is no `{ch:LFE}` prim and `upmix` is off, the LFE route is inactive and `lfegain` is **a no-op** (writing it is harmless but has no effect).
+
+#### Listener-side sentinel
+
+The debug setting `Stream3DLfeGain` (sentinel `-1.0` = follow tag, otherwise `0.0–4.0` to force-override) was also added in r12.1 (details §12.2). It sits in the broadcaster-driven model rescue slot and is intentionally not exposed in general-listener UI.
+
+### 7.5 Broadcaster-driven model
+
+These four keys (`binaural` / `venue` / `wetgain` / `lfegain`) are **root-prim-Description-as-truth (root truth)** — there is **no Preferences / Debug Settings UI for general listeners**.
 
 #### Why no listener UI?
 
@@ -470,9 +501,9 @@ These three keys are **root-prim-Description-as-truth (root truth)** — there i
 
 #### Exception: listener-side rescue for speaker viewing
 
-A listener using **speakers, not headphones**, may find ITD counterproductive when listening to a `{binaural:on}` broadcast. For this **rescue purpose only**, one sentinel debug setting is provided ─ `Stream3DBinauralRender = 0` to force OFF on the listener side (details §12.2). Similarly `Stream3DVenueOverride` (empty = follow tag, `"dry"` to force all reverb OFF) and `Stream3DVenueWetGain` (sentinel `-1.0` = follow tag) are also provided. None of these are exposed in general-user UI.
+A listener using **speakers, not headphones**, may find ITD counterproductive when listening to a `{binaural:on}` broadcast. For this **rescue purpose only**, one sentinel debug setting is provided ─ `Stream3DBinauralRender = 0` to force OFF on the listener side (details §12.2). Similarly `Stream3DVenueOverride` (empty = follow tag, `"dry"` to force all reverb OFF) / `Stream3DVenueWetGain` (sentinel `-1.0` = follow tag) / `Stream3DLfeGain` (sentinel `-1.0` = follow tag, r12.1) are also provided. None of these are exposed in general-user UI.
 
-### 7.5 Combination examples
+### 7.6 Combination examples
 
 #### Nothing written (= default)
 
@@ -538,7 +569,7 @@ Default: `off`. The broadcaster opts in.
 #### Why opt-in (default off)?
 
 - Stereo material was originally mixed for stereo. Upmix is interpretation, not reproduction.
-- If listeners with 6-prim placement decide independently whether to upmix, "the same broadcast sounds different per listener" — same ambiguity issue as §7.4.
+- If listeners with 6-prim placement decide independently whether to upmix, "the same broadcast sounds different per listener" — same ambiguity issue as §7.5.
 - So the broadcaster decides via tag. r10 behavior is preserved by default.
 
 ### 8.2 Algorithm (DPL2-family matrix decode + band separation)
@@ -899,17 +930,20 @@ The same "3D Stream" slider also appears in the speaker icon's Volume dropdown f
 
 #### r11/r12 broadcaster-driven model: listener-side sentinels (no general UI)
 
-As described in §7.4 / §8.4, the `binaural` / `venue` / `wetgain` / `upmix` keys are **broadcaster-tag-as-truth**, with no Preferences UI. For rescue purposes only, sentinel debug settings are provided. General listeners should not touch these.
+As described in §7.5 / §8.4, the `binaural` / `venue` / `wetgain` / `lfegain` / `upmix` keys are **broadcaster-tag-as-truth**, with no Preferences UI. For rescue purposes only, sentinel debug settings are provided. General listeners should not touch these.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `Stream3DBinauralRender` | S32 | `-1` (sentinel = follow tag) | `0` to force OFF on the listener side / `1` to force ON. Rescue use when listening to a `{binaural:on}` broadcast on speakers (details in §7.4 Exception) |
+| `Stream3DBinauralRender` | S32 | `-1` (sentinel = follow tag) | `0` to force OFF on the listener side / `1` to force ON. Rescue use when listening to a `{binaural:on}` broadcast on speakers (details in §7.5 Exception) |
 | `Stream3DVenueOverride` | string | `""` (sentinel = follow tag) | A venue name like `"dry"` forces all broadcasts to play in that venue (`"dry"` = force all reverb OFF, the typical use) |
 | `Stream3DVenueWetGain` | F32 | `-1.0` (sentinel = follow tag) | A value in `0.0–2.0` forces a wet-gain override |
+| `Stream3DLfeGain` | F32 | `-1.0` (sentinel = follow tag) | A value in `0.0–4.0` forces an LFE-gain override (added in r12.1, details §7.4) |
 | `Stream3DUpmix` | S32 | `-1` (sentinel = follow tag) | `0` ignores the tag and forces OFF / `1` forces ON. The 5.1-native auto-bypass still applies (details §8.1 / §8.3) |
 | `Stream3DUpmixLfeCutoff` | F32 (Hz) | `80.0` | upmix DSP LFE LPF cutoff (20–200). Details §8.4 |
 | `Stream3DUpmixCenterBleed` | F32 | `1.0` | upmix DSP center bleed removal fraction (0.0–1.0). Details §8.4 |
 | `Stream3DUpmixRearDelayMs` | F32 (ms) | `16.0` | upmix DSP rear decorrelation delay (0–32). Details §8.4 |
+
+> **r12.1 live-tuning fix**: At r12 release, the settings `Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` only took effect after the affected prim was **touched (Description re-parsed)**. r12.1 adds a per-poll push to the polling loop, so all of these are now applied from the next frame after the value changes (§12.3).
 
 #### Debug-only (for development verification)
 
@@ -925,6 +959,8 @@ Most settings are **"Live"** — applied from the next frame after the value cha
 
 - Toggling `Stream3DEnabled` from `false` to `true` does NOT auto re-bind. Re-discovery happens on the next poll cycle (within ~30s by default).
 - Toggling `Stream3DDescriptionScan` immediately tears down or re-discovers all bindings.
+
+> **Fixed in r12.1**: At r12 release, `Stream3DUpmixLfeCutoff` / `Stream3DUpmixCenterBleed` / `Stream3DUpmixRearDelayMs` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` regressed and only took effect after the affected prim was **touched (Description re-parsed)**. r12.1 added a per-poll push in `LLPositionalStreamMgr::update()` so these now follow the standard "next-frame apply" semantics.
 
 ---
 
@@ -1162,3 +1198,4 @@ This guide is the **user-facing** format reference. Implementation details (deco
 
 - **2026-05-05 (initial)**: Compiled as the final spec at r10. Cumulative spec from r5 / r8 / r9 / r10 / r10.x. r11 and later not covered (unreleased).
 - **2026-05-08 (r12)**: Added §4.5 (short-forms), §7 (Binaural / Venue Reverb), §8 (stereo→5.1 upmix). r11 is bundled into r12 (not released independently — to avoid two-step tag-format change confusion). Renumbered later sections (§7–§14 → §9–§16). §12.2 lists r11/r12 listener-side sentinel debug settings; broadcaster-driven model preserved (no general Preferences UI).
+- **2026-05-09 (r12.1)**: Added new §7.4 `{lfegain:N}` (short-form `lg`); renumbered the prior §7.4 Broadcaster-driven model to §7.5 and the prior §7.5 Combination examples to §7.6. Lowered the `wetgain` default from `1.0` to `0.2` to reflect the practical musical range (0.1–0.5) confirmed by listening tests. Added the `Stream3DLfeGain` sentinel to §12.2 and a live-tuning fix note in §12.2 / §12.3 (covering the r12 regression where `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` only took effect after a prim touch).
