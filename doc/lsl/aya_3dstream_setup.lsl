@@ -9,8 +9,19 @@
 //
 //  Tag form written to each prim's Description (per AYAstorm spec):
 //      [3dstream-stereo:{url:...}{ch:K}{range:N}{volume:V}
-//                       {binaural:on|off}{venue:NAME}{wetgain:G}
+//                       {bin:on|off}{v:NAME}{wg:G}
 //                       {upmix:on|off}]
+//
+//  r12 short-form keys/values (canonical form, emitted by this script):
+//      bin         <- binaural
+//      v           <- venue
+//      wg          <- wetgain
+//      v values    <- d/rs/rm/hs/hm/hl/cl/ct/od
+//                     (=dry/room_small/room_medium/hall_small/hall_medium/
+//                       hall_large/club/cathedral/outdoor)
+//  Long forms remain accepted on read for legacy Desc tags. Compression
+//  saves ~23 bytes for full r11+r12 stacks (45 → 22), keeping the 127-byte
+//  Desc cap reachable when URL is also long.
 //
 //  - URL is shared by the linkset; only the speaker(s) carrying {url:}
 //    cause AYAstorm to start/stop the stream. By convention this script
@@ -158,6 +169,57 @@ integer findTagEnd(string s, integer start)
     return start + i;
 }
 
+// r12: Desc 127-byte budget compression. Internal field key/value use the
+// canonical long form (binaural / venue / wetgain, hall_medium, ...), so
+// every getField / setField / applyField site keeps working unchanged.
+// Translation happens only at the read boundary (parseFields) and the
+// write boundary (buildTagBody). Short forms also accepted on read so a
+// hand-edited Desc with `{bin:on}` still parses correctly.
+
+string normalizeKeyToLong(string k)
+{
+    if (k == "bin") return "binaural";
+    if (k == "v")   return "venue";
+    if (k == "wg")  return "wetgain";
+    return k;
+}
+
+string normalizeVenueValueToLong(string v)
+{
+    if (v == "d")  return "dry";
+    if (v == "rs") return "room_small";
+    if (v == "rm") return "room_medium";
+    if (v == "hs") return "hall_small";
+    if (v == "hm") return "hall_medium";
+    if (v == "hl") return "hall_large";
+    if (v == "cl") return "club";
+    if (v == "ct") return "cathedral";
+    if (v == "od") return "outdoor";
+    return v;
+}
+
+string emitShortKey(string k)
+{
+    if (k == "binaural") return "bin";
+    if (k == "venue")    return "v";
+    if (k == "wetgain")  return "wg";
+    return k;
+}
+
+string emitShortVenueValue(string v)
+{
+    if (v == "dry")         return "d";
+    if (v == "room_small")  return "rs";
+    if (v == "room_medium") return "rm";
+    if (v == "hall_small")  return "hs";
+    if (v == "hall_medium") return "hm";
+    if (v == "hall_large")  return "hl";
+    if (v == "club")        return "cl";
+    if (v == "cathedral")   return "ct";
+    if (v == "outdoor")     return "od";
+    return v;
+}
+
 // Read all {key:value} fields inside the tag body.
 // Returns strided list [key0, val0, key1, val1, ...].
 list parseFields(string body)
@@ -179,6 +241,10 @@ list parseFields(string body)
         {
             string k = llStringTrim(llGetSubString(inner, 0, colon - 1), STRING_TRIM);
             string v = llStringTrim(llGetSubString(inner, colon + 1, -1), STRING_TRIM);
+            // r12: normalize short-form keys/values to canonical long form
+            // so the rest of the script is oblivious to the wire format.
+            k = normalizeKeyToLong(k);
+            if (k == "venue") v = normalizeVenueValueToLong(v);
             out += [k, v];
         }
         i = cb + 1;
@@ -235,7 +301,12 @@ string buildTagBody(list fields)
         string v = getField(fields, k);
         if (v != "")
         {
-            body += "{" + k + ":" + v + "}";
+            // r12: emit short forms for binaural/venue/wetgain to fit
+            // the 127-byte Desc budget. venue value also short-aliased.
+            string ek = emitShortKey(k);
+            string ev = v;
+            if (k == "venue") ev = emitShortVenueValue(v);
+            body += "{" + ek + ":" + ev + "}";
             seen += [k];
         }
     }
@@ -245,7 +316,11 @@ string buildTagBody(list fields)
         if (llListFindList(seen, [k]) == -1)
         {
             string v = llList2String(fields, i + 1);
-            body += "{" + k + ":" + v + "}";
+            // Same short-form emission for unknown-but-passthrough keys.
+            string ek = emitShortKey(k);
+            string ev = v;
+            if (k == "venue") ev = emitShortVenueValue(v);
+            body += "{" + ek + ":" + ev + "}";
         }
     }
     return body;

@@ -267,6 +267,38 @@ LLPositionalStreamMgr::parseTag(const std::string& description)
     return data;
 }
 
+// r12 P9: short-name aliases for r11 reverb/binaural keys and venue values.
+// Object Description has a hard 127-byte cap (SL protocol). Long forms like
+// {binaural:on}{venue:hall_medium}{wetgain:1.5} eat 45 bytes alone; short
+// forms compress to 22 (saves 23 bytes, enough headroom for typical URLs).
+// Parser accepts both old and new; LSL writer emits short by default.
+namespace
+{
+    // venue value alias table: short token → canonical long name.
+    // Keep in sync with LLVenueReverbDsp::knownVenues() and the LSL setup
+    // script's VENUE_BUTTONS list.
+    static constexpr std::pair<std::string_view, std::string_view> kVenueAliases[] = {
+        {"d",  "dry"},
+        {"rs", "room_small"},
+        {"rm", "room_medium"},
+        {"hs", "hall_small"},
+        {"hm", "hall_medium"},
+        {"hl", "hall_large"},
+        {"cl", "club"},
+        {"ct", "cathedral"},
+        {"od", "outdoor"},
+    };
+
+    std::string resolveVenueAlias(const std::string& val)
+    {
+        for (const auto& [short_form, long_form] : kVenueAliases)
+        {
+            if (val == short_form) return std::string(long_form);
+        }
+        return val; // not an alias → pass through as-is
+    }
+}
+
 // static
 std::optional<LLPositionalStreamMgr::ChannelKind>
 LLPositionalStreamMgr::parseChannelKind(std::string_view s)
@@ -398,12 +430,13 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadVolume, val);
                 }
             }
-            else if (key == "binaural")
+            else if (key == "binaural" || key == "bin")
             {
                 // r11 P5: {binaural:on|off} (case-insensitive). Only
                 // meaningful on the root prim (= same prim as {url}); we
                 // still parse it on every prim so a malformed value
                 // surfaces a chat error regardless of where the typo is.
+                // r12 P9: short alias `bin` accepted for Desc 127-byte budget.
                 std::string lowered = val;
                 LLStringUtil::toLower(lowered);
                 if (lowered == "on" || lowered == "true" || lowered == "1")
@@ -440,7 +473,7 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadUpmix, val);
                 }
             }
-            else if (key == "venue")
+            else if (key == "venue" || key == "v")
             {
                 // r11 P8: {venue:NAME}. Validated against the bundled
                 // catalog (LLVenueReverbDsp::knownVenues, includes "dry").
@@ -450,22 +483,26 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                 // separately and let evaluateLinkset notify on its own
                 // schedule, leaving data.venue at nullopt → effective
                 // resolves to "dry".
+                // r12 P9: short alias `v` accepted; venue value also
+                // accepts 2-char alias (hm, ct, ...) per kVenueAliases.
+                const std::string resolved = resolveVenueAlias(val);
                 const auto& known = LLVenueReverbDsp::knownVenues();
-                if (std::find(known.begin(), known.end(), val) != known.end())
+                if (std::find(known.begin(), known.end(), resolved) != known.end())
                 {
-                    data.venue = val;
+                    data.venue = resolved;
                 }
                 else
                 {
                     data.bad_venue_value = val;
                 }
             }
-            else if (key == "wetgain")
+            else if (key == "wetgain" || key == "wg")
             {
                 // r11 P9: {wetgain:N}. Spec §4.1 line 152 — F32 in
                 // [0.0, 2.0], values outside the range are clamped (not
                 // rejected). Non-numeric input is the only failure mode
                 // surfaced as BadWetGain.
+                // r12 P9: short alias `wg` accepted.
                 F32 f;
                 if (tryParseFloat(val, f))
                 {

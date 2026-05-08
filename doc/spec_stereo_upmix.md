@@ -330,13 +330,21 @@ r10 の 6 spk placement は `{ch:FL}` / `{ch:FR}` / `{ch:C}` / `{ch:LFE}` / `{ch
 
 ### 4.5 r11 既存タグとの並行動作
 
-r11 までのタグ (`{venue}` / `{binaural}` / `{wetgain}` / `{ch}` / `{range}` / `{volume}`) と並列指定可。例:
+r11 までのタグ (`{venue}` / `{binaural}` / `{wetgain}` / `{ch}` / `{range}` / `{volume}`) と並列指定可。例 (canonical 長形式):
 
 ```
 [3dstream-stereo:{upmix:on}{binaural:on}{venue:hall_medium}{wetgain:1.2}]
 ```
 
 配信ストリーム = stereo source、upmix で 6 spk に展開、各 spk に lite-HRTF + venue=hall_medium reverb (wetgain 1.2倍) が乗る。
+
+**短縮形 (r12 P9 で導入)**: SL Object Description 127 byte hard cap 対策で、r11 の 3 キー (`binaural`/`venue`/`wetgain`) と venue 値に短縮 alias を追加。viewer parser は両形式受理、LSL setup script は新規書き込み時に短縮形を emit。詳細は `spec_binaural_venue_reverb.md` §4.1.0 / §4.1.1 表の右列。上記例の短縮形:
+
+```
+[3dstream-stereo:{upmix:on}{bin:on}{v:hm}{wg:1.2}]
+```
+
+URL を含めた典型的なタグ全体長は long form で 116 byte (URL 50 byte 想定)、short form で 93 byte。venue が `cathedral` / `outdoor` の場合や URL がさらに長い場合の余裕がこの差で確保される。
 
 データフローは §4.2.3 のとおり source → mRing → OpKind dispatch (upmix or r10) → per-channel → r11 lite-HRTF → r11 venue reverb で、upmix は `pcmReadCallback` 内で完結する。upmix の有効/無効が変わると `OpKind` 再割当てが必要なので、これは r10 の placement rebuild と同じ tier (= stream rebuild が走る、live update ではない)。tag だけ on→off / off→on の toggle で rebuild 走るのは **意図通り**。
 

@@ -145,13 +145,15 @@ r8 で確立した親プリム書式に **値の集合ではなく新キー** �
 
 #### 4.1.0 新規タグキー一覧
 
-| キー | 値域 | default (未指定時) | 意味 |
+| キー (canonical / 短縮) | 値域 | default (未指定時) | 意味 |
 |---|---|---|---|
-| `{venue:NAME}` | §4.1.1 表参照 (9 種) | `dry` | 会場残響種別 |
-| `{binaural:on\|off}` | `on` / `off` (大文字小文字区別なし) | `on` | lite-HRTF DSP の有効化。配信者が「既に binaural-encoded な配信源を二重処理しない」「全 listener にスピーカー視聴互換で聴かせる」等の判断で `off` を選べる |
-| `{wetgain:N}` | F32、`0.0` 〜 `2.0` (clamp) | `1.0` | venue reverb の wet 強度倍率。1.0 で IR のオリジナル強度。配信者が会場の「派手さ / 控えめ」を曲ごとに調整 |
+| `{venue:NAME}` / `{v:NAME}` | §4.1.1 表参照 (9 種、短縮 alias 受理) | `dry` | 会場残響種別 |
+| `{binaural:on\|off}` / `{bin:on\|off}` | `on` / `off` (大文字小文字区別なし) | `on` | lite-HRTF DSP の有効化。配信者が「既に binaural-encoded な配信源を二重処理しない」「全 listener にスピーカー視聴互換で聴かせる」等の判断で `off` を選べる |
+| `{wetgain:N}` / `{wg:N}` | F32、`0.0` 〜 `2.0` (clamp) | `1.0` | venue reverb の wet 強度倍率。1.0 で IR のオリジナル強度。配信者が会場の「派手さ / 控えめ」を曲ごとに調整 |
 
 `{binaural}` は親プリム属性 (= venue / wetgain と同列)。**子プリムに書いても無視** される (子プリム属性は r8/r9/r10 で確立した `{ch}` `{range}` `{volume}` 系のみ)。
+
+**短縮形 (r12 で導入)**: SL Object Description が 127 byte hard cap であるため、URL 長 + r11 全機能を併用すると枠を超えやすい。r12 P9 で短縮 key (`bin` / `v` / `wg`) と venue 値短縮 alias (§4.1.1 表の右列) を追加した。viewer parser は両形式受理、LSL setup script は新規書き込み時に短縮形を emit する。混在 Desc も問題なくパースされる。
 
 #### 4.1.1 venue 許容値
 
@@ -159,15 +161,17 @@ r8 で確立した親プリム書式に **値の集合ではなく新キー** �
 
 | 値 | 想定用途 | IR 想定特性 |
 |---|---|---|
-| `dry` (= 省略時 default) | dry 再生、reverb 無し | — |
-| `room_small` | 6〜10 畳の部屋 | RT60 ~0.3s |
-| `room_medium` | 練習室 / 小ホール | RT60 ~0.6s |
-| `hall_small` | 小規模ライブハウス | RT60 ~1.0s |
-| `hall_medium` | ホール (300〜1000 席相当) | RT60 ~1.5s |
-| `hall_large` | 大ホール | RT60 ~2.0s |
-| `club` | クラブ / ダンスフロア | RT60 ~0.8s, dense |
-| `cathedral` | カテドラル | RT60 ~3.0s |
-| `outdoor` | 野外、軽い early reflection のみ | RT60 ~0.2s |
+| 値 (canonical / 短縮) | 想定用途 | IR 想定特性 |
+|---|---|---|
+| `dry` / `d` (= 省略時 default) | dry 再生、reverb 無し | — |
+| `room_small` / `rs` | 6〜10 畳の部屋 | RT60 ~0.3s |
+| `room_medium` / `rm` | 練習室 / 小ホール | RT60 ~0.6s |
+| `hall_small` / `hs` | 小規模ライブハウス | RT60 ~1.0s |
+| `hall_medium` / `hm` | ホール (300〜1000 席相当) | RT60 ~1.5s |
+| `hall_large` / `hl` | 大ホール | RT60 ~2.0s |
+| `club` / `cl` | クラブ / ダンスフロア | RT60 ~0.8s, dense |
+| `cathedral` / `ct` | カテドラル | RT60 ~3.0s |
+| `outdoor` / `od` | 野外、軽い early reflection のみ | RT60 ~0.2s |
 
 不正値 (`venue:foo` 等) は r8/r9/r10 と同じく **silent ignore + warn 1 回 (chat 通知)**。chat 通知は r10.x で確立した `notifyStream3D()` helper 経由 (前置「3D Stream: 」+ throttle + Preferences 表示 gate、`docs/ayastorm-r10.x-routing-diag-chat.md` 参照)。venue 関連の通知種別:
 
