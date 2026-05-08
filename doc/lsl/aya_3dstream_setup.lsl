@@ -1,151 +1,59 @@
 // =====================================================================
-//  aya_3dstream_setup.lsl
+//  aya_3dstream_setup.lsl — AYAstorm 3D Stream tag editor (r12.1 slim)
 //
-//  Owner-only touch UI for configuring AYAstorm 3D Stream tags on a
-//  multi-prim linkset. Drop this single script into the ROOT prim only.
+//  Drop into the ROOT prim of a multi-prim linkset. Touch a prim to
+//  configure its [3dstream-stereo:{...}] tag. Owner-only.
 //
-//  Touch ROOT prim  -> configure URL / Volume / range / ch
-//  Touch CHILD prim -> configure that child's Volume / range / ch
+//  Tag form (canonical short keys emitted by this script):
+//      [3dstream-stereo:{url:..}{ch:K}{range:N}{volume:V}
+//                       {bin:on|off}{v:NAME}{wg:G}{upmix:on|off}{lg:G}]
 //
-//  Tag form written to each prim's Description (per AYAstorm spec):
-//      [3dstream-stereo:{url:...}{ch:K}{range:N}{volume:V}
-//                       {bin:on|off}{v:NAME}{wg:G}
-//                       {upmix:on|off}]
+//  See doc/spec_dist_stereo*.md for full field semantics. r12.1 added
+//  {lg:G} (LFE gain multiplier, [0.0-3.0]; 1.0=passthrough, 2.0=+6dB)
+//  and a setup-helper hover-text overlay (Float Text on/off).
 //
-//  r12 short-form keys/values (canonical form, emitted by this script):
-//      bin         <- binaural
-//      v           <- venue
-//      wg          <- wetgain
-//      v values    <- d/rs/rm/hs/hm/hl/cl/ct/od
-//                     (=dry/room_small/room_medium/hall_small/hall_medium/
-//                       hall_large/club/cathedral/outdoor)
-//  Long forms remain accepted on read for legacy Desc tags. Compression
-//  saves ~23 bytes for full r11+r12 stacks (45 → 22), keeping the 127-byte
-//  Desc cap reachable when URL is also long.
-//
-//  - URL is shared by the linkset; only the speaker(s) carrying {url:}
-//    cause AYAstorm to start/stop the stream. By convention this script
-//    keeps the URL on the ROOT prim's tag.
-//  - {ch:} controls how that prim consumes the stream. Channels:
-//        L  R  M                       (stereo / r8)
-//        FL FR C  LFE SL SR            (5.1 / r10)
-//        None                          (no playback on this prim)
-//  - Setting Ch=None on a speaker turns it into a source-only prim.
-//    The script refuses to do this if it would leave the linkset with
-//    zero speakers (which is the only real "format error" condition).
-//  - r11 root-only fields:
-//        {binaural:on|off}  lite-HRTF DSP toggle (default = on)
-//        {venue:NAME}       convolution reverb (dry/room_*/hall_*/
-//                           club/cathedral/outdoor); default = dry
-//        {wetgain:G}        venue mix amount (default = 1.0)
-//        {upmix:on|off}     2ch→5.1 upmix dispatch toggle (default = off)
-//                           — opt-in. When on, a 2-ch source feeds DPL2-
-//                           style matrix decode into FL/FR/C/LFE/SL/SR
-//                           speakers in the linkset. 5.1 / 6-ch source
-//                           always plays native (auto-bypass).
-//
-//  No URL retention: Stop drops {url:} entirely (no urlsave shadow),
-//  Start prompts only when {url:} is absent. What the user wrote is
-//  what the Description holds, so a stream that fails to play is a
-//  visible signal that the URL or upstream server is the problem,
-//  rather than being silently masked by an auto-restored prior URL.
-//
-//  Tag-only replacement: any text in the prim Description outside the
-//  [3dstream-stereo:...] tag is preserved.
-//
-//  After saving, AYAstorm picks up the change at the next 30-second
-//  Description poll (Stream3DPollInterval). The script reminds the user.
-//
-//  English-only UI by design.
+//  This script lives close to the LSL Mono 64 KB script-memory cap.
+//  Body text in dialogs is intentionally minimal, M_* mode codes are
+//  integers (not strings), and there are no global button-list arrays
+//  — all literals are inlined into their show*() function so they
+//  exist only on the (transient) call stack, not in the global heap.
 // =====================================================================
 
-// ---------- Constants ----------
-
-string  TAG_PREFIX  = "[3dstream-stereo:";   // canonical
-string  ALT_PREFIX  = "[ayastream-stereo:";  // legacy alias (read-only)
+string  TAG_PREFIX  = "[3dstream-stereo:";
+string  ALT_PREFIX  = "[ayastream-stereo:";
 string  TAG_SUFFIX  = "]";
 
-// Fixed dialog channel; listener stays open for the script's lifetime.
 integer DIALOG_CHAN = -91234567;
 
-// Mode tokens for gMode
-string  M_ROOT         = "ROOT";
-string  M_CHILD        = "CHILD";
-string  M_CH           = "CH";
-string  M_RANGE        = "RANGE";
-string  M_VOLUME       = "VOLUME";
-string  M_URL          = "URL";
-string  M_RANGE_CUSTOM = "RANGE_CUSTOM";
-string  M_VOL_CUSTOM   = "VOL_CUSTOM";
-string  M_BINAURAL     = "BINAURAL";
-string  M_VENUE        = "VENUE";
-string  M_WETGAIN      = "WETGAIN";
-string  M_WETGAIN_CUSTOM = "WETGAIN_CUSTOM";
-string  M_UPMIX        = "UPMIX";
-string  M_CONFIRM_NONE = "CONFIRM_NONE";
-string  M_CONFIRM_RM   = "CONFIRM_RM";
+// Mode codes — integer, not string. Each `string M_X = "NAME"` would
+// add ~one heap object per global; 19 of them measurably push toward
+// Stack-Heap Collision on a script of this size.
+integer M_ROOT           = 1;
+integer M_CHILD          = 2;
+integer M_CH             = 3;
+integer M_RANGE          = 4;
+integer M_VOLUME         = 5;
+integer M_URL            = 6;
+integer M_RANGE_CUSTOM   = 7;
+integer M_VOL_CUSTOM     = 8;
+integer M_BINAURAL       = 9;
+integer M_VENUE          = 10;
+integer M_WETGAIN        = 11;
+integer M_WETGAIN_CUSTOM = 12;
+integer M_UPMIX          = 13;
+integer M_LFEGAIN        = 14;
+integer M_LFEGAIN_CUSTOM = 15;
+integer M_MORE           = 16;
+integer M_FLOAT_TEXT     = 17;
+integer M_CONFIRM        = 18;
 
-// Channel button labels (must match spec exactly: L R M FL FR C LFE SL SR)
-list CH_BUTTONS = [
-    "L",   "R",   "M",
-    "FL",  "FR",  "C",
-    "LFE", "SL",  "SR",
-    "None","Back"
-];
+key      gUser;
+integer  gLink;
+integer  gMode;
+integer  gFloatText;
 
-// Range presets (meters). Custom button opens textbox.
-list RANGE_BUTTONS = [
-    "5", "10", "20",
-    "30", "50", "80",
-    "Custom", "Back"
-];
+// ---------- Tag parsing ----------
 
-// Volume presets (0.0 - 1.0). Custom button opens textbox.
-list VOLUME_BUTTONS = [
-    "0.25", "0.50", "0.75",
-    "1.00", "1.50", "2.00",
-    "Custom", "Back"
-];
-
-// r11: lite-HRTF on/off. Default = remove tag (viewer default ON).
-list BINAURAL_BUTTONS = [
-    "On", "Off",
-    "Default", "Back"
-];
-
-// r11: venue convolution reverb (9 IR slots from spec §4.5).
-list VENUE_BUTTONS = [
-    "dry",        "room_small", "room_medium",
-    "hall_small", "hall_medium","hall_large",
-    "club",       "cathedral",  "outdoor",
-    "Default",    "Back"
-];
-
-// r11: wet gain presets (0.0 - 4.0). Custom button opens textbox.
-list WETGAIN_BUTTONS = [
-    "0.5",  "1.0", "1.5",
-    "2.0",  "Custom",
-    "Default", "Back"
-];
-
-// r12: 2ch→5.1 upmix dispatch on/off. Default = remove tag (viewer
-// default OFF, opt-in). Same shape as BINAURAL_BUTTONS.
-list UPMIX_BUTTONS = [
-    "On", "Off",
-    "Default", "Back"
-];
-
-// ---------- Globals ----------
-
-key      gUser;       // toucher (always owner)
-integer  gLink;       // link number being edited (1 = root, >=2 = child)
-string   gMode;       // current dialog mode
-string   gPending;    // pending value across confirm dialogs (e.g. ch name)
-
-// ---------- Tag parsing helpers ----------
-
-// Returns offset of TAG_PREFIX or ALT_PREFIX in s, or -1.
-// Out-parameter prefix length must be inferred by the caller.
 integer findTagStart(string s)
 {
     integer i = llSubStringIndex(s, TAG_PREFIX);
@@ -161,7 +69,6 @@ integer findTagPrefixLen(string s, integer start)
     return llStringLength(ALT_PREFIX);
 }
 
-// Find matching closing bracket for the tag starting at 'start'. Returns -1 on failure.
 integer findTagEnd(string s, integer start)
 {
     integer i = llSubStringIndex(llGetSubString(s, start, -1), TAG_SUFFIX);
@@ -169,22 +76,16 @@ integer findTagEnd(string s, integer start)
     return start + i;
 }
 
-// r12: Desc 127-byte budget compression. Internal field key/value use the
-// canonical long form (binaural / venue / wetgain, hall_medium, ...), so
-// every getField / setField / applyField site keeps working unchanged.
-// Translation happens only at the read boundary (parseFields) and the
-// write boundary (buildTagBody). Short forms also accepted on read so a
-// hand-edited Desc with `{bin:on}` still parses correctly.
-
-string normalizeKeyToLong(string k)
+string normalizeKey(string k)
 {
     if (k == "bin") return "binaural";
     if (k == "v")   return "venue";
     if (k == "wg")  return "wetgain";
+    if (k == "lg")  return "lfegain";
     return k;
 }
 
-string normalizeVenueValueToLong(string v)
+string normalizeVenueValue(string v)
 {
     if (v == "d")  return "dry";
     if (v == "rs") return "room_small";
@@ -203,6 +104,7 @@ string emitShortKey(string k)
     if (k == "binaural") return "bin";
     if (k == "venue")    return "v";
     if (k == "wetgain")  return "wg";
+    if (k == "lfegain")  return "lg";
     return k;
 }
 
@@ -220,8 +122,6 @@ string emitShortVenueValue(string v)
     return v;
 }
 
-// Read all {key:value} fields inside the tag body.
-// Returns strided list [key0, val0, key1, val1, ...].
 list parseFields(string body)
 {
     list out = [];
@@ -241,10 +141,8 @@ list parseFields(string body)
         {
             string k = llStringTrim(llGetSubString(inner, 0, colon - 1), STRING_TRIM);
             string v = llStringTrim(llGetSubString(inner, colon + 1, -1), STRING_TRIM);
-            // r12: normalize short-form keys/values to canonical long form
-            // so the rest of the script is oblivious to the wire format.
-            k = normalizeKeyToLong(k);
-            if (k == "venue") v = normalizeVenueValueToLong(v);
+            k = normalizeKey(k);
+            if (k == "venue") v = normalizeVenueValue(v);
             out += [k, v];
         }
         i = cb + 1;
@@ -252,8 +150,6 @@ list parseFields(string body)
     return out;
 }
 
-// Search only even-indexed positions so a value that happens to equal
-// the searched key cannot produce a false hit.
 integer findFieldIndex(list fields, string fkey)
 {
     integer n = llGetListLength(fields);
@@ -289,11 +185,9 @@ list dropField(list fields, string fkey)
 string buildTagBody(list fields)
 {
     string body = "";
-    integer n = llGetListLength(fields);
     integer i;
-    // Preferred field order for readability.
     list order = ["url", "ch", "range", "volume",
-                  "binaural", "venue", "wetgain", "upmix"];
+                  "binaural", "venue", "wetgain", "upmix", "lfegain"];
     list seen  = [];
     for (i = 0; i < llGetListLength(order); ++i)
     {
@@ -301,8 +195,6 @@ string buildTagBody(list fields)
         string v = getField(fields, k);
         if (v != "")
         {
-            // r12: emit short forms for binaural/venue/wetgain to fit
-            // the 127-byte Desc budget. venue value also short-aliased.
             string ek = emitShortKey(k);
             string ev = v;
             if (k == "venue") ev = emitShortVenueValue(v);
@@ -310,13 +202,13 @@ string buildTagBody(list fields)
             seen += [k];
         }
     }
+    integer n = llGetListLength(fields);
     for (i = 0; i < n; i += 2)
     {
         string k = llList2String(fields, i);
         if (llListFindList(seen, [k]) == -1)
         {
             string v = llList2String(fields, i + 1);
-            // Same short-form emission for unknown-but-passthrough keys.
             string ek = emitShortKey(k);
             string ev = v;
             if (k == "venue") ev = emitShortVenueValue(v);
@@ -326,7 +218,6 @@ string buildTagBody(list fields)
     return body;
 }
 
-// Splice new tag (or empty string) into description, preserving surrounding text.
 string spliceTag(string desc, string newTag)
 {
     integer start = findTagStart(desc);
@@ -337,21 +228,14 @@ string spliceTag(string desc, string newTag)
         return desc + " " + newTag;
     }
     integer end = findTagEnd(desc, start);
-    if (end == -1)
-    {
-        // malformed; replace whole description with new tag
-        return newTag;
-    }
+    if (end == -1) return newTag;
     string before = "";
     if (start > 0) before = llGetSubString(desc, 0, start - 1);
     string after = "";
     if (end < llStringLength(desc) - 1) after = llGetSubString(desc, end + 1, -1);
-
     if (newTag == "")
     {
-        // remove surrounding single space if it exists, to avoid double space
         string joined = before + after;
-        // collapse a run of spaces created by removal
         while (llSubStringIndex(joined, "  ") != -1)
         {
             integer dp = llSubStringIndex(joined, "  ");
@@ -362,48 +246,31 @@ string spliceTag(string desc, string newTag)
     return before + newTag + after;
 }
 
-// Read the current fields list for a given link number.
-// Returns [] if no tag present.
 list readFields(integer link)
 {
-    string desc = llList2String(
-        llGetLinkPrimitiveParams(link, [PRIM_DESC]),
-        0
-    );
+    string desc = llList2String(llGetLinkPrimitiveParams(link, [PRIM_DESC]), 0);
     integer start = findTagStart(desc);
     if (start == -1) return [];
     integer plen = findTagPrefixLen(desc, start);
     integer end = findTagEnd(desc, start);
     if (end == -1) return [];
-    string body = llGetSubString(desc, start + plen, end - 1);
-    return parseFields(body);
+    return parseFields(llGetSubString(desc, start + plen, end - 1));
 }
 
-// Write the given fields list back to the link's description.
-// If fields is empty, removes the tag entirely.
-// Returns 1 on success, 0 if the resulting description would exceed 127 bytes.
 integer writeFields(integer link, list fields)
 {
-    string desc = llList2String(
-        llGetLinkPrimitiveParams(link, [PRIM_DESC]),
-        0
-    );
+    string desc = llList2String(llGetLinkPrimitiveParams(link, [PRIM_DESC]), 0);
     string newTag = "";
     if (llGetListLength(fields) > 0)
     {
         newTag = TAG_PREFIX + buildTagBody(fields) + TAG_SUFFIX;
     }
     string newDesc = spliceTag(desc, newTag);
-    if (llStringLength(newDesc) > 127)
-    {
-        return 0;
-    }
+    if (llStringLength(newDesc) > 127) return 0;
     llSetLinkPrimitiveParamsFast(link, [PRIM_DESC, newDesc]);
     return 1;
 }
 
-// Count speakers (prims with {ch:} != "" and != "None") in linkset,
-// optionally excluding one link number.
 integer countSpeakers(integer excludeLink)
 {
     integer total = llGetNumberOfPrims();
@@ -412,262 +279,267 @@ integer countSpeakers(integer excludeLink)
     for (link = 1; link <= total; ++link)
     {
         if (link == excludeLink) jump skip;
-        list fields = readFields(link);
-        string ch = getField(fields, "ch");
+        string ch = getField(readFields(link), "ch");
         if (ch != "" && llToUpper(ch) != "NONE") ++count;
         @skip;
     }
     return count;
 }
 
-// Pretty-print current values for the given link, for menu body.
-string fmtCurrent(integer link)
+// One-line summary (replaces the older multi-line fmtCurrent — same
+// info, ~5x less literal text in the binary).
+string summary(integer link)
 {
     list fields = readFields(link);
-    if (llGetListLength(fields) == 0)
-    {
-        return "(no 3dstream tag set)";
-    }
-    string url    = getField(fields, "url");
-    string ch     = getField(fields, "ch");
-    string rng    = getField(fields, "range");
-    string vol    = getField(fields, "volume");
-    string bin    = getField(fields, "binaural");
-    string ven    = getField(fields, "venue");
-    string wet    = getField(fields, "wetgain");
-    string up     = getField(fields, "upmix");
+    if (llGetListLength(fields) == 0) return "(no tag)";
     string s = "";
-    if (url != "") s += "url=" + url + "\n";
-    if (ch  != "") s += "ch=" + ch + "  ";
-    else           s += "ch=(none)  ";
-    if (rng != "") s += "range=" + rng + "m  ";
-    if (vol != "") s += "volume=" + vol;
-    if (bin != "" || ven != "" || wet != "" || up != "") s += "\n";
-    if (bin != "") s += "binaural=" + bin + "  ";
-    if (ven != "") s += "venue=" + ven + "  ";
-    if (wet != "") s += "wetgain=" + wet + "  ";
-    if (up  != "") s += "upmix=" + up;
+    string url = getField(fields, "url");
+    string ch  = getField(fields, "ch");
+    string rng = getField(fields, "range");
+    string vol = getField(fields, "volume");
+    if (url != "") s += "url=" + url + " ";
+    if (ch  != "") s += "ch=" + ch + " ";
+    if (rng != "") s += "rng=" + rng + " ";
+    if (vol != "") s += "vol=" + vol + " ";
+    string bin = getField(fields, "binaural");
+    string ven = getField(fields, "venue");
+    string wet = getField(fields, "wetgain");
+    string up  = getField(fields, "upmix");
+    string lg  = getField(fields, "lfegain");
+    if (bin != "") s += "bin=" + bin + " ";
+    if (ven != "") s += "v=" + ven + " ";
+    if (wet != "") s += "wg=" + wet + " ";
+    if (up  != "") s += "up=" + up + " ";
+    if (lg  != "") s += "lg=" + lg;
     return s;
 }
 
-string linkLabel(integer link)
+string getCur(integer link, string fkey)
 {
-    if (link == LINK_ROOT || link == 1) return "ROOT prim";
-    return "child prim #" + (string)link;
+    string v = getField(readFields(link), fkey);
+    if (v == "") return "(none)";
+    return v;
+}
+
+refreshFloatText()
+{
+    integer total = llGetNumberOfPrims();
+    integer link;
+    for (link = 1; link <= total; ++link)
+    {
+        string txt = "";
+        float alpha = 0.0;
+        if (gFloatText)
+        {
+            list f = readFields(link);
+            if (llGetListLength(f) > 0)
+            {
+                txt = "L" + (string)link;
+                string ch  = getField(f, "ch");
+                string vol = getField(f, "volume");
+                string rng = getField(f, "range");
+                if (ch  != "") txt += " ch=" + ch;
+                if (vol != "") txt += " v=" + vol;
+                if (rng != "") txt += " r=" + rng;
+                alpha = 1.0;
+            }
+        }
+        llSetLinkPrimitiveParamsFast(link, [PRIM_TEXT, txt, <1,1,1>, alpha]);
+    }
 }
 
 // ---------- Dialog plumbing ----------
 
 clearMenu()
 {
-    gMode    = "";
-    gUser    = NULL_KEY;
-    gLink    = 0;
-    gPending = "";
+    gMode = 0;
+    gUser = NULL_KEY;
+    gLink = 0;
 }
 
-string getCurrentField(integer link, string fkey)
+saveErr()
 {
-    list fields = readFields(link);
-    string v = getField(fields, fkey);
-    if (v == "") return "(none)";
-    return v;
+    llRegionSayTo(gUser, 0, "Save failed: Description over 127 bytes.");
 }
 
-// ---------- Menu builders ----------
+saved()
+{
+    llRegionSayTo(gUser, 0, "Saved. AYAstorm picks up changes within 30s.");
+}
 
-showRootMenu()
+// ---------- show*() ----------
+
+showRoot()
 {
     gMode = M_ROOT;
-    string body = "ROOT prim setup\n\n"
-                + "Current:\n" + fmtCurrent(1)
-                + "\n\nLinkset speakers: " + (string)countSpeakers(0)
-                + "\n\nChoose a field to edit.";
-    list buttons = ["Start", "Stop", "URL",
-                    "Volume", "Range", "Ch",
-                    "Binaural", "Venue", "WetGain",
-                    "Upmix", "Remove Tag", "Close"];
-    llDialog(gUser, body, buttons, DIALOG_CHAN);
+    llDialog(gUser,
+        "ROOT prim\n" + summary(1)
+        + "\nSpeakers: " + (string)countSpeakers(0),
+        ["Start", "Stop", "URL",
+         "Volume", "Range", "Ch",
+         "Binaural", "Venue", "More...",
+         "Remove Tag", "Close"],
+        DIALOG_CHAN);
 }
 
-showChildMenu()
+showMore()
+{
+    gMode = M_MORE;
+    string ft = "off"; if (gFloatText) ft = "on";
+    llDialog(gUser,
+        "More\n" + summary(1) + "\nFloat Text: " + ft,
+        ["WetGain", "Upmix", "LfeGain", "Float Text", "Back"],
+        DIALOG_CHAN);
+}
+
+showFloatText()
+{
+    gMode = M_FLOAT_TEXT;
+    string c = "off"; if (gFloatText) c = "on";
+    llDialog(gUser, "Hover text: " + c, ["On", "Off", "Back"], DIALOG_CHAN);
+}
+
+showChild()
 {
     gMode = M_CHILD;
-    string body = "Child prim setup (link #" + (string)gLink + ")\n\n"
-                + "Current:\n" + fmtCurrent(gLink)
-                + "\n\nChoose a field to edit.";
-    list buttons = ["Volume", "Range", "Ch", "Remove Tag", "Close"];
-    llDialog(gUser, body, buttons, DIALOG_CHAN);
+    llDialog(gUser,
+        "Child #" + (string)gLink + "\n" + summary(gLink),
+        ["Volume", "Range", "Ch", "Remove Tag", "Close"],
+        DIALOG_CHAN);
 }
 
 showCh()
 {
     gMode = M_CH;
-    string body = "Select channel for " + linkLabel(gLink) + "\n\n"
-                + "L/R/M: stereo or mid-mix\n"
-                + "FL/FR/C/LFE/SL/SR: 5.1 placement\n"
-                + "None: no playback on this prim (source-only)";
-    llDialog(gUser, body, CH_BUTTONS, DIALOG_CHAN);
+    llDialog(gUser, "Ch (link " + (string)gLink + "): " + getCur(gLink, "ch"),
+        ["L", "R", "M",
+         "FL", "FR", "C",
+         "LFE", "SL", "SR",
+         "None", "Back"],
+        DIALOG_CHAN);
 }
 
 showRange()
 {
     gMode = M_RANGE;
-    string body = "Select range (meters) for " + linkLabel(gLink) + "\n"
-                + "Current: " + getCurrentField(gLink, "range") + "m";
-    llDialog(gUser, body, RANGE_BUTTONS, DIALOG_CHAN);
+    llDialog(gUser, "Range m: " + getCur(gLink, "range"),
+        ["5", "10", "20", "30", "50", "80", "Custom", "Back"],
+        DIALOG_CHAN);
 }
 
 showVolume()
 {
     gMode = M_VOLUME;
-    string body = "Select volume for " + linkLabel(gLink) + "\n"
-                + "Current: " + getCurrentField(gLink, "volume");
-    llDialog(gUser, body, VOLUME_BUTTONS, DIALOG_CHAN);
+    llDialog(gUser, "Volume: " + getCur(gLink, "volume"),
+        ["0.25", "0.50", "0.75", "1.00", "1.50", "2.00", "Custom", "Back"],
+        DIALOG_CHAN);
 }
 
 showUrl()
 {
     gMode = M_URL;
-    string current = getCurrentField(1, "url");
-    if (current == "") current = "(empty)";
-    llTextBox(gUser,
-        "Enter stream URL (http:// or https://). Empty input cancels.\n\nCurrent: " + current,
+    llTextBox(gUser, "URL (http/https). Empty=cancel.\n" + getCur(1, "url"),
         DIALOG_CHAN);
 }
 
 showRangeCustom()
 {
     gMode = M_RANGE_CUSTOM;
-    llTextBox(gUser,
-        "Enter custom range in meters (positive number). Empty input cancels.",
-        DIALOG_CHAN);
+    llTextBox(gUser, "Range (meters). Empty=cancel.", DIALOG_CHAN);
 }
 
 showVolumeCustom()
 {
     gMode = M_VOL_CUSTOM;
-    llTextBox(gUser,
-        "Enter custom volume (0.0 - 4.0). Empty input cancels.",
-        DIALOG_CHAN);
+    llTextBox(gUser, "Volume 0.0-4.0. Empty=cancel.", DIALOG_CHAN);
 }
 
-// r11: lite-HRTF on/off (root prim only).
 showBinaural()
 {
     gMode = M_BINAURAL;
-    string body = "Set binaural (lite-HRTF) for ROOT prim\n"
-                + "Current: " + getCurrentField(1, "binaural") + "\n\n"
-                + "On: force lite-HRTF on\n"
-                + "Off: disable lite-HRTF (vanilla 3D positioning only)\n"
-                + "Default: remove tag (viewer default = on)";
-    llDialog(gUser, body, BINAURAL_BUTTONS, DIALOG_CHAN);
+    llDialog(gUser, "Binaural: " + getCur(1, "binaural"),
+        ["On", "Off", "Default", "Back"], DIALOG_CHAN);
 }
 
-// r11: venue convolution reverb selection.
 showVenue()
 {
     gMode = M_VENUE;
-    string body = "Select venue reverb for ROOT prim\n"
-                + "Current: " + getCurrentField(1, "venue") + "\n\n"
-                + "dry: no reverb\n"
-                + "room_*: small/medium room\n"
-                + "hall_*: concert hall (medium/large = CPU heavy)\n"
-                + "club: nightclub\n"
-                + "cathedral: long reverb (heaviest)\n"
-                + "outdoor: open-air\n"
-                + "Default: remove tag (= dry)";
-    llDialog(gUser, body, VENUE_BUTTONS, DIALOG_CHAN);
+    llDialog(gUser, "Venue: " + getCur(1, "venue"),
+        ["dry", "room_small", "room_medium",
+         "hall_small", "hall_medium", "hall_large",
+         "club", "cathedral", "outdoor",
+         "Default", "Back"],
+        DIALOG_CHAN);
 }
 
-// r11: wet gain (venue mix amount).
 showWetGain()
 {
     gMode = M_WETGAIN;
-    string body = "Set wet gain for ROOT prim\n"
-                + "Current: " + getCurrentField(1, "wetgain") + "\n\n"
-                + "1.0 = unity, higher = more reverb mix";
-    llDialog(gUser, body, WETGAIN_BUTTONS, DIALOG_CHAN);
+    llDialog(gUser, "Wetgain: " + getCur(1, "wetgain"),
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "Custom", "Default", "Back"],
+        DIALOG_CHAN);
 }
 
 showWetGainCustom()
 {
     gMode = M_WETGAIN_CUSTOM;
-    llTextBox(gUser,
-        "Enter custom wetgain (0.0 - 4.0). Empty input cancels.",
+    llTextBox(gUser, "Wetgain 0.0-2.0 (musical range 0.1-0.5). Empty=cancel.", DIALOG_CHAN);
+}
+
+showLfeGain()
+{
+    gMode = M_LFEGAIN;
+    llDialog(gUser, "LFE gain: " + getCur(1, "lfegain"),
+        ["0.5", "1.0", "1.5", "2.0", "3.0", "Custom", "Default", "Back"],
         DIALOG_CHAN);
 }
 
-// r12: 2ch→5.1 upmix dispatch toggle (root prim only).
+showLfeGainCustom()
+{
+    gMode = M_LFEGAIN_CUSTOM;
+    llTextBox(gUser, "LFE gain 0.0-3.0. Empty=cancel.", DIALOG_CHAN);
+}
+
 showUpmix()
 {
     gMode = M_UPMIX;
-    string body = "Set upmix (2ch -> 5.1) for ROOT prim\n"
-                + "Current: " + getCurrentField(1, "upmix") + "\n\n"
-                + "On: dispatch a 2-ch source through DPL2-style matrix\n"
-                + "    decode into FL/FR/C/LFE/SL/SR speakers\n"
-                + "Off: 2-ch source plays as 2-spk stereo (r11 behavior)\n"
-                + "Default: remove tag (viewer default = off, opt-in)\n\n"
-                + "Note: 5.1 / 6-ch source ignores this and plays native.";
-    llDialog(gUser, body, UPMIX_BUTTONS, DIALOG_CHAN);
+    llDialog(gUser, "Upmix: " + getCur(1, "upmix"),
+        ["On", "Off", "Default", "Back"], DIALOG_CHAN);
 }
 
 // ---------- Action handlers ----------
-
-notifySaved()
-{
-    llRegionSayTo(gUser, 0,
-        "Saved. AYAstorm re-reads tags every 30 seconds, "
-        + "so playback may take up to half a minute to update.");
-}
 
 applyField(integer link, string fkey, string val)
 {
     list fields = readFields(link);
     if (val == "") fields = dropField(fields, fkey);
     else           fields = setField(fields, fkey, val);
-    if (writeFields(link, fields) == 0)
-    {
-        llRegionSayTo(gUser, 0,
-            "Cannot save: resulting Description would exceed 127 bytes. "
-            + "Try a shorter URL or remove other text from the Description.");
-        return;
-    }
-    notifySaved();
+    if (writeFields(link, fields) == 0) { saveErr(); return; }
+    saved();
+    if (gFloatText) refreshFloatText();
 }
 
-handleChSelect(string ch)
+backTo()
 {
-    if (ch == "Back")
-    {
-        if (gLink == 1) showRootMenu();
-        else            showChildMenu();
-        return;
-    }
+    if (gLink == 1) showRoot();
+    else            showChild();
+}
+
+handleCh(string ch)
+{
+    if (ch == "Back") { backTo(); return; }
     if (ch == "None")
     {
-        // Safety: ensure at least one other speaker remains.
         if (countSpeakers(gLink) == 0)
         {
-            gMode = M_CONFIRM_NONE;
-            gPending = "None";
-            llDialog(gUser,
-                "WARNING: setting Ch=None on this prim would leave the "
-              + "linkset with zero speakers, which AYAstorm treats as a "
-              + "format error.\n\n"
-              + "Add a speaker on another prim first, or cancel.",
-                ["Cancel"], DIALOG_CHAN);
+            gMode = M_CONFIRM;
+            llDialog(gUser, "Cannot: would leave 0 speakers.", ["Cancel"], DIALOG_CHAN);
             return;
         }
-        list fields = readFields(gLink);
-        fields = dropField(fields, "ch");
-        if (writeFields(gLink, fields) == 0)
-        {
-            llRegionSayTo(gUser, 0, "Save failed (description too long).");
-            clearMenu();
-            return;
-        }
-        notifySaved();
+        list f = readFields(gLink);
+        f = dropField(f, "ch");
+        if (writeFields(gLink, f) == 0) { saveErr(); clearMenu(); return; }
+        saved();
         clearMenu();
         return;
     }
@@ -675,36 +547,22 @@ handleChSelect(string ch)
     clearMenu();
 }
 
-// Stop: drop {url:} entirely. No urlsave retention — what the publisher
-// wrote is what stays in the Description (so a failed re-start is visible
-// as silence, not masked by an auto-restored previous URL).
 handleStop()
 {
-    list fields = readFields(1);
-    string url = getField(fields, "url");
-    if (url == "") { clearMenu(); return; }
-    fields = dropField(fields, "url");
-    if (writeFields(1, fields) == 0)
-    {
-        llRegionSayTo(gUser, 0, "Save failed (description too long).");
-        clearMenu();
-        return;
-    }
-    notifySaved();
+    list f = readFields(1);
+    if (getField(f, "url") == "") { clearMenu(); return; }
+    f = dropField(f, "url");
+    if (writeFields(1, f) == 0) { saveErr(); clearMenu(); return; }
+    saved();
     clearMenu();
 }
 
-// Start: if {url:} already present, do nothing (use URL to change it).
-// Otherwise prompt the user for a URL. No restore-from-urlsave.
 handleStart()
 {
-    list fields = readFields(1);
-    string current = getField(fields, "url");
-    if (current != "")
+    string cur = getField(readFields(1), "url");
+    if (cur != "")
     {
-        llRegionSayTo(gUser, 0,
-            "Stream is already configured (url=" + current + ").\n"
-          + "Use URL to change it, or Stop first.");
+        llRegionSayTo(gUser, 0, "Already configured (url=" + cur + "). Use URL or Stop.");
         clearMenu();
         return;
     }
@@ -713,34 +571,16 @@ handleStart()
 
 handleRange(string label)
 {
-    if (label == "Back")
-    {
-        if (gLink == 1) showRootMenu();
-        else            showChildMenu();
-        return;
-    }
-    if (label == "Custom")
-    {
-        showRangeCustom();
-        return;
-    }
+    if (label == "Back")   { backTo(); return; }
+    if (label == "Custom") { showRangeCustom(); return; }
     applyField(gLink, "range", label);
     clearMenu();
 }
 
 handleVolume(string label)
 {
-    if (label == "Back")
-    {
-        if (gLink == 1) showRootMenu();
-        else            showChildMenu();
-        return;
-    }
-    if (label == "Custom")
-    {
-        showVolumeCustom();
-        return;
-    }
+    if (label == "Back")   { backTo(); return; }
+    if (label == "Custom") { showVolumeCustom(); return; }
     applyField(gLink, "volume", label);
     clearMenu();
 }
@@ -749,10 +589,9 @@ handleRangeCustom(string text)
 {
     text = llStringTrim(text, STRING_TRIM);
     if (text == "") { clearMenu(); return; }
-    float v = (float)text;
-    if (v <= 0.0)
+    if ((float)text <= 0.0)
     {
-        llRegionSayTo(gUser, 0, "Range must be a positive number.");
+        llRegionSayTo(gUser, 0, "Range must be > 0.");
         clearMenu();
         return;
     }
@@ -767,7 +606,7 @@ handleVolumeCustom(string text)
     float v = (float)text;
     if (v < 0.0 || v > 4.0)
     {
-        llRegionSayTo(gUser, 0, "Volume must be between 0.0 and 4.0.");
+        llRegionSayTo(gUser, 0, "Volume 0.0-4.0.");
         clearMenu();
         return;
     }
@@ -782,7 +621,7 @@ handleUrl(string text)
     if (llSubStringIndex(text, "http://") != 0
      && llSubStringIndex(text, "https://") != 0)
     {
-        llRegionSayTo(gUser, 0, "URL must start with http:// or https://");
+        llRegionSayTo(gUser, 0, "URL needs http:// or https://");
         clearMenu();
         return;
     }
@@ -790,26 +629,21 @@ handleUrl(string text)
     clearMenu();
 }
 
-// r11: handlers for binaural/venue/wetgain submenus. All three live on
-// the ROOT prim only (spec §4.5/§4.6). "Default" drops the field so the
-// viewer falls back to its default (binaural on, venue dry, wetgain 1.0).
+// Drop a root-only field; takes the field key + which menu to return to
+// on Default/Back. Replaces 5 nearly-identical handle*() bodies.
+dropAndDone(string fkey)
+{
+    list f = readFields(1);
+    f = dropField(f, fkey);
+    if (writeFields(1, f) == 0) { saveErr(); clearMenu(); return; }
+    saved();
+    clearMenu();
+}
+
 handleBinaural(string label)
 {
-    if (label == "Back") { showRootMenu(); return; }
-    if (label == "Default")
-    {
-        list fields = readFields(1);
-        fields = dropField(fields, "binaural");
-        if (writeFields(1, fields) == 0)
-        {
-            llRegionSayTo(gUser, 0, "Save failed (description too long).");
-            clearMenu();
-            return;
-        }
-        notifySaved();
-        clearMenu();
-        return;
-    }
+    if (label == "Back")    { showRoot(); return; }
+    if (label == "Default") { dropAndDone("binaural"); return; }
     string val = "";
     if (label == "On")  val = "on";
     else if (label == "Off") val = "off";
@@ -820,43 +654,17 @@ handleBinaural(string label)
 
 handleVenue(string label)
 {
-    if (label == "Back") { showRootMenu(); return; }
-    if (label == "Default")
-    {
-        list fields = readFields(1);
-        fields = dropField(fields, "venue");
-        if (writeFields(1, fields) == 0)
-        {
-            llRegionSayTo(gUser, 0, "Save failed (description too long).");
-            clearMenu();
-            return;
-        }
-        notifySaved();
-        clearMenu();
-        return;
-    }
+    if (label == "Back")    { showRoot(); return; }
+    if (label == "Default") { dropAndDone("venue"); return; }
     applyField(1, "venue", label);
     clearMenu();
 }
 
 handleWetGain(string label)
 {
-    if (label == "Back") { showRootMenu(); return; }
-    if (label == "Custom") { showWetGainCustom(); return; }
-    if (label == "Default")
-    {
-        list fields = readFields(1);
-        fields = dropField(fields, "wetgain");
-        if (writeFields(1, fields) == 0)
-        {
-            llRegionSayTo(gUser, 0, "Save failed (description too long).");
-            clearMenu();
-            return;
-        }
-        notifySaved();
-        clearMenu();
-        return;
-    }
+    if (label == "Back")    { showMore(); return; }
+    if (label == "Custom")  { showWetGainCustom(); return; }
+    if (label == "Default") { dropAndDone("wetgain"); return; }
     applyField(1, "wetgain", label);
     clearMenu();
 }
@@ -866,9 +674,9 @@ handleWetGainCustom(string text)
     text = llStringTrim(text, STRING_TRIM);
     if (text == "") { clearMenu(); return; }
     float v = (float)text;
-    if (v < 0.0 || v > 4.0)
+    if (v < 0.0 || v > 2.0)
     {
-        llRegionSayTo(gUser, 0, "Wetgain must be between 0.0 and 4.0.");
+        llRegionSayTo(gUser, 0, "Wetgain 0.0-2.0.");
         clearMenu();
         return;
     }
@@ -876,27 +684,10 @@ handleWetGainCustom(string text)
     clearMenu();
 }
 
-// r12: upmix on/off/default — same shape as binaural. Tag default in
-// the viewer is OFF (opt-in), so "Default" simply drops the field and
-// also lets the viewer-side debug Stream3DUpmix sentinel decide if the
-// listener has overridden anything.
 handleUpmix(string label)
 {
-    if (label == "Back") { showRootMenu(); return; }
-    if (label == "Default")
-    {
-        list fields = readFields(1);
-        fields = dropField(fields, "upmix");
-        if (writeFields(1, fields) == 0)
-        {
-            llRegionSayTo(gUser, 0, "Save failed (description too long).");
-            clearMenu();
-            return;
-        }
-        notifySaved();
-        clearMenu();
-        return;
-    }
+    if (label == "Back")    { showMore(); return; }
+    if (label == "Default") { dropAndDone("upmix"); return; }
     string val = "";
     if (label == "On")  val = "on";
     else if (label == "Off") val = "off";
@@ -905,31 +696,53 @@ handleUpmix(string label)
     clearMenu();
 }
 
-handleRemoveTag()
+handleLfeGain(string label)
 {
-    // Removing a speaker leaves the linkset with no playback prim?
-    list fields = readFields(gLink);
-    string ch = getField(fields, "ch");
-    integer isSpeaker = (ch != "" && llToUpper(ch) != "NONE");
-    if (isSpeaker && countSpeakers(gLink) == 0)
+    if (label == "Back")    { showMore(); return; }
+    if (label == "Custom")  { showLfeGainCustom(); return; }
+    if (label == "Default") { dropAndDone("lfegain"); return; }
+    applyField(1, "lfegain", label);
+    clearMenu();
+}
+
+handleLfeGainCustom(string text)
+{
+    text = llStringTrim(text, STRING_TRIM);
+    if (text == "") { clearMenu(); return; }
+    float v = (float)text;
+    if (v < 0.0 || v > 3.0)
     {
-        gMode = M_CONFIRM_RM;
-        llDialog(gUser,
-            "WARNING: this prim is currently the only speaker in the "
-          + "linkset. Removing its tag would leave AYAstorm with nothing "
-          + "to play (format error).\n\n"
-          + "Set up another speaker first, or cancel.",
-            ["Cancel"], DIALOG_CHAN);
-        return;
-    }
-    if (writeFields(gLink, []) == 0)
-    {
-        llRegionSayTo(gUser, 0, "Save failed (description too long).");
+        llRegionSayTo(gUser, 0, "LFE gain 0.0-3.0.");
         clearMenu();
         return;
     }
-    llRegionSayTo(gUser, 0,
-        "Tag removed. AYAstorm will stop using this prim within ~30s.");
+    applyField(1, "lfegain", text);
+    clearMenu();
+}
+
+handleFloatText(string label)
+{
+    if (label == "Back") { showMore(); return; }
+    if (label == "On")  gFloatText = 1;
+    else if (label == "Off") gFloatText = 0;
+    else { clearMenu(); return; }
+    refreshFloatText();
+    clearMenu();
+}
+
+handleRemoveTag()
+{
+    list f = readFields(gLink);
+    string ch = getField(f, "ch");
+    integer isSpk = (ch != "" && llToUpper(ch) != "NONE");
+    if (isSpk && countSpeakers(gLink) == 0)
+    {
+        gMode = M_CONFIRM;
+        llDialog(gUser, "Cannot: this is the only speaker.", ["Cancel"], DIALOG_CHAN);
+        return;
+    }
+    if (writeFields(gLink, []) == 0) { saveErr(); clearMenu(); return; }
+    llRegionSayTo(gUser, 0, "Tag removed.");
     clearMenu();
 }
 
@@ -943,27 +756,22 @@ default
         llListen(DIALOG_CHAN, "", NULL_KEY, "");
     }
 
-    on_rez(integer p)
-    {
-        clearMenu();
-    }
+    on_rez(integer p) { clearMenu(); }
 
     touch_start(integer n)
     {
         gUser = llDetectedKey(0);
         integer link = llDetectedLinkNumber(0);
-        if (link == 0) link = 1;   // un-linked single prim
+        if (link == 0) link = 1;
         gLink = link;
-
-        if (link == 1) showRootMenu();
-        else           showChildMenu();
+        if (link == 1) showRoot();
+        else           showChild();
     }
 
     listen(integer chan, string name, key id, string msg)
     {
         if (id != gUser) return;
 
-        // ---- Root menu ----
         if (gMode == M_ROOT)
         {
             if (msg == "Close")      { clearMenu(); return; }
@@ -975,13 +783,19 @@ default
             if (msg == "Ch")         { showCh(); return; }
             if (msg == "Binaural")   { showBinaural(); return; }
             if (msg == "Venue")      { showVenue(); return; }
-            if (msg == "WetGain")    { showWetGain(); return; }
-            if (msg == "Upmix")      { showUpmix(); return; }
+            if (msg == "More...")    { showMore(); return; }
             if (msg == "Remove Tag") { handleRemoveTag(); return; }
             return;
         }
-
-        // ---- Child menu ----
+        if (gMode == M_MORE)
+        {
+            if (msg == "Back")       { showRoot(); return; }
+            if (msg == "WetGain")    { showWetGain(); return; }
+            if (msg == "Upmix")      { showUpmix(); return; }
+            if (msg == "LfeGain")    { showLfeGain(); return; }
+            if (msg == "Float Text") { showFloatText(); return; }
+            return;
+        }
         if (gMode == M_CHILD)
         {
             if (msg == "Close")      { clearMenu(); return; }
@@ -991,23 +805,21 @@ default
             if (msg == "Remove Tag") { handleRemoveTag(); return; }
             return;
         }
-
-        // ---- Sub-menus ----
-        if (gMode == M_CH)         { handleChSelect(msg);     return; }
-        if (gMode == M_RANGE)      { handleRange(msg);        return; }
-        if (gMode == M_VOLUME)     { handleVolume(msg);       return; }
-        if (gMode == M_RANGE_CUSTOM) { handleRangeCustom(msg); return; }
-        if (gMode == M_VOL_CUSTOM)   { handleVolumeCustom(msg); return; }
-        if (gMode == M_URL)        { handleUrl(msg);          return; }
-        if (gMode == M_BINAURAL)      { handleBinaural(msg);      return; }
-        if (gMode == M_VENUE)         { handleVenue(msg);         return; }
-        if (gMode == M_WETGAIN)       { handleWetGain(msg);       return; }
-        if (gMode == M_WETGAIN_CUSTOM){ handleWetGainCustom(msg); return; }
-        if (gMode == M_UPMIX)         { handleUpmix(msg);         return; }
-
-        // ---- Confirm dialogs ----
-        if (gMode == M_CONFIRM_NONE) { clearMenu(); return; }
-        if (gMode == M_CONFIRM_RM)   { clearMenu(); return; }
+        if (gMode == M_CH)              { handleCh(msg); return; }
+        if (gMode == M_RANGE)           { handleRange(msg); return; }
+        if (gMode == M_VOLUME)          { handleVolume(msg); return; }
+        if (gMode == M_RANGE_CUSTOM)    { handleRangeCustom(msg); return; }
+        if (gMode == M_VOL_CUSTOM)      { handleVolumeCustom(msg); return; }
+        if (gMode == M_URL)             { handleUrl(msg); return; }
+        if (gMode == M_BINAURAL)        { handleBinaural(msg); return; }
+        if (gMode == M_VENUE)           { handleVenue(msg); return; }
+        if (gMode == M_WETGAIN)         { handleWetGain(msg); return; }
+        if (gMode == M_WETGAIN_CUSTOM)  { handleWetGainCustom(msg); return; }
+        if (gMode == M_UPMIX)           { handleUpmix(msg); return; }
+        if (gMode == M_LFEGAIN)         { handleLfeGain(msg); return; }
+        if (gMode == M_LFEGAIN_CUSTOM)  { handleLfeGainCustom(msg); return; }
+        if (gMode == M_FLOAT_TEXT)      { handleFloatText(msg); return; }
+        if (gMode == M_CONFIRM)         { clearMenu(); return; }
     }
 
     changed(integer change)
