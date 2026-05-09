@@ -32,6 +32,9 @@ A single jump from r10 to r12.1 delivers all of the below at once. **r11 and r12
 - **`{lfegain:N}` (short `lg`)**: gain multiplier for the `{ch:LFE}` route and the LFE band produced by `{upmix:on}` (range 0.0–4.0, default 1.0). Used to boost a quietly-recorded LFE bus on the listener side, or to set `0` when the LFE prim is mounted on a non-subwoofer speaker to stop low-end leakage. The listener-side sentinel `Stream3DLfeGain` is added in lockstep. Details → [tag-guide §7.4](../doc/3dstream-tag-guide.en.md#74-lfegainn-short-form-lg-added-in-r121) / spec `doc/spec_stereo_upmix.md` §4.7
 - **`wetgain` default `1.0` → `0.2`**: `1.0` saturated the source on hall / cathedral presets; the new default reflects the practical musical range (0.1–0.5) confirmed by listening tests. The LSL UI quick-pick was also re-graded to fine `0.1`–`0.5` increments. Details → [tag-guide §7.3](../doc/3dstream-tag-guide.en.md#73-wetgainn-short-form-wg)
 - **Live-tuning fix for listener-side debug settings**: at r12 release, `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` regressed and only took effect after a prim touch (Description re-parse). r12.1 restores the standard "next-frame apply" semantics. Details → [tag-guide §12.3](../doc/3dstream-tag-guide.en.md#123-persistence-and-immediate-apply)
+- **Per-speaker volume tuning is now live**: r10's per-speaker volume trims (`Stream3DSpkVol*`) used to require a rebuild (prim touch) to take effect; r12.1 restores **next-frame apply** for them. Debugging and tuning sessions become considerably less painful.
+- **Routing diagnostic is upmix-aware**: the `Stream3DDescriptionScan` routing dump did not reflect the 6ch routing produced by r12 upmix. r12.1 fixes the dump so the channel→speaker mapping is correct even when `{upmix:on}` is in effect.
+- **Parcel music playback quality, opt-in**: a new `FSParcelStreamQuality` debug setting addresses the **buffer starvation** observed on high-bitrate (256/320 kbps mp3, FLAC-over-HTTP) parcel music streams (default `0` = bit-identical to upstream FS / `1` = AYAstorm enhanced). With `1`, the stream buffer hint is raised to a 320 kbps assumption, the resampler switches to SPLINE, and a +4 dB high-shelf @ 6 kHz EQ is attached to the stream group to gently restore the presence band that typical 128 kbps mp3 streams thin out. Independent of the 3dstream paths; existing users are unaffected. Details → `doc/spec_parcel_stream_quality.md`
 
 ### Existing placements
 
@@ -54,4 +57,5 @@ Bundled venue IRs are from OpenAIR (CC-BY 4.0). Sources in `app_settings/venue_i
 - r11 spec: `doc/spec_binaural_venue_reverb.md`
 - r12 / r12.1 spec: `doc/spec_stereo_upmix.md` (r12.1 extension in §4.7)
 - r12 / r12.1 implementation log: `docs/ayastorm-r12-stereo-upmix.md` (r12.1 follow-on in §6)
+- Parcel music quality spec: `doc/spec_parcel_stream_quality.md` (shipped with r12.1, independent from 3dstream)
 - Roadmap: `docs/ayastorm-stream3d-roadmap.md`

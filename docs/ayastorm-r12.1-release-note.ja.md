@@ -32,6 +32,9 @@ r10 → r12.1 の 1 ジャンプで以下をまとめて提供します。**r11 
 - **`{lfegain:N}` (短縮形 `lg`)**: `{ch:LFE}` プリムと `{upmix:on}` 時の LFE band に対するゲイン倍率 (0.0〜4.0、default 1.0)。配信側 LFE バスが控えめな素材を viewer 側で持ち上げる、あるいは LFE プリムをサブウーファーでない汎用 spk に割り当てる配置で `0` にして低域漏れを止める用途。listener 側 sentinel `Stream3DLfeGain` も同期追加。詳細 → [tag-guide §7.4](../doc/3dstream-tag-guide.ja.md#74-lfegainn-短縮形-lgr121-追加) / 仕様 `doc/spec_stereo_upmix.md` §4.7
 - **`wetgain` default `1.0` → `0.2`**: ホール / カテドラル等の長尾 venue で `1.0` が音楽的に飽和することが実 listening で判明。musical range 0.1〜0.5 を反映した実用 default に変更。LSL UI の quick-pick も `0.1`〜`0.5` 細刻みに刷新。詳細 → [tag-guide §7.3](../doc/3dstream-tag-guide.ja.md#73-wetgainn-短縮形-wg)
 - **listener 側 debug settings の live-tuning 修正**: r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチ (Description 再パース) まで反映されない仕様回帰があった件を修正、他の Live 設定と同じ「次フレーム反映」に戻しています。詳細 → [tag-guide §12.3](../doc/3dstream-tag-guide.ja.md#123-設定の永続化と即時反映)
+- **per-speaker volume を live-tuning 化**: r10 6 spk 配置の per-spk volume 補正 (`Stream3DSpkVol*`) が、これまで rebuild (プリムタッチ) しないと反映されない仕様だったのを **次フレーム反映** に修正。デバッグ・チューニング作業が大幅に楽になります。
+- **routing diagnostic を upmix-aware 化**: `Stream3DDescriptionScan` の routing 表示が、r12 で導入した upmix 経由の 6ch routing を正しく反映していなかった件を修正。`{upmix:on}` 時も実際の channel→spk マッピングを表示します。
+- **土地音 (parcel music) 再生品質の opt-in 改善**: 高 bitrate (256/320 kbps mp3, FLAC-over-HTTP) の土地音 stream で発生する **buffer starvation** を解消する `FSParcelStreamQuality` debug setting を新設 (default `0` = LL FS 既定動作と bit-identical / `1` = AYAstorm 拡張)。`1` で stream buffer hint を 320 kbps 想定に拡大、resampler を SPLINE 化、stream group に +4 dB high-shelf @ 6 kHz の subtle EQ を attach し、典型 128 kbps mp3 配信の「曇り」感も僅かに補正します。3dstream とは独立した parcel music 経路の改修で、既存ユーザーへの影響なし。詳細 → `doc/spec_parcel_stream_quality.md`
 
 ### 既存配置の扱い
 
@@ -54,4 +57,5 @@ bundled venue IR は OpenAIR 系 (CC-BY 4.0)。出典は `app_settings/venue_ir/
 - r11 仕様: `doc/spec_binaural_venue_reverb.md`
 - r12 / r12.1 仕様: `doc/spec_stereo_upmix.md` (r12.1 拡張は §4.7)
 - r12 / r12.1 実装記録: `docs/ayastorm-r12-stereo-upmix.md` (r12.1 follow-on は §6)
+- 土地音 (parcel music) 改善仕様: `doc/spec_parcel_stream_quality.md` (r12.1 同梱、3dstream とは独立)
 - ロードマップ: `docs/ayastorm-stream3d-roadmap.md`

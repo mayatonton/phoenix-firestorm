@@ -183,7 +183,7 @@ static FMOD_RESULT F_CALL systemCallback(FMOD_SYSTEM *system, FMOD_SYSTEM_CALLBA
     // </FS:minerjr> [FIRE-36022]
 }
 
-LLAudioEngine_FMODSTUDIO::LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 resample_method)
+LLAudioEngine_FMODSTUDIO::LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 resample_method, U32 parcel_stream_quality)
 :   mInited(false),
     mWindGen(NULL),
     mWindDSP(NULL),
@@ -191,6 +191,7 @@ LLAudioEngine_FMODSTUDIO::LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 res
     mEnableProfiler(enable_profiler),
     mWindDSPDesc(NULL),
     mResampleMethod(resample_method),
+    mParcelStreamQuality(parcel_stream_quality),
     mSelectedDeviceUUID()
 {
 }
@@ -250,18 +251,29 @@ bool LLAudioEngine_FMODSTUDIO::init(void* userdata, const std::string &app_title
 
     FMOD_ADVANCEDSETTINGS settings = { };
     settings.cbSize = sizeof(FMOD_ADVANCEDSETTINGS);
-    switch (mResampleMethod)
+    if (mParcelStreamQuality == 1)
     {
-    default:
-    case RESAMPLE_LINEAR:
-        settings.resamplerMethod = FMOD_DSP_RESAMPLER_LINEAR;
-        break;
-    case RESAMPLE_CUBIC:
-        settings.resamplerMethod = FMOD_DSP_RESAMPLER_CUBIC;
-        break;
-    case RESAMPLE_SPLINE:
+        // FSParcelStreamQuality enhanced: SPLINE has materially less HF aliasing
+        // than LINEAR/CUBIC for streamed sources that get sample-rate converted
+        // (44.1k → 48k etc.). FMODResampleMethod is intentionally ignored in
+        // this mode so the user only has to flip one switch.
         settings.resamplerMethod = FMOD_DSP_RESAMPLER_SPLINE;
-        break;
+    }
+    else
+    {
+        switch (mResampleMethod)
+        {
+        default:
+        case RESAMPLE_LINEAR:
+            settings.resamplerMethod = FMOD_DSP_RESAMPLER_LINEAR;
+            break;
+        case RESAMPLE_CUBIC:
+            settings.resamplerMethod = FMOD_DSP_RESAMPLER_CUBIC;
+            break;
+        case RESAMPLE_SPLINE:
+            settings.resamplerMethod = FMOD_DSP_RESAMPLER_SPLINE;
+            break;
+        }
     }
 
     result = mSystem->setAdvancedSettings(&settings);
@@ -555,7 +567,19 @@ std::string LLAudioEngine_FMODSTUDIO::getDriverName(bool verbose)
 // create our favourite FMOD-native streaming audio implementation
 LLStreamingAudioInterface *LLAudioEngine_FMODSTUDIO::createDefaultStreamingAudioImpl() const
 {
-    return new LLStreamingAudio_FMODSTUDIO(mSystem);
+    LLStreamingAudio_FMODSTUDIO* impl = new LLStreamingAudio_FMODSTUDIO(mSystem);
+    impl->setQuality(mParcelStreamQuality);
+    return impl;
+}
+
+void LLAudioEngine_FMODSTUDIO::setParcelStreamQuality(U32 quality)
+{
+    mParcelStreamQuality = quality;
+    if (LLStreamingAudio_FMODSTUDIO* impl =
+            dynamic_cast<LLStreamingAudio_FMODSTUDIO*>(getStreamingAudioImpl()))
+    {
+        impl->setQuality(quality);
+    }
 }
 
 
