@@ -1759,6 +1759,9 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "AYAChatWindowStyle", FSFloaterIM::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "AYAChatWindowStyle", FSFloaterNearbyChat::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "AYALLChatCompactView", []() { LLFloaterIMSessionTab::processChatHistoryStyleUpdate(); });
+    // Mirror PlainTextChatHistory live-apply onto LL-style chat (FS-only listeners above
+    // leave the LL container/IM tabs stale until next message arrives).
+    setting_setup_signal_listener(gSavedSettings, "PlainTextChatHistory", []() { LLFloaterIMSessionTab::processChatHistoryStyleUpdate(true); });
     // Auto-open ll_im_container when switching to LL style, and backfill any
     // IM sessions that were created while a non-LL style was active so they
     // become addressable from the LL container.
@@ -1784,6 +1787,11 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterIM::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterNearbyChat::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", LLViewerChat::signalChatFontChanged);
+    // <FS:AYA> Mirror ChatFontSize live-apply onto LL-style chat (the FS listeners above
+    // only refresh FSFloaterIM/FSFloaterNearbyChat; LL container stays at the old size
+    // until the next chat message triggers a redraw).
+    setting_setup_signal_listener(gSavedSettings, "ChatFontSize", []() { LLFloaterIMSessionTab::processChatHistoryStyleUpdate(true); });
+    // </FS:AYA>
     // </FS:Ansariel> [FS communication UI]
 
     setting_setup_signal_listener(gSavedPerAccountSettings, "GlobalOnlineStatusToggle", handleGlobalOnlineStatusChanged);
