@@ -33,12 +33,31 @@
 
 #include "llstreamingaudio_fmodstudio.h"
 
+#include <sstream>
+
 inline bool Check_FMOD_Error(FMOD_RESULT result, const char *string)
 {
     if (result == FMOD_OK)
         return false;
     LL_WARNS("AudioImpl") << string << " Error: " << FMOD_ErrorString(result) << LL_ENDL;
     return true;
+}
+
+static std::string stream_buffer_size_to_string(FMOD::System* system, const char* context)
+{
+    unsigned int file_buffer_size = 0;
+    FMOD_TIMEUNIT file_buffer_size_type = FMOD_TIMEUNIT_RAWBYTES;
+    if (Check_FMOD_Error(system->getStreamBufferSize(&file_buffer_size, &file_buffer_size_type),
+                         "FMOD::System::getStreamBufferSize"))
+    {
+        return std::string("FMOD stream buffer size [") + context + "]: unavailable";
+    }
+
+    std::ostringstream stream;
+    stream << "FMOD stream buffer size [" << context
+           << "]: size=" << file_buffer_size
+           << " type=" << static_cast<unsigned int>(file_buffer_size_type);
+    return stream.str();
 }
 
 class LLAudioStreamManagerFMODSTUDIO
@@ -110,9 +129,17 @@ void LLStreamingAudio_FMODSTUDIO::applyStreamBufferSize()
     // keep ~10 s of buffer for typical high-bitrate sources.
     const U32 buffer_seconds = 10;
     const U32 estimated_bitrate = (mQuality == 1) ? 320u : 128u;
-    Check_FMOD_Error(mSystem->setStreamBufferSize(estimated_bitrate * buffer_seconds * 128 /*bytes/kbit*/,
-                                                  FMOD_TIMEUNIT_RAWBYTES),
-                     "FMOD::System::setStreamBufferSize");
+    const U32 stream_buffer_size = estimated_bitrate * buffer_seconds * 128 /*bytes/kbit*/;
+    if (!Check_FMOD_Error(mSystem->setStreamBufferSize(stream_buffer_size, FMOD_TIMEUNIT_RAWBYTES),
+                          "FMOD::System::setStreamBufferSize"))
+    {
+        LL_DEBUGS("AudioImpl") << "FSParcelStreamQuality buffer hint: quality=" << mQuality
+                                << " estimated_bitrate_kbps=" << estimated_bitrate
+                                << " seconds=" << buffer_seconds
+                                << " requested_size=" << stream_buffer_size
+                                << LL_ENDL;
+        LL_DEBUGS("AudioImpl") << stream_buffer_size_to_string(mSystem, "after applyStreamBufferSize") << LL_ENDL;
+    }
 }
 
 void LLStreamingAudio_FMODSTUDIO::applyStreamEq()
@@ -507,6 +534,7 @@ mReady(false)
 {
     mInternetStreamURL = url;
 
+    LL_DEBUGS("AudioImpl") << stream_buffer_size_to_string(mSystem, "before createStream") << LL_ENDL;
     FMOD_RESULT result = mSystem->createStream(url.c_str(), FMOD_2D | FMOD_NONBLOCKING | FMOD_IGNORETAGS, 0, &mInternetStream);
 
     if (result != FMOD_OK)
@@ -584,13 +612,25 @@ FMOD_RESULT LLAudioStreamManagerFMODSTUDIO::getOpenState(FMOD_OPENSTATE& state, 
 
 void LLStreamingAudio_FMODSTUDIO::setBufferSizes(U32 streambuffertime, U32 decodebuffertime)
 {
-    if (Check_FMOD_Error(mSystem->setStreamBufferSize(streambuffertime / 1000 * 128 * 128, FMOD_TIMEUNIT_RAWBYTES), "FMOD::System::setStreamBufferSize"))
+    const U32 stream_buffer_size = streambuffertime / 1000 * 128 * 128;
+    if (Check_FMOD_Error(mSystem->setStreamBufferSize(stream_buffer_size, FMOD_TIMEUNIT_RAWBYTES), "FMOD::System::setStreamBufferSize"))
         return;
+    LL_DEBUGS("AudioImpl") << "setBufferSizes stream buffer hint: streambuffertime_ms=" << streambuffertime
+                            << " decodebuffertime_ms=" << decodebuffertime
+                            << " requested_size=" << stream_buffer_size
+                            << LL_ENDL;
+    LL_DEBUGS("AudioImpl") << stream_buffer_size_to_string(mSystem, "after setBufferSizes") << LL_ENDL;
+
     FMOD_ADVANCEDSETTINGS settings;
     memset(&settings, 0, sizeof(settings));
     settings.cbSize = sizeof(settings);
     settings.defaultDecodeBufferSize = decodebuffertime;//ms
     Check_FMOD_Error(mSystem->setAdvancedSettings(&settings), "FMOD::System::setAdvancedSettings");
+
+    if (mQuality == 1)
+    {
+        applyStreamBufferSize();
+    }
 }
 
 bool LLStreamingAudio_FMODSTUDIO::releaseDeadStreams()
