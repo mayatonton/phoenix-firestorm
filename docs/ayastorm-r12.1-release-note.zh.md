@@ -34,7 +34,7 @@ r10 → r12.1 一次跳跃同时提供以下内容。**r11 与 r12 均未单独�
 - **听者侧 debug settings 实时调参修正**：r12 发布时 `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 出现回归 — 修改后必须触摸图元 (重新解析 Description) 才生效。r12.1 恢复了标准的"下一帧生效"语义。详见 → [tag-guide §12.3](../doc/3dstream-tag-guide.zh.md#123-设置的持久化与即时生效)
 - **per-spk 音量调节实时化**：r10 6 扬声器布置的 per-spk 音量补正 (`Stream3DSpkVol*`) 此前必须 rebuild (触摸图元) 才生效，r12.1 改为 **下一帧生效**。调试 / 调音工作大幅减负。
 - **routing diagnostic 适配 upmix**：`Stream3DDescriptionScan` 的 routing 输出未正确反映 r12 引入的 upmix 6ch routing。r12.1 修复后，`{upmix:on}` 时也会显示真实的 channel→spk 映射。
-- **土地音 (parcel music) 播放品质 opt-in 改善**：新增 `FSParcelStreamQuality` debug setting，针对高码率 (256/320 kbps mp3、FLAC-over-HTTP) 土地音 stream 出现的 **buffer starvation** 问题 (默认 `0` = 与上游 FS bit-identical / `1` = AYAstorm 增强)。设为 `1` 时，stream buffer hint 提升至 320 kbps 假设，resampler 切换为 SPLINE，并在 stream group 上挂接 +4 dB high-shelf @ 6 kHz 的轻微 EQ，对典型 128 kbps mp3 配信常见的「闷感」做轻度补偿。与 3dstream 路径互不依赖，对既有用户无影响。详见 → `doc/spec_parcel_stream_quality.md`
+- **土地音 (parcel music) 播放品质 opt-in 改善**：新增 `FSParcelStreamQuality` debug setting，针对高码率 (256/320 kbps mp3、FLAC-over-HTTP) 土地音 stream 出现的 **buffer starvation** 问题 (默认 `0` = 与上游 FS bit-identical / `1` = AYAstorm 增强)。设为 `1` 时，stream buffer hint 提升至 320 kbps 假设，resampler 切换为 SPLINE，并在 stream group 上挂接 +4 dB high-shelf @ 6 kHz 的轻微 EQ，对典型 128 kbps mp3 配信常见的「闷感」做轻度补偿。另外同步修复了 `FSFadeAudioStream=1` (默认) 的 fade 路径会用临时 fade 缓冲 (114,688 bytes) 覆盖 320 kbps 缓冲提示的问题，修正后 `FSParcelStreamQuality=1` 在 fade 开启状态下也能维持预期的 409,600 bytes。与 3dstream 路径互不依赖，对既有用户无影响。详见 → `doc/spec_parcel_stream_quality.md` / 验证日志 `doc/testplans/fsparcel_stream_quality_fade_buffer.md`
 
 ### 既有布置的处理
 
