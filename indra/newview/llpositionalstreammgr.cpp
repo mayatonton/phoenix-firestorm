@@ -1423,6 +1423,23 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
         ChannelKind::FL, ChannelKind::FR, ChannelKind::C,
         ChannelKind::LFE, ChannelKind::SL, ChannelKind::SR,
     };
+
+    // r12: when upmix is engaged on a 2ch source, the 5.1 prims are not in
+    // compat fallback — they receive their canonical band via the upmix DSP.
+    // Replace the six per-prim "silent / playing X" lines with one summary
+    // (mirrors emitUpmixAutoBypassNotice symmetry: one line per non-default
+    // upmix outcome).
+    if (b.upmix_effective_applied && source_channels == 2)
+    {
+        bool any_5_1 = false;
+        for (auto pc : kPrim51) { if (ch_count[pc] > 0) { any_5_1 = true; break; } }
+        if (any_5_1)
+        {
+            notifyStream3D("5.1 prims fed by stereo\xe2\x86\x92" "6ch upmix DSP");
+        }
+        return;
+    }
+
     for (auto pc : kPrim51)
     {
         if (ch_count[pc] == 0) continue;
