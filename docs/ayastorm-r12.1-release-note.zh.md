@@ -6,7 +6,7 @@
 
 ---
 
-## AYAstorm r12.1 — 双耳化 + 会场残响 + stereo→5.1 上混 + LFE gain
+## AYAstorm r12.1 — 双耳化 + 会场残响 + stereo→5.1 上混 + LFE gain + 土地音品质
 
 r10 → r12.1 一次跳跃同时提供以下内容。**r11 与 r12 均未单独发布 — 为把标签格式变更集中在一个阶段** 一并并入本次发布。
 
@@ -27,7 +27,7 @@ r10 → r12.1 一次跳跃同时提供以下内容。**r11 与 r12 均未单独�
 - **推流者向 LSL 扩展** (`doc/lsl/aya_3dstream_setup.lsl`): 可从 menu/dialog 设置 r11 标签 (binaural/venue/wetgain)、r12 标签 (upmix) 与 r12.1 标签 (lfegain)。输出 **始终使用短形式**。
 - **macOS 构建复活**: r10.x 中暂停的 macOS 构建在 r12 复活。Mac 用户请按 r10 → r12.1 迁移。
 
-### r12.1 起源 — LFE gain + 实时调参修正
+### r12.1 起源 — LFE gain + 土地音品质 + 实时调参修正
 
 - **`{lfegain:N}` (短形式 `lg`)**：`{ch:LFE}` 路径与 `{upmix:on}` 时的 LFE band 增益倍率 (0.0〜4.0，默认 1.0)。用途包括：在听者侧抬升源端 LFE 总线录制偏弱的素材，或当 LFE 图元挂在非低音炮的普通扬声器上时设为 `0` 以阻止低频泄漏。听者侧 sentinel `Stream3DLfeGain` 同步追加。详见 → [tag-guide §7.4](../doc/3dstream-tag-guide.zh.md#74-lfegainn-短形式-lgr121-新增) / 规格 `doc/spec_stereo_upmix.md` §4.7
 - **`wetgain` 默认值 `1.0` → `0.2`**：在 hall / cathedral 等长尾预设下 `1.0` 会让源声饱和；新默认反映了试听确认的音乐用途实用区间 0.1〜0.5。LSL UI 的 quick-pick 也重新刻度为 `0.1`〜`0.5` 的细刻度。详见 → [tag-guide §7.3](../doc/3dstream-tag-guide.zh.md#73-wetgainn-短形式-wg)

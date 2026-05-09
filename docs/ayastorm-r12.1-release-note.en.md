@@ -6,7 +6,7 @@ Feature details live in the user-facing guide (`doc/3dstream-tag-guide.{ja,en,zh
 
 ---
 
-## AYAstorm r12.1 — Binaural + Venue Reverb + stereo→5.1 upmix + LFE gain
+## AYAstorm r12.1 — Binaural + Venue Reverb + stereo→5.1 upmix + LFE gain + parcel music quality
 
 A single jump from r10 to r12.1 delivers all of the below at once. **r11 and r12 were not released independently — to keep the tag-format change consolidated into one stage**, both are bundled into this release.
 
@@ -27,7 +27,7 @@ A single jump from r10 to r12.1 delivers all of the below at once. **r11 and r12
 - **LSL helper update** (`doc/lsl/aya_3dstream_setup.lsl`): r11 tags (binaural/venue/wetgain), r12 tag (upmix), and r12.1 tag (lfegain) are settable from the menu/dialog. Output **always uses short form**.
 - **macOS build returns**: macOS was paused at r10.x (Linux/Windows only); r12 brings it back. Mac users should migrate r10 → r12.1.
 
-### From r12.1 — LFE gain + live-tuning fix
+### From r12.1 — LFE gain + parcel music quality + live-tuning fix
 
 - **`{lfegain:N}` (short `lg`)**: gain multiplier for the `{ch:LFE}` route and the LFE band produced by `{upmix:on}` (range 0.0–4.0, default 1.0). Used to boost a quietly-recorded LFE bus on the listener side, or to set `0` when the LFE prim is mounted on a non-subwoofer speaker to stop low-end leakage. The listener-side sentinel `Stream3DLfeGain` is added in lockstep. Details → [tag-guide §7.4](../doc/3dstream-tag-guide.en.md#74-lfegainn-short-form-lg-added-in-r121) / spec `doc/spec_stereo_upmix.md` §4.7
 - **`wetgain` default `1.0` → `0.2`**: `1.0` saturated the source on hall / cathedral presets; the new default reflects the practical musical range (0.1–0.5) confirmed by listening tests. The LSL UI quick-pick was also re-graded to fine `0.1`–`0.5` increments. Details → [tag-guide §7.3](../doc/3dstream-tag-guide.en.md#73-wetgainn-short-form-wg)
