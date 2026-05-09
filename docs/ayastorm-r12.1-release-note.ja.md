@@ -6,7 +6,7 @@ GitHub release ページに貼り付ける用の文案。**r12.1 は r12 と r11
 
 ---
 
-## AYAstorm r12.1 — バイノーラル + 会場残響 + stereo→5.1 upmix + LFE gain
+## AYAstorm r12.1 — バイノーラル + 会場残響 + stereo→5.1 upmix + LFE gain + 土地音品質
 
 r10 → r12.1 の 1 ジャンプで以下をまとめて提供します。**r11 / r12 はそれぞれ独立リリースしておらず、タグ書式変更を 1 段階に集約する方針** で本リリースに同梱しました。
 
@@ -27,7 +27,7 @@ r10 → r12.1 の 1 ジャンプで以下をまとめて提供します。**r11 
 - **配信者向け LSL 拡張** (`doc/lsl/aya_3dstream_setup.lsl`): r11 タグ (binaural/venue/wetgain) と r12 タグ (upmix)、r12.1 タグ (lfegain) を menu/dialog から設定可能。出力は **常に短縮形** で書き出します。
 - **macOS ビルド復活**: r10.x では Linux/Windows のみとしていた macOS ビルドを r12 で復活。Mac ユーザーは r10 → r12.1 で移行してください。
 
-### r12.1 由来 — LFE gain + ライブチューニング修正
+### r12.1 由来 — LFE gain + 土地音品質 + ライブチューニング修正
 
 - **`{lfegain:N}` (短縮形 `lg`)**: `{ch:LFE}` プリムと `{upmix:on}` 時の LFE band に対するゲイン倍率 (0.0〜4.0、default 1.0)。配信側 LFE バスが控えめな素材を viewer 側で持ち上げる、あるいは LFE プリムをサブウーファーでない汎用 spk に割り当てる配置で `0` にして低域漏れを止める用途。listener 側 sentinel `Stream3DLfeGain` も同期追加。詳細 → [tag-guide §7.4](../doc/3dstream-tag-guide.ja.md#74-lfegainn-短縮形-lgr121-追加) / 仕様 `doc/spec_stereo_upmix.md` §4.7
 - **`wetgain` default `1.0` → `0.2`**: ホール / カテドラル等の長尾 venue で `1.0` が音楽的に飽和することが実 listening で判明。musical range 0.1〜0.5 を反映した実用 default に変更。LSL UI の quick-pick も `0.1`〜`0.5` 細刻みに刷新。詳細 → [tag-guide §7.3](../doc/3dstream-tag-guide.ja.md#73-wetgainn-短縮形-wg)
