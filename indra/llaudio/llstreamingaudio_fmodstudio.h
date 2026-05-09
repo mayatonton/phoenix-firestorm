@@ -63,19 +63,28 @@ public:
     //Streamtitle display DKO
     LLSD getCurrentMetadata() const noexcept { return mMetadata; }
 
+    // FSParcelStreamQuality: 0 = original FS path, 1 = AYAstorm enhanced
+    // (SPLINE resampler + 320kbps buffer hint + high-shelf EQ on stream group).
+    // Buffer hint applies on next createStream; EQ applies live.
+    void setQuality(U32 quality);
+
 private:
     bool releaseDeadStreams();
+    void applyStreamBufferSize();
+    void applyStreamEq(); // AYAstorm: high-shelf EQ to compensate mp3 HF rolloff
 
     FMOD::System *mSystem;
 
     LLAudioStreamManagerFMODSTUDIO *mCurrentInternetStreamp;
     FMOD::ChannelGroup* mStreamGroup;
     FMOD::Channel *mFMODInternetStreamChannelp;
+    FMOD::DSP* mStreamEqDsp { nullptr }; // AYAstorm: HF restoration on mStreamGroup
     std::list<LLAudioStreamManagerFMODSTUDIO *> mDeadStreams;
 
     std::string mURL;
     std::string mPendingURL;
     F32 mGain;
+    U32 mQuality { 0 };
     // <DKO> Streamtitle display
     LLSD mMetadata;
 

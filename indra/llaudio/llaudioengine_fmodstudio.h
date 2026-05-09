@@ -55,8 +55,13 @@ public:
         RESAMPLE_CUBIC,
         RESAMPLE_SPLINE
     };
-    LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 resample_method);
+    LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 resample_method, U32 parcel_stream_quality = 0);
     virtual ~LLAudioEngine_FMODSTUDIO();
+
+    // FSParcelStreamQuality live setter. Resampler is locked at System init,
+    // so changing this after init only affects the streaming-audio impl
+    // (buffer hint + gain curve). Restart is required to swap resampler.
+    void setParcelStreamQuality(U32 quality);
 
     // initialization/startup/shutdown
     virtual bool init(void *user_data, const std::string &app_title);
@@ -110,6 +115,7 @@ protected:
     LLVenueReverbDsp mVenueReverbDsp;               // r11 P7c
     bool mEnableProfiler;
     U32 mResampleMethod;
+    U32 mParcelStreamQuality { 0 };
 
     LLUUID mSelectedDeviceUUID;
 

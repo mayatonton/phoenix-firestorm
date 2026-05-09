@@ -75,13 +75,66 @@ mFMODInternetStreamChannelp(NULL),
 mGain(1.0f),
 mWasAlreadyPlaying(false)
 {
-    // Number of milliseconds of audio to buffer for the audio card.
-    // Must be larger than the usual Second Life frame stutter time.
-    const U32 buffer_seconds = 10;      //sec
-    const U32 estimated_bitrate = 128;  //kbit/sec
-    Check_FMOD_Error(mSystem->setStreamBufferSize(estimated_bitrate * buffer_seconds * 128/*bytes/kbit*/, FMOD_TIMEUNIT_RAWBYTES), "FMOD::System::setStreamBufferSize");
+    applyStreamBufferSize();
 
     Check_FMOD_Error(system->createChannelGroup("stream", &mStreamGroup), "FMOD::System::createChannelGroup");
+
+    // AYAstorm: high-shelf EQ DSP attached to the stream group. Created in
+    // DISABLED mode so quality=0 is bit-identical to upstream FS; quality=1
+    // flips A_FILTER to HIGHSHELF to compensate the mp3 HF rolloff that makes
+    // parcel music sound "veiled". Always attached so toggling is live.
+    if (mStreamGroup &&
+        !Check_FMOD_Error(mSystem->createDSPByType(FMOD_DSP_TYPE_MULTIBAND_EQ, &mStreamEqDsp),
+                          "FMOD::System::createDSPByType(MULTIBAND_EQ)"))
+    {
+        // Band A: 6kHz presence shelf +4dB. Lower than the 8kHz air band so
+        // the boost lands on instrument/vocal definition where 128 kbps mp3
+        // thins them out, instead of just the very top octave. A single
+        // gentle shelf produced the most reliable subjective improvement;
+        // additional bands (low-mid dip, higher gain) were tried and rolled
+        // back as either inaudible or fatigue-inducing.
+        mStreamEqDsp->setParameterInt(FMOD_DSP_MULTIBAND_EQ_A_FILTER,
+                                      FMOD_DSP_MULTIBAND_EQ_FILTER_DISABLED);
+        mStreamEqDsp->setParameterFloat(FMOD_DSP_MULTIBAND_EQ_A_FREQUENCY, 6000.0f);
+        mStreamEqDsp->setParameterFloat(FMOD_DSP_MULTIBAND_EQ_A_GAIN, 4.0f);
+        Check_FMOD_Error(mStreamGroup->addDSP(0, mStreamEqDsp),
+                         "FMOD::ChannelGroup::addDSP(stream EQ)");
+    }
+}
+
+void LLStreamingAudio_FMODSTUDIO::applyStreamBufferSize()
+{
+    // FSParcelStreamQuality: original FS used estimated_bitrate=128 kbps × 10 s.
+    // Higher-bitrate streams (256/320 kbps MP3, FLAC over HTTP) starve at 128
+    // and trigger pause/resume cycles. AYAstorm path raises the hint to 320 to
+    // keep ~10 s of buffer for typical high-bitrate sources.
+    const U32 buffer_seconds = 10;
+    const U32 estimated_bitrate = (mQuality == 1) ? 320u : 128u;
+    Check_FMOD_Error(mSystem->setStreamBufferSize(estimated_bitrate * buffer_seconds * 128 /*bytes/kbit*/,
+                                                  FMOD_TIMEUNIT_RAWBYTES),
+                     "FMOD::System::setStreamBufferSize");
+}
+
+void LLStreamingAudio_FMODSTUDIO::applyStreamEq()
+{
+    if (!mStreamEqDsp) return;
+    // quality=0: filter DISABLED -> DSP is a pass-through (bit-identical).
+    // quality=1: HIGHSHELF +4dB above 6kHz to restore the presence band
+    // typical 128 kbps mp3 streams thin out.
+    const int filter_type = (mQuality == 1)
+        ? static_cast<int>(FMOD_DSP_MULTIBAND_EQ_FILTER_HIGHSHELF)
+        : static_cast<int>(FMOD_DSP_MULTIBAND_EQ_FILTER_DISABLED);
+    mStreamEqDsp->setParameterInt(FMOD_DSP_MULTIBAND_EQ_A_FILTER, filter_type);
+}
+
+void LLStreamingAudio_FMODSTUDIO::setQuality(U32 quality)
+{
+    if (mQuality == quality) return;
+    mQuality = quality;
+    // Buffer hint reaches FMOD now but only takes effect on next createStream.
+    applyStreamBufferSize();
+    // EQ filter type swaps live on the existing DSP.
+    applyStreamEq();
 }
 
 LLStreamingAudio_FMODSTUDIO::~LLStreamingAudio_FMODSTUDIO()
@@ -92,6 +145,16 @@ LLStreamingAudio_FMODSTUDIO::~LLStreamingAudio_FMODSTUDIO()
         if (releaseDeadStreams())
             break;
         ms_sleep(10);
+    }
+
+    if (mStreamEqDsp)
+    {
+        if (mStreamGroup)
+        {
+            mStreamGroup->removeDSP(mStreamEqDsp);
+        }
+        mStreamEqDsp->release();
+        mStreamEqDsp = nullptr;
     }
 }
 
@@ -428,9 +491,7 @@ void LLStreamingAudio_FMODSTUDIO::setGain(F32 vol)
 
     if (mFMODInternetStreamChannelp)
     {
-        vol = llclamp(vol * vol, 0.f, 1.f); //should vol be squared here?
-
-        Check_FMOD_Error(mFMODInternetStreamChannelp->setVolume(vol), "FMOD::Channel::setVolume");
+        Check_FMOD_Error(mFMODInternetStreamChannelp->setVolume(vol * vol), "FMOD::Channel::setVolume");
     }
 }
 

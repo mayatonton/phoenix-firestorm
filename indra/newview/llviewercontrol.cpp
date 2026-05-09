@@ -40,6 +40,9 @@
 
 // For Listeners
 #include "llaudioengine.h"
+#ifdef LL_FMODSTUDIO
+#include "llaudioengine_fmodstudio.h" // r12.x: FSParcelStreamQuality live setter
+#endif
 #include "llpositionalstreammgr.h"
 #include "llagent.h"
 #include "llagentcamera.h"
@@ -665,6 +668,20 @@ static void handleStream3DDebugStereoPlayChanged(const LLSD& newvalue)
     }
 }
 // </FS:AYA>
+
+// r12.x: FSParcelStreamQuality live setter. Buffer hint applies on next
+// stream start; gain curve applies live. Resampler is locked at System
+// init, so a viewer restart is required to swap that piece.
+static void handleParcelStreamQualityChanged(const LLSD& newvalue)
+{
+#ifdef LL_FMODSTUDIO
+    if (LLAudioEngine_FMODSTUDIO* fmod_engine =
+            dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop))
+    {
+        fmod_engine->setParcelStreamQuality(static_cast<U32>(newvalue.asInteger()));
+    }
+#endif
+}
 
 static bool handleJoystickChanged(const LLSD& newvalue)
 {
@@ -1665,6 +1682,7 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "Stream3DVolumeMaster", handleStream3DVolumeMasterChanged);
     setting_setup_signal_listener(gSavedSettings, "Stream3DEnabled", handleStream3DEnabledChanged);
     setting_setup_signal_listener(gSavedSettings, "Stream3DDescriptionScan", handleStream3DDescriptionScanChanged);
+    setting_setup_signal_listener(gSavedSettings, "FSParcelStreamQuality", handleParcelStreamQualityChanged);
     // </FS:AYA>
     setting_setup_signal_listener(gSavedSettings, "SpellCheck", handleSpellCheckChanged);
     setting_setup_signal_listener(gSavedSettings, "SpellCheckDictionary", handleSpellCheckChanged);
