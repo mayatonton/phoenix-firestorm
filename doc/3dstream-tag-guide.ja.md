@@ -23,7 +23,8 @@
 13. [エラー通知 / 診断](#13-エラー通知--診断)
 14. [トラブルシューティング](#14-トラブルシューティング)
 15. [既知の制約 / 仕様上の注意](#15-既知の制約--仕様上の注意)
-16. [関連ドキュメント / 内部仕様書](#16-関連ドキュメント--内部仕様書)
+16. [静的 OBB occlusion `[ayastorm:occlude]` (r13)](#16-静的-obb-occlusion-ayastormocclude-r13)
+17. [関連ドキュメント / 内部仕様書](#17-関連ドキュメント--内部仕様書)
 
 ---
 
@@ -100,12 +101,13 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 
 ## 4. タグの全体像
 
-### 4.1 2 種類のタグ
+### 4.1 3 種類のタグ
 
 | タグ | 接頭辞 | 用途 |
 |---|---|---|
 | **モノラルタグ** | `[3dstream:...]` | 単一プリムから 1 ストリームを再生 (最小構成) |
 | **分散ステレオ / 会場配置タグ** | `[3dstream-stereo:...]` | リンクセットの複数プリムから 1 ストリームを同期再生 (ステレオ / マルチスピーカー / 5.1ch) |
+| **静的 OBB occlusion タグ** (r13 新設) | `[ayastorm:occlude]` | 壁・扉・床・天井プリムを「音を遮るもの」として扱う (会場運営 / 建設者向け、§16) |
 
 ### 4.2 旧プレフィクスのエイリアス
 
@@ -179,7 +181,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 #### LSL から書く場合
 
-同梱の LSL `aya_3dstream_setup.lsl` (§16 参照) は **入力時は両形式を受け付け、出力 (Description 書き込み) 時は常に短縮形** で書き出します。LSL ダイアログから設定した Description は自動的に短縮形になります。
+同梱の LSL `aya_3dstream_setup.lsl` (§17 参照) は **入力時は両形式を受け付け、出力 (Description 書き込み) 時は常に短縮形** で書き出します。LSL ダイアログから設定した Description は自動的に短縮形になります。
 
 #### 大文字小文字 / 混在
 
@@ -1190,7 +1192,101 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 
 ---
 
-## 16. 関連ドキュメント / 内部仕様書
+## 16. 静的 OBB occlusion `[ayastorm:occlude]` (r13)
+
+**会場運営 / 建設者向け** のタグです。壁・扉・床・天井などの「音を遮るプリム」にこのタグを書くと、AYAstorm はそのプリムをリスナー位置と音源プリム位置の間にある **遮蔽物** として扱い、音をこもらせます。
+
+`[3dstream:...]` / `[3dstream-stereo:...]` (§5 / §6) が **音を出す側** のタグなのに対して、`[ayastorm:occlude]` は **音を遮る側** のタグです。両者は完全に独立で、occlude タグだけ書いたプリムからは音は鳴りません。
+
+### 16.1 書式
+
+```
+[ayastorm:occlude]                            ← 既定値 (direct:0.7 reverb:0.5)
+[ayastorm:occlude{direct:0.9}{reverb:0.7}]    ← 値指定
+[ayastorm:occlude{direct:0.6}]                ← 一方だけ指定 (もう一方は既定)
+```
+
+旧プレフィクス (`[ayastream:occlude]`) は **受け付けません**。occlusion は r13 で新設の機能で、ayastream 系の遺産プリムが存在しないため。共通の書式ルール (§4.3、キー名は大文字小文字非区別 / 値は前後空白 trim / 未知キーは黙って無視) はそのまま適用されます。
+
+### 16.2 動作モデル
+
+#### 何が遮蔽されるか
+
+- **`[3dstream:...]` / `[3dstream-stereo:...]` から鳴る音** (3D 定位ストリーム、スピーカープリムごと)
+- **`llPlaySound` / 添付音 / 子プリム効果音** (世界 SFX)
+
+リスナー位置 (カメラまたはアバター) と音源位置を結ぶ線分が occlude プリムの **OBB (Oriented Bounding Box)** を貫いていれば「遮蔽あり」と判定し、音量を下げ + 低域強調のローパスでこもらせます。複数のプリムを同時に貫いている場合は **最も遮蔽値の強いプリム** を採用 (= max(direct), max(reverb))。
+
+#### 何が遮蔽されないか
+
+- **2D ストリーム** (parcel music のような 3D 定位なし配信)
+- **Voice (Vivox / WebRTC)**
+- **UI 効果音 / プレビュー音** (内部で `isForcedPriority` フィルタで除外)
+
+### 16.3 引数の意味
+
+| キー | 既定 | 範囲 | 効果 |
+|---|---|---|---|
+| `direct` | `0.7` | `0.0`-`1.0` | 直接音 (= 音量) の減衰。`0.0` = 素通し、`1.0` = ほぼ無音 |
+| `reverb` | `0.5` | `0.0`-`1.0` | 残響成分の減衰。`0.0` = 残響素通し、`1.0` = 残響カット |
+
+`direct` が大きいほど「壁の向こうで鳴っている感」が強くなり、しかも viewer 内蔵の LOWPASS_SIMPLE で **低域偏重のこもった音** に加工されます (22 kHz → 300 Hz、`direct=1.0` で最大こもり)。`reverb` は音源側プリムが `{venue:...}` で会場残響を有効化している場合のみ意味があります (§7.2)。
+
+### 16.4 推奨セット (材質イメージ → 値)
+
+経験的に「こんな感じ」というセット。会場でライブ確認しながら微調整してください。
+
+| 材質イメージ | `direct` | `reverb` | 印象 |
+|---|---|---|---|
+| 石壁 / コンクリート | `0.9` | `0.7` | ほぼ無音、低域だけ漏れる |
+| 木壁 / 内装パネル | `0.7` | `0.5` | 既定値、典型的な「壁の向こう」 |
+| 軽い木板 / カーテン | `0.6` | `0.4` | こもった音が漏れる、薄い間仕切り |
+| ガラス窓 / 障子 | `0.3` | `0.2` | 軽くこもる、向こう側が認識できる |
+| 装飾用 (実質透過) | `0.1` | `0.05` | ほぼ素通し、シルエットだけ存在 |
+
+### 16.5 自動追従 (動的扉も OK)
+
+`refreshOccluders` が **毎 tick** (= `LLPositionalStreamMgr::update()` ごと) 全 occluder プリムの位置 / 回転 / スケールを再取得します。つまり:
+
+- **動く扉** (LSL `llSetPos` / `llSetRot` でアニメーション) に `[ayastorm:occlude]` を書くだけで、開閉に追従して遮蔽が変化します
+- **乗り物 / 移動プリム** に書いた場合も同じく追従
+- 専用の「扉タグ」は **不要** です (r13 spec 策定時は `[ayastorm:door]` を予定していましたが、refreshOccluders で十分なため永久に drop)
+
+### 16.6 距離 cull (`Stream3DOccluderRange` = 64m)
+
+リスナー-音源距離が `Stream3DOccluderRange` (既定 64m) を超える場合、その音源に対する OBB raycast は **skip** されます (距離減衰で既に十分小さくなっている前提)。大規模会場で 64m 超の遮蔽が必要な場合は debug settings から値を上げる、または `0` を入れて常時 raycast にできます (§12.2)。
+
+### 16.7 master toggle (`Stream3DOcclusion`)
+
+トラブルシュート / 動作切り分け用の **全体 ON/OFF スイッチ** (debug setting)。
+
+| 値 | 動作 |
+|---|---|
+| `-1` (既定) | 有効。すべての `[ayastorm:occlude]` タグを評価 |
+| `0` | 無効。タグは全無視、すでにこもっていた音は通常 ramp で素通しに戻る |
+| `1` | 明示的に有効 (将来の per-mode override 予約) |
+
+ライブ中に live-toggle しても **cliff (突然の音量変化) は発生しません** — disabled 時も smoothing 経路は走るため、`Stream3DOcclusionRampMs` (既定 250 ms) でなめらかに bypass まで戻ります。
+
+### 16.8 可視化 (`Stream3DShowOccluders`、Alt+Shift+O)
+
+登録済み occluder プリムを **OBB ワイヤーフレーム** として表示する debug 機能。色は `direct` 値で変化 (オレンジ = `0.7` 既定 → 赤 = `1.0` 完全壁)。会場構築中に「タグはちゃんと認識されているか」「OBB の向きは想定どおりか」を目視確認できます。
+
+- **メニュー**: View → Highlighting and Visibility → "Show 3D Stream Occluders (AYAstorm)"
+- **ホットキー**: `Alt+Shift+O` (ライブ ON/OFF)
+
+`Stream3DOcclusion` (master toggle、§16.7) を `0` にしても可視化はそのまま見られます — 「audio off で OBB 構造だけ確認したい」会場運営側のワークフローに合わせて、両 toggle は意図的に独立しています。
+
+### 16.9 制限 / 上限
+
+- **同時 occluder 数 256** (`kMaxOccluders` hardcoded)。`[ayastorm:occlude]` タグ付きプリムが sim 内に 257 個以上ある場合、257 個目以降は登録されません (`LL_WARNS` がログに出ます)。典型 SL venue (~100 プリム想定) では十分な余裕。
+- **OBB 近似**: プリムの実形状ではなく、bounding box 単位で遮蔽判定します。複雑形状 (アーチ / 曲面 / 階段の手すり等) は近似誤差が出ます — 必要なら panel を分割して個別タグを書いてください。
+- **CPU 負荷**: 256 occluders × 64 channels × 60 Hz ≈ 1M slab tests/sec で 1 ms/sec 未満。typical SL venue では負荷無視可。
+- **同梱 FMOD 制約**: 内部実装は viewer 側の segment-vs-OBB slab test です (FMOD::Geometry::createGeometry は同梱 libfmod 2.03.07 で動作しないため)。ユーザー視点では影響なし。
+
+---
+
+## 17. 関連ドキュメント / 内部仕様書
 
 本ガイドは **利用者向け** の書式リファレンスです。実装内部の詳細 (decode thread / FMOD 経路 / リング bufferr / シャットダウン順序等) は以下の仕様書を参照してください。
 
@@ -1204,6 +1300,7 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 | `doc/spec_binaural_venue_reverb.md` | r11 バイノーラル + 会場残響仕様 (r12 と同梱配布)。lite-HRTF / 9 venue / wetgain 詳細 |
 | `doc/spec_stereo_upmix.md` | r12 stereo→5.1 upmix 仕様 — DPL2 系 matrix decode + 帯域分離アルゴリズム詳細 |
 | `docs/ayastorm-r12-stereo-upmix.md` | r12 phase 分解 (P0-P11) と工数見積 |
+| `docs/ayastorm-r13-occlusion.md` | r13 OBB occlusion 仕様 + 実装記録 — `[ayastorm:occlude]` 設計判断 / spike 実装 / 残工程 |
 | `docs/ayastorm-stream3d-roadmap.md` | 3D Stream 全体ロードマップ (r5〜r13+) |
 
 ---
@@ -1213,3 +1310,4 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 - **2026-05-05 (初版)**: r10 時点の最終仕様として整備。r5 / r8 / r9 / r10 / r10.x の累積仕様をまとめて記述。r11 以降は未リリースのため対象外。
 - **2026-05-08 (r12 改訂)**: r11 (バイノーラル / 会場残響 / wetgain) と r12 (stereo→5.1 upmix / タグ短縮形 `bin`/`v`/`wg` + venue 値短縮) を追記。r11 は独立リリースせず r12 に同梱配布する方針のため、ユーザー向けには r10 → r12 の 1 ジャンプとなる。§7 / §8 / §4.5 を新設、章番号 §7-§14 を §9-§16 に繰り下げ。
 - **2026-05-09 (r12.1 改訂)**: `{lfegain:N}` キー (短縮形 `lg`) を §7.4 として新設、旧 §7.4 配信者主導モデルを §7.5、旧 §7.5 組合せ例を §7.6 に繰り下げ。`wetgain` の既定値を `1.0` → `0.2` に変更 (実 listening での音楽的レンジ 0.1〜0.5 反映)。§12.2 に `Stream3DLfeGain` sentinel 追加。§12.2 / §12.3 にライブチューニング修正の注記を追加 (r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった回帰を修正)。
+- **2026-05-11 (r13 改訂)**: 静的 OBB occlusion タグ `[ayastorm:occlude]` を §16 として新設、旧 §16 関連ドキュメントを §17 に繰り下げ。§4.1 を「2 種類のタグ」→「3 種類のタグ」に拡張。debug settings (`Stream3DOcclusion` master sentinel / `Stream3DOccluderRange` 距離 cull / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` 可視化) を §16.6-§16.8 に記述。関連 spec として `docs/ayastorm-r13-occlusion.md` を §17 表に追加。
