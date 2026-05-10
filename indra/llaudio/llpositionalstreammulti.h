@@ -34,6 +34,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -45,6 +46,7 @@ namespace FMOD
     class Sound;
     class Channel;
     class System;
+    class DSP;
 }
 
 class LLLiteHrtfDsp;  // r11 P4: per-speaker lite-HRTF DSP (forward decl)
@@ -211,6 +213,19 @@ public:
     // Global volume multiplier on top of per-speaker volume.
     void setVolume(F32 volume);
 
+    // r13: visit every active (channel, lowpass-DSP, source-position) tuple
+    // so a caller owning newview-side occlusion state can apply
+    // Channel::set3DOcclusion AND push the muffling cutoff into the per-
+    // speaker LOWPASS_SIMPLE DSP. Skips speakers that have no live channel
+    // (still buffering / failed). lowpass_dsp may be null when DSP creation
+    // failed — visitor is responsible for the null-check. Const-correct:
+    // this method itself does not mutate any FMOD state — the visitor is
+    // free to.
+    using SpeakerVisitor = std::function<void(FMOD::Channel*,
+                                              FMOD::DSP* lowpass_dsp,
+                                              const LLVector3& source_pos)>;
+    void forEachActiveSpeaker(const SpeakerVisitor& fn) const;
+
     // r11 P5: enable/disable the per-speaker lite-HRTF DSP (= the
     // {binaural} tag's resolved effective value, computed by the mgr).
     // When ON, makeChannelForBinding() inserts the DSP at the head of the
@@ -344,6 +359,11 @@ private:
         // implicit SpeakerRuntime dtor stay valid in the .cpp where the
         // LiteHrtfDsp type is complete.
         std::unique_ptr<LLLiteHrtfDsp> hrtf_dsp;
+        // r13: per-speaker LOWPASS_SIMPLE DSP for OBB-occlusion "muffled"
+        // tone. Created and addDSP'd alongside the channel; cutoff is
+        // pushed by LLOcclusionGeometryMgr each tick based on the smoothed
+        // direct factor. Default cutoff (~22 kHz) is effectively bypass.
+        FMOD::DSP* lowpass_dsp = nullptr;
     };
 
     static FMOD_RESULT F_CALL pcmReadCallback(FMOD_SOUND* sound, void* data, U32 datalen);

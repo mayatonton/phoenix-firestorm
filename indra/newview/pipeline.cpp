@@ -31,6 +31,7 @@
 // library includes
 #include "llimagepng.h"
 #include "llaudioengine.h" // For debugging.
+#include "llocclusiongeometrymgr.h" // r13: OBB occlusion debug overlay.
 #include "llerror.h"
 #include "llviewercontrol.h"
 #include "llfasttimer.h"
@@ -5738,6 +5739,17 @@ void LLPipeline::renderDebug()
     }
 
     visible_selected_groups.clear();
+
+    // r13: AYAstorm OBB occlusion debug overlay. Gated on a CachedControl so
+    // the per-frame check is a single int load when the toggle is off.
+    static LLCachedControl<bool> show_occluders(gSavedSettings, "Stream3DShowOccluders");
+    if (show_occluders && !hud_only)
+    {
+        gDebugProgram.bind();
+        LLGLDepthTest depth(GL_TRUE, GL_FALSE);
+        LLOcclusionGeometryMgr::instance().renderDebug();
+        gDebugProgram.unbind();
+    }
 
     //draw reflection probes and links between them
     if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_REFLECTION_PROBES) && !hud_only)
