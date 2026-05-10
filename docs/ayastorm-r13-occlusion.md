@@ -381,7 +381,7 @@ spike で出していない r13 final scope の残作業:
 - **`kMaxOccluders` 64 → 256** — hardcoded 値の引き上げ (power-of-two、典型 SL venue ~100 prim に対し ~25% headroom)。`llocclusiongeometrymgr.{h,cpp}` のコメントも 64-spike → 256-final に同期。
 - **chat font live-apply cherry-pick (`d66bdb74fc`、元 `2689a35f8f`)** — r13 ブランチへの cherry-pick 完了。
 - **tag-guide 改訂** — `3dstream-tag-guide.{ja,en,zh}.md` の §16 として `[ayastorm:occlude]` 全項 (書式 / 動作モデル / 引数 / 推奨セット / 自動追従 / 距離 cull / master toggle / 可視化 / 制限) を追記、旧 §16 関連ドキュメントを §17 に繰り下げ。§4.1 を「2 種類のタグ」→「3 種類のタグ」に拡張、§17 表に `docs/ayastorm-r13-occlusion.md` 行を追加、§改訂履歴に 2026-05-11 (r13) entry を追加。3 言語ともセクション番号・TOC・cross-ref を整合。
-- **Release Notes** — リンク + 差分ハイライト。
+- **Release Notes** — `docs/ayastorm-r13-release-note.{ja,en,zh}.md` を r12.1 のフォーマットに沿って作成。骨子は `[ayastorm:occlude]` 紹介 (書式 / 動作 / 推奨セット / 動的扉追従 / 配信者主導モデルとの直交性) + debug settings 4 件サマリ + 同梱独立修正 (起動 unresponsive dialog 根本対策 / chat font live-apply) + 既存配置の互換性 + 既知制約 + ドキュメントリンク。3 言語同期、本文は link-only + 差分 highlight に徹し詳細は tag-guide / impl record / spec へ誘導。
 
 ### 5.4 r13 spike で発生した別案件: 起動時 OS unresponsive dialog
 
