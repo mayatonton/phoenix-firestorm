@@ -329,8 +329,7 @@ bool LLPositionalStreamMulti::start(const std::string& url,
         return false;
     }
 
-    FMOD::System* system = getFmodSystem();
-    if (!system)
+    if (!getFmodSystem())
     {
         LL_WARNS("Stream3D") << "FMOD Studio system unavailable" << LL_ENDL;
         return false;
@@ -344,53 +343,91 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     mFailReason.store(FailReason::Ok, std::memory_order_relaxed);
     mFailDetail.clear();
 
-    const FMOD_MODE source_mode = FMOD_2D
-                                | FMOD_NONBLOCKING
-                                | FMOD_IGNORETAGS;
-
-    // r11 P10: viewer-side URL pre-resolve. FMOD netstream does not follow
-    // HTTPS→HTTP cross-protocol redirects (typical of Cloudflare/CDN
+    // r11 P10 / r13 C: viewer-side URL pre-resolve. FMOD netstream does not
+    // follow HTTPS→HTTP cross-protocol redirects (typical of Cloudflare/CDN
     // fronted Shoutcast/Icecast). We probe via libcurl HEAD (with ranged
-    // GET fallback) and hand FMOD the post-redirect URL. mUrl stays as
-    // the original input so reconnect/log surfaces still show what the
-    // tag asked for.
+    // GET fallback) and hand FMOD the post-redirect URL. mUrl stays as the
+    // original input so reconnect/log surfaces still show what the tag
+    // asked for.
     //
-    // r13: skip the probe for plain http:// URLs. The probe was designed
+    // r13 A: skip the probe for plain http:// URLs. The probe was designed
     // for the HTTPS→HTTP redirect case; an http:// source needs no scheme
-    // promotion, and FMOD itself follows http→http redirects. Probing
-    // anyway costs up to 3 s on the main thread per stream open (long
-    // enough to trip the OS unresponsive dialog when the upstream is
-    // slow). Easy win to gate it on the scheme.
-    std::string createstream_url = clean_url;
+    // promotion, and FMOD itself follows http→http redirects.
+    //
+    // r13 C: when the probe IS run, submit it to a background worker
+    // thread and transition to State::Resolving instead of blocking the
+    // main thread on curl. update() polls the result and calls
+    // openSourceStream() once the URL is settled.
     const bool is_http = (clean_url.compare(0, 7, "http://") == 0);
     if (mUrlPreResolveEnabled && !is_http)
     {
-        std::string resolved;
-        if (LLStream3DUrlResolve::resolveStreamUrl(clean_url, resolved))
+        const auto id = LLStream3DUrlResolve::submit(clean_url);
+        if (id != LLStream3DUrlResolve::kInvalidRequestId)
         {
-            LL_INFOS("Stream3DUrlResolve") << "pre-resolved: " << clean_url
-                                             << " -> " << resolved << LL_ENDL;
-            createstream_url = resolved;
+            mResolveRequestId = id;
+            mState.store(State::Resolving, std::memory_order_release);
+            LL_INFOS("Stream3D") << "Submitted async pre-resolve for '"
+                                  << clean_url << "' (id=" << id
+                                  << ") with " << mSpeakers.size()
+                                  << " speaker(s)" << LL_ENDL;
+            return true;
         }
+        // Worker unavailable (e.g. resource exhaustion at startup):
+        // fall through and open with the raw URL synchronously. The
+        // FMOD netstream may still accept the HTTPS URL directly when
+        // the CDN doesn't actually require the cross-protocol redirect.
+        LL_WARNS("Stream3DUrlResolve") << "submit() returned invalid id; "
+                                         << "opening '" << clean_url
+                                         << "' without pre-resolve" << LL_ENDL;
     }
 
-    if (checkFmod(system->createStream(createstream_url.c_str(), source_mode, nullptr, &mSourceSound),
-                  "createStream(source)"))
+    if (!openSourceStream(clean_url))
     {
-        mSourceSound = nullptr;
         mUrl.clear();
         mSpeakers.clear();
         return false;
     }
-
-    mState = State::Opening;
     LL_INFOS("Stream3D") << "Opening multi source '" << clean_url
                           << "' with " << mSpeakers.size() << " speaker(s)" << LL_ENDL;
     return true;
 }
 
+bool LLPositionalStreamMulti::openSourceStream(const std::string& url)
+{
+    FMOD::System* system = getFmodSystem();
+    if (!system)
+    {
+        LL_WARNS("Stream3D") << "FMOD Studio system unavailable" << LL_ENDL;
+        return false;
+    }
+
+    const FMOD_MODE source_mode = FMOD_2D
+                                | FMOD_NONBLOCKING
+                                | FMOD_IGNORETAGS;
+
+    if (checkFmod(system->createStream(url.c_str(), source_mode, nullptr, &mSourceSound),
+                  "createStream(source)"))
+    {
+        mSourceSound = nullptr;
+        return false;
+    }
+
+    mState.store(State::Opening, std::memory_order_release);
+    return true;
+}
+
 void LLPositionalStreamMulti::stop()
 {
+    // r13 C: cancel any pending async URL resolve before tearing down. The
+    // worker thread can't be interrupted mid-curl, but cancel() flags the
+    // result entry so the resolved URL is dropped on completion rather
+    // than written to a now-stale tracked entry. Safe with
+    // kInvalidRequestId (no-op) and with stale ids (cancel is idempotent).
+    if (mResolveRequestId != LLStream3DUrlResolve::kInvalidRequestId)
+    {
+        LLStream3DUrlResolve::cancel(mResolveRequestId);
+        mResolveRequestId = LLStream3DUrlResolve::kInvalidRequestId;
+    }
     // r7 M3 invariant: join decode thread before releasing FMOD resources it
     // is reading from.
     stopDecodeThread();
@@ -1222,6 +1259,64 @@ void LLPositionalStreamMulti::update()
 {
     const State st = mState.load(std::memory_order_acquire);
     if (st == State::Idle || st == State::Failed) return;
+
+    // r13 C: drive the async pre-resolve. Polling drains the result entry,
+    // so once we observe Done/Failed we will not see it again on the next
+    // tick. mResolveRequestId is reset here even on Failed so subsequent
+    // ticks treat it as Idle for resolve purposes.
+    if (st == State::Resolving)
+    {
+        if (mResolveRequestId == LLStream3DUrlResolve::kInvalidRequestId)
+        {
+            // Defensive: shouldn't happen, but if it does, fall back to
+            // opening with the original URL rather than wedging.
+            if (!openSourceStream(mUrl))
+            {
+                releaseAll();
+                setFailed(FailReason::Network, "createStream after stale resolve id");
+            }
+            return;
+        }
+
+        std::string resolved;
+        const auto rs = LLStream3DUrlResolve::poll(mResolveRequestId, resolved);
+        if (rs == LLStream3DUrlResolve::Status::Pending)
+        {
+            return;
+        }
+
+        // Done / Failed / Unknown — poll has consumed the tracked entry.
+        const auto consumed_id = mResolveRequestId;
+        mResolveRequestId = LLStream3DUrlResolve::kInvalidRequestId;
+
+        const std::string open_url = (!resolved.empty() ? resolved : mUrl);
+        if (rs == LLStream3DUrlResolve::Status::Done && open_url != mUrl)
+        {
+            LL_INFOS("Stream3DUrlResolve") << "pre-resolved (async): " << mUrl
+                                             << " -> " << open_url
+                                             << " (id=" << consumed_id << ")"
+                                             << LL_ENDL;
+        }
+        else
+        {
+            LL_DEBUGS("Stream3DUrlResolve") << "resolve id=" << consumed_id
+                                              << " status=" << (int)rs
+                                              << " for '" << mUrl
+                                              << "', opening with '"
+                                              << open_url << "'" << LL_ENDL;
+        }
+
+        if (!openSourceStream(open_url))
+        {
+            LL_WARNS("Stream3D") << "createStream failed after resolve for "
+                                  << mUrl << LL_ENDL;
+            releaseAll();
+            setFailed(FailReason::Network, "createStream after pre-resolve");
+            return;
+        }
+        return;
+    }
+
     if (!mSourceSound) return;
 
     if (st == State::Opening)

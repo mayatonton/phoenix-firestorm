@@ -32,6 +32,7 @@
 
 #include "llaudioengine_fmodstudio.h"
 #include "lllistener_fmodstudio.h"
+#include "llstream3durlresolve.h"
 
 #include "llerror.h"
 #include "llmath.h"
@@ -599,6 +600,13 @@ void LLAudioEngine_FMODSTUDIO::allocateListener(void)
 void LLAudioEngine_FMODSTUDIO::shutdown()
 {
     stopInternetStream();
+
+    // r13 C: drain & join the async URL pre-resolve worker before tearing
+    // down audio. Per-stream stop() already cancels in-flight requests as
+    // streams are released; this is the final stop that releases the
+    // singleton's curl handle and joins the worker thread, idempotent if
+    // it was never started (no Stream3D source ever resolved this run).
+    LLStream3DUrlResolve::shutdown();
 
     LL_INFOS("FMOD") << "About to LLAudioEngine::shutdown()" << LL_ENDL;
     LLAudioEngine::shutdown();

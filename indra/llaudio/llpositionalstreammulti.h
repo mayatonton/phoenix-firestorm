@@ -27,6 +27,7 @@
 
 #include "llmultichanneldownmix.h"
 #include "llstereoupmix.h"
+#include "llstream3durlresolve.h"
 #include "stdtypes.h"
 #include "v3math.h"
 
@@ -284,7 +285,12 @@ public:
     void update();
 
 private:
-    enum class State { Idle, Opening, Buffering, Playing, Failed };
+    // r13 C: Resolving sits between Idle and Opening. While in Resolving the
+    // background curl worker (LLStream3DUrlResolve) is probing the source
+    // URL for HTTPS→HTTP redirects; update() polls the resolve result and
+    // transitions to Opening once the URL is settled. Pre-r13 the resolve
+    // ran synchronously inside start() so this state did not exist.
+    enum class State { Idle, Resolving, Opening, Buffering, Playing, Failed };
 
     // Per-sound user-data passed to FMOD's pcmreadcallback. Heap-allocated
     // because FMOD stores the pointer; the speaker_idx lets one static thunk
@@ -376,6 +382,14 @@ private:
     void setFailed(FailReason reason, std::string detail = {});
 
     void releaseAll();
+    // r13 C: extracted from the original start() body. Calls
+    // System::createStream(FMOD_NONBLOCKING) on `url` and, on success,
+    // publishes State::Opening. Returns false on FMOD failure (caller
+    // decides whether to clear+return-false or setFailed). Used by both
+    // the synchronous start path (when pre-resolve is gated off or the
+    // worker can't be started) and by the Resolving→Opening transition
+    // in update().
+    bool openSourceStream(const std::string& url);
     bool createUserSounds();
     bool startUserChannels();
     void applyChannelAttributes(FMOD::Channel* channel, const LLVector3& pos, F32 range);
@@ -472,6 +486,12 @@ private:
     // that forgets to call the setter still gets the redirect-following
     // behavior (matches the settings.xml sentinel default of "enabled").
     bool mUrlPreResolveEnabled = true;
+    // r13 C: id of the in-flight async resolve, kInvalidRequestId when
+    // none is pending. Set in start() when we transition to State::
+    // Resolving, cleared in update()/stop() when the result is consumed
+    // or cancelled. Single-threaded (main-thread only) so no atomic.
+    LLStream3DUrlResolve::RequestId mResolveRequestId
+        = LLStream3DUrlResolve::kInvalidRequestId;
     std::string mUrl;
 
     std::atomic<State> mState;
