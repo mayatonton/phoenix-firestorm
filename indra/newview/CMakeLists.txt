@@ -678,6 +678,7 @@ set(viewer_SOURCE_FILES
     llplacesfolderview.cpp
     llpopupview.cpp
     llpositionalstreammgr.cpp
+    llocclusiongeometrymgr.cpp
     llpostcard.cpp
     llpresetsmanager.cpp
     llpreview.cpp
@@ -1534,6 +1535,7 @@ set(viewer_HEADER_FILES
     llplacesfolderview.h
     llpopupview.h
     llpositionalstreammgr.h
+    llocclusiongeometrymgr.h
     llpostcard.h
     llpresetsmanager.h
     llpreview.h

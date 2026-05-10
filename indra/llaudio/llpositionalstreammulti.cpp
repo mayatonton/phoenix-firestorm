@@ -354,8 +354,16 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     // GET fallback) and hand FMOD the post-redirect URL. mUrl stays as
     // the original input so reconnect/log surfaces still show what the
     // tag asked for.
+    //
+    // r13: skip the probe for plain http:// URLs. The probe was designed
+    // for the HTTPS→HTTP redirect case; an http:// source needs no scheme
+    // promotion, and FMOD itself follows http→http redirects. Probing
+    // anyway costs up to 3 s on the main thread per stream open (long
+    // enough to trip the OS unresponsive dialog when the upstream is
+    // slow). Easy win to gate it on the scheme.
     std::string createstream_url = clean_url;
-    if (mUrlPreResolveEnabled)
+    const bool is_http = (clean_url.compare(0, 7, "http://") == 0);
+    if (mUrlPreResolveEnabled && !is_http)
     {
         std::string resolved;
         if (LLStream3DUrlResolve::resolveStreamUrl(clean_url, resolved))
@@ -419,6 +427,22 @@ void LLPositionalStreamMulti::releaseAll()
                 checkFmod(sr.channel->removeDSP(dsp),
                           "Channel::removeDSP(LiteHrtfDsp)");
             }
+        }
+    }
+    // r13: same teardown order for the per-speaker LOWPASS_SIMPLE DSP. We
+    // own this one outright (createDSPByType in makeChannelForBinding) so
+    // we both removeDSP and release here, then null the pointer.
+    for (auto& sr : mSpeakerRuntime)
+    {
+        if (sr.lowpass_dsp)
+        {
+            if (sr.channel)
+            {
+                checkFmod(sr.channel->removeDSP(sr.lowpass_dsp),
+                          "Channel::removeDSP(LowpassSimple)");
+            }
+            checkFmod(sr.lowpass_dsp->release(), "DSP::release(LowpassSimple)");
+            sr.lowpass_dsp = nullptr;
         }
     }
     // Channels must be stopped before their backing OPENUSER sounds are
@@ -517,6 +541,17 @@ void LLPositionalStreamMulti::setSpeakerVolume(size_t idx, F32 volume)
     {
         checkFmod(mSpeakerRuntime[idx].channel->setVolume(mVolume * volume),
                   "Channel::setVolume(speaker)");
+    }
+}
+
+void LLPositionalStreamMulti::forEachActiveSpeaker(const SpeakerVisitor& fn) const
+{
+    if (!fn) return;
+    for (size_t i = 0; i < mSpeakerRuntime.size() && i < mSpeakers.size(); ++i)
+    {
+        FMOD::Channel* ch = mSpeakerRuntime[i].channel;
+        if (!ch) continue;
+        fn(ch, mSpeakerRuntime[i].lowpass_dsp, mSpeakers[i].position);
     }
 }
 
@@ -949,6 +984,31 @@ bool LLPositionalStreamMulti::makeChannelForBinding(size_t i)
                            << " attached=" << (dsp_attached ? "yes" : "no")
                            << " set3DLevel=" << (dsp_attached ? "0.0" : "1.0")
                            << LL_ENDL;
+
+    // r13: per-speaker LOWPASS_SIMPLE DSP for the OBB-occlusion "muffled"
+    // tone. Inserted at the tail (= after lite-HRTF if present) so the
+    // muffling is applied to the post-pan signal rather than fed through
+    // the binaural ITD/ILD chain. Initial cutoff 22 kHz = effective
+    // bypass; LLOcclusionGeometryMgr pushes the live cutoff each tick
+    // based on the smoothed direct factor. Failure is non-fatal — we just
+    // skip the muffle effect for this speaker (audio still plays).
+    FMOD::DSP* lpf = nullptr;
+    if (!checkFmod(system->createDSPByType(FMOD_DSP_TYPE_LOWPASS_SIMPLE, &lpf),
+                   "createDSPByType(LowpassSimple)") && lpf)
+    {
+        checkFmod(lpf->setParameterFloat(FMOD_DSP_LOWPASS_SIMPLE_CUTOFF, 22000.f),
+                  "DSP::setParameterFloat(LowpassSimple cutoff init)");
+        if (checkFmod(sr.channel->addDSP(FMOD_CHANNELCONTROL_DSP_TAIL, lpf),
+                      "Channel::addDSP(LowpassSimple)"))
+        {
+            lpf->release();
+            lpf = nullptr;
+        }
+        else
+        {
+            sr.lowpass_dsp = lpf;
+        }
+    }
     return true;
 }
 

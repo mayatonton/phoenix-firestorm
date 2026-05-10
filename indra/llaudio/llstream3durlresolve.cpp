@@ -49,8 +49,15 @@ namespace
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 3000L);
-        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 2000L);
+        // r13: tightened from 3000/2000 ms. Combined with the per-frame
+        // drain rate-limit in LLPositionalStreamMgr::update(), this caps
+        // the worst-case single-frame stall to ~1.5 s — short enough to
+        // stay under the OS unresponsive-window threshold even at login
+        // when several https:// streams resolve back-to-back. A slow CDN
+        // that exceeds the budget falls through to the raw URL (FMOD
+        // attempts the HTTPS connect itself, which usually still works).
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 1500L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 1000L);
         // Block redirects to file:// / ftp:// / etc. — only HTTP/HTTPS
         // are valid Stream3D URLs (spec §4.7.6). Setopt the source-side
         // protocols too so curl_easy_setopt rejects a non-HTTP `in`
