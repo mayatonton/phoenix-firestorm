@@ -1280,7 +1280,7 @@ void LLPositionalStreamMulti::update()
 
         std::string resolved;
         const auto rs = LLStream3DUrlResolve::poll(mResolveRequestId, resolved);
-        if (rs == LLStream3DUrlResolve::Status::Pending)
+        if (rs == LLStream3DUrlResolve::ResolveStatus::Pending)
         {
             return;
         }
@@ -1290,7 +1290,7 @@ void LLPositionalStreamMulti::update()
         mResolveRequestId = LLStream3DUrlResolve::kInvalidRequestId;
 
         const std::string open_url = (!resolved.empty() ? resolved : mUrl);
-        if (rs == LLStream3DUrlResolve::Status::Done && open_url != mUrl)
+        if (rs == LLStream3DUrlResolve::ResolveStatus::Done && open_url != mUrl)
         {
             LL_INFOS("Stream3DUrlResolve") << "pre-resolved (async): " << mUrl
                                              << " -> " << open_url
