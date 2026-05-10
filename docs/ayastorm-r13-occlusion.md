@@ -375,7 +375,7 @@ C 完了後にコード現況と spec を突き合わせ、以下は **r13 だ�
 spike で出していない r13 final scope の残作業:
 
 - **per-prim 引数の確定** — spike では `{direct:N}{reverb:N}` を hand-rolled `find` + `sscanf` で実装。本 commit で r5-r12 共通ルール (case-insensitive prefix/key、value 空白 trim、未知 key silent ignore) に整合させて `findCaseInsensitive` + `forEachKeyValue` + `tryParseFloat` の helper 三点セットを `llocclusiongeometrymgr.cpp` 内に持ち込み (`llpositionalstreammgr.cpp` のものと等価実装、cross-module 結合は避ける)。spec §4.1 が参照する共通ルールと内部実装が一致。
-- **`llPlaySound` 適用 (G5)** — 3D stream channel のみに適用、世界 SFX (`llPlaySound` / attached sounds) には未配線。次 commit で `LLAudioEngine_FMODSTUDIO` 経路の sound channel を occlusion mgr の visitor に流す。
+- **`llPlaySound` 適用 (G5)** — spike では 3D stream channel のみ。本 commit で `LLAudioEngine_FMODSTUDIO::forEachActive3DSfxChannel` visitor を追加 (`LLPositionalStreamMulti::forEachActiveSpeaker` と同形)、`LLAudioChannelFMODSTUDIO` に per-channel `mOcclusionLowpass` (`FMOD_DSP_TYPE_LOWPASS_SIMPLE`) を生やして `updateBuffer` で作成 / `cleanup` で破棄。`LLPositionalStreamMgr::update()` から stream pass 直後に同じ tick で SFX pass を回し、`LLOcclusionGeometryMgr::applyToChannel` を共通利用 (3D stream / SFX で raycast / smoothing / cutoff push 経路を 100% 共有)。`isForcedPriority()` (UI / preview 2D) は visitor 内で skip。listener / source / OBB center が全て F32 truncated global で一致するため座標変換なし。
 - **`Stream3DOccluderRange` (64m) 距離 cull** — settings.xml に追加 + `applyToChannel` で listener-source 距離が range 超なら raycast skip。
 - **`Stream3DOcclusion` master sentinel (-1/0/1)** — settings.xml に追加 + mgr の `applyToChannel` 入口で `0` なら early return (タグ全無視)。
 - **`kMaxOccluders` 64 → 256** — hardcoded 値の引き上げ。
@@ -430,7 +430,7 @@ spec §6.1 を 14 件 → 12 件に再構成済み (door / material 表 永久 d
 - **O6 (per-prim 引数 `{direct:N}{reverb:N}` と引数なし default の差)**: parser 実装済、検証は P10
 - **O7 (`Stream3DOcclusion = 0` master OFF)**: 残工程 (settings 配線後)
 - **O8 (`Stream3DOccluderRange` 距離 cull)**: 残工程 (同上)
-- **O11 (`llPlaySound` 適用)**: 残工程 (visitor 経路を SFX channel に拡張)
+- **O11 (`llPlaySound` 適用)**: visitor 経路実装済 (`forEachActive3DSfxChannel` + per-channel LOWPASS_SIMPLE)、scene 検証は P10 で実施
 - **O12 (`Stream3DShowOccluders` 可視化)**: spike で AYA 主観確認済
 - **O2 / O4 / O5 / O9 / O10**: 未検証 (P10 で通す)
 - **CPU / dropout / leak / regression**: spike では未測定 (P12 で測定)
