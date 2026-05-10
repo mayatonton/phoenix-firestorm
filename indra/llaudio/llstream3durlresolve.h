@@ -46,7 +46,12 @@ namespace LLStream3DUrlResolve
     using RequestId = std::uint64_t;
     constexpr RequestId kInvalidRequestId = 0;
 
-    enum class Status
+    // r13 C: named ResolveStatus rather than Status to avoid colliding
+    // with Xlib's `#define Status int` which leaks into every TU that
+    // pulls in the GLX headers via llglheaders.h. Pre-existing trap on
+    // Linux Firestorm builds; an unscoped `Status` here triggered an
+    // "expected identifier before 'int'" macro-substitution error.
+    enum class ResolveStatus
     {
         Pending, // worker has not produced a result yet
         Done,    // resolve succeeded; out_url holds the post-redirect URL
@@ -76,7 +81,7 @@ namespace LLStream3DUrlResolve
     // tracked entry (subsequent poll() calls with the same id return
     // Unknown). Safe to call from any thread but expected from the main
     // thread driving LLPositionalStreamMulti::update().
-    Status poll(RequestId id, std::string& out_url);
+    ResolveStatus poll(RequestId id, std::string& out_url);
 
     // Mark a pending request as cancelled. The worker may still finish
     // the in-flight curl call (curl_easy is not interruptible from

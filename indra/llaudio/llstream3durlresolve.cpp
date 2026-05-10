@@ -180,7 +180,7 @@ namespace
 
     struct Result
     {
-        LLStream3DUrlResolve::Status status = LLStream3DUrlResolve::Status::Pending;
+        LLStream3DUrlResolve::ResolveStatus status = LLStream3DUrlResolve::ResolveStatus::Pending;
         std::string url;
         bool cancelled = false;
     };
@@ -240,7 +240,7 @@ namespace
                 }
                 mQueue.push_back({ id, url });
                 Result r;
-                r.status = LLStream3DUrlResolve::Status::Pending;
+                r.status = LLStream3DUrlResolve::ResolveStatus::Pending;
                 r.url = url;
                 mResults.emplace(id, std::move(r));
                 mCv.notify_one();
@@ -248,7 +248,7 @@ namespace
             }
         }
 
-        LLStream3DUrlResolve::Status poll(LLStream3DUrlResolve::RequestId id,
+        LLStream3DUrlResolve::ResolveStatus poll(LLStream3DUrlResolve::RequestId id,
                                           std::string& out_url)
         {
             std::lock_guard<std::mutex> lock(mMutex);
@@ -256,10 +256,10 @@ namespace
             if (it == mResults.end())
             {
                 out_url.clear();
-                return LLStream3DUrlResolve::Status::Unknown;
+                return LLStream3DUrlResolve::ResolveStatus::Unknown;
             }
-            const LLStream3DUrlResolve::Status s = it->second.status;
-            if (s == LLStream3DUrlResolve::Status::Pending)
+            const LLStream3DUrlResolve::ResolveStatus s = it->second.status;
+            if (s == LLStream3DUrlResolve::ResolveStatus::Pending)
             {
                 // Don't expose the in-progress URL yet.
                 out_url.clear();
@@ -281,7 +281,7 @@ namespace
             // If the result is already Done/Failed, just drop it so the
             // caller's later poll() returns Unknown rather than a stale
             // resolved URL they no longer want.
-            if (it->second.status != LLStream3DUrlResolve::Status::Pending)
+            if (it->second.status != LLStream3DUrlResolve::ResolveStatus::Pending)
             {
                 mResults.erase(it);
                 return;
@@ -377,7 +377,7 @@ namespace
                     // already collapsed into out=in. Distinguishing
                     // those further isn't useful to the caller.
                     it->second.url = std::move(resolved);
-                    it->second.status = LLStream3DUrlResolve::Status::Done;
+                    it->second.status = LLStream3DUrlResolve::ResolveStatus::Done;
                 }
             }
 
@@ -411,7 +411,7 @@ namespace LLStream3DUrlResolve
         return worker().submit(url);
     }
 
-    Status poll(RequestId id, std::string& out_url)
+    ResolveStatus poll(RequestId id, std::string& out_url)
     {
         return worker().poll(id, out_url);
     }
