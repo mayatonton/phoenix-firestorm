@@ -320,18 +320,26 @@ void LLOcclusionGeometryMgr::applyToChannel(FMOD::Channel* channel,
 {
     if (!channel) return;
 
-    // Compute target factors: 0/0 when no occluders, out of range, or no
-    // segment hit; otherwise the strongest direct/reverb among hit OBBs.
-    // The distance cull (Stream3DOccluderRange, default 64 m) skips firstHit
-    // entirely when the source is far enough that audibility is already
-    // negligible due to distance attenuation. Smoothing still runs on the
-    // 0/0 target so a source crossing the threshold ramps cleanly back to
-    // bypass instead of jumping (no audible cliff at the edge).
+    // Compute target factors: 0/0 when no occluders, master sentinel off,
+    // out of range, or no segment hit; otherwise the strongest direct/reverb
+    // among hit OBBs.
+    //
+    // Stream3DOcclusion (S32, -1 default = enabled, 0 = disabled, other =
+    // enabled) is the master sentinel for live-toggling the whole feature.
+    // When disabled we keep running smoothing + DSP push on the 0/0 target,
+    // so toggling the setting mid-play ramps the cutoff back to bypass over
+    // Stream3DOcclusionRampMs instead of a hard cliff.
+    //
+    // The distance cull (Stream3DOccluderRange, default 64 m) is a finer
+    // optimisation that skips firstHit when the source is far enough that
+    // audibility is already negligible from distance attenuation alone.
     F32 target_d = 0.f;
     F32 target_r = 0.f;
     bool hit = false;
     bool in_range = true;
-    if (!mOccluders.empty())
+    const S32 master = gSavedSettings.getS32("Stream3DOcclusion");
+    const bool occlusion_enabled = (master != 0);
+    if (occlusion_enabled && !mOccluders.empty())
     {
         const F32 range = gSavedSettings.getF32("Stream3DOccluderRange");
         if (range > 0.f)
@@ -397,6 +405,7 @@ void LLOcclusionGeometryMgr::applyToChannel(FMOD::Channel* channel,
                               << " source=" << source
                               << " occluders=" << mOccluders.size()
                               << " first_d/r=" << first_d << "/" << first_r
+                              << " master=" << master
                               << " in_range=" << (in_range ? 1 : 0)
                               << " hit=" << (hit ? 1 : 0)
                               << " target_d/r=" << target_d << "/" << target_r
