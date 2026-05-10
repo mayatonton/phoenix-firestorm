@@ -380,7 +380,7 @@ spike で出していない r13 final scope の残作業:
 - **`Stream3DOcclusion` master sentinel (-1/0/1)** — settings.xml に `S32` で追加 (default `-1` = enabled、`0` = disabled、`1` = explicit enabled / 将来の per-mode override 予約、その他は enabled)。`applyToChannel` で `master != 0` を `occlusion_enabled` として束ね、`mOccluders.empty()` 同様のガードに統合。disabled 時も smoothing + DSP push は走らせるので live-toggle で cliff にならず通常 ramp で bypass まで落ちる。spike 診断 LL_INFOS にも `master` フィールド追加。`renderDebug` (`Stream3DShowOccluders` 経路) は本 sentinel と独立。
 - **`kMaxOccluders` 64 → 256** — hardcoded 値の引き上げ (power-of-two、典型 SL venue ~100 prim に対し ~25% headroom)。`llocclusiongeometrymgr.{h,cpp}` のコメントも 64-spike → 256-final に同期。
 - **chat font live-apply cherry-pick (`d66bdb74fc`、元 `2689a35f8f`)** — r13 ブランチへの cherry-pick 完了。
-- **tag-guide 改訂** — `3dstream-tag-guide.{ja,en,zh}.md` に `[ayastorm:occlude]` 項追記。
+- **tag-guide 改訂** — `3dstream-tag-guide.{ja,en,zh}.md` の §16 として `[ayastorm:occlude]` 全項 (書式 / 動作モデル / 引数 / 推奨セット / 自動追従 / 距離 cull / master toggle / 可視化 / 制限) を追記、旧 §16 関連ドキュメントを §17 に繰り下げ。§4.1 を「2 種類のタグ」→「3 種類のタグ」に拡張、§17 表に `docs/ayastorm-r13-occlusion.md` 行を追加、§改訂履歴に 2026-05-11 (r13) entry を追加。3 言語ともセクション番号・TOC・cross-ref を整合。
 - **Release Notes** — リンク + 差分ハイライト。
 
 ### 5.4 r13 spike で発生した別案件: 起動時 OS unresponsive dialog

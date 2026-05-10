@@ -23,7 +23,8 @@
 13. [错误通知 / 诊断](#13-错误通知--诊断)
 14. [故障排查](#14-故障排查)
 15. [已知限制 / 规格说明](#15-已知限制--规格说明)
-16. [相关文档 / 内部规格书](#16-相关文档--内部规格书)
+16. [静态 OBB 遮蔽 `[ayastorm:occlude]` (r13)](#16-静态-obb-遮蔽-ayastormocclude-r13)
+17. [相关文档 / 内部规格书](#17-相关文档--内部规格书)
 
 ---
 
@@ -100,12 +101,13 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 
 ## 4. 标签总览
 
-### 4.1 两种标签
+### 4.1 三种标签
 
 | 标签 | 前缀 | 用途 |
 |---|---|---|
 | **单声道标签** | `[3dstream:...]` | 单个图元播放 1 条流 (最小配置) |
 | **分散立体声 / 会场布置标签** | `[3dstream-stereo:...]` | 链接组中多个图元同步播放 1 条流 (立体声 / 多扬声器 / 5.1ch) |
+| **静态 OBB 遮蔽标签** (r13 新增) | `[ayastorm:occlude]` | 把墙 / 门 / 地板 / 天花等图元标记为"阻挡声音的物体" (面向会场运营 / 建造者，详见 §16) |
 
 ### 4.2 旧前缀的别名
 
@@ -177,7 +179,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 
 #### LSL 辅助脚本的行为
 
-附带的 LSL `aya_3dstream_setup.lsl` (见 §16) **输入接受两种形式**、**输出 (Description 写入) 始终使用短形式**。通过 LSL 对话框配置的 Description 自动转换为短形式。
+附带的 LSL `aya_3dstream_setup.lsl` (见 §17) **输入接受两种形式**、**输出 (Description 写入) 始终使用短形式**。通过 LSL 对话框配置的 Description 自动转换为短形式。
 
 #### 注意事项
 
@@ -1176,7 +1178,101 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 ---
 
-## 16. 相关文档 / 内部规格书
+## 16. 静态 OBB 遮蔽 `[ayastorm:occlude]` (r13)
+
+**面向会场运营 / 建造者** 的标签。把墙、门、地板、天花板等"阻挡声音的图元"贴上这个标签后，AYAstorm 会把它们当作位于听者位置与音源图元位置之间的 **遮蔽物** 来处理，从而让声音变得闷蒙。
+
+`[3dstream:...]` / `[3dstream-stereo:...]` (§5 / §6) 是 **发出声音** 的标签，而 `[ayastorm:occlude]` 是 **阻挡声音** 的标签。两者完全独立 — 只写 occlude 标签的图元不会发出任何声音。
+
+### 16.1 语法
+
+```
+[ayastorm:occlude]                            ← 使用默认值 (direct:0.7 reverb:0.5)
+[ayastorm:occlude{direct:0.9}{reverb:0.7}]    ← 显式指定
+[ayastorm:occlude{direct:0.6}]                ← 只写其中一个 (另一个使用默认)
+```
+
+旧前缀 (`[ayastream:occlude]`) **不被接受** — 遮蔽是 r13 新增功能，没有 ayastream 系的遗留图元需要保留。通用书写规则 (§4.3，键名不区分大小写 / 值前后空格 trim / 未知键静默忽略) 仍然适用。
+
+### 16.2 行为模型
+
+#### 哪些声音会被遮蔽
+
+- **`[3dstream:...]` / `[3dstream-stereo:...]` 发出的声音** (3D 定位流，每个扬声器图元单独评估)
+- **`llPlaySound` / 附加音 / 子图元音效** (世界 SFX)
+
+如果听者位置 (摄像机或角色) 与音源位置的连线穿过 occlude 图元的 **OBB (Oriented Bounding Box)**，则判定为"有遮蔽"，应用音量衰减 + 低通着色让声音变闷。若同时穿过多个图元，则采用 **遮蔽值最强的那一个** (= max(direct), max(reverb))。
+
+#### 哪些声音不会被遮蔽
+
+- **2D 流** (地块 BGM 等无 3D 定位的播放)
+- **Voice (Vivox / WebRTC)**
+- **UI 音效 / 预览音** (内部通过 `isForcedPriority` 过滤)
+
+### 16.3 参数说明
+
+| 键 | 默认 | 范围 | 效果 |
+|---|---|---|---|
+| `direct` | `0.7` | `0.0`-`1.0` | 直达声 (= 音量) 衰减。`0.0` = 完全通过，`1.0` = 近乎静音 |
+| `reverb` | `0.5` | `0.0`-`1.0` | 残响成分衰减。`0.0` = 残响通过，`1.0` = 残响切断 |
+
+`direct` 越大，"墙的对面"的感觉越强，并且 viewer 内置的 LOWPASS_SIMPLE 还会按其值把截止频率从 22 kHz 降到 300 Hz (`direct=1.0` 时最深的闷)。`reverb` 仅在音源端图元已通过 `{venue:...}` 启用会场残响 (§7.2) 时才有意义。
+
+### 16.4 材质参考值
+
+经验起点，建议在会场内边听边微调。
+
+| 材质感觉 | `direct` | `reverb` | 印象 |
+|---|---|---|---|
+| 石墙 / 混凝土 | `0.9` | `0.7` | 近乎静音，仅低频泄漏 |
+| 木墙 / 室内装板 | `0.7` | `0.5` | 默认值 — 典型的"隔壁感" |
+| 薄木板 / 帘幕 | `0.6` | `0.4` | 闷音泄漏，轻量分隔 |
+| 玻璃 / 障子 | `0.3` | `0.2` | 轻微闷音，仍可辨识内容 |
+| 装饰用 (实际透明) | `0.1` | `0.05` | 基本通过，仅有轮廓存在 |
+
+### 16.5 自动跟随 (动态门也 OK)
+
+`refreshOccluders` **每 tick** (= 每次 `LLPositionalStreamMgr::update()`) 重新读取全部 occluder 图元的位置 / 旋转 / 缩放。也就是说：
+
+- **移动的门** (LSL `llSetPos` / `llSetRot` 做动画) 贴上 `[ayastorm:occlude]` 后，开关动作会实时反映在遮蔽变化上
+- **载具 / 移动图元** 同样可以跟随
+- 不需要专门的"门标签" (r13 规格初版曾计划 `[ayastorm:door]`，但 `refreshOccluders` 已足够，所以永久 drop)
+
+### 16.6 距离剪除 (`Stream3DOccluderRange` = 64m)
+
+听者-音源距离超过 `Stream3DOccluderRange` (默认 64m) 时，该音源的 OBB raycast 会被 **skip** (距离衰减已经足够小)。大型会场需要 64m 以上遮蔽时，可在 debug settings 中调高数值，或设为 `0` 让其始终 raycast (§12.2)。
+
+### 16.7 主开关 (`Stream3DOcclusion`)
+
+故障排查 / 切分动作用的 **整体 ON/OFF 开关** (debug setting)。
+
+| 值 | 行为 |
+|---|---|
+| `-1` (默认) | 启用。所有 `[ayastorm:occlude]` 标签都被评估 |
+| `0` | 禁用。标签全部忽略，已闷的声音会通过正常 ramp 回到通过状态 |
+| `1` | 显式启用 (为将来 per-mode override 保留) |
+
+实时切换 **不会产生 cliff (突然音量变化)** — 禁用时 smoothing 路径仍然运行，因此 DSP 会以 `Stream3DOcclusionRampMs` (默认 250 ms) 平滑地回到 bypass。
+
+### 16.8 可视化 (`Stream3DShowOccluders`、Alt+Shift+O)
+
+把已注册的 occluder 图元以 **OBB 线框** 形式显示的 debug 功能。颜色随 `direct` 变化 (橙色 = `0.7` 默认 → 红色 = `1.0` 完全墙)。建造会场时可用来确认"标签是否被正确识别"、"OBB 朝向是否符合预期"。
+
+- **菜单**: View → Highlighting and Visibility → "Show 3D Stream Occluders (AYAstorm)"
+- **快捷键**: `Alt+Shift+O` (实时切换)
+
+把 `Stream3DOcclusion` (主开关，§16.7) 设为 `0` 时可视化 **仍然可用** — 两个开关有意做成独立，以便会场运营在 audio off 的状态下也能确认 OBB 结构。
+
+### 16.9 限制 / 上限
+
+- **同时 occluder 数 256** (`kMaxOccluders` hardcoded)。sim 内 `[ayastorm:occlude]` 标签图元超过 256 个时，第 257 个起不会注册 (`LL_WARNS` 写入日志)。典型 SL 会场 (~100 图元) 有充足余量。
+- **OBB 近似**: 遮蔽判定基于 bounding box，不是图元真实形状。复杂形状 (拱形 / 曲面 / 楼梯扶手) 会有近似误差 — 如需更细粒度请拆分为面板并分别贴标签。
+- **CPU 负载**: 256 occluders × 64 channels × 60 Hz ≈ 1M slab tests/sec，远低于 1 ms/sec。典型 SL 会场负载可忽略。
+- **同梱 FMOD 限制**: 内部实现为 viewer 侧的 segment-vs-OBB slab test (同梱 `libfmod 2.03.07` 的 `FMOD::Geometry::createGeometry` 不可用)。对用户透明。
+
+---
+
+## 17. 相关文档 / 内部规格书
 
 本指南是 **面向使用者** 的格式参考。实现内部细节 (decode thread / FMOD 路径 / 环形 buffer / 关闭顺序等) 请参考下述规格书。
 
@@ -1190,6 +1286,7 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 | `doc/spec_binaural_venue_reverb.md` | r11 双耳 + 会场残响规格 (与 r12 一并发布) — 涵盖本指南 §7 |
 | `doc/spec_stereo_upmix.md` | r12 stereo→5.1 上混规格 — DPL2 + 4 步频段分离，涵盖本指南 §8 |
 | `docs/ayastorm-r12-stereo-upmix.md` | r12 phase 拆分 (P0–P11) 与验证设计 |
+| `docs/ayastorm-r13-occlusion.md` | r13 OBB 遮蔽规格 + 实现记录 — `[ayastorm:occlude]` 设计决策 / spike 实现 / 残工程，涵盖本指南 §16 |
 | `docs/ayastorm-stream3d-roadmap.md` | 3D Stream 整体路线图 |
 
 ---
@@ -1199,3 +1296,4 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 - **2026-05-05 (初版)**: 作为 r10 时点的最终规格整理。汇总记述 r5 / r8 / r9 / r10 / r10.x 的累积规格。r11 及之后未发布所以不包含。
 - **2026-05-08 (r12)**: 加入 §4.5 (短形式)、§7 (双耳化 / 会场残响)、§8 (stereo→5.1 上混)。r11 与 r12 一并发布 (避免标签格式两阶段变更引起的混乱，r11 不单独发布)。后续章节改番 (§7–§14 → §9–§16)。§12.2 列出 r11/r12 听者侧 sentinel debug 设置；推流者主导模型保留 (一般用户无 Preferences UI)。
 - **2026-05-09 (r12.1)**：新增 §7.4 `{lfegain:N}` (短形式 `lg`)，原 §7.4 推流者主导模型顺延为 §7.5、原 §7.5 组合示例顺延为 §7.6。`wetgain` 默认值由 `1.0` 改为 `0.2` (反映实际试听确认的音乐用途实用区间 0.1〜0.5)。§12.2 追加 `Stream3DLfeGain` sentinel；§12.2 / §12.3 加入实时调参修正说明 (覆盖 r12 中 `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 修改后必须触摸图元才生效的回归)。
+- **2026-05-11 (r13)**: 新增 §16 静态 OBB 遮蔽 `[ayastorm:occlude]`，原 §16 相关文档顺延为 §17。§4.1 由"两种标签"扩展为"三种标签"。r13 debug settings (`Stream3DOcclusion` 主开关 / `Stream3DOccluderRange` 距离剪除 / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` 可视化) 在 §16.6-§16.8 中说明。§17 表追加 `docs/ayastorm-r13-occlusion.md`。
