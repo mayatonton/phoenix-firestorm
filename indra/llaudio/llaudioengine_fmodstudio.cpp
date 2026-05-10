@@ -779,6 +779,30 @@ void LLAudioEngine_FMODSTUDIO::setInternalGain(F32 gain)
     }
 }
 
+void LLAudioEngine_FMODSTUDIO::forEachActive3DSfxChannel(const SfxOcclusionVisitor& fn)
+{
+    // r13 P8: walk every viewer audio channel slot. The FMOD backend keeps
+    // mChannels[] sized to LL_MAX_AUDIO_CHANNELS, with each slot lazily
+    // allocated and reused as sounds start/stop. We need to visit only
+    // slots that are currently driving a positional source — UI / preview
+    // sounds (isForcedPriority) are 2D and must skip occlusion.
+    if (!fn) return;
+    for (LLAudioChannel* base : mChannels)
+    {
+        if (!base) continue;
+        auto* fmc = static_cast<LLAudioChannelFMODSTUDIO*>(base);
+        FMOD::Channel* ch = fmc->getFmodChannel();
+        if (!ch) continue;
+        LLAudioSource* src = fmc->getSource();
+        if (!src) continue;
+        if (src->isForcedPriority()) continue;
+
+        LLVector3 spos;
+        spos.setVec(src->getPositionGlobal());
+        fn(ch, fmc->getOcclusionLowpass(), spos);
+    }
+}
+
 //
 // LLAudioChannelFMODSTUDIO implementation
 //
@@ -826,6 +850,34 @@ bool LLAudioChannelFMODSTUDIO::updateBuffer()
         {
             FMOD_RESULT result = getSystem()->playSound(soundp, NULL /*free channel?*/, true, &mChannelp);
             Check_FMOD_Error(result, "FMOD::System::playSound");
+
+            // r13 P8: attach a per-channel LOWPASS_SIMPLE so OBB-occlusion can
+            // muffle this SFX in real time (cutoff is pushed each frame from
+            // LLOcclusionGeometryMgr::applyToChannel via newview's visitor).
+            // Initial cutoff 22 kHz = effective bypass; pre-occlusion the
+            // listener hears unfiltered audio. Failure is non-fatal — the
+            // visitor null-checks the DSP and just skips the muffle path.
+            // Mirrors LLPositionalStreamMulti::makeChannelForBinding's
+            // per-speaker insertion (same DSP type, same tail position).
+            if (mChannelp && !mOcclusionLowpass)
+            {
+                FMOD::DSP* lpf = nullptr;
+                if (!Check_FMOD_Error(getSystem()->createDSPByType(FMOD_DSP_TYPE_LOWPASS_SIMPLE, &lpf),
+                                       "createDSPByType(LowpassSimple SFX)") && lpf)
+                {
+                    Check_FMOD_Error(lpf->setParameterFloat(FMOD_DSP_LOWPASS_SIMPLE_CUTOFF, 22000.f),
+                                     "DSP::setParameterFloat(LowpassSimple SFX cutoff init)");
+                    if (Check_FMOD_Error(mChannelp->addDSP(FMOD_CHANNELCONTROL_DSP_TAIL, lpf),
+                                         "Channel::addDSP(LowpassSimple SFX)"))
+                    {
+                        lpf->release();
+                    }
+                    else
+                    {
+                        mOcclusionLowpass = lpf;
+                    }
+                }
+            }
         }
 
         // Setting up channel mChannelID
@@ -918,6 +970,19 @@ void LLAudioChannelFMODSTUDIO::cleanup()
     {
         // Aborting cleanup with no channel handle.
         return;
+    }
+
+    // r13 P8: remove and release the per-channel occlusion DSP before
+    // stopping the channel. FMOD will warn if a DSP is still connected when
+    // the channel is torn down. Mirrors the stream-side teardown order in
+    // LLPositionalStreamMulti.
+    if (mOcclusionLowpass)
+    {
+        Check_FMOD_Error(mChannelp->removeDSP(mOcclusionLowpass),
+                         "FMOD::Channel::removeDSP(LowpassSimple SFX)");
+        Check_FMOD_Error(mOcclusionLowpass->release(),
+                         "FMOD::DSP::release(LowpassSimple SFX)");
+        mOcclusionLowpass = NULL;
     }
 
     //Cleaning up channel mChannelID

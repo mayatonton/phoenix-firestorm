@@ -2162,6 +2162,24 @@ void LLPositionalStreamMgr::update()
                 });
         }
     }
+
+    // r13 P8: same occlusion pass for llPlaySound / attached-sound channels.
+    // The engine-side visitor filters to positional (= non-forced-priority)
+    // channels with a live FMOD handle, so 2D UI / preview sounds pass
+    // through untouched. We run this once per mgr update tick — same
+    // cadence as the stream loop above — so cutoff smoothing and ramp share
+    // a single dt source. mOccluders.empty() short-circuit inside
+    // applyToChannel keeps the no-occluder case cheap (one ramp step per
+    // active channel to drive trailing values back to zero).
+    if (auto* fe = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop))
+    {
+        const LLVector3 lpos = gAudiop->getListenerPos();
+        fe->forEachActive3DSfxChannel(
+            [&lpos](FMOD::Channel* ch, FMOD::DSP* lpf, const LLVector3& spos)
+            {
+                LLOcclusionGeometryMgr::instance().applyToChannel(ch, lpf, lpos, spos);
+            });
+    }
     for (const auto& r : dead_roots)
     {
         LL_INFOS("Stream3D") << "[3dstream-stereo] root " << r
