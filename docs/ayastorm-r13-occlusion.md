@@ -320,10 +320,92 @@ r12 と異なり、本リリースでは **追加 phase が想定外に発生す
 
 ---
 
-## 5. 参照リンク
+## 5. 実装ログ (r13 spike, 2026-05-10)
+
+計画 (P0〜P12) に対する実装の **divergence と shipped 状態** を時系列で記録。spec / roadmap の本文は計画版を維持し、本セクションが「実際に何を出したか」の canonical ログ。
+
+### 5.1 設計変更: FMOD geometry → 自前 raycast
+
+**P1 着手時に判明**: 同梱 `libfmod 2.03.07` の `System::createGeometry()` が **最小サイズ (1 polygon, 4 vertex) でも `FMOD_ERR_INTERNAL` を返す**。`Geometry::getOcclusion` (raycast 取得) は動くが、occluder を登録できないので意味がない。FMOD plugin SDK にも geometry 関連が無く、再ビルド + plugin 自作も非現実的 (3 OS 分の libfmod を作り直す相当)。
+
+**判断**: FMOD geometry API は丸ごと諦め、**listener-source segment vs OBB の slab test を viewer 側で実装**して `Channel::set3DOcclusion(direct, reverb)` に直接適用する。spec §4.2.2 (FMOD geometry の構造) の記述は r13 では未使用、r14+ Steam Audio 時に再評価する建前として残置。
+
+**結果**: 計画フェーズ P1 (FMOD geometry lifecycle) と P3 (OBB → 12 triangle) は破棄。代わりに P1' = mgr skeleton + slab test、P3' = `[ayastorm:occlude]` 単独タグの parser に縮退。memory `project_fmod_geometry_unavailable.md` に経緯記録済み。
+
+### 5.2 shipped スコープ (commit 58c5ad7c14 + 6fcd078250)
+
+**新規ファイル**:
+- `indra/newview/llocclusiongeometrymgr.{h,cpp}` (LLSingleton)
+- `LLOcclusionGeometryMgr::onObjectPropertiesReceived` — `[ayastorm:occlude]` / `[ayastorm:occlude{direct:N}{reverb:N}]` parser + OBB 登録
+- `LLOcclusionGeometryMgr::refreshOccluders` — 毎 tick の dead/scale/rot/pos 更新
+- `LLOcclusionGeometryMgr::firstHit` — multiplicative pass-through accumulation `final = 1 - prod(1 - direct_i)`
+- `LLOcclusionGeometryMgr::segmentHitsOBB` — OBB-local frame に変換した slab test (quaternion conjugate 利用)
+- `LLOcclusionGeometryMgr::applyToChannel` — `Channel::set3DOcclusion` + `LOWPASS_SIMPLE` cutoff の同時押し込み + `Stream3DOcclusionRampMs` での線形 ramp
+- `LLOcclusionGeometryMgr::renderDebug` — 2-pass overlay (fill α=0.25 + wireframe、+5cm halo で z-fight 回避)
+
+**llaudio 側の変更**:
+- `LLPositionalStreamMulti::SpeakerVisitor` 新設 (`Channel*, lowpass DSP*, source_pos`) — newview 側 occlusion mgr が FMOD を触れる経路
+- `LLPositionalStreamMulti::forEachActiveSpeaker` — visitor 駆動
+- `SpeakerRuntime::lowpass_dsp` — per-speaker `FMOD_DSP_TYPE_LOWPASS_SIMPLE` を `makeChannelForBinding` で生成、`releaseAll` で teardown
+- `applyToChannel` 内で `direct ∈ [0,1]` を 22kHz→300Hz の exponential mapping で cutoff に変換 (`cutoff = 22000 * pow(300/22000, direct)`) → 壁越しの音が「muffled」に聞こえる
+
+**newview 側の変更**:
+- `LLSelectMgr::processObjectProperties` / `processObjectPropertiesFamily` から `LLOcclusionGeometryMgr::onObjectPropertiesReceived` を呼出 (既存 `LLPositionalStreamMgr` と並列)
+- `LLPositionalStreamMgr::update` で per-frame `refreshOccluders` + per-speaker `applyToChannel` をディスパッチ
+- `LLPipeline::renderDebug` で `Stream3DShowOccluders` cached toggle 直下に overlay 描画 (`gDebugProgram` バインド)
+- View メニューに「Show 3D Stream Occluders (AYAstorm)」項目を追加 (Highlight Transparent Probes 直下、`Alt+Shift+O` hotkey、EN/JA 両ローカライズ)
+
+**settings.xml 追加**:
+- `Stream3DOcclusionRampMs` (F32, 250.0) — ramp 時間
+- `Stream3DShowOccluders` (Boolean, 0) — overlay toggle
+
+### 5.3 計画から落としたもの (r13.x 以降へ持ち越し)
+
+- **`[ayastorm:door]` タグ** — door 動的追従は `refreshOccluders` で transform を毎 tick 取り直すので「動く occluder」自体は機能する。タグ別フラグ (door 専用 cap、door 専用 update 頻度) は未実装。spike では `[ayastorm:occlude]` に一本化。
+- **material 表 (SL prim material flag → preset)** — `{direct:N}` / `{reverb:N}` 引数のみ受付、material → preset の自動マッピングは未実装。デフォルト値 0.7 / 0.5 のハードコードのみ。
+- **debug settings 4 件のうち 3 件** — `Stream3DOcclusion` (sentinel) / `Stream3DOcclusionDirectGain` / `Stream3DOcclusionReverbGain` / `Stream3DOccluderMaxCount` / `Stream3DOccluderRange` は spike では未配線。`Stream3DOcclusionRampMs` + `Stream3DShowOccluders` のみ shipped。spike cap は code 内 `kMaxOccluders = 64` で hardcoded。
+- **`llPlaySound` 適用 (O14)** — 3D stream channel のみに適用。世界 SFX (footsteps, attached sounds) には未配線。
+
+### 5.4 r13 spike で発生した別案件: 起動時 OS unresponsive dialog
+
+**症状**: login 直後に「AYAstorm Viewer の応答がありません」OS dialog が間欠的に発火。
+
+**真因**: `LLPositionalStreamMulti::start()` 内の libcurl HEAD pre-resolve (r11 P10 で導入) が **https:// URL に対して同期 3s 待機**。login 直後 N 個の `[3dstream:url=https://…]` tag 付き prim の `ObjectProperties` が同一フレームに到着 → `mPendingLinksetEval` drain で N × 3s ブロック → OS unresponsive 判定。
+
+**緩和 (commit 58c5ad7c14、A+B)**:
+- **A**: `LLPositionalStreamMgr::update()` の drain を **1 root/frame に rate-limit** (前は全件同フレームで処理)
+- **B**: libcurl timeout を **3000/2000ms → 1500/1000ms** に短縮
+
+**結果**: 一定の改善は見られたものの、**実機では依然として dialog が発生** することを 2026-05-10 確認 (AYA 報告)。
+
+**次工程 (C)**: libcurl pre-resolve を **完全非同期化** (request-id ベース API + worker thread 経由)。`LLPositionalStreamMulti::start()` を 2-phase 化 (Resolving → Opening) し、main thread のブロックを完全に外す。**r13 OBB occlusion とは独立 commit で着手**。
+
+### 5.5 commit ログ
+
+| commit | 内容 |
+|---|---|
+| `66ddab6eb4` | r13 spec / 工程資料 / roadmap 初版 (P0 commit、計画版) |
+| `58c5ad7c14` | r13 OBB occlusion 実装 + 起動 unresponsive dialog 緩和 (A+B、本 spike) |
+| `6fcd078250` | r13 Stream3DShowOccluders を View メニューに追加 (`Alt+Shift+O`) |
+
+### 5.6 受入条件 (§4.1) の現況
+
+- **O1 (室外→室内 muffled→clear)**: 主観 PASS (AYA 確認、「おおいいよこもってて！！」)
+- **O2〜O14**: 未検証 (spike 段階のため)
+- **O3 (扉)**: `[ayastorm:door]` 未実装、`[ayastorm:occlude]` を移動させて確認可
+- **O6 (material 別)**: material 表未実装のため対象外、override 値手動指定での代替検証可
+- **O8〜O11 (debug settings)**: 関連 settings 未配線のため対象外
+- **CPU / dropout / leak / regression**: spike では未測定
+
+正式 release では r13.x で材料を整える (door 実装、material 表、debug settings 4 件配線、O2〜O14 通し検証)。
+
+---
+
+## 6. 参照リンク
 
 | 項目 | 参照先 |
 |---|---|
+| 実装ログ (FMOD 制約による pivot、shipped スコープ、unresponsive dialog 経緯) | 本書 §5 |
 | 設計判断 (旧 r13+ basket 降格 / OBB 単独で shipping / 役割分担導入) | `doc/spec_obb_occlusion.md` §1 / §2.2 / §2.3 |
 | リスク R1〜R9 (内容 + 縮退策) | `doc/spec_obb_occlusion.md` §7 |
 | 受入条件表 (O1〜O14 + 互換 + 安定性) | `doc/spec_obb_occlusion.md` §6 |

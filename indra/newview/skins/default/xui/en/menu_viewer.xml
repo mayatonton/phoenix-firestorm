@@ -2257,7 +2257,8 @@
                 </menu_item_check>
                 <menu_item_check
                    label="Show 3D Stream Occluders (AYAstorm)"
-                   name="Show Stream3D Occluders">
+                   name="Show Stream3D Occluders"
+                   shortcut="alt|shift|O">
                   <menu_item_check.on_check
                    control="Stream3DShowOccluders" />
                   <menu_item_check.on_click
