@@ -374,7 +374,7 @@ C 完了後にコード現況と spec を突き合わせ、以下は **r13 だ�
 
 spike で出していない r13 final scope の残作業:
 
-- **per-prim 引数の確定** — spike では `{direct:N}{reverb:N}` を実装済 (parser 行 48-83)。spec 表記と内部実装の最終整合は本 commit (impl record 整理) でラベルを統一。
+- **per-prim 引数の確定** — spike では `{direct:N}{reverb:N}` を hand-rolled `find` + `sscanf` で実装。本 commit で r5-r12 共通ルール (case-insensitive prefix/key、value 空白 trim、未知 key silent ignore) に整合させて `findCaseInsensitive` + `forEachKeyValue` + `tryParseFloat` の helper 三点セットを `llocclusiongeometrymgr.cpp` 内に持ち込み (`llpositionalstreammgr.cpp` のものと等価実装、cross-module 結合は避ける)。spec §4.1 が参照する共通ルールと内部実装が一致。
 - **`llPlaySound` 適用 (G5)** — 3D stream channel のみに適用、世界 SFX (`llPlaySound` / attached sounds) には未配線。次 commit で `LLAudioEngine_FMODSTUDIO` 経路の sound channel を occlusion mgr の visitor に流す。
 - **`Stream3DOccluderRange` (64m) 距離 cull** — settings.xml に追加 + `applyToChannel` で listener-source 距離が range 超なら raycast skip。
 - **`Stream3DOcclusion` master sentinel (-1/0/1)** — settings.xml に追加 + mgr の `applyToChannel` 入口で `0` なら early return (タグ全無視)。

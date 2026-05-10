@@ -10,15 +10,16 @@
 
 #include "llgl.h"
 #include "llrender.h"
+#include "llstring.h"
 #include "llviewerobject.h"
 #include "llviewerobjectlist.h"
 #include "llviewercontrol.h"
 #include "lltimer.h"
 #include "v3dmath.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
-#include <cstdio>
-#include <cstring>
 
 namespace
 {
@@ -26,6 +27,7 @@ namespace
     // `[ayastorm:occlude{direct:0.7}{reverb:0.5}]` overrides per prim.
     // Separator within `{...}` is `:` to match the rest of the AYAstorm
     // tag family (`{upmix:on}`, `{ch:FL}`, `{venue:hall_medium}`, etc.).
+    // Matched case-insensitively; see parseOccludeTag().
     constexpr const char* kOccludePrefix = "[ayastorm:occlude";
 
     // Defaults applied when the parameterized form omits a field, or when
@@ -43,42 +45,118 @@ namespace
                          static_cast<F32>(v.mdV[2]));
     }
 
+    // ASCII case-insensitive substring search. Matches the convention used
+    // in llpositionalstreammgr.cpp (r5-r12 tag family) so `[Ayastorm:Occlude]`
+    // typed by a building owner parses identically to the canonical form.
+    size_t findCaseInsensitive(const std::string& haystack, const std::string& needle)
+    {
+        if (needle.empty() || haystack.size() < needle.size()) return std::string::npos;
+        const size_t end = haystack.size() - needle.size();
+        for (size_t i = 0; i <= end; ++i)
+        {
+            bool match = true;
+            for (size_t j = 0; j < needle.size(); ++j)
+            {
+                const unsigned char a = static_cast<unsigned char>(haystack[i + j]);
+                const unsigned char b = static_cast<unsigned char>(needle[j]);
+                if (std::tolower(a) != std::tolower(b)) { match = false; break; }
+            }
+            if (match) return i;
+        }
+        return std::string::npos;
+    }
+
+    std::string toLowerAscii(std::string s)
+    {
+        std::transform(s.begin(), s.end(), s.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return s;
+    }
+
+    // Walk every well-formed `{key:value}` block within [content_start, end)
+    // of `desc` and invoke `onPair(lowered_key, trimmed_val)`. Anything between
+    // blocks (whitespace, separators, or junk) is ignored, matching the
+    // r5-r12 tag family's tolerance. Unknown keys are silently dropped by
+    // the caller (= spec §4.1 "未知タグ silent ignore").
+    template <typename F>
+    void forEachKeyValue(const std::string& desc, size_t content_start, size_t end, F&& onPair)
+    {
+        size_t cursor = content_start;
+        while (cursor < end)
+        {
+            const size_t ob = desc.find('{', cursor);
+            if (ob == std::string::npos || ob >= end) break;
+            const size_t cb = desc.find('}', ob + 1);
+            if (cb == std::string::npos || cb > end) break;
+
+            std::string inner = desc.substr(ob + 1, cb - ob - 1);
+            cursor = cb + 1;
+
+            const size_t colon = inner.find(':');
+            if (colon == std::string::npos) continue;
+
+            std::string key = inner.substr(0, colon);
+            std::string val = inner.substr(colon + 1);
+            LLStringUtil::trim(key);
+            LLStringUtil::trim(val);
+            key = toLowerAscii(key);
+
+            onPair(key, val);
+        }
+    }
+
+    bool tryParseFloat(const std::string& s, F32& out)
+    {
+        if (s.empty()) return false;
+        try
+        {
+            size_t consumed = 0;
+            const F32 v = std::stof(s, &consumed);
+            if (consumed == 0) return false;
+            out = v;
+            return true;
+        }
+        catch (const std::exception&) { return false; }
+    }
+
     // Returns true iff the description carries the occlude tag. Populates
     // direct/reverb with parsed values (or defaults when fields are absent).
+    // Format rules follow the r5-r12 tag family (case-insensitive prefix /
+    // key, value whitespace-trimmed, unknown keys silent-ignored). See
+    // spec §4.1 / §4.4 for the per-prim override semantics.
     bool parseOccludeTag(const std::string& desc, F32& direct, F32& reverb)
     {
         direct = kDefaultDirect;
         reverb = kDefaultReverb;
 
-        const auto p = desc.find(kOccludePrefix);
+        const std::string prefix = kOccludePrefix;
+        const size_t p = findCaseInsensitive(desc, prefix);
         if (p == std::string::npos) return false;
 
-        const auto after = p + std::strlen(kOccludePrefix);
-        if (after >= desc.size()) return false;
-        const char c = desc[after];
-        // Accept either bare ']' or a parameter list opening '{'.
+        const size_t after = p + prefix.size();
+        if (after > desc.size()) return false;
+
+        // Disambiguate from hypothetical sibling tags that would extend the
+        // prefix with letters/digits (e.g. `[ayastorm:occluder]`). The spec
+        // only defines `[ayastorm:occlude]` and `[ayastorm:occlude{...}]`,
+        // so anything other than ']', '{', or trailing whitespace right
+        // after the prefix is rejected.
+        size_t scan = after;
+        while (scan < desc.size() && std::isspace(static_cast<unsigned char>(desc[scan]))) ++scan;
+        if (scan >= desc.size()) return false;
+        const char c = desc[scan];
         if (c != ']' && c != '{') return false;
 
-        const auto end = desc.find(']', after);
+        const size_t end = desc.find(']', scan);
         if (end == std::string::npos) return false;
 
-        const std::string body = desc.substr(after, end - after);
-
-        auto extract = [&](const char* key, F32& out)
-        {
-            std::string pat = "{";
-            pat += key;
-            pat += ":";
-            const auto kp = body.find(pat);
-            if (kp == std::string::npos) return;
-            F32 v = 0.f;
-            if (std::sscanf(body.c_str() + kp + pat.size(), "%f", &v) == 1)
+        forEachKeyValue(desc, scan, end,
+            [&](const std::string& key, const std::string& val)
             {
-                out = llclamp(v, 0.0f, 1.0f);
-            }
-        };
-        extract("direct", direct);
-        extract("reverb", reverb);
+                F32 v = 0.f;
+                if (key == "direct" && tryParseFloat(val, v)) direct = llclamp(v, 0.f, 1.f);
+                else if (key == "reverb" && tryParseFloat(val, v)) reverb = llclamp(v, 0.f, 1.f);
+            });
         return true;
     }
 }
