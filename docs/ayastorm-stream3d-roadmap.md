@@ -46,9 +46,10 @@
 └────────────────────────────────────────────┘
                   ▲
 ┌──────── Layer 3: GEOMETRY (空間遮蔽) ──────┐
-│ ・FMOD geometry (OBB 単独近似)             │ ← r13
-│   壁/扉の listener↔音源 raycast で減衰     │
-│   [ayastorm:occlude] / [ayastorm:door]    │
+│ ・viewer 側 segment vs OBB raycast         │ ← r13
+│   listener↔音源 line-of-sight で direct/   │
+│   reverb 減衰 (per-speaker LOWPASS_SIMPLE) │
+│   [ayastorm:occlude{direct:N}{reverb:N}]   │
 │   会場運営タグで制御 (配信者タグと直交)    │
 └────────────────────────────────────────────┘
 ```
@@ -129,25 +130,27 @@
 
 ### r13: OBB タグベース遮蔽 (Layer 3 空間ジオメトリ、会場運営主導モデル + chat font 同梱)
 
-- ブランチ: `feature/aya-r13-obb-occlusion` (予定 / 着手前)
-- 仕様: `doc/spec_obb_occlusion.md`
-- 工程: `docs/ayastorm-r13-occlusion.md`
-- 同梱バグ修正: `feature/ll-chat-livetune-font-plaintext` (commit 2689a35f8f、ChatFontSize / PlainTextChatHistory live-apply on LL-style chat)
+- ブランチ: `feature/r13-occlusion-spec-draft` → `feature/aya-r13-obb-occlusion` (実装ブランチ、spike 完了済 / 残工程進行中)
+- 仕様: `doc/spec_obb_occlusion.md` (final scope 確定 2026-05-11)
+- 工程: `docs/ayastorm-r13-occlusion.md` (§5 が canonical な実装ログ)
+- 同梱バグ修正: cherry-pick `d66bdb74fc` (元 `feature/ll-chat-livetune-font-plaintext` の `2689a35f8f`、ChatFontSize / PlainTextChatHistory live-apply on LL-style chat)
 - 主要変更:
-  - **新規 mgr クラス** `LLOcclusionGeometryMgr` (`indra/newview/llocclusiongeometrymgr.{h,cpp}` 新設): プリム Desc タグ scan + OBB 抽出 + FMOD `System::createGeometry` 経由の polygon 登録 + 静的/動的 lifecycle を専担、`LLPositionalStreamMgr` (r5-r12 系) と完全独立な singleton。OBB 抽出は `LLOcclusionGeometryHelper` static 群 (`getPositionRegion / getRotationRegion / getScale` から 8 vertices + 6 quads)
-  - **会場運営タグ** `[ayastorm:occlude]` / `[ayastorm:door]` 追加 (引数オプション付き、`[ayastorm:occlude:0.5]` で material 表 override 可): 建物プリム (壁/天井/床/扉) に貼ることで音源と listener の line-of-sight 上で direct/reverb 両方を減衰
-  - **形状近似は OBB 単独で決め打ち** (sphere/cylinder/torus/sculpt/mesh も box 近似): 建築用途の 98% が完全一致 or 軽微なズレで済むため Steam Audio (回折/反射/共鳴) を待たずとも体験価値が大きい。実装コスト最小化、r14+ Steam Audio で形状特化近似を再検討
-  - **material 表** (SL prim material flag → preset): `LL_MCODE_NONE` → concrete (0.7, 0.5)、`LL_MCODE_STONE` → stone (0.9, 0.7)、`GLASS` → glass (0.3, 0.2) 等 8 entry。direct > reverb の関係で物理的妥当性確保
-  - **静的/動的 lifecycle**: `[ayastorm:occlude]` は rez/derez/move/Description 編集で再評価、`[ayastorm:door]` は ObjectUpdate hook で毎フレーム `setRotation/setPosition` 反映。しきい値ロジックは入れない (扉数が現実的に 1〜10 個なので毎フレーム API call は無視可)
-  - **適用先音源**: 3D stream prim (r5-r12 系) + `llPlaySound` (オブジェクト効果音)。parcel music (位置を持たない 2D) と voice (Vivox/WebRTC、別 audio engine) は対象外
-  - **debug settings 4 件 + range 1 件**: `Stream3DOcclusion` (sentinel `-1` = タグ通り) + `Stream3DOcclusionDirectGain` (1.0) + `Stream3DOcclusionReverbGain` (1.0) + `Stream3DOccluderMaxCount` (200) + `Stream3DOccluderRange` (64m)。listener 平時は不使用、実装/検証用
-  - **データフロー**: source → mRing → pcmReadCallback (OpKind dispatch) → r11 LiteHrtfDsp → Channel built-in panner → **r13: FMOD geometry が listener↔channel 位置で raycast → set3DOcclusion 自動更新** → Stream3D group → r11 VenueReverbDsp (reverb send が reverbOcclusion でゲートされる)。**既存 DSP chain は一切変更しない**、occlusion は side channel として動作
+  - **新規 mgr クラス** `LLOcclusionGeometryMgr` (`indra/newview/llocclusiongeometrymgr.{h,cpp}` 新設): タグ parse + OBB レジストリ + 毎 tick 全件 transform 追従 + segment vs OBB slab test + `Channel::set3DOcclusion` + per-speaker `LOWPASS_SIMPLE` cutoff の同時適用を専担、`LLPositionalStreamMgr` と完全独立な singleton
+  - **会場運営タグ** `[ayastorm:occlude]` 1 種のみ追加: 引数なしは hardcoded default (direct 0.7 / reverb 0.5)、`[ayastorm:occlude{direct:N}{reverb:N}]` で per-prim 個別値を上書き可。`[ayastorm:door]` 専用タグは設けない (`refreshOccluders` の毎 tick 全件追従で扉動作も成立)
+  - **形状近似は OBB 単独で決め打ち** (sphere/cylinder/torus/sculpt/mesh も box 近似): 建築用途の 98% が完全一致 or 軽微なズレで済む。r14+ Steam Audio で形状特化近似を再検討
+  - **occlusion 値は default + per-prim override の 2 層** (material 表は採用しない): `LL_MCODE_*` → preset 写像は実機聴感の根拠が薄く、tag-guide で推奨セット (石壁 0.9/0.7 / 木壁 0.6/0.4 / ガラス 0.3/0.2) を提示する運用に振る
+  - **lifecycle**: タグ付与は `onObjectPropertiesReceived` で OBB 登録、`refreshOccluders` が毎 tick 全件 `getPositionGlobal` / `getRotationRegion` / `getScale` を再評価して center/half/rot を上書き、消えた prim を drop。扉のような動的プリムも同経路で自動追従
+  - **適用先音源**: 3D stream prim (r5-r12 系) + `llPlaySound` (オブジェクト効果音、残工程で SFX channel へ visitor 経路拡張)。parcel music (位置を持たない 2D) と voice (Vivox/WebRTC、別 audio engine) は対象外
+  - **debug settings 2 件**: `Stream3DOcclusion` (sentinel `-1` = タグ通り、`0` = 強制 OFF) + `Stream3DOccluderRange` (64m、距離 cull)。`*DirectGain` / `*ReverbGain` / `OccluderMaxCount` 設定化は永久 drop (per-prim タグ + hardcoded `kMaxOccluders = 256` で代替)。既出荷 2 件 (`Stream3DOcclusionRampMs` 250ms / `Stream3DShowOccluders` Alt+Shift+O) と合わせて計 4 件
+  - **データフロー**: source → mRing → pcmReadCallback (OpKind dispatch) → **r13: per-speaker `LOWPASS_SIMPLE` (cutoff = direct 値の 22kHz→300Hz exponential mapping)** → r11 LiteHrtfDsp → Channel built-in panner → **r13: viewer 側 segment vs OBB raycast → `Channel::set3DOcclusion` 直接 set** → Stream3D group → r11 VenueReverbDsp (reverb send が reverbOcclusion でゲートされる)。LOWPASS_SIMPLE は per-speaker channel に挿入されるだけで lite-HRTF / venue reverb / placement / upmix は occlusion の存在を意識しない
+  - **歴史的経緯**: P1 着手時に同梱 `libfmod 2.03.07` の `System::createGeometry` が `FMOD_ERR_INTERNAL` を返し機能しないことが判明、当初計画の FMOD geometry API 経路を放棄して viewer 側 segment vs OBB slab test に pivot (memory `project_fmod_geometry_unavailable.md`)
 - **会場運営主導モデルの新規導入** (r11 配信者主導モデルの対パターン):
   - 建物オーナー (= 壁/扉を建てる人) と配信者 (= ストリームを流す人) を **別人格** として扱う
   - 建物の物理 (occlusion) は会場運営所有、表現キャラクタ (r11 venue reverb) は配信者所有
   - 両者は viewer 側で **意図的に直交** (整合性チェック / 自動補正 / 警告は入れない)
   - 「狭い箱の中で野外 venue」「屋外で cathedral venue」のような物理と表現の不一致を仕様として許容 (詳細は memory `project_venue_occlusion_orthogonal.md`)
-- **chat font live-apply fix 同梱**: 単独 release を切るほどではないバグ修正は次の planned release の train に乗せる方針。`feature/ll-chat-livetune-font-plaintext` ブランチ (commit 2689a35f8f) を r13 にマージ
+- **chat font live-apply fix 同梱**: 単独 release を切るほどではないバグ修正は次の planned release の train に乗せる方針。cherry-pick `d66bdb74fc` (元 `feature/ll-chat-livetune-font-plaintext` の `2689a35f8f`) を r13 ブランチに merge
+- **起動時 unresponsive dialog の根本対策同梱 (C)**: r13 spike 中に並行発生した別案件として、libcurl HEAD pre-resolve の同期ブロックを完全非同期化 (`LLStream3DUrlResolve` worker thread + request-id ベース API、`LLPositionalStreamMulti` 状態機械を `Idle → Resolving → Opening → Buffering → Playing → Failed` に拡張、commit `f336d43abc` + `5c3487ff06`)。Linux ビルドで踏んだ X11 `#define Status int` 罠は memory `project_linux_xlib_status_define_trap.md` に記録
 - **既存配置の自動恩恵**: r5-r12 で過去に置かれた全 stream prim は、会場運営が occlusion タグを建物に貼った瞬間から遮蔽の恩恵を受ける (stream 側再配置不要)
 - **r10/r11/r12 受入条件すべて維持**: dropout / CPU / URL 切替 / 互換マトリクス / 回帰、すべて r12 から劣化なし
 - **設計判断 — 旧 r13+ basket からの再定義**: 「3D stream を実装してプリムから音を出せるようになったが、音を遮る/反射する prim を作れないか検討したい」(AYA、2026-05-10) という提案が起点。OBB 単独で出荷、Steam Audio (回折/反射/共鳴) は r14+ に保留することで、SL viewer 史上初の空間音響遮蔽機能を viewer 内 DSP 完結で実現。配布負債ゼロ + 既存配置全部に効く + r14+ Steam Audio の geometry 登録基盤として再利用可能、の三拍子 (詳細は `doc/spec_obb_occlusion.md` §1 / §2.2)
@@ -166,7 +169,7 @@
 | r10 | 6-11 日 | 2-3 週 | 低-中 (r8 設計依存) | 実績 4 日 |
 | r11 | 9.5-10.5 日 | 3-5 週 | 中 (R5 master volume 伝播 / IR ライセンス / lite-HRTF 体感) | 実装完了 (リリース判断保留中) |
 | r12 | 5-7 日 | 1-2 週 | 低-中 (R6 DSP 挿入位置 A/B 判断 / R2-R4 default 値の聴感調整) | 完了 (PR #46 + r12.1 PR #52) |
-| r13 | 5-7 日 | 1-2 週 | 中 (R1 mesh OBB ズレ / R3 material 表 tuning / R7 rapid teleport) | 着手前 (本書策定で計画確定) |
+| r13 | 5-7 日 | 1-2 週 | 中 (R1 mesh OBB ズレ / R3 default 値 tuning / R7 rapid teleport) | spike 完了 / 残工程進行中 |
 | **合計** | **r8-r12 実績 + r13 計画 ~6 日** | **r13 のみ約 1-2 週** | - | - |
 
 ### r8 の内訳
@@ -224,23 +227,28 @@
 
 ### r13 の内訳
 
-詳細は `doc/spec_obb_occlusion.md` §8 / `docs/ayastorm-r13-occlusion.md` §2 (実装フェーズ)。
+詳細は `doc/spec_obb_occlusion.md` §8 / `docs/ayastorm-r13-occlusion.md` §5 (実装ログ canonical)。
 
-- P0 仕様確定 + roadmap doc 同時更新 + 実装箇所調査 (FMOD geometry API): 0.5 日
-- P1 LLOcclusionGeometryMgr skeleton + FMOD geometry lifecycle (空 geometry の create/release): 0.5 日
-- P2 タグ parser (`[ayastorm:occlude]` / `[ayastorm:door]` + 引数付き) + 範囲内 prim scan: 0.5 日
-- P3 OBB 抽出 helper (`LLOcclusionGeometryHelper`、8 vertices + 6 quads): 0.5 日
-- P4 material 表 (8 entry) + タグ override 適用: 0.5 日
-- P5 静的 occluder lifecycle (rez/derez/move/Description 編集 + UUID→polygon index map): 1 日
-- P6 動的 door 追従 (毎フレーム setRotation/setPosition): 0.5 日
-- P7 cap (Stream3DOccluderMaxCount) + range cap (Stream3DOccluderRange) + 距離順ソート: 0.5 日
-- P8 debug settings 4 件 (sentinel + multiplier/cap 3 件) 配線: 0.5 日
-- P9 検証 scene 構築手順 (`doc/r13/build_test_scene.md`) + 扉 LSL: 0.5 日
-- P10 検証実行 (O1〜O14): 0.5-1 日
-- P11 r10/r11/r12 回帰確認 + chat font live-apply fix 同梱確認: 0.5 日
-- P12 CPU benchmark + spec close-out: 0.5 日
-- 合計 5〜7 日 (Preferences UI 改修ゼロ、debug settings 4 件 + range 1 件のみ、r11/r12 と同等の改修コスト感)
-- リスク発火時の振れ幅: 最速 4 日 / 平均 5-7 日 / 最悪 11 日 (R1 で形状特化近似を r13 内に取り込む場合 +2 日、R3 で material 表再 tune が大規模化 +1 日、R7 で teleport hook 追加 +0.5 日)
+**spike 完了済 (~3 日)**:
+- P0 仕様確定 + roadmap doc 同時更新 + 実装箇所調査 (FMOD geometry API → 同梱 `libfmod 2.03.07` の `createGeometry` が `FMOD_ERR_INTERNAL` を返し機能不全と判明、viewer 側 segment vs OBB raycast に pivot、memory `project_fmod_geometry_unavailable.md`)
+- P1 `LLOcclusionGeometryMgr` skeleton + タグ parser (`[ayastorm:occlude]` bare、`onObjectPropertiesReceived` で OBB 登録)
+- P2 OBB 抽出 + segment vs OBB slab test + multiplicative 累積 (`final = 1 - prod(1 - direct_i)`) + per-speaker `LOWPASS_SIMPLE` cutoff (22kHz→300Hz exponential mapping) 配線
+- P3 occluder lifecycle (rez/derez/move/Description 編集 + UUID→OBB map + `refreshOccluders` 毎 tick 全件 `getPositionGlobal` / `getRotationRegion` / `getScale` 再評価で center/half/rot 上書き、扉のような動的プリムも同経路で自動追従)
+- P4 既出荷 debug 2 件 (`Stream3DOcclusionRampMs` 250ms ramp / `Stream3DShowOccluders` Alt+Shift+O hotkey で OBB wireframe 可視化)
+- P5 同梱バグ修正 cherry-pick `d66bdb74fc` (元 `feature/ll-chat-livetune-font-plaintext` の `2689a35f8f`、ChatFontSize / PlainTextChatHistory live-apply on LL-style chat)
+- P6 起動 unresponsive dialog 根本対策 (`LLStream3DUrlResolve` worker thread + request-id ベース API、`LLPositionalStreamMulti` 状態機械を `Idle → Resolving → Opening → Buffering → Playing → Failed` に拡張、commits `f336d43abc` + `5c3487ff06`、X11 `#define Status int` 罠は memory `project_linux_xlib_status_define_trap.md` に記録)
+
+**残工程 (~3-4 日)**:
+- P7 per-prim override args parser (`[ayastorm:occlude{direct:N}{reverb:N}]`、tag-guide 推奨セットの調整余地を per-prim で確保): 0.5 日
+- P8 `llPlaySound` occlusion 適用 (オブジェクト効果音、SFX channel に visitor 経路拡張): 0.5 日
+- P9 残 debug settings 2 件 (`Stream3DOcclusion` master sentinel `-1`/`0` + `Stream3DOccluderRange` 64m range cull) 配線 + `kMaxOccluders` 64 → 256 hardcode 変更: 0.5 日
+- P10 検証 scene 構築手順 (`doc/r13/build_test_scene.md`、推奨セット 石壁 0.9/0.7 / 木壁 0.6/0.4 / ガラス 0.3/0.2 の聴感確認用): 0.5 日
+- P11 検証実行 (O1〜O12) + r10/r11/r12 回帰確認 + chat font live-apply 同梱確認: 1 日
+- P12 tag-guide ja/en/zh 加筆 (`[ayastorm:occlude]` 1 種、bare + `{direct:N}{reverb:N}` override) + Release Notes (詳細資料リンクのみ): 0.5 日
+- P13 CPU benchmark + spec close-out: 0.5 日
+
+- 合計 5〜7 日 (Preferences UI 改修ゼロ、debug settings 既出荷 2 件 + 残工程追加 2 件で計 4 件、`[ayastorm:occlude]` タグ 1 種のみ、material 表は採用しない、`[ayastorm:door]` 専用タグも作らない、r11/r12 と同等の改修コスト感)
+- リスク発火時の振れ幅: 最速 4 日 / 平均 5-7 日 / 最悪 9 日 (R1 で形状特化近似を r13 内に取り込む場合 +2 日、R3 で default 値 / 推奨セット再 tune が必要 +0.5 日、R7 で teleport hook 追加 +0.5 日)
 
 ---
 
@@ -264,9 +272,9 @@
 | **RR12** | **r12 debug settings 3 件 (LfeCutoff / CenterBleed / RearDelayMs) の default 値が P11 検証で範囲超えで再 tune 必要** → P11.x として default 調整 phase を追加 (+0.5 日) | r12 |
 | **RR13** | **r12 source ch 判定が stream 開始タイミングで間に合わない** (codec layer の遅延) → ch 数判定 timeout を設定、判定不可なら upmix 無効 (= 安全側、5.1 として誤動作させない) | r12 |
 | **RR14** | **r13 mesh prim の OBB 近似が「斜め屋根 / アーチ」で明確にズレ**、体感ミスマッチ → 縮退 A: 該当 prim には occlude タグを貼らない運用ガイド、または r13 内で形状特化近似 (NG2 解禁) を P12.x として後追い | r13 |
-| **RR15** | **r13 material 表 preset 値 (concrete=0.7 等) が実機聴感で強すぎ/弱すぎ** → 縮退 B: P12 close-out 時に default 値を 0.1 単位で再 tune、リリース後も `Stream3DOcclusionDirectGain` でユーザ側微調整可 | r13 |
-| **RR16** | **r13 door 動的更新が prim animation (smooth rotation script) で 60Hz update され FMOD API call が増える** → 縮退 C: door 数の cap (`Stream3DDoorMaxCount` default 16) を別途設定、超過分は静的扱い | r13 |
-| **RR17** | **r13 listener が rapid teleport で範囲を超えて動くと FMOD geometry の再評価が間に合わない** → 縮退 D: teleport 検知で全 occluder を強制再 scan、scan 完了まで occlusion を一時停止 | r13 |
+| **RR15** | **r13 default 値 (direct 0.7 / reverb 0.5) と tag-guide 推奨セット (石壁 0.9/0.7 / 木壁 0.6/0.4 / ガラス 0.3/0.2) が実機聴感で強すぎ/弱すぎ** → 縮退 B: P13 close-out 時に default 値 / 推奨セットを 0.1 単位で再 tune、リリース後も per-prim タグ `{direct:N}{reverb:N}` override で会場運営側が個別微調整可 (`*DirectGain` / `*ReverbGain` 設定化は永久 drop で代替) | r13 |
+| ~~RR16~~ | ~~r13 door 動的更新が prim animation (smooth rotation script) で 60Hz update され FMOD API call が増える~~ | **解消 (2026-05-11)**: 当初の `[ayastorm:door]` 専用タグ + 動的追従経路を廃し、`refreshOccluders` の毎 tick 全件 transform 再評価に一本化。扉専用 cap (`Stream3DDoorMaxCount`) は不要、occluder 全体の `kMaxOccluders=256` cap で吸収。同梱 `libfmod 2.03.07` の geometry API 機能不全により FMOD API call そのものが消えた (segment vs OBB slab test は viewer 側、CPU 軽量) ため raycast 側のリスクとしても発火しない |
+| **RR17** | **r13 listener が rapid teleport で範囲を超えて動くと viewer 側 OBB レジストリの再評価が間に合わない** → 縮退 D: teleport 検知で全 occluder を `Stream3DOccluderRange` 内で強制再 scan、scan 完了まで occlusion を一時停止 | r13 |
 | **RR18** | **r13 大規模建造物 (sim 全体に建物) で Stream3DOccluderRange (64m default) の prim scan が重い** → 縮退 E: range default を 32m に下げる、または scan 頻度を `Stream3DPollInterval` 60s に延長 | r13 |
 
 ### 工数圧縮の選択肢
@@ -282,7 +290,7 @@
 9. **r13 形状近似を OBB 単独で決め打ち** (sphere/cylinder/torus も box 近似、形状特化近似は r14+): 建築用途の 98% で十分、実装コスト最小、r14+ Steam Audio で OBB 基盤を流用可。配信者にも会場運営にも形状モードを選ばせない [採用、2026-05-10 議論で確定]
 10. **r13 を「OBB タグベース遮蔽 + chat font 同梱」のみに絞り、Steam Audio / SOFA / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT は r14+ へ降格** → r13 工数を 数週 → 1-2 週に大幅圧縮、配布負債ゼロ、SL viewer 史上初の空間音響遮蔽機能を最短で出荷 [採用、2026-05-10 議論で確定]
 11. **r13 chat font live-apply fix を同梱**: 単独 release を切るほどではないバグ修正は次の planned release の train に乗せる方針。`feature/ll-chat-livetune-font-plaintext` (commit 2689a35f8f) を r13 にマージ、独立リリース工数 (verify / release-note / 3 OS build) を節約 [採用]
-12. **r13 タグは `[ayastorm:occlude]` / `[ayastorm:door]` の 2 種のみ**、debug settings は sentinel + multiplier/cap 3 件 + range 1 件で計 5 件。`[ayastorm:...]` プレフィクスで viewer 物理タグ系統を `[3dstream...]` 配信タグ系統と分離 [採用]
+12. **r13 タグは `[ayastorm:occlude]` 1 種のみ** (bare で hardcoded default、`{direct:N}{reverb:N}` で per-prim override)、debug settings は既出荷 2 件 (`Stream3DOcclusionRampMs` / `Stream3DShowOccluders`) + 残工程追加 2 件 (`Stream3DOcclusion` master sentinel + `Stream3DOccluderRange` 64m range cull) で計 4 件。`[ayastorm:door]` 専用タグ + material 表 + `*DirectGain`/`*ReverbGain`/`OccluderMaxCount` 設定化は永久 drop (`refreshOccluders` 毎 tick 全件追従 / tag-guide 推奨セット / per-prim タグ override / `kMaxOccluders=256` hardcode で代替)。`[ayastorm:...]` プレフィクスで viewer 物理タグ系統を `[3dstream...]` 配信タグ系統と分離 [採用、2026-05-11 final scope 確定]
 
 ---
 
@@ -308,11 +316,11 @@ r7 (done)
 - **r11 → r12**: r12 は **r10/r11 完了が前提**。stereo→5.1 upmix の出力 6ch を r10 placement にそのまま流し、r11 lite-HRTF / venue reverb がその上に乗る構造のため、r10/r11 が安定動作していないと r12 単体評価が成立しない
   - r12 DSP 挿入位置は **r10 placement の前段** (= Layer 0)、placement 側の改修ゼロ
   - 5.1 native 配信 (source ch>=6) は r12 を auto bypass するので r10/r11 と完全同一経路 (= 既存配信は無影響)
-- **r12 → r13**: r13 は **r10/r11/r12 完了が前提**。occlusion は既存 Layer 0-2 (upmix / placement / lite-HRTF / venue reverb) に対する **side channel** として動作 (FMOD geometry が listener↔channel 位置で raycast → `set3DOcclusion` を自動更新)、既存 DSP chain は一切変更しない
+- **r12 → r13**: r13 は **r10/r11/r12 完了が前提**。occlusion は既存 Layer 0-2 (upmix / placement / lite-HRTF / venue reverb) に対する **side channel** として動作 (viewer 側 segment vs OBB slab test が listener↔channel 位置で raycast → `Channel::set3DOcclusion` 直接 set + per-speaker `LOWPASS_SIMPLE` cutoff を自動更新)、既存 DSP chain は一切変更しない
   - r13 の `LLOcclusionGeometryMgr` は `LLPositionalStreamMgr` (r5-r12 系) と完全独立な singleton、両者の責務境界は parser から完全に分離
   - 既存 r5-r12 配置は occluder タグなしの環境で完全互換 (= タグ未指定なら従来動作)
   - chat font live-apply fix (commit 2689a35f8f) は occlusion 機能と独立だが、r13 train に同梱
-- **r13 → r14+**: r13 で確立した geometry 登録基盤 (タグ parser / OBB 抽出 / UUID→polygon index map / 静的/動的 lifecycle) は Steam Audio engine がそのまま入力として受け取れる構造で実装。r14 で「FMOD geometry → Steam Audio」への置換は engine 1 点のみで、parser / 抽出 / lifecycle は流用可能
+- **r13 → r14+**: r13 で確立した geometry 登録基盤 (タグ parser / OBB 抽出 / UUID→OBB レジストリ map / `refreshOccluders` 毎 tick 全件追従 lifecycle) は Steam Audio engine がそのまま入力として受け取れる構造で実装。r14 で「viewer 側 raycast → Steam Audio」への置換は engine 1 点のみで、parser / 抽出 / lifecycle は流用可能
 
 ---
 
@@ -339,11 +347,11 @@ r12 完成時の更なる獲得 — **stereo 配信にも 6 spk placement の体
 
 r13 完成時の更なる獲得 — **SL 世界の物理ジオメトリが音を遮る**:
 
-- **会場運営による物理空間の音響表現**: 建物プリムに `[ayastorm:occlude]` を貼ると壁/天井/床が音源と listener の line-of-sight 上で direct/reverb 両方を減衰、`[ayastorm:door]` で扉が動的に開閉してリアルな音漏れ体験
+- **会場運営による物理空間の音響表現**: 建物プリムに `[ayastorm:occlude]` を貼ると壁/天井/床が音源と listener の line-of-sight 上で direct/reverb 両方を減衰 (per-prim `{direct:N}{reverb:N}` で個別微調整可)。扉のような動的プリムも `refreshOccluders` の毎 tick 全件追従で自動同期、開閉や移動でリアルな音漏れ体験
 - **ライブ会場の体験完成**: r10 6 spk placement + r11 venue reverb + lite-HRTF + r12 upmix + r13 occlusion で「外で muffled に聴こえる音楽 → 扉から漏れてくる → 中に入るとフル venue reverb」というリアル空間の音響体験が SL viewer で初めて成立
 - **会場運営主導モデルの新規導入**: r11 配信者主導モデル (= 配信者がスピーカープリム Desc に書いたタグが root truth) の対パターンとして、建物オーナーが建物プリム Desc に書いたタグが root truth として動く運用モデル。両者は意図的に直交 (整合性チェックなし、不一致を仕様として許容)
 - **既存配置の自動恩恵**: r5-r12 で過去に置かれた全 stream prim は、会場運営が occlusion タグを建物に貼った瞬間から遮蔽の恩恵を受ける (stream 側再配置不要)
-- **配布負債ゼロ**: viewer 内 DSP 完結 (FMOD geometry API は platform 共通)、新 binary 不要、3 OS でのビルド差なし
+- **配布負債ゼロ**: viewer 側 segment vs OBB raycast + per-speaker `LOWPASS_SIMPLE` で完結、新 binary 不要、3 OS でのビルド差なし (同梱 `libfmod 2.03.07` の geometry API 機能不全を viewer 側 raycast で迂回した結果として platform 共通性が向上)
 - **r10/r11/r12 投資の元を取る**: r10 で作った 6 spk placement と r11 の venue reverb + lite-HRTF と r12 upmix が、occlusion と組合せることで「リアル建築空間の中で再生される音楽」として活きる状態 — これまでの投資への最大 ROI
 
 → r13 完成時点で AYAstorm は **「リアル音響体験を SL で構築する viewer」** として完成形に近づく。SL viewer 史上初の空間音響遮蔽機能。
@@ -380,3 +388,4 @@ r14 以降での更なる発展余地:
 - 2026-05-07 (P0 第 2 弾): r12 P0 で実コード (`indra/llaudio/llpositionalstream*.{h,cpp}`、`llaudioengine_fmodstudio.cpp`) を読んで DSP 挿入位置を判定。当初 spec §4.2.1 の **A 案 (`createStream3DGroup` 入力段) / B 案 (per-binding `Channel::addDSP`) はいずれも実アーキテクチャに不適合** と判明 (per-speaker channel が mono `numchannels=1`、Stream3D group は per-speaker mono の合成しか見えず source 2ch 不可視)。代わりに **C 案 = `SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造、`pcmReadCallback` で 2 track ring から L/R を pull、speaker 役割で upmix matrix + 帯域分離 + state を適用して 1ch 出力) として確定。新規ヘルパは `LLStereoUpmix` (`indra/llaudio/llstereoupmix.{h,cpp}`、`LLMultichannelDownmix` 並行構造)。これに伴い §3 r12 entry の主要変更欄を `llstereoupmix.{h,cpp}` 名 + 「helper class」呼称 + データフロー記述に修正、§5 RR10 を解消マーク。詳細調査記録は `doc/r12/dsp_insertion_survey.md`
 - 2026-05-10: r12 main / r12.1 完了 (PR #46 / PR #52) を反映。**r13 案を旧 r13+ basket (SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT) から「OBB タグベース遮蔽 (フラグシップ) + chat font live-apply 同梱」に再定義**、Steam Audio / SOFA / 形状特化近似 / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT は **r14+ に降格**。ロードマップ題名を `r7 → r12` から `r7 → r13` に拡張、Layer 3 (空間ジオメトリ) を §2 に追加 (4 層モデルへ)、§3 r13 entry 新設 (OBB occlusion + 会場運営主導モデル + chat font 同梱)、§4 r13 工数行 (5-7 日 / 1-2 週) と内訳追加、§5 RR1-3 を r14+ ラベル変更 + RR14-18 (mesh OBB ズレ / material 表 tuning / door 60Hz update / rapid teleport / 大規模建造物 prim scan) を r13 リスクとして追加、§5 工数圧縮 9-12 を追加 (OBB 単独決め打ち / Steam Audio r14+ 降格 / chat font 同梱 / タグ多択化回避)、§6 依存関係に r13 → r14+ を追加 (geometry 登録基盤の Steam Audio 流用)、§7 ユーザ価値に r13 完成時 SL 史上初空間音響遮蔽 + 会場運営主導モデル新規導入を追加、r14 以降を r13 以降から繰り下げ。仕様詳細は `doc/spec_obb_occlusion.md` / `docs/ayastorm-r13-occlusion.md` 参照。役割分担 (会場運営 vs 配信者の直交性) は memory `project_venue_occlusion_orthogonal.md`、r13 フラグシップ + 同梱 fix 方針は memory `project_ayastorm_r13_obb_occlusion.md` 参照
 - 2026-05-10 (r13 spike 着手): 同梱 `libfmod 2.03.07` の `System::createGeometry` が機能しない (`FMOD_ERR_INTERNAL`、memory `project_fmod_geometry_unavailable.md`) ため FMOD geometry 経路を放棄、**listener-source segment vs OBB の自前 slab test を viewer 側で実装**して `Channel::set3DOcclusion` に直接適用する経路に pivot。spike 出荷スコープは `[ayastorm:occlude]` 単独タグ + per-speaker `LOWPASS_SIMPLE` DSP (壁越し muffled 聴感、22kHz→300Hz exponential cutoff) + 250ms ramp + debug overlay (View メニュー `Alt+Shift+O`)。`[ayastorm:door]` / material 表 / debug settings 4 件のうち 3 件 / O2〜O14 通し検証は **r13.x 持ち越し**。同 commit に **起動時 OS unresponsive dialog 緩和 (A+B、drain rate-limit + curl timeout 短縮)** を同梱、根本対応 (curl 非同期化、C) は別 workstream 着手予定。実装詳細は `docs/ayastorm-r13-occlusion.md` §5 を canonical とする。commit 記録: `66ddab6eb4` (P0 spec/工程資料/roadmap 初版) / `58c5ad7c14` (実装本体 + A+B 緩和) / `6fcd078250` (View メニュー + `Alt+Shift+O`)
+- 2026-05-11 (r13 final scope 確定): spike 結果を踏まえて r13 出荷スコープを最終確定。**永久 drop**: `[ayastorm:door]` 専用タグ (`refreshOccluders` 毎 tick 全件追従で吸収) / material 表 (`LL_MCODE_*` → preset 写像、聴感根拠薄、tag-guide 推奨セットで代替) / `Stream3DOcclusionDirectGain` / `Stream3DOcclusionReverbGain` / `Stream3DOccluderMaxCount` 設定化 (per-prim タグ `{direct:N}{reverb:N}` override + hardcoded `kMaxOccluders=256` で代替)。**r13 残工程**: per-prim override args parser / `llPlaySound` occlusion 適用 / `Stream3DOcclusion` master sentinel + `Stream3DOccluderRange` 64m + `kMaxOccluders` 256 化 / 検証 O1〜O12 / chat font cherry-pick (`d66bdb74fc`、元 `2689a35f8f`) / tag-guide ja/en/zh 加筆 / Release Notes。**起動 unresponsive dialog 根本対策 (C)** は別 workstream で完了 (`f336d43abc` = URL pre-resolve 非同期 worker / `5c3487ff06` = X11 `#define Status int` 罠回避、memory `project_linux_xlib_status_define_trap.md`)。本書改訂: §2 ASCII 図の Layer 3 を viewer 側 raycast + per-prim タグ書式に更新、§3 r13 entry を final scope に書き換え、§4 r13 内訳を「spike 完了済 (~3 日) / 残工程 (~3-4 日)」二段構成に再編、§4 工数表の r13 実績欄を "spike 完了 / 残工程進行中" に変更、§5 RR15 を default 値 + tag-guide 推奨セット tuning に書き換え、§5 RR16 (door 60Hz update) を解消マーク (`refreshOccluders` 一本化)、§5 RR17 を viewer 側 OBB レジストリ参照に修正、§5 工数圧縮 12 を 1 種タグ + 4 件 settings に書き換え、§6 依存関係 r12→r13 / r13→r14+ を viewer 側 raycast + UUID→OBB レジストリ map 表現に修正、§7 r13 ユーザ価値を `[ayastorm:door]` 削除版 + 配布負債ゼロの根拠を明確化。同期して `doc/spec_obb_occlusion.md` (commit `2e02a63ac8`) と `docs/ayastorm-r13-occlusion.md` (commit `d143a4dbb7`) を final scope 反映済
