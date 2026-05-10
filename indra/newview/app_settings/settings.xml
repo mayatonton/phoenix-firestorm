@@ -27835,6 +27835,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>16.0</real>
     </map>
+    <key>Stream3DOcclusion</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r13: Master sentinel for tag-based OBB occlusion on positional-stream and llPlaySound channels. -1 (default) = enabled, 0 = disabled (all [ayastorm:occlude] tags ignored — raycast is skipped and the DSP cutoff ramps back to bypass through the normal smoothing path so toggling live does not produce an audible cliff), 1 = explicit enabled (reserved for future per-mode overrides). Other values are treated as enabled. Read each tick by LLOcclusionGeometryMgr::applyToChannel; live-tunable. Not exposed in Preferences — implementer / verification adjustment only. Stream3DShowOccluders (debug overlay) is independent of this sentinel.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>-1</integer>
+    </map>
     <key>Stream3DOcclusionRampMs</key>
     <map>
       <key>Comment</key>
