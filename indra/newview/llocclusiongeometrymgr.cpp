@@ -320,14 +320,29 @@ void LLOcclusionGeometryMgr::applyToChannel(FMOD::Channel* channel,
 {
     if (!channel) return;
 
-    // Compute target factors: 0/0 when no occluders or no segment hit;
-    // otherwise the strongest direct/reverb among hit OBBs.
+    // Compute target factors: 0/0 when no occluders, out of range, or no
+    // segment hit; otherwise the strongest direct/reverb among hit OBBs.
+    // The distance cull (Stream3DOccluderRange, default 64 m) skips firstHit
+    // entirely when the source is far enough that audibility is already
+    // negligible due to distance attenuation. Smoothing still runs on the
+    // 0/0 target so a source crossing the threshold ramps cleanly back to
+    // bypass instead of jumping (no audible cliff at the edge).
     F32 target_d = 0.f;
     F32 target_r = 0.f;
     bool hit = false;
+    bool in_range = true;
     if (!mOccluders.empty())
     {
-        hit = firstHit(listener, source, target_d, target_r);
+        const F32 range = gSavedSettings.getF32("Stream3DOccluderRange");
+        if (range > 0.f)
+        {
+            const F32 dist_sq = (source - listener).lengthSquared();
+            in_range = dist_sq <= range * range;
+        }
+        if (in_range)
+        {
+            hit = firstHit(listener, source, target_d, target_r);
+        }
     }
 
     // Linear ramp from current → target so a wall entering / leaving the
@@ -382,6 +397,7 @@ void LLOcclusionGeometryMgr::applyToChannel(FMOD::Channel* channel,
                               << " source=" << source
                               << " occluders=" << mOccluders.size()
                               << " first_d/r=" << first_d << "/" << first_r
+                              << " in_range=" << (in_range ? 1 : 0)
                               << " hit=" << (hit ? 1 : 0)
                               << " target_d/r=" << target_d << "/" << target_r
                               << " applied_d/r=" << sm.direct << "/" << sm.reverb
