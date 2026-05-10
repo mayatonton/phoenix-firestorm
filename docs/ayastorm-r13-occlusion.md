@@ -380,6 +380,17 @@ r12 と異なり、本リリースでは **追加 phase が想定外に発生す
 
 **次工程 (C)**: libcurl pre-resolve を **完全非同期化** (request-id ベース API + worker thread 経由)。`LLPositionalStreamMulti::start()` を 2-phase 化 (Resolving → Opening) し、main thread のブロックを完全に外す。**r13 OBB occlusion とは独立 commit で着手**。
 
+**C 完了 (2026-05-10、commit `f336d43abc` + `5c3487ff06`)**: 同日中に C を実装・shipping。
+
+- `LLStream3DUrlResolve` namespace を **完全非同期 API** に作り直し: `submit()` (request-id 返却 + worker queue 投入) / `poll()` (非ブロッキング状態取得) / `cancel()` (in-flight drop) / `shutdown()` (worker join、`LLAudioEngine_FMODSTUDIO::shutdown()` 内で 1 度呼ぶ)
+- worker thread は **Meyers 関数局所 static で lazy 起動**、初回 `submit()` 時に `std::thread` 生成。queue は `std::deque<Request>` + `std::mutex` + `std::condition_variable`、結果保持は `std::unordered_map<RequestId, Result>`
+- `LLPositionalStreamMulti` の状態機械を `Idle → Resolving → Opening → Buffering → Playing → Failed` に拡張。`start()` が `submit()` 後すぐ return し、`update()` 側で `poll()` → `Done`/`Failed`/`Unknown` 遷移時に `openSourceStream(resolved_or_original_url)` を呼ぶ。`stop()` は pending request を `cancel()` してから既存の停止処理に進む
+- main thread の curl 同期ブロックは完全消滅 (`submit()` / `poll()` はミューテックス取得 1 回のみ、µs オーダ)。r13 A+B (drain rate-limit / timeout 1500-1000ms) は safety net として残置
+- **Linux ビルド失敗 → 即修正 (`5c3487ff06`)**: 当初 `enum class Status` を導入したが、`newview/cmake_pch.hxx` 経由で `llglheaders.h → glx.h → X11/Xlib.h` の `#define Status int` が全 TU に漏れて `enum class int` にマクロ置換 → "expected identifier before 'int'"。`enum class ResolveStatus` にリネームし、ヘッダにコメントで罠を記録。memory `project_linux_xlib_status_define_trap.md` も作成
+- **動作確認**: Linux + Windows 両プラットフォームでビルド + 起動完了 (2026-05-10、AYA 確認)。Linux では `bash -x ./install.sh --yes` 経由で install まで進行 (Claude が debug 目的で実行したが、結果として正規 install と等価な完成バイナリを `~/ayastorm` に配置)
+
+**残リスク (運用観察)**: 起動が依然として重い場合、次の調査対象は `LLPositionalStreamMgr::update()` 内の **他の重処理** — タグ付き 3dstream prim 数に比例する OBB occlusion raycast、N speaker 分の per-frame DSP 更新。raycast hysteresis (距離/角度しきい値で N tick おき更新)、DSP 変化検出スキップなどが candidate。実機で重さが残らない限り着手しない。
+
 ### 5.5 commit ログ
 
 | commit | 内容 |
@@ -387,6 +398,9 @@ r12 と異なり、本リリースでは **追加 phase が想定外に発生す
 | `66ddab6eb4` | r13 spec / 工程資料 / roadmap 初版 (P0 commit、計画版) |
 | `58c5ad7c14` | r13 OBB occlusion 実装 + 起動 unresponsive dialog 緩和 (A+B、本 spike) |
 | `6fcd078250` | r13 Stream3DShowOccluders を View メニューに追加 (`Alt+Shift+O`) |
+| `cb7cd44bbd` | r13 Stream3DShowOccluders に `Alt+Shift+O` hotkey + 資料更新 (spike 実装ログ更新) |
+| `f336d43abc` | r13 C: 起動 unresponsive dialog の根本対策 — URL 事前解決を非同期 worker 化 |
+| `5c3487ff06` | r13 C: `enum Status` → `ResolveStatus` (X11 `#define Status int` 衝突回避、Linux ビルド復旧) |
 
 ### 5.6 受入条件 (§4.1) の現況
 
