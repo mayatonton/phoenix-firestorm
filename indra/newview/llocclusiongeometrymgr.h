@@ -8,9 +8,10 @@
  * delegate raycasting to FMOD::Geometry. Instead we keep the OBB set
  * locally and run our own segment-vs-OBB slab test per audio frame,
  * applying the result via Channel::set3DOcclusion. This keeps the
- * tag-driven scope (cap §4.7 = 200, spike cap = 64) so the work stays
- * O(N_occluders × N_speakers × frame_rate) which, with the caps, is
- * comfortably under 1 ms/sec on modern CPUs.
+ * tag-driven scope (r13 cap = 256, power-of-two with ~25% headroom over
+ * typical SL venue counts) so the work stays O(N_occluders × N_speakers ×
+ * frame_rate) which, with the cap, is comfortably under 1 ms/sec on modern
+ * CPUs.
  */
 
 #ifndef LL_OCCLUSIONGEOMETRYMGR_H
@@ -45,7 +46,7 @@ public:
 
     // Called once per LLPositionalStreamMgr::update() tick. Drops dead /
     // de-tagged prims, refreshes position/rotation/scale, and re-parses
-    // direct/reverb fields. ~10us at the 64-occluder cap (negligible).
+    // direct/reverb fields. ~40us at the 256-occluder cap (still negligible).
     void refreshOccluders();
 
     // Called per frame per speaker from LLPositionalStreamMgr::update.

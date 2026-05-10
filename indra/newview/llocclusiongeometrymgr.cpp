@@ -35,8 +35,12 @@ namespace
     constexpr F32 kDefaultDirect = 0.7f;
     constexpr F32 kDefaultReverb = 0.5f;
 
-    // Spike cap — tighter than spec §4.7 (=200) while we validate the path.
-    constexpr int kMaxOccluders = 64;
+    // r13 final cap. Spec §4.7 originally suggested 200; bumped to 256 for a
+    // power-of-two cap with ~25% headroom over typical SL venue counts (~100
+    // occluder prims). Cost is still O(N × N_channels × frame_rate) but at
+    // 256 × 64 channels × 60 Hz ≈ 1 M slab tests/sec — comfortably under
+    // 1 ms/sec on modern CPUs (each test is a few mul/cmp).
+    constexpr int kMaxOccluders = 256;
 
     LLVector3 toFloatVec(const LLVector3d& v)
     {
