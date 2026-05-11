@@ -1705,6 +1705,15 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
                 return;
             }
 
+            // <FS:AYA> Silently discard object IMs from other residents (vendor ads).
+            // Owner=self (HUDs, own rezzers) is preserved.
+            static LLCachedControl<bool> FSIgnoreObjectIM(gSavedSettings, "FSIgnoreObjectIM");
+            if (FSIgnoreObjectIM && !is_owned_by_me)
+            {
+                return;
+            }
+            // </FS:AYA>
+
             // <FS:PP> FIRE-6406: Feature to disable Object Return notification
             static LLCachedControl<bool> FSDisableReturnObjectNotification(gSavedSettings, "FSDisableReturnObjectNotification");
             if (FSDisableReturnObjectNotification)
