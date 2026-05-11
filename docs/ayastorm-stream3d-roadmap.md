@@ -6,6 +6,14 @@
 
 ---
 
+## ステータス: 完結章 (2026-05-12)
+
+本書は **r13 出荷をもって完結**。r7 → r13 までの 3D Stream / 音響表現シリーズを記録した過去章として保持する。
+
+r14 以降は **光/視覚表現** に軸を移し、新ロードマップ `docs/ayastorm-light-expression-roadmap.md` で進める。本書 §7 末尾「r14 以降での更なる発展余地」に列挙していた audio 系項目 (VenueReverb CPU 最適化 / 公開 README / air absorption 客観 FFT / venue IR ユーザアップロード / アルゴリズム多択化) は **一旦保留**、光表現章が一段落した後に再評価する。詳細は本書 §9 末尾の 2026-05-12 エントリ参照。
+
+---
+
 ## 1. ねらい
 
 3D Stream 機能を **「分散記述ステレオ」(r8)** から **「lite-HRTF + 会場残響を持つ配信者主導の SL Viewer」(r11)** へ、さらに **「stereo 配信でも 6 spk placement の体験が届く viewer」(r12)**、そして **「SL 世界の物理ジオメトリが音を遮る viewer」(r13)** まで段階的に発展させる。各リリースは独立に完結し、個別にユーザ価値を届けられる構成にする。途中で中断しても価値が積み上がるのが本ロードマップの強み。
@@ -361,7 +369,9 @@ r13 完成時の更なる獲得 — **SL 世界の物理ジオメトリが音を
 
 → r13 完成時点で AYAstorm は **「リアル音響体験を SL で構築する viewer」** として完成形に近づく。SL viewer 史上初の空間音響遮蔽機能。
 
-r14 以降での更なる発展余地:
+r14 以降での更なる発展余地 (**一旦保留、2026-05-12**):
+
+> 2026-05-12 以降、AYAstorm は r14 以降を **光/視覚表現章** に振り向ける (`docs/ayastorm-light-expression-roadmap.md`)。以下の audio 系項目は永久 drop ではなく **保留**、光表現章が一段落した後に再評価する。
 
 - venue IR ユーザアップロード UI / dynamic venue (位置依存残響)
 - VenueReverb CPU 最適化 (NUPC、hall_medium 以上の +8〜10pp 低減)
@@ -399,3 +409,4 @@ r14 以降での更なる発展余地:
 - 2026-05-11 (SOFA / Steam Audio / 物理シミュ / 個人 HRTF 永久 drop): r14+ basket の更なる絞り込み議論。**永久 drop 追加**: (a) SOFA per-source HRTF / 個人 HRTF — r11 lite-HRTF (ITD + ILD shadow + air abs) で AYAstorm の目指す音響リアリティ閾値は越えた、CPU 高 × 個人測定済ユーザ限定の ROI 薄、再配布ライセンス調査負債回避、listener UI 増殖を避ける。(b) Steam Audio integration / 回折・反射・共鳴の物理シミュ — 反射/共鳴は r11 convolution venue reverb (9 IR) で先取り表現済、回折は r13 occlusion の lowpass+減衰で知覚的に近似。まず reverb 拡張で目的達成を試すべきで、物理シミュは「さらに」段階に再検討。Steam Audio engine の存在意義 (SOFA も drop した今) もほぼ消失、3 OS binary 配布負債と engine 依存をゼロに戻す。本書改訂: §2 ASCII 図 Layer 2 から「SOFA per-source HRTF / Steam Audio ← r13+」行を削除し永久 drop 注記に置換、§3 r13 entry の「r14+ Steam Audio で形状特化近似を再検討」を「形状特化近似が必要になった段階で viewer 側 mesh raycast 経路を改めて検討」に書き換え、§5 RR1/RR2/RR3 を解消マーク (永久 drop 根拠を明記)、§5 工数圧縮 13 を新設、§6 依存関係 r13→r14+ ツリーを Steam Audio/SOFA/個人 HRTF 削除版に書き換え、§6 r13→r14+ 説明文を viewer 側 mesh raycast 経路に書き換え (Steam Audio 流用計画を廃止)、§7 r14 以降リストから Steam Audio / SOFA / 個人 HRTF を削除し「永久 drop (2026-05-11 確定)」サブセクションを追加。memory `project_ayastorm_r13_obb_occlusion.md` の永久 drop セクションも同期更新
 - 2026-05-11 (r13 P15 mesh raycast 取り込み): r14+ basket に残していた「形状特化近似 viewer 側 mesh raycast」項を **r13 内に前倒し取り込み**。AYA の「Prim の Mesh Export 機能で形状確定できる」洞察を起点に、`LLVolume::getVolumeFace` から path cut / hollow / mesh の実プリム三角形を抽出し、segment-vs-triangle を **OBB pre-cull (~95% reject) + Möller-Trumbore raycast** の 2 段で判定する経路を実装。`kMaxTrisPerOccluder = 2000` 超過時は OBB-only にフォールバック (LL_WARNS_ONCE)。build floater で選択中のプリムは `refreshOccluders` で毎 tick 再抽出してライブ追従。`Stream3DShowOccluders` の debug overlay は実形状三角形メッシュ (シアン fill + wireframe、face normal 方向 0.02m offset で z-fight 回避) に置換、オレンジ OBB 描画は撤去。本書改訂: §3 r13 entry を「形状判定は OBB pre-cull + 実プリム三角形 raycast の 2 段」+ データフロー「OBB pre-cull + Möller-Trumbore 三角形 raycast」に更新、§5 RR14 (mesh OBB ズレ) を解消マーク (P15)、§5 工数圧縮 13 の r14+ スコープから「形状特化近似 viewer 側 mesh raycast」を除外、§5 工数圧縮 14 を新設 (P15 取り込み判断記録)、§6 依存ツリーの r13 行を「タグベース occlusion: 実プリム mesh raycast」に書き換え + r14+ から該当項目を消化 + r13→r14+ 説明文を triangle 抽出 + ライブ再抽出含む基盤表現に修正、§7 ユーザ価値の「viewer 側 segment vs OBB raycast」を「OBB pre-cull + Möller-Trumbore 三角形 raycast」表記に統一、§7 r14 以降リストから「形状特化近似 / mesh prim 実 triangle 利用」を削除。同期して `docs/ayastorm-r13-occlusion.md` §5.5 commit log 表に P7〜P15.7 の 19 行を追記、memory `project_ayastorm_r13_obb_occlusion.md` を mesh raycast + ライブ追従仕様に更新。commit 記録: `cd4d64dc3b` (P15.1 OccluderShape 容器) / `84dbdc7141` (P15.2 三角形 raycast wire-up) / `5e527916be` (P15.3 三角形 wireframe overlay) / `dd8ada0ab5` (P15.4 シアン fill + 0.02m offset、オレンジ OBB 削除) / `ae66fffe44` (P15.5 build floater 選択中ライブ再抽出) / `409dea6f53` (P15.6 tag-guide ja/en/zh) / `44df4e93a8` (P15.7 Release Notes ja/en/zh)
 - 2026-05-11 (r13 P15.9 TP/login freeze 対策): P15 で `extractTriangles` (LLVolume → 三角形抽出) を `onObjectPropertiesReceived` から **同期実行** していたため、TP / login 直後の `ObjectPropertiesFamily` 集中到着で N 個の occluder が同フレームに登録 → N × ~50µs-2ms の主スレッド占有 → 100-200 ms 級 hitch (固まる体感) のリスクを AYA が指摘。**対策 A+B 同梱**: (A) `mPendingExtract` queue + `refreshOccluders` 末尾の per-tick budget=6 drain (100 prim バーストを ~17 tick = 0.3s に均す、pending 中は OBB-only fallback で audio 正常)、(B) 既存エントリ更新時の Desc 同値 (`scale_changed || tris.empty()` 不成立) re-extract スキップ (TP の冗長 ObjectProperties 再配信で空回り extract しない)。検証は AYA 実機ログイン + Claude による `~/.ayastorm_x64/logs/AYAstorm.log` grep で 7 prim 会場で register==drain==7 / 同 tick 最大 drain=4 / queue_remaining 即 0 を確認。検証用 hook (drain LL_INFOS) は shipping 前に除去。本書改訂: §9 本エントリ追記のみ (機能仕様変更ではない内部最適化のため §3 r13 entry / §6 / §7 は触らない)。同期して `docs/ayastorm-r13-occlusion.md` §5.5 commit log + §5.4 残リスク追記 + §5.7 設計判断ログを追加、memory `feedback_remove_verification_logs.md` 新設 (verify hook commit 前除去ルール)。commit 記録: `2887e598f7` (P15.9)
+- 2026-05-12 (本書を r13 完結章として凍結): r13 が `ayastorm-release` に push + PR 済 (AYA 実機受入 PASS 完了) で本シリーズの音響表現章が一段落したことを受け、**r14 以降は光/視覚表現章に軸を移行**する判断 (AYA)。「表現は音だけにこだわる気はなく、次は光の表現に移行したい」「サウンド系の追加はここで一旦すべて drop したい」。本書冒頭に「ステータス: 完結章」セクションを追加、§7「r14 以降での更なる発展余地」リスト (venue IR upload / VenueReverb CPU 最適化 / air abs 客観 FFT / 公開 README / アルゴリズム多択化) を **一旦保留** ラベル化 (永久 drop ではなく光表現章が一段落した後に再評価)。後続の光表現 roadmap は `docs/ayastorm-light-expression-roadmap.md` (新規)、初弾の r14 spec は `docs/ayastorm-r14-sun-dazzle.md` (新規) として別 doc で起こす。本軸転換は memory `project_ayastorm_r14_pivot_to_light.md` も参照
