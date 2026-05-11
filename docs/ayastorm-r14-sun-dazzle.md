@@ -1,8 +1,15 @@
-# AYAstorm r14: 太陽眩しさ表現 (sun disc overbright + bloom)
+# AYAstorm r14: 太陽眩しさ表現 (sun disc overbright + bloom) [DEPRECATED]
 
-**作成日**: 2026-05-12
-**対象**: AYAstorm `feature/aya-r14-sun-dazzle` (予定 / 着手前)
-**位置づけ**: r13 で完結した音響表現章の後継、光表現章の初弾。`docs/ayastorm-light-expression-roadmap.md` の §3 r14 entry を canonical な詳細化
+> **[2026-05-12 廃案]** r14 の本命は **volumetric atmosphere** に pivot しました。本書は経緯参照用として残置。
+> canonical な r14 spec: `docs/ayastorm-r14-volumetric-atmosphere.md`
+> 章全体の方向転換: `docs/ayastorm-visual-realism-roadmap.md` §1 thesis、memory `project_ayastorm_visual_realism_chapter.md`
+> pivot のきっかけ: P1 (sun disc HDR boost) が体感ゼロで unground し、AYA から「光表現章ではなく視覚的リアリティ章」「LUT/Tone では届かない」「AAA の暗がり偽装は採用しない」の章 thesis が明示されたこと
+
+---
+
+**作成日**: 2026-05-12 (廃案)
+**対象**: AYAstorm `feature/aya-r14-sun-dazzle` (廃案)
+**位置づけ**: 旧 `docs/ayastorm-light-expression-roadmap.md` の §3 r14 entry を canonical な詳細化 (両者とも廃案)
 
 > **本書の役割**: r14 個別の **計画スナップショット**。実装着手後に commit hash / 実測値を埋めていく。
 > 光表現章全体の位置づけは `docs/ayastorm-light-expression-roadmap.md` を参照。
