@@ -62,28 +62,31 @@ viewer-only の改修。配信側 / SIM 側変更なし。
 
 ### P1: 太陽輝度 boost 実装
 
-**目的**: 太陽 billboard / sky shader 出力の輝度を HDR 域に boost、tonemap 前の glow / bloom kernel に明るく拾わせる。
+**目的**: 太陽 disc 出力の **RGB と alpha** を boost し、`generateGlow` が alpha channel から halo を生成するパスを駆動する。RGB 倍率は HDR シーンバッファ (`mRT->screen`、RGBA16F) で適用するが tonemap で多くは clip される — 視覚的な眩しさの主役は **alpha boost 経由の glow halo** + tonemap 出口の飽和の組合せ (P0 調査結果、`doc/r14/sun_rendering_survey.md` §3 / §5 参照)。
 
 **設計**:
-- 既存 sun disc 出力に **倍率 sentinel** (`RenderSunDiscBoost` debug setting、default 12.0 程度) を乗算
-- boost は tonemap 前、glow buffer 入力前の HDR 値段階で適用
-- sun disc 以外 (sky 全体や太陽以外の emissive) には影響させない
-- 夜 / 日没時は太陽自体が暗いため自動的に弱まる (倍率は線形)
+- sunDiscF.glsl 末尾で `c.rgb *= sun_disc_boost; c.a = clamp(c.a * sun_disc_boost, 0.0, 1.0);` 相当を適用
+- boost は **sun disc shader 内** に閉じる (sky / cloud / 他 emissive 不可触)
+- sentinel `sun_disc_boost_enabled` で boost off にすると r13 と完全同一の絵に戻る
+- 夜 / 日没時は太陽自体が暗い / 描画されないため自動的に弱まる
+- `RenderGlow*` の既存 default は触らない (`feedback_prefer_defaults_over_config.md`、L4 リスク回避)
 
-**ファイル**:
-- `indra/newview/llvosky.{h,cpp}` あるいは sun shader (P0 で確定)
-- `indra/newview/app_settings/settings.xml` (`RenderSunDiscBoost` default 12.0、`RenderSunDiscBoostEnabled` master sentinel default true)
+**ファイル** (P0 調査で確定、`doc/r14/sun_rendering_survey.md` §6):
+- `indra/newview/app_settings/shaders/class1/deferred/sunDiscF.glsl` — `uniform float sun_disc_boost; uniform int sun_disc_boost_enabled;` 追加、`main()` 末尾の `frag_data` 出力前に boost 適用
+- `indra/newview/lldrawpoolwlsky.cpp` (`LLDrawPoolWLSky::renderHeavenlyBodies()`、line 354 周辺) — sun_shader bind 後 / draw 前に `uniform1f` / `uniform1i` plumbing
+- `indra/llrender/llshadermgr.{h,cpp}` — uniform name table に `SUN_DISC_BOOST` / `SUN_DISC_BOOST_ENABLED` を追加 (LL 流儀)
+- `indra/newview/app_settings/settings.xml` — `RenderSunDiscBoost` (F32 default 12.0) + `RenderSunDiscBoostEnabled` (Boolean default true) 追加
 
 ### P2: glow / bloom kernel 調整
 
-**目的**: 太陽輝度 boost に対して既存 glow kernel が「白くハロー状に滲む」絵になるよう default を調整。既存 RenderGlow* default 値の妥当性を確認、必要なら r14 同梱で default 微調整。
+**目的**: 太陽輝度 boost に対して既存 glow kernel が「白くハロー状に滲む」絵になるよう default を確認。**基本「何もしない」**。
 
 **設計**:
-- 既存 `RenderGlow*` 設定は触らないことを優先 (一般コンテンツの emissive 表現に影響するため)
-- 太陽専用の boost 倍率を上げる方向で表現を出す、kernel default 改変は最後の手段
-- どうしても kernel 改変が必要な場合は、デフォルト変更ではなく r14 専用の補助パラメータを追加するか、`RenderSunDiscBoost` の倍率調整で吸収
+- 既存 `RenderGlow*` 設定 (`RenderGlowStrength 0.325` / `RenderGlowWidth 1.3` / `RenderGlowIterations 2` 等) は **触らない** (`feedback_prefer_defaults_over_config.md`、L4 コンテンツ見え方変動を回避)
+- P1 の alpha boost が halo を生成しきれない場合の縮退オプションとして `RenderGlowHDR` (default false) の影響を verify、boost 倍率調整で吸収しきれない時のみ default true 候補
+- `GLOW_MIN_LUMINANCE` の 9999 ハードコード解除 (RGB 輝度ベース extract 復活) は **r15+ で再評価**、r14 では触らない (P0 §5 (B))
 
-**完了条件**: 通常の midday windlight で太陽を直視した時に、視野中心が白くハロー状に滲み、視線を逸らすと収まる絵が安定して出る。
+**完了条件**: 通常の midday windlight で太陽を直視した時に、視野中心が白くハロー状に滲み、視線を逸らすと収まる絵が安定して出る。kernel default 改変なしで成立すること。
 
 ### P3: 3 OS ビルド + 体感確認
 
@@ -139,3 +142,4 @@ r14 単独でも体感の 6 割を取りに行くスコープなので、r15/r16
 ## 7. 更新履歴
 
 - 2026-05-12: 初版作成。`docs/ayastorm-light-expression-roadmap.md` §3 r14 entry の詳細化。スコープを Layer A (sun disc HDR boost) + Layer C (既存 glow / bloom 流用) に限定、lens flare / auto-exposure / volumetric は r15+ へ持ち越し。debug settings は `RenderSunDiscBoost` (倍率、default 12.0) + `RenderSunDiscBoostEnabled` (sentinel、default true) の 2 件のみ提示。3 OS 込みで 0.5〜1 日工数の見積を継承
+- 2026-05-12 (P0 調査完了): `doc/r14/sun_rendering_survey.md` を起こし、§3 P1 の touch points を確定。主要発見: (a) sunDiscF.glsl は passthrough で boost 注入点として極めてクリーン、(b) `GLOW_MIN_LUMINANCE` が 9999 ハードコード (`pipeline.cpp:8420`) で `RenderGlowMinLuminance` 設定が dead → glow は実質「alpha channel 駆動」、boost は **alpha 経由で halo 化** が本命、(c) tonemap (`postDeferredTonemap.glsl`) は alpha を passthrough するため alpha boost が LDR 段でも生きる、(d) `generateExposure` パスが既に存在 (`mExposureMap`) → r16 (auto-exposure) は予想より短縮の可能性。P1 設計を「sunDiscF.glsl 末尾で c.rgb / c.a を boost、sentinel で完全 off 可」に書き換え、P2 を「`RenderGlow*` 既定改変ゼロ、kernel 触らない」に明文化
