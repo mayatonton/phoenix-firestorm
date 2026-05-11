@@ -9,6 +9,7 @@
 #include "fmodstudio/fmod.hpp"
 
 #include "llgl.h"
+#include "llpositionalstreammgr.h"
 #include "llrender.h"
 #include "llstring.h"
 #include "llviewerobject.h"
@@ -183,6 +184,17 @@ void LLOcclusionGeometryMgr::onObjectPropertiesReceived(const LLUUID& id,
 
     LLViewerObject* obj = gObjectList.findObject(id);
     if (!obj || obj->isDead()) return;
+
+    // r13 P14: tagged-root linksets nudge their children's Description into
+    // the cache so child occluders register without a user touch. Sim filters
+    // Description from ObjectPropertiesFamily for child prims; this select
+    // bootstrap is the same workaround [3dstream-stereo:...] speaker scan
+    // uses in evaluateLinkset. Idempotent — the helper dedups via
+    // mPendingChildDeselect, so we don't need to track scanned roots.
+    if (obj->isRoot())
+    {
+        LLPositionalStreamMgr::instance().bootstrapChildDescriptions(obj);
+    }
 
     auto it = mOccluders.find(id);
 

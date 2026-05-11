@@ -1520,6 +1520,22 @@ void LLPositionalStreamMgr::enqueuePriorityPoll(const LLUUID& id)
     mPriorityPollQueue.push_back(id);
 }
 
+void LLPositionalStreamMgr::bootstrapChildDescriptions(LLViewerObject* root_obj)
+{
+    // r13: see header. Mirror of the evaluateLinkset child-scan loop, but
+    // exposed for occlude tag bootstrap (and any future sibling system that
+    // needs a root's children's Description). The dedup in
+    // requestChildDescViaSelect (mPendingChildDeselect.try_emplace) makes
+    // repeat calls idempotent, so callers can fire on every root Desc update
+    // without throttling themselves.
+    if (!root_obj || root_obj->isDead()) return;
+    for (const auto& child : root_obj->getChildren())
+    {
+        if (!child || child->isDead()) continue;
+        requestChildDescViaSelect(child.get());
+    }
+}
+
 void LLPositionalStreamMgr::requestChildDescViaSelect(LLViewerObject* child)
 {
     // r8 F11: see header. We bypass LLSelectMgr deliberately — going through
