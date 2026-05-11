@@ -119,6 +119,18 @@ private:
                   F32& out_direct, F32& out_reverb) const;
     static bool segmentHitsOBB(const LLVector3& a, const LLVector3& b, const OBB& obb);
 
+    // r13 P15.2: OBB pre-cull → triangle-soup raycast. When shape.tris is
+    // empty (extraction skipped or LOD-evicted), falls back to segmentHitsOBB
+    // so unpopulated occluders keep working as r13 P15.1 baseline.
+    static bool segmentHitsShape(const LLVector3& a, const LLVector3& b,
+                                 const OccluderShape& shape);
+
+    // Walks the prim's LLVolume and copies triangle vertices into
+    // shape.tris in OBB-local space (scale applied). Skipped silently for
+    // prims without a volume (e.g. avatars). Triangles exceeding
+    // kMaxTrisPerOccluder cause a one-shot fallback to OBB-only.
+    static void extractTriangles(LLViewerObject* obj, OccluderShape& shape);
+
     std::map<LLUUID, OccluderShape>   mOccluders;
     std::map<FMOD::Channel*, Smoothing> mSmoothing;
     F64                               mLastTickTime = 0.0;

@@ -16,6 +16,7 @@
 #include "llviewerobjectlist.h"
 #include "llviewercontrol.h"
 #include "lltimer.h"
+#include "llvolume.h"
 #include "v3dmath.h"
 
 #include <algorithm>
@@ -42,6 +43,15 @@ namespace
     // 256 × 64 channels × 60 Hz ≈ 1 M slab tests/sec — comfortably under
     // 1 ms/sec on modern CPUs (each test is a few mul/cmp).
     constexpr int kMaxOccluders = 256;
+
+    // r13 P15.2 cap on per-occluder triangle count. Typical SL building
+    // prims tessellate to <200 tris; mesh prims can reach ~21k but that's
+    // a pathological case for occlusion (would also be a poor acoustic
+    // panel). When a prim exceeds the cap we fall back to OBB-only (leave
+    // tris empty) and warn once per registration — better than partial
+    // mesh which would produce inconsistent "some holes detected, others
+    // not" behaviour.
+    constexpr int kMaxTrisPerOccluder = 2000;
 
     LLVector3 toFloatVec(const LLVector3d& v)
     {
@@ -212,22 +222,28 @@ void LLOcclusionGeometryMgr::onObjectPropertiesReceived(const LLUUID& id,
         shape.obb.rot    = obj->getRotationRegion();
         shape.direct     = direct;
         shape.reverb     = reverb;
-        mOccluders[id]   = shape;
+        extractTriangles(obj, shape);
+        mOccluders[id]   = std::move(shape);
+        const OccluderShape& reg = mOccluders[id];
         LL_INFOS("Stream3D") << "[ayastorm:occlude] registered prim " << id
-                              << " at " << shape.obb.center
-                              << " half=" << shape.obb.half
+                              << " at " << reg.obb.center
+                              << " half=" << reg.obb.half
                               << " direct=" << direct << " reverb=" << reverb
+                              << " tris=" << reg.tris.size()
                               << " (count=" << mOccluders.size() << ")" << LL_ENDL;
     }
     else
     {
         // Existing entry — pick up Desc edits (direct/reverb) and current
-        // transform in one pass.
+        // transform in one pass. Triangles are re-extracted because Desc
+        // edits often coincide with shape edits in the build floater
+        // (build session ⇒ many path-cut / hollow tweaks).
         it->second.obb.center = toFloatVec(obj->getPositionGlobal());
         it->second.obb.half   = obj->getScale() * 0.5f;
         it->second.obb.rot    = obj->getRotationRegion();
         it->second.direct     = direct;
         it->second.reverb     = reverb;
+        extractTriangles(obj, it->second);
     }
 }
 
@@ -264,8 +280,18 @@ void LLOcclusionGeometryMgr::refreshOccluders()
             continue;
         }
         it->second.obb.center = toFloatVec(obj->getPositionGlobal());
-        it->second.obb.half   = obj->getScale() * 0.5f;
-        it->second.obb.rot    = obj->getRotationRegion();
+        const LLVector3 new_half = obj->getScale() * 0.5f;
+        const bool scale_changed = (new_half - it->second.obb.half).lengthSquared() > 1e-8f;
+        it->second.obb.half = new_half;
+        it->second.obb.rot  = obj->getRotationRegion();
+        // r13 P15.2: tris are stored in OBB-local space (scale baked in).
+        // Re-extract on scale change so they stay aligned with the
+        // refreshed half-extent. Shape edits (path cut / hollow) round
+        // through onObjectPropertiesReceived, which re-extracts there.
+        if (scale_changed)
+        {
+            extractTriangles(obj, it->second);
+        }
         ++it;
     }
 }
@@ -281,7 +307,7 @@ bool LLOcclusionGeometryMgr::firstHit(const LLVector3& a, const LLVector3& b,
     F32 pass_r = 1.f;
     for (const auto& kv : mOccluders)
     {
-        if (segmentHitsOBB(a, b, kv.second.obb))
+        if (segmentHitsShape(a, b, kv.second))
         {
             any = true;
             pass_d *= (1.f - kv.second.direct);
@@ -327,6 +353,117 @@ bool LLOcclusionGeometryMgr::segmentHitsOBB(const LLVector3& a, const LLVector3&
         if (t_min > t_max) return false;
     }
     return true;
+}
+
+namespace
+{
+    // Möller–Trumbore segment-triangle intersection. la/lb are the segment
+    // endpoints in the same local frame as v0/v1/v2 (OBB-local for our
+    // pipeline). Returns true iff the segment crosses the triangle plane
+    // strictly between the endpoints (t ∈ [0,1]). Backface-agnostic: we
+    // care about occlusion, not winding.
+    bool segmentHitsTriangle(const LLVector3& la, const LLVector3& lb,
+                             const LLVector3& v0, const LLVector3& v1, const LLVector3& v2)
+    {
+        constexpr F32 kEps = 1e-7f;
+        const LLVector3 d  = lb - la;
+        const LLVector3 e1 = v1 - v0;
+        const LLVector3 e2 = v2 - v0;
+        const LLVector3 p  = d % e2;
+        const F32 det = e1 * p;
+        if (fabsf(det) < kEps) return false;
+        const F32 inv_det = 1.f / det;
+
+        const LLVector3 tvec = la - v0;
+        const F32 u = (tvec * p) * inv_det;
+        if (u < 0.f || u > 1.f) return false;
+
+        const LLVector3 q = tvec % e1;
+        const F32 v = (d * q) * inv_det;
+        if (v < 0.f || u + v > 1.f) return false;
+
+        const F32 t = (e2 * q) * inv_det;
+        return t >= 0.f && t <= 1.f;
+    }
+}
+
+// static
+bool LLOcclusionGeometryMgr::segmentHitsShape(const LLVector3& a, const LLVector3& b,
+                                              const OccluderShape& shape)
+{
+    // OBB pre-cull rejects ~95% of mismatched (segment, occluder) pairs
+    // with a few mul/cmp. Triangle iteration only runs for the small
+    // fraction that pass.
+    if (!segmentHitsOBB(a, b, shape.obb)) return false;
+
+    // Empty tris (extraction skipped / over-cap / non-volume prim): the
+    // OBB pass already counted as a hit, preserving P15.1 OBB-only
+    // behaviour for occluders we couldn't tessellate.
+    if (shape.tris.empty()) return true;
+
+    // Transform segment to OBB-local space once, then test every triangle
+    // in the same space (tris are stored OBB-local-with-scale at populate
+    // time so we don't redo the scale per ray).
+    const LLQuaternion inv_rot = ~shape.obb.rot;
+    const LLVector3 la = (a - shape.obb.center) * inv_rot;
+    const LLVector3 lb = (b - shape.obb.center) * inv_rot;
+    for (const auto& tri : shape.tris)
+    {
+        if (segmentHitsTriangle(la, lb, tri.v0, tri.v1, tri.v2)) return true;
+    }
+    return false;
+}
+
+// static
+void LLOcclusionGeometryMgr::extractTriangles(LLViewerObject* obj, OccluderShape& shape)
+{
+    shape.tris.clear();
+    if (!obj) return;
+
+    LLVolume* vol = obj->getVolume();
+    if (!vol) return;
+
+    // Walk every face, count triangles first so we can early-out before
+    // any allocation when over the cap.
+    const S32 num_faces = vol->getNumVolumeFaces();
+    S32 total_tris = 0;
+    for (S32 f = 0; f < num_faces; ++f)
+    {
+        total_tris += vol->getVolumeFace(f).mNumIndices / 3;
+    }
+    if (total_tris == 0) return;
+    if (total_tris > kMaxTrisPerOccluder)
+    {
+        LL_WARNS_ONCE("Stream3D") << "[ayastorm:occlude] prim " << obj->getID()
+                                   << " has " << total_tris << " tris (cap "
+                                   << kMaxTrisPerOccluder << "), falling back to OBB-only"
+                                   << LL_ENDL;
+        return;
+    }
+
+    // LLVolume positions are normalised to prim shape space (typically
+    // -0.5..0.5 for a default cube). Multiplying per-axis by the world
+    // scale brings us into OBB-local space where the OBB half-extents
+    // are obb.half — same frame segmentHitsOBB tests in, so triangle
+    // and pre-cull share coordinates with zero extra transform per ray.
+    const LLVector3 scale = obj->getScale();
+    shape.tris.reserve(total_tris);
+    for (S32 f = 0; f < num_faces; ++f)
+    {
+        const LLVolumeFace& face = vol->getVolumeFace(f);
+        if (!face.mPositions || !face.mIndices) continue;
+        for (S32 i = 0; i + 2 < face.mNumIndices; i += 3)
+        {
+            const F32* p0 = face.mPositions[face.mIndices[i + 0]].getF32ptr();
+            const F32* p1 = face.mPositions[face.mIndices[i + 1]].getF32ptr();
+            const F32* p2 = face.mPositions[face.mIndices[i + 2]].getF32ptr();
+            Tri t;
+            t.v0.set(p0[0] * scale.mV[0], p0[1] * scale.mV[1], p0[2] * scale.mV[2]);
+            t.v1.set(p1[0] * scale.mV[0], p1[1] * scale.mV[1], p1[2] * scale.mV[2]);
+            t.v2.set(p2[0] * scale.mV[0], p2[1] * scale.mV[1], p2[2] * scale.mV[2]);
+            shape.tris.push_back(t);
+        }
+    }
 }
 
 void LLOcclusionGeometryMgr::applyToChannel(FMOD::Channel* channel,
