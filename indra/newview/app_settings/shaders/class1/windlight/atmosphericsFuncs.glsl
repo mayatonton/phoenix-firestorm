@@ -42,6 +42,7 @@ uniform float sun_moon_glow_factor;
 uniform float sky_sunlight_scale;
 uniform float sky_ambient_scale;
 uniform int classic_mode;
+uniform int aya_visual_realism_enabled;  // <FS:AYA r14> Visual Realism master switch
 
 float getAmbientClamp() { return 1.0f; }
 
@@ -77,6 +78,18 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
 
     // main atmospheric scattering line integral
     float density_dist = rel_pos_len * density_multiplier;
+
+    // <FS:AYA r14> altitude density: 視線終点高度に応じて空気密度を勾配化
+    // 地表近くは濃く、上空ほど薄く (指数勾配)、scale_height は max_y の半分を経験値として使用
+    // rel_pos.y は eye-space Y で、L57 の `if (abs(rel_pos.y) > max_y)` clamp が altitude として扱っているのを踏襲
+    if (aya_visual_realism_enabled > 0)
+    {
+        float altitude = max(rel_pos.y, 0.0);
+        float scale_height = max(max_y * 0.5, 1.0);  // 0-div 安全
+        float altitude_factor = exp(-altitude / scale_height);
+        density_dist *= altitude_factor;
+    }
+    // </FS:AYA>
 
     // Transparency (-> combined_haze)
     // ATI Bugfix -- can't store combined_haze*density_dist*distance_multiplier in a variable because the ati
