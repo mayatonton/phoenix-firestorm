@@ -818,6 +818,11 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     shader->uniform1f(LLShaderMgr::SKY_AMBIENT_SCALE, ambient_scale);
     shader->uniform1i(LLShaderMgr::CLASSIC_MODE, classic_mode);
 
+    // <FS:AYA r14> Visual Realism master switch — altitude density 等の物理ベース atmospherics 新経路を有効化
+    static LLCachedControl<bool> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", true);
+    shader->uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, aya_visual_realism ? 1 : 0);
+    // </FS:AYA>
+
     LLRender::sClassicMode = classic_mode;
 
     F32 probe_ambiance = getReflectionProbeAmbiance();

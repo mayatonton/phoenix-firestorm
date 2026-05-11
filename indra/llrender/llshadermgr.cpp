@@ -1316,6 +1316,7 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("sky_sunlight_scale");
     mReservedUniforms.push_back("sky_ambient_scale");
     mReservedUniforms.push_back("classic_mode");
+    mReservedUniforms.push_back("aya_visual_realism_enabled");  // <FS:AYA r14>
     mReservedUniforms.push_back("blue_horizon");
     mReservedUniforms.push_back("blue_density");
     mReservedUniforms.push_back("haze_horizon");
