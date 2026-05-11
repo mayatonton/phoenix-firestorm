@@ -71,12 +71,11 @@ viewer-only の改修。配信側 / SIM 側変更なし。
 - 夜 / 日没時は太陽自体が暗い / 描画されないため自動的に弱まる
 - `RenderGlow*` の既存 default は触らない (`feedback_prefer_defaults_over_config.md`、L4 リスク回避)
 
-**ファイル** (P0 調査で確定、P1 実装で確定値):
-- `indra/newview/app_settings/shaders/class1/deferred/sunDiscF.glsl` — `uniform float sun_disc_boost; uniform int sun_disc_boost_enabled;` 追加、`mix()` 直後で `c.rgb *= sun_disc_boost; c.a = clamp(c.a * sun_disc_boost, 0.0, 1.0);` を sentinel ガード付きで適用
-- `indra/newview/lldrawpoolwlsky.cpp` (`LLDrawPoolWLSky::renderHeavenlyBodies()`) — file-scope `static LLStaticHashedString sSunDiscBoost / sSunDiscBoostEnabled`、sun_shader bind 後 / `face->renderIndexed()` 前に `static LLCachedControl<F32/bool>` 経由で `uniform1f / uniform1i` plumbing
+**ファイル** (P0 調査で確定、`doc/r14/sun_rendering_survey.md` §6):
+- `indra/newview/app_settings/shaders/class1/deferred/sunDiscF.glsl` — `uniform float sun_disc_boost; uniform int sun_disc_boost_enabled;` 追加、`main()` 末尾の `frag_data` 出力前に boost 適用
+- `indra/newview/lldrawpoolwlsky.cpp` (`LLDrawPoolWLSky::renderHeavenlyBodies()`、line 354 周辺) — sun_shader bind 後 / draw 前に `uniform1f` / `uniform1i` plumbing
+- `indra/llrender/llshadermgr.{h,cpp}` — uniform name table に `SUN_DISC_BOOST` / `SUN_DISC_BOOST_ENABLED` を追加 (LL 流儀)
 - `indra/newview/app_settings/settings.xml` — `RenderSunDiscBoost` (F32 default 12.0) + `RenderSunDiscBoostEnabled` (Boolean default true) 追加
-
-> `indra/llrender/llshadermgr.{h,cpp}` への uniform enum 追加は **不要と判明** (P1 実装で確認): `LLGLSLShader::uniform1f / uniform1i` は `LLStaticHashedString` overload を持つため、reserved uniform table への登録ナシでも plumbing できる。enum 連動の整合性負債を回避できるためそちらを採用。
 
 ### P2: glow / bloom kernel 調整
 
