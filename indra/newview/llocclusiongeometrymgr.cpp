@@ -206,16 +206,16 @@ void LLOcclusionGeometryMgr::onObjectPropertiesReceived(const LLUUID& id,
                                   << ") reached, skipping " << id << LL_ENDL;
             return;
         }
-        OBB obb;
-        obb.center = toFloatVec(obj->getPositionGlobal());
-        obb.half   = obj->getScale() * 0.5f;
-        obb.rot    = obj->getRotationRegion();
-        obb.direct = direct;
-        obb.reverb = reverb;
-        mOccluders[id] = obb;
+        OccluderShape shape;
+        shape.obb.center = toFloatVec(obj->getPositionGlobal());
+        shape.obb.half   = obj->getScale() * 0.5f;
+        shape.obb.rot    = obj->getRotationRegion();
+        shape.direct     = direct;
+        shape.reverb     = reverb;
+        mOccluders[id]   = shape;
         LL_INFOS("Stream3D") << "[ayastorm:occlude] registered prim " << id
-                              << " at " << obb.center
-                              << " half=" << obb.half
+                              << " at " << shape.obb.center
+                              << " half=" << shape.obb.half
                               << " direct=" << direct << " reverb=" << reverb
                               << " (count=" << mOccluders.size() << ")" << LL_ENDL;
     }
@@ -223,11 +223,11 @@ void LLOcclusionGeometryMgr::onObjectPropertiesReceived(const LLUUID& id,
     {
         // Existing entry — pick up Desc edits (direct/reverb) and current
         // transform in one pass.
-        it->second.center = toFloatVec(obj->getPositionGlobal());
-        it->second.half   = obj->getScale() * 0.5f;
-        it->second.rot    = obj->getRotationRegion();
-        it->second.direct = direct;
-        it->second.reverb = reverb;
+        it->second.obb.center = toFloatVec(obj->getPositionGlobal());
+        it->second.obb.half   = obj->getScale() * 0.5f;
+        it->second.obb.rot    = obj->getRotationRegion();
+        it->second.direct     = direct;
+        it->second.reverb     = reverb;
     }
 }
 
@@ -263,9 +263,9 @@ void LLOcclusionGeometryMgr::refreshOccluders()
             it = mOccluders.erase(it);
             continue;
         }
-        it->second.center = toFloatVec(obj->getPositionGlobal());
-        it->second.half   = obj->getScale() * 0.5f;
-        it->second.rot    = obj->getRotationRegion();
+        it->second.obb.center = toFloatVec(obj->getPositionGlobal());
+        it->second.obb.half   = obj->getScale() * 0.5f;
+        it->second.obb.rot    = obj->getRotationRegion();
         ++it;
     }
 }
@@ -281,7 +281,7 @@ bool LLOcclusionGeometryMgr::firstHit(const LLVector3& a, const LLVector3& b,
     F32 pass_r = 1.f;
     for (const auto& kv : mOccluders)
     {
-        if (segmentHitsOBB(a, b, kv.second))
+        if (segmentHitsOBB(a, b, kv.second.obb))
         {
             any = true;
             pass_d *= (1.f - kv.second.direct);
@@ -493,12 +493,13 @@ void LLOcclusionGeometryMgr::renderDebug() const
         if (!obj || obj->isDead()) continue;
         const LLVector3 center = obj->getPositionAgent();
 
-        const OBB& obb = kv.second;
+        const OccluderShape& shape = kv.second;
+        const OBB& obb = shape.obb;
         // Colour scales with direct: orange (registered) → red (heavy).
         // direct is already clamped to [0,1] by the parser. Fill alpha
         // ~25 % so multiple overlapping OBBs stay individually legible.
         const F32 cr = 1.f;
-        const F32 cg = 0.6f * (1.f - obb.direct);
+        const F32 cg = 0.6f * (1.f - shape.direct);
         const F32 cb = 0.f;
         gGL.color4f(cr, cg, cb, 0.25f);
 
@@ -532,9 +533,10 @@ void LLOcclusionGeometryMgr::renderDebug() const
         if (!obj || obj->isDead()) continue;
         const LLVector3 center = obj->getPositionAgent();
 
-        const OBB& obb = kv.second;
+        const OccluderShape& shape = kv.second;
+        const OBB& obb = shape.obb;
         const F32 cr = 1.f;
-        const F32 cg = 0.6f * (1.f - obb.direct);
+        const F32 cg = 0.6f * (1.f - shape.direct);
         const F32 cb = 0.f;
         gGL.color4f(cr, cg, cb, 1.f);
 

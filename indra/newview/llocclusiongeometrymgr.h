@@ -24,6 +24,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 class LLViewerObject;
 
@@ -69,13 +70,38 @@ public:
     void renderDebug() const;
 
 private:
+    // Bounding OBB in world (region-relative) space. Cheap pre-cull: a
+    // segment that misses the box can never hit any triangle inside it.
     struct OBB
     {
         LLVector3    center;
         LLVector3    half;
         LLQuaternion rot;
-        F32          direct = 0.7f;  // set3DOcclusion direct factor
-        F32          reverb = 0.5f;  // set3DOcclusion reverb factor
+    };
+
+    // Triangle in prim-local space (vertices delivered by LLVolume::getVolumeFace,
+    // typically within -0.5..0.5 before the prim's scale is applied). Stored
+    // per-occluder so segmentHits can do triangle-soup raycast inside the OBB
+    // pre-cull pass; populated in P15.2 by reading LLVolume::getVolumeFace.
+    struct Tri
+    {
+        LLVector3 v0;
+        LLVector3 v1;
+        LLVector3 v2;
+    };
+
+    // r13 P15.1: extended container — bounding OBB (pre-cull) + (P15.2)
+    // triangle list reflecting the prim's actual tessellated shape
+    // (path cut / hollow / sculpt / mesh) + material (direct / reverb
+    // factors fed to FMOD::Channel::set3DOcclusion). P15.1 ships the
+    // new layout with tris empty, preserving the OBB-only raycast
+    // semantics so the refactor is a behaviour-preserving rename.
+    struct OccluderShape
+    {
+        OBB              obb;
+        std::vector<Tri> tris;
+        F32              direct = 0.7f;  // set3DOcclusion direct factor
+        F32              reverb = 0.5f;  // set3DOcclusion reverb factor
     };
 
     // Per-channel ramp state. Smooths transitions so a door opening / closing
@@ -93,7 +119,7 @@ private:
                   F32& out_direct, F32& out_reverb) const;
     static bool segmentHitsOBB(const LLVector3& a, const LLVector3& b, const OBB& obb);
 
-    std::map<LLUUID, OBB>             mOccluders;
+    std::map<LLUUID, OccluderShape>   mOccluders;
     std::map<FMOD::Channel*, Smoothing> mSmoothing;
     F64                               mLastTickTime = 0.0;
     F32                               mTickDt = 0.f;
