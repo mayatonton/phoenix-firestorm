@@ -50,6 +50,10 @@ extern bool gCubeSnapshot;
 static LLStaticHashedString sCamPosLocal("camPosLocal");
 static LLStaticHashedString sCustomAlpha("custom_alpha");
 
+// AYAstorm r14: sun disc HDR boost uniforms (see app_settings/shaders/.../sunDiscF.glsl)
+static LLStaticHashedString sSunDiscBoost("sun_disc_boost");
+static LLStaticHashedString sSunDiscBoostEnabled("sun_disc_boost_enabled");
+
 static LLGLSLShader* cloud_shader = NULL;
 static LLGLSLShader* sky_shader   = NULL;
 static LLGLSLShader* sun_shader   = NULL;
@@ -405,6 +409,12 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
 
                 sun_shader->uniform4fv(LLShaderMgr::DIFFUSE_COLOR, 1, color.mV);
                 sun_shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
+
+                // AYAstorm r14: sun disc HDR boost
+                static LLCachedControl<F32>  sun_disc_boost(gSavedSettings, "RenderSunDiscBoost", 12.0f);
+                static LLCachedControl<bool> sun_disc_boost_enabled(gSavedSettings, "RenderSunDiscBoostEnabled", true);
+                sun_shader->uniform1f(sSunDiscBoost, (F32)sun_disc_boost);
+                sun_shader->uniform1i(sSunDiscBoostEnabled, sun_disc_boost_enabled ? 1 : 0);
 
                 face->renderIndexed();
 
