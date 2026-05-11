@@ -37,6 +37,12 @@ GitHub release ページに貼り付ける用の文案。r13 は r12.1 (= r10→
 
 - **起動時 OS unresponsive dialog の根本対策** (commits `f336d43abc` / `5c3487ff06`): r11 P10 で導入した URL 事前解決 (libcurl HEAD pre-resolve) が `https://` URL に対して同期 3 秒待機し、login 直後 N 個の `[3dstream:url=https://…]` タグ付き prim が同時到着するシーンで N × 3s ブロック → OS「応答なし」dialog 発火 → の連鎖を起こしていた件を、**完全非同期 worker thread 経由 API** (`LLStream3DUrlResolve::submit/poll/cancel/shutdown`) に作り直して根治。main thread の curl 同期ブロックは完全消滅。詳細 → 実装記録 `docs/ayastorm-r13-occlusion.md` §5.4
 - **chat font live-apply fix** (`d66bdb74fc`): LL-style chat (FS 旧式表示) で `ChatFontSize` / `PlainTextChatHistory` の変更が次の発話まで反映されない不具合を修正。**3dstream とは独立した chat UI 修正** で、occlusion 系の作業中に併発したものを cherry-pick で同梱。
+- **V3 skin の on-screen chat console 初期表示揃え** (`617716ced8`): V3 skin だけ `FSUseNearbyChatConsole` の default が `0` で初期 OFF になっていたのを他 skin (firestorm / phoenix / text / hybrid) と揃えて `1` (= 初期 ON) に統一。新規インストール / skin 切替時の挙動が他 skin と一貫します。
+
+### r13 同梱の独立機能追加
+
+- **`[parcelhide]` 高度ゲート** (`1dfa52d0e9`): parcel description のタグを `[parcelhide:{altitude:1000-2000,3000-4000}]` のように書くと、自分の高度 (Z) が指定範囲のいずれかに入っているときだけ非表示を発火させられます。両端 inclusive、ハイフン区切り、カンマ区切りで複数範囲。撮影用途の skybox 階だけ非表示にする等の運用が可能。`parcelhide` 単独 (引数なし) の従来動作はそのまま。
+- **他住民所有オブジェクトの IM を一括無視 (`FSIgnoreObjectIM`)** (`e99d7c9abf`): ベンダー広告 / 釣り告知など、他住民が rez したオブジェクトからの IM を黙って捨てるグローバルスイッチ。**自分が所有する HUD / rezzer からの IM は素通り** (`permYouOwner()` 判定)。Preferences → Notifications → People にチェックボックスを追加、default OFF。
 
 ### 既存配置の扱い
 
@@ -65,3 +71,4 @@ GitHub release ページに貼り付ける用の文案。r13 は r12.1 (= r10→
 - r13 仕様: `doc/spec_obb_occlusion.md`
 - r13 実装記録 + 設計判断ログ: `docs/ayastorm-r13-occlusion.md`
 - ロードマップ: `docs/ayastorm-stream3d-roadmap.md`
+- 描画パフォーマンス調査メモ (議論用たたき台): `docs/ayastorm-render-perf-survey.md` (`33c3afaf62`) — LL 本体 + Firestorm + AYAstorm 独自層の描画ホットスポットを横串で俯瞰した観測ノート。r13 の機能ではなく今後の改修議論用

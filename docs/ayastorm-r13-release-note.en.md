@@ -37,6 +37,12 @@ Details → [tag-guide §16.6–§16.8](../doc/3dstream-tag-guide.en.md#166-dist
 
 - **Startup OS-unresponsive dialog root-cause fix** (commits `f336d43abc` / `5c3487ff06`): the URL pre-resolve introduced in r11 P10 (libcurl HEAD pre-resolve) was a **synchronous 3-second block on `https://` URLs**. Right after login, N prims with `[3dstream:url=https://…]` arriving in the same frame produced N × 3s of main-thread block → the OS "Not Responding" dialog. The path is rewritten as a **fully async worker-thread API** (`LLStream3DUrlResolve::submit/poll/cancel/shutdown`); the main-thread curl sync block is gone. Details → impl record `docs/ayastorm-r13-occlusion.md` §5.4
 - **Chat font live-apply fix** (`d66bdb74fc`): on LL-style chat (FS legacy display), `ChatFontSize` / `PlainTextChatHistory` changes failed to take effect until the next utterance. Fixed. **Independent of the 3dstream paths**, picked up via cherry-pick because it surfaced during the occlusion work.
+- **V3 skin on-screen chat console default alignment** (`617716ced8`): only V3 skin had `FSUseNearbyChatConsole` defaulting to `0` (initially off); aligned with the other skins (firestorm / phoenix / text / hybrid) to default to `1` (initially on). Fresh installs and skin switches now behave consistently across skins.
+
+### Independent features bundled with r13
+
+- **`[parcelhide]` altitude gate** (`1dfa52d0e9`): writing `[parcelhide:{altitude:1000-2000,3000-4000}]` in a parcel description fires the hide only when your Z (altitude) is inside one of the listed ranges. Both endpoints inclusive, hyphen-separated, comma-separated for multiple ranges. Use cases include hiding only a specific skybox floor for photo work. The legacy bare `parcelhide` (no argument) behaviour is unchanged.
+- **Ignore IMs from other residents' objects (`FSIgnoreObjectIM`)** (`e99d7c9abf`): a global switch that silently drops IMs from objects rezzed by other residents (vendor ads, fishing announcements, etc.). **IMs from objects you own (HUDs, your own rezzers) pass through** (`permYouOwner()` check). A checkbox is added under Preferences → Notifications → People; default off.
 
 ### Existing placements
 
@@ -65,3 +71,4 @@ The following are **not "yet to come"** — they are explicit decisions to keep 
 - r13 spec: `doc/spec_obb_occlusion.md`
 - r13 implementation record + design rationale: `docs/ayastorm-r13-occlusion.md`
 - Roadmap: `docs/ayastorm-stream3d-roadmap.md`
+- Rendering-performance survey note (discussion draft): `docs/ayastorm-render-perf-survey.md` (`33c3afaf62`) — a cross-layer observation note over LL core + Firestorm + AYAstorm rendering hotspots. Not an r13 feature; bundled as a discussion baseline for future work.

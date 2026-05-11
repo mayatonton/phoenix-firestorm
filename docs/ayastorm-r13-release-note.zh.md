@@ -37,6 +37,12 @@
 
 - **启动时 OS"未响应"对话框的根本修复** (commits `f336d43abc` / `5c3487ff06`): r11 P10 引入的 URL 事前解析 (libcurl HEAD pre-resolve) 在 `https://` URL 上是 **同步 3 秒阻塞**。登录后大量 `[3dstream:url=https://…]` 标签图元同一帧到达时会引起 N × 3s 主线程阻塞 → OS"未响应"对话框。本版改写为 **完全异步 worker-thread API** (`LLStream3DUrlResolve::submit/poll/cancel/shutdown`)，主线程的 curl 同步阻塞彻底消失。详情 → 实现记录 `docs/ayastorm-r13-occlusion.md` §5.4
 - **chat 字体实时应用修复** (`d66bdb74fc`): LL 风格 chat (FS 旧式显示) 下 `ChatFontSize` / `PlainTextChatHistory` 改动直到下次发言才生效的问题已修。**与 3dstream 经路无关** 的 chat UI 修复，在 occlusion 工作期间一并 cherry-pick 同梱。
+- **V3 皮肤 on-screen chat console 初始显示对齐** (`617716ced8`): 仅 V3 皮肤的 `FSUseNearbyChatConsole` 默认值为 `0` (初始关闭)，本版对齐其他皮肤 (firestorm / phoenix / text / hybrid) 改为 `1` (初始开启)。全新安装与皮肤切换时的行为现在跨皮肤一致。
+
+### r13 同梱的独立新功能
+
+- **`[parcelhide]` 高度门** (`1dfa52d0e9`): 在 parcel description 中写入 `[parcelhide:{altitude:1000-2000,3000-4000}]` 后，仅当自身高度 (Z) 落入任一指定范围时才触发隐藏。两端 inclusive，连字符分隔，多范围以逗号分隔。例如只对特定 skybox 楼层启用隐藏 (摄影用途)。无参数的传统 `parcelhide` 行为保持不变。
+- **一键忽略其他住民物体的 IM (`FSIgnoreObjectIM`)** (`e99d7c9abf`): 全局开关，把其他住民 rez 的物体 (例如商家广告 / 钓鱼广播) 发来的 IM 静默丢弃。**自己拥有的 HUD / rezzer 发出的 IM 不受影响** (依据 `permYouOwner()` 判定)。在 Preferences → Notifications → People 中新增勾选项，default 关闭。
 
 ### 既有布置的处理
 
@@ -65,3 +71,4 @@
 - r13 规格: `doc/spec_obb_occlusion.md`
 - r13 实现记录 + 设计判断: `docs/ayastorm-r13-occlusion.md`
 - 路线图: `docs/ayastorm-stream3d-roadmap.md`
+- 渲染性能调查笔记 (讨论草稿): `docs/ayastorm-render-perf-survey.md` (`33c3afaf62`) — 跨 LL 本体 + Firestorm + AYAstorm 的渲染热点观测笔记。并非 r13 功能，作为今后改修讨论的基线一并随版同梱。
