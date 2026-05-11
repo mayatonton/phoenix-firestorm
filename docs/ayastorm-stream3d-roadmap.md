@@ -36,7 +36,8 @@
 │ ・FMOD 既定: ILD のみ (ITD なし)           │
 │ ・lite-HRTF: ITD + ILD shadow + air abs    │ ← r11
 │ ・venue convolution reverb (9 種 IR)       │ ← r11
-│ ・SOFA per-source HRTF / Steam Audio       │ ← r13+
+│ (SOFA per-source HRTF / Steam Audio 物理   │
+│  シミュは 2026-05-11 議論で永久 drop)      │
 └────────────────────────────────────────────┘
                   ▲
 ┌──────── Layer 0: SOURCE (整形) ────────────┐
@@ -137,7 +138,7 @@
 - 主要変更:
   - **新規 mgr クラス** `LLOcclusionGeometryMgr` (`indra/newview/llocclusiongeometrymgr.{h,cpp}` 新設): タグ parse + OBB レジストリ + 毎 tick 全件 transform 追従 + segment vs OBB slab test + `Channel::set3DOcclusion` + per-speaker `LOWPASS_SIMPLE` cutoff の同時適用を専担、`LLPositionalStreamMgr` と完全独立な singleton
   - **会場運営タグ** `[ayastorm:occlude]` 1 種のみ追加: 引数なしは hardcoded default (direct 0.7 / reverb 0.5)、`[ayastorm:occlude{direct:N}{reverb:N}]` で per-prim 個別値を上書き可。`[ayastorm:door]` 専用タグは設けない (`refreshOccluders` の毎 tick 全件追従で扉動作も成立)
-  - **形状近似は OBB 単独で決め打ち** (sphere/cylinder/torus/sculpt/mesh も box 近似): 建築用途の 98% が完全一致 or 軽微なズレで済む。r14+ Steam Audio で形状特化近似を再検討
+  - **形状近似は OBB 単独で決め打ち** (sphere/cylinder/torus/sculpt/mesh も box 近似): 建築用途の 98% が完全一致 or 軽微なズレで済む。形状特化近似が必要になった段階で viewer 側 mesh raycast 経路を改めて検討 (Steam Audio による回折/反射/共鳴の物理シミュは 2026-05-11 議論で永久 drop、SOFA per-source HRTF も同日永久 drop)
   - **occlusion 値は default + per-prim override の 2 層** (material 表は採用しない): `LL_MCODE_*` → preset 写像は実機聴感の根拠が薄く、tag-guide で推奨セット (石壁 0.9/0.7 / 木壁 0.6/0.4 / ガラス 0.3/0.2) を提示する運用に振る
   - **lifecycle**: タグ付与は `onObjectPropertiesReceived` で OBB 登録、`refreshOccluders` が毎 tick 全件 `getPositionGlobal` / `getRotationRegion` / `getScale` を再評価して center/half/rot を上書き、消えた prim を drop。扉のような動的プリムも同経路で自動追従
   - **適用先音源**: 3D stream prim (r5-r12 系) + `llPlaySound` (オブジェクト効果音、残工程で SFX channel へ visitor 経路拡張)。parcel music (位置を持たない 2D) と voice (Vivox/WebRTC、別 audio engine) は対象外
@@ -258,9 +259,9 @@
 
 | ID | 内容 | 対象 |
 |---|---|---|
-| RR1 | Steam Audio + FMOD Studio 2.02 の Linux 動作確認が薄い領域。詰まるとリリース全体停止 | r14+ (r11/r12/r13 では Steam Audio 不採用) |
-| RR2 | KU100.sofa など個人 SOFA の入手元によっては再配布禁止。viewer 同梱可否を要調査 | r14+ (r11/r12/r13 では SOFA 不採用) |
-| RR3 | 16 spk × HRTF 畳み込み × 4 stream 並走で CPU 想定超なら DSP プールや音源数制限が必要 | r14+ |
+| ~~RR1~~ | ~~Steam Audio + FMOD Studio 2.02 の Linux 動作確認が薄い領域。詰まるとリリース全体停止~~ | **解消 (2026-05-11)**: Steam Audio integration / 回折・反射・共鳴の物理シミュは永久 drop。反射/共鳴は r11 convolution venue reverb (9 IR) で先取り表現済、回折は r13 OBB occlusion の lowpass+減衰で知覚的に近似。3 OS binary 配布負債 + engine 依存をゼロに戻す |
+| ~~RR2~~ | ~~KU100.sofa など個人 SOFA の入手元によっては再配布禁止。viewer 同梱可否を要調査~~ | **解消 (2026-05-11)**: SOFA per-source HRTF / 個人 HRTF は永久 drop。r11 lite-HRTF (ITD + ILD shadow + air abs) で AYAstorm の目指す音響リアリティ閾値は越えた、CPU 高 × 個人測定済ユーザ限定の ROI 薄、再配布ライセンス調査負債を回避 |
+| ~~RR3~~ | ~~16 spk × HRTF 畳み込み × 4 stream 並走で CPU 想定超なら DSP プールや音源数制限が必要~~ | **解消 (2026-05-11)**: SOFA per-source HRTF を永久 drop した結果として消失 (r11 lite-HRTF は per-channel × ITD/ILD shadow/air abs のみで畳み込みなし、CPU 軽量) |
 | RR4 | r8 F3 で N-track ring 汎用化を怠ると r10 で再設計コスト発生 (5-7 日) | r8 → r10 (回避済) |
 | RR5 | 配信側コミュニティの Icecast 移行が進まないと r10/r11 の価値が活かしきれない | r10 (運用面) |
 | RR6 | r11 P1 で Stream3D ChannelGroup 分離後、master volume / mute / 全体 setVolume が Stream3D group に伝播しない → 縮退 C (group 分離撤回 + per-channel addDSP) | r11 (実機検証で回避済) |
@@ -287,10 +288,11 @@
 6. **r12 を「stereo upmix のみ」に絞り、SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air absorption 客観 FFT は r13+ へ降格** → r12 工数を 4-8 週 → 1-2 週へ大幅圧縮、配布負債ゼロ、r10/r11 投資の元を取る ROI 最大 [採用、2026-05-07 議論で確定]
 7. **r12 アルゴリズムを DPL2 系 matrix decode + 帯域分離で決め打ち** (Logic 7 / SRS / ML 系は r13+) → 配信者にも listener にも選ばせない (= 表現の不確定性を増やさない、r5 / r11 流儀)、実装コスト最小化 [採用]
 8. **r12 配信者タグは `{upmix:on|off}` の 1 種のみ**、debug settings は sentinel + 微調整 3 件で計 4 件 → タグ多択化を回避、r11 と同等の改修コスト感に収める [採用]
-9. **r13 形状近似を OBB 単独で決め打ち** (sphere/cylinder/torus も box 近似、形状特化近似は r14+): 建築用途の 98% で十分、実装コスト最小、r14+ Steam Audio で OBB 基盤を流用可。配信者にも会場運営にも形状モードを選ばせない [採用、2026-05-10 議論で確定]
+9. **r13 形状近似を OBB 単独で決め打ち** (sphere/cylinder/torus も box 近似、形状特化近似は r14+): 建築用途の 98% で十分、実装コスト最小。配信者にも会場運営にも形状モードを選ばせない [採用、2026-05-10 議論で確定。当初は「r14+ Steam Audio で OBB 基盤を流用可」を根拠の一つにしていたが、Steam Audio は 2026-05-11 議論で永久 drop (項 13)。OBB レジストリ基盤は r14+ で viewer 側 mesh raycast 経路に流用する形に変更]
 10. **r13 を「OBB タグベース遮蔽 + chat font 同梱」のみに絞り、Steam Audio / SOFA / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT は r14+ へ降格** → r13 工数を 数週 → 1-2 週に大幅圧縮、配布負債ゼロ、SL viewer 史上初の空間音響遮蔽機能を最短で出荷 [採用、2026-05-10 議論で確定]
 11. **r13 chat font live-apply fix を同梱**: 単独 release を切るほどではないバグ修正は次の planned release の train に乗せる方針。`feature/ll-chat-livetune-font-plaintext` (commit 2689a35f8f) を r13 にマージ、独立リリース工数 (verify / release-note / 3 OS build) を節約 [採用]
 12. **r13 タグは `[ayastorm:occlude]` 1 種のみ** (bare で hardcoded default、`{direct:N}{reverb:N}` で per-prim override)、debug settings は既出荷 2 件 (`Stream3DOcclusionRampMs` / `Stream3DShowOccluders`) + 残工程追加 2 件 (`Stream3DOcclusion` master sentinel + `Stream3DOccluderRange` 64m range cull) で計 4 件。`[ayastorm:door]` 専用タグ + material 表 + `*DirectGain`/`*ReverbGain`/`OccluderMaxCount` 設定化は永久 drop (`refreshOccluders` 毎 tick 全件追従 / tag-guide 推奨セット / per-prim タグ override / `kMaxOccluders=256` hardcode で代替)。`[ayastorm:...]` プレフィクスで viewer 物理タグ系統を `[3dstream...]` 配信タグ系統と分離 [採用、2026-05-11 final scope 確定]
+13. **SOFA per-source HRTF / Steam Audio integration / 回折・反射・共鳴の物理シミュ / 個人 HRTF を r14+ 候補から永久 drop** → r14+ の対象を「形状特化近似 viewer 側 mesh raycast / VenueReverb CPU 最適化 / 公開 README / air abs 客観 FFT / venue IR ユーザアップロード / アルゴリズム多択化」に絞り込む。根拠: (a) r11 lite-HRTF (ITD + ILD shadow + air abs) で AYAstorm の目指す音響リアリティ閾値は越えた、(b) 反射/共鳴は r11 convolution venue reverb (9 IR) で先取り表現済、回折は r13 occlusion の lowpass+減衰で知覚的に近似、(c) Steam Audio engine の存在意義 (SOFA も drop した今) もほぼ消失、(d) 3 OS binary 配布負債 / engine 依存 / listener UI 増殖 / 再配布ライセンス調査負債をゼロに戻す。物理シミュは「reverb 拡張で目的達成を試したあとの『さらに』段階」に再検討 [採用、2026-05-11 議論で確定]
 
 ---
 
@@ -306,7 +308,8 @@ r7 (done)
                       └→ r12 main (完了 PR #46)
                            └→ r12.1 (完了 PR #52)
                                 └→ r13 (current — OBB occlusion + chat font 同梱)
-                                     └→ r14+ (Steam Audio / SOFA per-source HRTF / 形状特化近似 / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air absorption 客観 FFT)
+                                     └→ r14+ (形状特化近似 viewer 側 mesh raycast / VenueReverb CPU 最適化 / 公開 README / air absorption 客観 FFT / venue IR ユーザアップロード / アルゴリズム多択化)
+                                          ※ Steam Audio (回折/反射/共鳴の物理シミュ) と SOFA per-source HRTF / 個人 HRTF は 2026-05-11 議論で永久 drop
 ```
 
 - **r8 → r10**: F3 の N-track ring 汎用化に強く依存
@@ -320,7 +323,7 @@ r7 (done)
   - r13 の `LLOcclusionGeometryMgr` は `LLPositionalStreamMgr` (r5-r12 系) と完全独立な singleton、両者の責務境界は parser から完全に分離
   - 既存 r5-r12 配置は occluder タグなしの環境で完全互換 (= タグ未指定なら従来動作)
   - chat font live-apply fix (commit 2689a35f8f) は occlusion 機能と独立だが、r13 train に同梱
-- **r13 → r14+**: r13 で確立した geometry 登録基盤 (タグ parser / OBB 抽出 / UUID→OBB レジストリ map / `refreshOccluders` 毎 tick 全件追従 lifecycle) は Steam Audio engine がそのまま入力として受け取れる構造で実装。r14 で「viewer 側 raycast → Steam Audio」への置換は engine 1 点のみで、parser / 抽出 / lifecycle は流用可能
+- **r13 → r14+**: r13 で確立した geometry 登録基盤 (タグ parser / OBB 抽出 / UUID→OBB レジストリ map / `refreshOccluders` 毎 tick 全件追従 lifecycle) は、r14+ で形状特化近似 (mesh prim の実 triangle 利用、viewer 側 mesh raycast 経路) を導入する際にも parser / 抽出 / lifecycle はそのまま流用可能。raycast 内部の geometry 表現 (OBB → triangle mesh) のみ差し替える構造。Steam Audio による物理シミュ経路 (回折/反射/共鳴) は永久 drop で、r13 OBB 基盤を Steam Audio に渡す計画は廃止 (memory `project_ayastorm_r13_obb_occlusion.md` 参照)
 
 ---
 
@@ -358,15 +361,18 @@ r13 完成時の更なる獲得 — **SL 世界の物理ジオメトリが音を
 
 r14 以降での更なる発展余地:
 
-- Steam Audio integration (回折 / 反射 / 共鳴の物理シミュレーション、r13 OBB 基盤を流用)
-- 形状特化近似 (sphere → icosahedron、cylinder → 16-prism 等) / mesh prim の実 triangle 利用
-- per-source SOFA HRTF (個人 SOFA で上下/前後の曖昧性解消、KU100 等)
+- 形状特化近似 (sphere → icosahedron、cylinder → 16-prism 等) / mesh prim の実 triangle 利用 (viewer 側 mesh raycast 経路、r13 OBB レジストリ基盤を流用)
 - venue IR ユーザアップロード UI / dynamic venue (位置依存残響)
 - VenueReverb CPU 最適化 (NUPC、hall_medium 以上の +8〜10pp 低減)
 - air absorption 客観 FFT 測定 (r11 P12 で主観 PASS、客観未実施)
-- 個人 HRTF measurement / personalization
 - 公開 README / changelog 一括開示 (r8〜r13 機能成熟後)
 - アルゴリズム多択化 (Logic 7 / SRS / ML 系 upmix の聴感ベース評価)
+
+**永久 drop (2026-05-11 確定)**:
+
+- ~~Steam Audio integration (回折 / 反射 / 共鳴の物理シミュレーション)~~ — 反射/共鳴は r11 convolution venue reverb (9 IR) で先取り表現済、回折は r13 occlusion の lowpass+減衰で知覚的に近似。まず reverb 拡張で目的達成を試すべきで、物理シミュは「さらに」段階に再検討。Steam Audio engine の存在意義 (SOFA も drop した今) もほぼ消失、3 OS binary 配布負債と engine 依存をゼロに戻す
+- ~~per-source SOFA HRTF (個人 SOFA、KU100 等)~~ — r11 lite-HRTF (ITD + ILD shadow + air abs) で AYAstorm の目指す音響リアリティ閾値は越えた、CPU 高 × 個人測定済ユーザ限定の ROI 薄、再配布ライセンス調査負債回避、listener UI 増殖を避ける
+- ~~個人 HRTF measurement / personalization~~ — SOFA per-source HRTF を永久 drop した結果として消失
 
 ---
 
@@ -389,3 +395,4 @@ r14 以降での更なる発展余地:
 - 2026-05-10: r12 main / r12.1 完了 (PR #46 / PR #52) を反映。**r13 案を旧 r13+ basket (SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT) から「OBB タグベース遮蔽 (フラグシップ) + chat font live-apply 同梱」に再定義**、Steam Audio / SOFA / 形状特化近似 / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT は **r14+ に降格**。ロードマップ題名を `r7 → r12` から `r7 → r13` に拡張、Layer 3 (空間ジオメトリ) を §2 に追加 (4 層モデルへ)、§3 r13 entry 新設 (OBB occlusion + 会場運営主導モデル + chat font 同梱)、§4 r13 工数行 (5-7 日 / 1-2 週) と内訳追加、§5 RR1-3 を r14+ ラベル変更 + RR14-18 (mesh OBB ズレ / material 表 tuning / door 60Hz update / rapid teleport / 大規模建造物 prim scan) を r13 リスクとして追加、§5 工数圧縮 9-12 を追加 (OBB 単独決め打ち / Steam Audio r14+ 降格 / chat font 同梱 / タグ多択化回避)、§6 依存関係に r13 → r14+ を追加 (geometry 登録基盤の Steam Audio 流用)、§7 ユーザ価値に r13 完成時 SL 史上初空間音響遮蔽 + 会場運営主導モデル新規導入を追加、r14 以降を r13 以降から繰り下げ。仕様詳細は `doc/spec_obb_occlusion.md` / `docs/ayastorm-r13-occlusion.md` 参照。役割分担 (会場運営 vs 配信者の直交性) は memory `project_venue_occlusion_orthogonal.md`、r13 フラグシップ + 同梱 fix 方針は memory `project_ayastorm_r13_obb_occlusion.md` 参照
 - 2026-05-10 (r13 spike 着手): 同梱 `libfmod 2.03.07` の `System::createGeometry` が機能しない (`FMOD_ERR_INTERNAL`、memory `project_fmod_geometry_unavailable.md`) ため FMOD geometry 経路を放棄、**listener-source segment vs OBB の自前 slab test を viewer 側で実装**して `Channel::set3DOcclusion` に直接適用する経路に pivot。spike 出荷スコープは `[ayastorm:occlude]` 単独タグ + per-speaker `LOWPASS_SIMPLE` DSP (壁越し muffled 聴感、22kHz→300Hz exponential cutoff) + 250ms ramp + debug overlay (View メニュー `Alt+Shift+O`)。`[ayastorm:door]` / material 表 / debug settings 4 件のうち 3 件 / O2〜O14 通し検証は **r13.x 持ち越し**。同 commit に **起動時 OS unresponsive dialog 緩和 (A+B、drain rate-limit + curl timeout 短縮)** を同梱、根本対応 (curl 非同期化、C) は別 workstream 着手予定。実装詳細は `docs/ayastorm-r13-occlusion.md` §5 を canonical とする。commit 記録: `66ddab6eb4` (P0 spec/工程資料/roadmap 初版) / `58c5ad7c14` (実装本体 + A+B 緩和) / `6fcd078250` (View メニュー + `Alt+Shift+O`)
 - 2026-05-11 (r13 final scope 確定): spike 結果を踏まえて r13 出荷スコープを最終確定。**永久 drop**: `[ayastorm:door]` 専用タグ (`refreshOccluders` 毎 tick 全件追従で吸収) / material 表 (`LL_MCODE_*` → preset 写像、聴感根拠薄、tag-guide 推奨セットで代替) / `Stream3DOcclusionDirectGain` / `Stream3DOcclusionReverbGain` / `Stream3DOccluderMaxCount` 設定化 (per-prim タグ `{direct:N}{reverb:N}` override + hardcoded `kMaxOccluders=256` で代替)。**r13 残工程**: per-prim override args parser / `llPlaySound` occlusion 適用 / `Stream3DOcclusion` master sentinel + `Stream3DOccluderRange` 64m + `kMaxOccluders` 256 化 / 検証 O1〜O12 / chat font cherry-pick (`d66bdb74fc`、元 `2689a35f8f`) / tag-guide ja/en/zh 加筆 / Release Notes。**起動 unresponsive dialog 根本対策 (C)** は別 workstream で完了 (`f336d43abc` = URL pre-resolve 非同期 worker / `5c3487ff06` = X11 `#define Status int` 罠回避、memory `project_linux_xlib_status_define_trap.md`)。本書改訂: §2 ASCII 図の Layer 3 を viewer 側 raycast + per-prim タグ書式に更新、§3 r13 entry を final scope に書き換え、§4 r13 内訳を「spike 完了済 (~3 日) / 残工程 (~3-4 日)」二段構成に再編、§4 工数表の r13 実績欄を "spike 完了 / 残工程進行中" に変更、§5 RR15 を default 値 + tag-guide 推奨セット tuning に書き換え、§5 RR16 (door 60Hz update) を解消マーク (`refreshOccluders` 一本化)、§5 RR17 を viewer 側 OBB レジストリ参照に修正、§5 工数圧縮 12 を 1 種タグ + 4 件 settings に書き換え、§6 依存関係 r12→r13 / r13→r14+ を viewer 側 raycast + UUID→OBB レジストリ map 表現に修正、§7 r13 ユーザ価値を `[ayastorm:door]` 削除版 + 配布負債ゼロの根拠を明確化。同期して `doc/spec_obb_occlusion.md` (commit `2e02a63ac8`) と `docs/ayastorm-r13-occlusion.md` (commit `d143a4dbb7`) を final scope 反映済
+- 2026-05-11 (SOFA / Steam Audio / 物理シミュ / 個人 HRTF 永久 drop): r14+ basket の更なる絞り込み議論。**永久 drop 追加**: (a) SOFA per-source HRTF / 個人 HRTF — r11 lite-HRTF (ITD + ILD shadow + air abs) で AYAstorm の目指す音響リアリティ閾値は越えた、CPU 高 × 個人測定済ユーザ限定の ROI 薄、再配布ライセンス調査負債回避、listener UI 増殖を避ける。(b) Steam Audio integration / 回折・反射・共鳴の物理シミュ — 反射/共鳴は r11 convolution venue reverb (9 IR) で先取り表現済、回折は r13 occlusion の lowpass+減衰で知覚的に近似。まず reverb 拡張で目的達成を試すべきで、物理シミュは「さらに」段階に再検討。Steam Audio engine の存在意義 (SOFA も drop した今) もほぼ消失、3 OS binary 配布負債と engine 依存をゼロに戻す。本書改訂: §2 ASCII 図 Layer 2 から「SOFA per-source HRTF / Steam Audio ← r13+」行を削除し永久 drop 注記に置換、§3 r13 entry の「r14+ Steam Audio で形状特化近似を再検討」を「形状特化近似が必要になった段階で viewer 側 mesh raycast 経路を改めて検討」に書き換え、§5 RR1/RR2/RR3 を解消マーク (永久 drop 根拠を明記)、§5 工数圧縮 13 を新設、§6 依存関係 r13→r14+ ツリーを Steam Audio/SOFA/個人 HRTF 削除版に書き換え、§6 r13→r14+ 説明文を viewer 側 mesh raycast 経路に書き換え (Steam Audio 流用計画を廃止)、§7 r14 以降リストから Steam Audio / SOFA / 個人 HRTF を削除し「永久 drop (2026-05-11 確定)」サブセクションを追加。memory `project_ayastorm_r13_obb_occlusion.md` の永久 drop セクションも同期更新
