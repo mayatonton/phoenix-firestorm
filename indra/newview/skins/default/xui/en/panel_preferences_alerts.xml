@@ -130,6 +130,16 @@
      top_pad="3"
      width="450"/>
     <check_box
+     control_name="FSIgnoreObjectIM"
+     height="16"
+     label="Ignore object IMs from other residents (vendor ads)"
+     tool_tip="Silently discard instant messages from objects owned by other residents. Objects owned by you (HUDs, your own rezzers) are unaffected."
+     layout="topleft"
+     left="10"
+     name="FSIgnoreObjectIM"
+     top_pad="3"
+     width="450"/>
+    <check_box
      control_name="FSShowDisplayNameUpdateNotification"
      height="16"
      label="Notify me when somebody changes their display name"

@@ -33,6 +33,8 @@
 
 #include "llvenuereverbdsp.h"  // r11 P7c: value-type member, owned by engine
 
+#include <functional>
+
 //Stubs
 class LLAudioStreamManagerFMODSTUDIO;
 namespace FMOD
@@ -98,6 +100,17 @@ public:
     // Returns nullptr when init() never ran or createDSP failed.
     LLVenueReverbDsp* getVenueReverbDsp() { return mVenueReverbDsp.getDsp() ? &mVenueReverbDsp : nullptr; }
 
+    // r13 P8: visit every active 3D SFX channel (= llPlaySound and friends)
+    // so newview-side occlusion state can push Channel::set3DOcclusion plus
+    // a per-channel LOWPASS_SIMPLE cutoff. Skips channels with no live FMOD
+    // handle and 2D / forced-priority (UI, preview) sources. lowpass_dsp may
+    // be null when DSP creation failed — visitor must null-check. The
+    // stream-side equivalent lives on LLPositionalStreamMulti.
+    using SfxOcclusionVisitor = std::function<void(FMOD::Channel*,
+                                                   FMOD::DSP* lowpass_dsp,
+                                                   const LLVector3& source_pos)>;
+    void forEachActive3DSfxChannel(const SfxOcclusionVisitor& fn);
+
 protected:
     /*virtual*/ LLAudioBuffer *createBuffer(); // Get a free buffer, or flush an existing one if you have to.
     /*virtual*/ LLAudioChannel *createChannel(); // Create a new audio channel.
@@ -130,6 +143,14 @@ public:
     LLAudioChannelFMODSTUDIO(FMOD::System *audioengine);
     virtual ~LLAudioChannelFMODSTUDIO();
 
+    // r13 P8: read-only accessors used by LLAudioEngine_FMODSTUDIO::
+    // forEachActive3DSfxChannel. The FMOD channel pointer is owned by FMOD
+    // (lifetime ends in cleanup()); the LOWPASS_SIMPLE DSP is owned by this
+    // object and torn down in cleanup() ahead of the channel stop. Returns
+    // nullptr when no sound is currently playing through this slot.
+    FMOD::Channel* getFmodChannel() const { return mChannelp; }
+    FMOD::DSP*     getOcclusionLowpass() const { return mOcclusionLowpass; }
+
 protected:
     /*virtual*/ void play();
     /*virtual*/ void playSynced(LLAudioChannel *channelp);
@@ -145,6 +166,11 @@ protected:
     FMOD::System *getSystem()   const {return mSystemp;}
     FMOD::System *mSystemp;
     FMOD::Channel *mChannelp;
+    // r13 P8: per-SFX-channel LOWPASS_SIMPLE for the OBB-occlusion "muffled"
+    // tone. Attached at FMOD_CHANNELCONTROL_DSP_TAIL on the first updateBuffer
+    // that sets mChannelp, removed and released in cleanup(). Null when
+    // creation failed (rare, non-fatal — set3DOcclusion alone still attenuates).
+    FMOD::DSP    *mOcclusionLowpass { nullptr };
     S32 mLastSamplePos;
 };
 

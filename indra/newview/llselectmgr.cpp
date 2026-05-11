@@ -74,6 +74,7 @@
 #include "llmutelist.h"
 #include "llparcel.h"
 #include "llpositionalstreammgr.h" // <FS:AYA> [PositionalStream] capture prim Description
+#include "llocclusiongeometrymgr.h" // <FS:AYA> [r13 spike] [ayastorm:occlude] OBB registration
 #include "llnotificationsutil.h"
 #include "llsidepaneltaskinfo.h"
 #include "llslurl.h"
@@ -6226,6 +6227,9 @@ void LLSelectMgr::processObjectProperties(LLMessageSystem* msg, void** user_data
         // <FS:AYA> [PositionalStream] feed Description into positional stream mgr
         LLPositionalStreamMgr::instance().onObjectPropertiesReceived(id, desc);
         // </FS:AYA>
+        // <FS:AYA> [r13 spike] feed Description into OBB occlusion mgr
+        LLOcclusionGeometryMgr::instance().onObjectPropertiesReceived(id, desc);
+        // </FS:AYA>
 
         std::string touch_name;
         msg->getStringFast(_PREHASH_ObjectData, _PREHASH_TouchName, touch_name, i);
@@ -6441,6 +6445,9 @@ void LLSelectMgr::processObjectPropertiesFamily(LLMessageSystem* msg, void** use
 
     // <FS:AYA> [PositionalStream] feed Description into positional stream mgr
     LLPositionalStreamMgr::instance().onObjectPropertiesReceived(id, desc);
+    // </FS:AYA>
+    // <FS:AYA> [r13 spike] feed Description into OBB occlusion mgr
+    LLOcclusionGeometryMgr::instance().onObjectPropertiesReceived(id, desc);
     // </FS:AYA>
 
     // the reporter widget askes the server for info about picked objects

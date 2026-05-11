@@ -24635,6 +24635,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>1</integer>
     </map>
+    <key>FSIgnoreObjectIM</key>
+    <map>
+      <key>Comment</key>
+      <string>Silently discard instant messages from objects owned by other residents (vendor advertisements, etc.). Objects owned by you (HUDs, your rezzers) are not affected.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>FSDisableReturnObjectNotification</key>
     <map>
       <key>Comment</key>
@@ -27834,6 +27845,50 @@ Change of this parameter will affect the layout of buttons in notification toast
       <string>F32</string>
       <key>Value</key>
       <real>16.0</real>
+    </map>
+    <key>Stream3DOcclusion</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r13: Master sentinel for tag-based OBB occlusion on positional-stream and llPlaySound channels. -1 (default) = enabled, 0 = disabled (all [ayastorm:occlude] tags ignored — raycast is skipped and the DSP cutoff ramps back to bypass through the normal smoothing path so toggling live does not produce an audible cliff), 1 = explicit enabled (reserved for future per-mode overrides). Other values are treated as enabled. Read each tick by LLOcclusionGeometryMgr::applyToChannel; live-tunable. Not exposed in Preferences — implementer / verification adjustment only. Stream3DShowOccluders (debug overlay) is independent of this sentinel.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>-1</integer>
+    </map>
+    <key>Stream3DOcclusionRampMs</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r13: Ramp time (ms) for the OBB-occlusion direct/reverb factor on positional-stream channels. Smooths the transition when an [ayastorm:occlude] prim moves into or out of the listener-source segment, so opening a virtual door doesn't jump from silence to full volume in one frame. Default 250 ms (typical perceptual sweet spot). 0 = disable smoothing (binary jump, debug only). Read each tick by LLOcclusionGeometryMgr::applyToChannel; live-tunable. Not exposed in Preferences — implementer / verification adjustment only.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>250.0</real>
+    </map>
+    <key>Stream3DOccluderRange</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r13: Maximum listener-to-source distance (m) at which OBB occlusion raycasts run. Beyond this range applyToChannel skips firstHit and treats the source as un-occluded (still ramping the DSP cutoff back to bypass via the normal smoothing path, so no audible cliff). Default 64 m matches typical SL parcel reach. 0 = disable cull (always raycast — useful for very large venues or debug). Read each tick by LLOcclusionGeometryMgr::applyToChannel; live-tunable. Not exposed in Preferences — implementer / verification adjustment only.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>64.0</real>
+    </map>
+    <key>Stream3DShowOccluders</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r13: Render every registered [ayastorm:occlude] prim as an oriented bounding-box wireframe so the venue builder can confirm what the audio engine actually sees. Colour scales orange → red with the direct factor (0.0 = registered/transparent ramp, 0.7 = default tag, 1.0 = full opaque wall). Toggle live; no relog needed. Read each frame by LLPipeline::renderDebug from a CachedControl, so cost is one int load when off.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
     </map>
     <key>Stream3DUrlPreResolve</key>
     <map>

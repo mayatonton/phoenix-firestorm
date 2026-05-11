@@ -23,7 +23,8 @@
 13. [Error Notifications / Diagnostics](#13-error-notifications--diagnostics)
 14. [Troubleshooting](#14-troubleshooting)
 15. [Known Limitations / Specification Notes](#15-known-limitations--specification-notes)
-16. [Related Documents / Internal Specifications](#16-related-documents--internal-specifications)
+16. [Static Occlusion `[ayastorm:occlude]` (r13)](#16-static-occlusion-ayastormocclude-r13)
+17. [Related Documents / Internal Specifications](#17-related-documents--internal-specifications)
 
 ---
 
@@ -100,12 +101,13 @@ Read sections 3 onward. Multi-speaker, 5.1ch, fine-tuning, and broadcaster-side 
 
 ## 4. Tag Overview
 
-### 4.1 Two tag types
+### 4.1 Three tag types
 
 | Tag | Prefix | Purpose |
 |---|---|---|
 | **Mono tag** | `[3dstream:...]` | Play one stream from a single prim (minimal config) |
 | **Distributed stereo / venue tag** | `[3dstream-stereo:...]` | Synchronize one stream across multiple prims of a linkset (stereo / multi-speaker / 5.1ch) |
+| **Static occlusion tag** (added in r13) | `[ayastorm:occlude]` | Mark wall / door / floor / ceiling prims as sound-blocking geometry (venue operator / builder, see §16) |
 
 ### 4.2 Aliases for legacy prefixes
 
@@ -177,7 +179,7 @@ Short form (110 bytes — fits, 23 bytes saved):
 
 #### LSL helper behavior
 
-The bundled LSL `aya_3dstream_setup.lsl` (see §16) **accepts both forms on input** and **always writes short-form on output (Description writes)**. Descriptions configured via the LSL dialog are automatically converted to short-form.
+The bundled LSL `aya_3dstream_setup.lsl` (see §17) **accepts both forms on input** and **always writes short-form on output (Description writes)**. Descriptions configured via the LSL dialog are automatically converted to short-form.
 
 #### Notes
 
@@ -1176,7 +1178,109 @@ Typically use `Stream3DVolumeMaster` (the 3D Stream slider in Preferences) for g
 
 ---
 
-## 16. Related Documents / Internal Specifications
+## 16. Static Occlusion `[ayastorm:occlude]` (r13)
+
+A **venue operator / builder** tag. Marking wall / door / floor / ceiling prims with this tag makes AYAstorm treat them as **sound-blocking geometry** when the listener-to-source segment passes through them — the audio becomes muffled (less volume + lowpass-coloured).
+
+Whereas `[3dstream:...]` / `[3dstream-stereo:...]` (§5 / §6) are **sound-emitting** tags, `[ayastorm:occlude]` is a **sound-blocking** tag. The two are entirely independent — a prim tagged only with `occlude` does not emit any audio.
+
+### 16.1 Syntax
+
+```
+[ayastorm:occlude]                            ← defaults (direct:0.7 reverb:0.5)
+[ayastorm:occlude{direct:0.9}{reverb:0.7}]    ← explicit values
+[ayastorm:occlude{direct:0.6}]                ← one key only (other uses default)
+```
+
+The legacy prefix (`[ayastream:occlude]`) is **not accepted** — occlusion was introduced in r13 and there are no legacy ayastream prims to preserve. Common syntax rules (§4.3, case-insensitive keys / whitespace-trimmed values / unknown keys silently ignored) apply.
+
+### 16.2 Behaviour model
+
+#### What gets occluded
+
+- **`[3dstream:...]` / `[3dstream-stereo:...]` audio** (positional streams, per speaker prim)
+- **`llPlaySound` / attached sounds / child-prim SFX** (world SFX)
+
+If the segment from listener (camera or avatar) to source crosses the **actual prim shape (triangle mesh)** of an occlude prim, occlusion is applied (volume attenuation + lowpass colouration). Path Cut openings, Hollow interiors, and full mesh shapes all participate, so audio behaves intuitively — sound passes through a doughnut hole, gets muffled by the wall itself.
+
+If the segment crosses multiple occluders simultaneously, attenuation is **multiplicative pass-through** — e.g. two walls of `direct=0.7` yield an effective `1 - (1-0.7)² ≈ 0.91`, three walls go further. More walls means more muffling, matching natural intuition.
+
+Internally this is a two-stage test: a cheap bounding-OBB pre-cull (segment-vs-AABB) rejects ~95% of mismatched pairs, then surviving candidates run a Möller-Trumbore segment-triangle raycast. Keeps CPU low while preserving exact-shape accuracy.
+
+#### What does not get occluded
+
+- **2D streams** (parcel music — no positional info)
+- **Voice (Vivox / WebRTC)**
+- **UI / preview SFX** (filtered out via `isForcedPriority` internally)
+
+### 16.3 Argument reference
+
+| Key | Default | Range | Effect |
+|---|---|---|---|
+| `direct` | `0.7` | `0.0`-`1.0` | Direct-path (= volume) attenuation. `0.0` = pass-through, `1.0` = near-silent |
+| `reverb` | `0.5` | `0.0`-`1.0` | Reverb-tail attenuation. `0.0` = reverb pass-through, `1.0` = reverb cut |
+
+Higher `direct` deepens the "behind-the-wall" impression and additionally pushes the viewer's built-in LOWPASS_SIMPLE cutoff down (22 kHz → 300 Hz, full effect at `direct=1.0`) so the audio also sounds bass-heavy and muffled. `reverb` only has audible effect if the source prim has venue reverb enabled via `{venue:...}` (§7.2).
+
+### 16.4 Recommended values by material
+
+Empirical starting points. Adjust to taste on-site.
+
+| Material impression | `direct` | `reverb` | Subjective effect |
+|---|---|---|---|
+| Stone / concrete | `0.9` | `0.7` | Near-silent, only bass bleeds through |
+| Wood / interior panel | `0.7` | `0.5` | Default — typical "wall next door" |
+| Thin wood / curtain | `0.6` | `0.4` | Muffled bleed, lightweight partition |
+| Glass / paper screen | `0.3` | `0.2` | Slight muffling, content still discernible |
+| Decorative (essentially transparent) | `0.1` | `0.05` | Mostly pass-through, silhouette only |
+
+### 16.5 Automatic follow (dynamic doors work)
+
+`refreshOccluders` runs **every tick** (= once per `LLPositionalStreamMgr::update()`) and re-reads every occluder prim's position / rotation / scale. So:
+
+- A **moving door** (LSL-animated `llSetPos` / `llSetRot`) tagged with `[ayastorm:occlude]` automatically tracks the open/close motion — occlusion changes in real time
+- **Vehicles / mobile prims** with the tag also track the same way
+- A dedicated "door tag" is **not needed** (r13 spec originally planned `[ayastorm:door]` but `refreshOccluders` covers it cleanly, so it was permanently dropped)
+
+### 16.6 Distance cull (`Stream3DOccluderRange` = 64m)
+
+If the listener-to-source distance exceeds `Stream3DOccluderRange` (default 64m), OBB raycast is **skipped** for that source (audibility is already negligible due to distance attenuation). For very large venues that need 64m+ occlusion, raise the value or set it to `0` to always raycast (see §12.2).
+
+### 16.7 Master toggle (`Stream3DOcclusion`)
+
+A **global on/off switch** for troubleshooting (debug setting).
+
+| Value | Behaviour |
+|---|---|
+| `-1` (default) | Enabled. All `[ayastorm:occlude]` tags are evaluated |
+| `0` | Disabled. Tags fully ignored; previously-muffled audio ramps back to bypass via the normal smoothing path |
+| `1` | Explicit enabled (reserved for future per-mode override) |
+
+Live toggling **never produces an audible cliff** — even when disabled, the smoothing path keeps running, so the DSP ramps back to bypass over `Stream3DOcclusionRampMs` (default 250 ms).
+
+### 16.8 Visualisation (`Stream3DShowOccluders`, Alt+Shift+O)
+
+A debug overlay that renders every registered occluder prim as a **cyan triangle mesh** (translucent fill + wireframe). The exact triangles used by the raycast are drawn, so Path Cut / Hollow / mesh shapes appear **as they are**. Useful during venue construction to verify "is the tag recognised" and "is the right shape being used for occlusion".
+
+- **Menu**: View → Highlighting and Visibility → "Show 3D Stream Occluders (AYAstorm)"
+- **Hotkey**: `Alt+Shift+O` (live toggle)
+
+**Live tracking**: An occluder prim **selected in the build floater** updates its cyan shape live while you drag Path Cut / Hollow / Sculpt sliders — you can verify the occlusion shape before closing the edit window. Non-selected occluders update once the edit window closes (sim round-trip).
+
+**Fallback indicator**: An occluder whose triangle extraction failed (e.g. mesh exceeds the 2000-triangle cap, see §16.9) renders no cyan. A tagged prim that shows no cyan overlay is a visual cue that it has fallen back to OBB-only.
+
+Setting `Stream3DOcclusion` (master toggle, §16.7) to `0` does **not** disable the overlay — the two toggles are intentionally independent so a venue operator can inspect occluder structure with audio occlusion off.
+
+### 16.9 Limits
+
+- **256 simultaneous occluders** (`kMaxOccluders` hardcoded). If more than 256 `[ayastorm:occlude]`-tagged prims exist in the sim, the 257th onward are not registered (`LL_WARNS` logged). Typical SL venues (~100 prims) have plenty of headroom.
+- **Triangle count cap**: **2000 triangles per occluder** (`kMaxTrisPerOccluder` hardcoded). A mesh prim exceeding the cap skips triangle extraction and falls back to bounding-OBB-only occlusion (`LL_WARNS_ONCE` logged; the §16.8 cyan overlay shows nothing for the prim). Standard SL building prims (cube / cylinder / hollow / Path Cut) stay in the tens-to-hundreds range; even architectural mesh prims are usually well within budget.
+- **CPU cost**: The 64m distance cull + OBB pre-cull reject the vast majority of (segment, occluder) pairs in a handful of operations. Triangle raycast only runs for the few prims a listener-source line actually intersects. Stays under 1 ms/sec on typical venues (~100 occluders).
+- **Bundled FMOD constraint**: The implementation does a viewer-side OBB pre-cull + Möller-Trumbore triangle raycast (the bundled `libfmod 2.03.07`'s `FMOD::Geometry::createGeometry` is non-functional). Transparent to end users.
+
+---
+
+## 17. Related Documents / Internal Specifications
 
 This guide is the **user-facing** format reference. Implementation details (decode thread / FMOD path / ring buffer / shutdown order, etc.) are in the following internal specs.
 
@@ -1190,6 +1294,7 @@ This guide is the **user-facing** format reference. Implementation details (deco
 | `doc/spec_binaural_venue_reverb.md` | r11 binaural + venue reverb spec (bundled into r12 release) — covers §7 of this guide |
 | `doc/spec_stereo_upmix.md` | r12 stereo→5.1 upmix spec — DPL2 + 4-step band separation, covers §8 of this guide |
 | `docs/ayastorm-r12-stereo-upmix.md` | r12 phase breakdown (P0–P11) and verification design |
+| `docs/ayastorm-r13-occlusion.md` | r13 OBB occlusion spec + implementation record — `[ayastorm:occlude]` design decisions / spike implementation / remaining work, covers §16 of this guide |
 | `docs/ayastorm-stream3d-roadmap.md` | Overall 3D Stream roadmap |
 
 ---
@@ -1199,3 +1304,5 @@ This guide is the **user-facing** format reference. Implementation details (deco
 - **2026-05-05 (initial)**: Compiled as the final spec at r10. Cumulative spec from r5 / r8 / r9 / r10 / r10.x. r11 and later not covered (unreleased).
 - **2026-05-08 (r12)**: Added §4.5 (short-forms), §7 (Binaural / Venue Reverb), §8 (stereo→5.1 upmix). r11 is bundled into r12 (not released independently — to avoid two-step tag-format change confusion). Renumbered later sections (§7–§14 → §9–§16). §12.2 lists r11/r12 listener-side sentinel debug settings; broadcaster-driven model preserved (no general Preferences UI).
 - **2026-05-09 (r12.1)**: Added new §7.4 `{lfegain:N}` (short-form `lg`); renumbered the prior §7.4 Broadcaster-driven model to §7.5 and the prior §7.5 Combination examples to §7.6. Lowered the `wetgain` default from `1.0` to `0.2` to reflect the practical musical range (0.1–0.5) confirmed by listening tests. Added the `Stream3DLfeGain` sentinel to §12.2 and a live-tuning fix note in §12.2 / §12.3 (covering the r12 regression where `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` only took effect after a prim touch).
+- **2026-05-11 (r13)**: Added new §16 Static OBB Occlusion `[ayastorm:occlude]`; renumbered the prior §16 Related Documents to §17. Extended §4.1 from "Two tag types" to "Three tag types". Documented the r13 debug settings (`Stream3DOcclusion` master sentinel / `Stream3DOccluderRange` distance cull / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` overlay) inside §16.6-§16.8. Added `docs/ayastorm-r13-occlusion.md` row to the §17 spec table.
+- **2026-05-11 (r13 P15)**: Upgraded occlusion from OBB approximation to **exact-shape triangle raycast** (OBB pre-cull + Möller-Trumbore, see §16.2). Path Cut / Hollow / Mesh now feed real geometry into the audio calculation. Corrected the multi-occluder section to describe **multiplicative pass-through** (the implementation was always multiplicative; older docs misdescribed it as `max`). Changed `Stream3DShowOccluders` from OBB wireframe to **cyan triangle mesh** (translucent fill + wireframe), with live tracking while a prim is selected in the build floater (§16.8). Added the 2000-tri per-occluder cap and OBB-only fallback rules in §16.9. Shortened §16 title from "Static OBB Occlusion" to "Static Occlusion".
