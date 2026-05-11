@@ -98,9 +98,7 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
         // is also covered.
         LLDrawable* drawable = face ? face->getDrawable() : nullptr;
         if (drawable
-            && (LLPipeline::sParcelHideEnabled
-                || LLPipeline::sParcelOwnerTagActive)
-            && LLPipeline::shouldHideForOutsideParcel(drawable))
+            && LLPipeline::isParcelHideAlive(drawable))
         {
             continue;
         }

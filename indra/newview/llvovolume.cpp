@@ -5992,10 +5992,8 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
             }
 
             // <FS:AYA> [ParcelHide]
-            // Visitor's own setting OR parcel-owner tag triggers hiding.
-            if ((LLPipeline::sParcelHideEnabled
-                 || LLPipeline::sParcelOwnerTagActive)
-                && LLPipeline::shouldHideForOutsideParcel(drawablep))
+            // Visitor pref or parcel-owner tag (altitude-gated when specified).
+            if (LLPipeline::isParcelHideAlive(drawablep))
             {
                 continue;
             }

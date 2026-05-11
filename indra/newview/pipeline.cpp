@@ -350,6 +350,7 @@ S32     LLPipeline::sParcelCheckSeq = 0;
 bool    LLPipeline::sParcelOwnerTagActive = false;
 bool    LLPipeline::sParcelOwnerTagKeepAvatars = false;
 bool    LLPipeline::sParcelOwnerTagKeepOwn = false;
+std::vector<std::pair<F32, F32>> LLPipeline::sParcelOwnerTagAltRanges;
 // </FS:AYA>
 bool    LLPipeline::sBakeSunlight = false;
 bool    LLPipeline::sNoAlpha = false;
@@ -3184,6 +3185,39 @@ LLPipeline::ParcelTagOverride LLPipeline::parseParcelHideTag(const std::string& 
         // Lowercase the value so "True" / "FALSE" both work.
         for (char& c : val) { c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
 
+        // Non-boolean keys handled before the bool parse.
+        if (key == "altitude")
+        {
+            // val: "min-max" or "min-max,min-max,..." (both ends required, integers or floats).
+            // Hyphen is the range separator; comma separates multiple ranges.
+            std::vector<std::pair<F32, F32>> ranges;
+            std::string::size_type p = 0;
+            while (p <= val.size())
+            {
+                std::string::size_type comma = val.find(',', p);
+                std::string token = (comma == std::string::npos)
+                    ? val.substr(p) : val.substr(p, comma - p);
+                std::string::size_type dash = token.find('-');
+                if (dash != std::string::npos && dash > 0 && dash + 1 < token.size())
+                {
+                    try
+                    {
+                        F32 lo = std::stof(token.substr(0, dash));
+                        F32 hi = std::stof(token.substr(dash + 1));
+                        if (lo <= hi)
+                        {
+                            ranges.emplace_back(lo, hi);
+                        }
+                    }
+                    catch (...) { /* malformed token silently dropped */ }
+                }
+                if (comma == std::string::npos) break;
+                p = comma + 1;
+            }
+            out.altRanges = std::move(ranges);
+            continue;
+        }
+
         bool bval;
         if (val == "true") bval = true;
         else if (val == "false") bval = false;
@@ -3296,6 +3330,36 @@ bool LLPipeline::shouldHideForOutsideParcel(LLDrawable* drawablep)
     return hidden;
 }
 
+// Combined gate used by render pipelines. Encapsulates:
+//   1) visitor preference (sParcelHideEnabled) — unconditional, no altitude window
+//   2) parcel-owner [parcelhide:...] tag — gated on agent altitude when the
+//      tag carries an altitude:min-max[,min-max...] specification; an empty
+//      altRanges list means the tag applies at all heights (back-compat).
+// shouldHideForOutsideParcel() is invoked only when one of the two paths is
+// alive, so its per-drawable cache stays coherent across altitude crossings.
+bool LLPipeline::isParcelHideAlive(LLDrawable* drawablep)
+{
+    if (sParcelHideEnabled)
+    {
+        return shouldHideForOutsideParcel(drawablep);
+    }
+    if (sParcelOwnerTagActive)
+    {
+        if (!sParcelOwnerTagAltRanges.empty())
+        {
+            const F32 z = gAgent.getPositionAgent().mV[VZ];
+            bool in_range = false;
+            for (const auto& r : sParcelOwnerTagAltRanges)
+            {
+                if (z >= r.first && z <= r.second) { in_range = true; break; }
+            }
+            if (!in_range) return false;
+        }
+        return shouldHideForOutsideParcel(drawablep);
+    }
+    return false;
+}
+
 void LLPipeline::refreshOutsideParcelHiding()
 {
     sParcelCheckSeq++;
@@ -3312,12 +3376,14 @@ void LLPipeline::refreshOutsideParcelHiding()
         sParcelOwnerTagActive = tag.active;
         sParcelOwnerTagKeepAvatars = tag.keepAvatars;
         sParcelOwnerTagKeepOwn = tag.keepOwn;
+        sParcelOwnerTagAltRanges = std::move(tag.altRanges);
     }
     else
     {
         sParcelOwnerTagActive = false;
         sParcelOwnerTagKeepAvatars = false;
         sParcelOwnerTagKeepOwn = false;
+        sParcelOwnerTagAltRanges.clear();
     }
 
     if (!gPipeline.assertInitialized())

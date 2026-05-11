@@ -134,9 +134,7 @@ void LLHUDText::render()
         // keep_avatars / keep_own / HUD rules consistently with
         // volume / tree / grass / particle hiding.
         if (mSourceObject.notNull() && mSourceObject->mDrawable.notNull()
-            && (LLPipeline::sParcelHideEnabled
-                || LLPipeline::sParcelOwnerTagActive)
-            && LLPipeline::shouldHideForOutsideParcel(mSourceObject->mDrawable))
+            && LLPipeline::isParcelHideAlive(mSourceObject->mDrawable))
         {
             return;
         }
