@@ -47,6 +47,7 @@ uniform int aya_visual_realism_enabled;  // <FS:AYA r14> Visual Realism master s
 float getAmbientClamp() { return 1.0f; }
 
 vec3 srgb_to_linear(vec3 col);
+vec3 linear_to_srgb(vec3 col);  // <FS:AYA r14> scene-referred 積分用
 
 // return colors in sRGB space
 void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, out vec3 sunlit, out vec3 amblit, out vec3 additive,
@@ -130,7 +131,28 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     //     indra\newview\app_settings\shaders\class1\windlight\atmosphericsFuncs.glsl -- calcAtmosphericVars()
     // haze color
     vec3 cs = sunlight.rgb * (1. - cloud_shadow);
-    additive = (blue_horizon.rgb * blue_weight.rgb) * (cs + tmpAmbient.rgb) + (haze_horizon * haze_weight.rgb) * (cs * haze_glow + tmpAmbient.rgb);
+
+    // <FS:AYA r14> scene-referred 積分: 光の混色を linear 空間で行い、出力契約 (sRGB) に合わせて戻す
+    // 旧経路は sRGB 空間で乗算/加算しており、blue_horizon/haze_horizon が非線形 sRGB のまま光合成されるため物理整合性が低い。
+    // 新経路では preset 色を一旦 linear に展開し、合成後に linear_to_srgb で sRGB に戻して consumer 契約を維持する。
+    if (aya_visual_realism_enabled > 0)
+    {
+        vec3 sunlight_lin    = srgb_to_linear(sunlight.rgb);
+        vec3 amb_lin         = srgb_to_linear(tmpAmbient.rgb);
+        vec3 cs_lin          = sunlight_lin * (1. - cloud_shadow);
+        vec3 blue_h_lin      = srgb_to_linear(blue_horizon.rgb);
+        vec3 haze_h_lin      = srgb_to_linear(vec3(haze_horizon));
+
+        vec3 additive_lin    = (blue_h_lin * blue_weight.rgb) * (cs_lin + amb_lin)
+                             + (haze_h_lin * haze_weight.rgb) * (cs_lin * haze_glow + amb_lin);
+
+        additive = linear_to_srgb(additive_lin);
+    }
+    else
+    {
+        additive = (blue_horizon.rgb * blue_weight.rgb) * (cs + tmpAmbient.rgb) + (haze_horizon * haze_weight.rgb) * (cs * haze_glow + tmpAmbient.rgb);
+    }
+    // </FS:AYA>
 
     // brightness of surface both sunlight and ambient
 
