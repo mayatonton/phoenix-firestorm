@@ -11,15 +11,15 @@
 
 ## 1. ゴール
 
-SL viewer の現状の atmospherics は「色付きフィルター状」で、空気が **体積として見えない**。具体的には:
+P0 (`doc/r14/volumetric_atmosphere_survey.md` Round 1) の調査で判明したとおり、SL は **既に Beer-Lambert ベース** で atmospherics を組んでいる (`atmosphericsFuncs.glsl:84` `combined_haze = exp(-combined_haze * density_dist * distance_multiplier)`)。in-scatter (haze_glow) も既に実装済み。
 
-- 遠景が距離と共に減衰せず、近景と同じ強度でくっきり見える
-- 高度差 (地上 vs 上空) で空気の密度が変わって見えない
-- 太陽光が空気の中を通って届くという物理感がない (= sun halo は出るが「光が空気を満たしている」体感は出ない)
+ただし「空気が体積として見えない」原因として、次の **3 点が欠落** している:
 
-r14 ではこれを **WindLight preset の Haze / Blue Density 値を物理パラメタとして再解釈** し、**depth-driven Beer-Lambert + altitude density + analytic in-scatter** の組合せで、preset の絵作り意図を保ちながら空気の体積感を出す。
+1. **altitude density (高度依存の密度勾配)** が無い — `max_y` で clamp する以外、地表と上空で同じ密度。曇りの日に地上で霞んで上空が抜ける、といった物理感が出ない
+2. **scene-referred 積分が無い** — `additive` を sRGB 空間で組んで後で `srgb_to_linear`、物理整合性が低く HDR scene buffer 上で「リアル」にならない
+3. **反対方向の dispersion 区別が無い** — haze_glow は太陽方向だけ、反対側の Rayleigh/Mie 区別なし (これは r15-r16 の話、r14 ではタッチしない)
 
-heavy raymarch には踏み込まない (r15 godrays、r17 雲の体積化で取り組む)。
+r14 では **既存の Beer-Lambert + in-scatter 基盤を残したまま、上記 1 と 2 を追加実装** する。preset の絵作り意図を保ちながら空気の体積感を物理的に正しい形で出す。heavy raymarch には踏み込まない (r15 godrays、r17 雲の体積化で取り組む)。
 
 ---
 
@@ -41,23 +41,24 @@ heavy raymarch には踏み込まない (r15 godrays、r17 雲の体積化で取
 ## 3. スコープ
 
 ### 含む
-- 既存 atmospherics shader (`atmosphericsFuncs.glsl` 等) の内側を物理ベースに書き換え
-- depth-driven Beer-Lambert によるフォグ適用 (距離指数減衰)
-- altitude density (高度ごとの空気密度勾配)、地表近くは濃く上空は薄く
-- analytic in-scatter (太陽方向 dot で light の rebound を近似)
-- preset の Haze Horizon / Haze Density / Blue Density / Distance Multiplier 値を上記の物理パラメタにマップ
-- master switch (`AYAVisualRealismEnabled`)
+- 既存 `calcAtmosphericVars` / `calcAtmosphericVarsLinear` (atmosphericsFuncs.glsl) に **altitude density 経路を追加** — 視線サンプル点の高度に応じて density を勾配化、地表近くは濃く上空は薄く
+- 既存の `additive` 合成を **scene-referred linear で積分** する経路を追加 — sRGB 空間での合成を物理的に正しい linear 空間に移す
+- master switch `aya_visual_realism_enabled` で新経路 / 旧経路 (現状の式) を切り替える分岐を追加 (新経路 default ON)
+- C++ 側 plumbing: `LLShaderMgr` enum + `mReservedUniforms` + `LLSettingsVOSky::applyToShader` (template = `classic_mode`)
+- `settings.xml` に `AYAVisualRealismEnabled` Boolean default 1 を追加
 - 3 OS (Linux / macOS / Windows) ビルド + 体感確認
 
 ### 含まない (→ r15+)
+- 既存 Beer-Lambert / in-scatter の式そのものの書き換え (既存基盤を活かす、書き換えはしない)
+- 反対方向の Rayleigh/Mie 分離 (r15 godrays / r16 aerial perspective)
 - godrays / shaft of light (r15)
 - aerial perspective の精緻化 (色相変化、r16)
-- 時間帯色温度の物理化 (r17)
+- 時間帯色温度の物理化 + 波長依存散乱の物理分離 (r17)
 - 雲の体積化 (r17)
 - heavy raymarch volumetric
 
 ### 永久 drop
-- 軸 / 機能ごとの個別 debug settings (master switch 1 本のみ)
+- 軸 / 機能ごとの個別 debug settings (master switch 1 本のみ、altitude density 強度を tuning する追加 cvar は入れない方向で P1 着手、必要なら P1 で議論)
 - preset を破壊する後方非互換変更
 - LUT / color grade による誤魔化し
 
@@ -67,23 +68,32 @@ heavy raymarch には踏み込まない (r15 godrays、r17 雲の体積化で取
 
 viewer-only の改修。配信側 / SIM 側変更なし。
 
-### P0: 実装箇所調査 + spec 確定
+### P0: 実装箇所調査 + spec 確定 [完了 2026-05-12]
 
-**目的**: SL の atmospherics 経路を P0 round 1 (`doc/r14/sun_rendering_survey.md`、sun/halo) と同等の精度で解明し、書き換え点を確定する。
+詳細は `doc/r14/volumetric_atmosphere_survey.md` Round 1。要点:
 
-**進め方**: `doc/r14/volumetric_atmosphere_survey.md` を P0 起点として、以下を順次解明:
-
-- `atmosphericsFuncs.glsl` (および関連 include) の中で fog / haze が適用される正確な式
-- WindLight preset 値 (Haze, Blue Density, Distance Multiplier) がどの uniform に乗って shader に届くか
-- HDR scene buffer の段階で fog はいつ適用されるか (geometry pass / post / deferred fog pass)
-- altitude density / in-scatter の挿入箇所 (既存 shader を書き換えるか、新 pass を足すか)
-- master switch の plumbing (LLCachedControl → uniform)
-
-**完了条件**: 上記が survey にまとまり、P1 で触る具体的なファイル / 関数 / uniform が確定する。
+- atmospherics 中央関数: `atmosphericsFuncs.glsl:calcAtmosphericVars` (Beer-Lambert + haze_glow in-scatter は実装済み)
+- preset plumbing: `LLSettingsVOSky::applyToShader` (llsettingsvo.cpp ~L780)
+- master switch template: `classic_mode` (LLShaderMgr enum + mReservedUniforms + applyToShader 内 `uniform1i`)
+- 3 OS: GLSL 共通、`.metal` なし、`#ifdef` なし
 
 ### P1: 実装
 
-P0 で確定した経路に Beer-Lambert + altitude density + analytic in-scatter を実装。preset 値からの physical parameter マップを書く。`AYAVisualRealismEnabled` の plumbing も同時に。
+P0 で確定した経路に **altitude density 追加** + **scene-referred 積分追加** + **master switch plumbing** を実装。
+
+**触るファイル**:
+- `indra/llrender/llshadermgr.h` — `AYA_VISUAL_REALISM_ENABLED` enum 追加
+- `indra/llrender/llshadermgr.cpp` — `mReservedUniforms` に `"aya_visual_realism_enabled"` push
+- `indra/newview/llsettingsvo.cpp` — `applyToShader` で `LLCachedControl<bool>` + `shader->uniform1i`
+- `indra/newview/app_settings/settings.xml` — `AYAVisualRealismEnabled` Boolean default 1
+- `indra/newview/app_settings/shaders/class1/windlight/atmosphericsFuncs.glsl` — `uniform int aya_visual_realism_enabled;` 受信、`calcAtmosphericVars` 内で `if (aya_visual_realism_enabled > 0) { 新経路 } else { 旧経路 }` 分岐、新経路で altitude density + scene-referred 積分
+
+**触る関数**:
+- `LLSettingsVOSky::applyToShader` (uniform 追加)
+- `calcAtmosphericVars` / `calcAtmosphericVarsLinear` (新経路追加)
+
+**新規 uniform**:
+- `aya_visual_realism_enabled` (int)
 
 ### P2: 3 OS ビルド + 体感確認
 
@@ -110,16 +120,18 @@ AYA が Linux ビルド + 体感確認。問題なければ macOS / Windows ビ�
 
 ## 6. リスク
 
-| ID | リスク | 緩和策 |
+| ID | リスク | P0 後ステータス |
 |---|---|---|
-| R1 | preset の Haze 値域が物理ベースの想定範囲外で破綻 | P0 で preset 値域を計測、physical parameter へのマップで clamp / normalize |
-| R2 | 既存 atmospherics shader の include 経路が複雑で書き換えコスト爆発 | P0 で経路を完全に解明、書き換え範囲を最小化、複雑なら r14 スコープを縮小して r14.5 に分割 |
-| R3 | master switch off 経路で見え方が完全に r13 に戻らない (新 shader 経路が混入) | P0 で switch の挿入点を決定、最上位 (uber shader 入り口) で分岐 |
-| R4 | FPS 大幅低下 | analytic 実装に徹する、raymarch は r14 では入れない、必要なら altitude density を LUT 化 |
-| R5 | 3 OS でビルドが通らない (macOS Metal 等) | P0 で Mac/Win 経路の shader 差異も確認 |
+| R1 | preset の Haze 値域が altitude density で発散 (上空で 0 / 地表で過大) | 残: P1 で clamp / normalize、`max_y` を上限に密度勾配を formal に設計 |
+| R2 | 既存 atmospherics shader の書き換えコスト爆発 | **緩和**: P0 で「全置換ではなく追加実装」と確定、書き換え範囲は `calcAtmosphericVars` 内の追加分岐のみ |
+| R3 | master switch off 経路で見え方が完全に r13 に戻らない | **緩和**: P0 で `if (aya_visual_realism_enabled > 0)` の分岐点を `calcAtmosphericVars` 入口で取ることが確定、off 経路は既存式そのまま |
+| R4 | FPS 大幅低下 | 残: analytic 実装に徹する (P1 着手後計測)、raymarch は r14 では入れない |
+| R5 | 3 OS でビルドが通らない (macOS Metal 等) | **解消**: P0 で `.metal` 無し / `#ifdef` 無しを確認、GLSL 共通で問題なし |
+| R6 | scene-referred 積分への移行で既存 preset の見え方が大きく変わる (= 章 thesis 上は OK だが master off 経路で旧見え方が必要) | 残: master switch off 時は完全旧経路、on 時は新経路と明示的に分岐、preset 値は両経路で読み込み可能を維持 |
 
 ---
 
 ## 7. 更新履歴
 
-- 2026-05-12: 初版作成。旧 `docs/ayastorm-r14-sun-dazzle.md` (sun disc overbright) を unground した経緯を経て、r14 の本命を volumetric atmosphere に pivot。章全体の方向転換は `docs/ayastorm-visual-realism-roadmap.md` §1 thesis、memory `project_ayastorm_visual_realism_chapter.md` 参照
+- 2026-05-12 (初版): 旧 `docs/ayastorm-r14-sun-dazzle.md` (sun disc overbright) を unground した経緯を経て、r14 の本命を volumetric atmosphere に pivot。章全体の方向転換は `docs/ayastorm-visual-realism-roadmap.md` §1 thesis、memory `project_ayastorm_visual_realism_chapter.md` 参照
+- 2026-05-12 (P0 完了に伴う改訂): P0 (`doc/r14/volumetric_atmosphere_survey.md` Round 1) で「SL は既に Beer-Lambert + in-scatter を実装済み」「`classic_mode` が master switch の完全 template」「GLSL は 3 OS 共通」が判明。前提が「全置換」から「追加実装 (altitude density + scene-referred 積分 + master switch)」に変わったため、§1 ゴール / §3 スコープ / §4 P1 / §6 リスクを実態に合わせて更新。受け入れ条件 (§5) は維持
