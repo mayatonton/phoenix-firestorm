@@ -32,8 +32,6 @@ vec3 srgb_to_linear(vec3 c);
 uniform sampler2D diffuseMap;
 uniform sampler2D altDiffuseMap;
 uniform float blend_factor; // interp factor between sunDisc A/B
-uniform float sun_disc_boost;        // AYAstorm r14: HDR boost multiplier
-uniform int   sun_disc_boost_enabled; // AYAstorm r14: master sentinel
 in vec2 vary_texcoord0;
 in float sun_fade;
 
@@ -43,15 +41,6 @@ void main()
     vec4 sunDiscB = texture(altDiffuseMap, vary_texcoord0.xy);
     vec4 c     = mix(sunDiscA, sunDiscB, blend_factor);
 
-    // AYAstorm r14: sun disc HDR boost. RGB feeds the HDR scene buffer (most
-    // is clipped by tonemap); alpha is what generateGlow extracts (pipeline
-    // hardcodes GLOW_MIN_LUMINANCE=9999, so the lum path is dead and alpha is
-    // the only driver). Boosting alpha is what actually produces the halo.
-    if (sun_disc_boost_enabled != 0)
-    {
-        c.rgb *= sun_disc_boost;
-        c.a   = clamp(c.a * sun_disc_boost, 0.0, 1.0);
-    }
 
     // SL-9806 stars poke through
     //c.a *= sun_fade;
