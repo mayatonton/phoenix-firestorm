@@ -23,6 +23,7 @@
 #include "v3math.h"
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -133,6 +134,11 @@ private:
 
     std::map<LLUUID, OccluderShape>   mOccluders;
     std::map<FMOD::Channel*, Smoothing> mSmoothing;
+    // r13 P15.9: pending triangle-extract queue. onObjectPropertiesReceived
+    // registers OBB synchronously but defers extractTriangles here so a
+    // TP/login burst of N tagged prims spreads over N/budget ticks instead
+    // of hitching the main thread.
+    std::set<LLUUID>                  mPendingExtract;
     F64                               mLastTickTime = 0.0;
     F32                               mTickDt = 0.f;
 };

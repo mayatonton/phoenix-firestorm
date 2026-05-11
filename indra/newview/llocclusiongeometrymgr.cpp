@@ -53,6 +53,15 @@ namespace
     // not" behaviour.
     constexpr int kMaxTrisPerOccluder = 2000;
 
+    // r13 P15.9: per-tick cap on triangle extracts drained from the pending
+    // queue. TP/login bursts can deliver ~100 tagged prims in 1-2 frames; at
+    // worst a 2000-tri mesh prim takes ~1-2 ms to walk, so a synchronous
+    // burst can hitch 100-200 ms. 6/tick spreads a 100-prim burst over ~17
+    // ticks (~0.3 s at 60 Hz) — invisible to the user. OBB pre-cull still
+    // works on pending entries (empty tris ⇒ segmentHitsShape returns the
+    // OBB result), so audio is correct from the first tick.
+    constexpr int kExtractPerTickBudget = 6;
+
     LLVector3 toFloatVec(const LLVector3d& v)
     {
         return LLVector3(static_cast<F32>(v.mdV[0]),
@@ -222,28 +231,44 @@ void LLOcclusionGeometryMgr::onObjectPropertiesReceived(const LLUUID& id,
         shape.obb.rot    = obj->getRotationRegion();
         shape.direct     = direct;
         shape.reverb     = reverb;
-        extractTriangles(obj, shape);
+        // r13 P15.9 (A): defer extractTriangles to refreshOccluders' per-tick
+        // drain. A TP/login burst of N tagged prims would otherwise call
+        // extract synchronously N times on the main thread; mesh prims near
+        // the 2000-tri cap can hitch 100-200 ms total. Pre-cull works on
+        // empty tris (segmentHitsShape returns the OBB hit), so audio is
+        // correct from frame 1 — just shape-less (no path-cut openings)
+        // until the queue catches up, typically under 0.5 s.
         mOccluders[id]   = std::move(shape);
+        mPendingExtract.insert(id);
         const OccluderShape& reg = mOccluders[id];
         LL_INFOS("Stream3D") << "[ayastorm:occlude] registered prim " << id
                               << " at " << reg.obb.center
                               << " half=" << reg.obb.half
                               << " direct=" << direct << " reverb=" << reverb
-                              << " tris=" << reg.tris.size()
-                              << " (count=" << mOccluders.size() << ")" << LL_ENDL;
+                              << " (extract queued, count=" << mOccluders.size() << ")" << LL_ENDL;
     }
     else
     {
-        // Existing entry — pick up Desc edits (direct/reverb) and current
-        // transform in one pass. Triangles are re-extracted because Desc
-        // edits often coincide with shape edits in the build floater
-        // (build session ⇒ many path-cut / hollow tweaks).
+        // r13 P15.9 (B): pick up Desc edits (direct/reverb) and the current
+        // transform unconditionally, but only queue a re-extract when the
+        // shape might have changed. TP often re-delivers the same Desc with
+        // the same scale; re-running extractTriangles there wastes ~50us-2ms
+        // without altering the raycast. Build-floater live edits are still
+        // caught by the isSelected() path in refreshOccluders. Re-extract
+        // also fires when we registered OBB-only (tris empty — e.g. mesh
+        // not yet loaded at first Desc arrival) so the next Desc round-trip
+        // gives us another chance.
+        const LLVector3 new_half = obj->getScale() * 0.5f;
+        const bool scale_changed = (new_half - it->second.obb.half).lengthSquared() > 1e-8f;
         it->second.obb.center = toFloatVec(obj->getPositionGlobal());
-        it->second.obb.half   = obj->getScale() * 0.5f;
+        it->second.obb.half   = new_half;
         it->second.obb.rot    = obj->getRotationRegion();
         it->second.direct     = direct;
         it->second.reverb     = reverb;
-        extractTriangles(obj, it->second);
+        if (scale_changed || it->second.tris.empty())
+        {
+            mPendingExtract.insert(id);
+        }
     }
 }
 
@@ -276,6 +301,7 @@ void LLOcclusionGeometryMgr::refreshOccluders()
         LLViewerObject* obj = gObjectList.findObject(it->first);
         if (!obj || obj->isDead())
         {
+            mPendingExtract.erase(it->first);
             it = mOccluders.erase(it);
             continue;
         }
@@ -294,8 +320,40 @@ void LLOcclusionGeometryMgr::refreshOccluders()
         if (scale_changed || obj->isSelected())
         {
             extractTriangles(obj, it->second);
+            // P15.9: this path already produced fresh tris; drop any pending
+            // entry so the drain loop below doesn't redo the same work.
+            mPendingExtract.erase(it->first);
         }
         ++it;
+    }
+
+    // r13 P15.9 (A): drain a few queued triangle extracts per tick to
+    // smooth out TP/login bursts. Stale UUIDs (prim died or got
+    // un-tagged before its turn) are dropped silently. The inline
+    // scale_changed / isSelected path above may have already extracted
+    // for some entries — those were erased from the queue there, so we
+    // only do real work here for prims that registered OBB-only and
+    // haven't been touched since.
+    int budget = kExtractPerTickBudget;
+    for (auto pit = mPendingExtract.begin();
+         pit != mPendingExtract.end() && budget > 0; )
+    {
+        const LLUUID id = *pit;
+        auto oit = mOccluders.find(id);
+        if (oit == mOccluders.end())
+        {
+            pit = mPendingExtract.erase(pit);
+            continue;
+        }
+        LLViewerObject* obj = gObjectList.findObject(id);
+        if (!obj || obj->isDead())
+        {
+            pit = mPendingExtract.erase(pit);
+            continue;
+        }
+        extractTriangles(obj, oit->second);
+        --budget;
+        pit = mPendingExtract.erase(pit);
     }
 }
 
