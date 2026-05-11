@@ -696,4 +696,34 @@ void LLOcclusionGeometryMgr::renderDebug() const
     }
     gGL.end();
     gGL.flush();
+
+    // Third pass: cyan triangle wireframe — the actual mesh used by the
+    // raycast. Without this the OBB outline alone can't tell a path-cut /
+    // hollow / mesh prim apart from its bounding box. Depth test off so
+    // the lines aren't z-fought into oblivion by the real prim faces
+    // (the tris are by construction coplanar with them). Cyan is chosen
+    // to be visually distinct from the orange→red OBB pass.
+    LLGLDisable depth(GL_DEPTH_TEST);
+    gGL.begin(LLRender::LINES);
+    for (const auto& kv : mOccluders)
+    {
+        const OccluderShape& shape = kv.second;
+        if (shape.tris.empty()) continue;
+        LLViewerObject* obj = gObjectList.findObject(kv.first);
+        if (!obj || obj->isDead()) continue;
+        const LLVector3 center = obj->getPositionAgent();
+        const OBB& obb = shape.obb;
+        gGL.color4f(0.f, 1.f, 1.f, 1.f);
+        for (const auto& tri : shape.tris)
+        {
+            const LLVector3 w0 = tri.v0 * obb.rot + center;
+            const LLVector3 w1 = tri.v1 * obb.rot + center;
+            const LLVector3 w2 = tri.v2 * obb.rot + center;
+            gGL.vertex3fv(w0.mV); gGL.vertex3fv(w1.mV);
+            gGL.vertex3fv(w1.mV); gGL.vertex3fv(w2.mV);
+            gGL.vertex3fv(w2.mV); gGL.vertex3fv(w0.mV);
+        }
+    }
+    gGL.end();
+    gGL.flush();
 }
