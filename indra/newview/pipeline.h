@@ -42,6 +42,8 @@
 #include "llheroprobemanager.h"
 
 #include <stack>
+#include <utility>
+#include <vector>
 
 class LLViewerTexture;
 class LLFace;
@@ -697,9 +699,18 @@ public:
         bool active = false;        // tag found AND hideoutside is effectively true
         bool keepAvatars = false;   // tag-specified keepavatars (default false)
         bool keepOwn = false;       // tag-specified keepownobject (default false)
+        // tag-specified altitude ranges (meters, agent Z). Empty = unrestricted.
+        // Tag is gated to only fire when agent Z is within at least one range.
+        std::vector<std::pair<F32, F32>> altRanges;
     };
+    // Owner-tag altitude ranges currently in effect (mirror of latest parsed tag).
+    static std::vector<std::pair<F32, F32>> sParcelOwnerTagAltRanges;
     static ParcelTagOverride parseParcelHideTag(const std::string& desc);
     static bool             shouldHideForOutsideParcel(LLDrawable* drawablep);
+    // Combined gate: visitor pref OR (owner tag present AND agent Z in range).
+    // Use this in render pipelines instead of testing sParcelHide*/sParcelOwnerTag*
+    // directly so the altitude window is honored uniformly.
+    static bool             isParcelHideAlive(LLDrawable* drawablep);
     // Mark all volume drawables for rebuild so the outside-parcel filter is
     // re-applied. Call when sParcelCheckSeq changes.
     static void             refreshOutsideParcelHiding();
