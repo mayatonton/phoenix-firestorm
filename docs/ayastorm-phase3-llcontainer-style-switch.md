@@ -198,7 +198,7 @@ if (ayastorm_is_ll_style())
 
 ## 6. 残課題・スコープ外
 
-- `AYAChatWindowStyle` 切替時、開いていた旧スタイルの floater は閉じない (ユーザーが明示的に閉じる必要あり)
+- `AYAChatWindowStyle` 切替時、開いていた旧スタイルの floater は閉じない (ユーザーが明示的に閉じる必要あり)。**自動 close→reopen による live-apply 化は永久 drop** (2 度試行 → いずれもバグ多発で AYA 判断で諦め、再着手しない。運用は window close→reopen で行う)
 - `ayastorm_show_ll_im_conversation()` は循環 include 回避のため `llfloaterimcontainer.cpp` に置いた free 関数。同種ヘルパが増えたら `ayastorm_routing.{h,cpp}` 等に分離を検討
 - リコンサイラは 1Hz 駆動。ユーザーが高速移動する場合の体感ラグが気になれば `mParticipantRefreshTimer` の周期を別途調整可
 - ペーパー上 LL 窓は依然として `LLLocalSpeakerMgr` の voice 参加者追加ロジックに乗っているため、SIM 仕様変更で `sayRange` 概念が変わると再検討が必要

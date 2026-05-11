@@ -793,9 +793,7 @@ void LLViewerPartSim::updateSimulation()
             // shouldHideForOutsideParcel() applies the keep_avatars /
             // keep_own / HUD rules consistently with volume hiding.
             if (upd && vobj && vobj->mDrawable
-                && (LLPipeline::sParcelHideEnabled
-                    || LLPipeline::sParcelOwnerTagActive)
-                && LLPipeline::shouldHideForOutsideParcel(vobj->mDrawable))
+                && LLPipeline::isParcelHideAlive(vobj->mDrawable))
             {
                 upd = false;
             }

@@ -82,6 +82,7 @@ Just write the tag below into the **parcel description** and any **AYAstorm visi
 | `hideoutside` | `true` | `false` でタグを一時無効化 / `false` temporarily disables the tag / `false` 临时禁用此标签 |
 | `keepavatars` | `false` | `true` でアバター・HUD は表示 / `true` keeps avatars & HUDs visible / `true` 保留头像与 HUD |
 | `keepownobject` | `false` | `true` で訪問者自身の所有物は表示 / `true` keeps the visitor's own objects visible / `true` 保留访问者自有物体 |
+| `altitude` | (なし / none / 无) | `min-max[,min-max...]` 形式で自分の高度 Z が指定範囲のいずれかに入っているときだけ発火 (両端 inclusive、ハイフン区切り、複数範囲はカンマ区切り)。撮影用 skybox 階だけ非表示にしたい等の用途 / `min-max[,min-max...]` — fires only when your Z (altitude) falls inside any of the listed ranges (both endpoints inclusive, hyphen-separated, comma-separated for multiple ranges). E.g. hide only at a specific skybox floor for photo work / `min-max[,min-max...]` 格式，仅当自身高度 Z 落入任一指定范围时触发 (两端 inclusive，连字符分隔，多范围以逗号分隔)。例如只对特定 skybox 楼层启用隐藏 (摄影用途) |
 
 **例 / Examples / 示例:**
 
@@ -91,6 +92,7 @@ Just write the tag below into the **parcel description** and any **AYAstorm visi
 | `[parcelhide:{keepavatars:true}]` | アバターは見えるが他の物は隠す / Avatars stay visible, other objects hidden / 保留头像，其他物体隐藏 |
 | `[parcelhide:{keepavatars:true}{keepownobject:true}]` | 一般的に使いやすい設定 / Common-sense default / 通用推荐设置 |
 | `[parcelhide:{hideoutside:false}]` | タグ一時無効 (イベント時など) / Temporarily disable tag (during events etc.) / 临时禁用 (例如举办活动时) |
+| `[parcelhide:{altitude:1000-2000,3000-4000}]` | 高度 1000-2000m か 3000-4000m に居るときだけ非表示発火 (skybox 階だけ隠す等) / Hide only when at altitude 1000-2000m or 3000-4000m (e.g. specific skybox floors) / 仅当处于 1000-2000m 或 3000-4000m 高度时启用隐藏 (例如特定 skybox 楼层) |
 
 **効果イメージ / Effect comparison / 效果对比:**
 

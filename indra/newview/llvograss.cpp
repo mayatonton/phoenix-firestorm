@@ -638,9 +638,7 @@ void LLGrassPartition::addGeometryCount(LLSpatialGroup* group, U32& vertex_count
         // path), so the volume face-collection hook does not catch it.
         // Filtering here means the buffer is not sized for these
         // faces and they never reach the alpha pool draw_vec.
-        if ((LLPipeline::sParcelHideEnabled
-             || LLPipeline::sParcelOwnerTagActive)
-            && LLPipeline::shouldHideForOutsideParcel(drawablep))
+        if (LLPipeline::isParcelHideAlive(drawablep))
         {
             continue;
         }

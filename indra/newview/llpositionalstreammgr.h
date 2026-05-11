@@ -81,6 +81,16 @@ public:
     // wait up to Stream3DPollInterval seconds before tagged prims rebind.
     void forceRescan();
 
+    // r13: Force a one-shot ObjectSelect for every child of `root_obj` so the
+    // sim emits full ObjectProperties (carrying Description) for them. The
+    // sim filters Description from ObjectPropertiesFamily for *child* prims
+    // (project_sim_objectproperties_family_child_filter), so without this
+    // nudge a tagged child stays invisible until the user touches it.
+    // Public so sibling subsystems (LLOcclusionGeometryMgr, etc.) can use the
+    // same boot-time discovery path that [3dstream-stereo:...] speaker scan
+    // already relies on internally.
+    void bootstrapChildDescriptions(LLViewerObject* root_obj);
+
     // Debug toggle stream (driven by Stream3DDebugPlay). Independent of
     // the prim binding map.
     void startDebug(const std::string& url, const LLVector3& world_pos);

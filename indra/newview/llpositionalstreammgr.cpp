@@ -29,6 +29,7 @@
 #include "llaudioengine.h"
 #include "llaudioengine_fmodstudio.h"
 #include "llfasttimer.h"
+#include "llocclusiongeometrymgr.h"
 #include "llpositionalstream.h"
 #include "llpositionalstreammulti.h"
 #include "llpositionalstreamstereo.h"
@@ -1519,6 +1520,22 @@ void LLPositionalStreamMgr::enqueuePriorityPoll(const LLUUID& id)
     mPriorityPollQueue.push_back(id);
 }
 
+void LLPositionalStreamMgr::bootstrapChildDescriptions(LLViewerObject* root_obj)
+{
+    // r13: see header. Mirror of the evaluateLinkset child-scan loop, but
+    // exposed for occlude tag bootstrap (and any future sibling system that
+    // needs a root's children's Description). The dedup in
+    // requestChildDescViaSelect (mPendingChildDeselect.try_emplace) makes
+    // repeat calls idempotent, so callers can fire on every root Desc update
+    // without throttling themselves.
+    if (!root_obj || root_obj->isDead()) return;
+    for (const auto& child : root_obj->getChildren())
+    {
+        if (!child || child->isDead()) continue;
+        requestChildDescViaSelect(child.get());
+    }
+}
+
 void LLPositionalStreamMgr::requestChildDescViaSelect(LLViewerObject* child)
 {
     // r8 F11: see header. We bypass LLSelectMgr deliberately — going through
@@ -1783,20 +1800,27 @@ void LLPositionalStreamMgr::update()
     // consumed — the sim never sees a long-held selection on our behalf.
     drainChildDeselects(now);
 
-    // r8 F8: drain pending linkset re-evaluations once per frame. A
-    // selection-induced ObjectProperties message can deliver 16 child
-    // descriptions back-to-back; the previous "evaluate per reply" path
-    // rebuilt the FMOD multi-stream once for every reply, blocking the main
-    // thread for several seconds. Set semantics dedup the root ids so each
-    // affected linkset rebuilds at most once per frame.
+    // r8 F8: drain pending linkset re-evaluations. A selection-induced
+    // ObjectProperties message can deliver 16 child descriptions back-to-
+    // back; the previous "evaluate per reply" path rebuilt the FMOD multi-
+    // stream once for every reply, blocking the main thread for several
+    // seconds. Set semantics dedup the root ids so each affected linkset
+    // rebuilds at most once.
+    //
+    // r13: rate-limit to one root per frame. evaluateLinkset() ultimately
+    // calls stream->start() which still does a synchronous libcurl HEAD
+    // pre-resolve for https:// URLs (~1.5s timeout post-r13 B). At login
+    // ObjectProperties replies for every tagged prim arrive in the same
+    // frame; draining all in one frame stacks N × 1.5s of main-thread
+    // block and trips the OS unresponsive dialog. Spreading 1/frame caps
+    // worst-case to a single resolve per frame at the cost of N extra
+    // frames before all bindings are live (imperceptible at 60fps).
     if (!mPendingLinksetEval.empty())
     {
-        std::set<LLUUID> drained;
-        drained.swap(mPendingLinksetEval);
-        for (const auto& root_id : drained)
-        {
-            evaluateLinkset(root_id);
-        }
+        auto first = mPendingLinksetEval.begin();
+        const LLUUID root_id = *first;
+        mPendingLinksetEval.erase(first);
+        evaluateLinkset(root_id);
     }
 
     if (mDebugStream)
@@ -1910,6 +1934,11 @@ void LLPositionalStreamMgr::update()
     constexpr F64 kRetryDelayDist = 5.0;
     const S32 max_attempts_dist = gSavedSettings.getS32("Stream3DReconnectAttempts");
     const F64 now_dist = LLTimer::getElapsedSeconds();
+
+    // r13: refresh OBB occluders once per tick. Drops dead/de-tagged prims,
+    // re-fetches transform, and re-parses {direct=N}{reverb=N} fields. Cost
+    // is ~10us at the 64-prim cap; no-op when no occluders are registered.
+    LLOcclusionGeometryMgr::instance().refreshOccluders();
 
     std::vector<LLUUID> dead_roots;
     for (auto& [root_id, b] : mDistributedBindings)
@@ -2131,6 +2160,41 @@ void LLPositionalStreamMgr::update()
         applyWetGainToBinding(b, b.wetgain_tag);
         b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
         b.stream->update();
+
+        // r13: per-frame OBB occlusion eval. The shipped libfmod
+        // (2.03.07) returns FMOD_ERR_INTERNAL from System::createGeometry
+        // even on a 1-poly probe, so we ray-cast on our side and feed the
+        // result into Channel::set3DOcclusion. Tag-driven cap keeps the
+        // cost negligible (<0.5 ms/sec at the spec §4.7 hard cap of 200
+        // occluders × 6 speakers × 60 Hz). No-op when no occluders are
+        // registered (the visitor still resets each channel to 0/0 once).
+        if (gAudiop)
+        {
+            const LLVector3 lpos = gAudiop->getListenerPos();
+            b.stream->forEachActiveSpeaker(
+                [&lpos](FMOD::Channel* ch, FMOD::DSP* lpf, const LLVector3& spos)
+                {
+                    LLOcclusionGeometryMgr::instance().applyToChannel(ch, lpf, lpos, spos);
+                });
+        }
+    }
+
+    // r13 P8: same occlusion pass for llPlaySound / attached-sound channels.
+    // The engine-side visitor filters to positional (= non-forced-priority)
+    // channels with a live FMOD handle, so 2D UI / preview sounds pass
+    // through untouched. We run this once per mgr update tick — same
+    // cadence as the stream loop above — so cutoff smoothing and ramp share
+    // a single dt source. mOccluders.empty() short-circuit inside
+    // applyToChannel keeps the no-occluder case cheap (one ramp step per
+    // active channel to drive trailing values back to zero).
+    if (auto* fe = dynamic_cast<LLAudioEngine_FMODSTUDIO*>(gAudiop))
+    {
+        const LLVector3 lpos = gAudiop->getListenerPos();
+        fe->forEachActive3DSfxChannel(
+            [&lpos](FMOD::Channel* ch, FMOD::DSP* lpf, const LLVector3& spos)
+            {
+                LLOcclusionGeometryMgr::instance().applyToChannel(ch, lpf, lpos, spos);
+            });
     }
     for (const auto& r : dead_roots)
     {
