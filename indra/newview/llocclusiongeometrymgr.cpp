@@ -573,136 +573,57 @@ void LLOcclusionGeometryMgr::renderDebug() const
 {
     if (mOccluders.empty()) return;
 
-    // 12 edges of a box, indexed into the 8-corner array below. Corner
-    // index encodes ±half on each axis: bit 0 = X, bit 1 = Y, bit 2 = Z.
-    static constexpr int kEdges[12][2] = {
-        {0,1},{2,3},{4,5},{6,7},  // X edges
-        {0,2},{1,3},{4,6},{5,7},  // Y edges
-        {0,4},{1,5},{2,6},{3,7},  // Z edges
+    // Per-triangle outward halo: push each vertex along the triangle's
+    // face normal so the cyan layer doesn't sink into the prim surface
+    // it's coplanar with (z-fight). Direction is forced outward from the
+    // OBB centre so it works regardless of LLVolume's triangle winding.
+    // Render-only — segmentHitsShape still uses the un-offset tris.
+    constexpr F32 kHaloPad = 0.02f;
+    auto offsetOf = [](const Tri& tri) -> LLVector3
+    {
+        LLVector3 n = (tri.v1 - tri.v0) % (tri.v2 - tri.v0);
+        const F32 len = n.length();
+        if (len < 1e-6f) return LLVector3::zero;
+        n *= (kHaloPad / len);
+        const LLVector3 centroid = (tri.v0 + tri.v1 + tri.v2) * (1.f / 3.f);
+        if (n * centroid < 0.f) n = -n;
+        return n;
     };
 
-    // 6 faces of a box, two triangles each (12 tris total). Each face
-    // shares one fixed-axis sign; the other two axes traverse the four
-    // corners of that face. Wound CCW when viewed from outside, but back
-    // -face culling is disabled below so winding is purely cosmetic.
-    static constexpr int kFaces[12][3] = {
-        // -X face
-        {0,2,6}, {0,6,4},
-        // +X face
-        {1,5,7}, {1,7,3},
-        // -Y face
-        {0,4,5}, {0,5,1},
-        // +Y face
-        {2,3,7}, {2,7,6},
-        // -Z face
-        {0,1,3}, {0,3,2},
-        // +Z face
-        {4,6,7}, {4,7,5},
-    };
-
-    // First pass: filled translucent faces so the OBB volume is obvious
-    // even when the wireframe overlaps real geometry. Blend on, depth
-    // write off so faces of different OBBs sort visually without
-    // committing to a depth order. Cull off so the box is solid from any
-    // viewing angle.
-    //
-    // Inflation halo: render the box ~5 cm larger than the prim on every
-    // axis. The OBB cache itself stores the exact prim half-extent (used
-    // by segmentHitsOBB() — must stay tight), but coplanar visualization
-    // z-fights against the actual prim faces, which made the wireframe
-    // / fill effectively invisible against the underlying prim. The halo
-    // is render-only and never feeds back into the occlusion math.
-    constexpr F32 kHaloPad = 0.05f;
     LLGLEnable blend(GL_BLEND);
     LLGLDisable cull(GL_CULL_FACE);
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
 
+    // First pass: translucent cyan fill so the volume reads at a glance,
+    // including from inside (cull off). Depth test stays on so fills of
+    // different occluders sort naturally; alpha keeps overlaps legible.
     gGL.begin(LLRender::TRIANGLES);
     for (const auto& kv : mOccluders)
     {
-        // Re-fetch the prim so we render in agent-region space rather
-        // than the global frame the OBB cache holds. Cheap: bounded by
-        // the spike's 64-occluder cap and lookup is O(log N) on the
-        // viewer object map. Skip if the prim went away between
-        // refreshOccluders() ticks (entry will be reaped on the next
-        // refresh anyway).
+        const OccluderShape& shape = kv.second;
+        if (shape.tris.empty()) continue;
         LLViewerObject* obj = gObjectList.findObject(kv.first);
         if (!obj || obj->isDead()) continue;
         const LLVector3 center = obj->getPositionAgent();
-
-        const OccluderShape& shape = kv.second;
         const OBB& obb = shape.obb;
-        // Colour scales with direct: orange (registered) → red (heavy).
-        // direct is already clamped to [0,1] by the parser. Fill alpha
-        // ~25 % so multiple overlapping OBBs stay individually legible.
-        const F32 cr = 1.f;
-        const F32 cg = 0.6f * (1.f - shape.direct);
-        const F32 cb = 0.f;
-        gGL.color4f(cr, cg, cb, 0.25f);
-
-        LLVector3 corners[8];
-        for (int i = 0; i < 8; ++i)
+        gGL.color4f(0.f, 1.f, 1.f, 0.25f);
+        for (const auto& tri : shape.tris)
         {
-            const F32 sx = (i & 1) ? 1.f : -1.f;
-            const F32 sy = (i & 2) ? 1.f : -1.f;
-            const F32 sz = (i & 4) ? 1.f : -1.f;
-            const LLVector3 local(sx * (obb.half.mV[0] + kHaloPad),
-                                  sy * (obb.half.mV[1] + kHaloPad),
-                                  sz * (obb.half.mV[2] + kHaloPad));
-            corners[i] = center + local * obb.rot;
-        }
-        for (const auto& f : kFaces)
-        {
-            gGL.vertex3fv(corners[f[0]].mV);
-            gGL.vertex3fv(corners[f[1]].mV);
-            gGL.vertex3fv(corners[f[2]].mV);
+            const LLVector3 off = offsetOf(tri);
+            const LLVector3 w0 = (tri.v0 + off) * obb.rot + center;
+            const LLVector3 w1 = (tri.v1 + off) * obb.rot + center;
+            const LLVector3 w2 = (tri.v2 + off) * obb.rot + center;
+            gGL.vertex3fv(w0.mV);
+            gGL.vertex3fv(w1.mV);
+            gGL.vertex3fv(w2.mV);
         }
     }
     gGL.end();
     gGL.flush();
 
-    // Second pass: solid wireframe edges on top of the fill so the box
-    // outline reads sharply (the 25 % fill alone is faint).
-    gGL.begin(LLRender::LINES);
-    for (const auto& kv : mOccluders)
-    {
-        LLViewerObject* obj = gObjectList.findObject(kv.first);
-        if (!obj || obj->isDead()) continue;
-        const LLVector3 center = obj->getPositionAgent();
-
-        const OccluderShape& shape = kv.second;
-        const OBB& obb = shape.obb;
-        const F32 cr = 1.f;
-        const F32 cg = 0.6f * (1.f - shape.direct);
-        const F32 cb = 0.f;
-        gGL.color4f(cr, cg, cb, 1.f);
-
-        LLVector3 corners[8];
-        for (int i = 0; i < 8; ++i)
-        {
-            const F32 sx = (i & 1) ? 1.f : -1.f;
-            const F32 sy = (i & 2) ? 1.f : -1.f;
-            const F32 sz = (i & 4) ? 1.f : -1.f;
-            const LLVector3 local(sx * (obb.half.mV[0] + kHaloPad),
-                                  sy * (obb.half.mV[1] + kHaloPad),
-                                  sz * (obb.half.mV[2] + kHaloPad));
-            corners[i] = center + local * obb.rot;
-        }
-        for (const auto& e : kEdges)
-        {
-            gGL.vertex3fv(corners[e[0]].mV);
-            gGL.vertex3fv(corners[e[1]].mV);
-        }
-    }
-    gGL.end();
-    gGL.flush();
-
-    // Third pass: cyan triangle wireframe — the actual mesh used by the
-    // raycast. Without this the OBB outline alone can't tell a path-cut /
-    // hollow / mesh prim apart from its bounding box. Depth test off so
-    // the lines aren't z-fought into oblivion by the real prim faces
-    // (the tris are by construction coplanar with them). Cyan is chosen
-    // to be visually distinct from the orange→red OBB pass.
+    // Second pass: solid cyan triangle edges on top of the fill. Depth
+    // test off so the outline stays sharp even when the offset isn't
+    // quite enough to clear a textured / shiny prim face.
     LLGLDisable depth(GL_DEPTH_TEST);
     gGL.begin(LLRender::LINES);
     for (const auto& kv : mOccluders)
@@ -716,9 +637,10 @@ void LLOcclusionGeometryMgr::renderDebug() const
         gGL.color4f(0.f, 1.f, 1.f, 1.f);
         for (const auto& tri : shape.tris)
         {
-            const LLVector3 w0 = tri.v0 * obb.rot + center;
-            const LLVector3 w1 = tri.v1 * obb.rot + center;
-            const LLVector3 w2 = tri.v2 * obb.rot + center;
+            const LLVector3 off = offsetOf(tri);
+            const LLVector3 w0 = (tri.v0 + off) * obb.rot + center;
+            const LLVector3 w1 = (tri.v1 + off) * obb.rot + center;
+            const LLVector3 w2 = (tri.v2 + off) * obb.rot + center;
             gGL.vertex3fv(w0.mV); gGL.vertex3fv(w1.mV);
             gGL.vertex3fv(w1.mV); gGL.vertex3fv(w2.mV);
             gGL.vertex3fv(w2.mV); gGL.vertex3fv(w0.mV);
