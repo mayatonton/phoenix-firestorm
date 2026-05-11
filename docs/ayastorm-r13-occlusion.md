@@ -288,15 +288,15 @@ r12 と異なり、本リリースでは **追加 phase が想定外に発生す
 
 - [x] **O1: scene A 室外→室内で direct sound の muffled→clear 変化** — spike 段階で AYA 主観 PASS (「おおいいよこもってて！！」)
 - [ ] **O2: scene A + venue=hall_medium で reverb も muffled→clear** — P10 step 2
-- [ ] **O3: scene B 扉 (`[ayastorm:occlude]` 付き) 閉/開で listener 真正面の muffled→clear 切替** — P10 step 3
+- [x] **O3: scene B 扉 (`[ayastorm:occlude]` 付き) 閉/開で listener 真正面の muffled→clear 切替** — AYA 実機 PASS
 - [ ] **O4: scene B 扉開、listener 斜め前 30° で direct そこそこ抜ける** — P10 step 4
 - [ ] **O5: scene B 扉開、建物真横 (壁越し直線) で muffled 維持** — P10 step 5
 - [ ] **O6: per-prim 引数 `[ayastorm:occlude{direct:0.3}{reverb:0.2}]` (薄壁) と引数なし default (0.7/0.5) の差** — P10 step 6
-- [ ] **O7: `Stream3DOcclusion = 0` で強制 OFF** — P10 step 7
+- [x] **O7: `Stream3DOcclusion = 0` で強制 OFF** — AYA 実機 PASS
 - [ ] **O8: `Stream3DOccluderRange = 8` で遠い occluder が遮蔽しない** — P10 step 8
 - [ ] **O9: 動的プリム ([ayastorm:occlude] 付き扉) を移動で遮蔽位置が即追従、ramp 250ms で滑らか** — P10 step 9
 - [ ] **O10: 配信者 r11 venue タグと occlusion が独立動作 (狭箱で野外 venue 許容)** — P10 step 10
-- [ ] **O11: `llPlaySound` (オブジェクト効果音) も occlusion 適用** — P10 step 11
+- [x] **O11: `llPlaySound` (オブジェクト効果音) も occlusion 適用** — AYA 実機 PASS
 - [ ] **O12: `Stream3DShowOccluders` (Alt+Shift+O) で OBB が wireframe + fill 可視化** — spike 確認済、P10 step 12 で再確認
 - [ ] **5min dropout 0** (occlusion + venue=hall_medium + binaural ON + upmix ON、occluder ×30 + 動的扉 ×3) — P12
 - [ ] **URL 切替 ×10** (occlusion 環境下で stereo upmix ↔ 5.1 native ↔ mono の組合せ) — P12
