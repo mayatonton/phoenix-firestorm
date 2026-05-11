@@ -284,11 +284,14 @@ void LLOcclusionGeometryMgr::refreshOccluders()
         const bool scale_changed = (new_half - it->second.obb.half).lengthSquared() > 1e-8f;
         it->second.obb.half = new_half;
         it->second.obb.rot  = obj->getRotationRegion();
-        // r13 P15.2: tris are stored in OBB-local space (scale baked in).
-        // Re-extract on scale change so they stay aligned with the
-        // refreshed half-extent. Shape edits (path cut / hollow) round
-        // through onObjectPropertiesReceived, which re-extracts there.
-        if (scale_changed)
+        // r13 P15.5: re-extract while the prim is selected so Path Cut /
+        // Hollow / Sculpt edits in the build floater reflect live in both
+        // the cyan overlay and the audio raycast. Without this, mid-edit
+        // changes only round-trip via ObjectProperties after the edit
+        // window closes (sim doesn't broadcast every drag). Selection is
+        // typically 1-3 prims, so the per-tick re-extract cost stays in
+        // the μs range even at the 2000-tri cap.
+        if (scale_changed || obj->isSelected())
         {
             extractTriangles(obj, it->second);
         }
