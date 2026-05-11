@@ -408,6 +408,8 @@ spike で出していない r13 final scope の残作業:
 
 **残リスク (運用観察)**: 起動が依然として重い場合、次の調査対象は `LLPositionalStreamMgr::update()` 内の **他の重処理** — タグ付き 3dstream prim 数に比例する OBB occlusion raycast、N speaker 分の per-frame DSP 更新。raycast hysteresis (距離/角度しきい値で N tick おき更新)、DSP 変化検出スキップなどが candidate。実機で重さが残らない限り着手しない。
 
+**追記 (2026-05-11、P15.9 で部分消化)**: P15 で OBB → 実プリム三角形 raycast に昇格させた結果、`onObjectPropertiesReceived` 内の `extractTriangles` (LLVolume::getVolumeFace から ~200-2000 tri 抽出) が新たな同期ホットスポットとして浮上。TP/login バーストで 100 prim 級が同フレームに到着すると 100-200ms 級 hitch の懸念。**P15.9 (`2887e598f7`) で対策済**: 詳細は §5.7。raycast hysteresis / DSP 変化検出スキップは依然として実機重さが残らない限り着手しない方針。
+
 ### 5.5 commit ログ
 
 | commit | 内容 |
@@ -439,6 +441,8 @@ spike で出していない r13 final scope の残作業:
 | `ae66fffe44` | P15.5: 編集中プリム (build floater で選択中) を毎 tick 再抽出してライブ反映 (obj->isSelected() gating) |
 | `409dea6f53` | P15.6: tag-guide ja/en/zh §16 を実形状 mesh raycast 仕様に更新 (タイトル / §16.2 / §16.8 / §16.9 / 改訂履歴) |
 | `44df4e93a8` | P15.7: Release Notes ja/en/zh を実形状 mesh raycast 仕様に更新、永久 drop 4 項を「意図的にスコープ外」セクションに分離 |
+| `605a479256` | P15.8: roadmap §3/§5/§6/§7/§9 と impl record §5.5 を P15 mesh raycast 反映に同期 |
+| `2887e598f7` | P15.9: TP/login バースト時 freeze 対策 — extract 遅延 drain (per-tick budget=6) + 既存エントリの Desc 同値時 re-extract スキップ |
 
 ### 5.6 受入条件 (§4.1) の現況
 
@@ -455,6 +459,38 @@ spec §6.1 を 14 件 → 12 件に再構成済み (door / material 表 永久 d
 - **CPU / dropout / leak / regression**: spike では未測定 (P12 で測定)
 
 残工程 (§5.3.2) を片付けたら P10〜P12 を順次実行して closeout する。
+
+### 5.7 P15.9 設計判断: TP/login バースト時の extract 遅延 drain + Desc 同値スキップ
+
+**症状予測 (AYA 提起)**: P15 で `extractTriangles` (LLVolume::getVolumeFace 由来の ~200-2000 tri を OBB-local 座標に変換して `OccluderShape.tris` へ push) を **`onObjectPropertiesReceived` から同期実行** していたため、TP / login 直後に `ObjectPropertiesFamily` が一斉到着するシーンで主スレッド hitch (100-200 ms 級) が起こり「重い / 固まる」感覚を与える懸念。
+
+**真因**:
+- LL の sim 側は TP/login arrival 時に視界内 prim の `ObjectPropertiesFamily` を **同一フレームに集中送信** する。タグ付き occluder が N 個ある会場では `onObjectPropertiesReceived` が N 連続発火
+- 1 prim あたりの `extractTriangles` cost は ~50µs (200 tri) 〜 ~2ms (2000 tri 上限近傍 mesh)、100 prim 集中で **5-200 ms 主スレッド占有**
+- さらに line 246 (旧版) で「既存エントリも問答無用で re-extract」していたため、TP 中の冗長な ObjectProperties 再配信で N 倍の空回り extract が発生する経路もあった
+
+**対策 (commit `2887e598f7`、A+B 同梱)**:
+- **A. 遅延 drain (per-tick budget=6)**: `onObjectPropertiesReceived` 内で新規登録は **OBB のみ即時セット** し、UUID を `mPendingExtract` (`std::set<LLUUID>`) に積むだけにする。`refreshOccluders` の末尾で **1 tick あたり最大 6 件** だけ `extractTriangles` を drain。100 prim バースト → ~17 tick (~0.3s @ 60Hz) で消化。`segmentHitsShape` は `tris.empty()` のとき OBB-only fallback (line 405) を返すため、pending 中も audio raycast は正常 (path cut 穴だけ間に合わない、超短時間)
+- **B. Desc 同値時 re-extract スキップ**: 既存エントリ更新経路では `scale_changed || tris.empty()` のときだけ `mPendingExtract` に積む。TP の冗長 ObjectProperties 再配信で extract が空回りしない。build floater ライブ追従は `refreshOccluders` の `isSelected()` 経路 (line 294) がそのまま担うので影響なし
+- **副次**: 死亡 prim と inline (scale_changed / isSelected) extract 経路で `mPendingExtract.erase(it->first)` を実行、double-work を回避
+
+**検証 (2026-05-11、AYA 実機 + ログ判定)**:
+
+検証用 hook として drain 側に `[ayastorm:occlude] extract drained prim UUID tris=N queue_remaining=N` の LL_INFOS を仮設置し、AYA がタグ付き会場へログイン → 30 秒滞在 → 正常終了。Claude が `~/.ayastorm_x64/logs/AYAstorm.log` を grep して以下を確認:
+
+| 判定基準 | 結果 |
+|---|---|
+| A: per-tick budget 効いてる | ✓ 同 tick 最大 drain は 4 件 (budget=6 以内) |
+| B: drain 総数 == register 総数 | ✓ **7 == 7** (冗長 re-queue なし) |
+| `queue_remaining` が 0 に減衰 | ✓ 各バーストごとに即 0 |
+| over-cap fallback / WARN 発生 | ✓ なし (本会場は tris 84-108 で 2000 cap に遠い) |
+| occlusion 機能性確認 (おまけ) | ✓ AYA が壁の向こうに移動した瞬間 `hit=1` 発火、cutoff_hz が 22000 → 1088.21Hz に推移、direct/reverb 0.7/0.5 適用 |
+
+検証用 hook は判定 PASS 後に削除して shipping commit に含めず (memory `feedback_remove_verification_logs.md`)。
+
+**P15.9 で消化されないもの (将来 if needed)**:
+- `firstHit` 内 per-occluder 距離 cull (option D、当初提示): 効果小と判断、未実装。100m+ 会場で実機重さが残るなら検討
+- `extractTriangles` の lazy 遅延 (option C、当初提示): A の代替案。A で十分なので採用せず、定常メモリも 256 × 2000 tri × ~36 byte ≒ 18 MB と許容範囲
 
 ---
 
