@@ -287,36 +287,36 @@ r12 と異なり、本リリースでは **追加 phase が想定外に発生す
 ### 4.1 r13 新規 (P1〜P9 で実装、P10/P11/P12 で検証)
 
 - [x] **O1: scene A 室外→室内で direct sound の muffled→clear 変化** — spike 段階で AYA 主観 PASS (「おおいいよこもってて！！」)
-- [ ] **O2: scene A + venue=hall_medium で reverb も muffled→clear** — P10 step 2
+- [x] **O2: scene A + venue=hall_medium で reverb も muffled→clear** — AYA 実機 PASS
 - [x] **O3: scene B 扉 (`[ayastorm:occlude]` 付き) 閉/開で listener 真正面の muffled→clear 切替** — AYA 実機 PASS
-- [ ] **O4: scene B 扉開、listener 斜め前 30° で direct そこそこ抜ける** — P10 step 4
-- [ ] **O5: scene B 扉開、建物真横 (壁越し直線) で muffled 維持** — P10 step 5
-- [ ] **O6: per-prim 引数 `[ayastorm:occlude{direct:0.3}{reverb:0.2}]` (薄壁) と引数なし default (0.7/0.5) の差** — P10 step 6
+- [x] **O4: scene B 扉開、listener 斜め前 30° で direct そこそこ抜ける** — AYA 実機 PASS
+- [x] **O5: scene B 扉開、建物真横 (壁越し直線) で muffled 維持** — AYA 実機 PASS
+- [x] **O6: per-prim 引数 `[ayastorm:occlude{direct:0.3}{reverb:0.2}]` (薄壁) と引数なし default (0.7/0.5) の差** — AYA 実機 PASS
 - [x] **O7: `Stream3DOcclusion = 0` で強制 OFF** — AYA 実機 PASS
-- [ ] **O8: `Stream3DOccluderRange = 8` で遠い occluder が遮蔽しない** — P10 step 8
-- [ ] **O9: 動的プリム ([ayastorm:occlude] 付き扉) を移動で遮蔽位置が即追従、ramp 250ms で滑らか** — P10 step 9
-- [ ] **O10: 配信者 r11 venue タグと occlusion が独立動作 (狭箱で野外 venue 許容)** — P10 step 10
+- [x] **O8: `Stream3DOccluderRange = 8` で遠い occluder が遮蔽しない** — AYA 実機 PASS
+- [x] **O9: 動的プリム ([ayastorm:occlude] 付き扉) を移動で遮蔽位置が即追従、ramp 250ms で滑らか** — AYA 実機 PASS
+- [x] **O10: 配信者 r11 venue タグと occlusion が独立動作 (狭箱で野外 venue 許容)** — AYA 実機 PASS
 - [x] **O11: `llPlaySound` (オブジェクト効果音) も occlusion 適用** — AYA 実機 PASS
-- [ ] **O12: `Stream3DShowOccluders` (Alt+Shift+O) で OBB が wireframe + fill 可視化** — spike 確認済、P10 step 12 で再確認
-- [ ] **5min dropout 0** (occlusion + venue=hall_medium + binaural ON + upmix ON、occluder ×30 + 動的扉 ×3) — P12
-- [ ] **URL 切替 ×10** (occlusion 環境下で stereo upmix ↔ 5.1 native ↔ mono の組合せ) — P12
-- [ ] **prim rez/derez ×20 で occluder leak なし** (`mOccluders` 件数推移確認) — P12
-- [ ] **動的扉 連続回転 5min × LSL `llTargetOmega` で raycast slab 遅延なし** — P12
-- [ ] **CPU r12 比 +2pp 未満** — P12
+- [x] **O12: `Stream3DShowOccluders` (Alt+Shift+O) で実形状三角形メッシュ (シアン fill + wireframe) が可視化** — AYA 実機 PASS
+- [x] **5min dropout 0** (occlusion + venue=hall_medium + binaural ON + upmix ON、occluder ×30 + 動的扉 ×3) — AYA 実機 PASS
+- [x] **URL 切替 ×10** (occlusion 環境下で stereo upmix ↔ 5.1 native ↔ mono の組合せ) — AYA 実機 PASS
+- [x] **prim rez/derez ×20 で occluder leak なし** (`mOccluders` 件数推移確認) — AYA 実機 PASS
+- [x] **動的扉 連続回転 5min × LSL `llTargetOmega` で raycast slab 遅延なし** — AYA 実機 PASS
+- [x] **CPU r12 比 +2pp 未満** — AYA 実機 PASS
 
 ### 4.2 r10 / r11 / r12 互換 (回帰確認、P11)
 
-- [ ] r12 §6 受入条件全行が回帰なし (occluder タグなしの環境で完全互換)
-- [ ] r11 §5.5 受入条件全行が回帰なし (同上)
-- [ ] r10 §5.3 受入条件全行が回帰なし (同上)
-- [ ] r9 / r8 互換 (既存配置のタグ無改修動作) スポット回帰
-- [~] codec 別: Vorbis のみ end-to-end 実機回し、Opus / FLAC は r9 確立経路の流用でコードレビューのみ
+- [x] r12 §6 受入条件全行が回帰なし (occluder タグなしの環境で完全互換) — AYA 実機 PASS
+- [x] r11 §5.5 受入条件全行が回帰なし (同上) — AYA 実機 PASS
+- [x] r10 §5.3 受入条件全行が回帰なし (同上) — AYA 実機 PASS
+- [x] r9 / r8 互換 (既存配置のタグ無改修動作) スポット回帰 — AYA 実機 PASS
+- [~] codec 別: Vorbis のみ end-to-end 実機回し PASS、Opus / FLAC は r9 確立経路の流用でコードレビューのみ
 
 ### 4.3 chat font live-apply fix 同梱確認 (P11)
 
-- [ ] LL-style chat で ChatFontSize 変更が即時反映 (cherry-pick `d66bdb74fc`、元 `2689a35f8f`) — P11
-- [ ] LL-style chat で PlainTextChatHistory toggle が即時反映 (同上) — P11
-- [ ] FS-style chat 経路に regression なし (chat 描画系の従来動作維持) — P11
+- [x] LL-style chat で ChatFontSize 変更が即時反映 (cherry-pick `d66bdb74fc`、元 `2689a35f8f`) — AYA 実機 PASS
+- [x] LL-style chat で PlainTextChatHistory toggle が即時反映 (同上) — AYA 実機 PASS
+- [x] FS-style chat 経路に regression なし (chat 描画系の従来動作維持) — AYA 実機 PASS
 
 ---
 

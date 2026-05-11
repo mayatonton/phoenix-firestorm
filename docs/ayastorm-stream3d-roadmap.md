@@ -131,7 +131,7 @@
 
 ### r13: OBB タグベース遮蔽 (Layer 3 空間ジオメトリ、会場運営主導モデル + chat font 同梱)
 
-- ブランチ: `feature/r13-occlusion-spec-draft` → `feature/aya-r13-obb-occlusion` (実装ブランチ、spike 完了済 / 残工程進行中)
+- ブランチ: `feature/r13-occlusion-spec-draft` (shipped、AYA 実機受入 PASS 完了、tag/build/release は AYA 側で実施)
 - 仕様: `doc/spec_obb_occlusion.md` (final scope 確定 2026-05-11)
 - 工程: `docs/ayastorm-r13-occlusion.md` (§5 が canonical な実装ログ)
 - 同梱バグ修正: cherry-pick `d66bdb74fc` (元 `feature/ll-chat-livetune-font-plaintext` の `2689a35f8f`、ChatFontSize / PlainTextChatHistory live-apply on LL-style chat)
@@ -170,7 +170,7 @@
 | r10 | 6-11 日 | 2-3 週 | 低-中 (r8 設計依存) | 実績 4 日 |
 | r11 | 9.5-10.5 日 | 3-5 週 | 中 (R5 master volume 伝播 / IR ライセンス / lite-HRTF 体感) | 実装完了 (リリース判断保留中) |
 | r12 | 5-7 日 | 1-2 週 | 低-中 (R6 DSP 挿入位置 A/B 判断 / R2-R4 default 値の聴感調整) | 完了 (PR #46 + r12.1 PR #52) |
-| r13 | 5-7 日 | 1-2 週 | 中 (R1 mesh OBB ズレ / R3 default 値 tuning / R7 rapid teleport) | spike 完了 / 残工程進行中 |
+| r13 | 5-7 日 | 1-2 週 | 中 (R1 mesh OBB ズレ / R3 default 値 tuning / R7 rapid teleport) | shipped (受入 PASS 完了、AYA 側 tag/build 待ち) |
 | **合計** | **r8-r12 実績 + r13 計画 ~6 日** | **r13 のみ約 1-2 週** | - | - |
 
 ### r8 の内訳
