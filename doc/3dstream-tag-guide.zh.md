@@ -23,7 +23,7 @@
 13. [错误通知 / 诊断](#13-错误通知--诊断)
 14. [故障排查](#14-故障排查)
 15. [已知限制 / 规格说明](#15-已知限制--规格说明)
-16. [静态 OBB 遮蔽 `[ayastorm:occlude]` (r13)](#16-静态-obb-遮蔽-ayastormocclude-r13)
+16. [静态遮蔽 `[ayastorm:occlude]` (r13)](#16-静态遮蔽-ayastormocclude-r13)
 17. [相关文档 / 内部规格书](#17-相关文档--内部规格书)
 
 ---
@@ -107,7 +107,7 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 |---|---|---|
 | **单声道标签** | `[3dstream:...]` | 单个图元播放 1 条流 (最小配置) |
 | **分散立体声 / 会场布置标签** | `[3dstream-stereo:...]` | 链接组中多个图元同步播放 1 条流 (立体声 / 多扬声器 / 5.1ch) |
-| **静态 OBB 遮蔽标签** (r13 新增) | `[ayastorm:occlude]` | 把墙 / 门 / 地板 / 天花等图元标记为"阻挡声音的物体" (面向会场运营 / 建造者，详见 §16) |
+| **静态遮蔽标签** (r13 新增) | `[ayastorm:occlude]` | 把墙 / 门 / 地板 / 天花等图元标记为"阻挡声音的物体" (面向会场运营 / 建造者，详见 §16) |
 
 ### 4.2 旧前缀的别名
 
@@ -1178,7 +1178,7 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 ---
 
-## 16. 静态 OBB 遮蔽 `[ayastorm:occlude]` (r13)
+## 16. 静态遮蔽 `[ayastorm:occlude]` (r13)
 
 **面向会场运营 / 建造者** 的标签。把墙、门、地板、天花板等"阻挡声音的图元"贴上这个标签后，AYAstorm 会把它们当作位于听者位置与音源图元位置之间的 **遮蔽物** 来处理，从而让声音变得闷蒙。
 
@@ -1201,7 +1201,11 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 - **`[3dstream:...]` / `[3dstream-stereo:...]` 发出的声音** (3D 定位流，每个扬声器图元单独评估)
 - **`llPlaySound` / 附加音 / 子图元音效** (世界 SFX)
 
-如果听者位置 (摄像机或角色) 与音源位置的连线穿过 occlude 图元的 **OBB (Oriented Bounding Box)**，则判定为"有遮蔽"，应用音量衰减 + 低通着色让声音变闷。若同时穿过多个图元，则采用 **遮蔽值最强的那一个** (= max(direct), max(reverb))。
+如果听者位置 (摄像机或角色) 与音源位置的连线穿过 occlude 图元的 **真实形状 (三角形网格)**，则判定为"有遮蔽"，应用音量衰减 + 低通着色让声音变闷。Path Cut 切开的缺口 / Hollow 挖空的内部 / mesh 图元的精确形状 全部都会参与遮蔽计算 — "穿过甜甜圈的洞" 的声音直接通过，"撞到墙体本身" 的声音才会闷掉，符合直觉。
+
+若同时穿过多个图元，衰减以 **乘法叠加** 方式累积 — 例: 两面 `direct=0.7` 的墙最终 direct = `1 - (1-0.7)² ≈ 0.91`，三面更强。"墙越多越闷" 的直觉直接反映。
+
+内部为两阶段判定: 先用 bounding OBB 做粗剪除 (segment-vs-AABB，~95% 不相关组合被几条指令拒绝)，再对剩下的候选执行 Möller-Trumbore 三角形 raycast。在保持精确形状的同时控制 CPU 成本。
 
 #### 哪些声音不会被遮蔽
 
@@ -1256,19 +1260,23 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 ### 16.8 可视化 (`Stream3DShowOccluders`、Alt+Shift+O)
 
-把已注册的 occluder 图元以 **OBB 线框** 形式显示的 debug 功能。颜色随 `direct` 变化 (橙色 = `0.7` 默认 → 红色 = `1.0` 完全墙)。建造会场时可用来确认"标签是否被正确识别"、"OBB 朝向是否符合预期"。
+把已注册的 occluder 图元以 **青色三角形网格** (半透明 fill + wireframe) 形式显示的 debug 功能。绘制的就是 raycast 实际使用的三角形，所以 Path Cut / Hollow / mesh 图元的形状会**原样呈现**为青色。建造会场时可用来确认"标签是否被识别"、"是否按预期形状产生遮蔽"。
 
 - **菜单**: View → Highlighting and Visibility → "Show 3D Stream Occluders (AYAstorm)"
 - **快捷键**: `Alt+Shift+O` (实时切换)
 
-把 `Stream3DOcclusion` (主开关，§16.7) 设为 `0` 时可视化 **仍然可用** — 两个开关有意做成独立，以便会场运营在 audio off 的状态下也能确认 OBB 结构。
+**编辑中实时跟随**: 在 build floater 中 **选中的 occluder 图元**，在拖动 Path Cut / Hollow / Sculpt 滑块的过程中青色形状会实时更新 — 关闭编辑窗口前就能确认遮蔽形状。未选中的 occluder 则在关闭编辑窗口后通过 sim 回传更新。
+
+**回退提示**: 三角形提取失败的 occluder (例: mesh 三角形数超过 2000 上限，详见 §16.9) 不会画出青色。"贴了标签但没有青色显示" 是已回退到 OBB-only 模式的视觉信号。
+
+把 `Stream3DOcclusion` (主开关，§16.7) 设为 `0` 时可视化 **仍然可用** — 两个开关有意做成独立，以便会场运营在 audio off 的状态下也能确认遮蔽结构。
 
 ### 16.9 限制 / 上限
 
 - **同时 occluder 数 256** (`kMaxOccluders` hardcoded)。sim 内 `[ayastorm:occlude]` 标签图元超过 256 个时，第 257 个起不会注册 (`LL_WARNS` 写入日志)。典型 SL 会场 (~100 图元) 有充足余量。
-- **OBB 近似**: 遮蔽判定基于 bounding box，不是图元真实形状。复杂形状 (拱形 / 曲面 / 楼梯扶手) 会有近似误差 — 如需更细粒度请拆分为面板并分别贴标签。
-- **CPU 负载**: 256 occluders × 64 channels × 60 Hz ≈ 1M slab tests/sec，远低于 1 ms/sec。典型 SL 会场负载可忽略。
-- **同梱 FMOD 限制**: 内部实现为 viewer 侧的 segment-vs-OBB slab test (同梱 `libfmod 2.03.07` 的 `FMOD::Geometry::createGeometry` 不可用)。对用户透明。
+- **三角形数上限**: 每个 occluder **2000 个三角形** (`kMaxTrisPerOccluder` hardcoded)。超过上限的 mesh 图元会放弃三角形提取，回退到仅 bounding OBB 的判定 (`LL_WARNS_ONCE` 写入日志，§16.8 中该图元不显示青色作为视觉提示)。典型 SL building prim (cube / cylinder / hollow / Path Cut) 一般在数十-数百个三角形之间，建造类 mesh 图元也通常在范围内。
+- **CPU 负载**: 64m 距离剪除 + OBB 粗剪除使大多数 (segment, occluder) 组合被几条指令拒绝，三角形 raycast 仅对实际相交的少数图元执行。典型 SL 会场 (~100 occluder) 下保持低于 1 ms/sec。
+- **同梱 FMOD 限制**: 内部实现为 viewer 侧的 OBB 粗剪除 + Möller-Trumbore 三角形 raycast (同梱 `libfmod 2.03.07` 的 `FMOD::Geometry::createGeometry` 不可用)。对用户透明。
 
 ---
 
@@ -1297,3 +1305,4 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 - **2026-05-08 (r12)**: 加入 §4.5 (短形式)、§7 (双耳化 / 会场残响)、§8 (stereo→5.1 上混)。r11 与 r12 一并发布 (避免标签格式两阶段变更引起的混乱，r11 不单独发布)。后续章节改番 (§7–§14 → §9–§16)。§12.2 列出 r11/r12 听者侧 sentinel debug 设置；推流者主导模型保留 (一般用户无 Preferences UI)。
 - **2026-05-09 (r12.1)**：新增 §7.4 `{lfegain:N}` (短形式 `lg`)，原 §7.4 推流者主导模型顺延为 §7.5、原 §7.5 组合示例顺延为 §7.6。`wetgain` 默认值由 `1.0` 改为 `0.2` (反映实际试听确认的音乐用途实用区间 0.1〜0.5)。§12.2 追加 `Stream3DLfeGain` sentinel；§12.2 / §12.3 加入实时调参修正说明 (覆盖 r12 中 `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 修改后必须触摸图元才生效的回归)。
 - **2026-05-11 (r13)**: 新增 §16 静态 OBB 遮蔽 `[ayastorm:occlude]`，原 §16 相关文档顺延为 §17。§4.1 由"两种标签"扩展为"三种标签"。r13 debug settings (`Stream3DOcclusion` 主开关 / `Stream3DOccluderRange` 距离剪除 / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` 可视化) 在 §16.6-§16.8 中说明。§17 表追加 `docs/ayastorm-r13-occlusion.md`。
+- **2026-05-11 (r13 P15)**: 遮蔽判定从 OBB 近似升级为 **真实形状三角形 raycast** (OBB 粗剪除 + Möller-Trumbore 两阶段，详见 §16.2)。Path Cut / Hollow / Mesh 的真实形状全部参与音频计算。多图元叠加方式更正为 **乘法叠加** (实现一直是乘法叠加，旧版误记为 `max`)。`Stream3DShowOccluders` 从 OBB 线框改为 **青色三角形网格** (半透明 fill + wireframe)，build floater 中选中图元支持编辑中实时跟随 (§16.8)。§16.9 中追加每 occluder 2000 三角形上限及 OBB-only 回退规则。§16 标题由"静态 OBB 遮蔽"简化为"静态遮蔽"。

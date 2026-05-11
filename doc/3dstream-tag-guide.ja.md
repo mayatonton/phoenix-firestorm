@@ -23,7 +23,7 @@
 13. [エラー通知 / 診断](#13-エラー通知--診断)
 14. [トラブルシューティング](#14-トラブルシューティング)
 15. [既知の制約 / 仕様上の注意](#15-既知の制約--仕様上の注意)
-16. [静的 OBB occlusion `[ayastorm:occlude]` (r13)](#16-静的-obb-occlusion-ayastormocclude-r13)
+16. [静的 occlusion `[ayastorm:occlude]` (r13)](#16-静的-occlusion-ayastormocclude-r13)
 17. [関連ドキュメント / 内部仕様書](#17-関連ドキュメント--内部仕様書)
 
 ---
@@ -107,7 +107,7 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 |---|---|---|
 | **モノラルタグ** | `[3dstream:...]` | 単一プリムから 1 ストリームを再生 (最小構成) |
 | **分散ステレオ / 会場配置タグ** | `[3dstream-stereo:...]` | リンクセットの複数プリムから 1 ストリームを同期再生 (ステレオ / マルチスピーカー / 5.1ch) |
-| **静的 OBB occlusion タグ** (r13 新設) | `[ayastorm:occlude]` | 壁・扉・床・天井プリムを「音を遮るもの」として扱う (会場運営 / 建設者向け、§16) |
+| **静的 occlusion タグ** (r13 新設) | `[ayastorm:occlude]` | 壁・扉・床・天井プリムを「音を遮るもの」として扱う (会場運営 / 建設者向け、§16) |
 
 ### 4.2 旧プレフィクスのエイリアス
 
@@ -1192,7 +1192,7 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 
 ---
 
-## 16. 静的 OBB occlusion `[ayastorm:occlude]` (r13)
+## 16. 静的 occlusion `[ayastorm:occlude]` (r13)
 
 **会場運営 / 建設者向け** のタグです。壁・扉・床・天井などの「音を遮るプリム」にこのタグを書くと、AYAstorm はそのプリムをリスナー位置と音源プリム位置の間にある **遮蔽物** として扱い、音をこもらせます。
 
@@ -1215,7 +1215,11 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 - **`[3dstream:...]` / `[3dstream-stereo:...]` から鳴る音** (3D 定位ストリーム、スピーカープリムごと)
 - **`llPlaySound` / 添付音 / 子プリム効果音** (世界 SFX)
 
-リスナー位置 (カメラまたはアバター) と音源位置を結ぶ線分が occlude プリムの **OBB (Oriented Bounding Box)** を貫いていれば「遮蔽あり」と判定し、音量を下げ + 低域強調のローパスでこもらせます。複数のプリムを同時に貫いている場合は **最も遮蔽値の強いプリム** を採用 (= max(direct), max(reverb))。
+リスナー位置 (カメラまたはアバター) と音源位置を結ぶ線分が occlude プリムの **実形状 (三角形メッシュ)** を貫いていれば「遮蔽あり」と判定し、音量を下げ + 低域強調のローパスでこもらせます。Path Cut で開けた切れ目 / Hollow でくり抜いた中空 / mesh プリムの正確な形状 が全て遮蔽計算に反映されるため、「ドーナツの穴を通る音は素通し / 壁の本体に当たる音はこもる」という直感どおりに鳴ります。
+
+複数のプリムを同時に貫いている場合は **掛け合わせ** で減衰します — 例: `direct=0.7` のプリム 2 枚を抜けると最終 direct は `1 - (1-0.7)² ≈ 0.91`、3 枚抜けるとさらに強い、という「壁が増えるほどこもる」直感どおりの挙動。
+
+内部的には bounding OBB で粗く pre-cull (segment-vs-AABB で ~95% のミスマッチを reject) → 残った候補のみ三角形 raycast (Möller-Trumbore)、という 2 段判定で、CPU を低く保ちつつ実形状精度を確保しています。
 
 #### 何が遮蔽されないか
 
@@ -1270,19 +1274,23 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 
 ### 16.8 可視化 (`Stream3DShowOccluders`、Alt+Shift+O)
 
-登録済み occluder プリムを **OBB ワイヤーフレーム** として表示する debug 機能。色は `direct` 値で変化 (オレンジ = `0.7` 既定 → 赤 = `1.0` 完全壁)。会場構築中に「タグはちゃんと認識されているか」「OBB の向きは想定どおりか」を目視確認できます。
+登録済み occluder プリムを **シアン三角形メッシュ** (半透明 fill + wireframe) として表示する debug 機能。raycast で実際に使う三角形そのものを描画するため、Path Cut / Hollow / mesh プリムの形状が**そのままシアンに見えます**。会場構築中に「タグが認識されているか」「想定どおりの形状で遮蔽されるか」を目視確認できます。
 
 - **メニュー**: View → Highlighting and Visibility → "Show 3D Stream Occluders (AYAstorm)"
 - **ホットキー**: `Alt+Shift+O` (ライブ ON/OFF)
 
-`Stream3DOcclusion` (master toggle、§16.7) を `0` にしても可視化はそのまま見られます — 「audio off で OBB 構造だけ確認したい」会場運営側のワークフローに合わせて、両 toggle は意図的に独立しています。
+**ライブ追従**: build floater で **選択中の occluder プリム** は、Path Cut / Hollow / Sculpt のスライダーを動かしている最中もシアン形状が即座に追従します。編集ウィンドウを閉じる前にその場で遮蔽形状を確認できます (非選択の occluder は編集ウィンドウを閉じたタイミングで sim 経由で反映)。
+
+**フォールバック表示**: 三角形抽出ができなかった occluder (= 三角形数が上限 2000 を超えた mesh など、§16.9 参照) はシアンが描画されません。「タグは付いているのにシアンが出ない」状態は OBB-only フォールバックの目印になります。
+
+`Stream3DOcclusion` (master toggle、§16.7) を `0` にしても可視化はそのまま見られます — 「audio off で構造だけ確認したい」会場運営側のワークフローに合わせて、両 toggle は意図的に独立しています。
 
 ### 16.9 制限 / 上限
 
 - **同時 occluder 数 256** (`kMaxOccluders` hardcoded)。`[ayastorm:occlude]` タグ付きプリムが sim 内に 257 個以上ある場合、257 個目以降は登録されません (`LL_WARNS` がログに出ます)。典型 SL venue (~100 プリム想定) では十分な余裕。
-- **OBB 近似**: プリムの実形状ではなく、bounding box 単位で遮蔽判定します。複雑形状 (アーチ / 曲面 / 階段の手すり等) は近似誤差が出ます — 必要なら panel を分割して個別タグを書いてください。
-- **CPU 負荷**: 256 occluders × 64 channels × 60 Hz ≈ 1M slab tests/sec で 1 ms/sec 未満。typical SL venue では負荷無視可。
-- **同梱 FMOD 制約**: 内部実装は viewer 側の segment-vs-OBB slab test です (FMOD::Geometry::createGeometry は同梱 libfmod 2.03.07 で動作しないため)。ユーザー視点では影響なし。
+- **三角形数上限**: 1 occluder あたり **2000 三角形** まで (`kMaxTrisPerOccluder` hardcoded)。これを超える mesh プリムは三角形抽出を諦め、bounding OBB のみでの判定にフォールバックします (`LL_WARNS_ONCE` がログに出ます、§16.8 のシアン非表示でも判別可)。典型的な SL building prim (cube / cylinder / 中空 / Path Cut) は 数十-数百三角形、建築用途の mesh プリムでも通常範囲内。
+- **CPU 負荷**: 64m 距離 cull + OBB pre-cull で大半の (segment, occluder) 組は数演算で reject されるため、典型的な SL venue (~100 occluder) では 1 ms/sec 未満。三角形 raycast まで届くのは listener-source 線が実際にプリムを貫いている数枚分のみ。
+- **同梱 FMOD 制約**: 内部実装は viewer 側の OBB pre-cull + Möller-Trumbore 三角形 raycast です (FMOD::Geometry::createGeometry は同梱 libfmod 2.03.07 で動作しないため)。ユーザー視点では影響なし。
 
 ---
 
@@ -1311,3 +1319,4 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 - **2026-05-08 (r12 改訂)**: r11 (バイノーラル / 会場残響 / wetgain) と r12 (stereo→5.1 upmix / タグ短縮形 `bin`/`v`/`wg` + venue 値短縮) を追記。r11 は独立リリースせず r12 に同梱配布する方針のため、ユーザー向けには r10 → r12 の 1 ジャンプとなる。§7 / §8 / §4.5 を新設、章番号 §7-§14 を §9-§16 に繰り下げ。
 - **2026-05-09 (r12.1 改訂)**: `{lfegain:N}` キー (短縮形 `lg`) を §7.4 として新設、旧 §7.4 配信者主導モデルを §7.5、旧 §7.5 組合せ例を §7.6 に繰り下げ。`wetgain` の既定値を `1.0` → `0.2` に変更 (実 listening での音楽的レンジ 0.1〜0.5 反映)。§12.2 に `Stream3DLfeGain` sentinel 追加。§12.2 / §12.3 にライブチューニング修正の注記を追加 (r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった回帰を修正)。
 - **2026-05-11 (r13 改訂)**: 静的 OBB occlusion タグ `[ayastorm:occlude]` を §16 として新設、旧 §16 関連ドキュメントを §17 に繰り下げ。§4.1 を「2 種類のタグ」→「3 種類のタグ」に拡張。debug settings (`Stream3DOcclusion` master sentinel / `Stream3DOccluderRange` 距離 cull / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` 可視化) を §16.6-§16.8 に記述。関連 spec として `docs/ayastorm-r13-occlusion.md` を §17 表に追加。
+- **2026-05-11 (r13 P15 改訂)**: occlusion 判定を OBB 近似から **実プリム三角形 raycast** に拡張 (Möller-Trumbore + OBB pre-cull の 2 段判定)。Path Cut / Hollow / Mesh の実形状が遮蔽計算に反映される (§16.2)。複数プリム集計を **掛け合わせ** に修正記述 (実装は当初から掛け合わせだったが旧版で「max」と誤記)。`Stream3DShowOccluders` 表示を OBB ワイヤーフレームから **シアン三角形メッシュ** (半透明 fill + wireframe) に変更、build floater で選択中のプリムは編集中ライブ追従 (§16.8)。§16.9 に三角形数上限 2000 と OBB-only フォールバック条件を追記。§16 タイトルを「静的 OBB occlusion」→「静的 occlusion」に短縮。
