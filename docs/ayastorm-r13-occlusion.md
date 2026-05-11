@@ -420,6 +420,25 @@ spike で出していない r13 final scope の残作業:
 | `5c3487ff06` | r13 C: `enum Status` → `ResolveStatus` (X11 `#define Status int` 衝突回避、Linux ビルド復旧) |
 | `d66bdb74fc` | r13 同梱: chat font live-apply fix on LL-style chat (cherry-pick from `feature/ll-chat-livetune-font-plaintext` 元 `2689a35f8f`) |
 | `2e02a63ac8` | r13 spec scope final 整理: door / material 表 永久 drop、debug settings 5→2、per-prim `{direct:N}{reverb:N}` 引数に確定 |
+| `d143a4dbb7` | r13 impl record: final scope を反映 (永久 drop 4 項を §5.3.1 に明記、checklist 14→12) |
+| `ae2d353356` | r13 roadmap: final scope を反映 (door / material 表 永久 drop、§4 内訳を spike 完了 + 残工程に再編) |
+| `affb963a33` | P7: per-prim occlude tag parser を r5-r12 共通ルールに整合 (case-insensitive prefix / 値 trim / unknown key silent ignore) |
+| `dcca1ec058` | P8: llPlaySound 経路にも OBB occlusion を適用 (forEachActive3DSfxChannel visitor + per-channel LOWPASS_SIMPLE DSP) |
+| `5c73f5540d` | P9: Stream3DOccluderRange (64m) 距離 cull を applyToChannel に配線 |
+| `bfc143497f` | P10: Stream3DOcclusion master sentinel (-1/0/1) を配線、disabled でも smoothing 経由で bypass まで ramp |
+| `1ffbf86410` | P11: kMaxOccluders を 64 (spike) → 256 (final) に引き上げ、SL 通常会場 ~100 prim に 2x 余裕 |
+| `28f8eec243` | P12: tag-guide ja/en/zh に §16 [ayastorm:occlude] 全章を追記 |
+| `ade6a47805` | P13: Release Notes ja/en/zh を r12.1 形式で作成 |
+| `afb0570a45` | P14: 子プリム [ayastorm:occlude] 起動時 bootstrap (sim が子プリム ObjectPropertiesFamily を Description 抜きで返す仕様への対策) |
+| `19ef0ca140` | roadmap: SOFA / Steam Audio / 物理シミュ / 個人 HRTF を永久 drop に確定 (r11 lite-HRTF + r11 convolution venue で目的達成済の判断) |
+| `279fcfddd2` | doc: occlude タグ動的追従検証用 LSL テスト扉スクリプト同梱 |
+| `cd4d64dc3b` | P15.1: OccluderShape 容器に拡張 (三角形リストは P15.2 で populate、refactor のみで behaviour 不変) |
+| `84dbdc7141` | P15.2: LLVolume::getVolumeFace → 三角形 raycast (OBB pre-cull + Möller-Trumbore)、path cut / hollow / mesh の実形状が遮蔽計算に反映 |
+| `5e527916be` | P15.3: Stream3DShowOccluders に三角形メッシュ wireframe (シアン) を追加 |
+| `dd8ada0ab5` | P15.4: オレンジ OBB 描画を削除しシアン三角形 fill + wireframe に一本化 (face normal 方向 0.02m offset で z-fight 回避) |
+| `ae66fffe44` | P15.5: 編集中プリム (build floater で選択中) を毎 tick 再抽出してライブ反映 (obj->isSelected() gating) |
+| `409dea6f53` | P15.6: tag-guide ja/en/zh §16 を実形状 mesh raycast 仕様に更新 (タイトル / §16.2 / §16.8 / §16.9 / 改訂履歴) |
+| `44df4e93a8` | P15.7: Release Notes ja/en/zh を実形状 mesh raycast 仕様に更新、永久 drop 4 項を「意図的にスコープ外」セクションに分離 |
 
 ### 5.6 受入条件 (§4.1) の現況
 
