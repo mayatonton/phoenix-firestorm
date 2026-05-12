@@ -84,6 +84,31 @@ uniform int cube_snapshot;
 
 uniform float sky_hdr_scale;
 
+// r19 Translucency: wrap-around diffuse + back-light transmission.
+// Pipeline pushes strength=0 when r19 is OFF, so helpers below short-circuit.
+uniform vec4  aya_translucency_params; // (wrap, k_back, k_view, strength)
+uniform vec3  aya_translucency_tint;   // warm skin/leaf tint (linear)
+
+float ayaTranslucencyWrap(float ndotl)
+{
+    float strength = aya_translucency_params.w;
+    if (strength <= 0.0) return ndotl;
+    float wrap = aya_translucency_params.x;
+    return clamp((ndotl + wrap) / (1.0 + wrap), 0.0, 1.0);
+}
+
+vec3 ayaTranslucencyTransmit(vec3 n, vec3 light_dir, vec3 view_dir, vec3 sunlit, float scol)
+{
+    float strength = aya_translucency_params.w;
+    if (strength <= 0.0) return vec3(0.0);
+    float k_back = aya_translucency_params.y;
+    float k_view = aya_translucency_params.z;
+    float ndotl_back = clamp(-dot(n, light_dir), 0.0, 1.0);
+    float vdotl      = clamp( dot(view_dir, light_dir), 0.0, 1.0);
+    float transmit   = pow(ndotl_back, k_back) * pow(vdotl, k_view);
+    return transmit * strength * scol * sunlit * aya_translucency_tint;
+}
+
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 void calcDiffuseSpecular(vec3 baseColor, float metallic, inout vec3 diffuseColor, inout vec3 specularColor);
 
@@ -186,6 +211,9 @@ void main()
 
         vec3 v = -normalize(pos.xyz);
         color = pbrBaseLight(diffuseColor, specularColor, metallic, v, gb.normal, perceptualRoughness, light_dir, sunlit_linear, scol, radiance, irradiance, colorEmissive, ao, additive, atten);
+
+        // r19 Translucency: thin-material back-light transmission (skin / leaves / cloth)
+        color += ayaTranslucencyTransmit(gb.normal, light_dir, v, sunlit_linear, scol) * baseColor.rgb;
     }
     else if (GET_GBUFFER_FLAG(gb.gbufferFlag, GBUFFER_FLAG_HAS_HDRI))
     {
@@ -211,6 +239,8 @@ void main()
         spec.rgb = srgb_to_linear(spec.rgb);
 
         float da          = clamp(dot(gb.normal, light_dir.xyz), 0.0, 1.0);
+        // r19 Translucency: wrap-around extends lambertian past terminator
+        da = ayaTranslucencyWrap(da);
 
         vec3 irradiance = amblit;
         vec3 glossenv = vec3(0);
@@ -238,6 +268,12 @@ void main()
         }
 
         color.rgb *= baseColor.rgb;
+
+        // r19 Translucency: back-light transmit, tinted by baseColor (subsurface absorption proxy)
+        {
+            vec3 v_dir = -normalize(pos.xyz);
+            color.rgb += ayaTranslucencyTransmit(gb.normal, light_dir.xyz, v_dir, sunlit_linear, scol) * baseColor.rgb;
+        }
 
         vec3 refnormpersp = reflect(pos.xyz, gb.normal);
 
