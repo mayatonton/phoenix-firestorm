@@ -42,7 +42,8 @@ r14 では **既存の Beer-Lambert + in-scatter 基盤を残したまま、上�
 
 ### 含む
 - 既存 `calcAtmosphericVars` / `calcAtmosphericVarsLinear` (atmosphericsFuncs.glsl) に **altitude density 経路を追加** — 視線サンプル点の高度に応じて density を勾配化、地表近くは濃く上空は薄く
-- 既存の `additive` 合成を **scene-referred linear で積分** する経路を追加 — sRGB 空間での合成を物理的に正しい linear 空間に移す
+- 既存の `additive` 合成を **scene-referred linear で積分** する経路を追加 (atmosphericsFuncs.glsl 内) — sRGB 空間での合成を物理的に正しい linear 空間に移す
+- **空 (sky shader) の haze 色合成も scene-referred linear で積分** (skyV.glsl) — 太陽 disc 保護のため `blue_horizon` 部分のみ linear / `haze_horizon` 部分は旧 sRGB のまま (分割版)
 - master switch `aya_visual_realism_enabled` で新経路 / 旧経路 (現状の式) を切り替える分岐を追加 (新経路 default ON)
 - C++ 側 plumbing: `LLShaderMgr` enum + `mReservedUniforms` + `LLSettingsVOSky::applyToShader` (template = `classic_mode`)
 - `settings.xml` に `AYAVisualRealismEnabled` Boolean default 1 を追加
@@ -50,7 +51,9 @@ r14 では **既存の Beer-Lambert + in-scatter 基盤を残したまま、上�
 
 ### 含まない (→ r15+)
 - 既存 Beer-Lambert / in-scatter の式そのものの書き換え (既存基盤を活かす、書き換えはしない)
-- 反対方向の Rayleigh/Mie 分離 (r15 godrays / r16 aerial perspective)
+- **太陽方向経路長の Preetham (1999) 近似による物理化** (P2.b deferred) — sun disc 消失副作用のため drop、再設計時に sun disc 保護と両立する形で復活
+- **Rayleigh / Mie 散乱の波長依存分離** (P2.c deferred) — 同じく sun disc 消失副作用のため drop、再設計時に sun disc 保護と両立する形で復活
+- 反対方向の Rayleigh/Mie 分離の本格実装 (r15 godrays / r16 aerial perspective)
 - godrays / shaft of light (r15)
 - aerial perspective の精緻化 (色相変化、r16)
 - 時間帯色温度の物理化 + 波長依存散乱の物理分離 (r17)
@@ -77,7 +80,7 @@ viewer-only の改修。配信側 / SIM 側変更なし。
 - master switch template: `classic_mode` (LLShaderMgr enum + mReservedUniforms + applyToShader 内 `uniform1i`)
 - 3 OS: GLSL 共通、`.metal` なし、`#ifdef` なし
 
-### P1: 実装
+### P1: atmospherics 実装 (scene-referred 積分 + altitude density) [完了 2026-05-12]
 
 P0 で確定した経路に **altitude density 追加** + **scene-referred 積分追加** + **master switch plumbing** を実装。
 
@@ -95,11 +98,47 @@ P0 で確定した経路に **altitude density 追加** + **scene-referred 積�
 **新規 uniform**:
 - `aya_visual_realism_enabled` (int)
 
-### P2: 3 OS ビルド + 体感確認
+**実装履歴**:
+- `185884d271` P1.a: master switch + altitude density 実装
+- `cdf3eb7ab4` P1.b: scene-referred 積分 (calcAtmosphericVars 内)
+- `1c1acbe0a2` P1.a tune: `scale_height` を `max_y * 0.5 → max_y * 0.1` に強化 (勾配可視化)
+
+### P2: sky shader 実装 (skyV.glsl) [完了 2026-05-12、P2.b/c は deferred]
+
+atmosphericsFuncs.glsl は **scene オブジェクトの aerial perspective** を扱い、空ドーム自身の色は `skyV.glsl` の `vary_HazeColor` 経路で別計算される。P1 の改善を空の見え方に波及させるため P2 で skyV を改修。
+
+**触るファイル**:
+- `indra/newview/app_settings/shaders/class1/deferred/skyV.glsl` — `uniform int aya_visual_realism_enabled;` 受信、`vary_HazeColor` 合成式に master switch 分岐を追加
+  - vertex shader には `srgbF.glsl` が attach されないため、`aya_srgb_to_linear` / `aya_linear_to_srgb` をインライン定義
+
+**P2.a (scene-referred 積分): 採用 — 分割版**:
+- `blue_horizon` 部分 (全方向の青空) のみ linear 空間で物理的に混色 → 地平線/青空の質を改善
+- `haze_horizon` 部分 (太陽方向の glow を含む演出 haze) は旧 sRGB のまま → 太陽 disc を保護
+- 初版 (全 linear 積分) は haze_glow ピークが linear 化で強化され sun disc を白飛びで覆い隠す副作用があったため、分割版に refine
+- 実装履歴:
+  - `001ecc5c73` P2.a 初版 (全 linear 積分): sun disc 消失副作用判明
+  - `28727fa57f` P2.a refined: blue/haze 分割 — sun disc 保護と青空の物理整合性を両立
+
+**P2.b (太陽方向経路長の Preetham 近似): 採用見送り (deferred)**:
+- 平らな大気モデル `sec(theta)` を Preetham (1999) `cos_zenith + 0.15 * pow(max(93.885 - theta_deg, 1.0), -1.253)` で finite 化
+- 検証で sun disc の見え方が劣化する副作用を確認したため drop
+- 再設計時に「sun disc 保護」と両立する形で復活させる旨をコメントで明示
+
+**P2.c (Rayleigh/Mie 分離): 採用見送り (deferred)**:
+- 波長依存散乱比 RGB = (1.0, 2.33, 5.71) で Rayleigh weight を blue_density に重畳
+- 同じく sun disc 消失副作用のため drop、再設計時に sun disc 保護と両立する形で復活
+- 補足: r14 §3「含まない」の Rayleigh/Mie 分離 (r15-r16 本格実装) とは別物 — 本 P2.c は skyV.glsl 内の weight 補正の話で、r15+ で予定している全方向 in-scatter の波長分離より遥かに軽い変更だった
+
+**判明した既知のトレードオフ (P2.a refined)**:
+- 朝・夕の地平線の物理的なリアリティ感は改善
+- 一方で linear 積分の midtone flattening により全体的に「曇りっぽさ」が増す
+- P2 完了時点の体感としては許容、後段 P で overall tune の対象とする
+
+### P3: 3 OS ビルド + 体感確認
 
 AYA が Linux ビルド + 体感確認。問題なければ macOS / Windows ビルドへ。
 
-### P3: tag / release
+### P4: tag / release
 
 `feedback_release_with_user_feedback.md` に従い、完璧を目指さず tag / release してフィードバック収集。
 
@@ -135,3 +174,4 @@ AYA が Linux ビルド + 体感確認。問題なければ macOS / Windows ビ�
 
 - 2026-05-12 (初版): 旧 `docs/ayastorm-r14-sun-dazzle.md` (sun disc overbright) を unground した経緯を経て、r14 の本命を volumetric atmosphere に pivot。章全体の方向転換は `docs/ayastorm-visual-realism-roadmap.md` §1 thesis、memory `project_ayastorm_visual_realism_chapter.md` 参照
 - 2026-05-12 (P0 完了に伴う改訂): P0 (`doc/r14/volumetric_atmosphere_survey.md` Round 1) で「SL は既に Beer-Lambert + in-scatter を実装済み」「`classic_mode` が master switch の完全 template」「GLSL は 3 OS 共通」が判明。前提が「全置換」から「追加実装 (altitude density + scene-referred 積分 + master switch)」に変わったため、§1 ゴール / §3 スコープ / §4 P1 / §6 リスクを実態に合わせて更新。受け入れ条件 (§5) は維持
+- 2026-05-12 (P1 / P2 完了に伴う改訂): atmospherics 経路 (P1.a/b、tune 含む) と sky shader 経路 (P2.a refined) を実装、AYA 実機で「海と空の境界」「朝・夕地平線」の改善を確認。P2.b (Preetham off_axis) / P2.c (Rayleigh/Mie 分離) は sun disc 消失副作用のため deferred、コードにも deprecation コメントを残置。spec §3 (含む/含まない) / §4 (P1/P2 を分割) を実態に同期、§6 リスク表は次回 P3 / P4 着手時に再評価する
