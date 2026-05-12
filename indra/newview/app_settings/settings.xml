@@ -9979,6 +9979,34 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
+    <!-- <FS:AYA r19> Translucency individual switch (B 軸第 1 弾、薄物の透過) -->
+    <key>AYAR19TranslucencyEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r19 Translucency: softenLightF の Legacy / PBR 両分岐に wrap-around diffuse + back-light transmission を加算、太陽光が葉/布/耳/肌を透過する効果。AYAVisualRealismEnabled (master) とは独立に r19 効果のみ ON/OFF 可能 (master ON 前提)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
+    <!-- <FS:AYA r19> Translucency intensity tier (0-3 段階、配信者が強度を選べる) -->
+    <key>AYAR19TranslucencyIntensity</key>
+    <map>
+      <key>Comment</key>
+      <string>r19 Translucency 強度段階: 0=OFF (完全 no-op) / 1=控えめ (default) / 2=標準 / 3=強め。combo_box 安定 binding のため U32 (memory feedback_combo_box_u32_cvar.md 準拠)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>
