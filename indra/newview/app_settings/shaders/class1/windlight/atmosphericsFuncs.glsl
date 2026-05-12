@@ -86,7 +86,7 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     if (aya_visual_realism_enabled > 0)
     {
         float altitude = max(rel_pos.y, 0.0);
-        float scale_height = max(max_y * 0.5, 1.0);  // 0-div 安全
+        float scale_height = max(max_y * 0.1, 1.0);  // 0-div 安全 (r14 P1.a tune: 0.5→0.1 で勾配強化)
         float altitude_factor = exp(-altitude / scale_height);
         density_dist *= altitude_factor;
     }
