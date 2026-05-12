@@ -125,6 +125,8 @@ void main()
 
     // Sunlight attenuation effect (hue and brightness) due to atmosphere
     // this is used later for sunlight modulation at various altitudes
+    // <FS:AYA r14 P2.c (deferred)> Rayleigh / Mie 分離は太陽 disc 消失副作用のため drop、
+    // 再設計時に「sun disc 保護」と両立する形で復活させる。
     vec3 light_atten = (blue_density + vec3(haze_density * 0.25)) * (density_multiplier * max_y);
 
     // Calculate relative weights
@@ -133,6 +135,8 @@ void main()
     vec3 haze_weight   = haze_density / combined_haze;
 
     // Compute sunlight from rel_pos & lightnorm (for long rays like sky)
+    // <FS:AYA r14 P2.b (deferred)> Preetham (1999) 近似による太陽方向経路長の物理化は
+    // 太陽 disc 消失副作用のため drop。再設計時に「sun disc 保護」と両立する形で復活させる。
     float off_axis = 1.0 / max(1e-6, max(0., rel_pos_norm.y) + lightnorm.y);
     sunlight *= exp(-light_atten * off_axis);
 
@@ -158,17 +162,19 @@ void main()
     // For sun, add to glow.  For moon, remove glow entirely. SL-13768
     haze_glow = (sun_moon_glow_factor < 1.0) ? 0.0 : (sun_moon_glow_factor * (haze_glow + 0.25));
 
-    // <FS:AYA r14 P2.a> scene-referred 積分: 空の haze 色合成も linear で行う
+    // <FS:AYA r14 P2.a> scene-referred 積分 (分割版)
+    //   - blue_horizon 部分 (全方向の青空) は linear 空間で物理的に混色 → 地平線/青空の質を改善
+    //   - haze_horizon 部分 (太陽方向の glow を含む演出 haze) は旧 sRGB のまま → 太陽 disc を保護
+    //   linear 積分の haze_glow ピーク強化で sun disc が白飛び覆われる問題を回避する。
     vec3 color;
     if (aya_visual_realism_enabled > 0)
     {
         vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
         vec3 amb_lin      = aya_srgb_to_linear(ambient_color);
         vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
-        vec3 haze_h_lin   = aya_srgb_to_linear(vec3(haze_horizon));
-        vec3 color_lin    = (blue_h_lin * blue_weight) * (sunlight_lin + amb_lin)
-                          + (haze_h_lin * haze_weight) * (sunlight_lin * haze_glow + amb_lin);
-        color = aya_linear_to_srgb(color_lin);
+        vec3 blue_part    = aya_linear_to_srgb((blue_h_lin * blue_weight) * (sunlight_lin + amb_lin));
+        vec3 haze_part    = (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient_color);
+        color = blue_part + haze_part;
     }
     else
     {
@@ -187,17 +193,16 @@ void main()
     // Dim sunlight by cloud shadow percentage
     sunlight *= max(0.0, (1. - cloud_shadow));
 
-    // <FS:AYA r14 P2.a> scene-referred 積分: 下雲側の haze 色も linear で
+    // <FS:AYA r14 P2.a> scene-referred 積分 (分割版): 下雲側
     vec3 add_below_cloud;
     if (aya_visual_realism_enabled > 0)
     {
         vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
         vec3 amb_lin      = aya_srgb_to_linear(ambient);
         vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
-        vec3 haze_h_lin   = aya_srgb_to_linear(vec3(haze_horizon));
-        vec3 below_lin    = (blue_h_lin * blue_weight) * (sunlight_lin + amb_lin)
-                          + (haze_h_lin * haze_weight) * (sunlight_lin * haze_glow + amb_lin);
-        add_below_cloud = aya_linear_to_srgb(below_lin);
+        vec3 blue_part    = aya_linear_to_srgb((blue_h_lin * blue_weight) * (sunlight_lin + amb_lin));
+        vec3 haze_part    = (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient);
+        add_below_cloud = blue_part + haze_part;
     }
     else
     {
