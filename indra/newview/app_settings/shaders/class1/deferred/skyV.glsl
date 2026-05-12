@@ -62,6 +62,26 @@ uniform vec3  glow;
 uniform float sun_moon_glow_factor;
 
 uniform int cube_snapshot;
+uniform int aya_visual_realism_enabled;  // <FS:AYA r14 P2.a> Visual Realism master switch
+
+// <FS:AYA r14 P2.a> vertex shader 内のインライン sRGB <-> linear helper
+// skyV.glsl は vertex shader で srgbF.glsl が attach されないため、ここで直接定義する
+vec3 aya_srgb_to_linear(vec3 cs)
+{
+    vec3 low_range  = cs / vec3(12.92);
+    vec3 high_range = pow((cs + vec3(0.055)) / vec3(1.055), vec3(2.4));
+    bvec3 lt = lessThan(cs, vec3(0.04045));
+    return mix(high_range, low_range, lt);
+}
+
+vec3 aya_linear_to_srgb(vec3 cl)
+{
+    vec3 low_range  = cl * vec3(12.92);
+    vec3 high_range = vec3(1.055) * pow(cl, vec3(1.0 / 2.4)) - vec3(0.055);
+    bvec3 lt = lessThan(cl, vec3(0.0031308));
+    return mix(high_range, low_range, lt);
+}
+// </FS:AYA>
 
 // NOTE: Keep these in sync!
 //       indra\newview\app_settings\shaders\class1\deferred\skyV.glsl
@@ -105,6 +125,8 @@ void main()
 
     // Sunlight attenuation effect (hue and brightness) due to atmosphere
     // this is used later for sunlight modulation at various altitudes
+    // <FS:AYA r14 P2.c (deferred)> Rayleigh / Mie 分離は太陽 disc 消失副作用のため drop、
+    // 再設計時に「sun disc 保護」と両立する形で復活させる。
     vec3 light_atten = (blue_density + vec3(haze_density * 0.25)) * (density_multiplier * max_y);
 
     // Calculate relative weights
@@ -113,6 +135,8 @@ void main()
     vec3 haze_weight   = haze_density / combined_haze;
 
     // Compute sunlight from rel_pos & lightnorm (for long rays like sky)
+    // <FS:AYA r14 P2.b (deferred)> Preetham (1999) 近似による太陽方向経路長の物理化は
+    // 太陽 disc 消失副作用のため drop。再設計時に「sun disc 保護」と両立する形で復活させる。
     float off_axis = 1.0 / max(1e-6, max(0., rel_pos_norm.y) + lightnorm.y);
     sunlight *= exp(-light_atten * off_axis);
 
@@ -138,9 +162,27 @@ void main()
     // For sun, add to glow.  For moon, remove glow entirely. SL-13768
     haze_glow = (sun_moon_glow_factor < 1.0) ? 0.0 : (sun_moon_glow_factor * (haze_glow + 0.25));
 
-    // Haze color above cloud
-    vec3 color = (blue_horizon * blue_weight * (sunlight + ambient_color)
+    // <FS:AYA r14 P2.a> scene-referred 積分 (分割版)
+    //   - blue_horizon 部分 (全方向の青空) は linear 空間で物理的に混色 → 地平線/青空の質を改善
+    //   - haze_horizon 部分 (太陽方向の glow を含む演出 haze) は旧 sRGB のまま → 太陽 disc を保護
+    //   linear 積分の haze_glow ピーク強化で sun disc が白飛び覆われる問題を回避する。
+    vec3 color;
+    if (aya_visual_realism_enabled > 0)
+    {
+        vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
+        vec3 amb_lin      = aya_srgb_to_linear(ambient_color);
+        vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
+        vec3 blue_part    = aya_linear_to_srgb((blue_h_lin * blue_weight) * (sunlight_lin + amb_lin));
+        vec3 haze_part    = (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient_color);
+        color = blue_part + haze_part;
+    }
+    else
+    {
+        // Haze color above cloud (legacy sRGB-space integration)
+        color = (blue_horizon * blue_weight * (sunlight + ambient_color)
                + (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient_color));
+    }
+    // </FS:AYA>
 
     // Final atmosphere additive
     color *= (1. - combined_haze);
@@ -151,9 +193,24 @@ void main()
     // Dim sunlight by cloud shadow percentage
     sunlight *= max(0.0, (1. - cloud_shadow));
 
-    // Haze color below cloud
-    vec3 add_below_cloud = (blue_horizon * blue_weight * (sunlight + ambient)
+    // <FS:AYA r14 P2.a> scene-referred 積分 (分割版): 下雲側
+    vec3 add_below_cloud;
+    if (aya_visual_realism_enabled > 0)
+    {
+        vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
+        vec3 amb_lin      = aya_srgb_to_linear(ambient);
+        vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
+        vec3 blue_part    = aya_linear_to_srgb((blue_h_lin * blue_weight) * (sunlight_lin + amb_lin));
+        vec3 haze_part    = (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient);
+        add_below_cloud = blue_part + haze_part;
+    }
+    else
+    {
+        // Haze color below cloud (legacy sRGB-space integration)
+        add_below_cloud = (blue_horizon * blue_weight * (sunlight + ambient)
                          + (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient));
+    }
+    // </FS:AYA>
 
     // Attenuate cloud color by atmosphere
     combined_haze = sqrt(combined_haze);  // less atmos opacity (more transparency) below clouds

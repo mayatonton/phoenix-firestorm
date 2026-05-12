@@ -302,6 +302,39 @@
           <check_box.commit_callback
            function="Pref.RenderOptionUpdate" />
         </check_box>
+        <!-- <FS:AYA r18> View Mode: Firestorm 標準 / AYAstorm 大気拡張 切替 (r14+r15+r16+r18 一括) -->
+        <text
+         type="string"
+         length="1"
+         top_pad="4"
+         follows="top|left"
+         height="12"
+         width="110"
+         word_wrap="true"
+         layout="topleft"
+         left_delta="0"
+         name="aya_view_mode_label">
+          View Mode:
+        </text>
+        <combo_box
+         control_name="AYAVisualRealismEnabled"
+         height="23"
+         layout="topleft"
+         left_delta="5"
+         top_pad="3"
+         name="AYAViewMode"
+         tool_tip="Firestorm View: standard rendering. AYAstorm View: enables volumetric atmosphere, godrays, aerial perspective, and cloud volumetric."
+         width="180">
+          <combo_box.item
+           label="Firestorm View"
+           name="0"
+           value="0"/>
+          <combo_box.item
+           label="AYAstorm View"
+           name="1"
+           value="1"/>
+        </combo_box>
+        <!-- </FS:AYA> -->
         <text
          type="string"
          length="1"

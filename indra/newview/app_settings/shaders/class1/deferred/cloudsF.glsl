@@ -41,6 +41,7 @@ uniform vec3 cloud_pos_density1;
 uniform vec3 cloud_pos_density2;
 uniform float cloud_scale;
 uniform float cloud_variance;
+uniform int aya_r18_cloud_volumetric_enabled;  // <FS:AYA r18>
 
 in vec2 vary_texcoord0;
 in vec2 vary_texcoord1;
@@ -88,12 +89,37 @@ void main()
 
     // Compute alpha1, the main cloud opacity
 
-    float alpha1 = (cloudNoise(uv1).x - 0.5) + (cloudNoise(uv3).x - 0.5) * cloud_pos_density2.z;
-    alpha1 = min(max(alpha1 + cloudDensity, 0.) * 10 * cloud_pos_density1.z, 1.);
-
-    // And smooth
-    alpha1 = 1. - alpha1 * alpha1;
-    alpha1 = 1. - alpha1 * alpha1;
+    float alpha1;
+    // <FS:AYA r18> Cloud Volumetric: slab raymarch で疑似体積化 (A 軸)
+    //   既存 2D noise を 4 step、UV 空間を slab 方向に進めながら sample。
+    //   Beer-Lambert 風に transmittance を累積、最終 alpha は (1 - trans)。
+    //   OFF パスは既存式と数式上完全一致 (preset 互換維持)。
+    if (aya_r18_cloud_volumetric_enabled != 0)
+    {
+        const int N = 4;
+        const vec2 slab_offset = vec2(0.013, 0.008);  // UV 空間 slab 進行方向 (視線方向 proxy)
+        float trans = 1.0;
+        for (int i = 0; i < N; i++)
+        {
+            float t = (float(i) - 1.5) / 3.0;  // -0.5 ~ +0.5
+            vec2 du = slab_offset * t;
+            float a = (cloudNoise(uv1 + du).x - 0.5) + (cloudNoise(uv3 + du).x - 0.5) * cloud_pos_density2.z;
+            a = min(max(a + cloudDensity, 0.) * 10.0 * cloud_pos_density1.z, 1.);
+            a = 1.0 - a * a;
+            a = 1.0 - a * a;
+            trans *= 1.0 - a * 0.45;  // 各 slab で 45% 透過
+        }
+        alpha1 = 1.0 - trans;
+    }
+    else
+    {
+        // Legacy flat path (preset 互換)
+        alpha1 = (cloudNoise(uv1).x - 0.5) + (cloudNoise(uv3).x - 0.5) * cloud_pos_density2.z;
+        alpha1 = min(max(alpha1 + cloudDensity, 0.) * 10 * cloud_pos_density1.z, 1.);
+        alpha1 = 1. - alpha1 * alpha1;
+        alpha1 = 1. - alpha1 * alpha1;
+    }
+    // </FS:AYA>
 
     alpha1 *= altitude_blend_factor;
     alpha1 = clamp(alpha1, 0.0, 1.0);
