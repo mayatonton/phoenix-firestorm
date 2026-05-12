@@ -52,17 +52,17 @@ input (preset 値) と output (HDR scene buffer の信号特性、tonemap 取付
 
 | 軸 | 何を解く問題か | 担当リリース候補 |
 |---|---|---|
-| **A. 大気・空気** | 空気の体積感 / 距離感 / 時間帯の色 | r14-r17 |
-| **B. 物質色** | アルベド忠実度 / 薄物の subsurface / material response | r18+ |
-| **C. カメラ表現** | 自然な DoF / scene-referred 露出階調 / grain・vignette・収差の抑制活用 | r20+ |
+| **A. 大気・空気** | 空気の体積感 / 距離感 / 時間帯の色 / 雲の体積感 | r14-r18 |
+| **B. 物質色** | アルベド忠実度 / 薄物の subsurface / material response | r19+ |
+| **C. カメラ表現** | 自然な DoF / scene-referred 露出階調 / grain・vignette・収差の抑制活用 | r21+ |
 
 3 軸は AYA の章 thesis (memory `project_ayastorm_visual_realism_chapter.md`) から導出。AAA が偏重する Layer C (post-process で誤魔化す) ではなく、A → B → C の順で **物理的な土台から積む**。
 
 ---
 
-## 4. r14-r17 (A 軸: 大気・空気)
+## 4. r14-r18 (A 軸: 大気・空気)
 
-A 軸を 4 リリースに分割。各リリースは独立に完結し体感が出る単位。
+A 軸を 5 リリースに分割。各リリースは独立に完結し体感が出る単位。
 
 ### r14: volumetric atmosphere (空気の体積感) — **実装完了**
 - 細部: `docs/ayastorm-r14-volumetric-atmosphere.md`
@@ -79,28 +79,35 @@ A 軸を 4 リリースに分割。各リリースは独立に完結し体感が
 - **実装結果**: `renderGeomPostDeferred` の `doAtmospherics` 直後に挿入する fullscreen pass。既存 cascaded sun shadow を流用 (`sampleDirectionalShadow` + cascade 範囲外 skip + NaN/Inf ガード)、N=16 サンプルの shadow-driven ray-march + Mie 前方ピーク phase (cos^8) + strength=0.10。**alpha 保護必須** (`frag_color.a = 0`、`ONE/ONE` additive で alpha=1 を積むと scene buffer の sky mask が破壊され空が真っ白に潰れる; memory `project_aya_visual_realism_alpha_protect.md`)。master switch `AYAVisualRealismEnabled` を r14 と共有。commit 範囲 `fd027e7475`〜`edaed0fe6a`
 - 工数感: 2〜4 日 → 実績は P0 → P1 で 1 日 (Linux 体感 PASS まで)
 
-### r16: aerial perspective (距離による色変化)
+### r16: aerial perspective (距離による色変化) — **実装完了**
+- 細部: `docs/ayastorm-r16-aerial-perspective.md`
 - ねらい: 遠景が距離と共に減衰・色相変化、空気の遠近感が物理的に出る
-- スコープ: depth-based scattering integration、preset の Distance Multiplier を物理係数として再解釈
+- スコープ: scene 経路 `atmosphericsFuncs.glsl` に Rayleigh λ^-4 波長依存重み (`rayleigh_w = (1.0, 2.33, 5.71)`) を `combined_haze` と `blue_weight` に乗算。`light_atten` (太陽光路) には適用しない (= aerial perspective ≠ 夕焼けの物理分離)
+- **実装結果**: P1.a (波長依存 in-scatter) で Linux PASS — 遠景青味シフト明確、近景変化なし、sun disc 健在、preset 互換維持。P1.b (Preetham 球面近似) は数値検証 PASS だが体感 perceptual threshold 以下のため drop。個別 switch `AYAR16AerialPerspectiveEnabled` を新設 (master `AYAVisualRealismEnabled` 単独切替では r14/r15 も同時 off になり r16 単独体感評価不能の事情から不可避と判明)。commit `7427fbcb8d` (P1.a) + `fc08ffeebc` (close-out)
+- 工数感: 2〜3 日 → 実績は P0 → P1.a → P1.b 検証 → drop で 1 日 (Linux 体感 PASS まで)
+
+### r17: 時間帯色温度
+- ねらい: 朝・昼・夕・夜の色温度が物理的に正確 (Sun/Ambient の Kelvin 解釈)
+- スコープ: Sun/Ambient color の色温度 (Kelvin) 解釈、現状の preset 経験式色を物理的に再解釈。preset 互換維持 (input は経験式 RGB のまま、内側で色温度として解釈)
 - 工数感: 2〜3 日 (3 OS 込み、未確定)
 
-### r17: 時間帯色温度 + 雲のリアリティ
-- ねらい: 朝・昼・夕・夜の色温度が物理的に正確、雲が体積感を持つ
-- スコープ: Sun/Ambient color の色温度解釈、雲の volumetric 化 (軽量、heavy raymarch ではない)
-- 工数感: 4〜6 日 (3 OS 込み、未確定)
+### r18: 雲のリアリティ (体積感)
+- ねらい: 既存 flat texture cloud に体積感を付与、写真撮るに値する空の核
+- スコープ: cloud shader の volumetric 化 (軽量、heavy raymarch ではない、analytic + 軽量 raymarch の組合せ)
+- 工数感: 3〜4 日 (3 OS 込み、未確定)
 
 ---
 
-## 5. r18+ (B 軸: 物質色) / r20+ (C 軸: カメラ表現)
+## 5. r19+ (B 軸: 物質色) / r21+ (C 軸: カメラ表現)
 
 A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 
-### B 軸候補 (r18+)
+### B 軸候補 (r19+)
 - アルベド忠実度: PBR base color の sRGB/linear 取り扱い見直し
 - 薄物の subsurface scattering: 葉・カーテン・薄い布
 - material response: roughness / metallic の物理整合性
 
-### C 軸候補 (r20+)
+### C 軸候補 (r21+)
 - 自然な DoF: 物理レンズベース
 - scene-referred 露出階調: auto-exposure / tonemap 全面再考
 - grain / vignette / chromatic aberration: 抑制的活用 (LUT 系の「写真風 look」は本章で明示的に拒否)
@@ -122,11 +129,12 @@ A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 
 | リリース | 工数感 (3 OS 込み) | 状態 |
 |---|---|---|
-| r14 volumetric atmosphere | 3〜5 日 | **実装完了** (`fb76b8391b`〜`e69f2a98b1`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15 一括で実施予定) |
-| r15 godrays | 2〜4 日 | **実装完了** (`fd027e7475`〜`edaed0fe6a`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15 一括で実施予定) |
-| r16 aerial perspective | 2〜3 日 | 候補 |
-| r17 時間帯色温度 + 雲 | 4〜6 日 | 候補 |
-| r14-r17 (A 軸完走) | 11〜18 日 | 参考値 (r14 + r15 は実績 1 + 1 日でかなり前倒し) |
+| r14 volumetric atmosphere | 3〜5 日 | **実装完了** (`fb76b8391b`〜`e69f2a98b1`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
+| r15 godrays | 2〜4 日 | **実装完了** (`fd027e7475`〜`edaed0fe6a`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
+| r16 aerial perspective | 2〜3 日 | **実装完了** (`7427fbcb8d` P1.a + `fc08ffeebc` close-out、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
+| r17 時間帯色温度 | 2〜3 日 | 候補 |
+| r18 雲の体積化 | 3〜4 日 | 候補 |
+| r14-r18 (A 軸完走) | 12〜19 日 | 参考値 (r14 + r15 + r16 は実績 1 + 1 + 1 日でかなり前倒し) |
 
 ---
 
@@ -134,3 +142,4 @@ A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 
 - 2026-05-12: 初版作成。旧 `ayastorm-light-expression-roadmap.md` (3 層モデル + r14 sun dazzle) を全面書き換え。きっかけは r14 P1 (sun disc HDR boost) が体感ゼロで unground し、その unground を契機に AYA から「光表現章ではなく視覚的リアリティ章」「LUT/Tone では届かない」「AAA の暗がり偽装は採用しない」の章 thesis が明示されたこと。3 層モデル (光源/大気/カメラ) を 3 軸モデル (大気・空気 / 物質色 / カメラ表現) に再編、A 軸を r14-r17 で積む計画に再構成。背景は memory `project_ayastorm_visual_realism_chapter.md` 参照
 - 2026-05-12 (A 軸第 1 弾 + 第 2 弾 実装完了反映): r14 volumetric atmosphere (`fb76b8391b`〜`e69f2a98b1`) と r15 godrays (`fd027e7475`〜`edaed0fe6a`) を Linux 体感 PASS まで実装完了。§4 r14 / r15 の entry に実装結果を埋め、§7 工数感 table を「実装完了」表示に更新。3 OS フルビルドと tag/release は r13+r14+r15 一括で実施 (`v7.2.4-ayastorm-r15` 想定)。r15 P1 デバッグ中に観測した「scene buffer additive で `frag_color.a=1` を積むと sky mask が破壊される」挙動は memory `project_aya_visual_realism_alpha_protect.md` に永続化 (r16+ で再利用必須の知見)
+- 2026-05-12 (A 軸第 3 弾 r16 実装完了 + r17/r18 分割): r16 aerial perspective (`7427fbcb8d` P1.a + `fc08ffeebc` close-out) を Linux PASS まで実装完了 — scene 経路 `atmosphericsFuncs.glsl` に Rayleigh λ^-4 波長依存 in-scatter を導入、遠景青味シフト体感 PASS、P1.b Preetham 球面近似は体感差なしで drop。あわせて旧 r17 (時間帯色温度 + 雲のリアリティ) を r17 (色温度) / r18 (雲の体積化) に分割、B 軸を r19+、C 軸を r21+ に繰り下げ (A 軸 4 リリース → 5 リリース構成)。色温度を先にする理由は「雲は色温度の影響を受ける側 (sun color が物理的に決まらないと雲の体積感も浮く)」のため
