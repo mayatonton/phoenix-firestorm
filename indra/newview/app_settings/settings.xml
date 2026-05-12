@@ -9949,11 +9949,11 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
-    <!-- <FS:AYA r17> Color Temperature individual switch -->
-    <key>AYAR17ColorTemperatureEnabled</key>
+    <!-- <FS:AYA r18> Cloud Volumetric individual switch -->
+    <key>AYAR18CloudVolumetricEnabled</key>
     <map>
       <key>Comment</key>
-      <string>r17 Color Temperature: 太陽 elevation から派生する Kelvin (2200K horizon ～ 6500K noon) を preset 色に乗算で modulate。朝青/夕橙の物理的整合を sky + scene 両方で同期。AYAVisualRealismEnabled (master) とは独立に r17 効果のみ ON/OFF 可能 (master ON 前提)</string>
+      <string>r18 Cloud Volumetric: 既存 2D cloud_noise_texture を視線方向の slab raymarch で疑似体積化 (A 軸)。AYAVisualRealismEnabled (master) とは独立に r18 効果のみ ON/OFF 可能 (master ON 前提)</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

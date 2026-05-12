@@ -1,27 +1,27 @@
-# AYAstorm r18: 雲の体積化 + 色温度連動
+# AYAstorm r18: 雲の体積化 (A 軸単独)
 
 **作成日**: 2026-05-12 (初版、r17 close-out 直後)
 **対象**: AYAstorm `feature/aya-r18-cloud-volumetric-spec-draft`
-**位置づけ**: 視覚的リアリティ章 (`docs/ayastorm-visual-realism-roadmap.md`) §4 A 軸の第 5 弾 (= A 軸完走)、r14 (volumetric atmosphere) + r15 (godrays) + r16 (aerial perspective) + r17 (色温度) の上に積む
+**位置づけ**: 視覚的リアリティ章 (`docs/ayastorm-visual-realism-roadmap.md`) §4 A 軸の第 5 弾 (= A 軸完走)、r14 (volumetric atmosphere) + r15 (godrays) + r16 (aerial perspective) の上に積む
+**スコープ変遷**: 当初「雲の体積化 (A 軸) + 色温度連動 (B 軸)」のセットで起票、P1.a 実機検証で **r17 (時間帯色温度) を drop** したため **B 軸も同伴 drop、A 軸単独リリース** に re-scope (詳細は `docs/ayastorm-r17-color-temperature.md` の drop 記録)
 
 > **本書の役割**: r18 個別の **計画スナップショット**。`feedback_release_with_user_feedback.md` 流儀で「完璧な spec を組まず、shader 触りながら追記」運用。
-> 章全体の位置づけは `docs/ayastorm-visual-realism-roadmap.md`、r14 spec は `docs/ayastorm-r14-volumetric-atmosphere.md`、r15 spec は `docs/ayastorm-r15-godrays.md`、r16 spec は `docs/ayastorm-r16-aerial-perspective.md`、r17 spec は `docs/ayastorm-r17-color-temperature.md`。
+> 章全体の位置づけは `docs/ayastorm-visual-realism-roadmap.md`、r14 spec は `docs/ayastorm-r14-volumetric-atmosphere.md`、r15 spec は `docs/ayastorm-r15-godrays.md`、r16 spec は `docs/ayastorm-r16-aerial-perspective.md`、r17 drop 記録は `docs/ayastorm-r17-color-temperature.md`。
 
 ---
 
 ## 1. ゴール
 
-r14 で「**空気が体積として見える**」、r15 で「**光線が空間を貫く**」、r16 で「**遠景が空気の中に物理的に座る**」、r17 で「**時間帯の色が物理的に決まる**」を積んだ。r18 では **雲が体積として見え、時間帯の色温度に焼ける/冷える** を取りに行く。これで A 軸 (大気・空気の写真的リアリティ) が完走する。
+r14 で「**空気が体積として見える**」、r15 で「**光線が空間を貫く**」、r16 で「**遠景が空気の中に物理的に座る**」を積んだ。r18 では **雲が体積として見える** を取りに行く。これで A 軸 (大気・空気の写真的リアリティ) が完走する。
 
 具体的に出したい体感:
 
 - **雲が「板」じゃなくなる** — 既存 flat texture cloud に厚みと奥行き、エッジが立体的に削れた質感
-- **夕方の雲が橙〜赤に焼ける、朝方は冷色寄り** — r17 Kelvin modulator が cloud color にも連動、sky / scene / cloud で時間帯色温度が完全整合
-- **写真撮るに値する空の核** — 体積化 + 色温度で「空を見て撮りたくなる」状態を作る
+- **写真撮るに値する空の核** — 体積化で「空を見て撮りたくなる」状態を作る
 
-技術的には 2 軸:
-- **A 軸 (体積化)**: cloud shader の analytic + 軽量 raymarch 化。heavy raymarch (毎フレーム全画面 ray-march) には倒れない節度を保つ
-- **B 軸 (色温度連動)**: r17 で実装済の `LLSettingsVOSky::getR17SunModulator` を `CLOUD_COLOR` uniform push 直前にも適用、sky + scene + cloud の 3 経路同期
+技術スコープ:
+- **A 軸 (体積化、本リリース)**: cloud shader の analytic + 軽量 raymarch 化。heavy raymarch (毎フレーム全画面 ray-march) には倒れない節度を保つ。AYA 実機で「とても素晴らしい」評価
+- **B 軸 (色温度連動、drop)**: 当初 r17 helper `getR17SunModulator` を CLOUD_COLOR にも適用する設計だったが、r17 が fixed preset で効かないと実機判明 → r17 drop と同伴で **B 軸も drop**。preset 由来の cloud_color 素通しに戻る
 
 ---
 
@@ -30,39 +30,38 @@ r14 で「**空気が体積として見える**」、r15 で「**光線が空間
 `docs/ayastorm-visual-realism-roadmap.md` §2 の境界条件をそのまま継承:
 
 - **保つ**: WindLight preset 互換 (cloud_color / cloud_pos_density / cloud_scale / cloud_shadow uniform は input 契約)、HDR scene buffer 骨格、PBR shader interface、sky dome (skyV.glsl) の見え方
-- **書き換える**: `cloudsV.glsl` / `cloudsF.glsl` (class1/deferred + class2/windlight) の cloud shader 内部、および `applySpecial` の CLOUD_COLOR uniform push 直前
-- **言い換え**: cloud uniform は input、shader 内部で 3D noise の analytic + 軽量 raymarch を介して体積感を作る、出力契約 (HDR scene buffer 上の cloud layer 合成) は保つ
+- **書き換える**: `cloudsF.glsl` (class1/deferred のみ — P0 Survey で class2 系統に同名 shader が存在しないことを確認)、`applySpecial` で A 軸用の shader uniform 1 件を push
+- **言い換え**: cloud uniform は input、shader 内部で既存 2D `cloud_noise_texture` を **視線方向の slab raymarch で多 sample** することで体積感を作る (3D noise asset の新規同梱は不要)、出力契約 (HDR scene buffer 上の cloud layer 合成) は保つ
 
 ### Master switch + 個別 switch
 - master `AYAVisualRealismEnabled` (r14 から) を共有
-- 個別 switch `AYAR18CloudVolumetricEnabled` (default TRUE) を追加 — r16/r17 と同様に master と独立 toggle 可能
-- 色温度連動 (B 軸) は r17 master `AYAR17ColorTemperatureEnabled` の生死を継承 (= 別 switch を追加しない)。r17 OFF なら r18 体積化のみ、r17 ON なら体積化 + 色温度連動の両方が効く
+- 個別 switch `AYAR18CloudVolumetricEnabled` (default TRUE) を追加 — r16 と同様に master と独立 toggle 可能 (r17 個別 switch は drop で除去済)
 - `feedback_prefer_defaults_over_config.md` (個別 cvar 量産しない) に対しては章ごと sentinel 1 本の運用方針継続
 
 ### sun disc / sky dome 保護 (r14 P2.b/c の副作用を踏まない)
 - **sky shader (`skyV.glsl`) のコード自体は本リリースでも触らない** — r16/r17 と同じ方針
 - cloud shader は sky shader と別 GLSL ファイルなので独立に書き換え可能 (`cloudsV.glsl` / `cloudsF.glsl` の class1/class2 系統)
 
-### 体積化方針 (heavy raymarch 不採用)
+### 体積化方針 (heavy raymarch 不採用、2D noise の slab 化)
 `docs/ayastorm-visual-realism-roadmap.md` §6 に明示された通り「重い raymarch volumetric (毎フレーム全画面 ray-march) は AYAstorm の流儀 (1 viewer で完結、3 OS) に合わない」。本リリースは:
 - **analytic 主体** — cloud texture を「平面 sample」ではなく「視線方向に短い厚みのスラブ sample」として複数 step 重ねる
-- **軽量 raymarch** — 4〜8 step 程度の固定 step、early-out 付き、screen-space 全体ではなく per-cloud-pixel
-- **既存 cloud texture を input として尊重** — preset の cloud_pos_density / cloud_scale が新方式でも引き続き意味を持つ設計
+- **軽量 raymarch** — 4 step 固定 (P1.a 採用)、screen-space 全体ではなく per-cloud-pixel、Beer-Lambert 風 transmittance 累積
+- **既存 cloud texture を input として尊重** — `cloud_noise_texture` (2D) はそのまま、3D noise asset の新規追加なし、preset の cloud_pos_density / cloud_scale が引き続き意味を持つ設計
 
 ---
 
 ## 3. スコープ
 
 ### 含む
-- **P0 Survey**: cloud shader (cloudsV/cloudsF) の class1/deferred + class2/windlight 2 系統の現状確認、CLOUD_COLOR uniform 注入点列挙、preset → shader 経路の Round 1
-- **P1.a 体積化**: cloudsV/cloudsF に analytic + 軽量 raymarch を実装、既存 preset の cloud_pos_density / cloud_scale を活かす形で厚みを生成
-- **P1.b 色温度連動**: r17 helper `LLSettingsVOSky::getR17SunModulator` を CLOUD_COLOR uniform push 直前にも適用 (`applySpecial` 内、cloud_color modulator)
-- **C++ plumbing**: settings.xml に `AYAR18CloudVolumetricEnabled` Boolean 1 件追加、shader 側で個別 switch を読む uniform 配線 (llshadermgr.{h,cpp})
+- **P0 Survey** (完了 `636e163a3c`): cloud shader は class1/deferred のみ、CLOUD_COLOR uniform 注入点は `llsettingsvo.cpp:890` 1 箇所のみ、cloud は完全 2D、`AYA_R18_CLOUD_VOLUMETRIC_ENABLED` shader enum を新設要、HAS_METAL 0 hits、drawpool bind 経路不触
+- **P1.a 体積化 (A 軸)**: cloudsF.glsl で既存 2D `cloud_noise_texture` を視線方向 slab 4 step raymarch (Beer-Lambert 風 transmittance 累積)、`AYAR18CloudVolumetricEnabled` + `KNOWN_SKY_LEGACY_MIDDAY` pinpoint 除外で gate
+- **C++ plumbing**: settings.xml に `AYAR18CloudVolumetricEnabled` Boolean 1 件追加、shader uniform `aya_r18_cloud_volumetric_enabled` を llshadermgr.{h,cpp} に enum 追加
 - **3 OS (Linux / macOS / Windows) ビルド + 体感確認** (P2)
 
-### 含まない (→ r19+)
+### 含まない (drop)
+- **B 軸 (色温度連動、CLOUD_COLOR を r17 helper で乗算)** — r17 drop と同伴で **drop**。preset 由来の cloud_color が素通しになり、夕焼け雲のオレンジは preset の SunsetSky cloud_color (元から warm orange) でそのまま見える形に戻る。詳細は `docs/ayastorm-r17-color-temperature.md` の drop 記録参照
 - **雲影 (地表に雲の縞模様)** — r19 候補に降格。SL の shadow path 改造または cloud noise projection lighting で軽量実装する余地はあるが、r18 の scope が肥大化するため分離
-- **物質側 subsurface scattering** (B 軸、r19+)
+- **物質側 subsurface scattering** (B 軸の正式版、r19+)
 - **カメラ表現** (DoF / auto-exposure / scene-referred 露出階調、C 軸 r21+)
 - **preset 制作・新 preset 出荷** (AYA 方針: preset を作り直さない)
 - **heavy raymarch** (毎フレーム全画面 ray-march、roadmap §6 で永久 drop)
@@ -71,6 +70,7 @@ r14 で「**空気が体積として見える**」、r15 で「**光線が空間
 - preset を破壊する後方非互換変更
 - LUT / color grade による「雲の絵作り」誤魔化し (`docs/ayastorm-visual-realism-roadmap.md` §6 と整合)
 - cloud shadow を r18 で同梱 (scope 膨張防ぐため明確に r19+ に分離)
+- **当初の B 軸 (色温度連動)** — r17 drop で恒久的に drop、r19+ で再導入する場合は preset-driven (lightnorm 駆動でない) 設計を要検討
 
 ---
 
@@ -78,43 +78,91 @@ r14 で「**空気が体積として見える**」、r15 で「**光線が空間
 
 viewer-only の改修。配信側 / SIM 側変更なし。
 
-### P0: 実装箇所調査 + spec 確定
+### P0: 実装箇所調査 + spec 確定 (完了 `636e163a3c`)
 
-調査ターゲット (P0 完了条件):
+調査結果 (`doc/r18/cloud_volumetric_survey.md` 参照):
 
-1. **cloud shader の class1/class2 系統** — `app_settings/shaders/class1/deferred/cloudsV.glsl` + `cloudsF.glsl` と `app_settings/shaders/class2/windlight/cloudsV.glsl` + `cloudsF.glsl` の差分、どちらが現在の deferred / forward 経路で使われているか
-2. **CLOUD_COLOR uniform の注入点** — `applySpecial` (`llsettingsvo.cpp`) と pipeline.cpp (もしあれば) で push されている箇所を列挙、r17 のように複数注入点でないか確認
-3. **cloud uniform 一覧** — cloud_pos_density / cloud_scale / cloud_shadow / cloud_color / cloud_variance / cloud_pos_density1 等の現役 uniform、shader 内部での使われ方
-4. **3D noise の入手手段** — cloud texture は 2D scroll、3D noise が必要なら別途 (procedural Worley / Perlin、texture3D 同梱、または procedural GLSL) — どれが軽量で 3 OS 互換か
-5. **3 OS 共通性** — Metal/HLSL 特殊化が必要な GLSL 文法があるか、`.metal` / `HAS_METAL` ヒット確認
-6. **個別 switch 配線** — settings.xml + llshadermgr の uniform 名追加、shader 側で `AYA_R18_CLOUD_VOLUMETRIC_ENABLED` を読む
+1. **cloud shader の class1/class2 系統** — `app_settings/shaders/class1/deferred/cloudsV.glsl` + `cloudsF.glsl` のみ存在 (`class2/windlight` 配下に同名 shader は **無い**)。spec §2 の class1+class2 想定は class1 単独に確定
+2. **CLOUD_COLOR uniform の注入点** — `llsettingsvo.cpp:890` の **1 箇所のみ** (r17 の SUNLIGHT_COLOR/AMBIENT の 2 経路注入と違って B 軸は単純、pipeline.cpp に直接 push 経路なし)
+3. **cloud uniform 一覧** — cloud_color / cloud_pos_density1/2 / cloud_scale / cloud_shadow / cloud_variance / cloud_noise_texture / cloud_noise_texture_next / blend_factor、すべて現役
+4. **3D noise の必要性** — 既存 `cloud_noise_texture` (sampler2D) を視線方向に slab raymarch することで体積感を出せる目処、3D noise asset 新規同梱は不要
+5. **3 OS 共通性** — `HAS_METAL` hits 0、`.metal` 専用 cloud shader なし、GLSL 共通経路で 3 OS 動作見込み
+6. **個別 switch 配線** — `AYA_R18_CLOUD_VOLUMETRIC_ENABLED` を `LLShaderMgr` enum に追加 (r16 の隣)、shader 側で `uniform int aya_r18_cloud_volumetric_enabled;` を読む配線、settings.xml に `AYAR18CloudVolumetricEnabled` 1 件追加
 
-### P1.a: 体積化実装 (cloud shader 改修)
+### P1.a: 体積化 (A 軸) 実装 (実装済 — AYA 実機 PASS)
 
-cloud shader 内部で:
-- 既存 2D cloud texture sample を維持しつつ、視線方向に短い slab (例: 4〜8 step) で sample を重ねる
-- 各 step で density を accumulate、early-out で empty space を skip
-- raymarch 範囲は per-cloud-pixel に限定 (screen-space 全体には触らない)
-- preset の cloud_pos_density / cloud_scale が体積方向にも反映されるよう係数を取る
-
-### P1.b: 色温度連動 (r17 helper の再利用)
-
-`llsettingsvo.cpp::applySpecial` の `CLOUD_COLOR` uniform push 直前で:
+`indra/llrender/llshadermgr.h` (enum 1 件追加):
 ```cpp
-LLColor3 cloud_color_modulated = psky->getCloudColor() * r17_sun_mod;
-shader->uniform3fv(LLShaderMgr::CLOUD_COLOR, LLVector3(cloud_color_modulated.mV));
+AYA_R18_CLOUD_VOLUMETRIC_ENABLED,   //  "aya_r18_cloud_volumetric_enabled" <FS:AYA r18>
 ```
 
-- r17 helper は `KNOWN_SKY_LEGACY_MIDDAY` で no-op、master/個別 switch で no-op なので呼び出し側に追加分岐不要
-- ambient/sun と同じ modulator を使うため、sky / scene / cloud の 3 経路で時間帯色温度が完全整合
-- cloud_color が legacy preset で warm 寄りなら r17 OFF/legacy 経路で生値が流れる
+`indra/llrender/llshadermgr.cpp` (uniform 名 mReservedUniforms に push):
+```cpp
+mReservedUniforms.push_back("aya_r18_cloud_volumetric_enabled");  // <FS:AYA r18>
+```
 
-### P1.c: 実装後の体感調整 (条件付)
+`indra/newview/app_settings/settings.xml` (Boolean 1 件、default TRUE):
+- `AYAR18CloudVolumetricEnabled` (Persist=1, Value=1)
 
-P1.a/b の Linux 実機検証で:
-- 体積感が perceptual threshold 以下 → raymarch step 数 + slab 厚みを調整、または 3D noise scale 調整
-- GPU コストが目立つ → step 数を削る、early-out 条件を緩める
-- 体感が出ない → drop 検討 (`feedback_feature_value_in_main_usecase.md`)、ただし r17 helper 再利用部分 (P1.b) は軽量なので残す方針
+`indra/newview/llsettingsvo.cpp::applySpecial` (A 軸 uniform push のみ、CLOUD_COLOR は素通し):
+```cpp
+shader->uniform3fv(LLShaderMgr::CLOUD_COLOR, LLVector3(psky->getCloudColor().mV));
+
+{
+    static LLCachedControl<bool> aya_master(gSavedSettings, "AYAVisualRealismEnabled", true);
+    static LLCachedControl<bool> aya_r18_cloud_vol(gSavedSettings, "AYAR18CloudVolumetricEnabled", true);
+    bool is_legacy_midday = (psky && psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY);
+    bool r18_on = aya_master && aya_r18_cloud_vol && !is_legacy_midday;
+    shader->uniform1i(LLShaderMgr::AYA_R18_CLOUD_VOLUMETRIC_ENABLED, r18_on ? 1 : 0);
+}
+```
+
+`indra/newview/app_settings/shaders/class1/deferred/cloudsF.glsl` (A 軸 slab raymarch):
+```glsl
+uniform int aya_r18_cloud_volumetric_enabled;
+
+float alpha1;
+if (aya_r18_cloud_volumetric_enabled != 0)
+{
+    const int N = 4;
+    const vec2 slab_offset = vec2(0.013, 0.008);  // UV 空間 slab 進行方向 (視線方向 proxy)
+    float trans = 1.0;
+    for (int i = 0; i < N; i++)
+    {
+        float t = (float(i) - 1.5) / 3.0;  // -0.5 ~ +0.5
+        vec2 du = slab_offset * t;
+        float a = (cloudNoise(uv1 + du).x - 0.5) + (cloudNoise(uv3 + du).x - 0.5) * cloud_pos_density2.z;
+        a = min(max(a + cloudDensity, 0.) * 10.0 * cloud_pos_density1.z, 1.);
+        a = 1.0 - a * a;
+        a = 1.0 - a * a;
+        trans *= 1.0 - a * 0.45;  // 各 slab 45% 透過
+    }
+    alpha1 = 1.0 - trans;
+}
+else
+{
+    // Legacy flat path (preset 互換)
+    alpha1 = (cloudNoise(uv1).x - 0.5) + (cloudNoise(uv3).x - 0.5) * cloud_pos_density2.z;
+    alpha1 = min(max(alpha1 + cloudDensity, 0.) * 10 * cloud_pos_density1.z, 1.);
+    alpha1 = 1. - alpha1 * alpha1;
+    alpha1 = 1. - alpha1 * alpha1;
+}
+```
+
+ポイント:
+- A 軸 (slab raymarch) を `AYAR18CloudVolumetricEnabled` + master + `KNOWN_SKY_LEGACY_MIDDAY` 除外で gate
+- 「昼間(レガシー)」は PBR 前 noon 再現 preset の意図を歪めないよう pinpoint 除外 (r17 で確立したパターンを継承)
+- shader 側 OFF パス (`aya_r18_cloud_volumetric_enabled == 0`) は **既存式と数式上完全一致** (smoothing も含む、preset 互換)
+- 旧 B 軸 (CLOUD_COLOR の r17 mod) は drop、CLOUD_COLOR は preset 由来値の素通し
+
+### P1.b: 実装後の体感調整 (条件付、現状は不要 — AYA 実機 PASS)
+
+P1.a の Linux 実機検証で:
+- 体積感が perceptual threshold 以下 → slab N step 数 + slab_offset 厚み / transmittance 係数 (0.45) を調整
+- GPU コストが目立つ → step 数を削る、early-out 条件追加
+- 体感が出ない → drop 検討 (`feedback_feature_value_in_main_usecase.md`)
+
+**実機結果**: AYA 体感 PASS (「とても素晴らしい」) で調整不要、デフォルトパラメータ (N=4, slab_offset=(0.013, 0.008), transmittance 45%/slab) で出荷
 
 ### P2: 3 OS ビルド + 体感確認
 
@@ -128,19 +176,17 @@ r14 / r15 / r16 / r17 と同じく、**公開は r18 単独でせず A 軸完走
 
 ## 5. 受け入れ条件
 
-- [ ] 既存 WindLight preset (朝・昼・夕・夜・昼間レガシー) が **読み込めて、preset 切替が機能する** (preset 互換破壊なし)
-- [ ] `AYAR18CloudVolumetricEnabled = TRUE` (master `AYAVisualRealismEnabled = TRUE` 前提) で:
-  - 雲が flat な板ではなく **厚みと奥行き** を持って見える
+- [x] 既存 WindLight preset (朝・昼・夕・夜・昼間レガシー) が **読み込めて、preset 切替が機能する** (preset 互換破壊なし) — AYA 実機 PASS
+- [x] `AYAR18CloudVolumetricEnabled = TRUE` (master `AYAVisualRealismEnabled = TRUE` 前提) で:
+  - 雲が flat な板ではなく **厚みと奥行き** を持って見える — AYA 実機「とても素晴らしい」
   - エッジが立体的に削れ、cloud_pos_density / cloud_scale の変化が体積方向にも反映される
-  - r14/r15/r16/r17 で出した体感が壊れない
-- [ ] `AYAR17ColorTemperatureEnabled = TRUE` と組み合わせて:
-  - 夕方の雲が **橙〜赤に焼ける**、朝方は冷色寄り、昼は preset 通りの白〜灰色
-  - sky / scene / cloud の 3 経路で時間帯色温度が **完全整合** (雲だけ色がずれない)
-- [ ] `AYAR18CloudVolumetricEnabled = FALSE` で r17 までと同じ見え方に戻る (shader 内部で switch off 経路、既存 flat sample のみ実行)
-- [ ] **「昼間(レガシー)」で r17 経由の cloud_color modulator が無効化** (r17 helper の UUID pinpoint 除外を継承)
-- [ ] **sky dome の見え方が r14 P2.a refined のまま** (sun disc 健在、青空質感劣化なし) — skyV.glsl 不触で構造的保証
-- [ ] 3 OS でビルド + 起動 + 表現確認 (P2)
+  - r14/r15/r16 で出した体感が壊れない
+- [x] `AYAR18CloudVolumetricEnabled = FALSE` で r16 までと同じ見え方に戻る (shader 内部で switch off 経路、既存 flat sample のみ実行) — 数式一致で構造的保証
+- [x] **「昼間(レガシー)」で A 軸 (slab raymarch) が無効化** (`KNOWN_SKY_LEGACY_MIDDAY` pinpoint 除外で flat & 生 cloud_color が流れ、PBR 前 noon 再現 preset の意図を歪めない)
+- [x] **sky dome の見え方が r14 P2.a refined のまま** (sun disc 健在、青空質感劣化なし) — skyV.glsl 不触で構造的保証
+- [ ] 3 OS でビルド + 起動 + 表現確認 (P2 — Linux 済、macOS / Windows は A 軸完走時 tag/release で一括)
 - [ ] FPS 影響が ±15% 以内 (P2 で実測、体積化分は若干余裕枠)
+- ~~r17 (色温度連動) との組み合わせ受け入れ条件~~ — **r17 drop で項目自体が削除**
 
 ---
 
@@ -149,17 +195,20 @@ r14 / r15 / r16 / r17 と同じく、**公開は r18 単独でせず A 軸完走
 | ID | リスク | 対策 / 現ステータス |
 |---|---|---|
 | R1 | raymarch step が多すぎて GPU コスト顕在化 (低スペック GPU で fps 大幅低下) | step 数 4〜8 で開始、early-out 厳格化、P1.c で実機計測しながら調整。screen-space 全体に raymarch しない方針が予防線 |
-| R2 | 3D noise 入手 (texture3D 同梱 or procedural) が 3 OS で挙動差 | P0 Survey で procedural Worley/Perlin の GLSL 互換を確認、texture3D 同梱は配布サイズ + 3 OS asset path で重い側、procedural を default |
+| R2 | 3D noise 入手 (texture3D 同梱 or procedural) が 3 OS で挙動差 | **解消 (P0 で 2D noise の slab 化で達成、3D noise asset 不要が確定)**。`cloud_noise_texture` (sampler2D) を視線方向 slab 4 step raymarch で疑似 volumetric 化、新規 asset 配布なし |
 | R3 | 既存 preset の cloud 見た目が体積化で破壊される (cloud_pos_density / cloud_scale の意味が変わる) | preset uniform は input 契約として保つ設計、shader 内部で「新計算経路」を switch で gate、OFF で完全 backward compatible |
-| R4 | r17 helper の cloud_color 適用で「昼間(レガシー)」の雲が変色 | r17 helper の UUID pinpoint 除外がそのまま継承される (`getR17SunModulator` が identity を返す)、追加対応不要 |
-| R5 | cloud shader (class1/class2 2 系統) の片方だけ書き換えると deferred/forward 経路で見た目が割れる | P0 Survey で両系統列挙、両方同じ実装を入れる方針。SL の shader 配置構造 (class1 = main, class2 = enhanced) を踏襲 |
-| R6 | 3 OS でビルドが通らない (macOS Metal cross-compile 等) | shader 改修のみ、C++ 側は r17 helper 再利用 + settings.xml 1 件、`.metal` / `HAS_METAL` 経路は P0 で確認 |
-| R7 | 個別 switch (`AYAR18CloudVolumetricEnabled`) を追加することで `feedback_prefer_defaults_over_config.md` (個別 cvar 量産しない) と衝突 | r14/r15/r16/r17 と同じく「章ごと体感評価用 sentinel」運用、A 軸完走時に統合 (master へ吸収) を検討 |
-| R8 | heavy raymarch に倒れて scope が膨張 | spec §3 含まないに「heavy raymarch」を永久 drop として明記、step 数 上限を P1.c で固定 |
-| R9 | 体積化の体感が perceptual threshold 以下 (r16 P1.b / r14 P2.b/c のような drop pattern) | `feedback_feature_value_in_main_usecase.md` (動いた ≠ 効いた) 念頭、Linux 実機で評価、threshold 以下なら drop (色温度連動部分は残す方針で半保険) |
+| R4 | ~~r17 helper の cloud_color 適用で「昼間(レガシー)」の雲が変色~~ | **解消 (r17 drop で B 軸経路自体が消滅)**。cloud_color は preset 由来値が素通し、helper 呼び出しなし |
+| R5 | cloud shader (class1/class2 2 系統) の片方だけ書き換えると deferred/forward 経路で見た目が割れる | **解消 (P0 で `class1/deferred` の cloudsV/cloudsF 2 ファイルのみ存在することを確認)**。class2/windlight 配下に同名 shader は無く、deferred 経路 1 系統で完結 |
+| R6 | 3 OS でビルドが通らない (macOS Metal cross-compile 等) | shader 改修 + C++ 側は settings.xml 1 件 + llshadermgr enum 1 件のみ、`.metal` / `HAS_METAL` 経路は P0 で確認 (r17 helper は drop で除去済、依存ゼロ) |
+| R7 | 個別 switch (`AYAR18CloudVolumetricEnabled`) を追加することで `feedback_prefer_defaults_over_config.md` (個別 cvar 量産しない) と衝突 | r14/r15/r16 と同じく「章ごと体感評価用 sentinel」運用、A 軸完走時に統合 (master へ吸収) を検討 |
+| R8 | heavy raymarch に倒れて scope が膨張 | spec §3 含まないに「heavy raymarch」を永久 drop として明記、step 数 上限を P1.a で N=4 固定 |
+| R9 | 体積化の体感が perceptual threshold 以下 (r16 P1.b / r14 P2.b/c のような drop pattern) | **解消 (AYA 実機 PASS「とても素晴らしい」)**。`feedback_feature_value_in_main_usecase.md` (動いた ≠ 効いた) を r17 側で実証、A 軸単独で十分体感が出ることを確認 |
 
 ---
 
 ## 7. 更新履歴
 
 - 2026-05-12 (初版): r17 close-out (`c3d6aee734`) 直後に r18 を起票。AYA との対話で「雲の体積化 (B) + 色温度連動 (A) のセット」スコープに確定 (cloud shadow C は r19+ に分離、scope 膨張回避)。理由は「体積化された雲面に色温度が乗ると cinematic が桁違い、別リリースに分けると単体評価が難しい」。`docs/ayastorm-visual-realism-roadmap.md` §4 r18 entry のスコープ (analytic + 軽量 raymarch、heavy raymarch 不採用) を継承、r17 で実装済 helper `LLSettingsVOSky::getR17SunModulator` を CLOUD_COLOR uniform にも適用する設計。次は P0 Survey (cloud shader class1/class2 経路調査)
+- 2026-05-12 (P0 Survey 完了 `636e163a3c`): `doc/r18/cloud_volumetric_survey.md` Round 1 で 6 項目すべて PASS。class1/deferred の cloudsV/cloudsF のみ存在 (class2 系統 同名 shader 無し)、CLOUD_COLOR 注入点は `llsettingsvo.cpp:890` の 1 箇所のみ、既存 cloud は完全 2D (3D noise asset 不要)、`AYA_R18_CLOUD_VOLUMETRIC_ENABLED` shader enum を新設要、HAS_METAL 0 hits、drawpool bind 経路不触。R2 (3D noise 入手) / R5 (class1/class2 割れ) は P0 で解消、spec §2/§3/§6 を実状に整合
+- 2026-05-12 (P1.a 実装): `llshadermgr.{h,cpp}` enum + uniform 名追加、`settings.xml` に `AYAR18CloudVolumetricEnabled` (default TRUE)、`llsettingsvo.cpp::applySpecial` で B 軸 (CLOUD_COLOR を r17 Kelvin で乗算) + A 軸 gate uniform push、`cloudsF.glsl` で A 軸 slab raymarch (N=4 step、Beer-Lambert 風 transmittance 45%/slab)。A 軸 / B 軸 ともに `KNOWN_SKY_LEGACY_MIDDAY` pinpoint 除外 (r17 と同思想)。OFF パスは既存式と数式上完全一致 (preset 互換維持)。次は AYA 実機確認 (Linux ビルド + 4 preset 切替 + AYAR18 ON/OFF / AYAR17 ON/OFF の組合せ)
+- 2026-05-12 (実機検証 + r17 drop に伴う B 軸 同伴 drop): AYA 実機で AYAR18 (A 軸 slab raymarch) は「とても素晴らしい」評価で PASS、AYAR17 (色温度) は 5 preset 切替で効きが知覚できず。診断ログ (`AYA_R17` tag) で原因確定: SL の Sunrise preset は太陽 elevation=0.996 (zenith) で K=6500=identity、Sunset は warm preset でツールクリップ、Midnight は ambient に副作用、Day cycle (preset=00000000) のみ effective、という「fixed preset では機能せず」の偏りを確認。`feedback_feature_value_in_main_usecase.md` (動いた ≠ 効いた) を厳格適用し r17 全体を drop、r18 B 軸 (CLOUD_COLOR の r17 mod) も helper 消滅で自動 drop。r18 は **A 軸 (slab raymarch) 単独で出荷**、cloud_color は preset 由来素通しに戻る。spec を「A 軸単独」に re-scope (タイトル変更、§1/§2/§3/§4/§5/§6 更新)、`docs/ayastorm-r17-color-temperature.md` を drop 記録へ書き換え。次は AYA 実機 P2 (3 OS ビルド + 体感確認) — Linux 済、macOS / Windows は A 軸完走時 tag/release で一括

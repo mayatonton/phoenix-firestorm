@@ -6770,23 +6770,8 @@ void LLPipeline::setupHWLights()
     LLEnvironment& environment = LLEnvironment::instance();
     LLSettingsSky::ptr_t psky = environment.getCurrentSky();
 
-    // <FS:AYA r17> Color Temperature: 太陽 elevation から派生する Kelvin modulator を
-    //   scene path (LLPipeline::mSunDiffuse / mHWLightColors[0] / setAmbientLightColor) に適用。
-    //   sky path (skyV.glsl uniform) は llsettingsvo.cpp::applySpecial で同じ helper を呼ぶため、
-    //   scene と sky で同じ色温度が適用される設計。
-    //   「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) では helper 内で asset UUID 一致 pinpoint
-    //   除外で no-op に落ち、PBR 前 noon 再現 preset の意図を歪めない。
-    LLVector3 r17_lightnorm(environment.getClampedLightNorm().mV);
-    LLColor3  r17_sun_mod = LLSettingsVOSky::getR17SunModulator(r17_lightnorm, psky.get());
-    // </FS:AYA>
-
     // Ambient
     LLColor4 ambient = psky->getTotalAmbient();
-    // <FS:AYA r17> ambient も連動して朝青/夕橙シフト
-    ambient.mV[0] *= r17_sun_mod.mV[0];
-    ambient.mV[1] *= r17_sun_mod.mV[1];
-    ambient.mV[2] *= r17_sun_mod.mV[2];
-    // </FS:AYA>
 
     gGL.setAmbientLightColor(ambient);
 
@@ -6801,7 +6786,7 @@ void LLPipeline::setupHWLights()
         mSunDir.setVec(sun_dir);
         mMoonDir.setVec(moon_dir);
 
-        mSunDiffuse.setVec(psky->getSunlightColor() * r17_sun_mod);  // <FS:AYA r17>
+        mSunDiffuse.setVec(psky->getSunlightColor());
         mMoonDiffuse.setVec(psky->getMoonlightColor());
 
         F32 max_color = llmax(mSunDiffuse.mV[0], mSunDiffuse.mV[1], mSunDiffuse.mV[2]);
