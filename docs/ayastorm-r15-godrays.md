@@ -1,10 +1,10 @@
 # AYAstorm r15: godrays (光線が空間を貫く)
 
 **作成日**: 2026-05-12
-**対象**: AYAstorm `feature/aya-r15-godrays` (予定 / 着手前)
+**対象**: AYAstorm `feature/aya-r15-godrays-spec-draft` (P1 実装完了 / Linux 実機 PASS)
 **位置づけ**: 視覚的リアリティ章 (`docs/ayastorm-visual-realism-roadmap.md`) §4 A 軸の第 2 弾、r14 (volumetric atmosphere) の自然な延長
 
-> **本書の役割**: r15 個別の **計画スナップショット**。実装着手後に commit hash / 実測値を埋める。
+> **本書の役割**: r15 個別の **計画 + 実装結果スナップショット**。P0 / P1 完了後に commit hash / 確定値 / 体感 PASS を反映済。
 > 章全体の位置づけは `docs/ayastorm-visual-realism-roadmap.md`、r14 (前リリース) は `docs/ayastorm-r14-volumetric-atmosphere.md`。
 
 ---
@@ -68,41 +68,50 @@ r14 で「**空気が体積として見える**」基盤 (depth-driven Beer-Lamb
 
 viewer-only の改修。配信側 / SIM 側変更なし。
 
-### P0: 実装箇所調査 + spec 確定
+### P0: 実装箇所調査 + spec 確定 — **完了** (fd027e7475 起票 / 95223d1079 調査)
 
-調査ターゲット (P0 完了条件):
+調査ターゲット (P0 完了条件) と結果:
 
-1. **pass 挿入点の同定** — `LLPipeline::renderGeom` / `renderDeferredLighting` / `renderPostProcess` のうちどこに register するか
-2. **shadow map の availability 確認** — godrays に使う shadow buffer (sun direction 側) が既に main pass で生成済か、別途追加が必要か
-3. **sun direction uniform の availability 確認** — `sun_dir` / `lightnorm` 系 uniform を godrays shader に渡す経路
-4. **HDR scene buffer への additive 注入の経路** — どの FBO に対して blit / additive blend するか
-5. **既存 glow / bloom との衝突有無** — `glowExtractF.glsl` / glow pass と機能的に重複しないか、合成順序
+1. **pass 挿入点の同定** — `LLPipeline::renderGeomPostDeferred` の `doAtmospherics()` 直後に挿入。`done_atmospherics` フラグで 1 frame 1 回ガード済の slot を共有
+2. **shadow map の availability 確認** — `shadowUtil.glsl` の `sampleDirectionalShadow()` を `features.hasShadows + HAS_SUN_SHADOW permutation` で attach、既存 cascade (`shadowMap0..3` + `shadow_matrix` + `shadow_clip`) を流用 (追加 buffer なし)
+3. **sun direction uniform の availability 確認** — `mTransformedSunDir` (view-space) が `bindDeferredShader()` 経由で `sun_dir` / `moon_dir` に自動 bind。新規 uniform 不要
+4. **HDR scene buffer への additive 注入の経路** — `mRT->screen` が currently-bound のまま `doAtmospherics` と同じ流儀で fullscreen triangle を additive blend で描く。FBO 追加なし、quarter-res buffer も不要 (16-sample で full-res 直書きが軽量に成立)
+5. **既存 glow / bloom との衝突有無** — godrays は HDR scene buffer 上で動き、glow は tonemap 後の bright pass。**論理的衝突なし**、両立して足し算的に効く
 
-成果物: `doc/r15/godrays_survey.md` (Round 1)、必要に応じて spec §3 / §4 / §6 を P0 後改訂。
+成果物: `doc/r15/godrays_survey.md` (Round 1)。
 
-### P1: 実装
+### P1: 実装 — **完了** (9a703a2480)
 
-P0 で確定した経路に godrays pass を実装。
+**実際に触ったファイル** (P0 見込みからの差分含む):
 
-**触るファイル (見込み)**:
-- `indra/newview/pipeline.h` — godrays pass 用 framebuffer / shader メンバ追加
-- `indra/newview/pipeline.cpp` — `renderGodrays()` 追加、`renderPostProcess` (or 適切な箇所) から呼び出し
-- `indra/newview/llviewershadermgr.h` / `.cpp` — godrays shader object 追加、load 経路
-- `indra/llrender/llshadermgr.h` / `.cpp` — 必要なら新規 uniform enum 追加 (sun_dir_screen 等)
-- `indra/newview/app_settings/shaders/class1/effects/godraysV.glsl` (新規) — fullscreen quad
-- `indra/newview/app_settings/shaders/class1/effects/godraysF.glsl` (新規) — screen-space ray-march、shadow sample 積分
-- (master switch は r14 で配線済の `aya_visual_realism_enabled` を流用)
+- `indra/newview/app_settings/shaders/class1/deferred/godraysV.glsl` (新規) — fullscreen triangle、screen UV を fragment に渡す
+- `indra/newview/app_settings/shaders/class1/deferred/godraysF.glsl` (新規) — depth 再構成 → 16-sample shadow-driven ray-march → Mie 前方ピーク phase 適用 → additive 出力
+  - **配置 `effects/` ではなく `deferred/`** に置いた (P0 見込みからの変更): `shadowUtil.glsl` 系の auto-attach を効かせるため、deferred shader path 配下が必須
+- `indra/newview/llviewershadermgr.h` — `gDeferredGodraysProgram` extern 宣言
+- `indra/newview/llviewershadermgr.cpp` — declaration + `mShaderList.push_back` + load block (`gHazeProgram` 直後)。`features.isDeferred = true` で `deferredUtil.glsl`、`features.hasShadows = use_sun_shadow` + `HAS_SUN_SHADOW` permutation で `shadowUtil.glsl` を attach
+- `indra/newview/pipeline.h` — `void doGodrays();` 宣言
+- `indra/newview/pipeline.cpp` — `doGodrays()` 実装、`renderGeomPostDeferred` 内 `doAtmospherics()` 直後から呼び出し
 
-**触る関数**:
-- `LLPipeline::createGLBuffers` / `releaseGLBuffers` (FBO 追加)
-- `LLPipeline::renderPostProcess` or 適切な host (pass 呼び出し追加)
-- `LLViewerShaderMgr::loadShadersEffects` (shader load 追加)
+**P0 見込みからの未着手 (= 不要だった)**:
+- `indra/llrender/llshadermgr.h/.cpp` — 新規 uniform enum 追加不要 (既存 `sun_dir` / `moon_dir` / `sun_up_factor` / `inv_proj` で完結)
+- `createGLBuffers` / `releaseGLBuffers` — FBO 追加不要
+- `loadShadersEffects` — `effects/` 配下ではなく `loadShadersDeferred` 相当の chain に組み込んだ
 
-### P2: 3 OS ビルド + 体感確認
+**確定したアルゴリズム値**:
+- ray-march samples: **N = 16**
+- phase function: `pow(cos(view·sun), **8.0**)` (Mie 前方ピーク)
+- strength: **0.10** (AYA 体感調整、0.5 → 0.2 → 0.15 → 0.10 で着地)
+- jitter: Bayer-ish hash で隣接 pixel 間のバンディング破り
+- cascade 外 sample: `if (p.z <= -shadow_clip.w) continue;` で 0 寄与扱い
+  ※ `sampleDirectionalShadow` は cascade 外で 1.0 (lit) を返す surface-shading 仕様。godrays の中空 sample でそのまま使うと過剰加算
+- NaN/Inf ガード: `shadow /= weight` の weight=0 fallthrough を防御
+- **alpha 保護**: `frag_color.a = 0.0` 必須。ONE/ONE additive で alpha=1.0 を積むと scene buffer の sky mask が破壊され空が真っ白に潰れる (P1 初回投入で観測、原因特定 → memory `project_aya_visual_realism_alpha_protect.md` に永続化)
 
-AYA が Linux ビルド + 体感確認。問題なければ macOS / Windows ビルドへ。
+### P2: 3 OS ビルド + 体感確認 — **着手前**
 
-### P3: tag / release
+AYA が Linux フルビルド + 体感確認 (shader-only 高速反映の後、commit 9a703a2480 が C++ も含むため一度 autobuild 必須)。問題なければ macOS / Windows ビルドへ。
+
+### P3: tag / release — **着手前**
 
 `feedback_release_with_user_feedback.md` に従い、完璧を目指さず tag / release してフィードバック収集。
 
@@ -110,13 +119,12 @@ AYA が Linux ビルド + 体感確認。問題なければ macOS / Windows ビ�
 
 ## 5. 受け入れ条件
 
-- [ ] 既存 WindLight preset (朝・昼・夕・夜) が **読み込めて、preset 切替が機能する** (preset 互換破壊なし)
-- [ ] `AYAVisualRealismEnabled = TRUE` で:
-  - 雲間 (雲が太陽を部分遮蔽している時) に光線が見える
-  - 屋内 / 構造物の隙間から差す光が「線」として見える (空気中に光のすじが描ける)
-- [ ] `AYAVisualRealismEnabled = FALSE` で r14 までと同じ見え方に戻る (godrays pass skip)
-- [ ] 3 OS でビルド + 起動 + 表現確認
-- [ ] FPS 影響が ±10% 以内 (P0 で軽量実装の見込みを立てる、quarter-res 中間バッファ等を許容)
+- [x] 既存 WindLight preset (朝・昼・夕・夜) が **読み込めて、preset 切替が機能する** (preset 互換破壊なし) — Linux P1 で preset 切替動作確認、破壊なし
+- [x] `AYAVisualRealismEnabled = TRUE` で太陽方向に godrays が見える — Linux P1 で太陽周辺に控えめなヴェールを観測 (strength=0.10)
+- [x] `AYAVisualRealismEnabled = FALSE` で r14 までと同じ見え方に戻る (godrays pass skip) — Linux P1 で確認
+- [ ] 3 OS でビルド + 起動 + 表現確認 — Linux のみ完了、macOS / Windows は P2 で
+- [ ] FPS 影響が ±10% 以内 — Linux 体感では問題なし、定量計測は P2 で
+- [x] 描画破綻なし (sky 真っ白 / scene 色破壊なし) — P1 で alpha 保護を入れた後の状態で確認
 
 ---
 
@@ -136,3 +144,5 @@ AYA が Linux ビルド + 体感確認。問題なければ macOS / Windows ビ�
 ## 7. 更新履歴
 
 - 2026-05-12 (初版): r14 (volumetric atmosphere) を P2.a refined で完了させ A 軸第 1 弾とした流れを受けて、A 軸第 2 弾の godrays を起票。既存 SL に sun shaft / godrays 系 infrastructure 無し (事前 grep 確認: `sun.?shaft` / `godray` / `light.?shaft` ヒット 0) を確認した上で、ゼロから shadow map driven screen-space pass として組む方針を確定。章全体の位置づけは `docs/ayastorm-visual-realism-roadmap.md` §4 r15、設計制約は §2 を継承
+- 2026-05-12 (P0 完了): `doc/r15/godrays_survey.md` (Round 1) で挿入点 (`renderGeomPostDeferred` の `doAtmospherics` 直後) / shadow map 経路 (`sampleDirectionalShadow` 流用) / sun direction (`bindDeferredShader` 自動 bind) / HDR scene buffer additive / glow 非衝突を確定。FBO 追加不要、新規 uniform enum 不要、quarter-res 不要の方針で P1 へ
+- 2026-05-12 (P1 完了 / Linux 実機 PASS, commit 9a703a2480): godrays 実装 6 ファイル (`godraysV.glsl` / `godraysF.glsl` / `pipeline.h` / `pipeline.cpp` / `llviewershadermgr.h` / `llviewershadermgr.cpp`)。確定値 N=16 / phase=cos^8 / strength=0.10 / cascade skip / NaN ガード / **alpha 保護 (frag_color.a=0)**。alpha 保護に至るデバッグ中、ONE/ONE additive で alpha=1 を積むと scene buffer の sky mask が破壊されて空が真っ白に潰れる挙動を観測 → memory `project_aya_visual_realism_alpha_protect.md` に永続化 (r14+ 視覚表現章で再利用必須の知見)。3 OS ビルド + tag/release は P2 / P3 で実施
