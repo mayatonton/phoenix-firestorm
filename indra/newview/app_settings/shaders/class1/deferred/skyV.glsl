@@ -62,6 +62,26 @@ uniform vec3  glow;
 uniform float sun_moon_glow_factor;
 
 uniform int cube_snapshot;
+uniform int aya_visual_realism_enabled;  // <FS:AYA r14 P2.a> Visual Realism master switch
+
+// <FS:AYA r14 P2.a> vertex shader 内のインライン sRGB <-> linear helper
+// skyV.glsl は vertex shader で srgbF.glsl が attach されないため、ここで直接定義する
+vec3 aya_srgb_to_linear(vec3 cs)
+{
+    vec3 low_range  = cs / vec3(12.92);
+    vec3 high_range = pow((cs + vec3(0.055)) / vec3(1.055), vec3(2.4));
+    bvec3 lt = lessThan(cs, vec3(0.04045));
+    return mix(high_range, low_range, lt);
+}
+
+vec3 aya_linear_to_srgb(vec3 cl)
+{
+    vec3 low_range  = cl * vec3(12.92);
+    vec3 high_range = vec3(1.055) * pow(cl, vec3(1.0 / 2.4)) - vec3(0.055);
+    bvec3 lt = lessThan(cl, vec3(0.0031308));
+    return mix(high_range, low_range, lt);
+}
+// </FS:AYA>
 
 // NOTE: Keep these in sync!
 //       indra\newview\app_settings\shaders\class1\deferred\skyV.glsl
@@ -138,9 +158,25 @@ void main()
     // For sun, add to glow.  For moon, remove glow entirely. SL-13768
     haze_glow = (sun_moon_glow_factor < 1.0) ? 0.0 : (sun_moon_glow_factor * (haze_glow + 0.25));
 
-    // Haze color above cloud
-    vec3 color = (blue_horizon * blue_weight * (sunlight + ambient_color)
+    // <FS:AYA r14 P2.a> scene-referred 積分: 空の haze 色合成も linear で行う
+    vec3 color;
+    if (aya_visual_realism_enabled > 0)
+    {
+        vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
+        vec3 amb_lin      = aya_srgb_to_linear(ambient_color);
+        vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
+        vec3 haze_h_lin   = aya_srgb_to_linear(vec3(haze_horizon));
+        vec3 color_lin    = (blue_h_lin * blue_weight) * (sunlight_lin + amb_lin)
+                          + (haze_h_lin * haze_weight) * (sunlight_lin * haze_glow + amb_lin);
+        color = aya_linear_to_srgb(color_lin);
+    }
+    else
+    {
+        // Haze color above cloud (legacy sRGB-space integration)
+        color = (blue_horizon * blue_weight * (sunlight + ambient_color)
                + (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient_color));
+    }
+    // </FS:AYA>
 
     // Final atmosphere additive
     color *= (1. - combined_haze);
@@ -151,9 +187,25 @@ void main()
     // Dim sunlight by cloud shadow percentage
     sunlight *= max(0.0, (1. - cloud_shadow));
 
-    // Haze color below cloud
-    vec3 add_below_cloud = (blue_horizon * blue_weight * (sunlight + ambient)
+    // <FS:AYA r14 P2.a> scene-referred 積分: 下雲側の haze 色も linear で
+    vec3 add_below_cloud;
+    if (aya_visual_realism_enabled > 0)
+    {
+        vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
+        vec3 amb_lin      = aya_srgb_to_linear(ambient);
+        vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
+        vec3 haze_h_lin   = aya_srgb_to_linear(vec3(haze_horizon));
+        vec3 below_lin    = (blue_h_lin * blue_weight) * (sunlight_lin + amb_lin)
+                          + (haze_h_lin * haze_weight) * (sunlight_lin * haze_glow + amb_lin);
+        add_below_cloud = aya_linear_to_srgb(below_lin);
+    }
+    else
+    {
+        // Haze color below cloud (legacy sRGB-space integration)
+        add_below_cloud = (blue_horizon * blue_weight * (sunlight + ambient)
                          + (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient));
+    }
+    // </FS:AYA>
 
     // Attenuate cloud color by atmosphere
     combined_haze = sqrt(combined_haze);  // less atmos opacity (more transparency) below clouds
