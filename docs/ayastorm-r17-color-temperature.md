@@ -53,8 +53,9 @@ r14 で「**空気が体積として見える**」、r15 で「**光線が空間
 ## 3. スコープ
 
 ### 含む
-- **P0 Survey**: 完了 (`doc/r17/color_temperature_survey.md` Round 1) — Sun/Ambient の派生経路は `llsettingsvo.cpp::applySpecial` に一本化、shader 改修不要で C++ 側 modulate のみで完結することを確認
-- **P1.a**: 太陽 elevation → Kelvin 派生曲線の **C++ 実装のみ** (`applySpecial` の SUNLIGHT_COLOR / AMBIENT uniform push 直前に modulate を挿入)。Tanner Helland 2012 Kelvin→RGB 近似式で開始、preset 色との **乗算 modulator** で C 案 (preset 互換維持) を実現
+- **P0 Survey**: 完了 (`doc/r17/color_temperature_survey.md` Round 1 + §6 補遺) — Sun/Ambient の派生経路は当初「`applySpecial` 1 箇所」と書いたが P1.a 着手中に SUNLIGHT_COLOR が sky path / scene path の **2 注入点** あることが判明、§6 で訂正
+- **P1.a**: 完了 — 太陽 elevation → Kelvin 派生曲線の **C++ 実装** + **共通 helper `LLSettingsVOSky::getR17SunModulator(lightnorm, psky)`** + **3 注入点 modulate** (sky SUNLIGHT_COLOR / ambient base / scene `LLPipeline::mSunDiffuse`)。Tanner Helland 2012 Kelvin→RGB 近似式、preset 色との **乗算 modulator** で C 案 (preset 互換維持) を実現
+- **legacy preset 専用除外**: 「昼間(レガシー)」(asset UUID `KNOWN_SKY_LEGACY_MIDDAY = 6c83e853-e7f8-cad7-8ee6-5f31c453721c`) は PBR 前 SL noon の再現用 preset なので、helper 内で UUID 完全一致 pinpoint で no-op 化。`canAutoAdjust()` で広く gate すると朝方/昼間/夕方/夜中も同 legacy ファミリーで巻き込み r17 が完全無効化されるため、UUID 単点で除外する設計に確定
 - **C++ plumbing**: settings.xml に `AYAR17ColorTemperatureEnabled` Boolean 1 件追加。**shader uniform / llshadermgr.{h,cpp} は不要** (C++ 側で switch gate するため、r16 と異なり shader 側の switch uniform 不要)
 - **3 OS (Linux / macOS / Windows) ビルド + 体感確認** (P2)
 
@@ -97,36 +98,36 @@ viewer-only の改修。配信側 / SIM 側変更なし。
 - `getLightDiffuse()` 経由の PBR/material shader への間接影響 (Survey §2.7) — P1.a 実機で sun disc / scene 直接光に副作用なければ Round 2 不要
 - 屋内 ambient (`getReflectionProbeAmbiance() != 0.f` 分岐) の Kelvin 適用妥当性 (R3)
 
-### P1.a: Kelvin modulate 実装 (C++ 単独、shader 改修なし)
+### P1.a: Kelvin modulate 実装 — **完了**
 
-太陽 elevation から物理 Kelvin を派生し、`applySpecial` の uniform push 直前で modulate:
+太陽 elevation から物理 Kelvin を派生し、preset 色と乗算する modulator を **3 注入点** で適用 (sky / scene / ambient 整合)。曲線:
 
-- 朝 (elevation < 10°): 2500-4000K (warm amber)
-- 昼 (elevation > 30°): 5500-6500K (neutral white)
-- 夕 (elevation < 10°、sunset 側): 2000-3500K (deep amber)
-- 滑らかな曲線 (smoothstep or piecewise)
+- elevation ≤ 0 (horizon 下): smoothstep clamp 下端 → 2200K (deep amber)
+- 0 < elevation < 0.4 (約 23.6°): smoothstep で 2200K → 6500K に補間
+- elevation ≥ 0.4: 6500K = identity modulator (preset 絵作りを noon 基準で保持)
 
-実装イメージ (`llsettingsvo.cpp::applySpecial`):
+**共通 helper** (`indra/newview/llsettingsvo.{h,cpp}`):
 ```cpp
-static LLCachedControl<bool> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", true);
-static LLCachedControl<bool> aya_r17(gSavedSettings, "AYAR17ColorTemperatureEnabled", true);
-
-LLVector3 sun_light_color = LLVector3(psky->getSunlightColor().mV);
-LLVector3 ambient         = LLVector3(getAmbientColor().mV);
-
-if (aya_visual_realism && aya_r17) {
-    float elevation = LLEnvironment::instance().getClampedLightNorm().mV[2]; // sin(altitude)
-    float kelvin    = kelvinFromElevation(elevation);         // 2500-6500
-    LLVector3 mod   = kelvinModulator(kelvin);                // = kelvin_rgb(K) / kelvin_rgb(6500)
-    sun_light_color = component_mult(sun_light_color, mod);
-    ambient         = component_mult(ambient,         mod);   // ambient も連動
-}
-
-shader->uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, sun_light_color);
-// AMBIENT も同様に modulate して push
+// 戻り値 = kelvin_rgb(K) / kelvin_rgb(6500K) — preset 色に乗算して使う modulator
+// 引数 psky を渡すと「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) を asset UUID 完全一致で
+// pinpoint 除外 (= no-op)、PBR 前再現 preset の意図を歪めない。
+LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const LLSettingsSky* psky);
 ```
 
-Tanner Helland 2012 公開式 (Kelvin → RGB) を C++ helper として実装。
+ガード順序: master `AYAVisualRealismEnabled` OFF / 個別 `AYAR17ColorTemperatureEnabled` OFF / asset UUID == `KNOWN_SKY_LEGACY_MIDDAY` のいずれかで identity (1,1,1) を返却。それ以外は Tanner Helland 2012 Kelvin→RGB 公開式で派生した modulator。
+
+**3 注入点**:
+
+1. `indra/newview/llsettingsvo.cpp::applySpecial` (L868) — sky path:
+   - SG_SKY shader group の `SUNLIGHT_COLOR` uniform (`skyV.glsl` 消費) を modulate
+   - 同所で `AMBIENT` uniform 用の base ambient も modulate (朝青/夕橙の天空色シフト)
+2. `indra/newview/pipeline.cpp::setupHWLights` (L6778) — scene path:
+   - `LLPipeline::mSunDiffuse` (deferred / material shader が読む `SUNLIGHT_COLOR` の源流) を modulate
+   - 同所で `gGL.setAmbientLightColor` 直前の ambient も modulate (scene 側 ambient と sky 側 ambient の整合)
+
+これで sky dome / deferred scene / ambient の 3 経路に同一 Kelvin が乗り、preset 切替や時間帯遷移で色温度が割れない。
+
+**switch off 経路**: master / 個別 switch どちらかが OFF で helper が identity を返すため、呼び出し側は無条件で `preset_color * modulator` の形のまま記述。OFF 経路を取り回す追加分岐は不要。
 
 ### P1.b: 実装後の体感調整 (条件付)
 
@@ -146,13 +147,15 @@ r15 / r16 と同じく、**公開は r17 単独でせず後続リリースまで
 
 ## 5. 受け入れ条件
 
-- [ ] 既存 WindLight preset (朝・昼・夕・夜) が **読み込めて、preset 切替が機能する** (preset 互換破壊なし)
-- [ ] `AYAR17ColorTemperatureEnabled = TRUE` (master `AYAVisualRealismEnabled = TRUE` 前提) で:
-  - 朝の太陽光が **冷色寄りに**、夕方が **暖色寄りに** 物理的整合した形で出る
-  - ambient (天空光) が sunlight の色温度に **連動して** 朝青/夕橙のシフトを示す
-  - r14/r15/r16 で出した体感が壊れない
-- [ ] `AYAR17ColorTemperatureEnabled = FALSE` で r16 までと同じ見え方に戻る (Kelvin 派生を bypass する経路)
-- [ ] **sky dome の見え方が r14 P2.a refined のまま** (sun disc 健在、朝・夕の地平線・青空質感は劣化なし) — skyV.glsl 不触で構造的保証
+- [x] 既存 WindLight preset (朝・昼・夕・夜) が **読み込めて、preset 切替が機能する** (preset 互換破壊なし) — Linux 実機 PASS
+- [x] `AYAR17ColorTemperatureEnabled = TRUE` (master `AYAVisualRealismEnabled = TRUE` 前提) で:
+  - [x] 朝/夕で太陽光が **暖色寄りに** 物理的整合した形で出る (朝方は subtle、夕方は明瞭な amber シフト)
+  - [x] ambient (天空光) が sunlight の色温度に **連動して** 朝青/夕橙のシフトを示す (3 注入点で sky / scene / ambient 整合)
+  - [x] noon (elevation ≥ 0.4) で OFF と差が出ない (smoothstep clamp で 6500K = identity)
+  - [x] r14/r15/r16 で出した体感が壊れない
+- [x] `AYAR17ColorTemperatureEnabled = FALSE` で r16 までと同じ見え方に戻る (helper が identity を返し preset 生値が uniform に流れる)
+- [x] **「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) で r17 modulator が無効化** (PBR 前 noon 再現の preset 意図を歪めない、asset UUID pinpoint 除外で実現)
+- [x] **sky dome の見え方が r14 P2.a refined のまま** (sun disc 健在、朝・夕の地平線・青空質感は劣化なし) — skyV.glsl 不触で構造的保証
 - [ ] 3 OS でビルド + 起動 + 表現確認 (P2)
 - [ ] FPS 影響が ±10% 以内 (P2 で実測)
 
@@ -178,3 +181,4 @@ r15 / r16 と同じく、**公開は r17 単独でせず後続リリースまで
 
 - 2026-05-12 (初版): r16 close-out (P1.b drop で実装完結) 直後に r17 を起票。旧 r17 (時間帯色温度 + 雲のリアリティ) を r17 (色温度) / r18 (雲の体積化) に分割した分の前半。色温度を先にする理由は「雲は色温度の影響を受ける側 (sun color が物理的に決まらないと雲の体積感も浮く)」のため。スコープは scene 側 (`atmosphericsFuncs.glsl` + `llinventory/llsettingssky.cpp::calculateLightSettings`)、skyV.glsl は r14 P2.b/c 教訓で不触。preset 互換は C 案 (内部連動変数のみ Kelvin 整合) を default、A 案 (preset と blend) を fallback として P0 Survey で確定する方針
 - 2026-05-12 (P0 Survey Round 1 完了): `doc/r17/color_temperature_survey.md` で 6 項目クリア。**重要な設計判明**: (a) shader uniform `sunlight_color` には preset 生値が流れる (`applySpecial` 経由)、`calculateLightSettings()` 出力 `mSunDiffuse` は太陽 disc 専用、(b) `applySpecial` 1 箇所で SUNLIGHT_COLOR / AMBIENT uniform を modulate するだけで scene + sky の両方に色温度反映できる、(c) **shader 改修不要 / llshadermgr.{h,cpp} 不要**、settings.xml 1 件 + applySpecial 1 箇所のみで完結、(d) C 案 (preset 色 × Kelvin modulator の乗算) で preset 絵作りを noon 基準で保持、(e) Tanner Helland 2012 Kelvin→RGB 公開式で開始。spec §2/§3/§4 を Round 1 結果で更新、リスクは R1/R4/R5/R6/R7 を解消、R3/R9 を Round 2 候補として記録。次は P1.a (applySpecial に Kelvin modulate 追加 + Linux 実機検証)
+- 2026-05-12 (P1.a 実装完了 / Linux 実機 PASS): (a) Survey §6 で SUNLIGHT_COLOR の **2 注入点** (sky path `llsettingsvo.cpp::applySpecial` + scene path `pipeline.cpp::setupHWLights` 経由の `LLPipeline::mSunDiffuse`) が判明、当初の「applySpecial 1 箇所」想定を訂正し共通 helper `LLSettingsVOSky::getR17SunModulator(lightnorm, psky)` + **3 注入点 modulate** (sky / scene / ambient) で再設計、(b) Linux 実機検証で `「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY)` が PBR 前 noon の再現用 preset であるにも関わらず r17 modulator で orange 化する regression が発覚、(c) 当初試した `canAutoAdjust()` gate は SL 標準 menu 5 preset (朝方/昼間/夕方/夜中/昼間レガシー) すべてが同 legacy ファミリーで TRUE を返すため、夕方の amber までも止めてしまうことが判明 — 採用不可、(d) 最終解は **asset UUID `KNOWN_SKY_LEGACY_MIDDAY` 完全一致での pinpoint 除外**、4 modern menu preset (朝方/昼間/夕方/夜中) は r17 適用、(e) 受け入れ条件 §5 のうち実装関連 7 項目 PASS、残 2 項目 (3 OS ビルド / FPS ±10%) は P2 へ。spec §3/§4/§5 を実装内容で更新、Survey §6.3 helper シグネチャと §7 (新規) で legacy noon UUID gate の経緯を記録

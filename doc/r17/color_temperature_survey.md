@@ -196,3 +196,87 @@ P1.a で実装後、AYA Linux 実機で体感確認 — 主リスク R2 (r16 P1.
 1. spec §3 / §4 / §6 を Round 1 結果で更新 (skyV.glsl の文言、Kelvin 派生具体案、リスク更新)
 2. P1.a 着手 (applySpecial に Kelvin modulate 追加 + settings.xml + AYA Linux 実機検証)
 3. Round 2 (必要なら): R3 屋内 ambient / R2 体感不足時の Kelvin 曲線 fallback
+
+---
+
+## §6. Round 1 補遺 (P1.a 着手中に判明)
+
+**Round 1 の §2.1 で「Sun/Ambient color の派生経路は `applySpecial` に一本化」と書いたが、これは誤り**。実際は SUNLIGHT_COLOR uniform に **2 つの独立した注入点** がある:
+
+### §6.1 SUNLIGHT_COLOR の 2 つの注入点
+
+1. **Sky path** (`llsettingsvo.cpp:785`, `applySpecial`):
+   - SG_SKY shader group 向け
+   - `psky->getSunlightColor()` (preset 生値) を直接 push
+   - 消費先: `skyV.glsl` (sky dome 描画)
+
+2. **Scene path** (`pipeline.cpp:9810`, `bindDeferredShader`):
+   - SG_ANY 相当 (deferred / material shader 全般)
+   - `LLPipeline::mSunDiffuse` を push
+   - `LLPipeline::mSunDiffuse` は `pipeline.cpp:6789` で `psky->getSunlightColor()` から派生 (clamp + max-color normalize 経由)
+   - 消費先: `atmosphericsFuncs.glsl` (deferred 経路の scene 直接光)
+
+→ **r17 Kelvin modulate は 2 箇所両方で適用が必要**。片方だけだと sky と scene で色温度が不整合 (sky だけ暖色 / scene だけ preset 生色 等)。
+
+### §6.2 AMBIENT の注入点
+
+- `llsettingsvo.cpp` の 4 箇所 (L729 / L837 / L843 / L852 / L867) — すべて SG_ANY shader group 向け
+- pipeline.cpp 側からの AMBIENT push はなし
+- → AMBIENT は `llsettingsvo.cpp` の applyToUniforms + applySpecial で modulate すれば足りる
+
+### §6.3 設計変更: 共通 helper で 3 箇所カバー
+
+P1.a 実装方針 (legacy noon gate 追加後の最終形は §7 参照):
+- `LLSettingsVOSky` の static helper `getR17SunModulator(const LLVector3& lightnorm, const LLSettingsSky* psky)` を追加 — `AYAVisualRealismEnabled` + `AYAR17ColorTemperatureEnabled` が両 ON のとき Kelvin modulator を返す、それ以外は `LLColor3::white` (= no-op)。`psky` は legacy preset gate 用 (詳細 §7)
+- 注入点 3 箇所で `helper × 既存 color` の形で適用:
+  - `llsettingsvo.cpp:868` (sky SUNLIGHT_COLOR)
+  - `llsettingsvo.cpp:883` (ambient base)
+  - `pipeline.cpp:6778` (LLPipeline::mSunDiffuse、scene SUNLIGHT_COLOR の源流)
+
+これで scene + sky の両方に同じ Kelvin が適用され、整合が取れる。
+
+### §6.4 影響範囲 (spec §6 リスク更新提案)
+
+- R4 (sun disc 副作用): `LLPipeline::mSunDiffuse` も modulate するため、これを消費する sun disc 経路 (`LLVOSky::calc()::mSun.setColor` 経由は `LLSettingsSky::mSunDiffuse` の方なので独立 — pipeline.cpp の `mSunDiffuse` は別 member、混同注意) には影響しない構造を再確認
+- spec §4 P1.a の実装イメージコードを 3 注入点版に更新
+
+---
+
+## §7. Round 1 補遺 2: legacy noon preset の pinpoint 除外 (P1.a 実機検証中に判明)
+
+### §7.1 症状
+
+P1.a 3 注入点 modulate を Linux 実機適用後、ワールド/自然環境メニューの「**昼間(レガシー)**」を選ぶと preset が orange tint で表示される regression が発覚。modern menu の「昼間」(KNOWN_SKY_MIDDAY) では発生せず、「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) でのみ発生。
+
+「昼間(レガシー)」は PBR 導入前 (SL 7.0 以前) の WindLight noon を再現するための専用 preset。preset 自体の `sunlight_color` が既に warm 寄りに作られているため、r17 modulator が更に warm 化して orange に振れたと推定。
+
+### §7.2 試した gate と却下理由
+
+**試案 1**: `psky->canAutoAdjust()` で gate — 却下
+- `LLSettingsSky::mCanAutoAdjust` は `!settings.has(SETTING_REFLECTION_PROBE_AMBIANCE)` で決まる (`llsettingssky.cpp:1175`)
+- = preset に `reflection_probe_ambiance` が含まれない = legacy WindLight 由来 preset
+- SL 標準 menu 5 preset (Sunrise / Noon / LegacyMidday / Sunset / Midnight) は **全部** legacy ファミリーで `canAutoAdjust()==TRUE`
+- これで gate すると朝方/昼間/夕方/夜中の r17 効果まで止まる (実機で夕方の amber 消失を AYA さんが確認)
+- → 採用不可
+
+### §7.3 採用案: KNOWN_SKY_LEGACY_MIDDAY 完全一致での pinpoint 除外
+
+helper 内で `psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY` のときのみ identity (1,1,1) を返す:
+
+```cpp
+// indra/newview/llsettingsvo.cpp::getR17SunModulator (抜粋)
+if (psky && psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY)
+{
+    return LLColor3(1.f, 1.f, 1.f);
+}
+```
+
+- KNOWN_SKY_LEGACY_MIDDAY = `6c83e853-e7f8-cad7-8ee6-5f31c453721c` (llenvironment.cpp:825)
+- 4 modern menu preset (Sunrise/Noon/Sunset/Midnight) には影響しない
+- ユーザー自作 legacy preset (canAutoAdjust=TRUE) には r17 適用される — これは「自作 preset は modern 文脈で読まれている」前提、AYA が legacy 風に作っても r17 で warm 化されることは受容範囲とした (default 標準 preset 1 件だけ守れば十分という設計判断)
+
+### §7.4 学び (Round 2 候補ではなく、設計教訓)
+
+- preset の「physical canonicity」を判定する単一の axis は SL コードベース中に存在しない (`canAutoAdjust` は PBR 互換 axis、preset 制作意図 axis ではない)
+- 「PBR 前 SL を再現する」意図の preset は KNOWN_SKY_LEGACY_MIDDAY 1 件のみ (現時点の SL 標準では)
+- 将来 legacy 系 preset が増えたら同じパターン (UUID リスト) で個別除外する。広い axis での gate は副作用が大きすぎる
