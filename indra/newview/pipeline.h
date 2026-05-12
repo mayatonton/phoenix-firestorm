@@ -341,6 +341,11 @@ public:
     // should be called just before rendering pre-water alpha objects
     void doWaterHaze();
 
+    // <FS:AYA r15 P1> godrays: shadow-driven screen-space light shaft pass.
+    // Called from renderGeomPostDeferred right after doAtmospherics() so the
+    // additive radiance is integrated into the HDR scene buffer before tonemap.
+    void doGodrays();
+
     // Generate the water exclusion surface mask.
     void doWaterExclusionMask();
 

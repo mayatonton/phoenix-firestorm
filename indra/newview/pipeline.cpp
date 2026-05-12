@@ -4804,6 +4804,10 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         { // do atmospherics against depth buffer before rendering alpha
             doAtmospherics();
             done_atmospherics = true;
+            // <FS:AYA r15 P1> godrays right after atmospherics, still in HDR
+            // scene buffer (mRT->screen) and before alpha / tonemap.
+            doGodrays();
+            // </FS:AYA>
         }
 
         if (cur_type >= water_haze_pass && !done_water_haze)
@@ -10388,6 +10392,52 @@ void LLPipeline::doAtmospherics()
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
     }
 }
+
+// <FS:AYA r15 P1> godrays: screen-space shadow-driven ray-march pass.
+// Mirrors the doAtmospherics() pattern (bindDeferredShader on the HDR
+// scene buffer, fullscreen triangle, additive blend) so godrays land on
+// mRT->screen while it is still HDR / pre-tonemap.
+void LLPipeline::doGodrays()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+
+    if (sImpostorRender || gCubeSnapshot)
+    { // no godrays on impostors / reflection probe snapshots
+        return;
+    }
+
+    static LLCachedControl<bool> realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", true);
+    if (!realism_enabled())
+    {
+        return;
+    }
+
+    if (!gDeferredGodraysProgram.isComplete())
+    {
+        return;
+    }
+
+    LLGLDepthTest depth(GL_FALSE);
+    LLGLEnable    blend(GL_BLEND);
+    gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE);
+    gGL.setColorMask(true, true);
+
+    LLGLSLShader& shader = gDeferredGodraysProgram;
+    bindDeferredShader(shader);
+
+    LL_PROFILE_GPU_ZONE("godrays");
+
+    LLEnvironment& environment = LLEnvironment::instance();
+    shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
+
+    mScreenTriangleVB->setBuffer();
+    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    unbindDeferredShader(shader);
+
+    gGL.setSceneBlendType(LLRender::BT_ALPHA);
+}
+// </FS:AYA>
 
 void LLPipeline::doWaterHaze()
 {

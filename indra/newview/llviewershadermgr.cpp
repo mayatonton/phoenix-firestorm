@@ -162,6 +162,8 @@ LLGLSLShader            gDeferredSunProgram;
 LLGLSLShader            gDeferredSunProbeProgram;
 LLGLSLShader            gHazeProgram;
 LLGLSLShader            gHazeWaterProgram;
+// <FS:AYA r15 P1> godrays (screen-space light shaft, shadow-driven)
+LLGLSLShader            gDeferredGodraysProgram;
 LLGLSLShader            gDeferredBlurLightProgram;
 LLGLSLShader            gDeferredSoftenProgram;
 LLGLSLShader            gDeferredShadowProgram;
@@ -428,6 +430,9 @@ void LLViewerShaderMgr::finalizeShaderList()
     mShaderList.push_back(&gDeferredSunProbeProgram);
     mShaderList.push_back(&gHazeProgram);
     mShaderList.push_back(&gHazeWaterProgram);
+    // <FS:AYA r15 P1> godrays: register so LLSettingsVOSky::applyToShader
+    // auto-binds sunlight_color / moonlight_color / sun_up_factor.
+    mShaderList.push_back(&gDeferredGodraysProgram);
     mShaderList.push_back(&gDeferredSoftenProgram);
     mShaderList.push_back(&gDeferredAlphaProgram);
     mShaderList.push_back(&gHUDAlphaProgram);
@@ -2186,6 +2191,36 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         llassert(success);
     }
 
+    // <FS:AYA r15 P1> godrays shader: screen-space shadow-driven ray-march.
+    // Attached helpers via features.isDeferred (deferredUtil.glsl: getDepth,
+    // getPositionWithDepth) and features.hasShadows (shadowUtil.glsl:
+    // sampleDirectionalShadow). sunlight_color / sun_up_factor uniforms are
+    // auto-bound by LLSettingsVOSky::applyToShader because we registered the
+    // program in mShaderList earlier.
+    if (success)
+    {
+        gDeferredGodraysProgram.mName = "Godrays Shader";
+        gDeferredGodraysProgram.mShaderFiles.clear();
+        gDeferredGodraysProgram.mFeatures.isDeferred  = true;
+        gDeferredGodraysProgram.mFeatures.hasShadows  = use_sun_shadow;
+
+        gDeferredGodraysProgram.clearPermutations();
+        gDeferredGodraysProgram.mShaderFiles.push_back(make_pair("deferred/godraysV.glsl", GL_VERTEX_SHADER));
+        gDeferredGodraysProgram.mShaderFiles.push_back(make_pair("deferred/godraysF.glsl", GL_FRAGMENT_SHADER));
+
+        add_common_permutations(&gDeferredGodraysProgram);
+
+        if (use_sun_shadow)
+        {
+            gDeferredGodraysProgram.addPermutation("HAS_SUN_SHADOW", "1");
+        }
+
+        gDeferredGodraysProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+
+        success = gDeferredGodraysProgram.createShader();
+        llassert(success);
+    }
+    // </FS:AYA>
 
     if (success)
     {
