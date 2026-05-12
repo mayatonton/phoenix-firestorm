@@ -125,6 +125,7 @@ public:
         SKY_AMBIENT_SCALE,                  //  "sky_ambient_scale"
         CLASSIC_MODE,                       //  "classic_mode"
         AYA_VISUAL_REALISM_ENABLED,         //  "aya_visual_realism_enabled" <FS:AYA r14>
+        AYA_R16_AERIAL_PERSPECTIVE_ENABLED, //  "aya_r16_aerial_perspective_enabled" <FS:AYA r16>
         BLUE_HORIZON,                       //  "blue_horizon"
         BLUE_DENSITY,                       //  "blue_density"
         HAZE_HORIZON,                       //  "haze_horizon"

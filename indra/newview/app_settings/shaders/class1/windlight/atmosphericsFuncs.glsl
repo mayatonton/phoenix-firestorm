@@ -43,6 +43,7 @@ uniform float sky_sunlight_scale;
 uniform float sky_ambient_scale;
 uniform int classic_mode;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14> Visual Realism master switch
+uniform int aya_r16_aerial_perspective_enabled;  // <FS:AYA r16> r16 個別 switch (master 独立)
 
 float getAmbientClamp() { return 1.0f; }
 
@@ -63,14 +64,38 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
 
     vec3  sunlight     = (sun_up_factor == 1) ? sunlight_color: moonlight_color;
 
+    // <FS:AYA r16 P1.a> aerial perspective: Rayleigh λ^-4 波長依存化 (scene 経路)
+    //   値 (1.0, 2.33, 5.71) は 700/550/380 nm の λ^-4 比、Rayleigh 散乱物理近似。
+    //   個別 switch AYAR16AerialPerspectiveEnabled で master (r14/r15) と独立に
+    //   r16 効果のみ ON/OFF 可能。OFF 時 vec3(1.0) で旧経路等価。
+    //   適用先は combined_haze (視線散乱係数) と blue_weight (in-scatter color) のみ。
+    //   light_atten (太陽光路) には適用しない: aerial perspective ≠ 夕焼け、
+    //   太陽光路への波長依存は近景まで黄ばませる副作用がある (実証済)。
+    //   skyV.glsl (sky dome 経路) は触らない: sun disc 消失の原因経路と P0 で確認済。
+    //   atmosFragLighting は light *= atten.r でスカラー化するため combined_haze の
+    //   波長依存は surface 直接透過には殆ど効かず、additive 経由で効果が出る設計。
+    vec3 rayleigh_w = (aya_r16_aerial_perspective_enabled > 0)
+        ? vec3(1.0, 2.33, 5.71)
+        : vec3(1.0);
+    // </FS:AYA>
+
     // sunlight attenuation effect (hue and brightness) due to atmosphere
     // this is used later for sunlight modulation at various altitudes
+    // <FS:AYA r16 P1.a fix> light_atten は太陽→地表の経路長依存 (= 夕焼け方向),
+    //   aerial perspective (= 視線方向の散乱) とは別現象。rayleigh_w 適用を撤回。
+    //   常時夕焼け化で近景まで黄ばむ副作用を回避するため。
     vec3 light_atten = (blue_density + vec3(haze_density * 0.25)) * (density_multiplier * max_y);
+    // </FS:AYA>
     // I had thought blue_density and haze_density should have equal weighting,
     // but attenuation due to haze_density tends to seem too strong
 
-    vec3 combined_haze = max(blue_density + vec3(haze_density), vec3(1e-6));
-    vec3 blue_weight   = blue_density / combined_haze;
+    vec3 combined_haze = max(blue_density * rayleigh_w + vec3(haze_density), vec3(1e-6));
+    // <FS:AYA r16 P1.a> blue_weight にも rayleigh_w を反映: in-scatter coefficient の RGB weight が
+    //   短波長強になり、距離伸長と共に additive (in-scatter color) が B 方向にシフトする。
+    //   これが「遠景が青くかすむ」aerial perspective の物理メカニズム。
+    //   OFF 時 rayleigh_w = vec3(1.0) で旧 `blue_density / combined_haze` と等価。
+    vec3 blue_weight   = (blue_density * rayleigh_w) / combined_haze;
+    // </FS:AYA>
     vec3 haze_weight   = vec3(haze_density) / combined_haze;
 
     //(TERRAIN) compute sunlight from lightnorm y component. Factor is roughly cosecant(sun elevation) (for short rays like terrain)
