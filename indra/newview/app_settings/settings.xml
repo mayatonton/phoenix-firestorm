@@ -9921,15 +9921,17 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
-    <!-- <FS:AYA> r14: Visual Realism (写真的リアリティ章) master switch -->
+    <!-- <FS:AYA> r14: Visual Realism (写真的リアリティ章) master switch
+         Type は combo_box (Firestorm View=0 / AYAstorm View=1) と確実に binding するため U32。
+         0=Firestorm 標準描画、1=AYAstorm 大気拡張 (r14+r15+r16+r18 一括) -->
     <key>AYAVisualRealismEnabled</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm 視覚的リアリティ章 (r14+) の master switch。TRUE で altitude density 等の物理ベース atmospherics 新経路を有効化、FALSE で r13 までの見え方に戻る</string>
+      <string>AYAstorm 視覚的リアリティ章 (r14+) の master switch。0=Firestorm View (r13 までの見え方)、1=AYAstorm View (volumetric atmosphere / godrays / aerial perspective / cloud volumetric を有効化)</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
-      <string>Boolean</string>
+      <string>U32</string>
       <key>Value</key>
       <integer>1</integer>
     </map>
@@ -9940,6 +9942,20 @@ Change of this parameter will affect the layout of buttons in notification toast
     <map>
       <key>Comment</key>
       <string>r16 Aerial Perspective: scene 経路 atmosphericsFuncs の Rayleigh λ^-4 波長依存重みを有効化。AYAVisualRealismEnabled (master) とは独立に r16 効果のみ ON/OFF 可能 (master ON 前提)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
+    <!-- <FS:AYA r17> Color Temperature individual switch (revert: P1.a 復活) -->
+    <key>AYAR17ColorTemperatureEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r17 Color Temperature: 太陽 elevation から派生する Kelvin (2200K horizon ～ 6500K noon) を preset 色に乗算で modulate。朝青/夕橙の物理的整合を sky + scene + cloud で同期。AYAVisualRealismEnabled (master) とは独立に r17 効果のみ ON/OFF 可能 (master ON 前提)</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

@@ -722,6 +722,98 @@ inline void draw_real(LLShaderUniforms* shader, F32 value, S32 shader_key)
     shader->uniform1f(shader_key, value);
 }
 
+// <FS:AYA r17> Color Temperature helper (revert: P1.a 復活)
+//   Tanner Helland 2012 Kelvin→RGB 公開式で太陽 elevation から物理 Kelvin を派生し、
+//   preset 色に乗ずる modulator (= kelvin_rgb(K) / kelvin_rgb(6500K)) を返す。
+//   AYAVisualRealismEnabled (master, U32) + AYAR17ColorTemperatureEnabled 両 ON 時のみ active、
+//   それ以外は LLColor3::white (no-op) を返すため、呼び出し側は無条件に乗算可能。
+//   詳細: docs/ayastorm-r17-color-temperature.md
+namespace
+{
+    // Tanner Helland 2012 Kelvin→RGB (0..1 range)
+    LLColor3 kelvinToRGB(F32 kelvin)
+    {
+        F32 t = kelvin / 100.f;
+        F32 r, g, b;
+
+        if (t <= 66.f)
+        {
+            r = 1.f;
+        }
+        else
+        {
+            r = powf(t - 60.f, -0.1332047592f) * 329.698727446f / 255.f;
+        }
+
+        if (t <= 66.f)
+        {
+            g = (99.4708025861f * logf(t) - 161.1195681661f) / 255.f;
+        }
+        else
+        {
+            g = powf(t - 60.f, -0.0755148492f) * 288.1221695283f / 255.f;
+        }
+
+        if (t >= 66.f)
+        {
+            b = 1.f;
+        }
+        else if (t <= 19.f)
+        {
+            b = 0.f;
+        }
+        else
+        {
+            b = (138.5177312231f * logf(t - 10.f) - 305.0447927307f) / 255.f;
+        }
+
+        return LLColor3(llclampf(r), llclampf(g), llclampf(b));
+    }
+}
+
+LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const LLSettingsSky* psky)
+{
+    static LLCachedControl<U32>  aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    static LLCachedControl<bool> aya_r17(gSavedSettings, "AYAR17ColorTemperatureEnabled", true);
+
+    if (aya_visual_realism() == 0 || !aya_r17)
+    {
+        return LLColor3(1.f, 1.f, 1.f);
+    }
+
+    // ワールド/自然環境メニューの「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) は
+    // PBR 前の SL 標準 noon を再現するための専用 preset なので、Kelvin modulator を
+    // 当てると意図 (PBR 前の絵をそのまま見せる) を歪める。asset UUID 完全一致で
+    // pinpoint 除外する。canAutoAdjust() で広く gate すると朝方/昼間/夕方/夜中も
+    // 同じ legacy ファミリーで巻き込んで r17 が無効化されるため使えない。
+    if (psky && psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY)
+    {
+        return LLColor3(1.f, 1.f, 1.f);
+    }
+
+    // elevation = sin(altitude)、horizon=0、zenith=1
+    F32 elevation = llmax(0.f, lightnorm.mV[2]);
+
+    // smoothstep 0..0.4 で 2200K (horizon, deep amber) → 6500K (noon, neutral)
+    F32 t = elevation / 0.4f;
+    t = llclampf(t);
+    t = t * t * (3.f - 2.f * t);  // smoothstep
+    F32 kelvin = 2200.f + (6500.f - 2200.f) * t;
+
+    // modulator = current Kelvin RGB / noon (6500K) Kelvin RGB
+    //   - K=6500 で (1,1,1) — preset 絵作りを noon 基準で保持
+    //   - K=2200 で warm shift (R~1, G~0.5, B~0.2)
+    LLColor3 cur_rgb  = kelvinToRGB(kelvin);
+    LLColor3 noon_rgb = kelvinToRGB(6500.f);
+
+    return LLColor3(
+        cur_rgb.mV[0] / llmax(0.001f, noon_rgb.mV[0]),
+        cur_rgb.mV[1] / llmax(0.001f, noon_rgb.mV[1]),
+        cur_rgb.mV[2] / llmax(0.001f, noon_rgb.mV[2])
+    );
+}
+// </FS:AYA>
+
 void LLSettingsVOSky::applyToUniforms(void* ptarget)
 {
     LLShaderUniforms* shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_ANY];
@@ -778,23 +870,35 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
 
     LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
 
+    // <FS:AYA r17> Color Temperature (revert: P1.a 復活): 太陽 elevation から派生する Kelvin modulator を
+    //   sky path (SUNLIGHT_COLOR / AMBIENT / CLOUD_COLOR) に適用。scene path (LLPipeline::mSunDiffuse)
+    //   は pipeline.cpp::setupHWLights で同じ helper を呼ぶため、sky と scene で同色温度が適用される設計。
+    //   moon は r17 v1 では未対応 (sun elevation 派生の K カーブを moon に流用すると不自然)。
+    //   「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) では helper 内で asset UUID 一致 pinpoint
+    //   除外で no-op に落ち、PBR 前 noon 再現 preset の意図を歪めない。
+    LLColor3 r17_sun_mod = LLSettingsVOSky::getR17SunModulator(light_direction, psky.get());
+    // </FS:AYA>
+
     // TODO -- make these getters return vec3s
-    LLVector3 sun_light_color = LLVector3(psky->getSunlightColor().mV);
+    LLVector3 sun_light_color = LLVector3((psky->getSunlightColor() * r17_sun_mod).mV);  // <FS:AYA r17>
     LLVector3 moon_light_color = LLVector3(psky->getMoonlightColor().mV);
 
     shader->uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, sun_light_color);
     shader->uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, moon_light_color);
 
-    shader->uniform3fv(LLShaderMgr::CLOUD_COLOR, LLVector3(psky->getCloudColor().mV));
+    // <FS:AYA r17/r18> CLOUD_COLOR も r17 modulator を乗せる (r18 B 軸 復活): 夕焼け時に雲のオレンジが深まる
+    shader->uniform3fv(LLShaderMgr::CLOUD_COLOR, LLVector3((psky->getCloudColor() * r17_sun_mod).mV));
+    // </FS:AYA>
 
     // <FS:AYA r18> Cloud Volumetric A 軸: slab raymarch を有効化する shader uniform を push。
     //   AYAR18CloudVolumetricEnabled が OFF なら 0 で flat path。
+    //   master は U32 (0=Firestorm View / 1=AYAstorm View)、combo_box と確実に binding させる。
     //   「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) は PBR 前 noon 再現 preset の意図を歪めないよう pinpoint 除外。
     {
-        static LLCachedControl<bool> aya_master(gSavedSettings, "AYAVisualRealismEnabled", true);
+        static LLCachedControl<U32> aya_master(gSavedSettings, "AYAVisualRealismEnabled", 1);
         static LLCachedControl<bool> aya_r18_cloud_vol(gSavedSettings, "AYAR18CloudVolumetricEnabled", true);
         bool is_legacy_midday = (psky && psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY);
-        bool r18_on = aya_master && aya_r18_cloud_vol && !is_legacy_midday;
+        bool r18_on = (aya_master() != 0) && aya_r18_cloud_vol && !is_legacy_midday;
         shader->uniform1i(LLShaderMgr::AYA_R18_CLOUD_VOLUMETRIC_ENABLED, r18_on ? 1 : 0);
     }
     // </FS:AYA>
@@ -802,7 +906,7 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_ANY];
     shader->uniform1f(LLShaderMgr::SCENE_LIGHT_STRENGTH, mSceneLightStrength);
 
-    LLColor3 ambient(getTotalAmbient().mV);
+    LLColor3 ambient(LLColor3(getTotalAmbient().mV) * r17_sun_mod);  // <FS:AYA r17> ambient も連動して朝青/夕橙シフト
 
     F32 g = getGamma();
 
@@ -831,13 +935,16 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     shader->uniform1i(LLShaderMgr::CLASSIC_MODE, classic_mode);
 
     // <FS:AYA r14> Visual Realism master switch — altitude density 等の物理ベース atmospherics 新経路を有効化
-    static LLCachedControl<bool> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", true);
-    shader->uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, aya_visual_realism ? 1 : 0);
+    //   cvar 型は U32 (0=Firestorm View / 1=AYAstorm View)。combo_box との binding を確実にするため bool ではなく U32 で読む。
+    static LLCachedControl<U32> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    bool aya_view = (aya_visual_realism() != 0);
+    shader->uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, aya_view ? 1 : 0);
     // </FS:AYA>
 
-    // <FS:AYA r16> Aerial Perspective: 個別 switch (master 独立)、r16 効果のみ ON/OFF 可能
+    // <FS:AYA r16> Aerial Perspective: 個別 switch を master AND で gate
+    //   master OFF (Firestorm View) で r16 効果も停止、master ON 前提で個別に r16 のみ OFF 可能。
     static LLCachedControl<bool> aya_r16_aerial(gSavedSettings, "AYAR16AerialPerspectiveEnabled", true);
-    shader->uniform1i(LLShaderMgr::AYA_R16_AERIAL_PERSPECTIVE_ENABLED, aya_r16_aerial ? 1 : 0);
+    shader->uniform1i(LLShaderMgr::AYA_R16_AERIAL_PERSPECTIVE_ENABLED, (aya_view && aya_r16_aerial) ? 1 : 0);
     // </FS:AYA>
 
     LLRender::sClassicMode = classic_mode;
