@@ -1895,10 +1895,18 @@ class Darwin_x86_64_Manifest(ViewerManifest):
                     'installers', 'darwin', '%s-release-dmg' % dmg_template_prefix)
                 print ("Not found, trying template directory", dmg_template)
 
-            for s,d in list({self.get_dst_prefix():app_name + ".app",
-                        #os.path.join(dmg_template, "_VolumeIcon.icns"): ".VolumeIcon.icns",
-                        os.path.join(dmg_template, "background.png"): "background.png",
-                        os.path.join(dmg_template, "_DS_Store"): ".DS_Store"}.items()):
+            channel_type = self.channel_type()
+            dmg_contents = {self.get_dst_prefix(): app_name + ".app"}
+            if channel_type == 'ayastorm':
+                dmg_contents[os.path.join(dmg_template, "_DS_Store")] = ".DS_Store"
+            else:
+                dmg_contents.update({
+                    #os.path.join(dmg_template, "_VolumeIcon.icns"): ".VolumeIcon.icns",
+                    os.path.join(dmg_template, "background.png"): "background.png",
+                    os.path.join(dmg_template, "_DS_Store"): ".DS_Store"
+                })
+
+            for s,d in list(dmg_contents.items()):
                 print("Copying to dmg", s, d)
                 self.copy_action(self.src_path_of(s), os.path.join(volpath, d))
 
@@ -1913,13 +1921,16 @@ class Darwin_x86_64_Manifest(ViewerManifest):
             # Set up the installer disk image: set icon positions, folder view
             #  options, and icon label colors. This must be done before the
             #  files are hidden.
-            try:
-                self.run_command(
-                    ['osascript',
-                     self.src_path_of("installers/darwin/installer-dmg.applescript"),
-                     volname])
-            except ManifestError as err:
-                print("Warning: skipping Finder DMG layout step: " + err.msg, file=sys.stderr)
+            if channel_type == 'ayastorm':
+                print("Skipping Finder DMG layout step: using AYAstorm .DS_Store template")
+            else:
+                try:
+                    self.run_command(
+                        ['osascript',
+                         self.src_path_of("installers/darwin/installer-dmg.applescript"),
+                         volname])
+                except ManifestError as err:
+                    print("Warning: skipping Finder DMG layout step: " + err.msg, file=sys.stderr)
 
             # <FS:TS> ARGH! osascript clobbers the volume icon file, for no
             #        reason I can find anywhere. So we need to copy it after
@@ -1931,7 +1942,8 @@ class Darwin_x86_64_Manifest(ViewerManifest):
             # Hide the background image, DS_Store file, and volume icon file (set their "visible" bit)
             for f in ".VolumeIcon.icns", "background.png", ".DS_Store":
                 pathname = os.path.join(volpath, f)
-                self.run_command(['SetFile', '-a', 'V', pathname])
+                if os.path.exists(pathname):
+                    self.run_command(['SetFile', '-a', 'V', pathname])
 
             # Set the alias file's alias and custom icon bits
             self.run_command(['SetFile', '-a', 'AC', os.path.join(volpath, "Applications")])
