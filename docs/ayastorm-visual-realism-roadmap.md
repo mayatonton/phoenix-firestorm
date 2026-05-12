@@ -89,7 +89,8 @@ A 軸を 5 リリースに分割。各リリースは独立に完結し体感が
 ### r17: 時間帯色温度
 - ねらい: 朝・昼・夕・夜の色温度が物理的に正確 (Sun/Ambient の Kelvin 解釈)
 - スコープ: Sun/Ambient color の色温度 (Kelvin) 解釈、現状の preset 経験式色を物理的に再解釈。preset 互換維持 (input は経験式 RGB のまま、内側で色温度として解釈)
-- 工数感: 2〜3 日 (3 OS 込み、未確定)
+- **実装結果**: P1.a (Kelvin modulator × preset 色の C++ 乗算 path) で Linux PASS — 夕方 amber 明瞭、朝方 subtle、昼 OFF と差なし、preset 切替健全、sun disc 健在。共通 helper `LLSettingsVOSky::getR17SunModulator(lightnorm, psky)` で sky / scene / ambient の 3 注入点を整合。「昼間(レガシー)」(`KNOWN_SKY_LEGACY_MIDDAY`) は PBR 前 noon 再現 preset として asset UUID 完全一致で r17 modulator から pinpoint 除外 (`canAutoAdjust()` での広い gate は SL 標準 5 menu preset 全部を巻き込むため不可)。個別 switch `AYAR17ColorTemperatureEnabled` (default TRUE) を新設、master `AYAVisualRealismEnabled` の下に並列
+- 工数感: 2〜3 日 → 実績は P0 Survey Round 1 + Round 2 補遺 (legacy noon UUID gate) + P1.a 実装で 1 日 (Linux 体感 PASS まで)
 
 ### r18: 雲のリアリティ (体積感)
 - ねらい: 既存 flat texture cloud に体積感を付与、写真撮るに値する空の核
@@ -131,10 +132,10 @@ A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 |---|---|---|
 | r14 volumetric atmosphere | 3〜5 日 | **実装完了** (`fb76b8391b`〜`e69f2a98b1`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
 | r15 godrays | 2〜4 日 | **実装完了** (`fd027e7475`〜`edaed0fe6a`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
-| r16 aerial perspective | 2〜3 日 | **実装完了** (`7427fbcb8d` P1.a + `fc08ffeebc` close-out、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
-| r17 時間帯色温度 | 2〜3 日 | 候補 |
+| r16 aerial perspective | 2〜3 日 | **実装完了** (`7427fbcb8d` P1.a + `fc08ffeebc` close-out、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16+r17 一括で実施予定) |
+| r17 時間帯色温度 | 2〜3 日 | **実装完了** (P1.a + KNOWN_SKY_LEGACY_MIDDAY UUID gate、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16+r17 一括で実施予定) |
 | r18 雲の体積化 | 3〜4 日 | 候補 |
-| r14-r18 (A 軸完走) | 12〜19 日 | 参考値 (r14 + r15 + r16 は実績 1 + 1 + 1 日でかなり前倒し) |
+| r14-r18 (A 軸完走) | 12〜19 日 | 参考値 (r14 + r15 + r16 + r17 は実績 1 + 1 + 1 + 1 日でかなり前倒し) |
 
 ---
 
@@ -142,4 +143,5 @@ A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 
 - 2026-05-12: 初版作成。旧 `ayastorm-light-expression-roadmap.md` (3 層モデル + r14 sun dazzle) を全面書き換え。きっかけは r14 P1 (sun disc HDR boost) が体感ゼロで unground し、その unground を契機に AYA から「光表現章ではなく視覚的リアリティ章」「LUT/Tone では届かない」「AAA の暗がり偽装は採用しない」の章 thesis が明示されたこと。3 層モデル (光源/大気/カメラ) を 3 軸モデル (大気・空気 / 物質色 / カメラ表現) に再編、A 軸を r14-r17 で積む計画に再構成。背景は memory `project_ayastorm_visual_realism_chapter.md` 参照
 - 2026-05-12 (A 軸第 1 弾 + 第 2 弾 実装完了反映): r14 volumetric atmosphere (`fb76b8391b`〜`e69f2a98b1`) と r15 godrays (`fd027e7475`〜`edaed0fe6a`) を Linux 体感 PASS まで実装完了。§4 r14 / r15 の entry に実装結果を埋め、§7 工数感 table を「実装完了」表示に更新。3 OS フルビルドと tag/release は r13+r14+r15 一括で実施 (`v7.2.4-ayastorm-r15` 想定)。r15 P1 デバッグ中に観測した「scene buffer additive で `frag_color.a=1` を積むと sky mask が破壊される」挙動は memory `project_aya_visual_realism_alpha_protect.md` に永続化 (r16+ で再利用必須の知見)
+- 2026-05-12 (A 軸第 4 弾 r17 実装完了反映): r17 時間帯色温度を Linux 体感 PASS まで実装完了。共通 helper `LLSettingsVOSky::getR17SunModulator` + sky / scene / ambient の 3 注入点 modulate + 「昼間(レガシー)」(`KNOWN_SKY_LEGACY_MIDDAY`) の asset UUID pinpoint 除外で着地。実装中の知見として、SL の `canAutoAdjust()` axis は preset の「PBR 互換有無」を表しており「PBR 前再現意図」と一致しないため広い gate には使えない (SL 標準 menu 5 preset 全部が canAutoAdjust=TRUE)。§4 r17 の entry に実装結果を埋め、§7 工数感 table の r17 行を「実装完了」へ更新。tag/release は r13+r14+r15+r16+r17 一括 (`v7.2.4-ayastorm-r17` 想定)、r18 (雲の体積化) 完了で公開判断する流れを継続
 - 2026-05-12 (A 軸第 3 弾 r16 実装完了 + r17/r18 分割): r16 aerial perspective (`7427fbcb8d` P1.a + `fc08ffeebc` close-out) を Linux PASS まで実装完了 — scene 経路 `atmosphericsFuncs.glsl` に Rayleigh λ^-4 波長依存 in-scatter を導入、遠景青味シフト体感 PASS、P1.b Preetham 球面近似は体感差なしで drop。あわせて旧 r17 (時間帯色温度 + 雲のリアリティ) を r17 (色温度) / r18 (雲の体積化) に分割、B 軸を r19+、C 軸を r21+ に繰り下げ (A 軸 4 リリース → 5 リリース構成)。色温度を先にする理由は「雲は色温度の影響を受ける側 (sun color が物理的に決まらないと雲の体積感も浮く)」のため
