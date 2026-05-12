@@ -86,26 +86,24 @@ A 軸を 5 リリースに分割。各リリースは独立に完結し体感が
 - **実装結果**: P1.a (波長依存 in-scatter) で Linux PASS — 遠景青味シフト明確、近景変化なし、sun disc 健在、preset 互換維持。P1.b (Preetham 球面近似) は数値検証 PASS だが体感 perceptual threshold 以下のため drop。個別 switch `AYAR16AerialPerspectiveEnabled` を新設 (master `AYAVisualRealismEnabled` 単独切替では r14/r15 も同時 off になり r16 単独体感評価不能の事情から不可避と判明)。commit `7427fbcb8d` (P1.a) + `fc08ffeebc` (close-out)
 - 工数感: 2〜3 日 → 実績は P0 → P1.a → P1.b 検証 → drop で 1 日 (Linux 体感 PASS まで)
 
-### r17: 時間帯色温度 — **DROPPED**
-- 細部: `docs/ayastorm-r17-color-temperature.md` (drop 記録)
-- ねらい (当時): 朝・昼・夕・夜の色温度が物理的に正確 (Sun/Ambient の Kelvin 解釈)
-- **Drop 理由**: P1.a 実装後の AYA 実機検証で「効きが見えない」と判明、診断ログで原因確定:
-  - SL の Sunrise preset は太陽 elevation=0.996 (zenith) で K=6500=identity (no-op)、「朝の絵」は preset の色で作られていて helper は寄与ゼロ
-  - Sunset preset は warm preset で R が tone mapping 飽和、G/B 減のみは知覚閾値以下
-  - Midnight preset は太陽 elev=0 で warm mod が ambient に乗り副作用 (月夜の青さが warm に偏る)
-  - Estate day cycle (preset=00000000、時間で太陽が動く) でのみ effective という偏った効き方
-- **設計上の根本問題**: r17 helper は sun elevation を物理 Kelvin の入力と想定したが、SL preset は lightnorm と絵作り色 (SunlightColor/CloudColor 等) が preset 制作者の経験で独立に設定されており「Sunrise=低い太陽」「Sunset=水平の太陽」という物理的整合が慣行に存在しない
-- **Drop 影響**: `getR17SunModulator` / `kelvinToRGB` / `AYAR17ColorTemperatureEnabled` を完全除去、sky / scene / ambient / cloud の全 mod 経路を巻き戻し、r18 B 軸 (CLOUD_COLOR の r17 mod) も同伴 drop。AYA 主流ユースケース (fixed preset 切替) では「効いていない」状態だったため見た目影響はほぼゼロ
-- **teach-back**: 「主流ユースケースで効果が出ない機能は default ON で出荷しない」を A 軸第 4 弾でも実証 (cf. r14 P2.b/c sun dazzle drop)。physical/elevation-driven 設計は SL preset の慣行と衝突するため、再導入する場合は preset-driven (Kelvin tag を preset に注釈) かカメラ側 (D 軸 r21+ exposure) で扱う
+### r17: 時間帯色温度 — **REVERTED — P1.a 復活 (実装完了)**
+- 細部: `docs/ayastorm-r17-color-temperature.md` (revert 記録)
+- ねらい: 朝・昼・夕・夜の色温度が物理的に正確 (Sun/Ambient/Cloud の Kelvin 解釈)
+- **経緯**: P1.a 実装 (`c3d6aee734`) → instant A/B で「効きがわからない」 → drop (`380f5dc245`) → drop 後の sustained viewing で AYA が「Dropしたオレンジの夕焼けの世界は失われた」と評価 → **revert で復活**
+- **revert の根拠**: instant A/B では tone mapping 飽和や ambient 副作用で perceptual threshold 以下に見えたが、drop 後の世界を比較すると Sunset preset の orange 夕焼けが cumulative に効いていたことが判明。`feedback_doubt_self_first.md` を自分の drop 判断にも適用、AYA の「効きがわからない」発言を「機能 NG」と一般化したのが早計だった
+- **実装結果**: `getR17SunModulator` (太陽 elevation smoothstep 0..0.4 → Kelvin 2200..6500 → Tanner Helland 2012 公式 → mod RGB) + sky path (SUNLIGHT_COLOR/CLOUD_COLOR/ambient) + scene path (mSunDiffuse/ambient) の 3 注入点 modulate + `KNOWN_SKY_LEGACY_MIDDAY` asset UUID pinpoint 除外。個別 switch `AYAR17ColorTemperatureEnabled` (default TRUE) を sentinel として保持
+- **運用方針**: 「Day cycle と Sunset/Sunset 系 fixed preset で効くツール」として位置付け、Sunrise/Midnight 等の helper が空回りする preset があることは release note で説明、`feedback_release_with_user_feedback.md` 流で受け入れる
+- **teach-back**: 「instant A/B と sustained viewing の効きは別軸で評価する」を新規 lesson として獲得。`feedback_feature_value_in_main_usecase.md` の「動いた ≠ 効いた」を判定するときは A/B 文脈と sustained 文脈の両方で観測してから drop 判断する
 
-### r18: 雲の体積化 (A 軸単独) — **実装完了 (A 軸 PASS)**
+### r18: 雲の体積化 + 色温度連動 — **実装完了 (A+B 軸 PASS)**
 - 細部: `docs/ayastorm-r18-cloud-volumetric.md`
-- ねらい: 既存 flat texture cloud に体積感を付与、写真撮るに値する空の核 (A 軸完走)
-- スコープ変遷: 当初「**雲の体積化 (A 軸) + 色温度連動 (B 軸)**」のセットで起票したが、r17 drop と同伴で **B 軸 (CLOUD_COLOR の r17 mod) も drop**、**A 軸単独でリリース**
-- スコープ (確定): `cloudsF.glsl` で既存 2D `cloud_noise_texture` を視線方向 slab raymarch (N=4 step、Beer-Lambert 風 transmittance 累積) で体積化、`applySpecial` で shader uniform 1 件 push
-- 含まない: B 軸 (色温度連動) は r17 drop 同伴 drop、雲影 (地表に雲の縞模様) は r19+ 候補、heavy raymarch (全画面 ray-march) は永久 drop
-- **実装結果**: 個別 switch `AYAR18CloudVolumetricEnabled` (default TRUE) を新設、`AYA_R18_CLOUD_VOLUMETRIC_ENABLED` shader enum を `llshadermgr.{h,cpp}` に追加。`applySpecial` で master + r18 sentinel + `KNOWN_SKY_LEGACY_MIDDAY` pinpoint 除外で `r18_on` を gate、ON で shader uniform=1 push、OFF で 0 (CLOUD_COLOR は常に preset 由来素通し)。`cloudsF.glsl` で uniform 分岐、ON 経路は 4 step slab raymarch (UV offset 0.013/0.008、各 slab 45% 透過)、OFF 経路は既存式と数式上完全一致 (preset 互換維持)。3D noise asset 不要、class1/deferred 単一 shader で完結。**AYA 実機 Linux PASS「とても素晴らしい」**
-- 工数感: 3〜4 日 → 実績は P0 Survey + P1.a 実装 + 実機検証 + r17 drop 反映で 1 日 (Linux 体感 PASS まで)
+- ねらい: 既存 flat texture cloud に体積感を付与 + 体積化した雲面に sun の色温度が乗る cinematic 効果、写真撮るに値する空の核 (A 軸完走)
+- スコープ変遷: 当初「**雲の体積化 (A 軸) + 色温度連動 (B 軸)**」セットで起票 → r17 drop で B 軸も同伴 drop、「A 軸単独」に re-scope → r17 revert で B 軸復活、**最終的に当初通り A 軸 + B 軸セットで出荷**
+- スコープ (確定): `cloudsF.glsl` で既存 2D `cloud_noise_texture` を視線方向 slab raymarch (N=4 step、Beer-Lambert 風 transmittance 累積) で体積化 (A 軸) + `applySpecial` で CLOUD_COLOR を `getR17SunModulator` で乗算 (B 軸)
+- 含まない: 雲影 (地表に雲の縞模様) は r19+ 候補、heavy raymarch (全画面 ray-march) は永久 drop
+- **実装結果**: 個別 switch `AYAR18CloudVolumetricEnabled` (default TRUE) を新設、`AYA_R18_CLOUD_VOLUMETRIC_ENABLED` shader enum を `llshadermgr.{h,cpp}` に追加。`applySpecial` で master + r18 sentinel + `KNOWN_SKY_LEGACY_MIDDAY` pinpoint 除外で `r18_on` を gate、ON で shader uniform=1 push、OFF で 0。CLOUD_COLOR は `getR17SunModulator` で乗算 (r17 OFF/Legacy で identity)。`cloudsF.glsl` で uniform 分岐、ON 経路は 4 step slab raymarch (UV offset 0.013/0.008、各 slab 45% 透過)、OFF 経路は既存式と数式上完全一致 (preset 互換維持)。3D noise asset 不要、class1/deferred 単一 shader で完結。**AYA 実機 Linux PASS「とても素晴らしい」(A 軸) + 「cinematic な orange 夕焼け」(B 軸 revert 後)**
+- **View Mode UI 追加**: Preferences → Graphics → Shaders に `AYAViewMode` combo_box (`Firestorm View / AYAstorm View`) を panel_preferences_graphics1.xml (en/ja) に配線、master cvar `AYAVisualRealismEnabled` を **Boolean → U32** に変更 (combo_box value="0"/"1" 文字列 ↔ Boolean cvar の LLSD 型 coercion 不安定を回避)
+- 工数感: 3〜4 日 → 実績は P0 Survey + P1.a 実装 + 実機検証 + r17 drop + r17 revert + UI 配線 + master cvar U32 化で 1.5 日 (Linux 体感 PASS まで)
 
 ---
 
@@ -143,9 +141,9 @@ A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 | r14 volumetric atmosphere | 3〜5 日 | **実装完了** (`fb76b8391b`〜`e69f2a98b1`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
 | r15 godrays | 2〜4 日 | **実装完了** (`fd027e7475`〜`edaed0fe6a`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16 一括で実施予定) |
 | r16 aerial perspective | 2〜3 日 | **実装完了** (`7427fbcb8d` P1.a + `fc08ffeebc` close-out、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15+r16+r17 一括で実施予定) |
-| r17 時間帯色温度 | — | **DROPPED** (P1.a `c3d6aee734` で Kelvin modulator + 3 注入点を実装したが、AYA 実機検証で SL fixed preset では効きが知覚閾値以下と判明、診断ログで原因確定 — SL preset の lightnorm と絵作り色は独立、physical elevation-driven 設計が SL 慣行と衝突。`feedback_feature_value_in_main_usecase.md` 厳格適用で全体 drop、r18 B 軸も同伴 drop。詳細は `docs/ayastorm-r17-color-temperature.md`) |
-| r18 雲の体積化 (A 軸単独) | 3〜4 日 | **実装完了** (P0 Survey `636e163a3c` + P1.a 実装、AYAR18CloudVolumetricEnabled + AYA_R18_CLOUD_VOLUMETRIC_ENABLED uniform 配線、cloudsF.glsl で 2D noise の 4-step slab raymarch、KNOWN_SKY_LEGACY_MIDDAY pinpoint 除外、OFF パス preset 互換、**AYA 実機 Linux PASS「とても素晴らしい」**。3 OS ビルド / tag は A 軸完走 = r18 close-out で `v7.2.4-ayastorm-r18` 一括公開判断) |
-| r14-r18 (A 軸完走) | 12〜19 日 | 参考値 (r14 + r15 + r16 + r18 で実績 1 + 1 + 1 + 1 日、r17 は drop。A 軸 4 リリース で完走) |
+| r17 時間帯色温度 | 1〜2 日 | **REVERTED — 実装完了** (P1.a `c3d6aee734` 実装 → drop `380f5dc245` → drop 後の sustained viewing で「夕焼けの世界が失われた」評価で revert 復活。Kelvin modulator + sky/scene/cloud 3 注入点 + Legacy Midday pinpoint 除外。実績は P0 + P1.a + drop + revert で 1 日強。詳細は `docs/ayastorm-r17-color-temperature.md`) |
+| r18 雲の体積化 + 色温度連動 | 3〜4 日 | **実装完了** (P0 Survey `636e163a3c` + P1.a 実装、AYAR18CloudVolumetricEnabled + AYA_R18_CLOUD_VOLUMETRIC_ENABLED uniform 配線、cloudsF.glsl で 2D noise の 4-step slab raymarch、CLOUD_COLOR × r17 sun mod、KNOWN_SKY_LEGACY_MIDDAY pinpoint 除外、OFF パス preset 互換、**AYA 実機 Linux PASS「とても素晴らしい」+「cinematic な orange 夕焼け」**。あわせて `AYAViewMode` combo_box UI + master cvar U32 化。3 OS ビルド / tag は A 軸完走 = r18 close-out で `v7.2.4-ayastorm-r18` 一括公開判断) |
+| r14-r18 (A 軸完走) | 12〜19 日 | 参考値 (r14 + r15 + r16 + r17 + r18 で実績 1 + 1 + 1 + 1 + 1.5 日、A 軸 5 リリース完走) |
 
 ---
 
@@ -159,3 +157,4 @@ A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 - 2026-05-12 (A 軸第 5 弾 r18 P1.a 実装完了): `llshadermgr.{h,cpp}` に `AYA_R18_CLOUD_VOLUMETRIC_ENABLED` enum + uniform 名追加、`settings.xml` に `AYAR18CloudVolumetricEnabled` Boolean (default TRUE)、`llsettingsvo.cpp::applySpecial` で master + r18 sentinel + `KNOWN_SKY_LEGACY_MIDDAY` pinpoint 除外を統合した `r18_on` で gate (B 軸 CLOUD_COLOR を `r17_sun_mod` で乗算 + A 軸 shader uniform push)、`cloudsF.glsl` で `aya_r18_cloud_volumetric_enabled` 分岐の 4-step slab raymarch (UV offset 0.013/0.008、各 slab 45% 透過)。A 軸 / B 軸ともに r17 と同思想の Legacy Midday pinpoint 除外を入れ、OFF パスは既存式と数式上完全一致。§4 r18 entry に実装結果反映、§7 工数感 table の r18 行を「**P1.a 実装完了**」へ更新。AYA 実機確認 (Linux ビルド + 4 preset × AYAR18/AYAR17 ON/OFF) 待ち
 - 2026-05-12 (A 軸第 3 弾 r16 実装完了 + r17/r18 分割): r16 aerial perspective (`7427fbcb8d` P1.a + `fc08ffeebc` close-out) を Linux PASS まで実装完了 — scene 経路 `atmosphericsFuncs.glsl` に Rayleigh λ^-4 波長依存 in-scatter を導入、遠景青味シフト体感 PASS、P1.b Preetham 球面近似は体感差なしで drop。あわせて旧 r17 (時間帯色温度 + 雲のリアリティ) を r17 (色温度) / r18 (雲の体積化) に分割、B 軸を r19+、C 軸を r21+ に繰り下げ (A 軸 4 リリース → 5 リリース構成)。色温度を先にする理由は「雲は色温度の影響を受ける側 (sun color が物理的に決まらないと雲の体積感も浮く)」のため
 - 2026-05-12 (r17 全体 drop + r18 を A 軸単独に re-scope + A 軸完走): r18 P1.a 実機検証で AYAR18 (slab raymarch) は **AYA「とても素晴らしい」PASS** 、AYAR17 (色温度) は「効きがわからない」と評価。診断ログ (`AYA_R17` tag) で SL の 5 menu preset (朝/昼/夕/夜/レガシー) の太陽 elevation と Kelvin mod を採取、Sunrise preset で elev=0.996 (zenith) → K=6500=identity (no-op)、Sunset で warm preset + R 飽和 → 知覚閾値以下、Midnight で elev=0 → ambient warm 偏り副作用、Estate day cycle (preset=00000000) でのみ effective、という「fixed preset では機能せず」の偏りを確認。根本原因は「SL preset の lightnorm と絵作り色 (SunlightColor/CloudColor) は preset 制作者の経験で独立に設定されており、Sunrise=低い太陽 / Sunset=水平の太陽 という物理的整合が SL 慣行に存在しない」こと。`feedback_feature_value_in_main_usecase.md` (動いた ≠ 効いた) を厳格適用し r17 全体を drop — `getR17SunModulator` / `kelvinToRGB` / `AYAR17ColorTemperatureEnabled` / 診断ログ / sky path mod / scene path mod / ambient mod / cloud path mod (r18 B 軸) をすべて巻き戻し。r18 は **A 軸 (slab raymarch) 単独でリリース確定**。`docs/ayastorm-r17-color-temperature.md` を drop 記録へ書き換え、`docs/ayastorm-r18-cloud-volumetric.md` を「A 軸単独」に re-scope (タイトル変更、§1/§2/§3/§4/§5/§6/§7 更新)。§4 r17 entry を DROP 記録、§4 r18 entry を A 軸単独実装完了、§7 工数感 table を r17→DROPPED / r18→実装完了 へ更新。次は AYA 実機 P2 (macOS / Windows ビルド) を A 軸完走の `v7.2.4-ayastorm-r18` tag に向けて実施
+- 2026-05-12 (r17 revert + B 軸復活 + View Mode UI 追加 + master cvar U32 化): drop commit `380f5dc245` 後の sustained viewing で AYA が「Dropしたオレンジの夕焼けの世界は失われた」「夕焼けの美しさはなくなってしまった」と評価。**instant A/B では perceptual threshold 以下に見えた r17 が cumulative には効いていた**ことが drop 後の比較で判明、`feedback_doubt_self_first.md` を自分の drop 判断にも適用して r17 全体を revert。`getR17SunModulator` / `kelvinToRGB` / `AYAR17ColorTemperatureEnabled` を `c3d6aee734` の内容で復活、sky / scene / cloud (r18 B 軸) の 3 注入点 modulator を復元。あわせて (1) Preferences → Graphics → Shaders に `AYAViewMode` combo_box (`Firestorm View / AYAstorm View`) を panel_preferences_graphics1.xml (en/ja) で配線、(2) combo_box value="0"/"1" 文字列 ↔ Boolean cvar の LLSD 型 coercion が「差が殆どない」現象を起こしたため master cvar `AYAVisualRealismEnabled` を **Boolean → U32** に変更 (default=1)、C++ 3 サイト (`llsettingsvo.cpp::applySpecial` 2 箇所、`pipeline.cpp::doGodrays`) を `LLCachedControl<U32>` + `() != 0` 判定に統一、(3) r16 master gate leak (個別 switch だけで gate されていた r16 効果) を `(aya_visual_realism && aya_r16_aerial)` の AND で修正 — Firestorm View で aerial perspective も完全 off に。`docs/ayastorm-r17-color-temperature.md` を「REVERTED — P1.a 復活」へ書き換え、`docs/ayastorm-r18-cloud-volumetric.md` を「雲の体積化 + 色温度連動」(当初スコープ復活) へ書き戻し。§4 r17 entry を REVERTED 実装完了、§4 r18 entry を A+B 軸セット実装完了、§7 工数感 table を r17→REVERTED 実装完了 / r18→A+B 軸 実装完了 + UI 追加へ更新。**新 lesson**: instant A/B と sustained viewing の効きは別軸で評価する、`feedback_feature_value_in_main_usecase.md` を厳格適用するときは A/B 文脈と sustained 文脈の両方で観測してから drop 判断する

@@ -40,6 +40,13 @@
 			<check_box label="アンビエントオクルージョン" name="UseSSAO"/>
 			<check_box label="スクリーンスペースリフレクション" name="ScreenSpaceReflections"/>
 			<check_box label="ミラー" name="Mirrors"/>
+			<text name="aya_view_mode_label">
+				ビューモード：
+			</text>
+			<combo_box name="AYAViewMode" tool_tip="Firestorm View: 標準描画。AYAstorm View: 体積大気 / 光線 / 距離色変化 / 雲の体積化を有効化。">
+				<combo_box.item label="Firestorm View" name="0"/>
+				<combo_box.item label="AYAstorm View" name="1"/>
+			</combo_box>
 			<text name="shadows_label">
 				影：
 			</text>
