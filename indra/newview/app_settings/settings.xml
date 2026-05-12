@@ -9935,6 +9935,20 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
+    <!-- <FS:AYA> r16: Aerial Perspective (波長依存 Rayleigh 重み) 個別 switch -->
+    <key>AYAR16AerialPerspectiveEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r16 Aerial Perspective: scene 経路 atmosphericsFuncs の Rayleigh λ^-4 波長依存重みを有効化。AYAVisualRealismEnabled (master) とは独立に r16 効果のみ ON/OFF 可能 (master ON 前提)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>

@@ -823,6 +823,11 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     shader->uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, aya_visual_realism ? 1 : 0);
     // </FS:AYA>
 
+    // <FS:AYA r16> Aerial Perspective: 個別 switch (master 独立)、r16 効果のみ ON/OFF 可能
+    static LLCachedControl<bool> aya_r16_aerial(gSavedSettings, "AYAR16AerialPerspectiveEnabled", true);
+    shader->uniform1i(LLShaderMgr::AYA_R16_AERIAL_PERSPECTIVE_ENABLED, aya_r16_aerial ? 1 : 0);
+    // </FS:AYA>
+
     LLRender::sClassicMode = classic_mode;
 
     F32 probe_ambiance = getReflectionProbeAmbiance();
