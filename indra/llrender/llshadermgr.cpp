@@ -1318,6 +1318,7 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("classic_mode");
     mReservedUniforms.push_back("aya_visual_realism_enabled");  // <FS:AYA r14>
     mReservedUniforms.push_back("aya_r16_aerial_perspective_enabled");  // <FS:AYA r16>
+    mReservedUniforms.push_back("aya_r18_cloud_volumetric_enabled");  // <FS:AYA r18>
     mReservedUniforms.push_back("blue_horizon");
     mReservedUniforms.push_back("blue_density");
     mReservedUniforms.push_back("haze_horizon");

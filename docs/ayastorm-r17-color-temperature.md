@@ -1,184 +1,65 @@
-# AYAstorm r17: 時間帯色温度 (Sun/Ambient の Kelvin 解釈)
+# AYAstorm r17: 時間帯色温度 — **DROPPED**
 
-**作成日**: 2026-05-12 (初版、r16 close-out 直後)
-**対象**: AYAstorm `feature/aya-r17-color-temperature-spec-draft` (P0 Survey Round 1 完了)
-**位置づけ**: 視覚的リアリティ章 (`docs/ayastorm-visual-realism-roadmap.md`) §4 A 軸の第 4 弾、r14 (volumetric atmosphere) + r15 (godrays) + r16 (aerial perspective) の上に積む
-
-> **本書の役割**: r17 個別の **計画スナップショット**。P0 Survey Round 1 (`doc/r17/color_temperature_survey.md`) 完了に合わせて scope / risks を実コードベースで精緻化済。`feedback_release_with_user_feedback.md` 流儀で「完璧な spec を組まず、shader 触りながら追記」運用。
-> 章全体の位置づけは `docs/ayastorm-visual-realism-roadmap.md`、r14 spec は `docs/ayastorm-r14-volumetric-atmosphere.md`、r15 spec は `docs/ayastorm-r15-godrays.md`、r16 spec は `docs/ayastorm-r16-aerial-perspective.md`。
+**作成日**: 2026-05-12 (初版起票)
+**Drop 日**: 2026-05-12 (r18 実機検証中に効きが見えないと判明、即日 drop)
+**Drop 経緯記録**: `doc/r17/color_temperature_survey.md` (P0 Survey、3 注入点設計の確定)
 
 ---
 
-## 1. ゴール
+## 1. Drop 通知
 
-r14 で「**空気が体積として見える**」、r15 で「**光線が空間を貫く**」、r16 で「**遠景が空気の中に物理的に座る**」を積んだ。r17 では **時間帯の色が物理的に決まる** ところを取りに行く。具体的に出したい体感:
+r17 (時間帯色温度、太陽 elevation 駆動の Kelvin modulator) は **drop した**。r18 (雲の体積化) P1.a の AYA 実機検証中に AYAR17 ON/OFF 比較で「効きがわからない」と判明、診断ログで原因を確定したため。
 
-- **朝 (dawn) の冷たい青** から **昼 (noon) のニュートラル白** へ、**夕 (dusk) の深い amber/橙** へ滑らかに移行する色温度曲線
-- 同じ preset でも太陽 elevation に対して **物理的に整合する** Sun color の振る舞い
-- ambient (天空光) と sunlight が **色温度で連動** し、夕方は ambient も暖色寄り (= 天空が橙)、朝は ambient も冷色寄り (= 天空が青) に追随
+- r17 P1.a 実装 commit `c3d6aee734` (push 済) は **本 drop commit で巻き戻し**
+- r18 P1.a で予定していた **B 軸 (CLOUD_COLOR の r17 mod) も同時に drop** (r17 helper が消えるため自動 no-op、r18 は A 軸単独で出荷)
+- spec 本体 (本ファイル) は「drop 記録」として残存、survey doc も「設計過程の痕跡」として残存
 
-技術的には、preset の `sunlight_color` / `ambient_color` を **「物理 Kelvin から派生した色」として再解釈** する path を入れる。preset 値そのものは input 契約として保つが、内側で太陽 elevation から派生する Kelvin 曲線と blend / 再計算することで、preset 制作者の経験式に頼らない物理的整合性を取る。
+## 2. Drop 理由 (実機検証での観察)
 
-> SL における時間帯色の位置づけ: WindLight / EEP preset の Sun Color / Ambient / Blue Horizon は preset 制作者の経験で作られた RGB 三値。太陽 elevation との物理的関係はゆるく、preset 切替時に色相が不連続にジャンプすることがある。r17 はこれを「物理 Kelvin の曲線」で滑らかに再解釈する枠。
+`AYAR17ColorTemperatureEnabled = TRUE` で `getR17SunModulator` に診断ログ (`AYA_R17` tag) を追加して 5 preset (朝方/昼間/夕方/夜中/昼間レガシー) で実機計測した結果:
 
----
+| Preset | UUID | sun lightnorm.z (elev) | t (smoothstep) | K | mod RGB |
+|---|---|---|---|---|---|
+| Day cycle (起動時) | `00000000-...` | 0.17 | 0.40 | 3928 | (1.00, 0.80, 0.65) — **強い warm** |
+| Day cycle (時間進行) | `00000000-...` | 0.07 | 0.08 | 2539 | (1.00, 0.63, 0.29) — **深い amber** |
+| 朝方 (Sunrise) | `01e41537-...` | **0.996** | 1.00 | 6500 | **(1, 1, 1) identity = no-op** |
+| 昼間 (Midday) | `c46226b4-...` | 0.37 | 0.98 | 6428 | (1, 0.996, 0.993) ≒ identity |
+| 夕方 (Sunset) | `084e26cd-...` | **0** | 0 | 2200 | (1, 0.58, 0.16) 数値上は強い warm |
+| 夜中 (Midnight) | `8a01b97a-...` | **0** | 0 | 2200 | (1, 0.58, 0.16) **副作用** (ambient が warm に偏る) |
+| 昼間レガシー | `KNOWN_SKY_LEGACY_MIDDAY` | — | — | — | identity (UUID pinpoint 除外) |
 
-## 2. 設計制約
+### 致命的問題
+1. **朝方 (Sunrise) preset で太陽 elevation = 0.996 (zenith)** — SL の Sunrise preset は「朝の絵」だが太陽位置は真上に置かれており、helper は `t=1.0 / K=6500 / mod=(1,1,1) = identity` で no-op。AYA さんが「朝は変化を感じず」と評価した直接原因
+2. **夕方 (Sunset) preset で elev=0、mod=(1, 0.58, 0.16) の強い warm シフトが数値上はかかっている** が、preset の SunlightColor が既に warm orange で R が tone mapping で飽和、G/B 減のみは知覚閾値以下 → AYA さんが「夕方は以前の設定でオレンジになってるのでやはり変化は感じません」と評価
+3. **夜中 (Midnight) preset で elev=0、mod=(1, 0.58, 0.16) が ambient に適用** されると、月夜の青さが warm に偏る副作用 (sun が地下にいる時間帯にも sun elevation 駆動の Kelvin が ambient を縛る設計が不適切)
 
-`docs/ayastorm-visual-realism-roadmap.md` §2 の境界条件をそのまま継承:
+### 設計上の根本問題
+r17 helper は **sun elevation を物理 Kelvin の入力と想定** していたが、SL の WindLight/EEP preset は **太陽位置 (lightnorm) と絵作りの色 (SunlightColor/AmbientColor/CloudColor) が独立に preset 制作者の経験で設定** されている。「Sunrise preset = 太陽が低い」「Sunset preset = 太陽が水平」という物理的整合は SL preset の慣行に存在しない。
 
-- **保つ**: WindLight preset 互換、HDR scene buffer 骨格、PBR shader interface、sky dome (skyV.glsl) の見え方
-- **書き換える**: `atmosphericsFuncs.glsl` の sunlight / ambient 派生計算 (および必要なら `llinventory/llsettingssky.cpp::calculateLightSettings`)
-- **言い換え**: preset (`sunlight_color` / `ambient_color`) を input、Kelvin から派生する物理色温度として再解釈、出力契約 (HDR scene buffer の信号特性) は保つ
+→ r17 helper は **fixed preset では機能せず、Estate day cycle (preset=00000000、太陽が時間で動く) でのみ effective** という偏った効き方になっていた。これは `feedback_feature_value_in_main_usecase.md` の「動いた ≠ 効いた、主流ユースケースで効果が出ないなら捨てる」を厳格適用すると drop が筋。
 
-### Master switch + 個別 switch
-- master `AYAVisualRealismEnabled` (r14 から) を共有
-- 個別 switch `AYAR17ColorTemperatureEnabled` (default TRUE) を追加 — r16 と同様に master と独立 toggle 可能 (master ON 前提で r17 のみ on/off で体感評価)
-- `feedback_prefer_defaults_over_config.md` (個別 cvar 量産しない) に対しては r14/r15/r16/r17 章ごと sentinel 各 1 本の運用方針継続
+## 3. 残された知見 (memory / 後章で再利用予定)
 
-### sun disc 保護 (r14 P2.b/c の副作用を踏まない)
-- **sky shader (`skyV.glsl`) の GLSL コード自体は本リリースで一切触らない** — r16 と同じ方針
-- ただし P0 Round 1 で確認: `skyV.glsl` も `sunlight_color` / `ambient_color` uniform を読むため、**C++ 側で uniform 値を Kelvin modulate すると sky にも色温度反映される** 設計。これは意図通り (時間帯色の物理的整合を sky と scene で同期させる目的)
-- sun disc 消失副作用 (r14 P2.b/c) は exp() attenuation で disc 形状を消す問題で、色 modulate (Kelvin tint) では発生しない構造
-- `calculateLightSettings()` は不触: `mSunDiffuse` 経由で太陽 disc の色変更副作用を避けるため、Kelvin 注入は `applySpecial` の uniform push 直前のみで実施
+- **`kelvinToRGB` 公開式 (Tanner Helland 2012)** は別 helper として残せば D 軸 (カメラ/exposure) や音響 venue (?) で再利用可能。本 drop では削除したが、再導入が必要になったらこの spec の git 履歴を参照
+- **`KNOWN_SKY_LEGACY_MIDDAY` asset UUID pinpoint 除外** のパターンは、`LLSettingsSky::canAutoAdjust()` の axis が「PBR 互換有無」を表しており「PBR 前再現意図」と一致しないため広い gate に使えないという発見と一緒に有用 (visual realism 章の修飾系コードで「Legacy preset を保護」する標準パターンになる)
+- **SL preset の lightnorm と絵作り色の独立性** という観察は、将来「物理的に整合する preset 群」を出荷する選択肢 (例: Estate/Region 別 preset セット) を考えるときの前提
+- **r17 helper の 3 注入点設計** (sky path SUNLIGHT_COLOR + AMBIENT、scene path mSunDiffuse + setAmbientLightColor、cloud path B 軸) は preset 制作者の絵作りに viewer 側から「物理整合」を上書きする設計の一例として記録
 
-### preset 互換の取り扱い (3 案検討、P0 で確定)
-- **A 案**: preset の `sunlight_color` から逆算した「effective Kelvin」と、太陽 elevation から派生した「physical Kelvin」を blend。preset の絵作りを保ちつつ物理整合を取る
-- **B 案**: 太陽 elevation のみから物理 Kelvin を直接派生、preset の `sunlight_color` は ignore (= preset 互換破壊)。実装は単純だが preset 資産を活かせないため `feedback_prefer_defaults_over_config.md` 流儀と相反
-- **C 案**: preset の `sunlight_color` は targeted look として保ち、内部の連動変数 (例: ambient の cool/warm bias、Mie/Rayleigh 比率) のみ Kelvin に整合させる。preset 互換完全維持、内側だけ物理化
-- **方針**: C 案を default、A 案を fallback (P0 Survey で実装可能性を確認、P1 で決定)
+## 4. Drop による影響 (実コード)
 
----
+- **削除**: `LLSettingsVOSky::getR17SunModulator` (llsettingsvo.{h,cpp})、`kelvinToRGB` 無名 namespace helper、`AYAR17ColorTemperatureEnabled` (settings.xml)、診断ログ `AYA_R17` (llsettingsvo.cpp 内)
+- **巻き戻し**: `llsettingsvo.cpp::applySpecial` の sky path (SUNLIGHT_COLOR / AMBIENT の r17 mod)、`pipeline.cpp::setupHWLights` の scene path (mSunDiffuse / ambient の r17 mod)、`llsettingsvo.cpp::applySpecial` の r18 B 軸 (CLOUD_COLOR の r17 mod)
+- **見た目への影響**: 既に fixed preset で「効いていない」と確認済なので、AYA 主流ユースケース (menu から朝/昼/夕/夜/レガシー選択) では **見た目変化はほぼゼロ**。Estate day cycle (preset=00000000) 利用時のみ「太陽 elevation 駆動の Kelvin shift」が失われる
+- **r18 への影響**: P1.a 実装の B 軸 (CLOUD_COLOR mod) が drop 同伴で消える。**r18 は A 軸 (slab raymarch) 単独で出荷**、雲の体積感 (AYA 実機で「とても素晴らしい」評価) は単独で完結
 
-## 3. スコープ
+## 5. 関連 commit 履歴
 
-### 含む
-- **P0 Survey**: 完了 (`doc/r17/color_temperature_survey.md` Round 1 + §6 補遺) — Sun/Ambient の派生経路は当初「`applySpecial` 1 箇所」と書いたが P1.a 着手中に SUNLIGHT_COLOR が sky path / scene path の **2 注入点** あることが判明、§6 で訂正
-- **P1.a**: 完了 — 太陽 elevation → Kelvin 派生曲線の **C++ 実装** + **共通 helper `LLSettingsVOSky::getR17SunModulator(lightnorm, psky)`** + **3 注入点 modulate** (sky SUNLIGHT_COLOR / ambient base / scene `LLPipeline::mSunDiffuse`)。Tanner Helland 2012 Kelvin→RGB 近似式、preset 色との **乗算 modulator** で C 案 (preset 互換維持) を実現
-- **legacy preset 専用除外**: 「昼間(レガシー)」(asset UUID `KNOWN_SKY_LEGACY_MIDDAY = 6c83e853-e7f8-cad7-8ee6-5f31c453721c`) は PBR 前 SL noon の再現用 preset なので、helper 内で UUID 完全一致 pinpoint で no-op 化。`canAutoAdjust()` で広く gate すると朝方/昼間/夕方/夜中も同 legacy ファミリーで巻き込み r17 が完全無効化されるため、UUID 単点で除外する設計に確定
-- **C++ plumbing**: settings.xml に `AYAR17ColorTemperatureEnabled` Boolean 1 件追加。**shader uniform / llshadermgr.{h,cpp} は不要** (C++ 側で switch gate するため、r16 と異なり shader 側の switch uniform 不要)
-- **3 OS (Linux / macOS / Windows) ビルド + 体感確認** (P2)
+- `0655908da0` r17 P0 起票 (spec)
+- `d68c67891f` r17 P0 Survey Round 1 完了
+- `c3d6aee734` r17 P1.a 時間帯色温度実装 (本 drop で巻き戻し対象)
+- (本 drop commit) r17 drop + r18 P1.a (A 軸単独) close-out
 
-### 含まない (→ r18+)
-- **雲の体積化** (r18) — 別リリースに分離 (色温度の影響を受ける側、色温度が先決まる必要)
-- **sky dome (skyV.glsl) の物理化** — r17 でも一切触らない (r14 P2.b/c 教訓)
-- 物質側 subsurface scattering (B 軸、r19+)
-- カメラ表現 (DoF / auto-exposure / scene-referred 露出階調、C 軸 r21+)
-- preset 制作・新 preset 出荷 (AYA 方針: preset を作り直さない)
+## 6. r19+ への teach-back
 
-### 永久 drop
-- preset を破壊する後方非互換変更 (B 案単独はやらない)
-- LUT / color grade による「色温度演出」誤魔化し (`docs/ayastorm-visual-realism-roadmap.md` §6 と整合)
-- 重い per-frame full-screen color grading pass
-
----
-
-## 4. フェーズ分解
-
-viewer-only の改修。配信側 / SIM 側変更なし。
-
-### P0: 実装箇所調査 + spec 確定 — **完了** (Survey Round 1: `doc/r17/color_temperature_survey.md`)
-
-調査ターゲット (P0 完了条件) と結果:
-
-1. **Sun/Ambient color の派生経路** — `llsettingsvo.cpp::applySpecial` (L749-) で preset 値を uniform push、`calculateLightSettings()` の出力 `mSunDiffuse` は太陽 disc 用で shader uniform には流れない構造を確認 (Survey §2.1 / §2.2)
-2. **`calculateLightSettings()` の挙動** — `mSunDiffuse` は `LLVOSky::calc()` で太陽 disc 色に使用、shader uniform は preset 生値が流れる。**r17 では `calculateLightSettings()` 不触** で applySpecial の uniform push 直前 modulate のみとする方針確定 (Survey §2.2)
-3. **shader 内での Sun/Ambient 使用箇所** — `atmosphericsFuncs.glsl` (scene path, L27/L30/L65/L149) と `skyV.glsl` (sky dome, L47/L50/L124/L173 等) の 2 経路、両方が同じ uniform を読む。C++ 側 modulate で両方同時反映 (Survey §2.3)
-4. **preset の Kelvin 解釈可能性** — C 案 (Kelvin modulator × preset 色の乗算) で実装可能、preset 絵作りは noon 基準で保持、朝夕は Kelvin で物理 warm 化。Tanner Helland 2012 公開式で開始 (Survey §2.4)
-5. **3 OS 共通性** — C++ + math standard + shader 改修なしで GLSL/Metal/HLSL 差異なし、r14/r15/r16 と同じく `.metal` / `HAS_METAL` ヒットなし (Survey §2.6)
-6. **個別 switch 配線** — settings.xml に Boolean 1 件追加、`llsettingsvo.cpp::applySpecial` 内で `LLCachedControl<bool>` で gate。**llshadermgr.{h,cpp} / shader uniform は不要** (r16 と異なり shader 側に switch を渡さない、C++ 側で modulate を bypass する経路で switch off 実現) (Survey §2.5)
-
-**P1 着手の前提条件 (Survey §3)**:
-- shader 改修なし (`atmosphericsFuncs.glsl` / `skyV.glsl` のコードは不触、uniform 値だけ C++ 側で modulate)
-- C++ 改修は applySpecial の 1 箇所のみ + settings.xml 1 件
-- Kelvin → RGB は Tanner Helland 公開式で開始、体感不足なら Mitchell Charity テーブル線形補間に切替
-- modulate は preset 色との乗算 (C 案)、preset 絵作りは noon 基準で保持
-
-**未確認 (Round 2 候補)**:
-- `getLightDiffuse()` 経由の PBR/material shader への間接影響 (Survey §2.7) — P1.a 実機で sun disc / scene 直接光に副作用なければ Round 2 不要
-- 屋内 ambient (`getReflectionProbeAmbiance() != 0.f` 分岐) の Kelvin 適用妥当性 (R3)
-
-### P1.a: Kelvin modulate 実装 — **完了**
-
-太陽 elevation から物理 Kelvin を派生し、preset 色と乗算する modulator を **3 注入点** で適用 (sky / scene / ambient 整合)。曲線:
-
-- elevation ≤ 0 (horizon 下): smoothstep clamp 下端 → 2200K (deep amber)
-- 0 < elevation < 0.4 (約 23.6°): smoothstep で 2200K → 6500K に補間
-- elevation ≥ 0.4: 6500K = identity modulator (preset 絵作りを noon 基準で保持)
-
-**共通 helper** (`indra/newview/llsettingsvo.{h,cpp}`):
-```cpp
-// 戻り値 = kelvin_rgb(K) / kelvin_rgb(6500K) — preset 色に乗算して使う modulator
-// 引数 psky を渡すと「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) を asset UUID 完全一致で
-// pinpoint 除外 (= no-op)、PBR 前再現 preset の意図を歪めない。
-LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const LLSettingsSky* psky);
-```
-
-ガード順序: master `AYAVisualRealismEnabled` OFF / 個別 `AYAR17ColorTemperatureEnabled` OFF / asset UUID == `KNOWN_SKY_LEGACY_MIDDAY` のいずれかで identity (1,1,1) を返却。それ以外は Tanner Helland 2012 Kelvin→RGB 公開式で派生した modulator。
-
-**3 注入点**:
-
-1. `indra/newview/llsettingsvo.cpp::applySpecial` (L868) — sky path:
-   - SG_SKY shader group の `SUNLIGHT_COLOR` uniform (`skyV.glsl` 消費) を modulate
-   - 同所で `AMBIENT` uniform 用の base ambient も modulate (朝青/夕橙の天空色シフト)
-2. `indra/newview/pipeline.cpp::setupHWLights` (L6778) — scene path:
-   - `LLPipeline::mSunDiffuse` (deferred / material shader が読む `SUNLIGHT_COLOR` の源流) を modulate
-   - 同所で `gGL.setAmbientLightColor` 直前の ambient も modulate (scene 側 ambient と sky 側 ambient の整合)
-
-これで sky dome / deferred scene / ambient の 3 経路に同一 Kelvin が乗り、preset 切替や時間帯遷移で色温度が割れない。
-
-**switch off 経路**: master / 個別 switch どちらかが OFF で helper が identity を返すため、呼び出し側は無条件で `preset_color * modulator` の形のまま記述。OFF 経路を取り回す追加分岐は不要。
-
-### P1.b: 実装後の体感調整 (条件付)
-
-P1.a の Linux 実機検証で:
-- 体感が r16 P1.b のように perceptual threshold 以下 → drop (`feedback_feature_value_in_main_usecase.md`)
-- 体感が出るが過剰/不足 → Kelvin 曲線の係数調整、Mitchell Charity テーブルへの切替、屋内 ambient の専用処理 (R3) 等を Round 2 で追加調査
-
-### P2: 3 OS ビルド + 体感確認
-
-AYA が Linux フルビルド + 体感確認。問題なければ macOS / Windows ビルドへ。`feedback_release_with_user_feedback.md` の流儀。
-
-### P3: tag / release
-
-r15 / r16 と同じく、**公開は r17 単独でせず後続リリースまで pending** の運用 (AYA 方針)。r18 (雲の体積化) と一括、または A 軸完走時に公開する想定。
-
----
-
-## 5. 受け入れ条件
-
-- [x] 既存 WindLight preset (朝・昼・夕・夜) が **読み込めて、preset 切替が機能する** (preset 互換破壊なし) — Linux 実機 PASS
-- [x] `AYAR17ColorTemperatureEnabled = TRUE` (master `AYAVisualRealismEnabled = TRUE` 前提) で:
-  - [x] 朝/夕で太陽光が **暖色寄りに** 物理的整合した形で出る (朝方は subtle、夕方は明瞭な amber シフト)
-  - [x] ambient (天空光) が sunlight の色温度に **連動して** 朝青/夕橙のシフトを示す (3 注入点で sky / scene / ambient 整合)
-  - [x] noon (elevation ≥ 0.4) で OFF と差が出ない (smoothstep clamp で 6500K = identity)
-  - [x] r14/r15/r16 で出した体感が壊れない
-- [x] `AYAR17ColorTemperatureEnabled = FALSE` で r16 までと同じ見え方に戻る (helper が identity を返し preset 生値が uniform に流れる)
-- [x] **「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) で r17 modulator が無効化** (PBR 前 noon 再現の preset 意図を歪めない、asset UUID pinpoint 除外で実現)
-- [x] **sky dome の見え方が r14 P2.a refined のまま** (sun disc 健在、朝・夕の地平線・青空質感は劣化なし) — skyV.glsl 不触で構造的保証
-- [ ] 3 OS でビルド + 起動 + 表現確認 (P2)
-- [ ] FPS 影響が ±10% 以内 (P2 で実測)
-
----
-
-## 6. リスク
-
-| ID | リスク | P0 Round 1 後ステータス |
-|---|---|---|
-| R1 | preset の `sunlight_color` を Kelvin で再計算すると、preset 制作者の絵作りが全て壊れる | **緩和**: C 案 (preset 色 × Kelvin modulator の乗算) で preset 絵作りは noon 基準で保持される構造、Survey §2.4 で確認 |
-| R2 | Kelvin 曲線が AYA の体感する「写真的リアリティ」と乖離 (= 物理的には正しいが視覚効果薄、r16 P1.b 再演) | **未着手**: P1.a 実機で判定、Tanner Helland 単独で薄い場合 Mitchell Charity table への切替余地あり。`feedback_feature_value_in_main_usecase.md` (動いた ≠ 効いた) を念頭 |
-| R3 | ambient の cool/warm bias が屋内 vs 屋外で異なる要求 (屋内は preset の indoor ambient を尊重すべき) | **要追加調査** Round 2: `getReflectionProbeAmbiance() != 0.f` 分岐 (llsettingsvo.cpp:841) に屋内/屋外判定がある可能性、P1.a で屋内シーンが不自然なら Round 2 で確認 |
-| R4 | sun disc が r14 P2.b/c 同様に色温度経路で消失副作用 | **解消**: `calculateLightSettings()` 不触 + uniform path のみ modulate、Survey §2.2 で sun disc 経路 (`mSunDiffuse` → `LLVOSky::calc`) が shader uniform path と独立を確認 |
-| R5 | FPS 影響 (Kelvin → RGB 変換が per-pixel になると重い) | **解消**: C++ 側 per-frame 1 回計算、shader per-pixel コストなし (Survey §2.6) |
-| R6 | 3 OS でビルドが通らない (macOS Metal 等) | **解消**: shader 改修なし + 標準 math のみ、`.metal` / `HAS_METAL` ヒット 0 (Survey §2.6) |
-| R7 | switch off 経路で見え方が完全に旧経路まで戻らない | **解消**: C++ if gate で modulate を bypass、uniform 値は preset 生値を直接 push する構造 (Survey §2.5) |
-| R8 | 個別 switch (`AYAR17ColorTemperatureEnabled`) を追加することで `feedback_prefer_defaults_over_config.md` (個別 cvar 量産しない) と衝突 | **緩和**: r14/r15/r16 と同じく「章ごと体感評価用 sentinel」運用、A 軸完走時に統合 (master へ吸収) を検討 |
-| R9 (Round 1 新規) | `getLightDiffuse()` 経由で PBR/material shader が `mSunDiffuse` を間接参照している可能性 | **要追加調査**: Survey §2.7、P1.a 実機で sun disc / scene 直接光に副作用なければ Round 2 不要 |
-
----
-
-## 7. 更新履歴
-
-- 2026-05-12 (初版): r16 close-out (P1.b drop で実装完結) 直後に r17 を起票。旧 r17 (時間帯色温度 + 雲のリアリティ) を r17 (色温度) / r18 (雲の体積化) に分割した分の前半。色温度を先にする理由は「雲は色温度の影響を受ける側 (sun color が物理的に決まらないと雲の体積感も浮く)」のため。スコープは scene 側 (`atmosphericsFuncs.glsl` + `llinventory/llsettingssky.cpp::calculateLightSettings`)、skyV.glsl は r14 P2.b/c 教訓で不触。preset 互換は C 案 (内部連動変数のみ Kelvin 整合) を default、A 案 (preset と blend) を fallback として P0 Survey で確定する方針
-- 2026-05-12 (P0 Survey Round 1 完了): `doc/r17/color_temperature_survey.md` で 6 項目クリア。**重要な設計判明**: (a) shader uniform `sunlight_color` には preset 生値が流れる (`applySpecial` 経由)、`calculateLightSettings()` 出力 `mSunDiffuse` は太陽 disc 専用、(b) `applySpecial` 1 箇所で SUNLIGHT_COLOR / AMBIENT uniform を modulate するだけで scene + sky の両方に色温度反映できる、(c) **shader 改修不要 / llshadermgr.{h,cpp} 不要**、settings.xml 1 件 + applySpecial 1 箇所のみで完結、(d) C 案 (preset 色 × Kelvin modulator の乗算) で preset 絵作りを noon 基準で保持、(e) Tanner Helland 2012 Kelvin→RGB 公開式で開始。spec §2/§3/§4 を Round 1 結果で更新、リスクは R1/R4/R5/R6/R7 を解消、R3/R9 を Round 2 候補として記録。次は P1.a (applySpecial に Kelvin modulate 追加 + Linux 実機検証)
-- 2026-05-12 (P1.a 実装完了 / Linux 実機 PASS): (a) Survey §6 で SUNLIGHT_COLOR の **2 注入点** (sky path `llsettingsvo.cpp::applySpecial` + scene path `pipeline.cpp::setupHWLights` 経由の `LLPipeline::mSunDiffuse`) が判明、当初の「applySpecial 1 箇所」想定を訂正し共通 helper `LLSettingsVOSky::getR17SunModulator(lightnorm, psky)` + **3 注入点 modulate** (sky / scene / ambient) で再設計、(b) Linux 実機検証で `「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY)` が PBR 前 noon の再現用 preset であるにも関わらず r17 modulator で orange 化する regression が発覚、(c) 当初試した `canAutoAdjust()` gate は SL 標準 menu 5 preset (朝方/昼間/夕方/夜中/昼間レガシー) すべてが同 legacy ファミリーで TRUE を返すため、夕方の amber までも止めてしまうことが判明 — 採用不可、(d) 最終解は **asset UUID `KNOWN_SKY_LEGACY_MIDDAY` 完全一致での pinpoint 除外**、4 modern menu preset (朝方/昼間/夕方/夜中) は r17 適用、(e) 受け入れ条件 §5 のうち実装関連 7 項目 PASS、残 2 項目 (3 OS ビルド / FPS ±10%) は P2 へ。spec §3/§4/§5 を実装内容で更新、Survey §6.3 helper シグネチャと §7 (新規) で legacy noon UUID gate の経緯を記録
+- 「主流ユースケースで効果が出ない機能は default ON で出荷しない」を A 軸第 4 弾でも実証 (cf. r14 P2.b/c sun dazzle drop)
+- 「**SL preset の太陽位置と絵作りは独立**」という前提は今後も A 軸関連改修で再発しうるので、physical/elevation-driven 設計を入れる前に必ず 5 preset 実計測でカーブを確認する

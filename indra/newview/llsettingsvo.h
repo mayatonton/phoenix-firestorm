@@ -102,17 +102,6 @@ public:
 
     bool isAdvanced() const { return  m_isAdvanced; }
 
-    // <FS:AYA r17> Color Temperature: 太陽 elevation から派生する Kelvin modulator を返す。
-    //   AYAVisualRealismEnabled + AYAR17ColorTemperatureEnabled の両 ON で modulate、
-    //   それ以外は LLColor3::white (= no-op) を返す。
-    //   psky を渡すと「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) では asset UUID 一致で
-    //   pinpoint 除外し、r17 modulator が PBR 前再現 preset の意図を歪めないようにする。
-    //   呼び出し側 (llsettingsvo.cpp::applySpecial / pipeline.cpp::setupHWLights) で
-    //   preset 色に乗算して使用する。
-    //   詳細: docs/ayastorm-r17-color-temperature.md / doc/r17/color_temperature_survey.md
-    static LLColor3 getR17SunModulator(const LLVector3& lightnorm, const LLSettingsSky* psky);
-    // </FS:AYA>
-
 protected:
     LLSettingsVOSky();
 
