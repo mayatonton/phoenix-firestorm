@@ -144,7 +144,7 @@ P1.a 着手前に必ず実機サンプリングして確定:
 - [ ] `AYAR20AvatarSkinSSSEnabled = 0` で master ON でも r20 完全 no-op
 - [ ] `AYAR20AvatarSkinSSSIntensity = 0` で intensity ゼロ = 完全 no-op
 - [ ] `AYAR20AvatarSkinSSSIntensity = 1/2/3` で段階的に diffusion 強度が増える
-- [ ] 3 OS でビルド + 起動 + 表現確認 (P2、B 軸完走 r19-r21 で一括 tag/release)
+- [ ] 3 OS でビルド + 起動 + 表現確認 (P2、**B 軸完走 = r19+r20 セット**で一括 tag/release、positioning は「AYAstorm らしさを完全に打ち出す / Firestorm との差を見せる」)
 - [ ] FPS 影響が ±5% 以内 (skin coverage は画面の数 % 程度、 blur 3-4 tap で軽量見積もり)
 
 ---
@@ -167,3 +167,4 @@ P1.a 着手前に必ず実機サンプリングして確定:
 ## 7. 更新履歴
 
 - 2026-05-13 (初版起票): r19 P1.b PASS 後の章方向議論で AYA さんから「アバターの肌の温度というか SSS みたいなことができたらすごい」と発言。AYAstorm 視覚表現章 (r14+) が r14-r18 で空 / 大気 / 光 / 雲を触り切り、r19 (薄物透過) は technical PASS だがインパクト弱という評価から、章方向の見直しを議論中だった文脈で B 軸第 2 弾候補として浮上。avatar designer タグ駆動と viewer 側 whitelist の 2 案を比較し、AYA さんの「主流 body / head は 3-4 製品で 90% カバー」観察に基づき **viewer 側 whitelist 案 (= avatar designer の協力不要、viewer 完結)** を採用。spec を `feature/aya-r20-avatar-skin-sss-spec-draft` で起票 (base: ayastorm-release、r19 とは独立)。次は P0 Survey (whitelist 実機サンプリング + GBuffer flag 拡張案検討 + SSS pass 配置点比較)
+- 2026-05-13 (release positioning 確定): AYA さんと release 戦略合意 — **B 軸完走 = r19+r20 セット**として一括 tag/release、positioning は「**見た目を完全に AYAstorm らしさを打ち出す / Firestorm との差を見せる**」。当初想定の r19-r21 セットから r21+ (C 軸: カメラ表現) を切り離し、B 軸 2 リリースで「人物撮影で気づくレベルの違い」を打ち出す方針。Release Notes は技術詳細より「FS にはない AYAstorm の写真感」narrative を主軸にする想定
