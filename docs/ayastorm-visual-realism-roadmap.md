@@ -64,17 +64,20 @@ input (preset 値) と output (HDR scene buffer の信号特性、tonemap 取付
 
 A 軸を 4 リリースに分割。各リリースは独立に完結し体感が出る単位。
 
-### r14: volumetric atmosphere (空気の体積感)
+### r14: volumetric atmosphere (空気の体積感) — **実装完了**
 - 細部: `docs/ayastorm-r14-volumetric-atmosphere.md`
 - ねらい: 距離と高度に応じて空気が体積として見える。今の「色付きフィルター」状の霞を、depth-driven Beer-Lambert + altitude density で再解釈
 - スコープ: 既存 atmospherics shader の内側を書き換え、preset の Haze Horizon / Haze Density / Blue Density 値を物理パラメタとして再解釈
 - 含まない: heavy raymarch (r15)、godrays (r15)、距離 aerial perspective (r16)、時間帯色温度 (r17)
-- 工数感: 3〜5 日 (3 OS 込み、P0 後に再見積)
+- **実装結果**: master switch `AYAVisualRealismEnabled` (default TRUE) + altitude density + scene-referred 積分 (sky shader を blue / haze 分割で linear 空間合成) で着地。P2.a refined で完了、P2.b/c (Preetham 方向経路長 / sun disc HDR boost) は太陽 disc 消失副作用のため deferred。commit 範囲 `fb76b8391b`〜`e69f2a98b1`
+- 工数感: 3〜5 日 → 実績は P0 (5/12) → P2.a refined (5/12) で 1 日 (Linux 体感調整完了まで)
 
-### r15: godrays (光線が空間を貫く)
+### r15: godrays (光線が空間を貫く) — **実装完了**
+- 細部: `docs/ayastorm-r15-godrays.md`
 - ねらい: 雲間 / 木漏れ日 / 窓から差す光線が空間を貫く体感
-- スコープ: shadow map driven の screen-space godrays、または light scattering pass
-- 工数感: 2〜4 日 (3 OS 込み、未確定)
+- スコープ: shadow map driven の screen-space godrays (radial blur ではなく ray-march 系)
+- **実装結果**: `renderGeomPostDeferred` の `doAtmospherics` 直後に挿入する fullscreen pass。既存 cascaded sun shadow を流用 (`sampleDirectionalShadow` + cascade 範囲外 skip + NaN/Inf ガード)、N=16 サンプルの shadow-driven ray-march + Mie 前方ピーク phase (cos^8) + strength=0.10。**alpha 保護必須** (`frag_color.a = 0`、`ONE/ONE` additive で alpha=1 を積むと scene buffer の sky mask が破壊され空が真っ白に潰れる; memory `project_aya_visual_realism_alpha_protect.md`)。master switch `AYAVisualRealismEnabled` を r14 と共有。commit 範囲 `fd027e7475`〜`edaed0fe6a`
+- 工数感: 2〜4 日 → 実績は P0 → P1 で 1 日 (Linux 体感 PASS まで)
 
 ### r16: aerial perspective (距離による色変化)
 - ねらい: 遠景が距離と共に減衰・色相変化、空気の遠近感が物理的に出る
@@ -119,14 +122,15 @@ A 軸を積み上げ切った段階で詳細化。現時点では骨子のみ:
 
 | リリース | 工数感 (3 OS 込み) | 状態 |
 |---|---|---|
-| r14 volumetric atmosphere | 3〜5 日 | spec 起票 (`docs/ayastorm-r14-volumetric-atmosphere.md`)、P0 着手前 |
-| r15 godrays | 2〜4 日 | 候補 |
+| r14 volumetric atmosphere | 3〜5 日 | **実装完了** (`fb76b8391b`〜`e69f2a98b1`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15 一括で実施予定) |
+| r15 godrays | 2〜4 日 | **実装完了** (`fd027e7475`〜`edaed0fe6a`、Linux 体感 PASS、3 OS ビルド / tag は r13+r14+r15 一括で実施予定) |
 | r16 aerial perspective | 2〜3 日 | 候補 |
 | r17 時間帯色温度 + 雲 | 4〜6 日 | 候補 |
-| r14-r17 (A 軸完走) | 11〜18 日 | 参考値 |
+| r14-r17 (A 軸完走) | 11〜18 日 | 参考値 (r14 + r15 は実績 1 + 1 日でかなり前倒し) |
 
 ---
 
 ## 8. 更新履歴
 
 - 2026-05-12: 初版作成。旧 `ayastorm-light-expression-roadmap.md` (3 層モデル + r14 sun dazzle) を全面書き換え。きっかけは r14 P1 (sun disc HDR boost) が体感ゼロで unground し、その unground を契機に AYA から「光表現章ではなく視覚的リアリティ章」「LUT/Tone では届かない」「AAA の暗がり偽装は採用しない」の章 thesis が明示されたこと。3 層モデル (光源/大気/カメラ) を 3 軸モデル (大気・空気 / 物質色 / カメラ表現) に再編、A 軸を r14-r17 で積む計画に再構成。背景は memory `project_ayastorm_visual_realism_chapter.md` 参照
+- 2026-05-12 (A 軸第 1 弾 + 第 2 弾 実装完了反映): r14 volumetric atmosphere (`fb76b8391b`〜`e69f2a98b1`) と r15 godrays (`fd027e7475`〜`edaed0fe6a`) を Linux 体感 PASS まで実装完了。§4 r14 / r15 の entry に実装結果を埋め、§7 工数感 table を「実装完了」表示に更新。3 OS フルビルドと tag/release は r13+r14+r15 一括で実施 (`v7.2.4-ayastorm-r15` 想定)。r15 P1 デバッグ中に観測した「scene buffer additive で `frag_color.a=1` を積むと sky mask が破壊される」挙動は memory `project_aya_visual_realism_alpha_protect.md` に永続化 (r16+ で再利用必須の知見)
