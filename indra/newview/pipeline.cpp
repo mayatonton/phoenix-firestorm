@@ -10007,6 +10007,28 @@ void LLPipeline::renderDeferredLighting()
             soften_shader.uniform1f(ssao_scale_str, ssao_scale);
             soften_shader.uniform1f(ssao_max_str, ssao_max);
 
+            // --- AYAstorm r19 Translucency: push wrap+transmit params to softenLightF ---
+            {
+                static LLCachedControl<U32>  aya_realism_r19(gSavedSettings, "AYAVisualRealismEnabled", 1);
+                static LLCachedControl<bool> aya_r19_enabled(gSavedSettings, "AYAR19TranslucencyEnabled", true);
+                static LLCachedControl<U32>  aya_r19_tier(gSavedSettings, "AYAR19TranslucencyIntensity", 1);
+                static LLStaticHashedString  s_r19_params("aya_translucency_params");
+                static LLStaticHashedString  s_r19_tint("aya_translucency_tint");
+
+                // (wrap, k_back, k_view, strength) — tier 0 = OFF (strength 0 -> shader short-circuit)
+                static const F32 r19_table[4][4] = {
+                    { 0.00f, 1.0f, 1.0f, 0.0f }, // 0=OFF
+                    { 0.15f, 2.0f, 4.0f, 0.6f }, // 1=控えめ (default)
+                    { 0.25f, 1.5f, 3.0f, 1.0f }, // 2=標準
+                    { 0.35f, 1.2f, 2.5f, 1.5f }, // 3=強め
+                };
+                U32 tier = (aya_realism_r19() && aya_r19_enabled()) ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
+                soften_shader.uniform4fv(s_r19_params, 1, r19_table[tier]);
+                // warm linear tint approximating skin/leaf transmission color
+                const F32 r19_tint[3] = { 1.00f, 0.78f, 0.62f };
+                soften_shader.uniform3fv(s_r19_tint, 1, r19_tint);
+            }
+
             LLEnvironment &environment = LLEnvironment::instance();
 
             soften_shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
