@@ -395,7 +395,12 @@ bool addDeferredAttachments(LLRenderTarget& target, bool for_impostor = false)
 {
     U32 orm = GL_RGBA;
     U32 norm = GL_RGBA16;
-    U32 emissive = GL_RGB16F;
+    // <FS:AYA r20 Phase C> gbuffer3 (DEFERRED_EMISSIVE) needs an alpha
+    // channel to carry the per-pixel skin bit for the SSS pass. Existing
+    // readers only consume .rgb (softenLightF / pointLightF /
+    // multiPointLightF), so widening to RGBA is non-breaking.
+    U32 emissive = GL_RGBA16F;
+    // </FS:AYA>
     // <FS:Beq> FIRE-34483 additional fix
     if (target.getNumTextures() > 1)
     {
@@ -410,7 +415,9 @@ bool addDeferredAttachments(LLRenderTarget& target, bool for_impostor = false)
     if (!hdr)
     {
         norm = GL_RGB10_A2;
-        emissive = GL_RGB;
+        // <FS:AYA r20 Phase C> see comment above — gbuffer3 needs alpha
+        emissive = GL_RGBA;
+        // </FS:AYA>
     }
 
     bool valid = true;
@@ -4807,6 +4814,10 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             // <FS:AYA r15 P1> godrays right after atmospherics, still in HDR
             // scene buffer (mRT->screen) and before alpha / tonemap.
             doGodrays();
+            // </FS:AYA>
+            // <FS:AYA r20 P0a> skin SSS prototype right after godrays, still
+            // in HDR scene buffer (mRT->screen) and before alpha / tonemap.
+            doSkinSSS();
             // </FS:AYA>
         }
 
@@ -10473,6 +10484,167 @@ void LLPipeline::doGodrays()
     mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
     unbindDeferredShader(shader);
+
+    gGL.setSceneBlendType(LLRender::BT_ALPHA);
+}
+// </FS:AYA>
+
+// <FS:AYA r20 P0a> skin SSS prototype: screen-space 5-tap separable blur
+// with wavelength-dependent per-channel weights. Two-pass schedule:
+//   Pass 1: screen → mWaterDis  (horizontal blur, no blend, replace)
+//   Pass 2: mWaterDis → screen (vertical blur, SRC_ALPHA / 1-SRC_ALPHA
+//           blend so result mixes with original screen content at `strength`)
+// P0a scope: NO skin whitelist — global look-evaluation prototype.
+void LLPipeline::doSkinSSS()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+
+    if (sImpostorRender || gCubeSnapshot)
+    {
+        return;
+    }
+
+    static LLCachedControl<U32>  realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    static LLCachedControl<bool> r20_enabled(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", true);
+    if (realism_enabled() == 0 || !r20_enabled())
+    {
+        return;
+    }
+
+    if (!gDeferredSkinSSSProgram.isComplete())
+    {
+        return;
+    }
+
+    LL_PROFILE_GPU_ZONE("skin SSS");
+
+    LLGLSLShader& shader = gDeferredSkinSSSProgram;
+
+    // P0a prototype tuning. Look 判定中は live iteration の価値が大きいので
+    // debug settings に逃がしている。値が確定したら hard-code に戻す予定。
+    // 既定値: blur_radius=6.0 / strength=0.7 (iteration 3 で AYA OK 判定)。
+    static LLCachedControl<F32> sss_blur_radius(gSavedSettings, "AYAR20AvatarSkinSSSBlurRadius", 1.0f);
+    static LLCachedControl<F32> sss_strength(gSavedSettings, "AYAR20AvatarSkinSSSStrength", 0.7f);
+    // <FS:AYA r20 Phase D> glow restore gain + tint (highlight boost on top of blur).
+    static LLCachedControl<F32>      sss_glow_gain(gSavedSettings,  "AYAR20AvatarSkinSSSGlowGain",  3.0f);
+    static LLCachedControl<LLColor4> sss_glow_color(gSavedSettings, "AYAR20AvatarSkinSSSGlowColor");
+    // <FS:AYA r20 Phase D world-scale blur> blur 半径を世界座標で固定する
+    // (= 距離で逆スケール) ため、shader が depth を読む。near/far の距離
+    // fade cvar は不要 (遠距離では r_eff < 1px で自動 no-op)。
+    const F32 strength    = llclamp((F32)sss_strength(),    0.0f, 1.0f);
+    const F32 blur_radius = llmax((F32)sss_blur_radius(), 0.0f);
+    const F32 glow_gain   = llmax((F32)sss_glow_gain(), 0.0f);
+    const LLColor4 glow_color = sss_glow_color();
+    // </FS:AYA>
+
+    static LLStaticHashedString s_blur_dir("aya_blur_dir");
+    static LLStaticHashedString s_strength("aya_strength");
+    static LLStaticHashedString s_blur_radius("aya_blur_radius");
+    static LLStaticHashedString s_glow_gain("aya_glow_gain");    // <FS:AYA r20 Phase D>
+    static LLStaticHashedString s_glow_color("aya_glow_color");  // <FS:AYA r20 Phase D>
+
+    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
+    gGL.setColorMask(true, true);
+
+    // <FS:AYA r20 Phase C> gbuffer3 holds the per-pixel skin bit in .a.
+    // Pass 1 ignores alpha, but binding it both passes keeps state simple.
+    LLRenderTarget* deferred_target = &mRT->deferredScreen;
+    // </FS:AYA>
+
+    // Pass 1: horizontal blur, screen → mWaterDis (replace; blend off)
+    {
+        LLGLDisable blend_off(GL_BLEND);
+
+        mRT->screen.flush();
+        mWaterDis.bindTarget();
+
+        shader.bind();
+        shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mRT->screen, false, LLTexUnit::TFO_BILINEAR);
+        // <FS:AYA r20 Phase C> bind gbuffer3 as the skin mask source.
+        {
+            S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_EMISSIVE, deferred_target->getUsage());
+            if (channel > -1)
+            {
+                deferred_target->bindTexture(3, channel, LLTexUnit::TFO_POINT);
+                gGL.getTexUnit(channel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
+            }
+        }
+        // </FS:AYA>
+        // <FS:AYA r20 Phase D world-scale blur> bind deferred depth attachment
+        // so the shader can per-pixel scale blur radius by eye distance.
+        shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
+        // </FS:AYA>
+        shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
+            (GLfloat)mRT->screen.getWidth(), (GLfloat)mRT->screen.getHeight());
+        shader.uniform2f(s_blur_dir, 1.0f, 0.0f);
+        shader.uniform1f(s_strength, 1.0f);
+        shader.uniform1f(s_blur_radius, blur_radius);
+        shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
+        shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
+        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, realism_enabled() != 0 ? 1 : 0);
+        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, r20_enabled() ? 1 : 0);
+
+        mScreenTriangleVB->setBuffer();
+        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+        // <FS:AYA r20 Phase C> release the gbuffer3 channel so other passes
+        // can rebind index 3 cleanly.
+        shader.disableTexture(LLShaderMgr::DEFERRED_EMISSIVE, deferred_target->getUsage());
+        // </FS:AYA>
+        // <FS:AYA r20 Phase D world-scale blur> release depth channel.
+        shader.disableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
+        // </FS:AYA>
+        shader.unbind();
+        mWaterDis.flush();
+    }
+
+    // Pass 2: vertical blur, mWaterDis → screen (RGB-only mix with strength,
+    // alpha kept untouched so the scene-buffer sky mask is preserved —
+    // memory project_aya_visual_realism_alpha_protect.md)
+    {
+        mRT->screen.bindTarget();
+
+        LLGLEnable blend_on(GL_BLEND);
+        gGL.blendFunc(LLRender::BF_SOURCE_ALPHA, LLRender::BF_ONE_MINUS_SOURCE_ALPHA,
+                      LLRender::BF_ZERO, LLRender::BF_ONE);
+
+        shader.bind();
+        shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mWaterDis, false, LLTexUnit::TFO_BILINEAR);
+        // <FS:AYA r20 Phase C> skin mask: gbuffer3 (.a = per-pixel skin bit).
+        {
+            S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_EMISSIVE, deferred_target->getUsage());
+            if (channel > -1)
+            {
+                deferred_target->bindTexture(3, channel, LLTexUnit::TFO_POINT);
+                gGL.getTexUnit(channel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
+            }
+        }
+        // </FS:AYA>
+        // <FS:AYA r20 Phase D world-scale blur> bind deferred depth attachment
+        // for per-pixel blur-radius scaling in skinSSSF.
+        shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
+        // </FS:AYA>
+        shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
+            (GLfloat)mRT->screen.getWidth(), (GLfloat)mRT->screen.getHeight());
+        shader.uniform2f(s_blur_dir, 0.0f, 1.0f);
+        shader.uniform1f(s_strength, strength);
+        shader.uniform1f(s_blur_radius, blur_radius);
+        shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
+        shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
+        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, realism_enabled() != 0 ? 1 : 0);
+        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, r20_enabled() ? 1 : 0);
+
+        mScreenTriangleVB->setBuffer();
+        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+        // <FS:AYA r20 Phase C>
+        shader.disableTexture(LLShaderMgr::DEFERRED_EMISSIVE, deferred_target->getUsage());
+        // </FS:AYA>
+        // <FS:AYA r20 Phase D world-scale blur>
+        shader.disableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
+        // </FS:AYA>
+        shader.unbind();
+    }
 
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
 }

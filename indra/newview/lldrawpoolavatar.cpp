@@ -898,6 +898,16 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     if (pass == 1)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("render rigid meshes (eyeballs)"); // <FS:Beq/> Tracy markup
+        // <FS:AYA r20 Phase C> per-avatar SSS skin marker for Linden body / eyeballs
+        if (sVertexProgram)
+        {
+            GLint loc = sVertexProgram->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
+            if (loc > -1)
+            {
+                glUniform1f(loc, avatarp->isSSSTarget() ? 1.f : 0.f);
+            }
+        }
+        // </FS:AYA>
         // render rigid meshes (eyeballs) first
         avatarp->renderRigid();
         return;
@@ -932,6 +942,16 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     if( !single_avatar || (avatarp == single_avatar) )
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("renderSkinned"); // <FS:Beq/> Tracy markup
+        // <FS:AYA r20 Phase C> per-avatar SSS skin marker for Linden body
+        if (sVertexProgram)
+        {
+            GLint loc = sVertexProgram->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
+            if (loc > -1)
+            {
+                glUniform1f(loc, avatarp->isSSSTarget() ? 1.f : 0.f);
+            }
+        }
+        // </FS:AYA>
         avatarp->renderSkinned();
     }
 }

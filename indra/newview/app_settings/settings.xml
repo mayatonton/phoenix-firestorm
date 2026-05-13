@@ -10007,6 +10007,80 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
+    <!-- <FS:AYA r20 P0a> Avatar skin SSS prototype (screen-space, no whitelist) -->
+    <key>AYAR20AvatarSkinSSSEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 Avatar Skin SSS P0a prototype: screen-space 5-tap separable blur (wavelength-dependent per-channel weights) で全画面に SSS 風 diffusion を適用。P0a は whitelist 判別なし — SSS の見た目そのものを評価するための prototype。AYAVisualRealismEnabled (master) とは独立に r20 効果のみ ON/OFF 可能 (master ON 前提)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR20AvatarSkinSSSBlurRadius</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 SSS blur 半径 (eye_dist=1m での pixel 単位、world-scale 適用)。shader 内で `r_eff = blur_radius / max(eye_dist, 1m)` で per-pixel に距離逆スケール (Jimenez "Separable SSS" 方式)。遠距離で r_eff が 1px 未満に縮退して自動 no-op。default 1.0 (AYA 確定値)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>1.0</real>
+    </map>
+    <key>AYAR20AvatarSkinSSSStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 P0a tuning: SSS blur と元画面の mix 比率 (0.0 = OFF 相当 / 1.0 = blur 100%)。default 0.7。look 判定中の live iteration 用 — 確定値が決まったら hard-code 化予定</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.7</real>
+    </map>
+    <key>AYAR20AvatarSkinSSSGlowGain</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 Phase D: SSS blur 後の lit^3 に additive を足す gain。SSS で眠くなった hi-light を peak だけ非対称に持ち上げる。default 3.0 (AYA 確定値、warm-salmon color と組み合わせて血色感を補強)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>3.0</real>
+    </map>
+    <key>AYAR20AvatarSkinSSSGlowColor</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 Phase D: glow restore additive の色。真っ白だと「肌が発光してる」感が出るので、default は warm salmon (1.0, 0.65, 0.5)。配信者が血色感や肌色に合わせて調整可能。alpha は未使用</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Color4</string>
+      <key>Value</key>
+      <array>
+        <real>1.0</real>
+        <real>0.65</real>
+        <real>0.5</real>
+        <real>1.0</real>
+      </array>
+    </map>
+    <key>AYAR20AvatarSkinSSSWhitelist</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 SSS 対象 mesh asset UUID whitelist。改行区切り、各行が 1 件の mesh UUID (36 文字 dash 区切り、完全一致)。装着物を右クリック > Add to SSS whitelist で自動追加されるのが基本ルート。手書きで paste も可。空行/無効な行は無視。Phase B/E 装着時照合済み、Phase A (本 build) の rendering は全画面 SSS のままで Phase C で per-pixel mask に切替予定</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string></string>
+    </map>
+    <!-- </FS:AYA> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>

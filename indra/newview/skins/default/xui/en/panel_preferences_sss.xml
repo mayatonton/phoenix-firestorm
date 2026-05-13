@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<!-- <FS:AYA r20 Phase A> SSS preferences panel (Graphics > SSS sub-tab) -->
+<panel
+ follows="all"
+ layout="topleft"
+ label="SSS"
+ name="sss">
+    <panel.string name="DefaultWhitelist"></panel.string>
+
+    <text
+     layout="topleft"
+     follows="left|top|right"
+     left="10"
+     top="10"
+     height="16"
+     right="-10"
+     font.style="BOLD"
+     name="sss_header">
+        SSS (Subsurface Scattering) — Skin translucency
+    </text>
+
+    <text
+     layout="topleft"
+     follows="left|top|right"
+     left="10"
+     top_pad="4"
+     height="58"
+     right="-10"
+     word_wrap="true"
+     name="sss_description">
+        SSS only applies to Attachments. An attachment becomes a target if its mesh asset UUID is listed below. To register a mesh, right-click any attached object in-world and choose "Add to SSS whitelist".
+    </text>
+
+    <check_box
+     control_name="AYAR20AvatarSkinSSSEnabled"
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="10"
+     height="16"
+     width="300"
+     label="Enable SSS"
+     name="sss_enabled" />
+
+    <!-- ===== Parameters section ===== -->
+    <text
+     layout="topleft"
+     follows="left|top|right"
+     left="10"
+     top_pad="10"
+     height="14"
+     right="-10"
+     font.style="BOLD"
+     name="sss_param_header">
+        Parameters
+    </text>
+
+    <spinner
+     control_name="AYAR20AvatarSkinSSSBlurRadius"
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="6"
+     height="20"
+     width="220"
+     label="Blur radius @1m (px)"
+     label_width="120"
+     decimal_digits="2"
+     min_val="0.0"
+     max_val="32.0"
+     increment="0.5"
+     initial_value="1.0"
+     tool_tip="Tap spacing in pixels at 1m camera distance. Auto-scales inversely with distance (world-space sized SSS)"
+     name="sss_blur_radius" />
+    <button
+     layout="topleft"
+     follows="left|top"
+     left_pad="6"
+     top_delta="0"
+     height="20"
+     width="70"
+     label="Default"
+     name="sss_blur_radius_default" />
+
+    <spinner
+     control_name="AYAR20AvatarSkinSSSStrength"
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="4"
+     height="20"
+     width="220"
+     label="Strength"
+     label_width="120"
+     decimal_digits="2"
+     min_val="0.0"
+     max_val="1.0"
+     increment="0.05"
+     initial_value="0.7"
+     name="sss_strength" />
+    <button
+     layout="topleft"
+     follows="left|top"
+     left_pad="6"
+     top_delta="0"
+     height="20"
+     width="70"
+     label="Default"
+     name="sss_strength_default" />
+
+    <spinner
+     control_name="AYAR20AvatarSkinSSSGlowGain"
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="4"
+     height="20"
+     width="220"
+     label="Glow restore"
+     label_width="120"
+     decimal_digits="2"
+     min_val="0.0"
+     max_val="5.0"
+     increment="0.05"
+     initial_value="3.0"
+     name="sss_glow_gain" />
+    <button
+     layout="topleft"
+     follows="left|top"
+     left_pad="6"
+     top_delta="0"
+     height="20"
+     width="70"
+     label="Default"
+     name="sss_glow_gain_default" />
+
+    <text
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="6"
+     height="16"
+     width="120"
+     name="sss_glow_color_label">
+        Glow color
+    </text>
+    <color_swatch
+     control_name="AYAR20AvatarSkinSSSGlowColor"
+     layout="topleft"
+     follows="left|top"
+     left_delta="120"
+     top_delta="-4"
+     height="24"
+     width="44"
+     can_apply_immediately="true"
+     border_color="0.45098, 0.517647, 0.607843, 1"
+     label_height="0"
+     tool_tip="Tint for the SSS highlight restore (default warm salmon)"
+     name="sss_glow_color" />
+    <button
+     layout="topleft"
+     follows="left|top"
+     left_pad="12"
+     top_delta="0"
+     height="20"
+     width="70"
+     label="Default"
+     name="sss_glow_color_default" />
+
+    <!-- ===== Whitelist section ===== -->
+    <text
+     layout="topleft"
+     follows="left|top|right"
+     left="10"
+     top_pad="12"
+     height="14"
+     right="-10"
+     font.style="BOLD"
+     name="sss_whitelist_header">
+        Target mesh UUIDs (whitelist)
+    </text>
+
+    <check_box
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="6"
+     height="16"
+     width="320"
+     label="Lock editing (prevent accidental changes)"
+     initial_value="true"
+     name="sss_whitelist_lock" />
+
+    <text_editor
+     control_name="AYAR20AvatarSkinSSSWhitelist"
+     layout="topleft"
+     follows="left|top|right"
+     left="10"
+     right="-10"
+     top_pad="6"
+     height="170"
+     max_length="65536"
+     word_wrap="true"
+     commit_on_focus_lost="true"
+     show_line_numbers="false"
+     track_end="false"
+     name="sss_whitelist" />
+
+    <text
+     layout="topleft"
+     follows="left|top|right"
+     left="10"
+     top_pad="4"
+     height="14"
+     right="-10"
+     word_wrap="true"
+     name="sss_whitelist_hint">
+        One UUID per line (36-character format with dashes). Invalid and empty lines are ignored.
+    </text>
+
+    <button
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="6"
+     height="20"
+     width="180"
+     label="Reset all to defaults"
+     name="sss_reset_all" />
+</panel>
+<!-- </FS:AYA> -->

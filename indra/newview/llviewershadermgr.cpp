@@ -164,6 +164,8 @@ LLGLSLShader            gHazeProgram;
 LLGLSLShader            gHazeWaterProgram;
 // <FS:AYA r15 P1> godrays (screen-space light shaft, shadow-driven)
 LLGLSLShader            gDeferredGodraysProgram;
+// <FS:AYA r20 P0a> skin SSS prototype (screen-space separable blur, no whitelist)
+LLGLSLShader            gDeferredSkinSSSProgram;
 LLGLSLShader            gDeferredBlurLightProgram;
 LLGLSLShader            gDeferredSoftenProgram;
 LLGLSLShader            gDeferredShadowProgram;
@@ -558,6 +560,15 @@ void LLViewerShaderMgr::setShaders()
         {
             HBXXH128 hash_obj;
             hash_obj.update(LLVersionInfo::instance().getVersion());
+            // <FS:AYA> Mix AYAstorm release tag into the shader-cache key so
+            // an r-bump (which keeps the underlying FS version string) still
+            // invalidates the binary cache. Without this, users upgrading
+            // r19 → r20 would silently hit stale compiled shaders on all
+            // three OS. Bump this string at every AYAstorm release — grep
+            // "AYASTORM_SHADER_CACHE_TAG" to find every site that needs it.
+            const char* const AYASTORM_SHADER_CACHE_TAG = "AYAstorm r20";
+            hash_obj.update(AYASTORM_SHADER_CACHE_TAG);
+            // </FS:AYA>
             current_cache_version = hash_obj.digest();
 
             old_cache_version = LLUUID(gSavedSettings.getString("RenderShaderCacheVersion"));
@@ -2218,6 +2229,30 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredGodraysProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
 
         success = gDeferredGodraysProgram.createShader();
+        llassert(success);
+    }
+    // </FS:AYA>
+
+    // <FS:AYA r20 P0a> skin SSS prototype shader: screen-space 5-tap separable
+    // blur with wavelength-dependent per-channel weights. No whitelist gate
+    // in P0a — pure look evaluation pass. Two-pass scheduling
+    // (H → scratch, V → screen with alpha blend) is driven by
+    // LLPipeline::doSkinSSS.
+    if (success)
+    {
+        gDeferredSkinSSSProgram.mName = "Skin SSS Prototype Shader";
+        gDeferredSkinSSSProgram.mShaderFiles.clear();
+        gDeferredSkinSSSProgram.mFeatures.isDeferred = true;
+
+        gDeferredSkinSSSProgram.clearPermutations();
+        gDeferredSkinSSSProgram.mShaderFiles.push_back(make_pair("deferred/skinSSSV.glsl", GL_VERTEX_SHADER));
+        gDeferredSkinSSSProgram.mShaderFiles.push_back(make_pair("deferred/skinSSSF.glsl", GL_FRAGMENT_SHADER));
+
+        add_common_permutations(&gDeferredSkinSSSProgram);
+
+        gDeferredSkinSSSProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+
+        success = gDeferredSkinSSSProgram.createShader();
         llassert(success);
     }
     // </FS:AYA>

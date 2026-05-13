@@ -483,4 +483,44 @@ name="Stand Up">
     <menu_item_call.on_enable
      function="EnableMuteParticle" />
   </menu_item_call>
+  <!-- <FS:AYA r20 Phase E> SSS whitelist add/remove -->
+  <menu_item_separator
+       layout="topleft" />
+  <menu_item_call
+     label="Add to SSS whitelist"
+     layout="topleft"
+     name="SSS Add">
+    <menu_item_call.on_click
+     function="SSS.Add" />
+    <menu_item_call.on_enable
+     function="SSS.EnableAdd" />
+  </menu_item_call>
+  <menu_item_call
+     label="Remove from SSS whitelist"
+     layout="topleft"
+     name="SSS Remove">
+    <menu_item_call.on_click
+     function="SSS.Remove" />
+    <menu_item_call.on_enable
+     function="SSS.EnableRemove" />
+  </menu_item_call>
+  <menu_item_call
+     label="Add entire linkset to SSS whitelist"
+     layout="topleft"
+     name="SSS Add Linkset">
+    <menu_item_call.on_click
+     function="SSS.AddLinkset" />
+    <menu_item_call.on_enable
+     function="SSS.EnableAddLinkset" />
+  </menu_item_call>
+  <menu_item_call
+     label="Remove entire linkset from SSS whitelist"
+     layout="topleft"
+     name="SSS Remove Linkset">
+    <menu_item_call.on_click
+     function="SSS.RemoveLinkset" />
+    <menu_item_call.on_enable
+     function="SSS.EnableRemoveLinkset" />
+  </menu_item_call>
+  <!-- </FS:AYA> -->
 </context_menu>

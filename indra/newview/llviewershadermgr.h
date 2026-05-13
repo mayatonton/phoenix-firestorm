@@ -237,6 +237,8 @@ extern LLGLSLShader         gHazeProgram;
 extern LLGLSLShader         gHazeWaterProgram;
 // <FS:AYA r15 P1> godrays (screen-space light shaft, shadow-driven)
 extern LLGLSLShader         gDeferredGodraysProgram;
+// <FS:AYA r20 P0a> skin SSS prototype (screen-space separable blur, no whitelist)
+extern LLGLSLShader         gDeferredSkinSSSProgram;
 extern LLGLSLShader         gDeferredBlurLightProgram;
 extern LLGLSLShader         gDeferredAvatarProgram;
 extern LLGLSLShader         gDeferredSoftenProgram;

@@ -59,7 +59,9 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    frag_data[3] = vec4(c.rgb, c.a);
+    // <FS:AYA r20 Phase C> .a = SSS skin mask, moon is not skin.
+    frag_data[3] = vec4(c.rgb, 0.0);
+    // </FS:AYA>
 #else
     frag_data[0] = vec4(c.rgb, c.a);
 #endif

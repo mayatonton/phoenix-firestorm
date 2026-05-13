@@ -31,6 +31,12 @@ uniform sampler2D diffuseMap;
 
 uniform float minimum_alpha;
 
+// <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
+// is on the SSS whitelist, 0.0 otherwise. Written into frag_data[3].a so the
+// screen-space SSS pass can gate its blur to skin pixels only.
+uniform float aya_sss_skin_flag;
+// </FS:AYA>
+
 in vec3 vary_normal;
 in vec2 vary_texcoord0;
 in vec3 vary_position;
@@ -55,7 +61,9 @@ void main()
     frag_data[2] = encodeNormal(nvn.xyz, 0, GBUFFER_FLAG_HAS_ATMOS);
 
 #if defined(HAS_EMISSIVE)
-    frag_data[3] = vec4(0);
+    // <FS:AYA r20 Phase C> emit per-draw SSS skin bit in .a.
+    frag_data[3] = vec4(0, 0, 0, aya_sss_skin_flag);
+    // </FS:AYA>
 #endif
 }
 

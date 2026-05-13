@@ -152,6 +152,10 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     GLint brightness = mShader->getUniformLocation(LLShaderMgr::EMISSIVE_BRIGHTNESS);
     GLint minAlpha = mShader->getUniformLocation(LLShaderMgr::MINIMUM_ALPHA);
     GLint specular = mShader->getUniformLocation(LLShaderMgr::SPECULAR_COLOR);
+    // <FS:AYA r20 Phase C> per-draw SSS skin marker, sourced from LLDrawInfo::mIsSSSTarget
+    GLint sssSkin = mShader->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
+    F32 lastSSSSkin = -1.f;
+    // </FS:AYA>
 
     GLint diffuseChannel = mShader->enableTexture(LLShaderMgr::DIFFUSE_MAP);
     GLint specChannel = mShader->enableTexture(LLShaderMgr::SPECULAR_MAP);
@@ -218,6 +222,18 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             lastFullbright = fullbright;
             glUniform1f(brightness, lastFullbright);
         }
+
+        // <FS:AYA r20 Phase C> push per-draw SSS skin marker
+        if (sssSkin > -1)
+        {
+            F32 skinFlag = params.mIsSSSTarget ? 1.f : 0.f;
+            if (lastSSSSkin != skinFlag)
+            {
+                lastSSSSkin = skinFlag;
+                glUniform1f(sssSkin, skinFlag);
+            }
+        }
+        // </FS:AYA>
 
         if (normChannel > -1 && params.mNormalMap != lastNormalMap)
         {

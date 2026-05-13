@@ -543,6 +543,26 @@ protected:
 };
 // [/SL:KB]
 
+// <FS:AYA r20 Phase A> SSS preferences panel — whitelist + tuning + lock
+class LLPanelPreferenceSSS : public LLPanelPreference
+{
+    LOG_CLASS(LLPanelPreferenceSSS);
+
+public:
+    LLPanelPreferenceSSS();
+
+    /*virtual*/ bool postBuild();
+
+private:
+    void onLockToggle();
+    void onDefaultBlurRadius();
+    void onDefaultStrength();
+    void onDefaultGlowGain();   // <FS:AYA r20 Phase D>
+    void onDefaultGlowColor();  // <FS:AYA r20 Phase D>
+    void onResetAll();
+};
+// </FS:AYA>
+
 // [SL:KB] - Patch: Viewer-CrashReporting | Checked: 2010-10-21 (Catznip-2.6.0a) | Added: Catznip-2.2.0c
 class LLPanelPreferenceCrashReports : public LLPanelPreference
 {

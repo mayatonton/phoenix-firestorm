@@ -203,6 +203,12 @@ in vec2 vary_texcoord2;
 uniform float env_intensity;
 uniform vec4 specular_color;  // specular color RGB and specular exponent (glossiness) in alpha
 
+// <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
+// is on the SSS whitelist, 0.0 otherwise. Written into frag_data[3].a so the
+// screen-space SSS pass can gate its blur to skin pixels only.
+uniform float aya_sss_skin_flag;
+// </FS:AYA>
+
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_MASK)
 uniform float minimum_alpha;
 #endif
@@ -436,7 +442,9 @@ void main()
     frag_data[2] = encodeNormal(norm, env, flag);   // XY = Normal.  Z = Env. intensity. W = 1 skip atmos (mask off fog)
 
 #if defined(HAS_EMISSIVE)
-    frag_data[3] = vec4(0, 0, 0, 0);
+    // <FS:AYA r20 Phase C> .a carries the per-draw skin marker for SSS gating
+    frag_data[3] = vec4(0, 0, 0, aya_sss_skin_flag);
+    // </FS:AYA>
 #endif
 
 #endif
