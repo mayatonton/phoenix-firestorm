@@ -5320,6 +5320,16 @@ bool LLPanelPreferenceSSS::postBuild()
     {
         btn->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onDefaultStrength, this));
     }
+    // <FS:AYA r20 Phase D>
+    if (LLButton* btn = findChild<LLButton>("sss_glow_gain_default"))
+    {
+        btn->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onDefaultGlowGain, this));
+    }
+    if (LLButton* btn = findChild<LLButton>("sss_glow_color_default"))
+    {
+        btn->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onDefaultGlowColor, this));
+    }
+    // </FS:AYA>
     if (LLButton* btn = findChild<LLButton>("sss_reset_all"))
     {
         btn->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onResetAll, this));
@@ -5349,7 +5359,7 @@ void LLPanelPreferenceSSS::onLockToggle()
 
 void LLPanelPreferenceSSS::onDefaultBlurRadius()
 {
-    gSavedSettings.setF32("AYAR20AvatarSkinSSSBlurRadius", 6.0f);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSBlurRadius", 1.0f);
 }
 
 void LLPanelPreferenceSSS::onDefaultStrength()
@@ -5357,11 +5367,25 @@ void LLPanelPreferenceSSS::onDefaultStrength()
     gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.7f);
 }
 
+// <FS:AYA r20 Phase D>
+void LLPanelPreferenceSSS::onDefaultGlowGain()
+{
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSGlowGain", 3.0f);
+}
+
+void LLPanelPreferenceSSS::onDefaultGlowColor()
+{
+    gSavedSettings.setColor4("AYAR20AvatarSkinSSSGlowColor", LLColor4(1.0f, 0.65f, 0.5f, 1.0f));
+}
+// </FS:AYA>
+
 void LLPanelPreferenceSSS::onResetAll()
 {
     gSavedSettings.setBOOL("AYAR20AvatarSkinSSSEnabled", true);
-    gSavedSettings.setF32("AYAR20AvatarSkinSSSBlurRadius", 6.0f);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSBlurRadius", 1.0f);
     gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.7f);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSGlowGain", 3.0f);  // <FS:AYA r20 Phase D>
+    gSavedSettings.setColor4("AYAR20AvatarSkinSSSGlowColor", LLColor4(1.0f, 0.65f, 0.5f, 1.0f));  // <FS:AYA r20 Phase D>
     if (hasString("DefaultWhitelist"))
     {
         gSavedSettings.setString("AYAR20AvatarSkinSSSWhitelist", getString("DefaultWhitelist"));

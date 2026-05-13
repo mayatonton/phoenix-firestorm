@@ -38,7 +38,9 @@ uniform sampler2D diffuseRect;       // source color (screen for pass 1, scratch
 uniform vec2      screen_res;        // viewport size in pixels
 uniform vec2      aya_blur_dir;      // (1,0) horizontal pass 1, (0,1) vertical pass 2
 uniform float     aya_strength;      // alpha output (= mix factor when blended)
-uniform float     aya_blur_radius;   // tap spacing in pixels
+uniform float     aya_blur_radius;   // tap spacing in pixels at ref_dist=1m (world-scaled per-pixel by depth)
+uniform float     aya_glow_gain;     // <FS:AYA r20 Phase D> highlight restore strength
+uniform vec3      aya_glow_color;    // <FS:AYA r20 Phase D> highlight restore tint
 uniform int       aya_visual_realism_enabled;
 uniform int       aya_r20_skin_sss_enabled;
 // <FS:AYA r20 Phase C> gbuffer3 (DEFERRED_EMISSIVE / "emissiveRect") carries
@@ -47,6 +49,23 @@ uniform int       aya_r20_skin_sss_enabled;
 // is harmless because pass 1 ignores alpha. Reusing the existing reserved
 // uniform name avoids adding a new shader binding plumbing.
 uniform sampler2D emissiveRect;
+// </FS:AYA>
+
+// <FS:AYA r20 Phase D world-scale blur> screen-space SSS は blur 半径が
+// pixel 固定のため、遠距離で顔輪郭ごと舐めて破綻する (近接=良 / 遠=ぼやけ
+// のぼやけ)。Jimenez "Separable SSS" 流のアプローチで、blur 半径を世界
+// 座標で固定 (= eye_dist で逆スケール) し、遠距離では半径が < 1 px に
+// 縮退して自動的に no-op になるようにする。
+// 中心 pixel の linear eye depth (= 視点からの距離 [m]) を depth map +
+// inv_proj NDC 復元で取得 (cofF.glsl と同手順)。inv_proj は llrender が
+// reserved uniform として自動 bind。depthMap は doSkinSSS が DEFERRED_DEPTH
+// 経由で bind する。
+// ref_dist=1.0m hard-code: 1m 以内は aya_blur_radius がそのまま使われ
+// (近接ロールプレイ距離の見えを保つ)、1m を超えると逆スケール。
+// 上限を aya_blur_radius に固定することで、超近接 (< 1m) でも blur が
+// 暴走しないようにする。
+uniform sampler2D depthMap;
+uniform mat4      inv_proj;
 // </FS:AYA>
 
 void main()
@@ -78,7 +97,17 @@ void main()
         vec3(0.18, 0.10, 0.05)    // tap +2 (far)
     );
 
-    vec2 step = aya_blur_dir * aya_blur_radius / screen_res;
+    // <FS:AYA r20 Phase D world-scale blur> per-pixel depth から eye_dist を
+    // 復元し、blur 半径を 1m での aya_blur_radius を基準に逆スケール。
+    // eye_dist < 1m では aya_blur_radius (上限) で頭打ち。
+    float d_raw = texture(depthMap, tc).r;
+    vec4  ndc4  = vec4(0.0, 0.0, d_raw * 2.0 - 1.0, 1.0);
+    vec4  vp    = inv_proj * ndc4;
+    float eye_dist = abs(vp.z / vp.w);
+    float r_eff = aya_blur_radius / max(eye_dist, 1.0);
+
+    vec2 step = aya_blur_dir * r_eff / screen_res;
+    // </FS:AYA>
 
     vec3 sum = vec3(0.0);
     for (int i = 0; i < 5; ++i)
@@ -95,6 +124,14 @@ void main()
     // regions get the boost and dark regions stay dark.
     float lit = dot(sum, vec3(0.299, 0.587, 0.114));
     sum += vec3(0.10, 0.04, 0.0) * lit;
+
+    // <FS:AYA r20 Phase D> glow restore: SSS blur で hi-light が眠くなるので、
+    // lit を power curve で持ち上げて peak だけ additive で戻す。
+    // 低 lit 領域 (lit^3 << 1) は無変化、明るい所だけ非対称に強調する。
+    // 色は AYAR20AvatarSkinSSSGlowColor で配信者が選択 (default warm salmon、
+    // 真っ白だと「肌が発光してる」感が出るので血色寄りの暖色を初期値に)。
+    sum += aya_glow_color * pow(clamp(lit, 0.0, 1.0), 3.0) * aya_glow_gain;
+    // </FS:AYA>
 
     // Alpha = strength. With blend SRC_ALPHA / (1 - SRC_ALPHA):
     //   final = blurred * strength + screen_original * (1 - strength)
