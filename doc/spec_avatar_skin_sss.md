@@ -28,19 +28,27 @@ r20 はこの肌透過感を**画面空間 SSS (screen-space SSS)** で表現す
 
 | Phase | 内容 | 状態 |
 |------|------|------|
-| A | screen-space SSS blur pass (フルスクリーン、blur 半径 + strength のみ) | shipped (r20 ベース) |
+| A | screen-space SSS blur pass (2-pass separable、5-tap、波長依存重み、世界座標スケール、Phase C のマスクと連動) | **完成** |
 | B | per-attachment CPU フラグ `mIsSSSTarget` (whitelist マッチ結果を `LLViewerObject` に持つ) | **完成** |
 | E | **mesh UUID 軸 + 右クリック学習 UX** (本書 §4) | **完成** (B と統合して着手、識別子は UUID 単一) |
-| C | GBuffer 「skin」フラグ (B/E の bit を deferred GBuffer に書き込み、SSS pass は per-pixel mask で判定) | 未着手 |
-| D | glow 復元 (skin 部位だけ blur 前の lit を additive で戻し、SSS の眠さを補正) | 未着手 |
+| C | GBuffer 「skin」フラグ (B/E の bit を deferred GBuffer に書き込み、SSS pass は per-pixel mask で判定) | **完成** (gbuffer3 を RGB16F → RGBA16F に拡張、`.a` に skin bit、SSS pass は emissiveRect 経由で per-pixel mask 読取) |
+| D | glow 復元 + 距離適応 blur (SSS の眠さを補正し、遠距離でも破綻しない) | **完成** (D1: lit^3 power-curve highlight boost、追加 RT なし。spec の「blur 前の lit」原案は D2 へ降格) + **世界座標スケール blur** (Jimenez "Separable SSS"、`r_eff = blur_radius / max(eye_dist, 1m)` で半径を距離に逆比例 = 「ボケのボケ」問題が根本解決) |
 
 ### 2.1 各 Phase の境界
 
-- **A は完成しているが Phase C が来るまで全画面 blur** — 肌でない部位 (服/髪/背景) も blur される副作用が出るが、見栄えのインパクトを早期に確認するためあえて shipping
-- **B + E は同時に完成** — CPU 側 wiring (`mIsSSSTarget`) と識別子 (mesh UUID + 右クリック学習 UX) を一体で実装。Phase A の shader は今は読んでいない
-- **B/E 単体では視覚的効果はゼロ** — bit が立つだけ。Phase A は全画面 blur のまま、ただし whitelist UI と右クリック登録 UX は動作確認可能
-- **C で初めて見え方が変わる** — GBuffer に skin bit を書き、SSS pass がそれをマスクとして使う
-- **D は補正** — SSS で blur されると肌のハイライトが眠くなるので、blur 前の lit を skin 部位だけ additive で足し戻す
+- **A**: screen-space SSS blur pass (2-pass separable、5-tap、波長依存重み)。r20 出荷時点では Phase C のマスクと連動し肌 pixel だけに適用される
+- **B + E は同時に完成** — CPU 側 wiring (`mIsSSSTarget`) と識別子 (mesh UUID + 右クリック学習 UX) を一体で実装
+- **C**: GBuffer (gbuffer3) を RGB16F → RGBA16F に拡張し `.a` に skin bit を書く。SSS pass は emissiveRect 経由で per-pixel mask を読み肌だけに blur
+- **D は補正** — SSS で blur されると肌のハイライトが眠くなるので、glow 復元と世界座標スケール blur で補正
+  - **D1 (出荷)**: blurred lit を `pow(lit, 3)` で持ち上げて peak のみ additive。追加 RT 不要・shader 単体修正で live tuning 可。cvar `AYAR20AvatarSkinSSSGlowGain` (default **3.0**、max 5.0) + `AYAR20AvatarSkinSSSGlowColor` (Color4、コード default warm salmon)。色は配信者が肌色/血色感に合わせて UI で選択 — 真っ白だと「肌が発光」感が出るため default は暖色寄り。spec の「blur 前の lit」原案より cheap、look 判定後に不足なら D2 昇格。
+  - **D-世界座標スケール blur (出荷、D1 と同時)**: screen-space SSS の根本問題 (blur 半径は pixel 固定 / 遠距離で顔の輪郭ごと舐めて破綻 / かつ遠景は mip で既にソフトのため「ボケのボケ」になる) を、Jimenez "Separable SSS" 標準アプローチで根本解決。skinSSSF が per-pixel に depth を読み、`r_eff = aya_blur_radius / max(eye_dist, 1m)` で blur 半径を距離に逆比例させる。1m 以内は `aya_blur_radius` 上限で頭打ち (近接の見えを保つ + 超近接で暴走しない)、1m を超えると逆スケールで自動減衰。10m 先では半径 < 1px = no-op に縮退するため別の距離 fade cvar は不要。glow は sum 経由のままだが、遠距離で sum が「素 RGB」に縮退するので glow は自然に「素肌の輝度を持ち上げる」効果に転じ、AYA 要望「遠距離でも肌の生き感だけ glow で維持」を自動達成する。
+  - **D2 (未実装、保留)**: pass 1 前に `mRT->screen` を scratch RT へ snapshot し、pass 2 で `additive = max(0, original − blurred) * gain` を true unsharp-mask で復元。pre-blur specular peak を厳密に戻すが scratch RT 1 枚増 (HDR RGBA16F、FHD で ~16MB) + 3 OS の screen resize / VRAM pressure 検証が必要。
+
+#### 2.1.1 距離適応の設計史 (採用経緯)
+
+初期 D 案は smoothstep ベースの距離 fade (`AYAR20AvatarSkinSSSFadeNearDistance/FarDistance` cvar 2 件) で「3m〜10m で SSS を線形に切る」設計だった。AYA の実機検証で「数 m 下がると blur-on-blur で顔がぼやける」現象が継続したため、smoothstep の閾値を詰めても根本解決しないと判断。
+
+Jimenez "Separable SSS" の世界座標スケール blur (`r_eff = blur_radius / max(eye_dist, 1m)`) へ pivot し、距離 fade cvar 2 件を廃止。世界座標スケールなら近接で半径 1px / 10m 先で 0.1px (自動 no-op) となり、距離切替の判断ロジックが自然消滅する。AYA 採用後の検証で「Blur 1.0 / Strength 0.7 / Glow restore 3.00」が確定値。
 
 ### 2.2 Phase 順序を変えた理由
 
@@ -152,39 +160,42 @@ glow restore で hi-light の眠さを補正
 
 cvar 変更時は `SkinSSSMatcher::reloadAndReevaluate()` が `LLCharacter::sInstances` を全走査して全アバター × 全 attachment を再評価するため、右クリック登録 → 即座に全員に伝播する。
 
-## 5. 実装状況 (Phase B + E 完成時点)
+## 5. 実装状況 (r20 出荷時点)
 
 ### 5.1 追加ファイル
 
 - `indra/newview/llayaskinsss.h/.cpp` — `SkinSSSMatcher` singleton (cvar 監視 + UUID パース + 全アバター再評価)、static `getMeshId(LLViewerObject*)`、`addUUID()` / `removeUUID()` / `isInWhitelist()` API、`setSSSTargetForAttachment` / `clearSSSTargetForAttachment` 自由関数
+- `indra/newview/app_settings/shaders/class1/deferred/skinSSSV.glsl` / `skinSSSF.glsl` — Phase A の screen-space SSS 2-pass shader。F は 5-tap separable blur + 波長依存重み + per-pixel depth (depthMap / inv_proj) からの世界座標スケール blur + emissiveRect `.a` 経由 skin mask
+- `indra/newview/skins/default/xui/en/panel_preferences_sss.xml` — Preferences > Graphics > SSS タブ UI (Enable / Blur radius / Strength / Glow restore / Glow color / Lock checkbox / Whitelist text editor / 各 Default ボタン / Reset all)
 
 ### 5.2 既存ファイル変更
 
 - `indra/newview/llviewerobject.h` — `mIsSSSTarget` 追加、`isSSSTarget()` / `setSSSTarget()` accessor 追加
 - `indra/newview/llvoavatar.cpp` — `attachObject()` 末尾で `setSSSTargetForAttachment()` 呼出 (isSelf() ガードなし — UUID 軸は他人にも効く)、`detachObject()` で `clearSSSTargetForAttachment()` 呼出
+- `indra/newview/llvovolume.cpp` — Phase C: 描画時に `mIsSSSTarget` を per-draw flag として伝播 (gbuffer3 `.a` への skin bit 書込みパス)
 - `indra/newview/llviewermenu.cpp` — `SSS.Add` / `SSS.Remove` (commit) と `SSS.EnableAdd` / `SSS.EnableRemove` (enable) の 4 ハンドラ登録、`LLSelectMgr::getSelection()->getPrimaryObject()` から mesh UUID を抽出して `SkinSSSMatcher` にディスパッチ
-- `indra/newview/CMakeLists.txt` — 新規 2 ファイルを source/header list に追加
-- `indra/newview/llviewershadermgr.cpp` — shader cache 鍵に `AYASTORM_SHADER_CACHE_TAG = "AYAstorm r20"` を mix-in (r-bump 時に compiled shader cache を自動無効化)
-- `indra/newview/skins/default/xui/en/panel_preferences_sss.xml` — Preferences > Graphics > SSS タブ、ラベルを UUID 軸表現に更新 ("Target mesh UUIDs", hint "One UUID per line")
+- `indra/newview/pipeline.cpp` / `pipeline.h` — `doSkinSSS()` 2-pass 実装 (horizontal pass: screen → mWaterDis blend off / vertical pass: mWaterDis → screen blend on)、`depthMap` を両 pass で bind、Phase C で gbuffer3 を RGBA16F に拡張
+- `indra/newview/llfloaterpreference.cpp` / `.h` — SSS Default ボタン / Reset all / Lock checkbox の handler 配線 (`onDefaultBlurRadius` / `onDefaultStrength` / `onDefaultGlowGain` / `onDefaultGlowColor` / `onResetAll` / `onWhitelistLockToggle`)
+- `indra/newview/llviewershadermgr.cpp` / `.h` — `skinSSSProgram` 追加、shader cache 鍵に `AYASTORM_SHADER_CACHE_TAG = "AYAstorm r20"` を mix-in (r-bump 時に compiled shader cache を自動無効化)
+- `indra/llrender/llshadermgr.cpp` / `.h` — SSS shader 用 reserved uniform (aya_blur_dir / aya_blur_radius / aya_strength / aya_glow_gain / aya_glow_color) 登録
+- `indra/newview/app_settings/shaders/class1/deferred/*.glsl` — Phase C で gbuffer3 `.a` に skin bit を書く shader (avatarF / pbropaqueF / materialF 等) を更新
+- `indra/newview/CMakeLists.txt` — 新規 source/header (llayaskinsss + SSS shader) を list に追加
 - `indra/newview/skins/default/xui/en/menu_attachment_self.xml` / `menu_attachment_other.xml` — フラット文脈メニュー末尾に "Add to SSS whitelist" / "Remove from SSS whitelist" を追加
 - `indra/newview/skins/default/xui/en/menu_pie_attachment_self.xml` / `menu_pie_attachment_other.xml` — "More >" sub-pie 内に "SSS >" sub-pie (Add / Remove) を追加
-- `indra/newview/app_settings/settings.xml` — `AYAR20AvatarSkinSSSWhitelist` Comment を UUID 軸表現に更新
+- `indra/newview/skins/default/xui/en/panel_preferences_graphics1.xml` — SSS タブを Graphics tab container に追加
+- `indra/newview/skins/default/xui/en/strings.xml` + 各言語 strings.xml — SSS 関連メニュー label 追加
+- `indra/newview/app_settings/settings.xml` — `AYAR20AvatarSkinSSSEnabled` (default 1)、`AYAR20AvatarSkinSSSBlurRadius` (default 1.0、eye_dist=1m 基準 pixel)、`AYAR20AvatarSkinSSSStrength` (default 0.7)、`AYAR20AvatarSkinSSSGlowGain` (default 3.0、max 5.0)、`AYAR20AvatarSkinSSSGlowColor` (Color4、warm salmon)、`AYAR20AvatarSkinSSSWhitelist` (Comment を UUID 軸表現)
 
-### 5.3 Phase B + E の到達点と残課題
-
-到達:
+### 5.3 r20 到達点
 
 - 自分 / 他人どちらのアバターでも mesh UUID 経由で `mIsSSSTarget` が flip
 - 右クリック 1 発で whitelist 登録 (cvar 変更シグナル → 全アバター再評価が即座に走る)
 - Preferences の text_editor で手動 UUID 編集も可能 (2 層 UI)
-
-残課題 (本書のスコープ内、Phase C 着手前に拾うか判断):
-
-- **Lock checkbox** (whitelist 誤編集防止) は配置済みだが text_editor の read-only ゲートが未配線
-- spinner 横の **「Default」ボタン × 2** (Blur radius / Strength) は配置済みだが handler 未配線
-- **「Reset all to defaults」ボタン**は配置済みだが handler 未配線
-- Phase A の SSS shader は `mIsSSSTarget` を読んでおらず**現状は全画面 blur** (Phase C で per-pixel mask に置換)
-- 肌でない服や髪も blur される (副作用、Phase C のマスクで解消)
+- gbuffer3 `.a` の skin bit による per-pixel mask で、肌 pixel だけに SSS blur が適用される (服/髪/背景は無影響)
+- 世界座標スケール blur で近接〜遠距離まで自動スケール (別途距離 fade cvar 不要)
+- Glow restore (`pow(lit, 3) × glow_gain × glow_color`) で blur 後の肌ハイライトを補正、デフォルト warm salmon で血色感を補強
+- Preferences UI 配線完了 (Default ボタン × 4 / Reset all / Lock checkbox の text_editor read-only ゲート)
+- SSS はデフォルト ON (`AYAR20AvatarSkinSSSEnabled=1`) で出荷
 
 ## 6. オープン課題
 
@@ -200,40 +211,53 @@ cvar 変更時は `SkinSSSMatcher::reloadAndReevaluate()` が `LLCharacter::sIns
 - Genus Project heads
 - Catwa heads (legacy だが利用者まだ多い)
 
-シード収集方法は別途検討 (自分のインベントリから計測 / community 投稿)。Phase C/D で見え方が確定してから判断。
+シード収集方法は別途検討 (自分のインベントリから計測 / community 投稿)。r20 以降の運用フィードバック次第で r21+ にシード同梱を検討。
 
 ### 6.2 mesh UUID list の community 維持
 
 UUID 一覧の保守は anti-griefer block list の保守と同程度の運用負荷を想定。新作 body リリースのたびに list を更新する仕組み (Discord 通知 / GitHub PR 等) は未設計。シード list を出荷するか否かで運用設計の必要度が変わるため、§6.1 と合わせて判断する。
 
-### 6.3 Preferences パネルの未配線
+### 6.3 r20 出荷前の最終チェックリスト
 
-§5.3 残課題のうち UI 配線の 3 件 (Lock checkbox の read-only ゲート、Default ボタン × 2、Reset all ボタン):
+リリース前 / 出荷後 verification:
 
-- 機能的に欠けても r20 出荷可能 (デフォルト値で動く、whitelist 直編集も可能、Reset は cvar を 1 つずつ Ctrl+R で対応)
-- ただしユーザーの「あれ?ボタン押したのに反応しない」体験は減点要因
-- shader 工程 (Phase C/D) と独立に進められるので、待ち時間に詰めると総合工数が減る
+- 右クリック Add → text editor に UUID が 1 行追記される ✓
+- 右クリック Remove → text editor から該当 UUID 行が消える ✓
+- text editor に手動で UUID を貼ると登録される (commit_on_focus_lost で発火) ✓
+- Lock checkbox ON で text_editor が read-only にゲートされる ✓
+- 各 Default ボタンで該当 cvar が出荷時 default に戻る ✓
+- Reset all ボタンで Blur=1.0 / Strength=0.7 / GlowGain=3.0 / GlowColor=warm salmon に一括復帰 ✓
+- gbuffer3 `.a` skin bit が立っている pixel だけに SSS blur が適用される (服/髪/背景に滲まない) ✓
+- 近接 (1m 以内) で SSS が効き、10m 超では半径 < 1px に縮退して無影響 ✓
 
-### 6.4 Phase C/D へ移る前のチェックリスト
+### 6.4 検証後の debug settings 戻し案内 (記憶: `feedback_restore_debug_settings.md`)
 
-C 着手前に確認したいこと:
+検証中に AYA が persisted 上書きした値 (`~/.ayastorm_x64/user_settings/settings.xml`) は次回起動でも残るため、リリース後に default に戻したい場合は以下を参照:
 
-- 右クリック Add → text editor に UUID が 1 行追記される
-- 右クリック Remove → text editor から該当 UUID 行が消える
-- text editor に手動で UUID を貼ると登録される (commit_on_focus_lost で発火)
-- 同じ mesh を使う他アバターでも `mIsSSSTarget` が flip しているか (現状は外から見えない、簡易 stat 表示か LL_INFOS で確認可能)
-- 装着/取外し時に `setSSSTargetForAttachment` / `clearSSSTargetForAttachment` が呼ばれる (LL_INFOS hook で確認)
+| Cvar | 出荷 default | 戻す手段 |
+|------|-------------|---------|
+| `AYAR20AvatarSkinSSSEnabled` | 1 | Preferences > Graphics > SSS > Enable SSS チェック OFF |
+| `AYAR20AvatarSkinSSSBlurRadius` | 1.0 | SSS タブの「Default」ボタン |
+| `AYAR20AvatarSkinSSSStrength` | 0.7 | SSS タブの「Default」ボタン |
+| `AYAR20AvatarSkinSSSGlowGain` | 3.0 | SSS タブの「Default」ボタン |
+| `AYAR20AvatarSkinSSSGlowColor` | warm salmon (1.0, 0.65, 0.5, 1.0) | SSS タブの「Default」ボタン |
+| 全部 | (上記すべて) | 「Reset all to defaults」ボタン |
 
 ## 7. 関連記憶 (LLM persistent memory)
 
 - `project_ayastorm_visual_realism_chapter.md` — 視覚的リアリティ章の core thesis (光は入口、LUT/Tone では届かない根本)
 - `project_ayastorm_r14_pivot_to_light.md` — r14+ で音→光軸への移行
 - `project_aya_visual_realism_alpha_protect.md` — 視覚章 post-pass は scene buffer alpha を破壊しない
-- `reference_deferred_shader_routing.md` — オブジェクト → Pool → bound shader → gbuffer flag → softenLightF 分岐の確定マップ (Phase C 着手前に必読)
+- `reference_deferred_shader_routing.md` — オブジェクト → Pool → bound shader → gbuffer flag → softenLightF 分岐の確定マップ (Phase C 実装の根拠)
+- `reference_gbuffer3_storage.md` — gbuffer3 を RGB16F → RGBA16F に拡張した経緯 (`.a` を skin bit として使用、Phase C の根拠)
 
 ## 8. r20 リリース時点での宣伝ポイント
 
 - SL viewer 史上初の**アバター肌 SSS** (画面空間 SSS、deferred routing にネイティブ統合)
 - 自分にも他人にも効く (mesh UUID 軸統一、Phase B/E 統合済み)
 - ユーザーは UUID を 1 度も見ない (右クリックで学習、cvar 変更が即座に全アバターへ伝播)
-- 設定 3 つ (Enable / Blur radius / Strength) + Whitelist で完結
+- **gbuffer3 `.a` skin bit による per-pixel mask** — 肌だけに blur、服/髪/背景は無影響 (Phase C)
+- **世界座標スケール blur (Jimenez "Separable SSS" 方式)** — 半径が距離に逆比例、近接は本気の SSS / 遠距離は自動 no-op で「ボケのボケ」を根本回避 (Phase D)
+- **Glow restore + warm salmon color** — blur で眠くなる肌ハイライトを additive で復元、血色感を補強 (Phase D1)
+- デフォルト ON (`AYAR20AvatarSkinSSSEnabled=1`) — 起動直後から体験可能
+- 設定 UI 完備 (Enable / Blur radius / Strength / Glow restore / Glow color / Whitelist / 各 Default / Reset all / Lock)

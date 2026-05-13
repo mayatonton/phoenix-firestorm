@@ -557,6 +557,8 @@ private:
     void onLockToggle();
     void onDefaultBlurRadius();
     void onDefaultStrength();
+    void onDefaultGlowGain();   // <FS:AYA r20 Phase D>
+    void onDefaultGlowColor();  // <FS:AYA r20 Phase D>
     void onResetAll();
 };
 // </FS:AYA>

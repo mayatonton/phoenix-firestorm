@@ -63,13 +63,14 @@
      top_pad="6"
      height="20"
      width="220"
-     label="Blur radius (px)"
+     label="Blur radius @1m (px)"
      label_width="120"
      decimal_digits="2"
      min_val="0.0"
      max_val="32.0"
      increment="0.5"
-     initial_value="6.0"
+     initial_value="1.0"
+     tool_tip="Tap spacing in pixels at 1m camera distance. Auto-scales inversely with distance (world-space sized SSS)"
      name="sss_blur_radius" />
     <button
      layout="topleft"
@@ -106,6 +107,65 @@
      width="70"
      label="Default"
      name="sss_strength_default" />
+
+    <spinner
+     control_name="AYAR20AvatarSkinSSSGlowGain"
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="4"
+     height="20"
+     width="220"
+     label="Glow restore"
+     label_width="120"
+     decimal_digits="2"
+     min_val="0.0"
+     max_val="5.0"
+     increment="0.05"
+     initial_value="3.0"
+     name="sss_glow_gain" />
+    <button
+     layout="topleft"
+     follows="left|top"
+     left_pad="6"
+     top_delta="0"
+     height="20"
+     width="70"
+     label="Default"
+     name="sss_glow_gain_default" />
+
+    <text
+     layout="topleft"
+     follows="left|top"
+     left="10"
+     top_pad="6"
+     height="16"
+     width="120"
+     name="sss_glow_color_label">
+        Glow color
+    </text>
+    <color_swatch
+     control_name="AYAR20AvatarSkinSSSGlowColor"
+     layout="topleft"
+     follows="left|top"
+     left_delta="120"
+     top_delta="-4"
+     height="24"
+     width="44"
+     can_apply_immediately="true"
+     border_color="0.45098, 0.517647, 0.607843, 1"
+     label_height="0"
+     tool_tip="Tint for the SSS highlight restore (default warm salmon)"
+     name="sss_glow_color" />
+    <button
+     layout="topleft"
+     follows="left|top"
+     left_pad="12"
+     top_delta="0"
+     height="20"
+     width="70"
+     label="Default"
+     name="sss_glow_color_default" />
 
     <!-- ===== Whitelist section ===== -->
     <text
