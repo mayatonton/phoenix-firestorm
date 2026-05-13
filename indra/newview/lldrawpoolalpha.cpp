@@ -184,7 +184,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     prepare_alpha_shader(simple_shader, true, water_sign); //prime simple shader (loads shadow relevant uniforms)
 
     LLGLSLShader* materialShader = gDeferredMaterialProgram;
-    for (int i = 0; i < LLMaterial::SHADER_COUNT*2; ++i)
+    for (int i = 0; i < LLMaterial::SHADER_COUNT; ++i)
     {
         prepare_alpha_shader(&materialShader[i], true, water_sign);
     }
