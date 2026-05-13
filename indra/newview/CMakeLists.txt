@@ -679,6 +679,7 @@ set(viewer_SOURCE_FILES
     llpopupview.cpp
     llpositionalstreammgr.cpp
     llocclusiongeometrymgr.cpp
+    llayaskinsss.cpp
     llpostcard.cpp
     llpresetsmanager.cpp
     llpreview.cpp
@@ -1536,6 +1537,7 @@ set(viewer_HEADER_FILES
     llpopupview.h
     llpositionalstreammgr.h
     llocclusiongeometrymgr.h
+    llayaskinsss.h
     llpostcard.h
     llpresetsmanager.h
     llpreview.h

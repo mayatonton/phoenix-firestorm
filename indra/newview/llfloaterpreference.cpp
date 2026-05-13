@@ -76,6 +76,7 @@
 #include "llscrolllistitem.h"
 #include "llsliderctrl.h"
 #include "lltabcontainer.h"
+#include "lltexteditor.h" // <FS:AYA r20 Phase A> SSS whitelist editor
 #include "lltrans.h"
 #include "llviewercontrol.h"
 #include "llviewercamera.h"
@@ -5294,6 +5295,79 @@ void LLPanelPreferenceCrashReports::cancel(const std::vector<std::string> settin
 {
 }
 // [/SL:KB]
+
+// <FS:AYA r20 Phase A> SSS preferences panel — whitelist + tuning + lock
+static LLPanelInjector<LLPanelPreferenceSSS> t_pref_sss("panel_preference_sss");
+
+LLPanelPreferenceSSS::LLPanelPreferenceSSS()
+    : LLPanelPreference()
+{
+}
+
+bool LLPanelPreferenceSSS::postBuild()
+{
+    LLCheckBoxCtrl* lock = findChild<LLCheckBoxCtrl>("sss_whitelist_lock");
+    if (lock)
+    {
+        lock->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onLockToggle, this));
+    }
+
+    if (LLButton* btn = findChild<LLButton>("sss_blur_radius_default"))
+    {
+        btn->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onDefaultBlurRadius, this));
+    }
+    if (LLButton* btn = findChild<LLButton>("sss_strength_default"))
+    {
+        btn->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onDefaultStrength, this));
+    }
+    if (LLButton* btn = findChild<LLButton>("sss_reset_all"))
+    {
+        btn->setCommitCallback(boost::bind(&LLPanelPreferenceSSS::onResetAll, this));
+    }
+
+    // Lock は session 単位 (永続化なし)。初期は未 Lock = 編集可能。
+    onLockToggle();
+
+    return LLPanelPreference::postBuild();
+}
+
+void LLPanelPreferenceSSS::onLockToggle()
+{
+    bool locked = false;
+    if (LLCheckBoxCtrl* lock = findChild<LLCheckBoxCtrl>("sss_whitelist_lock"))
+    {
+        locked = lock->get();
+    }
+    if (LLTextEditor* whitelist = findChild<LLTextEditor>("sss_whitelist"))
+    {
+        // setEnabled() drives both keyboard handling and the underlying
+        // mReadOnly flag — setReadOnly() alone leaves focus/key state
+        // half-configured so typing was silently ignored.
+        whitelist->setEnabled(!locked);
+    }
+}
+
+void LLPanelPreferenceSSS::onDefaultBlurRadius()
+{
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSBlurRadius", 6.0f);
+}
+
+void LLPanelPreferenceSSS::onDefaultStrength()
+{
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.7f);
+}
+
+void LLPanelPreferenceSSS::onResetAll()
+{
+    gSavedSettings.setBOOL("AYAR20AvatarSkinSSSEnabled", true);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSBlurRadius", 6.0f);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.7f);
+    if (hasString("DefaultWhitelist"))
+    {
+        gSavedSettings.setString("AYAR20AvatarSkinSSSWhitelist", getString("DefaultWhitelist"));
+    }
+}
+// </FS:AYA>
 
 // [SL:KB] - Patch: Viewer-Skins | Checked: 2010-10-21 (Catznip-2.2)
 static LLPanelInjector<LLPanelPreferenceSkins> t_pref_skins("panel_preference_skins");

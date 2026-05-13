@@ -5806,6 +5806,14 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         draw_info->mAvatar = facep->mAvatar;
         draw_info->mSkinInfo = facep->mSkinInfo;
 
+        // <FS:AYA r20 Phase C> propagate per-object SSS skin flag into LLDrawInfo
+        // so the pool render can emit a per-draw uniform without per-frame lookup.
+        if (LLViewerObject* vobj = facep->getViewerObject())
+        {
+            draw_info->mIsSSSTarget = vobj->isSSSTarget();
+        }
+        // </FS:AYA>
+
         if (gltf_mat)
         {
             // just remember the material ID, render pools will reference the GLTF material

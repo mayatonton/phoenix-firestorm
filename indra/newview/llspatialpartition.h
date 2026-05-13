@@ -141,6 +141,7 @@ public:
     U8   mShiny = 0;
     bool mFullbright = false;
     bool mHasGlow = false;
+    bool mIsSSSTarget = false; // <FS:AYA r20 Phase C> propagated from parent LLViewerObject::isSSSTarget()
 
     struct CompareTexture
     {

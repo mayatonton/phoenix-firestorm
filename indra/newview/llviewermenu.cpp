@@ -109,6 +109,7 @@
 #include "llsceneview.h"
 #include "llscenemonitor.h"
 #include "llselectmgr.h"
+#include "llayaskinsss.h"        // <FS:AYA r20 Phase E> per-attachment SSS whitelist mutators
 #include "llsidepanelappearance.h"
 #include "llspellcheckmenuhandler.h"
 #include "llstatusbar.h"
@@ -13429,5 +13430,69 @@ void initialize_menus()
     view_listener_t::addMenu(new AYAConversationsCheck(), "AYA.Conversations.Check");
 
     // Note: AYA.NearbyChat.Toggle is registered in llviewerwindow.cpp before panel_toolbar_view.xml loads
+    // </FS:AYA>
+
+    // <FS:AYA r20 Phase E> SSS whitelist add/remove from right-click on
+    // an attachment. The right-clicked prim is the primary selection;
+    // we resolve its mesh asset UUID and mutate the whitelist cvar.
+    // Add is enabled only for mesh prims not yet in the list; Remove is
+    // enabled only for mesh prims that *are* in the list.
+    auto sss_get_primary_mesh_id = []() -> LLUUID
+    {
+        LLViewerObject* obj = LLSelectMgr::getInstance()->getSelection()->getPrimaryObject();
+        return ayastorm::SkinSSSMatcher::getMeshId(obj);
+    };
+    commit.add("SSS.Add", [sss_get_primary_mesh_id](LLUICtrl*, const LLSD&)
+    {
+        const LLUUID id = sss_get_primary_mesh_id();
+        if (id.notNull())
+        {
+            ayastorm::SkinSSSMatcher::instance().addUUID(id);
+        }
+    });
+    commit.add("SSS.Remove", [sss_get_primary_mesh_id](LLUICtrl*, const LLSD&)
+    {
+        const LLUUID id = sss_get_primary_mesh_id();
+        if (id.notNull())
+        {
+            ayastorm::SkinSSSMatcher::instance().removeUUID(id);
+        }
+    });
+    enable.add("SSS.EnableAdd", [sss_get_primary_mesh_id](LLUICtrl*, const LLSD&)
+    {
+        const LLUUID id = sss_get_primary_mesh_id();
+        return id.notNull() && !ayastorm::SkinSSSMatcher::instance().isInWhitelist(id);
+    });
+    enable.add("SSS.EnableRemove", [sss_get_primary_mesh_id](LLUICtrl*, const LLSD&)
+    {
+        const LLUUID id = sss_get_primary_mesh_id();
+        return id.notNull() && ayastorm::SkinSSSMatcher::instance().isInWhitelist(id);
+    });
+
+    // Linkset variants: walk root + children so multi-link mesh bodies
+    // (mesh body brands with many child prims) can be whitelisted in a
+    // single click. getRootEdit() climbs to the linkset root so that
+    // right-clicking *any* child prim still walks the whole linkset.
+    auto sss_get_primary_root = []() -> LLViewerObject*
+    {
+        LLViewerObject* obj = LLSelectMgr::getInstance()->getSelection()->getPrimaryObject();
+        return obj ? obj->getRootEdit() : nullptr;
+    };
+    commit.add("SSS.AddLinkset", [sss_get_primary_root](LLUICtrl*, const LLSD&)
+    {
+        ayastorm::addLinksetMeshIdsToWhitelist(sss_get_primary_root());
+    });
+    commit.add("SSS.RemoveLinkset", [sss_get_primary_root](LLUICtrl*, const LLSD&)
+    {
+        ayastorm::removeLinksetMeshIdsFromWhitelist(sss_get_primary_root());
+    });
+    enable.add("SSS.EnableAddLinkset", [sss_get_primary_root](LLUICtrl*, const LLSD&)
+    {
+        return ayastorm::linksetHasUnregisteredMesh(sss_get_primary_root());
+    });
+    enable.add("SSS.EnableRemoveLinkset", [sss_get_primary_root](LLUICtrl*, const LLSD&)
+    {
+        return ayastorm::linksetHasRegisteredMesh(sss_get_primary_root());
+    });
     // </FS:AYA>
 }

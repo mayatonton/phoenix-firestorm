@@ -346,6 +346,13 @@ public:
     // additive radiance is integrated into the HDR scene buffer before tonemap.
     void doGodrays();
 
+    // <FS:AYA r20 P0a> skin SSS prototype: screen-space 5-tap separable blur
+    // with wavelength-dependent per-channel weights. Called from
+    // renderGeomPostDeferred right after doGodrays() so the SSS mix lands
+    // on the HDR scene buffer before tonemap. P0a applies globally (no
+    // skin whitelist) — pure look-evaluation pass.
+    void doSkinSSS();
+
     // Generate the water exclusion surface mask.
     void doWaterExclusionMask();
 

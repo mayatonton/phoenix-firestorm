@@ -54,6 +54,12 @@ in vec2 emissive_texcoord;
 
 uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
 
+// <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
+// is on the SSS whitelist, 0.0 otherwise. Packed into frag_data[3].a so the
+// screen-space SSS pass can gate its blur to skin pixels only.
+uniform float aya_sss_skin_flag;
+// </FS:AYA>
+
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);
 
@@ -117,7 +123,9 @@ void main()
     frag_data[2] = encodeNormal(tnorm, 0, GBUFFER_FLAG_HAS_PBR); // normal, environment intensity, flags
 
 #if defined(HAS_EMISSIVE)
-    frag_data[3] = max(vec4(emissive,0), vec4(0));                                                // PBR sRGB Emissive
+    // <FS:AYA r20 Phase C> .a carries the per-draw skin marker for SSS gating
+    frag_data[3] = max(vec4(emissive, aya_sss_skin_flag), vec4(0));
+    // </FS:AYA>
 #endif
 }
 
