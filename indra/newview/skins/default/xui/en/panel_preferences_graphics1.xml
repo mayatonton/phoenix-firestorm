@@ -2134,6 +2134,19 @@ If you do not understand the distinction then leave this control alone."
          top_pad="5"
          width="477"/>
     </panel>
+
+<!-- <FS:AYA r20 Phase A> SSS sub-tab inside Graphics -->
+    <panel
+     class="panel_preference_sss"
+     filename="panel_preferences_sss.xml"
+     top_pad="5"
+     bottom="-1"
+     left="1"
+     right="-1"
+     follows="all"
+     label="SSS"
+     name="SSS" />
+<!-- </FS:AYA> -->
 </tab_container>
 
 <!-- These two check boxes are dummies and will never be displayed.  They are here so the control variables

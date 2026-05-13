@@ -121,7 +121,10 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    frag_data[3] = vec4(color.rgb, 1.0);
+    // <FS:AYA r20 Phase C> .a is the SSS skin mask — sky must be 0 so
+    // the screen-space SSS pass doesn't blur visible sky pixels.
+    frag_data[3] = vec4(color.rgb, 0.0);
+    // </FS:AYA>
 #else
     frag_data[0] = vec4(color.rgb, 1.0);
 #endif

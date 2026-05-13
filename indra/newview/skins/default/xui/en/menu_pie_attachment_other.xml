@@ -136,22 +136,31 @@
             name="Avatar Pie More 2"
             label="More &gt;">
 
-            <!-- ## Zi: Is this the right thing to use for avatar textures? -->
-            <pie_slice
-                label="Textures"
-                name="Debug...">
-                <pie_slice.on_click
-                    function="Avatar.Debug" />
-            </pie_slice>
-            <pie_slice
-	            enabled="true"
-	            label="Script Info"
-	            name="ScriptInfo">
-	            <pie_slice.on_click
-	                function="Tools.ScriptInfo" />
-                <pie_slice.on_enable
-                    function="Object.EnableScriptInfo" />
-	        </pie_slice>
+            <!-- <FS:AYA r20 Phase E> consolidate Textures + Script Info into Debug > sub-pie
+                 so the 8-slot ring has room for SSS > -->
+            <pie_menu
+                name="DebugMenu"
+                label="Debug &gt;">
+                <pie_separator />
+                <pie_separator />
+                <pie_separator />
+                <pie_slice
+                    label="Textures"
+                    name="Debug...">
+                    <pie_slice.on_click
+                        function="Avatar.Debug" />
+                </pie_slice>
+                <pie_slice
+                    enabled="true"
+                    label="Script Info"
+                    name="ScriptInfo">
+                    <pie_slice.on_click
+                        function="Tools.ScriptInfo" />
+                    <pie_slice.on_enable
+                        function="Object.EnableScriptInfo" />
+                </pie_slice>
+            </pie_menu>
+            <!-- </FS:AYA> -->
             <pie_slice
                 label="Call"
                 name="Call">
@@ -258,6 +267,48 @@
 						parameter="2" />
 				</pie_slice>
 			</pie_menu>
+            <!-- <FS:AYA r20 Phase E> SSS whitelist sub-pie -->
+            <pie_menu
+                name="SSSMenu"
+                label="SSS &gt;">
+                <pie_separator />
+                <pie_separator />
+                <pie_slice
+                    label="Add"
+                    name="SSS Add">
+                    <pie_slice.on_click
+                        function="SSS.Add" />
+                    <pie_slice.on_enable
+                        function="SSS.EnableAdd" />
+                </pie_slice>
+                <pie_slice
+                    label="Remove"
+                    name="SSS Remove">
+                    <pie_slice.on_click
+                        function="SSS.Remove" />
+                    <pie_slice.on_enable
+                        function="SSS.EnableRemove" />
+                </pie_slice>
+                <pie_separator />
+                <pie_slice
+                    label="Add Linkset"
+                    name="SSS Add Linkset">
+                    <pie_slice.on_click
+                        function="SSS.AddLinkset" />
+                    <pie_slice.on_enable
+                        function="SSS.EnableAddLinkset" />
+                </pie_slice>
+                <pie_slice
+                    label="Remove Linkset"
+                    name="SSS Remove Linkset">
+                    <pie_slice.on_click
+                        function="SSS.RemoveLinkset" />
+                    <pie_slice.on_enable
+                        function="SSS.EnableRemoveLinkset" />
+                </pie_slice>
+                <pie_separator />
+            </pie_menu>
+            <!-- </FS:AYA> -->
         </pie_menu>
 
         <pie_slice

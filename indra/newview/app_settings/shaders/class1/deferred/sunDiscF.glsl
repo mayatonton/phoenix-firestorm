@@ -50,7 +50,9 @@ void main()
     frag_data[2] = vec4(0.0, 1.0, 0.0, GBUFFER_FLAG_SKIP_ATMOS);
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    frag_data[3] = c;
+    // <FS:AYA r20 Phase C> .a = SSS skin mask, sun is not skin.
+    frag_data[3] = vec4(c.rgb, 0.0);
+    // </FS:AYA>
 #else
     frag_data[0] = c;
 #endif

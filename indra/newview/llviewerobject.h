@@ -198,6 +198,16 @@ public:
     virtual bool    isAttachment() const { return false; }
     const std::string& getAttachmentItemName() const;
 
+    // <FS:AYA r20 P0a Phase B> Phase B (CPU wiring) flag: set when the
+    // owning avatar attaches this object and its inventory item name
+    // matches the SSS whitelist (substring, case-insensitive). Phase A
+    // shader pass currently ignores this flag (still fullscreen blur);
+    // Phase C will gate the rendering on the GBuffer skin bit derived
+    // from it.
+    bool isSSSTarget() const { return mIsSSSTarget; }
+    void setSSSTarget(bool target) { mIsSSSTarget = target; }
+    // </FS:AYA>
+
     virtual LLVOAvatar* getAvatar() const;  //get the avatar this object is attached to, or NULL if object is not an attachment
 
     bool hasRenderMaterialParams() const;
@@ -1066,6 +1076,11 @@ private:
     LLUUID mAttachmentItemID; // ItemID of the associated object is in user inventory.
     EObjectUpdateType   mLastUpdateType;
     bool    mLastUpdateCached;
+    // <FS:AYA r20 P0a Phase B> SSS whitelist match result, set when an
+    // attachment is added/removed on the owning avatar. Default false so
+    // non-attachment LLViewerObjects are inert.
+    bool    mIsSSSTarget = false;
+    // </FS:AYA>
 
     RegionCrossExtrapolate mExtrap; // <FS:JN> improved extrapolator
 
