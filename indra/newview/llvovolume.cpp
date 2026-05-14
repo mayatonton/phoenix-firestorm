@@ -5758,7 +5758,13 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         info->mModelMatrix == model_mat &&
         info->mShaderMask == shader_mask &&
         info->mAvatar == facep->mAvatar &&
-        info->getSkinHash() == facep->getSkinHash())
+        info->getSkinHash() == facep->getSkinHash() &&
+        // <AYAstorm:r21.1 M4.17> Refuse to batch faces from different
+        // LLVOVolumes even when every other criterion matches. Two linked
+        // rigged child prims commonly share skin/avatar/material/VB-pool and
+        // would otherwise merge into one DrawInfo, erasing the per-prim
+        // identity the GPU self-rigged picker needs.
+        info->mFSPickerLocalID == (facep->getViewerObject() ? facep->getViewerObject()->getLocalID() : 0))
     {
         info->mCount += facep->getIndicesCount();
         info->mEnd += facep->getGeomCount();
@@ -5808,9 +5814,13 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
 
         // <FS:AYA r20 Phase C> propagate per-object SSS skin flag into LLDrawInfo
         // so the pool render can emit a per-draw uniform without per-frame lookup.
+        // <AYAstorm:r21.1 M4.17> also stash the source prim's LocalID so the
+        // GPU self-rigged picker can write per-prim identity into the
+        // ObjectIDBuffer without skin-hash collapse.
         if (LLViewerObject* vobj = facep->getViewerObject())
         {
             draw_info->mIsSSSTarget = vobj->isSSSTarget();
+            draw_info->mFSPickerLocalID = vobj->getLocalID();
         }
         // </FS:AYA>
 

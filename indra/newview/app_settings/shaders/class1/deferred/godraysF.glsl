@@ -117,7 +117,16 @@ void main()
         // sampleDirectionalShadow returns 1.0 when lit, 0.0 when shadowed.
         // We pass light_dir as the surrogate normal so the bias / PCF use
         // a light-facing offset (no real surface normal at mid-air points).
+        // Guard: hasShadows=false (shadow detail = 0) skips shadowUtil
+        // attach in llviewershadermgr, so the symbol is undefined unless
+        // HAS_SUN_SHADOW is set. Fall back to fully lit so the godrays
+        // pass still produces a halo (driven by phase only) without
+        // breaking link.
+#ifdef HAS_SUN_SHADOW
         float lit = sampleDirectionalShadow(p, light_dir, tc);
+#else
+        float lit = 1.0;
+#endif
         // shadowUtil cascade fallthrough: when a sample sits between near
         // splits and matches none of the four cascade branches, weight=0
         // and `shadow /= weight` yields NaN/+Inf. Godrays' mid-air sample

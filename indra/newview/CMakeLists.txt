@@ -183,6 +183,7 @@ set(viewer_SOURCE_FILES
     fsregioncross.cpp
     fsscriptlibrary.cpp
     fsscrolllistctrl.cpp
+    fsselfriggedpicker.cpp
     fsslurlcommand.cpp
     fsvirtualtrackpad.cpp
     fsworldmapmessage.cpp
@@ -1050,6 +1051,7 @@ set(viewer_HEADER_FILES
     fsregioncross.h
     fsscriptlibrary.h
     fsscrolllistctrl.h
+    fsselfriggedpicker.h
     fsslurl.h
     fsslurlcommand.h
     fsvirtualtrackpad.h

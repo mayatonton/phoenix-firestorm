@@ -28,6 +28,8 @@
 
 #include "pipeline.h"
 
+#include <unordered_map>
+
 // library includes
 #include "llimagepng.h"
 #include "llaudioengine.h" // For debugging.
@@ -88,6 +90,7 @@
 #include "llviewerregion.h" // for audio debugging.
 #include "llviewerwindow.h" // For getSpinAxis
 #include "llvoavatarself.h"
+#include "llviewerjointattachment.h"
 #include "llvocache.h"
 #include "llvosky.h"
 #include "llvowlsky.h"
@@ -1009,15 +1012,29 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
 
     if (!gCubeSnapshot) // hack to not re-allocate various targets for cube snapshots
     {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("non-cube allocations"); // <FS:Beq/> improve Tracy scoping 
+        LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("non-cube allocations"); // <FS:Beq/> improve Tracy scoping
         if (RenderUIBuffer)
         {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("UIBuffer"); // <FS:Beq/> improve Tracy scoping 
+            LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("UIBuffer"); // <FS:Beq/> improve Tracy scoping
             if (!mUIScreen.allocate(resX, resY, GL_RGBA))
             {
                 return false;
             }
         }
+
+        // <AYAstorm:r21.1> GPU self-rigged picker ID buffer.
+        // Allocated only on the main RT (not aux / hero probe). Borrows the
+        // deferred depth buffer so the ID pass agrees pixel-for-pixel with
+        // the real scene without re-writing depth. Note the call order:
+        // `A.shareDepthBuffer(B)` lends A's depth to B, so the lender (the
+        // one that already owns depth) goes on the left.
+        if (mRT == &mMainRT)
+        {
+            LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("ObjectIDBuffer");
+            if (!mObjectIDBuffer.allocate(resX, resY, GL_RGBA, false)) return false;
+            mRT->deferredScreen.shareDepthBuffer(mObjectIDBuffer);
+        }
+        // </AYAstorm:r21.1>
 
         if (RenderFSAAType > 0)
         {
@@ -1420,6 +1437,10 @@ void LLPipeline::releaseScreenBuffers()
     mHeroProbeRT.deferredLight.release();
 
     mPreviewScreen.release(); // <FS:Beq/> dedicated preview target
+
+    // <AYAstorm:r21.1> GPU self-rigged picker ID buffer
+    mObjectIDBuffer.release();
+    // </AYAstorm:r21.1>
 }
 
 void LLPipeline::releaseSunShadowTarget(U32 index)
@@ -9856,6 +9877,135 @@ LLVector4 pow4fsrgb(LLVector4 v, F32 f)
     return v;
 }
 
+// <AYAstorm:r21.1> GPU self-rigged picker helpers ----------------------------
+namespace
+{
+    // All PASS_*_RIGGED types in the LL render map. The visible deferred opaque
+    // pass dispatches rigged geometry through these via renderRiggedGroup /
+    // pushRiggedBatches (see lldrawpool.cpp:410, 466). Iterating the same set
+    // gives pixel-perfect agreement with what the user actually sees.
+    const U32 kFSRiggedPasses[] = {
+        LLRenderPass::PASS_SIMPLE_RIGGED,
+        LLRenderPass::PASS_FULLBRIGHT_RIGGED,
+        LLRenderPass::PASS_INVISIBLE_RIGGED,
+        LLRenderPass::PASS_INVISI_SHINY_RIGGED,
+        LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED,
+        LLRenderPass::PASS_SHINY_RIGGED,
+        LLRenderPass::PASS_BUMP_RIGGED,
+        LLRenderPass::PASS_POST_BUMP_RIGGED,
+        LLRenderPass::PASS_MATERIAL_RIGGED,
+        LLRenderPass::PASS_MATERIAL_ALPHA_RIGGED,
+        LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED,
+        LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE_RIGGED,
+        LLRenderPass::PASS_SPECMAP_RIGGED,
+        LLRenderPass::PASS_SPECMAP_BLEND_RIGGED,
+        LLRenderPass::PASS_SPECMAP_MASK_RIGGED,
+        LLRenderPass::PASS_SPECMAP_EMISSIVE_RIGGED,
+        LLRenderPass::PASS_NORMMAP_RIGGED,
+        LLRenderPass::PASS_NORMMAP_BLEND_RIGGED,
+        LLRenderPass::PASS_NORMMAP_MASK_RIGGED,
+        LLRenderPass::PASS_NORMMAP_EMISSIVE_RIGGED,
+        LLRenderPass::PASS_NORMSPEC_RIGGED,
+        LLRenderPass::PASS_NORMSPEC_BLEND_RIGGED,
+        LLRenderPass::PASS_NORMSPEC_MASK_RIGGED,
+        LLRenderPass::PASS_NORMSPEC_EMISSIVE_RIGGED,
+        LLRenderPass::PASS_GLOW_RIGGED,
+        LLRenderPass::PASS_GLTF_GLOW_RIGGED,
+        LLRenderPass::PASS_ALPHA_RIGGED,
+        LLRenderPass::PASS_ALPHA_MASK_RIGGED,
+        LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED,
+        LLRenderPass::PASS_ALPHA_INVISIBLE_RIGGED,
+        LLRenderPass::PASS_GLTF_PBR_RIGGED,
+        LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED,
+    };
+}
+
+void LLPipeline::renderSelfRiggedObjectIDBuffer()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    LL_PROFILE_GPU_ZONE("renderSelfRiggedObjectIDBuffer");
+
+    static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSSelfRiggedPickerGPU", false);
+    if (!gpu_enable) return;
+    if (!isAgentAvatarValid()) return;
+    if (!mObjectIDBuffer.isComplete()) return;
+
+    mObjectIDBuffer.bindTarget();
+    // gbuffer3 has no alpha in default LL config (project memory
+    // reference_gbuffer3_storage); make sure all four channels are writable so
+    // the top 8 bits of each packed ID survive the write.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(0.f, 0.f, 0.f, 0.f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Depth shared with deferredScreen — test only, no write.
+    LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
+    LLGLDisable   blend(GL_BLEND);
+    // Cull pinned to BACK to match deferred opaque (back-facing collar
+    // interiors must not write IDs at chin pixels).
+    LLGLEnable    cull (GL_CULL_FACE);
+    glCullFace(GL_BACK);
+
+    gFSObjectIDShader.bind();
+
+    static LLStaticHashedString sObjectIDPacked("object_id_packed");
+
+    // uploadMatrixPalette caches the last (avatar, mesh) pair to skip redundant
+    // GPU uploads for back-to-back DrawInfos with the same skin.
+    const LLVOAvatar* lastAvatar = nullptr;
+    U64  lastMeshId   = 0;
+    bool skipLastSkin = false;
+
+    LLVOAvatar* agent_avatar = gAgentAvatarp.get();
+
+    for (U32 pass_type : kFSRiggedPasses)
+    {
+        LLCullResult::drawinfo_iterator begin = beginRenderMap(pass_type);
+        LLCullResult::drawinfo_iterator end   = endRenderMap(pass_type);
+        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        {
+            LLDrawInfo* info = *i;
+            LLCullResult::increment_iterator(i, end);
+            if (!info || !info->mVertexBuffer || info->mCount == 0) continue;
+            if (info->mAvatar.get() != agent_avatar) continue;
+            const LLMeshSkinInfo* skin = info->mSkinInfo.get();
+            if (!skin || skin->mHash == 0) continue;
+            U32 id = info->mFSPickerLocalID;
+            if (id == 0)
+            {
+                // DrawInfo wasn't stamped with a LocalID at construction
+                // time (non-prim source, or stale batch from a removed
+                // attachment). Skip — its pixels stay 0 in the buffer and
+                // resolve as "no self rigged attachment here".
+                continue;
+            }
+
+            F32 r = ((id >>  0) & 0xff) / 255.f;
+            F32 g = ((id >>  8) & 0xff) / 255.f;
+            F32 b = ((id >> 16) & 0xff) / 255.f;
+            F32 a = ((id >> 24) & 0xff) / 255.f;
+            gFSObjectIDShader.uniform4f(sObjectIDPacked, r, g, b, a);
+
+            if (!LLRenderPass::uploadMatrixPalette(agent_avatar, skin,
+                                                  lastAvatar, lastMeshId, skipLastSkin))
+            {
+                continue;
+            }
+
+            info->mVertexBuffer->setBuffer();
+            info->mVertexBuffer->drawRange(LLRender::TRIANGLES,
+                                           info->mStart, info->mEnd,
+                                           info->mCount, info->mOffset);
+        }
+    }
+
+    gFSObjectIDShader.unbind();
+
+    mObjectIDBuffer.flush();
+
+}
+// </AYAstorm:r21.1>
+
 void LLPipeline::renderDeferredLighting()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -9866,6 +10016,19 @@ void LLPipeline::renderDeferredLighting()
     }
 
     llassert(!sRenderingHUDs);
+
+    // <AYAstorm:r21.1> GPU self-rigged picker:
+    // Write the self attachment LocalIDs into mObjectIDBuffer now — the
+    // deferred gbuffer pass has just completed, so depth is final and
+    // the rigged attachments are at their on-screen positions. Skip in
+    // cube snapshot / reflection probe path (mObjectIDBuffer only exists
+    // for the main RT pack, and the picker only ever reads it for the
+    // main viewport).
+    if (!gCubeSnapshot)
+    {
+        renderSelfRiggedObjectIDBuffer();
+    }
+    // </AYAstorm:r21.1>
 
     F32 light_scale = 1.f;
 

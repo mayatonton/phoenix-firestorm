@@ -332,6 +332,17 @@ public:
 
     void renderDeferredLighting();
 
+    // <AYAstorm:r21.1> GPU self-rigged picker:
+    // After the deferred gbuffer pass is complete (depth finalised), re-draw
+    // every rigged attachment hanging off gAgentAvatarp into mObjectIDBuffer
+    // with the attachment's LocalID packed across four 8-bit channels. The
+    // shared depth buffer + LEQUAL test means only pixels that actually got
+    // drawn for that attachment receive the ID — alpha-discarded triangles
+    // never reach the ID image, so the picker's mouse pixel agrees with
+    // what is visible on screen. Gated by FSSelfRiggedPickerGPU.
+    void renderSelfRiggedObjectIDBuffer();
+    // </AYAstorm:r21.1>
+
     // apply atmospheric haze based on contents of color and depth buffer
     // should be called just before rendering water when camera is under water
     // and just before rendering alpha when camera is above water
@@ -798,6 +809,18 @@ public:
 
     LLRenderTarget          mPbrBrdfLut;
     LLRenderTarget          mWaterExclusionMask;
+
+    // <AYAstorm:r21.1> GPU self-rigged picker:
+    // RGBA8 buffer where rigged attachments of gAgentAvatarp are re-rendered
+    // with their LocalID packed into 4 bytes (R=byte0 .. A=byte3). Shares the
+    // depth buffer with mRT->deferredScreen so it agrees pixel-for-pixel with
+    // the real scene. Right-click picker reads the byte quad at the mouse
+    // pixel, recombines it into a U32 LocalID, and resolves it by walking
+    // gAgentAvatarp's attachment tree (see fsselfriggedpicker.cpp). ID 0
+    // means "no self rigged attachment here" (clear value). Allocated only
+    // for mMainRT (top-level, not in RenderTargetPack).
+    LLRenderTarget          mObjectIDBuffer;
+    // </AYAstorm:r21.1>
 
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR

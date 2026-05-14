@@ -83,6 +83,8 @@
 
 #include "llviewernetwork.h"    // <FS:CR> For prim equivilance hiding
 
+#include "fsselfriggedpicker.h" // <FS:AYA r21.1> self rigged attachment fallback picker
+
 extern bool gDebugClicks;
 
 static void handle_click_action_play();
@@ -2344,6 +2346,65 @@ bool LLToolPie::handleRightClickPick()
 
     // Can't ignore children here.
     LLToolSelect::handleObjectSelection(mPick, false, true);
+
+    // <FS:AYA r21.1> Self rigged-attachment GPU picker.
+    // The upstream worldray pick occasionally mis-aligns against GPU-skinned
+    // rigged meshes attached to the agent (closeup zoom / alpha-discard hair /
+    // idle-skin drift), resolving to the bare self avatar or the wrong prim.
+    // When the pick fell through to the self avatar — or upstream picked a
+    // self rigged attachment, which might still be wrong — read the GPU
+    // LocalID written into mObjectIDBuffer at the mouse pixel and redirect
+    // selection to the correct attachment so the pie menu opens on the right
+    // target.
+    if (mPick.mPickType != LLPickInfo::PICK_LAND)
+    {
+        static LLCachedControl<bool> fs_self_picker_enable(gSavedSettings, "FSSelfRiggedPickerEnable", true);
+        if (fs_self_picker_enable && isAgentAvatarValid())
+        {
+            const bool fell_through_to_self_avatar = (mPick.mObjectID == gAgent.getID());
+            // Second-guess upstream when it picked a self rigged attachment —
+            // the worldray test can pierce an alpha-discarded triangle (hidden
+            // sleeve etc.) the user does not actually see, and the GPU ID
+            // buffer reflects the visible scene.
+            const bool upstream_picked_self_attachment =
+                object && (object->getAvatar() == gAgentAvatarp.get()) && !object->isAvatar();
+            // HUD attachments render through a separate camera-locked
+            // screen-space path and are NOT included in the world
+            // mObjectIDBuffer. Skip the picker entirely — upstream is correct.
+            const bool upstream_picked_hud_attachment =
+                object && object->isHUDAttachment();
+
+            if (!upstream_picked_hud_attachment &&
+                (fell_through_to_self_avatar || upstream_picked_self_attachment || !object))
+            {
+                bool gpu_authoritative = false;
+                LLViewerObject* picked = FSSelfRiggedPicker::findClosestAttachment(
+                    x, y, gpu_authoritative);
+                if (picked)
+                {
+                    object = picked;
+                    mPick.mObjectID = picked->getID();
+                    LLToolSelect::handleObjectSelection(mPick, false, true);
+                }
+                else if (gpu_authoritative && upstream_picked_self_attachment
+                         && object->isRiggedMesh())
+                {
+                    // Only force-to-body when upstream picked a RIGGED self
+                    // attachment that the GPU explicitly contradicts. Non-
+                    // rigged self attachments (piercings, separate jewelry
+                    // prims) aren't dispatched through any PASS_*_RIGGED type,
+                    // so the buffer reads id=0 at their pixels regardless of
+                    // visibility — treating that as "GPU disagrees" would
+                    // make jewelry/piercings unselectable. Trust upstream's
+                    // worldray hit for the non-rigged case.
+                    object = gAgentAvatarp.get();
+                    mPick.mObjectID = gAgent.getID();
+                    LLToolSelect::handleObjectSelection(mPick, false, true);
+                }
+            }
+        }
+    }
+    // </FS:AYA>
 
     // Spawn pie menu
     if (mPick.mPickType == LLPickInfo::PICK_LAND)
