@@ -63,8 +63,16 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachment(S32 mouse_x, S32 mouse
     }
 
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSSelfRiggedPickerGPU", false);
+    static LLCachedControl<bool> trace(gSavedSettings, "FSSelfRiggedPickerTrace", false);
     if (!gpu_enable || !gPipeline.mObjectIDBuffer.isComplete())
     {
+        if (trace)
+        {
+            LL_INFOS("FSSelfRiggedPicker")
+                << "readback skipped gpu_enable=" << (bool)gpu_enable
+                << " buffer_complete=" << gPipeline.mObjectIDBuffer.isComplete()
+                << LL_ENDL;
+        }
         return nullptr;
     }
 
@@ -88,6 +96,16 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachment(S32 mouse_x, S32 mouse
         mx_buf >= (S32)gPipeline.mObjectIDBuffer.getWidth() ||
         my_buf >= (S32)gPipeline.mObjectIDBuffer.getHeight())
     {
+        if (trace)
+        {
+            LL_INFOS("FSSelfRiggedPicker")
+                << "readback skipped out_of_bounds"
+                << " mouse=" << mouse_x << "," << mouse_y
+                << " buffer_xy=" << mx_buf << "," << my_buf
+                << " buffer=" << gPipeline.mObjectIDBuffer.getWidth()
+                << "x" << gPipeline.mObjectIDBuffer.getHeight()
+                << LL_ENDL;
+        }
         return nullptr;
     }
 
@@ -99,6 +117,18 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachment(S32 mouse_x, S32 mouse
                  | ((U32)rgba[1] << 8)
                  | ((U32)rgba[2] << 16)
                  | ((U32)rgba[3] << 24);
+
+    if (trace)
+    {
+        LL_INFOS("FSSelfRiggedPicker")
+            << "readback"
+            << " mouse=" << mouse_x << "," << mouse_y
+            << " buffer_xy=" << mx_buf << "," << my_buf
+            << " rgba=(" << (U32)rgba[0] << "," << (U32)rgba[1] << ","
+            << (U32)rgba[2] << "," << (U32)rgba[3] << ")"
+            << " local_id=" << local_id
+            << LL_ENDL;
+    }
 
     // GPU is the source of truth.
     out_gpu_authoritative = true;
