@@ -2259,7 +2259,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     }
     // </FS:AYA>
 
-    // <FS:AYA r21.1> GPU self-rigged picker (Stage -1):
+    // <FS:AYA r21.1> GPU self-rigged picker:
     // Re-skins the agent's rigged attachments using the same matrixPalette
     // path as the visible draw, and writes the attachment's LocalID packed
     // across the four 8-bit channels of mObjectIDBuffer. Picker reads the

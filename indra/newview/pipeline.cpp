@@ -9877,21 +9877,9 @@ LLVector4 pow4fsrgb(LLVector4 v, F32 f)
     return v;
 }
 
-// <AYAstorm:r21.1> GPU self-rigged picker (Stage -1) helpers ----------------
+// <AYAstorm:r21.1> GPU self-rigged picker helpers ----------------------------
 namespace
 {
-    // r21.1 M4.17: per-DrawInfo LocalID is stamped at DrawInfo construction
-    // time (llvovolume.cpp registerFace path) into mFSPickerLocalID. Earlier
-    // M4.11-M4.16 attempts maintained a `skin->mHash → LocalID` map built
-    // here by walking attachment children, but that collapsed on the very
-    // common case of linked rigged child prims sharing one rig (same skin
-    // hash, different vertex meshes — typical BoM body parts). Whichever
-    // child happened to be iterated last won the map slot, and every body
-    // pixel resolved to that single LocalID (observed: two clicks at
-    // disjoint arm positions both returning the foot prim's LocalID,
-    // 2026-05-14). Per-DrawInfo identity sidesteps the collision entirely.
-    // No helper is needed here anymore.
-
     // All PASS_*_RIGGED types in the LL render map. The visible deferred opaque
     // pass dispatches rigged geometry through these via renderRiggedGroup /
     // pushRiggedBatches (see lldrawpool.cpp:410, 466). Iterating the same set
@@ -9942,9 +9930,6 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
     if (!isAgentAvatarValid()) return;
     if (!mObjectIDBuffer.isComplete()) return;
 
-    // r21.1 M4.17: per-DrawInfo LocalID lives on info->mFSPickerLocalID; no
-    // pre-build map is needed.
-
     mObjectIDBuffer.bindTarget();
     // gbuffer3 has no alpha in default LL config (project memory
     // reference_gbuffer3_storage); make sure all four channels are writable so
@@ -9953,31 +9938,7 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // <AYAstorm:r21.1-diag> M4.12 Diag-D: red canary in GL top-left corner
-    // (100x100). After verticalFlip in the dump path:
-    //   red in PNG top-left   → no flip (X & Y both correct)
-    //   red in PNG top-right  → X-mirror
-    //   red in PNG bottom-left → Y-flip
-    //   red in PNG bottom-right → both
-    // Only when dump cvar is on, so production runs are unaffected.
-    {
-        static LLCachedControl<bool> dump_buffer(gSavedSettings, "FSSelfRiggedPickerDumpBuffer", false);
-        if (dump_buffer)
-        {
-            const S32 h = mObjectIDBuffer.getHeight();
-            glEnable(GL_SCISSOR_TEST);
-            glScissor(0, h - 100, 100, 100);
-            glClearColor(1.f, 0.f, 0.f, 1.f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glDisable(GL_SCISSOR_TEST);
-            glClearColor(0.f, 0.f, 0.f, 0.f);
-        }
-    }
-    // </AYAstorm:r21.1-diag>
-
-    // Depth shared with deferredScreen — test only, no write. Diag-A (M4.10)
-    // confirmed depth is innocent of the M4.5/M4.6 regression; the real issue
-    // was iterating LLDrawable static faces instead of the rigged render map.
+    // Depth shared with deferredScreen — test only, no write.
     LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
     LLGLDisable   blend(GL_BLEND);
     // Cull pinned to BACK to match deferred opaque (back-facing collar
@@ -10040,47 +10001,6 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
 
     gFSObjectIDShader.unbind();
 
-    // <AYAstorm:r21.1-diag> M4.12 Diag-C: one-shot PNG dump of mObjectIDBuffer
-    // contents — read while still bound, before flush(). Auto-resets cvar.
-    static LLCachedControl<bool> dump_buffer(gSavedSettings, "FSSelfRiggedPickerDumpBuffer", false);
-    if (dump_buffer)
-    {
-        const S32 w = mObjectIDBuffer.getWidth();
-        const S32 h = mObjectIDBuffer.getHeight();
-        LLPointer<LLImageRaw> raw = new LLImageRaw(w, h, 4);
-        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, raw->getData());
-        // No verticalFlip: LLImagePNG::encode handles the GL bottom-up →
-        // PNG top-down inversion internally. Diag-D canary confirmed an
-        // extra verticalFlip() call inverts the image (observed: red square
-        // appeared in PNG bottom-left when drawn at GL top-left).
-        // The alpha channel packs the high byte of the LocalID, which is
-        // usually small (~12). Image viewers would render the PNG as nearly
-        // fully transparent. Force alpha to 255 for the dump only so the RGB
-        // is visible — picker readback is unaffected.
-        {
-            U8* data = raw->getData();
-            const S64 pixel_count = (S64)w * (S64)h;
-            for (S64 p = 0; p < pixel_count; ++p)
-            {
-                data[p * 4 + 3] = 255;
-            }
-        }
-        LLPointer<LLImagePNG> png = new LLImagePNG;
-        if (png->encode(raw, 0.f))
-        {
-            std::string path = gDirUtilp->getExpandedFilename(LL_PATH_LOGS, "AYAstorm_picker_dump.png");
-            png->save(path);
-            LL_INFOS("FSPickerDump") << "Diag-C: dumped picker buffer to " << path
-                                     << " (" << w << "x" << h << ")" << LL_ENDL;
-        }
-        else
-        {
-            LL_WARNS("FSPickerDump") << "Diag-C: PNG encode failed" << LL_ENDL;
-        }
-        gSavedSettings.setBOOL("FSSelfRiggedPickerDumpBuffer", false);
-    }
-    // </AYAstorm:r21.1-diag>
-
     mObjectIDBuffer.flush();
 
 }
@@ -10097,7 +10017,7 @@ void LLPipeline::renderDeferredLighting()
 
     llassert(!sRenderingHUDs);
 
-    // <AYAstorm:r21.1> GPU self-rigged picker (Stage -1):
+    // <AYAstorm:r21.1> GPU self-rigged picker:
     // Write the self attachment LocalIDs into mObjectIDBuffer now — the
     // deferred gbuffer pass has just completed, so depth is final and
     // the rigged attachments are at their on-screen positions. Skip in

@@ -332,7 +332,7 @@ public:
 
     void renderDeferredLighting();
 
-    // <AYAstorm:r21.1> GPU self-rigged picker (Stage -1):
+    // <AYAstorm:r21.1> GPU self-rigged picker:
     // After the deferred gbuffer pass is complete (depth finalised), re-draw
     // every rigged attachment hanging off gAgentAvatarp into mObjectIDBuffer
     // with the attachment's LocalID packed across four 8-bit channels. The
@@ -810,14 +810,15 @@ public:
     LLRenderTarget          mPbrBrdfLut;
     LLRenderTarget          mWaterExclusionMask;
 
-    // <AYAstorm:r21.1> GPU self-rigged picker (Stage -1):
+    // <AYAstorm:r21.1> GPU self-rigged picker:
     // RGBA8 buffer where rigged attachments of gAgentAvatarp are re-rendered
     // with their LocalID packed into 4 bytes (R=byte0 .. A=byte3). Shares the
     // depth buffer with mRT->deferredScreen so it agrees pixel-for-pixel with
     // the real scene. Right-click picker reads the byte quad at the mouse
-    // pixel and recombines it into a U32 LocalID, which it then looks up via
-    // gObjectList. ID 0 means "no self rigged attachment here" (clear value).
-    // Allocated only for mMainRT (top-level, not in RenderTargetPack).
+    // pixel, recombines it into a U32 LocalID, and resolves it by walking
+    // gAgentAvatarp's attachment tree (see fsselfriggedpicker.cpp). ID 0
+    // means "no self rigged attachment here" (clear value). Allocated only
+    // for mMainRT (top-level, not in RenderTargetPack).
     LLRenderTarget          mObjectIDBuffer;
     // </AYAstorm:r21.1>
 

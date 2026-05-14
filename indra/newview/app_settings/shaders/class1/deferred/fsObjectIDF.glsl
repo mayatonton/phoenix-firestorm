@@ -4,10 +4,11 @@
  *
  * Writes the attachment's LocalID packed across four 8-bit channels into
  * pipeline.mObjectIDBuffer at every pixel the rigged mesh covers. The
- * picker reads the byte quad at the mouse pixel and recombines it into a
- * U32 LocalID, then resolves it via gObjectList. Because both this pass
- * and the visible scene share GPU skinning + depth, there is no CPU/GPU
- * drift, and alpha-discarded triangles never reach the ID buffer.
+ * picker reads the byte quad at the mouse pixel, recombines it into a
+ * U32 LocalID, and resolves it by walking gAgentAvatarp's attachment tree
+ * (see fsselfriggedpicker.cpp). Because both this pass and the visible
+ * scene share GPU skinning + depth, there is no CPU/GPU drift, and
+ * alpha-discarded triangles never reach the ID buffer.
  *
  * The host packs the LocalID like this:
  *   r = ((id >>  0) & 0xff) / 255.0
