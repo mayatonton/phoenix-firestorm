@@ -10,12 +10,14 @@
 
 - [概要](#概要)
 - [目的](#目的)
+- [負荷見積もり](#負荷見積もり)
 - [実装方針](#実装方針)
 - [設定](#設定)
 - [GPU picker が readback できる条件](#gpu-picker-が-readback-できる条件)
 - [実測ログ](#実測ログ)
 - [カーソルを外した場合](#カーソルを外した場合)
 - [追加ログ追跡](#追加ログ追跡)
+- [マウスルック時の追加確認](#マウスルック時の追加確認)
 - [現時点の評価](#現時点の評価)
 - [今後の改善候補](#今後の改善候補)
 
@@ -44,6 +46,56 @@ buffer=2560x1368
 ただし、描画 pass としては self rigged attachment 候補を追加で描くため、GPU 描画負荷は発生する。
 
 armed mode の目的は、常時 GPU ID pass を走らせず、右クリック前に必要になりそうな期間だけ ID buffer を用意すること。
+
+---
+
+## 負荷見積もり
+
+現時点では GPU time / CPU time を計測する profiling は行っていない。そのため、この節では実測ログから確認できる負荷要素と、armed mode によって削減できる範囲を整理する。
+
+常時描画の場合、`FSSelfRiggedPickerGPU` が有効であれば、self rigged picker 用の GPU ID pass は deferred lighting のタイミングで継続的に走る。
+
+実測ログでは、1 回の GPU ID pass で次の規模の描画が発生していた。
+
+```text
+buffer=2560x1368
+candidates=124 draw_calls=124 triangles=539611
+
+buffer=2560x1368
+candidates=129 draw_calls=129 triangles=619980
+```
+
+この pass は通常表示用の描画とは別に、picker 用 ID buffer へ self rigged attachment 候補を描く。したがって、1 回あたりの主な負荷は次の通り。
+
+- 実行解像度相当の ID buffer を render target として使う
+- self rigged attachment 候補ぶんの draw call を追加で発行する
+- 上記ログでは約 12 万から 13 万候補ではなく、約 124 から 129 draw calls
+- triangle 数は約 54 万から 62 万
+- 右クリック時には該当 mouse pixel の readback が走る
+
+buffer はフレームごとに蓄積されるものではないため、メモリ使用量が毎フレーム増え続ける種類の負荷ではない。一方で、描画 pass としては毎回追加描画になるため、GPU 描画時間と bandwidth には影響する。
+
+armed mode で削減できるのは、「GPU ID pass を実行する時間帯」である。
+
+armed でない時間は `renderSelfRiggedObjectIDBuffer()` を呼ばないため、上記の追加 draw call / triangle 描画は発生しない。
+
+一方で、armed 中の 1 回あたりの負荷は常時描画時と同じ。armed mode は ID buffer を軽くするものでも、描画解像度を下げるものでも、draw call を削減するものでもない。
+
+したがって、負荷削減量はおおむね次の比率で決まる。
+
+```text
+削減される GPU ID pass 負荷 ~= 1 - (armed になっている時間 / viewer 稼働時間)
+```
+
+例:
+
+- viewer 稼働中の 5% だけ self avatar / attachment に hover する使い方なら、GPU ID pass の追加描画時間はおおむね 5% まで減る
+- ほとんど自分のアバター上にカーソルを置かない使い方では、常時描画と比べて大きく減る
+- カーソルを自分のアバター / 装着物上に置き続ける使い方では、armed が更新され続けるため常時描画に近くなる
+
+実測では、カーソルをアバターから外した状態で約 20 秒追跡した範囲では `GPU ID pass ran` は出なかった。この状態では、常時描画時に発生していた GPU ID pass の追加描画は抑制できている。
+
+ただし、hover 中は `GPU ID pass ran` が断続的に継続した。hover 中の描画頻度をさらに抑えるには、armed mode とは別に throttling や低解像度 buffer 化が必要になる。
 
 ---
 
@@ -193,6 +245,56 @@ INFO #FSSelfRiggedPicker# ... findClosestAttachment : readback mouse=1311,714 bu
 右クリック / 対象確認中は readback が連続して出る。その後、readback が止まり、GPU ID pass のみが断続的に出る状態になった。
 
 これは selection 処理そのものではなく、hover により armed 状態が更新され、ID buffer の描画だけが継続している状態と見てよい。
+
+---
+
+## マウスルック時の追加確認
+
+2026-05-15 に、マウスルック状態で armed mode が走るかを追加確認した。
+
+追跡対象:
+
+```text
+FSSelfRiggedPicker
+GPU ID pass
+readback
+armed_mode
+GL Error
+MouseLook
+mouselook
+```
+
+確認手順:
+
+1. ログ追跡を開始
+2. マウスルックに入る
+3. 途中でマウスルックを抜ける
+4. その後の picker 関連ログを確認
+
+結果:
+
+- マウスルック開始後、最初の約 25 秒は picker 関連ログなし
+  - `GPU ID pass ran` なし
+  - `findClosestAttachment : readback` なし
+- マウスルック解除後と思われるタイミングで `GPU ID pass ran` が 3 回出た
+- `findClosestAttachment : readback` は出なかった
+- その後、picker 関連ログは止まった
+
+観測ログ:
+
+```text
+2026-05-14T20:31:56Z INFO #FSSelfRiggedPicker# ... GPU ID pass ran buffer=2560x1368 candidates=129 draw_calls=129 triangles=619980
+2026-05-14T20:31:58Z INFO #FSSelfRiggedPicker# ... GPU ID pass ran buffer=2560x1387 candidates=82 draw_calls=82 triangles=513153
+2026-05-14T20:32:00Z INFO #FSSelfRiggedPicker# ... GPU ID pass ran buffer=2560x1368 candidates=0 draw_calls=0 triangles=0
+```
+
+判断:
+
+マウスルック中に armed mode が継続的に走っている形跡は確認できなかった。
+
+最後に出た 3 回の GPU ID pass は、マウスルック解除時または解除直後の hover / 描画状態変化で armed が一時的に入った可能性が高い。
+
+`candidates` が `129 -> 82 -> 0` と落ちているため、解除遷移中の一時的な描画更新として扱う。
 
 ---
 
