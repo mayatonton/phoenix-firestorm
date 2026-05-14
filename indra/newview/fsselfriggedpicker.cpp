@@ -63,6 +63,7 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachment(S32 mouse_x, S32 mouse
     }
 
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSSelfRiggedPickerGPU", false);
+    static LLCachedControl<bool> armed_mode(gSavedSettings, "FSSelfRiggedPickerArmedMode", true);
     static LLCachedControl<bool> trace(gSavedSettings, "FSSelfRiggedPickerTrace", false);
     if (!gpu_enable || !gPipeline.mObjectIDBuffer.isComplete())
     {
@@ -71,6 +72,18 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachment(S32 mouse_x, S32 mouse
             LL_INFOS("FSSelfRiggedPicker")
                 << "readback skipped gpu_enable=" << (bool)gpu_enable
                 << " buffer_complete=" << gPipeline.mObjectIDBuffer.isComplete()
+                << LL_ENDL;
+        }
+        return nullptr;
+    }
+    if (armed_mode && !gPipeline.isSelfRiggedObjectIDBufferReady())
+    {
+        if (trace)
+        {
+            LL_INFOS("FSSelfRiggedPicker")
+                << "readback skipped armed_mode=1"
+                << " armed=" << gPipeline.isSelfRiggedObjectIDBufferArmed()
+                << " ready=" << gPipeline.isSelfRiggedObjectIDBufferReady()
                 << LL_ENDL;
         }
         return nullptr;

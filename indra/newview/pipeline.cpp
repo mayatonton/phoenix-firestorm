@@ -9880,6 +9880,11 @@ LLVector4 pow4fsrgb(LLVector4 v, F32 f)
 // <AYAstorm:r21.1> GPU self-rigged picker helpers ----------------------------
 namespace
 {
+    LLFrameTimer sFSSelfRiggedPickerArmTimer;
+    F32 sFSSelfRiggedPickerArmSeconds = 0.f;
+    U32 sFSSelfRiggedPickerArmGeneration = 0;
+    U32 sFSSelfRiggedPickerRenderGeneration = 0;
+
     // All PASS_*_RIGGED types in the LL render map. The visible deferred opaque
     // pass dispatches rigged geometry through these via renderRiggedGroup /
     // pushRiggedBatches (see lldrawpool.cpp:410, 466). Iterating the same set
@@ -9918,6 +9923,35 @@ namespace
         LLRenderPass::PASS_GLTF_PBR_RIGGED,
         LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED,
     };
+}
+
+void LLPipeline::armSelfRiggedObjectIDBuffer(F32 seconds)
+{
+    if (seconds <= 0.f)
+    {
+        return;
+    }
+
+    const bool was_armed = isSelfRiggedObjectIDBufferArmed();
+    sFSSelfRiggedPickerArmSeconds = seconds;
+    sFSSelfRiggedPickerArmTimer.reset();
+
+    if (!was_armed)
+    {
+        ++sFSSelfRiggedPickerArmGeneration;
+    }
+}
+
+bool LLPipeline::isSelfRiggedObjectIDBufferArmed() const
+{
+    return sFSSelfRiggedPickerArmSeconds > 0.f &&
+           sFSSelfRiggedPickerArmTimer.getElapsedTimeF32() <= sFSSelfRiggedPickerArmSeconds;
+}
+
+bool LLPipeline::isSelfRiggedObjectIDBufferReady() const
+{
+    return isSelfRiggedObjectIDBufferArmed() &&
+           sFSSelfRiggedPickerRenderGeneration == sFSSelfRiggedPickerArmGeneration;
 }
 
 void LLPipeline::renderSelfRiggedObjectIDBuffer()
@@ -10009,6 +10043,7 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
     gFSObjectIDShader.unbind();
 
     mObjectIDBuffer.flush();
+    sFSSelfRiggedPickerRenderGeneration = sFSSelfRiggedPickerArmGeneration;
 
     if (trace)
     {
@@ -10046,7 +10081,8 @@ void LLPipeline::renderDeferredLighting()
     // cube snapshot / reflection probe path (mObjectIDBuffer only exists
     // for the main RT pack, and the picker only ever reads it for the
     // main viewport).
-    if (!gCubeSnapshot)
+    static LLCachedControl<bool> armed_mode(gSavedSettings, "FSSelfRiggedPickerArmedMode", true);
+    if (!gCubeSnapshot && (!armed_mode || isSelfRiggedObjectIDBufferArmed()))
     {
         renderSelfRiggedObjectIDBuffer();
     }
