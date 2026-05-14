@@ -25,7 +25,7 @@ r21 では self attachment の picker を **専用 GPU object-ID buffer** (`mObj
 | キー | 既定 | 用途 |
 |---|---|---|
 | `FSSelfRiggedPickerEnable` | `1` | picker の master switch。`0` で r20 以前の上流挙動に完全に戻る |
-| `FSSelfRiggedPickerGPU` | `0` (M5 で `1` に flip 予定) | GPU buffer pass の kill-switch。`0` = picker 無効化 (上流 worldray を素通し)。Mac software OpenGL 等で GPU pass が破綻した場合の逃げ道として用意 |
+| `FSSelfRiggedPickerGPU` | `1` | GPU buffer pass の kill-switch。`0` = picker 無効化 (上流 worldray を素通し)。Mac software OpenGL 等で GPU pass が破綻した場合の逃げ道として用意 |
 
 > **CPU fallback は意図的に提供しません。** GPU pass が動く (`GPU=1`) か、picker そのものが無効化される (`GPU=0`、= r20 以前と同じ) か、のいずれかです。これは memory `feedback_root_cause_not_dump.md` (半分動く workaround を残さない) と `feedback_feature_value_in_main_usecase.md` (主流ユースケースで機能の存在価値を判定する) に基づく設計判断です。
 

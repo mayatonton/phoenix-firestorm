@@ -136,7 +136,7 @@ GPU buffer は `PASS_*_RIGGED` のみ dispatch されるので、**rigged では
 
 GPU picker 全体の **master switch**。OFF にすると lltoolpie の picker 呼び出し自体がスキップされ、上流 worldray の結果が無加工で使われる (= 完全に r20 以前の挙動)。
 
-### 3.2 `FSSelfRiggedPickerGPU` (Boolean, default 0 → M5 で 1 予定)
+### 3.2 `FSSelfRiggedPickerGPU` (Boolean, default 1)
 
 GPU buffer pass (`renderSelfRiggedObjectIDBuffer`) と GPU readback の **kill-switch**。OFF の場合:
 
@@ -151,7 +151,7 @@ GPU buffer pass (`renderSelfRiggedObjectIDBuffer`) と GPU readback の **kill-s
 | キー | 一時値 | 戻すべき default | 備考 |
 |---|---|---|---|
 | `FSSelfRiggedPickerEnable` | 0 (kill) / 1 (normal) | **1** | master、検証時に切るシナリオあり |
-| `FSSelfRiggedPickerGPU` | 1 (検証 ON) | **0** (M5 までは default OFF / M5 で 1) | M5 リリース以降は default 1 |
+| `FSSelfRiggedPickerGPU` | 0 (GPU pass を一時 OFF にする検証 / Mac software OpenGL 等の trouble shoot) | **1** | M5 で flip 済、kill-switch として残存 |
 
 ---
 
