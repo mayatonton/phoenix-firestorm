@@ -10044,13 +10044,13 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR20AvatarSkinSSSGlowGain</key>
     <map>
       <key>Comment</key>
-      <string>r20 Phase D: SSS blur 後の lit^3 に additive を足す gain。SSS で眠くなった hi-light を peak だけ非対称に持ち上げる。default 3.0 (AYA 確定値、warm-salmon color と組み合わせて血色感を補強)</string>
+      <string>r20 Phase D: SSS blur 後の lit^3 に additive を足す gain。SSS で眠くなった hi-light を peak だけ非対称に持ち上げる。default 1.0 (warm-salmon color と組み合わせて血色感を控えめに補強)</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>F32</string>
       <key>Value</key>
-      <real>3.0</real>
+      <real>1.0</real>
     </map>
     <key>AYAR20AvatarSkinSSSGlowColor</key>
     <map>
