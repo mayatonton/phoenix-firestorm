@@ -85,8 +85,8 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachment(S32 mouse_x, S32 mouse
     const S32 my_buf = my_win_raw - wv_raw.mBottom;
 
     if (mx_buf < 0 || my_buf < 0 ||
-        mx_buf >= gPipeline.mObjectIDBuffer.getWidth() ||
-        my_buf >= gPipeline.mObjectIDBuffer.getHeight())
+        mx_buf >= (S32)gPipeline.mObjectIDBuffer.getWidth() ||
+        my_buf >= (S32)gPipeline.mObjectIDBuffer.getHeight())
     {
         return nullptr;
     }
