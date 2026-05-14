@@ -83,6 +83,8 @@
 
 #include "llviewernetwork.h"    // <FS:CR> For prim equivilance hiding
 
+#include "fsselfriggedpicker.h" // <FS:AYA r21.1> self rigged attachment fallback picker
+
 extern bool gDebugClicks;
 
 static void handle_click_action_play();
@@ -2344,6 +2346,35 @@ bool LLToolPie::handleRightClickPick()
 
     // Can't ignore children here.
     LLToolSelect::handleObjectSelection(mPick, false, true);
+
+    // <FS:AYA r21.1> Self rigged-attachment fallback picker.
+    // The upstream pick path occasionally mis-aligns the world ray against GPU-skinned
+    // rigged meshes attached to the agent (observed ~4.7cm offset on a fitted body),
+    // causing the right-click menu to resolve to the bare self avatar instead of the
+    // attachment. When the pick fell through to the self avatar (or hit nothing),
+    // run a brute vertex-distance pass against gAgentAvatarp's rigged attachments
+    // and, if any vertex of an attachment is within tolerance of the ray, redirect
+    // selection to that attachment so gPieMenuAttachmentSelf opens correctly.
+    if (mPick.mPickType != LLPickInfo::PICK_LAND)
+    {
+        static LLCachedControl<bool> fs_self_picker_enable(gSavedSettings, "FSSelfRiggedPickerEnable", true);
+        static LLCachedControl<F32>  fs_self_picker_tol(gSavedSettings, "FSSelfRiggedPickerTolerance", 0.05f);
+        if (fs_self_picker_enable)
+        {
+            const bool fell_through_to_self_avatar = (mPick.mObjectID == gAgent.getID());
+            if (fell_through_to_self_avatar || !object)
+            {
+                LLViewerObject* picked = FSSelfRiggedPicker::findClosestAttachment(x, y, (F32)fs_self_picker_tol);
+                if (picked)
+                {
+                    object = picked;
+                    mPick.mObjectID = picked->getID();
+                    LLToolSelect::handleObjectSelection(mPick, false, true);
+                }
+            }
+        }
+    }
+    // </FS:AYA>
 
     // Spawn pie menu
     if (mPick.mPickType == LLPickInfo::PICK_LAND)
