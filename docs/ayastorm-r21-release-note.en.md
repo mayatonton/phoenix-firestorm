@@ -25,7 +25,7 @@ Details → spec `docs/ayastorm-r21-self-rigged-picker.md`
 | Key | Default | Purpose |
 |---|---|---|
 | `FSSelfRiggedPickerEnable` | `1` | Master switch for the picker. `0` reverts to pre-r21 upstream behaviour entirely |
-| `FSSelfRiggedPickerGPU` | `0` (M5 flip → `1`) | Kill-switch for the GPU buffer pass. `0` = picker no-op, upstream worldray is used unchanged. Provided as escape hatch for environments where the GPU pass misbehaves (Mac software OpenGL etc.) |
+| `FSSelfRiggedPickerGPU` | `1` | Kill-switch for the GPU buffer pass. `0` = picker no-op, upstream worldray is used unchanged. Provided as escape hatch for environments where the GPU pass misbehaves (Mac software OpenGL etc.) |
 
 > **CPU fallback is intentionally not provided.** Either the GPU pass is active (`GPU=1`) or the picker is disabled (`GPU=0`, equivalent to pre-r21 behaviour). This is a deliberate design choice — see memory `feedback_root_cause_not_dump.md` (no half-working workarounds) and `feedback_feature_value_in_main_usecase.md` (judge features by the main use case).
 

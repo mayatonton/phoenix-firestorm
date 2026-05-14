@@ -25,7 +25,7 @@ r21 把自身 attachment 的 picker 切出到 **专用 GPU object-ID buffer** (`
 | 键 | 默认 | 用途 |
 |---|---|---|
 | `FSSelfRiggedPickerEnable` | `1` | picker 的主开关。`0` 时完全回到 r20 之前的上游行为 |
-| `FSSelfRiggedPickerGPU` | `0` (M5 翻转为 `1`) | GPU buffer pass 的 kill-switch。`0` = picker 无效 (上游 worldray 不加修改直接使用)。为 Mac software OpenGL 等 GPU pass 不稳定环境提供逃生通道 |
+| `FSSelfRiggedPickerGPU` | `1` | GPU buffer pass 的 kill-switch。`0` = picker 无效 (上游 worldray 不加修改直接使用)。为 Mac software OpenGL 等 GPU pass 不稳定环境提供逃生通道 |
 
 > **不提供 CPU fallback。** 要么 GPU pass 启用 (`GPU=1`)、要么 picker 整体禁用 (`GPU=0`，即 r20 之前的行为)。这是有意的设计选择 — 见 memory `feedback_root_cause_not_dump.md` (不留半工作的 workaround) 与 `feedback_feature_value_in_main_usecase.md` (按主流用例判定功能价值)。
 
