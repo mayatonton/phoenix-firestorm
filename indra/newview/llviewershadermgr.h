@@ -239,6 +239,8 @@ extern LLGLSLShader         gHazeWaterProgram;
 extern LLGLSLShader         gDeferredGodraysProgram;
 // <FS:AYA r20 P0a> skin SSS prototype (screen-space separable blur, no whitelist)
 extern LLGLSLShader         gDeferredSkinSSSProgram;
+// <FS:AYA r21.1> GPU self-rigged picker: write attachment LocalID into mObjectIDBuffer
+extern LLGLSLShader         gFSObjectIDShader;
 extern LLGLSLShader         gDeferredBlurLightProgram;
 extern LLGLSLShader         gDeferredAvatarProgram;
 extern LLGLSLShader         gDeferredSoftenProgram;

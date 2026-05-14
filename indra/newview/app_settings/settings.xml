@@ -23245,7 +23245,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>FSSelfRiggedPickerEnable</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm r21.1: when the right-click pick falls through to the self avatar (or hits nothing), run a two-stage scan against the agent's rigged attachments and redirect the pick. Stage 1 prefers any attachment the ray actually pierces (two-sided ray-triangle test); stage 2 falls back to triangle-edge near-miss within FSSelfRiggedPickerTolerance meters.</string>
+      <string>AYAstorm r21.1: when the right-click pick falls through to the self avatar (or hits nothing), run a multi-stage scan against the agent's rigged attachments and redirect the pick. Stage -1 (gated by FSSelfRiggedPickerGPU) reads the GPU-side LocalID written into mObjectIDBuffer at the mouse pixel — exact agreement with what was drawn. Stage 0 (gated by FSSelfRiggedPickerDepthAssist) unprojects the depth buffer and runs a short-ray pierce / near-miss test against CPU-skinned meshes. Stage 1 is a two-sided ray-triangle pierce on the full camera ray. Stage 2 is triangle-edge near-miss within FSSelfRiggedPickerTolerance meters.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -23253,16 +23253,60 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>1</integer>
     </map>
+    <key>FSSelfRiggedPickerGPU</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r21.1: stage -1 GPU-side picking for self rigged attachments. When enabled, the deferred pass redraws the agent's rigged attachments into mObjectIDBuffer (RGBA8) with each attachment's LocalID packed into the four bytes. The picker reads that byte quad at the mouse pixel, recombines it into a U32 LocalID, and looks up the attachment via gObjectList. This is exact — there is no CPU-skin vs GPU-skin drift because the ID image and the visible image come from the same skinning. Disable to fall back to the CPU-mesh stages 0+1+2.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>FSSelfRiggedPickerDepthAssist</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r21.1: stage-0 depth-assist for the self rigged-attachment picker. When enabled, the picker reads the GPU depth buffer at the mouse pixel and chooses the rigged attachment whose CPU-skinned mesh is closest to that unprojected world point (within FSSelfRiggedPickerDepthTolerance). This is the only path that agrees with what is rendered on screen (alpha-discarded triangles are absent from the depth buffer). Disable to fall back to the ray-only stages 1+2.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>FSSelfRiggedPickerDepthTolerance</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r21.1: stage-0 depth-assist tolerance in meters. After unprojecting the depth-buffer sample to a world point, the picker runs the same pierce / near-miss test as stages 1+2 on the short ray from the camera to that point, with this value as the near-miss radius. Closest-to-camera pierce wins (so a shirt over a body wins automatically because its triangles sit at smaller pierce_t along the same ray). Default 0.10 (10cm) — generous enough to absorb the CPU-skin vs GPU-skin one-frame drift caused by idle animations.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.10</real>
+    </map>
     <key>FSSelfRiggedPickerTolerance</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm r21.1: tolerance in meters for the stage-2 near-miss path of the self rigged-attachment fallback picker. If no attachment is actually pierced by the ray (stage 1, ray-triangle test), an attachment becomes a candidate when any triangle edge of its CPU-skinned mesh is within this distance of the world ray; among candidates the surface nearest to the camera along the ray wins. Default 0.05 (5cm).</string>
+      <string>AYAstorm r21.1: tolerance in meters for the stage-2 near-miss path of the self rigged-attachment fallback picker. If stages 0+1 yield no hit (no depth coverage and no ray-triangle pierce), an attachment becomes a candidate when any triangle edge of its CPU-skinned mesh is within this distance of the world ray; among candidates the surface nearest to the camera along the ray wins. Default 0.05 (5cm).</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>F32</string>
       <key>Value</key>
       <real>0.05</real>
+    </map>
+    <key>FSSelfRiggedPickerDumpBuffer</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r21.1 Diag-C: when set to 1, the next frame dumps mObjectIDBuffer (the GPU self-rigged picker output) to ~/.ayastorm_x64/logs/AYAstorm_picker_dump.png and auto-resets to 0. Use this to visually inspect what the picker render covers vs the on-screen avatar — bright/colored pixels are rigged attachments that the picker can recognize, black pixels return id=0 (no hit).</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
     </map>
     <key>FSShowMutedChatHistory</key>
     <map>

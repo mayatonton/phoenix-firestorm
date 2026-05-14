@@ -2359,18 +2359,68 @@ bool LLToolPie::handleRightClickPick()
     {
         static LLCachedControl<bool> fs_self_picker_enable(gSavedSettings, "FSSelfRiggedPickerEnable", true);
         static LLCachedControl<F32>  fs_self_picker_tol(gSavedSettings, "FSSelfRiggedPickerTolerance", 0.05f);
-        if (fs_self_picker_enable)
+        if (fs_self_picker_enable && isAgentAvatarValid())
         {
             const bool fell_through_to_self_avatar = (mPick.mObjectID == gAgent.getID());
-            if (fell_through_to_self_avatar || !object)
+            // The picker should also second-guess upstream when upstream picked
+            // a self rigged attachment — the worldray test can pierce an alpha-
+            // discarded triangle (e.g. a hidden sleeve) that the user does not
+            // actually see, and the GPU ID buffer reflects the visible scene.
+            const bool upstream_picked_self_attachment =
+                object && (object->getAvatar() == gAgentAvatarp.get()) && !object->isAvatar();
+            // r21.1 M4.9: HUD attachments render through a separate camera-
+            // locked screen-space path and are NOT included in the world
+            // mObjectIDBuffer. If upstream picked a HUD attachment correctly
+            // (left-click drag confirms it works), running the GPU stage just
+            // reads id=0 from a buffer that never had HUD pixels, then
+            // authoritative-empty force-to-body kicks in and the right-click
+            // menu collapses to the self-avatar / nametag pie menu. Skip the
+            // picker entirely for HUD picks — upstream is correct.
+            const bool upstream_picked_hud_attachment =
+                object && object->isHUDAttachment();
+            // r21.1 M4.14 diag: always log upstream pick state at right-click
+            // so we can tell whether picker is even being invoked for bare-skin
+            // (arm / head) clicks that currently feel like "0% hit rate".
+            LL_INFOS("FSPicker") << "rclick upstream:"
+                                 << " obj=" << (object ? object->getID().asString() : std::string("null"))
+                                 << " is_self_avatar=" << (object == gAgentAvatarp.get())
+                                 << " is_attachment=" << (object ? object->isAttachment() : false)
+                                 << " is_self_att=" << upstream_picked_self_attachment
+                                 << " is_hud=" << upstream_picked_hud_attachment
+                                 << " fell_through_self=" << fell_through_to_self_avatar
+                                 << " pickType=" << (S32)mPick.mPickType
+                                 << LL_ENDL;
+
+            if (!upstream_picked_hud_attachment &&
+                (fell_through_to_self_avatar || upstream_picked_self_attachment || !object))
             {
-                LLViewerObject* picked = FSSelfRiggedPicker::findClosestAttachment(x, y, (F32)fs_self_picker_tol);
+                bool gpu_authoritative = false;
+                LLViewerObject* picked = FSSelfRiggedPicker::findClosestAttachment(
+                    x, y, (F32)fs_self_picker_tol, gpu_authoritative);
                 if (picked)
                 {
                     object = picked;
                     mPick.mObjectID = picked->getID();
                     LLToolSelect::handleObjectSelection(mPick, false, true);
                 }
+                else if (gpu_authoritative && upstream_picked_self_attachment)
+                {
+                    // GPU sampled a non-zero LocalID that no longer matches any
+                    // tracked attachment (race: attachment removed mid-frame, or
+                    // stale GPU value). We know upstream's worldray pick is
+                    // wrong because the GPU clearly sees something else on
+                    // screen; default to the self avatar (body) as the safe
+                    // fallback so the user doesn't get a phantom attachment
+                    // pie menu.
+                    object = gAgentAvatarp.get();
+                    mPick.mObjectID = gAgent.getID();
+                    LLToolSelect::handleObjectSelection(mPick, false, true);
+                }
+            }
+            else
+            {
+                // r21.1 M4.14 diag: record why picker was bypassed entirely.
+                LL_INFOS("FSPicker") << "rclick: picker BYPASSED (upstream picked non-self something else, or HUD)" << LL_ENDL;
             }
         }
     }

@@ -166,6 +166,8 @@ LLGLSLShader            gHazeWaterProgram;
 LLGLSLShader            gDeferredGodraysProgram;
 // <FS:AYA r20 P0a> skin SSS prototype (screen-space separable blur, no whitelist)
 LLGLSLShader            gDeferredSkinSSSProgram;
+// <FS:AYA r21.1> GPU self-rigged picker: write attachment LocalID into mObjectIDBuffer
+LLGLSLShader            gFSObjectIDShader;
 LLGLSLShader            gDeferredBlurLightProgram;
 LLGLSLShader            gDeferredSoftenProgram;
 LLGLSLShader            gDeferredShadowProgram;
@@ -2253,6 +2255,32 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSkinSSSProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
 
         success = gDeferredSkinSSSProgram.createShader();
+        llassert(success);
+    }
+    // </FS:AYA>
+
+    // <FS:AYA r21.1> GPU self-rigged picker (Stage -1):
+    // Re-skins the agent's rigged attachments using the same matrixPalette
+    // path as the visible draw, and writes the attachment's LocalID packed
+    // across the four 8-bit channels of mObjectIDBuffer. Picker reads the
+    // pixel at the mouse and recombines four bytes into a U32 LocalID.
+    // hasObjectSkinning=true attaches avatar/objectSkinV.glsl so the
+    // vertex stage's getObjectSkinnedTransform() resolves at link time.
+    if (success)
+    {
+        gFSObjectIDShader.mName = "FS Object ID Shader";
+        gFSObjectIDShader.mShaderFiles.clear();
+        gFSObjectIDShader.mFeatures.hasObjectSkinning = true;
+
+        gFSObjectIDShader.clearPermutations();
+        gFSObjectIDShader.mShaderFiles.push_back(make_pair("deferred/fsObjectIDV.glsl", GL_VERTEX_SHADER));
+        gFSObjectIDShader.mShaderFiles.push_back(make_pair("deferred/fsObjectIDF.glsl", GL_FRAGMENT_SHADER));
+
+        add_common_permutations(&gFSObjectIDShader);
+
+        gFSObjectIDShader.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+
+        success = gFSObjectIDShader.createShader();
         llassert(success);
     }
     // </FS:AYA>

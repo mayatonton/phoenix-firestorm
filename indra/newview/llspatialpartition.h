@@ -143,6 +143,17 @@ public:
     bool mHasGlow = false;
     bool mIsSSSTarget = false; // <FS:AYA r20 Phase C> propagated from parent LLViewerObject::isSSSTarget()
 
+    // <AYAstorm:r21.1 M4.17> Source LLViewerObject's LocalID, stashed at
+    // DrawInfo construction time so the GPU self-rigged picker can write a
+    // per-prim identity into mObjectIDBuffer without relying on skin-hash
+    // keyed lookup. Multiple linked rigged child prims commonly share one
+    // skin hash (same rig binding, different vertex meshes); the old hash-
+    // keyed approach collapsed them to a single LocalID and made every body
+    // pixel resolve to whichever child was iterated last. Zero means "no
+    // LocalID known" (non-prim DrawInfos, e.g. particles) and the picker
+    // skips such batches.
+    U32 mFSPickerLocalID = 0;
+
     struct CompareTexture
     {
         bool operator()(const LLDrawInfo& lhs, const LLDrawInfo& rhs)
