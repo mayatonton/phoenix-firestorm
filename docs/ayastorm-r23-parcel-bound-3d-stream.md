@@ -1,8 +1,8 @@
 # AYAstorm r23 — Parcel-bound 3D stream 仕様 (draft)
 
 **作成日**: 2026-05-16
-**最終更新**: 2026-05-16 (M2 実装完了)
-**ステータス**: M1 / M2 完了、Linux 単 OS ビルド PASS、M3 受入テストは舞台準備待ち
+**最終更新**: 2026-05-16 (M3 / M4 完了)
+**ステータス**: M1〜M4 完了、M5 (Release) 着手前
 **対象ブランチ**: `feat/ayastorm-r23-parcel-bound-3d-stream`
 
 このドキュメントは r23 で実装予定の「AYAstorm 3D stream を SL の parcel "Restrict gestures and object sounds to this parcel" フラグに連動させる」機能の仕様 draft。AYA との対話で順次確定していく。
@@ -136,17 +136,17 @@ precedent: `LLAudioSourceVO::updateMute()` (object sound) も canHearSound を�
 
 ---
 
-## 7. 受入基準 (実装後の予定)
+## 7. 受入基準
 
-- [ ] 配信 parcel が SOUND_LOCAL=on、隣接 parcel に居る listener → 3D stream が聞こえない
-- [ ] 配信 parcel が SOUND_LOCAL=on、同一 parcel 内の listener → 普通に聞こえる
-- [ ] listener parcel が SOUND_LOCAL=on、隣接 parcel の 3D stream → 聞こえない
-- [ ] どちらの parcel も SOUND_LOCAL=off → 従来通り聞こえる
-- [ ] parcel 境界を跨いで walk すると mute / unmute が滑らかに切り替わる (クリックノイズなし)
-- [ ] 5.1ch 配置で speaker が parcel boundary を跨いでいても、判定は配信タグ prim 1 点で完結し全 ch 一律
-- [ ] region 跨ぎ TP 直後に正しい mute 状態が反映される
-- [ ] venue reverb の tail が残っていても本体 mute と整合 (tail 単独で残り続けない)
-- [ ] 3 OS (Linux / Win / Mac) でビルド通過
+- [x] 配信 parcel が SOUND_LOCAL=on、隣接 parcel に居る listener → 3D stream が聞こえない
+- [x] 配信 parcel が SOUND_LOCAL=on、同一 parcel 内の listener → 普通に聞こえる
+- [x] listener parcel が SOUND_LOCAL=on、隣接 parcel の 3D stream → 聞こえない
+- [x] どちらの parcel も SOUND_LOCAL=off → 従来通り聞こえる
+- [x] parcel 境界を跨いで walk すると mute / unmute が滑らかに切り替わる (クリックノイズなし)
+- [x] 5.1ch 配置で speaker が parcel boundary を跨いでいても、判定は配信タグ prim 1 点で完結し全 ch 一律
+- [x] region 跨ぎ TP 直後に正しい mute 状態が反映される
+- [x] venue reverb の tail が残っていても本体 mute と整合 (tail 単独で残り続けない)
+- [x] 3 OS (Linux / Win / Mac) でビルド通過 + 動作確認
 
 ---
 
@@ -179,6 +179,6 @@ precedent: `LLAudioSourceVO::updateMute()` (object sound) も canHearSound を�
 |---|---|---|
 | M1 | 仕様確定 + 構造調査 + escape hatch 方針確定 | ✅ 確定 (追加機能なし、SL parcel 規約準拠を default) |
 | M2 | 実装 — `LLPositionalStreamMgr` に `canHearSound()` フック追加 | ✅ 完了 (commit `673ca4ae9c`、Linux ビルド PASS) |
-| M3 | 受入テスト — 同一/隣接 parcel、装着 stream の parcel 跨ぎ移動、region 跨ぎ TP | ⏳ 舞台 (隣接 parcel × SOUND_LOCAL on/off) 準備待ち |
-| M4 | 3 OS ビルド (Linux → Win → Mac) | Linux のみ PASS、Win/Mac は M3 後 |
-| M5 | Release — spec doc 更新、release note 3 言語、tag | — |
+| M3 | 受入テスト — 同一/隣接 parcel、装着 stream の parcel 跨ぎ移動、region 跨ぎ TP | ✅ 完了 (2026-05-16、全項目 PASS) |
+| M4 | 3 OS ビルド (Linux → Win → Mac) | ✅ 完了 (2026-05-16、3 OS ビルド + 動作確認 PASS) |
+| M5 | Release — spec doc 更新、release note 3 言語、tag | ⏳ 着手前 |
