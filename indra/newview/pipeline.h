@@ -341,6 +341,9 @@ public:
     // never reach the ID image, so the picker's mouse pixel agrees with
     // what is visible on screen. Gated by FSSelfRiggedPickerGPU.
     void renderSelfRiggedObjectIDBuffer();
+    void armSelfRiggedObjectIDBuffer(F32 seconds);
+    bool isSelfRiggedObjectIDBufferArmed() const;
+    bool isSelfRiggedObjectIDBufferReady() const;
     // </AYAstorm:r21.1>
 
     // apply atmospheric haze based on contents of color and depth buffer
