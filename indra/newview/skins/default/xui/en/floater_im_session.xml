@@ -258,7 +258,7 @@
                                      follows="all"
                                      layout="topleft"
                                      name="tab_object"
-                                     title="Object"
+                                     title="System &amp; Object"
                                      top="0"
                                      left="0"
                                      right="-1"

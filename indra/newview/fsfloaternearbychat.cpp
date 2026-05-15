@@ -328,20 +328,47 @@ void FSFloaterNearbyChat::addMessage(const LLChat& chat,bool archive,const LLSD 
     mChatHistoryMuted->appendMessage(chat, chat_args, input_append_params);
     if (!chat.mMuted)
     {
-        // <FS:AYAstorm r22> Route OBJECT chat to the Object tab when split is enabled.
+        // <FS:AYAstorm r22> Route non-Human chat to the System & Object tab when split is enabled.
+        // OBJECT / SYSTEM / TELEPORT / REGION → System & Object tab.
+        // AGENT / UNKNOWN → Human tab (UNKNOWN is the default-safe fallback).
         static LLCachedControl<bool> human_object_tabs(gSavedSettings, "FSChatHumanObjectTabs", true);
         FSChatHistory* target = mChatHistory;
-        if (human_object_tabs && mChatHistoryObject && chat.mSourceType == CHAT_SOURCE_OBJECT)
+        if (human_object_tabs && mChatHistoryObject)
         {
-            target = mChatHistoryObject;
+            const bool to_sys_object =
+                chat.mSourceType == CHAT_SOURCE_OBJECT   ||
+                chat.mSourceType == CHAT_SOURCE_SYSTEM   ||
+                chat.mSourceType == CHAT_SOURCE_TELEPORT ||
+                chat.mSourceType == CHAT_SOURCE_REGION;
+            if (to_sys_object)
+            {
+                target = mChatHistoryObject;
+            }
         }
         target->appendMessage(chat, chat_args, input_append_params);
         // Bump per-tab unread badge when the chat lands in a non-active tab.
-        // do_not_log marks history replays (reloadMessages / updateChatHistoryStyle)
+        // is_replay marks history reload paths (reloadMessages / updateChatHistoryStyle / loadHistory)
         // so we don't accumulate counts for messages the user has already seen.
-        if (human_object_tabs && mChatHistoryObject && !args["do_not_log"].asBoolean())
+        // do_not_log alone is NOT a replay signal — e.g. the TP arrival separator uses do_not_log=true
+        // for fresh runtime events that should still bump the badge.
+        const bool log_active = human_object_tabs && mChatHistoryObject && !args["is_replay"].asBoolean();
+        if (log_active)
         {
             bumpUnreadBadge(target);
+        }
+
+        // Friend online/offline exception (spec change 2026-05-16):
+        // also append to the Human tab so users notice when a friend they want to talk to comes online.
+        static LLCachedControl<bool> friend_online_to_human(gSavedSettings, "FSFriendOnlineToHumanTab", true);
+        if (human_object_tabs && mChatHistoryObject
+            && chat.mFriendOnlineNotification && friend_online_to_human
+            && target == mChatHistoryObject)
+        {
+            mChatHistory->appendMessage(chat, chat_args, input_append_params);
+            if (log_active)
+            {
+                bumpUnreadBadge(mChatHistory);
+            }
         }
         // </FS:AYAstorm r22>
     }
@@ -609,7 +636,7 @@ void FSFloaterNearbyChat::bumpUnreadBadge(FSChatHistory* target)
     {
         target_panel = findChild<LLPanel>("tab_object");
         counter      = &mUnreadObject;
-        base_title   = "Object";
+        base_title   = "System & Object";
     }
     else
     {
@@ -642,7 +669,7 @@ void FSFloaterNearbyChat::resetUnreadBadge(LLPanel* selected_panel)
     if (name == "tab_object")
     {
         counter    = &mUnreadObject;
-        base_title = "Object";
+        base_title = "System & Object";
     }
     else if (name == "tab_human")
     {
@@ -670,6 +697,7 @@ void FSFloaterNearbyChat::updateChatHistoryStyle()
 
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
+    do_not_log["is_replay"] = true; // <FS:AYAstorm r22> Mark archive replay so unread badge logic skips it.
     for(std::vector<LLChat>::iterator it = mMessageArchive.begin();it!=mMessageArchive.end();++it)
     {
         // Update the messages without re-writing them to a log file.
@@ -727,6 +755,7 @@ void FSFloaterNearbyChat::reloadMessages(bool clean_messages/* = false*/)
 
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
+    do_not_log["is_replay"] = true; // <FS:AYAstorm r22> Mark archive replay so unread badge logic skips it.
     for(std::vector<LLChat>::iterator it = mMessageArchive.begin();it!=mMessageArchive.end();++it)
     {
         // Update the messages without re-writing them to a log file.
@@ -738,6 +767,7 @@ void FSFloaterNearbyChat::loadHistory()
 {
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
+    do_not_log["is_replay"] = true; // <FS:AYAstorm r22> Mark history file replay so unread badge logic skips it.
 
     std::list<LLSD> history;
     LLLogChat::loadChatHistory("chat", history);

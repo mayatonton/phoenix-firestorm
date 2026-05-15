@@ -898,6 +898,9 @@ static void on_avatar_name_cache_notify(const LLUUID& agent_id,
         chat.mChatType = CHAT_TYPE_RADAR;
         chat.mFromID = agent_id;
         chat.mFromName = used_name;
+        // <FS:AYAstorm r22 spec change 2026-05-16> Mark friend online/offline so the Chat tab split routes it to Human as well.
+        chat.mFriendOnlineNotification = true;
+        // </FS:AYAstorm r22 spec change>
         if (history_only)
         {
             FSFloaterNearbyChat* nearby_chat = LLFloaterReg::getTypedInstance<FSFloaterNearbyChat>("fs_nearby_chat", LLSD());

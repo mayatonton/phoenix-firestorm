@@ -700,18 +700,46 @@ void LLFloaterIMSessionTab::appendMessage(const LLChat& chat, const LLSD& args)
             gSavedSettings.getBOOL("IMShowNamesForP2PConv");
 
     static const LLStyle::Params input_append_params = LLStyle::Params();
-    // <FS:AYAstorm r22> Route OBJECT chat to the Object tab when split is enabled.
+    // <FS:AYAstorm r22> Route non-Human chat to the System & Object tab when split is enabled.
+    // OBJECT / SYSTEM / TELEPORT / REGION → System & Object tab.
+    // AGENT / UNKNOWN → Human tab (UNKNOWN is the default-safe fallback).
     static LLCachedControl<bool> human_object_tabs(gSavedSettings, "FSChatHumanObjectTabs", true);
     LLChatHistory* target = mChatHistory;
-    if (human_object_tabs && mChatHistoryObject && chat.mSourceType == CHAT_SOURCE_OBJECT)
+    if (human_object_tabs && mChatHistoryObject)
     {
-        target = mChatHistoryObject;
+        const bool to_sys_object =
+            chat.mSourceType == CHAT_SOURCE_OBJECT   ||
+            chat.mSourceType == CHAT_SOURCE_SYSTEM   ||
+            chat.mSourceType == CHAT_SOURCE_TELEPORT ||
+            chat.mSourceType == CHAT_SOURCE_REGION;
+        if (to_sys_object)
+        {
+            target = mChatHistoryObject;
+        }
     }
     target->appendMessage(chat, chat_args, input_append_params);
     // Bump per-tab unread badge when the chat lands in a non-active tab.
-    if (human_object_tabs && mChatHistoryObject && !args["do_not_log"].asBoolean())
+    // is_replay marks history reload paths so we don't accumulate counts for messages
+    // the user has already seen. do_not_log alone is NOT a replay signal — the TP
+    // arrival separator uses do_not_log=true for fresh runtime events that should bump.
+    const bool log_active = human_object_tabs && mChatHistoryObject && !args["is_replay"].asBoolean();
+    if (log_active)
     {
         bumpUnreadBadge(target);
+    }
+
+    // Friend online/offline exception (spec change 2026-05-16):
+    // also append to the Human tab so users notice when a friend they want to talk to comes online.
+    static LLCachedControl<bool> friend_online_to_human(gSavedSettings, "FSFriendOnlineToHumanTab", true);
+    if (human_object_tabs && mChatHistoryObject
+        && chat.mFriendOnlineNotification && friend_online_to_human
+        && target == mChatHistoryObject)
+    {
+        mChatHistory->appendMessage(chat, chat_args, input_append_params);
+        if (log_active)
+        {
+            bumpUnreadBadge(mChatHistory);
+        }
     }
     // </FS:AYAstorm r22>
 }
@@ -729,7 +757,7 @@ void LLFloaterIMSessionTab::bumpUnreadBadge(LLChatHistory* target)
     {
         target_panel = findChild<LLPanel>("tab_object");
         counter      = &mUnreadObject;
-        base_title   = "Object";
+        base_title   = "System & Object";
     }
     else
     {
@@ -760,7 +788,7 @@ void LLFloaterIMSessionTab::resetUnreadBadge(LLPanel* selected_panel)
     if (name == "tab_object")
     {
         counter    = &mUnreadObject;
-        base_title = "Object";
+        base_title = "System & Object";
     }
     else if (name == "tab_human")
     {

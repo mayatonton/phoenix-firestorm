@@ -1,19 +1,21 @@
-# AYAstorm r22 — Chat tab split (人間 vs Object/LSL) 仕様
+# AYAstorm r22 — Chat tab split (Human vs System & Object) 仕様
 
 **作成日**: 2026-05-15
-**最終更新**: 2026-05-16 (M7 完了)
-**ステータス**: M1〜M7 完了、M8 (Release) 着手前
+**最終更新**: 2026-05-16 (spec change: System & Object 再グループ化)
+**ステータス**: M1〜M7 完了、M8 (spec change 実装) 着手中、M9 (Release) 着手前
 **対象ブランチ**: `feat/ayastorm-r22-chat-tab-split`
 
-このドキュメントは r22 で追加予定の「Chat 表示の人間/Object タブ分離」機能の仕様。AYA さんとの対話で確定した内容を集約。M1 セッション (2026-05-15) で主要論点をすべて確定済み。
+このドキュメントは r22 で追加予定の「Chat 表示の人間/Object タブ分離」機能の仕様。AYA さんとの対話で確定した内容を集約。M1 セッション (2026-05-15) で主要論点をすべて確定、2026-05-16 に spec change (System & Object 再グループ化 + フレンド online 例外 cvar) を追加。
 
 ---
 
 ## 1. 狙い
 
-Nearby Chat / IM の表示において、**人間アバター発言** と **Object (LSL) 由来発言** を別タブに分離する。
+Nearby Chat / IM の表示において、**人間アバター発言** と **System / Object 系通知 (LSL 由来 + システム通知 + TP / Region メッセージ)** を別タブに分離する。
 
-人間同士の会話に LSL からの警告 / 広告 / HUD 通知が混入して「会話の流れが途切れる」状況を解消するのが主目的。Object 発言を完全に消すのではなく、別タブに退避させて見落としは防ぐ。
+人間同士の会話に LSL からの警告 / 広告 / HUD 通知 / TP / Region 通知が混入して「会話の流れが途切れる」状況を解消するのが主目的。これらの通知を完全に消すのではなく、別タブに退避させて見落としは防ぐ。
+
+ただし「フレンドがオンラインに来た」通知だけは "会話したい相手の登場" 性質が強いため、cvar 制御で Human タブにも複製可能とする (System & Object タブには常に表示)。
 
 ---
 
@@ -36,36 +38,45 @@ Nearby Chat / IM の表示において、**人間アバター発言** と **Obje
 各 chat ウィンドウの history 領域上部に **タブ** を配置する。
 
 ```
-┌─────────────────────────────┐
-│ [Human] [Object (3)]        │ ← 非アクティブ側に未読件数バッジ
-├─────────────────────────────┤
-│  (選択中タブの history)     │
-├─────────────────────────────┤
-│  > 入力欄                   │ ← 共有 1 つ
-└─────────────────────────────┘
+┌──────────────────────────────────────┐
+│ [Human] [System & Object (3)]        │ ← 非アクティブ側に未読件数バッジ
+├──────────────────────────────────────┤
+│  (選択中タブの history)              │
+├──────────────────────────────────────┤
+│  > 入力欄                            │ ← 共有 1 つ
+└──────────────────────────────────────┘
 ```
 
 **仕様**:
-- タブは `[Human]` `[Object]` の 2 つ
+- タブは `[Human]` `[System & Object]` の 2 つ
 - 非アクティブ側に **未読件数バッジ** を表示し見落としを防ぐ
-  - 形式は `[Object (3)]` の件数表示 (M5 で確定)
-  - タブ切替で 0 にリセットしラベルを `Object` に戻す
+  - 形式は `[System & Object (3)]` の件数表示 (M5 で確定)
+  - タブ切替で 0 にリセットしラベルを `System & Object` に戻す
   - **セッション内のみ。再起動でリセット** (履歴ファイルには残るので件数自体は意味薄、と判断)
 - 入力欄は 1 つ共有 (どちらのタブを見ていても Local Chat に送信)
 - 自分の Local Chat 発言は **Human タブに記録**
 - V1 / V7 / LL の 3 style とも同じ形状で揃える (UX 一貫性)
 
-**設定スイッチ** (M1 確定):
+**ラベル順序** (spec change 2026-05-16): `System & Object` の順に並べる。`Object & System` ではない (AYA さん談: "Object が偉そうだから")。
 
-| Name | Type | Default | Persist |
-|---|---|---|---|
-| `FSChatHumanObjectTabs` | Boolean | `true` | 1 |
+**設定スイッチ** (M1 確定 + M8 spec change で追加):
 
-- **opt-out (default ON)** — AYAstorm の目玉機能として default で有効
-- 配置: `Preferences → Chat → Chat Windows` タブ (LL chat style 切替と同じタブ)
-- ラベル: `Split chat into Human / Object tabs`
-- tool_tip: `Separate human avatar speech from LSL/object messages into two tabs. Keeps human conversations free of script notifications.`
-- `false` にすると旧 1-widget 挙動に戻る (escape hatch 兼用、別 cvar 不要)
+| Name | Type | Default | Persist | 関係 |
+|---|---|---|---|---|
+| `FSChatHumanObjectTabs` | Boolean | `true` | 1 | master switch |
+| `FSFriendOnlineToHumanTab` | Boolean | `true` | 1 | 子 (master ON 時のみ意味あり) |
+
+- `FSChatHumanObjectTabs` (master): **opt-out (default ON)** — AYAstorm の目玉機能として default で有効
+  - 配置: `Preferences → Chat → Chat Windows` タブ (LL chat style 切替と同じタブ)
+  - ラベル: `Split chat into Human / System & Object tabs`
+  - tool_tip: `Separate human avatar speech from system/script messages into two tabs. Keeps human conversations free of notifications.`
+  - `false` にすると旧 1-widget 挙動に戻る (escape hatch 兼用、別 cvar 不要)
+- `FSFriendOnlineToHumanTab` (子、M8 spec change で追加): **default ON**
+  - 配置: `Preferences → Chat → Chat Windows`、master の直下にインデント
+  - ラベル: `Show friend online/offline in Human tab`
+  - tool_tip: `Also show friend online/offline notifications in the Human tab. They always appear in the System & Object tab regardless.`
+  - master OFF 時は UI 上グレーアウト (enabled_control で連動)
+  - フレンド online/offline は **System & Object には cvar 値に関わらず常に出力**、Human への複製可否だけがこの cvar で決まる
 
 ### 3.2 見た目フォールバック案 (実機検証で α が詰まった時の二の矢)
 
@@ -104,21 +115,30 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 
 ## 4. 判定境界 (M1 確定)
 
-`EChatSourceType` (llchat.h:35) の 6 値を以下に振り分ける:
+`EChatSourceType` (llchat.h:35) の 6 値を以下に振り分ける (spec change 2026-05-16 で System/TP/Region を System & Object 側へ移動):
 
 | Source Type | 例 | 振り分け |
 |---|---|---|
 | `CHAT_SOURCE_AGENT` | アバター発言 | **Human** |
-| `CHAT_SOURCE_OBJECT` | LSL `llSay` / `llOwnerSay` / HUD / 自分の attachment | **Object** |
-| `CHAT_SOURCE_SYSTEM` | "You are now logged in", item received 等 | **Human** |
-| `CHAT_SOURCE_TELEPORT` | TP offer / arrival | **Human** |
-| `CHAT_SOURCE_REGION` | sim restart 通知等 | **Human** |
+| `CHAT_SOURCE_OBJECT` | LSL `llSay` / `llOwnerSay` / HUD / 自分の attachment | **System & Object** |
+| `CHAT_SOURCE_SYSTEM` | "You are now logged in", item received, friend online 等 | **System & Object** (※フレンド online は例外、下記参照) |
+| `CHAT_SOURCE_TELEPORT` | TP offer / arrival | **System & Object** |
+| `CHAT_SOURCE_REGION` | sim restart 通知等 | **System & Object** |
 | `CHAT_SOURCE_UNKNOWN` | 不明 (fallback) | **Human** |
 
 **判定方針**:
-- Object タブには **「LSL 由来のうるさい話し声 (広告・警告・繰り返し通知)」だけ** を集める
-- System / Teleport / Region / Unknown は性質が違う (頻度低い・重要) ので Human 側 = メインの流れに残す
-- 「判別不能 → Human フォールバック」を default safe としても機能
+- System & Object タブには **「会話以外の通知すべて (LSL 発言・システム通知・TP・Region)」** を集める
+- 旧仕様 (r22 初版〜M7) では System / Teleport / Region は Human に流していたが、「TP したときのログが Human タブに表示される」のは会話の流れを切る — の AYA 判断で System & Object 側へ移動 (spec change 2026-05-16)
+- `CHAT_SOURCE_UNKNOWN` だけは **Human フォールバック** を維持: 判別不能 = 人間性のヒントがゼロなので「会話を見落とすほうがダメージ大」と判断、default safe を保つ
+
+**フレンド online/offline 例外**:
+- `llcallingcard.cpp:891-909` あたりで発火する friend online/offline 通知は `mSourceType = CHAT_SOURCE_SYSTEM` だが、「会話したい相手の登場」として Human タブにも届けたい性質がある
+- 実装: chat 構築時に `LLChat::mFriendOnlineNotification` (新フラグ、M8 で追加) を立てる
+- ルーティング層でこのフラグが立っていれば:
+  - **System & Object タブには `FSFriendOnlineToHumanTab` の値に関わらず常に出力**
+  - **Human タブには `FSFriendOnlineToHumanTab=true` (デフォルト) のときのみ複製出力**
+- 「フレンドオンライン通知」は SL の `OnlineOfflinetoNearbyChat` cvar (デフォルト OFF、Nearby Chat に表示するか) とは独立判定: AYAstorm の Chat tab split が ON のときは、上記フラグ経由で常に Nearby Chat に届く扱い
+- 履歴ファイルの suffix marker は `<!--src:system-->` のまま (Human 複製の判定は live ルーティング時のフラグであり、起動時の history load 後はフラグ復元不可なので System & Object タブにだけ載る。これは仕様として許容: 過去のフレンドオンライン履歴を Human で見直したい需要は薄い)
 
 ---
 
@@ -192,29 +212,35 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 
 ### 6.1 影響ファイル
 
-**XUI** (M3 着手時に構造再調査した実態を反映):
+**XUI** (M3 着手時に構造再調査した実態を反映、M8 spec change で追加分あり):
 
 - `indra/newview/skins/default/xui/en/floater_fs_nearby_chat.xml` — FS V1/V7 用、`tab_container` で `tab_human` / `tab_object` を抱える
 - `indra/newview/skins/default/xui/en/floater_im_session.xml` — LL style 用 (Nearby Chat と 1:1 IM の両方が同じ XUI を共有)、同じく `tab_container` を持つ
-- `indra/newview/skins/default/xui/en/panel_preferences_chat.xml` — `FSChatHumanObjectTabs` スイッチ + AYAChatWindowStyle の (requires restart) ラベル
+- `indra/newview/skins/default/xui/{en,ja,zh}/floater_fs_nearby_chat.xml` / `floater_im_session.xml` — タブラベル `Object` → `System & Object` に変更 (3 言語、M8 spec change)
+- `indra/newview/skins/default/xui/{en,ja,zh}/panel_preferences_chat.xml` — `FSChatHumanObjectTabs` スイッチ + `FSFriendOnlineToHumanTab` 子チェックボックス (M8 spec change で追加) + AYAChatWindowStyle の (requires restart) ラベル
 - `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `ChangeChatLayoutSetting` モーダル (M4-extra)
 - ~~`panel_nearby_chat.xml`~~ — **dead/未参照と判明** (M3 着手時に確認)、touch しない
 
-**C++** (実装後の実態):
+**C++** (実装後の実態、M8 spec change で追加分あり):
 
-- `indra/llui/llchat.h` — `LLChat::mSourceType` (既存 `EChatSourceType`) をそのまま利用、新規 enum 追加なし
+- `indra/llui/llchat.h` — `LLChat::mSourceType` (既存 `EChatSourceType`) をそのまま利用 + `LLChat::mFriendOnlineNotification` フラグを追加 (M8 spec change)
 - `indra/newview/lllogchat.cpp`:
   - `LLChatLogFormatter::format()` — suffix marker 出力
   - `LLChatLogParser::parse()` — suffix marker 抽出 + 本文剥がし。マーカーがある行だけ `LL_IM_SOURCE_TYPE` を立てる (legacy 行は未設定のまま、load 側の heuristic に委ねる)
-- `indra/newview/fsfloaternearbychat.cpp` / `.h` — FS 側の addMessage で source_type 振り分け + 未読バッジ更新
-- `indra/newview/llfloaterimsessiontab.cpp` / `.h` — LL Nearby Chat と 1:1 IM の基底クラス、appendMessage で同じく振り分け + バッジ更新
+- `indra/newview/llcallingcard.cpp` — friend online/offline 通知 chat 構築時に `LLChat::mFriendOnlineNotification = true` を立てる (M8 spec change、§4 「フレンド online/offline 例外」参照)
+- `indra/newview/fsfloaternearbychat.cpp` / `.h` — FS 側の addMessage で source_type 振り分け (System/TP/Region → System & Object、spec change) + フレンドオンライン例外パス + 未読バッジ更新
+- `indra/newview/llfloaterimsessiontab.cpp` / `.h` — LL Nearby Chat と 1:1 IM の基底クラス、appendMessage で同じく振り分け + バッジ更新 (System & Object 再グループ化、フレンド例外、M8)
 - `indra/newview/llfloaterimnearbychat.cpp` — load path で `LL_IM_SOURCE_TYPE` を尊重
 - `indra/llui/lltabcontainer.h` — `setTabsHidden()` を public へ昇格 (`FSChatHumanObjectTabs=false` 時のタブ strip 抑止に使用)
 - `indra/newview/llviewercontrol.cpp` — `AYAChatWindowStyle` / `FSChatHumanObjectTabs` 切替時の `ChangeChatLayoutSetting` モーダル発火 + 旧スタイルの IM コンテナ自動クローズ + `floater_vis_*` クリア (M4-extra)
+- `indra/newview/llagent.cpp` — TP セパレーター送出時に `LLFloaterIMNearbyChat` (LL style) と `FSFloaterNearbyChat` (FS V1/V7) の両方に dispatch (M8 spec change、上流 FS で commented out されていた LL style 側を `findTypedInstance` でガードしつつ復活させ、3 style 一貫性を確保)
+- `indra/newview/llnotificationhandlerutil.cpp` — `LLHandlerUtil::logToNearbyChat` で notification tip (`ChatSystemMessageTip` 等、SLURL からのテレポート完了 / simulator version 差異など) を FS / LL 両方の nearby chat に dispatch (M8 spec change、同じく Ansariel コメントアウトを復活)
 
-**Settings**:
+**Settings** (M8 spec change で追加分あり):
 
-- `indra/newview/app_settings/settings.xml` — `FSChatHumanObjectTabs` Boolean default true persist 1
+- `indra/newview/app_settings/settings.xml`:
+  - `FSChatHumanObjectTabs` Boolean default true persist 1
+  - `FSFriendOnlineToHumanTab` Boolean default true persist 1 (M8 spec change)
 
 ### 6.2 既存の参考パターン (viewer 内)
 
@@ -236,7 +262,9 @@ XUI / C++ を覗いた結果:
 
 ## 7. 受入基準 (実装後)
 
-- [x] Human タブに人間アバター発言、Object タブに LSL/Object 発言が分離して表示される
+**初版 (M1〜M7) で完了済み**:
+
+- [x] Human タブに人間アバター発言、Object タブに LSL/Object 発言が分離して表示される (※タブラベルは M8 で `System & Object` に rename 予定)
 - [x] 旧履歴 (マーカーなし) は Human タブにフォールバック
 - [x] タブ切替で session 中の発言色が維持される (グレーにならない)
 - [x] 起動時の history load は両タブともグレー (persisted color) で表示
@@ -245,13 +273,27 @@ XUI / C++ を覗いた結果:
 - [x] AYAstorm を介してユーザー画面にマーカー文字列が漏れない
 - [x] 上流 Firestorm で同じ履歴ファイルを開いても破綻しない (末尾文字列として見える)
 - [x] FS V1 / V7 / LL の 3 style すべてでタブが機能する (Linux / Win / Mac 全 OS で確認)
-- [x] IM (1 on 1) の `IM_FROM_TASK` 由来発言が Object タブに分離される (M4 で共有 XUI 経由実装、M6 で確認)
-- [x] System / Teleport / Region / Unknown 発言は Human タブに流れる
+- [x] IM (1 on 1) の `IM_FROM_TASK` 由来発言が System & Object タブに分離される (M4 で共有 XUI 経由実装、M6 で確認)
 - [x] `Preferences → Chat → Chat Windows` に `FSChatHumanObjectTabs` スイッチが表示される
 - [x] `FSChatHumanObjectTabs=false` で旧 1-widget 挙動に戻る (escape hatch)
 - [x] AYAChatWindowStyle / FSChatHumanObjectTabs 切替時に再起動誘導モーダルが出る (M4-extra)
 - [x] AYAChatWindowStyle 切替時に旧スタイルの IM コンテナが自動で閉じる (M4-extra)
 - [x] 3 OS (Linux / Win / Mac) でビルド通過 + 動作確認 (M7)
+
+**M8 spec change で追加**:
+
+- [ ] タブラベルが 3 言語 (en/ja/zh) すべてで `System & Object` (順序固定、`Object & System` ではない) に表示される
+- [ ] System / Teleport / Region 発言は **System & Object** タブに流れる (spec change 2026-05-16、旧仕様では Human タブだった)
+- [ ] `CHAT_SOURCE_UNKNOWN` は Human タブにフォールバック (default safe、変更なし)
+- [ ] フレンド online/offline 通知は System & Object タブには `FSFriendOnlineToHumanTab` の値に関わらず**常に**出力される
+- [ ] `FSFriendOnlineToHumanTab=true` (デフォルト) のとき、フレンド online/offline 通知は Human タブにも複製出力される
+- [ ] `FSFriendOnlineToHumanTab=false` で Human への複製が止まる (System & Object には残る)
+- [ ] `Preferences → Chat → Chat Windows` に `FSFriendOnlineToHumanTab` チェックボックスが master のインデント子要素として表示される
+- [ ] `FSChatHumanObjectTabs=false` のとき、`FSFriendOnlineToHumanTab` チェックボックスがグレーアウトする (enabled_control 連動)
+- [ ] TP 着地時のセパレーター (`CHAT_SOURCE_TELEPORT` + `CHAT_STYLE_TELEPORT_SEP`) が **FS V1 / V7 / LL の 3 style すべてで** System & Object タブに表示される (M8 で `llagent.cpp` の commented-out LL 経路を復活、上流 FS の latent bug 修正を同梱)
+- [ ] TP 着地時にも非アクティブタブの未読バッジが bump される (history replay と区別するため `args["is_replay"]` 専用フラグを導入、`do_not_log` は履歴抑止のみの意味に戻す)
+- [ ] LL style でも TP 完了時の SLURL 通知 (`FSShowBackSLURL` で出る "secondlife://... からのテレポートが完了しました") と simulator version 差異通知が System & Object タブに表示される (`llnotificationhandlerutil.cpp` の `logToNearbyChat` で LL 経路を復活)
+- [ ] M8 後に 3 OS (Linux / Win / Mac) で再ビルド + 動作確認 PASS
 
 ---
 
@@ -290,7 +332,8 @@ XUI / C++ を覗いた結果:
 | M5 | 未読バッジ (`(N)` 件数表示、セッション内のみ、再起動でリセット) | ✅ 完了 |
 | M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | ✅ 完了 (LSL `llInstantMessage` 経由で IM_FROM_TASK が Object タブに分離されることを確認) |
 | M7 | 3 OS ビルド (Linux → Win → Mac) | ✅ 完了 (2026-05-16、3 OS ビルド + 動作確認 PASS) |
-| M8 | Release — spec doc 更新、release note 3 言語、tag | ⏳ 着手前 |
+| M8 | spec change 実装: System & Object 再グループ化 + フレンド online → Human 例外 cvar (`FSFriendOnlineToHumanTab`) + タブラベル `Object` → `System & Object` (3 言語) | ⏳ 着手中 (2026-05-16) |
+| M9 | Release — spec doc 更新、release note 3 言語、tag | ⏳ 着手前 |
 
 ---
 
@@ -307,3 +350,21 @@ XUI / C++ を覗いた結果:
   - HUD allow list: r22 スコープ外、r23+ で検討
   - 構造調査の結果、`EChatSourceType` が既存定義済みで判定ロジックは新規不要、`LLLogChat::saveHistory()` シグネチャ拡張要、LL style は `panel_container` で session 切替する構造
 - **2026-05-16 (M7 完了)**: Windows + macOS でもビルド通過 + 動作確認 PASS。3 OS で受入基準を全項目クリア、M8 (Release) に移行。
+- **2026-05-16 (spec change: System & Object 再グループ化)**: AYA さんから「TP したときのログが Human タブに表示されないようにしてほしい」要求。3-tab (Human / Object / System) 案を一旦検討したが、「タブ多いと切り替えて見ない」との判断で **2-tab 再グループ化** に決定。
+  - **判定境界の変更**: `CHAT_SOURCE_SYSTEM` / `TELEPORT` / `REGION` を Human → **System & Object** へ移動。`CHAT_SOURCE_UNKNOWN` だけは Human フォールバックを維持 (default safe)
+  - **タブラベル**: `Object` → `System & Object` (順序固定。AYA さん談: "Object が偉そうだから" — `Object & System` ではない)
+  - **フレンド online/offline 例外**: 「会話したい相手の登場」性質が強いため、新 cvar `FSFriendOnlineToHumanTab` (デフォルト ON) で Human タブにも複製可能とする。System & Object には cvar 値に関わらず常に出力。実装は `llcallingcard.cpp` で chat 構築時に `LLChat::mFriendOnlineNotification` フラグを立てる方式。
+  - **据え置き**: `FSChatHumanObjectTabs` cvar 名 (rename しない) / 履歴 suffix marker フォーマット (semantic shift のみ、loader のタブ振り分けロジックが変わる)
+  - **マイルストーン再採番**: 旧 M8 (Release) → M9、新規 M8 = spec change 実装
+  - **背景**: AYA さん自身が「Human 開いてたらわからない」=「会話したい相手の登場は会話の流れに残したい」と説明、設定で出す/出さないも選べるようにしておく方が複数ユーザーの嗜好をカバーできるとの判断 (デフォルトは Human にも出す、cvar OFF で旧仕様派にも対応)
+- **2026-05-16 (M8 追加: LL style TP セパレーター復活)**: Sandbox で region 通知が LL style に出ないという AYA さんからの指摘を起点に調査。原因は Firestorm の `llagent.cpp:5029` で 2021-02-03 (Ansariel, commit `a1c46dc4125`) に `LLFloaterIMNearbyChat::addMessage()` 呼び出しが commented out されており、TP セパレーターが FS style にしか届かない上流 latent bug と判明。r22 で LL style を一級化した結果として顕在化した。
+  - **方針**: コメントアウトを復活させ、`findTypedInstance` でガードした上で 3 style に dispatch (option b、AYA 判断 "正しくは出るべき")
+  - **実装**: `llagent.cpp` の `#include "llfloaterimnearbychat.h"` を復活、`LLAgent::addRegionChangedCallback` 内で `FSFloaterNearbyChat` と `LLFloaterIMNearbyChat` の両方に `addMessage(chat, true, args)` を呼ぶ。`findTypedInstance` は inactive style では nullptr を返すので二重通知にはならず、`args["do_not_log"] = true` で履歴二重書きも防止
+- **2026-05-16 (M8 追加: TP 着地時の未読バッジ修正)**: AYA さんから「TP したログは未読カウントされてない」との追加指摘。原因は M5 で未読バッジの抑止条件に `args["do_not_log"]` を流用していたこと。TP セパレーターは「履歴に残さないが session 内の新規イベント」なので `do_not_log=true` で送られるが、未読カウントは bump すべき性質。
+  - **方針**: history reload 経路に専用フラグ `args["is_replay"]` を導入し、未読バッジ条件を `!args["is_replay"]` に切り替える。`do_not_log` は本来の「履歴ファイルに書かない」意味のみに戻す。
+  - **実装**: `fsfloaternearbychat.cpp` の `updateChatHistoryStyle` / `reloadMessages` / `loadHistory` および `llfloaterimnearbychat.cpp` の `reloadMessages` / `loadHistory` の各経路で `do_not_log["is_replay"] = true;` を併設。`fsfloaternearbychat.cpp` / `llfloaterimsessiontab.cpp` の `log_active` 条件を `!args["is_replay"].asBoolean()` に変更。
+  - **影響範囲**: TP 着地時のセパレーター, region change 系通知などで未読バッジが正しく bump されるようになる。history reload は引き続き抑止される (今までと同じ挙動)。
+- **2026-05-16 (M8 追加: LL style notification tip 復活)**: AYA さんから「V7 では `secondlife://... からのテレポートが完了しました` と `現在のシミュレータ / 以前のシミュレータ` の通知が出るが LL 版では出ない」と指摘。調査結果、`llnotificationhandlerutil.cpp:273` の `LLHandlerUtil::logToNearbyChat` で notification tip (`ChatSystemMessageTip` 等) を chat に流す処理が Ansariel 改造で FS 専用 (`FSFloaterNearbyChat`) のみに dispatch されていた。`llagent.cpp:5029` と同パターンの上流 FS 改造、LL style 一級化で顕在化。
+  - **方針**: `llagent.cpp` の修正と同様に、`LLFloaterIMNearbyChat` も `findTypedInstance` でガードしつつ並列 dispatch。3 style 一貫性確保。
+  - **実装**: `llnotificationhandlerutil.cpp` の `#include "llfloaterimnearbychat.h"` を復活、`logToNearbyChat` 内で `FSFloaterNearbyChat::addMessage` と `LLFloaterIMNearbyChat::addMessage` の両方を呼ぶ。
+  - **副次効果**: TP 完了 SLURL (`FSShowBackSLURL=true` 時) / region simulator version 差異 / RLV 系通知など、`ChatSystemMessageTip` 経由の system tip が全て LL style にも届くようになる。`mSourceType = CHAT_SOURCE_SYSTEM` で送られるので System & Object タブにルーティングされる。

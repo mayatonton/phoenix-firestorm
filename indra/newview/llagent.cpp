@@ -62,7 +62,9 @@
 #include "llmoveview.h"
 #include "llnavigationbar.h" // to show/hide navigation bar when changing mouse look state
 // <FS:Ansariel> [FS Communication UI]
-//#include "llfloaterimnearbychat.h"
+// <FS:AYAstorm r22 spec change 2026-05-16> Re-enable include so LL style nearby chat also gets the TP separator.
+#include "llfloaterimnearbychat.h"
+// </FS:AYAstorm r22 spec change>
 #include "fsnearbychathub.h"
 // </FS:Ansariel> [FS Communication UI]
 #include "llspeakers.h"
@@ -5026,10 +5028,12 @@ void LLAgent::addTPNearbyChatSeparator()
     }
 
     // <FS:Ansariel> [FS communication UI]
-    //LLFloaterIMNearbyChat* nearby_chat = LLFloaterReg::getTypedInstance<LLFloaterIMNearbyChat>("nearby_chat");
     FSFloaterNearbyChat* nearby_chat = LLFloaterReg::findTypedInstance<FSFloaterNearbyChat>("fs_nearby_chat");
     // </FS:Ansariel> [FS communication UI]
-    if (nearby_chat)
+    // <FS:AYAstorm r22 spec change 2026-05-16> Also dispatch to LL style nearby chat so all three styles (FS V1 / V7 / LL) receive the TP separator.
+    LLFloaterIMNearbyChat* ll_nearby_chat = LLFloaterReg::findTypedInstance<LLFloaterIMNearbyChat>("nearby_chat");
+    // </FS:AYAstorm r22 spec change>
+    if (nearby_chat || ll_nearby_chat)
     {
         std::string location_name;
         LLAgentUI::ELocationFormat format = LLAgentUI::LOCATION_FORMAT_NO_MATURITY;
@@ -5050,7 +5054,16 @@ void LLAgent::addTPNearbyChatSeparator()
 
         LLSD args;
         args["do_not_log"] = true;
-        nearby_chat->addMessage(chat, true, args);
+        if (nearby_chat)
+        {
+            nearby_chat->addMessage(chat, true, args);
+        }
+        // <FS:AYAstorm r22 spec change 2026-05-16> findTypedInstance returns nullptr for the inactive style, so only the currently active container receives the message; args["do_not_log"]=true prevents duplicate history writes regardless.
+        if (ll_nearby_chat)
+        {
+            ll_nearby_chat->addMessage(chat, true, args);
+        }
+        // </FS:AYAstorm r22 spec change>
     }
 }
 

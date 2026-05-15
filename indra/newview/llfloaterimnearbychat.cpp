@@ -220,6 +220,7 @@ void LLFloaterIMNearbyChat::reloadMessages(bool clean_messages/* = false*/)
 
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
+    do_not_log["is_replay"] = true; // <FS:AYAstorm r22> Mark archive replay so unread badge logic skips it.
     for(std::vector<LLChat>::iterator it = mMessageArchive.begin();it!=mMessageArchive.end();++it)
     {
         // Update the messages without re-writing them to a log file.
@@ -231,6 +232,7 @@ void LLFloaterIMNearbyChat::loadHistory()
 {
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
+    do_not_log["is_replay"] = true; // <FS:AYAstorm r22> Mark history file replay so unread badge logic skips it.
 
     std::list<LLSD> history;
     LLLogChat::loadChatHistory("chat", history);
