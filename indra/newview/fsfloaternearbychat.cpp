@@ -231,6 +231,16 @@ bool FSFloaterNearbyChat::postBuild()
         }
         mChatHistoryObject = nullptr;
     }
+    else if (LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container"))
+    {
+        // Hook tab selection so switching to a tab clears its unread badge.
+        tabs->setCommitCallback([this](LLUICtrl* ctrl, const LLSD&) {
+            if (LLTabContainer* t = dynamic_cast<LLTabContainer*>(ctrl))
+            {
+                resetUnreadBadge(t->getCurrentPanel());
+            }
+        });
+    }
     // </FS:AYAstorm r22>
 
     mUnreadMessagesNotificationPanel = getChild<LLLayoutPanel>("unread_messages_holder");
@@ -326,6 +336,13 @@ void FSFloaterNearbyChat::addMessage(const LLChat& chat,bool archive,const LLSD 
             target = mChatHistoryObject;
         }
         target->appendMessage(chat, chat_args, input_append_params);
+        // Bump per-tab unread badge when the chat lands in a non-active tab.
+        // do_not_log marks history replays (reloadMessages / updateChatHistoryStyle)
+        // so we don't accumulate counts for messages the user has already seen.
+        if (human_object_tabs && mChatHistoryObject && !args["do_not_log"].asBoolean())
+        {
+            bumpUnreadBadge(target);
+        }
         // </FS:AYAstorm r22>
     }
 
@@ -578,6 +595,74 @@ void FSFloaterNearbyChat::clearChatHistory()
     mChatHistoryMuted->clear();
     if (mChatHistoryObject) { mChatHistoryObject->clear(); } // <FS:AYAstorm r22>
 }
+
+// <FS:AYAstorm r22>
+void FSFloaterNearbyChat::bumpUnreadBadge(FSChatHistory* target)
+{
+    LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container");
+    if (!tabs) return;
+
+    LLPanel* target_panel = nullptr;
+    S32*     counter      = nullptr;
+    std::string base_title;
+    if (target == mChatHistoryObject)
+    {
+        target_panel = findChild<LLPanel>("tab_object");
+        counter      = &mUnreadObject;
+        base_title   = "Object";
+    }
+    else
+    {
+        target_panel = findChild<LLPanel>("tab_human");
+        counter      = &mUnreadHuman;
+        base_title   = "Human";
+    }
+    if (!target_panel || !counter) return;
+
+    // Don't badge the active tab — the user is already looking at it.
+    if (tabs->getCurrentPanel() == target_panel) return;
+
+    (*counter)++;
+    const S32 idx = tabs->getIndexForPanel(target_panel);
+    if (idx >= 0)
+    {
+        tabs->setPanelTitle(idx, llformat("%s (%d)", base_title.c_str(), *counter));
+    }
+}
+
+void FSFloaterNearbyChat::resetUnreadBadge(LLPanel* selected_panel)
+{
+    if (!selected_panel) return;
+    LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container");
+    if (!tabs) return;
+
+    const std::string name = selected_panel->getName();
+    std::string base_title;
+    S32* counter = nullptr;
+    if (name == "tab_object")
+    {
+        counter    = &mUnreadObject;
+        base_title = "Object";
+    }
+    else if (name == "tab_human")
+    {
+        counter    = &mUnreadHuman;
+        base_title = "Human";
+    }
+    else
+    {
+        return;
+    }
+
+    if (*counter == 0) return;
+    *counter = 0;
+    const S32 idx = tabs->getIndexForPanel(selected_panel);
+    if (idx >= 0)
+    {
+        tabs->setPanelTitle(idx, base_title);
+    }
+}
+// </FS:AYAstorm r22>
 
 void FSFloaterNearbyChat::updateChatHistoryStyle()
 {

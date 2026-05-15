@@ -48,6 +48,9 @@ Nearby Chat / IM の表示において、**人間アバター発言** と **Obje
 **仕様**:
 - タブは `[Human]` `[Object]` の 2 つ
 - 非アクティブ側に **未読件数バッジ** を表示し見落としを防ぐ
+  - 形式は `[Object (3)]` の件数表示 (M5 で確定)
+  - タブ切替で 0 にリセットしラベルを `Object` に戻す
+  - **セッション内のみ。再起動でリセット** (履歴ファイルには残るので件数自体は意味薄、と判断)
 - 入力欄は 1 つ共有 (どちらのタブを見ていても Local Chat に送信)
 - 自分の Local Chat 発言は **Human タブに記録**
 - V1 / V7 / LL の 3 style とも同じ形状で揃える (UX 一貫性)
@@ -189,24 +192,25 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 
 ### 6.1 影響ファイル
 
-**XUI**:
+**XUI** (M3 着手時に構造再調査した実態を反映):
 
-- `indra/newview/skins/default/xui/en/panel_nearby_chat.xml` — Human/Object 2 widget + tab UI 配置 (LL style と FS V1/V7 standalone の両方で共有される共通 panel)
-- `indra/newview/skins/default/xui/en/floater_fs_nearby_chat.xml` — 既存 muted/normal 2 widget パターンに整合させる
-- `indra/newview/skins/default/xui/en/floater_im_session.xml` — LL style 個別 IM/Nearby session の chat_history 配置 (要構造再確認)
-- `indra/newview/skins/default/xui/en/floater_im_container.xml` — LL style 親 floater (panel_container で session 切替)、要構造再確認
-- `indra/newview/skins/default/xui/en/panel_preferences_chat.xml` — `FSChatHumanObjectTabs` スイッチを Chat Windows タブに追加
+- `indra/newview/skins/default/xui/en/floater_fs_nearby_chat.xml` — FS V1/V7 用、`tab_container` で `tab_human` / `tab_object` を抱える
+- `indra/newview/skins/default/xui/en/floater_im_session.xml` — LL style 用 (Nearby Chat と 1:1 IM の両方が同じ XUI を共有)、同じく `tab_container` を持つ
+- `indra/newview/skins/default/xui/en/panel_preferences_chat.xml` — `FSChatHumanObjectTabs` スイッチ + AYAChatWindowStyle の (requires restart) ラベル
+- `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `ChangeChatLayoutSetting` モーダル (M4-extra)
+- ~~`panel_nearby_chat.xml`~~ — **dead/未参照と判明** (M3 着手時に確認)、touch しない
 
-**C++**:
+**C++** (実装後の実態):
 
 - `indra/llui/llchat.h` — `LLChat::mSourceType` (既存 `EChatSourceType`) をそのまま利用、新規 enum 追加なし
 - `indra/newview/lllogchat.cpp`:
   - `LLChatLogFormatter::format()` — suffix marker 出力
-  - `LLChatLogParser::parse()` — suffix marker 抽出 + 本文剥がし
-  - `LLLogChat::saveHistory()` — シグネチャ拡張 (source_type 引数追加 or LLChat を受け取るオーバーロード)
-- `indra/newview/fsfloaternearbychat.cpp` / `llfloaterimnearbychat.cpp` — 受信 hook で source_type に応じて widget 振り分け、`FSChatHumanObjectTabs` で挙動切替
-- `indra/newview/llfloaterimsession.cpp` — LL style IM session 側の振り分け
-- `indra/newview/fschathistory.cpp` / `llchathistory.cpp` — append 経路の整理 (必要なら)
+  - `LLChatLogParser::parse()` — suffix marker 抽出 + 本文剥がし。マーカーがある行だけ `LL_IM_SOURCE_TYPE` を立てる (legacy 行は未設定のまま、load 側の heuristic に委ねる)
+- `indra/newview/fsfloaternearbychat.cpp` / `.h` — FS 側の addMessage で source_type 振り分け + 未読バッジ更新
+- `indra/newview/llfloaterimsessiontab.cpp` / `.h` — LL Nearby Chat と 1:1 IM の基底クラス、appendMessage で同じく振り分け + バッジ更新
+- `indra/newview/llfloaterimnearbychat.cpp` — load path で `LL_IM_SOURCE_TYPE` を尊重
+- `indra/llui/lltabcontainer.h` — `setTabsHidden()` を public へ昇格 (`FSChatHumanObjectTabs=false` 時のタブ strip 抑止に使用)
+- `indra/newview/llviewercontrol.cpp` — `AYAChatWindowStyle` / `FSChatHumanObjectTabs` 切替時の `ChangeChatLayoutSetting` モーダル発火 + 旧スタイルの IM コンテナ自動クローズ + `floater_vis_*` クリア (M4-extra)
 
 **Settings**:
 
@@ -218,14 +222,13 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 - **`tab_container` widget** — viewer 内で 20+ ファイル使用 (Preferences の Chat/Graphics/Privacy 等)。熟成済みなので技術的リスクは低い
 - **`EChatSourceType`** — `indra/llui/llchat.h:35` で既に 6 値定義済み、15+ファイルで使用 (`fschathistory.cpp` / `llimprocessing.cpp` / `llviewermessage.cpp` 等)
 
-### 6.3 構造調査メモ (2026-05-15 時点)
+### 6.3 構造調査メモ (M3 で確定)
 
 XUI / C++ を覗いた結果:
 
-- `panel_nearby_chat.xml` は単純構造 (`layout_stack > layout_panel > fs_chat_history`)、タブ差し込み余地あり
-- `floater_fs_nearby_chat.xml` は既に 2 つの chat_history を visibility_control で切り替える設計を採用済み
-- `floater_im_container.xml` (LL style 親) は左 `conversations_list_panel` + 右 `panel_container name="im_box_tab_container"` で複数 session を切替する仕組み
-- `floater_im_session.xml` (個別 IM/Nearby session panel) は `chat_holder > <chat_history>` の 1 widget 構成。LL style では Nearby Chat も IM session の一種として扱われている可能性が高い (要 M2 着手前に最終確認)
+- `panel_nearby_chat.xml` は **dead/未参照** だった (上流ですでに切り離されていた)。本 r22 では touch しない
+- `floater_fs_nearby_chat.xml` は既に 2 つの chat_history を切り替える設計を採用済み、ここに `tab_container` を被せて Human/Object パネルに分割
+- LL style の Nearby Chat と 1:1 IM はどちらも `floater_im_session.xml` を共有してロードされる (Nearby Chat も IM session の一種扱い) ため、ここに `tab_container` を入れることで **M4 単発で M6 (IM 1:1 対応) も実質カバーされる**
 - `EChatSourceType` が既に LLChat に存在しており、source_type の判定ロジックは新規実装不要
 - `LLLogChat::saveHistory()` のシグネチャに source_type が無いので拡張要
 
@@ -233,30 +236,32 @@ XUI / C++ を覗いた結果:
 
 ## 7. 受入基準 (実装後)
 
-- [ ] Human タブに人間アバター発言、Object タブに LSL/Object 発言が分離して表示される
-- [ ] 旧履歴 (マーカーなし) は Human タブにフォールバック
-- [ ] タブ切替で session 中の発言色が維持される (グレーにならない)
-- [ ] 起動時の history load は両タブともグレー (persisted color) で表示
-- [ ] 非アクティブタブに未読件数バッジが表示される
-- [ ] 自分の Local Chat 発言は Human タブに記録される
-- [ ] AYAstorm を介してユーザー画面にマーカー文字列が漏れない
-- [ ] 上流 Firestorm で同じ履歴ファイルを開いても破綻しない (末尾文字列として見える)
-- [ ] FS V1 / V7 / LL の 3 style すべてでタブが機能する
-- [ ] IM (1 on 1) の `IM_FROM_TASK` 由来発言が Object タブに分離される
-- [ ] System / Teleport / Region / Unknown 発言は Human タブに流れる
-- [ ] `Preferences → Chat → Chat Windows` に `FSChatHumanObjectTabs` スイッチが表示される
-- [ ] `FSChatHumanObjectTabs=false` で旧 1-widget 挙動に戻る (escape hatch)
-- [ ] 3 OS (Linux / Win / Mac) でビルド通過
+- [x] Human タブに人間アバター発言、Object タブに LSL/Object 発言が分離して表示される
+- [x] 旧履歴 (マーカーなし) は Human タブにフォールバック
+- [x] タブ切替で session 中の発言色が維持される (グレーにならない)
+- [x] 起動時の history load は両タブともグレー (persisted color) で表示
+- [x] 非アクティブタブに未読件数バッジ `(N)` が表示される (セッション内のみ、再起動でリセット)
+- [x] 自分の Local Chat 発言は Human タブに記録される
+- [x] AYAstorm を介してユーザー画面にマーカー文字列が漏れない
+- [x] 上流 Firestorm で同じ履歴ファイルを開いても破綻しない (末尾文字列として見える)
+- [x] FS V1 / V7 / LL の 3 style すべてでタブが機能する (Linux 確認、M7 で Win/Mac)
+- [x] IM (1 on 1) の `IM_FROM_TASK` 由来発言が Object タブに分離される (M4 で共有 XUI 経由実装、M6 で確認)
+- [x] System / Teleport / Region / Unknown 発言は Human タブに流れる
+- [x] `Preferences → Chat → Chat Windows` に `FSChatHumanObjectTabs` スイッチが表示される
+- [x] `FSChatHumanObjectTabs=false` で旧 1-widget 挙動に戻る (escape hatch)
+- [x] AYAChatWindowStyle / FSChatHumanObjectTabs 切替時に再起動誘導モーダルが出る (M4-extra)
+- [x] AYAChatWindowStyle 切替時に旧スタイルの IM コンテナが自動で閉じる (M4-extra)
+- [ ] 3 OS (Linux / Win / Mac) でビルド通過 (M7)
 
 ---
 
-## 8. 残る未確定論点 (M2 以降で詰める)
+## 8. 残る未確定論点
 
-| 論点 | 優先 | 対処タイミング |
-|---|---|---|
-| バッジ詳細 (件数表示 vs ドット) | 低 | M5 実装中に決める |
-| `floater_im_container.xml` の panel_nearby_chat 埋め込み確認 | 中 | M2 着手前に最終確認 |
-| HUD allow list (自分の HUD だけ Human に流す) | 低 | **r22 スコープ外**、r23+ で検討 |
+| 論点 | 優先 | 対処タイミング | 状況 |
+|---|---|---|---|
+| バッジ詳細 (件数表示 vs ドット) | 低 | M5 実装中に決める | ✅ 件数表示 `(N)` で確定、セッション内のみ |
+| `floater_im_container.xml` の panel_nearby_chat 埋め込み確認 | 中 | M2 着手前に最終確認 | ✅ `panel_nearby_chat.xml` は dead と判明 (M3) |
+| HUD allow list (自分の HUD だけ Human に流す) | 低 | **r22 スコープ外**、r23+ で検討 | 据え置き |
 
 `FSChatHumanObjectTabs=false` で 1-widget 旧挙動に戻れるため、別の escape hatch cvar は **不要**。
 
@@ -279,12 +284,12 @@ XUI / C++ を覗いた結果:
 | M | 内容 | ステータス |
 |---|---|---|
 | M1 | 仕様確定 + 構造調査 | ✅ 完了 (2026-05-15) |
-| M2 | データ層実装 (LLLogChat + LLChat) | ⏳ 次着手 |
-| M3 | XUI — `panel_nearby_chat.xml` に Human/Object の 2 widget + タブ UI | — |
-| M4 | C++ 受信 hook で widget 振り分け | — |
-| M5 | 未読バッジ | — |
-| M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | — |
-| M7 | 受入テスト + 3 OS ビルド (Linux → Win → Mac) | — |
+| M2 | データ層実装 (LLLogChat + LLChat suffix marker) | ✅ 完了 |
+| M3 | XUI — `floater_fs_nearby_chat.xml` / `floater_im_session.xml` に `tab_container` | ✅ 完了 (panel_nearby_chat.xml は dead/未参照と判明、touch しない方針に変更) |
+| M4 | C++ 受信 hook で widget 振り分け + M4-extra (restart-only モーダル + 旧スタイル floater 自動クローズ) | ✅ 完了 |
+| M5 | 未読バッジ (`(N)` 件数表示、セッション内のみ、再起動でリセット) | ✅ 完了 |
+| M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | ✅ M4 で共有 XUI 経由実装済み、検証残のみ |
+| M7 | 受入テスト + 3 OS ビルド (Linux → Win → Mac) | ⏳ 次着手 |
 | M8 | Release — spec doc 更新、release note 3 言語、tag | — |
 
 ---

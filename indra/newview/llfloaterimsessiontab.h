@@ -195,6 +195,13 @@ protected:
 
     LLChatHistory* mChatHistory;
     LLChatHistory* mChatHistoryObject{ nullptr }; // <FS:AYAstorm r22> Object tab
+    // <FS:AYAstorm r22> Per-tab unread counters for the chat tab badge.
+    // See FSFloaterNearbyChat for the mirroring implementation.
+    S32 mUnreadHuman{ 0 };
+    S32 mUnreadObject{ 0 };
+    void bumpUnreadBadge(LLChatHistory* target);
+    void resetUnreadBadge(LLPanel* selected_panel);
+    // </FS:AYAstorm r22>
     LLChatEntry* mInputEditor;
     LLLayoutPanel* mChatLayoutPanel;
     LLLayoutStack* mInputPanels;

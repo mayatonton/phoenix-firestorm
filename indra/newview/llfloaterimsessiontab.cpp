@@ -327,6 +327,16 @@ bool LLFloaterIMSessionTab::postBuild()
         }
         mChatHistoryObject = nullptr;
     }
+    else if (LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container"))
+    {
+        // Clear the unread badge when the user switches to that tab.
+        tabs->setCommitCallback([this](LLUICtrl* ctrl, const LLSD&) {
+            if (LLTabContainer* t = dynamic_cast<LLTabContainer*>(ctrl))
+            {
+                resetUnreadBadge(t->getCurrentPanel());
+            }
+        });
+    }
     // </FS:AYAstorm r22>
 
     mInputEditor = getChild<LLChatEntry>("chat_editor");
@@ -698,8 +708,79 @@ void LLFloaterIMSessionTab::appendMessage(const LLChat& chat, const LLSD& args)
         target = mChatHistoryObject;
     }
     target->appendMessage(chat, chat_args, input_append_params);
+    // Bump per-tab unread badge when the chat lands in a non-active tab.
+    if (human_object_tabs && mChatHistoryObject && !args["do_not_log"].asBoolean())
+    {
+        bumpUnreadBadge(target);
+    }
     // </FS:AYAstorm r22>
 }
+
+// <FS:AYAstorm r22>
+void LLFloaterIMSessionTab::bumpUnreadBadge(LLChatHistory* target)
+{
+    LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container");
+    if (!tabs) return;
+
+    LLPanel* target_panel = nullptr;
+    S32*     counter      = nullptr;
+    std::string base_title;
+    if (target == mChatHistoryObject)
+    {
+        target_panel = findChild<LLPanel>("tab_object");
+        counter      = &mUnreadObject;
+        base_title   = "Object";
+    }
+    else
+    {
+        target_panel = findChild<LLPanel>("tab_human");
+        counter      = &mUnreadHuman;
+        base_title   = "Human";
+    }
+    if (!target_panel || !counter) return;
+    if (tabs->getCurrentPanel() == target_panel) return;
+
+    (*counter)++;
+    const S32 idx = tabs->getIndexForPanel(target_panel);
+    if (idx >= 0)
+    {
+        tabs->setPanelTitle(idx, llformat("%s (%d)", base_title.c_str(), *counter));
+    }
+}
+
+void LLFloaterIMSessionTab::resetUnreadBadge(LLPanel* selected_panel)
+{
+    if (!selected_panel) return;
+    LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container");
+    if (!tabs) return;
+
+    const std::string name = selected_panel->getName();
+    std::string base_title;
+    S32* counter = nullptr;
+    if (name == "tab_object")
+    {
+        counter    = &mUnreadObject;
+        base_title = "Object";
+    }
+    else if (name == "tab_human")
+    {
+        counter    = &mUnreadHuman;
+        base_title = "Human";
+    }
+    else
+    {
+        return;
+    }
+
+    if (*counter == 0) return;
+    *counter = 0;
+    const S32 idx = tabs->getIndexForPanel(selected_panel);
+    if (idx >= 0)
+    {
+        tabs->setPanelTitle(idx, base_title);
+    }
+}
+// </FS:AYAstorm r22>
 
 void LLFloaterIMSessionTab::updateUsedEmojis(LLWStringView text)
 {

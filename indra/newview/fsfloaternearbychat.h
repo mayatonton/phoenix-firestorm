@@ -144,6 +144,16 @@ private:
     FSChatHistory* mChatHistoryObject; // <FS:AYAstorm r22> Object tab
     LLChatEntry*   mInputEditor;
 
+    // <FS:AYAstorm r22> Per-tab unread counters for the chat tab badge.
+    // When a chat lands in a non-active tab, the corresponding counter
+    // increments and the tab title is rewritten to "Human (N)" / "Object (N)".
+    // Switching to that tab clears its counter and restores the bare label.
+    S32 mUnreadHuman{ 0 };
+    S32 mUnreadObject{ 0 };
+    void bumpUnreadBadge(class FSChatHistory* target);
+    void resetUnreadBadge(class LLPanel* selected_panel);
+    // </FS:AYAstorm r22>
+
     // chat type selector and send chat buttons
     LLButton*             mEmojiRecentPanelToggleBtn;
     LLButton*             mEmojiPickerToggleBtn;
