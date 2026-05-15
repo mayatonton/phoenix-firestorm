@@ -288,8 +288,8 @@ XUI / C++ を覗いた結果:
 | M3 | XUI — `floater_fs_nearby_chat.xml` / `floater_im_session.xml` に `tab_container` | ✅ 完了 (panel_nearby_chat.xml は dead/未参照と判明、touch しない方針に変更) |
 | M4 | C++ 受信 hook で widget 振り分け + M4-extra (restart-only モーダル + 旧スタイル floater 自動クローズ) | ✅ 完了 |
 | M5 | 未読バッジ (`(N)` 件数表示、セッション内のみ、再起動でリセット) | ✅ 完了 |
-| M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | ✅ M4 で共有 XUI 経由実装済み、検証残のみ |
-| M7 | 受入テスト + 3 OS ビルド (Linux → Win → Mac) | ⏳ 次着手 |
+| M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | ✅ 完了 (LSL `llInstantMessage` 経由で IM_FROM_TASK が Object タブに分離されることを確認) |
+| M7 | 3 OS ビルド (Linux → Win → Mac) | ⏳ Linux ✅ PASS、Win / Mac は push 後 |
 | M8 | Release — spec doc 更新、release note 3 言語、tag | — |
 
 ---
