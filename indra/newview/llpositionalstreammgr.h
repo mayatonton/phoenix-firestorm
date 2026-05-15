@@ -29,6 +29,8 @@
 #include "stdtypes.h"
 #include "v3math.h"
 
+#include <boost/signals2/connection.hpp>
+
 #include <deque>
 #include <limits>
 #include <map>
@@ -321,6 +323,20 @@ private:
         // toasts on every reconnect-success transition (only the *initial*
         // bind notifies; rebinds inherit a fresh false because new Binding).
         bool notified_played = false;
+        // r23: source prim is an attachment (= attached to an avatar). When
+        // true, the source position moves per-frame and the parcel gate is
+        // re-evaluated in update() every tick (Tier 2). When false, the
+        // source is static so the gate is refreshed only on agent
+        // parcel-change events (Tier 1) and cached here.
+        bool is_attached = false;
+        // r23: cached canHearSound() result for this binding's source vs.
+        // the listener parcel. True = audible (default = audible so an
+        // un-evaluated binding plays rather than silently muting).
+        bool parcel_audible = true;
+        // r23: idempotent guard for setVolume churn. The per-poll push
+        // skips when the new effective volume equals the last pushed value.
+        // Sentinel NaN means "never pushed", so the first push always goes.
+        F32 last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
         std::unique_ptr<LLPositionalStream> stream;
     };
 
@@ -427,6 +443,14 @@ private:
         // last_diagnostic_key on structural rebuild so a fresh start
         // (re)announces the bypass once.
         std::string last_upmix_notice_key;
+
+        // r23: same parcel-gate fields as the mono Binding above. See
+        // those comments for full semantics; behaviour is identical
+        // (source = root prim of the linkset, gate decision applied
+        // uniformly to every channel of the multi stream).
+        bool is_attached = false;
+        bool parcel_audible = true;
+        F32 last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
     };
 
     // r10 P5 / r10.x P2: routing-diagnostic emitter. Called from update()
@@ -499,6 +523,23 @@ private:
 
     void evaluateBinding(const LLUUID& id);
     void evaluateMonoBinding(const LLUUID& id, const TagData& tag);
+
+    // r23: register the parcel-change callback once gAgent is alive. Called
+    // lazily on the first update() tick. Tier 1 (static-source bindings)
+    // refresh their cached parcel_audible only on this signal, so the
+    // per-frame cost stays zero in the common case.
+    void ensureParcelCallbackRegistered();
+
+    // r23: slot for `gAgent.addParcelChangedCallback`. Walks every binding
+    // and refreshes its cached `parcel_audible`. Cheap — one canHearSound
+    // call per binding (one parcel overlay lookup each, ~O(1)).
+    void onAgentParcelChanged();
+
+    // r23: evaluate canHearSound() at the given source prim's world
+    // position. Returns the previous cached value when the prim is gone
+    // or its position is unavailable, so a transient lookup miss doesn't
+    // mute a binding spuriously.
+    bool computeParcelAudible(const LLUUID& source_id, bool fallback) const;
 
     // r8 F2-a: (re)build the distributed-stereo binding rooted at root_id by
     // walking the linkset and harvesting whatever speaker descriptions are
@@ -638,6 +679,11 @@ private:
     // population in practice tracks the user's tagged prim count, so a prune
     // pass is not yet required. Cleared by shutdownAll().
     std::map<std::pair<LLUUID, DistErrorKind>, F64> mErrorThrottle;
+
+    // r23: parcel-change signal connection. Connected lazily on the first
+    // update() tick (gAgent is guaranteed alive by then). scoped_connection
+    // auto-disconnects in the singleton's destructor at process exit.
+    boost::signals2::scoped_connection mParcelChangedConn;
 
     // r9 P6.5: roots whose source URL was permanently rejected by
     // LLPositionalStreamMulti (FailReason::FormatUnsupported, e.g. 5ch

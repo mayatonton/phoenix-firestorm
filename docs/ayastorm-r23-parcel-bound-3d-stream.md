@@ -64,9 +64,22 @@ mute の実装は FMOD channel の `volume` を 0 にする (paused にしない
 - paused だと再開時にクリックノイズ / 再シーク必要のリスク
 - per-channel 別判定モデルは音像が「片寄せ」になって不自然なので **採用しない** (M1 確定)
 
-### 3.3 評価頻度
+### 3.3 評価頻度 — 2 tier モデル
 
-avatar の `parcel_change` シグナル + 配信者の position 変化通知で **逐次再評価**。毎フレーム回さない (gesture/object sound と同じ流儀)。
+**Tier 1: 据置 stream (大多数、source 位置が静止)**
+- `LLAgent::addParcelChangedCallback` シグナルでだけ再評価
+- avatar が parcel を跨いだ瞬間に走り、それ以外は完全に静止
+- source 位置が動かないので source 側の監視は不要 → 平時の per-frame コストはゼロ
+
+**Tier 2: 装着 stream (稀、source 位置 = 装着 avatar 位置)**
+- binding 構築時に `LLViewerObject::isAttachment()` で判定し、attachment フラグを binding に立てる
+- attachment フラグが立っている binding に限り `update()` (per-frame) で `canHearSound()` 再評価
+- 装着 stream が無い場面では Tier 2 ループ自体が走らない
+- 装着 stream が一部存在する場面でも、追加コストは「装着 binding 数 × 1 query × 60 fps」で十分に安い
+
+判定結果が変わったときだけ `setVolume()` を呼ぶ idempotent ガードを入れることで、FMOD への無駄な API call を抑える。
+
+precedent: `LLAudioSourceVO::updateMute()` (object sound) も canHearSound を毎 audio tick で評価しているが、3D stream は据置が大多数なので Tier 分離して負荷を最小化する。
 
 ---
 
