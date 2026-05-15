@@ -9960,7 +9960,6 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
     LL_PROFILE_GPU_ZONE("renderSelfRiggedObjectIDBuffer");
 
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSSelfRiggedPickerGPU", false);
-    static LLCachedControl<bool> trace(gSavedSettings, "FSSelfRiggedPickerTrace", false);
     if (!gpu_enable) return;
     if (!isAgentAvatarValid()) return;
     if (!mObjectIDBuffer.isComplete()) return;
@@ -9992,9 +9991,6 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
     bool skipLastSkin = false;
 
     LLVOAvatar* agent_avatar = gAgentAvatarp.get();
-    U32 candidates = 0;
-    U32 draw_calls = 0;
-    U32 triangles = 0;
 
     for (U32 pass_type : kFSRiggedPasses)
     {
@@ -10006,7 +10002,6 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
             LLCullResult::increment_iterator(i, end);
             if (!info || !info->mVertexBuffer || info->mCount == 0) continue;
             if (info->mAvatar.get() != agent_avatar) continue;
-            ++candidates;
             const LLMeshSkinInfo* skin = info->mSkinInfo.get();
             if (!skin || skin->mHash == 0) continue;
             U32 id = info->mFSPickerLocalID;
@@ -10035,8 +10030,6 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
             info->mVertexBuffer->drawRange(LLRender::TRIANGLES,
                                            info->mStart, info->mEnd,
                                            info->mCount, info->mOffset);
-            ++draw_calls;
-            triangles += info->mCount / 3;
         }
     }
 
@@ -10044,22 +10037,6 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
 
     mObjectIDBuffer.flush();
     sFSSelfRiggedPickerRenderGeneration = sFSSelfRiggedPickerArmGeneration;
-
-    if (trace)
-    {
-        static U32 frame_count = 0;
-        ++frame_count;
-        if ((frame_count % 120) == 1)
-        {
-            LL_INFOS("FSSelfRiggedPicker")
-                << "GPU ID pass ran"
-                << " buffer=" << mObjectIDBuffer.getWidth() << "x" << mObjectIDBuffer.getHeight()
-                << " candidates=" << candidates
-                << " draw_calls=" << draw_calls
-                << " triangles=" << triangles
-                << LL_ENDL;
-        }
-    }
 }
 // </AYAstorm:r21.1>
 

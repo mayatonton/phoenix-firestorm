@@ -70,14 +70,14 @@ CPU/GPU drift も alpha-discard 不一致も idle skin lag も **構造的に発
 
 | ファイル | 役割 |
 |---|---|
-| `indra/newview/fsselfriggedpicker.{h,cpp}` | 右クリック呼出側の GPU buffer 読み出し / LocalID 復元 / attachment tree walk |
-| `indra/newview/lltoolpie.cpp` | 右クリック handler。picker を呼ぶか / 上流結果を採るかの判定 (M4.18 rigged gate 含む) |
-| `indra/newview/pipeline.{h,cpp}` | `mObjectIDBuffer` 確保 / `renderSelfRiggedObjectIDBuffer()` 本体 |
+| `indra/newview/fsselfriggedpicker.{h,cpp}` | 右クリック呼出側の GPU buffer 読み出し / LocalID 復元 / attachment tree walk。armed mode 有効時は `isSelfRiggedObjectIDBufferReady()` で readback 可否を判定 |
+| `indra/newview/lltoolpie.cpp` | 右クリック handler。picker を呼ぶか / 上流結果を採るかの判定 (M4.18 rigged gate 含む)。hover 時に self avatar / self attachment を検出して armed mode の picker を arm (`handleHover` → `fs_arm_self_rigged_picker_for_hover`)。`LLToolSelect::handleObjectSelection()` は GPU 補正後の 1 回だけ呼ぶ (M6 selection handoff fix) |
+| `indra/newview/pipeline.{h,cpp}` | `mObjectIDBuffer` 確保 / `renderSelfRiggedObjectIDBuffer()` 本体。armed mode 用 `armSelfRiggedObjectIDBuffer()` / `isSelfRiggedObjectIDBufferArmed()` / `isSelfRiggedObjectIDBufferReady()` を提供。`renderDeferredLighting()` で armed 時のみ ID buffer pass を呼ぶ gate あり |
 | `indra/newview/llspatialpartition.h` | `LLDrawInfo::mFSPickerLocalID` 新規 field (M4.17 per-prim identity) |
 | `indra/newview/llvovolume.cpp` | DrawInfo 構築時に `mFSPickerLocalID` 書込 + batching merge 条件に LocalID 一致を追加 |
 | `indra/newview/llviewershadermgr.{h,cpp}` | `gFSObjectIDShader` 登録 (vertex に `hasObjectSkinning=true`) |
 | `indra/newview/app_settings/shaders/class1/deferred/fsObjectID{V,F}.glsl` | vertex: rig skinning で clip pos のみ生成 / fragment: 4-byte LocalID を pack して書き込み |
-| `indra/newview/app_settings/settings.xml` | `FSSelfRiggedPickerEnable` (master) / `FSSelfRiggedPickerGPU` (kill-switch) |
+| `indra/newview/app_settings/settings.xml` | `FSSelfRiggedPickerEnable` (master) / `FSSelfRiggedPickerGPU` (kill-switch) / `FSSelfRiggedPickerArmedMode` (試作) / `FSSelfRiggedPickerArmSeconds` (試作) |
 
 ### 2.2 shader
 
@@ -128,6 +128,31 @@ GPU buffer は `PASS_*_RIGGED` のみ dispatch されるので、**rigged では
 
 **修正**: force-to-body 条件に `object->isRiggedMesh()` を追加 (`lltoolpie.cpp:2389`)。非 rigged は GPU buffer の id=0 を「picker の管轄外」と解釈し、upstream worldray の object を尊重する。
 
+### 2.6 M6 (selection handoff fix): 一時 selection を 1 回に集約
+
+**問題**: 旧構造の `LLToolPie::handleRightClickPick()` では、`LLToolSelect::handleObjectSelection(mPick, false, true)` が AYA GPU picker 補正の **前** に一度呼ばれていた。GPU picker が self rigged attachment を補正した場合、補正後の `mPick` に対してさらに `handleObjectSelection()` が再度呼ばれる構造で、右クリック 1 回につき次の 2 種類の一時 selection が連続して sim に送られていた。
+
+1. 上流 worldray の stale な selection
+2. AYA GPU picker 補正後の selection
+
+先に送った selection に対する `ObjectProperties` 応答が返ってきた時点では、既に selection が別 object に置き換わっているため、`LLSelectMgr::processObjectProperties()` が「Couldn't find object … selected.」を多数 (検証時に 1 セッション 887 件) 警告として出していた。
+
+**修正**: `LLToolSelect::handleObjectSelection(mPick, false, true)` を **AYA GPU picker block の後で 1 回だけ** 呼ぶ。block 内では `object` 差し替えと `mPick.mObjectID` の更新だけを行う。呼び出しは unconditional のまま維持し、land / no-object pick における上流 deselection 挙動は変えない。
+
+詳細経緯と比較検証ログ: `docs/ayastorm-r21-selection-handoff-investigation.md`。
+
+### 2.7 M7 (armed mode, experimental): GPU ID pass を hover 中だけ走らせる
+
+**動機**: `FSSelfRiggedPickerGPU=1` の出荷状態では `renderSelfRiggedObjectIDBuffer()` が deferred lighting で **毎フレーム** 走り、self rigged attachment 候補ぶんの追加 draw call (実測 124-129) と数十万 triangle を ID buffer に描いていた。自分のアバターにカーソルを乗せていない時間まで描き続けるのは無駄。
+
+**仕組み**: hover detection を `LLToolPie::handleHover()` 内の `fs_arm_self_rigged_picker_for_hover()` に置き、pick の対象が `gAgent.getID()` か self attachment (= `object->getAvatar() == gAgentAvatarp` かつ `!object->isAvatar() && !object->isHUDAttachment()`) の時に `LLPipeline::armSelfRiggedObjectIDBuffer(seconds)` を呼ぶ。pipeline 側は最後の arm 時刻 + 期間で `isSelfRiggedObjectIDBufferArmed()` を判定し、`renderDeferredLighting()` 入口で `armed_mode && isSelfRiggedObjectIDBufferArmed()` の時だけ `renderSelfRiggedObjectIDBuffer()` を呼び出す。
+
+**ready 判定**: arm 時に generation 番号を進め、render 完走後の generation と一致した時に「buffer が arm 後に少なくとも 1 回更新済み」とみなす (`isSelfRiggedObjectIDBufferReady()`)。`findClosestAttachment` は armed mode 有効時にこの ready を満たさない呼び出しを早期 return する (1 frame 前の hover で arm されただけで render 未完了の状態で右クリックされた等、stale buffer による誤選択を避ける)。
+
+**スコープ**: 試作 (experimental)。「非 hover 時の常時描画を止める」目的には効くが、hover 中は arm が更新され続けるため GPU ID pass が断続的に継続する点はそのまま。hover 中の描画頻度を更に抑える throttling / 縮小 buffer 化は将来課題。設定値 (`ArmSeconds` 短縮 / hover 間隔ごとの再 arm 等) は release 後フィードバックで調整。
+
+詳細評価ログ (カーソル off の 20 秒追跡 / mouselook 中の挙動 / hover 中の連続観測): `docs/ayastorm-r21-picker-armed-mode.md`。
+
 ---
 
 ## 3. 設定
@@ -146,12 +171,25 @@ GPU buffer pass (`renderSelfRiggedObjectIDBuffer`) と GPU readback の **kill-s
 
 > **CPU fallback は廃止** (M4.7 で legacy stage を削除)。OFF = picker 無効化スイッチ、CPU 経路で picker が動くわけではない。これは memory `feedback_root_cause_not_dump.md` (半分動く誤魔化しを残さない) と `feedback_feature_value_in_main_usecase.md` (主流ユースケースで判定) に基づく設計判断。Mac 等で問題が出た場合のフォールバックは「**上流 worldray のみ**」になる。
 
-### 3.3 検証後の戻し方表 (memory `feedback_restore_debug_settings.md` 方針)
+### 3.3 `FSSelfRiggedPickerArmedMode` (Boolean, default 1, experimental)
+
+M7 試作。`true` の時、`renderSelfRiggedObjectIDBuffer()` は **self avatar / self attachment への hover で arm されている間だけ** 走る。`false` にすると `FSSelfRiggedPickerGPU=1` と同じく **常時描画** に戻る。
+
+- `findClosestAttachment` も同じ cvar を見ており、armed mode 有効時に「arm されているが render 1 回も完了していない」状態の右クリックを skip する (stale buffer による誤選択回避)
+- カーソルを自分のアバターに乗せ続ければ arm が更新され続けて常時描画に近づく。逆に自分のアバターをほぼ見ない使い方では GPU ID pass の追加描画はほぼゼロになる
+
+### 3.4 `FSSelfRiggedPickerArmSeconds` (F32, default 3.0, experimental)
+
+armed mode で「最後に hover してから何秒間 ID pass を許可するか」。短くすると hover 解除後の余韻が短く、長くすると hover を外しても暫く ID pass が走る (= 右クリックの ready 待ちが減るが、無駄描画は増える)。3.0 秒は試作初期値で、release 後フィードバックで調整予定。
+
+### 3.5 検証後の戻し方表 (memory `feedback_restore_debug_settings.md` 方針)
 
 | キー | 一時値 | 戻すべき default | 備考 |
 |---|---|---|---|
 | `FSSelfRiggedPickerEnable` | 0 (kill) / 1 (normal) | **1** | master、検証時に切るシナリオあり |
 | `FSSelfRiggedPickerGPU` | 0 (GPU pass を一時 OFF にする検証 / Mac software OpenGL 等の trouble shoot) | **1** | M5 で flip 済、kill-switch として残存 |
+| `FSSelfRiggedPickerArmedMode` | 0 (armed gate を外して常時描画に戻し、armed mode が原因かを切り分ける) | **1** | M7 試作、experimental。負荷軽減 vs 応答遅延の調整余地あり |
+| `FSSelfRiggedPickerArmSeconds` | 0.5〜10.0 程度で試行 | **3.0** | 短くすると hover 解除後すぐ pass が止まる、長くすると常時描画寄り |
 
 ---
 
@@ -168,13 +206,30 @@ GPU buffer pass (`renderSelfRiggedObjectIDBuffer`) と GPU readback の **kill-s
 
 ---
 
-## 5. 受け入れ条件 (M5 検証で確認)
+## 5. 受け入れ条件
 
+### M4 picker 構造
 - [x] **rigged self attachment** (Mesh body の腕 / 頭 / 胴 / 服 / 髪): 右クリック → 正しい prim が pie menu に出る (M4.17 PASS)
 - [x] **非 rigged self attachment** (ピアス / 単独 jewelry prim): 右クリック → 該当 prim が pie menu に出る (M4.18 PASS)
 - [x] **他者 avatar / land / HUD**: picker bypass で上流挙動が壊れない (M4.9 で HUD 明示 bypass)
-- [ ] **3 OS ビルド + 起動 + 動作確認** (Linux PASS、Win / macOS は M5 で実施 — memory `project_ayastorm_three_platforms.md`)
-- [ ] **M5: `FSSelfRiggedPickerGPU` default を 1 に flip** (cleanup commit 後の別 commit)
+
+### M5 default flip
+- [x] `FSSelfRiggedPickerGPU` default を 1 に flip (`34acea572f`)
+- [x] Linux ビルド + 起動 + 動作確認 PASS
+- [ ] Windows / macOS ビルド + 起動 + 動作確認 (release tag 前に AYA 側で実施 — memory `project_ayastorm_three_platforms.md` / `feedback_build.md`)
+
+### M6 selection handoff fix
+- [x] 右クリック時の `Couldn't find object ... selected.` 警告が再発しない (`docs/ayastorm-r21-selection-handoff-investigation.md` の比較検証 PASS、修正前 trace-only app で 887 件 → 修正後 app で 0 件)
+- [x] land / no-object pick の上流 deselection 挙動を壊さない (`LLToolSelect::handleObjectSelection()` の呼び出しは unconditional のまま維持)
+
+### M7 armed mode (experimental)
+- [x] 非 hover 時に `renderSelfRiggedObjectIDBuffer()` が走らない (`docs/ayastorm-r21-picker-armed-mode.md` カーソル off 20 秒追跡で確認)
+- [x] hover 時に GPU ID pass が走り readback が成立する (同 doc の hover 中観測で確認)
+- [x] mouselook 中は armed mode が継続実行されない (同 doc の mouselook 中追跡で確認)
+- [ ] release 後フィードバックで `ArmSeconds` / hover ごとの arm 更新間隔の調整候補を判断
+
+### trace cleanup
+- [x] `FSSelfRiggedPickerTrace` cvar と LL_INFOS hook を出荷物から除去 (`744a47f471`、memory `feedback_remove_verification_logs.md`)
 
 ---
 
@@ -201,6 +256,8 @@ GPU buffer pass (`renderSelfRiggedObjectIDBuffer`) と GPU readback の **kill-s
 - `docs/ayastorm-deferred-shader-routing.md` — deferred 経路 reference
 - `docs/ayastorm-gbuffer3-trace.md` — gbuffer3 仕様
 - `docs/ayastorm-visual-realism-roadmap.md` — 章全体 (r21 は視覚表現章の外、UX 修正系)
+- `docs/ayastorm-r21-selection-handoff-investigation.md` — M6 selection handoff fix の調査記録 / 比較検証ログ
+- `docs/ayastorm-r21-picker-armed-mode.md` — M7 armed mode (experimental) の負荷見積もり / 実測ログ / 改善候補
 
 ---
 
@@ -214,5 +271,8 @@ GPU buffer pass (`renderSelfRiggedObjectIDBuffer`) と GPU readback の **kill-s
 - 2026-05-14 M4.16: M4.15 で入れた `root_id` 伝播が誤り → revert (child prim 本人 LocalID 書込)
 - 2026-05-14 (`f3c0829ea8`) **M4.17 Linux PASS**: `LLDrawInfo::mFSPickerLocalID` 導入で hash collision 完全解決。腕/頭/胴/服 全て正解
 - 2026-05-14 **M4.18 PASS**: non-rigged ピアス選択不能を `isRiggedMesh()` ガードで解決
-- 2026-05-14 **掃除 commit (この commit)**: CPU stage 0/1 ヘルパ ~400 行、CPU stage 関連 cvar 4 件 (`Tolerance` / `DepthAssist` / `DepthTolerance` / `DumpBuffer`)、per-click diag log、Diag-C/D PNG dump を全削除。net **-746 行**。掃除後の `findClosestAttachment` は 60 行台、GPU 1 path のみ
-- (M5 予定) cvar `FSSelfRiggedPickerGPU` default = 1 に flip、3 OS 検証完走、`v7.2.x-ayastorm-r21` tag/release
+- 2026-05-14 **掃除 commit**: CPU stage 0/1 ヘルパ ~400 行、CPU stage 関連 cvar 4 件 (`Tolerance` / `DepthAssist` / `DepthTolerance` / `DumpBuffer`)、per-click diag log、Diag-C/D PNG dump を全削除。net **-746 行**。掃除後の `findClosestAttachment` は 60 行台、GPU 1 path のみ
+- 2026-05-14 (`34acea572f`) **M5**: `FSSelfRiggedPickerGPU` default = 1 に flip、Linux PASS (Win / macOS は release tag 前に AYA 側で確認予定)
+- 2026-05-15 (`cd35ef4fd8`) **M6 selection handoff fix**: `LLToolSelect::handleObjectSelection()` を AYA GPU picker 補正後の 1 回に集約し、`Couldn't find object … selected.` 警告 (検証セッションで 887 件) を解消。詳細: `docs/ayastorm-r21-selection-handoff-investigation.md`
+- 2026-05-15 (`556607465f` / `f42a934509` / `16887a6395`) **M7 armed mode (experimental)**: `renderSelfRiggedObjectIDBuffer()` を hover detection で gate、`FSSelfRiggedPickerArmedMode` / `FSSelfRiggedPickerArmSeconds` を追加。非 hover 時の常時描画を抑制。詳細: `docs/ayastorm-r21-picker-armed-mode.md`
+- 2026-05-15 (`744a47f471`) **trace cleanup**: M6 / M7 検証用に追加していた `FSSelfRiggedPickerTrace` cvar + LL_INFOS hook 一式を出荷物から除去 (memory `feedback_remove_verification_logs.md`)

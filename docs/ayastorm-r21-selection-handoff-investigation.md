@@ -61,9 +61,7 @@ LLToolSelect::handleObjectSelection(mPick, false, true);
 
 ## 調査用 trace
 
-実機確認のため、一時的に `FSSelfRiggedPickerTrace` を追加した。
-
-ON の場合、次を `FSSelfRiggedPicker` channel に出す。
+実機確認のため、一時的に `FSSelfRiggedPickerTrace` を追加して以下を `FSSelfRiggedPicker` channel に出していた。
 
 - `renderSelfRiggedObjectIDBuffer()` が実際に走ったか
 - `mObjectIDBuffer` のサイズ
@@ -71,7 +69,7 @@ ON の場合、次を `FSSelfRiggedPicker` channel に出す。
 - 右クリック時の `glReadPixels` 結果 RGBA と復元 LocalID
 - GPU readback を skip した場合の理由
 
-これは release 用機能ではなく調査用。最終化時は default OFF、または設定ごと削除する。
+調査用機能のため、本 investigation での PASS 判定後に cvar と LL_INFOS hook 一式を出荷物から除去した (memory `feedback_remove_verification_logs.md` 方針)。本書中で `FSSelfRiggedPickerTrace` を有効にする手順は、当時の調査状況の記録として残している。
 
 ---
 

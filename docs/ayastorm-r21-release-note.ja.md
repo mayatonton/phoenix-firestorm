@@ -26,8 +26,15 @@ r21 では self attachment の picker を **専用 GPU object-ID buffer** (`mObj
 |---|---|---|
 | `FSSelfRiggedPickerEnable` | `1` | picker の master switch。`0` で r20 以前の上流挙動に完全に戻る |
 | `FSSelfRiggedPickerGPU` | `1` | GPU buffer pass の kill-switch。`0` = picker 無効化 (上流 worldray を素通し)。Mac software OpenGL 等で GPU pass が破綻した場合の逃げ道として用意 |
+| `FSSelfRiggedPickerArmedMode` (experimental) | `1` | self avatar / self attachment への hover 中だけ GPU ID pass を走らせる試作スイッチ。`0` で常時描画に戻る |
+| `FSSelfRiggedPickerArmSeconds` (experimental) | `3.0` | 最後に hover してから ID pass を継続させる秒数 (短くすれば余韻短く、長くすれば右クリック ready 待ちが減る) |
 
 > **CPU fallback は意図的に提供しません。** GPU pass が動く (`GPU=1`) か、picker そのものが無効化される (`GPU=0`、= r20 以前と同じ) か、のいずれかです。これは memory `feedback_root_cause_not_dump.md` (半分動く workaround を残さない) と `feedback_feature_value_in_main_usecase.md` (主流ユースケースで機能の存在価値を判定する) に基づく設計判断です。
+
+### r21.0 → r21 で取り込まれた追加修正
+
+- **`Couldn't find object ... selected.` 警告の解消** (selection handoff fix): 旧構造では右クリック 1 回につき「上流 worldray の stale な一時 selection」と「GPU picker 補正後の selection」が連続して sim に送られ、先に送ったほうの `ObjectProperties` 応答が「selection に存在しない object」となって `LLSelectMgr` から大量に警告が出ていました (検証セッションで 887 件)。`LLToolSelect::handleObjectSelection()` を GPU 補正後の 1 回だけ呼ぶように直しています。詳細: `docs/ayastorm-r21-selection-handoff-investigation.md`。
+- **armed mode (experimental)**: 出荷状態の常時 GPU ID pass を、自分のアバター / 装着物への hover 中だけに限定する試作。非 hover 時の追加描画はほぼゼロになりますが、hover 中は常時描画と同等のコストです。挙動の評価ログ (カーソル off の 20 秒追跡 / mouselook 中の挙動 / hover 中の連続観測) と改善候補: `docs/ayastorm-r21-picker-armed-mode.md`。
 
 ### 既知の制約
 
@@ -39,5 +46,7 @@ r21 では self attachment の picker を **専用 GPU object-ID buffer** (`mObj
 ### ドキュメント
 
 - r21 spec / アーキテクチャ / 既知 limits / risk register: `docs/ayastorm-r21-self-rigged-picker.md`
+- selection handoff fix の調査記録 / 比較検証ログ: `docs/ayastorm-r21-selection-handoff-investigation.md`
+- armed mode (experimental) の負荷見積もり / 実測ログ / 改善候補: `docs/ayastorm-r21-picker-armed-mode.md`
 - BoM body の rig hash collision 解決の経緯 (M4.17): memory `project_skin_hash_collision_bom_body.md`
 - deferred shader routing reference: `docs/ayastorm-deferred-shader-routing.md`

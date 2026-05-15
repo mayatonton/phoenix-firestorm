@@ -26,8 +26,15 @@ r21 把自身 attachment 的 picker 切出到 **专用 GPU object-ID buffer** (`
 |---|---|---|
 | `FSSelfRiggedPickerEnable` | `1` | picker 的主开关。`0` 时完全回到 r20 之前的上游行为 |
 | `FSSelfRiggedPickerGPU` | `1` | GPU buffer pass 的 kill-switch。`0` = picker 无效 (上游 worldray 不加修改直接使用)。为 Mac software OpenGL 等 GPU pass 不稳定环境提供逃生通道 |
+| `FSSelfRiggedPickerArmedMode` (实验性) | `1` | 仅在自身 avatar / 自身 attachment 被 hover 时运行 GPU ID pass 的实验开关。`0` 时回到常时绘制 |
+| `FSSelfRiggedPickerArmSeconds` (实验性) | `3.0` | 最后一次 hover 之后允许 ID pass 继续运行的秒数 (调短可在解除 hover 后更快停止；调长可减少右键 ready 等待，但浪费的绘制时间相应增加) |
 
 > **不提供 CPU fallback。** 要么 GPU pass 启用 (`GPU=1`)、要么 picker 整体禁用 (`GPU=0`，即 r20 之前的行为)。这是有意的设计选择 — 见 memory `feedback_root_cause_not_dump.md` (不留半工作的 workaround) 与 `feedback_feature_value_in_main_usecase.md` (按主流用例判定功能价值)。
+
+### r21 中追加并入的修复
+
+- **解决 `Couldn't find object ... selected.` 警告** (selection handoff fix): 旧结构在每次右键时会先后向 sim 发送「上游 worldray 的过期临时 selection」和「GPU picker 修正后的 selection」两次。先发送的那次的 `ObjectProperties` 响应返回时，selection 已经被替换，因而 `LLSelectMgr` 大量产生该警告 (验证 session 中观测到 887 条)。现已修改为只在 AYA GPU picker block 修正 `mPick` 之后调用一次 `LLToolSelect::handleObjectSelection()`。详情: `docs/ayastorm-r21-selection-handoff-investigation.md`。
+- **armed mode (实验性)**: 一个可选 gate，仅在自身 avatar / 自身 attachment 被 hover 时运行原本常时进行的 GPU ID pass。非 hover 时几乎为零开销；hover 中开销与常时绘制相同。评估日志 (光标移出 20 秒追踪 / mouselook 中行为 / 连续 hover 观测) 与调整候选: `docs/ayastorm-r21-picker-armed-mode.md`。
 
 ### 已知限制
 
@@ -39,5 +46,7 @@ r21 把自身 attachment 的 picker 切出到 **专用 GPU object-ID buffer** (`
 ### 文档
 
 - r21 spec / 架构 / 已知 limits / 风险登记: `docs/ayastorm-r21-self-rigged-picker.md`
+- selection handoff fix 的调查记录 / 对比验证日志: `docs/ayastorm-r21-selection-handoff-investigation.md`
+- armed mode (实验性) 的负载估算 / 实测日志 / 改善候选: `docs/ayastorm-r21-picker-armed-mode.md`
 - BoM body 的 rig hash 冲突缘由 (M4.17): memory `project_skin_hash_collision_bom_body.md`
 - deferred shader routing 参考: `docs/ayastorm-deferred-shader-routing.md`
