@@ -47,6 +47,7 @@ private:
     F32 mVolume;
     U32 mSampleRate;
     U32 mChannels;
+    U32 mFormatSerial;
     bool mPlaybackStarted;
     std::atomic<bool> mNeedsPrebuffer;
     std::atomic<U64> mCallbackCount;

@@ -12,6 +12,7 @@
 - [このブランチの範囲](#このブランチの範囲)
 - [実装後の音声経路](#実装後の音声経路)
 - [実装内容](#実装内容)
+- [メンテナ指摘への回答](#メンテナ指摘への回答)
 - [Dullahan package](#dullahan-package)
 - [macOS 検証結果](#macos-検証結果)
 - [Windows / Linux 担当者向け確認手順](#windows--linux-担当者向け確認手順)
@@ -97,6 +98,90 @@ media plugin process と Viewer process の間に audio 用 shared memory ring �
 Viewer 側に `LLMediaAudioStream` を追加し、shared memory ring から PCM を読み出して FMOD 2D `OPENUSER` stream として再生する。
 
 Media volume / mute は FMOD channel 側へ反映する。フェーダー操作時だけ volume update が送られる状態をログで確認済み。
+
+## メンテナ指摘への回答
+
+### media format 切り替え時の FMOD sound 再作成
+
+指摘:
+
+CEF が新しい media に切り替わり、sample rate が 44.1 kHz から 48 kHz へ変わるような場合、`onAudioStreamStartedCallback` は ring の `mSampleRate` を更新する。しかし `LLMediaAudioStream::update()` が `!mChannel` のときだけ `start()` する実装だと、FMOD sound が古い sample rate のまま残るのではないか。
+
+対応:
+
+現在の実装では、audio ring に `mFormatSerial` を追加している。
+
+`media_plugin_cef.cpp` 側では、CEF audio stream の開始 / 停止時に次の値を更新し、`mFormatSerial` を進める。
+
+- `mSampleRate`
+- `mChannels`
+- `mBytesPerSample`
+- `mReadFrame`
+- `mWriteFrame`
+- `mFormatSerial`
+
+`LLMediaAudioStream::update()` 側では、既存の FMOD channel がある場合でも、ring 側の `sample rate` / `channels` / `format serial` と、現在の FMOD sound 作成時に保持した値を比較する。
+
+差異があれば `stop()` してから `start(engine)` を呼び直すため、FMOD sound は新しい sample rate / channel count で作り直される。
+
+また、FMOD の `pcmreadcallback` 実行中に format 差異を検出した場合は、その callback では silence を返し、prebuffer を要求する。これにより、format 切り替え途中の古い channel / sample rate 前提で PCM を読み続けないようにしている。
+
+### audio ring の read/write pointer 競合
+
+指摘:
+
+`media_plugin_cef.cpp` 側で writer が `mReadFrame` を進めると、reader が frame 計算中に read pointer を変更される危険がある。
+
+対応:
+
+現在の実装では、writer 側から `mReadFrame` を進める処理を削除している。
+
+現在の責務は次の通り。
+
+- writer: CEF audio callback から受け取った PCM を ring に書き、最後に `mWriteFrame` を release store する
+- reader: FMOD callback で `mWriteFrame` を acquire load し、読み終えたあと `mReadFrame` を release store する
+
+ring が満杯の場合、writer は `mReadFrame` を再読み込みして空きができているか確認する。それでも満杯なら、未読の古い frame を上書きしたり read pointer を進めたりせず、その時点の入力 frame を書き込まずに捨て、`mTotalFramesDropped` を増やす。
+
+つまり現在は、writer が reader 側の read pointer を強制的に動かさない。これにより、指摘された read/write pointer 競合の主要因を避けている。
+
+この実装は、CEF audio callback 側の単一 writer と、FMOD callback 側の単一 reader を前提にしている。
+
+### macOS VolumeCatcher を残している理由
+
+指摘:
+
+`indra/media_plugins/cef/CMakeLists.txt` で macOS の `mac_volume_catcher_null.cpp` を `mac_volume_catcher.cpp` に切り替え、QuickTime ではなく CoreServices / AudioUnit を使う理由が分かりにくい。Viewer 側で FMOD volume control をするなら VolumeCatcher に依存する必要はないのではないか。
+
+回答:
+
+このブランチでの Viewer 側音量制御は FMOD channel 側で行う。VolumeCatcher は、Media volume のユーザー操作を反映する主経路ではない。
+
+現在 `media_plugin_cef.cpp` の `setVolume()` では、VolumeCatcher に常に `0.0f` を設定している。目的は、CEF native output を無音化し、同じ MOAP 音声が CEF native output と FMOD output の両方から二重再生されるのを防ぐことである。
+
+したがって現在の役割は次の分担になる。
+
+- Viewer Media volume / mute: `LLMediaAudioStream` から FMOD channel に反映する
+- macOS VolumeCatcher: CEF native output を mute するためだけに使う
+
+`mac_volume_catcher_null.cpp` のままだと、CEF native output を確実に無音化できず、FMOD 経由の音声と重なって聞こえる可能性がある。そのため macOS では `mac_volume_catcher.cpp` を使っている。
+
+QuickTime へ戻すのは避けるべきである。QuickTime framework は旧来の macOS メディア API であり、現行 macOS SDK / Apple Silicon arm64 build ではビルド、リンク、将来互換性の面で不利になる。さらに今回制御したい対象は QuickTime の再生音ではなく、CEF が process 内で開く native output AudioUnit である。そのため、QuickTime 依存へ戻すよりも AudioUnit 側を mute する現在の方が目的に近い。
+
+ただし、CoreServices / AudioUnit 版の VolumeCatcher も理想的な最終設計ではない。実装としては Component Manager / `CaptureComponent` を使い、process 内で開かれる Default Output AudioUnit を捕捉して volume を下げる互換ワークアラウンドである。
+
+このブランチでの主経路はあくまで Dullahan audio callback から Viewer 側 FMOD 2D channel へ PCM を流す経路であり、VolumeCatcher はその主経路ではない。macOS VolumeCatcher は、CEF native output を mute して二重再生を避けるための補助策として残している。
+
+将来的に Dullahan / CEF 側で native audio output そのものを無効化できる、または audio callback 専用出力に切り替えられるなら、VolumeCatcher への依存は削減するのが望ましい。
+
+今回その方式にしなかった理由:
+
+- この PR の主目的は、CEF audio callback で取得した PCM を Viewer 側 FMOD 2D channel へ接続し、Media volume / mute で制御できることを確認することである。
+- CEF native output を生成しない設計に踏み込むと、Dullahan / CEF 側の audio lifecycle、platform ごとの audio backend、autoplay / mute / pause の挙動まで変更範囲が広がる。
+- その変更は macOS だけでなく Windows / Linux の CEF 動作にも影響する可能性があり、この PR の macOS 実機検証だけでは十分に安全性を確認できない。
+- 現時点では、native output を mute したうえで FMOD 側を主出力にする方が、既存の CEF media 再生挙動を大きく崩さずに目的を検証しやすい。
+
+そのため、この PR では native output 無効化までは扱わず、二重再生防止を VolumeCatcher に任せる実装に留めている。native output を根本的に無効化する設計は、別ブランチで Dullahan 側の変更として検証するのが適切である。
 
 ## Dullahan package
 

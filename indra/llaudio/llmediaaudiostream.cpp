@@ -42,6 +42,7 @@ LLMediaAudioStream::LLMediaAudioStream()
     mVolume(1.f),
     mSampleRate(0),
     mChannels(0),
+    mFormatSerial(0),
     mPlaybackStarted(false),
     mNeedsPrebuffer(false),
     mCallbackCount(0),
@@ -87,15 +88,30 @@ void LLMediaAudioStream::update(LLAudioEngine* engine)
     if (!mRing ||
         mRing->mMagic != LL_PLUGIN_AUDIO_RING_MAGIC ||
         mRing->mVersion != LL_PLUGIN_AUDIO_RING_VERSION ||
-        mRing->mSampleRate == 0 ||
-        mRing->mChannels == 0)
+        mRing->mSampleRate.load(std::memory_order_acquire) == 0 ||
+        mRing->mChannels.load(std::memory_order_acquire) == 0)
     {
         stop();
         return;
     }
 
+    const U32 ring_sample_rate = mRing->mSampleRate.load(std::memory_order_acquire);
+    const U32 ring_channels = llclamp((U32)mRing->mChannels.load(std::memory_order_acquire),
+                                      1u,
+                                      LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
+    const U32 ring_format_serial = mRing->mFormatSerial.load(std::memory_order_acquire);
+
     if (!mChannel)
     {
+        start(engine);
+        return;
+    }
+
+    if (ring_sample_rate != mSampleRate ||
+        ring_channels != mChannels ||
+        ring_format_serial != mFormatSerial)
+    {
+        stop();
         start(engine);
         return;
     }
@@ -139,6 +155,7 @@ void LLMediaAudioStream::stop()
     mSystem = nullptr;
     mSampleRate = 0;
     mChannels = 0;
+    mFormatSerial = 0;
     mPlaybackStarted = false;
     mNeedsPrebuffer.store(false, std::memory_order_relaxed);
     mCallbackCount.store(0, std::memory_order_relaxed);
@@ -169,8 +186,11 @@ bool LLMediaAudioStream::start(LLAudioEngine* engine)
         return false;
     }
 
-    mSampleRate = mRing->mSampleRate;
-    mChannels = llclamp((U32)mRing->mChannels, 1u, LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
+    mSampleRate = mRing->mSampleRate.load(std::memory_order_acquire);
+    mChannels = llclamp((U32)mRing->mChannels.load(std::memory_order_acquire),
+                        1u,
+                        LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
+    mFormatSerial = mRing->mFormatSerial.load(std::memory_order_acquire);
 
     FMOD_CREATESOUNDEXINFO ex;
     std::memset(&ex, 0, sizeof(ex));
@@ -242,6 +262,20 @@ FMOD_RESULT LLMediaAudioStream::readPCM(void* data, unsigned int datalen)
     if (!mRing || mChannels == 0)
     {
         std::memset(data, 0, datalen);
+        return FMOD_OK;
+    }
+
+    const U32 ring_sample_rate = mRing->mSampleRate.load(std::memory_order_acquire);
+    const U32 ring_channels = llclamp((U32)mRing->mChannels.load(std::memory_order_acquire),
+                                      1u,
+                                      LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
+    const U32 ring_format_serial = mRing->mFormatSerial.load(std::memory_order_acquire);
+    if (ring_sample_rate != mSampleRate ||
+        ring_channels != mChannels ||
+        ring_format_serial != mFormatSerial)
+    {
+        std::memset(data, 0, datalen);
+        mNeedsPrebuffer.store(true, std::memory_order_release);
         return FMOD_OK;
     }
 

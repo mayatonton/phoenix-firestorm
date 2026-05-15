@@ -357,10 +357,10 @@ void LLPluginClassMedia::ensureAudioSharedMemory()
     header->mVersion = LL_PLUGIN_AUDIO_RING_VERSION;
     header->mHeaderSize = sizeof(LLPluginAudioRingHeader);
     header->mCapacityFrames = MEDIA_AUDIO_RING_CAPACITY_FRAMES;
-    header->mSampleRate = 0;
-    header->mChannels = 0;
-    header->mBytesPerSample = sizeof(float);
-    header->mReserved = 0;
+    header->mSampleRate.store(0, std::memory_order_relaxed);
+    header->mChannels.store(0, std::memory_order_relaxed);
+    header->mBytesPerSample.store(sizeof(float), std::memory_order_relaxed);
+    header->mFormatSerial.store(0, std::memory_order_relaxed);
     header->mWriteFrame.store(0, std::memory_order_relaxed);
     header->mReadFrame.store(0, std::memory_order_relaxed);
     header->mTotalFramesWritten.store(0, std::memory_order_relaxed);

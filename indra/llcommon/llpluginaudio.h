@@ -10,7 +10,7 @@
 #include <cstdint>
 
 static constexpr std::uint32_t LL_PLUGIN_AUDIO_RING_MAGIC = 0x41594141; // "AYAA"
-static constexpr std::uint32_t LL_PLUGIN_AUDIO_RING_VERSION = 1;
+static constexpr std::uint32_t LL_PLUGIN_AUDIO_RING_VERSION = 2;
 static constexpr std::uint32_t LL_PLUGIN_AUDIO_RING_MAX_CHANNELS = 8;
 
 struct LLPluginAudioRingHeader
@@ -19,10 +19,10 @@ struct LLPluginAudioRingHeader
     std::uint32_t mVersion;
     std::uint32_t mHeaderSize;
     std::uint32_t mCapacityFrames;
-    std::uint32_t mSampleRate;
-    std::uint32_t mChannels;
-    std::uint32_t mBytesPerSample;
-    std::uint32_t mReserved;
+    std::atomic<std::uint32_t> mSampleRate;
+    std::atomic<std::uint32_t> mChannels;
+    std::atomic<std::uint32_t> mBytesPerSample;
+    std::atomic<std::uint32_t> mFormatSerial;
     std::atomic<std::uint32_t> mWriteFrame;
     std::atomic<std::uint32_t> mReadFrame;
     std::atomic<std::uint64_t> mTotalFramesWritten;

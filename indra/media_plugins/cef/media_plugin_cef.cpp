@@ -451,13 +451,14 @@ void MediaPluginCEF::onAudioStreamStartedCallback(const dullahan::dullahan_audio
     mAudioStreamFramesReceived = 0;
     if (mAudioRing)
     {
-        mAudioRing->mSampleRate = (std::uint32_t)llmax(0, info.sample_rate);
-        mAudioRing->mChannels = (std::uint32_t)llclamp(info.channels, 0, (int)LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
-        mAudioRing->mBytesPerSample = sizeof(float);
         mAudioRing->mWriteFrame.store(0, std::memory_order_release);
         mAudioRing->mReadFrame.store(0, std::memory_order_release);
         mAudioRing->mTotalFramesWritten.store(0, std::memory_order_release);
         mAudioRing->mTotalFramesDropped.store(0, std::memory_order_release);
+        mAudioRing->mSampleRate.store((std::uint32_t)llmax(0, info.sample_rate), std::memory_order_release);
+        mAudioRing->mChannels.store((std::uint32_t)llclamp(info.channels, 0, (int)LL_PLUGIN_AUDIO_RING_MAX_CHANNELS), std::memory_order_release);
+        mAudioRing->mBytesPerSample.store(sizeof(float), std::memory_order_release);
+        mAudioRing->mFormatSerial.fetch_add(1, std::memory_order_acq_rel);
     }
 
 }
@@ -485,6 +486,14 @@ void MediaPluginCEF::onAudioStreamStoppedCallback()
     mAudioStreamSampleRate = 0;
     mAudioStreamChannels = 0;
     mAudioStreamFramesReceived = 0;
+    if (mAudioRing)
+    {
+        mAudioRing->mSampleRate.store(0, std::memory_order_release);
+        mAudioRing->mChannels.store(0, std::memory_order_release);
+        mAudioRing->mWriteFrame.store(0, std::memory_order_release);
+        mAudioRing->mReadFrame.store(0, std::memory_order_release);
+        mAudioRing->mFormatSerial.fetch_add(1, std::memory_order_acq_rel);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -519,15 +528,19 @@ void MediaPluginCEF::writeAudioPacketToRing(const float** data, int frames)
     const std::uint32_t total = capacity + 1;
     std::uint32_t write = mAudioRing->mWriteFrame.load(std::memory_order_relaxed);
     std::uint32_t read = mAudioRing->mReadFrame.load(std::memory_order_acquire);
+    std::uint64_t written = 0;
 
     for (int frame = 0; frame < frames; ++frame)
     {
         const std::uint32_t next = (write + 1) % total;
         if (next == read)
         {
-            mAudioRing->mReadFrame.store((read + 1) % total, std::memory_order_release);
             read = mAudioRing->mReadFrame.load(std::memory_order_acquire);
-            mAudioRing->mTotalFramesDropped.fetch_add(1, std::memory_order_relaxed);
+            if (next == read)
+            {
+                mAudioRing->mTotalFramesDropped.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
         }
 
         float* dst = samples + ((size_t)write * LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
@@ -541,10 +554,11 @@ void MediaPluginCEF::writeAudioPacketToRing(const float** data, int frames)
         }
 
         write = next;
+        ++written;
     }
 
     mAudioRing->mWriteFrame.store(write, std::memory_order_release);
-    mAudioRing->mTotalFramesWritten.fetch_add((std::uint64_t)frames, std::memory_order_relaxed);
+    mAudioRing->mTotalFramesWritten.fetch_add(written, std::memory_order_relaxed);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -38,6 +38,8 @@ if (LINUX)
   set(CMAKE_SHARED_LINKER_FLAGS  "-Wl,--build-id -Wl,-rpath,'$ORIGIN:$ORIGIN/../../lib'")
   list(APPEND media_plugin_cef_LINK_LIBRARIES llwindow ${MEDIA_PLUGIN_BASE_LIBRARIES})
 elseif (DARWIN)
+  # The viewer-owned media volume path is FMOD. Keep the macOS VolumeCatcher
+  # active only so CEF's native output can be muted and not double-played.
   list(APPEND media_plugin_cef_SOURCE_FILES mac_volume_catcher.cpp)
   find_library(CORESERVICES_LIBRARY CoreServices)
   find_library(AUDIOUNIT_LIBRARY AudioUnit)
