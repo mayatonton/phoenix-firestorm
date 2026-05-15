@@ -587,6 +587,20 @@
                  (requires restart)
             </text>
 
+            <!-- <FS:AYAstorm r22> Human/Object tab split -->
+            <check_box
+             layout="topleft"
+             follows="left|top"
+             top_pad="6"
+             left="20"
+             width="480"
+             height="20"
+             control_name="FSChatHumanObjectTabs"
+             name="FSChatHumanObjectTabs"
+             label="Split Nearby Chat / IM into Human and Object tabs"
+             tool_tip="Route scripted object chat (HUDs, attachments, in-world objects) into a separate Object tab. (Requires restart)" />
+            <!-- </FS:AYAstorm r22> -->
+
             <check_box
              layout="topleft"
              follows="left|top"

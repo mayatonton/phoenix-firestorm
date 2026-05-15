@@ -177,28 +177,72 @@
         right="0">
         <layout_panel
           name="chat_holder">
-          <fs_chat_history
-           invisibility_control="FSShowMutedChatHistory"
-           font="SansSerifSmall"
+          <!-- <FS:AYAstorm r22> Human/Object tab split -->
+          <tab_container
            follows="all"
-           name="chat_history"
-           parse_highlights="true"
-           parse_urls="true"
-           right="-4"
-           left="0"
+           halign="center"
+           layout="topleft"
+           name="chat_tab_container"
+           tab_position="top"
+           tab_width="80"
            top="0"
-           bottom="-1" />
-          <fs_chat_history
-           visibility_control="FSShowMutedChatHistory"
-           font="SansSerifSmall"
-           follows="all"
-           name="chat_history_muted"
-           parse_highlights="true"
-           parse_urls="true"
-           right="-4"
            left="0"
-           top="0"
-           bottom="-1" />
+           right="-1"
+           bottom="-1">
+            <panel
+             follows="all"
+             layout="topleft"
+             name="tab_human"
+             title="Human"
+             top="0"
+             left="0"
+             right="-1"
+             bottom="-1">
+              <fs_chat_history
+               invisibility_control="FSShowMutedChatHistory"
+               font="SansSerifSmall"
+               follows="all"
+               name="chat_history"
+               parse_highlights="true"
+               parse_urls="true"
+               right="-1"
+               left="0"
+               top="0"
+               bottom="-1" />
+              <fs_chat_history
+               visibility_control="FSShowMutedChatHistory"
+               font="SansSerifSmall"
+               follows="all"
+               name="chat_history_muted"
+               parse_highlights="true"
+               parse_urls="true"
+               right="-1"
+               left="0"
+               top="0"
+               bottom="-1" />
+            </panel>
+            <panel
+             follows="all"
+             layout="topleft"
+             name="tab_object"
+             title="Object"
+             top="0"
+             left="0"
+             right="-1"
+             bottom="-1">
+              <fs_chat_history
+               font="SansSerifSmall"
+               follows="all"
+               name="chat_history_object"
+               parse_highlights="true"
+               parse_urls="true"
+               right="-1"
+               left="0"
+               top="0"
+               bottom="-1" />
+            </panel>
+          </tab_container>
+          <!-- </FS:AYAstorm r22> -->
         </layout_panel>
         <layout_panel
           height="20"
