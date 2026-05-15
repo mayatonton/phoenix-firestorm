@@ -23264,6 +23264,28 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>1</integer>
     </map>
+    <key>FSSelfRiggedPickerArmedMode</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r21.1 experimental: only render the GPU self rigged-attachment ID buffer while the picker is armed by hovering the agent avatar or one of the agent's attachments. Disable to render the ID buffer continuously while FSSelfRiggedPickerGPU is enabled.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>FSSelfRiggedPickerArmSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r21.1 experimental: seconds to keep the GPU self rigged-attachment ID buffer armed after hovering the agent avatar or one of the agent's attachments.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>3.0</real>
+    </map>
     <key>FSSelfRiggedPickerTrace</key>
     <map>
       <key>Comment</key>

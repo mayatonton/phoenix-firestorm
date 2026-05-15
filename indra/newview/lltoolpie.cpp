@@ -90,6 +90,29 @@ extern bool gDebugClicks;
 static void handle_click_action_play();
 static void handle_click_action_open_media(LLPointer<LLViewerObject> objectp);
 static ECursorType cursor_from_parcel_media(U8 click_action);
+static void fs_arm_self_rigged_picker_for_hover(const LLPickInfo& pick);
+
+static void fs_arm_self_rigged_picker_for_hover(const LLPickInfo& pick)
+{
+    static LLCachedControl<bool> enable(gSavedSettings, "FSSelfRiggedPickerEnable", true);
+    static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSSelfRiggedPickerGPU", false);
+    static LLCachedControl<bool> armed_mode(gSavedSettings, "FSSelfRiggedPickerArmedMode", true);
+    static LLCachedControl<F32> arm_seconds(gSavedSettings, "FSSelfRiggedPickerArmSeconds", 3.f);
+    if (!enable || !gpu_enable || !armed_mode || !isAgentAvatarValid())
+    {
+        return;
+    }
+
+    LLViewerObject* object = pick.getObject();
+    const bool hover_self_avatar = pick.mObjectID == gAgent.getID();
+    const bool hover_self_attachment =
+        object && (object->getAvatar() == gAgentAvatarp.get()) &&
+        !object->isAvatar() && !object->isHUDAttachment();
+    if (hover_self_avatar || hover_self_attachment)
+    {
+        gPipeline.armSelfRiggedObjectIDBuffer((F32)arm_seconds);
+    }
+}
 
 LLToolPie::LLToolPie()
 :   LLTool(std::string("Pie")),
@@ -872,6 +895,7 @@ bool LLToolPie::handleHover(S32 x, S32 y, MASK mask)
     }
     // <FS:minerjr> [FIRE-35019]
     mHoverPick = gViewerWindow->pickImmediate(x, y, false, pick_rigged);
+    fs_arm_self_rigged_picker_for_hover(mHoverPick);
     LLViewerObject *parent = NULL;
     LLViewerObject *object = mHoverPick.getObject();
 // [RLVa:KB] - Checked: RLVa-1.1.0
