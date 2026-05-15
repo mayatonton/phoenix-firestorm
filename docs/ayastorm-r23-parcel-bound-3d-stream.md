@@ -1,8 +1,8 @@
 # AYAstorm r23 — Parcel-bound 3D stream 仕様 (draft)
 
 **作成日**: 2026-05-16
-**最終更新**: 2026-05-16 (M1 確定)
-**ステータス**: M1 確定、M2 実装着手前
+**最終更新**: 2026-05-16 (M2 実装完了)
+**ステータス**: M1 / M2 完了、Linux 単 OS ビルド PASS、M3 受入テストは舞台準備待ち
 **対象ブランチ**: `feat/ayastorm-r23-parcel-bound-3d-stream`
 
 このドキュメントは r23 で実装予定の「AYAstorm 3D stream を SL の parcel "Restrict gestures and object sounds to this parcel" フラグに連動させる」機能の仕様 draft。AYA との対話で順次確定していく。
@@ -178,7 +178,7 @@ precedent: `LLAudioSourceVO::updateMute()` (object sound) も canHearSound を�
 | M | 内容 | ステータス |
 |---|---|---|
 | M1 | 仕様確定 + 構造調査 + escape hatch 方針確定 | ✅ 確定 (追加機能なし、SL parcel 規約準拠を default) |
-| M2 | 実装 — `LLPositionalStreamMgr` に `canHearSound()` フック追加 | ⏳ 次着手 |
-| M3 | 受入テスト — 同一/隣接 parcel、装着 stream の parcel 跨ぎ移動、region 跨ぎ TP | — |
-| M4 | 3 OS ビルド (Linux → Win → Mac) | — |
+| M2 | 実装 — `LLPositionalStreamMgr` に `canHearSound()` フック追加 | ✅ 完了 (commit `673ca4ae9c`、Linux ビルド PASS) |
+| M3 | 受入テスト — 同一/隣接 parcel、装着 stream の parcel 跨ぎ移動、region 跨ぎ TP | ⏳ 舞台 (隣接 parcel × SOUND_LOCAL on/off) 準備待ち |
+| M4 | 3 OS ビルド (Linux → Win → Mac) | Linux のみ PASS、Win/Mac は M3 後 |
 | M5 | Release — spec doc 更新、release note 3 言語、tag | — |
