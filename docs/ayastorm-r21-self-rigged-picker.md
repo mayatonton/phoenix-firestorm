@@ -206,13 +206,30 @@ armed mode で「最後に hover してから何秒間 ID pass を許可する�
 
 ---
 
-## 5. 受け入れ条件 (M5 検証で確認)
+## 5. 受け入れ条件
 
+### M4 picker 構造
 - [x] **rigged self attachment** (Mesh body の腕 / 頭 / 胴 / 服 / 髪): 右クリック → 正しい prim が pie menu に出る (M4.17 PASS)
 - [x] **非 rigged self attachment** (ピアス / 単独 jewelry prim): 右クリック → 該当 prim が pie menu に出る (M4.18 PASS)
 - [x] **他者 avatar / land / HUD**: picker bypass で上流挙動が壊れない (M4.9 で HUD 明示 bypass)
-- [ ] **3 OS ビルド + 起動 + 動作確認** (Linux PASS、Win / macOS は M5 で実施 — memory `project_ayastorm_three_platforms.md`)
-- [ ] **M5: `FSSelfRiggedPickerGPU` default を 1 に flip** (cleanup commit 後の別 commit)
+
+### M5 default flip
+- [x] `FSSelfRiggedPickerGPU` default を 1 に flip (`34acea572f`)
+- [x] Linux ビルド + 起動 + 動作確認 PASS
+- [ ] Windows / macOS ビルド + 起動 + 動作確認 (release tag 前に AYA 側で実施 — memory `project_ayastorm_three_platforms.md` / `feedback_build.md`)
+
+### M6 selection handoff fix
+- [x] 右クリック時の `Couldn't find object ... selected.` 警告が再発しない (`docs/ayastorm-r21-selection-handoff-investigation.md` の比較検証 PASS、修正前 trace-only app で 887 件 → 修正後 app で 0 件)
+- [x] land / no-object pick の上流 deselection 挙動を壊さない (`LLToolSelect::handleObjectSelection()` の呼び出しは unconditional のまま維持)
+
+### M7 armed mode (experimental)
+- [x] 非 hover 時に `renderSelfRiggedObjectIDBuffer()` が走らない (`docs/ayastorm-r21-picker-armed-mode.md` カーソル off 20 秒追跡で確認)
+- [x] hover 時に GPU ID pass が走り readback が成立する (同 doc の hover 中観測で確認)
+- [x] mouselook 中は armed mode が継続実行されない (同 doc の mouselook 中追跡で確認)
+- [ ] release 後フィードバックで `ArmSeconds` / hover ごとの arm 更新間隔の調整候補を判断
+
+### trace cleanup
+- [x] `FSSelfRiggedPickerTrace` cvar と LL_INFOS hook を出荷物から除去 (`744a47f471`、memory `feedback_remove_verification_logs.md`)
 
 ---
 
@@ -255,7 +272,7 @@ armed mode で「最後に hover してから何秒間 ID pass を許可する�
 - 2026-05-14 (`f3c0829ea8`) **M4.17 Linux PASS**: `LLDrawInfo::mFSPickerLocalID` 導入で hash collision 完全解決。腕/頭/胴/服 全て正解
 - 2026-05-14 **M4.18 PASS**: non-rigged ピアス選択不能を `isRiggedMesh()` ガードで解決
 - 2026-05-14 **掃除 commit**: CPU stage 0/1 ヘルパ ~400 行、CPU stage 関連 cvar 4 件 (`Tolerance` / `DepthAssist` / `DepthTolerance` / `DumpBuffer`)、per-click diag log、Diag-C/D PNG dump を全削除。net **-746 行**。掃除後の `findClosestAttachment` は 60 行台、GPU 1 path のみ
-- 2026-05-14 (`34acea572f`) **M5**: `FSSelfRiggedPickerGPU` default = 1 に flip、3 OS 検証 PASS
+- 2026-05-14 (`34acea572f`) **M5**: `FSSelfRiggedPickerGPU` default = 1 に flip、Linux PASS (Win / macOS は release tag 前に AYA 側で確認予定)
 - 2026-05-15 (`cd35ef4fd8`) **M6 selection handoff fix**: `LLToolSelect::handleObjectSelection()` を AYA GPU picker 補正後の 1 回に集約し、`Couldn't find object … selected.` 警告 (検証セッションで 887 件) を解消。詳細: `docs/ayastorm-r21-selection-handoff-investigation.md`
 - 2026-05-15 (`556607465f` / `f42a934509` / `16887a6395`) **M7 armed mode (experimental)**: `renderSelfRiggedObjectIDBuffer()` を hover detection で gate、`FSSelfRiggedPickerArmedMode` / `FSSelfRiggedPickerArmSeconds` を追加。非 hover 時の常時描画を抑制。詳細: `docs/ayastorm-r21-picker-armed-mode.md`
-- 2026-05-15 (この commit) **trace cleanup**: M6 / M7 検証用に追加していた `FSSelfRiggedPickerTrace` cvar + LL_INFOS hook 一式を出荷物から除去 (memory `feedback_remove_verification_logs.md`)
+- 2026-05-15 (`744a47f471`) **trace cleanup**: M6 / M7 検証用に追加していた `FSSelfRiggedPickerTrace` cvar + LL_INFOS hook 一式を出荷物から除去 (memory `feedback_remove_verification_logs.md`)
