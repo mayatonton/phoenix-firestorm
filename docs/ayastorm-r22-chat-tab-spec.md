@@ -1,9 +1,9 @@
 # AYAstorm r22 — Chat tab split (人間 vs Object/LSL) 仕様
 
 **作成日**: 2026-05-15
-**最終更新**: 2026-05-15 (M1 仕様確定)
-**ステータス**: M1 完了、M2 (データ層実装) 着手前
-**対象ブランチ**: `docs/ayastorm-r22-chat-tab-spec`
+**最終更新**: 2026-05-16 (M7 完了)
+**ステータス**: M1〜M7 完了、M8 (Release) 着手前
+**対象ブランチ**: `feat/ayastorm-r22-chat-tab-split`
 
 このドキュメントは r22 で追加予定の「Chat 表示の人間/Object タブ分離」機能の仕様。AYA さんとの対話で確定した内容を集約。M1 セッション (2026-05-15) で主要論点をすべて確定済み。
 
@@ -244,14 +244,14 @@ XUI / C++ を覗いた結果:
 - [x] 自分の Local Chat 発言は Human タブに記録される
 - [x] AYAstorm を介してユーザー画面にマーカー文字列が漏れない
 - [x] 上流 Firestorm で同じ履歴ファイルを開いても破綻しない (末尾文字列として見える)
-- [x] FS V1 / V7 / LL の 3 style すべてでタブが機能する (Linux 確認、M7 で Win/Mac)
+- [x] FS V1 / V7 / LL の 3 style すべてでタブが機能する (Linux / Win / Mac 全 OS で確認)
 - [x] IM (1 on 1) の `IM_FROM_TASK` 由来発言が Object タブに分離される (M4 で共有 XUI 経由実装、M6 で確認)
 - [x] System / Teleport / Region / Unknown 発言は Human タブに流れる
 - [x] `Preferences → Chat → Chat Windows` に `FSChatHumanObjectTabs` スイッチが表示される
 - [x] `FSChatHumanObjectTabs=false` で旧 1-widget 挙動に戻る (escape hatch)
 - [x] AYAChatWindowStyle / FSChatHumanObjectTabs 切替時に再起動誘導モーダルが出る (M4-extra)
 - [x] AYAChatWindowStyle 切替時に旧スタイルの IM コンテナが自動で閉じる (M4-extra)
-- [ ] 3 OS (Linux / Win / Mac) でビルド通過 (M7)
+- [x] 3 OS (Linux / Win / Mac) でビルド通過 + 動作確認 (M7)
 
 ---
 
@@ -289,8 +289,8 @@ XUI / C++ を覗いた結果:
 | M4 | C++ 受信 hook で widget 振り分け + M4-extra (restart-only モーダル + 旧スタイル floater 自動クローズ) | ✅ 完了 |
 | M5 | 未読バッジ (`(N)` 件数表示、セッション内のみ、再起動でリセット) | ✅ 完了 |
 | M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | ✅ 完了 (LSL `llInstantMessage` 経由で IM_FROM_TASK が Object タブに分離されることを確認) |
-| M7 | 3 OS ビルド (Linux → Win → Mac) | ⏳ Linux ✅ PASS、Win / Mac は push 後 |
-| M8 | Release — spec doc 更新、release note 3 言語、tag | — |
+| M7 | 3 OS ビルド (Linux → Win → Mac) | ✅ 完了 (2026-05-16、3 OS ビルド + 動作確認 PASS) |
+| M8 | Release — spec doc 更新、release note 3 言語、tag | ⏳ 着手前 |
 
 ---
 
@@ -306,3 +306,4 @@ XUI / C++ を覗いた結果:
   - escape hatch: 上記 cvar の false 化で代用、別 cvar 不要
   - HUD allow list: r22 スコープ外、r23+ で検討
   - 構造調査の結果、`EChatSourceType` が既存定義済みで判定ロジックは新規不要、`LLLogChat::saveHistory()` シグネチャ拡張要、LL style は `panel_container` で session 切替する構造
+- **2026-05-16 (M7 完了)**: Windows + macOS でもビルド通過 + 動作確認 PASS。3 OS で受入基準を全項目クリア、M8 (Release) に移行。
