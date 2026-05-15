@@ -193,6 +193,7 @@ set(llcommon_HEADER_FILES
     llmutex.h
     llnametable.h
     llpointer.h
+    llpluginaudio.h
     llprofiler.h
     llprofilercategories.h
     llpounceable.h

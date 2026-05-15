@@ -44,12 +44,15 @@
 #include "llcoros.h"
 #include "llcorehttputil.h"
 
+#include <memory>
+
 class LLViewerMediaImpl;
 class LLUUID;
 class LLViewerMediaTexture;
 class LLMediaEntry;
 class LLVOVolume;
 class LLMimeDiscoveryResponder;
+class LLMediaAudioStream;
 
 typedef LLPointer<LLViewerMediaImpl> viewer_media_t;
 ///////////////////////////////////////////////////////////////////////////////
@@ -449,6 +452,7 @@ private:
 private:
     // a single media url with some data and an impl.
     std::shared_ptr<LLPluginClassMedia> mMediaSource;
+    std::unique_ptr<LLMediaAudioStream> mMediaAudioStream;
     LLCoros::Mutex mLock;
     F64     mZoomFactor;
     LLUUID mTextureId;
@@ -482,6 +486,7 @@ private:
     bool mMediaSourceFailed;
     F32 mRequestedVolume;
     F32 mPreviousVolume;
+    F32 mAppliedVolume;
     bool mIsMuted;
     bool mNeedsMuteCheck;
     int mPreviousMediaState;

@@ -34,6 +34,7 @@ if (TARGET ll::fmodstudio)
          llaudioengine_fmodstudio.cpp
          lllistener_fmodstudio.cpp
          llstreamingaudio_fmodstudio.cpp
+         llmediaaudiostream.cpp
          llpositionalstream.cpp
          llpositionalstreamstereo.cpp
          llpositionalstreammulti.cpp
@@ -51,6 +52,7 @@ if (TARGET ll::fmodstudio)
          llaudioengine_fmodstudio.h
          lllistener_fmodstudio.h
          llstreamingaudio_fmodstudio.h
+         llmediaaudiostream.h
          llpositionalstream.h
          llpositionalstreamstereo.h
          llpositionalstreammulti.h

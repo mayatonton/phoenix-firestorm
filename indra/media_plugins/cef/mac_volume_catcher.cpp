@@ -33,9 +33,10 @@
     kHALOutputParam_Volume parameter on all of them to adjust the output volume.
 **************************************************************************************************************/
 
+#include "linden_common.h"
 #include "volume_catcher.h"
 
-#include <QuickTime/QuickTime.h>
+#include <CoreServices/CoreServices.h>
 #include <AudioUnit/AudioUnit.h>
 #include <list>
 
@@ -239,7 +240,7 @@ void VolumeCatcherImpl::setInstanceVolume(VolumeCatcherStorage *instance)
 
     if(err)
     {
-//      std::cerr << "    AudioUnitSetParameter returned " << err << std::endl;
+        LL_WARNS("Media") << "VolumeCatcher AudioUnitSetParameter returned " << err << LL_ENDL;
     }
 }
 

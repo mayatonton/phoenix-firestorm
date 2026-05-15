@@ -34,6 +34,7 @@
 #include "llplugininstance.h"
 #include "llpluginmessage.h"
 #include "llpluginmessageclasses.h"
+#include "llpluginaudio.h"
 #include "llstring.h"
 #if LL_VOLUME_CATCHER
 #include "volume_catcher.h"
@@ -82,6 +83,11 @@ private:
     const std::vector<std::string> onFileDialog(dullahan::EFileDialogType dialog_type, const std::string dialog_title, const std::string default_file, const std::string dialog_accept_filter, bool& use_default);
     bool onJSDialogCallback(const std::string origin_url, const std::string message_text, const std::string default_prompt_text);
     bool onJSBeforeUnloadCallback();
+    void onAudioStreamStartedCallback(const dullahan::dullahan_audio_stream_info& info);
+    void onAudioStreamPacketCallback(const float** data, int frames, int64_t pts);
+    void onAudioStreamStoppedCallback();
+    void onAudioStreamErrorCallback(const std::string message);
+    void writeAudioPacketToRing(const float** data, int frames);
 
     void postDebugMessage(const std::string& msg);
     void authResponse(LLPluginMessage &message);
@@ -120,6 +126,13 @@ private:
     std::string mCefLogFile;
     bool mCefLogVerbose;
     std::vector<std::string> mPickedFiles;
+    bool mAudioStreamActive;
+    int mAudioStreamSampleRate;
+    int mAudioStreamChannels;
+    U64 mAudioStreamFramesReceived;
+    LLPluginAudioRingHeader* mAudioRing;
+    size_t mAudioRingSize;
+    int mAudioRingMaxChannels;
 #if LL_VOLUME_CATCHER
     VolumeCatcher mVolumeCatcher;
 #endif
@@ -163,6 +176,13 @@ MediaPluginBase(host_send_func, host_user_data)
     mCefLogFile = "";
     mCefLogVerbose = false;
     mPickedFiles.clear();
+    mAudioStreamActive = false;
+    mAudioStreamSampleRate = 0;
+    mAudioStreamChannels = 0;
+    mAudioStreamFramesReceived = 0;
+    mAudioRing = nullptr;
+    mAudioRingSize = 0;
+    mAudioRingMaxChannels = 0;
     mCurVolume = 0.0;
 
     mCEFLib = new dullahan();
@@ -423,6 +443,112 @@ bool MediaPluginCEF::onJSBeforeUnloadCallback()
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+void MediaPluginCEF::onAudioStreamStartedCallback(const dullahan::dullahan_audio_stream_info& info)
+{
+    mAudioStreamActive = true;
+    mAudioStreamSampleRate = info.sample_rate;
+    mAudioStreamChannels = info.channels;
+    mAudioStreamFramesReceived = 0;
+    if (mAudioRing)
+    {
+        mAudioRing->mSampleRate = (std::uint32_t)llmax(0, info.sample_rate);
+        mAudioRing->mChannels = (std::uint32_t)llclamp(info.channels, 0, (int)LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
+        mAudioRing->mBytesPerSample = sizeof(float);
+        mAudioRing->mWriteFrame.store(0, std::memory_order_release);
+        mAudioRing->mReadFrame.store(0, std::memory_order_release);
+        mAudioRing->mTotalFramesWritten.store(0, std::memory_order_release);
+        mAudioRing->mTotalFramesDropped.store(0, std::memory_order_release);
+    }
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+void MediaPluginCEF::onAudioStreamPacketCallback(const float** data, int frames, int64_t pts)
+{
+    (void)pts;
+
+    if (!mAudioStreamActive || !data || frames <= 0)
+    {
+        return;
+    }
+
+    mAudioStreamFramesReceived += (U64)frames;
+    writeAudioPacketToRing(data, frames);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+void MediaPluginCEF::onAudioStreamStoppedCallback()
+{
+    mAudioStreamActive = false;
+    mAudioStreamSampleRate = 0;
+    mAudioStreamChannels = 0;
+    mAudioStreamFramesReceived = 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+void MediaPluginCEF::onAudioStreamErrorCallback(const std::string message)
+{
+    LL_WARNS("AYAMediaAudio") << "CEF audio stream error: " << message << LL_ENDL;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+void MediaPluginCEF::writeAudioPacketToRing(const float** data, int frames)
+{
+    if (!mAudioRing ||
+        mAudioRing->mMagic != LL_PLUGIN_AUDIO_RING_MAGIC ||
+        mAudioRing->mVersion != LL_PLUGIN_AUDIO_RING_VERSION ||
+        mAudioStreamChannels <= 0 ||
+        frames <= 0)
+    {
+        return;
+    }
+
+    const std::uint32_t channels = (std::uint32_t)llclamp(mAudioStreamChannels, 1, mAudioRingMaxChannels);
+    const std::uint32_t capacity = mAudioRing->mCapacityFrames;
+    if (channels == 0 || capacity == 0)
+    {
+        return;
+    }
+
+    float* samples = reinterpret_cast<float*>(
+        reinterpret_cast<unsigned char*>(mAudioRing) + mAudioRing->mHeaderSize);
+    const std::uint32_t total = capacity + 1;
+    std::uint32_t write = mAudioRing->mWriteFrame.load(std::memory_order_relaxed);
+    std::uint32_t read = mAudioRing->mReadFrame.load(std::memory_order_acquire);
+
+    for (int frame = 0; frame < frames; ++frame)
+    {
+        const std::uint32_t next = (write + 1) % total;
+        if (next == read)
+        {
+            mAudioRing->mReadFrame.store((read + 1) % total, std::memory_order_release);
+            read = mAudioRing->mReadFrame.load(std::memory_order_acquire);
+            mAudioRing->mTotalFramesDropped.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        float* dst = samples + ((size_t)write * LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
+        for (std::uint32_t ch = 0; ch < channels; ++ch)
+        {
+            dst[ch] = data[ch] ? data[ch][frame] : 0.f;
+        }
+        for (std::uint32_t ch = channels; ch < LL_PLUGIN_AUDIO_RING_MAX_CHANNELS; ++ch)
+        {
+            dst[ch] = 0.f;
+        }
+
+        write = next;
+    }
+
+    mAudioRing->mWriteFrame.store(write, std::memory_order_release);
+    mAudioRing->mTotalFramesWritten.fetch_add((std::uint64_t)frames, std::memory_order_relaxed);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 void MediaPluginCEF::onCursorChangedCallback(dullahan::ECursorType type)
 {
     std::string name = "";
@@ -601,6 +727,12 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
                         mPixels = NULL;
                         mTextureSegmentName.clear();
                     }
+                    if (mAudioRing == iter->second.mAddress)
+                    {
+                        mAudioRing = nullptr;
+                        mAudioRingSize = 0;
+                        mAudioRingMaxChannels = 0;
+                    }
                     mSharedSegments.erase(iter);
                 }
                 else
@@ -617,7 +749,22 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
         }
         else if (message_class == LLPLUGIN_MESSAGE_CLASS_MEDIA)
         {
-            if (message_name == "init")
+            if (message_name == "audio_shm_set")
+            {
+                std::string name = message_in.getValue("name");
+                SharedSegmentMap::iterator iter = mSharedSegments.find(name);
+                if (iter != mSharedSegments.end())
+                {
+                    mAudioRing = reinterpret_cast<LLPluginAudioRingHeader*>(iter->second.mAddress);
+                    mAudioRingSize = iter->second.mSize;
+                    mAudioRingMaxChannels = message_in.getValueS32("max_channels");
+                }
+                else
+                {
+                    LL_WARNS("AYAMediaAudio") << "CEF audio shared memory not found: " << name << LL_ENDL;
+                }
+            }
+            else if (message_name == "init")
             {
                 // event callbacks from Dullahan
                 mCEFLib->setOnPageChangedCallback(std::bind(&MediaPluginCEF::onPageChangedCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
@@ -642,6 +789,10 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
                 mCEFLib->setOnRequestExitCallback(std::bind(&MediaPluginCEF::onRequestExitCallback, this));
                 mCEFLib->setOnJSDialogCallback(std::bind(&MediaPluginCEF::onJSDialogCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
                 mCEFLib->setOnJSBeforeUnloadCallback(std::bind(&MediaPluginCEF::onJSBeforeUnloadCallback, this));
+                mCEFLib->setOnAudioStreamStartedCallback(std::bind(&MediaPluginCEF::onAudioStreamStartedCallback, this, std::placeholders::_1));
+                mCEFLib->setOnAudioStreamPacketCallback(std::bind(&MediaPluginCEF::onAudioStreamPacketCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+                mCEFLib->setOnAudioStreamStoppedCallback(std::bind(&MediaPluginCEF::onAudioStreamStoppedCallback, this));
+                mCEFLib->setOnAudioStreamErrorCallback(std::bind(&MediaPluginCEF::onAudioStreamErrorCallback, this, std::placeholders::_1));
 
                 dullahan::dullahan_settings settings;
 #if LL_WINDOWS
@@ -1236,7 +1387,9 @@ void MediaPluginCEF::checkEditState()
 void MediaPluginCEF::setVolume()
 {
 #if LL_VOLUME_CATCHER
-    mVolumeCatcher.setVolume(mCurVolume);
+    // The viewer now plays CEF/MOAP PCM through FMOD. Keep the plugin-side
+    // native output silent so the same media audio is not heard twice.
+    mVolumeCatcher.setVolume(0.0f);
 #endif
 }
 
