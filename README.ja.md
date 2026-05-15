@@ -168,6 +168,47 @@ AYAstorm 独自のビルド手順 (Linux / Windows):
 
 ---
 
-## ベース
+## 貢献者
 
-AYAstorm は [Phoenix Firestorm](https://www.firestormviewer.org) のフォークです。Firestorm は [Second Life](https://github.com/secondlife/viewer) の公式クライアントから派生した LGPL ライセンスのオープンソース Viewer です。
+### AYAstorm チーム
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/mayatonton">
+        <img src="https://github.com/mayatonton.png?size=100" width="80" height="80" alt="mayatonton"/>
+        <br/>
+        <sub><b>mayatonton</b></sub>
+      </a>
+      <br/>
+      <sub>作者 / メンテナ</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/t-noami">
+        <img src="https://github.com/t-noami.png?size=100" width="80" height="80" alt="t-noami"/>
+        <br/>
+        <sub><b>t-noami</b></sub>
+      </a>
+      <br/>
+      <sub>共同メンテナ</sub>
+    </td>
+    <!--
+    To add another contributor, copy a <td> block above and update:
+      - the GitHub username in the URL and image src
+      - the display name in <sub><b>...</b></sub>
+      - the role text in the trailing <sub>...</sub>
+    -->
+  </tr>
+</table>
+
+AYAstorm の開発に参加しませんか? バグ報告、Pull Request、翻訳すべて歓迎です — [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
+
+### Firestorm をベースに
+
+AYAstorm は [Phoenix Firestorm](https://www.firestormviewer.org) のフォークで、Firestorm は [Second Life](https://github.com/secondlife/viewer) の公式クライアントから派生した LGPL ライセンスのオープンソース Viewer です。
+
+AYAstorm の土台となっている Firestorm チームと上流の全コントリビューターに心からの感謝を:
+
+<a href="https://github.com/FirestormViewer/phoenix-firestorm/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FirestormViewer/phoenix-firestorm" alt="Firestorm contributors" />
+</a>
