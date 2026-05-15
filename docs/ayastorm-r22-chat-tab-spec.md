@@ -1,10 +1,11 @@
-# AYAstorm r22 — Chat tab split (人間 vs Object/LSL) 仕様ドラフト
+# AYAstorm r22 — Chat tab split (人間 vs Object/LSL) 仕様
 
 **作成日**: 2026-05-15
-**ステータス**: 仕様検討中 (実装未着手)
+**最終更新**: 2026-05-15 (M1 仕様確定)
+**ステータス**: M1 完了、M2 (データ層実装) 着手前
 **対象ブランチ**: `docs/ayastorm-r22-chat-tab-spec`
 
-このドキュメントは r22 で追加予定の「Chat 表示の人間/Object タブ分離」機能の仕様検討メモ。AYA さんとの対話で確定した部分と、次セッションで詰める論点をまとめている。
+このドキュメントは r22 で追加予定の「Chat 表示の人間/Object タブ分離」機能の仕様。AYA さんとの対話で確定した内容を集約。M1 セッション (2026-05-15) で主要論点をすべて確定済み。
 
 ---
 
@@ -23,15 +24,14 @@ Nearby Chat / IM の表示において、**人間アバター発言** と **Obje
 | Nearby Chat (Local Chat) | ✅ 対象 |
 | IM (1 on 1) — 通常 | ✅ 対象 (受信側で判定) |
 | IM (1 on 1) — `IM_FROM_TASK` (Object 発信) | ✅ Object タブ |
-| Group chat | 🔶 基本 Human (Object 発言が来ない経路)、要再確認 |
-| System message (sim restart / Second Life messages) | ⏸️ 未確定 (§7) |
-| 対象 style: FS V1 / V7 / LL | ⏸️ 未確定 (§7) — 構造上は 3 style 同時対応が可能 |
+| Group chat | ✅ 基本 Human (Object 発言が来ない経路) |
+| 対象 style: FS V1 / V7 / LL | ✅ **3 style 同時対応** (M1 確定) |
 
 ---
 
 ## 3. 表示構造 (GUI)
 
-### 3.1 確定: タブ切替式
+### 3.1 確定: タブ切替式 + Preferences スイッチ
 
 各 chat ウィンドウの history 領域上部に **タブ** を配置する。
 
@@ -45,13 +45,26 @@ Nearby Chat / IM の表示において、**人間アバター発言** と **Obje
 └─────────────────────────────┘
 ```
 
+**仕様**:
 - タブは `[Human]` `[Object]` の 2 つ
 - 非アクティブ側に **未読件数バッジ** を表示し見落としを防ぐ
 - 入力欄は 1 つ共有 (どちらのタブを見ていても Local Chat に送信)
 - 自分の Local Chat 発言は **Human タブに記録**
-- V1 / V7 / LL の 3 style とも同じ形状で揃える (style 切替時の体験を一貫させるため)
+- V1 / V7 / LL の 3 style とも同じ形状で揃える (UX 一貫性)
 
-### 3.2 見た目フォールバック案 (実機検証で A が詰まった時の二の矢)
+**設定スイッチ** (M1 確定):
+
+| Name | Type | Default | Persist |
+|---|---|---|---|
+| `FSChatHumanObjectTabs` | Boolean | `true` | 1 |
+
+- **opt-out (default ON)** — AYAstorm の目玉機能として default で有効
+- 配置: `Preferences → Chat → Chat Windows` タブ (LL chat style 切替と同じタブ)
+- ラベル: `Split chat into Human / Object tabs`
+- tool_tip: `Separate human avatar speech from LSL/object messages into two tabs. Keeps human conversations free of script notifications.`
+- `false` にすると旧 1-widget 挙動に戻る (escape hatch 兼用、別 cvar 不要)
+
+### 3.2 見た目フォールバック案 (実機検証で α が詰まった時の二の矢)
 
 実機で「タブが見た目的に変」と判明したら、以下の順に検討:
 
@@ -86,9 +99,29 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 
 ---
 
-## 4. データ層
+## 4. 判定境界 (M1 確定)
 
-### 4.1 履歴ファイルは 1 本のまま維持
+`EChatSourceType` (llchat.h:35) の 6 値を以下に振り分ける:
+
+| Source Type | 例 | 振り分け |
+|---|---|---|
+| `CHAT_SOURCE_AGENT` | アバター発言 | **Human** |
+| `CHAT_SOURCE_OBJECT` | LSL `llSay` / `llOwnerSay` / HUD / 自分の attachment | **Object** |
+| `CHAT_SOURCE_SYSTEM` | "You are now logged in", item received 等 | **Human** |
+| `CHAT_SOURCE_TELEPORT` | TP offer / arrival | **Human** |
+| `CHAT_SOURCE_REGION` | sim restart 通知等 | **Human** |
+| `CHAT_SOURCE_UNKNOWN` | 不明 (fallback) | **Human** |
+
+**判定方針**:
+- Object タブには **「LSL 由来のうるさい話し声 (広告・警告・繰り返し通知)」だけ** を集める
+- System / Teleport / Region / Unknown は性質が違う (頻度低い・重要) ので Human 側 = メインの流れに残す
+- 「判別不能 → Human フォールバック」を default safe としても機能
+
+---
+
+## 5. データ層
+
+### 5.1 履歴ファイルは 1 本のまま維持
 
 | 種類 | ファイル | 方針 |
 |---|---|---|
@@ -101,7 +134,7 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 - 履歴ファイル数が倍増しない
 - 上流 Firestorm が同じファイルを開いても破綻しない
 
-### 4.2 行末メタマーカー
+### 5.2 行末メタマーカー
 
 新規書き込み行の末尾に source_type を埋め込む。
 
@@ -110,32 +143,38 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 ```
 [2026-05-15 10:23] Alice: hello\t<!--src:avatar-->
 [2026-05-15 10:24] PetBox: greetings, traveler!\t<!--src:task-->
+[2026-05-15 10:25] Second Life: You are now logged in.\t<!--src:system-->
 ```
 
-**source_type の値** (拡張余地あり):
+**source_type の値** (`EChatSourceType` 既存定義からマッピング):
 
-| 値 | 意味 |
+| Marker 値 | 対応する EChatSourceType |
 |---|---|
-| `avatar` | 人間アバターの発言 (Human タブ) |
-| `task` | LSL/Object 発言 (Object タブ) |
-| `system` | System message (振り分けは §7 で確定) |
+| `avatar` | `CHAT_SOURCE_AGENT` |
+| `task` | `CHAT_SOURCE_OBJECT` |
+| `system` | `CHAT_SOURCE_SYSTEM` |
+| `teleport` | `CHAT_SOURCE_TELEPORT` |
+| `region` | `CHAT_SOURCE_REGION` |
+| `unknown` | `CHAT_SOURCE_UNKNOWN` |
+
+→ ファイル上にすべての種類を残しておくことで、将来 Human/Object 以外の細分化 (例: System タブを別に分ける) に対応できる柔軟性を確保。
 
 **HTML コメント風 (`<!-- -->`) にした理由**:
 - 外部 viewer / エディタで直接開いても **意味のあるコメント記法に見え害が薄い** (`[TASK]` プレフィックスより目立たない)
 - `grep "src:task"` のような検索 noise になりにくい
 - **上流 Firestorm で同じ履歴ファイルを開いても破綻しない** (ただの末尾文字列として見える)
 
-### 4.3 読み込み時の挙動
+### 5.3 読み込み時の挙動
 
-`LLLogChat::loadHistory` が行を読む際:
+`LLChatLogParser::parse()` が行を読む際:
 
-1. 行末の `<!--src:.*-->` を **正規表現で抽出してメタフィールドに分離**
-2. 本文文字列からはマーカーを **剥がしてから** chat widget に渡す
+1. 行末の `<!--src:(\w+)-->` を **正規表現で抽出して LLSD に `source` キーとして詰める**
+2. 本文文字列からはマーカーを **剥がしてから** 後続パイプラインに渡す
 3. メタに従って Human / Object widget に振り分け
 
 → **AYAstorm を介する限り、ユーザー画面にマーカー文字列は絶対出ない**。
 
-### 4.4 旧履歴 (マーカーなし) のフォールバック
+### 5.4 旧履歴 (マーカーなし) のフォールバック
 
 マーカーがない行は判別不能 → **Human タブにフォールバック**。
 
@@ -146,39 +185,53 @@ Firestorm の `fs_chat_history` widget は行ごとに色が固定される:
 
 ---
 
-## 5. 実装スケッチ (構造のみ)
+## 6. 実装スケッチ
 
-### 5.1 影響ファイル想定
+### 6.1 影響ファイル
 
 **XUI**:
 
-- `indra/newview/skins/default/xui/en/panel_nearby_chat.xml` — Human/Object 2 widget + tab UI を配置
-- `indra/newview/skins/default/xui/en/floater_fs_nearby_chat.xml` — 既存 muted/normal 2 widget パターンに準拠して visibility 切替で実装可能 (要検討)
-- `indra/newview/skins/default/xui/en/floater_im_session.xml` — IM 側のタブ配置 (要構造調査)
-- `indra/newview/skins/default/xui/en/floater_im_container.xml` — LL style 側で panel_nearby_chat をどう埋め込んでいるか要確認
+- `indra/newview/skins/default/xui/en/panel_nearby_chat.xml` — Human/Object 2 widget + tab UI 配置 (LL style と FS V1/V7 standalone の両方で共有される共通 panel)
+- `indra/newview/skins/default/xui/en/floater_fs_nearby_chat.xml` — 既存 muted/normal 2 widget パターンに整合させる
+- `indra/newview/skins/default/xui/en/floater_im_session.xml` — LL style 個別 IM/Nearby session の chat_history 配置 (要構造再確認)
+- `indra/newview/skins/default/xui/en/floater_im_container.xml` — LL style 親 floater (panel_container で session 切替)、要構造再確認
+- `indra/newview/skins/default/xui/en/panel_preferences_chat.xml` — `FSChatHumanObjectTabs` スイッチを Chat Windows タブに追加
 
 **C++**:
 
-- `LLLogChat` — 書き込み時にマーカー付与、読み込み時にマーカー抽出 + メタ分離 (core)
-- `LLFloaterNearbyChat` / `LLFloaterIMSession` — chat 受信 hook で source_type 判定して widget 振り分け
-- `LLChat` struct — source_type 拡張 or 新 enum 追加
+- `indra/llui/llchat.h` — `LLChat::mSourceType` (既存 `EChatSourceType`) をそのまま利用、新規 enum 追加なし
+- `indra/newview/lllogchat.cpp`:
+  - `LLChatLogFormatter::format()` — suffix marker 出力
+  - `LLChatLogParser::parse()` — suffix marker 抽出 + 本文剥がし
+  - `LLLogChat::saveHistory()` — シグネチャ拡張 (source_type 引数追加 or LLChat を受け取るオーバーロード)
+- `indra/newview/fsfloaternearbychat.cpp` / `llfloaterimnearbychat.cpp` — 受信 hook で source_type に応じて widget 振り分け、`FSChatHumanObjectTabs` で挙動切替
+- `indra/newview/llfloaterimsession.cpp` — LL style IM session 側の振り分け
+- `indra/newview/fschathistory.cpp` / `llchathistory.cpp` — append 経路の整理 (必要なら)
 
-### 5.2 既存の参考パターン (viewer 内)
+**Settings**:
+
+- `indra/newview/app_settings/settings.xml` — `FSChatHumanObjectTabs` Boolean default true persist 1
+
+### 6.2 既存の参考パターン (viewer 内)
 
 - **`chat_history` / `chat_history_muted` 2 widget + `visibility_control` 切替** — `floater_fs_nearby_chat.xml` に既存。「複数の chat_history を切り替える」設計の前例
 - **`tab_container` widget** — viewer 内で 20+ ファイル使用 (Preferences の Chat/Graphics/Privacy 等)。熟成済みなので技術的リスクは低い
+- **`EChatSourceType`** — `indra/llui/llchat.h:35` で既に 6 値定義済み、15+ファイルで使用 (`fschathistory.cpp` / `llimprocessing.cpp` / `llviewermessage.cpp` 等)
 
-### 5.3 構造調査メモ (2026-05-15 時点)
+### 6.3 構造調査メモ (2026-05-15 時点)
 
-XUI を覗いた結果、タブ差し込みは構造的に十分可能と判断:
+XUI / C++ を覗いた結果:
 
-- `panel_nearby_chat.xml` は単純構造 (`layout_stack > layout_panel > fs_chat_history`) で差し込み余地あり
+- `panel_nearby_chat.xml` は単純構造 (`layout_stack > layout_panel > fs_chat_history`)、タブ差し込み余地あり
 - `floater_fs_nearby_chat.xml` は既に 2 つの chat_history を visibility_control で切り替える設計を採用済み
-- `panel_nearby_chat.xml` を LL style と FS V1/V7 の両方が共有しているなら、panel 側に手を入れるだけで 3 style 同時対応できる (要 `floater_im_container.xml` 確認)
+- `floater_im_container.xml` (LL style 親) は左 `conversations_list_panel` + 右 `panel_container name="im_box_tab_container"` で複数 session を切替する仕組み
+- `floater_im_session.xml` (個別 IM/Nearby session panel) は `chat_holder > <chat_history>` の 1 widget 構成。LL style では Nearby Chat も IM session の一種として扱われている可能性が高い (要 M2 着手前に最終確認)
+- `EChatSourceType` が既に LLChat に存在しており、source_type の判定ロジックは新規実装不要
+- `LLLogChat::saveHistory()` のシグネチャに source_type が無いので拡張要
 
 ---
 
-## 6. 受入基準 (実装後)
+## 7. 受入基準 (実装後)
 
 - [ ] Human タブに人間アバター発言、Object タブに LSL/Object 発言が分離して表示される
 - [ ] 旧履歴 (マーカーなし) は Human タブにフォールバック
@@ -188,53 +241,63 @@ XUI を覗いた結果、タブ差し込みは構造的に十分可能と判断:
 - [ ] 自分の Local Chat 発言は Human タブに記録される
 - [ ] AYAstorm を介してユーザー画面にマーカー文字列が漏れない
 - [ ] 上流 Firestorm で同じ履歴ファイルを開いても破綻しない (末尾文字列として見える)
-- [ ] FS V1 / V7 / LL の 3 style すべてでタブが機能する (LL 優先で進めるなら別途段階分け)
+- [ ] FS V1 / V7 / LL の 3 style すべてでタブが機能する
 - [ ] IM (1 on 1) の `IM_FROM_TASK` 由来発言が Object タブに分離される
+- [ ] System / Teleport / Region / Unknown 発言は Human タブに流れる
+- [ ] `Preferences → Chat → Chat Windows` に `FSChatHumanObjectTabs` スイッチが表示される
+- [ ] `FSChatHumanObjectTabs=false` で旧 1-widget 挙動に戻る (escape hatch)
 - [ ] 3 OS (Linux / Win / Mac) でビルド通過
 
 ---
 
-## 7. 未確定論点 (次セッションで詰める)
+## 8. 残る未確定論点 (M2 以降で詰める)
 
-### 7.1 判定境界
-
-「どこから Object 扱いにするか」の境界線:
-
-| ケース | 仮判定 | 確定要 |
+| 論点 | 優先 | 対処タイミング |
 |---|---|---|
-| 通常の avatar chat | Human | ✓ |
-| LSL `llSay` / `llShout` / `llWhisper` / `llRegionSay` | Object | ✓ |
-| HUD scripted attachment (自分の HUD からの発言) | ⏸️ | 未確定 |
-| 自分の scripted attachment (他人にも見える) | ⏸️ | 未確定 |
-| 他人の attachment 内 object 発言 | Object | ✓ |
-| System message (sim restart, Second Life messages) | ⏸️ | 未確定 |
-| Group notice | ⏸️ | 未確定 |
-| `IM_FROM_TASK` (Object → 自分) | Object | ✓ |
-| Bot avatar (人間が AI 制御) | Human (区別不可) | ✓ |
+| バッジ詳細 (件数表示 vs ドット) | 低 | M5 実装中に決める |
+| `floater_im_container.xml` の panel_nearby_chat 埋め込み確認 | 中 | M2 着手前に最終確認 |
+| HUD allow list (自分の HUD だけ Human に流す) | 低 | **r22 スコープ外**、r23+ で検討 |
 
-### 7.2 その他
-
-- **対象 style の段階分け**: V1 / V7 / LL を r22 で一気に対応するか、LL 優先で V1/V7 は r23 に分けるか
-- **opt-in / opt-out のデフォルト**: 初回利用時に Human/Object 分離を on にするか off にするか (memory `feedback_prefer_defaults_over_config.md` を踏まえて「無難なデフォルト」を選ぶ)
-- **「Object タブを完全に hide できる隠しトグル」の要否** — タブ自体を消して旧挙動 (1 widget) に戻す escape hatch
-- **重要 LSL を Human タブに混ぜる allow list の要否** — 例: 自分の HUD だけ Human タブに流す
-- **`floater_im_container.xml` の panel_nearby_chat 埋め込み確認** — LL style 側の構造確定
-- **バッジの設計詳細** — 件数表示 (`Object (3)`) vs 単なるドット表示の選択
+`FSChatHumanObjectTabs=false` で 1-widget 旧挙動に戻れるため、別の escape hatch cvar は **不要**。
 
 ---
 
-## 8. リスク登録
+## 9. リスク登録
 
 | リスク | 影響 | 対策 |
 |---|---|---|
-| タブの見た目が実機で詰む | 中 | フォールバック B-1〜B-3 を仕様に明記済み |
+| タブの見た目が実機で詰む | 中 | フォールバック B-1〜B-3 を §3.2 に明記済み |
 | 履歴ファイルの行末マーカー regex が既存パース処理 (URL 抽出等) と衝突 | 低 | 実装時に URL/highlight regex と末尾マーカー regex の優先順位を確認 |
-| LL style の panel_nearby_chat 埋め込み構造が想定と違う | 低-中 | 実装着手前に `floater_im_container.xml` を読んで確定 |
-| マーカー付き履歴を上流 Firestorm で開いた時の挙動 | 低 | 末尾文字列なので表示には漏れる可能性あり (パースされないので無害)、§4.2 参照 |
-| 「Human/Object 判定境界」のエッジケースで誤分類 | 中 | §7.1 を実装前に確定、ユーザーフィードバックで微調整 |
+| LL style の `floater_im_container.xml` / `floater_im_session.xml` の Nearby Chat 統合構造が想定と違う | 中 | M2 着手前に再確認、想定外なら影響範囲を再評価 |
+| マーカー付き履歴を上流 Firestorm で開いた時の挙動 | 低 | 末尾文字列なので表示には漏れる可能性あり (パースされないので無害)、§5.2 参照 |
+| `LLChatLogFormatter` / `LLChatLogParser` の上流互換性 | 中 | suffix marker は optional、なくても既存 parse が壊れない設計を保つ |
 
 ---
 
-## 9. 履歴
+## 10. マイルストーン
 
-- **2026-05-15**: ドラフト作成。AYA さんとの設計検討対話 (GUI 案 α 採用、データ層 1 本維持 + suffix marker、表示色維持の必須要件) を 1 ページにまとめ。判定境界とスコープ詳細は §7 に未確定として記録。
+| M | 内容 | ステータス |
+|---|---|---|
+| M1 | 仕様確定 + 構造調査 | ✅ 完了 (2026-05-15) |
+| M2 | データ層実装 (LLLogChat + LLChat) | ⏳ 次着手 |
+| M3 | XUI — `panel_nearby_chat.xml` に Human/Object の 2 widget + タブ UI | — |
+| M4 | C++ 受信 hook で widget 振り分け | — |
+| M5 | 未読バッジ | — |
+| M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | — |
+| M7 | 受入テスト + 3 OS ビルド (Linux → Win → Mac) | — |
+| M8 | Release — spec doc 更新、release note 3 言語、tag | — |
+
+---
+
+## 11. 履歴
+
+- **2026-05-15 (初版)**: ドラフト作成。AYA さんとの設計検討対話 (GUI 案 α 採用、データ層 1 本維持 + suffix marker、表示色維持の必須要件) を 1 ページにまとめ。判定境界とスコープ詳細は §7 に未確定として記録。
+- **2026-05-15 (M1 完了)**: M1 で以下を確定:
+  - 対象 style: FS V1 / V7 / LL の **3 style 同時対応**
+  - 判定境界: `CHAT_SOURCE_AGENT` → Human、`CHAT_SOURCE_OBJECT` → Object、`SYSTEM` / `TELEPORT` / `REGION` / `UNKNOWN` → Human
+  - opt-in/out: **opt-out (default ON)**
+  - 設定 cvar: `FSChatHumanObjectTabs` (Boolean, default true, persist 1)、配置 `Preferences → Chat → Chat Windows`
+  - UI ラベル: `Split chat into Human / Object tabs`
+  - escape hatch: 上記 cvar の false 化で代用、別 cvar 不要
+  - HUD allow list: r22 スコープ外、r23+ で検討
+  - 構造調査の結果、`EChatSourceType` が既存定義済みで判定ロジックは新規不要、`LLLogChat::saveHistory()` シグネチャ拡張要、LL style は `panel_container` で session 切替する構造
