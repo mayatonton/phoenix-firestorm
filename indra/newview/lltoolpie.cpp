@@ -2344,9 +2344,6 @@ bool LLToolPie::handleRightClickPick()
     // didn't click in any UI object, so must have clicked in the world
     LLViewerObject *object = mPick.getObject();
 
-    // Can't ignore children here.
-    LLToolSelect::handleObjectSelection(mPick, false, true);
-
     // <FS:AYA r21.1> Self rigged-attachment GPU picker.
     // The upstream worldray pick occasionally mis-aligns against GPU-skinned
     // rigged meshes attached to the agent (closeup zoom / alpha-discard hair /
@@ -2384,7 +2381,6 @@ bool LLToolPie::handleRightClickPick()
                 {
                     object = picked;
                     mPick.mObjectID = picked->getID();
-                    LLToolSelect::handleObjectSelection(mPick, false, true);
                 }
                 else if (gpu_authoritative && upstream_picked_self_attachment
                          && object->isRiggedMesh())
@@ -2399,12 +2395,18 @@ bool LLToolPie::handleRightClickPick()
                     // worldray hit for the non-rigged case.
                     object = gAgentAvatarp.get();
                     mPick.mObjectID = gAgent.getID();
-                    LLToolSelect::handleObjectSelection(mPick, false, true);
                 }
             }
         }
     }
     // </FS:AYA>
+
+    // Can't ignore children here. Select only after the optional AYA GPU
+    // redirect has finalized mPick, otherwise right-click can send a stale
+    // temporary selection before the corrected attachment selection. Keep the
+    // call unconditional so land/no-object picks still follow upstream
+    // deselection behavior.
+    LLToolSelect::handleObjectSelection(mPick, false, true);
 
     // Spawn pie menu
     if (mPick.mPickType == LLPickInfo::PICK_LAND)
