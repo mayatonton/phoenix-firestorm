@@ -168,6 +168,47 @@ Upstream Firestorm build guides (refer to these for Mac):
 
 ---
 
-## Based On
+## Contributors
 
-AYAstorm is a fork of [Phoenix Firestorm](https://www.firestormviewer.org), which is an open-source viewer derived from the official [Second Life](https://github.com/secondlife/viewer) client, licensed under LGPL.
+### AYAstorm Team
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/mayatonton">
+        <img src="https://github.com/mayatonton.png?size=100" width="80" height="80" alt="mayatonton"/>
+        <br/>
+        <sub><b>mayatonton</b></sub>
+      </a>
+      <br/>
+      <sub>Creator / Maintainer</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/t-noami">
+        <img src="https://github.com/t-noami.png?size=100" width="80" height="80" alt="t-noami"/>
+        <br/>
+        <sub><b>t-noami</b></sub>
+      </a>
+      <br/>
+      <sub>Co-Maintainer</sub>
+    </td>
+    <!--
+    To add another contributor, copy a <td> block above and update:
+      - the GitHub username in the URL and image src
+      - the display name in <sub><b>...</b></sub>
+      - the role text in the trailing <sub>...</sub>
+    -->
+  </tr>
+</table>
+
+Want to help build AYAstorm? Bug reports, PRs, and translations are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Built on Firestorm
+
+AYAstorm is a fork of [Phoenix Firestorm](https://www.firestormviewer.org), which is itself an open-source viewer derived from the official [Second Life](https://github.com/secondlife/viewer) client, licensed under LGPL.
+
+Huge thanks to the Firestorm team and all upstream contributors whose work AYAstorm builds upon:
+
+<a href="https://github.com/FirestormViewer/phoenix-firestorm/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FirestormViewer/phoenix-firestorm" alt="Firestorm contributors" />
+</a>
