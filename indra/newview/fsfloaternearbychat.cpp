@@ -379,7 +379,7 @@ void FSFloaterNearbyChat::addMessage(const LLChat& chat,bool archive,const LLSD 
                 return;
             }
             // </FS:TS> FIRE-23123
-            LLLogChat::saveHistory("chat", from_name, chat.mFromID, chat.mText);
+            LLLogChat::saveHistory("chat", from_name, chat.mFromID, chat.mText, chat.mSourceType); // <FS:AYAstorm r22> tag source type
         }
     }
 }

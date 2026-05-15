@@ -717,7 +717,7 @@ void LLFloaterIMNearbyChat::addMessage(const LLChat& chat,bool archive,const LLS
             }
         }
 
-        LLLogChat::saveHistory("chat", from_name, chat.mFromID, chat.mText);
+        LLLogChat::saveHistory("chat", from_name, chat.mFromID, chat.mText, chat.mSourceType); // <FS:AYAstorm r22> tag source type
     }
 }
 
