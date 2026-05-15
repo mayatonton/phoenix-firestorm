@@ -57,6 +57,7 @@
 #include "llfloaterreg.h"
 #include "llfloatersearchreplace.h"
 #include "llfocusmgr.h"
+#include "lltabcontainer.h" // <FS:AYAstorm r22>
 #include "llgesturemgr.h"
 #include "lliconctrl.h"
 #include "rlvactions.h"
@@ -216,6 +217,21 @@ bool FSFloaterNearbyChat::postBuild()
 
     mChatHistory = getChild<FSChatHistory>("chat_history");
     mChatHistoryMuted = getChild<FSChatHistory>("chat_history_muted");
+    mChatHistoryObject = findChild<FSChatHistory>("chat_history_object"); // <FS:AYAstorm r22>
+
+    // <FS:AYAstorm r22> Snapshot FSChatHumanObjectTabs at postBuild so the
+    // setting genuinely requires a restart. When false, hide the tab strip
+    // and the Object panel so the floater looks unsplit (vanilla layout).
+    if (!gSavedSettings.getBOOL("FSChatHumanObjectTabs"))
+    {
+        if (LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container"))
+        {
+            tabs->setTabsHidden(true);
+            if (LLPanel* p = findChild<LLPanel>("tab_object")) tabs->setTabVisibility(p, false);
+        }
+        mChatHistoryObject = nullptr;
+    }
+    // </FS:AYAstorm r22>
 
     mUnreadMessagesNotificationPanel = getChild<LLLayoutPanel>("unread_messages_holder");
     mUnreadMessagesNotificationTextBox = getChild<LLTextBox>("unread_messages_text");
@@ -302,7 +318,15 @@ void FSFloaterNearbyChat::addMessage(const LLChat& chat,bool archive,const LLSD 
     mChatHistoryMuted->appendMessage(chat, chat_args, input_append_params);
     if (!chat.mMuted)
     {
-        mChatHistory->appendMessage(chat, chat_args, input_append_params);
+        // <FS:AYAstorm r22> Route OBJECT chat to the Object tab when split is enabled.
+        static LLCachedControl<bool> human_object_tabs(gSavedSettings, "FSChatHumanObjectTabs", true);
+        FSChatHistory* target = mChatHistory;
+        if (human_object_tabs && mChatHistoryObject && chat.mSourceType == CHAT_SOURCE_OBJECT)
+        {
+            target = mChatHistoryObject;
+        }
+        target->appendMessage(chat, chat_args, input_append_params);
+        // </FS:AYAstorm r22>
     }
 
     if (archive)
@@ -552,6 +576,7 @@ void FSFloaterNearbyChat::clearChatHistory()
 {
     mChatHistory->clear();
     mChatHistoryMuted->clear();
+    if (mChatHistoryObject) { mChatHistoryObject->clear(); } // <FS:AYAstorm r22>
 }
 
 void FSFloaterNearbyChat::updateChatHistoryStyle()
@@ -613,6 +638,7 @@ void FSFloaterNearbyChat::reloadMessages(bool clean_messages/* = false*/)
 
     mChatHistory->clear();
     mChatHistoryMuted->clear();
+    if (mChatHistoryObject) { mChatHistoryObject->clear(); } // <FS:AYAstorm r22>
 
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
@@ -713,6 +739,14 @@ void FSFloaterNearbyChat::loadHistory()
         {
             chat.mSourceType = isWordsName(from) ? CHAT_SOURCE_UNKNOWN : CHAT_SOURCE_OBJECT;
         }
+
+        // <FS:AYAstorm r22> If the saved line carried an explicit source-type marker
+        // (M2 plumbing), trust it over the legacy from-name heuristic above.
+        if (msg.has(LL_IM_SOURCE_TYPE))
+        {
+            chat.mSourceType = (EChatSourceType)msg[LL_IM_SOURCE_TYPE].asInteger();
+        }
+        // </FS:AYAstorm r22>
 
         addMessage(chat, true, do_not_log);
 

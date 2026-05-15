@@ -601,6 +601,11 @@ L$が不足しているので、このグループに参加することができ
 	<notification name="ChangeLanguage">
 		言語か時刻フォーマットの変更は、[APP_NAME]再起動後に反映されます。
 	</notification>
+	<!-- <FS:AYAstorm r22> -->
+	<notification name="ChangeChatLayoutSetting">
+		チャットレイアウトの設定変更は、[APP_NAME]再起動後に有効になります。
+	</notification>
+	<!-- </FS:AYAstorm r22> -->
 	<notification name="GoToAuctionPage">
 		[CURRENT_GRID]のWebページに移動し、入札あるいはオークションの詳細を確認しますか？
 		<url name="url">http://secondlife.com/auctions/auction-detail.php?id=[AUCTION_ID]&amp;lang=ja-JP</url>

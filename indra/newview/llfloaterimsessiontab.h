@@ -194,6 +194,7 @@ protected:
     LLScrollContainer* mScroller;
 
     LLChatHistory* mChatHistory;
+    LLChatHistory* mChatHistoryObject{ nullptr }; // <FS:AYAstorm r22> Object tab
     LLChatEntry* mInputEditor;
     LLLayoutPanel* mChatLayoutPanel;
     LLLayoutStack* mInputPanels;

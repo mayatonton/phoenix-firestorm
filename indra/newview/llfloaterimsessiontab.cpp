@@ -48,6 +48,7 @@
 #include "llfloaterimnearbychat.h"
 #include "llgroupiconctrl.h"
 #include "lllayoutstack.h"
+#include "lltabcontainer.h" // <FS:AYAstorm r22>
 #include "llpanelemojicomplete.h"
 #include "lltoolbarview.h"
 #include "llspeakers.h"         // <FS:AYA> Phase 3
@@ -312,6 +313,21 @@ bool LLFloaterIMSessionTab::postBuild()
     mParticipantListPanel->addChild(mScroller);
 
     mChatHistory = getChild<LLChatHistory>("chat_history");
+    mChatHistoryObject = findChild<LLChatHistory>("chat_history_object"); // <FS:AYAstorm r22>
+
+    // <FS:AYAstorm r22> Snapshot FSChatHumanObjectTabs at postBuild — see
+    // FSFloaterNearbyChat::postBuild for rationale. Hides the tab strip
+    // and Object panel when disabled so the floater looks unsplit.
+    if (!gSavedSettings.getBOOL("FSChatHumanObjectTabs"))
+    {
+        if (LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container"))
+        {
+            tabs->setTabsHidden(true);
+            if (LLPanel* p = findChild<LLPanel>("tab_object")) tabs->setTabVisibility(p, false);
+        }
+        mChatHistoryObject = nullptr;
+    }
+    // </FS:AYAstorm r22>
 
     mInputEditor = getChild<LLChatEntry>("chat_editor");
 
@@ -674,7 +690,15 @@ void LLFloaterIMSessionTab::appendMessage(const LLChat& chat, const LLSD& args)
             gSavedSettings.getBOOL("IMShowNamesForP2PConv");
 
     static const LLStyle::Params input_append_params = LLStyle::Params();
-    mChatHistory->appendMessage(chat, chat_args, input_append_params);
+    // <FS:AYAstorm r22> Route OBJECT chat to the Object tab when split is enabled.
+    static LLCachedControl<bool> human_object_tabs(gSavedSettings, "FSChatHumanObjectTabs", true);
+    LLChatHistory* target = mChatHistory;
+    if (human_object_tabs && mChatHistoryObject && chat.mSourceType == CHAT_SOURCE_OBJECT)
+    {
+        target = mChatHistoryObject;
+    }
+    target->appendMessage(chat, chat_args, input_append_params);
+    // </FS:AYAstorm r22>
 }
 
 void LLFloaterIMSessionTab::updateUsedEmojis(LLWStringView text)

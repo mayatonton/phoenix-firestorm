@@ -216,6 +216,7 @@ void LLFloaterIMNearbyChat::reloadMessages(bool clean_messages/* = false*/)
     }
 
     mChatHistory->clear();
+    if (mChatHistoryObject) { mChatHistoryObject->clear(); } // <FS:AYAstorm r22>
 
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
@@ -268,6 +269,14 @@ void LLFloaterIMNearbyChat::loadHistory()
         {
             chat.mSourceType = isWordsName(from) ? CHAT_SOURCE_UNKNOWN : CHAT_SOURCE_OBJECT;
         }
+
+        // <FS:AYAstorm r22> Trust an explicit source-type marker (M2 plumbing)
+        // over the legacy from-name heuristic when reloading saved lines.
+        if (msg.has(LL_IM_SOURCE_TYPE))
+        {
+            chat.mSourceType = (EChatSourceType)msg[LL_IM_SOURCE_TYPE].asInteger();
+        }
+        // </FS:AYAstorm r22>
 
         addMessage(chat, true, do_not_log);
 

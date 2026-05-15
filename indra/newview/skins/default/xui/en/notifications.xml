@@ -1731,6 +1731,16 @@ Would you like to shutdown the viewer and launch it manually again in order to a
 The selected language or time format will be applied after restarting [APP_NAME].
   </notification>
 
+  <!-- <FS:AYAstorm r22> Generic restart-required notification for chat layout prefs
+       (AYAChatWindowStyle, FSChatHumanObjectTabs). -->
+  <notification
+   icon="alertmodal.tga"
+   name="ChangeChatLayoutSetting"
+   type="alertmodal">
+The selected chat layout setting will be applied after restarting [APP_NAME].
+  </notification>
+  <!-- </FS:AYAstorm r22> -->
+
   <notification
    icon="alertmodal.tga"
    name="GoToAuctionPage"

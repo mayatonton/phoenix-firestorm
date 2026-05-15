@@ -141,6 +141,7 @@ private:
 
     FSChatHistory* mChatHistory;
     FSChatHistory* mChatHistoryMuted;
+    FSChatHistory* mChatHistoryObject; // <FS:AYAstorm r22> Object tab
     LLChatEntry*   mInputEditor;
 
     // chat type selector and send chat buttons
