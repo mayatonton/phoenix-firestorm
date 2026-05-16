@@ -671,6 +671,11 @@
 	<notification name="ChangeLanguage">
 		重新啟動 [APP_NAME] 後將換成新的語言或時間格式。
 	</notification>
+	<!-- <FS:AYAstorm r22> -->
+	<notification name="ChangeChatLayoutSetting">
+		聊天版面設定變更將在重新啟動 [APP_NAME] 後生效。
+	</notification>
+	<!-- </FS:AYAstorm r22> -->
 	<notification name="GoToAuctionPage">
 		前往 [CURRENT_GRID] 網頁去檢視拍賣細節或競拍？
 		<usetemplate name="okcancelbuttons" notext="取消" yestext="確定"/>

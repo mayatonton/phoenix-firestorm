@@ -222,16 +222,60 @@
                          bottom="-1">
                             <layout_panel
                              name="chat_holder">
-                                <chat_history
-                                 font="SansSerifSmall"
+                                <!-- <FS:AYAstorm r22> Human/Object tab split -->
+                                <tab_container
                                  follows="all"
-                                 name="chat_history"
-                                 parse_highlights="true"
-                                 parse_urls="true"
-                                 right="-1"
-                                 left="0"
+                                 halign="center"
+                                 layout="topleft"
+                                 name="chat_tab_container"
+                                 tab_position="top"
+                                 tab_width="80"
                                  top="0"
-                                 bottom="-1" />
+                                 left="0"
+                                 right="-1"
+                                 bottom="-1">
+                                    <panel
+                                     follows="all"
+                                     layout="topleft"
+                                     name="tab_human"
+                                     title="Human"
+                                     top="0"
+                                     left="0"
+                                     right="-1"
+                                     bottom="-1">
+                                        <chat_history
+                                         font="SansSerifSmall"
+                                         follows="all"
+                                         name="chat_history"
+                                         parse_highlights="true"
+                                         parse_urls="true"
+                                         right="-1"
+                                         left="0"
+                                         top="0"
+                                         bottom="-1" />
+                                    </panel>
+                                    <panel
+                                     follows="all"
+                                     layout="topleft"
+                                     name="tab_object"
+                                     title="System &amp; Object"
+                                     top="0"
+                                     left="0"
+                                     right="-1"
+                                     bottom="-1">
+                                        <chat_history
+                                         font="SansSerifSmall"
+                                         follows="all"
+                                         name="chat_history_object"
+                                         parse_highlights="true"
+                                         parse_urls="true"
+                                         right="-1"
+                                         left="0"
+                                         top="0"
+                                         bottom="-1" />
+                                    </panel>
+                                </tab_container>
+                                <!-- </FS:AYAstorm r22> -->
                             </layout_panel>
                         </layout_stack>
                     </layout_panel>

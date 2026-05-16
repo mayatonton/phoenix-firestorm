@@ -1755,35 +1755,57 @@ void settings_setup_listeners()
     // <FS:Ansariel> [FS communication UI]
     setting_setup_signal_listener(gSavedSettings, "PlainTextChatHistory", FSFloaterIM::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "PlainTextChatHistory", FSFloaterNearbyChat::processChatHistoryStyleUpdate);
-    // <FS:AYA> Phase 3: Also update chat history style when AYAChatWindowStyle or AYALLChatCompactView changes
-    setting_setup_signal_listener(gSavedSettings, "AYAChatWindowStyle", FSFloaterIM::processChatHistoryStyleUpdate);
-    setting_setup_signal_listener(gSavedSettings, "AYAChatWindowStyle", FSFloaterNearbyChat::processChatHistoryStyleUpdate);
+    // <FS:AYA> Phase 3: AYALLChatCompactView is a live-apply compact toggle within LL style.
     setting_setup_signal_listener(gSavedSettings, "AYALLChatCompactView", []() { LLFloaterIMSessionTab::processChatHistoryStyleUpdate(); });
     // Mirror PlainTextChatHistory live-apply onto LL-style chat (FS-only listeners above
     // leave the LL container/IM tabs stale until next message arrives).
     setting_setup_signal_listener(gSavedSettings, "PlainTextChatHistory", []() { LLFloaterIMSessionTab::processChatHistoryStyleUpdate(true); });
-    // Auto-open ll_im_container when switching to LL style, and backfill any
-    // IM sessions that were created while a non-LL style was active so they
-    // become addressable from the LL container.
-    setting_setup_signal_listener(gSavedSettings, "AYAChatWindowStyle", [](const LLSD& newvalue) {
-        if (newvalue.asInteger() == 2)
+    // </FS:AYA>
+    // <FS:AYAstorm r22> AYAChatWindowStyle live-apply dropped (per memory: 2 attempts, bugs).
+    // The toggle now strictly requires a restart, surfaced via the (requires restart) label
+    // in panel_preferences_chat.xml. Do not re-add live-apply listeners here.
+    // Fire the modal "ChangeChatLayoutSetting" notification on toggle so the user sees an
+    // explicit restart prompt (matches FS's ChangeLanguage UX). Guarded by STATE_STARTED so
+    // the signal doesn't fire during the initial settings load on app boot.
+    setting_setup_signal_listener(gSavedSettings, "AYAChatWindowStyle", []() {
+        if (LLStartUp::getStartupState() >= STATE_STARTED)
         {
-            LLFloaterIMContainer* ll_container =
-                LLFloaterReg::getTypedInstance<LLFloaterIMContainer>("ll_im_container");
-            if (ll_container)
+            // The Nearby Chat is normally docked inside its style's IM container
+            // (ll_im_container for LL, fs_im_container for FS), so what the user
+            // sees as the "chat window" is actually the container. Close the
+            // now-unselected style's container (and its Nearby Chat floater in
+            // case it has been torn off) so we don't end up with both FS and LL
+            // chat windows open at once, and so the stale window doesn't
+            // auto-restore on the next launch.
+            const S32 new_style = gSavedSettings.getS32("AYAChatWindowStyle");
+            const std::vector<std::string> stale_names = (new_style == 2)
+                ? std::vector<std::string>{ "fs_im_container", "fs_nearby_chat" }
+                : std::vector<std::string>{ "ll_im_container", "nearby_chat" };
+            for (const std::string& name : stale_names)
             {
-                for (auto& kv : LLIMModel::getInstance()->mId2SessionMap)
+                if (LLFloater* stale = LLFloaterReg::findInstance(name))
                 {
-                    LLIMModel::LLIMSession* s = kv.second;
-                    if (s)
+                    if (stale->getVisible())
                     {
-                        ll_container->sessionAdded(kv.first, s->mName, s->mOtherParticipantID, false);
+                        stale->closeFloater();
                     }
                 }
+                const std::string vis_key = "floater_vis_" + name;
+                if (gSavedSettings.controlExists(vis_key))
+                {
+                    gSavedSettings.setBOOL(vis_key, false);
+                }
             }
+            LLNotificationsUtil::add("ChangeChatLayoutSetting");
         }
     });
-    // </FS:AYA>
+    setting_setup_signal_listener(gSavedSettings, "FSChatHumanObjectTabs", []() {
+        if (LLStartUp::getStartupState() >= STATE_STARTED)
+        {
+            LLNotificationsUtil::add("ChangeChatLayoutSetting");
+        }
+    });
+    // </FS:AYAstorm r22>
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterIM::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterNearbyChat::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", LLViewerChat::signalChatFontChanged);
