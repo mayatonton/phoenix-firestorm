@@ -47,7 +47,8 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
    - 初期実装では「MOAP 3D 有効時は 2D media audio path を無効化する」を明示ルールにする。
 
 4. MOAP surface と 3D Stream binding の対応は、既存 linkset 評価に寄せる。
-   - 初期案は root prim の Description に MOAP 3D 用 tag を追加する。
+   - 初期案は 3D Stream speaker linkset の root prim に設定された MOAP media を source として扱う。
+   - YouTube などの通常 web media も、root prim の MOAP として再生されていれば対象にする。
    - speaker prim の `{ch:...}` や `{range:...}` は既存 `[3dstream-stereo:...]` の概念を流用する。
 
 ## 現行仕様: MOAP audio
@@ -147,23 +148,21 @@ bool LLPositionalStreamMulti::startFromPcmRing(
 - speaker position update
 - failure / reconnect / stop lifecycle
 
-### MOAP binding の候補
+### MOAP binding
 
-初期実装では、Description tag に MOAP source を明示させる方式が扱いやすい。
+初期実装では、3D Stream speaker linkset の root prim に MOAP media が設定されている場合、その MOAP media を 3D Stream source として扱う。
 
-候補:
+つまり、root prim に YouTube / Web ラジオ / 通常 web page の MOAP が貼られていて、その linkset が 3D Stream speaker 構成として成立していれば、MOAP から出る音声を 3D Stream の speaker prim へ流す。
 
-```text
-[3dstream-moap:{media:face}{ch:FL}{range:20}{volume:1.0}]
-```
+source を明示する `{source:moap}` は必須にしない。root prim に URL source がなく、root prim に MOAP media がある場合は、MOAP を暗黙の source とする。
 
-または既存 tag を拡張する。
+speaker 定義は既存 tag を流用する。
 
 ```text
-[3dstream-stereo:{source:moap}{media:face}{ch:FL}{range:20}{volume:1.0}]
+[3dstream-stereo:{ch:FL}{range:20}{volume:1.0}]
 ```
 
-実装上は後者のほうが既存 parser / binding / speaker config を再利用しやすい。ただし URL と MOAP source の混在を避けるため、`{url:...}` と `{source:moap}` は同時指定不可にする。
+URL と MOAP source の混在は避ける。root prim に `{url:...}` がある場合は従来の URL-based 3D Stream を優先する。root prim に `{url:...}` がなく、root prim に MOAP media がある場合だけ MOAP source を使う。
 
 media の解決は段階的に行う。
 
@@ -250,13 +249,14 @@ void setAudioRoutedTo3DStream(bool enabled);
 
 ### Phase 4: LLPositionalStreamMgr に MOAP binding を追加する
 
-`LLPositionalStreamMgr` の parser / binding に MOAP source を追加する。
+`LLPositionalStreamMgr` の binding 評価に MOAP source を追加する。
 
 初期仕様:
 
-- root prim Description に `{source:moap}` を書く。
+- linkset が 3D Stream speaker 構成として成立していることを前提にする。
+- root prim に `{url:...}` がある場合は従来の URL-based 3D Stream を優先する。
+- root prim に `{url:...}` がなく、root prim に MOAP media がある場合は、その MOAP を source とする。
 - speaker 定義は既存 multi binding と同じ `{ch:...}` を使う。
-- `{url:...}` と `{source:moap}` は排他。
 - media face 未指定時は root prim の最初の media face を使う。
 - media impl が解決できなければ 2D fallback に戻す。
 
@@ -308,7 +308,7 @@ media mute は最優先で silence にする。Stream3D master が 0 の場合�
 
 MOAP は media texture / face index を中心に管理されている。一方、3D Stream は prim Description / linkset / speaker prim を中心に管理している。
 
-最初から media texture UUID を自由指定にすると、同一 media を複数 object / face が共有する case が難しくなる。初期実装は「root prim 上の MOAP を、その linkset の 3D Stream speaker に接続する」に限定する。
+最初から media texture UUID を自由指定にすると、同一 media を複数 object / face が共有する case が難しくなる。初期実装は「3D Stream speaker linkset の root prim 上の MOAP を、その linkset の speaker prim に接続する」に限定する。
 
 ### channel count
 
