@@ -57,7 +57,11 @@ public:
         RESAMPLE_CUBIC,
         RESAMPLE_SPLINE
     };
-    LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 resample_method, U32 parcel_stream_quality = 0);
+    LLAudioEngine_FMODSTUDIO(bool enable_profiler,
+                             U32 resample_method,
+                             U32 parcel_stream_quality = 0,
+                             bool opus_codec_enable = true,
+                             U32 opus_codec_priority = 0);
     virtual ~LLAudioEngine_FMODSTUDIO();
 
     // FSParcelStreamQuality live setter. Resampler is locked at System init,
@@ -129,6 +133,8 @@ protected:
     bool mEnableProfiler;
     U32 mResampleMethod;
     U32 mParcelStreamQuality { 0 };
+    bool mOpusCodecEnable { true };
+    U32 mOpusCodecPriority { 0 };
 
     LLUUID mSelectedDeviceUUID;
 
