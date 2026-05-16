@@ -5,6 +5,9 @@
 r12.1 から r24 へのジャンプで 12 リリース (r13〜r24) を 1 タグに同梱します。各リリースの詳細は repo 内の言語別 release note を参照ください (タグ pin の permalink — 後で docs を更新しても壊れません)。
 
 ## リリースノート (リリース × 言語)
+- 🇺🇸 English: [docs/ayastorm-r24-release-note.en.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.en.md)
+- 🇯🇵 日本語: [docs/ayastorm-r24-release-note.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.ja.md)
+- 🇨🇳 中文: [docs/ayastorm-r24-release-note.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.zh.md)
 
 ### Media audio (CEF/MOAP)
 - **r24** — MOAP audio を viewer 内の FMOD 2D channel に乗せる (本タグの主機能、@t-noami 実装 + AYAstorm 側 fallback switch): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.zh.md)
@@ -71,9 +74,9 @@ r11 で同梱した venue IR (現在も出荷中) は OpenAIR (CC-BY 4.0) より
 
 _3 OS ビルド完了後、@mayatonton が記入します。_
 
-- Windows Installer: _TBD_
-- macOS Installer: _TBD_
-- Linux Installer: _TBD_
+- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r24/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261360346_Setup.exe)
+- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r24/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-261361150.dmg)
+- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r24/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261361212.tar.xz)
 
 ## Contributer
 
