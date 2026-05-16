@@ -392,6 +392,7 @@ private:
     struct DistributedStereoBinding
     {
         LLUUID root_id;
+        SourceBindingKey source_key;
         std::string url;
         F32 range_default = 20.f;
         // r11 P5: publisher's {binaural:on|off} tag value (nullopt =

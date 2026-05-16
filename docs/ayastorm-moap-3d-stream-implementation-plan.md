@@ -42,12 +42,15 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 - `llpluginaudio` integration test を追加した。
 - 3D Stream tag parser に `{source:media}` と `{face:N}` を追加した。
 - `{url:...}` と `{source:media}` の同時指定を invalid binding として扱うようにした。
+- `{source:media}` の root prim media face を解決し、media audio ring を `LLPositionalStreamMulti` の source として開始できる経路を追加した。
+- media source 有効時は対象 media の通常 2D `LLMediaAudioStream` を停止する suppression を追加した。
+- media ring source は `1 / 2 / 6ch` を受け入れ、6ch は `FL / FR / C / LFE / SL / SR` として multi-tail ring に流す。
 
 まだ未実装:
 
-- media audio ring から `LLPositionalStreamMulti` へ PCM を流す source 実装。
-- `{source:media}` の実 binding / reconnect / retry / diagnostic key の完全な `SourceBindingKey` 化。
-- `{source:media}` 有効時に対象 media の 2D media audio path を止める処理。
+- media source の実機再生確認。
+- media source の diagnostic 表示文言の整理。
+- media face が未ロードの場合の user-facing notification 整理。
 
 確認済み:
 

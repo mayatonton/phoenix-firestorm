@@ -51,6 +51,7 @@ namespace FMOD
 }
 
 class LLLiteHrtfDsp;  // r11 P4: per-speaker lite-HRTF DSP (forward decl)
+struct LLPluginAudioRingHeader;
 
 // r8: multi-tail SPSC ring buffer for the distributed-stereo decode thread.
 //
@@ -165,6 +166,12 @@ public:
 
     // Begin opening url. speakers describes every output point (≥ 1, ≤ cap).
     bool start(const std::string& url, const std::vector<SpeakerConfig>& speakers);
+    // Begin reading an already-decoded media plugin PCM ring as the source.
+    // The caller owns the ring lifetime and must keep the media plugin alive
+    // while this stream is active.
+    bool startMedia(LLPluginAudioRingHeader* ring,
+                    const std::string& label,
+                    const std::vector<SpeakerConfig>& speakers);
     void stop();
 
     bool isOpen() const { return mSourceSound != nullptr; }
@@ -374,6 +381,8 @@ private:
 
     static FMOD_RESULT F_CALL pcmReadCallback(FMOD_SOUND* sound, void* data, U32 datalen);
 
+    enum class SourceKind { Url, MediaRing };
+
     FMOD::System* getFmodSystem() const;
 
     // r9 P6: capture fail reason + detail before publishing State::Failed so
@@ -390,6 +399,8 @@ private:
     // worker can't be started) and by the Resolving→Opening transition
     // in update().
     bool openSourceStream(const std::string& url);
+    bool validateMediaRing(U32& sample_rate, U32& channels, U32& format_serial) const;
+    bool openMediaRingSource();
     bool createUserSounds();
     bool startUserChannels();
     void applyChannelAttributes(FMOD::Channel* channel, const LLVector3& pos, F32 range);
@@ -403,6 +414,7 @@ private:
     // if any FMOD call fails; the caller is expected to abort the start.
     bool makeChannelForBinding(size_t i);
     size_t pumpSource();
+    size_t pumpMediaRingSource();
 
     // r10 P4: resolve §4.2 compat matrix into a SpeakerCallback::OpKind +
     // parameters for one speaker, given the current mSourceChannels and
@@ -425,6 +437,9 @@ private:
     void decodeThreadMain();
 
     FMOD::Sound* mSourceSound;
+    SourceKind mSourceKind = SourceKind::Url;
+    LLPluginAudioRingHeader* mMediaRing = nullptr;
+    U32 mMediaFormatSerial = 0;
     int mSampleRate;
     int mSourceChannels;       // 1, 2, or (r9) 6
     int mSourceBytesPerSample; // 2 for PCM16, 4 for PCMFLOAT
