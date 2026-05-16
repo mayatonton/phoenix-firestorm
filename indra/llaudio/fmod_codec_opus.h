@@ -1,10 +1,10 @@
 /**
  * @file fmod_codec_opus.h
- * @brief AYAstorm FMOD codec plugin for Ogg Opus.
+ * @brief AYAstorm FMOD codec plugin for Ogg Opus and Ogg Vorbis.
  *
- * Bundled libfmod lacks Opus decode support, so we extend FMOD via its
- * registerCodec() API. The actual decoder relies on libopus that ships with
- * FMOD SDK (FSBank dependency, but exports full decode + multistream API).
+ * Bundled libfmod lacks Opus decode support. A priority-0 Opus probe also
+ * cannot safely hand non-seekable Ogg Vorbis streams back to FMOD after reading
+ * from them, so this codec handles both Ogg Opus and Ogg Vorbis in one pass.
  */
 
 #ifndef LL_FMOD_CODEC_OPUS_H

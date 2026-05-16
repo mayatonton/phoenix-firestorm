@@ -21286,7 +21286,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>AYAOpusCodecEnable</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm validation switch for registering the custom FMOD Ogg Opus codec at startup. Keep enabled for normal AYAstorm Opus playback. Disable and restart only to verify whether the Opus probe is intercepting Ogg Vorbis live parcel music before FMOD's built-in Vorbis codec can open it.</string>
+    <string>AYAstorm validation switch for registering the custom FMOD Ogg Opus/Vorbis codec at startup. Keep enabled for normal AYAstorm Opus playback and live Ogg Vorbis parcel music. Disable and restart only to compare against FMOD's built-in Vorbis path.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -21297,7 +21297,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>AYAOpusCodecPriority</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm validation setting for FMOD::System::registerCodec priority of the custom Ogg Opus codec. 0 is highest priority and is required for normal Opus stream support. Larger values are for diagnostics only and require restart.</string>
+    <string>AYAstorm validation setting for FMOD::System::registerCodec priority of the custom Ogg Opus/Vorbis codec. 0 is highest priority and is required for normal Opus stream support. Larger values are for diagnostics only and require restart.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>

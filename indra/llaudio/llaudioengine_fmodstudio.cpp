@@ -428,25 +428,23 @@ bool LLAudioEngine_FMODSTUDIO::init(void* userdata, const std::string &app_title
         // Register before FMOD's built-in Ogg/Vorbis codec. Icecast Ogg Opus
         // streams can otherwise be claimed by the built-in Ogg path first and
         // fail with FMOD_ERR_FILE_COULDNOTSEEK before this codec is attempted.
-        //
-        // Validation note: non-Opus Ogg live streams cannot always be rewound
-        // after this probe. Keep this registration tunable so we can verify
-        // whether AYAstorm's Opus codec is intercepting Ogg Vorbis parcel music.
+        // The registered codec handles Ogg Vorbis too, because non-seekable
+        // streams cannot be safely handed back to FMOD after an Opus probe.
         const unsigned int opus_codec_priority = mOpusCodecPriority;
         unsigned int opus_codec_handle = 0;
         FMOD_RESULT codec_result = mSystem->registerCodec(FMODGetCodecDescriptionOpus(), &opus_codec_handle, opus_codec_priority);
         if (codec_result == FMOD_OK)
         {
-            LL_INFOS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Opus codec registered (handle=" << opus_codec_handle << ", priority=" << opus_codec_priority << ")" << LL_ENDL;
+            LL_INFOS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Ogg Opus/Vorbis codec registered (handle=" << opus_codec_handle << ", priority=" << opus_codec_priority << ")" << LL_ENDL;
         }
         else
         {
-            LL_WARNS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Opus codec register failed: " << FMOD_ErrorString(codec_result) << LL_ENDL;
+            LL_WARNS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Ogg Opus/Vorbis codec register failed: " << FMOD_ErrorString(codec_result) << LL_ENDL;
         }
     }
     else
     {
-        LL_WARNS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() AYAstorm Opus codec registration disabled for validation" << LL_ENDL;
+        LL_WARNS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() AYAstorm Ogg Opus/Vorbis codec registration disabled for validation" << LL_ENDL;
     }
 
     FMOD_ADVANCEDSETTINGS settings_dump = { };
