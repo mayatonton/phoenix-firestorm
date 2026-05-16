@@ -5,6 +5,9 @@
 从 r12.1 直接跳到 r24, 一并打包 12 个 release (r13〜r24) 至此 tag。各 release 的详细请参考 repo 内的语言别 release note (tag pin 的 permalink — 后续 docs 更新也不会断链)。
 
 ## Release notes (各 release × 语言)
+- 🇺🇸 English: [docs/ayastorm-r24-release-note.en.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.en.md)
+- 🇯🇵 日本語: [docs/ayastorm-r24-release-note.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.ja.md)
+- 🇨🇳 中文: [docs/ayastorm-r24-release-note.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.zh.md)
 
 ### Media audio (CEF/MOAP)
 - **r24** — MOAP audio 接入 viewer 内 FMOD 2D channel (本 tag 的主功能、@t-noami 实现 + AYAstorm 侧 build-time fallback switch): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.zh.md)

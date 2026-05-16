@@ -5,6 +5,9 @@
 A single jump from r12.1 to r24 bundles twelve releases (r13 through r24) into one tag. For the full notes per release, see the per-language release notes in the repo (tag-pinned permalinks — they will not break when docs are updated later).
 
 ## Release notes (per release × language)
+- 🇺🇸 English: [docs/ayastorm-r24-release-note.en.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.en.md)
+- 🇯🇵 日本語: [docs/ayastorm-r24-release-note.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.ja.md)
+- 🇨🇳 中文: [docs/ayastorm-r24-release-note.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.zh.md)
 
 ### Media audio (CEF/MOAP)
 - **r24** — MOAP audio through the viewer's FMOD 2D channel (this tag's headline feature, by @t-noami with an AYAstorm-side build-time fallback switch): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r24/docs/ayastorm-r24-release-note.zh.md)
