@@ -1,6 +1,6 @@
 # AYAstorm r24 MOAP audio to FMOD 2D
 
-検証ブランチ: `feature/media-playback-validation-release`
+検証ブランチ: `feature/ayastorm-r24-moap-audio-to-fmod-2d`
 
 検証日: 2026-05-15
 
