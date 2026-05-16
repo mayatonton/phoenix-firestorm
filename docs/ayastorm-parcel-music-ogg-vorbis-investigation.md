@@ -270,7 +270,71 @@ Ogg Opus / Ogg Vorbis live stream
 - 将来の 3D Stream routing
 - Viewer 側 volume control
 
-FMOD には codec 判定ではなく、output / mixing を担当させる。
+FMOD には codec fallback 競争ではなく、output / mixing を担当させる。
+
+## FMOD だけで済ませる場合の現実的な線
+
+「FMOD だけで済ませる」という方針は、次の 2 種類に分けて考える。
+
+```text
+案 A:
+FMOD built-in internet stream
+つまり createStream(url) 直渡しだけで済ませる
+
+案 B:
+FMOD mixer / output は使い続ける
+ただし Ogg family は AYAstorm 側 custom codec または OPENUSER で PCM を渡す
+```
+
+案 A は変更範囲が最小だが、今回の問題に対しては弱い。
+
+理由:
+
+- non-seekable HTTP live stream は codec probe 後に先頭へ戻せない。
+- FMOD built-in codec と AYAstorm Opus codec の fallback 順に依存する。
+- URL suffix と実体形式が食い違う stream を安全に分類できない。
+- Ogg Vorbis live stream が `FMOD_ERR_FILE_COULDNOTSEEK` で落ちる実例がある。
+- Opus support を維持するには AYAstorm codec を高 priority 登録する必要があり、Ogg Vorbis との競合が残る。
+
+したがって、`createStream(url)` 直渡しだけで Ogg Opus と Ogg Vorbis live stream の両方を安定させるのは期待しない。
+
+一方、案 B は FFmpeg / GStreamer を追加しなくても実現できる。
+
+現実的な FMOD-centered 構成:
+
+```text
+Parcel music URL
+-> AYAstorm stream probe
+-> Ogg Opus なら AYAstorm FMOD Opus codec
+-> Ogg Vorbis なら AYAstorm FMOD Vorbis codec または OPENUSER PCM
+-> MP3 / plain stream は従来の FMOD createStream(url)
+-> FMOD mixer / stream channel / volume control
+```
+
+この構成では、FMOD は引き続き最終的な再生エンジンである。
+
+ただし、Ogg family の format 判定と decode は FMOD built-in の URL codec fallback に任せない。
+
+外部依存を増やしたくない場合の中期案:
+
+1. `libogg` + `libvorbis` + 既存 `libopus` を使う。
+2. AYAstorm custom FMOD codec を Ogg Opus / Ogg Vorbis 用に分ける。
+3. first packet の `OpusHead` / `\x01vorbis` を AYAstorm 側で判定する。
+4. codec fallback でなく、判定済みの経路へ明示的に流す。
+5. 出力は PCMFLOAT とし、FMOD 側で 2D parcel music channel に接続する。
+
+この方針なら「FMOD だけ」と言える範囲を保ちながら、FFmpeg / GStreamer の配布・ライセンス・3OS packaging 問題を避けられる。
+
+ただし実装量は `createStream(url)` の mode 調整より大きい。
+
+最小検証としては、まず現在の `AYAOpusCodecEnable=false` で Ogg Vorbis stream の挙動を確認する。
+
+確認結果の解釈:
+
+- 無効化で再生できる: AYAstorm Opus codec の probe 横取りが主因。
+- 無効化しても再生できない: FMOD built-in の Ogg Vorbis live stream 処理自体が対象 stream と相性悪い。
+
+後者の場合、FMOD built-in だけでの解決はさらに難しい。
 
 ## 6ch / multichannel
 
