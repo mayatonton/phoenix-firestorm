@@ -9,6 +9,7 @@ MOAP/CEF 再生音声を、現行の 2D FMOD media audio path ではなく、3D 
 ## 目次
 
 - [結論](#結論)
+- [実装状況](#実装状況)
 - [実装方針](#実装方針)
 - [現行仕様: MOAP audio](#現行仕様-moap-audio)
 - [現行仕様: 3D Stream](#現行仕様-3d-stream)
@@ -29,6 +30,39 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 `LLMediaAudioStream` の FMOD channel を 3D 化する案は採用しない。単一位置で鳴らすだけなら短いが、3D Stream の speaker prim 分配、5.1 routing、HRTF、venue reverb、routing diagnostic を通らないため、このブランチの目的に合わない。
 
 ただし、実装は単に parser に `{source:media}` を追加するだけでは不十分である。現行 3D Stream は root source を `{url}` 文字列として扱っており、binding fingerprint、reconnect、diagnostic、format-failed cache、toast 表示まで URL 依存になっている。Media source 対応では、source 種別と source identity を binding 全体に通す必要がある。
+
+## 実装状況
+
+2026-05-17 時点で Phase 0 の一部を実装済み。
+
+- media audio ring の shared memory サイズ計算を helper 化した。
+- ring の sentinel frame (`capacity + 1`) 分を確保するよう修正した。
+- 3D media source の対応 channel count を `1 / 2 / 6` として helper 化した。
+- 6ch media audio の channel order を `FL / FR / C / LFE / SL / SR` として定義した。
+- `llpluginaudio` integration test を追加した。
+- 3D Stream tag parser に `{source:media}` と `{face:N}` を追加した。
+- `{url:...}` と `{source:media}` の同時指定を invalid binding として扱うようにした。
+
+まだ未実装:
+
+- media audio ring から `LLPositionalStreamMulti` へ PCM を流す source 実装。
+- `{source:media}` の実 binding / reconnect / retry / diagnostic key の完全な `SourceBindingKey` 化。
+- `{source:media}` 有効時に対象 media の 2D media audio path を止める処理。
+
+確認済み:
+
+- `git diff --check`
+- `llpluginaudio_test.cpp` の直接コンパイル
+
+未実行:
+
+- `INTEGRATION_TEST_llpluginaudio` の CMake target 実行
+- `newview` target の CMake build
+
+未実行理由:
+
+- 現在の `build-darwin-universal` は `LL_TESTS=FALSE`。
+- 現在の `xcodebuild` は full Xcode ではなく CommandLineTools を指している。
 
 ## 実装方針
 

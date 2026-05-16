@@ -144,18 +144,44 @@ public:
         SR,
     };
 
+    enum class DistSourceKind
+    {
+        Url,
+        Media,
+    };
+
+    struct SourceBindingKey
+    {
+        DistSourceKind kind = DistSourceKind::Url;
+        std::string url;
+        LLUUID media_id;
+        S32 face = -1;
+
+        bool operator==(const SourceBindingKey& rhs) const
+        {
+            return kind == rhs.kind &&
+                   url == rhs.url &&
+                   media_id == rhs.media_id &&
+                   face == rhs.face;
+        }
+    };
+
     // r8: parsed [3dstream-stereo:{url:...}{range:...}{ch:...}{volume:...}] tag.
+    // AYAstorm media-source extension also accepts {source:media}{face:N}.
     // A single prim's description may declare:
-    //   - source only (root):         {url}      [+ {range}]
+    //   - source only (root):         {url} or {source:media} [+ {range}]
     //   - speaker only (root/child):  {ch}       [+ {range} + {volume}]
-    //   - source + self-speaker:      {url}{ch}  [+ {range} + {volume}]
+    //   - source + self-speaker:      source + {ch} [+ {range} + {volume}]
     // The same {range} field, when present, fills both range_default (source
     // role) and range_speaker (speaker role) of the same prim — the spec
     // §4.3 treats it as a single shared field rather than two separate keys.
     struct DistStereoTagData
     {
-        // Source declaration fields (set only when {url:...} is present).
+        // Source declaration fields (set when {url:...} or {source:media}
+        // is present).
+        std::optional<DistSourceKind> source_kind;
         std::optional<std::string> url;
+        std::optional<S32> media_face;
         std::optional<F32> range_default;
         // r11 P5: lite-HRTF toggle ({binaural:on|off}). Source-side property
         // — meaningful only on the root prim (= same prim as {url}).
@@ -228,14 +254,22 @@ public:
         // r12.1: {lfegain:N} value not parseable as F32 (out-of-range
         // is clamped silently to [0.0, 3.0], not reported here).
         BadLfeGain,
+        // {source:...} value not recognized. Initial supported value: media.
+        BadSource,
+        // {url:...} and {source:media} are mutually exclusive source
+        // declarations.
+        ConflictingSource,
+        // {face:N} value not parseable as a non-negative integer.
+        BadFace,
     };
 
     struct DistParseResult
     {
-        // data has value only when the tag has at least one of {url} / {ch}
-        // and all present fields parse cleanly. nullopt with error==Ok
-        // means "no recognizable [3dstream-stereo:...] tag at all"; nullopt
-        // with error!=Ok means "tag present but a field is malformed".
+        // data has value only when the tag has at least one of {url} /
+        // {source} / {ch} and all present fields parse cleanly. nullopt
+        // with error==Ok means "no recognizable [3dstream-stereo:...] tag at
+        // all"; nullopt with error!=Ok means "tag present but a field is
+        // malformed".
         std::optional<DistStereoTagData> data;
         DistParseError error = DistParseError::Ok;
         std::string bad_value;
@@ -248,8 +282,8 @@ public:
     //   - tag present, all valid  → {data,    Ok, ""}
     //   - tag present, field bad  → {nullopt, <error>, bad_value}
     //
-    // The tag is recognized when {url} or {ch} is present. The legacy
-    // {l:N}{r:N} format (r5–r7) is no longer supported in r8.
+    // The tag is recognized when {url}, {source}, or {ch} is present. The
+    // legacy {l:N}{r:N} format (r5–r7) is no longer supported in r8.
     static DistParseResult parseDistributedStereoTag(const std::string& description);
 
     // r9 (§4.6): {ch:...} value → enum. Case-insensitive ASCII match against
@@ -513,6 +547,9 @@ private:
         // r12.1: {lfegain:N} value not parseable as F32 (out-of-range
         // is silently clamped to [0.0, 3.0], NOT reported here).
         BadLfeGain,
+        BadSource,
+        ConflictingSource,
+        BadFace,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for

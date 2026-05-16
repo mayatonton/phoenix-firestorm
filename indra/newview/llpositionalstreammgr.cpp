@@ -114,6 +114,29 @@ namespace
         }
     }
 
+    bool tryParseNonNegativeS32(const std::string& s, S32& out)
+    {
+        if (s.empty())
+        {
+            return false;
+        }
+        try
+        {
+            size_t consumed = 0;
+            int val = std::stoi(s, &consumed, 10);
+            if (consumed != s.size() || val < 0)
+            {
+                return false;
+            }
+            out = static_cast<S32>(val);
+            return true;
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+    }
+
     std::string toLowerAscii(std::string s)
     {
         std::transform(s.begin(), s.end(), s.begin(),
@@ -361,8 +384,10 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
     // Track which keys appeared (regardless of value validity) so a
     // {ch:X} with an invalid value still surfaces BadCh rather than
     // silently being treated as "no tag here".
-    bool seen_ch_key  = false;
+    bool seen_ch_key = false;
     bool seen_url_key = false;
+    bool seen_source_key = false;
+    bool seen_media_source = false;
 
     DistStereoTagData data;
     F32 range_value = 0.f;
@@ -393,7 +418,35 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                 }
                 else
                 {
+                    data.source_kind = DistSourceKind::Url;
                     data.url = val;
+                }
+            }
+            else if (key == "source")
+            {
+                seen_source_key = true;
+                std::string lowered = val;
+                LLStringUtil::toLower(lowered);
+                if (lowered == "media")
+                {
+                    seen_media_source = true;
+                    data.source_kind = DistSourceKind::Media;
+                }
+                else
+                {
+                    setError(DistParseError::BadSource, val);
+                }
+            }
+            else if (key == "face")
+            {
+                S32 face = -1;
+                if (tryParseNonNegativeS32(val, face))
+                {
+                    data.media_face = face;
+                }
+                else
+                {
+                    setError(DistParseError::BadFace, val);
                 }
             }
             else if (key == "ch")
@@ -537,12 +590,18 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
             // silently ignored — the spec is permissive about extra fields.
         });
 
-    // The tag is recognized when at least one of {url} or {ch} appeared.
+    // The tag is recognized when at least one of {url}, {source}, or {ch}
+    // appeared.
     // A bracket body with neither is treated as "no tag here".
-    const bool tag_recognized = seen_ch_key || seen_url_key;
+    const bool tag_recognized = seen_ch_key || seen_url_key || seen_source_key;
     if (!tag_recognized)
     {
         return result;
+    }
+
+    if (seen_url_key && seen_media_source)
+    {
+        setError(DistParseError::ConflictingSource, "url+source:media");
     }
 
     if (result.error != DistParseError::Ok)
@@ -555,7 +614,7 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
     // range_speaker from the same value (spec §4.3).
     if (range_valid)
     {
-        if (data.url.has_value()) data.range_default = range_value;
+        if (data.source_kind.has_value()) data.range_default = range_value;
         if (data.ch.has_value())  data.range_speaker = range_value;
     }
     if (volume_valid && data.ch.has_value())
@@ -701,6 +760,20 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         msg = "タグ書式エラー (prim " + id_short + "): lfegain の値は数値で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
         msg += " (範囲外は 0.0〜3.0 にクランプされます)。例: [3dstream-stereo:{url:http://example/stream.mp3}{lfegain:2.0}]";
+        break;
+    case DistErrorKind::BadSource:
+        msg = "タグ書式エラー (prim " + id_short + "): source の値は media を指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。例: [3dstream-stereo:{source:media}{ch:L}{range:30}]";
+        break;
+    case DistErrorKind::ConflictingSource:
+        msg = "タグ書式エラー (prim " + id_short + "): url と source:media は同時に指定できません";
+        msg += "。URL 音源なら {url:...}、prim media 音源なら {source:media} のどちらか一方を指定してください";
+        break;
+    case DistErrorKind::BadFace:
+        msg = "タグ書式エラー (prim " + id_short + "): face は 0 以上の整数で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。例: [3dstream-stereo:{source:media}{face:0}{ch:L}{range:30}]";
         break;
     }
     notifyStream3D(msg);
@@ -892,8 +965,9 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         mBindings.erase(bind_it);
     }
 
-    // r8 F2-a: distributed-stereo dispatch. Either {url} or {ch} triggers a
-    // linkset-level (re)evaluation rooted at this prim's getRootEdit().
+    // r8 F2-a: distributed-stereo dispatch. {url}, {source}, or {ch}
+    // triggers a linkset-level (re)evaluation rooted at this prim's
+    // getRootEdit().
     auto dist = parseDistributedStereoTag(desc);
 
     if (dist.error != DistParseError::Ok)
@@ -913,6 +987,11 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         case DistParseError::BadUpmix:    k = DistErrorKind::BadUpmix;    break;
         case DistParseError::BadWetGain:  k = DistErrorKind::BadWetGain;  break;
         case DistParseError::BadLfeGain:  k = DistErrorKind::BadLfeGain;  break;
+        case DistParseError::BadSource:   k = DistErrorKind::BadSource;   break;
+        case DistParseError::ConflictingSource:
+            k = DistErrorKind::ConflictingSource;
+            break;
+        case DistParseError::BadFace:     k = DistErrorKind::BadFace;     break;
         case DistParseError::Ok:          break; // unreachable
         }
         notifyDistributedError(id, k, dist.bad_value);
@@ -971,15 +1050,35 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     }
 
     auto root_parse = parseDistributedStereoTag(root_desc_it->second.description);
-    if (!root_parse.data || !root_parse.data->url.has_value())
+    if (!root_parse.data || !root_parse.data->source_kind.has_value())
     {
         // r8 F2-a constraint: source declaration must live on the root prim.
-        // A linkset without a root-level {url} cannot form a binding.
+        // A linkset without a root-level source cannot form a binding.
         teardownDistributedBinding(root_id);
         return;
     }
 
     const auto& root_data = *root_parse.data;
+    if (*root_data.source_kind == DistSourceKind::Media)
+    {
+        // Phase 1 parser/source-identity support only. Playback wiring is
+        // added by the PCM-ring source phase, so do not accidentally reuse an
+        // old URL binding for this root.
+        LL_INFOS("Stream3D") << "[3dstream-stereo] media source parsed for root "
+                              << root_id
+                              << " face=" << root_data.media_face.value_or(-1)
+                              << "; PCM source playback not wired yet"
+                              << LL_ENDL;
+        teardownDistributedBinding(root_id);
+        return;
+    }
+
+    if (!root_data.url.has_value())
+    {
+        teardownDistributedBinding(root_id);
+        return;
+    }
+
     const std::string url = *root_data.url;
 
     // r9 P6.5: skip re-opening if this root's URL was already classified
