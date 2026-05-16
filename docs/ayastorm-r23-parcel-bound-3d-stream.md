@@ -1,8 +1,8 @@
 # AYAstorm r23 — Parcel-bound 3D stream 仕様 (draft)
 
 **作成日**: 2026-05-16
-**最終更新**: 2026-05-16 (M3 / M4 完了)
-**ステータス**: M1〜M4 完了、M5 (Release) 着手前
+**最終更新**: 2026-05-16 (M5 release notes 完成、tag 切り前)
+**ステータス**: M1〜M5 release notes 完成、release tag 待ち
 **対象ブランチ**: `feat/ayastorm-r23-parcel-bound-3d-stream`
 
 このドキュメントは r23 で実装予定の「AYAstorm 3D stream を SL の parcel "Restrict gestures and object sounds to this parcel" フラグに連動させる」機能の仕様 draft。AYA との対話で順次確定していく。
@@ -181,4 +181,4 @@ precedent: `LLAudioSourceVO::updateMute()` (object sound) も canHearSound を�
 | M2 | 実装 — `LLPositionalStreamMgr` に `canHearSound()` フック追加 | ✅ 完了 (commit `673ca4ae9c`、Linux ビルド PASS) |
 | M3 | 受入テスト — 同一/隣接 parcel、装着 stream の parcel 跨ぎ移動、region 跨ぎ TP | ✅ 完了 (2026-05-16、全項目 PASS) |
 | M4 | 3 OS ビルド (Linux → Win → Mac) | ✅ 完了 (2026-05-16、3 OS ビルド + 動作確認 PASS) |
-| M5 | Release — spec doc 更新、release note 3 言語、tag | ⏳ 着手前 |
+| M5 | Release — spec doc 更新、release note 3 言語、tag | ✅ release notes 完成 (r14/r16-r20/r23 × en/ja/zh 計 21 + bundle release page × en/ja/zh 計 3)、tag 切りは AYA 手動 |

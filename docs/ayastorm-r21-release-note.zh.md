@@ -1,4 +1,4 @@
-# AYAstorm r21 — 发布公告草案
+# AYAstorm r21 — 发布公告
 
 用于粘贴到 GitHub release 页面的短文。**r21 是位于视觉真实感章 (r14-r20) 之外的 UX 修复型单功能 release**，把自身 rigged attachment 的右键 picker 由「上游 CPU bind-pose mesh ray」改写为「GPU 专用 object-ID buffer」并以一次发布交付。
 
