@@ -97,6 +97,19 @@ else (FS_PF_USER_AGENT)
 endif (FS_PF_USER_AGENT)
 # </Beq>
 
+# <AYAstorm> Toggle Dullahan audio-callback (CEF/MOAP -> FMOD) integration
+# Default OFF uses upstream secondlife/dullahan (autobuild installable "dullahan").
+# Turn ON to fetch the t-noami/dullahan fork installable "dullahan_aya_audio" and
+# compile the FMOD audio-callback path in media_plugin_cef / llviewermedia.
+option(LL_DULLAHAN_AUDIO_CALLBACK "Route CEF/MOAP audio through FMOD via t-noami/dullahan audio callback" OFF)
+if (LL_DULLAHAN_AUDIO_CALLBACK)
+    add_compile_definitions(LL_DULLAHAN_AUDIO_CALLBACK=1)
+    message(STATUS "Dullahan audio callback path: ENABLED (installable dullahan_aya_audio = t-noami/dullahan fork)")
+else (LL_DULLAHAN_AUDIO_CALLBACK)
+    message(STATUS "Dullahan audio callback path: DISABLED (installable dullahan = upstream secondlife/dullahan)")
+endif (LL_DULLAHAN_AUDIO_CALLBACK)
+# </AYAstorm>
+
 # <FS:Ansariel> [AVX Optimization]
 option(USE_AVX_OPTIMIZATION "AVX optimization support" OFF)
 option(USE_AVX2_OPTIMIZATION "AVX2 optimization support" OFF)

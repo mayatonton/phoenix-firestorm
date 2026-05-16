@@ -30,7 +30,9 @@
 #include "indra_constants.h"
 
 #include "llpluginclassmedia.h"
+#if LL_DULLAHAN_AUDIO_CALLBACK
 #include "llpluginaudio.h"
+#endif
 #include "llpluginmessageclasses.h"
 #include "llcontrol.h"
 
@@ -40,10 +42,12 @@ extern bool gHiDPISupport;
 #endif
 
 static int LOW_PRIORITY_TEXTURE_SIZE_DEFAULT = 256;
+#if LL_DULLAHAN_AUDIO_CALLBACK
 static const size_t MEDIA_AUDIO_RING_CAPACITY_FRAMES = 48000 * 2;
 static const size_t MEDIA_AUDIO_SHARED_MEMORY_SIZE =
     sizeof(LLPluginAudioRingHeader) +
     (MEDIA_AUDIO_RING_CAPACITY_FRAMES * LL_PLUGIN_AUDIO_RING_MAX_CHANNELS * sizeof(float));
+#endif
 
 static int nextPowerOf2( int value )
 {
@@ -180,7 +184,9 @@ void LLPluginClassMedia::idle(void)
         mPlugin->idle();
     }
 
+#if LL_DULLAHAN_AUDIO_CALLBACK
     ensureAudioSharedMemory();
+#endif
 
     if((mMediaWidth == -1) || (!mTextureParamsReceived) || (mPlugin == NULL) || (mPlugin->isBlocked()) || (mOwner == NULL))
     {
@@ -319,14 +325,19 @@ unsigned char* LLPluginClassMedia::getBitsData()
 
 void* LLPluginClassMedia::getAudioData()
 {
+#if LL_DULLAHAN_AUDIO_CALLBACK
     void *result = NULL;
     if((mPlugin != NULL) && !mAudioSharedMemoryName.empty())
     {
         result = mPlugin->getSharedMemoryAddress(mAudioSharedMemoryName);
     }
     return result;
+#else
+    return NULL;
+#endif
 }
 
+#if LL_DULLAHAN_AUDIO_CALLBACK
 void LLPluginClassMedia::ensureAudioSharedMemory()
 {
     if(!mPlugin || !mPlugin->isRunning() || !mAudioSharedMemoryName.empty())
@@ -379,6 +390,7 @@ void LLPluginClassMedia::ensureAudioSharedMemory()
                        << " capacity_frames=" << MEDIA_AUDIO_RING_CAPACITY_FRAMES
                        << LL_ENDL;
 }
+#endif // LL_DULLAHAN_AUDIO_CALLBACK
 
 void LLPluginClassMedia::setSize(int width, int height)
 {
