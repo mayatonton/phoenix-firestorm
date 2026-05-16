@@ -663,9 +663,9 @@ r25 で実装した要点:
 3. Ogg first packet handling を共通化した。
    - Ogg capture pattern `OggS` でないものは 4 bytes だけ読んで reject する。
    - Ogg stream は first BOS packet まで読む。
-   - non-Ogg MP3/AAC/HTTP stream を壊さない。
-   - 初期実装の scope は simple Icecast Ogg Opus/Vorbis とする。
-   - Ogg Skeleton や複数 logical stream の BOS scan は後続課題にする。現実装では chained Ogg / serial change を明示的に再初期化していないため、simple Icecast Ogg Opus/Vorbis を初期 scope とする。
+   - non-Ogg stream は `OggS` capture probe の 4 bytes だけで reject し、MP3 など既存の FMOD 経路で扱っていた stream への影響を最小限にする。
+   - この PR の対象は、一般的な Icecast-style の Ogg Opus / Ogg Vorbis live stream とする。
+   - Ogg Skeleton や複数 logical stream の BOS scan は後続課題にする。現実装では chained Ogg / serial change を明示的に再初期化していないため、通常の単一 audio stream として配信される Ogg Opus/Vorbis を対象範囲とする。
 
 4. Opus path は既存実装を維持した。
    - family 0 mono/stereo
