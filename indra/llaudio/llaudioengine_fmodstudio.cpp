@@ -184,7 +184,11 @@ static FMOD_RESULT F_CALL systemCallback(FMOD_SYSTEM *system, FMOD_SYSTEM_CALLBA
     // </FS:minerjr> [FIRE-36022]
 }
 
-LLAudioEngine_FMODSTUDIO::LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 resample_method, U32 parcel_stream_quality)
+LLAudioEngine_FMODSTUDIO::LLAudioEngine_FMODSTUDIO(bool enable_profiler,
+                                                   U32 resample_method,
+                                                   U32 parcel_stream_quality,
+                                                   bool opus_codec_enable,
+                                                   U32 opus_codec_priority)
 :   mInited(false),
     mWindGen(NULL),
     mWindDSP(NULL),
@@ -193,6 +197,8 @@ LLAudioEngine_FMODSTUDIO::LLAudioEngine_FMODSTUDIO(bool enable_profiler, U32 res
     mWindDSPDesc(NULL),
     mResampleMethod(resample_method),
     mParcelStreamQuality(parcel_stream_quality),
+    mOpusCodecEnable(opus_codec_enable),
+    mOpusCodecPriority(opus_codec_priority),
     mSelectedDeviceUUID()
 {
 }
@@ -417,26 +423,30 @@ bool LLAudioEngine_FMODSTUDIO::init(void* userdata, const std::string &app_title
 
     LL_INFOS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() FMOD Studio initialized correctly" << LL_ENDL;
 
+    if (mOpusCodecEnable)
     {
         // Register before FMOD's built-in Ogg/Vorbis codec. Icecast Ogg Opus
         // streams can otherwise be claimed by the built-in Ogg path first and
         // fail with FMOD_ERR_FILE_COULDNOTSEEK before this codec is attempted.
         //
-        // Non-Opus streams stay safe because opusOpen() now rejects anything
-        // without the Ogg capture pattern after a 4-byte probe, which FMOD's
-        // built-in HTTP codecs tolerate. FMOD codec priority uses 0 as the
-        // highest priority.
-        constexpr unsigned int kOpusCodecPriority = 0;
+        // Validation note: non-Opus Ogg live streams cannot always be rewound
+        // after this probe. Keep this registration tunable so we can verify
+        // whether AYAstorm's Opus codec is intercepting Ogg Vorbis parcel music.
+        const unsigned int opus_codec_priority = mOpusCodecPriority;
         unsigned int opus_codec_handle = 0;
-        FMOD_RESULT codec_result = mSystem->registerCodec(FMODGetCodecDescriptionOpus(), &opus_codec_handle, kOpusCodecPriority);
+        FMOD_RESULT codec_result = mSystem->registerCodec(FMODGetCodecDescriptionOpus(), &opus_codec_handle, opus_codec_priority);
         if (codec_result == FMOD_OK)
         {
-            LL_INFOS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Opus codec registered (handle=" << opus_codec_handle << ", priority=" << kOpusCodecPriority << ")" << LL_ENDL;
+            LL_INFOS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Opus codec registered (handle=" << opus_codec_handle << ", priority=" << opus_codec_priority << ")" << LL_ENDL;
         }
         else
         {
             LL_WARNS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Opus codec register failed: " << FMOD_ErrorString(codec_result) << LL_ENDL;
         }
+    }
+    else
+    {
+        LL_WARNS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() AYAstorm Opus codec registration disabled for validation" << LL_ENDL;
     }
 
     FMOD_ADVANCEDSETTINGS settings_dump = { };
