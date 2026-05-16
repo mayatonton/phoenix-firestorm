@@ -987,3 +987,17 @@ Opus support を削除して解決しない。
 `AYAOpusCodecEnable=false` を製品仕様にしない。これは診断用である。
 
 `.mp3` なら MP3、`.ogg` なら Vorbis、という判断をしない。実際の HTTP header と first bytes を正とする。
+
+## 2026-05-17 r25 cleanup 追記
+
+PR #75 merge 後、本文 L648 / L690 で「ファイル名と関数名は当面そのままでよい / 後で改名できる」とされていた箇所について、r25 リリース準備中に AYA 側で rename を実施した。
+
+- `indra/llaudio/fmod_codec_opus.cpp` → `indra/llaudio/fmod_codec_ogg.cpp`
+- `indra/llaudio/fmod_codec_opus.h` → `indra/llaudio/fmod_codec_ogg.h`
+- `FMODGetCodecDescriptionOpus()` → `FMODGetCodecDescriptionOgg()`
+- `LL_FMOD_CODEC_OPUS_H` → `LL_FMOD_CODEC_OGG_H` (header guard)
+- `indra/llaudio/CMakeLists.txt` / `indra/llaudio/llaudioengine_fmodstudio.cpp` の参照も追従
+
+doxygen `@brief` は PR #75 時点で既に "Ogg Opus and Ogg Vorbis" に直っており、ファイル名と関数名だけが旧 Opus 専用時代の名残として残っていたため、本リリースで揃えた。本文 L690 の改名候補名 `FMODGetCodecDescriptionOggFamily()` より短く現状実装スコープに即した `FMODGetCodecDescriptionOgg()` を採用した。Ogg family へ将来 codec を追加する場合 (例: FLAC) も同一 plugin descriptor で扱う想定のため、`Ogg` の方が拡張しやすい。
+
+実装ロジックには変更なし。本書本文の「変更した主なファイル」リストおよびコード例の関数名表記は、執筆時点 snapshot として凍結する。

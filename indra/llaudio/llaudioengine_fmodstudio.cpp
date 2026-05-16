@@ -40,7 +40,7 @@
 
 #include "fmodstudio/fmod.hpp"
 #include "fmodstudio/fmod_errors.h"
-#include "fmod_codec_opus.h"
+#include "fmod_codec_ogg.h"
 #include "lldir.h"
 #include "llapr.h"
 
@@ -432,7 +432,7 @@ bool LLAudioEngine_FMODSTUDIO::init(void* userdata, const std::string &app_title
         // streams cannot be safely handed back to FMOD after an Opus probe.
         const unsigned int opus_codec_priority = mOpusCodecPriority;
         unsigned int opus_codec_handle = 0;
-        FMOD_RESULT codec_result = mSystem->registerCodec(FMODGetCodecDescriptionOpus(), &opus_codec_handle, opus_codec_priority);
+        FMOD_RESULT codec_result = mSystem->registerCodec(FMODGetCodecDescriptionOgg(), &opus_codec_handle, opus_codec_priority);
         if (codec_result == FMOD_OK)
         {
             LL_INFOS("AppInit") << "LLAudioEngine_FMODSTUDIO::init() Ogg Opus/Vorbis codec registered (handle=" << opus_codec_handle << ", priority=" << opus_codec_priority << ")" << LL_ENDL;

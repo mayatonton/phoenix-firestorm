@@ -1,5 +1,5 @@
 /**
- * @file fmod_codec_opus.cpp
+ * @file fmod_codec_ogg.cpp
  * @brief AYAstorm FMOD codec plugin for Ogg Opus and Ogg Vorbis live streams.
  *
  * Bundled libfmod ships without an Opus codec. We extend FMOD via the
@@ -16,7 +16,7 @@
  *     real seeking and getlength are not advertised.
  */
 
-#include "fmod_codec_opus.h"
+#include "fmod_codec_ogg.h"
 #include "fmodstudio/fmod_errors.h"
 #include "llerror.h"
 
@@ -685,7 +685,7 @@ namespace
     };
 }
 
-FMOD_CODEC_DESCRIPTION* F_CALL FMODGetCodecDescriptionOpus()
+FMOD_CODEC_DESCRIPTION* F_CALL FMODGetCodecDescriptionOgg()
 {
     return &sOggCodec;
 }

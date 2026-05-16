@@ -44,7 +44,7 @@ if (TARGET ll::fmodstudio)
          llirloader.cpp
          llvenuereverbdsp.cpp
          llstream3durlresolve.cpp
-         fmod_codec_opus.cpp
+         fmod_codec_ogg.cpp
          )
 
     list(APPEND llaudio_HEADER_FILES
@@ -61,7 +61,7 @@ if (TARGET ll::fmodstudio)
          llirloader.h
          llvenuereverbdsp.h
          llstream3durlresolve.h
-         fmod_codec_opus.h
+         fmod_codec_ogg.h
          )
 
     # <AYAstorm> Dullahan audio callback path requires the t-noami/dullahan fork
