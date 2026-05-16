@@ -1,4 +1,4 @@
-# AYAstorm r22 — Release Announcement Draft
+# AYAstorm r22 — Release Announcement
 
 Short text intended to be pasted into the GitHub release page. **r22 is a chat-UX release** that splits the Nearby Chat / IM history into two tabs — "human avatar speech" and "System & Object notifications (LSL + system + TP / Region)".
 

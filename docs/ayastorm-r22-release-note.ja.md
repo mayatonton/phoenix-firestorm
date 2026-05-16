@@ -1,4 +1,4 @@
-# AYAstorm r22 — リリース告知文案
+# AYAstorm r22 — リリース告知
 
 GitHub release ページ貼り付け用の文案。**r22 は Chat 表示の UX 改良リリース**で、Nearby Chat / IM の history を「人間アバター発言」と「System & Object 系通知 (LSL 発言 + システム通知 + TP / Region)」の 2 タブに分離します。
 

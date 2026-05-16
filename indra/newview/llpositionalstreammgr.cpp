@@ -46,8 +46,11 @@
 #include "llinstantmessage.h"
 #include "llnotificationsutil.h"
 #include "llselectmgr.h"
+#include "llviewerparcelmgr.h"
 #include "llviewerregion.h"
 #include "message.h"
+
+#include <cmath>
 
 #include "llstring.h"
 #include "lltimer.h"
@@ -1195,6 +1198,20 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.upmix_effective_applied = upmix_effective;
     binding.speakers = std::move(speakers);
     binding.dropped_speakers = dropped;
+
+    // r23: seed parcel-gate state for the distributed binding. Source
+    // position = root prim position (per §3.2: single-point judgment, not
+    // per-speaker). Reset last_pushed_volume too so the next update() pass
+    // pushes the gated value even when the master volume is unchanged from
+    // the previous binding instance — important for a teardown/rebuild
+    // that lands on a different audible state.
+    if (LLViewerObject* root_obj = gObjectList.findObject(root_id))
+    {
+        binding.is_attached = root_obj->isAttachment();
+        binding.parcel_audible = LLViewerParcelMgr::getInstance()->canHearSound(
+            root_obj->getPositionGlobal());
+    }
+    binding.last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
     // r11 P8: push venue selection before the stream comes up so the
     // first audio block out of process() already convolves through the
     // right slot (avoids a momentary "dry then wet" pop on first start).
@@ -1760,6 +1777,11 @@ void LLPositionalStreamMgr::evaluateMonoBinding(const LLUUID& id, const TagData&
     b.applied_min = want_min;
     b.applied_max = want_max;
     b.stream = std::move(stream);
+    // r23: seed parcel-gate state. is_attached pins the eval tier (per-frame
+    // vs. signal-driven); parcel_audible is the initial gate so the first
+    // per-poll push in update() converges immediately without a 1-frame leak.
+    b.is_attached = obj->isAttachment();
+    b.parcel_audible = LLViewerParcelMgr::getInstance()->canHearSound(obj->getPositionGlobal());
     mBindings.emplace(id, std::move(b));
 
     LL_INFOS("Stream3D") << "Bound positional stream to " << id
@@ -1778,6 +1800,12 @@ void LLPositionalStreamMgr::update()
     {
         return;
     }
+
+    // r23: late-bind the parcel-change callback. The static singleton is
+    // built at process start when gAgent may not yet be alive, so we defer
+    // the connect to here where update() can only run post-login. Once
+    // connected, the early-return is a single bool load per tick.
+    ensureParcelCallbackRegistered();
 
     // M8: re-arm the cap notification once we drop back under the cap, so a
     // future cap-hit triggers a fresh toast rather than being suppressed by
@@ -1888,6 +1916,9 @@ void LLPositionalStreamMgr::update()
                 const LLVector3 pos = toFloatVec(obj->getPositionGlobal());
                 b.stream->setRolloffDistances(b.applied_min, b.applied_max);
                 b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+                // r23: reset the idempotent guard so the per-poll push next
+                // frame applies the parcel gate to the fresh FMOD channel.
+                b.last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
                 LL_INFOS("Stream3D") << "Reconnect attempt " << b.reconnect_attempts
                                       << "/" << max_attempts << " for " << id
                                       << " url=" << b.url << LL_ENDL;
@@ -1918,10 +1949,29 @@ void LLPositionalStreamMgr::update()
         }
 
         b.stream->setPosition(toFloatVec(obj->getPositionGlobal()));
+        // r23: Tier 2 — attached source moves per-frame, so re-evaluate the
+        // parcel gate every tick for this binding. Static-source (Tier 1)
+        // bindings rely on the cached value last refreshed by the
+        // parcel-change signal in onAgentParcelChanged().
+        if (b.is_attached)
+        {
+            b.parcel_audible = computeParcelAudible(id, b.parcel_audible);
+        }
         // r12.1: same per-poll master-volume push as the distributed
         // bindings loop below, so a Stream3DVolumeMaster edit propagates
         // without waiting for the next reconnect.
-        b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+        // r23: gate volume by parcel_audible (0 when muted by SL parcel
+        // SOUND_LOCAL rule), and skip the FMOD setVolume call when the
+        // effective value hasn't changed since the last push.
+        {
+            const F32 master_vol = gSavedSettings.getF32("Stream3DVolumeMaster");
+            const F32 effective_vol = b.parcel_audible ? master_vol : 0.f;
+            if (std::isnan(b.last_pushed_volume) || b.last_pushed_volume != effective_vol)
+            {
+                b.stream->setVolume(effective_vol);
+                b.last_pushed_volume = effective_vol;
+            }
+        }
         b.stream->update();
         ++it;
     }
@@ -2076,6 +2126,10 @@ void LLPositionalStreamMgr::update()
                     configs.push_back(c);
                 }
                 b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+                // r23: reset idempotent guard (see mono path); per-poll
+                // push next frame applies the parcel gate to the new
+                // FMOD channels.
+                b.last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
                 LL_INFOS("Stream3D") << "[3dstream-stereo] reconnect attempt "
                                       << b.reconnect_attempts << "/" << max_attempts_dist
                                       << " for root " << root_id
@@ -2158,7 +2212,22 @@ void LLPositionalStreamMgr::update()
         // that's a no-op when unchanged.
         applyVenueToBinding(b, b.venue_tag);
         applyWetGainToBinding(b, b.wetgain_tag);
-        b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+        // r23: Tier 2 refresh for attached-source distributed bindings.
+        // Source = root prim position; same evaluation as the mono path.
+        if (b.is_attached)
+        {
+            b.parcel_audible = computeParcelAudible(root_id, b.parcel_audible);
+        }
+        // r23: same parcel-gated, idempotent volume push as the mono loop.
+        {
+            const F32 master_vol = gSavedSettings.getF32("Stream3DVolumeMaster");
+            const F32 effective_vol = b.parcel_audible ? master_vol : 0.f;
+            if (std::isnan(b.last_pushed_volume) || b.last_pushed_volume != effective_vol)
+            {
+                b.stream->setVolume(effective_vol);
+                b.last_pushed_volume = effective_vol;
+            }
+        }
         b.stream->update();
 
         // r13: per-frame OBB occlusion eval. The shipped libfmod
@@ -2329,17 +2398,68 @@ void LLPositionalStreamMgr::applyMasterVolume(F32 volume)
     {
         mDebugStereoStream->setVolume(volume);
     }
+    // r23: gate by the cached parcel_audible for prim-bound streams. The
+    // per-poll loop in update() also pushes effective volume every tick;
+    // this path covers the Stream3DVolumeMaster signal-driven case so the
+    // user-visible slider responds in the same frame as the setting change.
     for (auto& [id, b] : mBindings)
     {
-        b.stream->setVolume(volume);
+        const F32 effective = b.parcel_audible ? volume : 0.f;
+        b.stream->setVolume(effective);
+        b.last_pushed_volume = effective;
     }
     for (auto& [root_id, b] : mDistributedBindings)
     {
         if (b.stream)
         {
-            b.stream->setVolume(volume);
+            const F32 effective = b.parcel_audible ? volume : 0.f;
+            b.stream->setVolume(effective);
+            b.last_pushed_volume = effective;
         }
     }
+}
+
+// r23: lazy callback registration. Called on every update() tick; the
+// `connected()` early-return makes the steady-state cost a single bool load.
+void LLPositionalStreamMgr::ensureParcelCallbackRegistered()
+{
+    if (mParcelChangedConn.connected())
+    {
+        return;
+    }
+    mParcelChangedConn = gAgent.addParcelChangedCallback(
+        boost::bind(&LLPositionalStreamMgr::onAgentParcelChanged, this));
+}
+
+// r23: Tier 1 refresh on agent parcel-change. Walks every binding (mono +
+// distributed) and re-evaluates its cached parcel_audible. Tier 2 (attached)
+// bindings will also be refreshed in update()'s per-frame pass, but we
+// eagerly refresh here too so the very first frame after the signal already
+// reflects the new gate state.
+void LLPositionalStreamMgr::onAgentParcelChanged()
+{
+    for (auto& [id, b] : mBindings)
+    {
+        b.parcel_audible = computeParcelAudible(id, b.parcel_audible);
+    }
+    for (auto& [root_id, b] : mDistributedBindings)
+    {
+        b.parcel_audible = computeParcelAudible(root_id, b.parcel_audible);
+    }
+}
+
+// r23: one canHearSound() probe at the source prim's world position. When
+// the prim has gone away or its position can't be resolved, return the
+// caller-supplied fallback (typically the previous cached value) so a
+// transient miss doesn't flip a binding to muted.
+bool LLPositionalStreamMgr::computeParcelAudible(const LLUUID& source_id, bool fallback) const
+{
+    LLViewerObject* obj = gObjectList.findObject(source_id);
+    if (!obj || obj->isDead())
+    {
+        return fallback;
+    }
+    return LLViewerParcelMgr::getInstance()->canHearSound(obj->getPositionGlobal());
 }
 
 void LLPositionalStreamMgr::startDebug(const std::string& url, const LLVector3& world_pos)

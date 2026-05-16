@@ -1,4 +1,4 @@
-# AYAstorm r21 — リリース告知文案
+# AYAstorm r21 — リリース告知
 
 GitHub release ページ貼り付け用の文案。**r21 は視覚的リアリティ章 (r14-r20) の外側にある UX 修正系の単機能リリース**で、自分の rigged attachment に対する右クリック picker を「上流 CPU bind-pose mesh ray」から「GPU 専用 object-ID buffer」に作り直したものを 1 本で提供します。
 
