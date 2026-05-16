@@ -102,7 +102,8 @@ public:
         mPosAgent(),
         mURL(),
         mChatStyle(CHAT_STYLE_NORMAL),
-        mSessionID()
+        mSessionID(),
+        mFriendOnlineNotification(false)
     { }
 
     std::string     mText;      // UTF-8 line of text
@@ -125,6 +126,12 @@ public:
     std::string     mURL;
     EChatStyle      mChatStyle;
     LLUUID          mSessionID;
+    // <FS:AYAstorm r22 spec change 2026-05-16>
+    // Friend online/offline notification flag.
+    // CHAT_SOURCE_SYSTEM with this flag set is also routed to the Human tab
+    // (in addition to the System & Object tab) when FSFriendOnlineToHumanTab=true.
+    bool            mFriendOnlineNotification;
+    // </FS:AYAstorm r22 spec change>
 };
 
 #endif

@@ -34,7 +34,9 @@
 #include "llplugininstance.h"
 #include "llpluginmessage.h"
 #include "llpluginmessageclasses.h"
+#if LL_DULLAHAN_AUDIO_CALLBACK
 #include "llpluginaudio.h"
+#endif
 #include "llstring.h"
 #if LL_VOLUME_CATCHER
 #include "volume_catcher.h"
@@ -83,11 +85,13 @@ private:
     const std::vector<std::string> onFileDialog(dullahan::EFileDialogType dialog_type, const std::string dialog_title, const std::string default_file, const std::string dialog_accept_filter, bool& use_default);
     bool onJSDialogCallback(const std::string origin_url, const std::string message_text, const std::string default_prompt_text);
     bool onJSBeforeUnloadCallback();
+#if LL_DULLAHAN_AUDIO_CALLBACK
     void onAudioStreamStartedCallback(const dullahan::dullahan_audio_stream_info& info);
     void onAudioStreamPacketCallback(const float** data, int frames, int64_t pts);
     void onAudioStreamStoppedCallback();
     void onAudioStreamErrorCallback(const std::string message);
     void writeAudioPacketToRing(const float** data, int frames);
+#endif
 
     void postDebugMessage(const std::string& msg);
     void authResponse(LLPluginMessage &message);
@@ -126,6 +130,7 @@ private:
     std::string mCefLogFile;
     bool mCefLogVerbose;
     std::vector<std::string> mPickedFiles;
+#if LL_DULLAHAN_AUDIO_CALLBACK
     bool mAudioStreamActive;
     int mAudioStreamSampleRate;
     int mAudioStreamChannels;
@@ -133,6 +138,7 @@ private:
     LLPluginAudioRingHeader* mAudioRing;
     size_t mAudioRingSize;
     int mAudioRingMaxChannels;
+#endif
 #if LL_VOLUME_CATCHER
     VolumeCatcher mVolumeCatcher;
 #endif
@@ -176,6 +182,7 @@ MediaPluginBase(host_send_func, host_user_data)
     mCefLogFile = "";
     mCefLogVerbose = false;
     mPickedFiles.clear();
+#if LL_DULLAHAN_AUDIO_CALLBACK
     mAudioStreamActive = false;
     mAudioStreamSampleRate = 0;
     mAudioStreamChannels = 0;
@@ -183,6 +190,7 @@ MediaPluginBase(host_send_func, host_user_data)
     mAudioRing = nullptr;
     mAudioRingSize = 0;
     mAudioRingMaxChannels = 0;
+#endif
     mCurVolume = 0.0;
 
     mCEFLib = new dullahan();
@@ -441,6 +449,7 @@ bool MediaPluginCEF::onJSBeforeUnloadCallback()
     return true;
 }
 
+#if LL_DULLAHAN_AUDIO_CALLBACK
 ////////////////////////////////////////////////////////////////////////////////
 //
 void MediaPluginCEF::onAudioStreamStartedCallback(const dullahan::dullahan_audio_stream_info& info)
@@ -560,6 +569,7 @@ void MediaPluginCEF::writeAudioPacketToRing(const float** data, int frames)
     mAudioRing->mWriteFrame.store(write, std::memory_order_release);
     mAudioRing->mTotalFramesWritten.fetch_add(written, std::memory_order_relaxed);
 }
+#endif // LL_DULLAHAN_AUDIO_CALLBACK
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -741,12 +751,14 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
                         mPixels = NULL;
                         mTextureSegmentName.clear();
                     }
+#if LL_DULLAHAN_AUDIO_CALLBACK
                     if (mAudioRing == iter->second.mAddress)
                     {
                         mAudioRing = nullptr;
                         mAudioRingSize = 0;
                         mAudioRingMaxChannels = 0;
                     }
+#endif
                     mSharedSegments.erase(iter);
                 }
                 else
@@ -763,6 +775,7 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
         }
         else if (message_class == LLPLUGIN_MESSAGE_CLASS_MEDIA)
         {
+#if LL_DULLAHAN_AUDIO_CALLBACK
             if (message_name == "audio_shm_set")
             {
                 std::string name = message_in.getValue("name");
@@ -779,6 +792,9 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
                 }
             }
             else if (message_name == "init")
+#else
+            if (message_name == "init")
+#endif
             {
                 // event callbacks from Dullahan
                 mCEFLib->setOnPageChangedCallback(std::bind(&MediaPluginCEF::onPageChangedCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
@@ -803,10 +819,12 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
                 mCEFLib->setOnRequestExitCallback(std::bind(&MediaPluginCEF::onRequestExitCallback, this));
                 mCEFLib->setOnJSDialogCallback(std::bind(&MediaPluginCEF::onJSDialogCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
                 mCEFLib->setOnJSBeforeUnloadCallback(std::bind(&MediaPluginCEF::onJSBeforeUnloadCallback, this));
+#if LL_DULLAHAN_AUDIO_CALLBACK
                 mCEFLib->setOnAudioStreamStartedCallback(std::bind(&MediaPluginCEF::onAudioStreamStartedCallback, this, std::placeholders::_1));
                 mCEFLib->setOnAudioStreamPacketCallback(std::bind(&MediaPluginCEF::onAudioStreamPacketCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
                 mCEFLib->setOnAudioStreamStoppedCallback(std::bind(&MediaPluginCEF::onAudioStreamStoppedCallback, this));
                 mCEFLib->setOnAudioStreamErrorCallback(std::bind(&MediaPluginCEF::onAudioStreamErrorCallback, this, std::placeholders::_1));
+#endif
 
                 dullahan::dullahan_settings settings;
 #if LL_WINDOWS
@@ -1401,9 +1419,15 @@ void MediaPluginCEF::checkEditState()
 void MediaPluginCEF::setVolume()
 {
 #if LL_VOLUME_CATCHER
-    // The viewer now plays CEF/MOAP PCM through FMOD. Keep the plugin-side
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    // The viewer plays CEF/MOAP PCM through FMOD. Keep the plugin-side
     // native output silent so the same media audio is not heard twice.
     mVolumeCatcher.setVolume(0.0f);
+#else
+    // Fallback: no FMOD bridge, so let CEF's native audio output through the
+    // OS audio device, controlled by the viewer-side volume catcher.
+    mVolumeCatcher.setVolume(mCurVolume);
+#endif
 #endif
 }
 

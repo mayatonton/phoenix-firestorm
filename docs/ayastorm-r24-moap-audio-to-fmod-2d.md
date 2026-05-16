@@ -1,6 +1,6 @@
-# AYAstorm MOAP audio to FMOD 2D implementation report
+# AYAstorm r24 MOAP audio to FMOD 2D
 
-検証ブランチ: `feature/media-playback-validation-release`
+検証ブランチ: `feature/ayastorm-r24-moap-audio-to-fmod-2d`
 
 検証日: 2026-05-15
 
@@ -263,3 +263,76 @@ Dullahan package をこの repository に手動コピーする必要はない。
 - MOAP 音声の 3D Stream / プリムスピーカー接続。
 
 libVLC については、このブランチで入れた試行実装を戻した。優先度を下げ、別ブランチで改めて調査・実装する。
+
+## Fallback build (AYAstorm 拡張)
+
+t-noami fork の Dullahan が利用不可になっても upstream `secondlife/dullahan` で build できるよう、`autobuild.xml` に **2 つの dullahan installable** を並べ、CMake スイッチ 1 つで切り替える。
+
+### PR #69 mayatonton コメント反映
+
+PR #69 の mayatonton コメントでは、t-noami/dullahan fork を使った Linux での 3D stream 動作確認後、fork 側の GitHub personal release が配布停止・取り下げになった場合でも AYAstorm が即座にビルド不能にならないよう、commit `9fa27b92ec` で build-time fallback switch を追加したことが説明されている。
+
+切替は CMake フラグ `-DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=` で行う。
+
+- `FALSE`: upstream `secondlife/dullahan` を使う。audio callback 経路は `#if LL_DULLAHAN_AUDIO_CALLBACK` で compile out され、fork が使えない状況でも upstream Dullahan だけでビルドを通せる。
+- `TRUE`: `t-noami/dullahan` fork を使う。FMOD audio callback 経路を有効化し、CEF/MOAP audio を Viewer 側 FMOD 経由で扱う。
+
+`autobuild.xml` には upstream 用の `dullahan` と fork 用の `dullahan_aya_audio` の 2 installable を併記する。フラグ切替時の file 衝突は `indra/cmake/CEFPlugin.cmake` が uninstall と sentinel reset を行うため、フラグを変えて configure し直すだけで切替できる。
+
+PR コメント時点では、両モードで Linux build と 3D stream 動作確認済み。Windows / macOS は別途検証予定として扱われていた。
+
+`autobuild.xml` の 2 entry:
+
+| installable key | source | 用途 |
+|---|---|---|
+| `dullahan` | `secondlife/dullahan` v1.26.0-CEF_139.0.40 (upstream) | **default**。CEF audio callback API なし |
+| `dullahan_aya_audio` | `t-noami/dullahan` v1.26.0-CEF_139.0.40-ayastorm-audio-callback.3 (fork) | audio callback API 4 setters を export |
+
+CMake スイッチ: `LL_DULLAHAN_AUDIO_CALLBACK` (`indra/CMakeLists.txt`、**default OFF**)
+
+`indra/cmake/CEFPlugin.cmake` がフラグを見て `use_prebuilt_binary(dullahan)` か `use_prebuilt_binary(dullahan_aya_audio)` のどちらを呼ぶか分岐する。autobuild は呼ばれた方の installable のみ fetch するので、もう片方は download されない。
+
+### A. 本家 dullahan build (default, OFF)
+
+何もしなくて良い:
+
+```bash
+autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
+autobuild build -A 64 -c ReleaseFS_open --no-configure
+```
+
+挙動:
+
+- autobuild は `dullahan` (upstream) のみ fetch
+- `LLMediaAudioStream` / `LLPluginAudioRingHeader` / CEF audio callback コードはすべて `#ifdef LL_DULLAHAN_AUDIO_CALLBACK` で compile out
+- CEF audio callback の 4 setters は呼ばれない
+- macOS は `mac_volume_catcher_null.cpp` (no-op、upstream Firestorm と同じ)
+- MOAP / Web / YouTube 音は CEF native output → OS audio device 直行、viewer の media volume slider は `VolumeCatcher` 経由で間接制御
+
+### B. t-noami fork dullahan build (opt-in, ON)
+
+configure フラグ 1 つを追加するだけ:
+
+```bash
+autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio -DLL_TESTS:BOOL=FALSE -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE --package --chan AYAstorm-release
+autobuild build -A 64 -c ReleaseFS_open --no-configure
+```
+
+挙動:
+
+- autobuild は `dullahan_aya_audio` (t-noami fork) のみ fetch
+- `LLMediaAudioStream` / `LLPluginAudioRingHeader` / CEF audio callback すべて compile される
+- macOS は `mac_volume_catcher.cpp` (CEF native output を mute、FMOD path のみ鳴らす)
+- MOAP / Web / YouTube 音は viewer 側 FMOD 2D channel 経由で再生
+
+`autobuild.xml` は static、`git status` 常に clean、pre-DL も `--local` も sed も不要。
+
+### `#ifdef LL_DULLAHAN_AUDIO_CALLBACK` ガード対象ファイル
+
+- `indra/CMakeLists.txt`: option 定義と compile definition `LL_DULLAHAN_AUDIO_CALLBACK=1` の付与
+- `indra/cmake/CEFPlugin.cmake`: `use_prebuilt_binary` の installable 名切替
+- `indra/llaudio/CMakeLists.txt`: `llmediaaudiostream.cpp/h` の追加を flag 連動
+- `indra/media_plugins/cef/CMakeLists.txt`: macOS の `mac_volume_catcher.cpp` ↔ `mac_volume_catcher_null.cpp` 切替
+- `indra/llplugin/llpluginclassmedia.cpp`: `ensureAudioSharedMemory()` / `getAudioData()` の中身
+- `indra/media_plugins/cef/media_plugin_cef.cpp`: callback 登録、`audio_shm_set` message handler、`writeAudioPacketToRing()` 周辺
+- `indra/newview/llviewermedia.cpp` / `.h`: `mMediaAudioStream` メンバ、`mAppliedVolume` メンバ、update/destroy/updateVolume での参照

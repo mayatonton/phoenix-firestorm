@@ -48,6 +48,7 @@
 #include "llfloaterimnearbychat.h"
 #include "llgroupiconctrl.h"
 #include "lllayoutstack.h"
+#include "lltabcontainer.h" // <FS:AYAstorm r22>
 #include "llpanelemojicomplete.h"
 #include "lltoolbarview.h"
 #include "llspeakers.h"         // <FS:AYA> Phase 3
@@ -312,6 +313,31 @@ bool LLFloaterIMSessionTab::postBuild()
     mParticipantListPanel->addChild(mScroller);
 
     mChatHistory = getChild<LLChatHistory>("chat_history");
+    mChatHistoryObject = findChild<LLChatHistory>("chat_history_object"); // <FS:AYAstorm r22>
+
+    // <FS:AYAstorm r22> Snapshot FSChatHumanObjectTabs at postBuild — see
+    // FSFloaterNearbyChat::postBuild for rationale. Hides the tab strip
+    // and Object panel when disabled so the floater looks unsplit.
+    if (!gSavedSettings.getBOOL("FSChatHumanObjectTabs"))
+    {
+        if (LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container"))
+        {
+            tabs->setTabsHidden(true);
+            if (LLPanel* p = findChild<LLPanel>("tab_object")) tabs->setTabVisibility(p, false);
+        }
+        mChatHistoryObject = nullptr;
+    }
+    else if (LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container"))
+    {
+        // Clear the unread badge when the user switches to that tab.
+        tabs->setCommitCallback([this](LLUICtrl* ctrl, const LLSD&) {
+            if (LLTabContainer* t = dynamic_cast<LLTabContainer*>(ctrl))
+            {
+                resetUnreadBadge(t->getCurrentPanel());
+            }
+        });
+    }
+    // </FS:AYAstorm r22>
 
     mInputEditor = getChild<LLChatEntry>("chat_editor");
 
@@ -674,8 +700,115 @@ void LLFloaterIMSessionTab::appendMessage(const LLChat& chat, const LLSD& args)
             gSavedSettings.getBOOL("IMShowNamesForP2PConv");
 
     static const LLStyle::Params input_append_params = LLStyle::Params();
-    mChatHistory->appendMessage(chat, chat_args, input_append_params);
+    // <FS:AYAstorm r22> Route non-Human chat to the System & Object tab when split is enabled.
+    // OBJECT / SYSTEM / TELEPORT / REGION → System & Object tab.
+    // AGENT / UNKNOWN → Human tab (UNKNOWN is the default-safe fallback).
+    static LLCachedControl<bool> human_object_tabs(gSavedSettings, "FSChatHumanObjectTabs", true);
+    LLChatHistory* target = mChatHistory;
+    if (human_object_tabs && mChatHistoryObject)
+    {
+        const bool to_sys_object =
+            chat.mSourceType == CHAT_SOURCE_OBJECT   ||
+            chat.mSourceType == CHAT_SOURCE_SYSTEM   ||
+            chat.mSourceType == CHAT_SOURCE_TELEPORT ||
+            chat.mSourceType == CHAT_SOURCE_REGION;
+        if (to_sys_object)
+        {
+            target = mChatHistoryObject;
+        }
+    }
+    target->appendMessage(chat, chat_args, input_append_params);
+    // Bump per-tab unread badge when the chat lands in a non-active tab.
+    // is_replay marks history reload paths so we don't accumulate counts for messages
+    // the user has already seen. do_not_log alone is NOT a replay signal — the TP
+    // arrival separator uses do_not_log=true for fresh runtime events that should bump.
+    const bool log_active = human_object_tabs && mChatHistoryObject && !args["is_replay"].asBoolean();
+    if (log_active)
+    {
+        bumpUnreadBadge(target);
+    }
+
+    // Friend online/offline exception (spec change 2026-05-16):
+    // also append to the Human tab so users notice when a friend they want to talk to comes online.
+    static LLCachedControl<bool> friend_online_to_human(gSavedSettings, "FSFriendOnlineToHumanTab", true);
+    if (human_object_tabs && mChatHistoryObject
+        && chat.mFriendOnlineNotification && friend_online_to_human
+        && target == mChatHistoryObject)
+    {
+        mChatHistory->appendMessage(chat, chat_args, input_append_params);
+        if (log_active)
+        {
+            bumpUnreadBadge(mChatHistory);
+        }
+    }
+    // </FS:AYAstorm r22>
 }
+
+// <FS:AYAstorm r22>
+void LLFloaterIMSessionTab::bumpUnreadBadge(LLChatHistory* target)
+{
+    LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container");
+    if (!tabs) return;
+
+    LLPanel* target_panel = nullptr;
+    S32*     counter      = nullptr;
+    std::string base_title;
+    if (target == mChatHistoryObject)
+    {
+        target_panel = findChild<LLPanel>("tab_object");
+        counter      = &mUnreadObject;
+        base_title   = "System & Object";
+    }
+    else
+    {
+        target_panel = findChild<LLPanel>("tab_human");
+        counter      = &mUnreadHuman;
+        base_title   = "Human";
+    }
+    if (!target_panel || !counter) return;
+    if (tabs->getCurrentPanel() == target_panel) return;
+
+    (*counter)++;
+    const S32 idx = tabs->getIndexForPanel(target_panel);
+    if (idx >= 0)
+    {
+        tabs->setPanelTitle(idx, llformat("%s (%d)", base_title.c_str(), *counter));
+    }
+}
+
+void LLFloaterIMSessionTab::resetUnreadBadge(LLPanel* selected_panel)
+{
+    if (!selected_panel) return;
+    LLTabContainer* tabs = findChild<LLTabContainer>("chat_tab_container");
+    if (!tabs) return;
+
+    const std::string name = selected_panel->getName();
+    std::string base_title;
+    S32* counter = nullptr;
+    if (name == "tab_object")
+    {
+        counter    = &mUnreadObject;
+        base_title = "System & Object";
+    }
+    else if (name == "tab_human")
+    {
+        counter    = &mUnreadHuman;
+        base_title = "Human";
+    }
+    else
+    {
+        return;
+    }
+
+    if (*counter == 0) return;
+    *counter = 0;
+    const S32 idx = tabs->getIndexForPanel(selected_panel);
+    if (idx >= 0)
+    {
+        tabs->setPanelTitle(idx, base_title);
+    }
+}
+// </FS:AYAstorm r22>
 
 void LLFloaterIMSessionTab::updateUsedEmojis(LLWStringView text)
 {

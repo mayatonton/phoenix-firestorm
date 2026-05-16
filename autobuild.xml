@@ -720,6 +720,66 @@
             <key>archive</key>
             <map>
               <key>hash</key>
+              <string>2c81fa7aa03b427088ab54ce3b71088a0003126b</string>
+              <key>hash_algorithm</key>
+              <string>sha1</string>
+              <key>url</key>
+              <string>https://github.com/secondlife/dullahan/releases/download/v1.26.0-CEF_139.0.40/dullahan-1.26.0.202510161627_139.0.40_g465474a_chromium-139.0.7258.139-darwin64-18568015445.tar.zst</string>
+            </map>
+            <key>name</key>
+            <string>darwin64</string>
+          </map>
+          <key>linux64</key>
+          <map>
+            <key>archive</key>
+            <map>
+              <key>hash</key>
+              <string>8e06d060729250c5bfcb993c8f818f36ea17de16</string>
+              <key>hash_algorithm</key>
+              <string>sha1</string>
+              <key>url</key>
+              <string>https://github.com/secondlife/dullahan/releases/download/v1.26.0-CEF_139.0.40/dullahan-1.26.0.202510161627_139.0.40_g465474a_chromium-139.0.7258.139-linux64-18568015445.tar.zst</string>
+            </map>
+            <key>name</key>
+            <string>linux64</string>
+          </map>
+          <key>windows64</key>
+          <map>
+            <key>archive</key>
+            <map>
+              <key>hash</key>
+              <string>7ca6db37f019b47e230c0861607c546d45535367</string>
+              <key>hash_algorithm</key>
+              <string>sha1</string>
+              <key>url</key>
+              <string>https://github.com/secondlife/dullahan/releases/download/v1.26.0-CEF_139.0.40/dullahan-1.26.0.202510161628_139.0.40_g465474a_chromium-139.0.7258.139-windows64-18568015445.tar.zst</string>
+            </map>
+            <key>name</key>
+            <string>windows64</string>
+          </map>
+        </map>
+        <key>license</key>
+        <string>MPL</string>
+        <key>license_file</key>
+        <string>LICENSES/LICENSE.txt</string>
+        <key>copyright</key>
+        <string>Copyright (c) 2017, Linden Research, Inc.</string>
+        <key>version</key>
+        <string>1.26.0.202510161627_139.0.40_g465474a_chromium-139.0.7258.139</string>
+        <key>name</key>
+        <string>dullahan</string>
+        <key>description</key>
+        <string>A headless browser SDK that uses the Chromium Embedded Framework (CEF). It is designed to make it easier to write applications that render modern web content directly to a memory buffer, inject synthesized mouse and keyboard events as well as interact with web based features like JavaScript or cookies.</string>
+      </map>
+      <key>dullahan_aya_audio</key>
+      <map>
+        <key>platforms</key>
+        <map>
+          <key>darwin64</key>
+          <map>
+            <key>archive</key>
+            <map>
+              <key>hash</key>
               <string>1b7fe88b3dcdc4bca341af139f1b69c14e0ccbd0</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
@@ -767,9 +827,9 @@
         <key>version</key>
         <string>1.26.0.202605151520_139.0.40_g465474a_chromium-139.0.7258.139-ayastorm-audio-callback.3</string>
         <key>name</key>
-        <string>dullahan</string>
+        <string>dullahan_aya_audio</string>
         <key>description</key>
-        <string>A headless browser SDK that uses the Chromium Embedded Framework (CEF). It is designed to make it easier to write applications that render modern web content directly to a memory buffer, inject synthesized mouse and keyboard events as well as interact with web based features like JavaScript or cookies.</string>
+        <string>t-noami/dullahan fork of Dullahan that exposes audio stream callbacks. Drop-in replacement for the upstream "dullahan" installable; selected at configure time via -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE so media_plugin_cef can route CEF/MOAP audio through FMOD.</string>
       </map>
       <key>emoji_shortcodes</key>
       <map>
