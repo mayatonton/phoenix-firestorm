@@ -1,4 +1,4 @@
-# AYAstorm MOAP audio to FMOD 2D implementation report
+# AYAstorm r24 MOAP audio to FMOD 2D
 
 検証ブランチ: `feature/media-playback-validation-release`
 
@@ -267,6 +267,19 @@ libVLC については、このブランチで入れた試行実装を戻した�
 ## Fallback build (AYAstorm 拡張)
 
 t-noami fork の Dullahan が利用不可になっても upstream `secondlife/dullahan` で build できるよう、`autobuild.xml` に **2 つの dullahan installable** を並べ、CMake スイッチ 1 つで切り替える。
+
+### PR #69 mayatonton コメント反映
+
+PR #69 の mayatonton コメントでは、t-noami/dullahan fork を使った Linux での 3D stream 動作確認後、fork 側の GitHub personal release が配布停止・取り下げになった場合でも AYAstorm が即座にビルド不能にならないよう、commit `9fa27b92ec` で build-time fallback switch を追加したことが説明されている。
+
+切替は CMake フラグ `-DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=` で行う。
+
+- `FALSE`: upstream `secondlife/dullahan` を使う。audio callback 経路は `#if LL_DULLAHAN_AUDIO_CALLBACK` で compile out され、fork が使えない状況でも upstream Dullahan だけでビルドを通せる。
+- `TRUE`: `t-noami/dullahan` fork を使う。FMOD audio callback 経路を有効化し、CEF/MOAP audio を Viewer 側 FMOD 経由で扱う。
+
+`autobuild.xml` には upstream 用の `dullahan` と fork 用の `dullahan_aya_audio` の 2 installable を併記する。フラグ切替時の file 衝突は `indra/cmake/CEFPlugin.cmake` が uninstall と sentinel reset を行うため、フラグを変えて configure し直すだけで切替できる。
+
+PR コメント時点では、両モードで Linux build と 3D stream 動作確認済み。Windows / macOS は別途検証予定として扱われていた。
 
 `autobuild.xml` の 2 entry:
 

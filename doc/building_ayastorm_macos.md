@@ -112,6 +112,24 @@ rg -n 'fmodstudio|darwin64|file://' my_autobuild.xml
 
 FMOD を使わないビルドにする場合は、以降の configure から `--fmodstudio` を外してください。
 
+## Dullahan audio callback
+
+AYAstorm Mac ビルド手順のデフォルトは Dullahan audio callback 経路を有効にします。
+
+`autobuild.xml` または `my_autobuild.xml` に `t-noami/dullahan` fork の installable (`dullahan_aya_audio`) が存在している場合:
+
+```bash
+-DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE
+```
+
+`t-noami/dullahan` fork が存在しておらず、upstream の `secondlife/dullahan` installable (`dullahan`) が存在している場合:
+
+```bash
+-DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=FALSE
+```
+
+configure 後は `build-darwin-universal/CMakeCache.txt` で `LL_DULLAHAN_AUDIO_CALLBACK:BOOL=` の値を確認してください。
+
 ## 環境変数
 
 ```bash
@@ -141,13 +159,14 @@ autobuild configure -A 64 -c ReleaseFS_open -- \
   --openal \
   --package \
   --chan AYAstorm-release \
-  -DLL_TESTS:BOOL=FALSE
+  -DLL_TESTS:BOOL=FALSE \
+  -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE
 ```
 
 configure 後に主要な設定を確認します。
 
 ```bash
-rg -n 'CMAKE_BUILD_TYPE|ADDRESS_SIZE|CMAKE_OSX_ARCHITECTURES|VIEWER_CHANNEL|USE_FMODSTUDIO|USE_OPENAL|OPENSIM|PACKAGE|VIEWER_BINARY_NAME' \
+rg -n 'CMAKE_BUILD_TYPE|ADDRESS_SIZE|CMAKE_OSX_ARCHITECTURES|VIEWER_CHANNEL|USE_FMODSTUDIO|USE_OPENAL|OPENSIM|PACKAGE|VIEWER_BINARY_NAME|LL_DULLAHAN_AUDIO_CALLBACK' \
   build-darwin-universal/CMakeCache.txt
 ```
 
@@ -163,6 +182,7 @@ USE_FMODSTUDIO:BOOL=ON
 USE_OPENAL:BOOL=ON
 VIEWER_BINARY_NAME:STRING=ayastorm-bin
 VIEWER_CHANNEL:STRING=Firestorm-AYAstorm-release
+LL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE
 ```
 
 ## Build / Package
