@@ -273,7 +273,7 @@ format handling:
 - sample format は float PCM 固定。
 - channel count は初期実装では 1 / 2 / 6 のみ許可する。
 - 3 / 4 / 5 / 7 / 8ch は fail ではなく、まず unsupported として 2D fallback に戻すのが安全である。
-- 6ch media audio は、CEF/Dullahan 側の channel order が確認できるまで 2D fallback にするか、取得できる layout 情報に基づいて FL/FR/C/LFE/SL/SR へ明示 map する。
+- 6ch media audio は `FL / FR / C / LFE / SL / SR` の channel order として扱い、既存 3D Stream 6ch routing に渡す。
 
 ### Phase 3: LLViewerMediaImpl から Media 3D source を公開する
 
@@ -369,6 +369,8 @@ MOAP は media texture / face index を中心に管理されている。一方�
 ### channel count
 
 MOAP ring は最大 8ch まで受けられるが、3D Stream multi routing は実質 1ch / 2ch / 6ch を前提にしている。
+
+MOAP/CEF から 6ch media audio が来る場合、channel order は `FL / FR / C / LFE / SL / SR` として扱う。この order は 3D Stream の既存 6ch routing と一致するため、追加の channel remap は不要である。
 
 初期実装:
 
