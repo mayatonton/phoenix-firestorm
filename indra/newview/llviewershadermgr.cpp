@@ -568,7 +568,7 @@ void LLViewerShaderMgr::setShaders()
             // r19 → r20 would silently hit stale compiled shaders on all
             // three OS. Bump this string at every AYAstorm release — grep
             // "AYASTORM_SHADER_CACHE_TAG" to find every site that needs it.
-            const char* const AYASTORM_SHADER_CACHE_TAG = "AYAstorm r20";
+            const char* const AYASTORM_SHADER_CACHE_TAG = "AYAstorm r24";
             hash_obj.update(AYASTORM_SHADER_CACHE_TAG);
             // </FS:AYA>
             current_cache_version = hash_obj.digest();
