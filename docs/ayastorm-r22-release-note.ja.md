@@ -2,6 +2,8 @@
 
 GitHub release ページ貼り付け用の文案。**r22 は Chat 表示の UX 改良リリース**で、Nearby Chat / IM の history を「人間アバター発言」と「System & Object 系通知 (LSL 発言 + システム通知 + TP / Region)」の 2 タブに分離します。
 
+> **配信形態**: r22 は **r23 リリースに同梱配信** されます (r22 単独タグは発行しません)。r23 リリースページから本ノートと r22 spec doc にリンクする運用です。
+
 実装・既知 limits・設定の詳細は永続資料 (`docs/ayastorm-r22-chat-tab-spec.md`) に常駐させ、本ノートはそこへの誘導と差分ハイライトに徹します。
 
 ---

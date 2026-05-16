@@ -1,8 +1,8 @@
 # AYAstorm r22 — Chat tab split (Human vs System & Object) 仕様
 
 **作成日**: 2026-05-15
-**最終更新**: 2026-05-16 (spec change: System & Object 再グループ化)
-**ステータス**: M1〜M7 完了、M8 (spec change 実装) 着手中、M9 (Release) 着手前
+**最終更新**: 2026-05-16 (M8 実装 + 3 OS 受入完了、r23 同梱リリース確定)
+**ステータス**: M1〜M8 完了 (3 OS 受入 PASS)。**単独タグは発行せず、r23 リリースに同梱配信予定**
 **対象ブランチ**: `feat/ayastorm-r22-chat-tab-split`
 
 このドキュメントは r22 で追加予定の「Chat 表示の人間/Object タブ分離」機能の仕様。AYA さんとの対話で確定した内容を集約。M1 セッション (2026-05-15) で主要論点をすべて確定、2026-05-16 に spec change (System & Object 再グループ化 + フレンド online 例外 cvar) を追加。
@@ -280,20 +280,20 @@ XUI / C++ を覗いた結果:
 - [x] AYAChatWindowStyle 切替時に旧スタイルの IM コンテナが自動で閉じる (M4-extra)
 - [x] 3 OS (Linux / Win / Mac) でビルド通過 + 動作確認 (M7)
 
-**M8 spec change で追加**:
+**M8 spec change で追加** (全て 3 OS で PASS 確認済):
 
-- [ ] タブラベルが 3 言語 (en/ja/zh) すべてで `System & Object` (順序固定、`Object & System` ではない) に表示される
-- [ ] System / Teleport / Region 発言は **System & Object** タブに流れる (spec change 2026-05-16、旧仕様では Human タブだった)
-- [ ] `CHAT_SOURCE_UNKNOWN` は Human タブにフォールバック (default safe、変更なし)
-- [ ] フレンド online/offline 通知は System & Object タブには `FSFriendOnlineToHumanTab` の値に関わらず**常に**出力される
-- [ ] `FSFriendOnlineToHumanTab=true` (デフォルト) のとき、フレンド online/offline 通知は Human タブにも複製出力される
-- [ ] `FSFriendOnlineToHumanTab=false` で Human への複製が止まる (System & Object には残る)
-- [ ] `Preferences → Chat → Chat Windows` に `FSFriendOnlineToHumanTab` チェックボックスが master のインデント子要素として表示される
-- [ ] `FSChatHumanObjectTabs=false` のとき、`FSFriendOnlineToHumanTab` チェックボックスがグレーアウトする (enabled_control 連動)
-- [ ] TP 着地時のセパレーター (`CHAT_SOURCE_TELEPORT` + `CHAT_STYLE_TELEPORT_SEP`) が **FS V1 / V7 / LL の 3 style すべてで** System & Object タブに表示される (M8 で `llagent.cpp` の commented-out LL 経路を復活、上流 FS の latent bug 修正を同梱)
-- [ ] TP 着地時にも非アクティブタブの未読バッジが bump される (history replay と区別するため `args["is_replay"]` 専用フラグを導入、`do_not_log` は履歴抑止のみの意味に戻す)
-- [ ] LL style でも TP 完了時の SLURL 通知 (`FSShowBackSLURL` で出る "secondlife://... からのテレポートが完了しました") と simulator version 差異通知が System & Object タブに表示される (`llnotificationhandlerutil.cpp` の `logToNearbyChat` で LL 経路を復活)
-- [ ] M8 後に 3 OS (Linux / Win / Mac) で再ビルド + 動作確認 PASS
+- [x] タブラベルが 3 言語 (en/ja/zh) すべてで `System & Object` (順序固定、`Object & System` ではない) に表示される
+- [x] System / Teleport / Region 発言は **System & Object** タブに流れる (spec change 2026-05-16、旧仕様では Human タブだった)
+- [x] `CHAT_SOURCE_UNKNOWN` は Human タブにフォールバック (default safe、変更なし)
+- [x] フレンド online/offline 通知は System & Object タブには `FSFriendOnlineToHumanTab` の値に関わらず**常に**出力される
+- [x] `FSFriendOnlineToHumanTab=true` (デフォルト) のとき、フレンド online/offline 通知は Human タブにも複製出力される
+- [x] `FSFriendOnlineToHumanTab=false` で Human への複製が止まる (System & Object には残る)
+- [x] `Preferences → Chat → Chat Windows` に `FSFriendOnlineToHumanTab` チェックボックスが master のインデント子要素として表示される
+- [x] `FSChatHumanObjectTabs=false` のとき、`FSFriendOnlineToHumanTab` チェックボックスがグレーアウトする (enabled_control 連動)
+- [x] TP 着地時のセパレーター (`CHAT_SOURCE_TELEPORT` + `CHAT_STYLE_TELEPORT_SEP`) が **FS V1 / V7 / LL の 3 style すべてで** System & Object タブに表示される (M8 で `llagent.cpp` の commented-out LL 経路を復活、上流 FS の latent bug 修正を同梱)
+- [x] TP 着地時にも非アクティブタブの未読バッジが bump される (history replay と区別するため `args["is_replay"]` 専用フラグを導入、`do_not_log` は履歴抑止のみの意味に戻す)
+- [x] LL style でも TP 完了時の SLURL 通知 (`FSShowBackSLURL` で出る "secondlife://... からのテレポートが完了しました") と simulator version 差異通知が System & Object タブに表示される (`llnotificationhandlerutil.cpp` の `logToNearbyChat` で LL 経路を復活)
+- [x] M8 後に 3 OS (Linux / Win / Mac) で再ビルド + 動作確認 PASS
 
 ---
 
@@ -332,8 +332,8 @@ XUI / C++ を覗いた結果:
 | M5 | 未読バッジ (`(N)` 件数表示、セッション内のみ、再起動でリセット) | ✅ 完了 |
 | M6 | IM (1 on 1) — `floater_im_session.xml` 対応、`IM_FROM_TASK` 判定 | ✅ 完了 (LSL `llInstantMessage` 経由で IM_FROM_TASK が Object タブに分離されることを確認) |
 | M7 | 3 OS ビルド (Linux → Win → Mac) | ✅ 完了 (2026-05-16、3 OS ビルド + 動作確認 PASS) |
-| M8 | spec change 実装: System & Object 再グループ化 + フレンド online → Human 例外 cvar (`FSFriendOnlineToHumanTab`) + タブラベル `Object` → `System & Object` (3 言語) | ⏳ 着手中 (2026-05-16) |
-| M9 | Release — spec doc 更新、release note 3 言語、tag | ⏳ 着手前 |
+| M8 | spec change 実装: System & Object 再グループ化 + フレンド online → Human 例外 cvar (`FSFriendOnlineToHumanTab`) + タブラベル `Object` → `System & Object` (3 言語) + 上流 LL style 通知 dispatch 復活 + 未読バッジの `is_replay` 分離 | ✅ 完了 (2026-05-16、3 OS 受入 PASS) |
+| M9 | Release — **r22 単独タグは発行せず、r23 リリースに同梱配信**。本 spec doc finalize 済、release note 3 言語 finalize 済、r23 release page から本 spec へリンク | ✅ 完了 (2026-05-16、r23 同梱方針確定) |
 
 ---
 
@@ -368,3 +368,5 @@ XUI / C++ を覗いた結果:
   - **方針**: `llagent.cpp` の修正と同様に、`LLFloaterIMNearbyChat` も `findTypedInstance` でガードしつつ並列 dispatch。3 style 一貫性確保。
   - **実装**: `llnotificationhandlerutil.cpp` の `#include "llfloaterimnearbychat.h"` を復活、`logToNearbyChat` 内で `FSFloaterNearbyChat::addMessage` と `LLFloaterIMNearbyChat::addMessage` の両方を呼ぶ。
   - **副次効果**: TP 完了 SLURL (`FSShowBackSLURL=true` 時) / region simulator version 差異 / RLV 系通知など、`ChatSystemMessageTip` 経由の system tip が全て LL style にも届くようになる。`mSourceType = CHAT_SOURCE_SYSTEM` で送られるので System & Object タブにルーティングされる。
+- **2026-05-16 (M8 完了 + 3 OS 受入 PASS)**: Linux / Windows / macOS の 3 OS で M8 込みの再ビルド + 動作確認すべて PASS。§7 の M8 追加受入項目 (11 件) を全てクリア。
+- **2026-05-16 (r23 同梱リリース確定)**: r22 単独タグは発行せず、r23 (parcel-bound 3D stream) リリースに同梱配信することを決定。理由: r22 / r23 とも 3 OS テスト PASS 済で配信遅延要因が無く、独立 tag を 2 本切るより 1 リリースにまとめた方が release page / 周知の整理に有利。本 spec doc と release note 3 言語 (`docs/ayastorm-r22-release-note.{en,ja,zh}.md`) は単体で完結する形のまま保持し、r23 release page からリンクする運用とする。

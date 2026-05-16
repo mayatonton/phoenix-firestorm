@@ -2,6 +2,8 @@
 
 Short text intended to be pasted into the GitHub release page. **r22 is a chat-UX release** that splits the Nearby Chat / IM history into two tabs — "human avatar speech" and "System & Object notifications (LSL + system + TP / Region)".
 
+> **Distribution**: r22 ships **bundled with the r23 release** (no standalone r22 tag). The r23 release page links back to this note and to the r22 spec.
+
 Implementation details / known limits / configuration reference live in the permanent spec (`docs/ayastorm-r22-chat-tab-spec.md`). This note is link-only + diff highlights.
 
 ---
