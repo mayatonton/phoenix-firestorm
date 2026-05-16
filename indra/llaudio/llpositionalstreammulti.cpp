@@ -661,6 +661,11 @@ void LLPositionalStreamMulti::releaseAll()
 
 const char* LLPositionalStreamMulti::sourceFormatName() const
 {
+    if (mSourceKind == SourceKind::MediaRing)
+    {
+        return "Media";
+    }
+
     // r10 P5: short codec label for the routing diagnostic log. Only the
     // codecs we actually meet on the AYAstorm path are spelled out — anything
     // else falls back to "Unknown" so the diagnostic line still parses.

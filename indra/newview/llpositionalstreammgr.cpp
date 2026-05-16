@@ -808,6 +808,11 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         if (!detail.empty()) msg += " (" + detail + ")";
         msg += "。root prim の media を再生開始してから再評価されます";
         break;
+    case DistErrorKind::MediaSourceInUse:
+        msg = "構造エラー (root " + id_short + "): この media source は別の 3D Stream binding で使用中です";
+        if (!detail.empty()) msg += " (" + detail + ")";
+        msg += "。同じ media を複数の 3D Stream source として同時使用することはできません";
+        break;
     }
     notifyStream3D(msg);
 }
@@ -1173,6 +1178,22 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         source_key.face = media_face;
         source_label = "media:" + source_key.media_id.asString()
                        + ":face=" + llformat("%d", media_face);
+
+        for (const auto& [other_root_id, other_binding] : mDistributedBindings)
+        {
+            if (other_root_id == root_id)
+            {
+                continue;
+            }
+            if (other_binding.source_key.kind == DistSourceKind::Media &&
+                other_binding.source_key.media_id == source_key.media_id)
+            {
+                notifyDistributedError(root_id, DistErrorKind::MediaSourceInUse,
+                                       "other_root=" + other_root_id.asString().substr(0, 8));
+                teardownDistributedBinding(root_id);
+                return;
+            }
+        }
     }
     else if (root_data.url.has_value())
     {

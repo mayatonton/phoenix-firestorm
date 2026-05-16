@@ -553,6 +553,7 @@ private:
         BadFace,
         MediaFaceAmbiguous,
         MediaSourceNotReady,
+        MediaSourceInUse,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for
