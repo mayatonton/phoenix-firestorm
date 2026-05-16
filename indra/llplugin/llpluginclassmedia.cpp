@@ -45,8 +45,7 @@ static int LOW_PRIORITY_TEXTURE_SIZE_DEFAULT = 256;
 #if LL_DULLAHAN_AUDIO_CALLBACK
 static const size_t MEDIA_AUDIO_RING_CAPACITY_FRAMES = 48000 * 2;
 static const size_t MEDIA_AUDIO_SHARED_MEMORY_SIZE =
-    sizeof(LLPluginAudioRingHeader) +
-    (MEDIA_AUDIO_RING_CAPACITY_FRAMES * LL_PLUGIN_AUDIO_RING_MAX_CHANNELS * sizeof(float));
+    ll_plugin_audio_ring_shared_memory_size(MEDIA_AUDIO_RING_CAPACITY_FRAMES);
 #endif
 
 static int nextPowerOf2( int value )
