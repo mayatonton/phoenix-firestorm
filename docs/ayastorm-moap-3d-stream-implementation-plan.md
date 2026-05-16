@@ -39,16 +39,17 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 
 2. 3D Stream の source 部分を分岐可能にする。
    - 既存: URL source -> `FMOD::createStream()` -> `FMOD::Sound::readData()`
-   - 追加: MOAP PCM source -> `LLPluginAudioRingHeader` -> `LLMultiTailRing`
+   - 追加: Media PCM source -> `LLPluginAudioRingHeader` -> `LLMultiTailRing`
 
 3. 3D 有効時は対象 MOAP の 2D `LLMediaAudioStream` を止める。
    - 現行 ring は `mReadFrame` を 1 つしか持たない single-reader 構造である。
    - 2D path と 3D path が同じ ring を同時に読むと、片方が先に `mReadFrame` を進めて音切れや無音を起こす。
    - 初期実装では「MOAP 3D 有効時は 2D media audio path を無効化する」を明示ルールにする。
 
-4. MOAP surface と 3D Stream binding の対応は、既存 linkset 評価に寄せる。
-   - 初期案は 3D Stream speaker linkset の root prim に設定された MOAP media を source として扱う。
-   - YouTube などの通常 web media も、root prim の MOAP として再生されていれば対象にする。
+4. Media surface と 3D Stream binding の対応は、既存 linkset 評価に寄せる。
+   - 初期案は 3D Stream speaker linkset の root prim に設定された media を `{source:media}` 指定時だけ source として扱う。
+   - YouTube などの通常 web media も、root prim の media として再生されていれば対象にする。
+   - root prim に media を表示しつつ別の URL stream を speaker から鳴らす構成を許可するため、media source は暗黙にはしない。
    - speaker prim の `{ch:...}` や `{range:...}` は既存 `[3dstream-stereo:...]` の概念を流用する。
 
 ## 現行仕様: MOAP audio
@@ -148,21 +149,27 @@ bool LLPositionalStreamMulti::startFromPcmRing(
 - speaker position update
 - failure / reconnect / stop lifecycle
 
-### MOAP binding
+### Media binding
 
-初期実装では、3D Stream speaker linkset の root prim に MOAP media が設定されている場合、その MOAP media を 3D Stream source として扱う。
+初期実装では、3D Stream speaker linkset の root prim に media が設定され、root prim の Description に `{source:media}` がある場合、その media audio を 3D Stream source として扱う。
 
-つまり、root prim に YouTube / Web ラジオ / 通常 web page の MOAP が貼られていて、その linkset が 3D Stream speaker 構成として成立していれば、MOAP から出る音声を 3D Stream の speaker prim へ流す。
+つまり、root prim に YouTube / Web ラジオ / 通常 web page の media が貼られていて、その linkset が 3D Stream speaker 構成として成立していれば、`{source:media}` 指定で media から出る音声を 3D Stream の speaker prim へ流す。
 
-source を明示する `{source:moap}` は必須にしない。root prim に URL source がなく、root prim に MOAP media がある場合は、MOAP を暗黙の source とする。
+media を source にする場合は `{source:media}` を必須にする。root prim に media があるだけでは 3D Stream source にはしない。
+
+これにより、次の 2 つの構成を両方扱える。
+
+- root prim の media audio を 3D Stream speaker から鳴らす。
+- root prim の media は画面表示用に使い、speaker からは別の URL stream を鳴らす。
 
 speaker 定義は既存 tag を流用する。
 
 ```text
-[3dstream-stereo:{ch:FL}{range:20}{volume:1.0}]
+[3dstream-stereo:{source:media}{ch:FL}{range:20}{volume:1.0}]
+[3dstream-stereo:{url:http://example.invalid/stream}{ch:FL}{range:20}{volume:1.0}]
 ```
 
-URL と MOAP source の混在は避ける。root prim に `{url:...}` がある場合は従来の URL-based 3D Stream を優先する。root prim に `{url:...}` がなく、root prim に MOAP media がある場合だけ MOAP source を使う。
+URL source と media source は排他にする。`{url:...}` と `{source:media}` が同時に指定された場合は invalid binding として扱い、どちらか一方に修正させる。
 
 media の解決は段階的に行う。
 
@@ -247,15 +254,17 @@ void setAudioRoutedTo3DStream(bool enabled);
 
 `setAudioRoutedTo3DStream(true)` の間は `LLMediaAudioStream::update()` を止める、または `mMediaAudioStream->stop()` する。これにより二重再生と ring 二重消費を避ける。
 
-### Phase 4: LLPositionalStreamMgr に MOAP binding を追加する
+### Phase 4: LLPositionalStreamMgr に Media binding を追加する
 
-`LLPositionalStreamMgr` の binding 評価に MOAP source を追加する。
+`LLPositionalStreamMgr` の binding 評価に media source を追加する。
 
 初期仕様:
 
 - linkset が 3D Stream speaker 構成として成立していることを前提にする。
-- root prim に `{url:...}` がある場合は従来の URL-based 3D Stream を優先する。
-- root prim に `{url:...}` がなく、root prim に MOAP media がある場合は、その MOAP を source とする。
+- root prim に `{url:...}` がある場合は従来の URL-based 3D Stream source とする。
+- root prim に `{source:media}` がある場合は root prim の media audio を source とする。
+- `{url:...}` と `{source:media}` は同時指定不可にする。
+- root prim に media があっても `{source:media}` がなければ media audio は 3D Stream source にしない。
 - speaker 定義は既存 multi binding と同じ `{ch:...}` を使う。
 - media face 未指定時は root prim の最初の media face を使う。
 - media impl が解決できなければ 2D fallback に戻す。
