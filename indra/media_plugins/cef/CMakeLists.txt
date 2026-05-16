@@ -38,13 +38,22 @@ if (LINUX)
   set(CMAKE_SHARED_LINKER_FLAGS  "-Wl,--build-id -Wl,-rpath,'$ORIGIN:$ORIGIN/../../lib'")
   list(APPEND media_plugin_cef_LINK_LIBRARIES llwindow ${MEDIA_PLUGIN_BASE_LIBRARIES})
 elseif (DARWIN)
-  list(APPEND media_plugin_cef_SOURCE_FILES mac_volume_catcher_null.cpp)
-  find_library(CORESERVICES_LIBRARY CoreServices)
-  find_library(AUDIOUNIT_LIBRARY AudioUnit)
-  set( media_plugin_cef_LINK_LIBRARIES
-       ${CORESERVICES_LIBRARY}     # for Component Manager calls
-       ${AUDIOUNIT_LIBRARY}        # for AudioUnit calls
-       )
+  # <AYAstorm> When Dullahan audio callback is ON, the viewer plays CEF/MOAP
+  # PCM through FMOD, so the macOS VolumeCatcher only needs to mute the
+  # plugin-side native output (to avoid double-play). When OFF, fall back to
+  # the upstream "null" VolumeCatcher path used before PR #69.
+  if (LL_DULLAHAN_AUDIO_CALLBACK)
+    list(APPEND media_plugin_cef_SOURCE_FILES mac_volume_catcher.cpp)
+    find_library(CORESERVICES_LIBRARY CoreServices)
+    find_library(AUDIOUNIT_LIBRARY AudioUnit)
+    set( media_plugin_cef_LINK_LIBRARIES
+         ${CORESERVICES_LIBRARY}     # for Component Manager calls
+         ${AUDIOUNIT_LIBRARY}        # for AudioUnit calls
+         )
+  else (LL_DULLAHAN_AUDIO_CALLBACK)
+    list(APPEND media_plugin_cef_SOURCE_FILES mac_volume_catcher_null.cpp)
+  endif (LL_DULLAHAN_AUDIO_CALLBACK)
+  # </AYAstorm>
 elseif (WINDOWS)
   list(APPEND media_plugin_cef_SOURCE_FILES windows_volume_catcher.cpp)
 endif (LINUX)

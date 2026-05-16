@@ -63,6 +63,13 @@ if (TARGET ll::fmodstudio)
          llstream3durlresolve.h
          fmod_codec_opus.h
          )
+
+    # <AYAstorm> Dullahan audio callback path requires the t-noami/dullahan fork
+    if (LL_DULLAHAN_AUDIO_CALLBACK)
+        list(APPEND llaudio_SOURCE_FILES llmediaaudiostream.cpp)
+        list(APPEND llaudio_HEADER_FILES llmediaaudiostream.h)
+    endif ()
+    # </AYAstorm>
 endif ()
 
 if (TARGET ll::openal)

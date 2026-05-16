@@ -32,6 +32,10 @@
 #include "llagentcamera.h"
 #include "llappviewer.h"
 #include "llaudioengine.h"  // for gAudiop
+#if LL_DULLAHAN_AUDIO_CALLBACK
+#include "llmediaaudiostream.h"
+#include "llpluginaudio.h"
+#endif
 #include "llcallbacklist.h"
 #include "lldir.h"
 #include "lldiriterator.h"
@@ -1623,6 +1627,9 @@ LLViewerMediaImpl::LLViewerMediaImpl(     const LLUUID& texture_id,
                                           U8 media_loop)
 :
     mMediaSource( NULL ),
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    mMediaAudioStream(new LLMediaAudioStream()),
+#endif
     mMovieImageHasMips(false),
     mMediaWidth(media_width),
     mMediaHeight(media_height),
@@ -1644,6 +1651,9 @@ LLViewerMediaImpl::LLViewerMediaImpl(     const LLUUID& texture_id,
     mMediaSourceFailed(false),
     mRequestedVolume(1.0f),
     mPreviousVolume(1.0f),
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    mAppliedVolume(-1.0f),
+#endif
     mIsMuted(false),
     mNeedsMuteCheck(false),
     mPreviousMediaState(MEDIA_NONE),
@@ -1764,6 +1774,13 @@ void LLViewerMediaImpl::createMediaSource()
 void LLViewerMediaImpl::destroyMediaSource()
 {
     mNeedsNewTexture = true;
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    if (mMediaAudioStream)
+    {
+        mMediaAudioStream->stop();
+        mMediaAudioStream->setRing(nullptr);
+    }
+#endif
 
     // Tell the viewer media texture it's no longer active
     LLViewerMediaTexture* oldImage = LLViewerTextureManager::findMediaTexture( mTextureId );
@@ -1989,6 +2006,9 @@ bool LLViewerMediaImpl::initializePlugin(const std::string& media_type)
 
         mMediaSource.reset(media_source);
         mMediaSource->setDeleteOK(false) ;
+#if LL_DULLAHAN_AUDIO_CALLBACK
+        mAppliedVolume = -1.0f;
+#endif
         updateVolume();
 
         return true;
@@ -2233,11 +2253,35 @@ void LLViewerMediaImpl::updateVolume()
 
         if (sOnlyAudibleTextureID == LLUUID::null || sOnlyAudibleTextureID == mTextureId)
         {
+#if LL_DULLAHAN_AUDIO_CALLBACK
+            if (mAppliedVolume != volume)
+            {
+                mMediaSource->setVolume(volume);
+                if (mMediaAudioStream)
+                {
+                    mMediaAudioStream->setVolume(volume);
+                }
+                mAppliedVolume = volume;
+            }
+#else
             mMediaSource->setVolume(volume);
+#endif
         }
         else
         {
+#if LL_DULLAHAN_AUDIO_CALLBACK
+            if (mAppliedVolume != 0.0f)
+            {
+                mMediaSource->setVolume(0.0f);
+                if (mMediaAudioStream)
+                {
+                    mMediaAudioStream->setVolume(0.0f);
+                }
+                mAppliedVolume = 0.0f;
+            }
+#else
             mMediaSource->setVolume(0.0f);
+#endif
         }
     }
 }
@@ -2995,6 +3039,14 @@ void LLViewerMediaImpl::update()
         destroyMediaSource();
         return;
     }
+
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    if (mMediaAudioStream)
+    {
+        mMediaAudioStream->setRing(reinterpret_cast<LLPluginAudioRingHeader*>(mMediaSource->getAudioData()));
+        mMediaAudioStream->update(gAudiop);
+    }
+#endif
 
     if(!mMediaSource->textureValid())
     {

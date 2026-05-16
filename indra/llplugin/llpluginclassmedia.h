@@ -71,6 +71,8 @@ public:
 
     // This may return NULL.  Callers need to check for and handle this case.
     unsigned char* getBitsData();
+    void* getAudioData();
+    size_t getAudioDataSize() const { return mAudioSharedMemorySize; }
 
     // gets the format details of the texture data
     // These may return 0 if they haven't been set up yet.  The caller needs to detect this case.
@@ -361,6 +363,7 @@ protected:
     std::queue<LLPluginMessage> mSendQueue;     // Used to queue messages while the plugin initializes.
 
     void setSizeInternal(void);
+    void ensureAudioSharedMemory();
 
     bool        mTextureParamsReceived;     // the mRequestedTexture* fields are only valid when this is true
     S32         mRequestedTextureDepth;
@@ -372,6 +375,8 @@ protected:
 
     std::string mTextureSharedMemoryName;
     size_t      mTextureSharedMemorySize;
+    std::string mAudioSharedMemoryName;
+    size_t      mAudioSharedMemorySize;
 
     // True to scale requested media up to the full size of the texture (i.e. next power of two)
     bool        mAutoScaleMedia;

@@ -30,6 +30,9 @@
 #include "indra_constants.h"
 
 #include "llpluginclassmedia.h"
+#if LL_DULLAHAN_AUDIO_CALLBACK
+#include "llpluginaudio.h"
+#endif
 #include "llpluginmessageclasses.h"
 #include "llcontrol.h"
 
@@ -39,6 +42,12 @@ extern bool gHiDPISupport;
 #endif
 
 static int LOW_PRIORITY_TEXTURE_SIZE_DEFAULT = 256;
+#if LL_DULLAHAN_AUDIO_CALLBACK
+static const size_t MEDIA_AUDIO_RING_CAPACITY_FRAMES = 48000 * 2;
+static const size_t MEDIA_AUDIO_SHARED_MEMORY_SIZE =
+    sizeof(LLPluginAudioRingHeader) +
+    (MEDIA_AUDIO_RING_CAPACITY_FRAMES * LL_PLUGIN_AUDIO_RING_MAX_CHANNELS * sizeof(float));
+#endif
 
 static int nextPowerOf2( int value )
 {
@@ -105,6 +114,8 @@ void LLPluginClassMedia::reset()
     mRequestedTextureCoordsOpenGL = false;
     mTextureSharedMemorySize = 0;
     mTextureSharedMemoryName.clear();
+    mAudioSharedMemorySize = 0;
+    mAudioSharedMemoryName.clear();
     mDefaultMediaWidth = 0;
     mDefaultMediaHeight = 0;
     mNaturalMediaWidth = 0;
@@ -172,6 +183,10 @@ void LLPluginClassMedia::idle(void)
     {
         mPlugin->idle();
     }
+
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    ensureAudioSharedMemory();
+#endif
 
     if((mMediaWidth == -1) || (!mTextureParamsReceived) || (mPlugin == NULL) || (mPlugin->isBlocked()) || (mOwner == NULL))
     {
@@ -307,6 +322,75 @@ unsigned char* LLPluginClassMedia::getBitsData()
     }
     return result;
 }
+
+void* LLPluginClassMedia::getAudioData()
+{
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    void *result = NULL;
+    if((mPlugin != NULL) && !mAudioSharedMemoryName.empty())
+    {
+        result = mPlugin->getSharedMemoryAddress(mAudioSharedMemoryName);
+    }
+    return result;
+#else
+    return NULL;
+#endif
+}
+
+#if LL_DULLAHAN_AUDIO_CALLBACK
+void LLPluginClassMedia::ensureAudioSharedMemory()
+{
+    if(!mPlugin || !mPlugin->isRunning() || !mAudioSharedMemoryName.empty())
+    {
+        return;
+    }
+
+    mAudioSharedMemorySize = MEDIA_AUDIO_SHARED_MEMORY_SIZE;
+    mAudioSharedMemoryName = mPlugin->addSharedMemory(mAudioSharedMemorySize);
+    if(mAudioSharedMemoryName.empty())
+    {
+        LL_WARNS("Plugin") << "Couldn't create media audio shared memory segment." << LL_ENDL;
+        mAudioSharedMemorySize = 0;
+        return;
+    }
+
+    void *addr = mPlugin->getSharedMemoryAddress(mAudioSharedMemoryName);
+    if(!addr)
+    {
+        LL_WARNS("Plugin") << "Failed to map media audio shared memory: "
+                            << mAudioSharedMemoryName << LL_ENDL;
+        return;
+    }
+
+    memset(addr, 0x00, mAudioSharedMemorySize);
+    LLPluginAudioRingHeader *header = reinterpret_cast<LLPluginAudioRingHeader*>(addr);
+    header->mMagic = LL_PLUGIN_AUDIO_RING_MAGIC;
+    header->mVersion = LL_PLUGIN_AUDIO_RING_VERSION;
+    header->mHeaderSize = sizeof(LLPluginAudioRingHeader);
+    header->mCapacityFrames = MEDIA_AUDIO_RING_CAPACITY_FRAMES;
+    header->mSampleRate.store(0, std::memory_order_relaxed);
+    header->mChannels.store(0, std::memory_order_relaxed);
+    header->mBytesPerSample.store(sizeof(float), std::memory_order_relaxed);
+    header->mFormatSerial.store(0, std::memory_order_relaxed);
+    header->mWriteFrame.store(0, std::memory_order_relaxed);
+    header->mReadFrame.store(0, std::memory_order_relaxed);
+    header->mTotalFramesWritten.store(0, std::memory_order_relaxed);
+    header->mTotalFramesDropped.store(0, std::memory_order_relaxed);
+
+    LLPluginMessage message(LLPLUGIN_MESSAGE_CLASS_MEDIA, "audio_shm_set");
+    message.setValue("name", mAudioSharedMemoryName);
+    message.setValueS32("size", (S32)mAudioSharedMemorySize);
+    message.setValueS32("capacity_frames", (S32)MEDIA_AUDIO_RING_CAPACITY_FRAMES);
+    message.setValueS32("max_channels", (S32)LL_PLUGIN_AUDIO_RING_MAX_CHANNELS);
+    mPlugin->sendMessage(message);
+
+    LL_INFOS("Plugin") << "Created media audio shared memory: "
+                       << mAudioSharedMemoryName
+                       << " size=" << mAudioSharedMemorySize
+                       << " capacity_frames=" << MEDIA_AUDIO_RING_CAPACITY_FRAMES
+                       << LL_ENDL;
+}
+#endif // LL_DULLAHAN_AUDIO_CALLBACK
 
 void LLPluginClassMedia::setSize(int width, int height)
 {
