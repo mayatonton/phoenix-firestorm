@@ -551,6 +551,8 @@ private:
         BadSource,
         ConflictingSource,
         BadFace,
+        MediaFaceAmbiguous,
+        MediaSourceNotReady,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for

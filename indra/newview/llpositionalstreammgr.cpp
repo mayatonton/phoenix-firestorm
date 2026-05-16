@@ -736,7 +736,7 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{range:30}]";
         break;
     case DistErrorKind::NoSpeakers:
-        msg = "構造エラー (root " + id_short + "): 音源宣言 (url) が root にあるがスピーカー (ch) が見つかりません";
+        msg = "構造エラー (root " + id_short + "): 音源宣言が root にあるがスピーカー (ch) が見つかりません";
         msg += "。各スピーカープリムに [3dstream-stereo:{ch:L|R|M}] を記載してください";
         break;
     case DistErrorKind::SpeakerOverLimit:
@@ -746,8 +746,8 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         break;
     case DistErrorKind::StreamStartFailed:
         msg = "再生エラー (root " + id_short + "): ストリームを開始できませんでした";
-        if (!detail.empty()) msg += " (url='" + detail + "')";
-        msg += "。URL とネットワーク接続を確認してください";
+        if (!detail.empty()) msg += " (source='" + detail + "')";
+        msg += "。音源の再生状態とネットワーク接続を確認してください";
         break;
     case DistErrorKind::UnsupportedSourceFormat:
         msg = "構造エラー (root " + id_short + "): 非対応のソース形式です";
@@ -797,6 +797,16 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         msg = "タグ書式エラー (prim " + id_short + "): face は 0 以上の整数で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
         msg += "。例: [3dstream-stereo:{source:media}{face:0}{ch:L}{range:30}]";
+        break;
+    case DistErrorKind::MediaFaceAmbiguous:
+        msg = "構造エラー (root " + id_short + "): root prim に media face が複数あるため source media を特定できません";
+        if (!detail.empty()) msg += " (" + detail + ")";
+        msg += "。例: [3dstream-stereo:{source:media}{face:0}{ch:L}{range:30}]";
+        break;
+    case DistErrorKind::MediaSourceNotReady:
+        msg = "再生待機 (root " + id_short + "): media source の音声がまだ準備できていません";
+        if (!detail.empty()) msg += " (" + detail + ")";
+        msg += "。root prim の media を再生開始してから再評価されます";
         break;
     }
     notifyStream3D(msg);
@@ -1101,14 +1111,22 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         if (media_face < 0)
         {
             const S32 num_tes = root_volume->getNumTEs();
+            S32 media_face_count = 0;
             for (S32 i = 0; i < num_tes; ++i)
             {
                 const LLTextureEntry* te = root_volume->getTE(static_cast<U8>(i));
                 if (te && te->hasMedia())
                 {
+                    ++media_face_count;
                     media_face = i;
-                    break;
                 }
+            }
+            if (media_face_count > 1)
+            {
+                notifyDistributedError(root_id, DistErrorKind::MediaFaceAmbiguous,
+                                       llformat("media_faces=%d", media_face_count));
+                teardownDistributedBinding(root_id);
+                return;
             }
         }
 
@@ -1128,6 +1146,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
             root_volume->requestMediaDataUpdate(false);
             LL_DEBUGS("Stream3D") << "[3dstream-stereo] media source not ready for root "
                                    << root_id << " face=" << media_face << LL_ENDL;
+            notifyDistributedError(root_id, DistErrorKind::MediaSourceNotReady,
+                                   llformat("face=%d media impl not loaded", media_face));
             teardownDistributedBinding(root_id);
             return;
         }
@@ -1142,6 +1162,8 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         {
             LL_DEBUGS("Stream3D") << "[3dstream-stereo] media audio ring not ready for root "
                                    << root_id << " face=" << media_face << LL_ENDL;
+            notifyDistributedError(root_id, DistErrorKind::MediaSourceNotReady,
+                                   llformat("face=%d audio ring not ready", media_face));
             teardownDistributedBinding(root_id);
             return;
         }

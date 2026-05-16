@@ -49,8 +49,7 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 まだ未実装:
 
 - media source の実機再生確認。
-- media source の diagnostic 表示文言の整理。
-- media face が未ロードの場合の user-facing notification 整理。
+- media source の diagnostic 表示文言の追加整理。
 
 確認済み:
 
