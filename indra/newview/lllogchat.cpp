@@ -59,6 +59,7 @@ const std::string LL_IM_DATE_TIME("datetime");
 const std::string LL_IM_TEXT("message");
 const std::string LL_IM_FROM("from");
 const std::string LL_IM_FROM_ID("from_id");
+const std::string LL_IM_SOURCE_TYPE("source_type"); // <FS:AYAstorm r22> Human/Object tab routing
 const std::string LL_TRANSCRIPT_FILE_EXTENSION("txt");
 
 const std::string GROUP_CHAT_SUFFIX(" (group)");
@@ -419,6 +420,22 @@ void LLLogChat::saveHistory(const std::string& filename,
                             const LLUUID& from_id,
                             const std::string& line)
 {
+    // <FS:AYAstorm r22> Forward legacy callers to source-typed overload.
+    // CHAT_SOURCE_AGENT is the safe default: 1:1 IM and most call sites are agent chat.
+    // Defensive override for empty-from/null-id case (treated as SYSTEM below) is handled in the overload.
+    saveHistory(filename, from, from_id, line, CHAT_SOURCE_AGENT);
+    // </FS:AYAstorm r22>
+}
+
+//static
+// <FS:AYAstorm r22> Source-typed overload — writes a trailing <!--src:type--> marker so that
+// loadHistory can route lines to Human/Object tabs without a sidecar file.
+void LLLogChat::saveHistory(const std::string& filename,
+                            const std::string& from,
+                            const LLUUID& from_id,
+                            const std::string& line,
+                            EChatSourceType source_type)
+{
     if(LLStartUp::getStartupState() <= STATE_LOGIN_CLEANUP)
     {
         return;
@@ -468,11 +485,17 @@ void LLLogChat::saveHistory(const std::string& filename,
     if (from.empty() && from_id.isNull())
     {
         item["from"] = SYSTEM_FROM;
+        // <FS:AYAstorm r22> Empty from + null id is unambiguously system; force-tag accordingly so a stray default
+        // from a legacy caller does not mis-mark a system line as AGENT.
+        source_type = CHAT_SOURCE_SYSTEM;
+        // </FS:AYAstorm r22>
     }
     else
     {
         item["from"] = from;
     }
+
+    item[LL_IM_SOURCE_TYPE] = (S32)source_type; // <FS:AYAstorm r22> consumed by LLChatLogFormatter::format
 
     file << LLChatLogFormatter(item) << std::endl;
 
@@ -480,6 +503,7 @@ void LLLogChat::saveHistory(const std::string& filename,
 
     LLLogChat::getInstance()->triggerHistorySignal();
 }
+// </FS:AYAstorm r22>
 
 // static
 void LLLogChat::loadChatHistory(const std::string& file_name, std::list<LLSD>& messages, const LLSD& load_params, bool is_group)
@@ -1094,6 +1118,27 @@ void LLChatLogFormatter::format(const LLSD& im, std::ostream& ostr) const
         boost::replace_all(im_text, NEW_LINE, NEW_LINE_SPACE_PREFIX);
         ostr << im_text;
     }
+
+    // <FS:AYAstorm r22> Append source type marker for Human/Object tab routing on load.
+    // Marker format: <!--src:avatar|task|system|teleport|region|unknown-->
+    // Choice of HTML-comment delimiter: stays invisible in any external text viewer that hides comments,
+    // and the closing "-->" is the unambiguous end anchor for the parser's tail regex.
+    if (im.has(LL_IM_SOURCE_TYPE))
+    {
+        S32 src = im[LL_IM_SOURCE_TYPE].asInteger();
+        const char* token = nullptr;
+        switch (src)
+        {
+            case CHAT_SOURCE_AGENT:    token = "avatar";   break;
+            case CHAT_SOURCE_OBJECT:   token = "task";     break;
+            case CHAT_SOURCE_SYSTEM:   token = "system";   break;
+            case CHAT_SOURCE_TELEPORT: token = "teleport"; break;
+            case CHAT_SOURCE_REGION:   token = "region";   break;
+            default:                   token = "unknown";  break;
+        }
+        ostr << "<!--src:" << token << "-->";
+    }
+    // </FS:AYAstorm r22>
 }
 
 bool LLChatLogParser::parse(std::string& raw, LLSD& im, const LLSD& parse_params)
@@ -1102,6 +1147,29 @@ bool LLChatLogParser::parse(std::string& raw, LLSD& im, const LLSD& parse_params
 
     bool cut_off_todays_date = parse_params.has("cut_off_todays_date")  ? parse_params["cut_off_todays_date"].asBoolean()  : true;
     im = LLSD::emptyMap();
+
+    // <FS:AYAstorm r22> Detect & strip trailing source type marker before any other parsing.
+    // Marker is written by LLChatLogFormatter::format. Only set LL_IM_SOURCE_TYPE when an
+    // explicit marker is present; legacy lines (no marker) leave the field absent so the
+    // load path can fall back to its existing heuristic (default-safe per spec §5.3).
+    {
+        static const boost::regex marker_regex("<!--src:(avatar|task|system|teleport|region|unknown)-->\\s*$");
+        boost::smatch m;
+        if (boost::regex_search(raw, m, marker_regex))
+        {
+            const std::string token = m[1].str();
+            EChatSourceType detected_src = CHAT_SOURCE_AGENT;
+            if      (token == "avatar")   detected_src = CHAT_SOURCE_AGENT;
+            else if (token == "task")     detected_src = CHAT_SOURCE_OBJECT;
+            else if (token == "system")   detected_src = CHAT_SOURCE_SYSTEM;
+            else if (token == "teleport") detected_src = CHAT_SOURCE_TELEPORT;
+            else if (token == "region")   detected_src = CHAT_SOURCE_REGION;
+            else                          detected_src = CHAT_SOURCE_UNKNOWN;
+            raw.erase(m.position(), m.length()); // default arg 0; avoid int overload ambiguity with const char_type*
+            im[LL_IM_SOURCE_TYPE] = (S32)detected_src;
+        }
+    }
+    // </FS:AYAstorm r22>
 
     //matching a timestamp
     boost::match_results<std::string::const_iterator> matches;

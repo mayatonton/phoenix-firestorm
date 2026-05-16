@@ -216,9 +216,11 @@ void LLFloaterIMNearbyChat::reloadMessages(bool clean_messages/* = false*/)
     }
 
     mChatHistory->clear();
+    if (mChatHistoryObject) { mChatHistoryObject->clear(); } // <FS:AYAstorm r22>
 
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
+    do_not_log["is_replay"] = true; // <FS:AYAstorm r22> Mark archive replay so unread badge logic skips it.
     for(std::vector<LLChat>::iterator it = mMessageArchive.begin();it!=mMessageArchive.end();++it)
     {
         // Update the messages without re-writing them to a log file.
@@ -230,6 +232,7 @@ void LLFloaterIMNearbyChat::loadHistory()
 {
     LLSD do_not_log;
     do_not_log["do_not_log"] = true;
+    do_not_log["is_replay"] = true; // <FS:AYAstorm r22> Mark history file replay so unread badge logic skips it.
 
     std::list<LLSD> history;
     LLLogChat::loadChatHistory("chat", history);
@@ -268,6 +271,14 @@ void LLFloaterIMNearbyChat::loadHistory()
         {
             chat.mSourceType = isWordsName(from) ? CHAT_SOURCE_UNKNOWN : CHAT_SOURCE_OBJECT;
         }
+
+        // <FS:AYAstorm r22> Trust an explicit source-type marker (M2 plumbing)
+        // over the legacy from-name heuristic when reloading saved lines.
+        if (msg.has(LL_IM_SOURCE_TYPE))
+        {
+            chat.mSourceType = (EChatSourceType)msg[LL_IM_SOURCE_TYPE].asInteger();
+        }
+        // </FS:AYAstorm r22>
 
         addMessage(chat, true, do_not_log);
 
@@ -717,7 +728,7 @@ void LLFloaterIMNearbyChat::addMessage(const LLChat& chat,bool archive,const LLS
             }
         }
 
-        LLLogChat::saveHistory("chat", from_name, chat.mFromID, chat.mText);
+        LLLogChat::saveHistory("chat", from_name, chat.mFromID, chat.mText, chat.mSourceType); // <FS:AYAstorm r22> tag source type
     }
 }
 

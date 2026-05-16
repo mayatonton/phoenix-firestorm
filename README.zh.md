@@ -168,6 +168,47 @@ AYAstorm 专用编译步骤 (Linux / Windows):
 
 ---
 
-## 基于
+## 贡献者
+
+### AYAstorm 团队
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/mayatonton">
+        <img src="https://github.com/mayatonton.png?size=100" width="80" height="80" alt="mayatonton"/>
+        <br/>
+        <sub><b>mayatonton</b></sub>
+      </a>
+      <br/>
+      <sub>创建者 / 维护者</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/t-noami">
+        <img src="https://github.com/t-noami.png?size=100" width="80" height="80" alt="t-noami"/>
+        <br/>
+        <sub><b>t-noami</b></sub>
+      </a>
+      <br/>
+      <sub>共同维护者</sub>
+    </td>
+    <!--
+    To add another contributor, copy a <td> block above and update:
+      - the GitHub username in the URL and image src
+      - the display name in <sub><b>...</b></sub>
+      - the role text in the trailing <sub>...</sub>
+    -->
+  </tr>
+</table>
+
+想要参与 AYAstorm 的开发吗？欢迎提交 Bug 报告、Pull Request 和翻译 — 详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+### 基于 Firestorm
 
 AYAstorm 是 [Phoenix Firestorm](https://www.firestormviewer.org) 的分支项目，而 Firestorm 本身是基于 [Second Life](https://github.com/secondlife/viewer) 官方客户端的开源项目，采用 LGPL 许可证。
+
+衷心感谢 Firestorm 团队以及所有上游贡献者，他们的工作正是 AYAstorm 得以构建的基础：
+
+<a href="https://github.com/FirestormViewer/phoenix-firestorm/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FirestormViewer/phoenix-firestorm" alt="Firestorm contributors" />
+</a>

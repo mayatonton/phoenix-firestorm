@@ -334,7 +334,7 @@
                 <panel
                  background_visible="false"
                  border="false"
-                 height="540"
+                 height="565"
                  layout="topleft"
                  left="0"
                  top="0"
@@ -428,6 +428,19 @@
                  name="style_ll"
                  value="2" />
             </radio_group>
+            <!-- <FS:AYAstorm r22> Chat window style toggle now strictly requires restart. -->
+            <text
+             name="req_restart_chat_window_style"
+             follows="left|top"
+             layout="topleft"
+             left="20"
+             top_pad="1"
+             text_color="White_50"
+             height="16"
+             width="200">
+                 (requires restart)
+            </text>
+            <!-- </FS:AYAstorm r22> -->
             <!-- </FS:AYA> -->
             <check_box
              control_name="ShowChatMiniIcons"
@@ -586,6 +599,43 @@
              width="100">
                  (requires restart)
             </text>
+
+            <!-- <FS:AYAstorm r22> Human / System & Object tab split -->
+            <check_box
+             layout="topleft"
+             follows="left|top"
+             top_pad="6"
+             left="20"
+             width="370"
+             height="20"
+             control_name="FSChatHumanObjectTabs"
+             name="FSChatHumanObjectTabs"
+             label="Split Nearby Chat / IM into Human and System &amp; Object tabs"
+             tool_tip="Separate human avatar speech from system / script messages into two tabs. Keeps human conversations free of notifications." />
+            <text
+             name="req_restart_human_object_tabs"
+             follows="left|top"
+             layout="topleft"
+             left_pad="10"
+             top_delta="2"
+             text_color="White_50"
+             height="16"
+             width="100">
+                 (requires restart)
+            </text>
+            <check_box
+             layout="topleft"
+             follows="left|top"
+             top_pad="3"
+             left="40"
+             width="370"
+             height="20"
+             control_name="FSFriendOnlineToHumanTab"
+             enabled_control="FSChatHumanObjectTabs"
+             name="FSFriendOnlineToHumanTab"
+             label="Show friend online/offline in Human tab"
+             tool_tip="Also show friend online/offline notifications in the Human tab. They always appear in the System &amp; Object tab regardless." />
+            <!-- </FS:AYAstorm r22> -->
 
             <check_box
              layout="topleft"

@@ -41,7 +41,9 @@
 // </FS:Ansariel> [FS communication UI]
 #include "llimview.h"
 // <FS:Ansariel> [FS communication UI]
-//#include "llfloaterimnearbychat.h"
+// <FS:AYAstorm r22 spec change 2026-05-16> Re-enable include so LL style nearby chat also gets notification-tip dispatch.
+#include "llfloaterimnearbychat.h"
+// </FS:AYAstorm r22 spec change>
 #include "fsfloaternearbychat.h"
 // </FS:Ansariel> [FS communication UI]
 #include "llnotificationhandler.h"
@@ -273,16 +275,27 @@ void LLHandlerUtil::logGroupNoticeToIMGroup(
 void LLHandlerUtil::logToNearbyChat(const LLNotificationPtr& notification, EChatSourceType type)
 {
     // <FS:Ansariel> [FS communication UI]
-    //LLFloaterIMNearbyChat* nearby_chat = LLFloaterReg::findTypedInstance<LLFloaterIMNearbyChat>("nearby_chat");
     FSFloaterNearbyChat* nearby_chat = FSFloaterNearbyChat::getInstance();
     // </FS:Ansariel> [FS communication UI]
-    if (nearby_chat)
+    // <FS:AYAstorm r22 spec change 2026-05-16> Also dispatch to LL style nearby chat so SLURL/sim-version style notification tips reach the System & Object tab in all three styles. findTypedInstance returns nullptr for inactive style, so only the active container receives it.
+    LLFloaterIMNearbyChat* ll_nearby_chat = LLFloaterReg::findTypedInstance<LLFloaterIMNearbyChat>("nearby_chat");
+    // </FS:AYAstorm r22 spec change>
+    if (nearby_chat || ll_nearby_chat)
     {
         LLChat chat_msg(notification->getMessage());
         chat_msg.mSourceType = type;
         chat_msg.mFromName = SYSTEM_FROM;
         chat_msg.mFromID = LLUUID::null;
-        nearby_chat->addMessage(chat_msg);
+        if (nearby_chat)
+        {
+            nearby_chat->addMessage(chat_msg);
+        }
+        // <FS:AYAstorm r22 spec change 2026-05-16> LL style dispatch — 3 style consistency.
+        if (ll_nearby_chat)
+        {
+            ll_nearby_chat->addMessage(chat_msg);
+        }
+        // </FS:AYAstorm r22 spec change>
 
         // Ansariel: Also log to console if enabled
         if (gSavedSettings.getBOOL("FSUseNearbyChatConsole"))
