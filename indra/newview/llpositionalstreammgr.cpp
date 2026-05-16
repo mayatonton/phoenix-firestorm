@@ -1148,7 +1148,6 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         viewer_media_t media = root_volume->getMediaImpl(static_cast<U8>(media_face));
         if (media.isNull() || !media->hasMedia())
         {
-            root_volume->requestMediaDataUpdate(false);
             LL_DEBUGS("Stream3D") << "[3dstream-stereo] media source not ready for root "
                                    << root_id << " face=" << media_face << LL_ENDL;
             notifyDistributedError(root_id, DistErrorKind::MediaSourceNotReady,

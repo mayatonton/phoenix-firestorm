@@ -56,16 +56,22 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 
 - `git diff --check`
 - `llpluginaudio_test.cpp` の直接コンパイル
+- macOS arm64 検証ビルド
+  - `xcodebuild -project build-darwin-universal/Firestorm.xcodeproj -configuration Release -target viewer ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build`
+  - `LL_DULLAHAN_AUDIO_CALLBACK=TRUE`
+  - `build-darwin-universal/newview/Release/AYAstorm.app` の staging / codesign まで成功
 
 未実行:
 
 - `INTEGRATION_TEST_llpluginaudio` の CMake target 実行
-- `newview` target の CMake build
+- universal macOS build
 
 未実行理由:
 
 - 現在の `build-darwin-universal` は `LL_TESTS=FALSE`。
-- 現在の `xcodebuild` は full Xcode ではなく CommandLineTools を指している。
+- universal build の x86_64 link には decoder symbol を持つ x86_64/universal `libopus` が必要である。
+- ローカルにある Homebrew `libopus` と既存 AYAstorm app 同梱 `libopus.dylib` は arm64 のみ。
+- 3p-fmodstudio / FSBank 由来の universal `libopus.dylib` は encoder symbol 中心で、`opus_decode_float` / `opus_decoder_create` / `opus_multistream_decoder_create` を export していないため、この branch の Opus codec link には使えない。
 
 ## 実装方針
 
