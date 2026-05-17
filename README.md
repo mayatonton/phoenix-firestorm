@@ -15,7 +15,7 @@ It adds rendering enhancements, UI improvements, and first-class Japanese langua
 
 Configurable from Preferences → Graphics → Rendering tab.
 
-![Preferences - Rendering](doc/images/preferences_graphics_rendering.png)
+![Preferences - Rendering](docs/images/preferences_graphics_rendering.png)
 
 - **Shadow Softness** — New slider to soften shadow edges
 
@@ -30,7 +30,7 @@ Configurable from Preferences → Graphics → Rendering tab.
 
 Configurable from Preferences → Firestorm → Build 2 tab.
 
-![Preferences - Firestorm Build 2](doc/images/preferences_firestorm_build2.png)
+![Preferences - Firestorm Build 2](docs/images/preferences_firestorm_build2.png)
 
 #### Visitor side — Hide objects outside the parcel
 
@@ -74,8 +74,8 @@ Just write the tag below into the **parcel description** and any **AYAstorm visi
 <td width="50%" align="center"><b>With tag</b><br/>(<code>[parcelhide:...]</code> in description)</td>
 </tr>
 <tr>
-<td><img src="doc/images/parcel_magic_off.png" alt="Without tag"/></td>
-<td><img src="doc/images/parcel_magic_on.png" alt="With tag"/></td>
+<td><img src="docs/images/parcel_magic_off.png" alt="Without tag"/></td>
+<td><img src="docs/images/parcel_magic_on.png" alt="With tag"/></td>
 </tr>
 </table>
 
@@ -99,21 +99,21 @@ Assign `[3dstream-stereo:{ch:L|R|M|FL|FR|C|LFE|SL|SR}]` to prims in a linkset to
 
 **Full reference:**
 
-- 🇯🇵 [3D Stream タグ書式ガイド (日本語)](doc/3dstream-tag-guide.ja.md)
-- 🇬🇧 [3D Stream Tag Format Guide (English)](doc/3dstream-tag-guide.en.md)
-- 🇨🇳 [3D Stream 标签格式指南 (简体中文)](doc/3dstream-tag-guide.zh.md)
+- 🇯🇵 [3D Stream タグ書式ガイド (日本語)](docs/guides/3dstream-tag-guide.ja.md)
+- 🇬🇧 [3D Stream Tag Format Guide (English)](docs/guides/3dstream-tag-guide.en.md)
+- 🇨🇳 [3D Stream 标签格式指南 (简体中文)](docs/guides/3dstream-tag-guide.zh.md)
 
 ### Chat UI
 
 Configurable from Preferences → Chat → Chat Windows tab.
 
-![Preferences - Chat Windows](doc/images/preferences_chat_chatwindows.png)
+![Preferences - Chat Windows](docs/images/preferences_chat_chatwindows.png)
 
 - **Ported LL-style Chat Window** — Upstream Firestorm's Nearby Chat already offers the capable `FS V1 (plain text)` and `FS V7 (modern headers)` styles, but **seeing who is within chat range requires opening a separate window**. AYAstorm adds a new **`LL style`** that ports the look of Linden Lab's official viewer's CONVERSATIONS window, **letting you see avatars within chat range directly inside the chat window** — no extra panel needed
 
 - **Profile Icons Next to Speakers (`Show mini icons in chat`)** — Show each speaker's profile icon next to their name on every chat line, so you can **intuitively tell who said what** instead of squinting at name strings alone
 
-  ![Mini icons in nearby chat](doc/images/neaby_chat_miniicon_exapmpleshot.png)
+  ![Mini icons in nearby chat](docs/images/neaby_chat_miniicon_exapmpleshot.png)
 
 - **Chat Range Participant Filter** — Show only avatars within chat range (20m) in the nearby chat list
 
@@ -158,7 +158,7 @@ cd Phoenix-FirestormOS-AYAstorm-release_LEGACY-*/
 
 AYAstorm-specific build guide (Linux / Windows):
 
-- [AYAstorm Build Guide](doc/building_ayastorm.md)
+- [AYAstorm Build Guide](docs/build/building_ayastorm.md)
 
 Upstream Firestorm build guides (refer to these for Mac):
 

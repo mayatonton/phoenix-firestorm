@@ -15,7 +15,7 @@
 
 環境設定 → グラフィック → レンダリング タブから設定できます。
 
-![環境設定 - レンダリング](doc/images/preferences_graphics_rendering.png)
+![環境設定 - レンダリング](docs/images/preferences_graphics_rendering.png)
 
 - **Shadow Softness（影の柔らかさ）** — 影のエッジを柔らかくする調整スライダーを追加
 
@@ -30,7 +30,7 @@
 
 環境設定 → Firestorm → Build 2 タブから設定できます。
 
-![環境設定 - Firestorm Build 2](doc/images/preferences_firestorm_build2.png)
+![環境設定 - Firestorm Build 2](docs/images/preferences_firestorm_build2.png)
 
 #### 利用者側 — 区画外オブジェクトを非表示
 
@@ -74,8 +74,8 @@
 <td width="50%" align="center"><b>タグあり</b><br/>(<code>[parcelhide:...]</code> in description)</td>
 </tr>
 <tr>
-<td><img src="doc/images/parcel_magic_off.png" alt="タグなし"/></td>
-<td><img src="doc/images/parcel_magic_on.png" alt="タグあり"/></td>
+<td><img src="docs/images/parcel_magic_off.png" alt="タグなし"/></td>
+<td><img src="docs/images/parcel_magic_on.png" alt="タグあり"/></td>
 </tr>
 </table>
 
@@ -99,21 +99,21 @@ HTTP オーディオストリーム (SHOUTcast / Icecast / 静的 MP3 / Vorbis /
 
 **詳細ガイド:**
 
-- 🇯🇵 [3D Stream タグ書式ガイド (日本語)](doc/3dstream-tag-guide.ja.md)
-- 🇬🇧 [3D Stream Tag Format Guide (English)](doc/3dstream-tag-guide.en.md)
-- 🇨🇳 [3D Stream 标签格式指南 (简体中文)](doc/3dstream-tag-guide.zh.md)
+- 🇯🇵 [3D Stream タグ書式ガイド (日本語)](docs/guides/3dstream-tag-guide.ja.md)
+- 🇬🇧 [3D Stream Tag Format Guide (English)](docs/guides/3dstream-tag-guide.en.md)
+- 🇨🇳 [3D Stream 标签格式指南 (简体中文)](docs/guides/3dstream-tag-guide.zh.md)
 
 ### チャット UI
 
 環境設定 → チャット → Chat Windows タブから設定できます。
 
-![環境設定 - チャットウィンドウ](doc/images/preferences_chat_chatwindows.png)
+![環境設定 - チャットウィンドウ](docs/images/preferences_chat_chatwindows.png)
 
 - **LL スタイルのチャットウィンドウを移植** — Firestorm の Nearby Chat は元々 `FS V1 (plain text)` と `FS V7 (modern headers)` から選択でき機能的にも優秀ですが、**チャットレンジ内のユーザーを把握するには別ウィンドウを開く必要がありました**。AYAstorm では **Linden Lab 公式 Viewer の CONVERSATIONS ウィンドウの見た目をそのまま移植した `LL style` を新規追加**し、チャットウィンドウを開いているだけで **チャットレンジ内のユーザーをそのまま一覧確認できる** ようにしました
 
 - **発言者プロフィールアイコン表示 (`Show mini icons in chat`)** — チャット発言行のユーザー名の隣にプロフィールアイコンを表示。名前文字列だけでは発言者の判別がしづらかったため、アイコンを併置することで **誰の発言か直感的にわかる** ようにしています
 
-  ![Nearby Chat におけるミニアイコン表示例](doc/images/neaby_chat_miniicon_exapmpleshot.png)
+  ![Nearby Chat におけるミニアイコン表示例](docs/images/neaby_chat_miniicon_exapmpleshot.png)
 
 - **チャットレンジ参加者フィルタ** — ローカルチャット参加者リストをチャットレンジ (20m) 以内のみ表示
 
@@ -158,7 +158,7 @@ cd Phoenix-FirestormOS-AYAstorm-release_LEGACY-*/
 
 AYAstorm 独自のビルド手順 (Linux / Windows):
 
-- [AYAstorm ビルド手順書](doc/building_ayastorm.md)
+- [AYAstorm ビルド手順書](docs/build/building_ayastorm.md)
 
 本家 Firestorm のビルド手順 (Mac はこちらを参照):
 
