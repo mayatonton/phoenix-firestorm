@@ -110,6 +110,14 @@ public:
     virtual S32 getNumShadowPasses();
     virtual void renderShadow(S32 pass = 0);
 
+    // <AYAstorm r30 P2> Velocity-buffer pass (BD lineage). Default impls return
+    // 0 / do nothing, so a pool that has no velocity work is a no-op.
+    virtual void beginMotionBlurPass(S32 pass);
+    virtual void endMotionBlurPass(S32 pass);
+    virtual S32 getNumMotionBlurPasses();
+    virtual void renderMotionBlur(S32 pass = 0);
+    // </AYAstorm r30 P2>
+
     virtual void render(S32 pass = 0) {};
     virtual void prerender() {};
     virtual U32 getVertexDataMask() { return 0; } // DEPRECATED -- draw pool doesn't actually determine vertex data mask any more
@@ -397,6 +405,16 @@ public:
     static bool uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, const LLGLSLShader*& lastAvatarShader, bool& skipLastSkin);
     virtual void renderGroup(LLSpatialGroup* group, U32 type, bool texture = true);
     virtual void renderRiggedGroup(LLSpatialGroup* group, U32 type, bool texture = true);
+
+    // <AYAstorm r30 P2> Velocity-buffer batch push (BD lineage). Iterate the
+    // render map for the given pool type, upload per-object last/current
+    // matrices, draw, then store current matrix back into mLastModelMatrix.
+    void pushVelocityBatches(U32 type);
+    void pushRiggedVelocityBatches(U32 type);
+    void pushVelocityBatchesTextured(U32 type);
+    void pushRiggedVelocityBatchesTextured(U32 type);
+    static bool uploadLastMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo);
+    // </AYAstorm r30 P2>
 };
 
 class LLFacePool : public LLDrawPool

@@ -11249,6 +11249,16 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+        // <AYAstorm r30 P2> Snapshot last frame's mGLMp for velocity buffer
+        // before rebuilding this frame. First-call (mFrame == 0) is skipped
+        // because mGLMp is still empty.
+        if (entry.mFrame > 0)
+        {
+            entry.mLastGLMp = entry.mGLMp;
+            entry.mLastFrame = entry.mFrame;
+        }
+        // </AYAstorm r30 P2>
+
         entry.mFrame = gFrameCount;
 
         //build matrix palette

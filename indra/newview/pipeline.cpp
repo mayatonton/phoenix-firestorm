@@ -366,6 +366,7 @@ bool    LLPipeline::sImpostorRender = false;
 bool    LLPipeline::sImpostorRenderAlphaDepthPass = false;
 // <AYAstorm r30 P2>
 bool    LLPipeline::sT2xJitterEnabled = false;
+bool    LLPipeline::sVelocityRender = false;
 // </AYAstorm r30 P2>
 bool    LLPipeline::sShowJellyDollAsImpostor = true;
 bool    LLPipeline::sUnderWaterRender = false;
@@ -4659,6 +4660,47 @@ void LLPipeline::renderHighlights()
 
 //debug use
 U32 LLPipeline::sCurRenderPoolType = 0 ;
+
+// <AYAstorm r30 P2> Velocity pass (BD lineage). Bind mVelocityMap, clear, run
+// each pool's renderMotionBlur(). Step 5 wires the display() callsite; until
+// then this stays unreferenced. Pools that don't override the new virtuals
+// (Step 4c per-pool override list) contribute zero passes — safe to call
+// before any override exists, just produces a cleared RG16F target.
+void LLPipeline::renderGeomMotionBlur()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    LL_PROFILE_GPU_ZONE("renderGeomMotionBlur");
+
+    if (!mVelocityMap.isComplete())
+    {
+        return;
+    }
+
+    mVelocityMap.bindTarget();
+    mVelocityMap.clear(GL_COLOR_BUFFER_BIT);
+
+    gGL.setColorMask(true, true);
+    LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
+
+    sVelocityRender = true;
+
+    for (pool_set_t::iterator iter = mPools.begin(); iter != mPools.end(); ++iter)
+    {
+        LLDrawPool* poolp = *iter;
+        S32 num_passes = poolp->getNumMotionBlurPasses();
+        for (S32 i = 0; i < num_passes; ++i)
+        {
+            poolp->beginMotionBlurPass(i);
+            poolp->renderMotionBlur(i);
+            poolp->endMotionBlurPass(i);
+        }
+    }
+
+    sVelocityRender = false;
+
+    mVelocityMap.flush();
+}
+// </AYAstorm r30 P2>
 
 void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 {

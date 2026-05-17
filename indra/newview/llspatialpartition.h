@@ -114,6 +114,10 @@ public:
     const LLMatrix4* mNormalMapMatrix = nullptr;
     const LLMatrix4* mTextureMatrix = nullptr;
     const LLMatrix4* mModelMatrix = nullptr;
+    // <AYAstorm r30 P2> Previous-frame model matrix for velocity buffer.
+    // Mutable so pushVelocityBatches can store this frame's matrix back.
+    LLMatrix4* mLastModelMatrix = nullptr;
+    // </AYAstorm r30 P2>
 
     LLPointer<LLVOAvatar> mAvatar = nullptr;
     LLConstPointer<LLMeshSkinInfo> mSkinInfo;// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh

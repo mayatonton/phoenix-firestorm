@@ -313,6 +313,12 @@ public:
     void renderGeomDeferred(LLCamera& camera, bool do_occlusion = false);
     void renderGeomPostDeferred(LLCamera& camera);
     void renderGeomShadow(LLCamera& camera);
+    // <AYAstorm r30 P2> Velocity pass for SMAA T2x / motion blur. Iterates
+    // each pool's renderMotionBlur() into mVelocityMap (RG16F). Cinematic
+    // mode only — caller (display() in Step 5) gates by mVelocityMap state.
+    void renderGeomMotionBlur();
+    static bool             sVelocityRender;
+    // </AYAstorm r30 P2>
     void bindLightFunc(LLGLSLShader& shader);
 
     // bind shadow maps
