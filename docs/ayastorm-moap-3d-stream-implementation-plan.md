@@ -76,7 +76,6 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 
 まだ未実装:
 
-- A/V sync の実機再確認。
 - 7.1ch speaker 構成での実機確認。
 
 PR 前に必要な実機確認:
@@ -101,12 +100,17 @@ PR 前に必要な実機確認:
 6. URL source と media 表示を併用する構成が壊れていないこと。確認済み。
    - root tag が `{url:...}` の場合、linkset 内に media があっても speaker は URL stream を鳴らす。
    - 結果: URL source と media 表示の併用構成は壊れていない。
+7. A/V sync が体感上破綻しないこと。確認済み。
+   - 実機確認では、映像と音声のずれは許容範囲内。
+
+残確認:
+
+- Windows / Linux で native CEF output と FMOD output の二重再生が起きないこと。
+- callback build が無効な platform / build で、media source 3D routing が安全に 2D fallback になること。
 
 将来確認:
 
 - BL/BR speaker prim を含む 7.1ch 構成での実音確認。
-- Windows / Linux で native CEF output と FMOD output の二重再生が起きないこと。
-- callback build が無効な platform / build で、media source 3D routing が安全に 2D fallback になること。
 - 厳密な A/V sync の改善。今回の優先順位は 5.1ch 3D Stream 再生の安定性であり、lip sync の完全一致は対象外。
 
 確認済み:
@@ -660,6 +664,8 @@ media source の buffer は短すぎると FMOD mixer 側の読み出しに余�
 - underflow / dropped frame diagnostic を追加し、ノイズ発生時に ring 側の供給不足か FMOD 側の読み出し不足かを切り分ける。
 
 buffer を増やすと音声の連続性は上がるが、映像に対する音声遅延は増える。今回の優先順位は、厳密な lip sync よりも 5.1ch 3D Stream 再生が破綻なく続くことである。
+
+実機確認では、現在の buffer 設定で A/V sync は許容範囲内である。厳密な lip sync の完全一致は対象外のままだが、PR 前の合格条件としては満たしている。
 
 ### media ON/OFF と plugin lifecycle
 
