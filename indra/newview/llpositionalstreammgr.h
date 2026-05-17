@@ -44,6 +44,7 @@
 class LLPositionalStream;
 class LLPositionalStreamStereo;
 class LLPositionalStreamMulti;
+class LLViewerMediaImpl;
 class LLViewerObject;
 
 class LLPositionalStreamMgr
@@ -92,6 +93,12 @@ public:
     // same boot-time discovery path that [3dstream-stereo:...] speaker scan
     // already relies on internally.
     void bootstrapChildDescriptions(LLViewerObject* root_obj);
+
+    // Called immediately before a MOAP media plugin source is destroyed.
+    // Media-ring backed 3D streams must detach before the plugin shared
+    // memory is unmapped; waiting for the next per-frame update leaves the
+    // decode thread with a stale raw ring pointer.
+    void onMediaSourceDestroying(LLViewerMediaImpl* media);
 
     // Debug toggle stream (driven by Stream3DDebugPlay). Independent of
     // the prim binding map.

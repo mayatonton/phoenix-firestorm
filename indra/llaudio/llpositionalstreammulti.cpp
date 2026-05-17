@@ -453,13 +453,16 @@ void LLPositionalStreamMulti::setMediaRingFor3DStream(LLPluginAudioRingHeader* r
         return;
     }
 
+    // The ring is owned by the media plugin shared-memory mapping. When a
+    // media source reloads or is destroyed, that mapping can disappear before
+    // the next manager update tick. Stop the decode thread while the old ring
+    // is still valid, then reopen against the new pointer on the main thread.
+    resetMediaRuntimeForReopen();
     mMediaRing = ring;
-    if (!mMediaReopenRequested.exchange(true, std::memory_order_acq_rel))
-    {
-        LL_INFOS("Stream3D") << "Media multi source ring pointer changed for "
-                              << mUrl << "; holding 3D route open"
-                              << LL_ENDL;
-    }
+    mMediaReopenRequested.store(false, std::memory_order_release);
+    LL_INFOS("Stream3D") << "Media multi source ring pointer changed for "
+                          << mUrl << "; holding 3D route open"
+                          << LL_ENDL;
     mState.store(State::Opening, std::memory_order_release);
 }
 

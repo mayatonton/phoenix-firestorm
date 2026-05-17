@@ -162,9 +162,12 @@ PR 前に必要な実機確認:
   - 実機クラッシュレポート: `AYAstorm-2026-05-17-155411.ips`
   - 例外: `EXC_BAD_ACCESS / SIGSEGV`
   - crash frame: `LLPositionalStreamMulti::validateMediaRingHeader()` → `openMediaRingSource()` → `LLPositionalStreamMulti::update()`
+  - 追加クラッシュレポート: `2026-05-17 18:45:15` の `Thread 22`
+  - crash frame: `LLPositionalStreamMulti::pumpMediaRingSource()` → `decodeThreadMain()`
   - 直前ログでは `Media multi source format pending/changed ... holding 3D route open` の後、`SLPlugin` が終了・再起動していた。
-  - 原因は、3D Stream 側が media plugin の古い shared memory ring pointer を保持したまま、plugin 終了後に unmapped pointer を dereference したことと判断。
+  - 原因は、3D Stream 側が media plugin の古い shared memory ring pointer を保持したまま、plugin 終了後に main thread または decode thread が unmapped pointer を dereference したことと判断。
   - 対策として、manager update ごとに現在の `LLViewerMediaImpl` から ring pointer を再取得し、`LLPositionalStreamMulti` へ差し替えるようにした。
+  - さらに `LLViewerMediaImpl::destroyMediaSource()` から `LLPositionalStreamMgr` へ media source 破棄直前通知を送り、shared memory unmap 前に 3D Stream の decode thread を停止して ring pointer を detach するようにした。
   - `LLPluginClassMedia::getAudioData()` は plugin が running の場合だけ audio shared memory address を返すようにした。
   - ring が一時的に `nullptr` の場合は 3D route を Failed にせず、Opening のまま無音待機する。
   - 修正後、`llaudio` / `llplugin` / `viewer` arm64 build 成功。
@@ -694,6 +697,8 @@ Media を ON/OFF したり、Nearby Media / browser 操作で media plugin が s
 
 - 3D Stream manager は毎 update で現在の media impl から audio ring pointer を再取得する。
 - pointer が変わった、または `nullptr` になった場合、stream は speaker runtime を一旦閉じ、route 自体は維持する。
+- `LLViewerMediaImpl::destroyMediaSource()` は shared memory を解放する前に `LLPositionalStreamMgr::onMediaSourceDestroying()` を呼ぶ。
+- `LLPositionalStreamMulti::setMediaRingFor3DStream()` は ring pointer 差し替え前に decode thread を join し、古い shared memory を読んでいる thread が残らないようにする。
 - plugin 再生成後に新しい ring pointer と format が得られたら、同じ binding 内で media ring source を再オープンする。
 - `LLPluginClassMedia::getAudioData()` は plugin が running のときだけ pointer を返す。
 - ring が一時的にない状態はエラーではなく、MOAP 読み込み直後や media OFF 中と同じ無音待機として扱う。

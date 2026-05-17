@@ -55,6 +55,7 @@
 #include "llavataractions.h"
 #include "llparcel.h"
 #include "llpluginclassmedia.h"
+#include "llpositionalstreammgr.h"
 #include "llurldispatcher.h"
 #include "lluuid.h"
 #include "llversioninfo.h"
@@ -1778,6 +1779,10 @@ void LLViewerMediaImpl::destroyMediaSource()
 {
     mNeedsNewTexture = true;
 #if LL_DULLAHAN_AUDIO_CALLBACK
+    if (mMediaSource && mStream3DAudioRedirected)
+    {
+        LLPositionalStreamMgr::instance().onMediaSourceDestroying(this);
+    }
     if (mMediaAudioStream)
     {
         mMediaAudioStream->stop();

@@ -2015,6 +2015,41 @@ void LLPositionalStreamMgr::bootstrapChildDescriptions(LLViewerObject* root_obj)
     }
 }
 
+void LLPositionalStreamMgr::onMediaSourceDestroying(LLViewerMediaImpl* media)
+{
+    if (!media)
+    {
+        return;
+    }
+
+    const LLUUID media_id = media->getMediaTextureID();
+    for (auto& [root_id, b] : mDistributedBindings)
+    {
+        if (b.source_key.kind != DistSourceKind::Media || !b.stream)
+        {
+            continue;
+        }
+
+        const bool same_media_id =
+            media_id.notNull() &&
+            b.source_key.media_id.notNull() &&
+            b.source_key.media_id == media_id;
+        if (!same_media_id && findMediaFor3DSource(b.source_key) != media)
+        {
+            continue;
+        }
+
+        LL_INFOS("Stream3D") << "[3dstream-stereo] media source destroying for root "
+                              << root_id
+                              << "; detaching 3D audio ring before plugin teardown"
+                              << LL_ENDL;
+        b.stream->setMediaRingFor3DStream(nullptr);
+        b.next_retry_time = 0.0;
+        b.last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
+        media->setStream3DAudioRedirected(false);
+    }
+}
+
 void LLPositionalStreamMgr::requestChildDescViaSelect(LLViewerObject* child)
 {
     // r8 F11: see header. We bypass LLSelectMgr deliberately — going through
