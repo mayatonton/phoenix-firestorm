@@ -384,6 +384,7 @@ public:
         CURRENT_MODELVIEW_MATRIX,           //  "current_modelview_matrix"
         LAST_MODELVIEW_MATRIX,              //  "last_modelview_matrix"
         LAST_MODELVIEW_MATRIX_INVERSE,      //  "last_modelview_matrix_inverse"
+        CURRENT_OBJECT_MATRIX,              //  "current_object_matrix"
         LAST_OBJECT_MATRIX,                 //  "last_object_matrix"
         MOTION_BLUR_STRENGTH,               //  "motion_blur_strength"
         AVATAR_LAST_MATRIX,                 //  "lastMatrixPalette"

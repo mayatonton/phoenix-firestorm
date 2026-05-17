@@ -1595,6 +1595,7 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("current_modelview_matrix");
     mReservedUniforms.push_back("last_modelview_matrix");
     mReservedUniforms.push_back("last_modelview_matrix_inverse");
+    mReservedUniforms.push_back("current_object_matrix");
     mReservedUniforms.push_back("last_object_matrix");
     mReservedUniforms.push_back("motion_blur_strength");
     mReservedUniforms.push_back("lastMatrixPalette");

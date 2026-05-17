@@ -55,6 +55,13 @@ public:
     /*virtual*/ void endShadowPass(S32 pass);
     /*virtual*/ void renderShadow(S32 pass);
 
+    // <AYAstorm r30 P2> motion blur / velocity pass (BD lineage)
+    /*virtual*/ S32 getNumMotionBlurPasses() override;
+    /*virtual*/ void beginMotionBlurPass(S32 pass) override;
+    /*virtual*/ void endMotionBlurPass(S32 pass) override;
+    /*virtual*/ void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
+
     /*virtual*/ bool verify() const;
     /*virtual*/ LLViewerTexture *getTexture();
     /*virtual*/ LLViewerTexture *getDebugTexture();
