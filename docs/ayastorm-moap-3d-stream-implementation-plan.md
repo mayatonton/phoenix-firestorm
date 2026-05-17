@@ -350,8 +350,9 @@ media の解決は段階的に行う。
 5. `{link:N}` は SL の link number と同じ意味で、root prim は 1、child prim は 2 以降、単独 prim は 0 として扱う。
 6. `{face:M}` は対象 prim の media face を絞り込む。
 7. `{link:N}` / `{face:M}` で絞っても複数候補が残る場合は ambiguous として通知する。
-8. `{link:N}` / `{face:M}` に該当する media がない場合は invalid binding として通知する。
-9. 将来、media texture UUID 指定を追加する。
+8. `{link:N}` / `{face:M}` に該当する media がまだ見えない場合は、linkset / media face の到着待ちとして扱い、root / child prim を再ポーリングする。viewer 起動直後や link 直後に早すぎる構造エラーを出さない。
+9. linkset / media face が揃った後も複数候補が残る場合は ambiguous として通知する。
+10. 将来、media texture UUID 指定を追加する。
 
 現行 parser は `{url}` または `{ch}` がある場合だけ `[3dstream-stereo:...]` を認識する。`{source:media}` を source declaration として扱うには、`parseDistributedStereoTag()` の recognized 条件、`DistStereoTagData`、`DistParseError`、`evaluateLinkset()` の root source 判定を変更する必要がある。
 
@@ -476,7 +477,7 @@ void setAudioRoutedTo3DStream(bool enabled);
 - speaker 定義は既存 multi binding と同じ `{ch:...}` を使う。
 - linkset 内の media face が 1 つだけなら `{link:N}` / `{face:M}` は省略可にする。
 - linkset 内の media face が複数ある場合は `{link:N}{face:M}` で対象を指定できるようにする。
-- media impl が解決できなければ 2D fallback に戻す。
+- `{link:N}` / `{face:M}` で指定した media face または media impl がまだ解決できない場合は、構造エラーにせず再評価待ちにする。既存の 3D route がある場合は壊さず、linkset / media の到着後に復帰させる。
 - media data update / media impl create-destroy / face media change で root を pending evaluation に入れる。
 
 manager は object deletion、Description change、media impl change、teleport、audio shutdown 時に `setAudioRoutedTo3DStream(false)` を必ず戻す。

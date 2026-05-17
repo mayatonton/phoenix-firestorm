@@ -1233,6 +1233,21 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     {
         std::vector<MediaFaceCandidate> media_candidates;
         S32 media_face_count_in_linkset = 0;
+
+        auto request_media_source_refresh = [&]()
+        {
+            enqueuePriorityPoll(root_id);
+            for (const auto& child : root->getChildren())
+            {
+                if (!child || child->isDead())
+                {
+                    continue;
+                }
+                enqueuePriorityPoll(child->getID());
+                requestChildDescViaSelect(child.get());
+            }
+        };
+
         auto collect_media_faces = [&](LLViewerObject* object)
         {
             if (!object || object->isDead())
@@ -1273,6 +1288,25 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
         if (media_candidates.empty())
         {
+            if (root_data.media_face || root_data.media_link)
+            {
+                LL_DEBUGS("Stream3D") << "[3dstream-stereo] media face pending for root "
+                                       << root_id
+                                       << " link="
+                                       << (root_data.media_link
+                                               ? llformat("%d", *root_data.media_link)
+                                               : std::string("any"))
+                                       << " face="
+                                       << (root_data.media_face
+                                               ? llformat("%d", *root_data.media_face)
+                                               : std::string("any"))
+                                       << " media_faces_seen="
+                                       << media_face_count_in_linkset
+                                       << LL_ENDL;
+                request_media_source_refresh();
+                return;
+            }
+
             notifyDistributedError(root_id, DistErrorKind::MediaFaceNotFound,
                                    root_data.media_face || root_data.media_link
                                        ? llformat("link=%s face=%s: no media face in linkset",
@@ -1304,10 +1338,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
             LL_DEBUGS("Stream3D") << "[3dstream-stereo] media source not ready for root "
                                    << root_id << " media_prim=" << media_source.object_id
                                    << " face=" << media_face << LL_ENDL;
-            notifyDistributedError(root_id, DistErrorKind::MediaSourceNotReady,
-                                   "media_prim=" + media_source.object_id.asString().substr(0, 8)
-                                   + llformat(" face=%d media impl not loaded", media_face));
-            teardownDistributedBinding(root_id);
+            request_media_source_refresh();
             return;
         }
 
@@ -1320,10 +1351,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
             LL_DEBUGS("Stream3D") << "[3dstream-stereo] media audio ring not ready for root "
                                    << root_id << " media_prim=" << media_source.object_id
                                    << " face=" << media_face << LL_ENDL;
-            notifyDistributedError(root_id, DistErrorKind::MediaSourceNotReady,
-                                   "media_prim=" + media_source.object_id.asString().substr(0, 8)
-                                   + llformat(" face=%d audio ring unavailable", media_face));
-            teardownDistributedBinding(root_id);
+            request_media_source_refresh();
             return;
         }
 
