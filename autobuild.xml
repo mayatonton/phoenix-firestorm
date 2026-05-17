@@ -780,11 +780,11 @@
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>1b7fe88b3dcdc4bca341af139f1b69c14e0ccbd0</string>
+              <string>2a043c69549411e934ecccf31f789528268ba46c</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://github.com/t-noami/dullahan/releases/download/v1.26.0-CEF_139.0.40-ayastorm-audio-callback.3/dullahan-1.26.0.202605151520_139.0.40_g465474a_chromium-139.0.7258.139-darwin64-25925705109.tar.zst</string>
+              <string>https://github.com/t-noami/dullahan/releases/download/v1.26.0-CEF_139.0.40-ayastorm-audio-callback.4/dullahan-1.26.0.202605171727_139.0.40_g465474a_chromium-139.0.7258.139-darwin64-261370827.tar.zst</string>
             </map>
             <key>name</key>
             <string>darwin64</string>
@@ -794,11 +794,11 @@
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>f343f444f36e1afb56683035ac6c54850a723b96</string>
+              <string>17ba90bd9af76c15e97f69c9ea629987cdcedcf6</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://github.com/t-noami/dullahan/releases/download/v1.26.0-CEF_139.0.40-ayastorm-audio-callback.3/dullahan-1.26.0.202605151519_139.0.40_g465474a_chromium-139.0.7258.139-linux64-25925705109.tar.zst</string>
+              <string>https://github.com/t-noami/dullahan/releases/download/v1.26.0-CEF_139.0.40-ayastorm-audio-callback.4/dullahan-1.26.0.202605170826_139.0.40_g465474a_chromium-139.0.7258.139-linux64-25985807911.tar.zst</string>
             </map>
             <key>name</key>
             <string>linux64</string>
@@ -808,11 +808,11 @@
             <key>archive</key>
             <map>
               <key>hash</key>
-              <string>cfa31aa85b4a0e2ee94eec916abf6f01a000d5c2</string>
+              <string>0e8cd6fba9c2d184743e95e36ad08e40bc686efd</string>
               <key>hash_algorithm</key>
               <string>sha1</string>
               <key>url</key>
-              <string>https://github.com/t-noami/dullahan/releases/download/v1.26.0-CEF_139.0.40-ayastorm-audio-callback.3/dullahan-1.26.0.202605151520_139.0.40_g465474a_chromium-139.0.7258.139-windows64-25925705109.tar.zst</string>
+              <string>https://github.com/t-noami/dullahan/releases/download/v1.26.0-CEF_139.0.40-ayastorm-audio-callback.4/dullahan-1.26.0.202605170827_139.0.40_g465474a_chromium-139.0.7258.139-windows64-25985807911.tar.zst</string>
             </map>
             <key>name</key>
             <string>windows64</string>
@@ -825,7 +825,7 @@
         <key>copyright</key>
         <string>Copyright (c) 2017, Linden Research, Inc.</string>
         <key>version</key>
-        <string>1.26.0.202605151520_139.0.40_g465474a_chromium-139.0.7258.139-ayastorm-audio-callback.3</string>
+        <string>1.26.0.202605171727_139.0.40_g465474a_chromium-139.0.7258.139-ayastorm-audio-callback.4</string>
         <key>name</key>
         <string>dullahan_aya_audio</string>
         <key>description</key>

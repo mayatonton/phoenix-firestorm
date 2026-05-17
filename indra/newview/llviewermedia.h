@@ -234,6 +234,7 @@ public:
     void setMute(bool mute);
     void updateVolume();
     F32 getVolume();
+    F32 getStream3DAudioGain() const;
     void focus(bool focus);
     // True if the impl has user focus.
     bool hasFocus() const;

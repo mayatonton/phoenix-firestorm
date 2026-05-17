@@ -32,7 +32,7 @@ static constexpr std::size_t ll_plugin_audio_ring_sample_bytes(std::uint32_t cap
 
 static constexpr bool ll_plugin_audio_ring_supported_3d_channel_count(std::uint32_t channels)
 {
-    return channels == 1 || channels == 2 || channels == 6;
+    return channels == 1 || channels == 2 || channels == 6 || channels == 8;
 }
 
 enum class LLPluginAudioSixChannel : std::uint32_t
@@ -43,6 +43,18 @@ enum class LLPluginAudioSixChannel : std::uint32_t
     Lfe = 3,
     SurroundLeft = 4,
     SurroundRight = 5,
+};
+
+enum class LLPluginAudioEightChannel : std::uint32_t
+{
+    FrontLeft = 0,
+    FrontRight = 1,
+    Center = 2,
+    Lfe = 3,
+    SurroundLeft = 4,
+    SurroundRight = 5,
+    BackLeft = 6,
+    BackRight = 7,
 };
 
 struct LLPluginAudioRingHeader

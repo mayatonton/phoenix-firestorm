@@ -458,6 +458,17 @@ void MediaPluginCEF::onAudioStreamStartedCallback(const dullahan::dullahan_audio
     mAudioStreamSampleRate = info.sample_rate;
     mAudioStreamChannels = info.channels;
     mAudioStreamFramesReceived = 0;
+    LL_INFOS("AYAMediaAudio") << "CEF audio stream started: "
+                              << info.sample_rate << " Hz x "
+                              << info.channels << " ch"
+                              << LL_ENDL;
+    LLPluginMessage message(LLPLUGIN_MESSAGE_CLASS_MEDIA, "audio_stream_format");
+    message.setValue("state", "started");
+    message.setValueS32("sample_rate", info.sample_rate);
+    message.setValueS32("channels", info.channels);
+    message.setValueS32("max_channels", mAudioRingMaxChannels);
+    sendMessage(message);
+
     if (mAudioRing)
     {
         mAudioRing->mWriteFrame.store(0, std::memory_order_release);
@@ -491,6 +502,16 @@ void MediaPluginCEF::onAudioStreamPacketCallback(const float** data, int frames,
 //
 void MediaPluginCEF::onAudioStreamStoppedCallback()
 {
+    LL_INFOS("AYAMediaAudio") << "CEF audio stream stopped after "
+                              << mAudioStreamFramesReceived
+                              << " frame(s)" << LL_ENDL;
+    LLPluginMessage message(LLPLUGIN_MESSAGE_CLASS_MEDIA, "audio_stream_format");
+    message.setValue("state", "stopped");
+    message.setValueS32("sample_rate", mAudioStreamSampleRate);
+    message.setValueS32("channels", mAudioStreamChannels);
+    message.setValueReal("frames", (F64)mAudioStreamFramesReceived);
+    sendMessage(message);
+
     mAudioStreamActive = false;
     mAudioStreamSampleRate = 0;
     mAudioStreamChannels = 0;
@@ -510,6 +531,10 @@ void MediaPluginCEF::onAudioStreamStoppedCallback()
 void MediaPluginCEF::onAudioStreamErrorCallback(const std::string message)
 {
     LL_WARNS("AYAMediaAudio") << "CEF audio stream error: " << message << LL_ENDL;
+    LLPluginMessage plugin_message(LLPLUGIN_MESSAGE_CLASS_MEDIA, "audio_stream_format");
+    plugin_message.setValue("state", "error");
+    plugin_message.setValue("message", message);
+    sendMessage(plugin_message);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

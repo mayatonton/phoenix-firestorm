@@ -69,6 +69,8 @@ namespace tut
                ll_plugin_audio_ring_supported_3d_channel_count(2));
         ensure("6ch is supported",
                ll_plugin_audio_ring_supported_3d_channel_count(6));
+        ensure("8ch is supported",
+               ll_plugin_audio_ring_supported_3d_channel_count(8));
 
         ensure("0ch is not supported",
                !ll_plugin_audio_ring_supported_3d_channel_count(0));
@@ -80,8 +82,6 @@ namespace tut
                !ll_plugin_audio_ring_supported_3d_channel_count(5));
         ensure("7ch is not supported",
                !ll_plugin_audio_ring_supported_3d_channel_count(7));
-        ensure("8ch is not supported",
-               !ll_plugin_audio_ring_supported_3d_channel_count(8));
     }
 
     template<> template<>
@@ -107,5 +107,36 @@ namespace tut
         ensure_equals("SR index",
                       static_cast<std::uint32_t>(LLPluginAudioSixChannel::SurroundRight),
                       5u);
+    }
+
+    template<> template<>
+    void object::test<5>()
+    {
+        set_test_name("8ch media order matches 7.1 routing order");
+
+        ensure_equals("FL index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::FrontLeft),
+                      0u);
+        ensure_equals("FR index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::FrontRight),
+                      1u);
+        ensure_equals("C index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::Center),
+                      2u);
+        ensure_equals("LFE index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::Lfe),
+                      3u);
+        ensure_equals("SL index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::SurroundLeft),
+                      4u);
+        ensure_equals("SR index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::SurroundRight),
+                      5u);
+        ensure_equals("BL index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::BackLeft),
+                      6u);
+        ensure_equals("BR index",
+                      static_cast<std::uint32_t>(LLPluginAudioEightChannel::BackRight),
+                      7u);
     }
 }

@@ -147,9 +147,11 @@ class LLPositionalStreamMulti
 public:
     // Mirrors LLPositionalStreamMgr::ChannelKind; duplicated here so llaudio
     // does not depend on indra/newview. r10 added the 5.1 placement values
+    // and AYAstorm MOAP media routing extends that alphabet to 7.1 with
+    // BL/BR back-surround placements.
     // (spec_5_1ch_placement.md §4.1); the per-source-channel-count behavior
     // (§4.2 compatibility matrix) is decided in pcmReadCallback.
-    enum class Channel { L, R, M, FL, FR, C, LFE, SL, SR };
+    enum class Channel { L, R, M, FL, FR, C, LFE, SL, SR, BL, BR };
 
     struct SpeakerConfig
     {
@@ -172,6 +174,7 @@ public:
     bool startMedia(LLPluginAudioRingHeader* ring,
                     const std::string& label,
                     const std::vector<SpeakerConfig>& speakers);
+    void setMediaRingFor3DStream(LLPluginAudioRingHeader* ring);
     void stop();
 
     bool isOpen() const { return mSourceSound != nullptr; }
@@ -390,6 +393,8 @@ private:
     // in place of plain `mState = State::Failed` from this point.
     void setFailed(FailReason reason, std::string detail = {});
 
+    void releaseSpeakerRuntime();
+    void resetMediaRuntimeForReopen();
     void releaseAll();
     // r13 C: extracted from the original start() body. Calls
     // System::createStream(FMOD_NONBLOCKING) on `url` and, on success,
@@ -399,6 +404,7 @@ private:
     // worker can't be started) and by the Resolving→Opening transition
     // in update().
     bool openSourceStream(const std::string& url);
+    bool validateMediaRingHeader() const;
     bool validateMediaRing(U32& sample_rate, U32& channels, U32& format_serial) const;
     bool openMediaRingSource();
     bool createUserSounds();
@@ -441,7 +447,7 @@ private:
     LLPluginAudioRingHeader* mMediaRing = nullptr;
     U32 mMediaFormatSerial = 0;
     int mSampleRate;
-    int mSourceChannels;       // 1, 2, or (r9) 6
+    int mSourceChannels;       // 1, 2, 6, or media 8
     int mSourceBytesPerSample; // 2 for PCM16, 4 for PCMFLOAT
     bool mSourceIsFloat;
     // r10 P5: codec type captured at getFormat() time. Used by the mgr-side
@@ -464,8 +470,8 @@ private:
 
     // Ring is sized at Opening→Buffering. r10: 1ch / 2ch sources use a
     // 2-track ring (mono is duplicated into both tracks at write time so
-    // ch=L/R each see the full signal); 6ch sources use a 6-track ring with
-    // raw per-channel write so ch:FL/FR/C/LFE/SL/SR can read their own track
+    // ch=L/R each see the full signal); 6ch / 8ch sources use a raw
+    // per-channel ring so ch:FL/FR/C/LFE/SL/SR(/BL/BR) can read their own track
     // directly. P3 wired the reader-side BS.775 downmix path for ch:L/R/M on
     // a 6-track ring (pcmReadCallback → readFramesRaw → mix6chToMono); the
     // §4.2 compat matrix dispatch for the placement values lands in P4.
@@ -521,6 +527,7 @@ private:
 
     std::thread mDecodeThread;
     std::atomic<bool> mDecodeStop;
+    std::atomic<bool> mMediaReopenRequested{false};
     std::mutex mDecodeMutex;
     std::condition_variable mDecodeCv;
 
@@ -551,6 +558,12 @@ private:
 
     static constexpr size_t kPrebufferFrames = 4096;
     static constexpr size_t kRingFrames      = 1 << 15; // ~0.74 s at 44.1 kHz
+    // Media source is already decoded and should stay close to the MOAP
+    // video clock. Keep a much shallower queue than URL streams, whose
+    // network jitter buffering is intentionally larger.
+    static constexpr size_t kMediaPrebufferFrames = 2048; // ~43 ms at 48 kHz
+    static constexpr size_t kMediaTargetBufferedFrames = 4096; // ~85 ms at 48 kHz
+    static constexpr size_t kMediaRingFrames = 16384; // ~341 ms at 48 kHz
     // r9: chunk granularity for the source → ring conversion loop. Sized so a
     // single chunk fits comfortably in L1 (1024 frames × 6 ch × 4 B = 24 KB).
     static constexpr size_t kPumpChunkFrames = 1024;

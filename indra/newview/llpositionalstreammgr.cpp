@@ -67,11 +67,74 @@
 
 namespace
 {
+    struct MediaFaceCandidate
+    {
+        LLUUID object_id;
+        S32 face = -1;
+        LLVOVolume* volume = nullptr;
+    };
+
     LLVector3 toFloatVec(const LLVector3d& v)
     {
         LLVector3 out;
         out.setVec(v);
         return out;
+    }
+
+    LLViewerMediaImpl* findMediaFor3DSource(
+        const LLPositionalStreamMgr::SourceBindingKey& source_key)
+    {
+        if (source_key.media_id.notNull())
+        {
+            if (LLViewerMediaImpl* media =
+                    LLViewerMedia::getInstance()->getMediaImplFromTextureID(
+                        source_key.media_id))
+            {
+                return media;
+            }
+        }
+
+        if (source_key.media_object_id.notNull() && source_key.face >= 0)
+        {
+            if (LLViewerObject* object =
+                    gObjectList.findObject(source_key.media_object_id))
+            {
+                if (!object->isDead())
+                {
+                    if (LLVOVolume* volume = dynamic_cast<LLVOVolume*>(object))
+                    {
+                        viewer_media_t media =
+                            volume->getMediaImpl(static_cast<U8>(source_key.face));
+                        if (media.notNull() && media->hasMedia())
+                        {
+                            return media.get();
+                        }
+                    }
+                }
+            }
+        }
+
+        return nullptr;
+    }
+
+    F32 effectiveDistributedStreamVolume(
+        F32 master_volume,
+        bool parcel_audible,
+        bool media_source,
+        LLViewerMediaImpl* media)
+    {
+        if (!parcel_audible)
+        {
+            return 0.f;
+        }
+        if (!media_source)
+        {
+            return master_volume;
+        }
+
+        const F32 master = std::clamp(master_volume, 0.f, 1.f);
+        const F32 media_gain = media ? media->getStream3DAudioGain() : 0.f;
+        return master * std::clamp(media_gain, 0.f, 1.f);
     }
 
     // r10 P5 (§4.4): label for one ChannelKind, used in the routing diagnostic
@@ -91,6 +154,8 @@ namespace
         case CK::LFE: return "LFE";
         case CK::SL:  return "SL";
         case CK::SR:  return "SR";
+        case CK::BL:  return "BL";
+        case CK::BR:  return "BR";
         }
         return "?";
     }
@@ -110,6 +175,8 @@ namespace
         case CK::LFE: return MC::LFE;
         case CK::SL:  return MC::SL;
         case CK::SR:  return MC::SR;
+        case CK::BL:  return MC::BL;
+        case CK::BR:  return MC::BR;
         }
         return MC::M;
     }
@@ -366,6 +433,8 @@ LLPositionalStreamMgr::parseChannelKind(std::string_view s)
         {"LFE", ChannelKind::LFE},
         {"SL",  ChannelKind::SL},
         {"SR",  ChannelKind::SR},
+        {"BL",  ChannelKind::BL},
+        {"BR",  ChannelKind::BR},
     };
 
     auto upcase = [](char c) -> char
@@ -717,7 +786,7 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
     switch (kind)
     {
     case DistErrorKind::BadCh:
-        msg = "タグ書式エラー (prim " + id_short + "): ch の値は L/R/M/FL/FR/C/LFE/SL/SR のいずれかである必要があります";
+        msg = "タグ書式エラー (prim " + id_short + "): ch の値は L/R/M/FL/FR/C/LFE/SL/SR/BL/BR のいずれかである必要があります";
         if (!detail.empty()) msg += " (got '" + detail + "')";
         msg += "。例: [3dstream-stereo:{ch:L}{range:30}]";
         break;
@@ -752,7 +821,7 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
     case DistErrorKind::UnsupportedSourceFormat:
         msg = "構造エラー (root " + id_short + "): 非対応のソース形式です";
         if (!detail.empty()) msg += " (" + detail + ")";
-        msg += "。受入対象は 1/2ch ソース、または 6ch Vorbis/Opus/FLAC のみです";
+        msg += "。受入対象は 1/2ch、6ch、または media callback 経由の 8ch ソースです";
         break;
     case DistErrorKind::BadBinaural:
         msg = "タグ書式エラー (prim " + id_short + "): binaural の値は on または off で指定してください";
@@ -799,14 +868,14 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         msg += "。例: [3dstream-stereo:{source:media}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::MediaFaceAmbiguous:
-        msg = "構造エラー (root " + id_short + "): root prim に media face が複数あるため source media を特定できません";
+        msg = "構造エラー (root " + id_short + "): linkset 内に media face が複数あるため source media を特定できません";
         if (!detail.empty()) msg += " (" + detail + ")";
         msg += "。例: [3dstream-stereo:{source:media}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::MediaSourceNotReady:
         msg = "再生待機 (root " + id_short + "): media source の音声がまだ準備できていません";
         if (!detail.empty()) msg += " (" + detail + ")";
-        msg += "。root prim の media を再生開始してから再評価されます";
+        msg += "。linkset 内の対象 media を再生開始してから再評価されます";
         break;
     case DistErrorKind::MediaSourceInUse:
         msg = "構造エラー (root " + id_short + "): この media source は別の 3D Stream binding で使用中です";
@@ -1105,53 +1174,69 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
     if (source_is_media)
     {
-        LLVOVolume* root_volume = dynamic_cast<LLVOVolume*>(root);
-        if (!root_volume)
+        std::vector<MediaFaceCandidate> media_candidates;
+        auto collect_media_faces = [&](LLViewerObject* object)
         {
-            teardownDistributedBinding(root_id);
-            return;
-        }
-
-        S32 media_face = root_data.media_face.value_or(-1);
-        if (media_face < 0)
-        {
-            const S32 num_tes = root_volume->getNumTEs();
-            S32 media_face_count = 0;
-            for (S32 i = 0; i < num_tes; ++i)
+            if (!object || object->isDead())
             {
-                const LLTextureEntry* te = root_volume->getTE(static_cast<U8>(i));
-                if (te && te->hasMedia())
-                {
-                    ++media_face_count;
-                    media_face = i;
-                }
-            }
-            if (media_face_count > 1)
-            {
-                notifyDistributedError(root_id, DistErrorKind::MediaFaceAmbiguous,
-                                       llformat("media_faces=%d", media_face_count));
-                teardownDistributedBinding(root_id);
                 return;
             }
+            LLVOVolume* volume = dynamic_cast<LLVOVolume*>(object);
+            if (!volume)
+            {
+                return;
+            }
+            const S32 num_tes = volume->getNumTEs();
+            for (S32 i = 0; i < num_tes; ++i)
+            {
+                if (root_data.media_face && i != *root_data.media_face)
+                {
+                    continue;
+                }
+                const LLTextureEntry* te = volume->getTE(static_cast<U8>(i));
+                if (te && te->hasMedia())
+                {
+                    media_candidates.push_back({object->getID(), i, volume});
+                }
+            }
+        };
+
+        collect_media_faces(root);
+        for (const auto& child : root->getChildren())
+        {
+            collect_media_faces(child.get());
         }
 
-        if (media_face < 0 || media_face >= root_volume->getNumTEs())
+        if (media_candidates.empty())
         {
             notifyDistributedError(root_id, DistErrorKind::BadFace,
                                    root_data.media_face
-                                       ? llformat("%d", *root_data.media_face)
-                                       : std::string("no media face"));
+                                       ? llformat("%d: no media face in linkset",
+                                                  *root_data.media_face)
+                                       : std::string("no media face in linkset"));
+            teardownDistributedBinding(root_id);
+            return;
+        }
+        if (media_candidates.size() > 1)
+        {
+            notifyDistributedError(root_id, DistErrorKind::MediaFaceAmbiguous,
+                                   llformat("media_faces=%d",
+                                            static_cast<S32>(media_candidates.size())));
             teardownDistributedBinding(root_id);
             return;
         }
 
-        viewer_media_t media = root_volume->getMediaImpl(static_cast<U8>(media_face));
+        const MediaFaceCandidate& media_source = media_candidates.front();
+        S32 media_face = media_source.face;
+        viewer_media_t media = media_source.volume->getMediaImpl(static_cast<U8>(media_face));
         if (media.isNull() || !media->hasMedia())
         {
             LL_DEBUGS("Stream3D") << "[3dstream-stereo] media source not ready for root "
-                                   << root_id << " face=" << media_face << LL_ENDL;
+                                   << root_id << " media_prim=" << media_source.object_id
+                                   << " face=" << media_face << LL_ENDL;
             notifyDistributedError(root_id, DistErrorKind::MediaSourceNotReady,
-                                   llformat("face=%d media impl not loaded", media_face));
+                                   "media_prim=" + media_source.object_id.asString().substr(0, 8)
+                                   + llformat(" face=%d media impl not loaded", media_face));
             teardownDistributedBinding(root_id);
             return;
         }
@@ -1160,22 +1245,24 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         media_ring = media_impl->getAudioRingForStream3D();
         if (!media_ring ||
             media_ring->mMagic != LL_PLUGIN_AUDIO_RING_MAGIC ||
-            media_ring->mVersion != LL_PLUGIN_AUDIO_RING_VERSION ||
-            media_ring->mSampleRate.load(std::memory_order_acquire) == 0 ||
-            media_ring->mChannels.load(std::memory_order_acquire) == 0)
+            media_ring->mVersion != LL_PLUGIN_AUDIO_RING_VERSION)
         {
             LL_DEBUGS("Stream3D") << "[3dstream-stereo] media audio ring not ready for root "
-                                   << root_id << " face=" << media_face << LL_ENDL;
+                                   << root_id << " media_prim=" << media_source.object_id
+                                   << " face=" << media_face << LL_ENDL;
             notifyDistributedError(root_id, DistErrorKind::MediaSourceNotReady,
-                                   llformat("face=%d audio ring not ready", media_face));
+                                   "media_prim=" + media_source.object_id.asString().substr(0, 8)
+                                   + llformat(" face=%d audio ring unavailable", media_face));
             teardownDistributedBinding(root_id);
             return;
         }
 
         source_key.kind = DistSourceKind::Media;
+        source_key.media_object_id = media_source.object_id;
         source_key.media_id = media_impl->getMediaTextureID();
         source_key.face = media_face;
         source_label = "media:" + source_key.media_id.asString()
+                       + ":prim=" + source_key.media_object_id.asString()
                        + ":face=" + llformat("%d", media_face);
 
         for (const auto& [other_root_id, other_binding] : mDistributedBindings)
@@ -1185,7 +1272,10 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
                 continue;
             }
             if (other_binding.source_key.kind == DistSourceKind::Media &&
-                other_binding.source_key.media_id == source_key.media_id)
+                ((source_key.media_id.notNull() &&
+                  other_binding.source_key.media_id == source_key.media_id) ||
+                 (other_binding.source_key.media_object_id == source_key.media_object_id &&
+                  other_binding.source_key.face == source_key.face)))
             {
                 notifyDistributedError(root_id, DistErrorKind::MediaSourceInUse,
                                        "other_root=" + other_root_id.asString().substr(0, 8));
@@ -1408,12 +1498,10 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     // entries so the new speaker set is the only one indexed.
     if (was_present)
     {
-        if (old_it->second.source_key.kind == DistSourceKind::Media &&
-            old_it->second.source_key.media_id.notNull())
+        if (old_it->second.source_key.kind == DistSourceKind::Media)
         {
             if (LLViewerMediaImpl* old_media =
-                    LLViewerMedia::getInstance()->getMediaImplFromTextureID(
-                        old_it->second.source_key.media_id))
+                    findMediaFor3DSource(old_it->second.source_key))
             {
                 old_media->setStream3DAudioRedirected(false);
             }
@@ -1479,7 +1567,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.reconnect_attempts = 0;
     binding.next_retry_time = 0.0;
     auto stream = std::make_unique<LLPositionalStreamMulti>();
-    stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+    stream->setVolume(effectiveDistributedStreamVolume(
+        gSavedSettings.getF32("Stream3DVolumeMaster"),
+        binding.parcel_audible,
+        source_is_media,
+        media_impl));
     // r11 P5: publisher's lite-HRTF intent (× debug override) decided at
     // start time. Persists across the stream's reconnect cascade because
     // makeChannelForBinding() reads it on every channel bring-up.
@@ -1617,7 +1709,7 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
     // binding that hasn't actually changed structure since last emit.
     if (!gSavedSettings.getBOOL("Stream3DRoutingDiagnostic")) return;
 
-    // Per-ch speaker count. r10 receives any of L/R/M/FL/FR/C/LFE/SL/SR
+    // Per-ch speaker count. r10 receives any of L/R/M/FL/FR/C/LFE/SL/SR/BL/BR
     // (older r5–r9 viewers only emit L/R/M, which is still a valid subset).
     std::map<ChannelKind, int> ch_count;
     for (const auto& s : b.speakers) ++ch_count[s.ch];
@@ -1633,18 +1725,24 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
 
     // (a) source-side: 6ch source with missing dedicated prim → folded into
     // the BS.775 downmix, or dropped entirely if no L/R/M prim exists.
-    if (source_channels == 6)
+    if (source_channels == 6 || source_channels == 8)
     {
-        static constexpr ChannelKind kSrc6[] = {
+        static constexpr ChannelKind kSrc8[] = {
             ChannelKind::FL, ChannelKind::FR, ChannelKind::C,
             ChannelKind::LFE, ChannelKind::SL, ChannelKind::SR,
+            ChannelKind::BL, ChannelKind::BR,
         };
-        for (auto sc : kSrc6)
+        for (auto sc : kSrc8)
         {
+            if (source_channels == 6 &&
+                (sc == ChannelKind::BL || sc == ChannelKind::BR))
+            {
+                continue;
+            }
             if (ch_count[sc] > 0) continue;
             const char* name = channelKindLabel(sc);
             std::ostringstream line;
-            if (has_lrm_bucket)
+            if (has_lrm_bucket && source_channels == 6)
             {
                 line << name << " content folded into BS.775 downmix"
                      << " (source is 6ch, no ch:" << name << " prim)";
@@ -1653,7 +1751,8 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
             {
                 line << name
                      << " content has no destination \xe2\x80\x94 dropped"
-                     << " (source is 6ch, no ch:L/R/M prim)";
+                     << " (source is " << source_channels << "ch, no ch:"
+                     << name << " prim)";
             }
             notifyStream3D(line.str());
         }
@@ -1670,7 +1769,8 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
     {
         bool has_51_prim = false;
         for (auto pc : { ChannelKind::FL, ChannelKind::FR, ChannelKind::C,
-                         ChannelKind::LFE, ChannelKind::SL, ChannelKind::SR })
+                         ChannelKind::LFE, ChannelKind::SL, ChannelKind::SR,
+                         ChannelKind::BL, ChannelKind::BR })
         {
             if (ch_count[pc] > 0) { has_51_prim = true; break; }
         }
@@ -1685,9 +1785,10 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
     // (b) prim-side: dedicated 5.1 prim (FL/FR/C/LFE/SL/SR) on 1ch or 2ch
     // source → compat fallback per §4.2 matrix. ch:L/R/M prims always have
     // a sensible mapping and are not warned (§4.4.1 row 5 "通知不要").
-    static constexpr ChannelKind kPrim51[] = {
+    static constexpr ChannelKind kPrimSurround[] = {
         ChannelKind::FL, ChannelKind::FR, ChannelKind::C,
         ChannelKind::LFE, ChannelKind::SL, ChannelKind::SR,
+        ChannelKind::BL, ChannelKind::BR,
     };
 
     // r12: when upmix is engaged on a 2ch source, the 5.1 prims are not in
@@ -1698,7 +1799,7 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
     if (b.upmix_effective_applied && source_channels == 2)
     {
         bool any_5_1 = false;
-        for (auto pc : kPrim51) { if (ch_count[pc] > 0) { any_5_1 = true; break; } }
+        for (auto pc : kPrimSurround) { if (ch_count[pc] > 0) { any_5_1 = true; break; } }
         if (any_5_1)
         {
             notifyStream3D("5.1 prims fed by stereo\xe2\x86\x92" "6ch upmix DSP");
@@ -1706,10 +1807,15 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
         return;
     }
 
-    for (auto pc : kPrim51)
+    for (auto pc : kPrimSurround)
     {
         if (ch_count[pc] == 0) continue;
-        if (source_channels == 6) continue; // direct, no warn
+        if (source_channels == 6 &&
+            pc != ChannelKind::BL && pc != ChannelKind::BR)
+        {
+            continue; // direct, no warn
+        }
+        if (source_channels == 8) continue; // direct, no warn
 
         const char* name = channelKindLabel(pc);
         const char* dest = nullptr;
@@ -1728,6 +1834,8 @@ void LLPositionalStreamMgr::emitRoutingDiagnostic(DistributedStereoBinding& b)
             case ChannelKind::LFE:
             case ChannelKind::SL:
             case ChannelKind::SR:
+            case ChannelKind::BL:
+            case ChannelKind::BR:
                 silent = true;
                 break;
             default:
@@ -1941,12 +2049,9 @@ void LLPositionalStreamMgr::teardownDistributedBinding(const LLUUID& root_id)
             mPrimToRoot.erase(pr_it);
         }
     }
-    if (it->second.source_key.kind == DistSourceKind::Media &&
-        it->second.source_key.media_id.notNull())
+    if (it->second.source_key.kind == DistSourceKind::Media)
     {
-        if (LLViewerMediaImpl* media =
-                LLViewerMedia::getInstance()->getMediaImplFromTextureID(
-                    it->second.source_key.media_id))
+        if (LLViewerMediaImpl* media = findMediaFor3DSource(it->second.source_key))
         {
             media->setStream3DAudioRedirected(false);
         }
@@ -2279,6 +2384,17 @@ void LLPositionalStreamMgr::update()
             continue;
         }
 
+        if (b.source_key.kind == DistSourceKind::Media)
+        {
+            LLPluginAudioRingHeader* ring = nullptr;
+            if (LLViewerMediaImpl* media = findMediaFor3DSource(b.source_key))
+            {
+                media->setStream3DAudioRedirected(true);
+                ring = media->getAudioRingForStream3D();
+            }
+            b.stream->setMediaRingFor3DStream(ring);
+        }
+
         if (b.stream->isFailed())
         {
             // r9 P6: format mismatches (3/4/5/7/8ch source, or 6ch in a
@@ -2357,7 +2473,15 @@ void LLPositionalStreamMgr::update()
                     }
                     configs.push_back(c);
                 }
-                b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+                LLViewerMediaImpl* reconnect_media =
+                    b.source_key.kind == DistSourceKind::Media
+                        ? findMediaFor3DSource(b.source_key)
+                        : nullptr;
+                b.stream->setVolume(effectiveDistributedStreamVolume(
+                    gSavedSettings.getF32("Stream3DVolumeMaster"),
+                    b.parcel_audible,
+                    b.source_key.kind == DistSourceKind::Media,
+                    reconnect_media));
                 // r23: reset idempotent guard (see mono path); per-poll
                 // push next frame applies the parcel gate to the new
                 // FMOD channels.
@@ -2369,18 +2493,15 @@ void LLPositionalStreamMgr::update()
                 if (b.source_key.kind == DistSourceKind::Media)
                 {
                     LLPluginAudioRingHeader* ring = nullptr;
-                    if (LLViewerMediaImpl* media =
-                            LLViewerMedia::getInstance()->getMediaImplFromTextureID(
-                                b.source_key.media_id))
+                    LLViewerMediaImpl* media = reconnect_media;
+                    if (media)
                     {
                         media->setStream3DAudioRedirected(true);
                         ring = media->getAudioRingForStream3D();
                     }
                     if (!b.stream->startMedia(ring, b.url, configs))
                     {
-                        if (LLViewerMediaImpl* media =
-                                LLViewerMedia::getInstance()->getMediaImplFromTextureID(
-                                    b.source_key.media_id))
+                        if (media)
                         {
                             media->setStream3DAudioRedirected(false);
                         }
@@ -2473,10 +2594,17 @@ void LLPositionalStreamMgr::update()
         {
             b.parcel_audible = computeParcelAudible(root_id, b.parcel_audible);
         }
-        // r23: same parcel-gated, idempotent volume push as the mono loop.
+        // r23 + media source: parcel gate first; media routed through 3D
+        // also keeps the existing media UI/global volume semantics as a
+        // source gain before per-speaker volume is applied by llaudio.
         {
             const F32 master_vol = gSavedSettings.getF32("Stream3DVolumeMaster");
-            const F32 effective_vol = b.parcel_audible ? master_vol : 0.f;
+            const bool is_media_source = b.source_key.kind == DistSourceKind::Media;
+            LLViewerMediaImpl* media = is_media_source
+                ? findMediaFor3DSource(b.source_key)
+                : nullptr;
+            const F32 effective_vol = effectiveDistributedStreamVolume(
+                master_vol, b.parcel_audible, is_media_source, media);
             if (std::isnan(b.last_pushed_volume) || b.last_pushed_volume != effective_vol)
             {
                 b.stream->setVolume(effective_vol);
@@ -2570,12 +2698,9 @@ void LLPositionalStreamMgr::shutdownPrimBindings()
                               << " distributed-stereo bindings" << LL_ENDL;
         for (const auto& [root_id, b] : mDistributedBindings)
         {
-            if (b.source_key.kind == DistSourceKind::Media &&
-                b.source_key.media_id.notNull())
+            if (b.source_key.kind == DistSourceKind::Media)
             {
-                if (LLViewerMediaImpl* media =
-                        LLViewerMedia::getInstance()->getMediaImplFromTextureID(
-                            b.source_key.media_id))
+                if (LLViewerMediaImpl* media = findMediaFor3DSource(b.source_key))
                 {
                     media->setStream3DAudioRedirected(false);
                 }
@@ -2680,7 +2805,12 @@ void LLPositionalStreamMgr::applyMasterVolume(F32 volume)
     {
         if (b.stream)
         {
-            const F32 effective = b.parcel_audible ? volume : 0.f;
+            const bool is_media_source = b.source_key.kind == DistSourceKind::Media;
+            LLViewerMediaImpl* media = is_media_source
+                ? findMediaFor3DSource(b.source_key)
+                : nullptr;
+            const F32 effective = effectiveDistributedStreamVolume(
+                volume, b.parcel_audible, is_media_source, media);
             b.stream->setVolume(effective);
             b.last_pushed_volume = effective;
         }

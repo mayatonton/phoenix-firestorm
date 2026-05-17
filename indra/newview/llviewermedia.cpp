@@ -83,6 +83,8 @@
 #include <boost/bind.hpp>   // for SkinFolder listener
 #include <boost/signals2.hpp>
 
+#include <algorithm>
+
 extern bool gCubeSnapshot;
 
 // *TODO: Consider enabling mipmaps (they have been disabled for a long time). Likely has a significant performance impact for tiled/high texture repeat media. Mip generation in a shader may also be an option if necessary.
@@ -2291,6 +2293,26 @@ void LLViewerMediaImpl::updateVolume()
 F32 LLViewerMediaImpl::getVolume()
 {
     return mRequestedVolume;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+F32 LLViewerMediaImpl::getStream3DAudioGain() const
+{
+    if (!mMediaSource)
+    {
+        return 0.f;
+    }
+    if (sOnlyAudibleTextureID.notNull() && sOnlyAudibleTextureID != mTextureId)
+    {
+        return 0.f;
+    }
+
+    // Match the non-proximity part of the existing 2D media volume path.
+    // Stream3D applies speaker range/rolloff itself, so mProximityCamera
+    // attenuation is intentionally not included here.
+    const F32 requested = std::clamp(mRequestedVolume, 0.f, 1.f);
+    const F32 global = std::clamp(LLViewerMedia::getInstance()->getVolume(), 0.f, 1.f);
+    return requested * global;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

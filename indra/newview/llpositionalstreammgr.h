@@ -142,6 +142,8 @@ public:
         LFE,
         SL,
         SR,
+        BL,
+        BR,
     };
 
     enum class DistSourceKind
@@ -154,6 +156,7 @@ public:
     {
         DistSourceKind kind = DistSourceKind::Url;
         std::string url;
+        LLUUID media_object_id;
         LLUUID media_id;
         S32 face = -1;
 
@@ -161,6 +164,7 @@ public:
         {
             return kind == rhs.kind &&
                    url == rhs.url &&
+                   media_object_id == rhs.media_object_id &&
                    media_id == rhs.media_id &&
                    face == rhs.face;
         }
@@ -172,6 +176,9 @@ public:
     //   - source only (root):         {url} or {source:media} [+ {range}]
     //   - speaker only (root/child):  {ch}       [+ {range} + {volume}]
     //   - source + self-speaker:      source + {ch} [+ {range} + {volume}]
+    // For {source:media}, the source declaration still lives on the root,
+    // but the media face may live on the root or one child prim in the same
+    // linkset. {face:N} narrows the linkset-wide media-face search.
     // The same {range} field, when present, fills both range_default (source
     // role) and range_speaker (speaker role) of the same prim — the spec
     // §4.3 treats it as a single shared field rather than two separate keys.
