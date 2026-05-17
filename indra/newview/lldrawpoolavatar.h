@@ -94,6 +94,16 @@ typedef enum
     /*virtual*/ void endShadowPass(S32 pass);
     /*virtual*/ void renderShadow(S32 pass);
 
+    // <AYAstorm r30 P2> motion blur / velocity pass (BD lineage)
+    // Known limitation: per-bone animation velocity is degraded because
+    // lastMatrixPalette is not uploaded on the avatar skeleton path
+    // (rigged attachments rendered by other pools work correctly).
+    /*virtual*/ S32 getNumMotionBlurPasses() override;
+    /*virtual*/ void beginMotionBlurPass(S32 pass) override;
+    /*virtual*/ void endMotionBlurPass(S32 pass) override;
+    /*virtual*/ void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
+
     void beginRigid();
     void beginImpostor();
     void beginSkinned();
