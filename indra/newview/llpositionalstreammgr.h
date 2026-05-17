@@ -171,14 +171,16 @@ public:
     };
 
     // r8: parsed [3dstream-stereo:{url:...}{range:...}{ch:...}{volume:...}] tag.
-    // AYAstorm media-source extension also accepts {source:media}{face:N}.
+    // AYAstorm media-source extension also accepts
+    // {source:media}{link:N}{face:N}.
     // A single prim's description may declare:
     //   - source only (root):         {url} or {source:media} [+ {range}]
     //   - speaker only (root/child):  {ch}       [+ {range} + {volume}]
     //   - source + self-speaker:      source + {ch} [+ {range} + {volume}]
     // For {source:media}, the source declaration still lives on the root,
     // but the media face may live on the root or one child prim in the same
-    // linkset. {face:N} narrows the linkset-wide media-face search.
+    // linkset. {link:N} narrows the search to one prim, and {face:N}
+    // narrows it to one media face.
     // The same {range} field, when present, fills both range_default (source
     // role) and range_speaker (speaker role) of the same prim — the spec
     // §4.3 treats it as a single shared field rather than two separate keys.
@@ -188,6 +190,7 @@ public:
         // is present).
         std::optional<DistSourceKind> source_kind;
         std::optional<std::string> url;
+        std::optional<S32> media_link;
         std::optional<S32> media_face;
         std::optional<F32> range_default;
         // r11 P5: lite-HRTF toggle ({binaural:on|off}). Source-side property
@@ -266,7 +269,8 @@ public:
         // {url:...} and {source:media} are mutually exclusive source
         // declarations.
         ConflictingSource,
-        // {face:N} value not parseable as a non-negative integer.
+        // {link:N} / {face:N} value not parseable as a non-negative integer.
+        BadLink,
         BadFace,
     };
 
@@ -557,7 +561,9 @@ private:
         BadLfeGain,
         BadSource,
         ConflictingSource,
+        BadLink,
         BadFace,
+        MediaFaceNotFound,
         MediaFaceAmbiguous,
         MediaSourceNotReady,
         MediaSourceInUse,

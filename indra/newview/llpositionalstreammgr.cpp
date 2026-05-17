@@ -70,9 +70,36 @@ namespace
     struct MediaFaceCandidate
     {
         LLUUID object_id;
+        S32 link_number = -1;
         S32 face = -1;
         LLVOVolume* volume = nullptr;
     };
+
+    S32 computeLinkNumber(LLViewerObject* root, LLViewerObject* object)
+    {
+        if (!root || !object)
+        {
+            return -1;
+        }
+        const LLViewerObject::child_list_t children = root->getChildren();
+        if (object == root)
+        {
+            return children.empty() ? 0 : 1;
+        }
+
+        S32 link_number = 1;
+        for (LLViewerObject::child_list_t::const_iterator iter = children.begin();
+             iter != children.end();
+             ++iter)
+        {
+            ++link_number;
+            if (iter->get() == object)
+            {
+                return link_number;
+            }
+        }
+        return -1;
+    }
 
     LLVector3 toFloatVec(const LLVector3d& v)
     {
@@ -541,6 +568,18 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                     setError(DistParseError::BadFace, val);
                 }
             }
+            else if (key == "link")
+            {
+                S32 link = -1;
+                if (tryParseNonNegativeS32(val, link))
+                {
+                    data.media_link = link;
+                }
+                else
+                {
+                    setError(DistParseError::BadLink, val);
+                }
+            }
             else if (key == "ch")
             {
                 seen_ch_key = true;
@@ -862,15 +901,25 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         msg = "タグ書式エラー (prim " + id_short + "): url と source:media は同時に指定できません";
         msg += "。URL 音源なら {url:...}、prim media 音源なら {source:media} のどちらか一方を指定してください";
         break;
+    case DistErrorKind::BadLink:
+        msg = "タグ書式エラー (prim " + id_short + "): link は 0 以上の整数で指定してください";
+        if (!detail.empty()) msg += " (got '" + detail + "')";
+        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
+        break;
     case DistErrorKind::BadFace:
         msg = "タグ書式エラー (prim " + id_short + "): face は 0 以上の整数で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{source:media}{face:0}{ch:L}{range:30}]";
+        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
+        break;
+    case DistErrorKind::MediaFaceNotFound:
+        msg = "構造エラー (root " + id_short + "): 指定された link / face に media が見つかりません";
+        if (!detail.empty()) msg += " (" + detail + ")";
+        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::MediaFaceAmbiguous:
         msg = "構造エラー (root " + id_short + "): linkset 内に media face が複数あるため source media を特定できません";
         if (!detail.empty()) msg += " (" + detail + ")";
-        msg += "。例: [3dstream-stereo:{source:media}{face:0}{ch:L}{range:30}]";
+        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::MediaSourceNotReady:
         msg = "再生待機 (root " + id_short + "): media source の音声がまだ準備できていません";
@@ -1098,6 +1147,7 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         case DistParseError::ConflictingSource:
             k = DistErrorKind::ConflictingSource;
             break;
+        case DistParseError::BadLink:     k = DistErrorKind::BadLink;     break;
         case DistParseError::BadFace:     k = DistErrorKind::BadFace;     break;
         case DistParseError::Ok:          break; // unreachable
         }
@@ -1181,6 +1231,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
             {
                 return;
             }
+            const S32 link_number = computeLinkNumber(root, object);
+            if (root_data.media_link && link_number != *root_data.media_link)
+            {
+                return;
+            }
             LLVOVolume* volume = dynamic_cast<LLVOVolume*>(object);
             if (!volume)
             {
@@ -1196,7 +1251,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
                 const LLTextureEntry* te = volume->getTE(static_cast<U8>(i));
                 if (te && te->hasMedia())
                 {
-                    media_candidates.push_back({object->getID(), i, volume});
+                    media_candidates.push_back({object->getID(), link_number, i, volume});
                 }
             }
         };
@@ -1209,10 +1264,15 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
         if (media_candidates.empty())
         {
-            notifyDistributedError(root_id, DistErrorKind::BadFace,
-                                   root_data.media_face
-                                       ? llformat("%d: no media face in linkset",
-                                                  *root_data.media_face)
+            notifyDistributedError(root_id, DistErrorKind::MediaFaceNotFound,
+                                   root_data.media_face || root_data.media_link
+                                       ? llformat("link=%s face=%s: no media face in linkset",
+                                                  root_data.media_link
+                                                      ? llformat("%d", *root_data.media_link).c_str()
+                                                      : "any",
+                                                  root_data.media_face
+                                                      ? llformat("%d", *root_data.media_face).c_str()
+                                                      : "any")
                                        : std::string("no media face in linkset"));
             teardownDistributedBinding(root_id);
             return;
@@ -1220,7 +1280,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         if (media_candidates.size() > 1)
         {
             notifyDistributedError(root_id, DistErrorKind::MediaFaceAmbiguous,
-                                   llformat("media_faces=%d",
+                                   llformat("media_faces=%d; specify {link:N}{face:M}",
                                             static_cast<S32>(media_candidates.size())));
             teardownDistributedBinding(root_id);
             return;
@@ -1263,6 +1323,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         source_key.face = media_face;
         source_label = "media:" + source_key.media_id.asString()
                        + ":prim=" + source_key.media_object_id.asString()
+                       + ":link=" + llformat("%d", media_source.link_number)
                        + ":face=" + llformat("%d", media_face);
 
         for (const auto& [other_root_id, other_binding] : mDistributedBindings)

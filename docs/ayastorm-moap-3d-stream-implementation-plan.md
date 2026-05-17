@@ -42,11 +42,12 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
   - 6ch: `FL / FR / C / LFE / SL / SR`
   - 8ch: `FL / FR / C / LFE / SL / SR / BL / BR`
 - `llpluginaudio` integration test を追加した。
-- 3D Stream tag parser に `{source:media}` と `{face:N}` を追加した。
+- 3D Stream tag parser に `{source:media}`、`{link:N}`、`{face:N}` を追加した。
 - `{url:...}` と `{source:media}` の同時指定を invalid binding として扱うようにした。
 - `{source:media}` の media face を linkset 内から解決し、media audio ring を `LLPositionalStreamMulti` の source として開始できる経路を追加した。
   - tag は root prim の Description に置く。
   - media face は root prim または child prim のどちらにあってもよい。
+  - media face が複数ある場合は `{link:N}{face:M}` で対象 prim / face を指定できる。
 - media source 有効時は対象 media の通常 2D `LLMediaAudioStream` を停止する suppression を追加した。
 - media ring source は `1 / 2 / 6 / 8ch` を受け入れる。
   - 今回の実機確認対象は 5.1ch 再生までとする。
@@ -80,7 +81,7 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 
 PR 前に必要な実機確認:
 
-2026-05-17 の実機確認で、今回の PR 前必須項目はすべて合格とする。
+2026-05-17 の macOS 実機確認で、今回の PR 前必須項目はすべて合格とする。
 
 1. root prim に tag、child prim に media を置いた構成で再生できること。確認済み。
    - root prim Description: `[3dstream-stereo:{source:media}...]`
@@ -209,6 +210,7 @@ PR 前に必要な実機確認:
 
 4. Media surface と 3D Stream binding の対応は、既存 linkset 評価に寄せる。
    - 3D Stream speaker linkset の root prim に `{source:media}` がある場合だけ、linkset 内の media を source として扱う。
+   - 対象 media は `{link:N}{face:M}` で明示できる。
    - YouTube などの通常 web media も、root prim または child prim の media として再生されていれば対象にする。
    - linkset 内の media を表示しつつ別の URL stream を speaker から鳴らす構成を許可するため、media source は暗黙にはしない。
    - speaker prim の `{ch:...}` や `{range:...}` は既存 `[3dstream-stereo:...]` の概念を流用する。
@@ -331,7 +333,7 @@ media を source にする場合は `{source:media}` を必須にする。linkse
 speaker 定義は既存 tag を流用する。
 
 ```text
-[3dstream-stereo:{source:media}{ch:FL}{range:20}{volume:1.0}]
+[3dstream-stereo:{source:media}{link:2}{face:0}{ch:FL}{range:20}{volume:1.0}]
 [3dstream-stereo:{url:http://example.invalid/stream}{ch:FL}{range:20}{volume:1.0}]
 ```
 
@@ -341,11 +343,13 @@ media の解決は段階的に行う。
 
 1. root prim の `{source:media}` を source declaration として扱う。
 2. media face は root prim と child prim を含む linkset 内から探す。
-3. linkset 内に media face が 1 つだけなら `{face:N}` は省略可にする。
-4. linkset 内に media face が複数ある場合は `{face:N}` を必須にする。
-5. `{face:N}` は linkset 内 media face の絞り込みとして扱う。同じ face 番号に複数 media がある場合は ambiguous として通知する。
-6. `{face:N}` に該当する media がない場合は invalid binding として通知する。
-7. 将来、media texture UUID 指定を追加する。
+3. linkset 内に media face が 1 つだけなら `{link:N}` / `{face:M}` は省略可にする。
+4. linkset 内に media face が複数ある場合は `{link:N}{face:M}` で対象を絞り込めるようにする。
+5. `{link:N}` は SL の link number と同じ意味で、root prim は 1、child prim は 2 以降、単独 prim は 0 として扱う。
+6. `{face:M}` は対象 prim の media face を絞り込む。
+7. `{link:N}` / `{face:M}` で絞っても複数候補が残る場合は ambiguous として通知する。
+8. `{link:N}` / `{face:M}` に該当する media がない場合は invalid binding として通知する。
+9. 将来、media texture UUID 指定を追加する。
 
 現行 parser は `{url}` または `{ch}` がある場合だけ `[3dstream-stereo:...]` を認識する。`{source:media}` を source declaration として扱うには、`parseDistributedStereoTag()` の recognized 条件、`DistStereoTagData`、`DistParseError`、`evaluateLinkset()` の root source 判定を変更する必要がある。
 
@@ -468,8 +472,8 @@ void setAudioRoutedTo3DStream(bool enabled);
 - `{url:...}` と `{source:media}` は同時指定不可にする。
 - linkset 内に media があっても `{source:media}` がなければ media audio は 3D Stream source にしない。
 - speaker 定義は既存 multi binding と同じ `{ch:...}` を使う。
-- linkset 内の media face が 1 つだけなら `{face:N}` は省略可にする。
-- linkset 内の media face が複数ある場合は `{face:N}` を必須にする。
+- linkset 内の media face が 1 つだけなら `{link:N}` / `{face:M}` は省略可にする。
+- linkset 内の media face が複数ある場合は `{link:N}{face:M}` で対象を指定できるようにする。
 - media impl が解決できなければ 2D fallback に戻す。
 - media data update / media impl create-destroy / face media change で root を pending evaluation に入れる。
 
@@ -568,7 +572,7 @@ media mute は最優先で silence にする。Stream3D master が 0 の場合�
 最低限、以下を `Stream3D` または `AYAMediaAudio` log に出す。
 
 - Media 3D binding start / stop
-- resolved media impl / object id / face
+- resolved media impl / object id / link number / face
 - source kind / source binding key
 - sample rate / channels / format serial
 - 2D media audio disabled / restored
@@ -576,7 +580,7 @@ media mute は最優先で silence にする。Stream3D master が 0 の場合�
 - ring dropped frames
 - unsupported channel count
 - fallback to 2D reason
-- invalid binding reason (`{url}` + `{source:media}` 同時指定、複数 media face で `{face}` 未指定、face 範囲外など)
+- invalid binding reason (`{url}` + `{source:media}` 同時指定、複数 media face で `{link}` / `{face}` 未指定、link / face 範囲外など)
 
 ## 先に解決すべき問題
 
@@ -697,6 +701,7 @@ MOAP audio callback は build option 依存である。macOS では callback ON 
 
 - root prim に `{source:media}` tag を置き、root prim の media face を source として speaker prim から聞こえること。
 - root prim に `{source:media}` tag を置き、child prim の media face を source として speaker prim から聞こえること。
+- root prim に `{source:media}{link:N}{face:M}` tag を置き、指定 child prim / face の media を source として speaker prim から聞こえること。
 - MOAP/CEF page の stereo audio が 2D ではなく speaker prim から聞こえること。
 - MOAP/CEF page の 5.1 audio が `FL/FR/C/LFE/SL/SR` として speaker prim から聞こえること。今回の合格条件はここまで。
 - Dullahan override 後に viewer log が `CEF audio stream started: 48000 Hz x 8 ch` を出すこと。
@@ -709,7 +714,7 @@ MOAP audio callback は build option 依存である。macOS では callback ON 
 - 3D Stream disabled 時に 2D media audio に戻ること。
 - media face 上のブラウザ操作で音声なしページと動画ページを切り替えても、3D route が維持され、2D media audio に一時復帰しないこと。
 - `{url:...}` と `{source:media}` の同時指定が invalid binding として通知されること。
-- linkset 内に media が複数 face ある状態で `{face:N}` 未指定なら invalid binding になること。
+- linkset 内に media が複数 face ある状態で `{link:N}` / `{face:M}` 未指定なら invalid binding になること。
 - URL source + root/child prim media 表示の構成で、speaker は URL stream を鳴らし、media audio は従来 2D path のままになること。
 - MOAP/CEF page の 7.1 audio が `FL/FR/C/LFE/SL/SR/BL/BR` として speaker prim から聞こえること。これは将来確認項目であり、今回の合格条件には含めない。
 
