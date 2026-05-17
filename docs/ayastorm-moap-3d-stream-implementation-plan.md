@@ -106,7 +106,7 @@ PR 前に必要な実機確認:
 残確認:
 
 - Windows / Linux で native CEF output と FMOD output の二重再生が起きないこと。
-- callback build が無効な platform / build で、media source 3D routing が安全に 2D fallback になること。
+- Dullahan audio callback が使えない build で `{source:media}` が指定された場合、crash せず通常の MOAP 2D audio として再生されること。
 
 将来確認:
 
