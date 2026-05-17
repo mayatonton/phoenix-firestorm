@@ -257,6 +257,11 @@ extern LLGLSLShader         gFXAAProgram[4];
 extern LLGLSLShader         gSMAAEdgeDetectProgram[4];
 extern LLGLSLShader         gSMAABlendWeightsProgram[4];
 extern LLGLSLShader         gSMAANeighborhoodBlendProgram[4];
+// <AYAstorm r30 P2 step 5c> SMAA T2x temporal resolve. One slot per SMAA quality
+// preset (low/medium/high/ultra). Compiled with SMAA_REPROJECTION=1, sources our
+// own SMAAResolveV/F.glsl wrappers around upstream SMAA.glsl's SMAAResolvePS.
+extern LLGLSLShader         gSMAAResolveProgram[4];
+// </AYAstorm r30 P2 step 5c>
 extern LLGLSLShader         gCASProgram;
 extern LLGLSLShader         gCASLegacyGammaProgram;
 extern LLGLSLShader         gDeferredPostNoDoFProgram;

@@ -165,6 +165,11 @@ public:
     void applyFXAA(LLRenderTarget* src, LLRenderTarget* dst);
     void generateSMAABuffers(LLRenderTarget* src);
     void applySMAA(LLRenderTarget* src, LLRenderTarget* dst);
+    // <AYAstorm r30 P2 step 5c> SMAA T2x temporal resolve. Blends the current
+    // post-SMAA frame with mSMAAHistory using velocityMap for reprojection,
+    // then copies the current frame into mSMAAHistory for the next frame.
+    void resolveSMAAT2x(LLRenderTarget* src, LLRenderTarget* dst);
+    // </AYAstorm r30 P2 step 5c>
     void renderDoF(LLRenderTarget* src, LLRenderTarget* dst);
     void copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst);
     void combineGlow(LLRenderTarget* src, LLRenderTarget* dst);
@@ -321,6 +326,7 @@ public:
     // vector. Gated by mVelocityMap.isComplete() and RenderMotionBlurStrength > 0.
     void renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* dst);
     static bool             sVelocityRender;
+    // sT2xJitterEnabled lives further down with the other s* statics (~line 778).
     // </AYAstorm r30 P2>
     void bindLightFunc(LLGLSLShader& shader);
 
@@ -850,6 +856,10 @@ public:
     // released otherwise to keep VRAM cost at zero in the other modes.
     LLRenderTarget          mVelocityMap;
     LLRenderTarget          mSMAAHistory;
+    // Toggles between 0 and 1 each frame that the T2x resolve runs. Drives
+    // the Halton jitter offset (step 5d) so that consecutive frames sample
+    // the two subpixel positions the resolve averages between.
+    U32                     mSMAAFrameIndex = 0;
     // </AYAstorm r30 P2>
 
     // copy of the color/depth buffer just before gamma correction

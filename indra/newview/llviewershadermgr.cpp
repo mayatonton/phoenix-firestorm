@@ -216,6 +216,9 @@ LLGLSLShader            gFXAAProgram[4];
 LLGLSLShader            gSMAAEdgeDetectProgram[4];
 LLGLSLShader            gSMAABlendWeightsProgram[4];
 LLGLSLShader            gSMAANeighborhoodBlendProgram[4];
+// <AYAstorm r30 P2 step 5c>
+LLGLSLShader            gSMAAResolveProgram[4];
+// </AYAstorm r30 P2 step 5c>
 LLGLSLShader            gCASProgram;
 LLGLSLShader            gCASLegacyGammaProgram;
 LLGLSLShader            gDeferredPostNoDoFProgram;
@@ -1198,6 +1201,9 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             gSMAAEdgeDetectProgram[i].unload();
             gSMAABlendWeightsProgram[i].unload();
             gSMAANeighborhoodBlendProgram[i].unload();
+            // <AYAstorm r30 P2 step 5c>
+            gSMAAResolveProgram[i].unload();
+            // </AYAstorm r30 P2 step 5c>
         }
         gCASProgram.unload();
         gCASLegacyGammaProgram.unload();
@@ -2876,6 +2882,38 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     break;
                 }
             }
+
+            // <AYAstorm r30 P2 step 5c> SMAA T2x temporal resolve.
+            // Reuses the same quality_levels loop but builds with SMAA_REPROJECTION=1
+            // so the upstream SMAAResolvePS samples previousColorTex through velocityTex.
+            if (success)
+            {
+                std::map<std::string, std::string> t2x_defines = defines;
+                t2x_defines["SMAA_REPROJECTION"] = "1";
+                t2x_defines.emplace("SMAA_REPROJECTION_WEIGHT_SCALE", "30.0");
+
+                gSMAAResolveProgram[i].mName = llformat("SMAA T2x Resolve (%s)", smaa_pair.second.c_str());
+                gSMAAResolveProgram[i].mFeatures.isDeferred = true;
+
+                gSMAAResolveProgram[i].clearPermutations();
+                gSMAAResolveProgram[i].addPermutations(t2x_defines);
+
+                gSMAAResolveProgram[i].mShaderFiles.clear();
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAAResolveF.glsl", GL_FRAGMENT_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAAResolveV.glsl", GL_VERTEX_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_FRAGMENT_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_VERTEX_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+                success = gSMAAResolveProgram[i].createShader();
+                if (!success)
+                {
+                    LL_WARNS() << "Failed to create shader '" << gSMAAResolveProgram[i].mName << "', disabling!" << LL_ENDL;
+                    failed = true;
+                    success = true;
+                    break;
+                }
+            }
+            // </AYAstorm r30 P2 step 5c>
             ++i;
         }
 
@@ -2886,6 +2924,9 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                 gSMAAEdgeDetectProgram[i].unload();
                 gSMAABlendWeightsProgram[i].unload();
                 gSMAANeighborhoodBlendProgram[i].unload();
+                // <AYAstorm r30 P2 step 5c>
+                gSMAAResolveProgram[i].unload();
+                // </AYAstorm r30 P2 step 5c>
             }
         }
     }

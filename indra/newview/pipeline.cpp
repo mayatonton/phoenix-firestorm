@@ -8988,6 +8988,67 @@ void LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst)
     }
 }
 
+// <AYAstorm r30 P2 step 5c>
+// SMAA T2x temporal resolve. Imported from BlackDragon Viewer 995a1354d8
+// (LGPL-2.1-only), adapted: AYAstorm gates on mVelocityMap.isComplete()
+// (Cinematic mode) and runs the resolve after applySMAA's spatial pass.
+//
+// Without Halton jitter (step 5d), the resolve simply blends frame N with
+// frame N-1, which produces ghosting on motion but minor edge stabilization
+// on the static parts of the scene. Step 5d adds the per-frame subpixel
+// jitter that turns this into proper temporal anti-aliasing.
+//
+// History save uses copyRenderTarget on the *current SMAA'd input* (src),
+// not the resolved output, so the next frame's resolve does a true 50/50
+// blend between two jitter samples rather than exponential decay.
+void LLPipeline::resolveSMAAT2x(LLRenderTarget* src, LLRenderTarget* dst)
+{
+    LL_PROFILE_GPU_ZONE("SMAA T2x Resolve");
+
+    static LLCachedControl<U32> aa_quality(gSavedSettings, "RenderFSAASamples", 0U);
+    U32 q = std::clamp(aa_quality(), 0U, 3U);
+
+    dst->bindTarget();
+
+    LLGLSLShader& shader = gSMAAResolveProgram[q];
+    shader.bind();
+
+    // Current SMAA'd frame goes to diffuseRect (DEFERRED_DIFFUSE), matching
+    // our SMAAResolveF.glsl's "uniform sampler2D diffuseRect" declaration.
+    // BD's variant uses a distinct SMAA_CURRENT_COLOR_TEX uniform name;
+    // we reuse the existing DEFERRED_DIFFUSE slot to avoid widening
+    // LLShaderMgr's reserved-uniform enum for a single binding.
+    S32 cur_ch = shader.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
+    if (cur_ch > -1)
+    {
+        src->bindTexture(0, cur_ch, LLTexUnit::TFO_POINT);
+    }
+
+    S32 prev_ch = shader.enableTexture(LLShaderMgr::SMAA_PREVIOUS_COLOR_TEX);
+    if (prev_ch > -1)
+    {
+        mSMAAHistory.bindTexture(0, prev_ch, LLTexUnit::TFO_POINT);
+    }
+
+    S32 vel_ch = shader.enableTexture(LLShaderMgr::SMAA_VELOCITY_TEX);
+    if (vel_ch > -1)
+    {
+        mVelocityMap.bindTexture(0, vel_ch, LLTexUnit::TFO_BILINEAR);
+    }
+
+    mScreenTriangleVB->setBuffer();
+    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    shader.unbind();
+    dst->flush();
+
+    // Save the current SMAA'd frame (not the resolved output) to history so
+    // the next frame's resolve sees a true 50/50 blend between the two
+    // jitter samples instead of exponential history decay.
+    copyRenderTarget(src, &mSMAAHistory);
+}
+// </AYAstorm r30 P2 step 5c>
+
 void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
 {
 
@@ -9577,6 +9638,11 @@ void LLPipeline::renderFinalize()
         std::swap(sourceBuffer, targetBuffer);
     }
 
+     // <AYAstorm r30 P2 step 5d> Default jitter off; only the SMAA T2x branch
+     // below re-enables it. Without this clear, leaving SMAA mode would freeze
+     // sT2xJitterEnabled=true and keep ghost-jittering the projection forever.
+     sT2xJitterEnabled = false;
+     // </AYAstorm r30 P2 step 5d>
      if (RenderFSAAType == 1)
     {
         applyFXAA(sourceBuffer, targetBuffer);
@@ -9587,6 +9653,24 @@ void LLPipeline::renderFinalize()
         generateSMAABuffers(sourceBuffer);
         applySMAA(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
+
+        // <AYAstorm r30 P2 step 5c+5d> SMAA T2x temporal resolve + jitter latch.
+        // Gate on Cinematic mode (mVelocityMap allocated) + history target ready
+        // + explicit cvar opt-in. The same gate also drives sT2xJitterEnabled,
+        // which LLViewerCamera::setPerspective reads next frame to inject the
+        // ±0.25 px subpixel offset. Without that jitter the resolve degenerates
+        // to a blend of two identical samples (= no AA gain), so the flag and
+        // the resolve must stay in lockstep.
+        static LLCachedControl<bool> smaa_t2x(gSavedSettings, "RenderSMAAT2x", false);
+        bool t2x_active = smaa_t2x && mVelocityMap.isComplete() && mSMAAHistory.isComplete() && !gCubeSnapshot;
+        sT2xJitterEnabled = t2x_active;
+        if (t2x_active)
+        {
+            resolveSMAAT2x(sourceBuffer, targetBuffer);
+            std::swap(sourceBuffer, targetBuffer);
+            mSMAAFrameIndex ^= 1;
+        }
+        // </AYAstorm r30 P2 step 5c+5d>
     }
 
     // <FS:Beq> Restore shader post proc for Vignette

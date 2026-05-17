@@ -41,6 +41,10 @@
 #include "llworld.h"
 #include "lltoolmgr.h"
 #include "llviewerjoystick.h"
+// <AYAstorm r30 P2 step 5d> for sT2xJitterEnabled / mSMAAFrameIndex
+#include "pipeline.h"
+extern bool gCubeSnapshot;
+// </AYAstorm r30 P2 step 5d>
 // [RLVa:KB] - RLVa-2.0.0
 #include "rlvactions.h"
 // [/RLVa:KB]
@@ -375,6 +379,30 @@ void LLViewerCamera::setPerspective(bool for_selection,
     calcProjection(z_far); // Update the projection matrix cache
 
     proj_mat *= glm::perspective(fov_y,aspect,z_near,z_far);
+
+    // <AYAstorm r30 P2 step 5d> SMAA T2x subpixel jitter (2-tap, ±0.25 px,
+    // alternates by mSMAAFrameIndex). Lineage: BlackDragon 995a1354d8.
+    // proj_mat[2][0/1] in glm column-major == m02/m12, i.e. the perspective
+    // x/y shift; adding `jitter_px * 2 / dim` here shifts every projected
+    // point by exactly that many NDC units = `jitter_px` pixels in screen
+    // space. The velocity buffer naturally captures the resulting per-pixel
+    // delta because both passes use this same jittered projection, so the
+    // resolve fetches history at the matching pre-jitter location via vel.
+    // Skipped for selection / cubemap snapshot / shadow renders (their
+    // projection should stay un-jittered).
+    if (LLPipeline::sT2xJitterEnabled && !for_selection && !gCubeSnapshot)
+    {
+        static const F32 jitters[2][2] = {
+            { 0.25f, -0.25f },
+            { -0.25f, 0.25f },
+        };
+        U32 idx = gPipeline.mSMAAFrameIndex & 1;
+        F32 jx = jitters[idx][0] * 2.0f / (F32)width;
+        F32 jy = jitters[idx][1] * 2.0f / (F32)height;
+        proj_mat[2][0] += jx;
+        proj_mat[2][1] += jy;
+    }
+    // </AYAstorm r30 P2 step 5d>
 
     gGL.loadMatrix(glm::value_ptr(proj_mat));
 
