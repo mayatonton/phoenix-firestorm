@@ -302,19 +302,22 @@
           <check_box.commit_callback
            function="Pref.RenderOptionUpdate" />
         </check_box>
-        <!-- <FS:AYA r18> View Mode: Firestorm 標準 / AYAstorm 大気拡張 切替 (r14+r15+r16+r18 一括) -->
+        <!-- <FS:AYA r18 / r30 P1> View Mode: Firestorm View / AYAstorm View / Cinematic 切替。
+             r30 P1 で Cinematic 枠を preview 追加、3 モードとも再起動切替に統一。
+             control_name で cvar は即時更新されるが、shader/pipeline は再起動後に反映される。
+             詳細: docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md -->
         <text
          type="string"
          length="1"
          top_pad="4"
          follows="top|left"
          height="12"
-         width="110"
+         width="180"
          word_wrap="true"
          layout="topleft"
          left_delta="0"
          name="aya_view_mode_label">
-          View Mode:
+          View Mode (restart required):
         </text>
         <combo_box
          control_name="AYAVisualRealismEnabled"
@@ -323,7 +326,7 @@
          left_delta="5"
          top_pad="3"
          name="AYAViewMode"
-         tool_tip="Firestorm View: standard rendering. AYAstorm View: enables volumetric atmosphere, godrays, aerial perspective, and cloud volumetric."
+         tool_tip="Firestorm View: upstream Firestorm standard rendering. AYAstorm View: r14+ visual realism (volumetric atmosphere / godrays / aerial perspective / Kelvin color temperature / cloud volumetric / translucency / SSS). Cinematic (preview): r30+ photo viewer mode; in r30 P1 this renders identically to AYAstorm View, and per-phase upgrades (velocity buffer, Volumetric Light, Motion Blur, BD DoF chain) will be enabled in subsequent releases. Changing this setting requires a viewer restart."
          width="180">
           <combo_box.item
            label="Firestorm View"
@@ -333,6 +336,10 @@
            label="AYAstorm View"
            name="1"
            value="1"/>
+          <combo_box.item
+           label="Cinematic (preview)"
+           name="2"
+           value="2"/>
         </combo_box>
         <!-- </FS:AYA> -->
         <text

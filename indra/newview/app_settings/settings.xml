@@ -9921,13 +9921,14 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
-    <!-- <FS:AYA> r14: Visual Realism (写真的リアリティ章) master switch
-         Type は combo_box (Firestorm View=0 / AYAstorm View=1) と確実に binding するため U32。
-         0=Firestorm 標準描画、1=AYAstorm 大気拡張 (r14+r15+r16+r18 一括) -->
+    <!-- <FS:AYA> r14: AYAstorm View Mode 切替。r30 P1 で Cinematic 枠を先行追加 (3 値拡張)。
+         Type は combo_box (Firestorm View=0 / AYAstorm View=1 / Cinematic=2) と確実に binding するため U32。
+         変更は viewer 再起動が必要 (r30 P1 で 3 モード再起動切替に統一)。
+         詳細: docs/specs/ayastorm-r30-cinematic-chapter.md / docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md -->
     <key>AYAVisualRealismEnabled</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm 視覚的リアリティ章 (r14+) の master switch。0=Firestorm View (r13 までの見え方)、1=AYAstorm View (volumetric atmosphere / godrays / aerial perspective / cloud volumetric を有効化)</string>
+      <string>AYAstorm View Mode 切替。0=Firestorm View (上流 Firestorm 標準描画)、1=AYAstorm View (r14+ 視覚表現: volumetric atmosphere / godrays / aerial perspective / Kelvin 色温度 / cloud volumetric / translucency / SSS)、2=Cinematic (r30+ 撮影描画 mode、P1 時点では AYAstorm View 相当、P2 以降で velocity buffer + Volumetric Light + Motion Blur + BD DoF chain を順次有効化)。変更には viewer 再起動が必要</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

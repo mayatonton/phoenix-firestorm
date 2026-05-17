@@ -1806,6 +1806,20 @@ void settings_setup_listeners()
         }
     });
     // </FS:AYAstorm r22>
+    // <FS:AYAstorm r30 P1> AYAVisualRealismEnabled (View Mode) restart-required.
+    // Per ayastorm-r30-cinematic-chapter.md, all 3 modes (Firestorm View / AYAstorm View /
+    // Cinematic) unify on restart-switch to avoid r17 Kelvin-gate maintenance hell and to
+    // make the pipeline build-once at startup. The combo_box stays control_name-bound
+    // (immediate cvar write) but we surface the modal "ChangeViewMode" notification so the
+    // user knows a restart is needed for the new mode to actually take effect.
+    // Guarded by STATE_STARTED to suppress firing during initial settings load on app boot.
+    setting_setup_signal_listener(gSavedSettings, "AYAVisualRealismEnabled", []() {
+        if (LLStartUp::getStartupState() >= STATE_STARTED)
+        {
+            LLNotificationsUtil::add("ChangeViewMode");
+        }
+    });
+    // </FS:AYAstorm r30 P1>
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterIM::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterNearbyChat::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", LLViewerChat::signalChatFontChanged);
