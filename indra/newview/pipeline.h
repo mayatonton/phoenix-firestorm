@@ -317,6 +317,9 @@ public:
     // each pool's renderMotionBlur() into mVelocityMap (RG16F). Cinematic
     // mode only — caller (display() in Step 5) gates by mVelocityMap state.
     void renderGeomMotionBlur();
+    // Step 5b: motion blur composite — samples diffuseRect along the velocity
+    // vector. Gated by mVelocityMap.isComplete() and RenderMotionBlurStrength > 0.
+    void renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* dst);
     static bool             sVelocityRender;
     // </AYAstorm r30 P2>
     void bindLightFunc(LLGLSLShader& shader);

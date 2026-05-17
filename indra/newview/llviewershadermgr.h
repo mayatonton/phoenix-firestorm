@@ -305,6 +305,7 @@ extern LLGLSLShader         gVelocitySkinnedProgram;
 extern LLGLSLShader         gVelocityAlphaProgram;
 extern LLGLSLShader         gVelocityAlphaSkinnedProgram;
 extern LLGLSLShader         gAvatarVelocityProgram;
+extern LLGLSLShader         gDeferredMotionBlurProgram;
 // </AYAstorm r30 P2>
 
 // [RLVa:KB] - @setsphere

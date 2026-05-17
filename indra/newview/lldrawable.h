@@ -288,6 +288,14 @@ public:
 
     F32             mDistanceWRTCamera;
 
+    // <AYAstorm r30 P2> Per-drawable storage for the previous frame's object matrix.
+    // LLDrawInfo::mLastModelMatrix points here so the velocity pass has stable
+    // per-object prev/curr state. Without this, mLastModelMatrix stays nullptr and
+    // the velocity shader falls back to identity → projects every vertex to world
+    // origin → radial blur artifacts on objects near (0,0,0).
+    LLMatrix4       mLastVelocityMatrix;
+    // </AYAstorm r30 P2>
+
     static F32 sCurPixelAngle; //current pixels per radian
 
 private:

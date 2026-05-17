@@ -242,6 +242,7 @@ LLGLSLShader            gVelocitySkinnedProgram;
 LLGLSLShader            gVelocityAlphaProgram;
 LLGLSLShader            gVelocityAlphaSkinnedProgram;
 LLGLSLShader            gAvatarVelocityProgram;
+LLGLSLShader            gDeferredMotionBlurProgram;
 // </AYAstorm r30 P2>
 
 // [RLVa:KB] - @setsphere
@@ -1225,6 +1226,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gVelocityAlphaProgram.unload();
         gVelocityAlphaSkinnedProgram.unload();
         gAvatarVelocityProgram.unload();
+        gDeferredMotionBlurProgram.unload();
         // </AYAstorm r30 P2>
 
         for (U32 i = 0; i < LLMaterial::SHADER_COUNT*2; ++i)
@@ -3235,6 +3237,17 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gAvatarVelocityProgram.mShaderFiles.push_back(make_pair("deferred/avatarVelocityF.glsl", GL_FRAGMENT_SHADER));
         gAvatarVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gAvatarVelocityProgram.createShader();
+    }
+
+    if (success)
+    {
+        gDeferredMotionBlurProgram.mName = "AYAstorm Deferred Motion Blur Shader";
+        gDeferredMotionBlurProgram.mFeatures.isDeferred = true;
+        gDeferredMotionBlurProgram.mShaderFiles.clear();
+        gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/motionBlurF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredMotionBlurProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = gDeferredMotionBlurProgram.createShader();
     }
     // </AYAstorm r30 P2>
 

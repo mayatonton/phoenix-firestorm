@@ -4700,6 +4700,32 @@ void LLPipeline::renderGeomMotionBlur()
 
     mVelocityMap.flush();
 }
+
+// <AYAstorm r30 P2 step 5b> Motion blur composite (BD lineage). Samples diffuseRect
+// along the per-pixel velocity vector, 32-tap triangle-weighted. Strength = max blur
+// length in pixels; 0 = effectively disabled (gated upstream).
+void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* dst)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+    LL_PROFILE_GPU_ZONE("motion blur composite");
+
+    dst->bindTarget();
+
+    gDeferredMotionBlurProgram.bind();
+    gDeferredMotionBlurProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
+    gDeferredMotionBlurProgram.bindTexture(LLShaderMgr::DEFERRED_VELOCITY, &mVelocityMap);
+    gDeferredMotionBlurProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
+        (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
+
+    static LLCachedControl<U32> blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
+    gDeferredMotionBlurProgram.uniform1i(LLShaderMgr::MOTION_BLUR_STRENGTH, (S32)blur_strength);
+
+    mScreenTriangleVB->setBuffer();
+    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    gDeferredMotionBlurProgram.unbind();
+    dst->flush();
+}
 // </AYAstorm r30 P2>
 
 void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
@@ -9526,6 +9552,16 @@ void LLPipeline::renderFinalize()
 
     combineGlow(sourceBuffer, targetBuffer);
     std::swap(sourceBuffer, targetBuffer);
+
+    // <AYAstorm r30 P2 step 5b> Motion blur composite (Cinematic mode only — gated by
+    // mVelocityMap.isComplete()). Reads diffuseRect + velocityMap, writes blurred image.
+    static LLCachedControl<U32> motion_blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
+    if (mVelocityMap.isComplete() && motion_blur_strength > 0 && !gCubeSnapshot)
+    {
+        renderMotionBlurComposite(sourceBuffer, targetBuffer);
+        std::swap(sourceBuffer, targetBuffer);
+    }
+    // </AYAstorm r30 P2 step 5b>
 
     gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
     gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
