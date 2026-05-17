@@ -62,7 +62,7 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 | media ON/OFF / reload / Nearby Media stop-start | macOS 実機確認済み | stale ring pointer crash 対策後、新規 AYAstorm crash report なし |
 | Windows / Linux 実機 | 未確認 | Dullahan package は用意済み |
 
-PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch source、44.1kHz source、A/V sync 許容範囲、URL source と media 表示の併用、media ON/OFF / reload 後の復帰を確認済みである。
+PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch source、44.1kHz source、A/V sync (映像と音声の同期) 許容範囲、URL source と media 表示の併用、media ON/OFF / reload 後の復帰を確認済みである。
 
 2026-05-18 の追加修正で、Dullahan/CEF callback bus が常に 8ch として見える環境でも、media source の論理 channel 数を tag 側で明示できるようにした。`{source:media}` と `{source:media-stereo}` は 2ch、`{source:media-5-1}` は 6ch として扱う。これにより、stereo media で `{upmix:on}` を指定したときに、callback bus の 8ch を native 8ch source と誤判定して upmix を bypass する問題を避ける。
 
@@ -157,7 +157,7 @@ PR 前に必要な実機確認:
 6. URL source と media 表示を併用する構成が壊れていないこと。確認済み。
    - root tag が `{url:...}` の場合、linkset 内に media があっても speaker は URL stream を鳴らす。
    - 結果: URL source と media 表示の併用構成は壊れていない。
-7. A/V sync が体感上破綻しないこと。確認済み。
+7. A/V sync (映像と音声の同期) が体感上破綻しないこと。確認済み。
    - 実機確認では、映像と音声のずれは許容範囲内。
 
 残確認:
@@ -167,7 +167,7 @@ PR 前に必要な実機確認:
 
 将来確認:
 
-- 厳密な A/V sync の改善。今回の優先順位は 5.1ch 3D Stream 再生の安定性であり、lip sync の完全一致は対象外。
+- 厳密な A/V sync (映像と音声の同期) の改善。今回の優先順位は 5.1ch 3D Stream 再生の安定性であり、lip sync (口の動きと音声の同期) の完全一致は対象外。
 
 確認済み:
 
@@ -743,9 +743,37 @@ Dullahan 側のテスト実装では、CEF audio callback に対して 7.1 / 48k
 
 media source の実装上は、callback bus を source mode として自動判定しない。publisher は tag で channel mode を選び、speaker prim の配置で出力先を決める。
 
-### A/V sync
+### 8ch callback bus 固定による負荷増大懸念
 
-MOAP video は media texture update、audio は FMOD callback で進む。3D Stream 側に入れると、`LLMultiTailRing` と speaker OPENUSER の prebuffer が追加される。厳密な lip sync は初期目標にしないが、体感で破綻しない範囲に抑える必要がある。
+今回の Dullahan/CEF 側は、5.1ch source を落とさず viewer へ渡すために `48000 Hz x 8 ch` の callback bus を要求している。そのため、2ch media を再生している場合でも、CEF/Dullahan から viewer へ渡る shared memory ring は 8ch 幅になる。
+
+ただし 3D Stream 側では、callback bus の実 channel 数と logical source channel 数を分離している。`{source:media}` / `{source:media-stereo}` は logical 2ch として扱うため、speaker routing / upmix 判定 / FMOD user sound の後段処理まで 8ch 全部を流しているわけではない。`{source:media-5-1}` のときだけ 5.1ch に必要な `FL / FR / C / LFE / SL / SR` を使う。
+
+メモリ増分の概算:
+
+```text
+2ch: 16384 frames * 2ch * 4 bytes = 131,072 bytes  = 約128 KiB
+6ch: 16384 frames * 6ch * 4 bytes = 393,216 bytes  = 約384 KiB
+8ch: 16384 frames * 8ch * 4 bytes = 524,288 bytes  = 約512 KiB
+```
+
+2ch 固定と比べると、8ch bus の ring 本体は media instance あたり約384 KiB 増える。6ch と比べると約128 KiB 増える。header / sentinel frame / shared memory 管理分は別途わずかに乗るが、容量としては数百 KiB 単位である。
+
+CPU / memory bandwidth の概算:
+
+```text
+48 kHz * 2ch * 4 bytes = 約0.38 MB/s
+48 kHz * 8ch * 4 bytes = 約1.54 MB/s
+差分 = 約1.15 MB/s
+```
+
+増える処理は主に、CEF/Dullahan が 8ch callback buffer を生成すること、viewer が shared memory ring に 8ch 分を書き込むこと、3D Stream 側で logical channel 分だけ取り出す copy である。通常の 1 個から数個の MOAP media source では問題になりにくい規模と判断する。
+
+将来的には、viewer から Dullahan へ requested callback layout を渡し、browser/media instance ごとに `CEF_CHANNEL_LAYOUT_STEREO` / `CEF_CHANNEL_LAYOUT_5_1` を切り替える最適化も考えられる。ただし CEF が media source の実 channel 数を安定して通知する API ではないため、自動判定ではなく tag / viewer policy に基づく切り替えになる。さらに audio stream restart / media reload の制御が必要になり、音切れや 2D/3D route の揺り戻し、lifecycle crash のリスクが増える。r26 では安定性と 5.1ch 維持を優先し、8ch callback bus 固定 + viewer 側 logical channel 指定を採用する。
+
+### A/V sync (映像と音声の同期)
+
+MOAP video は media texture update、audio は FMOD callback で進む。3D Stream 側に入れると、`LLMultiTailRing` と speaker OPENUSER の prebuffer が追加される。厳密な lip sync (口の動きと音声の同期) は初期目標にしないが、体感で破綻しない範囲に抑える必要がある。
 
 media source の buffer は短すぎると FMOD mixer 側の読み出しに余裕がなくなり、ざらつきや瞬断として聞こえる。現時点では 48 kHz 換算で約 43 ms の prebuffer、約 85 ms の target buffer とし、映像同期よりも音声の連続性を優先している。
 
@@ -755,9 +783,9 @@ media source の buffer は短すぎると FMOD mixer 側の読み出しに余�
 - OPENUSER decode buffer を 2048 frames から 4096 frames へ増やす。
 - underflow / dropped frame diagnostic を追加し、ノイズ発生時に ring 側の供給不足か FMOD 側の読み出し不足かを切り分ける。
 
-buffer を増やすと音声の連続性は上がるが、映像に対する音声遅延は増える。今回の優先順位は、厳密な lip sync よりも 5.1ch 3D Stream 再生が破綻なく続くことである。
+buffer を増やすと音声の連続性は上がるが、映像に対する音声遅延は増える。今回の優先順位は、厳密な lip sync (口の動きと音声の同期) よりも 5.1ch 3D Stream 再生が破綻なく続くことである。
 
-実機確認では、現在の buffer 設定で A/V sync は許容範囲内である。厳密な lip sync の完全一致は対象外のままだが、PR 前の合格条件としては満たしている。
+実機確認では、現在の buffer 設定で A/V sync (映像と音声の同期) は許容範囲内である。厳密な lip sync (口の動きと音声の同期) の完全一致は対象外のままだが、PR 前の合格条件としては満たしている。
 
 ### media ON/OFF と plugin lifecycle
 
@@ -820,7 +848,7 @@ MOAP audio callback は build option 依存である。macOS では callback ON 
 
 - libVLC / parcel media / non-CEF media の 3D Stream 接続。
 - 複数 reader 対応の shared memory ring 再設計。
-- MOAP audio の厳密な A/V sync。
+- MOAP audio の厳密な A/V sync (映像と音声の同期)。
 - arbitrary 8ch channel layout の routing。
 - 7.1.4 以上の object / height channel routing。
 - URL-based 3D Stream の parser 全面刷新。
