@@ -15,7 +15,7 @@
 
 可在 设置 → 图形 → 渲染 标签页中配置。
 
-![设置 - 渲染](doc/images/preferences_graphics_rendering.png)
+![设置 - 渲染](docs/images/preferences_graphics_rendering.png)
 
 - **阴影柔和度** — 新增滑块用于柔化阴影边缘
 
@@ -30,7 +30,7 @@
 
 可在 设置 → Firestorm → Build 2 标签页中配置。
 
-![设置 - Firestorm Build 2](doc/images/preferences_firestorm_build2.png)
+![设置 - Firestorm Build 2](docs/images/preferences_firestorm_build2.png)
 
 #### 用户侧 — 隐藏区域外物体
 
@@ -74,8 +74,8 @@
 <td width="50%" align="center"><b>有标签</b><br/>(<code>[parcelhide:...]</code> in description)</td>
 </tr>
 <tr>
-<td><img src="doc/images/parcel_magic_off.png" alt="无标签"/></td>
-<td><img src="doc/images/parcel_magic_on.png" alt="有标签"/></td>
+<td><img src="docs/images/parcel_magic_off.png" alt="无标签"/></td>
+<td><img src="docs/images/parcel_magic_on.png" alt="有标签"/></td>
 </tr>
 </table>
 
@@ -99,21 +99,21 @@
 
 **完整参考:**
 
-- 🇯🇵 [3D Stream タグ書式ガイド (日本語)](doc/3dstream-tag-guide.ja.md)
-- 🇬🇧 [3D Stream Tag Format Guide (English)](doc/3dstream-tag-guide.en.md)
-- 🇨🇳 [3D Stream 标签格式指南 (简体中文)](doc/3dstream-tag-guide.zh.md)
+- 🇯🇵 [3D Stream タグ書式ガイド (日本語)](docs/guides/3dstream-tag-guide.ja.md)
+- 🇬🇧 [3D Stream Tag Format Guide (English)](docs/guides/3dstream-tag-guide.en.md)
+- 🇨🇳 [3D Stream 标签格式指南 (简体中文)](docs/guides/3dstream-tag-guide.zh.md)
 
 ### 聊天界面
 
 可在 设置 → 聊天 → Chat Windows 标签页中配置。
 
-![设置 - 聊天窗口](doc/images/preferences_chat_chatwindows.png)
+![设置 - 聊天窗口](docs/images/preferences_chat_chatwindows.png)
 
 - **移植 LL 风格聊天窗口** — Firestorm 原有的 Nearby Chat 提供 `FS V1 (纯文本)` 和 `FS V7 (现代头部)` 两种风格，功能强大，但 **要查看聊天范围内的用户必须打开另一个窗口**。AYAstorm 新增 **`LL style`**，将 Linden Lab 官方客户端 CONVERSATIONS 窗口的外观直接移植过来，**只需打开聊天窗口即可一览聊天范围内的用户**
 
 - **发言者头像图标 (`Show mini icons in chat`)** — 在聊天行的用户名旁显示头像图标——仅靠名字文本难以快速识别发言者，附上头像后 **一眼就能看出是谁在说话**
 
-  ![附近聊天中的小图标显示示例](doc/images/neaby_chat_miniicon_exapmpleshot.png)
+  ![附近聊天中的小图标显示示例](docs/images/neaby_chat_miniicon_exapmpleshot.png)
 
 - **聊天范围参与者过滤** — 仅在附近聊天列表中显示聊天范围（20米）内的用户
 
@@ -158,7 +158,7 @@ cd Phoenix-FirestormOS-AYAstorm-release_LEGACY-*/
 
 AYAstorm 专用编译步骤 (Linux / Windows):
 
-- [AYAstorm 编译指南](doc/building_ayastorm.md)
+- [AYAstorm 编译指南](docs/build/building_ayastorm.md)
 
 上游 Firestorm 编译指南 (Mac 请参考此处):
 
