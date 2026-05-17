@@ -1576,6 +1576,19 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("color_grading_lut_intensity");
     mReservedUniforms.push_back("color_grading_lut_enabled");
 
+    // <AYAstorm r30 P2> Velocity buffer + SMAA T2x reprojection uniforms.
+    // Order must match eGLSLReservedUniforms in llshadermgr.h exactly.
+    mReservedUniforms.push_back("velocityMap");
+    mReservedUniforms.push_back("velocityTex");
+    mReservedUniforms.push_back("previousColorTex");
+    mReservedUniforms.push_back("current_modelview_matrix");
+    mReservedUniforms.push_back("last_modelview_matrix");
+    mReservedUniforms.push_back("last_modelview_matrix_inverse");
+    mReservedUniforms.push_back("last_object_matrix");
+    mReservedUniforms.push_back("motion_blur_strength");
+    mReservedUniforms.push_back("lastMatrixPalette");
+    // </AYAstorm r30 P2>
+
     llassert(mReservedUniforms.size() == END_RESERVED_UNIFORMS);
 
     std::set<std::string> dupe_check;

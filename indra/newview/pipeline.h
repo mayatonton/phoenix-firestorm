@@ -751,6 +751,12 @@ public:
     static bool             sDistortionRender;
     static bool             sImpostorRender;
     static bool             sImpostorRenderAlphaDepthPass;
+    // <AYAstorm r30 P2> True while SMAA T2x projection jitter is active
+    // (Cinematic mode only, mainline 3D scene only). Sub-RT passes
+    // (cube snapshot, reflection, shadow, impostor) leave it false so they
+    // don't pick up the half-pixel offset.
+    static bool             sT2xJitterEnabled;
+    // </AYAstorm r30 P2>
     static bool             sShowJellyDollAsImpostor;
     static bool             sUnderWaterRender;
     static bool             sRenderGlow;
@@ -824,6 +830,18 @@ public:
     // for mMainRT (top-level, not in RenderTargetPack).
     LLRenderTarget          mObjectIDBuffer;
     // </AYAstorm:r21.1>
+
+    // <AYAstorm r30 P2> Velocity buffer for Cinematic mode (imported from
+    // BD 995a1354d8). Two-channel RG16F = per-pixel NDC delta written by
+    // the velocity render pass. Shares depth with mRT->deferredScreen so
+    // the velocity pass agrees pixel-for-pixel with the gbuffer without
+    // re-writing depth. mSMAAHistory holds the previous frame's
+    // post-resolve color for SMAA T2x temporal reprojection. Both are
+    // allocated only when AYAVisualRealismEnabled == 2 (Cinematic),
+    // released otherwise to keep VRAM cost at zero in the other modes.
+    LLRenderTarget          mVelocityMap;
+    LLRenderTarget          mSMAAHistory;
+    // </AYAstorm r30 P2>
 
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR

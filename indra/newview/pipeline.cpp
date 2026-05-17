@@ -364,6 +364,9 @@ bool    LLPipeline::sReflectionRender = false;
 bool    LLPipeline::sDistortionRender = false;
 bool    LLPipeline::sImpostorRender = false;
 bool    LLPipeline::sImpostorRenderAlphaDepthPass = false;
+// <AYAstorm r30 P2>
+bool    LLPipeline::sT2xJitterEnabled = false;
+// </AYAstorm r30 P2>
 bool    LLPipeline::sShowJellyDollAsImpostor = true;
 bool    LLPipeline::sUnderWaterRender = false;
 bool    LLPipeline::sTextureBindTest = false;
@@ -1036,6 +1039,33 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         }
         // </AYAstorm:r21.1>
 
+        // <AYAstorm r30 P2> Velocity buffer + SMAA T2x history buffer.
+        // Cinematic-only (AYAVisualRealismEnabled == 2). Same allocate
+        // pattern as r21.1 mObjectIDBuffer just above: main RT only, share
+        // depth with deferredScreen. Reads the cvar via LLCachedControl
+        // because the View Mode is restart-required (r30 P1) — switching
+        // away mid-session does not actually re-enter this code path until
+        // the next allocateScreenBufferInternal call, and the display() side
+        // gate checks mVelocityMap.isComplete() before using it.
+        if (mRT == &mMainRT)
+        {
+            static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+            if (aya_view_mode == 2)
+            {
+                LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("CinematicBuffers");
+                if (!mVelocityMap.allocate(resX, resY, GL_RG16F, false)) return false;
+                mRT->deferredScreen.shareDepthBuffer(mVelocityMap);
+                if (!mSMAAHistory.allocate(resX, resY, GL_RGBA, false)) return false;
+                LL_INFOS("Pipeline") << "AYAstorm r30 P2: allocated mVelocityMap (RG16F) + mSMAAHistory (RGBA) at " << resX << "x" << resY << LL_ENDL;
+            }
+            else
+            {
+                mVelocityMap.release();
+                mSMAAHistory.release();
+            }
+        }
+        // </AYAstorm r30 P2>
+
         if (RenderFSAAType > 0)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("FSAABuffer"); // <FS:Beq/> improve Tracy scoping 
@@ -1441,6 +1471,11 @@ void LLPipeline::releaseScreenBuffers()
     // <AYAstorm:r21.1> GPU self-rigged picker ID buffer
     mObjectIDBuffer.release();
     // </AYAstorm:r21.1>
+
+    // <AYAstorm r30 P2> Velocity + T2x history buffers (Cinematic mode)
+    mVelocityMap.release();
+    mSMAAHistory.release();
+    // </AYAstorm r30 P2>
 }
 
 void LLPipeline::releaseSunShadowTarget(U32 index)

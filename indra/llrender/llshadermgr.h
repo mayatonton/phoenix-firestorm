@@ -375,6 +375,20 @@ public:
         COLOR_GRADING_LUT_INTENSITY,        //  "color_grading_lut_intensity"
         COLOR_GRADING_LUT_ENABLED,          //  "color_grading_lut_enabled"
 
+        // <AYAstorm r30 P2> Velocity buffer + SMAA T2x reprojection.
+        // Imported from BlackDragon Viewer 995a1354d8 (with AVATAR_LAST_MATRIX
+        // and SMAA_PREVIOUS_COLOR_TEX additions for the resolve pass).
+        DEFERRED_VELOCITY,                  //  "velocityMap"
+        SMAA_VELOCITY_TEX,                  //  "velocityTex"
+        SMAA_PREVIOUS_COLOR_TEX,            //  "previousColorTex"
+        CURRENT_MODELVIEW_MATRIX,           //  "current_modelview_matrix"
+        LAST_MODELVIEW_MATRIX,              //  "last_modelview_matrix"
+        LAST_MODELVIEW_MATRIX_INVERSE,      //  "last_modelview_matrix_inverse"
+        LAST_OBJECT_MATRIX,                 //  "last_object_matrix"
+        MOTION_BLUR_STRENGTH,               //  "motion_blur_strength"
+        AVATAR_LAST_MATRIX,                 //  "lastMatrixPalette"
+        // </AYAstorm r30 P2>
+
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
     // clang-format on
