@@ -109,20 +109,28 @@ Linux / macOS / Windows いずれかが落ちる状態では release を切ら�
 
 **注**: P1 では AYAstorm View に shader plumbing 引き上げ (SMAA/SSR default ON) は **行わない**。α 検証で絵が動かないと確認済み。
 
-### P2 Cinematic モード骨格 + velocity buffer (想定 r31)
+### P2 Cinematic モード骨格 + velocity buffer + SMAA T2x (想定 r31)
+
+**スコープ確定** (§7-7 案 A 採用、2026-05-17): velocity buffer + SMAA T2x を **両方 P2 で完成**。視覚で確認しながら P3 以降を判断する方が後段スムーズという AYA 判断による。工数: velocity 5 日 + T2x 4-5 日 = **9-10 日**。
 
 **取り込み**:
-- velocity buffer 一式 (BD から borrow):
+- velocity buffer 一式 (BD から borrow、9 ファイル):
   - `avatarVelocityF.glsl`, `avatarVelocityV.glsl`
   - `skinnedVelocityV.glsl`, `skinnedVelocityAlphaV.glsl`
   - `velocityF.glsl`, `velocityV.glsl`, `velocityFuncV.glsl`
   - `velocityAlphaF.glsl`, `velocityAlphaV.glsl`
 - velocity buffer 生成 pipeline (gbuffer に per-pixel velocity vector を書き込む path) を C++ 側に新規追加
+- **SMAA T2x 完成**:
+  - `SMAAResolve{V,F}.glsl` を AYAstorm 自作 (BD 未存在、SMAA reference impl から起こす、§7-7)
+  - `SMAA.glsl` `SMAA_DECODE_VELOCITY` macro 1 行 + Cinematic 用 `SMAA_REPROJECTION` permutation 追加
+  - `mSMAAHistory` RT + `resolveSMAAT2x()` + `applySMAA()` T2x 分岐 + jitter projection 経路 (`gGLProjection` を毎フレーム ±0.5px shift)
+  - `gSMAAResolveProgram[4]` + `gSMAANeighborhoodBlendT2xProgram[4]` 8 program load
+  - `RenderFSAAType` enum 拡張 (`3 = SMAA T2x`)、Cinematic 起動で auto-set
 - **Cinematic mode で SMAA T2x + SSR を default ON** (velocity buffer 入力が揃うので SMAA は T2x に格上げ、SSR は Cinematic の重さの中では微差が誤差で吸収される想定)
 - Cinematic 選択肢を preview から実質有効に昇格
 
 **ship 判定**:
-- Cinematic モード起動時に SMAA T2x が機能 (時間方向 reprojection が効いている)
+- Cinematic モード起動時に SMAA T2x が機能 (camera pan で edge AA 改善が目視可能、sub-pixel jitter blend で「ジャギが時間方向に滲んで消える」)
 - velocity buffer 取り込みで AYAstorm View / Firestorm View に regression が無い (Cinematic 専用 path に閉じ込められている)
 - 3 OS で動作
 
@@ -198,6 +206,8 @@ BD は全ファイル LL viewerlgpl 標準 header (LGPL 2.1 only)、AYAstorm と
 |---|---|---|---|
 | P1 | **(取り込みなし)** | — | View Mode UI と pipeline 構築 path の C++ 改修のみ |
 | P2 | velocity buffer 一式: `avatarVelocity{F,V}.glsl`, `skinnedVelocity{V,AlphaV}.glsl`, `velocity{F,V,Alpha{F,V},FuncV}.glsl` (9 ファイル) | BlackDragon | per-pixel velocity vector を gbuffer に書き込む。SMAA T2x の入力として必須 |
+| P2 | `SMAAResolveF.glsl`, `SMAAResolveV.glsl` (2 ファイル) | **AYAstorm 自作** | T2x resolve pass。BD repo 内に未存在 (Tier-3 trace 確認、§7-7)、SMAA reference impl (iryoku/smaa, Crytek/Jimenez SIGGRAPH 2011) から起こす |
+| P2 | `SMAA.glsl` 改修 (`SMAA_DECODE_VELOCITY` macro + `SMAA_REPROJECTION` permutation) | BD diff + AYAstorm 拡張 | BD 唯一の真 diff (1 行) + Cinematic 用 T2x permutation 追加 |
 | P3 | `class3/deferred/volumetricLightF.glsl` + `class1/deferred/volumetricLightF.glsl` + 5 cvar | BlackDragon | 体積照明 |
 | P4 | `class1/deferred/motionBlur{F,V}.glsl` | BlackDragon (Geenz 改良) | motion blur |
 | P4 | `dofCombineF.glsl`, `postDeferredHQDoFF.glsl`, `postDeferredNoDoFF.glsl` | BlackDragon | BD 独自 HQ DoF chain (High-Res snapshot 用) |
@@ -218,6 +228,8 @@ BD は全ファイル LL viewerlgpl 標準 header (LGPL 2.1 only)、AYAstorm と
   - Volumetric Light (class1 + class3)
   - Motion Blur (class1)
   - BD 独自 DoF chain (`dofCombineF`, `postDeferredHQDoFF`, `postDeferredNoDoFF`)
+- **BD repo にも存在せず AYAstorm が自作する**:
+  - `SMAAResolve{V,F}.glsl` (T2x resolve pass、SMAA reference impl から起こす、§7-7 詳細)
 
 ### 4.4 SMAA/SSR を AYAstorm View に default ON しない判断 (α 検証結果)
 
@@ -342,7 +354,7 @@ Cinematic 用色設定は cvar prefix で分離:
 | Phase | 工数 | 主軸 |
 |---|---|---|
 | P1 | 小〜中 | View Mode 再起動切替化 (pipeline 構築 path 改修) + Cinematic 枠 UI 追加。shader 取り込み無し |
-| P2 | 中〜大 | velocity buffer 取り込み + gbuffer pipeline 改修 + Cinematic mode 骨格、SMAA T2x + SSR 有効化 |
+| P2 | 大 (9-10 日) | velocity buffer 取り込み + gbuffer pipeline 改修 + Cinematic mode 骨格 + SMAA T2x 完成 (resolve shader 自作含む、§7-7 案 A 採用) |
 | P3 | 中 | Volumetric Light 取り込み + pipeline 連鎖位置決定 |
 | P4 | 中 | Motion Blur + BD DoF chain 取り込み |
 | P5 | 中 | Cinematic cvar 群の Preferences 統合 + ブラインドレビュー (UI 翻訳無し) |
