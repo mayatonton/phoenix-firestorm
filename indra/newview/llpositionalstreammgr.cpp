@@ -148,6 +148,7 @@ namespace
         F32 master_volume,
         bool parcel_audible,
         bool media_source,
+        bool use_media_volume,
         LLViewerMediaImpl* media)
     {
         if (!parcel_audible)
@@ -160,6 +161,11 @@ namespace
         }
 
         const F32 master = std::clamp(master_volume, 0.f, 1.f);
+        if (!use_media_volume)
+        {
+            return master;
+        }
+
         const F32 media_gain = media ? media->getStream3DAudioGain() : 0.f;
         return master * std::clamp(media_gain, 0.f, 1.f);
     }
@@ -1221,10 +1227,12 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     LLPluginAudioRingHeader* media_ring = nullptr;
     LLViewerMediaImpl* media_impl = nullptr;
     const bool source_is_media = (*root_data.source_kind == DistSourceKind::Media);
+    bool media_source_uses_viewer_volume = true;
 
     if (source_is_media)
     {
         std::vector<MediaFaceCandidate> media_candidates;
+        S32 media_face_count_in_linkset = 0;
         auto collect_media_faces = [&](LLViewerObject* object)
         {
             if (!object || object->isDead())
@@ -1232,10 +1240,6 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
                 return;
             }
             const S32 link_number = computeLinkNumber(root, object);
-            if (root_data.media_link && link_number != *root_data.media_link)
-            {
-                return;
-            }
             LLVOVolume* volume = dynamic_cast<LLVOVolume*>(object);
             if (!volume)
             {
@@ -1244,13 +1248,18 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
             const S32 num_tes = volume->getNumTEs();
             for (S32 i = 0; i < num_tes; ++i)
             {
-                if (root_data.media_face && i != *root_data.media_face)
-                {
-                    continue;
-                }
                 const LLTextureEntry* te = volume->getTE(static_cast<U8>(i));
                 if (te && te->hasMedia())
                 {
+                    ++media_face_count_in_linkset;
+                    if (root_data.media_link && link_number != *root_data.media_link)
+                    {
+                        continue;
+                    }
+                    if (root_data.media_face && i != *root_data.media_face)
+                    {
+                        continue;
+                    }
                     media_candidates.push_back({object->getID(), link_number, i, volume});
                 }
             }
@@ -1287,6 +1296,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         }
 
         const MediaFaceCandidate& media_source = media_candidates.front();
+        media_source_uses_viewer_volume = (media_face_count_in_linkset <= 1);
         S32 media_face = media_source.face;
         viewer_media_t media = media_source.volume->getMediaImpl(static_cast<U8>(media_face));
         if (media.isNull() || !media->hasMedia())
@@ -1552,6 +1562,11 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         {
             media_impl->setStream3DAudioRedirected(true);
         }
+        if (old_it->second.media_source_uses_viewer_volume != media_source_uses_viewer_volume)
+        {
+            old_it->second.media_source_uses_viewer_volume = media_source_uses_viewer_volume;
+            old_it->second.last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
+        }
         return;
     }
 
@@ -1588,6 +1603,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.upmix_effective_applied = upmix_effective;
     binding.speakers = std::move(speakers);
     binding.dropped_speakers = dropped;
+    binding.media_source_uses_viewer_volume = media_source_uses_viewer_volume;
 
     // r23: seed parcel-gate state for the distributed binding. Source
     // position = root prim position (per §3.2: single-point judgment, not
@@ -1632,6 +1648,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         gSavedSettings.getF32("Stream3DVolumeMaster"),
         binding.parcel_audible,
         source_is_media,
+        binding.media_source_uses_viewer_volume,
         media_impl));
     // r11 P5: publisher's lite-HRTF intent (× debug override) decided at
     // start time. Persists across the stream's reconnect cascade because
@@ -2542,6 +2559,7 @@ void LLPositionalStreamMgr::update()
                     gSavedSettings.getF32("Stream3DVolumeMaster"),
                     b.parcel_audible,
                     b.source_key.kind == DistSourceKind::Media,
+                    b.media_source_uses_viewer_volume,
                     reconnect_media));
                 // r23: reset idempotent guard (see mono path); per-poll
                 // push next frame applies the parcel gate to the new
@@ -2665,7 +2683,11 @@ void LLPositionalStreamMgr::update()
                 ? findMediaFor3DSource(b.source_key)
                 : nullptr;
             const F32 effective_vol = effectiveDistributedStreamVolume(
-                master_vol, b.parcel_audible, is_media_source, media);
+                master_vol,
+                b.parcel_audible,
+                is_media_source,
+                b.media_source_uses_viewer_volume,
+                media);
             if (std::isnan(b.last_pushed_volume) || b.last_pushed_volume != effective_vol)
             {
                 b.stream->setVolume(effective_vol);
@@ -2871,7 +2893,11 @@ void LLPositionalStreamMgr::applyMasterVolume(F32 volume)
                 ? findMediaFor3DSource(b.source_key)
                 : nullptr;
             const F32 effective = effectiveDistributedStreamVolume(
-                volume, b.parcel_audible, is_media_source, media);
+                volume,
+                b.parcel_audible,
+                is_media_source,
+                b.media_source_uses_viewer_volume,
+                media);
             b.stream->setVolume(effective);
             b.last_pushed_volume = effective;
         }

@@ -496,6 +496,12 @@ private:
         // uniformly to every channel of the multi stream).
         bool is_attached = false;
         bool parcel_audible = true;
+        // Media source volume policy. When a linkset has exactly one media
+        // face, keep 2D media semantics and multiply by media/global volume.
+        // When multiple media faces exist and one is explicitly selected for
+        // 3D, treat that selected media as source gain 1.0 so the other media
+        // faces can continue using the normal media volume slider.
+        bool media_source_uses_viewer_volume = true;
         F32 last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
     };
 

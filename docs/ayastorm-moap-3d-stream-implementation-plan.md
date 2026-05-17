@@ -61,8 +61,10 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
   - start 時に media ring に残っている古い PCM を破棄し、映像 clock に近い位置から読む。
   - URL stream 用の大きい jitter buffer は維持しつつ、media source は 3D Stream 側の buffered frames を浅く保つ。
   - 初回実機確認で浅すぎる buffer によるざらつきが出たため、media source は prebuffer 2048 frames、target 4096 frames、OPENUSER decode buffer 2048 frames に調整した。
-- media source route の volume を media UI/global volume と `Stream3DVolumeMaster` の積で制御するようにした。
-  - media volume / mute は 2D media path と同じ意味の source gain として扱う。
+- media source route の volume を media face 数に応じて制御するようにした。
+  - linkset 内の media face が 1 つだけなら、media volume / mute は 2D media path と同じ意味の source gain として扱う。
+  - linkset 内の media face が複数ある場合、3D Stream に流し込む media は source gain 1.0 として扱い、音量は `Stream3DVolumeMaster` と speaker volume で調整する。
+  - 3D Stream に選ばれていない他の media は従来通り media volume で調整できる。
   - URL source の volume path は従来通り `Stream3DVolumeMaster` のみを使う。
 - CEF audio callback の format を viewer log 側で確実に確認するため、`media_plugin_cef` から `LLPluginClassMedia` へ `audio_stream_format` message を送る diagnostic を追加した。
   - `started`: `CEF audio stream started: <sample_rate> Hz x <channels> ch (ring max <max_channels> ch)`
@@ -495,10 +497,15 @@ manager は object deletion、Description change、media impl change、teleport�
 volume rule:
 
 ```text
-effective volume = media user/global volume * Stream3DVolumeMaster * per-speaker volume
+single media face:
+  effective volume = media user/global volume * Stream3DVolumeMaster * per-speaker volume
+
+multiple media faces:
+  selected 3D media effective volume = Stream3DVolumeMaster * per-speaker volume
+  non-selected media volume = existing media volume path
 ```
 
-media mute は最優先で silence にする。Stream3D master が 0 の場合は 3D channel 側を 0 にするが、media playback 自体を止めるかは別途判断する。
+media face が 1 つだけの場合、media mute は最優先で silence にする。media face が複数ある場合、3D Stream に選ばれた media の viewer media volume は source gain としては使わず、他の media の 2D volume 操作と分離する。Stream3D master が 0 の場合は 3D channel 側を 0 にするが、media playback 自体は止めない。
 
 3D routed media では、既存 2D media proximity rolloff を掛けない。3D Stream 側が speaker range / rolloff で距離減衰を行うため、media proximity rolloff も掛けると二重減衰になる。
 
@@ -506,14 +513,15 @@ media mute は最優先で silence にする。Stream3D master が 0 の場合�
 
 2026-05-17 時点で実装済み。以下は実装内容と確認観点である。
 
-現在の media UI volume は `LLViewerMediaImpl::updateVolume()` で計算され、通常は `LLPluginClassMedia::setVolume()` と 2D `LLMediaAudioStream::setVolume()` に渡される。MOAP → 3D Stream route 中は 2D `LLMediaAudioStream` を停止し、CEF callback PCM を `LLPositionalStreamMulti` が読むため、media UI の volume / mute を 3D Stream 側へ明示的に渡す必要がある。
+現在の media UI volume は `LLViewerMediaImpl::updateVolume()` で計算され、通常は `LLPluginClassMedia::setVolume()` と 2D `LLMediaAudioStream::setVolume()` に渡される。MOAP → 3D Stream route 中は選択された media の 2D `LLMediaAudioStream` を停止し、CEF callback PCM を `LLPositionalStreamMulti` が読む。linkset 内の media face が 1 つだけなら、media UI の volume / mute を 3D Stream 側へ source gain として渡す。media face が複数ある場合は、選択 media の 3D 側 source gain は 1.0 とし、他の未選択 media の通常 2D volume 操作と干渉しないようにする。
 
 方針:
 
-- media volume は source gain として扱う。
+- media face が 1 つだけなら、media volume は source gain として扱う。
+- media face が複数ある場合、3D Stream に選んだ media の media volume は source gain として使わず、1.0 として扱う。
 - `Stream3DVolumeMaster` は 3D Stream 全体の master / safety gain として残す。
 - `{volume:N}` は speaker prim ごとの補正として残す。
-- 0.0〜1.0 の media gain と Stream3D master は掛け算にする。両方最大でも `1.0 * 1.0 = 1.0` なので過大化しない。
+- single-media 構成では、0.0〜1.0 の media gain と Stream3D master は掛け算にする。両方最大でも `1.0 * 1.0 = 1.0` なので過大化しない。
 - 1.0 超えを許す per-speaker volume や `lfegain` は既存仕様のまま別段で扱う。
 
 実装内容:
@@ -524,23 +532,26 @@ media mute は最優先で silence にする。Stream3D master が 0 の場合�
    - mute 時は `mRequestedVolume` が 0 になる既存挙動を使う。
    - `sOnlyAudibleTextureID` による「現在 audible ではない media」は 0 を返す。
    - 2D media proximity rolloff (`mProximityCamera`) は掛けない。
-2. `LLPositionalStreamMgr` の distributed binding volume push で、media source のときだけ media gain を掛けるようにした。
+2. `LLPositionalStreamMgr` の distributed binding volume push で、media source のときだけ media gain policy を適用するようにした。
    - 直近適用済み volume は既存の `last_pushed_volume` で追跡する。
    - media source 以外の URL source binding には影響させない。
+   - `media_source_uses_viewer_volume == true` の場合だけ media gain を掛ける。
+   - 複数 media face から選択した source では `media_source_uses_viewer_volume == false` になり、source gain 1.0 として扱う。
 3. media source binding の update で、現在の `LLViewerMediaImpl` から `media_gain` を読む。
    - plugin restart / child prim media のため、既存の `findMediaFor3DSource()` で現在の media impl を引く。
    - media impl が一時的に見つからない場合は `media_gain = 0.0f` として route は維持する。
 4. media source の stream volume は次で計算する。
 
    ```text
-   media_master = clamp(Stream3DVolumeMaster, 0, 1) * clamp(media_gain, 0, 1)
+   media_master = clamp(Stream3DVolumeMaster, 0, 1) * (use_media_volume ? clamp(media_gain, 0, 1) : 1.0)
    effective_stream_volume = parcel_audible ? media_master : 0
    ```
 
    `LLPositionalStreamMulti::setVolume(effective_stream_volume)` に渡す。`LLPositionalStreamMulti` 内では既存通り `effective_stream_volume * speaker.volume` が各 FMOD channel に適用される。
-5. `LLViewerMedia::setVolume()` または per-media volume 操作で `LLViewerMediaImpl::updateVolume()` が呼ばれた場合、次の `LLPositionalStreamMgr::update()` tick で 3D Stream 側へ反映する。
+5. `LLViewerMedia::setVolume()` または per-media volume 操作で `LLViewerMediaImpl::updateVolume()` が呼ばれた場合、single-media 構成では次の `LLPositionalStreamMgr::update()` tick で 3D Stream 側へ反映する。
    - signal wiring は追加していない。poll/update 反映で十分と判断する。
    - 即時性が足りない場合だけ、後で manager notify を追加する。
+   - multi-media 構成で選択された 3D media は viewer media volume を source gain に使わないため、media volume 操作では 3D 側音量は変わらない。`Stream3DVolumeMaster` または speaker `{volume:N}` で調整する。
 6. media source route 中も plugin 側 native output は引き続き 0 にする。
    - `media_plugin_cef` の `setVolume()` は `LL_DULLAHAN_AUDIO_CALLBACK` 時に `mVolumeCatcher.setVolume(0.0f)` を維持する。
    - これにより 2D native output と FMOD 3D output の二重再生を避ける。
@@ -560,10 +571,13 @@ media mute は最優先で silence にする。Stream3D master が 0 の場合�
 
 確認項目:
 
-- Nearby Media / media controls の volume slider を下げると、MOAP → 3D Stream の音量も下がる。
-- media mute で MOAP → 3D Stream が無音になる。
+- single-media 構成では、Nearby Media / media controls の volume slider を下げると MOAP → 3D Stream の音量も下がる。
+- single-media 構成では、media mute で MOAP → 3D Stream が無音になる。
+- multi-media 構成では、3D Stream に選ばれた media の viewer media volume は 3D 側 source gain に使われない。
+- multi-media 構成では、3D Stream に選ばれていない media は従来通り media volume で音量調整できる。
 - `Stream3DVolumeMaster` を下げると、URL source と media source の両方が下がる。
-- media volume 50% × Stream3D 50% が体感 25% になる。
+- single-media 構成では、media volume 50% × Stream3D 50% が体感 25% になる。
+- multi-media 構成では、selected media は Stream3D 50% が体感 50% になる。
 - `{volume:N}` は従来通り speaker prim ごとの相対調整として効く。
 - media source route 中に 2D native output が復活しない。
 
