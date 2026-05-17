@@ -65,6 +65,13 @@ public:
     void beginDeferredPass(S32 pass) override;
     void endDeferredPass(S32 pass) override;
     void renderDeferred(S32 pass) override;
+
+    // <AYAstorm r30 P2>
+    S32 getNumMotionBlurPasses() override;
+    void beginMotionBlurPass(S32 pass) override;
+    void endMotionBlurPass(S32 pass) override;
+    void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
 };
 
 #endif //LL_LLDRAWPOOLMATERIALS_H

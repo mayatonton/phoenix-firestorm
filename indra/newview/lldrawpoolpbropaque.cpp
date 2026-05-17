@@ -93,3 +93,56 @@ void LLDrawPoolGLTFPBR::renderPostDeferred(S32 pass)
     }
 }
 
+// <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,
+// 995a1354d8). LGPL-2.1-only. Per-pool mRenderType picks between alpha-mask
+// (gVelocityAlphaProgram) and opaque (gVelocityProgram).
+
+S32 LLDrawPoolGLTFPBR::getNumMotionBlurPasses()
+{
+    return 1;
+}
+
+void LLDrawPoolGLTFPBR::beginMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    LLGLSLShader& shader = (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
+        ? gVelocityAlphaProgram : gVelocityProgram;
+    shader.bind();
+    shader.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
+    shader.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
+    shader.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
+}
+
+void LLDrawPoolGLTFPBR::endMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
+        gVelocityAlphaProgram.unbind();
+    else
+        gVelocityProgram.unbind();
+}
+
+void LLDrawPoolGLTFPBR::renderMotionBlur(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    LLGLEnable cull(GL_CULL_FACE);
+
+    bool alpha_mask = (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK);
+
+    if (alpha_mask)
+        pushVelocityBatchesTextured(mRenderType);
+    else
+        pushVelocityBatches(mRenderType);
+
+    LLGLSLShader& shader = alpha_mask ? gVelocityAlphaProgram : gVelocityProgram;
+    shader.bind(true);
+    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
+    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
+    LLGLSLShader::sCurBoundShaderPtr->uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
+    if (alpha_mask)
+        pushRiggedVelocityBatchesTextured(mRenderType + 1);
+    else
+        pushRiggedVelocityBatches(mRenderType + 1);
+}
+// </AYAstorm r30 P2>
+

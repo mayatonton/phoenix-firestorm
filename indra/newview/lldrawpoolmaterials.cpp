@@ -303,3 +303,65 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         }
     }
 }
+
+// <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,
+// 995a1354d8). LGPL-2.1-only. Materials enumerates the full material variant
+// list both static and rigged.
+
+S32 LLDrawPoolMaterials::getNumMotionBlurPasses()
+{
+    return 1;
+}
+
+void LLDrawPoolMaterials::beginMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    gVelocityProgram.bind();
+    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
+    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
+    gVelocityProgram.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
+}
+
+void LLDrawPoolMaterials::endMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    gVelocityProgram.unbind();
+}
+
+void LLDrawPoolMaterials::renderMotionBlur(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    LLGLEnable cull(GL_CULL_FACE);
+
+    pushVelocityBatches(LLRenderPass::PASS_MATERIAL);
+    pushVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK);
+    pushVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE);
+    pushVelocityBatches(LLRenderPass::PASS_SPECMAP);
+    pushVelocityBatches(LLRenderPass::PASS_SPECMAP_MASK);
+    pushVelocityBatches(LLRenderPass::PASS_SPECMAP_EMISSIVE);
+    pushVelocityBatches(LLRenderPass::PASS_NORMMAP);
+    pushVelocityBatches(LLRenderPass::PASS_NORMMAP_MASK);
+    pushVelocityBatches(LLRenderPass::PASS_NORMMAP_EMISSIVE);
+    pushVelocityBatches(LLRenderPass::PASS_NORMSPEC);
+    pushVelocityBatches(LLRenderPass::PASS_NORMSPEC_MASK);
+    pushVelocityBatches(LLRenderPass::PASS_NORMSPEC_EMISSIVE);
+
+    gVelocityProgram.bind(true);
+    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
+    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
+    LLGLSLShader::sCurBoundShaderPtr->uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
+
+    pushRiggedVelocityBatches(LLRenderPass::PASS_MATERIAL_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_SPECMAP_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_SPECMAP_MASK_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_SPECMAP_EMISSIVE_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMMAP_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMMAP_MASK_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMMAP_EMISSIVE_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMSPEC_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMSPEC_MASK_RIGGED);
+    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMSPEC_EMISSIVE_RIGGED);
+}
+// </AYAstorm r30 P2>

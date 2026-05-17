@@ -47,6 +47,13 @@ public:
 
     S32 getNumDeferredPasses() override;
     void renderDeferred(S32 pass) override;
+
+    // <AYAstorm r30 P2>
+    S32 getNumMotionBlurPasses() override;
+    void beginMotionBlurPass(S32 pass) override;
+    void endMotionBlurPass(S32 pass) override;
+    void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
 };
 
 class LLDrawPoolGrass final : public LLRenderPass
@@ -65,6 +72,13 @@ public:
 
     S32 getNumDeferredPasses() override { return 1; }
     void renderDeferred(S32 pass) override;
+
+    // <AYAstorm r30 P2>
+    S32 getNumMotionBlurPasses() override;
+    void beginMotionBlurPass(S32 pass) override;
+    void endMotionBlurPass(S32 pass) override;
+    void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
 };
 
 class LLDrawPoolAlphaMask final : public LLRenderPass
@@ -83,6 +97,13 @@ public:
 
     S32 getNumDeferredPasses() override { return 1; }
     void renderDeferred(S32 pass) override;
+
+    // <AYAstorm r30 P2>
+    S32 getNumMotionBlurPasses() override;
+    void beginMotionBlurPass(S32 pass) override;
+    void endMotionBlurPass(S32 pass) override;
+    void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
 };
 
 class LLDrawPoolFullbrightAlphaMask final : public LLRenderPass
@@ -100,6 +121,13 @@ public:
 
     S32 getNumPostDeferredPasses() override { return 1; }
     void renderPostDeferred(S32 pass) override;
+
+    // <AYAstorm r30 P2>
+    S32 getNumMotionBlurPasses() override;
+    void beginMotionBlurPass(S32 pass) override;
+    void endMotionBlurPass(S32 pass) override;
+    void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
 };
 
 
@@ -118,6 +146,13 @@ public:
 
     S32 getNumPostDeferredPasses() override { return 1; }
     void renderPostDeferred(S32 pass) override;
+
+    // <AYAstorm r30 P2>
+    S32 getNumMotionBlurPasses() override;
+    void beginMotionBlurPass(S32 pass) override;
+    void endMotionBlurPass(S32 pass) override;
+    void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
 };
 
 class LLDrawPoolGlow final : public LLRenderPass
