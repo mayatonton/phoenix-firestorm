@@ -1,8 +1,8 @@
 # 3D Stream タグ書式ガイド
 
-> AYAstorm の **3D Stream** 機能で、プリムから HTTP オーディオストリームを 3D 空間定位再生するためのタグ書式リファレンスです。
+> AYAstorm の **3D Stream** 機能で、プリムから HTTP オーディオストリームまたは Media-on-a-Prim (MOAP) 音声を 3D 空間定位再生するためのタグ書式リファレンスです。
 >
-> このドキュメントは AYAstorm `r12` 時点の最終仕様に基づきます。r12 で追加された機能 (バイノーラル / 会場残響 / stereo→5.1 upmix / タグ短縮形) も含まれます。
+> このドキュメントは AYAstorm `r26` 時点の最終仕様に基づきます。r12 で追加された機能 (バイノーラル / 会場残響 / stereo→5.1 upmix / タグ短縮形) に加え、r26 の media/MOAP source routing も含まれます。
 
 ---
 
@@ -91,7 +91,8 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 | **リンクセット** | SL の「リンク」(Ctrl+L) で 1 つにまとめられたプリム集合。ルート 1 個 + 子 N 個 |
 | **ルートプリム** | リンクセットの親プリム。Build → Edit で「Selected linked」「Edit linked」OFF 時に最初に選択されるプリム |
 | **子プリム** | ルート以外のリンクセット内プリム |
-| **音源宣言** | `{url:...}` を含むタグを書いたプリム。本書での「どのストリームを鳴らすか」を宣言する役割。**ルートプリムにのみ書ける** (子プリムに書いても無視されます) |
+| **音源宣言** | `{url:...}` または `{source:media}` を含むタグを書いたルートプリム。本書での「どの音源を鳴らすか」を宣言する役割。**ルートプリムにのみ書ける** (子プリムに書いても無視されます) |
+| **media source** | 同じリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使う指定。ルートの `{source:media}` で有効になり、必要に応じて `{link:N}{face:N}` で面を選択します |
 | **スピーカープリム** | `{ch:...}` を含むタグを書いたプリム。実際に音を鳴らすプリム。**ルート/子プリムどちらでも可** |
 | **binding** | 1 つのリンクセットに対して内部で組み立てられる「音源 → スピーカー群」の対応関係。1 リンクセット = 1 binding |
 | **ch (チャンネル)** | スピーカープリムが受け持つ音声チャンネル。`L` / `R` / `M` (モノラル) のほか、5.1ch 用の `FL` / `FR` / `C` / `LFE` / `SL` / `SR` |
@@ -106,7 +107,7 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 | タグ | 接頭辞 | 用途 |
 |---|---|---|
 | **モノラルタグ** | `[3dstream:...]` | 単一プリムから 1 ストリームを再生 (最小構成) |
-| **分散ステレオ / 会場配置タグ** | `[3dstream-stereo:...]` | リンクセットの複数プリムから 1 ストリームを同期再生 (ステレオ / マルチスピーカー / 5.1ch) |
+| **分散ステレオ / 会場配置タグ** | `[3dstream-stereo:...]` | リンクセットの複数プリムから 1 音源を同期再生 (ステレオ / マルチスピーカー / 5.1ch / media/MOAP source) |
 | **静的 occlusion タグ** (r13 新設) | `[ayastorm:occlude]` | 壁・扉・床・天井プリムを「音を遮るもの」として扱う (会場運営 / 建設者向け、§16) |
 
 ### 4.2 旧プレフィクスのエイリアス
@@ -147,7 +148,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 | `wetgain` | `wg` | 残響ウェット成分の強さ (§7.3) |
 | `lfegain` | `lg` | LFE チャンネルゲイン倍率 (§7.4、r12.1 追加) |
 
-その他のキー (`url` / `ch` / `range` / `volume` / `min` / `max` / `upmix`) には短縮形はありません (元々短い、または使用頻度低)。
+その他のキー (`url` / `source` / `link` / `face` / `ch` / `range` / `volume` / `min` / `max` / `upmix`) には短縮形はありません (元々短い、または使用頻度低)。
 
 #### `venue` の値の短縮 (9 種)
 
@@ -224,6 +225,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 ### 5.3 動作
 
 - リンクセットの **どのプリム** でも書けます (ルートでも子でも)。書いたプリム自身がスピーカーとして音を鳴らします。
+- モノラルタグは URL 音源専用です。media/MOAP source routing は分散ステレオ / 会場配置タグ (§6.7) を使います。
 - ステレオ音源を渡した場合は **内部で L/R をミックスしてモノラル化** されます。
 - 同じリンクセット内に `[3dstream-stereo:...]` も同時に書かれている場合、`[3dstream:...]` 側がそのプリムのスピーカー指定として優先されることはありません — 両方の binding 経路は独立に評価されます。同一プリムを両用途に使うのは推奨しません (動作未定義)。
 
@@ -261,6 +263,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 ```
 [3dstream-stereo:{url:URL}{range:N}{ch:CH}{volume:V}]
+[3dstream-stereo:{source:media}{link:N}{face:N}{range:N}{ch:CH}{volume:V}]
 ```
 
 または旧プレフィクス:
@@ -269,7 +272,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 [ayastream-stereo:...]
 ```
 
-このタグは **リンクセット全体で 1 つのストリーム** を扱う形式です。ルートプリムが「どのストリームを鳴らすか」を宣言し、リンクセット内の各プリムが「自分はどのチャンネルを担当するか」を宣言します。
+このタグは **リンクセット全体で 1 つの音源** を扱う形式です。ルートプリムが「どの音源を鳴らすか」(`{url:...}` または `{source:media}`) を宣言し、リンクセット内の各プリムが「自分はどのチャンネルを担当するか」を宣言します。
 
 ### 6.2 プリムの役割
 
@@ -277,12 +280,13 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 | Description のフィールド | 役割 |
 |---|---|
-| `{url:...}` を含む | **音源宣言** (ルートプリム限定。子プリムで `{url:...}` を書くと無視されます) |
+| `{url:...}` を含む | **URL 音源宣言** (ルートプリム限定。子プリムで `{url:...}` を書くと無視されます) |
+| `{source:media}` を含む | **media/MOAP 音源宣言** (ルートプリム限定。MOAP 面はルート/子プリムどちらにあっても可) |
 | `{ch:...}` を含む | **スピーカー** (ルート/子プリムどちらでも可) |
 | 両方を含む (= ルートのみ) | 音源宣言 + 自身もスピーカーを兼ねる |
 | どちらも含まない | 何もしない (binding 対象外) |
 
-リンクセット内に **音源宣言 (= `{url}` を持つルート)** と **少なくとも 1 個のスピーカー (= `{ch}` を持つプリム)** が両方あって初めて再生開始されます。スピーカー 0 個では「構造エラー」となり、エラー通知が出ます (§13)。
+リンクセット内に **音源宣言 (= `{url}` または `{source:media}` を持つルート)** と **少なくとも 1 個のスピーカー (= `{ch}` を持つプリム)** が両方あって初めて再生開始されます。スピーカー 0 個では「構造エラー」となり、エラー通知が出ます (§13)。`{url}` と `{source:media}` は **相互排他**です。両方を書いた場合は構造エラーとして扱われます。
 
 ### 6.3 キー一覧
 
@@ -290,7 +294,10 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 | キー | 必須 | 型 | 既定値 | 意味 |
 |---|---|---|---|---|
-| `url` | **必須** | 文字列 | — | ストリーム URL。空文字列はエラー |
+| `url` | `source` と排他で必須 | 文字列 | — | ストリーム URL。空文字列はエラー |
+| `source` | `url` と排他で必須 | 列挙値 | — | `media` のみ。リンクセット内の media/MOAP 面を音源にする |
+| `link` | 任意 | S32 | 自動選択 | `{source:media}` 時の media 面があるリンク番号。複数 media 面がある場合の選択用 |
+| `face` | 任意 | S32 | 自動選択 | `{source:media}` 時の media 面番号。複数 media 面がある場合の選択用 |
 | `range` | 任意 | F32 (m) | `Stream3DRolloffMax` (20.0) | リンクセット内のスピーカーが個別に `range` を持たないときの既定減衰距離 |
 | `binaural` | 任意 | bool | `off` | バイノーラル ON/OFF (詳細 §7.1)。短縮形 `bin` |
 | `venue` | 任意 | 列挙値 | `dry` | 会場残響プリセット 9 種 (詳細 §7.2)。短縮形 `v` |
@@ -307,6 +314,8 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 | `volume` | 任意 | F32 [0.0〜1.0] | 1.0 | このスピーカー個別の音量倍率 |
 
 > **重要**: モノラルタグの `min` / `max` キーは分散ステレオタグ側では **無視** されます。分散ステレオでは近距離は内部固定で 1.0m、遠距離は `range` キー (または既定値 `Stream3DRolloffMax`) が使われます。
+
+> **重要**: `source` / `link` / `face` は **ルートプリムでのみ意味がある source selection キー**です。スピーカープリムに書いても無視されます。
 
 ### 6.4 ルート 1 つ + 子 1 つ (基本のステレオペア)
 
@@ -368,22 +377,65 @@ SR プリム:  [3dstream-stereo:{ch:SR}]
 - LFE は他の 5 個と同等に扱われます (ローパスフィルタ等の特殊処理は viewer 側に入っていません。低域フィルタリングが必要なら配信側 mix で済ませてください)
 - リスナーは「映画のスイートスポット」を持ちません (= SL の自由視点モデル)。会場を歩き回ると 5.1 mix の意図した定位は当然崩れます。シネマ的サラウンド体験ではなく、会場 PA 的な多点配置として運用してください
 
-### 6.7 同じ ch を複数のプリムに割り当てる
+### 6.7 Media/MOAP source を使う (r26)
+
+r26 では、HTTP URL ではなくリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使えます。ルート Description に `{source:media}` を書き、スピーカープリムは従来どおり `{ch:...}` を持たせます。
+
+```
+ルート Description:
+  [3dstream-stereo:{source:media}{ch:L}]
+
+子 Description:
+  [3dstream-stereo:{ch:R}]
+```
+
+media 面はルートプリム上にあっても、子プリム上にあっても構いません。media 面が 1 つだけなら `{link}` / `{face}` は省略できます。リンクセット内に media 面が複数ある場合は、どの面を 3D Stream に流すかをルートで明示します。
+
+```
+ルート Description:
+  [3dstream-stereo:{source:media}{link:3}{face:2}{range:30}]
+
+スピーカー #1 Description:
+  [3dstream-stereo:{ch:L}]
+
+スピーカー #2 Description:
+  [3dstream-stereo:{ch:R}]
+```
+
+`{link:N}` は **media source を選ぶためだけ**のリンク番号です。スピーカー順や L/R の割り当てには影響しません。スピーカーの役割は常に各プリムの `{ch:...}` で決まります。複数 media 面があるのに `{link}` / `{face}` を省略して一意に決められない場合は、構造エラーになります。
+
+URL 音源と media 表示は同居できます。その場合はルートに `{url:...}` を書き、media 面は通常の MOAP として表示・再生されます。3D Stream のスピーカーから鳴るのは URL ストリームで、media 音声は通常の media 音声として扱われます。
+
+```
+ルート Description:
+  [3dstream-stereo:{url:http://example.com/live.ogg}{ch:L}]
+
+子 Description:
+  [3dstream-stereo:{ch:R}]
+```
+
+`{url}` と `{source:media}` は相互排他です。media 画面を見せながら URL ストリームを 3D 配置したい場合は、上の例のように root は `{url:...}` のままにしてください。
+
+音量の扱いは media 面の数で変わります。media 面が 1 つだけの場合、その media の volume / mute は source gain として効きます。複数 media 面がある場合、3D に routed された選択 media は source gain 1.0 として扱われ、3D Stream 側の master volume / speaker volume で制御します。選択されなかった media 面は従来どおり通常の media volume で鳴ります。
+
+このガイドで扱う media callback の対応チャンネル数は **1 / 2 / 6ch** です。5.1ch (6ch) までを対象にします。
+
+### 6.8 同じ ch を複数のプリムに割り当てる
 
 `{ch:L}` を 2 つ以上のプリムに書くと、両プリムから同じ L チャンネルが鳴ります。配信会場で「ステージ前列の L」と「ステージ後列の L」のように複数台のスピーカーを置く用途に使えます。
 
 逆にどの ch も書かれていないと「スピーカー 0 個」エラーになります。
 
-### 6.8 ルート自身もスピーカー兼用
+### 6.9 ルート自身もスピーカー兼用
 
 ```
 ルート Description:
   [3dstream-stereo:{url:http://example.com/stream.mp3}{ch:M}{range:25}]
 ```
 
-このように 1 タグに `{url}` と `{ch}` を併記すると、ルートが音源宣言 + 自身も M (モノラル) スピーカーとして機能します。子プリムが 1 つもないシンプルな mono 構成にも使えます (`[3dstream:...]` と機能的にはほぼ等価)。
+このように 1 タグに `{url}` または `{source:media}` と `{ch}` を併記すると、ルートが音源宣言 + 自身も M (モノラル) スピーカーとして機能します。子プリムが 1 つもないシンプルな mono 構成にも使えます (`[3dstream:...]` と機能的にはほぼ等価。ただし `[3dstream:...]` は URL 音源専用)。
 
-### 6.9 ルートプリムの判別方法
+### 6.10 ルートプリムの判別方法
 
 リンクセットを編集中、Build フローターの **Object** タブで「Selected」が表示されているプリムが選択中、その linkset の親 (= ルート) は通常 **最初に選択した状態でリンクされたプリム** です。
 
@@ -686,7 +738,7 @@ SR:  [3dstream-stereo:{ch:SR}]
 
 ## 9. ch (チャンネル) 値リファレンス
 
-`{ch:値}` には以下の 9 種類が指定できます。**大文字小文字は区別しません** (`{ch:l}` も `{ch:L}` も同じ)。
+`{ch:値}` には以下の値が指定できます。**大文字小文字は区別しません** (`{ch:l}` も `{ch:L}` も同じ)。
 
 | 値 | 意味 | 主な用途 |
 |---|---|---|
@@ -708,7 +760,7 @@ SR:  [3dstream-stereo:{ch:SR}]
 
 ## 10. ソース ch 数 × タグ値 の互換マトリクス
 
-実際にスピーカープリムから何が鳴るかは、**ソース URL のチャンネル数** と **書いた `ch` 値** の組み合わせで決まります。
+実際にスピーカープリムから何が鳴るかは、**ソースのチャンネル数** と **書いた `ch` 値** の組み合わせで決まります。
 
 ### 10.1 互換マトリクス
 
@@ -994,7 +1046,7 @@ Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `py
 
 ```
 3D Stream: 構造エラー (リンクセット root: "MainStage")
-  音源宣言 (url) が root にあるがスピーカー (ch) が見つかりません。
+  音源宣言 (url/source) が root にあるがスピーカー (ch) が見つかりません。
   各スピーカープリムに [3dstream-stereo:{ch:L|R|M}] を記載してください。
 ```
 
@@ -1076,7 +1128,7 @@ ON にすると、フォールバック発生時に **Local Chat の自分自身
 
 1. **Description が正しく書き換わっているか**: プリムを右クリック → Edit → Description タブで現在値を確認
 2. **タグの綴り**: `[3dstream:` または `[3dstream-stereo:` が含まれているか (タイポ注意)
-3. **`{url:...}` のスキームが http/https**: `file://` や相対 URL は不可
+3. **音源宣言が有効か**: URL 音源は `{url:http://...}` または `{url:https://...}` が必要です。media 音源は root prim の `{source:media}` と、同じリンクセット内の media/MOAP 面が必要です
 4. **`Stream3DEnabled` / `Stream3DDescriptionScan` が true**: Preferences > Sound または Debug Settings で確認
 5. **ポーリング待ち**: LSL `llSetObjectDesc` 経由の変更は最大 30 秒待つ (= `Stream3DPollInterval`)
 6. **チャットにエラー通知が出ていないか**: §13 のエラー文言を確認
@@ -1115,6 +1167,14 @@ ON にすると、フォールバック発生時に **Local Chat の自分自身
 - 再評価のトリガが発火していない可能性。プリムを 1 度移動するか、ぐるりと回って再 polling を待ってください
 - それでも止まらない場合は `Stream3DEnabled` を一旦 false にして全 binding を強制解除、再 true で再発見
 
+### 14.8 `{source:media}` で media 面が見つからない
+
+- media が root tag と同じリンクセット内の face に設定されているか確認してください。
+- media が子プリム上にある場合は、その子プリムの SL link number を `{link:N}` で指定してください。
+- 選択したプリムに media face が複数ある場合は `{face:N}` も指定してください。
+- リンク直後や object 読み込み直後は、root Description より media face 情報が少し遅れて届くことがあります。数秒待つか、object を touch / edit して再評価させてください。
+- 同じ root tag に `{url:...}` と `{source:media}` を同時に書かないでください。
+
 ---
 
 ## 15. 既知の制約 / 仕様上の注意
@@ -1128,11 +1188,11 @@ ON にすると、フォールバック発生時に **Local Chat の自分自身
 
 これは LSL `llPlaySound` / パーセル BGM / Media-on-a-Prim とも共通の設定です。
 
-### 15.2 1 リンクセット = 1 ストリーム
+### 15.2 1 リンクセット = 1 音源
 
-1 つのリンクセット内に `{url}` を持つルートが「ある」/「ない」だけが意味を持ちます。**複数の `{url}` を 1 リンクセットに書くことはできません** (子プリムに `{url}` を書いても無視されます)。
+1 つのリンクセット内に音源宣言を持つルートが「ある」/「ない」だけが意味を持ちます。root は `{url:...}` または `{source:media}` のどちらか 1 つだけを持てます。**複数の `{url}` を 1 リンクセットに書いたり、`{url}` と `{source:media}` を同時に書いたりすることはできません** (子プリムに書いた source selection キーは無視されます)。
 
-複数の異なるストリームを 1 つの会場で鳴らしたい場合は、リンクセットを分けて配置してください (= `Stream3DMaxConcurrent` の枠内で複数 binding を持つ)。
+複数の異なる URL ストリームや media source を 1 つの会場で鳴らしたい場合は、リンクセットを分けて配置してください (= `Stream3DMaxConcurrent` の枠内で複数 binding を持つ)。
 
 ### 15.3 Description 文字数 (127 byte)
 
@@ -1140,7 +1200,7 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 
 長くなる場合の対処:
 
-- ルートに `{url}` だけ書いて子プリムに `{ch}` だけ書く分散方式 (この場合、各プリムの Description は短く保てます)
+- ルートに `{url}` または `{source:media}` だけ書いて子プリムに `{ch}` だけ書く分散方式 (この場合、各プリムの Description は短く保てます)
 - URL を短縮 (URL shortener、または配信側のパス短縮)
 - **キー名 / venue 値の短縮形を使う** (§4.5)。`binaural`/`venue`/`wetgain` は `bin`/`v`/`wg`、venue 値 9 種にも 1〜2 文字エイリアスがあり、長形式と完全等価です
 
@@ -1186,9 +1246,15 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 
 ### 15.9 音量の合成
 
-最終音量 = `Stream3DVolumeMaster` × `{volume:N}` × FMOD 距離減衰 × Master Audio Slider × 各種ミュート状態。
+URL 音源の最終音量は次の通りです。
+
+```
+Stream3DVolumeMaster × {volume:N} × FMOD 距離減衰 × Master Audio Slider × 各種ミュート状態
+```
 
 通常は `Stream3DVolumeMaster` (Preferences の 3D Stream スライダー) で全体調整、`{volume:N}` でプリム個別の補正、距離減衰は `range` (スピーカー個別) または `Stream3DRolloffMax` (全体既定) で制御します。
+
+media/MOAP 音源では、media 面が 1 つだけの構成に限り media volume / mute も source gain として効きます。詳細は §6.7 の音量ルールを参照してください。
 
 ---
 
@@ -1320,3 +1386,4 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 - **2026-05-09 (r12.1 改訂)**: `{lfegain:N}` キー (短縮形 `lg`) を §7.4 として新設、旧 §7.4 配信者主導モデルを §7.5、旧 §7.5 組合せ例を §7.6 に繰り下げ。`wetgain` の既定値を `1.0` → `0.2` に変更 (実 listening での音楽的レンジ 0.1〜0.5 反映)。§12.2 に `Stream3DLfeGain` sentinel 追加。§12.2 / §12.3 にライブチューニング修正の注記を追加 (r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった回帰を修正)。
 - **2026-05-11 (r13 改訂)**: 静的 OBB occlusion タグ `[ayastorm:occlude]` を §16 として新設、旧 §16 関連ドキュメントを §17 に繰り下げ。§4.1 を「2 種類のタグ」→「3 種類のタグ」に拡張。debug settings (`Stream3DOcclusion` master sentinel / `Stream3DOccluderRange` 距離 cull / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` 可視化) を §16.6-§16.8 に記述。関連 spec として `docs/ayastorm-r13-occlusion.md` を §17 表に追加。
 - **2026-05-11 (r13 P15 改訂)**: occlusion 判定を OBB 近似から **実プリム三角形 raycast** に拡張 (Möller-Trumbore + OBB pre-cull の 2 段判定)。Path Cut / Hollow / Mesh の実形状が遮蔽計算に反映される (§16.2)。複数プリム集計を **掛け合わせ** に修正記述 (実装は当初から掛け合わせだったが旧版で「max」と誤記)。`Stream3DShowOccluders` 表示を OBB ワイヤーフレームから **シアン三角形メッシュ** (半透明 fill + wireframe) に変更、build floater で選択中のプリムは編集中ライブ追従 (§16.8)。§16.9 に三角形数上限 2000 と OBB-only フォールバック条件を追記。§16 タイトルを「静的 OBB occlusion」→「静的 occlusion」に短縮。
+- **2026-05-17 (r26 改訂)**: media/MOAP source routing を §6.7 として追記。root の音源宣言を `{url:...}` / `{source:media}` の相互排他に拡張し、media 面選択用の root-only キー `{link:N}` / `{face:N}`、media 音量の扱い、URL 音源 + media 表示の同居条件、5.1ch までの media callback ch 数を整理。

@@ -1,8 +1,8 @@
 # 3D Stream 标签格式指南
 
-> AYAstorm 的 **3D Stream** 功能用于把 HTTP 音频流以 3D 空间定位的方式从图元 (prim) 播放出来。本文档是其标签格式参考手册。
+> AYAstorm 的 **3D Stream** 功能用于把 HTTP 音频流或 Media-on-a-Prim (MOAP) 音频以 3D 空间定位的方式从图元 (prim) 播放出来。本文档是其标签格式参考手册。
 >
-> 本文档反映 AYAstorm `r12` 时点的最终规格，包含 r12 新增的功能：双耳化 (binaural) / 会场残响 (venue reverb) / stereo→5.1 上混 (upmix) / 标签短形式 (short-forms)。
+> 本文档反映 AYAstorm `r26` 时点的最终规格，包含 r26 新增的 **media/MOAP source routing**，以及 r12 新增的功能：双耳化 (binaural) / 会场残响 (venue reverb) / stereo→5.1 上混 (upmix) / 标签短形式 (short-forms)。
 
 ---
 
@@ -38,6 +38,7 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 
 - **现场演出 PA**: 在舞台前布置扬声器图元，让推流的音源从这些位置播放
 - **环境音**: 让河畔、点唱机、电视等对象播放对应的音频
+- **Media/MOAP 音源路由**: 把同一链接组内某个媒体面的音频送入 3D Stream 扬声器布置
 - **立体声布置 / 多扬声器会场**: 把 L / R / 单声道分配给多个图元，把立体声铺开到空间中
 - **5.1ch 源的会场展开**: 把 5.1ch 各声道分别布置到 6 个图元上 (FL / FR / C / LFE / SL / SR)
 
@@ -91,7 +92,9 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 | **链接组 (linkset)** | 用 SL 的 "link" 操作 (Ctrl+L) 合并的图元集合。1 个根 + N 个子图元 |
 | **根图元 (root prim)** | 链接组的父图元。在 Build → Edit 中关闭 "Edit linked" 时点击会先选中的那一个 |
 | **子图元 (child prim)** | 链接组中除根之外的图元 |
-| **音源声明** | Description 中含 `{url:...}` 的图元。声明 "播放哪条流"。**只能写在根图元上** (写在子图元上会被忽略) |
+| **音源声明** | Description 中含 `{url:...}` 或 `{source:media}` 的根图元。声明 "使用哪一个音源"。**只能写在根图元上** (写在子图元上会被忽略) |
+| **URL 音源** | 根图元用 `{url:...}` 声明的 HTTP 音频流 |
+| **media/MOAP 音源** | 根图元用 `{source:media}` 声明的 Media-on-a-Prim 音频。媒体面可以在同一链接组内的根图元或子图元上 |
 | **扬声器图元** | Description 中含 `{ch:...}` 的图元。实际发声的图元。**根图元、子图元都可以** |
 | **binding (绑定)** | 内部按链接组组装的"音源 → 扬声器组"对应关系。1 个链接组 = 1 个 binding |
 | **ch (声道)** | 扬声器图元负责的音频声道。`L` / `R` / `M` (单声道)，以及 5.1ch 用的 `FL` / `FR` / `C` / `LFE` / `SL` / `SR` |
@@ -106,7 +109,7 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 | 标签 | 前缀 | 用途 |
 |---|---|---|
 | **单声道标签** | `[3dstream:...]` | 单个图元播放 1 条流 (最小配置) |
-| **分散立体声 / 会场布置标签** | `[3dstream-stereo:...]` | 链接组中多个图元同步播放 1 条流 (立体声 / 多扬声器 / 5.1ch) |
+| **分散立体声 / 会场布置标签** | `[3dstream-stereo:...]` | 链接组中多个图元同步播放 1 个音源 (URL 流或 media/MOAP；立体声 / 多扬声器 / 5.1ch) |
 | **静态遮蔽标签** (r13 新增) | `[ayastorm:occlude]` | 把墙 / 门 / 地板 / 天花等图元标记为"阻挡声音的物体" (面向会场运营 / 建造者，详见 §16) |
 
 ### 4.2 旧前缀的别名
@@ -147,7 +150,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 | `wetgain` | `wg` | 残响湿度等级 (§7.3) |
 | `lfegain` | `lg` | LFE 通道增益倍率 (§7.4，r12.1 新增) |
 
-其他键 (`url`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) 本来已较短，未追加别名。
+其他键 (`url`, `source`, `link`, `face`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) 本来已较短，未追加别名。
 
 #### `venue` 取值短形式
 
@@ -225,6 +228,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 - 标签可以写在链接组中 **任意图元** (根或子)。写了标签的图元自身就是发声扬声器。
 - 立体声音源会 **在内部混合 L/R 转为单声道** 播放。
 - 如果同一链接组内同时还写了 `[3dstream-stereo:...]`，单声道标签 **不会** 优先用作该图元的扬声器指派 — 两条 binding 路径独立评估。不推荐把同一个图元用于两种用途 (行为未定义)。
+- 单声道标签是 URL 音源专用。media/MOAP source routing 请使用分散立体声 / 会场布置标签 (§6.9)。
 
 ### 5.4 示例
 
@@ -260,6 +264,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 
 ```
 [3dstream-stereo:{url:URL}{range:N}{ch:CH}{volume:V}]
+[3dstream-stereo:{source:media}{link:N}{face:N}{range:N}{ch:CH}{volume:V}]
 ```
 
 或使用旧前缀：
@@ -268,7 +273,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 [ayastream-stereo:...]
 ```
 
-此标签 **以整个链接组为单位处理 1 条流**。根图元声明"播放哪条流"，链接组内各图元声明"自己负责哪个声道"。
+此标签 **以整个链接组为单位处理 1 个音源**。根图元声明"使用哪一个音源"，链接组内各图元声明"自己负责哪个声道"。音源可以是 HTTP URL (`{url:...}`)，也可以是同一链接组内某个 media/MOAP 面 (`{source:media}`)。
 
 ### 6.2 图元的角色
 
@@ -277,11 +282,12 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 | Description 中的字段 | 角色 |
 |---|---|
 | 含 `{url:...}` | **音源声明** (仅根图元有效，子图元写 `{url:...}` 会被忽略) |
+| 含 `{source:media}` | **media/MOAP 音源声明** (仅根图元有效，子图元写 `{source:media}` 会被忽略) |
 | 含 `{ch:...}` | **扬声器** (根 / 子图元都可以) |
-| 同时含两者 (= 仅根) | 音源声明 + 自身也作为扬声器 |
+| 根同时含音源声明与 `{ch:...}` | 音源声明 + 自身也作为扬声器 |
 | 两者都没有 | 不做任何事 (不属于 binding 对象) |
 
-链接组中同时存在 **音源声明 (= 带 `{url}` 的根)** 和 **至少 1 个扬声器 (= 带 `{ch}` 的图元)** 时才会开始播放。扬声器为 0 个时会触发"结构错误"，并发出错误通知 (§13)。
+链接组中同时存在 **音源声明 (= 根上有 `{url}` 或 `{source:media}`)** 和 **至少 1 个扬声器 (= 带 `{ch}` 的图元)** 时才会开始播放。扬声器为 0 个时会触发"结构错误"，并发出错误通知 (§13)。`{url:...}` 与 `{source:media}` **互斥**；同一个根标签中只能选择其中一种音源。
 
 ### 6.3 键一览
 
@@ -289,7 +295,10 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 
 | 键 | 必需 | 类型 | 默认值 | 含义 |
 |---|---|---|---|---|
-| `url` | **必需** | 字符串 | — | 流 URL。空字符串视为错误 |
+| `url` | 二选一 | 字符串 | — | HTTP 流 URL。空字符串视为错误。与 `source:media` 互斥 |
+| `source` | 二选一 | 枚举 | — | `media` = 使用同一链接组内的 media/MOAP 面作为音源。与 `url` 互斥 |
+| `link` | 可选 | S32 | 自动选择 | `source:media` 时选择媒体面所在 link number。仅用于选择媒体音源，不决定扬声器顺序 |
+| `face` | 可选 | S32 | 自动选择 | `source:media` 时选择媒体面所在 face number |
 | `range` | 可选 | F32 (m) | `Stream3DRolloffMax` (20.0) | 链接组内扬声器没有自己 `range` 时使用的默认衰减距离 |
 | `binaural` (`bin`) | 可选 | 枚举 | `off` | 双耳化 (耳机用 lite-HRTF) ON/OFF。详见 §7.1 |
 | `venue` (`v`) | 可选 | 枚举 | `dry` | 会场残响预设 (dry / room_small / ... / outdoor 共 9 种)。详见 §7.2 |
@@ -380,9 +389,54 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
   [3dstream-stereo:{url:http://example.com/stream.mp3}{ch:M}{range:25}]
 ```
 
-像这样在 1 条标签中并写 `{url}` 与 `{ch}` 时，根作为音源声明，自身也作为 M (单声道) 扬声器工作。也可用于完全没有子图元的简易 mono 配置 (与 `[3dstream:...]` 在功能上几乎等价)。
+像这样在 1 条标签中并写音源声明 (`{url}` 或 `{source:media}`) 与 `{ch}` 时，根作为音源声明，自身也作为 M (单声道) 扬声器工作。也可用于完全没有子图元的简易 mono 配置 (与 `[3dstream:...]` 在功能上几乎等价；但 `[3dstream:...]` 是 URL 音源专用)。
 
-### 6.9 如何识别根图元
+### 6.9 Media/MOAP 音源的使用 (r26)
+
+r26 起，分散立体声 / 会场布置标签可以把同一链接组内的 Media-on-a-Prim 音频作为 3D Stream 音源。Root 的 Description 使用 `{source:media}`：
+
+```
+根 Description:
+  [3dstream-stereo:{source:media}{ch:L}{range:30}]
+
+子 Description:
+  [3dstream-stereo:{ch:R}]
+```
+
+media 面可以在根图元上，也可以在同一链接组内的子图元上。标签仍然写在 **根图元** 上；扬声器图元照旧只写 `{ch:...}`。如果链接组内只有 1 个 media 面，可以省略 `{link}` / `{face}`，viewer 会自动选择它。
+
+如果同一链接组内有多个 media 面，或音源 media 面在子图元上，请在根标签中用 `{link:N}{face:N}` 明确选择。下面例子选择的是 link 3 的子图元 face 2：
+
+```
+根 Description:
+  [3dstream-stereo:{source:media}{link:3}{face:2}{range:30}]
+
+FL 图元: [3dstream-stereo:{ch:FL}]
+FR 图元: [3dstream-stereo:{ch:FR}]
+C 图元:  [3dstream-stereo:{ch:C}]
+```
+
+`link` / `face` 只用于选择 **哪一个 media/MOAP 面作为音源**，不决定扬声器顺序，也不替代 `{ch:...}`。有多个 media 面但没有写 `{link}` / `{face}`，或写出的组合找不到唯一 media 面时，会触发结构错误。
+
+URL 音源与 media 显示可以共存。根上使用 `{url:...}` 时，3D Stream 扬声器播放 URL 流；对象上的 media/MOAP 音频仍按普通媒体音频播放，不会被自动改路由：
+
+```
+根 Description:
+  [3dstream-stereo:{url:http://example.com/live.ogg}{ch:L}]
+
+子 Description:
+  [3dstream-stereo:{ch:R}]
+```
+
+media 音量 / mute 的作用规则：
+
+- 链接组内只有 1 个 media 面且被 `{source:media}` 使用时，media 自身的音量 / mute 作为音源增益参与 3D Stream。
+- 有多个 media 面时，被选中的 media 路由到 3D Stream 后按音源增益 `1.0` 处理，主要由 3D Stream 总音量 / 扬声器 `volume` 控制；未选中的 media 面保持普通 media 音量行为。
+- `{url:...}` 与 `{source:media}` 互斥。要让扬声器播放 media/MOAP 音频就使用 `{source:media}`；要让扬声器播放 HTTP 流就使用 `{url:...}`。
+
+本指南只说明 **1 / 2 / 6ch** 的 media callback 行为，目标到 5.1ch (6ch) 为止。
+
+### 6.10 如何识别根图元
 
 编辑链接组时，Build 浮窗的 **Object** 选项卡里 "Selected" 会显示当前选中的图元，链接组的父图元 (= 根) 通常是 **最初被选中并发起链接的那一个**。
 
@@ -672,7 +726,7 @@ FL:  [3dstream-stereo:{ch:FL}]   # 另外 5 个扬声器
 
 ## 9. `ch` (声道) 取值参考
 
-`{ch:值}` 可以指定以下 9 种。**不区分大小写** (`{ch:l}` 与 `{ch:L}` 等价)。
+`{ch:值}` 可以指定以下取值。**不区分大小写** (`{ch:l}` 与 `{ch:L}` 等价)。
 
 | 值 | 含义 | 主要用途 |
 |---|---|---|
@@ -694,7 +748,7 @@ FL:  [3dstream-stereo:{ch:FL}]   # 另外 5 个扬声器
 
 ## 10. 源声道数 × 标签值 兼容矩阵
 
-扬声器图元实际播放什么，由 **源 URL 的声道数** 与 **写下的 `ch` 值** 的组合决定。
+扬声器图元实际播放什么，由 **音源的声道数** 与 **写下的 `ch` 值** 的组合决定。
 
 ### 10.1 兼容矩阵
 
@@ -727,7 +781,7 @@ c = 1 / 2.914 ≈ 0.343 (防削波归一化)
 
 ### 10.4 5.1ch 会场布置下播放 2ch / 1ch 源
 
-会场已部署 6 个扬声器图元 (`ch:FL` / `FR` / `C` / `LFE` / `SL` / `SR`)，把源 URL 从 5.1ch 推流切到 **普通立体声 (2ch) 推流** 或 **单声道 (1ch) 推流** 的场景。例如 "正式演出走 5.1ch、休息时间用普通立体声 BGM"，"DJ set 之间穿插 MC 单声道语音"等运营。
+会场已部署 6 个扬声器图元 (`ch:FL` / `FR` / `C` / `LFE` / `SL` / `SR`)，把音源从 5.1ch 切到 **普通立体声 (2ch)** 或 **单声道 (1ch)** 的场景。例如 "正式演出走 5.1ch、休息时间用普通立体声 BGM"，"DJ set 之间穿插 MC 单声道语音"等运营。
 
 此时 **完全无需重新布置或修改设置**。各扬声器图元会自动按下述方式工作。
 
@@ -793,7 +847,7 @@ c = 1 / 2.914 ≈ 0.343 (防削波归一化)
 
 由此可一目了然地看出 "LFE / SL / SR 静音是规格行为，FL / FR / C 处于回退播放中"。
 
-通知按 `(root_id, url, observed_channel_count, prim_set_signature)` 作为 throttle 的键，因此布置或源声道数不变时同一通知不会重复发送。**推荐：仅在 5.1ch 会场布置 / 验证期间打开，正式运行时关闭 (`false`，默认值)**。详见 §13.3。
+通知按 `(root_id, source_id, observed_channel_count, prim_set_signature)` 作为 throttle 的键，因此布置或源声道数不变时同一通知不会重复发送。**推荐：仅在 5.1ch 会场布置 / 验证期间打开，正式运行时关闭 (`false`，默认值)**。详见 §13.3。
 
 #### 反方向: 2ch 布置下播放 5.1ch 源
 
@@ -980,7 +1034,7 @@ ffmpeg -re -i test_5_1.wav \
 
 ```
 3D Stream: 结构错误 (链接组 root: "MainStage")
-  根上有音源声明 (url) 但找不到扬声器 (ch)。
+  根上有音源声明 (url/source:media) 但找不到扬声器 (ch)。
   请在各扬声器图元上写 [3dstream-stereo:{ch:L|R|M}]。
 ```
 
@@ -1029,10 +1083,10 @@ ffmpeg -re -i test_5_1.wav \
 
 #### 13.3.4 throttle 与重新显示条件
 
-通知按 `(root_id, url, observed_channel_count, prim_set_signature)` 作为 throttle 的键。同一会场 / 同一源结构持续期间 **不会重复显示** (避免聊天被刷屏)。下列任一变化时重新评估并再次输出:
+通知按 `(root_id, source_id, observed_channel_count, prim_set_signature)` 作为 throttle 的键。同一会场 / 同一源结构持续期间 **不会重复显示** (避免聊天被刷屏)。下列任一变化时重新评估并再次输出:
 
-- 源 URL 改变 (= 切到不同的流)
-- 源声道数改变 (= 同一 URL 但发生了 5.1ch ↔ 2ch 切换)
+- 音源改变 (= 切到不同 URL，或改选其他 media/MOAP 面)
+- 源声道数改变 (= 同一 URL / 同一 media 面但发生了 5.1ch ↔ 2ch 切换)
 - 会场扬声器图元结构改变 (添加 / 删除 prim 或改变 `ch` 值)
 - `Stream3DRoutingDiagnostic` 由 OFF 切到 ON 的瞬间
 
@@ -1062,7 +1116,7 @@ ffmpeg -re -i test_5_1.wav \
 
 1. **Description 是否真的被改写**: 右键图元 → Edit → 查看 Description 选项卡的当前值
 2. **标签拼写**: 是否包含 `[3dstream:` 或 `[3dstream-stereo:` (注意拼写错误)
-3. **`{url:...}` 协议是否为 http/https**: `file://` 或相对 URL 不可
+3. **音源声明是否有效**: `{url:...}` 必须是 `http://` / `https://`；`{source:media}` 需要同一链接组内存在可唯一选择的 media/MOAP 面
 4. **`Stream3DEnabled` / `Stream3DDescriptionScan` 是否都为 true**: 在 Preferences > Sound 或 Debug Settings 确认
 5. **等待轮询**: LSL `llSetObjectDesc` 的修改最多等 30 秒 (= `Stream3DPollInterval`)
 6. **聊天里有没有错误通知**: 参考 §13 错误文言
@@ -1101,6 +1155,14 @@ ffmpeg -re -i test_5_1.wav \
 - 重新评估的触发可能没发生。请把图元移动一下，或绕一圈等待下次 polling
 - 仍然停不下来时把 `Stream3DEnabled` 暂时切到 false 强制拆除所有 binding，再切回 true 重新发现
 
+### 14.8 `{source:media}` 找不到 media 面
+
+- 确认 media 设置在与 root tag 相同链接组内的某个 face 上。
+- 如果 media 在子图元上，请用 `{link:N}` 指定该子图元的 SL link number。
+- 如果被选中的图元有多个 media face，请同时指定 `{face:N}`。
+- 刚 link 或刚加载对象时，media face 信息可能比 root Description 稍晚到达。请等待几秒，或 touch / edit 对象以触发重新评估。
+- 不要在同一个 root tag 中同时写 `{url:...}` 和 `{source:media}`。
+
 ---
 
 ## 15. 已知限制 / 规格说明
@@ -1114,11 +1176,11 @@ ffmpeg -re -i test_5_1.wav \
 
 这个设置同时作用于 LSL `llPlaySound` / 地块 BGM / Media-on-a-Prim。
 
-### 15.2 1 链接组 = 1 流
+### 15.2 1 链接组 = 1 音源
 
-每个链接组中只关心带 `{url}` 的根 "存在 / 不存在"。**不能在 1 个链接组里写多个 `{url}`** (子图元写 `{url}` 会被忽略)。
+每个链接组只建立 **1 个音源 binding**。根图元可以用 `{url:...}` 或 `{source:media}` 声明音源，但两者互斥；子图元上的音源声明会被忽略。
 
-要在 1 个会场里同时跑多个不同的流，请把链接组拆分摆放 (= 在 `Stream3DMaxConcurrent` 限额内持有多个 binding)。
+要在 1 个会场里同时跑多个不同音源，请把链接组拆分摆放 (= 在 `Stream3DMaxConcurrent` 限额内持有多个 binding)。
 
 ### 15.3 Description 字数 (127 字节)
 
@@ -1127,7 +1189,7 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 变长时的对策:
 
 - **使用键名 / venue 取值的短形式** (§4.5)。`binaural`/`venue`/`wetgain` 用 `bin`/`v`/`wg`，9 种 venue 取值也都有 1〜2 字符别名，长形式与短形式完全等价。
-- 根上只写 `{url}`、子图元只写 `{ch}` 的分散方式 (这种情况下每个图元的 Description 都能保持简短)
+- 根上只写 `{url}` 或 `{source:media}`、子图元只写 `{ch}` 的分散方式 (这种情况下每个图元的 Description 都能保持简短)
 - 缩短 URL (URL shortener，或推流端把路径缩短)
 
 ### 15.4 各 codec 的实测情况
@@ -1172,9 +1234,15 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 
 ### 15.9 音量合成
 
-最终音量 = `Stream3DVolumeMaster` × `{volume:N}` × FMOD 距离衰减 × Master Audio Slider × 各种静音状态。
+URL 音源的最终音量为：
+
+```
+Stream3DVolumeMaster × {volume:N} × FMOD 距离衰减 × Master Audio Slider × 各种静音状态
+```
 
 通常用 `Stream3DVolumeMaster` (Preferences 的 3D Stream 滑条) 做整体调整、`{volume:N}` 做图元级别校正、距离衰减由 `range` (扬声器单独) 或 `Stream3DRolloffMax` (整体默认) 控制。
+
+media/MOAP 音源在链接组内只有 1 个 media 面时，media volume / mute 也会作为 source gain 生效。详细规则见 §6.9。
 
 ---
 
@@ -1295,6 +1363,7 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 | `docs/specs/spec_stereo_upmix.md` | r12 stereo→5.1 上混规格 — DPL2 + 4 步频段分离，涵盖本指南 §8 |
 | `docs/ayastorm-r12-stereo-upmix.md` | r12 phase 拆分 (P0–P11) 与验证设计 |
 | `docs/ayastorm-r13-occlusion.md` | r13 OBB 遮蔽规格 + 实现记录 — `[ayastorm:occlude]` 设计决策 / spike 实现 / 残工程，涵盖本指南 §16 |
+| `docs/ayastorm-r26-moap-3d-stream-implementation-plan.md` | r26 media/MOAP source routing 实现计划 — `{source:media}` / `{link}` / `{face}` |
 | `docs/ayastorm-stream3d-roadmap.md` | 3D Stream 整体路线图 |
 
 ---
@@ -1306,3 +1375,4 @@ LSL `llSetObjectDesc` 能写入的 Description 上限为 **127 字节**。包含
 - **2026-05-09 (r12.1)**：新增 §7.4 `{lfegain:N}` (短形式 `lg`)，原 §7.4 推流者主导模型顺延为 §7.5、原 §7.5 组合示例顺延为 §7.6。`wetgain` 默认值由 `1.0` 改为 `0.2` (反映实际试听确认的音乐用途实用区间 0.1〜0.5)。§12.2 追加 `Stream3DLfeGain` sentinel；§12.2 / §12.3 加入实时调参修正说明 (覆盖 r12 中 `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` 修改后必须触摸图元才生效的回归)。
 - **2026-05-11 (r13)**: 新增 §16 静态 OBB 遮蔽 `[ayastorm:occlude]`，原 §16 相关文档顺延为 §17。§4.1 由"两种标签"扩展为"三种标签"。r13 debug settings (`Stream3DOcclusion` 主开关 / `Stream3DOccluderRange` 距离剪除 / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` 可视化) 在 §16.6-§16.8 中说明。§17 表追加 `docs/ayastorm-r13-occlusion.md`。
 - **2026-05-11 (r13 P15)**: 遮蔽判定从 OBB 近似升级为 **真实形状三角形 raycast** (OBB 粗剪除 + Möller-Trumbore 两阶段，详见 §16.2)。Path Cut / Hollow / Mesh 的真实形状全部参与音频计算。多图元叠加方式更正为 **乘法叠加** (实现一直是乘法叠加，旧版误记为 `max`)。`Stream3DShowOccluders` 从 OBB 线框改为 **青色三角形网格** (半透明 fill + wireframe)，build floater 中选中图元支持编辑中实时跟随 (§16.8)。§16.9 中追加每 occluder 2000 三角形上限及 OBB-only 回退规则。§16 标题由"静态 OBB 遮蔽"简化为"静态遮蔽"。
+- **2026-05-17 (r26)**: 加入 media/MOAP source routing。§3 / §6 追加 `{source:media}`、`{link:N}`、`{face:N}` 的根图元音源选择说明；§6.9 新增 media/MOAP 音源用法、root / child media face 示例、URL 音源与 media 显示共存示例、media volume / mute 规则，以及到 5.1ch 为止的 media callback 声道说明。

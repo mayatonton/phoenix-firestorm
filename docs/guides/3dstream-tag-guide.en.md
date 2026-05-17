@@ -1,8 +1,8 @@
 # 3D Stream Tag Format Guide
 
-> Tag format reference for AYAstorm's **3D Stream** feature, which plays HTTP audio streams as 3D-positional audio from prims.
+> Tag format reference for AYAstorm's **3D Stream** feature, which plays HTTP audio streams or Media-on-a-Prim (MOAP) audio as 3D-positional audio from prims.
 >
-> This document reflects the final specification as of AYAstorm `r12`. It includes the features added in r12: binaural / venue reverb / stereo→5.1 upmix / tag short-forms.
+> This document reflects the final specification as of AYAstorm `r26`. It includes r12 features (binaural / venue reverb / stereo→5.1 upmix / tag short-forms) and the r26 media/MOAP source routing extension.
 
 ---
 
@@ -40,6 +40,7 @@ Primary use cases:
 - **Ambient sound**: Play matching audio from objects like rivers, jukeboxes, TVs
 - **Stereo placement / multi-speaker venues**: Assign L / R / mono to multiple prims to spread stereo across space
 - **5.1ch source venue deployment**: Place the six 5.1ch channels (FL / FR / C / LFE / SL / SR) on six prims
+- **Media / MOAP speaker object**: Route the sound of a media face, such as a web player or YouTube page, into 3D Stream speakers
 
 Everything is configured by **writing a tag into a prim's Description field** — no LSL script, no SL server-side change. Only AYAstorm users hear the 3D audio. Other Viewers (mainline Firestorm, official LL Viewer, etc.) ignore these tags, so there is no compatibility problem.
 
@@ -91,7 +92,8 @@ Read sections 3 onward. Multi-speaker, 5.1ch, fine-tuning, and broadcaster-side 
 | **Linkset** | A group of prims linked together via SL's "link" operation (Ctrl+L). One root + N child prims |
 | **Root prim** | The parent prim of a linkset. Selected first when "Edit linked" is OFF in Build → Edit |
 | **Child prim** | Any prim in the linkset other than the root |
-| **Source declaration** | A prim with a tag containing `{url:...}`. Declares "which stream to play". **Only valid on the root prim** (ignored on child prims) |
+| **Source declaration** | A root prim tag containing either `{url:...}` or `{source:media}`. Declares what audio source the linkset plays. Source declarations are **root-only** |
+| **Media source** | A media/MOAP face in the same linkset used as the 3D Stream audio source via `{source:media}` |
 | **Speaker prim** | A prim with a tag containing `{ch:...}`. Actually emits sound. **Can be either root or child** |
 | **binding** | The internal "source → speaker group" mapping built per linkset. 1 linkset = 1 binding |
 | **ch (channel)** | The audio channel a speaker prim is responsible for. `L` / `R` / `M` (mono), or 5.1ch values `FL` / `FR` / `C` / `LFE` / `SL` / `SR` |
@@ -147,7 +149,7 @@ For `[3dstream-stereo:...]`, **4 frequent keys** and **all 9 `venue` values** ha
 | `wetgain` | `wg` | Reverb wet level (§7.3) |
 | `lfegain` | `lg` | LFE channel gain multiplier (§7.4, added in r12.1) |
 
-Other keys (`url`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) are already short, so no aliases are added.
+Other keys (`url`, `source`, `link`, `face`, `ch`, `range`, `volume`, `min`, `max`, `upmix`) are already short, so no aliases are added.
 
 #### `venue` value short-forms
 
@@ -260,6 +262,7 @@ Surrounding text is fine.
 
 ```
 [3dstream-stereo:{url:URL}{range:N}{ch:CH}{volume:V}]
+[3dstream-stereo:{source:media}{link:N}{face:N}{range:N}{ch:CH}{volume:V}]
 ```
 
 Or with the legacy prefix:
@@ -268,7 +271,7 @@ Or with the legacy prefix:
 [ayastream-stereo:...]
 ```
 
-This tag handles **one stream across the entire linkset**. The root prim declares "which stream to play", and each prim in the linkset declares "which channel I'm responsible for".
+This tag handles **one audio source across the entire linkset**. The root prim declares which source to play (`{url:...}` for an HTTP stream, or `{source:media}` for a media/MOAP face), and each speaker prim in the linkset declares which channel it is responsible for.
 
 ### 6.2 Per-prim role
 
@@ -276,12 +279,13 @@ Each prim takes on a role based on its tag fields:
 
 | Description fields | Role |
 |---|---|
-| Contains `{url:...}` | **Source declaration** (root only — `{url}` on a child prim is ignored) |
+| Contains `{url:...}` | **URL source declaration** (root only — `{url}` on a child prim is ignored) |
+| Contains `{source:media}` | **Media/MOAP source declaration** (root only — selects a media face in this linkset) |
 | Contains `{ch:...}` | **Speaker** (root or child, both fine) |
 | Contains both (= root only) | Source declaration + also acts as speaker |
 | Contains neither | Does nothing (not part of the binding) |
 
-Playback only starts when the linkset has both **a source declaration (root with `{url}`)** and **at least one speaker (a prim with `{ch}`)**. If there are zero speakers, a "structural error" is raised and a notification is shown (§13).
+Playback only starts when the linkset has both **a source declaration** (root with `{url}` or `{source:media}`) and **at least one speaker** (a prim with `{ch}`). If there are zero speakers, a "structural error" is raised and a notification is shown (§13).
 
 ### 6.3 Key reference
 
@@ -289,7 +293,10 @@ Playback only starts when the linkset has both **a source declaration (root with
 
 | Key | Required | Type | Default | Meaning |
 |---|---|---|---|---|
-| `url` | **required** | string | — | Stream URL. Empty string is an error |
+| `url` | required for URL source | string | — | HTTP stream URL. Empty string is an error. Mutually exclusive with `{source:media}` |
+| `source` | required for media source | enum | — | Source type. Use `{source:media}` to route a media/MOAP face through 3D Stream. Mutually exclusive with `{url:...}` |
+| `link` | optional | S32 | any media prim | Media source selector. Link number of the prim that owns the media face; only meaningful with `{source:media}` |
+| `face` | optional | S32 | any media face | Media source selector. Face number containing media; only meaningful with `{source:media}` |
 | `range` | optional | F32 (m) | `Stream3DRolloffMax` (20.0) | Default rolloff distance for speakers in the linkset that don't have their own `range` |
 | `binaural` | optional | bool | `off` | Binaural ON/OFF (details §7.1). Short-form `bin` |
 | `venue` | optional | enum | `dry` | Venue reverb preset, 9 values (details §7.2). Short-form `v` |
@@ -306,6 +313,8 @@ Playback only starts when the linkset has both **a source declaration (root with
 | `volume` | optional | F32 [0.0–1.0] | 1.0 | Per-speaker volume multiplier |
 
 > **Important**: The `min` / `max` keys from the mono tag are **ignored** in the distributed-stereo tag. For distributed stereo the near distance is internally fixed at 1.0m, and the far distance is the `range` key (or default `Stream3DRolloffMax`).
+
+> **Important**: `{url:...}` and `{source:media}` are alternatives. Do not put both in the same root tag. If you want to show media on a face while the speakers play a separate stream, keep `{url:...}` as the source and leave the media face unselected by 3D Stream (§6.10.3).
 
 ### 6.4 One root + one child (basic stereo pair)
 
@@ -380,7 +389,7 @@ Root Description:
   [3dstream-stereo:{url:http://example.com/stream.mp3}{ch:M}{range:25}]
 ```
 
-By writing both `{url}` and `{ch}` in the root tag, the root declares the source AND acts as an M (mono) speaker. This works for simple mono setups with no child prims (functionally close to `[3dstream:...]`).
+By writing a source declaration (`{url}` or `{source:media}`) and `{ch}` in the root tag, the root declares the source AND acts as an M (mono) speaker. This works for simple mono setups with no child prims (functionally close to `[3dstream:...]`; `[3dstream:...]` itself is URL-source only).
 
 ### 6.9 How to identify the root prim
 
@@ -390,7 +399,87 @@ Most reliable confirmation:
 - Build → Edit → "Edit linked" OFF → click any prim → the root of that linkset is selected
 - LSL: `llGetLinkNumber()` returns `1` for the root (when child prims exist). For a single un-linked prim, it returns `0`.
 
-The link order (link number 1, 2, 3, ...) of root vs children **does NOT affect 3D Stream playback**. The spec from r5 that used link number to determine L/R was retired in r8; from r8 onwards it's `{ch:...}` declaration based.
+The link order (link number 1, 2, 3, ...) of root vs children **does NOT affect speaker channel assignment**. The spec from r5 that used link number to determine L/R was retired in r8; from r8 onwards speaker routing is `{ch:...}` declaration based.
+
+In r26, `{link:N}` can be used with `{source:media}` to select which prim's media face becomes the audio source. This link number is **only a media-source selector**; it still does not decide L/R/FL/FR speaker order.
+
+### 6.10 Media / MOAP source (r26)
+
+Use `{source:media}` when the audio should come from a media face in the same linkset instead of from a direct HTTP stream URL. This is intended for MOAP / shared media surfaces such as web players, YouTube pages, or custom HTML players.
+
+The tag still lives on the **root prim**. The media face itself may be on the root prim or on a child prim. Speaker prims continue to use `{ch:...}` exactly like URL-based 3D Stream.
+
+#### 6.10.1 Basic media source
+
+If the linkset has exactly one media face, the root can simply select media:
+
+```
+Root Description:
+  [3dstream-stereo:{source:media}{range:30}]
+
+FL prim: [3dstream-stereo:{ch:FL}]
+FR prim: [3dstream-stereo:{ch:FR}]
+C prim:  [3dstream-stereo:{ch:C}]
+```
+
+When the media page plays audio, that audio is routed through the 3D Stream speaker prims. During media load, reload, navigation, or an audio-less page, the 3D route stays open and waits silently instead of briefly returning to normal 2D media audio.
+
+#### 6.10.2 Selecting a child prim / face
+
+If the media face is on a child prim, or if the linkset has multiple media faces, specify the media source with `{link:N}` and optionally `{face:N}`:
+
+```
+Root Description:
+  [3dstream-stereo:{source:media}{link:2}{face:0}{range:30}]
+
+Child link 2, face 0:
+  Set Media / MOAP here
+
+Speaker prims:
+  [3dstream-stereo:{ch:L}]
+  [3dstream-stereo:{ch:R}]
+```
+
+Rules:
+
+- `{link:N}` uses the SL link number of the prim containing the media face.
+- `{face:N}` uses the face number containing media.
+- If `{face:N}` is omitted and the selected prim has exactly one media face, that media face is used.
+- If multiple media faces exist and the tag does not identify one unambiguously, 3D Stream reports a structural error.
+- `{link:N}` / `{face:N}` only select the media source. Speaker placement still comes from each speaker prim's `{ch:...}`.
+
+#### 6.10.3 Showing media while playing a URL stream
+
+You can still display media on a prim while the 3D Stream speakers play a normal URL stream:
+
+```
+Root Description:
+  [3dstream-stereo:{url:http://example.com/stream.ogg}{range:30}]
+
+Any prim / face:
+  Set Media / MOAP for visuals
+```
+
+In this configuration, the speakers play the `{url:...}` stream. The media face is not routed into 3D Stream and keeps the normal viewer media-audio behavior.
+
+#### 6.10.4 Volume behavior for media source
+
+For URL sources, volume works as before:
+
+```
+final volume = Stream3DVolumeMaster × {volume:N} × distance attenuation × master audio
+```
+
+For media/MOAP sources:
+
+- If the linkset has **one media face**, the normal media volume / mute acts as the source gain for the 3D route. This matches the meaning of media volume in the normal 2D media path.
+- If the linkset has **two or more media faces**, the selected media routed into 3D Stream is treated as source gain `1.0`. Adjust it with the 3D Stream master volume and speaker `{volume:N}`. Other, unselected media faces continue to use normal media volume.
+
+This avoids changing the volume of unrelated media faces when one specific media source is used as the 3D Stream input.
+
+#### 6.10.5 Channel count notes
+
+Media callback sources covered by this guide are `1ch / 2ch / 6ch` PCM. The verified r26 target is 5.1 playback through `FL / FR / C / LFE / SL / SR` speaker prims.
 
 ---
 
@@ -672,7 +761,7 @@ FL:  [3dstream-stereo:{ch:FL}]   # 5 more speakers
 
 ## 9. `ch` (Channel) Value Reference
 
-`{ch:value}` accepts the following 9 values. **Case is not significant** (`{ch:l}` and `{ch:L}` are the same).
+`{ch:value}` accepts the following values. **Case is not significant** (`{ch:l}` and `{ch:L}` are the same).
 
 | Value | Meaning | Primary use |
 |---|---|---|
@@ -694,7 +783,7 @@ Invalid values (e.g., `{ch:foo}`) raise a **format error** notification (§13).
 
 ## 10. Source Channel Count × Tag Value Compatibility Matrix
 
-What a speaker prim actually plays is determined by the combination of the **source URL's channel count** and the **`ch` value you wrote**.
+What a speaker prim actually plays is determined by the combination of the **source channel count** and the **`ch` value you wrote**.
 
 ### 10.1 Compatibility matrix
 
@@ -980,7 +1069,7 @@ Tag format errors and structural errors are **shown in Local Chat** as system me
 
 ```
 3D Stream: Structural error (linkset root: "MainStage")
-  Source declaration (url) found on root, but no speakers (ch) found.
+  Source declaration found on root, but no speakers (ch) found.
   Each speaker prim should have [3dstream-stereo:{ch:L|R|M}].
 ```
 
@@ -1062,7 +1151,7 @@ Check in order:
 
 1. **Description was actually updated**: Right-click the prim → Edit → Description tab to confirm the current value
 2. **Tag spelling**: Confirm the prefix is exactly `[3dstream:` or `[3dstream-stereo:` (typos)
-3. **`{url:...}` scheme is http/https**: `file://` and relative URLs are not allowed
+3. **Source declaration is valid**: URL source requires `{url:http://...}` or `{url:https://...}`. Media source requires `{source:media}` on the root prim and a media face in the same linkset
 4. **`Stream3DEnabled` / `Stream3DDescriptionScan` are both true**: Confirm in Preferences > Sound or Debug Settings
 5. **Wait for poll**: Changes via LSL `llSetObjectDesc` take up to 30 seconds (`Stream3DPollInterval`)
 6. **Look for an error notification in chat**: See §13
@@ -1101,6 +1190,14 @@ Check in order:
 - Re-evaluation may not have triggered. Move the prim once, or look around the area to wait for the next poll.
 - If still stuck, toggle `Stream3DEnabled` to false (force-release all bindings) then back to true (re-discover).
 
+### 14.8 `{source:media}` reports no media face
+
+- Confirm the media is set on a face in the same linkset as the root tag.
+- If the media is on a child prim, add `{link:N}` using that child's SL link number.
+- If the selected prim has multiple media faces, add `{face:N}`.
+- Right after linking or loading an object, media-face information may arrive slightly later than the root Description. Wait a few seconds or touch/edit the object to trigger re-evaluation.
+- Do not combine `{url:...}` and `{source:media}` in the same root tag.
+
 ---
 
 ## 15. Known Limitations / Specification Notes
@@ -1114,11 +1211,11 @@ The listener position used for 3D Stream's spatialization follows Preferences > 
 
 This is the same setting used by LSL `llPlaySound`, parcel BGM, and Media-on-a-Prim.
 
-### 15.2 1 linkset = 1 stream
+### 15.2 1 linkset = 1 source
 
-What matters per linkset is whether a root with `{url}` "exists" or "doesn't exist". **Multiple `{url}` declarations in one linkset are not allowed** (`{url}` on a child prim is ignored).
+What matters per linkset is whether a root source declaration exists. The source is either `{url:...}` or `{source:media}`. **Multiple source declarations in one linkset are not allowed**, and `{url}` / `{source:media}` on a child prim is ignored.
 
-To run multiple distinct streams in one venue, split into separate linksets and place them — they coexist as separate bindings within `Stream3DMaxConcurrent`.
+To run multiple distinct sources in one venue, split them into separate linksets and place them — they coexist as separate bindings within `Stream3DMaxConcurrent`.
 
 ### 15.3 Description byte limit (127)
 
@@ -1172,9 +1269,15 @@ Up to ~64 channels stays within FMOD headroom. If you need more, raise via debug
 
 ### 15.9 Volume composition
 
-Final volume = `Stream3DVolumeMaster` × `{volume:N}` × FMOD distance attenuation × Master Audio Slider × any mute states.
+For URL sources, final volume is:
+
+```
+Stream3DVolumeMaster × {volume:N} × FMOD distance attenuation × Master Audio Slider × any mute states
+```
 
 Typically use `Stream3DVolumeMaster` (the 3D Stream slider in Preferences) for global control, `{volume:N}` for per-prim correction, and `range` (per-speaker) or `Stream3DRolloffMax` (global default) for distance attenuation.
+
+For media/MOAP sources, media volume can also act as source gain in the single-media-face case. See §6.10.4 for the exact media volume rule.
 
 ---
 

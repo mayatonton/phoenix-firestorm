@@ -1,4 +1,4 @@
-# AYAstorm MOAP audio to 3D Stream implementation plan
+# AYAstorm r26 MOAP audio to 3D Stream implementation plan
 
 ## 目的
 
@@ -8,8 +8,10 @@ MOAP/CEF 再生音声を、現行の 2D FMOD media audio path ではなく、3D 
 
 ## 目次
 
+- [読み方](#読み方)
 - [結論](#結論)
-- [実装状況](#実装状況)
+- [現在の状態](#現在の状態)
+- [詳細な実装・検証ログ](#詳細な実装検証ログ)
 - [実装方針](#実装方針)
 - [現行仕様: MOAP audio](#現行仕様-moap-audio)
 - [現行仕様: 3D Stream](#現行仕様-3d-stream)
@@ -18,6 +20,18 @@ MOAP/CEF 再生音声を、現行の 2D FMOD media audio path ではなく、3D 
 - [先に解決すべき問題](#先に解決すべき問題)
 - [検証計画](#検証計画)
 - [対象外](#対象外)
+
+## 読み方
+
+この文書は、PR 説明の元になる短い要約と、実装判断の根拠になる詳細ログを同居させている。
+
+レビュー時はまず次の順で読む。
+
+1. [結論](#結論)
+2. [現在の状態](#現在の状態)
+3. [詳細な実装・検証ログ](#詳細な実装検証ログ) の「PR 前に必要な実機確認」
+
+`現行仕様`、`接続設計`、`先に解決すべき問題` は、実装方針や将来改修の根拠を確認したい場合に読む補足である。
 
 ## 結論
 
@@ -31,9 +45,29 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 
 ただし、実装は単に parser に `{source:media}` を追加するだけでは不十分である。現行 3D Stream は root source を `{url}` 文字列として扱っており、binding fingerprint、reconnect、diagnostic、format-failed cache、toast 表示まで URL 依存になっている。Media source 対応では、source 種別と source identity を binding 全体に通す必要がある。
 
-## 実装状況
+## 現在の状態
 
-2026-05-17 時点で Phase 0 の一部を実装済み。
+2026-05-17 時点で、このブランチは macOS 実機確認上の PR 前必須項目を満たしている。
+
+| 項目 | 状態 | 備考 |
+| --- | --- | --- |
+| MOAP / media audio を 3D Stream source として扱う経路 | 実装済み | `{source:media}` で有効化する |
+| root tag + child prim media | 確認済み | tag は root prim、media face は child prim でもよい |
+| media source 選択 | 実装済み | `{link:N}` / `{face:N}` に対応 |
+| 対象 media の 2D audio suppression | 実装済み | 3D route 中に 2D と 3D を行き来しない |
+| 5.1ch source の 6 speaker 再生 | macOS 実機確認済み | 今回の合格条件はここまで |
+| 7.1ch / BL/BR speaker 実音確認 | 将来確認 | 8ch callback の受け口と track mapping はあるが、PR 合格条件外 |
+| 44.1kHz source | macOS 実機確認済み | Dullahan 側は 48kHz callback を要求 |
+| media ON/OFF / reload / Nearby Media stop-start | macOS 実機確認済み | stale ring pointer crash 対策後、新規 AYAstorm crash report なし |
+| Windows / Linux 実機 | 未確認 | Dullahan package は用意済み |
+
+PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch source、44.1kHz source、A/V sync 許容範囲、URL source と media 表示の併用、media ON/OFF / reload 後の復帰を確認済みである。
+
+残る主な確認は Windows / Linux での二重再生有無と、callback が使えない build での fallback 挙動である。7.1ch speaker 構成の BL/BR 実音確認は将来項目であり、今回の PR 合格条件には含めない。
+
+## 詳細な実装・検証ログ
+
+ここから下は、実装内容、ビルド、実機確認、クラッシュ調査の詳細ログである。
 
 - media audio ring の shared memory サイズ計算を helper 化した。
 - ring の sentinel frame (`capacity + 1`) 分を確保するよう修正した。
@@ -41,6 +75,7 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 - media audio の channel order を定義した。
   - 6ch: `FL / FR / C / LFE / SL / SR`
   - 8ch: `FL / FR / C / LFE / SL / SR / BL / BR`
+  - 8ch は media callback source の受け口と track mapping までの実装であり、今回の実機合格条件には含めない。BL/BR speaker prim を含む 7.1ch 実音確認は将来項目とする。
 - `llpluginaudio` integration test を追加した。
 - 3D Stream tag parser に `{source:media}`、`{link:N}`、`{face:N}` を追加した。
 - `{url:...}` と `{source:media}` の同時指定を invalid binding として扱うようにした。
@@ -90,8 +125,9 @@ PR 前に必要な実機確認:
    - media face: child prim
    - 結果: child prim media source から speaker prim へ再生できた。
 2. media ON/OFF、Nearby Media stop/start、media reload 後に crash せず 3D route が復帰すること。確認済み。
-   - 以前の crash は stale shared memory ring pointer が原因だったため、修正後の再実機確認が必要。
-   - 結果: media ON/OFF、Nearby Media stop/start、media reload 後も crash せず 3D route が復帰した。
+   - 以前の crash は stale shared memory ring pointer が原因だった。
+   - 結果: stale ring pointer 対策後、media ON/OFF、Nearby Media stop/start、media reload 後も crash せず 3D route が復帰した。
+   - 2026-05-17 19:09 時点で、最新の AYAstorm crash report は修正前相当の `AYAstorm-2026-05-17-185855.ips` が最後であり、その後の実機操作では新規 AYAstorm crash report は確認されていない。
 3. 5.1ch source が 6 speaker 構成で破綻なく鳴ること。確認済み。
    - 期待ログ: `CEF audio stream started: 48000 Hz x 8 ch`
    - 期待ログ: `layout=FL/FR/C/LFE/SL/SR/BL/BR ... speakers=6`
@@ -170,6 +206,8 @@ PR 前に必要な実機確認:
   - さらに `LLViewerMediaImpl::destroyMediaSource()` から `LLPositionalStreamMgr` へ media source 破棄直前通知を送り、shared memory unmap 前に 3D Stream の decode thread を停止して ring pointer を detach するようにした。
   - `LLPluginClassMedia::getAudioData()` は plugin が running の場合だけ audio shared memory address を返すようにした。
   - ring が一時的に `nullptr` の場合は 3D route を Failed にせず、Opening のまま無音待機する。
+  - 修正後の macOS 実機確認では、media ON/OFF、Nearby Media stop/start、media reload、media 操作後の再接続で crash せず 3D route が復帰した。
+  - 2026-05-17 19:09 時点で、`~/Library/Logs/DiagnosticReports` に新しい AYAstorm crash report は増えていない。`SLVoice` と `chrome_crashpad_handler` の report は別プロセスであり、MOAP 3D Stream 本体の crash とは扱わない。
   - 修正後、`llaudio` / `llplugin` / `viewer` arm64 build 成功。
 - 44.1kHz source の実機再生確認
   - Dullahan 側では 48kHz callback を要求している。
