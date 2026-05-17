@@ -3159,6 +3159,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     // 995a1354d8). LGPL-2.1-only (same as Second Life Viewer Source Code). These programs render
     // per-object screen-space motion vectors into mVelocityMap (RG16F), consumed by the SMAA T2x
     // reproject resolve and any later motion-blur pass.
+    //
+    // NOTE: BD upstream uses make_rigged_variant() here, which copies the same velocityV.glsl
+    // file and adds HAS_SKIN=1. Under HAS_SKIN the file calls getLastObjectSkinnedTransform(),
+    // which is only defined in skinnedVelocityV.glsl. That makes BD's rigged variant fail to
+    // link (latent because BD apparently never binds it). We instead set up the rigged variants
+    // manually with the dedicated skinnedVelocity*.glsl files (each has its own main()).
     if (success)
     {
         gVelocityProgram.mName = "AYAstorm Velocity Shader";
@@ -3167,8 +3173,26 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gVelocityProgram.mShaderFiles.push_back(make_pair("deferred/velocityV.glsl", GL_VERTEX_SHADER));
         gVelocityProgram.mShaderFiles.push_back(make_pair("deferred/velocityF.glsl", GL_FRAGMENT_SHADER));
         gVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        success = make_rigged_variant(gVelocityProgram, gVelocitySkinnedProgram);
-        success = success && gVelocityProgram.createShader();
+        success = gVelocityProgram.createShader();
+
+        if (success)
+        {
+            gVelocitySkinnedProgram.mName = "Skinned AYAstorm Velocity Shader";
+            gVelocitySkinnedProgram.mFeatures = gVelocityProgram.mFeatures;
+            gVelocitySkinnedProgram.mFeatures.hasObjectSkinning = true;
+            gVelocitySkinnedProgram.mShaderFiles.clear();
+            gVelocitySkinnedProgram.mShaderFiles.push_back(make_pair("deferred/skinnedVelocityV.glsl", GL_VERTEX_SHADER));
+            gVelocitySkinnedProgram.mShaderFiles.push_back(make_pair("deferred/velocityF.glsl", GL_FRAGMENT_SHADER));
+            gVelocitySkinnedProgram.mShaderLevel = gVelocityProgram.mShaderLevel;
+            gVelocitySkinnedProgram.mShaderGroup = gVelocityProgram.mShaderGroup;
+            // skinnedVelocityV.glsl references MAX_JOINTS_PER_MESH_OBJECT directly in its own
+            // compilation unit (not via the auto-attached objectSkinV.glsl), so the define must
+            // be present in this shader's mDefines.
+            gVelocitySkinnedProgram.addPermutation("MAX_JOINTS_PER_MESH_OBJECT",
+                std::to_string(LLSkinningUtil::getMaxJointCount()));
+            gVelocityProgram.mRiggedVariant = &gVelocitySkinnedProgram;
+            success = gVelocitySkinnedProgram.createShader();
+        }
     }
 
     if (success)
@@ -3181,8 +3205,24 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gVelocityAlphaProgram.mShaderFiles.push_back(make_pair("deferred/velocityAlphaF.glsl", GL_FRAGMENT_SHADER));
         gVelocityAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         add_common_permutations(&gVelocityAlphaProgram);
-        success = make_rigged_variant(gVelocityAlphaProgram, gVelocityAlphaSkinnedProgram);
-        success = success && gVelocityAlphaProgram.createShader();
+        success = gVelocityAlphaProgram.createShader();
+
+        if (success)
+        {
+            gVelocityAlphaSkinnedProgram.mName = "Skinned AYAstorm Velocity Alpha Shader";
+            gVelocityAlphaSkinnedProgram.mFeatures = gVelocityAlphaProgram.mFeatures;
+            gVelocityAlphaSkinnedProgram.mFeatures.hasObjectSkinning = true;
+            gVelocityAlphaSkinnedProgram.mShaderFiles.clear();
+            gVelocityAlphaSkinnedProgram.mShaderFiles.push_back(make_pair("deferred/skinnedVelocityAlphaV.glsl", GL_VERTEX_SHADER));
+            gVelocityAlphaSkinnedProgram.mShaderFiles.push_back(make_pair("deferred/velocityAlphaF.glsl", GL_FRAGMENT_SHADER));
+            gVelocityAlphaSkinnedProgram.mShaderLevel = gVelocityAlphaProgram.mShaderLevel;
+            gVelocityAlphaSkinnedProgram.mShaderGroup = gVelocityAlphaProgram.mShaderGroup;
+            add_common_permutations(&gVelocityAlphaSkinnedProgram);
+            gVelocityAlphaSkinnedProgram.addPermutation("MAX_JOINTS_PER_MESH_OBJECT",
+                std::to_string(LLSkinningUtil::getMaxJointCount()));
+            gVelocityAlphaProgram.mRiggedVariant = &gVelocityAlphaSkinnedProgram;
+            success = gVelocityAlphaSkinnedProgram.createShader();
+        }
     }
 
     if (success)

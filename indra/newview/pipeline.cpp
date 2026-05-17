@@ -9609,6 +9609,16 @@ void LLPipeline::renderFinalize()
             }
             break;
         }
+        // <AYAstorm r30 P2> velocity buffer visualization
+        case 7:
+        {
+            if (mVelocityMap.isComplete())
+            {
+                visualizeBuffers(&mVelocityMap, sourceBuffer, 0);
+            }
+            break;
+        }
+        // </AYAstorm r30 P2>
         default:
             break;
         }
@@ -10635,6 +10645,11 @@ void LLPipeline::renderDeferredLighting()
         renderGeomPostDeferred(*LLViewerCamera::getInstance());
         popRenderTypeMask();
     }
+
+    // <AYAstorm r30 P2> velocity buffer pass for motion blur / SMAA T2x
+    // (Cinematic mode only — gated by mVelocityMap.isComplete()).
+    renderGeomMotionBlur();
+    // </AYAstorm r30 P2>
 
     screen_target->flush();
 

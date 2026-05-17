@@ -32,7 +32,6 @@
 out vec4 frag_color;
 
 vec4 diffuseLookup(vec2 texcoord);
-void bayerDitherDiscard(float alpha, float threshold);
 
 in vec4 vary_cur_clip;
 in vec4 vary_last_clip;
@@ -44,7 +43,11 @@ void main()
     float alpha = diffuseLookup(vary_texcoord0.xy).a;
     alpha *= vertex_color.a;
 
-    bayerDitherDiscard(alpha, 0.88);
+    // AYAstorm r30 P2: BD calls bayerDitherDiscard(alpha, 0.88) here, but the helper isn't
+    // shipped with the borrowed shader set. For the velocity buffer the dither pattern isn't
+    // load-bearing — we just need to skip fully-transparent pixels so they don't overwrite
+    // the velocity of opaque geometry behind them. Plain cutoff is sufficient.
+    if (alpha < 0.1) discard;
 
     vec2 cur_ndc  = vary_cur_clip.xy / vary_cur_clip.w;
     vec2 last_ndc = vary_last_clip.xy / vary_last_clip.w;
