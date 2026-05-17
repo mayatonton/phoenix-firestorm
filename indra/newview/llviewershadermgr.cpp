@@ -235,6 +235,15 @@ LLGLSLShader            gDeferredSkinnedFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gNormalMapGenProgram;
 LLGLSLShader            gDeferredGenBrdfLutProgram;
 LLGLSLShader            gDeferredBufferVisualProgram;
+
+// <AYAstorm r30 P2> Velocity buffer shaders (BD lineage).
+LLGLSLShader            gVelocityProgram;
+LLGLSLShader            gVelocitySkinnedProgram;
+LLGLSLShader            gVelocityAlphaProgram;
+LLGLSLShader            gVelocityAlphaSkinnedProgram;
+LLGLSLShader            gAvatarVelocityProgram;
+// </AYAstorm r30 P2>
+
 // [RLVa:KB] - @setsphere
 LLGLSLShader            gRlvSphereProgram;
 // [/RLVa:KB]
@@ -813,6 +822,9 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     shaders.push_back( make_pair( "avatar/avatarSkinV.glsl",                1 ) );
     shaders.push_back( make_pair( "avatar/objectSkinV.glsl",                1 ) );
     shaders.push_back( make_pair( "deferred/textureUtilV.glsl",             1 ) );
+    // <AYAstorm r30 P2> Common helper used by velocity*V.glsl shaders.
+    shaders.push_back( make_pair( "deferred/velocityFuncV.glsl",            1 ) );
+    // </AYAstorm r30 P2>
     if (gGLManager.mGLSLVersionMajor >= 2 || gGLManager.mGLSLVersionMinor >= 30)
     {
         shaders.push_back( make_pair( "objects/indexedTextureV.glsl",           1 ) );
@@ -1206,6 +1218,14 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNormalMapGenProgram.unload();
         gDeferredGenBrdfLutProgram.unload();
         gDeferredBufferVisualProgram.unload();
+
+        // <AYAstorm r30 P2> Velocity buffer shaders.
+        gVelocityProgram.unload();
+        gVelocitySkinnedProgram.unload();
+        gVelocityAlphaProgram.unload();
+        gVelocityAlphaSkinnedProgram.unload();
+        gAvatarVelocityProgram.unload();
+        // </AYAstorm r30 P2>
 
         for (U32 i = 0; i < LLMaterial::SHADER_COUNT*2; ++i)
         {
@@ -3134,6 +3154,50 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredBufferVisualProgram.createShader();
     }
+
+    // <AYAstorm r30 P2> Velocity buffer shaders (ported from BlackDragon Viewer, NiranV Dean,
+    // 995a1354d8). LGPL-2.1-only (same as Second Life Viewer Source Code). These programs render
+    // per-object screen-space motion vectors into mVelocityMap (RG16F), consumed by the SMAA T2x
+    // reproject resolve and any later motion-blur pass.
+    if (success)
+    {
+        gVelocityProgram.mName = "AYAstorm Velocity Shader";
+        gVelocityProgram.mFeatures.hasMotionBlur = true;
+        gVelocityProgram.mShaderFiles.clear();
+        gVelocityProgram.mShaderFiles.push_back(make_pair("deferred/velocityV.glsl", GL_VERTEX_SHADER));
+        gVelocityProgram.mShaderFiles.push_back(make_pair("deferred/velocityF.glsl", GL_FRAGMENT_SHADER));
+        gVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = make_rigged_variant(gVelocityProgram, gVelocitySkinnedProgram);
+        success = success && gVelocityProgram.createShader();
+    }
+
+    if (success)
+    {
+        gVelocityAlphaProgram.mName = "AYAstorm Velocity Alpha Shader";
+        gVelocityAlphaProgram.mFeatures.hasMotionBlur = true;
+        gVelocityAlphaProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
+        gVelocityAlphaProgram.mShaderFiles.clear();
+        gVelocityAlphaProgram.mShaderFiles.push_back(make_pair("deferred/velocityAlphaV.glsl", GL_VERTEX_SHADER));
+        gVelocityAlphaProgram.mShaderFiles.push_back(make_pair("deferred/velocityAlphaF.glsl", GL_FRAGMENT_SHADER));
+        gVelocityAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        add_common_permutations(&gVelocityAlphaProgram);
+        success = make_rigged_variant(gVelocityAlphaProgram, gVelocityAlphaSkinnedProgram);
+        success = success && gVelocityAlphaProgram.createShader();
+    }
+
+    if (success)
+    {
+        gAvatarVelocityProgram.mName = "AYAstorm Avatar Velocity Shader";
+        gAvatarVelocityProgram.mFeatures.hasSkinning = true;
+        gAvatarVelocityProgram.mFeatures.hasMotionBlur = true;
+        gAvatarVelocityProgram.mShaderFiles.clear();
+        gAvatarVelocityProgram.mShaderFiles.push_back(make_pair("deferred/avatarVelocityV.glsl", GL_VERTEX_SHADER));
+        gAvatarVelocityProgram.mShaderFiles.push_back(make_pair("deferred/avatarVelocityF.glsl", GL_FRAGMENT_SHADER));
+        gAvatarVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = gAvatarVelocityProgram.createShader();
+    }
+    // </AYAstorm r30 P2>
+
     // [RLVa:KB] - @setsphere
     if(success)
     {

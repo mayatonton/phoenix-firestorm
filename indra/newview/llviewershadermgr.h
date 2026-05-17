@@ -298,6 +298,15 @@ extern LLGLSLShader         gHUDFullbrightShinyProgram;
 extern LLGLSLShader         gNormalMapGenProgram;
 extern LLGLSLShader         gDeferredGenBrdfLutProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
+
+// <AYAstorm r30 P2> Velocity buffer shaders (BD lineage).
+extern LLGLSLShader         gVelocityProgram;
+extern LLGLSLShader         gVelocitySkinnedProgram;
+extern LLGLSLShader         gVelocityAlphaProgram;
+extern LLGLSLShader         gVelocityAlphaSkinnedProgram;
+extern LLGLSLShader         gAvatarVelocityProgram;
+// </AYAstorm r30 P2>
+
 // [RLVa:KB] - @setsphere
 extern LLGLSLShader         gRlvSphereProgram;
 // [/RLVa:KB]

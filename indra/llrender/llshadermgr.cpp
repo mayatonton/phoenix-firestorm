@@ -174,6 +174,17 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
+    // <AYAstorm r30 P2> Auto-attach velocityFuncV.glsl helper for shaders that
+    // opt-in via mFeatures.hasMotionBlur (matches BD lineage).
+    if (features->hasMotionBlur)
+    {
+        if (!shader->attachVertexObject("deferred/velocityFuncV.glsl"))
+        {
+            return false;
+        }
+    }
+    // </AYAstorm r30 P2>
+
     if (!shader->attachVertexObject("deferred/textureUtilV.glsl"))
     {
         return false;
