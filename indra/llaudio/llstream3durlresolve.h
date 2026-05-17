@@ -5,7 +5,7 @@
  * Resolves HTTPS→HTTP cross-protocol redirects (typical of Cloudflare/CDN
  * fronted Shoutcast/Icecast streams) before handing the URL to FMOD's
  * netstream, which does not follow such redirects on its own. See
- * `doc/spec_binaural_venue_reverb.md` §4.7.
+ * `docs/specs/spec_binaural_venue_reverb.md` §4.7.
  *
  * r13 C: API is fully asynchronous. submit() enqueues a resolve request
  * onto a dedicated worker thread and returns immediately. The caller

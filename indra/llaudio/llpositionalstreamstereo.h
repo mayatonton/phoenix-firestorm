@@ -123,7 +123,7 @@ private:
 
     // r7 M1: decode thread skeleton. M1 spins up a thread on State::Playing
     // and tears it down in stop(); the loop itself is empty here. M2 will
-    // move pumpSource() into it. Spec: doc/spec_stream3d_decode_thread.md §4.
+    // move pumpSource() into it. Spec: docs/specs/spec_stream3d_decode_thread.md §4.
     void startDecodeThread();
     void stopDecodeThread();
     void decodeThreadMain();

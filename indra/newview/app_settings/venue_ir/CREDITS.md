@@ -5,7 +5,7 @@ AYAstorm Stream3D venue convolution reverb (`LLVenueReverbDsp`, r11 P7c).
 
 The viewer attempts to load `<name>.wav` for each non-`dry` venue in the
 catalog at startup. Missing or rejected files leave the slot un-selectable
-(silent fallback to dry). See `doc/spec_binaural_venue_reverb.md` §4.4.5
+(silent fallback to dry). See `docs/specs/spec_binaural_venue_reverb.md` §4.4.5
 for the canonical bundling rules.
 
 ## File requirements
@@ -19,7 +19,7 @@ Each file must satisfy **all** of the following or the slot is dropped:
   on modern OS defaults, 44100 Hz fallback). No resampling is performed.
 - Length: ≤ 3 s recommended; longer IRs work but cost CPU per partition.
 
-The drop-in pipeline (`doc/r11/fetch_venue_irs.sh`'s `ir_convert` helper)
+The drop-in pipeline (`docs/archive/r11/fetch_venue_irs.sh`'s `ir_convert` helper)
 normalises every file to **48 kHz / 16-bit / mono / 3 s trim + 0.05 s
 trailing fade**, which always satisfies the requirements above.
 
