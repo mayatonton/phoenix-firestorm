@@ -936,7 +936,37 @@ if (features->hasMotionBlur)
 
 ---
 
-## 8. 関連 spec / memory
+## 8. 実装 commit log (`feature/ayastorm-r30-p2-velocity-buffer-spec` ブランチ上)
+
+`ayastorm-release..HEAD` 範囲、古い → 新しい順。Step 番号は §3 の BD trace と §6 の改修ポイント表に対応。
+
+| commit | 内容 |
+| --- | --- |
+| `7eecbf10ec` | r30 chapter spec: cinematic mode plan + P1 view-mode restart-switch unification |
+| `627b5dbef3` | r30 P1: unify View Mode to restart-switch, add Cinematic (preview) slot |
+| `75f0d889cf` | r30 P2 spec: velocity buffer + SMAA T2x trace + case A decision (= 本 spec の初版) |
+| `dbe4fc508b` | r30 P2 step 1: import velocity buffer shaders from Black Dragon Viewer |
+| `016bf501ed` | r30 P2 step 2: add SMAAResolve{V,F}.glsl for SMAA T2x resolve pass |
+| `88ab1f3f27` | r30 P2 step 3: add llshadermgr uniforms, hasMotionBlur, mVelocityMap/mSMAAHistory RTs |
+| `26e8a1f3ef` | r30 P2 step 4a: register 5 velocity shader programs + hasMotionBlur attach |
+| `1c62a2d11b` | r30 P2 step 4b: LLDrawPool velocity virtuals + LLRenderPass push helpers + renderGeomMotionBlur |
+| `7d68ec63f3` | r30 P2 step 4c-1: opaque pool motion blur overrides (8 pools / 4 files) |
+| `b7d9ddb619` | r30 P2 step 4c-2: face-iter pool motion blur overrides (terrain + tree) |
+| `ccc77a536b` | r30 P2 step 4c-3: special pool motion blur overrides (alpha + avatar) |
+| `06c0fb9d55` | r30 P2 step 5a: display() hook + velocity buffer visualization + skinned variant fix |
+| `2f89d22f9d` | r30 P2 step 5b: motion blur composite + per-drawable velocity matrix hookup |
+| `c12bd5ddb2` | r30 P2 step 5c+5d: SMAA T2x resolve + 2-tap subpixel jitter |
+
+Step 5 受入観測 (2026-05-18 AYA):
+- **5b motion blur**: SIM 境界の radial blur "玉" は `LLDrawable::mLastVelocityMatrix` + `LLDrawInfo::mLastModelMatrix` 配線で解消、avatar lightning streak は NaN/inf guard で抑止、static building の subpixel drift は noise floor 2.0px で抑止。
+- **5c SMAA T2x resolve**: 配線のみでは ON/OFF 差ゼロ (jitter 無しでは 50/50 blend が同一サンプルの平均 = identity)、これは仕様。
+- **5d Halton 2-tap jitter**: 高周波エッジ (木の葉、髪、細枝) で SMAA 単独より若干滑らかになる差を確認。建物 / 地形などの直線エッジは既存 SMAA で取り切られているので追加効果は小さい。これは 2-tap (T2x の "2x") の理論限界に沿った結果で、ghost / smear は確認されず → jitter ↔ velocity reprojection ↔ resolve の lockstep 成立を確認。
+
+ブランチ状態 (本 commit log 追記時点): `feature/ayastorm-r30-p2-velocity-buffer-spec` を `origin` に push 済。`ayastorm-release` への PR は最終調整完了まで保留 (AYA 判断 2026-05-18)。
+
+---
+
+## 9. 関連 spec / memory
 
 - `docs/specs/ayastorm-r30-cinematic-chapter.md` — 親 spec、章レベル骨子 (§3 P2 / §4.2 borrow list)
 - `docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md` — 前段 spec、P1 で 3 モード再起動切替統一 + Cinematic 枠 UI 追加 (本 spec §6.12 startup snapshot は P1 で予告された P2 着手必要事項)
