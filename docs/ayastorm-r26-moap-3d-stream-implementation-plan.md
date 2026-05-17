@@ -51,19 +51,24 @@ MOAP audio はすでに `media_plugin_cef` から shared memory ring へ float P
 
 | 項目 | 状態 | 備考 |
 | --- | --- | --- |
-| MOAP / media audio を 3D Stream source として扱う経路 | 実装済み | `{source:media}` で有効化する |
+| MOAP / media audio を 3D Stream source として扱う経路 | 実装済み | `{source:media}` / `{source:media-stereo}` / `{source:media-5-1}` で有効化する |
 | root tag + child prim media | 確認済み | tag は root prim、media face は child prim でもよい |
 | media source 選択 | 実装済み | `{link:N}` / `{face:N}` に対応 |
+| media source の論理 channel 指定 | 実装済み | CEF callback bus が 8ch でも、tag 指定に従って 2ch / 5.1 source として扱う |
 | 対象 media の 2D audio suppression | 実装済み | 3D route 中に 2D と 3D を行き来しない |
 | 5.1ch source の 6 speaker 再生 | macOS 実機確認済み | 今回の合格条件はここまで |
-| 7.1ch / BL/BR speaker 実音確認 | 将来確認 | 8ch callback の受け口と track mapping はあるが、PR 合格条件外 |
+| 7.1ch / BL/BR speaker routing | 対象外 | 今回の 3D Stream 実装対象ではない |
 | 44.1kHz source | macOS 実機確認済み | Dullahan 側は 48kHz callback を要求 |
 | media ON/OFF / reload / Nearby Media stop-start | macOS 実機確認済み | stale ring pointer crash 対策後、新規 AYAstorm crash report なし |
 | Windows / Linux 実機 | 未確認 | Dullahan package は用意済み |
 
 PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch source、44.1kHz source、A/V sync 許容範囲、URL source と media 表示の併用、media ON/OFF / reload 後の復帰を確認済みである。
 
-残る主な確認は Windows / Linux での二重再生有無と、callback が使えない build での fallback 挙動である。7.1ch speaker 構成の BL/BR 実音確認は将来項目であり、今回の PR 合格条件には含めない。
+2026-05-18 の追加修正で、Dullahan/CEF callback bus が常に 8ch として見える環境でも、media source の論理 channel 数を tag 側で明示できるようにした。`{source:media}` と `{source:media-stereo}` は 2ch、`{source:media-5-1}` は 6ch として扱う。これにより、stereo media で `{upmix:on}` を指定したときに、callback bus の 8ch を native 8ch source と誤判定して upmix を bypass する問題を避ける。
+
+この追加修正は viewer 側だけで完結する。Dullahan/CEF package へ追加 API を入れず、3D Stream の media source reader が「実 callback bus channel 数」と「3D Stream source として扱う論理 channel 数」を分離する。URL source は従来通り FMOD の URL decode path を使うため、この修正の影響を受けない。
+
+残る主な確認は Windows / Linux での二重再生有無と、callback が使えない build での fallback 挙動である。7.1ch / BL/BR speaker routing は今回の 3D Stream 実装対象ではない。
 
 ## 詳細な実装・検証ログ
 
@@ -71,22 +76,23 @@ PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch so
 
 - media audio ring の shared memory サイズ計算を helper 化した。
 - ring の sentinel frame (`capacity + 1`) 分を確保するよう修正した。
-- 3D media source の対応 channel count を `1 / 2 / 6 / 8` として helper 化した。
+- media source の logical channel mode を 3D Stream tag で指定できるようにした。
 - media audio の channel order を定義した。
   - 6ch: `FL / FR / C / LFE / SL / SR`
-  - 8ch: `FL / FR / C / LFE / SL / SR / BL / BR`
-  - 8ch は media callback source の受け口と track mapping までの実装であり、今回の実機合格条件には含めない。BL/BR speaker prim を含む 7.1ch 実音確認は将来項目とする。
+  - 8ch callback bus は Dullahan/CEF から viewer へ渡される transport 幅であり、今回の 3D Stream speaker routing としては 7.1ch を扱わない。
 - `llpluginaudio` integration test を追加した。
-- 3D Stream tag parser に `{source:media}`、`{link:N}`、`{face:N}` を追加した。
+- 3D Stream tag parser に `{source:media}`、`{source:media-stereo}`、`{source:media-5-1}`、`{link:N}`、`{face:N}` を追加した。
+  - `{source:media}` / `{source:media-stereo}`: media audio を 2ch source として扱う。
+  - `{source:media-5-1}`: media audio を 5.1ch / 6ch source として扱う。
 - `{url:...}` と `{source:media}` の同時指定を invalid binding として扱うようにした。
 - `{source:media}` の media face を linkset 内から解決し、media audio ring を `LLPositionalStreamMulti` の source として開始できる経路を追加した。
   - tag は root prim の Description に置く。
   - media face は root prim または child prim のどちらにあってもよい。
   - media face が複数ある場合は `{link:N}{face:M}` で対象 prim / face を指定できる。
 - media source 有効時は対象 media の通常 2D `LLMediaAudioStream` を停止する suppression を追加した。
-- media ring source は `1 / 2 / 6 / 8ch` を受け入れる。
+- media ring source は callback bus の実 channel 数と、3D Stream source として扱う logical channel 数を分離する。
   - 今回の実機確認対象は 5.1ch 再生までとする。
-  - 8ch / 7.1ch は将来の speaker 構成拡張に備えた受け口として実装し、今回の合格条件には含めない。
+  - 7.1ch / BL/BR speaker routing は今回の実装対象に含めない。
 - 同一 media source を複数の 3D Stream binding が同時に読む構成は拒否するようにした。
 - media source binding は、media audio ring が存在する限り `sample_rate/channels` が未確定でも維持するようにした。
   - MOAP 読み込み直後、動画切替中、音声なしページでは 3D route を無音待機にする。
@@ -101,6 +107,19 @@ PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch so
   - linkset 内の media face が複数ある場合、3D Stream に流し込む media は source gain 1.0 として扱い、音量は `Stream3DVolumeMaster` と speaker volume で調整する。
   - 3D Stream に選ばれていない他の media は従来通り media volume で調整できる。
   - URL source の volume path は従来通り `Stream3DVolumeMaster` のみを使う。
+- CEF/Dullahan callback bus の channel 数と、3D Stream source として扱う論理 channel 数を分離した。
+  - 発生した問題:
+    - `https://cytube.mm428.net/r/3dstreamtest` のような stereo media でも、Dullahan/CEF callback bus は `48000 Hz x 8 ch` として viewer に届く。
+    - 3D Stream 側が callback bus の 8ch をそのまま source channel 数として扱うと、`{upmix:on}` が「native 8ch source なので upmix 不要」と誤判定し、`auto-bypass` される。
+  - 対処:
+    - `SourceBindingKey` と `DistStereoTagData` に media source の論理 channel 数を追加した。
+    - `LLPositionalStreamMulti::startMedia()` に `logical_source_channels` を渡し、media ring の実 channel 数とは別に `mSourceChannels` を決めるようにした。
+    - `{source:media}` / `{source:media-stereo}` は 2ch として扱うため、stereo source では `{upmix:on}` が従来通り upmix path に入る。
+    - `{source:media-5-1}` は callback bus のうち 5.1 に必要な channel を使い、`FL / FR / C / LFE / SL / SR` として 3D Stream に渡す。
+    - 7.1ch / BL/BR speaker routing は今回の実装対象外とし、Dullahan/CEF の 8ch callback bus は 5.1ch を落とさず受けるための transport 幅として扱う。
+  - URL Stream への影響:
+    - URL source は `LLPositionalStreamMulti::start(url, configs)` のままで、media logical channel 指定を持たない。
+    - 既存の Ogg Opus / Ogg Vorbis / MP3 などの URL Stream decode path には影響しない。
 - CEF audio callback の format を viewer log 側で確実に確認するため、`media_plugin_cef` から `LLPluginClassMedia` へ `audio_stream_format` message を送る diagnostic を追加した。
   - `started`: `CEF audio stream started: <sample_rate> Hz x <channels> ch (ring max <max_channels> ch)`
   - `stopped`: sample rate / channels / frame count
@@ -112,9 +131,9 @@ PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch so
   - macOS はローカルで universal package を作成し、同じ GitHub Release に upload 済み。
   - viewer 側 `autobuild.xml` の `dullahan_aya_audio` は `.4` release を参照する。
 
-まだ未実装:
+今回の対象外:
 
-- 7.1ch speaker 構成での実機確認。
+- 7.1ch / BL/BR speaker routing。
 
 PR 前に必要な実機確認:
 
@@ -130,8 +149,7 @@ PR 前に必要な実機確認:
    - 2026-05-17 19:09 時点で、最新の AYAstorm crash report は修正前相当の `AYAstorm-2026-05-17-185855.ips` が最後であり、その後の実機操作では新規 AYAstorm crash report は確認されていない。
 3. 5.1ch source が 6 speaker 構成で破綻なく鳴ること。確認済み。
    - 期待ログ: `CEF audio stream started: 48000 Hz x 8 ch`
-   - 期待ログ: `layout=FL/FR/C/LFE/SL/SR/BL/BR ... speakers=6`
-   - 結果: 6 speaker 構成で破綻なく鳴っている。今回の合格条件は 5.1ch 再生まで。7.1ch の BL/BR 実音確認は将来項目。
+   - 結果: 6 speaker 構成で破綻なく鳴っている。今回の合格条件は 5.1ch 再生まで。
 4. 44.1kHz source が問題なく鳴ること。確認済み。
    - 結果: 44.1kHz source でも問題なく鳴っている。
 5. media face 上でページ遷移、動画切替、音声なしページへの遷移を行っても、2D audio と 3D audio を行き来しないこと。確認済み。
@@ -149,7 +167,6 @@ PR 前に必要な実機確認:
 
 将来確認:
 
-- BL/BR speaker prim を含む 7.1ch 構成での実音確認。
 - 厳密な A/V sync の改善。今回の優先順位は 5.1ch 3D Stream 再生の安定性であり、lip sync の完全一致は対象外。
 
 確認済み:
@@ -180,9 +197,9 @@ PR 前に必要な実機確認:
   - media binding: `[3dstream-stereo:{source:media}{range:30}{volume:1.0}{bin:off}{v:hm}{wg:0.1}{upmix:off}]`
   - speaker prim: `FL / FR / C / LFE / SL / SR` の 6 speaker 構成。
   - `CEF audio stream started: 48000 Hz x 8 ch (ring max 8 ch)`
-  - `Media multi source ready: ... 48000 Hz x 8 ch, fmt=PCMFLOAT, layout=FL/FR/C/LFE/SL/SR/BL/BR, ring cap 16384 frames × 8 tracks, speakers=6`
+  - `Media multi source ready: ... 48000 Hz x 8 ch, fmt=PCMFLOAT, ring cap 16384 frames × 8 tracks, speakers=6`
   - Dullahan override により、以前の `44100 Hz x 2 ch` から `48000 Hz x 8 ch` callback へ変化した。
-  - 現在の検証 linkset は 6 speaker 構成のため、今回確認済みとするのは 5.1ch 再生まで。BL/BR 専用 speaker を含む 7.1ch 再生は将来確認項目に残す。
+  - 現在の検証 linkset は 6 speaker 構成のため、今回確認済みとするのは 5.1ch 再生まで。7.1ch / BL/BR speaker routing は今回の 3D Stream 実装対象に含めない。
 - Dullahan package build / release
   - tag: `v1.26.0-CEF_139.0.40-ayastorm-audio-callback.4`
   - Dullahan commit: `455af06 Request 7.1 audio callback format`
@@ -219,11 +236,21 @@ PR 前に必要な実機確認:
   - 5.1ch source が 6 speaker 構成で破綻なく鳴ることを確認。
   - media face 上でページ遷移、動画切替、音声なしページへの遷移を行っても、2D audio と 3D audio を行き来しないことを確認。
   - URL source と media 表示の併用構成が壊れていないことを確認。
+- 2026-05-18 media logical channel override 後の差分ビルド
+  - `llaudio` target build 成功。
+  - `viewer` target build 成功。
+  - build output: `build-darwin-universal/newview/RelWithDebInfo/AYAstorm.app`
+  - 初回の sandbox 内 build では clang module cache / PCH の不整合で失敗した。
+    - 対処: 既存の clang module cache を使う build に戻して再実行した。
+  - その後の codesign で `DullahanHelper (*.app): unsealed contents present in the bundle root` が発生した。
+    - 原因: 以前の package/copy 由来の nested `DullahanHelper (*.app)` が helper app bundle 内に残っていた。
+    - 対処: `build-darwin-universal/packages/lib/release` と `AYAstorm.app` staging 内の重複 nested helper app を削除し、viewer を再ビルドした。
+  - 再ビルド後は codesign まで通り、`** BUILD SUCCEEDED **` を確認した。
 
 未実行:
 
 - `INTEGRATION_TEST_llpluginaudio` の CMake target 実行
-- 7.1ch speaker 構成での BL/BR 出力確認
+- 7.1ch / BL/BR speaker routing
 - universal macOS build
 
 未実行理由:
@@ -478,13 +505,16 @@ PCM ring mode は既存の `Opening` state と `mSourceSound` 前提を使い回
 format handling:
 
 - sample rate は ring の `mSampleRate` を使う。
-- source channels は ring の `mChannels` を使う。
+- media callback bus channels は ring の `mChannels` を使う。
+- 3D Stream source としての logical channels は tag の `{source:media*}` 指定で決める。
+  - `{source:media}` / `{source:media-stereo}`: 2ch
+  - `{source:media-5-1}`: 6ch
+  - 7.1ch source mode は今回の 3D Stream 実装対象外
 - sample format は float PCM 固定。
-- channel count は初期実装では `1 / 2 / 6 / 8` を許可する。
-- 3 / 4 / 5 / 7ch は fail ではなく、まず unsupported として 2D fallback に戻すのが安全である。
-- 6ch media audio は `FL / FR / C / LFE / SL / SR` の channel order として扱い、既存 3D Stream 6ch routing に渡す。
-- 8ch media audio は `FL / FR / C / LFE / SL / SR / BL / BR` の 7.1 order として受けられるようにする。ただし、今回の実機合格条件は 5.1ch 再生までである。
-- 7.1ch speaker 構成は将来実装の足がかりとして扱い、7.1.4 は現行 ring / CEF callback / routing が 8ch 上限であるため対象外にする。
+- media source の channel mode は tag と speaker prim 構成で決める。callback bus の実 channel 数は CEF/Dullahan 側の入力幅であり、ユーザー向けの source channel mode とは分離する。
+- 6ch mode は `FL / FR / C / LFE / SL / SR` の channel order として扱い、既存 3D Stream 6ch routing に渡す。
+- 8ch callback bus は Dullahan/CEF から viewer へ渡される transport 幅として扱う。3D Stream の speaker routing としては 2ch / 5.1ch までを今回の対象にする。
+- 7.1ch / BL/BR speaker routing と 7.1.4 以上の object / height channel routing は対象外にする。
 
 ### Phase 3: LLViewerMediaImpl から Media 3D source を公開する
 
@@ -634,7 +664,6 @@ media face が 1 つだけの場合、media mute は最優先で silence にす�
 - 2D media audio disabled / restored
 - PCM underflow
 - ring dropped frames
-- unsupported channel count
 - fallback to 2D reason
 - invalid binding reason (`{url}` + `{source:media}` 同時指定、複数 media face で `{link}` / `{face}` 未指定、link / face 範囲外など)
 
@@ -654,13 +683,20 @@ MOAP は media texture / face index を中心に管理されている。一方�
 
 同一 `LLViewerMediaImpl` が複数 object / face で共有される場合は、初期実装では同時に 1 つの 3D binding だけを許可する。3D binding が media impl の 2D path を止めるため、同じ impl を別 object が共有している場合に別 object 側の 2D 音声まで影響するためである。競合時は media source 3D routing を拒否し、2D fallback に戻す。
 
-### channel count
+### media source channel mode
 
-MOAP ring は最大 8ch まで受けられる。3D Stream multi routing は、media callback source に限り `1ch / 2ch / 6ch / 8ch` を扱う。
+MOAP ring は最大 8ch まで受けられる。ただし、media source では callback bus の実 channel 数をそのままユーザー向けの source channel mode とは扱わない。3D Stream 側でどう扱うかは tag と speaker prim 構成で決める。
 
-MOAP/CEF から 6ch media audio が来る場合、channel order は `FL / FR / C / LFE / SL / SR` として扱う。この order は 3D Stream の既存 6ch routing と一致するため、追加の channel remap は不要である。
+基本方針:
 
-MOAP/CEF から 8ch media audio が来る場合は、7.1 source として `FL / FR / C / LFE / SL / SR / BL / BR` を期待する。speaker prim 側は `{ch:BL}` / `{ch:BR}` を追加できるようにしたが、今回の検証ゴールは 5.1ch であり、BL/BR 専用 speaker の実機確認は将来項目に残す。6ch source に対して `{ch:BL}` / `{ch:BR}` prim がある場合は、既存 5.1 の surround left / surround right をそれぞれ back speaker にも割り当てる。
+- `{source:media}` / `{source:media-stereo}` は 2ch source として扱う。
+- `{source:media-5-1}` は 5.1ch / 6ch source として扱う。
+- 実際にどの speaker から鳴るかは、linkset 内の speaker prim (`{ch:FL}` / `{ch:FR}` / `{ch:C}` / `{ch:LFE}` / `{ch:SL}` / `{ch:SR}` など) の設置で決まる。
+- callback bus の実 channel 数は CEF/Dullahan 側の都合で変わるため、source mode 判定とは分離する。
+
+5.1ch mode の channel order は `FL / FR / C / LFE / SL / SR` として扱う。この order は 3D Stream の既存 6ch routing と一致する。
+
+7.1ch / BL/BR speaker routing は今回の 3D Stream 実装対象ではない。Dullahan/CEF 側で 8ch callback bus を要求しているのは、5.1ch source を落とさず viewer へ渡す余裕を確保するためであり、3D Stream 側の 7.1ch tag / speaker 設定を実装したという意味ではない。
 
 2026-05-17 の外部確認では、検証用 stream は input stream としては 6ch 条件を満たしている。
 
@@ -693,7 +729,9 @@ Dullahan 側のテスト実装では、CEF audio callback に対して 7.1 / 48k
 - その Dullahan package を Viewer に組み込み、`CEF audio stream started: 48000 Hz x 8 ch` へ変化するか確認する。
 - 変化しない場合は、CEF callback が source PCM ではなく OS/browser output sink 後段の capture である可能性が高く、CEF/Dullahan だけで source multichannel を安定取得できるか再評価する。
 
-実機ログでは、Dullahan override 後に `48000 Hz x 8 ch` callback と `FL/FR/C/LFE/SL/SR/BL/BR` layout が確認できた。今回の speaker 構成は `FL/FR/C/LFE/SL/SR` の 6 speakers であり、5.1ch 再生確認段階としては十分と判断する。
+実機ログでは、Dullahan override 後に `48000 Hz x 8 ch` callback と 8ch callback bus が確認できた。ただし、これは CEF/Dullahan が viewer へ渡す bus 幅であり、再生中の web media が常に native 8ch source であることを意味しない。
+
+そのため、2026-05-18 の追加修正では viewer 側で callback bus channels と logical source channels を分離した。`{source:media}` / `{source:media-stereo}` は callback bus が 8ch でも 2ch source として扱い、`{upmix:on}` の判定も 2ch source として行う。`{source:media-5-1}` は 8ch callback bus から `FL / FR / C / LFE / SL / SR` を取り出して 6ch source として扱う。今回の speaker 構成は `FL/FR/C/LFE/SL/SR` の 6 speakers であり、5.1ch 再生確認段階としては十分と判断する。
 
 44.1kHz source について:
 
@@ -703,13 +741,7 @@ Dullahan 側のテスト実装では、CEF audio callback に対して 7.1 / 48k
 - 実機では 44.1kHz source でも問題なく再生できたため、今回の合格条件上は 44.1kHz source を追加 blocker としない。
 - ノイズが出る場合、第一候補は sample rate そのものではなく、resample 後の callback cadence、ring underflow、または media source buffer が浅すぎることである。
 
-初期実装:
-
-- 1ch: mono として既存 routing。
-- 2ch: stereo として既存 routing。
-- 6ch: FL/FR/C/LFE/SL/SR として既存 routing。
-- 8ch: FL/FR/C/LFE/SL/SR/BL/BR として media callback source のみ routing。今回は将来 7.1ch 対応の足がかりであり、実機合格条件は 5.1ch まで。
-- その他: 3D route せず 2D fallback。
+media source の実装上は、callback bus を source mode として自動判定しない。publisher は tag で channel mode を選び、speaker prim の配置で出力先を決める。
 
 ### A/V sync
 
@@ -752,8 +784,7 @@ MOAP audio callback は build option 依存である。macOS では callback ON 
 - PCM ring reader の wraparound。
 - underflow 時に silence を返すこと。
 - format serial change で stream rebuild が要求されること。
-- 1ch / 2ch / 6ch / 8ch PCM を `LLMultiTailRing` に投入し、既存 URL source と同じ speaker callback 出力になること。
-- unsupported channel count が 2D fallback になること。
+- media source の logical channel mode ごとに `LLMultiTailRing` へ PCM を投入し、speaker callback 出力が tag と speaker prim 構成に従うこと。
 
 ### integration
 
@@ -761,9 +792,10 @@ MOAP audio callback は build option 依存である。macOS では callback ON 
 - root prim に `{source:media}` tag を置き、child prim の media face を source として speaker prim から聞こえること。
 - root prim に `{source:media}{link:N}{face:M}` tag を置き、指定 child prim / face の media を source として speaker prim から聞こえること。
 - MOAP/CEF page の stereo audio が 2D ではなく speaker prim から聞こえること。
-- MOAP/CEF page の 5.1 audio が `FL/FR/C/LFE/SL/SR` として speaker prim から聞こえること。今回の合格条件はここまで。
+- stereo media に `{source:media}{upmix:on}` を指定した場合、callback bus の 8ch を native 8ch source と誤判定せず、2ch source として upmix path に入ること。
+- MOAP/CEF page に `{source:media-5-1}` を指定した場合、5.1 audio が `FL/FR/C/LFE/SL/SR` として speaker prim から聞こえること。今回の合格条件はここまで。
 - Dullahan override 後に viewer log が `CEF audio stream started: 48000 Hz x 8 ch` を出すこと。
-- media source ready log に `layout=FL/FR/C/LFE/SL/SR/BL/BR` と `speakers=6` が出ること。
+- media source ready log で、tag 指定に応じた logical channel count と callback bus channel count が区別できること。
 - MOAP を pause / resume / navigate / reload して音声 routing が復帰すること。
 - Media ON/OFF / Nearby Media stop-start 後に crash せず、3D route が復帰すること。
 - object 移動で speaker 位置が更新されること。
@@ -774,7 +806,6 @@ MOAP audio callback は build option 依存である。macOS では callback ON 
 - `{url:...}` と `{source:media}` の同時指定が invalid binding として通知されること。
 - linkset 内に media が複数 face ある状態で `{link:N}` / `{face:M}` 未指定なら invalid binding になること。
 - URL source + root/child prim media 表示の構成で、speaker は URL stream を鳴らし、media audio は従来 2D path のままになること。
-- MOAP/CEF page の 7.1 audio が `FL/FR/C/LFE/SL/SR/BL/BR` として speaker prim から聞こえること。これは将来確認項目であり、今回の合格条件には含めない。
 
 ### regression
 
@@ -790,6 +821,6 @@ MOAP audio callback は build option 依存である。macOS では callback ON 
 - libVLC / parcel media / non-CEF media の 3D Stream 接続。
 - 複数 reader 対応の shared memory ring 再設計。
 - MOAP audio の厳密な A/V sync。
-- arbitrary / non-7.1 8ch channel layout の routing。
+- arbitrary 8ch channel layout の routing。
 - 7.1.4 以上の object / height channel routing。
 - URL-based 3D Stream の parser 全面刷新。

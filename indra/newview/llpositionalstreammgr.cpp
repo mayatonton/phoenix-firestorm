@@ -552,10 +552,23 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
                 seen_source_key = true;
                 std::string lowered = val;
                 LLStringUtil::toLower(lowered);
-                if (lowered == "media")
+                if (lowered == "media" || lowered == "media-stereo")
                 {
                     seen_media_source = true;
                     data.source_kind = DistSourceKind::Media;
+                    data.media_source_channels = 2;
+                }
+                else if (lowered == "media-5-1")
+                {
+                    seen_media_source = true;
+                    data.source_kind = DistSourceKind::Media;
+                    data.media_source_channels = 6;
+                }
+                else if (lowered == "media-7-1")
+                {
+                    seen_media_source = true;
+                    data.source_kind = DistSourceKind::Media;
+                    data.media_source_channels = 8;
                 }
                 else
                 {
@@ -866,7 +879,7 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
     case DistErrorKind::UnsupportedSourceFormat:
         msg = "構造エラー (root " + id_short + "): 非対応のソース形式です";
         if (!detail.empty()) msg += " (" + detail + ")";
-        msg += "。受入対象は 1/2ch、6ch、または media callback 経由の 8ch ソースです";
+        msg += "。URL 音源は 1/2ch または 6ch、media 音源は source:media / media-5-1 / media-7-1 で指定してください";
         break;
     case DistErrorKind::BadBinaural:
         msg = "タグ書式エラー (prim " + id_short + "): binaural の値は on または off で指定してください";
@@ -899,9 +912,9 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
         msg += " (範囲外は 0.0〜3.0 にクランプされます)。例: [3dstream-stereo:{url:http://example/stream.mp3}{lfegain:2.0}]";
         break;
     case DistErrorKind::BadSource:
-        msg = "タグ書式エラー (prim " + id_short + "): source の値は media を指定してください";
+        msg = "タグ書式エラー (prim " + id_short + "): source の値は media / media-stereo / media-5-1 / media-7-1 のいずれかを指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{source:media}{ch:L}{range:30}]";
+        msg += "。例: [3dstream-stereo:{source:media}{upmix:on}{ch:L}{range:30}]";
         break;
     case DistErrorKind::ConflictingSource:
         msg = "タグ書式エラー (prim " + id_short + "): url と source:media は同時に指定できません";
@@ -1359,10 +1372,12 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         source_key.media_object_id = media_source.object_id;
         source_key.media_id = media_impl->getMediaTextureID();
         source_key.face = media_face;
+        source_key.media_source_channels = root_data.media_source_channels;
         source_label = "media:" + source_key.media_id.asString()
                        + ":prim=" + source_key.media_object_id.asString()
                        + ":link=" + llformat("%d", media_source.link_number)
-                       + ":face=" + llformat("%d", media_face);
+                       + ":face=" + llformat("%d", media_face)
+                       + ":logical_ch=" + llformat("%d", source_key.media_source_channels);
 
         for (const auto& [other_root_id, other_binding] : mDistributedBindings)
         {
@@ -1740,7 +1755,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
         {
             media_impl->setStream3DAudioRedirected(true);
         }
-        started = stream->startMedia(media_ring, url, configs);
+        started = stream->startMedia(media_ring, url, configs, source_key.media_source_channels);
         if (!started && media_impl)
         {
             media_impl->setStream3DAudioRedirected(false);
@@ -2641,7 +2656,8 @@ void LLPositionalStreamMgr::update()
                         media->setStream3DAudioRedirected(true);
                         ring = media->getAudioRingForStream3D();
                     }
-                    if (!b.stream->startMedia(ring, b.url, configs))
+                    if (!b.stream->startMedia(ring, b.url, configs,
+                                              b.source_key.media_source_channels))
                     {
                         if (media)
                         {

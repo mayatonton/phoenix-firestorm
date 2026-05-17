@@ -91,8 +91,8 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 | **リンクセット** | SL の「リンク」(Ctrl+L) で 1 つにまとめられたプリム集合。ルート 1 個 + 子 N 個 |
 | **ルートプリム** | リンクセットの親プリム。Build → Edit で「Selected linked」「Edit linked」OFF 時に最初に選択されるプリム |
 | **子プリム** | ルート以外のリンクセット内プリム |
-| **音源宣言** | `{url:...}` または `{source:media}` を含むタグを書いたルートプリム。本書での「どの音源を鳴らすか」を宣言する役割。**ルートプリムにのみ書ける** (子プリムに書いても無視されます) |
-| **media source** | 同じリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使う指定。ルートの `{source:media}` で有効になり、必要に応じて `{link:N}{face:N}` で面を選択します |
+| **音源宣言** | `{url:...}` または `{source:media...}` を含むタグを書いたルートプリム。本書での「どの音源を鳴らすか」を宣言する役割。**ルートプリムにのみ書ける** (子プリムに書いても無視されます) |
+| **media source** | 同じリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使う指定。ルートの `{source:media}` / `{source:media-stereo}` / `{source:media-5-1}` で有効になり、必要に応じて `{link:N}{face:N}` で面を選択します |
 | **スピーカープリム** | `{ch:...}` を含むタグを書いたプリム。実際に音を鳴らすプリム。**ルート/子プリムどちらでも可** |
 | **binding** | 1 つのリンクセットに対して内部で組み立てられる「音源 → スピーカー群」の対応関係。1 リンクセット = 1 binding |
 | **ch (チャンネル)** | スピーカープリムが受け持つ音声チャンネル。`L` / `R` / `M` (モノラル) のほか、5.1ch 用の `FL` / `FR` / `C` / `LFE` / `SL` / `SR` |
@@ -281,7 +281,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 | Description のフィールド | 役割 |
 |---|---|
 | `{url:...}` を含む | **URL 音源宣言** (ルートプリム限定。子プリムで `{url:...}` を書くと無視されます) |
-| `{source:media}` を含む | **media/MOAP 音源宣言** (ルートプリム限定。MOAP 面はルート/子プリムどちらにあっても可) |
+| `{source:media...}` を含む | **media/MOAP 音源宣言** (ルートプリム限定。MOAP 面はルート/子プリムどちらにあっても可) |
 | `{ch:...}` を含む | **スピーカー** (ルート/子プリムどちらでも可) |
 | 両方を含む (= ルートのみ) | 音源宣言 + 自身もスピーカーを兼ねる |
 | どちらも含まない | 何もしない (binding 対象外) |
@@ -295,7 +295,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 | キー | 必須 | 型 | 既定値 | 意味 |
 |---|---|---|---|---|
 | `url` | `source` と排他で必須 | 文字列 | — | ストリーム URL。空文字列はエラー |
-| `source` | `url` と排他で必須 | 列挙値 | — | `media` のみ。リンクセット内の media/MOAP 面を音源にする |
+| `source` | `url` と排他で必須 | 列挙値 | — | `media` / `media-stereo` = media/MOAP 面を 2ch 音源として扱う。`media-5-1` = 5.1ch / 6ch 音源として扱う |
 | `link` | 任意 | S32 | 自動選択 | `{source:media}` 時の media 面があるリンク番号。複数 media 面がある場合の選択用 |
 | `face` | 任意 | S32 | 自動選択 | `{source:media}` 時の media 面番号。複数 media 面がある場合の選択用 |
 | `range` | 任意 | F32 (m) | `Stream3DRolloffMax` (20.0) | リンクセット内のスピーカーが個別に `range` を持たないときの既定減衰距離 |
@@ -379,7 +379,7 @@ SR プリム:  [3dstream-stereo:{ch:SR}]
 
 ### 6.7 Media/MOAP source を使う (r26)
 
-r26 では、HTTP URL ではなくリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使えます。ルート Description に `{source:media}` を書き、スピーカープリムは従来どおり `{ch:...}` を持たせます。
+r26 では、HTTP URL ではなくリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使えます。ルート Description に `{source:media}` または `{source:media-5-1}` を書き、スピーカープリムは従来どおり `{ch:...}` を持たせます。
 
 ```
 ルート Description:
@@ -418,7 +418,12 @@ URL 音源と media 表示は同居できます。その場合はルートに `{
 
 音量の扱いは media 面の数で変わります。media 面が 1 つだけの場合、その media の volume / mute は source gain として効きます。複数 media 面がある場合、3D に routed された選択 media は source gain 1.0 として扱われ、3D Stream 側の master volume / speaker volume で制御します。選択されなかった media 面は従来どおり通常の media volume で鳴ります。
 
-このガイドで扱う media callback の対応チャンネル数は **1 / 2 / 6ch** です。5.1ch (6ch) までを対象にします。
+media source のチャンネル指定:
+
+- `{source:media}` / `{source:media-stereo}`: media を 2ch 音源として扱います。stereo media で `{upmix:on}` を使う場合もこの指定です。
+- `{source:media-5-1}`: media を 5.1ch / 6ch 音源として扱います。スピーカー側は `FL / FR / C / LFE / SL / SR` を配置します。
+
+このガイドで扱う media source は **2ch と 5.1ch (6ch)** までです。Dullahan/CEF の callback bus が 8ch で見える場合でも、3D Stream 側の 7.1ch speaker routing を実装済みとして扱うものではありません。
 
 ### 6.8 同じ ch を複数のプリムに割り当てる
 

@@ -92,9 +92,9 @@ AYAstorm 的 **3D Stream** 功能把图元 (对象) 当作"扬声器"，让流�
 | **链接组 (linkset)** | 用 SL 的 "link" 操作 (Ctrl+L) 合并的图元集合。1 个根 + N 个子图元 |
 | **根图元 (root prim)** | 链接组的父图元。在 Build → Edit 中关闭 "Edit linked" 时点击会先选中的那一个 |
 | **子图元 (child prim)** | 链接组中除根之外的图元 |
-| **音源声明** | Description 中含 `{url:...}` 或 `{source:media}` 的根图元。声明 "使用哪一个音源"。**只能写在根图元上** (写在子图元上会被忽略) |
+| **音源声明** | Description 中含 `{url:...}` 或 `{source:media...}` 的根图元。声明 "使用哪一个音源"。**只能写在根图元上** (写在子图元上会被忽略) |
 | **URL 音源** | 根图元用 `{url:...}` 声明的 HTTP 音频流 |
-| **media/MOAP 音源** | 根图元用 `{source:media}` 声明的 Media-on-a-Prim 音频。媒体面可以在同一链接组内的根图元或子图元上 |
+| **media/MOAP 音源** | 根图元用 `{source:media}` / `{source:media-stereo}` / `{source:media-5-1}` 声明的 Media-on-a-Prim 音频。媒体面可以在同一链接组内的根图元或子图元上 |
 | **扬声器图元** | Description 中含 `{ch:...}` 的图元。实际发声的图元。**根图元、子图元都可以** |
 | **binding (绑定)** | 内部按链接组组装的"音源 → 扬声器组"对应关系。1 个链接组 = 1 个 binding |
 | **ch (声道)** | 扬声器图元负责的音频声道。`L` / `R` / `M` (单声道)，以及 5.1ch 用的 `FL` / `FR` / `C` / `LFE` / `SL` / `SR` |
@@ -282,7 +282,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 | Description 中的字段 | 角色 |
 |---|---|
 | 含 `{url:...}` | **音源声明** (仅根图元有效，子图元写 `{url:...}` 会被忽略) |
-| 含 `{source:media}` | **media/MOAP 音源声明** (仅根图元有效，子图元写 `{source:media}` 会被忽略) |
+| 含 `{source:media...}` | **media/MOAP 音源声明** (仅根图元有效，子图元写 `{source:media...}` 会被忽略) |
 | 含 `{ch:...}` | **扬声器** (根 / 子图元都可以) |
 | 根同时含音源声明与 `{ch:...}` | 音源声明 + 自身也作为扬声器 |
 | 两者都没有 | 不做任何事 (不属于 binding 对象) |
@@ -296,7 +296,7 @@ LSL `llSetObjectDesc` 能写入的 Description **上限为 127 字节**。包含
 | 键 | 必需 | 类型 | 默认值 | 含义 |
 |---|---|---|---|---|
 | `url` | 二选一 | 字符串 | — | HTTP 流 URL。空字符串视为错误。与 `source:media` 互斥 |
-| `source` | 二选一 | 枚举 | — | `media` = 使用同一链接组内的 media/MOAP 面作为音源。与 `url` 互斥 |
+| `source` | 二选一 | 枚举 | — | `media` / `media-stereo` = 把 media/MOAP 面作为 2ch 音源。`media-5-1` = 作为 5.1ch / 6ch 音源。与 `url` 互斥 |
 | `link` | 可选 | S32 | 自动选择 | `source:media` 时选择媒体面所在 link number。仅用于选择媒体音源，不决定扬声器顺序 |
 | `face` | 可选 | S32 | 自动选择 | `source:media` 时选择媒体面所在 face number |
 | `range` | 可选 | F32 (m) | `Stream3DRolloffMax` (20.0) | 链接组内扬声器没有自己 `range` 时使用的默认衰减距离 |
@@ -393,7 +393,7 @@ SR 图元:  [3dstream-stereo:{ch:SR}]
 
 ### 6.9 Media/MOAP 音源的使用 (r26)
 
-r26 起，分散立体声 / 会场布置标签可以把同一链接组内的 Media-on-a-Prim 音频作为 3D Stream 音源。Root 的 Description 使用 `{source:media}`：
+r26 起，分散立体声 / 会场布置标签可以把同一链接组内的 Media-on-a-Prim 音频作为 3D Stream 音源。Root 的 Description 使用 `{source:media}` 或 `{source:media-5-1}`：
 
 ```
 根 Description:
@@ -434,7 +434,12 @@ media 音量 / mute 的作用规则：
 - 有多个 media 面时，被选中的 media 路由到 3D Stream 后按音源增益 `1.0` 处理，主要由 3D Stream 总音量 / 扬声器 `volume` 控制；未选中的 media 面保持普通 media 音量行为。
 - `{url:...}` 与 `{source:media}` 互斥。要让扬声器播放 media/MOAP 音频就使用 `{source:media}`；要让扬声器播放 HTTP 流就使用 `{url:...}`。
 
-本指南只说明 **1 / 2 / 6ch** 的 media callback 行为，目标到 5.1ch (6ch) 为止。
+media source 的声道指定：
+
+- `{source:media}` / `{source:media-stereo}`: 把 media 当作 2ch 音源。stereo media 需要 `{upmix:on}` 时也使用这个指定。
+- `{source:media-5-1}`: 把 media 当作 5.1ch / 6ch 音源。扬声器侧布置 `FL / FR / C / LFE / SL / SR`。
+
+本指南只说明 **2ch 与 5.1ch (6ch)** 为止的 media source 行为。即使 Dullahan/CEF callback bus 显示为 8ch，也不表示 3D Stream 已实现 7.1ch speaker routing。
 
 ### 6.10 如何识别根图元
 

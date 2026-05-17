@@ -250,6 +250,8 @@ LLPositionalStreamMulti::LLPositionalStreamMulti()
     mSourceKind(SourceKind::Url),
     mMediaRing(nullptr),
     mMediaFormatSerial(0),
+    mMediaRingChannels(0),
+    mMediaLogicalChannels(0),
     mSampleRate(0),
     mSourceChannels(0),
     mSourceBytesPerSample(0),
@@ -343,6 +345,8 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     mSourceKind = SourceKind::Url;
     mMediaRing = nullptr;
     mMediaFormatSerial = 0;
+    mMediaRingChannels = 0;
+    mMediaLogicalChannels = 0;
     mSpeakers = speakers;
     mReadFailStreak = 0;
     mLastReadFailLogTime = 0.0;
@@ -401,7 +405,8 @@ bool LLPositionalStreamMulti::start(const std::string& url,
 
 bool LLPositionalStreamMulti::startMedia(LLPluginAudioRingHeader* ring,
                                          const std::string& label,
-                                         const std::vector<SpeakerConfig>& speakers)
+                                         const std::vector<SpeakerConfig>& speakers,
+                                         int logical_source_channels)
 {
     stop();
 
@@ -412,10 +417,15 @@ bool LLPositionalStreamMulti::startMedia(LLPluginAudioRingHeader* ring,
     }
 
     mMediaRing = ring;
+    mMediaLogicalChannels = ll_plugin_audio_ring_supported_3d_channel_count(
+                                static_cast<std::uint32_t>(logical_source_channels))
+                                ? logical_source_channels
+                                : 0;
     if (!validateMediaRingHeader())
     {
         LL_WARNS("Stream3D") << "Refusing to start media multi stream: audio ring unavailable" << LL_ENDL;
         mMediaRing = nullptr;
+        mMediaLogicalChannels = 0;
         setFailed(FailReason::Network, "media ring unavailable");
         return false;
     }
@@ -424,6 +434,7 @@ bool LLPositionalStreamMulti::startMedia(LLPluginAudioRingHeader* ring,
     {
         LL_WARNS("Stream3D") << "FMOD Studio system unavailable" << LL_ENDL;
         mMediaRing = nullptr;
+        mMediaLogicalChannels = 0;
         setFailed(FailReason::Network, "FMOD Studio unavailable");
         return false;
     }
@@ -562,7 +573,20 @@ bool LLPositionalStreamMulti::openMediaRingSource()
     }
 
     mSampleRate = static_cast<int>(sample_rate);
-    mSourceChannels = static_cast<int>(channels);
+    mMediaRingChannels = static_cast<int>(channels);
+    mSourceChannels = mMediaLogicalChannels > 0
+                      ? mMediaLogicalChannels
+                      : mMediaRingChannels;
+    if (mSourceChannels > mMediaRingChannels)
+    {
+        LL_WARNS("Stream3D") << "Media multi source: requested logical "
+                              << mSourceChannels << "ch but callback bus has only "
+                              << mMediaRingChannels << "ch for " << mUrl << LL_ENDL;
+        setFailed(FailReason::FormatUnsupported,
+                  llformat("media requested_channels=%d callback_channels=%d",
+                           mSourceChannels, mMediaRingChannels));
+        return false;
+    }
     mSourceBytesPerSample = sizeof(F32);
     mSourceIsFloat = true;
     mSourceType = FMOD_SOUND_TYPE_UNKNOWN;
@@ -587,9 +611,9 @@ bool LLPositionalStreamMulti::openMediaRingSource()
 
     if (mSourceChannels == 6)
     {
-        // MOAP media ring order is Chromium/WebAudio order:
-        // FL / FR / C / LFE / SL / SR. Reuse the downmix helper's
-        // WAV/SMPTE-style mapping, which has the same index order.
+        // Internal 6ch order is FL / FR / C / LFE / SL / SR. When CEF
+        // delivers its 7.1 callback bus, pumpMediaRingSource() maps
+        // the callback's SL/SR positions into this canonical order.
         mDownmix = LLMultichannelDownmix::forSourceFormat(FMOD_SOUND_TYPE_FLAC,
                                                           mSourceChannels);
     }
@@ -601,7 +625,11 @@ bool LLPositionalStreamMulti::openMediaRingSource()
 
     LL_INFOS("Stream3D") << "Media multi source ready: " << mUrl
                           << " " << mSampleRate << " Hz x " << mSourceChannels
-                          << " ch, fmt=PCMFLOAT"
+                          << " logical ch"
+                          << (mMediaRingChannels != mSourceChannels
+                                  ? llformat(" (callback bus=%d ch)", mMediaRingChannels)
+                                  : std::string())
+                          << ", fmt=PCMFLOAT"
                           << (mSourceChannels == 6
                                   ? std::string(", layout=FL/FR/C/LFE/SL/SR")
                                   : (mSourceChannels == 8
@@ -719,6 +747,7 @@ void LLPositionalStreamMulti::resetMediaRuntimeForReopen()
     }
 
     mMediaFormatSerial = 0;
+    mMediaRingChannels = 0;
     mRing.clear();
     mSampleRate = 0;
     mSourceChannels = 0;
@@ -743,6 +772,8 @@ void LLPositionalStreamMulti::releaseAll()
     mSourceKind = SourceKind::Url;
     mMediaRing = nullptr;
     mMediaFormatSerial = 0;
+    mMediaRingChannels = 0;
+    mMediaLogicalChannels = 0;
     mMediaReopenRequested.store(false, std::memory_order_release);
     mRing.clear();
     mSampleRate = 0;
@@ -1535,7 +1566,7 @@ size_t LLPositionalStreamMulti::pumpMediaRingSource()
     U32 format_serial = 0;
     if (!validateMediaRing(sample_rate, channels, format_serial) ||
         static_cast<int>(sample_rate) != mSampleRate ||
-        static_cast<int>(channels) != mSourceChannels ||
+        static_cast<int>(channels) != mMediaRingChannels ||
         format_serial != mMediaFormatSerial)
     {
         if (!validateMediaRingHeader())
@@ -1616,7 +1647,27 @@ size_t LLPositionalStreamMulti::pumpMediaRingSource()
             {
                 for (int c = 0; c < mSourceChannels && c < static_cast<int>(n_tracks); ++c)
                 {
-                    chunk[i * n_tracks + c] = src[c];
+                    int src_channel = c;
+                    if (mMediaRingChannels == 8)
+                    {
+                        // CEF 7.1 callback order is FL/FR/C/LFE/BL/BR/SL/SR.
+                        // The 3D stream internals use FL/FR/C/LFE/SL/SR/BL/BR,
+                        // so normalize while copying out of the media ring.
+                        if (mSourceChannels == 6 && c >= 4)
+                        {
+                            src_channel = c + 2; // SL/SR <- CEF indices 6/7
+                        }
+                        else if (mSourceChannels == 8)
+                        {
+                            static constexpr int kCef71ToStream8[8] =
+                                { 0, 1, 2, 3, 6, 7, 4, 5 };
+                            src_channel = kCef71ToStream8[c];
+                        }
+                    }
+                    if (src_channel < mMediaRingChannels)
+                    {
+                        chunk[i * n_tracks + c] = src[src_channel];
+                    }
                 }
             }
             read = (read + 1) % total;

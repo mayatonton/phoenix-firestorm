@@ -166,6 +166,7 @@ public:
         LLUUID media_object_id;
         LLUUID media_id;
         S32 face = -1;
+        S32 media_source_channels = 0;
 
         bool operator==(const SourceBindingKey& rhs) const
         {
@@ -173,7 +174,8 @@ public:
                    url == rhs.url &&
                    media_object_id == rhs.media_object_id &&
                    media_id == rhs.media_id &&
-                   face == rhs.face;
+                   face == rhs.face &&
+                   media_source_channels == rhs.media_source_channels;
         }
     };
 
@@ -199,6 +201,7 @@ public:
         std::optional<std::string> url;
         std::optional<S32> media_link;
         std::optional<S32> media_face;
+        S32 media_source_channels = 0; // 0 = non-media/unset, otherwise 2/6/8
         std::optional<F32> range_default;
         // r11 P5: lite-HRTF toggle ({binaural:on|off}). Source-side property
         // — meaningful only on the root prim (= same prim as {url}).

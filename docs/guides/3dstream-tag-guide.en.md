@@ -92,8 +92,8 @@ Read sections 3 onward. Multi-speaker, 5.1ch, fine-tuning, and broadcaster-side 
 | **Linkset** | A group of prims linked together via SL's "link" operation (Ctrl+L). One root + N child prims |
 | **Root prim** | The parent prim of a linkset. Selected first when "Edit linked" is OFF in Build → Edit |
 | **Child prim** | Any prim in the linkset other than the root |
-| **Source declaration** | A root prim tag containing either `{url:...}` or `{source:media}`. Declares what audio source the linkset plays. Source declarations are **root-only** |
-| **Media source** | A media/MOAP face in the same linkset used as the 3D Stream audio source via `{source:media}` |
+| **Source declaration** | A root prim tag containing either `{url:...}` or `{source:media...}`. Declares what audio source the linkset plays. Source declarations are **root-only** |
+| **Media source** | A media/MOAP face in the same linkset used as the 3D Stream audio source via `{source:media}` / `{source:media-stereo}` / `{source:media-5-1}` |
 | **Speaker prim** | A prim with a tag containing `{ch:...}`. Actually emits sound. **Can be either root or child** |
 | **binding** | The internal "source → speaker group" mapping built per linkset. 1 linkset = 1 binding |
 | **ch (channel)** | The audio channel a speaker prim is responsible for. `L` / `R` / `M` (mono), or 5.1ch values `FL` / `FR` / `C` / `LFE` / `SL` / `SR` |
@@ -280,7 +280,7 @@ Each prim takes on a role based on its tag fields:
 | Description fields | Role |
 |---|---|
 | Contains `{url:...}` | **URL source declaration** (root only — `{url}` on a child prim is ignored) |
-| Contains `{source:media}` | **Media/MOAP source declaration** (root only — selects a media face in this linkset) |
+| Contains `{source:media...}` | **Media/MOAP source declaration** (root only — selects a media face in this linkset) |
 | Contains `{ch:...}` | **Speaker** (root or child, both fine) |
 | Contains both (= root only) | Source declaration + also acts as speaker |
 | Contains neither | Does nothing (not part of the binding) |
@@ -294,7 +294,7 @@ Playback only starts when the linkset has both **a source declaration** (root wi
 | Key | Required | Type | Default | Meaning |
 |---|---|---|---|---|
 | `url` | required for URL source | string | — | HTTP stream URL. Empty string is an error. Mutually exclusive with `{source:media}` |
-| `source` | required for media source | enum | — | Source type. Use `{source:media}` to route a media/MOAP face through 3D Stream. Mutually exclusive with `{url:...}` |
+| `source` | required for media source | enum | — | Source type. `media` / `media-stereo` route a media/MOAP face as a 2ch source. `media-5-1` routes it as a 5.1ch / 6ch source. Mutually exclusive with `{url:...}` |
 | `link` | optional | S32 | any media prim | Media source selector. Link number of the prim that owns the media face; only meaningful with `{source:media}` |
 | `face` | optional | S32 | any media face | Media source selector. Face number containing media; only meaningful with `{source:media}` |
 | `range` | optional | F32 (m) | `Stream3DRolloffMax` (20.0) | Default rolloff distance for speakers in the linkset that don't have their own `range` |
@@ -405,7 +405,7 @@ In r26, `{link:N}` can be used with `{source:media}` to select which prim's medi
 
 ### 6.10 Media / MOAP source (r26)
 
-Use `{source:media}` when the audio should come from a media face in the same linkset instead of from a direct HTTP stream URL. This is intended for MOAP / shared media surfaces such as web players, YouTube pages, or custom HTML players.
+Use `{source:media}` or `{source:media-5-1}` when the audio should come from a media face in the same linkset instead of from a direct HTTP stream URL. This is intended for MOAP / shared media surfaces such as web players, YouTube pages, or custom HTML players.
 
 The tag still lives on the **root prim**. The media face itself may be on the root prim or on a child prim. Speaker prims continue to use `{ch:...}` exactly like URL-based 3D Stream.
 
@@ -479,7 +479,12 @@ This avoids changing the volume of unrelated media faces when one specific media
 
 #### 6.10.5 Channel count notes
 
-Media callback sources covered by this guide are `1ch / 2ch / 6ch` PCM. The verified r26 target is 5.1 playback through `FL / FR / C / LFE / SL / SR` speaker prims.
+Media source channel selection:
+
+- `{source:media}` / `{source:media-stereo}` treats the media as a 2ch source. Use this for stereo media, including stereo sources that should use `{upmix:on}`.
+- `{source:media-5-1}` treats the media as a 5.1ch / 6ch source. Place `FL / FR / C / LFE / SL / SR` speaker prims for this mode.
+
+This guide covers media sources up to **2ch and 5.1ch (6ch)**. Even if the Dullahan/CEF callback bus appears as 8ch, that does not mean 7.1ch speaker routing is implemented in 3D Stream.
 
 ---
 

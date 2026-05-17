@@ -173,7 +173,8 @@ public:
     // while this stream is active.
     bool startMedia(LLPluginAudioRingHeader* ring,
                     const std::string& label,
-                    const std::vector<SpeakerConfig>& speakers);
+                    const std::vector<SpeakerConfig>& speakers,
+                    int logical_source_channels = 0);
     void setMediaRingFor3DStream(LLPluginAudioRingHeader* ring);
     void stop();
 
@@ -446,6 +447,8 @@ private:
     SourceKind mSourceKind = SourceKind::Url;
     LLPluginAudioRingHeader* mMediaRing = nullptr;
     U32 mMediaFormatSerial = 0;
+    int mMediaRingChannels = 0;   // actual callback-ring channels for media sources
+    int mMediaLogicalChannels = 0; // 0 = follow ring, otherwise 2/6/8 for source:media*
     int mSampleRate;
     int mSourceChannels;       // 1, 2, 6, or media 8
     int mSourceBytesPerSample; // 2 for PCM16, 4 for PCMFLOAT
