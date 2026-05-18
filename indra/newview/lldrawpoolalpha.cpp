@@ -208,8 +208,21 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // second pass, regular forward alpha rendering
     forwardRender();
 
+    // <AYAstorm r30 P3 step 5> Volumetric Lighting also benefits from alpha
+    // objects (foliage, fabric) being committed to the depth buffer so that
+    // shadow sampling along the godray accumulates against them instead of
+    // shooting through. Extend the existing DoF alpha-depth gate to also
+    // fire when Cinematic + RenderVolumetricLighting is on. BD lineage:
+    // lldrawpoolalpha.cpp:210-226 in BlackDragon 995a1354d8 (BD OR'd the two
+    // pipeline statics directly; AYAstorm reads via LLCachedControl since
+    // RenderVolumetricLighting isn't promoted to a static cvar here).
+    static LLCachedControl<U32>  aya_view_mode_dpa(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    static LLCachedControl<bool> volumetric_enable_dpa(gSavedSettings, "RenderVolumetricLighting", true);
+    bool volumetric_wants_alpha_depth = (aya_view_mode_dpa == 2) && volumetric_enable_dpa;
+    // </AYAstorm r30 P3 step 5>
+
     // final pass, render to depth for depth of field effects
-    if (!LLPipeline::sImpostorRender && LLPipeline::RenderDepthOfField && !gCubeSnapshot && !LLPipeline::sRenderingHUDs && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
+    if (!LLPipeline::sImpostorRender && (LLPipeline::RenderDepthOfField || volumetric_wants_alpha_depth) && !gCubeSnapshot && !LLPipeline::sRenderingHUDs && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
         //update depth buffer sampler
         simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
