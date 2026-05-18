@@ -121,9 +121,15 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    // <FS:AYA r20 Phase C> .a is the SSS skin mask — sky must be 0 so
-    // the screen-space SSS pass doesn't blur visible sky pixels.
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 uses
+    // gbuffer3.a as the SSS skin mask, so sky writes 0 to opt out of
+    // the screen-space SSS blur. Cinematic has no SSS pass, so it
+    // writes the BD original alpha = 1.0.
+#if AYASTORM_CINEMATIC
+    frag_data[3] = vec4(color.rgb, 1.0);
+#else
     frag_data[3] = vec4(color.rgb, 0.0);
+#endif
     // </FS:AYA>
 #else
     frag_data[0] = vec4(color.rgb, 1.0);
