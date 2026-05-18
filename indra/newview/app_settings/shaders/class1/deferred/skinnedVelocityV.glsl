@@ -27,9 +27,15 @@
 // Source: https://github.com/NiranV/Black-Dragon-Viewer @ indra/newview/app_settings/shaders/class1/deferred/skinnedVelocityV.glsl
 // License: LGPL-2.1-only (same as Second Life Viewer Source Code, no relicensing)
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> BD only declares
+// modelview_projection_matrix here; AY declares modelview_matrix +
+// projection_matrix separately so it can compose with skinning. Both
+// modes keep all three so the alternative main() path always links.
+uniform mat4 modelview_projection_matrix;
 uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 last_modelview_matrix;
+// </FS:AYA>
 
 in vec3 position;
 in vec4 weight4;
@@ -78,12 +84,19 @@ void main()
 {
     vec4 pos = vec4(position.xyz, 1.0);
 
-    // AYAstorm r30 P2 A2.2: BD's original `current_clip = modelview_projection_matrix * pos`
-    // skipped object skinning entirely, so rigged meshes rasterized at bind pose
-    // (T-pose) instead of their animated screen position. Fix mirrors
-    // velocityV.glsl's HAS_SKIN path: apply skinning then modelview then projection.
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r30 P2 A2.2
+    // documented that BD's original current_clip skipped object skinning
+    // (rigged meshes rasterized at T-pose into the velocity buffer).
+    // Cinematic restores BD exactly for 1:1 parity (motion-blur velocity
+    // for rigged meshes may regress to T-pose under Cinematic); AY mode
+    // keeps the skinning-aware fix.
+#if AYASTORM_CINEMATIC
+    vec4 current_clip = modelview_projection_matrix * pos;
+#else
     mat4 cur_mat = getObjectSkinnedTransform();
     vec4 current_clip = projection_matrix * (modelview_matrix * (cur_mat * pos));
+#endif
+    // </FS:AYA>
 
     mat4 last_mat = getLastObjectSkinnedTransform();
     vec4 last_clip = projection_matrix * (last_modelview_matrix * (last_mat * pos));
