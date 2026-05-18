@@ -466,13 +466,14 @@ public:
     //
     // 非 hot path / 1 frame に数回の呼び出しなら下記 getter で十分。
     // D3 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3)。
-    static bool      isCinematicMode();
-    static bool      getRenderCvarBOOL   (const std::string& name, bool             bd_default);
-    static U32       getRenderCvarU32    (const std::string& name, U32              bd_default);
-    static S32       getRenderCvarS32    (const std::string& name, S32              bd_default);
-    static F32       getRenderCvarF32    (const std::string& name, F32              bd_default);
-    static LLVector3 getRenderCvarVector3(const std::string& name, const LLVector3& bd_default);
-    static LLColor4  getRenderCvarColor4 (const std::string& name, const LLColor4&  bd_default);
+    static bool        isCinematicMode();
+    static bool        getRenderCvarBOOL   (const std::string& name, bool               bd_default);
+    static U32         getRenderCvarU32    (const std::string& name, U32                bd_default);
+    static S32         getRenderCvarS32    (const std::string& name, S32                bd_default);
+    static F32         getRenderCvarF32    (const std::string& name, F32                bd_default);
+    static LLVector3   getRenderCvarVector3(const std::string& name, const LLVector3&   bd_default);
+    static LLColor4    getRenderCvarColor4 (const std::string& name, const LLColor4&    bd_default);
+    static std::string getRenderCvarString (const std::string& name, const std::string& bd_default);
     // </FS:AYAstorm>
 
     void setRenderTypeMask(U32 type, ...);
