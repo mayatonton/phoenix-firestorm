@@ -442,8 +442,14 @@ void main()
     frag_data[2] = encodeNormal(norm, env, flag);   // XY = Normal.  Z = Env. intensity. W = 1 skip atmos (mask off fog)
 
 #if defined(HAS_EMISSIVE)
-    // <FS:AYA r20 Phase C> .a carries the per-draw skin marker for SSS gating
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 writes
+    // the per-draw SSS skin flag into gbuffer3.a. Cinematic has no SSS
+    // pass, so it writes BD original vec4(0, 0, 0, 0).
+#if AYASTORM_CINEMATIC
+    frag_data[3] = vec4(0, 0, 0, 0);
+#else
     frag_data[3] = vec4(0, 0, 0, aya_sss_skin_flag);
+#endif
     // </FS:AYA>
 #endif
 
