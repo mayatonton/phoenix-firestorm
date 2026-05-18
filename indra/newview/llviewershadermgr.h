@@ -313,6 +313,10 @@ extern LLGLSLShader         gAvatarVelocityProgram;
 extern LLGLSLShader         gDeferredMotionBlurProgram;
 // </AYAstorm r30 P2>
 
+// <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+extern LLGLSLShader         gVolumetricLightProgram;
+// </AYAstorm r30 P3>
+
 // [RLVa:KB] - @setsphere
 extern LLGLSLShader         gRlvSphereProgram;
 // [/RLVa:KB]

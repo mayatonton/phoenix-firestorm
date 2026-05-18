@@ -1601,6 +1601,13 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("lastMatrixPalette");
     // </AYAstorm r30 P2>
 
+    // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+    // Order must match the enum order in llshadermgr.h.
+    mReservedUniforms.push_back("godray_res");
+    mReservedUniforms.push_back("godray_multiplier");
+    mReservedUniforms.push_back("falloff_multiplier");
+    // </AYAstorm r30 P3>
+
     llassert(mReservedUniforms.size() == END_RESERVED_UNIFORMS);
 
     std::set<std::string> dupe_check;

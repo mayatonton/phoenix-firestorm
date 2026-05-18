@@ -390,6 +390,13 @@ public:
         AVATAR_LAST_MATRIX,                 //  "lastMatrixPalette"
         // </AYAstorm r30 P2>
 
+        // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+        // Imported from BlackDragon Viewer 995a1354d8 with no semantic change.
+        GODRAY_RES,                         //  "godray_res"
+        GODRAY_MULTIPLIER,                  //  "godray_multiplier"
+        FALLOFF_MULTIPLIER,                 //  "falloff_multiplier"
+        // </AYAstorm r30 P3>
+
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
     // clang-format on

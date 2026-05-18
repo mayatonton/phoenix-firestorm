@@ -248,6 +248,10 @@ LLGLSLShader            gAvatarVelocityProgram;
 LLGLSLShader            gDeferredMotionBlurProgram;
 // </AYAstorm r30 P2>
 
+// <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+LLGLSLShader            gVolumetricLightProgram;
+// </AYAstorm r30 P3>
+
 // [RLVa:KB] - @setsphere
 LLGLSLShader            gRlvSphereProgram;
 // [/RLVa:KB]
@@ -1234,6 +1238,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gAvatarVelocityProgram.unload();
         gDeferredMotionBlurProgram.unload();
         // </AYAstorm r30 P2>
+
+        // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+        gVolumetricLightProgram.unload();
+        // </AYAstorm r30 P3>
 
         for (U32 i = 0; i < LLMaterial::SHADER_COUNT*2; ++i)
         {
@@ -3291,6 +3299,34 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = gDeferredMotionBlurProgram.createShader();
     }
     // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays) — borrowed from
+    // BlackDragon Viewer 995a1354d8. GODRAYS_FADE permutation is attached to
+    // gVolumetricLightProgram (BD attached it to gDeferredSoftenProgram, but
+    // the #if GODRAYS_FADE guard only exists in volumetricLightF.glsl; verified
+    // 2026-05-18 against BD class3/deferred/softenLightF.glsl which contains
+    // no GODRAYS_FADE reference).
+    if (success)
+    {
+        gVolumetricLightProgram.mName = "AYAstorm Volumetric Light Shader";
+        gVolumetricLightProgram.mFeatures.isDeferred = true;
+        gVolumetricLightProgram.mFeatures.calculatesAtmospherics = true;
+        gVolumetricLightProgram.mFeatures.hasAtmospherics = true;
+        gVolumetricLightProgram.mFeatures.hasShadows = true;
+        gVolumetricLightProgram.mShaderFiles.clear();
+        gVolumetricLightProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gVolumetricLightProgram.mShaderFiles.push_back(make_pair("deferred/volumetricLightF.glsl", GL_FRAGMENT_SHADER));
+        gVolumetricLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+
+        static LLCachedControl<bool> volumetric_directional(gSavedSettings, "RenderVolumetricLightingDirectional", true);
+        if (volumetric_directional)
+        {
+            gVolumetricLightProgram.addPermutation("GODRAYS_FADE", "1");
+        }
+
+        success = gVolumetricLightProgram.createShader();
+    }
+    // </AYAstorm r30 P3>
 
     // [RLVa:KB] - @setsphere
     if(success)
