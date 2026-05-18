@@ -27,10 +27,14 @@
 // Source: https://github.com/NiranV/Black-Dragon-Viewer @ indra/newview/app_settings/shaders/class1/deferred/skinnedVelocityAlphaV.glsl
 // License: LGPL-2.1-only (same as Second Life Viewer Source Code, no relicensing)
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> Keep both uniform
+// sets so both main() paths link; pick at runtime via AYASTORM_CINEMATIC.
+uniform mat4 modelview_projection_matrix;
 uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 last_modelview_matrix;
 uniform mat4 texture_matrix0;
+// </FS:AYA>
 
 in vec3 position;
 in vec4 weight4;
@@ -84,10 +88,16 @@ void main()
 {
     vec4 pos = vec4(position.xyz, 1.0);
 
-    // AYAstorm r30 P2 A2.2: see comment in skinnedVelocityV.glsl — BD's
-    // current_clip skipped skinning, breaking rigged-mesh velocity writes.
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> Cinematic uses
+    // BD original (T-pose velocity for rigged meshes), AY mode keeps
+    // the P2 A2.2 skinning-aware fix.
+#if AYASTORM_CINEMATIC
+    vec4 current_clip = modelview_projection_matrix * pos;
+#else
     mat4 cur_mat = getObjectSkinnedTransform();
     vec4 current_clip = projection_matrix * (modelview_matrix * (cur_mat * pos));
+#endif
+    // </FS:AYA>
 
     mat4 last_mat = getLastObjectSkinnedTransform();
     vec4 last_clip = projection_matrix * (last_modelview_matrix * (last_mat * pos));
