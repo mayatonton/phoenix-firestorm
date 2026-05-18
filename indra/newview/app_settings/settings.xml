@@ -12038,11 +12038,11 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderMotionBlurStrength</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P2: max motion blur length in pixels (0 = off). Only active when AYAVisualRealismEnabled=2 (Cinematic) so the velocity buffer is allocated.</string>
+    <string>Maximum motion blur length in pixels (higher = stronger blur). BD parity: type S32 (was U32, FS:AYAstorm r30 BD full port Phase 3.4 part 4 aligned to BD 995a1354d8). 0 = off (only active when AYAVisualRealismEnabled=2 Cinematic).</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
-    <string>U32</string>
+    <string>S32</string>
     <key>Value</key>
     <integer>32</integer>
   </map>

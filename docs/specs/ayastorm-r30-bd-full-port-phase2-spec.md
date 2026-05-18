@@ -103,6 +103,24 @@ Cinematic mode (mode 2) で BD-equivalent な描画結果を得るために、�
 
 mode 2 では cvar tweak は無効 (helper が無視) になるため、配信者の絵作り余地は mode 2 では失われる。AYA 独自色作り (= LUT / 各種 tuning) は **mode 1 (AYAstorm View)** または **P6+ で独立 mode を追加**する方向で対応する想定。本 spec scope 外。
 
+### §3.6 type-diff 7 cvar の dispatch (Phase 3.4 part 4 追補)
+
+bucket 3.4 (`docs/specs/ayastorm-r30-bd-full-port-inventory.md` §3.4) の type-diff 7 cvar は、helper の typed signature (`getRenderCvarF32` 等) では一発で扱えないため、cvar 毎に dispatch 方針を確定する。
+
+| cvar | BD shape | AY shape | dispatch 方針 | 担当 Phase |
+|---|---|---|---|---|
+| `RenderMotionBlurStrength` | S32 / 32 | U32 / 32 | **AY を BD 型 (S32) に揃え**、`LLCachedControl<S32>` 化、値同じ | **3.4 part 4 完了** |
+| `RenderSSAOEffect` | F32 / -0.5 | Vector3 / (0.80, 1.00, 0.00) | use site で mode 2 のとき BD F32 (-0.5) を hardcode、mode 0/1 は Vector3 を読む。AY settings.xml は据置 | 3.7 |
+| `RenderScreenSpaceReflectionAdaptiveStepMultiplier` | Vector3 / (1.13, 1.5, 2) | F32 / 1.6 | 同上 (Vector3 hardcode in mode 2) | 3.7 |
+| `RenderScreenSpaceReflectionDepthRejectBias` | Vector3 / (1.0, 0.0, 0.001) | F32 / 0.001 | 同上 | 3.7 |
+| `RenderScreenSpaceReflectionDistanceBias` | Vector3 / (10.0, 0.4, 10) | F32 / 0.015 | 同上 | 3.7 |
+| `RenderScreenSpaceReflectionIterations` | Vector3 / (64, 16, 16) | S32 / 25 | 同上 (各 SSR pass 毎に異なる iteration 数) | 3.7 |
+| `RenderScreenSpaceReflectionRayStep` | Vector3 / (0.025, 0.75, 1) | F32 / 0.1 | 同上 | 3.7 |
+
+`RenderSSAOEffect` 以外の 5 SSR cvar は BD が **per-pass (Vector3 の x/y/z = SSR pass 0/1/2)** で扱う設計であり、AY の単一 scalar 設計とは shape が異なる。これは Phase 3.7 で SSR pass loop を BD 構造に移植する際に同時対応する (= shader uniform への送り方が変わる)。
+
+helper signature 不一致のため Phase 3.4 では完結できず、本 spec で **Phase 3.7 dispatch 内で per-site 対応** と確定。
+
 ---
 
 ## §4 D4: windlight preset は data 層、Cinematic mode では BD interpretation で render

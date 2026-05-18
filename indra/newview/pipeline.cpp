@@ -4787,7 +4787,7 @@ void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* 
     gDeferredMotionBlurProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
         (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
 
-    static LLCachedControl<U32> blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
+    static LLCachedControl<S32> blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
     gDeferredMotionBlurProgram.uniform1i(LLShaderMgr::MOTION_BLUR_STRENGTH, (S32)blur_strength);
 
     mScreenTriangleVB->setBuffer();
@@ -9756,7 +9756,7 @@ void LLPipeline::renderFinalize()
 
     // <AYAstorm r30 P2 step 5b> Motion blur composite (Cinematic mode only — gated by
     // mVelocityMap.isComplete()). Reads diffuseRect + velocityMap, writes blurred image.
-    static LLCachedControl<U32> motion_blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
+    static LLCachedControl<S32> motion_blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
     if (mVelocityMap.isComplete() && motion_blur_strength > 0 && !gCubeSnapshot)
     {
         renderMotionBlurComposite(sourceBuffer, targetBuffer);
