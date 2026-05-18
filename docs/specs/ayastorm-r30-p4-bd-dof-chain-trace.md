@@ -360,9 +360,49 @@ shader 側の permutation 付与 (HAS_DOF_CHROMA / FRONT_BLUR / HQ DoF 分岐) �
 | `RenderChromaStrength` | **2026-05-18 更新**: BD は 0.0、AYAstorm は `feedback_match_bd_defaults_on_borrow.md` 適用で **BD と同値 0.0** を踏襲。ただし「Chroma permutation は compile in されているが strength 0 で実効ゼロ」の状態は **BD と同じ** であり、初見比較負けにはならない。strength を上げる動線は §7.5 の UI 判断 (debug settings or Preferences) に従う | 影響なし |
 | `RenderDepthOfFieldFront` | **1 (= BD default、front blur ON)** ※ 2026-05-18 追加。HQ DoF user opt-in 時のみ effective。Cinematic+HQ DoF で初見 = BD と同じ前ボケ挙動 | 影響なし (Cinematic gate で ignore) |
 
-### 5.8 UI 取り込みは無し
+### 5.8 UI 取り込み = AYAstorm 独自 Cinematic sub-tab (B 案、SSS パターン踏襲)
 
-BD `panel_preferences_graphics1.xml:5600-5622, 6944-6961` (chroma + HQ DoF UI) と `panel_machinima.xml:681-692, 1775` (Photo Tools chroma) は取り込まず。`feedback_release_notes_link_only.md` 流儀で release note に「debug settings から手動 dial in」と記述する。
+**2026-05-18 AYA 判断**: BD UI そのものは取り込まないが、`panel_preferences_sss.xml` (r20 で確立した SSS sub-tab) と同じ流儀で **AYAstorm 独自の Cinematic 専用 Preferences sub-tab を P4 で先行新設** する。
+
+**判断根拠**: `feedback_match_bd_defaults_on_borrow.md` を UI 動線にも適用。BD には slider/checkbox が露出されているのに AYAstorm 側で debug settings 経由を要求すると、初見比較で動線負け。Cinematic mode は撮影 viewer ポジションなので、撮影者が Preferences の Cinematic タブを開いて即 dial in できる UX を最初から提供する。
+
+**実装方針 (SSS パターン踏襲)**:
+
+1. 新規 panel xml: `indra/newview/skins/default/xui/en/panel_preferences_cinematic.xml`
+   - header コメント `<!-- <FS:AYA r30 P4> Cinematic preferences panel (Graphics > Cinematic sub-tab) -->` で wrap (SSS パターン同様)
+   - 「This panel only affects Cinematic mode (View Mode を Cinematic に切替後の再起動で適用)」の説明文を冒頭に配置
+   - controls 4 件:
+     - `<check_box control_name="RenderDepthOfFieldHighQuality" label="High Quality Depth of Field (heavy, photo only)" />`
+     - `<check_box control_name="RenderDepthOfFieldFront" label="Foreground Blur (front of focus point)" />` (HQ DoF 有効時のみ effective、tooltip で明示)
+     - `<check_box control_name="RenderDepthOfFieldChroma" label="Chromatic Aberration (DoF only)" />`
+     - `<slider control_name="RenderChromaStrength" label="Chroma Strength" min_val="0.0" max_val="3.0" decimal_digits="2" />`
+
+2. `panel_preferences_graphics1.xml` 末尾 (`</tab_container>` 直前、SSS sub-tab の隣) に sub-tab 埋め込み追加:
+
+   ```xml
+   <!-- <FS:AYA r30 P4> Cinematic sub-tab inside Graphics -->
+       <panel
+        class="panel_preference_cinematic"
+        filename="panel_preferences_cinematic.xml"
+        top_pad="5"
+        bottom="-1"
+        left="1"
+        right="-1"
+        follows="all"
+        label="Cinematic"
+        name="Cinematic" />
+   <!-- </FS:AYA> -->
+   ```
+
+3. `llpanelpreferencecinematic.{h,cpp}` の C++ skeleton (`LLPanelPreferenceCinematic` 派生クラス) — SSS panel の class 構造 (`LLPanelPreferenceSSS`) を参考に最小実装。値の Apply/Cancel は LLControlGroup 自動 binding を活用、独自フックは出さない。
+
+4. ローカライゼーション file (ja/zh) は P4 出荷時に Volumetric/Motion Blur 等他 Cinematic cvar の sub-tab 拡張を見越して **panel_preferences_cinematic.xml 自体を多言語 lproj に複製** (SSS 同様、`indra/newview/skins/default/xui/{ja,zh}/panel_preferences_cinematic.xml`)。
+
+**将来の拡張**: chapter §3 P5+ で予定の AYAstorm UI 整理 phase で Volumetric / Motion Blur / Velocity buffer / DoF combine 等の P2-P5 Cinematic cvar を同じ Cinematic sub-tab に追加していく。P4 で枠を切ったことで P5+ は controls 追加だけで済む。
+
+**取り込まないもの**:
+- BD `panel_preferences_graphics1.xml:5600-5622, 6944-6961` (BD 独自の chroma/HQ DoF controls) — Firestorm XUI 規約と整合しないため
+- BD `panel_machinima.xml:681-692, 1775` (BD Photo Tools sidebar) — chapter §1.2 通り、BD UI は不取り込み
 
 ---
 
@@ -420,6 +460,14 @@ P3 の Volumetric Lighting cvar 群直後に追加 (chapter §3 順序通り):
 - `llshadermgr.h` の `eGLSLReservedUniforms` enum 内 P3 で追加した GODRAY_* 系 enum の直後に `DEFERRED_CHROMA_STRENGTH` 1 件追加
 - `llshadermgr.cpp` の `mReservedUniforms.push_back()` 列の対応位置に `"chroma_str"` 追加 (enum 順 = 文字列順を厳守)
 - §7 で BD 側の具体 line / 既存 enum 順を再 fetch して確認
+
+### 6.4a step 4a: AYAstorm 独自 Cinematic Preferences sub-tab 新設 (§5.8 / §7.5 B 案)
+
+- 新規: `indra/newview/skins/default/xui/en/panel_preferences_cinematic.xml` (SSS パターン踏襲、controls 4 件 = HQ DoF checkbox + Front Blur checkbox + Chroma checkbox + Chroma Strength slider)
+- 新規: `indra/newview/llpanelpreferencecinematic.{h,cpp}` (SSS の `LLPanelPreferenceSSS` を参考に最小 class skeleton)
+- 既存改修: `indra/newview/skins/default/xui/en/panel_preferences_graphics1.xml` の SSS sub-tab (line 2145-2156) の隣 (= `</tab_container>` 直前) に Cinematic sub-tab を追加
+- 多言語複製: `indra/newview/skins/default/xui/{ja,zh}/panel_preferences_cinematic.xml` (SSS パターン同様、label/tooltip のみ翻訳)
+- `CMakeLists.txt` への新規 cpp/h 登録 (必要なら)
 
 ### 6.4 step 4: `pipeline.cpp` / `pipeline.h` 配線
 
@@ -546,15 +594,18 @@ $ diff /tmp/bd_check/.../class1/deferred/dofCombineF.glsl \
 
 P3 で同様の `bindDeferredShader` 系操作をした実装が commit 済の可能性があるので、P4 着手時に git log で P3 commit を見て参考にする。
 
-### 7.5 ⏸️ Design decision — cvar UI 取り込み方針の最終確認
+### 7.5 ✓ Resolved (2026-05-18) — cvar UI 取り込み判断 = **B (SSS パターン踏襲)**
 
-§5.8 で「BD UI は取り込まない、debug settings 経由」と判断したが、その妥当性を最終確認:
+**AYA 判断** (2026-05-18): 「B で Cinematic 専用の Graphic preference タブを用意したほうが良いかもしれませんね　SSS みたいに」 → **B 案 + r20 SSS sub-tab 構造を踏襲** で確定。本 spec §5.8 を B 案で更新済。
 
-- **A. 完全 debug settings 経由** (本 spec 初版): release note に「debug settings から `RenderChromaStrength` を 0.5〜2.0 に dial in する」と記述。Cinematic ユーザーは Photo Tools と debug settings を行き来する状況になる。
-- **B. AYAstorm Preferences の Cinematic セクション (P4 で先行追加)**: chapter §3 P5+ で予定されている Cinematic Preferences セクションを P4 で先行新設し、chroma slider と HQ DoF checkbox を露出する。P5 で他 Cinematic cvar 統合のフレームを作る前段になる。
-- **C. AYAstorm Preferences の既存 Graphics tab に追加**: Firestorm 既存 Graphics tab の DoF 関連 controls の直下に slider 1 + checkbox 2 を追加。UI 工数最小だが「Cinematic 専用 cvar が Cinematic 外でも見える」整合性問題が出る (gate 内挙動を tooltip 等で明示する必要)。
+**踏襲する r20 SSS 構造の確認結果**:
+- `panel_preferences_sss.xml` 独立 panel file (label="SSS", name="sss")
+- `panel_preferences_graphics1.xml:2145-2156` に sub-tab として埋め込み (`<!-- <FS:AYA r20 Phase A> SSS sub-tab inside Graphics -->` / `<!-- </FS:AYA> -->` ガード)
+- `class="panel_preference_sss"` で C++ class binding
 
-**AYA さん判断待ち**: A / B / C のどれを採るか。本 spec の初期判断 A は「BD UI は取り込まない」という章方針の解釈だが、debug settings 経由は撮影者の動線として弱いという懸念がある。
+Cinematic 用は同形式で `panel_preferences_cinematic.xml` を新規追加 + `panel_preferences_graphics1.xml` の SSS sub-tab の隣に sub-tab を追加。詳細実装は §5.8。
+
+**判断ルール記録**: BD borrow 機能の UI 動線も BD と対等に。「BD UI は不取り込み」原則は守りつつ、AYAstorm 流儀で対等な動線を提供する (`feedback_match_bd_defaults_on_borrow.md` の UI 適用)。
 
 ### 7.6 ✓ Resolved (2026-05-18) — BD repo の再 fetch
 
