@@ -304,7 +304,7 @@
         </check_box>
         <!-- <FS:AYA r18 / r30 P1 / r30 P5> View Mode: Firestorm View / AYAstorm View / Cinematic 切替。
              r30 P1 で Cinematic 枠を preview 追加、3 モードとも再起動切替に統一。
-             r30 P5 で Cinematic を正式モードへ昇格 (combo label / tool_tip から preview 文言除去)。
+             r30 P5 で BD parity 構築 phase に pivot、preview ラベルは「BD と同じ絵」到達まで維持。
              control_name で cvar は即時更新されるが、shader/pipeline は再起動後に反映される。
              詳細: docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md
                    docs/specs/ayastorm-r30-p5-bd-parity-spec.md -->
@@ -328,7 +328,7 @@
          left_delta="5"
          top_pad="3"
          name="AYAViewMode"
-         tool_tip="Firestorm View: upstream Firestorm standard rendering. AYAstorm View: r14+ visual realism (volumetric atmosphere / godrays / aerial perspective / Kelvin color temperature / cloud volumetric / translucency / SSS). Cinematic: r30+ photo viewer mode with velocity buffer + SMAA T2x + Volumetric Lighting + per-object Motion Blur + BD HQ DoF with Chromatic Aberration. Live in-shot tuning is via the Cinematic Controls floater (AYAstorm menu &gt; Cinematic Controls..., Alt+C). Changing this setting requires a viewer restart."
+         tool_tip="Firestorm View: upstream Firestorm standard rendering. AYAstorm View: r14+ visual realism (volumetric atmosphere / godrays / aerial perspective / Kelvin color temperature / cloud volumetric / translucency / SSS). Cinematic (preview): r30+ photo viewer mode under BD parity construction; currently borrows velocity buffer + SMAA T2x + Volumetric Lighting + per-object Motion Blur + BD HQ DoF with Chromatic Aberration. Live in-shot tuning is via the Cinematic Controls floater (AYAstorm menu &gt; Cinematic Controls..., Alt+C). Will be promoted from preview to formal once same-picture parity with BD is reached. Changing this setting requires a viewer restart."
          width="180">
           <combo_box.item
            label="Firestorm View"
@@ -339,7 +339,7 @@
            name="1"
            value="1"/>
           <combo_box.item
-           label="Cinematic"
+           label="Cinematic (preview)"
            name="2"
            value="2"/>
         </combo_box>
