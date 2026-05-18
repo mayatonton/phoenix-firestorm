@@ -163,7 +163,9 @@ Linux / macOS / Windows いずれかが落ちる状態では release を切ら�
 
 **実装**:
 - View Mode UI で Cinematic を `preview / experimental` 表記から **正式モード** に昇格
-- P2〜P4 で追加した Cinematic 用 cvar 群を Preferences の AYAstorm セクションに整理統合 (既存 Firestorm Photo Tools floater は据え置き、Cinematic 専用 floater / Sidebar は **作らない**)
+- P2〜P4 で追加した Cinematic 用 cvar 群を **AYAstorm top menu 配下の Cinematic Controls floater** (P4 で新設、Alt+C) に集約整理する。Preferences への統合は **行わない** (Cinematic 系 cvar は永続設定でなく撮影中ライブ調整、Preferences 動線とミスマッチ — P4 step 4a で確定した判断を P5 にそのまま継承)
+- floater のセクション拡張方針: 既存の DoF + Chromatic Aberration の下に Volumetric / Motion Blur / SMAA T2x 等の P2/P3 cvar 群もまとめる。将来 Cinematic 機能が増えて 1 floater に収まらなくなった時点で AYAstorm top menu に sibling 項目 (Volumetric Controls / Motion Blur Controls 等) を追加する分割案に切り替える
+- 既存 Firestorm Photo Tools floater は据え置き (汎用撮影 UI なので Cinematic 専用 cvar を持ち込まない)
 - BD UI (Machinima Sidebar / Photo Tools panel / `panel_machinima.xml`) は **取り込まない / 翻訳もしない**
 
 **ship 判定 (= 章にとって最重要ゲート)**:
@@ -212,7 +214,7 @@ BD は全ファイル LL viewerlgpl 標準 header (LGPL 2.1 only)、AYAstorm と
 | P4 | `class1/deferred/motionBlur{F,V}.glsl` | BlackDragon (Geenz 改良) | motion blur |
 | P4 | `dofCombineF.glsl`, `postDeferredHQDoFF.glsl`, `postDeferredNoDoFF.glsl` | BlackDragon | BD 独自 HQ DoF chain (High-Res snapshot 用) |
 | P4 | `RenderDepthOfFieldChroma`, `RenderChromaStrength` cvar + 関連 shader 改修 | BlackDragon | DoF-only chromatic aberration |
-| P5 | Cinematic 用 cvar 群 + Preferences 整備 | AYAstorm 独自 | **BD UI は取り込まない**。Cinematic 専用 cvar のみ Preferences AYAstorm セクションに追加 |
+| P5 | Cinematic 用 cvar 群 + Cinematic Controls floater 整備 | AYAstorm 独自 | **BD UI は取り込まない**。P2/P3 cvar 群を P4 で新設した Cinematic Controls floater (AYAstorm top menu 配下) に集約。Preferences への統合は行わない (撮影 workflow 側に置く判断、P4 §5.8 参照) |
 
 ### 4.3 BD repo 静的 survey 結果 (2026-05-17)
 
@@ -357,7 +359,7 @@ Cinematic 用色設定は cvar prefix で分離:
 | P2 | 大 (9-10 日) | velocity buffer 取り込み + gbuffer pipeline 改修 + Cinematic mode 骨格 + SMAA T2x 完成 (resolve shader 自作含む、§7-7 案 A 採用) |
 | P3 | 中 | Volumetric Light 取り込み + pipeline 連鎖位置決定 |
 | P4 | 中 | Motion Blur + BD DoF chain 取り込み |
-| P5 | 中 | Cinematic cvar 群の Preferences 統合 + ブラインドレビュー (UI 翻訳無し) |
+| P5 | 中 | Cinematic cvar 群の Cinematic Controls floater 集約 (Preferences 統合は行わない) + ブラインドレビュー (UI 翻訳無し) |
 | P6+ | 大 (複数 release) | Cinematic 用 AYA 色の新規探索 |
 
 ### 8.2 章クローズまでの時間軸
