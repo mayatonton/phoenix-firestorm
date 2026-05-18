@@ -1,6 +1,6 @@
 # AYAstorm r19 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r19 は視覚的リアリティ章 (r14〜r20) の第 6 弾、B 軸 (物質色) の第 1 弾**です。deferred lit 経路に wrap-around diffuse + back-light transmission を加算し、葉・白い布カーテン・逆光の耳の縁といった **薄物が太陽光を透過** する状態を作ります (これまで flat に黒く落ちていた)。
+**r19 は視覚的リアリティ章 (r14〜r20) の第 6 弾、B 軸 (物質色) の第 1 弾**です。deferred lit 経路に wrap-around diffuse + back-light transmission を加算し、葉・白い布カーテン・逆光の耳の縁といった **薄物が太陽光を透過** する状態を作ります (これまで flat に黒く落ちていた)。
 
 > **配信形態**: r19 は **r23 リリースに同梱配信** されます (r19 単独タグは発行しません)。r23 リリースページから本ノートと r19 spec doc にリンクする運用です。
 

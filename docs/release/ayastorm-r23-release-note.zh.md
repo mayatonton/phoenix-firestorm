@@ -1,6 +1,6 @@
 # AYAstorm r23 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r23 把 AYAstorm 的 3D stream (positional / 5.1ch / distributed-stereo / binaural — r6 系以来) 接入 SL 的 `PARCEL_FLAG_SOUND_LOCAL` 边界规约** — 与 gesture / object sound 同规约。无新增 cvar、无反向 tag,parcel flag 本身就是 root truth。
+**r23 把 AYAstorm 的 3D stream (positional / 5.1ch / distributed-stereo / binaural — r6 系以来) 接入 SL 的 `PARCEL_FLAG_SOUND_LOCAL` 边界规约** — 与 gesture / object sound 同规约。无新增 cvar、无反向 tag,parcel flag 本身就是 root truth。
 
 > **发布形态**: r23 作为 r13〜r23 一并发布 tag 的主功能出货。同捆的其它 release note 由 GitHub Release 页面直接给出链接。
 

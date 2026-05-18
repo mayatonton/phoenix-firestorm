@@ -1,6 +1,6 @@
 # AYAstorm r21 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r21 は視覚的リアリティ章 (r14-r20) の外側にある UX 修正系の単機能リリース**で、自分の rigged attachment に対する右クリック picker を「上流 CPU bind-pose mesh ray」から「GPU 専用 object-ID buffer」に作り直したものを 1 本で提供します。
+**r21 は視覚的リアリティ章 (r14-r20) の外側にある UX 修正系の単機能リリース**で、自分の rigged attachment に対する右クリック picker を「上流 CPU bind-pose mesh ray」から「GPU 専用 object-ID buffer」に作り直したものを 1 本で提供します。
 
 実装・既知 limits・設定の詳細は永続資料 (`docs/ayastorm-r21-self-rigged-picker.md`) に常駐させ、本ノートはそこへの誘導と差分ハイライトに徹します。
 

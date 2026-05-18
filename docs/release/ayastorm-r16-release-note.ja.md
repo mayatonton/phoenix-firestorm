@@ -1,6 +1,6 @@
 # AYAstorm r16 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r16 は視覚的リアリティ章 (r14〜r20) の第 3 弾**で、scene の aerial perspective 経路に波長依存 (Rayleigh λ⁻⁴) の in-scatter weighting を入れ、遠景が距離に応じて青味方向にシフトするようにします。WindLight preset 互換を保ったまま、**sky dome は一切触らず** (sun disc は構造的に保護)。
+**r16 は視覚的リアリティ章 (r14〜r20) の第 3 弾**で、scene の aerial perspective 経路に波長依存 (Rayleigh λ⁻⁴) の in-scatter weighting を入れ、遠景が距離に応じて青味方向にシフトするようにします。WindLight preset 互換を保ったまま、**sky dome は一切触らず** (sun disc は構造的に保護)。
 
 > **配信形態**: r16 は **r23 リリースに同梱配信** されます (r16 単独タグは発行しません)。r23 リリースページから本ノートと r16 spec doc にリンクする運用です。
 

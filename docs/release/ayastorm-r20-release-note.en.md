@@ -1,6 +1,6 @@
 # AYAstorm r20 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r20 is the seventh release of the visual-realism chapter (r14–r20) and completes the B-axis (material color)**. Adds **screen-space subsurface scattering (SSS) to avatar skin** — your avatar (and other avatars) get a real soft, lit-from-within skin quality with **per-pixel skin masking** via gbuffer3 `.a`, **world-space-scaled blur** that auto-fades with distance, and **right-click learning** of new mesh bodies/heads (no UUID typing).
+**r20 is the seventh release of the visual-realism chapter (r14–r20) and completes the B-axis (material color)**. Adds **screen-space subsurface scattering (SSS) to avatar skin** — your avatar (and other avatars) get a real soft, lit-from-within skin quality with **per-pixel skin masking** via gbuffer3 `.a`, **world-space-scaled blur** that auto-fades with distance, and **right-click learning** of new mesh bodies/heads (no UUID typing).
 
 > **Distribution**: r20 ships **bundled with the r23 release** (no standalone r20 tag). The r23 release page links back to this note and to the r20 spec.
 

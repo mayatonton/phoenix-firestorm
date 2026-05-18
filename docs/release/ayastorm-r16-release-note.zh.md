@@ -1,6 +1,6 @@
 # AYAstorm r16 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r16 是视觉真实感章 (r14–r20) 的第三弹**,在 scene aerial perspective 路径上加入波长依存 (Rayleigh λ⁻⁴) 的 in-scatter weighting,使远景随距离向蓝色方向偏移。保持 WindLight preset 兼容,**完全不动 sky dome** (sun disc 在结构上得到保护)。
+**r16 是视觉真实感章 (r14–r20) 的第三弹**,在 scene aerial perspective 路径上加入波长依存 (Rayleigh λ⁻⁴) 的 in-scatter weighting,使远景随距离向蓝色方向偏移。保持 WindLight preset 兼容,**完全不动 sky dome** (sun disc 在结构上得到保护)。
 
 > **发布形态**: r16 与 **r23 发布版本一同捆绑发布** (不单独发行 r16 tag)。r23 发布页面会回链至本说明及 r16 spec 文档。
 

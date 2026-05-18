@@ -1,6 +1,6 @@
-# AYAstorm r13 — 发布公告草案
+# AYAstorm r13 — 发布公告
 
-用于粘贴到 GitHub release 页面的短文。r13 相对于 r12.1 (即 r10→r12.1 跳跃后首个公开 release) 是 **小幅增量**，骨干是新标签 family `[ayastorm:occlude]` (按图元真实形状判定) + 两项独立的 UI / 启动相关修复。
+r13 相对于 r12.1 (即 r10→r12.1 跳跃后首个公开 release) 是 **小幅增量**，骨干是新标签 family `[ayastorm:occlude]` (按图元真实形状判定) + 两项独立的 UI / 启动相关修复。
 
 功能细节常驻于用户指南 (`docs/guides/3dstream-tag-guide.{ja,en,zh}.md`) 与规格书。本公告仅做链接 + 差分要点。
 

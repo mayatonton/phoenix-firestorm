@@ -1,6 +1,6 @@
 # AYAstorm r17 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r17 是视觉真实感章 (r14–r20) 的第四弹**,引入太阳 elevation 驱动的色温 modulator,使太阳接近地平线时 sun / ambient / cloud color 向 orange 方向变暖,找回单凭 preset 取值出不来的「夕烧的暖意」cinematic 感。
+**r17 是视觉真实感章 (r14–r20) 的第四弹**,引入太阳 elevation 驱动的色温 modulator,使太阳接近地平线时 sun / ambient / cloud color 向 orange 方向变暖,找回单凭 preset 取值出不来的「夕烧的暖意」cinematic 感。
 
 > **发布形态**: r17 与 **r23 发布版本一同捆绑发布** (不单独发行 r17 tag)。r23 发布页面会回链至本说明及 r17 spec 文档。
 

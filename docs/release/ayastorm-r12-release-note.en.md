@@ -1,6 +1,4 @@
-# AYAstorm r12 — Release Announcement Draft
-
-Short text intended to be pasted into the GitHub release page. AYA pastes this when the release decision is finalized.
+# AYAstorm r12 — Release Announcement
 
 Feature details live in the user-facing guide (`docs/guides/3dstream-tag-guide.{ja,en,zh}.md`) and the spec docs. This note is link-only + diff highlights.
 

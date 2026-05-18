@@ -1,6 +1,6 @@
 # AYAstorm r24 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r24 把 CEF / Dullahan 路径的 media audio (MOAP / Web / HTML5 / YouTube) 切换到 viewer 内部的 FMOD 2D channel** — viewer 的 Media volume / mute 现在能对这些 CEF media 直接生效。
+**r24 把 CEF / Dullahan 路径的 media audio (MOAP / Web / HTML5 / YouTube) 切换到 viewer 内部的 FMOD 2D channel** — viewer 的 Media volume / mute 现在能对这些 CEF media 直接生效。
 
 > **发布形态**: r24 作为 r13〜r24 一并发布 tag 的其中一个 feature 出货。同捆的其它 release note 由 GitHub Release 页面直接给出链接。
 

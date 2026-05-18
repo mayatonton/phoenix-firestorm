@@ -1,6 +1,6 @@
 # AYAstorm r25 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r25 修复了 AYAstorm r10.x-bugfix-1 以后一直损坏的土地音乐 Ogg Vorbis live stream 播放** — 在保留 Ogg Opus 支持的前提下,使 Ogg Vorbis 的 Icecast live stream 在 AYAstorm 上也能正常播放。
+**r25 修复了 AYAstorm r10.x-bugfix-1 以后一直损坏的土地音乐 Ogg Vorbis live stream 播放** — 在保留 Ogg Opus 支持的前提下,使 Ogg Vorbis 的 Icecast live stream 在 AYAstorm 上也能正常播放。
 
 实现细节、调查日志、验证 URL 都保留在永久文档 (`docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md`) 中。本说明仅作为该文档的入口及差异亮点。
 

@@ -1,6 +1,6 @@
 # AYAstorm r23 — Release Announcement
 
-GitHub release page copy. **r23 brings AYAstorm 3D stream (positional / 5.1ch / distributed-stereo / binaural — r6 onward) into compliance with SL's `PARCEL_FLAG_SOUND_LOCAL` boundary**, the same rule gestures and object sounds have always followed. No new cvar, no inverse tag — the parcel flag itself is the source of truth.
+**r23 brings AYAstorm 3D stream (positional / 5.1ch / distributed-stereo / binaural — r6 onward) into compliance with SL's `PARCEL_FLAG_SOUND_LOCAL` boundary**, the same rule gestures and object sounds have always followed. No new cvar, no inverse tag — the parcel flag itself is the source of truth.
 
 > **Distribution**: r23 ships as the headline feature of the r13–r23 bundle tag. Other release notes for the bundled releases are linked directly from the GitHub Release page.
 

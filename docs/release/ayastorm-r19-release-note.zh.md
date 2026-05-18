@@ -1,6 +1,6 @@
 # AYAstorm r19 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r19 是视觉真实感章 (r14–r20) 的第六弹、B 轴 (物质色) 的第一弹**。在 deferred lit 路径上加入 wrap-around diffuse + back-light transmission 加算,使叶片、白色窗帘、强逆光下耳缘等 **薄物开始透过太阳光** (此前一律 flat 黑掉)。
+**r19 是视觉真实感章 (r14–r20) 的第六弹、B 轴 (物质色) 的第一弹**。在 deferred lit 路径上加入 wrap-around diffuse + back-light transmission 加算,使叶片、白色窗帘、强逆光下耳缘等 **薄物开始透过太阳光** (此前一律 flat 黑掉)。
 
 > **发布形态**: r19 与 **r23 发布版本一同捆绑发布** (不单独发行 r19 tag)。r23 发布页面会回链至本说明及 r19 spec 文档。
 

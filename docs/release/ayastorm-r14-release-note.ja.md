@@ -1,6 +1,6 @@
 # AYAstorm r14 — リリース告知
 
-GitHub release ページ用の文案。**r14 は視覚的リアリティ章 (r14〜r20) の開幕リリース** で、SL の既存 Beer-Lambert + in-scatter atmospherics の上に高度依存の密度勾配と scene-referred (linear 空間) 積分を追加し、WindLight preset 互換を保ったまま空気が体積として感じられるようにします。
+**r14 は視覚的リアリティ章 (r14〜r20) の開幕リリース** で、SL の既存 Beer-Lambert + in-scatter atmospherics の上に高度依存の密度勾配と scene-referred (linear 空間) 積分を追加し、WindLight preset 互換を保ったまま空気が体積として感じられるようにします。
 
 > **配信形態**: r14 は **r23 リリースに同梱配信** されます (r14 単独タグは発行しません)。r23 リリースページから本ノートと r14 spec doc にリンクする運用です。
 

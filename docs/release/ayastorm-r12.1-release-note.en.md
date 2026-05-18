@@ -1,6 +1,6 @@
-# AYAstorm r12.1 — Release Announcement Draft
+# AYAstorm r12.1 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r12.1 is the first public release that bundles r11 + r12 + r12.1 together**, so this note presents the cumulative r10 → r12.1 delta as a single unit.
+**r12.1 is the first public release that bundles r11 + r12 + r12.1 together**, so this note presents the cumulative r10 → r12.1 delta as a single unit.
 
 Feature details live in the user-facing guide (`docs/guides/3dstream-tag-guide.{ja,en,zh}.md`) and the spec docs. This note is link-only + diff highlights.
 

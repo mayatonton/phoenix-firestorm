@@ -1,6 +1,4 @@
-# AYAstorm r12 — リリース告知文案
-
-GitHub release ページに貼り付ける用の短文案。リリース判断確定後、AYA が公開時に貼り付ける。
+# AYAstorm r12 — リリース告知
 
 機能の詳細はユーザー向けガイド (`docs/guides/3dstream-tag-guide.{ja,en,zh}.md`) と各仕様書に常駐させ、本ノートはそこへの誘導と差分ハイライトに徹する。
 

@@ -1,6 +1,4 @@
-# AYAstorm r11 — リリース告知文案
-
-GitHub release ページに貼り付ける用の短文案。リリース判断確定後、AYA が公開時に貼り付ける。
+# AYAstorm r11 — リリース告知
 
 実装記録 / 仕様詳細は `docs/ayastorm-r11-binaural-venue-reverb.md` / `docs/specs/spec_binaural_venue_reverb.md` を参照。
 

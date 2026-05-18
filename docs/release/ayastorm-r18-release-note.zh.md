@@ -1,6 +1,6 @@
 # AYAstorm r18 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r18 是视觉真实感章 (r14–r20) 的第五弹,也是 A 轴 (大气) 完走 release**。通过对既有 2D `cloud_noise_texture` 在视线方向做轻量 slab raymarch 多重采样,云从「平面板」变成具有厚度与深度的立体,与 r17 的色温联动结合后形成 **cinematic 的 orange 夕烧云**。
+**r18 是视觉真实感章 (r14–r20) 的第五弹,也是 A 轴 (大气) 完走 release**。通过对既有 2D `cloud_noise_texture` 在视线方向做轻量 slab raymarch 多重采样,云从「平面板」变成具有厚度与深度的立体,与 r17 的色温联动结合后形成 **cinematic 的 orange 夕烧云**。
 
 > **发布形态**: r18 与 **r23 发布版本一同捆绑发布** (不单独发行 r18 tag)。r23 发布页面会回链至本说明及 r18 spec 文档。
 

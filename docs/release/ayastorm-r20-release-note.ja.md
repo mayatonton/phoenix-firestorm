@@ -1,6 +1,6 @@
 # AYAstorm r20 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r20 は視覚的リアリティ章 (r14〜r20) の第 7 弾、B 軸 (物質色) 完走リリース**。screen-space SSS (subsurface scattering) を **アバター肌** に適用し、自分にも他人にも、柔らかく内側から灯る肌の質感をもたらします。**gbuffer3 `.a` の per-pixel skin mask**、**世界座標スケール blur** で距離自動 fade、**右クリック学習** で新規 mesh body/head を瞬時に追加 (UUID を打ち込む必要なし)。
+**r20 は視覚的リアリティ章 (r14〜r20) の第 7 弾、B 軸 (物質色) 完走リリース**。screen-space SSS (subsurface scattering) を **アバター肌** に適用し、自分にも他人にも、柔らかく内側から灯る肌の質感をもたらします。**gbuffer3 `.a` の per-pixel skin mask**、**世界座標スケール blur** で距離自動 fade、**右クリック学習** で新規 mesh body/head を瞬時に追加 (UUID を打ち込む必要なし)。
 
 > **配信形態**: r20 は **r23 リリースに同梱配信** されます (r20 単独タグは発行しません)。r23 リリースページから本ノートと r20 spec doc にリンクする運用です。
 

@@ -1,6 +1,6 @@
 # AYAstorm r19 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r19 is the sixth release of the visual-realism chapter (r14–r20) and the first release of the B-axis (material color)**. Adds wrap-around diffuse + back-light transmission to the deferred lit path so thin objects — leaves, white curtains, the rim of an ear in strong backlight — start to **transmit light** instead of going flat black.
+**r19 is the sixth release of the visual-realism chapter (r14–r20) and the first release of the B-axis (material color)**. Adds wrap-around diffuse + back-light transmission to the deferred lit path so thin objects — leaves, white curtains, the rim of an ear in strong backlight — start to **transmit light** instead of going flat black.
 
 > **Distribution**: r19 ships **bundled with the r23 release** (no standalone r19 tag). The r23 release page links back to this note and to the r19 spec.
 

@@ -1,6 +1,6 @@
 # AYAstorm r23 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r23 は AYAstorm の 3D stream (positional / 5.1ch / distributed-stereo / binaural — r6 系列以降) を SL の `PARCEL_FLAG_SOUND_LOCAL` 境界に準拠させるリリース** — gesture / object sound と同じ規約。新規 cvar なし、逆向きタグなし、parcel フラグそのものが root truth。
+**r23 は AYAstorm の 3D stream (positional / 5.1ch / distributed-stereo / binaural — r6 系列以降) を SL の `PARCEL_FLAG_SOUND_LOCAL` 境界に準拠させるリリース** — gesture / object sound と同じ規約。新規 cvar なし、逆向きタグなし、parcel フラグそのものが root truth。
 
 > **配信形態**: r23 は r13〜r23 を一括配信するタグの主機能として出荷されます。同梱される他リリースの release note は GitHub Release ページから直接リンクされます。
 

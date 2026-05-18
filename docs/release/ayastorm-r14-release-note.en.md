@@ -1,6 +1,6 @@
 # AYAstorm r14 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r14 is the opening release of the visual-realism chapter** (r14–r20) — adding altitude-dependent atmospheric density and scene-referred (linear-space) integration on top of SL's existing Beer-Lambert + in-scatter atmospherics, so that air gains a real sense of volume without breaking WindLight preset compatibility.
+**r14 is the opening release of the visual-realism chapter** (r14–r20) — adding altitude-dependent atmospheric density and scene-referred (linear-space) integration on top of SL's existing Beer-Lambert + in-scatter atmospherics, so that air gains a real sense of volume without breaking WindLight preset compatibility.
 
 > **Distribution**: r14 ships **bundled with the r23 release** (no standalone r14 tag). The r23 release page links back to this note and to the r14 spec.
 

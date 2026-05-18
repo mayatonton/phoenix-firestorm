@@ -1,6 +1,6 @@
-# AYAstorm r13 — Release Announcement Draft
+# AYAstorm r13 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. r13 is a **small increment** over r12.1 (the first public release after the r10→r12.1 jump). The core is a new tag family `[ayastorm:occlude]` (exact-shape mesh raycast) plus two independent UI / startup fixes.
+r13 is a **small increment** over r12.1 (the first public release after the r10→r12.1 jump). The core is a new tag family `[ayastorm:occlude]` (exact-shape mesh raycast) plus two independent UI / startup fixes.
 
 Feature details live in the user-facing guide (`docs/guides/3dstream-tag-guide.{ja,en,zh}.md`) and the spec docs. This note is link-only + diff highlights.
 

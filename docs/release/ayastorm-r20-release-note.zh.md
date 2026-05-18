@@ -1,6 +1,6 @@
 # AYAstorm r20 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r20 是视觉真实感章 (r14–r20) 的第七弹、B 轴 (物质色) 完走 release**。把 screen-space SSS (subsurface scattering) 应用到 **avatar 皮肤**,自己和他人都能呈现柔和、自内发光的皮肤质感。**gbuffer3 `.a` 的 per-pixel skin mask**、**世界坐标尺度 blur** 自动随距离淡出、**右键学习** 瞬时新增 mesh body/head (无需输入 UUID)。
+**r20 是视觉真实感章 (r14–r20) 的第七弹、B 轴 (物质色) 完走 release**。把 screen-space SSS (subsurface scattering) 应用到 **avatar 皮肤**,自己和他人都能呈现柔和、自内发光的皮肤质感。**gbuffer3 `.a` 的 per-pixel skin mask**、**世界坐标尺度 blur** 自动随距离淡出、**右键学习** 瞬时新增 mesh body/head (无需输入 UUID)。
 
 > **发布形态**: r20 与 **r23 发布版本一同捆绑发布** (不单独发行 r20 tag)。r23 发布页面会回链至本说明及 r20 spec 文档。
 
