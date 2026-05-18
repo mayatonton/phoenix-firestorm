@@ -1608,6 +1608,11 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("falloff_multiplier");
     // </AYAstorm r30 P3>
 
+    // <AYAstorm r30 P4 step 3> BD DoF chain chroma strength.
+    // Order must match the enum order in llshadermgr.h.
+    mReservedUniforms.push_back("chroma_str");
+    // </AYAstorm r30 P4>
+
     llassert(mReservedUniforms.size() == END_RESERVED_UNIFORMS);
 
     std::set<std::string> dupe_check;

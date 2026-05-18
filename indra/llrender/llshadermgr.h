@@ -397,6 +397,13 @@ public:
         FALLOFF_MULTIPLIER,                 //  "falloff_multiplier"
         // </AYAstorm r30 P3>
 
+        // <AYAstorm r30 P4 step 3> BD DoF chain chroma strength.
+        // Imported from BlackDragon Viewer 995a1354d8. Drives the
+        // chroma_str uniform in postDeferredF / postDeferredHQDoFF /
+        // postDeferredNoDoFF when HAS_DOF_CHROMA permutation is set.
+        DEFERRED_CHROMA_STRENGTH,           //  "chroma_str"
+        // </AYAstorm r30 P4>
+
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
     // clang-format on
