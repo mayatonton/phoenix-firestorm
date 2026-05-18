@@ -81,6 +81,7 @@
 #include "llsmoothstep.h"
 #include "llstartup.h"
 #include "llstatusbar.h"
+#include "bdsidebar.h"  // <AYAstorm:r30-bd-port> Phase 3.9: BD sidebar mouselook hook
 #include "llteleportflags.h"
 #include "lltool.h"
 #include "lltoolbarview.h"
@@ -2724,6 +2725,10 @@ void LLAgent::endAnimationUpdateUI()
         // <FS:Ansariel> Separate navigation and favorites panel
         LLNavigationBar::instance().getView()->setVisible(true);
         gStatusBar->setVisibleForMouselook(true);
+        // <AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar mouselook reveal (Cinematic mode only)
+        if (gSideBar)
+            gSideBar->setVisibleForMouselook(true);
+        // </AYAstorm:r30-bd-port>
 
         // <FS:Zi> We don't use the mini location panel in Firestorm
         // static LLCachedControl<bool> show_mini_location_panel(gSavedSettings, "ShowMiniLocationPanel");
@@ -2887,6 +2892,10 @@ void LLAgent::endAnimationUpdateUI()
         // <FS:Ansariel> Separate navigation and favorites panel
         LLNavigationBar::instance().getView()->setVisible(false);
         gStatusBar->setVisibleForMouselook(false);
+        // <AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar mouselook hide (Cinematic mode only)
+        if (gSideBar)
+            gSideBar->setVisibleForMouselook(false);
+        // </AYAstorm:r30-bd-port>
 
         // <FS:Zi> We don't use the mini location panel in Firestorm
         // LLPanelTopInfoBar::getInstance()->setVisible(false);

@@ -92,6 +92,7 @@
 // newview includes
 #include "fscommon.h"
 #include "llaccordionctrl.h"
+#include "bdsidebar.h"
 #include "llbox.h"
 #include "llchicletbar.h"
 #include "llconsole.h"
@@ -2423,6 +2424,24 @@ void LLViewerWindow::initWorldUI()
         mChicletContainer->setVisible(true);
     }
 
+    // <AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar mount (Cinematic mode only).
+    // BD original: llviewerwindow.cpp:2337-2347. AY gates on AYAVisualRealismEnabled == 2
+    // (view mode change requires restart per r30 P1, so a one-time decision at init is safe).
+    if (gSavedSettings.getU32("AYAVisualRealismEnabled") == 2)
+    {
+        if (!mMachinimaSidebar)
+            mMachinimaSidebar = gToolBarView->getChild<LLPanel>("machinima");
+
+        if (mMachinimaSidebar && !gSideBar)
+        {
+            gSideBar = new LLSideBar(mMachinimaSidebar->getLocalRect());
+            gSideBar->setShape(mMachinimaSidebar->getLocalRect());
+            mMachinimaSidebar->addChild(gSideBar);
+            mMachinimaSidebar->setVisible(true);
+        }
+    }
+    // </AYAstorm:r30-bd-port>
+
     LLRect morph_view_rect = full_window;
     morph_view_rect.stretch( -STATUS_BAR_HEIGHT );
     morph_view_rect.mTop = full_window.mTop - 32;
@@ -2656,6 +2675,9 @@ void LLViewerWindow::shutdownViews()
     gStatusBar = NULL;
     gIMMgr = NULL;
     gToolTipView = NULL;
+    // <AYAstorm:r30-bd-port> Phase 3.9: BD sidebar global cleanup
+    gSideBar = NULL;
+    // </AYAstorm:r30-bd-port>
 
     gToolBarView = NULL;
     gFloaterView = NULL;
