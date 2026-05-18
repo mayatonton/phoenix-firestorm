@@ -46,6 +46,9 @@ uniform mat4 inv_proj;
 uniform vec4 viewport;
 uniform int classic_mode;
 
+//BD
+uniform float global_light_strength;
+
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);
 vec4 getNorm(vec2 screenpos);
@@ -150,6 +153,10 @@ void main()
             discard;
         }
     }
+
+    //BD
+    final_color *= global_light_strength;
+
     float final_scale = 1.0;
     if (classic_mode > 0)
         final_scale = 0.9;
