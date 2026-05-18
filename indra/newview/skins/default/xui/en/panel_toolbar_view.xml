@@ -130,6 +130,31 @@
 	            name="caret" />
         </toolbar_vertical> <!-- FS:Ansariel: Special vertical toolbar -->
       </layout_panel>
+      <!-- <FS:AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar mount slot.
+           bdsidebar.cpp::LLSideBar が gToolBarView->getChild<LLPanel>("machinima")
+           経由でこの panel を取得し、Cinematic mode (AYAVisualRealismEnabled=2)
+           初期化時に addChild される。visibility_control 経由で MachinimaSidebar
+           cvar に bind。非 Cinematic 時は LLViewerWindow::initWindow 側で
+           gSideBar が NULL のまま → 空 layout_panel として無害。 -->
+      <layout_panel auto_resize="false"
+                    follows="right|top|bottom"
+                    height="500"
+                    layout="topleft"
+                    mouse_opaque="false"
+                    visible="false"
+                    tab_stop="false"
+                    name="machinima_layout_panel"
+                    width="345"
+                    visibility_control="MachinimaSidebar">
+        <panel top="0"
+               follows="top|right|bottom"
+               height="500"
+               left="-345"
+               mouse_opaque="false"
+               name="machinima"
+               width="345"/>
+      </layout_panel>
+      <!-- </FS:AYAstorm:r30-bd-port> -->
     </layout_stack>
   </layout_panel>
 

@@ -11506,6 +11506,29 @@ Change of this parameter will affect the layout of buttons in notification toast
     </array>
   </map>
   <!-- </FS:AYAstorm> -->
+
+  <!-- <FS:AYAstorm r30 BD full port Phase 3.9>
+       BD-only cvar (settings_blackdragon.xml:564).
+       BD Machinima Sidebar (panel_machinima) visibility 制御。AY 側で
+       AYAVisualRealismEnabled == 2 (Cinematic) のとき initWindow で gSideBar
+       を生成し、panel_toolbar_view.xml の `name="machinima"` layout_panel が
+       visibility_control="MachinimaSidebar" 経由で表示/非表示を切替える。
+       Persist=0 (debug option)、default 1 で Cinematic 入り時は即出現。
+       Cinematic 以外では gSideBar が NULL のため本値が true でも sidebar 自体無し。
+       詳細: docs/specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md -->
+  <key>MachinimaSidebar</key>
+  <map>
+    <key>Comment</key>
+    <string>Debug option to open the Machinima Sidebar (BD parity, Cinematic mode のみ実効)</string>
+    <key>Persist</key>
+    <integer>0</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <!-- </FS:AYAstorm> -->
+
   <key>RenderBumpmapMinDistanceSquared</key>
     <map>
       <key>Comment</key>
