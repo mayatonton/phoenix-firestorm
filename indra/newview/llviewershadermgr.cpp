@@ -454,6 +454,12 @@ void LLViewerShaderMgr::finalizeShaderList()
     // <FS:AYA r15 P1> godrays: register so LLSettingsVOSky::applyToShader
     // auto-binds sunlight_color / moonlight_color / sun_up_factor.
     mShaderList.push_back(&gDeferredGodraysProgram);
+    // <AYAstorm r30 P3 step 3> Volumetric Light (godrays via shadow accumulation):
+    // register so atmosphere uniforms (sunlight_color / sun_dir / blue_density /
+    // haze_density) are auto-bound by LLSettingsVOSky::applyToShader. Without
+    // this push_back the shader compiles but the additive godray contribution
+    // is multiplied by zero atmosphere and never appears.
+    mShaderList.push_back(&gVolumetricLightProgram);
     mShaderList.push_back(&gDeferredSoftenProgram);
     mShaderList.push_back(&gDeferredAlphaProgram);
     mShaderList.push_back(&gHUDAlphaProgram);
@@ -3306,17 +3312,30 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     // the #if GODRAYS_FADE guard only exists in volumetricLightF.glsl; verified
     // 2026-05-18 against BD class3/deferred/softenLightF.glsl which contains
     // no GODRAYS_FADE reference).
+    // Step 6 fix: hasShadows is gated on use_sun_shadow + HAS_SUN_SHADOW
+    // permutation, matching the r15 godraysF.glsl wiring. Without sun shadows
+    // the shader early-outs to a passthrough since godrays-from-no-contrast
+    // carries no signal. BD's `nonpcfShadowAtPos` is remapped at shader level
+    // to the Firestorm-standard `sampleDirectionalShadow` from shadowUtil.glsl.
     if (success)
     {
         gVolumetricLightProgram.mName = "AYAstorm Volumetric Light Shader";
         gVolumetricLightProgram.mFeatures.isDeferred = true;
         gVolumetricLightProgram.mFeatures.calculatesAtmospherics = true;
         gVolumetricLightProgram.mFeatures.hasAtmospherics = true;
-        gVolumetricLightProgram.mFeatures.hasShadows = true;
+        gVolumetricLightProgram.mFeatures.hasShadows = use_sun_shadow;
         gVolumetricLightProgram.mShaderFiles.clear();
+        gVolumetricLightProgram.clearPermutations();
         gVolumetricLightProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
         gVolumetricLightProgram.mShaderFiles.push_back(make_pair("deferred/volumetricLightF.glsl", GL_FRAGMENT_SHADER));
         gVolumetricLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+
+        add_common_permutations(&gVolumetricLightProgram);
+
+        if (use_sun_shadow)
+        {
+            gVolumetricLightProgram.addPermutation("HAS_SUN_SHADOW", "1");
+        }
 
         static LLCachedControl<bool> volumetric_directional(gSavedSettings, "RenderVolumetricLightingDirectional", true);
         if (volumetric_directional)

@@ -615,4 +615,67 @@ BD `llshadermgr.cpp` の `mReservedUniforms.push_back()` 列の正確な line �
 
 ## 8. 実装 commit log (P3 着手後追記)
 
-(Step 1 着手時に追記開始)
+### 8.1 commit 一覧
+
+| Step | Commit | 概要 |
+| --- | --- | --- |
+| 1 | `bf269b8671` | BD viewer から shader (`volumetricLightV/F.glsl`) を import (LGPL-2.1-only)、AYAstorm ライセンス header 貼付 |
+| 2 | `4e6a97bf86` | `RenderVolumetricLighting` / `Resolution` / `Multiplier` / `FalloffMultiplier` / `Directional` の 5 cvar を `settings.xml` に追加 |
+| 3 | `64aa990f7c` | `gVolumetricLightProgram` extern + register、`llshadermgr` に `GODRAY_RES` / `GODRAY_MULTIPLIER` / `FALLOFF_MULTIPLIER` uniform 追加 |
+| 4 | `0df903736d` | `pipeline.cpp` に `renderVolumetric()` 本体 + `renderFinalize()` 内 hook (Cinematic + cvar gated, `mPostPingMap`/`mPostPongMap` pong-chain) |
+| 5 | `d0a695c2ac` | `lldrawpoolalpha.cpp` で `getType() == POOL_ALPHA_POST_WATER` の depth write gate を Cinematic+`RenderVolumetricLighting` でも有効化 (BD §5.4 案 A) |
+| 6 (hotfix) | _未 commit_ | step 6 受入観測 で判明した 3 件の fix を 1 commit にまとめる予定:<br>(a) shader: `nonpcfShadowAtPos` (BD-only) → `sampleDirectionalShadow` (AYAstorm/Firestorm 標準、`shadowUtil.glsl`) 差し替え、`HAS_SUN_SHADOW` permutation gate で全 godrays 計算を guard<br>(b) `llviewershadermgr.cpp`: `gVolumetricLightProgram` を `mShaderList.push_back()` し `LLSettingsVOSky::applyToShader` から atmosphere uniform (`sunlight_color` / `sun_dir` / `blue_density` / `haze_density`) を auto-bind / register block で `mFeatures.hasShadows = use_sun_shadow` + `HAS_SUN_SHADOW` permutation を `RenderShadowDetail > 0` 時のみ付与<br>(c) `settings.xml` + `pipeline.cpp`: `RenderVolumetricLightingMultiplier` default を `1.0` → `50.0` (受入観測 §8.2 参照) |
+
+### 8.2 step 6 受入観測 (2026-05-18)
+
+#### (a) 受入 path
+
+1. shader-only fast iterate (`cp` install + `shader_cache/` clear) で複数回試行
+2. Cinematic mode + `RenderVolumetricLighting True` + 屋外昼間 + 太陽が画面内の構図で目視
+
+#### (b) 障害切り分け (canary 法)
+
+Default 値 (Multiplier 1.0) で全く視認できなかったため、shader 内に 4 種類の canary を順に仕込んで bisect:
+
+| Canary | 出力 | AYA 観測結果 | 判明事項 |
+| --- | --- | --- | --- |
+| 1 | `frag_color = vec3(1.0,0.0,0.0)` | 全面真っ赤 | shader は実行されている (hook / install / permutation 全部 OK) |
+| 2 | `frag_color = sunlight_color` | 昼真っ白 / 夕方真っ黒 | atmosphere uniform 届く (`mShaderList.push_back` 効いてる)、SL の sunlight clamp 挙動も正常 |
+| 3 | `vec3(shadamount, shaftify, haze_weight.x) * 5` | 画面マゼンタ (R+B、緑ゼロ) | `shaftify` 成分だけゼロ。`shadamount` / `haze_weight.x` は出ている |
+| 4 | `shadamount`, `shaftify_pre_fade`, `shaftify_post_fade` の 3 分解 | 空は黄色 (R+G、B 弱)、太陽近傍だけ R+G+B 全部 | `GODRAYS_FADE` の `1 - 2.16 * &#x7c;sun_dir.xy&#x7c;^2` 窓が極狭で、太陽が画面中心 +約30° 以内でしか shaftify_post が残らない (= 仕様通り)。地面側で `shaftify_pre_fade` がゼロになるのは `depth *= pow(depth, 100.0)` の sky-only 重み付けで意図的 |
+
+結論: BD math は全部正しく動作しており、bug ではない。**default が肉眼 threshold に届かないのが唯一の問題**。
+
+#### (c) Multiplier threshold tuning
+
+`RenderVolumetricLightingMultiplier` を 50 / 100 / 200 で A/B、AYA さんの主観評価:
+
+| 値 | 印象 |
+| --- | --- |
+| 1.0 (BD default) | 不可視 |
+| 50 | 現実世界に近い、自然な薄明光線 |
+| 100 | しっかり godrays 主張、雰囲気強め |
+| 200 | PV/Cinematic 向け、かなり強い |
+
+AYAstorm r30 thesis (`project_ayastorm_visual_realism_chapter.md` = 写真を撮るに値する空気と空間) と整合する **50.0 を default に確定**。
+
+#### (d) BD default (1.0) との乖離理由 (仮説)
+
+AYAstorm の ACES tone mapping + HDR scene buffer が BD の sRGB 直書きより加算分を強く圧縮する、または BD パイプラインで godray 追加が別場所 (e.g. tone mapping 前の linear space で乗算) で行われていた可能性。BD 側オリジナルの「default 1.0 で見えていたか」は未検証。AYAstorm 環境では 50 必須。
+
+#### (e) regression check
+
+- AYAstorm View / Firestorm View に切替後 (再起動 path 経由)、`renderVolumetric` の Cinematic gate (`aya_view_mode == 2`) で hook 自体が dispatch されないことを確認 (canary 1 で「真っ赤」が AYAstorm/Firestorm View 時に出ないことで間接確認)
+- Cinematic + `RenderVolumetricLighting False` で hook skip、`True` で即時 godrays 復活、`True/False/True` 即時切替で再起動なし反映を確認
+
+#### (f) `RenderVolumetricLightingDirectional` (GODRAYS_FADE permutation) 受入
+
+- `Directional=False` で AYAstorm 再起動 → shader が `GODRAYS_FADE` permutation 無しで rebuild
+- AYA 観測: **建物等が白く光る** (`shaftify *= fade` が外れて全画面 godrays 加算が乗る、Multiplier=50 で建物が godrays に飲まれた状態)
+- これにより §5.1 修正 (`gDeferredSoftenProgram` から `gVolumetricLightProgram` への permutation 取付先変更) が effective に効いていることを実機裏付け
+- 既定 `Directional=True` に戻し AYAstorm 再起動で正常 (太陽 view 前方のみ godrays) に復帰確認
+
+#### (g) 未実施 (release 後 user feedback 収集対象)
+
+- `RenderVolumetricLightingResolution` を 8 / 16 / 32 / 64 で FPS 影響計測 — tuning は user 側で `feedback_release_with_user_feedback` 方針
+- §7.1「Resolution=1 で本当に godrays 無効か」の最終目視確認 — shader 上 `for (i=godray_res-1; i>0; --i)` は `godray_res=1` で 0 回ループなので無効化されるはず、実機未確認

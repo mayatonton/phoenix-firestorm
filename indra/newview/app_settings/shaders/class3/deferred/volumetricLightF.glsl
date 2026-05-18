@@ -57,15 +57,29 @@ float rand(vec2 co)
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
-float nonpcfShadowAtPos(vec4 pos_world, vec2 pos_screen);
+// AYAstorm r30 P3: BD originally forward-declared `nonpcfShadowAtPos(vec4, vec2)`,
+// expecting a BD-only helper file. AYAstorm has no such helper; we remap to the
+// Firestorm/AYAstorm-standard `sampleDirectionalShadow(vec3 pos, vec3 norm,
+// vec2 pos_screen)` from class1/deferred/shadowUtil.glsl, attached via
+// features.hasShadows. Same semantics: returns 1.0 when lit, 0.0 when shadowed.
+// `sun_dir` is reused as the surrogate "normal" so the bias/PCF pick a
+// light-facing offset (mid-air sample points have no real surface normal) —
+// matches the trick used in class1/deferred/godraysF.glsl. When sun shadows
+// are off (HAS_SUN_SHADOW undefined) we early-out to passthrough, because
+// godrays without shadow contrast carry no signal.
+#ifdef HAS_SUN_SHADOW
+float sampleDirectionalShadow(vec3 pos, vec3 norm, vec2 pos_screen);
+#endif
 
 vec4 getPosition(vec2 pos_screen);
 
 void main()
 {
     vec2 tc = vary_fragcoord.xy;
-    vec4 pos = getPosition(tc);
     vec4 diff = texture(diffuseRect, tc);
+
+#ifdef HAS_SUN_SHADOW
+    vec4 pos = getPosition(tc);
     float depth = texture(depthMap, tc).r;
     depth *= pow(depth, 100.0);
 
@@ -85,7 +99,7 @@ void main()
     for (int i=godray_res-1; i>0; --i)
     {
       vec4 spos = vec4(mix(vec3(0,0,0), farpos, (i-roffset)/(godray_res)), 1.0);
-      float this_shadsample = 0.275 * nonpcfShadowAtPos(spos, tc);
+      float this_shadsample = 0.275 * sampleDirectionalShadow(spos.xyz, sun_dir, tc);
       float this_shaftify = 0.15 * (abs(this_shadsample + last_shadsample));
       last_shadsample = this_shadsample;
       this_shadsample *= i;
@@ -109,6 +123,7 @@ void main()
     shaftify *= fade;
 #endif
     diff.rgb += ((shaftify * haze_weight.x) * shadamount) * sunlight_color;
+#endif
 
     frag_color = diff;
 }
