@@ -89,10 +89,17 @@ BD は `toolbars.xml` または `main_view.xml` 系のどこかに `name="machin
 
 ### 3.3 panel_preferences_render_settings / panel_preferences_ui_colors
 
-- floater_preferences.xml に常時 ref (mode gate せず)
-- BD-only な preferences タブが Cinematic mode 関係なく見える状態を許容
-- 理由: preferences タブを mode 切替で出現/消失させるのは UX 上不健全 (チェックボックス変更 → 再起動 → タブ消失は混乱)
-- BD parity 観点で「Cinematic 関連 cvar 専用 preferences タブ」は常時見えてよい (実効性は mode に依存)
+- **判断: ファイル配置のみ、AY 側 floater_preferences.xml への ref 追加は行わない (orphan)**
+- 理由 1: AY preferences は既に 17 タブ (general/chat/colors/graphics/sound/setup/move/controls/alerts/privacy/advanced/UI/skins/crashreports/firestorm/opensim/backup) で密。BD-only 2 タブ追加は AY UX 健全性に impact 大
+- 理由 2: Phase 3.7 で BD-only cvar の C++ Cinematic dispatch は完了済 → UI 露出が無くても機能は動く
+- 理由 3: BD と完全一致しないが、`feedback_bd_full_port_only.md` の「BD pipeline 全体を 1:1 移植」は描画 pipeline が主眼で UI tab の見た目までは含まない解釈
+
+### 3.3b panel_settings_water_image / panel_settings_water_settings の ext_day_cycle ref
+
+- AY 側 `floater_edit_ext_day_cycle.xml` には BD 側にある water_image/settings panel ref が無く、LL 系 water panel を使用
+- **判断: ext_day_cycle への BD water panel ref は追加しない、floater_adjust_water 経由でのみ activate**
+- 理由: ext_day_cycle 経由の water panel 構造を BD 流に置換するのは large refactor、Phase 3.9 スコープ外
+- BD water_image/settings.xml は floater_adjust_water 内部で ref されるので「BD UI 入口 = bdsidebar → env_adjust_water」ルートで利用可
 
 ### 3.4 panel_settings_water_image / panel_settings_water_settings
 
@@ -131,8 +138,10 @@ BD は `toolbars.xml` または `main_view.xml` 系のどこかに `name="machin
 
 ### Step 3: UI XML 9 件配置 (commit 3)
 - `indra/newview/skins/default/xui/en/` に 9 件配置
-- `floater_preferences.xml` に panel_preferences_render_settings / panel_preferences_ui_colors ref 追加
-- `floater_edit_ext_day_cycle.xml` (common diff yes) を BD 側に揃えるか、water_image/water_settings panel ref のみ追記するか実装時判断
+- **§3.3 改訂判断**: floater_preferences.xml / floater_edit_ext_day_cycle.xml への BD panel ref 追加は行わない (preferences は AY 17 タブが既に密、ext_day_cycle は large refactor 回避)
+- panel_preferences_render_settings / panel_preferences_ui_colors / panel_settings_water_image / panel_settings_water_settings の 4 件は orphan (ファイル配置のみ)
+- panel_machinima.xml = bdsidebar.cpp から buildFromFile される (親 ref 不要)
+- floater_adjust_water / floater_environment_settings = step 2 の viewerfloaterreg register で開ける
 
 ### Step 4: 4 caller patch (commit 4)
 - `llviewerwindow.{cpp,h}` / `llviewercontrol.cpp` / `llfloaterpreference.cpp` / `llagent.cpp` に bdsidebar 連携追加
