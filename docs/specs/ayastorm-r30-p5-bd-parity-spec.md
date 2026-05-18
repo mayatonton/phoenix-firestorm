@@ -154,6 +154,104 @@ P4 ship 直後の floater + UI 仕上げまで完了した時点で、AYA 自身
 
 ---
 
+### 4.6 axis 2 audit 結果 (2026-05-19 実施): cvar default 比較
+
+BD `995a1354d8` `indra/newview/app_settings/settings.xml` (16901 行) と AYAstorm 現行 `settings.xml` (28310 行) から `Render*` prefix の全 cvar を抽出して比較 (`/tmp/audit_cvars.py`)。
+
+#### 4.6.1 サマリ
+
+- BD `Render*` cvar 数: 254 / AYAstorm `Render*` cvar 数: 273
+- common: 247 / BD-only: 7 / AYAstorm-only: 26
+- common のうち default 値同一: 207 / 値ずれ: 33 / 型ずれ: 7
+
+「`RenderChromaStrength` BD 0.0 vs AYAstorm 5.0」「`RenderVolumetricLightingMultiplier` BD 1.0 vs AYAstorm 50.0」の事前既知 2 件 (本 §4 で当初想定) のほかに、**Glow 系 8 cvar / Shadow 系 8 cvar** が cluster で乖離していることが新規発見。これは「BD と絵が違う」の主要因として有力候補。
+
+#### 4.6.2 default 値ずれ 33 件 (絵への影響が大きい cluster を上に)
+
+| cluster | cvar | type | BD | AYAstorm | 絵への寄与 |
+|---|---|---|---|---|---|
+| **Glow (光の滲み)** | `RenderGlowIterations` | S32 | 5 | 2 | blur pass 回数 / 滲みの広がり |
+| Glow | `RenderGlowWidth` | F32 | 3.6 | 1.3 | Gaussian σ / 滲みの直径 |
+| Glow | `RenderGlowStrength` | F32 | 0.233 | 0.325 | 加算強度 |
+| Glow | `RenderGlowWarmthAmount` | F32 | 16.0 | 0.0 | warmth weighting (BD では強く効く、AYA では完全無効) |
+| Glow | `RenderGlowMaxExtractAlpha` | F32 | 0.03 | 0.25 | 抽出 threshold (BD は低 threshold = 暗部からも拾う) |
+| Glow | `RenderGlowMinLuminance` | F32 | 0.0 | 1.0 | 抽出輝度下限 (BD は全画素対象、AYA は飽和近傍のみ) |
+| Glow | `RenderGlowLumWeights` | Vector3 | 0.4 | 1.0 | RGB→luma 重み |
+| Glow | `RenderGlowWarmthWeights` | Vector3 | 0.75 | 1.0 | warmth tinting 重み |
+| **Shadow (影)** | `RenderShadowDetail` | S32 | 1 | 2 | shadow rendering detail level |
+| Shadow | `RenderShadowGaussian` | Vector3 | 1.25 | 3.0 | PCF Gaussian 半径 |
+| Shadow | `RenderShadowBias` | F32 | -0.001 | -0.002 | depth bias |
+| Shadow | `RenderShadowBiasError` | F32 | 0.1 | -0.007 | bias error term |
+| Shadow | `RenderShadowOffset` | F32 | 0.002 | 0.01 | shadow offset |
+| Shadow | `RenderShadowBlurSize` | F32 | 1.0 | 1.4 | softening blur |
+| Shadow | `RenderShadowBlurDistFactor` | F32 | 0.01 | 0 | dist-based blur scaling |
+| Shadow | `RenderShadowFOVCutoff` | F32 | 0.0 | 0.8 | FOV-based culling |
+| Shadow | `RenderShadowErrorCutoff` | F32 | 0.0 | 5.0 | error-based culling |
+| **AO** | `RenderSSAOFactor` | F32 | 0.05 | 0.30 | SSAO 強度 (BD は弱い) |
+| AO | `RenderSSAOMaxScale` | U32 | 300 | 200 | SSAO 距離スケール上限 |
+| **シーン構築** | `RenderFarClip` | F32 | 96.0 | 256.0 | view 距離 (BD は近、AYA は遠) |
+| シーン構築 | `RenderTreeLODFactor` | F32 | 1.0 | 0.5 | tree LOD 切替距離 (BD は遠くまで詳細) |
+| シーン構築 | `RenderTerrainScale` | F32 | 6.0 | 12.0 | terrain texture scale |
+| シーン構築 | `RenderWaterRefResolution` | S32 | 768 | 512 | 水面反射 RT 解像度 (BD 高解像) |
+| **AA / quality** | `RenderFSAAType` | U32 | 2 (SMAA) | 0 (none) | default AA |
+| AA / quality | `RenderAutoMaskAlphaDeferred` | Boolean | 0 | 1 | deferred alpha mask 自動 |
+| AA / quality | `RenderAutoMaskAlphaNonDeferred` | Boolean | 0 | 1 | non-deferred alpha mask 自動 |
+| AA / quality | `RenderGammaFull` | Boolean | 1 | 1.0 | full gamma (型差は実質同等) |
+| **アバター負荷** | `RenderAvatarMaxComplexity` | U32 | 250000 | 0 | 上限 (BD は閾、AYA は無制限) |
+| アバター負荷 | `RenderAutoMuteSurfaceAreaLimit` | F32 | 0 | 1000.0 | 自動 mute 閾 |
+| アバター負荷 | `RenderAutoHideSurfaceAreaLimit` | F32 | 0 | 10.0E6 | 自動 hide 閾 |
+| **VRAM / spot shadow** | `RenderDeferredSpotShadowOffset` | F32 | 0.0 | 0.8 | spot light shadow offset |
+| VRAM / spot shadow | `RenderMaxVRAMBudget` | U32 | 0 | 768 | VRAM budget MB |
+
+#### 4.6.3 型ずれ 7 件 (要注意)
+
+| cvar | BD type / 値 | AY type / 値 | 備考 |
+|---|---|---|---|
+| `RenderMotionBlurStrength` | S32 / 32 | U32 / 32 | 値同一、型差は機能的同等 |
+| `RenderSSAOEffect` | F32 / -0.5 | Vector3 / 0.80 | BD は単一 contrast、AY は Vector3 (R/G/B 別 contrast) |
+| `RenderScreenSpaceReflectionAdaptiveStepMultiplier` | Vector3 / 1.13 | F32 / 1.6 | BD 側 Vector3 宣言は誤り疑いだが値も差 |
+| `RenderScreenSpaceReflectionDepthRejectBias` | Vector3 / 1.0 | F32 / 0.001 | 同上、値差大きい |
+| `RenderScreenSpaceReflectionDistanceBias` | Vector3 / 10.0 | F32 / 0.015 | 同上、値差大きい |
+| `RenderScreenSpaceReflectionIterations` | Vector3 / 64 | S32 / 25 | 同上、値差大きい |
+| `RenderScreenSpaceReflectionRayStep` | Vector3 / 0.025 | F32 / 0.1 | 同上 |
+
+SSR 系の Vector3 宣言は LL/Firestorm の F32 が正、BD の宣言ミスと推定。値差は実値で比較すべき。
+
+#### 4.6.4 BD-only cvar 7 件 (取り込み判断要)
+
+| cvar | type | BD default | 性質 |
+|---|---|---|---|
+| `RenderAvatar` | Boolean | 1 | global avatar render switch |
+| `RenderDelayVBUpdate` | Boolean | 0 | VB update delay flag (legacy 疑い) |
+| `RenderMotionBlur` | Boolean | 0 | motion blur master switch (AYA は mode + 個別 cvar で実装済、再導入不要) |
+| `RenderScreenSpaceReflectionMaxDepth` | F32 | 256 | SSR 距離上限 (取り込み候補) |
+| `RenderScreenSpaceReflectionMaxRoughness` | F32 | 1.0 | SSR roughness 上限 (取り込み候補) |
+| `RenderScreenSpaceReflectionSplitStart` | Vector3 | 0 | SSR split range start (取り込み候補) |
+| `RenderScreenSpaceReflectionSplitEnd` | Vector3 | 25 | SSR split range end (取り込み候補) |
+
+SSR の追加 4 cvar は BD-only。AYAstorm SSR の制御粒度を BD 同等に上げる場合は別途 borrow (step 7 候補)。
+
+#### 4.6.5 BD-compat preset (step 5) 初期セット候補
+
+step 5 で実装する preset の初期反映対象 (絵への寄与が大きいもの優先):
+
+1. Glow 系 8 cvar 全件
+2. Shadow 系 8 cvar 全件
+3. SSAO 系 2 cvar
+4. `RenderChromaStrength` (5.0 → 0.0)
+5. `RenderVolumetricLightingMultiplier` (50.0 → 1.0、tone 議題と connected — §6)
+6. シーン構築系 4 cvar (FarClip / TreeLODFactor / TerrainScale / WaterRefResolution)
+
+「アバター負荷」「VRAM」系は撮影品質と直交するため、初期 preset 範囲には含めない。
+
+#### 4.6.6 axis 2 完了の含意
+
+事前既知 2 件しか想定していなかった default ずれが 33 件 + 重要 cluster (Glow / Shadow) という規模だった。**Cinematic mode で BD と絵が違う第一原因は default 値群の cluster ずれ**である可能性が高い (shader plumbing 自体は P2/P3/P4 で borrow 済のため)。
+
+→ step 5 (BD-compat preset) を最優先で実装し、preset on で「絵が BD に寄ったか」を AYA 目視確認するのが最効率な next step。preset on で十分に寄ったなら、axis 1 (shader 中身 diff) と axis 3 (pipeline 順序) は preset 確認後の差分追跡で十分。axis 4 (BD-only 機能) は SSR の追加 4 cvar 以外は実質ない (motion blur master は AYAstorm では別実装で達成済)。
+
+---
+
 ## 5. step 5: BD-compat preset 実装
 
 ### 5.1 目的
