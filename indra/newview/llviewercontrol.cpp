@@ -1531,6 +1531,12 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderShadowResolutionScale", handleShadowsResized);
     setting_setup_signal_listener(gSavedSettings, "RenderGlow", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderGlow", handleSetShaderChanged);
+    // <AYAstorm r30 P4 step 5> BD DoF chain permutation cvars trigger shader rebuild.
+    // RenderChromaStrength is a uniform (no rebuild) so it's intentionally not listed.
+    setting_setup_signal_listener(gSavedSettings, "RenderDepthOfFieldHighQuality", handleSetShaderChanged);
+    setting_setup_signal_listener(gSavedSettings, "RenderDepthOfFieldChroma",      handleSetShaderChanged);
+    setting_setup_signal_listener(gSavedSettings, "RenderDepthOfFieldFront",       handleSetShaderChanged);
+    // </AYAstorm r30 P4 step 5>
     setting_setup_signal_listener(gSavedSettings, "RenderGlowResolutionPow", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderGlowHDR", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderEnableEmissiveBuffer", handleEnableEmissiveChanged);

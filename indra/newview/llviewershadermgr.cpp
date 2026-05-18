@@ -2989,8 +2989,38 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostProgram.mName = "Deferred Post Shader";
         gDeferredPostProgram.mFeatures.isDeferred = true;
         gDeferredPostProgram.mShaderFiles.clear();
+        // <AYAstorm r30 P4 step 5> Cinematic-only HQ shader file branch + permutations.
+        // clearPermutations() is required because the BD-borrow permutations accumulate
+        // across rebuilds (mDefines is a map; toggling a P4 cvar would otherwise carry
+        // over stale HAS_DOF_CHROMA / FRONT_BLUR entries from the previous build).
+        gDeferredPostProgram.clearPermutations();
         gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredF.glsl", GL_FRAGMENT_SHADER));
+
+        static LLCachedControl<U32>  aya_view_mode_post(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        if (aya_view_mode_post == 2)
+        {
+            static LLCachedControl<bool> hq_dof(gSavedSettings, "RenderDepthOfFieldHighQuality", false);
+            gDeferredPostProgram.mShaderFiles.push_back(make_pair(
+                hq_dof ? "deferred/postDeferredHQDoFF.glsl" : "deferred/postDeferredF.glsl",
+                GL_FRAGMENT_SHADER));
+
+            static LLCachedControl<bool> dof_chroma_post(gSavedSettings, "RenderDepthOfFieldChroma", true);
+            if (dof_chroma_post)
+            {
+                gDeferredPostProgram.addPermutation("HAS_DOF_CHROMA", "1");
+            }
+
+            static LLCachedControl<bool> dof_front(gSavedSettings, "RenderDepthOfFieldFront", true);
+            if (dof_front)
+            {
+                gDeferredPostProgram.addPermutation("FRONT_BLUR", "1");
+            }
+        }
+        else
+        {
+            gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredF.glsl", GL_FRAGMENT_SHADER));
+        }
+        // </AYAstorm r30 P4 step 5>
         gDeferredPostProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostProgram.createShader();
         llassert(success);
@@ -3025,8 +3055,25 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostNoDoFProgram.mName = "Deferred Post NoDoF Shader";
         gDeferredPostNoDoFProgram.mFeatures.isDeferred = true;
         gDeferredPostNoDoFProgram.mShaderFiles.clear();
+        // <AYAstorm r30 P4 step 5> Gate the vignette chroma path on Cinematic+ChromaCvar.
+        // postDeferredNoDoFF.glsl's vignette chroma is guarded by #if HAS_DOF_CHROMA == 0
+        // (i.e. runs when permutation is undefined or 0). To suppress it outside Cinematic
+        // we explicitly addPermutation("HAS_DOF_CHROMA", "1"). Inside Cinematic, the user
+        // cvar RenderDepthOfFieldChroma controls whether the vignette path runs.
+        gDeferredPostNoDoFProgram.clearPermutations();
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoDoFF.glsl", GL_FRAGMENT_SHADER));
+
+        static LLCachedControl<U32>  aya_view_mode_nodof(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        static LLCachedControl<bool> dof_chroma_nodof(gSavedSettings, "RenderDepthOfFieldChroma", true);
+        if (aya_view_mode_nodof != 2 || dof_chroma_nodof)
+        {
+            // Non-Cinematic: always suppress; Cinematic+DoFChroma=1: suppress (chroma
+            // delivered via DoF path instead). Cinematic+DoFChroma=0: leave undefined so
+            // the vignette path runs (the only chroma route when DoF is off).
+            gDeferredPostNoDoFProgram.addPermutation("HAS_DOF_CHROMA", "1");
+        }
+        // </AYAstorm r30 P4 step 5>
         gDeferredPostNoDoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostNoDoFProgram.createShader();
         llassert(success);
@@ -3042,6 +3089,17 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredPostNoDoFNoiseProgram.clearPermutations();
         gDeferredPostNoDoFNoiseProgram.addPermutation("HAS_NOISE", "1");
+
+        // <AYAstorm r30 P4 step 5> Same chroma gate as gDeferredPostNoDoFProgram (this
+        // is the noisy-present sibling — shares postDeferredNoDoFF.glsl). See sibling
+        // register block for the full Cinematic gate rationale.
+        static LLCachedControl<U32>  aya_view_mode_noise(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        static LLCachedControl<bool> dof_chroma_noise(gSavedSettings, "RenderDepthOfFieldChroma", true);
+        if (aya_view_mode_noise != 2 || dof_chroma_noise)
+        {
+            gDeferredPostNoDoFNoiseProgram.addPermutation("HAS_DOF_CHROMA", "1");
+        }
+        // </AYAstorm r30 P4 step 5>
 
         gDeferredPostNoDoFNoiseProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostNoDoFNoiseProgram.createShader();
