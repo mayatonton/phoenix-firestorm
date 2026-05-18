@@ -51,22 +51,24 @@ AYA Phase 4 検証で触った cvar の default 戻し表を release note に同
 
 ### §1.3 cinematic_bd/ license / attribution 確認
 
-Phase 3.8 step 4 で `indra/newview/app_settings/shaders/cinematic_bd/class{1,3}/` 配下に配置した BD 由来 shader (shadowUtil / screenSpaceReflUtil) の冒頭に BD 由来注釈 + LGPL header があるか確認:
+Phase 3.8 step 4 で `indra/newview/app_settings/shaders/cinematic_bd/class{1,3}/` 配下に配置した BD 由来 shader 監査 (2026-05-19 audit):
 
-- [ ] `cinematic_bd/class1/deferred/shadowUtil.glsl` 冒頭に BD attribution
-- [ ] `cinematic_bd/class3/deferred/screenSpaceReflUtil.glsl` 冒頭に同上
-- [ ] 配置物が strategy D 確定 2 件以外混入していないか確認 (`ls` で件数 verify)
+- [x] `cinematic_bd/class1/deferred/shadowUtil.glsl` — LL LGPL header verbatim (BD 自身も LL header を変更せずに改造、AY 側もそれに倣う、`feedback_bd_full_port_only.md` 1:1 verbatim 原則)
+- [x] `cinematic_bd/class3/deferred/screenSpaceReflUtil.glsl` — 同上
+- [x] 配置物は strategy D 確定 2 件のみ (`shadowUtil.glsl` + `screenSpaceReflUtil.glsl`)、他混入なし
+
+BD source 由来は git history (commit 4769ac08ce / c3dc5559dc + branch tracker) で記録、file header への "imported from BD" 追記は 1:1 verbatim 違反となるため行わない。
 
 ### §1.4 inventory 漏れ port 物の出所トレース確認
 
-Phase 3.9 で inventory 漏れとして port した:
+Phase 3.9 で inventory 漏れとして port した物の provenance audit (2026-05-19):
 
-- `bdsidebar.{cpp,h}`
-- `bdfunctions.{cpp,h}` (Phase 3.9 後段)
-- 4 caller patch (`llviewerwindow.{cpp,h}` / `llviewercontrol.cpp` / `llfloaterpreference.cpp` / `llagent.cpp` / `llagent.h`)
-- 6 LLControlVariable / LLControlGroup / LLEnvironment / LLComboBox / LLViewerRegion API 拡張
+- [x] `bdsidebar.{cpp,h}` — BD 由来 "Copyright (C) 2018, NiranV Dean" header verbatim
+- [x] `bdfunctions.{cpp,h}` — 同上 + AYAstorm 注釈 (`imported from BlackDragon Viewer (NiranV Dean), 995a1354d8, 2026-04-19`)
+- [x] 4 caller patch (`llviewerwindow.{cpp,h}` / `llviewercontrol.cpp` / `llfloaterpreference.cpp` / `llagent.{cpp,h}`) — 該当箇所に `FS:AYAstorm:r30-bd-port` marker 確認
+- [x] AY-side API 拡張 (`LLControlVariable` / `LLControlGroup` / `LLEnvironment` / `LLComboBox` / `LLViewerRegion`) — 各 file に `FS:AYAstorm:r30-bd-port` 拡張 marker 確認
 
-各 file 冒頭の provenance header (`AYAstorm: imported from BlackDragon Viewer (NiranV Dean), 995a1354d8, 2026-04-19`) が残っているか確認。
+合計 22 file に AYA-side BD port marker が landed (`grep 'FS:AYAstorm:r30-bd-port|imported from BlackDragon'` 結果)。git history 上書きで provenance を失わない構造、cleanup 不要。
 
 ### §1.5 build sanity (no-op)
 
