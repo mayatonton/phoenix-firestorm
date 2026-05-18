@@ -30,6 +30,19 @@ r30 章 §3 P5 は **章の最重要ゲート**: Cinematic mode が BD と並走
 - **BD UI 翻訳**: 章 §1.2 通り、BD の Machinima Sidebar / Photo Tools panel は取り込まない / 翻訳もしない
 - **floater 多言語対応**: P5 では英語のみ維持。日本語/中国語 lproj 翻訳は P6+ で AYA 色作りと並行して検討
 
+### 1.4 意図的に P5 では触らない不整合 — Phototools floater との DoF 系重複
+
+**現状**: 既存 Firestorm Phototools floater (汎用撮影 UI、6 tab) にも DoF / 関連項目があり、P4 で新設した Cinematic Controls floater との間で同 cvar に 2 つの動線がある状態。ユーザーが「同じ DoF 設定が 2 箇所にある」と感じる懸念は実在する。
+
+**P5 判断 (2026-05-19 AYA confirm)**: **意図して P5 では触らない**。理由:
+- Phototools は Firestorm 由来の汎用撮影 UI で、Cinematic mode 外でも使用される。撮影 workflow の **互換性** を残すことが Firestorm fork として価値がある (Firestorm ユーザーが乗り換え時に既存操作を失わない)
+- 重複解消には Phototools 側の cvar 再配置 + テスト範囲拡大が必要で、P5 のコスト感に対して比して大きい
+- 初期段階は release notes / README で「Cinematic 系設定は Cinematic Controls floater (Alt+C) を推奨、Phototools の同名項目もそのまま動く」と明示するだけで案内する
+
+**release notes 反映義務**: 本判断を P5 ship 時の ja/en/zh release notes 「移行ノート」節に必ず明記すること。ユーザーが「どっちを使えばいい？」と迷う前に先回りで案内する。
+
+**P6+ 以降の再検討余地**: AYA 色作りが進んで Cinematic が「独自の絵」を出すフェーズに入った段階で、Phototools との UI 動線を再設計する余地あり (例: Phototools 側に「このモードでは Cinematic Controls を開く」リンクを追加する等)。P6+ spec で判断する。
+
 ---
 
 ## 2. 現在状態 (P4 ship 直後)
