@@ -12090,13 +12090,13 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderChromaStrength</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P4 (BD borrow): chromatic aberration strength (chroma_str uniform). 0 = invisible, BD default 0.0 ships the feature gate on with the slider at zero so users opt in via Cinematic Preferences. Range guidance: 0.0-2.0 subtle, 2.0-5.0 visible, >5.0 stylized. Only active when AYAVisualRealismEnabled=2 (Cinematic).</string>
+    <string>AYAstorm r30 P4 (BD borrow): radial chromatic aberration strength for NoDoF Cinematic path. Per-channel R/B texcoord offset = chroma_str * 0.0005 * r2 (r2: 0 center to 2 corners). Range guidance: ~5 subtle (default), ~10 noticeable, ~30 cinematic, >50 stylized. Active only when AYAVisualRealismEnabled=2 (Cinematic) and the NoDoF vignette path is selected.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
     <string>F32</string>
     <key>Value</key>
-    <real>0.0</real>
+    <real>5.0</real>
   </map>
 
   <key>RenderDepthOfFieldInEditMode</key>

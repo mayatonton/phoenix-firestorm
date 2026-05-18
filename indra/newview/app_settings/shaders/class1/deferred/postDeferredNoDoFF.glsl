@@ -82,49 +82,28 @@ void main()
 {
     vec4 diff = texture(diffuseRect, vary_fragcoord.xy);
 
-// <AYAstorm r30 P4 step 1> BD NoDoF screen-edge chroma path
-// Active only when HAS_DOF_CHROMA==0 (no DoF chroma coupling). Produces a
-// vignette-style chromatic aberration from luma gradient + depth weighting.
+// <AYAstorm r30 P4 step 1> BD NoDoF radial chromatic aberration
+// Active only when HAS_DOF_CHROMA==0 (no DoF chroma coupling). Per-channel
+// radial offset sampling: R pulled toward center, B pushed outward, shift
+// grows toward screen edges. chroma_str=0 → no shift (free).
 #if HAS_DOF_CHROMA == 0
-    vec3 col = diff.rgb;
+    // vary_fragcoord is already [0,1] texcoord (see postDeferredNoTCV.glsl).
+    vec2 p = vary_fragcoord.xy * 2.0 - 1.0;
+    float r2 = dot(p, p);                       // 0 center → ~2 corners
 
-    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    // Per-pixel shift in texcoord space. 0.0005 keeps the relationship
+    // monotonic across usable range: chroma_str=10 → ~1% edge shift (subtle),
+    // 50 → ~5% (clear), 100 → ~10% (strong). Above ~150 the offset taps
+    // become incoherent and the image disintegrates.
+    float shift = chroma_str * 0.0005 * r2;
+    vec2  dir   = p;                            // radial from center, no normalize
 
-    vec2 p = (vary_fragcoord.xy / screen_res.xy) * 2.0 - 1.0;
-    float r = dot(p, p);
+    vec2 tcR = vary_fragcoord.xy - dir * shift;
+    vec2 tcB = vary_fragcoord.xy + dir * shift;
 
-    float depth = texture(depthMap, vary_fragcoord.xy).r;
-    float depthWeight = smoothstep(0.2, 0.8, depth);
-    depthWeight *= depthWeight;
-
-    vec3 gx = dFdx(col);
-    vec3 gy = dFdy(col);
-    vec3 grad = gx + gy;
-    float edge = length(grad);
-
-    // Blue disperses most, green least
-    const float wR = 0.60;
-    const float wG = 0.15;
-    const float wB = 1.00;
-
-    float ca =
-        chroma_str *
-        edge *
-        smoothstep(0.15, 1.0, luma) *
-        smoothstep(0.0, 1.2, r) *
-        depthWeight;
-
-    vec2 dir = normalize(p + 1e-5);
-
-    col.r += ca * wR * (grad.r) * dir.x;
-    col.g += ca * wG * (grad.g) * dir.x * 0.25; // very subtle
-    col.b -= ca * wB * (grad.b) * dir.x;
-
-    col.r += ca * wR * gy.r * 0.30;
-    col.b -= ca * wB * gy.b * 0.30;
-
-    diff.rgb = col;
-    diff.rgb = clamp(diff.rgb, 0.0, 1.0);
+    diff.r = texture(diffuseRect, tcR).r;
+    // diff.g stays as the already-sampled center value.
+    diff.b = texture(diffuseRect, tcB).b;
 #endif
 // </AYAstorm r30 P4 step 1>
 

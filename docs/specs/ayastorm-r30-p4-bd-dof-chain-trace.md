@@ -357,7 +357,7 @@ shader 側の permutation 付与 (HAS_DOF_CHROMA / FRONT_BLUR / HQ DoF 分岐) �
 |---|---|---|
 | `RenderDepthOfFieldHighQuality` | 0 (= 標準 DoF、user opt-in で HQ) | 影響なし (Cinematic gate で ignore) |
 | `RenderDepthOfFieldChroma` | 1 (= 機能 compile in、strength で実効制御) | 影響なし (Cinematic gate で ignore) |
-| `RenderChromaStrength` | **2026-05-18 更新**: BD は 0.0、AYAstorm は `feedback_match_bd_defaults_on_borrow.md` 適用で **BD と同値 0.0** を踏襲。ただし「Chroma permutation は compile in されているが strength 0 で実効ゼロ」の状態は **BD と同じ** であり、初見比較負けにはならない。strength を上げる動線は §7.5 の UI 判断 (debug settings or Preferences) に従う | 影響なし |
+| `RenderChromaStrength` | **2026-05-19 再更新**: 初期値 0.0 だったが step 6 受入で「Cinematic ON で何も見えない」と判定 (effect 自体が subtle なので chroma_str=0 だと「機能が無いように見える」)。`feedback_match_bd_defaults_on_borrow.md` を実体験ベースで再適用 → **5.0** に変更。radial offset 数式は §2.3 の「NoDoF vignette」を `chroma_str * 0.0005 * r2` の係数に書き直し済 (= 5.0 で画面端 ~0.5% shift, subtle だが「気付く」range)。BD の 0.0 default は元々 BD UI に slider が露出していることが前提なので、AYAstorm 専用 floater (§5.8 改) で同等動線を提供する以上、default を 5.0 に上げる方が borrow rule に整合する | 影響なし |
 | `RenderDepthOfFieldFront` | **1 (= BD default、front blur ON)** ※ 2026-05-18 追加。HQ DoF user opt-in 時のみ effective。Cinematic+HQ DoF で初見 = BD と同じ前ボケ挙動 | 影響なし (Cinematic gate で ignore) |
 
 ### 5.8 UI 取り込み = AYAstorm 独自 Cinematic sub-tab (B 案、SSS パターン踏襲)
@@ -506,11 +506,27 @@ if (gPipeline.sViewModeCinematic && gSavedSettings.getBOOL("RenderDepthOfFieldCh
 
 ### 6.6 step 6: 受入検証
 
-- shader compile 4 ケース (Cinematic ON × HQ ON/OFF × Chroma ON/OFF) で 起動時に shader 全部 link 成功
-- `RenderChromaStrength = 2.0` で空 / 雲 / 樹木の高 CoF 領域に R/B 色ずれが視認できる
-- `RenderChromaStrength = 0.0` で chroma block が compile in されていても見た目変化なし (sampling cost は変わるが視覚差分なし)
-- HQ DoF ON で boku 領域の sample 精度向上 (round bokeh が滑らかになる)、framerate 低下を確認 (= BD と同じ「重いが綺麗」を再現)
-- Cinematic OFF (AYAstorm View / Firestorm View) で全 cvar 無効、既存挙動と完全一致
+**2026-05-19 実施結果**:
+
+- shader compile 4 ケース (Cinematic ON × HQ ON/OFF × Chroma ON/OFF) で 起動時に shader 全部 link 成功 → ✓
+- 受入過程で **chroma 数式バグ 2 件 hotfix**:
+  1. `vary_fragcoord` の単位誤認: NoDoF vignette path で `(vary_fragcoord / screen_res) * 2 - 1` と書いたが、vertex shader (`postDeferredNoTCV.glsl`) では `vary_fragcoord = (pos*0.5+0.5)` で既に [0,1] texcoord。screen_res で再除算 → p≈-1 全画面 / r≈2 で「画面端 weight が全画面適用」状態 → 数式が常時 max でも edge 重みで見えない、という二重バグ。`vary_fragcoord.xy * 2 - 1` に修正
+  2. 元の vignette 数式 (`edge × luma × radial × depth` 5 重乗算) は実質「オブジェクト輪郭でしか chroma が出ない」設計で、Cinematic 撮影体験として subtle 過ぎ → **radial per-channel offset sampling 方式に書き換え** (R 内側 / G 中心 / B 外側、shift = `chroma_str * 0.0005 * r2`)。chroma_str=5 で画面端 ~0.5% シフト ≈ 「気付く」、=30 で「明確」、=100 で「強演出」、150+ で意図的 disintegrate
+- diagnostic canary (画面端を chroma_str > 0.5 のとき赤塗りする一行) を一時投入 → permutation gate と座標 fix を順次検証 → 確定後削除
+- AYA 受入: floater スライダー / D ボタン / "Couple to DoF blur" チェックいずれも live 反映、Cinematic OFF で全 cvar 無効、4 つすべて期待通り動作確認
+
+最終 chroma 数式 (postDeferredNoDoFF.glsl, `#if HAS_DOF_CHROMA == 0` 内):
+
+```glsl
+vec2 p = vary_fragcoord.xy * 2.0 - 1.0;
+float r2 = dot(p, p);                       // 0 center → ~2 corners
+float shift = chroma_str * 0.0005 * r2;
+vec2  dir   = p;
+vec2 tcR = vary_fragcoord.xy - dir * shift;
+vec2 tcB = vary_fragcoord.xy + dir * shift;
+diff.r = texture(diffuseRect, tcR).r;
+diff.b = texture(diffuseRect, tcB).b;
+```
 
 ### 6.7 step 7: 出荷物の clean up + commit
 
@@ -644,6 +660,24 @@ BD `panel_preferences_graphics1.xml` の chroma UI (line 5600-5622, 6944-6961) �
 - chapter §1.2 で確定済 (「BD UI は取り込まない / Firestorm 流儀にも翻訳しない」)
 - 撮影特化 user 向けの設定は debug settings 経由でも実用上問題なし (`feedback_release_notes_link_only.md` 流儀)
 - 将来 Cinematic 専用 Preferences セクションを作る場合 (chapter §3 P5 以降の AYAstorm UI 整理) で再判断
+
+---
+
+## 9. 実装記録 (commit log + 受入観測)
+
+### 9.1 step 1-5 commit (2026-05-18)
+
+| commit | step | 内容 |
+|---|---|---|
+| `2bb8fde044` | step 1 | import HQ DoF shader + add chroma/front-blur permutations from BD |
+| `428bd31587` | step 2 | add HQ DoF / chroma / front-blur cvars to settings.xml |
+| `573845d7dd` | step 3 | register DEFERRED_CHROMA_STRENGTH reserved uniform |
+| `4e171f6223` | step 4 | wire RenderChromaStrength into the 3 postDeferred bind sites |
+| `b771da956d` | step 5 | shader register Cinematic gate + permutations + signal listeners |
+
+### 9.2 step 6 受入観測 (2026-05-19)
+
+§6.6 参照。chroma 数式の二重バグ (texcoord 単位誤認 + vignette 数式が subtle 過ぎ) を受入過程で発見、radial per-channel offset 方式に書き直し + chroma_str default を 0.0 → 5.0 へ。
 
 ---
 
