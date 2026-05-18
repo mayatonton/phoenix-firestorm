@@ -40,6 +40,9 @@ uniform float far_z;
 uniform mat4  inv_proj;
 uniform int classic_mode;
 
+//BD
+uniform float global_light_strength;
+
 in vec4 vary_fragcoord;
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
@@ -170,6 +173,10 @@ void main()
             }
         }
     }
+
+    //BD
+    final_color *= global_light_strength;
+
     float final_scale = 1.0;
     if (classic_mode > 0)
         final_scale = 0.9;
