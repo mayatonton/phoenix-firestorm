@@ -45,8 +45,7 @@ static int LOW_PRIORITY_TEXTURE_SIZE_DEFAULT = 256;
 #if LL_DULLAHAN_AUDIO_CALLBACK
 static const size_t MEDIA_AUDIO_RING_CAPACITY_FRAMES = 48000 * 2;
 static const size_t MEDIA_AUDIO_SHARED_MEMORY_SIZE =
-    sizeof(LLPluginAudioRingHeader) +
-    (MEDIA_AUDIO_RING_CAPACITY_FRAMES * LL_PLUGIN_AUDIO_RING_MAX_CHANNELS * sizeof(float));
+    ll_plugin_audio_ring_shared_memory_size(MEDIA_AUDIO_RING_CAPACITY_FRAMES);
 #endif
 
 static int nextPowerOf2( int value )
@@ -327,7 +326,7 @@ void* LLPluginClassMedia::getAudioData()
 {
 #if LL_DULLAHAN_AUDIO_CALLBACK
     void *result = NULL;
-    if((mPlugin != NULL) && !mAudioSharedMemoryName.empty())
+    if((mPlugin != NULL) && mPlugin->isRunning() && !mAudioSharedMemoryName.empty())
     {
         result = mPlugin->getSharedMemoryAddress(mAudioSharedMemoryName);
     }
@@ -1361,6 +1360,35 @@ void LLPluginClassMedia::receivePluginMessage(const LLPluginMessage &message)
         {
             mFileDownloadFilename = message.getValue("filename");
             mediaEvent(LLPluginClassMediaOwner::MEDIA_EVENT_FILE_DOWNLOAD);
+        }
+        else if(message_name == "audio_stream_format")
+        {
+            const std::string state = message.getValue("state");
+            if (state == "started")
+            {
+                LL_INFOS("Plugin") << "CEF audio stream started: "
+                                   << message.getValueS32("sample_rate") << " Hz x "
+                                   << message.getValueS32("channels") << " ch"
+                                   << " (ring max "
+                                   << message.getValueS32("max_channels")
+                                   << " ch)"
+                                   << LL_ENDL;
+            }
+            else if (state == "stopped")
+            {
+                LL_INFOS("Plugin") << "CEF audio stream stopped: "
+                                   << message.getValueS32("sample_rate") << " Hz x "
+                                   << message.getValueS32("channels") << " ch after "
+                                   << message.getValueReal("frames")
+                                   << " frame(s)"
+                                   << LL_ENDL;
+            }
+            else if (state == "error")
+            {
+                LL_WARNS("Plugin") << "CEF audio stream error: "
+                                   << message.getValue("message")
+                                   << LL_ENDL;
+            }
         }
         else if(message_name == "debug_message")
         {

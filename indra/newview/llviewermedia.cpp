@@ -55,6 +55,7 @@
 #include "llavataractions.h"
 #include "llparcel.h"
 #include "llpluginclassmedia.h"
+#include "llpositionalstreammgr.h"
 #include "llurldispatcher.h"
 #include "lluuid.h"
 #include "llversioninfo.h"
@@ -82,6 +83,8 @@
 
 #include <boost/bind.hpp>   // for SkinFolder listener
 #include <boost/signals2.hpp>
+
+#include <algorithm>
 
 extern bool gCubeSnapshot;
 
@@ -1654,6 +1657,7 @@ LLViewerMediaImpl::LLViewerMediaImpl(     const LLUUID& texture_id,
 #if LL_DULLAHAN_AUDIO_CALLBACK
     mAppliedVolume(-1.0f),
 #endif
+    mStream3DAudioRedirected(false),
     mIsMuted(false),
     mNeedsMuteCheck(false),
     mPreviousMediaState(MEDIA_NONE),
@@ -1775,6 +1779,10 @@ void LLViewerMediaImpl::destroyMediaSource()
 {
     mNeedsNewTexture = true;
 #if LL_DULLAHAN_AUDIO_CALLBACK
+    if (mMediaSource && mStream3DAudioRedirected)
+    {
+        LLPositionalStreamMgr::instance().onMediaSourceDestroying(this);
+    }
     if (mMediaAudioStream)
     {
         mMediaAudioStream->stop();
@@ -2290,6 +2298,26 @@ void LLViewerMediaImpl::updateVolume()
 F32 LLViewerMediaImpl::getVolume()
 {
     return mRequestedVolume;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+F32 LLViewerMediaImpl::getStream3DAudioGain() const
+{
+    if (!mMediaSource)
+    {
+        return 0.f;
+    }
+    if (sOnlyAudibleTextureID.notNull() && sOnlyAudibleTextureID != mTextureId)
+    {
+        return 0.f;
+    }
+
+    // Match the non-proximity part of the existing 2D media volume path.
+    // Stream3D applies speaker range/rolloff itself, so mProximityCamera
+    // attenuation is intentionally not included here.
+    const F32 requested = std::clamp(mRequestedVolume, 0.f, 1.f);
+    const F32 global = std::clamp(LLViewerMedia::getInstance()->getVolume(), 0.f, 1.f);
+    return requested * global;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -3043,8 +3071,15 @@ void LLViewerMediaImpl::update()
 #if LL_DULLAHAN_AUDIO_CALLBACK
     if (mMediaAudioStream)
     {
-        mMediaAudioStream->setRing(reinterpret_cast<LLPluginAudioRingHeader*>(mMediaSource->getAudioData()));
-        mMediaAudioStream->update(gAudiop);
+        if (mStream3DAudioRedirected)
+        {
+            mMediaAudioStream->stop();
+        }
+        else
+        {
+            mMediaAudioStream->setRing(reinterpret_cast<LLPluginAudioRingHeader*>(mMediaSource->getAudioData()));
+            mMediaAudioStream->update(gAudiop);
+        }
     }
 #endif
 
@@ -3271,6 +3306,32 @@ LLViewerMediaTexture* LLViewerMediaImpl::updateMediaImage()
 LLUUID LLViewerMediaImpl::getMediaTextureID() const
 {
     return mTextureId;
+}
+
+LLPluginAudioRingHeader* LLViewerMediaImpl::getAudioRingForStream3D() const
+{
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    return mMediaSource
+        ? reinterpret_cast<LLPluginAudioRingHeader*>(mMediaSource->getAudioData())
+        : nullptr;
+#else
+    return nullptr;
+#endif
+}
+
+void LLViewerMediaImpl::setStream3DAudioRedirected(bool redirected)
+{
+    if (mStream3DAudioRedirected == redirected)
+    {
+        return;
+    }
+    mStream3DAudioRedirected = redirected;
+#if LL_DULLAHAN_AUDIO_CALLBACK
+    if (redirected && mMediaAudioStream)
+    {
+        mMediaAudioStream->stop();
+    }
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

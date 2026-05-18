@@ -25,7 +25,18 @@ if (USE_FMODSTUDIO)
   if (FMODSTUDIO_LIBRARY AND FMODSTUDIO_INCLUDE_DIR)
     # If the path have been specified in the arguments, use that
 
-    target_link_libraries(ll::fmodstudio INTERFACE ${FMODSTUDIO_LIBRARY})
+    get_filename_component(FMODSTUDIO_LIBRARY_DIR "${FMODSTUDIO_LIBRARY}" DIRECTORY)
+
+    # The AYAstorm FMOD codec plugin calls libopus decoder symbols directly.
+    # Keep libopus on ll::fmodstudio even when libfmod is supplied manually.
+    find_library(OPUS_LIBRARY
+      NAMES
+      opus.lib
+      libopus.dylib
+      libopus.so
+      PATHS "${FMODSTUDIO_LIBRARY_DIR}" "${ARCH_PREBUILT_DIRS_RELEASE}" REQUIRED NO_DEFAULT_PATH)
+
+    target_link_libraries(ll::fmodstudio INTERFACE ${FMODSTUDIO_LIBRARY} ${OPUS_LIBRARY})
     target_include_directories( ll::fmodstudio SYSTEM INTERFACE  ${FMODSTUDIO_INCLUDE_DIR})
   else (FMODSTUDIO_LIBRARY AND FMODSTUDIO_INCLUDE_DIR)
     # If not, we're going to try to get the package listed in autobuild.xml
@@ -59,4 +70,3 @@ if (USE_FMODSTUDIO)
 else()
   set( USE_FMODSTUDIO "OFF")
 endif ()
-

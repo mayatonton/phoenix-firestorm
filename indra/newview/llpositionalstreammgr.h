@@ -44,6 +44,7 @@
 class LLPositionalStream;
 class LLPositionalStreamStereo;
 class LLPositionalStreamMulti;
+class LLViewerMediaImpl;
 class LLViewerObject;
 
 class LLPositionalStreamMgr
@@ -92,6 +93,12 @@ public:
     // same boot-time discovery path that [3dstream-stereo:...] speaker scan
     // already relies on internally.
     void bootstrapChildDescriptions(LLViewerObject* root_obj);
+
+    // Called immediately before a MOAP media plugin source is destroyed.
+    // Media-ring backed 3D streams must detach before the plugin shared
+    // memory is unmapped; waiting for the next per-frame update leaves the
+    // decode thread with a stale raw ring pointer.
+    void onMediaSourceDestroying(LLViewerMediaImpl* media);
 
     // Debug toggle stream (driven by Stream3DDebugPlay). Independent of
     // the prim binding map.
@@ -142,20 +149,59 @@ public:
         LFE,
         SL,
         SR,
+        BL,
+        BR,
+    };
+
+    enum class DistSourceKind
+    {
+        Url,
+        Media,
+    };
+
+    struct SourceBindingKey
+    {
+        DistSourceKind kind = DistSourceKind::Url;
+        std::string url;
+        LLUUID media_object_id;
+        LLUUID media_id;
+        S32 face = -1;
+        S32 media_source_channels = 0;
+
+        bool operator==(const SourceBindingKey& rhs) const
+        {
+            return kind == rhs.kind &&
+                   url == rhs.url &&
+                   media_object_id == rhs.media_object_id &&
+                   media_id == rhs.media_id &&
+                   face == rhs.face &&
+                   media_source_channels == rhs.media_source_channels;
+        }
     };
 
     // r8: parsed [3dstream-stereo:{url:...}{range:...}{ch:...}{volume:...}] tag.
+    // AYAstorm media-source extension also accepts
+    // {source:media}{link:N}{face:N}.
     // A single prim's description may declare:
-    //   - source only (root):         {url}      [+ {range}]
+    //   - source only (root):         {url} or {source:media} [+ {range}]
     //   - speaker only (root/child):  {ch}       [+ {range} + {volume}]
-    //   - source + self-speaker:      {url}{ch}  [+ {range} + {volume}]
+    //   - source + self-speaker:      source + {ch} [+ {range} + {volume}]
+    // For {source:media}, the source declaration still lives on the root,
+    // but the media face may live on the root or one child prim in the same
+    // linkset. {link:N} narrows the search to one prim, and {face:N}
+    // narrows it to one media face.
     // The same {range} field, when present, fills both range_default (source
     // role) and range_speaker (speaker role) of the same prim — the spec
     // §4.3 treats it as a single shared field rather than two separate keys.
     struct DistStereoTagData
     {
-        // Source declaration fields (set only when {url:...} is present).
+        // Source declaration fields (set when {url:...} or {source:media}
+        // is present).
+        std::optional<DistSourceKind> source_kind;
         std::optional<std::string> url;
+        std::optional<S32> media_link;
+        std::optional<S32> media_face;
+        S32 media_source_channels = 0; // 0 = non-media/unset, otherwise 2/6/8
         std::optional<F32> range_default;
         // r11 P5: lite-HRTF toggle ({binaural:on|off}). Source-side property
         // — meaningful only on the root prim (= same prim as {url}).
@@ -228,14 +274,23 @@ public:
         // r12.1: {lfegain:N} value not parseable as F32 (out-of-range
         // is clamped silently to [0.0, 3.0], not reported here).
         BadLfeGain,
+        // {source:...} value not recognized. Initial supported value: media.
+        BadSource,
+        // {url:...} and {source:media} are mutually exclusive source
+        // declarations.
+        ConflictingSource,
+        // {link:N} / {face:N} value not parseable as a non-negative integer.
+        BadLink,
+        BadFace,
     };
 
     struct DistParseResult
     {
-        // data has value only when the tag has at least one of {url} / {ch}
-        // and all present fields parse cleanly. nullopt with error==Ok
-        // means "no recognizable [3dstream-stereo:...] tag at all"; nullopt
-        // with error!=Ok means "tag present but a field is malformed".
+        // data has value only when the tag has at least one of {url} /
+        // {source} / {ch} and all present fields parse cleanly. nullopt
+        // with error==Ok means "no recognizable [3dstream-stereo:...] tag at
+        // all"; nullopt with error!=Ok means "tag present but a field is
+        // malformed".
         std::optional<DistStereoTagData> data;
         DistParseError error = DistParseError::Ok;
         std::string bad_value;
@@ -248,8 +303,8 @@ public:
     //   - tag present, all valid  → {data,    Ok, ""}
     //   - tag present, field bad  → {nullopt, <error>, bad_value}
     //
-    // The tag is recognized when {url} or {ch} is present. The legacy
-    // {l:N}{r:N} format (r5–r7) is no longer supported in r8.
+    // The tag is recognized when {url}, {source}, or {ch} is present. The
+    // legacy {l:N}{r:N} format (r5–r7) is no longer supported in r8.
     static DistParseResult parseDistributedStereoTag(const std::string& description);
 
     // r9 (§4.6): {ch:...} value → enum. Case-insensitive ASCII match against
@@ -358,6 +413,7 @@ private:
     struct DistributedStereoBinding
     {
         LLUUID root_id;
+        SourceBindingKey source_key;
         std::string url;
         F32 range_default = 20.f;
         // r11 P5: publisher's {binaural:on|off} tag value (nullopt =
@@ -450,6 +506,12 @@ private:
         // uniformly to every channel of the multi stream).
         bool is_attached = false;
         bool parcel_audible = true;
+        // Media source volume policy. When a linkset has exactly one media
+        // face, keep 2D media semantics and multiply by media/global volume.
+        // When multiple media faces exist and one is explicitly selected for
+        // 3D, treat that selected media as source gain 1.0 so the other media
+        // faces can continue using the normal media volume slider.
+        bool media_source_uses_viewer_volume = true;
         F32 last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
     };
 
@@ -513,6 +575,14 @@ private:
         // r12.1: {lfegain:N} value not parseable as F32 (out-of-range
         // is silently clamped to [0.0, 3.0], NOT reported here).
         BadLfeGain,
+        BadSource,
+        ConflictingSource,
+        BadLink,
+        BadFace,
+        MediaFaceNotFound,
+        MediaFaceAmbiguous,
+        MediaSourceNotReady,
+        MediaSourceInUse,
     };
 
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for

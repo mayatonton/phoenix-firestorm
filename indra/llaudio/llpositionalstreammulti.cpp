@@ -29,6 +29,7 @@
 #include "llaudioengine.h"
 #include "llaudioengine_fmodstudio.h"
 #include "lllitehrtfdsp.h"
+#include "llpluginaudio.h"
 #include "llstream3durlresolve.h"
 #include "llstring.h"
 #include "lltimer.h"
@@ -246,6 +247,11 @@ size_t LLMultiTailRing::readFramesRaw(size_t reader_idx, F32* dst, size_t n_fram
 
 LLPositionalStreamMulti::LLPositionalStreamMulti()
 :   mSourceSound(nullptr),
+    mSourceKind(SourceKind::Url),
+    mMediaRing(nullptr),
+    mMediaFormatSerial(0),
+    mMediaRingChannels(0),
+    mMediaLogicalChannels(0),
     mSampleRate(0),
     mSourceChannels(0),
     mSourceBytesPerSample(0),
@@ -336,6 +342,11 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     }
 
     mUrl = clean_url;
+    mSourceKind = SourceKind::Url;
+    mMediaRing = nullptr;
+    mMediaFormatSerial = 0;
+    mMediaRingChannels = 0;
+    mMediaLogicalChannels = 0;
     mSpeakers = speakers;
     mReadFailStreak = 0;
     mLastReadFailLogTime = 0.0;
@@ -392,6 +403,80 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     return true;
 }
 
+bool LLPositionalStreamMulti::startMedia(LLPluginAudioRingHeader* ring,
+                                         const std::string& label,
+                                         const std::vector<SpeakerConfig>& speakers,
+                                         int logical_source_channels)
+{
+    stop();
+
+    if (speakers.empty())
+    {
+        LL_WARNS("Stream3D") << "Refusing to start media multi stream with zero speakers" << LL_ENDL;
+        return false;
+    }
+
+    mMediaRing = ring;
+    mMediaLogicalChannels = ll_plugin_audio_ring_supported_3d_channel_count(
+                                static_cast<std::uint32_t>(logical_source_channels))
+                                ? logical_source_channels
+                                : 0;
+    if (!validateMediaRingHeader())
+    {
+        LL_WARNS("Stream3D") << "Refusing to start media multi stream: audio ring unavailable" << LL_ENDL;
+        mMediaRing = nullptr;
+        mMediaLogicalChannels = 0;
+        setFailed(FailReason::Network, "media ring unavailable");
+        return false;
+    }
+
+    if (!getFmodSystem())
+    {
+        LL_WARNS("Stream3D") << "FMOD Studio system unavailable" << LL_ENDL;
+        mMediaRing = nullptr;
+        mMediaLogicalChannels = 0;
+        setFailed(FailReason::Network, "FMOD Studio unavailable");
+        return false;
+    }
+
+    mUrl = label.empty() ? std::string("media") : label;
+    mSourceKind = SourceKind::MediaRing;
+    mMediaFormatSerial = 0;
+    mSpeakers = speakers;
+    mReadFailStreak = 0;
+    mLastReadFailLogTime = 0.0;
+    mZeroFillStreakStart = 0.0;
+    mMediaReopenRequested.store(false, std::memory_order_release);
+    mFailReason.store(FailReason::Ok, std::memory_order_relaxed);
+    mFailDetail.clear();
+    mState.store(State::Opening, std::memory_order_release);
+
+    LL_INFOS("Stream3D") << "Opening media multi source '" << mUrl
+                          << "' with " << mSpeakers.size()
+                          << " speaker(s)" << LL_ENDL;
+    return true;
+}
+
+void LLPositionalStreamMulti::setMediaRingFor3DStream(LLPluginAudioRingHeader* ring)
+{
+    if (mSourceKind != SourceKind::MediaRing || mMediaRing == ring)
+    {
+        return;
+    }
+
+    // The ring is owned by the media plugin shared-memory mapping. When a
+    // media source reloads or is destroyed, that mapping can disappear before
+    // the next manager update tick. Stop the decode thread while the old ring
+    // is still valid, then reopen against the new pointer on the main thread.
+    resetMediaRuntimeForReopen();
+    mMediaRing = ring;
+    mMediaReopenRequested.store(false, std::memory_order_release);
+    LL_INFOS("Stream3D") << "Media multi source ring pointer changed for "
+                          << mUrl << "; holding 3D route open"
+                          << LL_ENDL;
+    mState.store(State::Opening, std::memory_order_release);
+}
+
 bool LLPositionalStreamMulti::openSourceStream(const std::string& url)
 {
     FMOD::System* system = getFmodSystem();
@@ -413,6 +498,148 @@ bool LLPositionalStreamMulti::openSourceStream(const std::string& url)
     }
 
     mState.store(State::Opening, std::memory_order_release);
+    return true;
+}
+
+bool LLPositionalStreamMulti::validateMediaRingHeader() const
+{
+    if (!mMediaRing ||
+        mMediaRing->mMagic != LL_PLUGIN_AUDIO_RING_MAGIC ||
+        mMediaRing->mVersion != LL_PLUGIN_AUDIO_RING_VERSION ||
+        mMediaRing->mHeaderSize < sizeof(LLPluginAudioRingHeader) ||
+        mMediaRing->mCapacityFrames == 0)
+    {
+        return false;
+    }
+    return true;
+}
+
+bool LLPositionalStreamMulti::validateMediaRing(U32& sample_rate,
+                                                U32& channels,
+                                                U32& format_serial) const
+{
+    if (!validateMediaRingHeader())
+    {
+        return false;
+    }
+
+    sample_rate = mMediaRing->mSampleRate.load(std::memory_order_acquire);
+    channels = mMediaRing->mChannels.load(std::memory_order_acquire);
+    format_serial = mMediaRing->mFormatSerial.load(std::memory_order_acquire);
+    const U32 bytes_per_sample = mMediaRing->mBytesPerSample.load(std::memory_order_acquire);
+
+    return sample_rate > 0 &&
+           channels > 0 &&
+           channels <= LL_PLUGIN_AUDIO_RING_MAX_CHANNELS &&
+           bytes_per_sample == sizeof(F32);
+}
+
+bool LLPositionalStreamMulti::openMediaRingSource()
+{
+    if (!mMediaRing)
+    {
+        if (!mMediaReopenRequested.exchange(true, std::memory_order_acq_rel))
+        {
+            LL_INFOS("Stream3D") << "Media multi source audio ring unavailable for "
+                                  << mUrl << "; holding 3D route open"
+                                  << LL_ENDL;
+        }
+        mState.store(State::Opening, std::memory_order_release);
+        return false;
+    }
+
+    U32 sample_rate = 0;
+    U32 channels = 0;
+    U32 format_serial = 0;
+    if (!validateMediaRing(sample_rate, channels, format_serial))
+    {
+        if (!validateMediaRingHeader())
+        {
+            LL_WARNS("Stream3D") << "Media multi source audio ring vanished for "
+                                  << mUrl << LL_ENDL;
+            setFailed(FailReason::Network, "media ring vanished");
+        }
+        return false;
+    }
+
+    if (!ll_plugin_audio_ring_supported_3d_channel_count(channels))
+    {
+        LL_WARNS("Stream3D") << "Media multi source: unsupported channel count "
+                              << channels << " for " << mUrl
+                              << " (1/2/6/8 only)" << LL_ENDL;
+        setFailed(FailReason::FormatUnsupported,
+                  llformat("media channels=%u", channels));
+        return false;
+    }
+
+    mSampleRate = static_cast<int>(sample_rate);
+    mMediaRingChannels = static_cast<int>(channels);
+    mSourceChannels = mMediaLogicalChannels > 0
+                      ? mMediaLogicalChannels
+                      : mMediaRingChannels;
+    if (mSourceChannels > mMediaRingChannels)
+    {
+        LL_WARNS("Stream3D") << "Media multi source: requested logical "
+                              << mSourceChannels << "ch but callback bus has only "
+                              << mMediaRingChannels << "ch for " << mUrl << LL_ENDL;
+        setFailed(FailReason::FormatUnsupported,
+                  llformat("media requested_channels=%d callback_channels=%d",
+                           mSourceChannels, mMediaRingChannels));
+        return false;
+    }
+    mSourceBytesPerSample = sizeof(F32);
+    mSourceIsFloat = true;
+    mSourceType = FMOD_SOUND_TYPE_UNKNOWN;
+    mMediaFormatSerial = format_serial;
+
+    const U32 capacity = mMediaRing->mCapacityFrames;
+    const U32 total = capacity + 1;
+    const U32 write = mMediaRing->mWriteFrame.load(std::memory_order_acquire);
+    const U32 read = mMediaRing->mReadFrame.load(std::memory_order_relaxed);
+    const U32 available = (write >= read) ? (write - read) : (total - read + write);
+    if (available > kMediaPrebufferFrames)
+    {
+        const U32 keep = static_cast<U32>(std::min(kMediaPrebufferFrames,
+                                                   static_cast<size_t>(capacity)));
+        const U32 new_read = (write + total - keep) % total;
+        mMediaRing->mReadFrame.store(new_read, std::memory_order_release);
+        LL_INFOS("Stream3D") << "Media multi source latency trim: discarded "
+                              << (available - keep) << " stale frame(s) for "
+                              << mUrl << ", kept " << keep << " frame(s)"
+                              << LL_ENDL;
+    }
+
+    if (mSourceChannels == 6)
+    {
+        // Internal 6ch order is FL / FR / C / LFE / SL / SR. When CEF
+        // delivers its 7.1 callback bus, pumpMediaRingSource() maps
+        // the callback's SL/SR positions into this canonical order.
+        mDownmix = LLMultichannelDownmix::forSourceFormat(FMOD_SOUND_TYPE_FLAC,
+                                                          mSourceChannels);
+    }
+
+    const size_t n_tracks = (mSourceChannels >= 6) ? static_cast<size_t>(mSourceChannels) : 2;
+    const size_t cap = nextPow2(kMediaRingFrames);
+    mRing.reset(cap, n_tracks, mSpeakers.size());
+    mState = State::Buffering;
+
+    LL_INFOS("Stream3D") << "Media multi source ready: " << mUrl
+                          << " " << mSampleRate << " Hz x " << mSourceChannels
+                          << " logical ch"
+                          << (mMediaRingChannels != mSourceChannels
+                                  ? llformat(" (callback bus=%d ch)", mMediaRingChannels)
+                                  : std::string())
+                          << ", fmt=PCMFLOAT"
+                          << (mSourceChannels == 6
+                                  ? std::string(", layout=FL/FR/C/LFE/SL/SR")
+                                  : (mSourceChannels == 8
+                                         ? std::string(", layout=FL/FR/C/LFE/SL/SR/BL/BR")
+                                         : std::string()))
+                          << ", ring cap " << cap << " frames × " << n_tracks
+                          << " tracks, speakers=" << mSpeakers.size()
+                          << LL_ENDL;
+
+    startDecodeThread();
     return true;
 }
 
@@ -446,10 +673,8 @@ void LLPositionalStreamMulti::setFailed(FailReason reason, std::string detail)
     mState.store(State::Failed, std::memory_order_release);
 }
 
-void LLPositionalStreamMulti::releaseAll()
+void LLPositionalStreamMulti::releaseSpeakerRuntime()
 {
-    llassert(!mDecodeThread.joinable());
-
     // r11 P5: peel the LiteHrtfDsp off the channel chain BEFORE stopping,
     // mirroring the wind-DSP cleanup pattern in LLAudioEngine_FMODSTUDIO.
     // DSP::release() does detach internally, but removing while the
@@ -503,12 +728,53 @@ void LLPositionalStreamMulti::releaseAll()
     // SpeakerCallback structs are referenced by the FMOD pcmreadcallback,
     // which won't fire again after the sound is released — safe to drop.
     mSpeakerRuntime.clear();
+}
+
+void LLPositionalStreamMulti::resetMediaRuntimeForReopen()
+{
+    if (mSourceKind != SourceKind::MediaRing)
+    {
+        return;
+    }
+
+    stopDecodeThread();
+    releaseSpeakerRuntime();
 
     if (mSourceSound)
     {
         checkFmod(mSourceSound->release(), "Sound::release(source)");
         mSourceSound = nullptr;
     }
+
+    mMediaFormatSerial = 0;
+    mMediaRingChannels = 0;
+    mRing.clear();
+    mSampleRate = 0;
+    mSourceChannels = 0;
+    mSourceBytesPerSample = 0;
+    mSourceIsFloat = false;
+    mSourceType = FMOD_SOUND_TYPE_UNKNOWN;
+    mDownmix = LLMultichannelDownmix();
+    mState.store(State::Opening, std::memory_order_release);
+}
+
+void LLPositionalStreamMulti::releaseAll()
+{
+    llassert(!mDecodeThread.joinable());
+
+    releaseSpeakerRuntime();
+
+    if (mSourceSound)
+    {
+        checkFmod(mSourceSound->release(), "Sound::release(source)");
+        mSourceSound = nullptr;
+    }
+    mSourceKind = SourceKind::Url;
+    mMediaRing = nullptr;
+    mMediaFormatSerial = 0;
+    mMediaRingChannels = 0;
+    mMediaLogicalChannels = 0;
+    mMediaReopenRequested.store(false, std::memory_order_release);
     mRing.clear();
     mSampleRate = 0;
     mSourceChannels = 0;
@@ -523,6 +789,11 @@ void LLPositionalStreamMulti::releaseAll()
 
 const char* LLPositionalStreamMulti::sourceFormatName() const
 {
+    if (mSourceKind == SourceKind::MediaRing)
+    {
+        return "Media";
+    }
+
     // r10 P5: short codec label for the routing diagnostic log. Only the
     // codecs we actually meet on the AYAstorm path are spelled out — anything
     // else falls back to "Unknown" so the diagnostic line still parses.
@@ -765,6 +1036,8 @@ LLPositionalStreamMulti::mapChToUpmixRole(Channel ch)
     case Channel::LFE: return R::LFE;
     case Channel::SL:  return R::SL;
     case Channel::SR:  return R::SR;
+    case Channel::BL:  return R::SL;
+    case Channel::BR:  return R::SR;
     // Spec §4.3.6 legacy fold-in: r5–r9 ch values are mapped to their
     // closest 5.1 role so a pre-r10 desc with only L/R/M speakers still
     // gets a sensible upmix (L = front-left, R = front-right, M = center)
@@ -784,7 +1057,24 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
     using Op = SpeakerCallback::OpKind;
     using Role = LLMultichannelDownmix::MixRole;
 
-    if (mSourceChannels == 6 && mDownmix.isSupported())
+    if (mSourceChannels == 8)
+    {
+        switch (ch)
+        {
+        case Channel::L:
+        case Channel::FL:  cb.op_kind = Op::Track; cb.op_track = 0; return;
+        case Channel::R:
+        case Channel::FR:  cb.op_kind = Op::Track; cb.op_track = 1; return;
+        case Channel::M:
+        case Channel::C:   cb.op_kind = Op::Track; cb.op_track = 2; return;
+        case Channel::LFE: cb.op_kind = Op::Track; cb.op_track = 3; return;
+        case Channel::SL:  cb.op_kind = Op::Track; cb.op_track = 4; return;
+        case Channel::SR:  cb.op_kind = Op::Track; cb.op_track = 5; return;
+        case Channel::BL:  cb.op_kind = Op::Track; cb.op_track = 6; return;
+        case Channel::BR:  cb.op_kind = Op::Track; cb.op_track = 7; return;
+        }
+    }
+    else if (mSourceChannels == 6 && mDownmix.isSupported())
     {
         // r12 P4 auto-bypass: even when the publisher requested {upmix:on},
         // a 6ch native source falls through to the r10 placement / Bs775
@@ -803,6 +1093,8 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
         case Channel::LFE: cb.op_kind = Op::Track; cb.op_track = idx.LFE;     return;
         case Channel::SL:  cb.op_kind = Op::Track; cb.op_track = idx.SL;      return;
         case Channel::SR:  cb.op_kind = Op::Track; cb.op_track = idx.SR;      return;
+        case Channel::BL:  cb.op_kind = Op::Track; cb.op_track = idx.SL;      return;
+        case Channel::BR:  cb.op_kind = Op::Track; cb.op_track = idx.SR;      return;
         }
     }
     else if (mSourceChannels == 2 && mUpmixEnabled)
@@ -829,7 +1121,9 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
         case Channel::C:   cb.op_kind = Op::StereoSum;              return;
         case Channel::LFE:
         case Channel::SL:
-        case Channel::SR:  cb.op_kind = Op::Silent;                 return;
+        case Channel::SR:
+        case Channel::BL:
+        case Channel::BR:  cb.op_kind = Op::Silent;                 return;
         }
     }
     else  // mSourceChannels == 1 (or unexpected — falls through to Silent)
@@ -849,7 +1143,9 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
         case Channel::C:   cb.op_kind = Op::Track; cb.op_track = 0; return;
         case Channel::LFE:
         case Channel::SL:
-        case Channel::SR:  cb.op_kind = Op::Silent;                 return;
+        case Channel::SR:
+        case Channel::BL:
+        case Channel::BR:  cb.op_kind = Op::Silent;                 return;
         }
     }
     // Defensive default — every (ch, src_ch) combination above hits a
@@ -874,7 +1170,7 @@ bool LLPositionalStreamMulti::createUserSounds()
         ex.defaultfrequency = mSampleRate;
         ex.format = FMOD_SOUND_FORMAT_PCMFLOAT;
         ex.length = static_cast<U32>(mSampleRate) * sizeof(F32) * 5;
-        ex.decodebuffersize = 4096;
+        ex.decodebuffersize = (mSourceKind == SourceKind::MediaRing) ? 2048 : 4096;
         ex.pcmreadcallback = &pcmReadCallback;
 
         const FMOD_MODE mode = FMOD_OPENUSER
@@ -1094,6 +1390,11 @@ bool LLPositionalStreamMulti::startUserChannels()
 
 size_t LLPositionalStreamMulti::pumpSource()
 {
+    if (mSourceKind == SourceKind::MediaRing)
+    {
+        return pumpMediaRingSource();
+    }
+
     if (!mSourceSound || mSampleRate <= 0 || mSourceChannels <= 0) return 0;
     // Once we've declared the stream dead, don't keep banging on a broken
     // source — the manager's reconnect loop will rebuild us.
@@ -1255,6 +1556,131 @@ size_t LLPositionalStreamMulti::pumpSource()
     return read_bytes;
 }
 
+size_t LLPositionalStreamMulti::pumpMediaRingSource()
+{
+    if (!mMediaRing || mSampleRate <= 0 || mSourceChannels <= 0) return 0;
+    if (mState.load(std::memory_order_acquire) == State::Failed) return 0;
+
+    U32 sample_rate = 0;
+    U32 channels = 0;
+    U32 format_serial = 0;
+    if (!validateMediaRing(sample_rate, channels, format_serial) ||
+        static_cast<int>(sample_rate) != mSampleRate ||
+        static_cast<int>(channels) != mMediaRingChannels ||
+        format_serial != mMediaFormatSerial)
+    {
+        if (!validateMediaRingHeader())
+        {
+            LL_WARNS("Stream3D") << "Media multi source ring vanished for "
+                                  << mUrl << "; transitioning to Failed for reconnect"
+                                  << LL_ENDL;
+            setFailed(FailReason::Network, "media ring vanished");
+            return 0;
+        }
+
+        if (!mMediaReopenRequested.exchange(true, std::memory_order_acq_rel))
+        {
+            LL_INFOS("Stream3D") << "Media multi source format pending/changed for "
+                                  << mUrl << "; holding 3D route open"
+                                  << LL_ENDL;
+        }
+        mState.store(State::Opening, std::memory_order_release);
+        return 0;
+    }
+
+    const size_t free_frames = mRing.writeAvailable();
+    const size_t buffered_frames = mRing.readAvailable(0);
+    if (buffered_frames >= kMediaTargetBufferedFrames)
+    {
+        return 0;
+    }
+
+    constexpr size_t kMaxFramesPerPump = 8192;
+    const size_t target_room = kMediaTargetBufferedFrames - buffered_frames;
+    const size_t want_frames = std::min({ free_frames, target_room, kMaxFramesPerPump });
+    if (want_frames == 0) return 0;
+
+    const U32 capacity = mMediaRing->mCapacityFrames;
+    const U32 total = capacity + 1;
+    U32 read = mMediaRing->mReadFrame.load(std::memory_order_relaxed);
+    const U32 write = mMediaRing->mWriteFrame.load(std::memory_order_acquire);
+    U32 available = (write >= read) ? (write - read) : (total - read + write);
+    if (available > kMediaTargetBufferedFrames)
+    {
+        const U32 skip = static_cast<U32>(available - kMediaTargetBufferedFrames);
+        read = (read + skip) % total;
+        available -= skip;
+        mMediaRing->mReadFrame.store(read, std::memory_order_release);
+        LL_DEBUGS("Stream3D") << "Media multi source catch-up skipped "
+                               << skip << " stale frame(s) for " << mUrl
+                               << LL_ENDL;
+    }
+    const size_t frames_to_read = std::min(want_frames, static_cast<size_t>(available));
+    if (frames_to_read == 0)
+    {
+        return 0;
+    }
+
+    const size_t n_tracks = mRing.numTracks();
+    constexpr size_t kChunkFrames = kPumpChunkFrames;
+    std::vector<F32> chunk(kChunkFrames * n_tracks, 0.f);
+    const F32* samples = reinterpret_cast<const F32*>(
+        reinterpret_cast<const U8*>(mMediaRing) + mMediaRing->mHeaderSize);
+
+    size_t remaining = frames_to_read;
+    while (remaining > 0)
+    {
+        const size_t this_chunk = std::min(remaining, kChunkFrames);
+        std::fill(chunk.begin(), chunk.begin() + this_chunk * n_tracks, 0.f);
+
+        for (size_t i = 0; i < this_chunk; ++i)
+        {
+            const F32* src = samples + static_cast<size_t>(read) * LL_PLUGIN_AUDIO_RING_MAX_CHANNELS;
+            if (mSourceChannels == 1)
+            {
+                for (size_t t = 0; t < n_tracks; ++t)
+                {
+                    chunk[i * n_tracks + t] = src[0];
+                }
+            }
+            else
+            {
+                for (int c = 0; c < mSourceChannels && c < static_cast<int>(n_tracks); ++c)
+                {
+                    int src_channel = c;
+                    if (mMediaRingChannels == 8)
+                    {
+                        // CEF 7.1 callback order is FL/FR/C/LFE/BL/BR/SL/SR.
+                        // The 3D stream internals use FL/FR/C/LFE/SL/SR/BL/BR,
+                        // so normalize while copying out of the media ring.
+                        if (mSourceChannels == 6 && c >= 4)
+                        {
+                            src_channel = c + 2; // SL/SR <- CEF indices 6/7
+                        }
+                        else if (mSourceChannels == 8)
+                        {
+                            static constexpr int kCef71ToStream8[8] =
+                                { 0, 1, 2, 3, 6, 7, 4, 5 };
+                            src_channel = kCef71ToStream8[c];
+                        }
+                    }
+                    if (src_channel < mMediaRingChannels)
+                    {
+                        chunk[i * n_tracks + c] = src[src_channel];
+                    }
+                }
+            }
+            read = (read + 1) % total;
+        }
+
+        mRing.writeFrames(chunk.data(), this_chunk);
+        remaining -= this_chunk;
+    }
+
+    mMediaRing->mReadFrame.store(read, std::memory_order_release);
+    return frames_to_read;
+}
+
 void LLPositionalStreamMulti::update()
 {
     const State st = mState.load(std::memory_order_acquire);
@@ -1317,9 +1743,26 @@ void LLPositionalStreamMulti::update()
         return;
     }
 
-    if (!mSourceSound) return;
+    if (mSourceKind == SourceKind::MediaRing)
+    {
+        if (st == State::Opening)
+        {
+            if (mMediaReopenRequested.exchange(false, std::memory_order_acq_rel))
+            {
+                resetMediaRuntimeForReopen();
+            }
+            if (!openMediaRingSource())
+            {
+                return;
+            }
+        }
+    }
+    else if (!mSourceSound)
+    {
+        return;
+    }
 
-    if (st == State::Opening)
+    if (st == State::Opening && mSourceKind == SourceKind::Url)
     {
         FMOD_OPENSTATE state = FMOD_OPENSTATE_LOADING;
         FMOD_RESULT rr = mSourceSound->getOpenState(&state, nullptr, nullptr, nullptr);
@@ -1461,7 +1904,10 @@ void LLPositionalStreamMulti::update()
         // Each speaker has its own reader tail; checking idx 0 alone is
         // enough because no reader has consumed yet (channels are still
         // unpaused below) so all tails read identical readAvailable values.
-        if (mRing.readAvailable(0) >= kPrebufferFrames)
+        const size_t prebuffer_frames = (mSourceKind == SourceKind::MediaRing)
+                                      ? kMediaPrebufferFrames
+                                      : kPrebufferFrames;
+        if (mRing.readAvailable(0) >= prebuffer_frames)
         {
             if (!createUserSounds() || !startUserChannels())
             {

@@ -2665,6 +2665,12 @@ target_link_libraries(${VIEWER_BINARY_NAME}
         fs::discord # <FS:Ansariel> Discord  support
         )
 
+if( TARGET ll::fmodstudio )
+   # Keep FMOD/Opus after llaudio's static archive so the AYAstorm FMOD codec
+   # symbols resolve reliably in universal macOS links.
+   target_link_libraries(${VIEWER_BINARY_NAME} ll::fmodstudio )
+endif()
+
 if (USE_DISCORD)
    target_link_libraries(${VIEWER_BINARY_NAME} ll::discord_sdk )
 endif ()
