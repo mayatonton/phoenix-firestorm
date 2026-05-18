@@ -12324,6 +12324,68 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Backup</key>
     <integer>0</integer>
   </map>
+  <!-- <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdsidebar shadow res/dist 4-channel + projector 2-channel cvars.
+       BD pipeline reads these per-channel; AY pipeline currently consumes RenderShadowResolutionScale (scalar) only.
+       Wiring into LLPipeline shadow rendering is deferred to a follow-up step; the cvars exist now to satisfy
+       bdsidebar.cpp compile-time references (Cinematic-mode-only UI). -->
+  <key>RenderShadowResolution</key>
+  <map>
+    <key>Comment</key>
+    <string>Per-cascade sun/moon shadow map resolutions (4 cascades).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>LLSD</string>
+    <key>Value</key>
+    <array>
+      <real>1024.0</real>
+      <real>1024.0</real>
+      <real>1024.0</real>
+      <real>1024.0</real>
+    </array>
+  </map>
+  <key>RenderShadowDistance</key>
+  <map>
+    <key>Comment</key>
+    <string>Per-cascade sun/moon shadow distance multipliers.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>LLSD</string>
+    <key>Value</key>
+    <array>
+      <real>12.0</real>
+      <real>24.0</real>
+      <real>48.0</real>
+      <real>96.0</real>
+    </array>
+  </map>
+  <key>RenderProjectorShadowResolution</key>
+  <map>
+    <key>Comment</key>
+    <string>Projector shadow map resolution (X = width, Y = height).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>LLSD</string>
+    <key>Value</key>
+    <array>
+      <real>1024.0</real>
+      <real>1024.0</real>
+    </array>
+  </map>
+  <key>RenderShadowAutomaticDistance</key>
+  <map>
+    <key>Comment</key>
+    <string>If true, shadow cascade distances are computed automatically; if false, the per-cascade RenderShadowDistance entries can be edited via the BD sidebar.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <!-- </FS:AYAstorm:r30-bd-port> -->
   <key>RenderShadowSoftness</key>
   <map>
     <key>Comment</key>

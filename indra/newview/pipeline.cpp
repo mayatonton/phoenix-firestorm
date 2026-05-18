@@ -166,6 +166,9 @@ S32 LLPipeline::RenderShadowDetail;
 S32 LLPipeline::RenderShadowSplits;
 bool LLPipeline::RenderDeferredSSAO;
 F32 LLPipeline::RenderShadowResolutionScale;
+// <FS:AYAstorm:r30-bd-port> Phase 3.9: BD sidebar gating flag for manual shadow distance entry.
+bool LLPipeline::RenderShadowAutomaticDistance;
+// </FS:AYAstorm:r30-bd-port>
 bool LLPipeline::RenderDelayCreation;
 //bool LLPipeline::RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
 bool LLPipeline::FreezeTime;
@@ -617,6 +620,9 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("RenderShadowSplits");
     connectRefreshCachedSettingsSafe("RenderDeferredSSAO");
     connectRefreshCachedSettingsSafe("RenderShadowResolutionScale");
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9
+    connectRefreshCachedSettingsSafe("RenderShadowAutomaticDistance");
+    // </FS:AYAstorm:r30-bd-port>
     connectRefreshCachedSettingsSafe("RenderDelayCreation");
 //  connectRefreshCachedSettingsSafe("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     connectRefreshCachedSettingsSafe("FreezeTime");
@@ -1283,6 +1289,9 @@ void LLPipeline::refreshCachedSettings()
     RenderShadowSplits = gSavedSettings.getS32("RenderShadowSplits");
     RenderDeferredSSAO = gSavedSettings.getBOOL("RenderDeferredSSAO");
     RenderShadowResolutionScale = gSavedSettings.getF32("RenderShadowResolutionScale");
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9
+    RenderShadowAutomaticDistance = gSavedSettings.getBOOL("RenderShadowAutomaticDistance");
+    // </FS:AYAstorm:r30-bd-port>
     RenderDelayCreation = gSavedSettings.getBOOL("RenderDelayCreation");
 //  RenderAnimateRes = gSavedSettings.getBOOL("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     FreezeTime = gSavedSettings.getBOOL("FreezeTime");

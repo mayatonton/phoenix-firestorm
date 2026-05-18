@@ -41,6 +41,10 @@
 
 class LLVector3;
 class LLVector3d;
+// <FS:AYAstorm:r30-bd-port> Phase 3.9
+class LLVector4;
+class LLVector2;
+// </FS:AYAstorm:r30-bd-port>
 class LLQuaternion;
 class LLColor4;
 class LLColor3;
@@ -254,6 +258,10 @@ public:
     LLWString   getWString(std::string_view name);
     LLVector3   getVector3(std::string_view name);
     LLVector3d  getVector3d(std::string_view name);
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdsidebar.cpp expects these for shadow res/dist tuples.
+    LLVector4   getVector4(std::string_view name);
+    LLVector2   getVector2(std::string_view name);
+    // </FS:AYAstorm:r30-bd-port>
     LLRect      getRect(std::string_view name);
     LLSD        getLLSD(std::string_view name);
     LLQuaternion    getQuaternion(std::string_view name);

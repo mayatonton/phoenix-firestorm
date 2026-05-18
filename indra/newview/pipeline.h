@@ -1232,6 +1232,9 @@ public:
     static S32 RenderShadowSplits;
     static bool RenderDeferredSSAO;
     static F32 RenderShadowResolutionScale;
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD sidebar reads this to enable/disable manual shadow distance entries.
+    static bool RenderShadowAutomaticDistance;
+    // </FS:AYAstorm:r30-bd-port>
     static bool RenderDelayCreation;
 //  static bool RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     static bool FreezeTime;

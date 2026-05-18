@@ -37,6 +37,10 @@
 #include "llstring.h"
 #include "v3math.h"
 #include "v3dmath.h"
+// <FS:AYAstorm:r30-bd-port> Phase 3.9
+#include "v4math.h"
+#include "v2math.h"
+// </FS:AYAstorm:r30-bd-port>
 #include "v4coloru.h"
 #include "v4color.h"
 #include "v3color.h"
@@ -712,6 +716,31 @@ LLVector3d LLControlGroup::getVector3d(std::string_view name)
 {
     return get<LLVector3d>(name);
 }
+
+// <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdsidebar.cpp reads shadow res/dist as Vector4/Vector2.
+// Stored as LLSD array in settings.xml; constructed via LLVector4/LLVector2 LLSD ctor.
+LLVector4 LLControlGroup::getVector4(std::string_view name)
+{
+    LLControlVariable* control = getControl(name);
+    if (control)
+    {
+        return LLVector4(control->get());
+    }
+    LL_WARNS() << "Control " << name << " not found." << LL_ENDL;
+    return LLVector4();
+}
+
+LLVector2 LLControlGroup::getVector2(std::string_view name)
+{
+    LLControlVariable* control = getControl(name);
+    if (control)
+    {
+        return LLVector2(control->get());
+    }
+    LL_WARNS() << "Control " << name << " not found." << LL_ENDL;
+    return LLVector2();
+}
+// </FS:AYAstorm:r30-bd-port>
 
 LLQuaternion LLControlGroup::getQuaternion(std::string_view name)
 {
