@@ -9102,6 +9102,12 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
     gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
     gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
 
+    // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
+    static LLCachedControl<F32> nodof_chroma_str(gSavedSettings, "RenderChromaStrength", 0.0f);
+    gDeferredPostNoDoFProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
+    gDeferredPostNoDoFProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, (F32)nodof_chroma_str);
+    // </AYAstorm r30 P4 step 4>
+
     {
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -9549,6 +9555,9 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 
                 gDeferredPostProgram.bind();
                 gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mRT->deferredLight, LLTexUnit::TFO_POINT);
+                // <AYAstorm r30 P4 step 4> HQ DoF needs depthMap for the s.a <= depth*0.50 gate
+                gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+                // </AYAstorm r30 P4 step 4>
 
                 gDeferredPostProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
@@ -9556,6 +9565,11 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredPostProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, adj_COF);
                 // </FS:Beq>
                 gDeferredPostProgram.uniform1f(LLShaderMgr::DOF_RES_SCALE, CameraDoFResScale);
+
+                // <AYAstorm r30 P4 step 4> BD chroma_str (HAS_DOF_CHROMA permutation, no-op otherwise)
+                static LLCachedControl<F32> dof_chroma_str(gSavedSettings, "RenderChromaStrength", 0.0f);
+                gDeferredPostProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, (F32)dof_chroma_str);
+                // </AYAstorm r30 P4 step 4>
 
                 mScreenTriangleVB->setBuffer();
                 mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -9809,6 +9823,10 @@ void LLPipeline::renderFinalize()
     gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
 
     gDeferredPostNoDoFNoiseProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)sourceBuffer->getWidth(), (GLfloat)sourceBuffer->getHeight());
+    // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
+    static LLCachedControl<F32> nodof_noise_chroma_str(gSavedSettings, "RenderChromaStrength", 0.0f);
+    gDeferredPostNoDoFNoiseProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, (F32)nodof_noise_chroma_str);
+    // </AYAstorm r30 P4 step 4>
 
     {
         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
