@@ -550,7 +550,16 @@ uniform vec4 SMAA_RT_METRICS;
 #endif
 
 #ifndef SMAA_DECODE_VELOCITY
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> BD decodes the
+// half-encoded velocity by multiplying by 0.5; AY removed that scale to
+// keep its own velocity pipeline at full magnitude. Cinematic restores
+// BD parity, AY mode keeps the AY-tuned path.
+#if AYASTORM_CINEMATIC
+#define SMAA_DECODE_VELOCITY(sample) (sample.rg * 0.5)
+#else
 #define SMAA_DECODE_VELOCITY(sample) sample.rg
+#endif
+// </FS:AYA>
 #endif
 
 //-----------------------------------------------------------------------------
