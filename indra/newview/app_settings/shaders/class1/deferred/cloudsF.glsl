@@ -146,8 +146,14 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    // <FS:AYA r20 Phase C> .a = SSS skin mask, clouds are not skin.
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> r20 SSS skin
+    // mask in gbuffer3.a; clouds are never skin. Cinematic restores BD
+    // original (passes cloud alpha through into gbuffer3.a).
+#if AYASTORM_CINEMATIC
+    frag_data[3] = vec4(color.rgb, alpha1);
+#else
     frag_data[3] = vec4(color.rgb, 0.0);
+#endif
     // </FS:AYA>
 #else
     frag_data[0] = vec4(color.rgb, alpha1);
