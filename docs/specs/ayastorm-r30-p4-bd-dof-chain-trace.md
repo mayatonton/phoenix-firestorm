@@ -360,49 +360,42 @@ shader 側の permutation 付与 (HAS_DOF_CHROMA / FRONT_BLUR / HQ DoF 分岐) �
 | `RenderChromaStrength` | **2026-05-19 再更新**: 初期値 0.0 だったが step 6 受入で「Cinematic ON で何も見えない」と判定 (effect 自体が subtle なので chroma_str=0 だと「機能が無いように見える」)。`feedback_match_bd_defaults_on_borrow.md` を実体験ベースで再適用 → **5.0** に変更。radial offset 数式は §2.3 の「NoDoF vignette」を `chroma_str * 0.0005 * r2` の係数に書き直し済 (= 5.0 で画面端 ~0.5% shift, subtle だが「気付く」range)。BD の 0.0 default は元々 BD UI に slider が露出していることが前提なので、AYAstorm 専用 floater (§5.8 改) で同等動線を提供する以上、default を 5.0 に上げる方が borrow rule に整合する | 影響なし |
 | `RenderDepthOfFieldFront` | **1 (= BD default、front blur ON)** ※ 2026-05-18 追加。HQ DoF user opt-in 時のみ effective。Cinematic+HQ DoF で初見 = BD と同じ前ボケ挙動 | 影響なし (Cinematic gate で ignore) |
 
-### 5.8 UI 取り込み = AYAstorm 独自 Cinematic sub-tab (B 案、SSS パターン踏襲)
+### 5.8 UI 取り込み = AYAstorm top menu + 専用 Cinematic Controls floater (C 案、2026-05-19 改)
 
-**2026-05-18 AYA 判断**: BD UI そのものは取り込まないが、`panel_preferences_sss.xml` (r20 で確立した SSS sub-tab) と同じ流儀で **AYAstorm 独自の Cinematic 専用 Preferences sub-tab を P4 で先行新設** する。
+**2026-05-19 revise** (元 B 案 = Preferences sub-tab から変更): step 4a 実装着手前の最終判断で AYA から「これは永続設定じゃなく撮影中ライブ調整する性質、Preferences より撮影 workflow 側」「ただし Phototools は既に 6 tab ぎっしりで section 追加余地が無い」との指摘 → **AYAstorm 独自 top menu 新設 + 専用 Cinematic Controls floater** で確定。
 
-**判断根拠**: `feedback_match_bd_defaults_on_borrow.md` を UI 動線にも適用。BD には slider/checkbox が露出されているのに AYAstorm 側で debug settings 経由を要求すると、初見比較で動線負け。Cinematic mode は撮影 viewer ポジションなので、撮影者が Preferences の Cinematic タブを開いて即 dial in できる UX を最初から提供する。
+**判断根拠の更新**: `feedback_match_bd_defaults_on_borrow.md` の UI 動線適用は維持しつつ、設定の **性質** (永続 vs ライブ) と **動線** (Preferences vs Photo workflow) の整合を優先。BD はそもそも viewer 全体が撮影 specialty なので per-control の置き場議論が薄く、AYAstorm では撮影 mode と日常使用 mode の境界が明示されているため、撮影時 ライブ調整 floater を独立で用意する流れが自然。
 
-**実装方針 (SSS パターン踏襲)**:
+**実装方針 (top menu + 専用 floater)**:
 
-1. 新規 panel xml: `indra/newview/skins/default/xui/en/panel_preferences_cinematic.xml`
-   - header コメント `<!-- <FS:AYA r30 P4> Cinematic preferences panel (Graphics > Cinematic sub-tab) -->` で wrap (SSS パターン同様)
-   - 「This panel only affects Cinematic mode (View Mode を Cinematic に切替後の再起動で適用)」の説明文を冒頭に配置
-   - controls 4 件:
-     - `<check_box control_name="RenderDepthOfFieldHighQuality" label="High Quality Depth of Field (heavy, photo only)" />`
-     - `<check_box control_name="RenderDepthOfFieldFront" label="Foreground Blur (front of focus point)" />` (HQ DoF 有効時のみ effective、tooltip で明示)
-     - `<check_box control_name="RenderDepthOfFieldChroma" label="Chromatic Aberration (DoF only)" />`
-     - `<slider control_name="RenderChromaStrength" label="Chroma Strength" min_val="0.0" max_val="3.0" decimal_digits="2" />`
+1. **新規 top menu**: `indra/newview/skins/default/xui/en/menu_viewer.xml` の Build と Help の間に `<menu label="AYAstorm" name="AYAstorm" tear_off="true">` を新設。初期メニュー項目は 1 件:
+   - `Cinematic Controls...` (shortcut: Alt+C) → `Floater.Toggle parameter="aya_cinematic"`
 
-2. `panel_preferences_graphics1.xml` 末尾 (`</tab_container>` 直前、SSS sub-tab の隣) に sub-tab 埋め込み追加:
+2. **新規 floater**: `indra/newview/skins/default/xui/en/floater_aya_cinematic.xml` (width 320 / height 320 / single_instance)
+   - Header section: 「Active only when View Mode (Graphics tab) is Cinematic. View Mode change requires restart; controls below apply live.」の説明
+   - Depth of Field section: `RenderDepthOfFieldHighQuality` + `RenderDepthOfFieldFront` の 2 checkbox
+   - Chromatic Aberration section: `RenderDepthOfFieldChroma` checkbox + `RenderChromaStrength` slider_bar + spinner + Reset (D) button
+   - Footer: BD borrow credit + release notes リンク
 
-   ```xml
-   <!-- <FS:AYA r30 P4> Cinematic sub-tab inside Graphics -->
-       <panel
-        class="panel_preference_cinematic"
-        filename="panel_preferences_cinematic.xml"
-        top_pad="5"
-        bottom="-1"
-        left="1"
-        right="-1"
-        follows="all"
-        label="Cinematic"
-        name="Cinematic" />
-   <!-- </FS:AYA> -->
+3. **floater 登録**: `indra/newview/llviewerfloaterreg.cpp` の `phototools_camera` 登録の直後に追加:
+   ```cpp
+   LLFloaterReg::add("aya_cinematic", "floater_aya_cinematic.xml",
+       (LLFloaterBuildFunc)&LLFloaterReg::build<FloaterQuickPrefs>);
    ```
+   Phototools と同じ `FloaterQuickPrefs` 派生 generic class を流用、cvar binding は XML の `control_name` 自動。C++ 新規 class 不要。
 
-3. `llpanelpreferencecinematic.{h,cpp}` の C++ skeleton (`LLPanelPreferenceCinematic` 派生クラス) — SSS panel の class 構造 (`LLPanelPreferenceSSS`) を参考に最小実装。値の Apply/Cancel は LLControlGroup 自動 binding を活用、独自フックは出さない。
+4. **多言語**: P4 では英語のみ。AYAstorm release notes (ja/en/zh 3 言語) で floater の存在は告知。lproj は P5+ で Cinematic 系機能拡張時にまとめて翻訳。
 
-4. ローカライゼーション file (ja/zh) は P4 出荷時に Volumetric/Motion Blur 等他 Cinematic cvar の sub-tab 拡張を見越して **panel_preferences_cinematic.xml 自体を多言語 lproj に複製** (SSS 同様、`indra/newview/skins/default/xui/{ja,zh}/panel_preferences_cinematic.xml`)。
-
-**将来の拡張**: chapter §3 P5+ で予定の AYAstorm UI 整理 phase で Volumetric / Motion Blur / Velocity buffer / DoF combine 等の P2-P5 Cinematic cvar を同じ Cinematic sub-tab に追加していく。P4 で枠を切ったことで P5+ は controls 追加だけで済む。
+**将来の拡張**: chapter §3 P5+ で Volumetric / Motion Blur / Velocity buffer などが入る際は、AYAstorm top menu に sibling menu item を追加 (Cinematic Controls / Volumetric Controls / Motion Blur Controls など) するか、Cinematic Controls floater に section を追加する。判断は P5 spec で行う。
 
 **取り込まないもの**:
 - BD `panel_preferences_graphics1.xml:5600-5622, 6944-6961` (BD 独自の chroma/HQ DoF controls) — Firestorm XUI 規約と整合しないため
 - BD `panel_machinima.xml:681-692, 1775` (BD Photo Tools sidebar) — chapter §1.2 通り、BD UI は不取り込み
+
+**revise した B 案 (Preferences sub-tab) との比較**:
+- B 案メリット: SSS パターンと統一感、Graphics tab の延長で発見容易
+- B 案デメリット: Preferences は永続設定の場、撮影中に何度も値を試す UX とミスマッチ
+- C 案 (採用): 撮影中ライブ調整に最適化、AYAstorm 独自性も top menu で明示、P5+ 拡張の枠も用意
 
 ---
 
@@ -461,13 +454,12 @@ P3 の Volumetric Lighting cvar 群直後に追加 (chapter §3 順序通り):
 - `llshadermgr.cpp` の `mReservedUniforms.push_back()` 列の対応位置に `"chroma_str"` 追加 (enum 順 = 文字列順を厳守)
 - §7 で BD 側の具体 line / 既存 enum 順を再 fetch して確認
 
-### 6.4a step 4a: AYAstorm 独自 Cinematic Preferences sub-tab 新設 (§5.8 / §7.5 B 案)
+### 6.4a step 4a: AYAstorm top menu + 専用 Cinematic Controls floater 新設 (§5.8 / §7.5 C 案、2026-05-19 改)
 
-- 新規: `indra/newview/skins/default/xui/en/panel_preferences_cinematic.xml` (SSS パターン踏襲、controls 4 件 = HQ DoF checkbox + Front Blur checkbox + Chroma checkbox + Chroma Strength slider)
-- 新規: `indra/newview/llpanelpreferencecinematic.{h,cpp}` (SSS の `LLPanelPreferenceSSS` を参考に最小 class skeleton)
-- 既存改修: `indra/newview/skins/default/xui/en/panel_preferences_graphics1.xml` の SSS sub-tab (line 2145-2156) の隣 (= `</tab_container>` 直前) に Cinematic sub-tab を追加
-- 多言語複製: `indra/newview/skins/default/xui/{ja,zh}/panel_preferences_cinematic.xml` (SSS パターン同様、label/tooltip のみ翻訳)
-- `CMakeLists.txt` への新規 cpp/h 登録 (必要なら)
+- 既存改修: `indra/newview/skins/default/xui/en/menu_viewer.xml` の Build と Help の間に `<menu label="AYAstorm">` 新設 + `Cinematic Controls...` (Alt+C) メニュー項目 1 件
+- 新規: `indra/newview/skins/default/xui/en/floater_aya_cinematic.xml` (320×320、Header / Depth of Field / Chromatic Aberration / Footer の 4 section)
+- 既存改修: `indra/newview/llviewerfloaterreg.cpp` で `aya_cinematic` → `floater_aya_cinematic.xml` を `FloaterQuickPrefs` class 流用で登録 (C++ 新規 class 不要)
+- 多言語: P4 では英語のみ、lproj は P5+ で実施
 
 ### 6.4 step 4: `pipeline.cpp` / `pipeline.h` 配線
 
@@ -610,18 +602,17 @@ $ diff /tmp/bd_check/.../class1/deferred/dofCombineF.glsl \
 
 P3 で同様の `bindDeferredShader` 系操作をした実装が commit 済の可能性があるので、P4 着手時に git log で P3 commit を見て参考にする。
 
-### 7.5 ✓ Resolved (2026-05-18) — cvar UI 取り込み判断 = **B (SSS パターン踏襲)**
+### 7.5 ✓ Resolved (2026-05-18 B 案 → 2026-05-19 C 案へ revise) — cvar UI 取り込み判断 = **C (top menu + 専用 floater)**
 
-**AYA 判断** (2026-05-18): 「B で Cinematic 専用の Graphic preference タブを用意したほうが良いかもしれませんね　SSS みたいに」 → **B 案 + r20 SSS sub-tab 構造を踏襲** で確定。本 spec §5.8 を B 案で更新済。
+**判断履歴**:
 
-**踏襲する r20 SSS 構造の確認結果**:
-- `panel_preferences_sss.xml` 独立 panel file (label="SSS", name="sss")
-- `panel_preferences_graphics1.xml:2145-2156` に sub-tab として埋め込み (`<!-- <FS:AYA r20 Phase A> SSS sub-tab inside Graphics -->` / `<!-- </FS:AYA> -->` ガード)
-- `class="panel_preference_sss"` で C++ class binding
+- **2026-05-18**: 「B で Cinematic 専用の Graphic preference タブを用意したほうが良いかもしれませんね SSS みたいに」 → **B 案 (Preferences sub-tab + SSS パターン踏襲)** で確定、§5.8 を B 案で起草。step 1-5 を実装。
+- **2026-05-19** (step 4a 着手時): AYA から「Preferences ではなく、撮影時にも使うことを前提に Phototools に入れるほうがいいのかも。あれは永続的に設定する項目ではないのかな」との指摘 → DoF/chroma 全 cvar が **撮影中ライブ調整** 性質と再判定。Phototools 移植も検討したが、AYA より「Phototools はすでにタブがいっぱい (Env/Shdw/VFX/Gen/Aids/Cam の 6 tab 横幅ぎっしり)」と確認、tab 追加も VFX 内 section 追加も不適と判断。最終: **AYAstorm 独自 top menu 新設 + 専用 Cinematic Controls floater (C 案)** で確定。§5.8 を C 案で全面 rewrite、§6.4a も同様。
 
-Cinematic 用は同形式で `panel_preferences_cinematic.xml` を新規追加 + `panel_preferences_graphics1.xml` の SSS sub-tab の隣に sub-tab を追加。詳細実装は §5.8。
-
-**判断ルール記録**: BD borrow 機能の UI 動線も BD と対等に。「BD UI は不取り込み」原則は守りつつ、AYAstorm 流儀で対等な動線を提供する (`feedback_match_bd_defaults_on_borrow.md` の UI 適用)。
+**判断ルール記録**:
+- BD borrow 機能の UI 動線も BD と対等に (`feedback_match_bd_defaults_on_borrow.md` UI 適用) を維持
+- 設定の **性質** (永続 vs ライブ) を見てから UI 配置を決める。Boolean 4 件 + slider 1 件のうち主要因 (chroma strength slider) が「撮影中スライダー触りまくる」性質なら Preferences ではなく専用 floater
+- Phototools は既に飽和、AYAstorm 独自 top menu を立てる方が拡張余地と独自性両立
 
 ### 7.6 ✓ Resolved (2026-05-18) — BD repo の再 fetch
 
@@ -677,7 +668,15 @@ BD `panel_preferences_graphics1.xml` の chroma UI (line 5600-5622, 6944-6961) �
 
 ### 9.2 step 6 受入観測 (2026-05-19)
 
-§6.6 参照。chroma 数式の二重バグ (texcoord 単位誤認 + vignette 数式が subtle 過ぎ) を受入過程で発見、radial per-channel offset 方式に書き直し + chroma_str default を 0.0 → 5.0 へ。
+§6.6 参照。chroma 数式の二重バグ (texcoord 単位誤認 + vignette 数式が subtle 過ぎ) を受入過程で発見、radial per-channel offset 方式に書き直し + chroma_str default を 0.0 → 5.0 へ。受入経過の commit hash は §9.3 参照。
+
+| commit | step | 内容 |
+|---|---|---|
+| `181c813e49` | step 6 | chroma 数式 hotfix (radial offset) + default 5.0 + spec §6.6 受入観測 |
+
+### 9.3 step 4a UI rework (2026-05-19)
+
+§5.8 / §6.4a / §7.5 参照。B 案 (Preferences sub-tab) で起草・着手したが、step 4a 直前で AYA から「これは永続設定でなく撮影中ライブ調整」「Phototools 飽和」の二段指摘を受け **C 案 (top menu + 専用 floater)** に revise。Preferences 系の作業 (panel + floater_preferences entry) は実装途中で revert、現行構成: AYAstorm top menu (Build と Help の間) + Cinematic Controls floater (Alt+C)。
 
 ---
 

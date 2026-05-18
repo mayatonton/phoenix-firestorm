@@ -2635,9 +2635,29 @@
        </menu_item_call>
       </menu>   
     
+    <!-- <AYAstorm r30 P4 step 4a> AYAstorm top-level menu.
+         Houses Cinematic-mode controls and (future P5/P6+) AYAstorm-specific
+         post-processing toggles. Placed between Build and Help. -->
+    <menu
+     create_jump_keys="true"
+     label="AYAstorm"
+     name="AYAstorm"
+     tear_off="true"
+     visible="true">
+        <menu_item_call
+         label="Cinematic Controls..."
+         name="aya_cinematic_controls"
+         shortcut="alt|C">
+            <menu_item_call.on_click
+             function="Floater.Toggle"
+             parameter="aya_cinematic" />
+        </menu_item_call>
+    </menu>
+    <!-- </AYAstorm r30 P4 step 4a> -->
+
     <!-- Help Menu -->
-    
-    
+
+
     <menu
      create_jump_keys="true"
      label="Help"

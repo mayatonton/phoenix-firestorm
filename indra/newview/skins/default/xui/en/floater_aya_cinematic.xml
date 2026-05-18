@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<!--
+  AYAstorm r30 P4 — Cinematic Controls floater.
+  Live-adjust UI for BD-borrowed DoF/chroma chain. All controls here only
+  produce visible effects when View Mode (Graphics tab) is set to "Cinematic"
+  (AYAVisualRealismEnabled=2). Future P5/P6+ Cinematic post-processing
+  toggles land in this floater as new sections.
+-->
+<floater
+ can_resize="false"
+ can_close="true"
+ can_minimize="true"
+ height="320"
+ help_topic="aya_cinematic_floater"
+ layout="topleft"
+ name="aya_cinematic"
+ positioning="topright"
+ save_rect="true"
+ save_dock_state="true"
+ single_instance="true"
+ title="AYAstorm Cinematic Controls"
+ width="320">
+
+    <!-- ===== Header / mode hint ===== -->
+    <panel
+     name="P_Header"
+     follows="top|left|right"
+     layout="topleft"
+     top="0"
+     left="3"
+     right="-3"
+     height="38"
+     bg_alpha_color="Phototools_Header"
+     border_visible="true"
+     border_thickness="1"
+     background_visible="true">
+        <text
+         name="T_Header"
+         follows="left|top|right"
+         layout="topleft"
+         left="5"
+         top="4"
+         right="-5"
+         height="28"
+         font="SansSerifSmall"
+         word_wrap="true">
+            Active only when View Mode (Graphics tab) is "Cinematic". View Mode change requires restart; controls below apply live.
+        </text>
+    </panel>
+
+    <!-- ===== Depth of Field ===== -->
+    <panel
+     name="P_DoF_Section_Header"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="3"
+     left="3"
+     right="-3"
+     height="22"
+     bg_alpha_color="Phototools_Header"
+     border_visible="true"
+     border_thickness="1"
+     background_visible="true">
+        <text
+         name="T_DoF_Section"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         font="SansSerif"
+         height="17"
+         width="280">
+            Depth of Field
+        </text>
+    </panel>
+
+    <panel
+     name="P_DoF_Settings"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="1"
+     left="3"
+     right="-3"
+     height="50"
+     border_visible="true"
+     background_visible="true">
+        <check_box
+         control_name="RenderDepthOfFieldHighQuality"
+         height="16"
+         label="High quality DoF (4× CoF, depth-gated)"
+         layout="topleft"
+         left="5"
+         name="DoFHighQuality"
+         tool_tip="Black Dragon's high-quality DoF post-pass. Higher GPU cost."
+         top_pad="5"
+         width="300"/>
+        <check_box
+         control_name="RenderDepthOfFieldFront"
+         height="16"
+         label="Front-of-focus blur"
+         layout="topleft"
+         left="5"
+         name="DoFFront"
+         tool_tip="Allow objects in front of the focus plane to blur, not just behind it."
+         top_pad="2"
+         width="300"/>
+    </panel>
+
+    <!-- ===== Chromatic aberration ===== -->
+    <panel
+     name="P_Chroma_Section_Header"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="3"
+     left="3"
+     right="-3"
+     height="22"
+     bg_alpha_color="Phototools_Header"
+     border_visible="true"
+     border_thickness="1"
+     background_visible="true">
+        <text
+         name="T_Chroma_Section"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         font="SansSerif"
+         height="17"
+         width="280">
+            Chromatic Aberration
+        </text>
+    </panel>
+
+    <panel
+     name="P_Chroma_Settings"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="1"
+     left="3"
+     right="-3"
+     height="80"
+     border_visible="true"
+     background_visible="true">
+        <check_box
+         control_name="RenderDepthOfFieldChroma"
+         height="16"
+         label="Couple to DoF blur (off = vignette only)"
+         layout="topleft"
+         left="5"
+         name="DoFChroma"
+         tool_tip="On: R/G/B offset scales with DoF blur amount (per-pixel). Off: radial vignette aberration at screen edges only."
+         top_pad="5"
+         width="300"/>
+        <text
+         name="T_ChromaStrength"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         top_pad="8"
+         width="100">
+            Strength
+        </text>
+        <slider_bar
+         name="SB_ChromaStrength"
+         control_name="RenderChromaStrength"
+         follows="left|top"
+         height="16"
+         increment="0.5"
+         layout="topleft"
+         left_pad="0"
+         min_val="0"
+         max_val="100"
+         top_delta="-2"
+         width="120"/>
+        <spinner
+         name="S_ChromaStrength"
+         control_name="RenderChromaStrength"
+         top_delta="-3"
+         label_width="0"
+         left_pad="0"
+         decimal_digits="1"
+         follows="left|top"
+         max_val="100"
+         min_val="0"
+         width="55"
+         increment="0.5"/>
+        <button
+         follows="left|top"
+         name="Reset_ChromaStrength"
+         height="22"
+         label="D"
+         layout="topleft"
+         left_pad="0"
+         top_delta="0"
+         width="20"
+         tool_tip="Reset to the default value.">
+            <button.commit_callback
+             function="ResetControl"
+             parameter="RenderChromaStrength"/>
+        </button>
+    </panel>
+
+    <!-- ===== Footer ===== -->
+    <text
+     name="T_Credits"
+     follows="bottom|left|right"
+     layout="topleft"
+     left="5"
+     top_pad="8"
+     right="-5"
+     height="24"
+     font="SansSerifSmall"
+     word_wrap="true"
+     text_color="White_50">
+        BD DoF chain borrowed from Black Dragon viewer (LGPL-2.1). See AYAstorm r30 P4 release notes.
+    </text>
+
+</floater>
