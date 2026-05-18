@@ -76,7 +76,17 @@ void main()
 
     vary_texcoord0 = (texture_matrix0 * vec4(texcoord0,0,1)).xy;
 
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> FS:Beq added an
+    // ambient_color tint so the preview inherits the scene ambient. BD
+    // starts from black so the preview reads as a neutral light study.
+    // The ambient_color uniform stays declared in both modes (harmless
+    // when unbound on the C++ side).
+#if AYASTORM_CINEMATIC
+    vec4 col = vec4(0,0,0,1);
+#else
     vec4 col = ambient_color; // <FS:Beq/> add ambient color to preview shader
+#endif
+    // </FS:AYA>
 
     // Collect normal lights (need to be divided by two, as we later multiply by 2)
     col.rgb += light_diffuse[1].rgb * calcDirectionalLight(norm, light_position[1].xyz);
