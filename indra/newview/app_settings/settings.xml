@@ -12051,6 +12051,54 @@ Change of this parameter will affect the layout of buttons in notification toast
     <integer>1</integer>
   </map>
 
+  <key>RenderDepthOfFieldHighQuality</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4: enable BlackDragon's high quality Depth of Field shader (postDeferredHQDoFF.glsl) with 4x CoF, depth-gated sampling, and per-channel chroma sampling. Only active when AYAVisualRealismEnabled=2 (Cinematic). Higher GPU cost than the standard DoF; toggling rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+
+  <key>RenderDepthOfFieldFront</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4 (BD borrow): enable blurring the foreground (front blur) with Depth of Field. Adds the FRONT_BLUR permutation to postDeferredF / postDeferredHQDoFF so positive CoF samples are blurred too. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderDepthOfFieldChroma</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4 (BD borrow): use DoF-coupled chromatic aberration (per-channel R/G/B offset in postDeferred*F). When 1, chroma scales with CoF inside DoF; when 0, postDeferredNoDoFF runs a vignette-style screen-edge chroma instead. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderChromaStrength</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4 (BD borrow): chromatic aberration strength (chroma_str uniform). 0 = invisible, BD default 0.0 ships the feature gate on with the slider at zero so users opt in via Cinematic Preferences. Range guidance: 0.0-2.0 subtle, 2.0-5.0 visible, >5.0 stylized. Only active when AYAVisualRealismEnabled=2 (Cinematic).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+
   <key>RenderDepthOfFieldInEditMode</key>
   <map>
     <key>Comment</key>
