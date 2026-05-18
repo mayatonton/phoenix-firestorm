@@ -33,9 +33,7 @@ uniform sampler2D depthMap;
 uniform vec2 screen_res;
 in vec2 vary_fragcoord;
 
-// <AYAstorm r30 P4 step 1> BD chroma uniform (used in NoDoF path when HAS_DOF_CHROMA==0)
 uniform float chroma_str;
-// </AYAstorm r30 P4 step 1>
 
 //=================================
 // borrowed noise from:
@@ -77,6 +75,77 @@ float noise(vec2 x) {
 
 vec3 clampHDRRange(vec3 color);
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+//   Cinematic — BD original: gradient/luma/depth-weighted radial CA with
+//     per-channel dispersion weights (wR=0.60, wG=0.15, wB=1.00) and
+//     dFdx/dFdy edge term; clamps to [0,1] before returning.
+//   AY        — r30 P4 step 1 radial-offset sampling: per-channel
+//     re-sample with radial shift = chroma_str * 0.0005 * r2, no
+//     gradient/luma/depth modulation, no clamp.
+// Two main() bodies; selection via #if AYASTORM_CINEMATIC.
+
+#if AYASTORM_CINEMATIC
+
+void main()
+{
+    vec4 diff = texture(diffuseRect, vary_fragcoord.xy);
+#if HAS_DOF_CHROMA == 0
+    vec3 col = diff.rgb;
+
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+
+    vec2 p = (vary_fragcoord.xy / screen_res.xy) * 2.0 - 1.0;
+    float r = dot(p, p);
+
+    float depth = texture(depthMap, vary_fragcoord.xy).r;
+    float depthWeight = smoothstep(0.2, 0.8, depth);
+    depthWeight *= depthWeight;
+
+    vec3 gx = dFdx(col);
+    vec3 gy = dFdy(col);
+    vec3 grad = gx + gy;
+    float edge = length(grad);
+
+    // Blue disperses most, green least
+    const float wR = 0.60;
+    const float wG = 0.15;
+    const float wB = 1.00;
+
+    float ca =
+        chroma_str *
+        edge *
+        smoothstep(0.15, 1.0, luma) *
+        smoothstep(0.0, 1.2, r) *
+        depthWeight;
+
+    vec2 dir = normalize(p + 1e-5);
+
+    col.r += ca * wR * (grad.r) * dir.x;
+    col.g += ca * wG * (grad.g) * dir.x * 0.25; // very subtle
+    col.b -= ca * wB * (grad.b) * dir.x;
+
+    col.r += ca * wR * gy.r * 0.30;
+    col.b -= ca * wB * gy.b * 0.30;
+
+    diff.rgb = col;
+    diff.rgb = clamp(diff.rgb, 0.0, 1.0);
+#endif
+
+
+#ifdef HAS_NOISE
+    vec2 tc_q = vary_fragcoord.xy*screen_res*4.0;
+    vec3 seed = (diff.rgb+vec3(1.0))*vec3(tc_q.xy, tc_q.x+tc_q.y);
+    vec3 nz = vec3(noise(seed.rg), noise(seed.gb), noise(seed.rb));
+    diff.rgb += nz*0.003;
+#endif
+
+    diff.rgb = clampHDRRange(diff.rgb);
+    frag_color = diff;
+
+    gl_FragDepth = texture(depthMap, vary_fragcoord.xy).r;
+}
+
+#else // AYASTORM_CINEMATIC
 
 void main()
 {
@@ -120,3 +189,5 @@ void main()
     gl_FragDepth = texture(depthMap, vary_fragcoord.xy).r;
 }
 
+#endif // AYASTORM_CINEMATIC
+// </FS:AYA>
