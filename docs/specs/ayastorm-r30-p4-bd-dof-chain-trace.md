@@ -678,6 +678,14 @@ BD `panel_preferences_graphics1.xml` の chroma UI (line 5600-5622, 6944-6961) �
 
 §5.8 / §6.4a / §7.5 参照。B 案 (Preferences sub-tab) で起草・着手したが、step 4a 直前で AYA から「これは永続設定でなく撮影中ライブ調整」「Phototools 飽和」の二段指摘を受け **C 案 (top menu + 専用 floater)** に revise。Preferences 系の作業 (panel + floater_preferences entry) は実装途中で revert、現行構成: AYAstorm top menu (Build と Help の間) + Cinematic Controls floater (Alt+C)。
 
+| commit | step | 内容 |
+|---|---|---|
+| `d8cf170bbc` | step 4a | AYAstorm top menu + 専用 Cinematic Controls floater (menu_viewer.xml / floater_aya_cinematic.xml / llviewerfloaterreg.cpp) |
+
+### 9.4 step 7 release notes (2026-05-19)
+
+§6.7 参照。受入 PASS + UI rework 完了を受け、ja/en/zh 3 言語の release notes を `docs/release/ayastorm-r30-p4-release-note.{ja,en,zh}.md` として追加し、本 §9 で P4 を closure。release notes commit 本体は本 spec の同 commit と同梱 (P3 と同じ pattern、`git log` 参照)。
+
 ---
 
 (本 spec は P4 着手時に作業者が file:line 単位で「BD のどこを見て、AYAstorm のどこに何を入れるか」を spec 1 本で把握できる状態を目指している。実装着手時に §7 の各項目を再 fetch / 再確認した上で、§6 ステップ順に進める。)
