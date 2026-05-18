@@ -341,6 +341,22 @@ LLScrollListItem* LLComboBox::addSeparator(EAddPosition pos)
     return mList->addSeparator(pos);
 }
 
+// <FS:AYAstorm:r30-bd-port> Phase 3.9: see header for rationale.
+LLScrollListItem* LLComboBox::addSeparator(EAddPosition pos, const std::string& label)
+{
+    LLScrollListItem* item = mList->addSeparator(pos);
+    if (item && !label.empty())
+    {
+        LLScrollListCell* cell = item->getColumn(0);
+        if (cell)
+        {
+            cell->setValue(label);
+        }
+    }
+    return item;
+}
+// </FS:AYAstorm:r30-bd-port>
+
 // <FS:Ansariel> Get items by value
 LLScrollListItem* LLComboBox::getItemByValue(const LLSD& value)
 {

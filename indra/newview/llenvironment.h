@@ -209,6 +209,23 @@ public:
     static LLSettingsWater::ptr_t createWaterFromLegacyPreset(const std::string filename, LLSD &messages);
     static LLSettingsSky::ptr_t createSkyFromLegacyPreset(const std::string filename, LLSD &messages);
     static LLSettingsDay::ptr_t createDayCycleFromLegacyPreset(const std::string filename, LLSD &messages);
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD's gDragonLibrary calls these EEP-format variants when
+    // a preset file contains a "version" key. AY upstream merged this routing differently; the
+    // simplest faithful behavior is to delegate to the Legacy creators (the EEP loader inside
+    // LLSettingsBase will recognise the format from the data itself).
+    static LLSettingsWater::ptr_t createWaterFromPreset(const std::string filename, LLSD &messages)
+    { return createWaterFromLegacyPreset(filename, messages); }
+    static LLSettingsSky::ptr_t createSkyFromPreset(const std::string filename, LLSD &messages)
+    { return createSkyFromLegacyPreset(filename, messages); }
+    static LLSettingsDay::ptr_t createDayCycleFromPreset(const std::string filename, LLSD &messages)
+    { return createDayCycleFromLegacyPreset(filename, messages); }
+
+    // BD adds a flag toggled while a local-disk preset is active so that "Save" applies to the
+    // currently-loaded file rather than creating a fresh inventory item. AY has no equivalent
+    // notion; we accept the call but no-op since AY's environment apply path always creates a
+    // new ENV_LOCAL slot.
+    void setLocalPreset(bool /*flag*/) { /* no-op for AY */ }
+    // </FS:AYAstorm:r30-bd-port>
 
     // Construct a new day cycle based on the environment.  Replacing either the water or the sky tracks.
     LLSettingsDay::ptr_t        createDayCycleFromEnvironment(EnvSelection_t env, LLSettingsBase::ptr_t settings);

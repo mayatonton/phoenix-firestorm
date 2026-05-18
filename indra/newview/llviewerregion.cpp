@@ -904,8 +904,24 @@ void LLViewerRegion::sendReliableMessage()
 
 void LLViewerRegion::setWaterHeight(F32 water_level)
 {
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: cache server-provided water level on first call so the
+    // Water Adjust floater "Reset" knows where to return.
+    if (!mAYAHaveOriginalWaterHeight)
+    {
+        mAYAOriginalWaterHeight = water_level;
+        mAYAHaveOriginalWaterHeight = true;
+    }
+    // </FS:AYAstorm:r30-bd-port>
     mImpl->mLandp->setWaterHeight(water_level);
 }
+
+// <FS:AYAstorm:r30-bd-port> Phase 3.9: local override that intentionally does NOT update the
+// saved-original.
+void LLViewerRegion::setWaterHeightLocal(F32 water_level)
+{
+    mImpl->mLandp->setWaterHeight(water_level);
+}
+// </FS:AYAstorm:r30-bd-port>
 
 // <FS:CR> Aurora Sim
 void LLViewerRegion::rebuildWater()

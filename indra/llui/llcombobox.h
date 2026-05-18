@@ -141,6 +141,12 @@ public:
     LLScrollListItem*   add(const std::string& name, void* userdata, EAddPosition pos = ADD_BOTTOM, bool enabled = true);
     LLScrollListItem*   add(const std::string& name, LLSD value, EAddPosition pos = ADD_BOTTOM, bool enabled = true);
     LLScrollListItem*   addSeparator(EAddPosition pos = ADD_BOTTOM);
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD overload that inserts a labeled "header" separator
+    // (used by gDragonLibrary preset list to mark User/Inventory/System sections). Renders as a
+    // plain disabled row carrying the label since AY's scroll list lacks a labeled-separator
+    // widget — the visual nicety is sacrificed but functional grouping is preserved.
+    LLScrollListItem*   addSeparator(EAddPosition pos, const std::string& label);
+    // </FS:AYAstorm:r30-bd-port>
     bool            remove( S32 index );    // remove item by index, return true if found and removed
     void            removeall() { clearRows(); }
     bool            itemExists(const std::string& name);

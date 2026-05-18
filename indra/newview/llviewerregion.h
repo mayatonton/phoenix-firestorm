@@ -158,6 +158,17 @@ public:
 
     void setWaterHeight(F32 water_level);
     F32 getWaterHeight() const;
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD adds a saved-original water level so the Water Adjust
+    // floater's "Reset" can restore the region's server-provided value after a local override.
+    // The server value is captured the first time setWaterHeight is called (== region handshake).
+    // A local override goes through setWaterHeightLocal which does NOT update the saved-original.
+    F32  getOriginalWaterHeight() const { return mAYAOriginalWaterHeight; }
+    void setWaterHeightLocal(F32 water_level);
+private:
+    F32  mAYAOriginalWaterHeight = 20.f;
+    bool mAYAHaveOriginalWaterHeight = false;
+public:
+    // </FS:AYAstorm:r30-bd-port>
 // <FS:CR> Aurora Sim
     void rebuildWater();
 // </FS:CR> Aurora Sim

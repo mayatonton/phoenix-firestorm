@@ -140,6 +140,12 @@ private:
 public:
     const LLUUID&   getID() const               { return gAgentID; }
     const LLUUID&   getSessionID() const        { return gAgentSessionID; }
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD BDFunctions::checkDeveloper references getDevID().
+    // BD ties this to NiranV's own avatar UUID for in-viewer developer recognition. AY has no
+    // developer-specific UUID, so we return null — checkDeveloper will then fall through to
+    // the secondary DEV_ID literal compare (also returns 0 for any AY user).
+    LLUUID          getDevID() const            { return LLUUID::null; }
+    // </FS:AYAstorm:r30-bd-port>
     // Note: NEVER send this value in the clear or over any weakly
     // encrypted channel (such as simple XOR masking).  If you are unsure
     // ask Aaron or MarkL.

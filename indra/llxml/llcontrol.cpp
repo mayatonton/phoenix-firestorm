@@ -441,6 +441,10 @@ const std::string LLControlGroup::mTypeString[TYPE_COUNT] = { "U32"
                                                              ,"String"
                                                              ,"Vector3"
                                                              ,"Vector3D"
+                                                             // <FS:AYAstorm:r30-bd-port> Phase 3.9 (must match eControlType order)
+                                                             ,"Vector4"
+                                                             ,"Vector2"
+                                                             // </FS:AYAstorm:r30-bd-port>
                                                              ,"Quaternion"
                                                              ,"Rect"
                                                              ,"Color4"
@@ -841,6 +845,26 @@ void LLControlGroup::setVector3d(std::string_view name, const LLVector3d &val)
 {
     set(name, val);
 }
+
+// <FS:AYAstorm:r30-bd-port> Phase 3.9
+void LLControlGroup::setVector4(std::string_view name, const LLVector4 &val)
+{
+    LLControlVariable* control = getControl(name);
+    if (control)
+    {
+        control->setValue(val.getValue());
+    }
+}
+
+void LLControlGroup::setVector2(std::string_view name, const LLVector2 &val)
+{
+    LLControlVariable* control = getControl(name);
+    if (control)
+    {
+        control->setValue(val.getValue());
+    }
+}
+// </FS:AYAstorm:r30-bd-port>
 
 void LLControlGroup::setQuaternion(std::string_view name, const LLQuaternion &val)
 {
