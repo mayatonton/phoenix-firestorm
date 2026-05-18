@@ -1238,8 +1238,13 @@ void LLPipeline::updateRenderTransparentWater()
 void LLPipeline::refreshCachedSettings()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-    LLPipeline::sAutoMaskAlphaDeferred = gSavedSettings.getBOOL("RenderAutoMaskAlphaDeferred");
-    LLPipeline::sAutoMaskAlphaNonDeferred = gSavedSettings.getBOOL("RenderAutoMaskAlphaNonDeferred");
+    // <FS:AYAstorm r30 BD full port Phase 3.4>
+    // Cinematic (mode 2) では BD default に固定、それ以外は gSavedSettings の値。
+    // 対象 cvar 一覧と BD default は
+    // docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3.3 / Phase 0 inventory cvar bucket 3 を参照。
+    LLPipeline::sAutoMaskAlphaDeferred = getRenderCvarBOOL("RenderAutoMaskAlphaDeferred", false);
+    LLPipeline::sAutoMaskAlphaNonDeferred = getRenderCvarBOOL("RenderAutoMaskAlphaNonDeferred", false);
+    // </FS:AYAstorm>
     LLPipeline::sUseFarClip = gSavedSettings.getBOOL("RenderUseFarClip");
     LLPipeline::sShowJellyDollAsImpostor = gSavedSettings.getBOOL("RenderJellyDollsAsImpostors");
     LLVOAvatar::sMaxNonImpostors = gSavedSettings.getU32("RenderAvatarMaxNonImpostors");
@@ -1260,13 +1265,13 @@ void LLPipeline::refreshCachedSettings()
     WindLightUseAtmosShaders = true; // DEPRECATED -- gSavedSettings.getBOOL("WindLightUseAtmosShaders");
     RenderDeferred = true; // DEPRECATED -- gSavedSettings.getBOOL("RenderDeferred");
     RenderDeferredSunWash = gSavedSettings.getF32("RenderDeferredSunWash");
-    RenderFSAAType = gSavedSettings.getU32("RenderFSAAType");
+    RenderFSAAType = getRenderCvarU32("RenderFSAAType", 2);
     RenderResolutionDivisor = gSavedSettings.getU32("RenderResolutionDivisor");
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
     RenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
 // [/SL:KB]
     RenderUIBuffer = gSavedSettings.getBOOL("RenderUIBuffer");
-    RenderShadowDetail = gSavedSettings.getS32("RenderShadowDetail");
+    RenderShadowDetail = getRenderCvarS32("RenderShadowDetail", 1);
     RenderShadowSplits = gSavedSettings.getS32("RenderShadowSplits");
     RenderDeferredSSAO = gSavedSettings.getBOOL("RenderDeferredSSAO");
     RenderShadowResolutionScale = gSavedSettings.getF32("RenderShadowResolutionScale");
@@ -1288,14 +1293,14 @@ void LLPipeline::refreshCachedSettings()
     PreviewDirection0 = gSavedSettings.getVector3("PreviewDirection0");
     PreviewDirection1 = gSavedSettings.getVector3("PreviewDirection1");
     PreviewDirection2 = gSavedSettings.getVector3("PreviewDirection2");
-    RenderGlowMaxExtractAlpha = gSavedSettings.getF32("RenderGlowMaxExtractAlpha");
-    RenderGlowWarmthAmount = gSavedSettings.getF32("RenderGlowWarmthAmount");
-    RenderGlowLumWeights = gSavedSettings.getVector3("RenderGlowLumWeights");
-    RenderGlowWarmthWeights = gSavedSettings.getVector3("RenderGlowWarmthWeights");
-    RenderGlowResolutionPow = gSavedSettings.getS32("RenderGlowResolutionPow");
-    RenderGlowIterations = gSavedSettings.getS32("RenderGlowIterations");
-    RenderGlowWidth = gSavedSettings.getF32("RenderGlowWidth");
-    RenderGlowStrength = gSavedSettings.getF32("RenderGlowStrength");
+    RenderGlowMaxExtractAlpha = getRenderCvarF32("RenderGlowMaxExtractAlpha", 0.03f);
+    RenderGlowWarmthAmount = getRenderCvarF32("RenderGlowWarmthAmount", 16.0f);
+    RenderGlowLumWeights = getRenderCvarVector3("RenderGlowLumWeights", LLVector3(0.4f, 0.3f, 0.3f));
+    RenderGlowWarmthWeights = getRenderCvarVector3("RenderGlowWarmthWeights", LLVector3(0.75f, 0.6f, 0.712f));
+    RenderGlowResolutionPow = getRenderCvarS32("RenderGlowResolutionPow", 10);
+    RenderGlowIterations = getRenderCvarS32("RenderGlowIterations", 5);
+    RenderGlowWidth = getRenderCvarF32("RenderGlowWidth", 3.6f);
+    RenderGlowStrength = getRenderCvarF32("RenderGlowStrength", 0.233f);
     RenderGlowNoise = gSavedSettings.getBOOL("RenderGlowNoise");
     RenderDepthOfField = gSavedSettings.getBOOL("RenderDepthOfField");
     RenderDepthOfFieldInEditMode = gSavedSettings.getBOOL("RenderDepthOfFieldInEditMode");
@@ -1309,33 +1314,33 @@ void LLPipeline::refreshCachedSettings()
     CameraFieldOfView = gSavedSettings.getF32("CameraFieldOfView");
     RenderShadowNoise = gSavedSettings.getF32("RenderShadowNoise");
     RenderShadowSoftness = gSavedSettings.getF32("RenderShadowSoftness");
-    RenderShadowBlurSize = gSavedSettings.getF32("RenderShadowBlurSize");
+    RenderShadowBlurSize = getRenderCvarF32("RenderShadowBlurSize", 1.0f);
     RenderSSAOScale = gSavedSettings.getF32("RenderSSAOScale");
-    RenderSSAOMaxScale = gSavedSettings.getU32("RenderSSAOMaxScale");
-    RenderSSAOFactor = gSavedSettings.getF32("RenderSSAOFactor");
+    RenderSSAOMaxScale = getRenderCvarU32("RenderSSAOMaxScale", 300);
+    RenderSSAOFactor = getRenderCvarF32("RenderSSAOFactor", 0.05f);
     RenderSSAOEffect = gSavedSettings.getVector3("RenderSSAOEffect");
     RenderShadowOffsetError = gSavedSettings.getF32("RenderShadowOffsetError");
-    RenderShadowBiasError = gSavedSettings.getF32("RenderShadowBiasError");
-    RenderShadowOffset = gSavedSettings.getF32("RenderShadowOffset");
-    RenderShadowBias = gSavedSettings.getF32("RenderShadowBias");
+    RenderShadowBiasError = getRenderCvarF32("RenderShadowBiasError", 0.1f);
+    RenderShadowOffset = getRenderCvarF32("RenderShadowOffset", 0.002f);
+    RenderShadowBias = getRenderCvarF32("RenderShadowBias", -0.001f);
     RenderSpotShadowOffset = gSavedSettings.getF32("RenderSpotShadowOffset");
     RenderSpotShadowBias = gSavedSettings.getF32("RenderSpotShadowBias");
     RenderEdgeDepthCutoff = gSavedSettings.getF32("RenderEdgeDepthCutoff");
     RenderEdgeNormCutoff = gSavedSettings.getF32("RenderEdgeNormCutoff");
-    RenderShadowGaussian = gSavedSettings.getVector3("RenderShadowGaussian");
-    RenderShadowBlurDistFactor = gSavedSettings.getF32("RenderShadowBlurDistFactor");
+    RenderShadowGaussian = getRenderCvarVector3("RenderShadowGaussian", LLVector3(1.25f, 2.0f, 0.0f));
+    RenderShadowBlurDistFactor = getRenderCvarF32("RenderShadowBlurDistFactor", 0.01f);
     RenderDeferredAtmospheric = gSavedSettings.getBOOL("RenderDeferredAtmospheric");
     RenderHighlightFadeTime = gSavedSettings.getF32("RenderHighlightFadeTime");
-    RenderFarClip = gSavedSettings.getF32("RenderFarClip");
+    RenderFarClip = getRenderCvarF32("RenderFarClip", 96.0f);
     RenderShadowSplitExponent = gSavedSettings.getVector3("RenderShadowSplitExponent");
-    RenderShadowErrorCutoff = gSavedSettings.getF32("RenderShadowErrorCutoff");
-    RenderShadowFOVCutoff = gSavedSettings.getF32("RenderShadowFOVCutoff");
+    RenderShadowErrorCutoff = getRenderCvarF32("RenderShadowErrorCutoff", 0.0f);
+    RenderShadowFOVCutoff = getRenderCvarF32("RenderShadowFOVCutoff", 0.0f);
     CameraOffset = gSavedSettings.getBOOL("CameraOffset");
     CameraMaxCoF = gSavedSettings.getF32("CameraMaxCoF");
     CameraDoFResScale = gSavedSettings.getF32("CameraDoFResScale");
     RenderVignette = gSavedSettings.getVector3("FSRenderVignette"); // <FS:Beq/> redo the vignette
 
-    RenderAutoHideSurfaceAreaLimit = gSavedSettings.getF32("RenderAutoHideSurfaceAreaLimit");
+    RenderAutoHideSurfaceAreaLimit = getRenderCvarF32("RenderAutoHideSurfaceAreaLimit", 0.0f);
     RenderScreenSpaceReflections = gSavedSettings.getBOOL("RenderScreenSpaceReflections");
     RenderScreenSpaceReflectionIterations = gSavedSettings.getS32("RenderScreenSpaceReflectionIterations");
     RenderScreenSpaceReflectionRayStep = gSavedSettings.getF32("RenderScreenSpaceReflectionRayStep");
