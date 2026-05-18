@@ -99,74 +99,113 @@ XXL bucket (shadowUtil 147 行差 / screenSpaceReflUtil 463 行差) は AY 側 f
 
 ## §3 per-file mount 表 (40 substantive shader)
 
-### §3.1 sub-bucket S (2-3 行差、15 件)
+### §3.0 step 1 audit signature
 
-| # | file | AY 拡張 marker | strategy | 備考 |
-|---|---|---|---|---|
-| 1 | `class1/deferred/SMAA.glsl` | 要確認 | TBD | Phase 3.8 step 1 audit |
-| 2 | `class1/deferred/moonF.glsl` | 要確認 | TBD | 〃 |
-| 3 | `class1/deferred/postDeferredVisualizeBuffers.glsl` | 要確認 | TBD | 〃 |
-| 4 | `class1/deferred/skyF.glsl` | 要確認 | TBD | 〃 |
-| 5 | `class1/deferred/starsF.glsl` | 要確認 | TBD | 〃 |
-| 6 | `class1/deferred/sunDiscF.glsl` | 要確認 | TBD | 〃 |
-| 7 | `class3/deferred/multiPointLightF.glsl` | 要確認 | TBD | 〃 |
-| 8 | `class3/deferred/pointLightF.glsl` | 要確認 | TBD | 〃 |
-| 9 | `class3/deferred/spotLightF.glsl` | 要確認 | TBD | 〃 |
-| 10 | `class3/environment/waterF.glsl` | 要確認 | TBD | 〃 |
-| 11 | `class1/deferred/SMAABlendWeightsF.glsl` | 要確認 | TBD | 〃 |
-| 12 | `class1/deferred/avatarF.glsl` | 要確認 | TBD | 〃 |
-| 13 | `class1/deferred/velocityAlphaF.glsl` | dither→cutoff 差 | B (overwrite) | sample 確認済、AY 拡張なし |
-| 14 | `class1/objects/previewV.glsl` | 要確認 | TBD | 〃 |
-| 15 | `class3/deferred/materialF.glsl` | 要確認 | TBD | 〃 |
+各 file の diff signature を機械抽出 (step 1 audit 出力):
 
-### §3.2 sub-bucket M (4-13 行差、9 件)
+- **AY+=N**: BD baseline に対して AY が追加した行数 (normalized: コメント/空白除外)
+- **BD+=N**: BD baseline にあって AY で削除された行数
+- **ay_uni**: AY が追加した `uniform` 宣言の数 (uniform-gated extension の indicator)
+- **bd_rm**: AY が削除した BD 関数の数
 
-| # | file | 行数 | 主な diff 観点 | strategy | 備考 |
-|---|---|---:|---|---|---|
-| 1 | `class1/deferred/pbropaqueF.glsl` | 4 | TBD | TBD | step 1 audit |
-| 2 | `class1/deferred/skinnedVelocityAlphaV.glsl` | 5 | TBD | TBD | 〃 |
-| 3 | `class1/deferred/skinnedVelocityV.glsl` | 5 | per-bone skinning へ BD 移行 | B (overwrite) | sample 確認済、AY 拡張なし |
-| 4 | `class2/deferred/sunLightSSAOF.glsl` | 5 | TBD | TBD | step 1 audit |
-| 5 | `class3/deferred/reflectionProbeF.glsl` | 6 | TBD | TBD | 〃 |
-| 6 | `class3/deferred/volumetricLightF.glsl` | 10 | TBD | TBD | 〃 |
-| 7 | `class1/deferred/avatarAlphaMaskShadowF.glsl` | 13 | TBD | TBD | 〃 |
-| 8 | `class1/deferred/avatarAlphaShadowF.glsl` | 13 | TBD | TBD | 〃 |
-| 9 | `class1/deferred/pbrShadowAlphaBlendF.glsl` | 13 | TBD | TBD | 〃 |
-| 10 | `class1/deferred/shadowAlphaMaskF.glsl` | 13 | TBD | TBD | 〃 |
+判定 heuristic:
 
-### §3.3 sub-bucket L (20-31 行差、9 件)
+| signature | 解釈 | strategy |
+|---|---|---|
+| AY+=0, BD+=N | AY が BD 機能削減のみ | **B** (overwrite で BD 復活) |
+| AY+=N, BD+=0, ay_uni>0 | AY が uniform-gated 拡張追加 | **A** (neutral 給餌で collapse 確認) / 不十分なら **C** |
+| AY+=N, BD+=0, ay_uni=0 | AY が hard-coded 拡張追加 | **C** (permutation 必須) |
+| AY+=N, BD+=N | 双方変更 | **C** (permutation) |
+| AY+= 100+ AND BD+= 100+ | 構造乖離 | **D** (dual-file) |
 
-| # | file | 行数 | 主な diff 観点 | strategy | 備考 |
-|---|---|---:|---|---|---|
-| 1 | `class1/deferred/blurLightF.glsl` | 20 | TBD (r17 SSS 関連?) | TBD | step 1 audit |
-| 2 | `class1/deferred/globalF.glsl` | 21 | TBD | TBD | 〃 |
-| 3 | `class1/deferred/motionBlurF.glsl` | 22 | BD NaN guard / vel sample 改善 | B (overwrite) | sample 確認済、AY 拡張なし |
-| 4 | `class1/interface/glowcombineF.glsl` | 23 | TBD | TBD | step 1 audit |
-| 5 | `class1/deferred/cloudsF.glsl` | 26 | r18 cloud volumetric 関連 | C (permutation) 候補 | AY 拡張あり前提、要確認 |
-| 6 | `class3/deferred/softenLightF.glsl` | 26 | r14+ atmospheric routing | C (permutation) 候補 | 〃 |
-| 7 | `class1/avatar/objectSkinV.glsl` | 27 | TBD | TBD | step 1 audit |
-| 8 | `class1/deferred/postDeferredTonemap.glsl` | 30 | r14+ tonemap (saturation/contrast/temperature/brightness/LUT/chroma) | C (permutation) 必須 | uniform 群は §3.7 cat 01 で BD default 0/1 流済 |
-| 9 | `class1/windlight/atmosphericsFuncs.glsl` | 31 | atten スカラー化 (memory project_atmos_atten_scalarized) 等 | C (permutation) 候補 | AY 拡張多い |
+### §3.1 sub-bucket S (2-3 行差、15 件) — 確定 strategy
 
-### §3.4 sub-bucket XL (40-76 行差、5 件)
+| # | file | AY+= | BD+= | ay_uni | bd_rm | strategy | 確定理由 |
+|---|---|---:|---:|---:|---:|---|---|
+| 1 | `class1/deferred/SMAA.glsl` | 1 | 1 | 0 | 0 | **C** | 1-line 双方差、permutation |
+| 2 | `class1/deferred/moonF.glsl` | 3 | 1 | 0 | 0 | **C** | r20 SSS .a=0 write、permutation |
+| 3 | `class1/deferred/postDeferredVisualizeBuffers.glsl` | 1 | 1 | 0 | 0 | **C** | 1-line 差、permutation |
+| 4 | `class1/deferred/skyF.glsl` | 4 | 1 | 0 | 0 | **C** | r20 SSS .a=0 write、permutation |
+| 5 | `class1/deferred/starsF.glsl` | 3 | 1 | 0 | 0 | **C** | r20 SSS .a=0 write、permutation |
+| 6 | `class1/deferred/sunDiscF.glsl` | 3 | 1 | 0 | 0 | **C** | r20 SSS .a=0 write、permutation |
+| 7 | `class3/deferred/multiPointLightF.glsl` | 0 | 7 | 0 | 0 | **B** | AY が BD 削減のみ、overwrite |
+| 8 | `class3/deferred/pointLightF.glsl` | 0 | 7 | 0 | 0 | **B** | 同上 |
+| 9 | `class3/deferred/spotLightF.glsl` | 0 | 7 | 0 | 0 | **B** | 同上 |
+| 10 | `class3/environment/waterF.glsl` | 1 | 1 | 0 | 0 | **C** | 1-line 双方差、permutation |
+| 11 | `class1/deferred/SMAABlendWeightsF.glsl` | 1 | 2 | 0 | 0 | **C** | 1-line AY tweak、permutation |
+| 12 | `class1/deferred/avatarF.glsl` | 9 | 1 | 1 | 0 | **C** | r20 Phase C SSS skin marker uniform-gated、permutation |
+| 13 | `class1/deferred/velocityAlphaF.glsl` | 9 | 2 | 0 | 1 | **C** | AY P2 で BD bayerDither helper を alpha cutoff に意図置換、permutation |
+| 14 | `class1/objects/previewV.glsl` | 2 | 1 | 1 | 0 | **C** | FS:Beq ambient color 拡張、permutation |
+| 15 | `class3/deferred/materialF.glsl` | 9 | 1 | 1 | 0 | **C** | r20 SSS skin marker、permutation |
 
-| # | file | 行数 | 主な diff 観点 | strategy | 備考 |
-|---|---|---:|---|---|---|
-| 1 | `class1/deferred/postDeferredNoDoFF.glsl` | 40 | TBD | TBD | step 1 audit |
-| 2 | `class1/deferred/skyV.glsl` | 45 | r17 Sun Kelvin / atmospheric 拡張 | C (permutation) | uniform 給餌で吸収可能か要確認 |
-| 3 | `class1/deferred/tonemapUtilF.glsl` | 67 | tonemap chain | C (permutation) | LUT/color grading 系 |
-| 4 | `class1/deferred/aoUtil.glsl` | 76 | AO 系 r14+ 拡張 | C (permutation) | 要 audit |
+S-bucket 集計: B = 3, C = 12
 
-(post-audit で 5 件目を追加 — XL 集計は再確認要、5 と書いたが現在表 4 件)
+### §3.2 sub-bucket M (4-13 行差、10 件) — 確定 strategy
 
-→ correction: §1.2 で XL = 5 件と書いたが、実 substantive bucketing で 40-76 行帯は **4 件**, 100+ 帯 (XXL) は **2 件**。総計 40 = 15 + 10 + 9 + 4 + 2。
+| # | file | AY+= | BD+= | ay_uni | bd_rm | strategy | 確定理由 |
+|---|---|---:|---:|---:|---:|---|---|
+| 1 | `class1/deferred/pbropaqueF.glsl` | 9 | 4 | 1 | 0 | **C** | r20 Phase C SSS skin marker uniform-gated、permutation |
+| 2 | `class1/deferred/skinnedVelocityAlphaV.glsl` | 9 | 2 | 1 | 0 | **C** | AY P2 A2.2 skinning approach 意図差、permutation |
+| 3 | `class1/deferred/skinnedVelocityV.glsl` | 11 | 2 | 1 | 0 | **C** | AY が BD original skinning math を AY 用 helper に置換、permutation |
+| 4 | `class2/deferred/sunLightSSAOF.glsl` | 0 | 5 | 0 | 1 | **B** | AY が BD SSAO 関数削除、overwrite |
+| 5 | `class3/deferred/reflectionProbeF.glsl` | 5 | 2 | 0 | 0 | **C** | 双方差、permutation |
+| 6 | `class3/deferred/volumetricLightF.glsl` | 33 | 14 | 0 | 2 | **C** | AY P3 で BD nonpcfShadowAtPos 想定を AY shadow helper に remap、permutation |
+| 7 | `class1/deferred/avatarAlphaMaskShadowF.glsl` | 12 | 3 | 0 | 1 | **C** | shadow path AY 拡張、permutation |
+| 8 | `class1/deferred/avatarAlphaShadowF.glsl` | 12 | 3 | 0 | 1 | **C** | 同上 |
+| 9 | `class1/deferred/pbrShadowAlphaBlendF.glsl` | 12 | 3 | 0 | 1 | **C** | 同上 |
+| 10 | `class1/deferred/shadowAlphaMaskF.glsl` | 12 | 3 | 0 | 1 | **C** | 同上 |
 
-### §3.5 sub-bucket XXL (147+ 行差、2 件)
+M-bucket 集計: B = 1, C = 9
 
-| # | file | 行数 | 主な diff 観点 | strategy | 備考 |
-|---|---|---:|---|---|---|
-| 1 | `class1/deferred/shadowUtil.glsl` | 147 | shadow 全面再設計 | D (dual-file) | mount 場所: `cinematic_bd/class1/deferred/shadowUtil.glsl` |
-| 2 | `class3/deferred/screenSpaceReflUtil.glsl` | 463 | SSR 全面再設計 | D (dual-file) | mount 場所: `cinematic_bd/class3/deferred/screenSpaceReflUtil.glsl` |
+### §3.3 sub-bucket L (20-31 行差、9 件) — 確定 strategy
+
+| # | file | AY+= | BD+= | ay_uni | bd_rm | strategy | 確定理由 |
+|---|---|---:|---:|---:|---:|---|---|
+| 1 | `class1/deferred/blurLightF.glsl` | 7 | 15 | 0 | 0 | **C** | 双方差、permutation |
+| 2 | `class1/deferred/globalF.glsl` | 0 | 29 | 0 | 1 | **B** | AY が BD 機能削減、overwrite |
+| 3 | `class1/deferred/motionBlurF.glsl` | 48 | 6 | 0 | 0 | **C** | AY P2 step 5b 拡張 (NaN guard / vel guard / threshold) は意図差、permutation |
+| 4 | `class1/interface/glowcombineF.glsl` | 1 | 27 | 0 | 0 | **B** | AY 削減のみ、overwrite |
+| 5 | `class1/deferred/cloudsF.glsl` | 35 | 7 | 1 | 0 | **A→C** | r18 cloud volumetric uniform-gated (aya_r18_cloud_volumetric_enabled、Phase 3.7 で 0 給餌済)、collapse 確認後 A 確定、不十分なら C |
+| 6 | `class3/deferred/softenLightF.glsl` | 36 | 0 | 2 | 0 | **A→C** | r14+ atmospheric uniform-gated、neutral collapse 確認 |
+| 7 | `class1/avatar/objectSkinV.glsl` | 0 | 34 | 0 | 0 | **B** | AY が BD 機能削減、overwrite |
+| 8 | `class1/deferred/postDeferredTonemap.glsl` | 35 | 0 | 7 | 0 | **A** | neutral uniform (sat=1/con=1/temp=0/bri=0/lut=off) で applyColorGrading() no-op、Phase 3.7 cat 01 で給餌済、shader 触らず |
+| 9 | `class1/windlight/atmosphericsFuncs.glsl` | 63 | 3 | 2 | 0 | **A→C** | aya_visual_realism_enabled / aya_r16_aerial_perspective_enabled で gated、Phase 3.7 で 0 給餌時 collapse 確認 |
+
+L-bucket 集計: B = 3, A = 1, A→C = 3, C = 2
+
+### §3.4 sub-bucket XL (40-76 行差、4 件) — 確定 strategy
+
+| # | file | AY+= | BD+= | ay_uni | bd_rm | strategy | 確定理由 |
+|---|---|---:|---:|---:|---:|---|---|
+| 1 | `class1/deferred/postDeferredNoDoFF.glsl` | 27 | 42 | 1 | 0 | **C** | 双方大幅変更、AY chroma uniform 拡張 + BD pipeline 更新、permutation |
+| 2 | `class1/deferred/skyV.glsl` | 61 | 4 | 1 | 0 | **A→C** | aya_visual_realism_enabled で gated、neutral collapse 確認 |
+| 3 | `class1/deferred/tonemapUtilF.glsl` | 41 | 37 | 0 | 3 | **C** | 双方大幅変更、permutation |
+| 4 | `class1/deferred/aoUtil.glsl` | 0 | 110 | 0 | 2 | **B** | AY が BD HBAO (作者本人「Shitty ass local」) 削除、overwrite で復活、AY mode 影響なし (caller 既に削除済) |
+
+XL-bucket 集計: B = 1, A→C = 1, C = 2
+
+(§1.2 で XL = 5 と書いたが正は 40-76 行帯 4 件 + 100+ 帯 2 件 = 合計 40)
+
+### §3.5 sub-bucket XXL (147+ 行差、2 件) — 確定 strategy
+
+| # | file | AY+= | BD+= | ay_uni | bd_rm | strategy | 確定理由 |
+|---|---|---:|---:|---:|---:|---|---|
+| 1 | `class1/deferred/shadowUtil.glsl` | 22 | 165 | 1 | 4 | **B→D** | AY が大幅削減 + 少量追加。overwrite で AY mode 回帰なければ B、回帰あれば D dual-file mount |
+| 2 | `class3/deferred/screenSpaceReflUtil.glsl` | 307 | 221 | 11 | 5 | **D** | 双方大幅再設計、構造乖離、dual-file mount 必須 |
+
+XXL-bucket 集計: B/D = 1 (検証で確定), D = 1
+
+### §3.6 step 1 audit 集計
+
+| strategy | 確定数 | 検証要 | 合計 |
+|---|---:|---:|---:|
+| A (uniform 吸収) | 1 (postDeferredTonemap) | 4 (cloudsF, softenLightF, atmosphericsFuncs, skyV) | 5 |
+| B (overwrite) | 8 (multiPointLightF, pointLightF, spotLightF, sunLightSSAOF, globalF, glowcombineF, objectSkinV, aoUtil) | 1 (shadowUtil) | 9 |
+| C (permutation) | 26 | 0 | 26 |
+| D (dual-file) | 1 (screenSpaceReflUtil) | 0 (shadowUtil 重複候補) | 1 |
+| **合計** | **36** | **5** | **41 (重複 1 = shadowUtil)** |
+
+実数 40 = A(1) + B(8) + C(26) + D(1) + 不確定(4 件は A 検証後 A or C、1 件は shadowUtil B or D)。検証 step を経て A 5/C 28/B 8/D 2 等に再 fix する。
 
 ---
 
