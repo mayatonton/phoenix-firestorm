@@ -195,6 +195,19 @@ XL-bucket 集計: B = 1, A→C = 1, C = 2
 
 XXL-bucket 集計: B/D = 1 (検証で確定), D = 1
 
+### §3.5b step 3 A 候補検証ログ (2026-05-19)
+
+step 3 中に 4 件の A→C 候補を per-file 検証。BD baseline との full diff + Cinematic 時に uniform に流し込まれる値を全 site で trace:
+
+| # | file | 検証結果 | 確定 | 根拠 |
+|---|---|---|---|---|
+| 1 | `class3/deferred/softenLightF.glsl` | r19 translucency 全 site が `aya_translucency_params.w (strength)` で短絡。Cinematic は `pipeline.cpp:10638` で tier=0 → `r19_table[0] = {0, 1, 1, 0}` → strength=0 → 両 helper が `return ndotl` / `return vec3(0.0)` | **A** | 完全 uniform-gated、file 触らず |
+| 2 | `class1/windlight/atmosphericsFuncs.glsl` | r16 `rayleigh_w` 三項演算で `uniform==0 → vec3(1.0)` → BD `combined_haze = blue_density + haze_density` / `blue_weight = blue_density / combined_haze` と数値等価。r14 altitude density / scene-referred additive は `if (aya_visual_realism_enabled > 0)` で囲い、Cinematic では else 経路 = BD verbatim | **A** | uniform=0 で全 AY block 短絡、file 触らず |
+| 3 | `class1/deferred/skyV.glsl` | r14 P2.a scene-referred 分割積分は上雲/下雲とも `if (aya_visual_realism_enabled > 0) { linear path } else { BD verbatim }`。else branch は `(blue_horizon * blue_weight * (sunlight + ambient_color) + (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient_color))` で BD 行と byte 等価 | **A** | uniform=0 で BD 経路、file 触らず |
+| 4 | `class1/deferred/cloudsF.glsl` | r18 cloud volumetric は uniform-gated (A 部分 OK) だが、r20 SSS skin marker `frag_data[3] = vec4(color.rgb, 0.0)` が hard-coded で BD `vec4(color.rgb, alpha1)` と非等価 → permutation 必須 | **C** (fell through) | strategy C 1 hunk 追加で commit 1622a8e899 |
+
+確定: A = 3 (softenLightF, atmosphericsFuncs, skyV), C = 1 (cloudsF)
+
 ### §3.6 step 1 audit 集計
 
 | strategy | 確定数 | 検証要 | 合計 |
