@@ -32,6 +32,14 @@
 out vec4 frag_color;
 
 vec4 diffuseLookup(vec2 texcoord);
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> bayerDitherDiscard
+// is defined in globalF.glsl (restored in step 2 strategy B overwrite),
+// so Cinematic can call it directly. AY mode keeps the plain cutoff
+// fallback that's been live since r30 P2.
+#if AYASTORM_CINEMATIC
+void bayerDitherDiscard(float alpha, float threshold);
+#endif
+// </FS:AYA>
 
 in vec4 vary_cur_clip;
 in vec4 vary_last_clip;
@@ -43,11 +51,17 @@ void main()
     float alpha = diffuseLookup(vary_texcoord0.xy).a;
     alpha *= vertex_color.a;
 
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+#if AYASTORM_CINEMATIC
+    bayerDitherDiscard(alpha, 0.88);
+#else
     // AYAstorm r30 P2: BD calls bayerDitherDiscard(alpha, 0.88) here, but the helper isn't
-    // shipped with the borrowed shader set. For the velocity buffer the dither pattern isn't
+    // wired into AY's velocity pipeline. For the velocity buffer the dither pattern isn't
     // load-bearing — we just need to skip fully-transparent pixels so they don't overwrite
     // the velocity of opaque geometry behind them. Plain cutoff is sufficient.
     if (alpha < 0.1) discard;
+#endif
+    // </FS:AYA>
 
     vec2 cur_ndc  = vary_cur_clip.xy / vary_cur_clip.w;
     vec2 last_ndc = vary_last_clip.xy / vary_last_clip.w;
