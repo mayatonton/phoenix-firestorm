@@ -577,6 +577,16 @@ void LLViewerShaderMgr::setShaders()
         return;
     }
 
+    // <FS:AYA r30 Phase 3.8> Cinematic mount: latch sCinematicMode from
+    // AYAVisualRealismEnabled before loadShaderFile is invoked anywhere
+    // (initShaderCache may compile, and the full reload below definitely
+    // does). Strategy C shaders branch on `#if AYASTORM_CINEMATIC`.
+    {
+        static LLCachedControl<U32> aya_view_mode_shader(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        LLShaderMgr::sCinematicMode = (aya_view_mode_shader() == 2);
+    }
+    // </FS:AYA>
+
     {
         static LLCachedControl<bool> shader_cache_enabled(gSavedSettings, "RenderShaderCacheEnabled", true);
         static LLUUID old_cache_version;
@@ -593,6 +603,13 @@ void LLViewerShaderMgr::setShaders()
             // "AYASTORM_SHADER_CACHE_TAG" to find every site that needs it.
             const char* const AYASTORM_SHADER_CACHE_TAG = "AYAstorm r24";
             hash_obj.update(AYASTORM_SHADER_CACHE_TAG);
+            // </FS:AYA>
+            // <FS:AYA r30 Phase 3.8> Mix Cinematic mode into the cache key so
+            // toggling AYAVisualRealismEnabled (0/1 vs 2) cannot reuse a
+            // shader binary compiled with the opposite AYASTORM_CINEMATIC.
+            const char* const AYASTORM_CINEMATIC_MODE_TAG =
+                LLShaderMgr::sCinematicMode ? "cinematic=1" : "cinematic=0";
+            hash_obj.update(AYASTORM_CINEMATIC_MODE_TAG);
             // </FS:AYA>
             current_cache_version = hash_obj.digest();
 

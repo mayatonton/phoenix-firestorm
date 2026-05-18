@@ -45,6 +45,11 @@ using std::string;
 
 LLShaderMgr * LLShaderMgr::sInstance = NULL;
 
+// <FS:AYA r30 Phase 3.8> Cinematic mount global flag. LLViewerShaderMgr
+// flips this from AYAVisualRealismEnabled == 2 right before reloading
+// shaders. loadShaderFile() reads it to inject #define AYASTORM_CINEMATIC.
+bool LLShaderMgr::sCinematicMode = false;
+
 LLShaderMgr::LLShaderMgr()
 {
 }
@@ -649,6 +654,15 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_FLAG_HAS_PBR      0.67\n"); // bit 1
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_FLAG_HAS_HDRI      1.0\n");  // bit 2
     extra_code_text[extra_code_count++] = strdup("#define GET_GBUFFER_FLAG(data, flag)    (abs(data-flag)< 0.1)\n");
+
+    // <FS:AYA r30 Phase 3.8> Cinematic mount: inject AYASTORM_CINEMATIC = 1
+    // when LLViewerShaderMgr has set sCinematicMode. Strategy C shaders use
+    // `#if AYASTORM_CINEMATIC` to switch to BD-original code path; shaders
+    // that don't reference the macro are unaffected.
+    extra_code_text[extra_code_count++] = strdup(
+        sCinematicMode
+            ? "#define AYASTORM_CINEMATIC 1\n"
+            : "#define AYASTORM_CINEMATIC 0\n");
 
     if (defines)
     {

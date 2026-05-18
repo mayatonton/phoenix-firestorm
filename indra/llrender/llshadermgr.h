@@ -454,6 +454,12 @@ public:
     bool mShaderCacheEnabled = false;
     std::string mShaderCacheDir;
 
+    // <FS:AYA r30 Phase 3.8> Cinematic mount: when true, loadShaderFile
+    // injects `#define AYASTORM_CINEMATIC 1` so Strategy C shaders branch
+    // to their BD-original code path. Viewer side (LLViewerShaderMgr) sets
+    // this from AYAVisualRealismEnabled == 2 right before reloadShaders().
+    static bool sCinematicMode;
+
 protected:
 
     // our parameter manager singleton instance
