@@ -32,10 +32,21 @@ in float target_pos_x;
 in float pos_w;
 in vec2 vary_texcoord0;
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> Cinematic calls
+// bayerDitherDiscard (defined in globalF.glsl, restored in step 2).
+#if AYASTORM_CINEMATIC
+void bayerDitherDiscard(float alpha, float threshold);
+#endif
+// </FS:AYA>
+
 void main()
 {
     float alpha = texture(diffuseMap, vary_texcoord0.xy).a;
 
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+#if AYASTORM_CINEMATIC
+    bayerDitherDiscard(alpha, minimum_alpha);
+#else
     if (alpha < 0.05) // treat as totally transparent
     {
         discard;
@@ -48,6 +59,8 @@ void main()
         discard;
       }
     }
+#endif
+    // </FS:AYA>
 
     frag_color = vec4(1,1,1,1);
 }

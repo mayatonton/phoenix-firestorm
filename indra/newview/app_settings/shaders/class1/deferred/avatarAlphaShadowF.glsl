@@ -34,10 +34,20 @@ in float target_pos_x;
 in vec2 vary_texcoord0;
 uniform vec4 color;
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+#if AYASTORM_CINEMATIC
+void bayerDitherDiscard(float alpha, float threshold);
+#endif
+// </FS:AYA>
+
 void main()
 {
     float alpha = texture(diffuseMap, vary_texcoord0.xy).a * color.a;
 
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+#if AYASTORM_CINEMATIC
+    bayerDitherDiscard(alpha, minimum_alpha);
+#else
     if (alpha < 0.05) // treat as totally transparent
     {
         discard;
@@ -50,6 +60,8 @@ void main()
         discard;
       }
     }
+#endif
+    // </FS:AYA>
 
     frag_color = vec4(1,1,1,1);
 }
