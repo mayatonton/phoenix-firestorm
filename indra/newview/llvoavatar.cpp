@@ -8595,7 +8595,13 @@ const LLViewerJointAttachment *LLVOAvatar::attachObject(LLViewerObject *viewer_o
     // whitelist. Mesh UUID is in ObjectUpdate so this works for self
     // *and* others — no isSelf() gate. Phase C will fan this out into
     // a GBuffer skin bit so the SSS pass can mask per-pixel.
-    ayastorm::setSSSTargetForAttachment(viewer_object);
+    // <FS:AYA r30 Phase 3.7 cat 04> Cinematic / Firestorm View では SSS
+    // pipeline 自体が走らないので plumbing もしない (AYAstorm View 専用)。
+    static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    if (aya_view_mode() == 1)
+    {
+        ayastorm::setSSSTargetForAttachment(viewer_object);
+    }
     // </FS:AYA>
     return attachment;
 }
@@ -8904,7 +8910,13 @@ bool LLVOAvatar::detachObject(LLViewerObject *viewer_object)
             // <FS:AYA r20 Phase B> Clear the SSS target flag before the
             // object is removed from this attachment point so a stale
             // bit can't leak into a later non-attachment use.
-            ayastorm::clearSSSTargetForAttachment(viewer_object);
+            // <FS:AYA r30 Phase 3.7 cat 04> Cinematic / Firestorm View では
+            // SSS pipeline 自体が走らないので clear も skip。set 側と対称。
+            static LLCachedControl<U32> aya_view_mode_clear(gSavedSettings, "AYAVisualRealismEnabled", 1);
+            if (aya_view_mode_clear() == 1)
+            {
+                ayastorm::clearSSSTargetForAttachment(viewer_object);
+            }
             // </FS:AYA>
             attachment->removeObject(viewer_object);
             if (!is_animated_object)
