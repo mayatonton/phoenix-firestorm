@@ -289,7 +289,15 @@ void main()
 #endif
 
     float metallic = 1.0;
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> BD squares
+    // blurMultiplier (perceptually-linear roughness mapping). AY uses the
+    // raw multiplier for sharper reflections in the post-r14 water look.
+#if AYASTORM_CINEMATIC
+    float perceptualRoughness = blurMultiplier * blurMultiplier;
+#else
     float perceptualRoughness = blurMultiplier;
+#endif
+    // </FS:AYA>
     float gloss      = 1 - perceptualRoughness;
 
     vec3  irradiance = vec3(0);
