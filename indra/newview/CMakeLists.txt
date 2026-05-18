@@ -357,6 +357,7 @@ set(viewer_SOURCE_FILES
     llfloatereditextdaycycle.cpp
     llfloateremojipicker.cpp
     llfloaterenvironmentadjust.cpp
+    llfloaterenvironmentsettings.cpp
     llfloaterevent.cpp
     llfloaterexperiencepicker.cpp
     llfloaterexperienceprofile.cpp
@@ -455,6 +456,7 @@ set(viewer_SOURCE_FILES
     llfloaterurlentry.cpp
     llfloatervoiceeffect.cpp
     llfloatervoicevolume.cpp
+    llfloaterwateradjust.cpp
     llfloaterwebcontent.cpp
     llfloaterwhitelistentry.cpp
     llfloaterwindowsize.cpp
@@ -1229,6 +1231,7 @@ set(viewer_HEADER_FILES
     llfloatereditextdaycycle.h
     llfloateremojipicker.h
     llfloaterenvironmentadjust.h
+    llfloaterenvironmentsettings.h
     llfloaterevent.h
     llfloaterexperiencepicker.h
     llfloaterexperienceprofile.h
@@ -1331,6 +1334,7 @@ set(viewer_HEADER_FILES
     llfloaterurlentry.h
     llfloatervoiceeffect.h
     llfloatervoicevolume.h
+    llfloaterwateradjust.h
     llfloaterwebcontent.h
     llfloaterwhitelistentry.h
     llfloaterwindowsize.h
