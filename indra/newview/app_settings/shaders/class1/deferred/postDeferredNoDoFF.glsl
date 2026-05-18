@@ -33,6 +33,10 @@ uniform sampler2D depthMap;
 uniform vec2 screen_res;
 in vec2 vary_fragcoord;
 
+// <AYAstorm r30 P4 step 1> BD chroma uniform (used in NoDoF path when HAS_DOF_CHROMA==0)
+uniform float chroma_str;
+// </AYAstorm r30 P4 step 1>
+
 //=================================
 // borrowed noise from:
 //  <https://www.shadertoy.com/view/4dS3Wd>
@@ -77,6 +81,52 @@ vec3 clampHDRRange(vec3 color);
 void main()
 {
     vec4 diff = texture(diffuseRect, vary_fragcoord.xy);
+
+// <AYAstorm r30 P4 step 1> BD NoDoF screen-edge chroma path
+// Active only when HAS_DOF_CHROMA==0 (no DoF chroma coupling). Produces a
+// vignette-style chromatic aberration from luma gradient + depth weighting.
+#if HAS_DOF_CHROMA == 0
+    vec3 col = diff.rgb;
+
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+
+    vec2 p = (vary_fragcoord.xy / screen_res.xy) * 2.0 - 1.0;
+    float r = dot(p, p);
+
+    float depth = texture(depthMap, vary_fragcoord.xy).r;
+    float depthWeight = smoothstep(0.2, 0.8, depth);
+    depthWeight *= depthWeight;
+
+    vec3 gx = dFdx(col);
+    vec3 gy = dFdy(col);
+    vec3 grad = gx + gy;
+    float edge = length(grad);
+
+    // Blue disperses most, green least
+    const float wR = 0.60;
+    const float wG = 0.15;
+    const float wB = 1.00;
+
+    float ca =
+        chroma_str *
+        edge *
+        smoothstep(0.15, 1.0, luma) *
+        smoothstep(0.0, 1.2, r) *
+        depthWeight;
+
+    vec2 dir = normalize(p + 1e-5);
+
+    col.r += ca * wR * (grad.r) * dir.x;
+    col.g += ca * wG * (grad.g) * dir.x * 0.25; // very subtle
+    col.b -= ca * wB * (grad.b) * dir.x;
+
+    col.r += ca * wR * gy.r * 0.30;
+    col.b -= ca * wB * gy.b * 0.30;
+
+    diff.rgb = col;
+    diff.rgb = clamp(diff.rgb, 0.0, 1.0);
+#endif
+// </AYAstorm r30 P4 step 1>
 
 #ifdef HAS_NOISE
     vec2 tc = vary_fragcoord.xy*screen_res*4.0;

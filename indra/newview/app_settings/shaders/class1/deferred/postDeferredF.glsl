@@ -34,6 +34,10 @@ uniform vec2 screen_res;
 uniform float max_cof;
 uniform float res_scale;
 
+// <AYAstorm r30 P4 step 1> BD chroma uniform (gated by HAS_DOF_CHROMA permutation)
+uniform float chroma_str;
+// </AYAstorm r30 P4 step 1>
+
 in vec2 vary_fragcoord;
 
 void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc)
@@ -41,6 +45,19 @@ void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc)
     vec4 s = texture(diffuseRect, tc);
 
     float sc = abs(s.a*2.0-1.0)*max_cof;
+
+// <AYAstorm r30 P4 step 1> BD HAS_DOF_CHROMA: per-channel R/G/B offset sampling
+#if HAS_DOF_CHROMA
+    vec3 col_offset = vec3(0.0015, 0.0000, 0.0005);
+    float mult = sc * (chroma_str * 0.2);
+    col_offset *= vec3(mult);
+
+    s.r = texture(diffuseRect, tc + vec2(col_offset.x)).r;
+    s.g = texture(diffuseRect, tc + vec2(col_offset.y)).g;
+    s.b = texture(diffuseRect, tc + vec2(col_offset.z)).b;
+    s.a = texture(diffuseRect, tc).a;
+#endif
+// </AYAstorm r30 P4 step 1>
 
     if (sc > min_sc) //sampled pixel is more "out of focus" than current sample radius
     {
@@ -85,6 +102,8 @@ void main()
         float PI = 3.14159265358979323846264;
 
         // sample quite uniformly spaced points within a circle, for a circular 'bokeh'
+// <AYAstorm r30 P4 step 1> BD FRONT_BLUR: gate the sc>0.5 (front-CoF) branch on permutation
+#if FRONT_BLUR
         if (sc > 0.5)
         {
             while (sc > 0.5)
@@ -102,6 +121,10 @@ void main()
             }
         }
         else if (sc < -0.5)
+#else
+        if (sc < -0.5)
+#endif
+// </AYAstorm r30 P4 step 1>
         {
             sc = abs(sc);
             while (sc > 0.5)
