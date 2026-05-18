@@ -4003,6 +4003,15 @@ std::string LLViewerShaderMgr::getShaderDirPrefix(void)
     return gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders", "class");
 }
 
+// <FS:AYA r30 Phase 3.8 step 4> Cinematic strategy D root.
+std::string LLViewerShaderMgr::getCinematicShaderDirPrefix(void)
+{
+    return gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders", "cinematic_bd")
+         + gDirUtilp->getDirDelimiter()
+         + "class";
+}
+// </FS:AYA>
+
 void LLViewerShaderMgr::updateShaderUniforms(LLGLSLShader * shader)
 {
     LLEnvironment::instance().updateShaderUniforms(shader);

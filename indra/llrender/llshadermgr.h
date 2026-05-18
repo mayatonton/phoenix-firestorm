@@ -423,6 +423,16 @@ public:
     // Implemented in the application to actually point to the shader directory.
     virtual std::string getShaderDirPrefix(void) = 0; // Pure Virtual
 
+    // <FS:AYA r30 Phase 3.8 step 4> Cinematic mount strategy D: when
+    // sCinematicMode is true, loadShaderFile() probes this prefix first
+    // before falling back to getShaderDirPrefix(). Returns the
+    // `<app_settings>/shaders/cinematic_bd/class` base; loadShaderFile
+    // appends `<gpu_class><delim><filename>` exactly like the standard
+    // path. Files only land here when an AY/BD shader pair is too
+    // divergent for strategy C permutation (XXL bucket).
+    virtual std::string getCinematicShaderDirPrefix(void) { return std::string(); }
+    // </FS:AYA>
+
     // Implemented in the application to actually update out of date uniforms for a particular shader
     virtual void updateShaderUniforms(LLGLSLShader * shader) = 0; // Pure Virtual
 

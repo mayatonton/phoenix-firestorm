@@ -130,6 +130,8 @@ public:
 
     /* virtual */ std::string getShaderDirPrefix(void);
 
+    /* virtual */ std::string getCinematicShaderDirPrefix(void);
+
     /* virtual */ void updateShaderUniforms(LLGLSLShader * shader);
 
 private:

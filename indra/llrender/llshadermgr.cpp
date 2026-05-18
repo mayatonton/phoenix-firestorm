@@ -529,8 +529,35 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 #endif
     {
         //find the most relevant file
+        // <FS:AYA r30 Phase 3.8 step 4> Cinematic strategy D path probe.
+        // When sCinematicMode is true, probe getCinematicShaderDirPrefix()
+        // first at each gpu_class tier. Files present there override the
+        // standard tree for the Cinematic pass; absent files fall through
+        // to the normal path. Only XXL-bucket shaders (shadowUtil,
+        // screenSpaceReflUtil) live under cinematic_bd/.
+        std::string cinematic_prefix = sCinematicMode ? getCinematicShaderDirPrefix() : std::string();
+        // </FS:AYA>
         for (gpu_class = try_gpu_class; gpu_class > 0; gpu_class--)
         {   //search from the current gpu class down to class 1 to find the most relevant shader
+
+            // <FS:AYA r30 Phase 3.8 step 4>
+            if (!cinematic_prefix.empty())
+            {
+                std::stringstream cfname;
+                cfname << cinematic_prefix;
+                cfname << gpu_class << gDirUtilp->getDirDelimiter() << filename;
+                std::string cinematic_name = cfname.str();
+                LL_DEBUGS("ShaderLoading") << "Looking in " << cinematic_name << " (cinematic_bd override)" << LL_ENDL;
+                file = LLFile::fopen(cinematic_name, "r");  /* Flawfinder: ignore */
+                if (file)
+                {
+                    open_file_name = cinematic_name;
+                    LL_DEBUGS("ShaderLoading") << "Loading cinematic_bd override: " << open_file_name << " (Want class " << gpu_class << ")" << LL_ENDL;
+                    break;
+                }
+            }
+            // </FS:AYA>
+
             std::stringstream fname;
             fname << getShaderDirPrefix();
             fname << gpu_class << gDirUtilp->getDirDelimiter() << filename;
