@@ -24,14 +24,16 @@ Phase 4 通過後、Phase 3.7-3.9 で持ち込んだ検証用 hook / 動作確�
 
 ### §1.1 検証用 LL_INFOS / hook の削除 (`feedback_remove_verification_logs.md`)
 
-Phase 3.7-3.9 で追加した shader / cvar dispatch hook の log は **release 物から除去**:
+`git diff ayastorm-release..HEAD -- 'indra/newview/*.cpp' 'indra/newview/*.h'` 全 BD-port 差分の log 追加行を確認:
 
-- [ ] `pipeline.cpp` Phase 3.7 dispatch 追加箇所 (cinematic mode 判定 log 想定)
-- [ ] `llviewershadermgr.cpp` Phase 3.8 cinematic_bd path-probe (探索成功 log があれば除去)
-- [ ] `bdsidebar.cpp` mount 時 log (BD 由来は保持、AY 増設は除去)
-- [ ] `llviewerwindow.cpp` Phase 3.9 step 4a mount caller (`mMachinimaSidebar` 探索 log があれば除去)
+- [x] `pipeline.cpp` Phase 3.7 dispatch 追加箇所 — **追加 log なし** (dispatch は silent)
+- [x] `llviewershadermgr.cpp` Phase 3.8 cinematic_bd path-probe — **追加 log なし** (path-probe は silent)
+- [x] `bdsidebar.cpp` mount 時 log — **BD verbatim** (`LL_WARNS("Sidebar")` 3 件は BD 由来、保持)
+- [x] `bdfunctions.cpp` update checker `LL_INFOS() << "HTTP Code"` — **BD verbatim、保持**
+- [x] `llviewerwindow.cpp` Phase 3.9 step 4a mount caller — **追加 log なし**
+- [x] `pipeline.cpp` r30 P2 `LL_INFOS("Pipeline") << "AYAstorm r30 P2: allocated mVelocityMap..."` — **one-shot alloc 報告、保持** (per-frame でなく起動 1 回、debug 用ではなく構成記録)
 
-判定: `git diff ayastorm-release..HEAD -- '*.cpp' '*.h' | grep -E '^\+.*LL_INFOS.*r30'` で残骸 grep。
+確定: Phase 5 §1.1 は **追加 cleanup 不要**。BD port branch で追加された verification debug log は無し。判定方法は `git diff ayastorm-release..HEAD -- '*.cpp' '*.h' | grep -E '^\+.*(LL_INFOS|LL_WARNS|LL_DEBUGS)'` で全 hit を BD verbatim / 既存 r30 P2 にカテゴライズ済 (2026-05-19 audit)。
 
 ### §1.2 検証用 debug settings 整理 (`feedback_restore_debug_settings.md`)
 
