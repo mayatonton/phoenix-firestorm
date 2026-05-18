@@ -11991,6 +11991,66 @@ Change of this parameter will affect the layout of buttons in notification toast
     <integer>0</integer>
   </map>
 
+  <key>RenderVolumetricLighting</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: enable volumetric lighting (godrays) in Cinematic mode. Only active when AYAVisualRealismEnabled=2 (Cinematic) so the post-process pass is dispatched.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderVolumetricLightingResolution</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: godray sample count per pixel for the volumetric lighting composite (BD's RenderVolumetricLightingResolution). Higher = smoother shafts, higher GPU cost. The shader's inner loop iterates (godray_res - 1) times, so values &lt;= 1 effectively disable the effect.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>16</integer>
+  </map>
+
+  <key>RenderVolumetricLightingMultiplier</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). 1.0 is BD's default; raise for stronger shafts, lower for subtler haze.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+
+  <key>RenderVolumetricLightingFalloffMultiplier</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: distance falloff multiplier for volumetric lighting (falloff_multiplier uniform). Higher values fade godrays out faster with depth.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+
+  <key>RenderVolumetricLightingDirectional</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: fade volumetric lighting out when the sun is below the horizon (sun_dir.z &lt; 0). Adds the GODRAYS_FADE permutation to gVolumetricLightProgram so no shafts hang in mid-air at night. Toggling this rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
   <key>RenderDepthOfFieldInEditMode</key>
   <map>
     <key>Comment</key>
