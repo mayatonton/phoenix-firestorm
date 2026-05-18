@@ -10,7 +10,7 @@
  can_resize="false"
  can_close="true"
  can_minimize="true"
- height="500"
+ height="635"
  help_topic="aya_cinematic_floater"
  layout="topleft"
  name="aya_cinematic"
@@ -401,6 +401,121 @@
          width="300"/>
     </panel>
 
+    <!-- ===== Motion Blur + SMAA T2x ===== -->
+    <panel
+     name="P_MotionBlur_Section_Header"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="3"
+     left="3"
+     right="-3"
+     height="22"
+     bg_alpha_color="Phototools_Header"
+     border_visible="true"
+     border_thickness="1"
+     background_visible="true">
+        <text
+         name="T_MotionBlur_Section"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         font="SansSerif"
+         height="17"
+         width="280">
+            Motion Blur &amp; Temporal AA
+        </text>
+    </panel>
+
+    <panel
+     name="P_MotionBlur_Settings"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="1"
+     left="3"
+     right="-3"
+     height="100"
+     border_visible="true"
+     background_visible="true">
+        <text
+         name="T_MotionBlurStrength"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         top_pad="6"
+         width="100">
+            Strength (px)
+        </text>
+        <slider_bar
+         name="SB_MotionBlurStrength"
+         control_name="RenderMotionBlurStrength"
+         follows="left|top"
+         height="16"
+         increment="1"
+         layout="topleft"
+         left_pad="0"
+         min_val="0"
+         max_val="128"
+         top_delta="-2"
+         width="120"/>
+        <spinner
+         name="S_MotionBlurStrength"
+         control_name="RenderMotionBlurStrength"
+         top_delta="-3"
+         label_width="0"
+         left_pad="0"
+         decimal_digits="0"
+         follows="left|top"
+         max_val="128"
+         min_val="0"
+         width="55"
+         increment="1"/>
+        <button
+         follows="left|top"
+         name="Reset_MotionBlurStrength"
+         height="22"
+         label="D"
+         layout="topleft"
+         left_pad="0"
+         top_delta="0"
+         width="20"
+         tool_tip="Reset to the default value.">
+            <button.commit_callback
+             function="ResetControl"
+             parameter="RenderMotionBlurStrength"/>
+        </button>
+
+        <check_box
+         control_name="RenderMotionBlurSelfAvatar"
+         height="16"
+         label="Blur self avatar"
+         layout="topleft"
+         left="5"
+         name="MotionBlurSelf"
+         tool_tip="Include the self avatar in the velocity buffer so motion blur applies to first-person/own movement."
+         top_pad="6"
+         width="300"/>
+        <check_box
+         control_name="RenderMotionBlurOtherAvatars"
+         height="16"
+         label="Blur other avatars"
+         layout="topleft"
+         left="5"
+         name="MotionBlurOthers"
+         tool_tip="Include other avatars in the velocity buffer so motion blur applies to their movement. Disable to keep other avatars crisp in portrait/group shots."
+         top_pad="2"
+         width="300"/>
+        <check_box
+         control_name="RenderSMAAT2x"
+         height="16"
+         label="SMAA T2x (requires SMAA + Cinematic; may ghost)"
+         layout="topleft"
+         left="5"
+         name="SMAAT2x"
+         tool_tip="Enable SMAA T2x temporal resolve. Requires Antialiasing=SMAA (RenderFSAAType=2). Produces edge stabilization plus ghosting on motion; default off."
+         top_pad="2"
+         width="300"/>
+    </panel>
+
     <!-- ===== Footer ===== -->
     <text
      name="T_Credits"
@@ -413,7 +528,7 @@
      font="SansSerifSmall"
      word_wrap="true"
      text_color="White_50">
-        BD DoF + Volumetric chain borrowed from Black Dragon viewer (LGPL-2.1). See AYAstorm r30 release notes.
+        BD DoF + Volumetric + Motion Blur chain borrowed from Black Dragon viewer (LGPL-2.1). See AYAstorm r30 release notes.
     </text>
 
 </floater>
