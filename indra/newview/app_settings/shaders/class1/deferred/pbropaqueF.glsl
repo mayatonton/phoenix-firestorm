@@ -123,8 +123,14 @@ void main()
     frag_data[2] = encodeNormal(tnorm, 0, GBUFFER_FLAG_HAS_PBR); // normal, environment intensity, flags
 
 #if defined(HAS_EMISSIVE)
-    // <FS:AYA r20 Phase C> .a carries the per-draw skin marker for SSS gating
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 packs the
+    // per-draw SSS skin flag into gbuffer3.a alongside emissive. Cinematic
+    // has no SSS pass, so it writes BD original max(vec4(emissive,0), 0).
+#if AYASTORM_CINEMATIC
+    frag_data[3] = max(vec4(emissive, 0), vec4(0));
+#else
     frag_data[3] = max(vec4(emissive, aya_sss_skin_flag), vec4(0));
+#endif
     // </FS:AYA>
 #endif
 }
@@ -154,6 +160,13 @@ vec3 srgb_to_linear(vec3 c);
 void main()
 {
     vec4 basecolor = texture(diffuseMap, base_color_texcoord.xy).rgba;
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> BD multiplies
+    // basecolor.a by vertex_color.a in the HUD path; AY dropped that to
+    // keep HUD opacity decoupled from per-vertex tint alpha.
+#if AYASTORM_CINEMATIC
+    basecolor.a *= vertex_color.a;
+#endif
+    // </FS:AYA>
     if (basecolor.a < minimum_alpha)
     {
         discard;
