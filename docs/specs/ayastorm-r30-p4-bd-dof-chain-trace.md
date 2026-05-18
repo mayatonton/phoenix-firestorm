@@ -20,11 +20,12 @@
 2. **Chromatic Aberration 機能**: 3 件の cvar (`RenderDepthOfFieldChroma`, `RenderChromaStrength`, `RenderDepthOfFieldHighQuality`) + `HAS_DOF_CHROMA` permutation + `DEFERRED_CHROMA_STRENGTH` uniform + 既存 4 shader 内 chroma サンプリング block 追加
 3. **既存 DoF shader への chroma block 注入**: `postDeferredF.glsl` / `postDeferredHQDoFF.glsl` / `postDeferredNoDoFF.glsl` の 3 本に `#if HAS_DOF_CHROMA` ガード付き色収差 sampling コードを追加
 4. **uniform push 配線**: pipeline.cpp の 3 箇所 (renderDoF / renderFinalize / bindDeferredShader) に `DEFERRED_CHROMA_STRENGTH` uniform push を追加
+5. **Front Blur 取り込み** (2026-05-18 追加、§7.2 で AYA 判断確定): `RenderDepthOfFieldFront` cvar (BD default=1) + `FRONT_BLUR` permutation を Cinematic+HQ DoF 同時有効時に付与。`postDeferredHQDoFF.glsl` 内の `#if FRONT_BLUR` ガード block は BD 由来コードのまま byte-preserve。**判断根拠**: 章 §1.1「BD と並走する撮影 viewer」thesis 整合、控えめ default で出荷すると初見比較で BD に劣後する印象 (`feedback_match_bd_defaults_on_borrow.md`)
 
 スコープ外:
 - BD UI (`panel_preferences_graphics1.xml` の DoF/chroma スライダー UI / `panel_machinima.xml` の Photo Tools chroma UI) — chapter §1.2 「BD UI を取り込まない」方針通り
 - BD `RenderDepthOfFieldAlphas` (alpha pass DoF) — P3 §4.5 で取り込み判断が懸案中、P4 でも別 phase 扱い
-- BD `RenderDepthOfFieldFront` (front blur 経路) — `postDeferredHQDoFF.glsl` 内 `#if FRONT_BLUR` ガードがあるが、cvar 取り込みは P5 以降に後送り (P4 では永続無効 = permutation 非追加)
+- (削除) BD `RenderDepthOfFieldFront` (front blur 経路) — 当初スコープ外だったが、AYA さん 2026-05-18 判断で **取り込み確定** (§5.6/§7.2 参照、BD default=1 / 章 §1.1 整合 / 初見比較で BD と勝負)
 - `lldrawpoolwater.cpp` の chroma uniform push (BD 独自の water chroma) — Firestorm の water pipeline は別物、無理に踏むと深層 regression のリスクが高いので P4 スコープ外
 - `LLPipeline::renderMotionBlurComposite` 系統 (P2 で ship 済、変更不要)
 
@@ -337,16 +338,16 @@ NoDoF 経路にも chroma block を追加。BD line 82 の `#if HAS_DOF_CHROMA =
 
 ### 5.6 Cinematic gate 戦略
 
-shader 側の permutation 付与 (HAS_DOF_CHROMA / HQ DoF 分岐) は **起動時 1 回確定**。Cinematic mode が ON か OFF かで shader file 選択 + permutation 付与を分岐する:
+shader 側の permutation 付与 (HAS_DOF_CHROMA / FRONT_BLUR / HQ DoF 分岐) は **起動時 1 回確定**。Cinematic mode が ON か OFF かで shader file 選択 + permutation 付与を分岐する:
 
-| AYAVisualRealismEnabled | RenderDepthOfFieldChroma | RenderDepthOfFieldHighQuality | 結果 (gDeferredPostProgram) |
-|---|---|---|---|
-| 0 (Firestorm View) | - (ignore) | - (ignore) | 標準 `postDeferredF.glsl`、permutation なし (現状と同じ) |
-| 1 (AYAstorm View) | - (ignore) | - (ignore) | 標準 `postDeferredF.glsl`、permutation なし (現状と同じ) |
-| 2 (Cinematic) | 1 (default) | 0 (default) | 標準 `postDeferredF.glsl` + `HAS_DOF_CHROMA` permutation |
-| 2 (Cinematic) | 1 (default) | 1 (user opt-in) | `postDeferredHQDoFF.glsl` + `HAS_DOF_CHROMA` permutation |
-| 2 (Cinematic) | 0 (user opt-out) | 0 | 標準 `postDeferredF.glsl`、permutation なし |
-| 2 (Cinematic) | 0 (user opt-out) | 1 | `postDeferredHQDoFF.glsl`、permutation なし |
+| AYAVisualRealismEnabled | RenderDepthOfFieldHighQuality | RenderDepthOfFieldChroma | RenderDepthOfFieldFront | 結果 (gDeferredPostProgram) |
+|---|---|---|---|---|
+| 0 / 1 (Firestorm View / AYAstorm View) | - (ignore) | - (ignore) | - (ignore) | 標準 `postDeferredF.glsl`、permutation なし (現状と同じ) |
+| 2 (Cinematic) | 0 (default) | 1 (default) | - (HQ 無効なので参照されない) | 標準 `postDeferredF.glsl` + `HAS_DOF_CHROMA` permutation |
+| 2 (Cinematic) | 1 (user opt-in) | 1 (default) | 1 (default) | `postDeferredHQDoFF.glsl` + `HAS_DOF_CHROMA` + `FRONT_BLUR` permutation (**BD default 完全再現**) |
+| 2 (Cinematic) | 1 (user opt-in) | 1 (default) | 0 (user opt-out) | `postDeferredHQDoFF.glsl` + `HAS_DOF_CHROMA` permutation のみ |
+| 2 (Cinematic) | 0 (default) | 0 (user opt-out) | - | 標準 `postDeferredF.glsl`、permutation なし |
+| 2 (Cinematic) | 1 (user opt-in) | 0 (user opt-out) | 1 (default) | `postDeferredHQDoFF.glsl` + `FRONT_BLUR` permutation のみ |
 
 `llviewershadermgr.cpp` 内 register block で `if (gPipeline.sViewModeCinematic && gSavedSettings.getBOOL("RenderDepthOfFieldChroma"))` のような 2 段 gate を入れる。Cinematic 以外では BD の cvar 値を完全 ignore = 一切影響を出さない。
 
@@ -356,7 +357,8 @@ shader 側の permutation 付与 (HAS_DOF_CHROMA / HQ DoF 分岐) は **起動�
 |---|---|---|
 | `RenderDepthOfFieldHighQuality` | 0 (= 標準 DoF、user opt-in で HQ) | 影響なし (Cinematic gate で ignore) |
 | `RenderDepthOfFieldChroma` | 1 (= 機能 compile in、strength で実効制御) | 影響なし (Cinematic gate で ignore) |
-| `RenderChromaStrength` | 0.0 (= 強度 off、UI 無いので debug settings 経由で dial in) | 影響なし (uniform push されるが permutation 無いので shader 側で参照されない) |
+| `RenderChromaStrength` | **2026-05-18 更新**: BD は 0.0、AYAstorm は `feedback_match_bd_defaults_on_borrow.md` 適用で **BD と同値 0.0** を踏襲。ただし「Chroma permutation は compile in されているが strength 0 で実効ゼロ」の状態は **BD と同じ** であり、初見比較負けにはならない。strength を上げる動線は §7.5 の UI 判断 (debug settings or Preferences) に従う | 影響なし |
+| `RenderDepthOfFieldFront` | **1 (= BD default、front blur ON)** ※ 2026-05-18 追加。HQ DoF user opt-in 時のみ effective。Cinematic+HQ DoF で初見 = BD と同じ前ボケ挙動 | 影響なし (Cinematic gate で ignore) |
 
 ### 5.8 UI 取り込みは無し
 
@@ -514,27 +516,16 @@ if (gPipeline.sViewModeCinematic && gSavedSettings.getBOOL("RenderDepthOfFieldCh
 
 enum 順 (line 401 の `END_RESERVED_UNIFORMS` 直前に追加) と push_back 順 (line 1609 で追加) が 1 対 1 対応であることを §6.3 step 3 で必ず double-check。
 
-### 7.2 ⏸️ Design decision — `RenderDepthOfFieldFront` cvar 取り込み判断
+### 7.2 ✓ Resolved (2026-05-18) — `RenderDepthOfFieldFront` 取り込み判断 = **A**
 
-**BD 側調査結果 (`settings_blackdragon.xml:801`)**:
-```xml
-<key>RenderDepthOfFieldFront</key>
-<map>
-  <key>Comment</key><string>Enable blurring the foreground with Depth of Field.</string>
-  <key>Persist</key><integer>1</integer>
-  <key>Type</key><string>Boolean</string>
-  <key>Value</key><integer>1</integer>
-</map>
-```
+**AYA 判断** (2026-05-18): 「BDに合わせて強い絵で勝負しないと初見で負けた感じになっちゃうね」 → **A 案 (BD default 1 のまま取り込み)** で確定。本 spec §1.1 / §5.6 / §5.7 を A 案で更新済。
 
-**BD default = 1 (front blur ON)**。本 spec 初版では「P4 で取り込まず、`#if FRONT_BLUR` ガードを永続無効化」と書いたが、これだと BD の絵を再現しない (HQ DoF 経路で foreground のボケが入らない)。
+**確定後の実装内容**:
+- `settings.xml` に `RenderDepthOfFieldFront` 1 件追加 (Type=Boolean / Value=1 / Persist=1 / Comment は BD 原文 "Enable blurring the foreground with Depth of Field." を継承)
+- `llviewershadermgr.cpp` の `gDeferredPostProgram` register block 内で Cinematic+HQ DoF 両方有効時に追加で `if (gSavedSettings.getBOOL("RenderDepthOfFieldFront")) gDeferredPostProgram.addPermutation("FRONT_BLUR", "1");`
+- `postDeferredHQDoFF.glsl` 内の `#if FRONT_BLUR` ガード block (BD 由来コード) はバイト保存で取り込み、削除しない
 
-**選択肢**:
-- **A. BD default に合わせて取り込む** (推奨): cvar 1 件追加 (`RenderDepthOfFieldFront=1`)、`llviewershadermgr.cpp` register block で Cinematic+HQ DoF 両方有効時に `FRONT_BLUR` permutation を addPermutation。出荷直後から BD の HQ DoF 挙動が完全再現される。
-- **B. ガードだけ残して default 無効** (本 spec 初版): cvar 取り込まず、permutation も付与せず。HQ DoF on でも front blur は効かない (= BD と差が出る)。後続 phase で opt-in 余地を残す名目。
-- **C. cvar すら削除**: `postDeferredHQDoFF.glsl` の `#if FRONT_BLUR` ガード block を取り込み時に削除し、`else` 側 (`if (sc < -0.5)` 直入り = 背景ボケのみ) を残す。shader が simple になるが BD 由来コード byte-preserve 原則と反する。
-
-**AYA さん判断待ち**: A / B / C のどれを採るか。本 spec の初期判断 B は「BD 由来 byte-preserve 優先」だったが、BD default が 1 と判明した以上「BD の絵を再現する Cinematic」という章 thesis (§1.1) と整合する選択は A になる。
+**判断ルール記録**: BD から borrow する機能は default を BD と合わせる、控えめ default は初見比較で負けて印象を損なう → `feedback_match_bd_defaults_on_borrow.md`
 
 ### 7.3 ✓ Resolved (2026-05-18) — `dofCombineF.glsl` byte-diff
 
