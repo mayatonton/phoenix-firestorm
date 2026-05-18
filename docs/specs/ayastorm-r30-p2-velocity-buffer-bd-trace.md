@@ -956,13 +956,22 @@ if (features->hasMotionBlur)
 | `06c0fb9d55` | r30 P2 step 5a: display() hook + velocity buffer visualization + skinned variant fix |
 | `2f89d22f9d` | r30 P2 step 5b: motion blur composite + per-drawable velocity matrix hookup |
 | `c12bd5ddb2` | r30 P2 step 5c+5d: SMAA T2x resolve + 2-tap subpixel jitter |
+| `c7f4d3fef8` | r30 P2 spec: append §8 実装 commit log + step 5 受入観測 |
+| `c70c65d76e` | r30 P2 step 5e: motion blur avatar opt-out + composite bleed gate |
 
 Step 5 受入観測 (2026-05-18 AYA):
 - **5b motion blur**: SIM 境界の radial blur "玉" は `LLDrawable::mLastVelocityMatrix` + `LLDrawInfo::mLastModelMatrix` 配線で解消、avatar lightning streak は NaN/inf guard で抑止、static building の subpixel drift は noise floor 2.0px で抑止。
 - **5c SMAA T2x resolve**: 配線のみでは ON/OFF 差ゼロ (jitter 無しでは 50/50 blend が同一サンプルの平均 = identity)、これは仕様。
 - **5d Halton 2-tap jitter**: 高周波エッジ (木の葉、髪、細枝) で SMAA 単独より若干滑らかになる差を確認。建物 / 地形などの直線エッジは既存 SMAA で取り切られているので追加効果は小さい。これは 2-tap (T2x の "2x") の理論限界に沿った結果で、ghost / smear は確認されず → jitter ↔ velocity reprojection ↔ resolve の lockstep 成立を確認。
+- **5e avatar opt-out + bleed gate**: 2-stage で完成。
+  - *write side*: `RenderMotionBlurSelfAvatar` / `RenderMotionBlurOtherAvatars` (Boolean, default 1) を `LLDrawPoolAvatar::renderMotionBlur` + 4 push helpers (`pushVelocityBatches{,Textured}` / `pushRiggedVelocityBatches{,Textured}`) で読み、該当 avatar の velocity 書込みを skip。`LLDrawInfo::mAttachedToAvatar` (新規) で static prim attachment の wearer 紐付けを `mAvatar` (rigged 専用) と独立に持たせる。velocity RT が `(0,0)` clear 済 + composite の `speed < 2.0` 分岐で当該画素は unblurred。
+  - *診断*: `RenderBufferVisualization = 7` で velocity buffer 直接確認 — opt-out 中の avatar 画素が真っ黒 (R=G=0) であることを確認、skip 経路の動作を実機で検証 (2026-05-18 AYA)。
+  - *composite bleed gate (motionBlurF.glsl)*: write side skip 単独では「高 velocity な BG 画素の 32-tap blur が、opt-out された avatar 画素の diffuse を sample して halo として滲み出る」アルゴリズム的副作用が残る。per-sample velocity gate を追加し、各 sample 位置の velocity が 2 px noise floor 未満なら weight に含めない。avatar 画素は除外され、`total < 1e-3` の場合は center pixel をそのまま return。3rd-person camera pan で self / other 両方の halo 消失を確認 (2026-05-18 AYA)。
+  - *副次の skinning 修正 (A2.2)*: BD の `skinnedVelocityV.glsl` / `skinnedVelocityAlphaV.glsl` は `current_clip = modelview_projection_matrix * pos` で object skinning を skip しており、rigged mesh は bind pose (T-pose) でラスタライズ → `last_clip` 側は skinned matrix で全フレーム巨大 velocity (= "T-pose ⇄ 現ポーズ" の偽 motion)。velocityV.glsl HAS_SKIN path と同じ `projection * (modelview * (cur_mat * pos))` に揃え修正。
+  - *helper 整理*: `uploadLastMatrixPalette` の `force_zero` 引数を削除 — 同等効果は upstream skip + RT clear で達成され、uniform 経由の zero-write 機構は不要 (over-engineering 撤去)。first-frame `mLastGLMp` empty 時の `mGLMp` fallback は維持 (前 rig の matrix palette を read して "lightning-streak velocity" が出る回避)。
+  - *既知の運用 caveat*: Debug Settings から `RenderMotionBlur{Self,Other}Avatars` を toggle した値は **Debug Settings の Window を閉じた時点で commit** される (auto-widget の commit タイミング、code 側 bug ではない)。release note / 運用 tip 側で明記、cvar 型変換 (Boolean → U32) は不採用 (2026-05-18 AYA 判断、影響軽微につき memory rule 適用見送り)。
 
-ブランチ状態 (本 commit log 追記時点): `feature/ayastorm-r30-p2-velocity-buffer-spec` を `origin` に push 済。`ayastorm-release` への PR は最終調整完了まで保留 (AYA 判断 2026-05-18)。
+ブランチ状態 (本 commit log 追記時点): `feature/ayastorm-r30-p2-velocity-buffer-spec` を `origin` に push 済 (step 5e まで反映、`c70c65d76e`)。`ayastorm-release` への PR は本 spec 更新の commit を以て「最終調整完了」とする (2026-05-18 AYA 判断)。
 
 ---
 
