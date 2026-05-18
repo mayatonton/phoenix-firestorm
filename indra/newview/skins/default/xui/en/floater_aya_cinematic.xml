@@ -10,7 +10,7 @@
  can_resize="false"
  can_close="true"
  can_minimize="true"
- height="320"
+ height="500"
  help_topic="aya_cinematic_floater"
  layout="topleft"
  name="aya_cinematic"
@@ -199,6 +199,208 @@
         </button>
     </panel>
 
+    <!-- ===== Volumetric Lighting ===== -->
+    <panel
+     name="P_Volumetric_Section_Header"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="3"
+     left="3"
+     right="-3"
+     height="22"
+     bg_alpha_color="Phototools_Header"
+     border_visible="true"
+     border_thickness="1"
+     background_visible="true">
+        <text
+         name="T_Volumetric_Section"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         font="SansSerif"
+         height="17"
+         width="280">
+            Volumetric Lighting (Godrays)
+        </text>
+    </panel>
+
+    <panel
+     name="P_Volumetric_Settings"
+     follows="top|left|right"
+     layout="topleft"
+     top_pad="1"
+     left="3"
+     right="-3"
+     height="140"
+     border_visible="true"
+     background_visible="true">
+        <check_box
+         control_name="RenderVolumetricLighting"
+         height="16"
+         label="Enable volumetric lighting (godrays)"
+         layout="topleft"
+         left="5"
+         name="VolumetricEnable"
+         tool_tip="Master switch for the godrays composite. Only active in Cinematic mode."
+         top_pad="5"
+         width="300"/>
+
+        <text
+         name="T_VolumetricResolution"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         top_pad="6"
+         width="100">
+            Resolution
+        </text>
+        <slider_bar
+         name="SB_VolumetricResolution"
+         control_name="RenderVolumetricLightingResolution"
+         follows="left|top"
+         height="16"
+         increment="1"
+         layout="topleft"
+         left_pad="0"
+         min_val="4"
+         max_val="64"
+         top_delta="-2"
+         width="120"/>
+        <spinner
+         name="S_VolumetricResolution"
+         control_name="RenderVolumetricLightingResolution"
+         top_delta="-3"
+         label_width="0"
+         left_pad="0"
+         decimal_digits="0"
+         follows="left|top"
+         max_val="64"
+         min_val="4"
+         width="55"
+         increment="1"/>
+        <button
+         follows="left|top"
+         name="Reset_VolumetricResolution"
+         height="22"
+         label="D"
+         layout="topleft"
+         left_pad="0"
+         top_delta="0"
+         width="20"
+         tool_tip="Reset to the default value.">
+            <button.commit_callback
+             function="ResetControl"
+             parameter="RenderVolumetricLightingResolution"/>
+        </button>
+
+        <text
+         name="T_VolumetricMultiplier"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         top_pad="6"
+         width="100">
+            Intensity
+        </text>
+        <slider_bar
+         name="SB_VolumetricMultiplier"
+         control_name="RenderVolumetricLightingMultiplier"
+         follows="left|top"
+         height="16"
+         increment="1"
+         layout="topleft"
+         left_pad="0"
+         min_val="0"
+         max_val="200"
+         top_delta="-2"
+         width="120"/>
+        <spinner
+         name="S_VolumetricMultiplier"
+         control_name="RenderVolumetricLightingMultiplier"
+         top_delta="-3"
+         label_width="0"
+         left_pad="0"
+         decimal_digits="1"
+         follows="left|top"
+         max_val="200"
+         min_val="0"
+         width="55"
+         increment="1"/>
+        <button
+         follows="left|top"
+         name="Reset_VolumetricMultiplier"
+         height="22"
+         label="D"
+         layout="topleft"
+         left_pad="0"
+         top_delta="0"
+         width="20"
+         tool_tip="Reset to the default value.">
+            <button.commit_callback
+             function="ResetControl"
+             parameter="RenderVolumetricLightingMultiplier"/>
+        </button>
+
+        <text
+         name="T_VolumetricFalloff"
+         follows="left|top"
+         layout="topleft"
+         left="5"
+         top_pad="6"
+         width="100">
+            Falloff
+        </text>
+        <slider_bar
+         name="SB_VolumetricFalloff"
+         control_name="RenderVolumetricLightingFalloffMultiplier"
+         follows="left|top"
+         height="16"
+         increment="0.1"
+         layout="topleft"
+         left_pad="0"
+         min_val="0"
+         max_val="10"
+         top_delta="-2"
+         width="120"/>
+        <spinner
+         name="S_VolumetricFalloff"
+         control_name="RenderVolumetricLightingFalloffMultiplier"
+         top_delta="-3"
+         label_width="0"
+         left_pad="0"
+         decimal_digits="2"
+         follows="left|top"
+         max_val="10"
+         min_val="0"
+         width="55"
+         increment="0.1"/>
+        <button
+         follows="left|top"
+         name="Reset_VolumetricFalloff"
+         height="22"
+         label="D"
+         layout="topleft"
+         left_pad="0"
+         top_delta="0"
+         width="20"
+         tool_tip="Reset to the default value.">
+            <button.commit_callback
+             function="ResetControl"
+             parameter="RenderVolumetricLightingFalloffMultiplier"/>
+        </button>
+
+        <check_box
+         control_name="RenderVolumetricLightingDirectional"
+         height="16"
+         label="Directional fade (sun-below-horizon gate; restart required)"
+         layout="topleft"
+         left="5"
+         name="VolumetricDirectional"
+         tool_tip="Adds GODRAYS_FADE permutation so shafts disappear when the sun goes below the horizon. Toggling rebuilds the shader; requires a viewer restart."
+         top_pad="6"
+         width="300"/>
+    </panel>
+
     <!-- ===== Footer ===== -->
     <text
      name="T_Credits"
@@ -211,7 +413,7 @@
      font="SansSerifSmall"
      word_wrap="true"
      text_color="White_50">
-        BD DoF chain borrowed from Black Dragon viewer (LGPL-2.1). See AYAstorm r30 P4 release notes.
+        BD DoF + Volumetric chain borrowed from Black Dragon viewer (LGPL-2.1). See AYAstorm r30 release notes.
     </text>
 
 </floater>
