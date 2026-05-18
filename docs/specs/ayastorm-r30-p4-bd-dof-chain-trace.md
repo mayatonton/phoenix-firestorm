@@ -471,34 +471,120 @@ if (gPipeline.sViewModeCinematic && gSavedSettings.getBOOL("RenderDepthOfFieldCh
 
 ## 7. 未確定事項 (P4 着手時に再 fetch / 再確認が必要)
 
-### 7.1 `llshadermgr.{h,cpp}` の BD 具体 line
+**ステータス**: 6 項目中 4 件 resolved (2026-05-18 spec commit 直後の追補 trace で fetch 済)、残 2 件は design decision で AYA さん判断待ち。
 
-BD で `DEFERRED_CHROMA_STRENGTH` enum / `"chroma_str"` 文字列がそれぞれ何行目に追加されているか、Firestorm の既存 `eGLSLReservedUniforms` enum の最後尾 / 中間どこに挿入されているかは未 fetch。P4 着手時に `/tmp/bd_check/indra/llrender/llshadermgr.{h,cpp}` を grep 確認。
+### 7.1 ✓ Resolved (2026-05-18) — `llshadermgr.{h,cpp}` の BD 具体 line + AYAstorm 挿入点
 
-### 7.2 `RenderDepthOfFieldFront` cvar
+**BD 側 (`origin/master:indra/llrender/llshadermgr.h`)**:
+- enum 配置: `DEFERRED_CHROMA_STRENGTH` は line 391。`DEFERRED_NUM_COLORS` (388) → `DEFERRED_GREYSCALE_STRENGTH` (389) → `DEFERRED_SEPIA_STRENGTH` (390) → `DEFERRED_CHROMA_STRENGTH` (391) のクラスタ末尾。
+- 関連 enum (P3 で扱う): `GODRAY_RES` (370) / `GODRAY_MULTIPLIER` (371) / `FALLOFF_MULTIPLIER` (372)
 
-BD は `RenderDepthOfFieldFront` でも HQ DoF の `FRONT_BLUR` permutation を制御している。AYAstorm では P4 で取り込まず (= permutation 無し = front blur 無効) する方針だが、`postDeferredHQDoFF.glsl` 内 `#if FRONT_BLUR` ガードを残すか削除するかは P4 着手時に再判定:
+**BD 側 (`origin/master:indra/llrender/llshadermgr.cpp`)**:
+- push_back 列: line 1596 `mReservedUniforms.push_back("chroma_str");` (cluster: 1593 `"num_colors"` → 1594 `"greyscale_str"` → 1595 `"sepia_str"` → 1596 `"chroma_str"`)
 
-- 残す: 後続 phase で front blur を opt-in する余地を残す (BD 由来コード改変を最小化)
-- 削除: shader を simple に保つ (Firestorm 流儀)
+**AYAstorm 側 (`indra/llrender/llshadermgr.h`)**:
+- P3 で `GODRAY_RES` / `GODRAY_MULTIPLIER` / `FALLOFF_MULTIPLIER` が **既に line 393-398 に追加 commit 済** (`// <AYAstorm r30 P3 step 3>` / `// </AYAstorm r30 P3>` ガード付き)。本 P4 spec 起草時の前提が一部食い違っており、P3 は spec only ではなく enum 部分は実装済 (要 git log 確認)。
+- P4 挿入点: line 398 `// </AYAstorm r30 P3>` の直後 / line 400 `END_RESERVED_UNIFORMS` の直前:
 
-**初期判断**: ガード残す (BD 由来コードの byte-preserve を優先、Firestorm が過去 BD borrow した前例も同様)。
+```cpp
+        // </AYAstorm r30 P3>
 
-### 7.3 `dofCombineF.glsl` の diff 再確認
+        // <AYAstorm r30 P4> BD DoF chain — chromatic aberration uniform.
+        // Imported from BlackDragon Viewer 995a1354d8 with no semantic change.
+        DEFERRED_CHROMA_STRENGTH,           //  "chroma_str"
+        // </AYAstorm r30 P4>
 
-§5.4 で「BD と AYAstorm で chroma 差分無し」と書いたが、これは BD 全体を full diff したわけではなく chroma 関連 grep の結果。P4 着手時に BD `dofCombineF.glsl` を AYAstorm 側と byte-diff して、想定外の差分が無いことを再確認。
+        END_RESERVED_UNIFORMS
+```
 
-### 7.4 `bindDeferredShader` の AYAstorm 側 line 番号
+**AYAstorm 側 (`indra/llrender/llshadermgr.cpp`)**:
+- P3 push_back は line 1606-1608 (`"godray_res"` / `"godray_multiplier"` / `"falloff_multiplier"`) に既に追加済。
+- P4 挿入点: line 1608 直後 (P3 ガード閉じの直後 / 既存 `attribsAndUniforms()` 関数末尾の `}` 直前):
 
-BD では `pipeline.cpp:8743-9533` の `bindDeferredShader()` 末尾近く (8969) で chroma uniform push をしているが、AYAstorm の `bindDeferredShader()` は構造が若干違う可能性 (Firestorm 追加 uniform 群がある場合)。P4 着手時に AYAstorm 側で「LL deferred uniform 列の最後 / Firestorm 独自 uniform 列の前後 どこに置くか」を確定。
+```cpp
+    mReservedUniforms.push_back("godray_res");
+    mReservedUniforms.push_back("godray_multiplier");
+    mReservedUniforms.push_back("falloff_multiplier");
+    // </AYAstorm r30 P3>
 
-### 7.5 cvar UI 取り込み判断の最終確認
+    // <AYAstorm r30 P4> BD DoF chain — chromatic aberration uniform.
+    mReservedUniforms.push_back("chroma_str");
+    // </AYAstorm r30 P4>
+```
 
-§5.8 で「BD UI は取り込まない、debug settings 経由」と決めているが、AYAstorm Preferences 側に「Cinematic」セクションを将来作る (chapter §3 P5+ で言及) ことを見越して、debug settings 名と UI label 名の整合性を保つかどうかは P4 着手時に AYA さんと再確認。
+enum 順 (line 401 の `END_RESERVED_UNIFORMS` 直前に追加) と push_back 順 (line 1609 で追加) が 1 対 1 対応であることを §6.3 step 3 で必ず double-check。
 
-### 7.6 BD repo の再 fetch
+### 7.2 ⏸️ Design decision — `RenderDepthOfFieldFront` cvar 取り込み判断
 
-本 spec は BD `995a1354d8` を基準にしているが、P4 着手時には BD `master` HEAD を再 fetch して `995a1354d8` 以降の chroma / DoF 関連変更が無いか確認 (BD は active development 中)。
+**BD 側調査結果 (`settings_blackdragon.xml:801`)**:
+```xml
+<key>RenderDepthOfFieldFront</key>
+<map>
+  <key>Comment</key><string>Enable blurring the foreground with Depth of Field.</string>
+  <key>Persist</key><integer>1</integer>
+  <key>Type</key><string>Boolean</string>
+  <key>Value</key><integer>1</integer>
+</map>
+```
+
+**BD default = 1 (front blur ON)**。本 spec 初版では「P4 で取り込まず、`#if FRONT_BLUR` ガードを永続無効化」と書いたが、これだと BD の絵を再現しない (HQ DoF 経路で foreground のボケが入らない)。
+
+**選択肢**:
+- **A. BD default に合わせて取り込む** (推奨): cvar 1 件追加 (`RenderDepthOfFieldFront=1`)、`llviewershadermgr.cpp` register block で Cinematic+HQ DoF 両方有効時に `FRONT_BLUR` permutation を addPermutation。出荷直後から BD の HQ DoF 挙動が完全再現される。
+- **B. ガードだけ残して default 無効** (本 spec 初版): cvar 取り込まず、permutation も付与せず。HQ DoF on でも front blur は効かない (= BD と差が出る)。後続 phase で opt-in 余地を残す名目。
+- **C. cvar すら削除**: `postDeferredHQDoFF.glsl` の `#if FRONT_BLUR` ガード block を取り込み時に削除し、`else` 側 (`if (sc < -0.5)` 直入り = 背景ボケのみ) を残す。shader が simple になるが BD 由来コード byte-preserve 原則と反する。
+
+**AYA さん判断待ち**: A / B / C のどれを採るか。本 spec の初期判断 B は「BD 由来 byte-preserve 優先」だったが、BD default が 1 と判明した以上「BD の絵を再現する Cinematic」という章 thesis (§1.1) と整合する選択は A になる。
+
+### 7.3 ✓ Resolved (2026-05-18) — `dofCombineF.glsl` byte-diff
+
+```
+$ diff /tmp/bd_check/.../class1/deferred/dofCombineF.glsl \
+       /home/.../class1/deferred/dofCombineF.glsl
+(no output)
+```
+
+**BD と AYAstorm で byte-identical**。§5.4 の判断 (「P4 では `dofCombineF.glsl` を触らない」) は正しい。chapter §3 P4 取り込みリストに `dofCombineF.glsl` が含まれているのはあくまで「DoF chain に属するファイル」のラベリングであり、ファイル自体の変更は無し。
+
+### 7.4 ✓ Resolved (2026-05-18) — `bindDeferredShader` の AYAstorm 側 line 番号
+
+**BD**: `pipeline.cpp:8743` から `bindDeferredShader()`、chroma uniform push は line 8969 (関数末尾近く、bulk uniform setter section、`//BD - Post Process` コメント付き)。
+**AYAstorm**: `pipeline.cpp:9906` から `bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target, LLRenderTarget* depth_target)`。BD より 1163 行後ろ (= Firestorm 独自関数群が前段に挿入されている)。
+
+**chroma uniform push 挿入点**: AYAstorm `bindDeferredShader()` 関数末尾近く、`LLPipeline::unbindDeferredShader()` 定義 (要 line 確認) の直前。具体 line は §6.4 step 4 実装時に当該関数末尾の `}` を Read で特定 → 直前の uniform push 群 (BD で言うと `DEFERRED_LIGHT_STRENGTH` push の隣) に挿入。
+
+P3 で同様の `bindDeferredShader` 系操作をした実装が commit 済の可能性があるので、P4 着手時に git log で P3 commit を見て参考にする。
+
+### 7.5 ⏸️ Design decision — cvar UI 取り込み方針の最終確認
+
+§5.8 で「BD UI は取り込まない、debug settings 経由」と判断したが、その妥当性を最終確認:
+
+- **A. 完全 debug settings 経由** (本 spec 初版): release note に「debug settings から `RenderChromaStrength` を 0.5〜2.0 に dial in する」と記述。Cinematic ユーザーは Photo Tools と debug settings を行き来する状況になる。
+- **B. AYAstorm Preferences の Cinematic セクション (P4 で先行追加)**: chapter §3 P5+ で予定されている Cinematic Preferences セクションを P4 で先行新設し、chroma slider と HQ DoF checkbox を露出する。P5 で他 Cinematic cvar 統合のフレームを作る前段になる。
+- **C. AYAstorm Preferences の既存 Graphics tab に追加**: Firestorm 既存 Graphics tab の DoF 関連 controls の直下に slider 1 + checkbox 2 を追加。UI 工数最小だが「Cinematic 専用 cvar が Cinematic 外でも見える」整合性問題が出る (gate 内挙動を tooltip 等で明示する必要)。
+
+**AYA さん判断待ち**: A / B / C のどれを採るか。本 spec の初期判断 A は「BD UI は取り込まない」という章方針の解釈だが、debug settings 経由は撮影者の動線として弱いという懸念がある。
+
+### 7.6 ✓ Resolved (2026-05-18) — BD repo の再 fetch
+
+`git fetch origin` 実行結果: BD `origin/master` の HEAD は依然 `995a1354d89feef858c0893f6d5cc2a1466ecd4b` (Version to 5.6.2, 2026-04-19)。本 spec の参照 commit から進行無し。**P4 着手時に BD HEAD が更新されていれば再度 chroma / DoF 関連変更を grep 確認**。
+
+### 7.7 ✓ Resolved (2026-05-18) — P3 実装ステータス確認
+
+`git log --grep='r30 P3'` で確認、**P3 は step 1 から release notes まで完全 ship 済**:
+
+| commit | 内容 |
+|---|---|
+| `31c6310c81` | r30 P3 spec: volumetric light trace + plumbing map |
+| `bf269b8671` | step 1: import volumetric light shaders from Black Dragon Viewer |
+| `4e6a97bf86` | step 2: add 5 volumetric light cvars to settings.xml |
+| `64aa990f7c` | step 3: register gVolumetricLightProgram (BD lineage 995a1354d8) |
+| `0df903736d` | step 4: pipeline plumbing — renderVolumetric() + renderFinalize hook |
+| `d0a695c2ac` | step 5: alpha pool depth-write extension for godrays (Cinematic gated) |
+| `4f0215d3a8` | step 6: hotfix + default Multiplier retune (50.0) + spec §8 受入観測 |
+| `775573ada9` | r30 P3 release notes (ja/en/zh) |
+
+P4 spec の前提 (= P3 完了済) は正しい。本 spec 起草時に持ち込まれた conversation summary の「P3 not pushed」記述は古く、実態は ship 完了。**P4 は P3 tip から積めば良い** (本 spec の branch `feature/ayastorm-r30-p4-bd-dof-chain-spec` は既にそうなっている、`git log` 上 `2670934d28` (P2 release notes) より前段 = P3 ship 後の HEAD)。
 
 ---
 
