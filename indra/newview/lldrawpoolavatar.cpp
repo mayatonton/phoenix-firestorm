@@ -997,6 +997,11 @@ LLColor3 LLDrawPoolAvatar::getDebugColor() const
 // skeleton mesh (head/body bones) only reflects camera + root motion,
 // not arm-wave/walk-cycle animation velocity. Acceptable for Cinematic
 // alpha; revisit in a later r30 step if needed.
+//
+// RenderMotionBlurSelfAvatar / OtherAvatars: when disabled, renderMotionBlur
+// returns early so the velocity RT (cleared to (0,0) at frame start in
+// renderGeomMotionBlur) keeps zero for this avatar's body pixels, and the
+// composite shader's speed-floor branch passes them through unblurred.
 
 S32 LLDrawPoolAvatar::getNumMotionBlurPasses()
 {
@@ -1062,6 +1067,19 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     {
         return;
     }
+
+    // <AYAstorm r30 P2> RenderMotionBlur{Self,Other}Avatars opt-out for the
+    // classic / system avatar body. Skipping is safe because the velocity RT
+    // is cleared to (0,0) each frame in renderGeomMotionBlur, so body pixels
+    // we don't write keep that zero and motionBlurF.glsl's `if (speed < 2.0)`
+    // branch passes them through unblurred.
+    static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
+    static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
+    if (avatarp->isSelf() ? !self_blur : !others_blur)
+    {
+        return;
+    }
+    // </AYAstorm r30 P2>
 
     avatarp->renderSkinned();
 }

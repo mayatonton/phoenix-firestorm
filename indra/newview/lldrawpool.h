@@ -413,6 +413,10 @@ public:
     void pushRiggedVelocityBatches(U32 type);
     void pushVelocityBatchesTextured(U32 type);
     void pushRiggedVelocityBatchesTextured(U32 type);
+    // On first visible frame of a (avatar, mesh) pair, mLastGLMp is empty;
+    // the helper falls back to mGLMp so last_pose == curr_pose → velocity 0,
+    // instead of leaving lastMatrixPalette[] holding bones from whatever
+    // mesh drew last (which read as "lightning-streak" velocities).
     static bool uploadLastMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo);
     // </AYAstorm r30 P2>
 };

@@ -5825,6 +5825,13 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         {
             draw_info->mIsSSSTarget = vobj->isSSSTarget();
             draw_info->mFSPickerLocalID = vobj->getLocalID();
+            // <AYAstorm r30 P2> stash wearer avatar so the static velocity push
+            // helpers can suppress motion blur on attachments per
+            // RenderMotionBlurOtherAvatars / SelfAvatar. getAvatar() returns the
+            // control avatar for animesh, the wearer for attachments, NULL for
+            // world geometry.
+            draw_info->mAttachedToAvatar = vobj->getAvatar();
+            // </AYAstorm r30 P2>
         }
         // </FS:AYA>
 

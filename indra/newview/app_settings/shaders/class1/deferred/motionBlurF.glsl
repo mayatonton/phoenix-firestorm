@@ -88,16 +88,33 @@ void main()
     // Start sampling ahead of center
     vec2 sample_uv = uv + step_uv * 16.0;
 
-    // 32-sample triangle-weighted blur
+    // 32-sample triangle-weighted blur with per-sample velocity gate
+    // (AYAstorm r30 P2): reject samples whose own velocity falls under the
+    // same 2.0 px noise floor used at the output pixel. This prevents
+    // high-velocity neighbors (BG) from sampling diffuse from explicitly
+    // zero-velocity surfaces (RenderMotionBlur{Self,Other}Avatars opt-out,
+    // or any static no-write region), which would otherwise smear avatar
+    // diffuse outward as a halo around opted-out avatars.
     vec3 color = vec3(0.0);
     float total = 0.0;
 
     for (int i = 0; i < 32; ++i)
     {
-        float w = 32.0 - abs(float(i) - 16.0);
-        total += w;
-        color += texture(diffuseRect, sample_uv).rgb * w;
+        vec2 vel_at_sample = texture(velocityMap, sample_uv).rg;
+        vec2 pixel_vel_sample = vel_at_sample * screen_res * 0.5;
+        if (length(pixel_vel_sample) >= 2.0)
+        {
+            float w = 32.0 - abs(float(i) - 16.0);
+            total += w;
+            color += texture(diffuseRect, sample_uv).rgb * w;
+        }
         sample_uv -= step_uv;
+    }
+
+    if (total < 1e-3)
+    {
+        frag_color = texture(diffuseRect, uv);
+        return;
     }
 
     frag_color = vec4(color / total, 1.0);

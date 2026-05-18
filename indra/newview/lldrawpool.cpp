@@ -806,9 +806,18 @@ void teardown_texture_matrix(LLDrawInfo& params)
 // render map for the given pool type, upload per-object last/current matrices
 // via the LAST_OBJECT_MATRIX uniform (set by Step 3 enum), draw, then store
 // the current matrix back into params.mLastModelMatrix for next frame.
+//
+// RenderMotionBlur{Self,Other}Avatars opt-out: skip the draw entirely. The
+// velocity RT is cleared to (0,0) at frame start in renderGeomMotionBlur
+// (pipeline.cpp), so any pixel we don't write reads back as (0,0), which
+// motionBlurF.glsl's `if (speed < 2.0) return diffuseRect` branch treats as
+// "no blur" — exactly the requested outcome.
 void LLRenderPass::pushVelocityBatches(U32 type)
 {
     static const LLMatrix4 identity;
+    static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
+    static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
+
     auto* begin = gPipeline.beginRenderMap(type);
     auto* end   = gPipeline.endRenderMap(type);
 
@@ -818,6 +827,12 @@ void LLRenderPass::pushVelocityBatches(U32 type)
         LLCullResult::increment_iterator(i, end);
 
         if (!params.mVertexBuffer.notNull())
+        {
+            continue;
+        }
+
+        if (params.mAttachedToAvatar.notNull() &&
+            (params.mAttachedToAvatar->isSelf() ? !self_blur : !others_blur))
         {
             continue;
         }
@@ -846,6 +861,9 @@ void LLRenderPass::pushRiggedVelocityBatches(U32 type)
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
 
+    static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
+    static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
+
     auto* begin = gPipeline.beginRenderMap(type);
     auto* end   = gPipeline.endRenderMap(type);
 
@@ -855,6 +873,11 @@ void LLRenderPass::pushRiggedVelocityBatches(U32 type)
         LLCullResult::increment_iterator(i, end);
 
         if (!params.mVertexBuffer.notNull() || !params.mAvatar)
+        {
+            continue;
+        }
+
+        if (params.mAvatar->isSelf() ? !self_blur : !others_blur)
         {
             continue;
         }
@@ -876,6 +899,9 @@ void LLRenderPass::pushRiggedVelocityBatches(U32 type)
 void LLRenderPass::pushVelocityBatchesTextured(U32 type)
 {
     static const LLMatrix4 identity;
+    static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
+    static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
+
     auto* begin = gPipeline.beginRenderMap(type);
     auto* end   = gPipeline.endRenderMap(type);
 
@@ -885,6 +911,12 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
         LLCullResult::increment_iterator(i, end);
 
         if (!params.mVertexBuffer.notNull())
+        {
+            continue;
+        }
+
+        if (params.mAttachedToAvatar.notNull() &&
+            (params.mAttachedToAvatar->isSelf() ? !self_blur : !others_blur))
         {
             continue;
         }
@@ -918,6 +950,9 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
 
+    static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
+    static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
+
     auto* begin = gPipeline.beginRenderMap(type);
     auto* end   = gPipeline.endRenderMap(type);
 
@@ -927,6 +962,11 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
         LLCullResult::increment_iterator(i, end);
 
         if (!params.mVertexBuffer.notNull() || !params.mAvatar)
+        {
+            continue;
+        }
+
+        if (params.mAvatar->isSelf() ? !self_blur : !others_blur)
         {
             continue;
         }
@@ -961,7 +1001,19 @@ bool LLRenderPass::uploadLastMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinI
     const LLVOAvatar::MatrixPaletteCache& mpc = avatar->updateSkinInfoMatrixPalette(skinInfo);
     U32 count = static_cast<U32>(mpc.mMatrixPalette.size());
 
-    if (count == 0 || mpc.mLastGLMp.empty())
+    if (count == 0)
+    {
+        return false;
+    }
+
+    // First-frame fallback: when mLastGLMp hasn't been populated yet (new hash
+    // or first visible frame), uploading nothing would leave lastMatrixPalette[]
+    // holding bones from whichever rig drew previously — those get read as the
+    // "last frame" of this rig and produce lightning-streak velocity. Upload
+    // mGLMp instead so last_pose == curr_pose → velocity = 0, the correct
+    // "no motion captured yet" answer.
+    const std::vector<F32>& src = mpc.mLastGLMp.empty() ? mpc.mGLMp : mpc.mLastGLMp;
+    if (src.empty())
     {
         return false;
     }
@@ -969,7 +1021,7 @@ bool LLRenderPass::uploadLastMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinI
     LLGLSLShader::sCurBoundShaderPtr->uniformMatrix3x4fv(LLShaderMgr::AVATAR_LAST_MATRIX,
         count,
         false,
-        (GLfloat*)&(mpc.mLastGLMp[0]));
+        (GLfloat*)&(src[0]));
 
     return true;
 }

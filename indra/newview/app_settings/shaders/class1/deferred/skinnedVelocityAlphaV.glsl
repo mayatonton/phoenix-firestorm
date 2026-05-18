@@ -27,7 +27,7 @@
 // Source: https://github.com/NiranV/Black-Dragon-Viewer @ indra/newview/app_settings/shaders/class1/deferred/skinnedVelocityAlphaV.glsl
 // License: LGPL-2.1-only (same as Second Life Viewer Source Code, no relicensing)
 
-uniform mat4 modelview_projection_matrix;
+uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 last_modelview_matrix;
 uniform mat4 texture_matrix0;
@@ -84,7 +84,10 @@ void main()
 {
     vec4 pos = vec4(position.xyz, 1.0);
 
-    vec4 current_clip = modelview_projection_matrix * pos;
+    // AYAstorm r30 P2 A2.2: see comment in skinnedVelocityV.glsl — BD's
+    // current_clip skipped skinning, breaking rigged-mesh velocity writes.
+    mat4 cur_mat = getObjectSkinnedTransform();
+    vec4 current_clip = projection_matrix * (modelview_matrix * (cur_mat * pos));
 
     mat4 last_mat = getLastObjectSkinnedTransform();
     vec4 last_clip = projection_matrix * (last_modelview_matrix * (last_mat * pos));

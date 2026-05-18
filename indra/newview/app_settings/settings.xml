@@ -11955,6 +11955,30 @@ Change of this parameter will affect the layout of buttons in notification toast
     <integer>32</integer>
   </map>
 
+  <key>RenderMotionBlurSelfAvatar</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P2: include the self avatar in the velocity buffer so motion blur applies to first-person/own movement. Disable to keep the self avatar crisp regardless of camera/limb motion.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderMotionBlurOtherAvatars</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P2: include other avatars in the velocity buffer so motion blur applies to their movement. Disable to keep other avatars crisp (useful for portrait/group shots where only environment motion should smear).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
   <key>RenderSMAAT2x</key>
   <map>
     <key>Comment</key>

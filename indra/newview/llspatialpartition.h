@@ -122,6 +122,14 @@ public:
     LLPointer<LLVOAvatar> mAvatar = nullptr;
     LLConstPointer<LLMeshSkinInfo> mSkinInfo;// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 
+    // <AYAstorm r30 P2> Wearer avatar for attachments (rigged AND static). mAvatar
+    // is only populated for rigged faces, so static prim attachments (classic prim
+    // hair, sculpts, hand-held props) had no signal back to the wearer. Velocity
+    // pass uses this to apply RenderMotionBlurOtherAvatars / SelfAvatar suppression
+    // on the non-rigged push helpers too. NULL for world geometry.
+    LLPointer<LLVOAvatar> mAttachedToAvatar = nullptr;
+    // </AYAstorm r30 P2>
+
     // Material pointer here is likely for debugging only and are immaterial (zing!)
     LLPointer<LLMaterial> mMaterial;
 
