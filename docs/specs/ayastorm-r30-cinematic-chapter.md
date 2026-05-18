@@ -69,11 +69,13 @@ AYA さんは r14+ 視覚表現章で本来 AYAstorm View を BD クラスに近
 
 ### 2.1 Cinematic の出荷条件
 
-Cinematic モードを「初回 ship」する条件は **BD で撮った写真と並べて、第三者ブラインドで BD と AYAstorm Cinematic が見分けられない (もしくは AYAstorm の方が好評)** 水準。半端な状態で ship しない。
+Cinematic モードを「正式モード」として ship する条件は **AYA 自身の目で、同一 location / 同一構図で撮影した BD vs AYAstorm Cinematic のスクリーンショットを並べて、どちらが BD かどちらが AYAstorm か区別がつかない** 水準 (5 scene 最小: 屋外昼景 / 屋外夕景 / 屋内 / 浅景深ポートレート / 動きのある pan)。半端な状態で正式ラベルを付けない。
+
+判定主体は **AYA 自身** で十分。parity 未達の状態で第三者に見せても評価コストに対して得られる情報量が少ない (「BD のほうが良い」が確定済) ため、第三者ブラインド A/B は parity 到達後の「BD を超えたか」判定 (P6+) に retract する (2026-05-19 P5 pivot で確定、`docs/specs/ayastorm-r30-p5-bd-parity-spec.md` §2 参照)。
 
 これが守れない場合の選択肢:
-- **延期**: P5 ゲートを通過するまで Cinematic 単体タグを切らない (内部 dogfood のみ)
-- **撤退**: P4 までで BD 同等が見えない場合、章スコープを「BD と並走できる photo viewer」から「Firestorm + AYA 色の選択肢提示」に縮小し、Cinematic 名乗りを取り下げる
+- **継続**: P5 phase 自体を複数 sub-release (P5 / P5.1 / P5.2 …) に分割して parity 構築を続ける (初期方針、`docs/specs/ayastorm-r30-p5-bd-parity-spec.md` §1.3)。各 sub-release は preview のまま出荷
+- **撤退**: P5 phase が長期化して parity の見込みが立たなくなった時点で AYA に判断を仰ぐ。章スコープを「BD と並走できる photo viewer」から「Firestorm + AYA 色の選択肢提示」に縮小し、Cinematic 名乗りを取り下げる余地あり
 
 「ある程度動くから ship する」は不採用 (`feedback_feature_value_in_main_usecase.md` を章スコープに適用)。
 
@@ -159,24 +161,43 @@ Linux / macOS / Windows いずれかが落ちる状態では release を切ら�
 - DoF 撮影で色収差が cinematic らしく乗る
 - High-Res snapshot 時の HQ DoF が BD 同等で破綻しない
 
-### P5 BD 同等到達ゲート (想定 r34) — **Cinematic 初回正式 ship**
+### P5 BD parity 構築 phase (想定 r34 〜 r34.x) — **複数 release 許容 / 最終 sub-release で Cinematic 初回正式 ship**
 
-**実装**:
-- View Mode UI で Cinematic を `preview / experimental` 表記から **正式モード** に昇格
-- P2〜P4 で追加した Cinematic 用 cvar 群を **AYAstorm top menu 配下の Cinematic Controls floater** (P4 で新設、Alt+C) に集約整理する。Preferences への統合は **行わない** (Cinematic 系 cvar は永続設定でなく撮影中ライブ調整、Preferences 動線とミスマッチ — P4 step 4a で確定した判断を P5 にそのまま継承)
-- floater のセクション拡張方針: 既存の DoF + Chromatic Aberration の下に Volumetric / Motion Blur / SMAA T2x 等の P2/P3 cvar 群もまとめる。将来 Cinematic 機能が増えて 1 floater に収まらなくなった時点で AYAstorm top menu に sibling 項目 (Volumetric Controls / Motion Blur Controls 等) を追加する分割案に切り替える
-- 既存 Firestorm Photo Tools floater は据え置き (汎用撮影 UI なので Cinematic 専用 cvar を持ち込まない)
+**位置づけ**: r30 章の最重要 phase。Cinematic mode を **BD と「同じ絵」が作れるレベル**まで詰める phase。**単一 release ではなく複数 release (P5 / P5.1 / P5.2 …) に分割される前提**。詳細仕様は `docs/specs/ayastorm-r30-p5-bd-parity-spec.md`。
+
+**pivot 経緯 (2026-05-19)**: 当初 P5 は「cvar 集約 + View Mode 正式昇格 + 第三者ブラインド A/B 判定」を 1 release で行う ship gate を想定していたが、P4 ship 直後の floater + UI 仕上げ完了時点で AYA 自身が「この時点では BD に完敗」「BD と完全に同じ絵を作れますか? (= ノー)」と確認、parity 構築が必要と判断。P5 を構築 phase に再定義。
+
+**phase 構成 (sub-release は audit 結果で分割数確定)**:
+
+1. **step 4 (audit)**: BD vs AYAstorm Cinematic の shader / cvar default / pipeline stage / 未取り込み機能を系統的に diff、表化
+2. **step 5 (BD-compat preset)**: Cinematic Controls floater に「BD-compat / AYAstorm-default」2 button + cvar 一括反映 UI を追加。「同等に揃えた上で差を見る」を成立させる検証基盤
+3. **step 6 (tone 方針)**: AYAstorm ACES tone vs BD tone の差をどう扱うか確定 (ACES 維持 / BD tone borrow / preset 内切替、初期推奨は preset 内切替)
+4. **step 7 (追加 borrow)**: audit で同定された未 borrow の BD 機能 (SSAO / SSR / Bloom / Color Grading / Vignette / Film Grain 等の候補) を parity に必要な順で sub-release 化
+5. **step 8 (継続 A/B)**: 各 sub-release で AYA 自己判定の same-picture A/B (BD-compat preset on で比較)
+6. **step 9 (formal ship)**: §2.1 parity 到達条件達成時に View Mode UI 再昇格 (preview → 正式) + README / ja/en/zh release notes + Cinematic 正式 ship
+
+**実装 (UI 整備)**:
+- Cinematic Controls floater (P4 で新設、Alt+C) に BD-compat preset UI を追加 (step 5)
+- P2〜P4 で追加した cvar 群は既に同 floater に集約済 (P4 step 4a, 4b で完成)
+- Preferences への統合は **行わない** (Cinematic 系 cvar は撮影中ライブ調整、Preferences 動線とミスマッチ — P4 step 4a で確定した判断を継承)
+- 既存 Firestorm Photo Tools floater との DoF 系重複は **意図して P5 では触らない** (撮影 workflow 互換性を残す価値、P5 spec §1.4 / 2026-05-19 AYA confirm)
 - BD UI (Machinima Sidebar / Photo Tools panel / `panel_machinima.xml`) は **取り込まない / 翻訳もしない**
 
-**ship 判定 (= 章にとって最重要ゲート)**:
-- **第三者ブラインド A/B**: BD で撮った写真と AYAstorm Cinematic で撮った写真を並べて、SL コミュニティ内の photo 系ユーザー複数名に判定してもらい、BD 同等以上の判定を得る
-- 判定に届かない場合は **ship しない**。P6 に進まず、P1〜P5 のどこに不足があるかを再 survey して差分 release を切る
+**ship 判定 (= phase 全体の出口条件)**:
+- AYA 自己判定で 5 scene 最小の same-picture A/B が「BD と区別がつかない」を達成 (§2.1)
+- 達成までは sub-release を継続、View Mode UI は `Cinematic (preview)` ラベルを維持
+- 達成時に最終 sub-release で正式モード昇格 + 章 §10 P6+ 着手準備
 
-このゲートを通過した時点で Cinematic を「正式モード」として release notes / README で告知する。
+**mode 別影響範囲 (per-mode gating により保護)**:
+- Firestorm View (mode 0): parity 作業の影響なし、再起動で生存
+- AYAstorm View (mode 1): r14+ default 値は変更しない、既存 release との連続性維持
+- Cinematic (mode 2): 全面的に parity 構築対象
 
 ### P6+ BlackDragon を超える (想定 r35+ 複数 release)
 
-**実装**: AYA が完成した Cinematic pipeline の絵を実機で見て、**新規に** AYA 色を起こす。
+**前提**: P5 phase で BD parity (= AYA 自己判定で BD と区別不能) に到達済。「超える」は「並ぶ」の後にしか存在しないため、P5 完了が P6+ 着手の必要条件。
+
+**実装**: AYA が parity 到達済の Cinematic pipeline の絵を実機で見て、**新規に** AYA 色を起こす。
 
 **重要 — 既存 AYA 色 (Kelvin/LUT/aerial 等) を Cinematic に流用しない**:
 - AYAstorm View が出している色は AYAstorm View の pipeline で見たときに最適化された色作り
@@ -214,7 +235,7 @@ BD は全ファイル LL viewerlgpl 標準 header (LGPL 2.1 only)、AYAstorm と
 | P4 | `class1/deferred/motionBlur{F,V}.glsl` | BlackDragon (Geenz 改良) | motion blur |
 | P4 | `dofCombineF.glsl`, `postDeferredHQDoFF.glsl`, `postDeferredNoDoFF.glsl` | BlackDragon | BD 独自 HQ DoF chain (High-Res snapshot 用) |
 | P4 | `RenderDepthOfFieldChroma`, `RenderChromaStrength` cvar + 関連 shader 改修 | BlackDragon | DoF-only chromatic aberration |
-| P5 | Cinematic 用 cvar 群 + Cinematic Controls floater 整備 | AYAstorm 独自 | **BD UI は取り込まない**。P2/P3 cvar 群を P4 で新設した Cinematic Controls floater (AYAstorm top menu 配下) に集約。Preferences への統合は行わない (撮影 workflow 側に置く判断、P4 §5.8 参照) |
+| P5 | BD parity 構築 (audit / BD-compat preset / tone 方針 / 追加 borrow / A/B 検証) | BlackDragon (追加 borrow) + AYAstorm 独自 (preset UI / 比較 workflow) | **複数 sub-release 許容**。P5 phase で BD と「同じ絵」レベルへ到達させてから正式 ship。詳細は `docs/specs/ayastorm-r30-p5-bd-parity-spec.md`。BD UI は引き続き取り込まない |
 
 ### 4.3 BD repo 静的 survey 結果 (2026-05-17)
 
@@ -291,20 +312,22 @@ Cinematic 用色設定は cvar prefix で分離:
 
 ### 6.2 P2〜P4 phase 内検証
 
-各 phase の ship 判定は AYA 実機 + 1〜2 名の dogfood ユーザー (要相談) で行う。BD 同等性の主観判定は P5 まで持ち越す。
+各 phase の ship 判定は AYA 実機 + 1〜2 名の dogfood ユーザー (要相談) で行う。BD 同等性の主観判定は P5 phase (BD parity 構築) で AYA 自身が継続的に行う。
 
 - A/B 撮影: 同 region / 同 EEP / 同 camera 位置で AYAstorm Cinematic と BlackDragon を撮影し並列比較
 - High-Res snapshot で velocity / volumetric / motion blur が破綻しないことを確認
 - 3 OS 全てで artifact が出ないことを確認
 - AYAstorm View / Firestorm View に regression が無いことを確認
 
-### 6.3 P5 ブラインドレビュー (BD 同等到達ゲート)
+### 6.3 P5 same-picture A/B (BD parity 構築 phase)
 
-- SL コミュニティの photo 系ユーザー複数名に協力依頼
-- BD で撮った写真と AYAstorm Cinematic で撮った写真を **どちらか分からない状態** で並べる
-- 「どちらが BD っぽい」「どちらが綺麗」を聞く
-- BD と区別が付かない or AYAstorm の方が好評 → ship gate 通過
-- BD 寄りと判定される → P1〜P5 のどこに不足があるか再 survey
+- 判定主体: **AYA 自身** (第三者ブラインドは parity 到達後の P6+ 判定に retract、2026-05-19 pivot)
+- 同一 SL location / 同一構図 / 同一時刻 / 同一 Windlight で BD と AYAstorm Cinematic (BD-compat preset on) を交互に撮影
+- 5 scene 最小: 屋外昼景 / 屋外夕景 / 屋内 / 浅景深ポートレート / 動きのある pan
+- PNG / 無加工 / 同解像度で並べて目視比較
+- 各 scene を「区別不能 / どちらが BD か特定可能 / どちらかが明らかに勝つ」の 3 段で判定
+- 全 scene が「区別不能」になった時点で P5 phase ship gate 通過 → 最終 sub-release で Cinematic 正式モード昇格
+- 区別がついた scene がある場合: 主な乖離原因を `docs/specs/ayastorm-r30-p5-bd-parity-spec.md` §8 に記録、次 sub-release で詰める項目を決定
 
 ### 6.4 P6+ 色到達判定
 
@@ -327,7 +350,7 @@ Cinematic 用色設定は cvar prefix で分離:
 | 3 モード再起動切替化が user experience を損なう (毎回再起動で煩雑) | ユーザーは「自分が普段どのモードで使うか」を起動時に確定する運用前提。低スペックユーザーは Firestorm View で固定、撮影時のみ Cinematic に切替 |
 | BD から shader を取り込んでも絵が変わらない (Firestorm が複数借りていながら絵が変わらない前例あり、α 検証でも SSR 単体は無効と確認済み) | shader 単発でなく、**default 全 ON 設計 + post pipeline 連鎖 + tone 支配の最終段** を総体として組む (UI は対象外、描画エンジン部分のみ)。phase ごとに「絵が動いた」確認 |
 | Mac OpenGL deprecation で Cinematic shader が動かない | Mac kill-switch を phase ごとに併設。最悪 Cinematic = Linux/Win 限定の判断もあり得る (AYA に確認) |
-| P5 ブラインドで BD 同等に届かない | ship せず差分 release で P1〜P5 を再走、それでも届かない場合は章スコープを「BD と並走できる photo viewer」から取り下げ |
+| P5 phase で BD parity に届かない | P5 を sub-release (P5.1 / P5.2 …) に分割継続、preview ラベルのまま出荷を許容。長期化判断は AYA に仰ぐ、最終撤退時は章スコープを「BD と並走できる photo viewer」から取り下げ |
 | 工数が想定を大幅超過 | r25-r29 (3D stream) で十分に章を完結させてから着手、r30 章自体の長さは複数 release を許容 |
 | AYA 色作り工数が長期化 (P6+) | release ごとに「Cinematic 用色 incremental」で出して 1 release で完成させない。AYA View 色が壊れない限り incremental で問題なし |
 
@@ -335,7 +358,7 @@ Cinematic 用色設定は cvar prefix で分離:
 
 以下のいずれかが発生した場合、章リーダー (AYA) に再判断を仰ぐ:
 
-- P4 完了時点で BD 同等の見込みが立たない → P6 進まず差分 release で P1-P5 再走、それでも届かない場合 Cinematic 名乗りを取り下げ
+- P5 phase が複数 sub-release を経ても BD parity の見込みが立たない → P6 進まず、章スコープ縮小 (Cinematic 名乗り取り下げ) を AYA に仰ぐ
 - Mac OpenGL deprecation で取り込み shader が動かず kill-switch では塞ぎきれない → Cinematic = Linux/Win 限定の判断を AYA に仰ぐ
 - 章が r35-r36 を大幅超過する見込みになる → 再判断
 
@@ -359,14 +382,14 @@ Cinematic 用色設定は cvar prefix で分離:
 | P2 | 大 (9-10 日) | velocity buffer 取り込み + gbuffer pipeline 改修 + Cinematic mode 骨格 + SMAA T2x 完成 (resolve shader 自作含む、§7-7 案 A 採用) |
 | P3 | 中 | Volumetric Light 取り込み + pipeline 連鎖位置決定 |
 | P4 | 中 | Motion Blur + BD DoF chain 取り込み |
-| P5 | 中 | Cinematic cvar 群の Cinematic Controls floater 集約 (Preferences 統合は行わない) + ブラインドレビュー (UI 翻訳無し) |
-| P6+ | 大 (複数 release) | Cinematic 用 AYA 色の新規探索 |
+| P5 | 大 (phase 全体、複数 sub-release) | BD parity 構築 (audit / BD-compat preset / tone 方針 / 追加 borrow / 継続 A/B / 最終 ship)。1 sub-release は中規模、phase 全体で半年級 |
+| P6+ | 大 (複数 release) | Cinematic 用 AYA 色の新規探索 (parity 到達後着手) |
 
 ### 8.2 章クローズまでの時間軸
 
 - AYA さんの次の release は **r30 P1**、r25-r29 を待たず即着手可能 (2026-05-17 オーナー委譲済み)
-- r30 (P1) 着手後、P5 BD 同等到達ゲート通過まで **半年級**
-- P6+ AYA 色到達まで含めると **1 年級** の章
+- r30 (P1) 着手後、P5 phase 完了 (BD parity 到達 / Cinematic 正式 ship) まで **半年〜1 年級** (sub-release 分割数次第)
+- P6+ AYA 色到達まで含めると **1 年〜1.5 年級** の章
 - 章クローズは P6+ で「Cinematic AYAstorm でしか撮れない絵」の到達時点
 
 ### 8.3 r25-r29 (3D stream 章) との関係
@@ -399,7 +422,7 @@ r30 P1 ship 前に「AYAstorm の絵が BD のように精細でない」「pres
 - **3D stream 系 (r25-r29) の報告**:
   → 別オーナーに委譲済み、AYA さん側でさばかない。「r20 系は別オーナー担当です」と案内のみ
 - r30 P1 ship 後は「View Mode 切替が 3 モードとも再起動切替になりました、Cinematic 枠を preview 追加しました」を release notes で告知
-- r30 P5 ship 後は「Cinematic モードもお試しください」が選択肢に加わる
+- r30 P5 phase 中は Cinematic は preview ラベルで提供、P5 phase 最終 sub-release (BD parity 到達 + 正式 ship) 以降に「Cinematic モードもお試しください」が選択肢に加わる
 
 ---
 
