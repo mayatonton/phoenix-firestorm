@@ -328,6 +328,13 @@ public:
     static bool             sVelocityRender;
     // sT2xJitterEnabled lives further down with the other s* statics (~line 778).
     // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — BD lineage
+    // 995a1354d8. Post-process pass between generateGlow and combineGlow;
+    // gated by AYAVisualRealismEnabled == 2 (Cinematic) and
+    // RenderVolumetricLighting at the call site. Pong'ed via mPostPing/Pong.
+    void renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst);
+    // </AYAstorm r30 P3>
     void bindLightFunc(LLGLSLShader& shader);
 
     // bind shadow maps

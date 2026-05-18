@@ -4728,6 +4728,48 @@ void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* 
 }
 // </AYAstorm r30 P2>
 
+// <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — BD lineage 995a1354d8.
+// Adds shadow-accumulated god rays from the sun direction to the tonemapped
+// color buffer. Atmosphere + shadow uniforms (sun_dir, blue_density,
+// haze_density, sunlight_color, shadowMap[0..3], shadowMatrix[0..3]) are
+// auto-bound by bindDeferredShader() via the calculatesAtmospherics /
+// hasAtmospherics / hasShadows feature flags set in llviewershadermgr.cpp.
+// Alpha channel left untouched (setColorMask(true, false)) to honor the
+// AYAstorm visual-realism alpha-protect rule. Caller pong-chains the result.
+void LLPipeline::renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+    LL_PROFILE_GPU_ZONE("volumetric light");
+
+    dst->bindTarget();
+    glViewport(0, 0, dst->getWidth(), dst->getHeight());
+
+    gGL.setColorMask(true, false);
+
+    bindDeferredShader(gVolumetricLightProgram);
+    gVolumetricLightProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, false, LLTexUnit::TFO_POINT);
+
+    gVolumetricLightProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
+        (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
+
+    static LLCachedControl<U32> godray_res(gSavedSettings, "RenderVolumetricLightingResolution", 16);
+    static LLCachedControl<F32> godray_mult(gSavedSettings, "RenderVolumetricLightingMultiplier", 1.0f);
+    static LLCachedControl<F32> falloff_mult(gSavedSettings, "RenderVolumetricLightingFalloffMultiplier", 1.0f);
+
+    gVolumetricLightProgram.uniform1i(LLShaderMgr::GODRAY_RES, (S32)godray_res);
+    gVolumetricLightProgram.uniform1f(LLShaderMgr::GODRAY_MULTIPLIER, (F32)godray_mult);
+    gVolumetricLightProgram.uniform1f(LLShaderMgr::FALLOFF_MULTIPLIER, (F32)falloff_mult);
+
+    mScreenTriangleVB->setBuffer();
+    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    unbindDeferredShader(gVolumetricLightProgram);
+    dst->flush();
+
+    gGL.setColorMask(true, true);
+}
+// </AYAstorm r30 P3>
+
 void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 {
     LLAppViewer::instance()->pingMainloopTimeout("Pipeline:RenderGeomDeferred");
@@ -9610,6 +9652,20 @@ void LLPipeline::renderFinalize()
 
     LLRenderTarget* sourceBuffer = &mPostPingMap;
     LLRenderTarget* targetBuffer = &mPostPongMap;
+
+    // <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — Cinematic mode
+    // only. Runs before combineGlow so glow is added on top of the godray-lit
+    // diffuse (physically natural: glow blooms from the same light that
+    // produced the shafts). Pong'ed via mPostPing/Pong; BD ran this in-place,
+    // we chose pong for driver safety per spec §5.2 (matches P2 swap-chain).
+    static LLCachedControl<U32>  aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    static LLCachedControl<bool> volumetric_enable(gSavedSettings, "RenderVolumetricLighting", true);
+    if (aya_view_mode == 2 && volumetric_enable && !gCubeSnapshot)
+    {
+        renderVolumetric(sourceBuffer, targetBuffer);
+        std::swap(sourceBuffer, targetBuffer);
+    }
+    // </AYAstorm r30 P3 step 4>
 
     combineGlow(sourceBuffer, targetBuffer);
     std::swap(sourceBuffer, targetBuffer);
