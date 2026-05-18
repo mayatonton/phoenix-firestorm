@@ -38,6 +38,66 @@ uniform int motion_blur_strength;
 
 in vec2 vary_fragcoord;
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+//   Cinematic — BD original: 0.5 px noise floor, no NaN/Inf guard, no
+//     sanity ceiling, no per-sample velocity gate. Trusts the velocity
+//     buffer fully — accepts the upstream avatar lastMatrixPalette
+//     uninitialized streak artifact as part of the BD look.
+//   AY        — r30 P2 step 5b hardening: NaN/Inf guard, 2.0 px noise
+//     floor, 2x max_blur sanity ceiling, per-sample velocity gate
+//     (rejects samples under the same noise floor so high-velocity
+//     neighbors don't smear diffuse from explicitly zero-velocity
+//     surfaces, e.g. RenderMotionBlur{Self,Other}Avatars opt-out),
+//     zero-total passthrough fallback.
+// Two main() bodies; AY mode is preserved verbatim.
+#if AYASTORM_CINEMATIC
+
+void main()
+{
+    vec2 uv = vary_fragcoord;
+    vec2 vel = texture(velocityMap, uv).rg;
+
+    // NDC velocity to pixel velocity
+    vec2 pixel_vel = vel * screen_res * 0.5;
+    float speed = length(pixel_vel);
+
+    // Early out for negligible motion
+    if (speed < 0.5)
+    {
+        frag_color = texture(diffuseRect, uv);
+        return;
+    }
+
+    // Clamp to max blur length
+    float max_blur = float(motion_blur_strength);
+    if (speed > max_blur)
+    {
+        pixel_vel *= max_blur / speed;
+    }
+
+    // Step size in UV space per iteration
+    vec2 step_uv = (pixel_vel / screen_res) * (2.0 / 32.0);
+
+    // Start sampling ahead of center
+    vec2 sample_uv = uv + step_uv * 16.0;
+
+    // 32-sample triangle-weighted blur
+    vec3 color = vec3(0.0);
+    float total = 0.0;
+
+    for (int i = 0; i < 32; ++i)
+    {
+        float w = 32.0 - abs(float(i) - 16.0);
+        total += w;
+        color += texture(diffuseRect, sample_uv).rgb * w;
+        sample_uv -= step_uv;
+    }
+
+    frag_color = vec4(color / total, 1.0);
+}
+
+#else // AYASTORM_CINEMATIC
+
 void main()
 {
     vec2 uv = vary_fragcoord;
@@ -119,3 +179,6 @@ void main()
 
     frag_color = vec4(color / total, 1.0);
 }
+
+#endif // AYASTORM_CINEMATIC
+// </FS:AYA>
