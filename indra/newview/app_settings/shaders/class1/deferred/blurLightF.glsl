@@ -41,6 +41,94 @@ in vec2 vary_fragcoord;
 vec4 getPosition(vec2 pos_screen);
 vec4 getNorm(vec2 pos_screen);
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+//   Cinematic — BD original: only the G channel (SSAO) is blurred;
+//     directional/spot shadows (R, B, A) pass through untouched.
+//   AY        — blurs all four channels uniformly via .xyxx swizzle.
+// Two main() bodies; AY mode is preserved verbatim.
+#if AYASTORM_CINEMATIC
+
+void main()
+{
+    vec2 tc = vary_fragcoord.xy;
+    vec4 norm = getNorm(tc);
+    vec3 pos = getPosition(tc).xyz;
+    vec4 ccol = texture(lightMap, tc).rgba;
+
+    vec2 dlt = kern_scale * delta / (1.0+norm.xy*norm.xy);
+    dlt /= max(-pos.z*dist_factor, 1.0);
+
+    // Only blur SSAO (G channel), pass through shadows (R, B, A channels)
+    // Initialize: R with no blur, G with blur weight, B and A with no blur
+    float defined_weight = kern[0].x; // weight for SSAO blur only
+    vec4 col;
+    col.r = ccol.r; // directional shadow - no blur
+    col.g = kern[0].x * ccol.g; // SSAO - apply blur
+    col.b = ccol.b; // spot shadow 0 - no blur
+    col.a = ccol.a; // spot shadow 1 - no blur
+
+    float pointplanedist_tolerance_pow2 = pos.z*pos.z*0.00005;
+
+    tc *= screen_res;
+    float tc_mod = 0.5*(tc.x + tc.y);
+    tc_mod -= floor(tc_mod);
+    tc_mod *= 2.0;
+    tc += ( (tc_mod - 0.5) * kern[1].z * dlt * 0.5 );
+
+    vec3 k[7];
+    k[0] = kern[0];
+    k[2] = kern[1];
+    k[4] = kern[2];
+    k[6] = kern[3];
+
+    k[1] = (k[0]+k[2])*0.5f;
+    k[3] = (k[2]+k[4])*0.5f;
+    k[5] = (k[4]+k[6])*0.5f;
+
+    for (int i = 1; i < 7; i++)
+    {
+        vec2 samptc = tc + k[i].z*dlt*2.0;
+        samptc /= screen_res;
+        vec3 samppos = getPosition(samptc).xyz;
+
+        float d = dot(norm.xyz, samppos.xyz-pos.xyz);
+
+        if (d*d <= pointplanedist_tolerance_pow2)
+        {
+            vec4 sampcol = texture(lightMap, samptc);
+            col.g += sampcol.g * k[i].x;
+            defined_weight += k[i].x;
+        }
+    }
+
+    for (int i = 1; i < 7; i++)
+    {
+        vec2 samptc = tc - k[i].z*dlt*2.0;
+        samptc /= screen_res;
+        vec3 samppos = getPosition(samptc).xyz;
+
+        float d = dot(norm.xyz, samppos.xyz-pos.xyz);
+
+        if (d*d <= pointplanedist_tolerance_pow2)
+        {
+            vec4 sampcol = texture(lightMap, samptc);
+            col.g += sampcol.g * k[i].x;
+            defined_weight += k[i].x;
+        }
+    }
+
+    col.g /= defined_weight;
+
+    frag_color = max(col, vec4(0));
+
+#ifdef IS_AMD_CARD
+    vec3 dummy1 = kern[0];
+    vec3 dummy2 = kern[3];
+#endif
+}
+
+#else // AYASTORM_CINEMATIC
+
 void main()
 {
     vec2 tc = vary_fragcoord.xy;
@@ -116,4 +204,7 @@ void main()
     vec3 dummy2 = kern[3];
 #endif
 }
+
+#endif // AYASTORM_CINEMATIC
+// </FS:AYA>
 
