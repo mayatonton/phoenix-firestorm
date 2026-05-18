@@ -776,7 +776,10 @@ LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const L
     static LLCachedControl<U32>  aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
     static LLCachedControl<bool> aya_r17(gSavedSettings, "AYAR17ColorTemperatureEnabled", true);
 
-    if (aya_visual_realism() == 0 || !aya_r17)
+    // <FS:AYAstorm r30 BD full port Phase 3.1> r17 Sun Kelvin modulator は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF (= white)。
+    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
+    if (aya_visual_realism() != 1 || !aya_r17)
+    // </FS:AYAstorm>
     {
         return LLColor3(1.f, 1.f, 1.f);
     }
@@ -898,7 +901,10 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         static LLCachedControl<U32> aya_master(gSavedSettings, "AYAVisualRealismEnabled", 1);
         static LLCachedControl<bool> aya_r18_cloud_vol(gSavedSettings, "AYAR18CloudVolumetricEnabled", true);
         bool is_legacy_midday = (psky && psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY);
-        bool r18_on = (aya_master() != 0) && aya_r18_cloud_vol && !is_legacy_midday;
+        // <FS:AYAstorm r30 BD full port Phase 3.1> r18 Cloud Volumetric は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF。
+        // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
+        bool r18_on = (aya_master() == 1) && aya_r18_cloud_vol && !is_legacy_midday;
+        // </FS:AYAstorm>
         shader->uniform1i(LLShaderMgr::AYA_R18_CLOUD_VOLUMETRIC_ENABLED, r18_on ? 1 : 0);
     }
     // </FS:AYA>
@@ -937,7 +943,11 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     // <FS:AYA r14> Visual Realism master switch — altitude density 等の物理ベース atmospherics 新経路を有効化
     //   cvar 型は U32 (0=Firestorm View / 1=AYAstorm View)。combo_box との binding を確実にするため bool ではなく U32 で読む。
     static LLCachedControl<U32> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    bool aya_view = (aya_visual_realism() != 0);
+    // <FS:AYAstorm r30 BD full port Phase 3.1> 中央集権 uniform。mode 2 (Cinematic) では r14-r20 効果を全 OFF (= uniform=0) し、純 BD パスのみ走らせる。
+    // shader 側 6 site (atmosphericsFuncs/godrays/skinSSS/skyV) はこの uniform 経由で連動。
+    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
+    bool aya_view = (aya_visual_realism() == 1);
+    // </FS:AYAstorm>
     shader->uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, aya_view ? 1 : 0);
     // </FS:AYA>
 

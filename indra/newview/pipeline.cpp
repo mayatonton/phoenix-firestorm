@@ -10512,7 +10512,10 @@ void LLPipeline::renderDeferredLighting()
                     { 0.25f, 1.5f, 3.0f, 1.0f }, // 2=標準
                     { 0.35f, 1.2f, 2.5f, 1.5f }, // 3=強め
                 };
-                U32 tier = (aya_realism_r19() && aya_r19_enabled()) ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
+                // <FS:AYAstorm r30 BD full port Phase 3.1> Cinematic (mode 2) は純 BD パスのため r19 OFF。
+                // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
+                U32 tier = (aya_realism_r19() == 1 && aya_r19_enabled()) ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
+                // </FS:AYAstorm>
                 soften_shader.uniform4fv(s_r19_params, 1, r19_table[tier]);
                 // warm linear tint approximating skin/leaf transmission color
                 const F32 r19_tint[3] = { 1.00f, 0.78f, 0.62f };
@@ -10938,13 +10941,15 @@ void LLPipeline::doGodrays()
         return;
     }
 
-    // <FS:AYA r14/r18> master cvar は U32 (0=Firestorm View / 1=AYAstorm View)、combo_box と確実に binding させる
+    // <FS:AYAstorm r30 BD full port Phase 3.1> AYAVisualRealismEnabled (U32, 0=Firestorm View / 1=AYAstorm View / 2=Cinematic)。
+    // r15 godrays は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF。
+    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
     static LLCachedControl<U32> realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    if (realism_enabled() == 0)
+    if (realism_enabled() != 1)
     {
         return;
     }
-    // </FS:AYA>
+    // </FS:AYAstorm>
 
     if (!gDeferredGodraysProgram.isComplete())
     {
@@ -10988,12 +10993,15 @@ void LLPipeline::doSkinSSS()
         return;
     }
 
+    // <FS:AYAstorm r30 BD full port Phase 3.1> r20 SSS は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF。
+    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
     static LLCachedControl<U32>  realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
     static LLCachedControl<bool> r20_enabled(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", true);
-    if (realism_enabled() == 0 || !r20_enabled())
+    if (realism_enabled() != 1 || !r20_enabled())
     {
         return;
     }
+    // </FS:AYAstorm>
 
     if (!gDeferredSkinSSSProgram.isComplete())
     {
