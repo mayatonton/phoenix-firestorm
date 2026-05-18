@@ -1521,7 +1521,9 @@ void LLPipeline::createGLBuffers()
     GLuint resY = gViewerWindow->getWorldViewHeightRaw();
 
     // allocate screen space glow buffers
-    const U32 glow_res = llmax(1, llmin(512, 1 << gSavedSettings.getS32("RenderGlowResolutionPow")));
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (10) に固定
+    const U32 glow_res = llmax(1, llmin(512, 1 << getRenderCvarS32("RenderGlowResolutionPow", 10)));
+    // </FS:AYAstorm>
     const bool glow_hdr = gSavedSettings.getBOOL("RenderGlowHDR");
     const U32 glow_color_fmt = glow_hdr ? GL_RGBA16F : GL_RGBA;
     for (U32 i = 0; i < 3; i++)
@@ -13721,7 +13723,9 @@ void LLPipeline::skipRenderingShadows()
 
 void LLPipeline::handleShadowDetailChanged()
 {
-    if (RenderShadowDetail > gSavedSettings.getS32("RenderShadowDetail"))
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では effective 値が BD default に固定
+    if (RenderShadowDetail > getRenderCvarS32("RenderShadowDetail", 1))
+    // </FS:AYAstorm>
     {
         skipRenderingShadows();
     }

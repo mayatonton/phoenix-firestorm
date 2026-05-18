@@ -212,7 +212,10 @@ void LLDrawPoolTree::endShadowPass(S32 pass)
     //                  gSavedSettings.getF32("RenderDeferredSpotShadowBias"));
     static LLCachedControl<F32> RenderDeferredSpotShadowOffset(gSavedSettings, "RenderDeferredSpotShadowOffset");
     static LLCachedControl<F32> RenderDeferredSpotShadowBias(gSavedSettings, "RenderDeferredSpotShadowBias");
-    glPolygonOffset(RenderDeferredSpotShadowOffset, RenderDeferredSpotShadowBias);
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では RenderDeferredSpotShadowOffset を BD default (0.0) に固定
+    const F32 spot_shadow_offset = LLPipeline::isCinematicMode() ? 0.0f : (F32)RenderDeferredSpotShadowOffset;
+    glPolygonOffset(spot_shadow_offset, RenderDeferredSpotShadowBias);
+    // </FS:AYAstorm>
     // </FS:PP>
 
     gDeferredTreeShadowProgram.unbind();

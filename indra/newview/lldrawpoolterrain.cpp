@@ -74,7 +74,10 @@ LLDrawPoolTerrain::LLDrawPoolTerrain(LLViewerTexture *texturep) :
     static LLCachedControl<F32> RenderTerrainScale(gSavedSettings, "RenderTerrainScale");
     static LLCachedControl<F32> RenderTerrainPBRScale(gSavedSettings, "RenderTerrainPBRScale");
     static LLCachedControl<S32> RenderTerrainPBRDetail(gSavedSettings, "RenderTerrainPBRDetail");
-    sDetailScale = 1.f/RenderTerrainScale;
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では RenderTerrainScale を BD default (6.0) に固定
+    const F32 terrain_scale = LLPipeline::isCinematicMode() ? 6.0f : (F32)RenderTerrainScale;
+    sDetailScale = 1.f/terrain_scale;
+    // </FS:AYAstorm>
     sPBRDetailScale = 1.f/RenderTerrainPBRScale;
     sPBRDetailMode = RenderTerrainPBRDetail();
     // </FS:PP>

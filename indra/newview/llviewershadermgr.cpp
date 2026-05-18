@@ -864,7 +864,9 @@ std::string LLViewerShaderMgr::loadBasicShaders()
 
     S32 probe_level = llclamp(gSavedSettings.getS32("RenderReflectionProbeLevel"), 0, 3);
 
-    S32 shadow_detail            = gSavedSettings.getS32("RenderShadowDetail");
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (1) に固定
+    S32 shadow_detail            = LLPipeline::getRenderCvarS32("RenderShadowDetail", 1);
+    // </FS:AYAstorm>
 
     if (shadow_detail >= 1)
     {
@@ -968,8 +970,10 @@ bool LLViewerShaderMgr::loadShadersWater()
     bool success = true;
     bool terrainWaterSuccess = true;
 
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (1) に固定
     bool use_sun_shadow = mShaderLevel[SHADER_DEFERRED] > 1 &&
-        gSavedSettings.getS32("RenderShadowDetail") > 0;
+        LLPipeline::getRenderCvarS32("RenderShadowDetail", 1) > 0;
+    // </FS:AYAstorm>
 
     if (mShaderLevel[SHADER_WATER] == 0)
     {
@@ -1136,8 +1140,10 @@ bool LLViewerShaderMgr::loadShadersEffects()
 bool LLViewerShaderMgr::loadShadersDeferred()
 {
     LL_PROFILE_ZONE_SCOPED;
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (1) に固定
     bool use_sun_shadow = mShaderLevel[SHADER_DEFERRED] > 1 &&
-        gSavedSettings.getS32("RenderShadowDetail") > 0;
+        LLPipeline::getRenderCvarS32("RenderShadowDetail", 1) > 0;
+    // </FS:AYAstorm>
 
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
