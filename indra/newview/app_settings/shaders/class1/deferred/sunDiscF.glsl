@@ -50,8 +50,14 @@ void main()
     frag_data[2] = vec4(0.0, 1.0, 0.0, GBUFFER_FLAG_SKIP_ATMOS);
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    // <FS:AYA r20 Phase C> .a = SSS skin mask, sun is not skin.
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 uses
+    // gbuffer3.a as the SSS skin mask, so sun writes 0 to opt out.
+    // Cinematic has no SSS pass, so it writes the BD original c.
+#if AYASTORM_CINEMATIC
+    frag_data[3] = c;
+#else
     frag_data[3] = vec4(c.rgb, 0.0);
+#endif
     // </FS:AYA>
 #else
     frag_data[0] = c;
