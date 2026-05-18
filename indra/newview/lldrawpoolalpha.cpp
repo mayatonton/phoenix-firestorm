@@ -216,9 +216,15 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // lldrawpoolalpha.cpp:210-226 in BlackDragon 995a1354d8 (BD OR'd the two
     // pipeline statics directly; AYAstorm reads via LLCachedControl since
     // RenderVolumetricLighting isn't promoted to a static cvar here).
-    static LLCachedControl<U32>  aya_view_mode_dpa(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    static LLCachedControl<bool> volumetric_enable_dpa(gSavedSettings, "RenderVolumetricLighting", true);
-    bool volumetric_wants_alpha_depth = (aya_view_mode_dpa == 2) && volumetric_enable_dpa;
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 02> RenderVolumetricLighting
+    // を dispatch helper 経由で読む。Cinematic では BD default (false) を返す
+    // ため volumetric_wants_alpha_depth は必ず false → BD parity (BD は
+    // volumetric OFF default + r18 stack 全 disable)。mode 0/1 は従来通り
+    // aya_view_mode==2 で gate されているので発火しない。spec §3.1 phase3.5-ay-only。
+    const bool volumetric_wants_alpha_depth =
+        LLPipeline::isCinematicMode()
+        && LLPipeline::getRenderCvarBOOL("RenderVolumetricLighting", false);
+    // </FS:AYAstorm>
     // </AYAstorm r30 P3 step 5>
 
     // final pass, render to depth for depth of field effects

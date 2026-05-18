@@ -1073,12 +1073,17 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     // is cleared to (0,0) each frame in renderGeomMotionBlur, so body pixels
     // we don't write keep that zero and motionBlurF.glsl's `if (speed < 2.0)`
     // branch passes them through unblurred.
-    static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
-    static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 02> Cinematic では BD parity
+    // のため avatar motion blur を全 disable (BD baseline 995a1354d8 では
+    // renderMotionBlur 全体が /* ... */ で commented out)。dispatch helper で
+    // mode 2 → false (= 必ず skip) を強制。spec §3.1 (phase3.5-ay-only spec)。
+    const bool self_blur   = LLPipeline::getRenderCvarBOOL("RenderMotionBlurSelfAvatar",   false);
+    const bool others_blur = LLPipeline::getRenderCvarBOOL("RenderMotionBlurOtherAvatars", false);
     if (avatarp->isSelf() ? !self_blur : !others_blur)
     {
         return;
     }
+    // </FS:AYAstorm>
     // </AYAstorm r30 P2>
 
     avatarp->renderSkinned();
