@@ -454,6 +454,27 @@ public:
 
     static bool isWaterClip();
 
+    // <FS:AYAstorm r30 BD full port Phase 3.3>
+    // Cinematic-aware cvar reader. mode 2 (Cinematic) は BD pure path のため
+    // bd_default を返す、それ以外 (mode 0 Firestorm View / mode 1 AYAstorm View) は
+    // gSavedSettings の現在値を返す。
+    //
+    // ホット path で繰り返し呼ぶ場合は caller 側で `static LLCachedControl<T>` を
+    // 持ち、mode 2 分岐だけ isCinematicMode() で書く形が安い:
+    //   static LLCachedControl<F32> my_cvar(gSavedSettings, "RenderX", 1.0f);
+    //   F32 v = LLPipeline::isCinematicMode() ? bd_default : my_cvar();
+    //
+    // 非 hot path / 1 frame に数回の呼び出しなら下記 getter で十分。
+    // D3 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3)。
+    static bool      isCinematicMode();
+    static bool      getRenderCvarBOOL   (const std::string& name, bool             bd_default);
+    static U32       getRenderCvarU32    (const std::string& name, U32              bd_default);
+    static S32       getRenderCvarS32    (const std::string& name, S32              bd_default);
+    static F32       getRenderCvarF32    (const std::string& name, F32              bd_default);
+    static LLVector3 getRenderCvarVector3(const std::string& name, const LLVector3& bd_default);
+    static LLColor4  getRenderCvarColor4 (const std::string& name, const LLColor4&  bd_default);
+    // </FS:AYAstorm>
+
     void setRenderTypeMask(U32 type, ...);
     // This is equivalent to 'setRenderTypeMask'
     //void orRenderTypeMask(U32 type, ...);

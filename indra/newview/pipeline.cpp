@@ -2768,6 +2768,69 @@ bool LLPipeline::isWaterClip()
     return (gPipeline.mHeroProbeManager.isMirrorPass()) ? false : (!sRenderTransparentWater || gCubeSnapshot) && !sRenderingHUDs;
 }
 
+// <FS:AYAstorm r30 BD full port Phase 3.3>
+// Cinematic-aware cvar helpers. mode 2 (Cinematic) で BD default を返し、
+// pipeline / drawpool / shader 系の render path から AY-only cvar tuning を
+// 一括無効化する。mode 0 / mode 1 では gSavedSettings の現在値を返すため、
+// AYAstorm View / Firestorm View 配信者の絵作りは従来通り効く。
+// D3 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3)。
+
+// static
+bool LLPipeline::isCinematicMode()
+{
+    static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    return aya_view_mode() == 2;
+}
+
+// static
+bool LLPipeline::getRenderCvarBOOL(const std::string& name, bool bd_default)
+{
+    if (isCinematicMode())
+        return bd_default;
+    return gSavedSettings.getBOOL(name);
+}
+
+// static
+U32 LLPipeline::getRenderCvarU32(const std::string& name, U32 bd_default)
+{
+    if (isCinematicMode())
+        return bd_default;
+    return gSavedSettings.getU32(name);
+}
+
+// static
+S32 LLPipeline::getRenderCvarS32(const std::string& name, S32 bd_default)
+{
+    if (isCinematicMode())
+        return bd_default;
+    return gSavedSettings.getS32(name);
+}
+
+// static
+F32 LLPipeline::getRenderCvarF32(const std::string& name, F32 bd_default)
+{
+    if (isCinematicMode())
+        return bd_default;
+    return gSavedSettings.getF32(name);
+}
+
+// static
+LLVector3 LLPipeline::getRenderCvarVector3(const std::string& name, const LLVector3& bd_default)
+{
+    if (isCinematicMode())
+        return bd_default;
+    return gSavedSettings.getVector3(name);
+}
+
+// static
+LLColor4 LLPipeline::getRenderCvarColor4(const std::string& name, const LLColor4& bd_default)
+{
+    if (isCinematicMode())
+        return bd_default;
+    return gSavedSettings.getColor4(name);
+}
+// </FS:AYAstorm>
+
 void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_attachments)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_CULL);
