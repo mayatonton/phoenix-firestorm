@@ -543,7 +543,7 @@ AYA さんが mode 2 (Cinematic) で Cinematic Controls floater (`floater_aya_ci
 
 #### 10.7.2 Phase 4 G1-G4 進捗
 
-- G3 (mode 2 動作) は本検証で **wiring 確認 ✅ / floater が反応する ✅ / shader compile clean ✅**。残は §2.4 step 6 (mouselook hide) / step 7 (MachinimaSidebar visibility trigger) / step 8 (env_adjust_water floater 経由起動) など bdsidebar 固有挙動の確認、AYA 検証次回継続
+- G3 (mode 2 動作) は本検証で **wiring 確認 ✅ / floater が反応する ✅ / shader compile clean ✅**。残は §2.4 step 6 (env_adjust_water / env_settings floater が Cinematic Controls 経由で開く) など Cinematic Controls floater 固有挙動の確認、AYA 検証次回継続。なお bdsidebar / MachinimaSidebar 路線は撤去済 (2026-05-19、phase3.9 spec §0 参照)
 - G1 (mode 0) / G2 (mode 1) / G4 (round-trip) は未着手、AYA 検証時に追加実施
 
 #### 10.7.3 wire 状態 audit + 残ギャップ fix (2026-05-19、後追い)
@@ -579,9 +579,56 @@ AYA さんが mode 2 (Cinematic) で Cinematic Controls floater (`floater_aya_ci
 
 これで Cinematic floater で AYA さんが目で「動かなかった」と感じうる cvar はゼロになる。setShaders() コストを伴う再 build (1-2 秒) が走るタイミングが `RenderDepthOfFieldChroma` / `RenderGlow` / `RenderVolumetricLightingDirectional` toggle 時に集約されるが、これは仕様。
 
-### 10.8 以降の step (5.x〜9)
+### 10.8 §3.3 cvar split landing (2026-05-20)
 
-各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は step 5.x に降格 (§0.5)。
+`docs/specs/ayastorm-r30-bd-full-port-inventory.md` §3.3 で列挙された **AY/BD で default 値が異なる 32 cvar** (例: `RenderShadowDetail` BD=1 / AY=2、`RenderSSAOFactor` BD=0.05 / AY=0.30、`RenderGlowStrength` BD=0.233 / AY=0.325 等) について、§0.5 の paradigm shift で「user cvar が render に届く土管」が通った直後の AYA hands-on 検証 (2026-05-19) で残課題が浮上していた:
+
+- Cinematic Controls floater の slider は `RenderShadowDetail` 等 base cvar に直接 binding されており、mode 2 (Cinematic) で BD 寄りに振ると **mode 1 (AYAstorm View) の値も同時に書き換わる**
+- 逆に mode 1 を AY 既定で使う配信者が cvar に触ると、mode 2 切替時の BD parity も崩れる
+- = mode 1 / mode 2 の tuning が cvar 共有によって不可分
+
+当初 §5 で想定していた「BD-compat preset を 1 発 Load する UI」では、preset 適用時に mode 1 値も巻き取って書き換える / 退避から書き戻す UX を毎回挟む必要があり、配信者の手元値の永続性と整合しない。
+
+#### 10.8.1 決定 (AYA 確認 2026-05-19)
+
+`{base名}Cinematic` suffix で **cvar を物理的に分離** (例: `RenderShadowDetail` → `RenderShadowDetailCinematic`)。32 件全件を split する。
+
+- mode 2 では Cinematic 系 cvar を読み書き → BD parity 値が default として永続
+- mode 0/1 では従来どおり base cvar を読み書き → 既存 user tuning は完全保存
+- preset の概念は撤去 (§5 は「BD-compat preset」名義のまま spec に残るが、実装手段は split に置換)
+- BD 1:1 移植原則 (`feedback_bd_full_port_only.md`) との整合: BD 自身は単一 cvar 空間で動作。AYAstorm の 3-mode 並走という上位構造のために追加した orthogonal 拡張であり、BD 描画ロジック自体には介入していない
+
+#### 10.8.2 実装 (commit 群 2026-05-20)
+
+| 層 | 変更 | file |
+|---|---|---|
+| cvar 追加 | 32 cvar の `*Cinematic` variant、default を BD 値で登録 (`Persist=1`) | `indra/newview/app_settings/settings.xml` (§3.3 表対応の 32 key block) |
+| dispatch | 匿名 namespace に `getCinematicAwareControl(name)` を追加 (L2880)。mode 2 で `name+"Cinematic"` を優先、無ければ base に fall-through。`getRenderCvar{BOOL,U32,S32,F32,Vector3,Color4,String}` 7 関数が全て経由 | `indra/newview/pipeline.cpp` L2880-L2937 |
+| signal wire | 32 `*Cinematic` cvar 全件に `connectRefreshCachedSettingsSafe` を追加。slider 変更で `refreshCachedSettings` が走り、`LLPipeline` の static cache (`RenderShadowDetail` 等) も即座に更新される | `indra/newview/pipeline.cpp` L721-L756 |
+| floater 切替 | floater 内で binding する 11 cvar (`sb_/s_/d_` トリプル × 11 = 33 attribute) の `control_name` / `parameter` を `*Cinematic` suffix 形に repoint | `indra/newview/skins/default/xui/en/floater_aya_cinematic.xml` |
+| D-button cleanup | `AYAResetCinematic::parityTable` から `RenderFSAAType` 行 (旧設計の hot fix) を撤去。`*Cinematic` 名で reset を受けると table 未 hit → `resetToDefault(true)` で `settings.xml` の default Value (BD 値) に戻る = 同一結果。header comment に split 設計を追記 | `indra/newview/llviewermenu.cpp` L10150-L10210 |
+
+floater 内で `control_name` が `*Cinematic` に切替わるのは split 対象 32 件のうち **floater で実際に slider/spinner/D-button として露出している 11 件のみ** (`RenderShadowDetail` / `RenderShadowBlurSize` / `RenderSSAOFactor` / `RenderSSAOMaxScale` / `RenderFSAAType` / `RenderGlowStrength` / `RenderGlowIterations` / `RenderGlowMaxExtractAlpha` / `RenderGlowMinLuminance` / `RenderGlowWarmthAmount` / `RenderGlowWidth`)。残 21 件 (`RenderAutoHideSurfaceAreaLimit` / `RenderShadowGaussian` 等) は floater 露出がないが、`getCinematicAwareControl` が mode 2 で *Cinematic を拾うため pipeline 経由の dispatch では同様に BD parity 値が効く。
+
+`floater_preferences_graphics_advanced.xml` / `floater_phototools.xml` / `panel_performance_preferences.xml` 等の mode 0/1 向け UI は base cvar bind を **意図的にそのまま残す** (split の対称半分)。
+
+#### 10.8.3 受入 (AYA hands-on 2026-05-20)
+
+- mode 2 で Cinematic Controls floater の D-all を実行 → BD parity 復帰 (Glow 弱まる / SSAO 6× 弱まる / Shadow detail 1 / AA=SMAA 等) を視覚確認 ✅
+- mode 0/1 に戻して既存挙動が壊れていないこと、mode 1 で AY 既定 cvar が `*Cinematic` 系の値に巻き込まれていないこと ✅
+- ビルド clean (autobuild ReleaseFS_open exit 0、追加 warning 無し)
+
+AYA 確認: 「よさそうです」。preview ラベル維持の方針 (§0.4) は据置 (parity 到達はこの 1 swing で完了ではなく §8 same-picture A/B の累積判定が必要)。
+
+#### 10.8.4 §5 BD-compat preset への影響
+
+- 「mode 1 値を退避 → preset Load → 戻す」の Load/Restore UI は実装不要。`AYAVisualRealismEnabled=2` 切替自体が preset Load 相当
+- 後続で「BD-default 一発 reset」が要れば、floater の D-all を `AYAResetCinematic` 連打にまとめた button 1 個で対応可 (32 cvar reset を 1 click で発火、複雑な preset 機構不要)
+- `LLControlGroup` の preset 流用 (§11.2 で未確定だった選択肢) は本 split で elide。spec §11.2 は本 entry で resolution 済
+
+### 10.9 以降の step (5.x〜9)
+
+各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は §10.8 の cvar split で elide、後続 step は §3 in-scope 内で順次着手。
 
 ---
 

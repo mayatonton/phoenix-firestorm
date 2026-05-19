@@ -11441,8 +11441,10 @@ Change of this parameter will affect the layout of buttons in notification toast
   <!-- <FS:AYAstorm r30 BD full port Phase 3.4 part 3>
        BD-only cvars (BD 995a1354d8 indra/newview/app_settings/settings.xml).
        AY に存在しなかった 7 cvar を BD default 値で追加。
-       mode 2 (Cinematic) では LLPipeline::getRenderCvarXxx helper が
-       BD default に固定するため、本値は mode 0/1 でのみ読まれる初期値。
+       これらの cvar は BD にしか存在しなかったため、AY 側にも同名で追加して
+       全 mode で BD 値を初期値として読む。mode 0/1 を意図的に BD と違う値で
+       走らせたい場合は、別途 mode 別 split (suffix 'Cinematic' pattern、
+       下記 §3.3 split block 参照) を導入する必要がある。
        詳細: docs/specs/ayastorm-r30-bd-full-port-inventory.md §3.1 -->
   <key>RenderAvatar</key>
   <map>
@@ -11531,27 +11533,6 @@ Change of this parameter will affect the layout of buttons in notification toast
   </map>
   <!-- </FS:AYAstorm> -->
 
-  <!-- <FS:AYAstorm r30 BD full port Phase 3.9>
-       BD-only cvar (settings_blackdragon.xml:564).
-       BD Machinima Sidebar (panel_machinima) visibility 制御。AY 側で
-       AYAVisualRealismEnabled == 2 (Cinematic) のとき initWindow で gSideBar
-       を生成し、panel_toolbar_view.xml の `name="machinima"` layout_panel が
-       visibility_control="MachinimaSidebar" 経由で表示/非表示を切替える。
-       Persist=0 (debug option)、default 1 で Cinematic 入り時は即出現。
-       Cinematic 以外では gSideBar が NULL のため本値が true でも sidebar 自体無し。
-       詳細: docs/specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md -->
-  <key>MachinimaSidebar</key>
-  <map>
-    <key>Comment</key>
-    <string>Debug option to open the Machinima Sidebar (BD parity, Cinematic mode のみ実効)</string>
-    <key>Persist</key>
-    <integer>0</integer>
-    <key>Type</key>
-    <string>Boolean</string>
-    <key>Value</key>
-    <integer>1</integer>
-  </map>
-  <!-- </FS:AYAstorm> -->
 
   <key>RenderBumpmapMinDistanceSquared</key>
     <map>
@@ -12229,14 +12210,420 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderChromaStrength</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P4 (BD borrow): radial chromatic aberration strength for NoDoF Cinematic path. Per-channel R/B texcoord offset = chroma_str * 0.0005 * r2 (r2: 0 center to 2 corners). Range guidance: ~5 subtle (default), ~10 noticeable, ~30 cinematic, >50 stylized. Active only when AYAVisualRealismEnabled=2 (Cinematic) and the NoDoF vignette path is selected.</string>
+    <string>AYAstorm r30 P4 (BD full port): chromatic aberration strength. Active only when AYAVisualRealismEnabled=2 (Cinematic). Drives two paths: (a) DoF-coupled chroma (postDeferredF / postDeferredHQDoFF when RenderDepthOfFieldChroma=1) — per-channel offset = vec3(0.0015,0,0.0005) * CoF_px * (chroma_str * 0.2), fires only on out-of-focus samples; (b) NoDoF radial chroma (postDeferredNoDoFF when DoF off or DoFChroma=0) — radial R/B shift = chroma_str * 0.0005 * r2 (r2: 0 center → ~2 corners). BD ships 0.0 (opt-in via UI slider). Range guidance: ~5 subtle, ~10 noticeable, ~30 cinematic, >50 stylized.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
     <string>F32</string>
     <key>Value</key>
-    <real>5.0</real>
+    <real>0.0</real>
   </map>
+
+  <!-- <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+       inventory §3.3 にある 32 件の common-diff cvar (AY default ≠ BD default)
+       について、mode 2 (Cinematic) 専用 slot を suffix 'Cinematic' で追加。
+       pipeline.cpp は mode 2 の時 これらを読み、mode 0/1 では従来 cvar を読む
+       (getModalCvarXxx helper 経由)。これで Cinematic は BD 1:1 描画、
+       Firestorm/AYAstorm mode は AY 従来値を維持し、mode 跨ぎで slider tune
+       が漏れない。
+       詳細: docs/specs/ayastorm-r30-bd-full-port-inventory.md §3.3 -->
+
+  <key>RenderAutoHideSurfaceAreaLimitCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): maximum surface area before auto-hide. BD default 0 disables auto-hide entirely.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+
+  <key>RenderAutoMaskAlphaDeferredCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): alpha mask use in Advanced Lighting. BD ships off for cleaner Cinematic alpha blending.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+
+  <key>RenderAutoMaskAlphaNonDeferredCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): alpha mask use outside Advanced Lighting. BD ships off.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+
+  <key>RenderAutoMuteSurfaceAreaLimitCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): attachment auto-mute surface area limit. BD default 0 disables the limit.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+
+  <key>RenderAvatarMaxComplexityCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): avatar complexity cap. BD ships 250000 (visible threshold for impostor fallback in photo scenes).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>250000</integer>
+  </map>
+
+  <key>RenderDeferredSpotShadowOffsetCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): spot shadow offset. BD ships 0.0 (no extra bias).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+
+  <key>RenderFSAATypeCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): AA mode. BD ships 2 (SMAA).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>2</integer>
+  </map>
+
+  <key>RenderFarClipCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): far clip distance in meters. BD ships 96.0 for photo focus on near subjects.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>96.0</real>
+  </map>
+
+  <key>RenderGlowIterationsCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): glow blur iteration count. BD ships 5 (wider, smoother glow than AY's 2).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>S32</string>
+    <key>Value</key>
+    <integer>5</integer>
+  </map>
+
+  <key>RenderGlowLumWeightsCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): per-channel weights for luminance extraction in glow. BD ships (0.4, 0.3, 0.3).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector3</string>
+    <key>Value</key>
+    <array>
+      <real>0.4</real>
+      <real>0.3</real>
+      <real>0.3</real>
+    </array>
+  </map>
+
+  <key>RenderGlowMaxExtractAlphaCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): glow brightness extraction alpha cap. BD ships 0.03 (tight HDR clamp).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.03</real>
+  </map>
+
+  <key>RenderGlowMinLuminanceCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): glow auto-extract luminance floor. BD ships 0.0 (glow on everything bright).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+
+  <key>RenderGlowResolutionPowCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): glow map resolution as power of two. BD ships 10 (1024x1024 — finer glow than AY's 9 = 512).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>S32</string>
+    <key>Value</key>
+    <integer>10</integer>
+  </map>
+
+  <key>RenderGlowStrengthCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): additive glow strength. BD ships 0.233 (softer than AY's 0.325).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.233</real>
+  </map>
+
+  <key>RenderGlowWarmthAmountCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): warmth vs luminance blend for glow extraction. BD ships 16.0 (warm-biased — AY ships 0 = pure luminance).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>16.0</real>
+  </map>
+
+  <key>RenderGlowWarmthWeightsCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): per-channel weights for warmth extraction in glow. BD ships (0.75, 0.6, 0.712).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector3</string>
+    <key>Value</key>
+    <array>
+      <real>0.75</real>
+      <real>0.6</real>
+      <real>0.712</real>
+    </array>
+  </map>
+
+  <key>RenderGlowWidthCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): glow blur sample width. BD ships 3.6 (wider — AY's 1.3 is much tighter).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>3.6</real>
+  </map>
+
+  <key>RenderMaxVRAMBudgetCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): VRAM budget cap in MB. BD ships 0 (autodetect).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+
+  <key>RenderSSAOFactorCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): SSAO occlusion factor. BD ships 0.05 (subtle — AY's 0.30 is 6x stronger).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.05</real>
+  </map>
+
+  <key>RenderSSAOMaxScaleCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): SSAO sample radius cap in pixels. BD ships 300.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>300</integer>
+  </map>
+
+  <key>RenderShadowBiasCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): shadow bias to prevent acne. BD ships -0.001.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>-0.001</real>
+  </map>
+
+  <key>RenderShadowBiasErrorCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): shadow bias error scale by altitude. BD ships 0.1.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.1</real>
+  </map>
+
+  <key>RenderShadowBlurDistFactorCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): shadow blur distance scaler. BD ships 0.01.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.01</real>
+  </map>
+
+  <key>RenderShadowBlurSizeCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): shadow softening kernel scale. BD ships 1.0 (AY's 1.4 is wider).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+
+  <key>RenderShadowDetailCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): shadow detail level. BD ships 1 (sun + projector but no avatar local shadows — AY ships 2).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>S32</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderShadowErrorCutoffCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): cutoff to use ortho instead of perspective projection. BD ships 0.0.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+
+  <key>RenderShadowFOVCutoffCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): FOV cutoff to use ortho instead of perspective projection. BD ships 0.0.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+
+  <key>RenderShadowGaussianCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): gaussian coefficients for shadow/SSAO blur passes. BD ships (1.25, 2.0, 0.0).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector3</string>
+    <key>Value</key>
+    <array>
+      <real>1.25</real>
+      <real>2.0</real>
+      <real>0.0</real>
+    </array>
+  </map>
+
+  <key>RenderShadowOffsetCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): shadow offset to prevent acne. BD ships 0.002.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.002</real>
+  </map>
+
+  <key>RenderTerrainScaleCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): terrain detail texture scale in meters. BD ships 6.0 (finer than AY's 12).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>6.0</real>
+  </map>
+
+  <key>RenderTreeLODFactorCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): vegetation LOD multiplier. BD ships 1.0 (AY's 0.5 LODs more aggressively).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+
+  <key>RenderWaterRefResolutionCinematic</key>
+  <map>
+    <key>Comment</key>
+    <string>BD parity (Cinematic mode 2): water planar reflection resolution. BD ships 768 (AY's 512 is lower).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>S32</string>
+    <key>Value</key>
+    <integer>768</integer>
+  </map>
+  <!-- </FS:AYAstorm r30 BD full port Phase 3.4 part 5> -->
 
   <key>RenderDepthOfFieldInEditMode</key>
   <map>
@@ -12348,10 +12735,10 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Backup</key>
     <integer>0</integer>
   </map>
-  <!-- <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdsidebar shadow res/dist 4-channel + projector 2-channel cvars.
+  <!-- <FS:AYAstorm:r30-bd-port> BD shadow res/dist 4-channel + projector 2-channel cvars.
        BD pipeline reads these per-channel; AY pipeline currently consumes RenderShadowResolutionScale (scalar) only.
-       Wiring into LLPipeline shadow rendering is deferred to a follow-up step; the cvars exist now to satisfy
-       bdsidebar.cpp compile-time references (Cinematic-mode-only UI). -->
+       Per-channel wiring into LLPipeline shadow rendering is deferred; the AYAstorm Cinematic Controls
+       floater exposes the editable surface in mode 2. -->
   <key>RenderShadowResolution</key>
   <map>
     <key>Comment</key>
@@ -12412,7 +12799,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderShadowAutomaticDistance</key>
   <map>
     <key>Comment</key>
-    <string>If true, shadow cascade distances are computed automatically; if false, the per-cascade RenderShadowDistance entries can be edited via the BD sidebar.</string>
+    <string>If true, shadow cascade distances are computed automatically; if false, the per-cascade RenderShadowDistance entries are used as-is.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>

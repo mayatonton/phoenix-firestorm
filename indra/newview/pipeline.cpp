@@ -718,6 +718,43 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("fsregioncornerbeacons");
     // </FS:PP>
 
+    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 cvar split>
+    // mode 2 (Cinematic) で *Cinematic variant を読むため、これらの cvar 変更も
+    // refreshCachedSettings をキックする必要がある。base 側は上の既存ブロックで wire 済。
+    connectRefreshCachedSettingsSafe("RenderAutoHideSurfaceAreaLimitCinematic");
+    connectRefreshCachedSettingsSafe("RenderAutoMaskAlphaDeferredCinematic");
+    connectRefreshCachedSettingsSafe("RenderAutoMaskAlphaNonDeferredCinematic");
+    connectRefreshCachedSettingsSafe("RenderAutoMuteSurfaceAreaLimitCinematic");
+    connectRefreshCachedSettingsSafe("RenderAvatarMaxComplexityCinematic");
+    connectRefreshCachedSettingsSafe("RenderDeferredSpotShadowOffsetCinematic");
+    connectRefreshCachedSettingsSafe("RenderFSAATypeCinematic");
+    connectRefreshCachedSettingsSafe("RenderFarClipCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowIterationsCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowLumWeightsCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowMaxExtractAlphaCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowMinLuminanceCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowResolutionPowCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowStrengthCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowWarmthAmountCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowWarmthWeightsCinematic");
+    connectRefreshCachedSettingsSafe("RenderGlowWidthCinematic");
+    connectRefreshCachedSettingsSafe("RenderMaxVRAMBudgetCinematic");
+    connectRefreshCachedSettingsSafe("RenderSSAOFactorCinematic");
+    connectRefreshCachedSettingsSafe("RenderSSAOMaxScaleCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowBiasCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowBiasErrorCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowBlurDistFactorCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowBlurSizeCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowDetailCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowErrorCutoffCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowFOVCutoffCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowGaussianCinematic");
+    connectRefreshCachedSettingsSafe("RenderShadowOffsetCinematic");
+    connectRefreshCachedSettingsSafe("RenderTerrainScaleCinematic");
+    connectRefreshCachedSettingsSafe("RenderTreeLODFactorCinematic");
+    connectRefreshCachedSettingsSafe("RenderWaterRefResolutionCinematic");
+    // </FS:AYAstorm>
+
     LLPointer<LLControlVariable> cntrl_ptr = gSavedSettings.getControl("CollectFontVertexBuffers");
     if (cntrl_ptr.notNull())
     {
@@ -2827,52 +2864,77 @@ bool LLPipeline::isCinematicMode()
 // P5 step 5 paradigm shift (2026-05-19): Cinematic 短絡を撤去。Cinematic mode で
 // あっても user cvar 値を読む = Cinematic Controls floater の slider/checkbox 変更
 // が即時反映される。bd_default は cvar 未登録時の fallback としてのみ機能。
+//
+// r30 BD full port Phase 3.4 part 5 (cvar split): mode 2 (Cinematic) では
+// 同名 cvar に suffix "Cinematic" を付けた variant を優先して読む。
+// variant が登録されていればそちらの値を返し、無ければ base cvar に
+// fall-through する。これで:
+//   - mode 0/1: 従来どおり base cvar を読む (Firestorm/AYAstorm 既存挙動)
+//   - mode 2: *Cinematic を読む → Cinematic floater の slider/D-button は
+//     *Cinematic 側を書き換えるので live-apply は paradigm shift 通り維持
+//   - *Cinematic variant が無い cvar (= §3.3 split 対象外、AY-only cvar 等):
+//     base に fall-through するので呼出側で意識不要
+// 詳細: docs/specs/ayastorm-r30-bd-full-port-inventory.md §3.3
+namespace
+{
+    LLControlVariable* getCinematicAwareControl(const std::string& name)
+    {
+        static const std::string kCinematicMode = "AYAVisualRealismEnabled";
+        if (gSavedSettings.getU32(kCinematicMode) == 2)
+        {
+            LLControlVariable* cv = gSavedSettings.getControl(name + "Cinematic");
+            if (cv) return cv;
+        }
+        return gSavedSettings.getControl(name);
+    }
+}
+
 // static
 bool LLPipeline::getRenderCvarBOOL(const std::string& name, bool bd_default)
 {
-    LLControlVariable* c = gSavedSettings.getControl(name);
+    LLControlVariable* c = getCinematicAwareControl(name);
     return c ? c->getValue().asBoolean() : bd_default;
 }
 
 // static
 U32 LLPipeline::getRenderCvarU32(const std::string& name, U32 bd_default)
 {
-    LLControlVariable* c = gSavedSettings.getControl(name);
+    LLControlVariable* c = getCinematicAwareControl(name);
     return c ? (U32)c->getValue().asInteger() : bd_default;
 }
 
 // static
 S32 LLPipeline::getRenderCvarS32(const std::string& name, S32 bd_default)
 {
-    LLControlVariable* c = gSavedSettings.getControl(name);
+    LLControlVariable* c = getCinematicAwareControl(name);
     return c ? (S32)c->getValue().asInteger() : bd_default;
 }
 
 // static
 F32 LLPipeline::getRenderCvarF32(const std::string& name, F32 bd_default)
 {
-    LLControlVariable* c = gSavedSettings.getControl(name);
+    LLControlVariable* c = getCinematicAwareControl(name);
     return c ? (F32)c->getValue().asReal() : bd_default;
 }
 
 // static
 LLVector3 LLPipeline::getRenderCvarVector3(const std::string& name, const LLVector3& bd_default)
 {
-    LLControlVariable* c = gSavedSettings.getControl(name);
+    LLControlVariable* c = getCinematicAwareControl(name);
     return c ? LLVector3(c->getValue()) : bd_default;
 }
 
 // static
 LLColor4 LLPipeline::getRenderCvarColor4(const std::string& name, const LLColor4& bd_default)
 {
-    LLControlVariable* c = gSavedSettings.getControl(name);
+    LLControlVariable* c = getCinematicAwareControl(name);
     return c ? LLColor4(c->getValue()) : bd_default;
 }
 
 // static
 std::string LLPipeline::getRenderCvarString(const std::string& name, const std::string& bd_default)
 {
-    LLControlVariable* c = gSavedSettings.getControl(name);
+    LLControlVariable* c = getCinematicAwareControl(name);
     return c ? c->getValue().asString() : bd_default;
 }
 // </FS:AYAstorm>

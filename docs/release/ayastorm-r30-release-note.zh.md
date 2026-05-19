@@ -62,7 +62,7 @@ r30 将 BD 的描绘 pipeline **1:1 完全移植**,在 AYAstorm 内集成 **3 mo
 - **AYAstorm View (mode 1) 与 r29 以前的描绘等同**,直接升级到 r30 不改设置外观不变。
 - Cinematic mode (mode 2) 的动作验证请参考 Phase 4 受入 spec ([`docs/specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md`](../specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md)) 的 G1-G5。
 - mode 切换建议 **重启** 进行。round-trip 切换 (仅改 cvar 不重启) 在 β feedback 确认稳定前请谨慎。
-- Cinematic mode 内 Machinima Sidebar slider 操作可能与 AY 扩展 cvar 控件名冲突,精密调整 AY 扩展请回到 mode 1。
+- 将 BD 与 AY 默认值不同的 32 个 cvar 用 `*Cinematic` 后缀分离,因此通过 Cinematic Controls floater tuning mode 2 时不会影响 AYAstorm View (mode 1) 使用的同名 cvar ([`p5-bd-parity-spec §10.8`](../specs/ayastorm-r30-p5-bd-parity-spec.md#108-33-cvar-split-landing-2026-05-20))。mode 1 与 mode 2 的 tuning 完全独立。
 - BD `panel_preferences_render_settings` / `panel_preferences_ui_colors` 仅放置文件作为 **orphan**,不动 AY preferences 标签布局 ([Phase 3.9 §3.3](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md) 判断,优先维持 AY 17 标签 UX)。
 
 ### 已知注意点

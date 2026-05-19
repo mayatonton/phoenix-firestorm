@@ -10149,6 +10149,13 @@ class FSResetPerAccountControl : public view_listener_t
 // Restores a cvar to AYAstorm Cinematic recommended value (≈ BD parity).
 // XUI usage: <button.commit_callback function="AYAResetCinematic" parameter="CvarName"/>
 // Falls back to LL settings.xml default when the cvar isn't in the parity table.
+// r30 BD full port Phase 3.4 part 5 (cvar split): for cvars where AY/BD ship
+// different defaults (inventory §3.3), the floater binds to the *Cinematic
+// suffix variant whose settings.xml Value already holds the BD value; D-button
+// then just falls through to resetToDefault. The parityTable below remains the
+// authoritative source only for base cvars that intentionally stay shared
+// across modes (master switches + camera DoF values) where the BD default
+// must be re-asserted explicitly.
 class AYAResetCinematic : public view_listener_t
 {
     static const std::map<std::string, LLSD>& parityTable()
@@ -10159,7 +10166,6 @@ class AYAResetCinematic : public view_listener_t
             {"RenderDepthOfFieldHighQuality",   LLSD(true)},
             {"RenderMotionBlur",                LLSD(true)},
             {"RenderScreenSpaceReflections",    LLSD(true)},
-            {"RenderFSAAType",                  LLSD(LLSD::Integer(2))}, // 2 = SMAA
             // BD camera DoF values — LL defaults are conservative, BD ships photo-tuned
             {"CameraFieldOfView",               LLSD(67.0)},
             {"CameraFNumber",                   LLSD(28.0)},

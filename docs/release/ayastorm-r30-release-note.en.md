@@ -62,7 +62,7 @@ r30 ports the BD render pipeline **1:1 verbatim** and integrates **three modes**
 - **AYAstorm View (mode 1) renders identically to r29 and earlier** — upgrading to r30 with no setting changes preserves the existing look.
 - Verify Cinematic mode (mode 2) with the Phase 4 acceptance spec ([`docs/specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md`](../specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md)) gates G1-G5.
 - Mode switching is **restart-first** for now. Round-trip switching (cvar change without restart) awaits β feedback for stability confirmation.
-- Some Machinima Sidebar sliders may share control names with AY extensions; tune AY extensions while back in mode 1.
+- The 32 cvars whose defaults differ between BD and AY are now split via a `*Cinematic` suffix, so tuning mode 2 from the Cinematic Controls floater never disturbs the same-named cvars used by AYAstorm View (mode 1) — mode 1 and mode 2 tuning are fully independent ([`p5-bd-parity-spec §10.8`](../specs/ayastorm-r30-p5-bd-parity-spec.md#108-33-cvar-split-landing-2026-05-20)).
 - BD `panel_preferences_render_settings` / `panel_preferences_ui_colors` are placed as **orphans only** — AY's 17-tab preferences layout is preserved (see [Phase 3.9 §3.3](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md)).
 
 ### Known caveats
