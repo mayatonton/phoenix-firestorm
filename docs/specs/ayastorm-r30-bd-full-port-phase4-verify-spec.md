@@ -84,13 +84,19 @@ Phase 3.7-3.9 で landed した 3 mode dispatch / shader mount / UI mount が、
 
 ## §3 受入条件 (release gate)
 
-| ID | 条件 | 必須 | 失敗時の扱い |
-|---|---|---|---|
-| G1 | §2.2 mode 0 全通過 | **必須** | Phase 4 fail。Firestorm baseline 退行は release blocker |
-| G2 | §2.3 mode 1 全通過 | **必須** | 同上。AYAstorm r14-r20 機能退行は release blocker |
-| G3 | §2.4 mode 2 全通過 | **必須** | Phase 4 fail。BD full port 完了 = mode 2 動作が真の合格基準 |
-| G4 | §2.5 round-trip 全通過 | 推奨 | 失敗時は β release note で「mode 切替は再起動推奨」明記すれば release 可 |
-| G5 | log に未対応 shader compile error が無い | **必須** | 1 件でも error あれば調査 → fix commit |
+| ID | 条件 | 必須 | 状態 | 失敗時の扱い |
+|---|---|---|---|---|
+| G1 | §2.2 mode 0 全通過 | **必須** | (AYA 検証待ち) | Phase 4 fail。Firestorm baseline 退行は release blocker |
+| G2 | §2.3 mode 1 全通過 | **必須** | (AYA 検証待ち) | 同上。AYAstorm r14-r20 機能退行は release blocker |
+| G3 | §2.4 mode 2 全通過 | **必須** | (AYA 検証待ち) | Phase 4 fail。BD full port 完了 = mode 2 動作が真の合格基準 |
+| G4 | §2.5 round-trip 全通過 | 推奨 | (AYA 検証待ち) | 失敗時は β release note で「mode 切替は再起動推奨」明記すれば release 可 |
+| G5 | log に未対応 shader compile error が無い | **必須** | ✅ (2026-05-19) | 1 件でも error あれば調査 → fix commit |
+
+**G5 達成根拠 (2026-05-19)**:
+
+- mode 2 post-paradigm-shift + post-volumetric-gate audit (`ayaudit_run.sh A` with `AYAVisualRealismEnabled=2`、49 cvar × low/high × 3 sample × 1 profile sweep) で **`grep -cE "C3002|Linker Error|undefined function" /tmp/aya-audit-run-A.log` = 0**
+- 経緯と fix: `docs/specs/ayastorm-r30-p5-bd-parity-spec.md` §10.6.1 を参照 (`volumetricLightF.glsl` Cinematic body の `HAS_SUN_SHADOW` gate 非対称、commit `431f0157f2` で対称化)
+- mode 0 / 1 (AY branch) は元から `#ifdef HAS_SUN_SHADOW` で body 全体を gate 済、`use_sun_shadow=false` 時に passthrough する設計のため、本 fix と同パターンの link error は構造的に起きない (`P5 spec §10.6.1` Strategy C 健全性 sweep で確認)
 
 ---
 
