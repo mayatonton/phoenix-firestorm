@@ -1068,22 +1068,39 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
         return;
     }
 
-    // <AYAstorm r30 P2> RenderMotionBlur{Self,Other}Avatars opt-out for the
-    // classic / system avatar body. Skipping is safe because the velocity RT
-    // is cleared to (0,0) each frame in renderGeomMotionBlur, so body pixels
-    // we don't write keep that zero and motionBlurF.glsl's `if (speed < 2.0)`
-    // branch passes them through unblurred.
-    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 02> Cinematic では BD parity
-    // のため avatar motion blur を全 disable (BD baseline 995a1354d8 では
-    // renderMotionBlur 全体が /* ... */ で commented out)。dispatch helper で
-    // mode 2 → false (= 必ず skip) を強制。spec §3.1 (phase3.5-ay-only spec)。
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 02> Cinematic (= BD baseline)
+    // では本 helper を no-op にする。BD 995a1354d8 では renderMotionBlur 全体が
+    // /* ... */ で commented out であり、本 viewer も BD 完全移植方針
+    // (feedback_bd_full_port_only) に沿って同じ挙動を取る。
+    //
+    // 直接の原因: avatarVelocityV.glsl は lastMatrixPalette[45] を読むが、
+    // BD は本 path で uploadLastMatrixPalette() を呼ばないため shader が
+    // garbage (前 batch の rig 行列の残骸 or 未初期化 GPU memory) を読んで
+    // 巨大な last_clip → 巨大 velocity → diffuseRect が方向ベクトルに沿って
+    // 引き伸ばされ、緑等の lightning streak アーティファクトが発生する。
+    // BD baseline と同じく早期 return で本データ経路を絶つ。
+    //
+    // Rigged mesh attachments は他 pool (Bump / Materials / PBR alpha) の
+    // pushRiggedVelocityBatches* 経由で uploadLastMatrixPalette() を
+    // 正しく呼ぶので Cinematic 中も blur 対象として残る。
+    static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 0);
+    if (aya_view_mode == 2)
+    {
+        return;
+    }
+    // </FS:AYAstorm>
+
+    // <AYAstorm r30 P2> mode != 2 用 RenderMotionBlur{Self,Other}Avatars opt-out。
+    // 現状 velocity buffer は Cinematic (mode 2) のみ allocate されるため、
+    // renderGeomMotionBlur 自体が mode != 2 で early-return し、ここには到達
+    // しない (上の mode 2 ガードでも捕捉) — 将来 mode 0/1 で velocity buffer を
+    // 有効化する step が入った時の safety net として残す。
     const bool self_blur   = LLPipeline::getRenderCvarBOOL("RenderMotionBlurSelfAvatar",   false);
     const bool others_blur = LLPipeline::getRenderCvarBOOL("RenderMotionBlurOtherAvatars", false);
     if (avatarp->isSelf() ? !self_blur : !others_blur)
     {
         return;
     }
-    // </FS:AYAstorm>
     // </AYAstorm r30 P2>
 
     avatarp->renderSkinned();
