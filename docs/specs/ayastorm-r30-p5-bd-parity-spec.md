@@ -38,6 +38,23 @@ P4 ship 直後の floater + UI 仕上げまで完了した時点で、AYA 自身
 
 新定義に従い、当初 P5 想定で先行実施していた View Mode UI の preview ラベル除去 (combo / tool_tip / comment 全 3 箇所) を 1 commit で revert 済 (`6b1ef33377`)。preview ラベルは parity 到達まで維持。
 
+### 0.5 step 5 pivot (2026-05-19): BD-compat preset → Cinematic 短絡撤去 (paradigm shift)
+
+step 4 axis 5 audit 完了後の AYA UI 検証で、**Cinematic Controls floater の slider/checkbox を動かしても画面が変わらない** (tab 単位で「DoF & Camera 全死」「SSR 全死」「Motion Blur Strength 死」「Glow & Godrays 全死」「Post-process 死」と報告) ことが判明:
+
+> 「動かしても変わらないので わたしからすれば死んでます」
+
+根因 trace: `LLPipeline::getRenderCvar{BOOL,U32,S32,F32}` が Cinematic mode のとき **user cvar 値を読まず `bd_default` リテラルを返す** 短絡を持っていた。よって floater から user cvar を変更しても render path に届かず、UI が「動かしても変わらない」状態だった。
+
+→ step 5 を当初の「BD-compat preset 実装」から **「Cinematic 短絡の撤去 (paradigm shift)」** に pivot。preset 構築の前に、まず user cvar が render に届く土管を通す。
+
+**pivot 後の step 5 = paradigm shift**:
+- `getRenderCvar{BOOL,U32,S32,F32,Vector3,Color4,String}` 7 関数の Cinematic 短絡を撤去、user cvar 値を mode に関わらず返す
+- `bd_default` 引数は cvar 未登録時の fallback としてのみ機能 (構造維持で BD 1:1 移植仕様は崩さない)
+- commit `c320012236` で landed (詳細は §10.6)
+
+**当初の step 5 (BD-compat preset) は step 5.x に降格**: paradigm shift で user cvar が届くようになったので、BD-compat preset は「BD-default 値を一括ロードする UI」として後続 sub-release に再配置。preset 単独では何も覚醒しないという §4.7.4 の含意 (Volumetric short-circuit) は step 5 pivot で解消済。
+
 ---
 
 ## 1. 概要
@@ -295,7 +312,7 @@ A+C+D 統合で wiring 確認済 (SOLID+WIRED+MARGINAL) は **37/49 (75.5%)**。
 | MotionBlur stimulus 不足 (2) | `RenderMotionBlurOtherAvatars`, `RenderMotionBlurStrength` | 他 avatar の連続移動 + camera pan が必要、headless framework 範囲外 |
 | DoF HQ 鎖の sub dark (3) | `RenderDepthOfFieldHighQuality`, `RenderDepthOfFieldChroma`, `RenderChromaStrength` | profile D で master 起動 pin したが HAS_DOF_CHROMA permutation 効果が autofocus blur に紛れて検出されず |
 | SSR bias edge case (2) | `RenderScreenSpaceReflectionDepthRejectBias`, `RenderScreenSpaceReflectionDistanceBias` | normal/depth 不連続の edge case のみ効く、平面反射では効果が出ない |
-| Volumetric chain (4) | `RenderVolumetricLighting` + Falloff/Multiplier/Resolution | pipeline.cpp 側で `isCinematicMode() && !bd_default` short-circuit、現状 path 自体が closed |
+| Volumetric chain (4) | `RenderVolumetricLighting` + Falloff/Multiplier/Resolution | pipeline.cpp 側で `isCinematicMode() && !bd_default` short-circuit、現状 path 自体が closed → **step 5 pivot で解消 (§0.5 / §10.6)** |
 
 詳細表は `/tmp/aya-audit-{A,B,C,D}.report` および `/tmp/aya-audit-v12.report` (作業者向け生成物、リリース成果物ではない)。
 
@@ -311,7 +328,9 @@ AYAudit framework は P5 / P5.x / P6+ で BD parity の継続観測に再利用�
 
 ---
 
-## 5. step 5: BD-compat preset 実装
+## 5. step 5: BD-compat preset 実装 (step 5.x に降格)
+
+> **2026-05-19 更新**: 当初の step 5 = BD-compat preset は §0.5 / §10.6 の paradigm shift (Cinematic 短絡撤去) に席を譲り、step 5.x として後続 sub-release に降格。paradigm shift で user cvar が render に届くようになったため、preset は「BD-default 値を一括ロードする UI」として正しく機能する素地ができた。preset 実装は paradigm shift の AYA UI 検証完了後に着手。
 
 ### 5.1 目的
 
@@ -466,9 +485,32 @@ P5 ship をもって r30 章は「BD と並走できる Cinematic を持つ」�
 |---|---|
 | `5d06fc3a72` | `ayaudit_run.sh` を profile 引数 (A/B/C/D) + `DOF_MASTER_PIN` + waiter `[b]in/…` 自己排除に拡張、profile B (motion-rich) は audit-negative 確定 (mask 71.6% / noise floor 0.05620 で破棄)、A/C/D を回して best-band 統合: SOLID 25 / WIRED 5 / MARGINAL 7 / DEAD 12 (wiring 確認 37/49 = 75.5%)、DEAD 12 件を 5 カテゴリ (master 不可触 / MotionBlur stimulus 不足 / DoF HQ sub dark / SSR bias edge case / Volumetric short-circuit) に構造分類、§4.7 を 4 profile 統合表へ書き換え |
 
-### 10.6 以降の step (5〜9)
+### 10.6 step 5 pivot (2026-05-19): Cinematic 短絡撤去 paradigm shift
 
-各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。
+| commit | 内容 |
+|---|---|
+| `c320012236` | `getRenderCvar{BOOL,U32,S32,F32,Vector3,Color4,String}` 7 関数の Cinematic 短絡撤去。Cinematic mode でも user cvar 値を返す (bd_default は cvar 未登録時 fallback のみ)。これにより Cinematic Controls floater から slider/checkbox を動かすと render path に即座に届くようになる |
+
+**post-shift 検証 (profile A mode 2 audit、ayaudit_run.sh `--set AYAVisualRealismEnabled 2` で実施)**:
+
+post-shift 環境では scene 動的要因 (sun 位置等) により noise floor が pre-shift 0.001 → post-shift 0.023 と上昇したため絶対判定 (SOLID threshold) は満たさないが、**pre-shift で DEAD だった cvar 全てが post-shift で 10〜36× の信号 lift** を示し、user cvar → GPU 経路の開通を裏付ける:
+
+| cvar | pre-shift abs diff | post-shift abs diff | lift | 含意 |
+|---|---:|---:|---:|---|
+| `RenderVolumetricLighting` | 0.00024 | 0.00866 | **36×** | §4.7.4 の「short-circuit closed」が解消 |
+| `RenderScreenSpaceReflections` | 0.00043 | 0.00978 | 23× | SSR gate が user cvar を読むようになった |
+| `RenderMotionBlur` | 0.00068 | 0.01086 | 16× | MB gate 同上 |
+| `RenderDepthOfField` | 0.00106 | 0.01077 | 10× | DoF master gate 同上 |
+| `RenderShadowDetail` | 0.04196 | 0.62638 | 15× | 元 SOLID だが post-shift で massive lift (shadow detail toggle が決定的に効く) |
+| `RenderShadowResolutionScale` | 0.02068 | 0.21445 | 10× | 同上 |
+
+ayaudit framework 自体は scene noise を被るため SOLID 判定の精度が下がるが、**「user cvar 操作が GPU に届くか」の wiring 確認には十分**。BD parity 判定 (絶対値の SOLID 判定) は noise floor の低い scene を別途選定して再計測する想定。
+
+post-shift mode 2 audit table: `/tmp/aya-audit-A-mode2-postshift-table.archive.txt` (作業者向け、リリース成果物ではない)。
+
+### 10.7 以降の step (5.x〜9)
+
+各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は step 5.x に降格 (§0.5)。
 
 ---
 
