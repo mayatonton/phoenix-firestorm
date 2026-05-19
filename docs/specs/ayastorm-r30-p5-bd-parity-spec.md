@@ -252,6 +252,65 @@ step 5 で実装する preset の初期反映対象 (絵への寄与が大きい
 
 ---
 
+### 4.7 axis 5 audit 結果 (2026-05-19 実施): cvar 実 wiring 判定 (AYAudit framework)
+
+#### 4.7.1 動機
+
+axis 2 (§4.6) で「default 値の cluster ずれ」が parity 主要因と判明したことで、step 5 BD-compat preset の対象 cvar 群が大量化した (Cinematic Controls floater 49 cvar 全件が候補)。preset 実装前に、**そもそも floater 内 cvar が pipeline / shader に届いているか** (= live wiring が破断していないか) を確認する必要が出た。設定したのに絵が変わらない cvar が混じっていると、preset と AYA 目視判定の双方が信頼できなくなる。
+
+#### 4.7.2 framework: AYAudit headless
+
+`llayaudit.{cpp,h}` + `--ayaudit` CLI flag + `ayaudit_run.sh` / `ayaudit_analyze.sh`。viewer を headless state machine (WARMUP → NOISE_CAL → SWEEP_LOW/HIGH_SET/SNAP → FINALIZE → QUIT) で起動し、49 cvar を low/high 2 値で sweep。各 cvar につき triplet snapshot (median) を 2 組撮り、ImageMagick `compare -metric AE -fuzz 5%` で pixel diff を取る。アニメーション由来の flicker mask + noise floor (median of C(N,2) pairs) で baseline を抜き、4 band 判定 (SOLID / WIRED / MARGINAL / DEAD)。
+
+`ayaudit_run.sh` は profile 引数 (A/B/C/D) を取り、profile ごとに grid / SLURL / login / `DOF_MASTER_PIN` を切替える。`DOF_MASTER_PIN` で `RenderDepthOfField` の起動値を 0/1 切替できるようにし、profile D で DoF HQ chain (HQ/Chroma/ChromaStrength) を覚醒させる経路を持たせた (副作用として autofocus 1Hz bistate が mask を僅かに食う)。master cvar を起動時に on で pin する設計は不変 (shader permutation が起動時 baking のため、mid-session toggle では shader が再 compile されず sub-cvar が dark になる対策)。詳細根拠は run.sh 内コメントに同居。
+
+waiter の `pgrep -f` 自己マッチ罠: 起動 polling で `pgrep -f 'bin/do-not-directly-run-ayastorm-bin'` を bash `-c` 経由で呼ぶと waiter 自身の command line にもこの literal 文字列が乗っているため自己 hit する。`[b]in/do-not-directly-run-ayastorm-bin` のように 1 文字を char class 化することで「target process の command line にマッチしつつ waiter 自身の command line (literal `[b]in/`) にはマッチしない」状態を作って自己排除している。
+
+framework 自体の wiring fix 5 件:
+- `RenderSSAOMaxScale` / `RenderFSAAType` / `RenderVolumetricLightingResolution`: U32 cvar に `setF32` で書いていたため silently no-op していた、`CV_U32` に修正
+- `CameraFieldOfView` の依存先を `nullptr` から `RenderDepthOfField` に修正 (純粋 DoF 数学参照)
+- `forceMasterOn()` を再帰化 (`RenderChromaStrength` → `RenderDepthOfFieldChroma` → `RenderDepthOfField` 2 段依存)
+
+#### 4.7.3 4 profile 統合判定結果 (2026-05-19、49 cvar)
+
+stimulus 不足を補うため 4 profile を回し、cvar ごとに最良 band (SOLID > WIRED > MARGINAL > DEAD) を採用して統合する。
+
+| profile | scene | DoF pin | mask | noise floor | SOLID | WIRED | MARGINAL | DEAD |
+|---|---|:-:|---:|---:|---:|---:|---:|---:|
+| A | Morris / Aditi (baseline) | 0 | 99.4% | 0.00479 | 14 | 2 | 4 | 29 |
+| B | Kittens Palace (motion-rich, Agni) | 0 | 71.6% | 0.05620 | — | — | — | — |
+| C | Roleplay Heaven (reflection-rich, Agni) | 0 | 96.3% | 0.00257 | 26 | 4 | 4 | 15 |
+| D | Roleplay Heaven (depth-rich, Agni) | 1 | 99.2% | 0.00243 | 23 | 3 | 3 | 20 |
+| **A+C+D 統合 (best band)** | | | | | **25** | **5** | **7** | **12** |
+
+profile B は audit 失敗 (mask 71.6% / noise floor 0.05620、basleline の 12 倍)。「motion-rich = 多人数 avatar」という設計が誤りで、avatar idle anim は signal でなく noise として noise floor を持ち上げる。MotionBlur 系は camera pan が本来の stimulus で、framework が camera 静止前提のため audit 経路として不適。B は破棄。
+
+A+C+D 統合で wiring 確認済 (SOLID+WIRED+MARGINAL) は **37/49 (75.5%)**。
+
+**DEAD 12 件の構造的分類** (3 profile 全てで DEAD = 単純 scene 拡張では追えない):
+
+| カテゴリ | cvar | 原因 |
+|---|---|---|
+| master 不可触 (1) | `RenderDeferred` | audit は deferred=1 前提で組まれている、master off は別 baseline 必要 |
+| MotionBlur stimulus 不足 (2) | `RenderMotionBlurOtherAvatars`, `RenderMotionBlurStrength` | 他 avatar の連続移動 + camera pan が必要、headless framework 範囲外 |
+| DoF HQ 鎖の sub dark (3) | `RenderDepthOfFieldHighQuality`, `RenderDepthOfFieldChroma`, `RenderChromaStrength` | profile D で master 起動 pin したが HAS_DOF_CHROMA permutation 効果が autofocus blur に紛れて検出されず |
+| SSR bias edge case (2) | `RenderScreenSpaceReflectionDepthRejectBias`, `RenderScreenSpaceReflectionDistanceBias` | normal/depth 不連続の edge case のみ効く、平面反射では効果が出ない |
+| Volumetric chain (4) | `RenderVolumetricLighting` + Falloff/Multiplier/Resolution | pipeline.cpp 側で `isCinematicMode() && !bd_default` short-circuit、現状 path 自体が closed |
+
+詳細表は `/tmp/aya-audit-{A,B,C,D}.report` および `/tmp/aya-audit-v12.report` (作業者向け生成物、リリース成果物ではない)。
+
+#### 4.7.4 step 5 への含意
+
+- **wiring 確認済 37 件 (SOLID 25 + WIRED 5 + MARGINAL 7)** は BD-compat preset で値変更を AYA 目視で即確認できる、優先実装対象
+- **DEAD 12 件は構造的盲点**。preset で値を入れても A/C/D 全 profile で絵差分が出ない。これは「preset が効いていない」のではなく「stimulus / pipeline gate / framework 範囲」のいずれかで stimulus が届いていない。release note / floater UI に **「stimulus 依存」マーカー** で明示し、AYA に「触っても変わって見えないのは設計通り」を伝える必要あり
+- Volumetric 4 件は `isCinematicMode() && !bd_default` short-circuit を解除する別 step (BD 互換 cvar group 切替) が前提、preset 単独では覚醒しない
+
+#### 4.7.5 framework の永続性
+
+AYAudit framework は P5 / P5.x / P6+ で BD parity の継続観測に再利用する。retire 予定なし。run.sh が起動 cvar の理由をコメント同居しているため、scene を変えた audit run でも parametrize は profile 引数 + SLURL override のみで済む。motion / Volumetric 系の盲点を追うには Cinematic mode pin + camera pan stimulus を持つ profile E の framework 拡張が将来必要 (P5.x 以降で検討)。
+
+---
+
 ## 5. step 5: BD-compat preset 実装
 
 ### 5.1 目的
@@ -389,7 +448,25 @@ P5 ship をもって r30 章は「BD と並走できる Cinematic を持つ」�
 
 (commit hash は実施後追記)
 
-### 10.3 以降の step (4〜9)
+### 10.3 step 4 axis 2 (2026-05-19): cvar default 比較 audit
+
+| commit | 内容 |
+|---|---|
+| `1f79538b10` | BD `995a1354d8` vs AYAstorm 現行 settings.xml 比較、§4.6 に default ずれ 33 件 + 型ずれ 7 件 + BD-only 7 件を確定表として記録 |
+
+### 10.4 step 4 axis 5 (2026-05-19): AYAudit framework + 49 cvar 実 wiring 判定
+
+| commit | 内容 |
+|---|---|
+| `d2f7fbb2ae` | Cinematic Controls floater 完成 + AYAudit headless framework (`llayaudit.{cpp,h}`, `--ayaudit` flag, `ayaudit_run.sh` / `ayaudit_analyze.sh`)、wiring fix 5 件 (U32 type / dependency / 再帰 forceMasterOn)、profile A 単独判定 SOLID 14 / WIRED 2 / MARGINAL 4 / DEAD 29、§4.7 に初版記録 |
+
+### 10.5 step 4 axis 5 拡張 (2026-05-19): 4 profile 統合 audit
+
+| commit | 内容 |
+|---|---|
+| (本 commit) | `ayaudit_run.sh` を profile 引数 (A/B/C/D) + `DOF_MASTER_PIN` + waiter `[b]in/…` 自己排除に拡張、profile B (motion-rich) は audit-negative 確定 (mask 71.6% / noise floor 0.05620 で破棄)、A/C/D を回して best-band 統合: SOLID 25 / WIRED 5 / MARGINAL 7 / DEAD 12 (wiring 確認 37/49 = 75.5%)、DEAD 12 件を 5 カテゴリ (master 不可触 / MotionBlur stimulus 不足 / DoF HQ sub dark / SSR bias edge case / Volumetric short-circuit) に構造分類、§4.7 を 4 profile 統合表へ書き換え |
+
+### 10.6 以降の step (5〜9)
 
 各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。
 
