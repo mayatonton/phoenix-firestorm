@@ -93,7 +93,6 @@ set(viewer_SOURCE_FILES
     aoengine.cpp
     aoset.cpp
     bdfunctions.cpp
-    bdsidebar.cpp
     chatbar_as_cmdline.cpp
     daeexport.cpp
     fschecktexture.cpp
@@ -963,7 +962,6 @@ set(viewer_HEADER_FILES
     aoengine.h
     aoset.h
     bdfunctions.h
-    bdsidebar.h
     chatbar_as_cmdline.h
     daeexport.h
     fschecktexture.h

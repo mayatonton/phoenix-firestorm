@@ -11531,28 +11531,6 @@ Change of this parameter will affect the layout of buttons in notification toast
   </map>
   <!-- </FS:AYAstorm> -->
 
-  <!-- <FS:AYAstorm r30 BD full port Phase 3.9>
-       BD-only cvar (settings_blackdragon.xml:564).
-       BD Machinima Sidebar (panel_machinima) visibility 制御。AY 側で
-       AYAVisualRealismEnabled == 2 (Cinematic) のとき initWindow で gSideBar
-       を生成し、panel_toolbar_view.xml の `name="machinima"` layout_panel が
-       visibility_control="MachinimaSidebar" 経由で表示/非表示を切替える。
-       Persist=0 (debug option)、default 1 で Cinematic 入り時は即出現。
-       Cinematic 以外では gSideBar が NULL のため本値が true でも sidebar 自体無し。
-       詳細: docs/specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md -->
-  <key>MachinimaSidebar</key>
-  <map>
-    <key>Comment</key>
-    <string>Debug option to open the Machinima Sidebar (BD parity, Cinematic mode のみ実効)</string>
-    <key>Persist</key>
-    <integer>0</integer>
-    <key>Type</key>
-    <string>Boolean</string>
-    <key>Value</key>
-    <integer>1</integer>
-  </map>
-  <!-- </FS:AYAstorm> -->
-
   <key>RenderBumpmapMinDistanceSquared</key>
     <map>
       <key>Comment</key>
@@ -12348,10 +12326,9 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Backup</key>
     <integer>0</integer>
   </map>
-  <!-- <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdsidebar shadow res/dist 4-channel + projector 2-channel cvars.
+  <!-- <FS:AYAstorm:r30-bd-port> Phase 3.9: BD per-channel shadow res/dist 4-channel + projector 2-channel cvars.
        BD pipeline reads these per-channel; AY pipeline currently consumes RenderShadowResolutionScale (scalar) only.
-       Wiring into LLPipeline shadow rendering is deferred to a follow-up step; the cvars exist now to satisfy
-       bdsidebar.cpp compile-time references (Cinematic-mode-only UI). -->
+       Placeholder cvars for the pending overlay-based BD parity port (Phase 5 後続)、現状未配線。 -->
   <key>RenderShadowResolution</key>
   <map>
     <key>Comment</key>
@@ -12412,7 +12389,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderShadowAutomaticDistance</key>
   <map>
     <key>Comment</key>
-    <string>If true, shadow cascade distances are computed automatically; if false, the per-cascade RenderShadowDistance entries can be edited via the BD sidebar.</string>
+    <string>If true, shadow cascade distances are computed automatically; if false, the per-cascade RenderShadowDistance entries are used as-is.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>

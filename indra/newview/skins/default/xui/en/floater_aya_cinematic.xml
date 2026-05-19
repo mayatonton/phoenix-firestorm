@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <!--
   AYAstorm r30 P4 — Cinematic Controls floater (tabbed).
-  Replaces the BD right-side Machinima sidebar (panel_machinima.xml) per Q1=A.
+  Cinematic mode の唯一の cvar 編集 UI (BD Machinima sidebar 路線は撤去済、
+  Phase 3.9 spec §0 参照)。
   All controls here only produce visible effects when View Mode (Graphics tab)
   is set to "Cinematic" (AYAVisualRealismEnabled=2). View Mode change requires
   restart; sliders here apply live.

@@ -8,6 +8,24 @@
 
 ---
 
+## 0. 重要 — bdsidebar は撤去済 (2026-05-19)
+
+本 spec の **本体は bdsidebar (panel_machinima.xml + LLSideBar + gSideBar + MachinimaSidebar cvar) を Cinematic mode に mount する設計** で書かれているが、commit `d2f7fbb2ae` 以降、bdsidebar UI 路線は **撤去** され、**`floater_aya_cinematic.xml` (AYA Cinematic Controls floater、menu `Avatar → Cinematic Controls...` または `Alt+C`) に統合済**。
+
+撤去対象 (新たに実体無し):
+- `indra/newview/bdsidebar.{cpp,h}` (1021 行) / `panel_machinima.xml` (82KB) — delete 済
+- `MachinimaSidebar` cvar / `LLControlGroup::getVector4()` / `getVector2()` / `LLPanel* mMachinimaSidebar` / `gSideBar` グローバル — 全削除済
+- 関連 `#include "bdsidebar.h"` / dtor / mouselook hook / setting listener — 全 sweep 済
+
+維持:
+- `bdfunctions` / `gDragonLibrary` (preset / inventory) は llfloaterwateradjust.cpp / llfloaterenvironmentsettings.cpp で利用継続
+- `env_adjust_water` / `env_settings` floater register は Cinematic Controls floater から開く用に残置
+- 移植した BD shader / pipeline / pool は引き続き mode 2 で稼働 (Phase 3.7 / 3.8 範囲)
+
+下記の §1 以降は **歴史記録**。実装の現況は `feature/ayastorm-r30-bd-full-port-inventory` 上の commit と `phase4-verify-spec.md` を参照。
+
+---
+
 ## 1. 目的
 
 Phase 0 inventory §4.1 で特定された **BD-only UI XML 9 件**、および本 spec 起票時の追加調査で判明した **inventory 漏れ bdsidebar.{cpp,h} (1021 行) + 4 caller patch + 4 BD-only floater cpp/h** を AYAstorm に移植し、Cinematic mode (AYAVisualRealismEnabled=2) で BD の主要 UI (Machinima Sidebar) が出現するようにする。

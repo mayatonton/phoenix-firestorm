@@ -463,7 +463,7 @@ void LLViewerFloaterReg::registerFloaters()
 
     LLFloaterReg::add("env_adjust_snapshot", "floater_adjust_environment.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterEnvironmentAdjust>);
 
-    // <AYAstorm:r30-bd-port> BD env floaters (Phase 3.9) — opened by bdsidebar in Cinematic mode
+    // <AYAstorm:r30-bd-port> BD env floaters — opened from AYA Cinematic Controls
     LLFloaterReg::add("env_adjust_water", "floater_adjust_water.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterWaterAdjust>);
     LLFloaterReg::add("env_settings", "floater_environment_settings.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterEnvironmentSettings>);
     // </AYAstorm:r30-bd-port>

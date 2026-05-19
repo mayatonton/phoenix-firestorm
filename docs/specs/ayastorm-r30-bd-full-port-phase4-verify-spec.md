@@ -1,7 +1,7 @@
 # AYAstorm r30 BD full port — Phase 4 3-mode 検証 spec
 
 **Phase 名**: r30 BD 完全移植 Phase 4 — 3 mode 受入検証
-**前提**: Phase 3.7 (C++ Cinematic dispatch) / Phase 3.8 (shader Cinematic mount) / Phase 3.9 (UI BD floater + bdsidebar mount) 完了
+**前提**: Phase 3.7 (C++ Cinematic dispatch) / Phase 3.8 (shader Cinematic mount) / Phase 3.9 (UI mount — Cinematic Controls floater + BD env floater) 完了
 **作成日**: 2026-05-19
 **ブランチ**: `feature/ayastorm-r30-bd-full-port-inventory`
 **章方針**: `feedback_release_with_user_feedback.md` (exhaustive な solo acceptance を組まない、tag/release 後にユーザーフィードバックで補う) + `feedback_no_escape_full_bd_coverage.md` (BD parity から逃げない)
@@ -26,8 +26,8 @@ Phase 3.7-3.9 で landed した 3 mode dispatch / shader mount / UI mount が、
 |---|---|---|---|
 | A. 起動 / sky 描画 | 起動 / sky 通常描画 | 起動 / r14-r20 AY 拡張動作 | 起動 / BD pipeline 動作 |
 | B. shader permutation | AYASTORM_CINEMATIC=0 / class*/ | AYASTORM_CINEMATIC=0 / class*/ | AYASTORM_CINEMATIC=1 / cinematic_bd/ 優先探索 |
-| C. UI BD floater | bdsidebar 非表示 | bdsidebar 非表示 | bdsidebar **表示** |
-| D. cvar refresh | 通常 | 通常 | `gSideBar->refreshGraphicControls()` 反映 |
+| C. UI mount | Cinematic Controls 任意 | Cinematic Controls 任意 | Cinematic Controls floater で BD pipeline 操作 |
+| D. cvar refresh | 通常 (Preferences) | 通常 (Preferences) | Cinematic Controls floater slider が即時反映 |
 
 ---
 
@@ -44,39 +44,35 @@ Phase 3.7-3.9 で landed した 3 mode dispatch / shader mount / UI mount が、
 1. `Debug Settings` → `AYAVisualRealismEnabled = 0` set
 2. viewer 再起動
 3. 起動完了 / sky / water / avatar が AY 通常通り描画されるか目視
-4. 画面右に bdsidebar が **出ない** ことを確認
-5. `~/.ayastorm_x64/logs/AYAstorm.log` の last 50 行に shader compile error が無いか確認
+4. `~/.ayastorm_x64/logs/AYAstorm.log` の last 50 行に shader compile error が無いか確認
 
-**通過**: 4 / 5 すべて green
+**通過**: 3 / 4 green
 
 ### §2.3 mode 1 (AYAstorm View) — 5 分
 
 1. `AYAVisualRealismEnabled = 1` set / 再起動
 2. r14-r20 AY 拡張 (atmosphericsFuncs / softenLight / skyV / cloudsF) が動いて見えるか目視 (空の atmospheric perspective / cloud 立体感 / softenLight 効果)
-3. bdsidebar が **出ない** ことを確認
-4. log の shader compile error 確認
+3. log の shader compile error 確認
 
-**通過**: 2 / 3 / 4 green
+**通過**: 2 / 3 green
 
 ### §2.4 mode 2 (Cinematic) — 15 分
 
 1. `AYAVisualRealismEnabled = 2` set / 再起動
 2. 起動完了 (起動中 hang や crash なし)
-3. 画面右に panel_machinima 由来の **bdsidebar 出現** (345px 幅)
-4. bdsidebar 内 slider / button が動く (例: shadow distance slider を動かして即時反映)
+3. メニュー `Avatar` → `Cinematic Controls...` (shortcut `Alt+C`) で `floater_aya_cinematic.xml` を開く
+4. Cinematic Controls floater 内 slider / button が動く (例: shadow distance slider を動かして即時反映)
 5. sky / water が BD pipeline で描画 (AY 拡張 OFF / BD baseline / cinematic_bd の shadowUtil + screenSpaceReflUtil 経路)
-6. mouselook 切替で bdsidebar 自動 hide / 復帰確認
-7. `MachinimaSidebar` cvar trigger で sidebar 即時 show/hide (visibility_control 動作)
-8. env_adjust_water / env_settings floater が bdsidebar 経由で開く
-9. log の shader compile error / NULL pointer crash 確認
+6. Cinematic Controls floater から `env_adjust_water` / `env_settings` が開けて即時反映する
+7. log の shader compile error / NULL pointer crash 確認
 
-**通過**: 2-9 すべて green。1 件でも red なら Phase 4 fail、原因 file を spec 化して fix commit。
+**通過**: 2-7 すべて green。1 件でも red なら Phase 4 fail、原因 file を spec 化して fix commit。
 
 ### §2.5 mode 切替 round-trip — 5 分
 
 1. mode 2 → 1 → 0 → 2 を再起動を挟まずに cvar 切替で連続実施 (3 回)
 2. 各切替で hang / crash / shader cache 不整合の log が出ない
-3. mode 2 戻り時に bdsidebar が再表示される
+3. mode 2 戻り時に Cinematic Controls floater が引き続き操作可能 (再起動なしで slider が即時反映)
 
 **通過**: 2 / 3 green
 
@@ -88,7 +84,7 @@ Phase 3.7-3.9 で landed した 3 mode dispatch / shader mount / UI mount が、
 |---|---|---|---|---|
 | G1 | §2.2 mode 0 全通過 | **必須** | (AYA 検証待ち) | Phase 4 fail。Firestorm baseline 退行は release blocker |
 | G2 | §2.3 mode 1 全通過 | **必須** | (AYA 検証待ち) | 同上。AYAstorm r14-r20 機能退行は release blocker |
-| G3 | §2.4 mode 2 全通過 | **必須** | (AYA 検証待ち) | Phase 4 fail。BD full port 完了 = mode 2 動作が真の合格基準 |
+| G3 | §2.4 mode 2 全通過 (起動 + Cinematic Controls floater + env floater) | **必須** | (AYA 検証待ち) | Phase 4 fail。BD full port 完了 = mode 2 動作が真の合格基準 |
 | G4 | §2.5 round-trip 全通過 | 推奨 | (AYA 検証待ち) | 失敗時は β release note で「mode 切替は再起動推奨」明記すれば release 可 |
 | G5 | log に未対応 shader compile error が無い | **必須** | ✅ (2026-05-19) | 1 件でも error あれば調査 → fix commit |
 

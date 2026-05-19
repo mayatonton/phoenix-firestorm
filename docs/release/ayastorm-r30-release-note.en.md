@@ -16,7 +16,7 @@ Implementation, port strategy, shader mount table, and acceptance gates are pers
 | [`ayastorm-r30-bd-full-port-phase3.2-cpp-dispatch-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.2-cpp-dispatch-spec.md) | Phase 3.2 C++ Cinematic dispatch (53 files) |
 | [`ayastorm-r30-bd-full-port-phase3.5-ay-only-render-cvar-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.5-ay-only-render-cvar-spec.md) | Phase 3.5 AY-only Render* cvar (26) dispatch |
 | [`ayastorm-r30-bd-full-port-phase3.8-shader-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.8-shader-cinematic-mount-spec.md) | Phase 3.8 shader 49-file A/B/C/D mount |
-| [`ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md) | Phase 3.9 BD UI floater + bdsidebar mount |
+| [`ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md) | Phase 3.9 UI mount (BD env floaters + Cinematic Controls integration, bdsidebar route retired — §0) |
 | [`ayastorm-r30-bd-full-port-phase4-verify-spec.md`](../specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md) | Phase 4 3-mode acceptance gates (G1-G5) |
 | [`ayastorm-r30-bd-full-port-phase5-cleanup-spec.md`](../specs/ayastorm-r30-bd-full-port-phase5-cleanup-spec.md) | Phase 5 cleanup / release prep |
 
@@ -45,7 +45,7 @@ r30 ports the BD render pipeline **1:1 verbatim** and integrates **three modes**
    - **C**: `#if AYASTORM_CINEMATIC` permutation (26 files, AY and BD coexist in the same file)
    - **D**: dual-file mount (2 files placed under `cinematic_bd/` with shadermgr probe order)
 3. **Cvar expansion (Phase 3.3-3.6)**: 7 BD-only cvars added, 7 BD-only sky/water/day presets bundled, 26 AY-only Render* cvars pinned to BD-noop values in Cinematic
-4. **UI mount (Phase 3.9)**: in Cinematic mode (`MachinimaSidebar=1`) BD's Machinima Sidebar (panel_machinima, 1021 lines) appears on the right edge of the screen, with `gSideBar->refreshGraphicControls()` providing bidirectional cvar binding
+4. **UI mount (Phase 3.9)**: Cinematic mode controls live in **`Avatar → Cinematic Controls...` (`Alt+C`) → `floater_aya_cinematic.xml`**. The earlier design ported BD's `panel_machinima.xml` (1021 lines) plus `bdsidebar`, but we consolidated into the Cinematic Controls floater so AYAstorm's existing floater scheme stays consistent; the bdsidebar route was retired (see [Phase 3.9 spec §0](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md))
 
 ### Settings: normal usage
 
@@ -54,8 +54,9 @@ r30 ports the BD render pipeline **1:1 verbatim** and integrates **three modes**
 | Cvar | Default | Purpose |
 |---|---|---|
 | `AYAVisualRealismEnabled` | `1` | `0`=Firestorm View / `1`=AYAstorm View / `2`=Cinematic, **restart required** |
-| `MachinimaSidebar` | `1` | Show BD Machinima Sidebar when in Cinematic. `0` keeps the pipeline BD but hides the sidebar |
 | `RenderShadowAutomaticDistance` | `1` | BD-only automatic shadow distance calculation (active in mode 2) |
+
+Per-parameter tuning in Cinematic mode is done from the Cinematic Controls floater opened via `Avatar → Cinematic Controls...` (`Alt+C`).
 
 ### Migration notes
 
@@ -67,13 +68,12 @@ r30 ports the BD render pipeline **1:1 verbatim** and integrates **three modes**
 
 ### Known caveats
 
-- Cinematic mode + the AY-side `floater_aya_cinematic.xml` can coexist, but the right-edge bdsidebar may overlap UI. Use one at a time.
 - BD `llfloatereditsky` / `llfloatereditwater` were never registered upstream in BD; we ported them as orphans to preserve 1:1 fidelity.
 - Shaders placed under `cinematic_bd/` retain the standard class3→class2→class1 GPU class fallback chain. Older GPUs automatically fall back as before.
 - In Cinematic mode the classic / system avatar body (the base mesh — Ruth/Roth shapes and the un-clothed body part of legacy system outfits) is **excluded from motion blur**. This matches BD baseline (where `LLDrawPoolAvatar::renderMotionBlur` is fully `/* ... */` commented out in BD 995a1354d8). Modern rigged-mesh avatars (hands, hair, clothing, and most attachments) still pick up motion blur via the other pools.
 
 ### Acknowledgements
 
-The BlackDragon Viewer (NiranV Dean) render pipeline, panel_machinima UI, and shader set served as the entire reference for this port. The `Copyright (C) 2018, NiranV Dean` headers on `bdfunctions` / `bdsidebar` are preserved verbatim.
+The BlackDragon Viewer (NiranV Dean) render pipeline and shader set served as the entire reference for this port. The `Copyright (C) 2018, NiranV Dean` header on `bdfunctions` is preserved verbatim.
 
 ---

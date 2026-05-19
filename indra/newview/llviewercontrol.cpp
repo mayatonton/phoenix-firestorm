@@ -73,7 +73,6 @@
 #include "llkeyboard.h"
 #include "llerrorcontrol.h"
 #include "llappviewer.h"
-#include "bdsidebar.h"  // <AYAstorm:r30-bd-port> Phase 3.9: BD MachinimaSidebar cvar handler
 #include "llvosurfacepatch.h"
 #include "llvowlsky.h"
 #include "llrender.h"
@@ -361,20 +360,6 @@ static bool handleShadowsResized(const LLSD& newvalue)
     gPipeline.requestResizeShadowTexture();
     return true;
 }
-
-// <AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar cvar handler.
-// BD original: llviewercontrol.cpp:1014. Refreshes sidebar slider state on
-// cvar change. gSideBar is NULL outside Cinematic mode, so this is no-op there.
-static bool handleMachinimaSidebar(const LLSD& newvalue)
-{
-    if (gSideBar)
-    {
-        gSideBar->refreshGraphicControls();
-        return true;
-    }
-    return false;
-}
-// </AYAstorm:r30-bd-port>
 
 static bool handleWindowResized(const LLSD& newvalue)
 {
@@ -1544,9 +1529,6 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderSpecularExponent", handleLUTBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderAnisotropic", handleAnisotropicChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderShadowResolutionScale", handleShadowsResized);
-    // <AYAstorm:r30-bd-port> Phase 3.9: BD MachinimaSidebar cvar listener
-    setting_setup_signal_listener(gSavedSettings, "MachinimaSidebar", handleMachinimaSidebar);
-    // </AYAstorm:r30-bd-port>
     setting_setup_signal_listener(gSavedSettings, "RenderGlow", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderGlow", handleSetShaderChanged);
     // <AYAstorm r30 P4 step 5> BD DoF chain permutation cvars trigger shader rebuild.

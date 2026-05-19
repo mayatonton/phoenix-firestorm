@@ -16,7 +16,7 @@
 | [`ayastorm-r30-bd-full-port-phase3.2-cpp-dispatch-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.2-cpp-dispatch-spec.md) | Phase 3.2 C++ Cinematic dispatch (53 file) |
 | [`ayastorm-r30-bd-full-port-phase3.5-ay-only-render-cvar-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.5-ay-only-render-cvar-spec.md) | Phase 3.5 AY-only Render* cvar 26 件 dispatch |
 | [`ayastorm-r30-bd-full-port-phase3.8-shader-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.8-shader-cinematic-mount-spec.md) | Phase 3.8 shader 49 file A/B/C/D mount |
-| [`ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md) | Phase 3.9 BD UI floater + bdsidebar mount |
+| [`ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md) | Phase 3.9 UI mount (BD env floater + Cinematic Controls 統合、bdsidebar 路線は §0 で撤去記録) |
 | [`ayastorm-r30-bd-full-port-phase4-verify-spec.md`](../specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md) | Phase 4 3 mode 受入検証 (G1-G5) |
 | [`ayastorm-r30-bd-full-port-phase5-cleanup-spec.md`](../specs/ayastorm-r30-bd-full-port-phase5-cleanup-spec.md) | Phase 5 cleanup / release prep |
 
@@ -45,7 +45,7 @@ r30 は **BD の描画 pipeline を完全に 1:1 移植** し、AYAstorm 内に 
    - **C**: `#if AYASTORM_CINEMATIC` permutation (26 file、AY と BD を同 file 共存)
    - **D**: dual-file mount (2 file、`cinematic_bd/` 配下に BD 別配置 + shadermgr 探索切替)
 3. **cvar 拡張 (Phase 3.3-3.6)**: BD-only cvar 7 件追加、BD-only sky/water/day preset 7 件同梱、AY-only Render* cvar 26 件は Cinematic で BD-noop 値固定
-4. **UI mount (Phase 3.9)**: Cinematic mode (`MachinimaSidebar=1`) のとき画面右に BD の Machinima Sidebar (panel_machinima 1021 行) を出現させる、`gSideBar->refreshGraphicControls()` 経由で双方向 binding
+4. **UI mount (Phase 3.9)**: Cinematic mode 用の操作は **`Avatar → Cinematic Controls...` (`Alt+C`) の `floater_aya_cinematic.xml` に統合**。当初は BD `panel_machinima.xml` (1021 行) + `bdsidebar` を mount する設計でしたが、AYAstorm の floater 体系と整合させるため Cinematic Controls floater に統合し、bdsidebar 路線は撤去しました ([Phase 3.9 spec §0](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md))
 
 ### 設定: 通常運用での操作
 
@@ -54,8 +54,9 @@ r30 は **BD の描画 pipeline を完全に 1:1 移植** し、AYAstorm 内に 
 | Cvar | 既定値 | 用途 |
 |---|---|---|
 | `AYAVisualRealismEnabled` | `1` | `0`=Firestorm View / `1`=AYAstorm View / `2`=Cinematic、**再起動必須** |
-| `MachinimaSidebar` | `1` | Cinematic mode 時の BD Machinima Sidebar 表示。`0` で sidebar 非表示 (描画 pipeline は BD のまま) |
 | `RenderShadowAutomaticDistance` | `1` | BD-only 自動 shadow distance 計算 (mode 2 で活性) |
+
+Cinematic mode の各種パラメータ調整は `Avatar → Cinematic Controls...` (`Alt+C`) で開く Cinematic Controls floater から行います。
 
 ### 移行ノート
 
@@ -67,13 +68,12 @@ r30 は **BD の描画 pipeline を完全に 1:1 移植** し、AYAstorm 内に 
 
 ### 既知の留意点
 
-- mode 2 Cinematic + AY 拡張 floater (`floater_aya_cinematic.xml`) は共存可能ですが、画面右の bdsidebar と UI 競合する場合があります — どちらかに寄せて運用してください。
 - BD `llfloatereditsky` / `llfloatereditwater` は BD 上流自身が register していない orphan ファイルで、AY 側でも register せず orphan のまま移植しました (1:1 完全移植原則)。
 - cinematic_bd/ 配下 shader は GPU class 別 fallback (class3→class2→class1) を維持。下位 class GPU でも自動的に下位 fallback を辿ります。
 - Cinematic mode では classic / system avatar body (素体・Ruth/Roth・古い system 服の素体部分) は **motion blur 対象外** です。BD baseline (BD 995a1354d8 で `LLDrawPoolAvatar::renderMotionBlur` 全体が `/* ... */` で commented out) と整合させた挙動で、現代の rigged mesh アバター (手・髪・服を含む大半の attachments) は他 pool 経由で blur 対象として残ります。
 
 ### 謝辞
 
-BlackDragon Viewer (NiranV Dean) の描画 pipeline / panel_machinima UI / shader 群を移植元として全面参照しました。bdfunctions / bdsidebar の `Copyright (C) 2018, NiranV Dean` header はそのまま保持しています。
+BlackDragon Viewer (NiranV Dean) の描画 pipeline / shader 群を移植元として全面参照しました。bdfunctions の `Copyright (C) 2018, NiranV Dean` header はそのまま保持しています。
 
 ---

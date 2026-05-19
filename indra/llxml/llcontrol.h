@@ -153,7 +153,7 @@ public:
     void resetToDefault(bool fire_signal = false);
 
     // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD adds per-control lock + min/max introspection
-    // (used by bdsidebar vector widgets and bdfunctions warning system). AY has no equivalent.
+    // (used by bdfunctions warning system). AY has no equivalent.
     // We carry minimal state: a soft lock flag (no enforcement at set() time) and pass-throughs
     // to getMin/getMax via the underlying control-variable defaults — BD's UI consults these
     // only for warning-bound display.
@@ -283,10 +283,6 @@ public:
     LLWString   getWString(std::string_view name);
     LLVector3   getVector3(std::string_view name);
     LLVector3d  getVector3d(std::string_view name);
-    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdsidebar.cpp expects these for shadow res/dist tuples.
-    LLVector4   getVector4(std::string_view name);
-    LLVector2   getVector2(std::string_view name);
-    // </FS:AYAstorm:r30-bd-port>
     LLRect      getRect(std::string_view name);
     LLSD        getLLSD(std::string_view name);
     LLQuaternion    getQuaternion(std::string_view name);

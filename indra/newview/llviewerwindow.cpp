@@ -92,7 +92,6 @@
 // newview includes
 #include "fscommon.h"
 #include "llaccordionctrl.h"
-#include "bdsidebar.h"
 #include "llbox.h"
 #include "llchicletbar.h"
 #include "llconsole.h"
@@ -2427,13 +2426,11 @@ void LLViewerWindow::initWorldUI()
 
     // <AYAstorm:r30-bd-port> Phase 4: Cinematic mode BD-parity cvar pinning.
     // BD ships several cvars enabled-by-default that LL ships off — at Cinematic
-    // boot we force them to BD parity values so the new tabbed AYAstorm Cinematic
-    // Controls floater's sliders/checkboxes have non-degenerate visual effect.
+    // boot we force them to BD parity values so the AYAstorm Cinematic Controls
+    // floater's sliders/checkboxes have non-degenerate visual effect.
     // Mode switch requires restart (r30 P1), so once-per-boot is sufficient.
     //
-    // Note: the BD Machinima right sidebar (panel_machinima.xml via bdsidebar.cpp)
-    // was removed at Phase 4 per Q1=A — replaced by the tabbed floater. The
-    // resetToDefault values used by the floater's "D" buttons are defined in
+    // The resetToDefault values used by the floater's "D" buttons are defined in
     // llviewermenu.cpp::AYAResetCinematic::parityTable() and must stay in sync
     // with the pins below.
     if (gSavedSettings.getU32("AYAVisualRealismEnabled") == 2)
@@ -2685,9 +2682,6 @@ void LLViewerWindow::shutdownViews()
     gStatusBar = NULL;
     gIMMgr = NULL;
     gToolTipView = NULL;
-    // <AYAstorm:r30-bd-port> Phase 3.9: BD sidebar global cleanup
-    gSideBar = NULL;
-    // </AYAstorm:r30-bd-port>
 
     gToolBarView = NULL;
     gFloaterView = NULL;

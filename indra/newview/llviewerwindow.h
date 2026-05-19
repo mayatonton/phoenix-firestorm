@@ -510,9 +510,6 @@ private:
     LLView*         mNavBarContainer = nullptr;
     LLPanel*        mStatusBarContainer = nullptr;
     LLPanel*        mChicletContainer = nullptr;
-    // <AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar mount slot (Cinematic mode only)
-    LLPanel*        mMachinimaSidebar = nullptr;
-    // </AYAstorm:r30-bd-port>
     LLPanel*        mTopInfoContainer = nullptr;
     LLVector2       mDisplayScale;
 

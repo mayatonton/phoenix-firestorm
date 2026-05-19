@@ -28,9 +28,9 @@ Phase 4 通過後、Phase 3.7-3.9 で持ち込んだ検証用 hook / 動作確�
 
 - [x] `pipeline.cpp` Phase 3.7 dispatch 追加箇所 — **追加 log なし** (dispatch は silent)
 - [x] `llviewershadermgr.cpp` Phase 3.8 cinematic_bd path-probe — **追加 log なし** (path-probe は silent)
-- [x] `bdsidebar.cpp` mount 時 log — **BD verbatim** (`LL_WARNS("Sidebar")` 3 件は BD 由来、保持)
+- [x] ~~`bdsidebar.cpp` mount 時 log~~ — **bdsidebar 撤去済 (2026-05-19)**、Cinematic Controls floater に統合
 - [x] `bdfunctions.cpp` update checker `LL_INFOS() << "HTTP Code"` — **BD verbatim、保持**
-- [x] `llviewerwindow.cpp` Phase 3.9 step 4a mount caller — **追加 log なし**
+- [x] `llviewerwindow.cpp` Phase 3.9 step 4a mount caller — **撤去済 (bdsidebar 削除に伴い消滅)**
 - [x] `pipeline.cpp` r30 P2 `LL_INFOS("Pipeline") << "AYAstorm r30 P2: allocated mVelocityMap..."` — **one-shot alloc 報告、保持** (per-frame でなく起動 1 回、debug 用ではなく構成記録)
 
 確定: Phase 5 §1.1 は **追加 cleanup 不要**。BD port branch で追加された verification debug log は無し。判定方法は `git diff ayastorm-release..HEAD -- '*.cpp' '*.h' | grep -E '^\+.*(LL_INFOS|LL_WARNS|LL_DEBUGS)'` で全 hit を BD verbatim / 既存 r30 P2 にカテゴライズ済 (2026-05-19 audit)。
@@ -42,7 +42,6 @@ AYA Phase 4 検証で触った cvar の default 戻し表を release note に同
 | cvar | 検証で触った値 | release 後の推奨値 | persist |
 |---|---|---|---|
 | `AYAVisualRealismEnabled` | 0 / 1 / 2 | **1** (AYAstorm View 既定) | 1 |
-| `MachinimaSidebar` | 1 (default) | 1 | 0 |
 | `RenderShadowAutomaticDistance` | (default 1) | 1 | 1 |
 | `RenderShadowResolution` | (BD-only 配列) | 4×1024.0 | 1 |
 | `RenderShadowDistance` | (BD-only 配列) | [12, 24, 48, 96] | 1 |
@@ -63,12 +62,12 @@ BD source 由来は git history (commit 4769ac08ce / c3dc5559dc + branch tracker
 
 Phase 3.9 で inventory 漏れとして port した物の provenance audit (2026-05-19):
 
-- [x] `bdsidebar.{cpp,h}` — BD 由来 "Copyright (C) 2018, NiranV Dean" header verbatim
-- [x] `bdfunctions.{cpp,h}` — 同上 + AYAstorm 注釈 (`imported from BlackDragon Viewer (NiranV Dean), 995a1354d8, 2026-04-19`)
-- [x] 4 caller patch (`llviewerwindow.{cpp,h}` / `llviewercontrol.cpp` / `llfloaterpreference.cpp` / `llagent.{cpp,h}`) — 該当箇所に `FS:AYAstorm:r30-bd-port` marker 確認
-- [x] AY-side API 拡張 (`LLControlVariable` / `LLControlGroup` / `LLEnvironment` / `LLComboBox` / `LLViewerRegion`) — 各 file に `FS:AYAstorm:r30-bd-port` 拡張 marker 確認
+- [x] ~~`bdsidebar.{cpp,h}`~~ — **撤去済 (2026-05-19)**、Cinematic Controls floater に統合
+- [x] `bdfunctions.{cpp,h}` — BD 由来 + AYAstorm 注釈 (`imported from BlackDragon Viewer (NiranV Dean), 995a1354d8, 2026-04-19`)
+- [x] caller patch (`llviewerwindow.{cpp,h}` / `llviewercontrol.cpp` / `llfloaterpreference.cpp` / `llagent.{cpp,h}`) — 該当箇所に `FS:AYAstorm:r30-bd-port` marker 確認、bdsidebar 関連箇所は撤去済
+- [x] AY-side API 拡張 (`LLControlVariable` / `LLControlGroup` / `LLEnvironment` / `LLComboBox` / `LLViewerRegion`) — 各 file に `FS:AYAstorm:r30-bd-port` 拡張 marker 確認、bdsidebar 専用 (`getVector4`/`getVector2`) は撤去済
 
-合計 22 file に AYA-side BD port marker が landed (`grep 'FS:AYAstorm:r30-bd-port|imported from BlackDragon'` 結果)。git history 上書きで provenance を失わない構造、cleanup 不要。
+git history 上書きで provenance を失わない構造、cleanup 不要。bdsidebar 撤去は phase4-verify-spec / phase3.9-ui-cinematic-mount-spec §0 に記録。
 
 ### §1.5 build sanity (no-op)
 
@@ -96,13 +95,13 @@ AYAstorm に Cinematic mode を追加し、BlackDragon Viewer (BD) 995a1354d8 �
 |---|---|---|
 | 3 mode 統合 | `AYAVisualRealismEnabled` で Firestorm View(0) / AYAstorm View(1) / Cinematic(2) を再起動切替 | `docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md` (D1) |
 | BD shader 49 file mount | shader 49 file を A/B/C/D strategy で mode 2 に mount | `docs/specs/ayastorm-r30-bd-full-port-phase3.8-shader-cinematic-mount-spec.md` |
-| BD UI mount (bdsidebar) | mode 2 で右側に Machinima Sidebar 出現 (BD と同 panel_machinima) | `docs/specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md` |
+| BD UI mount | mode 2 用 Cinematic Controls floater (`Alt+C`) に BD pipeline 操作を統合。当初 panel_machinima.xml 全面 port を計画したが、Cinematic Controls floater に統合する形で結論 | `docs/specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md` §0 |
 | BD C++ dispatch | pipeline / drawpool / shadermgr 等 53 file の mode 別 dispatch | `docs/specs/ayastorm-r30-bd-full-port-phase3.2-cpp-dispatch-spec.md` |
 
 ### §2.3 注意事項 (β release)
 
 - mode 切替は **再起動推奨** (round-trip 動作未保証、Phase 4 G4)
-- bdsidebar 内 slider/button 操作は AY 拡張 cvar と一部衝突する場合あり (AY 拡張は mode 1 で確認)
+- Cinematic Controls floater の slider/button は BD pipeline 用に調整されており、mode 1 で AY 拡張と併用すると効果が重なる場合がある (AY 拡張のみは mode 1 で確認)
 - cinematic_bd/ 経路は GPU class 別 fallback (class3→class2→class1) を継承
 
 ### §2.4 known issues / 持ち越し
