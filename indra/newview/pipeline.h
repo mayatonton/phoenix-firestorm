@@ -454,18 +454,14 @@ public:
 
     static bool isWaterClip();
 
-    // <FS:AYAstorm r30 BD full port Phase 3.3>
-    // Cinematic-aware cvar reader. mode 2 (Cinematic) は BD pure path のため
-    // bd_default を返す、それ以外 (mode 0 Firestorm View / mode 1 AYAstorm View) は
-    // gSavedSettings の現在値を返す。
+    // <FS:AYAstorm r30 BD full port Phase 3.3, P5 step 5 pivot 2026-05-19>
+    // 全 mode で user cvar 値を読む getter。bd_default は cvar が未登録の場合の
+    // fallback としてのみ機能。Cinematic mode (=2) でも user cvar 値が effective、
+    // Cinematic Controls floater の slider/checkbox が即時反映される。
     //
-    // ホット path で繰り返し呼ぶ場合は caller 側で `static LLCachedControl<T>` を
-    // 持ち、mode 2 分岐だけ isCinematicMode() で書く形が安い:
-    //   static LLCachedControl<F32> my_cvar(gSavedSettings, "RenderX", 1.0f);
-    //   F32 v = LLPipeline::isCinematicMode() ? bd_default : my_cvar();
-    //
-    // 非 hot path / 1 frame に数回の呼び出しなら下記 getter で十分。
-    // D3 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3)。
+    // 旧仕様 (D3 cvar 短絡) は P5 step 5 で撤去。Cinematic 専用の動作は cvar 値
+    // でなく feature gate (caller 側 isCinematicMode() 分岐) で表現する。
+    // 例: `if (isCinematicMode() && cinematic_only_pass_enabled) { ... }`
     static bool        isCinematicMode();
     static bool        getRenderCvarBOOL   (const std::string& name, bool               bd_default);
     static U32         getRenderCvarU32    (const std::string& name, U32                bd_default);

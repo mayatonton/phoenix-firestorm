@@ -2824,60 +2824,56 @@ bool LLPipeline::isCinematicMode()
     return aya_view_mode() == 2;
 }
 
+// P5 step 5 paradigm shift (2026-05-19): Cinematic 短絡を撤去。Cinematic mode で
+// あっても user cvar 値を読む = Cinematic Controls floater の slider/checkbox 変更
+// が即時反映される。bd_default は cvar 未登録時の fallback としてのみ機能。
 // static
 bool LLPipeline::getRenderCvarBOOL(const std::string& name, bool bd_default)
 {
-    if (isCinematicMode())
-        return bd_default;
-    return gSavedSettings.getBOOL(name);
+    LLControlVariable* c = gSavedSettings.getControl(name);
+    return c ? c->getValue().asBoolean() : bd_default;
 }
 
 // static
 U32 LLPipeline::getRenderCvarU32(const std::string& name, U32 bd_default)
 {
-    if (isCinematicMode())
-        return bd_default;
-    return gSavedSettings.getU32(name);
+    LLControlVariable* c = gSavedSettings.getControl(name);
+    return c ? (U32)c->getValue().asInteger() : bd_default;
 }
 
 // static
 S32 LLPipeline::getRenderCvarS32(const std::string& name, S32 bd_default)
 {
-    if (isCinematicMode())
-        return bd_default;
-    return gSavedSettings.getS32(name);
+    LLControlVariable* c = gSavedSettings.getControl(name);
+    return c ? (S32)c->getValue().asInteger() : bd_default;
 }
 
 // static
 F32 LLPipeline::getRenderCvarF32(const std::string& name, F32 bd_default)
 {
-    if (isCinematicMode())
-        return bd_default;
-    return gSavedSettings.getF32(name);
+    LLControlVariable* c = gSavedSettings.getControl(name);
+    return c ? (F32)c->getValue().asReal() : bd_default;
 }
 
 // static
 LLVector3 LLPipeline::getRenderCvarVector3(const std::string& name, const LLVector3& bd_default)
 {
-    if (isCinematicMode())
-        return bd_default;
-    return gSavedSettings.getVector3(name);
+    LLControlVariable* c = gSavedSettings.getControl(name);
+    return c ? LLVector3(c->getValue()) : bd_default;
 }
 
 // static
 LLColor4 LLPipeline::getRenderCvarColor4(const std::string& name, const LLColor4& bd_default)
 {
-    if (isCinematicMode())
-        return bd_default;
-    return gSavedSettings.getColor4(name);
+    LLControlVariable* c = gSavedSettings.getControl(name);
+    return c ? LLColor4(c->getValue()) : bd_default;
 }
 
 // static
 std::string LLPipeline::getRenderCvarString(const std::string& name, const std::string& bd_default)
 {
-    if (isCinematicMode())
-        return bd_default;
-    return gSavedSettings.getString(name);
+    LLControlVariable* c = gSavedSettings.getControl(name);
+    return c ? c->getValue().asString() : bd_default;
 }
 // </FS:AYAstorm>
 
