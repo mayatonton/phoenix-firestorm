@@ -216,7 +216,7 @@
             <text name="T_GlowWidth">幅</text>
             <button name="d_GlowWidth" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_VolLighting">ボリュメトリック ライティング (AYA ゴッドレイ — BD parity gate により現在無効)</text>
+            <text name="T_VolLighting">ボリュメトリック ライティング (AYA ゴッドレイ)</text>
 
             <check_box name="cb_VolEnable" label="ボリュメトリック ライティングを有効化 (ゴッドレイ)"
                        tool_tip="AYA ゴッドレイ合成のマスタースイッチ。"/>

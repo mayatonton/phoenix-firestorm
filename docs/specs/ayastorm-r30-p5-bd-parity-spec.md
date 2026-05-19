@@ -520,7 +520,33 @@ post-shift mode 2 audit table: `/tmp/aya-audit-A-mode2-postshift-table.archive.t
 
 **残 Strategy C link 健全性**: 26 strategy C shader を BD-only function (`nonpcfShadow{AtPos,}` / `binarySearch` / `rayMarch` / `calculateEdgeFade`) 参照で sweep、`nonpcfShadowAtPos` は `volumetricLightF.glsl` のみが call 元で本 gate で全数解消。signature mismatch 無し (standard と cinematic_bd 版で `pcfShadow` / `sampleDirectionalShadow` / `tapScreenSpaceReflection` 等の共通関数 signature 同一)。残 link error 潜在無しを確認済。
 
-### 10.7 以降の step (5.x〜9)
+### 10.7 paradigm shift 後 UI 検証 (2026-05-19、AYA hands-on)
+
+AYA さんが mode 2 (Cinematic) で Cinematic Controls floater (`floater_aya_cinematic.xml`) を一通り触って報告:
+
+- **動作確認**: paradigm shift 前 (dead) だった Glow / DoF / SSR / Motion Blur / Volumetric slider 群が **「動くようになったのを感じた」** — wiring 開通を視覚的に確認、§10.6 audit lift 結果と整合
+- **ラベル疑問 2 件**:
+  - **「カメラ (BD) 画角」 (Tab 4)** → 実体は `CameraFieldOfView` で **DoF 計算式に入る vertical FOV (°)**、描画カメラ FOV (`CameraAngle`) ではない。tooltip 不足で誤解。BD 推奨 67° は人間視野相当。誤解しやすいので将来 tooltip 拡充候補
+  - **「ボリュメトリック ライティング (AYA ゴッドレイ — BD parity gate により現在無効)」 (Tab 7)** → paradigm shift 後は wiring 開通済で **stale 表記**。本 spec landing と同 commit で en/ja 両言語 label から「— BD parity gate により現在無効」/「— disabled by BD parity gate」を削除
+- **「設定が即時同期されていない」疑問**: AYA さんが Tab 7 の slider を動かしたら、過去に動かしていた DoF Chroma の効果 (画面全体の RGB 分離 + アバター頭部 bloom 白飛び) が初めて画面に出た現象。**バグでなく LL viewer 標準仕様**:
+  - 個別 slider 値 (`RenderChromaStrength`, `RenderGlowStrength` 等) → 毎フレーム読み、**即時反映**
+  - master cvar (`RenderGlow`, `RenderDeferred`, `RenderVolumetricLighting`, structural な permutation 系) → toggle で `setShaders()` 全 shader 再リンクを発火 (1-2 秒)、その瞬間に **過去に動かした全 cvar が同時に再評価**
+  - = AYA さんが Tab 7 master を動かした時に setShaders() 走行 → Tab 4 で先に動かしてあった Chroma 設定が初めて render に届いた、という見え方
+  - **運用回避**: 効果確認時は master (Tab 4 DoF master / Tab 7 Glow master / Vol master) を **最初に ON にしてから個別 slider を動かす**。setShaders() コストを払う順序を逆転させない
+- **頭白飛び + 色収差** はバグでなく、Glow chain (`RenderGlowMinLuminance` 低めで肌の輝度が bloom 対象に乗る) と DoF Chroma (`RenderChromaStrength` 既定値で focus 外領域に色収差) の **設計通り重ね合わせ**。チューニングで抑制可能、表現過剰なら BD-default 値の見直しは別途 step 5.x 範疇
+
+#### 10.7.1 commit 連鎖
+
+| commit | 内容 |
+|---|---|
+| (本 entry と同 commit) | `floater_aya_cinematic.xml` (en/ja) `T_VolLighting` label から「BD parity gate により現在無効」/「disabled by BD parity gate」を削除。paradigm shift 後の動作状態と整合 |
+
+#### 10.7.2 Phase 4 G1-G4 進捗
+
+- G3 (mode 2 動作) は本検証で **wiring 確認 ✅ / floater が反応する ✅ / shader compile clean ✅**。残は §2.4 step 6 (mouselook hide) / step 7 (MachinimaSidebar visibility trigger) / step 8 (env_adjust_water floater 経由起動) など bdsidebar 固有挙動の確認、AYA 検証次回継続
+- G1 (mode 0) / G2 (mode 1) / G4 (round-trip) は未着手、AYA 検証時に追加実施
+
+### 10.8 以降の step (5.x〜9)
 
 各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は step 5.x に降格 (§0.5)。
 

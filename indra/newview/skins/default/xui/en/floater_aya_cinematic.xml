@@ -308,7 +308,7 @@
             <spinner    follows="left|top" layout="topleft" name="s_GlowWidth"             top="152" left="376" width="65"  height="20" control_name="RenderGlowWidth" min_val="0.1" max_val="5" increment="0.05" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_GlowWidth"             top="152" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowWidth"/></button>
 
-            <text follows="left|top" layout="topleft" name="T_VolLighting" top="184" left="8" width="572" height="18" font="SansSerif">Volumetric Lighting (AYA godrays — disabled by BD parity gate)</text>
+            <text follows="left|top" layout="topleft" name="T_VolLighting" top="184" left="8" width="572" height="18" font="SansSerif">Volumetric Lighting (AYA godrays)</text>
 
             <check_box follows="left|top" layout="topleft" name="cb_VolEnable" control_name="RenderVolumetricLighting" top="208" left="12" width="530" height="20" label="Enable volumetric lighting (godrays)" tool_tip="Master switch for the AYA godrays composite."/>
             <button    follows="left|top" layout="topleft" name="d_VolEnable"  top="208" left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderVolumetricLighting"/></button>
