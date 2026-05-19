@@ -231,8 +231,8 @@
             <text name="T_VolFall">減衰</text>
             <button name="d_VolFall" tool_tip="デフォルトに戻す"/>
 
-            <check_box name="cb_VolDir" label="方向性フェード (太陽が地平線下で消える; 再起動必須)"
-                       tool_tip="GODRAYS_FADE permutation を追加します。切替時はシェーダーが再構築されるためビューア再起動が必要です。"/>
+            <check_box name="cb_VolDir" label="方向性フェード (太陽が地平線下で消える)"
+                       tool_tip="GODRAYS_FADE permutation を追加します。切替時にシェーダーが即時再構築 (1-2秒) されます。"/>
             <button name="d_VolDir" tool_tip="デフォルトに戻す"/>
 
             <text name="T_BDGodrays">BD ゴッドレイ (未実装)</text>

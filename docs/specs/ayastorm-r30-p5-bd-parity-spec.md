@@ -546,6 +546,39 @@ AYA さんが mode 2 (Cinematic) で Cinematic Controls floater (`floater_aya_ci
 - G3 (mode 2 動作) は本検証で **wiring 確認 ✅ / floater が反応する ✅ / shader compile clean ✅**。残は §2.4 step 6 (mouselook hide) / step 7 (MachinimaSidebar visibility trigger) / step 8 (env_adjust_water floater 経由起動) など bdsidebar 固有挙動の確認、AYA 検証次回継続
 - G1 (mode 0) / G2 (mode 1) / G4 (round-trip) は未着手、AYA 検証時に追加実施
 
+#### 10.7.3 wire 状態 audit + 残ギャップ fix (2026-05-19、後追い)
+
+§10.7 で記述した「master cvar の setShaders() 全 link が他 cvar を巻き取る」挙動は LL 標準仕様だが、**「2 段階反映」と AYA さんが受け取ったのは別問題** との指摘を受け、Cinematic floater 全 cvar の wire 状態を `llviewercontrol.cpp` で audit:
+
+**wire 済 (既に即時反映する cvar):**
+
+| cvar | wire | 種類 |
+|---|---|---|
+| `RenderDepthOfFieldChroma` / `HighQuality` / `Front` | `handleSetShaderChanged` | shader permutation |
+| `RenderGlow` | `handleReleaseGLBufferChanged` + `handleSetShaderChanged` | master |
+| `RenderShadowDetail` / `RenderDeferredSSAO` | `handleSetShaderChanged` | permutation |
+| `RenderScreenSpaceReflections` / `RenderReflectionProbeLevel` | `handleReflectionProbeDetailChanged` | reflection chain |
+| `RenderDepthOfField` master | `handleReleaseGLBufferChanged` | render target (DoF buffer) |
+| `RenderFSAAType` | `handleReleaseGLBufferChanged` | AA buffer |
+| `RenderShadowResolutionScale` | `handleShadowsResized` | shadow target |
+
+**runtime-read で wire 不要 (即時反映する):**
+
+- `RenderChromaStrength`, `RenderGlowStrength`, `RenderGlowMinLuminance`, 各 `RenderSSAO*`, `RenderShadowBlurSize`, `RenderCASSharpness`, `Camera*`, 全 `RenderScreenSpaceReflection*` sub, `RenderVolumetricLightingResolution/Multiplier/FalloffMultiplier`: shader uniform / runtime branch のみ
+- `RenderMotionBlurSelfAvatar` / `OtherAvatars`: `LLCachedControl` 経由で per-frame 読み
+- `RenderDeferredBlurLight`: `LLPipeline::RenderDeferredBlurLight` 静的が `connectRefreshCachedSettingsSafe` で更新
+- `RenderVolumetricLighting` master: `getRenderCvarBOOL` で per-frame 読み
+- `RenderSMAAT2x`: `getRenderCvarBOOL` で per-frame 読み
+
+**実 wire ギャップ 2 件 (本 commit で fix):**
+
+| cvar | 何が起こっていたか | fix |
+|---|---|---|
+| `RenderMotionBlur` (master) | `LLPipeline::createGLBuffers()` で `mVelocityMap` を allocate するが、cvar toggle 後に `createGLBuffers()` を再走しないため、起動後 OFF→ON 切替で MotionBlur は無効 (mVelocityMap 未確保) のまま | `handleReleaseGLBufferChanged` 接続。toggle で `releaseGLBuffers()` + `createGLBuffers()` 再走、mVelocityMap が改めて確保される |
+| `RenderVolumetricLightingDirectional` | `llviewershadermgr.cpp` で `GODRAYS_FADE` permutation の `addPermutation` を gate。cvar 値変更後に shader 再 build しないため XML tooltip に「再起動必須」と書かれていた | `handleSetShaderChanged` 接続。toggle で `setShaders()` 走行、`GODRAYS_FADE` 1/0 で shader 再 build。XML tooltip から「再起動必須」/「restart required」削除 (en/ja) |
+
+これで Cinematic floater で AYA さんが目で「動かなかった」と感じうる cvar はゼロになる。setShaders() コストを伴う再 build (1-2 秒) が走るタイミングが `RenderDepthOfFieldChroma` / `RenderGlow` / `RenderVolumetricLightingDirectional` toggle 時に集約されるが、これは仕様。
+
 ### 10.8 以降の step (5.x〜9)
 
 各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は step 5.x に降格 (§0.5)。

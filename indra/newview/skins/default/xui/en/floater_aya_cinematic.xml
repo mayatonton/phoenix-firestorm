@@ -328,7 +328,7 @@
             <spinner    follows="left|top" layout="topleft" name="s_VolFall"  top="284" left="376" width="65"  height="20" control_name="RenderVolumetricLightingFalloffMultiplier" min_val="0" max_val="10" increment="0.1" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_VolFall"  top="284" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderVolumetricLightingFalloffMultiplier"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_VolDir" control_name="RenderVolumetricLightingDirectional" top="312" left="12" width="530" height="20" label="Directional fade (sun-below-horizon; restart required)" tool_tip="Adds GODRAYS_FADE permutation. Toggling rebuilds the shader; requires viewer restart."/>
+            <check_box follows="left|top" layout="topleft" name="cb_VolDir" control_name="RenderVolumetricLightingDirectional" top="312" left="12" width="530" height="20" label="Directional fade (sun-below-horizon)" tool_tip="Adds GODRAYS_FADE permutation. Toggling rebuilds shaders live (1-2s)."/>
             <button    follows="left|top" layout="topleft" name="d_VolDir"  top="312" left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderVolumetricLightingDirectional"/></button>
 
             <text follows="left|top" layout="topleft" name="T_BDGodrays" top="344" left="8" width="572" height="18" font="SansSerif">BD Godrays (未実装)</text>

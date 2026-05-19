@@ -1555,6 +1555,12 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderDepthOfFieldChroma",      handleSetShaderChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderDepthOfFieldFront",       handleSetShaderChanged);
     // </AYAstorm r30 P4 step 5>
+    // <AYAstorm r30 P5> Cinematic floater 即時反映の wire ギャップ補填。
+    // RenderMotionBlur: mVelocityMap allocation を createGLBuffers() で再走させる。
+    // RenderVolumetricLightingDirectional: GODRAYS_FADE permutation を shader rebuild で反映。
+    setting_setup_signal_listener(gSavedSettings, "RenderMotionBlur",                    handleReleaseGLBufferChanged);
+    setting_setup_signal_listener(gSavedSettings, "RenderVolumetricLightingDirectional", handleSetShaderChanged);
+    // </AYAstorm r30 P5>
     setting_setup_signal_listener(gSavedSettings, "RenderGlowResolutionPow", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderGlowHDR", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderEnableEmissiveBuffer", handleEnableEmissiveChanged);
