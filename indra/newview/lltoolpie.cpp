@@ -2479,6 +2479,12 @@ bool LLToolPie::handleRightClickPick()
         if (fs_self_picker_enable && isAgentAvatarValid())
         {
             const bool fell_through_to_self_avatar = (mPick.mObjectID == gAgent.getID());
+            const bool upstream_picked_self_avatar =
+                object && (object == gAgentAvatarp.get()) && object->isAvatar();
+            if (upstream_picked_self_avatar && mPick.mObjectID != gAgent.getID())
+            {
+                mPick.mObjectID = gAgent.getID();
+            }
             // Second-guess upstream when it picked a self rigged attachment —
             // the worldray test can pierce an alpha-discarded triangle (hidden
             // sleeve etc.) the user does not actually see, and the GPU ID
@@ -2492,7 +2498,8 @@ bool LLToolPie::handleRightClickPick()
                 object && object->isHUDAttachment();
 
             if (!upstream_picked_hud_attachment &&
-                (fell_through_to_self_avatar || upstream_picked_self_attachment || !object))
+                (fell_through_to_self_avatar || upstream_picked_self_avatar ||
+                 upstream_picked_self_attachment || !object))
             {
                 bool gpu_authoritative = false;
                 LLViewerObject* picked = FSSelfRiggedPicker::findClosestAttachment(
@@ -2501,6 +2508,12 @@ bool LLToolPie::handleRightClickPick()
                 {
                     object = picked;
                     mPick.mObjectID = picked->getID();
+                }
+                else if (gpu_authoritative &&
+                         (fell_through_to_self_avatar || upstream_picked_self_avatar))
+                {
+                    object = gAgentAvatarp.get();
+                    mPick.mObjectID = gAgent.getID();
                 }
                 else if (gpu_authoritative && upstream_picked_self_attachment
                          && object->isRiggedMesh())

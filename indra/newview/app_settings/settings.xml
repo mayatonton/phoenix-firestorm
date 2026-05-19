@@ -23383,7 +23383,7 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Type</key>
       <string>U32</string>
       <key>Value</key>
-      <integer>800000</integer>
+      <integer>1200000</integer>
     </map>
     <key>FSShowMutedChatHistory</key>
     <map>

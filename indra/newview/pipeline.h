@@ -527,7 +527,9 @@ private:
                                              U32 max_triangles,
                                              U32* out_draw_calls = nullptr,
                                              U32* out_triangles = nullptr,
-                                             bool* out_over_budget = nullptr);
+                                             bool* out_over_budget = nullptr,
+                                             U32* out_attempted_draw_calls = nullptr,
+                                             U32* out_attempted_triangles = nullptr);
     void assertInitializedDoError();
     bool assertInitialized() { const bool is_init = isInit(); if (!is_init) assertInitializedDoError(); return is_init; };
     void connectRefreshCachedSettingsSafe(const std::string name);

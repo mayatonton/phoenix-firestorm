@@ -9945,11 +9945,15 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
                                                      U32 max_triangles,
                                                      U32* out_draw_calls,
                                                      U32* out_triangles,
-                                                     bool* out_over_budget)
+                                                     bool* out_over_budget,
+                                                     U32* out_attempted_draw_calls,
+                                                     U32* out_attempted_triangles)
 {
     if (out_draw_calls) *out_draw_calls = 0;
     if (out_triangles) *out_triangles = 0;
     if (out_over_budget) *out_over_budget = false;
+    if (out_attempted_draw_calls) *out_attempted_draw_calls = 0;
+    if (out_attempted_triangles) *out_attempted_triangles = 0;
 
     if (!target_avatar || target_avatar->isDead()) return false;
     if (!mObjectIDBuffer.isComplete()) return false;
@@ -9992,6 +9996,8 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     bool skipLastSkin = false;
     U32 draw_calls = 0;
     U32 triangles = 0;
+    U32 attempted_draw_calls = 0;
+    U32 attempted_triangles = 0;
     bool over_budget = false;
 
     for (U32 pass_type : kFSRiggedPasses)
@@ -10018,6 +10024,8 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
 
             const U32 next_draw_calls = draw_calls + 1;
             const U32 next_triangles = triangles + (info->mCount / 3);
+            attempted_draw_calls = next_draw_calls;
+            attempted_triangles = next_triangles;
             if ((max_draw_calls > 0 && next_draw_calls > max_draw_calls) ||
                 (max_triangles > 0 && next_triangles > max_triangles))
             {
@@ -10074,6 +10082,8 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     if (out_draw_calls) *out_draw_calls = draw_calls;
     if (out_triangles) *out_triangles = triangles;
     if (out_over_budget) *out_over_budget = over_budget;
+    if (out_attempted_draw_calls) *out_attempted_draw_calls = attempted_draw_calls;
+    if (out_attempted_triangles) *out_attempted_triangles = attempted_triangles;
     return !over_budget;
 }
 
@@ -10215,7 +10225,7 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
     static LLCachedControl<bool> enable(gSavedSettings, "FSOtherRiggedPickerEnable", false);
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSOtherRiggedPickerGPU", true);
     static LLCachedControl<U32> max_draw_calls(gSavedSettings, "FSOtherRiggedPickerMaxDrawCalls", 160);
-    static LLCachedControl<U32> max_triangles(gSavedSettings, "FSOtherRiggedPickerMaxTriangles", 800000);
+    static LLCachedControl<U32> max_triangles(gSavedSettings, "FSOtherRiggedPickerMaxTriangles", 1200000);
     if (!enable || !gpu_enable) return;
     if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK ||
         gAgentCamera.cameraCustomizeAvatar())
@@ -10240,13 +10250,17 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
     const U32 previous_render_generation = sFSOtherRiggedPickerRenderGeneration;
     U32 draw_calls = 0;
     U32 triangles = 0;
+    U32 attempted_draw_calls = 0;
+    U32 attempted_triangles = 0;
     bool over_budget = false;
     if (renderRiggedObjectIDBufferForAvatar(target_avatar,
                                             (U32)max_draw_calls,
                                             (U32)max_triangles,
                                             &draw_calls,
                                             &triangles,
-                                            &over_budget))
+                                            &over_budget,
+                                            &attempted_draw_calls,
+                                            &attempted_triangles))
     {
         sFSOtherRiggedPickerRenderGeneration = sFSOtherRiggedPickerArmGeneration;
         if (previous_render_generation != sFSOtherRiggedPickerRenderGeneration &&
@@ -10273,6 +10287,8 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
                 << " generation=" << arm_generation
                 << " draw_calls=" << draw_calls
                 << " triangles=" << triangles
+                << " attempted_draw_calls=" << attempted_draw_calls
+                << " attempted_triangles=" << attempted_triangles
                 << " over_budget=" << over_budget
                 << " budget_draw_calls=" << (U32)max_draw_calls
                 << " budget_triangles=" << (U32)max_triangles
@@ -10301,13 +10317,13 @@ void LLPipeline::renderDeferredLighting()
     // for the main RT pack, and the picker only ever reads it for the
     // main viewport).
     static LLCachedControl<bool> armed_mode(gSavedSettings, "FSSelfRiggedPickerArmedMode", true);
-    if (!gCubeSnapshot && (!armed_mode || isSelfRiggedObjectIDBufferArmed()))
-    {
-        renderSelfRiggedObjectIDBuffer();
-    }
-    else if (!gCubeSnapshot && isOtherRiggedObjectIDBufferArmed())
+    if (!gCubeSnapshot && isOtherRiggedObjectIDBufferArmed())
     {
         renderOtherRiggedObjectIDBuffer();
+    }
+    else if (!gCubeSnapshot && (!armed_mode || isSelfRiggedObjectIDBufferArmed()))
+    {
+        renderSelfRiggedObjectIDBuffer();
     }
     // </AYAstorm:r21.1>
 
