@@ -508,6 +508,18 @@ ayaudit framework 自体は scene noise を被るため SOLID 判定の精度が
 
 post-shift mode 2 audit table: `/tmp/aya-audit-A-mode2-postshift-table.archive.txt` (作業者向け、リリース成果物ではない)。
 
+#### 10.6.1 volumetricLightF.glsl HAS_SUN_SHADOW gate (2026-05-19)
+
+| commit | 内容 |
+|---|---|
+| `431f0157f2` | `volumetricLightF.glsl` Cinematic branch (`#if AYASTORM_CINEMATIC`) を `#ifdef HAS_SUN_SHADOW` で gate。Cinematic body は unconditional に `nonpcfShadowAtPos(spos, tc)` を call するが、`RenderShadowDetail=0` 時は `use_sun_shadow=false` → `features.hasShadows=false` → shadowUtil.glsl が attach されず、関数未定義のまま link → GLSL Linker Error C3002 を発火していた。AY branch (`#else`) は元から body 全体を `#ifdef HAS_SUN_SHADOW` で gate 済だったため、対称化で解消 |
+
+**検出経緯**: §10.6 post-shift audit (mode 2) のログに 2 件の `error C3002: call to undefined function "float nonpcfShadowAtPos(vec4, vec2);"` を発見 (`/tmp/aya-audit-A-mode2-postshift-table.archive.txt` 採取時の `/tmp/aya-audit-run-A.preshaderfix.log` に保存)。audit は `RenderShadowDetail` を 0/2 で sweep するため、低側 sweep 中に shadowUtil の link 切れが Cinematic 経路だけで露呈。
+
+**再 audit 検証 (Phase 4 G5)**: gate 適用後 mode 2 で re-audit (`/tmp/aya-audit-run-A.log`)、`grep -cE "C3002|Linker Error|undefined function"` で **0 件** を確認。Phase 4 G5 (log に未対応 shader compile error が無い) 達成。
+
+**残 Strategy C link 健全性**: 26 strategy C shader を BD-only function (`nonpcfShadow{AtPos,}` / `binarySearch` / `rayMarch` / `calculateEdgeFade`) 参照で sweep、`nonpcfShadowAtPos` は `volumetricLightF.glsl` のみが call 元で本 gate で全数解消。signature mismatch 無し (standard と cinematic_bd 版で `pcfShadow` / `sampleDirectionalShadow` / `tapScreenSpaceReflection` 等の共通関数 signature 同一)。残 link error 潜在無しを確認済。
+
 ### 10.7 以降の step (5.x〜9)
 
 各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は step 5.x に降格 (§0.5)。
