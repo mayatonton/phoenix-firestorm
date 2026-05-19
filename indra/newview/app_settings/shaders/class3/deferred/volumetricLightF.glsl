@@ -59,15 +59,21 @@ float rand(vec2 co)
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> Two main() bodies:
 //   Cinematic — BD original. Forward-declares nonpcfShadowAtPos(vec4,
-//     vec2) and runs godrays unconditionally. REQUIRES shadowUtil to
-//     supply nonpcfShadowAtPos (step 2 strategy B overwrite or step 4
-//     strategy D dual-file mount must satisfy this).
+//     vec2) and runs godrays. REQUIRES shadowUtil to supply
+//     nonpcfShadowAtPos (step 2 strategy B overwrite or step 4 strategy
+//     D dual-file mount must satisfy this). Gated on HAS_SUN_SHADOW
+//     because features.hasShadows = use_sun_shadow and shadowUtil is
+//     not attached when use_sun_shadow=false; without the gate, the
+//     unconditional call to nonpcfShadowAtPos would fail to link when
+//     the user sets RenderShadowDetail=0. Godrays without shadow
+//     contrast carry no signal anyway, so this is graceful degradation.
 //   AY — r30 P3 fallback. Remaps to sampleDirectionalShadow (in
 //     class1/deferred/shadowUtil.glsl, attached via features.hasShadows)
-//     and skips the whole body when HAS_SUN_SHADOW is undefined because
-//     godrays without shadow contrast carry no signal.
+//     and skips the whole body when HAS_SUN_SHADOW is undefined.
 #if AYASTORM_CINEMATIC
+#ifdef HAS_SUN_SHADOW
 float nonpcfShadowAtPos(vec4 pos_world, vec2 pos_screen);
+#endif
 #else
 #ifdef HAS_SUN_SHADOW
 float sampleDirectionalShadow(vec3 pos, vec3 norm, vec2 pos_screen);
@@ -82,8 +88,9 @@ vec4 getPosition(vec2 pos_screen);
 void main()
 {
     vec2 tc = vary_fragcoord.xy;
-    vec4 pos = getPosition(tc);
     vec4 diff = texture(diffuseRect, tc);
+#ifdef HAS_SUN_SHADOW
+    vec4 pos = getPosition(tc);
     float depth = texture(depthMap, tc).r;
     depth *= pow(depth, 100.0);
 
@@ -127,6 +134,7 @@ void main()
     shaftify *= fade;
 #endif
     diff.rgb += ((shaftify * haze_weight.x) * shadamount) * sunlight_color;
+#endif // HAS_SUN_SHADOW
 
     frag_color = diff;
 }
