@@ -70,6 +70,7 @@ r30 ports the BD render pipeline **1:1 verbatim** and integrates **three modes**
 - Cinematic mode + the AY-side `floater_aya_cinematic.xml` can coexist, but the right-edge bdsidebar may overlap UI. Use one at a time.
 - BD `llfloatereditsky` / `llfloatereditwater` were never registered upstream in BD; we ported them as orphans to preserve 1:1 fidelity.
 - Shaders placed under `cinematic_bd/` retain the standard class3→class2→class1 GPU class fallback chain. Older GPUs automatically fall back as before.
+- In Cinematic mode the classic / system avatar body (the base mesh — Ruth/Roth shapes and the un-clothed body part of legacy system outfits) is **excluded from motion blur**. This matches BD baseline (where `LLDrawPoolAvatar::renderMotionBlur` is fully `/* ... */` commented out in BD 995a1354d8). Modern rigged-mesh avatars (hands, hair, clothing, and most attachments) still pick up motion blur via the other pools.
 
 ### Acknowledgements
 

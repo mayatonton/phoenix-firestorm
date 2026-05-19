@@ -110,6 +110,17 @@ Phase 3.7-3.9 で landed した 3 mode dispatch / shader mount / UI mount が、
 4. fix commit 1 件 / build 1 巡 / §2 の該当 mode のみ再走 (全 mode 再走は不要)
 5. fix 後 fail 抜けたら G1-G5 該当項目を ✅ に更新して spec re-commit
 
+### §4.1 実行事例: Cinematic system body velocity の lightning streak (2026-05-19)
+
+| 項目 | 内容 |
+|---|---|
+| 検出 | §2.4 mode 2 検証中、AYA 目視で「緑の雷状アーティファクト」報告 |
+| trace | `motionBlurF.glsl` 分岐確認 → AY branch は guards で抑止、Cinematic branch (BD-pure) は無防備 → `LLDrawPoolAvatar::renderMotionBlur` が `avatarVelocityV.glsl` を bind するが `lastMatrixPalette[45]` を upload していない (BD 本 path の未完成部分) → shader が garbage を読み巨大 velocity → diffuse が方向に引き伸ばされ streak |
+| 仕様判定 | BD baseline 995a1354d8 では `LLDrawPoolAvatar::renderMotionBlur` 全体が `/* ... */` で commented out。`feedback_bd_full_port_only` に従い同じ no-op 挙動に整合させる (= BD 本線から外れていた現状を本線に戻す修正) |
+| fix commit | `3cdbc28194` (`r30 BD full port: Cinematic system body velocity write を BD baseline に整合`) |
+| 影響範囲 | classic / system avatar body の motion blur が Cinematic 中対象外 (BD baseline と一致)。rigged mesh attachments は他 pool 経由で blur 対象として残る (AYA 視覚確認済) |
+| release note | ja/en/zh 「既知の留意点」に明示済 |
+
 ---
 
 ## §5 完了 commit

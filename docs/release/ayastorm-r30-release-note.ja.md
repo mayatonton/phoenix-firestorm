@@ -70,6 +70,7 @@ r30 は **BD の描画 pipeline を完全に 1:1 移植** し、AYAstorm 内に 
 - mode 2 Cinematic + AY 拡張 floater (`floater_aya_cinematic.xml`) は共存可能ですが、画面右の bdsidebar と UI 競合する場合があります — どちらかに寄せて運用してください。
 - BD `llfloatereditsky` / `llfloatereditwater` は BD 上流自身が register していない orphan ファイルで、AY 側でも register せず orphan のまま移植しました (1:1 完全移植原則)。
 - cinematic_bd/ 配下 shader は GPU class 別 fallback (class3→class2→class1) を維持。下位 class GPU でも自動的に下位 fallback を辿ります。
+- Cinematic mode では classic / system avatar body (素体・Ruth/Roth・古い system 服の素体部分) は **motion blur 対象外** です。BD baseline (BD 995a1354d8 で `LLDrawPoolAvatar::renderMotionBlur` 全体が `/* ... */` で commented out) と整合させた挙動で、現代の rigged mesh アバター (手・髪・服を含む大半の attachments) は他 pool 経由で blur 対象として残ります。
 
 ### 謝辞
 
