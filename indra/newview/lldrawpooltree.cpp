@@ -210,12 +210,10 @@ void LLDrawPoolTree::endShadowPass(S32 pass)
     // <FS:PP> Attempt to speed up things a little
     // glPolygonOffset(gSavedSettings.getF32("RenderDeferredSpotShadowOffset"),
     //                  gSavedSettings.getF32("RenderDeferredSpotShadowBias"));
-    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
-    // RenderDeferredSpotShadowOffset は §3.3 split 対象 (mode 2 = 0.0 vs base = 1.0)。
-    // RenderDeferredSpotShadowBias は split 対象外、従来どおり base 読み。
-    F32 spot_shadow_offset = LLPipeline::getRenderCvarF32("RenderDeferredSpotShadowOffset", 1.0f);
+    static LLCachedControl<F32> RenderDeferredSpotShadowOffset(gSavedSettings, "RenderDeferredSpotShadowOffset");
     static LLCachedControl<F32> RenderDeferredSpotShadowBias(gSavedSettings, "RenderDeferredSpotShadowBias");
-    glPolygonOffset(spot_shadow_offset, RenderDeferredSpotShadowBias);
+    // <FS:AYAstorm r30 P5 step 5 pivot 2026-05-19> Cinematic 短絡撤去、user cvar 値を使う
+    glPolygonOffset(RenderDeferredSpotShadowOffset, RenderDeferredSpotShadowBias);
     // </FS:AYAstorm>
     // </FS:PP>
 

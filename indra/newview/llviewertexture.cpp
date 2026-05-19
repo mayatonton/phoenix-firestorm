@@ -516,12 +516,7 @@ void LLViewerTexture::updateClass()
     // If you set 1024MB of VRAM, this will, by default, use 512.
     // -Geenz 2025-03-03
     static LLCachedControl<U32> tex_vram_divisor(gSavedSettings, "RenderTextureVRAMDivisor", 2);
-    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
-    // RenderMaxVRAMBudget は §3.3 split 対象 (mode 2 = 0 autodetect)。LLCachedControl 直読
-    // だと mode 2 でも base 値を使うので mode-aware helper 経由で読む。updateClass は
-    // per-frame 呼びだが、helper の cost は控除内 (getControl 1 lookup + getValue 1 read)。
-    U32 max_vram_budget = LLPipeline::getRenderCvarU32("RenderMaxVRAMBudget", 0);
-    // </FS:AYAstorm>
+    static LLCachedControl<U32> max_vram_budget(gSavedSettings, "RenderMaxVRAMBudget", 0);
     static LLCachedControl<bool> max_vram_budget_enabled(gSavedSettings, "FSLimitTextureVRAMUsage"); // <FS:Ansariel> Expose max texture VRAM setting
 
     F64 texture_bytes_alloc = LLImageGL::getTextureBytesAllocated() / 1024.0 / 512.0;

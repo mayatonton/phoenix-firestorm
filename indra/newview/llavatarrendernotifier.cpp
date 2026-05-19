@@ -47,7 +47,6 @@
 // associated header
 #include "llavatarrendernotifier.h"
 #include "llresmgr.h"
-#include "pipeline.h" // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
 
 // when change exceeds this ration, notification is shown
 static const F32 RENDER_ALLOWED_CHANGE_PCT = 0.1f;
@@ -414,11 +413,7 @@ bool LLHUDRenderNotifier::isNotificationVisible()
 // private static
 LLHUDRenderNotifier::EWarnLevel LLHUDRenderNotifier::getWarningType(LLHUDComplexity object_complexity, LLHUDComplexity cmp_complexity)
 {
-    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
-    // RenderAvatarMaxComplexity は §3.3 split 対象。HUD warning threshold は
-    // avatar cost と同じ値を使うので mode-aware で読む (mode 2 = 250000)。
-    U32 max_render_cost = LLPipeline::getRenderCvarU32("RenderAvatarMaxComplexity", 0U); // ties max HUD cost to avatar cost
-    // </FS:AYAstorm>
+    static LLCachedControl<U32> max_render_cost(gSavedSettings, "RenderAvatarMaxComplexity", 0U); // ties max HUD cost to avatar cost
     static LLCachedControl<U32> max_objects_count(gSavedSettings, "RenderHUDObjectsWarning", WARN_HUD_OBJECTS_LIMIT);
     static LLCachedControl<U32> max_textures_count(gSavedSettings, "RenderHUDTexturesWarning", WARN_HUD_TEXTURES_LIMIT);
     static LLCachedControl<U32> max_oversized_count(gSavedSettings, "RenderHUDOversizedTexturesWarning", WARN_HUD_OVERSIZED_TEXTURES_LIMIT);
