@@ -1225,8 +1225,6 @@ Two sub-buckets:
 
 ## 3.3 common cvars (default 値差分)
 
-> **Resolution (2026-05-20)**: 下記 32 件 (`RenderGammaFull` を除く) は `*Cinematic` suffix split で resolution 済。Cinematic mode 専用の `RenderXxxCinematic` cvar に BD default を入れ、mode 0/1 は AY default を保持する base cvar を読む形に分離した (`LLPipeline::getRenderCvarXxx` 経由)。詳細は [`p5-bd-parity-spec §10.8`](./ayastorm-r30-p5-bd-parity-spec.md#108-33-cvar-split-landing-2026-05-20) 参照。`RenderGammaFull` は type 食い違い (Boolean/F32) のため §3.4 と併せて別途扱い。
-
 | # | cvar | type | BD default | AY default |
 |---|---|---|---|---|
 | 1 | `RenderAutoHideSurfaceAreaLimit` | F32 | `0` | `10.0E6` |

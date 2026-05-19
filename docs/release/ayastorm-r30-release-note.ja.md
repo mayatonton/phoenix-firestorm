@@ -62,7 +62,7 @@ r30 は **BD の描画 pipeline を完全に 1:1 移植** し、AYAstorm 内に 
 - **AYAstorm View (mode 1) は r29 までの描画と同等**、何もせず r30 にアップグレードしても見た目は変わりません。
 - Cinematic mode (mode 2) の動作確認は Phase 4 受入 spec ([`docs/specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md`](../specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md)) の G1-G5 に従ってください。
 - mode 切替は **再起動を挟む** ことを推奨。round-trip 切替 (cvar だけ変えて再起動なし) は β feedback で安定性を確認するまで使用注意。
-- AY/BD で default 値が異なる 32 cvar を `*Cinematic` suffix で分離したため、Cinematic Controls floater から mode 2 を tuning しても AYAstorm View (mode 1) の同名 cvar には影響しません ([`p5-bd-parity-spec §10.8`](../specs/ayastorm-r30-p5-bd-parity-spec.md#108-33-cvar-split-landing-2026-05-20))。mode 1 と mode 2 の tuning は完全に独立しています。
+- Cinematic mode 内の Machinima Sidebar slider 操作は AY 拡張 cvar と一部 control 名が衝突する可能性があり、AY 拡張の精密調整は mode 1 に戻して行ってください。
 - BD `panel_preferences_render_settings` / `panel_preferences_ui_colors` は **配置のみ orphan** とし、AY preferences タブ並びは変更しません ([Phase 3.9 §3.3](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md) 判断、AY 17 タブ既存 UX 優先)。
 
 ### 既知の留意点
