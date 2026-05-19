@@ -158,6 +158,7 @@
 #include "lltexturecache.h"
 #include "lltexturefetch.h"
 #include "lltextureview.h"
+#include "lllayoutstack.h" // <FS:AYA r30 P3.9> LLLayoutPanel for BD Machinima Sidebar programmatic mount
 #include "lltoast.h"
 #include "lltool.h"
 #include "lltoolbarview.h"
@@ -2424,21 +2425,30 @@ void LLViewerWindow::initWorldUI()
         mChicletContainer->setVisible(true);
     }
 
-    // <AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar mount (Cinematic mode only).
-    // BD original: llviewerwindow.cpp:2337-2347. AY gates on AYAVisualRealismEnabled == 2
-    // (view mode change requires restart per r30 P1, so a one-time decision at init is safe).
+    // <AYAstorm:r30-bd-port> Phase 4: Cinematic mode BD-parity cvar pinning.
+    // BD ships several cvars enabled-by-default that LL ships off — at Cinematic
+    // boot we force them to BD parity values so the new tabbed AYAstorm Cinematic
+    // Controls floater's sliders/checkboxes have non-degenerate visual effect.
+    // Mode switch requires restart (r30 P1), so once-per-boot is sufficient.
+    //
+    // Note: the BD Machinima right sidebar (panel_machinima.xml via bdsidebar.cpp)
+    // was removed at Phase 4 per Q1=A — replaced by the tabbed floater. The
+    // resetToDefault values used by the floater's "D" buttons are defined in
+    // llviewermenu.cpp::AYAResetCinematic::parityTable() and must stay in sync
+    // with the pins below.
     if (gSavedSettings.getU32("AYAVisualRealismEnabled") == 2)
     {
-        if (!mMachinimaSidebar)
-            mMachinimaSidebar = gToolBarView->getChild<LLPanel>("machinima");
-
-        if (mMachinimaSidebar && !gSideBar)
-        {
-            gSideBar = new LLSideBar(mMachinimaSidebar->getLocalRect());
-            gSideBar->setShape(mMachinimaSidebar->getLocalRect());
-            mMachinimaSidebar->addChild(gSideBar);
-            mMachinimaSidebar->setVisible(true);
-        }
+        gSavedSettings.setBOOL("RenderDepthOfField", true);
+        gSavedSettings.setBOOL("RenderDepthOfFieldHighQuality", true);
+        gSavedSettings.setBOOL("RenderMotionBlur", true);
+        gSavedSettings.setBOOL("RenderScreenSpaceReflections", true);
+        gSavedSettings.setU32("RenderFSAAType", 2); // 2 = SMAA
+        gSavedSettings.setF32("CameraFieldOfView", 67.0f);
+        gSavedSettings.setF32("CameraFNumber", 28.0f);
+        gSavedSettings.setF32("CameraFocalLength", 40.0f);
+        gSavedSettings.setF32("CameraMaxCoF", 11.9f);
+        gSavedSettings.setF32("CameraFocusTransitionTime", 0.4f);
+        gSavedSettings.setF32("CameraDoFResScale", 0.5f);
     }
     // </AYAstorm:r30-bd-port>
 

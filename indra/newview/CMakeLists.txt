@@ -239,6 +239,7 @@ set(viewer_SOURCE_FILES
     llappviewer.cpp
     llappviewerlistener.cpp
     llattachmentsmgr.cpp
+    llayaudit.cpp
     llaudiosourcevo.cpp
     llautoreplace.cpp
     llavataractions.cpp
@@ -1114,6 +1115,7 @@ set(viewer_HEADER_FILES
     llappviewer.h
     llappviewerlistener.h
     llattachmentsmgr.h
+    llayaudit.h
     llaudiosourcevo.h
     llautoreplace.h
     llavataractions.h

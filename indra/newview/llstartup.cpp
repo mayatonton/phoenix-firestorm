@@ -189,6 +189,7 @@
 #include "llxfermanager.h"
 #include "pipeline.h"
 #include "llappviewer.h"
+#include "llayaudit.h" // <FS:AYAstorm r30 P4>
 #include "llfasttimerview.h"
 #include "llfloatermap.h"
 #include "llweb.h"
@@ -3364,6 +3365,10 @@ bool idle_startup()
 
         LLStartUp::setStartupState( STATE_STARTED );
         do_startup_frame();
+
+        // <FS:AYAstorm r30 P4> Kick off headless Cinematic cvar audit if --ayaudit.
+        LLAYAudit::instance().onStartupDone();
+        // </FS:AYAstorm r30 P4>
 
         // <FS:Ansariel> Draw Distance stepping; originally based on SpeedRez by Henri Beauchamp, licensed under LGPL
         if (gSavedSettings.getBOOL("FSRenderFarClipStepping"))

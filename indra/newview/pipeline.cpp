@@ -187,6 +187,11 @@ LLColor4 LLPipeline::PreviewSpecular2;
 LLVector3 LLPipeline::PreviewDirection0;
 LLVector3 LLPipeline::PreviewDirection1;
 LLVector3 LLPipeline::PreviewDirection2;
+F32 LLPipeline::RenderGlowMinLuminance;
+// <FS:AYAstorm r30 P4>
+bool LLPipeline::RenderDeferredBlurLight;
+bool LLPipeline::RenderMotionBlur;
+// </FS:AYAstorm r30 P4>
 F32 LLPipeline::RenderGlowMaxExtractAlpha;
 F32 LLPipeline::RenderGlowWarmthAmount;
 LLVector3 LLPipeline::RenderGlowLumWeights;
@@ -641,8 +646,13 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("PreviewDirection0");
     connectRefreshCachedSettingsSafe("PreviewDirection1");
     connectRefreshCachedSettingsSafe("PreviewDirection2");
+    connectRefreshCachedSettingsSafe("RenderGlowMinLuminance");
     connectRefreshCachedSettingsSafe("RenderGlowMaxExtractAlpha");
     connectRefreshCachedSettingsSafe("RenderGlowWarmthAmount");
+    // <FS:AYAstorm r30 P4> Cinematic Controls switches
+    connectRefreshCachedSettingsSafe("RenderDeferredBlurLight");
+    connectRefreshCachedSettingsSafe("RenderMotionBlur");
+    // </FS:AYAstorm r30 P4>
     connectRefreshCachedSettingsSafe("RenderGlowLumWeights");
     connectRefreshCachedSettingsSafe("RenderGlowWarmthWeights");
     connectRefreshCachedSettingsSafe("RenderGlowResolutionPow");
@@ -1311,6 +1321,11 @@ void LLPipeline::refreshCachedSettings()
     PreviewDirection1 = gSavedSettings.getVector3("PreviewDirection1");
     PreviewDirection2 = gSavedSettings.getVector3("PreviewDirection2");
     RenderGlowMaxExtractAlpha = getRenderCvarF32("RenderGlowMaxExtractAlpha", 0.03f);
+    RenderGlowMinLuminance = getRenderCvarF32("RenderGlowMinLuminance", 1.0f);
+    // <FS:AYAstorm r30 P4> Cinematic Controls switches must take effect at runtime.
+    RenderDeferredBlurLight = gSavedSettings.getBOOL("RenderDeferredBlurLight");
+    RenderMotionBlur = gSavedSettings.getBOOL("RenderMotionBlur");
+    // </FS:AYAstorm r30 P4>
     RenderGlowWarmthAmount = getRenderCvarF32("RenderGlowWarmthAmount", 16.0f);
     RenderGlowLumWeights = getRenderCvarVector3("RenderGlowLumWeights", LLVector3(0.4f, 0.3f, 0.3f));
     RenderGlowWarmthWeights = getRenderCvarVector3("RenderGlowWarmthWeights", LLVector3(0.75f, 0.6f, 0.712f));
@@ -8728,7 +8743,9 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
         LLVector3 lumWeights = RenderGlowLumWeights;
         LLVector3 warmthWeights = RenderGlowWarmthWeights;
 
-        gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MIN_LUMINANCE, 9999);
+        // <FS:AYAstorm r30 P4> Honor RenderGlowMinLuminance instead of hardcoded gate.
+        gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MIN_LUMINANCE, RenderGlowMinLuminance);
+        // </FS:AYAstorm r30 P4>
         gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MAX_EXTRACT_ALPHA, maxAlpha);
         gGlowExtractProgram.uniform3f(LLShaderMgr::GLOW_LUM_WEIGHTS, lumWeights.mV[0], lumWeights.mV[1],
             lumWeights.mV[2]);
@@ -9811,7 +9828,9 @@ void LLPipeline::renderFinalize()
     // <AYAstorm r30 P2 step 5b> Motion blur composite (Cinematic mode only — gated by
     // mVelocityMap.isComplete()). Reads diffuseRect + velocityMap, writes blurred image.
     static LLCachedControl<S32> motion_blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
-    if (mVelocityMap.isComplete() && motion_blur_strength > 0 && !gCubeSnapshot)
+    // <FS:AYAstorm r30 P4> RenderMotionBlur (GUI checkbox) is the master gate.
+    if (RenderMotionBlur && mVelocityMap.isComplete() && motion_blur_strength > 0 && !gCubeSnapshot)
+    // </FS:AYAstorm r30 P4>
     {
         renderMotionBlurComposite(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
@@ -10544,7 +10563,9 @@ void LLPipeline::renderDeferredLighting()
             deferred_light_target->flush();
         }
 
-        if (RenderDeferredSSAO && !gCubeSnapshot)
+        // <FS:AYAstorm r30 P4> RenderDeferredBlurLight gates the soften-shadow blur pass.
+        if (RenderDeferredSSAO && RenderDeferredBlurLight && !gCubeSnapshot)
+        // </FS:AYAstorm r30 P4>
         {
             // soften direct lighting lightmap
             LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - soften shadow");
@@ -12359,12 +12380,18 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
         F32 sxp = split_exp.mV[1] + (split_exp.mV[0]-split_exp.mV[1])*da;
 
+        // <FS:AYAstorm r30 P4> RenderShadowAutomaticDistance toggles sun-angle-weighted
+        // split distribution (ON) vs equal linear splits (OFF).
         for (U32 i = 0; i < 4; ++i)
         {
             F32 x = (F32)(i+1)/4.f;
-            x = powf(x, sxp);
+            if (RenderShadowAutomaticDistance)
+            {
+                x = powf(x, sxp);
+            }
             mSunClipPlanes.mV[i] = near_clip+range*x;
         }
+        // </FS:AYAstorm r30 P4>
 
         mSunClipPlanes.mV[0] *= 1.25f; //bump back first split for transition padding
     }

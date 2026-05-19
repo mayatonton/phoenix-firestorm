@@ -1254,6 +1254,11 @@ public:
     static LLVector3 PreviewDirection1;
     static LLVector3 PreviewDirection2;
     static F32 RenderGlowMinLuminance;
+    // <FS:AYAstorm r30 P4> Cinematic Controls GUI requires every exposed switch to do something.
+    // Wired up at pipeline.cpp gate points; see floater_aya_cinematic.xml.
+    static bool RenderDeferredBlurLight;
+    static bool RenderMotionBlur;
+    // </FS:AYAstorm r30 P4>
     static F32 RenderGlowMaxExtractAlpha;
     static F32 RenderGlowWarmthAmount;
     static LLVector3 RenderGlowLumWeights;

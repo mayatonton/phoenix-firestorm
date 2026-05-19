@@ -2032,6 +2032,30 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <!-- <FS:AYAstorm r30 P4> Headless Cinematic cvar audit -->
+    <key>AYAuditMode</key>
+    <map>
+      <key>Comment</key>
+      <string>Run Cinematic cvar audit on login: sweep all bound cvars, dump snapshots, then quit.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAuditOutputDir</key>
+    <map>
+      <key>Comment</key>
+      <string>Directory where AYAudit snapshots are written.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>/tmp/aya-audit</string>
+    </map>
+    <!-- </FS:AYAstorm r30 P4> -->
     <key>AutoMimeDiscovery</key>
     <map>
       <key>Comment</key>

@@ -18,6 +18,25 @@
       <string>AutoLogin</string>
     </map>
 
+    <!-- <FS:AYAstorm r30 P4> Headless Cinematic cvar audit -->
+    <key>ayaudit</key>
+    <map>
+      <key>desc</key>
+      <string>Run Cinematic cvar audit: sweep all bound cvars and save snapshots, then exit.</string>
+      <key>map-to</key>
+      <string>AYAuditMode</string>
+    </map>
+    <key>ayaudit-output</key>
+    <map>
+      <key>desc</key>
+      <string>Output directory for AYAudit snapshots (default: /tmp/aya-audit).</string>
+      <key>count</key>
+      <integer>1</integer>
+      <key>map-to</key>
+      <string>AYAuditOutputDir</string>
+    </map>
+    <!-- </FS:AYAstorm r30 P4> -->
+
     <key>channel</key>
     <map>
       <key>count</key>
