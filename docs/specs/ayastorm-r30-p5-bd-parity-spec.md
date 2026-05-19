@@ -464,7 +464,7 @@ P5 ship をもって r30 章は「BD と並走できる Cinematic を持つ」�
 
 | commit | 内容 |
 |---|---|
-| (本 commit) | `ayaudit_run.sh` を profile 引数 (A/B/C/D) + `DOF_MASTER_PIN` + waiter `[b]in/…` 自己排除に拡張、profile B (motion-rich) は audit-negative 確定 (mask 71.6% / noise floor 0.05620 で破棄)、A/C/D を回して best-band 統合: SOLID 25 / WIRED 5 / MARGINAL 7 / DEAD 12 (wiring 確認 37/49 = 75.5%)、DEAD 12 件を 5 カテゴリ (master 不可触 / MotionBlur stimulus 不足 / DoF HQ sub dark / SSR bias edge case / Volumetric short-circuit) に構造分類、§4.7 を 4 profile 統合表へ書き換え |
+| `5d06fc3a72` | `ayaudit_run.sh` を profile 引数 (A/B/C/D) + `DOF_MASTER_PIN` + waiter `[b]in/…` 自己排除に拡張、profile B (motion-rich) は audit-negative 確定 (mask 71.6% / noise floor 0.05620 で破棄)、A/C/D を回して best-band 統合: SOLID 25 / WIRED 5 / MARGINAL 7 / DEAD 12 (wiring 確認 37/49 = 75.5%)、DEAD 12 件を 5 カテゴリ (master 不可触 / MotionBlur stimulus 不足 / DoF HQ sub dark / SSR bias edge case / Volumetric short-circuit) に構造分類、§4.7 を 4 profile 統合表へ書き換え |
 
 ### 10.6 以降の step (5〜9)
 
