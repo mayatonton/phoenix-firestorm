@@ -4076,7 +4076,10 @@ void LLVOAvatar::idleUpdateNameTagText(bool new_name)
         complexity = mVisualComplexity;
 
         // Show complexity color if we're limiting and not showing our own ARW...
-        static LLCachedControl<U32> max_render_cost(gSavedSettings, "RenderAvatarMaxComplexity", 0);
+        // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+        // RenderAvatarMaxComplexity は §3.3 split 対象 (mode 2 = 250000)。
+        U32 max_render_cost = LLPipeline::getRenderCvarU32("RenderAvatarMaxComplexity", 0);
+        // </FS:AYAstorm>
         if (max_render_cost != 0 && !isSelf())
         {
             // This calculation is copied from idleUpdateRenderComplexity()
@@ -4305,7 +4308,10 @@ void LLVOAvatar::idleUpdateNameTagText(bool new_name)
             addNameTagLine(FSCommon::format_string(complexity_label, label_args), complexity_color, LLFontGL::NORMAL, LLFontGL::getFontSansSerifSmall());
 
             // only show texture area if this is the reason for jelly baby rendering
-            static LLCachedControl<F32> max_attachment_area(gSavedSettings, "RenderAutoMuteSurfaceAreaLimit", 1000.0f);
+            // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+            // RenderAutoMuteSurfaceAreaLimit は §3.3 split 対象 (mode 2 = 0 = 制限なし)。
+            F32 max_attachment_area = LLPipeline::getRenderCvarF32("RenderAutoMuteSurfaceAreaLimit", 1000.0f);
+            // </FS:AYAstorm>
             if (max_attachment_area > 0.f && mAttachmentSurfaceArea > max_attachment_area)
             {
                 LLResMgr::getInstance()->getIntegerString(complexity_string, (S32)mAttachmentSurfaceArea);
@@ -9774,8 +9780,10 @@ bool LLVOAvatar::isTooComplex() const
         }
         // </FS:minerjr> [FIRE-35735]
         // Determine if visually muted or not
-        static LLCachedControl<U32> max_render_cost(gSavedSettings, "RenderAvatarMaxComplexity", 0U);
-        static LLCachedControl<F32> max_attachment_area(gSavedSettings, "RenderAutoMuteSurfaceAreaLimit", 1000.0f);
+        // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+        U32 max_render_cost = LLPipeline::getRenderCvarU32("RenderAvatarMaxComplexity", 0U);
+        F32 max_attachment_area = LLPipeline::getRenderCvarF32("RenderAutoMuteSurfaceAreaLimit", 1000.0f);
+        // </FS:AYAstorm>
         // If the user has chosen unlimited max complexity, we also disregard max attachment area
         // so that unlimited will completely disable the overly complex impostor rendering
         // yes, this leaves them vulnerable to griefing objects... their choice
@@ -12424,7 +12432,9 @@ void LLVOAvatar::idleUpdateDebugInfo()
          * controls muting MUST match that in the isVisuallyMuted and isTooComplex methods.
          */
 
-        static LLCachedControl<U32> max_render_cost(gSavedSettings, "RenderAvatarMaxComplexity", 0);
+        // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+        U32 max_render_cost = LLPipeline::getRenderCvarU32("RenderAvatarMaxComplexity", 0);
+        // </FS:AYAstorm>
         info_line = llformat("%d Complexity", mVisualComplexity);
 
         if (max_render_cost != 0) // zero means don't care, so don't bother coloring based on this
@@ -12456,7 +12466,9 @@ void LLVOAvatar::idleUpdateDebugInfo()
                        info_color, info_style);
 
         // Attachment Surface Area
-        static LLCachedControl<F32> max_attachment_area(gSavedSettings, "RenderAutoMuteSurfaceAreaLimit", 1000.0f);
+        // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+        F32 max_attachment_area = LLPipeline::getRenderCvarF32("RenderAutoMuteSurfaceAreaLimit", 1000.0f);
+        // </FS:AYAstorm>
         info_line = llformat("%.0f m^2", mAttachmentSurfaceArea);
 
         if (max_render_cost != 0 && max_attachment_area != 0) // zero means don't care, so don't bother coloring based on this

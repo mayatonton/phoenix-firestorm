@@ -71,12 +71,16 @@ LLDrawPoolTerrain::LLDrawPoolTerrain(LLViewerTexture *texturep) :
     // sDetailScale = 1.f/gSavedSettings.getF32("RenderTerrainScale");
     // sPBRDetailScale = 1.f/gSavedSettings.getF32("RenderTerrainPBRScale");
     // sPBRDetailMode = gSavedSettings.getS32("RenderTerrainPBRDetail");
-    static LLCachedControl<F32> RenderTerrainScale(gSavedSettings, "RenderTerrainScale");
+    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+    // RenderTerrainScale は §3.3 split 対象。mode 2 (Cinematic) では *Cinematic を
+    // 読む必要があるため LLCachedControl 直読 (bypass) をやめて mode-aware helper 経由に
+    // する。handleTerrainScaleChanged が *Cinematic + AYAVisualRealismEnabled commit でも
+    // 発火するので、コンストラクタ後の値更新も sDetailScale に伝播する。
+    // RenderTerrainPBRScale / RenderTerrainPBRDetail は split 対象外、従来どおり base 読み。
+    sDetailScale = 1.f / LLPipeline::getRenderCvarF32("RenderTerrainScale", 12.0f);
+    // </FS:AYAstorm>
     static LLCachedControl<F32> RenderTerrainPBRScale(gSavedSettings, "RenderTerrainPBRScale");
     static LLCachedControl<S32> RenderTerrainPBRDetail(gSavedSettings, "RenderTerrainPBRDetail");
-    // <FS:AYAstorm r30 P5 step 5 pivot 2026-05-19> Cinematic 短絡撤去、user cvar 値を使う
-    sDetailScale = 1.f/RenderTerrainScale;
-    // </FS:AYAstorm>
     sPBRDetailScale = 1.f/RenderTerrainPBRScale;
     sPBRDetailMode = RenderTerrainPBRDetail();
     // </FS:PP>

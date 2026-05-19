@@ -628,7 +628,12 @@ static void settings_to_globals()
     LLVOVolume::sLODFactor              = llclamp(gSavedSettings.getF32("RenderVolumeLODFactor"), 0.01f, MAX_LOD_FACTOR);
     LLVOVolume::sDistanceFactor         = 1.f-LLVOVolume::sLODFactor * 0.1f;
     LLVolumeImplFlexible::sUpdateFactor = gSavedSettings.getF32("RenderFlexTimeFactor");
-    LLVOTree::sTreeFactor               = gSavedSettings.getF32("RenderTreeLODFactor");
+    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+    // RenderTreeLODFactor は §3.3 split 対象 (mode 2 = 1.0)。startup init で
+    // mode-aware に読み、handleTreeLODChanged が *Cinematic + AYAVisualRealismEnabled
+    // commit でも発火するので mode 切替時に sTreeFactor が再計算される。
+    LLVOTree::sTreeFactor               = LLPipeline::getRenderCvarF32("RenderTreeLODFactor", 0.5f);
+    // </FS:AYAstorm>
     LLVOAvatar::sLODFactor              = llclamp(gSavedSettings.getF32("RenderAvatarLODFactor"), 0.f, MAX_AVATAR_LOD_FACTOR);
     LLVOAvatar::sPhysicsLODFactor       = llclamp(gSavedSettings.getF32("RenderAvatarPhysicsLODFactor"), 0.f, MAX_AVATAR_LOD_FACTOR);
     LLVOAvatar::updateImpostorRendering(gSavedSettings.getU32("RenderAvatarMaxNonImpostors"));
@@ -4269,7 +4274,10 @@ LLSD LLAppViewer::getViewerInfo() const
     // <FS:Ansariel> Include VRAM budget
     if (gSavedSettings.getBOOL("FSLimitTextureVRAMUsage"))
     {
-        auto budget = gSavedSettings.getU32("RenderMaxVRAMBudget");
+        // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+        // sysinfo は今 mode で実際に効いている値を表示すべき (mode 2 では *Cinematic 経由)。
+        auto budget = LLPipeline::getRenderCvarU32("RenderMaxVRAMBudget", 0);
+        // </FS:AYAstorm>
         info["VRAM_BUDGET"] = std::to_string(budget) + " MB";
         info["VRAM_BUDGET_ENGLISH"] = std::to_string(budget) + " MB";
     }

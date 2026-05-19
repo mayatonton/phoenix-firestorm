@@ -626,6 +626,38 @@ AYA 確認: 「よさそうです」。preview ラベル維持の方針 (§0.4) 
 - 後続で「BD-default 一発 reset」が要れば、floater の D-all を `AYAResetCinematic` 連打にまとめた button 1 個で対応可 (32 cvar reset を 1 click で発火、複雑な preset 機構不要)
 - `LLControlGroup` の preset 流用 (§11.2 で未確定だった選択肢) は本 split で elide。spec §11.2 は本 entry で resolution 済
 
+#### 10.8.5 split bypass 後追い修正 (2026-05-20)
+
+AYA hands-on (mode 2、`RenderTerrainScaleCinematic` を 6.0 → 12 に変更) で「絵が変わらない」報告。原因調査で **§10.8 の split が C++ 読出側で局所的に bypass されていた** ことが判明:
+
+| file:line | 旧コード (bypass) | 影響 |
+|---|---|---|
+| `lldrawpoolterrain.cpp:74` | `LLCachedControl<F32>(gSavedSettings, "RenderTerrainScale")` (コンストラクタで `sDetailScale` を 1 回 set、その後は signal 経由のみ更新) | mode 2 切替後も AY base 値 (12) のまま、`RenderTerrainScaleCinematic` (6.0) が効かない |
+| `lldrawpooltree.cpp:213` | `LLCachedControl<F32>(... "RenderDeferredSpotShadowOffset")` (`endShadowPass` per-frame 呼び) | mode 2 でも base 値 (1.0) を毎フレーム読む |
+| `llviewertexture.cpp:519` | `LLCachedControl<U32>(... "RenderMaxVRAMBudget")` (`updateClass` per-frame) | mode 2 でも base 値、VRAM budget が AY 設定で計算される |
+| `llvoavatar.cpp:4079, 9777, 12427` | `LLCachedControl<U32>(... "RenderAvatarMaxComplexity")` (3 箇所、tag color / impostor 判定 / debug 表示) | mode 2 でも base 値、Complexity cap が BD parity から外れる |
+| `llvoavatar.cpp:4308, 9778, 12459` | `LLCachedControl<F32>(... "RenderAutoMuteSurfaceAreaLimit")` (3 箇所、jelly baby trigger / impostor / debug) | mode 2 でも base 値 |
+| `llavatarrendernotifier.cpp:416` | `LLCachedControl<U32>(... "RenderAvatarMaxComplexity")` (HUD warning threshold) | mode 2 でも base 値 |
+| `llappviewer.cpp:631` | `gSavedSettings.getF32("RenderTreeLODFactor")` (startup init で `LLVOTree::sTreeFactor` 設定) + handler `handleTreeLODChanged` も `newvalue.asReal()` 直読 | mode 2 起動時/切替時に AY base 値 (0.5)、tree LOD が AY 設定 |
+| `llappviewer.cpp:4272` | `gSavedSettings.getU32("RenderMaxVRAMBudget")` (sysinfo dump) | mode 2 で実際に効いている budget と表示が乖離 |
+| `llviewercontrol.cpp:202-222, 480-484` | `handleRenderFarClipChanged` / `handleTerrainScaleChanged` / `handleTreeLODChanged` が `newvalue.asReal()` 直読、かつ base cvar の signal にしか listen していない | `*Cinematic` 変更でも mode 切替でも handler が発火せず、static cache (`mDrawDistance` / `sDetailScale` / `sTreeFactor`) が更新されない |
+
+修正方針 (`feedback_bd_full_port_only.md` / `feedback_no_escape_full_bd_coverage.md` 準拠、退行せず一気に全件):
+
+1. **read 側**: `gSavedSettings.getXxx` / `LLCachedControl` 直読を `LLPipeline::getRenderCvarXxx(name, default)` に置換。helper は `getCinematicAwareControl()` 経由なので mode 2 で `*Cinematic` を確実に拾う
+2. **handler 側**: 3 handler (`handleRenderFarClipChanged` / `handleTerrainScaleChanged` / `handleTreeLODChanged`) が `newvalue` を捨て、`LLPipeline::getRenderCvarF32` で active 値を読み直すよう書き換え
+3. **signal wire 拡張**: `settings_setup_listeners()` で各 handler を `*Cinematic` cvar と `AYAVisualRealismEnabled` の 2 系統 commit にも接続。これで *Cinematic 値変更時、mode 切替時、いずれの経路でも static cache が即時更新される
+
+#### 10.8.6 受入 (AYA hands-on 2026-05-20)
+
+- mode 2 で `RenderTerrainScaleCinematic` を 12 → 24 等に変更 → 芝の繰り返し周期が即時変化 (sDetailScale が活性化したことで干渉縞 (Moiré) パターンの周期も変わる)
+- mode 1 ↔ mode 2 round-trip で `mDrawDistance` / `sDetailScale` / `sTreeFactor` が mode 別 cvar 値に追従
+- mode 1 の同名 base cvar tuning は mode 2 に漏れない (split 設計の正常動作)
+
+別件として残存している:
+- mode 2 daytime 芝の Moiré パターン (#178): cvar 値変更で周期は変わるが Moiré 自体は消えない → 別 root cause (Cinematic-specific render path のサンプリング) を追う
+- mode 2 night 暗部 banding (#179): HDR→LDR 8-bit 量子化の疑い、別途診断
+
 ### 10.9 以降の step (5.x〜9)
 
 各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は §10.8 の cvar split で elide、後続 step は §3 in-scope 内で順次着手。

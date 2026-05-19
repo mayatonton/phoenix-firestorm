@@ -73,7 +73,6 @@
 #include "llkeyboard.h"
 #include "llerrorcontrol.h"
 #include "llappviewer.h"
-#include "bdsidebar.h"  // <AYAstorm:r30-bd-port> Phase 3.9: BD MachinimaSidebar cvar handler
 #include "llvosurfacepatch.h"
 #include "llvowlsky.h"
 #include "llrender.h"
@@ -204,17 +203,24 @@ static bool handleRenderFarClipChanged(const LLSD& newvalue)
 {
     if (LLStartUp::getStartupState() >= STATE_STARTED)
     {
-        F32 draw_distance = (F32)newvalue.asReal();
-    gAgentCamera.mDrawDistance = draw_distance;
-    LLWorld::getInstance()->setLandFarClip(draw_distance);
-    return true;
+        // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+        // base cvar / *Cinematic / AYAVisualRealismEnabled の 3 signal から発火する。
+        // newvalue は wire 元によって意味が変わる (mode 切替時は U32 mode 値が来る)
+        // ので、active mode に対応した有効値を mode-aware helper で読み直す。
+        F32 draw_distance = LLPipeline::getRenderCvarF32("RenderFarClip", 256.0f);
+        // </FS:AYAstorm>
+        gAgentCamera.mDrawDistance = draw_distance;
+        LLWorld::getInstance()->setLandFarClip(draw_distance);
+        return true;
     }
     return false;
 }
 
 static bool handleTerrainScaleChanged(const LLSD& newvalue)
 {
-    F64 scale = newvalue.asReal();
+    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+    F64 scale = (F64)LLPipeline::getRenderCvarF32("RenderTerrainScale", 12.0f);
+    // </FS:AYAstorm>
     if (scale != 0.0)
     {
         LLDrawPoolTerrain::sDetailScale = F32(1.0 / scale);
@@ -362,20 +368,6 @@ static bool handleShadowsResized(const LLSD& newvalue)
     return true;
 }
 
-// <AYAstorm:r30-bd-port> Phase 3.9: BD Machinima Sidebar cvar handler.
-// BD original: llviewercontrol.cpp:1014. Refreshes sidebar slider state on
-// cvar change. gSideBar is NULL outside Cinematic mode, so this is no-op there.
-static bool handleMachinimaSidebar(const LLSD& newvalue)
-{
-    if (gSideBar)
-    {
-        gSideBar->refreshGraphicControls();
-        return true;
-    }
-    return false;
-}
-// </AYAstorm:r30-bd-port>
-
 static bool handleWindowResized(const LLSD& newvalue)
 {
     gPipeline.requestResizeScreenTexture();
@@ -494,7 +486,9 @@ static bool handleTerrainLODChanged(const LLSD& newvalue)
 
 static bool handleTreeLODChanged(const LLSD& newvalue)
 {
-    LLVOTree::sTreeFactor = (F32) newvalue.asReal();
+    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+    LLVOTree::sTreeFactor = LLPipeline::getRenderCvarF32("RenderTreeLODFactor", 0.5f);
+    // </FS:AYAstorm>
     return true;
 }
 
@@ -1527,6 +1521,16 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderFarClip", handleRenderFarClipChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderTerrainScale", handleTerrainScaleChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderTerrainPBRScale", handlePBRTerrainScaleChanged);
+    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+    // base cvar の wire は上の通り、mode-aware で sDetailScale / mDrawDistance / sTreeFactor
+    // を再計算する。*Cinematic 変更でも commit signal を発火させ、AYAVisualRealismEnabled
+    // (mode 切替) でも再適用させる。これで Cinematic Controls floater から *Cinematic を
+    // tuning した時、mode 1↔2 切替直後、いずれの経路でも static cache が即時更新される。
+    setting_setup_signal_listener(gSavedSettings, "RenderFarClipCinematic", handleRenderFarClipChanged);
+    setting_setup_signal_listener(gSavedSettings, "RenderTerrainScaleCinematic", handleTerrainScaleChanged);
+    setting_setup_signal_listener(gSavedSettings, "AYAVisualRealismEnabled", handleRenderFarClipChanged);
+    setting_setup_signal_listener(gSavedSettings, "AYAVisualRealismEnabled", handleTerrainScaleChanged);
+    // </FS:AYAstorm>
     setting_setup_signal_listener(gSavedSettings, "RenderTerrainPBRDetail", handleSetShaderChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderTerrainPBRPlanarSampleCount", handleSetShaderChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", handleSetShaderChanged);
@@ -1544,9 +1548,6 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderSpecularExponent", handleLUTBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderAnisotropic", handleAnisotropicChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderShadowResolutionScale", handleShadowsResized);
-    // <AYAstorm:r30-bd-port> Phase 3.9: BD MachinimaSidebar cvar listener
-    setting_setup_signal_listener(gSavedSettings, "MachinimaSidebar", handleMachinimaSidebar);
-    // </AYAstorm:r30-bd-port>
     setting_setup_signal_listener(gSavedSettings, "RenderGlow", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderGlow", handleSetShaderChanged);
     // <AYAstorm r30 P4 step 5> BD DoF chain permutation cvars trigger shader rebuild.
@@ -1575,6 +1576,10 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderAvatarPhysicsLODFactor", handleAvatarPhysicsLODChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderTerrainLODFactor", handleTerrainLODChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderTreeLODFactor", handleTreeLODChanged);
+    // <FS:AYAstorm r30 BD full port Phase 3.4 part 5 (cvar split)>
+    setting_setup_signal_listener(gSavedSettings, "RenderTreeLODFactorCinematic", handleTreeLODChanged);
+    setting_setup_signal_listener(gSavedSettings, "AYAVisualRealismEnabled", handleTreeLODChanged);
+    // </FS:AYAstorm>
     setting_setup_signal_listener(gSavedSettings, "RenderFlexTimeFactor", handleFlexLODChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderGamma", handleGammaChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderFogRatio", handleFogRatioChanged);
