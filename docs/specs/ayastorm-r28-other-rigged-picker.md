@@ -121,6 +121,15 @@ else if (!gCubeSnapshot && (!armed_mode || isSelfRiggedObjectIDBufferArmed()))
 }
 ```
 
+P1 確認で、generation だけでは `mObjectIDBuffer` の中身が self 由来か other 由来かを表せないことを確認した。self hover 後に other hover へ移ると other pass が buffer を上書きするが、self 側の render generation は古い一致状態のまま残り得る。逆に other armed が切れた後に self pass が buffer を上書きすると、古い other generation も表面上は残り得る。
+
+このため、render 成功時に buffer owner (`Self` / `Other`) を記録し、ready 判定は次の条件をすべて満たす場合だけ true とする。
+
+- self picker: self armed window 内、self render generation 一致、buffer owner が `Self`。
+- other picker: other armed window 内、avatar ID 一致、other render generation 一致、buffer owner が `Other`。
+
+これにより、自分 avatar と他人 avatar を交互に hover しても、直前に別 picker が描いた `mObjectIDBuffer` を stale ready として readback しない。
+
 ## 5. 実装内容
 
 ### 5.1 変更ファイル
@@ -152,6 +161,7 @@ ready 条件:
 - target avatar が alive である。
 - target avatar ID が一致している。
 - render generation と arm generation が一致している。
+- `mObjectIDBuffer` の owner が other picker である。
 
 ### 5.3 pipeline API
 

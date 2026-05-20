@@ -9885,6 +9885,16 @@ namespace
     U32 sFSSelfRiggedPickerArmGeneration = 0;
     U32 sFSSelfRiggedPickerRenderGeneration = 0;
 
+    enum class FSRiggedPickerObjectIDBufferOwner
+    {
+        None,
+        Self,
+        Other
+    };
+
+    FSRiggedPickerObjectIDBufferOwner sFSRiggedPickerObjectIDBufferOwner =
+        FSRiggedPickerObjectIDBufferOwner::None;
+
     LLFrameTimer sFSOtherRiggedPickerArmTimer;
     F32 sFSOtherRiggedPickerArmSeconds = 0.f;
     U32 sFSOtherRiggedPickerArmGeneration = 0;
@@ -10105,6 +10115,7 @@ bool LLPipeline::isSelfRiggedObjectIDBufferArmed() const
 bool LLPipeline::isSelfRiggedObjectIDBufferReady() const
 {
     return isSelfRiggedObjectIDBufferArmed() &&
+           sFSRiggedPickerObjectIDBufferOwner == FSRiggedPickerObjectIDBufferOwner::Self &&
            sFSSelfRiggedPickerRenderGeneration == sFSSelfRiggedPickerArmGeneration;
 }
 
@@ -10153,6 +10164,7 @@ bool LLPipeline::isOtherRiggedObjectIDBufferReady(const LLUUID& avatar_id) const
     return avatar_id.notNull() &&
            isOtherRiggedObjectIDBufferArmed() &&
            sFSOtherRiggedPickerAvatarID == avatar_id &&
+           sFSRiggedPickerObjectIDBufferOwner == FSRiggedPickerObjectIDBufferOwner::Other &&
            sFSOtherRiggedPickerRenderGeneration == sFSOtherRiggedPickerArmGeneration;
 }
 
@@ -10170,6 +10182,10 @@ void LLPipeline::clearOtherRiggedObjectIDBuffer()
     sFSOtherRiggedPickerAvatar = nullptr;
     sFSOtherRiggedPickerAvatarID.setNull();
     ++sFSOtherRiggedPickerArmGeneration;
+    if (sFSRiggedPickerObjectIDBufferOwner == FSRiggedPickerObjectIDBufferOwner::Other)
+    {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::None;
+    }
 }
 
 void LLPipeline::renderSelfRiggedObjectIDBuffer()
@@ -10183,10 +10199,12 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
 
     if (renderRiggedObjectIDBufferForAvatar(gAgentAvatarp.get(), 0, 0))
     {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::Self;
         sFSSelfRiggedPickerRenderGeneration = sFSSelfRiggedPickerArmGeneration;
     }
     else
     {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::None;
         sFSSelfRiggedPickerRenderGeneration = 0;
     }
 }
@@ -10229,10 +10247,12 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
                                             &attempted_draw_calls,
                                             &attempted_triangles))
     {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::Other;
         sFSOtherRiggedPickerRenderGeneration = sFSOtherRiggedPickerArmGeneration;
     }
     else
     {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::None;
         sFSOtherRiggedPickerRenderGeneration = 0;
     }
     (void)attempted_draw_calls;
