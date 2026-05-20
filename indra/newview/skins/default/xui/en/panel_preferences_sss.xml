@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <!-- <FS:AYA r20 Phase A> SSS preferences panel (Graphics > SSS sub-tab) -->
+<!-- <FS:AYA r30 P5 A6> B3 grey-out: pipeline.cpp:doSkinSSS() 早期 return 条件
+     `realism_enabled() != 1 || !r20_enabled()` ─ SSS 描画は AYAstorm View (mode 1)
+     のときだけ走る。mode 0 (Firestorm View) / mode 2 (Cinematic) では描画が走らないので
+     UI も grey out して整合を取る。helper cvar AYAR20SSSEffective ((mode==1) の Boolean
+     shadow、llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で同期) を
+     enabled_control に bind。詳細: docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md
+     §5.10.A (B3 audit) / §10 A6。 -->
 <panel
  follows="all"
  layout="topleft"
  label="SSS"
+ enabled_control="AYAR20SSSEffective"
  name="sss">
     <panel.string name="DefaultWhitelist"></panel.string>
 
@@ -33,6 +41,7 @@
 
     <check_box
      control_name="AYAR20AvatarSkinSSSEnabled"
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left="10"
@@ -57,6 +66,7 @@
 
     <spinner
      control_name="AYAR20AvatarSkinSSSBlurRadius"
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left="10"
@@ -73,6 +83,7 @@
      tool_tip="Tap spacing in pixels at 1m camera distance. Auto-scales inversely with distance (world-space sized SSS)"
      name="sss_blur_radius" />
     <button
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left_pad="6"
@@ -84,6 +95,7 @@
 
     <spinner
      control_name="AYAR20AvatarSkinSSSStrength"
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left="10"
@@ -99,6 +111,7 @@
      initial_value="0.7"
      name="sss_strength" />
     <button
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left_pad="6"
@@ -110,6 +123,7 @@
 
     <spinner
      control_name="AYAR20AvatarSkinSSSGlowGain"
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left="10"
@@ -125,6 +139,7 @@
      initial_value="3.0"
      name="sss_glow_gain" />
     <button
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left_pad="6"
@@ -146,6 +161,7 @@
     </text>
     <color_swatch
      control_name="AYAR20AvatarSkinSSSGlowColor"
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left_delta="120"
@@ -158,6 +174,7 @@
      tool_tip="Tint for the SSS highlight restore (default warm salmon)"
      name="sss_glow_color" />
     <button
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left_pad="12"
@@ -181,6 +198,7 @@
     </text>
 
     <check_box
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left="10"
@@ -193,6 +211,7 @@
 
     <text_editor
      control_name="AYAR20AvatarSkinSSSWhitelist"
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top|right"
      left="10"
@@ -219,6 +238,7 @@
     </text>
 
     <button
+     enabled_control="AYAR20SSSEffective"
      layout="topleft"
      follows="left|top"
      left="10"

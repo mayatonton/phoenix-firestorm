@@ -102,8 +102,8 @@
             <button     follows="left|top" layout="topleft" name="d_ShadowAutoDistance"  top="60"  left="555" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderShadowAutomaticDistance"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_ShadowBlurSize"      top="88"  left="12"  width="160" height="20">Shadow blur size</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_ShadowBlurSize"     top="90"  left="176" width="195" height="16" control_name="RenderShadowBlurSize" min_val="0" max_val="4" increment="0.1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_ShadowBlurSize"      top="88"  left="376" width="65"  height="20" control_name="RenderShadowBlurSize" min_val="0" max_val="4" increment="0.1" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_ShadowBlurSize"     top="90"  left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderShadowBlurSize" min_val="0" max_val="4" increment="0.1"/>
+            <spinner    follows="left|top" layout="topleft" name="s_ShadowBlurSize"      top="88"  left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderShadowBlurSize" min_val="0" max_val="4" increment="0.1" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_ShadowBlurSize"      top="88"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderShadowBlurSize"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_ShadowsRes"          top="124" left="8"   width="572" height="18" font="SansSerif">Shadow resolution</text>
@@ -132,13 +132,13 @@
             <text follows="left|top" layout="topleft" name="T_SSAOTuning" top="92" left="8" width="572" height="18" font="SansSerif">Tuning</text>
 
             <text       follows="left|top" layout="topleft" name="T_SSAOFactor"   top="116" left="12"  width="160" height="20">Factor</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_SSAOFactor"  top="118" left="176" width="195" height="16" control_name="RenderSSAOFactor" min_val="0" max_val="2" increment="0.01"/>
-            <spinner    follows="left|top" layout="topleft" name="s_SSAOFactor"   top="116" left="376" width="65"  height="20" control_name="RenderSSAOFactor" min_val="0" max_val="2" increment="0.01" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSAOFactor"  top="118" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderSSAOFactor" min_val="0" max_val="2" increment="0.01"/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSAOFactor"   top="116" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderSSAOFactor" min_val="0" max_val="2" increment="0.01" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_SSAOFactor"   top="116" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderSSAOFactor"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_SSAOMaxScale" top="140" left="12"  width="160" height="20">Max scale</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_SSAOMaxScale" top="142" left="176" width="195" height="16" control_name="RenderSSAOMaxScale" min_val="0" max_val="1000" increment="10"/>
-            <spinner    follows="left|top" layout="topleft" name="s_SSAOMaxScale"  top="140" left="376" width="65"  height="20" control_name="RenderSSAOMaxScale" min_val="0" max_val="1000" increment="10" decimal_digits="0" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSAOMaxScale" top="142" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderSSAOMaxScale" min_val="0" max_val="1000" increment="10"/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSAOMaxScale"  top="140" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderSSAOMaxScale" min_val="0" max_val="1000" increment="10" decimal_digits="0" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_SSAOMaxScale"  top="140" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderSSAOMaxScale"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_SSAOScale"    top="164" left="12"  width="160" height="20">Scale</text>
@@ -280,33 +280,33 @@
             <text follows="left|top" layout="topleft" name="T_GlowTuning" top="8" left="8" width="572" height="18" font="SansSerif">Glow / Bloom tuning</text>
 
             <text       follows="left|top" layout="topleft" name="T_GlowStrength"          top="32"  left="12"  width="160" height="20">Strength</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_GlowStrength"         top="34"  left="176" width="195" height="16" control_name="RenderGlowStrength" min_val="0" max_val="2" increment="0.005"/>
-            <spinner    follows="left|top" layout="topleft" name="s_GlowStrength"          top="32"  left="376" width="65"  height="20" control_name="RenderGlowStrength" min_val="0" max_val="2" increment="0.005" decimal_digits="3" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlowStrength"         top="34"  left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowStrength" min_val="0" max_val="2" increment="0.005"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlowStrength"          top="32"  left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowStrength" min_val="0" max_val="2" increment="0.005" decimal_digits="3" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_GlowStrength"          top="32"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowStrength"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_GlowIterations"        top="56"  left="12"  width="160" height="20">Iterations</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_GlowIterations"       top="58"  left="176" width="195" height="16" control_name="RenderGlowIterations" min_val="0" max_val="8" increment="1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_GlowIterations"        top="56"  left="376" width="65"  height="20" control_name="RenderGlowIterations" min_val="0" max_val="8" increment="1" decimal_digits="0" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlowIterations"       top="58"  left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowIterations" min_val="0" max_val="8" increment="1"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlowIterations"        top="56"  left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowIterations" min_val="0" max_val="8" increment="1" decimal_digits="0" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_GlowIterations"        top="56"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowIterations"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_GlowMaxExtractAlpha"   top="80"  left="12"  width="160" height="20">Max extract alpha</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_GlowMaxExtractAlpha"  top="82"  left="176" width="195" height="16" control_name="RenderGlowMaxExtractAlpha" min_val="0" max_val="1" increment="0.01"/>
-            <spinner    follows="left|top" layout="topleft" name="s_GlowMaxExtractAlpha"   top="80"  left="376" width="65"  height="20" control_name="RenderGlowMaxExtractAlpha" min_val="0" max_val="1" increment="0.01" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlowMaxExtractAlpha"  top="82"  left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowMaxExtractAlpha" min_val="0" max_val="1" increment="0.01"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlowMaxExtractAlpha"   top="80"  left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowMaxExtractAlpha" min_val="0" max_val="1" increment="0.01" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_GlowMaxExtractAlpha"   top="80"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowMaxExtractAlpha"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_GlowMinLuminance"      top="104" left="12"  width="160" height="20">Min luminance</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_GlowMinLuminance"     top="106" left="176" width="195" height="16" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05"/>
-            <spinner    follows="left|top" layout="topleft" name="s_GlowMinLuminance"      top="104" left="376" width="65"  height="20" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlowMinLuminance"     top="106" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlowMinLuminance"      top="104" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_GlowMinLuminance"      top="104" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowMinLuminance"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_GlowWarmthAmount"      top="128" left="12"  width="160" height="20">Warmth amount</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_GlowWarmthAmount"     top="130" left="176" width="195" height="16" control_name="RenderGlowWarmthAmount" min_val="0" max_val="2" increment="0.01"/>
-            <spinner    follows="left|top" layout="topleft" name="s_GlowWarmthAmount"      top="128" left="376" width="65"  height="20" control_name="RenderGlowWarmthAmount" min_val="0" max_val="2" increment="0.01" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlowWarmthAmount"     top="130" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowWarmthAmount" min_val="0" max_val="2" increment="0.01"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlowWarmthAmount"      top="128" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowWarmthAmount" min_val="0" max_val="2" increment="0.01" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_GlowWarmthAmount"      top="128" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowWarmthAmount"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_GlowWidth"             top="152" left="12"  width="160" height="20">Width</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_GlowWidth"            top="154" left="176" width="195" height="16" control_name="RenderGlowWidth" min_val="0.1" max_val="5" increment="0.05"/>
-            <spinner    follows="left|top" layout="topleft" name="s_GlowWidth"             top="152" left="376" width="65"  height="20" control_name="RenderGlowWidth" min_val="0.1" max_val="5" increment="0.05" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlowWidth"            top="154" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowWidth" min_val="0.1" max_val="5" increment="0.05"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlowWidth"             top="152" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowWidth" min_val="0.1" max_val="5" increment="0.05" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_GlowWidth"             top="152" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowWidth"/></button>
 
             <text follows="left|top" layout="topleft" name="T_VolLighting" top="184" left="8" width="572" height="18" font="SansSerif">Volumetric Lighting (AYA godrays)</text>

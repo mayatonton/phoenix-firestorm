@@ -2144,7 +2144,10 @@ If you do not understand the distinction then leave this control alone."
          width="477"/>
     </panel>
 
-<!-- <FS:AYA r20 Phase A> SSS sub-tab inside Graphics -->
+<!-- <FS:AYA r20 Phase A / r30 P5 A6> SSS sub-tab inside Graphics。
+     enabled_control="AYAR20SSSEffective" は tab_container 側で tab ラベル ("SSS")
+     自体を grey out するため。子 panel の各 widget も同じ control を bind して
+     入力欄を grey out (LL XUI は親 panel.setEnabled が子へ伝搬しないため)。-->
     <panel
      class="panel_preference_sss"
      filename="panel_preferences_sss.xml"
@@ -2154,6 +2157,7 @@ If you do not understand the distinction then leave this control alone."
      right="-1"
      follows="all"
      label="SSS"
+     enabled_control="AYAR20SSSEffective"
      name="SSS" />
 <!-- </FS:AYA> -->
 </tab_container>

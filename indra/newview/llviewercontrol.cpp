@@ -1827,6 +1827,17 @@ void settings_setup_listeners()
     // user knows a restart is needed for the new mode to actually take effect.
     // Guarded by STATE_STARTED to suppress firing during initial settings load on app boot.
     setting_setup_signal_listener(gSavedSettings, "AYAVisualRealismEnabled", []() {
+        // <FS:AYA r30 P5 C' / A6> Keep helper Boolean shadows in sync so XUI
+        // enabled_control bindings update immediately on combo_box change. Fires
+        // unconditionally (also during pre-STATE_STARTED settings load) so the
+        // UI is correct before the user sees Preferences.
+        //   - AYACinematicModeActive  = (mode == 2): BD-X1 cvar widgets grey out in mode 0/1
+        //   - AYAR20SSSEffective       = (mode == 1): SSS panel active only in AYAstorm View
+        //     (matches pipeline.cpp:doSkinSSS early-return condition)
+        const U32 mode_v = gSavedSettings.getU32("AYAVisualRealismEnabled");
+        gSavedSettings.setBOOL("AYACinematicModeActive", mode_v == 2);
+        gSavedSettings.setBOOL("AYAR20SSSEffective",     mode_v == 1);
+        // </FS:AYA>
         if (LLStartUp::getStartupState() >= STATE_STARTED)
         {
             // <FS:AYA r30 P5 R2> Reset overlay sentinel when leaving mode 2 so the
@@ -1841,6 +1852,14 @@ void settings_setup_listeners()
             LLNotificationsUtil::add("ChangeViewMode");
         }
     });
+    // <FS:AYA r30 P5 C' / A6> Initial sync at startup: signal listener does not fire on
+    // registration, so seed both helper Boolean shadows from the loaded U32 value here.
+    {
+        const U32 mode_v = gSavedSettings.getU32("AYAVisualRealismEnabled");
+        gSavedSettings.setBOOL("AYACinematicModeActive", mode_v == 2);
+        gSavedSettings.setBOOL("AYAR20SSSEffective",     mode_v == 1);
+    }
+    // </FS:AYA>
     // </FS:AYAstorm r30 P1>
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterIM::processChatHistoryStyleUpdate);
     setting_setup_signal_listener(gSavedSettings, "ChatFontSize", FSFloaterNearbyChat::processChatHistoryStyleUpdate);

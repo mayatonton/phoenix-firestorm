@@ -9965,6 +9965,45 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
+    <!-- <FS:AYA> r30 P5 C': Cinematic mode 中フラグ (XUI enabled_control 用 Boolean shadow)。
+         AYAVisualRealismEnabled は U32 (0/1/2) で LL XUI enabled_control の Boolean binding に
+         直結できないため、本 helper cvar を介して BD-X1 cvar の UI widget を mode 0/1 で grey out。
+         llviewercontrol.cpp の AYAVisualRealismEnabled signal listener が値を同期 (mode==2 -> 1)。
+         Persist=0: 起動時に常に listener が同期するので保存不要。詳細:
+         docs/specs/ayastorm-r30-p5-bd-parity-spec.md §10 (C' helper cvar)。 -->
+    <key>AYACinematicModeActive</key>
+    <map>
+      <key>Comment</key>
+      <string>Helper Boolean shadow of (AYAVisualRealismEnabled==2). LL XUI enabled_control に渡して BD-X1 mode 2 専用 cvar の widget を mode 0/1 時に grey out するための shadow。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
+    <!-- <FS:AYA> r30 P5 A6: AYAR20 SSS effective フラグ。pipeline.cpp:doSkinSSS() 早期 return 条件
+         `realism_enabled() != 1 || !r20_enabled()` に対応 ─ SSS 描画パスは AYAstorm View (mode 1)
+         のみで走る。Preferences > Graphics > SSS タブ root の enabled_control に bind し、
+         mode 0 (Firestorm View) / mode 2 (Cinematic) では UI を grey out。これで「UI active なのに
+         描画されない」逆ズレ (AYA 2026-05-20 指摘) を解消。AYACinematicModeActive と同様の helper
+         shadow で、AYAVisualRealismEnabled (U32) → Boolean conversion 用。詳細:
+         docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §5.10.A (B3 audit) / §10 A6。 -->
+    <key>AYAR20SSSEffective</key>
+    <map>
+      <key>Comment</key>
+      <string>Helper Boolean shadow of (AYAVisualRealismEnabled==1). XUI enabled_control 用、SSS 描画パスが走る mode 1 のときだけ Preferences > Graphics > SSS タブ全体を active にする。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
     <!-- <FS:AYA> r14: AYAstorm View Mode 切替。r30 P1 で Cinematic 枠を先行追加 (3 値拡張)。
          Type は combo_box (Firestorm View=0 / AYAstorm View=1 / Cinematic=2) と確実に binding するため U32。
          変更は viewer 再起動が必要 (r30 P1 で 3 モード再起動切替に統一)。
