@@ -1258,14 +1258,14 @@ void LLPipeline::refreshCachedSettings()
     // Cinematic (mode 2) では BD default に固定、それ以外は gSavedSettings の値。
     // 対象 cvar 一覧と BD default は
     // docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3.3 / Phase 0 inventory cvar bucket 3 を参照。
-    LLPipeline::sAutoMaskAlphaDeferred = getRenderCvarBOOL("RenderAutoMaskAlphaDeferred", false);
-    LLPipeline::sAutoMaskAlphaNonDeferred = getRenderCvarBOOL("RenderAutoMaskAlphaNonDeferred", false);
+    LLPipeline::sAutoMaskAlphaDeferred = gSavedSettings.getBOOL("RenderAutoMaskAlphaDeferred");
+    LLPipeline::sAutoMaskAlphaNonDeferred = gSavedSettings.getBOOL("RenderAutoMaskAlphaNonDeferred");
     // </FS:AYAstorm>
     LLPipeline::sUseFarClip = gSavedSettings.getBOOL("RenderUseFarClip");
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic は BD impostor
     // 機構と等価 = JellyDoll を impostor 化 (true)。AY default も true で同値、
     // mode 0/1 は gSavedSettings 値維持。spec §3.2 phase3.5-ay-only Category B。
-    LLPipeline::sShowJellyDollAsImpostor = getRenderCvarBOOL("RenderJellyDollsAsImpostors", true);
+    LLPipeline::sShowJellyDollAsImpostor = gSavedSettings.getBOOL("RenderJellyDollsAsImpostors");
     // </FS:AYAstorm>
     LLVOAvatar::sMaxNonImpostors = gSavedSettings.getU32("RenderAvatarMaxNonImpostors");
     LLVOAvatar::updateImpostorRendering(LLVOAvatar::sMaxNonImpostors);
@@ -1285,17 +1285,17 @@ void LLPipeline::refreshCachedSettings()
     WindLightUseAtmosShaders = true; // DEPRECATED -- gSavedSettings.getBOOL("WindLightUseAtmosShaders");
     RenderDeferred = true; // DEPRECATED -- gSavedSettings.getBOOL("RenderDeferred");
     RenderDeferredSunWash = gSavedSettings.getF32("RenderDeferredSunWash");
-    RenderFSAAType = getRenderCvarU32("RenderFSAAType", 2);
+    RenderFSAAType = gSavedSettings.getU32("RenderFSAAType");
     RenderResolutionDivisor = gSavedSettings.getU32("RenderResolutionDivisor");
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic は BD parity
     // (1.0f = multiplier 無効、native 解像度) に固定。BD には resolution
     // multiplier 機構が無い。spec §3.2 phase3.5-ay-only Category B。
-    RenderResolutionMultiplier = getRenderCvarF32("RenderResolutionMultiplier", 1.0f);
+    RenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
     // </FS:AYAstorm>
 // [/SL:KB]
     RenderUIBuffer = gSavedSettings.getBOOL("RenderUIBuffer");
-    RenderShadowDetail = getRenderCvarS32("RenderShadowDetail", 1);
+    RenderShadowDetail = gSavedSettings.getS32("RenderShadowDetail");
     RenderShadowSplits = gSavedSettings.getS32("RenderShadowSplits");
     RenderDeferredSSAO = gSavedSettings.getBOOL("RenderDeferredSSAO");
     RenderShadowResolutionScale = gSavedSettings.getF32("RenderShadowResolutionScale");
@@ -1320,19 +1320,19 @@ void LLPipeline::refreshCachedSettings()
     PreviewDirection0 = gSavedSettings.getVector3("PreviewDirection0");
     PreviewDirection1 = gSavedSettings.getVector3("PreviewDirection1");
     PreviewDirection2 = gSavedSettings.getVector3("PreviewDirection2");
-    RenderGlowMaxExtractAlpha = getRenderCvarF32("RenderGlowMaxExtractAlpha", 0.03f);
-    RenderGlowMinLuminance = getRenderCvarF32("RenderGlowMinLuminance", 1.0f);
+    RenderGlowMaxExtractAlpha = gSavedSettings.getF32("RenderGlowMaxExtractAlpha");
+    RenderGlowMinLuminance = gSavedSettings.getF32("RenderGlowMinLuminance");
     // <FS:AYAstorm r30 P4> Cinematic Controls switches must take effect at runtime.
     RenderDeferredBlurLight = gSavedSettings.getBOOL("RenderDeferredBlurLight");
     RenderMotionBlur = gSavedSettings.getBOOL("RenderMotionBlur");
     // </FS:AYAstorm r30 P4>
-    RenderGlowWarmthAmount = getRenderCvarF32("RenderGlowWarmthAmount", 16.0f);
-    RenderGlowLumWeights = getRenderCvarVector3("RenderGlowLumWeights", LLVector3(0.4f, 0.3f, 0.3f));
-    RenderGlowWarmthWeights = getRenderCvarVector3("RenderGlowWarmthWeights", LLVector3(0.75f, 0.6f, 0.712f));
-    RenderGlowResolutionPow = getRenderCvarS32("RenderGlowResolutionPow", 10);
-    RenderGlowIterations = getRenderCvarS32("RenderGlowIterations", 5);
-    RenderGlowWidth = getRenderCvarF32("RenderGlowWidth", 3.6f);
-    RenderGlowStrength = getRenderCvarF32("RenderGlowStrength", 0.233f);
+    RenderGlowWarmthAmount = gSavedSettings.getF32("RenderGlowWarmthAmount");
+    RenderGlowLumWeights = gSavedSettings.getVector3("RenderGlowLumWeights");
+    RenderGlowWarmthWeights = gSavedSettings.getVector3("RenderGlowWarmthWeights");
+    RenderGlowResolutionPow = gSavedSettings.getS32("RenderGlowResolutionPow");
+    RenderGlowIterations = gSavedSettings.getS32("RenderGlowIterations");
+    RenderGlowWidth = gSavedSettings.getF32("RenderGlowWidth");
+    RenderGlowStrength = gSavedSettings.getF32("RenderGlowStrength");
     RenderGlowNoise = gSavedSettings.getBOOL("RenderGlowNoise");
     RenderDepthOfField = gSavedSettings.getBOOL("RenderDepthOfField");
     RenderDepthOfFieldInEditMode = gSavedSettings.getBOOL("RenderDepthOfFieldInEditMode");
@@ -1347,35 +1347,35 @@ void LLPipeline::refreshCachedSettings()
     RenderShadowNoise = gSavedSettings.getF32("RenderShadowNoise");
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> AY-only shadow softness
     // 拡張、Cinematic は BD parity (1.0f = 無補正) に固定。spec §3.2 phase3.5-ay-only。
-    RenderShadowSoftness = getRenderCvarF32("RenderShadowSoftness", 1.0f);
+    RenderShadowSoftness = gSavedSettings.getF32("RenderShadowSoftness");
     // </FS:AYAstorm>
-    RenderShadowBlurSize = getRenderCvarF32("RenderShadowBlurSize", 1.0f);
+    RenderShadowBlurSize = gSavedSettings.getF32("RenderShadowBlurSize");
     RenderSSAOScale = gSavedSettings.getF32("RenderSSAOScale");
-    RenderSSAOMaxScale = getRenderCvarU32("RenderSSAOMaxScale", 300);
-    RenderSSAOFactor = getRenderCvarF32("RenderSSAOFactor", 0.05f);
+    RenderSSAOMaxScale = gSavedSettings.getU32("RenderSSAOMaxScale");
+    RenderSSAOFactor = gSavedSettings.getF32("RenderSSAOFactor");
     RenderSSAOEffect = gSavedSettings.getVector3("RenderSSAOEffect");
     RenderShadowOffsetError = gSavedSettings.getF32("RenderShadowOffsetError");
-    RenderShadowBiasError = getRenderCvarF32("RenderShadowBiasError", 0.1f);
-    RenderShadowOffset = getRenderCvarF32("RenderShadowOffset", 0.002f);
-    RenderShadowBias = getRenderCvarF32("RenderShadowBias", -0.001f);
+    RenderShadowBiasError = gSavedSettings.getF32("RenderShadowBiasError");
+    RenderShadowOffset = gSavedSettings.getF32("RenderShadowOffset");
+    RenderShadowBias = gSavedSettings.getF32("RenderShadowBias");
     RenderSpotShadowOffset = gSavedSettings.getF32("RenderSpotShadowOffset");
     RenderSpotShadowBias = gSavedSettings.getF32("RenderSpotShadowBias");
     RenderEdgeDepthCutoff = gSavedSettings.getF32("RenderEdgeDepthCutoff");
     RenderEdgeNormCutoff = gSavedSettings.getF32("RenderEdgeNormCutoff");
-    RenderShadowGaussian = getRenderCvarVector3("RenderShadowGaussian", LLVector3(1.25f, 2.0f, 0.0f));
-    RenderShadowBlurDistFactor = getRenderCvarF32("RenderShadowBlurDistFactor", 0.01f);
+    RenderShadowGaussian = gSavedSettings.getVector3("RenderShadowGaussian");
+    RenderShadowBlurDistFactor = gSavedSettings.getF32("RenderShadowBlurDistFactor");
     RenderDeferredAtmospheric = gSavedSettings.getBOOL("RenderDeferredAtmospheric");
     RenderHighlightFadeTime = gSavedSettings.getF32("RenderHighlightFadeTime");
-    RenderFarClip = getRenderCvarF32("RenderFarClip", 96.0f);
+    RenderFarClip = gSavedSettings.getF32("RenderFarClip");
     RenderShadowSplitExponent = gSavedSettings.getVector3("RenderShadowSplitExponent");
-    RenderShadowErrorCutoff = getRenderCvarF32("RenderShadowErrorCutoff", 0.0f);
-    RenderShadowFOVCutoff = getRenderCvarF32("RenderShadowFOVCutoff", 0.0f);
+    RenderShadowErrorCutoff = gSavedSettings.getF32("RenderShadowErrorCutoff");
+    RenderShadowFOVCutoff = gSavedSettings.getF32("RenderShadowFOVCutoff");
     CameraOffset = gSavedSettings.getBOOL("CameraOffset");
     CameraMaxCoF = gSavedSettings.getF32("CameraMaxCoF");
     CameraDoFResScale = gSavedSettings.getF32("CameraDoFResScale");
     RenderVignette = gSavedSettings.getVector3("FSRenderVignette"); // <FS:Beq/> redo the vignette
 
-    RenderAutoHideSurfaceAreaLimit = getRenderCvarF32("RenderAutoHideSurfaceAreaLimit", 0.0f);
+    RenderAutoHideSurfaceAreaLimit = gSavedSettings.getF32("RenderAutoHideSurfaceAreaLimit");
     RenderScreenSpaceReflections = gSavedSettings.getBOOL("RenderScreenSpaceReflections");
     RenderScreenSpaceReflectionIterations = gSavedSettings.getS32("RenderScreenSpaceReflectionIterations");
     RenderScreenSpaceReflectionRayStep = gSavedSettings.getF32("RenderScreenSpaceReflectionRayStep");
@@ -1557,7 +1557,7 @@ void LLPipeline::createGLBuffers()
 
     // allocate screen space glow buffers
     // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (10) に固定
-    const U32 glow_res = llmax(1, llmin(512, 1 << getRenderCvarS32("RenderGlowResolutionPow", 10)));
+    const U32 glow_res = llmax(1, llmin(512, 1 << gSavedSettings.getS32("RenderGlowResolutionPow")));
     // </FS:AYAstorm>
     const bool glow_hdr = gSavedSettings.getBOOL("RenderGlowHDR");
     const U32 glow_color_fmt = glow_hdr ? GL_RGBA16F : GL_RGBA;
@@ -2810,70 +2810,18 @@ bool LLPipeline::isWaterClip()
     return (gPipeline.mHeroProbeManager.isMirrorPass()) ? false : (!sRenderTransparentWater || gCubeSnapshot) && !sRenderingHUDs;
 }
 
-// <FS:AYAstorm r30 BD full port Phase 3.3>
-// Cinematic-aware cvar helpers. mode 2 (Cinematic) で BD default を返し、
-// pipeline / drawpool / shader 系の render path から AY-only cvar tuning を
-// 一括無効化する。mode 0 / mode 1 では gSavedSettings の現在値を返すため、
-// AYAstorm View / Firestorm View 配信者の絵作りは従来通り効く。
-// D3 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3)。
-
+// <FS:AYAstorm r30 BD full port Phase 5 R3 (A4)>
+// Cinematic mode 判定。R2 で導入した settings_cinematic_bd.xml overlay により
+// mode 2 起動時に BD default 値が gSavedSettings に焼き込まれるため、render path
+// 側は直接 gSavedSettings.getX() を呼べばよい (P5 step 5 paradigm shift で導入
+// した getRenderCvar* helper は R3 で撤去済)。本 isCinematicMode のみ残し、
+// Cinematic 専用機能 (Volumetric Lighting / Motion Blur / DoF chain 等) の
+// gate 判定に使用する。
 // static
 bool LLPipeline::isCinematicMode()
 {
     static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
     return aya_view_mode() == 2;
-}
-
-// P5 step 5 paradigm shift (2026-05-19): Cinematic 短絡を撤去。Cinematic mode で
-// あっても user cvar 値を読む = Cinematic Controls floater の slider/checkbox 変更
-// が即時反映される。bd_default は cvar 未登録時の fallback としてのみ機能。
-// static
-bool LLPipeline::getRenderCvarBOOL(const std::string& name, bool bd_default)
-{
-    LLControlVariable* c = gSavedSettings.getControl(name);
-    return c ? c->getValue().asBoolean() : bd_default;
-}
-
-// static
-U32 LLPipeline::getRenderCvarU32(const std::string& name, U32 bd_default)
-{
-    LLControlVariable* c = gSavedSettings.getControl(name);
-    return c ? (U32)c->getValue().asInteger() : bd_default;
-}
-
-// static
-S32 LLPipeline::getRenderCvarS32(const std::string& name, S32 bd_default)
-{
-    LLControlVariable* c = gSavedSettings.getControl(name);
-    return c ? (S32)c->getValue().asInteger() : bd_default;
-}
-
-// static
-F32 LLPipeline::getRenderCvarF32(const std::string& name, F32 bd_default)
-{
-    LLControlVariable* c = gSavedSettings.getControl(name);
-    return c ? (F32)c->getValue().asReal() : bd_default;
-}
-
-// static
-LLVector3 LLPipeline::getRenderCvarVector3(const std::string& name, const LLVector3& bd_default)
-{
-    LLControlVariable* c = gSavedSettings.getControl(name);
-    return c ? LLVector3(c->getValue()) : bd_default;
-}
-
-// static
-LLColor4 LLPipeline::getRenderCvarColor4(const std::string& name, const LLColor4& bd_default)
-{
-    LLControlVariable* c = gSavedSettings.getControl(name);
-    return c ? LLColor4(c->getValue()) : bd_default;
-}
-
-// static
-std::string LLPipeline::getRenderCvarString(const std::string& name, const std::string& bd_default)
-{
-    LLControlVariable* c = gSavedSettings.getControl(name);
-    return c ? c->getValue().asString() : bd_default;
 }
 // </FS:AYAstorm>
 
@@ -8633,19 +8581,19 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         // のため値で no-op (saturation/contrast=1.0, brightness/temperature=0.0)。
         // spec §3.1 phase3.5-ay-only Category A。
         shader->uniform1f(LLShaderMgr::COLOR_SATURATION,
-            getRenderCvarF32("RenderColorSaturation", 1.0f));
+            gSavedSettings.getF32("RenderColorSaturation"));
         shader->uniform1f(LLShaderMgr::COLOR_CONTRAST,
-            getRenderCvarF32("RenderColorContrast", 1.0f));
+            gSavedSettings.getF32("RenderColorContrast"));
         shader->uniform1f(LLShaderMgr::COLOR_TEMPERATURE,
-            getRenderCvarF32("RenderColorTemperature", 0.0f));
+            gSavedSettings.getF32("RenderColorTemperature"));
         shader->uniform1f(LLShaderMgr::COLOR_BRIGHTNESS,
-            getRenderCvarF32("RenderColorBrightness", 0.0f));
+            gSavedSettings.getF32("RenderColorBrightness"));
 
         // Reload 3D LUT if setting changed
         {
             // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic では
             // LUT name を空 string (= LUT load しない) に強制。
-            const std::string lut_name = getRenderCvarString("RenderColorGradingLUTName", std::string());
+            const std::string lut_name = gSavedSettings.getString("RenderColorGradingLUTName");
             if (lut_name != mColorGradingLUTName)
                 loadColorGradingLUT(lut_name);
             // </FS:AYAstorm>
@@ -8656,7 +8604,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
             gGL.getTexUnit(lut_channel)->bindManual(LLTexUnit::TT_TEXTURE_3D, mColorGradingLUT);
         shader->uniform1i(LLShaderMgr::COLOR_GRADING_LUT_ENABLED, (mColorGradingLUT != 0) ? 1 : 0);
         shader->uniform1f(LLShaderMgr::COLOR_GRADING_LUT_INTENSITY,
-            getRenderCvarF32("RenderColorGradingLUTIntensity", 0.0f));
+            gSavedSettings.getF32("RenderColorGradingLUTIntensity"));
         // </FS:AYAstorm>
 
         mScreenTriangleVB->setBuffer();
@@ -9233,7 +9181,7 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
     // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic で chroma 完全 OFF
     // (BD_NOOP=0.0f)。spec §3.1 phase3.5-ay-only Category A。
-    const F32 nodof_chroma_str = getRenderCvarF32("RenderChromaStrength", 0.0f);
+    const F32 nodof_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
     gDeferredPostNoDoFProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
     gDeferredPostNoDoFProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, nodof_chroma_str);
     // </FS:AYAstorm>
@@ -9699,7 +9647,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 
                 // <AYAstorm r30 P4 step 4> BD chroma_str (HAS_DOF_CHROMA permutation, no-op otherwise)
                 // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic BD parity (0.0f)。spec §3.1。
-                const F32 dof_chroma_str = getRenderCvarF32("RenderChromaStrength", 0.0f);
+                const F32 dof_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
                 gDeferredPostProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, dof_chroma_str);
                 // </FS:AYAstorm>
                 // </AYAstorm r30 P4 step 4>
@@ -9809,7 +9757,7 @@ void LLPipeline::renderFinalize()
     // 結果として block 全体が常に no-op (BD parity)、構造は spec dependency
     // 明示のため維持。
     if (LLPipeline::isCinematicMode()
-        && getRenderCvarBOOL("RenderVolumetricLighting", false)
+        && gSavedSettings.getBOOL("RenderVolumetricLighting")
         && !gCubeSnapshot)
     {
         renderVolumetric(sourceBuffer, targetBuffer);
@@ -9873,7 +9821,7 @@ void LLPipeline::renderFinalize()
         // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> SMAA T2x は AY-only
         // 拡張、Cinematic では BD parity (false) に固定 (BD は FSAAType=2 で
         // 通常 SMAA で完結、T2x は無い)。mode 0/1 は cvar 値維持。spec §3.1。
-        const bool smaa_t2x = getRenderCvarBOOL("RenderSMAAT2x", false);
+        const bool smaa_t2x = gSavedSettings.getBOOL("RenderSMAAT2x");
         bool t2x_active = smaa_t2x && mVelocityMap.isComplete() && mSMAAHistory.isComplete() && !gCubeSnapshot;
         // </FS:AYAstorm>
         sT2xJitterEnabled = t2x_active;
@@ -9968,7 +9916,7 @@ void LLPipeline::renderFinalize()
     gDeferredPostNoDoFNoiseProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)sourceBuffer->getWidth(), (GLfloat)sourceBuffer->getHeight());
     // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic BD parity (0.0f)。spec §3.1。
-    const F32 nodof_noise_chroma_str = getRenderCvarF32("RenderChromaStrength", 0.0f);
+    const F32 nodof_noise_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
     gDeferredPostNoDoFNoiseProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, nodof_noise_chroma_str);
     // </FS:AYAstorm>
     // </AYAstorm r30 P4 step 4>
@@ -13807,7 +13755,7 @@ void LLPipeline::skipRenderingShadows()
 void LLPipeline::handleShadowDetailChanged()
 {
     // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では effective 値が BD default に固定
-    if (RenderShadowDetail > getRenderCvarS32("RenderShadowDetail", 1))
+    if (RenderShadowDetail > gSavedSettings.getS32("RenderShadowDetail"))
     // </FS:AYAstorm>
     {
         skipRenderingShadows();

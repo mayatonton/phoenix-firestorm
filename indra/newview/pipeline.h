@@ -454,22 +454,13 @@ public:
 
     static bool isWaterClip();
 
-    // <FS:AYAstorm r30 BD full port Phase 3.3, P5 step 5 pivot 2026-05-19>
-    // 全 mode で user cvar 値を読む getter。bd_default は cvar が未登録の場合の
-    // fallback としてのみ機能。Cinematic mode (=2) でも user cvar 値が effective、
-    // Cinematic Controls floater の slider/checkbox が即時反映される。
-    //
-    // 旧仕様 (D3 cvar 短絡) は P5 step 5 で撤去。Cinematic 専用の動作は cvar 値
-    // でなく feature gate (caller 側 isCinematicMode() 分岐) で表現する。
-    // 例: `if (isCinematicMode() && cinematic_only_pass_enabled) { ... }`
-    static bool        isCinematicMode();
-    static bool        getRenderCvarBOOL   (const std::string& name, bool               bd_default);
-    static U32         getRenderCvarU32    (const std::string& name, U32                bd_default);
-    static S32         getRenderCvarS32    (const std::string& name, S32                bd_default);
-    static F32         getRenderCvarF32    (const std::string& name, F32                bd_default);
-    static LLVector3   getRenderCvarVector3(const std::string& name, const LLVector3&   bd_default);
-    static LLColor4    getRenderCvarColor4 (const std::string& name, const LLColor4&    bd_default);
-    static std::string getRenderCvarString (const std::string& name, const std::string& bd_default);
+    // <FS:AYAstorm r30 BD full port Phase 5 R3 (A4)>
+    // Cinematic mode 判定。R2 settings_cinematic_bd.xml overlay により mode 2 起動時に
+    // BD default が gSavedSettings に焼き込まれるため、render path 側は直接
+    // gSavedSettings.getX() を呼べばよい (R3 で getRenderCvar* helper 群は撤去済)。
+    // Cinematic 専用機能 (Volumetric Lighting / Motion Blur / DoF chain 等) の
+    // gate 判定にのみ本関数を使用する。
+    static bool isCinematicMode();
     // </FS:AYAstorm>
 
     void setRenderTypeMask(U32 type, ...);

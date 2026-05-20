@@ -1095,8 +1095,8 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     // renderGeomMotionBlur 自体が mode != 2 で early-return し、ここには到達
     // しない (上の mode 2 ガードでも捕捉) — 将来 mode 0/1 で velocity buffer を
     // 有効化する step が入った時の safety net として残す。
-    const bool self_blur   = LLPipeline::getRenderCvarBOOL("RenderMotionBlurSelfAvatar",   false);
-    const bool others_blur = LLPipeline::getRenderCvarBOOL("RenderMotionBlurOtherAvatars", false);
+    const bool self_blur   = gSavedSettings.getBOOL("RenderMotionBlurSelfAvatar");
+    const bool others_blur = gSavedSettings.getBOOL("RenderMotionBlurOtherAvatars");
     if (avatarp->isSelf() ? !self_blur : !others_blur)
     {
         return;

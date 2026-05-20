@@ -120,7 +120,7 @@ static bool enableVolumeSAPProtection()
     // NaCl/AO SA 保護機構が無い → off で純 BD render path に合わせる。
     // spec §3.2 phase3.5-ay-only。dispatch helper 経由で mode 2 のみ
     // BD_NOOP=false、mode 0/1 は従来の保護動作維持。
-    return LLPipeline::getRenderCvarBOOL("RenderVolumeSAProtection", false);
+    return gSavedSettings.getBOOL("RenderVolumeSAProtection");
     // </FS:AYAstorm>
 }
 // NaCl End

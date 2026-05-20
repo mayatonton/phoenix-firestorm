@@ -223,7 +223,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // aya_view_mode==2 で gate されているので発火しない。spec §3.1 phase3.5-ay-only。
     const bool volumetric_wants_alpha_depth =
         LLPipeline::isCinematicMode()
-        && LLPipeline::getRenderCvarBOOL("RenderVolumetricLighting", false);
+        && gSavedSettings.getBOOL("RenderVolumetricLighting");
     // </FS:AYAstorm>
     // </AYAstorm r30 P3 step 5>
 
