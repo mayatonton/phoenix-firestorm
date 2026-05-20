@@ -1236,6 +1236,11 @@ public:
     static F32 RenderShadowFarClip;
     static F32 RenderGlobalLightStrength;
     // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD live Post FX scalar cvar (Cinematic only)
+    static F32 RenderSepiaStrength;
+    static F32 RenderGreyscaleStrength;
+    static U32 RenderNumColors;
+    // </FS:AYAstorm:r30-bd-port>
     static bool RenderDelayCreation;
 //  static bool RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     static bool FreezeTime;

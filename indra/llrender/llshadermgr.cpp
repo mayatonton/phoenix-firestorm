@@ -1654,11 +1654,11 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("chroma_str");
     // </AYAstorm r30 P4>
 
-    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live uniforms.
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live uniforms (995a1354d8 verbatim).
     // Order must match the enum order in llshadermgr.h.
     mReservedUniforms.push_back("global_light_strength");
-    mReservedUniforms.push_back("sepia_strength");
-    mReservedUniforms.push_back("greyscale_strength");
+    mReservedUniforms.push_back("sepia_str");
+    mReservedUniforms.push_back("greyscale_str");
     mReservedUniforms.push_back("num_colors");
     // </FS:AYAstorm:r30-bd-port>
 

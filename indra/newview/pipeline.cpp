@@ -178,6 +178,11 @@ LLVector2 LLPipeline::RenderProjectorShadowResolution;
 F32 LLPipeline::RenderShadowFarClip;
 F32 LLPipeline::RenderGlobalLightStrength;
 // </FS:AYAstorm:r30-bd-port>
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD live Post FX scalar cvar (Cinematic only)
+F32 LLPipeline::RenderSepiaStrength;
+F32 LLPipeline::RenderGreyscaleStrength;
+U32 LLPipeline::RenderNumColors;
+// </FS:AYAstorm:r30-bd-port>
 bool LLPipeline::RenderDelayCreation;
 //bool LLPipeline::RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
 bool LLPipeline::FreezeTime;
@@ -655,6 +660,11 @@ void LLPipeline::init()
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
     connectRefreshCachedSettingsSafe("RenderShadowFarClip");
     connectRefreshCachedSettingsSafe("RenderGlobalLightStrength");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 3
+    connectRefreshCachedSettingsSafe("RenderPostSepiaStrength");
+    connectRefreshCachedSettingsSafe("RenderPostGreyscaleStrength");
+    connectRefreshCachedSettingsSafe("RenderPostPosterizationSamples");
     // </FS:AYAstorm:r30-bd-port>
     connectRefreshCachedSettingsSafe("RenderDelayCreation");
 //  connectRefreshCachedSettingsSafe("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
@@ -1377,6 +1387,11 @@ void LLPipeline::refreshCachedSettings()
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar
     RenderShadowFarClip = gSavedSettings.getF32("RenderShadowFarClip");
     RenderGlobalLightStrength = gSavedSettings.getF32("RenderGlobalLightStrength");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD live Post FX scalar cvar
+    RenderSepiaStrength = gSavedSettings.getF32("RenderPostSepiaStrength");
+    RenderGreyscaleStrength = gSavedSettings.getF32("RenderPostGreyscaleStrength");
+    RenderNumColors = gSavedSettings.getU32("RenderPostPosterizationSamples");
     // </FS:AYAstorm:r30-bd-port>
     RenderDelayCreation = gSavedSettings.getBOOL("RenderDelayCreation");
 //  RenderAnimateRes = gSavedSettings.getBOOL("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
@@ -9346,6 +9361,22 @@ void LLPipeline::combineGlow(LLRenderTarget* src, LLRenderTarget* dst)
         gGlowCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
         gGlowCombineProgram.bindTexture(LLShaderMgr::DEFERRED_EMISSIVE, &mGlow[1]);
 
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD post FX (Cinematic only).
+        // mode 0/1 では noop default (Greyscale=0 / Sepia=0 / NumColors=1) を送る。
+        if (isCinematicMode())
+        {
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, RenderGreyscaleStrength);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, RenderSepiaStrength);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, (GLfloat)RenderNumColors);
+        }
+        else
+        {
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, 0.0f);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, 0.0f);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, 1.0f);
+        }
+        // </FS:AYAstorm:r30-bd-port>
+
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
     }
@@ -10369,16 +10400,21 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
     shader.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mReflectionMapManager.mMaxProbeLOD);
 
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live deferred uniforms (Cinematic only).
-    // In non-Cinematic modes shaders that bind these uniforms must use neutral
-    // defaults (strength = 1.0 / 0.0 / 1 = noop) — Cinematic-only shader paths
-    // are still in flight under Phase 6 §1.3 so for now we always push them.
+    // BD pipeline.cpp:8965-8972 verbatim. Non-Cinematic modes get neutral defaults
+    // (light strength 1.0 / sepia 0 / greyscale 0 / num colors 1 = noop).
     if (isCinematicMode())
     {
         shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, RenderGlobalLightStrength);
+        shader.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, RenderGreyscaleStrength);
+        shader.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, RenderSepiaStrength);
+        shader.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, (GLfloat)RenderNumColors);
     }
     else
     {
         shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, 1.0f);
+        shader.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, 0.0f);
+        shader.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, 0.0f);
+        shader.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, 1.0f);
     }
     // </FS:AYAstorm:r30-bd-port>
 }
