@@ -169,6 +169,11 @@ F32 LLPipeline::RenderShadowResolutionScale;
 // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD sidebar gating flag for manual shadow distance entry.
 bool LLPipeline::RenderShadowAutomaticDistance;
 // </FS:AYAstorm:r30-bd-port>
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation (Cinematic only)
+LLVector4 LLPipeline::RenderShadowResolution;
+LLVector4 LLPipeline::RenderShadowFarClipVec;
+LLVector2 LLPipeline::RenderProjectorShadowResolution;
+// </FS:AYAstorm:r30-bd-port>
 bool LLPipeline::RenderDelayCreation;
 //bool LLPipeline::RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
 bool LLPipeline::FreezeTime;
@@ -627,6 +632,11 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("RenderShadowResolutionScale");
     // <FS:AYAstorm:r30-bd-port> Phase 3.9
     connectRefreshCachedSettingsSafe("RenderShadowAutomaticDistance");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+    connectRefreshCachedSettingsSafe("RenderShadowResolution");
+    connectRefreshCachedSettingsSafe("RenderShadowDistance");
+    connectRefreshCachedSettingsSafe("RenderProjectorShadowResolution");
     // </FS:AYAstorm:r30-bd-port>
     connectRefreshCachedSettingsSafe("RenderDelayCreation");
 //  connectRefreshCachedSettingsSafe("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
@@ -1164,10 +1174,28 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
     U32 sun_shadow_map_width = BlurHappySize(resX, scale);
     U32 sun_shadow_map_height = BlurHappySize(resY, scale);
 
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-cascade shadow allocation (Cinematic only)
+    const bool cinematic_per_channel_shadow = isCinematicMode() && !gCubeSnapshot;
+    // </FS:AYAstorm:r30-bd-port>
+
     if (shadow_detail > 0)
     { //allocate 4 sun shadow maps
         for (U32 i = 0; i < 4; i++)
         {
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+            if (cinematic_per_channel_shadow)
+            {
+                U32 res = (U32)RenderShadowResolution.mV[i];
+                if (mRT->shadow[i].getWidth() != res)
+                {
+                    if (!mRT->shadow[i].allocate(res, res, 0, true))
+                    {
+                        return false;
+                    }
+                }
+                continue;
+            }
+            // </FS:AYAstorm:r30-bd-port>
             if (!mRT->shadow[i].allocate(sun_shadow_map_width, sun_shadow_map_height, 0, true))
             {
                 return false;
@@ -1193,6 +1221,17 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
             U32 spot_shadow_map_height = height;
             for (U32 i = 0; i < 2; i++)
             {
+                // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+                if (cinematic_per_channel_shadow)
+                {
+                    U32 res = (U32)RenderProjectorShadowResolution.mV[i];
+                    if (!mSpotShadow[i].allocate(res, res, 0, true))
+                    {
+                        return false;
+                    }
+                    continue;
+                }
+                // </FS:AYAstorm:r30-bd-port>
                 if (!mSpotShadow[i].allocate(spot_shadow_map_width, spot_shadow_map_height, 0, true))
                 {
                     return false;
@@ -1301,6 +1340,11 @@ void LLPipeline::refreshCachedSettings()
     RenderShadowResolutionScale = gSavedSettings.getF32("RenderShadowResolutionScale");
     // <FS:AYAstorm:r30-bd-port> Phase 3.9
     RenderShadowAutomaticDistance = gSavedSettings.getBOOL("RenderShadowAutomaticDistance");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation
+    RenderShadowResolution = gSavedSettings.getVector4("RenderShadowResolution");
+    RenderShadowFarClipVec = gSavedSettings.getVector4("RenderShadowDistance");
+    RenderProjectorShadowResolution = gSavedSettings.getVector2("RenderProjectorShadowResolution");
     // </FS:AYAstorm:r30-bd-port>
     RenderDelayCreation = gSavedSettings.getBOOL("RenderDelayCreation");
 //  RenderAnimateRes = gSavedSettings.getBOOL("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
@@ -12326,6 +12370,20 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
         // <FS:AYAstorm r30 P4> RenderShadowAutomaticDistance toggles sun-angle-weighted
         // split distribution (ON) vs equal linear splits (OFF).
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: Cinematic + Auto=OFF uses BD
+        // per-cascade cumulative clip planes from RenderShadowDistance (Vector4).
+        if (isCinematicMode() && !RenderShadowAutomaticDistance)
+        {
+            F32 tot = 0.f;
+            for (U32 i = 0; i < 4; ++i)
+            {
+                mSunClipPlanes.mV[i] = near_clip + tot + RenderShadowFarClipVec[i];
+                tot += RenderShadowFarClipVec[i];
+            }
+        }
+        else
+        {
+        // </FS:AYAstorm:r30-bd-port>
         for (U32 i = 0; i < 4; ++i)
         {
             F32 x = (F32)(i+1)/4.f;
@@ -12335,6 +12393,9 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
             mSunClipPlanes.mV[i] = near_clip+range*x;
         }
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+        }
+        // </FS:AYAstorm:r30-bd-port>
         // </FS:AYAstorm r30 P4>
 
         mSunClipPlanes.mV[0] *= 1.25f; //bump back first split for transition padding

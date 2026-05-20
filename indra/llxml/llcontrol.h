@@ -283,6 +283,10 @@ public:
     LLWString   getWString(std::string_view name);
     LLVector3   getVector3(std::string_view name);
     LLVector3d  getVector3d(std::string_view name);
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+    LLVector4   getVector4(std::string_view name);
+    LLVector2   getVector2(std::string_view name);
+    // </FS:AYAstorm:r30-bd-port>
     LLRect      getRect(std::string_view name);
     LLSD        getLLSD(std::string_view name);
     LLQuaternion    getQuaternion(std::string_view name);

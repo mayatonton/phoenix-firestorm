@@ -12385,17 +12385,17 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Backup</key>
     <integer>0</integer>
   </map>
-  <!-- <FS:AYAstorm:r30-bd-port> Phase 3.9: BD per-channel shadow res/dist 4-channel + projector 2-channel cvars.
-       BD pipeline reads these per-channel; AY pipeline currently consumes RenderShadowResolutionScale (scalar) only.
-       Placeholder cvars for the pending overlay-based BD parity port (Phase 5 後続)、現状未配線。 -->
+  <!-- <FS:AYAstorm:r30-bd-port> Phase 6 step 1: per-channel shadow 3 cvar を AY pipeline に配線。
+       Cinematic mode (AYAVisualRealismEnabled == 2) の時 BD per-channel allocator / clip plane が走る。
+       mode 0/1 では従来通り RenderShadowResolutionScale (scalar) を消費。 -->
   <key>RenderShadowResolution</key>
   <map>
     <key>Comment</key>
-    <string>Per-cascade sun/moon shadow map resolutions (4 cascades).</string>
+    <string>Raw shadow width and height of each of the four shadow maps, closest (X), mid (Y), far (Z) furthest (W). Cinematic mode のみ。</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
-    <string>LLSD</string>
+    <string>Vector4</string>
     <key>Value</key>
     <array>
       <real>1024.0</real>
@@ -12407,11 +12407,11 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderShadowDistance</key>
   <map>
     <key>Comment</key>
-    <string>Per-cascade sun/moon shadow distance multipliers.</string>
+    <string>Per-cascade sun shadow far clip range addition (closest X / mid Y / far Z / furthest W). RenderShadowAutomaticDistance=FALSE + Cinematic mode の時に効く。</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
-    <string>LLSD</string>
+    <string>Vector4</string>
     <key>Value</key>
     <array>
       <real>12.0</real>
@@ -12423,17 +12423,18 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderProjectorShadowResolution</key>
   <map>
     <key>Comment</key>
-    <string>Projector shadow map resolution (X = width, Y = height).</string>
+    <string>Raw projector shadow width of the two available spot shadow maps. Cinematic mode のみ。</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
-    <string>LLSD</string>
+    <string>Vector2</string>
     <key>Value</key>
     <array>
       <real>1024.0</real>
       <real>1024.0</real>
     </array>
   </map>
+  <!-- </FS:AYAstorm:r30-bd-port> -->
   <key>RenderWindlightInterpolateTime</key>
   <map>
     <key>Comment</key>

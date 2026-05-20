@@ -89,6 +89,10 @@ template <> std::string convert_from_llsd<std::string>(const LLSD& sd, eControlT
 template <> LLWString convert_from_llsd<LLWString>(const LLSD& sd, eControlType type, std::string_view control_name);
 template <> LLVector3 convert_from_llsd<LLVector3>(const LLSD& sd, eControlType type, std::string_view control_name);
 template <> LLVector3d convert_from_llsd<LLVector3d>(const LLSD& sd, eControlType type, std::string_view control_name);
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+template <> LLVector4 convert_from_llsd<LLVector4>(const LLSD& sd, eControlType type, std::string_view control_name);
+template <> LLVector2 convert_from_llsd<LLVector2>(const LLSD& sd, eControlType type, std::string_view control_name);
+// </FS:AYAstorm:r30-bd-port>
 template <> LLRect convert_from_llsd<LLRect>(const LLSD& sd, eControlType type, std::string_view control_name);
 template <> LLColor4 convert_from_llsd<LLColor4>(const LLSD& sd, eControlType type, std::string_view control_name);
 template <> LLColor4U convert_from_llsd<LLColor4U>(const LLSD& sd, eControlType type, std::string_view control_name);
@@ -720,6 +724,18 @@ LLVector3d LLControlGroup::getVector3d(std::string_view name)
 {
     return get<LLVector3d>(name);
 }
+
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+LLVector4 LLControlGroup::getVector4(std::string_view name)
+{
+    return get<LLVector4>(name);
+}
+
+LLVector2 LLControlGroup::getVector2(std::string_view name)
+{
+    return get<LLVector2>(name);
+}
+// </FS:AYAstorm:r30-bd-port>
 
 LLQuaternion LLControlGroup::getQuaternion(std::string_view name)
 {
@@ -1540,6 +1556,32 @@ LLVector3d convert_from_llsd<LLVector3d>(const LLSD& sd, eControlType type, std:
         return LLVector3d::zero;
     }
 }
+
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+template<>
+LLVector4 convert_from_llsd<LLVector4>(const LLSD& sd, eControlType type, std::string_view control_name)
+{
+    if (type == TYPE_VEC4)
+        return LLVector4(sd);
+    else
+    {
+        CONTROL_ERRS << "Invalid LLVector4 value for " << control_name << ": " << LLControlGroup::typeEnumToString(type) << " " << sd << LL_ENDL;
+        return LLVector4();
+    }
+}
+
+template<>
+LLVector2 convert_from_llsd<LLVector2>(const LLSD& sd, eControlType type, std::string_view control_name)
+{
+    if (type == TYPE_VEC2)
+        return LLVector2(sd);
+    else
+    {
+        CONTROL_ERRS << "Invalid LLVector2 value for " << control_name << ": " << LLControlGroup::typeEnumToString(type) << " " << sd << LL_ENDL;
+        return LLVector2::zero;
+    }
+}
+// </FS:AYAstorm:r30-bd-port>
 
 template<>
 LLQuaternion convert_from_llsd<LLQuaternion>(const LLSD& sd, eControlType type, std::string_view control_name)

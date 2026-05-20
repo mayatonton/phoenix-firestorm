@@ -1222,6 +1222,11 @@ public:
     // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD sidebar reads this to enable/disable manual shadow distance entries.
     static bool RenderShadowAutomaticDistance;
     // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation (Cinematic only)
+    static LLVector4 RenderShadowResolution;
+    static LLVector4 RenderShadowFarClipVec;  // cvar: RenderShadowDistance
+    static LLVector2 RenderProjectorShadowResolution;
+    // </FS:AYAstorm:r30-bd-port>
     static bool RenderDelayCreation;
 //  static bool RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     static bool FreezeTime;
