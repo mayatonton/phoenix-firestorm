@@ -255,7 +255,7 @@ step 5 で実装する preset の初期反映対象 (絵への寄与が大きい
 1. Glow 系 8 cvar 全件
 2. Shadow 系 8 cvar 全件
 3. SSAO 系 2 cvar
-4. `RenderChromaStrength` (5.0 → 0.0)
+4. ~~`RenderChromaStrength` (5.0 → 0.0)~~ **訂正 (2026-05-20)**: 本記述は誤り。`RenderChromaStrength` は AY-only cvar (BD には該当 cvar 無し、[`ayastorm-r30-bd-full-port-inventory.md`](./ayastorm-r30-bd-full-port-inventory.md) §3.2 line 1196 参照)、preset 比較対象から除外。AY 側の default 5.0 は overlay 案 land 後の見直しで 0.3 に降ろし済 (§10.12 commit `49bdd69249`)
 5. `RenderVolumetricLightingMultiplier` (50.0 → 1.0、tone 議題と connected — §6)
 6. シーン構築系 4 cvar (FarClip / TreeLODFactor / TerrainScale / WaterRefResolution)
 
@@ -347,7 +347,7 @@ Cinematic Controls floater に「BD-compat」ボタンを 1 つ追加し、押�
 
 audit (§4) で同定された cvar 群を対象。最低でも以下を初期セットに含める想定:
 
-- `RenderChromaStrength`: BD 0.0 ↔ AYAstorm 5.0
+- ~~`RenderChromaStrength`: BD 0.0 ↔ AYAstorm 5.0~~ **訂正 (2026-05-20)**: BD には該当 cvar 無し ([`ayastorm-r30-bd-full-port-inventory.md`](./ayastorm-r30-bd-full-port-inventory.md) §3.2 line 1196、AY-only)。AY default は §10.12 で 0.3 に降ろし済、preset 比較対象外
 - `RenderVolumetricLightingMultiplier`: BD 1.0 ↔ AYAstorm 50.0
 - (audit で追加されるもの)
 
@@ -593,7 +593,43 @@ AYA さんが mode 2 (Cinematic) で Cinematic Controls floater (`floater_aya_ci
 
 詳細経緯と audit 結果は [`ayastorm-r30-p5-bd-ui-binding-audit-spec.md`](./ayastorm-r30-p5-bd-ui-binding-audit-spec.md) §0 / §3.4 / §5.0 / §5.6 / §5.7 / §5.10.A / §5.10.B を参照。
 
-### 10.9 以降の step (5.x〜9)
+### 10.9 R1 (audit spec A1) (2026-05-20): UI range 拡張 4 箇所
+
+| commit | 内容 |
+|---|---|
+| `b6a261010b` | overlay 案で mode 2 に流し込む BD default が AY UI の slider/combo range 外に出る 4 箇所を拡張: `RenderGlowIterations` (max 4→8) / `RenderGlowResolutionPow` (graphics_advanced / phototools の 2 箇所 max 9→10) / `RenderSSAOFactor` (max 0.5→1.0)。binding 互換性 audit (#181) で同定。詳細は [`ayastorm-r30-p5-bd-ui-binding-audit-spec.md`](./ayastorm-r30-p5-bd-ui-binding-audit-spec.md) §2 / §5.2 |
+
+### 10.10 R2 (audit spec A2+A3+A7) (2026-05-20): overlay 機構実装
+
+| commit | 内容 |
+|---|---|
+| `49eafd0d6b` | XML overlay architecture の土台 3 件を 1 commit で landing:<br>**A2** `indra/newview/app_settings/settings_cinematic_bd.xml` を新規追加 (Phase 0 inventory §3.3 の BD/AY default 差分 32 cvar に BD 値を記録)。<br>**A3** `LLAppViewer::settingsRestoreFileAndGroup` (= `loadSettingsFromDirectory` 相当) に overlay 読込ロジックを追加 (mode 2 起動時のみ base → overlay → user の順で load)。<br>**A7** `llviewercontrol.cpp` `handleAYAVisualRealismEnabled` で mode 切替時の overlay 強制再適用 (mode 2 進入で overlay 適用、mode 0/1 復帰で base default + user 値復元)。<br>cvar 名空間は単一のまま、UI ⇄ engine binding は既存 (Firestorm 既存 UI が mode 2 でもそのまま効く) |
+
+### 10.11 R3 (audit spec A4) (2026-05-20): `getRenderCvar*` helper 廃止
+
+| commit | 内容 |
+|---|---|
+| `be7431a025` | §10.6 paradigm shift で短絡撤去した `getRenderCvar{BOOL,U32,S32,F32,Vector3,Color4,String}` 7 helper を vanilla LL の `gSavedSettings.getX()` 直接読みに巻き戻し。`bd_default` 引数は overlay 機構 (§10.10) で機能的に代替されたため dead code 化、helper 定義 + 全呼び出し ~30 箇所を delete。pipeline.cpp の indirection を 1 段減らし、user cvar → render path の経路が読みやすくなる |
+
+### 10.12 RenderChromaStrength default 値見直し (2026-05-20)
+
+| commit | 内容 |
+|---|---|
+| `49bdd69249` | `RenderChromaStrength` AY default を 5.0 → 0.3 に降下、Cinematic floater slider increment を 0.5 → 0.05 に細刻化。inventory §3.2 で BD-only でなく AY-only と確定し (BD には該当 cvar 無し)、当初 axis 2 audit (§4.6) が 「BD 0.0 vs AYAstorm 5.0」と書いていた前提は誤りと判明 (本 §4.6.5 / §5.3 line に訂正注記)。0.3 は §10.7 で AYA が「過剰な色収差」を体感した bloom + 頭白飛び連合の chroma 側 default 値を撮影常用域に降ろしたもの |
+
+### 10.13 B' + A' (refined R2) (2026-05-20): BD-X1 / BD-X2 分類 + overlay 縮小
+
+| commit | 内容 |
+|---|---|
+| `f4be09f72d` | overlay 対象 32 cvar を shader/pipeline trace で 2 グループに厳密分類 (task #191 B' audit):<br>**BD-X1 (17 cvar)** = shader uniform / kernel array 構築に使われる cvar (Glow 8 + Shadow 6 + SSAO 2 + Chroma 1)。mode 2 で BD default を強制適用、mode 0/1 では Firestorm 既定値を維持して UI grey out 対象 (§C').<br>**BD-X2 (15 cvar)** = path / hardware / cost cvar (FarClip / FSAAType / VRAMBudget / TerrainScale 等)。mode に依らずユーザー環境固有の値を尊重すべきで、overlay 適用は逆効果。overlay XML から 15 件を除外 (= `settings_cinematic_bd.xml` の項目数 32 → 17 に縮小)。<br>詳細分類は [`ayastorm-r30-p5-bd-ui-binding-audit-spec.md`](./ayastorm-r30-p5-bd-ui-binding-audit-spec.md) §5.10.B 参照 |
+
+### 10.14 C' + A6 (audit spec A6) (2026-05-20): UI grey out 整合
+
+| commit | 内容 |
+|---|---|
+| `777c0738ea` | 2 系列の UI grey out を 1 commit で landing:<br>**C' (BD-X1 grey out)**: BD-X1 17 cvar のうち XUI 露出のある 9 cvar の slider/spinner に `enabled_control="AYACinematicModeActive"` を bind。mode 2 でのみ active、mode 0/1 では「触っても overlay で上書きされる」誤解を防ぐため grey out。対象 floater = `floater_aya_cinematic.xml` 9 cvar × 2 widget + `floater_phototools.xml` 8 cvar × 2 widget。<br>**A6 (B3 SSS grey out)**: `pipeline.cpp:doSkinSSS()` 早期 return (`realism_enabled() != 1 \|\| !r20_enabled()`) に整合させ、SSS panel root + 11 widget (sss_enabled / blur_radius / strength / glow_gain / glow_color / whitelist_lock / whitelist / 4 default ボタン) を `enabled_control="AYAR20SSSEffective"` で grey out。mode 0 (Firestorm View) も rendering されないので UI も非活性で整合。<br>**helper Boolean cvar 2 件 (Persist=0)**: `AYACinematicModeActive` (= mode==2 shadow) / `AYAR20SSSEffective` (= mode==1 shadow) を `settings.xml` に新規追加、`llviewercontrol.cpp` で `AYAVisualRealismEnabled` signal listener + 起動時 seed で同期。LL XUI の `enabled_control` は Boolean 専用で U32 cvar (`AYAVisualRealismEnabled`) を直接 bind できないための実装上の必要。詳細は [`ayastorm-r30-p5-bd-ui-binding-audit-spec.md`](./ayastorm-r30-p5-bd-ui-binding-audit-spec.md) §5.10.A (B3 audit) 参照。<br>AYA hands-on 検証で mode 0 / mode 1 / mode 2 の 3 モード全てで挙動 OK 確認済 |
+
+### 10.15 以降の step (5.x〜9)
 
 各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は step 5.x に降格 (§0.5)。
 
