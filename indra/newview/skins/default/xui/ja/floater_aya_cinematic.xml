@@ -2,14 +2,14 @@
 <floater name="aya_cinematic" title="AYAstorm シネマ撮影コントロール">
 
     <text name="T_Header">
-        Cinematic モード時のみ有効です (グラフィック設定の表示モード)。モード変更は再起動が必要、スライダーは即時反映。「D」ボタンで BD 推奨値 / LL デフォルトに戻します。
+        Cinematic モード時のみ有効です (グラフィック設定の表示モード)。モード変更は再起動が必要、スライダーは即時反映。「D」ボタンで 新しい描画エンジン推奨値 / LL デフォルトに戻します。
     </text>
 
     <tab_container name="aya_cinematic_tabs">
 
         <!-- ============ Tab 1: General ============ -->
         <panel label="基本" name="tab_general">
-            <text name="T_GeneralMaster">マスタースイッチ (BD 推奨値)</text>
+            <text name="T_GeneralMaster">マスタースイッチ (新しい描画エンジン推奨値)</text>
 
             <check_box name="cb_Deferred" label="ディファード描画 (影/SSAO/SSR/DoF に必須)"
                        tool_tip="マスタースイッチ。OFF にすると Cinematic 機能の大半が無効化されます。"/>
@@ -58,8 +58,8 @@
 
             <text name="T_ShadowsExtras">その他</text>
 
-            <text name="T_ShadowFarClip">影遠クリップ (未実装)</text>
-            <button name="d_ShadowFarClip" tool_tip="未実装 — BD cvar RenderShadowFarClip は未移植"/>
+            <text name="T_ShadowFarClip">影遠クリップ</text>
+            <button name="d_ShadowFarClip" tool_tip="デフォルトに戻す"/>
         </panel>
 
         <!-- ============ Tab 3: SSAO ============ -->
@@ -90,12 +90,12 @@
             <text name="T_DoFMaster">被写界深度 マスタースイッチ</text>
 
             <check_box name="cb_DepthOfField" label="被写界深度 (DoF) を有効化"
-                       tool_tip="Cinematic では BD 推奨値で ON、LL デフォルトは OFF です。"/>
-            <button name="d_DepthOfField" tool_tip="BD 推奨値 (ON) に戻す"/>
+                       tool_tip="Cinematic では 新しい描画エンジン推奨値で ON、LL デフォルトは OFF です。"/>
+            <button name="d_DepthOfField" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
 
             <check_box name="cb_DoFHighQuality" label="高品質 DoF (4× CoF, 深度依存)"
-                       tool_tip="GPU 負荷増。BD 推奨値で ON。"/>
-            <button name="d_DoFHighQuality" tool_tip="BD 推奨値 (ON) に戻す"/>
+                       tool_tip="GPU 負荷増。新しい描画エンジン推奨値で ON。"/>
+            <button name="d_DoFHighQuality" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
 
             <check_box name="cb_DoFFront" label="前方ぼけ (フォーカス手前もぼかす)"
                        tool_tip="ピント面より手前の被写体もぼかします (OFF の場合は奥のみ)。"/>
@@ -105,29 +105,29 @@
                        tool_tip="ON: R/G/B オフセットが DoF ぼけと連動。OFF: 画面端の放射状ビネットのみ。"/>
             <button name="d_DoFChroma" tool_tip="デフォルトに戻す"/>
 
-            <check_box name="cb_DoFAlphas" label="アルファブレンドに DoF (未実装)"
-                       tool_tip="未実装 — BD cvar RenderDepthOfFieldAlphas は未移植"/>
-            <button name="d_DoFAlphas" tool_tip="未実装"/>
+            <check_box name="cb_DoFAlphas" label="DoF にアルファ面を含める"
+                       tool_tip="ON: アルファ面 (cutoff 0.7) を DoF 深度に寄与。OFF: 除外 (cutoff 1.0)。"/>
+            <button name="d_DoFAlphas" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_CameraValues">カメラ (BD 推奨値)</text>
+            <text name="T_CameraValues">カメラ (新しい描画エンジン推奨値)</text>
 
             <text name="T_FieldOfView">画角 (°)</text>
-            <button name="d_FieldOfView" tool_tip="BD 推奨値 (67°) に戻す"/>
+            <button name="d_FieldOfView" tool_tip="新しい描画エンジン推奨値 (67°) に戻す"/>
 
             <text name="T_FNumber">F 値 (絞り)</text>
-            <button name="d_FNumber" tool_tip="BD 推奨値 (28) に戻す"/>
+            <button name="d_FNumber" tool_tip="新しい描画エンジン推奨値 (28) に戻す"/>
 
             <text name="T_FocalLength">焦点距離 (mm)</text>
-            <button name="d_FocalLength" tool_tip="BD 推奨値 (40mm) に戻す"/>
+            <button name="d_FocalLength" tool_tip="新しい描画エンジン推奨値 (40mm) に戻す"/>
 
             <text name="T_MaxCoF">最大錯乱円 (CoF)</text>
-            <button name="d_MaxCoF" tool_tip="BD 推奨値 (11.9) に戻す"/>
+            <button name="d_MaxCoF" tool_tip="新しい描画エンジン推奨値 (11.9) に戻す"/>
 
             <text name="T_FocusTransitionTime">フォーカス遷移時間 (秒)</text>
-            <button name="d_FocusTransitionTime" tool_tip="BD 推奨値 (0.4 秒) に戻す"/>
+            <button name="d_FocusTransitionTime" tool_tip="新しい描画エンジン推奨値 (0.4 秒) に戻す"/>
 
             <text name="T_DoFResScale">DoF バッファ解像度</text>
-            <button name="d_DoFResScale" tool_tip="BD 推奨値 (0.5) に戻す"/>
+            <button name="d_DoFResScale" tool_tip="新しい描画エンジン推奨値 (0.5) に戻す"/>
 
             <text name="T_ChromaSec">色収差 強度</text>
 
@@ -140,8 +140,8 @@
             <text name="T_SSRMaster">スクリーンスペース 反射 (SSR)</text>
 
             <check_box name="cb_SSR" label="SSR を有効化"
-                       tool_tip="Cinematic では BD 推奨値で ON、LL デフォルトは OFF です。"/>
-            <button name="d_SSR" tool_tip="BD 推奨値 (ON) に戻す"/>
+                       tool_tip="Cinematic では 新しい描画エンジン推奨値で ON、LL デフォルトは OFF です。"/>
+            <button name="d_SSR" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
 
             <text name="T_SSRTuning">品質チューニング</text>
 
@@ -169,8 +169,8 @@
             <text name="T_MBMaster">モーションブラー</text>
 
             <check_box name="cb_MotionBlur" label="モーションブラーを有効化"
-                       tool_tip="Cinematic では BD 推奨値で ON、LL デフォルトは OFF です。"/>
-            <button name="d_MotionBlur" tool_tip="BD 推奨値 (ON) に戻す"/>
+                       tool_tip="Cinematic では 新しい描画エンジン推奨値で ON、LL デフォルトは OFF です。"/>
+            <button name="d_MotionBlur" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
 
             <text name="T_MBStrength">強度 (px)</text>
             <button name="d_MBStrength" tool_tip="デフォルトに戻す"/>
@@ -186,16 +186,16 @@
             <text name="T_AA">アンチエイリアシング</text>
 
             <text name="T_FSAAType">AA 種別 (0/1/2/3)</text>
-            <slider_bar name="sb_FSAAType" tool_tip="0=オフ, 1=FXAA, 2=SMAA (BD 推奨値), 3=SMAA T2x"/>
-            <button name="d_FSAAType" tool_tip="BD 推奨値 (SMAA=2) に戻す"/>
+            <slider_bar name="sb_FSAAType" tool_tip="0=オフ, 1=FXAA, 2=SMAA (新しい描画エンジン推奨値), 3=SMAA T2x"/>
+            <button name="d_FSAAType" tool_tip="新しい描画エンジン推奨値 (SMAA=2) に戻す"/>
 
             <check_box name="cb_SMAAT2x" label="SMAA T2x 時間的解像 (動きでゴーストが出ることあり)"
                        tool_tip="AA 種別が 2 以上で有効。エッジ安定化と引き換えに動きのゴーストが出ます。"/>
             <button name="d_SMAAT2x" tool_tip="デフォルトに戻す"/>
         </panel>
 
-        <!-- ============ Tab 7: Glow & Godrays ============ -->
-        <panel label="グロー / ゴッドレイ" name="tab_glow_godrays">
+        <!-- ============ Tab 7: Glow & Volumetric ============ -->
+        <panel label="グロー / ボリュメトリック" name="tab_glow_godrays">
             <text name="T_GlowTuning">グロー / ブルーム チューニング</text>
 
             <text name="T_GlowStrength">強度</text>
@@ -235,39 +235,30 @@
                        tool_tip="GODRAYS_FADE permutation を追加します。切替時にシェーダーが即時再構築 (1-2秒) されます。"/>
             <button name="d_VolDir" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_BDGodrays">BD ゴッドレイ (未実装)</text>
-            <text name="T_BDGodraysNote">
-                BD RenderGodrays + 関連 4 cvar は未移植です (shader は存在、cvar/pipeline 接続が未) — Phase 4.x で対応予定
-            </text>
         </panel>
 
         <!-- ============ Tab 8: Lighting ============ -->
         <panel label="ライティング" name="tab_lighting">
-            <text name="T_LightingNote">ライティング (未実装 — BD cvar 群が未移植)</text>
+            <text name="T_LightingNote">ライティング コントロール</text>
 
-            <check_box name="cb_EnableFullbright" label="フルブライトを有効化 (未実装)"
-                       tool_tip="未実装 — BD cvar RenderEnableFullbright は未移植"/>
-            <button name="d_EnableFullbright" tool_tip="未実装"/>
+            <check_box name="cb_EnableFullbright" label="フルブライト テクスチャを有効化 (全モード)"
+                       tool_tip="OFF にするとフルブライト テクスチャが通常の陰影付き面として描画されます (全モードに適用)。"/>
+            <button name="d_EnableFullbright" tool_tip="デフォルトに戻す"/>
 
-            <check_box name="cb_DeferredLights" label="ディファードライトを描画 (未実装)"
-                       tool_tip="未実装 — BD cvar RenderDeferredLights は未移植"/>
-            <button name="d_DeferredLights" tool_tip="未実装"/>
+            <check_box name="cb_DeferredLights" label="ワールド内のポイント/スポットライトを描画"
+                       tool_tip="OFF にするとアタッチでない (in-world の) ポイント/スポットライトが抑制されます。"/>
+            <button name="d_DeferredLights" tool_tip="デフォルトに戻す"/>
 
-            <check_box name="cb_OwnAttachedLights" label="自分のアタッチライトを描画 (未実装)"
-                       tool_tip="未実装 — BD cvar RenderOwnAttachedLights は未移植"/>
-            <button name="d_OwnAttachedLights" tool_tip="未実装"/>
+            <check_box name="cb_OwnAttachedLights" label="自分のアタッチライトを描画"
+                       tool_tip="OFF にすると自分のアバターに付いているライトが抑制されます。"/>
+            <button name="d_OwnAttachedLights" tool_tip="デフォルトに戻す"/>
 
-            <check_box name="cb_OtherAttachedLights" label="他人のアタッチライトを描画 (未実装)"
-                       tool_tip="未実装 — BD cvar RenderOtherAttachedLights は未移植"/>
-            <button name="d_OtherAttachedLights" tool_tip="未実装"/>
+            <check_box name="cb_OtherAttachedLights" label="他人のアタッチライトを描画"
+                       tool_tip="OFF にすると他のアバターに付いているライトが抑制されます。"/>
+            <button name="d_OtherAttachedLights" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_GlobalLightStrength">グローバルライト強度 (未実装)</text>
-            <button name="d_GlobalLightStrength" tool_tip="未実装"/>
-
-            <text name="T_LightingLens">レンズ / フレア (未実装)</text>
-            <check_box name="cb_LensFlare" label="レンズフレアを描画 (未実装)"
-                       tool_tip="未実装 — 新しい描画エンジン shader 未移植"/>
-            <button name="d_LensFlare" tool_tip="未実装"/>
+            <text name="T_GlobalLightStrength">グローバルライト強度</text>
+            <button name="d_GlobalLightStrength" tool_tip="デフォルトに戻す"/>
         </panel>
 
         <!-- ============ Tab 9: Post-process ============ -->
@@ -277,30 +268,22 @@
             <text name="T_CASSharpness">CAS シャープネス</text>
             <button name="d_CASSharpness" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_PostFX">ポスト FX (未実装)</text>
+            <text name="T_PostFX">ポスト FX</text>
 
-            <text name="T_GreyscaleStrength">グレースケール強度 (未実装)</text>
-            <button name="d_GreyscaleStrength" tool_tip="未実装"/>
+            <text name="T_GreyscaleStrength">グレースケール強度</text>
+            <button name="d_GreyscaleStrength" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_PosterizationSamples">ポスタリゼーション (未実装)</text>
-            <button name="d_PosterizationSamples" tool_tip="未実装"/>
+            <text name="T_SepiaStrength">セピア強度</text>
+            <button name="d_SepiaStrength" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_SepiaStrength">セピア強度 (未実装)</text>
-            <button name="d_SepiaStrength" tool_tip="未実装"/>
-
-            <text name="T_Tone">トーンマッピング (未実装)</text>
-
-            <text name="T_ColorGradeTech">カラーグレード手法 (未実装)</text>
-            <button name="d_ColorGradeTech" tool_tip="未実装"/>
-
-            <text name="T_ToneMapping">トーンマッピング演算子 (未実装)</text>
-            <button name="d_ToneMapping" tool_tip="未実装"/>
+            <text name="T_PosterizationSamples">ポスタリゼーション 階調数</text>
+            <button name="d_PosterizationSamples" tool_tip="デフォルトに戻す"/>
         </panel>
 
     </tab_container>
 
     <text name="T_Credits">
-        BD DoF / モーションブラー / SSR チェーンは Black Dragon viewer (LGPL-2.1) から移植。「未実装」行は未移植の BD cvar (Phase 4.x で対応予定)。
+        DoF / モーションブラー / SSR / シネマ撮影チェーンは Black Dragon viewer (LGPL-2.1) から移植。
     </text>
 
 </floater>

@@ -8,7 +8,7 @@
   restart; sliders here apply live.
 
   D button: <button.commit_callback function="AYAResetCinematic" parameter="<cvar>"/>
-  Restores the cvar to AYAstorm Cinematic recommended value (BD parity) via
+  Restores the cvar to AYAstorm Cinematic recommended value via
   llviewermenu.cpp::AYAResetCinematic::parityTable(); falls back to LL default
   for cvars not in the table.
 
@@ -46,7 +46,7 @@
      height="32"
      font="SansSerifSmall"
      word_wrap="true">
-        Active only when View Mode (Graphics tab) is "Cinematic". Mode change requires restart; sliders apply live. "D" restores BD parity / LL default.
+        Active only when View Mode (Graphics tab) is "Cinematic". Mode change requires restart; sliders apply live. "D" restores Cinematic preset / LL default.
     </text>
 
     <tab_container
@@ -63,7 +63,7 @@
 
         <!-- =================== Tab 1: General =================== -->
         <panel border="false" follows="left|top" label="General" layout="topleft" left="1" name="tab_general" top="0" height="427" width="588">
-            <text follows="left|top" layout="topleft" name="T_GeneralMaster" top="8"   left="8"  width="572" height="18" font="SansSerif">Master switches (BD parity defaults)</text>
+            <text follows="left|top" layout="topleft" name="T_GeneralMaster" top="8"   left="8"  width="572" height="18" font="SansSerif">Master switches (Cinematic preset defaults)</text>
 
             <check_box follows="left|top" layout="topleft" name="cb_Deferred"            control_name="RenderDeferred"           top="32"  left="12" width="530" height="20" label="Deferred Rendering (required for shadows/SSAO/SSR/DoF)" tool_tip="Master switch. Disabling kills almost every Cinematic feature."/>
             <button    follows="left|top" layout="topleft" name="d_Deferred"             top="32"  left="555" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDeferred"/></button>
@@ -115,8 +115,10 @@
 
             <text       follows="left|top" layout="topleft" name="T_ShadowsExtras"       top="184" left="8"   width="572" height="18" font="SansSerif">Extras</text>
 
-            <text       follows="left|top" layout="topleft" name="T_ShadowFarClip"       top="208" left="12"  width="430" height="20" text_color="White_50">Shadow far clip (未実装)</text>
-            <button     follows="left|top" layout="topleft" name="d_ShadowFarClip"       top="208" left="445" width="20"  height="20" label="D" enabled="false" tool_tip="未実装 — BD cvar RenderShadowFarClip not ported"/>
+            <text       follows="left|top" layout="topleft" name="T_ShadowFarClip"       top="208" left="12"  width="160" height="20">Shadow far clip</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_ShadowFarClip"      top="210" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderShadowFarClip" min_val="32" max_val="512" increment="1"/>
+            <spinner    follows="left|top" layout="topleft" name="s_ShadowFarClip"       top="208" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderShadowFarClip" min_val="32" max_val="512" increment="1" decimal_digits="0" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_ShadowFarClip"       top="208" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderShadowFarClip"/></button>
         </panel>
 
         <!-- =================== Tab 3: SSAO =================== -->
@@ -151,11 +153,11 @@
         <panel border="false" follows="left|top" label="DoF &amp; Camera" layout="topleft" left="1" name="tab_dof_camera" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_DoFMaster" top="8" left="8" width="572" height="18" font="SansSerif">DoF master switches</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_DepthOfField"   control_name="RenderDepthOfField"            top="32"  left="12" width="530" height="20" label="Enable Depth of Field" tool_tip="BD parity default ON in Cinematic; LL default OFF."/>
-            <button    follows="left|top" layout="topleft" name="d_DepthOfField"    top="32"  left="555" width="20"  height="20" label="D" tool_tip="Reset to BD parity (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfField"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_DepthOfField"   control_name="RenderDepthOfField"            top="32"  left="12" width="530" height="20" label="Enable Depth of Field" tool_tip="Cinematic preset default ON; LL default OFF."/>
+            <button    follows="left|top" layout="topleft" name="d_DepthOfField"    top="32"  left="555" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfField"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_DoFHighQuality" control_name="RenderDepthOfFieldHighQuality" top="56"  left="12" width="530" height="20" label="High-quality DoF (4× CoF, depth-gated)" tool_tip="Higher GPU cost; BD parity default ON."/>
-            <button    follows="left|top" layout="topleft" name="d_DoFHighQuality"  top="56"  left="555" width="20"  height="20" label="D" tool_tip="Reset to BD parity (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldHighQuality"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_DoFHighQuality" control_name="RenderDepthOfFieldHighQuality" top="56"  left="12" width="530" height="20" label="High-quality DoF (4× CoF, depth-gated)" tool_tip="Higher GPU cost; Cinematic preset default ON."/>
+            <button    follows="left|top" layout="topleft" name="d_DoFHighQuality"  top="56"  left="555" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldHighQuality"/></button>
 
             <check_box follows="left|top" layout="topleft" name="cb_DoFFront"       control_name="RenderDepthOfFieldFront"       top="80"  left="12" width="530" height="20" label="Front-of-focus blur" tool_tip="Allow objects in front of the focus plane to blur, not just behind."/>
             <button    follows="left|top" layout="topleft" name="d_DoFFront"        top="80"  left="555" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldFront"/></button>
@@ -163,40 +165,40 @@
             <check_box follows="left|top" layout="topleft" name="cb_DoFChroma"      control_name="RenderDepthOfFieldChroma"      top="104" left="12" width="530" height="20" label="Couple chromatic aberration to DoF" tool_tip="On: R/G/B offset scales with DoF blur. Off: radial vignette at screen edges only."/>
             <button    follows="left|top" layout="topleft" name="d_DoFChroma"       top="104" left="555" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldChroma"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_DoFAlphas"      enabled="false"                              top="128" left="12" width="530" height="20" label="DoF on alpha-blended (未実装)" tool_tip="未実装 — BD cvar RenderDepthOfFieldAlphas not ported"/>
-            <button    follows="left|top" layout="topleft" name="d_DoFAlphas"       top="128" left="555" width="20"  height="20" label="D" enabled="false" tool_tip="未実装"/>
+            <check_box follows="left|top" layout="topleft" name="cb_DoFAlphas"      enabled_control="AYACinematicModeActive" control_name="RenderDepthOfFieldAlphas" top="128" left="12" width="530" height="20" label="Include alpha-blended surfaces in DoF depth" tool_tip="On: alpha surfaces (cutoff 0.7) contribute to DoF. Off: excluded (cutoff 1.0)."/>
+            <button    follows="left|top" layout="topleft" name="d_DoFAlphas"       top="128" left="555" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldAlphas"/></button>
 
-            <text follows="left|top" layout="topleft" name="T_CameraValues" top="160" left="8" width="572" height="18" font="SansSerif">Camera (BD parity values)</text>
+            <text follows="left|top" layout="topleft" name="T_CameraValues" top="160" left="8" width="572" height="18" font="SansSerif">Camera (Cinematic preset values)</text>
 
             <text       follows="left|top" layout="topleft" name="T_FieldOfView"          top="184" left="12"  width="160" height="20">Field of View (°)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FieldOfView"         top="186" left="176" width="195" height="16" control_name="CameraFieldOfView"   min_val="10" max_val="120" increment="1"/>
             <spinner    follows="left|top" layout="topleft" name="s_FieldOfView"          top="184" left="376" width="65"  height="20" control_name="CameraFieldOfView"   min_val="10" max_val="120" increment="1" decimal_digits="1" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_FieldOfView"          top="184" left="445" width="20"  height="20" label="D" tool_tip="Reset to BD parity (67°)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFieldOfView"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FieldOfView"          top="184" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (67°)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFieldOfView"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_FNumber"              top="208" left="12"  width="160" height="20">F-number (aperture)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FNumber"             top="210" left="176" width="195" height="16" control_name="CameraFNumber"      min_val="1"  max_val="128" increment="0.5"/>
             <spinner    follows="left|top" layout="topleft" name="s_FNumber"              top="208" left="376" width="65"  height="20" control_name="CameraFNumber"      min_val="1"  max_val="128" increment="0.5" decimal_digits="1" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_FNumber"              top="208" left="445" width="20"  height="20" label="D" tool_tip="Reset to BD parity (28)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFNumber"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FNumber"              top="208" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (28)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFNumber"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_FocalLength"          top="232" left="12"  width="160" height="20">Focal length (mm)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FocalLength"         top="234" left="176" width="195" height="16" control_name="CameraFocalLength"  min_val="10" max_val="300" increment="1"/>
             <spinner    follows="left|top" layout="topleft" name="s_FocalLength"          top="232" left="376" width="65"  height="20" control_name="CameraFocalLength"  min_val="10" max_val="300" increment="1" decimal_digits="1" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_FocalLength"          top="232" left="445" width="20"  height="20" label="D" tool_tip="Reset to BD parity (40mm)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocalLength"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FocalLength"          top="232" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (40mm)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocalLength"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_MaxCoF"               top="256" left="12"  width="160" height="20">Max circle of confusion</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_MaxCoF"              top="258" left="176" width="195" height="16" control_name="CameraMaxCoF"       min_val="0.1" max_val="50" increment="0.1"/>
             <spinner    follows="left|top" layout="topleft" name="s_MaxCoF"               top="256" left="376" width="65"  height="20" control_name="CameraMaxCoF"       min_val="0.1" max_val="50" increment="0.1" decimal_digits="2" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_MaxCoF"               top="256" left="445" width="20"  height="20" label="D" tool_tip="Reset to BD parity (11.9)"><button.commit_callback function="AYAResetCinematic" parameter="CameraMaxCoF"/></button>
+            <button     follows="left|top" layout="topleft" name="d_MaxCoF"               top="256" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (11.9)"><button.commit_callback function="AYAResetCinematic" parameter="CameraMaxCoF"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_FocusTransitionTime" top="280" left="12"  width="160" height="20">Focus transition (s)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FocusTransitionTime" top="282" left="176" width="195" height="16" control_name="CameraFocusTransitionTime" min_val="0" max_val="5" increment="0.05"/>
             <spinner    follows="left|top" layout="topleft" name="s_FocusTransitionTime"  top="280" left="376" width="65"  height="20" control_name="CameraFocusTransitionTime" min_val="0" max_val="5" increment="0.05" decimal_digits="2" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_FocusTransitionTime"  top="280" left="445" width="20"  height="20" label="D" tool_tip="Reset to BD parity (0.4s)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocusTransitionTime"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FocusTransitionTime"  top="280" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (0.4s)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocusTransitionTime"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_DoFResScale"          top="304" left="12"  width="160" height="20">DoF buffer resolution</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_DoFResScale"         top="306" left="176" width="195" height="16" control_name="CameraDoFResScale" min_val="0.1" max_val="1" increment="0.05"/>
             <spinner    follows="left|top" layout="topleft" name="s_DoFResScale"          top="304" left="376" width="65"  height="20" control_name="CameraDoFResScale" min_val="0.1" max_val="1" increment="0.05" decimal_digits="2" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_DoFResScale"          top="304" left="445" width="20"  height="20" label="D" tool_tip="Reset to BD parity (0.5)"><button.commit_callback function="AYAResetCinematic" parameter="CameraDoFResScale"/></button>
+            <button     follows="left|top" layout="topleft" name="d_DoFResScale"          top="304" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (0.5)"><button.commit_callback function="AYAResetCinematic" parameter="CameraDoFResScale"/></button>
 
             <text follows="left|top" layout="topleft" name="T_ChromaSec" top="336" left="8" width="572" height="18" font="SansSerif">Chromatic aberration strength</text>
 
@@ -210,8 +212,8 @@
         <panel border="false" follows="left|top" label="SSR" layout="topleft" left="1" name="tab_ssr" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_SSRMaster" top="8" left="8" width="572" height="18" font="SansSerif">Screen Space Reflections</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_SSR" control_name="RenderScreenSpaceReflections" top="32" left="12" width="530" height="20" label="Enable Screen Space Reflections" tool_tip="BD parity default ON in Cinematic; LL default OFF."/>
-            <button    follows="left|top" layout="topleft" name="d_SSR"  top="32" left="555" width="20" height="20" label="D" tool_tip="Reset to BD parity (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflections"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_SSR" control_name="RenderScreenSpaceReflections" top="32" left="12" width="530" height="20" label="Enable Screen Space Reflections" tool_tip="Cinematic preset default ON; LL default OFF."/>
+            <button    follows="left|top" layout="topleft" name="d_SSR"  top="32" left="555" width="20" height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflections"/></button>
 
             <text follows="left|top" layout="topleft" name="T_SSRTuning" top="68" left="8" width="572" height="18" font="SansSerif">Quality tuning</text>
 
@@ -250,8 +252,8 @@
         <panel border="false" follows="left|top" label="Motion Blur" layout="topleft" left="1" name="tab_motion_blur" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_MBMaster" top="8" left="8" width="572" height="18" font="SansSerif">Motion Blur</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_MotionBlur" control_name="RenderMotionBlur" top="32" left="12" width="530" height="20" label="Enable Motion Blur" tool_tip="BD parity default ON in Cinematic; LL default OFF."/>
-            <button    follows="left|top" layout="topleft" name="d_MotionBlur"  top="32" left="555" width="20"  height="20" label="D" tool_tip="Reset to BD parity (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderMotionBlur"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_MotionBlur" control_name="RenderMotionBlur" top="32" left="12" width="530" height="20" label="Enable Motion Blur" tool_tip="Cinematic preset default ON; LL default OFF."/>
+            <button    follows="left|top" layout="topleft" name="d_MotionBlur"  top="32" left="555" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderMotionBlur"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_MBStrength" top="60" left="12" width="160" height="20">Strength (px)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_MBStrength" top="62" left="176" width="195" height="16" control_name="RenderMotionBlurStrength" min_val="0" max_val="128" increment="1"/>
@@ -267,16 +269,16 @@
             <text follows="left|top" layout="topleft" name="T_AA" top="148" left="8" width="572" height="18" font="SansSerif">Antialiasing</text>
 
             <text       follows="left|top" layout="topleft" name="T_FSAAType"   top="172" left="12"  width="160" height="20">AA type (0/1/2/3)</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_FSAAType"  top="174" left="176" width="195" height="16" control_name="RenderFSAAType" min_val="0" max_val="3" increment="1" tool_tip="0=Off, 1=FXAA, 2=SMAA (BD parity), 3=SMAA T2x"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_FSAAType"  top="174" left="176" width="195" height="16" control_name="RenderFSAAType" min_val="0" max_val="3" increment="1" tool_tip="0=Off, 1=FXAA, 2=SMAA (Cinematic preset), 3=SMAA T2x"/>
             <spinner    follows="left|top" layout="topleft" name="s_FSAAType"   top="172" left="376" width="65"  height="20" control_name="RenderFSAAType" min_val="0" max_val="3" increment="1" decimal_digits="0" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_FSAAType"   top="172" left="445" width="20"  height="20" label="D" tool_tip="Reset to BD parity (SMAA=2)"><button.commit_callback function="AYAResetCinematic" parameter="RenderFSAAType"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FSAAType"   top="172" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (SMAA=2)"><button.commit_callback function="AYAResetCinematic" parameter="RenderFSAAType"/></button>
 
             <check_box follows="left|top" layout="topleft" name="cb_SMAAT2x"    control_name="RenderSMAAT2x" top="200" left="12" width="530" height="20" label="SMAA T2x temporal resolve (may ghost on motion)" tool_tip="Requires AA type ≥ 2. Edge stabilization at cost of motion ghosting."/>
             <button    follows="left|top" layout="topleft" name="d_SMAAT2x"     top="200" left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderSMAAT2x"/></button>
         </panel>
 
-        <!-- =================== Tab 7: Glow & Godrays =================== -->
-        <panel border="false" follows="left|top" label="Glow &amp; Godrays" layout="topleft" left="1" name="tab_glow_godrays" top="0" height="427" width="588">
+        <!-- =================== Tab 7: Glow & Volumetric =================== -->
+        <panel border="false" follows="left|top" label="Glow &amp; Volumetric" layout="topleft" left="1" name="tab_glow_godrays" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_GlowTuning" top="8" left="8" width="572" height="18" font="SansSerif">Glow / Bloom tuning</text>
 
             <text       follows="left|top" layout="topleft" name="T_GlowStrength"          top="32"  left="12"  width="160" height="20">Strength</text>
@@ -332,35 +334,28 @@
             <check_box follows="left|top" layout="topleft" name="cb_VolDir" control_name="RenderVolumetricLightingDirectional" top="312" left="12" width="530" height="20" label="Directional fade (sun-below-horizon)" tool_tip="Adds GODRAYS_FADE permutation. Toggling rebuilds shaders live (1-2s)."/>
             <button    follows="left|top" layout="topleft" name="d_VolDir"  top="312" left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderVolumetricLightingDirectional"/></button>
 
-            <text follows="left|top" layout="topleft" name="T_BDGodrays" top="344" left="8" width="572" height="18" font="SansSerif">BD Godrays (未実装)</text>
-            <text follows="left|top|right" layout="topleft" name="T_BDGodraysNote" top="368" left="12" width="572" height="36" text_color="White_50" word_wrap="true">
-                BD RenderGodrays + 4 関連 cvar は未移植 (shader は存在、cvar/pipeline wire-up 未) — Phase 4.x 予定
-            </text>
         </panel>
 
         <!-- =================== Tab 8: Lighting =================== -->
         <panel border="false" follows="left|top" label="Lighting" layout="topleft" left="1" name="tab_lighting" top="0" height="427" width="588">
-            <text follows="left|top" layout="topleft" name="T_LightingNote" top="8" left="8" width="572" height="18" font="SansSerif">Lighting controls (未実装 — BD cvar 群が未移植)</text>
+            <text follows="left|top" layout="topleft" name="T_LightingNote" top="8" left="8" width="572" height="18" font="SansSerif">Lighting controls</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_EnableFullbright"   enabled="false" top="32"  left="12" width="530" height="20" label="Enable fullbright (未実装)" tool_tip="未実装 — BD cvar RenderEnableFullbright not ported"/>
-            <button    follows="left|top" layout="topleft" name="d_EnableFullbright"    enabled="false" top="32"  left="555" width="20" height="20" label="D" tool_tip="未実装"/>
+            <check_box follows="left|top" layout="topleft" name="cb_EnableFullbright"   enabled_control="AYACinematicModeActive" control_name="RenderEnableFullbright"   top="32"  left="12" width="530" height="20" label="Enable fullbright textures (global)" tool_tip="If off, fullbright textures render as regular shaded surfaces (applies to all modes)."/>
+            <button    follows="left|top" layout="topleft" name="d_EnableFullbright"    top="32"  left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderEnableFullbright"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_DeferredLights"     enabled="false" top="56"  left="12" width="530" height="20" label="Render deferred lights (未実装)" tool_tip="未実装 — BD cvar RenderDeferredLights not ported"/>
-            <button    follows="left|top" layout="topleft" name="d_DeferredLights"      enabled="false" top="56"  left="555" width="20" height="20" label="D" tool_tip="未実装"/>
+            <check_box follows="left|top" layout="topleft" name="cb_DeferredLights"     enabled_control="AYACinematicModeActive" control_name="RenderDeferredLights"     top="56"  left="12" width="530" height="20" label="Render in-world point/spot lights" tool_tip="If off, non-attached point/spot lights are suppressed."/>
+            <button    follows="left|top" layout="topleft" name="d_DeferredLights"      top="56"  left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDeferredLights"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_OwnAttachedLights"  enabled="false" top="80"  left="12" width="530" height="20" label="Render own attached lights (未実装)" tool_tip="未実装 — BD cvar RenderOwnAttachedLights not ported"/>
-            <button    follows="left|top" layout="topleft" name="d_OwnAttachedLights"   enabled="false" top="80"  left="555" width="20" height="20" label="D" tool_tip="未実装"/>
+            <check_box follows="left|top" layout="topleft" name="cb_OwnAttachedLights"  enabled_control="AYACinematicModeActive" control_name="RenderOwnAttachedLights"  top="80"  left="12" width="530" height="20" label="Render own attached lights" tool_tip="If off, lights attached to your own avatar are suppressed."/>
+            <button    follows="left|top" layout="topleft" name="d_OwnAttachedLights"   top="80"  left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderOwnAttachedLights"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_OtherAttachedLights" enabled="false" top="104" left="12" width="530" height="20" label="Render others' attached lights (未実装)" tool_tip="未実装 — BD cvar RenderOtherAttachedLights not ported"/>
-            <button    follows="left|top" layout="topleft" name="d_OtherAttachedLights" enabled="false" top="104" left="555" width="20" height="20" label="D" tool_tip="未実装"/>
+            <check_box follows="left|top" layout="topleft" name="cb_OtherAttachedLights" enabled_control="AYACinematicModeActive" control_name="RenderOtherAttachedLights" top="104" left="12" width="530" height="20" label="Render others' attached lights" tool_tip="If off, lights attached to other avatars are suppressed."/>
+            <button    follows="left|top" layout="topleft" name="d_OtherAttachedLights" top="104" left="555" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderOtherAttachedLights"/></button>
 
-            <text       follows="left|top" layout="topleft" name="T_GlobalLightStrength" top="128" left="12" width="430" height="20" text_color="White_50">Global light strength (未実装)</text>
-            <button     follows="left|top" layout="topleft" name="d_GlobalLightStrength" enabled="false" top="128" left="445" width="20" height="20" label="D" tool_tip="未実装"/>
-
-            <text follows="left|top" layout="topleft" name="T_LightingLens" top="160" left="8" width="572" height="18" font="SansSerif">Lens / Flare (未実装)</text>
-
-            <check_box follows="left|top" layout="topleft" name="cb_LensFlare" enabled="false" top="184" left="12" width="530" height="20" label="Render lens flare (未実装)" tool_tip="未実装 — new render engine shader missing"/>
-            <button    follows="left|top" layout="topleft" name="d_LensFlare"  enabled="false" top="184" left="555" width="20" height="20" label="D" tool_tip="未実装"/>
+            <text       follows="left|top" layout="topleft" name="T_GlobalLightStrength" top="128" left="12" width="160" height="20">Global light strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlobalLightStrength" top="130" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlobalLightStrength" min_val="0" max_val="4" increment="0.05"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlobalLightStrength"  top="128" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlobalLightStrength" min_val="0" max_val="4" increment="0.05" decimal_digits="2" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_GlobalLightStrength"  top="128" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlobalLightStrength"/></button>
         </panel>
 
         <!-- =================== Tab 9: Post-process =================== -->
@@ -372,24 +367,22 @@
             <spinner    follows="left|top" layout="topleft" name="s_CASSharpness"  top="32" left="376" width="65"  height="20" control_name="RenderCASSharpness" min_val="0" max_val="1" increment="0.01" decimal_digits="2" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_CASSharpness"  top="32" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderCASSharpness"/></button>
 
-            <text follows="left|top" layout="topleft" name="T_PostFX" top="64" left="8" width="572" height="18" font="SansSerif">Post FX (未実装)</text>
+            <text follows="left|top" layout="topleft" name="T_PostFX" top="64" left="8" width="572" height="18" font="SansSerif">Post FX</text>
 
-            <text   follows="left|top" layout="topleft" name="T_GreyscaleStrength"    top="88"  left="12" width="430" height="20" text_color="White_50">Greyscale strength (未実装)</text>
-            <button follows="left|top" layout="topleft" name="d_GreyscaleStrength"    enabled="false" top="88"  left="445" width="20" height="20" label="D" tool_tip="未実装"/>
+            <text       follows="left|top" layout="topleft" name="T_GreyscaleStrength"    top="88"  left="12" width="160" height="20">Greyscale strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GreyscaleStrength"   top="90"  left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderPostGreyscaleStrength" min_val="0" max_val="1" increment="0.01"/>
+            <spinner    follows="left|top" layout="topleft" name="s_GreyscaleStrength"    top="88"  left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderPostGreyscaleStrength" min_val="0" max_val="1" increment="0.01" decimal_digits="2" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_GreyscaleStrength"    top="88"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderPostGreyscaleStrength"/></button>
 
-            <text   follows="left|top" layout="topleft" name="T_PosterizationSamples" top="112" left="12" width="430" height="20" text_color="White_50">Posterization (未実装)</text>
-            <button follows="left|top" layout="topleft" name="d_PosterizationSamples" enabled="false" top="112" left="445" width="20" height="20" label="D" tool_tip="未実装"/>
+            <text       follows="left|top" layout="topleft" name="T_SepiaStrength"        top="112" left="12" width="160" height="20">Sepia strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SepiaStrength"       top="114" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderPostSepiaStrength" min_val="0" max_val="1" increment="0.01"/>
+            <spinner    follows="left|top" layout="topleft" name="s_SepiaStrength"        top="112" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderPostSepiaStrength" min_val="0" max_val="1" increment="0.01" decimal_digits="2" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_SepiaStrength"        top="112" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderPostSepiaStrength"/></button>
 
-            <text   follows="left|top" layout="topleft" name="T_SepiaStrength"        top="136" left="12" width="430" height="20" text_color="White_50">Sepia strength (未実装)</text>
-            <button follows="left|top" layout="topleft" name="d_SepiaStrength"        enabled="false" top="136" left="445" width="20" height="20" label="D" tool_tip="未実装"/>
-
-            <text follows="left|top" layout="topleft" name="T_Tone" top="168" left="8" width="572" height="18" font="SansSerif">Tone mapping (未実装)</text>
-
-            <text   follows="left|top" layout="topleft" name="T_ColorGradeTech" top="192" left="12" width="430" height="20" text_color="White_50">Color grade tech (未実装)</text>
-            <button follows="left|top" layout="topleft" name="d_ColorGradeTech" enabled="false" top="192" left="445" width="20" height="20" label="D" tool_tip="未実装"/>
-
-            <text   follows="left|top" layout="topleft" name="T_ToneMapping"    top="216" left="12" width="430" height="20" text_color="White_50">Tone mapping op (未実装)</text>
-            <button follows="left|top" layout="topleft" name="d_ToneMapping"    enabled="false" top="216" left="445" width="20" height="20" label="D" tool_tip="未実装"/>
+            <text       follows="left|top" layout="topleft" name="T_PosterizationSamples" top="136" left="12" width="160" height="20">Posterization shades</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_PosterizationSamples" top="138" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderPostPosterizationSamples" min_val="1" max_val="64" increment="1"/>
+            <spinner    follows="left|top" layout="topleft" name="s_PosterizationSamples"  top="136" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderPostPosterizationSamples" min_val="1" max_val="64" increment="1" decimal_digits="0" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_PosterizationSamples"  top="136" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderPostPosterizationSamples"/></button>
         </panel>
 
     </tab_container>
@@ -405,7 +398,7 @@
      font="SansSerifSmall"
      word_wrap="true"
      text_color="White_50">
-        BD DoF / Motion Blur / SSR chain ported from Black Dragon viewer (LGPL-2.1). "未実装" rows mark BD cvars not yet ported (Phase 4.x).
+        DoF / Motion Blur / SSR / Cinematic chain ported from Black Dragon viewer (LGPL-2.1).
     </text>
 
 </floater>
