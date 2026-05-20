@@ -1,12 +1,26 @@
 <?xml version="1.0" ?>
 <!--
-  AYAstorm r30 BD full port Phase 5 R2 (A2): Cinematic mode BD-parity overlay.
+  AYAstorm r30 BD full port Phase 5 A' (refined R2): Cinematic mode BD-parity
+  overlay — BD-X1 cvar (17 件) のみ。
 
-  Mode 2 (Cinematic) で BD upstream `BlackDragon 995a1354d8` の描画 cvar default を
-  適用するための overlay。仕様詳細は
-  `docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md` §3.4 (architecture
-  decision) および `ayastorm-r30-p5-bd-parity-spec.md` §4.6.2 (cvar default diff
-  audit) を参照。
+  Mode 2 (Cinematic) で BD upstream `BlackDragon 995a1354d8` の描画 cvar
+  default を適用するための overlay。R2 (commit 49eafd0d6b) は 32 cvar を
+  一括 overlay 焼きしていたが、shader/pipeline trace audit (task #191) で
+  以下 2 種が混在していたことが判明:
+
+    - BD-X1 (17 件): shader uniform / kernel 配列構築に直接効く視覚 fidelity
+      cvar。Glow weight/閾値 8 + Shadow blur/bias 6 + SSAO 2 + spot shadow 1。
+      mode 2 で BD と同じ視覚を再現するには BD 値で焼く必然性あり。
+      本 file が overlay 対象とするのはこれら。
+    - BD-X2 (15 件): path 切替 / on-off 判定 / HW spec / scene cost / peer cost
+      判定に使われる cvar。RenderFarClip / RenderFSAAType / RenderShadowDetail /
+      RenderAvatarMaxComplexity 等。user の HW/scene 判断で両 mode 共有すべき
+      もので、BD 値で焼く意義なし。**本 file から除外** (A' で 15 件削除)。
+
+  P5 確定仕様: 「Preference 設定は全 mode で共有 (1 cvar 1 値)、mode 2 専用の
+  cvar (BD-X1) は Preferences UI で mode 0/1 時に grey out (C' で実装予定)」。
+  audit-spec §5.10 (AY 固有 cvar の B3 grey-out) の思想を BD-borrow 側に
+  拡張した形。
 
   形式: 平坦な LLSD map (cvar name -> value)。値の型は対応 cvar が settings.xml
   に登録済の Type に従う (LLControlVariable::setValue が LLSD coercion を担当)。
@@ -14,15 +28,15 @@
   適用契機 (`llcinematicoverlay.cpp` 実装):
     - 起動時、AYAVisualRealismEnabled==2 かつ overlay 未適用 (sentinel
       AYACinematicOverlayApplied==0) のとき
-    - mode 切替で 1/0 -> 2 になったとき (`handleAYAVisualRealismEnabled` 経由)
+    - LLViewerWindow::applyRecommendedSettings 後の force-reapply
 
-  mode 2 -> 1/0 切替時は sentinel をリセットするのみで cvar 値は触らない。次回
-  mode 2 に戻る際に再 force-apply される。BD 値を編集しても本 overlay は更新
-  されないので、cvar default 変更時は本ファイルと parity-spec §4.6.2 の両方を
-  同期する。
+  mode 2 -> 1/0 切替時は sentinel をリセットするのみで cvar 値は触らない。
+  次回 mode 2 に戻る際に再 force-apply される。BD 値を編集しても本 overlay は
+  更新されないので、cvar default 変更時は本ファイルと parity-spec §4.6.2 の
+  両方を同期する。
 
-  本ファイルに無い cvar (SSR Vector3 misdeclared 5 件 + BD-only 7 件) は別 phase
-  で扱う (parity-spec §4.6.3 / §4.6.4)。
+  本ファイルに無い cvar (BD-X2 15 件 + SSR Vector3 misdeclared 5 件 + BD-only
+  7 件) は別 phase で扱う (parity-spec §4.6.3 / §4.6.4、A' commit メッセージ参照)。
 -->
 <llsd>
   <map>
@@ -58,9 +72,6 @@
       <real>0.712</real>
     </array>
 
-    <key>RenderShadowDetail</key>
-    <integer>1</integer>
-
     <key>RenderShadowGaussian</key>
     <array>
       <real>1.25</real>
@@ -83,55 +94,13 @@
     <key>RenderShadowBlurDistFactor</key>
     <real>0.01</real>
 
-    <key>RenderShadowFOVCutoff</key>
-    <real>0.0</real>
-
-    <key>RenderShadowErrorCutoff</key>
-    <real>0.0</real>
-
     <key>RenderSSAOFactor</key>
     <real>0.05</real>
 
     <key>RenderSSAOMaxScale</key>
     <integer>300</integer>
 
-    <key>RenderFarClip</key>
-    <real>96.0</real>
-
-    <key>RenderTreeLODFactor</key>
-    <real>1.0</real>
-
-    <key>RenderTerrainScale</key>
-    <real>6.0</real>
-
-    <key>RenderWaterRefResolution</key>
-    <integer>768</integer>
-
-    <key>RenderFSAAType</key>
-    <integer>2</integer>
-
-    <key>RenderAutoMaskAlphaDeferred</key>
-    <integer>0</integer>
-
-    <key>RenderAutoMaskAlphaNonDeferred</key>
-    <integer>0</integer>
-
-    <key>RenderGammaFull</key>
-    <integer>1</integer>
-
-    <key>RenderAvatarMaxComplexity</key>
-    <integer>250000</integer>
-
-    <key>RenderAutoMuteSurfaceAreaLimit</key>
-    <real>0.0</real>
-
-    <key>RenderAutoHideSurfaceAreaLimit</key>
-    <real>0.0</real>
-
     <key>RenderDeferredSpotShadowOffset</key>
     <real>0.0</real>
-
-    <key>RenderMaxVRAMBudget</key>
-    <integer>0</integer>
   </map>
 </llsd>
