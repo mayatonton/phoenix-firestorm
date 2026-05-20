@@ -1574,7 +1574,7 @@
 				 control_name="RenderSSAOFactor"
 				 follows="left|right"
 				 height="16"
-				 increment="1"
+				 increment="0.01"
 				 layout="topleft"
 				 left_pad="0"
 				 min_val="0"
@@ -1587,12 +1587,12 @@
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
-				 decimal_digits="0"
+				 decimal_digits="2"
 				 follows="top|right"
 				 max_val="100000"
 				 min_val="0"
 				 width="53"
-				 increment="1"/>
+				 increment="0.01"/>
 				<button
 				 follows="left|top"
 				 name="Reset_Scaling_Factor"
