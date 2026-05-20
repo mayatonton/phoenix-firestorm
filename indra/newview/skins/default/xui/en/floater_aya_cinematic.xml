@@ -359,7 +359,7 @@
 
             <text follows="left|top" layout="topleft" name="T_LightingLens" top="160" left="8" width="572" height="18" font="SansSerif">Lens / Flare (未実装)</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_LensFlare" enabled="false" top="184" left="12" width="530" height="20" label="Render lens flare (未実装)" tool_tip="未実装 — BD shader missing"/>
+            <check_box follows="left|top" layout="topleft" name="cb_LensFlare" enabled="false" top="184" left="12" width="530" height="20" label="Render lens flare (未実装)" tool_tip="未実装 — new render engine shader missing"/>
             <button    follows="left|top" layout="topleft" name="d_LensFlare"  enabled="false" top="184" left="555" width="20" height="20" label="D" tool_tip="未実装"/>
         </panel>
 

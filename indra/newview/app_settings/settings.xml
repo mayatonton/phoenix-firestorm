@@ -9955,7 +9955,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYACinematicOverlayApplied</key>
     <map>
       <key>Comment</key>
-      <string>Sentinel: settings_cinematic_bd.xml が現セッションで Cinematic mode に適用済みなら 1、未適用なら 0。llcinematicoverlay モジュールが管理。手動で 0 に戻すと次回 mode 2 起動時に BD parity 値が force-apply される</string>
+      <string>Sentinel: settings_cinematic_bd.xml が現セッションで Cinematic mode に適用済みなら 1、未適用なら 0。llcinematicoverlay モジュールが管理。手動で 0 に戻すと次回 mode 2 起動時に新しい描画エンジン parity 値が force-apply される</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -9974,7 +9974,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYACinematicModeActive</key>
     <map>
       <key>Comment</key>
-      <string>Helper Boolean shadow of (AYAVisualRealismEnabled==2). LL XUI enabled_control に渡して BD-X1 mode 2 専用 cvar の widget を mode 0/1 時に grey out するための shadow。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
+      <string>Helper Boolean shadow of (AYAVisualRealismEnabled==2). LL XUI enabled_control に渡して新しい描画エンジン X1 mode 2 専用 cvar の widget を mode 0/1 時に grey out するための shadow。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
       <key>Persist</key>
       <integer>0</integer>
       <key>Type</key>
@@ -10011,13 +10011,13 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAVisualRealismEnabled</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm View Mode 切替。0=Firestorm View (上流 Firestorm 標準描画)、1=AYAstorm View (r14+ 視覚表現: volumetric atmosphere / godrays / aerial perspective / Kelvin 色温度 / cloud volumetric / translucency / SSS)、2=Cinematic (r30+ 撮影描画 mode、P1 時点では AYAstorm View 相当、P2 以降で velocity buffer + Volumetric Light + Motion Blur + BD DoF chain を順次有効化)。変更には viewer 再起動が必要</string>
+      <string>AYAstorm View Mode 切替。0=Firestorm View (上流 Firestorm 標準描画)、1=AYAstorm View (r14+ 視覚表現: volumetric atmosphere / godrays / aerial perspective / Kelvin 色温度 / cloud volumetric / translucency / SSS)、2=Cinematic (r30+ 撮影描画 mode、新しい描画エンジン 995a1354d8 1:1 完全移植)。変更には viewer 再起動が必要</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>U32</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>2</integer>
     </map>
     <!-- </FS:AYA> -->
 
@@ -12122,7 +12122,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderMotionBlurStrength</key>
   <map>
     <key>Comment</key>
-    <string>Maximum motion blur length in pixels (higher = stronger blur). BD parity: type S32 (was U32, FS:AYAstorm r30 BD full port Phase 3.4 part 4 aligned to BD 995a1354d8). 0 = off (only active when AYAVisualRealismEnabled=2 Cinematic).</string>
+    <string>Maximum motion blur length in pixels (higher = stronger blur). New render engine parity: type S32 (was U32, AYAstorm r30 Phase 3.4 part 4 aligned to upstream 995a1354d8). 0 = off (only active when AYAVisualRealismEnabled=2 Cinematic).</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -12182,7 +12182,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderVolumetricLightingResolution</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P3: godray sample count per pixel for the volumetric lighting composite (BD's RenderVolumetricLightingResolution). Higher = smoother shafts, higher GPU cost. The shader's inner loop iterates (godray_res - 1) times, so values &lt;= 1 effectively disable the effect.</string>
+    <string>AYAstorm r30 P3: godray sample count per pixel for the volumetric lighting composite (new render engine's RenderVolumetricLightingResolution). Higher = smoother shafts, higher GPU cost. The shader's inner loop iterates (godray_res - 1) times, so values &lt;= 1 effectively disable the effect.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -12194,7 +12194,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderVolumetricLightingMultiplier</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). BD's default is 1.0, but AYAstorm's ACES tone mapping + HDR scene buffer compress the additive contribution to near-imperceptible at 1.0. Default 50 picked for "現実世界に近い" subtle shafts; raise to 100-200 for stronger PV/cinematic look.</string>
+    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). The new render engine's default is 1.0, but AYAstorm's ACES tone mapping + HDR scene buffer compress the additive contribution to near-imperceptible at 1.0. Default 50 picked for "現実世界に近い" subtle shafts; raise to 100-200 for stronger PV/cinematic look.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -12230,7 +12230,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderDepthOfFieldHighQuality</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P4: enable BlackDragon's high quality Depth of Field shader (postDeferredHQDoFF.glsl) with 4x CoF, depth-gated sampling, and per-channel chroma sampling. Only active when AYAVisualRealismEnabled=2 (Cinematic). Higher GPU cost than the standard DoF; toggling rebuilds the shader.</string>
+    <string>AYAstorm r30 P4: enable the new render engine's high quality Depth of Field shader (postDeferredHQDoFF.glsl) with 4x CoF, depth-gated sampling, and per-channel chroma sampling. Only active when AYAVisualRealismEnabled=2 (Cinematic). Higher GPU cost than the standard DoF; toggling rebuilds the shader.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -12242,7 +12242,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderDepthOfFieldFront</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P4 (BD borrow): enable blurring the foreground (front blur) with Depth of Field. Adds the FRONT_BLUR permutation to postDeferredF / postDeferredHQDoFF so positive CoF samples are blurred too. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
+    <string>AYAstorm r30 P4 (new render engine borrow): enable blurring the foreground (front blur) with Depth of Field. Adds the FRONT_BLUR permutation to postDeferredF / postDeferredHQDoFF so positive CoF samples are blurred too. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -12254,7 +12254,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderDepthOfFieldChroma</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P4 (BD borrow): use DoF-coupled chromatic aberration (per-channel R/G/B offset in postDeferred*F). When 1, chroma scales with CoF inside DoF; when 0, postDeferredNoDoFF runs a vignette-style screen-edge chroma instead. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
+    <string>AYAstorm r30 P4 (new render engine borrow): use DoF-coupled chromatic aberration (per-channel R/G/B offset in postDeferred*F). When 1, chroma scales with CoF inside DoF; when 0, postDeferredNoDoFF runs a vignette-style screen-edge chroma instead. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -12266,7 +12266,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderChromaStrength</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P4 (BD borrow): radial chromatic aberration strength for NoDoF Cinematic path. Per-channel R/B texcoord offset = chroma_str * 0.0005 * r2 (r2: 0 center to 2 corners). Range guidance: ~0.3 subtle (default), ~1 noticeable, ~3 cinematic, >10 stylized. Active only when AYAVisualRealismEnabled=2 (Cinematic) and the NoDoF vignette path is selected.</string>
+    <string>AYAstorm r30 P4 (new render engine borrow): radial chromatic aberration strength for NoDoF Cinematic path. Per-channel R/B texcoord offset = chroma_str * 0.0005 * r2 (r2: 0 center to 2 corners). Range guidance: ~0.3 subtle (default), ~1 noticeable, ~3 cinematic, >10 stylized. Active only when AYAVisualRealismEnabled=2 (Cinematic) and the NoDoF vignette path is selected.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
@@ -12437,7 +12437,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderWindlightInterpolateTime</key>
   <map>
     <key>Comment</key>
-    <string>Seconds over which to interpolate when a BD-style preset is applied via gDragonLibrary (sky/water/day).</string>
+    <string>Seconds over which to interpolate when a preset matching the new render engine is applied via gDragonLibrary (sky/water/day).</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>

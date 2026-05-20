@@ -266,7 +266,7 @@
 
             <text name="T_LightingLens">レンズ / フレア (未実装)</text>
             <check_box name="cb_LensFlare" label="レンズフレアを描画 (未実装)"
-                       tool_tip="未実装 — BD shader 未移植"/>
+                       tool_tip="未実装 — 新しい描画エンジン shader 未移植"/>
             <button name="d_LensFlare" tool_tip="未実装"/>
         </panel>
 

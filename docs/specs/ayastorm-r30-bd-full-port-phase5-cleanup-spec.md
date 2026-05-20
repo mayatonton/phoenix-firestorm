@@ -41,12 +41,12 @@ AYA Phase 4 検証で触った cvar の default 戻し表を release note に同
 
 | cvar | 検証で触った値 | release 後の推奨値 | persist |
 |---|---|---|---|
-| `AYAVisualRealismEnabled` | 0 / 1 / 2 | **1** (AYAstorm View 既定) | 1 |
-| `RenderShadowAutomaticDistance` | (default 1) | 1 | 1 |
-| `RenderShadowResolution` | (BD-only 配列) | 4×1024.0 | 1 |
-| `RenderShadowDistance` | (BD-only 配列) | [12, 24, 48, 96] | 1 |
+| `AYAVisualRealismEnabled` | 0 / 1 / 2 | **2** (Cinematic 既定) | 1 |
+| `RenderShadowAutomaticDistance` | (default 1) | **1** (AYA 確認 2026-05-20) | 1 |
+| `RenderShadowResolution` | (BD-only 配列) | **4×1024.0** (AYA 確認 2026-05-20、未配線 placeholder のため配線時 r30 後続 phase で再検討) | 1 |
+| `RenderShadowDistance` | (BD-only 配列) | **[12, 24, 48, 96]** (AYA 確認 2026-05-20、未配線 placeholder のため配線時 r30 後続 phase で再検討) | 1 |
 
-実際の値は AYA 検証結果を反映、Phase 5 step 3 で確定。
+実際の値は AYA 検証結果を反映、Phase 5 step 3 で確定 (2026-05-20 全 4 cvar AYA 承認完了)。
 
 ### §1.3 cinematic_bd/ license / attribution 確認
 
@@ -71,9 +71,9 @@ git history 上書きで provenance を失わない構造、cleanup 不要。bds
 
 ### §1.5 build sanity (no-op)
 
-- [ ] `autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio -DLL_TESTS:BOOL=FALSE -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE --package --chan AYAstorm-release`
-- [ ] `autobuild build -A 64 -c ReleaseFS_open --no-configure --fmodstudio` green
-- [ ] install + cache clear + 起動確認 (mode 1 default 起動のみ、3 mode 再走しない)
+- [x] `autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio -DLL_TESTS:BOOL=FALSE -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE --package --chan AYAstorm-release` (2026-05-20)
+- [x] `autobuild build -A 64 -c ReleaseFS_open --no-configure` green (2026-05-20、commit `0c76d5f7fc` 後のビルド `bf9cys912` で exit code 0 確認)
+- [x] install + cache clear + 起動確認 (2026-05-20、`~/ayastorm/` 再 install + `~/.ayastorm_x64/cache/` clear、AYA hands-on で mode 1 起動 OK 確認)
 
 ---
 
