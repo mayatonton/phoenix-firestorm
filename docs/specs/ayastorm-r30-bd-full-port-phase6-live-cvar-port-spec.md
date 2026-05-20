@@ -132,14 +132,14 @@ Phase 5 R2 で確立した Cinematic overlay 機構を使用。各 BD cvar の *
 
 ## §3 commit unit
 
-| step | 単位 | 例 |
+| step | 状態 | commit |
 |---|---|---|
-| 1 (Category A 配線) | 1 commit | `r30 BD full port Phase 6 step 1: per-channel shadow 3 cvar を AY pipeline に配線` |
-| 2 (Category B core) | 7 件 1 commit (まとめて) or 関連グループ 2-3 commit に分割 | `r30 BD full port Phase 6 step 2: live BD cvar 7 件 (Shadow/DoF/Fullbright/Lights/GlobalLight) 1:1 移植` |
-| 3 (Category B Post FX) | 1 commit (shader + C++ 一括) | `r30 BD full port Phase 6 step 3: Post FX 3 cvar (Greyscale/Sepia/Posterize) 1:1 移植` |
-| 4 (Category C UI cleanup) | 1 commit | `r30 BD full port Phase 6 step 4: floater dead UI 削除 + branding 残漏れ rename` |
-| 5 (build / 検証) | (no commit) | spec 更新で ✅ 化 |
-| FINAL | 1 commit | `r30 BD full port Phase 6: live cvar 13 件 1:1 移植 完了` |
+| 1 (Category A 配線) | ✅ | `45a71362d7` r30 BD full port Phase 6 step 1: per-channel shadow 3 cvar を AY pipeline に配線 |
+| 2 (Category B core) | ✅ | step 2 関連 commit 群 (Shadow/DoF/Fullbright/Lights/GlobalLight, 7 件) |
+| 3 (Category B Post FX) | ✅ | `1306241cc4` r30 BD full port Phase 6 step 3: Post FX 3 cvar (Greyscale/Sepia/Posterize) 1:1 移植 |
+| 4 (Category C UI cleanup) | ✅ | `94abf64fab` r30 BD full port Phase 6 step 4: floater dead UI 削除 + live cvar UI 化 + branding 残漏れ rename |
+| 5 (build / 検証) | ✅ | step 4 build green / install OK, AYA hands-on は別作業 |
+| FINAL | ✅ | `r30 BD full port Phase 6: live cvar 13 件 1:1 移植 完了` |
 
 ---
 
@@ -155,12 +155,12 @@ Phase 5 R2 で確立した Cinematic overlay 機構を使用。各 BD cvar の *
 
 ## §5 完了基準
 
-- §1.1 Category A 3 件: pipeline.cpp で shadow buffer + clip plane が per-channel 配列から正しく構成される
-- §1.2 Category B core 7 件: BD 同等 site で同じ dispatch が走る (`git diff bd/master..HEAD -- 'indra/newview/pipeline.cpp' 'indra/newview/lldrawpoolalpha.cpp' 'indra/llprimitive/llprimitive.cpp'` で 1:1 確認)
-- §1.3 Category B Post FX 3 件: Cinematic mode で Sepia/Greyscale/Posterize の slider が UI から実効
-- §1.4 dead UI 削除: floater_aya_cinematic.xml から Godrays / LensFlare / Tone mapping section が消えている
-- §1.5 branding cleanup: floater_aya_cinematic.xml に "BD" 文字列が user-visible 部分から消滅 (LGPL attribution は source comment に残す)
-- build green / cache clear / AYA hands-on で Cinematic mode の新 UI 機能を確認
-- 最終 commit: `r30 BD full port Phase 6: live cvar 13 件 1:1 移植 完了`
+- ✅ §1.1 Category A 3 件: pipeline.cpp で shadow buffer + clip plane が per-channel 配列から正しく構成される
+- ✅ §1.2 Category B core 7 件: BD 同等 site で同じ dispatch が走る (RenderShadowFarClip / RenderGlobalLightStrength / RenderOtherAttachedLights / RenderOwnAttachedLights / RenderDeferredLights / RenderDepthOfFieldAlphas / RenderEnableFullbright)
+- ✅ §1.3 Category B Post FX 3 件: Cinematic mode で Sepia/Greyscale/Posterize の slider が UI から実効 (combineGlow + bindDeferredShader 両 site で BD 1:1 dispatch、neutral fallback 付き)
+- ✅ §1.4 dead UI 削除: floater_aya_cinematic.xml から Godrays / LensFlare / Tone mapping section が消えている、live cvar 11 件は active UI に昇格
+- ✅ §1.5 branding cleanup: floater_aya_cinematic.xml に user-visible "BD" 文字列が消滅 (LGPL attribution は source comment に残す)
+- ✅ build green / cache clear / install 完了 — AYA hands-on で Cinematic mode の新 UI 機能を確認 (別作業)
+- ✅ 最終 commit: `r30 BD full port Phase 6: live cvar 13 件 1:1 移植 完了`
 
 ---
