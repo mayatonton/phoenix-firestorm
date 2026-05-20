@@ -68,6 +68,8 @@ PR 前の macOS 実機確認では、root prim tag + child prim media、5.1ch so
 
 この追加修正は viewer 側だけで完結する。Dullahan/CEF package へ追加 API を入れず、3D Stream の media source reader が「実 callback bus channel 数」と「3D Stream source として扱う論理 channel 数」を分離する。URL source は従来通り FMOD の URL decode path を使うため、この修正の影響を受けない。
 
+2026-05-21 の追加確認で、`{source:media-5-1}` は callback bus が 8ch でも logical 6ch の `FL / FR / C / LFE / SL / SR` を bus index `0..5` から読む必要があることを確認した。full 7.1 source では CEF 7.1 layout の `BL/BR` と `SL/SR` の並べ替えが必要だが、WebAudio `ChannelMerger` 経由の media-5-1 に同じ並べ替えを適用すると、SL / SR を誤って bus index `6/7` から読んでしまう。詳細は `docs/specs/ayastorm-r26-media-5-1-callback-routing-fix.md` を参照する。
+
 残る主な確認は Windows / Linux での二重再生有無と、callback が使えない build での fallback 挙動である。7.1ch / BL/BR speaker routing は今回の 3D Stream 実装対象ではない。
 
 ## 詳細な実装・検証ログ
