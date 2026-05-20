@@ -282,8 +282,4 @@
 
     </tab_container>
 
-    <text name="T_Credits">
-        DoF / モーションブラー / SSR / シネマ撮影チェーンは Black Dragon viewer (LGPL-2.1) から移植。
-    </text>
-
 </floater>

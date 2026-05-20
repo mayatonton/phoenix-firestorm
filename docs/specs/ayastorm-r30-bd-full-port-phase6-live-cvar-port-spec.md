@@ -164,3 +164,12 @@ Phase 5 R2 で確立した Cinematic overlay 機構を使用。各 BD cvar の *
 - ✅ 最終 commit: `r30 BD full port Phase 6: live cvar 13 件 1:1 移植 完了`
 
 ---
+
+## §6 Post-close polish (2026-05-20)
+
+Phase 6 close 直後に AYA hands-on で発見された UI 整理。**配線スコープ外**の純粋な見栄え / 帰属表示の polish。
+
+- **BD LGPL-2.1 attribution の置き場所変更**: `floater_aya_cinematic.xml` 下部の `T_Credits` テキスト ("DoF / Motion Blur / SSR / Cinematic chain ported from Black Dragon viewer (LGPL-2.1).") を撤去し、`floater_about.xml` Licenses タブに `Black Dragon viewer (LGPL-2.1) Copyright (C) NiranV Dean — DoF / Motion Blur / SSR / Cinematic post-process chain ported into AYAstorm Cinematic mode.` を追記 (en/ja 両方)。floater 高さは 560→520 に縮小。LGPL-2.1 attribution は引続き user-visible (場所が About に移っただけ)。
+- **check_box の D ボタン左移動**: 各タブの check_box 23 件で D ボタンが画面右端 (`left=555`) に配置されており、label との対応が視覚的に取りづらかったため、D ボタンを check_box 直前 (`left=12`) に移動し check_box を `left=36 width=506` にずらした。slider 系 D ボタン (`left=445`) は spinner との並びで関係が明確なため現状維持。Cinematic Control の cvar default / slider range / saturation curve の本格 tuning は引続き別 phase (`memory: project_r30_cinematic_control_tuning_deferred.md`)。
+
+両件とも live cvar 配線本体には触れていないため、Phase 6 の「BD 1:1 verbatim port」完了基準には影響しない。
