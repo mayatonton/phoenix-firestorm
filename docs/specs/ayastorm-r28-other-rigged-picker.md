@@ -61,18 +61,15 @@ r28 では、この仕組みを他人 avatar の rigged attachment へ限定的�
 ```text
 FSOtherRiggedPickerEnable = true
 FSOtherRiggedPickerGPU = true
-FSOtherRiggedPickerRequireNonDefaultCamera = true
 FSOtherRiggedPickerArmSeconds = 1.0
-FSOtherRiggedPickerDebugLog = false
-FSOtherRiggedPickerMaxDrawCalls = 512
-FSOtherRiggedPickerMaxTriangles = 1200000
 ```
 
 補足:
 
-- `FSOtherRiggedPickerEnable` は default on。
-- `FSOtherRiggedPickerDebugLog` は検証時だけ ON にする。通常 default は OFF。
-- `FSOtherRiggedPickerRequireNonDefaultCamera=true` により、ESC 後のデフォルトカメラ位置では other picker を arm しない。
+- `FSOtherRiggedPickerEnable` は default on、`FSOtherRiggedPickerGPU` は kill-switch、`FSOtherRiggedPickerArmSeconds` は hover arm window。
+- `RequireNonDefaultCamera` 動作は内部 hardcoded true。ESC 後のデフォルトカメラ位置では other picker を arm しない (cvar として外には出さない)。
+- draw call / triangle 予算は内部 hardcoded (512 / 1,200,000)。tuning は将来 release で再調整するまで動かさない。
+- 検証ログは出荷物から strip 済 (r21 doctrine: `feedback_remove_verification_logs.md`)。再現確認は build local で `LL_DEBUGS` 系を一時投入する運用。
 - other picker は常に armed window 方式で動く。`FSOtherRiggedPickerArmedMode` は持たせない。
 
 ## 4. 実装方針
@@ -265,20 +262,21 @@ LocalID 解決は target avatar の attachment tree だけで行う。これに�
 
 ### 6.2 draw call / triangle budget
 
-現在の budget:
+現在の budget (`indra/newview/pipeline.cpp` 内 hardcoded):
 
 ```text
-FSOtherRiggedPickerMaxDrawCalls = 512
-FSOtherRiggedPickerMaxTriangles = 1200000
+kMaxDrawCalls = 512
+kMaxTriangles = 1200000
 ```
 
 経緯:
 
-- `MaxDrawCalls=160` では重い avatar で over budget になり、ID pass が ready まで進まなかった。
-- triangle `800000` では、実用域の重い avatar で境界に当たった。
-- 現在は triangle budget を `1200000` に引き上げている。
+- 初期値 `MaxDrawCalls=160` では重い avatar で over budget になり、ID pass が ready まで進まなかった → 512。
+- triangle `800000` では、実用域の重い avatar で境界に当たった → 1,200,000。
 
-上限超過時は `render failed` を出し、既存 worldray pick に fallback する。
+上限超過時は `renderRiggedObjectIDBufferForAvatar` が false を返し、`sFSOtherRiggedPickerRenderGeneration` を 0 に倒して `isReady()` を false に戻す。right-click 側は readback に入らず、既存 worldray pick にフォールスルーする。
+
+budget 再調整が必要になった場合は次の release で hardcoded 値を動かす方針 (cvar 化しない)。
 
 ### 6.3 readback は右クリック時のみ
 
@@ -288,26 +286,9 @@ hover 中に毎フレーム readback しない。hover 中は ID buffer を準�
 
 ## 7. ログ設計
 
-`FSOtherRiggedPickerDebugLog` で other picker の検証ログを制御する。
+出荷物には永続的な検証ログ hook を含めない (r21 doctrine: `feedback_remove_verification_logs.md`)。再現確認が必要になった場合は、build local で `LL_DEBUGS("FSOtherRiggedPicker")` などを一時投入する運用とする。
 
-通常 default は OFF。挙動検証時だけ ON にする。
-
-主なログ:
-
-```text
-hover ignored by default-camera gate
-armed avatar=<uuid> seconds=<n> generation=<n> target_changed=<0|1>
-render ready avatar=<uuid> generation=<n> draw_calls=<n> triangles=<n>
-render failed avatar=<uuid> generation=<n> draw_calls=<n> triangles=<n> attempted_draw_calls=<n> attempted_triangles=<n> over_budget=<0|1> budget_draw_calls=<n> budget_triangles=<n>
-right-click skipped not-ready avatar=<uuid> upstream=<uuid>
-readback local_id=<id> avatar=<uuid> hit=<uuid>
-readback empty avatar=<uuid> local_id=0
-right-click redirected avatar=<uuid> upstream=<uuid> picked=<uuid> local_id=<id>
-right-click fallback avatar=<uuid> upstream=<uuid> gpu_authoritative=<0|1>
-right-click skipped target_avatar=<uuid|null> upstream_hud=<0|1>
-```
-
-読み方:
+主な確認ポイント (オペレータが心の中で追う項目):
 
 - `armed`: hover で対象 avatar が決まった。
 - `render ready`: other avatar 用 GPU ID pass が実際に描かれ、readback 可能になった。
@@ -392,9 +373,8 @@ right-click skipped target_avatar=60764175-8400-427a-af9c-87d891897281 upstream_
 
 運用注意:
 
-- `FSOtherRiggedPickerDebugLog` は通常 OFF。検証時だけ ON にする。
 - 問題が出た場合は `FSOtherRiggedPickerEnable=false` で other picker 全体を止められる。
-- `FSOtherRiggedPickerRequireNonDefaultCamera=true` は維持する。通常の背後視点で他人 avatar に cursor が触れただけでは ID pass を走らせない。
+- 通常の背後視点で他人 avatar に cursor が触れただけでは ID pass を走らせない (RequireNonDefaultCamera は内部 hardcoded、cvar として外には出さない)。
 
 ## 10. Mac 版実機確認
 
@@ -405,11 +385,10 @@ right-click skipped target_avatar=60764175-8400-427a-af9c-87d891897281 upstream_
 - デフォルトカメラ位置では other picker の hover arm が抑止される。
 - mouselook / avatar customize 中は other picker を使わない。
 - `renderOtherRiggedObjectIDBuffer()` が他人 avatar 用 GPU ID pass を描く。
-- runtime log で `armed -> render ready -> readback -> redirected` を確認済み。
+- runtime で `armed -> render ready -> readback -> redirected` を確認済み (検証 build に一時投入したログでチェック、出荷物には残していない)。
 - self avatar は other picker の対象外として skip される。
 - self picker の既存挙動は維持され、自分 avatar の顔選択も修正済み。
 - draw call / triangle budget を持ち、上限超過時は fallback する。
 - readback 失敗時または `local_id=0` 時は既存 worldray pick に戻る。
 - selection handoff は補正後の `mPick` で行う。
-- `FSOtherRiggedPickerDebugLog` は通常 default OFF に戻した状態で build した。
 - Release arm64 build と `AYAstorm.app` codesign verify が成功した。

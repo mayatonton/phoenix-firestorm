@@ -28,14 +28,6 @@
 
 namespace
 {
-    bool fs_other_rigged_picker_debug_log()
-    {
-        static LLCachedControl<bool> debug_log(gSavedSettings,
-                                               "FSOtherRiggedPickerDebugLog",
-                                               false);
-        return debug_log;
-    }
-
     // Recursive walk through an avatar's attachment tree, looking for the
     // child whose LocalID matches what the GPU object-ID buffer reported at
     // the mouse pixel. The caller scopes this to exactly one avatar so LocalID
@@ -187,25 +179,10 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachmentForAvatar(S32 mouse_x, 
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSOtherRiggedPickerGPU", true);
     if (!enable || !gpu_enable || !gPipeline.mObjectIDBuffer.isComplete())
     {
-        if (fs_other_rigged_picker_debug_log())
-        {
-            LL_INFOS("FSOtherRiggedPicker")
-                << "readback skipped avatar=" << avatar->getID()
-                << " enable=" << (bool)enable
-                << " gpu_enable=" << (bool)gpu_enable
-                << " buffer_complete=" << gPipeline.mObjectIDBuffer.isComplete()
-                << LL_ENDL;
-        }
         return nullptr;
     }
     if (!gPipeline.isOtherRiggedObjectIDBufferReady(avatar->getID()))
     {
-        if (fs_other_rigged_picker_debug_log())
-        {
-            LL_INFOS("FSOtherRiggedPicker")
-                << "readback skipped not-ready avatar=" << avatar->getID()
-                << LL_ENDL;
-        }
         return nullptr;
     }
 
@@ -213,37 +190,13 @@ LLViewerObject* FSSelfRiggedPicker::findClosestAttachmentForAvatar(S32 mouse_x, 
     U32 local_id = readObjectIDBufferLocalID(mouse_x, mouse_y, read);
     if (!read)
     {
-        if (fs_other_rigged_picker_debug_log())
-        {
-            LL_INFOS("FSOtherRiggedPicker")
-                << "readback failed avatar=" << avatar->getID()
-                << " mouse_x=" << mouse_x
-                << " mouse_y=" << mouse_y
-                << LL_ENDL;
-        }
         return nullptr;
     }
 
     out_gpu_authoritative = true;
     if (local_id != 0)
     {
-        LLViewerObject* hit = findAttachmentOnAvatarByLocalID(avatar, local_id);
-        if (fs_other_rigged_picker_debug_log())
-        {
-            LL_INFOS("FSOtherRiggedPicker")
-                << "readback local_id=" << local_id
-                << " avatar=" << avatar->getID()
-                << " hit=" << (hit ? hit->getID().asString() : std::string("null"))
-                << LL_ENDL;
-        }
-        return hit;
-    }
-    if (fs_other_rigged_picker_debug_log())
-    {
-        LL_INFOS("FSOtherRiggedPicker")
-            << "readback empty avatar=" << avatar->getID()
-            << " local_id=0"
-            << LL_ENDL;
+        return findAttachmentOnAvatarByLocalID(avatar, local_id);
     }
     return nullptr;
 }
