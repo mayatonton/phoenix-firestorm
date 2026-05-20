@@ -12435,6 +12435,87 @@ Change of this parameter will affect the layout of buttons in notification toast
     </array>
   </map>
   <!-- </FS:AYAstorm:r30-bd-port> -->
+  <!-- <FS:AYAstorm:r30-bd-port> Phase 6 step 2: live BD cvar (Cinematic 限定 / 一部 global)。
+       BD 995a1354d8 settings_blackdragon.xml verbatim defaults。
+       global 採用 (mode dispatch なし): RenderEnableFullbright (llprimitive 直結) -->
+  <key>RenderShadowFarClip</key>
+  <map>
+    <key>Comment</key>
+    <string>Single far-clip distance for the sun shadow cascade pyramid when RenderShadowAutomaticDistance is ON. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>200.0</real>
+  </map>
+  <key>RenderGlobalLightStrength</key>
+  <map>
+    <key>Comment</key>
+    <string>Global multiplier applied to point/spot light contribution in the deferred light shaders. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+  <key>RenderOtherAttachedLights</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, lights attached to other avatars are suppressed. Cinematic mode のみ (mode 0/1 は RenderAttachedLights を共通使用)。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <key>RenderOwnAttachedLights</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, lights attached to your own avatar are suppressed. Cinematic mode のみ (mode 0/1 は RenderAttachedLights を共通使用)。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <key>RenderDeferredLights</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, in-world (non-attached) point/spot lights are suppressed. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <key>RenderDepthOfFieldAlphas</key>
+  <map>
+    <key>Comment</key>
+    <string>If true, transparent surfaces contribute to depth-of-field depth (cutoff 0.7); if false, they are excluded (cutoff 1.0). Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+  <key>RenderEnableFullbright</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, fullbright textures are rendered as regular shaded surfaces. Global (mode を問わず適用、BD verbatim)。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <!-- </FS:AYAstorm:r30-bd-port> -->
   <key>RenderWindlightInterpolateTime</key>
   <map>
     <key>Comment</key>

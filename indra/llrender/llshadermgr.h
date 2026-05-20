@@ -404,6 +404,14 @@ public:
         DEFERRED_CHROMA_STRENGTH,           //  "chroma_str"
         // </AYAstorm r30 P4>
 
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live uniforms (Cinematic only).
+        // Imported from BlackDragon Viewer 995a1354d8.
+        DEFERRED_LIGHT_STRENGTH,            //  "global_light_strength"
+        DEFERRED_SEPIA_STRENGTH,            //  "sepia_strength"
+        DEFERRED_GREYSCALE_STRENGTH,        //  "greyscale_strength"
+        DEFERRED_NUM_COLORS,                //  "num_colors"
+        // </FS:AYAstorm:r30-bd-port>
+
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
     // clang-format on

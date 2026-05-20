@@ -174,6 +174,10 @@ LLVector4 LLPipeline::RenderShadowResolution;
 LLVector4 LLPipeline::RenderShadowFarClipVec;
 LLVector2 LLPipeline::RenderProjectorShadowResolution;
 // </FS:AYAstorm:r30-bd-port>
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar (Cinematic only)
+F32 LLPipeline::RenderShadowFarClip;
+F32 LLPipeline::RenderGlobalLightStrength;
+// </FS:AYAstorm:r30-bd-port>
 bool LLPipeline::RenderDelayCreation;
 //bool LLPipeline::RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
 bool LLPipeline::FreezeTime;
@@ -385,6 +389,11 @@ bool    LLPipeline::sShowJellyDollAsImpostor = true;
 bool    LLPipeline::sUnderWaterRender = false;
 bool    LLPipeline::sTextureBindTest = false;
 bool    LLPipeline::sRenderAttachedLights = true;
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD-verbatim attached-light split (Cinematic only)
+bool    LLPipeline::sRenderOtherAttachedLights = true;
+bool    LLPipeline::sRenderOwnAttachedLights = true;
+bool    LLPipeline::sRenderDeferredLights = true;
+// </FS:AYAstorm:r30-bd-port>
 bool    LLPipeline::sRenderAttachedParticles = true;
 bool    LLPipeline::sRenderDeferred = false;
 bool    LLPipeline::sReflectionProbesEnabled = false;
@@ -505,6 +514,11 @@ void LLPipeline::init()
     gOctreeMinSize = gSavedSettings.getF32("OctreeMinimumNodeSize");
     sDynamicLOD = gSavedSettings.getBOOL("RenderDynamicLOD");
     sRenderAttachedLights = gSavedSettings.getBOOL("RenderAttachedLights");
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    sRenderOtherAttachedLights = gSavedSettings.getBOOL("RenderOtherAttachedLights");
+    sRenderOwnAttachedLights = gSavedSettings.getBOOL("RenderOwnAttachedLights");
+    sRenderDeferredLights = gSavedSettings.getBOOL("RenderDeferredLights");
+    // </FS:AYAstorm:r30-bd-port>
     sRenderAttachedParticles = gSavedSettings.getBOOL("RenderAttachedParticles");
 
     sRenderMOAPBeacons = gSavedSettings.getBOOL("moapbeacon");
@@ -638,6 +652,10 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("RenderShadowDistance");
     connectRefreshCachedSettingsSafe("RenderProjectorShadowResolution");
     // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    connectRefreshCachedSettingsSafe("RenderShadowFarClip");
+    connectRefreshCachedSettingsSafe("RenderGlobalLightStrength");
+    // </FS:AYAstorm:r30-bd-port>
     connectRefreshCachedSettingsSafe("RenderDelayCreation");
 //  connectRefreshCachedSettingsSafe("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     connectRefreshCachedSettingsSafe("FreezeTime");
@@ -720,6 +738,11 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("RenderAttachedLights");
     connectRefreshCachedSettingsSafe("RenderAttachedParticles");
     // </FS:Ansariel>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    connectRefreshCachedSettingsSafe("RenderOtherAttachedLights");
+    connectRefreshCachedSettingsSafe("RenderOwnAttachedLights");
+    connectRefreshCachedSettingsSafe("RenderDeferredLights");
+    // </FS:AYAstorm:r30-bd-port>
     // <FS:Beq> FIRE-16728 Add free aim mouse and focus lock
     connectRefreshCachedSettingsSafe("FSFocusPointFollowsPointer");
     connectRefreshCachedSettingsSafe("FSFocusPointLocked");
@@ -1312,6 +1335,11 @@ void LLPipeline::refreshCachedSettings()
     LLPipeline::sRenderAttachedLights = gSavedSettings.getBOOL("RenderAttachedLights");
     LLPipeline::sRenderAttachedParticles = gSavedSettings.getBOOL("RenderAttachedParticles");
     // </FS:Ansariel>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    LLPipeline::sRenderOtherAttachedLights = gSavedSettings.getBOOL("RenderOtherAttachedLights");
+    LLPipeline::sRenderOwnAttachedLights = gSavedSettings.getBOOL("RenderOwnAttachedLights");
+    LLPipeline::sRenderDeferredLights = gSavedSettings.getBOOL("RenderDeferredLights");
+    // </FS:AYAstorm:r30-bd-port>
     // <FS:PP> FIRE-33085 Region corner markers
     LLPipeline::sRenderRegionCornerBeacons = gSavedSettings.getBOOL("fsregioncornerbeacons");
     // </FS:PP>
@@ -1345,6 +1373,10 @@ void LLPipeline::refreshCachedSettings()
     RenderShadowResolution = gSavedSettings.getVector4("RenderShadowResolution");
     RenderShadowFarClipVec = gSavedSettings.getVector4("RenderShadowDistance");
     RenderProjectorShadowResolution = gSavedSettings.getVector2("RenderProjectorShadowResolution");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar
+    RenderShadowFarClip = gSavedSettings.getF32("RenderShadowFarClip");
+    RenderGlobalLightStrength = gSavedSettings.getF32("RenderGlobalLightStrength");
     // </FS:AYAstorm:r30-bd-port>
     RenderDelayCreation = gSavedSettings.getBOOL("RenderDelayCreation");
 //  RenderAnimateRes = gSavedSettings.getBOOL("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
@@ -6903,6 +6935,27 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
                 drawable->clearState(LLDrawable::NEARBY_LIGHT);
                 continue;
             }
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: Cinematic uses BD per-owner light split.
+            if (isCinematicMode())
+            {
+                if (volight->isAttachment())
+                {
+                    LLVOAvatar* av = volight->getAvatar();
+                    if ((!sRenderOtherAttachedLights && (av != gAgentAvatarp))
+                        || (!sRenderOwnAttachedLights && (av == gAgentAvatarp)))
+                    {
+                        drawable->clearState(LLDrawable::NEARBY_LIGHT);
+                        continue;
+                    }
+                }
+                else if (!sRenderDeferredLights)
+                {
+                    drawable->clearState(LLDrawable::NEARBY_LIGHT);
+                    continue;
+                }
+            }
+            else
+            // </FS:AYAstorm:r30-bd-port>
             if (!sRenderAttachedLights && volight && volight->isAttachment())
             {
                 drawable->clearState(LLDrawable::NEARBY_LIGHT);
@@ -6959,6 +7012,25 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
             {
                 continue; // no lighting from HUD objects
             }
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+            if (isCinematicMode())
+            {
+                if (light->isAttachment())
+                {
+                    LLVOAvatar* av_bd = light->getAvatar();
+                    if ((!sRenderOtherAttachedLights && (av_bd != gAgentAvatarp))
+                        || (!sRenderOwnAttachedLights && (av_bd == gAgentAvatarp)))
+                    {
+                        continue;
+                    }
+                }
+                else if (!sRenderDeferredLights)
+                {
+                    continue;
+                }
+            }
+            else
+            // </FS:AYAstorm:r30-bd-port>
             if (!sRenderAttachedLights && light && light->isAttachment())
             {
                 continue;
@@ -7155,6 +7227,25 @@ void LLPipeline::setupHWLights()
                 continue;
             }
 
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+            if (isCinematicMode())
+            {
+                if (light->isAttachment())
+                {
+                    LLVOAvatar* av_bd = light->getAvatar();
+                    if ((!sRenderOtherAttachedLights && (av_bd != gAgentAvatarp))
+                        || (!sRenderOwnAttachedLights && (av_bd == gAgentAvatarp)))
+                    {
+                        continue;
+                    }
+                }
+                else if (!sRenderDeferredLights)
+                {
+                    continue;
+                }
+            }
+            else
+            // </FS:AYAstorm:r30-bd-port>
             if (light->isAttachment())
             {
                 if (!sRenderAttachedLights)
@@ -10276,6 +10367,20 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
     shader.uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, 1, mMoonDiffuse.mV);
 
     shader.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mReflectionMapManager.mMaxProbeLOD);
+
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live deferred uniforms (Cinematic only).
+    // In non-Cinematic modes shaders that bind these uniforms must use neutral
+    // defaults (strength = 1.0 / 0.0 / 1 = noop) — Cinematic-only shader paths
+    // are still in flight under Phase 6 §1.3 so for now we always push them.
+    if (isCinematicMode())
+    {
+        shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, RenderGlobalLightStrength);
+    }
+    else
+    {
+        shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, 1.0f);
+    }
+    // </FS:AYAstorm:r30-bd-port>
 }
 
 
@@ -10735,6 +10840,25 @@ void LLPipeline::renderDeferredLighting()
                         continue;
                     }
 
+                    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+                    if (isCinematicMode())
+                    {
+                        if (volume->isAttachment())
+                        {
+                            LLVOAvatar* av_bd = volume->getAvatarAncestor();
+                            if ((!sRenderOtherAttachedLights && (av_bd != gAgentAvatarp))
+                                || (!sRenderOwnAttachedLights && (av_bd == gAgentAvatarp)))
+                            {
+                                continue;
+                            }
+                        }
+                        else if (!sRenderDeferredLights)
+                        {
+                            continue;
+                        }
+                    }
+                    else
+                    // </FS:AYAstorm:r30-bd-port>
                     if (volume->isAttachment())
                     {
                         if (!sRenderAttachedLights)
@@ -12370,15 +12494,28 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
         // <FS:AYAstorm r30 P4> RenderShadowAutomaticDistance toggles sun-angle-weighted
         // split distribution (ON) vs equal linear splits (OFF).
-        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: Cinematic + Auto=OFF uses BD
-        // per-cascade cumulative clip planes from RenderShadowDistance (Vector4).
-        if (isCinematicMode() && !RenderShadowAutomaticDistance)
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1/2: Cinematic uses BD verbatim clip planes.
+        if (isCinematicMode())
         {
-            F32 tot = 0.f;
-            for (U32 i = 0; i < 4; ++i)
+            if (RenderShadowAutomaticDistance)
             {
-                mSunClipPlanes.mV[i] = near_clip + tot + RenderShadowFarClipVec[i];
-                tot += RenderShadowFarClipVec[i];
+                // BD Auto=ON: powf-weighted * fixed RenderShadowFarClip
+                for (U32 i = 0; i < 4; ++i)
+                {
+                    F32 x = (F32)(i+1)/4.f;
+                    x = powf(x, sxp);
+                    mSunClipPlanes.mV[i] = near_clip + RenderShadowFarClip*x;
+                }
+            }
+            else
+            {
+                // BD Auto=OFF: per-cascade cumulative RenderShadowFarClipVec
+                F32 tot = 0.f;
+                for (U32 i = 0; i < 4; ++i)
+                {
+                    mSunClipPlanes.mV[i] = near_clip + tot + RenderShadowFarClipVec[i];
+                    tot += RenderShadowFarClipVec[i];
+                }
             }
         }
         else
@@ -12393,7 +12530,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
             mSunClipPlanes.mV[i] = near_clip+range*x;
         }
-        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1/2
         }
         // </FS:AYAstorm:r30-bd-port>
         // </FS:AYAstorm r30 P4>

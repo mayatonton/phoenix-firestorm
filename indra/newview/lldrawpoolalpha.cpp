@@ -234,7 +234,17 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
 
         simple_shader->bind();
-        simple_shader->setMinimumAlpha(0.33f);
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: Cinematic mode honors BD
+        // RenderDepthOfFieldAlphas (default OFF). When OFF, alpha objects do not
+        // contribute to depth-of-field depth (BD verbatim, lldrawpoolalpha.cpp:225).
+        F32 dof_alpha_cutoff = 0.33f;
+        if (LLPipeline::isCinematicMode())
+        {
+            static LLCachedControl<bool> render_dof_alphas(gSavedSettings, "RenderDepthOfFieldAlphas", false);
+            dof_alpha_cutoff = render_dof_alphas ? 0.7f : 1.f;
+        }
+        simple_shader->setMinimumAlpha(dof_alpha_cutoff);
+        // </FS:AYAstorm:r30-bd-port>
 
         // mask off color buffer writes as we're only writing to depth buffer
         gGL.setColorMask(false, false);

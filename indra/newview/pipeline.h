@@ -793,6 +793,11 @@ public:
     static bool             sRenderGlow;
     static bool             sTextureBindTest;
     static bool             sRenderAttachedLights;
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD-verbatim attached-light split (Cinematic only)
+    static bool             sRenderOtherAttachedLights;
+    static bool             sRenderOwnAttachedLights;
+    static bool             sRenderDeferredLights;
+    // </FS:AYAstorm:r30-bd-port>
     static bool             sRenderAttachedParticles;
     static bool             sRenderDeferred;
     static bool             sReflectionProbesEnabled;
@@ -1226,6 +1231,10 @@ public:
     static LLVector4 RenderShadowResolution;
     static LLVector4 RenderShadowFarClipVec;  // cvar: RenderShadowDistance
     static LLVector2 RenderProjectorShadowResolution;
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar (Cinematic only)
+    static F32 RenderShadowFarClip;
+    static F32 RenderGlobalLightStrength;
     // </FS:AYAstorm:r30-bd-port>
     static bool RenderDelayCreation;
 //  static bool RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
