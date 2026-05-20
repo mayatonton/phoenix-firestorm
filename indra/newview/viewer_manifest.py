@@ -1807,10 +1807,17 @@ class Darwin_x86_64_Manifest(ViewerManifest):
                     with self.prefix(src=os.path.join(pkgdir, 'lib', 'release')):
                         self.path("Chromium Embedded Framework.framework")
                         self.path("DullahanHelper.app")
-                        self.path("DullahanHelper (Alerts).app")
-                        self.path("DullahanHelper (GPU).app")
-                        self.path("DullahanHelper (Renderer).app")
-                        self.path("DullahanHelper (Plugin).app")
+                        dullahan_helper_apps = [
+                            "DullahanHelper (Alerts).app",
+                            "DullahanHelper (GPU).app",
+                            "DullahanHelper (Renderer).app",
+                            "DullahanHelper (Plugin).app",
+                        ]
+                        for helper_app in dullahan_helper_apps:
+                            self.path(helper_app)
+                            nested_helper_app = self.dst_path_of(os.path.join(helper_app, helper_app))
+                            if os.path.isdir(nested_helper_app):
+                                shutil.rmtree(nested_helper_app)
 
                         # Copy libvlc
                         self.path( "libvlc*.dylib*" )
