@@ -198,7 +198,7 @@ BD `995a1354d8` `indra/newview/app_settings/settings.xml` (16901 行) と AYAsto
 | **Shadow (影)** | `RenderShadowDetail` | S32 | 1 | 2 | shadow rendering detail level |
 | Shadow | `RenderShadowGaussian` | Vector3 | 1.25 | 3.0 | PCF Gaussian 半径 |
 | Shadow | `RenderShadowBias` | F32 | -0.001 | -0.002 | depth bias |
-| Shadow | `RenderShadowBiasError` | F32 | 0.1 | -0.007 | bias error term |
+| Shadow | `RenderShadowBiasError` | F32 | 0.1 | -0.007 | bias error term (※ §10.15 で overlay から除外: BD +0.1 が `pipeline.cpp:10193` の `bias_error = BiasError * \|cam.z\|/3000` 経路で z≈30m に shadow_bias zero-crossing を起こし、地面 / 服に shadow acne 干渉縞 (#196 / #197) を発生。AY -0.007 を全 mode 共有で fringe 解消) |
 | Shadow | `RenderShadowOffset` | F32 | 0.002 | 0.01 | shadow offset |
 | Shadow | `RenderShadowBlurSize` | F32 | 1.0 | 1.4 | softening blur |
 | Shadow | `RenderShadowBlurDistFactor` | F32 | 0.01 | 0 | dist-based blur scaling |
@@ -629,7 +629,13 @@ AYA さんが mode 2 (Cinematic) で Cinematic Controls floater (`floater_aya_ci
 |---|---|
 | `777c0738ea` | 2 系列の UI grey out を 1 commit で landing:<br>**C' (BD-X1 grey out)**: BD-X1 17 cvar のうち XUI 露出のある 9 cvar の slider/spinner に `enabled_control="AYACinematicModeActive"` を bind。mode 2 でのみ active、mode 0/1 では「触っても overlay で上書きされる」誤解を防ぐため grey out。対象 floater = `floater_aya_cinematic.xml` 9 cvar × 2 widget + `floater_phototools.xml` 8 cvar × 2 widget。<br>**A6 (B3 SSS grey out)**: `pipeline.cpp:doSkinSSS()` 早期 return (`realism_enabled() != 1 \|\| !r20_enabled()`) に整合させ、SSS panel root + 11 widget (sss_enabled / blur_radius / strength / glow_gain / glow_color / whitelist_lock / whitelist / 4 default ボタン) を `enabled_control="AYAR20SSSEffective"` で grey out。mode 0 (Firestorm View) も rendering されないので UI も非活性で整合。<br>**helper Boolean cvar 2 件 (Persist=0)**: `AYACinematicModeActive` (= mode==2 shadow) / `AYAR20SSSEffective` (= mode==1 shadow) を `settings.xml` に新規追加、`llviewercontrol.cpp` で `AYAVisualRealismEnabled` signal listener + 起動時 seed で同期。LL XUI の `enabled_control` は Boolean 専用で U32 cvar (`AYAVisualRealismEnabled`) を直接 bind できないための実装上の必要。詳細は [`ayastorm-r30-p5-bd-ui-binding-audit-spec.md`](./ayastorm-r30-p5-bd-ui-binding-audit-spec.md) §5.10.A (B3 audit) 参照。<br>AYA hands-on 検証で mode 0 / mode 1 / mode 2 の 3 モード全てで挙動 OK 確認済 |
 
-### 10.15 以降の step (5.x〜9)
+### 10.15 BiasError exclusion (2026-05-20): BD-X1 doctrine 例外 1 件
+
+| commit | 内容 |
+|---|---|
+| (pending) | `settings_cinematic_bd.xml` から `RenderShadowBiasError` を除外 (BD-X1 17 → 16 件)。`pipeline.cpp:10193` の formula `shadow_bias = RenderShadowBias + RenderShadowBiasError * \|cam.z\|/3000` において BD 値 +0.1 が SL 地面標高帯 (cam.z≈30m) で shadow_bias を 0 に zero-crossing させ、ground / 服に shadow acne fringe (#196 報告 / #197 trace 確定) を発生。AY/FS default -0.007 (cam.z 上昇に対し bias がより負方向に深まり acne 抑制が効く) を全 mode 共有することで解消 (AYA hands-on PASS 2026-05-20)。BD pipeline がどの段階で z scaling を適用しているかは BD 側コード未調査だが、本 viewer formula と粒度差があることは確定。BD-X1 doctrine の単独例外として overlay から除外し、`RenderShadowBias` / `RenderShadowOffset` / `RenderShadowBlurSize` / `RenderShadowBlurDistFactor` / `RenderShadowGaussian` 他の Shadow 系 BD 値は維持 |
+
+### 10.16 以降の step (5.x〜9)
 
 各 sub-release 実行時に [step / 日付 / commit hash / 概要] を追記する。当初の step 5 (BD-compat preset) は step 5.x に降格 (§0.5)。
 

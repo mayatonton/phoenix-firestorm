@@ -1,17 +1,25 @@
 <?xml version="1.0" ?>
 <!--
   AYAstorm r30 BD full port Phase 5 A' (refined R2): Cinematic mode BD-parity
-  overlay — BD-X1 cvar (17 件) のみ。
+  overlay — BD-X1 cvar (16 件) のみ。
 
   Mode 2 (Cinematic) で BD upstream `BlackDragon 995a1354d8` の描画 cvar
   default を適用するための overlay。R2 (commit 49eafd0d6b) は 32 cvar を
   一括 overlay 焼きしていたが、shader/pipeline trace audit (task #191) で
   以下 2 種が混在していたことが判明:
 
-    - BD-X1 (17 件): shader uniform / kernel 配列構築に直接効く視覚 fidelity
-      cvar。Glow weight/閾値 8 + Shadow blur/bias 6 + SSAO 2 + spot shadow 1。
+    - BD-X1 (16 件): shader uniform / kernel 配列構築に直接効く視覚 fidelity
+      cvar。Glow weight/閾値 8 + Shadow blur/bias 5 + SSAO 2 + spot shadow 1。
       mode 2 で BD と同じ視覚を再現するには BD 値で焼く必然性あり。
       本 file が overlay 対象とするのはこれら。
+      ※ `RenderShadowBiasError` は当初 17 件目だったが、本 viewer の formula
+      `shadow_bias = RenderShadowBias + RenderShadowBiasError * |cam.z|/3000`
+      (`pipeline.cpp:10193`) において BD 値 +0.1 が camera 高度 z≈30m で
+      shadow_bias を 0 に zero-crossing させ、地面 / 服に shadow acne 干渉縞
+      (#196 / #197) を発生させる。AY/FS default -0.007 を全 mode で共有する
+      ことで fringe 解消 (2026-05-20 AYA hands-on 検証 PASS)。これは BD pipeline
+      と本 viewer の cam.z scaling 適用粒度の差に起因する mismatch であり、
+      BD-X1 doctrine の例外として overlay から除外。
     - BD-X2 (15 件): path 切替 / on-off 判定 / HW spec / scene cost / peer cost
       判定に使われる cvar。RenderFarClip / RenderFSAAType / RenderShadowDetail /
       RenderAvatarMaxComplexity 等。user の HW/scene 判断で両 mode 共有すべき
@@ -82,8 +90,9 @@
     <key>RenderShadowBias</key>
     <real>-0.001</real>
 
-    <key>RenderShadowBiasError</key>
-    <real>0.1</real>
+    <!-- RenderShadowBiasError は header コメント参照のため除外 (BD +0.1 が
+         cam.z≈30m で shadow_bias zero-crossing → 地面 / 服に shadow acne fringe
+         #196 / #197)。AY/FS default -0.007 を全 mode で使用。 -->
 
     <key>RenderShadowOffset</key>
     <real>0.002</real>
