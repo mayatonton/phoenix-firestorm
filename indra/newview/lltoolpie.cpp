@@ -96,15 +96,6 @@ static void fs_arm_self_rigged_picker_for_hover(const LLPickInfo& pick);
 static void fs_arm_other_rigged_picker_for_hover(const LLPickInfo& pick);
 static LLVOAvatar* fs_get_avatar_from_pick(const LLPickInfo& pick);
 static bool fs_other_rigged_picker_camera_allows_hover();
-static bool fs_other_rigged_picker_debug_log();
-
-static bool fs_other_rigged_picker_debug_log()
-{
-    static LLCachedControl<bool> debug_log(gSavedSettings,
-                                           "FSOtherRiggedPickerDebugLog",
-                                           false);
-    return debug_log;
-}
 
 static void fs_arm_self_rigged_picker_for_hover(const LLPickInfo& pick)
 {
@@ -148,17 +139,11 @@ static LLVOAvatar* fs_get_avatar_from_pick(const LLPickInfo& pick)
 
 static bool fs_other_rigged_picker_camera_allows_hover()
 {
-    static LLCachedControl<bool> require_non_default(gSavedSettings,
-                                                     "FSOtherRiggedPickerRequireNonDefaultCamera",
-                                                     true);
+    // AYA P0 fixup: RequireNonDefaultCamera was a cvar; hardcoded true now.
     if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK ||
         gAgentCamera.cameraCustomizeAvatar())
     {
         return false;
-    }
-    if (!require_non_default)
-    {
-        return true;
     }
     if (!gAgentCamera.cameraThirdPerson() ||
         LLFloaterCamera::inFreeCameraMode() ||
@@ -181,7 +166,6 @@ static void fs_arm_other_rigged_picker_for_hover(const LLPickInfo& pick)
     static LLCachedControl<bool> enable(gSavedSettings, "FSOtherRiggedPickerEnable", false);
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSOtherRiggedPickerGPU", true);
     static LLCachedControl<F32> arm_seconds(gSavedSettings, "FSOtherRiggedPickerArmSeconds", 1.f);
-    static bool sLoggedDefaultCameraGate = false;
     if (!enable || !gpu_enable || !isAgentAvatarValid())
     {
         return;
@@ -189,16 +173,8 @@ static void fs_arm_other_rigged_picker_for_hover(const LLPickInfo& pick)
     if (!fs_other_rigged_picker_camera_allows_hover())
     {
         gPipeline.clearOtherRiggedObjectIDBuffer();
-        if (!sLoggedDefaultCameraGate && fs_other_rigged_picker_debug_log())
-        {
-            sLoggedDefaultCameraGate = true;
-            LL_INFOS("FSOtherRiggedPicker")
-                << "hover ignored by default-camera gate"
-                << LL_ENDL;
-        }
         return;
     }
-    sLoggedDefaultCameraGate = false;
 
     LLVOAvatar* avatar = fs_get_avatar_from_pick(pick);
     if (!avatar || avatar->isDead() || avatar == gAgentAvatarp.get())
@@ -2556,52 +2532,19 @@ bool LLToolPie::handleRightClickPick()
                     target_avatar != gAgentAvatarp.get() &&
                     !upstream_picked_hud_attachment)
                 {
-                    const LLUUID upstream_object_id = object ? object->getID() : LLUUID::null;
                     bool gpu_authoritative = false;
                     LLViewerObject* picked = nullptr;
-                    const bool gpu_ready = gPipeline.isOtherRiggedObjectIDBufferReady(target_avatar->getID());
-                    if (gpu_ready)
+                    if (gPipeline.isOtherRiggedObjectIDBufferReady(target_avatar->getID()))
                     {
                         picked = FSSelfRiggedPicker::findClosestAttachmentForAvatar(
                             x, y, target_avatar, gpu_authoritative);
-                    }
-                    else if (fs_other_rigged_picker_debug_log())
-                    {
-                        LL_INFOS("FSOtherRiggedPicker")
-                            << "right-click skipped not-ready avatar=" << target_avatar->getID()
-                            << " upstream=" << upstream_object_id
-                            << LL_ENDL;
                     }
                     if (picked)
                     {
                         object = picked;
                         mPick.mObjectID = picked->getID();
-                        if (fs_other_rigged_picker_debug_log())
-                        {
-                            LL_INFOS("FSOtherRiggedPicker")
-                                << "right-click redirected avatar=" << target_avatar->getID()
-                                << " upstream=" << upstream_object_id
-                                << " picked=" << picked->getID()
-                                << " local_id=" << picked->getLocalID()
-                                << LL_ENDL;
-                        }
                     }
-                    else if (gpu_ready && fs_other_rigged_picker_debug_log())
-                    {
-                        LL_INFOS("FSOtherRiggedPicker")
-                            << "right-click fallback avatar=" << target_avatar->getID()
-                            << " upstream=" << upstream_object_id
-                            << " gpu_authoritative=" << gpu_authoritative
-                            << LL_ENDL;
-                    }
-                }
-                else if (fs_other_rigged_picker_debug_log())
-                {
-                    LL_INFOS("FSOtherRiggedPicker")
-                        << "right-click skipped target_avatar="
-                        << (target_avatar ? target_avatar->getID().asString() : std::string("null"))
-                        << " upstream_hud=" << upstream_picked_hud_attachment
-                        << LL_ENDL;
+                    (void)gpu_authoritative;
                 }
             }
         }

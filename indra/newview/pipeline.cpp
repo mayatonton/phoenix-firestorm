@@ -9892,14 +9892,6 @@ namespace
     LLPointer<LLVOAvatar> sFSOtherRiggedPickerAvatar;
     LLUUID sFSOtherRiggedPickerAvatarID;
 
-    bool fs_other_rigged_picker_debug_log()
-    {
-        static LLCachedControl<bool> debug_log(gSavedSettings,
-                                               "FSOtherRiggedPickerDebugLog",
-                                               false);
-        return debug_log;
-    }
-
     // All PASS_*_RIGGED types in the LL render map. The visible deferred opaque
     // pass dispatches rigged geometry through these via renderRiggedGroup /
     // pushRiggedBatches (see lldrawpool.cpp:410, 466). Iterating the same set
@@ -10141,15 +10133,6 @@ void LLPipeline::armOtherRiggedObjectIDBuffer(LLVOAvatar* avatar, F32 seconds)
     if (!was_armed || target_changed)
     {
         ++sFSOtherRiggedPickerArmGeneration;
-        if (fs_other_rigged_picker_debug_log())
-        {
-            LL_INFOS("FSOtherRiggedPicker")
-                << "armed avatar=" << sFSOtherRiggedPickerAvatarID
-                << " seconds=" << sFSOtherRiggedPickerArmSeconds
-                << " generation=" << sFSOtherRiggedPickerArmGeneration
-                << " target_changed=" << target_changed
-                << LL_ENDL;
-        }
     }
 }
 
@@ -10175,9 +10158,7 @@ bool LLPipeline::isOtherRiggedObjectIDBufferReady(const LLUUID& avatar_id) const
 
 void LLPipeline::clearOtherRiggedObjectIDBuffer()
 {
-    const bool was_armed = isOtherRiggedObjectIDBufferArmed();
-    const LLUUID old_avatar_id = sFSOtherRiggedPickerAvatarID;
-    if (!was_armed &&
+    if (!isOtherRiggedObjectIDBufferArmed() &&
         sFSOtherRiggedPickerArmSeconds <= 0.f &&
         sFSOtherRiggedPickerAvatar.isNull() &&
         sFSOtherRiggedPickerAvatarID.isNull())
@@ -10189,13 +10170,6 @@ void LLPipeline::clearOtherRiggedObjectIDBuffer()
     sFSOtherRiggedPickerAvatar = nullptr;
     sFSOtherRiggedPickerAvatarID.setNull();
     ++sFSOtherRiggedPickerArmGeneration;
-    if (was_armed && fs_other_rigged_picker_debug_log())
-    {
-        LL_INFOS("FSOtherRiggedPicker")
-            << "cleared avatar=" << old_avatar_id
-            << " generation=" << sFSOtherRiggedPickerArmGeneration
-            << LL_ENDL;
-    }
 }
 
 void LLPipeline::renderSelfRiggedObjectIDBuffer()
@@ -10224,8 +10198,9 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
 
     static LLCachedControl<bool> enable(gSavedSettings, "FSOtherRiggedPickerEnable", false);
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSOtherRiggedPickerGPU", true);
-    static LLCachedControl<U32> max_draw_calls(gSavedSettings, "FSOtherRiggedPickerMaxDrawCalls", 160);
-    static LLCachedControl<U32> max_triangles(gSavedSettings, "FSOtherRiggedPickerMaxTriangles", 1200000);
+    // AYA P0 fixup: MaxDrawCalls / MaxTriangles were cvars; hardcoded now.
+    static constexpr U32 kMaxDrawCalls = 512;
+    static constexpr U32 kMaxTriangles = 1200000;
     if (!enable || !gpu_enable) return;
     if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK ||
         gAgentCamera.cameraCustomizeAvatar())
@@ -10237,25 +10212,17 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
     LLVOAvatar* target_avatar = sFSOtherRiggedPickerAvatar.get();
     if (!target_avatar || target_avatar->isDead() || target_avatar->isImpostor())
     {
-        if (fs_other_rigged_picker_debug_log())
-        {
-            LL_INFOS("FSOtherRiggedPicker")
-                << "render skipped invalid target avatar=" << sFSOtherRiggedPickerAvatarID
-                << LL_ENDL;
-        }
         return;
     }
 
-    const U32 arm_generation = sFSOtherRiggedPickerArmGeneration;
-    const U32 previous_render_generation = sFSOtherRiggedPickerRenderGeneration;
     U32 draw_calls = 0;
     U32 triangles = 0;
     U32 attempted_draw_calls = 0;
     U32 attempted_triangles = 0;
     bool over_budget = false;
     if (renderRiggedObjectIDBufferForAvatar(target_avatar,
-                                            (U32)max_draw_calls,
-                                            (U32)max_triangles,
+                                            kMaxDrawCalls,
+                                            kMaxTriangles,
                                             &draw_calls,
                                             &triangles,
                                             &over_budget,
@@ -10263,38 +10230,14 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
                                             &attempted_triangles))
     {
         sFSOtherRiggedPickerRenderGeneration = sFSOtherRiggedPickerArmGeneration;
-        if (previous_render_generation != sFSOtherRiggedPickerRenderGeneration &&
-            fs_other_rigged_picker_debug_log())
-        {
-            LL_INFOS("FSOtherRiggedPicker")
-                << "render ready avatar=" << sFSOtherRiggedPickerAvatarID
-                << " generation=" << sFSOtherRiggedPickerRenderGeneration
-                << " draw_calls=" << draw_calls
-                << " triangles=" << triangles
-                << LL_ENDL;
-        }
     }
     else
     {
         sFSOtherRiggedPickerRenderGeneration = 0;
-        static U32 sLastLoggedFailureGeneration = 0;
-        if (sLastLoggedFailureGeneration != arm_generation &&
-            fs_other_rigged_picker_debug_log())
-        {
-            sLastLoggedFailureGeneration = arm_generation;
-            LL_INFOS("FSOtherRiggedPicker")
-                << "render failed avatar=" << sFSOtherRiggedPickerAvatarID
-                << " generation=" << arm_generation
-                << " draw_calls=" << draw_calls
-                << " triangles=" << triangles
-                << " attempted_draw_calls=" << attempted_draw_calls
-                << " attempted_triangles=" << attempted_triangles
-                << " over_budget=" << over_budget
-                << " budget_draw_calls=" << (U32)max_draw_calls
-                << " budget_triangles=" << (U32)max_triangles
-                << LL_ENDL;
-        }
     }
+    (void)attempted_draw_calls;
+    (void)attempted_triangles;
+    (void)over_budget;
 }
 // </AYAstorm:r21.1>
 
