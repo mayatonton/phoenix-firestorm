@@ -45,6 +45,7 @@
 #endif
 #include "llpositionalstreammgr.h"
 #include "llagent.h"
+#include "llcinematicoverlay.h" // <FS:AYA r30 P5 R2> sentinel reset on mode switch
 #include "llagentcamera.h"
 #include "llconsole.h"
 #include "lldrawpoolbump.h"
@@ -1828,6 +1829,15 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "AYAVisualRealismEnabled", []() {
         if (LLStartUp::getStartupState() >= STATE_STARTED)
         {
+            // <FS:AYA r30 P5 R2> Reset overlay sentinel when leaving mode 2 so the
+            // next entry into Cinematic force-applies a fresh BD baseline. The
+            // forward transition (-> 2) is left to the next startup since all 3
+            // modes require restart per r30 P1.
+            if (gSavedSettings.getU32("AYAVisualRealismEnabled") != 2)
+            {
+                LLCinematicOverlay::clearOverlaySentinel();
+            }
+            // </FS:AYA>
             LLNotificationsUtil::add("ChangeViewMode");
         }
     });

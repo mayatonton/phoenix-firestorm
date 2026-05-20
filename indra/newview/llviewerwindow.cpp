@@ -39,6 +39,7 @@
 
 #include "llagent.h"
 #include "llagentcamera.h"
+#include "llcinematicoverlay.h" // <FS:AYA r30 P5 R2> applyRecommendedSettings 後の BD overlay 再適用
 #include "llcommandhandler.h"
 #include "llcommunicationchannel.h"
 #include "llfloaterreg.h"
@@ -2145,6 +2146,18 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     {
         LLFeatureManager::getInstance()->applyRecommendedSettings();
         gSavedSettings.setBOOL("ProbeHardwareOnStartup", false);
+        // <FS:AYA r30 P5 R2> applyRecommendedSettings は featuretable preset を経由して
+        // RenderShadowDetail / RenderFSAAType / RenderFarClip / RenderTreeLODFactor 等を
+        // 上書きするため、initConfiguration 段階で乗せた Cinematic BD overlay が消える。
+        // Cinematic mode の場合はここで強制再適用して preset を BD baseline で潰す。
+        // 通常起動 (ProbeHardwareOnStartup==false かつ LastFeatureVersion 一致) では
+        // 本ブロックに入らないので user tuning は安全。詳細:
+        // docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §3.4
+        if (gSavedSettings.getU32("AYAVisualRealismEnabled") == 2)
+        {
+            LLCinematicOverlay::applyCinematicOverlay();
+        }
+        // </FS:AYA>
     }
 
     // If we crashed while initializng GL stuff last time, disable certain features

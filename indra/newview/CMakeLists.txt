@@ -261,6 +261,7 @@ set(viewer_SOURCE_FILES
     llchatmsgbox.cpp
     llchiclet.cpp
     llchicletbar.cpp
+    llcinematicoverlay.cpp
     llclassifiedinfo.cpp
     llcofwearables.cpp
     llcolorswatch.cpp
@@ -1136,6 +1137,7 @@ set(viewer_HEADER_FILES
     llchatmsgbox.h
     llchiclet.h
     llchicletbar.h
+    llcinematicoverlay.h
     llclassifiedinfo.h
     llcofwearables.h
     llcolorswatch.h
@@ -2228,6 +2230,7 @@ set(viewer_APPSETTINGS_FILES
     app_settings/settings_v3.xml
     app_settings/settings_text.xml
     app_settings/settings.xml
+    app_settings/settings_cinematic_bd.xml
     app_settings/settings_crash_behavior.xml
     app_settings/settings_files.xml
     app_settings/settings_per_account.xml

@@ -9945,6 +9945,26 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
+    <!-- <FS:AYA> r30 P5 R2: Cinematic mode BD-parity overlay 適用状態 sentinel。
+         settings_cinematic_bd.xml が現セッションで適用済みかを記録。AYAVisualRealismEnabled==2
+         かつ本値==0 のとき llcinematicoverlay::applyCinematicOverlayIfNeeded が overlay を
+         適用して 1 に立てる。mode 2 -> 1/0 切替時は 0 にリセット、再度 2 になった際に再適用。
+         User がこの値を手で 1 にすると次回 mode 2 起動時に overlay 適用がスキップされる
+         (force restore したい場合は 0 に戻す)。詳細:
+         docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §3.4 (architecture decision)。 -->
+    <key>AYACinematicOverlayApplied</key>
+    <map>
+      <key>Comment</key>
+      <string>Sentinel: settings_cinematic_bd.xml が現セッションで Cinematic mode に適用済みなら 1、未適用なら 0。llcinematicoverlay モジュールが管理。手動で 0 に戻すと次回 mode 2 起動時に BD parity 値が force-apply される</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
     <!-- <FS:AYA> r14: AYAstorm View Mode 切替。r30 P1 で Cinematic 枠を先行追加 (3 値拡張)。
          Type は combo_box (Firestorm View=0 / AYAstorm View=1 / Cinematic=2) と確実に binding するため U32。
          変更は viewer 再起動が必要 (r30 P1 で 3 モード再起動切替に統一)。

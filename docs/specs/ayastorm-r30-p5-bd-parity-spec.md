@@ -587,9 +587,11 @@ AYA さんが mode 2 (Cinematic) で Cinematic Controls floater (`floater_aya_ci
 - AYA が目指す Cinematic 像は「BD 描画エンジン + Firestorm 既存 UI + 漏れたものを AYA Cinematic Controls floater で補完」であり、cvar 名の物理分離は逆方向 (UI ⇄ engine の binding を全て二重化)
 - B3 (AY-original cvar の mode 2 grey-out) 要件と整合させようとすると cvar 数がさらに増える
 
-これらを受けて、cvar split は本コミットで revert し、後続は **XML overlay 案** (`settings.xml` ← `settings_cinematic_bd.xml` overlay ← `user_settings.xml` の 3 段で default を mode 別に上書き、cvar 名は単一空間を維持) で再設計する。決定論的な最終 architecture は audit spec §3 で議論中、task #183 で確定予定。
+これらを受けて、cvar split は本コミットで revert し、後続は **XML overlay 案** (`settings.xml` ← `settings_cinematic_bd.xml` overlay ← `user_settings.xml` の 3 段で default を mode 別に上書き、cvar 名は単一空間を維持) で再設計する。
 
-詳細経緯と audit 結果は [`ayastorm-r30-p5-bd-ui-binding-audit-spec.md`](./ayastorm-r30-p5-bd-ui-binding-audit-spec.md) §0 / §5.0 / §5.6 / §5.7 を参照。
+**2026-05-20 task #183 完了**: 後続 audit (#182 semantic diff = 差なし / #184 AY-固有 cvar B3 = SSS 6 widget のみ) を経て、最終 architecture を **XML overlay 案** に確定。実装 step A1-A9 は audit spec §3.4 を参照 (見積約 5 日)。
+
+詳細経緯と audit 結果は [`ayastorm-r30-p5-bd-ui-binding-audit-spec.md`](./ayastorm-r30-p5-bd-ui-binding-audit-spec.md) §0 / §3.4 / §5.0 / §5.6 / §5.7 / §5.10.A / §5.10.B を参照。
 
 ### 10.9 以降の step (5.x〜9)
 

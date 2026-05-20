@@ -29,6 +29,7 @@
 #include "llappviewer.h"
 
 // Viewer includes
+#include "llcinematicoverlay.h"
 #include "llversioninfo.h"
 #include "llfeaturemanager.h"
 #include "lluictrlfactory.h"
@@ -3257,6 +3258,14 @@ bool LLAppViewer::initConfiguration()
     // <FS:AO> Re-read user settings again. This is a Firestorm hack to get user settings to override modes
     //Todo, find a cleaner way of doing this via the various set_default arguments.
     loadSettingsFromDirectory("User");
+
+    // <FS:AYA r30 P5 R2> Apply Cinematic BD-parity overlay after all settings
+    // layers are loaded (Default -> Session -> User). Only fires when
+    // AYAVisualRealismEnabled == 2 and AYACinematicOverlayApplied sentinel
+    // is unset, so user tunings within mode 2 survive restarts. See
+    // docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §3.4.
+    LLCinematicOverlay::applyCinematicOverlayIfNeeded();
+    // </FS:AYA>
 
     // <FS:Ansariel> Debug setting to disable log throttle
     nd::logging::setThrottleEnabled(gSavedSettings.getBOOL("FSEnableLogThrottle"));
