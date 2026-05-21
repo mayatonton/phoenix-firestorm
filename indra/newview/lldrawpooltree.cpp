@@ -71,6 +71,28 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
         return;
     }
 
+    // <AYAstorm canary: Linden trees は常に非装着 (Rez Object 扱い)。tree pool は
+    // LLDrawInfo 経由でなく drawRange 直叩きのため、ここで shader 全体に 1 度
+    // canary=11 を流す。診断専用。>
+    {
+        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+        if (shader)
+        {
+            shader->uniform1i(s_aya_attachment_canary, 11);
+            // <AYAcanary diag — temporary, remove before commit>
+            {
+                static std::set<std::string> s_seen;
+                if (s_seen.insert(shader->mName).second)
+                {
+                    LL_INFOS("AYAcanary") << "[treePool] shader=" << shader->mName
+                                          << " canary=11 (forced)" << LL_ENDL;
+                }
+            }
+            // </AYAcanary>
+        }
+    }
+    // </AYAstorm>
+
 
 // [SL:KB] - Patch: Render-TextureToggle (Catznip-4.0)
     if( (LLPipeline::sRenderTextures) )

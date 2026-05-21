@@ -103,6 +103,16 @@ private:
 
     // if true, we're executing a rigged render pass
     bool mRigged = false;
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> When true, forwardRender is
+    // currently routing color writes to gPipeline.mAYAAlphaColor (set by
+    // renderPostDeferred for POST_WATER + DoF only). Tells forwardRender to
+    // use a premultiplied-"over"-friendly alpha blend factor (ONE / 1-Sa)
+    // instead of the default glow-suppression factor (ZERO / 1-Sa), so the
+    // separate RT accumulates a usable alpha coverage we can over-blend in
+    // dofCombineF.
+    bool mForwardToAlphaRT = false;
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
 };
 
 #endif // LL_LLDRAWPOOLALPHA_H

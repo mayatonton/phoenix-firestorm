@@ -895,6 +895,19 @@ public:
     LLRenderTarget          mAYAAlphaDepth;
     // </AYAstorm r30 P5 transparent-DoF L2-β>
 
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color attachment
+    // for forward alpha BLEND draws. Shares depth with mRT->screen so
+    // depth test / depth occlusion against opaque geometry still works,
+    // but color writes land in a separate RT instead of mRT->screen.
+    // After DoF runs on the opaque-only mRT->screen (= bg through alpha
+    // pixels is correctly blurred), this RT is composited over the DoF
+    // result in dofCombineF so alpha geometry (hair, grilles, foliage)
+    // overlays the blurred bg. Resolves the L1/L2 compositional
+    // ambiguity (subject vs bg depth in same pixel) by structurally
+    // keeping alpha color in its own channel. Main RT only.
+    LLRenderTarget          mAYAAlphaColor;
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR
     LLRenderTarget          mSceneMap;

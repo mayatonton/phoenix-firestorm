@@ -38,6 +38,16 @@ uniform float res_scale;
 uniform float dof_width;
 uniform float dof_height;
 
+// <AYAstorm r30 P5 transparent-DoF C-(a)>
+// Alpha BLEND plate (gPipeline.mAYAAlphaColor) — premultiplied color/coverage
+// from forward alpha pass redirected away from mRT->screen so the opaque-only
+// scene goes through cofF/HQDoFF unobstructed. Composited back as sharp "over"
+// on top of the DoF result here. Guarded by aya_alpha_plate_enabled so the
+// shader is a no-op when C-(a) is not allocated (aux / probe paths).
+uniform sampler2D aya_alpha_plate;
+uniform bool      aya_alpha_plate_enabled;
+// </AYAstorm r30 P5 transparent-DoF C-(a)>
+
 in vec2 vary_fragcoord;
 
 vec4 dofSample(sampler2D tex, vec2 tc)
@@ -72,4 +82,21 @@ void main()
     }
 
     frag_color = mix(diff, dof, a);
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> Over-blend the alpha plate.
+    // mAYAAlphaColor was filled with forward alpha BLEND using factor
+    // (SRC_ALPHA, 1-SRC_ALPHA) for color + (ONE, 1-SRC_ALPHA) for alpha into a
+    // clear-to-(0,0,0,0) target, which produces premultiplied output:
+    //   plate.rgb = src.rgb * src.a (accumulated)
+    //   plate.a   = src.a           (accumulated as coverage)
+    // Standard "over" composite is therefore:
+    //   out.rgb = plate.rgb + scene.rgb * (1 - plate.a)
+    // Preserve frag_color.a (= scene glow signal) untouched — the alpha plate
+    // has no glow contribution and downstream combineGlow reads .a from this RT.
+    if (aya_alpha_plate_enabled)
+    {
+        vec4 plate = texture(aya_alpha_plate, vary_fragcoord.xy);
+        frag_color.rgb = plate.rgb + frag_color.rgb * (1.0 - plate.a);
+    }
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
 }

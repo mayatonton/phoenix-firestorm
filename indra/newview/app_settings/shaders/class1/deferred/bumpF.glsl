@@ -59,13 +59,18 @@ void main()
                 ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
                 : ((aya_attachment_canary == 4)
                     ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
-                    : vec3(0.0, 0.0, 1.0)));               // mesh 装着物 = blue
+                    : ((aya_attachment_canary == 11)
+                        ? vec3(0.0, 0.0, 0.0)              // 11 = Rez Object opaque 黒
+                        : ((aya_attachment_canary == 12)
+                            ? vec3(0.0, 1.0, 0.0)          // 12 = Rez Object alpha BLEND 緑
+                            : vec3(0.0, 0.0, 1.0)))));     // mesh 装着物 = blue
         frag_data[0] = vec4(canary_rgb, 0.0);
         frag_data[1] = vec4(0.0);
         // bumpF stores tangent-space basis in vary_mat0/1/2; the world-space
         // surface normal is the z-row.
         vec3 fake_n = normalize(vec3(vary_mat0.z, vary_mat1.z, vary_mat2.z));
-        frag_data[2] = encodeNormal(fake_n, 0.0, GBUFFER_FLAG_HAS_ATMOS);
+        // SKIP_ATMOS で softenLightF を bypass、canary 色を素通り
+        frag_data[2] = encodeNormal(fake_n, 0.0, GBUFFER_FLAG_SKIP_ATMOS);
 #if defined(HAS_EMISSIVE)
         frag_data[3] = vec4(canary_rgb, 0.0);
 #endif

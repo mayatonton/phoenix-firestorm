@@ -1138,6 +1138,24 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         }
         // </AYAstorm r30 P5 transparent-DoF L2-β>
 
+        // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color RT for
+        // forward alpha BLEND. RGBA16F to preserve HDR scene buffer
+        // precision (matches mRT->screen). depth=false here — we share
+        // mRT->screen's depth attachment via shareDepthBuffer below so
+        // alpha BLEND draws still depth-test against opaque geometry
+        // without re-allocating depth. Main RT only — DoF doesn't run on
+        // aux / probe / impostor / HUD paths.
+        if (mRT == &mMainRT)
+        {
+            LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYAAlphaColor");
+            if (!mAYAAlphaColor.allocate(resX, resY, GL_RGBA16F, false)) return false;
+            // deferredScreen owns depth (allocate(..., true) above) and has
+            // already lent it to mRT->screen. Borrow the same attachment so
+            // alpha BLEND depth-tests/writes match the rest of the scene.
+            mRT->deferredScreen.shareDepthBuffer(mAYAAlphaColor);
+        }
+        // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
         if (RenderFSAAType > 0)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("FSAABuffer"); // <FS:Beq/> improve Tracy scoping 
@@ -1624,6 +1642,10 @@ void LLPipeline::releaseScreenBuffers()
     // <AYAstorm r30 P5 transparent-DoF L2-β> alpha-aware depth for cofF.glsl
     mAYAAlphaDepth.release();
     // </AYAstorm r30 P5 transparent-DoF L2-β>
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND color RT
+    mAYAAlphaColor.release();
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
 }
 
 void LLPipeline::releaseSunShadowTarget(U32 index)
@@ -9864,6 +9886,22 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredDoFCombineProgram.bind();
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_LIGHT, &mRT->deferredLight, LLTexUnit::TFO_POINT);
+
+                // <AYAstorm r30 P5 transparent-DoF C-(a)> Bind the alpha BLEND
+                // plate so dofCombineF can "over" it on top of the DoF'd
+                // opaque scene. When mAYAAlphaColor is not allocated (aux /
+                // probe paths) the gate uniform stays false and the shader
+                // skips the composite entirely — no fallback bind needed.
+                {
+                    S32 ap_chan = gDeferredDoFCombineProgram.getTextureChannel(LLShaderMgr::AYA_ALPHA_PLATE);
+                    const bool ap_on = mAYAAlphaColor.isComplete() && ap_chan >= 0;
+                    if (ap_on)
+                    {
+                        gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::AYA_ALPHA_PLATE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
+                    }
+                    gDeferredDoFCombineProgram.uniform1i(LLShaderMgr::AYA_ALPHA_PLATE_ENABLED, ap_on ? 1 : 0);
+                }
+                // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
                 gDeferredDoFCombineProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image

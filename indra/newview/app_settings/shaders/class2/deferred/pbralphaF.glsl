@@ -232,8 +232,13 @@ void main()
                 ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
                 : ((aya_attachment_canary == 4)
                     ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
-                    : vec3(0.0, 0.0, 1.0)));               // mesh 装着物 = blue
-        frag_color = vec4(canary_rgb, a);
+                    : ((aya_attachment_canary == 11)
+                        ? vec3(0.0, 0.0, 0.0)              // 11 = Rez Object opaque 黒
+                        : ((aya_attachment_canary == 12)
+                            ? vec3(0.0, 1.0, 0.0)          // 12 = Rez Object alpha BLEND 緑
+                            : vec3(0.0, 0.0, 1.0)))));     // mesh 装着物 = blue
+        float canary_a = (aya_attachment_canary == 11 || aya_attachment_canary == 12) ? 1.0 : a;
+        frag_color = vec4(canary_rgb, canary_a);
         return;
     }
     // </AYAstorm>

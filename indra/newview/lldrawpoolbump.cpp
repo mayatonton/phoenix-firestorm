@@ -1070,11 +1070,21 @@ void LLRenderPass::pushBumpBatch(LLDrawInfo& params, bool texture, bool batch_te
         LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
         if (cur)
         {
-            cur->uniform1i(s_aya_attachment_canary,
-                           params.mAttachedToAvatar.notNull()
-                               ? (params.mIsBoMBodyOrHead ? 1
-                                    : (params.mIsPrim ? 3 : 2))
-                               : 0);
+            const bool att = params.mAttachedToAvatar.notNull();
+            const int cval = att ? (params.mIsBoMBodyOrHead ? 1 : (params.mIsPrim ? 3 : 2)) : 11;
+            cur->uniform1i(s_aya_attachment_canary, cval);
+            // <AYAcanary diag — temporary, remove before commit>
+            {
+                static std::set<std::string> s_seen;
+                std::string key = cur->mName + "|" + std::to_string(cval) + "|" + (att ? "T" : "F");
+                if (s_seen.insert(key).second)
+                {
+                    LL_INFOS("AYAcanary") << "[pushBumpBatch] shader=" << cur->mName
+                                          << " canary=" << cval
+                                          << " att=" << (att ? "T" : "F") << LL_ENDL;
+                }
+            }
+            // </AYAcanary>
         }
     }
     // </AYAstorm>
