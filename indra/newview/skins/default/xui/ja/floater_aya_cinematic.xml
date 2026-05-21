@@ -109,13 +109,19 @@
 
             <text name="T_CameraValues">カメラ (新しい描画エンジン推奨値)</text>
 
-            <text name="T_FieldOfView">画角 (°)</text>
+            <text name="T_FieldOfView">DoF 焦点 FOV (°)</text>
+            <slider_bar name="sb_FieldOfView" tool_tip="DoF ぼけ式の入力値のみ。ビューポートの実画角 (ワールド側 FOV 設定) は変更しません。"/>
+            <spinner    name="s_FieldOfView"  tool_tip="DoF ぼけ式の入力値のみ。ビューポートの実画角 (ワールド側 FOV 設定) は変更しません。"/>
             <button name="d_FieldOfView" tool_tip="新しい描画エンジン推奨値 (67°) に戻す"/>
 
-            <text name="T_FNumber">F 値 (絞り)</text>
+            <text name="T_FNumber">F 値 (DoF ぼけ専用)</text>
+            <slider_bar name="sb_FNumber" tool_tip="DoF ぼけ式の入力値のみ。F 値が小さいほどぼけが大きくなります。"/>
+            <spinner    name="s_FNumber"  tool_tip="DoF ぼけ式の入力値のみ。F 値が小さいほどぼけが大きくなります。"/>
             <button name="d_FNumber" tool_tip="新しい描画エンジン推奨値 (28) に戻す"/>
 
-            <text name="T_FocalLength">焦点距離 (mm)</text>
+            <text name="T_FocalLength">焦点距離 (DoF ぼけ専用, mm)</text>
+            <slider_bar name="sb_FocalLength" tool_tip="DoF ぼけ式の入力値のみ。ビューポートの遠近感は変更しません。"/>
+            <spinner    name="s_FocalLength"  tool_tip="DoF ぼけ式の入力値のみ。ビューポートの遠近感は変更しません。"/>
             <button name="d_FocalLength" tool_tip="新しい描画エンジン推奨値 (40mm) に戻す"/>
 
             <text name="T_MaxCoF">最大錯乱円 (CoF)</text>
@@ -277,9 +283,13 @@
             <text name="T_PostFX">ポスト FX</text>
 
             <text name="T_GreyscaleStrength">グレースケール強度</text>
+            <slider_bar name="sb_GreyscaleStrength" tool_tip="ポストパイプラインでセピアより先に合成されます。グレースケールとセピアを両方 1.0 にすると淡い茶色になります。"/>
+            <spinner    name="s_GreyscaleStrength"  tool_tip="ポストパイプラインでセピアより先に合成されます。グレースケールとセピアを両方 1.0 にすると淡い茶色になります。"/>
             <button name="d_GreyscaleStrength" tool_tip="デフォルトに戻す"/>
 
             <text name="T_SepiaStrength">セピア強度</text>
+            <slider_bar name="sb_SepiaStrength" tool_tip="ポストパイプラインでグレースケールの後に合成されます。両方 1.0 で淡い茶色になります。"/>
+            <spinner    name="s_SepiaStrength"  tool_tip="ポストパイプラインでグレースケールの後に合成されます。両方 1.0 で淡い茶色になります。"/>
             <button name="d_SepiaStrength" tool_tip="デフォルトに戻す"/>
 
             <text name="T_PosterizationSamples">ポスタリゼーション 階調数</text>
