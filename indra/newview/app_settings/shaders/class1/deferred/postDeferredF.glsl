@@ -29,16 +29,6 @@ out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
 
-// <AYAstorm r30 BD-preserving alpha edge guard> depthMap uniform を追加。
-// gDeferredPostProgram は既に pipeline.cpp:9804 で DEFERRED_DEPTH を bind 済
-// (BD HQ path 用に r30 P4 step 4 で追加された)。標準 postDeferredF からも同じ
-// depth texture を利用できる。Cinematic OFF / 非 AYAstorm では HAS_ALPHA_EDGE_GUARD
-// permutation が立たないので uniform は宣言のみで未参照、ドライバ最適化で剥がれる。
-#if HAS_ALPHA_EDGE_GUARD
-uniform sampler2D depthMap;
-#endif
-// </AYAstorm>
-
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 uniform float max_cof;
@@ -50,14 +40,7 @@ uniform float chroma_str;
 
 in vec2 vary_fragcoord;
 
-void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc
-// <AYAstorm r30 BD-preserving alpha edge guard> center pixel depth を引数で渡す。
-// guard 式 (s.a <= depth*0.50) は BD HQ path postDeferredHQDoFF.glsl:65 と同一。
-#if HAS_ALPHA_EDGE_GUARD
-    , float depth
-#endif
-// </AYAstorm>
-)
+void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc)
 {
     vec4 s = texture(diffuseRect, tc);
 
@@ -76,14 +59,7 @@ void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc
 #endif
 // </AYAstorm r30 P4 step 1>
 
-    if (sc > min_sc //sampled pixel is more "out of focus" than current sample radius
-// <AYAstorm r30 BD-preserving alpha edge guard> AND で BD HQ 由来 depth guard。
-// 既存式 `sc > min_sc` は一切書き換えず、AND 1 条件のみ追加。permutation OFF で完全 no-op。
-#if HAS_ALPHA_EDGE_GUARD
-        && (s.a <= depth*0.50)
-#endif
-// </AYAstorm>
-        )
+    if (sc > min_sc) //sampled pixel is more "out of focus" than current sample radius
     {
         float wg = 0.25;
 
@@ -117,12 +93,6 @@ void main()
     vec2 tc = vary_fragcoord.xy;
 
     vec4 diff = texture(diffuseRect, vary_fragcoord.xy);
-
-// <AYAstorm r30 BD-preserving alpha edge guard>
-#if HAS_ALPHA_EDGE_GUARD
-    float depth = texture(depthMap, tc).r;
-#endif
-// </AYAstorm>
 
     {
         float w = 1.0;
@@ -166,13 +136,7 @@ void main()
                     float samp_x = sc*sin(ang);
                     float samp_y = sc*cos(ang);
                     // you could test sample coords against an interesting non-circular aperture shape here, if desired.
-                    dofSample(diff, w, sc, vary_fragcoord.xy + (vec2(samp_x,samp_y) / screen_res)
-// <AYAstorm r30 BD-preserving alpha edge guard>
-#if HAS_ALPHA_EDGE_GUARD
-                        , depth
-#endif
-// </AYAstorm>
-                    );
+                    dofSample(diff, w, sc, vary_fragcoord.xy + (vec2(samp_x,samp_y) / screen_res));
                 }
                 sc -= 1.0;
             }
