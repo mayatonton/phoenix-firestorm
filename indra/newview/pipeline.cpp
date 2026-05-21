@@ -5163,19 +5163,20 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         { // do atmospherics against depth buffer before rendering alpha
             doAtmospherics();
             done_atmospherics = true;
-            // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> AYAstorm View
-            // 専用の r15 godrays / r20 SSS は Cinematic (mode 2) / Firestorm
-            // (mode 0) では呼ばない。各関数も自己 gate 済 (Phase 3.1) だが
-            // call-site で wrap して可視化 + Cinematic で関数 entry 無駄ゼロ化。
-            // §2.1.3 dispatch helper pattern (docs/specs/...phase3.2-cpp-dispatch-spec.md)
-            static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
-            if (aya_view_mode() == 1)
+            // <FS:AYAstorm r30 BD改善> AYAstorm View は無条件、Cinematic は個別 InCinematic cvar で opt-in。
+            //   各関数も自己 gate 済 (Phase 3.1 / r20 早期 return) だが call-site でも wrap して
+            //   Cinematic OFF 時の関数 entry を無駄ゼロ化。
+            static LLCachedControl<U32>  aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+            static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
+            static LLCachedControl<bool> aya_r20_in_cinematic(gSavedSettings, "AYAR20AvatarSkinSSSInCinematicEnabled", false);
+            bool dispatch_r15 = (aya_view_mode() == 1) || (aya_view_mode() == 2 && aya_r15_in_cinematic);
+            bool dispatch_r20 = (aya_view_mode() == 1) || (aya_view_mode() == 2 && aya_r20_in_cinematic);
+            if (dispatch_r15)
             {
-                // <FS:AYA r15 P1> godrays right after atmospherics, still in HDR
-                // scene buffer (mRT->screen) and before alpha / tonemap.
                 doGodrays();
-                // <FS:AYA r20 P0a> skin SSS prototype right after godrays, still
-                // in HDR scene buffer (mRT->screen) and before alpha / tonemap.
+            }
+            if (dispatch_r20)
+            {
                 doSkinSSS();
             }
             // </FS:AYAstorm>
@@ -10859,9 +10860,12 @@ void LLPipeline::renderDeferredLighting()
                     { 0.25f, 1.5f, 3.0f, 1.0f }, // 2=標準
                     { 0.35f, 1.2f, 2.5f, 1.5f }, // 3=強め
                 };
-                // <FS:AYAstorm r30 BD full port Phase 3.1> Cinematic (mode 2) は純 BD パスのため r19 OFF。
-                // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
-                U32 tier = (aya_realism_r19() == 1 && aya_r19_enabled()) ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
+                // <FS:AYAstorm r30 BD改善> AYAstorm View は既存 cvar、Cinematic は InCinematic cvar で opt-in。
+                //   tier 自体は AYAR19TranslucencyIntensity (1..3) を共有 (Cinematic 専用 tier は持たない、A/B 判断に集中)。
+                static LLCachedControl<bool> aya_r19_in_cinematic(gSavedSettings, "AYAR19TranslucencyInCinematicEnabled", false);
+                bool r19_active = (aya_realism_r19() == 1 && aya_r19_enabled())
+                               || (aya_realism_r19() == 2 && aya_r19_in_cinematic);
+                U32 tier = r19_active ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
                 // </FS:AYAstorm>
                 soften_shader.uniform4fv(s_r19_params, 1, r19_table[tier]);
                 // warm linear tint approximating skin/leaf transmission color
@@ -11398,11 +11402,14 @@ void LLPipeline::doSkinSSS()
         return;
     }
 
-    // <FS:AYAstorm r30 BD full port Phase 3.1> r20 SSS は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF。
-    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
+    // <FS:AYAstorm r30 BD改善> r20 SSS: AYAstorm View は既存 cvar (AYAR20AvatarSkinSSSEnabled),
+    //   Cinematic は個別 InCinematic cvar で opt-in。default OFF (= 純 BD パス維持)。
     static LLCachedControl<U32>  realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
     static LLCachedControl<bool> r20_enabled(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", true);
-    if (realism_enabled() != 1 || !r20_enabled())
+    static LLCachedControl<bool> r20_in_cinematic(gSavedSettings, "AYAR20AvatarSkinSSSInCinematicEnabled", false);
+    bool r20_active = (realism_enabled() == 1 && r20_enabled())
+                   || (realism_enabled() == 2 && r20_in_cinematic);
+    if (!r20_active)
     {
         return;
     }
@@ -11478,8 +11485,10 @@ void LLPipeline::doSkinSSS()
         shader.uniform1f(s_blur_radius, blur_radius);
         shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
         shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
-        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, realism_enabled() != 0 ? 1 : 0);
-        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, r20_enabled() ? 1 : 0);
+        // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
+        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, 1);
+        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, 1);
+        // </FS:AYAstorm>
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -11528,8 +11537,10 @@ void LLPipeline::doSkinSSS()
         shader.uniform1f(s_blur_radius, blur_radius);
         shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
         shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
-        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, realism_enabled() != 0 ? 1 : 0);
-        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, r20_enabled() ? 1 : 0);
+        // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
+        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, 1);
+        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, 1);
+        // </FS:AYAstorm>
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);

@@ -10165,6 +10165,80 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
+    <!-- <FS:AYAstorm r30 BD 改善 phase> AYAstorm View r14-r20 (r17 除外) を Cinematic
+         mode に opt-in 解禁する個別 cvar。各 false default で起動時の Cinematic 画面は
+         BD parity ベースのまま、AYA さんが Cinematic Controls 「AYAstorm View Effects」
+         tab から live A/B で確認しながら有効化判断する。
+         feedback_visual_decisions_need_live_ab.md より「机上で BD vs AYAstorm を選ばず、
+         全候補を live cvar で flip 可能にしてから AYA に渡す」 -->
+    <key>AYAR14VolumetricAtmosphereInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r14 Volumetric Atmosphere (altitude density + scene-referred linear integration) を Cinematic mode で有効化。default OFF、live cvar (再起動不要)。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View (mode 1) では本 cvar に関係なく常時 ON で従来動作</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR15GodraysInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r15 Godrays (godraysF post-process pass) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View (mode 1) では従来通り常時 ON</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR16AerialPerspectiveInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r16 Aerial Perspective (Rayleigh λ^-4 波長依存散乱) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR16AerialPerspectiveEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR18CloudVolumetricInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r18 Cloud Volumetric (slab raymarch 疑似体積雲) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR18CloudVolumetricEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR19TranslucencyInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r19 Translucency (wrap-around diffuse + back-light transmission) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR19TranslucencyEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR20AvatarSkinSSSInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 Avatar Skin SSS (screen-space 5-tap separable blur) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR20AvatarSkinSSSEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>

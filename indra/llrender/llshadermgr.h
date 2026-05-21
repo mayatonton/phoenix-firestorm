@@ -125,6 +125,8 @@ public:
         SKY_AMBIENT_SCALE,                  //  "sky_ambient_scale"
         CLASSIC_MODE,                       //  "classic_mode"
         AYA_VISUAL_REALISM_ENABLED,         //  "aya_visual_realism_enabled" <FS:AYA r14>
+        AYA_R14_VOLUMETRIC_ATMOSPHERE_ENABLED, // "aya_r14_volumetric_atmosphere_enabled" <FS:AYAstorm r30 BD改善>
+        AYA_R15_GODRAYS_ENABLED,            //  "aya_r15_godrays_enabled" <FS:AYAstorm r30 BD改善>
         AYA_R16_AERIAL_PERSPECTIVE_ENABLED, //  "aya_r16_aerial_perspective_enabled" <FS:AYA r16>
         AYA_R18_CLOUD_VOLUMETRIC_ENABLED,   //  "aya_r18_cloud_volumetric_enabled" <FS:AYA r18>
         AYA_R20_SKIN_SSS_ENABLED,           //  "aya_r20_skin_sss_enabled" <FS:AYA r20>

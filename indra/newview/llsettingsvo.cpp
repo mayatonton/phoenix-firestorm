@@ -900,10 +900,12 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     {
         static LLCachedControl<U32> aya_master(gSavedSettings, "AYAVisualRealismEnabled", 1);
         static LLCachedControl<bool> aya_r18_cloud_vol(gSavedSettings, "AYAR18CloudVolumetricEnabled", true);
+        // <FS:AYAstorm r30 BD 改善> Cinematic mode 個別 opt-in
+        static LLCachedControl<bool> aya_r18_in_cinematic(gSavedSettings, "AYAR18CloudVolumetricInCinematicEnabled", false);
         bool is_legacy_midday = (psky && psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY);
-        // <FS:AYAstorm r30 BD full port Phase 3.1> r18 Cloud Volumetric は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF。
-        // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
-        bool r18_on = (aya_master() == 1) && aya_r18_cloud_vol && !is_legacy_midday;
+        // mode 1 (AYAstorm View): 既存 cvar に従う / mode 2 (Cinematic): InCinematic cvar (default OFF)
+        bool r18_on = ((aya_master() == 1 && aya_r18_cloud_vol)
+                    || (aya_master() == 2 && aya_r18_in_cinematic)) && !is_legacy_midday;
         // </FS:AYAstorm>
         shader->uniform1i(LLShaderMgr::AYA_R18_CLOUD_VOLUMETRIC_ENABLED, r18_on ? 1 : 0);
     }
@@ -941,20 +943,42 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     shader->uniform1i(LLShaderMgr::CLASSIC_MODE, classic_mode);
 
     // <FS:AYA r14> Visual Realism master switch — altitude density 等の物理ベース atmospherics 新経路を有効化
-    //   cvar 型は U32 (0=Firestorm View / 1=AYAstorm View)。combo_box との binding を確実にするため bool ではなく U32 で読む。
+    //   cvar 型は U32 (0=Firestorm View / 1=AYAstorm View / 2=Cinematic)。combo_box との binding を確実にするため bool ではなく U32 で読む。
     static LLCachedControl<U32> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    // <FS:AYAstorm r30 BD full port Phase 3.1> 中央集権 uniform。mode 2 (Cinematic) では r14-r20 効果を全 OFF (= uniform=0) し、純 BD パスのみ走らせる。
-    // shader 側 6 site (atmosphericsFuncs/godrays/skinSSS/skyV) はこの uniform 経由で連動。
-    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
+    // <FS:AYAstorm r30 BD改善> mode 2 (Cinematic) では個別 InCinematic cvar で各 r14-r20 効果を opt-in。
+    //   master uniform AYA_VISUAL_REALISM_ENABLED 自体は mode==1 のみ true を保つ (skinSSSF 旧 path 互換 / r14-r15 等は個別 uniform に分岐)。
     bool aya_view = (aya_visual_realism() == 1);
     // </FS:AYAstorm>
     shader->uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, aya_view ? 1 : 0);
     // </FS:AYA>
 
+    // <FS:AYAstorm r30 BD改善> r14 Volumetric Atmosphere + Sun Dazzle 個別 uniform
+    //   AYAstorm View は無条件 ON (個別 cvar 持たないため)、Cinematic は AYAR14VolumetricAtmosphereInCinematicEnabled で opt-in。
+    {
+        static LLCachedControl<bool> aya_r14_in_cinematic(gSavedSettings, "AYAR14VolumetricAtmosphereInCinematicEnabled", false);
+        bool r14_on = aya_view || (aya_visual_realism() == 2 && aya_r14_in_cinematic);
+        shader->uniform1i(LLShaderMgr::AYA_R14_VOLUMETRIC_ATMOSPHERE_ENABLED, r14_on ? 1 : 0);
+    }
+    // </FS:AYAstorm>
+
+    // <FS:AYAstorm r30 BD改善> r15 Godrays 個別 uniform (godraysF が参照)
+    //   AYAstorm View は無条件 ON、Cinematic は AYAR15GodraysInCinematicEnabled で opt-in。
+    //   実際の dispatch (doGodrays) は pipeline.cpp 側でも mode/cvar 評価される。
+    {
+        static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
+        bool r15_on = aya_view || (aya_visual_realism() == 2 && aya_r15_in_cinematic);
+        shader->uniform1i(LLShaderMgr::AYA_R15_GODRAYS_ENABLED, r15_on ? 1 : 0);
+    }
+    // </FS:AYAstorm>
+
     // <FS:AYA r16> Aerial Perspective: 個別 switch を master AND で gate
     //   master OFF (Firestorm View) で r16 効果も停止、master ON 前提で個別に r16 のみ OFF 可能。
+    //   <FS:AYAstorm r30 BD改善> Cinematic mode 個別 opt-in
     static LLCachedControl<bool> aya_r16_aerial(gSavedSettings, "AYAR16AerialPerspectiveEnabled", true);
-    shader->uniform1i(LLShaderMgr::AYA_R16_AERIAL_PERSPECTIVE_ENABLED, (aya_view && aya_r16_aerial) ? 1 : 0);
+    static LLCachedControl<bool> aya_r16_in_cinematic(gSavedSettings, "AYAR16AerialPerspectiveInCinematicEnabled", false);
+    bool r16_on = (aya_view && aya_r16_aerial)
+               || (aya_visual_realism() == 2 && aya_r16_in_cinematic);
+    shader->uniform1i(LLShaderMgr::AYA_R16_AERIAL_PERSPECTIVE_ENABLED, r16_on ? 1 : 0);
     // </FS:AYA>
 
     LLRender::sClassicMode = classic_mode;

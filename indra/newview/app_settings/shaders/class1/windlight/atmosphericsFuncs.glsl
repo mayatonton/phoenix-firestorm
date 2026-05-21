@@ -43,6 +43,7 @@ uniform float sky_sunlight_scale;
 uniform float sky_ambient_scale;
 uniform int classic_mode;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14> Visual Realism master switch
+uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
 uniform int aya_r16_aerial_perspective_enabled;  // <FS:AYA r16> r16 個別 switch (master 独立)
 
 float getAmbientClamp() { return 1.0f; }
@@ -108,7 +109,7 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     // <FS:AYA r14> altitude density: 視線終点高度に応じて空気密度を勾配化
     // 地表近くは濃く、上空ほど薄く (指数勾配)、scale_height は max_y の半分を経験値として使用
     // rel_pos.y は eye-space Y で、L57 の `if (abs(rel_pos.y) > max_y)` clamp が altitude として扱っているのを踏襲
-    if (aya_visual_realism_enabled > 0)
+    if (aya_r14_volumetric_atmosphere_enabled > 0)
     {
         float altitude = max(rel_pos.y, 0.0);
         float scale_height = max(max_y * 0.1, 1.0);  // 0-div 安全 (r14 P1.a tune: 0.5→0.1 で勾配強化)
@@ -160,7 +161,7 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     // <FS:AYA r14> scene-referred 積分: 光の混色を linear 空間で行い、出力契約 (sRGB) に合わせて戻す
     // 旧経路は sRGB 空間で乗算/加算しており、blue_horizon/haze_horizon が非線形 sRGB のまま光合成されるため物理整合性が低い。
     // 新経路では preset 色を一旦 linear に展開し、合成後に linear_to_srgb で sRGB に戻して consumer 契約を維持する。
-    if (aya_visual_realism_enabled > 0)
+    if (aya_r14_volumetric_atmosphere_enabled > 0)
     {
         vec3 sunlight_lin    = srgb_to_linear(sunlight.rgb);
         vec3 amb_lin         = srgb_to_linear(tmpAmbient.rgb);

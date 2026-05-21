@@ -63,6 +63,7 @@ uniform float sun_moon_glow_factor;
 
 uniform int cube_snapshot;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14 P2.a> Visual Realism master switch
+uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate
 
 // <FS:AYA r14 P2.a> vertex shader 内のインライン sRGB <-> linear helper
 // skyV.glsl は vertex shader で srgbF.glsl が attach されないため、ここで直接定義する
@@ -167,7 +168,7 @@ void main()
     //   - haze_horizon 部分 (太陽方向の glow を含む演出 haze) は旧 sRGB のまま → 太陽 disc を保護
     //   linear 積分の haze_glow ピーク強化で sun disc が白飛び覆われる問題を回避する。
     vec3 color;
-    if (aya_visual_realism_enabled > 0)
+    if (aya_r14_volumetric_atmosphere_enabled > 0)
     {
         vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
         vec3 amb_lin      = aya_srgb_to_linear(ambient_color);
@@ -195,7 +196,7 @@ void main()
 
     // <FS:AYA r14 P2.a> scene-referred 積分 (分割版): 下雲側
     vec3 add_below_cloud;
-    if (aya_visual_realism_enabled > 0)
+    if (aya_r14_volumetric_atmosphere_enabled > 0)
     {
         vec3 sunlight_lin = aya_srgb_to_linear(sunlight);
         vec3 amb_lin      = aya_srgb_to_linear(ambient);

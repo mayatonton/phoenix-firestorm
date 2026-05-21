@@ -47,8 +47,9 @@ uniform mat4 inv_proj;
 // godrays accumulator (scene whites out / greens shift yellow).
 uniform vec4 shadow_clip;
 
-// AYAstorm r15 master switch (shared across visual-realism chapter)
-uniform int aya_visual_realism_enabled;
+// AYAstorm r15 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
+// <FS:AYAstorm r30 BD改善> master ではなく r15 個別 uniform を見る (Cinematic で master OFF のまま r15 だけ ON 可能)
+uniform int aya_r15_godrays_enabled;
 
 // helpers provided by deferred/deferredUtil.glsl + deferred/shadowUtil.glsl
 float getDepth(vec2 pos_screen);
@@ -57,7 +58,7 @@ float sampleDirectionalShadow(vec3 pos, vec3 norm, vec2 pos_screen);
 
 void main()
 {
-    if (aya_visual_realism_enabled <= 0)
+    if (aya_r15_godrays_enabled <= 0)
     {
         frag_color = vec4(0.0);
         return;
