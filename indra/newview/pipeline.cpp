@@ -1216,9 +1216,12 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
         for (U32 i = 0; i < 4; i++)
         {
             // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+            // <FS:AYAstorm r30 cleanup A.3> Apply RenderShadowResolutionScale uniformly to
+            // the per-cascade Vector4. Without this, the scale slider was inert in Cinematic.
+            // llmax(64.f, ...) prevents 0-size allocation when scale is set to 0.
             if (cinematic_per_channel_shadow)
             {
-                U32 res = (U32)RenderShadowResolution.mV[i];
+                U32 res = (U32)llmax(64.f, RenderShadowResolution.mV[i] * scale);
                 if (mRT->shadow[i].getWidth() != res)
                 {
                     if (!mRT->shadow[i].allocate(res, res, 0, true))
@@ -1255,9 +1258,10 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
             for (U32 i = 0; i < 2; i++)
             {
                 // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+                // <FS:AYAstorm r30 cleanup A.3> Scale applied for symmetry with sun cascades.
                 if (cinematic_per_channel_shadow)
                 {
-                    U32 res = (U32)RenderProjectorShadowResolution.mV[i];
+                    U32 res = (U32)llmax(64.f, RenderProjectorShadowResolution.mV[i] * scale);
                     if (!mSpotShadow[i].allocate(res, res, 0, true))
                     {
                         return false;
