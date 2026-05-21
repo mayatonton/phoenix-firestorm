@@ -1064,6 +1064,21 @@ void LLRenderPass::pushBumpBatch(LLDrawInfo& params, bool texture, bool batch_te
         }
     }
 
+    // <AYAstorm canary: attachment magenta override (bump batch dispatcher)>
+    {
+        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+        if (cur)
+        {
+            cur->uniform1i(s_aya_attachment_canary,
+                           params.mAttachedToAvatar.notNull()
+                               ? (params.mIsBoMBodyOrHead ? 1
+                                    : (params.mIsPrim ? 3 : 2))
+                               : 0);
+        }
+    }
+    // </AYAstorm>
+
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 

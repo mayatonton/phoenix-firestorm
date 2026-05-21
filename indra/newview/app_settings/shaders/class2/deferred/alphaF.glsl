@@ -33,6 +33,12 @@
 
 out vec4 frag_color;
 
+// <AYAstorm canary: attachment magenta override>
+// C++ (lldrawpoolalpha.cpp) drawRange 直前で mAttachedToAvatar.notNull() のとき 1 をセット。
+// shader 側で未参照なら GL が optimize-out、未 set 時は spec 上 0 のため leakage 無し。
+uniform int aya_attachment_canary;
+// </AYAstorm>
+
 uniform mat3 env_mat;
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
@@ -314,6 +320,26 @@ void main()
 #endif
 
     color.rgb *= final_scale;
+
+    // <AYAstorm canary: HUD = green、非 HUD は 1=BoM body/head→magenta / 2=その他→blue>
+    if (aya_attachment_canary != 0)
+    {
+#ifdef IS_HUD
+        frag_color = vec4(0.0, 1.0, 0.0, color.a);
+#else
+        vec3 canary_rgb = (aya_attachment_canary == 1)
+            ? vec3(1.0, 0.0, 1.0)                          // BoM body/head = magenta
+            : ((aya_attachment_canary == 3)
+                ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
+                : ((aya_attachment_canary == 4)
+                    ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
+                    : vec3(0.0, 0.0, 1.0)));               // mesh 装着物 = blue
+        frag_color = vec4(canary_rgb, color.a);
+#endif
+        return;
+    }
+    // </AYAstorm>
+
     frag_color = max(color, vec4(0));
 }
 

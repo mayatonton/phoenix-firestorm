@@ -38,6 +38,12 @@ uniform float emissive_brightness;  // fullbright flag, 1.0 == fullbright, 0.0 o
 uniform int sun_up_factor;
 uniform int classic_mode;
 
+// <AYAstorm canary: attachment magenta override>
+//   C++ side (lldrawpoolmaterials.cpp drawRange 直前) で attachment 描画時に 1 をセット。
+//   未 set 時 0 (GL spec)、未参照 program では optimize-out。診断専用。
+uniform int aya_attachment_canary;
+// </AYAstorm>
+
 vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
 vec3 scaleSoftClipFragLinear(vec3 l);
 void calcAtmosphericVarsLinear(vec3 inPositionEye, vec3 norm, vec3 light_dir, out vec3 sunlit, out vec3 amblit, out vec3 atten, out vec3 additive);
@@ -430,12 +436,49 @@ void main()
     float final_scale = 1;
     if (classic_mode > 0)
         final_scale = 1.1;
+
+    // <AYAstorm canary: 1 = BoM MeshBody/MeshHead → magenta、2 = その他装着物 → blue (forward BLEND path)>
+    if (aya_attachment_canary != 0)
+    {
+        vec3 canary_rgb = (aya_attachment_canary == 1)
+            ? vec3(1.0, 0.0, 1.0)                          // BoM body/head = magenta
+            : ((aya_attachment_canary == 3)
+                ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
+                : ((aya_attachment_canary == 4)
+                    ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
+                    : vec3(0.0, 0.0, 1.0)));               // mesh 装着物 = blue
+        frag_color = vec4(canary_rgb, al);
+        return;
+    }
+    // </AYAstorm>
+
     frag_color = max(vec4(color * final_scale, al), vec4(0));
 
 #else // mode is not DIFFUSE_ALPHA_MODE_BLEND, encode to gbuffer
     // deferred path               // See: C++: addDeferredAttachment(), shader: softenLightF.glsl
 
     float flag = GBUFFER_FLAG_HAS_ATMOS;
+
+    // <AYAstorm canary: 1 = BoM MeshBody/MeshHead → magenta、2 = その他装着物 → blue (deferred gbuffer path)>
+    //   diffuse = canary 色、emissive = canary 色 で lighting 後も支配。
+    if (aya_attachment_canary != 0)
+    {
+        vec3 canary_rgb = (aya_attachment_canary == 1)
+            ? vec3(1.0, 0.0, 1.0)                          // BoM body/head = magenta
+            : ((aya_attachment_canary == 3)
+                ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
+                : ((aya_attachment_canary == 4)
+                    ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
+                    : vec3(0.0, 0.0, 1.0)));               // mesh 装着物 = blue
+        frag_data[0] = vec4(canary_rgb, 1.0);
+        frag_data[1] = vec4(0.0);
+        frag_data[2] = encodeNormal(norm, 0.0, flag);
+#if defined(HAS_EMISSIVE)
+        frag_data[3] = vec4(canary_rgb, 0.0);
+#endif
+        return;
+    }
+    // </AYAstorm>
 
     frag_data[0] = max(vec4(diffcol.rgb, emissive), vec4(0));        // gbuffer is sRGB for legacy materials
     frag_data[1] = max(vec4(spec.rgb, glossiness), vec4(0));           // XYZ = Specular color. W = Specular exponent.

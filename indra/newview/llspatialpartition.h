@@ -130,6 +130,20 @@ public:
     LLPointer<LLVOAvatar> mAttachedToAvatar = nullptr;
     // </AYAstorm r30 P2>
 
+    // <AYAstorm r30 P5 canary> True when this draw batch is a BoM MeshBody /
+    // MeshHead face (TE id == IMG_USE_BAKED_HEAD / UPPER / LOWER / LEFTARM /
+    // LEFTLEG). Used by the magenta/blue canary to distinguish the avatar's
+    // own BoM body/head attachments from clothing/hair/accessories.
+    // Per-face flag; LLDrawInfo は元々 face 単位なので per-draw 判定で OK。
+    bool mIsBoMBodyOrHead = false;
+
+    // True when this draw batch is a prim attachment (= 装着物のうち mesh で
+    // ないもの: box / sphere / cylinder / torus / ring / tube / prism + sculpt
+    // 全部含む)。SL ユーザー慣習で sculpt も「プリム」に含めるため判定式は
+    // `mAttachedToAvatar.notNull() && !vobj->isMesh()`。canary では gray を割り当て。
+    bool mIsPrim = false;
+    // </AYAstorm r30 P5 canary>
+
     // Material pointer here is likely for debugging only and are immaterial (zing!)
     LLPointer<LLMaterial> mMaterial;
 

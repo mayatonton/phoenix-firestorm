@@ -839,6 +839,30 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         reset_minimum_alpha = true;
                     }
 
+                    // <AYAstorm canary: attachment magenta override>
+                    //   docs/specs/ayastorm-attachment-magenta-canary-trace.md §4.2
+                    //   `mAttachedToAvatar.notNull()` = attachment (rigged + non-rigged 不問、
+                    //   HUD/通常 prim/avatar body は notNull にならない、§2.1)。
+                    //   shader 側で uniform 未参照なら GL が optimize-out、no-op。
+                    {
+                        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+                        if (current_shader)
+                        {
+                            // <AYAstorm r30 P5 canary> alpha pool は透過合成
+                            // (BLEND) 専用 dispatcher。残り mesh 装飾物は
+                            // 4 (= brown) に振る。他 pool は 2 (blue) のまま。
+                            // BoM body/head (1) と prim (3) は alpha 経由でも
+                            // 意味を優先して維持する。
+                            current_shader->uniform1i(
+                                s_aya_attachment_canary,
+                                params.mAttachedToAvatar.notNull()
+                                    ? (params.mIsBoMBodyOrHead ? 1
+                                         : (params.mIsPrim ? 3 : 4))
+                                    : 0);
+                        }
+                    }
+                    // </AYAstorm>
+
                     params.mVertexBuffer->setBuffer();
                     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
                     stop_glerror();

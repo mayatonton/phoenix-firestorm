@@ -648,6 +648,22 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
         return;
     }
     // </FS:Beq>
+
+    // <AYAstorm canary: attachment magenta override (legacy textured/bump batches)>
+    {
+        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+        if (cur)
+        {
+            cur->uniform1i(s_aya_attachment_canary,
+                           params.mAttachedToAvatar.notNull()
+                               ? (params.mIsBoMBodyOrHead ? 1
+                                    : (params.mIsPrim ? 3 : 2))
+                               : 0);
+        }
+    }
+    // </AYAstorm>
+
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
     if (tex_setup)
@@ -668,6 +684,21 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
     }
 
     applyModelMatrix(params);
+
+    // <AYAstorm canary: attachment magenta override (legacy untextured batches)>
+    {
+        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+        if (cur)
+        {
+            cur->uniform1i(s_aya_attachment_canary,
+                           params.mAttachedToAvatar.notNull()
+                               ? (params.mIsBoMBodyOrHead ? 1
+                                    : (params.mIsPrim ? 3 : 2))
+                               : 0);
+        }
+    }
+    // </AYAstorm>
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
@@ -1098,6 +1129,20 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
     }
     // </FS:AYA>
 
+    // <AYAstorm canary: attachment magenta override (GLTF batch)>
+    {
+        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+        if (cur)
+        {
+            cur->uniform1i(s_aya_attachment_canary,
+                           params.mAttachedToAvatar.notNull()
+                               ? (params.mIsBoMBodyOrHead ? 1
+                                    : (params.mIsPrim ? 3 : 2))
+                               : 0);
+        }
+    }
+    // </AYAstorm>
+
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 
@@ -1112,6 +1157,21 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
     LLGLDisable cull_face(mat->mDoubleSided ? GL_CULL_FACE : 0);
 
     applyModelMatrix(params);
+
+    // <AYAstorm canary: attachment magenta override (untextured GLTF batch)>
+    {
+        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+        if (cur)
+        {
+            cur->uniform1i(s_aya_attachment_canary,
+                           params.mAttachedToAvatar.notNull()
+                               ? (params.mIsBoMBodyOrHead ? 1
+                                    : (params.mIsPrim ? 3 : 2))
+                               : 0);
+        }
+    }
+    // </AYAstorm>
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);

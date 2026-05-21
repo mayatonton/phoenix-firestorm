@@ -292,6 +292,20 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             params.mGroup->rebuildMesh();
         }*/
 
+        // <AYAstorm canary: attachment magenta override (materials pool)>
+        {
+            static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
+            if (mShader)
+            {
+                mShader->uniform1i(s_aya_attachment_canary,
+                                   params.mAttachedToAvatar.notNull()
+                                       ? (params.mIsBoMBodyOrHead ? 1
+                                            : (params.mIsPrim ? 3 : 2))
+                                       : 0);
+            }
+        }
+        // </AYAstorm>
+
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 

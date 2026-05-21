@@ -25,6 +25,10 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+// <AYAstorm canary: attachment magenta override — declared outside IS_HUD so
+// both deferred and HUD branches see it>
+uniform int aya_attachment_canary;
+// </AYAstorm>
 
 #ifndef IS_HUD
 
@@ -118,6 +122,27 @@ void main()
     //emissive = vNt * 0.5 + 0.5;
     //emissive = tnorm*0.5+0.5;
     // See: C++: addDeferredAttachments(), GLSL: softenLightF
+
+    // <AYAstorm canary: 1 = BoM MeshBody/MeshHead → magenta、2 = その他装着物 → blue>
+    if (aya_attachment_canary != 0)
+    {
+        vec3 canary_rgb = (aya_attachment_canary == 1)
+            ? vec3(1.0, 0.0, 1.0)                          // BoM body/head = magenta
+            : ((aya_attachment_canary == 3)
+                ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
+                : ((aya_attachment_canary == 4)
+                    ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
+                    : vec3(0.0, 0.0, 1.0)));               // mesh 装着物 = blue
+        frag_data[0] = vec4(canary_rgb, 0.0);
+        frag_data[1] = vec4(0.0);
+        frag_data[2] = encodeNormal(tnorm, 0.0, GBUFFER_FLAG_HAS_PBR);
+#if defined(HAS_EMISSIVE)
+        frag_data[3] = vec4(canary_rgb, 0.0);
+#endif
+        return;
+    }
+    // </AYAstorm>
+
     frag_data[0] = max(vec4(col, 0.0), vec4(0));                                                   // Diffuse
     frag_data[1] = max(vec4(spec.rgb,0.0), vec4(0));                                    // PBR linear packed Occlusion, Roughness, Metal.
     frag_data[2] = encodeNormal(tnorm, 0, GBUFFER_FLAG_HAS_PBR); // normal, environment intensity, flags
@@ -178,6 +203,14 @@ void main()
     emissive *= srgb_to_linear(texture(emissiveMap, emissive_texcoord.xy).rgb);
 
     col += emissive;
+
+    // <AYAstorm canary (HUD PBR opaque path) — HUD = green>
+    if (aya_attachment_canary != 0)
+    {
+        frag_color = vec4(0.0, 1.0, 0.0, 1.0);
+        return;
+    }
+    // </AYAstorm>
 
     // HUDs are rendered after gamma correction, output in sRGB space
     frag_color.rgb = linear_to_srgb(col);
