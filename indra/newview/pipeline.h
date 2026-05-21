@@ -883,15 +883,6 @@ public:
     U32                     mSMAAFrameIndex = 0;
     // </AYAstorm r30 P2>
 
-    // <AYAstorm r30 P5 transparent-DoF L1> Background depth snapshot. Captured
-    // right before forward-alpha renders (rigged hair etc.) so it holds the
-    // opaque scene depth that is "behind" any subsequent BLEND overlay. Fed
-    // to cofF.glsl in place of the post-alpha deferredScreen depth so the CoF
-    // calc for a hair-board pixel matches the depth of the background visible
-    // through it, not the hair board's own z=focal_distance. Main RT only.
-    LLRenderTarget          mAYABgDepth;
-    // </AYAstorm r30 P5 transparent-DoF L1>
-
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR
     LLRenderTarget          mSceneMap;
