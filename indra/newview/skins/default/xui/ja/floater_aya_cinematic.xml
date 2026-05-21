@@ -36,8 +36,8 @@
         <panel label="影" name="tab_shadows">
             <text name="T_ShadowsLevel">影レベルと距離</text>
 
-            <text name="T_ShadowDetail">影の詳細 (0-3)</text>
-            <slider_bar name="sb_ShadowDetail" tool_tip="0=オフ, 1=太陽, 2=太陽+スポット, 3=全部"/>
+            <text name="T_ShadowDetail">影の詳細 (0-2)</text>
+            <slider_bar name="sb_ShadowDetail" tool_tip="0=オフ, 1=太陽のみ, 2=太陽+スポット+プロジェクター (LL/BD に level 3 経路は存在しません)"/>
             <button name="d_ShadowDetail" tool_tip="デフォルトに戻す"/>
 
             <check_box name="cb_ShadowAutoDistance" label="影距離を自動設定"

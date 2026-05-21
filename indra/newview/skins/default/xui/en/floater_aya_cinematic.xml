@@ -90,9 +90,9 @@
         <panel border="false" follows="left|top" label="Shadows" layout="topleft" left="1" name="tab_shadows" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_ShadowsLevel" top="8" left="8" width="572" height="18" font="SansSerif">Shadow level &amp; distance</text>
 
-            <text       follows="left|top" layout="topleft" name="T_ShadowDetail"        top="32"  left="12"  width="160" height="20">Shadow Detail (0-3)</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_ShadowDetail"       top="34"  left="176" width="195" height="16" control_name="RenderShadowDetail" min_val="0" max_val="3" increment="1" tool_tip="0=off, 1=sun, 2=sun+spot, 3=all"/>
-            <spinner    follows="left|top" layout="topleft" name="s_ShadowDetail"        top="32"  left="376" width="65"  height="20" control_name="RenderShadowDetail" min_val="0" max_val="3" increment="1" decimal_digits="0" label_width="0"/>
+            <text       follows="left|top" layout="topleft" name="T_ShadowDetail"        top="32"  left="12"  width="160" height="20">Shadow Detail (0-2)</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_ShadowDetail"       top="34"  left="176" width="195" height="16" control_name="RenderShadowDetail" min_val="0" max_val="2" increment="1" tool_tip="0=off, 1=sun only, 2=sun+spot+projector (LL/BD have no level 3 path)"/>
+            <spinner    follows="left|top" layout="topleft" name="s_ShadowDetail"        top="32"  left="376" width="65"  height="20" control_name="RenderShadowDetail" min_val="0" max_val="2" increment="1" decimal_digits="0" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_ShadowDetail"        top="32"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderShadowDetail"/></button>
 
             <check_box  follows="left|top" layout="topleft" name="cb_ShadowAutoDistance" control_name="RenderShadowAutomaticDistance" top="60" left="36" width="506" height="20" label="Automatic shadow distance" tool_tip="When on, viewer chooses cascade distances; manual sliders below are ignored."/>
