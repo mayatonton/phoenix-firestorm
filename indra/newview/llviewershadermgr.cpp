@@ -3027,6 +3027,18 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                 hq_dof ? "deferred/postDeferredHQDoFF.glsl" : "deferred/postDeferredF.glsl",
                 GL_FRAGMENT_SHADER));
 
+            // <AYAstorm r30 BD-preserving alpha edge guard>
+            // 標準 postDeferredF.glsl path に、BD HQ path 由来の depth-aware edge guard を permutation で添加。
+            // HQ path は BD 由来コードに同等 guard を既に持つため、permutation を立てない (BD 完全移植維持)。
+            // 標準 path は AYAstorm Cinematic mode default で walk するため、ここで guard が立つことで
+            // alpha mesh edge 色シフトを抑える。Cinematic OFF (mode 0/1) では本 else ブランチで
+            // permutation 自体宣言されないので完全 no-op (vanilla 動作維持)。
+            if (!hq_dof)
+            {
+                gDeferredPostProgram.addPermutation("HAS_ALPHA_EDGE_GUARD", "1");
+            }
+            // </AYAstorm>
+
             static LLCachedControl<bool> dof_chroma_post(gSavedSettings, "RenderDepthOfFieldChroma", true);
             if (dof_chroma_post)
             {
@@ -3042,6 +3054,8 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         else
         {
             gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredF.glsl", GL_FRAGMENT_SHADER));
+            // 注: ここでは HAS_ALPHA_EDGE_GUARD permutation を立てない。
+            //     mode 0/1 は vanilla Firestorm 動作維持 (BD 由来でない既存仕様を一切変えない、C7 の精神)。
         }
         // </AYAstorm r30 P4 step 5>
         gDeferredPostProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
