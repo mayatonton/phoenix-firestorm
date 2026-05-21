@@ -5837,40 +5837,6 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
             // world geometry.
             draw_info->mAttachedToAvatar = vobj->getAvatar();
             // </AYAstorm r30 P2>
-
-            // <AYAstorm r30 P5 canary> BoM MeshBody/MeshHead 判定。
-            // 装着物 object の全 face TE を走査し IMG_USE_BAKED_HEAD / UPPER /
-            // LOWER / LEFTARM / LEFTLEG のいずれかを参照していれば
-            // BoM body/head 確定 (object 単位、face 内のどれか 1 つでも OK)。
-            // 服や髪が BoM tattoo/clothing layer を受ける場合は HEAD/UPPER/LOWER の
-            // baked tex を参照しないので false のままで分離できる。
-            if (draw_info->mAttachedToAvatar.notNull())
-            {
-                const S32 num_tes = vobj->getNumTEs();
-                for (S32 i = 0; i < num_tes; ++i)
-                {
-                    const LLTextureEntry* te = vobj->getTE(i);
-                    if (!te) continue;
-                    const LLUUID& tid = te->getID();
-                    if (tid == IMG_USE_BAKED_HEAD    ||
-                        tid == IMG_USE_BAKED_UPPER   ||
-                        tid == IMG_USE_BAKED_LOWER   ||
-                        tid == IMG_USE_BAKED_LEFTARM ||
-                        tid == IMG_USE_BAKED_LEFTLEG)
-                    {
-                        draw_info->mIsBoMBodyOrHead = true;
-                        break;
-                    }
-                }
-
-                // プリム装着物判定: 装着物のうち mesh でないもの = プリム
-                // (default prim + sculpt 全部、SL ユーザー慣習で sculpt も含む)。
-                // LLViewerObject::isMesh() は LLVOVolume::isMesh() 経由で
-                // PARAMS_SCULPT_TYPE_MESH かどうかを返すので、sculpt も
-                // mesh でもない default prim 系は両方 false → mIsPrim = true。
-                draw_info->mIsPrim = !vobj->isMesh();
-            }
-            // </AYAstorm r30 P5 canary>
         }
         // </FS:AYA>
 
