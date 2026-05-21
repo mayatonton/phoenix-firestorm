@@ -25,7 +25,7 @@
  can_resize="false"
  can_close="true"
  can_minimize="true"
- height="520"
+ height="536"
  help_topic="aya_cinematic_floater"
  layout="topleft"
  name="aya_cinematic"
@@ -43,10 +43,10 @@
      top="22"
      left="8"
      width="584"
-     height="32"
+     height="48"
      font="SansSerifSmall"
      word_wrap="true">
-        Active only when View Mode (Graphics tab) is "Cinematic". Mode change requires restart; sliders apply live. "D" restores Cinematic preset / LL default.
+        Active only when View Mode (Graphics tab) is "Cinematic". Mode change requires restart; sliders apply live. "D" restores Cinematic preset / LL default. All Cinematic controls require Deferred Rendering (Preferences → Graphics → Advanced Lighting Model).
     </text>
 
     <tab_container
@@ -58,33 +58,30 @@
      name="aya_cinematic_tabs"
      tab_height="22"
      tab_position="top"
-     top="58"
+     top="74"
      width="590">
 
         <!-- =================== Tab 1: General =================== -->
         <panel border="false" follows="left|top" label="General" layout="topleft" left="1" name="tab_general" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_GeneralMaster" top="8"   left="8"  width="572" height="18" font="SansSerif">Master switches (Cinematic preset defaults)</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_Deferred"            control_name="RenderDeferred"           top="32"  left="36" width="506" height="20" label="Deferred Rendering (required for shadows/SSAO/SSR/DoF)" tool_tip="Master switch. Disabling kills almost every Cinematic feature."/>
-            <button    follows="left|top" layout="topleft" name="d_Deferred"             top="32"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDeferred"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_DeferredSSAO"        control_name="RenderDeferredSSAO"       top="32"  left="36" width="506" height="20" label="Screen Space Ambient Occlusion (SSAO)" tool_tip="Approximate contact shadows / ambient darkening."/>
+            <button    follows="left|top" layout="topleft" name="d_DeferredSSAO"         top="32"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDeferredSSAO"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_DeferredSSAO"        control_name="RenderDeferredSSAO"       top="56"  left="36" width="506" height="20" label="Screen Space Ambient Occlusion (SSAO)" tool_tip="Approximate contact shadows / ambient darkening."/>
-            <button    follows="left|top" layout="topleft" name="d_DeferredSSAO"         top="56"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDeferredSSAO"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_Glow"                control_name="RenderGlow"               top="56"  left="36" width="506" height="20" label="Glow / Bloom" tool_tip="HDR bloom pass on bright pixels."/>
+            <button    follows="left|top" layout="topleft" name="d_Glow"                 top="56"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlow"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_Glow"                control_name="RenderGlow"               top="80"  left="36" width="506" height="20" label="Glow / Bloom" tool_tip="HDR bloom pass on bright pixels."/>
-            <button    follows="left|top" layout="topleft" name="d_Glow"                 top="80"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlow"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_AttachedParticles"   control_name="RenderAttachedParticles"  top="80"  left="36" width="506" height="20" label="Render Attached Particles" tool_tip="Particles emitted from attachments on avatars."/>
+            <button    follows="left|top" layout="topleft" name="d_AttachedParticles"    top="80"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderAttachedParticles"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_AttachedParticles"   control_name="RenderAttachedParticles"  top="104" left="36" width="506" height="20" label="Render Attached Particles" tool_tip="Particles emitted from attachments on avatars."/>
-            <button    follows="left|top" layout="topleft" name="d_AttachedParticles"    top="104" left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderAttachedParticles"/></button>
+            <text       follows="left|top" layout="topleft" name="T_GeneralReflection"   top="116" left="8"   width="572" height="18" font="SansSerif">Reflection detail</text>
 
-            <text       follows="left|top" layout="topleft" name="T_GeneralReflection"   top="140" left="8"   width="572" height="18" font="SansSerif">Reflection detail</text>
+            <text       follows="left|top" layout="topleft" name="T_ReflectionDetail"    top="140" left="12"  width="160" height="20">Reflection probe quality</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_ReflectionDetail"   top="142" left="176" width="195" height="16" control_name="RenderReflectionProbeLevel" min_val="0" max_val="3" increment="1"/>
+            <spinner    follows="left|top" layout="topleft" name="s_ReflectionDetail"    top="140" left="376" width="65"  height="20" control_name="RenderReflectionProbeLevel" min_val="0" max_val="3" increment="1" decimal_digits="0" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_ReflectionDetail"    top="140" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderReflectionProbeLevel"/></button>
 
-            <text       follows="left|top" layout="topleft" name="T_ReflectionDetail"    top="164" left="12"  width="160" height="20">Reflection probe quality</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_ReflectionDetail"   top="166" left="176" width="195" height="16" control_name="RenderReflectionProbeLevel" min_val="0" max_val="3" increment="1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_ReflectionDetail"    top="164" left="376" width="65"  height="20" control_name="RenderReflectionProbeLevel" min_val="0" max_val="3" increment="1" decimal_digits="0" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_ReflectionDetail"    top="164" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderReflectionProbeLevel"/></button>
-
-            <text       follows="left|top|right" layout="topleft" name="T_GeneralNote"   top="210" left="8"   width="572" height="40" font="SansSerifSmall" word_wrap="true" text_color="White_50">
+            <text       follows="left|top|right" layout="topleft" name="T_GeneralNote"   top="186" left="8"   width="572" height="40" font="SansSerifSmall" word_wrap="true" text_color="White_50">
                 Tip: change View Mode in Preferences → Graphics. Restart the viewer after switching to apply.
             </text>
         </panel>

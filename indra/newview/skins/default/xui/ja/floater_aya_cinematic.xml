@@ -2,7 +2,7 @@
 <floater name="aya_cinematic" title="AYAstorm シネマ撮影コントロール">
 
     <text name="T_Header">
-        Cinematic モード時のみ有効です (グラフィック設定の表示モード)。モード変更は再起動が必要、スライダーは即時反映。「D」ボタンで 新しい描画エンジン推奨値 / LL デフォルトに戻します。
+        Cinematic モード時のみ有効です (グラフィック設定の表示モード)。モード変更は再起動が必要、スライダーは即時反映。「D」ボタンで 新しい描画エンジン推奨値 / LL デフォルトに戻します。Cinematic の全機能は ディファード描画 (環境設定 → グラフィック → Advanced Lighting Model) が必須です。
     </text>
 
     <tab_container name="aya_cinematic_tabs">
@@ -10,10 +10,6 @@
         <!-- ============ Tab 1: General ============ -->
         <panel label="基本" name="tab_general">
             <text name="T_GeneralMaster">マスタースイッチ (新しい描画エンジン推奨値)</text>
-
-            <check_box name="cb_Deferred" label="ディファード描画 (影/SSAO/SSR/DoF に必須)"
-                       tool_tip="マスタースイッチ。OFF にすると Cinematic 機能の大半が無効化されます。"/>
-            <button name="d_Deferred" tool_tip="デフォルトに戻す"/>
 
             <check_box name="cb_DeferredSSAO" label="スクリーンスペース AO (SSAO)"
                        tool_tip="接触影 / 環境光の暗がりを近似計算で再現します。"/>
