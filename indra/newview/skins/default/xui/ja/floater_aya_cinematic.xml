@@ -55,6 +55,8 @@
             <text name="T_ShadowsExtras">その他</text>
 
             <text name="T_ShadowFarClip">影遠クリップ</text>
+            <slider_bar name="sb_ShadowFarClip" tool_tip="影の描画距離 (m)。実効範囲は RenderFarClip (描画距離) により上限が決まります。"/>
+            <spinner    name="s_ShadowFarClip"  tool_tip="影の描画距離 (m)。実効範囲は RenderFarClip (描画距離) により上限が決まります。"/>
             <button name="d_ShadowFarClip" tool_tip="デフォルトに戻す"/>
         </panel>
 
@@ -142,9 +144,13 @@
             <text name="T_SSRTuning">品質チューニング</text>
 
             <text name="T_SSRRayStep">レイステップ</text>
+            <slider_bar name="sb_SSRRayStep" tool_tip="1 反復あたりのステップ距離。実用的な反射到達距離は レイステップ × 反復回数 で、積を ~50m 以下に保つのが目安です。"/>
+            <spinner    name="s_SSRRayStep"  tool_tip="1 反復あたりのステップ距離。実用的な反射到達距離は レイステップ × 反復回数 で、積を ~50m 以下に保つのが目安です。"/>
             <button name="d_SSRRayStep" tool_tip="デフォルトに戻す"/>
 
             <text name="T_SSRIterations">反復回数</text>
+            <slider_bar name="sb_SSRIterations" tool_tip="1 レイあたりのステップ数。実用的な反射到達距離は レイステップ × 反復回数 で、積を ~50m 以下に保つのが目安です。"/>
+            <spinner    name="s_SSRIterations"  tool_tip="1 レイあたりのステップ数。実用的な反射到達距離は レイステップ × 反復回数 で、積を ~50m 以下に保つのが目安です。"/>
             <button name="d_SSRIterations" tool_tip="デフォルトに戻す"/>
 
             <text name="T_SSRDistBias">距離バイアス</text>
@@ -154,6 +160,8 @@
             <button name="d_SSRDepthBias" tool_tip="デフォルトに戻す"/>
 
             <text name="T_SSRAdaptive">適応ステップ ×</text>
+            <slider_bar name="sb_SSRAdaptive" tool_tip="反復ごとのステップ指数倍率。1.0 未満では毎ループでステップが縮小し FP32 アンダーフローします。"/>
+            <spinner    name="s_SSRAdaptive"  tool_tip="反復ごとのステップ指数倍率。1.0 未満では毎ループでステップが縮小し FP32 アンダーフローします。"/>
             <button name="d_SSRAdaptive" tool_tip="デフォルトに戻す"/>
 
             <text name="T_SSRGlossy">グロッシー サンプル数</text>
@@ -200,6 +208,8 @@
             <button name="d_GlowMaxExtractAlpha" tool_tip="デフォルトに戻す"/>
 
             <text name="T_GlowMinLuminance">最小輝度</text>
+            <slider_bar name="sb_GlowMinLuminance" tool_tip="グロー抽出の輝度しきい値。HDR が OFF の場合、0.0〜1.0 の範囲のみ意味があります。"/>
+            <spinner    name="s_GlowMinLuminance"  tool_tip="グロー抽出の輝度しきい値。HDR が OFF の場合、0.0〜1.0 の範囲のみ意味があります。"/>
             <button name="d_GlowMinLuminance" tool_tip="デフォルトに戻す"/>
 
             <text name="T_GlowWarmthAmount">暖色量</text>
@@ -218,9 +228,13 @@
             <button name="d_VolRes" tool_tip="デフォルトに戻す"/>
 
             <text name="T_VolMul">強度</text>
+            <slider_bar name="sb_VolMul" tool_tip="トーンマップ前に加算するゴッドレイ強度。~80 を超えるとトーンマップ曲線が飽和します。"/>
+            <spinner    name="s_VolMul"  tool_tip="トーンマップ前に加算するゴッドレイ強度。~80 を超えるとトーンマップ曲線が飽和します。"/>
             <button name="d_VolMul" tool_tip="デフォルトに戻す"/>
 
             <text name="T_VolFall">減衰</text>
+            <slider_bar name="sb_VolFall" tool_tip="近距離のゴッドレイのみを減衰させます。遠距離のレイには影響しません。"/>
+            <spinner    name="s_VolFall"  tool_tip="近距離のゴッドレイのみを減衰させます。遠距離のレイには影響しません。"/>
             <button name="d_VolFall" tool_tip="デフォルトに戻す"/>
 
             <check_box name="cb_VolDir" label="方向性フェード (太陽が地平線下で消える)"
@@ -269,6 +283,8 @@
             <button name="d_SepiaStrength" tool_tip="デフォルトに戻す"/>
 
             <text name="T_PosterizationSamples">ポスタリゼーション 階調数</text>
+            <slider_bar name="sb_PosterizationSamples" tool_tip="ポスタリゼーションの階調数。3 未満はシェーダーゲート (&gt;2) で無効化されます。"/>
+            <spinner    name="s_PosterizationSamples"  tool_tip="ポスタリゼーションの階調数。3 未満はシェーダーゲート (&gt;2) で無効化されます。"/>
             <button name="d_PosterizationSamples" tool_tip="デフォルトに戻す"/>
         </panel>
 

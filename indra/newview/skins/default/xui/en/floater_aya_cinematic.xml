@@ -113,8 +113,8 @@
             <text       follows="left|top" layout="topleft" name="T_ShadowsExtras"       top="184" left="8"   width="572" height="18" font="SansSerif">Extras</text>
 
             <text       follows="left|top" layout="topleft" name="T_ShadowFarClip"       top="208" left="12"  width="160" height="20">Shadow far clip</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_ShadowFarClip"      top="210" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderShadowFarClip" min_val="32" max_val="512" increment="1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_ShadowFarClip"       top="208" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderShadowFarClip" min_val="32" max_val="512" increment="1" decimal_digits="0" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_ShadowFarClip"      top="210" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderShadowFarClip" min_val="32" max_val="512" increment="1" tool_tip="Shadow draw distance in meters. Effective range is capped by RenderFarClip (view distance)."/>
+            <spinner    follows="left|top" layout="topleft" name="s_ShadowFarClip"       top="208" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderShadowFarClip" min_val="32" max_val="512" increment="1" decimal_digits="0" label_width="0" tool_tip="Shadow draw distance in meters. Effective range is capped by RenderFarClip (view distance)."/>
             <button     follows="left|top" layout="topleft" name="d_ShadowFarClip"       top="208" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderShadowFarClip"/></button>
         </panel>
 
@@ -215,13 +215,13 @@
             <text follows="left|top" layout="topleft" name="T_SSRTuning" top="68" left="8" width="572" height="18" font="SansSerif">Quality tuning</text>
 
             <text       follows="left|top" layout="topleft" name="T_SSRRayStep"     top="92"  left="12"  width="160" height="20">Ray step</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_SSRRayStep"    top="94"  left="176" width="195" height="16" control_name="RenderScreenSpaceReflectionRayStep" min_val="0.01" max_val="10" increment="0.1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_SSRRayStep"     top="92"  left="376" width="65"  height="20" control_name="RenderScreenSpaceReflectionRayStep" min_val="0.01" max_val="10" increment="0.1" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSRRayStep"    top="94"  left="176" width="195" height="16" control_name="RenderScreenSpaceReflectionRayStep" min_val="0.01" max_val="10" increment="0.1" tool_tip="Step size per iteration. Practical reflection reach is RayStep × Iterations; keep the product around ~50m or less."/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSRRayStep"     top="92"  left="376" width="65"  height="20" control_name="RenderScreenSpaceReflectionRayStep" min_val="0.01" max_val="10" increment="0.1" decimal_digits="2" label_width="0" tool_tip="Step size per iteration. Practical reflection reach is RayStep × Iterations; keep the product around ~50m or less."/>
             <button     follows="left|top" layout="topleft" name="d_SSRRayStep"     top="92"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflectionRayStep"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_SSRIterations" top="116" left="12"  width="160" height="20">Iterations</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_SSRIterations" top="118" left="176" width="195" height="16" control_name="RenderScreenSpaceReflectionIterations" min_val="1" max_val="200" increment="1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_SSRIterations"  top="116" left="376" width="65"  height="20" control_name="RenderScreenSpaceReflectionIterations" min_val="1" max_val="200" increment="1" decimal_digits="0" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSRIterations" top="118" left="176" width="195" height="16" control_name="RenderScreenSpaceReflectionIterations" min_val="1" max_val="200" increment="1" tool_tip="Steps per ray. Practical reflection reach is RayStep × Iterations; keep the product around ~50m or less."/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSRIterations"  top="116" left="376" width="65"  height="20" control_name="RenderScreenSpaceReflectionIterations" min_val="1" max_val="200" increment="1" decimal_digits="0" label_width="0" tool_tip="Steps per ray. Practical reflection reach is RayStep × Iterations; keep the product around ~50m or less."/>
             <button     follows="left|top" layout="topleft" name="d_SSRIterations"  top="116" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflectionIterations"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_SSRDistBias"   top="140" left="12"  width="160" height="20">Distance bias</text>
@@ -235,8 +235,8 @@
             <button     follows="left|top" layout="topleft" name="d_SSRDepthBias"  top="164" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflectionDepthRejectBias"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_SSRAdaptive"   top="188" left="12"  width="160" height="20">Adaptive step ×</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_SSRAdaptive"  top="190" left="176" width="195" height="16" control_name="RenderScreenSpaceReflectionAdaptiveStepMultiplier" min_val="0.1" max_val="10" increment="0.1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_SSRAdaptive"   top="188" left="376" width="65"  height="20" control_name="RenderScreenSpaceReflectionAdaptiveStepMultiplier" min_val="0.1" max_val="10" increment="0.1" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSRAdaptive"  top="190" left="176" width="195" height="16" control_name="RenderScreenSpaceReflectionAdaptiveStepMultiplier" min_val="1.0" max_val="10" increment="0.1" tool_tip="Exponential step growth per iteration. Values below 1.0 shrink the step every loop and underflow FP32."/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSRAdaptive"   top="188" left="376" width="65"  height="20" control_name="RenderScreenSpaceReflectionAdaptiveStepMultiplier" min_val="1.0" max_val="10" increment="0.1" decimal_digits="2" label_width="0" tool_tip="Exponential step growth per iteration. Values below 1.0 shrink the step every loop and underflow FP32."/>
             <button     follows="left|top" layout="topleft" name="d_SSRAdaptive"   top="188" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflectionAdaptiveStepMultiplier"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_SSRGlossy"     top="212" left="12"  width="160" height="20">Glossy samples</text>
@@ -291,8 +291,8 @@
             <button     follows="left|top" layout="topleft" name="d_GlowMaxExtractAlpha"   top="80"  left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowMaxExtractAlpha"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_GlowMinLuminance"      top="104" left="12"  width="160" height="20">Min luminance</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_GlowMinLuminance"     top="106" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05"/>
-            <spinner    follows="left|top" layout="topleft" name="s_GlowMinLuminance"      top="104" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_GlowMinLuminance"     top="106" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05" tool_tip="Luminance threshold for glow extraction. When HDR is OFF, only the 0.0-1.0 range is meaningful."/>
+            <spinner    follows="left|top" layout="topleft" name="s_GlowMinLuminance"      top="104" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderGlowMinLuminance" min_val="0" max_val="4" increment="0.05" decimal_digits="2" label_width="0" tool_tip="Luminance threshold for glow extraction. When HDR is OFF, only the 0.0-1.0 range is meaningful."/>
             <button     follows="left|top" layout="topleft" name="d_GlowMinLuminance"      top="104" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderGlowMinLuminance"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_GlowWarmthAmount"      top="128" left="12"  width="160" height="20">Warmth amount</text>
@@ -316,13 +316,13 @@
             <button     follows="left|top" layout="topleft" name="d_VolRes"  top="236" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderVolumetricLightingResolution"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_VolMul"  top="260" left="12"  width="160" height="20">Intensity</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_VolMul" top="262" left="176" width="195" height="16" control_name="RenderVolumetricLightingMultiplier" min_val="0" max_val="200" increment="1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_VolMul"  top="260" left="376" width="65"  height="20" control_name="RenderVolumetricLightingMultiplier" min_val="0" max_val="200" increment="1" decimal_digits="1" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_VolMul" top="262" left="176" width="195" height="16" control_name="RenderVolumetricLightingMultiplier" min_val="0" max_val="80" increment="1" tool_tip="Godray intensity added pre-tonemap. Beyond ~80 the result saturates the tonemap curve."/>
+            <spinner    follows="left|top" layout="topleft" name="s_VolMul"  top="260" left="376" width="65"  height="20" control_name="RenderVolumetricLightingMultiplier" min_val="0" max_val="80" increment="1" decimal_digits="1" label_width="0" tool_tip="Godray intensity added pre-tonemap. Beyond ~80 the result saturates the tonemap curve."/>
             <button     follows="left|top" layout="topleft" name="d_VolMul"  top="260" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderVolumetricLightingMultiplier"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_VolFall" top="284" left="12"  width="160" height="20">Falloff</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_VolFall" top="286" left="176" width="195" height="16" control_name="RenderVolumetricLightingFalloffMultiplier" min_val="0" max_val="10" increment="0.1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_VolFall"  top="284" left="376" width="65"  height="20" control_name="RenderVolumetricLightingFalloffMultiplier" min_val="0" max_val="10" increment="0.1" decimal_digits="2" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_VolFall" top="286" left="176" width="195" height="16" control_name="RenderVolumetricLightingFalloffMultiplier" min_val="0" max_val="10" increment="0.1" tool_tip="Attenuates near-field godrays only; does not affect far-field rays."/>
+            <spinner    follows="left|top" layout="topleft" name="s_VolFall"  top="284" left="376" width="65"  height="20" control_name="RenderVolumetricLightingFalloffMultiplier" min_val="0" max_val="10" increment="0.1" decimal_digits="2" label_width="0" tool_tip="Attenuates near-field godrays only; does not affect far-field rays."/>
             <button     follows="left|top" layout="topleft" name="d_VolFall"  top="284" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderVolumetricLightingFalloffMultiplier"/></button>
 
             <check_box follows="left|top" layout="topleft" name="cb_VolDir" control_name="RenderVolumetricLightingDirectional" top="312" left="36" width="506" height="20" label="Directional fade (sun-below-horizon)" tool_tip="Adds GODRAYS_FADE permutation. Toggling rebuilds shaders live (1-2s)."/>
@@ -374,8 +374,8 @@
             <button     follows="left|top" layout="topleft" name="d_SepiaStrength"        top="112" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderPostSepiaStrength"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_PosterizationSamples" top="136" left="12" width="160" height="20">Posterization shades</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_PosterizationSamples" top="138" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderPostPosterizationSamples" min_val="1" max_val="64" increment="1"/>
-            <spinner    follows="left|top" layout="topleft" name="s_PosterizationSamples"  top="136" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderPostPosterizationSamples" min_val="1" max_val="64" increment="1" decimal_digits="0" label_width="0"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_PosterizationSamples" top="138" left="176" width="195" height="16" enabled_control="AYACinematicModeActive" control_name="RenderPostPosterizationSamples" min_val="3" max_val="64" increment="1" tool_tip="Number of luminance bands. Values below 3 are no-op (shader gate &gt; 2)."/>
+            <spinner    follows="left|top" layout="topleft" name="s_PosterizationSamples"  top="136" left="376" width="65"  height="20" enabled_control="AYACinematicModeActive" control_name="RenderPostPosterizationSamples" min_val="3" max_val="64" increment="1" decimal_digits="0" label_width="0" tool_tip="Number of luminance bands. Values below 3 are no-op (shader gate &gt; 2)."/>
             <button     follows="left|top" layout="topleft" name="d_PosterizationSamples"  top="136" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderPostPosterizationSamples"/></button>
         </panel>
 
