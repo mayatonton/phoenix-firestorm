@@ -564,10 +564,10 @@ if (aya_attachment_canary != 0)
 
 ### 9.1 茶 path だけで起きる典型バグ
 
-| 症状 | なぜ茶だけ起きるか |
-|---|---|
-| **DoF (焦点距離) が透過部だけ効かない / 誤った距離でぼける** | alpha pool は forward path で gbuffer (depth含む) に書かない。後段の DoF pass は depth buffer の **opaque 部分の深さ** しか参照できないので、透過面の手前/奥の判定が opaque 背景に置き換わる |
-| **SSAO / SSR / 反射プローブが透過部で抜ける** | 同上。SSAO/SSR は gbuffer depth + normal を読むが、透過は gbuffer に書かないので「そこには何もない」扱い |
+| 症状 | なぜ茶だけ起きるか | AYAstorm 対応状況 |
+|---|---|---|
+| **DoF (焦点距離) が透過部だけ効かない / 誤った距離でぼける** | alpha pool は forward path で gbuffer (depth含む) に書かない。後段の DoF pass は depth buffer の **opaque 部分の深さ** しか参照できないので、透過面の手前/奥の判定が opaque 背景に置き換わる | **✅ 解決済 (2026-05-22、C 案完成)** — 装着物の髪・服 (茶) と Rez Object の窓ガラス・葉先 (緑) の両 alpha BLEND で camera params が応答するようになった。配線詳細は `ayastorm-rez-object-rendering-routing.md` §10.10 (cofF が `mAYAAlphaDepth` で CoC 計算 → `dofCombineF` が `mAYAAlphaColor` を CoC ベース 12-tap disc gather で blur 合成) |
+| **SSAO / SSR / 反射プローブが透過部で抜ける** | 同上。SSAO/SSR は gbuffer depth + normal を読むが、透過は gbuffer に書かないので「そこには何もない」扱い | ⏳ 未着手 (DoF と同じ機構ではない、out of scope / future work) |
 | **Z-order で背面が貫いて見える** | alpha BLEND は depth write しない (or 限定的にしか書かない)。複数透過 face の前後関係はソート順序に依存し、視点移動で順序が変わると見え方が変わる |
 | **影が出ない / 受けない** | shadow map pass で alpha BLEND は skip されることが多い (shadow caster には alpha MASK だけ含めるのが一般的) |
 | **tonemap / exposure の効き方が opaque と微妙に違う** | alpha BLEND は scene HDR buffer に **forward で直接 src*src_alpha + dst*(1-src_alpha) で混色** する。post-process exposure / bloom が alpha channel をどう扱うかで結果が変わる |

@@ -583,14 +583,55 @@ forward alpha BLEND path (alphaF / pbralphaF / materialF の forward 出力) で
 
 `LLGLSPipelineAlpha` で **depth write OFF**。結果として:
 
-| post-process pass | 透過面の depth 扱い | 症状 |
-|---|---|---|
-| DoF (CoC 計算) | "そこに何もない" → 後ろの opaque depth を参照 | 透過部だけぼけが効かない、または誤った距離でぼける |
-| SSAO | 隣接 depth 参照不可 | 透過面の縁で AO が抜ける |
-| SSR (screen-space reflection) | depth 参照不可 | 透過面に反射が乗らない / 抜ける |
-| 反射プローブ depth match | 透過面が無視される | プローブ blend が変 |
+| post-process pass | 透過面の depth 扱い | 症状 | AYAstorm 対応状況 |
+|---|---|---|---|
+| DoF (CoC 計算) | "そこに何もない" → 後ろの opaque depth を参照 | 透過部だけぼけが効かない、または誤った距離でぼける | **✅ 解決済 (2026-05-22)** — §10.10 参照 |
+| SSAO | 隣接 depth 参照不可 | 透過面の縁で AO が抜ける | ⏳ 未着手 (out of scope) |
+| SSR (screen-space reflection) | depth 参照不可 | 透過面に反射が乗らない / 抜ける | ⏳ 未着手 (out of scope) |
+| 反射プローブ depth match | 透過面が無視される | プローブ blend が変 | ⏳ 未着手 (out of scope) |
 
 **だから C 案 (= 透過専用の depth + color RT を別建てして post-process で合成参照する)** が必要。L2-β 第二 depth prepass (cutoff 0.5) は **暫定対策** で、ガラスや葉先のような「α>0.5」面は depth に書き戻すが、α<0.5 (hair / lace の薄い部分) は discard で救えない。C 案は depth/color の **完全分離** で根本解決を狙う。
+
+### 10.10 C 案完成 (DoF first-class、2026-05-22)
+
+`#275` の C 案 = 透過 alpha BLEND を別 RT (`mAYAAlphaColor`) + 別 depth (`mAYAAlphaDepth`、L2-β cutoff 0.5 で alpha 再注入) に分離し、post-process で composit する。**DoF への配線が今回完成** (装着物の髪・服 + Rez Object の窓ガラス・葉先など全 alpha BLEND が camera params に応答するようになった)。
+
+配線の最終形 (`indra/newview/app_settings/shaders/class1/deferred/`):
+
+| pass | 入力 | 出力 | 役割 |
+|---|---|---|---|
+| `cofF.glsl` | `mAYAAlphaDepth` (alpha-aware) | `mRT->deferredLight` (.rgb = src, .a = CoC) | CoC を alpha plate depth で計算 |
+| `postDeferredHQDoFF.glsl` | `mRT->deferredLight` + scene depth | DoF-blurred scene | opaque scene を CoC に従って blur |
+| `dofCombineF.glsl` | DoF-blurred + sharp lightMap + **`mAYAAlphaColor`** | final | DoF 結果に alpha plate を **CoC ベースの 12-tap disc gather で blur 合成** |
+
+`dofCombineF` 内の alpha plate over-blend:
+
+```glsl
+if (aya_alpha_plate_enabled)
+{
+    float coc_px = abs(diff.a * 2.0 - 1.0) * max_cof * 4.0;   // HQDoFF と同強度係数
+    vec4 plate;
+    if (coc_px < 0.75)
+    {
+        plate = texture(aya_alpha_plate, vary_fragcoord.xy);  // in-focus は単点 sample
+    }
+    else
+    {
+        // 12-tap disc gather (premultiplied なので uniform-weight box 平均で OK)
+        ...
+        plate = acc / float(N);
+    }
+    frag_color.rgb = plate.rgb + frag_color.rgb * (1.0 - plate.a);
+}
+```
+
+応答する camera params: **CameraFNumber** / **CameraFocalLength** / **CameraMaxCoF** すべて (cofF の `calc_cof` + `max_cof` clamp 経由)。
+
+**精度の限界 (許容範囲)**:
+- alpha ≥ 0.5 pixel (ガラス、葉、ストッキング等): mAYAAlphaDepth に alpha 自身の depth が injection されているので CoC は正確
+- alpha < 0.5 pixel (hair tip、lace の薄い edge 等): bg depth fallback → 背景と同じ blur 量。wispy 部分なので blur 質感の差はほぼ視認不可
+
+**SSAO / SSR / 反射プローブ への展開**: 別 chapter (DoF と同じ機構ではない、透過面に AO/SSR を「載せる」か「背景越しに見せる」かの設計判断が分かれる、業界全体未解決寄り)。本 chapter では out of scope。
 
 ### 10.10 検証時の最短再現手順
 
@@ -725,12 +766,12 @@ else
 4. 副作用検証: hair の z が必要な系統 (impostor / shadow pass / cube snapshot) は **forwardRender とは別経路** で depth 書きを持っているはずなので、forward 内 swap だけで完結する
 5. 自 fork に既に C-(a) 相当の別 RT 分離があるなら、その path だけ swap → 残り path で抜けが残るため **全 path で default 化** を推奨
 
-### 11.9 別解 — 採用しなかった案
+### 11.9 別解 — 採用しなかった案 / 別目的で並走している案
 
-| 案 | 説明 | 不採用理由 |
+| 案 | 説明 | 採否 / 状況 |
 |---|---|---|
-| B: `write_depth = rigged` から rigged を外す | rigged も depth 書かない | L2-β prepass 等で rigged depth を別途供給する必要、影響範囲広い |
-| C: alpha 完全別 RT + 別 depth | depth を opaque と alpha で完全分離 | 数日工数。AYAstorm `#275` で進行中。案 A で可視症状は消えるが、透過の DoF/SSAO/SSR 正しさは C 案の動機として残る |
+| B: `write_depth = rigged` から rigged を外す | rigged も depth 書かない | **不採用**: L2-β prepass 等で rigged depth を別途供給する必要、影響範囲広い |
+| C: alpha 完全別 RT + 別 depth | depth を opaque と alpha で完全分離 | **DoF first-class で完成 (2026-05-22、`#275`)**: §10.10 参照。案 A で可視症状 (二重アルファブロック) は消え、C 案で透過 alpha BLEND の DoF correctness を獲得。SSAO/SSR/probe は依然 out of scope (別 chapter) |
 
 ---
 
