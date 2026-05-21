@@ -256,6 +256,36 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
         gGL.setColorMask(true, false);
     }
+
+    // <AYAstorm r30 P5 transparent-DoF L2-β> 2nd depth prepass at cutoff 0.5
+    // into the alpha-aware depth RT (mAYAAlphaDepth). The RT was initialised
+    // by pipeline.cpp before forward alpha to the opaque-only depth; here we
+    // re-inject only those alpha BLEND fragments whose texture alpha ≥ 0.5
+    // (window grilles, lace, foliage, etc.) so cofF treats them as subject.
+    // Hair-style low-alpha BLEND fragments (alpha ≈ 0.2) are discarded so
+    // the snapshotted background z survives and cofF blurs the background
+    // visible through the hair. Distinct from the prepass above which still
+    // writes deferredScreen.depth for atmospherics / HQ DoF gate.
+    if (!LLPipeline::sImpostorRender && LLPipeline::RenderDepthOfField &&
+        !gCubeSnapshot && !LLPipeline::sRenderingHUDs &&
+        getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
+        gPipeline.mAYAAlphaDepth.isComplete())
+    {
+        LL_PROFILE_GPU_ZONE("aya alpha depth re-inject");
+        gPipeline.mAYAAlphaDepth.bindTarget();
+
+        simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
+        simple_shader->bind();
+        simple_shader->setMinimumAlpha(0.5f);
+
+        gGL.setColorMask(false, false);
+        renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2,
+            true); // discard mostly transparent faces
+        gGL.setColorMask(true, false);
+
+        gPipeline.mAYAAlphaDepth.flush();
+    }
+    // </AYAstorm r30 P5 transparent-DoF L2-β>
 }
 
 void LLDrawPoolAlpha::forwardRender(bool rigged)
