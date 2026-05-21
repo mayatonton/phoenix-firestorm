@@ -1126,6 +1126,18 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         }
         // </AYAstorm r30 P2>
 
+        // <AYAstorm r30 P5 transparent-DoF L1> Allocate the background depth
+        // snapshot RT. Color attachment is unused (we only read/write depth)
+        // but we allocate color+depth because LLRenderTarget needs a depth
+        // attachment for gl_FragDepth writes from gCopyDepthProgram. Main RT
+        // only — DoF doesn't run on aux/probe paths.
+        if (mRT == &mMainRT)
+        {
+            LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYABgDepth");
+            if (!mAYABgDepth.allocate(resX, resY, GL_RGBA, true)) return false;
+        }
+        // </AYAstorm r30 P5 transparent-DoF L1>
+
         if (RenderFSAAType > 0)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("FSAABuffer"); // <FS:Beq/> improve Tracy scoping 
@@ -1608,6 +1620,10 @@ void LLPipeline::releaseScreenBuffers()
     mVelocityMap.release();
     mSMAAHistory.release();
     // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P5 transparent-DoF L1> bg depth snapshot for cofF.glsl
+    mAYABgDepth.release();
+    // </AYAstorm r30 P5 transparent-DoF L1>
 }
 
 void LLPipeline::releaseSunShadowTarget(U32 index)
@@ -9758,13 +9774,26 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
             F32 screen_to_target_scale_factor = (F32)gViewerWindow->getWindowHeightRaw()/dst->getHeight();
             F32 adj_COF = CameraMaxCoF / screen_to_target_scale_factor;
             // </FS:Beq>
+
             { // build diffuse+bloom+CoF
                 mRT->deferredLight.bindTarget();
 
                 gDeferredCoFProgram.bind();
 
                 gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
-                gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+                // <AYAstorm r30 P5 transparent-DoF L1> Bind the opaque-only
+                // depth snapshot (captured in renderDeferredLighting before
+                // forward alpha) instead of post-alpha deferredScreen.depth.
+                // For an alpha BLEND hair pixel sitting at the focal plane,
+                // deferredScreen.depth holds the hair board's z → CoF≈0 →
+                // sharp; mAYABgDepth holds whatever opaque background is
+                // behind it → CoF reflects the real background distance →
+                // hair-overlaid region blurs together with surrounding
+                // background. For opaque-only pixels the two depths are
+                // identical so behaviour is unchanged.
+                LLRenderTarget* cof_depth_src = mAYABgDepth.isComplete() ? &mAYABgDepth : &mRT->deferredScreen;
+                gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, cof_depth_src, true);
+                // </AYAstorm r30 P5 transparent-DoF L1>
 
                 gDeferredCoFProgram.uniform1f(LLShaderMgr::DEFERRED_DEPTH_CUTOFF, RenderEdgeDepthCutoff);
                 gDeferredCoFProgram.uniform1f(LLShaderMgr::DEFERRED_NORM_CUTOFF, RenderEdgeNormCutoff);
@@ -11102,6 +11131,40 @@ void LLPipeline::renderDeferredLighting()
 
         gGL.setColorMask(true, true);
     }
+
+    // <AYAstorm r30 P5 transparent-DoF L1> Snapshot the opaque-only depth
+    // before forward alpha runs. After this point rigged BLEND attachments
+    // (hair etc.) will overwrite deferredScreen.depth with their own z and
+    // pin CoF to ~0 for pixels they cover; mAYABgDepth preserves the depth
+    // of whatever opaque geometry is behind them, which is what cofF.glsl
+    // needs to compute the right blur for a "background visible through
+    // hair" pixel. Cheap (one fullscreen depth blit) and only on main RT.
+    if (mAYABgDepth.isComplete() && !gCubeSnapshot && RenderDepthOfField)
+    {
+        LL_PROFILE_GPU_ZONE("aya bg depth snapshot");
+        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
+
+        LLRenderTarget& depth_src = mRT->deferredScreen;
+
+        mRT->screen.flush();
+        mAYABgDepth.bindTarget();
+        gCopyDepthProgram.bind();
+
+        S32 diff_map  = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
+        S32 depth_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
+
+        gGL.getTexUnit(diff_map)->bind(&mRT->screen);
+        gGL.getTexUnit(depth_map)->bind(&depth_src, true);
+
+        gGL.setColorMask(false, false);
+        mScreenTriangleVB->setBuffer();
+        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        gGL.setColorMask(true, true);
+
+        mAYABgDepth.flush();
+        mRT->screen.bindTarget();
+    }
+    // </AYAstorm r30 P5 transparent-DoF L1>
 
     {  // render non-deferred geometry (alpha, fullbright, glow)
         LLGLDisable blend(GL_BLEND);
