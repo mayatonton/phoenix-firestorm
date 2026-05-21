@@ -963,41 +963,6 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         reset_minimum_alpha = true;
                     }
 
-                    // <AYAstorm canary: attachment magenta override>
-                    //   docs/specs/ayastorm-attachment-magenta-canary-trace.md §4.2
-                    //   `mAttachedToAvatar.notNull()` = attachment (rigged + non-rigged 不問、
-                    //   HUD/通常 prim/avatar body は notNull にならない、§2.1)。
-                    //   shader 側で uniform 未参照なら GL が optimize-out、no-op。
-                    {
-                        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
-                        if (current_shader)
-                        {
-                            // <AYAstorm r30 P5 canary> alpha pool は透過合成
-                            // (BLEND) 専用 dispatcher。残り mesh 装飾物は
-                            // 4 (= brown) に振る。他 pool は 2 (blue) のまま。
-                            // BoM body/head (1) と prim (3) は alpha 経由でも
-                            // 意味を優先して維持する。
-                            // <AYAstorm r30 透過 DoF C 案準備> Rez Object 側
-                            // は alpha pool 経由なら 12 (= 緑、alpha BLEND)、
-                            // それ以外 pool 経由なら 11 (= 黒、opaque)。
-                            const bool att = params.mAttachedToAvatar.notNull();
-                            const int cval = att ? (params.mIsBoMBodyOrHead ? 1 : (params.mIsPrim ? 3 : 4)) : 12;
-                            current_shader->uniform1i(s_aya_attachment_canary, cval);
-                            // <AYAcanary diag — temporary, remove before commit>
-                            {
-                                static std::set<std::string> s_seen;
-                                std::string key = current_shader->mName + "|" + std::to_string(cval) + "|" + (att ? "T" : "F");
-                                if (s_seen.insert(key).second)
-                                {
-                                    LL_INFOS("AYAcanary") << "[alphaPool] shader=" << current_shader->mName
-                                                          << " canary=" << cval
-                                                          << " att=" << (att ? "T" : "F") << LL_ENDL;
-                                }
-                            }
-                            // </AYAcanary>
-                        }
-                    }
-                    // </AYAstorm>
 
                     params.mVertexBuffer->setBuffer();
                     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);

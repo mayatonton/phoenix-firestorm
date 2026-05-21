@@ -649,30 +649,6 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
     // </FS:Beq>
 
-    // <AYAstorm canary: attachment magenta override (legacy textured/bump batches)>
-    {
-        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
-        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
-        if (cur)
-        {
-            const bool att = params.mAttachedToAvatar.notNull();
-            const int cval = att ? (params.mIsBoMBodyOrHead ? 1 : (params.mIsPrim ? 3 : 2)) : 11;
-            cur->uniform1i(s_aya_attachment_canary, cval);
-            // <AYAcanary diag — temporary, remove before commit>
-            {
-                static std::set<std::string> s_seen;
-                std::string key = cur->mName + "|" + std::to_string(cval) + "|" + (att ? "T" : "F");
-                if (s_seen.insert(key).second)
-                {
-                    LL_INFOS("AYAcanary") << "[pushBatch] shader=" << cur->mName
-                                          << " canary=" << cval
-                                          << " att=" << (att ? "T" : "F") << LL_ENDL;
-                }
-            }
-            // </AYAcanary>
-        }
-    }
-    // </AYAstorm>
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
@@ -695,30 +671,6 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
 
     applyModelMatrix(params);
 
-    // <AYAstorm canary: attachment magenta override (legacy untextured batches)>
-    {
-        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
-        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
-        if (cur)
-        {
-            const bool att = params.mAttachedToAvatar.notNull();
-            const int cval = att ? (params.mIsBoMBodyOrHead ? 1 : (params.mIsPrim ? 3 : 2)) : 11;
-            cur->uniform1i(s_aya_attachment_canary, cval);
-            // <AYAcanary diag — temporary, remove before commit>
-            {
-                static std::set<std::string> s_seen;
-                std::string key = cur->mName + "|" + std::to_string(cval) + "|" + (att ? "T" : "F");
-                if (s_seen.insert(key).second)
-                {
-                    LL_INFOS("AYAcanary") << "[pushUntexBatch] shader=" << cur->mName
-                                          << " canary=" << cval
-                                          << " att=" << (att ? "T" : "F") << LL_ENDL;
-                }
-            }
-            // </AYAcanary>
-        }
-    }
-    // </AYAstorm>
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
@@ -1149,29 +1101,6 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
     }
     // </FS:AYA>
 
-    // <AYAstorm canary: attachment magenta override (GLTF batch)>
-    {
-        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
-        if (cur)
-        {
-            const bool att = params.mAttachedToAvatar.notNull();
-            const int cval = att ? (params.mIsBoMBodyOrHead ? 1 : (params.mIsPrim ? 3 : 2)) : 11;
-            cur->uniform1i(s_aya_attachment_canary, cval);
-            // <AYAcanary diag — temporary, remove before commit>
-            {
-                static std::set<std::string> s_seen;
-                std::string key = cur->mName + "|" + std::to_string(cval) + "|" + (att ? "T" : "F");
-                if (s_seen.insert(key).second)
-                {
-                    LL_INFOS("AYAcanary") << "[pushGLTFBatch] shader=" << cur->mName
-                                          << " canary=" << cval
-                                          << " att=" << (att ? "T" : "F") << LL_ENDL;
-                }
-            }
-            // </AYAcanary>
-        }
-    }
-    // </AYAstorm>
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
@@ -1188,30 +1117,6 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
 
     applyModelMatrix(params);
 
-    // <AYAstorm canary: attachment magenta override (untextured GLTF batch)>
-    {
-        static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
-        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
-        if (cur)
-        {
-            const bool att = params.mAttachedToAvatar.notNull();
-            const int cval = att ? (params.mIsBoMBodyOrHead ? 1 : (params.mIsPrim ? 3 : 2)) : 11;
-            cur->uniform1i(s_aya_attachment_canary, cval);
-            // <AYAcanary diag — temporary, remove before commit>
-            {
-                static std::set<std::string> s_seen;
-                std::string key = cur->mName + "|" + std::to_string(cval) + "|" + (att ? "T" : "F");
-                if (s_seen.insert(key).second)
-                {
-                    LL_INFOS("AYAcanary") << "[pushUntexGLTFBatch] shader=" << cur->mName
-                                          << " canary=" << cval
-                                          << " att=" << (att ? "T" : "F") << LL_ENDL;
-                }
-            }
-            // </AYAcanary>
-        }
-    }
-    // </AYAstorm>
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);

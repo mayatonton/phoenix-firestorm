@@ -25,10 +25,6 @@
 
 /*[EXTRA_CODE_HERE]*/
 
-// <AYAstorm canary: attachment magenta override — declared outside IS_HUD so
-// both deferred and HUD branches see it>
-uniform int aya_attachment_canary;
-// </AYAstorm>
 
 #ifndef IS_HUD
 
@@ -223,25 +219,6 @@ void main()
     if (classic_mode > 0)
         final_scale = 1.1;
 
-    // <AYAstorm canary: 1 = BoM MeshBody/MeshHead → magenta、2 = その他装着物 → blue>
-    if (aya_attachment_canary != 0)
-    {
-        vec3 canary_rgb = (aya_attachment_canary == 1)
-            ? vec3(1.0, 0.0, 1.0)                          // BoM body/head = magenta
-            : ((aya_attachment_canary == 3)
-                ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
-                : ((aya_attachment_canary == 4)
-                    ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
-                    : ((aya_attachment_canary == 11)
-                        ? vec3(0.0, 0.0, 0.0)              // 11 = Rez Object opaque 黒
-                        : ((aya_attachment_canary == 12)
-                            ? vec3(0.0, 1.0, 0.0)          // 12 = Rez Object alpha BLEND 緑
-                            : vec3(0.0, 0.0, 1.0)))));     // mesh 装着物 = blue
-        float canary_a = (aya_attachment_canary == 11 || aya_attachment_canary == 12) ? 1.0 : a;
-        frag_color = vec4(canary_rgb, canary_a);
-        return;
-    }
-    // </AYAstorm>
 
     frag_color = max(vec4(color.rgb * final_scale,a), vec4(0));
 }
@@ -298,13 +275,6 @@ void main()
 
     color = linear_to_srgb(color);
 
-    // <AYAstorm canary (HUD PBR alpha path) — HUD = green>
-    if (aya_attachment_canary != 0)
-    {
-        frag_color = vec4(0.0, 1.0, 0.0, a);
-        return;
-    }
-    // </AYAstorm>
 
     frag_color = max(vec4(color.rgb,a), vec4(0));
 }

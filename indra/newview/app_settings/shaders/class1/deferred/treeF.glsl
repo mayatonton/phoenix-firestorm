@@ -39,39 +39,11 @@ uniform float minimum_alpha;
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
 
-// <AYAstorm canary: attachment magenta override (tree pool)>
-uniform int aya_attachment_canary;
-// </AYAstorm>
 
 void main()
 {
     mirrorClip(vary_position);
 
-    // <AYAstorm canary: 11 = Rez Object 全部黒 (Linden trees も Rez Object)>
-    if (aya_attachment_canary != 0)
-    {
-        vec3 canary_rgb = (aya_attachment_canary == 1)
-            ? vec3(1.0, 0.0, 1.0)
-            : ((aya_attachment_canary == 3)
-                ? vec3(0.5, 0.5, 0.5)
-                : ((aya_attachment_canary == 4)
-                    ? vec3(0.214, 0.051, 0.0)
-                    : ((aya_attachment_canary == 11)
-                        ? vec3(0.0, 0.0, 0.0)
-                        : ((aya_attachment_canary == 12)
-                            ? vec3(0.0, 1.0, 0.0)
-                            : vec3(0.0, 0.0, 1.0)))));
-        // SKIP_ATMOS で softenLightF を bypass、canary 色を素通り
-        frag_data[0] = vec4(canary_rgb, 0.0);
-        frag_data[1] = vec4(0.0);
-        vec3 nvn = normalize(vary_normal);
-        frag_data[2] = encodeNormal(nvn.xyz, 0.0, GBUFFER_FLAG_SKIP_ATMOS);
-#if defined(HAS_EMISSIVE)
-        frag_data[3] = vec4(canary_rgb, 0.0);
-#endif
-        return;
-    }
-    // </AYAstorm>
 
     vec4 col = texture(diffuseMap, vary_texcoord0.xy);
     if (col.a < minimum_alpha)

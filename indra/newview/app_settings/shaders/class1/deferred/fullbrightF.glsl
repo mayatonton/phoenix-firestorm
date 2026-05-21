@@ -31,9 +31,6 @@ out vec4 frag_color;
 uniform sampler2D diffuseMap;
 #endif
 
-// <AYAstorm canary: attachment magenta override>
-uniform int aya_attachment_canary;
-// </AYAstorm>
 
 in vec3 vary_position;
 in vec4 vertex_color;
@@ -99,29 +96,6 @@ void main()
 
 #endif
 
-    // <AYAstorm canary: HUD = green、非 HUD は 1=BoM body/head→magenta / 2=その他→blue>
-    if (aya_attachment_canary != 0)
-    {
-#ifdef IS_HUD
-        frag_color = vec4(0.0, 1.0, 0.0, color.a);
-#else
-        vec3 canary_rgb = (aya_attachment_canary == 1)
-            ? vec3(1.0, 0.0, 1.0)                          // BoM body/head = magenta
-            : ((aya_attachment_canary == 3)
-                ? vec3(0.5, 0.5, 0.5)                      // プリム装着物 = gray
-                : ((aya_attachment_canary == 4)
-                    ? vec3(0.214, 0.051, 0.0)              // alpha BLEND 装着物 = brown (sRGB 0.5,0.25,0)
-                    : ((aya_attachment_canary == 11)
-                        ? vec3(0.0, 0.0, 0.0)              // 11 = Rez Object opaque 黒
-                        : ((aya_attachment_canary == 12)
-                            ? vec3(0.0, 1.0, 0.0)          // 12 = Rez Object alpha BLEND 緑
-                            : vec3(0.0, 0.0, 1.0)))));     // mesh 装着物 = blue
-        float canary_a = (aya_attachment_canary == 11 || aya_attachment_canary == 12) ? 1.0 : color.a;
-        frag_color = vec4(canary_rgb, canary_a);
-#endif
-        return;
-    }
-    // </AYAstorm>
 
     frag_color = max(color, vec4(0));
 }

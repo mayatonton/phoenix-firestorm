@@ -292,29 +292,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             params.mGroup->rebuildMesh();
         }*/
 
-        // <AYAstorm canary: attachment magenta override (materials pool)>
-        {
-            static LLStaticHashedString s_aya_attachment_canary("aya_attachment_canary");
-            if (mShader)
-            {
-                const bool att = params.mAttachedToAvatar.notNull();
-                const int cval = att ? (params.mIsBoMBodyOrHead ? 1 : (params.mIsPrim ? 3 : 2)) : 11;
-                mShader->uniform1i(s_aya_attachment_canary, cval);
-                // <AYAcanary diag — temporary, remove before commit>
-                {
-                    static std::set<std::string> s_seen;
-                    std::string key = mShader->mName + "|" + std::to_string(cval) + "|" + (att ? "T" : "F");
-                    if (s_seen.insert(key).second)
-                    {
-                        LL_INFOS("AYAcanary") << "[materialsPool] shader=" << mShader->mName
-                                              << " canary=" << cval
-                                              << " att=" << (att ? "T" : "F") << LL_ENDL;
-                    }
-                }
-                // </AYAcanary>
-            }
-        }
-        // </AYAstorm>
 
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
