@@ -12155,18 +12155,6 @@ Change of this parameter will affect the layout of buttons in notification toast
     <integer>1</integer>
   </map>
 
-  <key>RenderSMAAT2x</key>
-  <map>
-    <key>Comment</key>
-    <string>AYAstorm r30 P2: enable SMAA T2x temporal resolve. Requires SMAA (RenderFSAAType=2) and Cinematic (AYAVisualRealismEnabled=2). Until step 5d ships the Halton jitter this produces minor edge stabilization plus ghosting on motion; default off.</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Boolean</string>
-    <key>Value</key>
-    <integer>0</integer>
-  </map>
-
   <key>RenderVolumetricLighting</key>
   <map>
     <key>Comment</key>

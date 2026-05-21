@@ -182,12 +182,8 @@
             <text name="T_AA">アンチエイリアシング</text>
 
             <text name="T_FSAAType">AA 種別 (0/1/2/3)</text>
-            <slider_bar name="sb_FSAAType" tool_tip="0=オフ, 1=FXAA, 2=SMAA (新しい描画エンジン推奨値), 3=SMAA T2x"/>
+            <slider_bar name="sb_FSAAType" tool_tip="0=オフ, 1=FXAA, 2=SMAA (新しい描画エンジン推奨値), 3=SMAA + T2x 時間的解像 (動きでゴーストが出ることあり)"/>
             <button name="d_FSAAType" tool_tip="新しい描画エンジン推奨値 (SMAA=2) に戻す"/>
-
-            <check_box name="cb_SMAAT2x" label="SMAA T2x 時間的解像 (動きでゴーストが出ることあり)"
-                       tool_tip="AA 種別が 2 以上で有効。エッジ安定化と引き換えに動きのゴーストが出ます。"/>
-            <button name="d_SMAAT2x" tool_tip="デフォルトに戻す"/>
         </panel>
 
         <!-- ============ Tab 7: Glow & Volumetric ============ -->

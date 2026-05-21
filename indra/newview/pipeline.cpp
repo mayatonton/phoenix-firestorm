@@ -9975,25 +9975,20 @@ void LLPipeline::renderFinalize()
         applyFXAA(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
     }
-    else if (RenderFSAAType == 2)
+    else if (RenderFSAAType == 2 || RenderFSAAType == 3)
     {
         generateSMAABuffers(sourceBuffer);
         applySMAA(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
 
-        // <AYAstorm r30 P2 step 5c+5d> SMAA T2x temporal resolve + jitter latch.
-        // Gate on Cinematic mode (mVelocityMap allocated) + history target ready
-        // + explicit cvar opt-in. The same gate also drives sT2xJitterEnabled,
-        // which LLViewerCamera::setPerspective reads next frame to inject the
-        // ±0.25 px subpixel offset. Without that jitter the resolve degenerates
-        // to a blend of two identical samples (= no AA gain), so the flag and
-        // the resolve must stay in lockstep.
-        // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> SMAA T2x は AY-only
-        // 拡張、Cinematic では BD parity (false) に固定 (BD は FSAAType=2 で
-        // 通常 SMAA で完結、T2x は無い)。mode 0/1 は cvar 値維持。spec §3.1。
-        const bool smaa_t2x = gSavedSettings.getBOOL("RenderSMAAT2x");
-        bool t2x_active = smaa_t2x && mVelocityMap.isComplete() && mSMAAHistory.isComplete() && !gCubeSnapshot;
-        // </FS:AYAstorm>
+        // <AYAstorm r30 P2 step 5c+5d / cleanup A.2+A.5> SMAA T2x temporal resolve.
+        // Selector is the single RenderFSAAType enum: 2 = plain SMAA (BD parity
+        // default), 3 = SMAA + T2x (AY-only opt-in). The old RenderSMAAT2x cvar
+        // was removed in cleanup A.5; FSAAType=3 is now the sole entry point.
+        // sT2xJitterEnabled stays in lockstep with t2x_active so that
+        // LLViewerCamera::setPerspective injects the ±0.25 px jitter only while
+        // the resolve runs.
+        bool t2x_active = (RenderFSAAType == 3) && mVelocityMap.isComplete() && mSMAAHistory.isComplete() && !gCubeSnapshot;
         sT2xJitterEnabled = t2x_active;
         if (t2x_active)
         {
@@ -10001,7 +9996,7 @@ void LLPipeline::renderFinalize()
             std::swap(sourceBuffer, targetBuffer);
             mSMAAFrameIndex ^= 1;
         }
-        // </AYAstorm r30 P2 step 5c+5d>
+        // </AYAstorm r30 P2 step 5c+5d / cleanup A.2+A.5>
     }
 
     // <FS:Beq> Restore shader post proc for Vignette

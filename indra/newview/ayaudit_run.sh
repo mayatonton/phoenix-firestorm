@@ -122,13 +122,11 @@ SETS=(
     # in case a future change opens the gate.
     --set RenderVolumetricLighting 1
     --set RenderVolumetricLightingDirectional 1
-    # AA master (FSAA SMAA path). T2x jitters camera by 0.5px between
-    # alternating frames; un-accumulated snapshots land in random parity,
-    # producing whole-frame ~0.43 diff between back-to-back frames that
-    # poisons noise calibration. Force OFF for audit; T2x itself will be
-    # measured as DEAD as a known limitation (documented).
+    # AA master (FSAA SMAA path). FSAAType=3 (SMAA + T2x) jitters camera by
+    # 0.5px between alternating frames; un-accumulated snapshots land in
+    # random parity, producing whole-frame ~0.43 diff between back-to-back
+    # frames that poisons noise calibration. Force plain SMAA (=2) for audit.
     --set RenderFSAAType 2
-    --set RenderSMAAT2x 0
     # Dynamic exposure feeds back the previous frame's luminance into the
     # current frame's tonemap — alternating snapshot frames see alternating
     # exposure states, producing a periodic ~0.40 whole-sky bistate that
