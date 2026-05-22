@@ -1503,7 +1503,9 @@ void LLFloaterPreference::onLUTFileSelected(const std::vector<std::string>& file
         std::string basename = gDirUtilp->getBaseFileName(path, false);
         if (combo->getItemByValue(LLSD(path)) == nullptr)
             combo->addSimpleElement(basename, ADD_BOTTOM, path);
-        combo->setSimple(path);
+        // カスタム LUT は label=basename / value=full path で登録されているので
+        // value で選択する。setSimple(path) は label 検索で失敗していた。
+        combo->setValue(LLSD(path));
     }
 }
 
@@ -1521,19 +1523,31 @@ void LLFloaterPreference::onRemoveLUT()
     LLComboBox* combo = getChild<LLComboBox>("ColorGradingLUTCombo", true);
     if (!combo) return;
 
-    std::string current = combo->getSimple();
+    // 現在の選択は saved setting (= value) で判定する。
+    // combo->getSimple() は label を返すため、None 選択時 ("None" ラベル) や
+    // Browse 直後の表示ズレ状態で押されると None 項目自体を削ってしまっていた。
+    std::string current = gSavedSettings.getString("RenderColorGradingLUTName");
 
-    // デフォルトLUT（luts/フォルダ内）は削除不可
+    // None 選択時は何もしない (saved 値が空 = None)
+    if (current.empty()) return;
+
+    // デフォルトLUT (luts/ フォルダ内) は削除不可
     std::string current_path = gDirUtilp->getExpandedFilename(
         LL_PATH_APP_SETTINGS, "luts", current);
     if (gDirUtilp->fileExists(current_path))
         return;
 
-    // カスタムLUTをリストから削除
-    combo->remove(current);
+    // カスタム LUT を value で検索し、その label で削除
+    LLScrollListItem* item = combo->getItemByValue(LLSD(current));
+    if (item && item->getColumn(0))
+    {
+        std::string label = item->getColumn(0)->getValue().asString();
+        if (!label.empty())
+            combo->remove(label);
+    }
 
-    // Noneに戻す
-    combo->setSimple(std::string("None"));
+    // None に戻す
+    combo->setValue(LLSD(""));
     gSavedSettings.setString("RenderColorGradingLUTName", "");
 }
 
@@ -4088,7 +4102,10 @@ bool LLPanelPreferenceGraphics::postBuild()
                 std::string basename = gDirUtilp->getBaseFileName(current, false);
                 combo->addSimpleElement(basename, ADD_BOTTOM, current);
             }
-            combo->setSimple(current.empty() ? std::string("None") : current);
+            // value で選択。current="" は None (value="") にマッチする。
+            // setSimple は label 検索なので custom LUT (label=basename / value=full path)
+            // で外れていた。
+            combo->setValue(LLSD(current));
 
             LLFloaterPreference* parent_floater = dynamic_cast<LLFloaterPreference*>(getParentByType<LLFloater>());
             if (parent_floater)

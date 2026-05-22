@@ -149,6 +149,12 @@
 #define A_CPU 1
 #include "app_settings/shaders/class1/deferred/CASF.glsl" // This is also C++
 
+// PCH 経由で Xlib (X11/Xlib.h:84) の `#define None 0L` が流入し、enum class member
+// 等の `None` トークンを数値リテラル `0L` に置換してしまう。pipeline.cpp は X11
+// API を直接呼ばないのでファイル冒頭で undef して局所的に無効化する。
+// memory: project_linux_xlib_status_define_trap.md
+#undef None
+
 extern bool gSnapshot;
 bool gShiftFrame = false;
 
