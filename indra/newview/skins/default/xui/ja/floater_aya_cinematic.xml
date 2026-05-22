@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <floater name="aya_cinematic" title="AYAstorm シネマ撮影コントロール">
 
-    <text name="T_Header">
-        Cinematic モード時のみ有効です (グラフィック設定の表示モード)。モード変更は再起動が必要、スライダーは即時反映。「D」ボタンで 新しい描画エンジン推奨値 / LL デフォルトに戻します。Cinematic の全機能は ディファード描画 (環境設定 → グラフィック → Advanced Lighting Model) が必須です。
-    </text>
-
     <tab_container name="aya_cinematic_tabs">
 
         <!-- ============ Tab 1: General ============ -->

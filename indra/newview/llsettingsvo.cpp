@@ -775,14 +775,20 @@ LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const L
 {
     static LLCachedControl<U32>  aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
     static LLCachedControl<bool> aya_r17(gSavedSettings, "AYAR17ColorTemperatureEnabled", true);
+    // <FS:AYAstorm r30 BD改善> r17 Cinematic opt-in: mode==1 (AYAstorm View) は従来通り
+    // AYAR17ColorTemperatureEnabled に従い、mode==2 (Cinematic) は AYAR17ColorTemperatureInCinematicEnabled で opt-in。
+    static LLCachedControl<bool> aya_r17_in_cinematic(gSavedSettings, "AYAR17ColorTemperatureInCinematicEnabled", false);
+    static LLCachedControl<F32>  aya_r17_strength(gSavedSettings, "AYAR17Strength", 1.0f);
 
-    // <FS:AYAstorm r30 BD full port Phase 3.1> r17 Sun Kelvin modulator は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF (= white)。
-    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
-    if (aya_visual_realism() != 1 || !aya_r17)
-    // </FS:AYAstorm>
+    const U32 mode = aya_visual_realism();
+    const bool r17_gated =
+        (mode == 1 && aya_r17) ||
+        (mode == 2 && aya_r17_in_cinematic);
+    if (!r17_gated)
     {
         return LLColor3(1.f, 1.f, 1.f);
     }
+    // </FS:AYAstorm>
 
     // ワールド/自然環境メニューの「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) は
     // PBR 前の SL 標準 noon を再現するための専用 preset なので、Kelvin modulator を
@@ -809,11 +815,20 @@ LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const L
     LLColor3 cur_rgb  = kelvinToRGB(kelvin);
     LLColor3 noon_rgb = kelvinToRGB(6500.f);
 
-    return LLColor3(
+    LLColor3 modulator(
         cur_rgb.mV[0] / llmax(0.001f, noon_rgb.mV[0]),
         cur_rgb.mV[1] / llmax(0.001f, noon_rgb.mV[1]),
         cur_rgb.mV[2] / llmax(0.001f, noon_rgb.mV[2])
     );
+    // <FS:AYAstorm r30 BD改善> strength で white(=OFF 相当) と modulator(=ON 相当) を lerp。
+    // 0=完全 OFF (white) と数式上一致、1=従来 ON、中間値で連続調整可能。
+    const F32 s = llclampf((F32)aya_r17_strength);
+    return LLColor3(
+        1.f + (modulator.mV[0] - 1.f) * s,
+        1.f + (modulator.mV[1] - 1.f) * s,
+        1.f + (modulator.mV[2] - 1.f) * s
+    );
+    // </FS:AYAstorm>
 }
 // </FS:AYA>
 
@@ -911,6 +926,14 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     }
     // </FS:AYA>
 
+    // <FS:AYAstorm r30 BD改善> r18 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
+    //   r18 enabled 評価とは独立に常時 push、shader 側で gate 内 lerp。
+    {
+        static LLCachedControl<F32> aya_r18_strength(gSavedSettings, "AYAR18CloudVolumetricStrength", 1.0f);
+        shader->uniform1f(LLShaderMgr::AYA_R18_STRENGTH, llclamp((F32)aya_r18_strength, 0.f, 1.f));
+    }
+    // </FS:AYAstorm>
+
     shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_ANY];
     shader->uniform1f(LLShaderMgr::SCENE_LIGHT_STRENGTH, mSceneLightStrength);
 
@@ -961,6 +984,13 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     }
     // </FS:AYAstorm>
 
+    // <FS:AYAstorm r30 BD改善> r14 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
+    {
+        static LLCachedControl<F32> aya_r14_strength(gSavedSettings, "AYAR14Strength", 1.0f);
+        shader->uniform1f(LLShaderMgr::AYA_R14_STRENGTH, llclamp((F32)aya_r14_strength, 0.f, 1.f));
+    }
+    // </FS:AYAstorm>
+
     // <FS:AYAstorm r30 BD改善> r15 Godrays 個別 uniform (godraysF が参照)
     //   AYAstorm View は無条件 ON、Cinematic は AYAR15GodraysInCinematicEnabled で opt-in。
     //   実際の dispatch (doGodrays) は pipeline.cpp 側でも mode/cvar 評価される。
@@ -980,6 +1010,14 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
                || (aya_visual_realism() == 2 && aya_r16_in_cinematic);
     shader->uniform1i(LLShaderMgr::AYA_R16_AERIAL_PERSPECTIVE_ENABLED, r16_on ? 1 : 0);
     // </FS:AYA>
+
+    // <FS:AYAstorm r30 BD改善> r16 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
+    //   r16 enabled 評価とは独立に常時 push、shader 側で gate 内 lerp。
+    {
+        static LLCachedControl<F32> aya_r16_strength(gSavedSettings, "AYAR16AerialPerspectiveStrength", 1.0f);
+        shader->uniform1f(LLShaderMgr::AYA_R16_STRENGTH, llclamp((F32)aya_r16_strength, 0.f, 1.f));
+    }
+    // </FS:AYAstorm>
 
     LLRender::sClassicMode = classic_mode;
 

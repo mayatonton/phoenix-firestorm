@@ -42,6 +42,7 @@ uniform vec3 cloud_pos_density2;
 uniform float cloud_scale;
 uniform float cloud_variance;
 uniform int aya_r18_cloud_volumetric_enabled;  // <FS:AYA r18>
+uniform float aya_r18_strength;  // <FS:AYAstorm r30 BD改善> r18 効果強度 (0=legacy / 1=volumetric、enabled 内で lerp)
 
 in vec2 vary_texcoord0;
 in vec2 vary_texcoord1;
@@ -94,31 +95,40 @@ void main()
     //   既存 2D noise を 4 step、UV 空間を slab 方向に進めながら sample。
     //   Beer-Lambert 風に transmittance を累積、最終 alpha は (1 - trans)。
     //   OFF パスは既存式と数式上完全一致 (preset 互換維持)。
-    if (aya_r18_cloud_volumetric_enabled != 0)
-    {
-        const int N = 4;
-        const vec2 slab_offset = vec2(0.013, 0.008);  // UV 空間 slab 進行方向 (視線方向 proxy)
-        float trans = 1.0;
-        for (int i = 0; i < N; i++)
-        {
-            float t = (float(i) - 1.5) / 3.0;  // -0.5 ~ +0.5
-            vec2 du = slab_offset * t;
-            float a = (cloudNoise(uv1 + du).x - 0.5) + (cloudNoise(uv3 + du).x - 0.5) * cloud_pos_density2.z;
-            a = min(max(a + cloudDensity, 0.) * 10.0 * cloud_pos_density1.z, 1.);
-            a = 1.0 - a * a;
-            a = 1.0 - a * a;
-            trans *= 1.0 - a * 0.45;  // 各 slab で 45% 透過
-        }
-        alpha1 = 1.0 - trans;
-    }
-    else
+    // <FS:AYAstorm r30 BD改善> r18 強度 lerp: enabled ON 時は legacy alpha と volumetric alpha
+    //   を strength で連続補間。0=legacy 等価、1=現状 volumetric。enabled OFF 時は legacy only。
+    //   両 path 評価でコストは増えるが (raymarch 4-step + legacy)、slider 操作のシームレスさを優先。
     {
         // Legacy flat path (preset 互換)
-        alpha1 = (cloudNoise(uv1).x - 0.5) + (cloudNoise(uv3).x - 0.5) * cloud_pos_density2.z;
-        alpha1 = min(max(alpha1 + cloudDensity, 0.) * 10 * cloud_pos_density1.z, 1.);
-        alpha1 = 1. - alpha1 * alpha1;
-        alpha1 = 1. - alpha1 * alpha1;
+        float legacy_alpha = (cloudNoise(uv1).x - 0.5) + (cloudNoise(uv3).x - 0.5) * cloud_pos_density2.z;
+        legacy_alpha = min(max(legacy_alpha + cloudDensity, 0.) * 10 * cloud_pos_density1.z, 1.);
+        legacy_alpha = 1. - legacy_alpha * legacy_alpha;
+        legacy_alpha = 1. - legacy_alpha * legacy_alpha;
+
+        if (aya_r18_cloud_volumetric_enabled != 0)
+        {
+            const int N = 4;
+            const vec2 slab_offset = vec2(0.013, 0.008);  // UV 空間 slab 進行方向 (視線方向 proxy)
+            float trans = 1.0;
+            for (int i = 0; i < N; i++)
+            {
+                float t = (float(i) - 1.5) / 3.0;  // -0.5 ~ +0.5
+                vec2 du = slab_offset * t;
+                float a = (cloudNoise(uv1 + du).x - 0.5) + (cloudNoise(uv3 + du).x - 0.5) * cloud_pos_density2.z;
+                a = min(max(a + cloudDensity, 0.) * 10.0 * cloud_pos_density1.z, 1.);
+                a = 1.0 - a * a;
+                a = 1.0 - a * a;
+                trans *= 1.0 - a * 0.45;  // 各 slab で 45% 透過
+            }
+            float vol_alpha = 1.0 - trans;
+            alpha1 = mix(legacy_alpha, vol_alpha, aya_r18_strength);
+        }
+        else
+        {
+            alpha1 = legacy_alpha;
+        }
     }
+    // </FS:AYAstorm>
     // </FS:AYA>
 
     alpha1 *= altitude_blend_factor;
@@ -147,13 +157,11 @@ void main()
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
     // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> r20 SSS skin
-    // mask in gbuffer3.a; clouds are never skin. Cinematic restores BD
-    // original (passes cloud alpha through into gbuffer3.a).
-#if AYASTORM_CINEMATIC
-    frag_data[3] = vec4(color.rgb, alpha1);
-#else
+    // mask in gbuffer3.a; clouds are never skin.
+    // <FS:AYAstorm r30 BD改善> Cinematic でも SSS dispatch が走るため、
+    //   alpha=cloud_alpha leak で雲経由で skin_mask 誤発火。両 mode で 0。
     frag_data[3] = vec4(color.rgb, 0.0);
-#endif
+    // </FS:AYAstorm>
     // </FS:AYA>
 #else
     frag_data[0] = vec4(color.rgb, alpha1);

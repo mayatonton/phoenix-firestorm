@@ -44,7 +44,9 @@ uniform float sky_ambient_scale;
 uniform int classic_mode;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14> Visual Realism master switch
 uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
+uniform float aya_r14_strength;  // <FS:AYAstorm r30 BD改善> r14 効果強度 (0=OFF / 1=ON)
 uniform int aya_r16_aerial_perspective_enabled;  // <FS:AYA r16> r16 個別 switch (master 独立)
+uniform float aya_r16_strength;  // <FS:AYAstorm r30 BD改善> r16 効果強度 (0=OFF / 1=ON、enabled 内で lerp)
 
 float getAmbientClamp() { return 1.0f; }
 
@@ -75,9 +77,12 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     //   skyV.glsl (sky dome 経路) は触らない: sun disc 消失の原因経路と P0 で確認済。
     //   atmosFragLighting は light *= atten.r でスカラー化するため combined_haze の
     //   波長依存は surface 直接透過には殆ど効かず、additive 経由で効果が出る設計。
+    // <FS:AYAstorm r30 BD改善> r16 強度 lerp: 0=旧 (vec3(1.0)) / 1=現状 r16 (vec3(1.0, 2.33, 5.71))
+    //   enabled OFF 時は強度に関係なく vec3(1.0) で旧経路、enabled ON 時に strength で連続補間。
     vec3 rayleigh_w = (aya_r16_aerial_perspective_enabled > 0)
-        ? vec3(1.0, 2.33, 5.71)
+        ? mix(vec3(1.0), vec3(1.0, 2.33, 5.71), aya_r16_strength)
         : vec3(1.0);
+    // </FS:AYAstorm>
     // </FS:AYA>
 
     // sunlight attenuation effect (hue and brightness) due to atmosphere
@@ -114,7 +119,9 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
         float altitude = max(rel_pos.y, 0.0);
         float scale_height = max(max_y * 0.1, 1.0);  // 0-div 安全 (r14 P1.a tune: 0.5→0.1 で勾配強化)
         float altitude_factor = exp(-altitude / scale_height);
-        density_dist *= altitude_factor;
+        // <FS:AYAstorm r30 BD改善> r14 強度 lerp: 0=旧 (×1.0) / 1=現状 r14 (×altitude_factor)
+        density_dist *= mix(1.0, altitude_factor, aya_r14_strength);
+        // </FS:AYAstorm>
     }
     // </FS:AYA>
 
@@ -172,7 +179,11 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
         vec3 additive_lin    = (blue_h_lin * blue_weight.rgb) * (cs_lin + amb_lin)
                              + (haze_h_lin * haze_weight.rgb) * (cs_lin * haze_glow + amb_lin);
 
-        additive = linear_to_srgb(additive_lin);
+        // <FS:AYAstorm r30 BD改善> r14 強度 lerp: 旧 sRGB 経路と新 linear 経路を strength で混合
+        vec3 additive_old = (blue_horizon.rgb * blue_weight.rgb) * (cs + tmpAmbient.rgb)
+                          + (haze_horizon * haze_weight.rgb) * (cs * haze_glow + tmpAmbient.rgb);
+        additive = mix(additive_old, linear_to_srgb(additive_lin), aya_r14_strength);
+        // </FS:AYAstorm>
     }
     else
     {

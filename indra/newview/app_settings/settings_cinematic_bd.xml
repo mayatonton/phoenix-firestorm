@@ -136,6 +136,9 @@
     <key>RenderMotionBlur</key>
     <boolean>1</boolean>
 
+    <key>RenderMotionBlurStrength</key>
+    <integer>8</integer>
+
     <key>RenderScreenSpaceReflections</key>
     <boolean>1</boolean>
 
@@ -146,10 +149,10 @@
     <real>67.0</real>
 
     <key>CameraFNumber</key>
-    <real>28.0</real>
+    <real>64.0</real>
 
     <key>CameraFocalLength</key>
-    <real>40.0</real>
+    <real>10.0</real>
 
     <key>CameraMaxCoF</key>
     <real>11.9</real>
@@ -159,5 +162,35 @@
 
     <key>CameraDoFResScale</key>
     <real>0.5</real>
+
+    <!-- r30 BD改善 FX タブ 2nd batch default (2026-05-22 編入)。AYAstorm View
+         で AYA さん tuning した値を Cinematic mode の初起動 default として
+         焼く。sentinel (AYACinematicOverlayApplied) で 1 回だけ焼き、以降は
+         user customize (mValues[1]) を survive。Reset D ボタン
+         (llviewermenu.cpp::AYAResetCinematic::parityTable) と値同期必須。 -->
+
+    <key>AYAR14VolumetricAtmosphereInCinematicEnabled</key>
+    <boolean>1</boolean>
+
+    <key>AYAR14Strength</key>
+    <real>0.2</real>
+
+    <key>AYAR16AerialPerspectiveInCinematicEnabled</key>
+    <boolean>1</boolean>
+
+    <key>AYAR16AerialPerspectiveStrength</key>
+    <real>0.5</real>
+
+    <key>AYAR17ColorTemperatureInCinematicEnabled</key>
+    <boolean>0</boolean>
+
+    <key>AYAR17Strength</key>
+    <real>0.5</real>
+
+    <key>AYAR18CloudVolumetricInCinematicEnabled</key>
+    <boolean>1</boolean>
+
+    <key>AYAR18CloudVolumetricStrength</key>
+    <real>0.7</real>
   </map>
 </llsd>

@@ -124,13 +124,12 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 packs the
-    // per-draw SSS skin flag into gbuffer3.a alongside emissive. Cinematic
-    // has no SSS pass, so it writes BD original max(vec4(emissive,0), 0).
-#if AYASTORM_CINEMATIC
-    frag_data[3] = max(vec4(emissive, 0), vec4(0));
-#else
+    // per-draw SSS skin flag into gbuffer3.a alongside emissive.
+    // <FS:AYAstorm r30 BD改善> r20 consolidation 後は Cinematic でも SSS dispatch
+    // するため両 mode で skin flag を書く。非 SSS 経路では r20 が cvar OFF で
+    // doSkinSSS 早期 return するため write 値は読まれない (実害ゼロ)。
     frag_data[3] = max(vec4(emissive, aya_sss_skin_flag), vec4(0));
-#endif
+    // </FS:AYAstorm>
     // </FS:AYA>
 #endif
 }

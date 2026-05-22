@@ -3267,6 +3267,12 @@ bool LLAppViewer::initConfiguration()
     LLCinematicOverlay::applyCinematicOverlayIfNeeded();
     // </FS:AYA>
 
+    // <FS:AYAstorm> r20 SSS cvar consolidation migration. One-shot; safe in
+    // every startup path (no-op once AYAR20SSSMigrationVersion >= 1). Must run
+    // after the User settings layer is loaded so persisted values are visible.
+    LLCinematicOverlay::applyR20SSSMigrationIfNeeded();
+    // </FS:AYAstorm>
+
     // <FS:Ansariel> Debug setting to disable log throttle
     nd::logging::setThrottleEnabled(gSavedSettings.getBOOL("FSEnableLogThrottle"));
 

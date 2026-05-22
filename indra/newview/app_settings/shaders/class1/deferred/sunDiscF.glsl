@@ -52,12 +52,10 @@ void main()
     frag_data[0] = vec4(0);
     // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 uses
     // gbuffer3.a as the SSS skin mask, so sun writes 0 to opt out.
-    // Cinematic has no SSS pass, so it writes the BD original c.
-#if AYASTORM_CINEMATIC
-    frag_data[3] = c;
-#else
+    // <FS:AYAstorm r30 BD改善> Cinematic でも r20 SSS dispatch が走るため
+    //   alpha leak で太陽縁に skin_mask 誤発火する。両 mode で 0。
     frag_data[3] = vec4(c.rgb, 0.0);
-#endif
+    // </FS:AYAstorm>
     // </FS:AYA>
 #else
     frag_data[0] = c;

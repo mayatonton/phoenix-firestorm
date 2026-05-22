@@ -8595,10 +8595,12 @@ const LLViewerJointAttachment *LLVOAvatar::attachObject(LLViewerObject *viewer_o
     // whitelist. Mesh UUID is in ObjectUpdate so this works for self
     // *and* others — no isSelf() gate. Phase C will fan this out into
     // a GBuffer skin bit so the SSS pass can mask per-pixel.
-    // <FS:AYA r30 Phase 3.7 cat 04> Cinematic / Firestorm View では SSS
-    // pipeline 自体が走らないので plumbing もしない (AYAstorm View 専用)。
+    // <FS:AYAstorm r30 BD改善> r20 consolidation で SSS dispatch は mode 1
+    // (AYAstorm View) / mode 2 (Cinematic) 共通になったため、whitelist plumbing
+    // も両 mode で走らせる (旧コメントは AYAstorm View 専用前提、当時の遺物)。
+    // mode 0 (Firestorm View) では SSS pipeline が走らないので plumbing も skip。
     static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    if (aya_view_mode() == 1)
+    if (aya_view_mode() > 0)
     {
         ayastorm::setSSSTargetForAttachment(viewer_object);
     }
@@ -8910,10 +8912,10 @@ bool LLVOAvatar::detachObject(LLViewerObject *viewer_object)
             // <FS:AYA r20 Phase B> Clear the SSS target flag before the
             // object is removed from this attachment point so a stale
             // bit can't leak into a later non-attachment use.
-            // <FS:AYA r30 Phase 3.7 cat 04> Cinematic / Firestorm View では
-            // SSS pipeline 自体が走らないので clear も skip。set 側と対称。
+            // <FS:AYAstorm r30 BD改善> set 側と対称: mode 1/2 共通で clear。
+            // mode 0 (Firestorm View) では SSS pipeline が走らないので skip。
             static LLCachedControl<U32> aya_view_mode_clear(gSavedSettings, "AYAVisualRealismEnabled", 1);
-            if (aya_view_mode_clear() == 1)
+            if (aya_view_mode_clear() > 0)
             {
                 ayastorm::clearSSSTargetForAttachment(viewer_object);
             }

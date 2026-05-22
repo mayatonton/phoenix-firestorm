@@ -10158,15 +10158,27 @@ class AYAResetCinematic : public view_listener_t
             {"RenderDepthOfField",              LLSD(true)},
             {"RenderDepthOfFieldHighQuality",   LLSD(true)},
             {"RenderMotionBlur",                LLSD(true)},
+            {"RenderMotionBlurStrength",        LLSD(LLSD::Integer(8))},
             {"RenderScreenSpaceReflections",    LLSD(true)},
             {"RenderFSAAType",                  LLSD(LLSD::Integer(2))}, // 2 = SMAA
             // BD camera DoF values — LL defaults are conservative, BD ships photo-tuned
             {"CameraFieldOfView",               LLSD(67.0)},
-            {"CameraFNumber",                   LLSD(28.0)},
-            {"CameraFocalLength",               LLSD(40.0)},
+            {"CameraFNumber",                   LLSD(64.0)},
+            {"CameraFocalLength",               LLSD(10.0)},
             {"CameraMaxCoF",                    LLSD(11.9)},
             {"CameraFocusTransitionTime",       LLSD(0.4)},
             {"CameraDoFResScale",               LLSD(0.5)},
+            // AYA r14-r20 in-Cinematic tuning — default reset for live A/B sliders.
+            // settings.xml の <Value> および settings_cinematic_bd.xml overlay と
+            // 値同期必須 (2026-05-22 FX タブ 2nd batch tuning)。
+            {"AYAR14VolumetricAtmosphereInCinematicEnabled", LLSD(true)},
+            {"AYAR14Strength",                               LLSD(0.2)},
+            {"AYAR16AerialPerspectiveInCinematicEnabled",    LLSD(true)},
+            {"AYAR16AerialPerspectiveStrength",              LLSD(0.5)},
+            {"AYAR17ColorTemperatureInCinematicEnabled",     LLSD(false)},
+            {"AYAR17Strength",                               LLSD(0.5)},
+            {"AYAR18CloudVolumetricInCinematicEnabled",      LLSD(true)},
+            {"AYAR18CloudVolumetricStrength",                LLSD(0.7)},
         };
         return table;
     }

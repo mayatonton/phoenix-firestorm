@@ -9984,17 +9984,17 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
-    <!-- <FS:AYA> r30 P5 A6: AYAR20 SSS effective フラグ。pipeline.cpp:doSkinSSS() 早期 return 条件
-         `realism_enabled() != 1 || !r20_enabled()` に対応 ─ SSS 描画パスは AYAstorm View (mode 1)
-         のみで走る。Preferences > Graphics > SSS タブ root の enabled_control に bind し、
-         mode 0 (Firestorm View) / mode 2 (Cinematic) では UI を grey out。これで「UI active なのに
-         描画されない」逆ズレ (AYA 2026-05-20 指摘) を解消。AYACinematicModeActive と同様の helper
-         shadow で、AYAVisualRealismEnabled (U32) → Boolean conversion 用。詳細:
-         docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §5.10.A (B3 audit) / §10 A6。 -->
+    <!-- <FS:AYA> r30 P5 A6 → r30 P? r20 consolidation: AYAR20 SSS effective フラグ。
+         pipeline.cpp:doSkinSSS() 早期 return 条件 `realism_enabled() <= 0 || !r20_enabled()` に対応
+         ─ SSS 描画パスは AYAstorm View (mode 1) と Cinematic (mode 2) の両方で走る。Preferences >
+         Graphics > SSS タブ root の enabled_control に bind し、mode 0 (Firestorm View) では UI を
+         grey out。AYAR20AvatarSkinSSSEnabled が mode 1/2 共通 cvar になった consolidation に追従。
+         AYACinematicModeActive と同様の helper shadow で、AYAVisualRealismEnabled (U32) → Boolean
+         conversion 用。詳細: docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §5.10.A / §10 A6。 -->
     <key>AYAR20SSSEffective</key>
     <map>
       <key>Comment</key>
-      <string>Helper Boolean shadow of (AYAVisualRealismEnabled==1). XUI enabled_control 用、SSS 描画パスが走る mode 1 のときだけ Preferences > Graphics > SSS タブ全体を active にする。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
+      <string>Helper Boolean shadow of (AYAVisualRealismEnabled &gt; 0). XUI enabled_control 用、SSS 描画パスが走る mode 1 / 2 のときだけ Preferences &gt; Graphics &gt; SSS タブ全体を active にする。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
       <key>Persist</key>
       <integer>0</integer>
       <key>Type</key>
@@ -10049,6 +10049,31 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
+    <!-- <FS:AYAstorm r30 BD改善> r17 Cinematic opt-in + strength -->
+    <key>AYAR17ColorTemperatureInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r17 Color Temperature (太陽 Kelvin modulator) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR17ColorTemperatureEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR17Strength</key>
+    <map>
+      <key>Comment</key>
+      <string>r17 Color Temperature (太陽 Kelvin modulator) の強度を 0=OFF 相当 (white modulator) / 1=現在の ON 相当 (full Kelvin shift) で連続 lerp。live cvar (再起動不要)。AYAR17ColorTemperatureEnabled (AYAstorm View) または AYAR17ColorTemperatureInCinematicEnabled (Cinematic) が ON のときに効く。getR17SunModulator() の戻り値を LLColor3::white と Kelvin RGB の間で連続補間 (llsettingsvo.cpp)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.5</real>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <!-- <FS:AYA r18> Cloud Volumetric individual switch -->
     <key>AYAR18CloudVolumetricEnabled</key>
     <map>
@@ -10095,13 +10120,13 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR20AvatarSkinSSSEnabled</key>
     <map>
       <key>Comment</key>
-      <string>r20 Avatar Skin SSS P0a prototype: screen-space 5-tap separable blur (wavelength-dependent per-channel weights) で全画面に SSS 風 diffusion を適用。P0a は whitelist 判別なし — SSS の見た目そのものを評価するための prototype。AYAVisualRealismEnabled (master) とは独立に r20 効果のみ ON/OFF 可能 (master ON 前提)</string>
+      <string>r20 Avatar Skin SSS: screen-space 5-tap separable blur (wavelength-dependent per-channel weights) を whitelist 一致 avatar 肌 pixel に適用。AYAVisualRealismEnabled &gt; 0 のときに有効化判定対象 (mode 1 AYAstorm View / mode 2 Cinematic 共通の 1 cvar dispatch)。default OFF — 配信者が肌質感を判定したうえで opt-in</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>0</integer>
     </map>
     <key>AYAR20AvatarSkinSSSBlurRadius</key>
     <map>
@@ -10117,29 +10142,29 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR20AvatarSkinSSSStrength</key>
     <map>
       <key>Comment</key>
-      <string>r20 P0a tuning: SSS blur と元画面の mix 比率 (0.0 = OFF 相当 / 1.0 = blur 100%)。default 0.7。look 判定中の live iteration 用 — 確定値が決まったら hard-code 化予定</string>
+      <string>r20 P0a tuning: SSS blur と元画面の mix 比率 (0.0 = OFF 相当 / 1.0 = blur 100%)。default 0.5 (AYA 確定値、2026-05-23)。look 判定中の live iteration 用</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>F32</string>
       <key>Value</key>
-      <real>0.7</real>
+      <real>0.5</real>
     </map>
     <key>AYAR20AvatarSkinSSSGlowGain</key>
     <map>
       <key>Comment</key>
-      <string>r20 Phase D: SSS blur 後の lit^3 に additive を足す gain。SSS で眠くなった hi-light を peak だけ非対称に持ち上げる。default 1.0 (warm-salmon color と組み合わせて血色感を控えめに補強)</string>
+      <string>r20 Phase D: SSS blur 後の lit^3 に additive を足す gain。SSS で眠くなった hi-light を peak だけ非対称に持ち上げる。default 0.2 (AYA 確定値、2026-05-23: red glow color と組み合わせて控えめな血色感)</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>F32</string>
       <key>Value</key>
-      <real>1.0</real>
+      <real>0.2</real>
     </map>
     <key>AYAR20AvatarSkinSSSGlowColor</key>
     <map>
       <key>Comment</key>
-      <string>r20 Phase D: glow restore additive の色。真っ白だと「肌が発光してる」感が出るので、default は warm salmon (1.0, 0.65, 0.5)。配信者が血色感や肌色に合わせて調整可能。alpha は未使用</string>
+      <string>r20 Phase D: glow restore additive の色。default pure red (1.0, 0.0, 0.0) (AYA 確定値、2026-05-23)。配信者が血色感や肌色に合わせて調整可能。alpha は未使用</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -10147,8 +10172,8 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <array>
         <real>1.0</real>
-        <real>0.65</real>
-        <real>0.5</real>
+        <real>0.0</real>
+        <real>0.0</real>
         <real>1.0</real>
       </array>
     </map>
@@ -10174,13 +10199,24 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR14VolumetricAtmosphereInCinematicEnabled</key>
     <map>
       <key>Comment</key>
-      <string>r14 Volumetric Atmosphere (altitude density + scene-referred linear integration) を Cinematic mode で有効化。default OFF、live cvar (再起動不要)。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View (mode 1) では本 cvar に関係なく常時 ON で従来動作</string>
+      <string>r14 Volumetric Atmosphere (altitude density + scene-referred linear integration) を Cinematic mode で有効化。default ON、live cvar (再起動不要)。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View (mode 1) では本 cvar に関係なく常時 ON で従来動作</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>0</integer>
+      <integer>1</integer>
+    </map>
+    <key>AYAR14Strength</key>
+    <map>
+      <key>Comment</key>
+      <string>r14 効果 (Volumetric Atmosphere + Sun Dazzle) の強度を 0=OFF 相当 / 1=現在の ON 相当 で連続 lerp。live cvar (再起動不要)。AYAVisualRealismEnabled==2 かつ AYAR14VolumetricAtmosphereInCinematicEnabled=1 のとき (および AYAstorm View mode==1 のとき) に効く。altitude density (atmosphericsFuncs.glsl) と scene-referred 積分 (skyV.glsl 含む 3 箇所) の両方を 1 つの scalar で lerp する</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.2</real>
     </map>
     <key>AYAR15GodraysInCinematicEnabled</key>
     <map>
@@ -10193,27 +10229,49 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>AYAR16AerialPerspectiveStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>r16 Aerial Perspective (Rayleigh λ^-4) の強度を 0=OFF 相当 / 1=現在の ON 相当 で連続 lerp。live cvar (再起動不要)。AYAR16AerialPerspectiveEnabled (AYAstorm View) または AYAR16AerialPerspectiveInCinematicEnabled (Cinematic) が ON のときに効く。rayleigh_w を vec3(1.0) と vec3(1.0, 2.33, 5.71) の間で連続補間 (atmosphericsFuncs.glsl)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.5</real>
+    </map>
     <key>AYAR16AerialPerspectiveInCinematicEnabled</key>
     <map>
       <key>Comment</key>
-      <string>r16 Aerial Perspective (Rayleigh λ^-4 波長依存散乱) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR16AerialPerspectiveEnabled (既存) に従う</string>
+      <string>r16 Aerial Perspective (Rayleigh λ^-4 波長依存散乱) を Cinematic mode で有効化。default ON、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR16AerialPerspectiveEnabled (既存) に従う</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>0</integer>
+      <integer>1</integer>
+    </map>
+    <key>AYAR18CloudVolumetricStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>r18 Cloud Volumetric (slab raymarch) の強度を 0=OFF 相当 / 1=現在の ON 相当 で連続 lerp。live cvar (再起動不要)。AYAR18CloudVolumetricEnabled (AYAstorm View) または AYAR18CloudVolumetricInCinematicEnabled (Cinematic) が ON のときに効く。alpha1 を legacy flat path と volumetric raymarch path の間で連続補間 (cloudsF.glsl)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.7</real>
     </map>
     <key>AYAR18CloudVolumetricInCinematicEnabled</key>
     <map>
       <key>Comment</key>
-      <string>r18 Cloud Volumetric (slab raymarch 疑似体積雲) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR18CloudVolumetricEnabled (既存) に従う</string>
+      <string>r18 Cloud Volumetric (slab raymarch 疑似体積雲) を Cinematic mode で有効化。default ON、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR18CloudVolumetricEnabled (既存) に従う</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>0</integer>
+      <integer>1</integer>
     </map>
     <key>AYAR19TranslucencyInCinematicEnabled</key>
     <map>
@@ -10229,11 +10287,22 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR20AvatarSkinSSSInCinematicEnabled</key>
     <map>
       <key>Comment</key>
-      <string>r20 Avatar Skin SSS (screen-space 5-tap separable blur) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR20AvatarSkinSSSEnabled (既存) に従う</string>
+      <string>DEPRECATED (r30 P? r20 consolidation): AYAR20AvatarSkinSSSEnabled が mode 1/2 共通の単一 dispatch cvar になったため不要。本 entry は AYAR20SSSMigrationVersion==0 の起動時に旧値を読み出して新 cvar (AYAR20AvatarSkinSSSEnabled) に OR 合成するためだけに残置。migration 後は触らない</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR20SSSMigrationVersion</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 SSS cvar migration counter。default 0。起動時 llappviewer.cpp で version &lt; 1 を検出したら、旧 AYAR20AvatarSkinSSSInCinematicEnabled の値を新 AYAR20AvatarSkinSSSEnabled に OR 合成して version=1 に bump。version 番号は将来の cvar 整理時に +1 ずつ進める想定</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
       <key>Value</key>
       <integer>0</integer>
     </map>

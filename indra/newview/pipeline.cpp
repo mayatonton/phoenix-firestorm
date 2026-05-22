@@ -5170,11 +5170,13 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             // <FS:AYAstorm r30 BD改善> AYAstorm View は無条件、Cinematic は個別 InCinematic cvar で opt-in。
             //   各関数も自己 gate 済 (Phase 3.1 / r20 早期 return) だが call-site でも wrap して
             //   Cinematic OFF 時の関数 entry を無駄ゼロ化。
+            //   r20 SSS は consolidation 後 mode 1/2 共通の単一 cvar (AYAR20AvatarSkinSSSEnabled) で
+            //   dispatch されるため、call-site では mode > 0 と enabled のみで判定。
             static LLCachedControl<U32>  aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
             static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
-            static LLCachedControl<bool> aya_r20_in_cinematic(gSavedSettings, "AYAR20AvatarSkinSSSInCinematicEnabled", false);
+            static LLCachedControl<bool> aya_r20_enabled_disp(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", false);
             bool dispatch_r15 = (aya_view_mode() == 1) || (aya_view_mode() == 2 && aya_r15_in_cinematic);
-            bool dispatch_r20 = (aya_view_mode() == 1) || (aya_view_mode() == 2 && aya_r20_in_cinematic);
+            bool dispatch_r20 = (aya_view_mode() > 0) && aya_r20_enabled_disp;
             if (dispatch_r15)
             {
                 doGodrays();
@@ -11401,13 +11403,13 @@ void LLPipeline::doSkinSSS()
         return;
     }
 
-    // <FS:AYAstorm r30 BD改善> r20 SSS: AYAstorm View は既存 cvar (AYAR20AvatarSkinSSSEnabled),
-    //   Cinematic は個別 InCinematic cvar で opt-in。default OFF (= 純 BD パス維持)。
+    // <FS:AYAstorm r30 BD改善> r20 SSS: consolidation 後 mode 1 (AYAstorm View) /
+    //   mode 2 (Cinematic) 共通の単一 cvar (AYAR20AvatarSkinSSSEnabled) で dispatch。
+    //   旧 AYAR20AvatarSkinSSSInCinematicEnabled は AYAR20SSSMigrationVersion==0 起動時に
+    //   新 cvar へ OR 合成される (llappviewer.cpp の migration コード参照)。default OFF。
     static LLCachedControl<U32>  realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    static LLCachedControl<bool> r20_enabled(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", true);
-    static LLCachedControl<bool> r20_in_cinematic(gSavedSettings, "AYAR20AvatarSkinSSSInCinematicEnabled", false);
-    bool r20_active = (realism_enabled() == 1 && r20_enabled())
-                   || (realism_enabled() == 2 && r20_in_cinematic);
+    static LLCachedControl<bool> r20_enabled(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", false);
+    bool r20_active = (realism_enabled() > 0) && r20_enabled();
     if (!r20_active)
     {
         return;
@@ -11427,9 +11429,9 @@ void LLPipeline::doSkinSSS()
     // debug settings に逃がしている。値が確定したら hard-code に戻す予定。
     // 既定値: blur_radius=6.0 / strength=0.7 (iteration 3 で AYA OK 判定)。
     static LLCachedControl<F32> sss_blur_radius(gSavedSettings, "AYAR20AvatarSkinSSSBlurRadius", 1.0f);
-    static LLCachedControl<F32> sss_strength(gSavedSettings, "AYAR20AvatarSkinSSSStrength", 0.7f);
+    static LLCachedControl<F32> sss_strength(gSavedSettings, "AYAR20AvatarSkinSSSStrength", 0.5f);
     // <FS:AYA r20 Phase D> glow restore gain + tint (highlight boost on top of blur).
-    static LLCachedControl<F32>      sss_glow_gain(gSavedSettings,  "AYAR20AvatarSkinSSSGlowGain",  3.0f);
+    static LLCachedControl<F32>      sss_glow_gain(gSavedSettings,  "AYAR20AvatarSkinSSSGlowGain",  0.2f);
     static LLCachedControl<LLColor4> sss_glow_color(gSavedSettings, "AYAR20AvatarSkinSSSGlowColor");
     // <FS:AYA r20 Phase D world-scale blur> blur 半径を世界座標で固定する
     // (= 距離で逆スケール) ため、shader が depth を読む。near/far の距離

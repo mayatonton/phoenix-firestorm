@@ -25,7 +25,7 @@
  can_resize="false"
  can_close="true"
  can_minimize="true"
- height="536"
+ height="484"
  help_topic="aya_cinematic_floater"
  layout="topleft"
  name="aya_cinematic"
@@ -36,19 +36,6 @@
  title="AYAstorm Cinematic Controls"
  width="600">
 
-    <text
-     name="T_Header"
-     follows="left|top|right"
-     layout="topleft"
-     top="22"
-     left="8"
-     width="584"
-     height="48"
-     font="SansSerifSmall"
-     word_wrap="true">
-        Active only when View Mode (Graphics tab) is "Cinematic". Mode change requires restart; sliders apply live. "D" restores Cinematic preset / LL default. All Cinematic controls require Deferred Rendering (Preferences → Graphics → Advanced Lighting Model).
-    </text>
-
     <tab_container
      follows="left|top"
      halign="center"
@@ -58,7 +45,7 @@
      name="aya_cinematic_tabs"
      tab_height="22"
      tab_position="top"
-     top="74"
+     top="22"
      width="590">
 
         <!-- =================== Tab 1: General =================== -->
@@ -383,41 +370,38 @@
         <!-- <FS:AYAstorm r30 BD改善> AYAstorm View 由来の追加効果を Cinematic mode に個別 opt-in。
              default OFF (= 純 BD パスのまま) で、AYA さんが live A/B しながら 1 件ずつ on/off 判断する想定。
              各 cvar は AYAR##InCinematicEnabled (Bool, default 0, Persist=1, live)。 -->
-        <panel border="false" follows="left|top" label="AYAstorm View FX" layout="topleft" left="1" name="tab_aya_view_fx" top="0" height="427" width="588">
-            <text follows="left|top" layout="topleft" name="T_AYAFXNote" top="8" left="8" width="572" height="32" font="SansSerifSmall" word_wrap="true">
-                AYAstorm View (r14-r20) 由来の追加効果を Cinematic mode に opt-in 配線。default OFF。live cvar (再起動不要)。AYA さんが画面を見て 1 件ずつ A/B 判断するための窓口。
-            </text>
+        <panel border="false" follows="left|top" label="Atmosphere &amp; sky" layout="topleft" left="1" name="tab_aya_view_fx" top="0" height="427" width="588">
+            <check_box follows="left|top" layout="topleft" name="cb_R14VolAtm" enabled_control="AYACinematicModeActive" control_name="AYAR14VolumetricAtmosphereInCinematicEnabled" top="32"  left="36" width="506" height="20" label="Sky depth &amp; sun glare" tool_tip="高度に応じた空気密度勾配 + scene-referred linear 積分 (空の物理的混色)。空全体の色相/明度が変わる。"/>
+            <button    follows="left|top" layout="topleft" name="d_R14VolAtm"  enabled_control="AYACinematicModeActive" top="32"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default (ON)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR14VolumetricAtmosphereInCinematicEnabled"/></button>
 
-            <text follows="left|top" layout="topleft" name="T_AYAFXSky" top="48" left="8" width="572" height="18" font="SansSerif">Atmosphere &amp; sky</text>
+            <text       follows="left|top" layout="topleft" name="T_R14Str"  enabled_control="AYACinematicModeActive" top="60" left="56"  width="116" height="20">Strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_R14Str" enabled_control="AYACinematicModeActive" top="62" left="176" width="195" height="16" control_name="AYAR14Strength" min_val="0" max_val="1" increment="0.05" tool_tip="r14 効果 (Volumetric Atmosphere + Sun Dazzle) の強度を 0=OFF 相当 / 1=現在の ON 相当 で連続 lerp。AYA さんの「空の色が変わりすぎる」を詰めるための live A/B slider。"/>
+            <spinner    follows="left|top" layout="topleft" name="s_R14Str"  enabled_control="AYACinematicModeActive" top="60" left="376" width="65"  height="20" control_name="AYAR14Strength" min_val="0" max_val="1" increment="0.05" decimal_digits="2" label_width="0" tool_tip="r14 効果の強度 (0=OFF / 1=ON)。"/>
+            <button     follows="left|top" layout="topleft" name="d_R14Str"  enabled_control="AYACinematicModeActive" top="60" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (0.2)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR14Strength"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_R14VolAtm" control_name="AYAR14VolumetricAtmosphereInCinematicEnabled" top="72"  left="36" width="506" height="20" label="r14 Volumetric Atmosphere + Sun Dazzle" tool_tip="高度に応じた空気密度勾配 + scene-referred linear 積分 (空の物理的混色)。空全体の色相/明度が変わる。"/>
-            <button    follows="left|top" layout="topleft" name="d_R14VolAtm"  top="72"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default (OFF)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR14VolumetricAtmosphereInCinematicEnabled"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_R16Aerial" enabled_control="AYACinematicModeActive" control_name="AYAR16AerialPerspectiveInCinematicEnabled" top="84" left="36" width="506" height="20" label="Distant blue haze" tool_tip="遠景の青ヘイズ重み付け。遠距離オブジェクトに青みがかかる。"/>
+            <button    follows="left|top" layout="topleft" name="d_R16Aerial"  enabled_control="AYACinematicModeActive" top="84" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (ON)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR16AerialPerspectiveInCinematicEnabled"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_R16Aerial" control_name="AYAR16AerialPerspectiveInCinematicEnabled" top="96"  left="36" width="506" height="20" label="r16 Aerial Perspective (Rayleigh λ⁻⁴)" tool_tip="遠景の青ヘイズ重み付け。遠距離オブジェクトに青みがかかる。"/>
-            <button    follows="left|top" layout="topleft" name="d_R16Aerial"  top="96"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default (OFF)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR16AerialPerspectiveInCinematicEnabled"/></button>
+            <text       follows="left|top" layout="topleft" name="T_R16Str"  enabled_control="AYACinematicModeActive" top="108" left="56"  width="116" height="20">Strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_R16Str" enabled_control="AYACinematicModeActive" top="110" left="176" width="195" height="16" control_name="AYAR16AerialPerspectiveStrength" min_val="0" max_val="1" increment="0.05" tool_tip="r16 Aerial Perspective (Rayleigh λ⁻⁴) の強度を 0=OFF 相当 / 1=現状 ON 相当 で連続 lerp。enabled OFF の時は無効。"/>
+            <spinner    follows="left|top" layout="topleft" name="s_R16Str"  enabled_control="AYACinematicModeActive" top="108" left="376" width="65"  height="20" control_name="AYAR16AerialPerspectiveStrength" min_val="0" max_val="1" increment="0.05" decimal_digits="2" label_width="0" tool_tip="r16 効果の強度 (0=OFF / 1=ON)。"/>
+            <button     follows="left|top" layout="topleft" name="d_R16Str"  enabled_control="AYACinematicModeActive" top="108" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (0.5)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR16AerialPerspectiveStrength"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_R18Cloud"  control_name="AYAR18CloudVolumetricInCinematicEnabled" top="120" left="36" width="506" height="20" label="r18 Cloud Volumetric (slab raymarch)" tool_tip="雲を平面ではなく厚みのある体積として raymarch。立体感が出るが GPU 負荷あり。"/>
-            <button    follows="left|top" layout="topleft" name="d_R18Cloud"   top="120" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (OFF)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR18CloudVolumetricInCinematicEnabled"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_R17Kelvin" enabled_control="AYACinematicModeActive" control_name="AYAR17ColorTemperatureInCinematicEnabled" top="132" left="36" width="506" height="20" label="Morning blue / evening warm tint" tool_tip="太陽 elevation から派生する Kelvin (2200K horizon ～ 6500K noon) を preset 色に乗算で modulate。朝青/夕橙の物理的整合を sky + scene + cloud で同期。"/>
+            <button    follows="left|top" layout="topleft" name="d_R17Kelvin"  enabled_control="AYACinematicModeActive" top="132" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (OFF)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR17ColorTemperatureInCinematicEnabled"/></button>
 
-            <text follows="left|top" layout="topleft" name="T_AYAFXLight" top="156" left="8" width="572" height="18" font="SansSerif">Lighting &amp; volumetrics</text>
+            <text       follows="left|top" layout="topleft" name="T_R17Str"  enabled_control="AYACinematicModeActive" top="156" left="56"  width="116" height="20">Strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_R17Str" enabled_control="AYACinematicModeActive" top="158" left="176" width="195" height="16" control_name="AYAR17Strength" min_val="0" max_val="1" increment="0.05" tool_tip="r17 Color Temperature (Kelvin modulator) の強度を 0=OFF 相当 (white modulator) / 1=現状 ON 相当 (full Kelvin shift) で連続 lerp。enabled OFF の時は無効。"/>
+            <spinner    follows="left|top" layout="topleft" name="s_R17Str"  enabled_control="AYACinematicModeActive" top="156" left="376" width="65"  height="20" control_name="AYAR17Strength" min_val="0" max_val="1" increment="0.05" decimal_digits="2" label_width="0" tool_tip="r17 効果の強度 (0=OFF / 1=ON)。"/>
+            <button     follows="left|top" layout="topleft" name="d_R17Str"  enabled_control="AYACinematicModeActive" top="156" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (0.5)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR17Strength"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_R15Godrays" control_name="AYAR15GodraysInCinematicEnabled" top="180" left="36" width="506" height="20" label="r15 Godrays (AYA 経路)" tool_tip="AYA 独自の godrays 積分パス。BD の RenderVolumetricLighting と独立。同時 ON 時は重複加算注意。"/>
-            <button    follows="left|top" layout="topleft" name="d_R15Godrays"  top="180" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (OFF)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR15GodraysInCinematicEnabled"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_R18Cloud"  enabled_control="AYACinematicModeActive" control_name="AYAR18CloudVolumetricInCinematicEnabled" top="180" left="36" width="506" height="20" label="3D cloud depth" tool_tip="雲を平面ではなく厚みのある体積として raymarch。立体感が出るが GPU 負荷あり。"/>
+            <button    follows="left|top" layout="topleft" name="d_R18Cloud"   enabled_control="AYACinematicModeActive" top="180" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (ON)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR18CloudVolumetricInCinematicEnabled"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_R19Trans" control_name="AYAR19TranslucencyInCinematicEnabled" top="204" left="36" width="506" height="20" label="r19 Translucency (wrap-around + back-light)" tool_tip="肌/葉の半透過っぽい光抜けを近似。tier は AYAR19TranslucencyIntensity 共有 (default 1)。"/>
-            <button    follows="left|top" layout="topleft" name="d_R19Trans"  top="204" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (OFF)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR19TranslucencyInCinematicEnabled"/></button>
-
-            <text follows="left|top" layout="topleft" name="T_AYAFXSkin" top="240" left="8" width="572" height="18" font="SansSerif">Avatar skin</text>
-
-            <check_box follows="left|top" layout="topleft" name="cb_R20SSS" control_name="AYAR20AvatarSkinSSSInCinematicEnabled" top="264" left="36" width="506" height="20" label="r20 Avatar Skin SSS (screen-space 5-tap separable blur)" tool_tip="肌領域に screen-space SSS ブラー。BoM body 等にも適用。tuning cvar (Radius/Strength/GlowGain) は AYAstorm View と共通。"/>
-            <button    follows="left|top" layout="topleft" name="d_R20SSS"  top="264" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (OFF)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR20AvatarSkinSSSInCinematicEnabled"/></button>
-
-            <text follows="left|top|right" layout="topleft" name="T_AYAFXBottom" top="312" left="8" width="572" height="60" font="SansSerifSmall" word_wrap="true" text_color="White_50">
-                Notes:
-                · これらは View Mode = Cinematic (AYAVisualRealismEnabled=2) のときだけ効果あり。
-                · live cvar なので checkbox 切替で即反映 (再起動不要)。
-                · 受入完了後、cvar が default の OFF のままで良ければそのまま残してください。気に入った組み合わせは AYA さんと別 phase で default 化議論。
-            </text>
+            <text       follows="left|top" layout="topleft" name="T_R18Str"  enabled_control="AYACinematicModeActive" top="204" left="56"  width="116" height="20">Strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_R18Str" enabled_control="AYACinematicModeActive" top="206" left="176" width="195" height="16" control_name="AYAR18CloudVolumetricStrength" min_val="0" max_val="1" increment="0.05" tool_tip="r18 Cloud Volumetric (slab raymarch) の強度を 0=legacy flat / 1=現状 volumetric で連続 lerp。enabled OFF の時は無効。"/>
+            <spinner    follows="left|top" layout="topleft" name="s_R18Str"  enabled_control="AYACinematicModeActive" top="204" left="376" width="65"  height="20" control_name="AYAR18CloudVolumetricStrength" min_val="0" max_val="1" increment="0.05" decimal_digits="2" label_width="0" tool_tip="r18 効果の強度 (0=legacy / 1=volumetric)。"/>
+            <button     follows="left|top" layout="topleft" name="d_R18Str"  enabled_control="AYACinematicModeActive" top="204" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (0.7)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR18CloudVolumetricStrength"/></button>
         </panel>
 
     </tab_container>

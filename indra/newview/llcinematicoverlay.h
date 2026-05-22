@@ -34,6 +34,14 @@ namespace LLCinematicOverlay
 
     // Clear the sentinel so the next entry into mode 2 force-applies again.
     void clearOverlaySentinel();
+
+    // <FS:AYAstorm> r20 SSS cvar consolidation migration. Runs once on
+    // startup: when AYAR20SSSMigrationVersion < 1, OR-merges old
+    // AYAR20AvatarSkinSSSInCinematicEnabled into AYAR20AvatarSkinSSSEnabled
+    // (the new single-source-of-truth cvar) and bumps the version counter.
+    // See settings.xml entry for AYAR20SSSMigrationVersion.
+    void applyR20SSSMigrationIfNeeded();
+    // </FS:AYAstorm>
 }
 
 #endif // LL_CINEMATIC_OVERLAY_H

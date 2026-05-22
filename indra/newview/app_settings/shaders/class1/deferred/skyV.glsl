@@ -64,6 +64,7 @@ uniform float sun_moon_glow_factor;
 uniform int cube_snapshot;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14 P2.a> Visual Realism master switch
 uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate
+uniform float aya_r14_strength;  // <FS:AYAstorm r30 BD改善> r14 効果強度 (0=OFF / 1=ON)
 
 // <FS:AYA r14 P2.a> vertex shader 内のインライン sRGB <-> linear helper
 // skyV.glsl は vertex shader で srgbF.glsl が attach されないため、ここで直接定義する
@@ -175,7 +176,12 @@ void main()
         vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
         vec3 blue_part    = aya_linear_to_srgb((blue_h_lin * blue_weight) * (sunlight_lin + amb_lin));
         vec3 haze_part    = (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient_color);
-        color = blue_part + haze_part;
+        vec3 color_new    = blue_part + haze_part;
+        // <FS:AYAstorm r30 BD改善> r14 強度 lerp: 旧 legacy 経路と新 split-linear 経路を strength で混合
+        vec3 color_old    = (blue_horizon * blue_weight * (sunlight + ambient_color)
+                           + (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient_color));
+        color = mix(color_old, color_new, aya_r14_strength);
+        // </FS:AYAstorm>
     }
     else
     {
@@ -203,7 +209,12 @@ void main()
         vec3 blue_h_lin   = aya_srgb_to_linear(blue_horizon);
         vec3 blue_part    = aya_linear_to_srgb((blue_h_lin * blue_weight) * (sunlight_lin + amb_lin));
         vec3 haze_part    = (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient);
-        add_below_cloud = blue_part + haze_part;
+        vec3 add_new      = blue_part + haze_part;
+        // <FS:AYAstorm r30 BD改善> r14 強度 lerp: 旧 legacy 経路と新 split-linear 経路を strength で混合
+        vec3 add_old      = (blue_horizon * blue_weight * (sunlight + ambient)
+                           + (haze_horizon * haze_weight) * (sunlight * haze_glow + ambient));
+        add_below_cloud = mix(add_old, add_new, aya_r14_strength);
+        // </FS:AYAstorm>
     }
     else
     {

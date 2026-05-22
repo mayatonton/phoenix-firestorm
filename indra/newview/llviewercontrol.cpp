@@ -1825,26 +1825,32 @@ void settings_setup_listeners()
     // make the pipeline build-once at startup. The combo_box stays control_name-bound
     // (immediate cvar write) but we surface the modal "ChangeViewMode" notification so the
     // user knows a restart is needed for the new mode to actually take effect.
-    // Guarded by STATE_STARTED to suppress firing during initial settings load on app boot.
+    // <FS:AYAstorm r30 cleanup> Guard at STATE_LOGIN_SHOW (not STATE_STARTED) so a
+    //   pre-login Preferences mode change also fires the restart prompt. Otherwise the
+    //   user changes View Mode on the login screen, logs in, and finds the viewer still
+    //   running the boot-time mode (shaders / overlay are locked at startup) — observed
+    //   2026-05-22, AYA selected AYAstorm View pre-login but got Cinematic in-world.
     setting_setup_signal_listener(gSavedSettings, "AYAVisualRealismEnabled", []() {
         // <FS:AYA r30 P5 C' / A6> Keep helper Boolean shadows in sync so XUI
         // enabled_control bindings update immediately on combo_box change. Fires
         // unconditionally (also during pre-STATE_STARTED settings load) so the
         // UI is correct before the user sees Preferences.
         //   - AYACinematicModeActive  = (mode == 2): BD-X1 cvar widgets grey out in mode 0/1
-        //   - AYAR20SSSEffective       = (mode == 1): SSS panel active only in AYAstorm View
-        //     (matches pipeline.cpp:doSkinSSS early-return condition)
+        //   - AYAR20SSSEffective       = (mode &gt; 0): SSS Preferences panel active in
+        //     AYAstorm View (mode 1) AND Cinematic (mode 2). r20 consolidation
+        //     merged the InCinematic cvar into AYAR20AvatarSkinSSSEnabled, so the
+        //     SSS tuning UI must follow.
         const U32 mode_v = gSavedSettings.getU32("AYAVisualRealismEnabled");
         gSavedSettings.setBOOL("AYACinematicModeActive", mode_v == 2);
-        gSavedSettings.setBOOL("AYAR20SSSEffective",     mode_v == 1);
+        gSavedSettings.setBOOL("AYAR20SSSEffective",     mode_v > 0);
         // </FS:AYA>
-        if (LLStartUp::getStartupState() >= STATE_STARTED)
+        if (LLStartUp::getStartupState() >= STATE_LOGIN_SHOW)
         {
             // <FS:AYA r30 P5 R2> Reset overlay sentinel when leaving mode 2 so the
             // next entry into Cinematic force-applies a fresh BD baseline. The
             // forward transition (-> 2) is left to the next startup since all 3
             // modes require restart per r30 P1.
-            if (gSavedSettings.getU32("AYAVisualRealismEnabled") != 2)
+            if (mode_v != 2)
             {
                 LLCinematicOverlay::clearOverlaySentinel();
             }
@@ -1857,7 +1863,7 @@ void settings_setup_listeners()
     {
         const U32 mode_v = gSavedSettings.getU32("AYAVisualRealismEnabled");
         gSavedSettings.setBOOL("AYACinematicModeActive", mode_v == 2);
-        gSavedSettings.setBOOL("AYAR20SSSEffective",     mode_v == 1);
+        gSavedSettings.setBOOL("AYAR20SSSEffective",     mode_v > 0);
     }
     // </FS:AYA>
     // </FS:AYAstorm r30 P1>
