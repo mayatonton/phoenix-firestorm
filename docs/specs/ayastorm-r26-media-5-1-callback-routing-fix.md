@@ -76,7 +76,7 @@ URL source path は FMOD decode path のままであり、この修正の影響�
 
 確認済み:
 
-- 対象 branch: `fix/dullahan-audio-callback-5-macos-helper`
+- 対象 branch: `fix/r26-1-media-5-1-callback-routing`
 - Dullahan package: `v1.26.0-CEF_139.0.40-ayastorm-audio-callback.5`
 - `LL_DULLAHAN_AUDIO_CALLBACK=TRUE`
 - macOS arm64 viewer build 成功
