@@ -1,11 +1,19 @@
 # AYAstorm r30 — 撮影描画 mode 新設 (Cinematic) + 3 モード再起動切替統一
 
 **作成日**: 2026-05-17
-**最終更新**: 2026-05-17 (α 実機検証で軸 A 仮説 falsify、章構成を Cinematic 主軸に再設計)
+**最終更新**: 2026-05-23 (r30 release 直前で Cinematic を AYAstorm View に promote、章 thesis 達成方針を再整理)
 **ステータス**: 章レベル骨子 (個別 phase の詳細 spec は P1 着手時に別ファイルで起こす)
 **前提**: なし — r25-r29 (3D stream 章) は別オーナーに委譲 (2026-05-17)、AYA さんは r30 を即着手可能
 **章スコープ**: r30 系 (複数 release で段階構築、章クローズは P6+ で AYA 色到達時点)
 **オーナー**: AYA さん主軸 (r25-r29 系は別オーナー、本章とは独立並走)
+
+> **2026-05-23 update (r30 release 直前)**: P2-P6 までで構築した Cinematic
+> mode を **新 AYAstorm View** として promote し、旧 AYAstorm View (mode=1) は
+> UI 不到達にして新 AYAstorm View (mode=2、旧 Cinematic) に migration するこ
+> ととした。詳細経緯・migration semantics・残留作業は
+> [`ayastorm-r30-view-mode-reshuffle.md`](ayastorm-r30-view-mode-reshuffle.md)
+> 参照。以下の章本文は当時の議論記録として残置 (Cinematic 用語のまま)、新規
+> 作業は view-mode-reshuffle.md を起点とする。
 
 このドキュメントは AYAstorm r30+ で着手する **撮影描画章** の章レベル骨子。
 

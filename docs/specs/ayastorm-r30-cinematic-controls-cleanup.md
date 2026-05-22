@@ -10,6 +10,7 @@
   - `docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md` (BD live cvar 配線完了)
   - `docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md` (前回の UI binding audit)
   - `indra/newview/skins/default/xui/en/floater_aya_cinematic.xml` (対象 floater)
+  - `docs/specs/ayastorm-r30-view-mode-reshuffle.md` (後続: Cinematic を AYAstorm View に promote、r30 release 直前の rename + migration)
 
 ## 0. 背景
 
