@@ -1,79 +1,90 @@
 # AYAstorm r30 — Release Announcement
 
-**r30 is the first release of the cinematic rendering chapter (r30+)** — it adds a new **Cinematic mode** to AYAstorm and ports a new render engine (995a1354d8) **1:1 verbatim** so it runs alongside AYAstorm's own visual extensions. A single cvar (`AYAVisualRealismEnabled`) switches between **Firestorm View**, **AYAstorm View (r14-r20 extensions)**, and **Cinematic** at viewer restart.
+**r30 ships the photography-grade render engine that AYAstorm has been building since the r30 chapter opened — and it does so as the new "AYAstorm View"**. The view-mode picker now shows two modes — `Firestorm View` and `AYAstorm View` — and the new engine (velocity buffer + SMAA T2x + Volumetric Light + BD-class DoF chain + Motion Blur + Chromatic Aberration + 35-cvar Cinematic Controls floater) is what AYAstorm View now means.
 
-> **Distribution**: r30 ships as a standalone tag (β release first).
->
-> **Restart-required mode switch**: switching mode requires a viewer restart. Round-trip behaviour (changing the cvar without restarting) is recommended-only in Phase 4 G4; long-term stability awaits β feedback.
+> **Distribution**: r30 ships as one of the features in the r25–r30 bundle tag. Other release notes for the bundled releases are linked directly from the GitHub Release page.
 
-Implementation, port strategy, shader mount table, and acceptance gates are persisted under `docs/specs/`. This note is the entry point and diff highlight.
-
-| Doc | Content |
-|---|---|
-| [`ayastorm-r30-bd-full-port-inventory.md`](../specs/ayastorm-r30-bd-full-port-inventory.md) | Phase 0 inventory (new render engine vs AY delta: 49 shaders / 92 cpp / cvar additions) |
-| [`ayastorm-r30-bd-full-port-phase1-audit.md`](../specs/ayastorm-r30-bd-full-port-phase1-audit.md) | Phase 1 audit (REDO/REUSE classification + r14-r20 gating) |
-| [`ayastorm-r30-bd-full-port-phase2-spec.md`](../specs/ayastorm-r30-bd-full-port-phase2-spec.md) | Phase 2 architectural (D1-D4 dispatch shape) |
-| [`ayastorm-r30-bd-full-port-phase3.2-cpp-dispatch-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.2-cpp-dispatch-spec.md) | Phase 3.2 C++ Cinematic dispatch (53 files) |
-| [`ayastorm-r30-bd-full-port-phase3.5-ay-only-render-cvar-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.5-ay-only-render-cvar-spec.md) | Phase 3.5 AY-only Render* cvar (26) dispatch |
-| [`ayastorm-r30-bd-full-port-phase3.8-shader-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.8-shader-cinematic-mount-spec.md) | Phase 3.8 shader 49-file A/B/C/D mount |
-| [`ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md`](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md) | Phase 3.9 UI mount (new render engine env floaters + Cinematic Controls integration, sidebar route retired — §0) |
-| [`ayastorm-r30-bd-full-port-phase4-verify-spec.md`](../specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md) | Phase 4 3-mode acceptance gates (G1-G5) |
-| [`ayastorm-r30-bd-full-port-phase5-cleanup-spec.md`](../specs/ayastorm-r30-bd-full-port-phase5-cleanup-spec.md) | Phase 5 cleanup / release prep |
+Implementation lineage (P1 restart-switch infrastructure → P2 velocity buffer → P3 Volumetric Light → P4 BD DoF chain → P5 BD parity gate → P6 live BD cvar port → Phase 6 Controls Cleanup → r30 release picker reshuffle) and the migration / residual-code design are preserved as historical specs under `docs/specs/`. The single source of truth for the r30 release decision is `docs/specs/ayastorm-r30-view-mode-reshuffle.md`. This note is the entry point and diff highlight.
 
 ---
 
-## AYAstorm r30 — new render engine full port + 3-mode integration
+## AYAstorm r30 — View Mode picker reshuffle: Cinematic promoted to AYAstorm View
 
-### Headline: one viewer, three modes — Firestorm baseline, AYAstorm extensions, new render engine photography
+### Headline: AYAstorm View is now the new render engine
 
-AYAstorm has built up its own visual realism extensions through r14-r20 (atmospheric perspective, cloud volumetric, sun Kelvin modulator, SSS skin marker, translucency, chromatic aberration, SMAA T2x, volumetric godrays, enhanced depth-of-field, etc.). In parallel, a separate render engine has been evolving toward photography in its own direction, and AYAstorm users wanted that photography experience available from within AYAstorm itself.
+Through r14–r20, AYAstorm built a visual-realism extension layer on top of Firestorm's baseline — what users saw as "AYAstorm View" in the r24 picker. Through the r30 chapter (P1–P6), a parallel render-engine port was added as a third mode internally called "Cinematic", aiming to reach BD-class photography quality.
 
-r30 ports that new render engine **1:1 verbatim** and integrates **three modes** into one viewer:
+For r30 release we made an editorial call:
 
-| `AYAVisualRealismEnabled` | Mode | Render pipeline | Use case |
-|---|---|---|---|
-| `0` | Firestorm View | Linden / Firestorm baseline (AY extensions off) | Stream watching / work / lower resource usage |
-| `1` | AYAstorm View | AY r14-r20 visual realism extensions | r29-era AYAstorm experience |
-| `2` | Cinematic (default) | New render engine 995a1354d8 pipeline 1:1 port | Photography / machinima |
+- The new engine reached the chapter goal.
+- Asking users to remember three modes (Firestorm View / AYAstorm View / Cinematic) for what amounts to "the engine got better" was the wrong framing.
 
-### How it works: 4-layer dispatch keeping the three modes in parallel
+So **the new engine ships as the new AYAstorm View**. The picker is reduced to two visible modes:
 
-1. **C++ dispatch (Phase 3.7)**: pipeline.cpp / lldrawpool* / llviewershadermgr and 53 files read `AYAVisualRealismEnabled` and per-mode switch shader bind / render state / draw order
-2. **Shader permutation (Phase 3.8)**: 49 REDO shaders mounted across 4 strategies
-   - **A**: uniform-fed collapse (5 files, no shader edit, neutral values fold the AY branch)
-   - **B**: overwrite (9 files, new render engine baseline replaces AY where AY had no extension)
-   - **C**: `#if AYASTORM_CINEMATIC` permutation (26 files, AY and new render engine coexist in the same file)
-   - **D**: dual-file mount (2 files placed under `cinematic_bd/` with shadermgr probe order)
-3. **Cvar expansion (Phase 3.3-3.6)**: 7 new-render-engine-only cvars added, 7 sky/water/day presets bundled, 26 AY-only Render* cvars pinned to noop values matching the new render engine in Cinematic
-4. **UI mount (Phase 3.9)**: Cinematic mode controls live in **`Avatar → Cinematic Controls...` (`Alt+C`) → `floater_aya_cinematic.xml`**. The earlier design ported the new render engine's `panel_machinima.xml` (1021 lines) plus a dedicated sidebar, but we consolidated into the Cinematic Controls floater so AYAstorm's existing floater scheme stays consistent; the sidebar route was retired (see [Phase 3.9 spec §0](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md))
+| Picker entry | Render pipeline | Use case |
+|---|---|---|
+| Firestorm View | Linden / Firestorm baseline | Stream watching, work, lower resource usage |
+| **AYAstorm View** (default) | New render engine (velocity buffer / SMAA T2x / Volumetric Light / BD-class DoF / Motion Blur / Chromatic Aberration / r14–r20 extensions on opt-in) | Photography, machinima, everyday immersive use |
 
-### Settings: normal usage
+### What happens on first launch after upgrading
 
-**No action required for normal usage (mode 2 = Cinematic is the default)**. To switch back to AYAstorm View / Firestorm View:
+If you were on the r24-era AYAstorm View (persisted as `AYAVisualRealismEnabled = 1`), an idempotent one-shot migration on startup rewrites it to `2` (the new AYAstorm View) and stamps `AYAViewModeMigrationVersion = 1`. You'll see a log line like:
+
+```
+View mode migration v0->v1: AYAVisualRealismEnabled 1 (legacy AYAstorm View) -> 2 (new AYAstorm View)
+```
+
+There is no user-facing prompt. From your perspective the engine simply got better.
+
+### Mode switching is restart-required
+
+Switching between Firestorm View and AYAstorm View applies after restarting AYAstorm. The pipeline builds once at startup, so a running session always reflects one and only one mode. (Per the r30 chapter design — runtime gates were intentionally not adopted to avoid the kinds of bugs that come from mid-frame pipeline reconfiguration.)
+
+### AYAstorm Controls (Alt+C)
+
+The Cinematic Controls floater that was introduced during the chapter is now reachable as **`AYAstorm → AYAstorm Controls...`** (`Alt+C`). It exposes the new engine's tunables — BD live cvars (shadow, DoF, fullbright, lights, global light, post FX), per-channel shadow tuning, 6 cvars to individually opt-in r14–r20 AYA visual-realism effects on top of the new engine, and so on.
+
+> **Internal naming is preserved.** The internal mode index `AYAVisualRealismEnabled == 2`, the `AYACinematicModeActive` helper cvar, `AYASTORM_CINEMATIC` shader `#define`, `LLCinematicOverlay` namespace, `floater_aya_cinematic.xml` file, and `settings_cinematic_bd.xml` overlay all remain as-is. Renaming them would have been a churn-only refactor with no user-visible benefit — and the BD upstream lineage in commits / comments would lose readability. The promotion is a UI-only rename plus a one-shot migration. See `docs/specs/ayastorm-r30-view-mode-reshuffle.md` §2.2.
+
+### What about the old AYAstorm View?
+
+The r14–r20 AYAstorm View (mode `1`) is **removed from the picker** but the code path is preserved. If you want to revisit it for any reason, you can set `AYAViewModeMigrationVersion = 0` **and** `AYAVisualRealismEnabled = 1` in Debug Settings together and restart. The migration will run again on the next startup and rewrite you back to mode `2` — this is intentional (the chapter's editorial position is that the engine got replaced, not that you have two engines to choose from).
+
+The same individual r14–r20 effects (atmospheric perspective, godrays, aerial perspective, color temperature, cloud volumetric, translucency, avatar skin SSS) are reachable as **opt-in additions on top of the new engine** through the AYAstorm Controls floater. The new AYAstorm View ships with these defaulted to OFF; turn them on if you want the r14–r20 layer back on top of the new pipeline.
+
+### Settings
+
+For normal usage, no action is required (AYAstorm View is the default).
 
 | Cvar | Default | Purpose |
 |---|---|---|
-| `AYAVisualRealismEnabled` | `2` | `0`=Firestorm View / `1`=AYAstorm View / `2`=Cinematic, **restart required** |
-| `RenderShadowAutomaticDistance` | `1` | New-engine-only automatic shadow distance calculation (active in mode 2) |
+| `AYAVisualRealismEnabled` | `2` | `0` = Firestorm View / `2` = AYAstorm View (new engine). **Restart required.** Setting `1` is reachable only via Debug Settings + `AYAViewModeMigrationVersion=0`, and the migration will rewrite it on next restart |
+| `AYAViewModeMigrationVersion` | `0` → `1` post-migration | Idempotent gate for the one-shot migration. Do not edit unless you intentionally want to re-trigger migration |
 
-Per-parameter tuning in Cinematic mode is done from the Cinematic Controls floater opened via `Avatar → Cinematic Controls...` (`Alt+C`).
+The new engine's per-parameter tuning lives in the **AYAstorm Controls** floater (`Alt+C`).
 
-### Migration notes
+### Known limitations
 
-- **r30's default is now Cinematic (mode 2)**. To keep the r29-era look (= AYAstorm View), set `AYAVisualRealismEnabled` to `1` in Debug Settings and restart.
-- Verify Cinematic mode (mode 2) with the Phase 4 acceptance spec ([`docs/specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md`](../specs/ayastorm-r30-bd-full-port-phase4-verify-spec.md)) gates G1-G5.
-- Mode switching is **restart-first** for now. Round-trip switching (cvar change without restart) awaits β feedback for stability confirmation.
-- Some Machinima Sidebar sliders may share control names with AY extensions; tune AY extensions while back in mode 1.
-- The new render engine's `panel_preferences_render_settings` / `panel_preferences_ui_colors` are placed as **orphans only** — AY's 17-tab preferences layout is preserved (see [Phase 3.9 §3.3](../specs/ayastorm-r30-bd-full-port-phase3.9-ui-cinematic-mount-spec.md)).
+- **Restart required for mode switch**: live in-session mode switching was intentionally not adopted. Switching applies on next startup.
+- **Old AYAstorm View is unsupported**: reachable via Debug Settings as documented above, but not surface-level supported in r30 — the migration is intentionally irreversible by normal means.
+- **System body (Ruth/Roth) excluded from motion blur**: matches the new engine baseline (where `LLDrawPoolAvatar::renderMotionBlur` is fully commented out). Modern rigged-mesh avatars still get motion blur via the other pools.
+- **macOS OpenGL deprecation watch**: as with the rest of the chapter, the new engine's shader chains rely on GL features that may need fallbacks in future macOS toolchains. No regressions known at r30 ship.
 
-### Known caveats
+### Implementation summary
 
-- `llfloatereditsky` / `llfloatereditwater` were never registered upstream in the new render engine; we ported them as orphans to preserve 1:1 fidelity.
-- Shaders placed under `cinematic_bd/` retain the standard class3→class2→class1 GPU class fallback chain. Older GPUs automatically fall back as before.
-- In Cinematic mode the classic / system avatar body (the base mesh — Ruth/Roth shapes and the un-clothed body part of legacy system outfits) is **excluded from motion blur**. This matches the new render engine baseline (where `LLDrawPoolAvatar::renderMotionBlur` is fully `/* ... */` commented out at 995a1354d8). Modern rigged-mesh avatars (hands, hair, clothing, and most attachments) still pick up motion blur via the other pools.
+- 10 files changed for the picker reshuffle commit (`6a6b657441`): `settings.xml`, `llcinematicoverlay.{h,cpp}` (migration helper), `llappviewer.cpp` (startup ordering), `panel_preferences_graphics1.xml` (en/ja), `menu_viewer.xml` (en), `floater_aya_cinematic.xml` (en/ja), `floater_about.xml` (en).
+- Migration ordering: `applyAYAViewModeMigrationIfNeeded()` runs **before** `applyCinematicOverlayIfNeeded()` so upgrading users get the new-engine overlay applied in the same startup.
+- The full lineage (P1 → P6 + Controls Cleanup + view-mode reshuffle) is captured across the r30 specs in `docs/specs/`.
 
-### Acknowledgements
+### Credits
 
-An external photography-oriented render engine implementation (by NiranV Dean) served as the entire reference for this port. The `Copyright (C) 2018, NiranV Dean` header on `bdfunctions` is preserved verbatim.
+The new-engine pipeline draws extensively from an external photography-oriented render engine (NiranV Dean's Black Dragon viewer, LGPL-2.1, license matched to viewerlgpl). The port is acknowledged in `floater_about.xml` and the BD repository commit references are preserved in port-spec headers.
 
----
+### Documentation
+
+- r30 release decision (single source of truth): `docs/specs/ayastorm-r30-view-mode-reshuffle.md`
+- Chapter status block (historical, points forward to reshuffle): `docs/specs/ayastorm-r30-cinematic-chapter.md`
+- P1 restart-switch infrastructure (historical): `docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md`
+- Phase-specific specs (P2 velocity buffer / P3 Volumetric Light / P4 DoF chain / P5 BD parity / P6 live cvar port / Cinematic Controls Cleanup): `docs/specs/ayastorm-r30-*.md`
+- BD live cvar port reference: `docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md`
+- Cinematic Controls floater audit: `docs/specs/ayastorm-r30-cinematic-controls-cleanup.md`

@@ -1,0 +1,80 @@
+🌐 Language: [🇺🇸 English](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-github-release-page.en.md) | [🇯🇵 日本語](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-github-release-page.ja.md) | [🇨🇳 中文](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-github-release-page.zh.md)
+
+# AYAstorm r30 — 撮影品質描画エンジンが新しい AYAstorm View として出荷 + parcel music Ogg Vorbis fix + MOAP 3D stream routing + macOS branding 統一 + 他人 avatar rigged picker
+
+r24 から r30 への一括移行 tag。5 release (r25 / r26 / r27 / r28 / r30) を 1 つの tag に同梱します。r29 は章移行中に skip されました。柱は r30 — r30 章 (P1〜P6) で構築してきた撮影品質描画エンジンを、新しい「AYAstorm View」として出荷し、r14〜r20 の視覚的リアリズム層は新エンジン上の opt-in 追加機能として再配置しています。各 release の完全な note は repo 内の per-language release note を参照 (tag-pinned permalink — 後日 docs が更新されても壊れません)。
+
+## Release notes (release × 言語)
+- 🇺🇸 English: [docs/release/ayastorm-r30-release-note.en.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-release-note.en.md)
+- 🇯🇵 日本語: [docs/release/ayastorm-r30-release-note.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-release-note.ja.md)
+- 🇨🇳 中文: [docs/release/ayastorm-r30-release-note.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-release-note.zh.md)
+
+### 撮影描画章 (r30)
+- **r30** — View Mode picker reshuffle: Cinematic を新しい AYAstorm View へ promote。velocity buffer / SMAA T2x / Volumetric Light / BD クラス DoF chain / Motion Blur / Chromatic Aberration / 35 cvar の AYAstorm Controls floater。再起動必須のモード切替、r14〜r20 AYAstorm View からの 1-shot migration: [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r30-release-note.zh.md)
+
+### Media audio (parcel music / MOAP)
+- **r25** — parcel music Ogg Vorbis live stream 再生 fix (r10.x-bugfix-1 以降の regression、Ogg Opus サポートは維持): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r25-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r25-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r25-release-note.zh.md)
+- **r26** — MOAP audio を 3D Stream の speaker routing 経由に (`{ch:L}/{ch:R}/{ch:FL}/...` 分散ステレオ / 5.1 配置 / HRTF / venue reverb / occlusion が MOAP 面でも動作): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r26-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r26-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r26-release-note.zh.md)
+
+### Cross-platform polish
+- **r27** — macOS branding 統一 (menu bar / window title / Apple About panel が「AYAstorm」表記に、About 内の `(based on Firestorm)` 表記は維持): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r27-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r27-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r27-release-note.zh.md)
+
+### UX & picker
+- **r28** — 他人 rigged picker (r21 GPU object-ID picker を他人 avatar の rigged attachment へ拡張、同時 armed は 1 人、by @t-noami): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r28-release-note.en.md) / [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r28-release-note.ja.md) / [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/release/ayastorm-r28-release-note.zh.md)
+
+## 主要ドキュメント (tag-pinned)
+
+### 撮影描画章 (r30)
+- r30 release 判断の単一の真実: [docs/specs/ayastorm-r30-view-mode-reshuffle.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-view-mode-reshuffle.md)
+- r30 章 status block (P1–P6 系譜、reshuffle へ forward 参照): [docs/specs/ayastorm-r30-cinematic-chapter.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-cinematic-chapter.md)
+- P1 再起動切替インフラ: [docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md)
+- BD live cvar port reference: [docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md)
+- Cinematic Controls floater audit: [docs/specs/ayastorm-r30-cinematic-controls-cleanup.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-cinematic-controls-cleanup.md)
+
+### Media audio
+- r25 parcel music Ogg Vorbis investigation: [docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md)
+- r26 MOAP 3D stream implementation plan: [docs/ayastorm-r26-moap-3d-stream-implementation-plan.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/ayastorm-r26-moap-3d-stream-implementation-plan.md)
+- 3D stream tag guide (r6 以降の累積): [docs/guides/3dstream-tag-guide.en.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/guides/3dstream-tag-guide.en.md) / [.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/guides/3dstream-tag-guide.ja.md) / [.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/guides/3dstream-tag-guide.zh.md)
+
+### UX & picker
+- r28 他人 rigged picker spec: [docs/specs/ayastorm-r28-other-rigged-picker.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r28-other-rigged-picker.md)
+- r21 self rigged picker spec (姉妹機能): [docs/specs/ayastorm-r21-self-rigged-picker.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r21-self-rigged-picker.md)
+
+## 公開資料: 二重 alpha block fix (他 SL viewer 共通 bug の公開)
+
+LL / Firestorm / Alchemy / Black Dragon 全 SL viewer に共通する forward alpha BLEND 描画 bug (「二重 alpha block」) と、AYAstorm が採用した 2 行修正を、他 viewer fork が PR 不要で取込めるよう 3 言語の公開資料 + 検証スクショとして公開しています。専用 reference branch `fix/double-alpha-block` を永続的に保持しています (HEAD は最新 doc revision に追従):
+
+- 一次資料 (英語): [docs/specs/double-alpha-block-fix.md](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.md)
+- 日本語: [docs/specs/double-alpha-block-fix.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.ja.md)
+- 中文: [docs/specs/double-alpha-block-fix.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.zh.md)
+- Reference branch: [fix/double-alpha-block](https://github.com/mayatonton/phoenix-firestorm/tree/fix/double-alpha-block)
+
+## 既存設定との互換性
+
+r24 setup を壊さずに全機能が出荷されます:
+
+- **r30 view-mode reshuffle**: r24 時代の AYAstorm View ユーザー (`AYAVisualRealismEnabled = 1`) は初回起動時の冪等 1-shot migration で新しい AYAstorm View (`= 2`) に静かに移行されます。ユーザー向けプロンプトはなし。r14〜r20 の視覚的リアリズム層は AYAstorm Controls floater (`Alt+C`) から新エンジン上の opt-in 追加機能として到達可能。Firestorm View 切替は配信/低リソース用途向けに引き続き利用可。モード切替には再起動が必須
+- **r25 parcel music Ogg Vorbis fix**: Icecast Ogg Vorbis live stream が正常再生されます。Ogg Opus サポートは完全維持。設定不要
+- **r26 MOAP 3D stream routing**: 既存の 3D Stream tag 規約 (`{ch:L}/{ch:R}/{ch:FL}/...`) が MOAP 面 URL にも適用されます。タグを使っていない配信者には影響なし
+- **r27 macOS branding**: macOS 上の純表面 rename。機能変更なし、非 macOS build には影響なし
+- **r28 他人 rigged picker**: GPU object-ID buffer pass を他人 avatar に拡張。マスタースイッチ `FSOtherRiggedPickerEnable` は default ON、`FSOtherRiggedPickerGPU` kill-switch も維持。デフォルトカメラ gate と 1.0 秒 arm window で負荷を抑制。r21 self picker は不変
+
+## IR ライセンス
+
+r11 で同梱して以来出荷を続けている venue IR は OpenAIR (CC-BY 4.0) を起源とします。出典は [`app_settings/venue_ir/CREDITS.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/indra/newview/app_settings/venue_ir/CREDITS.md)。
+
+## 描画エンジン credit
+
+新しい AYAstorm View pipeline は NiranV Dean 氏の Black Dragon viewer (LGPL-2.1、viewerlgpl と互換) から大量に拝借しています。credit は `floater_about.xml` に明記、port spec の header に BD repository commit ref を保持しています。
+
+## Downloads
+
+_3 OS ビルド完了後 @mayatonton が記入。_
+
+- Windows Installer
+- macOS Installer
+- Linux Installer
+
+## Contributors
+
+@t-noami @mayatonton
