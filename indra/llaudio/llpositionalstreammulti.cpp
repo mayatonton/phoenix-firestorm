@@ -1651,13 +1651,11 @@ size_t LLPositionalStreamMulti::pumpMediaRingSource()
                     if (mMediaRingChannels == 8)
                     {
                         // CEF 7.1 callback order is FL/FR/C/LFE/BL/BR/SL/SR.
-                        // The 3D stream internals use FL/FR/C/LFE/SL/SR/BL/BR,
-                        // so normalize while copying out of the media ring.
-                        if (mSourceChannels == 6 && c >= 4)
-                        {
-                            src_channel = c + 2; // SL/SR <- CEF indices 6/7
-                        }
-                        else if (mSourceChannels == 8)
+                        // The 3D stream internals use FL/FR/C/LFE/SL/SR/BL/BR.
+                        // media-5-1 is produced by WebAudio's ChannelMerger as
+                        // logical channels 0..5 on the 8ch callback bus, so only
+                        // full 7.1 media needs reordering here.
+                        if (mSourceChannels == 8)
                         {
                             static constexpr int kCef71ToStream8[8] =
                                 { 0, 1, 2, 3, 6, 7, 4, 5 };
