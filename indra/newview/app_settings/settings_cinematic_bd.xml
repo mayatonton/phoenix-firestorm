@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <!--
   AYAstorm r30 BD full port Phase 5 A' (refined R2): Cinematic mode BD-parity
-  overlay — BD-X1 cvar (16 件) のみ。
+  overlay — BD-X1 (16 件) + Phase 4 boot-time camera/path defaults (11 件)。
 
   Mode 2 (Cinematic) で BD upstream `BlackDragon 995a1354d8` の描画 cvar
   default を適用するための overlay。R2 (commit 49eafd0d6b) は 32 cvar を
@@ -21,7 +21,7 @@
       と本 viewer の cam.z scaling 適用粒度の差に起因する mismatch であり、
       BD-X1 doctrine の例外として overlay から除外。
     - BD-X2 (15 件): path 切替 / on-off 判定 / HW spec / scene cost / peer cost
-      判定に使われる cvar。RenderFarClip / RenderFSAAType / RenderShadowDetail /
+      判定に使われる cvar。RenderFarClip / RenderShadowDetail /
       RenderAvatarMaxComplexity 等。user の HW/scene 判断で両 mode 共有すべき
       もので、BD 値で焼く意義なし。**本 file から除外** (A' で 15 件削除)。
 
@@ -29,6 +29,17 @@
   cvar (BD-X1) は Preferences UI で mode 0/1 時に grey out (C' で実装予定)」。
   audit-spec §5.10 (AY 固有 cvar の B3 grey-out) の思想を BD-borrow 側に
   拡張した形。
+
+  Phase 4 boot-time defaults (11 件): 2026-05-22 編入。元は llviewerwindow.cpp
+  に hardcoded された「mode==2 時に毎起動で setF32/setBOOL/setU32 で焼き込み」
+  ブロック (Phase 4 当時の Cinematic 初起動 non-degenerate 担保コード) が、
+  user の floater customize を毎起動で潰す bug (CameraFocalLength 等が再起動で
+  消える) を起こしていた。sentinel-driven な overlay 機構に移管することで
+  「初起動 1 回だけ BD 値を焼き、以降は user 改変 (mValues[1]) を survive」
+  に修正。BD-X1 doctrine からは BD-X2/camera/path 寄りで外れるが、persistence
+  破壊を優先解決 (audit-spec §3.4 sentinel mechanism 再利用)。
+  ※ Reset D ボタン (`llviewermenu.cpp::AYAResetCinematic::parityTable`) の
+  値と一致させること。
 
   形式: 平坦な LLSD map (cvar name -> value)。値の型は対応 cvar が settings.xml
   に登録済の Type に従う (LLControlVariable::setValue が LLSD coercion を担当)。
@@ -43,7 +54,7 @@
   更新されないので、cvar default 変更時は本ファイルと parity-spec §4.6.2 の
   両方を同期する。
 
-  本ファイルに無い cvar (BD-X2 15 件 + SSR Vector3 misdeclared 5 件 + BD-only
+  本ファイルに無い cvar (BD-X2 残 + SSR Vector3 misdeclared 5 件 + BD-only
   7 件) は別 phase で扱う (parity-spec §4.6.3 / §4.6.4、A' commit メッセージ参照)。
 -->
 <llsd>
@@ -111,5 +122,42 @@
 
     <key>RenderDeferredSpotShadowOffset</key>
     <real>0.0</real>
+
+    <!-- Phase 4 boot-time defaults (元 llviewerwindow.cpp:2449-2462 hardcoded
+         ブロック、2026-05-22 編入)。Reset D ボタン
+         (llviewermenu.cpp::AYAResetCinematic::parityTable) と値同期必須。 -->
+
+    <key>RenderDepthOfField</key>
+    <boolean>1</boolean>
+
+    <key>RenderDepthOfFieldHighQuality</key>
+    <boolean>1</boolean>
+
+    <key>RenderMotionBlur</key>
+    <boolean>1</boolean>
+
+    <key>RenderScreenSpaceReflections</key>
+    <boolean>1</boolean>
+
+    <key>RenderFSAAType</key>
+    <integer>2</integer>
+
+    <key>CameraFieldOfView</key>
+    <real>67.0</real>
+
+    <key>CameraFNumber</key>
+    <real>28.0</real>
+
+    <key>CameraFocalLength</key>
+    <real>40.0</real>
+
+    <key>CameraMaxCoF</key>
+    <real>11.9</real>
+
+    <key>CameraFocusTransitionTime</key>
+    <real>0.4</real>
+
+    <key>CameraDoFResScale</key>
+    <real>0.5</real>
   </map>
 </llsd>

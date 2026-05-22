@@ -2437,30 +2437,12 @@ void LLViewerWindow::initWorldUI()
         mChicletContainer->setVisible(true);
     }
 
-    // <AYAstorm:r30-bd-port> Phase 4: Cinematic mode BD-parity cvar pinning.
-    // BD ships several cvars enabled-by-default that LL ships off — at Cinematic
-    // boot we force them to BD parity values so the AYAstorm Cinematic Controls
-    // floater's sliders/checkboxes have non-degenerate visual effect.
-    // Mode switch requires restart (r30 P1), so once-per-boot is sufficient.
-    //
-    // The resetToDefault values used by the floater's "D" buttons are defined in
-    // llviewermenu.cpp::AYAResetCinematic::parityTable() and must stay in sync
-    // with the pins below.
-    if (gSavedSettings.getU32("AYAVisualRealismEnabled") == 2)
-    {
-        gSavedSettings.setBOOL("RenderDepthOfField", true);
-        gSavedSettings.setBOOL("RenderDepthOfFieldHighQuality", true);
-        gSavedSettings.setBOOL("RenderMotionBlur", true);
-        gSavedSettings.setBOOL("RenderScreenSpaceReflections", true);
-        gSavedSettings.setU32("RenderFSAAType", 2); // 2 = SMAA
-        gSavedSettings.setF32("CameraFieldOfView", 67.0f);
-        gSavedSettings.setF32("CameraFNumber", 28.0f);
-        gSavedSettings.setF32("CameraFocalLength", 40.0f);
-        gSavedSettings.setF32("CameraMaxCoF", 11.9f);
-        gSavedSettings.setF32("CameraFocusTransitionTime", 0.4f);
-        gSavedSettings.setF32("CameraDoFResScale", 0.5f);
-    }
-    // </AYAstorm:r30-bd-port>
+    // 元 Phase 4 hardcoded BD-parity pinning ブロック (RenderDepthOfField/
+    // RenderMotionBlur/RenderScreenSpaceReflections/RenderFSAAType + Camera
+    // DoF 6 件) は 2026-05-22 に settings_cinematic_bd.xml overlay へ移管。
+    // 毎起動 setBOOL/setF32 が user の floater customize を潰す bug の根本因
+    // だったため、sentinel-driven な overlay 機構 (一度焼き → user 改変
+    // survive) に統一。
 
     LLRect morph_view_rect = full_window;
     morph_view_rect.stretch( -STATUS_BAR_HEIGHT );
