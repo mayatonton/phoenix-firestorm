@@ -23308,6 +23308,39 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>3.0</real>
     </map>
+    <key>FSOtherRiggedPickerEnable</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r28: master enable for the GPU picker for one hovered non-self avatar's rigged attachments. Default on; load is limited by non-default camera gating, armed-window rendering, and draw/triangle budgets.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>FSOtherRiggedPickerGPU</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r28: GPU stage for resolving rigged attachments on the single armed non-self avatar. Requires FSOtherRiggedPickerEnable.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>FSOtherRiggedPickerArmSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r28: seconds to keep the other-avatar rigged attachment ID buffer armed after hovering the target avatar or one of its attachments.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>1.0</real>
+    </map>
     <key>FSShowMutedChatHistory</key>
     <map>
       <key>Comment</key>

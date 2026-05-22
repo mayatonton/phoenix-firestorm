@@ -9885,6 +9885,23 @@ namespace
     U32 sFSSelfRiggedPickerArmGeneration = 0;
     U32 sFSSelfRiggedPickerRenderGeneration = 0;
 
+    enum class FSRiggedPickerObjectIDBufferOwner
+    {
+        None,
+        Self,
+        Other
+    };
+
+    FSRiggedPickerObjectIDBufferOwner sFSRiggedPickerObjectIDBufferOwner =
+        FSRiggedPickerObjectIDBufferOwner::None;
+
+    LLFrameTimer sFSOtherRiggedPickerArmTimer;
+    F32 sFSOtherRiggedPickerArmSeconds = 0.f;
+    U32 sFSOtherRiggedPickerArmGeneration = 0;
+    U32 sFSOtherRiggedPickerRenderGeneration = 0;
+    LLPointer<LLVOAvatar> sFSOtherRiggedPickerAvatar;
+    LLUUID sFSOtherRiggedPickerAvatarID;
+
     // All PASS_*_RIGGED types in the LL render map. The visible deferred opaque
     // pass dispatches rigged geometry through these via renderRiggedGroup /
     // pushRiggedBatches (see lldrawpool.cpp:410, 466). Iterating the same set
@@ -9925,6 +9942,153 @@ namespace
     };
 }
 
+bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
+                                                     U32 max_draw_calls,
+                                                     U32 max_triangles,
+                                                     U32* out_draw_calls,
+                                                     U32* out_triangles,
+                                                     bool* out_over_budget,
+                                                     U32* out_attempted_draw_calls,
+                                                     U32* out_attempted_triangles)
+{
+    if (out_draw_calls) *out_draw_calls = 0;
+    if (out_triangles) *out_triangles = 0;
+    if (out_over_budget) *out_over_budget = false;
+    if (out_attempted_draw_calls) *out_attempted_draw_calls = 0;
+    if (out_attempted_triangles) *out_attempted_triangles = 0;
+
+    if (!target_avatar || target_avatar->isDead()) return false;
+    if (!mObjectIDBuffer.isComplete()) return false;
+
+    gGL.flush();
+
+    GLboolean previous_color_mask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    GLfloat previous_clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
+    GLint previous_cull_face_mode = GL_BACK;
+    glGetBooleanv(GL_COLOR_WRITEMASK, previous_color_mask);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, previous_clear_color);
+    glGetIntegerv(GL_CULL_FACE_MODE, &previous_cull_face_mode);
+
+    mObjectIDBuffer.bindTarget();
+    // gbuffer3 has no alpha in default LL config (project memory
+    // reference_gbuffer3_storage); make sure all four channels are writable so
+    // the top 8 bits of each packed ID survive the write. Go through gGL so
+    // LLRender's cached mask stays in sync with the actual GL state.
+    gGL.setColorMask(false, false, false, false);
+    gGL.setColorMask(true, true, true, true);
+    glClearColor(0.f, 0.f, 0.f, 0.f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Depth shared with deferredScreen — test only, no write.
+    LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
+    LLGLDisable   blend(GL_BLEND);
+    // Cull pinned to BACK to match deferred opaque (back-facing collar
+    // interiors must not write IDs at chin pixels).
+    LLGLEnable    cull (GL_CULL_FACE);
+    glCullFace(GL_BACK);
+
+    gFSObjectIDShader.bind();
+
+    static LLStaticHashedString sObjectIDPacked("object_id_packed");
+
+    // uploadMatrixPalette caches the last (avatar, mesh) pair to skip redundant
+    // GPU uploads for back-to-back DrawInfos with the same skin.
+    const LLVOAvatar* lastAvatar = nullptr;
+    U64  lastMeshId   = 0;
+    bool skipLastSkin = false;
+    U32 draw_calls = 0;
+    U32 triangles = 0;
+    U32 attempted_draw_calls = 0;
+    U32 attempted_triangles = 0;
+    bool over_budget = false;
+
+    for (U32 pass_type : kFSRiggedPasses)
+    {
+        LLCullResult::drawinfo_iterator begin = beginRenderMap(pass_type);
+        LLCullResult::drawinfo_iterator end   = endRenderMap(pass_type);
+        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        {
+            LLDrawInfo* info = *i;
+            LLCullResult::increment_iterator(i, end);
+            if (!info || !info->mVertexBuffer || info->mCount == 0) continue;
+            if (info->mAvatar.get() != target_avatar) continue;
+            const LLMeshSkinInfo* skin = info->mSkinInfo.get();
+            if (!skin || skin->mHash == 0) continue;
+            U32 id = info->mFSPickerLocalID;
+            if (id == 0)
+            {
+                // DrawInfo wasn't stamped with a LocalID at construction
+                // time (non-prim source, or stale batch from a removed
+                // attachment). Skip — its pixels stay 0 in the buffer and
+                // resolve as "no rigged attachment here".
+                continue;
+            }
+
+            const U32 next_draw_calls = draw_calls + 1;
+            const U32 next_triangles = triangles + (info->mCount / 3);
+            attempted_draw_calls = next_draw_calls;
+            attempted_triangles = next_triangles;
+            if ((max_draw_calls > 0 && next_draw_calls > max_draw_calls) ||
+                (max_triangles > 0 && next_triangles > max_triangles))
+            {
+                over_budget = true;
+                break;
+            }
+
+            F32 r = ((id >>  0) & 0xff) / 255.f;
+            F32 g = ((id >>  8) & 0xff) / 255.f;
+            F32 b = ((id >> 16) & 0xff) / 255.f;
+            F32 a = ((id >> 24) & 0xff) / 255.f;
+            gFSObjectIDShader.uniform4f(sObjectIDPacked, r, g, b, a);
+
+            if (!LLRenderPass::uploadMatrixPalette(target_avatar, skin,
+                                                   lastAvatar, lastMeshId, skipLastSkin))
+            {
+                continue;
+            }
+
+            info->mVertexBuffer->setBuffer();
+            info->mVertexBuffer->drawRange(LLRender::TRIANGLES,
+                                           info->mStart, info->mEnd,
+                                           info->mCount, info->mOffset);
+            draw_calls = next_draw_calls;
+            triangles = next_triangles;
+        }
+
+        if (over_budget)
+        {
+            break;
+        }
+    }
+
+    gFSObjectIDShader.unbind();
+
+    if (over_budget)
+    {
+        glClearColor(0.f, 0.f, 0.f, 0.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
+
+    mObjectIDBuffer.flush();
+
+    gGL.setColorMask(previous_color_mask[0] == GL_TRUE,
+                     previous_color_mask[1] == GL_TRUE,
+                     previous_color_mask[2] == GL_TRUE,
+                     previous_color_mask[3] == GL_TRUE);
+    glClearColor(previous_clear_color[0],
+                 previous_clear_color[1],
+                 previous_clear_color[2],
+                 previous_clear_color[3]);
+    glCullFace(previous_cull_face_mode);
+
+    if (out_draw_calls) *out_draw_calls = draw_calls;
+    if (out_triangles) *out_triangles = triangles;
+    if (out_over_budget) *out_over_budget = over_budget;
+    if (out_attempted_draw_calls) *out_attempted_draw_calls = attempted_draw_calls;
+    if (out_attempted_triangles) *out_attempted_triangles = attempted_triangles;
+    return !over_budget;
+}
+
 void LLPipeline::armSelfRiggedObjectIDBuffer(F32 seconds)
 {
     if (seconds <= 0.f)
@@ -9951,7 +10115,77 @@ bool LLPipeline::isSelfRiggedObjectIDBufferArmed() const
 bool LLPipeline::isSelfRiggedObjectIDBufferReady() const
 {
     return isSelfRiggedObjectIDBufferArmed() &&
+           sFSRiggedPickerObjectIDBufferOwner == FSRiggedPickerObjectIDBufferOwner::Self &&
            sFSSelfRiggedPickerRenderGeneration == sFSSelfRiggedPickerArmGeneration;
+}
+
+void LLPipeline::armOtherRiggedObjectIDBuffer(LLVOAvatar* avatar, F32 seconds)
+{
+    if (seconds <= 0.f || !avatar || avatar->isDead())
+    {
+        return;
+    }
+    if (isAgentAvatarValid() && avatar == gAgentAvatarp.get())
+    {
+        return;
+    }
+    if (avatar->isImpostor())
+    {
+        return;
+    }
+
+    const bool was_armed = isOtherRiggedObjectIDBufferArmed();
+    const bool target_changed = (sFSOtherRiggedPickerAvatarID != avatar->getID());
+    sFSOtherRiggedPickerAvatar = avatar;
+    sFSOtherRiggedPickerAvatarID = avatar->getID();
+    sFSOtherRiggedPickerArmSeconds = seconds;
+    sFSOtherRiggedPickerArmTimer.reset();
+
+    if (!was_armed || target_changed)
+    {
+        ++sFSOtherRiggedPickerArmGeneration;
+    }
+}
+
+bool LLPipeline::isOtherRiggedObjectIDBufferArmed() const
+{
+    if (sFSOtherRiggedPickerArmSeconds <= 0.f ||
+        sFSOtherRiggedPickerArmTimer.getElapsedTimeF32() > sFSOtherRiggedPickerArmSeconds)
+    {
+        return false;
+    }
+    return sFSOtherRiggedPickerAvatar.notNull() &&
+           !sFSOtherRiggedPickerAvatar->isDead() &&
+           sFSOtherRiggedPickerAvatarID.notNull();
+}
+
+bool LLPipeline::isOtherRiggedObjectIDBufferReady(const LLUUID& avatar_id) const
+{
+    return avatar_id.notNull() &&
+           isOtherRiggedObjectIDBufferArmed() &&
+           sFSOtherRiggedPickerAvatarID == avatar_id &&
+           sFSRiggedPickerObjectIDBufferOwner == FSRiggedPickerObjectIDBufferOwner::Other &&
+           sFSOtherRiggedPickerRenderGeneration == sFSOtherRiggedPickerArmGeneration;
+}
+
+void LLPipeline::clearOtherRiggedObjectIDBuffer()
+{
+    if (!isOtherRiggedObjectIDBufferArmed() &&
+        sFSOtherRiggedPickerArmSeconds <= 0.f &&
+        sFSOtherRiggedPickerAvatar.isNull() &&
+        sFSOtherRiggedPickerAvatarID.isNull())
+    {
+        return;
+    }
+
+    sFSOtherRiggedPickerArmSeconds = 0.f;
+    sFSOtherRiggedPickerAvatar = nullptr;
+    sFSOtherRiggedPickerAvatarID.setNull();
+    ++sFSOtherRiggedPickerArmGeneration;
+    if (sFSRiggedPickerObjectIDBufferOwner == FSRiggedPickerObjectIDBufferOwner::Other)
+    {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::None;
+    }
 }
 
 void LLPipeline::renderSelfRiggedObjectIDBuffer()
@@ -9962,81 +10196,68 @@ void LLPipeline::renderSelfRiggedObjectIDBuffer()
     static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSSelfRiggedPickerGPU", false);
     if (!gpu_enable) return;
     if (!isAgentAvatarValid()) return;
-    if (!mObjectIDBuffer.isComplete()) return;
 
-    mObjectIDBuffer.bindTarget();
-    // gbuffer3 has no alpha in default LL config (project memory
-    // reference_gbuffer3_storage); make sure all four channels are writable so
-    // the top 8 bits of each packed ID survive the write.
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glClearColor(0.f, 0.f, 0.f, 0.f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    // Depth shared with deferredScreen — test only, no write.
-    LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
-    LLGLDisable   blend(GL_BLEND);
-    // Cull pinned to BACK to match deferred opaque (back-facing collar
-    // interiors must not write IDs at chin pixels).
-    LLGLEnable    cull (GL_CULL_FACE);
-    glCullFace(GL_BACK);
-
-    gFSObjectIDShader.bind();
-
-    static LLStaticHashedString sObjectIDPacked("object_id_packed");
-
-    // uploadMatrixPalette caches the last (avatar, mesh) pair to skip redundant
-    // GPU uploads for back-to-back DrawInfos with the same skin.
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64  lastMeshId   = 0;
-    bool skipLastSkin = false;
-
-    LLVOAvatar* agent_avatar = gAgentAvatarp.get();
-
-    for (U32 pass_type : kFSRiggedPasses)
+    if (renderRiggedObjectIDBufferForAvatar(gAgentAvatarp.get(), 0, 0))
     {
-        LLCullResult::drawinfo_iterator begin = beginRenderMap(pass_type);
-        LLCullResult::drawinfo_iterator end   = endRenderMap(pass_type);
-        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
-        {
-            LLDrawInfo* info = *i;
-            LLCullResult::increment_iterator(i, end);
-            if (!info || !info->mVertexBuffer || info->mCount == 0) continue;
-            if (info->mAvatar.get() != agent_avatar) continue;
-            const LLMeshSkinInfo* skin = info->mSkinInfo.get();
-            if (!skin || skin->mHash == 0) continue;
-            U32 id = info->mFSPickerLocalID;
-            if (id == 0)
-            {
-                // DrawInfo wasn't stamped with a LocalID at construction
-                // time (non-prim source, or stale batch from a removed
-                // attachment). Skip — its pixels stay 0 in the buffer and
-                // resolve as "no self rigged attachment here".
-                continue;
-            }
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::Self;
+        sFSSelfRiggedPickerRenderGeneration = sFSSelfRiggedPickerArmGeneration;
+    }
+    else
+    {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::None;
+        sFSSelfRiggedPickerRenderGeneration = 0;
+    }
+}
 
-            F32 r = ((id >>  0) & 0xff) / 255.f;
-            F32 g = ((id >>  8) & 0xff) / 255.f;
-            F32 b = ((id >> 16) & 0xff) / 255.f;
-            F32 a = ((id >> 24) & 0xff) / 255.f;
-            gFSObjectIDShader.uniform4f(sObjectIDPacked, r, g, b, a);
+void LLPipeline::renderOtherRiggedObjectIDBuffer()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    LL_PROFILE_GPU_ZONE("renderOtherRiggedObjectIDBuffer");
 
-            if (!LLRenderPass::uploadMatrixPalette(agent_avatar, skin,
-                                                  lastAvatar, lastMeshId, skipLastSkin))
-            {
-                continue;
-            }
-
-            info->mVertexBuffer->setBuffer();
-            info->mVertexBuffer->drawRange(LLRender::TRIANGLES,
-                                           info->mStart, info->mEnd,
-                                           info->mCount, info->mOffset);
-        }
+    static LLCachedControl<bool> enable(gSavedSettings, "FSOtherRiggedPickerEnable", false);
+    static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSOtherRiggedPickerGPU", true);
+    // AYA P0 fixup: MaxDrawCalls / MaxTriangles were cvars; hardcoded now.
+    static constexpr U32 kMaxDrawCalls = 512;
+    static constexpr U32 kMaxTriangles = 1200000;
+    if (!enable || !gpu_enable) return;
+    if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK ||
+        gAgentCamera.cameraCustomizeAvatar())
+    {
+        clearOtherRiggedObjectIDBuffer();
+        return;
+    }
+    if (!isOtherRiggedObjectIDBufferArmed()) return;
+    LLVOAvatar* target_avatar = sFSOtherRiggedPickerAvatar.get();
+    if (!target_avatar || target_avatar->isDead() || target_avatar->isImpostor())
+    {
+        return;
     }
 
-    gFSObjectIDShader.unbind();
-
-    mObjectIDBuffer.flush();
-    sFSSelfRiggedPickerRenderGeneration = sFSSelfRiggedPickerArmGeneration;
+    U32 draw_calls = 0;
+    U32 triangles = 0;
+    U32 attempted_draw_calls = 0;
+    U32 attempted_triangles = 0;
+    bool over_budget = false;
+    if (renderRiggedObjectIDBufferForAvatar(target_avatar,
+                                            kMaxDrawCalls,
+                                            kMaxTriangles,
+                                            &draw_calls,
+                                            &triangles,
+                                            &over_budget,
+                                            &attempted_draw_calls,
+                                            &attempted_triangles))
+    {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::Other;
+        sFSOtherRiggedPickerRenderGeneration = sFSOtherRiggedPickerArmGeneration;
+    }
+    else
+    {
+        sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::None;
+        sFSOtherRiggedPickerRenderGeneration = 0;
+    }
+    (void)attempted_draw_calls;
+    (void)attempted_triangles;
+    (void)over_budget;
 }
 // </AYAstorm:r21.1>
 
@@ -10059,7 +10280,11 @@ void LLPipeline::renderDeferredLighting()
     // for the main RT pack, and the picker only ever reads it for the
     // main viewport).
     static LLCachedControl<bool> armed_mode(gSavedSettings, "FSSelfRiggedPickerArmedMode", true);
-    if (!gCubeSnapshot && (!armed_mode || isSelfRiggedObjectIDBufferArmed()))
+    if (!gCubeSnapshot && isOtherRiggedObjectIDBufferArmed())
+    {
+        renderOtherRiggedObjectIDBuffer();
+    }
+    else if (!gCubeSnapshot && (!armed_mode || isSelfRiggedObjectIDBufferArmed()))
     {
         renderSelfRiggedObjectIDBuffer();
     }

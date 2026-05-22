@@ -1239,6 +1239,24 @@ class Darwin_x86_64_Manifest(ViewerManifest):
         build_data_dict.update({'Bundle Id':self.args['bundleid']})
         return build_data_dict
 
+    def remove_nested_dullahan_helper_apps(self):
+        # Some local package extractions have shipped Dullahan helper apps
+        # containing a duplicate same-named .app at the bundle root. That makes
+        # codesign fail with "unsealed contents present in the bundle root".
+        helper_apps = [
+            "DullahanHelper.app",
+            "DullahanHelper (Alerts).app",
+            "DullahanHelper (GPU).app",
+            "DullahanHelper (Renderer).app",
+            "DullahanHelper (Plugin).app",
+        ]
+
+        for helper_app in helper_apps:
+            nested_app = os.path.join(self.dst_path_of(helper_app), helper_app)
+            if os.path.isdir(nested_app):
+                print("Removing invalid nested Dullahan helper bundle:", nested_app)
+                shutil.rmtree(nested_app)
+
     def sign_macho_tree(self, app_path):
         entitlements = self.src_path_of("slplugin.entitlements")
         nested_apps = []
@@ -1811,6 +1829,7 @@ class Darwin_x86_64_Manifest(ViewerManifest):
                         self.path("DullahanHelper (GPU).app")
                         self.path("DullahanHelper (Renderer).app")
                         self.path("DullahanHelper (Plugin).app")
+                        self.remove_nested_dullahan_helper_apps()
 
                         # Copy libvlc
                         self.path( "libvlc*.dylib*" )

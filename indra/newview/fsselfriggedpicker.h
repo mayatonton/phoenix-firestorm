@@ -19,6 +19,7 @@
 #define FS_SELFRIGGEDPICKER_H
 
 class LLViewerObject;
+class LLVOAvatar;
 
 namespace FSSelfRiggedPicker
 {
@@ -40,6 +41,13 @@ namespace FSSelfRiggedPicker
     //   - cvar off / RT not ready    → returns null, authoritative=false.
     LLViewerObject* findClosestAttachment(S32 mouse_x, S32 mouse_y,
                                           bool& out_gpu_authoritative);
+
+    // AYAstorm r28: same GPU readback path, scoped to one non-self avatar that
+    // was armed by hover. Returns null without authority if the target avatar's
+    // object-ID buffer is not ready.
+    LLViewerObject* findClosestAttachmentForAvatar(S32 mouse_x, S32 mouse_y,
+                                                   LLVOAvatar* avatar,
+                                                   bool& out_gpu_authoritative);
 }
 
 #endif // FS_SELFRIGGEDPICKER_H

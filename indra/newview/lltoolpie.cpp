@@ -37,6 +37,7 @@
 #include "llavatarnamecache.h"
 #include "llfocusmgr.h"
 #include "llfirstuse.h"
+#include "llfloatercamera.h"
 #include "llfloaterland.h"
 #include "llfloaterreg.h"
 #include "llfloaterscriptdebug.h"
@@ -68,6 +69,7 @@
 #include "llviewerwindow.h"
 #include "llviewerinput.h"
 #include "llviewermedia.h"
+#include "llvoavatar.h"
 #include "llvoavatarself.h"
 #include "llviewermediafocus.h"
 #include "llworld.h"
@@ -91,6 +93,9 @@ static void handle_click_action_play();
 static void handle_click_action_open_media(LLPointer<LLViewerObject> objectp);
 static ECursorType cursor_from_parcel_media(U8 click_action);
 static void fs_arm_self_rigged_picker_for_hover(const LLPickInfo& pick);
+static void fs_arm_other_rigged_picker_for_hover(const LLPickInfo& pick);
+static LLVOAvatar* fs_get_avatar_from_pick(const LLPickInfo& pick);
+static bool fs_other_rigged_picker_camera_allows_hover();
 
 static void fs_arm_self_rigged_picker_for_hover(const LLPickInfo& pick)
 {
@@ -112,6 +117,72 @@ static void fs_arm_self_rigged_picker_for_hover(const LLPickInfo& pick)
     {
         gPipeline.armSelfRiggedObjectIDBuffer((F32)arm_seconds);
     }
+}
+
+static LLVOAvatar* fs_get_avatar_from_pick(const LLPickInfo& pick)
+{
+    LLViewerObject* object = pick.getObject();
+    if (!object || object->isDead())
+    {
+        return nullptr;
+    }
+    if (object->isAvatar())
+    {
+        return object->asAvatar();
+    }
+    if (object->isAttachment())
+    {
+        return LLVOAvatar::findAvatarFromAttachment(object);
+    }
+    return object->getAvatar();
+}
+
+static bool fs_other_rigged_picker_camera_allows_hover()
+{
+    // AYA P0 fixup: RequireNonDefaultCamera was a cvar; hardcoded true now.
+    if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK ||
+        gAgentCamera.cameraCustomizeAvatar())
+    {
+        return false;
+    }
+    if (!gAgentCamera.cameraThirdPerson() ||
+        LLFloaterCamera::inFreeCameraMode() ||
+        !gAgentCamera.getFocusOnAvatar())
+    {
+        return true;
+    }
+
+    // ESC/default view keeps the camera focused on the avatar at the initial
+    // zoom. Comparing the actual camera origin against the theoretical rear
+    // offset is too noisy here: collision correction, avatar head offset,
+    // sitting transforms, and smoothing can all move the camera without user
+    // intent. Treat focused third-person initial zoom as the default gate.
+    const F32 zoom_epsilon = 0.01f;
+    return llabs(gAgentCamera.getCurrentCameraZoomFraction() - 1.f) > zoom_epsilon;
+}
+
+static void fs_arm_other_rigged_picker_for_hover(const LLPickInfo& pick)
+{
+    static LLCachedControl<bool> enable(gSavedSettings, "FSOtherRiggedPickerEnable", false);
+    static LLCachedControl<bool> gpu_enable(gSavedSettings, "FSOtherRiggedPickerGPU", true);
+    static LLCachedControl<F32> arm_seconds(gSavedSettings, "FSOtherRiggedPickerArmSeconds", 1.f);
+    if (!enable || !gpu_enable || !isAgentAvatarValid())
+    {
+        return;
+    }
+    if (!fs_other_rigged_picker_camera_allows_hover())
+    {
+        gPipeline.clearOtherRiggedObjectIDBuffer();
+        return;
+    }
+
+    LLVOAvatar* avatar = fs_get_avatar_from_pick(pick);
+    if (!avatar || avatar->isDead() || avatar == gAgentAvatarp.get())
+    {
+        return;
+    }
+
+    gPipeline.armOtherRiggedObjectIDBuffer(avatar, (F32)arm_seconds);
 }
 
 LLToolPie::LLToolPie()
@@ -896,6 +967,7 @@ bool LLToolPie::handleHover(S32 x, S32 y, MASK mask)
     // <FS:minerjr> [FIRE-35019]
     mHoverPick = gViewerWindow->pickImmediate(x, y, false, pick_rigged);
     fs_arm_self_rigged_picker_for_hover(mHoverPick);
+    fs_arm_other_rigged_picker_for_hover(mHoverPick);
     LLViewerObject *parent = NULL;
     LLViewerObject *object = mHoverPick.getObject();
 // [RLVa:KB] - Checked: RLVa-1.1.0
@@ -2383,6 +2455,12 @@ bool LLToolPie::handleRightClickPick()
         if (fs_self_picker_enable && isAgentAvatarValid())
         {
             const bool fell_through_to_self_avatar = (mPick.mObjectID == gAgent.getID());
+            const bool upstream_picked_self_avatar =
+                object && (object == gAgentAvatarp.get()) && object->isAvatar();
+            if (upstream_picked_self_avatar && mPick.mObjectID != gAgent.getID())
+            {
+                mPick.mObjectID = gAgent.getID();
+            }
             // Second-guess upstream when it picked a self rigged attachment —
             // the worldray test can pierce an alpha-discarded triangle (hidden
             // sleeve etc.) the user does not actually see, and the GPU ID
@@ -2396,7 +2474,8 @@ bool LLToolPie::handleRightClickPick()
                 object && object->isHUDAttachment();
 
             if (!upstream_picked_hud_attachment &&
-                (fell_through_to_self_avatar || upstream_picked_self_attachment || !object))
+                (fell_through_to_self_avatar || upstream_picked_self_avatar ||
+                 upstream_picked_self_attachment || !object))
             {
                 bool gpu_authoritative = false;
                 LLViewerObject* picked = FSSelfRiggedPicker::findClosestAttachment(
@@ -2405,6 +2484,12 @@ bool LLToolPie::handleRightClickPick()
                 {
                     object = picked;
                     mPick.mObjectID = picked->getID();
+                }
+                else if (gpu_authoritative &&
+                         (fell_through_to_self_avatar || upstream_picked_self_avatar))
+                {
+                    object = gAgentAvatarp.get();
+                    mPick.mObjectID = gAgent.getID();
                 }
                 else if (gpu_authoritative && upstream_picked_self_attachment
                          && object->isRiggedMesh())
@@ -2419,6 +2504,47 @@ bool LLToolPie::handleRightClickPick()
                     // worldray hit for the non-rigged case.
                     object = gAgentAvatarp.get();
                     mPick.mObjectID = gAgent.getID();
+                }
+            }
+        }
+    }
+    // </FS:AYA>
+
+    // <FS:AYA r28> Other-avatar rigged-attachment GPU picker.
+    // Keep the r21 self path separate: this only runs for a single non-self
+    // avatar that was armed from hover, and silently falls back to upstream
+    // worldray selection when the ID buffer is not ready.
+    if (mPick.mPickType != LLPickInfo::PICK_LAND)
+    {
+        static LLCachedControl<bool> fs_other_picker_enable(gSavedSettings, "FSOtherRiggedPickerEnable", false);
+        if (fs_other_picker_enable && isAgentAvatarValid())
+        {
+            if (!fs_other_rigged_picker_camera_allows_hover())
+            {
+                gPipeline.clearOtherRiggedObjectIDBuffer();
+            }
+            else
+            {
+                LLVOAvatar* target_avatar = fs_get_avatar_from_pick(mPick);
+                const bool upstream_picked_hud_attachment =
+                    object && object->isHUDAttachment();
+                if (target_avatar &&
+                    target_avatar != gAgentAvatarp.get() &&
+                    !upstream_picked_hud_attachment)
+                {
+                    bool gpu_authoritative = false;
+                    LLViewerObject* picked = nullptr;
+                    if (gPipeline.isOtherRiggedObjectIDBufferReady(target_avatar->getID()))
+                    {
+                        picked = FSSelfRiggedPicker::findClosestAttachmentForAvatar(
+                            x, y, target_avatar, gpu_authoritative);
+                    }
+                    if (picked)
+                    {
+                        object = picked;
+                        mPick.mObjectID = picked->getID();
+                    }
+                    (void)gpu_authoritative;
                 }
             }
         }

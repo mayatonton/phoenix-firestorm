@@ -341,9 +341,14 @@ public:
     // never reach the ID image, so the picker's mouse pixel agrees with
     // what is visible on screen. Gated by FSSelfRiggedPickerGPU.
     void renderSelfRiggedObjectIDBuffer();
+    void renderOtherRiggedObjectIDBuffer();
     void armSelfRiggedObjectIDBuffer(F32 seconds);
     bool isSelfRiggedObjectIDBufferArmed() const;
     bool isSelfRiggedObjectIDBufferReady() const;
+    void armOtherRiggedObjectIDBuffer(LLVOAvatar* avatar, F32 seconds);
+    bool isOtherRiggedObjectIDBufferArmed() const;
+    bool isOtherRiggedObjectIDBufferReady(const LLUUID& avatar_id) const;
+    void clearOtherRiggedObjectIDBuffer();
     // </AYAstorm:r21.1>
 
     // apply atmospheric haze based on contents of color and depth buffer
@@ -517,6 +522,14 @@ private:
     void addToQuickLookup( LLDrawPool* new_poolp );
     void removeFromQuickLookup( LLDrawPool* poolp );
     bool updateDrawableGeom(LLDrawable* drawable);
+    bool renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
+                                             U32 max_draw_calls,
+                                             U32 max_triangles,
+                                             U32* out_draw_calls = nullptr,
+                                             U32* out_triangles = nullptr,
+                                             bool* out_over_budget = nullptr,
+                                             U32* out_attempted_draw_calls = nullptr,
+                                             U32* out_attempted_triangles = nullptr);
     void assertInitializedDoError();
     bool assertInitialized() { const bool is_init = isInit(); if (!is_init) assertInitializedDoError(); return is_init; };
     void connectRefreshCachedSettingsSafe(const std::string name);

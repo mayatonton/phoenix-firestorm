@@ -201,8 +201,8 @@ armed mode で「最後に hover してから何秒間 ID pass を許可する�
 | L2 | **HUD attachment は picker 対象外** | HUD は別 camera (screen-space) で render され `mObjectIDBuffer` には書かれない。lltoolpie は HUD 判定で早期 bypass (M4.9) |
 | L3 | **非 rigged self attachment は upstream worldray 依存** | ピアス等 — M4.18 で「id=0 でも force-to-body しない」処理を入れて upstream 結果を尊重 |
 | L4 | **CPU mode (`FSSelfRiggedPickerGPU=0`) では picker が動作しない** | 構造的判断 (memory `feedback_feature_value_in_main_usecase.md`)。Mac の software OpenGL renderer 等で問題が出た場合はこの kill-switch で OFF にして上流動作に戻す |
-| L5 | **他者 avatar の rigged attachment は対象外** | r21 スコープは self picker のみ。他者 picker は r22+ で別途検討 |
-| L6 | **closeup zoom で id=0 を引くケースが残存可能性あり** | M4.8 として task 残置 (#72) — M4.17 hash collision 解決でほぼ抑え込めた感触だが、M5 検証時に再現したら根本究明 |
+| L5 | **r21 単体では他者 avatar の rigged attachment は対象外** | r21 スコープは self picker のみ。r28 で other picker を追加し、他人 avatar の rigged attachment は `FSOtherRiggedPickerEnable` 側で 1 avatar 限定の GPU ID pass を使う |
+| L6 | **closeup zoom / face right-click では id=0 を引くケースが残存可能性あり** | self avatar 顔右クリックは、GPU hit がない場合でも avatar body selection に戻す。r28 以降、他人 avatar の rigged attachment は r21 self picker ではなく other picker が扱うため、face/body fallback と attachment redirect の責務を分ける |
 
 ---
 
@@ -211,7 +211,7 @@ armed mode で「最後に hover してから何秒間 ID pass を許可する�
 ### M4 picker 構造
 - [x] **rigged self attachment** (Mesh body の腕 / 頭 / 胴 / 服 / 髪): 右クリック → 正しい prim が pie menu に出る (M4.17 PASS)
 - [x] **非 rigged self attachment** (ピアス / 単独 jewelry prim): 右クリック → 該当 prim が pie menu に出る (M4.18 PASS)
-- [x] **他者 avatar / land / HUD**: picker bypass で上流挙動が壊れない (M4.9 で HUD 明示 bypass)
+- [x] **他者 avatar / land / HUD**: r21 self picker は bypass で上流挙動を壊さない (M4.9 で HUD 明示 bypass)。r28 以降の他者 rigged attachment 補正は other picker 側で扱う
 
 ### M5 default flip
 - [x] `FSSelfRiggedPickerGPU` default を 1 に flip (`34acea572f`)
