@@ -42,6 +42,16 @@ namespace LLCinematicOverlay
     // See settings.xml entry for AYAR20SSSMigrationVersion.
     void applyR20SSSMigrationIfNeeded();
     // </FS:AYAstorm>
+
+    // <FS:AYAstorm> r30 release: View Mode picker reshuffle migration. Runs once
+    // on startup: when AYAViewModeMigrationVersion < 1, rewrites persisted
+    // AYAVisualRealismEnabled value 1 (legacy AYAstorm View) to 2 (the new
+    // AYAstorm View, formerly Cinematic) and bumps the version counter. Lifts
+    // users from the previous release into the new engine without touching
+    // their picker selection. See settings.xml entry for
+    // AYAViewModeMigrationVersion.
+    void applyAYAViewModeMigrationIfNeeded();
+    // </FS:AYAstorm>
 }
 
 #endif // LL_CINEMATIC_OVERLAY_H

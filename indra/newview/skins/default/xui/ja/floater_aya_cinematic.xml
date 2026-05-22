@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-<floater name="aya_cinematic" title="AYAstorm シネマ撮影コントロール">
+<floater name="aya_cinematic" title="AYAstorm コントロール">
 
     <tab_container name="aya_cinematic_tabs">
 
         <!-- ============ Tab 1: General ============ -->
         <panel label="基本" name="tab_general">
-            <text name="T_GeneralMaster">マスタースイッチ (新しい描画エンジン推奨値)</text>
+            <text name="T_GeneralMaster">マスタースイッチ (AYAstorm 推奨値)</text>
 
             <check_box name="cb_DeferredSSAO" label="スクリーンスペース AO (SSAO)"
                        tool_tip="接触影 / 環境光の暗がりを近似計算で再現します。"/>
@@ -84,12 +84,12 @@
             <text name="T_DoFMaster">被写界深度 マスタースイッチ</text>
 
             <check_box name="cb_DepthOfField" label="被写界深度 (DoF) を有効化"
-                       tool_tip="Cinematic では 新しい描画エンジン推奨値で ON、LL デフォルトは OFF です。"/>
-            <button name="d_DepthOfField" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
+                       tool_tip="AYAstorm 推奨値で ON、LL デフォルトは OFF です。"/>
+            <button name="d_DepthOfField" tool_tip="AYAstorm 推奨値 (ON) に戻す"/>
 
             <check_box name="cb_DoFHighQuality" label="高品質 DoF (4× CoF, 深度依存)"
-                       tool_tip="GPU 負荷増。新しい描画エンジン推奨値で ON。"/>
-            <button name="d_DoFHighQuality" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
+                       tool_tip="GPU 負荷増。AYAstorm 推奨値で ON。"/>
+            <button name="d_DoFHighQuality" tool_tip="AYAstorm 推奨値 (ON) に戻す"/>
 
             <check_box name="cb_DoFFront" label="前方ぼけ (フォーカス手前もぼかす)"
                        tool_tip="ピント面より手前の被写体もぼかします (OFF の場合は奥のみ)。"/>
@@ -103,31 +103,31 @@
                        tool_tip="ON: アルファ面 (cutoff 0.7) を DoF 深度に寄与。OFF: 除外 (cutoff 1.0)。"/>
             <button name="d_DoFAlphas" tool_tip="デフォルトに戻す"/>
 
-            <text name="T_CameraValues">カメラ (新しい描画エンジン推奨値)</text>
+            <text name="T_CameraValues">カメラ (AYAstorm 推奨値)</text>
 
             <text name="T_FieldOfView">DoF 焦点 FOV (°)</text>
             <slider_bar name="sb_FieldOfView" tool_tip="DoF ぼけ式の入力値のみ。ビューポートの実画角 (ワールド側 FOV 設定) は変更しません。"/>
             <spinner    name="s_FieldOfView"  tool_tip="DoF ぼけ式の入力値のみ。ビューポートの実画角 (ワールド側 FOV 設定) は変更しません。"/>
-            <button name="d_FieldOfView" tool_tip="新しい描画エンジン推奨値 (67°) に戻す"/>
+            <button name="d_FieldOfView" tool_tip="AYAstorm 推奨値 (67°) に戻す"/>
 
             <text name="T_FNumber">F 値 (DoF ぼけ専用)</text>
             <slider_bar name="sb_FNumber" tool_tip="DoF ぼけ式の入力値のみ。F 値が小さいほどぼけが大きくなります。"/>
             <spinner    name="s_FNumber"  tool_tip="DoF ぼけ式の入力値のみ。F 値が小さいほどぼけが大きくなります。"/>
-            <button name="d_FNumber" tool_tip="新しい描画エンジン推奨値 (28) に戻す"/>
+            <button name="d_FNumber" tool_tip="AYAstorm 推奨値 (28) に戻す"/>
 
             <text name="T_FocalLength">焦点距離 (DoF ぼけ専用, mm)</text>
             <slider_bar name="sb_FocalLength" tool_tip="DoF ぼけ式の入力値のみ。ビューポートの遠近感は変更しません。"/>
             <spinner    name="s_FocalLength"  tool_tip="DoF ぼけ式の入力値のみ。ビューポートの遠近感は変更しません。"/>
-            <button name="d_FocalLength" tool_tip="新しい描画エンジン推奨値 (40mm) に戻す"/>
+            <button name="d_FocalLength" tool_tip="AYAstorm 推奨値 (40mm) に戻す"/>
 
             <text name="T_MaxCoF">最大錯乱円 (CoF)</text>
-            <button name="d_MaxCoF" tool_tip="新しい描画エンジン推奨値 (11.9) に戻す"/>
+            <button name="d_MaxCoF" tool_tip="AYAstorm 推奨値 (11.9) に戻す"/>
 
             <text name="T_FocusTransitionTime">フォーカス遷移時間 (秒)</text>
-            <button name="d_FocusTransitionTime" tool_tip="新しい描画エンジン推奨値 (0.4 秒) に戻す"/>
+            <button name="d_FocusTransitionTime" tool_tip="AYAstorm 推奨値 (0.4 秒) に戻す"/>
 
             <text name="T_DoFResScale">DoF バッファ解像度</text>
-            <button name="d_DoFResScale" tool_tip="新しい描画エンジン推奨値 (0.5) に戻す"/>
+            <button name="d_DoFResScale" tool_tip="AYAstorm 推奨値 (0.5) に戻す"/>
 
             <text name="T_ChromaSec">色収差 強度</text>
 
@@ -140,8 +140,8 @@
             <text name="T_SSRMaster">スクリーンスペース 反射 (SSR)</text>
 
             <check_box name="cb_SSR" label="SSR を有効化"
-                       tool_tip="Cinematic では 新しい描画エンジン推奨値で ON、LL デフォルトは OFF です。"/>
-            <button name="d_SSR" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
+                       tool_tip="AYAstorm 推奨値で ON、LL デフォルトは OFF です。"/>
+            <button name="d_SSR" tool_tip="AYAstorm 推奨値 (ON) に戻す"/>
 
             <text name="T_SSRTuning">品質チューニング</text>
 
@@ -175,8 +175,8 @@
             <text name="T_MBMaster">モーションブラー</text>
 
             <check_box name="cb_MotionBlur" label="モーションブラーを有効化"
-                       tool_tip="Cinematic では 新しい描画エンジン推奨値で ON、LL デフォルトは OFF です。"/>
-            <button name="d_MotionBlur" tool_tip="新しい描画エンジン推奨値 (ON) に戻す"/>
+                       tool_tip="AYAstorm 推奨値で ON、LL デフォルトは OFF です。"/>
+            <button name="d_MotionBlur" tool_tip="AYAstorm 推奨値 (ON) に戻す"/>
 
             <text name="T_MBStrength">強度 (px)</text>
             <button name="d_MBStrength" tool_tip="デフォルトに戻す"/>
@@ -192,8 +192,8 @@
             <text name="T_AA">アンチエイリアシング</text>
 
             <text name="T_FSAAType">AA 種別 (0/1/2/3)</text>
-            <slider_bar name="sb_FSAAType" tool_tip="0=オフ, 1=FXAA, 2=SMAA (新しい描画エンジン推奨値), 3=SMAA + T2x 時間的解像 (動きでゴーストが出ることあり)"/>
-            <button name="d_FSAAType" tool_tip="新しい描画エンジン推奨値 (SMAA=2) に戻す"/>
+            <slider_bar name="sb_FSAAType" tool_tip="0=オフ, 1=FXAA, 2=SMAA (AYAstorm 推奨値), 3=SMAA + T2x 時間的解像 (動きでゴーストが出ることあり)"/>
+            <button name="d_FSAAType" tool_tip="AYAstorm 推奨値 (SMAA=2) に戻す"/>
         </panel>
 
         <!-- ============ Tab 7: Glow & Volumetric ============ -->

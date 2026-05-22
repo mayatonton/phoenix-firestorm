@@ -328,7 +328,7 @@
          left_delta="5"
          top_pad="3"
          name="AYAViewMode"
-         tool_tip="Firestorm View: upstream Firestorm standard rendering. AYAstorm View: r14+ visual realism (volumetric atmosphere / godrays / aerial perspective / Kelvin color temperature / cloud volumetric / translucency / SSS). Cinematic (preview): r30+ photo viewer mode under BD parity construction; currently borrows velocity buffer + SMAA T2x + Volumetric Lighting + per-object Motion Blur + BD HQ DoF with Chromatic Aberration. Live in-shot tuning is via the Cinematic Controls floater (AYAstorm menu &gt; Cinematic Controls..., Alt+C). Will be promoted from preview to formal once same-picture parity with BD is reached. Changing this setting requires a viewer restart."
+         tool_tip="Firestorm View: upstream Firestorm standard rendering. AYAstorm View: AYAstorm photo-grade rendering engine — velocity buffer, SMAA T2x, Volumetric Lighting, per-object Motion Blur, BD HQ DoF with Chromatic Aberration, plus opt-in extras (volumetric atmosphere / godrays / aerial perspective / Kelvin color temperature / cloud volumetric / translucency / SSS). Live in-shot tuning is via the AYAstorm Controls floater (AYAstorm menu &gt; AYAstorm Controls..., Alt+C). Changing this setting requires a viewer restart."
          width="180">
           <combo_box.item
            label="Firestorm View"
@@ -336,10 +336,6 @@
            value="0"/>
           <combo_box.item
            label="AYAstorm View"
-           name="1"
-           value="1"/>
-          <combo_box.item
-           label="Cinematic (preview)"
            name="2"
            value="2"/>
         </combo_box>

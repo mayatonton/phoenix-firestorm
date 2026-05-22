@@ -3259,6 +3259,15 @@ bool LLAppViewer::initConfiguration()
     //Todo, find a cleaner way of doing this via the various set_default arguments.
     loadSettingsFromDirectory("User");
 
+    // <FS:AYAstorm> r30 release View Mode picker reshuffle migration. One-shot;
+    // rewrites persisted AYAVisualRealismEnabled value 1 (legacy AYAstorm View)
+    // to 2 (new AYAstorm View, formerly Cinematic). Must run before
+    // applyCinematicOverlayIfNeeded() so upgrading users get the BD overlay on
+    // the same startup the migration fires. No-op once
+    // AYAViewModeMigrationVersion >= 1.
+    LLCinematicOverlay::applyAYAViewModeMigrationIfNeeded();
+    // </FS:AYAstorm>
+
     // <FS:AYA r30 P5 R2> Apply Cinematic BD-parity overlay after all settings
     // layers are loaded (Default -> Session -> User). Only fires when
     // AYAVisualRealismEnabled == 2 and AYACinematicOverlayApplied sentinel

@@ -142,3 +142,39 @@ void LLCinematicOverlay::applyR20SSSMigrationIfNeeded()
         << " -> merged=" << merged << LL_ENDL;
 }
 // </FS:AYAstorm>
+
+// <FS:AYAstorm> r30 release View Mode picker reshuffle migration.
+// Pre-r30-release picker:  0=Firestorm View / 1=AYAstorm View / 2=Cinematic (preview)
+// Post-r30-release picker: 0=Firestorm View / 2=AYAstorm View (legacy 1 removed)
+// The previous Cinematic mode (value=2) is promoted to "AYAstorm View" and the
+// previous AYAstorm View (value=1) disappears from the UI. Migration rewrites
+// any persisted value 1 to 2 so returning users land on the new engine with
+// their View Mode selection preserved.
+void LLCinematicOverlay::applyAYAViewModeMigrationIfNeeded()
+{
+    static const char VERSION_CONTROL[] = "AYAViewModeMigrationVersion";
+    static const char MODE_CONTROL[]    = "AYAVisualRealismEnabled";
+
+    const S32 ver = gSavedSettings.getS32(VERSION_CONTROL);
+    if (ver >= 1)
+    {
+        return;
+    }
+
+    const U32 mode = gSavedSettings.getU32(MODE_CONTROL);
+    if (mode == 1)
+    {
+        gSavedSettings.setU32(MODE_CONTROL, 2);
+        LL_INFOS("CinematicOverlay")
+            << "View mode migration v0->v1: AYAVisualRealismEnabled "
+            << "1 (legacy AYAstorm View) -> 2 (new AYAstorm View)" << LL_ENDL;
+    }
+    else
+    {
+        LL_INFOS("CinematicOverlay")
+            << "View mode migration v0->v1: no rewrite needed "
+            << "(AYAVisualRealismEnabled=" << mode << ")" << LL_ENDL;
+    }
+    gSavedSettings.setS32(VERSION_CONTROL, 1);
+}
+// </FS:AYAstorm>

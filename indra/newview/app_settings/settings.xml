@@ -10004,14 +10004,15 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
-    <!-- <FS:AYA> r14: AYAstorm View Mode 切替。r30 P1 で Cinematic 枠を先行追加 (3 値拡張)。
-         Type は combo_box (Firestorm View=0 / AYAstorm View=1 / Cinematic=2) と確実に binding するため U32。
-         変更は viewer 再起動が必要 (r30 P1 で 3 モード再起動切替に統一)。
+    <!-- <FS:AYA> r14: AYAstorm View Mode 切替。r30 P1 で 3 値拡張、r30 release で picker は 2 件表示に
+         縮退 (Firestorm View=0 / AYAstorm View=2)。旧 value=1 (legacy AYAstorm View) は internal code path
+         を残置しつつ UI から削除、起動時 migration で 1→2 へ書換 (AYAViewModeMigrationVersion 参照)。
+         Type は combo_box との確実な binding のため U32 のまま。変更は viewer 再起動が必要。
          詳細: docs/specs/ayastorm-r30-cinematic-chapter.md / docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md -->
     <key>AYAVisualRealismEnabled</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm View Mode 切替。0=Firestorm View (上流 Firestorm 標準描画)、1=AYAstorm View (r14+ 視覚表現: volumetric atmosphere / godrays / aerial perspective / Kelvin 色温度 / cloud volumetric / translucency / SSS)、2=Cinematic (r30+ 撮影描画 mode、新しい描画エンジン 995a1354d8 1:1 完全移植)。変更には viewer 再起動が必要</string>
+      <string>AYAstorm View Mode 切替。UI picker は 2 件 (0=Firestorm View 上流 Firestorm 標準描画 / 2=AYAstorm View 新しい描画エンジン 995a1354d8 1:1 完全移植 + r14-r20 個別 opt-in)。内部に legacy value=1 (旧 r14+ 視覚表現 mode、UI 削除済 / 起動時 migration で 2 に書換) を残置。変更には viewer 再起動が必要</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -10299,6 +10300,25 @@ Change of this parameter will affect the layout of buttons in notification toast
     <map>
       <key>Comment</key>
       <string>r20 SSS cvar migration counter。default 0。起動時 llappviewer.cpp で version &lt; 1 を検出したら、旧 AYAR20AvatarSkinSSSInCinematicEnabled の値を新 AYAR20AvatarSkinSSSEnabled に OR 合成して version=1 に bump。version 番号は将来の cvar 整理時に +1 ずつ進める想定</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
+    <!-- <FS:AYAstorm> r30 release: AYAVisualRealismEnabled view mode migration counter。
+         r30 release で picker から旧 AYAstorm View (value=1) を削除、Cinematic (value=2) を
+         "AYAstorm View" として promote。version &lt; 1 検出時に持続 cvar の値 1 を 2 に書換、
+         version=1 に bump (llcinematicoverlay::applyAYAViewModeMigrationIfNeeded)。
+         旧 release から upgrade してきたユーザーの View Mode 選択を保ったまま新エンジンに乗せ替える。
+         一度 migration を通った後は no-op。 -->
+    <key>AYAViewModeMigrationVersion</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAVisualRealismEnabled view mode migration counter。default 0。起動時 llappviewer.cpp で version &lt; 1 を検出したら AYAVisualRealismEnabled==1 (legacy AYAstorm View) を 2 (新 AYAstorm View = 旧 Cinematic) に書換、version=1 に bump。version 番号は将来の view mode 再編時に +1 ずつ進める想定</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

@@ -33,7 +33,7 @@
  save_rect="false"
  save_dock_state="false"
  single_instance="true"
- title="AYAstorm Cinematic Controls"
+ title="AYAstorm Controls"
  width="600">
 
     <tab_container
@@ -50,7 +50,7 @@
 
         <!-- =================== Tab 1: General =================== -->
         <panel border="false" follows="left|top" label="General" layout="topleft" left="1" name="tab_general" top="0" height="427" width="588">
-            <text follows="left|top" layout="topleft" name="T_GeneralMaster" top="8"   left="8"  width="572" height="18" font="SansSerif">Master switches (Cinematic preset defaults)</text>
+            <text follows="left|top" layout="topleft" name="T_GeneralMaster" top="8"   left="8"  width="572" height="18" font="SansSerif">Master switches (AYAstorm preset defaults)</text>
 
             <check_box follows="left|top" layout="topleft" name="cb_DeferredSSAO"        control_name="RenderDeferredSSAO"       top="32"  left="36" width="506" height="20" label="Screen Space Ambient Occlusion (SSAO)" tool_tip="Approximate contact shadows / ambient darkening."/>
             <button    follows="left|top" layout="topleft" name="d_DeferredSSAO"         top="32"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDeferredSSAO"/></button>
@@ -137,11 +137,11 @@
         <panel border="false" follows="left|top" label="DoF &amp; Camera" layout="topleft" left="1" name="tab_dof_camera" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_DoFMaster" top="8" left="8" width="572" height="18" font="SansSerif">DoF master switches</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_DepthOfField"   control_name="RenderDepthOfField"            top="32"  left="36" width="506" height="20" label="Enable Depth of Field" tool_tip="Cinematic preset default ON; LL default OFF."/>
-            <button    follows="left|top" layout="topleft" name="d_DepthOfField"    top="32"  left="12" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfField"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_DepthOfField"   control_name="RenderDepthOfField"            top="32"  left="36" width="506" height="20" label="Enable Depth of Field" tool_tip="AYAstorm preset default ON; LL default OFF."/>
+            <button    follows="left|top" layout="topleft" name="d_DepthOfField"    top="32"  left="12" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfField"/></button>
 
-            <check_box follows="left|top" layout="topleft" name="cb_DoFHighQuality" control_name="RenderDepthOfFieldHighQuality" top="56"  left="36" width="506" height="20" label="High-quality DoF (4× CoF, depth-gated)" tool_tip="Higher GPU cost; Cinematic preset default ON."/>
-            <button    follows="left|top" layout="topleft" name="d_DoFHighQuality"  top="56"  left="12" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldHighQuality"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_DoFHighQuality" control_name="RenderDepthOfFieldHighQuality" top="56"  left="36" width="506" height="20" label="High-quality DoF (4× CoF, depth-gated)" tool_tip="Higher GPU cost; AYAstorm preset default ON."/>
+            <button    follows="left|top" layout="topleft" name="d_DoFHighQuality"  top="56"  left="12" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldHighQuality"/></button>
 
             <check_box follows="left|top" layout="topleft" name="cb_DoFFront"       control_name="RenderDepthOfFieldFront"       top="80"  left="36" width="506" height="20" label="Front-of-focus blur" tool_tip="Allow objects in front of the focus plane to blur, not just behind."/>
             <button    follows="left|top" layout="topleft" name="d_DoFFront"        top="80"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldFront"/></button>
@@ -152,37 +152,37 @@
             <check_box follows="left|top" layout="topleft" name="cb_DoFAlphas"      enabled_control="AYACinematicModeActive" control_name="RenderDepthOfFieldAlphas" top="128" left="36" width="506" height="20" label="Include alpha-blended surfaces in DoF depth" tool_tip="On: alpha surfaces (cutoff 0.7) contribute to DoF. Off: excluded (cutoff 1.0)."/>
             <button    follows="left|top" layout="topleft" name="d_DoFAlphas"       top="128" left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDepthOfFieldAlphas"/></button>
 
-            <text follows="left|top" layout="topleft" name="T_CameraValues" top="160" left="8" width="572" height="18" font="SansSerif">Camera (Cinematic preset values)</text>
+            <text follows="left|top" layout="topleft" name="T_CameraValues" top="160" left="8" width="572" height="18" font="SansSerif">Camera (AYAstorm preset values)</text>
 
             <text       follows="left|top" layout="topleft" name="T_FieldOfView"          top="184" left="12"  width="160" height="20">DoF focal FOV (°)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FieldOfView"         top="186" left="176" width="195" height="16" control_name="CameraFieldOfView"   min_val="10" max_val="120" increment="1" tool_tip="DoF blur formula input only. Does not change the viewport field of view (controlled by the world FOV settings)."/>
             <spinner    follows="left|top" layout="topleft" name="s_FieldOfView"          top="184" left="376" width="65"  height="20" control_name="CameraFieldOfView"   min_val="10" max_val="120" increment="1" decimal_digits="1" label_width="0" tool_tip="DoF blur formula input only. Does not change the viewport field of view (controlled by the world FOV settings)."/>
-            <button     follows="left|top" layout="topleft" name="d_FieldOfView"          top="184" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (67°)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFieldOfView"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FieldOfView"          top="184" left="445" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (67°)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFieldOfView"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_FNumber"              top="208" left="12"  width="160" height="20">F-number (DoF blur)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FNumber"             top="210" left="176" width="195" height="16" control_name="CameraFNumber"      min_val="1"  max_val="128" increment="0.5" tool_tip="DoF blur formula input only. Smaller F-numbers widen the blur kernel."/>
             <spinner    follows="left|top" layout="topleft" name="s_FNumber"              top="208" left="376" width="65"  height="20" control_name="CameraFNumber"      min_val="1"  max_val="128" increment="0.5" decimal_digits="1" label_width="0" tool_tip="DoF blur formula input only. Smaller F-numbers widen the blur kernel."/>
-            <button     follows="left|top" layout="topleft" name="d_FNumber"              top="208" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (28)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFNumber"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FNumber"              top="208" left="445" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (28)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFNumber"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_FocalLength"          top="232" left="12"  width="160" height="20">Focal length (DoF blur, mm)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FocalLength"         top="234" left="176" width="195" height="16" control_name="CameraFocalLength"  min_val="10" max_val="300" increment="1" tool_tip="DoF blur formula input only. Does not change the viewport perspective."/>
             <spinner    follows="left|top" layout="topleft" name="s_FocalLength"          top="232" left="376" width="65"  height="20" control_name="CameraFocalLength"  min_val="10" max_val="300" increment="1" decimal_digits="1" label_width="0" tool_tip="DoF blur formula input only. Does not change the viewport perspective."/>
-            <button     follows="left|top" layout="topleft" name="d_FocalLength"          top="232" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (40mm)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocalLength"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FocalLength"          top="232" left="445" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (40mm)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocalLength"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_MaxCoF"               top="256" left="12"  width="160" height="20">Max circle of confusion</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_MaxCoF"              top="258" left="176" width="195" height="16" control_name="CameraMaxCoF"       min_val="0.1" max_val="50" increment="0.1"/>
             <spinner    follows="left|top" layout="topleft" name="s_MaxCoF"               top="256" left="376" width="65"  height="20" control_name="CameraMaxCoF"       min_val="0.1" max_val="50" increment="0.1" decimal_digits="2" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_MaxCoF"               top="256" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (11.9)"><button.commit_callback function="AYAResetCinematic" parameter="CameraMaxCoF"/></button>
+            <button     follows="left|top" layout="topleft" name="d_MaxCoF"               top="256" left="445" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (11.9)"><button.commit_callback function="AYAResetCinematic" parameter="CameraMaxCoF"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_FocusTransitionTime" top="280" left="12"  width="160" height="20">Focus transition (s)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_FocusTransitionTime" top="282" left="176" width="195" height="16" control_name="CameraFocusTransitionTime" min_val="0" max_val="5" increment="0.05"/>
             <spinner    follows="left|top" layout="topleft" name="s_FocusTransitionTime"  top="280" left="376" width="65"  height="20" control_name="CameraFocusTransitionTime" min_val="0" max_val="5" increment="0.05" decimal_digits="2" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_FocusTransitionTime"  top="280" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (0.4s)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocusTransitionTime"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FocusTransitionTime"  top="280" left="445" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (0.4s)"><button.commit_callback function="AYAResetCinematic" parameter="CameraFocusTransitionTime"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_DoFResScale"          top="304" left="12"  width="160" height="20">DoF buffer resolution</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_DoFResScale"         top="306" left="176" width="195" height="16" control_name="CameraDoFResScale" min_val="0.1" max_val="1" increment="0.05"/>
             <spinner    follows="left|top" layout="topleft" name="s_DoFResScale"          top="304" left="376" width="65"  height="20" control_name="CameraDoFResScale" min_val="0.1" max_val="1" increment="0.05" decimal_digits="2" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_DoFResScale"          top="304" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (0.5)"><button.commit_callback function="AYAResetCinematic" parameter="CameraDoFResScale"/></button>
+            <button     follows="left|top" layout="topleft" name="d_DoFResScale"          top="304" left="445" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (0.5)"><button.commit_callback function="AYAResetCinematic" parameter="CameraDoFResScale"/></button>
 
             <text follows="left|top" layout="topleft" name="T_ChromaSec" top="336" left="8" width="572" height="18" font="SansSerif">Chromatic aberration strength</text>
 
@@ -196,8 +196,8 @@
         <panel border="false" follows="left|top" label="SSR" layout="topleft" left="1" name="tab_ssr" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_SSRMaster" top="8" left="8" width="572" height="18" font="SansSerif">Screen Space Reflections</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_SSR" control_name="RenderScreenSpaceReflections" top="32" left="36" width="506" height="20" label="Enable Screen Space Reflections" tool_tip="Cinematic preset default ON; LL default OFF."/>
-            <button    follows="left|top" layout="topleft" name="d_SSR"  top="32" left="12" width="20" height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflections"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_SSR" control_name="RenderScreenSpaceReflections" top="32" left="36" width="506" height="20" label="Enable Screen Space Reflections" tool_tip="AYAstorm preset default ON; LL default OFF."/>
+            <button    follows="left|top" layout="topleft" name="d_SSR"  top="32" left="12" width="20" height="20" label="D" tool_tip="Reset to AYAstorm preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderScreenSpaceReflections"/></button>
 
             <text follows="left|top" layout="topleft" name="T_SSRTuning" top="68" left="8" width="572" height="18" font="SansSerif">Quality tuning</text>
 
@@ -236,8 +236,8 @@
         <panel border="false" follows="left|top" label="Motion Blur" layout="topleft" left="1" name="tab_motion_blur" top="0" height="427" width="588">
             <text follows="left|top" layout="topleft" name="T_MBMaster" top="8" left="8" width="572" height="18" font="SansSerif">Motion Blur</text>
 
-            <check_box follows="left|top" layout="topleft" name="cb_MotionBlur" control_name="RenderMotionBlur" top="32" left="36" width="506" height="20" label="Enable Motion Blur" tool_tip="Cinematic preset default ON; LL default OFF."/>
-            <button    follows="left|top" layout="topleft" name="d_MotionBlur"  top="32" left="12" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderMotionBlur"/></button>
+            <check_box follows="left|top" layout="topleft" name="cb_MotionBlur" control_name="RenderMotionBlur" top="32" left="36" width="506" height="20" label="Enable Motion Blur" tool_tip="AYAstorm preset default ON; LL default OFF."/>
+            <button    follows="left|top" layout="topleft" name="d_MotionBlur"  top="32" left="12" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (ON)"><button.commit_callback function="AYAResetCinematic" parameter="RenderMotionBlur"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_MBStrength" top="60" left="12" width="160" height="20">Strength (px)</text>
             <slider_bar follows="left|top" layout="topleft" name="sb_MBStrength" top="62" left="176" width="195" height="16" control_name="RenderMotionBlurStrength" min_val="0" max_val="128" increment="1"/>
@@ -253,9 +253,9 @@
             <text follows="left|top" layout="topleft" name="T_AA" top="148" left="8" width="572" height="18" font="SansSerif">Antialiasing</text>
 
             <text       follows="left|top" layout="topleft" name="T_FSAAType"   top="172" left="12"  width="160" height="20">AA type (0/1/2/3)</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_FSAAType"  top="174" left="176" width="195" height="16" control_name="RenderFSAAType" min_val="0" max_val="3" increment="1" tool_tip="0=Off, 1=FXAA, 2=SMAA (Cinematic preset), 3=SMAA + T2x temporal resolve (may ghost on motion)"/>
+            <slider_bar follows="left|top" layout="topleft" name="sb_FSAAType"  top="174" left="176" width="195" height="16" control_name="RenderFSAAType" min_val="0" max_val="3" increment="1" tool_tip="0=Off, 1=FXAA, 2=SMAA (AYAstorm preset), 3=SMAA + T2x temporal resolve (may ghost on motion)"/>
             <spinner    follows="left|top" layout="topleft" name="s_FSAAType"   top="172" left="376" width="65"  height="20" control_name="RenderFSAAType" min_val="0" max_val="3" increment="1" decimal_digits="0" label_width="0"/>
-            <button     follows="left|top" layout="topleft" name="d_FSAAType"   top="172" left="445" width="20"  height="20" label="D" tool_tip="Reset to Cinematic preset (SMAA=2)"><button.commit_callback function="AYAResetCinematic" parameter="RenderFSAAType"/></button>
+            <button     follows="left|top" layout="topleft" name="d_FSAAType"   top="172" left="445" width="20"  height="20" label="D" tool_tip="Reset to AYAstorm preset (SMAA=2)"><button.commit_callback function="AYAResetCinematic" parameter="RenderFSAAType"/></button>
         </panel>
 
         <!-- =================== Tab 7: Glow & Volumetric =================== -->
