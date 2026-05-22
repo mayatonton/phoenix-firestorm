@@ -5,6 +5,13 @@
 **想定 release**: r30
 **スコープ**: View Mode 切替 (Firestorm View / AYAstorm View / Cinematic) を 3 モード再起動切替に統一、Cinematic 枠を View Mode UI に先行追加 (動作は AYAstorm View 相当、shader 取り込み無し)
 
+> **2026-05-23 update (r30 release 直前)**: P1 で先行追加した Cinematic 枠は
+> P2-P6 で構築完了後、r30 release で **新 AYAstorm View** として promote、旧
+> AYAstorm View (mode=1) は picker から削除 + migration で mode=2 に書換に
+> なった。本 P1 spec は当時の議論記録として残置 (Cinematic 用語のまま)、新規
+> 作業は [`ayastorm-r30-view-mode-reshuffle.md`](ayastorm-r30-view-mode-reshuffle.md)
+> を起点とする。
+
 ## 1. 設計判断
 
 ### 1.1 cvar 名は据え置き
