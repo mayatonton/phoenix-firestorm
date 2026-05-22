@@ -50,6 +50,7 @@
 #include "llglcommonfunc.h"
 #include "llvoavatar.h"
 #include "gltfscenemanager.h"
+#include "lltoolmgr.h"
 
 #include "llenvironment.h"
 
@@ -211,9 +212,16 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // with mMainRT->deferredScreen at allocate time, so the redirect is only
     // valid while the main RT pack is current. preview/profile/probe paths
     // call renderPostDeferred with a non-main mRT and would mismatch depth.
+    // Build mode gate: renderDoF() in pipeline.cpp is itself skipped when
+    // inBuildMode() && !RenderDepthOfFieldInEditMode, so without matching
+    // here the alpha plate gets filled but never composited back over the
+    // DoF result — alpha BLEND surfaces vanish from the screen while edit
+    // tool is open. Keep the redirect gate aligned with renderDoF()'s gate.
     const bool use_alpha_rt =
         !LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
         !gCubeSnapshot && LLPipeline::RenderDepthOfField &&
+        (LLPipeline::RenderDepthOfFieldInEditMode ||
+         !LLToolMgr::getInstance()->inBuildMode()) &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
         gPipeline.mRT == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaColor.isComplete();
