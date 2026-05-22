@@ -414,6 +414,11 @@ public:
         DEFERRED_NUM_COLORS,                //  "num_colors"
         // </FS:AYAstorm:r30-bd-port>
 
+        // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND plate composite
+        AYA_ALPHA_PLATE,                    //  "aya_alpha_plate"
+        AYA_ALPHA_PLATE_ENABLED,            //  "aya_alpha_plate_enabled"
+        // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
     // clang-format on

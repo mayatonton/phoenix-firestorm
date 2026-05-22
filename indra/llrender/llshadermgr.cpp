@@ -1664,6 +1664,11 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("num_colors");
     // </FS:AYAstorm:r30-bd-port>
 
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND plate composite
+    mReservedUniforms.push_back("aya_alpha_plate");
+    mReservedUniforms.push_back("aya_alpha_plate_enabled");
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
     llassert(mReservedUniforms.size() == END_RESERVED_UNIFORMS);
 
     std::set<std::string> dupe_check;

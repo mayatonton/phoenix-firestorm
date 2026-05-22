@@ -199,14 +199,85 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // already being setup for rendering
     LLGLSLShader::unbind();
 
-    if (!LLPipeline::sRenderingHUDs)
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> Redirect forward alpha BLEND
+    // color writes to gPipeline.mAYAAlphaColor when DoF is on so the DoF
+    // pipeline (cofF / HQDoFF / dofCombineF) sees the opaque-only scene and
+    // blurs the bg correctly. Depth is shared with mRT->screen so alpha BLEND
+    // still depth-tests/writes against opaque z exactly as before. The
+    // separated alpha plate is composited back over the DoF result in
+    // dofCombineF. Only POST_WATER pool — PRE_WATER stays on mRT->screen
+    // (water haze / fog mixing relies on it being there).
+    // gPipeline.mRT == &mMainRT: mAYAAlphaColor's depth attachment is shared
+    // with mMainRT->deferredScreen at allocate time, so the redirect is only
+    // valid while the main RT pack is current. preview/profile/probe paths
+    // call renderPostDeferred with a non-main mRT and would mismatch depth.
+    const bool use_alpha_rt =
+        !LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
+        !gCubeSnapshot && LLPipeline::RenderDepthOfField &&
+        getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
+        gPipeline.mRT == &gPipeline.mMainRT &&
+        gPipeline.mAYAAlphaColor.isComplete();
+
+    if (use_alpha_rt)
     {
-        // first pass, render rigged objects only and render to depth buffer
+        LL_PROFILE_GPU_ZONE("aya alpha color redirect");
+        // LLRenderTarget keeps an FBO bind stack: pushing mAYAAlphaColor on
+        // top leaves mRT->screen underneath, and flush() at the end pops back
+        // to it automatically — no manual screen.flush()/bindTarget() needed
+        // (doing so trips the !isBoundInStack assertion on re-push).
+        gPipeline.mAYAAlphaColor.bindTarget();
+        // Clear color only — depth attachment is shared with mRT->screen and
+        // holds opaque z that alpha BLEND must depth-test against.
+        {
+            LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
+            glClearColor(0.f, 0.f, 0.f, 0.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+        mForwardToAlphaRT = true;
+    }
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
+    // <AYAstorm r30 P5 二重アルファブロック対策> POST_WATER 内の forward
+    // render を non-rigged → rigged の back-to-front 順に **常時 default 化**。
+    // 元の rigged-first 順は `write_depth = rigged` (forwardRender 行 379)
+    // で attachment alpha BLEND (hair / clothing) の z を共有 depth に
+    // 書き込み、後続の non-rigged alpha (Rez Object 側の窓ガラス / lace /
+    // 葉先) を GL_LEQUAL で reject → fragment 自体が走らず画素は opaque 段
+    // の sky のまま残る = 「髪越しに窓ガラスが sky に抜ける」二重アルファ
+    // ブロック regression。以前は use_alpha_rt 時のみ限定 swap だったが、
+    // RenderDepthOfField = false (use_alpha_rt=false) の path で同症状が
+    // 実機再現 (canary=12 緑で確認、Cinematic mode + DoF OFF) したため、
+    // POST_WATER 全 path で swap を default 化。PRE_WATER は water fog
+    // 計算 (write_depth が always true) のため rigged-first を維持。HUD は
+    // forwardRender 1 回のみで対象外。
+    if (!LLPipeline::sRenderingHUDs &&
+        getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
+    {
+        // back-to-front: non-rigged (background — windows / foliage) 先 →
+        // rigged (foreground — hair) 後。use_alpha_rt 時は mAYAAlphaColor
+        // 上で同じ順序で over-blend、非使用時は mRT->screen 上で同様。
+        forwardRender();
         forwardRender(true);
     }
+    else
+    {
+        // PRE_WATER / HUD の元順 — water fog 整合性のため touch しない。
+        if (!LLPipeline::sRenderingHUDs)
+        {
+            forwardRender(true);
+        }
+        forwardRender();
+    }
+    // </AYAstorm r30 P5 二重アルファブロック対策>
 
-    // second pass, regular forward alpha rendering
-    forwardRender();
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> Pop alpha plate RT — flush()
+    // auto-restores mRT->screen from the FBO stack.
+    if (use_alpha_rt)
+    {
+        gPipeline.mAYAAlphaColor.flush();
+        mForwardToAlphaRT = false;
+    }
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
     // <AYAstorm r30 P3 step 5> Volumetric Lighting also benefits from alpha
     // objects (foliage, fabric) being committed to the depth buffer so that
@@ -256,6 +327,44 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
         gGL.setColorMask(true, false);
     }
+
+    // <AYAstorm r30 P5 transparent-DoF L2-β> 2nd depth prepass at cutoff 0.5
+    // into the alpha-aware depth RT (mAYAAlphaDepth). The RT was initialised
+    // by pipeline.cpp before forward alpha to the opaque-only depth; here we
+    // re-inject only those alpha BLEND fragments whose texture alpha ≥ 0.5
+    // (window grilles, lace, foliage, etc.) so cofF treats them as subject.
+    // Hair-style low-alpha BLEND fragments (alpha ≈ 0.2) are discarded so
+    // the snapshotted background z survives and cofF blurs the background
+    // visible through the hair. Distinct from the prepass above which still
+    // writes deferredScreen.depth for atmospherics / HQ DoF gate.
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> When C-(a) is active the alpha
+    // BLEND color is composited as a separate plate on top of the DoF result,
+    // so cofF wants the opaque-only mAYAAlphaDepth snapshot. Re-injecting
+    // grille z here would tell cofF "this pixel is subject" and prevent bg
+    // blur behind grilles — exactly the regression C-(a) avoids. Skip the
+    // re-injection when mAYAAlphaColor is alive.
+    if (!LLPipeline::sImpostorRender && LLPipeline::RenderDepthOfField &&
+        !gCubeSnapshot && !LLPipeline::sRenderingHUDs &&
+        getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
+        gPipeline.mRT == &gPipeline.mMainRT &&
+        gPipeline.mAYAAlphaDepth.isComplete() &&
+        !gPipeline.mAYAAlphaColor.isComplete())
+    {
+        LL_PROFILE_GPU_ZONE("aya alpha depth re-inject");
+        gPipeline.mAYAAlphaDepth.bindTarget();
+
+        simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
+        simple_shader->bind();
+        simple_shader->setMinimumAlpha(0.5f);
+
+        gGL.setColorMask(false, false);
+        renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2,
+            true); // discard mostly transparent faces
+        gGL.setColorMask(true, false);
+
+        gPipeline.mAYAAlphaDepth.flush();
+    }
+    // </AYAstorm r30 P5 transparent-DoF L2-β>
 }
 
 void LLDrawPoolAlpha::forwardRender(bool rigged)
@@ -279,8 +388,23 @@ void LLDrawPoolAlpha::forwardRender(bool rigged)
 
     mColorSFactor = LLRender::BF_SOURCE_ALPHA;           // } regular alpha blend
     mColorDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA; // }
-    mAlphaSFactor = LLRender::BF_ZERO;                         // } glow suppression
-    mAlphaDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;       // }
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> When redirected to
+    // mAYAAlphaColor, switch alpha-channel factor to (ONE, 1-Sa) so the
+    // separate plate accumulates premultiplied alpha = src.a (correct
+    // coverage for "over" composite in dofCombineF). The default
+    // (ZERO, 1-Sa) is "glow suppression" and only makes sense when alpha
+    // is being written into mRT->screen.a (the scene buffer's glow channel).
+    if (mForwardToAlphaRT)
+    {
+        mAlphaSFactor = LLRender::BF_ONE;
+        mAlphaDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;
+    }
+    else
+    {
+        mAlphaSFactor = LLRender::BF_ZERO;                         // } glow suppression
+        mAlphaDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;       // }
+    }
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
     gGL.blendFunc(mColorSFactor, mColorDFactor, mAlphaSFactor, mAlphaDFactor);
 
     if (rigged && mType == LLDrawPool::POOL_ALPHA_POST_WATER)

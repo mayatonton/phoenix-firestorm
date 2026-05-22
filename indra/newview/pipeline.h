@@ -883,6 +883,31 @@ public:
     U32                     mSMAAFrameIndex = 0;
     // </AYAstorm r30 P2>
 
+    // <AYAstorm r30 P5 transparent-DoF L2-β> Alpha-aware depth buffer fed
+    // to cofF.glsl. Initialised from the pre-forward-alpha (opaque-only)
+    // depth, then re-overwritten only by alpha BLEND fragments whose
+    // texture alpha is >= the L2 cutoff (0.5). Net effect:
+    //   - opaque-only pixel        → opaque z (no regression)
+    //   - hair (alpha ≈ 0.2)       → opaque z behind hair (bg blurs)
+    //   - window grille (alpha≈0.7)→ grille z (treated as subject)
+    // Distinct from deferredScreen.depth which still records rigged-hair
+    // z (atmospherics / HQ DoF gate keep stock behaviour). Main RT only.
+    LLRenderTarget          mAYAAlphaDepth;
+    // </AYAstorm r30 P5 transparent-DoF L2-β>
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color attachment
+    // for forward alpha BLEND draws. Shares depth with mRT->screen so
+    // depth test / depth occlusion against opaque geometry still works,
+    // but color writes land in a separate RT instead of mRT->screen.
+    // After DoF runs on the opaque-only mRT->screen (= bg through alpha
+    // pixels is correctly blurred), this RT is composited over the DoF
+    // result in dofCombineF so alpha geometry (hair, grilles, foliage)
+    // overlays the blurred bg. Resolves the L1/L2 compositional
+    // ambiguity (subject vs bg depth in same pixel) by structurally
+    // keeping alpha color in its own channel. Main RT only.
+    LLRenderTarget          mAYAAlphaColor;
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR
     LLRenderTarget          mSceneMap;
