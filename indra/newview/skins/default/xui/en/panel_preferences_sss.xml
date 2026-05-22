@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <!-- <FS:AYA r20 Phase A> SSS preferences panel (Graphics > SSS sub-tab) -->
 <!-- <FS:AYA r30 P5 A6 → r30 P? r20 consolidation> B3 grey-out: pipeline.cpp:doSkinSSS() 早期
-     return 条件 `realism_enabled() <= 0 || !r20_enabled()` ─ SSS 描画は AYAstorm View (mode 1)
-     / Cinematic (mode 2) で走る。mode 0 (Firestorm View) では描画が走らないので UI も grey
-     out して整合を取る。helper cvar AYAR20SSSEffective ((mode > 0) の Boolean shadow、
-     llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で同期) を enabled_control
-     に bind。詳細: docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §5.10.A / §10 A6。 -->
+     return 条件 `realism_enabled() <= 0 || !r20_enabled()` ─ SSS 描画は legacy AYAstorm View
+     (mode 1) / 新 AYAstorm View (mode 2、旧 Cinematic) で走る。mode 0 (Firestorm View) では
+     描画が走らないので UI も grey out して整合を取る。helper cvar AYAR20SSSEffective
+     ((mode > 0) の Boolean shadow、llviewercontrol.cpp が AYAVisualRealismEnabled signal
+     listener で同期) を enabled_control に bind。詳細: docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md
+     §5.10.A / §10 A6、r30 release での picker 改編は docs/specs/ayastorm-r30-view-mode-reshuffle.md。 -->
 <panel
  follows="all"
  layout="topleft"

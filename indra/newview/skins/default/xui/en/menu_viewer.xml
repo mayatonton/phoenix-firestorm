@@ -2636,8 +2636,10 @@
       </menu>   
     
     <!-- <AYAstorm r30 P4 step 4a> AYAstorm top-level menu.
-         Houses Cinematic-mode controls and (future P5/P6+) AYAstorm-specific
-         post-processing toggles. Placed between Build and Help. -->
+         Houses AYAstorm View controls (旧 Cinematic mode、r30 release で promote) and
+         (future P5/P6+) AYAstorm-specific post-processing toggles. Placed between
+         Build and Help. 内部 floater 名は aya_cinematic のまま据え置き
+         (詳細: docs/specs/ayastorm-r30-view-mode-reshuffle.md §2.2). -->
     <menu
      create_jump_keys="true"
      label="AYAstorm"
