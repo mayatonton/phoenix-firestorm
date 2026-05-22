@@ -1,0 +1,196 @@
+<?xml version="1.0" ?>
+<!--
+  AYAstorm r30 BD full port Phase 5 A' (refined R2): Cinematic mode BD-parity
+  overlay — BD-X1 (16 件) + Phase 4 boot-time camera/path defaults (11 件)。
+
+  Mode 2 (Cinematic) で BD upstream `BlackDragon 995a1354d8` の描画 cvar
+  default を適用するための overlay。R2 (commit 49eafd0d6b) は 32 cvar を
+  一括 overlay 焼きしていたが、shader/pipeline trace audit (task #191) で
+  以下 2 種が混在していたことが判明:
+
+    - BD-X1 (16 件): shader uniform / kernel 配列構築に直接効く視覚 fidelity
+      cvar。Glow weight/閾値 8 + Shadow blur/bias 5 + SSAO 2 + spot shadow 1。
+      mode 2 で BD と同じ視覚を再現するには BD 値で焼く必然性あり。
+      本 file が overlay 対象とするのはこれら。
+      ※ `RenderShadowBiasError` は当初 17 件目だったが、本 viewer の formula
+      `shadow_bias = RenderShadowBias + RenderShadowBiasError * |cam.z|/3000`
+      (`pipeline.cpp:10193`) において BD 値 +0.1 が camera 高度 z≈30m で
+      shadow_bias を 0 に zero-crossing させ、地面 / 服に shadow acne 干渉縞
+      (#196 / #197) を発生させる。AY/FS default -0.007 を全 mode で共有する
+      ことで fringe 解消 (2026-05-20 AYA hands-on 検証 PASS)。これは BD pipeline
+      と本 viewer の cam.z scaling 適用粒度の差に起因する mismatch であり、
+      BD-X1 doctrine の例外として overlay から除外。
+    - BD-X2 (15 件): path 切替 / on-off 判定 / HW spec / scene cost / peer cost
+      判定に使われる cvar。RenderFarClip / RenderShadowDetail /
+      RenderAvatarMaxComplexity 等。user の HW/scene 判断で両 mode 共有すべき
+      もので、BD 値で焼く意義なし。**本 file から除外** (A' で 15 件削除)。
+
+  P5 確定仕様: 「Preference 設定は全 mode で共有 (1 cvar 1 値)、mode 2 専用の
+  cvar (BD-X1) は Preferences UI で mode 0/1 時に grey out (C' で実装予定)」。
+  audit-spec §5.10 (AY 固有 cvar の B3 grey-out) の思想を BD-borrow 側に
+  拡張した形。
+
+  Phase 4 boot-time defaults (11 件): 2026-05-22 編入。元は llviewerwindow.cpp
+  に hardcoded された「mode==2 時に毎起動で setF32/setBOOL/setU32 で焼き込み」
+  ブロック (Phase 4 当時の Cinematic 初起動 non-degenerate 担保コード) が、
+  user の floater customize を毎起動で潰す bug (CameraFocalLength 等が再起動で
+  消える) を起こしていた。sentinel-driven な overlay 機構に移管することで
+  「初起動 1 回だけ BD 値を焼き、以降は user 改変 (mValues[1]) を survive」
+  に修正。BD-X1 doctrine からは BD-X2/camera/path 寄りで外れるが、persistence
+  破壊を優先解決 (audit-spec §3.4 sentinel mechanism 再利用)。
+  ※ Reset D ボタン (`llviewermenu.cpp::AYAResetCinematic::parityTable`) の
+  値と一致させること。
+
+  形式: 平坦な LLSD map (cvar name -> value)。値の型は対応 cvar が settings.xml
+  に登録済の Type に従う (LLControlVariable::setValue が LLSD coercion を担当)。
+
+  適用契機 (`llcinematicoverlay.cpp` 実装):
+    - 起動時、AYAVisualRealismEnabled==2 かつ overlay 未適用 (sentinel
+      AYACinematicOverlayApplied==0) のとき
+    - LLViewerWindow::applyRecommendedSettings 後の force-reapply
+
+  mode 2 -> 1/0 切替時は sentinel をリセットするのみで cvar 値は触らない。
+  次回 mode 2 に戻る際に再 force-apply される。BD 値を編集しても本 overlay は
+  更新されないので、cvar default 変更時は本ファイルと parity-spec §4.6.2 の
+  両方を同期する。
+
+  本ファイルに無い cvar (BD-X2 残 + SSR Vector3 misdeclared 5 件 + BD-only
+  7 件) は別 phase で扱う (parity-spec §4.6.3 / §4.6.4、A' commit メッセージ参照)。
+-->
+<llsd>
+  <map>
+    <key>RenderGlowIterations</key>
+    <integer>5</integer>
+
+    <key>RenderGlowWidth</key>
+    <real>3.6</real>
+
+    <key>RenderGlowStrength</key>
+    <real>0.233</real>
+
+    <key>RenderGlowWarmthAmount</key>
+    <real>16.0</real>
+
+    <key>RenderGlowMaxExtractAlpha</key>
+    <real>0.03</real>
+
+    <key>RenderGlowMinLuminance</key>
+    <real>0.0</real>
+
+    <key>RenderGlowLumWeights</key>
+    <array>
+      <real>0.4</real>
+      <real>0.3</real>
+      <real>0.3</real>
+    </array>
+
+    <key>RenderGlowWarmthWeights</key>
+    <array>
+      <real>0.75</real>
+      <real>0.6</real>
+      <real>0.712</real>
+    </array>
+
+    <key>RenderShadowGaussian</key>
+    <array>
+      <real>1.25</real>
+      <real>2.0</real>
+      <real>0.0</real>
+    </array>
+
+    <key>RenderShadowBias</key>
+    <real>-0.001</real>
+
+    <!-- RenderShadowBiasError は header コメント参照のため除外 (BD +0.1 が
+         cam.z≈30m で shadow_bias zero-crossing → 地面 / 服に shadow acne fringe
+         #196 / #197)。AY/FS default -0.007 を全 mode で使用。 -->
+
+    <key>RenderShadowOffset</key>
+    <real>0.002</real>
+
+    <key>RenderShadowBlurSize</key>
+    <real>1.0</real>
+
+    <key>RenderShadowBlurDistFactor</key>
+    <real>0.01</real>
+
+    <key>RenderSSAOFactor</key>
+    <real>0.05</real>
+
+    <key>RenderSSAOMaxScale</key>
+    <integer>300</integer>
+
+    <key>RenderDeferredSpotShadowOffset</key>
+    <real>0.0</real>
+
+    <!-- Phase 4 boot-time defaults (元 llviewerwindow.cpp:2449-2462 hardcoded
+         ブロック、2026-05-22 編入)。Reset D ボタン
+         (llviewermenu.cpp::AYAResetCinematic::parityTable) と値同期必須。 -->
+
+    <key>RenderDepthOfField</key>
+    <boolean>1</boolean>
+
+    <key>RenderDepthOfFieldHighQuality</key>
+    <boolean>1</boolean>
+
+    <key>RenderMotionBlur</key>
+    <boolean>1</boolean>
+
+    <key>RenderMotionBlurStrength</key>
+    <integer>8</integer>
+
+    <key>RenderScreenSpaceReflections</key>
+    <boolean>1</boolean>
+
+    <key>RenderFSAAType</key>
+    <integer>2</integer>
+
+    <key>CameraFieldOfView</key>
+    <real>67.0</real>
+
+    <key>CameraFNumber</key>
+    <real>64.0</real>
+
+    <key>CameraFocalLength</key>
+    <real>10.0</real>
+
+    <key>CameraMaxCoF</key>
+    <real>11.9</real>
+
+    <key>CameraFocusTransitionTime</key>
+    <real>0.4</real>
+
+    <key>CameraDoFResScale</key>
+    <real>0.5</real>
+
+    <!-- r30 BD改善 FX タブ 2nd batch default (2026-05-22 編入)。AYAstorm View
+         で AYA さん tuning した値を Cinematic mode の初起動 default として
+         焼く。sentinel (AYACinematicOverlayApplied) で 1 回だけ焼き、以降は
+         user customize (mValues[1]) を survive。Reset D ボタン
+         (llviewermenu.cpp::AYAResetCinematic::parityTable) と値同期必須。 -->
+
+    <key>AYAR14VolumetricAtmosphereInCinematicEnabled</key>
+    <boolean>1</boolean>
+
+    <key>AYAR14Strength</key>
+    <real>0.2</real>
+
+    <key>AYAR16AerialPerspectiveInCinematicEnabled</key>
+    <boolean>1</boolean>
+
+    <key>AYAR16AerialPerspectiveStrength</key>
+    <real>0.5</real>
+
+    <key>AYAR17ColorTemperatureInCinematicEnabled</key>
+    <boolean>0</boolean>
+
+    <key>AYAR17Strength</key>
+    <real>0.5</real>
+
+    <key>AYAR18CloudVolumetricInCinematicEnabled</key>
+    <boolean>1</boolean>
+
+    <key>AYAR18CloudVolumetricStrength</key>
+    <real>0.7</real>
+  </map>
+</llsd>

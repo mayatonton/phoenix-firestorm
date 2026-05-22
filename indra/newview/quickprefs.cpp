@@ -143,6 +143,15 @@ FloaterQuickPrefs::~FloaterQuickPrefs()
 
 void FloaterQuickPrefs::onOpen(const LLSD& key)
 {
+    // <FS:AYA r30> aya_cinematic has none of QP's preset combos / hover slider /
+    // complexity widgets, and no quick_preferences.xml dynamic slots — every getChild
+    // here would manufacture a dummy. Bail before loadPresets() (which dereferences
+    // mWaterPresetsCombo et al.) and before the QP-only post-init wiring.
+    if (getIsAyaCinematic())
+    {
+        return;
+    }
+    // </FS:AYA r30>
     loadPresets();
     setSelectedEnvironment();
 
@@ -198,6 +207,14 @@ void FloaterQuickPrefs::onOpen(const LLSD& key)
 
 void FloaterQuickPrefs::initCallbacks()
 {
+    // <FS:AYA r30> aya_cinematic XUI has neither the preset combos nor the
+    // Restore_Btn / HoverHeightSlider / IndirectMaxComplexity widgets, so every
+    // getChild below would manufacture a dummy. Skip the QP-original wiring.
+    if (getIsAyaCinematic())
+    {
+        return;
+    }
+    // </FS:AYA r30>
     getChild<LLUICtrl>("WaterPresetsCombo")->setCommitCallback(boost::bind(&FloaterQuickPrefs::onChangeWaterPreset, this));
     getChild<LLUICtrl>("WLPresetsCombo")->setCommitCallback(boost::bind(&FloaterQuickPrefs::onChangeSkyPreset, this));
     getChild<LLUICtrl>("DCPresetsCombo")->setCommitCallback(boost::bind(&FloaterQuickPrefs::onChangeDayCyclePreset, this));
@@ -580,6 +597,15 @@ void FloaterQuickPrefs::setSelectedEnvironment()
 
 bool FloaterQuickPrefs::postBuild()
 {
+    // <FS:AYA r30> aya_cinematic owns its own XUI (floater_aya_cinematic.xml) and
+    // doesn't carry any of QP's preset combos / hover sliders / dynamic-editor
+    // widgets. Skip the entire QP-original postBuild path; the cinematic XUI's
+    // 200+ controls bind directly via their own control_name attributes.
+    if (getIsAyaCinematic())
+    {
+        return LLTransientDockableFloater::postBuild();
+    }
+    // </FS:AYA r30>
     // Phototools additions
     if (getIsPhototools())
     {

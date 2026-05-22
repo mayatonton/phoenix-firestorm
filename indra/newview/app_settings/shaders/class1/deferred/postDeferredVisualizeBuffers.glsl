@@ -36,6 +36,14 @@ void main()
 {
     vec4 diff = textureLod(diffuseRect, vary_fragcoord.xy, mipLevel);
 
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> BD remaps signed
+    // float gbuffer visualizations into [0,1] for inspection. AY shows
+    // the raw value so HDR debug stays comparable across views.
+#if AYASTORM_CINEMATIC
+    frag_color = (diff * 0.5 + 0.5);
+#else
     frag_color = diff;
+#endif
+    // </FS:AYA>
 }
 

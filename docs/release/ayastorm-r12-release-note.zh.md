@@ -1,6 +1,4 @@
-# AYAstorm r12 — 发布告知文案
-
-供粘贴到 GitHub release 页面的短文案。AYA 在确定发布时复制使用。
+# AYAstorm r12 — 发布公告
 
 功能详情常驻于面向用户的指南 (`docs/guides/3dstream-tag-guide.{ja,en,zh}.md`) 与各规格书。本告知只做导引 + 差异要点。
 

@@ -1,6 +1,6 @@
-# AYAstorm r15 — Release Announcement Draft
+# AYAstorm r15 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r15 is the next public release after r12.1 (the first release of the r10→r12.1 jump), bundling three steps (r13 + r14 + r15) into a single jump** — the final pillar of the audio-expression chapter (tag-based occlusion) together with the first two installments of the new "visual realism" chapter (atmospheric volume + light shafts).
+**r15 is the next public release after r12.1 (the first release of the r10→r12.1 jump), bundling three steps (r13 + r14 + r15) into a single jump** — the final pillar of the audio-expression chapter (tag-based occlusion) together with the first two installments of the new "visual realism" chapter (atmospheric volume + light shafts).
 
 Feature details live in the user-facing guide (`docs/guides/3dstream-tag-guide.{ja,en,zh}.md`) and the spec / roadmap docs. This note is link-only + diff highlights.
 

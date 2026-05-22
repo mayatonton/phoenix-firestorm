@@ -868,6 +868,13 @@ public:
         // Float array ready to be sent to GL
         std::vector<F32> mGLMp;
 
+        // <AYAstorm r30 P2> Previous frame's mGLMp for velocity buffer
+        // (lastMatrixPalette uniform consumed by avatarVelocityV.glsl /
+        // skinnedVelocityV.glsl).
+        std::vector<F32> mLastGLMp;
+        S32              mLastFrame = -1;
+        // </AYAstorm r30 P2>
+
         MatrixPaletteCache() :
             mFrame(gFrameCount - 1)
         {

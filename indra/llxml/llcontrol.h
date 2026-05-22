@@ -41,6 +41,10 @@
 
 class LLVector3;
 class LLVector3d;
+// <FS:AYAstorm:r30-bd-port> Phase 3.9
+class LLVector4;
+class LLVector2;
+// </FS:AYAstorm:r30-bd-port>
 class LLQuaternion;
 class LLColor4;
 class LLColor3;
@@ -55,6 +59,12 @@ typedef enum e_control_type
     TYPE_STRING,
     TYPE_VEC3,
     TYPE_VEC3D,
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdfunctions.cpp references TYPE_VEC2/TYPE_VEC4 in
+    // eControlType comparisons (vector widget commit handlers). No declare/get/set support yet;
+    // values exist for compile-time matching.
+    TYPE_VEC4,
+    TYPE_VEC2,
+    // </FS:AYAstorm:r30-bd-port>
     TYPE_QUAT,
     TYPE_RECT,
     TYPE_COL4,
@@ -111,6 +121,12 @@ private:
     validate_signal_t mValidateSignal;
     sanity_signal_t mSanitySignal;
 
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9 backing store for isLocked/min/max above.
+    bool mAYALocked = false;
+    F32  mAYAMinValue = 0.f;
+    F32  mAYAMaxValue = 0.f;
+    // </FS:AYAstorm:r30-bd-port>
+
 public:
     LLControlVariable(const std::string& name, eControlType type,
         LLSD initial, const std::string& comment,
@@ -135,6 +151,19 @@ public:
     bool isType(eControlType tp) { return tp == mType; }
 
     void resetToDefault(bool fire_signal = false);
+
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD adds per-control lock + min/max introspection
+    // (used by bdfunctions warning system). AY has no equivalent.
+    // We carry minimal state: a soft lock flag (no enforcement at set() time) and pass-throughs
+    // to getMin/getMax via the underlying control-variable defaults — BD's UI consults these
+    // only for warning-bound display.
+    bool isLocked() const { return mAYALocked; }
+    void setLocked(bool locked) { mAYALocked = locked; }
+    F32  getMinValue() const { return mAYAMinValue; }
+    F32  getMaxValue() const { return mAYAMaxValue; }
+    void setMinValue(F32 v) { mAYAMinValue = v; }
+    void setMaxValue(F32 v) { mAYAMaxValue = v; }
+    // </FS:AYAstorm:r30-bd-port>
 
     commit_signal_t* getSignal() { return &mCommitSignal; } // shorthand for commit signal
     commit_signal_t* getCommitSignal() { return &mCommitSignal; }
@@ -254,6 +283,10 @@ public:
     LLWString   getWString(std::string_view name);
     LLVector3   getVector3(std::string_view name);
     LLVector3d  getVector3d(std::string_view name);
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+    LLVector4   getVector4(std::string_view name);
+    LLVector2   getVector2(std::string_view name);
+    // </FS:AYAstorm:r30-bd-port>
     LLRect      getRect(std::string_view name);
     LLSD        getLLSD(std::string_view name);
     LLQuaternion    getQuaternion(std::string_view name);
@@ -292,6 +325,10 @@ public:
     void    setString(std::string_view  name, const std::string& val);
     void    setVector3(std::string_view name, const LLVector3 &val);
     void    setVector3d(std::string_view name, const LLVector3d &val);
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9
+    void    setVector4(std::string_view name, const LLVector4 &val);
+    void    setVector2(std::string_view name, const LLVector2 &val);
+    // </FS:AYAstorm:r30-bd-port>
     void    setQuaternion(std::string_view name, const LLQuaternion &val);
     void    setRect(std::string_view name, const LLRect &val);
     void    setColor4(std::string_view name, const LLColor4 &val);
@@ -324,6 +361,11 @@ public:
     U32 saveToFile(const std::string& filename, bool nondefault_only);
     U32 loadFromFile(const std::string& filename, bool default_values = false, bool save_values = true);
     void    resetToDefaults();
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD bdfunctions::doFactoryReset calls this on
+    // gSavedSettings and gSavedPerAccountSettings. We alias to resetToDefaults (same effect:
+    // every control returns to its declared default).
+    void    doFactoryReset() { resetToDefaults(); }
+    // </FS:AYAstorm:r30-bd-port>
     void    incrCount(std::string_view name);
 
     bool    mSettingsProfile;

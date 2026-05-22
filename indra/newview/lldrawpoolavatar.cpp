@@ -986,4 +986,125 @@ LLColor3 LLDrawPoolAvatar::getDebugColor() const
     return LLColor3(0.f, 1.f, 0.f);
 }
 
+// <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,
+// 995a1354d8). LGPL-2.1-only. Uses non-rigged gAvatarVelocityProgram with
+// the standard avatar skinning path. Rigged mesh attachments go through
+// other pools (Bump / Materials / PBR alpha) and pick up correct
+// per-bone velocity via uploadLastMatrixPalette on their rigged push.
+//
+// Known limitation: the avatar shader expects lastMatrixPalette[45] for
+// per-bone velocity, but BD does not upload it on this path, so the
+// skeleton mesh (head/body bones) only reflects camera + root motion,
+// not arm-wave/walk-cycle animation velocity. Acceptable for Cinematic
+// alpha; revisit in a later r30 step if needed.
+//
+// RenderMotionBlurSelfAvatar / OtherAvatars: when disabled, renderMotionBlur
+// returns early so the velocity RT (cleared to (0,0) at frame start in
+// renderGeomMotionBlur) keeps zero for this avatar's body pixels, and the
+// composite shader's speed-floor branch passes them through unblurred.
+
+S32 LLDrawPoolAvatar::getNumMotionBlurPasses()
+{
+    return 1;
+}
+
+void LLDrawPoolAvatar::beginMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+    sVertexProgram = &gAvatarVelocityProgram;
+
+    if (sShaderLevel > 0)
+    {
+        sRenderingSkinned = true;
+        sVertexProgram->bind();
+    }
+
+    sVertexProgram->uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
+    sVertexProgram->uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
+    sVertexProgram->uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
+
+    gGL.diffuseColor4f(1, 1, 1, 1);
+}
+
+void LLDrawPoolAvatar::endMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+    if (sShaderLevel > 0)
+    {
+        sVertexProgram->unbind();
+    }
+    sVertexProgram = NULL;
+    sRenderingSkinned = false;
+}
+
+void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+    LLGLEnable cull(GL_CULL_FACE);
+
+    if (mDrawFace.empty())
+    {
+        return;
+    }
+
+    const LLFace* facep = mDrawFace[0];
+    if (!facep->getDrawable())
+    {
+        return;
+    }
+    LLVOAvatar* avatarp = (LLVOAvatar*)facep->getDrawable()->getVObj().get();
+
+    if (avatarp->isDead() || avatarp->isUIAvatar() || avatarp->mDrawable.isNull())
+    {
+        return;
+    }
+
+    LLVOAvatar::AvatarOverallAppearance oa = avatarp->getOverallAppearance();
+    bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor();
+    if (avatarp->isTooSlow() || impostor || (oa == LLVOAvatar::AOA_INVISIBLE))
+    {
+        return;
+    }
+
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 02> Cinematic (= BD baseline)
+    // では本 helper を no-op にする。BD 995a1354d8 では renderMotionBlur 全体が
+    // /* ... */ で commented out であり、本 viewer も BD 完全移植方針
+    // (feedback_bd_full_port_only) に沿って同じ挙動を取る。
+    //
+    // 直接の原因: avatarVelocityV.glsl は lastMatrixPalette[45] を読むが、
+    // BD は本 path で uploadLastMatrixPalette() を呼ばないため shader が
+    // garbage (前 batch の rig 行列の残骸 or 未初期化 GPU memory) を読んで
+    // 巨大な last_clip → 巨大 velocity → diffuseRect が方向ベクトルに沿って
+    // 引き伸ばされ、緑等の lightning streak アーティファクトが発生する。
+    // BD baseline と同じく早期 return で本データ経路を絶つ。
+    //
+    // Rigged mesh attachments は他 pool (Bump / Materials / PBR alpha) の
+    // pushRiggedVelocityBatches* 経由で uploadLastMatrixPalette() を
+    // 正しく呼ぶので Cinematic 中も blur 対象として残る。
+    static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 0);
+    if (aya_view_mode == 2)
+    {
+        return;
+    }
+    // </FS:AYAstorm>
+
+    // <AYAstorm r30 P2> mode != 2 用 RenderMotionBlur{Self,Other}Avatars opt-out。
+    // 現状 velocity buffer は Cinematic (mode 2) のみ allocate されるため、
+    // renderGeomMotionBlur 自体が mode != 2 で early-return し、ここには到達
+    // しない (上の mode 2 ガードでも捕捉) — 将来 mode 0/1 で velocity buffer を
+    // 有効化する step が入った時の safety net として残す。
+    const bool self_blur   = gSavedSettings.getBOOL("RenderMotionBlurSelfAvatar");
+    const bool others_blur = gSavedSettings.getBOOL("RenderMotionBlurOtherAvatars");
+    if (avatarp->isSelf() ? !self_blur : !others_blur)
+    {
+        return;
+    }
+    // </AYAstorm r30 P2>
+
+    avatarp->renderSkinned();
+}
+// </AYAstorm r30 P2>
+
 

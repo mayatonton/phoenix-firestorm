@@ -165,6 +165,11 @@ public:
     void applyFXAA(LLRenderTarget* src, LLRenderTarget* dst);
     void generateSMAABuffers(LLRenderTarget* src);
     void applySMAA(LLRenderTarget* src, LLRenderTarget* dst);
+    // <AYAstorm r30 P2 step 5c> SMAA T2x temporal resolve. Blends the current
+    // post-SMAA frame with mSMAAHistory using velocityMap for reprojection,
+    // then copies the current frame into mSMAAHistory for the next frame.
+    void resolveSMAAT2x(LLRenderTarget* src, LLRenderTarget* dst);
+    // </AYAstorm r30 P2 step 5c>
     void renderDoF(LLRenderTarget* src, LLRenderTarget* dst);
     void copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst);
     void combineGlow(LLRenderTarget* src, LLRenderTarget* dst);
@@ -313,6 +318,23 @@ public:
     void renderGeomDeferred(LLCamera& camera, bool do_occlusion = false);
     void renderGeomPostDeferred(LLCamera& camera);
     void renderGeomShadow(LLCamera& camera);
+    // <AYAstorm r30 P2> Velocity pass for SMAA T2x / motion blur. Iterates
+    // each pool's renderMotionBlur() into mVelocityMap (RG16F). Cinematic
+    // mode only — caller (display() in Step 5) gates by mVelocityMap state.
+    void renderGeomMotionBlur();
+    // Step 5b: motion blur composite — samples diffuseRect along the velocity
+    // vector. Gated by mVelocityMap.isComplete() and RenderMotionBlurStrength > 0.
+    void renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* dst);
+    static bool             sVelocityRender;
+    // sT2xJitterEnabled lives further down with the other s* statics (~line 778).
+    // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — BD lineage
+    // 995a1354d8. Post-process pass between generateGlow and combineGlow;
+    // gated by AYAVisualRealismEnabled == 2 (Cinematic) and
+    // RenderVolumetricLighting at the call site. Pong'ed via mPostPing/Pong.
+    void renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst);
+    // </AYAstorm r30 P3>
     void bindLightFunc(LLGLSLShader& shader);
 
     // bind shadow maps
@@ -436,6 +458,15 @@ public:
     bool hasAnyRenderType(const U32 type, ...) const;
 
     static bool isWaterClip();
+
+    // <FS:AYAstorm r30 BD full port Phase 5 R3 (A4)>
+    // Cinematic mode 判定。R2 settings_cinematic_bd.xml overlay により mode 2 起動時に
+    // BD default が gSavedSettings に焼き込まれるため、render path 側は直接
+    // gSavedSettings.getX() を呼べばよい (R3 で getRenderCvar* helper 群は撤去済)。
+    // Cinematic 専用機能 (Volumetric Lighting / Motion Blur / DoF chain 等) の
+    // gate 判定にのみ本関数を使用する。
+    static bool isCinematicMode();
+    // </FS:AYAstorm>
 
     void setRenderTypeMask(U32 type, ...);
     // This is equivalent to 'setRenderTypeMask'
@@ -764,11 +795,22 @@ public:
     static bool             sDistortionRender;
     static bool             sImpostorRender;
     static bool             sImpostorRenderAlphaDepthPass;
+    // <AYAstorm r30 P2> True while SMAA T2x projection jitter is active
+    // (Cinematic mode only, mainline 3D scene only). Sub-RT passes
+    // (cube snapshot, reflection, shadow, impostor) leave it false so they
+    // don't pick up the half-pixel offset.
+    static bool             sT2xJitterEnabled;
+    // </AYAstorm r30 P2>
     static bool             sShowJellyDollAsImpostor;
     static bool             sUnderWaterRender;
     static bool             sRenderGlow;
     static bool             sTextureBindTest;
     static bool             sRenderAttachedLights;
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD-verbatim attached-light split (Cinematic only)
+    static bool             sRenderOtherAttachedLights;
+    static bool             sRenderOwnAttachedLights;
+    static bool             sRenderDeferredLights;
+    // </FS:AYAstorm:r30-bd-port>
     static bool             sRenderAttachedParticles;
     static bool             sRenderDeferred;
     static bool             sReflectionProbesEnabled;
@@ -837,6 +879,47 @@ public:
     // for mMainRT (top-level, not in RenderTargetPack).
     LLRenderTarget          mObjectIDBuffer;
     // </AYAstorm:r21.1>
+
+    // <AYAstorm r30 P2> Velocity buffer for Cinematic mode (imported from
+    // BD 995a1354d8). Two-channel RG16F = per-pixel NDC delta written by
+    // the velocity render pass. Shares depth with mRT->deferredScreen so
+    // the velocity pass agrees pixel-for-pixel with the gbuffer without
+    // re-writing depth. mSMAAHistory holds the previous frame's
+    // post-resolve color for SMAA T2x temporal reprojection. Both are
+    // allocated only when AYAVisualRealismEnabled == 2 (Cinematic),
+    // released otherwise to keep VRAM cost at zero in the other modes.
+    LLRenderTarget          mVelocityMap;
+    LLRenderTarget          mSMAAHistory;
+    // Toggles between 0 and 1 each frame that the T2x resolve runs. Drives
+    // the Halton jitter offset (step 5d) so that consecutive frames sample
+    // the two subpixel positions the resolve averages between.
+    U32                     mSMAAFrameIndex = 0;
+    // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P5 transparent-DoF L2-β> Alpha-aware depth buffer fed
+    // to cofF.glsl. Initialised from the pre-forward-alpha (opaque-only)
+    // depth, then re-overwritten only by alpha BLEND fragments whose
+    // texture alpha is >= the L2 cutoff (0.5). Net effect:
+    //   - opaque-only pixel        → opaque z (no regression)
+    //   - hair (alpha ≈ 0.2)       → opaque z behind hair (bg blurs)
+    //   - window grille (alpha≈0.7)→ grille z (treated as subject)
+    // Distinct from deferredScreen.depth which still records rigged-hair
+    // z (atmospherics / HQ DoF gate keep stock behaviour). Main RT only.
+    LLRenderTarget          mAYAAlphaDepth;
+    // </AYAstorm r30 P5 transparent-DoF L2-β>
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color attachment
+    // for forward alpha BLEND draws. Shares depth with mRT->screen so
+    // depth test / depth occlusion against opaque geometry still works,
+    // but color writes land in a separate RT instead of mRT->screen.
+    // After DoF runs on the opaque-only mRT->screen (= bg through alpha
+    // pixels is correctly blurred), this RT is composited over the DoF
+    // result in dofCombineF so alpha geometry (hair, grilles, foliage)
+    // overlays the blurred bg. Resolves the L1/L2 compositional
+    // ambiguity (subject vs bg depth in same pixel) by structurally
+    // keeping alpha color in its own channel. Main RT only.
+    LLRenderTarget          mAYAAlphaColor;
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR
@@ -1179,6 +1262,23 @@ public:
     static S32 RenderShadowSplits;
     static bool RenderDeferredSSAO;
     static F32 RenderShadowResolutionScale;
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD sidebar reads this to enable/disable manual shadow distance entries.
+    static bool RenderShadowAutomaticDistance;
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation (Cinematic only)
+    static LLVector4 RenderShadowResolution;
+    static LLVector4 RenderShadowFarClipVec;  // cvar: RenderShadowDistance
+    static LLVector2 RenderProjectorShadowResolution;
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar (Cinematic only)
+    static F32 RenderShadowFarClip;
+    static F32 RenderGlobalLightStrength;
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD live Post FX scalar cvar (Cinematic only)
+    static F32 RenderSepiaStrength;
+    static F32 RenderGreyscaleStrength;
+    static U32 RenderNumColors;
+    // </FS:AYAstorm:r30-bd-port>
     static bool RenderDelayCreation;
 //  static bool RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     static bool FreezeTime;
@@ -1198,6 +1298,11 @@ public:
     static LLVector3 PreviewDirection1;
     static LLVector3 PreviewDirection2;
     static F32 RenderGlowMinLuminance;
+    // <FS:AYAstorm r30 P4> Cinematic Controls GUI requires every exposed switch to do something.
+    // Wired up at pipeline.cpp gate points; see floater_aya_cinematic.xml.
+    static bool RenderDeferredBlurLight;
+    static bool RenderMotionBlur;
+    // </FS:AYAstorm r30 P4>
     static F32 RenderGlowMaxExtractAlpha;
     static F32 RenderGlowWarmthAmount;
     static LLVector3 RenderGlowLumWeights;

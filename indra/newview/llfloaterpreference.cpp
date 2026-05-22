@@ -5364,18 +5364,18 @@ void LLPanelPreferenceSSS::onDefaultBlurRadius()
 
 void LLPanelPreferenceSSS::onDefaultStrength()
 {
-    gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.7f);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.5f);
 }
 
 // <FS:AYA r20 Phase D>
 void LLPanelPreferenceSSS::onDefaultGlowGain()
 {
-    gSavedSettings.setF32("AYAR20AvatarSkinSSSGlowGain", 3.0f);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSGlowGain", 0.2f);
 }
 
 void LLPanelPreferenceSSS::onDefaultGlowColor()
 {
-    gSavedSettings.setColor4("AYAR20AvatarSkinSSSGlowColor", LLColor4(1.0f, 0.65f, 0.5f, 1.0f));
+    gSavedSettings.setColor4("AYAR20AvatarSkinSSSGlowColor", LLColor4(1.0f, 0.0f, 0.0f, 1.0f));
 }
 // </FS:AYA>
 
@@ -5383,9 +5383,9 @@ void LLPanelPreferenceSSS::onResetAll()
 {
     gSavedSettings.setBOOL("AYAR20AvatarSkinSSSEnabled", true);
     gSavedSettings.setF32("AYAR20AvatarSkinSSSBlurRadius", 1.0f);
-    gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.7f);
-    gSavedSettings.setF32("AYAR20AvatarSkinSSSGlowGain", 3.0f);  // <FS:AYA r20 Phase D>
-    gSavedSettings.setColor4("AYAR20AvatarSkinSSSGlowColor", LLColor4(1.0f, 0.65f, 0.5f, 1.0f));  // <FS:AYA r20 Phase D>
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSStrength", 0.5f);
+    gSavedSettings.setF32("AYAR20AvatarSkinSSSGlowGain", 0.2f);  // <FS:AYA r20 Phase D>
+    gSavedSettings.setColor4("AYAR20AvatarSkinSSSGlowColor", LLColor4(1.0f, 0.0f, 0.0f, 1.0f));  // <FS:AYA r20 Phase D>
     if (hasString("DefaultWhitelist"))
     {
         gSavedSettings.setString("AYAR20AvatarSkinSSSWhitelist", getString("DefaultWhitelist"));

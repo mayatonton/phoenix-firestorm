@@ -1,6 +1,6 @@
 # AYAstorm r16 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r16 is the third release of the visual-realism chapter (r14–r20)** — adds wavelength-dependent (Rayleigh λ⁻⁴) in-scatter weighting to the scene aerial perspective path so distant terrain shifts toward blue while preserving WindLight preset compatibility and **without touching the sky dome** (sun disc is structurally protected).
+**r16 is the third release of the visual-realism chapter (r14–r20)** — adds wavelength-dependent (Rayleigh λ⁻⁴) in-scatter weighting to the scene aerial perspective path so distant terrain shifts toward blue while preserving WindLight preset compatibility and **without touching the sky dome** (sun disc is structurally protected).
 
 > **Distribution**: r16 ships **bundled with the r23 release** (no standalone r16 tag). The r23 release page links back to this note and to the r16 spec.
 

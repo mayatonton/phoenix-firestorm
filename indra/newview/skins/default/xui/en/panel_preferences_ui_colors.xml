@@ -1,0 +1,1131 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<panel
+border="false"
+follows="left|top|right|bottom"
+height="408"
+label="UI Colors"
+layout="topleft"
+left="0"
+name="UI Colors"
+top="45"
+width="510">
+   <scroll_container
+   color="Transparent"
+   follows="all"
+   layout="topleft"
+   left="0"
+   name="ui_scroll"
+   opaque="true"
+   height="407"
+   width="509"
+   top="0">
+      <panel
+      layout="topleft"
+      follows="left|top|right"
+      height="944"
+      name="ui_colors_panel"
+      top="0"
+      left="0"
+      width="495">
+	 <panel
+ follows="left|top|right"
+ height="21"
+ bg_visible="true"
+ bg_alpha_color="0.10 0.43 0.77 0.28"
+ layout="topleft"
+ mouse_opaque="false"
+ left="1"
+ name="title"
+ top="0"
+ width="492"/>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="12"
+	 layout="topleft"
+	 left="10"
+	 mouse_opaque="false"
+	 name="name_colors"
+	 top_delta="5"
+	 width="240">
+	    Name Tag Colors:
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled_control="NameTagShowDisplayNames"
+	 layout="topleft"
+	 left="20"
+	 name="match"
+	 top_pad="15"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="NameTagMatch" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="NameTagMatch" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 top_delta="2"
+	 height="14"
+	 layout="topleft"
+	 word_wrap="true"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="same"
+	 width="265">
+Displayname and Username match
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 enabled_control="NameTagShowDisplayNames"
+	 name="mismatch"
+	 top_pad="7"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="NameTagMismatch" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="NameTagMismatch" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 top_delta="2"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="diffs"
+	 width="265">
+Displayname and Username differ
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="EmphasisColor_35"
+	 enabled_control="NameTagShowFriends"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="friends"
+	 top_pad="7"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="NameTagFriend" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="NameTagFriend" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 top_delta="2"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="highlighted"
+	 width="265">
+Highlighted Friendnames
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="EmphasisColor_35"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="usernames"
+	 top_pad="7"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="NameTagLegacy" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="NameTagLegacy" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 top_delta="2"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="legacy"
+	 width="265">
+Legacy Usernames
+	 </text>
+	 
+	 <panel
+ follows="left|top|right"
+ height="20"
+ bg_visible="true"
+ bg_alpha_color="0.10 0.43 0.77 0.28"
+ layout="topleft"
+ mouse_opaque="false"
+ left="1"
+ name="title"
+ top_pad="13"
+ width="492"/>
+	 <text
+	 follows="left|top"
+	 layout="topleft"
+	 left="10"
+	 height="12"
+	 name="font_colors" 
+	 top_delta="4" 
+	 width="120">
+	 Effect Colors:
+	 </text>  
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left="20"
+	 top_pad="15"
+	 name="effect_color_swatch"
+	 tool_tip="Click to open Color Picker"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="EffectColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="EffectColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 name="effects_color_textbox"
+	 top_delta="2"
+	 width="265">
+My own particle effects
+	 </text>
+  <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 top_pad="7"
+	 name="effect_color_swatch"
+	 tool_tip="Click to open Color Picker"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="ContextSilhouetteColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="ContextSilhouetteColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 name="effects_color_textbox"
+	 top_delta="2"
+	 width="265">
+Object selection highlights
+	 </text>
+	 
+	 <panel
+ follows="left|top|right"
+ height="20"
+ bg_visible="true"
+ bg_alpha_color="0.10 0.43 0.77 0.28"
+ layout="topleft"
+ mouse_opaque="false"
+ left="1"
+ name="title"
+ top_pad="13"
+ width="492"/>
+	 <text
+	 follows="left|top"
+	 layout="topleft"
+	 left="10"
+	 height="12"
+	 name="font_colors" 
+	 top_delta="4" 
+	 width="120">
+	 Chat Colors:
+	 </text>  
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left="20"
+	 name="user"
+	 top_pad="15"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="UserChatColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="UserChatColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box1"
+	 top_delta="2"
+	 width="95">
+	 Me
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="agent"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="AgentChatColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="AgentChatColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box2"
+	 top_delta="2"
+	 width="95">
+	 Others
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="LtGray"
+	 follows="left|top"
+	 height="40"
+	 label_width="44"
+	 layout="topleft"
+	 left="20"
+	 name="system"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="SystemChatColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="SystemChatColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box4"
+	 top_delta="2"
+	 width="95">
+	 System
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="Red"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="script_error"
+	 top_pad="7"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="ScriptErrorColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="ScriptErrorColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box5"
+	 top_delta="2"
+	 width="95">
+	 Errors
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="EmphasisColor_35"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="objects"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="ObjectChatColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="ObjectChatColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box6"
+	 top_delta="2"
+	 width="95">
+	 Objects
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="LtYellow"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="owner"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="llOwnerSayChatColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="llOwnerSayChatColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box7"
+	 top_delta="2"
+	 width="95">
+	 Owner
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="EmphasisColor"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="links"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="HTMLLinkColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="HTMLLinkColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box9"
+	 top_delta="2"
+	 width="95">
+	 URLs
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 color="LtOrange"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 top_pad="7"
+	 name="direct"
+	 tool_tip="Choose color for bubble chat"
+	 width="44">
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="DirectChatColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="DirectChatColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box11"
+	 top_delta="2"
+	 width="95">
+	 Direct
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="friend"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="FriendChatColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="FriendChatColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box30"
+	 top_delta="2"
+	 width="95">
+	 Friends
+	 </text>
+	 
+	 <panel
+ follows="left|top|right"
+ height="20"
+ bg_visible="true"
+ bg_alpha_color="0.10 0.43 0.77 0.28"
+ layout="topleft"
+ mouse_opaque="false"
+ left="1"
+ name="title"
+ top_pad="13"
+ width="492"/>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="12"
+	 layout="topleft"
+	 left="10"
+	 name="pie_colors_label"
+	 top_delta="4"
+	 width="300">Pie Menu Colors:</text>
+ 
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left="20"
+	 name="pie_bg"
+	 top_pad="15"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="PieMenuBgColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="PieMenuBgColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box4"
+	 top_delta="2"
+	 width="295">
+	     Pie Menu Background
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="pie_line"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="PieMenuLineColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="PieMenuLineColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box5"
+	 top_delta="2"
+	 width="295">
+	     Pie Menu Lines
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="pie_selected"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="PieMenuSelectedColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="PieMenuSelectedColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box6"
+	 top_delta="2"
+	 width="295">
+		     Pie Menu Selected
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="pie_text"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="PieMenuTextColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="PieMenuTextColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="text_box7"
+	 top_delta="2"
+	 width="295">
+		     Pie Menu Text
+	 </text>
+	 <panel
+ follows="left|top|right"
+ height="20"
+ bg_visible="true"
+ bg_alpha_color="0.10 0.43 0.77 0.28"
+ layout="topleft"
+ mouse_opaque="false"
+ left="1"
+ name="title"
+ top_pad="13"
+ width="492"/>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="12"
+	 layout="topleft"
+	 left="10"
+	 name="pie_colors_label"
+	 top_delta="4"
+	 width="300">Widget Colors:</text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left="20"
+	 name="buttonimage"
+	 top_pad="15"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="ButtonImageColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="ButtonImageColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="button_text"
+	 top_delta="2"
+	 width="150">
+	   Buttons
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="buttonlabel"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="ButtonLabelColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="ButtonLabelColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="button_label_text"
+	 top_delta="2"
+	 width="150">
+	   Button Label
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="focus"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="FocusColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="FocusColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="focus_text"
+	 top_delta="2"
+	 width="150">
+	   Focus
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="inventory_item"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="InventoryItemSuffixColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="InventoryItemSuffixColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="inventory_item_text"
+	 top_delta="2"
+	 width="150">
+	   Inventory Item
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="inventory_link"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="InventoryItemLinkColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="InventoryItemLinkColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="inventory_link_text"
+	 top_delta="2"
+	 width="150">
+	   Inventory Link
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="map_avatars"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="MapAvatarColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="MapAvatarColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="map_avatars_text"
+	 top_delta="2"
+	 width="150">
+	   Avatars on Map
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="map_friend"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="MapAvatarFriendColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="MapAvatarFriendColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="map_friend_text"
+	 top_delta="2"
+	 width="150">
+	   Friends on Map
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="self"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="MapAvatarSelfColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="MapAvatarSelfColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="self_text"
+	 top_delta="2"
+	 width="150">
+	   Self on Map
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="map_frustum"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="MapFrustumColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="MapFrustumColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="map_frustum_text"
+	 top_delta="2"
+	 width="150">
+	   Viewdistance on Map
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="map_track"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="MapTrackColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="MapTrackColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="map_track_text"
+	 top_delta="2"
+	 width="150">
+	   Tracker on Map
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 enabled_control="MiniMapChatRing"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="ring"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="MapChatRingColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="MapChatRingColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 enabled_control="MiniMapChatRing"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="chatrange_text"
+	 top_delta="2"
+	 width="150">
+	   Chat-Range Ring
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="toolbar_dropzone"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="ToolbarDropZoneColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="ToolbarDropZoneColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="toolbar_dropzone_text"
+	 top_delta="2"
+	 width="150">
+	   Toolbar Dropzone
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="labels"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="LabelTextColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="LabelTextColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="labels_text"
+	 top_delta="2"
+	 width="150">
+	   Text
+	 </text>
+	 <color_swatch
+	 can_apply_immediately="true"
+	 follows="left|top"
+	 height="40"
+	 enabled="true"
+	 layout="topleft"
+	 left_delta="-49"
+	 name="disabled_labels"
+	 top_pad="7"
+	 width="44" >
+	 <color_swatch.init_callback
+	 function="Pref.getUIColor"
+	 parameter="LabelDisabledColor" />
+	 <color_swatch.commit_callback
+	 function="Pref.applyUIColor"
+	 parameter="LabelDisabledColor" />
+	 </color_swatch>
+	 <text
+	 type="string"
+	 length="1"
+	 follows="left|top"
+	 height="14"
+	 layout="topleft"
+	 left_pad="5"
+	 mouse_opaque="false"
+	 name="disabled_labels_text"
+	 top_delta="2"
+	 width="150">
+	   Disabled Text
+	 </text>
+      </panel>
+   </scroll_container>
+</panel>

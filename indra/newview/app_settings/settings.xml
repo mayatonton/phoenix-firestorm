@@ -2032,6 +2032,30 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <!-- <FS:AYAstorm r30 P4> Headless Cinematic cvar audit -->
+    <key>AYAuditMode</key>
+    <map>
+      <key>Comment</key>
+      <string>Run Cinematic cvar audit on login: sweep all bound cvars, dump snapshots, then quit.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAuditOutputDir</key>
+    <map>
+      <key>Comment</key>
+      <string>Directory where AYAudit snapshots are written.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>/tmp/aya-audit</string>
+    </map>
+    <!-- </FS:AYAstorm r30 P4> -->
     <key>AutoMimeDiscovery</key>
     <map>
       <key>Comment</key>
@@ -9921,19 +9945,80 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYA> -->
 
-    <!-- <FS:AYA> r14: Visual Realism (写真的リアリティ章) master switch
-         Type は combo_box (Firestorm View=0 / AYAstorm View=1) と確実に binding するため U32。
-         0=Firestorm 標準描画、1=AYAstorm 大気拡張 (r14+r15+r16+r18 一括) -->
+    <!-- <FS:AYA> r30 P5 R2: Cinematic mode BD-parity overlay 適用状態 sentinel。
+         settings_cinematic_bd.xml が現セッションで適用済みかを記録。AYAVisualRealismEnabled==2
+         かつ本値==0 のとき llcinematicoverlay::applyCinematicOverlayIfNeeded が overlay を
+         適用して 1 に立てる。mode 2 -> 1/0 切替時は 0 にリセット、再度 2 になった際に再適用。
+         User がこの値を手で 1 にすると次回 mode 2 起動時に overlay 適用がスキップされる
+         (force restore したい場合は 0 に戻す)。詳細:
+         docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §3.4 (architecture decision)。 -->
+    <key>AYACinematicOverlayApplied</key>
+    <map>
+      <key>Comment</key>
+      <string>Sentinel: settings_cinematic_bd.xml が現セッションで Cinematic mode に適用済みなら 1、未適用なら 0。llcinematicoverlay モジュールが管理。手動で 0 に戻すと次回 mode 2 起動時に新しい描画エンジン parity 値が force-apply される</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
+    <!-- <FS:AYA> r30 P5 C': Cinematic mode 中フラグ (XUI enabled_control 用 Boolean shadow)。
+         AYAVisualRealismEnabled は U32 (0/1/2) で LL XUI enabled_control の Boolean binding に
+         直結できないため、本 helper cvar を介して BD-X1 cvar の UI widget を mode 0/1 で grey out。
+         llviewercontrol.cpp の AYAVisualRealismEnabled signal listener が値を同期 (mode==2 -> 1)。
+         Persist=0: 起動時に常に listener が同期するので保存不要。詳細:
+         docs/specs/ayastorm-r30-p5-bd-parity-spec.md §10 (C' helper cvar)。 -->
+    <key>AYACinematicModeActive</key>
+    <map>
+      <key>Comment</key>
+      <string>Helper Boolean shadow of (AYAVisualRealismEnabled==2). LL XUI enabled_control に渡して新しい描画エンジン X1 mode 2 専用 cvar の widget を mode 0/1 時に grey out するための shadow。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
+    <!-- <FS:AYA> r30 P5 A6 → r30 P? r20 consolidation: AYAR20 SSS effective フラグ。
+         pipeline.cpp:doSkinSSS() 早期 return 条件 `realism_enabled() <= 0 || !r20_enabled()` に対応
+         ─ SSS 描画パスは AYAstorm View (mode 1) と Cinematic (mode 2) の両方で走る。Preferences >
+         Graphics > SSS タブ root の enabled_control に bind し、mode 0 (Firestorm View) では UI を
+         grey out。AYAR20AvatarSkinSSSEnabled が mode 1/2 共通 cvar になった consolidation に追従。
+         AYACinematicModeActive と同様の helper shadow で、AYAVisualRealismEnabled (U32) → Boolean
+         conversion 用。詳細: docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §5.10.A / §10 A6。 -->
+    <key>AYAR20SSSEffective</key>
+    <map>
+      <key>Comment</key>
+      <string>Helper Boolean shadow of (AYAVisualRealismEnabled &gt; 0). XUI enabled_control 用、SSS 描画パスが走る mode 1 / 2 のときだけ Preferences &gt; Graphics &gt; SSS タブ全体を active にする。llviewercontrol.cpp が AYAVisualRealismEnabled signal listener で値同期、Persist=0</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYA> -->
+
+    <!-- <FS:AYA> r14: AYAstorm View Mode 切替。r30 P1 で 3 値拡張、r30 release で picker は 2 件表示に
+         縮退 (Firestorm View=0 / AYAstorm View=2)。旧 value=1 (legacy AYAstorm View) は internal code path
+         を残置しつつ UI から削除、起動時 migration で 1→2 へ書換 (AYAViewModeMigrationVersion 参照)。
+         Type は combo_box との確実な binding のため U32 のまま。変更は viewer 再起動が必要。
+         詳細: docs/specs/ayastorm-r30-cinematic-chapter.md / docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md -->
     <key>AYAVisualRealismEnabled</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm 視覚的リアリティ章 (r14+) の master switch。0=Firestorm View (r13 までの見え方)、1=AYAstorm View (volumetric atmosphere / godrays / aerial perspective / cloud volumetric を有効化)</string>
+      <string>AYAstorm View Mode 切替。UI picker は 2 件 (0=Firestorm View 上流 Firestorm 標準描画 / 2=AYAstorm View 新しい描画エンジン 995a1354d8 1:1 完全移植 + r14-r20 個別 opt-in)。内部に legacy value=1 (旧 r14+ 視覚表現 mode、UI 削除済 / 起動時 migration で 2 に書換) を残置。変更には viewer 再起動が必要</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>U32</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>2</integer>
     </map>
     <!-- </FS:AYA> -->
 
@@ -9964,6 +10049,31 @@ Change of this parameter will affect the layout of buttons in notification toast
       <integer>1</integer>
     </map>
     <!-- </FS:AYA> -->
+
+    <!-- <FS:AYAstorm r30 BD改善> r17 Cinematic opt-in + strength -->
+    <key>AYAR17ColorTemperatureInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r17 Color Temperature (太陽 Kelvin modulator) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR17ColorTemperatureEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR17Strength</key>
+    <map>
+      <key>Comment</key>
+      <string>r17 Color Temperature (太陽 Kelvin modulator) の強度を 0=OFF 相当 (white modulator) / 1=現在の ON 相当 (full Kelvin shift) で連続 lerp。live cvar (再起動不要)。AYAR17ColorTemperatureEnabled (AYAstorm View) または AYAR17ColorTemperatureInCinematicEnabled (Cinematic) が ON のときに効く。getR17SunModulator() の戻り値を LLColor3::white と Kelvin RGB の間で連続補間 (llsettingsvo.cpp)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.5</real>
+    </map>
+    <!-- </FS:AYAstorm> -->
 
     <!-- <FS:AYA r18> Cloud Volumetric individual switch -->
     <key>AYAR18CloudVolumetricEnabled</key>
@@ -10011,13 +10121,13 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR20AvatarSkinSSSEnabled</key>
     <map>
       <key>Comment</key>
-      <string>r20 Avatar Skin SSS P0a prototype: screen-space 5-tap separable blur (wavelength-dependent per-channel weights) で全画面に SSS 風 diffusion を適用。P0a は whitelist 判別なし — SSS の見た目そのものを評価するための prototype。AYAVisualRealismEnabled (master) とは独立に r20 効果のみ ON/OFF 可能 (master ON 前提)</string>
+      <string>r20 Avatar Skin SSS: screen-space 5-tap separable blur (wavelength-dependent per-channel weights) を whitelist 一致 avatar 肌 pixel に適用。AYAVisualRealismEnabled &gt; 0 のときに有効化判定対象 (mode 1 AYAstorm View / mode 2 Cinematic 共通の 1 cvar dispatch)。default OFF — 配信者が肌質感を判定したうえで opt-in</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>0</integer>
     </map>
     <key>AYAR20AvatarSkinSSSBlurRadius</key>
     <map>
@@ -10033,29 +10143,29 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR20AvatarSkinSSSStrength</key>
     <map>
       <key>Comment</key>
-      <string>r20 P0a tuning: SSS blur と元画面の mix 比率 (0.0 = OFF 相当 / 1.0 = blur 100%)。default 0.7。look 判定中の live iteration 用 — 確定値が決まったら hard-code 化予定</string>
+      <string>r20 P0a tuning: SSS blur と元画面の mix 比率 (0.0 = OFF 相当 / 1.0 = blur 100%)。default 0.5 (AYA 確定値、2026-05-23)。look 判定中の live iteration 用</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>F32</string>
       <key>Value</key>
-      <real>0.7</real>
+      <real>0.5</real>
     </map>
     <key>AYAR20AvatarSkinSSSGlowGain</key>
     <map>
       <key>Comment</key>
-      <string>r20 Phase D: SSS blur 後の lit^3 に additive を足す gain。SSS で眠くなった hi-light を peak だけ非対称に持ち上げる。default 1.0 (warm-salmon color と組み合わせて血色感を控えめに補強)</string>
+      <string>r20 Phase D: SSS blur 後の lit^3 に additive を足す gain。SSS で眠くなった hi-light を peak だけ非対称に持ち上げる。default 0.2 (AYA 確定値、2026-05-23: red glow color と組み合わせて控えめな血色感)</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>F32</string>
       <key>Value</key>
-      <real>1.0</real>
+      <real>0.2</real>
     </map>
     <key>AYAR20AvatarSkinSSSGlowColor</key>
     <map>
       <key>Comment</key>
-      <string>r20 Phase D: glow restore additive の色。真っ白だと「肌が発光してる」感が出るので、default は warm salmon (1.0, 0.65, 0.5)。配信者が血色感や肌色に合わせて調整可能。alpha は未使用</string>
+      <string>r20 Phase D: glow restore additive の色。default pure red (1.0, 0.0, 0.0) (AYA 確定値、2026-05-23)。配信者が血色感や肌色に合わせて調整可能。alpha は未使用</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -10063,8 +10173,8 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <array>
         <real>1.0</real>
-        <real>0.65</real>
-        <real>0.5</real>
+        <real>0.0</real>
+        <real>0.0</real>
         <real>1.0</real>
       </array>
     </map>
@@ -10080,6 +10190,143 @@ Change of this parameter will affect the layout of buttons in notification toast
       <string></string>
     </map>
     <!-- </FS:AYA> -->
+
+    <!-- <FS:AYAstorm r30 BD 改善 phase> AYAstorm View r14-r20 (r17 除外) を Cinematic
+         mode に opt-in 解禁する個別 cvar。各 false default で起動時の Cinematic 画面は
+         BD parity ベースのまま、AYA さんが Cinematic Controls 「AYAstorm View Effects」
+         tab から live A/B で確認しながら有効化判断する。
+         feedback_visual_decisions_need_live_ab.md より「机上で BD vs AYAstorm を選ばず、
+         全候補を live cvar で flip 可能にしてから AYA に渡す」 -->
+    <key>AYAR14VolumetricAtmosphereInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r14 Volumetric Atmosphere (altitude density + scene-referred linear integration) を Cinematic mode で有効化。default ON、live cvar (再起動不要)。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View (mode 1) では本 cvar に関係なく常時 ON で従来動作</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR14Strength</key>
+    <map>
+      <key>Comment</key>
+      <string>r14 効果 (Volumetric Atmosphere + Sun Dazzle) の強度を 0=OFF 相当 / 1=現在の ON 相当 で連続 lerp。live cvar (再起動不要)。AYAVisualRealismEnabled==2 かつ AYAR14VolumetricAtmosphereInCinematicEnabled=1 のとき (および AYAstorm View mode==1 のとき) に効く。altitude density (atmosphericsFuncs.glsl) と scene-referred 積分 (skyV.glsl 含む 3 箇所) の両方を 1 つの scalar で lerp する</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.2</real>
+    </map>
+    <key>AYAR15GodraysInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r15 Godrays (godraysF post-process pass) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View (mode 1) では従来通り常時 ON</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR16AerialPerspectiveStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>r16 Aerial Perspective (Rayleigh λ^-4) の強度を 0=OFF 相当 / 1=現在の ON 相当 で連続 lerp。live cvar (再起動不要)。AYAR16AerialPerspectiveEnabled (AYAstorm View) または AYAR16AerialPerspectiveInCinematicEnabled (Cinematic) が ON のときに効く。rayleigh_w を vec3(1.0) と vec3(1.0, 2.33, 5.71) の間で連続補間 (atmosphericsFuncs.glsl)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.5</real>
+    </map>
+    <key>AYAR16AerialPerspectiveInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r16 Aerial Perspective (Rayleigh λ^-4 波長依存散乱) を Cinematic mode で有効化。default ON、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR16AerialPerspectiveEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR18CloudVolumetricStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>r18 Cloud Volumetric (slab raymarch) の強度を 0=OFF 相当 / 1=現在の ON 相当 で連続 lerp。live cvar (再起動不要)。AYAR18CloudVolumetricEnabled (AYAstorm View) または AYAR18CloudVolumetricInCinematicEnabled (Cinematic) が ON のときに効く。alpha1 を legacy flat path と volumetric raymarch path の間で連続補間 (cloudsF.glsl)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.7</real>
+    </map>
+    <key>AYAR18CloudVolumetricInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r18 Cloud Volumetric (slab raymarch 疑似体積雲) を Cinematic mode で有効化。default ON、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR18CloudVolumetricEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR19TranslucencyInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r19 Translucency (wrap-around diffuse + back-light transmission) を Cinematic mode で有効化。default OFF、live cvar。AYAVisualRealismEnabled==2 のとき有効。AYAstorm View では AYAR19TranslucencyEnabled (既存) に従う</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR20AvatarSkinSSSInCinematicEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>DEPRECATED (r30 P? r20 consolidation): AYAR20AvatarSkinSSSEnabled が mode 1/2 共通の単一 dispatch cvar になったため不要。本 entry は AYAR20SSSMigrationVersion==0 の起動時に旧値を読み出して新 cvar (AYAR20AvatarSkinSSSEnabled) に OR 合成するためだけに残置。migration 後は触らない</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR20SSSMigrationVersion</key>
+    <map>
+      <key>Comment</key>
+      <string>r20 SSS cvar migration counter。default 0。起動時 llappviewer.cpp で version &lt; 1 を検出したら、旧 AYAR20AvatarSkinSSSInCinematicEnabled の値を新 AYAR20AvatarSkinSSSEnabled に OR 合成して version=1 に bump。version 番号は将来の cvar 整理時に +1 ずつ進める想定</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
+    <!-- <FS:AYAstorm> r30 release: AYAVisualRealismEnabled view mode migration counter。
+         r30 release で picker から旧 AYAstorm View (value=1) を削除、Cinematic (value=2) を
+         "AYAstorm View" として promote。version &lt; 1 検出時に持続 cvar の値 1 を 2 に書換、
+         version=1 に bump (llcinematicoverlay::applyAYAViewModeMigrationIfNeeded)。
+         旧 release から upgrade してきたユーザーの View Mode 選択を保ったまま新エンジンに乗せ替える。
+         一度 migration を通った後は no-op。 -->
+    <key>AYAViewModeMigrationVersion</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAVisualRealismEnabled view mode migration counter。default 0。起動時 llappviewer.cpp で version &lt; 1 を検出したら AYAVisualRealismEnabled==1 (legacy AYAstorm View) を 2 (新 AYAstorm View = 旧 Cinematic) に書換、version=1 に bump。version 番号は将来の view mode 再編時に +1 ずつ進める想定</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
 
     <key>PluginInstancesLow</key>
     <map>
@@ -11112,7 +11359,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderBufferVisualization</key>
   <map>
     <key>Comment</key>
-    <string>Outputs a selected buffer to the screen.  -1 = final render buffer.  0 = Albedo, 1 = Specular/ORM, 2 = Normal, 3 = Emissive, 4 = Eye luminance, 5 = FXAA Luminance/SMAA Edge Tex, 6 = SMAA Blend Weights</string>
+    <string>Outputs a selected buffer to the screen.  -1 = final render buffer.  0 = Albedo, 1 = Specular/ORM, 2 = Normal, 3 = Emissive, 4 = Eye luminance, 5 = FXAA Luminance/SMAA Edge Tex, 6 = SMAA Blend Weights, 7 = AYAstorm Velocity (Cinematic only)</string>
     <key>Persist</key>
     <integer>0</integer>
     <key>Type</key>
@@ -11413,6 +11660,99 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Value</key>
     <integer>4</integer>
   </map>
+  <!-- <FS:AYAstorm r30 BD full port Phase 3.4 part 3>
+       BD-only cvars (BD 995a1354d8 indra/newview/app_settings/settings.xml).
+       AY に存在しなかった 7 cvar を BD default 値で追加。
+       mode 2 (Cinematic) では LLPipeline::getRenderCvarXxx helper が
+       BD default に固定するため、本値は mode 0/1 でのみ読まれる初期値。
+       詳細: docs/specs/ayastorm-r30-bd-full-port-inventory.md §3.1 -->
+  <key>RenderAvatar</key>
+  <map>
+    <key>Comment</key>
+    <string>Render Avatars</string>
+    <key>Persist</key>
+    <integer>0</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <key>RenderDelayVBUpdate</key>
+  <map>
+    <key>Comment</key>
+    <string>Delay vertex buffer updates until just before rendering</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+  <key>RenderMotionBlur</key>
+  <map>
+    <key>Comment</key>
+    <string>Enable per-object motion blur velocity buffer generation.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+  <key>RenderScreenSpaceReflectionMaxDepth</key>
+  <map>
+    <key>Comment</key>
+    <string>Maximum depth from the camera to attempt a trace.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>256</real>
+  </map>
+  <key>RenderScreenSpaceReflectionMaxRoughness</key>
+  <map>
+    <key>Comment</key>
+    <string>Maximum permitted roughness for screen space reflections.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+  <key>RenderScreenSpaceReflectionSplitEnd</key>
+  <map>
+    <key>Comment</key>
+    <string>Ending splits for each SSR pass.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector3</string>
+    <key>Value</key>
+    <array>
+      <real>25</real>
+      <real>150</real>
+      <real>1000</real>
+    </array>
+  </map>
+  <key>RenderScreenSpaceReflectionSplitStart</key>
+  <map>
+    <key>Comment</key>
+    <string>Starting splits for each SSR pass.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector3</string>
+    <key>Value</key>
+    <array>
+      <real>0</real>
+      <real>5</real>
+      <real>50</real>
+    </array>
+  </map>
+  <!-- </FS:AYAstorm> -->
+
   <key>RenderBumpmapMinDistanceSquared</key>
     <map>
       <key>Comment</key>
@@ -11942,6 +12282,150 @@ Change of this parameter will affect the layout of buttons in notification toast
     <integer>0</integer>
   </map>
 
+  <key>RenderMotionBlurStrength</key>
+  <map>
+    <key>Comment</key>
+    <string>Maximum motion blur length in pixels (higher = stronger blur). New render engine parity: type S32 (was U32, AYAstorm r30 Phase 3.4 part 4 aligned to upstream 995a1354d8). 0 = off (only active when AYAVisualRealismEnabled=2 Cinematic).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>S32</string>
+    <key>Value</key>
+    <integer>32</integer>
+  </map>
+
+  <key>RenderMotionBlurSelfAvatar</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P2: include the self avatar in the velocity buffer so motion blur applies to first-person/own movement. Disable to keep the self avatar crisp regardless of camera/limb motion.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderMotionBlurOtherAvatars</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P2: include other avatars in the velocity buffer so motion blur applies to their movement. Disable to keep other avatars crisp (useful for portrait/group shots where only environment motion should smear).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderVolumetricLighting</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: enable volumetric lighting (godrays) in Cinematic mode. Only active when AYAVisualRealismEnabled=2 (Cinematic) so the post-process pass is dispatched.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderVolumetricLightingResolution</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: godray sample count per pixel for the volumetric lighting composite (new render engine's RenderVolumetricLightingResolution). Higher = smoother shafts, higher GPU cost. The shader's inner loop iterates (godray_res - 1) times, so values &lt;= 1 effectively disable the effect.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>16</integer>
+  </map>
+
+  <key>RenderVolumetricLightingMultiplier</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). The new render engine's default is 1.0, but AYAstorm's ACES tone mapping + HDR scene buffer compress the additive contribution to near-imperceptible at 1.0. Default 50 picked for "現実世界に近い" subtle shafts; raise to 100-200 for stronger PV/cinematic look.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>50.0</real>
+  </map>
+
+  <key>RenderVolumetricLightingFalloffMultiplier</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: distance falloff multiplier for volumetric lighting (falloff_multiplier uniform). Higher values fade godrays out faster with depth.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+
+  <key>RenderVolumetricLightingDirectional</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P3: fade volumetric lighting out when the sun is below the horizon (sun_dir.z &lt; 0). Adds the GODRAYS_FADE permutation to gVolumetricLightProgram so no shafts hang in mid-air at night. Toggling this rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderDepthOfFieldHighQuality</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4: enable the new render engine's high quality Depth of Field shader (postDeferredHQDoFF.glsl) with 4x CoF, depth-gated sampling, and per-channel chroma sampling. Only active when AYAVisualRealismEnabled=2 (Cinematic). Higher GPU cost than the standard DoF; toggling rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+
+  <key>RenderDepthOfFieldFront</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4 (new render engine borrow): enable blurring the foreground (front blur) with Depth of Field. Adds the FRONT_BLUR permutation to postDeferredF / postDeferredHQDoFF so positive CoF samples are blurred too. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderDepthOfFieldChroma</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4 (new render engine borrow): use DoF-coupled chromatic aberration (per-channel R/G/B offset in postDeferred*F). When 1, chroma scales with CoF inside DoF; when 0, postDeferredNoDoFF runs a vignette-style screen-edge chroma instead. Only active when AYAVisualRealismEnabled=2 (Cinematic). Toggling rebuilds the shader.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+
+  <key>RenderChromaStrength</key>
+  <map>
+    <key>Comment</key>
+    <string>AYAstorm r30 P4 (new render engine borrow): radial chromatic aberration strength for NoDoF Cinematic path. Per-channel R/B texcoord offset = chroma_str * 0.0005 * r2 (r2: 0 center to 2 corners). Range guidance: ~0.3 subtle (default), ~1 noticeable, ~3 cinematic, >10 stylized. Active only when AYAVisualRealismEnabled=2 (Cinematic) and the NoDoF vignette path is selected.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.3</real>
+  </map>
+
   <key>RenderDepthOfFieldInEditMode</key>
   <map>
     <key>Comment</key>
@@ -12052,6 +12536,196 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Backup</key>
     <integer>0</integer>
   </map>
+  <!-- <FS:AYAstorm:r30-bd-port> Phase 6 step 1: per-channel shadow 3 cvar を AY pipeline に配線。
+       Cinematic mode (AYAVisualRealismEnabled == 2) の時 BD per-channel allocator / clip plane が走る。
+       mode 0/1 では従来通り RenderShadowResolutionScale (scalar) を消費。 -->
+  <key>RenderShadowResolution</key>
+  <map>
+    <key>Comment</key>
+    <string>Raw shadow width and height of each of the four shadow maps, closest (X), mid (Y), far (Z) furthest (W). Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector4</string>
+    <key>Value</key>
+    <array>
+      <real>1024.0</real>
+      <real>1024.0</real>
+      <real>1024.0</real>
+      <real>1024.0</real>
+    </array>
+  </map>
+  <key>RenderShadowDistance</key>
+  <map>
+    <key>Comment</key>
+    <string>Per-cascade sun shadow far clip range addition (closest X / mid Y / far Z / furthest W). RenderShadowAutomaticDistance=FALSE + Cinematic mode の時に効く。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector4</string>
+    <key>Value</key>
+    <array>
+      <real>12.0</real>
+      <real>24.0</real>
+      <real>48.0</real>
+      <real>96.0</real>
+    </array>
+  </map>
+  <key>RenderProjectorShadowResolution</key>
+  <map>
+    <key>Comment</key>
+    <string>Raw projector shadow width of the two available spot shadow maps. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Vector2</string>
+    <key>Value</key>
+    <array>
+      <real>1024.0</real>
+      <real>1024.0</real>
+    </array>
+  </map>
+  <!-- </FS:AYAstorm:r30-bd-port> -->
+  <!-- <FS:AYAstorm:r30-bd-port> Phase 6 step 2: live BD cvar (Cinematic 限定 / 一部 global)。
+       BD 995a1354d8 settings_blackdragon.xml verbatim defaults。
+       global 採用 (mode dispatch なし): RenderEnableFullbright (llprimitive 直結) -->
+  <key>RenderShadowFarClip</key>
+  <map>
+    <key>Comment</key>
+    <string>Single far-clip distance for the sun shadow cascade pyramid when RenderShadowAutomaticDistance is ON. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>200.0</real>
+  </map>
+  <key>RenderGlobalLightStrength</key>
+  <map>
+    <key>Comment</key>
+    <string>Global multiplier applied to point/spot light contribution in the deferred light shaders. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>1.0</real>
+  </map>
+  <key>RenderOtherAttachedLights</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, lights attached to other avatars are suppressed. Cinematic mode のみ (mode 0/1 は RenderAttachedLights を共通使用)。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <key>RenderOwnAttachedLights</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, lights attached to your own avatar are suppressed. Cinematic mode のみ (mode 0/1 は RenderAttachedLights を共通使用)。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <key>RenderDeferredLights</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, in-world (non-attached) point/spot lights are suppressed. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <key>RenderDepthOfFieldAlphas</key>
+  <map>
+    <key>Comment</key>
+    <string>If true, transparent surfaces contribute to depth-of-field depth (cutoff 0.7); if false, they are excluded (cutoff 1.0). Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+  <key>RenderEnableFullbright</key>
+  <map>
+    <key>Comment</key>
+    <string>If false, fullbright textures are rendered as regular shaded surfaces. Global (mode を問わず適用、BD verbatim)。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <!-- </FS:AYAstorm:r30-bd-port> -->
+  <!-- <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD Post FX cvar (Cinematic 限定)。
+       BD 995a1354d8 settings_blackdragon.xml verbatim defaults。 -->
+  <key>RenderPostSepiaStrength</key>
+  <map>
+    <key>Comment</key>
+    <string>Set the percentual amount of sepia's strength, 1.0 means a full sepia tone, 0.0 means no sepia tone at all. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+  <key>RenderPostGreyscaleStrength</key>
+  <map>
+    <key>Comment</key>
+    <string>Set the percentual amount of greyscale's strength, 1.0 means fully greyscale, 0.0 means fully colored. Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+  <key>RenderPostPosterizationSamples</key>
+  <map>
+    <key>Comment</key>
+    <string>Set the number of color shades used for rendering the scene. 1 = posterization off (full color range). Cinematic mode のみ。</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <!-- </FS:AYAstorm:r30-bd-port> -->
+  <key>RenderWindlightInterpolateTime</key>
+  <map>
+    <key>Comment</key>
+    <string>Seconds over which to interpolate when a preset matching the new render engine is applied via gDragonLibrary (sky/water/day).</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>0.0</real>
+  </map>
+  <key>RenderShadowAutomaticDistance</key>
+  <map>
+    <key>Comment</key>
+    <string>If true, shadow cascade distances are computed automatically; if false, the per-cascade RenderShadowDistance entries are used as-is.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>1</integer>
+  </map>
+  <!-- </FS:AYAstorm:r30-bd-port> -->
   <key>RenderShadowSoftness</key>
   <map>
     <key>Comment</key>

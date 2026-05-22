@@ -149,6 +149,60 @@ void LLDrawPoolTree::renderShadow(S32 pass)
     renderDeferred(pass);
 }
 
+// <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,
+// 995a1354d8). LGPL-2.1-only. Tree face-iter pattern: trees have no
+// LLDrawInfo batches; use buff->drawRange directly. Trees don't move
+// between frames, so feed per-region matrix as both LAST and CURRENT.
+
+S32 LLDrawPoolTree::getNumMotionBlurPasses()
+{
+    return 1;
+}
+
+void LLDrawPoolTree::beginMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    gVelocityProgram.bind();
+    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
+    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
+    gVelocityProgram.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
+}
+
+void LLDrawPoolTree::endMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    gVelocityProgram.unbind();
+}
+
+void LLDrawPoolTree::renderMotionBlur(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    LLGLEnable cull(GL_CULL_FACE);
+    if (mDrawFace.empty())
+        return;
+
+    for (std::vector<LLFace*>::iterator iter = mDrawFace.begin(); iter != mDrawFace.end(); iter++)
+    {
+        LLFace* face = *iter;
+        LLDrawable* drawable = face ? face->getDrawable() : nullptr;
+        if (!drawable) continue;
+        if (LLPipeline::isParcelHideAlive(drawable)) continue;
+
+        LLVertexBuffer* buff = face->getVertexBuffer();
+        if (!buff) continue;
+
+        LLMatrix4* model_matrix = &(drawable->getRegion()->mRenderMatrix);
+        llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
+        LLRenderPass::applyModelMatrix(model_matrix);
+        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
+        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
+
+        buff->setBuffer();
+        buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
+    }
+}
+// </AYAstorm r30 P2>
+
 void LLDrawPoolTree::endShadowPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -158,7 +212,9 @@ void LLDrawPoolTree::endShadowPass(S32 pass)
     //                  gSavedSettings.getF32("RenderDeferredSpotShadowBias"));
     static LLCachedControl<F32> RenderDeferredSpotShadowOffset(gSavedSettings, "RenderDeferredSpotShadowOffset");
     static LLCachedControl<F32> RenderDeferredSpotShadowBias(gSavedSettings, "RenderDeferredSpotShadowBias");
+    // <FS:AYAstorm r30 P5 step 5 pivot 2026-05-19> Cinematic 短絡撤去、user cvar 値を使う
     glPolygonOffset(RenderDeferredSpotShadowOffset, RenderDeferredSpotShadowBias);
+    // </FS:AYAstorm>
     // </FS:PP>
 
     gDeferredTreeShadowProgram.unbind();

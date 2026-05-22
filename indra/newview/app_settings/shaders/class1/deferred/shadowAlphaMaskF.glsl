@@ -33,6 +33,12 @@ in vec4 vertex_color;
 in vec2 vary_texcoord0;
 uniform float minimum_alpha;
 
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+#if AYASTORM_CINEMATIC
+void bayerDitherDiscard(float alpha, float threshold);
+#endif
+// </FS:AYA>
+
 void main()
 {
     float alpha = diffuseLookup(vary_texcoord0.xy).a;
@@ -46,6 +52,10 @@ void main()
     alpha *= vertex_color.a;
 #endif
 
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+#if AYASTORM_CINEMATIC
+    bayerDitherDiscard(alpha, minimum_alpha);
+#else
     if (alpha < 0.05) // treat as totally transparent
     {
         discard;
@@ -58,6 +68,8 @@ void main()
             discard;
         }
     }
+#endif
+    // </FS:AYA>
 
     frag_color = vec4(1,1,1,1);
 }

@@ -35,6 +35,11 @@
 #include "rlvdefines.h"
 
 const std::string PHOTOTOOLS_FLOATER = "phototools";
+// <FS:AYA r30> Cinematic Controls reuses this floater class but ships its own XUI
+// (floater_aya_cinematic.xml) without the QuickPrefs preset combos / hover slider
+// widgets. getIsAyaCinematic() mirrors getIsPhototools() so we can skip the
+// QP-original wiring instead of spamming "Making dummy" warnings on open.
+const std::string AYA_CINEMATIC_FLOATER = "aya_cinematic";
 
 class LLCheckBoxCtrl;
 class LLComboBox;
@@ -108,6 +113,9 @@ public:
     // Phototools additions
     void refreshSettings();
     bool getIsPhototools() const { return getName() == PHOTOTOOLS_FLOATER; };
+    // <FS:AYA r30> see AYA_CINEMATIC_FLOATER comment at top of header
+    bool getIsAyaCinematic() const { return getName() == AYA_CINEMATIC_FLOATER; };
+    // </FS:AYA r30>
 
     void dockToToolbarButton();
 

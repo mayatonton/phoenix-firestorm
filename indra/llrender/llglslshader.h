@@ -60,6 +60,10 @@ public:
     bool hasHeroProbes = false;
     bool isPBRTerrain = false;
     bool hasTonemap = false;
+    // <AYAstorm r30 P2> Gates velocityFuncV.glsl auto-attach in
+    // attachShaderFeatures() so velocity-shader variants can compile.
+    bool hasMotionBlur = false;
+    // </AYAstorm r30 P2>
 };
 
 // ============= Structure for caching shader uniforms ===============

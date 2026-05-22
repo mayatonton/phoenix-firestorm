@@ -92,6 +92,7 @@ set(viewer_SOURCE_FILES
     ao.cpp
     aoengine.cpp
     aoset.cpp
+    bdfunctions.cpp
     chatbar_as_cmdline.cpp
     daeexport.cpp
     fschecktexture.cpp
@@ -237,6 +238,7 @@ set(viewer_SOURCE_FILES
     llappviewer.cpp
     llappviewerlistener.cpp
     llattachmentsmgr.cpp
+    llayaudit.cpp
     llaudiosourcevo.cpp
     llautoreplace.cpp
     llavataractions.cpp
@@ -259,6 +261,7 @@ set(viewer_SOURCE_FILES
     llchatmsgbox.cpp
     llchiclet.cpp
     llchicletbar.cpp
+    llcinematicoverlay.cpp
     llclassifiedinfo.cpp
     llcofwearables.cpp
     llcolorswatch.cpp
@@ -356,6 +359,7 @@ set(viewer_SOURCE_FILES
     llfloatereditextdaycycle.cpp
     llfloateremojipicker.cpp
     llfloaterenvironmentadjust.cpp
+    llfloaterenvironmentsettings.cpp
     llfloaterevent.cpp
     llfloaterexperiencepicker.cpp
     llfloaterexperienceprofile.cpp
@@ -454,6 +458,7 @@ set(viewer_SOURCE_FILES
     llfloaterurlentry.cpp
     llfloatervoiceeffect.cpp
     llfloatervoicevolume.cpp
+    llfloaterwateradjust.cpp
     llfloaterwebcontent.cpp
     llfloaterwhitelistentry.cpp
     llfloaterwindowsize.cpp
@@ -957,6 +962,7 @@ set(viewer_HEADER_FILES
     ao.h
     aoengine.h
     aoset.h
+    bdfunctions.h
     chatbar_as_cmdline.h
     daeexport.h
     fschecktexture.h
@@ -1108,6 +1114,7 @@ set(viewer_HEADER_FILES
     llappviewer.h
     llappviewerlistener.h
     llattachmentsmgr.h
+    llayaudit.h
     llaudiosourcevo.h
     llautoreplace.h
     llavataractions.h
@@ -1130,6 +1137,7 @@ set(viewer_HEADER_FILES
     llchatmsgbox.h
     llchiclet.h
     llchicletbar.h
+    llcinematicoverlay.h
     llclassifiedinfo.h
     llcofwearables.h
     llcolorswatch.h
@@ -1227,6 +1235,7 @@ set(viewer_HEADER_FILES
     llfloatereditextdaycycle.h
     llfloateremojipicker.h
     llfloaterenvironmentadjust.h
+    llfloaterenvironmentsettings.h
     llfloaterevent.h
     llfloaterexperiencepicker.h
     llfloaterexperienceprofile.h
@@ -1329,6 +1338,7 @@ set(viewer_HEADER_FILES
     llfloaterurlentry.h
     llfloatervoiceeffect.h
     llfloatervoicevolume.h
+    llfloaterwateradjust.h
     llfloaterwebcontent.h
     llfloaterwhitelistentry.h
     llfloaterwindowsize.h
@@ -2220,6 +2230,7 @@ set(viewer_APPSETTINGS_FILES
     app_settings/settings_v3.xml
     app_settings/settings_text.xml
     app_settings/settings.xml
+    app_settings/settings_cinematic_bd.xml
     app_settings/settings_crash_behavior.xml
     app_settings/settings_files.xml
     app_settings/settings_per_account.xml

@@ -130,6 +130,8 @@ public:
 
     /* virtual */ std::string getShaderDirPrefix(void);
 
+    /* virtual */ std::string getCinematicShaderDirPrefix(void);
+
     /* virtual */ void updateShaderUniforms(LLGLSLShader * shader);
 
 private:
@@ -257,6 +259,11 @@ extern LLGLSLShader         gFXAAProgram[4];
 extern LLGLSLShader         gSMAAEdgeDetectProgram[4];
 extern LLGLSLShader         gSMAABlendWeightsProgram[4];
 extern LLGLSLShader         gSMAANeighborhoodBlendProgram[4];
+// <AYAstorm r30 P2 step 5c> SMAA T2x temporal resolve. One slot per SMAA quality
+// preset (low/medium/high/ultra). Compiled with SMAA_REPROJECTION=1, sources our
+// own SMAAResolveV/F.glsl wrappers around upstream SMAA.glsl's SMAAResolvePS.
+extern LLGLSLShader         gSMAAResolveProgram[4];
+// </AYAstorm r30 P2 step 5c>
 extern LLGLSLShader         gCASProgram;
 extern LLGLSLShader         gCASLegacyGammaProgram;
 extern LLGLSLShader         gDeferredPostNoDoFProgram;
@@ -298,6 +305,20 @@ extern LLGLSLShader         gHUDFullbrightShinyProgram;
 extern LLGLSLShader         gNormalMapGenProgram;
 extern LLGLSLShader         gDeferredGenBrdfLutProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
+
+// <AYAstorm r30 P2> Velocity buffer shaders (BD lineage).
+extern LLGLSLShader         gVelocityProgram;
+extern LLGLSLShader         gVelocitySkinnedProgram;
+extern LLGLSLShader         gVelocityAlphaProgram;
+extern LLGLSLShader         gVelocityAlphaSkinnedProgram;
+extern LLGLSLShader         gAvatarVelocityProgram;
+extern LLGLSLShader         gDeferredMotionBlurProgram;
+// </AYAstorm r30 P2>
+
+// <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+extern LLGLSLShader         gVolumetricLightProgram;
+// </AYAstorm r30 P3>
+
 // [RLVa:KB] - @setsphere
 extern LLGLSLShader         gRlvSphereProgram;
 // [/RLVa:KB]

@@ -125,8 +125,13 @@ public:
         SKY_AMBIENT_SCALE,                  //  "sky_ambient_scale"
         CLASSIC_MODE,                       //  "classic_mode"
         AYA_VISUAL_REALISM_ENABLED,         //  "aya_visual_realism_enabled" <FS:AYA r14>
+        AYA_R14_VOLUMETRIC_ATMOSPHERE_ENABLED, // "aya_r14_volumetric_atmosphere_enabled" <FS:AYAstorm r30 BD改善>
+        AYA_R14_STRENGTH,                   //  "aya_r14_strength" <FS:AYAstorm r30 BD改善>
+        AYA_R15_GODRAYS_ENABLED,            //  "aya_r15_godrays_enabled" <FS:AYAstorm r30 BD改善>
         AYA_R16_AERIAL_PERSPECTIVE_ENABLED, //  "aya_r16_aerial_perspective_enabled" <FS:AYA r16>
+        AYA_R16_STRENGTH,                   //  "aya_r16_strength" <FS:AYAstorm r30 BD改善>
         AYA_R18_CLOUD_VOLUMETRIC_ENABLED,   //  "aya_r18_cloud_volumetric_enabled" <FS:AYA r18>
+        AYA_R18_STRENGTH,                   //  "aya_r18_strength" <FS:AYAstorm r30 BD改善>
         AYA_R20_SKIN_SSS_ENABLED,           //  "aya_r20_skin_sss_enabled" <FS:AYA r20>
         AYA_SSS_SKIN_FLAG,                  //  "aya_sss_skin_flag" <FS:AYA r20 Phase C>
         BLUE_HORIZON,                       //  "blue_horizon"
@@ -375,6 +380,48 @@ public:
         COLOR_GRADING_LUT_INTENSITY,        //  "color_grading_lut_intensity"
         COLOR_GRADING_LUT_ENABLED,          //  "color_grading_lut_enabled"
 
+        // <AYAstorm r30 P2> Velocity buffer + SMAA T2x reprojection.
+        // Imported from BlackDragon Viewer 995a1354d8 (with AVATAR_LAST_MATRIX
+        // and SMAA_PREVIOUS_COLOR_TEX additions for the resolve pass).
+        DEFERRED_VELOCITY,                  //  "velocityMap"
+        SMAA_VELOCITY_TEX,                  //  "velocityTex"
+        SMAA_PREVIOUS_COLOR_TEX,            //  "previousColorTex"
+        CURRENT_MODELVIEW_MATRIX,           //  "current_modelview_matrix"
+        LAST_MODELVIEW_MATRIX,              //  "last_modelview_matrix"
+        LAST_MODELVIEW_MATRIX_INVERSE,      //  "last_modelview_matrix_inverse"
+        CURRENT_OBJECT_MATRIX,              //  "current_object_matrix"
+        LAST_OBJECT_MATRIX,                 //  "last_object_matrix"
+        MOTION_BLUR_STRENGTH,               //  "motion_blur_strength"
+        AVATAR_LAST_MATRIX,                 //  "lastMatrixPalette"
+        // </AYAstorm r30 P2>
+
+        // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+        // Imported from BlackDragon Viewer 995a1354d8 with no semantic change.
+        GODRAY_RES,                         //  "godray_res"
+        GODRAY_MULTIPLIER,                  //  "godray_multiplier"
+        FALLOFF_MULTIPLIER,                 //  "falloff_multiplier"
+        // </AYAstorm r30 P3>
+
+        // <AYAstorm r30 P4 step 3> BD DoF chain chroma strength.
+        // Imported from BlackDragon Viewer 995a1354d8. Drives the
+        // chroma_str uniform in postDeferredF / postDeferredHQDoFF /
+        // postDeferredNoDoFF when HAS_DOF_CHROMA permutation is set.
+        DEFERRED_CHROMA_STRENGTH,           //  "chroma_str"
+        // </AYAstorm r30 P4>
+
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live uniforms (Cinematic only).
+        // Imported from BlackDragon Viewer 995a1354d8.
+        DEFERRED_LIGHT_STRENGTH,            //  "global_light_strength"
+        DEFERRED_SEPIA_STRENGTH,            //  "sepia_strength"
+        DEFERRED_GREYSCALE_STRENGTH,        //  "greyscale_strength"
+        DEFERRED_NUM_COLORS,                //  "num_colors"
+        // </FS:AYAstorm:r30-bd-port>
+
+        // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND plate composite
+        AYA_ALPHA_PLATE,                    //  "aya_alpha_plate"
+        AYA_ALPHA_PLATE_ENABLED,            //  "aya_alpha_plate_enabled"
+        // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
     // clang-format on
@@ -393,6 +440,16 @@ public:
 
     // Implemented in the application to actually point to the shader directory.
     virtual std::string getShaderDirPrefix(void) = 0; // Pure Virtual
+
+    // <FS:AYA r30 Phase 3.8 step 4> Cinematic mount strategy D: when
+    // sCinematicMode is true, loadShaderFile() probes this prefix first
+    // before falling back to getShaderDirPrefix(). Returns the
+    // `<app_settings>/shaders/cinematic_bd/class` base; loadShaderFile
+    // appends `<gpu_class><delim><filename>` exactly like the standard
+    // path. Files only land here when an AY/BD shader pair is too
+    // divergent for strategy C permutation (XXL bucket).
+    virtual std::string getCinematicShaderDirPrefix(void) { return std::string(); }
+    // </FS:AYA>
 
     // Implemented in the application to actually update out of date uniforms for a particular shader
     virtual void updateShaderUniforms(LLGLSLShader * shader) = 0; // Pure Virtual
@@ -424,6 +481,12 @@ public:
     LLUUID mShaderCacheVersion;
     bool mShaderCacheEnabled = false;
     std::string mShaderCacheDir;
+
+    // <FS:AYA r30 Phase 3.8> Cinematic mount: when true, loadShaderFile
+    // injects `#define AYASTORM_CINEMATIC 1` so Strategy C shaders branch
+    // to their BD-original code path. Viewer side (LLViewerShaderMgr) sets
+    // this from AYAVisualRealismEnabled == 2 right before reloadShaders().
+    static bool sCinematicMode;
 
 protected:
 

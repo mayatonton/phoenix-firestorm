@@ -45,6 +45,11 @@ using std::string;
 
 LLShaderMgr * LLShaderMgr::sInstance = NULL;
 
+// <FS:AYA r30 Phase 3.8> Cinematic mount global flag. LLViewerShaderMgr
+// flips this from AYAVisualRealismEnabled == 2 right before reloading
+// shaders. loadShaderFile() reads it to inject #define AYASTORM_CINEMATIC.
+bool LLShaderMgr::sCinematicMode = false;
+
 LLShaderMgr::LLShaderMgr()
 {
 }
@@ -173,6 +178,17 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
             return false;
         }
     }
+
+    // <AYAstorm r30 P2> Auto-attach velocityFuncV.glsl helper for shaders that
+    // opt-in via mFeatures.hasMotionBlur (matches BD lineage).
+    if (features->hasMotionBlur)
+    {
+        if (!shader->attachVertexObject("deferred/velocityFuncV.glsl"))
+        {
+            return false;
+        }
+    }
+    // </AYAstorm r30 P2>
 
     if (!shader->attachVertexObject("deferred/textureUtilV.glsl"))
     {
@@ -513,8 +529,35 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 #endif
     {
         //find the most relevant file
+        // <FS:AYA r30 Phase 3.8 step 4> Cinematic strategy D path probe.
+        // When sCinematicMode is true, probe getCinematicShaderDirPrefix()
+        // first at each gpu_class tier. Files present there override the
+        // standard tree for the Cinematic pass; absent files fall through
+        // to the normal path. Only XXL-bucket shaders (shadowUtil,
+        // screenSpaceReflUtil) live under cinematic_bd/.
+        std::string cinematic_prefix = sCinematicMode ? getCinematicShaderDirPrefix() : std::string();
+        // </FS:AYA>
         for (gpu_class = try_gpu_class; gpu_class > 0; gpu_class--)
         {   //search from the current gpu class down to class 1 to find the most relevant shader
+
+            // <FS:AYA r30 Phase 3.8 step 4>
+            if (!cinematic_prefix.empty())
+            {
+                std::stringstream cfname;
+                cfname << cinematic_prefix;
+                cfname << gpu_class << gDirUtilp->getDirDelimiter() << filename;
+                std::string cinematic_name = cfname.str();
+                LL_DEBUGS("ShaderLoading") << "Looking in " << cinematic_name << " (cinematic_bd override)" << LL_ENDL;
+                file = LLFile::fopen(cinematic_name, "r");  /* Flawfinder: ignore */
+                if (file)
+                {
+                    open_file_name = cinematic_name;
+                    LL_DEBUGS("ShaderLoading") << "Loading cinematic_bd override: " << open_file_name << " (Want class " << gpu_class << ")" << LL_ENDL;
+                    break;
+                }
+            }
+            // </FS:AYA>
+
             std::stringstream fname;
             fname << getShaderDirPrefix();
             fname << gpu_class << gDirUtilp->getDirDelimiter() << filename;
@@ -638,6 +681,15 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_FLAG_HAS_PBR      0.67\n"); // bit 1
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_FLAG_HAS_HDRI      1.0\n");  // bit 2
     extra_code_text[extra_code_count++] = strdup("#define GET_GBUFFER_FLAG(data, flag)    (abs(data-flag)< 0.1)\n");
+
+    // <FS:AYA r30 Phase 3.8> Cinematic mount: inject AYASTORM_CINEMATIC = 1
+    // when LLViewerShaderMgr has set sCinematicMode. Strategy C shaders use
+    // `#if AYASTORM_CINEMATIC` to switch to BD-original code path; shaders
+    // that don't reference the macro are unaffected.
+    extra_code_text[extra_code_count++] = strdup(
+        sCinematicMode
+            ? "#define AYASTORM_CINEMATIC 1\n"
+            : "#define AYASTORM_CINEMATIC 0\n");
 
     if (defines)
     {
@@ -1317,8 +1369,13 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("sky_ambient_scale");
     mReservedUniforms.push_back("classic_mode");
     mReservedUniforms.push_back("aya_visual_realism_enabled");  // <FS:AYA r14>
+    mReservedUniforms.push_back("aya_r14_volumetric_atmosphere_enabled");  // <FS:AYAstorm r30 BD改善>
+    mReservedUniforms.push_back("aya_r14_strength");  // <FS:AYAstorm r30 BD改善>
+    mReservedUniforms.push_back("aya_r15_godrays_enabled");  // <FS:AYAstorm r30 BD改善>
     mReservedUniforms.push_back("aya_r16_aerial_perspective_enabled");  // <FS:AYA r16>
+    mReservedUniforms.push_back("aya_r16_strength");  // <FS:AYAstorm r30 BD改善>
     mReservedUniforms.push_back("aya_r18_cloud_volumetric_enabled");  // <FS:AYA r18>
+    mReservedUniforms.push_back("aya_r18_strength");  // <FS:AYAstorm r30 BD改善>
     mReservedUniforms.push_back("aya_r20_skin_sss_enabled");  // <FS:AYA r20>
     mReservedUniforms.push_back("aya_sss_skin_flag");  // <FS:AYA r20 Phase C>
     mReservedUniforms.push_back("blue_horizon");
@@ -1575,6 +1632,45 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("color_grading_lut");
     mReservedUniforms.push_back("color_grading_lut_intensity");
     mReservedUniforms.push_back("color_grading_lut_enabled");
+
+    // <AYAstorm r30 P2> Velocity buffer + SMAA T2x reprojection uniforms.
+    // Order must match eGLSLReservedUniforms in llshadermgr.h exactly.
+    mReservedUniforms.push_back("velocityMap");
+    mReservedUniforms.push_back("velocityTex");
+    mReservedUniforms.push_back("previousColorTex");
+    mReservedUniforms.push_back("current_modelview_matrix");
+    mReservedUniforms.push_back("last_modelview_matrix");
+    mReservedUniforms.push_back("last_modelview_matrix_inverse");
+    mReservedUniforms.push_back("current_object_matrix");
+    mReservedUniforms.push_back("last_object_matrix");
+    mReservedUniforms.push_back("motion_blur_strength");
+    mReservedUniforms.push_back("lastMatrixPalette");
+    // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+    // Order must match the enum order in llshadermgr.h.
+    mReservedUniforms.push_back("godray_res");
+    mReservedUniforms.push_back("godray_multiplier");
+    mReservedUniforms.push_back("falloff_multiplier");
+    // </AYAstorm r30 P3>
+
+    // <AYAstorm r30 P4 step 3> BD DoF chain chroma strength.
+    // Order must match the enum order in llshadermgr.h.
+    mReservedUniforms.push_back("chroma_str");
+    // </AYAstorm r30 P4>
+
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live uniforms (995a1354d8 verbatim).
+    // Order must match the enum order in llshadermgr.h.
+    mReservedUniforms.push_back("global_light_strength");
+    mReservedUniforms.push_back("sepia_str");
+    mReservedUniforms.push_back("greyscale_str");
+    mReservedUniforms.push_back("num_colors");
+    // </FS:AYAstorm:r30-bd-port>
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND plate composite
+    mReservedUniforms.push_back("aya_alpha_plate");
+    mReservedUniforms.push_back("aya_alpha_plate_enabled");
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
     llassert(mReservedUniforms.size() == END_RESERVED_UNIFORMS);
 

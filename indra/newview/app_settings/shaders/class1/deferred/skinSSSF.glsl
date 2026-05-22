@@ -101,6 +101,27 @@ void main()
     // 復元し、blur 半径を 1m での aya_blur_radius を基準に逆スケール。
     // eye_dist < 1m では aya_blur_radius (上限) で頭打ち。
     float d_raw = texture(depthMap, tc).r;
+
+    // <FS:AYAstorm r30> Sky safety net: gbuffer3.a is the SSS skin mask, but
+    // the deferred clear color is (1,0,1,1) so gbuffer3.a starts at 1.0 at
+    // sky pixels and is only reset to 0.0 when the sky shader path is
+    // compiled with HAS_EMISSIVE. That permutation depends on
+    // RenderEnableEmissiveBuffer and on the shader having been recompiled
+    // since the cvar was read — both are observable failure modes, and a
+    // skin_mask of 1.0 at sky pixels drives MAX SSS over the whole sky
+    // (= the "sky turns red when r20 is ON" repro). Depth==1.0 (far plane)
+    // is a domain-correct opt-out: sky cannot be a SSS target by
+    // definition. Pass 1 (blend off, scratch fill) writes vec4(0) so the
+    // scratch buffer holds 0 at sky pixels; pass 2 (composite, blend
+    // SRC_ALPHA / 1-SRC_ALPHA) writes alpha=0 so the screen passes through
+    // untouched. Both passes are made safe by the same early return.
+    if (d_raw >= 0.9999)
+    {
+        frag_color = vec4(0.0);
+        return;
+    }
+    // </FS:AYAstorm>
+
     vec4  ndc4  = vec4(0.0, 0.0, d_raw * 2.0 - 1.0, 1.0);
     vec4  vp    = inv_proj * ndc4;
     float eye_dist = abs(vp.z / vp.w);
@@ -143,8 +164,12 @@ void main()
     // elsewhere. Multiplying strength by the mask zero-blends non-skin
     // pixels (alpha=0 → blend keeps original screen) while preserving the
     // pass-1 behavior since pass 1 writes raw RGB regardless of alpha.
+    // <FS:AYAstorm r30> skin_mask is written by the gbuffer pass as a
+    // binary marker (0.0 or 1.0). Threshold at 0.5 to be defensive against
+    // partial / interpolated values from shaders that may set .a to
+    // something other than exactly {0, aya_sss_skin_flag}.
     float skin_mask = texture(emissiveRect, tc).a;
-    float masked_strength = aya_strength * skin_mask;
-    frag_color = vec4(sum, masked_strength);
+    float skin_bit  = (skin_mask >= 0.5) ? 1.0 : 0.0;
+    frag_color = vec4(sum, aya_strength * skin_bit);
     // </FS:AYA>
 }

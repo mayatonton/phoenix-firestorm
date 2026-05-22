@@ -43,9 +43,9 @@
 			<text name="aya_view_mode_label">
 				ビューモード：
 			</text>
-			<combo_box name="AYAViewMode" tool_tip="Firestorm View: 標準描画。AYAstorm View: 体積大気 / 光線 / 距離色変化 / 雲の体積化を有効化。">
+			<combo_box name="AYAViewMode" tool_tip="Firestorm View: 上流 Firestorm 標準描画。AYAstorm View: AYAstorm 撮影グレード描画エンジン — velocity buffer / SMAA T2x / Volumetric Lighting / per-object Motion Blur / BD HQ DoF + Chromatic Aberration、加えて opt-in 拡張 (体積大気 / 光線 / 距離色変化 / Kelvin 色温度 / 雲の体積化 / 透過 / SSS)。撮影中の調整は AYAstorm メニュー → AYAstorm コントロール (Alt+C) から。切替には再起動が必要です。">
 				<combo_box.item label="Firestorm View" name="0"/>
-				<combo_box.item label="AYAstorm View" name="1"/>
+				<combo_box.item label="AYAstorm View" name="2"/>
 			</combo_box>
 			<text name="shadows_label">
 				影：

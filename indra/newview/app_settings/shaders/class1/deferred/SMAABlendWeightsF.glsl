@@ -34,6 +34,13 @@ in vec4 vary_offset[3];
 uniform sampler2D edgesTex;
 uniform sampler2D areaTex;
 uniform sampler2D searchTex;
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> BD wires
+// subsampleIndices as a uniform for SMAA T2x jitter. AY hard-codes
+// vec4(0.0) since the AY T2x path doesn't use the SMAA helper.
+#if AYASTORM_CINEMATIC
+uniform vec4 subsampleIndices;
+#endif
+// </FS:AYA>
 
 vec4 SMAABlendingWeightCalculationPS(vec2 texcoord,
                                        vec2 pixcoord,
@@ -51,7 +58,13 @@ void main()
                                                  edgesTex,
                                                  areaTex,
                                                  searchTex,
+                                                 // <FS:AYA r30 Phase 3.8>
+#if AYASTORM_CINEMATIC
+                                                 subsampleIndices
+#else
                                                  vec4(0.0)
+#endif
+                                                 // </FS:AYA>
                                                  );
 }
 

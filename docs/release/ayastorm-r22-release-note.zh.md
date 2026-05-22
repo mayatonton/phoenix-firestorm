@@ -1,6 +1,6 @@
 # AYAstorm r22 — 发布公告
 
-用于粘贴到 GitHub release 页面的简短文案。**r22 是聊天 UX 改进版本**,将 Nearby Chat / IM 的历史记录分离为「人类阿凡达发言」和「System & Object 系通知 (LSL + 系统 + TP / Region)」两个标签页。
+**r22 是聊天 UX 改进版本**,将 Nearby Chat / IM 的历史记录分离为「人类阿凡达发言」和「System & Object 系通知 (LSL + 系统 + TP / Region)」两个标签页。
 
 > **发布形态**: r22 与 **r23 发布版本一同捆绑发布** (不单独发行 r22 tag)。r23 发布页面会回链至本说明及 r22 规格文档。
 

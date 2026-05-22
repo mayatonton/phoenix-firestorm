@@ -216,6 +216,9 @@ LLGLSLShader            gFXAAProgram[4];
 LLGLSLShader            gSMAAEdgeDetectProgram[4];
 LLGLSLShader            gSMAABlendWeightsProgram[4];
 LLGLSLShader            gSMAANeighborhoodBlendProgram[4];
+// <AYAstorm r30 P2 step 5c>
+LLGLSLShader            gSMAAResolveProgram[4];
+// </AYAstorm r30 P2 step 5c>
 LLGLSLShader            gCASProgram;
 LLGLSLShader            gCASLegacyGammaProgram;
 LLGLSLShader            gDeferredPostNoDoFProgram;
@@ -235,6 +238,20 @@ LLGLSLShader            gDeferredSkinnedFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gNormalMapGenProgram;
 LLGLSLShader            gDeferredGenBrdfLutProgram;
 LLGLSLShader            gDeferredBufferVisualProgram;
+
+// <AYAstorm r30 P2> Velocity buffer shaders (BD lineage).
+LLGLSLShader            gVelocityProgram;
+LLGLSLShader            gVelocitySkinnedProgram;
+LLGLSLShader            gVelocityAlphaProgram;
+LLGLSLShader            gVelocityAlphaSkinnedProgram;
+LLGLSLShader            gAvatarVelocityProgram;
+LLGLSLShader            gDeferredMotionBlurProgram;
+// </AYAstorm r30 P2>
+
+// <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+LLGLSLShader            gVolumetricLightProgram;
+// </AYAstorm r30 P3>
+
 // [RLVa:KB] - @setsphere
 LLGLSLShader            gRlvSphereProgram;
 // [/RLVa:KB]
@@ -437,6 +454,12 @@ void LLViewerShaderMgr::finalizeShaderList()
     // <FS:AYA r15 P1> godrays: register so LLSettingsVOSky::applyToShader
     // auto-binds sunlight_color / moonlight_color / sun_up_factor.
     mShaderList.push_back(&gDeferredGodraysProgram);
+    // <AYAstorm r30 P3 step 3> Volumetric Light (godrays via shadow accumulation):
+    // register so atmosphere uniforms (sunlight_color / sun_dir / blue_density /
+    // haze_density) are auto-bound by LLSettingsVOSky::applyToShader. Without
+    // this push_back the shader compiles but the additive godray contribution
+    // is multiplied by zero atmosphere and never appears.
+    mShaderList.push_back(&gVolumetricLightProgram);
     mShaderList.push_back(&gDeferredSoftenProgram);
     mShaderList.push_back(&gDeferredAlphaProgram);
     mShaderList.push_back(&gHUDAlphaProgram);
@@ -554,6 +577,16 @@ void LLViewerShaderMgr::setShaders()
         return;
     }
 
+    // <FS:AYA r30 Phase 3.8> Cinematic mount: latch sCinematicMode from
+    // AYAVisualRealismEnabled before loadShaderFile is invoked anywhere
+    // (initShaderCache may compile, and the full reload below definitely
+    // does). Strategy C shaders branch on `#if AYASTORM_CINEMATIC`.
+    {
+        static LLCachedControl<U32> aya_view_mode_shader(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        LLShaderMgr::sCinematicMode = (aya_view_mode_shader() == 2);
+    }
+    // </FS:AYA>
+
     {
         static LLCachedControl<bool> shader_cache_enabled(gSavedSettings, "RenderShaderCacheEnabled", true);
         static LLUUID old_cache_version;
@@ -570,6 +603,13 @@ void LLViewerShaderMgr::setShaders()
             // "AYASTORM_SHADER_CACHE_TAG" to find every site that needs it.
             const char* const AYASTORM_SHADER_CACHE_TAG = "AYAstorm r24";
             hash_obj.update(AYASTORM_SHADER_CACHE_TAG);
+            // </FS:AYA>
+            // <FS:AYA r30 Phase 3.8> Mix Cinematic mode into the cache key so
+            // toggling AYAVisualRealismEnabled (0/1 vs 2) cannot reuse a
+            // shader binary compiled with the opposite AYASTORM_CINEMATIC.
+            const char* const AYASTORM_CINEMATIC_MODE_TAG =
+                LLShaderMgr::sCinematicMode ? "cinematic=1" : "cinematic=0";
+            hash_obj.update(AYASTORM_CINEMATIC_MODE_TAG);
             // </FS:AYA>
             current_cache_version = hash_obj.digest();
 
@@ -813,6 +853,9 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     shaders.push_back( make_pair( "avatar/avatarSkinV.glsl",                1 ) );
     shaders.push_back( make_pair( "avatar/objectSkinV.glsl",                1 ) );
     shaders.push_back( make_pair( "deferred/textureUtilV.glsl",             1 ) );
+    // <AYAstorm r30 P2> Common helper used by velocity*V.glsl shaders.
+    shaders.push_back( make_pair( "deferred/velocityFuncV.glsl",            1 ) );
+    // </AYAstorm r30 P2>
     if (gGLManager.mGLSLVersionMajor >= 2 || gGLManager.mGLSLVersionMinor >= 30)
     {
         shaders.push_back( make_pair( "objects/indexedTextureV.glsl",           1 ) );
@@ -838,7 +881,9 @@ std::string LLViewerShaderMgr::loadBasicShaders()
 
     S32 probe_level = llclamp(gSavedSettings.getS32("RenderReflectionProbeLevel"), 0, 3);
 
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (1) に固定
     S32 shadow_detail            = gSavedSettings.getS32("RenderShadowDetail");
+    // </FS:AYAstorm>
 
     if (shadow_detail >= 1)
     {
@@ -942,8 +987,10 @@ bool LLViewerShaderMgr::loadShadersWater()
     bool success = true;
     bool terrainWaterSuccess = true;
 
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (1) に固定
     bool use_sun_shadow = mShaderLevel[SHADER_DEFERRED] > 1 &&
         gSavedSettings.getS32("RenderShadowDetail") > 0;
+    // </FS:AYAstorm>
 
     if (mShaderLevel[SHADER_WATER] == 0)
     {
@@ -1110,8 +1157,10 @@ bool LLViewerShaderMgr::loadShadersEffects()
 bool LLViewerShaderMgr::loadShadersDeferred()
 {
     LL_PROFILE_ZONE_SCOPED;
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (1) に固定
     bool use_sun_shadow = mShaderLevel[SHADER_DEFERRED] > 1 &&
         gSavedSettings.getS32("RenderShadowDetail") > 0;
+    // </FS:AYAstorm>
 
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
@@ -1185,6 +1234,9 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             gSMAAEdgeDetectProgram[i].unload();
             gSMAABlendWeightsProgram[i].unload();
             gSMAANeighborhoodBlendProgram[i].unload();
+            // <AYAstorm r30 P2 step 5c>
+            gSMAAResolveProgram[i].unload();
+            // </AYAstorm r30 P2 step 5c>
         }
         gCASProgram.unload();
         gCASLegacyGammaProgram.unload();
@@ -1206,6 +1258,19 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNormalMapGenProgram.unload();
         gDeferredGenBrdfLutProgram.unload();
         gDeferredBufferVisualProgram.unload();
+
+        // <AYAstorm r30 P2> Velocity buffer shaders.
+        gVelocityProgram.unload();
+        gVelocitySkinnedProgram.unload();
+        gVelocityAlphaProgram.unload();
+        gVelocityAlphaSkinnedProgram.unload();
+        gAvatarVelocityProgram.unload();
+        gDeferredMotionBlurProgram.unload();
+        // </AYAstorm r30 P2>
+
+        // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays).
+        gVolumetricLightProgram.unload();
+        // </AYAstorm r30 P3>
 
         for (U32 i = 0; i < LLMaterial::SHADER_COUNT*2; ++i)
         {
@@ -2854,6 +2919,38 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     break;
                 }
             }
+
+            // <AYAstorm r30 P2 step 5c> SMAA T2x temporal resolve.
+            // Reuses the same quality_levels loop but builds with SMAA_REPROJECTION=1
+            // so the upstream SMAAResolvePS samples previousColorTex through velocityTex.
+            if (success)
+            {
+                std::map<std::string, std::string> t2x_defines = defines;
+                t2x_defines["SMAA_REPROJECTION"] = "1";
+                t2x_defines.emplace("SMAA_REPROJECTION_WEIGHT_SCALE", "30.0");
+
+                gSMAAResolveProgram[i].mName = llformat("SMAA T2x Resolve (%s)", smaa_pair.second.c_str());
+                gSMAAResolveProgram[i].mFeatures.isDeferred = true;
+
+                gSMAAResolveProgram[i].clearPermutations();
+                gSMAAResolveProgram[i].addPermutations(t2x_defines);
+
+                gSMAAResolveProgram[i].mShaderFiles.clear();
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAAResolveF.glsl", GL_FRAGMENT_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAAResolveV.glsl", GL_VERTEX_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_FRAGMENT_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderFiles.push_back(make_pair("deferred/SMAA.glsl", GL_VERTEX_SHADER_ARB));
+                gSMAAResolveProgram[i].mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+                success = gSMAAResolveProgram[i].createShader();
+                if (!success)
+                {
+                    LL_WARNS() << "Failed to create shader '" << gSMAAResolveProgram[i].mName << "', disabling!" << LL_ENDL;
+                    failed = true;
+                    success = true;
+                    break;
+                }
+            }
+            // </AYAstorm r30 P2 step 5c>
             ++i;
         }
 
@@ -2864,6 +2961,9 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                 gSMAAEdgeDetectProgram[i].unload();
                 gSMAABlendWeightsProgram[i].unload();
                 gSMAANeighborhoodBlendProgram[i].unload();
+                // <AYAstorm r30 P2 step 5c>
+                gSMAAResolveProgram[i].unload();
+                // </AYAstorm r30 P2 step 5c>
             }
         }
     }
@@ -2912,8 +3012,38 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostProgram.mName = "Deferred Post Shader";
         gDeferredPostProgram.mFeatures.isDeferred = true;
         gDeferredPostProgram.mShaderFiles.clear();
+        // <AYAstorm r30 P4 step 5> Cinematic-only HQ shader file branch + permutations.
+        // clearPermutations() is required because the BD-borrow permutations accumulate
+        // across rebuilds (mDefines is a map; toggling a P4 cvar would otherwise carry
+        // over stale HAS_DOF_CHROMA / FRONT_BLUR entries from the previous build).
+        gDeferredPostProgram.clearPermutations();
         gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredF.glsl", GL_FRAGMENT_SHADER));
+
+        static LLCachedControl<U32>  aya_view_mode_post(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        if (aya_view_mode_post == 2)
+        {
+            static LLCachedControl<bool> hq_dof(gSavedSettings, "RenderDepthOfFieldHighQuality", false);
+            gDeferredPostProgram.mShaderFiles.push_back(make_pair(
+                hq_dof ? "deferred/postDeferredHQDoFF.glsl" : "deferred/postDeferredF.glsl",
+                GL_FRAGMENT_SHADER));
+
+            static LLCachedControl<bool> dof_chroma_post(gSavedSettings, "RenderDepthOfFieldChroma", true);
+            if (dof_chroma_post)
+            {
+                gDeferredPostProgram.addPermutation("HAS_DOF_CHROMA", "1");
+            }
+
+            static LLCachedControl<bool> dof_front(gSavedSettings, "RenderDepthOfFieldFront", true);
+            if (dof_front)
+            {
+                gDeferredPostProgram.addPermutation("FRONT_BLUR", "1");
+            }
+        }
+        else
+        {
+            gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredF.glsl", GL_FRAGMENT_SHADER));
+        }
+        // </AYAstorm r30 P4 step 5>
         gDeferredPostProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostProgram.createShader();
         llassert(success);
@@ -2948,8 +3078,25 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostNoDoFProgram.mName = "Deferred Post NoDoF Shader";
         gDeferredPostNoDoFProgram.mFeatures.isDeferred = true;
         gDeferredPostNoDoFProgram.mShaderFiles.clear();
+        // <AYAstorm r30 P4 step 5> Gate the vignette chroma path on Cinematic+ChromaCvar.
+        // postDeferredNoDoFF.glsl's vignette chroma is guarded by #if HAS_DOF_CHROMA == 0
+        // (i.e. runs when permutation is undefined or 0). To suppress it outside Cinematic
+        // we explicitly addPermutation("HAS_DOF_CHROMA", "1"). Inside Cinematic, the user
+        // cvar RenderDepthOfFieldChroma controls whether the vignette path runs.
+        gDeferredPostNoDoFProgram.clearPermutations();
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoDoFF.glsl", GL_FRAGMENT_SHADER));
+
+        static LLCachedControl<U32>  aya_view_mode_nodof(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        static LLCachedControl<bool> dof_chroma_nodof(gSavedSettings, "RenderDepthOfFieldChroma", true);
+        if (aya_view_mode_nodof != 2 || dof_chroma_nodof)
+        {
+            // Non-Cinematic: always suppress; Cinematic+DoFChroma=1: suppress (chroma
+            // delivered via DoF path instead). Cinematic+DoFChroma=0: leave undefined so
+            // the vignette path runs (the only chroma route when DoF is off).
+            gDeferredPostNoDoFProgram.addPermutation("HAS_DOF_CHROMA", "1");
+        }
+        // </AYAstorm r30 P4 step 5>
         gDeferredPostNoDoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostNoDoFProgram.createShader();
         llassert(success);
@@ -2965,6 +3112,17 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredPostNoDoFNoiseProgram.clearPermutations();
         gDeferredPostNoDoFNoiseProgram.addPermutation("HAS_NOISE", "1");
+
+        // <AYAstorm r30 P4 step 5> Same chroma gate as gDeferredPostNoDoFProgram (this
+        // is the noisy-present sibling — shares postDeferredNoDoFF.glsl). See sibling
+        // register block for the full Cinematic gate rationale.
+        static LLCachedControl<U32>  aya_view_mode_noise(gSavedSettings, "AYAVisualRealismEnabled", 1);
+        static LLCachedControl<bool> dof_chroma_noise(gSavedSettings, "RenderDepthOfFieldChroma", true);
+        if (aya_view_mode_noise != 2 || dof_chroma_noise)
+        {
+            gDeferredPostNoDoFNoiseProgram.addPermutation("HAS_DOF_CHROMA", "1");
+        }
+        // </AYAstorm r30 P4 step 5>
 
         gDeferredPostNoDoFNoiseProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostNoDoFNoiseProgram.createShader();
@@ -3134,6 +3292,142 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredBufferVisualProgram.createShader();
     }
+
+    // <AYAstorm r30 P2> Velocity buffer shaders (ported from BlackDragon Viewer, NiranV Dean,
+    // 995a1354d8). LGPL-2.1-only (same as Second Life Viewer Source Code). These programs render
+    // per-object screen-space motion vectors into mVelocityMap (RG16F), consumed by the SMAA T2x
+    // reproject resolve and any later motion-blur pass.
+    //
+    // NOTE: BD upstream uses make_rigged_variant() here, which copies the same velocityV.glsl
+    // file and adds HAS_SKIN=1. Under HAS_SKIN the file calls getLastObjectSkinnedTransform(),
+    // which is only defined in skinnedVelocityV.glsl. That makes BD's rigged variant fail to
+    // link (latent because BD apparently never binds it). We instead set up the rigged variants
+    // manually with the dedicated skinnedVelocity*.glsl files (each has its own main()).
+    if (success)
+    {
+        gVelocityProgram.mName = "AYAstorm Velocity Shader";
+        gVelocityProgram.mFeatures.hasMotionBlur = true;
+        gVelocityProgram.mShaderFiles.clear();
+        gVelocityProgram.mShaderFiles.push_back(make_pair("deferred/velocityV.glsl", GL_VERTEX_SHADER));
+        gVelocityProgram.mShaderFiles.push_back(make_pair("deferred/velocityF.glsl", GL_FRAGMENT_SHADER));
+        gVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = gVelocityProgram.createShader();
+
+        if (success)
+        {
+            gVelocitySkinnedProgram.mName = "Skinned AYAstorm Velocity Shader";
+            gVelocitySkinnedProgram.mFeatures = gVelocityProgram.mFeatures;
+            gVelocitySkinnedProgram.mFeatures.hasObjectSkinning = true;
+            gVelocitySkinnedProgram.mShaderFiles.clear();
+            gVelocitySkinnedProgram.mShaderFiles.push_back(make_pair("deferred/skinnedVelocityV.glsl", GL_VERTEX_SHADER));
+            gVelocitySkinnedProgram.mShaderFiles.push_back(make_pair("deferred/velocityF.glsl", GL_FRAGMENT_SHADER));
+            gVelocitySkinnedProgram.mShaderLevel = gVelocityProgram.mShaderLevel;
+            gVelocitySkinnedProgram.mShaderGroup = gVelocityProgram.mShaderGroup;
+            // skinnedVelocityV.glsl references MAX_JOINTS_PER_MESH_OBJECT directly in its own
+            // compilation unit (not via the auto-attached objectSkinV.glsl), so the define must
+            // be present in this shader's mDefines.
+            gVelocitySkinnedProgram.addPermutation("MAX_JOINTS_PER_MESH_OBJECT",
+                std::to_string(LLSkinningUtil::getMaxJointCount()));
+            gVelocityProgram.mRiggedVariant = &gVelocitySkinnedProgram;
+            success = gVelocitySkinnedProgram.createShader();
+        }
+    }
+
+    if (success)
+    {
+        gVelocityAlphaProgram.mName = "AYAstorm Velocity Alpha Shader";
+        gVelocityAlphaProgram.mFeatures.hasMotionBlur = true;
+        gVelocityAlphaProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
+        gVelocityAlphaProgram.mShaderFiles.clear();
+        gVelocityAlphaProgram.mShaderFiles.push_back(make_pair("deferred/velocityAlphaV.glsl", GL_VERTEX_SHADER));
+        gVelocityAlphaProgram.mShaderFiles.push_back(make_pair("deferred/velocityAlphaF.glsl", GL_FRAGMENT_SHADER));
+        gVelocityAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        add_common_permutations(&gVelocityAlphaProgram);
+        success = gVelocityAlphaProgram.createShader();
+
+        if (success)
+        {
+            gVelocityAlphaSkinnedProgram.mName = "Skinned AYAstorm Velocity Alpha Shader";
+            gVelocityAlphaSkinnedProgram.mFeatures = gVelocityAlphaProgram.mFeatures;
+            gVelocityAlphaSkinnedProgram.mFeatures.hasObjectSkinning = true;
+            gVelocityAlphaSkinnedProgram.mShaderFiles.clear();
+            gVelocityAlphaSkinnedProgram.mShaderFiles.push_back(make_pair("deferred/skinnedVelocityAlphaV.glsl", GL_VERTEX_SHADER));
+            gVelocityAlphaSkinnedProgram.mShaderFiles.push_back(make_pair("deferred/velocityAlphaF.glsl", GL_FRAGMENT_SHADER));
+            gVelocityAlphaSkinnedProgram.mShaderLevel = gVelocityAlphaProgram.mShaderLevel;
+            gVelocityAlphaSkinnedProgram.mShaderGroup = gVelocityAlphaProgram.mShaderGroup;
+            add_common_permutations(&gVelocityAlphaSkinnedProgram);
+            gVelocityAlphaSkinnedProgram.addPermutation("MAX_JOINTS_PER_MESH_OBJECT",
+                std::to_string(LLSkinningUtil::getMaxJointCount()));
+            gVelocityAlphaProgram.mRiggedVariant = &gVelocityAlphaSkinnedProgram;
+            success = gVelocityAlphaSkinnedProgram.createShader();
+        }
+    }
+
+    if (success)
+    {
+        gAvatarVelocityProgram.mName = "AYAstorm Avatar Velocity Shader";
+        gAvatarVelocityProgram.mFeatures.hasSkinning = true;
+        gAvatarVelocityProgram.mFeatures.hasMotionBlur = true;
+        gAvatarVelocityProgram.mShaderFiles.clear();
+        gAvatarVelocityProgram.mShaderFiles.push_back(make_pair("deferred/avatarVelocityV.glsl", GL_VERTEX_SHADER));
+        gAvatarVelocityProgram.mShaderFiles.push_back(make_pair("deferred/avatarVelocityF.glsl", GL_FRAGMENT_SHADER));
+        gAvatarVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = gAvatarVelocityProgram.createShader();
+    }
+
+    if (success)
+    {
+        gDeferredMotionBlurProgram.mName = "AYAstorm Deferred Motion Blur Shader";
+        gDeferredMotionBlurProgram.mFeatures.isDeferred = true;
+        gDeferredMotionBlurProgram.mShaderFiles.clear();
+        gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/motionBlurF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredMotionBlurProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = gDeferredMotionBlurProgram.createShader();
+    }
+    // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P3 step 3> Volumetric Lighting (godrays) — borrowed from
+    // BlackDragon Viewer 995a1354d8. GODRAYS_FADE permutation is attached to
+    // gVolumetricLightProgram (BD attached it to gDeferredSoftenProgram, but
+    // the #if GODRAYS_FADE guard only exists in volumetricLightF.glsl; verified
+    // 2026-05-18 against BD class3/deferred/softenLightF.glsl which contains
+    // no GODRAYS_FADE reference).
+    // Step 6 fix: hasShadows is gated on use_sun_shadow + HAS_SUN_SHADOW
+    // permutation, matching the r15 godraysF.glsl wiring. Without sun shadows
+    // the shader early-outs to a passthrough since godrays-from-no-contrast
+    // carries no signal. BD's `nonpcfShadowAtPos` is remapped at shader level
+    // to the Firestorm-standard `sampleDirectionalShadow` from shadowUtil.glsl.
+    if (success)
+    {
+        gVolumetricLightProgram.mName = "AYAstorm Volumetric Light Shader";
+        gVolumetricLightProgram.mFeatures.isDeferred = true;
+        gVolumetricLightProgram.mFeatures.calculatesAtmospherics = true;
+        gVolumetricLightProgram.mFeatures.hasAtmospherics = true;
+        gVolumetricLightProgram.mFeatures.hasShadows = use_sun_shadow;
+        gVolumetricLightProgram.mShaderFiles.clear();
+        gVolumetricLightProgram.clearPermutations();
+        gVolumetricLightProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gVolumetricLightProgram.mShaderFiles.push_back(make_pair("deferred/volumetricLightF.glsl", GL_FRAGMENT_SHADER));
+        gVolumetricLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+
+        add_common_permutations(&gVolumetricLightProgram);
+
+        if (use_sun_shadow)
+        {
+            gVolumetricLightProgram.addPermutation("HAS_SUN_SHADOW", "1");
+        }
+
+        static LLCachedControl<bool> volumetric_directional(gSavedSettings, "RenderVolumetricLightingDirectional", true);
+        if (volumetric_directional)
+        {
+            gVolumetricLightProgram.addPermutation("GODRAYS_FADE", "1");
+        }
+
+        success = gVolumetricLightProgram.createShader();
+    }
+    // </AYAstorm r30 P3>
+
     // [RLVa:KB] - @setsphere
     if(success)
     {
@@ -3708,6 +4002,15 @@ std::string LLViewerShaderMgr::getShaderDirPrefix(void)
 {
     return gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders", "class");
 }
+
+// <FS:AYA r30 Phase 3.8 step 4> Cinematic strategy D root.
+std::string LLViewerShaderMgr::getCinematicShaderDirPrefix(void)
+{
+    return gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders", "cinematic_bd")
+         + gDirUtilp->getDirDelimiter()
+         + "class";
+}
+// </FS:AYA>
 
 void LLViewerShaderMgr::updateShaderUniforms(LLGLSLShader * shader)
 {

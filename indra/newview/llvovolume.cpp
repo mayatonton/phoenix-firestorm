@@ -115,8 +115,13 @@ extern bool gCubeSnapshot;
 // NaCl - Graphics crasher protection
 static bool enableVolumeSAPProtection()
 {
-    static LLCachedControl<bool> protect(gSavedSettings, "RenderVolumeSAProtection");
-    return protect;
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 04> Cinematic では
+    // RenderVolumeSAProtection を BD parity (false) に強制。BD には
+    // NaCl/AO SA 保護機構が無い → off で純 BD render path に合わせる。
+    // spec §3.2 phase3.5-ay-only。dispatch helper 経由で mode 2 のみ
+    // BD_NOOP=false、mode 0/1 は従来の保護動作維持。
+    return gSavedSettings.getBOOL("RenderVolumeSAProtection");
+    // </FS:AYAstorm>
 }
 // NaCl End
 
@@ -5790,6 +5795,10 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         draw_vec.push_back(draw_info);
         draw_info->mTextureMatrix = tex_mat;
         draw_info->mModelMatrix = model_mat;
+        // <AYAstorm r30 P2> Hook up per-drawable storage so the velocity pass has
+        // a stable place to read/write the previous frame's object matrix.
+        draw_info->mLastModelMatrix = &facep->getDrawable()->mLastVelocityMatrix;
+        // </AYAstorm r30 P2>
 
         draw_info->mBump  = bump;
         draw_info->mShiny = shiny;
@@ -5821,6 +5830,13 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         {
             draw_info->mIsSSSTarget = vobj->isSSSTarget();
             draw_info->mFSPickerLocalID = vobj->getLocalID();
+            // <AYAstorm r30 P2> stash wearer avatar so the static velocity push
+            // helpers can suppress motion blur on attachments per
+            // RenderMotionBlurOtherAvatars / SelfAvatar. getAvatar() returns the
+            // control avatar for animesh, the wearer for attachments, NULL for
+            // world geometry.
+            draw_info->mAttachedToAvatar = vobj->getAvatar();
+            // </AYAstorm r30 P2>
         }
         // </FS:AYA>
 

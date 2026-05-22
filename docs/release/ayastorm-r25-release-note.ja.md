@@ -1,6 +1,6 @@
 # AYAstorm r25 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r25 は AYAstorm r10.x-bugfix-1 以降で壊れていた parcel music の Ogg Vorbis live stream 再生を修正するリリース** — Opus support を維持したまま、Ogg Vorbis の Icecast live stream を AYAstorm 上でも正しく再生できるようにします。
+**r25 は AYAstorm r10.x-bugfix-1 以降で壊れていた parcel music の Ogg Vorbis live stream 再生を修正するリリース** — Opus support を維持したまま、Ogg Vorbis の Icecast live stream を AYAstorm 上でも正しく再生できるようにします。
 
 実装・調査ログ・検証 URL の詳細は永続資料 (`docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md`) に常駐させ、本ノートはそこへの誘導と差分ハイライトに徹します。
 

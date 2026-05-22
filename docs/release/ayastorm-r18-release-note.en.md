@@ -1,6 +1,6 @@
 # AYAstorm r18 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r18 is the fifth release of the visual-realism chapter (r14–r20) — and completes the A-axis (atmosphere)**. Clouds are no longer flat textured planes: a lightweight slab raymarch over the existing 2D `cloud_noise_texture` gives them depth, sculpted edges, and (when combined with r17's color temperature) **cinematic orange sunset clouds**.
+**r18 is the fifth release of the visual-realism chapter (r14–r20) — and completes the A-axis (atmosphere)**. Clouds are no longer flat textured planes: a lightweight slab raymarch over the existing 2D `cloud_noise_texture` gives them depth, sculpted edges, and (when combined with r17's color temperature) **cinematic orange sunset clouds**.
 
 > **Distribution**: r18 ships **bundled with the r23 release** (no standalone r18 tag). The r23 release page links back to this note and to the r18 spec.
 

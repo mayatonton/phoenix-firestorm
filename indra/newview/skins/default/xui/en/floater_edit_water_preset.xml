@@ -1,0 +1,561 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<floater
+ height="222"
+ layout="topleft"
+ name="Edit Water Preset"
+ save_rect="true"
+ title="Edit Water Preset"
+ width="700">
+<string name="title_new">
+			Create a new Water Preset
+</string>
+<string name="title_edit">
+			Edit Water Preset
+</string>
+<string name="title_neutral">
+			Edit a Water Preset or create a new one.
+</string>
+<string name="combo_label">
+			-Select a preset-
+</string>
+<icon
+	follows="top|left"
+	height="193"
+	color="1 1 1 1"
+	image_name="Panel_Background"
+	layout="topleft"
+	name="vicon"
+	mouse_opaque="false"
+	visible="true"
+	width="686"
+	top="22"
+	left="7"/>
+       <tab_container
+       follows="left|top"
+       height="186"
+       halign="center"
+       layout="topleft"
+       tab_height="20"
+       left="5"
+       name="tab_settings"
+       tab_position="top"
+       top="2"
+       width="689">
+       <panel
+       border="false"
+       bevel_style="none"
+       follows="left|top|right|bottom"
+       label="Settings"
+       layout="topleft"
+       height="180"
+       left="1"
+       mouse_opaque="false"
+       name="Settings"
+       top="0"
+       width="698">
+ 
+<!--======== I conlumn of controls ========-->   
+   <text
+    follows="left|top|right"
+    height="16"
+    font="SansSerif"
+    layout="topleft"
+    left="10"    
+    name="water_color_label"
+    top="7"
+    width="215">
+       Water Fog Color
+   </text>
+   <color_swatch
+    can_apply_immediately="true"
+    follows="left|top"
+    height="50"
+    label_height="0"
+    layout="topleft"
+    left_delta="7"
+    name="WaterFogColor"
+    top_pad="6"
+    width="60" />
+    
+    
+   <text
+    follows="left|top|right"
+    font="SansSerif"
+    layout="topleft"
+    left="10"
+    height="16"
+    top="91"
+    name="water_fog_density_label"
+    width="215">
+    	Fog Density Exponent
+   </text>
+   <slider
+    decimal_digits="1"
+    follows="left|top"
+    height="10"
+    initial_value="0"
+    layout="topleft"
+    left_delta="0"
+    max_val="10"
+    name="WaterFogDensity"
+    top_pad="3"
+    width="196"/>
+    
+    
+   <text
+    follows="left|top|right"
+    font="SansSerif"
+    layout="topleft"
+    left="10"
+    height="16"
+    top="133"
+    name="underwater_fog_modifier_label"
+    width="215">
+    	Underwater Fog Modifier
+   </text>
+   <slider
+    decimal_digits="2"
+    follows="left|top"
+    height="10"
+    initial_value="0"
+    layout="topleft"
+    increment="0.01"
+    left_delta="0"
+    max_val="2"
+    name="WaterUnderWaterFogMod"
+    top_pad="3"
+    width="196"/>
+    
+<!--======== II conlumn of controls ========-->    
+    
+    
+    <text
+     follows="left|top|right"
+     font="SansSerif"
+     layout="topleft"
+     left="235"
+     name="HDText"
+     height="16"
+     top="7"
+     width="215">
+        Fresnel Scale
+    </text>
+    <slider
+     control_name="WaterFresnelScale"
+     decimal_digits="2"
+     follows="left|top"
+     height="10"
+     increment="0.01"
+     initial_value="0.7"
+     layout="topleft"
+     left_delta="0"
+     name="WaterFresnelScale"
+     top_pad="3"
+     width="196"/>
+    <text
+     follows="left|top|right"
+     font="SansSerif"
+     layout="topleft"
+     left_delta="0"
+     height="16"
+     name="FresnelOffsetText"
+     top="49"
+     width="215">
+        Fresnel Offset
+    </text>
+    <slider
+     control_name="WaterFresnelOffset"
+     decimal_digits="2"
+     follows="top|left"
+     height="10"
+     increment="0.01"
+     initial_value="0.7"
+     layout="topleft"
+     left_delta="0"
+     name="WaterFresnelOffset"
+     top_pad="3"
+     width="196"/>
+    
+    <text
+     follows="left|top|right"
+     font="SansSerif"
+     height="16"
+     layout="topleft"
+     left="235"
+     name="BDensText"
+     top="91"
+     width="215">
+        Reflection Wavelet Scale
+    </text>
+    <slider
+     control_name="WaterNormalScaleX"
+     decimal_digits="1"
+     follows="left|top"
+     initial_value="0.7"
+     layout="topleft"
+     height="10"
+     label="1"
+     left_delta="0"
+     max_val="10"
+     name="WaterNormalScaleX"
+     top_pad="3"
+     width="196"/>
+    <slider
+     control_name="WaterNormalScaleY"
+     decimal_digits="1"
+     follows="left|top"
+     label="2"
+     initial_value="0.7"
+     layout="topleft"
+     max_val="10"
+     name="WaterNormalScaleY"
+     top_pad="6"
+     width="196"/>
+    <slider
+     control_name="WaterNormalScaleZ"
+     decimal_digits="1"
+     follows="left|top"
+     initial_value="0.7"
+     label="3"
+     layout="topleft"
+     max_val="10"
+     name="WaterNormalScaleZ"
+     top_pad="6"
+     width="196"/>
+    
+    	 <text
+      follows="left|top|right"
+      font="SansSerif"
+      height="16"
+      layout="topleft"
+      left="470"
+      name="DensMultText"
+      top="7"
+      width="215">
+         Refract Scale Above
+     </text>
+     <slider
+      control_name="WaterScaleAbove"
+      decimal_digits="2"
+      follows="left|top"
+      increment="0.01"
+      initial_value="0.1"
+      layout="topleft"
+      left_delta="0"
+      name="WaterScaleAbove"
+      top_pad="3"
+      width="196" />
+     
+     <text
+      type="string"
+      length="1"
+      follows="left|top|right"
+      font="SansSerif"
+      height="16"
+      layout="topleft"
+      left_delta="0"
+      name="WaterScaleBelowText"
+      top="49"
+      width="215">
+         Refract Scale Below
+     </text>
+     <slider
+      control_name="WaterScaleBelow"
+      decimal_digits="2"
+      follows="left|top"
+      height="10"
+      increment="0.01"
+      initial_value="0"
+      layout="topleft"
+      left_delta="0"
+      name="WaterScaleBelow"
+      top_pad="3"
+      width="196"/>
+     
+      <text
+      follows="left|top|right"
+      font="SansSerif"
+      height="16"
+      layout="topleft"
+      left_delta="0"
+      name="MaxAltText"
+      top="91"
+      width="215">
+         Blur Multiplier
+     </text>
+     <slider
+      control_name="WaterBlurMult"
+      follows="left|top"
+      height="10"
+      increment="0.001"
+      initial_value="0"
+      layout="topleft"
+      left_delta="0"
+      max_val="6.0"
+      name="WaterBlurMult"
+      top_pad="3"
+      width="196"/>
+     
+     <text
+      follows="left|top|right"
+      font="SansSerif"
+      height="16"
+      layout="topleft"
+      left_delta="0"
+      name="MaxAltText"
+      top="133"
+      width="215">
+         Water Height
+     </text>
+     <slider
+      control_name="RenderWaterHeightFudge"
+      follows="left|top"
+      can_edit_text="true"
+      height="16"
+      increment="0.01"
+      initial_value="0"
+      layout="topleft"
+      left_delta="0"
+      max_val="256.0"
+      name="RenderWaterHeightFudge"
+      top_pad="0"
+      width="196"/>
+     <button
+ follows="left|top"
+ height="15"
+ is_toggle="false"
+ label="⌊default⌉"
+ image_selected="Transparent"
+ image_unselected="Transparent"
+ layout="topleft"
+ left_pad="-55"
+ top_delta="-17"
+ name="DefaultWaterHeight"
+ width="60"/>
+     
+	</panel>
+       <panel
+       border="false"
+       follows="all"
+       label="Image"
+       layout="topleft"
+       mouse_opaque="false"
+       name="Image"
+       top="0"
+       width="300">
+
+
+<!--======== III conlumn of contorls ========-->
+
+    <text
+     follows="left|top|right"
+     font="SansSerif"
+     layout="topleft"
+     left="10"
+     height="16"
+     name="BHText"
+     top="7"
+     width="215">
+        Big Wave Direction
+    </text>    
+    <slider
+     control_name="WaterWave1DirX"
+     decimal_digits="2"
+     follows="left|top"
+     increment="0.01"
+     initial_value="0.7"
+     label="X"
+     height="10"
+     layout="topleft"             
+     max_val="4"
+     min_val="-4"
+     name="WaterWave1DirX"
+     top_pad="3"
+     width="196"/>    
+    <slider
+     control_name="WaterWave1DirY"
+     decimal_digits="2"
+     follows="left|top"
+     increment="0.01"
+     initial_value="0.7"
+     label="Y"
+     layout="topleft"
+     max_val="4"
+     min_val="-4"
+     name="WaterWave1DirY"
+     top_pad="5"
+     width="196"/>
+    
+         <text
+      follows="left|top|right"
+      font="SansSerif"
+      layout="topleft"
+      left="10"
+      height="16"
+      name="BHText2"
+      top="91"
+      width="215">
+         Little Wave Direction
+     </text>
+     <slider
+      control_name="WaterWave2DirX"
+      decimal_digits="2"
+      follows="left|top"
+      increment="0.01"
+      initial_value="0.7"
+      label="X"
+      height="10"
+      layout="topleft"
+      max_val="4"
+      min_val="-4"
+      name="WaterWave2DirX"
+      top_pad="3"
+      width="196" />
+     <slider
+      control_name="WaterWave2DirY"
+      decimal_digits="2"
+      follows="left|top"
+      increment="0.01"
+      initial_value="0.7"
+      label="Y"
+      layout="topleft"
+      max_val="4"
+      min_val="-4"
+      name="WaterWave2DirY"
+      top_pad="6"
+      width="196" />
+      
+      <text
+       follows="left|top|right"
+       font="SansSerif"
+       height="16"
+       layout="topleft"
+       left="235"
+       name="BHText3"
+       top="7"
+       width="215">
+          Normal Map
+      </text>
+      <texture_picker
+       height="143"
+       layout="topleft"
+       left_delta="5"
+       name="water_normal_map"
+       top_pad="3"
+       width="128" />
+	</panel>
+<!--======== End of Controls panel ========-->	
+       </tab_container>
+	
+ <icon
+		follows="left|top|right"
+		image_name="Toolbar_Middle_Off"
+		height="23"
+		width="169"
+		layout="topleft"
+		visible="false"
+		name="water_preset_icon"
+		left="9"
+		top_pad="3"/>
+   <line_editor
+    height="20"
+     left="11"
+     name="water_preset_name"
+     text_pad_left="5"
+     top_delta="1"
+     width="165" />
+   <combo_box
+   follows="top|left"
+     layout="topleft"
+     allow_text_entry="true"
+     left="9"
+     max_chars="100"
+	  height="22"
+   name="water_preset_combo"
+   top_delta="-1"
+     width="177">
+    <combo_box.combo_editor
+          text_pad_left="5"
+          background_image="TextField_Off"
+          background_image_disabled="TextField_Disabled"
+          background_image_focused="TextField_Active"/>
+          <combo_box.combo_button
+          image_unselected="ComboToolbarButton_Off"
+          image_selected="ComboToolbarButton_Selected"
+          image_pressed="ComboToolbarButton_Selected" 
+          image_pressed_selected="ComboToolbarButton_Selected"/>
+          <combo_box.drop_down_button
+          image_unselected="ComboToolbarButton_Off"
+          image_selected="ComboToolbarButton_Selected"
+          image_pressed="ComboToolbarButton_Selected" 
+          image_pressed_selected="ComboToolbarButton_Selected"
+          image_disabled="ComboToolbarButton_Disabled"/>
+        </combo_box>
+    <button
+     follows="bottom|right"
+     height="23"
+     label="Save Preset"
+	  image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+     layout="topleft"
+     left_pad="-7"
+     name="save"
+     top_delta="0"
+     width="80"/>
+   <button
+     follows="bottom|right"
+     height="23"
+     label="Delete"
+	  image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+     layout="topleft"
+     left_pad="1"
+     name="delete"
+     width="55"/>
+	 <button
+     follows="bottom|right"
+     height="23"
+     label="Refresh"
+	  image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+     layout="topleft"
+     left_pad="1"
+     name="refresh"
+     width="60"/>
+    
+     <button
+     follows="top|left"
+     height="23"
+     label="Make this my new preset"
+	  image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+     layout="topleft"
+     is_toggle="true"
+     left_pad="1"
+     name="make_default_cb"
+     top_delta="0"
+     width="152"/>
+     <icon
+		follows="left|top|right"
+		image_name="Toolbar_Middle_Off"
+		height="23"
+		width="105"
+		layout="topleft"
+		left_pad="1"
+		top_delta="0"/>
+     <button
+     follows="bottom|right"
+     height="23"
+     label="Cancel"
+	  image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+     layout="topleft"
+     left_pad="1"
+     name="cancel"
+     width="55"/>
+ </floater>

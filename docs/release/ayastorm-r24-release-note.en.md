@@ -1,6 +1,6 @@
 # AYAstorm r24 — Release Announcement
 
-GitHub release page copy. **r24 routes CEF / Dullahan media audio (MOAP / Web / HTML5 / YouTube) through the viewer's FMOD 2D channel** — the viewer's Media volume / mute now applies cleanly to all CEF-driven media.
+**r24 routes CEF / Dullahan media audio (MOAP / Web / HTML5 / YouTube) through the viewer's FMOD 2D channel** — the viewer's Media volume / mute now applies cleanly to all CEF-driven media.
 
 > **Distribution**: r24 ships as one of the features in the r13–r24 bundle tag. Other release notes for the bundled releases are linked directly from the GitHub Release page.
 

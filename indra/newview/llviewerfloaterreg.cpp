@@ -72,6 +72,8 @@
 #include "llfloatereditextdaycycle.h"
 #include "llfloateremojipicker.h"
 #include "llfloaterenvironmentadjust.h"
+#include "llfloaterenvironmentsettings.h"
+#include "llfloaterwateradjust.h"
 #include "llfloaterexperienceprofile.h"
 #include "llfloaterexperiences.h"
 #include "llfloaterexperiencepicker.h"
@@ -461,6 +463,11 @@ void LLViewerFloaterReg::registerFloaters()
 
     LLFloaterReg::add("env_adjust_snapshot", "floater_adjust_environment.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterEnvironmentAdjust>);
 
+    // <AYAstorm:r30-bd-port> BD env floaters — opened from AYA Cinematic Controls
+    LLFloaterReg::add("env_adjust_water", "floater_adjust_water.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterWaterAdjust>);
+    LLFloaterReg::add("env_settings", "floater_environment_settings.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterEnvironmentSettings>);
+    // </AYAstorm:r30-bd-port>
+
     LLFloaterReg::add("env_edit_extdaycycle", "floater_edit_ext_day_cycle.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterEditExtDayCycle>);
     LLFloaterReg::add("my_environments", "floater_my_environments.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterMyEnvironment>);
 
@@ -689,6 +696,11 @@ void LLViewerFloaterReg::registerFloaters()
 	// LLFloaterReg::add(PHOTOTOOLS_FLOATER, "floater_phototools.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FloaterQuickPrefs>); // Original line with likely typo
 	LLFloaterReg::add("phototools", "floater_phototools.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FloaterQuickPrefs>); // Corrected line - using string literal "phototools"
     LLFloaterReg::add("phototools_camera", "floater_phototools_camera.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterCamera>);
+    // <AYAstorm r30 P4 step 4a> AYAstorm Cinematic Controls floater
+    // (BD DoF chain + future P5/P6 Cinematic post-processing).
+    // Reuses generic FloaterQuickPrefs class — controls bind via XML control_name.
+    LLFloaterReg::add("aya_cinematic", "floater_aya_cinematic.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FloaterQuickPrefs>);
+    // </AYAstorm r30 P4 step 4a>
     LLFloaterReg::add("quickprefs", "floater_quickprefs.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FloaterQuickPrefs>);
     LLFloaterReg::add("region_tracker", "floater_region_tracker.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<ALFloaterRegionTracker>);
     LLFloaterReg::add("search_replace", "floater_search_replace.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterSearchReplace>);

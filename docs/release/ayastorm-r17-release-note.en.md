@@ -1,6 +1,6 @@
 # AYAstorm r17 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r17 is the fourth release of the visual-realism chapter (r14–r20)** — adds a sun-elevation-driven color temperature modulator that warms the sun / ambient / cloud color toward orange as the sun approaches the horizon, restoring the cinematic warmth of sunset that flat preset values alone don't deliver.
+**r17 is the fourth release of the visual-realism chapter (r14–r20)** — adds a sun-elevation-driven color temperature modulator that warms the sun / ambient / cloud color toward orange as the sun approaches the horizon, restoring the cinematic warmth of sunset that flat preset values alone don't deliver.
 
 > **Distribution**: r17 ships **bundled with the r23 release** (no standalone r17 tag). The r23 release page links back to this note and to the r17 spec.
 

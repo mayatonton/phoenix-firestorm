@@ -39,6 +39,7 @@
 
 #include "llagent.h"
 #include "llagentcamera.h"
+#include "llcinematicoverlay.h" // <FS:AYA r30 P5 R2> applyRecommendedSettings 後の BD overlay 再適用
 #include "llcommandhandler.h"
 #include "llcommunicationchannel.h"
 #include "llfloaterreg.h"
@@ -157,6 +158,7 @@
 #include "lltexturecache.h"
 #include "lltexturefetch.h"
 #include "lltextureview.h"
+#include "lllayoutstack.h" // <FS:AYA r30 P3.9> LLLayoutPanel for BD Machinima Sidebar programmatic mount
 #include "lltoast.h"
 #include "lltool.h"
 #include "lltoolbarview.h"
@@ -2144,6 +2146,18 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     {
         LLFeatureManager::getInstance()->applyRecommendedSettings();
         gSavedSettings.setBOOL("ProbeHardwareOnStartup", false);
+        // <FS:AYA r30 P5 R2> applyRecommendedSettings は featuretable preset を経由して
+        // RenderShadowDetail / RenderFSAAType / RenderFarClip / RenderTreeLODFactor 等を
+        // 上書きするため、initConfiguration 段階で乗せた Cinematic BD overlay が消える。
+        // Cinematic mode の場合はここで強制再適用して preset を BD baseline で潰す。
+        // 通常起動 (ProbeHardwareOnStartup==false かつ LastFeatureVersion 一致) では
+        // 本ブロックに入らないので user tuning は安全。詳細:
+        // docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §3.4
+        if (gSavedSettings.getU32("AYAVisualRealismEnabled") == 2)
+        {
+            LLCinematicOverlay::applyCinematicOverlay();
+        }
+        // </FS:AYA>
     }
 
     // If we crashed while initializng GL stuff last time, disable certain features
@@ -2422,6 +2436,13 @@ void LLViewerWindow::initWorldUI()
         mChicletContainer->addChild(chiclet_bar);
         mChicletContainer->setVisible(true);
     }
+
+    // 元 Phase 4 hardcoded BD-parity pinning ブロック (RenderDepthOfField/
+    // RenderMotionBlur/RenderScreenSpaceReflections/RenderFSAAType + Camera
+    // DoF 6 件) は 2026-05-22 に settings_cinematic_bd.xml overlay へ移管。
+    // 毎起動 setBOOL/setF32 が user の floater customize を潰す bug の根本因
+    // だったため、sentinel-driven な overlay 機構 (一度焼き → user 改変
+    // survive) に統一。
 
     LLRect morph_view_rect = full_window;
     morph_view_rect.stretch( -STATUS_BAR_HEIGHT );

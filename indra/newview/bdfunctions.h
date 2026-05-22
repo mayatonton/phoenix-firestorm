@@ -1,0 +1,116 @@
+/**
+*
+* Copyright (C) 2018, NiranV Dean
+*
+* This library is free software; you can redistribute it and/or
+* modify it under the terms of the GNU Lesser General Public
+* License as published by the Free Software Foundation;
+* version 2.1 of the License only.
+*
+* This library is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+* Lesser General Public License for more details.
+*
+*/
+
+
+// AYAstorm: imported from BlackDragon Viewer (NiranV Dean), 995a1354d8, 2026-04-19
+// Phase 3.9 BD full port: ported verbatim to satisfy llfloaterenvironmentsettings /
+// llfloaterwateradjust gDragonLibrary dependency (inventory miss caught at build time).
+
+#ifndef BD_FUNCTIONS_H
+#define BD_FUNCTIONS_H
+
+#include <string>
+
+#include "llsliderctrl.h"
+#include "llbutton.h"
+#include "lltabcontainer.h"
+#include "llsettingsbase.h"
+#include "llframetimer.h"
+
+class LLComboBox;
+
+class BDFunctions
+{
+public:
+	BDFunctions();
+	/*virtual*/	~BDFunctions();
+
+	void initializeControls();
+
+//	//BD - Debug Arrays
+	static void onCommitX(LLUICtrl* ctrl, const LLSD& param);
+	static void onCommitY(LLUICtrl* ctrl, const LLSD& param);
+	static void onCommitZ(LLUICtrl* ctrl, const LLSD& param);
+//	//BD - Vector4
+	static void onCommitW(LLUICtrl* ctrl, const LLSD& param);
+
+	static void onControlLock(LLUICtrl* ctrl, const LLSD& param);
+
+//	//BD - Revert to Default
+	// <FS:AYAstorm:r30-bd-port> Phase 3.9
+	static bool resetToDefault(LLUICtrl* ctrl);
+	// </FS:AYAstorm:r30-bd-port>
+
+	static void invertValue(LLUICtrl* ctrl);
+
+	static std::string escapeString(const std::string& str);
+
+	static void triggerWarning(LLUICtrl* ctrl, const LLSD& param);
+
+	static void openPreferences(const LLSD& param);
+
+	static S32 checkDeveloper(LLUUID id);
+
+	static bool checkKonamiCode();
+
+	static void askFactoryReset(const LLSD& param);
+	static void doFactoryReset(const LLSD& notification, const LLSD& response);
+
+//	//BD - Camera Recorder
+	bool getCameraOverride() { return mCameraOverride; }
+
+//	//BD - Windlight functions
+	void savePreset(std::string name, LLSettingsBase::ptr_t settings);
+	void deletePreset(std::string name, std::string folder = "skies");
+	void loadPresetsFromDir(LLComboBox* combo, std::string folder = "skies");
+	bool doLoadPreset(const std::string& path);
+	static std::string getWindlightDir(std::string folder, bool system = false);
+	bool checkPermissions(LLUUID uuid);
+	void onSelectPreset(LLComboBox* combo, LLSettingsBase::ptr_t settings);
+	void addInventoryPresets(LLComboBox* combo, LLSettingsBase::ptr_t settings);
+	void loadItem(LLSettingsBase::ptr_t settings);
+	bool loadPreset(std::string filename, LLSettingsBase::ptr_t settings);
+
+//  //BD - Update Checker
+    static size_t writeCallback(void* contents, size_t size, size_t nmemb, void* userp);
+    std::string fetchRemoteVersion();
+    std::vector<S32> splitVersion(const std::string& version);
+    S32 compareVersions(const std::string& remote, const std::string& local);
+
+	bool mCameraOverride;
+
+	LLSD mDefaultSkyPresets;
+	LLSD mDefaultWaterPresets;
+	LLSD mDefaultDayCyclePresets;
+
+	//BD - Cached Settings
+	//     llvoavatar.cpp
+	bool mAllowWalkingBackwards;
+	F32 mAvatarRotateThresholdSlow;
+	F32 mAvatarRotateThresholdFast;
+	F32 mAvatarRotateThresholdMouselook;
+	F32 mMovementRotationSpeed;
+
+    LLFrameTimer mWarningCD;
+
+	bool mUseFreezeWorld;
+
+	bool mDebugAvatarRezTime;
+};
+
+extern BDFunctions gDragonLibrary;
+
+#endif

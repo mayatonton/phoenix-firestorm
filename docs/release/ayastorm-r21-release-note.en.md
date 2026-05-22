@@ -1,6 +1,6 @@
 # AYAstorm r21 — Release Announcement
 
-Short text intended to be pasted into the GitHub release page. **r21 is a single-feature UX release** outside the visual-realism chapter (r14-r20) — a complete redesign of the right-click picker for the user's own rigged attachments, switching from upstream CPU bind-pose mesh-ray to a GPU-rendered object-ID buffer.
+**r21 is a single-feature UX release** outside the visual-realism chapter (r14-r20) — a complete redesign of the right-click picker for the user's own rigged attachments, switching from upstream CPU bind-pose mesh-ray to a GPU-rendered object-ID buffer.
 
 Implementation details / known limits / configuration reference live in the permanent spec (`docs/ayastorm-r21-self-rigged-picker.md`). This note is link-only + diff highlights.
 

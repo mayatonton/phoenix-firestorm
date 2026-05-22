@@ -166,6 +166,23 @@ S32 LLPipeline::RenderShadowDetail;
 S32 LLPipeline::RenderShadowSplits;
 bool LLPipeline::RenderDeferredSSAO;
 F32 LLPipeline::RenderShadowResolutionScale;
+// <FS:AYAstorm:r30-bd-port> Phase 3.9: BD sidebar gating flag for manual shadow distance entry.
+bool LLPipeline::RenderShadowAutomaticDistance;
+// </FS:AYAstorm:r30-bd-port>
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation (Cinematic only)
+LLVector4 LLPipeline::RenderShadowResolution;
+LLVector4 LLPipeline::RenderShadowFarClipVec;
+LLVector2 LLPipeline::RenderProjectorShadowResolution;
+// </FS:AYAstorm:r30-bd-port>
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar (Cinematic only)
+F32 LLPipeline::RenderShadowFarClip;
+F32 LLPipeline::RenderGlobalLightStrength;
+// </FS:AYAstorm:r30-bd-port>
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD live Post FX scalar cvar (Cinematic only)
+F32 LLPipeline::RenderSepiaStrength;
+F32 LLPipeline::RenderGreyscaleStrength;
+U32 LLPipeline::RenderNumColors;
+// </FS:AYAstorm:r30-bd-port>
 bool LLPipeline::RenderDelayCreation;
 //bool LLPipeline::RenderAnimateRes; <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
 bool LLPipeline::FreezeTime;
@@ -184,6 +201,11 @@ LLColor4 LLPipeline::PreviewSpecular2;
 LLVector3 LLPipeline::PreviewDirection0;
 LLVector3 LLPipeline::PreviewDirection1;
 LLVector3 LLPipeline::PreviewDirection2;
+F32 LLPipeline::RenderGlowMinLuminance;
+// <FS:AYAstorm r30 P4>
+bool LLPipeline::RenderDeferredBlurLight;
+bool LLPipeline::RenderMotionBlur;
+// </FS:AYAstorm r30 P4>
 F32 LLPipeline::RenderGlowMaxExtractAlpha;
 F32 LLPipeline::RenderGlowWarmthAmount;
 LLVector3 LLPipeline::RenderGlowLumWeights;
@@ -364,10 +386,19 @@ bool    LLPipeline::sReflectionRender = false;
 bool    LLPipeline::sDistortionRender = false;
 bool    LLPipeline::sImpostorRender = false;
 bool    LLPipeline::sImpostorRenderAlphaDepthPass = false;
+// <AYAstorm r30 P2>
+bool    LLPipeline::sT2xJitterEnabled = false;
+bool    LLPipeline::sVelocityRender = false;
+// </AYAstorm r30 P2>
 bool    LLPipeline::sShowJellyDollAsImpostor = true;
 bool    LLPipeline::sUnderWaterRender = false;
 bool    LLPipeline::sTextureBindTest = false;
 bool    LLPipeline::sRenderAttachedLights = true;
+// <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD-verbatim attached-light split (Cinematic only)
+bool    LLPipeline::sRenderOtherAttachedLights = true;
+bool    LLPipeline::sRenderOwnAttachedLights = true;
+bool    LLPipeline::sRenderDeferredLights = true;
+// </FS:AYAstorm:r30-bd-port>
 bool    LLPipeline::sRenderAttachedParticles = true;
 bool    LLPipeline::sRenderDeferred = false;
 bool    LLPipeline::sReflectionProbesEnabled = false;
@@ -488,6 +519,11 @@ void LLPipeline::init()
     gOctreeMinSize = gSavedSettings.getF32("OctreeMinimumNodeSize");
     sDynamicLOD = gSavedSettings.getBOOL("RenderDynamicLOD");
     sRenderAttachedLights = gSavedSettings.getBOOL("RenderAttachedLights");
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    sRenderOtherAttachedLights = gSavedSettings.getBOOL("RenderOtherAttachedLights");
+    sRenderOwnAttachedLights = gSavedSettings.getBOOL("RenderOwnAttachedLights");
+    sRenderDeferredLights = gSavedSettings.getBOOL("RenderDeferredLights");
+    // </FS:AYAstorm:r30-bd-port>
     sRenderAttachedParticles = gSavedSettings.getBOOL("RenderAttachedParticles");
 
     sRenderMOAPBeacons = gSavedSettings.getBOOL("moapbeacon");
@@ -613,6 +649,23 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("RenderShadowSplits");
     connectRefreshCachedSettingsSafe("RenderDeferredSSAO");
     connectRefreshCachedSettingsSafe("RenderShadowResolutionScale");
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9
+    connectRefreshCachedSettingsSafe("RenderShadowAutomaticDistance");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+    connectRefreshCachedSettingsSafe("RenderShadowResolution");
+    connectRefreshCachedSettingsSafe("RenderShadowDistance");
+    connectRefreshCachedSettingsSafe("RenderProjectorShadowResolution");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    connectRefreshCachedSettingsSafe("RenderShadowFarClip");
+    connectRefreshCachedSettingsSafe("RenderGlobalLightStrength");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 3
+    connectRefreshCachedSettingsSafe("RenderPostSepiaStrength");
+    connectRefreshCachedSettingsSafe("RenderPostGreyscaleStrength");
+    connectRefreshCachedSettingsSafe("RenderPostPosterizationSamples");
+    // </FS:AYAstorm:r30-bd-port>
     connectRefreshCachedSettingsSafe("RenderDelayCreation");
 //  connectRefreshCachedSettingsSafe("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     connectRefreshCachedSettingsSafe("FreezeTime");
@@ -631,8 +684,13 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("PreviewDirection0");
     connectRefreshCachedSettingsSafe("PreviewDirection1");
     connectRefreshCachedSettingsSafe("PreviewDirection2");
+    connectRefreshCachedSettingsSafe("RenderGlowMinLuminance");
     connectRefreshCachedSettingsSafe("RenderGlowMaxExtractAlpha");
     connectRefreshCachedSettingsSafe("RenderGlowWarmthAmount");
+    // <FS:AYAstorm r30 P4> Cinematic Controls switches
+    connectRefreshCachedSettingsSafe("RenderDeferredBlurLight");
+    connectRefreshCachedSettingsSafe("RenderMotionBlur");
+    // </FS:AYAstorm r30 P4>
     connectRefreshCachedSettingsSafe("RenderGlowLumWeights");
     connectRefreshCachedSettingsSafe("RenderGlowWarmthWeights");
     connectRefreshCachedSettingsSafe("RenderGlowResolutionPow");
@@ -690,6 +748,11 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("RenderAttachedLights");
     connectRefreshCachedSettingsSafe("RenderAttachedParticles");
     // </FS:Ansariel>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    connectRefreshCachedSettingsSafe("RenderOtherAttachedLights");
+    connectRefreshCachedSettingsSafe("RenderOwnAttachedLights");
+    connectRefreshCachedSettingsSafe("RenderDeferredLights");
+    // </FS:AYAstorm:r30-bd-port>
     // <FS:Beq> FIRE-16728 Add free aim mouse and focus lock
     connectRefreshCachedSettingsSafe("FSFocusPointFollowsPointer");
     connectRefreshCachedSettingsSafe("FSFocusPointLocked");
@@ -1036,6 +1099,63 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         }
         // </AYAstorm:r21.1>
 
+        // <AYAstorm r30 P2> Velocity buffer + SMAA T2x history buffer.
+        // Cinematic-only (AYAVisualRealismEnabled == 2). Same allocate
+        // pattern as r21.1 mObjectIDBuffer just above: main RT only, share
+        // depth with deferredScreen. Reads the cvar via LLCachedControl
+        // because the View Mode is restart-required (r30 P1) — switching
+        // away mid-session does not actually re-enter this code path until
+        // the next allocateScreenBufferInternal call, and the display() side
+        // gate checks mVelocityMap.isComplete() before using it.
+        if (mRT == &mMainRT)
+        {
+            static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+            if (aya_view_mode == 2)
+            {
+                LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("CinematicBuffers");
+                if (!mVelocityMap.allocate(resX, resY, GL_RG16F, false)) return false;
+                mRT->deferredScreen.shareDepthBuffer(mVelocityMap);
+                if (!mSMAAHistory.allocate(resX, resY, GL_RGBA, false)) return false;
+                LL_INFOS("Pipeline") << "AYAstorm r30 P2: allocated mVelocityMap (RG16F) + mSMAAHistory (RGBA) at " << resX << "x" << resY << LL_ENDL;
+            }
+            else
+            {
+                mVelocityMap.release();
+                mSMAAHistory.release();
+            }
+        }
+        // </AYAstorm r30 P2>
+
+        // <AYAstorm r30 P5 transparent-DoF L2-β> Allocate the alpha-aware
+        // depth RT. Color attachment is unused (we only read/write depth)
+        // but LLRenderTarget needs depth+color for gCopyDepthProgram to
+        // emit gl_FragDepth. Main RT only — DoF doesn't run on aux/probe
+        // paths.
+        if (mRT == &mMainRT)
+        {
+            LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYAAlphaDepth");
+            if (!mAYAAlphaDepth.allocate(resX, resY, GL_RGBA, true)) return false;
+        }
+        // </AYAstorm r30 P5 transparent-DoF L2-β>
+
+        // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color RT for
+        // forward alpha BLEND. RGBA16F to preserve HDR scene buffer
+        // precision (matches mRT->screen). depth=false here — we share
+        // mRT->screen's depth attachment via shareDepthBuffer below so
+        // alpha BLEND draws still depth-test against opaque geometry
+        // without re-allocating depth. Main RT only — DoF doesn't run on
+        // aux / probe / impostor / HUD paths.
+        if (mRT == &mMainRT)
+        {
+            LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYAAlphaColor");
+            if (!mAYAAlphaColor.allocate(resX, resY, GL_RGBA16F, false)) return false;
+            // deferredScreen owns depth (allocate(..., true) above) and has
+            // already lent it to mRT->screen. Borrow the same attachment so
+            // alpha BLEND depth-tests/writes match the rest of the scene.
+            mRT->deferredScreen.shareDepthBuffer(mAYAAlphaColor);
+        }
+        // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
         if (RenderFSAAType > 0)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("FSAABuffer"); // <FS:Beq/> improve Tracy scoping 
@@ -1117,10 +1237,31 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
     U32 sun_shadow_map_width = BlurHappySize(resX, scale);
     U32 sun_shadow_map_height = BlurHappySize(resY, scale);
 
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-cascade shadow allocation (Cinematic only)
+    const bool cinematic_per_channel_shadow = isCinematicMode() && !gCubeSnapshot;
+    // </FS:AYAstorm:r30-bd-port>
+
     if (shadow_detail > 0)
     { //allocate 4 sun shadow maps
         for (U32 i = 0; i < 4; i++)
         {
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+            // <FS:AYAstorm r30 cleanup A.3> Apply RenderShadowResolutionScale uniformly to
+            // the per-cascade Vector4. Without this, the scale slider was inert in Cinematic.
+            // llmax(64.f, ...) prevents 0-size allocation when scale is set to 0.
+            if (cinematic_per_channel_shadow)
+            {
+                U32 res = (U32)llmax(64.f, RenderShadowResolution.mV[i] * scale);
+                if (mRT->shadow[i].getWidth() != res)
+                {
+                    if (!mRT->shadow[i].allocate(res, res, 0, true))
+                    {
+                        return false;
+                    }
+                }
+                continue;
+            }
+            // </FS:AYAstorm:r30-bd-port>
             if (!mRT->shadow[i].allocate(sun_shadow_map_width, sun_shadow_map_height, 0, true))
             {
                 return false;
@@ -1146,6 +1287,18 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
             U32 spot_shadow_map_height = height;
             for (U32 i = 0; i < 2; i++)
             {
+                // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
+                // <FS:AYAstorm r30 cleanup A.3> Scale applied for symmetry with sun cascades.
+                if (cinematic_per_channel_shadow)
+                {
+                    U32 res = (U32)llmax(64.f, RenderProjectorShadowResolution.mV[i] * scale);
+                    if (!mSpotShadow[i].allocate(res, res, 0, true))
+                    {
+                        return false;
+                    }
+                    continue;
+                }
+                // </FS:AYAstorm:r30-bd-port>
                 if (!mSpotShadow[i].allocate(spot_shadow_map_width, spot_shadow_map_height, 0, true))
                 {
                     return false;
@@ -1207,16 +1360,30 @@ void LLPipeline::updateRenderTransparentWater()
 void LLPipeline::refreshCachedSettings()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+    // <FS:AYAstorm r30 BD full port Phase 3.4>
+    // Cinematic (mode 2) では BD default に固定、それ以外は gSavedSettings の値。
+    // 対象 cvar 一覧と BD default は
+    // docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §3.3 / Phase 0 inventory cvar bucket 3 を参照。
     LLPipeline::sAutoMaskAlphaDeferred = gSavedSettings.getBOOL("RenderAutoMaskAlphaDeferred");
     LLPipeline::sAutoMaskAlphaNonDeferred = gSavedSettings.getBOOL("RenderAutoMaskAlphaNonDeferred");
+    // </FS:AYAstorm>
     LLPipeline::sUseFarClip = gSavedSettings.getBOOL("RenderUseFarClip");
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic は BD impostor
+    // 機構と等価 = JellyDoll を impostor 化 (true)。AY default も true で同値、
+    // mode 0/1 は gSavedSettings 値維持。spec §3.2 phase3.5-ay-only Category B。
     LLPipeline::sShowJellyDollAsImpostor = gSavedSettings.getBOOL("RenderJellyDollsAsImpostors");
+    // </FS:AYAstorm>
     LLVOAvatar::sMaxNonImpostors = gSavedSettings.getU32("RenderAvatarMaxNonImpostors");
     LLVOAvatar::updateImpostorRendering(LLVOAvatar::sMaxNonImpostors);
     // <FS:Ansariel> Make change to RenderAttachedLights & RenderAttachedParticles instant
     LLPipeline::sRenderAttachedLights = gSavedSettings.getBOOL("RenderAttachedLights");
     LLPipeline::sRenderAttachedParticles = gSavedSettings.getBOOL("RenderAttachedParticles");
     // </FS:Ansariel>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+    LLPipeline::sRenderOtherAttachedLights = gSavedSettings.getBOOL("RenderOtherAttachedLights");
+    LLPipeline::sRenderOwnAttachedLights = gSavedSettings.getBOOL("RenderOwnAttachedLights");
+    LLPipeline::sRenderDeferredLights = gSavedSettings.getBOOL("RenderDeferredLights");
+    // </FS:AYAstorm:r30-bd-port>
     // <FS:PP> FIRE-33085 Region corner markers
     LLPipeline::sRenderRegionCornerBeacons = gSavedSettings.getBOOL("fsregioncornerbeacons");
     // </FS:PP>
@@ -1232,13 +1399,34 @@ void LLPipeline::refreshCachedSettings()
     RenderFSAAType = gSavedSettings.getU32("RenderFSAAType");
     RenderResolutionDivisor = gSavedSettings.getU32("RenderResolutionDivisor");
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic は BD parity
+    // (1.0f = multiplier 無効、native 解像度) に固定。BD には resolution
+    // multiplier 機構が無い。spec §3.2 phase3.5-ay-only Category B。
     RenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
+    // </FS:AYAstorm>
 // [/SL:KB]
     RenderUIBuffer = gSavedSettings.getBOOL("RenderUIBuffer");
     RenderShadowDetail = gSavedSettings.getS32("RenderShadowDetail");
     RenderShadowSplits = gSavedSettings.getS32("RenderShadowSplits");
     RenderDeferredSSAO = gSavedSettings.getBOOL("RenderDeferredSSAO");
     RenderShadowResolutionScale = gSavedSettings.getF32("RenderShadowResolutionScale");
+    // <FS:AYAstorm:r30-bd-port> Phase 3.9
+    RenderShadowAutomaticDistance = gSavedSettings.getBOOL("RenderShadowAutomaticDistance");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation
+    RenderShadowResolution = gSavedSettings.getVector4("RenderShadowResolution");
+    RenderShadowFarClipVec = gSavedSettings.getVector4("RenderShadowDistance");
+    RenderProjectorShadowResolution = gSavedSettings.getVector2("RenderProjectorShadowResolution");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar
+    RenderShadowFarClip = gSavedSettings.getF32("RenderShadowFarClip");
+    RenderGlobalLightStrength = gSavedSettings.getF32("RenderGlobalLightStrength");
+    // </FS:AYAstorm:r30-bd-port>
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD live Post FX scalar cvar
+    RenderSepiaStrength = gSavedSettings.getF32("RenderPostSepiaStrength");
+    RenderGreyscaleStrength = gSavedSettings.getF32("RenderPostGreyscaleStrength");
+    RenderNumColors = gSavedSettings.getU32("RenderPostPosterizationSamples");
+    // </FS:AYAstorm:r30-bd-port>
     RenderDelayCreation = gSavedSettings.getBOOL("RenderDelayCreation");
 //  RenderAnimateRes = gSavedSettings.getBOOL("RenderAnimateRes"); <FS:Beq> FIRE-23122 BUG-225920 Remove broken RenderAnimateRes functionality.
     FreezeTime = gSavedSettings.getBOOL("FreezeTime");
@@ -1258,6 +1446,11 @@ void LLPipeline::refreshCachedSettings()
     PreviewDirection1 = gSavedSettings.getVector3("PreviewDirection1");
     PreviewDirection2 = gSavedSettings.getVector3("PreviewDirection2");
     RenderGlowMaxExtractAlpha = gSavedSettings.getF32("RenderGlowMaxExtractAlpha");
+    RenderGlowMinLuminance = gSavedSettings.getF32("RenderGlowMinLuminance");
+    // <FS:AYAstorm r30 P4> Cinematic Controls switches must take effect at runtime.
+    RenderDeferredBlurLight = gSavedSettings.getBOOL("RenderDeferredBlurLight");
+    RenderMotionBlur = gSavedSettings.getBOOL("RenderMotionBlur");
+    // </FS:AYAstorm r30 P4>
     RenderGlowWarmthAmount = gSavedSettings.getF32("RenderGlowWarmthAmount");
     RenderGlowLumWeights = gSavedSettings.getVector3("RenderGlowLumWeights");
     RenderGlowWarmthWeights = gSavedSettings.getVector3("RenderGlowWarmthWeights");
@@ -1277,7 +1470,10 @@ void LLPipeline::refreshCachedSettings()
     CameraFocalLength = gSavedSettings.getF32("CameraFocalLength");
     CameraFieldOfView = gSavedSettings.getF32("CameraFieldOfView");
     RenderShadowNoise = gSavedSettings.getF32("RenderShadowNoise");
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> AY-only shadow softness
+    // 拡張、Cinematic は BD parity (1.0f = 無補正) に固定。spec §3.2 phase3.5-ay-only。
     RenderShadowSoftness = gSavedSettings.getF32("RenderShadowSoftness");
+    // </FS:AYAstorm>
     RenderShadowBlurSize = gSavedSettings.getF32("RenderShadowBlurSize");
     RenderSSAOScale = gSavedSettings.getF32("RenderSSAOScale");
     RenderSSAOMaxScale = gSavedSettings.getU32("RenderSSAOMaxScale");
@@ -1441,6 +1637,19 @@ void LLPipeline::releaseScreenBuffers()
     // <AYAstorm:r21.1> GPU self-rigged picker ID buffer
     mObjectIDBuffer.release();
     // </AYAstorm:r21.1>
+
+    // <AYAstorm r30 P2> Velocity + T2x history buffers (Cinematic mode)
+    mVelocityMap.release();
+    mSMAAHistory.release();
+    // </AYAstorm r30 P2>
+
+    // <AYAstorm r30 P5 transparent-DoF L2-β> alpha-aware depth for cofF.glsl
+    mAYAAlphaDepth.release();
+    // </AYAstorm r30 P5 transparent-DoF L2-β>
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND color RT
+    mAYAAlphaColor.release();
+    // </AYAstorm r30 P5 transparent-DoF C-(a)>
 }
 
 void LLPipeline::releaseSunShadowTarget(U32 index)
@@ -1480,7 +1689,9 @@ void LLPipeline::createGLBuffers()
     GLuint resY = gViewerWindow->getWorldViewHeightRaw();
 
     // allocate screen space glow buffers
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では BD default (10) に固定
     const U32 glow_res = llmax(1, llmin(512, 1 << gSavedSettings.getS32("RenderGlowResolutionPow")));
+    // </FS:AYAstorm>
     const bool glow_hdr = gSavedSettings.getBOOL("RenderGlowHDR");
     const U32 glow_color_fmt = glow_hdr ? GL_RGBA16F : GL_RGBA;
     for (U32 i = 0; i < 3; i++)
@@ -2731,6 +2942,21 @@ bool LLPipeline::isWaterClip()
     // We always pretend that we're not clipping water when rendering mirrors.
     return (gPipeline.mHeroProbeManager.isMirrorPass()) ? false : (!sRenderTransparentWater || gCubeSnapshot) && !sRenderingHUDs;
 }
+
+// <FS:AYAstorm r30 BD full port Phase 5 R3 (A4)>
+// Cinematic mode 判定。R2 で導入した settings_cinematic_bd.xml overlay により
+// mode 2 起動時に BD default 値が gSavedSettings に焼き込まれるため、render path
+// 側は直接 gSavedSettings.getX() を呼べばよい (P5 step 5 paradigm shift で導入
+// した getRenderCvar* helper は R3 で撤去済)。本 isCinematicMode のみ残し、
+// Cinematic 専用機能 (Volumetric Lighting / Motion Blur / DoF chain 等) の
+// gate 判定に使用する。
+// static
+bool LLPipeline::isCinematicMode()
+{
+    static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    return aya_view_mode() == 2;
+}
+// </FS:AYAstorm>
 
 void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_attachments)
 {
@@ -4625,6 +4851,115 @@ void LLPipeline::renderHighlights()
 //debug use
 U32 LLPipeline::sCurRenderPoolType = 0 ;
 
+// <AYAstorm r30 P2> Velocity pass (BD lineage). Bind mVelocityMap, clear, run
+// each pool's renderMotionBlur(). Step 5 wires the display() callsite; until
+// then this stays unreferenced. Pools that don't override the new virtuals
+// (Step 4c per-pool override list) contribute zero passes — safe to call
+// before any override exists, just produces a cleared RG16F target.
+void LLPipeline::renderGeomMotionBlur()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    LL_PROFILE_GPU_ZONE("renderGeomMotionBlur");
+
+    if (!mVelocityMap.isComplete())
+    {
+        return;
+    }
+
+    mVelocityMap.bindTarget();
+    mVelocityMap.clear(GL_COLOR_BUFFER_BIT);
+
+    gGL.setColorMask(true, true);
+    LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
+
+    sVelocityRender = true;
+
+    for (pool_set_t::iterator iter = mPools.begin(); iter != mPools.end(); ++iter)
+    {
+        LLDrawPool* poolp = *iter;
+        S32 num_passes = poolp->getNumMotionBlurPasses();
+        for (S32 i = 0; i < num_passes; ++i)
+        {
+            poolp->beginMotionBlurPass(i);
+            poolp->renderMotionBlur(i);
+            poolp->endMotionBlurPass(i);
+        }
+    }
+
+    sVelocityRender = false;
+
+    mVelocityMap.flush();
+}
+
+// <AYAstorm r30 P2 step 5b> Motion blur composite (BD lineage). Samples diffuseRect
+// along the per-pixel velocity vector, 32-tap triangle-weighted. Strength = max blur
+// length in pixels; 0 = effectively disabled (gated upstream).
+void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* dst)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+    LL_PROFILE_GPU_ZONE("motion blur composite");
+
+    dst->bindTarget();
+
+    gDeferredMotionBlurProgram.bind();
+    gDeferredMotionBlurProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
+    gDeferredMotionBlurProgram.bindTexture(LLShaderMgr::DEFERRED_VELOCITY, &mVelocityMap);
+    gDeferredMotionBlurProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
+        (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
+
+    static LLCachedControl<S32> blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
+    gDeferredMotionBlurProgram.uniform1i(LLShaderMgr::MOTION_BLUR_STRENGTH, (S32)blur_strength);
+
+    mScreenTriangleVB->setBuffer();
+    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    gDeferredMotionBlurProgram.unbind();
+    dst->flush();
+}
+// </AYAstorm r30 P2>
+
+// <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — BD lineage 995a1354d8.
+// Adds shadow-accumulated god rays from the sun direction to the tonemapped
+// color buffer. Atmosphere + shadow uniforms (sun_dir, blue_density,
+// haze_density, sunlight_color, shadowMap[0..3], shadowMatrix[0..3]) are
+// auto-bound by bindDeferredShader() via the calculatesAtmospherics /
+// hasAtmospherics / hasShadows feature flags set in llviewershadermgr.cpp.
+// Alpha channel left untouched (setColorMask(true, false)) to honor the
+// AYAstorm visual-realism alpha-protect rule. Caller pong-chains the result.
+void LLPipeline::renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+    LL_PROFILE_GPU_ZONE("volumetric light");
+
+    dst->bindTarget();
+    glViewport(0, 0, dst->getWidth(), dst->getHeight());
+
+    gGL.setColorMask(true, false);
+
+    bindDeferredShader(gVolumetricLightProgram);
+    gVolumetricLightProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, false, LLTexUnit::TFO_POINT);
+
+    gVolumetricLightProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
+        (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
+
+    static LLCachedControl<U32> godray_res(gSavedSettings, "RenderVolumetricLightingResolution", 16);
+    static LLCachedControl<F32> godray_mult(gSavedSettings, "RenderVolumetricLightingMultiplier", 50.0f);
+    static LLCachedControl<F32> falloff_mult(gSavedSettings, "RenderVolumetricLightingFalloffMultiplier", 1.0f);
+
+    gVolumetricLightProgram.uniform1i(LLShaderMgr::GODRAY_RES, (S32)godray_res);
+    gVolumetricLightProgram.uniform1f(LLShaderMgr::GODRAY_MULTIPLIER, (F32)godray_mult);
+    gVolumetricLightProgram.uniform1f(LLShaderMgr::FALLOFF_MULTIPLIER, (F32)falloff_mult);
+
+    mScreenTriangleVB->setBuffer();
+    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    unbindDeferredShader(gVolumetricLightProgram);
+    dst->flush();
+
+    gGL.setColorMask(true, true);
+}
+// </AYAstorm r30 P3>
+
 void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 {
     LLAppViewer::instance()->pingMainloopTimeout("Pipeline:RenderGeomDeferred");
@@ -4832,14 +5167,25 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         { // do atmospherics against depth buffer before rendering alpha
             doAtmospherics();
             done_atmospherics = true;
-            // <FS:AYA r15 P1> godrays right after atmospherics, still in HDR
-            // scene buffer (mRT->screen) and before alpha / tonemap.
-            doGodrays();
-            // </FS:AYA>
-            // <FS:AYA r20 P0a> skin SSS prototype right after godrays, still
-            // in HDR scene buffer (mRT->screen) and before alpha / tonemap.
-            doSkinSSS();
-            // </FS:AYA>
+            // <FS:AYAstorm r30 BD改善> AYAstorm View は無条件、Cinematic は個別 InCinematic cvar で opt-in。
+            //   各関数も自己 gate 済 (Phase 3.1 / r20 早期 return) だが call-site でも wrap して
+            //   Cinematic OFF 時の関数 entry を無駄ゼロ化。
+            //   r20 SSS は consolidation 後 mode 1/2 共通の単一 cvar (AYAR20AvatarSkinSSSEnabled) で
+            //   dispatch されるため、call-site では mode > 0 と enabled のみで判定。
+            static LLCachedControl<U32>  aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+            static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
+            static LLCachedControl<bool> aya_r20_enabled_disp(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", false);
+            bool dispatch_r15 = (aya_view_mode() == 1) || (aya_view_mode() == 2 && aya_r15_in_cinematic);
+            bool dispatch_r20 = (aya_view_mode() > 0) && aya_r20_enabled_disp;
+            if (dispatch_r15)
+            {
+                doGodrays();
+            }
+            if (dispatch_r20)
+            {
+                doSkinSSS();
+            }
+            // </FS:AYAstorm>
         }
 
         if (cur_type >= water_haze_pass && !done_water_haze)
@@ -6649,6 +6995,27 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
                 drawable->clearState(LLDrawable::NEARBY_LIGHT);
                 continue;
             }
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: Cinematic uses BD per-owner light split.
+            if (isCinematicMode())
+            {
+                if (volight->isAttachment())
+                {
+                    LLVOAvatar* av = volight->getAvatar();
+                    if ((!sRenderOtherAttachedLights && (av != gAgentAvatarp))
+                        || (!sRenderOwnAttachedLights && (av == gAgentAvatarp)))
+                    {
+                        drawable->clearState(LLDrawable::NEARBY_LIGHT);
+                        continue;
+                    }
+                }
+                else if (!sRenderDeferredLights)
+                {
+                    drawable->clearState(LLDrawable::NEARBY_LIGHT);
+                    continue;
+                }
+            }
+            else
+            // </FS:AYAstorm:r30-bd-port>
             if (!sRenderAttachedLights && volight && volight->isAttachment())
             {
                 drawable->clearState(LLDrawable::NEARBY_LIGHT);
@@ -6705,6 +7072,25 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
             {
                 continue; // no lighting from HUD objects
             }
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+            if (isCinematicMode())
+            {
+                if (light->isAttachment())
+                {
+                    LLVOAvatar* av_bd = light->getAvatar();
+                    if ((!sRenderOtherAttachedLights && (av_bd != gAgentAvatarp))
+                        || (!sRenderOwnAttachedLights && (av_bd == gAgentAvatarp)))
+                    {
+                        continue;
+                    }
+                }
+                else if (!sRenderDeferredLights)
+                {
+                    continue;
+                }
+            }
+            else
+            // </FS:AYAstorm:r30-bd-port>
             if (!sRenderAttachedLights && light && light->isAttachment())
             {
                 continue;
@@ -6901,6 +7287,25 @@ void LLPipeline::setupHWLights()
                 continue;
             }
 
+            // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+            if (isCinematicMode())
+            {
+                if (light->isAttachment())
+                {
+                    LLVOAvatar* av_bd = light->getAvatar();
+                    if ((!sRenderOtherAttachedLights && (av_bd != gAgentAvatarp))
+                        || (!sRenderOwnAttachedLights && (av_bd == gAgentAvatarp)))
+                    {
+                        continue;
+                    }
+                }
+                else if (!sRenderDeferredLights)
+                {
+                    continue;
+                }
+            }
+            else
+            // </FS:AYAstorm:r30-bd-port>
             if (light->isAttachment())
             {
                 if (!sRenderAttachedLights)
@@ -8365,6 +8770,11 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
             : psky->getTonemapMix(should_auto_adjust());
         shader->uniform1f(tonemap_mix, mix_val);
 
+        // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> AY r14+ color
+        // correction uniform を Cinematic では BD parity NO-OP に固定。
+        // shader 側は uniform 受領は必須 (BD でも tonemap shader が宣言)
+        // のため値で no-op (saturation/contrast=1.0, brightness/temperature=0.0)。
+        // spec §3.1 phase3.5-ay-only Category A。
         shader->uniform1f(LLShaderMgr::COLOR_SATURATION,
             gSavedSettings.getF32("RenderColorSaturation"));
         shader->uniform1f(LLShaderMgr::COLOR_CONTRAST,
@@ -8376,9 +8786,12 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
 
         // Reload 3D LUT if setting changed
         {
-            static LLCachedControl<std::string> lut_name(gSavedSettings, "RenderColorGradingLUTName", "");
-            if (std::string(lut_name) != mColorGradingLUTName)
+            // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic では
+            // LUT name を空 string (= LUT load しない) に強制。
+            const std::string lut_name = gSavedSettings.getString("RenderColorGradingLUTName");
+            if (lut_name != mColorGradingLUTName)
                 loadColorGradingLUT(lut_name);
+            // </FS:AYAstorm>
         }
 
         S32 lut_channel = shader->enableTexture(LLShaderMgr::COLOR_GRADING_LUT, LLTexUnit::TT_TEXTURE_3D);
@@ -8387,6 +8800,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         shader->uniform1i(LLShaderMgr::COLOR_GRADING_LUT_ENABLED, (mColorGradingLUT != 0) ? 1 : 0);
         shader->uniform1f(LLShaderMgr::COLOR_GRADING_LUT_INTENSITY,
             gSavedSettings.getF32("RenderColorGradingLUTIntensity"));
+        // </FS:AYAstorm>
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -8468,7 +8882,9 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
         LLVector3 lumWeights = RenderGlowLumWeights;
         LLVector3 warmthWeights = RenderGlowWarmthWeights;
 
-        gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MIN_LUMINANCE, 9999);
+        // <FS:AYAstorm r30 P4> Honor RenderGlowMinLuminance instead of hardcoded gate.
+        gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MIN_LUMINANCE, RenderGlowMinLuminance);
+        // </FS:AYAstorm r30 P4>
         gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MAX_EXTRACT_ALPHA, maxAlpha);
         gGlowExtractProgram.uniform3f(LLShaderMgr::GLOW_LUM_WEIGHTS, lumWeights.mV[0], lumWeights.mV[1],
             lumWeights.mV[2]);
@@ -8885,6 +9301,67 @@ void LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst)
     }
 }
 
+// <AYAstorm r30 P2 step 5c>
+// SMAA T2x temporal resolve. Imported from BlackDragon Viewer 995a1354d8
+// (LGPL-2.1-only), adapted: AYAstorm gates on mVelocityMap.isComplete()
+// (Cinematic mode) and runs the resolve after applySMAA's spatial pass.
+//
+// Without Halton jitter (step 5d), the resolve simply blends frame N with
+// frame N-1, which produces ghosting on motion but minor edge stabilization
+// on the static parts of the scene. Step 5d adds the per-frame subpixel
+// jitter that turns this into proper temporal anti-aliasing.
+//
+// History save uses copyRenderTarget on the *current SMAA'd input* (src),
+// not the resolved output, so the next frame's resolve does a true 50/50
+// blend between two jitter samples rather than exponential decay.
+void LLPipeline::resolveSMAAT2x(LLRenderTarget* src, LLRenderTarget* dst)
+{
+    LL_PROFILE_GPU_ZONE("SMAA T2x Resolve");
+
+    static LLCachedControl<U32> aa_quality(gSavedSettings, "RenderFSAASamples", 0U);
+    U32 q = std::clamp(aa_quality(), 0U, 3U);
+
+    dst->bindTarget();
+
+    LLGLSLShader& shader = gSMAAResolveProgram[q];
+    shader.bind();
+
+    // Current SMAA'd frame goes to diffuseRect (DEFERRED_DIFFUSE), matching
+    // our SMAAResolveF.glsl's "uniform sampler2D diffuseRect" declaration.
+    // BD's variant uses a distinct SMAA_CURRENT_COLOR_TEX uniform name;
+    // we reuse the existing DEFERRED_DIFFUSE slot to avoid widening
+    // LLShaderMgr's reserved-uniform enum for a single binding.
+    S32 cur_ch = shader.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
+    if (cur_ch > -1)
+    {
+        src->bindTexture(0, cur_ch, LLTexUnit::TFO_POINT);
+    }
+
+    S32 prev_ch = shader.enableTexture(LLShaderMgr::SMAA_PREVIOUS_COLOR_TEX);
+    if (prev_ch > -1)
+    {
+        mSMAAHistory.bindTexture(0, prev_ch, LLTexUnit::TFO_POINT);
+    }
+
+    S32 vel_ch = shader.enableTexture(LLShaderMgr::SMAA_VELOCITY_TEX);
+    if (vel_ch > -1)
+    {
+        mVelocityMap.bindTexture(0, vel_ch, LLTexUnit::TFO_BILINEAR);
+    }
+
+    mScreenTriangleVB->setBuffer();
+    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    shader.unbind();
+    dst->flush();
+
+    // Save the current SMAA'd frame (not the resolved output) to history so
+    // the next frame's resolve sees a true 50/50 blend between the two
+    // jitter samples instead of exponential history decay.
+    copyRenderTarget(src, &mSMAAHistory);
+}
+// </AYAstorm r30 P2 step 5c>
+
 void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
 {
 
@@ -8895,6 +9372,15 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
 
     gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
     gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+
+    // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic で chroma 完全 OFF
+    // (BD_NOOP=0.0f)。spec §3.1 phase3.5-ay-only Category A。
+    const F32 nodof_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
+    gDeferredPostNoDoFProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
+    gDeferredPostNoDoFProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, nodof_chroma_str);
+    // </FS:AYAstorm>
+    // </AYAstorm r30 P4 step 4>
 
     {
         mScreenTriangleVB->setBuffer();
@@ -8919,6 +9405,22 @@ void LLPipeline::combineGlow(LLRenderTarget* src, LLRenderTarget* dst)
 
         gGlowCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
         gGlowCombineProgram.bindTexture(LLShaderMgr::DEFERRED_EMISSIVE, &mGlow[1]);
+
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 3: BD post FX (Cinematic only).
+        // mode 0/1 では noop default (Greyscale=0 / Sepia=0 / NumColors=1) を送る。
+        if (isCinematicMode())
+        {
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, RenderGreyscaleStrength);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, RenderSepiaStrength);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, (GLfloat)RenderNumColors);
+        }
+        else
+        {
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, 0.0f);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, 0.0f);
+            gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, 1.0f);
+        }
+        // </FS:AYAstorm:r30-bd-port>
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -9307,7 +9809,20 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredCoFProgram.bind();
 
                 gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
-                gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+                // <AYAstorm r30 P5 transparent-DoF L2-β> Bind the alpha-aware
+                // depth buffer (opaque-only snapshot + cutoff-0.5 alpha
+                // re-injection) instead of post-alpha deferredScreen.depth.
+                // For an alpha BLEND hair pixel (alpha ≈ 0.2) the cutoff
+                // discards the hair fragment so the snapshotted bg depth
+                // survives → cofF blurs the bg; for an alpha BLEND window
+                // grille (alpha ≈ 0.7) the cutoff passes so the grille z
+                // is written and cofF treats it as subject. For pure opaque
+                // pixels the two buffers carry the same z so behaviour is
+                // unchanged. Falls back to deferredScreen.depth if the L2
+                // RT is unavailable (e.g. probe paths).
+                LLRenderTarget* cof_depth_src = mAYAAlphaDepth.isComplete() ? &mAYAAlphaDepth : &mRT->deferredScreen;
+                gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, cof_depth_src, true);
+                // </AYAstorm r30 P5 transparent-DoF L2-β>
 
                 gDeferredCoFProgram.uniform1f(LLShaderMgr::DEFERRED_DEPTH_CUTOFF, RenderEdgeDepthCutoff);
                 gDeferredCoFProgram.uniform1f(LLShaderMgr::DEFERRED_NORM_CUTOFF, RenderEdgeNormCutoff);
@@ -9343,6 +9858,9 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 
                 gDeferredPostProgram.bind();
                 gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mRT->deferredLight, LLTexUnit::TFO_POINT);
+                // <AYAstorm r30 P4 step 4> HQ DoF needs depthMap for the s.a <= depth*0.50 gate
+                gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+                // </AYAstorm r30 P4 step 4>
 
                 gDeferredPostProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
@@ -9350,6 +9868,13 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredPostProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, adj_COF);
                 // </FS:Beq>
                 gDeferredPostProgram.uniform1f(LLShaderMgr::DOF_RES_SCALE, CameraDoFResScale);
+
+                // <AYAstorm r30 P4 step 4> BD chroma_str (HAS_DOF_CHROMA permutation, no-op otherwise)
+                // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic BD parity (0.0f)。spec §3.1。
+                const F32 dof_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
+                gDeferredPostProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, dof_chroma_str);
+                // </FS:AYAstorm>
+                // </AYAstorm r30 P4 step 4>
 
                 mScreenTriangleVB->setBuffer();
                 mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -9368,6 +9893,22 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredDoFCombineProgram.bind();
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_LIGHT, &mRT->deferredLight, LLTexUnit::TFO_POINT);
+
+                // <AYAstorm r30 P5 transparent-DoF C-(a)> Bind the alpha BLEND
+                // plate so dofCombineF can "over" it on top of the DoF'd
+                // opaque scene. When mAYAAlphaColor is not allocated (aux /
+                // probe paths) the gate uniform stays false and the shader
+                // skips the composite entirely — no fallback bind needed.
+                {
+                    S32 ap_chan = gDeferredDoFCombineProgram.getTextureChannel(LLShaderMgr::AYA_ALPHA_PLATE);
+                    const bool ap_on = mAYAAlphaColor.isComplete() && ap_chan >= 0;
+                    if (ap_on)
+                    {
+                        gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::AYA_ALPHA_PLATE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
+                    }
+                    gDeferredDoFCombineProgram.uniform1i(LLShaderMgr::AYA_ALPHA_PLATE_ENABLED, ap_on ? 1 : 0);
+                }
+                // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
                 gDeferredDoFCombineProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
@@ -9447,8 +9988,38 @@ void LLPipeline::renderFinalize()
     LLRenderTarget* sourceBuffer = &mPostPingMap;
     LLRenderTarget* targetBuffer = &mPostPongMap;
 
+    // <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — historic AY
+    // Cinematic-only gate. r30 BD full port では Cinematic = pure BD = no
+    // volumetric (spec §3.1 phase3.5-ay-only: RenderVolumetricLighting BD_NOOP=false)。
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> dispatch helper 経由で
+    // Cinematic では false を返し、gate (true && false) = false で発火しない。
+    // mode 0/1 は元から aya_view_mode==2 short-circuit で発火しない。
+    // 結果として block 全体が常に no-op (BD parity)、構造は spec dependency
+    // 明示のため維持。
+    if (LLPipeline::isCinematicMode()
+        && gSavedSettings.getBOOL("RenderVolumetricLighting")
+        && !gCubeSnapshot)
+    {
+        renderVolumetric(sourceBuffer, targetBuffer);
+        std::swap(sourceBuffer, targetBuffer);
+    }
+    // </FS:AYAstorm>
+    // </AYAstorm r30 P3 step 4>
+
     combineGlow(sourceBuffer, targetBuffer);
     std::swap(sourceBuffer, targetBuffer);
+
+    // <AYAstorm r30 P2 step 5b> Motion blur composite (Cinematic mode only — gated by
+    // mVelocityMap.isComplete()). Reads diffuseRect + velocityMap, writes blurred image.
+    static LLCachedControl<S32> motion_blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
+    // <FS:AYAstorm r30 P4> RenderMotionBlur (GUI checkbox) is the master gate.
+    if (RenderMotionBlur && mVelocityMap.isComplete() && motion_blur_strength > 0 && !gCubeSnapshot)
+    // </FS:AYAstorm r30 P4>
+    {
+        renderMotionBlurComposite(sourceBuffer, targetBuffer);
+        std::swap(sourceBuffer, targetBuffer);
+    }
+    // </AYAstorm r30 P2 step 5b>
 
     gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
     gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
@@ -9464,16 +10035,38 @@ void LLPipeline::renderFinalize()
         std::swap(sourceBuffer, targetBuffer);
     }
 
+     // <AYAstorm r30 P2 step 5d> Default jitter off; only the SMAA T2x branch
+     // below re-enables it. Without this clear, leaving SMAA mode would freeze
+     // sT2xJitterEnabled=true and keep ghost-jittering the projection forever.
+     sT2xJitterEnabled = false;
+     // </AYAstorm r30 P2 step 5d>
      if (RenderFSAAType == 1)
     {
         applyFXAA(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
     }
-    else if (RenderFSAAType == 2)
+    else if (RenderFSAAType == 2 || RenderFSAAType == 3)
     {
         generateSMAABuffers(sourceBuffer);
         applySMAA(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
+
+        // <AYAstorm r30 P2 step 5c+5d / cleanup A.2+A.5> SMAA T2x temporal resolve.
+        // Selector is the single RenderFSAAType enum: 2 = plain SMAA (BD parity
+        // default), 3 = SMAA + T2x (AY-only opt-in). The old RenderSMAAT2x cvar
+        // was removed in cleanup A.5; FSAAType=3 is now the sole entry point.
+        // sT2xJitterEnabled stays in lockstep with t2x_active so that
+        // LLViewerCamera::setPerspective injects the ±0.25 px jitter only while
+        // the resolve runs.
+        bool t2x_active = (RenderFSAAType == 3) && mVelocityMap.isComplete() && mSMAAHistory.isComplete() && !gCubeSnapshot;
+        sT2xJitterEnabled = t2x_active;
+        if (t2x_active)
+        {
+            resolveSMAAT2x(sourceBuffer, targetBuffer);
+            std::swap(sourceBuffer, targetBuffer);
+            mSMAAFrameIndex ^= 1;
+        }
+        // </AYAstorm r30 P2 step 5c+5d / cleanup A.2+A.5>
     }
 
     // <FS:Beq> Restore shader post proc for Vignette
@@ -9532,6 +10125,16 @@ void LLPipeline::renderFinalize()
             }
             break;
         }
+        // <AYAstorm r30 P2> velocity buffer visualization
+        case 7:
+        {
+            if (mVelocityMap.isComplete())
+            {
+                visualizeBuffers(&mVelocityMap, sourceBuffer, 0);
+            }
+            break;
+        }
+        // </AYAstorm r30 P2>
         default:
             break;
         }
@@ -9546,6 +10149,12 @@ void LLPipeline::renderFinalize()
     gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
 
     gDeferredPostNoDoFNoiseProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)sourceBuffer->getWidth(), (GLfloat)sourceBuffer->getHeight());
+    // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
+    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic BD parity (0.0f)。spec §3.1。
+    const F32 nodof_noise_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
+    gDeferredPostNoDoFNoiseProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, nodof_noise_chroma_str);
+    // </FS:AYAstorm>
+    // </AYAstorm r30 P4 step 4>
 
     {
         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
@@ -9858,6 +10467,25 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
     shader.uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, 1, mMoonDiffuse.mV);
 
     shader.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mReflectionMapManager.mMaxProbeLOD);
+
+    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live deferred uniforms (Cinematic only).
+    // BD pipeline.cpp:8965-8972 verbatim. Non-Cinematic modes get neutral defaults
+    // (light strength 1.0 / sepia 0 / greyscale 0 / num colors 1 = noop).
+    if (isCinematicMode())
+    {
+        shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, RenderGlobalLightStrength);
+        shader.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, RenderGreyscaleStrength);
+        shader.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, RenderSepiaStrength);
+        shader.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, (GLfloat)RenderNumColors);
+    }
+    else
+    {
+        shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, 1.0f);
+        shader.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, 0.0f);
+        shader.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, 0.0f);
+        shader.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, 1.0f);
+    }
+    // </FS:AYAstorm:r30-bd-port>
 }
 
 
@@ -10358,7 +10986,9 @@ void LLPipeline::renderDeferredLighting()
             deferred_light_target->flush();
         }
 
-        if (RenderDeferredSSAO && !gCubeSnapshot)
+        // <FS:AYAstorm r30 P4> RenderDeferredBlurLight gates the soften-shadow blur pass.
+        if (RenderDeferredSSAO && RenderDeferredBlurLight && !gCubeSnapshot)
+        // </FS:AYAstorm r30 P4>
         {
             // soften direct lighting lightmap
             LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - soften shadow");
@@ -10456,7 +11086,13 @@ void LLPipeline::renderDeferredLighting()
                     { 0.25f, 1.5f, 3.0f, 1.0f }, // 2=標準
                     { 0.35f, 1.2f, 2.5f, 1.5f }, // 3=強め
                 };
-                U32 tier = (aya_realism_r19() && aya_r19_enabled()) ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
+                // <FS:AYAstorm r30 BD改善> AYAstorm View は既存 cvar、Cinematic は InCinematic cvar で opt-in。
+                //   tier 自体は AYAR19TranslucencyIntensity (1..3) を共有 (Cinematic 専用 tier は持たない、A/B 判断に集中)。
+                static LLCachedControl<bool> aya_r19_in_cinematic(gSavedSettings, "AYAR19TranslucencyInCinematicEnabled", false);
+                bool r19_active = (aya_realism_r19() == 1 && aya_r19_enabled())
+                               || (aya_realism_r19() == 2 && aya_r19_in_cinematic);
+                U32 tier = r19_active ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
+                // </FS:AYAstorm>
                 soften_shader.uniform4fv(s_r19_params, 1, r19_table[tier]);
                 // warm linear tint approximating skin/leaf transmission color
                 const F32 r19_tint[3] = { 1.00f, 0.78f, 0.62f };
@@ -10537,6 +11173,25 @@ void LLPipeline::renderDeferredLighting()
                         continue;
                     }
 
+                    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
+                    if (isCinematicMode())
+                    {
+                        if (volume->isAttachment())
+                        {
+                            LLVOAvatar* av_bd = volume->getAvatarAncestor();
+                            if ((!sRenderOtherAttachedLights && (av_bd != gAgentAvatarp))
+                                || (!sRenderOwnAttachedLights && (av_bd == gAgentAvatarp)))
+                            {
+                                continue;
+                            }
+                        }
+                        else if (!sRenderDeferredLights)
+                        {
+                            continue;
+                        }
+                    }
+                    else
+                    // </FS:AYAstorm:r30-bd-port>
                     if (volume->isAttachment())
                     {
                         if (!sRenderAttachedLights)
@@ -10745,6 +11400,45 @@ void LLPipeline::renderDeferredLighting()
         gGL.setColorMask(true, true);
     }
 
+    // <AYAstorm r30 P5 transparent-DoF L2-β> Snapshot the opaque-only depth
+    // into mAYAAlphaDepth before forward alpha runs. Once alpha geometry
+    // renders, rigged BLEND attachments (hair etc.) overwrite
+    // deferredScreen.depth with their own z and pin CoF to ~0 for the
+    // pixels they cover — even though the texture alpha is ≈ 0.2 and we
+    // can see the background through them. mAYAAlphaDepth keeps the
+    // opaque z for those pixels so cofF can compute the right bg blur.
+    // A later cutoff-0.5 prepass in lldrawpoolalpha (POST_WATER, post
+    // forward alpha) overwrites mAYAAlphaDepth only where alpha ≥ 0.5
+    // (window grilles, foliage etc.) so subject-like alpha meshes still
+    // get treated as subjects. Cheap (one fullscreen depth blit) and
+    // only on main RT.
+    if (mAYAAlphaDepth.isComplete() && !gCubeSnapshot && RenderDepthOfField)
+    {
+        LL_PROFILE_GPU_ZONE("aya alpha depth snapshot");
+        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
+
+        LLRenderTarget& depth_src = mRT->deferredScreen;
+
+        mRT->screen.flush();
+        mAYAAlphaDepth.bindTarget();
+        gCopyDepthProgram.bind();
+
+        S32 diff_map  = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
+        S32 depth_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
+
+        gGL.getTexUnit(diff_map)->bind(&mRT->screen);
+        gGL.getTexUnit(depth_map)->bind(&depth_src, true);
+
+        gGL.setColorMask(false, false);
+        mScreenTriangleVB->setBuffer();
+        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        gGL.setColorMask(true, true);
+
+        mAYAAlphaDepth.flush();
+        mRT->screen.bindTarget();
+    }
+    // </AYAstorm r30 P5 transparent-DoF L2-β>
+
     {  // render non-deferred geometry (alpha, fullbright, glow)
         LLGLDisable blend(GL_BLEND);
 
@@ -10783,6 +11477,11 @@ void LLPipeline::renderDeferredLighting()
         renderGeomPostDeferred(*LLViewerCamera::getInstance());
         popRenderTypeMask();
     }
+
+    // <AYAstorm r30 P2> velocity buffer pass for motion blur / SMAA T2x
+    // (Cinematic mode only — gated by mVelocityMap.isComplete()).
+    renderGeomMotionBlur();
+    // </AYAstorm r30 P2>
 
     screen_target->flush();
 
@@ -10877,13 +11576,15 @@ void LLPipeline::doGodrays()
         return;
     }
 
-    // <FS:AYA r14/r18> master cvar は U32 (0=Firestorm View / 1=AYAstorm View)、combo_box と確実に binding させる
+    // <FS:AYAstorm r30 BD full port Phase 3.1> AYAVisualRealismEnabled (U32, 0=Firestorm View / 1=AYAstorm View / 2=Cinematic)。
+    // r15 godrays は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF。
+    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
     static LLCachedControl<U32> realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    if (realism_enabled() == 0)
+    if (realism_enabled() != 1)
     {
         return;
     }
-    // </FS:AYA>
+    // </FS:AYAstorm>
 
     if (!gDeferredGodraysProgram.isComplete())
     {
@@ -10927,12 +11628,18 @@ void LLPipeline::doSkinSSS()
         return;
     }
 
+    // <FS:AYAstorm r30 BD改善> r20 SSS: consolidation 後 mode 1 (AYAstorm View) /
+    //   mode 2 (Cinematic) 共通の単一 cvar (AYAR20AvatarSkinSSSEnabled) で dispatch。
+    //   旧 AYAR20AvatarSkinSSSInCinematicEnabled は AYAR20SSSMigrationVersion==0 起動時に
+    //   新 cvar へ OR 合成される (llappviewer.cpp の migration コード参照)。default OFF。
     static LLCachedControl<U32>  realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    static LLCachedControl<bool> r20_enabled(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", true);
-    if (realism_enabled() == 0 || !r20_enabled())
+    static LLCachedControl<bool> r20_enabled(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", false);
+    bool r20_active = (realism_enabled() > 0) && r20_enabled();
+    if (!r20_active)
     {
         return;
     }
+    // </FS:AYAstorm>
 
     if (!gDeferredSkinSSSProgram.isComplete())
     {
@@ -10947,9 +11654,9 @@ void LLPipeline::doSkinSSS()
     // debug settings に逃がしている。値が確定したら hard-code に戻す予定。
     // 既定値: blur_radius=6.0 / strength=0.7 (iteration 3 で AYA OK 判定)。
     static LLCachedControl<F32> sss_blur_radius(gSavedSettings, "AYAR20AvatarSkinSSSBlurRadius", 1.0f);
-    static LLCachedControl<F32> sss_strength(gSavedSettings, "AYAR20AvatarSkinSSSStrength", 0.7f);
+    static LLCachedControl<F32> sss_strength(gSavedSettings, "AYAR20AvatarSkinSSSStrength", 0.5f);
     // <FS:AYA r20 Phase D> glow restore gain + tint (highlight boost on top of blur).
-    static LLCachedControl<F32>      sss_glow_gain(gSavedSettings,  "AYAR20AvatarSkinSSSGlowGain",  3.0f);
+    static LLCachedControl<F32>      sss_glow_gain(gSavedSettings,  "AYAR20AvatarSkinSSSGlowGain",  0.2f);
     static LLCachedControl<LLColor4> sss_glow_color(gSavedSettings, "AYAR20AvatarSkinSSSGlowColor");
     // <FS:AYA r20 Phase D world-scale blur> blur 半径を世界座標で固定する
     // (= 距離で逆スケール) ため、shader が depth を読む。near/far の距離
@@ -11004,8 +11711,10 @@ void LLPipeline::doSkinSSS()
         shader.uniform1f(s_blur_radius, blur_radius);
         shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
         shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
-        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, realism_enabled() != 0 ? 1 : 0);
-        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, r20_enabled() ? 1 : 0);
+        // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
+        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, 1);
+        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, 1);
+        // </FS:AYAstorm>
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -11054,8 +11763,10 @@ void LLPipeline::doSkinSSS()
         shader.uniform1f(s_blur_radius, blur_radius);
         shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
         shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
-        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, realism_enabled() != 0 ? 1 : 0);
-        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, r20_enabled() ? 1 : 0);
+        // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
+        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, 1);
+        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, 1);
+        // </FS:AYAstorm>
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -12160,12 +12871,48 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
         F32 sxp = split_exp.mV[1] + (split_exp.mV[0]-split_exp.mV[1])*da;
 
+        // <FS:AYAstorm r30 P4> RenderShadowAutomaticDistance toggles sun-angle-weighted
+        // split distribution (ON) vs equal linear splits (OFF).
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1/2: Cinematic uses BD verbatim clip planes.
+        if (isCinematicMode())
+        {
+            if (RenderShadowAutomaticDistance)
+            {
+                // BD Auto=ON: powf-weighted * fixed RenderShadowFarClip
+                for (U32 i = 0; i < 4; ++i)
+                {
+                    F32 x = (F32)(i+1)/4.f;
+                    x = powf(x, sxp);
+                    mSunClipPlanes.mV[i] = near_clip + RenderShadowFarClip*x;
+                }
+            }
+            else
+            {
+                // BD Auto=OFF: per-cascade cumulative RenderShadowFarClipVec
+                F32 tot = 0.f;
+                for (U32 i = 0; i < 4; ++i)
+                {
+                    mSunClipPlanes.mV[i] = near_clip + tot + RenderShadowFarClipVec[i];
+                    tot += RenderShadowFarClipVec[i];
+                }
+            }
+        }
+        else
+        {
+        // </FS:AYAstorm:r30-bd-port>
         for (U32 i = 0; i < 4; ++i)
         {
             F32 x = (F32)(i+1)/4.f;
-            x = powf(x, sxp);
+            if (RenderShadowAutomaticDistance)
+            {
+                x = powf(x, sxp);
+            }
             mSunClipPlanes.mV[i] = near_clip+range*x;
         }
+        // <FS:AYAstorm:r30-bd-port> Phase 6 step 1/2
+        }
+        // </FS:AYAstorm:r30-bd-port>
+        // </FS:AYAstorm r30 P4>
 
         mSunClipPlanes.mV[0] *= 1.25f; //bump back first split for transition padding
     }
@@ -13584,7 +14331,9 @@ void LLPipeline::skipRenderingShadows()
 
 void LLPipeline::handleShadowDetailChanged()
 {
+    // <FS:AYAstorm r30 BD full port Phase 3.4> Cinematic では effective 値が BD default に固定
     if (RenderShadowDetail > gSavedSettings.getS32("RenderShadowDetail"))
+    // </FS:AYAstorm>
     {
         skipRenderingShadows();
     }

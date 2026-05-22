@@ -1,6 +1,6 @@
 # AYAstorm r24 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r24 は MOAP / Web / HTML5 / YouTube など CEF / Dullahan 経路の media audio を viewer の FMOD 2D channel 経由に切り替えるリリース** — viewer の Media volume / mute がこれら CEF media にも素直に効くようになります。
+**r24 は MOAP / Web / HTML5 / YouTube など CEF / Dullahan 経路の media audio を viewer の FMOD 2D channel 経由に切り替えるリリース** — viewer の Media volume / mute がこれら CEF media にも素直に効くようになります。
 
 > **配信形態**: r24 は r13〜r24 を一括配信するタグの 1 機能として出荷されます。同梱される他リリースの release note は GitHub Release ページから直接リンクされます。
 

@@ -750,7 +750,16 @@ void doProbeSample(inout vec3 ambenv, inout vec3 glossenv,
     glossenv = sampleProbes(pos, normalize(refnormpersp), lod);
 
 #if defined(SSR)
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY adds a
+    // glossiness >= 0.9 early-out to skip SSR for rough surfaces (cheap
+    // in fully-rough scenes, hides SSR on matte surfaces). Cinematic
+    // restores BD original: SSR runs whenever cube_snapshot != 1.
+#if AYASTORM_CINEMATIC
+    if (cube_snapshot != 1)
+#else
     if (cube_snapshot != 1 && glossiness >= 0.9)
+#endif
+    // </FS:AYA>
     {
         vec4 ssr = vec4(0);
         if (transparent)

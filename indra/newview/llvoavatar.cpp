@@ -8595,7 +8595,15 @@ const LLViewerJointAttachment *LLVOAvatar::attachObject(LLViewerObject *viewer_o
     // whitelist. Mesh UUID is in ObjectUpdate so this works for self
     // *and* others — no isSelf() gate. Phase C will fan this out into
     // a GBuffer skin bit so the SSS pass can mask per-pixel.
-    ayastorm::setSSSTargetForAttachment(viewer_object);
+    // <FS:AYAstorm r30 BD改善> r20 consolidation で SSS dispatch は mode 1
+    // (AYAstorm View) / mode 2 (Cinematic) 共通になったため、whitelist plumbing
+    // も両 mode で走らせる (旧コメントは AYAstorm View 専用前提、当時の遺物)。
+    // mode 0 (Firestorm View) では SSS pipeline が走らないので plumbing も skip。
+    static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    if (aya_view_mode() > 0)
+    {
+        ayastorm::setSSSTargetForAttachment(viewer_object);
+    }
     // </FS:AYA>
     return attachment;
 }
@@ -8904,7 +8912,13 @@ bool LLVOAvatar::detachObject(LLViewerObject *viewer_object)
             // <FS:AYA r20 Phase B> Clear the SSS target flag before the
             // object is removed from this attachment point so a stale
             // bit can't leak into a later non-attachment use.
-            ayastorm::clearSSSTargetForAttachment(viewer_object);
+            // <FS:AYAstorm r30 BD改善> set 側と対称: mode 1/2 共通で clear。
+            // mode 0 (Firestorm View) では SSS pipeline が走らないので skip。
+            static LLCachedControl<U32> aya_view_mode_clear(gSavedSettings, "AYAVisualRealismEnabled", 1);
+            if (aya_view_mode_clear() > 0)
+            {
+                ayastorm::clearSSSTargetForAttachment(viewer_object);
+            }
             // </FS:AYA>
             attachment->removeObject(viewer_object);
             if (!is_animated_object)
@@ -11248,6 +11262,16 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
     if (entry.mFrame != gFrameCount)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+        // <AYAstorm r30 P2> Snapshot last frame's mGLMp for velocity buffer
+        // before rebuilding this frame. First-call (mFrame == 0) is skipped
+        // because mGLMp is still empty.
+        if (entry.mFrame > 0)
+        {
+            entry.mLastGLMp = entry.mGLMp;
+            entry.mLastFrame = entry.mFrame;
+        }
+        // </AYAstorm r30 P2>
 
         entry.mFrame = gFrameCount;
 

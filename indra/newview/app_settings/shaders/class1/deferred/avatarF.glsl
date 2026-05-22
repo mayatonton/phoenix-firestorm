@@ -61,8 +61,14 @@ void main()
     frag_data[2] = encodeNormal(nvn.xyz, 0, GBUFFER_FLAG_HAS_ATMOS);
 
 #if defined(HAS_EMISSIVE)
-    // <FS:AYA r20 Phase C> emit per-draw SSS skin bit in .a.
+    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 writes the
+    // per-draw SSS skin flag into gbuffer3.a so the SSS pass can gate to
+    // skin pixels.
+    // <FS:AYAstorm r30 BD改善> r20 consolidation 後は Cinematic でも SSS dispatch
+    // するため両 mode で skin flag を書く。非 SSS 経路では r20 が cvar OFF で
+    // doSkinSSS 早期 return するため write 値は読まれない (実害ゼロ)。
     frag_data[3] = vec4(0, 0, 0, aya_sss_skin_flag);
+    // </FS:AYAstorm>
     // </FS:AYA>
 #endif
 }

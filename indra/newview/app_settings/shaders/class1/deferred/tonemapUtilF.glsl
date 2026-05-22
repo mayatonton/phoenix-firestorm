@@ -113,6 +113,138 @@ vec3 PBRNeutralToneMapping( vec3 color )
   return mix(color, newPeak * vec3(1, 1, 1), g);
 }
 
+uniform float exposure;
+uniform float tonemap_mix;
+uniform int tonemap_type;
+
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
+//   Cinematic — BD original tonemap dispatch:
+//     case 0 PBRNeutral, case 1 ACES_Hill, case 2 PBRReinhard,
+//     case 3 Uncharted2BD, case 4 FilmicBD. Cases 2/3 pass color
+//     pre-exposure (color, not exposed_color) and Uncharted2 applies
+//     its own exposure*2.0. toneMapNoExposure switches all 5 cases.
+//   AY        — current AY dispatch:
+//     case 0 PBRNeutral, case 1 ACES_Hill, case 2 toneMapFilmic,
+//     case 3 toneMapUchimura, case 4 toneMapFilmicBD. All cases pass
+//     exposed_color. toneMapNoExposure switches only cases 0/1.
+// Helper functions for cases 2/3/4 are entirely different and live
+// inside the same #if branch as the dispatch that uses them.
+
+#if AYASTORM_CINEMATIC
+
+vec3 PBRReinhardToneMapping(vec3 color)
+{
+	float white = 2.;
+	float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+	float toneMappedLuma = luma * (1. + luma / (white*white)) / (1. + luma);
+	color *= toneMappedLuma / luma;
+	return color;
+}
+
+vec3 Uncharted2ToneMapping(vec3 color)
+{
+	float A = 0.15;
+	float B = 0.50;
+	float C = 0.10;
+	float D = 0.20;
+	float E = 0.02;
+	float F = 0.30;
+	float W = 11.2;
+	float exposure = 2.;
+	color *= exposure;
+	color = ((color * (A * color + C * B) + D * E) / (color * (A * color + B) + D * F)) - E / F;
+	float white = ((W * (A * W + C * B) + D * E) / (W * (A * W + B) + D * F)) - E / F;
+	color /= white;
+	return color;
+}
+
+vec3 FilmicToneMapping(vec3 color)
+{
+	vec3 X = max(vec3(0.0), color - 0.004);
+    vec3 result = (X * (6.2 * X + 0.5)) / (X * (6.2 * X + 1.7) + 0.06);
+    return pow(result, vec3(2.2));
+}
+
+
+vec3 toneMap(vec3 color)
+{
+#ifndef NO_POST
+    vec3 linear_input_color = color;
+
+    float exp_scale = texture(exposureMap, vec2(0.5,0.5)).r;
+    float final_exposure = exposure * exp_scale;
+    vec3 exposed_color = color * final_exposure;
+
+    vec3 tonemapped_color = exposed_color;
+    switch(tonemap_type)
+    {
+    case 0:
+        tonemapped_color = PBRNeutralToneMapping(exposed_color);
+        break;
+    case 1:
+        tonemapped_color = toneMapACES_Hill(exposed_color);
+        break;
+    case 2:
+        tonemapped_color = PBRReinhardToneMapping(color);
+        break;
+    case 3:
+        tonemapped_color = Uncharted2ToneMapping(color);
+        break;
+    case 4:
+        tonemapped_color = FilmicToneMapping(color);
+        break;
+    }
+
+    vec3 exposed_linear_input = linear_input_color * final_exposure;
+    color = mix(exposed_linear_input, tonemapped_color, tonemap_mix);
+
+    color = clamp(color, 0.0, 1.0);
+#else
+    color *= exposure * texture(exposureMap, vec2(0.5,0.5)).r;
+    color = clamp(color, 0.0, 1.0);
+#endif
+
+    return color;
+}
+
+
+vec3 toneMapNoExposure(vec3 color)
+{
+#ifndef NO_POST
+    vec3 linear_input_color = color;
+
+    vec3 tonemapped_color = color;
+    switch(tonemap_type)
+    {
+    case 0:
+        tonemapped_color = PBRNeutralToneMapping(color);
+        break;
+    case 1:
+        tonemapped_color = toneMapACES_Hill(color);
+        break;
+    case 2:
+        tonemapped_color = PBRReinhardToneMapping(color);
+        break;
+    case 3:
+        tonemapped_color = Uncharted2ToneMapping(color);
+        break;
+    case 4:
+        tonemapped_color = FilmicToneMapping(color);
+        break;
+    }
+
+    color = mix(linear_input_color, tonemapped_color, tonemap_mix);
+
+    color = clamp(color, 0.0, 1.0);
+#else
+     color = clamp(color, 0.0, 1.0);
+#endif
+
+    return color;
+}
+
+#else // AYASTORM_CINEMATIC
+
 vec3 uncharted2Tonemap(vec3 x)
 {
     float A = 0.15, B = 0.50, C = 0.10, D = 0.20, E = 0.02, F = 0.30;
@@ -162,10 +294,6 @@ vec3 toneMapFilmicBD(vec3 color)
     vec3 result = (X * (6.2 * X + 0.5)) / (X * (6.2 * X + 1.7) + 0.06);
     return pow(result, vec3(2.2));
 }
-
-uniform float exposure;
-uniform float tonemap_mix;
-uniform int tonemap_type;
 
 vec3 toneMap(vec3 color)
 {
@@ -233,6 +361,9 @@ vec3 toneMapNoExposure(vec3 color)
 
     return color;
 }
+
+#endif // AYASTORM_CINEMATIC
+// </FS:AYA>
 
 
 //===============================================================

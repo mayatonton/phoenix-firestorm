@@ -1741,6 +1741,17 @@ The selected chat layout setting will be applied after restarting [APP_NAME].
   </notification>
   <!-- </FS:AYAstorm r22> -->
 
+  <!-- <FS:AYAstorm r30 P1> View Mode (AYAVisualRealismEnabled) restart-required notification.
+       Per ayastorm-r30-cinematic-chapter.md, all 3 modes (Firestorm View / AYAstorm View / Cinematic)
+       unify on restart-switch to make the pipeline build-once at startup. -->
+  <notification
+   icon="alertmodal.tga"
+   name="ChangeViewMode"
+   type="alertmodal">
+The selected View Mode will be applied after restarting [APP_NAME].
+  </notification>
+  <!-- </FS:AYAstorm r30 P1> -->
+
   <notification
    icon="alertmodal.tga"
    name="GoToAuctionPage"

@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<floater
+ height="222"
+ layout="topleft"
+ name="Environment Editor Floater"
+ save_rect="true"
+ title="Environment Settings"
+ width="240">
+ 
+ <icon
+	follows="top|left"
+	height="215"
+	color="1 1 1 1"
+	image_name="Panel_Background"
+	layout="topleft"
+	name="vicon"
+	mouse_opaque="false"
+	visible="true"
+	width="229"
+	top="0"
+	left="5"/>
+ <check_box
+   layout="topleft"
+   control_name="UseDayCycle"
+   left="10"
+   follows="top|left"
+   label="Use Day Cycle instead of fixed Sky"
+   name="sky_dayc_settings_check"
+   top="4"
+   height="16"
+   width="100"/>
+ <!--<check_box
+   layout="topleft"
+   control_name="RenderInterpolateWindlight"
+   left="270"
+   follows="top|left"
+   label="Use Windlight Transitions"
+   name="RenderInterpolateWindlight"
+   top="2"
+   height="16"
+   width="100"/>
+ <slider
+         control_name="RenderWindlightInterpolateTime"
+         decimal_digits="0"
+         follows="left|top"
+         height="10"
+         increment="1"
+         initial_value="5"
+         max_val="30"
+         label="Time(s)"
+         layout="topleft"
+         left="470"
+         top_delta="3"
+         name="RenderWindlightInterpolateTime"
+         width="220" />-->
+ <panel
+  height="171"
+  layout="topleft"
+  left="0"
+  name="user_environment_settings"
+  top="20"
+  width="491">
+ 
+ <!-- Sky/Day Cycle Settings -->
+ 
+ <!--<icon
+		follows="left|top|right"
+		image_name="Toolbar_Middle_Off"
+		height="23"
+		width="70"
+		layout="topleft"
+		left="9"
+		top="2"/>-->
+ <text
+  name="fixed_sky_label"
+  follows="top|left"
+  height="16"
+  layout="topleft"
+  left_delta="14"
+  top="7"
+  width="64">
+  		Sky Preset
+  </text>
+
+  <combo_box
+   follows="top|left"
+   disabled_control="UseDayCycle"
+   left_delta="0"
+   height="23"
+   use_ticker="true"
+   only_arrows="true"
+   name="sky_settings_preset_combo"
+   top_pad="1"
+   width="182">
+      <combo_box.item
+       label="-Select a preset-"
+       name="item0"/>
+      <combo_box.combo_button
+            image_unselected="ToolbarDropDown_Off"
+            image_selected="ToolbarDropDown_Press"
+            image_disabled="ToolbarDropDown_Off" />
+            <combo_box.drop_down_button
+       pad_right="4"
+       image_unselected="Transparent"
+       image_selected="Transparent"
+       image_pressed="Transparent" 
+       image_pressed_selected="Transparent"
+       image_disabled="Transparent" />
+        </combo_box>
+  <button
+   follows="left|bottom"
+   height="23"
+   label=""
+   layout="topleft"
+   tool_tip="Open Sky Editor"
+   image_overlay="OptionsMenu_Off"
+   image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+   left_pad="1"
+   name="sky_btn"
+   top_delta="0"
+   width="27" >
+  <button.commit_callback
+	  function="Floater.ToggleOrBringToFront"
+	  parameter="env_fixed_environmentent_sky" />
+  </button>
+  <!--<icon
+		follows="left|top|right"
+		image_name="Toolbar_Middle_Off"
+		height="23"
+		width="80"
+		layout="topleft"
+		left_pad="29"
+		top="2"/>-->
+  <text
+  name="day_cycle_label"
+  enabled_control="UseDayCycle"
+  follows="top|left"
+  height="16"
+  layout="topleft"
+  left="14"
+  top="49"
+  width="64">
+  		Day Cycle
+  </text>
+  <combo_box
+   follows="top|left"
+   enabled_control="UseDayCycle"
+   name="dayc_settings_preset_combo"
+   use_ticker="true"
+   only_arrows="true"
+   height="23"
+   top_pad="1"
+   width="182">
+      <combo_box.item
+       label="-Select a preset-"
+       name="item0"/>
+      <combo_box.combo_button
+            image_unselected="ToolbarDropDown_Off"
+            image_selected="ToolbarDropDown_Press"
+            image_disabled="ToolbarDropDown_Off" />
+            <combo_box.drop_down_button
+       pad_right="4"
+       image_unselected="Transparent"
+       image_selected="Transparent"
+       image_pressed="Transparent" 
+       image_pressed_selected="Transparent"
+       image_disabled="Transparent" />
+        </combo_box>
+  <button
+   follows="left|top"
+   height="23"
+   label=""
+   enabled_control="UseDayCycle"
+   tool_tip="Open Water Editor"
+   image_overlay="OptionsMenu_Off"
+   image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+   layout="topleft"
+   left_pad="1"
+   name="daycycle_btn"
+   top_delta="0"
+   width="27" >
+  <button.commit_callback
+	  function="Floater.ToggleOrBringToFront"
+	  parameter="env_edit_extdaycycle" />
+  </button>
+    <text
+  name="water_label"
+  follows="top|left"
+  height="16"
+  layout="topleft"
+  left="15"
+  top="91"
+  width="75">
+  		Water Preset
+  </text>
+  <combo_box
+   follows="top|left"
+   left_delta="0"
+   name="water_settings_preset_combo"
+   use_ticker="true"
+   only_arrows="true"
+   top_pad="1"
+   width="182">
+      <combo_box.item
+       label="-Select a preset-"
+       name="item0"/>
+      <combo_box.combo_button
+            image_unselected="ToolbarDropDown_Off"
+            image_selected="ToolbarDropDown_Press"
+            image_disabled="ToolbarDropDown_Off" />
+            <combo_box.drop_down_button
+       pad_right="4"
+       image_unselected="Transparent"
+       image_selected="Transparent"
+       image_pressed="Transparent" 
+       image_pressed_selected="Transparent"
+       image_disabled="Transparent" />
+        </combo_box>
+  <button
+   follows="left|top"
+   height="23"
+   label=""
+   tool_tip="Open Water Editor"
+   image_overlay="OptionsMenu_Off"
+   image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+   layout="topleft"
+   left_pad="1"
+   name="water_btn"
+   top_delta="0"
+   width="27" >
+  <button.commit_callback
+	  function="Floater.ToggleOrBringToFront"
+	  parameter="env_fixed_environmentent_water" />
+  </button>
+  <text
+  name="transition_label"
+  follows="top|left"
+  height="16"
+  layout="topleft"
+  left="15"
+  top="133"
+  width="175">
+  		Windlight Transition Time
+  </text>
+ <slider
+         control_name="RenderWindlightInterpolateTime"
+         decimal_digits="0"
+         follows="left|top"
+         height="16"
+         increment="1"
+         initial_value="5"
+         can_edit_text="true"
+         max_val="30"
+         layout="topleft"
+         left_delta="0"
+         top_pad="0"
+         name="RenderWindlightInterpolateTime"
+         width="196" />
+  </panel>
+ <button
+   follows="left|bottom"
+   control_name="UseEnvironmentFromRegion"
+   height="23"
+   is_toggle="true"
+   label="Use Region Settings"
+   tool_tip="Switch between Regio-light or custom Sky/Water/Day-cycles"
+   image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+   layout="topleft"
+   left_delta="7"
+   name="estate_btn"
+   top_pad="0"
+   width="144"/>
+  <button
+   follows="left|bottom"
+   height="23"
+   label="Cancel"
+   image_hover_unselected="Toolbar_Middle_Over"
+	  image_selected="Toolbar_Middle_Selected"
+	  image_unselected="Toolbar_Middle_Off"
+   layout="topleft"
+   left_pad="1"
+   name="cancel_btn"
+   width="80" />
+</floater>

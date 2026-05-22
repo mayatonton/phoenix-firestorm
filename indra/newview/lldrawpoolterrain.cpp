@@ -74,7 +74,9 @@ LLDrawPoolTerrain::LLDrawPoolTerrain(LLViewerTexture *texturep) :
     static LLCachedControl<F32> RenderTerrainScale(gSavedSettings, "RenderTerrainScale");
     static LLCachedControl<F32> RenderTerrainPBRScale(gSavedSettings, "RenderTerrainPBRScale");
     static LLCachedControl<S32> RenderTerrainPBRDetail(gSavedSettings, "RenderTerrainPBRDetail");
+    // <FS:AYAstorm r30 P5 step 5 pivot 2026-05-19> Cinematic 短絡撤去、user cvar 値を使う
     sDetailScale = 1.f/RenderTerrainScale;
+    // </FS:AYAstorm>
     sPBRDetailScale = 1.f/RenderTerrainPBRScale;
     sPBRDetailMode = RenderTerrainPBRDetail();
     // </FS:PP>
@@ -196,6 +198,53 @@ void LLDrawPoolTerrain::renderShadow(S32 pass)
     drawLoop();
     //glCullFace(GL_BACK);
 }
+
+// <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,
+// 995a1354d8). LGPL-2.1-only. Face-iter pattern: terrain has no LLDrawInfo
+// batches, so we walk mDrawFace and feed per-region model matrix as both
+// LAST and CURRENT (terrain regions don't move between frames).
+
+S32 LLDrawPoolTerrain::getNumMotionBlurPasses()
+{
+    return 1;
+}
+
+void LLDrawPoolTerrain::beginMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    gVelocityProgram.bind();
+    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
+    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
+    gVelocityProgram.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
+}
+
+void LLDrawPoolTerrain::endMotionBlurPass(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED;
+    gVelocityProgram.unbind();
+}
+
+void LLDrawPoolTerrain::renderMotionBlur(S32 pass)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    LLGLEnable cull(GL_CULL_FACE);
+    if (mDrawFace.empty())
+        return;
+
+    for (std::vector<LLFace*>::iterator iter = mDrawFace.begin(); iter != mDrawFace.end(); iter++)
+    {
+        LLFace* facep = *iter;
+        LLDrawable* drawable = facep->getDrawable();
+        if (!drawable) continue;
+        LLMatrix4* model_matrix = &(drawable->getRegion()->mRenderMatrix);
+        llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
+        LLRenderPass::applyModelMatrix(model_matrix);
+        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
+        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
+        facep->renderIndexed();
+    }
+}
+// </AYAstorm r30 P2>
 
 
 void LLDrawPoolTerrain::drawLoop()

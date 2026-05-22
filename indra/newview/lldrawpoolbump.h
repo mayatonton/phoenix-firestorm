@@ -76,6 +76,13 @@ public:
     virtual S32 getNumPostDeferredPasses() override { return 1; }
     /*virtual*/ void renderPostDeferred(S32 pass) override;
 
+    // <AYAstorm r30 P2>
+    S32 getNumMotionBlurPasses() override;
+    void beginMotionBlurPass(S32 pass) override;
+    void endMotionBlurPass(S32 pass) override;
+    void renderMotionBlur(S32 pass) override;
+    // </AYAstorm r30 P2>
+
     static bool bindBumpMap(LLDrawInfo& params, S32 channel = -2);
     static bool bindBumpMap(LLFace* face, S32 channel = -2);
 

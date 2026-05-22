@@ -1,6 +1,6 @@
 # AYAstorm r17 — リリース告知
 
-GitHub release ページ貼り付け用の文案。**r17 は視覚的リアリティ章 (r14〜r20) の第 4 弾**で、太陽 elevation 駆動の色温度 modulator を導入し、太陽が地平線に近づくに従って sun / ambient / cloud color が orange 方向に温まる cinematic な夕焼け感を取り戻します。preset の値だけでは出ない「夕焼けの世界」を物理駆動で乗せる。
+**r17 は視覚的リアリティ章 (r14〜r20) の第 4 弾**で、太陽 elevation 駆動の色温度 modulator を導入し、太陽が地平線に近づくに従って sun / ambient / cloud color が orange 方向に温まる cinematic な夕焼け感を取り戻します。preset の値だけでは出ない「夕焼けの世界」を物理駆動で乗せる。
 
 > **配信形態**: r17 は **r23 リリースに同梱配信** されます (r17 単独タグは発行しません)。r23 リリースページから本ノートと r17 spec doc にリンクする運用です。
 

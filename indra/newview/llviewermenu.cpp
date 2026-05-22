@@ -10145,6 +10145,68 @@ class FSResetPerAccountControl : public view_listener_t
 };
 // </FS:Ansariel> Control enhancements
 
+// <FS:AYAstorm r30 P4 — D-button for Cinematic Controls floater>
+// Restores a cvar to AYAstorm Cinematic recommended value (≈ BD parity).
+// XUI usage: <button.commit_callback function="AYAResetCinematic" parameter="CvarName"/>
+// Falls back to LL settings.xml default when the cvar isn't in the parity table.
+class AYAResetCinematic : public view_listener_t
+{
+    static const std::map<std::string, LLSD>& parityTable()
+    {
+        static const std::map<std::string, LLSD> table = {
+            // BD master switches — LL ships off, BD ships on
+            {"RenderDepthOfField",              LLSD(true)},
+            {"RenderDepthOfFieldHighQuality",   LLSD(true)},
+            {"RenderMotionBlur",                LLSD(true)},
+            {"RenderMotionBlurStrength",        LLSD(LLSD::Integer(8))},
+            {"RenderScreenSpaceReflections",    LLSD(true)},
+            {"RenderFSAAType",                  LLSD(LLSD::Integer(2))}, // 2 = SMAA
+            // BD camera DoF values — LL defaults are conservative, BD ships photo-tuned
+            {"CameraFieldOfView",               LLSD(67.0)},
+            {"CameraFNumber",                   LLSD(64.0)},
+            {"CameraFocalLength",               LLSD(10.0)},
+            {"CameraMaxCoF",                    LLSD(11.9)},
+            {"CameraFocusTransitionTime",       LLSD(0.4)},
+            {"CameraDoFResScale",               LLSD(0.5)},
+            // AYA r14-r20 in-Cinematic tuning — default reset for live A/B sliders.
+            // settings.xml の <Value> および settings_cinematic_bd.xml overlay と
+            // 値同期必須 (2026-05-22 FX タブ 2nd batch tuning)。
+            {"AYAR14VolumetricAtmosphereInCinematicEnabled", LLSD(true)},
+            {"AYAR14Strength",                               LLSD(0.2)},
+            {"AYAR16AerialPerspectiveInCinematicEnabled",    LLSD(true)},
+            {"AYAR16AerialPerspectiveStrength",              LLSD(0.5)},
+            {"AYAR17ColorTemperatureInCinematicEnabled",     LLSD(false)},
+            {"AYAR17Strength",                               LLSD(0.5)},
+            {"AYAR18CloudVolumetricInCinematicEnabled",      LLSD(true)},
+            {"AYAR18CloudVolumetricStrength",                LLSD(0.7)},
+        };
+        return table;
+    }
+
+    bool handleEvent(const LLSD& userdata)
+    {
+        std::string cvar = userdata.asString();
+        LLControlVariable* control = gSavedSettings.getControl(cvar);
+        if (!control)
+        {
+            LL_WARNS("AYACinematic") << "AYAResetCinematic: cvar not found: " << cvar << LL_ENDL;
+            return true;
+        }
+        const auto& table = parityTable();
+        auto it = table.find(cvar);
+        if (it != table.end())
+        {
+            control->setValue(it->second);
+        }
+        else
+        {
+            control->resetToDefault(true);
+        }
+        return true;
+    }
+};
+// </FS:AYAstorm r30 P4>
+
 // <FS:Ansariel> Reset Mesh LOD; Forcing highest LOD on each mesh briefly should fix
 //               broken meshes bursted into triangles
 static void reset_mesh_lod(LLVOAvatar* avatar)
@@ -13334,6 +13396,10 @@ void initialize_menus()
     view_listener_t::addMenu(new FSResetControl(), "ResetControl");
     view_listener_t::addMenu(new FSResetPerAccountControl(), "ResetPerAccountControl");
     // </FS:Ansariel> Control enhancements
+
+    // <FS:AYAstorm r30 P4> D-button for Cinematic Controls
+    view_listener_t::addMenu(new AYAResetCinematic(), "AYAResetCinematic");
+    // </FS:AYAstorm r30 P4>
 
     // <FS:Ansariel> Reset Mesh LOD
     view_listener_t::addMenu(new FSResetMeshLOD(), "Avatar.ResetMeshLOD");

@@ -1117,7 +1117,7 @@
 				</text>
 				<slider_bar
 				 name="SB_Blur_Size"
-				 control_name="RenderShadowBlurSize"
+				 enabled_control="AYACinematicModeActive" control_name="RenderShadowBlurSize"
 				 follows="left|right"
 				 height="16"
 				 increment="0.01"
@@ -1129,7 +1129,7 @@
 				 width="127"/>
 				<spinner
 				 name="S_Blur_Size"
-				 control_name="RenderShadowBlurSize"
+				 enabled_control="AYACinematicModeActive" control_name="RenderShadowBlurSize"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
@@ -1210,7 +1210,7 @@
 				</text>
 				<slider_bar
 				 name="SB_Blur_Dist"
-				 control_name="RenderShadowBlurDistFactor"
+				 enabled_control="AYACinematicModeActive" control_name="RenderShadowBlurDistFactor"
 				 follows="left|right"
 				 height="16"
 				 increment="0.01"
@@ -1222,7 +1222,7 @@
 				 width="127"/>
 				<spinner
 				 name="S_Blur_Dist"
-				 control_name="RenderShadowBlurDistFactor"
+				 enabled_control="AYACinematicModeActive" control_name="RenderShadowBlurDistFactor"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
@@ -1362,7 +1362,7 @@
 				<slider_bar
 				 name="SB_Shd_Bias"
 				 can_edit_text="true"
-				 control_name="RenderShadowBias"
+				 enabled_control="AYACinematicModeActive" control_name="RenderShadowBias"
 				 follows="left|right"
 				 height="16"
 				 increment="0.000001"
@@ -1376,7 +1376,7 @@
 				<spinner
 				 name="S_Shd_Bias"
 				 can_edit_text="true"
-				 control_name="RenderShadowBias"
+				 enabled_control="AYACinematicModeActive" control_name="RenderShadowBias"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
@@ -1522,7 +1522,7 @@
 				</text>
 				<slider_bar
 				 name="SB_Max_Scale"
-				 control_name="RenderSSAOMaxScale"
+				 enabled_control="AYACinematicModeActive" control_name="RenderSSAOMaxScale"
 				 follows="left|right"
 				 height="16"
 				 increment="1"
@@ -1534,7 +1534,7 @@
 				 width="127"/>
 				<spinner
 				 name="S_Max_Scale"
-				 control_name="RenderSSAOMaxScale"
+				 enabled_control="AYACinematicModeActive" control_name="RenderSSAOMaxScale"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
@@ -1571,10 +1571,10 @@
 				</text>
 				<slider_bar
 				 name="SB_Scaling_Factor"
-				 control_name="RenderSSAOFactor"
+				 enabled_control="AYACinematicModeActive" control_name="RenderSSAOFactor"
 				 follows="left|right"
 				 height="16"
-				 increment="1"
+				 increment="0.01"
 				 layout="topleft"
 				 left_pad="0"
 				 min_val="0"
@@ -1583,16 +1583,16 @@
 				 width="127"/>
 				<spinner
 				 name="S_Scaling_Factor"
-				 control_name="RenderSSAOFactor"
+				 enabled_control="AYACinematicModeActive" control_name="RenderSSAOFactor"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
-				 decimal_digits="0"
+				 decimal_digits="2"
 				 follows="top|right"
 				 max_val="100000"
 				 min_val="0"
 				 width="53"
-				 increment="1"/>
+				 increment="0.01"/>
 				<button
 				 follows="left|top"
 				 name="Reset_Scaling_Factor"
@@ -2525,7 +2525,7 @@
 				</text>
 				<slider_bar
 				 name="SB_Glow_Iterations"
-				 control_name="RenderGlowIterations"
+				 enabled_control="AYACinematicModeActive" control_name="RenderGlowIterations"
 				 follows="top|left"
 				 height="16"
 				 increment="1"
@@ -2537,7 +2537,7 @@
 				 width="127"/>
 				<spinner
 				 name="S_Glow_Iterations"
-				 control_name="RenderGlowIterations"
+				 enabled_control="AYACinematicModeActive" control_name="RenderGlowIterations"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
@@ -2573,7 +2573,7 @@
 				</text>
 				<slider_bar
 				 name="SB_Glow_Strength"
-				 control_name="RenderGlowStrength"
+				 enabled_control="AYACinematicModeActive" control_name="RenderGlowStrength"
 				 follows="top|left"
 				 height="16"
 				 increment=".001"
@@ -2585,7 +2585,7 @@
 				 width="127"/>
 				<spinner
 				 name="S_Glow_Strength"
-				 control_name="RenderGlowStrength"
+				 enabled_control="AYACinematicModeActive" control_name="RenderGlowStrength"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
@@ -2622,7 +2622,7 @@
 				</text>
 				<slider_bar
 				 name="SB_Glow_Width"
-				 control_name="RenderGlowWidth"
+				 enabled_control="AYACinematicModeActive" control_name="RenderGlowWidth"
 				 follows="left|right"
 				 height="16"
 				 increment="0.001"
@@ -2634,7 +2634,7 @@
 				 width="127"/>
 				<spinner
 				 name="S_Glow_Width"
-				 control_name="RenderGlowWidth"
+				 enabled_control="AYACinematicModeActive" control_name="RenderGlowWidth"
 				 top_delta="-3"
 				 label_width="0"
 				 left_pad="0"
