@@ -125,6 +125,17 @@ static bool enableVolumeSAPProtection()
 }
 // NaCl End
 
+static bool renderFullbrightEnabled()
+{
+    static LLCachedControl<bool> render_fullbright(gSavedSettings, "RenderEnableFullbright", true);
+    return render_fullbright;
+}
+
+static bool teFullbrightEnabled(const LLTextureEntry* te)
+{
+    return te && renderFullbrightEnabled() && te->getFullbright();
+}
+
 // Implementation class of LLMediaDataClientObject.  See llmediadataclient.h
 class LLMediaDataClientObjectImpl : public LLMediaDataClientObject
 {
@@ -1889,7 +1900,7 @@ void LLVOVolume::updateFaceFlags()
         LLFace *face = mDrawable->getFace(i);
         if (face)
         {
-            bool fullbright = getTEref(i).getFullbright();
+            bool fullbright = renderFullbrightEnabled() && getTEref(i).getFullbright();
             face->clearState(LLFace::FULLBRIGHT | LLFace::HUD_RENDER | LLFace::LIGHT);
 
             if (fullbright || (mMaterial == LL_MCODE_LIGHT))
@@ -5622,7 +5633,7 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         (type == LLRenderPass::PASS_INVISIBLE) ||
         (type == LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK) ||
         (type == LLRenderPass::PASS_ALPHA && facep->isState(LLFace::FULLBRIGHT)) ||
-        (facep->getTextureEntry()->getFullbright());
+        teFullbrightEnabled(facep->getTextureEntry());
 
     if (!fullbright &&
         type != LLRenderPass::PASS_GLOW &&
@@ -6381,7 +6392,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
                             { //needs normal + tangent
                                 add_face(sBumpFaces, bump_count, facep);
                             }
-                            else if (te->getShiny() || !te->getFullbright())
+                            else if (te->getShiny() || !teFullbrightEnabled(te))
                             { //needs normal
                                 add_face(sSimpleFaces, simple_count, facep);
                             }
@@ -6598,9 +6609,9 @@ struct CompareBatchBreaker
         {
             return lte->getBumpmap() < rte->getBumpmap();
         }
-        else if (lte->getFullbright() != rte->getFullbright())
+        else if (teFullbrightEnabled(lte) != teFullbrightEnabled(rte))
         {
-            return lte->getFullbright() < rte->getFullbright();
+            return teFullbrightEnabled(lte) < teFullbrightEnabled(rte);
         }
         else if (lte->getMaterialID() != rte->getMaterialID())
         {
@@ -6998,7 +7009,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 // things without normals down the materials pipeline and will
                 // render poorly if not crash NORSPEC-240,314
                 //
-                if (te->getFullbright())
+                if (teFullbrightEnabled(te))
                 {
                     if (mat->getDiffuseAlphaMode() == LLMaterial::DIFFUSE_ALPHA_MODE_MASK)
                     {
@@ -7136,7 +7147,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 }
                 else if (facep->canRenderAsMask() && !hud_group)
                 {
-                    if (te->getFullbright() || LLPipeline::sNoAlpha)
+                    if (teFullbrightEnabled(te) || LLPipeline::sNoAlpha)
                     {
                         registerFace(group, facep, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK);
                     }
@@ -7164,7 +7175,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 }
                 else if (!hud_group)
                 { //deferred rendering
-                    if (te->getFullbright())
+                    if (teFullbrightEnabled(te))
                     { //register in post deferred fullbright shiny pass
                         registerFace(group, facep, LLRenderPass::PASS_FULLBRIGHT_SHINY);
                         if (te->getBumpmap())

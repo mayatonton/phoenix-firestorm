@@ -245,6 +245,19 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 - CAS sharpness の実効レンジ
 - SSAO Factor の飽和点
 
+Fullbright texture trace:
+
+- `RenderEnableFullbright` は `LLPrimitive` の TE pack/unpack では参照されていたが、既に scene に存在する face の `LLFace::FULLBRIGHT` state や render pass 分類では `LLTextureEntry::getFullbright()` が直接参照されていた。
+- そのため Cinematic floater から OFF にしても、表示中 object は fullbright pass / fullbright vertex format / fullbright shiny pass に残り、ユーザー視点では「効果がわからない」状態になりやすかった。
+- 修正方針は、legacy fullbright TE の描画判定だけを `RenderEnableFullbright` で gate し、HUD attachment や light material 由来の fullbright fallback は維持する。
+- `RenderEnableFullbright` 変更時は表示中の `LLVOVolume` を `updateFaceFlags()` + `markForUpdate()` で再分類し、再ログインや object reload なしで反映する。
+
+Fullbright texture 検証条件:
+
+- Fullbright texture を持つ legacy/blinn-phong object を用意する。PBR/GLTF emissive は別系統なのでこの toggle の主対象外。
+- `RenderEnableFullbright=TRUE` で照明影響を受けにくい見た目、`FALSE` で通常 shaded surface として光源・影・環境光の影響を受けることを確認する。
+- alpha/masked fullbright object と shiny fullbright object でも、OFF 時に fullbright alpha mask / fullbright shiny pass に残らないことを確認する。
+
 完了条件:
 
 - dead control は削除または disabled
