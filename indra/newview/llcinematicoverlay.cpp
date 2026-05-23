@@ -178,3 +178,33 @@ void LLCinematicOverlay::applyAYAViewModeMigrationIfNeeded()
     gSavedSettings.setS32(VERSION_CONTROL, 1);
 }
 // </FS:AYAstorm>
+
+// <FS:AYAstorm> r30 BD改善: r15 Godrays Cinematic opt-in default flip migration.
+// Pre-flip (live A/B 期間):
+//   AYAR15GodraysInCinematicEnabled default false → 既存ユーザーは false 持ち
+// Post-flip (BD改善 phase 確定):
+//   default true → 新規ユーザーは godrays 体験
+// 既存ユーザーは Persist=1 で false が残るため新 default の恩恵を受けない。
+// 本 migration で version 0 → 1 のとき強制 true 上書き。明示的に false に設定
+// していたユーザーも一度上書きされるが、godrays 撮影体験を guarantee する方を優先。
+// 再度 OFF にしたい場合は Debug Settings から手動で false に戻せる。
+void LLCinematicOverlay::applyR15GodraysCinematicMigrationIfNeeded()
+{
+    static const char VERSION_CONTROL[] = "AYAR15GodraysCinematicMigrationVersion";
+    static const char ENABLED_CONTROL[] = "AYAR15GodraysInCinematicEnabled";
+
+    const S32 ver = gSavedSettings.getS32(VERSION_CONTROL);
+    if (ver >= 1)
+    {
+        return;
+    }
+
+    const bool old_value = gSavedSettings.getBOOL(ENABLED_CONTROL);
+    gSavedSettings.setBOOL(ENABLED_CONTROL, true);
+    gSavedSettings.setS32(VERSION_CONTROL, 1);
+
+    LL_INFOS("CinematicOverlay")
+        << "r15 godrays Cinematic migration v0->v1: "
+        << ENABLED_CONTROL << " " << (old_value ? "true" : "false") << " -> true" << LL_ENDL;
+}
+// </FS:AYAstorm>

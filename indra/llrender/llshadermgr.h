@@ -128,6 +128,8 @@ public:
         AYA_R14_VOLUMETRIC_ATMOSPHERE_ENABLED, // "aya_r14_volumetric_atmosphere_enabled" <FS:AYAstorm r30 BD改善>
         AYA_R14_STRENGTH,                   //  "aya_r14_strength" <FS:AYAstorm r30 BD改善>
         AYA_R15_GODRAYS_ENABLED,            //  "aya_r15_godrays_enabled" <FS:AYAstorm r30 BD改善>
+        AYA_R15_GODRAYS_PHASE_EXPONENT,     //  "aya_r15_godrays_phase_exponent" <FS:AYAstorm r30 BD改善>
+        AYA_R15_GODRAYS_STRENGTH,           //  "aya_r15_godrays_strength" <FS:AYAstorm r30 BD改善>
         AYA_R16_AERIAL_PERSPECTIVE_ENABLED, //  "aya_r16_aerial_perspective_enabled" <FS:AYA r16>
         AYA_R16_STRENGTH,                   //  "aya_r16_strength" <FS:AYAstorm r30 BD改善>
         AYA_R18_CLOUD_VOLUMETRIC_ENABLED,   //  "aya_r18_cloud_volumetric_enabled" <FS:AYA r18>

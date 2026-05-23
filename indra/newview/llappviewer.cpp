@@ -3282,6 +3282,12 @@ bool LLAppViewer::initConfiguration()
     LLCinematicOverlay::applyR20SSSMigrationIfNeeded();
     // </FS:AYAstorm>
 
+    // <FS:AYAstorm> r30 BD改善: r15 Godrays Cinematic opt-in default flip migration.
+    // One-shot; safe in every startup path (no-op once
+    // AYAR15GodraysCinematicMigrationVersion >= 1).
+    LLCinematicOverlay::applyR15GodraysCinematicMigrationIfNeeded();
+    // </FS:AYAstorm>
+
     // <FS:Ansariel> Debug setting to disable log throttle
     nd::logging::setThrottleEnabled(gSavedSettings.getBOOL("FSEnableLogThrottle"));
 

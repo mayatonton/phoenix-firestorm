@@ -52,6 +52,15 @@ namespace LLCinematicOverlay
     // AYAViewModeMigrationVersion.
     void applyAYAViewModeMigrationIfNeeded();
     // </FS:AYAstorm>
+
+    // <FS:AYAstorm> r30 BD改善: r15 Godrays Cinematic opt-in default flip.
+    // Pre: AYAR15GodraysInCinematicEnabled default OFF (live A/B 期間)
+    // Post: default ON (BD改善 phase で「Cinematic でも godrays 標準」と確定)
+    // Runs once: when AYAR15GodraysCinematicMigrationVersion < 1, forces the
+    // cvar to true regardless of persisted value, then bumps the version.
+    // 既存ユーザーが live A/B 期間中 false 持ちで放置していたケースを救済する。
+    void applyR15GodraysCinematicMigrationIfNeeded();
+    // </FS:AYAstorm>
 }
 
 #endif // LL_CINEMATIC_OVERLAY_H
