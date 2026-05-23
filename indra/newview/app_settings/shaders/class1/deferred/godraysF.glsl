@@ -51,6 +51,12 @@ uniform vec4 shadow_clip;
 // <FS:AYAstorm r30 BD改善> master ではなく r15 個別 uniform を見る (Cinematic で master OFF のまま r15 だけ ON 可能)
 uniform int aya_r15_godrays_enabled;
 
+// <FS:AYAstorm r30 BD改善> r15 ビーム感 live cvar tuning
+//   phase_exponent: Mie 前方ピーク (pow(cos_theta, e))。大きいほど太陽方向に集中、ビーム感増
+//   strength: 加算強度。HDR 加算なので大きすぎると空白飛び。
+uniform float aya_r15_godrays_phase_exponent;
+uniform float aya_r15_godrays_strength;
+
 // helpers provided by deferred/deferredUtil.glsl + deferred/shadowUtil.glsl
 float getDepth(vec2 pos_screen);
 vec4  getPositionWithDepth(vec2 pos_screen, float depth);
@@ -144,15 +150,12 @@ void main()
 
     // Mie-style forward peak. Exponent controls how tightly the contribution
     // hugs the sun direction. 8 = visibly wide halo, 16 = moderate, 32 = thin
-    // shaft only when looking ~5° from the sun.
+    // shaft only when looking ~5° from the sun. Live cvar AYAR15GodraysPhaseExponent。
     float cos_theta = clamp(dot(view_dir, light_dir), 0.0, 1.0);
-    float phase     = pow(cos_theta, 8.0);
+    float phase     = pow(cos_theta, max(aya_r15_godrays_phase_exponent, 1.0));
 
-    // r15 MVP intensity. AYA 体感調整: 0.5 = loud, 0.2 = ちょっと強い、
-    // 0.15 もまだ少し強い、0.10 で「うっすら空気の主張」を狙う。
-    const float strength = 0.10;
-
-    vec3 godrays = light_color * accum * phase * strength;
+    // 加算強度。live cvar AYAR15GodraysStrength。
+    vec3 godrays = light_color * accum * phase * aya_r15_godrays_strength;
 
     // Alpha は必ず 0。scene buffer の alpha は doAtmospherics / sky 合成が
     // mask として使うので、blendFunc ONE/ONE のもとで alpha=1.0 を書くと

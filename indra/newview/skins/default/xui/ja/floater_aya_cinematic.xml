@@ -243,6 +243,22 @@
                        tool_tip="GODRAYS_FADE permutation を追加します。切替時にシェーダーが即時再構築 (1-2秒) されます。"/>
             <button name="d_VolDir" tool_tip="デフォルトに戻す"/>
 
+            <text name="T_R15Godrays">ゴッドレイ (太陽方向ビーム)</text>
+
+            <check_box name="cb_R15GodraysCinematic" label="ゴッドレイ有効化"
+                       tool_tip="Cinematic モードでゴッドレイを有効化します (AYAstorm View では常時 ON)。"/>
+            <button name="d_R15GodraysCinematic" tool_tip="デフォルトに戻す"/>
+
+            <text name="T_R15PhaseExp">ビーム集中度</text>
+            <slider_bar name="sb_R15PhaseExp" tool_tip="Mie 前方ピーク指数。1 = 最大ハロー (ほぼ全画面) / 4 = 全画面ハロー / 8 = 広い / 16 = 中程度ビーム / 30 = 集中ビーム (デフォルト) / 32 = 太陽近傍のみの細いシャフト。"/>
+            <spinner    name="s_R15PhaseExp"  tool_tip="Mie 前方ピーク指数。1 = 最大ハロー (ほぼ全画面) / 4 = 全画面ハロー / 8 = 広い / 16 = 中程度ビーム / 30 = 集中ビーム (デフォルト) / 32 = 太陽近傍のみの細いシャフト。"/>
+            <button name="d_R15PhaseExp" tool_tip="デフォルトに戻す"/>
+
+            <text name="T_R15Strength">ビーム強度</text>
+            <slider_bar name="sb_R15Strength" tool_tip="加算強度。0.10 = 控えめ (デフォルト) / 0.15-0.20 = ビーム / 0.30 以上で空が白飛びします。"/>
+            <spinner    name="s_R15Strength"  tool_tip="加算強度。0.10 = 控えめ (デフォルト) / 0.15-0.20 = ビーム / 0.30 以上で空が白飛びします。"/>
+            <button name="d_R15Strength" tool_tip="デフォルトに戻す"/>
+
         </panel>
 
         <!-- ============ Tab 8: Lighting ============ -->

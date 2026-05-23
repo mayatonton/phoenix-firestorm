@@ -998,6 +998,11 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
         bool r15_on = aya_view || (aya_visual_realism() == 2 && aya_r15_in_cinematic);
         shader->uniform1i(LLShaderMgr::AYA_R15_GODRAYS_ENABLED, r15_on ? 1 : 0);
+
+        static LLCachedControl<F32> aya_r15_phase_exp(gSavedSettings, "AYAR15GodraysPhaseExponent", 16.0f);
+        static LLCachedControl<F32> aya_r15_strength(gSavedSettings, "AYAR15GodraysStrength", 0.15f);
+        shader->uniform1f(LLShaderMgr::AYA_R15_GODRAYS_PHASE_EXPONENT, (F32)aya_r15_phase_exp);
+        shader->uniform1f(LLShaderMgr::AYA_R15_GODRAYS_STRENGTH, (F32)aya_r15_strength);
     }
     // </FS:AYAstorm>
 

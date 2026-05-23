@@ -11625,14 +11625,10 @@ void LLPipeline::doGodrays()
         return;
     }
 
-    // <FS:AYAstorm r30 BD full port Phase 3.1> AYAVisualRealismEnabled (U32, 0=Firestorm View / 1=AYAstorm View / 2=Cinematic)。
-    // r15 godrays は AYAstorm View r14+ stack の一部、Cinematic は純 BD パスのため OFF。
-    // D1 確定 (docs/specs/ayastorm-r30-bd-full-port-phase2-spec.md §1)。
-    static LLCachedControl<U32> realism_enabled(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    if (realism_enabled() != 1)
-    {
-        return;
-    }
+    // <FS:AYAstorm r30 BD改善> mode gate は唯一の caller (line ~5184) 側に集約済。
+    // BD改善 Phase で Cinematic mode==2 + AYAR15GodraysInCinematicEnabled で opt-in dispatch
+    // できるようになったため、本体側の mode==1 early return は dispatch 条件を裏切る。
+    // 二重 gate を撤去し、callee は呼ばれたら走るだけにする。
     // </FS:AYAstorm>
 
     if (!gDeferredGodraysProgram.isComplete())
