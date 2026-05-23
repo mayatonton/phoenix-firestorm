@@ -114,6 +114,13 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 - Mac/Linux で雲が表示される
 - 3D cloud depth の ON/OFF 差を検証できる状態になる
 
+進捗:
+
+- 雲描画は cloud draw pass そのものが停止していたわけではなく、`RenderEnableEmissiveBuffer=1` 時の sky/cloud emissive output alpha が 0 になっていたことが主因と判断する。
+- `LLGLSPipelineBlendSkyBox` は alpha blending で sky/cloud を合成するため、`frag_data[3]` に RGB が入っていても alpha 0 だと最終合成に寄与しない。結果として「雲が描画されていない」ように見える。
+- 修正では sky domain の `HAS_EMISSIVE` 経路で、視覚出力と同じ alpha を emissive attachment に渡すようにした。具体的には `cloudsF.glsl` は `alpha1`、`skyF.glsl` は `1.0`、`starsF.glsl` / `moonF.glsl` / `sunDiscF.glsl` は各色の alpha を `frag_data[3].a` に入れる。
+- このため、雲復旧は 3D cloud depth や environment pass の gate 修正ではなく、emissive buffer 経路の alpha 合成修正によって説明できる。
+
 ### Step B: Post-process chain 健全性確認
 
 **目的**: Linux の UI 白塗り、LUT 不適用、Glow OFF path を同じ根で調査する。
