@@ -12345,13 +12345,13 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderVolumetricLightingMultiplier</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). The new render engine's default is 1.0, but AYAstorm's ACES tone mapping + HDR scene buffer compress the additive contribution to near-imperceptible at 1.0. Default 50 picked for "現実世界に近い" subtle shafts; raise to 100-200 for stronger PV/cinematic look.</string>
+    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). Default 4.0 keeps godrays visible without saturating the post-tonemap image.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
     <string>F32</string>
     <key>Value</key>
-    <real>50.0</real>
+    <real>4.0</real>
   </map>
 
   <key>RenderVolumetricLightingFalloffMultiplier</key>
@@ -12363,7 +12363,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Type</key>
     <string>F32</string>
     <key>Value</key>
-    <real>1.0</real>
+    <real>2.0</real>
   </map>
 
   <key>RenderVolumetricLightingDirectional</key>
