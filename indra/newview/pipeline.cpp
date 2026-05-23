@@ -11123,7 +11123,9 @@ void LLPipeline::renderDeferredLighting()
         }
 
         // <FS:AYAstorm r30 P4> RenderDeferredBlurLight gates the soften-shadow blur pass.
-        if (RenderDeferredSSAO && RenderDeferredBlurLight && !gCubeSnapshot)
+        // Shadow blur should remain available when SSAO is disabled; the sun
+        // shader still writes directional/spot shadows into the light map.
+        if ((RenderDeferredSSAO || RenderShadowDetail > 0) && RenderDeferredBlurLight && !gCubeSnapshot)
         // </FS:AYAstorm r30 P4>
         {
             // soften direct lighting lightmap

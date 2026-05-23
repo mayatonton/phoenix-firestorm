@@ -156,6 +156,14 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 - 影ぼかしサイズを最小/最大にしたスクリーンショットで差が確認できる
 - sun shadow と spot/projector shadow のどちらに効く UI なのかを tooltip に反映する
 
+進捗:
+
+- `RenderShadowBlurSize` は UI、cached setting、`gDeferredBlurLightProgram` の `kern_scale` まで届いていた。
+- ただし blur pass は `RenderDeferredSSAO && RenderDeferredBlurLight` の時だけ実行されていたため、SSAO OFF では shadow light map が生成されていても影ぼかしが走らなかった。
+- Cinematic 分岐の `blurLightF.glsl` は BD original に合わせて G channel (SSAO) だけをぼかし、R/B/A の directional/spot shadow channel を素通ししていた。このため Cinematic では `RenderShadowBlurSize` が影に見えない。
+- 対策として、blur pass gate を `RenderDeferredSSAO || RenderShadowDetail > 0` に広げ、Cinematic 分岐でも R/G/B/A 全 channel を同じ separable blur で処理する。
+- Phototools の Shadow Blur / Blur Dist tooltip から「Ambient Occlusion 必須」の記述を外した。
+
 ### Step D: SSR controls
 
 **目的**: SSR 全項目が効果不明な原因を切り分ける。
