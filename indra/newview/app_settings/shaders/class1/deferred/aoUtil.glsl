@@ -114,7 +114,7 @@ float calcHBAmbientOcclusion(vec4 pos, vec3 normal, vec2 pos_screen)
         for (int j = 1; j <= NUM_STEPS; ++j)
         {
             float step_scale = pow((float(j) + 0.5) / float(NUM_STEPS), 2.0);
-            float view_scale = 1.0 / abs(pos.z);
+            float view_scale = 1.0 / max(abs(pos.z), 1e-4);
             vec3 viewDir = normalize(-pos.xyz);
             vec2 offset = dir * radius * view_scale * step_scale;
 
@@ -180,7 +180,7 @@ float calcHBAmbientOcclusion(vec4 pos, vec3 normal, vec2 pos_screen)
         weight_sum += weight;
     }
 
-    return result / weight_sum;
+    return weight_sum > 1e-6 ? (result / weight_sum) : 1.0;
 }
 
 //calculate decreases in ambient lighting when crowded out (SSAO)
