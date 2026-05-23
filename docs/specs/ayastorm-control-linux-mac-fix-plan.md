@@ -208,6 +208,12 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 
 過去 trace では `RenderVolumetricLightingResolution=1` の場合、for loop が実質 0 回になる疑いがある。default と UI min の再検討が必要。
 
+デフォルト調整:
+
+- AYA 実機確認用の初期値として、Volumetric Lighting は `ON`、`Resolution=16`、`Intensity=4.0`、`Falloff=2.0` に合わせる。
+- `RenderVolumetricLighting` と `RenderVolumetricLightingResolution` は既存 default が画像値と一致していた。
+- `RenderVolumetricLightingMultiplier` は `50.0 -> 4.0`、`RenderVolumetricLightingFalloffMultiplier` は `1.0 -> 2.0` に変更し、settings default / Cinematic overlay / Reset D / runtime fallback を同期する。
+
 完了条件:
 
 - 各 slider の min/max で差が出る検証 scene を定義する

@@ -142,6 +142,18 @@
     <key>RenderScreenSpaceReflections</key>
     <boolean>1</boolean>
 
+    <key>RenderVolumetricLighting</key>
+    <boolean>1</boolean>
+
+    <key>RenderVolumetricLightingResolution</key>
+    <integer>16</integer>
+
+    <key>RenderVolumetricLightingMultiplier</key>
+    <real>4.0</real>
+
+    <key>RenderVolumetricLightingFalloffMultiplier</key>
+    <real>2.0</real>
+
     <key>RenderFSAAType</key>
     <integer>2</integer>
 

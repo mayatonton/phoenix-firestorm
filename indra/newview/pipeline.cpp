@@ -5019,8 +5019,8 @@ void LLPipeline::renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst)
         (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
 
     static LLCachedControl<U32> godray_res(gSavedSettings, "RenderVolumetricLightingResolution", 16);
-    static LLCachedControl<F32> godray_mult(gSavedSettings, "RenderVolumetricLightingMultiplier", 50.0f);
-    static LLCachedControl<F32> falloff_mult(gSavedSettings, "RenderVolumetricLightingFalloffMultiplier", 1.0f);
+    static LLCachedControl<F32> godray_mult(gSavedSettings, "RenderVolumetricLightingMultiplier", 4.0f);
+    static LLCachedControl<F32> falloff_mult(gSavedSettings, "RenderVolumetricLightingFalloffMultiplier", 2.0f);
 
     gVolumetricLightProgram.uniform1i(LLShaderMgr::GODRAY_RES, (S32)godray_res);
     gVolumetricLightProgram.uniform1f(LLShaderMgr::GODRAY_MULTIPLIER, (F32)godray_mult);
