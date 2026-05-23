@@ -906,6 +906,13 @@ public:
     // ambiguity (subject vs bg depth in same pixel) by structurally
     // keeping alpha color in its own channel. Main RT only.
     LLRenderTarget          mAYAAlphaColor;
+    // R-1: per-frame populated flag — true only when the alpha pool actually
+    // redirected this frame's main-RT alpha pass into mAYAAlphaColor. Reset
+    // at the top of renderGeomPostDeferred so probe / HUD passes start clean,
+    // set in LLDrawPoolAlpha::renderPostDeferred when use_alpha_rt fires, and
+    // consumed by tonemap()/gammaCorrect() to decide whether to composite the
+    // plate over the scene before the tone curve runs.
+    bool                    mAYAAlphaColorPopulated = false;
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
     // copy of the color/depth buffer just before gamma correction

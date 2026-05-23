@@ -49,6 +49,7 @@
 #include "llspatialpartition.h"
 #include "llglcommonfunc.h"
 #include "llvoavatar.h"
+#include "lltoolmgr.h"
 #include "gltfscenemanager.h"
 
 #include "llenvironment.h"
@@ -211,12 +212,28 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // with mMainRT->deferredScreen at allocate time, so the redirect is only
     // valid while the main RT pack is current. preview/profile/probe paths
     // call renderPostDeferred with a non-main mRT and would mismatch depth.
+    // <AYAstorm r30 P5 transparent-DoF Bug A fix> The renderDoF gate
+    // (pipeline.cpp:10044) drops the DoF combine pass — and therefore the
+    // alpha plate composite — whenever inBuildMode() is true (e.g. while a
+    // HUD object is being LMB-clicked, which activates the Select tool).
+    // If we still redirect forward alpha to mAYAAlphaColor in that frame,
+    // the plate is silently discarded and alpha BLEND surfaces vanish from
+    // screen entirely. Sync this gate with renderDoF's gate so the redirect
+    // only happens when the combine pass will actually run.
+    const bool gate_dof_runs =
+        (LLPipeline::RenderDepthOfFieldInEditMode || !LLToolMgr::getInstance()->inBuildMode());
+    // </AYAstorm r30 P5 transparent-DoF Bug A fix>
+    const bool gate_no_impostor = !LLPipeline::sImpostorRender;
+    const bool gate_no_hud      = !LLPipeline::sRenderingHUDs;
+    const bool gate_no_cube     = !gCubeSnapshot;
+    const bool gate_dof_on      = LLPipeline::RenderDepthOfField;
+    const bool gate_post_water  = (getType() == LLDrawPool::POOL_ALPHA_POST_WATER);
+    const bool gate_main_rt     = (gPipeline.mRT == &gPipeline.mMainRT);
+    const bool gate_aya_complete = gPipeline.mAYAAlphaColor.isComplete();
     const bool use_alpha_rt =
-        !LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
-        !gCubeSnapshot && LLPipeline::RenderDepthOfField &&
-        getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        gPipeline.mRT == &gPipeline.mMainRT &&
-        gPipeline.mAYAAlphaColor.isComplete();
+        gate_no_impostor && gate_no_hud && gate_no_cube && gate_dof_on &&
+        gate_dof_runs &&
+        gate_post_water && gate_main_rt && gate_aya_complete;
 
     if (use_alpha_rt)
     {
@@ -230,10 +247,17 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         // holds opaque z that alpha BLEND must depth-test against.
         {
             LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
+            // Pristine premul baseline: (0,0,0,0) preserves the
+            // plate.rgb <= plate.a invariant so the over-composite in
+            // dofCombineF works as designed.
             glClearColor(0.f, 0.f, 0.f, 0.f);
             glClear(GL_COLOR_BUFFER_BIT);
         }
         mForwardToAlphaRT = true;
+        // R-1: tell tonemap()/gammaCorrect() the plate carries valid premul
+        // data for this frame. Without this, the consumer can't tell a fresh
+        // plate from stale contents of a previous frame's redirect.
+        gPipeline.mAYAAlphaColorPopulated = true;
     }
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
 

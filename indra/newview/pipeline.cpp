@@ -5104,6 +5104,14 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     LL_PROFILE_GPU_ZONE("renderGeomPostDeferred");
 
+    // <AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+    // Reset the plate-populated flag every entry. Probe and HUD passes hit
+    // this function too; their gate condition in LLDrawPoolAlpha will not
+    // fire so the flag stays false through them. The main-RT pass may flip
+    // it to true if forward alpha BLEND was redirected this frame.
+    mAYAAlphaColorPopulated = false;
+    // </AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+
     if (gUseWireframe)
     {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -8750,6 +8758,23 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
 
         shader->bindTexture(LLShaderMgr::EXPOSURE_MAP, &mExposureMap);
 
+        // <AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+        // Pre-tonemap plate over-blend. Plate carries premultiplied alpha
+        // BLEND color in HDR linear space, matching the space of src
+        // (mRT->screen pre-tonemap). Compositing here means downstream
+        // glow / DoF naturally see the alpha BLEND surface in the merged
+        // buffer, so hair / clothing get bloom and CoC blur for free.
+        {
+            const bool ap_chan_ok = (shader->getTextureChannel(LLShaderMgr::AYA_ALPHA_PLATE) >= 0);
+            const bool ap_on = mAYAAlphaColorPopulated && mAYAAlphaColor.isComplete() && ap_chan_ok;
+            if (ap_on)
+            {
+                shader->bindTexture(LLShaderMgr::AYA_ALPHA_PLATE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
+            }
+            shader->uniform1i(LLShaderMgr::AYA_ALPHA_PLATE_ENABLED, ap_on ? 1 : 0);
+        }
+        // </AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+
         shader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
 
         static LLCachedControl<F32> exposure(gSavedSettings, "RenderExposure", 1.f);
@@ -8829,6 +8854,20 @@ void LLPipeline::gammaCorrect(LLRenderTarget* src, LLRenderTarget* dst)
 
         shader.bind();
         shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, false, LLTexUnit::TFO_POINT);
+
+        // <AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+        // Non-HDR path symmetric to tonemap(). See tonemap() for rationale.
+        {
+            const bool ap_chan_ok = (shader.getTextureChannel(LLShaderMgr::AYA_ALPHA_PLATE) >= 0);
+            const bool ap_on = mAYAAlphaColorPopulated && mAYAAlphaColor.isComplete() && ap_chan_ok;
+            if (ap_on)
+            {
+                shader.bindTexture(LLShaderMgr::AYA_ALPHA_PLATE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
+            }
+            shader.uniform1i(LLShaderMgr::AYA_ALPHA_PLATE_ENABLED, ap_on ? 1 : 0);
+        }
+        // </AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+
         shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
 
         mScreenTriangleVB->setBuffer();
@@ -9891,22 +9930,6 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredDoFCombineProgram.bind();
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_LIGHT, &mRT->deferredLight, LLTexUnit::TFO_POINT);
-
-                // <AYAstorm r30 P5 transparent-DoF C-(a)> Bind the alpha BLEND
-                // plate so dofCombineF can "over" it on top of the DoF'd
-                // opaque scene. When mAYAAlphaColor is not allocated (aux /
-                // probe paths) the gate uniform stays false and the shader
-                // skips the composite entirely — no fallback bind needed.
-                {
-                    S32 ap_chan = gDeferredDoFCombineProgram.getTextureChannel(LLShaderMgr::AYA_ALPHA_PLATE);
-                    const bool ap_on = mAYAAlphaColor.isComplete() && ap_chan >= 0;
-                    if (ap_on)
-                    {
-                        gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::AYA_ALPHA_PLATE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
-                    }
-                    gDeferredDoFCombineProgram.uniform1i(LLShaderMgr::AYA_ALPHA_PLATE_ENABLED, ap_on ? 1 : 0);
-                }
-                // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
                 gDeferredDoFCombineProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image

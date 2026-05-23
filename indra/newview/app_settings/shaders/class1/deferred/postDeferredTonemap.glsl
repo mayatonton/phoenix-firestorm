@@ -29,6 +29,17 @@ out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
 
+// <AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+// Forward alpha BLEND plate is now composited here, *before* the tonemap /
+// gamma / clamp chain, so plate.rgb (HDR linear, premul) is mixed with
+// diff.rgb (HDR linear scene) in matching color space. The combined result
+// then goes through toneMap → applyColorGrading → linear_to_srgb together,
+// inheriting bloom / DoF naturally from the downstream chain operating on
+// the merged buffer. dofCombineF reverts to vanilla as a consequence.
+uniform sampler2D aya_alpha_plate;
+uniform bool      aya_alpha_plate_enabled;
+// </AYAstorm r30 P5 transparent-DoF C-(a) R-1>
+
 in vec2 vary_fragcoord;
 
 #ifdef GAMMA_CORRECT
@@ -87,6 +98,18 @@ void main()
 {
     //this is the one of the rare spots where diffuseRect contains linear color values (not sRGB)
     vec4 diff = texture(diffuseRect, vary_fragcoord);
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a) R-1> pre-tonemap plate over-blend
+    // plate is premultiplied: plate.rgb = src.rgb * src.a, plate.a = src.a
+    // Composite in linear space so the merged buffer goes through tonemap +
+    // color grading + sRGB encoding uniformly. diff.a is preserved as the
+    // scene-side glow signal (downstream combineGlow uses .a from this RT).
+    if (aya_alpha_plate_enabled)
+    {
+        vec4 plate = texture(aya_alpha_plate, vary_fragcoord);
+        diff.rgb = plate.rgb + diff.rgb * (1.0 - plate.a);
+    }
+    // </AYAstorm r30 P5 transparent-DoF C-(a) R-1>
 
 #ifndef NO_POST
     diff.rgb = toneMap(diff.rgb);
