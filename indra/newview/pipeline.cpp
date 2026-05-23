@@ -110,6 +110,7 @@
 #include "llmutelist.h"
 #include "lltoolpie.h"
 #include "llnotifications.h"
+#include "llnotificationsutil.h"
 #include "llpathinglib.h"
 #include "llfloaterpathfindingconsole.h"
 #include "llfloaterpathfindingcharacters.h"
@@ -157,6 +158,51 @@
 
 extern bool gSnapshot;
 bool gShiftFrame = false;
+
+static void notifyMotionBlurSkippedOnce(const std::string& message)
+{
+    static bool sNotified = false;
+    if (sNotified)
+    {
+        return;
+    }
+
+    sNotified = true;
+
+    LLSD args;
+    args["MESSAGE"] = message;
+    LLNotificationsUtil::add("ChatSystemMessageTip", args);
+}
+
+static void notifySSAOShadowSkippedOnce(const std::string& message)
+{
+    static bool sNotified = false;
+    if (sNotified)
+    {
+        return;
+    }
+
+    sNotified = true;
+
+    LLSD args;
+    args["MESSAGE"] = message;
+    LLNotificationsUtil::add("ChatSystemMessageTip", args);
+}
+
+static void notifyDoFSkippedOnce(const std::string& message)
+{
+    static bool sNotified = false;
+    if (sNotified)
+    {
+        return;
+    }
+
+    sNotified = true;
+
+    LLSD args;
+    args["MESSAGE"] = message;
+    LLNotificationsUtil::add("ChatSystemMessageTip", args);
+}
 
 //cached settings
 bool LLPipeline::WindLightUseAtmosShaders;
@@ -4872,6 +4918,21 @@ void LLPipeline::renderGeomMotionBlur()
         return;
     }
 
+    auto is_complete_with_rigged_variant = [](const LLGLSLShader& shader)
+    {
+        return shader.isComplete() &&
+            (!shader.mRiggedVariant || shader.mRiggedVariant->isComplete());
+    };
+
+    if (!is_complete_with_rigged_variant(gVelocityProgram) ||
+        !is_complete_with_rigged_variant(gVelocityAlphaProgram) ||
+        !gAvatarVelocityProgram.isComplete())
+    {
+        LL_WARNS_ONCE("Pipeline") << "Skipping motion blur velocity pass because one or more velocity shaders failed to link." << LL_ENDL;
+        notifyMotionBlurSkippedOnce("AYAstorm: Motion blur was disabled because a required velocity shader failed to load. Check AYAstorm.log for shader details.");
+        return;
+    }
+
     mVelocityMap.bindTarget();
     mVelocityMap.clear(GL_COLOR_BUFFER_BIT);
 
@@ -4904,6 +4965,13 @@ void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* 
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("motion blur composite");
+
+    if (!gDeferredMotionBlurProgram.isComplete())
+    {
+        LL_WARNS_ONCE("Pipeline") << "Skipping motion blur composite because the deferred motion blur shader failed to link." << LL_ENDL;
+        notifyMotionBlurSkippedOnce("AYAstorm: Motion blur was disabled because the motion blur composite shader failed to load. Check AYAstorm.log for shader details.");
+        return;
+    }
 
     dst->bindTarget();
 
@@ -9691,6 +9759,16 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 
         if (sDoFEnabled) // <FS:Beq/> // FIRE-32023 Render focus point
         {
+            if (!gDeferredCoFProgram.isComplete() ||
+                !gDeferredPostProgram.isComplete() ||
+                !gDeferredDoFCombineProgram.isComplete())
+            {
+                LL_WARNS_ONCE("Pipeline") << "Skipping depth of field because one or more DoF shaders failed to link." << LL_ENDL;
+                notifyDoFSkippedOnce("AYAstorm: Depth of Field was disabled because a required post-processing shader failed to load. Check AYAstorm.log for shader details.");
+                copyRenderTarget(src, dst);
+                return;
+            }
+
             LLGLDisable blend(GL_BLEND);
 
             // depth of field focal plane calculations
@@ -11009,30 +11087,38 @@ void LLPipeline::renderDeferredLighting()
         if ((RenderDeferredSSAO && !gCubeSnapshot) || RenderShadowDetail > 0)
         {
             LL_PROFILE_GPU_ZONE("sun program");
-            deferred_light_target->bindTarget();
-            {  // paint shadow/SSAO light map (direct lighting lightmap)
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - sun shadow");
-
-                LLGLSLShader& sun_shader = gCubeSnapshot ? gDeferredSunProbeProgram : gDeferredSunProgram;
-                bindDeferredShader(sun_shader, deferred_light_target);
-                mScreenTriangleVB->setBuffer();
-                glClearColor(1, 1, 1, 1);
-                deferred_light_target->clear(GL_COLOR_BUFFER_BIT);
-                glClearColor(0, 0, 0, 0);
-
-                sun_shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-                                              (GLfloat)deferred_light_target->getWidth(),
-                                              (GLfloat)deferred_light_target->getHeight());
-
-                {
-                    LLGLDisable   blend(GL_BLEND);
-                    LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_ALWAYS);
-                    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-                }
-
-                unbindDeferredShader(sun_shader);
+            LLGLSLShader& sun_shader = gCubeSnapshot ? gDeferredSunProbeProgram : gDeferredSunProgram;
+            if (!sun_shader.isComplete())
+            {
+                LL_WARNS_ONCE("Pipeline") << "Skipping SSAO/shadow light pass because the deferred sun shader failed to link." << LL_ENDL;
+                notifySSAOShadowSkippedOnce("AYAstorm: SSAO/shadow smoothing was disabled because the deferred sun shader failed to load. Check AYAstorm.log for shader details.");
             }
-            deferred_light_target->flush();
+            else
+            {
+                deferred_light_target->bindTarget();
+                {  // paint shadow/SSAO light map (direct lighting lightmap)
+                    LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - sun shadow");
+
+                    bindDeferredShader(sun_shader, deferred_light_target);
+                    mScreenTriangleVB->setBuffer();
+                    glClearColor(1, 1, 1, 1);
+                    deferred_light_target->clear(GL_COLOR_BUFFER_BIT);
+                    glClearColor(0, 0, 0, 0);
+
+                    sun_shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
+                                                  (GLfloat)deferred_light_target->getWidth(),
+                                                  (GLfloat)deferred_light_target->getHeight());
+
+                    {
+                        LLGLDisable   blend(GL_BLEND);
+                        LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_ALWAYS);
+                        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+                    }
+
+                    unbindDeferredShader(sun_shader);
+                }
+                deferred_light_target->flush();
+            }
         }
 
         // <FS:AYAstorm r30 P4> RenderDeferredBlurLight gates the soften-shadow blur pass.

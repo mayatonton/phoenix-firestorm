@@ -25,6 +25,10 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifndef HAS_NOISE
+#define HAS_NOISE 0
+#endif
+
 out vec4 frag_color;
 
 uniform sampler2D diffuseMap;

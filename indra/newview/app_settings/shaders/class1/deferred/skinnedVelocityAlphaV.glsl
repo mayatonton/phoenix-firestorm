@@ -49,6 +49,7 @@ uniform mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
 mat4 getObjectSkinnedTransform();
 mat4 getLastObjectSkinnedTransform();
 
+void passTextureIndex();
 void writeVaryVelocity(vec4 pos, vec4 last_pos);
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount fix> Phase 3.8 step 2 overwrote
@@ -83,4 +84,5 @@ void main()
 
     vary_texcoord0 = (texture_matrix0 * vec4(texcoord0, 0, 1)).xy;
     vertex_color = diffuse_color;
+    passTextureIndex();
 }
