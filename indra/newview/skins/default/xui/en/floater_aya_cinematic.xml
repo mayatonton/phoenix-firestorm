@@ -34,19 +34,20 @@
  save_dock_state="false"
  single_instance="true"
  title="AYAstorm Controls"
- width="500">
+ width="630">
 
     <tab_container
-     follows="left|top"
-     halign="center"
+     follows="all"
+     halign="left"
      height="461"
      layout="topleft"
-     left="5"
+     left="0"
      name="aya_cinematic_tabs"
-     tab_height="22"
-     tab_position="top"
+     tab_position="left"
+     tab_width="130"
+     tab_padding_right="4"
      top="22"
-     width="490">
+     width="630">
 
         <!-- =================== Tab 1: General =================== -->
         <panel border="false" follows="left|top" label="General" layout="topleft" left="1" name="tab_general" top="0" height="427" width="488">
@@ -417,6 +418,56 @@
             <slider_bar follows="left|top" layout="topleft" name="sb_R18Str" enabled_control="AYACinematicModeActive" top="206" left="176" width="195" height="16" control_name="AYAR18CloudVolumetricStrength" min_val="0" max_val="1" increment="0.05" tool_tip="r18 Cloud Volumetric (slab raymarch) の強度を 0=legacy flat / 1=現状 volumetric で連続 lerp。enabled OFF の時は無効。"/>
             <spinner    follows="left|top" layout="topleft" name="s_R18Str"  enabled_control="AYACinematicModeActive" top="204" left="376" width="65"  height="20" control_name="AYAR18CloudVolumetricStrength" min_val="0" max_val="1" increment="0.05" decimal_digits="2" label_width="0" tool_tip="r18 効果の強度 (0=legacy / 1=volumetric)。"/>
             <button     follows="left|top" layout="topleft" name="d_R18Str"  enabled_control="AYACinematicModeActive" top="204" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (0.7)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR18CloudVolumetricStrength"/></button>
+        </panel>
+
+        <!-- =================== Tab 11: Skin SSS =================== -->
+        <!-- <FS:AYA r20 → r30> SSS sub-tab を Preferences > Graphics から AYAstorm Controls に
+             移設 (2026-05-24)。original panel_preferences_sss.xml の widget を踏襲、Reset All と
+             Lock の callback は llviewermenu.cpp::AYASSSResetAll / AYASSSToggleLock 経由。-->
+        <panel border="false" follows="left|top" label="Skin SSS" layout="topleft" left="1" name="tab_skin_sss" top="0" height="427" width="488">
+            <panel.string name="DefaultWhitelist"></panel.string>
+
+            <text follows="left|top" layout="topleft" name="T_SSSHeader" top="8" left="8" width="472" height="18" font="SansSerif">Subsurface Scattering — Skin translucency</text>
+
+            <text follows="left|top" layout="topleft" name="T_SSSDesc" top="32" left="12" width="464" height="40" word_wrap="true">SSS only applies to Attachments. An attachment becomes a target if its mesh asset UUID is listed below. To register a mesh, right-click any attached object in-world and choose "Add to SSS whitelist".</text>
+
+            <check_box follows="left|top" layout="topleft" name="cb_SSSEnabled" enabled_control="AYACinematicModeActive" control_name="AYAR20AvatarSkinSSSEnabled" top="84" left="36" width="406" height="20" label="Enable SSS" tool_tip="Master toggle for screen-space subsurface scattering."/>
+            <button    follows="left|top" layout="topleft" name="d_SSSEnabled" enabled_control="AYACinematicModeActive" top="84" left="12" width="20"  height="20" label="D" tool_tip="Reset to default (ON)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR20AvatarSkinSSSEnabled"/></button>
+
+            <text follows="left|top" layout="topleft" name="T_SSSParamHeader" top="116" left="8" width="472" height="18" font="SansSerif">Parameters</text>
+
+            <text       follows="left|top" layout="topleft" name="T_SSSBlur"  enabled_control="AYACinematicModeActive" top="142" left="12" width="160" height="20">Blur radius @1m (px)</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSSBlur" enabled_control="AYACinematicModeActive" top="144" left="176" width="195" height="16" control_name="AYAR20AvatarSkinSSSBlurRadius" min_val="0" max_val="32" increment="0.5" tool_tip="Tap spacing in pixels at 1m camera distance. Auto-scales inversely with distance (world-space sized SSS)."/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSSBlur"  enabled_control="AYACinematicModeActive" top="142" left="376" width="65"  height="20" control_name="AYAR20AvatarSkinSSSBlurRadius" min_val="0" max_val="32" increment="0.5" decimal_digits="2" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_SSSBlur"  enabled_control="AYACinematicModeActive" top="142" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (1.0)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR20AvatarSkinSSSBlurRadius"/></button>
+
+            <text       follows="left|top" layout="topleft" name="T_SSSStr"  enabled_control="AYACinematicModeActive" top="166" left="12" width="160" height="20">Strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSSStr" enabled_control="AYACinematicModeActive" top="168" left="176" width="195" height="16" control_name="AYAR20AvatarSkinSSSStrength" min_val="0" max_val="1" increment="0.05"/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSSStr"  enabled_control="AYACinematicModeActive" top="166" left="376" width="65"  height="20" control_name="AYAR20AvatarSkinSSSStrength" min_val="0" max_val="1" increment="0.05" decimal_digits="2" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_SSSStr"  enabled_control="AYACinematicModeActive" top="166" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (0.5)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR20AvatarSkinSSSStrength"/></button>
+
+            <text       follows="left|top" layout="topleft" name="T_SSSGlow"  enabled_control="AYACinematicModeActive" top="190" left="12" width="160" height="20">Glow restore</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_SSSGlow" enabled_control="AYACinematicModeActive" top="192" left="176" width="195" height="16" control_name="AYAR20AvatarSkinSSSGlowGain" min_val="0" max_val="5" increment="0.05"/>
+            <spinner    follows="left|top" layout="topleft" name="s_SSSGlow"  enabled_control="AYACinematicModeActive" top="190" left="376" width="65"  height="20" control_name="AYAR20AvatarSkinSSSGlowGain" min_val="0" max_val="5" increment="0.05" decimal_digits="2" label_width="0"/>
+            <button     follows="left|top" layout="topleft" name="d_SSSGlow"  enabled_control="AYACinematicModeActive" top="190" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (0.2)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR20AvatarSkinSSSGlowGain"/></button>
+
+            <text         follows="left|top" layout="topleft" name="T_SSSColor"  enabled_control="AYACinematicModeActive" top="218" left="12" width="160" height="20">Glow color</text>
+            <color_swatch follows="left|top" layout="topleft" name="cs_SSSColor" enabled_control="AYACinematicModeActive" control_name="AYAR20AvatarSkinSSSGlowColor" top="214" left="176" width="44" height="24" can_apply_immediately="true" label_height="0" border_color="0.45098, 0.517647, 0.607843, 1" tool_tip="Tint for the SSS highlight restore (default pure red)."/>
+            <button       follows="left|top" layout="topleft" name="d_SSSColor"  enabled_control="AYACinematicModeActive" top="218" left="445" width="20"  height="20" label="D" tool_tip="Reset to default (pure red)"><button.commit_callback function="AYAResetCinematic" parameter="AYAR20AvatarSkinSSSGlowColor"/></button>
+
+            <text follows="left|top" layout="topleft" name="T_SSSWhitelistHeader" top="250" left="8" width="472" height="18" font="SansSerif">Target mesh UUIDs (whitelist)</text>
+
+            <check_box follows="left|top" layout="topleft" name="sss_whitelist_lock" enabled_control="AYACinematicModeActive" top="276" left="12" width="408" height="16" label="Lock editing (prevent accidental changes)" initial_value="true">
+                <check_box.commit_callback function="AYASSSToggleLock"/>
+            </check_box>
+
+            <text_editor follows="left|top" layout="topleft" name="sss_whitelist" control_name="AYAR20AvatarSkinSSSWhitelist" top="298" left="12" width="464" height="80" enabled="false" max_length="65536" word_wrap="true" commit_on_focus_lost="true" show_line_numbers="false" track_end="false"/>
+
+            <text follows="left|top" layout="topleft" name="T_SSSHint" top="384" left="12" width="464" height="14" word_wrap="true">One UUID per line (36-character format with dashes). Invalid and empty lines are ignored.</text>
+
+            <button follows="left|top" layout="topleft" name="sss_reset_all" enabled_control="AYACinematicModeActive" top="402" left="12" width="180" height="20" label="Reset all to defaults">
+                <button.commit_callback function="AYASSSResetAll"/>
+            </button>
         </panel>
 
     </tab_container>

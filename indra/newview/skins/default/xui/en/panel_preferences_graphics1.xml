@@ -2140,22 +2140,8 @@ If you do not understand the distinction then leave this control alone."
          width="477"/>
     </panel>
 
-<!-- <FS:AYA r20 Phase A / r30 P5 A6> SSS sub-tab inside Graphics。
-     enabled_control="AYAR20SSSEffective" は tab_container 側で tab ラベル ("SSS")
-     自体を grey out するため。子 panel の各 widget も同じ control を bind して
-     入力欄を grey out (LL XUI は親 panel.setEnabled が子へ伝搬しないため)。-->
-    <panel
-     class="panel_preference_sss"
-     filename="panel_preferences_sss.xml"
-     top_pad="5"
-     bottom="-1"
-     left="1"
-     right="-1"
-     follows="all"
-     label="SSS"
-     enabled_control="AYAR20SSSEffective"
-     name="SSS" />
-<!-- </FS:AYA> -->
+<!-- <FS:AYA r20 → r30> SSS sub-tab は AYAstorm Controls (Alt+C) の Skin SSS タブに移設
+     (2026-05-24)。Preferences > Graphics 側からは削除。 -->
 </tab_container>
 
 <!-- These two check boxes are dummies and will never be displayed.  They are here so the control variables

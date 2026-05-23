@@ -1,7 +1,7 @@
 # AYAstorm r30 — 撮影描画 mode 新設 (Cinematic) + 3 モード再起動切替統一
 
 **作成日**: 2026-05-17
-**最終更新**: 2026-05-23 (r30 release 直前で Cinematic を AYAstorm View に promote、章 thesis 達成方針を再整理)
+**最終更新**: 2026-05-24 (AYAstorm Controls の tab 左縦並び化 + r20 SSS タブ合流を bundle)
 **ステータス**: 章レベル骨子 (個別 phase の詳細 spec は P1 着手時に別ファイルで起こす)
 **前提**: なし — r25-r29 (3D stream 章) は別オーナーに委譲 (2026-05-17)、AYA さんは r30 を即着手可能
 **章スコープ**: r30 系 (複数 release で段階構築、章クローズは P6+ で AYA 色到達時点)
@@ -14,6 +14,13 @@
 > [`ayastorm-r30-view-mode-reshuffle.md`](ayastorm-r30-view-mode-reshuffle.md)
 > 参照。以下の章本文は当時の議論記録として残置 (Cinematic 用語のまま)、新規
 > 作業は view-mode-reshuffle.md を起点とする。
+>
+> **2026-05-24 update (UI 配置整理)**: AYAstorm Controls floater の tab を
+> 左サイドバー方式 (Preferences pattern) に変更し、r20 SSS 設定を
+> Preferences → グラフィック → SSS から AYAstorm Controls 内の
+> "Skin SSS" タブに合流。撮影描画系設定を一元化。詳細は
+> [`ayastorm-r30-aya-controls-tab-overhaul.md`](ayastorm-r30-aya-controls-tab-overhaul.md)
+> 参照。
 
 このドキュメントは AYAstorm r30+ で着手する **撮影描画章** の章レベル骨子。
 

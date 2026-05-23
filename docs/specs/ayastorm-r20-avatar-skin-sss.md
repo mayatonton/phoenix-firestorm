@@ -4,6 +4,13 @@
 **位置づけ**: AYAstorm 視覚的リアリティ章 B 軸第 2 弾 (r19 translucency に続く)
 **ベース branch**: `ayastorm-release` (r19 とは独立、依存なし)
 
+> **2026-05-24 update (UI 配置のみ変更)**: SSS 設定 UI は r30 で
+> Preferences → グラフィック → SSS から **AYAstorm Controls (Alt+C) →
+> "Skin SSS" タブ** に移行。shader 経路 / cvar 名 / whitelist 形式は本 spec の
+> まま無変更。詳細経緯は
+> [`ayastorm-r30-aya-controls-tab-overhaul.md`](ayastorm-r30-aya-controls-tab-overhaul.md)
+> 参照。
+
 ---
 
 ## 1. 章 thesis との接続
