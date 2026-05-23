@@ -156,15 +156,13 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> r20 SSS skin
-    // mask in gbuffer3.a; clouds are never skin.
-    // <FS:AYAstorm r30 BD改善> Cinematic でも SSS dispatch が走るため、
-    //   alpha=cloud_alpha leak で雲経由で skin_mask 誤発火。両 mode で 0。
-    frag_data[3] = vec4(color.rgb, 0.0);
+    // gbuffer3.a is also the source alpha used by the skybox blend state.
+    // Keep cloud visual alpha here so emissive-buffer clouds actually blend;
+    // skinSSS excludes sky/cloud pixels by far-plane depth.
+    frag_data[3] = vec4(color.rgb, alpha1);
     // </FS:AYAstorm>
     // </FS:AYA>
 #else
     frag_data[0] = vec4(color.rgb, alpha1);
 #endif
 }
-
