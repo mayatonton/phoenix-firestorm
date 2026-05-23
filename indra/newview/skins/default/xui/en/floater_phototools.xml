@@ -1111,7 +1111,7 @@
 				 layout="topleft"
 				 left="5"
 				 top_pad="5"
-				 tool_tip="This setting controls the softness of shadow edges, allowing you to create either sharp, well-defined shadows or softer, more diffused ones. Increasing the value results in blurrier shadow edges, while setting it to 0 produces the sharpest shadows possible. Shadow Blur works in conjunction with the 'Shadow Soften' setting, which allows for additional fine-tuning of shadow softness, especially when Shadow Blur is set to higher values (e.g., around 4.0). For precise adjustments, consider setting Shadow Blur to 0.0 temporarily to observe changes in clarity before reapplying blur. Note: Ambient Occlusion must be enabled for this setting to function properly, as it relies on depth-based lighting calculations."
+				 tool_tip="This setting controls the softness of shadow edges, allowing you to create either sharp, well-defined shadows or softer, more diffused ones. Increasing the value results in blurrier shadow edges, while setting it to 0 produces the sharpest shadows possible. Shadow Blur works in conjunction with the 'Shadow Soften' setting, which allows for additional fine-tuning of shadow softness, especially when Shadow Blur is set to higher values (e.g., around 4.0). For precise adjustments, consider setting Shadow Blur to 0.0 temporarily to observe changes in clarity before reapplying blur."
 				 width="70">
 					Shd. Blur
 				</text>
@@ -1204,7 +1204,7 @@
 				 layout="topleft"
 				 left="5"
 				 top_pad="5"
-				 tool_tip="Determines the distance from the camera where shadows begin to blur. Lower values apply blur closer to the viewer. Requires Ambient Occlusion to be enabled."
+				 tool_tip="Determines the distance from the camera where shadows begin to blur. Lower values apply blur closer to the viewer."
 				 width="70">
 					Blur Dist.
 				</text>
