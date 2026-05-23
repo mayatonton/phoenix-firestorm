@@ -25,6 +25,10 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifndef HAS_DOF_CHROMA
+#define HAS_DOF_CHROMA 0
+#endif
+
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
