@@ -276,6 +276,9 @@ extern LLGLSLShader         gDeferredPostTonemapGammaCorrectProgram;
 extern LLGLSLShader         gNoPostTonemapGammaCorrectProgram;
 extern LLGLSLShader         gDeferredPostTonemapLegacyGammaCorrectProgram;
 extern LLGLSLShader         gNoPostTonemapLegacyGammaCorrectProgram;
+// <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
+extern LLGLSLShader         gAYAAlphaPlateCompositeProgram;
+// </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 extern LLGLSLShader         gExposureProgram;
 extern LLGLSLShader         gExposureProgramNoFade;
 extern LLGLSLShader         gLuminanceProgram;

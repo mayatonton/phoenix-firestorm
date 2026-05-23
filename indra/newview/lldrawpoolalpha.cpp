@@ -226,6 +226,29 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         gPipeline.mRT == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaColor.isComplete();
 
+    // <AYAstorm r30 P5 plate-clear unconditional 2026-05-23>
+    // Clear mAYAAlphaColor every frame regardless of use_alpha_rt. When
+    // inBuildMode() (= LMB on HUD) flips use_alpha_rt=false, this branch used
+    // to skip the clear → previous frame's plate contents leaked into the
+    // next frame's composite. The pre-tonemap composite step (renderFinalize)
+    // reads mAYAAlphaColor unconditionally, so it must start clean every
+    // frame.
+    if (!LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
+        !gCubeSnapshot && getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
+        gPipeline.mRT == &gPipeline.mMainRT &&
+        gPipeline.mAYAAlphaColor.isComplete())
+    {
+        LL_PROFILE_GPU_ZONE("aya alpha color clear");
+        gPipeline.mAYAAlphaColor.bindTarget();
+        {
+            LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
+            glClearColor(0.f, 0.f, 0.f, 0.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+        gPipeline.mAYAAlphaColor.flush();
+    }
+    // </AYAstorm r30 P5 plate-clear unconditional>
+
     if (use_alpha_rt)
     {
         LL_PROFILE_GPU_ZONE("aya alpha color redirect");
@@ -234,13 +257,6 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         // to it automatically — no manual screen.flush()/bindTarget() needed
         // (doing so trips the !isBoundInStack assertion on re-push).
         gPipeline.mAYAAlphaColor.bindTarget();
-        // Clear color only — depth attachment is shared with mRT->screen and
-        // holds opaque z that alpha BLEND must depth-test against.
-        {
-            LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
-            glClearColor(0.f, 0.f, 0.f, 0.f);
-            glClear(GL_COLOR_BUFFER_BIT);
-        }
         mForwardToAlphaRT = true;
     }
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
@@ -1023,6 +1039,30 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
             {
                 gPipeline.enableLightsDynamic();
 
+                // <AYAstorm r30 P5 fix glow-lost-in-plate 2026-05-23>
+                // Emissive pass uses (BF_ZERO, BF_ONE) for color (no-op) and
+                // (BF_ONE, BF_ONE) for alpha (additive glow). When the BLEND
+                // pass above was redirected to mAYAAlphaColor (plate), the
+                // currently-bound FBO is the plate — leaving it bound here
+                // makes emissive ADD glow into plate.a, which is the plate's
+                // coverage channel used by dofCombineF's over-composite. That
+                // both corrupts coverage AND prevents glow from ever reaching
+                // mRT->screen.a (the scene glow channel combineGlow reads).
+                // Net effect: alpha BLEND material loses its glow entirely.
+                //
+                // Fix: temporarily pop the plate so the emissive pass targets
+                // mRT->screen, where glow accumulation belongs. flush() pops
+                // the plate off LLRenderTarget's FBO stack, leaving the
+                // pre-pushed screen on top; bindTarget() re-pushes the plate
+                // after the emissive pass so subsequent BLEND in the second
+                // forwardRender() call continues to write to the plate.
+                const bool emissive_to_screen = mForwardToAlphaRT;
+                if (emissive_to_screen)
+                {
+                    gPipeline.mAYAAlphaColor.flush();
+                }
+                // </AYAstorm r30 P5 fix glow-lost-in-plate>
+
                 // install glow-accumulating blend mode
                 // don't touch color, add to alpha (glow)
                 gGL.blendFunc(LLRender::BF_ZERO, LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE);
@@ -1064,6 +1104,15 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 {
                     lastShader->bind();
                 }
+
+                // <AYAstorm r30 P5 fix glow-lost-in-plate 2026-05-23>
+                // Re-push plate so subsequent BLEND (second forwardRender call
+                // or other consumers) continues writing into the plate.
+                if (emissive_to_screen)
+                {
+                    gPipeline.mAYAAlphaColor.bindTarget();
+                }
+                // </AYAstorm r30 P5 fix glow-lost-in-plate>
             }
         }
     }
