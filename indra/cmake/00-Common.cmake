@@ -241,6 +241,10 @@ if (LINUX OR DARWIN)
     add_compile_options(-Wno-unused-local-typedef)
   endif()
 
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    add_compile_options(-Wno-inconsistent-missing-override)
+  endif()
+
   if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(-Wno-stringop-truncation -Wno-parentheses -Wno-maybe-uninitialized)
   endif()
