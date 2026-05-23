@@ -230,7 +230,7 @@ float tapScreenSpaceReflection(
             float u1 = random(tc * screen_res + noiseSine + float(s) * 0.123);
             float u2 = random(tc * screen_res * 1.7 + noiseSine + float(s) * 0.456 + 0.5);
 
-            float theta = atan(alpha * sqrt(u1) / sqrt(1.0 - u1));
+            float theta = atan(alpha * sqrt(clamp(u1, 0.0, 0.9999)) / sqrt(max(1.0 - u1, 1e-6)));
             float phi = 2.0 * 3.14159265 * u2;
 
             vec3 up = abs(reflectDir.y) < 0.999 ? vec3(0, 1, 0) : vec3(1, 0, 0);
@@ -275,7 +275,7 @@ float tapScreenSpaceReflection(
         float zFade = 1.0 - smoothstep(zFadeStart, maxZDepth, hitDepth);
 
         float rayLength = length(hitCoord - transformedJitteredPos);
-        float maxMipLevels = floor(log2(max(screen_res.x, screen_res.y)));
+        float maxMipLevels = floor(log2(max(1.0, max(screen_res.x, screen_res.y))));
         float distanceFactor = clamp(rayLength / maxZDepth, 0.0, 1.0);
         float effectiveRoughness = clamp(roughness + distanceFactor * roughness, 0.0, 1.0);
         float mipLevel = maxMipLevels * effectiveRoughness;

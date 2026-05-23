@@ -109,7 +109,9 @@ void main()
 #if FRONT_BLUR
 		if (sc > 0.5)
 		{
-			while (sc > 0.5)
+			// Apple Silicon Metal safety: bound the loop in case sc becomes NaN
+			// (NaN > 0.5 is always false on conformant GL but undefined under Metal emulation).
+			for (int safety = 0; safety < 32 && sc > 0.5; ++safety)
 			{
 				int its = int(max(1.0,(sc*3.7)));
 				for (int i=0; i<its; ++i)
@@ -129,7 +131,8 @@ void main()
 #endif
 		{
 			sc = abs(sc);
-			while (sc > 0.5)
+			// Apple Silicon Metal safety: bounded loop (see comment above).
+			for (int safety = 0; safety < 32 && sc > 0.5; ++safety)
 			{
 				int its = int(max(1.0,(sc*3.7)));
 				for (int i=0; i<its; ++i)

@@ -123,7 +123,7 @@ void main()
     shaftify /= godray_res;
     shadamount *= clamp(depth, 0.0 , 0.5);
 
-    float fade = max(falloff_multiplier / depth, 1.0);
+    float fade = max(falloff_multiplier / max(depth, 1e-4), 1.0);
     shaftify = (shaftify / fade) * godray_multiplier;
 #if GODRAYS_FADE
     fade = 0.0;
@@ -180,7 +180,7 @@ void main()
     shaftify /= godray_res;
     shadamount *= clamp(depth, 0.0 , 0.5);
 
-    float fade = max(falloff_multiplier / depth, 1.0);
+    float fade = max(falloff_multiplier / max(depth, 1e-4), 1.0);
     shaftify = (shaftify / fade) * godray_multiplier;
 #if GODRAYS_FADE
     fade = 0.0;
