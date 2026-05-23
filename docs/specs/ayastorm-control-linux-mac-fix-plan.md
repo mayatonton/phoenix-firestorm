@@ -225,8 +225,9 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 
 - Volumetric Lighting は shader/pass が死んでいたわけではない。Cinematic mode では `renderFinalize()` から `RenderVolumetricLighting=ON` かつ `!gCubeSnapshot` の時に `renderVolumetric()` が実行され、`gVolumetricLightProgram` に `godray_res` / `godray_multiplier` / `falloff_multiplier` が送られる。
 - `RenderVolumetricLightingResolution=16` は `volumetricLightF.glsl` の `for (int i=godray_res-1; i>0; --i)` により十分なサンプル数を持つ。以前懸念していた `Resolution<=1` の実質 no-op には該当しない。
-- 効果がわかりにくかった主因は、pass未実行ではなく、検証値とscene条件の問題と判断する。godrays は shadow map を視線方向に積分するため、太陽方向、遮蔽物、影コントラストが弱いsceneでは `Intensity` / `Falloff` を動かしても差が見えにくい。
-- 画像値の `Intensity=4.0` / `Falloff=2.0` に default / overlay / Reset D / runtime fallback を揃えたことで、初期状態で過度に飽和せず、slider差分を確認しやすい基準になった。したがって「直った」理由は、Volumetric chain の修復ではなく、有効な既存chainに対する検証しやすい初期値への同期で説明できる。
+- 実機所見では、朝方・夕方の低い太陽位置では `Intensity` / `Falloff` などのパラメータを動かしても描画上の変化がかなり見えにくい。一方、正午前後の太陽位置で、カメラ内に太陽を入れる構図では効果が確認できる。
+- したがって現時点の問題は「Volumetric chain が直った/直っていない」というより、太陽高度・太陽の画面内位置・遮蔽物・影コントラストに強く依存して、特定条件では control の変化が視認しづらいことにある。
+- 画像値の `Intensity=4.0` / `Falloff=2.0` は、初期状態で過度に飽和させずに検証するための基準値として採用した。ただし朝方・夕方の太陽位置でも変化が効くようにするには、低太陽高度時の `shaftify` / fade / falloff の扱いを追加調整する必要があるかもしれない。
 
 完了条件:
 
