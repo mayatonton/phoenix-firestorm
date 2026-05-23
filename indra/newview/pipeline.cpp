@@ -340,6 +340,8 @@ static LLStaticHashedString sDelta("delta");
 static LLStaticHashedString sDistFactor("dist_factor");
 static LLStaticHashedString sKern("kern");
 static LLStaticHashedString sKernScale("kern_scale");
+static LLStaticHashedString sSSRMaxDepth("maxZDepth");
+static LLStaticHashedString sSSRMaxRoughness("maxRoughness");
 static LLStaticHashedString sSmaaRTMetrics("SMAA_RT_METRICS");
 
 //----------------------------------------
@@ -12198,6 +12200,11 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
 
     shader.uniform1f(LLShaderMgr::DEFERRED_SSR_NOISE_SINE, (GLfloat)mPoissonOffset);
     shader.uniform1f(LLShaderMgr::DEFERRED_SSR_ADAPTIVE_STEP_MULT, RenderScreenSpaceReflectionAdaptiveStepMultiplier);
+
+    static LLCachedControl<F32> ssr_max_depth(gSavedSettings, "RenderScreenSpaceReflectionMaxDepth", 256.f);
+    static LLCachedControl<F32> ssr_max_roughness(gSavedSettings, "RenderScreenSpaceReflectionMaxRoughness", 1.f);
+    shader.uniform1f(sSSRMaxDepth, llmax(1.f, (F32)ssr_max_depth));
+    shader.uniform1f(sSSRMaxRoughness, llclamp((F32)ssr_max_roughness, 0.001f, 1.f));
 
     channel = shader.enableTexture(LLShaderMgr::SCENE_DEPTH);
     if (channel > -1)
