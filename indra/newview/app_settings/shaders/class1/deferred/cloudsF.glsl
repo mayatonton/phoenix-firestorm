@@ -157,11 +157,11 @@ void main()
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
     // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> r20 SSS skin
-    // mask in gbuffer3.a; clouds are never skin.
-    // <FS:AYAstorm r30 BD改善> Cinematic でも SSS dispatch が走るため、
-    //   alpha=cloud_alpha leak で雲経由で skin_mask 誤発火。両 mode で 0。
-    frag_data[3] = vec4(color.rgb, 0.0);
-    // </FS:AYAstorm>
+    // mask in gbuffer3.a; clouds are never skin. しかし HAS_EMISSIVE 経路で
+    // frag_data[3].a=0 にすると softenLightF SKIP_ATMOS 分岐合成で雲自体が
+    // 消えるため alpha1 を維持する。skin_mask 誤発火は skinSSSF 側で
+    // GBUFFER_FLAG_SKIP_ATMOS を見て gate する方向で別途対応。
+    frag_data[3] = vec4(color.rgb, alpha1);
     // </FS:AYA>
 #else
     frag_data[0] = vec4(color.rgb, alpha1);
