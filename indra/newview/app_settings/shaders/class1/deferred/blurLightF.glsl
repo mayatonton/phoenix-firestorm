@@ -42,9 +42,9 @@ vec4 getPosition(vec2 pos_screen);
 vec4 getNorm(vec2 pos_screen);
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
-//   Cinematic — BD original: only the G channel (SSAO) is blurred;
-//     directional/spot shadows (R, B, A) pass through untouched.
-//   AY        — blurs all four channels uniformly via .xyxx swizzle.
+// Blur directional shadows (R), SSAO (G), and spot shadows (B/A).  BD's
+// original Cinematic pass only blurred SSAO, which left RenderShadowBlurSize
+// visually inert for shadow edges.
 // Two main() bodies; AY mode is preserved verbatim.
 #if AYASTORM_CINEMATIC
 
@@ -58,14 +58,8 @@ void main()
     vec2 dlt = kern_scale * delta / (1.0+norm.xy*norm.xy);
     dlt /= max(-pos.z*dist_factor, 1.0);
 
-    // Only blur SSAO (G channel), pass through shadows (R, B, A channels)
-    // Initialize: R with no blur, G with blur weight, B and A with no blur
-    float defined_weight = kern[0].x; // weight for SSAO blur only
-    vec4 col;
-    col.r = ccol.r; // directional shadow - no blur
-    col.g = kern[0].x * ccol.g; // SSAO - apply blur
-    col.b = ccol.b; // spot shadow 0 - no blur
-    col.a = ccol.a; // spot shadow 1 - no blur
+    vec2 defined_weight = kern[0].xy;
+    vec4 col = defined_weight.xyxx * ccol;
 
     float pointplanedist_tolerance_pow2 = pos.z*pos.z*0.00005;
 
@@ -96,8 +90,8 @@ void main()
         if (d*d <= pointplanedist_tolerance_pow2)
         {
             vec4 sampcol = texture(lightMap, samptc);
-            col.g += sampcol.g * k[i].x;
-            defined_weight += k[i].x;
+            col += sampcol * k[i].xyxx;
+            defined_weight += k[i].xy;
         }
     }
 
@@ -112,12 +106,12 @@ void main()
         if (d*d <= pointplanedist_tolerance_pow2)
         {
             vec4 sampcol = texture(lightMap, samptc);
-            col.g += sampcol.g * k[i].x;
-            defined_weight += k[i].x;
+            col += sampcol * k[i].xyxx;
+            defined_weight += k[i].xy;
         }
     }
 
-    col.g /= defined_weight;
+    col /= defined_weight.xyxx;
 
     frag_color = max(col, vec4(0));
 
@@ -207,4 +201,3 @@ void main()
 
 #endif // AYASTORM_CINEMATIC
 // </FS:AYA>
-
