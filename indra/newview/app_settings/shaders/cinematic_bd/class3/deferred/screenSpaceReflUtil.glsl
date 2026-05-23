@@ -34,12 +34,11 @@ uniform mat4 inv_proj;
 uniform mat4 modelview_delta;
 uniform mat4 inv_modelview_delta;
 
-// Declared to keep pipeline uniform setup happy
-uniform vec3 iterationCount;
-uniform vec3 rayStep;
-uniform vec3 distanceBias;
-uniform vec3 depthRejectBias;
-uniform vec3 adaptiveStepMultiplier;
+uniform float iterationCount;
+uniform float rayStep;
+uniform float distanceBias;
+uniform float depthRejectBias;
+uniform float adaptiveStepMultiplier;
 uniform vec3 splitParamsStart;
 uniform vec3 splitParamsEnd;
 uniform float glossySampleCount;
@@ -47,17 +46,14 @@ uniform float noiseSine;
 uniform float maxZDepth;
 uniform float maxRoughness;
 
-// Ray march parameters wired to uniforms (.x component of each)
-//   rayStep.x              = step size (default 0.5)
-//   iterationCount.x       = max steps (default 96)
-//   adaptiveStepMultiplier.x = step growth rate (default 1.03)
-//   distanceBias.x         = max step size cap (default 5.0)
-//   depthRejectBias.x      = max thickness for hit validation (default 1.0)
-#define STEP_SIZE       rayStep.x
-#define STEP_GROWTH     adaptiveStepMultiplier.x
-#define MAX_STEP_SIZE   distanceBias.x
-#define MAX_THICKNESS   depthRejectBias.x
-#define DEPTH_BIAS      depthRejectBias.y
+// Ray march parameters wired to AYA scalar controls.
+// distanceBias is used as hit thickness; max step is derived from max depth
+// and iteration count so rayStep/Iterations still control reach.
+#define STEP_SIZE       rayStep
+#define STEP_GROWTH     adaptiveStepMultiplier
+#define MAX_STEP_SIZE   max(STEP_SIZE, maxZDepth / max(iterationCount, 1.0))
+#define MAX_THICKNESS   max(distanceBias, STEP_SIZE * 0.5)
+#define DEPTH_BIAS      depthRejectBias
 const int   BINARY_STEPS    = 8;
 
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);
@@ -115,7 +111,7 @@ vec3 rayMarch(vec3 dir, inout vec3 hitCoord, out float dDepth, float startDepth)
 {
     dir *= STEP_SIZE;
 
-    for (int i = 0; i < int(iterationCount.x); i++)
+    for (int i = 0; i < int(iterationCount); i++)
     {
         hitCoord += dir;
 
