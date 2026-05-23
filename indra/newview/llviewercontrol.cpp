@@ -48,6 +48,7 @@
 #include "llcinematicoverlay.h" // <FS:AYA r30 P5 R2> sentinel reset on mode switch
 #include "llagentcamera.h"
 #include "llconsole.h"
+#include "lldrawable.h"
 #include "lldrawpoolbump.h"
 #include "lldrawpoolterrain.h"
 #include "llflexibleobject.h"
@@ -381,6 +382,25 @@ static bool handleReleaseGLBufferChanged(const LLSD& newvalue)
 static bool handleEnableEmissiveChanged(const LLSD& newvalue)
 {
     return handleReleaseGLBufferChanged(newvalue) && handleSetShaderChanged(newvalue);
+}
+
+static bool handleRenderEnableFullbrightChanged(const LLSD& newvalue)
+{
+    for (S32 i = 0, count = gObjectList.getNumObjects(); i < count; ++i)
+    {
+        LLViewerObject* objectp = gObjectList.getObject(i);
+        LLDrawable* drawablep = objectp ? objectp->mDrawable.get() : nullptr;
+        if (drawablep && !drawablep->isDead())
+        {
+            if (LLVOVolume* volume = drawablep->getVOVolume())
+            {
+                volume->updateFaceFlags();
+                volume->markForUpdate();
+            }
+        }
+    }
+
+    return true;
 }
 
 static bool handleDisableVintageMode(const LLSD& newvalue)
@@ -1551,6 +1571,7 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderHDREnabled", handleEnableHDR);
     setting_setup_signal_listener(gSavedSettings, "RenderGlowNoise", handleSetShaderChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderGammaFull", handleSetShaderChanged);
+    setting_setup_signal_listener(gSavedSettings, "RenderEnableFullbright", handleRenderEnableFullbrightChanged);
     setting_setup_signal_listener(gSavedSettings, "FSOverrideVRAMDetection", handleOverrideVRAMDetectionChanged); // <FS:Beq/> Override VRAM detection support
     setting_setup_signal_listener(gSavedSettings, "RenderVolumeLODFactor", handleVolumeLODChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderAvatarComplexityMode", handleUserImpostorByDistEnabledChanged);
