@@ -9900,22 +9900,6 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_LIGHT, &mRT->deferredLight, LLTexUnit::TFO_POINT);
 
-                // <AYAstorm r30 P5 transparent-DoF C-(a)> Bind the alpha BLEND
-                // plate so dofCombineF can "over" it on top of the DoF'd
-                // opaque scene. When mAYAAlphaColor is not allocated (aux /
-                // probe paths) the gate uniform stays false and the shader
-                // skips the composite entirely — no fallback bind needed.
-                {
-                    S32 ap_chan = gDeferredDoFCombineProgram.getTextureChannel(LLShaderMgr::AYA_ALPHA_PLATE);
-                    const bool ap_on = mAYAAlphaColor.isComplete() && ap_chan >= 0;
-                    if (ap_on)
-                    {
-                        gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::AYA_ALPHA_PLATE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
-                    }
-                    gDeferredDoFCombineProgram.uniform1i(LLShaderMgr::AYA_ALPHA_PLATE_ENABLED, ap_on ? 1 : 0);
-                }
-                // </AYAstorm r30 P5 transparent-DoF C-(a)>
-
                 gDeferredDoFCombineProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
                 // gDeferredDoFCombineProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, CameraMaxCoF);
@@ -9960,6 +9944,62 @@ void LLPipeline::renderFinalize()
 
     gGL.setColorMask(true, true);
     glClearColor(0, 0, 0, 0);
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
+    // Over-blend the linear premultiplied alpha plate (mAYAAlphaColor) onto
+    // mRT->screen BEFORE generateLuminance / tonemap. Without this step the
+    // HDR auto-exposure path (generateLuminance → generateExposure → tonemap)
+    // sees only opaque scene contents on LMB-up (use_alpha_rt=true) — alpha
+    // BLEND brightness is invisible to exposure calibration, so the later
+    // post-tonemap composite produces an exposure mismatch versus the
+    // LMB-on-HUD (use_alpha_rt=false) path where alpha was written into
+    // mRT->screen directly. By compositing here both paths feed exposure
+    // calibration the same merged scene, and the plate is no longer
+    // composited inside dofCombineF (post-tonemap) where it would be in a
+    // different color space. mAYAAlphaColor is cleared unconditionally at
+    // the start of the forward alpha pass (lldrawpoolalpha.cpp) so when
+    // use_alpha_rt=false the texture is all-zeros and this pass is a no-op.
+    if (mAYAAlphaColor.isComplete() && gAYAAlphaPlateCompositeProgram.isComplete())
+    {
+        LL_PROFILE_GPU_ZONE("aya plate pre-tonemap composite");
+        mRT->screen.bindTarget();
+
+        LLGLEnable blend_on(GL_BLEND);
+        // RGB: premultiplied "over" composite onto opaque scene.
+        //   dst.rgb = plate.rgb + screen.rgb * (1 - plate.a)
+        // Alpha: attenuate dst.a by (1 - plate.a) to mimic the LMB-on-HUD
+        // path's "glow suppression" blend (BF_ZERO, BF_ONE_MINUS_SOURCE_ALPHA)
+        // which attenuates screen.a (scene glow channel consumed by
+        // combineGlow) under alpha-covered pixels. Without attenuation
+        // LMB-up shows opaque-light glow halos bleeding through hair /
+        // clothing while LMB-on-HUD does not — visible path divergence.
+        // This is an approximation: LMB-on-HUD attenuates per-draw with
+        // emissive added between, whereas here we attenuate accumulated
+        // screen.a (opaque_glow + sum(alpha_emissive)) once by accumulated
+        // plate.a. For emissive-zero alpha BLEND (hair/clothing/glass, the
+        // vast majority) the approximation matches LMB-on-HUD; for emissive
+        // alpha BLEND (lanterns) we over-attenuate slightly. Acceptable.
+        //   dst.a = screen.a * (1 - plate.a)
+        glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+
+        gAYAAlphaPlateCompositeProgram.bind();
+        gAYAAlphaPlateCompositeProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
+
+        {
+            LLGLDepthTest depth_test(GL_FALSE, GL_FALSE);
+            mScreenTriangleVB->setBuffer();
+            mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        }
+
+        gAYAAlphaPlateCompositeProgram.unbind();
+
+        // Restore default blend func so subsequent passes (tonemap etc.)
+        // aren't surprised.
+        glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ONE, GL_ZERO);
+
+        mRT->screen.flush();
+    }
+    // </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 
     static LLCachedControl<bool> has_hdr(gSavedSettings, "RenderHDREnabled", true);
     bool hdr = gGLManager.mGLVersion > 4.05f && has_hdr();
@@ -10033,9 +10073,12 @@ void LLPipeline::renderFinalize()
     gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
     glViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
 
-    if((RenderDepthOfFieldInEditMode || !LLToolMgr::getInstance()->inBuildMode()) &&
+    const bool dof_gate_pass =
+        (RenderDepthOfFieldInEditMode || !LLToolMgr::getInstance()->inBuildMode()) &&
         RenderDepthOfField &&
-        !gCubeSnapshot)
+        !gCubeSnapshot;
+
+    if (dof_gate_pass)
     {
         renderDoF(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);

@@ -207,6 +207,9 @@ LLGLSLShader            gDeferredPostTonemapGammaCorrectProgram;
 LLGLSLShader            gNoPostTonemapGammaCorrectProgram;
 LLGLSLShader            gDeferredPostTonemapLegacyGammaCorrectProgram;
 LLGLSLShader            gNoPostTonemapLegacyGammaCorrectProgram;
+// <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
+LLGLSLShader            gAYAAlphaPlateCompositeProgram;
+// </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 LLGLSLShader            gDeferredPostGammaCorrectProgram;
 LLGLSLShader            gLegacyPostGammaCorrectProgram;
 LLGLSLShader            gExposureProgram;
@@ -2668,6 +2671,26 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = gLegacyPostGammaCorrectProgram.createShader();
         llassert(success);
     }
+
+    // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
+    // Simple fullscreen passthrough that, with blend func set to
+    // (ONE, 1-SRC_ALPHA), overlays mAYAAlphaColor (premult linear plate) onto
+    // mRT->screen before generateLuminance / tonemap runs. Puts alpha BLEND
+    // into the auto-exposure / tonemap input the same way the LMB-on-HUD path
+    // does (where forward alpha was written directly to mRT->screen).
+    if (success)
+    {
+        gAYAAlphaPlateCompositeProgram.mName = "AYAstorm Alpha Plate Composite";
+        gAYAAlphaPlateCompositeProgram.mFeatures.isDeferred = true;
+        gAYAAlphaPlateCompositeProgram.mShaderFiles.clear();
+        gAYAAlphaPlateCompositeProgram.clearPermutations();
+        gAYAAlphaPlateCompositeProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gAYAAlphaPlateCompositeProgram.mShaderFiles.push_back(make_pair("deferred/ayaAlphaPlateCompositeF.glsl", GL_FRAGMENT_SHADER));
+        gAYAAlphaPlateCompositeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = gAYAAlphaPlateCompositeProgram.createShader();
+        llassert(success);
+    }
+    // </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 
     if (success)
     {
