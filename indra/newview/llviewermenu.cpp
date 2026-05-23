@@ -177,6 +177,7 @@
 #include "lfsimfeaturehandler.h"
 #include "llavatarpropertiesprocessor.h"
 #include "llcheckboxctrl.h"
+#include "lltexteditor.h"
 #include "llfloatergridstatus.h"
 #include "llfloatermarketplace.h"
 #include "llfloaterpreference.h"
@@ -10188,6 +10189,15 @@ class AYAResetCinematic : public view_listener_t
             // Volumetric 関連は PR #97 が同 table 内 RenderVolumetricLighting* で統合管理。
             {"RenderShadowResolutionScale",                  LLSD(3.0)},
             {"RenderFarClip",                                LLSD(400.0)},
+            // r20 Skin SSS — Preferences > Graphics > SSS sub-tab を AYAstorm Controls
+            // 新 Skin SSS tab に移設 (2026-05-24)。default 値は元 LLPanelPreferenceSSS の
+            // onDefault*/onResetAll と一致させる。GlowColor は LLSD array (Color4)。
+            {"AYAR20AvatarSkinSSSEnabled",                   LLSD(true)},
+            {"AYAR20AvatarSkinSSSBlurRadius",                LLSD(1.0)},
+            {"AYAR20AvatarSkinSSSStrength",                  LLSD(0.5)},
+            {"AYAR20AvatarSkinSSSGlowGain",                  LLSD(0.2)},
+            {"AYAR20AvatarSkinSSSGlowColor",
+                []() { LLSD c = LLSD::emptyArray(); c.append(1.0); c.append(0.0); c.append(0.0); c.append(1.0); return c; }()},
         };
         return table;
     }
@@ -10215,6 +10225,54 @@ class AYAResetCinematic : public view_listener_t
     }
 };
 // </FS:AYAstorm r30 P4>
+
+// <FS:AYA r20 → r30> Skin SSS tab callbacks (Preferences > Graphics から AYAstorm Controls に移設)
+// XUI usage:
+//   <check_box.commit_callback function="AYASSSToggleLock"/>  (sss_whitelist_lock)
+//   <button.commit_callback function="AYASSSResetAll"/>       (sss_reset_all)
+
+class AYASSSToggleLock : public view_listener_t
+{
+    bool handleEvent(const LLSD& /*userdata*/)
+    {
+        LLFloater* floater = LLFloaterReg::findInstance("aya_cinematic");
+        if (!floater) return true;
+        LLCheckBoxCtrl* lock = floater->findChild<LLCheckBoxCtrl>("sss_whitelist_lock", true);
+        LLTextEditor*   edit = floater->findChild<LLTextEditor>("sss_whitelist", true);
+        if (lock && edit)
+        {
+            edit->setEnabled(!lock->get());
+        }
+        return true;
+    }
+};
+
+class AYASSSResetAll : public view_listener_t
+{
+    bool handleEvent(const LLSD& /*userdata*/)
+    {
+        gSavedSettings.setBOOL("AYAR20AvatarSkinSSSEnabled", true);
+        gSavedSettings.setF32 ("AYAR20AvatarSkinSSSBlurRadius", 1.0f);
+        gSavedSettings.setF32 ("AYAR20AvatarSkinSSSStrength",   0.5f);
+        gSavedSettings.setF32 ("AYAR20AvatarSkinSSSGlowGain",   0.2f);
+        gSavedSettings.setColor4("AYAR20AvatarSkinSSSGlowColor",
+                                 LLColor4(1.0f, 0.0f, 0.0f, 1.0f));
+        // Whitelist は floater 内 panel.string "DefaultWhitelist" (空) を使用
+        if (LLFloater* floater = LLFloaterReg::findInstance("aya_cinematic"))
+        {
+            if (LLPanel* tab = floater->findChild<LLPanel>("tab_skin_sss", true))
+            {
+                if (tab->hasString("DefaultWhitelist"))
+                {
+                    gSavedSettings.setString("AYAR20AvatarSkinSSSWhitelist",
+                                             tab->getString("DefaultWhitelist"));
+                }
+            }
+        }
+        return true;
+    }
+};
+// </FS:AYA>
 
 // <FS:Ansariel> Reset Mesh LOD; Forcing highest LOD on each mesh briefly should fix
 //               broken meshes bursted into triangles
@@ -13409,6 +13467,11 @@ void initialize_menus()
     // <FS:AYAstorm r30 P4> D-button for Cinematic Controls
     view_listener_t::addMenu(new AYAResetCinematic(), "AYAResetCinematic");
     // </FS:AYAstorm r30 P4>
+
+    // <FS:AYA r20 → r30> Skin SSS tab callbacks (Preferences > Graphics から移設)
+    view_listener_t::addMenu(new AYASSSToggleLock(), "AYASSSToggleLock");
+    view_listener_t::addMenu(new AYASSSResetAll(),   "AYASSSResetAll");
+    // </FS:AYA>
 
     // <FS:Ansariel> Reset Mesh LOD
     view_listener_t::addMenu(new FSResetMeshLOD(), "Avatar.ResetMeshLOD");

@@ -310,6 +310,39 @@
             <button name="d_PosterizationSamples" tool_tip="デフォルトに戻す"/>
         </panel>
 
+        <!-- ============ Tab 11: Skin SSS ============ -->
+        <panel label="肌 SSS" name="tab_skin_sss">
+            <text name="T_SSSHeader">サブサーフェススキャタリング — 肌の半透明感</text>
+            <text name="T_SSSDesc">SSS はアタッチメントにのみ適用されます。メッシュ資産 UUID が下のリストに登録されていれば対象になります。登録するには、装着オブジェクトを右クリックして「SSS ホワイトリストに追加」を選んでください。</text>
+
+            <check_box name="cb_SSSEnabled" label="SSS を有効化" tool_tip="スクリーンスペース SSS のマスタートグル。"/>
+            <button name="d_SSSEnabled" tool_tip="デフォルトに戻す (ON)"/>
+
+            <text name="T_SSSParamHeader">パラメーター</text>
+
+            <text name="T_SSSBlur">ブラー半径 @1m (px)</text>
+            <slider_bar name="sb_SSSBlur" tool_tip="カメラ距離 1m での tap 間隔 (px)。距離に反比例して自動スケールします。"/>
+            <button name="d_SSSBlur" tool_tip="デフォルトに戻す (1.0)"/>
+
+            <text name="T_SSSStr">強度</text>
+            <button name="d_SSSStr" tool_tip="デフォルトに戻す (0.5)"/>
+
+            <text name="T_SSSGlow">グロー復元</text>
+            <button name="d_SSSGlow" tool_tip="デフォルトに戻す (0.2)"/>
+
+            <text name="T_SSSColor">グロー色</text>
+            <color_swatch name="cs_SSSColor" tool_tip="SSS ハイライト復元の色味 (既定は純赤)。"/>
+            <button name="d_SSSColor" tool_tip="デフォルトに戻す (純赤)"/>
+
+            <text name="T_SSSWhitelistHeader">対象メッシュ UUID (ホワイトリスト)</text>
+
+            <check_box name="sss_whitelist_lock" label="編集をロック (誤操作防止)"/>
+
+            <text name="T_SSSHint">1 行 1 UUID (ダッシュ込み 36 文字)。無効行と空行は無視されます。</text>
+
+            <button name="sss_reset_all" label="すべて既定値に戻す"/>
+        </panel>
+
     </tab_container>
 
 </floater>
