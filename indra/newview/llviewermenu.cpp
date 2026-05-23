@@ -10179,6 +10179,11 @@ class AYAResetCinematic : public view_listener_t
             {"AYAR17Strength",                               LLSD(0.5)},
             {"AYAR18CloudVolumetricInCinematicEnabled",      LLSD(true)},
             {"AYAR18CloudVolumetricStrength",                LLSD(0.7)},
+            // r30 Cinematic shadow / clip / volumetric defaults (2026-05-24)。
+            // settings_cinematic_bd.xml overlay と値同期必須。
+            {"RenderShadowResolutionScale",                  LLSD(3.0)},
+            {"RenderFarClip",                                LLSD(400.0)},
+            {"RenderVolumetricLightingMultiplier",           LLSD(4.0)},
         };
         return table;
     }
