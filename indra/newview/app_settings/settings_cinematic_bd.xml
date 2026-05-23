@@ -205,18 +205,15 @@
     <key>AYAR18CloudVolumetricStrength</key>
     <real>0.7</real>
 
-    <!-- r30 Cinematic shadow / clip / volumetric defaults (2026-05-24 編入)。
-         AYA hands-on verify で「Cinematic で beam が薄く影が立たない」「奥が
-         見えない」「godray が控えめすぎる」を解消するための初起動焼き。
-         Reset D ボタン (parityTable) と値同期必須。 -->
+    <!-- r30 Cinematic shadow / clip defaults (2026-05-24 編入)。
+         AYA hands-on verify で「Cinematic で影が立たない」「奥が見えない」を
+         解消するための初起動焼き。Reset D ボタン (parityTable) と値同期必須。
+         Volumetric 関連は PR #97 が同 file 内 L145-156 に統合管理。 -->
 
     <key>RenderShadowResolutionScale</key>
     <real>3.0</real>
 
     <key>RenderFarClip</key>
     <real>400.0</real>
-
-    <key>RenderVolumetricLightingMultiplier</key>
-    <real>4.0</real>
   </map>
 </llsd>
