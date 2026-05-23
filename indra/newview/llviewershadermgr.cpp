@@ -3439,6 +3439,13 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         if (use_sun_shadow)
         {
             gVolumetricLightProgram.addPermutation("HAS_SUN_SHADOW", "1");
+            // <FS:AYAstorm r30 godrays fix> cinematic_bd/class1/deferred/shadowUtil.glsl の
+            // nonpcfShadowAtPos は #if defined(SUN_SHADOW) 外で return 1.0 (一様 fallback) を
+            // 返す。SUN_SHADOW permutation を立てないと Cinematic main() で
+            // shaftify が depth に依らず const となり、godray が「光のシャフト」
+            // でなく scene 全体への一様 sunlight 加算になる。BD 元実装に合わせて立てる。
+            gVolumetricLightProgram.addPermutation("SUN_SHADOW", "1");
+            // </FS:AYAstorm>
         }
 
         static LLCachedControl<bool> volumetric_directional(gSavedSettings, "RenderVolumetricLightingDirectional", true);
