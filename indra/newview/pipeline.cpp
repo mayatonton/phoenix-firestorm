@@ -8981,7 +8981,8 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
     else // !sRenderGlow, skip the glow ping-pong and just clear the result target
     {
         mGlow[1].bindTarget();
-        mGlow[1].clear();
+        glClearColor(0.f, 0.f, 0.f, 0.f);
+        mGlow[1].clear(GL_COLOR_BUFFER_BIT);
         mGlow[1].flush();
     }
 }
