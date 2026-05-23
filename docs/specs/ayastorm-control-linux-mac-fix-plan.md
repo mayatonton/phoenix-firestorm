@@ -1,7 +1,7 @@
 # AYAstorm Control Linux/Mac rendering controls fix plan
 
-**Status**: DRAFT (2026-05-23)
-**Work branch**: `docs/ayastorm-control-fix-plan`
+**Status**: IN PROGRESS (2026-05-23)
+**Work branch**: `fix/ayastorm-cloud-postprocess-chain`
 **Base branch**: `fix/macos-glsl-guards`
 **Scope**: AYAstorm Control / Cinematic rendering controls の Linux/Mac 実機報告を整理し、調査・修正順序を確定する。
 
@@ -131,6 +131,13 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 - Linux で Glow/Bloom OFF でも UI 文字が白四角化しない
 - Linux で `LUT None` と任意 LUT の差が見える
 - Mac の LUT 正常動作を壊さない
+
+進捗:
+
+- `LLPipeline::renderFinalize()` は Glow/Bloom OFF 時でも `generateGlow()` の後に必ず `combineGlow()` を実行し、`glowcombineF.glsl` は `mGlow[1]` を画面色に加算する。
+- `generateGlow()` の OFF 分岐では `mGlow[1].clear()` が現在の GL clear color に依存していた。Linux で clear color が白または非ゼロのまま残ると、UI 文字やパネルに白い加算ブロックが出る説明がつく。
+- 対策として OFF 分岐で `mGlow[1]` を `glClearColor(0, 0, 0, 0)` + `GL_COLOR_BUFFER_BIT` で明示クリアする。Glow ON の抽出・ぼかし経路には影響させない。
+- Mac では LUT 適用済み確認あり。Linux の LUT 不適用疑いは、Glow OFF白塗り対策後に実機で再確認する。
 
 ### Step C: Shadow blur controls
 
