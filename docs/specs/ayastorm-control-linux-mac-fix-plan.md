@@ -182,6 +182,14 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 - 各 control がどの visible output に効くかを確定する
 - dead control があれば削除または disabled にする
 
+進捗:
+
+- `RenderScreenSpaceReflections` と SSR sub controls は UI、cached setting、`bindReflectionProbes()` の uniform 送信までは届いていた。
+- Cinematic shader override (`cinematic_bd/class3/deferred/screenSpaceReflUtil.glsl`) は BD 由来の `vec3` uniform を期待していたが、AYA 側 settings と C++ は scalar (`S32` / `F32`) として送っていた。型不一致により Cinematic SSR の sub uniform が正しく反映されない。
+- 同 shader は `maxZDepth` / `maxRoughness` で早期 return するが、C++ 側から送信されていなかった。初期値 0 の場合、`roughness >= maxRoughness` でほぼ全 material が SSR なしになる。
+- 対策として Cinematic SSR shader を AYA の scalar controls に合わせ、`maxZDepth` / `maxRoughness` を `RenderScreenSpaceReflectionMaxDepth` / `RenderScreenSpaceReflectionMaxRoughness` から送信する。
+- 検証 scene は roughness 低め、metallic/specular 高めの反射 material と、反射に映る高コントラスト物体を同一画面内に置く。SSR は画面外の物体を反射できないため、比較時はカメラ内に反射対象を残す。
+
 ### Step E: Volumetric Lighting controls
 
 **目的**: 方向性フェード以外の Volumetric controls の効果不明を解消する。
