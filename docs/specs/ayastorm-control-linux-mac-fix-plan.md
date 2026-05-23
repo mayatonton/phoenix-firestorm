@@ -1,7 +1,7 @@
 # AYAstorm Control Linux/Mac rendering controls fix plan
 
-**Status**: IN PROGRESS (2026-05-23)
-**Work branch**: `fix/ayastorm-cloud-postprocess-chain`
+**Status**: MAC VERIFIED / LINUX VERIFICATION PENDING (2026-05-23)
+**Current branch**: `fix/ayastorm-fullbright-control`
 **Base branch**: `fix/macos-glsl-guards`
 **Scope**: AYAstorm Control / Cinematic rendering controls の Linux/Mac 実機報告を整理し、調査・修正順序を確定する。
 
@@ -10,8 +10,8 @@
 AYAstorm Control の Linux 版検証で、複数の描画コントロールが「効かない」「効果が見えない」「post process が壊れている疑い」として報告された。Mac 版でも同じ項目を再検証したところ、以下のように分類できる。
 
 - Linux 固有疑い: Glow/Bloom OFF 時の UI 白塗り、LUT 適用不良
-- Mac/Linux 共通疑い: 影ぼかしサイズ、SSR、Volumetric、Fullbright texture、雲描画
-- Mac では効果確認済み: DoF 系、CAS、LUT、SSAO の一部
+- 修正後 Mac 実機確認済み: 雲描画、影ぼかしサイズ、SSR、Volumetric Lighting、Fullbright texture、Glow/Volumetric 暖色量
+- Mac では条件付きで効果確認済み: DoF 系、CAS、LUT、SSAO の一部
 - UI レンジ/実効レンジ不一致疑い: SSAO Factor、F 値、最大散乱円など
 
 本計画では、単に「効く/効かない」を表で終わらせず、各 cvar が UI、cached setting、pipeline、shader uniform、shader permutation のどこで途切れているかを追う。
@@ -50,25 +50,25 @@ AYAstorm Control の Linux 版検証で、複数の描画コントロールが�
 | M7 | F 値 | DoF 焦点 FOV との兼ね合いで効く |
 | M8 | 最大散乱円 | 強い DoF 状態では効く |
 | M9 | 色収差強度 | 強い DoF 状態では効く |
-| M10 | SSR 全項目 | 効果がわからない |
-| M11 | Glow/Volumetric 暖色量 | 効果がわからない |
-| M12 | Volumetric Lighting 全項目 | 方向性フェード ON/OFF 以外は効果がわからない |
-| M13 | Fullbright texture | 効果がわからない |
+| M10 | SSR 全項目 | 修正後、Mac で変動確認済み |
+| M11 | Glow/Volumetric 暖色量 | Mac で変動確認済み |
+| M12 | Volumetric Lighting 全項目 | 正午前後 + 太陽が画面内の構図で効果確認済み。朝夕の低太陽高度では変化が見えにくい |
+| M13 | Fullbright texture | 修正後、Mac で ON/OFF 確認済み |
 | M14 | CAS sharpness | うっすら効果あり。4K 以上でないと判別困難なレベル |
-| M15 | Clouds / 3D cloud depth | 雲が描画されない |
+| M15 | Clouds / 3D cloud depth | 修正後、Mac で雲描画確認済み |
 | M16 | LUT | Mac では適用される |
 
 ## 2. 暫定分類
 
-### 2.1 高優先度: 共通不具合疑い
+### 2.1 高優先度: 修正済み・Linux 実機確認待ち
 
 | ID | 項目 | 理由 | 初期仮説 |
 |---|---|---|---|
-| P1 | Clouds が描画されない | Linux/Mac 両方で再現 | environment/cloud render pass、shader permutation、または mode gate の破損 |
-| P2 | 影ぼかしサイズが効かない | Linux/Mac 両方で再現 | `RenderShadowBlurSize` または `RenderShadowGaussian` が blur shader/pass に届いていない |
-| P3 | SSR 全項目が効果不明 | Linux/Mac 両方で再現 | SSR 自体が gate で無効、または UI cvar と shader uniform が未接続 |
-| P4 | Volumetric Lighting の大半が効果不明 | Linux/Mac 両方で再現 | default/sample count が低すぎる、uniform 未接続、または additive pass が別 pass で上書き |
-| P5 | Fullbright texture が効果不明 | Linux/Mac 両方で再現 | UI 名と実装対象が不一致、または検証 material 条件不足 |
+| P1 | Clouds が描画されない | Mac 修正確認済み、Linux 確認待ち | sky/cloud emissive output alpha が 0 のため blend に寄与しない |
+| P2 | 影ぼかしサイズが効かない | Mac 修正確認済み、Linux 確認待ち | shadow blur pass gate と Cinematic blur shader channel 処理の不一致 |
+| P3 | SSR 全項目が効果不明 | Mac 修正確認済み、Linux 確認待ち | Cinematic SSR shader uniform 型/送信漏れ |
+| P4 | Volumetric Lighting の大半が効果不明 | Mac 効果確認済み、Linux 確認待ち | no-op ではなく、太陽高度・画面内太陽位置・遮蔽物に強く依存 |
+| P5 | Fullbright texture が効果不明 | Mac 修正確認済み、Linux 確認待ち | render pass 分類が `RenderEnableFullbright` を見ていなかった |
 
 ### 2.2 中優先度: Linux 固有疑い
 
@@ -258,6 +258,19 @@ Fullbright texture 検証条件:
 - `RenderEnableFullbright=TRUE` で照明影響を受けにくい見た目、`FALSE` で通常 shaded surface として光源・影・環境光の影響を受けることを確認する。
 - alpha/masked fullbright object と shiny fullbright object でも、OFF 時に fullbright alpha mask / fullbright shiny pass に残らないことを確認する。
 
+Mac 実機確認:
+
+- `RenderEnableFullbright` の ON/OFF は Mac で確認済み。
+- Glow/Volumetric 暖色量も Mac で変動確認済み。`RenderGlowWarmthAmount` / `RenderGlowWarmthWeights` は `LLPipeline::generateGlow()` から `gGlowExtractProgram` の `warmthAmount` / `warmthWeights` uniform に送られ、`glowExtractF.glsl` で glow 抽出 alpha に寄与する。
+
+Linux 経路確認:
+
+- Fullbright: `RenderEnableFullbright` の listener、`LLVOVolume` の `teFullbrightEnabled()`、render pass 分類には `LL_LINUX` / `LL_DARWIN` の分岐がない。Linux でも同じ `LLTextureEntry` 判定と `LLVOVolume::markForUpdate()` 経路を通る。
+- Glow warmth: settings cache (`RenderGlowWarmthAmount` / `RenderGlowWarmthWeights`) から `gGlowExtractProgram` uniform、`effects/glowExtractF.glsl` まで platform 分岐なし。Linux でも同じ shader が compile/link できていれば同じ経路で効く。
+- CAS: `RenderCASSharpness` は `LLPipeline::renderFinalize()` から `applyCAS()` に入り、`gCASProgram` / `gCASLegacyGammaProgram` が complete の時だけ適用される。Linux 固有処理は `CASF.glsl` を C++ include するための warning 抑制のみで、実行経路は共通。
+- SSAO: `RenderSSAOScale` / `RenderSSAOMaxScale` / `RenderSSAOFactor` は `renderDeferredLighting()` で deferred sun shader uniform に送信される。Linux 固有分岐は見当たらないため、実機確認では shader link と deferred target サイズを重点確認する。
+- Linux 固有として残るのは、実機 GL/driver 依存が疑われる Glow/Bloom OFF UI 白塗りと LUT 適用不良。これらは Mac では再現しないため、Linux で同じ build を使った確認が必要。
+
 完了条件:
 
 - dead control は削除または disabled
@@ -268,16 +281,25 @@ Fullbright texture 検証条件:
 
 | 項目 | Mac | Linux | Windows | 必須 scene/material |
 |---|---|---|---|---|
-| Cloud 描画 | 必須 | 必須 | 推奨 | 雲あり environment |
-| 3D cloud depth | 必須 | 必須 | 推奨 | 雲 + 遠近差のある地形 |
-| Glow/Bloom OFF UI | 必須 | 必須 | 推奨 | UI overlay + text heavy panel |
-| LUT | 必須 | 必須 | 推奨 | 強い LUT と `None` の比較 |
-| Shadow blur | 必須 | 必須 | 推奨 | 斜光 + 地面 + hard shadow |
-| SSR | 必須 | 必須 | 推奨 | roughness 低めの reflective material |
-| Volumetric Lighting | 必須 | 必須 | 推奨 | 太陽角度低め + shadow caster |
-| Fullbright texture | 必須 | 必須 | 推奨 | fullbright textured object |
-| SSAO | 必須 | 必須 | 推奨 | contact shadow が見える室内/地面 |
-| CAS | 必須 | 必須 | 推奨 | high frequency texture / 4K 表示 |
+| Cloud 描画 | OK | 要確認 | 推奨 | 雲あり environment |
+| 3D cloud depth | OK | 要確認 | 推奨 | 雲 + 遠近差のある地形 |
+| Glow/Bloom OFF UI | OK | 要確認 | 推奨 | UI overlay + text heavy panel |
+| LUT | OK | 要確認 | 推奨 | 強い LUT と `None` の比較 |
+| Shadow blur | OK | 要確認 | 推奨 | 斜光 + 地面 + hard shadow |
+| SSR | OK | 要確認 | 推奨 | roughness 低めの reflective material |
+| Volumetric Lighting | OK | 要確認 | 推奨 | 正午前後 + 太陽が画面内 + shadow caster |
+| Fullbright texture | OK | 要確認 | 推奨 | fullbright textured object |
+| Glow/Volumetric 暖色量 | OK | 要確認 | 推奨 | 暖色 emissive/glow source |
+| SSAO | 条件付き OK | 要確認 | 推奨 | contact shadow が見える室内/地面 |
+| CAS | 条件付き OK | 要確認 | 推奨 | high frequency texture / 4K 表示 |
+
+Linux 実機確認で優先して見る項目:
+
+1. Glow/Bloom OFF UI 白塗りが出ないこと。
+2. LUT `None` と任意 LUT の差が出ること。
+3. Cloud / 3D cloud depth / Shadow blur / SSR / Fullbright / Glow warmth が Mac と同じ条件で変化すること。
+4. SSAO Factor は `0.00` から `0.20` 付近までの変化を重点確認する。`0.20` 以上は Mac でも飽和気味。
+5. CAS は 4K 以上または高周波 texture で確認する。低解像度・低周波 scene では差が微弱。
 
 ## 6. 実装ブランチ分割案
 
