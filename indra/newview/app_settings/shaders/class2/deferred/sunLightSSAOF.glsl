@@ -24,6 +24,10 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifndef HAS_HBAO
+#define HAS_HBAO 0
+#endif
+
 out vec4 frag_color;
 
 //class 2 -- shadows and SSAO

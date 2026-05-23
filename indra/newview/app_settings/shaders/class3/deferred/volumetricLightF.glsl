@@ -32,6 +32,10 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifndef GODRAYS_FADE
+#define GODRAYS_FADE 0
+#endif
+
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
