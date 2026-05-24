@@ -511,7 +511,8 @@ cost 試算 (推測): 30 source × 64 OBB × ~50 ns/AABB-test ≒ 96 μs/tick。
 
 - **What**: `postSort` で `std::sort(sCull->beginAlphaGroups()...)` を CPU で group ごとに距離 sort、その後 `LLDrawPoolAlpha::renderAlpha` で per-DrawInfo に流す。
 - **Where**: `pipeline.cpp:4281-4289`, `lldrawpoolalpha.cpp:583-743`
-- **Why GPU**: WBOIT (weighted blended OIT) や per-pixel linked list で sort 自体を消せる。draw 順を CPU で気にしなくて済む。
+- **Why GPU**: per-pixel linked list / depth peeling 系で sort 自体を消せる。draw 順を CPU で気にしなくて済む。
+- **検証結果 (r31 attempt, 2026-05)**: **WBOIT (Weighted Blended OIT) は SL では使い物にならなかった**。weighted-average は重なる alpha 層の色を必ず平均化するため、SL 主流の多層 strand 髪 mesh で「内側の dark hair 層が外側の silver 層を平準化してしまい、本来の髪色が出せない (hijiki 症状)」という構造的劣化が出る。SL の典型 asset 形態と相性が悪いと判明、候補から外す。残る筋は per-pixel linked list / depth peeling 系のみ。
 - **Risk**: 上流の deferred renderer と shader 全部書き換え、AYAstorm の water exclusion / atmospherics pass の挟み込み (`pipeline.cpp:4794-4814`) と衝突。
 - **Effort**: L
 - **Priority**: 中 — 効果はアバター集会 / 透明 mesh 多数の sim で目に見えるが、上流の PBR/GLTF 移行待ちのほうが筋がいい。
