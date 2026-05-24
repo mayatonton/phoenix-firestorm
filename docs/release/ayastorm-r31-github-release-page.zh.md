@@ -85,11 +85,9 @@ AYAstorm View pipeline 大量借鉴自 NiranV Dean 的 Black Dragon viewer (LGPL
 
 ## Downloads
 
-_3 OS 构建完成后由 @mayatonton 填写。_
-
-- Windows Installer
-- macOS Installer
-- Linux Installer
+- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261440915_Setup.exe)
+- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81208.dmg)
+- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261441701.tar.xz)
 
 ## Contributors
 

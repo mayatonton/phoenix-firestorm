@@ -85,11 +85,9 @@ The AYAstorm View pipeline draws extensively from NiranV Dean's Black Dragon vie
 
 ## Downloads
 
-_To be filled in by @mayatonton after the 3 OS build completes._
-
-- Windows Installer
-- macOS Installer
-- Linux Installer
+- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261440915_Setup.exe)
+- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81208.dmg)
+- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261441701.tar.xz)
 
 ## Contributors
 
