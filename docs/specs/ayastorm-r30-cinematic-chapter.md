@@ -126,7 +126,7 @@ Linux / macOS / Windows いずれかが落ちる状態では release を切ら�
 
 **注**: P1 では AYAstorm View に shader plumbing 引き上げ (SMAA/SSR default ON) は **行わない**。α 検証で絵が動かないと確認済み。
 
-### P2 Cinematic モード骨格 + velocity buffer + SMAA T2x (想定 r31)
+### P2 Cinematic モード骨格 + velocity buffer + SMAA T2x
 
 **スコープ確定** (§7-7 案 A 採用、2026-05-17): velocity buffer + SMAA T2x を **両方 P2 で完成**。視覚で確認しながら P3 以降を判断する方が後段スムーズという AYA 判断による。工数: velocity 5 日 + T2x 4-5 日 = **9-10 日**。
 
