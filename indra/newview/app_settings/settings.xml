@@ -28749,7 +28749,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Stream3DBinauralRender</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm r11: Debug-only override for the lite-HRTF DSP on positional streams. -1 (default, sentinel) = follow the publisher's {binaural:on|off} tag (and treat unspecified as on). 0 = force OFF (FMOD's built-in panner only, r10-equivalent behavior). 1 = force ON (overrides {binaural:off}). Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
+      <string>AYAstorm r11/r31: Debug-only override for the lite-HRTF DSP on positional streams. -1 (default, sentinel) = follow the publisher's {binaural:on|off} tag (and treat unspecified as off). 0 = force OFF (FMOD's built-in panner only, r10-equivalent behavior). 1 = force ON (overrides {binaural:off}). Not exposed in Preferences — listeners are intended to hear the publisher's intent unchanged.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -28804,7 +28804,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Stream3DUpmixLfeCutoff</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm r12: Cutoff frequency (Hz) for the LFE-channel low-pass filter in the 2ch→5.1 upmix path. Default 80 Hz (THX recommendation). Range clamped to 20.0–200.0 inside the helper so a hostile / mistyped value can't overflow the biquad coefficients. Read by the FMOD mixer thread via a lock-free atomic snapshot, refreshed every poll. Not exposed in Preferences — for implementer / verification adjustment only.</string>
+      <string>AYAstorm r12: Cutoff frequency (Hz) for the LFE-channel low-pass filter in the 2ch→5.1 upmix path. Default 80 Hz. Range clamped to 20.0–200.0 inside the helper so a hostile / mistyped value can't overflow the biquad coefficients. Read by the FMOD mixer thread via a lock-free atomic snapshot, refreshed every poll. Not exposed in Preferences — for implementer / verification adjustment only.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -28815,7 +28815,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Stream3DUpmixCenterBleed</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm r12: Front L/R center-bleed-removal amount in the 2ch→5.1 upmix path. 1.0 (default) = full extraction (phantom center fully removed from front L/R, plays only from C speaker). 0.0 = DPL1-compatible behavior (front L/R full-range, phantom center remains). Range clamped to 0.0–1.0 inside the helper. Same lock-free atomic plumbing as Stream3DUpmixLfeCutoff. Not exposed in Preferences — implementer / verification adjustment only.</string>
+      <string>AYAstorm r12: Front L/R center-bleed-removal amount in the 2ch→5.1 upmix path. 1.0 (default) = full extraction (phantom center fully removed from front L/R, plays only from C speaker). 0.0 = no center removal (front L/R full-range, phantom center remains). Range clamped to 0.0–1.0 inside the helper. Same lock-free atomic plumbing as Stream3DUpmixLfeCutoff. Not exposed in Preferences — implementer / verification adjustment only.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

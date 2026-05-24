@@ -195,6 +195,12 @@ public:
     // §4.3 treats it as a single shared field rather than two separate keys.
     struct DistStereoTagData
     {
+        // r31: true when this distributed tag was written with the canonical
+        // [3dstream:...] prefix instead of the legacy-explicit
+        // [3dstream-stereo:...] form. This lets [3dstream:{url:...}] remain
+        // a mono fallback when no speaker {ch:...} exists in the linkset.
+        bool unified_3dstream_prefix = false;
+
         // Source declaration fields (set when {url:...} or {source:media}
         // is present).
         std::optional<DistSourceKind> source_kind;

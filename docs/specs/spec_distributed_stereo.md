@@ -405,7 +405,7 @@ r8 の「1 ソース → N FMOD Channel」アーキテクチャは 5.1ch ソー�
 | **FLAC multichannel** | Icecast or HTTP 静的配信 | FMOD 内蔵デコーダで完結 |
 | AAC 5.1 (ADTS over HTTP) | 理論上可、Linux ビルドで AAC デコーダ問題あり | 非対象 (r10 では扱わない) |
 | AAC HLS (.m3u8) | HLS マニフェスト解析が新規実装 | 非対象 |
-| AC-3 / E-AC-3 | Dolby ライセンス必要 | 非対象 |
+| AC-3 / E-AC-3 | ライセンス上の理由 | 非対象 |
 
 **実用的には Icecast 2.4+ + Opus surround が事実上唯一の現実解**。viewer 側の codec 改修はゼロで済む。Shoutcast は Opus 非対応なので、5.1 化を選ぶ配信者は Icecast 移行が前提となる (= 配信側の社会的・運用コストが本拡張の最大の障壁)。
 

@@ -1100,7 +1100,7 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
     else if (mSourceChannels == 2 && mUpmixEnabled)
     {
         // r12 P4: every speaker — including legacy r5–r9 L/R/M placements —
-        // gets fanned out via the DPL2 matrix decode. The per-speaker
+        // gets fanned out via the static matrix upmix. The per-speaker
         // role is mapped from Channel to UpmixRole; the actual matrix +
         // band split lives in LLStereoUpmix::upmix2chToSpeaker().
         cb.op_kind = Op::Upmix;
@@ -1129,7 +1129,7 @@ void LLPositionalStreamMulti::resolveReadOp(SpeakerCallback& cb, Channel ch) con
     else  // mSourceChannels == 1 (or unexpected — falls through to Silent)
     {
         // r12 P4: 1ch sources do not get upmix dispatched even if
-        // mUpmixEnabled — DPL2 decode of a mono signal collapses to
+        // mUpmixEnabled — matrix upmix of a mono signal collapses to
         // (FL=FR=L, C=L×√2, S=0) which is louder than r8/r10 mono and
         // gains nothing acoustically. The r8 mono fan-out (every non-LFE
         // role plays track 0) is the correct degenerate behavior.

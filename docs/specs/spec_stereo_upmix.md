@@ -24,13 +24,13 @@ r12 はこの分岐点を埋める。viewer 内 DSP として **stereo→5.1 upm
 - stereo 配信を viewer 内で 5.1 化し、r10 6 spk placement の体験を全配信に届ける
 - 5.1 native 配信 (source ch>=6) は upmix を自動 bypass、二重処理を防止
 - 配信者主導モデル (r11) を維持: 制御は配信者プリム Desc タグ (`{upmix:on|off}`) で完結、listener 側 Preferences UI 改修ゼロ
-- アルゴリズムは決め打ち (DPL2 系 matrix decode + 帯域分離) で「配信者は on/off だけ判断」できる UX を維持
+- アルゴリズムは決め打ち (matrix upmix + 帯域分離) で「配信者は on/off だけ判断」できる UX を維持
 
 **設計思想 — 配信者主導モデルの維持**:
 
 r11 で確立した「配信者がスピーカープリム Desc に書いた表現意図を listener viewer は忠実にレンダリングする」モデルを継承する。upmix 制御も `{upmix:on|off}` タグで完結し、listener 側の Preferences UI 経由の override は提供しない。実装/検証用の debug settings (sentinel = 「タグ通り」default) のみ残す。
 
-**アルゴリズム多択化はしない**: 「DPL2 / Logic7 / band-steering どれを使うか」を配信者に選ばせない。配信者の選択は `{upmix:on|off}` のみで、ある音 = 再現される音を担保する。微調整 (LFE cutoff / center bleed / rear delay) は listener 側 debug settings に出すが、配信者タグには出さない。これは r11 の `Stream3DBinauralRender` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` と同じ流儀。
+**アルゴリズム多択化はしない**: 「どの upmix アルゴリズムを使うか」を配信者に選ばせない。配信者の選択は `{upmix:on|off}` のみで、ある音 = 再現される音を担保する。微調整 (LFE cutoff / center bleed / rear delay) は listener 側 debug settings に出すが、配信者タグには出さない。これは r11 の `Stream3DBinauralRender` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` と同じ流儀。
 
 **過去仕様との関係**:
 
@@ -40,7 +40,7 @@ r11 で確立した「配信者がスピーカープリム Desc に書いた表�
 
 非対象 (r12 では触らない):
 
-- アルゴリズムの多択化 (DPL2 系決め打ち、Logic7 / SRS / 周波数帯別 steering 等は r13+)
+- アルゴリズムの多択化 (r12 では固定アルゴリズム、周波数帯別 steering 等は r13+)
 - 動的 steering (入力解析に基づくマトリックス係数の時変調整)
 - ML / Spatial Audio AI 系 upmix
 - 5.1 native 配信への upmix 適用 (source ch>=6 で auto bypass)
@@ -82,12 +82,12 @@ r11 完了時点で AYAstorm は **5.1 配信を前提とした** 「6 spk place
 
 ### 2.3 アルゴリズムを決め打ちする根拠
 
-stereo→5.1 upmix のアルゴリズムは複数の選択肢がある (DPL2 系 matrix decode、Logic 7 系 multi-band steering、SRS Circle Surround 系の心理音響モデル、ML 系 upmix 等)。本書では **DPL2 系 matrix decode + 帯域分離 (LFE LPF / center bleed 除去 / rear decorrelation)** を採用し、決め打ちする。理由:
+stereo→5.1 upmix のアルゴリズムは複数の選択肢がある。本書では **matrix upmix + 帯域分離 (LFE LPF / center bleed 除去 / rear decorrelation)** を採用し、決め打ちする。理由:
 
-- 配信者がアルゴリズムを選ぶタグまで増やすと「DPL2 / Logic7 / band-steering どれが正解?」と迷わせる。配信者主導モデルでは「配信者が表現意図を確定的に指定できる」ことが価値で、アルゴリズム選択肢は表現の不確定性を増やす方向に働く
+- 配信者がアルゴリズムを選ぶタグまで増やすと「どの方式を選ぶべきか」という判断が増える。配信者主導モデルでは「配信者が表現意図を確定的に指定できる」ことが価値で、アルゴリズム選択肢は表現の不確定性を増やす方向に働く
 - listener 側に切替 UI を出すと r11 までの「listener UI 改修ゼロ」design philosophy が崩れる
 - 「ある音 = 再現される音」になる方が配信者にも listener にも認知負荷が低い
-- DPL2 系は古典的で実装が確立しており、phase 依存性こそあるが SL 配信音源 (一般的なステレオ音楽 / トーク) では十分機能する。動的 steering (Logic 7 系) は実装コストが大きく、SL 配信の音源特性 (急峻な phase 変化が少ない) を考えると ROI が低い
+- `(L+R)` / `(L-R)` を使う matrix upmix は古典的で実装が単純であり、phase 依存性こそあるが SL 配信音源 (一般的なステレオ音楽 / トーク) では十分機能する。動的 steering は実装コストが大きく、SL 配信の音源特性 (急峻な phase 変化が少ない) を考えると ROI が低い
 - ML 系は CPU / モデル配布 / 推論レイテンシで配布負債が深刻
 
 将来アルゴリズムを差し替えたく / 増やしたくなったら、そのタイミングで判断 (= r13+ 持ち越し)。最初から多択にしないのが r5 / r11 の流儀でもある。
@@ -106,7 +106,7 @@ r12 で済ませておくと r13+ の SOFA / Steam Audio 着手時に手戻り�
 
 ### ゴール
 
-- G1. **stereo→5.1 upmix DSP 実装**: 2ch input から 6ch output (L/R/C/Ls/Rs/LFE) を DPL2 系 matrix decode + 帯域分離で生成
+- G1. **stereo→5.1 upmix DSP 実装**: 2ch input から 6ch output (L/R/C/Ls/Rs/LFE) を matrix upmix + 帯域分離で生成
 - G2. **配信者タグ `{upmix:on|off}` 追加**: default `off`。配信者が明示的に on にすることで upmix 有効化
 - G3. **5.1 native 配信の auto bypass**: source ch>=6 のときは `{upmix:on}` であっても upmix を自動 bypass、二重処理を防止
 - G4. **debug settings 経由の listener 側微調整**: LFE cutoff / center bleed / rear decorrelation 量を debug settings で調整可。default はアルゴリズム標準値 (= タグ通り sentinel ではなく実値 default)
@@ -117,7 +117,7 @@ r12 で済ませておくと r13+ の SOFA / Steam Audio 着手時に手戻り�
 
 ### 非ゴール
 
-- NG1. **アルゴリズム多択化**: DPL2 系決め打ち、Logic 7 / SRS / 周波数帯別 steering 等は配信者にも listener にも選ばせない (r13+ で再検討)
+- NG1. **アルゴリズム多択化**: r12 では固定アルゴリズムとし、周波数帯別 steering 等は配信者にも listener にも選ばせない (r13+ で再検討)
 - NG2. **配信者向けの細かいパラメータ調整タグ**: LFE cutoff / center bleed / rear delay は配信者タグに出さない (debug settings のみ)
 - NG3. **動的 steering** (時変マトリックス係数): 入力解析に基づくリアルタイム重み付け。r13+ で再検討
 - NG4. **ML / Spatial Audio AI 系 upmix**: r13+ で外部依存込みで再検討
@@ -234,9 +234,9 @@ upmix の 1 speaker output は r10 Track / Bs775 と完全に同じ「per-speake
 - **呼出単位**: `pcmReadCallback` の `datalen / sizeof(F32)` フレーム数。Bs775 dispatch と同じく `kReaderChunkFrames` 単位 (1024) での内部チャンク処理
 - **state**: per-speaker (= per-`SpeakerCallback`)。LFE は biquad LPF state (Direct Form II、4 floats)、Ls/Rs は delay line buffer (16ms @ 44.1kHz ≈ 706 samples、固定 jitter で L/R ±2ms)、FL/FR/C は stateless
 
-#### 4.3.2 Matrix decode (DPL2 ベース)
+#### 4.3.2 Matrix upmix
 
-DPL2 (Dolby Pro Logic II) 系の静的マトリックス decode を採用:
+`(L+R)` / `(L-R)` を使う静的な matrix upmix を採用:
 
 ```
 C  = (L + R) / √2          ← 中央成分 (phantom center 抽出)
@@ -251,14 +251,14 @@ R' = R - C / √2            ← center bleed 除去後の R
 
 #### 4.3.3 Center bleed 除去
 
-DPL2 系で C 成分を抽出した後、front L/R に元の L/R をそのまま流すと **「phantom center が center spk と front L/R 両方から鳴る」二重像** が発生し、定位が不安定になる。これを防ぐため、front L/R から C 成分の一部を引く:
+C 成分を抽出した後、front L/R に元の L/R をそのまま流すと **「phantom center が center spk と front L/R 両方から鳴る」二重像** が発生し、定位が不安定になる。これを防ぐため、front L/R から C 成分の一部を引く:
 
 ```
 L' = L - C × bleed_amount / √2
 R' = R - C × bleed_amount / √2
 ```
 
-`bleed_amount` の default は `1.0` (= フル除去、phantom center が center spk のみから鳴る)。listener 側 debug settings (`Stream3DUpmixCenterBleed` F32 0.0-1.0) で調整可。`0.0` にすると DPL1 互換 (front L/R も full-range)。
+`bleed_amount` の default は `1.0` (= フル除去、phantom center が center spk のみから鳴る)。listener 側 debug settings (`Stream3DUpmixCenterBleed` F32 0.0-1.0) で調整可。`0.0` にすると center 成分を除去せず、front L/R も full-range になる。
 
 #### 4.3.4 Rear decorrelation
 
@@ -284,7 +284,7 @@ LFE は L+R sum を low-pass filter して生成:
 LFE = LPF_cutoff((L + R) / 2)
 ```
 
-cutoff の default は **80 Hz** (THX 推奨)。実装は biquad LPF (Butterworth 2nd order、-12dB/oct で十分。SL 配信音源で more steep が必要な状況は想定しない)。listener 側 debug settings (`Stream3DUpmixLfeCutoff` F32, default 80.0、許容範囲 20.0-200.0) で調整可。
+cutoff の default は **80 Hz**。実装は biquad LPF (Butterworth 2nd order、-12dB/oct で十分。SL 配信音源で more steep が必要な状況は想定しない)。listener 側 debug settings (`Stream3DUpmixLfeCutoff` F32, default 80.0、許容範囲 20.0-200.0) で調整可。
 
 LFE 出力レベル: `(L+R)/2` の振幅で LFE ch に流す。家庭 AV の bass management に相当する処理 (sub に振る分の振幅補正) は **入れない**。理由は SL 内の prim spk は物理的な sub 制約がないので、bass management は配置側の演出に委ねる。
 
@@ -300,7 +300,7 @@ r10 の 6 spk placement は `{ch:FL}` / `{ch:FR}` / `{ch:C}` / `{ch:LFE}` / `{ch
 | `LFE` | `LFE` | `LPF((L+R)/2, cutoff)` |
 | `SL` | `SL` | `delay(S, base + jitter)` (S = (L-R)/√2) |
 | `SR` | `SR` | `delay(-S, base − jitter)` |
-| `L` (旧 r8 stereo) | `FL` | (= 旧 ch:L 配置の listener も DPL2 matrix decode の恩恵を受ける) |
+| `L` (旧 r8 stereo) | `FL` | (= 旧 ch:L 配置の listener も matrix upmix の処理対象になる) |
 | `R` (旧 r8 stereo) | `FR` | 同上 |
 | `M` (旧 r8 mono) | `C` | (= mono 中心配置の listener は phantom center を center 役で受ける) |
 
@@ -316,7 +316,7 @@ r10 の 6 spk placement は `{ch:FL}` / `{ch:FR}` / `{ch:C}` / `{ch:LFE}` / `{ch
 |---|---|---|---|
 | `Stream3DUpmix` | int | `-1` (sentinel = タグ通り) | `0` = upmix を強制 OFF (タグ `{upmix:on}` を無視) / `1` = 強制 ON (タグ `{upmix:off}` でも有効化、ただし source ch>=6 の auto bypass は有効) |
 | `Stream3DUpmixLfeCutoff` | F32 | `80.0` Hz | LFE LPF cutoff 周波数 (許容 20.0〜200.0)。配信者タグでは出さない。listener 側の DAW 的微調整用 |
-| `Stream3DUpmixCenterBleed` | F32 | `1.0` | front L/R から center 成分を引く割合 (`0.0` = DPL1 互換 / `1.0` = フル除去、phantom center が center spk のみ) |
+| `Stream3DUpmixCenterBleed` | F32 | `1.0` | front L/R から center 成分を引く割合 (`0.0` = center 除去なし / `1.0` = フル除去、phantom center が center spk のみ) |
 | `Stream3DUpmixRearDelayMs` | F32 | `16.0` ms | rear decorrelation 用の base delay。L/R 分離は ±2ms の固定 jitter |
 
 **動作優先順位** (先に評価される側ほど強い):
@@ -414,7 +414,7 @@ stereo upmix の効果を主観的に確認するための検証材料:
 | U5 | `{upmix:on}` ↔ `{upmix:off}` の Desc 編集 live 切替で次の `evaluateLinkset()` から効く (= rebuild 走る) | LSL から toggle して聴感差確認 |
 | U6 | `Stream3DUpmix` debug = `0` で強制 OFF / `1` で強制 ON (`-1` = タグ通り) | 各設定で動作確認 |
 | U7 | `Stream3DUpmixLfeCutoff` を 80→120Hz に変えると LFE 帯域が広がる | 主観確認 |
-| U8 | `Stream3DUpmixCenterBleed` を 1.0→0.0 に変えると DPL1 互換 (phantom center が二重像) | 主観確認 |
+| U8 | `Stream3DUpmixCenterBleed` を 1.0→0.0 に変えると center 除去なしになり、phantom center が二重像になる | 主観確認 |
 | U9 | `Stream3DUpmixRearDelayMs` を 16→8ms に変えると rear decorrelation が薄くなる | 主観確認 |
 
 ### 6.2 r10 / r11 互換 (回帰)
@@ -435,7 +435,7 @@ stereo upmix の効果を主観的に確認するための検証材料:
 
 | ID | 内容 | 縮退策 |
 |---|---|---|
-| R1 | DPL2 の **phase 依存性** で特定の stereo 素材 (例: vocal が片側 only の cinematic mix) で center 抽出が不自然 | 縮退 A: `{upmix:off}` を配信者がタグで明示することで個別 stream を回避できる (アルゴリズム内固定、プリセット切替なし) |
+| R1 | matrix upmix の **phase 依存性** で特定の stereo 素材 (例: vocal が片側 only の cinematic mix) で center 抽出が不自然 | 縮退 A: `{upmix:off}` を配信者がタグで明示することで個別 stream を回避できる (アルゴリズム内固定、プリセット切替なし) |
 | R2 | center bleed 除去で **front L/R が薄く感じる** (= bleed=1.0 が強すぎる) | 縮退 B: `Stream3DUpmixCenterBleed` default を 0.5〜0.7 に下げる (P11 検証で決定) |
 | R3 | rear decorrelation で **rear が "強すぎ / 薄すぎ"** | 縮退 C: `Stream3DUpmixRearDelayMs` default を 12〜20ms 範囲で調整 (P11 検証で決定) |
 | R4 | LFE LPF 80Hz が **配信音源によってボワつく / スカスカ** | 縮退 D: `Stream3DUpmixLfeCutoff` default を 100〜120Hz に変更 (P11 検証で決定) |
@@ -504,12 +504,12 @@ stereo upmix の効果を主観的に確認するための検証材料:
 
 ### 9.7 r13+: アルゴリズム多択化 (本書策定時に新規発生)
 
-- DPL2 → Logic 7 系 multi-band steering / SRS / ML 系の代替アルゴリズム検討
-- 配信者タグ `{upmix:dpl2|logic7|...}` の enum 化を検討。ただし NG1 で「決め打ち」と確定したので、AYAstorm 側のエコシステム成熟と聴感ベース評価をしてから判断
+- multi-band steering / ML 系など、代替アルゴリズムの検討
+- 配信者タグ `{upmix:...}` の enum 化を検討。ただし NG1 で「決め打ち」と確定したので、AYAstorm 側のエコシステム成熟と聴感ベース評価をしてから判断
 
 ### 9.8 r13+: 動的 steering
 
-- 入力解析に基づく時変マトリックス係数調整 (Logic 7 系)
+- 入力解析に基づく時変マトリックス係数調整
 - 動的 panning detection / dialog detection / ambience detection による intelligent up-mix
 
 ### 9.9 r13+: ML / Spatial Audio AI 系 upmix
@@ -521,6 +521,6 @@ stereo upmix の効果を主観的に確認するための検証材料:
 
 ## 10. 変更履歴
 
-- 2026-05-07: 初版作成。r11 完了直後の議論で AYA さんから「世間の SL 配信はほぼ stereo、6 spk placement の元を取りたい」提案。旧 r12 計画 (SOFA per-source HRTF + Steam Audio) は本書策定で「stereo upmix のみ」に再定義、SOFA / Steam Audio / VenueReverb CPU 最適化 / air absorption 客観測定 / 個人 HRTF / 公開 README は r13+ に降格 (詳細は §2.2 / §9)。アルゴリズムは DPL2 系 matrix decode + 帯域分離で決め打ち (§2.3)。配信者主導モデル (r11 で確立) を維持、新タグ `{upmix:on|off}` (default off)、debug settings 4 件 (sentinel 1 件 + 微調整 3 件)。
+- 2026-05-07: 初版作成。r11 完了直後の議論で AYA さんから「世間の SL 配信はほぼ stereo、6 spk placement の元を取りたい」提案。旧 r12 計画 (SOFA per-source HRTF + Steam Audio) は本書策定で「stereo upmix のみ」に再定義、SOFA / Steam Audio / VenueReverb CPU 最適化 / air absorption 客観測定 / 個人 HRTF / 公開 README は r13+ に降格 (詳細は §2.2 / §9)。アルゴリズムは matrix upmix + 帯域分離で決め打ち (§2.3)。配信者主導モデル (r11 で確立) を維持、新タグ `{upmix:on|off}` (default off)、debug settings 4 件 (sentinel 1 件 + 微調整 3 件)。
 - 2026-05-07: P0 調査結果を反映。実コード (`indra/llaudio/llpositionalstream*.{h,cpp}`) を読んで DSP 挿入位置を確定。当初 §4.2.1 で候補とした A 案 (`createStream3DGroup` 入力段) / B 案 (`makeChannelForBinding` per-binding) はいずれも実アーキテクチャに不適合と判明 — per-speaker channel が mono (`numchannels=1`) で 2→6 materialize 不可、Stream3D group は per-speaker mono の合成しか見えず source 2ch に到達不可。代わりに r10 の `SpeakerCallback::OpKind` (Bs775 dispatch) を拡張する **C 案** として確定: `OpKind::Upmix` を追加し、`pcmReadCallback` 内で 2 track ring から 2ch を pull、speaker 役割に応じて upmix matrix + 帯域分離 + 状態を適用して 1ch 出力。新規ヘルパは `LLStereoUpmix` (`indra/llaudio/llstereoupmix.{h,cpp}`、`LLMultichannelDownmix` 並行構造)。これに伴い §4.2.1 / §4.2.2 / §4.2.3 / §4.3 (タイトル + §4.3.1 / §4.3.6) / §4.5 / §7 R6 を改訂。詳細は `docs/archive/r12/dsp_insertion_survey.md`。
 - 2026-05-09 (r12.1): §4.7 を追加。`{lfegain:N}` (短縮形 `lg`) を root prim タグに追加 (値域 0.0〜4.0、default 1.0)。listener 側 sentinel `Stream3DLfeGain` を debug settings に追加 (sentinel `-1.0` = タグ通り)。あわせて r12 リリース時の live-tuning 回帰 (`Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった件) を `LLPositionalStreamMgr::update()` の per-poll push 追加で修正。`wetgain` の default も実 listening 結果を反映して `1.0` → `0.2` に変更 (詳細は tag-guide §7.3 改訂履歴、本書の §4.5 r11 既存タグ並行動作の例値も参考)。

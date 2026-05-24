@@ -49,8 +49,8 @@ r14 以降は **光/視覚表現** に軸を移し、新ロードマップ `docs
 └────────────────────────────────────────────┘
                   ▲
 ┌──────── Layer 0: SOURCE (整形) ────────────┐
-│ ・stereo → 5.1 upmix (DPL2 系 + 帯域分離)  │ ← r12
-│   matrix decode + LFE LPF + rear decorr    │
+│ ・stereo → 5.1 upmix (matrix + 帯域分離)   │ ← r12
+│   matrix upmix + LFE LPF + rear decorr     │
 │   {upmix:on|off} 配信者タグで制御          │
 └────────────────────────────────────────────┘
                   ▲
@@ -126,12 +126,12 @@ r14 以降は **光/視覚表現** に軸を移し、新ロードマップ `docs
 - 仕様: `docs/specs/spec_stereo_upmix.md`
 - 工程: `docs/ayastorm-r12-stereo-upmix.md`
 - 主要変更:
-  - **stereo→5.1 upmix helper class** (`llstereoupmix.{h,cpp}` 新設、`LLMultichannelDownmix` 並行構造): 2 track ring から speaker 役割 (FL/FR/C/LFE/SL/SR) ごとに 1ch を生成、DPL2 系 matrix decode + center bleed 除去 + rear decorrelation + LFE LPF (Butterworth biquad、80Hz default)。**`SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造) で `pcmReadCallback` から呼ぶ — P0 調査で FMOD DSP 経路 (A/B 案) は不適合と判明、C 案として確定 (詳細は `docs/archive/r12/dsp_insertion_survey.md`)
+  - **stereo→5.1 upmix helper class** (`llstereoupmix.{h,cpp}` 新設、`LLMultichannelDownmix` 並行構造): 2 track ring から speaker 役割 (FL/FR/C/LFE/SL/SR) ごとに 1ch を生成、matrix upmix + center bleed 除去 + rear decorrelation + LFE LPF (Butterworth biquad、80Hz default)。**`SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造) で `pcmReadCallback` から呼ぶ — P0 調査で FMOD DSP 経路 (A/B 案) は不適合と判明、C 案として確定 (詳細は `docs/archive/r12/dsp_insertion_survey.md`)
   - **配信者タグ `{upmix:on|off}`** 追加 (default `off`): 配信者が opt-in した瞬間から 6 spk placement の体験を獲得
   - **5.1 native 配信の auto bypass**: source ch>=6 のとき `{upmix:on}` でも DSP 非挿入、chat 通知 1 回。二重処理防止
   - **debug settings 4 件**: `Stream3DUpmix` (sentinel `-1` = タグ通り) + パラメータ微調整 3 件 (`Stream3DUpmixLfeCutoff` 80Hz / `Stream3DUpmixCenterBleed` 1.0 / `Stream3DUpmixRearDelayMs` 16ms)。listener 平時は不使用、実装/検証用
   - **データフロー順序**: source stream → mRing (per-track) → `pcmReadCallback` `OpKind::Upmix` dispatch (r12) → per-channel placement (r10) → lite-HRTF (r11) → Stream3D group → venue reverb (r11)
-- **アルゴリズムは決め打ち** (DPL2 系 matrix decode + 帯域分離): 配信者にも listener にも選ばせない (r5 / r11 流儀)。Logic 7 / SRS / ML 系は r13+ で再検討
+- **アルゴリズムは決め打ち** (matrix upmix + 帯域分離): 配信者にも listener にも選ばせない (r5 / r11 流儀)。代替方式は r13+ で再検討
 - **既存配置の自動恩恵**: r8/r10 で過去に置かれた全 prim は、配信者が `{upmix:on}` を明示的に追加した瞬間から 6 spk placement の体験を得る (再配置不要)
 - **r10/r11 受入条件すべて維持**: dropout / CPU / URL 切替 / 互換マトリクス / 回帰、すべて r11 から劣化なし
 - **設計判断 — 旧 r12 計画 (SOFA + Steam Audio) からの再定義**: 「世間の SL 配信はほぼ stereo、6 spk placement の元を取りたい」(AYA、2026-05-07) という認識転換が起点。r10 で 6 spk placement を、r11 で venue reverb と lite-HRTF を載せたフルチェインを **5.1 配信前提でしか体感できない** という機会損失を、viewer 内 DSP で埋める。配布負債ゼロ + 既存配信全部に効く + r10/r11 投資の元を取る、の三拍子で ROI が最大 (詳細は `docs/specs/spec_stereo_upmix.md` §1 / §2.2)
@@ -277,7 +277,7 @@ r14 以降は **光/視覚表現** に軸を移し、新ロードマップ `docs
 | RR8 | r11 lite-HRTF (ITD+ILD shadow) の体感が薄い → 縮退 A (default off + opt-in 化) | r11 (主観 PASS で default on のまま出荷) |
 | RR9 | r11 venue reverb の CPU が +10pp 超 → 縮退 B (IR 上限 3s→2s、`hall_large`/`cathedral` mono 化、9→5 venue) | r11 (hall_medium 以上で +8〜10pp 、絶対値・dropout 共に問題なく ship-with-note 判断) |
 | ~~RR10~~ | ~~r12 P0 で StereoUpmixDsp 挿入位置 (A 案: stream-level group 入力段 / B 案: per-stream / per-binding) を確定できず P1 着手後に切替が必要~~ | **解消 (2026-05-07)**: r12 P0 第 2 弾で実コード調査の結果、A 案 / B 案ともに不適合 (per-speaker channel が mono、Stream3D group は source 2ch を見えない) と判明。代わりに **C 案 = `SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造) として確定 (`docs/archive/r12/dsp_insertion_survey.md`)。Bs775 と並行構造で実装難易度小、P1.5 不要 |
-| **RR11** | **r12 DPL2 系 matrix decode の phase 依存性が想定以上に強く、特定の stereo 素材 (vocal が片側 only の cinematic mix 等) で center 抽出が不自然** → 縮退 (アルゴリズム多択化はせず、`{upmix:off}` を配信者がタグで明示することで個別 stream を回避) | r12 |
+| **RR11** | **r12 matrix upmix の phase 依存性が想定以上に強く、特定の stereo 素材 (vocal が片側 only の cinematic mix 等) で center 抽出が不自然** → 縮退 (アルゴリズム多択化はせず、`{upmix:off}` を配信者がタグで明示することで個別 stream を回避) | r12 |
 | **RR12** | **r12 debug settings 3 件 (LfeCutoff / CenterBleed / RearDelayMs) の default 値が P11 検証で範囲超えで再 tune 必要** → P11.x として default 調整 phase を追加 (+0.5 日) | r12 |
 | **RR13** | **r12 source ch 判定が stream 開始タイミングで間に合わない** (codec layer の遅延) → ch 数判定 timeout を設定、判定不可なら upmix 無効 (= 安全側、5.1 として誤動作させない) | r12 |
 | ~~RR14~~ | ~~r13 mesh prim の OBB 近似が「斜め屋根 / アーチ」で明確にズレ、体感ミスマッチ~~ | **解消 (2026-05-11、P15)**: r13 内で OBB 近似 → 実プリム三角形 raycast (OBB pre-cull + Möller-Trumbore) に昇格。`LLVolume::getVolumeFace` から path cut / hollow / mesh の実形状を抽出して segmentHitsShape で判定するため斜め屋根 / アーチ / 曲面でも正確に遮蔽。kMaxTrisPerOccluder=2000 超過時は OBB-only にフォールバック (LL_WARNS_ONCE)、典型 SL 建築は範囲内 |
@@ -294,7 +294,7 @@ r14 以降は **光/視覚表現** に軸を移し、新ロードマップ `docs
 4. **r11 で Preferences UI 改修ゼロ、配信者主導モデルで debug settings 4 件のみ** → 0.5 日節約、一般 listener UI 増殖を回避、配信者主導モデル (タグ root truth) と整合 [採用]
 5. **r11 で `{binaural}` default off + opt-in 化** → lite-HRTF 体感が薄い場合の縮退 A (リリース判断時、結果として default on で出荷)
 6. **r12 を「stereo upmix のみ」に絞り、SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air absorption 客観 FFT は r13+ へ降格** → r12 工数を 4-8 週 → 1-2 週へ大幅圧縮、配布負債ゼロ、r10/r11 投資の元を取る ROI 最大 [採用、2026-05-07 議論で確定]
-7. **r12 アルゴリズムを DPL2 系 matrix decode + 帯域分離で決め打ち** (Logic 7 / SRS / ML 系は r13+) → 配信者にも listener にも選ばせない (= 表現の不確定性を増やさない、r5 / r11 流儀)、実装コスト最小化 [採用]
+7. **r12 アルゴリズムを matrix upmix + 帯域分離で決め打ち** (代替方式は r13+) → 配信者にも listener にも選ばせない (= 表現の不確定性を増やさない、r5 / r11 流儀)、実装コスト最小化 [採用]
 8. **r12 配信者タグは `{upmix:on|off}` の 1 種のみ**、debug settings は sentinel + 微調整 3 件で計 4 件 → タグ多択化を回避、r11 と同等の改修コスト感に収める [採用]
 9. **r13 形状近似を OBB 単独で決め打ち** (sphere/cylinder/torus も box 近似、形状特化近似は r14+): 建築用途の 98% で十分、実装コスト最小。配信者にも会場運営にも形状モードを選ばせない [採用、2026-05-10 議論で確定。当初は「r14+ Steam Audio で OBB 基盤を流用可」を根拠の一つにしていたが、Steam Audio は 2026-05-11 議論で永久 drop (項 13)。OBB レジストリ基盤は r14+ で viewer 側 mesh raycast 経路に流用する形に変更]
 10. **r13 を「OBB タグベース遮蔽 + chat font 同梱」のみに絞り、Steam Audio / SOFA / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT は r14+ へ降格** → r13 工数を 数週 → 1-2 週に大幅圧縮、配布負債ゼロ、SL viewer 史上初の空間音響遮蔽機能を最短で出荷 [採用、2026-05-10 議論で確定]
@@ -377,7 +377,7 @@ r14 以降での更なる発展余地 (**一旦保留、2026-05-12**):
 - VenueReverb CPU 最適化 (NUPC、hall_medium 以上の +8〜10pp 低減)
 - air absorption 客観 FFT 測定 (r11 P12 で主観 PASS、客観未実施)
 - 公開 README / changelog 一括開示 (r8〜r13 機能成熟後)
-- アルゴリズム多択化 (Logic 7 / SRS / ML 系 upmix の聴感ベース評価)
+- アルゴリズム多択化 (代替 upmix 方式の聴感ベース評価)
 
 **永久 drop (2026-05-11 確定)**:
 
@@ -401,7 +401,7 @@ r14 以降での更なる発展余地 (**一旦保留、2026-05-12**):
 
 - 2026-05-03: 初版作成 (r8 着手時点)。Layer 1/2 直交モデル、r7→r11 計画、工数見積り、リスク策定
 - 2026-05-06: r8/r9/r10/r10.x/r10.x-bugfix-1 完了状態を反映。**r11 案を Steam Audio + 任意 SOFA から「lite-HRTF + venue convolution reverb (配信者主導モデル)」に再定義**、SOFA per-source HRTF / Steam Audio は r12+ に降格。工数 19-33 日 → 9.5-10.5 日。Preferences UI 改修ゼロ + debug settings 4 件 + 配信者主導モデル方針を明記。リスク表に R5/IR ライセンス/lite-HRTF 体感/reverb CPU を追加、旧 RR1-3 (Steam Audio/SOFA 系) は r12+ 印つけ。仕様詳細は `docs/specs/spec_binaural_venue_reverb.md` 参照。P0 (本書改訂) として `feature/aya-r11-p0-roadmap-update` ブランチで実施
-- 2026-05-07: r11 実装完了 (リリース判断保留中) を反映。**r12 案を SOFA per-source HRTF + Steam Audio から「stereo→5.1 upmix のみ」に再定義**、SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air absorption 客観 FFT は **r13+ に降格**。ロードマップ題名を `r7 → r11` から `r7 → r12` に拡張、Layer 0 (ソース整形) を §2 に追加、§3 r12 entry 新設、§4 r12 工数行 (5-7 日 / 1-2 週) と内訳追加、§5 RR1-3 を r13+ ラベル変更 + RR10-13 (DSP 挿入位置 / DPL2 phase 依存性 / default 値再 tune / source ch 判定 timeout) を r12 リスクとして追加、§5 工数圧縮 6-8 を追加、§6 依存関係に r12 を追加、§7 ユーザ価値に r12 完成時 stereo 配信での 6 spk 体験を追加、r13 以降を r12 以降から繰り下げ。仕様詳細は `docs/specs/spec_stereo_upmix.md` / `docs/ayastorm-r12-stereo-upmix.md` 参照
+- 2026-05-07: r11 実装完了 (リリース判断保留中) を反映。**r12 案を SOFA per-source HRTF + Steam Audio から「stereo→5.1 upmix のみ」に再定義**、SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air absorption 客観 FFT は **r13+ に降格**。ロードマップ題名を `r7 → r11` から `r7 → r12` に拡張、Layer 0 (ソース整形) を §2 に追加、§3 r12 entry 新設、§4 r12 工数行 (5-7 日 / 1-2 週) と内訳追加、§5 RR1-3 を r13+ ラベル変更 + RR10-13 (DSP 挿入位置 / matrix upmix の phase 依存性 / default 値再 tune / source ch 判定 timeout) を r12 リスクとして追加、§5 工数圧縮 6-8 を追加、§6 依存関係に r12 を追加、§7 ユーザ価値に r12 完成時 stereo 配信での 6 spk 体験を追加、r13 以降を r12 以降から繰り下げ。仕様詳細は `docs/specs/spec_stereo_upmix.md` / `docs/ayastorm-r12-stereo-upmix.md` 参照
 - 2026-05-07 (P0 第 2 弾): r12 P0 で実コード (`indra/llaudio/llpositionalstream*.{h,cpp}`、`llaudioengine_fmodstudio.cpp`) を読んで DSP 挿入位置を判定。当初 spec §4.2.1 の **A 案 (`createStream3DGroup` 入力段) / B 案 (per-binding `Channel::addDSP`) はいずれも実アーキテクチャに不適合** と判明 (per-speaker channel が mono `numchannels=1`、Stream3D group は per-speaker mono の合成しか見えず source 2ch 不可視)。代わりに **C 案 = `SpeakerCallback::OpKind::Upmix` 拡張** (r10 Bs775 dispatch の対称構造、`pcmReadCallback` で 2 track ring から L/R を pull、speaker 役割で upmix matrix + 帯域分離 + state を適用して 1ch 出力) として確定。新規ヘルパは `LLStereoUpmix` (`indra/llaudio/llstereoupmix.{h,cpp}`、`LLMultichannelDownmix` 並行構造)。これに伴い §3 r12 entry の主要変更欄を `llstereoupmix.{h,cpp}` 名 + 「helper class」呼称 + データフロー記述に修正、§5 RR10 を解消マーク。詳細調査記録は `docs/archive/r12/dsp_insertion_survey.md`
 - 2026-05-10: r12 main / r12.1 完了 (PR #46 / PR #52) を反映。**r13 案を旧 r13+ basket (SOFA / Steam Audio / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT) から「OBB タグベース遮蔽 (フラグシップ) + chat font live-apply 同梱」に再定義**、Steam Audio / SOFA / 形状特化近似 / VenueReverb CPU 最適化 / 個人 HRTF / 公開 README / air abs 客観 FFT は **r14+ に降格**。ロードマップ題名を `r7 → r12` から `r7 → r13` に拡張、Layer 3 (空間ジオメトリ) を §2 に追加 (4 層モデルへ)、§3 r13 entry 新設 (OBB occlusion + 会場運営主導モデル + chat font 同梱)、§4 r13 工数行 (5-7 日 / 1-2 週) と内訳追加、§5 RR1-3 を r14+ ラベル変更 + RR14-18 (mesh OBB ズレ / material 表 tuning / door 60Hz update / rapid teleport / 大規模建造物 prim scan) を r13 リスクとして追加、§5 工数圧縮 9-12 を追加 (OBB 単独決め打ち / Steam Audio r14+ 降格 / chat font 同梱 / タグ多択化回避)、§6 依存関係に r13 → r14+ を追加 (geometry 登録基盤の Steam Audio 流用)、§7 ユーザ価値に r13 完成時 SL 史上初空間音響遮蔽 + 会場運営主導モデル新規導入を追加、r14 以降を r13 以降から繰り下げ。仕様詳細は `docs/specs/spec_obb_occlusion.md` / `docs/ayastorm-r13-occlusion.md` 参照。役割分担 (会場運営 vs 配信者の直交性) は memory `project_venue_occlusion_orthogonal.md`、r13 フラグシップ + 同梱 fix 方針は memory `project_ayastorm_r13_obb_occlusion.md` 参照
 - 2026-05-10 (r13 spike 着手): 同梱 `libfmod 2.03.07` の `System::createGeometry` が機能しない (`FMOD_ERR_INTERNAL`、memory `project_fmod_geometry_unavailable.md`) ため FMOD geometry 経路を放棄、**listener-source segment vs OBB の自前 slab test を viewer 側で実装**して `Channel::set3DOcclusion` に直接適用する経路に pivot。spike 出荷スコープは `[ayastorm:occlude]` 単独タグ + per-speaker `LOWPASS_SIMPLE` DSP (壁越し muffled 聴感、22kHz→300Hz exponential cutoff) + 250ms ramp + debug overlay (View メニュー `Alt+Shift+O`)。`[ayastorm:door]` / material 表 / debug settings 4 件のうち 3 件 / O2〜O14 通し検証は **r13.x 持ち越し**。同 commit に **起動時 OS unresponsive dialog 緩和 (A+B、drain rate-limit + curl timeout 短縮)** を同梱、根本対応 (curl 非同期化、C) は別 workstream 着手予定。実装詳細は `docs/ayastorm-r13-occlusion.md` §5 を canonical とする。commit 記録: `66ddab6eb4` (P0 spec/工程資料/roadmap 初版) / `58c5ad7c14` (実装本体 + A+B 緩和) / `6fcd078250` (View メニュー + `Alt+Shift+O`)

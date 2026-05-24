@@ -31,7 +31,7 @@
 #include <vector>
 
 // r12 (spec_stereo_upmix.md §4.2.1 / §4.3): map a 2-channel (L, R) source frame
-// to a single mono output channel for one speaker role using DPL2-style matrix
+// to a single mono output channel for one speaker role using static matrix
 // decode + band split (LFE LPF / center bleed removal / rear decorrelation).
 //
 // Architecturally the symmetric counterpart of LLMultichannelDownmix. Where

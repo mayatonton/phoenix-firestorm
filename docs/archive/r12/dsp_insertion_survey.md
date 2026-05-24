@@ -87,7 +87,7 @@ per-binding (= per-speaker) channel は **mono**。その channel に attach す
 **ファイル変更プラン**:
 
 - 新規: `indra/llaudio/llstereoupmix.{h,cpp}` — `LLMultichannelDownmix` と並行構造のヘルパクラス
-  - `bool isSupported()` — 常に true (DPL2 系決め打ちなのでフォーマット依存なし)
+  - `bool isSupported()` — 常に true (固定アルゴリズムなのでフォーマット依存なし)
   - `enum class UpmixRole { FL, FR, C, LFE, SL, SR }`
   - per-speaker state: biquad LPF (Direct Form II)、delay line (1 ring で 2 read tap)
   - `void upmix2chToSpeaker(const F32* track_l, const F32* track_r, F32* out, size_t n_frames, UpmixRole role, ...)` — speaker 固有出力 1ch 生成
@@ -149,7 +149,7 @@ per-binding (= per-speaker) channel は **mono**。その channel に attach す
 - **state 量の確認**: per-speaker LPF (4 floats) + delay buffer (~706 samples × 1 = 2824 bytes) × 6 speakers = ~17KB。問題ない量
 - **dropout 影響**: pcmReadCallback での計算量増加分 (matrix + biquad + delay tap) は Bs775 の `mix6chToMono` 並みかそれ以下。CPU 受入条件 (+3pp 未満) の達成可能性は現実的
 - **r13+ で SOFA を載せる場合**: 今回の C 案で確立した「OpKind 拡張で 6 spk placement の前段に整形を入れる」パターンは、r13 で SOFA HRTF を per-channel に載せる場合にも流用可能 (= speaker channel が mono のまま、DSP head に SOFA convolution を addDSP)。SOFA は per-channel 1ch in/1ch out の形になるので、A/B 案と違って FMOD DSP に素直に乗る
-- **アルゴリズム多択化 (r13+)**: 現 C 案では `LLStereoUpmix` が DPL2 決め打ち。r13+ で Logic 7 / SRS 等を入れる場合、`LLStereoUpmix` の interface はそのまま、内部 algorithm を strategy pattern 化すれば済む
+- **アルゴリズム多択化 (r13+)**: 現 C 案では `LLStereoUpmix` が固定アルゴリズム。r13+ で別方式を入れる場合、`LLStereoUpmix` の interface はそのまま、内部 algorithm を strategy pattern 化すれば済む
 
 ---
 
