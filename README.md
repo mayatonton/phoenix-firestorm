@@ -11,6 +11,38 @@ It adds rendering enhancements, UI improvements, and first-class Japanese langua
 
 ## Features
 
+### AYAstorm Controls
+
+Open from the **AYAstorm** menu (between Build and Help) → `AYAstorm Controls...`, or press `Alt+C`.
+
+![AYAstorm Controls](docs/images/ayastorm_controls.png)
+
+A single floater that surfaces AYAstorm's preset master switches and 11 rendering categories on the left tab strip. Every control has a `D` button to snap back to the AYAstorm preset default, so you can live A/B-tune without hunting through debug settings.
+
+- **General** — Master switches for SSAO / Glow & Bloom / Render Attached Particles, plus the Reflection probe quality slider. Use this tab as the top-level on/off panel before diving into per-effect tuning
+
+- **Shadows** — Shadow Detail level (off / sun only / sun + spot + projector), automatic vs. manual cascade distance, shadow blur size, resolution scale, and shadow far clip. Lets you balance softness against shadow draw distance
+
+- **SSAO** — SSAO master toggle (mirrors General tab), `Blur deferred lights` toggle, and AO tuning sliders. Adjust contact shadow strength and falloff
+
+- **DoF & Camera** — Depth of Field master, **High-quality DoF (4× CoF, depth-gated)**, front-of-focus blur, alpha-blended-surface depth inclusion, plus camera-side AYAstorm preset values (focal length / aperture / etc.) and a DoF-coupled chromatic aberration strength slider
+
+- **SSR** — Screen Space Reflections master toggle and six quality-tuning sliders (step count, max distance, etc.). Adds wet-floor / glass reflections on top of the deferred opaque buffer
+
+- **Motion Blur** — Motion Blur master toggle, separate `Blur self avatar` and `Blur other avatars` switches, plus an Antialiasing sub-section
+
+- **Glow & Volumetric** — Glow / Bloom intensity tuning, **Volumetric Lighting (AYA godrays)** with directional fade (sun-below-horizon), and a separate **Godrays (sun-facing beam)** pass for the brighter on-axis variant
+
+- **Lighting** — Enable fullbright textures (global), render in-world point/spot lights, render own attached lights, render others' attached lights — the four switches that decide how much the local-light pipeline contributes to the scene
+
+- **Post-process** — Contrast Adaptive Sharpening (CAS) and Post FX sliders, applied as the final post-process pass over the framebuffer
+
+- **Atmosphere & sky** — Sky depth & sun glare, distant blue haze, and a morning blue / evening warm tint — AYAstorm View's signature atmosphere shaping on top of EEP
+
+- **Skin SSS** — Subsurface Scattering for skin translucency: master switch, blur radius / strength / etc. parameters, and a target-mesh-UUID whitelist with `Lock editing (prevent accidental changes)` and `Reset all to defaults`
+
+> Tip: change the **View Mode** (Firestorm / AYAstorm View) in Preferences → Graphics. Restart the viewer after switching to apply.
+
 ### Rendering
 
 Configurable from Preferences → Graphics → Rendering tab.
