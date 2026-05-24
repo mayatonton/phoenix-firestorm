@@ -131,6 +131,22 @@
 
 ---
 
+## 文档
+
+### 用户使用指南
+
+- **Skin SSS — Avatar 摄影**: [🇺🇸 en](docs/specs/skin-sss-user-guide.md) · [🇯🇵 ja](docs/specs/skin-sss-user-guide.ja.md) · [🇨🇳 zh](docs/specs/skin-sss-user-guide.zh.md)
+- **3D Stream 标签格式**: [🇺🇸 en](docs/guides/3dstream-tag-guide.en.md) · [🇯🇵 ja](docs/guides/3dstream-tag-guide.ja.md) · [🇨🇳 zh](docs/guides/3dstream-tag-guide.zh.md)
+
+### 公开技术规范 (面向其他 SL Viewer 开发者)
+
+将 SL Viewer 全体共通存在的 bug 与 AYAstorm 采用的修复方案以公开规范形式公开，便于 LL 派生 viewer fork 无需 PR 自由取入。
+
+- **Rigged Mesh Picker — GPU object-ID buffer**: [🇺🇸 en](docs/specs/rigged-mesh-picker-gpu-buffer.md) · [🇯🇵 ja](docs/specs/rigged-mesh-picker-gpu-buffer.ja.md) · [🇨🇳 zh](docs/specs/rigged-mesh-picker-gpu-buffer.zh.md)
+- **Double Alpha Block — forward alpha BLEND 修复** (公开专用分支): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.md) · [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.ja.md) · [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.zh.md)
+
+---
+
 ## 下载
 
 最新编译版可在 **[GitHub Releases](https://github.com/mayatonton/phoenix-firestorm/releases/latest)** 下载。

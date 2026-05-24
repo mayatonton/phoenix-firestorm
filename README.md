@@ -131,6 +131,22 @@ Configurable from Preferences → Chat → Chat Windows tab.
 
 ---
 
+## Documentation
+
+### User guides
+
+- **Skin SSS — avatar photography**: [🇺🇸 en](docs/specs/skin-sss-user-guide.md) · [🇯🇵 ja](docs/specs/skin-sss-user-guide.ja.md) · [🇨🇳 zh](docs/specs/skin-sss-user-guide.zh.md)
+- **3D Stream tag format**: [🇺🇸 en](docs/guides/3dstream-tag-guide.en.md) · [🇯🇵 ja](docs/guides/3dstream-tag-guide.ja.md) · [🇨🇳 zh](docs/guides/3dstream-tag-guide.zh.md)
+
+### Open technical specifications (for other SL viewer developers)
+
+SL-viewer-wide bugs and AYAstorm's fixes — published as open specs for free adoption by any LL-derived viewer fork. No PR required, pull what you need.
+
+- **Rigged Mesh Picker — GPU object-ID buffer**: [🇺🇸 en](docs/specs/rigged-mesh-picker-gpu-buffer.md) · [🇯🇵 ja](docs/specs/rigged-mesh-picker-gpu-buffer.ja.md) · [🇨🇳 zh](docs/specs/rigged-mesh-picker-gpu-buffer.zh.md)
+- **Double Alpha Block — forward alpha BLEND fix** (separate disclosure branch): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.md) · [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.ja.md) · [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.zh.md)
+
+---
+
 ## Download
 
 Pre-built binaries are available from **[GitHub Releases](https://github.com/mayatonton/phoenix-firestorm/releases/latest)**.

@@ -131,6 +131,22 @@ HTTP オーディオストリーム (SHOUTcast / Icecast / 静的 MP3 / Vorbis /
 
 ---
 
+## ドキュメント
+
+### ユーザー向けガイド
+
+- **Skin SSS — アバター撮影**: [🇺🇸 en](docs/specs/skin-sss-user-guide.md) · [🇯🇵 ja](docs/specs/skin-sss-user-guide.ja.md) · [🇨🇳 zh](docs/specs/skin-sss-user-guide.zh.md)
+- **3D Stream タグ書式**: [🇺🇸 en](docs/guides/3dstream-tag-guide.en.md) · [🇯🇵 ja](docs/guides/3dstream-tag-guide.ja.md) · [🇨🇳 zh](docs/guides/3dstream-tag-guide.zh.md)
+
+### 公開技術資料 (他 SL Viewer 開発者向け)
+
+SL Viewer 全体に共通する bug と AYAstorm が採用した修正を、LL 派生 Viewer fork が PR 不要で自由に取込めるよう公開仕様として公開しています。
+
+- **Rigged Mesh Picker — GPU object-ID buffer**: [🇺🇸 en](docs/specs/rigged-mesh-picker-gpu-buffer.md) · [🇯🇵 ja](docs/specs/rigged-mesh-picker-gpu-buffer.ja.md) · [🇨🇳 zh](docs/specs/rigged-mesh-picker-gpu-buffer.zh.md)
+- **Double Alpha Block — forward alpha BLEND 修正** (公開用専用ブランチ): [🇺🇸 en](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.md) · [🇯🇵 ja](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.ja.md) · [🇨🇳 zh](https://github.com/mayatonton/phoenix-firestorm/blob/fix/double-alpha-block/docs/specs/double-alpha-block-fix.zh.md)
+
+---
+
 ## ダウンロード
 
 最新版のビルド済みバイナリは **[GitHub Releases](https://github.com/mayatonton/phoenix-firestorm/releases/latest)** からダウンロードできます。
