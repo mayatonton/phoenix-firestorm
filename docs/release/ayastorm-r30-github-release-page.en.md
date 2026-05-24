@@ -30,6 +30,7 @@ A single jump from r24 to r30 bundles five releases (r25, r26, r27, r28, r30) in
 - P1 restart-switch infrastructure: [docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md)
 - BD live cvar port reference: [docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md)
 - Cinematic Controls floater audit: [docs/specs/ayastorm-r30-cinematic-controls-cleanup.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-cinematic-controls-cleanup.md)
+- Skin SSS user guide (avatar photography): [docs/specs/skin-sss-user-guide.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/skin-sss-user-guide.md) / [.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/skin-sss-user-guide.ja.md) / [.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/skin-sss-user-guide.zh.md)
 
 ### Media audio
 - r25 parcel music Ogg Vorbis investigation: [docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md)
@@ -39,6 +40,7 @@ A single jump from r24 to r30 bundles five releases (r25, r26, r27, r28, r30) in
 ### UX & picker
 - r28 other rigged picker spec: [docs/specs/ayastorm-r28-other-rigged-picker.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r28-other-rigged-picker.md)
 - r21 self-rigged picker spec (sibling feature): [docs/specs/ayastorm-r21-self-rigged-picker.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r21-self-rigged-picker.md)
+- Rigged Mesh Picker — GPU object-ID buffer technical spec (for other viewer forks): [docs/specs/rigged-mesh-picker-gpu-buffer.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/rigged-mesh-picker-gpu-buffer.md) / [.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/rigged-mesh-picker-gpu-buffer.ja.md) / [.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/rigged-mesh-picker-gpu-buffer.zh.md)
 
 ## Public disclosure: double alpha-block fix (cross-viewer common bug)
 
