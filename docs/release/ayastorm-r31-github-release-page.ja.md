@@ -46,7 +46,7 @@ r24 から r31 への一括移行 tag。6 release (r25 / r26 / r27 / r28 / r30 /
 - Skin SSS ユーザーガイド (アバター撮影向け): [docs/specs/skin-sss-user-guide.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31+bundle-fs.80646/docs/specs/skin-sss-user-guide.md) / [.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31+bundle-fs.80646/docs/specs/skin-sss-user-guide.ja.md) / [.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31+bundle-fs.80646/docs/specs/skin-sss-user-guide.zh.md)
 
 ### Media audio
-- r25 parcel music Ogg Vorbis investigation: [docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31+bundle-fs.80646/docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md)
+- r25 parcel music Ogg Vorbis investigation: [docs/specs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31+bundle-fs.80646/docs/specs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md)
 - r26 MOAP 3D stream implementation plan: [docs/specs/ayastorm-r26-moap-3d-stream-implementation-plan.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31+bundle-fs.80646/docs/specs/ayastorm-r26-moap-3d-stream-implementation-plan.md)
 
 ### UX & picker
