@@ -494,16 +494,25 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
 {
     // r5 で導入した [3dstream-stereo:...] と alias [ayastream-stereo:...] を
     // 同じ本体としてサポート (r8 で旧 {l:N}{r:N} 書式は廃止し、新書式のみ受ける)。
+    // r31 では [3dstream:...] も distributed/linkset grammar として読む。
+    // ただし [3dstream:{url:...}] 単独は evaluateLinkset() 側で既存 mono
+    // fallback に戻すため、古い単一プリム配置は壊さない。
     static const std::string kPrefix    = "[3dstream-stereo:";
     static const std::string kPrefixOld = "[ayastream-stereo:";
+    static const std::string kPrefixUnified = "[3dstream:";
 
     DistParseResult result;
 
     size_t content_start = 0, end = 0;
+    bool unified_3dstream_prefix = false;
     if (!findTagBody(description, kPrefix, content_start, end) &&
         !findTagBody(description, kPrefixOld, content_start, end))
     {
-        return result; // no tag at all
+        if (!findTagBody(description, kPrefixUnified, content_start, end))
+        {
+            return result; // no tag at all
+        }
+        unified_3dstream_prefix = true;
     }
 
     // Track which keys appeared (regardless of value validity) so a
@@ -515,6 +524,7 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
     bool seen_media_source = false;
 
     DistStereoTagData data;
+    data.unified_3dstream_prefix = unified_3dstream_prefix;
     F32 range_value = 0.f;
     bool range_valid = false;
     F32 volume_value = 0.f;
@@ -846,25 +856,25 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
     case DistErrorKind::BadCh:
         msg = "タグ書式エラー (prim " + id_short + "): ch の値は L/R/M/FL/FR/C/LFE/SL/SR/BL/BR のいずれかである必要があります";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{ch:L}{range:30}]";
+        msg += "。例: [3dstream:{ch:L}{range:30}]";
         break;
     case DistErrorKind::BadRange:
         msg = "タグ書式エラー (prim " + id_short + "): range は正の数で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{ch:L}{range:30}]";
+        msg += "。例: [3dstream:{ch:L}{range:30}]";
         break;
     case DistErrorKind::BadVolume:
         msg = "タグ書式エラー (prim " + id_short + "): volume は 0.0〜1.0 の範囲で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{ch:L}{volume:0.8}]";
+        msg += "。例: [3dstream:{ch:L}{volume:0.8}]";
         break;
     case DistErrorKind::EmptyUrl:
         msg = "タグ書式エラー (prim " + id_short + "): url が空です";
-        msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{range:30}]";
+        msg += "。例: [3dstream:{url:http://example/stream.mp3}{range:30}]";
         break;
     case DistErrorKind::NoSpeakers:
         msg = "構造エラー (root " + id_short + "): 音源宣言が root にあるがスピーカー (ch) が見つかりません";
-        msg += "。各スピーカープリムに [3dstream-stereo:{ch:L|R|M}] を記載してください";
+        msg += "。各スピーカープリムに [3dstream:{ch:L|R|M}] を記載してください";
         break;
     case DistErrorKind::SpeakerOverLimit:
         msg = "構造エラー (root " + id_short + "): スピーカー数が上限を超えています";
@@ -884,12 +894,12 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
     case DistErrorKind::BadBinaural:
         msg = "タグ書式エラー (prim " + id_short + "): binaural の値は on または off で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{binaural:off}]";
+        msg += "。例: [3dstream:{url:http://example/stream.mp3}{binaural:off}]";
         break;
     case DistErrorKind::BadUpmix:
         msg = "タグ書式エラー (prim " + id_short + "): upmix の値は on または off で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{url:http://example/stream.mp3}{upmix:on}]";
+        msg += "。例: [3dstream:{url:http://example/stream.mp3}{upmix:on}]";
         break;
     case DistErrorKind::BadVenue:
         msg = "タグ書式エラー (root " + id_short + "): venue の値が認識できません";
@@ -904,17 +914,17 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
     case DistErrorKind::BadWetGain:
         msg = "タグ書式エラー (prim " + id_short + "): wetgain の値は数値で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += " (範囲外は 0.0〜2.0 にクランプされます)。例: [3dstream-stereo:{venue:hall_medium}{wetgain:1.0}]";
+        msg += " (範囲外は 0.0〜2.0 にクランプされます)。例: [3dstream:{venue:hall_medium}{wetgain:1.0}]";
         break;
     case DistErrorKind::BadLfeGain:
         msg = "タグ書式エラー (prim " + id_short + "): lfegain の値は数値で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += " (範囲外は 0.0〜3.0 にクランプされます)。例: [3dstream-stereo:{url:http://example/stream.mp3}{lfegain:2.0}]";
+        msg += " (範囲外は 0.0〜3.0 にクランプされます)。例: [3dstream:{url:http://example/stream.mp3}{lfegain:2.0}]";
         break;
     case DistErrorKind::BadSource:
         msg = "タグ書式エラー (prim " + id_short + "): source の値は media / media-stereo / media-5-1 / media-7-1 のいずれかを指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{source:media}{upmix:on}{ch:L}{range:30}]";
+        msg += "。例: [3dstream:{source:media}{upmix:on}{ch:L}{range:30}]";
         break;
     case DistErrorKind::ConflictingSource:
         msg = "タグ書式エラー (prim " + id_short + "): url と source:media は同時に指定できません";
@@ -923,22 +933,22 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
     case DistErrorKind::BadLink:
         msg = "タグ書式エラー (prim " + id_short + "): link は 0 以上の整数で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
+        msg += "。例: [3dstream:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::BadFace:
         msg = "タグ書式エラー (prim " + id_short + "): face は 0 以上の整数で指定してください";
         if (!detail.empty()) msg += " (got '" + detail + "')";
-        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
+        msg += "。例: [3dstream:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::MediaFaceNotFound:
         msg = "構造エラー (root " + id_short + "): 指定された link / face に media が見つかりません";
         if (!detail.empty()) msg += " (" + detail + ")";
-        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
+        msg += "。例: [3dstream:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::MediaFaceAmbiguous:
         msg = "構造エラー (root " + id_short + "): linkset 内に media face が複数あるため source media を特定できません";
         if (!detail.empty()) msg += " (" + detail + ")";
-        msg += "。例: [3dstream-stereo:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
+        msg += "。例: [3dstream:{source:media}{link:2}{face:0}{ch:L}{range:30}]";
         break;
     case DistErrorKind::MediaSourceNotReady:
         msg = "再生待機 (root " + id_short + "): media source の音声がまだ準備できていません";
@@ -957,13 +967,13 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
 // static
 bool LLPositionalStreamMgr::effectiveBinaural(std::optional<bool> tag_value)
 {
-    // r11 P5 / spec §6 precedence: debug override (sentinel `-1` = follow
-    // tag) wins over the publisher tag. Tag default is `on` when the
-    // publisher omits the {binaural:...} key (spec §4.1.0).
+    // r11 P5 / r31 policy: debug override (sentinel `-1` = follow tag)
+    // wins over the publisher tag. Tag default is `off` when the publisher
+    // omits the {binaural:...} key; binaural rendering is opt-in.
     const S32 dbg = gSavedSettings.getS32("Stream3DBinauralRender");
     if (dbg == 0) return false;        // force OFF
     if (dbg >= 1) return true;         // force ON
-    return tag_value.value_or(true);   // sentinel -1 → follow tag
+    return tag_value.value_or(false);  // sentinel -1 → follow tag
 }
 
 // static
@@ -1110,10 +1120,65 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
     }
 
     const std::string& desc = desc_it->second.description;
+    auto dist = parseDistributedStereoTag(desc);
     auto mono_tag = parseTag(desc);
 
     if (mono_tag)
     {
+        // r31: [3dstream:{url:...}] is still the old single-prim mono tag
+        // unless the same tag also carries a speaker role, or the linkset has
+        // [3dstream:{ch:...}] speakers. In those cases the unified tag is a
+        // distributed/linkset declaration and must not start the mono path.
+        if (dist.data && dist.data->unified_3dstream_prefix)
+        {
+            LLViewerObject* obj = gObjectList.findObject(id);
+            LLViewerObject* root = obj && !obj->isDead() ? obj->getRootEdit() : nullptr;
+            LLUUID root_id = root ? root->getID() : id;
+            bool has_linkset_speaker = dist.data->ch.has_value();
+
+            if (!has_linkset_speaker && root)
+            {
+                for (const auto& child : root->getChildren())
+                {
+                    if (!child || child->isDead())
+                    {
+                        continue;
+                    }
+                    auto child_desc_it = mDescriptionCache.find(child->getID());
+                    if (child_desc_it == mDescriptionCache.end())
+                    {
+                        continue;
+                    }
+                    auto child_parse = parseDistributedStereoTag(child_desc_it->second.description);
+                    if (child_parse.data &&
+                        child_parse.data->ch.has_value())
+                    {
+                        has_linkset_speaker = true;
+                        break;
+                    }
+                }
+            }
+
+            if (has_linkset_speaker || mDistributedBindings.find(root_id) != mDistributedBindings.end())
+            {
+                auto bind_it = mBindings.find(id);
+                if (bind_it != mBindings.end())
+                {
+                    LL_INFOS("Stream3D") << "Removing positional binding for " << id
+                                          << " (promoted to distributed 3dstream)"
+                                          << LL_ENDL;
+                    mBindings.erase(bind_it);
+                }
+                mPendingLinksetEval.insert(root_id);
+                return;
+            }
+
+            if (dist.data->source_kind == DistSourceKind::Url)
+            {
+                mPendingLinksetEval.insert(root_id);
+            }
+        }
+
         evaluateMonoBinding(id, *mono_tag);
         // r8 F2-a: a prim that just became a mono source must drop out of any
         // distributed-stereo linkset it had been participating in. Re-evaluate
@@ -1143,8 +1208,6 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
     // r8 F2-a: distributed-stereo dispatch. {url}, {source}, or {ch}
     // triggers a linkset-level (re)evaluation rooted at this prim's
     // getRootEdit().
-    auto dist = parseDistributedStereoTag(desc);
-
     if (dist.error != DistParseError::Ok)
     {
         LL_INFOS("Stream3D") << "[3dstream-stereo] parse error on " << id
@@ -1507,6 +1570,22 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
 
     if (speakers.empty())
     {
+        if (root_data.unified_3dstream_prefix &&
+            root_data.source_kind == DistSourceKind::Url &&
+            root_data.url.has_value())
+        {
+            // r31: [3dstream:{url:...}] without any {ch:...} speakers keeps
+            // its long-standing mono behavior. This path also handles a
+            // linkset that used to have unified speakers but no longer does:
+            // tear down the distributed binding, then restore the mono one.
+            teardownDistributedBinding(root_id);
+            if (auto mono_tag = parseTag(root_desc_it->second.description))
+            {
+                evaluateMonoBinding(root_id, *mono_tag);
+            }
+            return;
+        }
+
         LL_INFOS("Stream3D") << "[3dstream-stereo] structural error: root "
                               << root_id << " has no speakers" << LL_ENDL;
         notifyDistributedError(root_id, DistErrorKind::NoSpeakers, "");
@@ -1636,6 +1715,13 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     }
 
     auto& binding = mDistributedBindings[root_id];
+    if (auto mono_it = mBindings.find(root_id); mono_it != mBindings.end())
+    {
+        LL_INFOS("Stream3D") << "Removing positional binding for " << root_id
+                              << " (distributed 3dstream active)" << LL_ENDL;
+        mBindings.erase(mono_it);
+    }
+
     binding.root_id = root_id;
     binding.source_key = source_key;
     binding.url = url;

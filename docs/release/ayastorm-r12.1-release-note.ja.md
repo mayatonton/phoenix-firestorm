@@ -20,7 +20,7 @@ r10 → r12.1 の 1 ジャンプで以下をまとめて提供します。**r11 
 ### r12 由来 — stereo 配信を 5.1 placement に展開
 
 - **`{upmix:on|off}` タグ**: viewer 内 DSP で 2ch → 6ch (FL/FR/C/Ls/Rs/LFE) を生成。SL 配信ソフトの大半が stereo 止まりという実情に対し、r10 で作った 6 spk placement を **stereo 配信のままでも体験可能** にします。詳細 → [tag-guide §8](../guides/3dstream-tag-guide.ja.md#8-stereo51-upmix-r12) / 仕様 `docs/specs/spec_stereo_upmix.md`
-- **アルゴリズムは固定 (NG1)**: DPL2 系 matrix decode + 帯域分離 (LFE LPF / center bleed 除去 / rear decorrelation)。`{upmix:dpl2|logic7|...}` のような選択肢は導入しません (= 表現の不確定性を増やさない方針)。
+- **アルゴリズムは固定 (NG1)**: matrix upmix + 帯域分離 (LFE LPF / center bleed 除去 / rear decorrelation)。`{upmix:...}` のようなアルゴリズム選択肢は導入しません (= 表現の不確定性を増やさない方針)。
 - **5.1 native は auto bypass**: source ch ≥ 6 の場合 `{upmix:on}` でも自動 bypass + chat 通知 1 回。同じ Description を stereo / 5.1 native 両方の素材で使い回せます。
 - **default は `off` (opt-in)**: r10 挙動を保つため、配信者がタグで明示的に opt-in。
 - **タグ短縮形**: `binaural`/`venue`/`wetgain` を `bin`/`v`/`wg` に、9 venue 値にも 1〜2 字エイリアス (`d`/`rs`/`rm`/`hs`/`hm`/`hl`/`cl`/`ct`/`od`)。長形式と完全等価。SL Description 127-byte 制限に収まりやすくなります。詳細 → [tag-guide §4.5](../guides/3dstream-tag-guide.ja.md#45-キー名venue-値の短縮形-r12--r121)

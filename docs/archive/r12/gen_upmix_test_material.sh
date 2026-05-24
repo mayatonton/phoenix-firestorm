@@ -12,7 +12,7 @@
 # 5.1 native 回帰用 (= U4) は r10 で生成済の sample1_6ch.ogg を流用するの
 # でこのスクリプトでは扱わない (spec §5 4 行目)。
 #
-# 各素材の理屈 (spec §4.3 の DPL2 + bleed 数式に照らして):
+# 各素材の理屈 (spec §4.3 の matrix upmix + bleed 数式に照らして):
 #
 #   1) stereo_voice_30s: mono dialog を L=R duplicate して完全 centered。
 #      C = (L+R)/√2 = √2·V (フル) / FL,FR = L − C·bleed/√2 = 0 (bleed=1) /

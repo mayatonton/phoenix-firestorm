@@ -32,7 +32,7 @@
 
 namespace
 {
-    // 1/√2 — the DPL2 power-preserving normaliser. Spec §4.3.2:
+    // 1/√2 — the power-preserving matrix normaliser. Spec §4.3.2:
     //   C  = (L + R) / √2, S  = (L - R) / √2,
     //   L' = L - C × bleed / √2, R' = R - C × bleed / √2.
     // Doubles as α = sin(ω0)/(2Q) for the Butterworth LFE biquad

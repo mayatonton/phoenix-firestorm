@@ -322,7 +322,7 @@ private:
             StereoSum, // (track0 + track1)/2 — ch:M/C on 2ch source
             Bs775,     // mix6chToMono(op_role) — ch:L/R/M on 6ch source
             // r12 P2 + P4: 2ch source + effectiveUpmix() == on →
-            // DPL2-style matrix decode + band split (FL/FR/C/LFE/SL/SR
+            // static matrix upmix + band split (FL/FR/C/LFE/SL/SR
             // per role). Parallel to Bs775: a 2-track raw read followed
             // by a stateless transform with per-speaker state (LPF /
             // delay) carried in upmix_state. resolveReadOp() emits this
