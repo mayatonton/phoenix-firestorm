@@ -11,6 +11,38 @@
 
 ## 機能
 
+### AYAstorm Controls
+
+**AYAstorm** メニュー (Build と Help の間) → `AYAstorm Controls...`、または `Alt+C` で開きます。
+
+![AYAstorm Controls](docs/images/ayastorm_controls.png)
+
+AYAstorm の preset マスタースイッチと 11 のレンダリングカテゴリを左タブにまとめた 1 つの floater です。各項目に `D` ボタンがあり、AYAstorm preset の default 値に即座に戻せるため、debug settings を探さずに live A/B 調整できます。
+
+- **General** — SSAO / Glow & Bloom / Render Attached Particles のマスタースイッチと、Reflection probe quality スライダー。個別効果の tuning に入る前のトップレベル ON/OFF パネル
+
+- **Shadows** — Shadow Detail レベル (OFF / 太陽のみ / 太陽+spot+projector)、自動 vs. 手動 cascade 距離、shadow blur size、解像度スケール、shadow far clip。柔らかさと shadow 描画距離のバランスを取れます
+
+- **SSAO** — SSAO マスタートグル (General タブと連動)、`Blur deferred lights` トグル、AO tuning スライダー。接触影の強度と減衰を調整
+
+- **DoF & Camera** — Depth of Field マスター、**High-quality DoF (4× CoF, depth-gated)**、前ボケ (front-of-focus blur)、alpha 透過面を DoF depth に含めるオプション、加えて camera 側 AYAstorm preset 値 (focal length / aperture 等) と DoF 連動の chromatic aberration 強度
+
+- **SSR** — Screen Space Reflections マスタートグルと 6 本の quality tuning スライダー (step count、max distance 等)。deferred opaque buffer の上に濡れ床/ガラス反射を加算
+
+- **Motion Blur** — Motion Blur マスタートグル、`Blur self avatar` / `Blur other avatars` の独立スイッチ、加えて Antialiasing サブセクション
+
+- **Glow & Volumetric** — Glow / Bloom 強度 tuning、**Volumetric Lighting (AYA godrays)** (太陽が地平線下に沈んだときの directional fade 付き)、別立ての **Godrays (sun-facing beam)** (太陽光軸上の強い光芒バリアント)
+
+- **Lighting** — Enable fullbright textures (global) / in-world の point・spot light / 自分の attached light / 他人の attached light — local-light pipeline がシーンに寄与する量を決める 4 スイッチ
+
+- **Post-process** — Contrast Adaptive Sharpening (CAS) と Post FX のスライダー。framebuffer に対する最終 post-process pass として適用
+
+- **Atmosphere & sky** — Sky depth & sun glare、distant blue haze、morning blue / evening warm tint — EEP の上に乗る AYAstorm View 固有の大気表現
+
+- **Skin SSS** — 肌の半透過 subsurface scattering: マスタースイッチ、blur radius / strength 等のパラメータ、target mesh UUID whitelist と `Lock editing (prevent accidental changes)` / `Reset all to defaults`
+
+> Tip: **View Mode** (Firestorm / AYAstorm View) の切替は 環境設定 → グラフィック から。切替後は viewer 再起動で反映されます。
+
 ### レンダリング
 
 環境設定 → グラフィック → レンダリング タブから設定できます。

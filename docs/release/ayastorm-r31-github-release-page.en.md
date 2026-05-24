@@ -85,9 +85,11 @@ The AYAstorm View pipeline draws extensively from NiranV Dean's Black Dragon vie
 
 ## Downloads
 
-- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261440915_Setup.exe)
-- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81208.dmg)
-- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261441701.tar.xz)
+> **Linux / Windows: please use [AYAstorm r31-bugfix-1](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1) instead.** r31-bugfix-1 fixes a structural SSS pink-shadow leak through FullBright prims that was present in r31. macOS remains on this r31 build until r32 bundles the fix (per r10.x precedent: bugfix-N releases ship Linux/Windows only).
+
+- Linux Installer → [use r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
+- Windows Installer → [use r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
+- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81208.dmg) — current macOS build; r32 will bundle the SSS leak fix
 
 ## Contributors
 

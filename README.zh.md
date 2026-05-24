@@ -11,6 +11,38 @@
 
 ## 功能
 
+### AYAstorm Controls
+
+从 **AYAstorm** 菜单(位于 Build 与 Help 之间)→ `AYAstorm Controls...` 打开,或按 `Alt+C`。
+
+![AYAstorm Controls](docs/images/ayastorm_controls.png)
+
+将 AYAstorm 的预设主开关与 11 个渲染分类按左侧标签栏集中在单一 floater。每项控件旁的 `D` 按钮可一键恢复到 AYAstorm preset 默认值,无需翻 debug settings 即可进行 live A/B 调整。
+
+- **General** — SSAO / Glow & Bloom / Render Attached Particles 的主开关,以及 Reflection probe quality 滑块。在进入各效果细调前,作为顶层 ON/OFF 面板使用
+
+- **Shadows** — Shadow Detail 级别(关闭 / 仅太阳 / 太阳 + spot + projector)、自动 vs. 手动 cascade 距离、shadow blur size、分辨率缩放、shadow far clip。可在柔和度与阴影绘制距离之间取得平衡
+
+- **SSAO** — SSAO 主开关(与 General 标签联动)、`Blur deferred lights` 开关、AO 调整滑块。调整接触阴影强度与衰减
+
+- **DoF & Camera** — Depth of Field 主开关、**High-quality DoF(4× CoF,depth-gated)**、前景虚化(front-of-focus blur)、是否将 alpha 透明面纳入 DoF depth,以及 camera 侧 AYAstorm preset 数值(focal length / aperture 等)和 DoF 联动的 chromatic aberration 强度
+
+- **SSR** — Screen Space Reflections 主开关与 6 条 quality tuning 滑块(step count、max distance 等)。在 deferred opaque buffer 之上叠加湿地板 / 玻璃反射
+
+- **Motion Blur** — Motion Blur 主开关、`Blur self avatar` / `Blur other avatars` 独立开关,以及 Antialiasing 子节
+
+- **Glow & Volumetric** — Glow / Bloom 强度调整、**Volumetric Lighting(AYA godrays)**(带太阳低于地平线时的 directional fade),以及独立的 **Godrays(sun-facing beam)**(沿太阳光轴的更强光束变体)
+
+- **Lighting** — Enable fullbright textures(global)/ in-world 的 point/spot 光 / 自己的 attached 光 / 他人的 attached 光 —— 决定 local-light pipeline 对场景贡献量的 4 个开关
+
+- **Post-process** — Contrast Adaptive Sharpening(CAS)与 Post FX 滑块,作为 framebuffer 上的最终 post-process pass
+
+- **Atmosphere & sky** — Sky depth & sun glare、distant blue haze、morning blue / evening warm tint —— 叠加在 EEP 之上的 AYAstorm View 标志性大气表现
+
+- **Skin SSS** — 肌肤半透明 subsurface scattering: 主开关、blur radius / strength 等参数,以及 target mesh UUID 白名单与 `Lock editing(prevent accidental changes)` / `Reset all to defaults`
+
+> 提示:**View Mode**(Firestorm / AYAstorm View)的切换位于 设置 → 图形。切换后需重启 viewer 才能生效。
+
 ### 渲染
 
 可在 设置 → 图形 → 渲染 标签页中配置。
