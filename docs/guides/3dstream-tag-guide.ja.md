@@ -1,8 +1,10 @@
 # 3D Stream タグ書式ガイド
 
+> **Language / 言語 / 语言**: [English](./3dstream-tag-guide.en.md) · **日本語** · [中文](./3dstream-tag-guide.zh.md)
+>
 > AYAstorm の **3D Stream** 機能で、プリムから HTTP オーディオストリームまたは Media-on-a-Prim (MOAP) 音声を 3D 空間定位再生するためのタグ書式リファレンスです。
 >
-> このドキュメントは AYAstorm `r26` 時点の最終仕様に基づきます。r12 で追加された機能 (バイノーラル / 会場残響 / stereo→5.1 upmix / タグ短縮形) に加え、r26 の media/MOAP source routing も含まれます。
+> このドキュメントは AYAstorm `r31` 時点の最終仕様に基づきます。r31 では、単一プリム再生とリンクセット分散配置の新規推奨タグを `[3dstream:...]` に統一しました。旧 `[3dstream-stereo:...]` / `[ayastream-stereo:...]` も互換受付します。
 
 ---
 
@@ -12,8 +14,8 @@
 2. [クイックスタート](#2-クイックスタート)
 3. [用語](#3-用語)
 4. [タグの全体像](#4-タグの全体像)
-5. [モノラルタグ `[3dstream:...]`](#5-モノラルタグ-3dstream)
-6. [分散ステレオ / 会場配置タグ `[3dstream-stereo:...]`](#6-分散ステレオ--会場配置タグ-3dstream-stereo)
+5. [単一プリム URL 再生 `[3dstream:...]`](#5-単一プリム-url-再生-3dstream)
+6. [リンクセット配置 / 分散ステレオ `[3dstream:...]`](#6-リンクセット配置--分散ステレオ-3dstream)
 7. [バイノーラル / 会場残響 (r12)](#7-バイノーラル--会場残響-r12)
 8. [stereo→5.1 upmix (r12)](#8-stereo51-upmix-r12)
 9. [ch (チャンネル) 値リファレンス](#9-ch-チャンネル-値リファレンス)
@@ -64,15 +66,15 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 1. 親プリム (Root) と子プリム (Child) を 1 つずつリンクします (Ctrl+L)
 2. **Root の Description**:
    ```
-   [3dstream-stereo:{url:http://example.com/stream.mp3}{range:30}]
+   [3dstream:{url:http://example.com/stream.mp3}{range:30}]
    ```
 3. **Root の Description に追記** (= Root 自身も L スピーカー):
    ```
-   [3dstream-stereo:{url:http://example.com/stream.mp3}{range:30}{ch:L}]
+   [3dstream:{url:http://example.com/stream.mp3}{range:30}{ch:L}]
    ```
 4. **Child の Description**:
    ```
-   [3dstream-stereo:{ch:R}]
+   [3dstream:{ch:R}]
    ```
 
 これで Root から L、Child から R が鳴ります。
@@ -102,23 +104,24 @@ AYAstorm の **3D Stream** 機能は、プリム (オブジェクト) を「ス�
 
 ## 4. タグの全体像
 
-### 4.1 3 種類のタグ
+### 4.1 3 種類の用途
 
-| タグ | 接頭辞 | 用途 |
+| 用途 | 接頭辞 | 成立条件 |
 |---|---|---|
-| **モノラルタグ** | `[3dstream:...]` | 単一プリムから 1 ストリームを再生 (最小構成) |
-| **分散ステレオ / 会場配置タグ** | `[3dstream-stereo:...]` | リンクセットの複数プリムから 1 音源を同期再生 (ステレオ / マルチスピーカー / 5.1ch / media/MOAP source) |
+| **単一プリム URL 再生** | `[3dstream:...]` | `{url:...}` があり、同じリンクセット内に `{ch:...}` を持つ 3D Stream タグが無い |
+| **リンクセット配置 / 分散ステレオ** | `[3dstream:...]` | ルートに `{url:...}` または `{source:media...}` があり、ルートまたは子プリムに `{ch:...}` が 1 つ以上ある |
 | **静的 occlusion タグ** (r13 新設) | `[ayastorm:occlude]` | 壁・扉・床・天井プリムを「音を遮るもの」として扱う (会場運営 / 建設者向け、§16) |
 
 ### 4.2 旧プレフィクスのエイリアス
 
-両タグとも、旧プレフィクス (`[ayastream:...]` / `[ayastream-stereo:...]`) を **恒久エイリアス** として受け付けます。r5 (2026-05) で `ayastream` → `3dstream` にリネームした際、それ以前に配置されたプリムを再編集せずに済むよう温存しています。新規記述は **`3dstream` 系を推奨**しますが、混在しても問題ありません。
+r31 以降の新規記述は **`[3dstream:...]` を推奨**します。旧プレフィクス (`[ayastream:...]` / `[3dstream-stereo:...]` / `[ayastream-stereo:...]`) も互換のため受け付けます。r5 の `ayastream` → `3dstream` rename、および r31 の unified tag 以前に配置されたプリムを再編集せずに済むよう温存しています。
 
 ```
-[3dstream:{url:...}]              ← 推奨 (canonical)
-[ayastream:{url:...}]             ← 旧式、互換受付
+[3dstream:{url:...}]              ← 単一プリム URL 再生の推奨 (canonical)
+[3dstream:{url:...}{ch:L}]        ← リンクセット配置の推奨 (canonical)
 
-[3dstream-stereo:{url:...}{ch:L}] ← 推奨 (canonical)
+[ayastream:{url:...}]             ← 旧式、互換受付
+[3dstream-stereo:{ch:L}]          ← 旧式、互換受付
 [ayastream-stereo:{ch:L}]         ← 旧式、互換受付
 ```
 
@@ -137,7 +140,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 ### 4.5 キー名・venue 値の短縮形 (r12 / r12.1)
 
-`[3dstream-stereo:...]` で使う **キー名のうち頻出 4 つ** と **`venue` の値 9 種** には r12 から **短縮エイリアス**を用意しています。SL の Description 127 byte 上限 (§4.4) に収めやすくするためのもので、長形式と短縮形は **完全等価** です (内部で同じ正規形に解決)。新規記述・既存記述どちらの形式で書いても動作は同じです。
+`[3dstream:...]` で使う **キー名のうち頻出 4 つ** と **`venue` の値 9 種** には r12 から **短縮エイリアス**を用意しています。SL の Description 127 byte 上限 (§4.4) に収めやすくするためのもので、長形式と短縮形は **完全等価** です (内部で同じ正規形に解決)。新規記述・既存記述どちらの形式で書いても動作は同じです。
 
 #### キー名の短縮 (4 件)
 
@@ -169,14 +172,14 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 長形式 (**127 byte 超過、Description に書けない**):
 
 ```
-[3dstream-stereo:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{ch:C}{binaural:on}{venue:hall_medium}{wetgain:1.5}{upmix:on}]
+[3dstream:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{ch:C}{binaural:on}{venue:hall_medium}{wetgain:1.5}{upmix:on}]
 ```
 (133 byte — 127 上限を 6 byte 超過)
 
 短縮形 (**127 byte 以内、書ける**):
 
 ```
-[3dstream-stereo:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{ch:C}{bin:on}{v:hm}{wg:1.5}{upmix:on}]
+[3dstream:{url:http://stream.example.jp:8000/aya/live_set_a.ogg}{ch:C}{bin:on}{v:hm}{wg:1.5}{upmix:on}]
 ```
 (110 byte — 23 byte 削減で 127 byte 制限を余裕クリア)
 
@@ -198,18 +201,12 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 ---
 
-## 5. モノラルタグ `[3dstream:...]`
+## 5. 単一プリム URL 再生 `[3dstream:...]`
 
 ### 5.1 書式
 
 ```
 [3dstream:{url:URL}{min:N}{max:N}]
-```
-
-または旧プレフィクス:
-
-```
-[ayastream:{url:URL}{min:N}{max:N}]
 ```
 
 ### 5.2 キー一覧
@@ -225,9 +222,11 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 ### 5.3 動作
 
 - リンクセットの **どのプリム** でも書けます (ルートでも子でも)。書いたプリム自身がスピーカーとして音を鳴らします。
-- モノラルタグは URL 音源専用です。media/MOAP source routing は分散ステレオ / 会場配置タグ (§6.7) を使います。
+- `{url:...}` だけを書いた `[3dstream:...]` は単一プリム URL 再生になります。
+- 同じリンクセット内に `{ch:...}` を持つ 3D Stream タグが 1 つでもある場合、`[3dstream:{url:...}]` はリンクセット配置の音源宣言として扱われ、単一プリム mono ではなくなります。
+- 子プリムが存在するだけではリンクセット配置に昇格しません。判定に使うのは **子プリムの有無ではなく `{ch:...}` の有無**です。
+- `{source:media...}` は単一プリム再生にはなりません。media/MOAP source routing はリンクセット配置 (§6.7) として、少なくとも 1 つの `{ch:...}` スピーカーと組み合わせます。
 - ステレオ音源を渡した場合は **内部で L/R をミックスしてモノラル化** されます。
-- 同じリンクセット内に `[3dstream-stereo:...]` も同時に書かれている場合、`[3dstream:...]` 側がそのプリムのスピーカー指定として優先されることはありません — 両方の binding 経路は独立に評価されます。同一プリムを両用途に使うのは推奨しません (動作未定義)。
 
 ### 5.4 例
 
@@ -257,22 +256,23 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 ---
 
-## 6. 分散ステレオ / 会場配置タグ `[3dstream-stereo:...]`
+## 6. リンクセット配置 / 分散ステレオ `[3dstream:...]`
 
 ### 6.1 書式
 
 ```
-[3dstream-stereo:{url:URL}{range:N}{ch:CH}{volume:V}]
-[3dstream-stereo:{source:media}{link:N}{face:N}{range:N}{ch:CH}{volume:V}]
+[3dstream:{url:URL}{range:N}{ch:CH}{volume:V}]
+[3dstream:{source:media}{link:N}{face:N}{range:N}{ch:CH}{volume:V}]
 ```
 
-または旧プレフィクス:
+旧プレフィクスも互換受付します:
 
 ```
+[3dstream-stereo:...]
 [ayastream-stereo:...]
 ```
 
-このタグは **リンクセット全体で 1 つの音源** を扱う形式です。ルートプリムが「どの音源を鳴らすか」(`{url:...}` または `{source:media}`) を宣言し、リンクセット内の各プリムが「自分はどのチャンネルを担当するか」を宣言します。
+この用途は **リンクセット全体で 1 つの音源** を扱う形式です。ルートプリムが「どの音源を鳴らすか」(`{url:...}` または `{source:media}`) を宣言し、リンクセット内の各プリムが「自分はどのチャンネルを担当するか」を `{ch:...}` で宣言します。
 
 ### 6.2 プリムの役割
 
@@ -286,7 +286,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 | 両方を含む (= ルートのみ) | 音源宣言 + 自身もスピーカーを兼ねる |
 | どちらも含まない | 何もしない (binding 対象外) |
 
-リンクセット内に **音源宣言 (= `{url}` または `{source:media}` を持つルート)** と **少なくとも 1 個のスピーカー (= `{ch}` を持つプリム)** が両方あって初めて再生開始されます。スピーカー 0 個では「構造エラー」となり、エラー通知が出ます (§13)。`{url}` と `{source:media}` は **相互排他**です。両方を書いた場合は構造エラーとして扱われます。
+リンクセット内に **音源宣言 (= `{url}` または `{source:media}` を持つルート)** と **少なくとも 1 個のスピーカー (= `{ch}` を持つプリム)** が両方あって初めてリンクセット配置として再生開始されます。子プリムがあっても `{ch}` が 1 つも無い場合、`[3dstream:{url:...}]` は従来どおり単一プリム URL 再生です。`{source:media}` は `{ch}` スピーカーが無いと再生開始できません。`{url}` と `{source:media}` は **相互排他**です。両方を書いた場合は構造エラーとして扱われます。
 
 ### 6.3 キー一覧
 
@@ -313,7 +313,7 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 | `range` | 任意 | F32 (m) | ルートの `range` → `Stream3DRolloffMax` の順でフォールバック | このスピーカー個別の減衰距離 |
 | `volume` | 任意 | F32 [0.0〜1.0] | 1.0 | このスピーカー個別の音量倍率 |
 
-> **重要**: モノラルタグの `min` / `max` キーは分散ステレオタグ側では **無視** されます。分散ステレオでは近距離は内部固定で 1.0m、遠距離は `range` キー (または既定値 `Stream3DRolloffMax`) が使われます。
+> **重要**: 単一プリム URL 再生の `min` / `max` キーはリンクセット配置では **無視** されます。リンクセット配置では近距離は内部固定で 1.0m、遠距離は `range` キー (または既定値 `Stream3DRolloffMax`) が使われます。
 
 > **重要**: `source` / `link` / `face` は **ルートプリムでのみ意味がある source selection キー**です。スピーカープリムに書いても無視されます。
 
@@ -323,10 +323,10 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 ```
 ルート Description:
-  [3dstream-stereo:{url:http://example.com/stream.mp3}{ch:L}]
+  [3dstream:{url:http://example.com/stream.mp3}{ch:L}]
 
 子 Description:
-  [3dstream-stereo:{ch:R}]
+  [3dstream:{ch:R}]
 ```
 
 ルート自身が L、子が R を担当します。ルートと子の **位置関係 (= リンク番号)** は再生に影響しません。空間内のどこに置くかが定位を決めます。
@@ -337,24 +337,26 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 ```
 ルート Description:
-  [3dstream-stereo:{url:http://example.com/stream.mp3}{range:30}]
+  [3dstream:{url:http://example.com/stream.mp3}{range:50}]
 
 子 #1 Description:
-  [3dstream-stereo:{ch:L}{range:50}]
+  [3dstream:{ch:L}]
 
 子 #2 Description:
-  [3dstream-stereo:{ch:R}{range:50}]
+  [3dstream:{ch:R}]
 
 子 #3 Description:
-  [3dstream-stereo:{ch:L}{volume:0.7}]
+  [3dstream:{ch:L}{volume:0.7}]
 
 子 #4 Description:
-  [3dstream-stereo:{ch:R}{volume:0.7}]
+  [3dstream:{ch:R}{volume:0.7}]
 ```
 
 - ルートは音源宣言だけで、自分はスピーカーとして鳴りません (`{ch}` なし)
-- 子 #1, #2 は L/R それぞれ近距離 50m、音量 100%
-- 子 #3, #4 は同じ L/R を 70% で鳴らす (前段の補助)
+- ルートの `{range:50}` が 4 つの子スピーカーすべての既定減衰距離になります
+- 子 #1, #2 は L/R それぞれ音量 100%
+- 子 #3, #4 は同じ L/R を 70% で鳴らす (後方・補助スピーカー想定)
+- 同じ `{ch}` を複数プリムに書くと、そのチャンネルを複数地点から鳴らせます。会場前方と後方に同じ L/R を置くような用途に使えます
 - スピーカー数の上限は `Stream3DStereoMaxSpeakers` 設定で **既定 16 個まで** (§12)
 
 ### 6.6 5.1ch 会場配置 (6 プリム)
@@ -363,58 +365,48 @@ LSL `llSetObjectDesc` が書ける Description は **127 byte 上限**です。�
 
 ```
 ルート Description:
-  [3dstream-stereo:{url:http://example.com/test_5_1.flac}{range:30}]
+  [3dstream:{url:http://example.com/test_5_1.flac}{range:30}]
 
-FL プリム:  [3dstream-stereo:{ch:FL}]
-FR プリム:  [3dstream-stereo:{ch:FR}]
-C プリム:   [3dstream-stereo:{ch:C}]
-LFE プリム: [3dstream-stereo:{ch:LFE}]
-SL プリム:  [3dstream-stereo:{ch:SL}]
-SR プリム:  [3dstream-stereo:{ch:SR}]
+FL プリム:  [3dstream:{ch:FL}]
+FR プリム:  [3dstream:{ch:FR}]
+C プリム:   [3dstream:{ch:C}]
+LFE プリム: [3dstream:{ch:LFE}]
+SL プリム:  [3dstream:{ch:SL}]
+SR プリム:  [3dstream:{ch:SR}]
 ```
 
 - 各プリムを物理的に「会場のスピーカー位置」に配置します (ステージ前 L/R、センター、サブウーファー、サラウンド L/R)
 - LFE は他の 5 個と同等に扱われます (ローパスフィルタ等の特殊処理は viewer 側に入っていません。低域フィルタリングが必要なら配信側 mix で済ませてください)
-- リスナーは「映画のスイートスポット」を持ちません (= SL の自由視点モデル)。会場を歩き回ると 5.1 mix の意図した定位は当然崩れます。シネマ的サラウンド体験ではなく、会場 PA 的な多点配置として運用してください
+- 映画館のように特定の座席付近を基準にしたい場合は、その位置をリスニングポイントとして想定して各スピーカーを配置できます。リスナーが会場内を歩き回る運用では、基準点から離れるほど定位は変化するため、5.1ch 各チャンネルを空間内のスピーカーとして配置する会場 PA 的な使い方になります。
 
-### 6.7 Media/MOAP source を使う (r26)
+### 6.7 Media/MOAP source を使う (r26 / r31 unified tag)
 
-r26 では、HTTP URL ではなくリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使えます。ルート Description に `{source:media}` または `{source:media-5-1}` を書き、スピーカープリムは従来どおり `{ch:...}` を持たせます。
+r26 では、HTTP URL ではなくリンクセット内の Media-on-a-Prim (MOAP) 面を 3D Stream の音源として使えるようになりました。r31 以降はルート Description に `[3dstream:{source:media}]` または `[3dstream:{source:media-5-1}]` を書き、スピーカープリムには `[3dstream:{ch:...}]` を持たせます。
 
 ```
 ルート Description:
-  [3dstream-stereo:{source:media}{ch:L}]
+  [3dstream:{source:media}{ch:L}]
 
 子 Description:
-  [3dstream-stereo:{ch:R}]
+  [3dstream:{ch:R}]
 ```
 
 media 面はルートプリム上にあっても、子プリム上にあっても構いません。media 面が 1 つだけなら `{link}` / `{face}` は省略できます。リンクセット内に media 面が複数ある場合は、どの面を 3D Stream に流すかをルートで明示します。
 
 ```
 ルート Description:
-  [3dstream-stereo:{source:media}{link:3}{face:2}{range:30}]
+  [3dstream:{source:media}{link:3}{face:2}{range:30}]
 
 スピーカー #1 Description:
-  [3dstream-stereo:{ch:L}]
+  [3dstream:{ch:L}]
 
 スピーカー #2 Description:
-  [3dstream-stereo:{ch:R}]
+  [3dstream:{ch:R}]
 ```
 
 `{link:N}` は **media source を選ぶためだけ**のリンク番号です。スピーカー順や L/R の割り当てには影響しません。スピーカーの役割は常に各プリムの `{ch:...}` で決まります。複数 media 面があるのに `{link}` / `{face}` を省略して一意に決められない場合は、構造エラーになります。
 
-URL 音源と media 表示は同居できます。その場合はルートに `{url:...}` を書き、media 面は通常の MOAP として表示・再生されます。3D Stream のスピーカーから鳴るのは URL ストリームで、media 音声は通常の media 音声として扱われます。
-
-```
-ルート Description:
-  [3dstream-stereo:{url:http://example.com/live.ogg}{ch:L}]
-
-子 Description:
-  [3dstream-stereo:{ch:R}]
-```
-
-`{url}` と `{source:media}` は相互排他です。media 画面を見せながら URL ストリームを 3D 配置したい場合は、上の例のように root は `{url:...}` のままにしてください。
+URL 音源と media 表示は同居できます。ただし `{url}` と `{source:media}` は相互排他です。media 画面を見せながら別の URL ストリームを 3D 配置したい場合は、ルートに `{url:...}` だけを書き、media 面は 3D Stream source として選択しません。この場合、3D Stream のスピーカーから鳴るのは URL ストリームで、media 音声は通常の MOAP 音声として扱われます。
 
 音量の扱いは media 面の数で変わります。media 面が 1 つだけの場合、その media の volume / mute は source gain として効きます。複数 media 面がある場合、3D に routed された選択 media は source gain 1.0 として扱われ、3D Stream 側の master volume / speaker volume で制御します。選択されなかった media 面は従来どおり通常の media volume で鳴ります。
 
@@ -425,22 +417,7 @@ media source のチャンネル指定:
 
 このガイドで扱う media source は **2ch と 5.1ch (6ch)** までです。Dullahan/CEF の callback bus が 8ch で見える場合でも、3D Stream 側の 7.1ch speaker routing を実装済みとして扱うものではありません。
 
-### 6.8 同じ ch を複数のプリムに割り当てる
-
-`{ch:L}` を 2 つ以上のプリムに書くと、両プリムから同じ L チャンネルが鳴ります。配信会場で「ステージ前列の L」と「ステージ後列の L」のように複数台のスピーカーを置く用途に使えます。
-
-逆にどの ch も書かれていないと「スピーカー 0 個」エラーになります。
-
-### 6.9 ルート自身もスピーカー兼用
-
-```
-ルート Description:
-  [3dstream-stereo:{url:http://example.com/stream.mp3}{ch:M}{range:25}]
-```
-
-このように 1 タグに `{url}` または `{source:media}` と `{ch}` を併記すると、ルートが音源宣言 + 自身も M (モノラル) スピーカーとして機能します。子プリムが 1 つもないシンプルな mono 構成にも使えます (`[3dstream:...]` と機能的にはほぼ等価。ただし `[3dstream:...]` は URL 音源専用)。
-
-### 6.10 ルートプリムの判別方法
+### 6.8 ルートプリムの判別方法
 
 リンクセットを編集中、Build フローターの **Object** タブで「Selected」が表示されているプリムが選択中、その linkset の親 (= ルート) は通常 **最初に選択した状態でリンクされたプリム** です。
 
@@ -454,16 +431,16 @@ media source のチャンネル指定:
 
 ## 7. バイノーラル / 会場残響 (r12)
 
-r10 までの 3D Stream は「dry な素材を多点配置で空間に置く」だけで、ヘッドホンで聴いたときの左右定位の精細さや「会場に居る感」はリスナー側の想像力に頼っていました。r12 ではこの 2 点を viewer 内 DSP で補強する 3 つのタグキーを追加します。
+r10 までの 3D Stream でも、dry な素材を多点配置して空間内のスピーカーとして聴かせる運用は可能でした。r12 では、ヘッドホン再生時の定位補正や会場残響を viewer 内 DSP で追加できるタグキーを用意しています。
 
 | キー | 短縮形 | 既定 | 機能 |
 |---|---|---|---|
-| `binaural` | `bin` | `on` | lite-HRTF (ITD + air absorption) によるヘッドホン定位強化 |
+| `binaural` | `bin` | `off` | lite-HRTF (ITD + air absorption) によるヘッドホン定位強化 |
 | `venue` | `v` | `dry` | 9 種の会場残響プリセット (convolution reverb) |
-| `wetgain` | `wg` | `0.2` | 残響ウェット成分の倍率 (0.0〜2.0、音楽的レンジ 0.1〜0.5) |
+| `wetgain` | `wg` | `0.2` | 残響ウェット成分の倍率 (0.0〜2.0、推奨範囲 0.1〜0.5) |
 | `lfegain` | `lg` | `1.0` | LFE チャンネルのゲイン倍率 (0.0〜4.0、r12.1 追加) |
 
-**いずれも root プリムにのみ書きます** (子プリムに書いても無視)。listener 側 UI には現れません ─ **配信者がタグで決めたものをそのまま聴く** モデルです (§7.5)。
+これらのキーは音源全体の表現を決めるため、**音源宣言を持つ root プリムに書きます**。子プリムに書いても、そのスピーカーだけに個別適用されるわけではなく無視されます。リスナー側に個別の UI 項目はなく、会場側のタグ設定として適用されます (§7.5)。
 
 ### 7.1 `{binaural:on|off}` (短縮形 `bin`)
 
@@ -480,17 +457,17 @@ ILD (左右レベル差) は r10 までと同じく FMOD の `FMOD_3D_LINEARSQUA
 
 #### `off` を選ぶ場面
 
-- **既にバイノーラル encoded された配信源** を流すとき (二重処理を避ける)
-- **スピーカー視聴の listener が多い** ことが分かっているとき (ITD はヘッドホン前提の処理、スピーカーでは効果が薄く副作用のリスクがある)
-- **r10 までの動作** に厳密に揃えたいとき
+- 配信音源そのものが、すでにヘッドホン向けの立体音響として作られているとき
+- 来場者の多くがヘッドホンではなくスピーカーで聴く前提の会場にしたいとき
+- 追加の定位処理を掛けず、従来の 3D Stream と同じ素直な距離・方向表現にしたいとき
 
-#### 既定が `on` の理由
+#### 既定が `off` の理由
 
-既存配置 (r8/r10 で置かれた全リンクセット) を **タグ無改修で** 改善できるようにするためです。新規記述は明示的に `{bin:on}` を書くことを推奨しますが、書かなくても on 動作になります。
+既存配置の音の出方を、タグ無改修ではなるべく変えないためです。ヘッドホン向けの定位強化を使いたい会場では、root タグに `{bin:on}` または `{binaural:on}` を明示してください。
 
 ### 7.2 `{venue:NAME}` (短縮形 `v`)
 
-会場残響のプリセット 9 種から 1 つを選びます。**配信側で素材を dry に保ち、viewer 側で「ホール着替え」する** 運用が基本です。
+会場残響のプリセット 9 種から 1 つを選びます。音源自体に強い残響が入っていると `venue` の残響と重なるため、3D Stream 側で会場の響きを調整したい場合は、配信音源をなるべく dry にしておくと扱いやすくなります。
 
 #### プリセット一覧
 
@@ -508,13 +485,11 @@ ILD (左右レベル差) は r10 までと同じく FMOD の `FMOD_3D_LINEARSQUA
 
 #### 既定が `dry` の理由
 
-配信者の **明示的 opt-in** を求めるためです。`dry` のときは reverb DSP 自体が挿入されず CPU 負荷ゼロ ─ r10 まで通り素通り再生になります。
+未指定では従来と同じ再生にするためです。`dry` のときは reverb DSP が挿入されないため、残響処理の CPU 負荷はありません。
 
-#### CPU 負荷の注意 (重い venue)
+#### CPU 負荷
 
-`hall_medium` 以上の 4 venue (`hm` / `hl` / `cl` / `ct`) は IR (impulse response) が長く partitioned FFT convolution の負荷が増えます。`cathedral` は r10 比 **+10.2pp** ─ 1 コアで 53% 程度を消費します。modern 多コア機では問題になりにくい (全体 CPU 換算 3〜7%) ですが、低スペック機向けの会場では `room_small` / `room_medium` / `outdoor` が無難です。
-
-「重い venue を **削るのではなく出荷する**」のが r12 の方針です ─ 配信者が cathedral タグを付ける = 「重い長残響が欲しい」と明示 opt-in する選択であり、コストに見合う効果を返すべき、という判断です。
+`hall_medium` / `hall_large` / `club` / `cathedral` は IR (impulse response) が長く、partitioned FFT convolution の負荷が増えます。`cathedral` は r10 比 **+10.2pp**、1 コアで 53% 程度を消費します。多コア CPU では全体 CPU 換算で 3〜7% 程度ですが、低スペック環境を想定する会場では `room_small` / `room_medium` / `outdoor` から選ぶと負荷を抑えられます。
 
 ### 7.3 `{wetgain:N}` (短縮形 `wg`)
 
@@ -524,16 +499,16 @@ venue 残響の **ウェット成分** (= reverb 出力) の倍率です。dry s
 |---|---|
 | `0.0` | 完全 dry (= venue=dry と同等。ただし DSP は挿入されたまま) |
 | `0.1` | wet ごく薄め |
-| **`0.2` (既定)** | wet 控えめ (音楽的に違和感の出ない標準) |
-| `0.3〜0.5` | wet 中庸〜やや濃いめ (musical range の上限目安) |
-| `1.0` 以上 | wet が dry と同等以上の濃度 (実用上はリバーブが過剰になりやすい) |
+| **`0.2` (既定)** | wet 控えめ |
+| `0.3〜0.5` | wet 中庸〜やや濃いめ |
+| `1.0` 以上 | wet が dry と同程度以上になり、残響が目立ちやすい |
 | `2.0` | wet 2 倍 (上限) |
 
 #### 設計上のポイント
 
-各 venue の IR は **unity-gain 正規化** されているため、`{wg:0.2}` は venue を切り替えても **「wet と dry の比」が一定** に保たれます。`room_small` も `cathedral` も `wg:0.2` で同じ「dry/wet バランス」になります (cathedral だけ wet が爆音にならない)。
+各 venue の IR は **unity-gain 正規化** されているため、`{wg:0.2}` は venue を切り替えても wet と dry の比率を保ちます。ただし RT60 が長い preset ほど残響が長く残るため、同じ `wetgain` でも聴感上は濃く感じる場合があります。
 
-> **既定値の根拠 (r12.1 で 1.0 → 0.2 に変更)**: 実装当初の `1.0` は「wet と dry が同レベル」を意味するため、ホール / カテドラルでは原音が飽和してしまい、配信用途として実用域から外れていました。実 listening で **音楽的に使えるレンジは 0.1〜0.5** であることが確認されたため、r12.1 で既定値を `0.2` に下げています。LSL UI のクイック選択も `0.1`〜`0.5` の細かい刻みに揃えています。
+> **既定値の変更 (r12.1 で 1.0 → 0.2)**: `1.0` は wet と dry が同レベルになるため、ホール系やカテドラルでは残響が強く出すぎる場合がありました。r12.1 では通常の配信で扱いやすい値として既定値を `0.2` に下げています。LSL UI のクイック選択も `0.1`〜`0.5` を中心にしています。
 
 #### `{venue:dry}` のとき
 
@@ -563,62 +538,62 @@ LFE 経路自体が動作しないため、`lfegain` は **意味を持ちませ
 
 #### listener 側 sentinel
 
-debug settings `Stream3DLfeGain` (sentinel `-1.0` = タグ通り、それ以外 `0.0〜4.0` で強制上書き) も r12.1 で追加しています (詳細 §12.2)。配信者主導モデルの例外救済枠で、一般 listener UI には載せていません。
+Debug Settings に `Stream3DLfeGain` もあります。`-1.0` はタグ通り、それ以外の `0.0〜4.0` は listener 側の上書き値として扱います (詳細 §12.2)。通常の Preferences には表示されません。
 
 ### 7.5 配信者主導モデル
 
-これら 4 キー (`binaural` / `venue` / `wetgain` / `lfegain`) は **root prim Description が真実 (root truth)** ─ 一般 listener の Preferences / Debug Settings には対応 UI がありません。
+これら 4 キー (`binaural` / `venue` / `wetgain` / `lfegain`) は、root prim Description のタグで指定します。通常の Preferences には、listener が個別に変更するための UI はありません。
 
 #### なぜ listener UI を提供しないのか
 
-- 配信者が「この会場はホール、binaural ON」と決めた表現を、listener が勝手に変えて聴くと「同じ配信を聴いているのに人によって聴こえ方が違う」という曖昧性が増えます
-- AYAstorm の方針 (`r5 命名整理` / `r11 配信者主導モデル`) は **「表現の不確定性を増やさない」** で、tuning 軸を増やすほど運用が崩れる、という判断です
+- 会場側が指定した残響や binaural 設定を listener ごとに変更できると、同じ会場でも聴こえ方が大きく変わります
+- AYAstorm では、会場の音作りに関わる設定はタグ側に寄せ、listener 側の通常 UI には出さない設計にしています
 
-#### 例外: スピーカー視聴で binaural を切りたい個人
+#### 例外: debug settings による個人側 override
 
-ヘッドホンではなくスピーカーで視聴している listener が、`{binaural:on}` 配信を聴くと ITD が逆効果になる場合があります。この **救済目的** に限り Debug Settings に sentinel 1 件 ─ `Stream3DBinauralRender = 0` で listener 側強制 OFF できます (詳細 §12.2)。同様に `Stream3DVenueOverride` (空文字 = タグ通り、`"dry"` で全 reverb 強制 OFF) / `Stream3DVenueWetGain` (sentinel `-1.0` = タグ通り) / `Stream3DLfeGain` (sentinel `-1.0` = タグ通り、r12.1) も用意されていますが、いずれも一般利用者向け UI には載せていません。
+Debug Settings の `Stream3DBinauralRender` で、タグに関係なく binaural を強制 OFF / ON できます。検証用の上書き設定であり、通常の Preferences には表示されません。同様に `Stream3DVenueOverride` (空文字 = タグ通り、`"dry"` で全 reverb 強制 OFF) / `Stream3DVenueWetGain` (sentinel `-1.0` = タグ通り) / `Stream3DLfeGain` (sentinel `-1.0` = タグ通り、r12.1) もあります。
 
 ### 7.6 組合せ例
 
 #### 何も書かない (= 既定)
 
 ```
-[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}]
+[3dstream:{url:http://example/stream.ogg}{ch:C}]
 ```
-→ `{bin:on}{v:d}{wg:1.0}` 相当。lite-HRTF が掛かるが残響は無し (r10 + 定位強化)。
+→ `{bin:off}{v:d}{wg:0.2}` 相当。追加の binaural / venue reverb は掛からず、dry な 3D Stream として再生されます。
 
 #### ライブハウス (PA 想定、打ち込み系)
 
 ```
-[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:cl}{wg:1.0}]
+[3dstream:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:cl}{wg:0.3}]
 ```
-→ club preset、密な反射、dry/wet 同レベル。
+→ club preset を使い、反射の多い会場として再生します。`wg:0.3` は既定より少し残響を足す設定です。
 
 #### 大ホール (オーケストラ)
 
 ```
-[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:hl}{wg:0.8}]
+[3dstream:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:hl}{wg:0.25}]
 ```
-→ hall_large、wet を 0.8 倍に控えめ (ホール残響が長いので素材成分を残す)。
+→ hall_large を使い、wet を 0.25 倍にします。ホール残響が長いため、残響量は控えめにしています。
 
 #### カテドラル (アンビエント / 環境音)
 
 ```
-[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:ct}{wg:0.6}]
+[3dstream:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:ct}{wg:0.15}]
 ```
-→ cathedral、wet 0.6 倍 (RT60 ~3s と長いので濃すぎないように)。
+→ cathedral を使い、wet を 0.15 倍にします。RT60 が約 3 秒あるため、長い残響が前に出すぎない値にしています。
 
 #### 野外 (環境音 / 散歩 BGM)
 
 ```
-[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:od}{wg:1.0}]
+[3dstream:{url:http://example/stream.ogg}{ch:C}{bin:on}{v:od}{wg:0.2}]
 ```
-→ outdoor、軽い early reflection のみ、空気感を出す。
+→ outdoor を使い、軽い early reflection を加えます。`wg:0.2` は既定値です。
 
 #### 既にバイノーラル済の素材 (二重処理回避)
 
 ```
-[3dstream-stereo:{url:http://example/stream.ogg}{ch:C}{bin:off}{v:d}]
+[3dstream:{url:http://example/stream.ogg}{ch:C}{bin:off}{v:d}]
 ```
 → binaural OFF、reverb なし (= r10 までの動作)。
 
@@ -626,9 +601,11 @@ debug settings `Stream3DLfeGain` (sentinel `-1.0` = タグ通り、それ以外 
 
 ## 8. stereo→5.1 upmix (r12)
 
-r10 の per-channel 配置 (FL/FR/C/LFE/SL/SR の 6 spk) は **5.1 配信** 専用の機能でした。しかし SL 配信ソフト (butt / Mixxx / OBS / SAM 等) の主流は stereo 止まりで、6 spk 配置を体感できる配信者は稀です。
+r10 の per-channel 配置 (FL/FR/C/LFE/SL/SR の 6 spk) は **5.1 配信** 用の機能でした。一方で、SL 配信で使われるソフト (butt / Mixxx / OBS / SAM 等) は stereo 配信が中心です。
 
-r12 で追加された `{upmix:on}` キーは viewer 内 DSP として **stereo 2ch を 6ch に展開** し、r10 で築いた 6 spk placement の体験を **stereo 配信にも届け** ます。配信側の機材や方法は一切変更不要で、配信者がタグを 1 つ書き加えるだけで効きます。
+> **TIPS:** 5.1ch で配信したい場合は、本 repo の contributor である t-noami が作成した [SurroundStreamer](https://github.com/t-noami/SurroundStreamer) を利用できます。
+
+r12 で追加された `{upmix:on}` キーは、viewer 内 DSP で **stereo 2ch を 6ch に展開**します。配信側を 5.1ch に変更しなくても、6 spk 配置を使った再生ができます。
 
 ### 8.1 `{upmix:on|off}` (短縮形なし)
 
@@ -639,30 +616,30 @@ r12 で追加された `{upmix:on}` キーは viewer 内 DSP として **stereo 
 
 #### 既定が `off` の理由
 
-`venue` と同じく **配信者の明示 opt-in** を求めるためです。upmix DSP は CPU を消費し、また音像が変化するため、配信者の表現意図として明示的に有効化する設計です。
+upmix DSP は CPU を消費し、音像も変化するため、未指定では従来と同じ stereo 再生にします。6 spk 展開を使う場合は `{upmix:on}` を明示します。
 
 #### 既存配置への効果
 
-r8/r10 で過去に置かれた **すべての 6 spk リンクセット** は、配信者が `{upmix:on}` を 1 文字加えるだけで 6 spk placement の体験を得ます (再配置不要)。逆に `{upmix:off}` (or 未指定) の状態では従来通り。
+r8/r10 で作成した 6 spk リンクセットは、root タグに `{upmix:on}` を追加すると stereo source でも 6 spk に展開されます。`{upmix:off}` または未指定の場合は従来通りです。
 
-### 8.2 アルゴリズム (DPL2 系 matrix decode + 帯域分離)
+### 8.2 アルゴリズム (matrix upmix + 帯域分離)
 
-upmix は **DPL2 (Dolby Pro Logic II) 系のマトリックスデコード** に **3 つの帯域分離処理** を組み合わせた決め打ちアルゴリズムです。配信者は `on/off` だけ判断すれば良く、アルゴリズム選択タグはありません (= r11 の流儀踏襲)。
+upmix は stereo source から center / surround / LFE 成分を生成する固定アルゴリズムです。`(L+R)` / `(L-R)` の matrix 処理に帯域分離と rear delay を組み合わせています。配信者が指定するのは `on/off` のみで、アルゴリズムを選ぶタグはありません。
 
 | 出力チャンネル | 派生方法 (概要) |
 |---|---|
 | `C` (center) | `(L+R)/√2` (in-phase 成分) |
 | `Ls` / `Rs` (rear) | `(L-R)/√2` を decorrelate (固定 delay 16ms ± jitter で L/R 分離) |
-| `LFE` | `(L+R)` を 80Hz LPF (THX 推奨) |
+| `LFE` | `(L+R)` を 80Hz LPF |
 | `FL` / `FR` (front) | `L` / `R` から center 成分を `bleed_amount` で除去 (default フル除去 = phantom center を center spk に集約) |
 
-**3 つの帯域分離** が DPL1 純粋 matrix decode との差です:
+通常の matrix decode に加えて、以下の処理を行います:
 
-- **LFE LPF**: 低域だけを LFE spk に分配、front L/R には低域が残らない
+- **LFE LPF**: 低域だけを LFE spk に分配
 - **Center bleed 除去**: phantom center の二重像 (center spk + front L/R 両方から鳴る現象) を防止
 - **Rear decorrelation**: surround の左右をわずかな時間差で分離、空間広がりを生成
 
-ML / AI 系 upmix は採用しません ─ 配信者・listener どちらにも「結果が予測できる音」を保証するための判断です。
+機械学習ベースの upmix は使用していません。入力に対する出力が予測しやすい方式を優先しています。
 
 ### 8.3 5.1 native 配信での自動 bypass
 
@@ -678,12 +655,12 @@ source の channel 数が **6 以上** (= 5.1 native 配信、Vorbis 6ch / Opus 
 
 ### 8.4 微調整 (debug settings 3 件)
 
-upmix DSP 内部のパラメータは **配信者タグには出さず、listener 側 debug settings** に出します。配信者主導モデル維持のため、配信者が選ぶのは on/off のみで、内部パラメータは「アルゴリズムの一部」として固定します。listener 側も平時は触りません ─ 実装/検証時や個人的微調整用です。
+upmix DSP 内部のパラメータは、配信者タグではなく listener 側 Debug Settings にあります。タグで指定するのは on/off のみです。通常は変更不要で、実装確認や個別調整が必要な場合に使います。
 
 | Debug 設定キー | 既定 | 範囲 | 意味 |
 |---|---|---|---|
 | `Stream3DUpmixLfeCutoff` | `80.0` Hz | 20〜200 | LFE LPF の cutoff 周波数 |
-| `Stream3DUpmixCenterBleed` | `1.0` | 0.0〜1.0 | front L/R から center 成分を引く割合 (`0` で DPL1 互換、`1` でフル除去) |
+| `Stream3DUpmixCenterBleed` | `1.0` | 0.0〜1.0 | front L/R から center 成分を引く割合 (`0` で除去なし、`1` でフル除去) |
 | `Stream3DUpmixRearDelayMs` | `16.0` ms | 0〜32 | rear decorrelation の base delay (L/R は ±2ms jitter で分離) |
 
 別途 listener 側の強制 OFF / 強制 ON 用に sentinel 1 件:
@@ -697,47 +674,67 @@ upmix DSP 内部のパラメータは **配信者タグには出さず、listene
 #### 既定動作 (upmix なし)
 
 ```
-[3dstream-stereo:{url:http://example/stereo.ogg}{ch:L}]
-[3dstream-stereo:{ch:R}]
-```
-→ r10 までと同じ動作 (stereo を L/R の 2 spk に流す)。
+ルート Description:
+  [3dstream:{url:http://example/stereo.ogg}{ch:L}]
 
-#### 6 spk 配置 + upmix (r12 推奨フォーマット)
+子 Description:
+  [3dstream:{ch:R}]
+```
+→ stereo source の L/R を 2 個のスピーカープリムに流します。`{upmix:on}` を書かない場合、C / LFE / SL / SR は生成されません。
+
+#### 6 spk 配置 + upmix
 
 ```
 ルート Description:
-  [3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}]
-FL:  [3dstream-stereo:{ch:FL}]
-FR:  [3dstream-stereo:{ch:FR}]
-C:   [3dstream-stereo:{ch:C}]
-LFE: [3dstream-stereo:{ch:LFE}]
-SL:  [3dstream-stereo:{ch:SL}]
-SR:  [3dstream-stereo:{ch:SR}]
-```
-→ stereo source が 6ch に展開され、各 spk に役割が割り当てられる。
+  [3dstream:{url:http://example/stereo.ogg}{upmix:on}{range:30}]
 
-#### upmix + binaural + venue 全部入り (r12 フル機能)
-
+FL:  [3dstream:{ch:FL}]
+FR:  [3dstream:{ch:FR}]
+C:   [3dstream:{ch:C}]
+LFE: [3dstream:{ch:LFE}]
+SL:  [3dstream:{ch:SL}]
+SR:  [3dstream:{ch:SR}]
 ```
-[3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}{bin:on}{v:hm}{wg:1.2}]
-```
-→ stereo source を 6ch 化、各 spk に lite-HRTF と hall_medium reverb (wet 1.2 倍) を適用。会場感とヘッドホン定位を最大限に活かす設定。
+→ stereo source から FL / FR / C / LFE / SL / SR を生成し、各スピーカープリムに割り当てます。
 
-#### r10 旧配置 (`ch:L`/`ch:R` のみ) + upmix
+#### upmix + binaural + venue
 
 ```
 ルート Description:
-  [3dstream-stereo:{url:http://example/stereo.ogg}{upmix:on}{ch:L}]
-子: [3dstream-stereo:{ch:R}]
+  [3dstream:{url:http://example/stereo.ogg}{upmix:on}{bin:on}{v:hm}{wg:0.25}{range:30}]
+
+FL:  [3dstream:{ch:FL}]
+FR:  [3dstream:{ch:FR}]
+C:   [3dstream:{ch:C}]
+LFE: [3dstream:{ch:LFE}]
+SL:  [3dstream:{ch:SL}]
+SR:  [3dstream:{ch:SR}]
 ```
-→ `ch:L`/`ch:R` も内部的には FL/FR にマップされるため、center bleed 除去 / rear decorrelation の **一部恩恵** を受ける (ただし full surround 体感には 6 spk 配置が必要)。
+→ 6 spk upmix に、lite-HRTF と hall_medium reverb を組み合わせます。`wg:0.25` は hall_medium 向けの控えめな残響量です。
+
+#### 2 spk 配置に `{upmix:on}` を書いた場合
+
+```
+ルート Description:
+  [3dstream:{url:http://example/stereo.ogg}{upmix:on}{ch:L}]
+子: [3dstream:{ch:R}]
+```
+→ `ch:L` / `ch:R` は FL / FR 相当として扱われますが、C / LFE / SL / SR を受けるプリムが無いため、それらのチャンネルは鳴りません。2 spk 配置では通常 `{upmix:on}` は不要です。center や surround を鳴らしたい場合は、上の 6 spk 配置にしてください。
 
 #### 5.1 native 配信に upmix を付けてしまった場合
 
 ```
-[3dstream-stereo:{url:http://example/stream_5_1.ogg}{upmix:on}]
+ルート Description:
+  [3dstream:{url:http://example/stream_5_1.ogg}{upmix:on}{range:30}]
+
+FL:  [3dstream:{ch:FL}]
+FR:  [3dstream:{ch:FR}]
+C:   [3dstream:{ch:C}]
+LFE: [3dstream:{ch:LFE}]
+SL:  [3dstream:{ch:SL}]
+SR:  [3dstream:{ch:SR}]
 ```
-→ 6ch source 検出 → upmix auto bypass、Local Chat に通知 1 回。誤って `{upmix:on}` を付けたまま 5.1 配信に切り替えても安全 (二重処理されない)。
+→ 6ch source を検出すると upmix は自動 bypass され、Local Chat に 1 回通知されます。各スピーカープリムには 5.1 native source の各チャンネルがそのまま流れます。
 
 ---
 
@@ -894,20 +891,20 @@ ON にすると、5.1 配置 × 2ch / 1ch ソースのフォールバック発�
 |---|---|---|---|---|
 | **MP3** | ✓ | ✓ | — | SHOUTcast / Icecast の伝統的経路 |
 | **Vorbis (Ogg)** | ✓ | ✓ | ✓ | 6ch も実機検証済み (r9 P10) |
-| **Opus (Ogg)** | ✓ | ✓ | △ | 6ch は Opus channel mapping family 1。**単純 HTTP / Icecast push は seek 失敗** で開けない場合あり (§11.4) |
-| **FLAC** | ✓ | ✓ | △ | 6ch は理論上対応、Opus と同じ seek 制約あり |
+| **Opus (Ogg)** | ✓ | ✓ | ✓ | 6ch は Opus channel mapping family 1。r9-opus 補完で実機検証済み |
+| **FLAC** | ✓ | ✓ | △ | 6ch の layout は実装済みだが、配信経路によって seek 制約あり (§11.4) |
 | AAC (ADTS / HLS) | — | — | — | 非対応 |
-| AC-3 / E-AC-3 | — | — | — | Dolby ライセンス問題で非対応 |
+| AC-3 / E-AC-3 | — | — | — | ライセンス上の理由で非対応 |
 
 ソース URL は `http://` / `https://` のいずれも受け付けます。HTTP/1.1 keep-alive を維持する経路 (= SHOUTcast 互換 streamer や ffmpeg の TCP 出力) のほうが、単純な静的 HTTP より安定する傾向があります。
 
 ### 11.2 1ch / 2ch の配信
 
-ふつうの SHOUTcast / Icecast / 静的 HTTP で OK です。MP3 / Vorbis / Opus / FLAC のいずれでも問題なく動作します。`oggenc` や ffmpeg / butt 等の通常の配信ツールがそのまま使えます。
+1ch / 2ch の音源は、SHOUTcast / Icecast / 静的 HTTP のいずれでも配信できます。codec は MP3 / Vorbis / Opus / FLAC に対応しています。配信には `oggenc`、ffmpeg、butt など一般的な配信ツールを使用できます。
 
-### 11.3 5.1ch (Vorbis 6ch) の配信
+### 11.3 5.1ch (Vorbis / Opus 6ch) の配信
 
-5.1ch を viewer 側で確実に動かす経路として **Vorbis 6ch** が推奨されます (r9 P10 で実機検証済み)。
+5.1ch 配信には **Vorbis 6ch** または **Opus 6ch** を使用できます。どちらも viewer 側での 6ch 再生を確認済みです。ミュージシャンや DJ が Opus 6ch で配信する場合は、t-noami 作成の [SurroundStreamer](https://github.com/t-noami/SurroundStreamer) を利用できます。以下では、検証用の音源を作りやすい Vorbis 6ch の例を示します。
 
 #### 11.3.1 テスト素材作成 (ffmpeg)
 
@@ -946,27 +943,28 @@ ffmpeg -re -i test_5_1.wav \
 - `-content_type audio/ogg` = Icecast に MIME を申告 (これがないと MP3 と誤判定する)
 - `-ac 6 -ar 48000` = 6ch 48kHz を維持
 
-### 11.4 Opus 6ch / FLAC 6ch の制約
+### 11.4 Opus 6ch と FLAC 6ch の扱い
 
-Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `python3 -m http.server`) や **Icecast push** で配信すると、FMOD の parser が **seek 要求** をかけるため `FMOD_ERR_FILE_COULDNOTSEEK` で開けないケースがあります。
+Opus 6ch は r9-opus の codec plugin 経由で decode されるため、通常の Ogg/Opus 6ch 配信では FMOD parser の seek 制約を受けません。Opus channel mapping family 1 の 6ch source は実機 Icecast で再生確認済みです。ライブ配信で 5.1ch を扱う場合は、Opus 6ch が実用的な選択肢になります。
 
-回避策:
+FLAC 6ch は codec layout 自体は実装済みですが、FLAC parser が seek を要求する場合があります。配信経路が seek に対応していない場合、`FMOD_ERR_FILE_COULDNOTSEEK` で開けないことがあります。FLAC 6ch を使う場合は、実際に使う配信経路で事前に再生確認してください。
 
-- **SHOUTcast 互換 streamer** を使う (keep-alive + range 対応)
-- **ffmpeg primary** を経由する (TCP backpressure で解決)
-- **5.1ch GUI 配信ツール `butt-aya`** (AYA さん別プロジェクトで開発中、本書執筆時点で未公開) で push する
+運用上の目安:
 
-確実に動かしたい場合は **Vorbis 6ch** を選ぶのが現状の最短経路です。
+- ライブ 5.1ch 配信では **Opus 6ch** を優先します
+- ミュージシャン / DJ が Opus 6ch 配信を行う場合は **SurroundStreamer** を利用できます
+- 検証用の静的ファイルでは **Vorbis 6ch** が扱いやすい形式です
+- FLAC 6ch は、配信経路で seek できることを確認できる場合に限って使ってください
 
 ### 11.5 配信側ツールの選び方
 
 | ツール | 用途 | 注意 |
 |---|---|---|
-| **ffmpeg** | 任意 codec / 任意 ch / 静的 / リアルタイム | CLI 操作が必要、最も柔軟 |
-| **butt** (公式) | DJ 配信 | 1ch / 2ch のみ、5.1ch 非対応 |
-| **butt-aya** (5.1ch fork) | 5.1ch GUI 配信 | AYA さん別プロジェクト、本書執筆時点で未公開 |
-| **Liquidsoap** | 高度な放送オートメーション | 設定の難易度高、上級者向け |
-| **Mixxx / DarkIce / ezstream** | DJ / 自動化 | stereo 前提、5.1ch 非対応 |
+| **SurroundStreamer** | Opus 6ch の 5.1ch 配信 | ミュージシャン / DJ 向け。t-noami 作成。詳細は [SurroundStreamer](https://github.com/t-noami/SurroundStreamer) |
+| **ffmpeg** | 検証素材作成 / Vorbis 6ch 配信 / codec 変換 | CLI 操作が必要。テストや自動化に向く |
+| **butt** | 1ch / 2ch のライブ配信 | 5.1ch 配信には使いません |
+| **Liquidsoap** | 放送オートメーション / サーバー側処理 | 設定の難易度が高い。導入前に 6ch の維持を確認してください |
+| **Mixxx / DarkIce / ezstream** | DJ / 自動化 | 基本的に stereo 前提。5.1ch 配信には使いません |
 
 ---
 
@@ -978,7 +976,7 @@ Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `py
 
 - **3D Stream** スライダー — 全ストリームの音量倍率 (`Stream3DVolumeMaster`)
 - **Enabled** チェックボックス — 機能全体の ON/OFF (`Stream3DEnabled`)
-- **Show channel routing diagnostics in chat** — routing 診断通知 (`Stream3DRoutingDiagnostic`、§13.3)
+- **Preferences > Sound > Show channel routing diagnostics in chat** — routing 診断通知 (`Stream3DRoutingDiagnostic`、§13.3)
 - **Hear media and sounds from:** — リスナー位置を Camera / Avatar から選択 (`MediaSoundsEarLocation`、§15.1)
 
 スピーカーアイコンの Volume プルダウンにも同じ「3D Stream」スライダーが現れ、ボイスチャットの近くから音量を即時調整できます。
@@ -993,7 +991,7 @@ Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `py
 | `Stream3DDescriptionScan` | bool | `true` | `false` で Description タグスキャンを停止し、すべてのプリム binding を解除 (debug stream は影響受けない) |
 | `Stream3DMaxConcurrent` | S32 | `4` | 同時 binding 上限 (mono + stereo の合計)。0 で無制限 |
 | `Stream3DStereoMaxSpeakers` | S32 | `16` | 1 リンクセットあたりのスピーカー数上限。超過分は traversal 末尾から落ちて警告通知 |
-| `Stream3DRolloffMin` | F32 (m) | `1.0` | モノラルタグ既定の近距離 (mono の `{min}` 省略時) |
+| `Stream3DRolloffMin` | F32 (m) | `1.0` | 単一プリム URL 再生の既定近距離 (`{min}` 省略時) |
 | `Stream3DRolloffMax` | F32 (m) | `20.0` | 既定の遠距離 (mono の `{max}` / stereo の `{range}` 省略時の共通フォールバック) |
 | `Stream3DMaxDistance` | F32 (m) | `64.0` | プリム検出のポーリング半径。`Stream3DRolloffMax` 以上に設定 |
 | `Stream3DPollInterval` | F32 (秒) | `30.0` | Description ポーリング間隔。LSL 経由のタグ変更検出にこの間隔がかかる。0 で能動ポーリング無効 |
@@ -1001,13 +999,13 @@ Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `py
 | `Stream3DReconnectAttempts` | S32 | `3` | ストリーム切断時の自動再接続試行回数。各リトライは 5 秒待機。0 で再接続無効 |
 | `Stream3DRoutingDiagnostic` | bool | `false` | routing 診断 chat 通知の ON/OFF (§13.3)。Preferences のチェックボックスと同期 |
 
-#### r11/r12 配信者主導モデル: listener 側 sentinel (一般 UI なし)
+#### r11/r12 の listener 側上書き設定
 
-§7.5 / §8.4 で説明したとおり、`binaural` / `venue` / `wetgain` / `lfegain` / `upmix` は **配信者タグが真実**で、Preferences には UI を出していません。ただし救済目的に限り debug settings に sentinel を用意しています。一般 listener は触らないでください。
+§7.5 / §8.4 で説明したとおり、`binaural` / `venue` / `wetgain` / `lfegain` / `upmix` はタグで指定します。通常の Preferences には UI を出していませんが、検証や個別調整用に Debug Settings から上書きできます。
 
 | 設定キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
-| `Stream3DBinauralRender` | S32 | `-1` (sentinel = タグ通り) | `0` で listener 側強制 OFF / `1` で強制 ON。スピーカー視聴で `{binaural:on}` 配信を聴くときの救済用 (詳細 §7.5 例外節) |
+| `Stream3DBinauralRender` | S32 | `-1` (sentinel = タグ通り) | `0` で listener 側強制 OFF / `1` で強制 ON。`-1` かつ `{binaural}` 未指定なら off (詳細 §7.5 例外節) |
 | `Stream3DVenueOverride` | 文字列 | `""` (sentinel = タグ通り) | `"dry"` 等の venue 名を入れると全配信を強制その venue で聴く (`"dry"` で全 reverb 強制 OFF が代表用途) |
 | `Stream3DVenueWetGain` | F32 | `-1.0` (sentinel = タグ通り) | `0.0〜2.0` の値で wet gain を強制上書き |
 | `Stream3DLfeGain` | F32 | `-1.0` (sentinel = タグ通り) | `0.0〜4.0` の値で LFE gain を強制上書き (r12.1 追加、詳細 §7.4) |
@@ -1046,13 +1044,13 @@ Opus 6ch (channel mapping family 1) や FLAC 6ch を **単純な HTTP** (例 `py
 ```
 3D Stream: タグ書式エラー (オブジェクト名: "MySpeaker")
   ch の値が L/R/M/FL/FR/C/LFE/SL/SR のいずれかである必要があります。
-  例: [3dstream-stereo:{ch:L}{range:30}]
+  例: [3dstream:{ch:L}{range:30}]
 ```
 
 ```
 3D Stream: 構造エラー (リンクセット root: "MainStage")
   音源宣言 (url/source) が root にあるがスピーカー (ch) が見つかりません。
-  各スピーカープリムに [3dstream-stereo:{ch:L|R|M}] を記載してください。
+  各スピーカープリムに [3dstream:{ch:L|R|M}] を記載してください。
 ```
 
 ### 13.2 30 秒抑制
@@ -1132,7 +1130,7 @@ ON にすると、フォールバック発生時に **Local Chat の自分自身
 確認順序:
 
 1. **Description が正しく書き換わっているか**: プリムを右クリック → Edit → Description タブで現在値を確認
-2. **タグの綴り**: `[3dstream:` または `[3dstream-stereo:` が含まれているか (タイポ注意)
+2. **タグの綴り**: `[3dstream:` が含まれているか。旧配置では `[3dstream-stereo:` / `[ayastream-stereo:` / `[ayastream:` も互換受付されます (タイポ注意)
 3. **音源宣言が有効か**: URL 音源は `{url:http://...}` または `{url:https://...}` が必要です。media 音源は root prim の `{source:media}` と、同じリンクセット内の media/MOAP 面が必要です
 4. **`Stream3DEnabled` / `Stream3DDescriptionScan` が true**: Preferences > Sound または Debug Settings で確認
 5. **ポーリング待ち**: LSL `llSetObjectDesc` 経由の変更は最大 30 秒待つ (= `Stream3DPollInterval`)
@@ -1147,7 +1145,7 @@ ON にすると、フォールバック発生時に **Local Chat の自分自身
 
 ### 14.3 5.1ch ソースが開けない / 音がブツブツ切れる
 
-- §11.4 の seek 制約: 単純 HTTP / Icecast push の Opus 6ch / FLAC 6ch で起きやすい問題。**Vorbis 6ch に切り替える** か、SHOUTcast 互換 streamer / ffmpeg primary 経由に切り替えてください
+- §11.4 の seek 制約: FLAC 6ch の配信経路が seek に対応していない場合に起きることがあります。**Vorbis 6ch / Opus 6ch に切り替える**、Opus 6ch なら SurroundStreamer を使う、または FLAC 6ch を seek 可能な経路で配信してください
 - HTTP 切替直後の最初の 5〜10 秒は prebuffer 充填中に dropout 警告が出る場合があります (LAN 環境で 408〜2045 frames/spk/s ≒ 0.8〜4% 程度)。定常運用では消えます
 - ストリームのビットレートが高すぎる / ネットワークが詰まっている場合の dropout: 配信側でビットレートを下げる (256kbps 以下推奨) / 同時 binding 数を減らす
 
@@ -1169,8 +1167,9 @@ ON にすると、フォールバック発生時に **Local Chat の自分自身
 
 ### 14.7 タグを消したのに音が止まらない
 
-- 再評価のトリガが発火していない可能性。プリムを 1 度移動するか、ぐるりと回って再 polling を待ってください
-- それでも止まらない場合は `Stream3DEnabled` を一旦 false にして全 binding を強制解除、再 true で再発見
+- Description の変更は通常、次のポーリングで反映されます (`Stream3DPollInterval` 既定 30 秒、§4.6)。
+- 手動編集の場合は、Description を保存し直すと Properties 通知で再評価されます。
+- それでも止まらない場合は `Stream3DEnabled` を一旦 `false` にして全 binding を強制解除し、必要なら再度 `true` に戻してください。
 
 ### 14.8 `{source:media}` で media 面が見つからない
 
@@ -1214,11 +1213,11 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 | codec | 1ch / 2ch | 6ch |
 |---|---|---|
 | Vorbis (Ogg) | ✓ 実機検証済 | ✓ 実機検証済 (r9 P10、12 分連続 0 dropout) |
-| Opus (Ogg) | ✓ 実機検証済 | △ コードレビューのみ (本番経路で動作実績、static HTTP / Icecast push は seek 失敗) |
-| FLAC | ✓ 実機検証済 | △ コードレビューのみ (Opus と同制約) |
+| Opus (Ogg) | ✓ 実機検証済 | ✓ 実機検証済 (r9-opus 補完、Opus channel mapping family 1) |
+| FLAC | ✓ 実機検証済 | △ codec layout は実装済み。配信経路によって seek 制約あり |
 | MP3 | ✓ 実機検証済 | — |
 
-5.1ch を確実に動かしたい場合は **Vorbis 6ch** を選んでください。
+5.1ch 配信では **Vorbis 6ch** または **Opus 6ch** を選んでください。ライブ配信では Opus 6ch、検証用の静的ファイルでは Vorbis 6ch が扱いやすい形式です。
 
 ### 15.5 LFE の特殊扱いはなし
 
@@ -1228,16 +1227,18 @@ LSL `llSetObjectDesc` が書き込める Description は **127 byte 上限**で�
 
 ### 15.6 5.1ch の自由視点モデル
 
-実 5.1 (映画基準・ITU-R BS.775) は **リスナーが固定位置にいる前提**で各 ch に方向感を埋め込みます。SL のリスナーは自由視点なので「sweet spot」概念は適用できません。本機能で目指すのは **「会場で 5.1 ソースを多点再生する」** という PA 的な発想であり、シネマ的サラウンド体験の再現ではありません。
+5.1ch ソースは、通常は基準となるリスニング位置を想定して mix されています。AYAstorm でも、映画館の座席のように会場内の特定位置を基準にしてスピーカーを配置できます。
 
-リスナーが空間を歩き回ると 5.1 mix の意図した定位は当然崩れますが、「会場感」「面で鳴っている感」は十分に出ます。
+一方で、SL ではリスナーが会場内を自由に移動します。基準位置から離れるほど、mix が想定した定位とは聴こえ方が変わります。そのため 3D Stream の 5.1ch 配置は、固定席での視聴にも使えますが、会場内に各チャンネルを配置して鳴らす多点 PA としての性格も持ちます。
 
 ### 15.7 他 Viewer での挙動
 
-`[3dstream:...]` / `[3dstream-stereo:...]` タグは **AYAstorm 専用** です。本家 Firestorm / 公式 LL Viewer / Catznip 等の他 Viewer は完全に無視します。
+`[3dstream:...]` タグ、および互換プレフィクスの `[3dstream-stereo:...]` / `[ayastream:...]` / `[ayastream-stereo:...]` は **AYAstorm 専用** です。本家 Firestorm / 公式 LL Viewer / Catznip 等の他 Viewer は完全に無視します。
 
 - AYAstorm 利用者には 3D 定位再生される
-- 他 Viewer 利用者にはタグが説明文の一部として表示されるだけで、音は鳴らない (パーセル BGM とは独立に動作するため、パーセル BGM が設定されていればそれは聞こえる)
+- 他 Viewer 利用者にはタグが説明文の一部として表示されるだけで、`{url:...}` の 3D Stream 音声は鳴らない (パーセル BGM とは独立に動作するため、パーセル BGM が設定されていればそれは聞こえる)
+- `{source:media}` を使う構成では、他 Viewer でも media 面自体は通常の MOAP として表示・再生されます。ただし 3D Stream のスピーカー配置、`{ch:...}` routing、upmix、binaural、venue reverb は適用されません
+- media 画面を見せながら `{url:...}` の 3D Stream を鳴らす構成では、他 Viewer では media 側だけが通常の MOAP として扱われ、`{url:...}` の 3D Stream 音声は鳴りません
 
 ### 15.8 同時最大数
 
@@ -1267,7 +1268,7 @@ media/MOAP 音源では、media 面が 1 つだけの構成に限り media volum
 
 **会場運営 / 建設者向け** のタグです。壁・扉・床・天井などの「音を遮るプリム」にこのタグを書くと、AYAstorm はそのプリムをリスナー位置と音源プリム位置の間にある **遮蔽物** として扱い、音をこもらせます。
 
-`[3dstream:...]` / `[3dstream-stereo:...]` (§5 / §6) が **音を出す側** のタグなのに対して、`[ayastorm:occlude]` は **音を遮る側** のタグです。両者は完全に独立で、occlude タグだけ書いたプリムからは音は鳴りません。
+`[3dstream:...]` (§5 / §6) が **音を出す側** のタグなのに対して、`[ayastorm:occlude]` は **音を遮る側** のタグです。両者は完全に独立で、occlude タグだけ書いたプリムからは音は鳴りません。
 
 ### 16.1 書式
 
@@ -1283,7 +1284,7 @@ media/MOAP 音源では、media 面が 1 つだけの構成に限り media volum
 
 #### 何が遮蔽されるか
 
-- **`[3dstream:...]` / `[3dstream-stereo:...]` から鳴る音** (3D 定位ストリーム、スピーカープリムごと)
+- **`[3dstream:...]` から鳴る音** (3D 定位ストリーム、スピーカープリムごと)
 - **`llPlaySound` / 添付音 / 子プリム効果音** (世界 SFX)
 
 リスナー位置 (カメラまたはアバター) と音源位置を結ぶ線分が occlude プリムの **実形状 (三角形メッシュ)** を貫いていれば「遮蔽あり」と判定し、音量を下げ + 低域強調のローパスでこもらせます。Path Cut で開けた切れ目 / Hollow でくり抜いた中空 / mesh プリムの正確な形状 が全て遮蔽計算に反映されるため、「ドーナツの穴を通る音は素通し / 壁の本体に当たる音はこもる」という直感どおりに鳴ります。
@@ -1372,12 +1373,14 @@ media/MOAP 音源では、media 面が 1 つだけの構成に限り media volum
 | ドキュメント | 内容 |
 |---|---|
 | `docs/specs/spec_positional_stream_audio.md` | 3D Stream 本体仕様 (r5 改訂) — 基本アーキテクチャ |
+| `docs/specs/3dstream-user-guide.ja.md` | 3D Stream 使い方ガイド — 配置手順、配信形式、SurroundStreamer、他 Viewer fallback |
 | `docs/specs/spec_stream3d_decode_thread.md` | r7 で確立した 3-thread モデル |
-| `docs/specs/spec_distributed_stereo.md` | r8 分散記述ステレオ仕様 — `[3dstream-stereo:...]` の field 書式 |
+| `docs/specs/spec_distributed_stereo.md` | r8 分散記述ステレオ仕様 — 旧 `[3dstream-stereo:...]` の field 書式 |
+| `docs/specs/ayastorm-r31-3dstream-unified-tag.md` | r31 3D Stream unified tag 仕様 — `[3dstream:...]` への統一、`{ch}` による linkset routing 昇格、旧 prefix 互換 |
 | `docs/specs/spec_5_1ch_source.md` | r9 5.1ch ソース受入仕様 — Opus/FLAC 6ch decode 経路 + BS.775 ダウンミックス |
 | `docs/specs/spec_5_1ch_placement.md` | r10 5.1ch 会場配置仕様 — `ch=FL/FR/C/LFE/SL/SR` 拡張 + 互換マトリクス |
 | `docs/specs/spec_binaural_venue_reverb.md` | r11 バイノーラル + 会場残響仕様 (r12 と同梱配布)。lite-HRTF / 9 venue / wetgain 詳細 |
-| `docs/specs/spec_stereo_upmix.md` | r12 stereo→5.1 upmix 仕様 — DPL2 系 matrix decode + 帯域分離アルゴリズム詳細 |
+| `docs/specs/spec_stereo_upmix.md` | r12 stereo→5.1 upmix 仕様 — matrix upmix + 帯域分離アルゴリズム詳細 |
 | `docs/ayastorm-r12-stereo-upmix.md` | r12 phase 分解 (P0-P11) と工数見積 |
 | `docs/ayastorm-r13-occlusion.md` | r13 OBB occlusion 仕様 + 実装記録 — `[ayastorm:occlude]` 設計判断 / spike 実装 / 残工程 |
 | `docs/ayastorm-stream3d-roadmap.md` | 3D Stream 全体ロードマップ (r5〜r13+) |
@@ -1388,7 +1391,9 @@ media/MOAP 音源では、media 面が 1 つだけの構成に限り media volum
 
 - **2026-05-05 (初版)**: r10 時点の最終仕様として整備。r5 / r8 / r9 / r10 / r10.x の累積仕様をまとめて記述。r11 以降は未リリースのため対象外。
 - **2026-05-08 (r12 改訂)**: r11 (バイノーラル / 会場残響 / wetgain) と r12 (stereo→5.1 upmix / タグ短縮形 `bin`/`v`/`wg` + venue 値短縮) を追記。r11 は独立リリースせず r12 に同梱配布する方針のため、ユーザー向けには r10 → r12 の 1 ジャンプとなる。§7 / §8 / §4.5 を新設、章番号 §7-§14 を §9-§16 に繰り下げ。
-- **2026-05-09 (r12.1 改訂)**: `{lfegain:N}` キー (短縮形 `lg`) を §7.4 として新設、旧 §7.4 配信者主導モデルを §7.5、旧 §7.5 組合せ例を §7.6 に繰り下げ。`wetgain` の既定値を `1.0` → `0.2` に変更 (実 listening での音楽的レンジ 0.1〜0.5 反映)。§12.2 に `Stream3DLfeGain` sentinel 追加。§12.2 / §12.3 にライブチューニング修正の注記を追加 (r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった回帰を修正)。
+- **2026-05-09 (r12.1 改訂)**: `{lfegain:N}` キー (短縮形 `lg`) を §7.4 として新設、旧 §7.4 配信者主導モデルを §7.5、旧 §7.5 組合せ例を §7.6 に繰り下げ。`wetgain` の既定値を `1.0` → `0.2` に変更 (推奨範囲 0.1〜0.5 を反映)。§12.2 に `Stream3DLfeGain` sentinel 追加。§12.2 / §12.3 にライブチューニング修正の注記を追加 (r12 で `Stream3DUpmix*` / `Stream3DVenueOverride` / `Stream3DVenueWetGain` / `Stream3DLfeGain` / `Stream3DVolumeMaster` がプリムタッチまで反映されなかった回帰を修正)。
 - **2026-05-11 (r13 改訂)**: 静的 OBB occlusion タグ `[ayastorm:occlude]` を §16 として新設、旧 §16 関連ドキュメントを §17 に繰り下げ。§4.1 を「2 種類のタグ」→「3 種類のタグ」に拡張。debug settings (`Stream3DOcclusion` master sentinel / `Stream3DOccluderRange` 距離 cull / `Stream3DOcclusionRampMs` smoothing / `Stream3DShowOccluders` 可視化) を §16.6-§16.8 に記述。関連 spec として `docs/ayastorm-r13-occlusion.md` を §17 表に追加。
 - **2026-05-11 (r13 P15 改訂)**: occlusion 判定を OBB 近似から **実プリム三角形 raycast** に拡張 (Möller-Trumbore + OBB pre-cull の 2 段判定)。Path Cut / Hollow / Mesh の実形状が遮蔽計算に反映される (§16.2)。複数プリム集計を **掛け合わせ** に修正記述 (実装は当初から掛け合わせだったが旧版で「max」と誤記)。`Stream3DShowOccluders` 表示を OBB ワイヤーフレームから **シアン三角形メッシュ** (半透明 fill + wireframe) に変更、build floater で選択中のプリムは編集中ライブ追従 (§16.8)。§16.9 に三角形数上限 2000 と OBB-only フォールバック条件を追記。§16 タイトルを「静的 OBB occlusion」→「静的 occlusion」に短縮。
 - **2026-05-17 (r26 改訂)**: media/MOAP source routing を §6.7 として追記。root の音源宣言を `{url:...}` / `{source:media}` の相互排他に拡張し、media 面選択用の root-only キー `{link:N}` / `{face:N}`、media 音量の扱い、URL 音源 + media 表示の同居条件、5.1ch までの media callback ch 数を整理。
+- **2026-05-24 (r31 改訂)**: 新規推奨タグを `[3dstream:...]` に統一。`[3dstream:{url:...}]` は `{ch}` が無いリンクセットでは単一プリム URL 再生、同じリンクセットに `{ch}` がある場合はリンクセット配置の音源宣言として扱う仕様を追記。`[3dstream:{source:media...}]` は `{ch}` スピーカーと組み合わせる linkset routing 専用であること、子プリムの有無ではなく `{ch}` の有無で判定することを明記。旧 `[3dstream-stereo:...]` / `[ayastream-stereo:...]` は互換 prefix として整理。
+- **2026-05-24 (r31 ドキュメント改訂)**: `binaural` 未指定時の既定を `off` に変更し、§7 の説明と Debug Settings 表を更新。§8 の upmix 説明から商標名を除き、実装に合わせて matrix upmix + 帯域分離として整理。§11 / §15.4 の codec 実績を r9-opus 補完後の状態に更新し、Opus 6ch は実機検証済み、FLAC 6ch は配信経路によって seek 制約ありと記述。Opus 6ch 配信の実用経路として SurroundStreamer を追記。§15.6 の 5.1ch 自由視点モデル、§15.7 の他 Viewer / MOAP fallback、§14 のトラブルシュート文言を見直し。

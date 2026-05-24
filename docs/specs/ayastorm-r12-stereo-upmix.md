@@ -17,7 +17,7 @@ r10 で完成した **Layer 1 (per-channel placement)** と r11 で完成した 
 
 設計の核は **配信者主導モデルの維持** (r11 で確立): 親プリム Desc に追加した 1 タグキー (`{upmix:on|off}`) が root truth、default `off`、source ch>=6 では auto bypass。listener 側の Preferences UI 改修は一切行わない。実装/検証時の独立 toggle / パラメータ微調整用に debug settings 4 件 (sentinel 1 件 + 実値 default 3 件) のみ提供。
 
-アルゴリズムは **DPL2 系 matrix decode + 帯域分離 (LFE LPF / center bleed 除去 / rear decorrelation) で決め打ち**。SOFA per-source HRTF / Steam Audio integration / VenueReverb CPU 最適化 / air absorption 客観測定 / 個人 HRTF / 公開 README は r12 では非対象、r13+ への保留。spec §1 / §2.2 の構成判断 (旧 r12 計画降格 / アルゴリズム決め打ち) は仕様書側を参照。
+アルゴリズムは **matrix upmix + 帯域分離 (LFE LPF / center bleed 除去 / rear decorrelation) で決め打ち**。SOFA per-source HRTF / Steam Audio integration / VenueReverb CPU 最適化 / air absorption 客観測定 / 個人 HRTF / 公開 README は r12 では非対象、r13+ への保留。spec §1 / §2.2 の構成判断 (旧 r12 計画降格 / アルゴリズム決め打ち) は仕様書側を参照。
 
 ---
 
@@ -62,7 +62,7 @@ viewer-only の改修。配信側パイプラインは r9 / r10 / r11 流用。�
 
 ### P2: pcmReadCallback に OpKind::Upmix dispatch 追加 + LLStereoUpmix::upmix2chToSpeaker 実装
 
-**目的**: spec §4.3.2〜§4.3.4 の DPL2 系 matrix decode 本体を `LLStereoUpmix::upmix2chToSpeaker` に実装し、`SpeakerCallback::pcmReadCallback` の switch に `case Upmix:` を追加 (Bs775 と並行構造)。`C = (L+R)/√2`、`S = (L-R)/√2`、`L' = L - C×bleed/√2`、`R' = R - C×bleed/√2`、Ls/Rs は S を short random delay (12〜20ms) で decorrelate。
+**目的**: spec §4.3.2〜§4.3.4 の matrix upmix 本体を `LLStereoUpmix::upmix2chToSpeaker` に実装し、`SpeakerCallback::pcmReadCallback` の switch に `case Upmix:` を追加 (Bs775 と並行構造)。`C = (L+R)/√2`、`S = (L-R)/√2`、`L' = L - C×bleed/√2`、`R' = R - C×bleed/√2`、Ls/Rs は S を short random delay (12〜20ms) で decorrelate。
 
 **ファイル**:
 - `indra/llaudio/llpositionalstreammulti.h` (`OpKind::Upmix` 追加、`UpmixRole op_role_upmix` field 追加 — Bs775 の `op_role_bs775` と並行)
@@ -128,7 +128,7 @@ viewer-only の改修。配信側パイプラインは r9 / r10 / r11 流用。�
 - `indra/llaudio/llstereoupmix.{h,cpp}` (`std::atomic<F32>` のグローバル param または per-stream の atomic fields + `upmix2chToSpeaker` で per-call snapshot 取得)
 - `indra/newview/llpositionalstreammgr.cpp` (debug settings 値を helper の atomic に push、stream 起動時 + 設定変更時)
 
-**完了条件**: `Stream3DUpmixLfeCutoff` を 80→120Hz に変えると LFE 帯域が広がる / `Stream3DUpmixCenterBleed` を 1.0→0.0 に変えると DPL1 互換 (phantom center 二重像) / `Stream3DUpmixRearDelayMs` を 16→8ms に変えると rear decorrelation が薄くなる / 3 件すべて lock-free atomic write で thread race なし (mixer thread は read-only snapshot)。
+**完了条件**: `Stream3DUpmixLfeCutoff` を 80→120Hz に変えると LFE 帯域が広がる / `Stream3DUpmixCenterBleed` を 1.0→0.0 に変えると center 除去なしになる (phantom center 二重像) / `Stream3DUpmixRearDelayMs` を 16→8ms に変えると rear decorrelation が薄くなる / 3 件すべて lock-free atomic write で thread race なし (mixer thread は read-only snapshot)。
 
 **commit**: (TBD)
 
@@ -177,7 +177,7 @@ viewer-only の改修。配信側パイプラインは r9 / r10 / r11 流用。�
 5. U5: `{upmix:on}` ↔ `{upmix:off}` の Desc 編集 live 切替
 6. U6: `Stream3DUpmix` debug 3 sentinel (`-1`/`0`/`1`)
 7. U7: `Stream3DUpmixLfeCutoff` 80→120Hz で LFE 帯域変化
-8. U8: `Stream3DUpmixCenterBleed` 1.0→0.0 で DPL1 互換
+8. U8: `Stream3DUpmixCenterBleed` 1.0→0.0 で center 除去なし
 9. U9: `Stream3DUpmixRearDelayMs` 16→8ms で decorrelation 薄化
 
 **完了条件**: spec §6.1 受入表 9 行が全 PASS / 必要なら debug settings の default 値を P11 close-out 時に再調整 (R2/R3/R4 縮退策)。
@@ -258,7 +258,7 @@ r11 と異なり、本リリースでは **追加 phase が想定外に発生す
 - [ ] **U5: タグ live 切替** (`{upmix:on}` ↔ `{upmix:off}` で次の `evaluateLinkset()` から rebuild) — P9 step 5
 - [ ] **U6: `Stream3DUpmix` 3 sentinel** (`-1`/`0`/`1`) — P9 step 6
 - [ ] **U7: `Stream3DUpmixLfeCutoff` 80→120Hz で LFE 帯域変化** — P9 step 7
-- [ ] **U8: `Stream3DUpmixCenterBleed` 1.0→0.0 で DPL1 互換** — P9 step 8
+- [ ] **U8: `Stream3DUpmixCenterBleed` 1.0→0.0 で center 除去なし** — P9 step 8
 - [ ] **U9: `Stream3DUpmixRearDelayMs` 16→8ms で decorrelation 薄化** — P9 step 9
 - [ ] **5min dropout 0** (stereo + upmix + venue=hall_medium + binaural ON) — P11
 - [ ] **URL 切替 ×10** (stereo upmix ↔ 5.1 native ↔ stereo non-upmix の組合せ) — P11
