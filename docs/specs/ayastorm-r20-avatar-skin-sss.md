@@ -45,6 +45,8 @@ SL の Mesh body / head は deferred で **`materialF` (Legacy) または `pbrop
 
 実際の Name / Description pattern は P0 で実機サンプリングして確定 (例: 「LELUTKA EVOX 〇〇」「Maitreya Lara V〇」等の prefix が typical)。
 
+> **実装版での結論**: default whitelist は **空** で出荷しています。本セクションに列挙した主流 Mesh body / head 製品は **設計段階の想定リスト** であり、実機での asset UUID キュレーションを継続的にメンテする運用負荷を回避するため、出荷物には含めず、ユーザー側で右クリック UX (`Add to SSS whitelist` / `Add entire linkset to SSS whitelist`) または手動編集で登録する形を採っています。ユーザー向け案内は [`docs/specs/skin-sss-user-guide.md`](./skin-sss-user-guide.md) 参照。
+
 ### 2.3 アプローチ全体図
 
 ```

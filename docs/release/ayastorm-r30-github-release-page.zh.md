@@ -30,6 +30,7 @@
 - P1 重启切换基础设施: [docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-p1-view-mode-restart-switch.md)
 - BD live cvar port reference: [docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-bd-full-port-phase6-live-cvar-port-spec.md)
 - Cinematic Controls floater audit: [docs/specs/ayastorm-r30-cinematic-controls-cleanup.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r30-cinematic-controls-cleanup.md)
+- Skin SSS 使用指南 (面向 avatar 摄影): [docs/specs/skin-sss-user-guide.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/skin-sss-user-guide.md) / [.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/skin-sss-user-guide.ja.md) / [.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/skin-sss-user-guide.zh.md)
 
 ### Media audio
 - r25 parcel music Ogg Vorbis investigation: [docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/ayastorm-r25-parcel-music-ogg-vorbis-investigation.md)
@@ -39,6 +40,7 @@
 ### UX & picker
 - r28 他人 rigged picker spec: [docs/specs/ayastorm-r28-other-rigged-picker.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r28-other-rigged-picker.md)
 - r21 self rigged picker spec (姐妹功能): [docs/specs/ayastorm-r21-self-rigged-picker.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/ayastorm-r21-self-rigged-picker.md)
+- Rigged Mesh Picker — GPU object-ID buffer 技术资料 (供其他 viewer fork 取用): [docs/specs/rigged-mesh-picker-gpu-buffer.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/rigged-mesh-picker-gpu-buffer.md) / [.ja.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/rigged-mesh-picker-gpu-buffer.ja.md) / [.zh.md](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r30/docs/specs/rigged-mesh-picker-gpu-buffer.zh.md)
 
 ## 公开披露: 二重 alpha block fix (其他 SL viewer 通用 bug 公开资料)
 
