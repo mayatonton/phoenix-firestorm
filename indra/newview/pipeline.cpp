@@ -5192,6 +5192,9 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     bool done_atmospherics = LLPipeline::sRenderingHUDs; //skip atmospherics on huds
     bool done_water_haze = done_atmospherics;
     bool done_water_exclusion = false;
+    // <FS:AYAstorm bug fix> SSS dispatch を FB pool より前に動かすため独立 flag を導入。
+    bool done_sss = LLPipeline::sRenderingHUDs;
+    // </FS:AYAstorm>
 
     // do water exclusion just before water pass.
     U32 water_exclusion_pass = LLDrawPool::POOL_WATEREXCLUSION;
@@ -5206,6 +5209,12 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 
     // do water haze just before pre water alpha
     U32 water_haze_pass = LLDrawPool::POOL_ALPHA_PRE_WATER;
+
+    // <FS:AYAstorm bug fix> SSS を FullBright/postDeferred より前で発火させて
+    //   FB prim 越しに SSS pink が透ける bug を解消。scene color が FB で
+    //   上書きされる前 (softenLight 直後の素 skin 色) を sample させる。
+    U32 sss_pass = LLDrawPool::POOL_FULLBRIGHT;
+    // </FS:AYAstorm>
 
     calcNearbyLights(camera);
     setupHWLights();
@@ -5225,6 +5234,11 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     bool low_detail_probe = probe_level == 0 && gCubeSnapshot;
     done_atmospherics = done_atmospherics || low_detail_probe;
     done_water_haze   = done_water_haze || low_detail_probe;
+    // <FS:AYAstorm bug fix> 旧コードでは SSS が atmospherics と同 block にあったため
+    //   low_detail_probe の done_atmospherics 経由で skip されていた。独立 dispatch に
+    //   分離した本 fix でも cube snapshot 時の挙動を維持するため done_sss も同様に gate。
+    done_sss = done_sss || low_detail_probe;
+    // </FS:AYAstorm>
 
 
     while ( iter1 != mPools.end() )
@@ -5239,6 +5253,25 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             done_water_exclusion = true;
         }
 
+        // <FS:AYAstorm bug fix> SSS を FullBright/postDeferred より前で発火。
+        //   旧: atmospherics と同 block (POOL_ALPHA_POST_WATER) で発火、mRT->screen が
+        //       FB で塗られた状態を sample → FB pixel に skin pink shadow が滲む bug。
+        //   新: POOL_FULLBRIGHT 到達直前で発火、scene color は softenLight 直後の素 skin 色のまま、
+        //       FB が後で覆い被さるので SSS は FB pixel に乗らない。
+        //   r20 SSS dispatch 条件は元と同じ (mode > 0 && AYAR20AvatarSkinSSSEnabled)。
+        if (cur_type >= sss_pass && !done_sss)
+        {
+            static LLCachedControl<U32>  aya_view_mode_sss(gSavedSettings, "AYAVisualRealismEnabled", 1);
+            static LLCachedControl<bool> aya_r20_enabled_sss(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", false);
+            bool dispatch_r20 = (aya_view_mode_sss() > 0) && aya_r20_enabled_sss;
+            if (dispatch_r20)
+            {
+                doSkinSSS();
+            }
+            done_sss = true;
+        }
+        // </FS:AYAstorm>
+
         if (cur_type >= atmospherics_pass && !done_atmospherics)
         { // do atmospherics against depth buffer before rendering alpha
             doAtmospherics();
@@ -5246,20 +5279,14 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             // <FS:AYAstorm r30 BD改善> AYAstorm View は無条件、Cinematic は個別 InCinematic cvar で opt-in。
             //   各関数も自己 gate 済 (Phase 3.1 / r20 早期 return) だが call-site でも wrap して
             //   Cinematic OFF 時の関数 entry を無駄ゼロ化。
-            //   r20 SSS は consolidation 後 mode 1/2 共通の単一 cvar (AYAR20AvatarSkinSSSEnabled) で
-            //   dispatch されるため、call-site では mode > 0 と enabled のみで判定。
+            //   r15 Godrays は atmospherics 後の light scattering なので atmospherics ブロックに残置。
+            //   r20 SSS は本 fix で FB 前 dispatch に分離済 (上の sss_pass ブロック)。
             static LLCachedControl<U32>  aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
             static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
-            static LLCachedControl<bool> aya_r20_enabled_disp(gSavedSettings, "AYAR20AvatarSkinSSSEnabled", false);
             bool dispatch_r15 = (aya_view_mode() == 1) || (aya_view_mode() == 2 && aya_r15_in_cinematic);
-            bool dispatch_r20 = (aya_view_mode() > 0) && aya_r20_enabled_disp;
             if (dispatch_r15)
             {
                 doGodrays();
-            }
-            if (dispatch_r20)
-            {
-                doSkinSSS();
             }
             // </FS:AYAstorm>
         }
