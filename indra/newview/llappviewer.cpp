@@ -30,6 +30,7 @@
 
 // Viewer includes
 #include "llcinematicoverlay.h"
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A: zone CSV writer init/shutdown
 #include "llversioninfo.h"
 #include "llfeaturemanager.h"
 #include "lluictrlfactory.h"
@@ -1567,6 +1568,7 @@ bool LLAppViewer::frame()
 
 bool LLAppViewer::doFrame()
 {
+    AYAPERF_ZONE("doFrame_total"); // <FS:AYAstorm> CPU perf 章 §7-A Group A: frame budget 天井
     resumeMainloopTimeout("Main:doFrameStart");
 #ifdef LL_DISCORD
     {
@@ -1871,6 +1873,7 @@ bool LLAppViewer::doFrame()
                 // <FS:Beq> instrument image decodes
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_APP("updateTextureThreads");
+                    AYAPERF_ZONE("updateTextureThreads"); // <FS:AYAstorm> CPU perf 章 §7-A Group A
                 work_pending += updateTextureThreads(max_time);
                 }   // <FS:Beq/> instrument image decodes
 
@@ -1891,6 +1894,7 @@ bool LLAppViewer::doFrame()
 
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df gMeshRepo");
+                AYAPERF_ZONE("meshRepoUpdate"); // <FS:AYAstorm> CPU perf 章 §7-A Group A
                 gMeshRepo.update() ;
             }
 
@@ -1930,6 +1934,10 @@ bool LLAppViewer::doFrame()
             pingMainloopTimeout("Main:End");
         }
     }
+
+    // <FS:AYAstorm> CPU perf 章 §7-A: per-frame zone CSV の frame counter を進める。
+    LLAyastormPerfLog::onFrameEnd();
+    // </FS:AYAstorm>
 
     if (LLApp::isExiting())
     {
@@ -2589,6 +2597,10 @@ bool LLAppViewer::cleanup()
     LLSingletonBase::deleteAll();
 
     LLSplashScreen::hide();
+
+    // <FS:AYAstorm> CPU perf 章 §7-A: zone CSV writer flush + close。
+    LLAyastormPerfLog::shutdown();
+    // </FS:AYAstorm>
 
     LL_INFOS() << "Goodbye!" << LL_ENDL;
 
@@ -3286,6 +3298,15 @@ bool LLAppViewer::initConfiguration()
     // One-shot; safe in every startup path (no-op once
     // AYAR15GodraysCinematicMigrationVersion >= 1).
     LLCinematicOverlay::applyR15GodraysCinematicMigrationIfNeeded();
+    // </FS:AYAstorm>
+
+    // <FS:AYAstorm> CPU perf 章 §7-A: zone CSV writer 起動。AYAPerfLogEnabled=0
+    // のとき内部で即 return、disk I/O 走らない。1 のとき
+    // <userdir>/logs/AYAstorm-perf.csv を open。llcommon 配置のため
+    // path は newview 側で gDirUtilp で解決して渡す。
+    LLAyastormPerfLog::init(
+        gSavedSettings.getU32("AYAPerfLogEnabled") != 0,
+        gDirUtilp->getExpandedFilename(LL_PATH_LOGS, "AYAstorm-perf.csv"));
     // </FS:AYAstorm>
 
     // <FS:Ansariel> Debug setting to disable log throttle
@@ -5766,6 +5787,7 @@ static LLTrace::BlockTimerStatHandle FTM_HUD_EFFECTS("HUD Effects");
 ///////////////////////////////////////////////////////
 void LLAppViewer::idle()
 {
+    AYAPERF_ZONE("idle"); // <FS:AYAstorm> CPU perf 章 §7-A Group A: idle 全体
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;
     pingMainloopTimeout("Main:Idle");
 
@@ -6537,6 +6559,7 @@ static LLTrace::BlockTimerStatHandle FTM_CHECK_REGION_CIRCUIT("Check Region Circ
 
 void LLAppViewer::idleNetwork()
 {
+    AYAPERF_ZONE("messagePump"); // <FS:AYAstorm> CPU perf 章 §7-A Group B: message + ack pump
     LL_PROFILE_ZONE_SCOPED_CATEGORY_NETWORK;
     pingMainloopTimeout("idleNetwork");
 

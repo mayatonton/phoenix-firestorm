@@ -28,6 +28,8 @@
 
 #include "llviewerdisplay.h"
 
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A
+
 #include "fsyspath.h"
 #include "hexdump.h"
 #include "llagent.h"
@@ -468,6 +470,7 @@ static void update_tp_display(bool minimized)
 // Paint the display!
 void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 {
+    AYAPERF_ZONE("display"); // <FS:AYAstorm> CPU perf 章 §7-A Group A: display 全体
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Render");
     LL_PROFILE_GPU_ZONE("Render");
 
@@ -895,7 +898,12 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         static LLCullResult result;
         LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
         LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
-        gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
+        {
+            // <FS:AYAstorm> CPU perf 章 §7-A: updateCull (前 frame occlusion query 結果回収 + frustum cull)
+            AYAPERF_ZONE("updateCull");
+            gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
+            // </FS:AYAstorm>
+        }
         stop_glerror();
 
         LLGLState::checkStates();
@@ -996,7 +1004,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 4")
             LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
-            gPipeline.stateSort(camera, result); // <FS:Ansariel> Factor out calls to getInstance
+            {
+                AYAPERF_ZONE("stateSort_main"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 caller 別)
+                gPipeline.stateSort(camera, result); // <FS:Ansariel> Factor out calls to getInstance
+            }
             stop_glerror();
 
             if (rebuild)
@@ -1011,7 +1022,12 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             }
         }
 
-        LLSceneMonitor::getInstance()->fetchQueryResult();
+        {
+            // <FS:AYAstorm> CPU perf 章 §7-A: scene monitor の GL query fetch (前 frame 結果 wait)
+            AYAPERF_ZONE("fetchQueryResult");
+            LLSceneMonitor::getInstance()->fetchQueryResult();
+            // </FS:AYAstorm>
+        }
 
         LLGLState::checkStates();
 
@@ -1271,6 +1287,7 @@ std::string getProfileStatsFilename()
 // WIP simplified copy of display() that does minimal work
 void display_cube_face()
 {
+    AYAPERF_ZONE("cubeFaceRender_total"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 reflection map per-frame コスト直視)
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Render Cube Face");
     LL_PROFILE_GPU_ZONE("display cube face");
 
@@ -1331,7 +1348,10 @@ void display_cube_face()
 
     {
         LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
-        gPipeline.stateSort(*LLViewerCamera::getInstance(), result);
+        {
+            AYAPERF_ZONE("stateSort_cubeFace"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 caller 別)
+            gPipeline.stateSort(*LLViewerCamera::getInstance(), result);
+        }
 
         if (rebuild)
         {
@@ -1383,6 +1403,7 @@ void display_cube_face()
 
 void render_hud_attachments()
 {
+    AYAPERF_ZONE("hudAttachmentRender"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     LLPerfStats::RecordSceneTime T ( LLPerfStats::StatType_t::RENDER_HUDS); // render time capture - Primary contributor to HUDs (though these end up in render batches)
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.pushMatrix();
@@ -1471,7 +1492,10 @@ void render_hud_attachments()
         gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_PASS_GLTF_PBR);
         gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK);
 
-        gPipeline.stateSort(hud_cam, result);
+        {
+            AYAPERF_ZONE("stateSort_hud"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 caller 別)
+            gPipeline.stateSort(hud_cam, result);
+        }
 
         gPipeline.renderGeomPostDeferred(hud_cam);
 
@@ -1597,6 +1621,7 @@ bool setup_hud_matrices(const LLRect& screen_region)
 
 void render_ui(F32 zoom_factor, int subfield)
 {
+    AYAPERF_ZONE("uiRender"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     LLPerfStats::RecordSceneTime T ( LLPerfStats::StatType_t::RENDER_UI ); // render time capture - Primary UI stat can have HUD time overlap (TODO)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI; //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI);
     LL_PROFILE_GPU_ZONE("ui");
@@ -1628,7 +1653,11 @@ void render_ui(F32 zoom_factor, int subfield)
 
 
         LL_PROFILE_ZONE_NAMED_CATEGORY_UI("HUD");
-    render_hud_elements();
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group F (5 周目 scope 修正: render_hud_elements 専用)
+            AYAPERF_ZONE("uiRender_hudElements");
+            render_hud_elements();
+        }
+        // </FS:AYAstorm>
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
         if (RlvActions::hasBehaviour(RLV_BHVR_SETOVERLAY))
         {
@@ -1652,6 +1681,7 @@ void render_ui(F32 zoom_factor, int subfield)
             if (!gDisconnected)
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 3D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_3D);
+                AYAPERF_ZONE("uiRender_3d"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 UI 内訳)
                 LLGLState::checkStates();
                 render_ui_3d();
                 LLGLState::checkStates();
@@ -1670,8 +1700,16 @@ void render_ui(F32 zoom_factor, int subfield)
         if (render_ui)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 2D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_2D);
-            LLHUDObject::renderAll();
-            render_ui_2d();
+            AYAPERF_ZONE("uiRender_2d"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 UI 内訳: parent / 検算用)
+            { // <FS:AYAstorm> CPU perf 章 §7-A Group F (5 周目 内訳: renderAll vs ui_2d 分離)
+                AYAPERF_ZONE("uiRender_renderAll");
+                LLHUDObject::renderAll();
+            }
+            {
+                AYAPERF_ZONE("uiRender_ui2d");
+                render_ui_2d();
+            }
+            // </FS:AYAstorm>
         }
         // <FS:Beq> FIRE-33239 - particles do not sie when UI is disabled
         if (!render_ui)
@@ -1700,6 +1738,7 @@ void swap()
     LL_PROFILE_GPU_ZONE("swap");
     if (gDisplaySwapBuffers)
     {
+        AYAPERF_ZONE("swapBuffers"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
         gViewerWindow->getWindow()->swapBuffers();
     }
     gDisplaySwapBuffers = true;
@@ -1959,6 +1998,7 @@ void render_ui_2d()
                 t_rect = LLView::sDirtyRect;
                 LLView::sDirtyRect = last_rect;
                 last_rect = t_rect;
+                // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目 BFS: render_ui_2d 内訳)
 
                 // <FS:Ansariel> Factor out instance() call
                 //last_rect.mLeft = LLRect::tCoordType(last_rect.mLeft / LLUI::getScaleFactor().mV[0]);
@@ -1974,7 +2014,10 @@ void render_ui_2d()
 
                 glClear(GL_COLOR_BUFFER_BIT);
 
-                gViewerWindow->draw();
+                {
+                    AYAPERF_ZONE("uiRender_ui2d_viewerWindowDraw");
+                    gViewerWindow->draw();
+                }
             }
 
             gPipeline.mUIScreen.flush();
@@ -1983,6 +2026,7 @@ void render_ui_2d()
             LLView::sDirtyRect = t_rect;
         }
 
+        AYAPERF_ZONE("uiRender_ui2d_uiScreenComposite"); // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目)
         LLGLDisable cull(GL_CULL_FACE);
         LLGLDisable blend(GL_BLEND);
         S32 width = gViewerWindow->getWindowWidthScaled();
@@ -1998,6 +2042,7 @@ void render_ui_2d()
     }
     else
     {
+        AYAPERF_ZONE("uiRender_ui2d_viewerWindowDraw"); // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目, else 経路)
         gViewerWindow->draw();
     }
 

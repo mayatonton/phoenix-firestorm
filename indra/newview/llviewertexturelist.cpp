@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group D: AYAPERF_ZONE
+
 #include <sys/stat.h>
 
 #include "llviewertexturelist.h"
@@ -1113,6 +1115,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 
 F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 {
+    AYAPERF_ZONE("updateImagesCreateTextures"); // <FS:AYAstorm> CPU perf 章 §7-A Group D
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     if (gGLManager.mIsDisabled) return 0.0f;
 
@@ -1252,6 +1255,7 @@ void LLViewerTextureList::forceImmediateUpdate(LLViewerFetchedTexture* imagep)
 
 F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 {
+    AYAPERF_ZONE("updateImagesFetchTextures"); // <FS:AYAstorm> CPU perf 章 §7-A Group D
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
     typedef std::vector<LLPointer<LLViewerFetchedTexture> > entries_list_t;

@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group B: AYAPERF_ZONE
+
 #include <typeinfo>
 #include <random>
 
@@ -2367,6 +2369,7 @@ void LLInventoryModel::idleNotifyObservers()
 void LLInventoryModel::notifyObservers(const LLUUID& transaction_id)
 // [/SL:KB]
 {
+    AYAPERF_ZONE("inventoryObserver"); // <FS:AYAstorm> CPU perf 章 §7-A Group B
     if (mIsNotifyObservers)
     {
         // Within notifyObservers, something called notifyObservers

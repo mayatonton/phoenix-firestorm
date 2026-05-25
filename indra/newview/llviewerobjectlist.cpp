@@ -92,6 +92,7 @@
 
 #include "fsareasearch.h" // <FS:Cron> Added to provide the ability to update the impact costs in area search. </FS:Cron>
 #include "llavataractions.h"
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A: AYAPERF_ZONE
 
 extern F32 gMinObjectDistance;
 extern bool gAnimateTextures;
@@ -1024,6 +1025,11 @@ void LLViewerObjectList::update(LLAgent &agent)
 
     std::vector<LLViewerObject*>::iterator idle_end = idle_list.begin()+idle_count;
 
+    // <FS:AYAstorm> CPU perf 章 §7-A: idleUpdate per-frame 全体時間を計測。
+    // mActiveObjects (~21k) × idleUpdate() の loop 全体 + flexible / texture-anim
+    // update を 1 zone で囲み、main thread の最大負荷源候補の実時間を CSV 出力。
+    {
+        AYAPERF_ZONE("idleUpdate");
     // <FS:Ansariel> Speed up debug settings
     //if (gSavedSettings.getBOOL("FreezeTime"))
     if (freezeTime)
@@ -1059,6 +1065,7 @@ void LLViewerObjectList::update(LLAgent &agent)
             LLViewerTextureAnim::updateClass();
         }
     }
+    } // </FS:AYAstorm> AYAPERF_ZONE("idleUpdate")
 
 
 

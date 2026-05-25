@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group B: AYAPERF_ZONE
+
 #include "llworld.h"
 #include "llrender.h"
 
@@ -1120,6 +1122,7 @@ static LLTrace::SampleStatHandle<> sNumActiveCachedObjects("numactivecachedobjec
 
 void LLWorld::updateRegions(F32 max_update_time)
 {
+    AYAPERF_ZONE("regionIdleUpdate"); // <FS:AYAstorm> CPU perf 章 §7-A Group B
     LL_PROFILE_ZONE_SCOPED;
     LLTimer update_timer;
     mNumOfActiveCachedObjects = 0;
@@ -1202,6 +1205,7 @@ void LLWorld::clearAllVisibleObjects()
 
 void LLWorld::updateParticles()
 {
+    AYAPERF_ZONE("particleSim"); // <FS:AYAstorm> CPU perf 章 §7-A Group B
     LLViewerPartSim::getInstance()->updateSimulation();
 }
 

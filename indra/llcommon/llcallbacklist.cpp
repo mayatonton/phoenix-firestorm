@@ -27,6 +27,7 @@
 #include "llcallbacklist.h"
 #include "lleventtimer.h"
 #include "llerrorlegacy.h"
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group B: AYAPERF_ZONE
 
 // Globals
 //
@@ -109,6 +110,7 @@ void LLCallbackList::deleteAllFunctions()
 
 void LLCallbackList::callFunctions()
 {
+    AYAPERF_ZONE("idleCallbacks"); // <FS:AYAstorm> CPU perf 章 §7-A Group B
     for (callback_list_t::iterator iter = mCallbackList.begin(); iter != mCallbackList.end(); )
     {
         callback_list_t::iterator curiter = iter++;
