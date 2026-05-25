@@ -71,7 +71,8 @@ SSS dispatch 位置を移動しました:
 
 ### Credits
 
-[@mayatonton](https://github.com/mayatonton) — 実装、routing 地図整備、バグ解析。
+- [@t-noami](https://github.com/t-noami) — r31-bugfix-1 の macOS ビルドに加え、AYAstorm 全体への継続的な実装貢献 (r24 Dullahan audio callback / r25 Ogg Vorbis codec / r26 3D Stream media ring / r27 macOS branding ほか)。
+- [@mayatonton](https://github.com/mayatonton) — r31-bugfix-1 SSS pink-shadow 修正の実装、routing 地図整備、バグ解析。
 
 ### Documentation
 

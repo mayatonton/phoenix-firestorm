@@ -41,4 +41,4 @@ r11 で同梱し以降も出荷中の venue IR は OpenAIR (CC-BY 4.0) 由来で
 
 ## Contributors
 
-@mayatonton
+@t-noami @mayatonton

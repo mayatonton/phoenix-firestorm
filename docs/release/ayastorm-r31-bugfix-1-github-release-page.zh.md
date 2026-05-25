@@ -41,4 +41,4 @@ r11 同捆并持续出货的 venue IR 来自 OpenAIR(CC-BY 4.0)。来源: [`app_
 
 ## Contributors
 
-@mayatonton
+@t-noami @mayatonton
