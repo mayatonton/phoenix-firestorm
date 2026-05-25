@@ -59,7 +59,6 @@ The four routing maps (1894 lines total) ship in this release as a permanent reu
 
 - The structural double meaning of `gbuffer3.a` (SSS skin mask **and** emissive MRT blend factor) is not resolved by this fix. The same class of bug may surface again for a future effect that reads `gbuffer3.a` after a single-RT pass
 - A more structural fix (case A: MRT-ize the FB shaders so they write a clean `gbuffer3.a`) remains open as future work. For SSS, the present fix is complete
-- **macOS build is bundled in the r32 chapter** (per the r10.x precedent: bugfix-N releases ship Linux/Windows only)
 
 ### Implementation summary
 

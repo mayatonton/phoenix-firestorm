@@ -35,11 +35,9 @@ Venue IRs bundled in r11 (and still shipping) are from OpenAIR (CC-BY 4.0). Sour
 
 ## Downloads
 
-_To be filled in by @mayatonton after the 2 OS (Linux / Windows) build completes._
-
-- Linux Installer: _TBD_ — `Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-XXXXXX.tar.xz`
-- Windows Installer: _TBD_ — `Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-XXXXXX_Setup.exe`
-- macOS Installer: **Not provided in this release.** Bundled in the upcoming r32 chapter (per r10.x precedent: bugfix-N releases ship Linux/Windows only)
+- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261441503_Setup.exe)
+- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81209.dmg)
+- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261442337.tar.xz)
 
 ## Contributors
 

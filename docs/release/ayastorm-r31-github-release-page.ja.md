@@ -85,11 +85,11 @@ AYAstorm View pipeline は NiranV Dean 氏の Black Dragon viewer (LGPL-2.1、vi
 
 ## Downloads
 
-> **Linux / Windows ユーザーの方は [AYAstorm r31-bugfix-1](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1) をご利用ください。** r31 に存在していた FullBright prim 越し SSS pink-shadow 透けの構造バグを r31-bugfix-1 で修正済みです。macOS は r32 で fix を同梱するまで本 r31 ビルドのままです (r10.x の前例どおり、bugfix-N リリースは Linux/Windows のみ提供)。
+> **[AYAstorm r31-bugfix-1](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1) をご利用ください。** r31 に存在していた FullBright prim 越し SSS pink-shadow 透けの構造バグを r31-bugfix-1 で修正済みで、3 OS (Linux / Windows / macOS) すべてのインストーラーを同梱しています。
 
 - Linux Installer → [r31-bugfix-1 release を使用](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
 - Windows Installer → [r31-bugfix-1 release を使用](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
-- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31+bundle-fs.80646/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81208.dmg) — 現行 macOS ビルド (r32 で SSS leak fix を同梱予定)
+- macOS Installer → [r31-bugfix-1 release を使用](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
 
 ## Contributors
 

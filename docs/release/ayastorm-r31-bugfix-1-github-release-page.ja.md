@@ -35,11 +35,9 @@ r11 で同梱し以降も出荷中の venue IR は OpenAIR (CC-BY 4.0) 由来で
 
 ## Downloads
 
-_2 OS (Linux / Windows) build 完了後に @mayatonton が記入予定。_
-
-- Linux Installer: _TBD_ — `Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-XXXXXX.tar.xz`
-- Windows Installer: _TBD_ — `Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-XXXXXX_Setup.exe`
-- macOS Installer: **本リリースでは非提供。** 次の r32 章でまとめて同梱予定です (r10.x の前例どおり、bugfix-N リリースは Linux/Windows のみ)
+- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261441503_Setup.exe)
+- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81209.dmg)
+- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261442337.tar.xz)
 
 ## Contributors
 
