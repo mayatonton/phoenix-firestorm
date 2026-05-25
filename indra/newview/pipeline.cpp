@@ -3191,18 +3191,25 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         gGL.setColorMask(true, true);
     }
 
-    // <FS:AYAstorm> CPU perf 章 r31 P0 打ち手 B: 旧 (B) block (Hero only) 削除。
-    // upstream secondlife/viewer 2024-06-21 b01c6ef0674 (Dave Parks
-    // "#1814 and #1517 Fix mirror update rate and occlusion culling") で
-    // 上記 (A) block に mHeroProbeManager.doOcclusion() を追加した際、
-    // 既存の (B) Hero only block (2023-08-21 ef057c7b268 Geenz
-    // "Readd occlusion culling for hero probes") を消し忘れた結果、
-    // 同条件で Hero probe occlusion query が毎 frame 2 回発行されていた。
-    // LLHeroProbeManager::doOcclusion() は内部で probe->doOcclusion(eye) を
-    // 呼び GPU occlusion query を発行するため idempotent ではなく、2 回呼ぶと
-    // GPU/CPU work が両方 2 倍化する。12 周目計測で doOcclusion_reflectionProbes
-    // が doOcclusion 内 95% (4.13 ms/frame) と支配的だったため削除。
-    // </FS:AYAstorm>
+    if (sReflectionProbesEnabled && sUseOcclusion > 1 && !LLPipeline::sShadowRender && !gCubeSnapshot)
+    {
+        gGL.setColorMask(false, false);
+        LLGLDepthTest depth(GL_TRUE, GL_FALSE);
+        LLGLDisable cull(GL_CULL_FACE);
+
+        gOcclusionCubeProgram.bind();
+
+        if (mCubeVB.isNull())
+        { //cube VB will be used for issuing occlusion queries
+            mCubeVB = ll_create_cube_vb(LLVertexBuffer::MAP_VERTEX);
+        }
+        mCubeVB->setBuffer();
+
+        mHeroProbeManager.doOcclusion();
+        gOcclusionCubeProgram.unbind();
+
+        gGL.setColorMask(true, true);
+    }
     } // </FS:AYAstorm> doOcclusion_reflectionProbes scope end
 
     if (LLPipeline::sUseOcclusion > 1 &&
