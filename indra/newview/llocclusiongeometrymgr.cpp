@@ -4,6 +4,8 @@
  */
 
 #include "linden_common.h"
+
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group E: AYAPERF_ZONE
 #include "llocclusiongeometrymgr.h"
 
 #include "fmodstudio/fmod.hpp"
@@ -274,6 +276,7 @@ void LLOcclusionGeometryMgr::onObjectPropertiesReceived(const LLUUID& id,
 
 void LLOcclusionGeometryMgr::refreshOccluders()
 {
+    AYAPERF_ZONE("occlusionRefresh"); // <FS:AYAstorm> CPU perf 章 §7-A Group E
     // Update tick dt regardless of whether occluders are present, so the
     // ramp logic in applyToChannel sees a sane delta on the very first
     // frame an occluder appears.

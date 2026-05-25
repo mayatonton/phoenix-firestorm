@@ -31,6 +31,7 @@
 
 #include "llimagegl.h"
 
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A
 #include "llerror.h"
 #include "llfasttimer.h"
 #include "llimage.h"
@@ -1745,6 +1746,11 @@ bool LLImageGL::createGLTexture(S32 discard_level, const U8* data_in, bool data_
 void LLImageGL::syncToMainThread(LLGLuint new_tex_name)
 {
     LL_PROFILE_ZONE_SCOPED;
+    // <FS:AYAstorm> CPU perf 章 §7-A: NVIDIA = glClientWaitSync で fence wait block、
+    // AMD = WorkQueue post で async。worker thread (LLImageGLThread) 上で実行されるため
+    // llcommon 配置の AYAPERF_ZONE で計測可能。TID 181797 (CPU 30%) の正体究明用。
+    AYAPERF_ZONE("syncToMainThread");
+    // </FS:AYAstorm>
     llassert(!on_main_thread());
 
     {

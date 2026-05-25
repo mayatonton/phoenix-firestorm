@@ -24,6 +24,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group E: AYAPERF_ZONE
+
 #include "llpositionalstreammgr.h"
 
 #include "llaudioengine.h"
@@ -2397,6 +2399,7 @@ static LLTrace::BlockTimerStatHandle FTM_STREAM3D_MGR_UPDATE("Stream3D Mgr Updat
 
 void LLPositionalStreamMgr::update()
 {
+    AYAPERF_ZONE("stream3DUpdate"); // <FS:AYAstorm> CPU perf 章 §7-A Group E
     LL_RECORD_BLOCK_TIME(FTM_STREAM3D_MGR_UPDATE);
 
     // M8: master kill switch. Listener already tore down state when the

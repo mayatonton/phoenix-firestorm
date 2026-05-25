@@ -36,6 +36,7 @@
 #include "_httpopsetget.h"
 
 #include "lltimer.h"
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A
 #include "httpstats.h"
 
 namespace
@@ -412,6 +413,10 @@ HttpHandle HttpRequest::requestNoOp(HttpHandler::ptr_t user_handler)
 
 HttpStatus HttpRequest::update(long usecs)
 {
+    // <FS:AYAstorm> CPU perf 章 §7-A: worker → main の reply queue drain。
+    // B2 fix (2026-05-26): 旧版は update() 先頭に zone を置いていたため queue が空でも
+    // 1 行 (dt=0) 記録され、CSV の 95% が空 poll になった。実 callback 単位の dt を取りたい
+    // ので、各 visitNotifier 呼出のすぐ外側に scope を絞る。
     HttpOperation::ptr_t op;
 
     if (usecs)
@@ -419,9 +424,10 @@ HttpStatus HttpRequest::update(long usecs)
         const HttpTime limit(totalTime() + HttpTime(usecs));
         while (limit >= totalTime() && (op = mReplyQueue->fetchOp()))
         {
-            // Process operation
-            op->visitNotifier(this);
-
+            {
+                AYAPERF_ZONE("visitNotifier");
+                op->visitNotifier(this);
+            }
             // We're done with the operation
             op.reset();
         }
@@ -433,6 +439,7 @@ HttpStatus HttpRequest::update(long usecs)
         mReplyQueue->fetchAll(replies);
         if (! replies.empty())
         {
+            AYAPERF_ZONE("visitNotifier"); // 空でない batch 全体を 1 scope で計測
             for (HttpReplyQueue::OpContainer::iterator iter(replies.begin());
                  replies.end() != iter;
                  ++iter)
@@ -448,6 +455,7 @@ HttpStatus HttpRequest::update(long usecs)
             }
         }
     }
+    // </FS:AYAstorm>
 
     return HttpStatus();
 }
