@@ -34,6 +34,7 @@
 #include "llimagepng.h"
 #include "llaudioengine.h" // For debugging.
 #include "llocclusiongeometrymgr.h" // r13: OBB occlusion debug overlay.
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A
 #include "llerror.h"
 #include "llviewercontrol.h"
 #include "llfasttimer.h"
@@ -2640,6 +2641,7 @@ void LLPipeline::updateMovedList(LLDrawable::drawable_vector_t& moved_list)
 
 void LLPipeline::updateMove()
 {
+    AYAPERF_ZONE("drawablesUpdateMove"); // <FS:AYAstorm> CPU perf 章 §7-A Group B
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
     if (FreezeTime)
@@ -2663,6 +2665,9 @@ void LLPipeline::updateMove()
     updateMovedList(mMovedList);
 
     //balance octrees
+    // <FS:AYAstorm> CPU perf 章 §7-A: 全 region × NUM_PARTITIONS の octree balance を 1 zone で計測。
+    {
+        AYAPERF_ZONE("octreeBalance");
     for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
         iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
     {
@@ -2683,6 +2688,7 @@ void LLPipeline::updateMove()
             vo_part->mOctree->balance();
         }
     }
+    } // </FS:AYAstorm> AYAPERF_ZONE("octreeBalance")
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -3975,6 +3981,7 @@ void LLPipeline::markRebuild(LLDrawable *drawablep, LLDrawable::EDrawableFlags f
 
 void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
 {
+    AYAPERF_ZONE("stateSort"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("stateSort");
 
@@ -4912,6 +4919,7 @@ U32 LLPipeline::sCurRenderPoolType = 0 ;
 // before any override exists, just produces a cleared RG16F target.
 void LLPipeline::renderGeomMotionBlur()
 {
+    AYAPERF_ZONE("motionBlur"); // <FS:AYAstorm> CPU perf 章 §7-A Group C (Cinematic only)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     LL_PROFILE_GPU_ZONE("renderGeomMotionBlur");
 
@@ -5004,6 +5012,7 @@ void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* 
 // AYAstorm visual-realism alpha-protect rule. Caller pong-chains the result.
 void LLPipeline::renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst)
 {
+    AYAPERF_ZONE("volumetric"); // <FS:AYAstorm> CPU perf 章 §7-A Group C (Cinematic only)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("volumetric light");
 
@@ -5038,6 +5047,7 @@ void LLPipeline::renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst)
 
 void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 {
+    AYAPERF_ZONE("renderGeomDeferred"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     LLAppViewer::instance()->pingMainloopTimeout("Pipeline:RenderGeomDeferred");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_GEOMETRY);
     LL_PROFILE_GPU_ZONE("renderGeomDeferred");
@@ -5067,21 +5077,27 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 
     bool occlude = LLPipeline::sUseOcclusion > 1 && do_occlusion && !LLGLSLShader::sProfileEnabled;
 
-    setupHWLights();
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group H (7 周目 BFS Layer 2: renderGeomDeferred gap drill)
+        AYAPERF_ZONE("renderGeomDeferred_setupHWLights");
+        setupHWLights();
+    } // </FS:AYAstorm>
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("deferred pools");
 
         LLGLEnable cull(GL_CULL_FACE);
 
-        for (pool_set_t::iterator iter = mPools.begin(); iter != mPools.end(); ++iter)
-        {
-            LLDrawPool *poolp = *iter;
-            if (hasRenderType(poolp->getType()))
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目 BFS: prerender setup overhead)
+            AYAPERF_ZONE("renderGeomDeferred_prerender");
+            for (pool_set_t::iterator iter = mPools.begin(); iter != mPools.end(); ++iter)
             {
-                poolp->prerender();
+                LLDrawPool *poolp = *iter;
+                if (hasRenderType(poolp->getType()))
+                {
+                    poolp->prerender();
+                }
             }
-        }
+        } // </FS:AYAstorm>
 
         LLVertexBuffer::unbind();
 
@@ -5112,13 +5128,45 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
                 occlude = false;
                 gGLLastMatrix = NULL;
                 gGL.loadMatrix(gGLModelView);
-                doOcclusion(camera);
+                { // <FS:AYAstorm> CPU perf 章 §7-A Group H (7 周目 Layer 2)
+                    AYAPERF_ZONE("renderGeomDeferred_doOcclusion");
+                    doOcclusion(camera);
+                } // </FS:AYAstorm>
             }
 
             pool_set_t::iterator iter2 = iter1;
             if (hasRenderType(poolp->getType()) && poolp->getNumDeferredPasses() > 0)
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("deferred pool render");
+                // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目 BFS: per-pool dispatch dt)
+                static const char* k_pool_zone_names[LLDrawPool::NUM_POOL_TYPES] = {
+                    "renderGeom_pool_unused0",
+                    "renderGeom_pool_SKY",
+                    "renderGeom_pool_WATEREXCLUSION",
+                    "renderGeom_pool_WL_SKY",
+                    "renderGeom_pool_SIMPLE",
+                    "renderGeom_pool_FULLBRIGHT",
+                    "renderGeom_pool_BUMP",
+                    "renderGeom_pool_MATERIALS",
+                    "renderGeom_pool_GLTF_PBR",
+                    "renderGeom_pool_TERRAIN",
+                    "renderGeom_pool_GRASS",
+                    "renderGeom_pool_GLTF_PBR_ALPHA_MASK",
+                    "renderGeom_pool_TREE",
+                    "renderGeom_pool_ALPHA_MASK",
+                    "renderGeom_pool_FULLBRIGHT_ALPHA_MASK",
+                    "renderGeom_pool_AVATAR",
+                    "renderGeom_pool_CONTROL_AV",
+                    "renderGeom_pool_GLOW",
+                    "renderGeom_pool_ALPHA_PRE_WATER",
+                    "renderGeom_pool_VOIDWATER",
+                    "renderGeom_pool_WATER",
+                    "renderGeom_pool_ALPHA_POST_WATER",
+                    "renderGeom_pool_ALPHA",
+                };
+                LLAyastormPerfZone _aya_pool_zone(
+                    (cur_type < (U32)LLDrawPool::NUM_POOL_TYPES) ? k_pool_zone_names[cur_type] : "renderGeom_pool_OOB");
+                // </FS:AYAstorm>
 
                 gGLLastMatrix = NULL;
                 gGL.loadMatrix(gGLModelView);
@@ -5159,11 +5207,14 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
             stop_glerror();
         }
 
-        gGLLastMatrix = NULL;
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-        gGL.loadMatrix(gGLModelView);
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group H (7 周目 Layer 2: while ループ後の GL state restore)
+            AYAPERF_ZONE("renderGeomDeferred_postLoop");
+            gGLLastMatrix = NULL;
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+            gGL.loadMatrix(gGLModelView);
 
-        gGL.setColorMask(true, false);
+            gGL.setColorMask(true, false);
+        } // </FS:AYAstorm>
 
     } // Tracy ZoneScoped
 
@@ -9778,6 +9829,7 @@ bool LLPipeline::renderSnapshotFrame(LLRenderTarget* src, LLRenderTarget* dst)
 
 void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 {
+    AYAPERF_ZONE("depthOfField"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     LL_PROFILE_GPU_ZONE("dof");
     {
         sDoFEnabled = // <FS:Beq/> // FIRE-32023 Render focus point
@@ -10034,6 +10086,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 
 void LLPipeline::renderFinalize()
 {
+    AYAPERF_ZONE("renderFinalize"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     llassert(!gCubeSnapshot);
     LLVertexBuffer::unbind();
     LLGLState::checkStates();
@@ -11048,6 +11101,7 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
 
 void LLPipeline::renderDeferredLighting()
 {
+    AYAPERF_ZONE("renderDeferredLighting"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("renderDeferredLighting");
     if (!sCull)
@@ -11667,6 +11721,7 @@ void LLPipeline::renderDeferredLighting()
 
 void LLPipeline::doAtmospherics()
 {
+    AYAPERF_ZONE("atmosphericsHaze"); // <FS:AYAstorm> CPU perf 章 §7-A Group C
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
     if (sImpostorRender)
@@ -12437,10 +12492,18 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 
     LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
 
-    updateCull(shadow_cam, result);
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group I-1 (8 周目 Layer 3: renderShadow body cull = updateCull 寄与)
+        AYAPERF_ZONE("renderShadow_body_cull");
+        updateCull(shadow_cam, result);
+    } // </FS:AYAstorm>
 
-    stateSort(shadow_cam, result);
+    {
+        AYAPERF_ZONE("renderShadow_stateSort"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 shadow pass 内 stateSort 寄与)
+        stateSort(shadow_cam, result);
+    }
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-1 (9 周目 Layer 4: renderShadow body pre-dispatch matrix/texunit setup)
+    AYAPERF_ZONE("renderShadow_body_matrixSetup");
     //generate shadow map
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.pushMatrix();
@@ -12466,6 +12529,10 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 
 
     LLVertexBuffer::unbind();
+    } // </FS:AYAstorm> matrixSetup scope end
+
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目 BFS: shadow draw dispatch part = sun - stateSort 残差)
+    AYAPERF_ZONE("renderShadow_dispatch");
     for (int j = 0; j < 2; ++j) // 0 -- static, 1 -- rigged
     {
         bool rigged = j == 1;
@@ -12494,21 +12561,27 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 
         gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
     }
+    } // <FS:AYAstorm> renderShadow_dispatch scope end
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-1 (9 周目 Layer 4: renderShadow body 内部 doOcclusion = sUseOcclusion>1 時のみ発火)
+    AYAPERF_ZONE("renderShadow_body_innerOcclusion");
     if (LLPipeline::sUseOcclusion > 1)
     { // do occlusion culling against non-masked only to take advantage of hierarchical Z
         doOcclusion(shadow_cam);
     }
+    } // </FS:AYAstorm> innerOcclusion scope end
 
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow geom");
+        AYAPERF_ZONE("renderShadow_body_geom"); // <FS:AYAstorm> CPU perf 章 §7-A Group I-1 (8 周目 Layer 3: renderShadow body 内 opaque shadow geom 寄与)
         renderGeomShadow(shadow_cam);
     }
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha");
         LL_PROFILE_GPU_ZONE("shadow alpha");
+        AYAPERF_ZONE("renderShadow_body_alpha"); // <FS:AYAstorm> CPU perf 章 §7-A Group I-1 (8 周目 Layer 3: renderShadow body 内 alpha/masked shadow 寄与)
         const S32 sun_up = LLEnvironment::instance().getIsSunUp() ? 1 : 0;
         U32 target_width = LLRenderTarget::sCurResX;
 
@@ -12588,6 +12661,8 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
         }
     }
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-1 (9 周目 Layer 4: renderShadow body cube program bind + matrix pop + state restore)
+    AYAPERF_ZONE("renderShadow_body_cubeTeardown");
     gDeferredShadowCubeProgram.bind();
     gGLLastMatrix = NULL;
     gGL.loadMatrix(gGLModelView);
@@ -12603,6 +12678,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
     // reset occlusion culling flag
     sUseOcclusion = saved_occlusion;
     LLPipeline::sShadowRender = false;
+    } // </FS:AYAstorm> cubeTeardown scope end
 }
 
 bool LLPipeline::getVisiblePointCloud(LLCamera& camera, LLVector3& min, LLVector3& max, std::vector<LLVector3>& fp, LLVector3 light_dir)
@@ -12841,6 +12917,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         return;
     }
 
+    AYAPERF_ZONE("renderShadow"); // <FS:AYAstorm> CPU perf 章 §7-A Group C (early return 後)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_GEN_SUN_SHADOW);
     LL_PROFILE_GPU_ZONE("generateSunShadow");
 
@@ -13102,8 +13179,18 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     }
     else
     {
+        // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目: per-cascade index 別 zone 名 table)
+        static const char* k_sun_cascade_zone_names[4] = {
+            "renderShadow_sun_0",
+            "renderShadow_sun_1",
+            "renderShadow_sun_2",
+            "renderShadow_sun_3",
+        };
+        // </FS:AYAstorm>
         for (S32 j = 0; j < (gCubeSnapshot ? 2 : 4); j++)
         {
+            AYAPERF_ZONE("renderShadow_sun"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 sun cascade 内訳, per-iter sample)
+            LLAyastormPerfZone _aya_sun_idx_zone(k_sun_cascade_zone_names[j]); // <FS:AYAstorm> §7-A Group G (6 周目 per-cascade)
             if (!hasRenderDebugMask(RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
                 mShadowFrustPoints[j].clear();
@@ -13460,6 +13547,10 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             mRT->shadow[j].clear();
 
             {
+                // <FS:AYAstorm> CPU perf 章 §7-A Group H (7 周目 Layer 2: sun_3 内訳)
+                // sun_setup phase = sun_<j> total - sun_call (derived during analysis)
+                AYAPERF_ZONE("renderShadow_sun_call");
+                // </FS:AYAstorm>
                 static LLCullResult result[4];
                 renderShadow(view[j], proj[j], shadow_cam, result[j], true);
             }
@@ -13520,8 +13611,16 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         // this should never happen
         llassert(mShadowSpotLight[0] != mShadowSpotLight[1] || mShadowSpotLight[0].isNull());
 
+        // <FS:AYAstorm> CPU perf 章 §7-A Group G (6 周目: per-projector index 別 zone 名 table)
+        static const char* k_projector_zone_names[2] = {
+            "renderShadow_projector_0",
+            "renderShadow_projector_1",
+        };
+        // </FS:AYAstorm>
         for (S32 i = 0; i < 2; i++)
         {
+            AYAPERF_ZONE("renderShadow_projector"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 projector 内訳, per-iter sample)
+            LLAyastormPerfZone _aya_proj_idx_zone(k_projector_zone_names[i]); // <FS:AYAstorm> §7-A Group G (6 周目 per-iter)
             set_current_modelview(saved_view);
             set_current_projection(saved_proj);
 
@@ -13912,7 +14011,10 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
         }
     }
 
-    stateSort(*LLViewerCamera::getInstance(), result);
+    {
+        AYAPERF_ZONE("stateSort_impostor"); // <FS:AYAstorm> CPU perf 章 §7-A Group F (4 周目 caller 別, rare)
+        stateSort(*LLViewerCamera::getInstance(), result);
+    }
 
     LLCamera camera = *viewer_camera;
     LLVector2 tdim;
