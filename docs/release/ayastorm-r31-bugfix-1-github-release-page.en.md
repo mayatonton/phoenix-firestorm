@@ -41,4 +41,4 @@ Venue IRs bundled in r11 (and still shipping) are from OpenAIR (CC-BY 4.0). Sour
 
 ## Contributors
 
-@mayatonton
+@t-noami @mayatonton

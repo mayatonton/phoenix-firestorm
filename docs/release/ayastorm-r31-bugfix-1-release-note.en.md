@@ -71,7 +71,8 @@ The four routing maps (1894 lines total) ship in this release as a permanent reu
 
 ### Credits
 
-[@mayatonton](https://github.com/mayatonton) — implementation, routing-map authoring, bug analysis.
+- [@t-noami](https://github.com/t-noami) — macOS build for r31-bugfix-1, alongside ongoing implementation contributions across AYAstorm (r24 Dullahan audio callback, r25 Ogg Vorbis codec, r26 3D Stream media ring, r27 macOS branding, and more).
+- [@mayatonton](https://github.com/mayatonton) — r31-bugfix-1 SSS pink-shadow fix implementation, routing-map authoring, bug analysis.
 
 ### Documentation
 

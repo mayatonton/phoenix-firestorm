@@ -71,7 +71,8 @@
 
 ### 致谢
 
-[@mayatonton](https://github.com/mayatonton) — 实现、routing 地图编写、bug 分析。
+- [@t-noami](https://github.com/t-noami) — r31-bugfix-1 的 macOS 构建,以及 AYAstorm 全局的持续实装贡献 (r24 Dullahan audio callback / r25 Ogg Vorbis codec / r26 3D Stream media ring / r27 macOS branding 等)。
+- [@mayatonton](https://github.com/mayatonton) — r31-bugfix-1 SSS pink-shadow 修复实装、routing 地图编写、bug 分析。
 
 ### 文档
 
