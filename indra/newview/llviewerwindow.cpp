@@ -27,6 +27,8 @@
 #include "llviewerprecompiledheaders.h"
 #include "llviewerwindow.h"
 
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group H (7 周目 Layer 2)
+
 
 // system library includes
 #include <stdio.h>
@@ -3002,53 +3004,88 @@ void LLViewerWindow::drawDebugText()
 
 void LLViewerWindow::draw()
 {
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group I-2 (8 周目 Layer 3: viewerWindowDraw setup 寄与 = stop_glerror/matrix/timecode/gUIProgram.bind/pushMatrix)
+    AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup");
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-2 (9 周目 Layer 4: setup 内側 stop_glerror = GPU sync stall 主犯候補)
+        AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_stopGlerror");
 //#if LL_DEBUG
-    LLView::sIsDrawing = true;
+        LLView::sIsDrawing = true;
 //#endif
-    stop_glerror();
+        stop_glerror();
+    } // </FS:AYAstorm>
 
-    LLUI::setLineWidth(1.f);
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-2 (9 周目 Layer 4: setup 内側 matrix init) + Group K-1 (10 周目 Layer 5: matrixInit 4 分割)
+        AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_matrixInit");
 
-    // Reset any left-over transforms
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
+        { // <FS:AYAstorm> Group K-1 (Layer 5 で 16.6 ms/frame の主犯と特定)
+            // <FS:AYAstorm> CPU perf 章 r31 P0: LLUI::setLineWidth(1.f) を削除。
+            // LLUI::setLineWidth は LLRender2D::setLineWidth 経由で UIGLScaleFactor を乗じるため、
+            // 他多数の raw gGL.setLineWidth(1.f) caller と mLineWidth guard 値が一致せず、毎フレーム
+            // glLineWidth() を発火させていた。default 1.0 で reset したい意図なら他 caller が責任を
+            // 持つべき (各 caller は既に末尾で `gGL.setLineWidth(1.f)` または LLUI 経由で 1.f に戻している)。
+            AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_matrixInit_setLineWidth");
+            // LLUI::setLineWidth(1.f);  // 削除: r31 P0 / CPU perf 章 §4.2.f
+        } // </FS:AYAstorm>
 
-    gGL.loadIdentity();
+        { // <FS:AYAstorm> Group K-1 (Layer 5: matrixMode 単発、Reset any left-over transforms)
+            AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_matrixInit_matrixMode");
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+        } // </FS:AYAstorm>
 
-    //S32 screen_x, screen_y;
+        { // <FS:AYAstorm> Group K-1 (Layer 5: loadIdentity 単発、matrix stack identity push 候補)
+            AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_matrixInit_loadIdentity");
+            gGL.loadIdentity();
+        } // </FS:AYAstorm>
 
-    if (!LLPipeline::RenderUIBuffer)
-    {
-        LLView::sDirtyRect = getWindowRectScaled();
-    }
+        //S32 screen_x, screen_y;
 
-    // HACK for timecode debugging
-    //if (gSavedSettings.getBOOL("DisplayTimecode"))
-    static LLCachedControl<bool> displayTimecode(gSavedSettings, "DisplayTimecode");
-    if (displayTimecode)
-    {
-        // draw timecode block
-        std::string text;
+        { // <FS:AYAstorm> Group K-1 (Layer 5: dirtyRect block、OS Window size 取得経路 + LLView 全体 dirty 化)
+            AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_matrixInit_dirtyRect");
+            if (!LLPipeline::RenderUIBuffer)
+            {
+                LLView::sDirtyRect = getWindowRectScaled();
+            }
+        } // </FS:AYAstorm>
+    } // </FS:AYAstorm>
 
-        gGL.loadIdentity();
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-2 (9 周目 Layer 4: setup 内側 displayTimecode 取得 + 描画)
+        AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_displayTimecode");
+        // HACK for timecode debugging
+        //if (gSavedSettings.getBOOL("DisplayTimecode"))
+        static LLCachedControl<bool> displayTimecode(gSavedSettings, "DisplayTimecode");
+        if (displayTimecode)
+        {
+            // draw timecode block
+            std::string text;
 
-        microsecondsToTimecodeString(gFrameTime,text);
-        const LLFontGL* font = LLFontGL::getFontSansSerif();
-        font->renderUTF8(text, 0,
-                        ll_round((getWindowWidthScaled()/2)-100.f),
-                        ll_round((getWindowHeightScaled()-60.f)),
-            LLColor4( 1.f, 1.f, 1.f, 1.f ),
-            LLFontGL::LEFT, LLFontGL::TOP);
-    }
+            gGL.loadIdentity();
 
-    // Draw all nested UI views.
-    // No translation needed, this view is glued to 0,0
+            microsecondsToTimecodeString(gFrameTime,text);
+            const LLFontGL* font = LLFontGL::getFontSansSerif();
+            font->renderUTF8(text, 0,
+                            ll_round((getWindowWidthScaled()/2)-100.f),
+                            ll_round((getWindowHeightScaled()-60.f)),
+                LLColor4( 1.f, 1.f, 1.f, 1.f ),
+                LLFontGL::LEFT, LLFontGL::TOP);
+        }
+    } // </FS:AYAstorm>
 
-    gUIProgram.bind();
-    gGL.color4f(1, 1, 1, 1);
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-2 (9 周目 Layer 4: setup 内側 gUIProgram.bind = LLGLSL state validation 主犯候補)
+        AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_uiProgramBind");
+        // Draw all nested UI views.
+        // No translation needed, this view is glued to 0,0
 
-    gGL.pushMatrix();
-    LLUI::pushMatrix();
+        gUIProgram.bind();
+        gGL.color4f(1, 1, 1, 1);
+    } // </FS:AYAstorm>
+
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group J-2 (9 周目 Layer 4: setup 内側 push matrices)
+        AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_pushMatrices");
+        gGL.pushMatrix();
+        LLUI::pushMatrix();
+    } // </FS:AYAstorm>
+    } // </FS:AYAstorm> setup scope end
     {
         // <FS:Ansariel> Factor out instance() call
         LLViewerCamera& camera = LLViewerCamera::instance();
@@ -3073,6 +3110,8 @@ void LLViewerWindow::draw()
             LLUI::getScaleFactor() *= zoom_factor;
         }
 
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group H (7 周目 Layer 2: tool + mouselook overlays)
+        AYAPERF_ZONE("uiRender_ui2d_vwDraw_toolAndOverlays");
         // Draw tool specific overlay on world
         LLToolMgr::getInstance()->getCurrentTool()->draw();
 
@@ -3179,10 +3218,14 @@ void LLViewerWindow::draw()
             drawMouselookInstructions();
             stop_glerror();
         }
+        } // </FS:AYAstorm> toolAndOverlays scope end
 
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group H (7 周目 Layer 2: UI widget tree 本体)
+        AYAPERF_ZONE("uiRender_ui2d_vwDraw_rootView");
         // Draw all nested UI views.
         // No translation needed, this view is glued to 0,0
         mRootView->draw();
+        } // </FS:AYAstorm> rootView scope end
 
         if (LLView::sDebugRects)
         {
@@ -3193,6 +3236,7 @@ void LLViewerWindow::draw()
         LLUICtrl* top_ctrl = gFocusMgr.getTopCtrl();
         if (top_ctrl && top_ctrl->getVisible())
         {
+            AYAPERF_ZONE("uiRender_ui2d_vwDraw_topCtrl"); // <FS:AYAstorm> CPU perf 章 §7-A Group I-2 (8 周目 Layer 3: top_ctrl draw 寄与)
             S32 screen_x, screen_y;
             top_ctrl->localPointToScreen(0, 0, &screen_x, &screen_y);
 
@@ -3206,6 +3250,7 @@ void LLViewerWindow::draw()
 
         if( gShowOverlayTitle && !mOverlayTitle.empty() )
         {
+            AYAPERF_ZONE("uiRender_ui2d_vwDraw_overlayTitle"); // <FS:AYAstorm> CPU perf 章 §7-A Group I-2 (8 周目 Layer 3: gShowOverlayTitle 寄与、default OFF で 0 us 想定)
             // Used for special titles such as "Second Life - Special E3 2003 Beta"
             const S32 DIST_FROM_TOP = 20;
             LLFontGL::getFontSansSerifBig()->renderUTF8(
@@ -3218,12 +3263,15 @@ void LLViewerWindow::draw()
 
         LLUI::setScaleFactor(old_scale_factor);
     }
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group I-2 (8 周目 Layer 3: viewerWindowDraw teardown 寄与 = popMatrix/gUIProgram.unbind)
+    AYAPERF_ZONE("uiRender_ui2d_vwDraw_teardown");
     LLUI::popMatrix();
     gGL.popMatrix();
 
     gUIProgram.unbind();
 
     LLView::sIsDrawing = false;
+    } // </FS:AYAstorm> teardown scope end
 }
 
 // <FS:TT> Window Title Access
