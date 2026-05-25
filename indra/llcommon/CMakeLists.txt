@@ -22,6 +22,7 @@ set(llcommon_SOURCE_FILES
     llapr.cpp
     llassettype.cpp
     llatomic.cpp
+    llayastormperflog.cpp
     llbase32.cpp
     llbase64.cpp
     llbitpack.cpp
@@ -132,6 +133,7 @@ set(llcommon_HEADER_FILES
     llapr.h
     llassettype.h
     llatomic.h
+    llayastormperflog.h
     llbase32.h
     llbase64.h
     llbitpack.h

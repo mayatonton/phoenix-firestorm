@@ -10361,6 +10361,25 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm> CPU perf 章: zone 計測 CSV writer の gate。
+         docs/specs/ayastorm-cpu-perf/ §7-A の数字 (idleUpdate / octree balance /
+         fetchQueryResult / NVIDIA fence / visitNotifier の per-frame 時間) を
+         実機で取るための infra。1=有効、起動時に <userdir>/logs/AYAstorm-perf.csv を
+         open、AYAPERF_ZONE 各 scope の dt を append。0=完全 no-op (file open / disk I/O
+         一切なし)。default 0。再起動で適用 (起動時のみ判定)。 -->
+    <key>AYAPerfLogEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm CPU perf 章の zone 計測 CSV 出力 gate。1=有効 (起動時に &lt;userdir&gt;/logs/AYAstorm-perf.csv を open、AYAPERF_ZONE 各 scope の dt を append)、0=完全 no-op。default 0。再起動で適用。docs/specs/ayastorm-cpu-perf/ §7-A 用</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>
