@@ -358,6 +358,11 @@ public:
     // through if unspecified) is used. Result is clamped to [0.0, 3.0].
     static F32 effectiveLfeGain(std::optional<F32> tag_value);
 
+    // r34: render-side mouselook suppression must not hide or stall prims
+    // participating in a live 3D Stream binding, especially source:media
+    // surfaces whose audio ring depends on media/plugin updates.
+    bool isStream3DPrimOrRoot(const LLUUID& id) const;
+
 private:
     LLPositionalStreamMgr();
     ~LLPositionalStreamMgr();

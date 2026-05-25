@@ -390,6 +390,32 @@ LLPositionalStreamMgr& LLPositionalStreamMgr::instance()
 LLPositionalStreamMgr::LLPositionalStreamMgr() = default;
 LLPositionalStreamMgr::~LLPositionalStreamMgr() = default;
 
+bool LLPositionalStreamMgr::isStream3DPrimOrRoot(const LLUUID& id) const
+{
+    if (id.isNull())
+    {
+        return false;
+    }
+
+    if (mBindings.find(id) != mBindings.end() ||
+        mDistributedBindings.find(id) != mDistributedBindings.end() ||
+        mPrimToRoot.find(id) != mPrimToRoot.end())
+    {
+        return true;
+    }
+
+    for (const auto& [root_id, binding] : mDistributedBindings)
+    {
+        if (binding.source_key.kind == DistSourceKind::Media &&
+            binding.source_key.media_object_id == id)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // static
 std::optional<LLPositionalStreamMgr::TagData>
 LLPositionalStreamMgr::parseTag(const std::string& description)

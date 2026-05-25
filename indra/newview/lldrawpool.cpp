@@ -44,6 +44,10 @@
 #include "lldrawpoolwater.h"
 #include "lldrawpoolwaterexclusion.h"
 #include "llface.h"
+#include "llagentcamera.h"
+#include "llframetimer.h"
+#include "llpositionalstreammgr.h"
+#include "llviewerobject.h"
 #include "llviewerobjectlist.h" // For debug listing.
 #include "pipeline.h"
 #include "llspatialpartition.h"
@@ -54,7 +58,690 @@
 #include "llvoavatar.h"
 #include "llviewershadermgr.h"
 
+#include <algorithm>
+#include <initializer_list>
+#include <map>
+#include <sstream>
+#include <unordered_map>
+#include <vector>
+
 S32 LLDrawPool::sNumDrawPools = 0;
+
+namespace
+{
+    struct FSR34MouselookWorldSourceStats
+    {
+        U32 mRootLocalID = 0;
+        LLUUID mRootID;
+        LLUUID mOwnerID;
+        F32 mRootDistance = 0.f;
+        F32 mRootForwardDistance = 0.f;
+        F32 mRootCameraDot = 0.f;
+        F32 mRootCameraAngle = -1.f;
+        S32 mRootChildren = 0;
+        bool mRootIsMesh = false;
+
+        U32 mSampleLocalID = 0;
+        LLUUID mSampleID;
+        F32 mSampleDistance = 0.f;
+        F32 mSampleForwardDistance = 0.f;
+        F32 mSampleCameraDot = 0.f;
+        F32 mSampleCameraAngle = -1.f;
+        bool mSampleIsMesh = false;
+        bool mSampleIsRiggedMesh = false;
+
+        U64 mDrawInfos = 0;
+        U64 mIndices = 0;
+        U64 mPassDrawInfos[LLRenderPass::NUM_RENDER_TYPES] = {};
+        U64 mPassIndices[LLRenderPass::NUM_RENDER_TYPES] = {};
+    };
+
+    struct FSR34MouselookVolumeTraceStats
+    {
+        bool mInitialized = false;
+        LLFrameTimer mTimer;
+        U64 mDrawInfos = 0;
+        U64 mIndices = 0;
+        U64 mRiggedDrawInfos = 0;
+        U64 mWorldDrawInfos = 0;
+        U64 mSelfRiggedDrawInfos = 0;
+        U64 mSelfAttachmentDrawInfos = 0;
+        U64 mOtherAvatarDrawInfos = 0;
+        U64 mSuppressedDrawInfos = 0;
+        U64 mSuppressedIndices = 0;
+        U64 mPassDrawInfos[LLRenderPass::NUM_RENDER_TYPES] = {};
+        U64 mPassIndices[LLRenderPass::NUM_RENDER_TYPES] = {};
+        std::map<U32, FSR34MouselookWorldSourceStats> mWorldSources;
+        std::map<U32, FSR34MouselookWorldSourceStats> mWorldChildren;
+
+        void reset()
+        {
+            mInitialized = true;
+            mTimer.reset();
+            mDrawInfos = 0;
+            mIndices = 0;
+            mRiggedDrawInfos = 0;
+            mWorldDrawInfos = 0;
+            mSelfRiggedDrawInfos = 0;
+            mSelfAttachmentDrawInfos = 0;
+            mOtherAvatarDrawInfos = 0;
+            mSuppressedDrawInfos = 0;
+            mSuppressedIndices = 0;
+            for (U32 i = 0; i < LLRenderPass::NUM_RENDER_TYPES; ++i)
+            {
+                mPassDrawInfos[i] = 0;
+                mPassIndices[i] = 0;
+            }
+            mWorldSources.clear();
+            mWorldChildren.clear();
+        }
+    };
+
+    struct FSR34MouselookSourceCacheEntry
+    {
+        LLViewerObject* mObject = nullptr;
+        LLViewerObject* mRoot = nullptr;
+        U32 mRootLocalID = 0;
+        F32 mRootDistance = 0.f;
+        F32 mObjectCameraDot = 1.f;
+        S32 mRootChildren = 0;
+        bool mStream3DProtected = false;
+    };
+
+    struct FSR34MouselookFrameCache
+    {
+        S32 mFrame = -1;
+        std::unordered_map<U32, LLViewerObject*> mObjects;
+        std::unordered_map<U32, FSR34MouselookSourceCacheEntry> mSources;
+
+        void update()
+        {
+            const S32 frame = LLFrameTimer::getFrameCount();
+            if (mFrame == frame)
+            {
+                return;
+            }
+
+            mFrame = frame;
+            mObjects.clear();
+            mSources.clear();
+
+            const S32 count = gObjectList.getNumObjects();
+            mObjects.reserve(count);
+            for (S32 i = 0; i < count; ++i)
+            {
+                LLViewerObject* objectp = gObjectList.getObject(i);
+                if (objectp)
+                {
+                    mObjects[objectp->getLocalID()] = objectp;
+                }
+            }
+        }
+    };
+
+    FSR34MouselookVolumeTraceStats sFSR34MouselookVolumeTraceStats;
+    FSR34MouselookFrameCache sFSR34MouselookFrameCache;
+
+    void fsr34_measure_camera_relation(
+        const LLVector3& object_pos,
+        const LLVector3& camera_pos,
+        const LLVector3& camera_at,
+        F32& distance,
+        F32& forward_distance,
+        F32& camera_dot,
+        F32& camera_angle);
+
+    bool fsr34_mouselook_volume_trace_active()
+    {
+        static LLCachedControl<bool> trace_enabled(gSavedSettings, "AYAR34MouselookVolumeTraceEnabled", false);
+        return trace_enabled && gAgentCamera.cameraMouselook();
+    }
+
+    bool fsr34_mouselook_top_source_trace_enabled()
+    {
+        static LLCachedControl<bool> trace_enabled(gSavedSettings, "AYAR34MouselookTopSourceTraceEnabled", false);
+        return trace_enabled;
+    }
+
+    bool fsr34_world_volume_draw_info(const LLDrawInfo& params)
+    {
+        return params.mAvatar.isNull() && params.mAttachedToAvatar.isNull();
+    }
+
+    bool fsr34_mouselook_alpha_mask_pass(U32 type)
+    {
+        return type == LLRenderPass::PASS_ALPHA_MASK ||
+               type == LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK ||
+               type == LLRenderPass::PASS_MATERIAL_ALPHA_MASK ||
+               type == LLRenderPass::PASS_SPECMAP_MASK ||
+               type == LLRenderPass::PASS_NORMMAP_MASK ||
+               type == LLRenderPass::PASS_NORMSPEC_MASK ||
+               type == LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK;
+    }
+
+    bool fsr34_mouselook_outer_cone_pass(U32 type)
+    {
+        return fsr34_mouselook_alpha_mask_pass(type) ||
+               type == LLRenderPass::PASS_SIMPLE ||
+               type == LLRenderPass::PASS_FULLBRIGHT ||
+               type == LLRenderPass::PASS_GLOW ||
+               type == LLRenderPass::PASS_GLTF_GLOW;
+    }
+
+    bool fsr34_mouselook_suppress_pass_matches(S32 mode, U32 type)
+    {
+        if (mode == 1)
+        {
+            return fsr34_mouselook_alpha_mask_pass(type);
+        }
+        if (mode == 2)
+        {
+            return fsr34_mouselook_outer_cone_pass(type);
+        }
+
+        return false;
+    }
+
+    U64 fsr34_pass_draw_infos(U32 type)
+    {
+        return type < LLRenderPass::NUM_RENDER_TYPES ? sFSR34MouselookVolumeTraceStats.mPassDrawInfos[type] : 0;
+    }
+
+    U64 fsr34_pass_triangles(U32 type)
+    {
+        return type < LLRenderPass::NUM_RENDER_TYPES ? sFSR34MouselookVolumeTraceStats.mPassIndices[type] / 3 : 0;
+    }
+
+    U64 fsr34_source_pass_draw_infos(const FSR34MouselookWorldSourceStats& stats, U32 type)
+    {
+        return type < LLRenderPass::NUM_RENDER_TYPES ? stats.mPassDrawInfos[type] : 0;
+    }
+
+    U64 fsr34_source_pass_triangles(const FSR34MouselookWorldSourceStats& stats, U32 type)
+    {
+        return type < LLRenderPass::NUM_RENDER_TYPES ? stats.mPassIndices[type] / 3 : 0;
+    }
+
+    U64 fsr34_pass_group_draw_infos(std::initializer_list<U32> types)
+    {
+        U64 count = 0;
+        for (U32 type : types)
+        {
+            count += fsr34_pass_draw_infos(type);
+        }
+        return count;
+    }
+
+    U64 fsr34_pass_group_triangles(std::initializer_list<U32> types)
+    {
+        U64 triangles = 0;
+        for (U32 type : types)
+        {
+            triangles += fsr34_pass_triangles(type);
+        }
+        return triangles;
+    }
+
+    void fsr34_append_pass_group(std::ostringstream& out, const char* name, std::initializer_list<U32> types)
+    {
+        const U64 draw_infos = fsr34_pass_group_draw_infos(types);
+        if (draw_infos == 0)
+        {
+            return;
+        }
+
+        out << " " << name << "=" << draw_infos << "/" << fsr34_pass_group_triangles(types);
+    }
+
+    void fsr34_append_source_pass_group(
+        std::ostringstream& out,
+        const FSR34MouselookWorldSourceStats& stats,
+        const char* name,
+        std::initializer_list<U32> types)
+    {
+        U64 draw_infos = 0;
+        U64 triangles = 0;
+        for (U32 type : types)
+        {
+            draw_infos += fsr34_source_pass_draw_infos(stats, type);
+            triangles += fsr34_source_pass_triangles(stats, type);
+        }
+
+        if (draw_infos == 0)
+        {
+            return;
+        }
+
+        out << " " << name << "=" << draw_infos << "/" << triangles;
+    }
+
+    LLViewerObject* fsr34_find_object_by_local_id(U32 local_id)
+    {
+        if (local_id == 0)
+        {
+            return nullptr;
+        }
+
+        sFSR34MouselookFrameCache.update();
+        const auto it = sFSR34MouselookFrameCache.mObjects.find(local_id);
+        return it != sFSR34MouselookFrameCache.mObjects.end() ? it->second : nullptr;
+    }
+
+    const FSR34MouselookSourceCacheEntry& fsr34_get_source_cache_entry(U32 local_id)
+    {
+        sFSR34MouselookFrameCache.update();
+
+        auto found = sFSR34MouselookFrameCache.mSources.find(local_id);
+        if (found != sFSR34MouselookFrameCache.mSources.end())
+        {
+            return found->second;
+        }
+
+        FSR34MouselookSourceCacheEntry entry;
+        entry.mObject = fsr34_find_object_by_local_id(local_id);
+        entry.mRoot = entry.mObject ? entry.mObject->getRootEdit() : nullptr;
+        entry.mRootLocalID = entry.mRoot ? entry.mRoot->getLocalID() : local_id;
+        entry.mRootChildren = entry.mRoot ? entry.mRoot->numChildren() : 0;
+        entry.mStream3DProtected =
+            (entry.mObject && LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(entry.mObject->getID())) ||
+            (entry.mRoot && LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(entry.mRoot->getID()));
+
+        const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
+        const LLVector3& camera_at = LLViewerCamera::getInstance()->getAtAxis();
+        if (entry.mRoot)
+        {
+            F32 forward_distance = 0.f;
+            F32 camera_angle = 0.f;
+            fsr34_measure_camera_relation(
+                entry.mRoot->getPositionAgent(),
+                camera_pos,
+                camera_at,
+                entry.mRootDistance,
+                forward_distance,
+                entry.mObjectCameraDot,
+                camera_angle);
+        }
+
+        if (entry.mObject)
+        {
+            F32 distance = 0.f;
+            F32 forward_distance = 0.f;
+            F32 camera_angle = 0.f;
+            fsr34_measure_camera_relation(
+                entry.mObject->getPositionAgent(),
+                camera_pos,
+                camera_at,
+                distance,
+                forward_distance,
+                entry.mObjectCameraDot,
+                camera_angle);
+        }
+
+        const auto inserted = sFSR34MouselookFrameCache.mSources.emplace(local_id, entry);
+        return inserted.first->second;
+    }
+
+    void fsr34_measure_camera_relation(
+        const LLVector3& object_pos,
+        const LLVector3& camera_pos,
+        const LLVector3& camera_at,
+        F32& distance,
+        F32& forward_distance,
+        F32& camera_dot,
+        F32& camera_angle)
+    {
+        const LLVector3 camera_to_object = object_pos - camera_pos;
+        distance = camera_to_object.magVec();
+        forward_distance = camera_to_object * camera_at;
+
+        if (distance > 0.001f)
+        {
+            camera_dot = llclamp(forward_distance / distance, -1.f, 1.f);
+            camera_angle = acosf(camera_dot) * RAD_TO_DEG;
+        }
+        else
+        {
+            camera_dot = 1.f;
+            camera_angle = 0.f;
+        }
+    }
+
+    void fsr34_initialize_world_source_stats(
+        FSR34MouselookWorldSourceStats& stats,
+        LLViewerObject* rootp,
+        LLViewerObject* objectp,
+        U32 root_local_id)
+    {
+        const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
+        const LLVector3& camera_at = LLViewerCamera::getInstance()->getAtAxis();
+        stats.mRootLocalID = root_local_id;
+
+        if (rootp)
+        {
+            stats.mRootID = rootp->getID();
+            stats.mOwnerID = rootp->mOwnerID;
+            fsr34_measure_camera_relation(
+                rootp->getPositionAgent(),
+                camera_pos,
+                camera_at,
+                stats.mRootDistance,
+                stats.mRootForwardDistance,
+                stats.mRootCameraDot,
+                stats.mRootCameraAngle);
+            stats.mRootChildren = rootp->numChildren();
+            stats.mRootIsMesh = rootp->isMesh();
+        }
+
+        if (objectp)
+        {
+            stats.mSampleLocalID = objectp->getLocalID();
+            stats.mSampleID = objectp->getID();
+            fsr34_measure_camera_relation(
+                objectp->getPositionAgent(),
+                camera_pos,
+                camera_at,
+                stats.mSampleDistance,
+                stats.mSampleForwardDistance,
+                stats.mSampleCameraDot,
+                stats.mSampleCameraAngle);
+            stats.mSampleIsMesh = objectp->isMesh();
+            stats.mSampleIsRiggedMesh = objectp->isRiggedMesh();
+        }
+    }
+
+    void fsr34_accumulate_world_source_stats(FSR34MouselookWorldSourceStats& stats, U32 type, const LLDrawInfo& params)
+    {
+        ++stats.mDrawInfos;
+        stats.mIndices += params.mCount;
+        if (type < LLRenderPass::NUM_RENDER_TYPES)
+        {
+            ++stats.mPassDrawInfos[type];
+            stats.mPassIndices[type] += params.mCount;
+        }
+    }
+
+    void fsr34_record_world_source(U32 type, const LLDrawInfo& params)
+    {
+        const FSR34MouselookSourceCacheEntry& source = fsr34_get_source_cache_entry(params.mFSPickerLocalID);
+        LLViewerObject* objectp = source.mObject;
+        LLViewerObject* rootp = source.mRoot;
+        const U32 root_local_id = source.mRootLocalID;
+
+        FSR34MouselookWorldSourceStats& root_stats =
+            sFSR34MouselookVolumeTraceStats.mWorldSources[root_local_id];
+        if (root_stats.mDrawInfos == 0)
+        {
+            fsr34_initialize_world_source_stats(root_stats, rootp, objectp, root_local_id);
+        }
+        fsr34_accumulate_world_source_stats(root_stats, type, params);
+
+        FSR34MouselookWorldSourceStats& child_stats =
+            sFSR34MouselookVolumeTraceStats.mWorldChildren[params.mFSPickerLocalID];
+        if (child_stats.mDrawInfos == 0)
+        {
+            fsr34_initialize_world_source_stats(child_stats, rootp, objectp, root_local_id);
+        }
+        fsr34_accumulate_world_source_stats(child_stats, type, params);
+    }
+
+    void fsr34_log_world_top_sources(
+        const std::map<U32, FSR34MouselookWorldSourceStats>& source_map,
+        const char* label,
+        size_t limit)
+    {
+        if (source_map.empty())
+        {
+            return;
+        }
+
+        std::vector<const FSR34MouselookWorldSourceStats*> sources;
+        sources.reserve(source_map.size());
+        for (const auto& entry : source_map)
+        {
+            sources.push_back(&entry.second);
+        }
+
+        std::sort(
+            sources.begin(),
+            sources.end(),
+            [](const FSR34MouselookWorldSourceStats* lhs, const FSR34MouselookWorldSourceStats* rhs)
+            {
+                if (lhs->mIndices != rhs->mIndices)
+                {
+                    return lhs->mIndices > rhs->mIndices;
+                }
+                return lhs->mDrawInfos > rhs->mDrawInfos;
+            });
+
+        std::ostringstream out;
+        out << label;
+        const size_t count = std::min<size_t>(sources.size(), limit);
+        for (size_t i = 0; i < count; ++i)
+        {
+            const FSR34MouselookWorldSourceStats& source = *sources[i];
+
+            std::ostringstream passes;
+            fsr34_append_source_pass_group(passes, source, "simple", { LLRenderPass::PASS_SIMPLE, LLRenderPass::PASS_SIMPLE_RIGGED });
+            fsr34_append_source_pass_group(passes, source, "fullbright", { LLRenderPass::PASS_FULLBRIGHT, LLRenderPass::PASS_FULLBRIGHT_RIGGED });
+            fsr34_append_source_pass_group(passes, source, "alpha_mask", { LLRenderPass::PASS_ALPHA_MASK, LLRenderPass::PASS_ALPHA_MASK_RIGGED,
+                                                                           LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED });
+            fsr34_append_source_pass_group(passes, source, "material", { LLRenderPass::PASS_MATERIAL, LLRenderPass::PASS_MATERIAL_RIGGED,
+                                                                         LLRenderPass::PASS_MATERIAL_ALPHA_MASK, LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED,
+                                                                         LLRenderPass::PASS_SPECMAP, LLRenderPass::PASS_SPECMAP_RIGGED,
+                                                                         LLRenderPass::PASS_SPECMAP_MASK, LLRenderPass::PASS_SPECMAP_MASK_RIGGED,
+                                                                         LLRenderPass::PASS_NORMMAP, LLRenderPass::PASS_NORMMAP_RIGGED,
+                                                                         LLRenderPass::PASS_NORMMAP_MASK, LLRenderPass::PASS_NORMMAP_MASK_RIGGED,
+                                                                         LLRenderPass::PASS_NORMSPEC, LLRenderPass::PASS_NORMSPEC_RIGGED,
+                                                                         LLRenderPass::PASS_NORMSPEC_MASK, LLRenderPass::PASS_NORMSPEC_MASK_RIGGED });
+            fsr34_append_source_pass_group(passes, source, "pbr", { LLRenderPass::PASS_GLTF_PBR, LLRenderPass::PASS_GLTF_PBR_RIGGED,
+                                                                    LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK, LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED });
+            fsr34_append_source_pass_group(passes, source, "glow", { LLRenderPass::PASS_GLOW, LLRenderPass::PASS_GLOW_RIGGED,
+                                                                     LLRenderPass::PASS_GLTF_GLOW, LLRenderPass::PASS_GLTF_GLOW_RIGGED });
+            fsr34_append_source_pass_group(passes, source, "alpha", { LLRenderPass::PASS_ALPHA, LLRenderPass::PASS_ALPHA_RIGGED,
+                                                                      LLRenderPass::PASS_MATERIAL_ALPHA, LLRenderPass::PASS_MATERIAL_ALPHA_RIGGED,
+                                                                      LLRenderPass::PASS_SPECMAP_BLEND, LLRenderPass::PASS_SPECMAP_BLEND_RIGGED,
+                                                                      LLRenderPass::PASS_NORMMAP_BLEND, LLRenderPass::PASS_NORMMAP_BLEND_RIGGED,
+                                                                      LLRenderPass::PASS_NORMSPEC_BLEND, LLRenderPass::PASS_NORMSPEC_BLEND_RIGGED });
+
+            out << " #" << i + 1
+                << " root_local=" << source.mRootLocalID
+                << " root_id=" << source.mRootID
+                << " owner=" << source.mOwnerID
+                << " root_dist_m=" << static_cast<S32>(source.mRootDistance + 0.5f)
+                << " root_forward_m=" << static_cast<S32>(source.mRootForwardDistance + (source.mRootForwardDistance >= 0.f ? 0.5f : -0.5f))
+                << " root_dot=" << source.mRootCameraDot
+                << " root_angle_deg=" << static_cast<S32>(source.mRootCameraAngle + 0.5f)
+                << " root_children=" << source.mRootChildren
+                << " root_mesh=" << source.mRootIsMesh
+                << " sample_local=" << source.mSampleLocalID
+                << " sample_id=" << source.mSampleID
+                << " sample_dist_m=" << static_cast<S32>(source.mSampleDistance + 0.5f)
+                << " sample_forward_m=" << static_cast<S32>(source.mSampleForwardDistance + (source.mSampleForwardDistance >= 0.f ? 0.5f : -0.5f))
+                << " sample_dot=" << source.mSampleCameraDot
+                << " sample_angle_deg=" << static_cast<S32>(source.mSampleCameraAngle + 0.5f)
+                << " sample_mesh=" << source.mSampleIsMesh
+                << " sample_rigged=" << source.mSampleIsRiggedMesh
+                << " draw_infos=" << source.mDrawInfos
+                << " triangles=" << source.mIndices / 3
+                << " passes:" << passes.str();
+        }
+
+        LL_INFOS("AYAR34MouselookFPS") << out.str() << LL_ENDL;
+    }
+
+    void fsr34_log_mouselook_volume_trace(F32 seconds)
+    {
+        std::ostringstream passes;
+        fsr34_append_pass_group(passes, "simple", { LLRenderPass::PASS_SIMPLE, LLRenderPass::PASS_SIMPLE_RIGGED });
+        fsr34_append_pass_group(passes, "fullbright", { LLRenderPass::PASS_FULLBRIGHT, LLRenderPass::PASS_FULLBRIGHT_RIGGED });
+        fsr34_append_pass_group(passes, "shiny", { LLRenderPass::PASS_SHINY, LLRenderPass::PASS_SHINY_RIGGED });
+        fsr34_append_pass_group(passes, "bump", { LLRenderPass::PASS_BUMP, LLRenderPass::PASS_BUMP_RIGGED });
+        fsr34_append_pass_group(passes, "fb_shiny", { LLRenderPass::PASS_FULLBRIGHT_SHINY, LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED });
+        fsr34_append_pass_group(passes, "alpha_mask", { LLRenderPass::PASS_ALPHA_MASK, LLRenderPass::PASS_ALPHA_MASK_RIGGED,
+                                                        LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED });
+        fsr34_append_pass_group(passes, "material", { LLRenderPass::PASS_MATERIAL, LLRenderPass::PASS_MATERIAL_RIGGED,
+                                                      LLRenderPass::PASS_MATERIAL_ALPHA_MASK, LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED,
+                                                      LLRenderPass::PASS_SPECMAP, LLRenderPass::PASS_SPECMAP_RIGGED,
+                                                      LLRenderPass::PASS_SPECMAP_MASK, LLRenderPass::PASS_SPECMAP_MASK_RIGGED,
+                                                      LLRenderPass::PASS_NORMMAP, LLRenderPass::PASS_NORMMAP_RIGGED,
+                                                      LLRenderPass::PASS_NORMMAP_MASK, LLRenderPass::PASS_NORMMAP_MASK_RIGGED,
+                                                      LLRenderPass::PASS_NORMSPEC, LLRenderPass::PASS_NORMSPEC_RIGGED,
+                                                      LLRenderPass::PASS_NORMSPEC_MASK, LLRenderPass::PASS_NORMSPEC_MASK_RIGGED });
+        fsr34_append_pass_group(passes, "pbr", { LLRenderPass::PASS_GLTF_PBR, LLRenderPass::PASS_GLTF_PBR_RIGGED,
+                                                 LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK, LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED });
+        fsr34_append_pass_group(passes, "glow", { LLRenderPass::PASS_GLOW, LLRenderPass::PASS_GLOW_RIGGED,
+                                                  LLRenderPass::PASS_GLTF_GLOW, LLRenderPass::PASS_GLTF_GLOW_RIGGED });
+        fsr34_append_pass_group(passes, "alpha", { LLRenderPass::PASS_ALPHA, LLRenderPass::PASS_ALPHA_RIGGED,
+                                                   LLRenderPass::PASS_MATERIAL_ALPHA, LLRenderPass::PASS_MATERIAL_ALPHA_RIGGED,
+                                                   LLRenderPass::PASS_SPECMAP_BLEND, LLRenderPass::PASS_SPECMAP_BLEND_RIGGED,
+                                                   LLRenderPass::PASS_NORMMAP_BLEND, LLRenderPass::PASS_NORMMAP_BLEND_RIGGED,
+                                                   LLRenderPass::PASS_NORMSPEC_BLEND, LLRenderPass::PASS_NORMSPEC_BLEND_RIGGED });
+
+        LL_INFOS("AYAR34MouselookFPS")
+            << "dt=" << seconds
+            << " draw_infos=" << sFSR34MouselookVolumeTraceStats.mDrawInfos
+            << " triangles=" << sFSR34MouselookVolumeTraceStats.mIndices / 3
+            << " rigged_draw_infos=" << sFSR34MouselookVolumeTraceStats.mRiggedDrawInfos
+            << " world_draw_infos=" << sFSR34MouselookVolumeTraceStats.mWorldDrawInfos
+            << " self_rigged_draw_infos=" << sFSR34MouselookVolumeTraceStats.mSelfRiggedDrawInfos
+            << " self_attachment_draw_infos=" << sFSR34MouselookVolumeTraceStats.mSelfAttachmentDrawInfos
+            << " other_avatar_draw_infos=" << sFSR34MouselookVolumeTraceStats.mOtherAvatarDrawInfos
+            << " suppressed_draw_infos=" << sFSR34MouselookVolumeTraceStats.mSuppressedDrawInfos
+            << " suppressed_triangles=" << sFSR34MouselookVolumeTraceStats.mSuppressedIndices / 3
+            << " pass_draw_infos/triangles:" << passes.str()
+            << LL_ENDL;
+
+        if (fsr34_mouselook_top_source_trace_enabled())
+        {
+            fsr34_log_world_top_sources(sFSR34MouselookVolumeTraceStats.mWorldSources, "world_top_sources:", 5);
+            fsr34_log_world_top_sources(sFSR34MouselookVolumeTraceStats.mWorldChildren, "world_top_children:", 8);
+        }
+    }
+
+    void fsr34_record_mouselook_volume_draw_info(U32 type, const LLDrawInfo& params, bool rigged)
+    {
+        if (!fsr34_mouselook_volume_trace_active())
+        {
+            if (sFSR34MouselookVolumeTraceStats.mInitialized)
+            {
+                sFSR34MouselookVolumeTraceStats.mInitialized = false;
+            }
+            return;
+        }
+
+        if (!sFSR34MouselookVolumeTraceStats.mInitialized)
+        {
+            sFSR34MouselookVolumeTraceStats.reset();
+        }
+
+        ++sFSR34MouselookVolumeTraceStats.mDrawInfos;
+        sFSR34MouselookVolumeTraceStats.mIndices += params.mCount;
+        if (rigged)
+        {
+            ++sFSR34MouselookVolumeTraceStats.mRiggedDrawInfos;
+        }
+
+        if (type < LLRenderPass::NUM_RENDER_TYPES)
+        {
+            ++sFSR34MouselookVolumeTraceStats.mPassDrawInfos[type];
+            sFSR34MouselookVolumeTraceStats.mPassIndices[type] += params.mCount;
+        }
+
+        const LLVOAvatar* avatarp = params.mAvatar.get();
+        const LLVOAvatar* attached_avatarp = params.mAttachedToAvatar.get();
+        if (avatarp && avatarp->isSelf())
+        {
+            ++sFSR34MouselookVolumeTraceStats.mSelfRiggedDrawInfos;
+        }
+        else if (attached_avatarp && attached_avatarp->isSelf())
+        {
+            ++sFSR34MouselookVolumeTraceStats.mSelfAttachmentDrawInfos;
+        }
+        else if (avatarp || attached_avatarp)
+        {
+            ++sFSR34MouselookVolumeTraceStats.mOtherAvatarDrawInfos;
+        }
+        else
+        {
+            ++sFSR34MouselookVolumeTraceStats.mWorldDrawInfos;
+            if (fsr34_mouselook_top_source_trace_enabled())
+            {
+                fsr34_record_world_source(type, params);
+            }
+        }
+
+        const F32 elapsed = sFSR34MouselookVolumeTraceStats.mTimer.getElapsedTimeF32();
+        if (elapsed >= 1.f)
+        {
+            fsr34_log_mouselook_volume_trace(elapsed);
+            sFSR34MouselookVolumeTraceStats.reset();
+        }
+    }
+
+    bool fsr34_suppress_mouselook_volume_draw_info(U32 type, const LLDrawInfo& params)
+    {
+        static LLCachedControl<U32> target_local_id(gSavedSettings, "AYAR34MouselookSuppressChildLocalID", 0);
+        static LLCachedControl<U32> target_root_local_id(gSavedSettings, "AYAR34MouselookSuppressRootLocalID", 0);
+        static LLCachedControl<S32> target_root_pass_mode(gSavedSettings, "AYAR34MouselookSuppressRootPassMode", 0);
+        static LLCachedControl<F32> target_root_outer_dot(gSavedSettings, "AYAR34MouselookSuppressRootOuterDot", 0.8f);
+        static LLCachedControl<bool> auto_root_enabled(gSavedSettings, "AYAR34MouselookSuppressAutoRootEnabled", false);
+        static LLCachedControl<F32> auto_root_max_distance(gSavedSettings, "AYAR34MouselookSuppressAutoRootMaxDistance", 12.f);
+        static LLCachedControl<S32> auto_root_min_children(gSavedSettings, "AYAR34MouselookSuppressAutoRootMinChildren", 50);
+
+        if ((!target_local_id && !target_root_local_id && !auto_root_enabled) || !gAgentCamera.cameraMouselook())
+        {
+            return false;
+        }
+
+        if (!fsr34_world_volume_draw_info(params))
+        {
+            return false;
+        }
+
+        bool suppress = target_local_id && params.mFSPickerLocalID == target_local_id;
+
+        if (!suppress && (target_root_local_id || auto_root_enabled) && target_root_pass_mode)
+        {
+            const FSR34MouselookSourceCacheEntry& source = fsr34_get_source_cache_entry(params.mFSPickerLocalID);
+            if (source.mStream3DProtected)
+            {
+                return false;
+            }
+
+            LLViewerObject* rootp = source.mRoot;
+            const U32 root_local_id = source.mRootLocalID;
+            const S32 root_pass_mode = target_root_pass_mode;
+            const bool explicit_root_match = target_root_local_id && root_local_id == target_root_local_id;
+            const bool auto_root_match =
+                auto_root_enabled &&
+                rootp &&
+                source.mRootDistance <= llmax(0.f, static_cast<F32>(auto_root_max_distance)) &&
+                source.mRootChildren >= llmax(0, static_cast<S32>(auto_root_min_children));
+
+            suppress = (explicit_root_match || auto_root_match) &&
+                       fsr34_mouselook_suppress_pass_matches(root_pass_mode, type) &&
+                       (root_pass_mode != 2 ||
+                        source.mObjectCameraDot <= llclamp(static_cast<F32>(target_root_outer_dot), -1.f, 1.f));
+        }
+
+        if (!suppress)
+        {
+            return false;
+        }
+
+        if (fsr34_mouselook_volume_trace_active())
+        {
+            if (!sFSR34MouselookVolumeTraceStats.mInitialized)
+            {
+                sFSR34MouselookVolumeTraceStats.reset();
+            }
+            ++sFSR34MouselookVolumeTraceStats.mSuppressedDrawInfos;
+            sFSR34MouselookVolumeTraceStats.mSuppressedIndices += params.mCount;
+        }
+
+        return true;
+    }
+}
 
 //=============================
 // Draw Pool Implementation
@@ -466,6 +1153,12 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
             LLDrawInfo* pparams = *i;
             LLCullResult::increment_iterator(i, end);
 
+            if (fsr34_suppress_mouselook_volume_draw_info(type, *pparams))
+            {
+                continue;
+            }
+
+            fsr34_record_mouselook_volume_draw_info(type, *pparams, false);
             pushBatch(*pparams, texture, batch_textures);
         }
     }
@@ -485,6 +1178,12 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
         LLDrawInfo* pparams = *i;
         LLCullResult::increment_iterator(i, end);
 
+        if (fsr34_suppress_mouselook_volume_draw_info(type, *pparams))
+        {
+            continue;
+        }
+
+        fsr34_record_mouselook_volume_draw_info(type, *pparams, false);
         pushUntexturedBatch(*pparams);
     }
 }
@@ -505,8 +1204,14 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
             LLDrawInfo* pparams = *i;
             LLCullResult::increment_iterator(i, end);
 
+            if (fsr34_suppress_mouselook_volume_draw_info(type, *pparams))
+            {
+                continue;
+            }
+
             if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
             {
+                fsr34_record_mouselook_volume_draw_info(type, *pparams, true);
                 pushBatch(*pparams, texture, batch_textures);
             }
         }
@@ -530,8 +1235,14 @@ void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
         LLDrawInfo* pparams = *i;
         LLCullResult::increment_iterator(i, end);
 
+        if (fsr34_suppress_mouselook_volume_draw_info(type, *pparams))
+        {
+            continue;
+        }
+
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
+            fsr34_record_mouselook_volume_draw_info(type, *pparams, true);
             pushUntexturedBatch(*pparams);
         }
     }
@@ -546,7 +1257,12 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
     {
         LLDrawInfo* pparams = *i;
         LLCullResult::increment_iterator(i, end);
+        if (fsr34_suppress_mouselook_volume_draw_info(type, *pparams))
+        {
+            continue;
+        }
         LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+        fsr34_record_mouselook_volume_draw_info(type, *pparams, false);
         pushBatch(*pparams, texture, batch_textures);
     }
 }
@@ -567,10 +1283,16 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
 
         llassert(pparams);
 
+        if (fsr34_suppress_mouselook_volume_draw_info(type, *pparams))
+        {
+            continue;
+        }
+
         LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
 
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
+            fsr34_record_mouselook_volume_draw_info(type, *pparams, true);
             pushBatch(*pparams, texture, batch_textures);
         }
     }

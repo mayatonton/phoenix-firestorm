@@ -10162,6 +10162,109 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>0.2</real>
     </map>
+    <!-- <FS:AYA r34> Temporary mouselook FPS investigation trace. Persisted for
+         restart-based local verification only. Remove before release fix unless
+         it remains useful behind a developer-only switch. -->
+    <key>AYAR34MouselookVolumeTraceEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary trace for mouselook FPS investigation. When true, LLRenderPass logs one-second drawinfo / triangle / pass summaries while camera is in mouselook. Persisted for restart-based local diagnosis.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR34MouselookTopSourceTraceEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary trace for mouselook FPS investigation. When true, also records and logs detailed top world source / child source tables. Keep false during suppression-only FPS checks because this runs extra per-drawinfo bookkeeping.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR34MouselookSuppressChildLocalID</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary mouselook FPS experiment. When non-zero, skips world volume drawinfos whose source child local ID matches this value while camera is in mouselook. Persisted for restart-based local diagnosis.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR34MouselookSuppressRootLocalID</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary mouselook FPS experiment. When non-zero, combines with AYAR34MouselookSuppressRootPassMode to skip selected world volume passes under this root local ID while camera is in mouselook. Leave 0 when using AYAR34MouselookSuppressAutoRootEnabled.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAR34MouselookSuppressRootPassMode</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary mouselook FPS experiment. 0 disables root pass suppression, 1 skips alpha-mask style passes under AYAR34MouselookSuppressRootLocalID while camera is in mouselook, 2 skips selected outer-cone passes under that root using AYAR34MouselookSuppressRootOuterDot.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>2</integer>
+    </map>
+    <key>AYAR34MouselookSuppressRootOuterDot</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary mouselook FPS experiment. In AYAR34MouselookSuppressRootPassMode=2, skips root child drawinfos whose source object direction dot is less than or equal to this value. 0.80 is an aggressive outer-cone test.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.8</real>
+    </map>
+    <key>AYAR34MouselookSuppressAutoRootEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary mouselook FPS experiment. When true, AYAR34MouselookSuppressRootPassMode applies to nearby large world linksets instead of one fixed local root ID.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR34MouselookSuppressAutoRootMaxDistance</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary mouselook FPS experiment. Maximum camera distance in meters for auto-selected nearby large world linksets.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>12.0</real>
+    </map>
+    <key>AYAR34MouselookSuppressAutoRootMinChildren</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 temporary mouselook FPS experiment. Minimum root child count for auto-selected nearby large world linksets.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>50</integer>
+    </map>
+    <!-- </FS:AYA r34> -->
     <key>AYAR20AvatarSkinSSSGlowColor</key>
     <map>
       <key>Comment</key>
