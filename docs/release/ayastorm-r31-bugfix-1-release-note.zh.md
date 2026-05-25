@@ -59,7 +59,6 @@
 
 - `gbuffer3.a` 在结构上的双重含义(SSS skin mask 与 emissive MRT blend factor)本次未解决。今后若有 effect 在 single-RT pass 之后读取 `gbuffer3.a`,同类 bug 仍可能复发
 - 更根本的结构修复(案 A: 将 FB shader MRT 化,使其写入干净的 `gbuffer3.a`)仍是开放课题。就 SSS 而言本次已完整修复
-- **macOS 构建将在 r32 章一同提供**(按 r10.x 先例,bugfix-N 版本仅提供 Linux/Windows)
 
 ### 实现概要
 

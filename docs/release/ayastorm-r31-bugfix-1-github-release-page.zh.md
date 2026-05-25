@@ -35,11 +35,9 @@ r11 同捆并持续出货的 venue IR 来自 OpenAIR(CC-BY 4.0)。来源: [`app_
 
 ## Downloads
 
-_2 OS(Linux / Windows)构建完成后由 @mayatonton 填写。_
-
-- Linux Installer: _TBD_ — `Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-XXXXXX.tar.xz`
-- Windows Installer: _TBD_ — `Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-XXXXXX_Setup.exe`
-- macOS Installer: **本次发布不提供。** 将在即将到来的 r32 章一并同捆(按 r10.x 先例,bugfix-N 版本仅提供 Linux/Windows)
+- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261441503_Setup.exe)
+- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81209.dmg)
+- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261442337.tar.xz)
 
 ## Contributors
 

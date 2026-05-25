@@ -59,7 +59,6 @@ SSS dispatch 位置を移動しました:
 
 - `gbuffer3.a` の構造的二重意味 (SSS skin mask と emissive MRT blend factor) は本 fix では解消していません。single-RT pass 後に `gbuffer3.a` を読む将来の effect で同型のバグが再発する可能性があります
 - より構造的な fix (案 A: FB shader を MRT 化してクリーンな `gbuffer3.a` を書かせる) は将来課題として残っています。SSS については本 fix で完了です
-- **macOS build は r32 章で同梱予定**です (r10.x の前例どおり、bugfix-N リリースは Linux/Windows のみ提供)
 
 ### Implementation summary
 
