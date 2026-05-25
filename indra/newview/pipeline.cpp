@@ -3168,6 +3168,8 @@ void LLPipeline::doOcclusion(LLCamera& camera)
     LL_PROFILE_GPU_ZONE("doOcclusion");
     llassert(!gCubeSnapshot);
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group L (Layer 6): reflection probe occlusion 2 block (A + B、構造ほぼ duplicate) を 1 zone で計測
+    AYAPERF_ZONE("doOcclusion_reflectionProbes");
     if (sReflectionProbesEnabled && sUseOcclusion > 1 && !LLPipeline::sShadowRender && !gCubeSnapshot)
     {
         gGL.setColorMask(false, false);
@@ -3208,6 +3210,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
 
         gGL.setColorMask(true, true);
     }
+    } // </FS:AYAstorm> doOcclusion_reflectionProbes scope end
 
     if (LLPipeline::sUseOcclusion > 1 &&
         (sCull->hasOcclusionGroups() || LLVOCachePartition::sNeedsOcclusionCheck))
@@ -3230,26 +3233,32 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         }
         mCubeVB->setBuffer();
 
-        for (LLCullResult::sg_iterator iter = sCull->beginOcclusionGroups(); iter != sCull->endOcclusionGroups(); ++iter)
-        {
-            LLSpatialGroup* group = *iter;
-            if (!group->isDead())
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group L (Layer 6): spatial group iteration = group->doOcclusion + state clear
+            AYAPERF_ZONE("doOcclusion_spatialGroups");
+            for (LLCullResult::sg_iterator iter = sCull->beginOcclusionGroups(); iter != sCull->endOcclusionGroups(); ++iter)
             {
-                group->doOcclusion(&camera);
-                group->clearOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
+                LLSpatialGroup* group = *iter;
+                if (!group->isDead())
+                {
+                    group->doOcclusion(&camera);
+                    group->clearOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
+                }
             }
-        }
+        } // </FS:AYAstorm>
 
-        //apply occlusion culling to object cache tree
-        for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
-            iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
-        {
-            LLVOCachePartition* vo_part = (*iter)->getVOCachePartition();
-            if(vo_part)
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group L (Layer 6): VO cache region list × processOccluders
+            AYAPERF_ZONE("doOcclusion_voCache");
+            //apply occlusion culling to object cache tree
+            for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
+                iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
             {
-                vo_part->processOccluders(&camera);
+                LLVOCachePartition* vo_part = (*iter)->getVOCachePartition();
+                if(vo_part)
+                {
+                    vo_part->processOccluders(&camera);
+                }
             }
-        }
+        } // </FS:AYAstorm>
 
         gGL.setColorMask(true, true);
     }
