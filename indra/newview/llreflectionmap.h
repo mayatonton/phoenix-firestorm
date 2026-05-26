@@ -32,6 +32,10 @@
 class LLSpatialGroup;
 class LLViewerObject;
 
+// <FS:AYAstorm> CPU perf 章 案 O: worker thread から渡る per-probe action 種別
+enum class ProbeOcclusionActionKind;
+// </FS:AYAstorm>
+
 class alignas(16) LLReflectionMap : public LLRefCount
 {
     LL_ALIGN_NEW
@@ -87,6 +91,11 @@ public:
 
     // perform occlusion query/readback
     void doOcclusion(const LLVector4a& eye);
+
+    // <FS:AYAstorm> CPU perf 章 案 O: worker mode apply phase (Pass 2 GL 部分)
+    // kind は worker thread が決めた action 種別。main thread で GL state machine を発行。
+    void doOcclusion_pass2_gl(ProbeOcclusionActionKind kind);
+    // </FS:AYAstorm>
 
     // return false if this probe isn't currently relevant (for example, disabled due to graphics preferences)
     bool isRelevant() const;

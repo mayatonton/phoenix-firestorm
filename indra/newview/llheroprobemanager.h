@@ -32,8 +32,11 @@
 #include "llcubemap.h"
 #include "lldrawable.h"
 
+#include <memory> // <FS:AYAstorm> CPU perf 章 案 O
+
 class LLSpatialGroup;
 class LLViewerObject;
+class LLReflectionOcclusionWorker; // <FS:AYAstorm> CPU perf 章 案 O
 
 // number of reflection probes to keep in vram
 #define LL_MAX_HERO_PROBE_COUNT 2
@@ -146,5 +149,9 @@ private:
 
     // Part of a hacky workaround to fix #3331.
     bool mInitialized = false;
+
+    // <FS:AYAstorm> CPU perf 章 案 O: doOcclusion 並列化 worker (Hero 用 1 instance)
+    std::unique_ptr<LLReflectionOcclusionWorker> mOcclusionWorker;
+    // </FS:AYAstorm>
 };
 

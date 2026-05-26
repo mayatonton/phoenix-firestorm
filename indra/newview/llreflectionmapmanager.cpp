@@ -28,6 +28,7 @@
 
 #include "llreflectionmapmanager.h"
 
+#include <unordered_set>
 #include <vector>
 
 #include "llviewercamera.h"
@@ -40,6 +41,9 @@
 #include "llstartup.h"
 #include "llviewermenufile.h"
 #include "llnotificationsutil.h"
+#include "llreflectionocclusionworker.h" // <FS:AYAstorm> CPU perf 章 案 O
+#include "llframetimer.h"                // <FS:AYAstorm> CPU perf 章 案 O: LLFrameTimer::getFrameCount
+#include "llayastormperflog.h"           // <FS:AYAstorm> CPU perf 章 案 O: worker_enqueue / worker_apply zone
 
 #if LL_WINDOWS
 #pragma warning (push)
@@ -146,7 +150,17 @@ LLReflectionMapManager::LLReflectionMapManager()
 {
     mDynamicProbeCount = LL_MAX_REFLECTION_PROBE_COUNT;
     initCubeFree();
+    // <FS:AYAstorm> CPU perf 章 案 O: worker spawn (CPU thread のみ、GL context 不要)
+    mOcclusionWorker = std::make_unique<LLReflectionOcclusionWorker>();
+    // </FS:AYAstorm>
 }
+
+// <FS:AYAstorm> CPU perf 章 案 O: destructor (unique_ptr destruction で worker thread を join)
+LLReflectionMapManager::~LLReflectionMapManager()
+{
+    mOcclusionWorker.reset();
+}
+// </FS:AYAstorm>
 
 void LLReflectionMapManager::initCubeFree()
 {
@@ -1615,16 +1629,78 @@ void LLReflectionMapManager::cleanup()
 
 void LLReflectionMapManager::doOcclusion()
 {
-    LLVector4a eye;
-    eye.load3(LLViewerCamera::instance().getOrigin().mV);
+    // <FS:AYAstorm> CPU perf 章 案 O: worker offload path (cvar gate, default OFF)
+    // r40 phase2 case O gate verdict = REJECT (2026-05-26): doOcclusion 内 CPU 占有率 ~1%、
+    // GL 99%、worker 剥がし上限 ~6us vs 50% gate 要求 2850us。詳細 phase2-case-O-plan.md §12。
+    // path はクラッシュ修正済 (raw ptr non-owning) のため experiment 用に残す、default 0。
+    static LLCachedControl<U32> sWorkerEnabled(gSavedSettings, "AYARenderOcclusionWorkerEnabled", 0);
+    const bool worker_path = (sWorkerEnabled() != 0) && mOcclusionWorker;
 
-    for (auto& probe : mProbes)
+    if (!worker_path)
     {
-        if (probe != nullptr && probe != mDefaultProbe)
+        // 旧 single-pass: 全 probe を main thread で順次処理 (cvar=0 もしくは worker 未初期化)
+        LLVector4a eye;
+        eye.load3(LLViewerCamera::instance().getOrigin().mV);
+
+        for (auto& probe : mProbes)
         {
-            probe->doOcclusion(eye);
+            if (probe != nullptr && probe != mDefaultProbe)
+            {
+                probe->doOcclusion(eye);
+            }
+        }
+        return;
+    }
+
+    // (1) 前 frame の worker 結果を取得し apply (1 frame lag 非同期式)
+    ProbeOcclusionResult result;
+    bool got_result = mOcclusionWorker->wait_get_result(result);
+    if (got_result)
+    {
+        AYAPERF_ZONE("worker_apply");
+        // 1 frame 前 snapshot 内の raw probe* が現 mProbes に在籍しているかを validate。
+        // 在籍しない (probe が destroy された) ものは skip — raw を deref しない。
+        std::unordered_set<LLReflectionMap*> alive;
+        alive.reserve(mProbes.size());
+        for (auto& p : mProbes) { alive.insert(p.get()); }
+        for (auto& a : result.mActions)
+        {
+            if (a.mProbe && alive.count(a.mProbe))
+            {
+                a.mProbe->doOcclusion_pass2_gl(a.mKind);
+            }
         }
     }
+
+    // (2) 現 frame の snapshot 作成 + worker に enqueue
+    ProbeOcclusionSnapshot snap;
+    {
+        AYAPERF_ZONE("worker_enqueue");
+        const LLVector3& cam_origin = LLViewerCamera::instance().getOrigin();
+        snap.mEyeXYZ[0] = cam_origin.mV[0];
+        snap.mEyeXYZ[1] = cam_origin.mV[1];
+        snap.mEyeXYZ[2] = cam_origin.mV[2];
+        snap.mFrameSeq = LLFrameTimer::getFrameCount();
+        snap.mEntries.reserve(mProbes.size());
+        for (auto& probe : mProbes)
+        {
+            if (probe == nullptr || probe == mDefaultProbe)
+            {
+                continue;
+            }
+            ProbeOcclusionSnapshotEntry e;
+            e.mProbe = probe.get();
+            const F32* op = probe->mOrigin.getF32ptr();
+            e.mOriginXYZ[0] = op[0];
+            e.mOriginXYZ[1] = op[1];
+            e.mOriginXYZ[2] = op[2];
+            e.mRadius = probe->mRadius;
+            e.mOcclusionQuery = probe->mOcclusionQuery;
+            snap.mEntries.push_back(std::move(e));
+        }
+    }
+    mOcclusionWorker->enqueue(std::move(snap));
+    // </FS:AYAstorm>
 }
 
 void LLReflectionMapManager::forceDefaultProbeAndUpdateUniforms(bool force)

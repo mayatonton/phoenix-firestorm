@@ -31,8 +31,11 @@
 #include "llcubemaparray.h"
 #include "llcubemap.h"
 
+#include <memory> // <FS:AYAstorm> CPU perf 章 案 O: std::unique_ptr<LLReflectionOcclusionWorker>
+
 class LLSpatialGroup;
 class LLViewerObject;
+class LLReflectionOcclusionWorker; // <FS:AYAstorm> CPU perf 章 案 O
 
 // number of reflection probes to keep in vram
 #define LL_MAX_REFLECTION_PROBE_COUNT 256
@@ -155,6 +158,10 @@ public:
     // perform occlusion culling on all active reflection probes
     void doOcclusion();
 
+    // <FS:AYAstorm> CPU perf 章 案 O: cleanup 時 worker thread を join するために本クラス destructor 経由
+    ~LLReflectionMapManager();
+    // </FS:AYAstorm>
+
     // *HACK: "cull" all reflection probes except the default one. Only call
     // this if you don't intend to call updateUniforms directly. Call again
     // with false when done.
@@ -275,5 +282,10 @@ private:
     F32 mResumeTime = 0.f;
 
     ReflectionProbeData mProbeData;
+
+    // <FS:AYAstorm> CPU perf 章 案 O: doOcclusion 並列化 worker (1 frame lag 非同期式)
+    // unique_ptr で forward-decl 維持、cpp 側で new/reset。cvar=0 path では未使用。
+    std::unique_ptr<LLReflectionOcclusionWorker> mOcclusionWorker;
+    // </FS:AYAstorm>
 };
 

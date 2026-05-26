@@ -701,6 +701,7 @@ set(viewer_SOURCE_FILES
     llrecentpeople.cpp
     llreflectionmap.cpp
     llreflectionmapmanager.cpp
+    llreflectionocclusionworker.cpp
     llheroprobemanager.cpp
     llregioninfomodel.cpp
     llregionposition.cpp
@@ -1566,6 +1567,7 @@ set(viewer_HEADER_FILES
     llrecentpeople.h
     llreflectionmap.h
     llreflectionmapmanager.h
+    llreflectionocclusionworker.h
     llheroprobemanager.h
     llregioninfomodel.h
     llregionposition.h

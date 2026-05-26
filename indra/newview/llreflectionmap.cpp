@@ -33,6 +33,7 @@
 #include "llworld.h"
 #include "llshadermgr.h"
 #include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group N (Day 1-2 doOcclusion Layer 8 drill)
+#include "llreflectionocclusionworker.h" // <FS:AYAstorm> CPU perf 章 案 O: worker action kind enum
 
 extern F32SecondsImplicit gFrameTimeSeconds;
 
@@ -355,18 +356,23 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
     // super sloppy, but we're doing an occlusion cull against a bounding cube of
     // a bounding sphere, pad radius so we assume if the eye is within
     // the bounding sphere of the bounding cube, the node is not culled
+    { // <FS:AYAstorm> CPU perf 章 case O baseline: Pass 1 (CPU 部分、worker 移送候補)
+    AYAPERF_ZONE("rmdo_pass1_cpu");
     F32 dist = mRadius * F_SQRT3 + 1.f;
 
     LLVector4a o;
     o.setSub(mOrigin, eye);
-
-    bool do_query = false;
 
     if (o.getLength3().getF32() < dist)
     { // eye is inside radius, don't attempt to occlude
         mOccluded = false;
         return;
     }
+    } // </FS:AYAstorm> Pass 1 end
+
+    bool do_query = false;
+    { // <FS:AYAstorm> CPU perf 章 case O baseline: Pass 2 (GL 部分、main 残置必須)
+    AYAPERF_ZONE("rmdo_pass2_gl");
 
     if (mOcclusionQuery == 0)
     { // no query was previously issued, allocate one and issue
@@ -417,5 +423,74 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
         glEndQuery(GL_ANY_SAMPLES_PASSED);
         // </FS:AYAstorm>
     }
+    } // </FS:AYAstorm> Pass 2 end
 #endif
 }
+
+// <FS:AYAstorm> CPU perf 章 案 O: worker mode apply phase
+namespace
+{
+    // Pass 2 GL: glBeginQuery / uniform / drawRange / glEndQuery (元 llreflectionmap.cpp:403-419 と同等)
+    void pushQuery_main(LLReflectionMap* probe)
+    {
+        AYAPERF_ZONE("rmdo_pushQuery");
+        glBeginQuery(GL_ANY_SAMPLES_PASSED, probe->mOcclusionQuery);
+
+        LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+        shader->uniform3fv(LLShaderMgr::BOX_CENTER, 1, probe->mOrigin.getF32ptr());
+        shader->uniform3f(LLShaderMgr::BOX_SIZE, probe->mRadius, probe->mRadius, probe->mRadius);
+
+        gPipeline.mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(LLViewerCamera::getInstance(), probe->mOrigin));
+
+        glEndQuery(GL_ANY_SAMPLES_PASSED);
+    }
+}
+
+void LLReflectionMap::doOcclusion_pass2_gl(ProbeOcclusionActionKind kind)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    if (LLGLSLShader::sProfileEnabled)
+    {
+        return;
+    }
+
+    AYAPERF_ZONE("rmdo_pass2_gl");
+
+    switch (kind)
+    {
+    case ProbeOcclusionActionKind::SKIP_INSIDE_RADIUS:
+        mOccluded = false;
+        return;
+
+    case ProbeOcclusionActionKind::NEED_GEN_QUERY:
+        glGenQueries(1, &mOcclusionQuery);
+        pushQuery_main(this);
+        return;
+
+    case ProbeOcclusionActionKind::POLL_AND_MAYBE_PUSH:
+    {
+        GLuint result = 0;
+        {
+            AYAPERF_ZONE("rmdo_resultAvail");
+            glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT_AVAILABLE, &result);
+        }
+
+        if (result > 0)
+        {
+            {
+                AYAPERF_ZONE("rmdo_resultRead");
+                glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT, &result);
+            }
+            mOccluded = (result == 0);
+            mOcclusionPendingFrames = 0;
+            pushQuery_main(this);
+        }
+        else
+        {
+            mOcclusionPendingFrames++;
+        }
+        return;
+    }
+    }
+}
+// </FS:AYAstorm>
