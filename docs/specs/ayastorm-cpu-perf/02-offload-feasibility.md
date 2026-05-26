@@ -761,20 +761,20 @@ Day 1-2 (doOcclusion Layer 8) + Day 2-3 (vwDraw Layer 8) で **計測** 側の�
 | `LLCullResult` storage | 🟢 GREEN | 11 buffer (mVisibleGroups / mAlphaGroups / mRiggedAlphaGroups / mOcclusionGroups / mDrawableGroups / mVisibleList / mVisibleBridge / mRenderMap[8]) すべて `std::vector<T*>` append-only、reader 側は read-only。per-task buffer + 末尾 merge は trivial |
 | `push*` method call site | 🟢 GREEN | 7 site (pushVisibleGroup 3138 / pushOcclusionGroup 3159/3167 / pushDrawableGroup 3134 / pushDrawable 3100/3111/3803 / pushBridge 3798 / pushDrawInfo 4541 / pushAlphaGroup 4572) — 全て cull 経路 sequential、順序依存 cross-bucket 無し |
 | 非 main thread mState mutation | 🟢 GREEN | llvocache.cpp 328/339 のみ、VO cache 寿命管理経路で cull traversal 開始前完了。実 concurrent 書込無し |
-| **OCCLUDED bit cross-camera 共有** | 🔴 **RED — 構造的 blocker** | mState の OCCLUDED (0x10000) は main_cam で set → shadow_cam が read する設計。SG_STATE_INHERIT_MASK で継承されるため、atomic 化しても shadow cull が main cull の OCCLUDED bit を読んでしまい false-positive occlusion で shadow 描画破綻 |
+| **OCCLUDED bit cross-camera 共有** | 🟢 **GREEN — 既に per-camera 化済 (2026-05-26 grep 確定)** | `OCCLUDED = 0x00010000` は `LLOcclusionCullingGroup` の OCCLUSION_STATE enum (llvieweroctree.h:279)、storage は `mOcclusionState[LLViewerCamera::NUM_CAMERAS]` (llvieweroctree.h:332)。`set/clearOcclusionState(OCCLUDED, ...)` は全 site で `STATE_MODE_DIFF` = per-camera (llvieweroctree.cpp:1126/1154/1158/1197)。`STATE_MODE_ALL_CAMERAS` は `DISCARD_QUERY` 専用 (llspatialpartition.cpp:310/964)。`SG_STATE_INHERIT_MASK & parent->mOcclusionState[i]` (llvieweroctree.cpp:879) も per-camera index `i` 内の parent→child 継承で cross-camera leak は構造上発生しない |
 
-#### 結論
+#### 結論 (2026-05-26 更新)
 
 **atomic mState + per-task push buffer 自体は 1 週間で実装可能 (GREEN)。**
 
-**ただし** OCCLUDED bit を **per-camera state に分離** しない限り shadow_cam + main_cam の並列 cull は **不可** (false-positive occlusion で artifact)。既に `mOcclusionState[sCurCameraID]` で per-camera 化されている枠は存在するため、`mState` の OCCLUDED bit を `mOcclusionState[]` 側に統合する追加 refactor (~2-3 日) を踏むのが構造的に正しい解。
+**当初想定していた "OCCLUDED bit を per-camera 化する prerequisite refactor" は不要** — 上記 grep finding により OCCLUDED は既に `mOcclusionState[per-camera]` に格納済で、cross-camera bit leakage は構造上発生しない。Day 5-6 POC 時の RED 判定は `mState` 側に OCCLUDED bit が同居していると誤読していたもので、実コードでは `mState` (`LLSpatialGroup::eSpatialState`) と `mOcclusionState[]` (`LLOcclusionCullingGroup::OCCLUSION_STATE`) は独立 enum / 独立 storage。
 
-#### Phase 1.2 で確定する scope (案 P-refined)
+#### Phase 1.2 で確定する scope (案 P-refined、2026-05-26 改訂)
 
-- 必須 prerequisite: **OCCLUDED bit を mState から mOcclusionState[per-camera] に移送する refactor** — これが入らないと並列 cull は破綻
-- 必須 prerequisite 後の本実装: atomic mState + per-task LLCullResult buffer
+- prerequisite refactor: **不要** (OCCLUDED は既に per-camera 化済、上記 grep 確定)
+- 本実装: atomic mState + per-task LLCullResult buffer
 - 期待効果: main_cam updateCull (1.04 ms/frame) と shadow_cam updateCull 4 cascade (cascade 別 budget は 04 §4.3 sun cascade 分析参照、合計 ~12 ms/frame) の並列化 — 上限で 4-5 ms/frame 圧縮可能性
-- リスク: OCCLUDED bit 統合の視覚回帰 (occlusion がカメラ別になることで、複数カメラ共有最適化を期待する drawable で false negative が出る可能性)
+- 残リスク: `mState` 側 (DIRTY / OBJECT_DIRTY / GEOM_DIRTY 等) の cross-camera 共有は未確認。Phase 2 着手時に main_cam / shadow_cam 並列で書込競合する mState bit を再 grep して洗う (atomic 化対象の確定)
 
 ---
 
@@ -789,7 +789,7 @@ Day 1-2 / Day 2-3 (計測地図) + Day 4-5 / Day 5-6 (POC spike) の集計。
 | 案 O (doOcclusion async) — Hero probe iteration loop 全体を worker に剥がす | 🟢 GREEN (rmdo_* state machine 22.7%、parent − Σ = 77.3% iteration loop) | 1-1.5 週 (Worker A pool infra + frustum snapshot 配線) | doOcclusion_reflectionProbes 8.1 ms/frame の **~70-80%** = **5.7-6.5 ms/frame** | **GO** |
 | 案 Q (vwDraw text cache) — text width measurement の per-frame caching | 🔴 RED (19 周目 Group O 実測 = 0.145 ms/frame、Layer 1 推定 18.6 ms/frame は session diff) | 0.5-1 週 | 100% 削減でも frame budget の 0.5% (0.08 ms) | **DROP** |
 | 案 R-refined (renderShadow pre-cull worker) — shadow cascade 4 つの updateCull + stateSort のみ worker | 🟢 GREEN (sCull/mNumVisibleFaces 共に scope 小、GL blocker は body 側のみ) | 1 週 (worker B + 4 cascade buffer + sShadowRender parameter 化) | renderShadow body 内 cull + stateSort 部分の **~25%** = **~2-3 ms/frame** | **GO** |
-| 案 P-refined (mState atomic + per-task cull buffer) — OCCLUDED 分離 + 並列 cull | 🟡 YELLOW (OCCLUDED 分離 prerequisite 必要、視覚回帰リスク) | 2-2.5 週 (OCCLUDED refactor 2-3 日 + 本実装 1-1.5 週) | main + shadow cam 並列で **4-5 ms/frame** | **GO 条件付** (OCCLUDED refactor が単独 spec として独立判断可能なら go) |
+| 案 P-refined (mState atomic + per-task cull buffer + 並列 cull) | 🟢 GREEN (2026-05-26 grep finding で OCCLUDED prerequisite 消滅、§E.2 更新) | 1-1.5 週 (本実装のみ) | main + shadow cam 並列で **4-5 ms/frame** | **GO** |
 
 ### §F.2 章 scope 凍結案 (案 Y-refined)
 
@@ -797,7 +797,7 @@ Phase 1.2 (Core 振り分け設計) で取り扱う剥がし候補を **3 件に
 
 1. **案 O (doOcclusion async)** — 最大の ceiling、構造 GREEN、即着手可
 2. **案 R-refined (renderShadow pre-cull worker)** — GREEN、案 O と独立に着手可
-3. **案 P-refined (mState atomic + 並列 cull)** — 案 O / R 完成後の追加 ceiling、OCCLUDED refactor 単独 spec を先行検討
+3. **案 P-refined (mState atomic + 並列 cull)** — 案 O / R 完成後の追加 ceiling (OCCLUDED prerequisite は 2026-05-26 grep finding で消滅、§E.2 / §F.3 更新)
 
 **案 Q (vwDraw text cache) は DROP 確定** — Day 2-3 Group O 実測で vwDraw 全体 0.145 ms/frame、100% 削減でも frame budget の 0.5% (詳細は 04 §4.2.j)。
 
@@ -807,7 +807,8 @@ Phase 1.2 (Core 振り分け設計) で取り扱う剥がし候補を **3 件に
 |---|---|---|
 | 案 O worker から GL query 発行不可 | 案 O の implementation が pure CPU 化に限定される (GL Begin/End は main 残し) | scope §4.2.i §Phase 1.2 直接 input で明記済 — worker は probe visibility 判定 / 結果消費のみ |
 | 案 R-refined の sShadowRender parameter 化が 12 file 以上に波及 | refactor cost 増 | sShadowRender を ShadowRenderContext struct に集約、leaf 側は context ptr 受け取りに変更 (機械的) |
-| 案 P-refined OCCLUDED 分離で複数カメラ共有最適化破綻 | shadow / probe / impostor の occlusion 共有が崩れる | OCCLUDED 分離前に **既存共有最適化の実測 ceiling を確認** — 共有による短縮が 0.5 ms 未満なら drop して安全側 |
+| ~~案 P-refined OCCLUDED 分離で複数カメラ共有最適化破綻~~ | ~~shadow / probe / impostor の occlusion 共有が崩れる~~ | **2026-05-26 解消** — OCCLUDED は既に `mOcclusionState[per-camera]` 化済 (§E.2 更新)、分離 refactor 自体が不要のため本 risk は構造上発生しない |
+| 案 P-refined の `mState` 他 bit (DIRTY / GEOM_DIRTY 等) cross-camera write 競合 | main_cam / shadow_cam 並列 cull で同一 group の `mState` を同時 write した場合の race | Phase 2 着手時に `mState` 全 bit を再 grep し、cross-camera write site が出る bit のみ atomic 化対象に絞る (現時点では cull traversal hot path 内の write site 18 個全て main thread + frame-scoped で race 確認できず) |
 | 計測 instrumentation overhead (Group O drawChildren parent-name 比較) | 1 frame あたり drawChildren 呼出数 × 2 文字列比較 ≈ 数 µs overhead | AYAPerfLogEnabled=0 default で zero overhead、deploy 影響無し |
 
 ### §F.4 go/no-go
@@ -817,7 +818,7 @@ Phase 1.2 (Core 振り分け設計) で取り扱う剥がし候補を **3 件に
 着手順序は 05-core-assignment-plan.md Y-refined 改訂版 §7 で確定:
 1. 案 O から (ceiling 最大 + 構造シンプル) — 期待 5.7-6.5 ms/frame 短縮
 2. 案 R-refined (案 O と independent、Worker B 立ち上げ) — 期待 2-3 ms/frame 短縮
-3. 案 P-refined OCCLUDED 分離 — 独立 spec 検討 — 期待 4-5 ms/frame 短縮 (条件付)
+3. 案 P-refined (mState atomic + 並列 cull) — 期待 4-5 ms/frame 短縮 (2026-05-26 OCCLUDED prerequisite 消滅、§E.2 / §F.3 更新で条件付 → 純 GO)
 
 **剥がし候補 3 件合計の理論上限 = 11.7-14.5 ms/frame** (60 fps 化に必要な 16.67 ms - 当面の baseline frame ms との gap 確認は Phase 2 着手時に Frame Profile 再取得)。
 

@@ -101,7 +101,7 @@ Phase 1.1 で **剥がし候補 4 件中 3 件 GO / 1 件 DROP** を確定。Pha
 |---|---|---|---|
 | **案 O (doOcclusion async)** | Hero probe iteration loop 全体を Worker A に移送、main は GL Begin/End のみ残し | 5.7-6.5 ms/frame | 1 |
 | **案 R-refined (renderShadow pre-cull worker)** | shadow cascade 4 つの updateCull + stateSort を Worker B に移送、GL dispatch は main 残し | 2-3 ms/frame | 2 |
-| **案 P-refined (mState atomic + 並列 cull)** | OCCLUDED bit を `mOcclusionState[per-cam]` に移送する prerequisite refactor + 並列 cull | 4-5 ms/frame (条件付) | 3 |
+| **案 P-refined (mState atomic + 並列 cull)** | `mState` atomic 化 + per-task LLCullResult buffer + main_cam / shadow_cam 並列 cull (2026-05-26 grep finding で旧 OCCLUDED 分離 prerequisite は不要確定、02 §E.2 / 05 §6 削除ノート参照) | 4-5 ms/frame | 3 |
 | 案 Q (vwDraw text cache) | DROP — 19 周目 Group O 実測 0.145 ms/frame、frame budget 0.5% (詳細 04 §4.2.j) | — | — |
 
 剥がし候補 3 件合計の理論上限 = **11.7-14.5 ms/frame**。設計は 05-core-assignment-plan.md (Y-refined 改訂版)、判定根拠は 02 §F、計測根拠は 04 §4.2.h/i/j。

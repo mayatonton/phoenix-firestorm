@@ -10,7 +10,9 @@
 
 ## §0. one-liner (結論ファースト)
 
-本 spec で **剥がし対象を Y-refined の 3 候補に確定** — 案 O (doOcclusion async) / 案 R-refined (renderShadow pre-cull worker) / 案 P-refined (mState atomic + 並列 cull)。**Worker pool は A / B / C の 3 構成** で、A = doOcclusion 専属、B = shadow pre-cull 専属、C = P-refined 用 (OCCLUDED 分離 prerequisite 後に立ち上げ)。**Phase 2 着手順序は O → R-refined → P-refined**。各候補の go/no-go は **02 §F.1 ceiling の 50% 未満なら revert** の per-candidate gate で運用 (§8)。02 §A1-A14 のうち本章 Y-refined に含まれない A1/A5/A8/A11/A12/A14 は r41+ 章で再評価。
+本 spec で **剥がし対象を Y-refined の 3 候補に確定** — 案 O (doOcclusion async) / 案 R-refined (renderShadow pre-cull worker) / 案 P-refined (mState atomic + 並列 cull)。**Worker pool は A / B / C の 3 構成** で、A = doOcclusion 専属、B = shadow pre-cull 専属、C = P-refined 専属。**Phase 2 着手順序は O → R-refined → P-refined**。各候補の go/no-go は **02 §F.1 ceiling の 50% 未満なら revert** の per-candidate gate で運用 (§8)。02 §A1-A14 のうち本章 Y-refined に含まれない A1/A5/A8/A11/A12/A14 は r41+ 章で再評価。
+
+**2026-05-26 更新**: 旧版で P-refined の prerequisite として置いていた "OCCLUDED 分離 refactor" は grep finding (02 §E.2 更新) で **不要** が確定。`OCCLUDED` (0x00010000) は `LLOcclusionCullingGroup::mOcclusionState[NUM_CAMERAS]` (per-camera array) 側の bit で、`LLSpatialGroup::mState` には含まれていない。これに伴い旧 §6 は削除、§7 着手順序から prerequisite step が消え、§9.3 / §10.1.3 の判断項目も消滅。
 
 ---
 
@@ -28,7 +30,7 @@
 1. r40 章で剥がす対象は何か — Day 7 統合判定の Y-refined 3 候補 (§3)
 2. 各候補を **どの Worker pool に置くか** (§4)
 3. **main 残置部分の境界線** (snapshot 入力 / apply 出力 / lock 戦略) — 候補ごと (§5)
-4. **案 P-refined の prerequisite** (OCCLUDED 分離 refactor) — 単独工程として明示 (§6)
+4. ~~案 P-refined の prerequisite (OCCLUDED 分離 refactor)~~ — **2026-05-26 grep finding で不要確定 (§3.1 / 02 §E.2 参照)、旧 §6 は削除**
 5. **Phase 2 着手順序** (§7)
 6. **per-candidate go/no-go gate** — 実装後の ceiling 達成率による revert 条件 (§8)
 7. **未解決 unknown** と Phase 2 着手前に潰すべき open question (§9)
@@ -65,7 +67,7 @@ memory `project_ayastorm_r40_cpu_parallel.md` + `feedback_r40_no_micro_tuning.md
 |---|---|---|---|---|
 | **案 O — doOcclusion async** | Worker A 専属 | **5.7-6.5 ms/frame** (doOcclusion_reflectionProbes 8.1 ms × 70-80%) | 🟢 GREEN — rmdo_* state machine 22.7%、parent − Σ = 77.3% iteration loop が剥がし対象本体 | Phase 2 第 1 (§7) |
 | **案 R-refined — renderShadow pre-cull worker** | Worker B 専属 | **2-3 ms/frame** (renderShadow body 内 cull + stateSort の ~25%) | 🟢 GREEN — sCull/mNumVisibleFaces scope 小、GL blocker は body 側のみ。pre-cull (updateCull + stateSort) を frame N-1 で worker 先行構築可能 | Phase 2 第 2 |
-| **案 P-refined — mState atomic + 並列 cull** | Worker C (OCCLUDED 分離後立ち上げ) | **4-5 ms/frame** (main_cam + shadow_cam 並列) | 🟡 YELLOW (条件付 GO) — atomic mState + per-task buffer は GREEN、**OCCLUDED bit を mState から mOcclusionState[per-camera] へ分離する prerequisite refactor 必要** (§6) | Phase 2 第 3 (prerequisite spec 経由) |
+| **案 P-refined — mState atomic + 並列 cull** | Worker C 専属 | **4-5 ms/frame** (main_cam + shadow_cam 並列) | 🟢 GREEN (2026-05-26 grep finding で prerequisite 消滅) — atomic mState + per-task buffer は GREEN、当初 prerequisite として置いた "OCCLUDED 分離" は `OCCLUDED` が既に `mOcclusionState[NUM_CAMERAS]` per-camera 化済 (llvieweroctree.h:332、全 set/clear site が `STATE_MODE_DIFF`) のため不要 (02 §E.2 / §F.3 更新) | Phase 2 第 3 |
 
 合計理論上限 = **11.7-14.5 ms/frame**。
 
@@ -102,12 +104,12 @@ memory `project_ayastorm_r40_cpu_parallel.md` + `feedback_r40_no_micro_tuning.md
 |---|---|---|
 | **Worker A** | 案 O (doOcclusion async) | reflection probe visibility 計算は **frame 内に必ず完了する必要** (apply は同 frame の display zone)、他候補と pool 共有すると競合 |
 | **Worker B** | 案 R-refined (renderShadow pre-cull) | shadow updateCull + stateSort は **frame N-1 で先行構築 → frame N の renderShadow body で消費**。frame 跨ぎ pool となり A/C と scheduling が独立 |
-| **Worker C** | 案 P-refined (並列 cull) | OCCLUDED 分離後の main_cam + shadow_cam 並列 cull 用。**P-refined prerequisite (§6) 完了まで立ち上げ保留** |
+| **Worker C** | 案 P-refined (並列 cull) | main_cam + shadow_cam 並列 cull 用 (per-task LLCullResult buffer)。2026-05-26 grep finding で OCCLUDED prerequisite 消滅、Worker A / B と独立 lifecycle で着手可 |
 
 pool 数 = 3 とした理由:
 1. **frame budget の分離**: A = frame 内完結、B = frame 跨ぎ可、C = frame 内完結 (P-refined 着手時)。同 pool に混ぜると scheduling 設計が破綻
-2. **lock domain の分離**: A は reflection probe visibility queue writer、B は LLCullResult buffer (4 cascade × 11 sub-buffer) writer、C は per-camera mOcclusionState writer。lock 競合が pool 越えに起きない
-3. **段階着手**: C は §6 prerequisite が片付くまで物理的に動かせない、A/B と独立 lifecycle
+2. **lock domain の分離**: A は reflection probe visibility queue writer、B は LLCullResult buffer (4 cascade × 11 sub-buffer) writer、C は per-task LLCullResult buffer × 5 (main + shadow 4) writer + per-camera `mOcclusionState[]` 読出。lock 競合が pool 越えに起きない
+3. **段階着手**: A → B → C の順、A/B の Worker pool infra 知見が溜まってから C 着手 (Worker A / B / C は独立 lifecycle、prerequisite blocking は 2026-05-26 で解消済)
 
 4 pool 以上にしない: Y-refined 3 候補で十分、pool 増は context-switch overhead と設計負担増。
 
@@ -177,7 +179,7 @@ private:
 
 ### §4.4 Worker C 詳細 (案 P-refined 専属)
 
-§6 prerequisite 完了まで立ち上げ保留のため、本 spec では **interface のみ示し thread 数 / lifecycle は §6 完了時に確定**。
+着手は Phase 2 第 3 (§7.2、Worker A / B 完成後)。旧版で挙げていた "§6 prerequisite 完了待ち" は 2026-05-26 grep finding (§6 削除ノート) で消滅、Worker C は Worker A / B と独立 lifecycle で立ち上げ可能。本 spec では **interface のみ示し thread 数 / lifecycle 詳細は Phase 2 第 3 着手時の baseline commit で確定**。
 
 ```cpp
 class ParallelCullWorker {
@@ -188,7 +190,7 @@ public:
 };
 ```
 
-prerequisite (§6) で OCCLUDED bit が `mOcclusionState[per-cam]` に分離された後、main_cam と shadow_cam の cull traversal が独立 buffer で並列実行可能。
+`OCCLUDED` (`mOcclusionState[NUM_CAMERAS]` per-camera) は既に main_cam / shadow_cam で独立に書込まれるため、main_cam と shadow_cam の cull traversal は per-task LLCullResult buffer + per-camera mOcclusionState write で独立並列実行可能。`mState` 側 bit (DIRTY / OBJECT_DIRTY / GEOM_DIRTY 等) で cross-camera write 競合が起きる bit のみ Phase 2 着手前 grep (§9.2 案 P-Q1') で確定して atomic 化対象に絞る。
 
 ### §4.5 共通契約 (3 pool 共通)
 
@@ -290,48 +292,36 @@ prerequisite (§6) で OCCLUDED bit が `mOcclusionState[per-cam]` に分離さ�
 | snapshot 入力 | camera frustum × 5 (main + shadow 4)、octree root pointer (read-only)、agent pos |
 | apply 出力 | 5 個の LLCullResult buffer (main thread が end-of-cull で union) |
 | **main 残置 (絶対)** | (a) LLCullResult buffer union (5 個を main の cull result に merge)、(b) post-cull state mark (LLSpatialGroup mark dirty 等)、(c) GL state mutation 全般 |
-| lock | (a) mState は **atomic U32 化** (02 §E.2)、(b) per-task push buffer は worker 独立、(c) union 時のみ main 排他 (短時間) |
-| **必須 prerequisite** | **§6 OCCLUDED 分離 refactor** — これ無しでは false-positive occlusion で shadow 描画破綻 |
-| 想定 unknown | (a) mOcclusionState[per-cam] 分離後の cross-camera occlusion 共有効果損失 (02 §F.3 risk register、shared occlusion で 0.5 ms 未満なら drop して安全側)、(b) atomic mState の read overhead が cull traversal hot loop で問題化しないか — Phase 2 着手時 baseline 取得 |
+| lock | (a) mState は **atomic U32 化** (02 §E.2) — cross-camera 並列 cull 中に書き込まれる bit のみ atomic 化対象、(b) per-task push buffer は worker 独立、(c) union 時のみ main 排他 (短時間) |
+| **prerequisite** | **不要 (2026-05-26 grep finding)** — 旧版で必須としていた "OCCLUDED 分離 refactor" は `OCCLUDED` が既に `mOcclusionState[NUM_CAMERAS]` per-camera 化済のため成立せず (02 §E.2 / §F.3 更新)。`mState` 側 cross-camera write site は Phase 2 着手時に再 grep して atomic 化対象 bit を絞る (現時点では 18 site 全て main thread + frame-scoped で race 確認できず) |
+| 想定 unknown | (a) `mState` 側の cross-camera 書込 bit 洗い出し (DIRTY / GEOM_DIRTY 等が main_cam / shadow_cam 並列 cull 中に同時書込されるか) — Phase 2 着手前に再 grep、(b) atomic mState の read overhead が cull traversal hot loop で問題化しないか — Phase 2 着手時 baseline 取得 |
 
 ---
 
-## §6. 案 P-refined 前提 = OCCLUDED 分離 refactor (global refactor 単独工程)
+## §6. (削除) 旧 "OCCLUDED 分離 refactor" 工程 — 2026-05-26 grep finding で不要確定
 
-### §6.1 工程の位置付け
+旧版 (本 spec 初稿) では案 P-refined の必須 prerequisite として "`mState` の OCCLUDED bit (0x10000) を `mOcclusionState[per-camera]` に分離する refactor (工数 2-3 日 + 視覚回帰確認)" を独立工程として置いていた。
 
-案 P-refined の構造的 prerequisite として **mState の OCCLUDED bit (0x10000) を mOcclusionState[per-camera] に分離する refactor** が必要 (02 §E.2 RED blocker、02 §F.3 risk 1)。
+**2026-05-26 grep finding により本工程は不要 (構造的に既に達成済)**:
 
-**本工程は P-refined と切り離して単独 spec / 単独 PR とする判断を Phase 1.2 完了時 (AYA review 時点) に取る**:
+| 確認項目 | 実コードでの状態 | 出典 |
+|---|---|---|
+| `OCCLUDED` の定義場所 | `LLOcclusionCullingGroup::OCCLUSION_STATE` enum (`mState` ではない) | llvieweroctree.h:279 |
+| `OCCLUDED` の storage | `mOcclusionState[LLViewerCamera::NUM_CAMERAS]` (既に per-camera array) | llvieweroctree.h:332 |
+| `setOcclusionState(OCCLUDED, ...)` の mode | 全 site で `STATE_MODE_DIFF` (per-camera) | llvieweroctree.cpp:1126 / 1154 / 1158 / 1197 |
+| `STATE_MODE_ALL_CAMERAS` 使用箇所 | `DISCARD_QUERY` のみ (OCCLUDED 関与なし) | llspatialpartition.cpp:310 / 964 |
+| `SG_STATE_INHERIT_MASK & parent->mOcclusionState[i]` | 同一 camera index `i` 内の parent→child 継承、cross-camera leak なし | llvieweroctree.cpp:879 |
 
-- **option A (単独 spec)**: 06-occluded-bit-separation.md 等の独立 spec として工程を切り出し、P-refined 着手前にレビュー → merge → 視覚回帰確認 → 然る後 P-refined 着手
-- **option B (P-refined spec の §0 として取り込み)**: P-refined 着手時に 1 PR の prerequisite step として実施 (small refactor かつ視覚回帰確認 frame profile で完結する場合)
+→ Day 5-6 POC 時の RED 判定 (02 §E.2 旧版) は `mState` (`LLSpatialGroup::eSpatialState`) と `mOcclusionState[]` (`LLOcclusionCullingGroup::OCCLUSION_STATE`) を同一 storage と誤読していたもので、実際は独立 enum / 独立 storage。
 
-判断軸: 視覚回帰確認の規模。occlusion 共有最適化が複数経路 (shadow / probe / impostor) で効いているなら option A、shadow 単独なら option B。Phase 1.2 完了時の AYA review で確定。
+**含意**:
 
-### §6.2 refactor 内容
+- 旧 §7.2 の Phase 2 着手順序 3 番目 "§6 OCCLUDED 分離 refactor" は削除 (§7 で確定順序を更新)
+- 旧 §9.3 "OCCLUDED 分離 単独 spec 化判断 (option A vs B)" は削除 (§9.3 で消滅マーク)
+- 旧 §10.1.3 "OCCLUDED 分離 option A/B 判断確定" は削除 (§10 で確定順序を更新)
+- 案 P-refined 着手の物理的 blocker は不在、Worker A / B / C は独立 lifecycle で進行可能
 
-| 段階 | 内容 |
-|---|---|
-| Step 1 | `LLSpatialGroup::mState` から OCCLUDED bit (0x10000) を削除、`SG_STATE_INHERIT_MASK` から除外 |
-| Step 2 | `mOcclusionState[sCurCameraID]` (既存) に OCCLUDED 相当の bit を追加、setter/getter を `getOcclusionState(camera_id)` 経由に統一 |
-| Step 3 | OCCLUDED 参照 site (現 mState 0x10000 を read している全箇所) を `mOcclusionState[camera_id]` 経由に書き換え |
-| Step 4 | 視覚回帰確認 — shadow / probe / impostor の各経路で frame diff 撮影、occlusion shared 期待箇所で false negative が出ないか |
-
-### §6.3 視覚回帰確認手順
-
-1. baseline frame profile 撮影 (refactor 前、19 周目 baseline CSV を流用可)
-2. refactor 後 frame profile 撮影
-3. screenshot diff (memory `feedback_render_bug_canary_protocol` の canary 色塗りを応用、occlusion で消えるべき drawable に色 uniform 仕込み)
-4. 共有最適化が損失する場合の ms 増加を測定 — **0.5 ms/frame 未満なら go**、それ以上なら refactor 設計やり直し (mOcclusionState の cross-camera sharing 機構を追加)
-
-### §6.4 関連 grep
-
-- mState の 0x10000 read/write site: `git grep -n '0x10000\|OCCLUDED\|mState' indra/newview/llspatialpartition.cpp indra/newview/llpipeline.cpp`
-- mOcclusionState 既存 site: `git grep -n 'mOcclusionState' indra/`
-- SG_STATE_INHERIT_MASK 参照: `git grep -n 'SG_STATE_INHERIT_MASK' indra/`
-
-(具体 file:line は Phase 2 §6 着手時に grep 結果を本 spec に追記)
+**残課題 (§5.3 想定 unknown へ移管済)**: `mState` 本来 bit (DIRTY / OBJECT_DIRTY / GEOM_DIRTY 等) が main_cam / shadow_cam 並列 cull 中に cross-camera write 競合するか — Phase 2 着手時に再 grep して atomic 化対象 bit を絞る。
 
 ---
 
@@ -341,23 +331,21 @@ prerequisite (§6) で OCCLUDED bit が `mOcclusionState[per-cam]` に分離さ�
 
 - **ROI**: 期待 ms 削減 (§3.1 ceiling) / 工数見積
 - **独立性**: 他候補との依存 (snapshot 共有 / apply 順序)
-- **prerequisite**: §6 OCCLUDED 分離が後続候補を blocking しているか
+- ~~prerequisite (旧 §6 OCCLUDED 分離)~~: **2026-05-26 grep finding で blocker 消滅**、本軸は実質判定不要に
 
-### §7.2 確定順序
+### §7.2 確定順序 (2026-05-26 改訂、旧 §6 工程を削除)
 
 | 順 | 候補 | 理由 | 工数感 |
 |---|---|---|---|
 | 1 | **案 O (doOcclusion async)** | ceiling 最大 (5.7-6.5 ms)、構造シンプル、Worker A 1 thread 単独 pool で立ち上げ、他候補と依存無し | 1-1.5 週 (Worker A pool infra + snapshot 配線 + apply 結線) |
-| 2 | **案 R-refined (renderShadow pre-cull worker)** | 案 O と independent、Worker B 立ち上げ、ShadowRenderContext 化と sShadowRender 12 file 波及修正が主 | 1 週 (Worker B + 4 cascade buffer + sShadowRender param 化) |
-| 3 | **§6 OCCLUDED 分離 refactor** | P-refined の prerequisite、視覚回帰確認手順込み | 2-3 日 (refactor 本体) + 視覚回帰確認 (frame diff 撮影 × 数 scene) |
-| 4 | **案 P-refined (mState atomic + 並列 cull)** | §6 完了後着手、Worker C 立ち上げ、main_cam + shadow_cam 並列 | 1-1.5 週 |
+| 2 | **案 R-refined (renderShadow pre-cull worker)** | 案 O と independent、Worker B 立ち上げ、ShadowRenderContext 化と sShadowRender 15 file 波及修正が主 (§5.2.1 確定) | 1 週 (Worker B + 4 cascade buffer + sShadowRender param 化) |
+| 3 | **案 P-refined (mState atomic + 並列 cull)** | 案 O / R 完成後の追加 ceiling、Worker C 立ち上げ、main_cam + shadow_cam 並列。旧 prerequisite (OCCLUDED 分離) は不要確定 (§6 削除ノート参照) | 1-1.5 週 |
 
 ### §7.3 順序の根拠
 
 - **案 O を最初に置く**: ceiling 最大 + 構造シンプル + 他候補 prerequisite なし、Worker pool infra (§4.5 共通契約) の reference impl も兼ねる
 - **案 R-refined を 2 番目**: 案 O と独立 (worker / lock / snapshot 全て別)、Worker B は frame-skew 運用で frame 跨ぎ pool の reference
-- **§6 を 3 番目**: P-refined 着手の物理的 blocker。option A (単独 spec) を取る場合は本順序、option B (P-refined 取り込み) なら 4 と統合
-- **案 P-refined を最後**: prerequisite (§6) 完成 + 案 O/R で worker pool infra 運用知見が溜まってから着手
+- **案 P-refined を最後**: 旧版で挟んでいた "§6 OCCLUDED 分離 refactor" 工程は 2026-05-26 grep finding で不要確定 (§6 削除ノート参照)。案 O / R で Worker pool infra 運用知見が溜まってから着手する順序自体は維持 (lock domain 設計の reference impl が前 2 候補で固まる利点)
 
 ---
 
@@ -414,15 +402,13 @@ prerequisite (§6) で OCCLUDED bit が `mOcclusionState[per-cam]` に分離さ�
   - 案 R-Q2: sShadowRender 参照 12 file 以上 (02 §E.1 §F.3) の正確な site list と ShadowRenderContext 化の波及範囲 — Phase 2 着手前に grep 確定
 
 - **案 P-refined**:
-  - 案 P-Q1: §6 OCCLUDED 分離後の cross-camera occlusion 共有効果損失 (shared occlusion で 0.5 ms 未満なら go) — §6.3 視覚回帰確認手順で確定
+  - ~~案 P-Q1: §6 OCCLUDED 分離後の cross-camera occlusion 共有効果損失~~ → **2026-05-26 解消** (旧 §6 工程不要確定、§6 削除ノート参照)
+  - 案 P-Q1' (新規): `mState` 側 cross-camera write site 洗い出し — DIRTY / OBJECT_DIRTY / GEOM_DIRTY 等のうち main_cam / shadow_cam 並列 cull 中に同時書込される bit を Phase 2 着手前に再 grep、atomic 化対象 bit を絞る
   - 案 P-Q2: atomic mState read overhead が cull traversal hot loop で問題化しないか — Phase 2 着手時 baseline
 
-### §9.3 §6 OCCLUDED 分離 単独 spec 化判断 (option A vs B、§6.1)
+### §9.3 (削除) 旧 "§6 OCCLUDED 分離 単独 spec 化判断 (option A vs B)"
 
-- 視覚回帰確認の規模が大きい (複数経路で occlusion 共有が効いている) → option A、独立 06 spec 化
-- 規模が小さい (shadow 単独) → option B、P-refined PR の §0 として取り込み
-
-Phase 1.2 完成時 (本 spec AYA review 時点) に occlusion 共有経路を grep で列挙し判断を確定。
+旧版で本節に置いていた option A / B 判断 (P-refined 着手前の単独 spec 化 vs 取り込み) は、2026-05-26 grep finding で旧 §6 工程自体が不要確定したため **判断項目消滅**。§6 削除ノート参照。
 
 ---
 
@@ -434,14 +420,16 @@ Phase 1.2 完成時 (本 spec AYA review 時点) に occlusion 共有経路を g
 
 1. 本 spec の AYA review PASS
 2. §9.1 Q1 / Q2 が Worker A reference impl で数値確認できる準備整備済 (案 O 第 1 着手の baseline commit で確認)
-3. §9.3 OCCLUDED 分離 option A/B 判断確定
+3. ~~§9.3 OCCLUDED 分離 option A/B 判断確定~~ — **2026-05-26 解消** (旧 §6 工程不要確定、判断項目消滅)
 4. §5.2 sShadowRender 12 file 以上の正確な site list grep 済 (案 R-refined 着手前) — **✓ 2026-05-26 確定 (§5.2.1、15 files / 74 sites、NG 条件未満)**
+5. 案 P-refined 着手前: `mState` 側 cross-camera write site の再 grep (§9.2 案 P-Q1' 経由、atomic 化対象 bit 確定)
 
 ### §10.2 着手 NG 条件
 
 - Worker A の dispatch overhead が 0.5 ms を超える (= worker pool 構成そのものが r40 では成立しない、設計やり直し)
 - 案 R-refined の sShadowRender 化が 30 file 以上に波及 (= 工数破綻、scope refine)
-- §6 OCCLUDED 分離で cross-camera occlusion 共有損失が 0.5 ms 超 (= P-refined 設計やり直し、shared occlusion 機構を別途維持)
+- ~~§6 OCCLUDED 分離で cross-camera occlusion 共有損失が 0.5 ms 超~~ → **2026-05-26 解消** (旧 §6 工程不要確定、本 NG 条件消滅)
+- 案 P-refined 着手時、`mState` 側 cross-camera write bit の atomic 化コストが 0.5 ms/frame 超 (= atomic 化なし設計を再検討、worker C 並列度を絞る or 候補 drop)
 
 ### §10.3 着手後の運用
 
@@ -472,4 +460,5 @@ Phase 1.2 完成時 (本 spec AYA review 時点) に occlusion 共有経路を g
 | 版 | 日付 | 内容 |
 |---|---|---|
 | 初版 | 2026-05-26 09:41 | 9 候補 / 3 pool (cull/parse/compute) の pre-thesis 版、A14 reference impl 想定 |
-| Y-refined 改訂 | 2026-05-26 (本版) | Day 7 統合判定後、3 候補 (O / R-refined / P-refined) に集約、pool 構成を candidate 専属モデルに再定義、§6 OCCLUDED 分離単独工程化、per-candidate ceiling 50% gate 明示 |
+| Y-refined 改訂 | 2026-05-26 | Day 7 統合判定後、3 候補 (O / R-refined / P-refined) に集約、pool 構成を candidate 専属モデルに再定義、§6 OCCLUDED 分離単独工程化、per-candidate ceiling 50% gate 明示 |
+| OCCLUDED grep finding 反映 | 2026-05-26 (本版) | 旧 §6 OCCLUDED 分離 refactor 工程を削除 (`OCCLUDED` は既に `mOcclusionState[NUM_CAMERAS]` per-camera 化済を grep 確定、02 §E.2 / §F.3 と同期)。P-refined を 🟡 → 🟢、Phase 2 着手順序から prerequisite step 消滅、§9.3 / §10.1.3 / §10.2 の OCCLUDED 関連判断項目を消去。`mState` 側 cross-camera write site 洗い出しを案 P-Q1' として残課題化 |

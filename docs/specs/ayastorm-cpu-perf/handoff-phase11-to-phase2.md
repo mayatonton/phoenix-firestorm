@@ -57,12 +57,26 @@ push 完了後、新 session で `git fetch && git status` で同期確認推奨
 
 ## 未着手の小タスク (Phase 2 開始前 / 並行可能)
 
-1. **OCCLUDED grep finding の spec 反映**
+1. ~~**OCCLUDED grep finding の spec 反映**~~ — **完了 (2026-05-26、本 commit)**
    - 確定事項: OCCLUDED は既に `LLOcclusionCullingGroup::mOcclusionState[NUM_CAMERAS]` で per-camera 化済 (llvieweroctree.h:332)
    - `setOcclusionState(OCCLUDED, ...)` は llvieweroctree.cpp:1158 で `STATE_MODE_DIFF` (per-camera)、`STATE_MODE_ALL_CAMERAS` は llspatialpartition.cpp:310/964 の `DISCARD_QUERY` のみ
    - 含意: §6 OCCLUDED 分離 refactor 不要、案 P-refined prerequisite cost ≈ zero
-   - 反映先: 02 §F.3 / 05 §6 / 06 該当節 (細かい sec 番号は spec 内 grep で特定)
-   - workload: 30 分程度
+   - 反映先 (確定):
+     - 02-offload-feasibility.md §E.2 (RED → GREEN row、結論 / Phase 1.2 scope 更新)
+     - 02-offload-feasibility.md §F.1 (P-refined YELLOW → GREEN)
+     - 02-offload-feasibility.md §F.3 (旧 OCCLUDED risk 取り消し線 + `mState` 他 bit を新 risk として残し)
+     - 02-offload-feasibility.md §F.2 / §F.4 (P-refined 着手順序の条件付 → 純 GO)
+     - 05-core-assignment-plan.md §0 (Y-refined 改訂後の 2026-05-26 update note 追加)
+     - 05-core-assignment-plan.md §1.2 (旧第 4 項目 strikethrough)
+     - 05-core-assignment-plan.md §3.1 / §4.1 / §5.3 (P-refined GREEN 化、prerequisite 不要)
+     - 05-core-assignment-plan.md §6 全体 (削除ノート + grep finding 出典表に置換)
+     - 05-core-assignment-plan.md §7.1 / §7.2 / §7.3 (Phase 2 着手順序から OCCLUDED step 消去、3 件順序のみ)
+     - 05-core-assignment-plan.md §9.2 (案 P-Q1 削除、案 P-Q1' `mState` 他 bit 再 grep を新規)
+     - 05-core-assignment-plan.md §9.3 (削除ノート)
+     - 05-core-assignment-plan.md §10.1 (項目 3 strikethrough、項目 5 `mState` cross-camera write site grep を追加)
+     - 05-core-assignment-plan.md §10.2 (旧 OCCLUDED NG 取り消し線 + `mState` atomic コスト NG 条件に置換)
+     - 05-core-assignment-plan.md §12 改訂履歴に "OCCLUDED grep finding 反映" 追記
+     - 06-offload-feasibility-deep.md §2.2 結論末尾に 2026-05-26 補足追加
 
 2. **次回 perf capture 命名規約変更**
    - 現状: `--csv-name 18pass-baseline` のような自由名 → 同名衝突 (45 MB M-only / 406 MB M+N) が発生済

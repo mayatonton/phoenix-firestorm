@@ -69,6 +69,8 @@
 
 **結論**: **着手 OK**、ただし mState atomic 化 と pushVisibleGroup の per-task buffer 化が前提条件。
 
+**2026-05-26 補足 (Y-refined → P-refined への refine)**: 本節 R3 (c) で参照している `setOcclusionState()` は llvieweroctree.cpp:1158 の per-camera write (`STATE_MODE_DIFF`、`mOcclusionState[sCurCameraID]`) であり、`mState` への書込ではない (`mState` への `&=` write は llspatialpartition.cpp:475/485/504-525/534/553-574/601/675/781/796 等の non-OCCLUDED bit のみ)。`OCCLUDED` (0x00010000) は `LLOcclusionCullingGroup::OCCLUSION_STATE` enum (llvieweroctree.h:279)、storage は `mOcclusionState[NUM_CAMERAS]` (llvieweroctree.h:332、per-camera array) で、旧 05 §6 で想定していた "`mState` からの分離 refactor" は構造的に既に達成済 (02 §E.2 / 05 §6 削除ノート参照)。Phase 2 着手時の atomic 化対象は `mState` 側 (DIRTY / OBJECT_DIRTY / GEOM_DIRTY 等) の cross-camera write 競合 bit のみ、Phase 2 着手前 grep で確定。
+
 ---
 
 ### §2.3 A1 — `LLViewerObject::idleUpdate` (Worker A)
