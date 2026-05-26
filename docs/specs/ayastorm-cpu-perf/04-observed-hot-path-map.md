@@ -455,6 +455,124 @@ renderShadow body 内訳の 11 周目値も整合 (cull 134, geom 66, alpha 357)
 
 ---
 
+### §4.2.h 18 周目 Layer 6 全周回 結果 — updateCull / renderDeferredLighting 内訳
+
+**計測条件**: 2026-05-26 active session (wall_ms 1003→137621 = **136.6 s**, max_frame=27755, display fps ≈ 26 (renderDeferredLighting count 3585 から逆算))、AYAPerfLogEnabled=1。Group M 配線後 (updateCull 3 zone + renderDeferredLighting 4 zone) build。同 SLurl (8-11 周目と一致)。
+
+CSV: `~/.ayastorm_x64/logs/AYAstorm-perf-18pass-baseline.csv` (45 MB、Group M-only build run、人手 login。**§4.2.i の同名 CSV (`tests/aya-gui/artifacts/.../AYAstorm-perf-18pass-baseline.csv`、406 MB) とは別ファイル**: §4.2.i は Group N zones 追加後の M+N 合算 build の run_perf.py 自動 capture)。
+
+備考: Layer 6 では **per-call (= per-fire)** を主軸に読む。frame ID は HUD render path + shadow split から増加するため、`total_us / frame_count` の per-frame 換算は zone 間で母数が揃わず比較不能 (03 spec §6.11 注記済)。
+
+#### M-1 詳細: updateCull body 3 分解
+
+| zone | total (us) | count | per-call (us) | parent 比 (per-call) |
+|---|---|---|---|---|
+| updateCull (parent, llviewerdisplay.cpp:903) | 1,779,808 | 1,809 | **983.86** | 100% |
+| updateCull_waterClip | 1,639 | 19,221 | 0.09 | 0.01% (per-call) |
+| updateCull_regionPartition | 3,902,140 | 19,221 | **203.01** | 20.6% (per-call) |
+| updateCull_skyRender | 2,739 | 19,221 | 0.14 | 0.01% (per-call) |
+
+##### 観察
+
+1. **sub-zone count 19221 / parent count 1809 = 10.63×** — top-level frame の updateCull 1 回に対し、sub-zone は HUD render + shadow split (4 cascade × 1.5 + Hero probe 等) 経路から **約 10 回 fire**。03 spec §6.11 既知制約通り。
+2. **updateCull body の hot は `regionPartition` 一択** (per-call 203 us / parent 984 us = **20.6%**)。waterClip / skyRender は 0.1 us クラスで誤差。
+3. parent − Σ children (per-call) = 984 − 203.24 = **780.6 us** が body 外 implicit (priority queue / agent setup / impostor / partition init 系) に潜在。これは function-internal の前後 setup で、Layer 7 drill すれば更に追えるが、**1 個の dominant sub-zone (regionPartition) で 20% を占めることを掴んだのが本周回の収穫**。
+4. shadow/HUD path 全体での **regionPartition 総コスト = 0.203 ms × 10.6 fire = 2.15 ms/frame 級** (top-level 1 回 + shadow 9 回程度の合算)。これは Phase 1.2 で別 thread に剥がす候補として最有力。
+
+#### M-2 詳細: renderDeferredLighting body 4 分解
+
+| zone | total (us) | count | per-call (us) | per-call 占有率 |
+|---|---|---|---|---|
+| renderDeferredLighting (parent) | 3,132,044 | 3,585 | **873.65** | 100% |
+| _lightmap | 22,568 | 3,585 | 6.30 | 0.7% |
+| _atmospherics | 16,871 | 3,585 | 4.71 | 0.5% |
+| _localLights | 419,094 | 3,585 | 116.90 | 13.4% |
+| _postDeferred | 2,655,448 | 3,585 | **740.71** | **84.8%** |
+
+Σ children (per-call) = 6.30 + 4.71 + 116.90 + 740.71 = **868.62 us** / parent 873.65 = **99.42% カバー**
+
+##### 観察
+
+1. **implicit setup gap = 873.65 − 868.62 = 5.03 us/call = 0.58%** — 03 spec §6.11 の "明示 zone 切らず逆算" 方針が妥当だったことを確認。**Layer 7 drill 不要**。
+2. **renderDeferredLighting の主犯確定 = `postDeferred` (per-call 741 us、children の 85%)**。handoff の事前仮説 PASS。`postDeferred` は softenLightF + atmosphericsFinal + DoF + tone map 一帯の post-deferred pass を内包。
+3. localLights が 13% (117 us/call) — 二位だが postDeferred の 1/6。
+4. lightmap / atmospherics は 1% 未満 (誤差級)。
+
+#### Layer 6 全周回 総括
+
+| 観点 | 判定 |
+|---|---|
+| updateCull 主犯確定 | ✓ `regionPartition` (per-call 203 us、parent の 20.6%、shadow/HUD path 10× fire) |
+| renderDeferredLighting 主犯確定 | ✓ `postDeferred` (per-call 741 us、children の 85%) |
+| implicit setup gap (renderDeferredLighting) | **0.58% (5 us/call)** — drill 不要 |
+| implicit setup gap (updateCull) | **79.4% (781 us/call)** — body 外 setup に潜在、但し dominant sub-zone (regionPartition) 確認済 |
+| Layer 7 drill 必要性 | **不要** (renderDeferredLighting は 99% カバー、updateCull は dominant sub 確認済) |
+| Phase 1.1 完成判定 | **✓ PASS** |
+
+##### Phase 1.2 (Core 振り分け設計) 着手判断
+
+- 02-offload-feasibility §A1-A14 deep-dive ✓
+- Layer 6 全周回 (Group M 配線 + 18 周目 CSV) ✓
+- 18 周目 CSV 結果整理 (本 §4.2.h) ✓
+
+**3 条件すべて充足 → Phase 1.2 (`05-core-assignment-plan.md` Y-refined 改訂版) 着手可。**
+
+Phase 1.2 で集約すべき main thread offload 候補 (現時点 top-3):
+
+| 候補 | per-frame コスト概算 | 剥がし先候補 |
+|---|---|---|
+| `doOcclusion_reflectionProbes` (Layer 5/6 既存) | 6.37 ms/call × 1.28 call/frame ≈ 8.1 ms (もしくは display frame 換算で 3.16 ms) | Worker A (occlusion query polling) |
+| `renderDeferredLighting_postDeferred` | 741 us/display-frame ≈ 0.74 ms | GPU 側 / async (CPU side は dispatch だけ、削減余地確認要) |
+| `updateCull_regionPartition` (shadow/HUD 含む 10 fire) | 203 us × ≈10 = 2.0 ms/frame | Worker B (partition traversal / impostor) |
+
+詳細振り分けと依存解析は 05 spec で詰める。
+
+---
+
+### §4.2.i 19 周目 Layer 8 Group N 結果 — Hero probe doOcclusion 状態機械内訳
+
+**計測条件**: 2026-05-26 active session、SLurl `secondlife://util.aditi.lindenlab.com/secondlife/Bonifacio/179/69/26` (Aditi grid、昼時間帯固定、8/9/10/11/18 周目と一致)、AYAPerfLogEnabled=1。
+**配線**: `indra/newview/llreflectionmap.cpp:383/391/407` の Group N-1/N-2/N-3 zone — `LLReflectionMap::doOcclusion()` 内 GL クエリ状態機械 3 分解。
+**CSV**: `tests/aya-gui/artifacts/20260526-111600-414334/AYAstorm-perf-18pass-baseline.csv` (406 MB、累積 13.09 M rows、38,499 unique frames、wall_ms 873〜153,133 = 152.3 s)。**Group M+N 合算 build の run_perf.py 自動 capture**。§4.2.h の同名 CSV (`~/.ayastorm_x64/logs/...`、45 MB) とは別ファイル — basename 衝突は次回 capture から `day12-group-N.csv` 形式へ移行 (本周回分は本記述で disambiguate)。
+**自動起動**: 本周回から `tests/aya-gui/run_perf.py` (LEAP harness 経由 LLURLDispatcher `secondlife:///app/location_login/...` 自動 login) で人手 login 不要化。
+
+#### N 詳細: rmdo 状態機械 3 分解
+
+| zone | total (us) | count | per-call (us) | parent 比 |
+|---|---:|---:|---:|---:|
+| **parent: doOcclusion_reflectionProbes** | 2,116,598 | 8,192 | **258.374** | 100.0% |
+| N-1: rmdo_resultAvail (GL_QUERY_RESULT_AVAILABLE poll) | 155,527 | 3,509,084 | **0.044** | 7.35% |
+| N-2: rmdo_resultRead (GL_QUERY_RESULT fetch、AVAILABLE>0 時のみ) | 118,162 | 3,507,879 | **0.034** | 5.58% |
+| N-3: rmdo_pushQuery (glBeginQuery + uniform + drawCube + glEndQuery、do_query=true 時のみ) | 206,813 | 3,508,639 | **0.059** | 9.77% |
+| **Σ rmdo_***  | **480,502** | 10,525,602 | — | **22.70%** |
+| **parent − Σ rmdo_*** (= probe iteration / branching / cube vertex setup 等 implicit body) | **1,636,096** | — | — | **77.30%** |
+
+#### 観察
+
+1. **rmdo_* 3 zone は per-call sub-microsecond** — 状態機械 GL 呼び出し本体 (AVAILABLE poll / RESULT fetch / Begin+drawCube+End) は完全に GPU 待ちでなく driver 側 enqueue だけで決着している。**Layer 9 (rmdo_* 内側 drill) 不要**。
+2. **真犯人は parent − Σ の 77.30% (= per-call 199.6 us 相当の implicit body)** — Hero probe iteration loop (mProbes 走査)、probe 毎の condition branch (`do_occlusion_query` / `mCubeArray` 有無 / `mOccluded` 状態遷移)、cube vertex buffer 共有準備、occlusion query handle 配列管理が支配的。
+3. **do_query=true 比率 ≈ 99.99%** (pushQuery_count / resultAvail_count = 3,508,639 / 3,509,084) — RESULT 読了直後 ほぼ全 probe が即時 re-query を発行している。query を **間引く / pipeline する** 余地は GL 状態機械側でなく、**probe 群を 1 frame 内に何個まで投げるかという policy 層**にある。
+4. parent per-call 258 us × 1.28 call/frame (Layer 6 と同一 budget) ≈ **331 us/frame ≈ 0.33 ms/frame** — display frame 換算で main thread 上 fixed cost。仮に 5.x 章 §4.2.h top-3 候補 (doOcclusion_reflectionProbes 全体 8.1 ms/frame) と区別すると、本 Layer 8 で「Hero probe 自体は GL 待ちでなく iteration / branch 層」と確定。
+
+#### Layer 8 Group N 総括
+
+| 観点 | 判定 |
+|---|---|
+| rmdo_* 状態機械 hot path 性 | **✗ 否** (per-call sub-us、parent 比 22.70%) |
+| Hero probe 主犯部位 | **probe iteration loop + branch + cube vertex setup (parent − Σ = 77.30%)** |
+| Layer 9 (rmdo_* 内側) drill 必要性 | **不要** (per-call 0.04〜0.06 us、これ以上分解しても誤差級) |
+| do_query 間引き policy 検討必要性 | **可** (99.99% 即時 re-query、frame 跨ぎ間引きで主観的に effective probe 数を下げられる) |
+| Phase 1.2 における Hero probe offload 設計示唆 | **GL 呼び出し移送ではなく iteration loop 全体を worker に剥がすべき** (rmdo_* を worker 側に切出すだけでは 22.70% しか取れない) |
+
+##### Phase 1.2 (`05-core-assignment-plan.md`) への直接 input
+
+- §4.2.h で挙げた Worker A 候補「occlusion query polling」 = rmdo_resultAvail/resultRead — 本周回で **per-call 0.04 us = 剥がしても効かない** ことが確定。Worker A の真の target は **`LLReflectionMapManager::doOcclusion(camera)` 関数全体** (mProbes 走査ループごと別 thread)。
+- worker 移送時の同期境界: camera frustum (read-only snapshot) + probe occlusion state 更新 (write-back queue) + GL context 制約 (GL 呼び出しは main thread 専有のため worker からの query 発行は不可)。
+- 上記制約から、Hero probe offload は **「probe visibility 判定 / occlusion 結果消費」を worker 側で行い、`glBeginQuery`/`glEndQuery` 発行のみ main thread に残す split** が現実解。
+- 設計詳細は 05 spec §(TBD) で詰める。
+
+---
+
 ### §4.3 sun cascade の per-call 分析
 
 cube_snapshot 中に sun_0/sun_1 だけ 2 回発火 (cascade 0/1 のみ cube face shadow 再計算)。
@@ -467,6 +585,72 @@ per-call (main scene shadow):
 - sun_3: 8363 / 1449 = **5.77 ms/call (main only)** ← 突出
 
 **含意**: sun_3 は最遠 cascade で frustum が広く、shadow map に投影する drawable が多い。per-cascade setup (frustum compute / FBO bind / culling) と draw 本体のどちらが効いているかは Layer 2 drill で分離。
+
+---
+
+### §4.2.j 19 周目 Layer 8 Group O 結果 — vwDraw per-child 分解 (Day 2-3)
+
+**計測条件**: 2026-05-26 active session、SLurl `secondlife://util.aditi.lindenlab.com/secondlife/Bonifacio/179/69/26` (Aditi grid、昼)、AYAPerfLogEnabled=1。Group O 配線後 (`LLView::drawChildren()` parent-name gate、root / main_view の 2 段 per-child 動的 zone)。
+**CSV**: `tests/aya-gui/artifacts/20260526-114303-467640/AYAstorm-perf-day23-group-O.csv` (291 MB、9.1 M rows、40,812 unique display frames、wall_ms span 135.2s)。
+**自動起動**: run_perf.py + LLURLDispatcher 経由 (login 人手不要)。
+
+#### O-1 詳細: mRootView 直下 child 分解
+
+| zone (mRootView 直下) | total (us) | count | per-call (us) | per-frame (us) | 親 (vwDraw_rootView) 比 |
+|---|---:|---:|---:|---:|---:|
+| **parent: uiRender_ui2d_vwDraw_rootView** | 5,905,268 | 59,456 | **99.322** | 144.71 | 100.0% |
+| `vwDraw_root_main_view` | 5,432,483 | 59,456 | **91.370** | 133.11 | **92.0%** |
+| `vwDraw_root_console` | 413,342 | 59,456 | 6.952 | 10.13 | 7.0% |
+| `vwDraw_root_hud` | 5,683 | 34,488 | 0.165 | 0.14 | 0.1% |
+| **Σ root_*** | 5,851,508 | — | — | 143.38 | **99.09%** |
+| **parent − Σ root_*** (= drawChildren overhead) | 53,760 | — | — | 1.32 | 0.91% |
+
+**parent count 59,456 / unique frames 40,812 = 1.457 calls/frame** — vwDraw_rootView は display frame 1 + HUD render path 計 1.5 回/frame 発火。
+
+#### O-2 詳細: MainPanel ("main_view") 直下 widget 分解
+
+| zone (main_view 直下) | total (us) | count | per-call (us) | per-frame (us) | 親 (vwDraw_root_main_view) 比 |
+|---|---:|---:|---:|---:|---:|
+| **parent: vwDraw_root_main_view** | 5,432,483 | 59,456 | **91.370** | 133.11 | 100.0% |
+| `vwDraw_mp_menu_stack` | 3,200,338 | 59,456 | **53.827** | 78.43 | **58.9%** |
+| `vwDraw_mp_navigation_bar` | 726,784 | 34,488 | 21.074 | 12.22 | 13.4% |
+| `vwDraw_mp_progress_view` | 694,340 | 50,667 | 13.704 | 11.68 | 12.8% |
+| `vwDraw_mp_Menu Holder` | 166,765 | 59,456 | 2.805 | 2.81 | 3.1% |
+| `vwDraw_mp_tooltip view` | 14,459 | 59,456 | 0.243 | 0.24 | 0.27% |
+| `vwDraw_mp_popup_holder` | 4,487 | 59,456 | 0.075 | 0.08 | 0.08% |
+| `vwDraw_mp_snapshot_floater_view_holder` | 2,875 | 59,456 | 0.048 | 0.05 | 0.05% |
+| `vwDraw_mp_hint_holder` | 666 | 24,968 | 0.027 | 0.01 | 0.01% |
+| **Σ mp_*** | 4,810,714 | — | — | 105.52 | **88.6%** |
+| **parent − Σ mp_*** (= main_view 自身の drawDebugRect / iteration overhead) | 621,769 | — | — | 27.59 | 11.4% |
+
+#### 観察
+
+1. **vwDraw_rootView 親が 144.71 us/frame = 0.145 ms/frame** — Layer 1 (7 周目) 計測時の 18.6 ms/frame という値からは大幅に縮小。原因は (a) Layer 8 計測時 SLurl が Bonifacio 静止 (HUD/floater 少ない) (b) Layer 1 時の session 状態 (login 直後 progress bar / floater 多数) との session diff。**現実の vwDraw cost は 18.6 ms ではなく 0.15 ms 級が baseline**。
+2. **mRootView 直下 console (6.95 us/call、7.0%) は予想外の 2nd hot** — Floater console widget が常時 visible で draw されている。drop 候補ではないが Phase 1.2 で「画面外なら skip」の確認余地あり。
+3. **MainPanel 直下 main_view drill (O-2) 主犯 = `menu_stack` (78.4 us/frame、58.9%)** — menu_stack は layout_stack で内部に world_panel / status_bar_container / topinfo_bar_container / login_panel_holder / menu_bar_holder 等を抱える。Layer 9 drill する場合は menu_stack 内側 (gMenuBarView 等) が target。
+4. **`navigation_bar` (12.22 us/frame、13.4%) と `progress_view` (11.68 us/frame、12.8%) が 2 位 / 3 位** — どちらも比較的軽い。progress_view が count 50,667 (85% visible) なのは dismiss 後も visibility flag が残存している、または mProgressViewMini との切替が dispatch されている可能性。本周回では再現性のため追わない。
+5. **tail 5 widget (Menu Holder / tooltip view / popup_holder / snapshot_floater_view_holder / hint_holder) は per-call sub-µs〜2.8 µs**、合計 < 0.4% — Layer 9 drill 対象外。
+
+#### 案 Q (vwDraw text width cache) 判定
+
+| 観点 | 結果 |
+|---|---|
+| 現状 vwDraw 全体 cost | **0.145 ms/frame** (Layer 1 当初推定の 1/120) |
+| 想定主犯 (案 Q: per-frame text width measurement) | menu_stack 内側 LLTextBox 系の getTextWidth 呼出が想定だが、parent 自体が 0.078 ms/frame で frame budget の 0.5% 未満 |
+| ROI | text cache 実装 (1 週工数) で 100% 削減できても **0.078 ms/frame 短縮** = 60 fps frame budget 16.67 ms の **0.5%** |
+| **判定** | 🔴 **DROP** (Phase 1.2 scope から外す) |
+
+**結論**: 案 Q (vwDraw text cache) は **drop**。Phase 1.2 の剥がし候補は 案 O / 案 R-refined / 案 P-refined の **3 件**で確定。
+
+#### Day 2-3 Layer 8 総括
+
+| 観点 | 判定 |
+|---|---|
+| Layer 8 root_* per-child 分解 | **✓ 99.09% カバー** (drawChildren overhead < 1%) |
+| Layer 8 mp_* per-child 分解 | **✓ 88.6% カバー** (main_view 自身 overhead 11.4% は LLView::draw / drawDebugRect 通常 cost) |
+| Layer 9 drill 必要性 | **不要** (vwDraw 全体が 0.145 ms/frame、Phase 1.2 候補からは drop) |
+| 案 Q go/no-go | **DROP 確定** |
+| Day 7 統合判定への input | **3 候補で確定 (案 O / R-refined / P-refined)、案 Q drop** |
 
 ---
 
@@ -559,6 +743,11 @@ deploy 時 (`AYAPerfLogEnabled=0` default) は全 zone no-op。
 ---
 
 ## §10. 現在位置サマリ (引き継ぎ用 one-liner)
+
+> **19 周目 Layer 8 全周完了 (Day 1-2 Group N + Day 2-3 Group O) + 4 候補 POC spike (Day 4-5/5-6) + Day 7 統合判定済。Phase 1.1 完成、Phase 1.2 着手可。Hero probe doOcclusion rmdo_* は 22.7% (per-call sub-µs)、真犯人は iteration loop 77.3%。vwDraw は実測 0.145 ms/frame で 案 Q drop。剥がし 3 候補 (案 O / R-refined / P-refined) 合計 ceiling 11.7-14.5 ms/frame で go 判定 (02 §F)。**
+
+(以下、旧版 8 周目時点の one-liner)
+---
 
 > **8 周目 Layer 3 完了。viewerWindowDraw は `vwDraw_setup` 単独 13.15 ms (94.7%) で完全分解 ✓ — 主犯は関数頭の stop_glerror / gUIProgram.bind / matrix 系のどれか。renderShadow body は body_alpha 395 us/call 最重 + 残 gap 674 us/call (26%) で部分分解。次は Layer 4 = vwDraw_setup 内側 5 zone + renderShadow body 残 gap 3 zone 同時 drill。**
 

@@ -3023,6 +3023,8 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_CULL);
     LL_PROFILE_GPU_ZONE("updateCull"); // should always be zero GPU time, but drop a timer to flush stuff out
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group M (Layer 6): water clip plane setup
+    AYAPERF_ZONE("updateCull_waterClip");
     bool water_clip = isWaterClip();
 
     if (water_clip)
@@ -3052,7 +3054,10 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
     {
         camera.disableUserClipPlane();
     }
+    } // </FS:AYAstorm> updateCull_waterClip scope end
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group M (Layer 6): grabReferences + region partition cull + VO cache cull
+    AYAPERF_ZONE("updateCull_regionPartition");
     grabReferences(result);
 
     sCull->clear();
@@ -3083,7 +3088,10 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
             vo_part->cull(camera, sUseOcclusion > 0 && !gAgent.getFSAreaSearchActive());
         }
     }
+    } // </FS:AYAstorm> updateCull_regionPartition scope end
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group M (Layer 6): sky + WL_SKY drawable visibility push
+    AYAPERF_ZONE("updateCull_skyRender");
     if (hasRenderType(LLPipeline::RENDER_TYPE_SKY) &&
         gSky.mVOSkyp.notNull() &&
         gSky.mVOSkyp->mDrawable.notNull())
@@ -3102,6 +3110,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
         gSky.mVOWLSkyp->mDrawable->setVisible(camera);
         sCull->pushDrawable(gSky.mVOWLSkyp->mDrawable);
     }
+    } // </FS:AYAstorm> updateCull_skyRender scope end
 }
 
 void LLPipeline::markNotCulled(LLSpatialGroup* group, LLCamera& camera)
@@ -3184,8 +3193,14 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         }
         mCubeVB->setBuffer();
 
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group N-4 (Day 1-2 Layer 8: ReflectionMapManager 全 probe loop)
+        AYAPERF_ZONE("doOcc_refProbeMgr");
         mReflectionMapManager.doOcclusion();
+        } // </FS:AYAstorm>
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group N-5 (Day 1-2 Layer 8: HeroProbeManager 第 1 呼出、第 2 と重複の可能性)
+        AYAPERF_ZONE("doOcc_heroProbeMgr_1");
         mHeroProbeManager.doOcclusion();
+        } // </FS:AYAstorm>
         gOcclusionCubeProgram.unbind();
 
         gGL.setColorMask(true, true);
@@ -3205,7 +3220,10 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         }
         mCubeVB->setBuffer();
 
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group N-6 (Day 1-2 Layer 8: HeroProbeManager 第 2 呼出 = 重複疑い、打ち手 B revert 後の残骸)
+        AYAPERF_ZONE("doOcc_heroProbeMgr_2");
         mHeroProbeManager.doOcclusion();
+        } // </FS:AYAstorm>
         gOcclusionCubeProgram.unbind();
 
         gGL.setColorMask(true, true);
@@ -11177,6 +11195,8 @@ void LLPipeline::renderDeferredLighting()
         tc_moon = mat * tc_moon;
         mTransformedMoonDir.set(tc_moon);
 
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group M (Layer 6): lightmap = SSAO/sun shadow paint + blur 合算
+        AYAPERF_ZONE("renderDeferredLighting_lightmap");
         if ((RenderDeferredSSAO && !gCubeSnapshot) || RenderShadowDetail > 0)
         {
             LL_PROFILE_GPU_ZONE("sun program");
@@ -11279,7 +11299,10 @@ void LLPipeline::renderDeferredLighting()
             deferred_light_target->flush();
             unbindDeferredShader(gDeferredBlurLightProgram);
         }
+        } // </FS:AYAstorm> renderDeferredLighting_lightmap scope end
 
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group M (Layer 6): atmospherics soften pass (screen clear + softenLight shader)
+        AYAPERF_ZONE("renderDeferredLighting_atmospherics");
         screen_target->bindTarget();
         // clear color buffer here - zeroing alpha (glow) is important or it will accumulate against sky
         glClearColor(0, 0, 0, 0);
@@ -11347,10 +11370,13 @@ void LLPipeline::renderDeferredLighting()
 
             unbindDeferredShader(gDeferredSoftenProgram);
         }
+        } // </FS:AYAstorm> renderDeferredLighting_atmospherics scope end
 
         static LLCachedControl<S32> local_light_count(gSavedSettings, "RenderLocalLightCount", 256);
         static LLCachedControl<S32> probe_level(gSavedSettings, "RenderReflectionProbeLevel", 0);
 
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group M (Layer 6): local lights iteration (local + spot + fullscreen)
+        AYAPERF_ZONE("renderDeferredLighting_localLights");
         if (local_light_count > 0 && (!gCubeSnapshot || probe_level > 0))
         {
             gGL.setSceneBlendType(LLRender::BT_ADD);
@@ -11626,10 +11652,13 @@ void LLPipeline::renderDeferredLighting()
                 unbindDeferredShader(gDeferredMultiSpotLightProgram);
             }
         }
+        } // </FS:AYAstorm> renderDeferredLighting_localLights scope end
 
         gGL.setColorMask(true, true);
     }
 
+    { // <FS:AYAstorm> CPU perf 章 §7-A Group M (Layer 6): post-deferred = alpha depth snapshot + forward alpha geom + motion blur + teardown
+    AYAPERF_ZONE("renderDeferredLighting_postDeferred");
     // <AYAstorm r30 P5 transparent-DoF L2-β> Snapshot the opaque-only depth
     // into mAYAAlphaDepth before forward alpha runs. Once alpha geometry
     // renders, rigged BLEND attachments (hair etc.) overwrite
@@ -11726,6 +11755,7 @@ void LLPipeline::renderDeferredLighting()
         }
     }
     gGL.setColorMask(true, true);
+    } // </FS:AYAstorm> renderDeferredLighting_postDeferred scope end
 }
 
 void LLPipeline::doAtmospherics()

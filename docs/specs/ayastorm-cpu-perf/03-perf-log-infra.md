@@ -578,6 +578,102 @@ Layer 3 で setup が 10 ms 以上を占めるなら、上記 3 候補を更に�
 - 10 周目 setup parent が 13 寄り / 3.5 寄り / 中間 のどれか → variance 性質 (再現性 / outlier 位置) を判定
 - 既存 zone (renderShadow body cull/geom/alpha 等) の 10 周目値が 8/9 周目と整合しているか → 計測 infra session 間ノイズの sanity check
 
+### §6.10 12 周目 sub-zone カタログ (Group L — Layer 6 doOcclusion 3 分割 / commit `171d6b90d1`)
+
+11 周目 打ち手 A で確定した **doOcclusion 6.17 ms/frame** (renderGeomDeferred 配下の真の CPU work bottleneck) の内訳を 3 phase に分割。同 commit で配線済、計測は 15-17 周目で確定。
+
+| zone 名 | 配線位置 (pipeline.cpp::LLPipeline::doOcclusion) | wrap 対象 |
+|---|---|---|
+| `doOcclusion_reflectionProbes` | pipeline.cpp:3172 | `sReflectionProbesEnabled` 条件下 2 block (構造 duplicate、1 zone 合算) = `mReflectionMapManager.doOcclusion()` + `mHeroProbeManager.doOcclusion()` ×2 path |
+| `doOcclusion_spatialGroups` | pipeline.cpp:3237 | `sCull->beginOcclusionGroups()` loop = `group->doOcclusion(&camera)` + state clear |
+| `doOcclusion_voCache` | pipeline.cpp:3250 | LLWorld region list × `vo_part->processOccluders(&camera)` |
+
+**Layer 6 結果 (15 周目)**: `queryGen` = 4940 us/frame が doOcclusion 内主犯と特定 (打ち手 F query pool 試行で確定、ただし F 自体は uncommitted で破棄)。13-17 周目脱線については 00-overview.md §「13-17 周目の脱線」参照。
+
+### §6.11 18 周目 sub-zone カタログ (Group M — Layer 6 全周回 / 7 catalog)
+
+Group L で doOcclusion 1 枝のみ Layer 6 深度に到達した状態。BFS 原則 (memory: `feedback_perf_map_bfs_drill.md`) に従い、**doOcclusion と同じ「display() 配下で深い分解未着手の hot zone」の兄弟 2 枝**を全周回として配線。
+
+#### Group M-1. updateCull 内訳 (3 個)
+
+`updateCull` parent (1.04 ms/frame、Layer 1 計測、llviewerdisplay.cpp:903 で wrap 済) の body を 3 phase に分割。
+
+| zone 名 | 配線位置 (pipeline.cpp::LLPipeline::updateCull) | wrap 対象 |
+|---|---|---|
+| `updateCull_waterClip` | pipeline.cpp:3027 | `isWaterClip()` + 水面 ClipPlane setup (under/over water 分岐含む) |
+| `updateCull_regionPartition` | pipeline.cpp:3060 | `grabReferences()` + `sCull->clear()` + region list × NUM_PARTITIONS spatial cull + VO cache cull |
+| `updateCull_skyRender` | pipeline.cpp:3094 | `RENDER_TYPE_SKY` / `RENDER_TYPE_WL_SKY` drawable の `setVisible` + `pushDrawable` |
+
+**注**: function-internal sub-zone のため、`updateCull` parent (display 経路のみ、count = active frame 数) より sub-zone count は多くなる (HUD render at llviewerdisplay.cpp:1340/1467 + shadow path at pipeline.cpp:12506 から fire するため)。per-call 比較する場合は count 補正必要。
+
+#### Group M-2. renderDeferredLighting 内訳 (4 個)
+
+`renderDeferredLighting` parent (1.80 ms/frame、Layer 1 計測、pipeline.cpp:11113 で wrap 済) の body を 4 phase に分割。
+
+| zone 名 | 配線位置 (pipeline.cpp::LLPipeline::renderDeferredLighting) | wrap 対象 |
+|---|---|---|
+| `renderDeferredLighting_lightmap` | pipeline.cpp:11190 | SSAO/sun shadow paint (`if RenderDeferredSSAO ...`) + soften shadow blur (`if RenderDeferredBlurLight ...`) 合算 |
+| `renderDeferredLighting_atmospherics` | pipeline.cpp:11296 | screen clear + `RenderDeferredAtmospheric` 配下 softenLight shader (多 uniform push + 1 fullscreen draw) |
+| `renderDeferredLighting_localLights` | pipeline.cpp:11370 | `mNearbyLights` iteration + frustum cull + per-light cube draw / spot light dispatch / fullscreen multi-light dispatch |
+| `renderDeferredLighting_postDeferred` | pipeline.cpp:11652 | alpha depth snapshot (r30 P5 transparent-DoF L2-β) + `renderGeomPostDeferred()` (forward alpha/glow) + `renderGeomMotionBlur()` + scene matrix copy + teardown |
+
+**implicit setup gap** = `renderDeferredLighting` parent − Σ(4 sub-zone) = function 冒頭 (early return / ID buffer pack / `setupHWLights()` / sun/moon dir compute) の合算。明示 zone を切らず gap から逆算する設計 (40 行程度の sequential 配置で更に細分する意味が薄い)。
+
+#### Group M 全体構造
+
+- 7 catalog × 直接配線 (pool 展開なし)
+- 親 zone (`updateCull` / `renderDeferredLighting`) は 既存 (Layer 1 配線)
+- 18 周目で `update Cull` と `renderDeferredLighting` 内側 gap を完全分解 → どこに CPU 時間が集中しているかが特定可能
+- 主犯 sub-zone が判明したら Phase 1.2 Core 振り分け設計案で「どの worker thread に剥がせるか」評価対象になる
+
+### §6.12 19 周目 sub-zone カタログ (Group N — Day 1-2 Layer 8 Hero probe doOcclusion 状態機械 / 3 catalog)
+
+Layer 6 (Group L) で `doOcclusion_reflectionProbes` parent (6.17 ms/frame、Layer 5 計測、pipeline.cpp:3172 で wrap 済) が確定済。Day 1-2 は `LLReflectionMap::doOcclusion()` 内 GL クエリ状態機械を 3 phase に分割し、「rmdo_* が hot path か否か」を実測で確定する。
+
+| zone 名 | 配線位置 (llreflectionmap.cpp::LLReflectionMap::doOcclusion) | wrap 対象 |
+|---|---|---|
+| `rmdo_resultAvail` | llreflectionmap.cpp:383 | `glGetQueryObjectuiv(..., GL_QUERY_RESULT_AVAILABLE, ...)` — query availability poll |
+| `rmdo_resultRead` | llreflectionmap.cpp:391 | `glGetQueryObjectuiv(..., GL_QUERY_RESULT, ...)` — AVAILABLE>0 時のみ fire (取得した GPU pixel count を mOccluded に反映) |
+| `rmdo_pushQuery` | llreflectionmap.cpp:407 | `glBeginQuery` + uniform setup + `gPipeline.mCubeVB->drawRange()` + `glEndQuery` を fuse (do_query==true 時のみ fire) |
+
+**Layer 9 (rmdo_* 内側) drill 必要性判定**: 19 周目 CSV 取得後に判断。per-call が sub-microsecond なら drill 不要 (誤差級)。
+
+### §6.13 19 周目 sub-zone カタログ (Group O — Day 2-3 Layer 8 vwDraw per-child / 動的 zone 1 配線)
+
+Layer 3 (Group I-2) で `uiRender_ui2d_vwDraw_rootView` parent (Layer 1 計測時 18.6 ms/frame、llviewerwindow.cpp:3227 で wrap 済) が確定済。Day 2-3 は `mRootView->draw()` 配下の `LLView::drawChildren()` に **parent-name ゲート** を仕込み、`name="root"` (= mRootView 自身) と `name="main_view"` (= MainPanel、mRootView 唯一の機能 panel) の 2 段で **per-child 動的 zone** を発行する。
+
+#### 配線実体
+
+| 種別 | 配線位置 | 動作 |
+|---|---|---|
+| 動的 per-child zone | llui/llview.cpp::LLView::drawChildren() | `mName == "root"` → `vwDraw_root_<child_name>` / `mName == "main_view"` → `vwDraw_mp_<child_name>` |
+
+`AYAPERF_ZONE` の `const char*` 制約は scope-local `std::string` を間に挟んで満たす (zone destructor が string destructor より先に発火するため pointer 妥当性確保)。
+
+#### 期待される CSV 出力 (main_view 直下 XML より)
+
+```
+vwDraw_root_main_view                    # mRootView 直下 (main_view のみ大半占有予想)
+vwDraw_mp_navigation_bar
+vwDraw_mp_menu_stack
+vwDraw_mp_snapshot_floater_view_holder
+vwDraw_mp_popup_holder
+vwDraw_mp_hint_holder
+vwDraw_mp_progress_view
+vwDraw_mp_progress_view_mini
+vwDraw_mp_Menu Holder                    # ※空白付き name は XML 由来
+vwDraw_mp_tooltip view                   # 同上
+```
+
+加えて mRootView 直下に main_view 以外の panel (gFloaterView 等) が attach されている可能性があるため、CSV で実列挙を確認する。
+
+#### Group O 全体構造
+
+- 動的 zone 配線 (zone 名は実行時生成、対応 child は CSV 経由で実観測)
+- `LLAyastormPerfLog::isEnabled()` + `mName == "root" / "main_view"` の 2 段 gate で UI tree 全域への波及を防止
+- AYAPerfLogEnabled=0 時 zero overhead (constructor 内 `isEnabled()` 早期 return)
+- 19 周目 CSV から **MainPanel 直下のどの widget が vwDraw 18.6 ms を支配するか** が完全分解可能
+
 ---
 
 ## §7. 引継ぎ時 — 即座に確認すべきファイル
@@ -616,8 +712,10 @@ indra/newview/app_settings/settings.xml    # AYAPerfLogEnabled 追加
 # zone 配線済ファイル (6 周目で合計 13 file / Layer 1 完成 = 44 catalog + Group G 11 catalog = 55 catalog → distinct zone は pool 22 展開で 76)
 indra/newview/llappviewer.cpp              # init/shutdown + doFrame_total/idle/updateTextureThreads/meshRepoUpdate/messagePump
 indra/newview/llviewerdisplay.cpp          # display/updateCull/fetchQueryResult/hudAttachmentRender/uiRender/swapBuffers + 4 周目: cubeFaceRender_total/stateSort_main/stateSort_cubeFace/stateSort_hud/uiRender_hudElements/uiRender_3d/uiRender_2d + 5 周目: uiRender_renderAll/uiRender_ui2d (split) + 6 周目: uiRender_ui2d_viewerWindowDraw/uiRender_ui2d_uiScreenComposite
-indra/newview/pipeline.cpp                 # octreeBalance/drawablesUpdateMove/stateSort/renderShadow/renderGeomDeferred/renderDeferredLighting/atmosphericsHaze/renderFinalize/volumetric/motionBlur/depthOfField + 4 周目: renderShadow_sun/renderShadow_projector/renderShadow_stateSort/stateSort_impostor + 6 周目: renderShadow_dispatch/renderShadow_sun_<0..3>/renderShadow_projector_<0..1>/renderGeomDeferred_prerender/renderGeom_pool_<TYPE×22> + 7 周目 Layer 2: renderGeomDeferred_setupHWLights/renderGeomDeferred_doOcclusion/renderGeomDeferred_postLoop/renderShadow_sun_call + 8 周目 Layer 3: renderShadow_body_cull/renderShadow_body_geom/renderShadow_body_alpha + 9 周目 Layer 4: renderShadow_body_matrixSetup/renderShadow_body_innerOcclusion/renderShadow_body_cubeTeardown
+indra/newview/pipeline.cpp                 # octreeBalance/drawablesUpdateMove/stateSort/renderShadow/renderGeomDeferred/renderDeferredLighting/atmosphericsHaze/renderFinalize/volumetric/motionBlur/depthOfField + 4 周目: renderShadow_sun/renderShadow_projector/renderShadow_stateSort/stateSort_impostor + 6 周目: renderShadow_dispatch/renderShadow_sun_<0..3>/renderShadow_projector_<0..1>/renderGeomDeferred_prerender/renderGeom_pool_<TYPE×22> + 7 周目 Layer 2: renderGeomDeferred_setupHWLights/renderGeomDeferred_doOcclusion/renderGeomDeferred_postLoop/renderShadow_sun_call + 8 周目 Layer 3: renderShadow_body_cull/renderShadow_body_geom/renderShadow_body_alpha + 9 周目 Layer 4: renderShadow_body_matrixSetup/renderShadow_body_innerOcclusion/renderShadow_body_cubeTeardown + 12 周目 Layer 6 (commit `171d6b90d1`): doOcclusion_reflectionProbes/doOcclusion_spatialGroups/doOcclusion_voCache + 18 周目 Layer 6 全周回 (Group M): updateCull_waterClip/updateCull_regionPartition/updateCull_skyRender + renderDeferredLighting_lightmap/renderDeferredLighting_atmospherics/renderDeferredLighting_localLights/renderDeferredLighting_postDeferred
 indra/newview/llviewerwindow.cpp           # 7 周目 Layer 2: uiRender_ui2d_vwDraw_toolAndOverlays/uiRender_ui2d_vwDraw_rootView (#include llayastormperflog.h 追加) + 8 周目 Layer 3: uiRender_ui2d_vwDraw_setup/uiRender_ui2d_vwDraw_topCtrl/uiRender_ui2d_vwDraw_overlayTitle/uiRender_ui2d_vwDraw_teardown + 9 周目 Layer 4: uiRender_ui2d_vwDraw_setup_stopGlerror/setup_matrixInit/setup_displayTimecode/setup_uiProgramBind/setup_pushMatrices
+indra/newview/llreflectionmap.cpp          # 19 周目 Day 1-2 Layer 8 (Group N): rmdo_resultAvail/rmdo_resultRead/rmdo_pushQuery
+indra/llui/llview.cpp                      # 19 周目 Day 2-3 Layer 8 (Group O): drawChildren parent-name gate で動的 zone 発行 (vwDraw_root_*/vwDraw_mp_*)
 indra/newview/llviewerobjectlist.cpp       # idleUpdate
 indra/newview/llworld.cpp                  # 3 周目新規: regionIdleUpdate/particleSim
 indra/newview/llinventorymodel.cpp         # 3 周目新規: inventoryObserver

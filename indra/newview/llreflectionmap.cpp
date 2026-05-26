@@ -32,6 +32,7 @@
 #include "llviewerregion.h"
 #include "llworld.h"
 #include "llshadermgr.h"
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group N (Day 1-2 doOcclusion Layer 8 drill)
 
 extern F32SecondsImplicit gFrameTimeSeconds;
 
@@ -378,12 +379,18 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
         // if previous query is available
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("rmdo - glGetQueryObject");
         GLuint result = 0;
+        { // <FS:AYAstorm> CPU perf 章 §7-A Group N-1 (Day 1-2 Layer 8: AVAILABLE check 単体)
+        AYAPERF_ZONE("rmdo_resultAvail");
         glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT_AVAILABLE, &result);
+        } // </FS:AYAstorm>
 
         if (result > 0)
         {
             do_query = true;
+            { // <FS:AYAstorm> CPU perf 章 §7-A Group N-2 (Day 1-2 Layer 8: RESULT read 単体、AVAILABLE>0 のみ発火)
+            AYAPERF_ZONE("rmdo_resultRead");
             glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT, &result);
+            } // </FS:AYAstorm>
             mOccluded = result == 0;
             mOcclusionPendingFrames = 0;
         }
@@ -396,6 +403,8 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
     if (do_query)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("rmdo - push query");
+        // <FS:AYAstorm> CPU perf 章 §7-A Group N-3 (Day 1-2 Layer 8: Begin/uniform/drawRange/End fused, do_query==true のみ発火)
+        AYAPERF_ZONE("rmdo_pushQuery");
         glBeginQuery(GL_ANY_SAMPLES_PASSED, mOcclusionQuery);
 
         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
@@ -406,6 +415,7 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
         gPipeline.mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(LLViewerCamera::getInstance(), mOrigin));
 
         glEndQuery(GL_ANY_SAMPLES_PASSED);
+        // </FS:AYAstorm>
     }
 #endif
 }

@@ -48,6 +48,7 @@
 #include "llsdutil.h"
 #include "llsdserialize.h"
 #include "llviewereventrecorder.h"
+#include "llayastormperflog.h" // <FS:AYAstorm> CPU perf 章 §7-A Group O (Day 2-3 Layer 8 vwDraw per-child)
 #include "llkeyboard.h"
 // for ui edit hack
 #include "llbutton.h"
@@ -1297,6 +1298,16 @@ void LLView::drawChildren()
         LLView* rootp = LLUI::getInstance()->getRootView();
         ++sDepth;
 
+        // <FS:AYAstorm> CPU perf 章 §7-A Group O (Day 2-3 Layer 8 vwDraw per-child)
+        // mRootView (name="root") とその直下 MainPanel (name="main_view") の 2 段を per-child 計測。
+        // drawChildren() は UI tree 全域で再帰呼出されるため、parent name でゲートして該当 2 段のみ計測する。
+        //   O-1: parent="root"      → child zone = "vwDraw_root_<child_name>"  (mRootView 直下 panel 群)
+        //   O-2: parent="main_view" → child zone = "vwDraw_mp_<child_name>"   (MainPanel 直下 widget 群)
+        const bool aya_perf_on   = LLAyastormPerfLog::isEnabled();
+        const bool aya_root_drill = aya_perf_on && (mName == "root");
+        const bool aya_mv_drill   = aya_perf_on && (mName == "main_view");
+        // </FS:AYAstorm>
+
         for (child_list_reverse_iter_t child_iter = mChildList.rbegin(); child_iter != mChildList.rend();)  // ++child_iter)
         {
             child_list_reverse_iter_t child = child_iter++;
@@ -1317,7 +1328,19 @@ void LLView::drawChildren()
                         LLUI::translate((F32)viewp->getRect().mLeft, (F32)viewp->getRect().mBottom);
                         // flag the fact we are in draw here, in case overridden draw() method attempts to remove this widget
                         viewp->mInDraw = true;
-                        viewp->draw();
+                        // <FS:AYAstorm> Layer 8 per-child zone (parent="root" or "main_view")
+                        if (aya_root_drill || aya_mv_drill)
+                        {
+                            const std::string aya_zone_name =
+                                (aya_root_drill ? "vwDraw_root_" : "vwDraw_mp_") + viewp->getName();
+                            AYAPERF_ZONE(aya_zone_name.c_str());
+                            viewp->draw();
+                        }
+                        else
+                        {
+                            viewp->draw();
+                        }
+                        // </FS:AYAstorm>
                         viewp->mInDraw = false;
 
                         if (sDebugRects)
