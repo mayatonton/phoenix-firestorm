@@ -17,7 +17,7 @@
 
 `feedback_perf_map_bfs_drill.md` を最初に。本 phase で新たに load-bearing になった memory:
 
-- **`project_uchite_b_mirror_followup.md`** (新規): 打ち手 B 適用後の mirror probe 視覚 regression 確認は、r31 release 前 or AYA 普段 use での自然な遭遇で実施する deferred task。次 session 開始時に release date チェック → 未確認なら release note に明記。
+- **`project_uchite_b_mirror_followup.md`** (新規): 打ち手 B 適用後の mirror probe 視覚 regression 確認は、r40 release 前 or AYA 普段 use での自然な遭遇で実施する deferred task。次 session 開始時に release date チェック → 未確認なら release note に明記。
 - **`feedback_release_with_user_feedback.md`**: 視覚 A/B 用シーンが揃わない時に exhaustive solo acceptance を組まずに release + user feedback で補う原則。打ち手 B の mirror 確認方針の根拠。
 - **`feedback_feature_value_in_main_usecase.md`**: 元から「Mirror Off」機能を持つほど重い機能で、AYAstorm 主流 use case で mirror probe シーンが流行っていない事実を踏まえて検証粒度を判断。
 
@@ -93,7 +93,7 @@ b01c6ef0674 (Dave Parks, 2024-06-21) "#1814 and #1517 Fix mirror update rate and
 `indra/newview/pipeline.cpp:3194-3206`:
 
 ```cpp
-// <FS:AYAstorm> CPU perf 章 r31 P0 打ち手 B: 旧 (B) block (Hero only) 削除。
+// <FS:AYAstorm> CPU perf 章 r40 P0 打ち手 B: 旧 (B) block (Hero only) 削除。
 // upstream secondlife/viewer 2024-06-21 b01c6ef0674 (Dave Parks
 // "#1814 and #1517 Fix mirror update rate and occlusion culling") で
 // 上記 (A) block に mHeroProbeManager.doOcclusion() を追加した際、
@@ -114,7 +114,7 @@ b01c6ef0674 (Dave Parks, 2024-06-21) "#1814 and #1517 Fix mirror update rate and
 
 ### 4.1 13 周目計測 (次 session 最初)
 
-**前提**: branch `feature/ayastorm-r31-cpu-perf` の最新 (commit 114d3dd532) を build + install + cache clear した状態で AYA さんに active session 録音依頼。同 SLurl、時刻条件不問。
+**前提**: branch `feature/ayastorm-r40-cpu-perf` の最新 (commit 114d3dd532) を build + install + cache clear した状態で AYA さんに active session 録音依頼。同 SLurl、時刻条件不問。
 
 **検証目標**:
 | zone | 12 周目 (打ち手 B 前) | 13 周目想定 (打ち手 B 後) | 判定 |
@@ -136,7 +136,7 @@ b01c6ef0674 (Dave Parks, 2024-06-21) "#1814 and #1517 Fix mirror update rate and
 
 ### 4.3 commit aggregation 戦略 (次 session 終盤、AYA 相談必須)
 
-現状 branch `feature/ayastorm-r31-cpu-perf` の **5 commit構成 (base からの追加 7 commit)**:
+現状 branch `feature/ayastorm-r40-cpu-perf` の **5 commit構成 (base からの追加 7 commit)**:
 
 ```
 114d3dd532  fix(perf): doOcclusion 内 Hero probe 2 重 occlusion query を除去 (打ち手 B)
@@ -156,7 +156,7 @@ ef1defa450  perf(zone): Layer 1 広域 zone + AYAPerfLog init/shutdown 配線
 
 ### 4.4 リリース反映方針 (案、要 AYA 確認)
 
-r31 本体 release に含める打ち手:
+r40 本体 release に含める打ち手:
 - 打ち手 A (`LLUI::setLineWidth(1.f)` 削除): UI 回帰確認済、効果確定、独立 commit で release branch cherry-pick が安全
 - 打ち手 B (Hero probe 2 重削除): mirror 視覚未確認、release note に「異常があれば issue 報告」明記する条件で含める案 (memory `project_uchite_b_mirror_followup.md` §How to apply)
 - zone 配線 (Layer 1-6) + spec docs: 計測 infra なので release 自体には不要だが、`AYAPerfLogEnabled` default=0 で persist しないなら同梱でも user 影響ゼロ → 同梱推奨
@@ -169,7 +169,7 @@ r31 本体 release に含める打ち手:
 # 1. 12 周目 CSV は退避済
 #    ~/.ayastorm_x64/logs/AYAstorm-perf-12pass-baseline.csv (50MB, 1.16M rows)
 
-# 2. branch feature/ayastorm-r31-cpu-perf の最新 (114d3dd532) を確認
+# 2. branch feature/ayastorm-r40-cpu-perf の最新 (114d3dd532) を確認
 git -C /home/ishikawa/work_firestorm/phoenix-firestorm log --oneline -1
 
 # 3. build (Claude 連続実行 OK、autonomous 期間中に build 全権 — feedback_bd_port_autonomous_exec.md は r30 期間外なので明示確認は取る)
@@ -238,7 +238,7 @@ git -C /home/ishikawa/work_firestorm/phoenix-firestorm log --oneline -1
 
 ## 9. 既知 risk
 
-1. **未 push の 7 commit が branch `feature/ayastorm-r31-cpu-perf` に積まれている**: `feedback_release_flow.md` 通り push は AYA 側、次 session でも勝手に push しない。commit aggregation 戦略を相談してから AYA 実行依頼。
+1. **未 push の 7 commit が branch `feature/ayastorm-r40-cpu-perf` に積まれている**: `feedback_release_flow.md` 通り push は AYA 側、次 session でも勝手に push しない。commit aggregation 戦略を相談してから AYA 実行依頼。
 2. **AYAPerfLogEnabled=1 が persist 状態**: 13 周目計測継続 OK、ただし release 出荷前に必ず default=0 戻し案内 (05 spec / release note 両方)。
 3. **観測者効果の累積**: Layer 1-6 で zone 数 = 広域 ~15 + spatial / 非同期 ~10 + render ~6 + vwDraw ~14 + doOcclusion 3 = 約 48 zone。13 周目で既存 zone (renderShadow / vwDraw / matrixInit など) が過去周回値と整合しているか sanity check 必須。
 4. **mirror probe 視覚 regression は未検証**: `project_uchite_b_mirror_followup.md` に集約済、release 前に必ず参照。検証用シーンが揃わない場合は release note に「mirror に異常があれば issue 報告ください」明記。
@@ -266,7 +266,7 @@ handoff-layer6-to-13pass-analysis.md 読んで、まず 7 commit の集約戦略
 
 ## 11. Open task list (引き継ぎ時に TaskCreate)
 
-- [ ] branch `feature/ayastorm-r31-cpu-perf` の最新 (114d3dd532) 確認 + build + install + cache clear
+- [ ] branch `feature/ayastorm-r40-cpu-perf` の最新 (114d3dd532) 確認 + build + install + cache clear
 - [ ] AYA に 13 周目 active session 録音依頼 (同 SLurl、時刻不問)
 - [ ] 12 周目 CSV を `AYAstorm-perf-12pass-baseline.csv` に退避済確認、13 周目を上書き → 退避
 - [ ] 13 周目 CSV 解析 (`doOcclusion_reflectionProbes` 想定 ~2000-2500 us を検証)
@@ -275,5 +275,5 @@ handoff-layer6-to-13pass-analysis.md 読んで、まず 7 commit の集約戦略
 - [ ] 05 spec 新規 (打ち手 A + B まとめ + 出荷判断)
 - [ ] commit aggregation 戦略 AYA 相談 (7 commit そのまま merge / fix のみ cherry-pick / docs amend など)
 - [ ] `AYAPerfLogEnabled=0` 戻し案内文を 05 spec に明記
-- [ ] `project_uchite_b_mirror_followup.md` の release 前確認 task 化 (r31 release branch merge 前に必ず参照)
+- [ ] `project_uchite_b_mirror_followup.md` の release 前確認 task 化 (r40 release branch merge 前に必ず参照)
 - [ ] (打ち手 B 効果が想定半分以下の場合のみ) Layer 7 配線 = `mReflectionMapManager.doOcclusion()` vs `mHeroProbeManager.doOcclusion()` 2 分割

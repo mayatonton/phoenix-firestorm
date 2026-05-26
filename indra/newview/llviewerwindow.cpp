@@ -3019,13 +3019,13 @@ void LLViewerWindow::draw()
         AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_matrixInit");
 
         { // <FS:AYAstorm> Group K-1 (Layer 5 で 16.6 ms/frame の主犯と特定)
-            // <FS:AYAstorm> CPU perf 章 r31 P0: LLUI::setLineWidth(1.f) を削除。
+            // <FS:AYAstorm> CPU perf 章 r40 P0: LLUI::setLineWidth(1.f) を削除。
             // LLUI::setLineWidth は LLRender2D::setLineWidth 経由で UIGLScaleFactor を乗じるため、
             // 他多数の raw gGL.setLineWidth(1.f) caller と mLineWidth guard 値が一致せず、毎フレーム
             // glLineWidth() を発火させていた。default 1.0 で reset したい意図なら他 caller が責任を
             // 持つべき (各 caller は既に末尾で `gGL.setLineWidth(1.f)` または LLUI 経由で 1.f に戻している)。
             AYAPERF_ZONE("uiRender_ui2d_vwDraw_setup_matrixInit_setLineWidth");
-            // LLUI::setLineWidth(1.f);  // 削除: r31 P0 / CPU perf 章 §4.2.f
+            // LLUI::setLineWidth(1.f);  // 削除: r40 P0 / CPU perf 章 §4.2.f
         } // </FS:AYAstorm>
 
         { // <FS:AYAstorm> Group K-1 (Layer 5: matrixMode 単発、Reset any left-over transforms)
