@@ -11,6 +11,7 @@
 - [確認状況](#確認状況)
 - [影響範囲](#影響範囲)
 - [原因調査](#原因調査)
+- [関連する既存修正](#関連する既存修正)
 - [関連コード](#関連コード)
 - [回帰確認項目](#回帰確認項目)
 - [今後の対応](#今後の対応)
@@ -129,6 +130,33 @@ gGL.setColorMask(true, false);
 PR112 前は SSS が FullBright 後に走っていたため、この state leak は FullBright へ影響しにくかった。PR112 後は SSS が FullBright 前に走るため、`doSkinSSS()` が alpha write enabled のまま戻ると、その後の FullBright 系 pass が `mRT->screen.a` を書けてしまう。
 
 これは「SSS 各パラメータを動かしても設置物の誤 Glow が変化しない」という観測とも一致する。
+
+## 関連する既存修正
+
+雲消失の既存修正は、今回と同じく `gbuffer3.a` / alpha channel の用途衝突が原因だった。
+
+関連ブランチ:
+
+- `fix/ayastorm-cloud-postprocess-chain`
+- `fix/r30-13-cloud-recovery`
+
+関連 commit:
+
+- `6ae5f9bf1c` r30 #13 雲消失 fix: `cloudsF.glsl` HAS_EMISSIVE 経路の alpha を `alpha1` に戻す
+- `4188880321` Fix sky emissive alpha blending
+
+現在の `ayastorm-release` には `6ae5f9bf1c` が入っている。`fix/ayastorm-cloud-postprocess-chain` 側の `4188880321` は、sky / moon / stars / sunDisc も visual alpha を保持する広い修正だが、現 `HEAD` にはその commit 全体は入っていない。
+
+雲消失の流れ:
+
+1. r20 SSS の skin mask として `gbuffer3.a` を使った。
+2. sky/cloud 側が SSS 対象にならないよう、HAS_EMISSIVE 経路で `frag_data[3].a = 0.0` にした。
+3. しかし雲の描画では同じ alpha が合成にも使われるため、雲自体が消えた。
+4. 修正では `cloudsF.glsl` の visual alpha を `alpha1` に戻し、SSS 側は `skinSSSF.glsl` の far-plane / sky-domain gate で除外する方針にした。
+
+今回の SSS / Glow 修正でも同じ注意が必要である。非 SSS object の誤 Glow を避けるために FullBright / material / sky domain の alpha 意味を潰すと、雲消失と同種の回帰を起こす可能性がある。
+
+そのため今回の修正は、object や shader の alpha 出力仕様を変更せず、`doSkinSSS()` 後に post-deferred の render state を復元する範囲に限定した。これは「SSS 判定は SSS 側で閉じる」「通常描画 pass の alpha 用途を SSS 対策で壊さない」という雲修正時の教訓と一致する。
 
 ## 関連コード
 
