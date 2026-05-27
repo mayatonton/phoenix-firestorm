@@ -748,7 +748,7 @@ namespace
         static LLCachedControl<S32> auto_root_min_children(gSavedSettings, "AYAR34MouselookSuppressAutoRootMinChildren", 50);
         static LLCachedControl<bool> auto_heavy_enabled(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyEnabled", false);
         static LLCachedControl<F32> auto_heavy_max_distance(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyMaxDistance", 96.f);
-        static LLCachedControl<S32> auto_heavy_min_source_tris(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyMinSourceTriangles", 250000);
+        static LLCachedControl<S32> auto_heavy_min_source_tris(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyMinSourceTriangles", 12000);
         static LLCachedControl<F32> auto_heavy_outer_dot(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyOuterDot", 0.75f);
         static LLCachedControl<F32> auto_heavy_small_screen_pct(gSavedSettings, "AYAR34MouselookSuppressAutoHeavySmallScreenPct", 1.5f);
 

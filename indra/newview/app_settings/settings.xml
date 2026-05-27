@@ -10295,7 +10295,7 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Type</key>
       <string>S32</string>
       <key>Value</key>
-      <integer>250000</integer>
+      <integer>12000</integer>
     </map>
     <key>AYAR34MouselookSuppressAutoHeavyOuterDot</key>
     <map>

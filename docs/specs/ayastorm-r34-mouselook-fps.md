@@ -940,6 +940,12 @@ Phase 4: 汎用化判定
 - `AYAR34MouselookVolumeTraceEnabled` の summary に `auto_heavy_tested`、`auto_heavy_eligible`、`auto_heavy_rejects(no_object/not_mesh/distance/threshold/view/pass)` を追加した。次回検証では suppression が増えない場合でも、どの gate で落ちているかをログで判定できる。
 - Mac Release app build 成功。`codesign --verify --deep --strict --verbose=2 build-darwin-universal/newview/Release/AYAstorm.app` 成功。
 
+2026-05-28 ログ検証:
+
+- 新しい reject counter は出た。代表値は `auto_heavy_tested=18958`、`auto_heavy_eligible=0`、`auto_heavy_rejects(.../threshold/...)=18958`。`pass` reject は 0 になっており、rigged pass 追加は効いている。
+- top child は `draw_infos=71〜111`、`triangles=1,064,645〜1,664,445` で、1 drawinfo / 1 frame あたり約 `15,000` triangles。現在の `AYAR34MouselookSuppressAutoHeavyMinSourceTriangles=250000` は per-frame threshold としては高すぎる。
+- `AYAR34MouselookSuppressAutoHeavyMinSourceTriangles` の既定値を `12000` に変更する。これにより、実測で支配的な high-triangle child は候補化しつつ、数百〜数千 triangles/frame の通常 source は原則対象外のままにする。
+
 ビルド:
 
 - Mac Release app build 成功。
