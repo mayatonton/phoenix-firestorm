@@ -933,6 +933,13 @@ Phase 4: 汎用化判定
 - `LLPositionalStreamMgr::isStream3DPrimOrRoot()` による保護条件を LOD bias / forced LOD refresh / auto-heavy suppression から外した。r34 mouselook fast path は world mesh、mouselook、selected 以外という条件に絞る。
 - 検証では `auto_heavy_suppressed_triangles` が 0 から増えるかを最優先で確認する。
 
+2026-05-28 追加修正 3:
+
+- `auto_heavy_suppressed_triangles=0` の追加原因として、`world_top_sources` の `simple` group は `PASS_SIMPLE` と `PASS_SIMPLE_RIGGED` をまとめて表示している一方、suppression 側の pass 判定は non-rigged variant だけを許可していた。
+- world volume 限定のまま、`PASS_SIMPLE_RIGGED`、`PASS_FULLBRIGHT_RIGGED`、alpha-mask 系 rigged variant、`PASS_GLOW_RIGGED`、`PASS_GLTF_GLOW_RIGGED` を auto-heavy の outer-cone pass 対象に追加した。avatar / attachment は従来どおり `fsr34_world_volume_draw_info()` で除外される。
+- `AYAR34MouselookVolumeTraceEnabled` の summary に `auto_heavy_tested`、`auto_heavy_eligible`、`auto_heavy_rejects(no_object/not_mesh/distance/threshold/view/pass)` を追加した。次回検証では suppression が増えない場合でも、どの gate で落ちているかをログで判定できる。
+- Mac Release app build 成功。`codesign --verify --deep --strict --verbose=2 build-darwin-universal/newview/Release/AYAstorm.app` 成功。
+
 ビルド:
 
 - Mac Release app build 成功。

@@ -110,6 +110,14 @@ namespace
         U64 mSuppressedIndices = 0;
         U64 mAutoHeavySuppressedDrawInfos = 0;
         U64 mAutoHeavySuppressedIndices = 0;
+        U64 mAutoHeavyTestedDrawInfos = 0;
+        U64 mAutoHeavyEligibleDrawInfos = 0;
+        U64 mAutoHeavyRejectNoObject = 0;
+        U64 mAutoHeavyRejectNotMesh = 0;
+        U64 mAutoHeavyRejectDistance = 0;
+        U64 mAutoHeavyRejectThreshold = 0;
+        U64 mAutoHeavyRejectView = 0;
+        U64 mAutoHeavyRejectPass = 0;
         U64 mPassDrawInfos[LLRenderPass::NUM_RENDER_TYPES] = {};
         U64 mPassIndices[LLRenderPass::NUM_RENDER_TYPES] = {};
         std::map<U32, FSR34MouselookWorldSourceStats> mWorldSources;
@@ -130,6 +138,14 @@ namespace
             mSuppressedIndices = 0;
             mAutoHeavySuppressedDrawInfos = 0;
             mAutoHeavySuppressedIndices = 0;
+            mAutoHeavyTestedDrawInfos = 0;
+            mAutoHeavyEligibleDrawInfos = 0;
+            mAutoHeavyRejectNoObject = 0;
+            mAutoHeavyRejectNotMesh = 0;
+            mAutoHeavyRejectDistance = 0;
+            mAutoHeavyRejectThreshold = 0;
+            mAutoHeavyRejectView = 0;
+            mAutoHeavyRejectPass = 0;
             for (U32 i = 0; i < LLRenderPass::NUM_RENDER_TYPES; ++i)
             {
                 mPassDrawInfos[i] = 0;
@@ -230,21 +246,32 @@ namespace
     bool fsr34_mouselook_alpha_mask_pass(U32 type)
     {
         return type == LLRenderPass::PASS_ALPHA_MASK ||
+               type == LLRenderPass::PASS_ALPHA_MASK_RIGGED ||
                type == LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK ||
+               type == LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED ||
                type == LLRenderPass::PASS_MATERIAL_ALPHA_MASK ||
+               type == LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED ||
                type == LLRenderPass::PASS_SPECMAP_MASK ||
+               type == LLRenderPass::PASS_SPECMAP_MASK_RIGGED ||
                type == LLRenderPass::PASS_NORMMAP_MASK ||
+               type == LLRenderPass::PASS_NORMMAP_MASK_RIGGED ||
                type == LLRenderPass::PASS_NORMSPEC_MASK ||
-               type == LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK;
+               type == LLRenderPass::PASS_NORMSPEC_MASK_RIGGED ||
+               type == LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK ||
+               type == LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED;
     }
 
     bool fsr34_mouselook_outer_cone_pass(U32 type)
     {
         return fsr34_mouselook_alpha_mask_pass(type) ||
                type == LLRenderPass::PASS_SIMPLE ||
+               type == LLRenderPass::PASS_SIMPLE_RIGGED ||
                type == LLRenderPass::PASS_FULLBRIGHT ||
+               type == LLRenderPass::PASS_FULLBRIGHT_RIGGED ||
                type == LLRenderPass::PASS_GLOW ||
-               type == LLRenderPass::PASS_GLTF_GLOW;
+               type == LLRenderPass::PASS_GLOW_RIGGED ||
+               type == LLRenderPass::PASS_GLTF_GLOW ||
+               type == LLRenderPass::PASS_GLTF_GLOW_RIGGED;
     }
 
     bool fsr34_mouselook_suppress_pass_matches(S32 mode, U32 type)
@@ -631,6 +658,15 @@ namespace
             << " suppressed_triangles=" << sFSR34MouselookVolumeTraceStats.mSuppressedIndices / 3
             << " auto_heavy_suppressed_draw_infos=" << sFSR34MouselookVolumeTraceStats.mAutoHeavySuppressedDrawInfos
             << " auto_heavy_suppressed_triangles=" << sFSR34MouselookVolumeTraceStats.mAutoHeavySuppressedIndices / 3
+            << " auto_heavy_tested=" << sFSR34MouselookVolumeTraceStats.mAutoHeavyTestedDrawInfos
+            << " auto_heavy_eligible=" << sFSR34MouselookVolumeTraceStats.mAutoHeavyEligibleDrawInfos
+            << " auto_heavy_rejects(no_object/not_mesh/distance/threshold/view/pass)="
+            << sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectNoObject << "/"
+            << sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectNotMesh << "/"
+            << sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectDistance << "/"
+            << sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectThreshold << "/"
+            << sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectView << "/"
+            << sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectPass
             << " pass_draw_infos/triangles:" << passes.str()
             << LL_ENDL;
 
@@ -768,14 +804,56 @@ namespace
                 const bool off_axis_or_small =
                     source.mObjectCameraDot <= outer_dot ||
                     source.mObjectProjectedPct <= small_screen_pct;
+                const bool has_object = source.mObject;
+                const bool mesh_ok = has_object && source.mObjectIsMesh;
+                const bool distance_ok = source.mObjectDistance <= max_distance;
+                const bool threshold_ok = source_tris >= min_source_tris;
+                const bool pass_ok = fsr34_mouselook_outer_cone_pass(type);
+
+                if (fsr34_mouselook_volume_trace_active())
+                {
+                    if (!sFSR34MouselookVolumeTraceStats.mInitialized)
+                    {
+                        sFSR34MouselookVolumeTraceStats.reset();
+                    }
+                    ++sFSR34MouselookVolumeTraceStats.mAutoHeavyTestedDrawInfos;
+                    if (has_object && mesh_ok && distance_ok && threshold_ok && off_axis_or_small && pass_ok)
+                    {
+                        ++sFSR34MouselookVolumeTraceStats.mAutoHeavyEligibleDrawInfos;
+                    }
+                    if (!has_object)
+                    {
+                        ++sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectNoObject;
+                    }
+                    if (has_object && !mesh_ok)
+                    {
+                        ++sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectNotMesh;
+                    }
+                    if (!distance_ok)
+                    {
+                        ++sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectDistance;
+                    }
+                    if (!threshold_ok)
+                    {
+                        ++sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectThreshold;
+                    }
+                    if (!off_axis_or_small)
+                    {
+                        ++sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectView;
+                    }
+                    if (!pass_ok)
+                    {
+                        ++sFSR34MouselookVolumeTraceStats.mAutoHeavyRejectPass;
+                    }
+                }
 
                 auto_heavy_suppress =
-                    source.mObject &&
-                    source.mObjectIsMesh &&
-                    source.mObjectDistance <= max_distance &&
-                    source_tris >= min_source_tris &&
+                    has_object &&
+                    mesh_ok &&
+                    distance_ok &&
+                    threshold_ok &&
                     off_axis_or_small &&
-                    fsr34_mouselook_outer_cone_pass(type);
+                    pass_ok;
                 suppress = auto_heavy_suppress;
             }
         }
