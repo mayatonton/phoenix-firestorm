@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (b): Vulkan API 設計
 
-**status**: foundation group **§1 + §2 + §3 + §9 draft 完成 (本 session)**、§4-§8 + §10 は次 session で draft
+**status**: group A (§4 + §5) draft 追加完成 — **§1-§5 + §9 完成**、§6-§8 + §10 は group B/C で draft
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (b)
 **前置 doc**: `04-portage-inventory.md` work item (a) 全完了 (§6.4 設計 input が直接 source)
 **達成条件**: §1-§10 全 section draft 完成 + AYA review PASS → work item (c) 工程算定 着手
@@ -248,30 +248,401 @@ a-4 §B.1 確定の r21.1 self-rigged picker:
 
 ## §4 render pass / framebuffer (deferred g-buffer の Vulkan 表現)
 
-**status**: **次 session で draft** (本 session foundation group §1-§3 + §9 まで)
+### §4.1 dynamic rendering 採用判断
 
-draft 予定の項目:
-- §4.1 deferred g-buffer の Vulkan representation (VkRenderPass + VkFramebuffer vs Vulkan 1.3 dynamic rendering)
-- §4.2 attachment 配置 (color × N + depth/stencil)、subpass 構成
-- §4.3 dynamic rendering 採用判断 (subpass 簡素化 vs subpass dependency tooling 喪失)
-- §4.4 r14+ post-process pass chain 統合 (godrays / volumetricLight / blurLight / vignette + r30 DoF)
-- §4.5 r21.1 picker attachment 統合 (§3.4 を pass 側から記述)
-- §4.6 windlight / atmospherics の sky pass 表現
-- §4.7 LLRenderTarget → Vulkan attachment 移行マップ (a-4 §1.1 LLRenderTarget 35 GL calls 対応)
+**結論**: **Vulkan 1.3 dynamic rendering を採用**、`VkRenderPass` + `VkFramebuffer` 明示作成は使わない。
+
+#### 採用根拠
+
+1. **subpass dependency 手動管理の回避**: AYAstorm 描画 stage chain (shadow → deferred g-buffer → deferred lighting → forward alpha → sky → post-process) は subpass 内合成より stage 間明示 barrier で記述する方が見通しが良い (§5.3 layout transition 表と整合)
+2. **VkRenderPass / VkFramebuffer object の管理コスト削減**: attachment 構成変更ごとに pass object 再作成不要、`vkCmdBeginRenderingKHR` で attachment を直接指定
+3. **r41 段階 4 (pipeline.cpp render stage dispatch → VkRenderPass chain、a-4 §6.3.1) の実装簡素化**: 各 stage を独立 `vkCmdBeginRendering` で記述、frame context (LLPipelineFrameContext 仮称) との結合度低下
+4. **Vulkan 1.3 widely available**: NVIDIA / AMD / Intel proprietary / Mesa RADV / ANV 全部対応、Mac MoltenVK は portable subset で対応 (§9.4)
+
+#### subpass 採用しない理由 (trade-off 認識)
+
+- mobile / tile-based GPU の subpass merge optimization は AYAstorm 主 target (PC discrete GPU) では benefit 薄い
+- subpass dependency の自動 barrier insertion (tooling 利点) は喪失、ただし synchronization2 (§5.4) で明示 barrier 記述が簡素化されるため許容
+- AYAstorm 描画 stage chain は subpass 内で attachment 共有する箇所が少ない (shadow 結果は texture sampling、g-buffer 結果は次 pass で sampler bind)
+
+#### 影響範囲
+
+- llrendertarget.{cpp,h} (a-2 §2.1.2 要再設計): `bindTarget()` / `flush()` interface を維持しつつ内部実装を dynamic rendering に置換 (§4.7)
+- pipeline.cpp render stage dispatch (a-2 §2.3): 各 stage の `vkCmdBeginRendering` 呼出位置を確定 (§4.3 chain 図)
+
+### §4.2 deferred g-buffer attachment 配置
+
+#### 標準 attachment 構成
+
+| attachment | VkFormat | 用途 |
+|---|---|---|
+| gbuffer0 | `VK_FORMAT_R8G8B8A8_UNORM` | diffuse + alpha (legacy / PBR base color) |
+| gbuffer1 | `VK_FORMAT_R8G8B8A8_UNORM` | normal (octahedral encode) + smoothness |
+| gbuffer2 | `VK_FORMAT_R8G8B8A8_UNORM` | specular / metallic + AO + emissive flag |
+| gbuffer3 | `VK_FORMAT_R8G8B8A8_UNORM` | r21.1 picker LocalID/ObjectID (§4.5 / §3.4) |
+| depth | `VK_FORMAT_D24_UNORM_S8_UINT` | depth + stencil |
+
+注: 現 GL 実装の `gbuffer3` は LL 標準で alpha 無し (`GL_RGB16F`、memory `reference_gbuffer3_storage`)、AYAstorm では r21.1 picker 採用で RGBA 化済。Vulkan 化でも 4 channel 維持 = picker LocalID/ObjectID を `.rg` / `.ba` に packing 可能。
+
+#### attachment load/store op
+
+- **load op**: `LOAD_OP_CLEAR` (frame 開始時 g-buffer 全 clear)
+- **store op**: `STORE_OP_STORE` (次 pass で sampler 経由 read)
+- depth: `LOAD_OP_CLEAR` + `STORE_OP_STORE` (post-process / DoF が depth read する)
+
+### §4.3 render pass chain 全体図
+
+dynamic rendering 採用前提の AYAstorm 描画 stage chain:
+
+```
+[frame begin]
+    │
+    ▼
+[pass 1: shadow map] ─── cascade × 4 (sun shadow) + spot light shadow
+    │   attachment: depth only (4 × depth array texture)
+    │   pool: lldrawpoolavatar / lldrawpoolbump 等 (shadow-eligible のみ)
+    ▼
+[pass 2: deferred g-buffer + picker write] ─── §4.2 attachment + r21.1 (§4.5)
+    │   attachment: gbuffer0/1/2/3 + depth
+    │   pool: lldrawpoolavatar / bump / materials / pbropaque / terrain / tree
+    ▼
+[pass 3: deferred lighting (soften)] ─── sun + light list + reflection probe
+    │   attachment: HDR color (R16G16B16A16_SFLOAT)
+    │   input: g-buffer × 4 + depth + shadow map × 4
+    ▼
+[pass 4: forward alpha + particles] ─── transparent + emissive
+    │   attachment: HDR color (alpha BLEND)、depth READ_ONLY
+    │   pool: lldrawpoolalpha / water
+    ▼
+[pass 5: sky + atmospherics] ─── windlight + r14+ atmospherics
+    │   attachment: HDR color (forward write)、depth READ_ONLY
+    │   pool: lldrawpoolsky / wlsky (llvosky / llvowlsky)
+    ▼
+[pass 6: post-process chain] ─── §4.4 詳細
+    │   sub-chain: godrays → volumetricLight → blurLight → vignette → DoF (r30) → tonemap
+    │   attachment: post-process ping-pong (2 個)
+    ▼
+[pass 7: UI + 2D] ─── llrender2dutils / font / cursor
+    │   attachment: swapchain image (sRGB)
+    ▼
+[present]
+```
+
+各 pass は独立 `vkCmdBeginRenderingKHR` / `vkCmdEndRenderingKHR` でくくる、pass 間の attachment layout transition は §5.3 / §5.4 で詳細化。
+
+### §4.4 r14+ post-process pass chain 統合
+
+a-3 §5.2 で確定した r14+ visual realism shader 7 file (sampler ~25 + mat4 ~30) を pass 6 内 sub-chain として統合:
+
+| sub-pass | shader | input attachment | output |
+|---|---|---|---|
+| 6-a | `godraysF.glsl` / `godraysV.glsl` (r15) | HDR color + depth + sun shaft sampler | post-process intermediate A |
+| 6-b | `volumetricLightF.glsl` (class3, r30 BD import) | intermediate A + shadow map + atmospherics LUT | intermediate B |
+| 6-c | `blurLightF.glsl` (r30 P3.8) | intermediate B + SSAO map | intermediate A (ping-pong) |
+| 6-d | `atmosphericsF.glsl` (include) | intermediate A + windlight LUT | intermediate B |
+| 6-e | vignette (`FSRenderVignette` cvar 配下) | intermediate B | intermediate A |
+| 6-f | DoF (r30) — `postDeferredHQDoFF.glsl` / `postDeferredNoDoFF.glsl` / `ayaAlphaPlateCompositeF.glsl` | intermediate A + depth + per-layer alpha plate | intermediate B |
+| 6-g | tonemap | intermediate B | swapchain pre-stage |
+
+#### descriptor set 配置
+
+- pass 6 全 sub-pass で sampler ~25 を **set=0 per-frame** (godrays sampler / shadow map / atmospherics LUT / windlight LUT / SSAO map) または **set=1 per-material** (intermediate ping-pong attachment) に分配
+- §3.2 sampler 分布 (per-frame ~30 / per-material ~70 / per-draw ~106) の per-frame ~30 のうち post-process chain 関連が支配的
+- mat4 ~30 は per-frame UBO に集約、`VK_KHR_inline_uniform_block` (§9.1) で descriptor set 内 inline 化
+
+#### ping-pong attachment 設計
+
+- intermediate A / intermediate B 2 個の HDR color attachment (`VK_FORMAT_R16G16B16A16_SFLOAT`)
+- swapchain と同 resolution、`VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT`
+- sub-pass ごとに layout transition (`COLOR_ATTACHMENT_OPTIMAL` ↔ `SHADER_READ_ONLY_OPTIMAL`、§5.3)
+
+#### scene buffer alpha 保護 (memory `project_aya_visual_realism_alpha_protect`)
+
+r14+ で additive (`ONE/ONE`) blend する shader (godrays / volumetricLight) は `frag_color.a = 0` 必須、alpha 破壊で sky 真っ白の既知 bug が再発するため Vulkan 化でも同 invariant を SPIR-V cross compile 後の validation で確認 (work item (c) 工程算定の test plan に含む)。
+
+### §4.5 r21.1 picker attachment 統合 (§3.4 を pass 側から記述)
+
+a-4 §6.4.2 (5) 確定: **deferred main pass (pass 2) 内 inline color attachment** で picker を統合、別 pass 不採用。
+
+#### pass 2 attachment への picker 追加
+
+§4.2 attachment 構成の gbuffer3 = `VK_FORMAT_R8G8B8A8_UNORM` を picker LocalID/ObjectID 格納に流用、shader (`fsObjectIDV.glsl` / `fsObjectIDF.glsl` 2 file、a-3 §5.1) の picker fragment output を gbuffer3 への書込みに割当て。
+
+| 用途 | channel | データ |
+|---|---|---|
+| LocalID 下位 16-bit | gbuffer3.rg | uint16_to_unorm(LocalID & 0xFFFF) |
+| LocalID 上位 16-bit | gbuffer3.ba | uint16_to_unorm((LocalID >> 16) & 0xFFFF) |
+
+(または `VK_FORMAT_R32G32_UINT` 等の integer format に変更し、`UINT` storage 直接 write でも可。SPIR-V cross compile 後の format support 確認は (c) 工程算定の検証項目)
+
+#### picker readback
+
+- pass 2 終了後、`vkCmdCopyImageToBuffer` で gbuffer3 (画面領域全体ではなく cursor 周辺の小領域) を staging buffer に copy
+- CPU side 読込みは frame in flight = 3 (§5.1) で **3 frame 遅延**、AYAstorm picker 用途 (cursor hover 視覚 feedback) で許容範囲
+- 既存 `mObjectIDBuffer` lifetime と互換: 1 frame に 1 readback、複数 draw call で書込み (cumulative)
+
+#### 別 pass 不採用の根拠
+
+- 別 pass にすると frame context overhead (extra render pass setup / attachment bind / barrier × 2) が発生
+- gbuffer3 を picker 専用 attachment に流用しても deferred lighting (pass 3) は gbuffer3 を不参照、競合なし
+- a-4 §6.4.2 (5) で確定方針
+
+### §4.6 sky / atmospherics pass (pass 5)
+
+#### 対象 file
+
+- `lldrawpoolsky.cpp` (57 LOC) — sky dome 最小描画
+- `lldrawpoolwlsky.cpp` (521 LOC) — Windlight sky dome、atmospherics
+- `llvosky.cpp` + `llvowlsky.cpp` (合計 2,198 LOC、a-4 §6.1) — sky dome geometry + atmospherics state
+
+#### pass 5 構成
+
+- forward 描画 (deferred lighting 後の HDR color attachment に直接 write)
+- depth: `READ_ONLY` (sky は depth 書込まない、far plane で z-test pass)
+- attachment: HDR color (pass 3 result と同じ buffer)、depth (READ_ONLY)
+- shader: `class1/windlight/` 配下 8 file (a-1 §1.3) + atmospherics LUT
+- sampler: sky cubemap × 1 + atmospherics LUT × 1 + windlight LUT × 1 + noise (set=0 per-frame に集約)
+
+#### r14+ visual realism との関係
+
+llvosky / llvowlsky は r14+ visual realism 章 (`project_ayastorm_visual_realism_chapter.md`) の atmospherics quality 改善 stage で touch されてきた基盤。Vulkan 化での要 port 範囲 (a-3 §B.2) は GLSL → SPIR-V 化 + uniform 配信方式変更 (push constant / per-frame UBO) のみ、interface 変更最小。
+
+#### sky pass 順序の trade-off
+
+- 現 GL 実装: forward alpha (pass 4) 後に sky 描画 (深度 z-test で z-far のみ pass)
+- alternative: deferred lighting 前に sky 描画 (g-buffer skip、HDR color 初期値として書込み)
+- AYAstorm では現順序維持 (pass 4 → pass 5)、変更時の visual regression risk を回避 ((c) 工程算定で別途検討項目)
+
+### §4.7 LLRenderTarget → Vulkan attachment 移行マップ
+
+a-4 §1.1 確定の `llrendertarget.cpp` 589 LOC / 35 GL calls の Vulkan 等価実装マップ。
+
+#### GL call → Vulkan call 対応表
+
+| 現 GL 実装 | Vulkan dynamic rendering 等価 | 備考 |
+|---|---|---|
+| `glGenFramebuffers` + `glBindFramebuffer` | (不要、dynamic rendering で消滅) | object 概念廃止 |
+| `glFramebufferTexture2D` | `VkRenderingAttachmentInfo::imageView` (vkCmdBeginRendering 引数) | 都度指定 |
+| `glDrawBuffers` (MRT 指定) | `VkRenderingInfo::colorAttachmentCount` + array | 同上 |
+| `glReadBuffer` + `glReadPixels` | `vkCmdCopyImageToBuffer` (transfer queue) | picker readback / screenshot |
+| `glBlitFramebuffer` | `vkCmdBlitImage` (or `vkCmdResolveImage` for MSAA) | post-process intermediate copy |
+| `glClearColor` + `glClear(GL_COLOR_BUFFER_BIT)` | `LOAD_OP_CLEAR` (`VkRenderingAttachmentInfo::loadOp`) + `clearValue` | render pass 開始時 |
+| `glClearDepthf` + `glClear(GL_DEPTH_BUFFER_BIT)` | 同上 (depth attachment) | 同上 |
+| `glCheckFramebufferStatus` | (不要、`vkCreateImage` 時 format support check で代替) | validation layer で warning |
+| `glGenRenderbuffers` + `glRenderbufferStorage` | `vkCreateImage` + `vkAllocateMemory` (VMA 経由) | depth buffer / multisample |
+| `glFramebufferRenderbuffer` | `VkRenderingAttachmentInfo::imageView` (depth) | 同上 |
+
+#### LLRenderTarget interface 変更
+
+a-2 §2.1.2 で「要再設計」確定、interface 残置の方針:
+
+- `LLRenderTarget::allocate(w, h, format, ...)` → 内部実装を `vkCreateImage` + VMA `vmaCreateImage` に置換、`VkImage` + `VkImageView` を member 保持
+- `LLRenderTarget::bindTarget()` → frame context (LLPipelineFrameContext) に「次 vkCmdBeginRendering で使う attachment」を queue、実際の `vkCmdBeginRendering` 呼出は pipeline.cpp render stage 側で発行
+- `LLRenderTarget::flush()` → frame context から queue を取出し `vkCmdEndRendering` 呼出
+- `LLRenderTarget::getTexture(idx)` → `VkImageView` を返す、descriptor set bind 時に caller が利用
+
+#### caller 側影響
+
+llrendertarget interface 残置で **caller の 188 file 上流側変更は不要** (a-1 §1.2 wrapper 局在化と同じ追い風)、pipeline.cpp 内 render stage dispatch のみ書換え対象 (a-4 §6.3.1 段階 4)。
 
 ---
 
 ## §5 sync 戦略 (state diagram / barrier table)
 
-**status**: 次 session で draft
+### §5.1 frame in flight = 3 採用根拠
 
-draft 予定の項目:
-- §5.1 frame in flight = 3 採用根拠 (低遅延 vs CPU/GPU 並列度)
-- §5.2 fence / binary semaphore / timeline semaphore の使い分け
-- §5.3 image layout transition 表 (color attachment / depth / sampled / present)
-- §5.4 synchronization2 access mask 細分化方針
-- §5.5 worker thread (texture upload / mesh upload) → main thread の async 同期 (timeline semaphore)
-- §5.6 swapchain image acquisition → render → present の barrier sequence
+**結論**: **frame in flight = 3** を採用。
+
+#### 採用根拠
+
+| 候補値 | trade-off |
+|---|---|
+| 1 (no parallel) | CPU/GPU 完全直列、GPU idle 顕在化、frame time 倍化 |
+| 2 | CPU/GPU 並列、ただし CPU bound shift 時に GPU idle、AYAstorm の rendering thread bound 状況で margin 不足 |
+| **3** | **CPU/GPU 並列度確保 + input lag 許容範囲** (60fps で 50ms = 3 frame 遅延、AYAstorm 用途 = 撮影描画 / Cinematic で許容) |
+| 4+ | input lag 顕在化 (>66ms)、memory cost 増加 (per-frame descriptor pool × 4)、AYAstorm では benefit なし |
+
+#### 周辺数値との align
+
+- §3.6 descriptor pool sizing: per-frame set (set=0) = frame in flight × 1 = **3 set**
+- §3.6 per-material set (set=1): material 種別数 × frame in flight = 50 × **3** = 150
+- §5.5 worker thread upload: timeline semaphore で main thread 側 frame index と同期、3 並列
+
+#### industry reference
+
+Doom Eternal / Vulkan Samples / volk 同梱 example / RPCS3 等、large project の default。AYAstorm でも違える積極理由なし。
+
+### §5.2 fence / binary semaphore / timeline semaphore の使い分け
+
+#### sync primitive 分類
+
+| primitive | 用途 | AYAstorm 採用箇所 |
+|---|---|---|
+| `VkFence` | **CPU ↔ GPU sync** (CPU が GPU 完了を wait) | frame in flight 管理 (前 frame N-3 の GPU work 完了待ち) |
+| **binary** `VkSemaphore` | **queue 間 GPU-only sync、1 回 signal → 1 回 wait** | swapchain acquire (acquire → render submit)、render → present |
+| **timeline** `VkSemaphore` | **monotonic counter で多対多 sync、CPU/GPU 双方 wait 可** | worker thread (texture/mesh upload) → main thread の async 同期 |
+
+#### timeline semaphore 採用の利点 (Vulkan 1.2 core)
+
+- counter 比較で「N 番目まで完了」を判定、binary semaphore の「1 回限り」制約を回避
+- CPU 側で `vkWaitSemaphores` でも wait 可、fence の代替として使える場合あり
+- worker thread → main thread の upload commit (texture × N + mesh × M) を 1 counter で管理可能 (§5.5 で詳細)
+
+#### 各 frame の sync primitive 一覧
+
+```
+per-frame instance (× 3 = frame in flight):
+  - inFlightFence: VkFence (前 frame N-3 完了待ち)
+  - imageAvailableSemaphore: binary VkSemaphore (swapchain image 取得完了)
+  - renderFinishedSemaphore: binary VkSemaphore (render 完了 → present へ)
+
+global (× 1):
+  - uploadTimeline: timeline VkSemaphore (worker thread upload 同期)
+```
+
+### §5.3 image layout transition 表
+
+§4.3 render pass chain の各 attachment の layout transition を列挙:
+
+#### swapchain image
+
+| timing | layout |
+|---|---|
+| 初期 (vkAcquireNextImageKHR 直後) | `UNDEFINED` |
+| pass 7 (UI) 開始時 | `COLOR_ATTACHMENT_OPTIMAL` (transition) |
+| pass 7 終了時 | `PRESENT_SRC_KHR` (transition) |
+
+#### g-buffer (gbuffer0/1/2/3)
+
+| timing | layout |
+|---|---|
+| frame 開始時 | `UNDEFINED` (`LOAD_OP_CLEAR` で初期化) |
+| pass 2 (g-buffer write) 中 | `COLOR_ATTACHMENT_OPTIMAL` |
+| pass 3 (deferred lighting read) 開始時 | `SHADER_READ_ONLY_OPTIMAL` (transition) |
+| pass 3 終了後 (gbuffer3 picker readback) | `TRANSFER_SRC_OPTIMAL` (transition、§4.5) |
+
+#### depth
+
+| timing | layout |
+|---|---|
+| 初期 | `UNDEFINED` |
+| pass 2 (g-buffer write) 中 | `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` |
+| pass 3-6 (read-only depth sample) | `DEPTH_STENCIL_READ_ONLY_OPTIMAL` (transition) |
+
+#### post-process intermediate A / B
+
+| timing | layout |
+|---|---|
+| pass 6 sub-chain 内 ping-pong | `COLOR_ATTACHMENT_OPTIMAL` ↔ `SHADER_READ_ONLY_OPTIMAL` 交互 |
+
+#### shadow map (cascade × 4)
+
+| timing | layout |
+|---|---|
+| pass 1 (shadow render) 中 | `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` |
+| pass 3 (deferred lighting sample) | `DEPTH_STENCIL_READ_ONLY_OPTIMAL` (transition) |
+
+### §5.4 synchronization2 access mask 細分化方針
+
+Vulkan 1.3 core `synchronization2` (§9.1) で memory dependency を細分化、over-barrier を回避。
+
+#### 採用 access mask (代表例)
+
+| stage | access mask | 用途 |
+|---|---|---|
+| color attachment write | `VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT` | pass 2 / 3 / 4 / 5 / 6 attachment write |
+| depth attachment write | `VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT` | pass 1 / 2 depth write |
+| shader sampled read | `VK_ACCESS_2_SHADER_SAMPLED_READ_BIT` | g-buffer / shadow / post-process intermediate sampler read |
+| transfer read | `VK_ACCESS_2_TRANSFER_READ_BIT` | picker readback (§4.5) |
+| transfer write | `VK_ACCESS_2_TRANSFER_WRITE_BIT` | staging buffer → texture upload (§5.5) |
+
+#### stage mask 細分化
+
+`VK_PIPELINE_STAGE_2_*` の細分化により、`ALL_COMMANDS` のような over-barrier を回避:
+
+- `COLOR_ATTACHMENT_OUTPUT_BIT` (fragment shader output → attachment write)
+- `FRAGMENT_SHADER_BIT` (sampler read)
+- `EARLY_FRAGMENT_TESTS_BIT` / `LATE_FRAGMENT_TESTS_BIT` (depth test)
+- `TRANSFER_BIT` (vkCmdCopy* / vkCmdBlit*)
+- `COMPUTE_SHADER_BIT` (将来 GPU-driven culling 等、本 design では予約)
+
+#### barrier batching
+
+複数 attachment の layout transition を 1 回の `vkCmdPipelineBarrier2` にまとめる (pass 境界で頻発)、過剰な barrier call を回避。
+
+### §5.5 worker thread (texture/mesh upload) → main thread async 同期
+
+#### upload path
+
+| upload 対象 | source | Vulkan path |
+|---|---|---|
+| texture | llimagegl.cpp (LLImageGLThread、a-2 §2.1.2) | staging buffer (VMA HOST_VISIBLE) → `vkCmdCopyBufferToImage` on transfer queue |
+| mesh / VBO | llspatialpartition.cpp `rebuildMesh()` (a-1 §1.4) | staging buffer → `vkCmdCopyBuffer` on transfer queue |
+
+#### timeline semaphore による同期
+
+```
+worker thread (transfer queue):
+  upload N 実行 → vkQueueSubmit2 with signal { uploadTimeline, value = N }
+
+main thread (graphics queue, frame F):
+  vkQueueSubmit2 with wait { uploadTimeline, value = uploadCommitVersion_F, stage = FRAGMENT_SHADER }
+  → frame F の fragment shader が読み始めるまでに upload N 完了を保証
+```
+
+- `uploadCommitVersion_F` は frame F が要求する upload 完了 counter (frame 開始時に確定)
+- 1 frame に複数 upload を 1 counter で batch 管理可能、binary semaphore の「1 回限り」制約を回避
+
+#### buffer device address との連携 (Vulkan 1.2 core, §9.1)
+
+- vertex buffer / staging buffer に `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT` を立てると GPU pointer (`VkDeviceAddress`) を shader から indirect 参照可能
+- 将来の GPU-driven rendering / bindless 化の素地 (本 design では capability 確保のみ、利用は r45+ 検討)
+
+#### transfer queue 選択
+
+- discrete GPU (NVIDIA / AMD): 専用 transfer queue family あり、graphics queue と並列実行可能
+- integrated GPU (Intel / Apple Silicon via MoltenVK): unified queue、transfer も graphics queue で実行、並列度低下
+- `vkGetPhysicalDeviceQueueFamilyProperties2` で transfer queue 存在確認、fallback として graphics queue 使用
+
+### §5.6 swapchain image acquisition → render → present の barrier sequence
+
+#### per-frame sequence (frame F)
+
+```
+1. vkWaitForFences(inFlightFence_F)
+   ← 前 frame F-3 の GPU work 完了待ち (CPU side)
+
+2. vkAcquireNextImageKHR(swapchain, imageAvailableSemaphore_F, ...)
+   ← swapchain image 取得、imageAvailableSemaphore_F signal
+
+3. record command buffer:
+   - pass 1 (shadow): vkCmdBeginRendering + draw + vkCmdEndRendering
+   - barrier: shadow depth → SHADER_READ_ONLY (for pass 3)
+   - pass 2 (g-buffer + picker): vkCmdBeginRendering + draw + vkCmdEndRendering
+   - barrier: g-buffer (gbuffer0/1/2) → SHADER_READ_ONLY, gbuffer3 → TRANSFER_SRC
+   - vkCmdCopyImageToBuffer (picker readback、async copy to pickerStaging buffer)
+   - pass 3 (deferred lighting): vkCmdBeginRendering + draw + vkCmdEndRendering
+   - pass 4-6 同様、barrier は §5.3 / §5.4 に従う
+   - pass 7 (UI): vkCmdBeginRendering (swapchain image) + draw + vkCmdEndRendering
+   - barrier: swapchain image → PRESENT_SRC_KHR
+
+4. vkQueueSubmit2(graphicsQueue,
+     wait = { imageAvailableSemaphore_F, COLOR_ATTACHMENT_OUTPUT },
+     wait = { uploadTimeline, uploadCommitVersion_F, FRAGMENT_SHADER },
+     signal = { renderFinishedSemaphore_F },
+     signal_fence = inFlightFence_F)
+
+5. vkQueuePresentKHR(presentQueue,
+     wait = { renderFinishedSemaphore_F },
+     swapchain image)
+
+6. CPU side で次 frame の prep 進行 (F+1 frame の data prep、F-2 frame の picker readback 結果 consume)
+```
+
+#### 注記
+
+- frame F の picker readback (step 3 vkCmdCopyImageToBuffer) の CPU 可視化は frame F+3 以降 (inFlightFence wait 後)、AYAstorm cursor hover 用途で許容
+- swapchain re-create (resize / minimize / fullscreen 切替) 時は別 path、§7 で詳細化
 
 ---
 
@@ -384,29 +755,30 @@ draft 予定の項目:
 
 ---
 
-## 本 session draft 後の整理
+## draft 進行状況の整理
 
-### §1-§3 + §9 で確定した設計 input (work item (c) 工程算定 への引継ぎ事項)
+### §1-§5 + §9 で確定した設計 input (work item (c) 工程算定 への引継ぎ事項)
 
-- Vulkan 1.3 default + volk loader + LunarG SDK 1.3.x の 3 OS 同梱 = 段階 1 (GL header wrapper 置換) の具体 dependency 確定
-- shader cross compile chain は glslang single-stage、SPIR-V binary を runtime load = build integration の cmake target 設計 input
-- descriptor set 3 構成 (per-frame / per-material / per-draw) + push descriptor for per-draw = 段階 3 (state machine → PSO 化) の API 表面確定
-- 採用 extension 一覧 (KHR 必須 5 + EXT 必須 5 + future 予約 3) = device feature query / `vkCreateInstance` / `vkCreateDevice` の enable list 確定
+- **Vulkan 基盤 (§1)**: Vulkan 1.3 default + volk loader + LunarG SDK 1.3.x の 3 OS 同梱 = 段階 1 (GL header wrapper 置換) の具体 dependency 確定
+- **shader chain (§2)**: glslang single-stage、SPIR-V binary を runtime load = build integration の cmake target 設計 input
+- **descriptor (§3)**: descriptor set 3 構成 (per-frame / per-material / per-draw) + push descriptor for per-draw = 段階 3 (state machine → PSO 化) の API 表面確定
+- **render pass (§4)**: dynamic rendering 採用確定、7 pass chain (shadow / g-buffer+picker / deferred lighting / forward alpha / sky / post-process / UI) 確定、r14+ post-process sub-chain (7 sub-pass) + r21.1 picker gbuffer3 inline 統合 + LLRenderTarget interface 残置移行マップ確定
+- **sync (§5)**: frame in flight = 3 確定、fence / binary / timeline 使い分け確定、image layout transition 表確定、sync2 access mask 細分化方針確定、worker thread upload timeline semaphore 同期確定、per-frame barrier sequence 確定
+- **extension (§9)**: KHR 必須 5 + EXT 必須 5 + future 予約 3 = device feature query / `vkCreateInstance` / `vkCreateDevice` の enable list 確定
 
-### §4-§8 + §10 で詰める残り設計 input
+### §6-§8 + §10 で詰める残り設計 input
 
-- VkRenderPass / dynamic rendering 採用判断 + deferred g-buffer の Vulkan 表現 (§4)
-- frame in flight + barrier 戦略 (§5)
-- VMA 採用 + memory type 分配 (§6)
-- swapchain / present mode (§7)
-- 3 OS 詳細 + Mac MoltenVK 制約 (§8)
-- r41.5 abstraction interface skeleton (§10)
+- **memory allocator (§6)**: VMA 採用 + memory type 分配 + staging buffer 戦略 + defragmentation 採用判断
+- **swapchain (§7)**: present mode / image 数 / surface format / re-create 戦略
+- **3 OS (§8)**: Linux / Win driver matrix + Mac MoltenVK portable subset 詳細
+- **abstraction (§10)**: r41.5 分離 skeleton (interface skeleton only、詳細は r41.5 charter)
 
-### 次 session 開始時の最初の task list
+### 次 step
 
-1. 本 doc §1-§3 + §9 draft の AYA review 反映 (修正指示あれば適用)
-2. §4-§8 + §10 を draft 化
-3. 10 section 揃ったら work item (b) 完了宣言、work item (c) 工程算定 (06-effort-estimation.md) 着手
+1. 本 doc §1-§5 + §9 draft の AYA review 反映 (修正指示あれば適用)
+2. group B (§6 + §7) を draft 化
+3. group C (§8 + §10) を draft 化
+4. 10 section 揃ったら work item (b) 完了宣言、work item (c) 工程算定 (06-effort-estimation.md) 着手
 
 ---
 
