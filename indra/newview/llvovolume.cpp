@@ -31,6 +31,7 @@
 #include "llvovolume.h"
 
 #include <sstream>
+#include <unordered_map>
 
 #include "llviewercontrol.h"
 #include "lldir.h"
@@ -74,6 +75,8 @@
 #include "llnotifications.h"
 #include "llnotificationsutil.h"
 #include "llagent.h"
+#include "llagentcamera.h"
+#include "llpositionalstreammgr.h"
 #include "llviewermediafocus.h"
 #include "lldatapacker.h"
 #include "llviewershadermgr.h"
@@ -134,6 +137,413 @@ static bool renderFullbrightEnabled()
 static bool teFullbrightEnabled(const LLTextureEntry* te)
 {
     return te && renderFullbrightEnabled() && te->getFullbright();
+}
+
+namespace
+{
+    struct AYAR34MouselookDenseLODCacheEntry
+    {
+        S32 mBand = 0;
+        S32 mPendingBand = 0;
+        S32 mPendingFrame = 0;
+        S32 mLastDecisionFrame = -1;
+        S32 mLastForcedRefreshFrame = -1;
+        S32 mLastTouchedFrame = 0;
+    };
+
+    struct AYAR34MouselookDenseLODStats
+    {
+        bool mInitialized = false;
+        LLFrameTimer mTimer;
+        U64 mCandidates = 0;
+        U64 mBiased = 0;
+        U64 mDenseRootCandidates = 0;
+        U64 mHeavyMeshCandidates = 0;
+        U64 mHeavyMeshSeen = 0;
+        U64 mHeavyMeshDistanceRejected = 0;
+        U64 mHeavyMeshForwardProtected = 0;
+        U64 mHeavyMeshScreenForced = 0;
+        U64 mForcedLODRefreshes = 0;
+        U64 mBands[4] = {};
+        U64 mBiasTotal = 0;
+
+        void reset()
+        {
+            mInitialized = true;
+            mTimer.reset();
+            mCandidates = 0;
+            mBiased = 0;
+            mDenseRootCandidates = 0;
+            mHeavyMeshCandidates = 0;
+            mHeavyMeshSeen = 0;
+            mHeavyMeshDistanceRejected = 0;
+            mHeavyMeshForwardProtected = 0;
+            mHeavyMeshScreenForced = 0;
+            mForcedLODRefreshes = 0;
+            mBiasTotal = 0;
+            for (U32 i = 0; i < 4; ++i)
+            {
+                mBands[i] = 0;
+            }
+        }
+    };
+
+    std::unordered_map<U32, AYAR34MouselookDenseLODCacheEntry> sAYAR34MouselookDenseLODCache;
+    AYAR34MouselookDenseLODStats sAYAR34MouselookDenseLODStats;
+
+    bool aya_r34_mouselook_dense_lod_trace_enabled()
+    {
+        static LLCachedControl<bool> trace_enabled(gSavedSettings, "AYAR34MouselookDenseRootTraceEnabled", false);
+        return trace_enabled && gAgentCamera.cameraMouselook();
+    }
+
+    bool aya_r34_any_selected(LLViewerObject* objectp, LLViewerObject* rootp)
+    {
+        return (objectp && objectp->isSelected()) || (rootp && rootp->isSelected());
+    }
+
+    F32 aya_r34_projected_height_pct(F32 distance, F32 radius)
+    {
+        LLViewerCamera* camera = LLViewerCamera::getInstance();
+        const F32 view_height = static_cast<F32>(llmax(1, camera->getViewHeightInPixels()));
+        const F32 safe_distance = llmax(distance, 0.001f);
+        const F32 projected_height = (camera->getPixelMeterRatio() / safe_distance) * radius * 2.f;
+        return llclamp((projected_height / view_height) * 100.f, 0.f, 1000.f);
+    }
+
+    S32 aya_r34_apply_dense_lod_hysteresis(U32 local_id, S32 raw_band, S32 interval_frames, S32 hysteresis_frames)
+    {
+        const S32 frame = LLFrameTimer::getFrameCount();
+        AYAR34MouselookDenseLODCacheEntry& entry = sAYAR34MouselookDenseLODCache[local_id];
+        entry.mLastTouchedFrame = frame;
+
+        if (entry.mLastDecisionFrame >= 0 && frame - entry.mLastDecisionFrame < interval_frames)
+        {
+            return entry.mBand;
+        }
+
+        entry.mLastDecisionFrame = frame;
+
+        if (raw_band >= entry.mBand)
+        {
+            entry.mBand = raw_band;
+            entry.mPendingBand = raw_band;
+            entry.mPendingFrame = frame;
+            return entry.mBand;
+        }
+
+        if (entry.mPendingBand != raw_band)
+        {
+            entry.mPendingBand = raw_band;
+            entry.mPendingFrame = frame;
+            return entry.mBand;
+        }
+
+        if (frame - entry.mPendingFrame >= hysteresis_frames)
+        {
+            entry.mBand = raw_band;
+        }
+
+        return entry.mBand;
+    }
+
+    void aya_r34_record_dense_lod_stats(
+        S32 band,
+        S32 bias,
+        bool dense_root_candidate,
+        bool heavy_mesh_candidate,
+        bool heavy_mesh_seen,
+        bool heavy_mesh_distance_rejected,
+        bool heavy_mesh_forward_protected,
+        bool heavy_mesh_screen_forced)
+    {
+        if (!aya_r34_mouselook_dense_lod_trace_enabled())
+        {
+            if (sAYAR34MouselookDenseLODStats.mInitialized)
+            {
+                sAYAR34MouselookDenseLODStats.mInitialized = false;
+            }
+            return;
+        }
+
+        if (!sAYAR34MouselookDenseLODStats.mInitialized)
+        {
+            sAYAR34MouselookDenseLODStats.reset();
+        }
+
+        if (dense_root_candidate || heavy_mesh_candidate)
+        {
+            ++sAYAR34MouselookDenseLODStats.mCandidates;
+        }
+        if (dense_root_candidate)
+        {
+            ++sAYAR34MouselookDenseLODStats.mDenseRootCandidates;
+        }
+        if (heavy_mesh_candidate)
+        {
+            ++sAYAR34MouselookDenseLODStats.mHeavyMeshCandidates;
+        }
+        if (heavy_mesh_seen)
+        {
+            ++sAYAR34MouselookDenseLODStats.mHeavyMeshSeen;
+        }
+        if (heavy_mesh_distance_rejected)
+        {
+            ++sAYAR34MouselookDenseLODStats.mHeavyMeshDistanceRejected;
+        }
+        if (heavy_mesh_forward_protected)
+        {
+            ++sAYAR34MouselookDenseLODStats.mHeavyMeshForwardProtected;
+        }
+        if (heavy_mesh_screen_forced)
+        {
+            ++sAYAR34MouselookDenseLODStats.mHeavyMeshScreenForced;
+        }
+        if (band >= 0 && band < 4)
+        {
+            ++sAYAR34MouselookDenseLODStats.mBands[band];
+        }
+        if (bias > 0)
+        {
+            ++sAYAR34MouselookDenseLODStats.mBiased;
+            sAYAR34MouselookDenseLODStats.mBiasTotal += bias;
+        }
+
+        const F32 elapsed = sAYAR34MouselookDenseLODStats.mTimer.getElapsedTimeF32();
+        if (elapsed >= 1.f)
+        {
+            LL_INFOS("AYAR34MouselookFPS")
+                << "dense_lod dt=" << elapsed
+                << " candidates=" << sAYAR34MouselookDenseLODStats.mCandidates
+                << " biased=" << sAYAR34MouselookDenseLODStats.mBiased
+                << " bias_total=" << sAYAR34MouselookDenseLODStats.mBiasTotal
+                << " dense_root=" << sAYAR34MouselookDenseLODStats.mDenseRootCandidates
+                << " heavy_mesh=" << sAYAR34MouselookDenseLODStats.mHeavyMeshCandidates
+                << " heavy_seen=" << sAYAR34MouselookDenseLODStats.mHeavyMeshSeen
+                << " heavy_distance_rejected=" << sAYAR34MouselookDenseLODStats.mHeavyMeshDistanceRejected
+                << " heavy_forward_protected=" << sAYAR34MouselookDenseLODStats.mHeavyMeshForwardProtected
+                << " screen_forced=" << sAYAR34MouselookDenseLODStats.mHeavyMeshScreenForced
+                << " forced_refresh=" << sAYAR34MouselookDenseLODStats.mForcedLODRefreshes
+                << " bands="
+                << sAYAR34MouselookDenseLODStats.mBands[0] << "/"
+                << sAYAR34MouselookDenseLODStats.mBands[1] << "/"
+                << sAYAR34MouselookDenseLODStats.mBands[2] << "/"
+                << sAYAR34MouselookDenseLODStats.mBands[3]
+                << LL_ENDL;
+            sAYAR34MouselookDenseLODStats.reset();
+        }
+    }
+
+    S32 aya_r34_mouselook_dense_lod_bias(LLVOVolume* objectp, F32 distance, F32 radius)
+    {
+        static LLCachedControl<bool> bias_enabled(gSavedSettings, "AYAR34MouselookDenseRootLODBiasEnabled", false);
+        static LLCachedControl<bool> trace_enabled(gSavedSettings, "AYAR34MouselookDenseRootTraceEnabled", false);
+        static LLCachedControl<F32> max_distance(gSavedSettings, "AYAR34MouselookDenseRootMaxDistance", 12.f);
+        static LLCachedControl<S32> min_children(gSavedSettings, "AYAR34MouselookDenseRootMinChildren", 50);
+        static LLCachedControl<F32> heavy_max_distance(gSavedSettings, "AYAR34MouselookHeavyMeshMaxDistance", 96.f);
+        static LLCachedControl<S32> heavy_min_tris(gSavedSettings, "AYAR34MouselookHeavyMeshMinTriangles", 50000);
+        static LLCachedControl<bool> heavy_screen_force_enabled(gSavedSettings, "AYAR34MouselookHeavyMeshScreenForceEnabled", true);
+        static LLCachedControl<F32> forward_dot(gSavedSettings, "AYAR34MouselookDenseRootForwardDot", 0.75f);
+        static LLCachedControl<F32> small_screen_pct(gSavedSettings, "AYAR34MouselookDenseRootSmallScreenPct", 1.5f);
+        static LLCachedControl<F32> very_small_screen_pct(gSavedSettings, "AYAR34MouselookDenseRootVerySmallScreenPct", 0.5f);
+        static LLCachedControl<S32> decision_interval(gSavedSettings, "AYAR34MouselookDenseRootDecisionIntervalFrames", 4);
+        static LLCachedControl<S32> hysteresis_frames(gSavedSettings, "AYAR34MouselookDenseRootHysteresisFrames", 8);
+
+        if ((!bias_enabled && !trace_enabled) || !gAgentCamera.cameraMouselook() || !objectp)
+        {
+            return 0;
+        }
+
+        if (objectp->isHUDAttachment() || objectp->getAvatar() || objectp->isAttachment())
+        {
+            return 0;
+        }
+
+        LLViewerObject* rootp = objectp->getRootEdit();
+        if (!rootp || aya_r34_any_selected(objectp, rootp))
+        {
+            return 0;
+        }
+
+        if (LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(objectp->getID()) ||
+            LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(rootp->getID()))
+        {
+            return 0;
+        }
+
+        const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
+        const LLVector3& camera_at = LLViewerCamera::getInstance()->getAtAxis();
+        const LLVector3 root_delta = rootp->getPositionAgent() - camera_pos;
+        const F32 root_distance = root_delta.magVec();
+        const S32 root_children = rootp->numChildren();
+        const bool dense_root_candidate =
+            root_distance <= llmax(0.f, static_cast<F32>(max_distance)) &&
+            root_children >= llmax(0, static_cast<S32>(min_children));
+
+        S32 vertex_count = 0;
+        const F32 current_tris = static_cast<F32>(objectp->getTriangleCount(&vertex_count));
+        const F32 estimated_max_tris = objectp->getEstTrianglesMax();
+        const F32 cost_tris = llmax(current_tris, estimated_max_tris);
+        const bool heavy_mesh_seen = cost_tris >= static_cast<F32>(llmax(0, static_cast<S32>(heavy_min_tris)));
+        const bool heavy_mesh_distance_rejected =
+            heavy_mesh_seen && root_distance > llmax(0.f, static_cast<F32>(heavy_max_distance));
+        const bool heavy_mesh_candidate =
+            heavy_mesh_seen && !heavy_mesh_distance_rejected;
+
+        if (!dense_root_candidate && !heavy_mesh_candidate)
+        {
+            if (heavy_mesh_seen)
+            {
+                aya_r34_record_dense_lod_stats(
+                    -1,
+                    0,
+                    false,
+                    false,
+                    heavy_mesh_seen,
+                    heavy_mesh_distance_rejected,
+                    false,
+                    false);
+            }
+            return 0;
+        }
+
+        const LLVector3 object_delta = objectp->getPositionAgent() - camera_pos;
+        const F32 object_distance = object_delta.magVec();
+        F32 object_dot = 1.f;
+        if (object_distance > 0.001f)
+        {
+            object_dot = llclamp((object_delta * camera_at) / object_distance, -1.f, 1.f);
+        }
+
+        const F32 projected_pct = aya_r34_projected_height_pct(distance, radius);
+        const F32 clamped_forward_dot = llclamp(static_cast<F32>(forward_dot), -1.f, 1.f);
+        const F32 small_pct = llmax(0.f, static_cast<F32>(small_screen_pct));
+        const F32 very_small_pct = llmax(0.f, static_cast<F32>(very_small_screen_pct));
+
+        S32 raw_band = 0;
+        bool heavy_mesh_screen_forced = false;
+        bool heavy_mesh_forward_protected = false;
+        if (heavy_mesh_candidate &&
+            heavy_screen_force_enabled &&
+            object_dot >= clamped_forward_dot &&
+            projected_pct < small_pct * 2.f)
+        {
+            heavy_mesh_screen_forced = true;
+            raw_band = projected_pct < very_small_pct ? 2 : 1;
+        }
+        else if (object_dot >= clamped_forward_dot || projected_pct >= small_pct * 2.f)
+        {
+            raw_band = 0;
+            heavy_mesh_forward_protected = heavy_mesh_candidate && object_dot >= clamped_forward_dot;
+        }
+        else if (object_dot >= 0.f || projected_pct >= small_pct)
+        {
+            raw_band = 1;
+        }
+        else if (projected_pct >= very_small_pct)
+        {
+            raw_band = 2;
+        }
+        else
+        {
+            raw_band = 3;
+        }
+
+        const S32 band = aya_r34_apply_dense_lod_hysteresis(
+            objectp->getLocalID(),
+            raw_band,
+            llmax(1, static_cast<S32>(decision_interval)),
+            llmax(0, static_cast<S32>(hysteresis_frames)));
+        const S32 bias = band == 1 ? 1 : (band >= 2 ? 2 : 0);
+
+        aya_r34_record_dense_lod_stats(
+            band,
+            bias,
+            dense_root_candidate,
+            heavy_mesh_candidate,
+            heavy_mesh_seen,
+            heavy_mesh_distance_rejected,
+            heavy_mesh_forward_protected,
+            heavy_mesh_screen_forced);
+        return bias_enabled ? bias : 0;
+    }
+}
+
+void aya_r34_record_mouselook_forced_lod_update()
+{
+    if (!aya_r34_mouselook_dense_lod_trace_enabled())
+    {
+        return;
+    }
+
+    if (!sAYAR34MouselookDenseLODStats.mInitialized)
+    {
+        sAYAR34MouselookDenseLODStats.reset();
+    }
+
+    ++sAYAR34MouselookDenseLODStats.mForcedLODRefreshes;
+}
+
+bool aya_r34_mouselook_force_lod_update_candidate(LLVOVolume* objectp)
+{
+    static LLCachedControl<bool> bias_enabled(gSavedSettings, "AYAR34MouselookDenseRootLODBiasEnabled", false);
+    static LLCachedControl<bool> trace_enabled(gSavedSettings, "AYAR34MouselookDenseRootTraceEnabled", false);
+    static LLCachedControl<F32> max_distance(gSavedSettings, "AYAR34MouselookDenseRootMaxDistance", 12.f);
+    static LLCachedControl<S32> min_children(gSavedSettings, "AYAR34MouselookDenseRootMinChildren", 50);
+    static LLCachedControl<F32> heavy_max_distance(gSavedSettings, "AYAR34MouselookHeavyMeshMaxDistance", 96.f);
+    static LLCachedControl<S32> heavy_min_tris(gSavedSettings, "AYAR34MouselookHeavyMeshMinTriangles", 50000);
+    static LLCachedControl<S32> force_interval(gSavedSettings, "AYAR34MouselookForceLODRefreshIntervalFrames", 4);
+
+    if ((!bias_enabled && !trace_enabled) || !gAgentCamera.cameraMouselook() || !objectp)
+    {
+        return false;
+    }
+
+    if (objectp->isHUDAttachment() || objectp->getAvatar() || objectp->isAttachment())
+    {
+        return false;
+    }
+
+    LLViewerObject* rootp = objectp->getRootEdit();
+    if (!rootp || aya_r34_any_selected(objectp, rootp))
+    {
+        return false;
+    }
+
+    if (LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(objectp->getID()) ||
+        LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(rootp->getID()))
+    {
+        return false;
+    }
+
+    const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
+    const F32 root_distance = (rootp->getPositionAgent() - camera_pos).magVec();
+    const bool dense_root_candidate =
+        root_distance <= llmax(0.f, static_cast<F32>(max_distance)) &&
+        rootp->numChildren() >= llmax(0, static_cast<S32>(min_children));
+
+    S32 vertex_count = 0;
+    const F32 current_tris = static_cast<F32>(objectp->getTriangleCount(&vertex_count));
+    const F32 estimated_max_tris = objectp->getEstTrianglesMax();
+    const bool heavy_mesh_candidate =
+        root_distance <= llmax(0.f, static_cast<F32>(heavy_max_distance)) &&
+        llmax(current_tris, estimated_max_tris) >= static_cast<F32>(llmax(0, static_cast<S32>(heavy_min_tris)));
+
+    if (!dense_root_candidate && !heavy_mesh_candidate)
+    {
+        return false;
+    }
+
+    const S32 frame = LLFrameTimer::getFrameCount();
+    AYAR34MouselookDenseLODCacheEntry& entry = sAYAR34MouselookDenseLODCache[objectp->getLocalID()];
+    const S32 interval = llmax(1, static_cast<S32>(force_interval));
+    if (entry.mLastForcedRefreshFrame >= 0 && frame - entry.mLastForcedRefreshFrame < interval)
+    {
+        return false;
+    }
+
+    entry.mLastForcedRefreshFrame = frame;
+    return true;
 }
 
 // Implementation class of LLMediaDataClientObject.  See llmediadataclient.h
@@ -1776,6 +2186,11 @@ bool LLVOVolume::calcLOD()
     else
     {
         cur_detail = computeLODDetail(ll_round(distance, 0.01f), ll_round(radius, 0.01f), lod_factor);
+        const S32 aya_r34_dense_lod_bias = aya_r34_mouselook_dense_lod_bias(this, mLODDistance, radius);
+        if (aya_r34_dense_lod_bias > 0)
+        {
+            cur_detail = llmax(0, cur_detail - aya_r34_dense_lod_bias);
+        }
     }
 
     if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_TRIANGLE_COUNT) && mDrawable->getFace(0))

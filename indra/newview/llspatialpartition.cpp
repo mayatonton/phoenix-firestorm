@@ -634,6 +634,25 @@ void LLSpatialGroup::updateDistance(LLCamera &camera)
                         (F32) mOctreeNode->getSize().getLength3().getF32();
         mDistance = getSpatialPartition()->calcDistance(this, camera);
         mPixelArea = getSpatialPartition()->calcPixelArea(this, camera);
+
+        if (getSpatialPartition()->mRenderByGroup)
+        {
+            for (element_iter i = getDataBegin(); i != getDataEnd(); ++i)
+            {
+                LLDrawable* drawable = (LLDrawable*)(*i)->getDrawable();
+                if (!drawable)
+                {
+                    continue;
+                }
+
+                LLVOVolume* volume = drawable->getVOVolume();
+                if (aya_r34_mouselook_force_lod_update_candidate(volume))
+                {
+                    aya_r34_record_mouselook_forced_lod_update();
+                    drawable->updateDistance(camera, true);
+                }
+            }
+        }
     }
 }
 

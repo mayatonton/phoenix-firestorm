@@ -10185,7 +10185,7 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>0</integer>
+      <integer>1</integer>
     </map>
     <key>AYAR34MouselookSuppressChildLocalID</key>
     <map>
@@ -10218,7 +10218,7 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Type</key>
       <string>S32</string>
       <key>Value</key>
-      <integer>2</integer>
+      <integer>0</integer>
     </map>
     <key>AYAR34MouselookSuppressRootOuterDot</key>
     <map>
@@ -10240,7 +10240,7 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>0</integer>
     </map>
     <key>AYAR34MouselookSuppressAutoRootMaxDistance</key>
     <map>
@@ -10263,6 +10263,149 @@ Change of this parameter will affect the layout of buttons in notification toast
       <string>S32</string>
       <key>Value</key>
       <integer>50</integer>
+    </map>
+    <key>AYAR34MouselookDenseRootLODBiasEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. When true, applies extra LOD bias to low-priority world-volume children under nearby dense root linksets while camera is in mouselook. Does not affect avatars, attachments, HUD, selected objects, or 3D Stream protected prims.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR34MouselookDenseRootTraceEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. When true, logs one-second dense-root LOD candidate, band, and bias summaries while camera is in mouselook.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR34MouselookDenseRootMaxDistance</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Maximum camera distance in meters for a dense root linkset to receive mouselook LOD bias.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>12.0</real>
+    </map>
+    <key>AYAR34MouselookDenseRootMinChildren</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Minimum root child count for a nearby world linkset to receive mouselook LOD bias.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>50</integer>
+    </map>
+    <key>AYAR34MouselookHeavyMeshMaxDistance</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook heavy-mesh LOD experiment. Maximum camera distance in meters for a high-triangle world volume to receive mouselook LOD bias even when its root linkset is not dense by child count.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>96.0</real>
+    </map>
+    <key>AYAR34MouselookHeavyMeshMinTriangles</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook heavy-mesh LOD experiment. Minimum current or estimated maximum triangle count for a nearby world volume to receive LOD bias even when its root linkset has few children.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>50000</integer>
+    </map>
+    <key>AYAR34MouselookHeavyMeshScreenForceEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook heavy-mesh LOD experiment. When true, high-triangle world volumes that occupy little screen space can receive LOD bias even when they are inside the camera forward cone.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAR34MouselookDenseRootForwardDot</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Child objects with camera direction dot at or above this value are treated as forward-cone and keep normal LOD.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.75</real>
+    </map>
+    <key>AYAR34MouselookDenseRootSmallScreenPct</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Projected screen height percentage below which a dense-root child can receive mild LOD bias when outside the forward cone.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>1.5</real>
+    </map>
+    <key>AYAR34MouselookDenseRootVerySmallScreenPct</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Projected screen height percentage below which a rear-cone dense-root child can receive stronger LOD bias.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.5</real>
+    </map>
+    <key>AYAR34MouselookDenseRootDecisionIntervalFrames</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Minimum frame interval between dense-root LOD band decisions for the same child object.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>4</integer>
+    </map>
+    <key>AYAR34MouselookDenseRootHysteresisFrames</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Number of frames a child must remain in a lighter band before its LOD bias is relaxed, reducing mouselook rotation flicker.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>8</integer>
+    </map>
+    <key>AYAR34MouselookForceLODRefreshIntervalFrames</key>
+    <map>
+      <key>Comment</key>
+      <string>r34 mouselook dense-root LOD experiment. Minimum frame interval for forcing visible render-by-group world volumes through per-object LOD refresh while camera is in mouselook.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>4</integer>
     </map>
     <!-- </FS:AYA r34> -->
     <key>AYAR20AvatarSkinSSSGlowColor</key>

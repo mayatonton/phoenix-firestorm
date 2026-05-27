@@ -513,5 +513,7 @@ protected:
     friend class LLVolumeImplFlexible;
 };
 
-#endif // LL_LLVOVOLUME_H
+bool aya_r34_mouselook_force_lod_update_candidate(LLVOVolume* objectp);
+void aya_r34_record_mouselook_forced_lod_update();
 
+#endif // LL_LLVOVOLUME_H
