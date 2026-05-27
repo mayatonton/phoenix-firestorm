@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (b): Vulkan API 設計
 
-**status**: **group B (§6 + §7) + group C (§8 + §10) draft 追加完成 — 全 §1-§10 完成**、AYA review 待ち
+**status**: **work item (b) 完了 (AYA review PASS 2026-05-28)** — group B (§6 + §7) + group C (§8 + §10) draft 追加完成、全 §1-§10 完成。後続 work item (c)(d) 完了、work item (e) charter 完成 着手中
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (b)
 **前置 doc**: `04-portage-inventory.md` work item (a) 全完了 (§6.4 設計 input が直接 source)
 **達成条件**: §1-§10 全 section draft 完成 + AYA review PASS → work item (c) 工程算定 着手

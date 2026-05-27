@@ -1,6 +1,6 @@
 # AYAstorm r40 章 charter — Vulkan 化選択ストーリー + 工程プラン
 
-**status**: active (sub-phase 3 = Vulkan 化選択 + 工程プラン策定中)
+**status**: **closed 2026-05-28** (work item (a)-(e) 全完了 + AYA review PASS、**r40 達成 = 工程プラン完成**、r41 charter 起草へ移行)
 **起草**: 2026-05-28
 **達成条件**: Vulkan 化作業の工程プラン (設計および工程想定) が完成した段階
 **親 memory**: `project_ayastorm_r40_cpu_parallel.md`
@@ -36,7 +36,7 @@ r40 章は **3 つの sub-phase** を包摂する。
   - 案 P-refined (parallel cull): pre-impl REJECT、worker-safe 上限 0.29 ms/frame (gate 1.33 ms に 78% 不足)
   - 案 Q (vwDraw text cache): 実測 0.5% で DROP
 - Root cause 確定: pipeline.cpp の 3 大グローバル (`sCull` / `sShadowRender` / `sCurCameraID`) + cull/stateSort 内 GL 呼出 (`checkOcclusion`) と geometry mutation (`rebuildMesh` / `markOccluder`) が render path 全体の並列化を阻止 → **OpenGL viewer の main 剥がしは構造的に不可能**
-- 詳細 → `01-sub-phase-1-cpu-perf.md` (起草予定)
+- 詳細 → `01-sub-phase-1-cpu-perf.md`
 
 ### sub-phase 2: LL 待ち + 鉱脈発掘案 (closed 2026-05-28)
 
@@ -44,7 +44,7 @@ r40 章は **3 つの sub-phase** を包摂する。
 - thesis: 「LL Vulkan が完成するまで本線を延命する。自前 Vulkan は作らない、体系的 cache も入れない、ad-hoc な明らかに無駄を 1 件ずつ削って 5% を 1-2 年で積み上げる」
 - 2026-05-28 AYA さん 1 日かけて鉱脈調査 → **鉱脈ゼロ確定**、延命前提が falsify
 - 帰結: 「鉱脈発掘で延命可能」の前提が崩壊 → 消去法で Vulkan 化以外に次の進化を乗せる手段なし
-- 詳細 → `02-sub-phase-2-extended-falsify.md` (起草予定)
+- 詳細 → `02-sub-phase-2-extended-falsify.md`
 
 ### sub-phase 3: Vulkan 化選択 + 工程プラン策定 (active 2026-05-28〜)
 
@@ -53,7 +53,7 @@ r40 章は **3 つの sub-phase** を包摂する。
 - AYA 確定: 「**消去法でマルチプロセスを達成するには LL に関係なく Vulkan 化以外に次の進化を乗せられない**」
 - 工程プラン策定の擦り合わせ (§4 の 8 確定事項) を 2026-05-28 完了
 - 残作業 = Vulkan portage 棚卸し + 設計 + 工程算定 + r42+ 区切り確定 → §9 work breakdown
-- 詳細 → `03-sub-phase-3-vulkan-plan.md` (起草予定)
+- 詳細 → `03-sub-phase-3-vulkan-plan.md` (active 2026-05-28〜)
 
 ## 4. 工程プラン確定事項 (2026-05-28 AYA 擦り合わせ完了)
 
@@ -66,7 +66,7 @@ r40 章は **3 つの sub-phase** を包摂する。
 | 5 | LL 着地時 reset | **その時点で判断** — charter で固定せず、AYAstorm-vk 進捗 × LL 公式の質的評価で reset / maintain / merge を選別 (判断指針は §7) |
 | 6 | 本線 r40 close 凍結保守 | **critical security/crash bug + minor bugfix + AYAstorm r1-r30 系統 bug 周辺の小改善 OK**、新章不可 |
 | 7 | r14+ visual realism suspend | **特例 drop** — (6) ルールに包摂で十分、独立扱い不要 |
-| 8 | r42+ ロードマップ | **描画 stage 単位** で区切る方針 (旧 charter vk-β/γ/δ/RC 流れ継承)、細かい区切りは **Vulkan portage 棚卸し後 TBD** (詳細 §6) |
+| 8 | r42+ ロードマップ | **描画 stage 単位** で区切る方針 (旧 charter vk-β/γ/δ/RC 流れ継承)、細かい区切りは **work item (d) で確定済 2026-05-28** (詳細 §6 正式 line up + `07-r42-plus-milestone-mapping.md`) |
 
 ### 各確定値の含意
 
@@ -129,7 +129,7 @@ r40 章は **3 つの sub-phase** を包摂する。
 - 新章開始 (r31 / r32 等の新規 chapter) は不可、軽微改善のみ
 - Claude/AYA リソース配分は Vulkan 化 (r40 章) 優先、本線軽微改善は余力配分
 
-#### (8) r42+ ロードマップ — 描画 stage 単位、棚卸し後 TBD
+#### (8) r42+ ロードマップ — 描画 stage 単位、work item (d) で確定済
 
 - 旧 charter の vk-β/γ/δ/RC 流れを継承:
   - vk-β = 静止 scene + avatar (no shadow, no light)
@@ -137,7 +137,7 @@ r40 章は **3 つの sub-phase** を包摂する。
   - vk-δ = reflection probe / SMAA / SSAO / DoF / shadow cascade
   - vk-RC = AYAstorm r1-r30 全機能 parity
 - AYAstorm 固有機能 (r1-r30) は描画 stage で必要になったタイミングで pull-in (audio r1-r13 は描画 stage 非依存なので並行 port 可能、視覚表現 r14-r24 と Cinematic r30 は描画 stage と密接結合)
-- 細かい r42 / r43 / r44 / r45+ の区切りは Vulkan portage 棚卸し後 (§9 work breakdown の (a)) に確定
+- 細かい r42 / r43 / r44 / r45+ の区切りは work item (d) で 2026-05-28 確定済 (§6 正式 line up 参照、`07-r42-plus-milestone-mapping.md` §1-§5 で詳細)
 
 ## 5. r41 達成基準
 
@@ -181,28 +181,39 @@ C++ critical path 約 63K LOC + GLSL shader 248 file の完全置換:
 
 §4 (8) 確定の通り **描画 stage 単位** で区切る。旧 charter の vk-β/γ/δ/RC 流れを継承、AYAstorm 固有機能 (r1-r30) は描画 stage 必要時に pull-in。
 
-### 仮 line up (棚卸し後に確定)
+### 正式 line up (work item (d) 確定 2026-05-28)
 
-| milestone | 描画 stage 相当 | AYAstorm 機能 pull-in 想定 | repo 構成 |
-|---|---|---|---|
-| r41 | vk-α | (なし、parity 不要) | 本線同居 (Phase 1) |
-| **r41.5** | (描画 stage 進行なし、構造 refactor のみ) | **Vulkan code abstraction 化 + VK repo 分離** | **VK repo 新規立ち上げ (Phase 2 開始)** |
-| r42 | vk-β (静止 scene + avatar) | r1-r13 audio port (描画非依存、並行可) | 本線 + VK repo (dynamic link) |
-| r43 | vk-γ (deferred lighting + 基本 material) | r14-r24 視覚表現の lighting 系統 port (atmospheric / volumetric / etc.) | 本線 + VK repo |
-| r44 | vk-δ (reflection / SMAA / SSAO / DoF / shadow cascade) | r14-r24 視覚表現の effects 系統 port | 本線 + VK repo |
-| r45+ | vk-RC (parity 完遂) | r25-r29 3D stream / r30 Cinematic / chat / picker / 残り全機能 + Win/Mac 移植 | 本線 + VK repo |
+| 正式 milestone | 描画 stage | AYAstorm 機能 pull-in | repo 構成 | base PM | 暦月マーカー |
+|---|---|---|---|---|---|
+| r41 | vk-α (空転) | (なし、parity 不要) | 本線同居 (Phase 1) | 16.17 | ~2033 年中 |
+| r41.5 | (描画 stage 進行なし、構造 refactor のみ) | Vulkan code abstraction 化 + VK repo 分離 | VK repo 新規立ち上げ (Phase 2 開始) | 1.50 | ~2034 年初 |
+| r42-α | vk-β 着手 (render pass attachment + read-pick) | **r21.1 self-rigged picker port** | 本線 + VK repo (dynamic link) | 0.65 | ~2034 年前半 |
+| r42-β | vk-β 完遂 + vk-δ 部分 (DoF + state enum 化) | **r30 Cinematic mode port** | 本線 + VK repo | 3.15 | ~2035 年中 |
+| r42-γ | vk-γ + vk-δ 部分 (lighting + post-process chain) | **r14+ visual realism port** | 本線 + VK repo | 3.18 | ~2036 年後半 |
+| r42-δ | vk-δ 完遂 + parity 残機能 polish | r25-r29 3D stream + r1-r13 audio 確認 + regression sweep | 本線 + VK repo | 2.25 | ~2037 年中 |
+| r43 | vk-RC (parity 補強 + 性能 polish 一部) | Linux baseline 安定維持 + **Win parity 完遂** (Win driver matrix + 旧 driver fallback + WHCK 認定) | 本線 + VK repo | 2.63 | ~2038 年中 - 2039 年初 |
+| r44 | vk-RC 完遂 (parity 補強 + 性能 polish + Mac portable subset 詳細化) | **Mac parity 完遂** (MoltenVK + UMA + MSL + t-noami workflow) = **vk-RC 達成** = §4 (1) 完遂 goal 到達 | 本線 + VK repo | 6.30 | ~2039 年初 - 2040 年後半 |
+| (vk-RC 達成 = r44 達成 = r40 章工程プラン完遂 marker) | — | — | — | **35.83** (累積) | **~2040 年後半** (累積 ~170 暦月 / ~14.2 年) |
+| r45+ | (本算定範囲外、別章 charter で扱う) | visual realism 次世代 / ray tracing / HDR / GPU-driven / AYAstorm 独自進化 | (TBD) | — | — |
 
-**注**: 上記は仮 line up。Vulkan portage 棚卸し (§9 (a)) 完了後に正式区切りを確定、本 §6 を更新する。
+**注**: 上記は work item (d) 確定の正式 line up (`07-r42-plus-milestone-mapping.md` §1-§4 結論)、(a) Vulkan portage 棚卸し + (b) Vulkan API 設計 + (c) 工程算定 + (d) r42+ 区切り確定 の出力統合反映。r45+ は本算定範囲外 (本 §6 末尾「r45+ 範囲外 + 別章 charter 起草指針」sub-section 参照、`docs/specs/ayastorm-r45-plus-xxx/00-charter.md` 別章で扱う)。
 
-### a-4 棚卸しで確定した AYAstorm 機能 pull-in 順 (本 line up 格上げは work item (d) で確定)
+### a-4 棚卸しで確定した AYAstorm 機能 pull-in 順 (work item (d) で正式 mapping 確定済 2026-05-28)
 
-work item (a) a-4 §6.3.2 で touchpoint 規模順 + 独立度順を確定 (合計 20-30 call、base portage の 0.03% 未満で **局在性確定**、base LL port 完成後の modular patch 合成可能):
+work item (a) a-4 §6.3.2 で touchpoint 規模順 + 独立度順を確定 (合計 20-30 call、base portage の 0.03% 未満で **局在性確定**、base LL port 完成後の modular patch 合成可能)。work item (d) `07-r42-plus-milestone-mapping.md` §1.3 で描画 stage × AYAstorm 機能 × milestone 三軸 mapping を正式確定:
 
-- **r42-α**: r21.1 self-rigged picker (mObjectIDBuffer → render pass attachment、shader 2 file SPIR-V 化)
-- **r42-β**: r30 Cinematic mode (DoF state enum 化 + frame context 統合、shader 4 file SPIR-V 化)
-- **r42-γ**: r14+ visual realism (post-process pass chain 統合、shader 7 file SPIR-V 化、llvosky/llvowlsky port 含む)
+| milestone | 描画 stage (主) | 描画 stage (副) | AYAstorm 機能 | 進行範囲 |
+|---|---|---|---|---|
+| r42-α | **vk-β 着手** | — | **r21.1 self-rigged picker** | 静止 scene + avatar + render pass attachment (mObjectIDBuffer) + read-pick path、shader 2 file SPIR-V 化 |
+| r42-β | **vk-β 完遂** | vk-δ 部分 (DoF) | **r30 Cinematic mode** | scene + avatar 完成 + DoF state enum 化 + post-process pass 着手、shader 4 file SPIR-V 化 |
+| r42-γ | **vk-γ 着手 + vk-γ 進行** | vk-δ 部分 (post-process chain) | **r14+ visual realism** | deferred lighting + sky dome (llvosky + llvowlsky) + atmospherics + post-process chain 7 sub-pass、shader 7 file SPIR-V 化 |
+| r42-δ | vk-γ 完遂 + **vk-δ 完遂** | vk-RC 直前 polish | r25-r29 3D stream + r1-r13 audio 確認 | reflection / SMAA / SSAO / shadow cascade 完遂 + parity 残機能 polish + regression sweep |
 
-上記 3 順序の **仮 line up §6 r42-r45+ への正式 mapping** は work item (d) r42+ 区切り確定で行う。
+**含意**:
+
+- 描画 stage は r42 内で 4 段階進行 (vk-β 着手 → vk-β 完遂 + vk-δ 部分 → vk-γ + vk-δ 部分 → vk-γ + vk-δ 完遂)、旧仮 line up の「r42 = vk-β / r43 = vk-γ / r44 = vk-δ」より **r42 内で大半の stage が進む**
+- AYAstorm 機能 port = 描画 stage の trigger (r21.1 picker = vk-β 着手 trigger / r30 Cinematic = vk-β 完遂 + DoF trigger / r14+ visual realism = vk-γ + vk-δ 完遂 trigger)
+- r43-r44 = vk-RC (parity 補強 + 性能 polish + 3 OS parity 完遂) に振替え (本 §6 冒頭の正式 line up 表参照)
 
 ### r41.5 milestone (新規追加 2026-05-28)
 
@@ -228,6 +239,42 @@ VK repo の license 戦略 (proprietary / open-source MIT / Apache 2.0 / 等) �
 - 後付け分離なので一部 code 重複 / interface 設計変更が発生
 - ただし「空転達成」という大きな milestone の後、分離可否が確定した状態での refactor なので work-loss risk は低い
 
+#### r41.5 charter 起草 cadence (work item (d) §5.2 反映 2026-05-28)
+
+- **起草 timing**: r41 達成宣言直後 (~2033 年中、`07-r42-plus-milestone-mapping.md` §5.2)
+- **起草主体**: AYA + Claude (法的 review 関与で AYA 比重大、必要なら外部法務 advice)
+- **起草先**: `docs/specs/ayastorm-r41-5-vk-repo-separation/00-charter.md`
+- **工数 + 暦月**: ~1.50 PM / ~7.2 暦月 (06 doc §3.10 + §5.3、Linux first-class 並走 ratio 4x 反映)
+- **acceptance criteria draft**: work item (d) §5.2 反映 8 件 (Vulkan code abstraction 化 / VK repo 新規立ち上げ / 物理分離 / dynamic link 動作 / ビルド統合 / 法的分離 / LL UI 変更時 defensibility 確保 / regression 無し)
+- **詳細化**: charter 起草時に LLVKRenderer interface signature + VK repo directory 構造 + VK repo license 戦略 + LL UI 変更時 defensibility 詳細を AYA + Claude で確定 (work item (d) outline は base)
+
+### r45+ 範囲外 + 別章 charter 起草指針 (work item (d) §4 反映 2026-05-28)
+
+本 r40 章工程プランは vk-RC parity 完遂 (= r44 達成、~2040 年後半 / ~170 暦月) までを算定範囲、r45+ は本算定範囲外。詳細は `07-r42-plus-milestone-mapping.md` §4 参照。
+
+#### r45+ scope broad outline
+
+| topic 領域 | 内容 broad outline |
+|---|---|
+| visual realism 次世代 | r14+ 章 thesis 「写真を撮るに値する空気と空間」の next iteration、AYAstorm 独自進化路線 |
+| ray tracing | `VK_KHR_ray_tracing_pipeline` + `VK_KHR_acceleration_structure` 活用、reflection / shadow / GI 等の hardware ray tracing 実装 (Mac MoltenVK 非対応のため 3 OS parity 対象外、Linux/Win first-class) |
+| HDR (High Dynamic Range) | 10-bit / 12-bit per channel HDR display 対応 + HDR-aware tonemap + monitor calibration |
+| GPU-driven rendering | indirect draw / draw call merging / GPU-side culling + scene graph traversal、`VK_EXT_mesh_shader` 活用での mesh shader pipeline 導入 |
+| AYAstorm 独自進化 | r14+ 章を含む AYAstorm 独自路線の自由扱い (§3 「parity 完遂後の self-driven 章」) |
+
+#### r45+ 着手 trigger
+
+- **必須 trigger**: r44 達成 (= vk-RC parity 完遂 = §4 (1) 完遂 goal 到達) + AYA judgment (§3 「AYA life plan」前提)
+- **任意 trigger**: §7 LL 着地時判断指針 + §8 plan B trigger との連動 (§7 判断軸 1 「vk-RC 後」では reset cost 最大 / LL 採用 merit 低 → (ii) maintain + AYAstorm 独自路線 が r45+ scope に重なる)
+- **時間軸 trigger 無し** (§3 「時間軸では撤退条件を設けない」遵守)
+
+#### r45+ charter 起草 cadence
+
+- **起草 timing**: r44 達成宣言 + 6 か月以内に AYA 擦り合わせ開始 (§3 時間軸非設定遵守下の合理的擦り合わせ期間)
+- **起草主体**: AYA 主体 (scope 判断) + Claude 補助 (technical draft + memory / charter / doc cross-reference)
+- **起草先**: `docs/specs/ayastorm-r45-plus-xxx/00-charter.md` (xxx は scope による、例: `r45-plus-raytracing` / `r45-plus-hdr` / `r45-plus-gpu-driven` 等の分章可能)
+- **本 charter (00-charter.md) との関係**: r45+ は別章 charter で扱う、本 charter §6 では broad outline のみ反映 (本 r45+ section)
+
 ## 7. LL 着地時判断指針
 
 LL 公式 Vulkan が phoenix-firestorm 系の upstream (Linden Lab 本家) で着地した場合の判断は **その時点で行う** (§4 (5))、charter では reset 方針を固定しない。判断指針は以下:
@@ -237,10 +284,13 @@ LL 公式 Vulkan が phoenix-firestorm 系の upstream (Linden Lab 本家) で�
 | 着地時 AYAstorm 進捗 | reset cost (失う work) | LL 公式採用 merit |
 |---|---|---|
 | vk-α 前 (r41 着手前) | ~ゼロ | 高い (棚卸し済 work loss、LL に乗り換えで完遂可能性が大幅 up) |
-| vk-α 直後 (r41 達成、r42 着手前) | 低い (空転までの work、~6 か月-1 年) | 高い (基本機能 port をスキップ可能) |
-| vk-γ 頃 (r43 達成、描画基本動作中) | 中 (~2-4 年 work) | 中 (lighting/material 部分は LL に揃える価値あり、AYAstorm 固有 shader は再 port) |
-| vk-δ 頃 (r44 達成、effects 動作中) | 高 (~4-6 年 work) | 中 (effects 部分の質的比較で選別) |
-| vk-RC 後 (parity 完遂) | 最大 (全 work loss) | 低 (parity 達成済、LL 採用は work loss > merit) |
+| vk-α 直後 (r41 達成、r41.5 / r42 着手前) | 低い (空転までの work、~16 PM / ~7 年経過) | 高い (基本機能 port + 視覚表現 port を全スキップ可能) |
+| vk-β / vk-γ 進行中 (r42-α / r42-β / r42-γ 達成、deferred + 視覚表現 port 中) | 中 (~17-27 PM / ~7-11 年経過) | 中 (lighting/material 部分は LL に揃える価値あり、AYAstorm 固有 shader は再 port) |
+| vk-δ 完遂 (r42-δ 達成、effects 動作中、3 OS parity 完遂前) | 高 (~27 PM / ~11 年経過) | 中 (effects 部分の質的比較で選別) |
+| vk-RC 進行中 (r43 達成、Linux baseline + Win parity 完遂、Mac 未) | 高 (~30 PM / ~12.7 年経過) | 低 (Mac parity 残のみ、reset で失う Linux+Win parity work 大) |
+| vk-RC 達成 (r44 達成、3 OS parity 完遂) | 最大 (全 work loss、~36 PM / ~14.2 年経過) | 低 (parity 達成済、LL 採用は work loss > merit) |
+
+**注**: 上記 reset cost / 経過年数は本 §6 正式 line up + `06-effort-estimation.md` §3-§5 + `07-r42-plus-milestone-mapping.md` §1-§4 確定値ベース。中央値で記載、uncertainty band は 06 doc §6 参照。
 
 ### 判断軸 2: LL 公式の質的評価
 
@@ -337,19 +387,21 @@ r40 達成 (工程プラン完成) までに進める work item:
 - (a) → (b) → (c) → (d) の順序依存あり (棚卸し → 設計 → 算定 → 区切り)
 - (e) は (a)-(d) 全完了後
 - 各 work item は Claude/AYA 共同で進める、Claude が draft 作成 → AYA review → 修正 → 確定
-- 中間 doc は `docs/specs/ayastorm-r40-vulkan-migration/` 配下に作成 (例: `04-portage-inventory.md` / `05-vulkan-api-design.md` / `06-effort-estimation.md`)
+- 中間 doc は `docs/specs/ayastorm-r40-vulkan-migration/` 配下に作成 (例: `04-portage-inventory.md` / `05-vulkan-api-design.md` / `06-effort-estimation.md` / `07-r42-plus-milestone-mapping.md`)
 
 ## 10. 関連 doc
 
 ### r40 章内部
 
 - `00-charter.md` — 本 doc (工程プラン本体 = r40 達成成果物)
-- `01-sub-phase-1-cpu-perf.md` — sub-phase 1 CPU perf 全 REJECT 記録 (起草予定)
-- `02-sub-phase-2-extended-falsify.md` — sub-phase 2 鉱脈ゼロ記録 (起草予定)
-- `03-sub-phase-3-vulkan-plan.md` — sub-phase 3 work item 統合 (起草予定、(a)-(d) 完了後)
-- `04-portage-inventory.md` — Vulkan portage 棚卸し (work item (a) 出力、起草予定)
-- `05-vulkan-api-design.md` — Vulkan 設計 (work item (b) 出力、起草予定)
-- `06-effort-estimation.md` — 工程算定 (work item (c) 出力、起草予定)
+- `01-sub-phase-1-cpu-perf.md` — sub-phase 1 CPU perf 全 REJECT 記録
+- `02-sub-phase-2-extended-falsify.md` — sub-phase 2 鉱脈ゼロ記録
+- `03-sub-phase-3-vulkan-plan.md` — sub-phase 3 work item 統合 (active 2026-05-28〜)
+- `04-portage-inventory.md` — Vulkan portage 棚卸し (work item (a) 出力、完了 2026-05-28)
+- `05-vulkan-api-design.md` — Vulkan 設計 (work item (b) 出力、完了 2026-05-28)
+- `06-effort-estimation.md` — 工程算定 (work item (c) 出力、完了 2026-05-28)
+- `07-r42-plus-milestone-mapping.md` — r42+ 区切り確定 (work item (d) 出力、完了 2026-05-28)
+- `handoff-work-item-*-complete.md` — 各 work item / group 区切り cadence handoff (historical、a-complete / b-foundation/group-a/complete / c-foundation/group-a/group-b/group-c-complete / d-foundation/group-a/group-b-complete)
 
 ### 関連 memory
 

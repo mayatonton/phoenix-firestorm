@@ -147,7 +147,7 @@ sub-phase 2 falsify を受けて、2026-05-27 drop した旧 r41 自前 Vulkan m
 
 - `00-charter.md` — r40 章 charter (sub-phase 1/2/3 包摂、§3 経緯で sub-phase 2 概要)
 - `01-sub-phase-1-cpu-perf.md` — sub-phase 1 詳細 (前章)
-- `03-sub-phase-3-vulkan-plan.md` — sub-phase 3 詳細 (起草予定、active phase)
+- `03-sub-phase-3-vulkan-plan.md` — sub-phase 3 詳細 (active 2026-05-28〜)
 
 ### memory
 

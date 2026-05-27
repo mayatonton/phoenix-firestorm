@@ -1,6 +1,6 @@
-# r40 sub-phase 3: Vulkan 化選択 + 工程プラン策定 (active 2026-05-28〜)
+# r40 sub-phase 3: Vulkan 化選択 + 工程プラン策定 (closed 2026-05-28)
 
-**status**: active (work item (a) 全完了 2026-05-28 / work item (b) Vulkan API 設計 **完了** 2026-05-28 AYA review PASS / work item (c) 工程算定 **完了** 2026-05-28 AYA review PASS / work item (d) r42+ 区切り確定 **§1-§6 全 draft 完成** 2026-05-28、AYA review PASS で完了予定 → work item (e) charter 完成 着手)
+**status**: **closed 2026-05-28** (work item (a)-(e) 全完了 + AYA review PASS、sub-phase 3 完了 = r40 章 close = 工程プラン完成)
 **親 charter**: `00-charter.md`
 **位置付け**: r40 章の sub-phase 3 (Vulkan 化選択を正式採用、工程プラン策定中)
 **前章**: sub-phase 2 (`02-sub-phase-2-extended-falsify.md`)
@@ -23,8 +23,8 @@ charter §9 で定義した (a)-(e) work item の status tracker:
 | (a) | Vulkan portage 棚卸し phase | `04-portage-inventory.md` | (なし、最初) | **完了 (2026-05-28)** |
 | (b) | Vulkan API 設計 | `05-vulkan-api-design.md` | (a) 完了後 | **完了 (2026-05-28)** (foundation + group A + B + C 全 10 section、AYA review PASS) |
 | (c) | 工程算定 | `06-effort-estimation.md` | (a)(b) 完了後 | **完了 (2026-05-28)** (foundation + group A + B + C 全 §1-§8、AYA review PASS) |
-| (d) | r42+ 区切り確定 | `07-r42-plus-milestone-mapping.md` + `00-charter.md` §6 更新 | (a)(b)(c) 完了後 | **§1-§6 全 draft 完成 (2026-05-28)** (foundation group §1+§2 + group A §3+§4 + group B §5+§6 完了、AYA review PASS で完了予定) |
-| (e) | charter 完成 → r40 達成 | 全 doc final review | (a)(b)(c)(d) 完了後 | 未着手 |
+| (d) | r42+ 区切り確定 | `07-r42-plus-milestone-mapping.md` + `00-charter.md` §6 更新 | (a)(b)(c) 完了後 | **完了 (2026-05-28)** (foundation group §1+§2 + group A §3+§4 + group B §5+§6 全完了、AYA review PASS、`00-charter.md` §6 実 update は (e)-1 で実施済) |
+| (e) | charter 完成 → r40 達成 | 全 doc final review | (a)(b)(c)(d) 完了後 | **着手中 (2026-05-28)** ((e)-1 00-charter.md §6 update 完了 / (e)-2 03 doc 最終 review 実施中 / (e)-3 04-07 doc final review pending / (e)-4 00-charter.md 他 section 整合 pending / (e)-5 memory update pending) |
 
 work item は **逐次進行** (並列不可、(a) → (b) → (c) → (d) → (e) 順序依存)。
 
@@ -232,9 +232,11 @@ Claude は AYA review 待ち中は別 work item に進まない、AYA review 完
 - `00-charter.md` — r40 章 charter (本 sub-phase 3 で final 化)
 - `01-sub-phase-1-cpu-perf.md` — sub-phase 1 詳細
 - `02-sub-phase-2-extended-falsify.md` — sub-phase 2 詳細
-- `04-portage-inventory.md` — work item (a) 出力 (起草予定)
-- `05-vulkan-api-design.md` — work item (b) 出力 (起草予定)
-- `06-effort-estimation.md` — work item (c) 出力 (起草予定)
+- `04-portage-inventory.md` — work item (a) 出力 (完了 2026-05-28)
+- `05-vulkan-api-design.md` — work item (b) 出力 (完了 2026-05-28)
+- `06-effort-estimation.md` — work item (c) 出力 (完了 2026-05-28)
+- `07-r42-plus-milestone-mapping.md` — work item (d) 出力 (完了 2026-05-28)
+- `handoff-work-item-d-foundation-complete.md` / `handoff-work-item-d-group-a-complete.md` / `handoff-work-item-d-group-b-complete.md` — work item (d) 各 group cadence handoff (historical)
 
 ### r40 章外部 doc
 

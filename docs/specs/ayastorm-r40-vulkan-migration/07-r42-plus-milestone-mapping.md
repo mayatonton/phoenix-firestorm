@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (d): r42+ 区切り確定
 
-**status**: foundation group (§1 r42 区切り algorithm 化 + §2 r42 milestone 内訳) + group A (§3 r43-r44 + §4 r45+) + group B (§5 charter outline + §6 charter §6 反映) draft 完了 = **§1-§6 全 draft 完成** — AYA review PASS で work item (d) 完了宣言 → work item (e) charter 完成 着手
+**status**: **work item (d) 完了 (AYA review PASS 2026-05-28)** — foundation group (§1 + §2) + group A (§3 + §4) + group B (§5 + §6) 全完了、§1-§6 全 section 確定。本 §6 diff draft の 00-charter.md §6 への実 update は work item (e)-1 で実施済 (2026-05-28)、work item (e) charter 完成 着手中
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (d)
 **前置 doc**:
 - `00-charter.md` §6 — r42+ 仮 line up (本 work item (d) で正式 mapping 化)

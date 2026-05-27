@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (c): 工程算定
 
-**status**: **確定 (AYA review PASS 2026-05-28)** — work item (c) 全 §1-§8 完成 → work item (d) r42+ 区切り確定 着手 (`07-r42-plus-milestone-mapping.md`)
+**status**: **work item (c) 完了 (AYA review PASS 2026-05-28)** — 全 §1-§8 完成。後続 work item (d) 完了 (`07-r42-plus-milestone-mapping.md`)、work item (e) charter 完成 着手中
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (c)
 **前置 doc**:
 - `04-portage-inventory.md` (work item (a)) — per-file 工数の input source

@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (a): Vulkan portage 棚卸し
 
-**status**: a-1 + a-2 + a-3 + a-4 (棚卸し総括) 全完了 → work item (a) 全完了、work item (b) Vulkan API 設計 着手前
+**status**: **work item (a) 完了 (AYA review PASS 2026-05-28)** — a-1 + a-2 + a-3 + a-4 (棚卸し総括) 全完了。後続 work item (b)(c)(d) 完了、work item (e) charter 完成 着手中
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (a)
 **達成条件**: §6 棚卸し総括 完成 → work item (b) Vulkan API 設計 着手
 
