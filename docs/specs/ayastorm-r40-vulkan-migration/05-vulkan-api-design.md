@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (b): Vulkan API 設計
 
-**status**: group A (§4 + §5) draft 追加完成 — **§1-§5 + §9 完成**、§6-§8 + §10 は group B/C で draft
+**status**: **group B (§6 + §7) + group C (§8 + §10) draft 追加完成 — 全 §1-§10 完成**、AYA review 待ち
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (b)
 **前置 doc**: `04-portage-inventory.md` work item (a) 全完了 (§6.4 設計 input が直接 source)
 **達成条件**: §1-§10 全 section draft 完成 + AYA review PASS → work item (c) 工程算定 着手
@@ -648,42 +648,611 @@ main thread (graphics queue, frame F):
 
 ## §6 memory allocator 方針 (VMA)
 
-**status**: 次 session で draft
+### §6.1 VMA (Vulkan Memory Allocator, GPUOpen) 採用判断
 
-draft 予定の項目:
-- §6.1 VMA (Vulkan Memory Allocator, GPUOpen) 採用根拠
-- §6.2 memory type 分類 (DEVICE_LOCAL / HOST_VISIBLE / HOST_COHERENT / HOST_CACHED / DEVICE_LOCAL+HOST_VISIBLE)
-- §6.3 staging buffer 戦略 (llimagegl.cpp 移行、a-4 §1.1)
-- §6.4 vertex buffer / index buffer / UBO / texture の typical allocation pattern
-- §6.5 defragmentation 採用判断 (long-lived session での fragmentation 蓄積対策)
-- §6.6 budget API (VK_EXT_memory_budget) 経由の VRAM 使用量監視
+**結論**: **AMD GPUOpen VMA (https://gpuopen.com/vulkan-memory-allocator/) を全 allocation で採用**、`vkAllocateMemory` / `vkBindBufferMemory` / `vkBindImageMemory` を直接呼ぶ箇所はゼロにする。
+
+#### 採用根拠
+
+1. **`maxMemoryAllocationCount` 制約への対応**: Vulkan spec minimum guarantee 4096 (driver により実 4096-65536)、AYAstorm 規模で texture 数千 + VBO 数千 + UBO/staging 多数の合計 allocation がこの上限に容易に抵触。VMA は内部で大きい block を確保 → suballocate で 1 vkAllocateMemory に多 resource 詰め込みが default、上限 hit を構造的に回避
+2. **memory type 自動選定**: `VMA_MEMORY_USAGE_AUTO` + 利用パターン hint (`VK_BUFFER_USAGE_*`) を渡すと driver の available memory heap から最適 type を自動選定、本線側で memory type table を書かなくて済む
+3. **VkMemoryRequirements + alignment 整合自動化**: vkGetBufferMemoryRequirements / vkGetImageMemoryRequirements の alignment / size / memoryTypeBits を VMA 内部で吸収、手書き省略
+4. **defragmentation API 標準提供**: §6.5 で展開、long-lived session (AYAstorm は撮影セッション数時間級) の fragmentation 対策が built-in
+5. **statistics + budget API 統合**: `vmaGetHeapBudgets` / `vmaCalculateStatistics` 経由で per-heap 使用量 / per-pool 使用量を query、§6.6 VRAM 監視と統合
+6. **既存実績**: Doom Eternal (id Tech 7) / RPCS3 / Wicked Engine / Granite / Anki Engine / Niagara / 等の large project で採用、stability 確立。Vulkan tutorial / Vulkan Guide も標準として推奨
+7. **license**: MIT (LGPL viewer base と互換)、header-only / single-translation-unit、cmake target 統合容易
+
+#### 自前 allocator を書かない理由
+
+- Vulkan `vkAllocateMemory` 制約 (block 化前提 / alignment / heap 選定 / defrag) の正解実装が VMA で確立済、独自実装は drift risk のみで benefit ゼロ
+- AYAstorm は描画 engine ではなく viewer (memory allocation は black box であるべき)、本線開発工数を VMA で吸収
+
+#### VMA 統合 file
+
+- 新規 `indra/llrender/llvkmemoryallocator.h/.cpp` (仮称) に VMA instance (`VmaAllocator`) を集約、`LLVKMemoryAllocator::getInstance()` で他 file から access
+- `vmaCreateAllocator` は instance 作成直後 (vkCreateDevice 完了後 + worker thread launch 前) に 1 回呼ぶ
+- 既存 `llrender/llvertexbuffer.cpp` / `llrender/llimagegl.cpp` 等の memory allocate 関数を VMA wrapper 経由に置換 (a-4 §6.3.1 段階 2-3 内)
+
+### §6.2 memory type 分類と VMA usage hint mapping
+
+#### Vulkan memory type の 5 種別
+
+| memory property | host 可視 | device 速度 | 用途 | VMA usage |
+|---|---|---|---|---|
+| `DEVICE_LOCAL` | × | 最速 | GPU 専用 read/write (g-buffer / depth / shadow / cubemap / 完成テクスチャ) | `VMA_MEMORY_USAGE_GPU_ONLY` (deprecated) → 後継 `VMA_MEMORY_USAGE_AUTO` + `VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT` (大型 attachment 用) |
+| `HOST_VISIBLE` + `HOST_COHERENT` | ◯ | 遅 | staging buffer (CPU 書込 → GPU copy) / per-frame UBO (mat4 / time 等) | `VMA_MEMORY_USAGE_AUTO_PREFER_HOST` + `VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT` |
+| `HOST_VISIBLE` + `HOST_CACHED` | ◯ | 中 | CPU readback (picker readback / screenshot) | `VMA_MEMORY_USAGE_AUTO_PREFER_HOST` + `VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT` |
+| `DEVICE_LOCAL + HOST_VISIBLE` (Resizable BAR / ReBAR) | ◯ | 高 | 高頻度 update する UBO / vertex buffer (modern GPU で利用可) | `VMA_MEMORY_USAGE_AUTO` (VMA が ReBAR 可用性検出) |
+| `LAZILY_ALLOCATED` | × | tile memory | mobile/integrated GPU で MSAA resolve 等の transient attachment | (AYAstorm 主 target = discrete PC GPU、利用予定なし) |
+
+#### VMA hint 渡し方の原則
+
+a-4 §6.4.1 で確定方針 (VMA 必須採用):
+
+- 本線 code 側は **memory type を直接指定しない**、`VmaAllocationCreateInfo::usage` + `flags` のみ渡す
+- `VMA_MEMORY_USAGE_AUTO` (Vulkan 1.3 + VMA 3.x の推奨) を default、特殊用途のみ `_AUTO_PREFER_DEVICE` / `_AUTO_PREFER_HOST` で hint
+- ReBAR / unified memory architecture (Apple Silicon via MoltenVK) の差異は VMA が吸収、本線 code は単一 path
+
+#### AYAstorm 描画各 resource の usage 分布
+
+§4 / §5 の結果と統合:
+
+| resource | usage hint | 配置 heap 想定 |
+|---|---|---|
+| g-buffer 0-3 / depth (§4.2) | `_AUTO` + dedicated | DEVICE_LOCAL |
+| post-process intermediate A/B (§4.4) | `_AUTO` + dedicated | DEVICE_LOCAL |
+| shadow map cascade × 4 (§4.3 pass 1) | `_AUTO` + dedicated | DEVICE_LOCAL |
+| swapchain image (§7) | (VMA 管理外、vkCreateSwapchainKHR が直接管理) | DEVICE_LOCAL |
+| texture (BoM / attachment / 完成済) | `_AUTO` | DEVICE_LOCAL |
+| vertex buffer / index buffer (mesh) | `_AUTO` | DEVICE_LOCAL or ReBAR (頻度依存、§6.4) |
+| per-frame UBO (camera / time / sun) | `_AUTO_PREFER_HOST` + SEQUENTIAL_WRITE | HOST_VISIBLE+COHERENT or ReBAR |
+| staging buffer (texture/mesh upload) | `_AUTO_PREFER_HOST` + SEQUENTIAL_WRITE | HOST_VISIBLE+COHERENT |
+| picker readback staging (§4.5) | `_AUTO_PREFER_HOST` + RANDOM | HOST_VISIBLE+CACHED |
+
+### §6.3 staging buffer 戦略
+
+#### 移行対象 (a-4 §1.1)
+
+- `llimagegl.cpp` (LLImageGLThread): texture upload (`glTexImage2D` / `glTexSubImage2D`) の Vulkan 化 → staging buffer 経由 `vkCmdCopyBufferToImage`
+- `llspatialpartition.cpp` `rebuildMesh()`: VBO / IBO update の Vulkan 化 → staging buffer 経由 `vkCmdCopyBuffer`
+
+#### staging pool 設計
+
+**結論**: **per-thread staging pool** を採用、worker thread (LLImageGLThread 後継) と main thread で独立した `VmaPool` を保持。
+
+| pool | 所有 thread | 用途 | 想定 size |
+|---|---|---|---|
+| `mainThreadStagingPool` | main render thread | per-frame UBO 更新 / 小サイズ動的 buffer | ~16 MB |
+| `uploadThreadStagingPool` | worker upload thread (LLImageGLThread 後継) | texture / mesh upload | ~256 MB (frame 内 cumulative) |
+| `readbackPool` | main render thread (consume), GPU writer (produce) | picker readback (§4.5) / screenshot | ~4 MB |
+
+設計理由:
+- per-thread pool で `vmaCreateBuffer` / `vmaDestroyBuffer` の thread contention 回避 (`VmaAllocator` 自体は thread-safe だが pool 分離で hot path lockless 化)
+- upload thread の staging buffer は frame 内で cumulative に積み上がる (1 frame で N texture + M mesh)、large pool で `vmaCreateBuffer` 失敗 → pool 自動拡張 (`VMA_POOL_CREATE_LINEAR_ALGORITHM_BIT` で ring allocator 化)
+
+#### staging buffer lifecycle
+
+```
+worker thread upload N (texture T):
+1. vmaCreateBuffer(uploadThreadStagingPool, sizeof(T), TRANSFER_SRC,
+                   HOST_ACCESS_SEQUENTIAL_WRITE)
+   → 戻り値: VkBuffer + VmaAllocation
+2. vmaMapMemory → memcpy(T pixel data) → vmaUnmapMemory
+   (HOST_COHERENT なので flush 不要、ReBAR 上なら direct write)
+3. transfer queue で vkCmdCopyBufferToImage(staging → device_local_image)
+4. vkQueueSubmit2 + uploadTimeline signal(N) (§5.5)
+5. frame F (CPU 側 fence wait 完了後) で vmaDestroyBuffer(staging)
+```
+
+- staging buffer の lifecycle = upload 完了の確証 (= uploadTimeline N 完了) まで保持必須
+- main thread 側で `vmaDestroyBuffer` を呼ぶ前に `vkWaitSemaphores(uploadTimeline, N)` 必須 (§5.5)
+
+#### ring allocator optimization
+
+upload thread 用 staging pool は **`VMA_POOL_CREATE_LINEAR_ALGORITHM_BIT` で linear allocator 化** を採用候補:
+- allocate は ring buffer 末尾に append (O(1))
+- destroy は順序維持 (FIFO)
+- texture upload は時系列順 enqueue 想定なので相性が良い
+- ただし長期保持 staging (1 frame 内で完結しない巨大 texture) は別 pool に分離 (`uploadThreadStagingLongLivedPool` 仮称)
+
+### §6.4 typical allocation pattern (vertex / index / UBO / texture)
+
+各 resource 種別の VMA allocate template:
+
+#### vertex buffer / index buffer
+
+```cpp
+VkBufferCreateInfo buf{
+  .size = N,
+  .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+         | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+         | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,  // §5.5 将来 BDA
+};
+VmaAllocationCreateInfo alloc{
+  .usage = VMA_MEMORY_USAGE_AUTO,
+  .flags = 0,  // 更新頻度低 = DEVICE_LOCAL 期待
+};
+vmaCreateBuffer(allocator, &buf, &alloc, &vkBuffer, &vmaAlloc, nullptr);
+```
+
+頻度高 (mesh が毎 frame 更新される場合) は `_AUTO_PREFER_HOST` + SEQUENTIAL_WRITE で ReBAR 候補化、要 profile (a-4 §B.4 mesh upload 頻度確認)
+
+#### per-frame UBO (camera / sun / time)
+
+```cpp
+VkBufferCreateInfo buf{
+  .size = sizeof(PerFrameUBO),
+  .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+};
+VmaAllocationCreateInfo alloc{
+  .usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+  .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+         | VMA_ALLOCATION_CREATE_MAPPED_BIT,  // 常時 mapped 維持
+};
+```
+
+frame in flight = 3 (§5.1) なので 3 個確保、frame F の更新は `frameUBO[F % 3]` に書込み。
+
+#### texture (完成済、長期保持)
+
+```cpp
+VkImageCreateInfo img{
+  .imageType = VK_IMAGE_TYPE_2D,
+  .format = format,  // BC7 / R8G8B8A8_UNORM / etc.
+  .extent = { w, h, 1 },
+  .mipLevels = mipCount,
+  .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+  .samples = VK_SAMPLE_COUNT_1_BIT,
+};
+VmaAllocationCreateInfo alloc{
+  .usage = VMA_MEMORY_USAGE_AUTO,
+  .flags = 0,  // VMA が suballocate or dedicated 自動選定
+};
+vmaCreateImage(allocator, &img, &alloc, &vkImage, &vmaAlloc, nullptr);
+```
+
+巨大 texture (>= 64 MB 例 環境マップ cubemap) は `VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT` 明示で 1 image = 1 memory allocate に分離 (defrag 対象外化)
+
+#### g-buffer / shadow map / post-process intermediate (attachment)
+
+```cpp
+VkImageCreateInfo img{
+  .format = VK_FORMAT_R8G8B8A8_UNORM,  // §4.2
+  .extent = { screenW, screenH, 1 },
+  .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+         | VK_IMAGE_USAGE_SAMPLED_BIT
+         | (gbuffer3 ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0),  // §4.5 picker readback
+};
+VmaAllocationCreateInfo alloc{
+  .usage = VMA_MEMORY_USAGE_AUTO,
+  .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,  // 大型 + 長期保持
+};
+```
+
+### §6.5 defragmentation 採用判断
+
+#### 採用方針
+
+**結論**: **defragmentation は採用、ただし AYAstorm では interactive defrag (毎 frame 少しずつ) に限定、stop-the-world は禁止**。
+
+#### 採用根拠
+
+- AYAstorm は撮影セッションで連続 1-6 時間級の long-lived 用途 (撮影者は viewer を立ち上げっぱなしで景観/被写体探索)
+- texture / mesh の load/unload が長時間に渡り蓄積、fragmentation で `vmaCreateBuffer` / `vmaCreateImage` 失敗 (=OOM) のリスク
+- 1 GB-sized resource を後から確保しようとして fragmentation で確保できない事象は VMA 公式 doc でも典型ケースとして報告
+
+#### 実装方針
+
+```cpp
+// 1 frame に 1 回 (idle stage で実行)、budget 内のみ move
+VmaDefragmentationInfo defragInfo{
+  .flags = VMA_DEFRAGMENTATION_FLAG_ALGORITHM_BALANCED_BIT,
+  .maxBytesPerPass = 16 * 1024 * 1024,  // 1 pass 16 MB 上限
+  .maxAllocationsPerPass = 32,
+};
+VmaDefragmentationContext ctx;
+vmaBeginDefragmentation(allocator, &defragInfo, &ctx);
+// pass loop: vmaBeginDefragmentationPass → 移動対象列挙 → vkCmdCopyImage/Buffer →
+//            barrier → vmaEndDefragmentationPass
+vmaEndDefragmentation(allocator, &ctx, nullptr);
+```
+
+- 1 frame に **16 MB / 32 allocation 上限**、frame budget の影響を avg 0.1ms 程度に抑える (a-4 §6.4.1 budget 整合)
+- defrag 対象は per-pool (textures pool / vbo pool / etc.) を周期 rotation、stop-the-world は採らない
+- defrag pass で move された resource は `vmaSetAllocationUserData` 経由で記録した `VkImageView` / `VkBufferView` を再生成必要 (descriptor set 再 write も)
+
+#### 非対象
+
+- attachment (g-buffer / depth / shadow / intermediate) は `DEDICATED_MEMORY_BIT` で defrag 対象外、move のリスク無し
+- swapchain image (VMA 管理外)
+
+#### 実装着手 timing
+
+- r41 (GL 除去 + Vulkan 空転) では implement skip、interactive defrag は r42-α (基盤描画 stable) 以降で導入
+- ただし API surface (header 内 `LLVKMemoryAllocator::scheduleDefragPass()` 仮称) は r41 で予約しておく
+
+### §6.6 budget API (VK_EXT_memory_budget) 経由の VRAM 監視
+
+#### enable 確認
+
+§9.3 で `VK_EXT_memory_budget` を必須 enable 済、VMA `VmaAllocatorCreateInfo::flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT` を立てると VMA 内部で budget query が自動有効化。
+
+#### query API
+
+```cpp
+VkPhysicalDeviceMemoryProperties2 props;
+VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+vmaGetHeapBudgets(allocator, budgets);
+for (uint32_t i = 0; i < memProps.memoryHeapCount; ++i) {
+    LLINFOS("vkmemory")
+        << "heap " << i
+        << " usage=" << budgets[i].usage   // VMA 把握分
+        << " budget=" << budgets[i].budget // driver 報告 budget (= 利用可能上限)
+        << " (cap=" << memProps.memoryHeaps[i].size << ")"
+        << LL_ENDL;
+}
+```
+
+#### 監視 cadence
+
+- **per-frame query は禁止** (Linux driver で query が重い report あり)
+- 1 秒に 1 回 / または `vmaCreateBuffer` 失敗 (OOM) 時の診断 dump で十分
+- AYAPerfLog (r30 で導入) または既存 stat infrastructure に統合、HUD overlay の VRAM 使用率表示に reuse 検討
+
+#### 既存 viewer の VRAM stat との関係
+
+- llrender 内に既存 `gMaxVramUsageBytes` 等の GL 経由 query (NVX_gpu_memory_info / WGL_ATI_meminfo) があるが、Vulkan 化で廃止
+- 全 VRAM 監視は Vulkan budget API に一本化、driver-specific GL extension への依存解消
+
+#### threshold action
+
+- budget の 90% 超で warning log、AYAstorm 側で texture cache TTL 短縮 / VBO defrag schedule を発火
+- 95% 超で critical (texture lod 強制低下 等の AYAstorm 側 graceful degradation policy は r42+ 検討、本 §6.6 では監視 API 確立まで)
 
 ---
 
 ## §7 swapchain / present mode
 
-**status**: 次 session で draft
+### §7.1 present mode 選択
 
-draft 予定の項目:
-- §7.1 present mode 選択 (FIFO default / mailbox optional for VSync OFF / immediate 不採用)
-- §7.2 swapchain image 数 (3 image 採用、frame in flight と align)
-- §7.3 surface format (sRGB / linear, HDR 検討)
-- §7.4 resize / minimize / fullscreen 切替時の re-create 戦略
-- §7.5 multi-monitor / DPI scaling
-- §7.6 VK_EXT_swapchain_maintenance1 採用検討
+#### Vulkan present mode 一覧と本 design 採否
+
+| mode | tear | latency | GPU 負荷 | AYAstorm 採否 |
+|---|---|---|---|---|
+| `VK_PRESENT_MODE_FIFO_KHR` | なし | 高 (VSync 待ち) | 低 | **default 採用** (VSync ON 相当) |
+| `VK_PRESENT_MODE_FIFO_RELAXED_KHR` | 一部あり (frame drop 時のみ) | 中-高 | 低 | 採用 (VSync ON + 遅延緩和 user 向け) |
+| `VK_PRESENT_MODE_MAILBOX_KHR` | なし | 低 | 高 (GPU 余剰描画) | 採用 (low-latency user 向け、VSync OFF 相当) |
+| `VK_PRESENT_MODE_IMMEDIATE_KHR` | あり | 最低 | 中 | **不採用** (撮影章 = tear 出る = 採れない) |
+
+#### user 設定 mapping (cvar)
+
+既存 `VSyncMode` (or 類似) cvar を Vulkan present mode に mapping:
+
+| cvar value | present mode | 用途 |
+|---|---|---|
+| 0 (Always On) | `FIFO_KHR` | default、battery-friendly |
+| 1 (Adaptive) | `FIFO_RELAXED_KHR` (driver 未対応時は FIFO_KHR fallback) | 遅延緩和、tear 局所許容 |
+| 2 (Off / Triple Buffer) | `MAILBOX_KHR` (driver 未対応時は FIFO_KHR fallback) | 低 latency、撮影/Cinematic mode で benefit |
+
+`IMMEDIATE_KHR` は **撮影章の本旨 (tear 無し撮影品質) に反する** ので cvar 選択肢から除外、user 側で要望が出た場合のみ別途検討。
+
+#### Mac MoltenVK 制約
+
+- Metal layer (CAMetalLayer) は FIFO / MAILBOX サポート、IMMEDIATE は MoltenVK で `displaySyncEnabled` を OFF にして近似 (本 design 採用しないので非該当)
+- ProMotion (120 Hz 可変 refresh) 対応は MoltenVK が Metal 側で自動、Vulkan 側追加処理不要 (§8.3 で詳細)
+
+#### support 検出
+
+`vkGetPhysicalDeviceSurfacePresentModesKHR` で driver/surface 支持 mode を query、unsupported なら FIFO_KHR (必須対応 mode) に fallback。
+
+### §7.2 swapchain image 数
+
+#### 結論
+
+**default 3 image 採用**、§5.1 frame in flight = 3 と align。
+
+#### 算定根拠
+
+| present mode | 推奨 image 数 | 理由 |
+|---|---|---|
+| `FIFO_KHR` | 2 or 3 | 2 = double buffer (VSync 待ちで GPU idle 発生確率高)、**3 = triple buffer (推奨)** |
+| `MAILBOX_KHR` | 3 (必須相当) | acquire/present/displayed の 3 個必要 |
+
+`VkSurfaceCapabilitiesKHR::minImageCount` / `maxImageCount` を query、driver 上限内で `max(3, minImageCount)` を選択 (一部 driver は minImageCount = 3、Mac MoltenVK は 2 minimum 報告 case あり)。
+
+#### frame in flight = 3 との align
+
+§5.1 で frame in flight = 3 確定、swapchain image 数 = 3 と一致させると acquire → render → present の 1:1 対応で実装簡素化。
+
+frame in flight != swapchain image 数 のケース (例 FIFO で swapchain 2 + in flight 3) も Vulkan spec 上は許容だが、acquire の blocking 動作で実質 in flight が swapchain image 数に律速されるため、整合させる方が予測可能。
+
+### §7.3 surface format (sRGB / linear / HDR)
+
+#### default format 選定
+
+**結論**: **`VK_FORMAT_B8G8R8A8_SRGB` (or `R8G8B8A8_SRGB`)** を default、`VK_COLOR_SPACE_SRGB_NONLINEAR_KHR` color space と組合せ。
+
+#### 選定根拠
+
+- 全 driver (Linux/Win/Mac) で必須対応 format、fallback 不要
+- swapchain attachment への描画時に自動 linear → sRGB 変換 (GPU 側 hardware)、shader は linear で描画して `vkCmdEndRendering` で自動 encoding
+- 現 GL 実装の `glEnable(GL_FRAMEBUFFER_SRGB)` 等価動作
+
+#### `VK_FORMAT_*_SRGB` 採用 vs `*_UNORM` + 手動 encoding
+
+| 候補 | shader 出力 | encoding |
+|---|---|---|
+| `_SRGB` swapchain | linear (現状の lldrawpool 描画と整合) | hardware 自動 |
+| `_UNORM` swapchain | linear → sRGB を shader 末尾で手動 (`pow(x, 1/2.2)` 等) | software |
+
+**`_SRGB` 採用**: shader 側 modify ゼロ、現 GL の `GL_FRAMEBUFFER_SRGB` 挙動と互換、AYAstorm の post-process chain (tonemap → swapchain) の output 接続も linear で揃う。
+
+#### HDR (将来検討、本 design では予約のみ)
+
+| HDR format | color space | driver/OS |
+|---|---|---|
+| `VK_FORMAT_A2B10G10R10_UNORM_PACK32` | `VK_COLOR_SPACE_HDR10_ST2084_EXT` (HDR10) | Win + RTX/RDNA driver + HDR monitor |
+| `VK_FORMAT_R16G16B16A16_SFLOAT` | `VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT` (scRGB) | Win + 一部 driver、Mac/Linux 限定的 |
+
+- AYAstorm 撮影章で HDR output 需要は将来あり (r14+ visual realism の延長)、ただし monitor 普及率 / Linux driver 整備未成熟 / camera-OS workflow 確立必要、本 design では予約のみ
+- enable 要 `VK_KHR_swapchain_mutable_format` (§9.2) + `VK_EXT_swapchain_colorspace` (要追加検討、本 §9 未収載)
+- 採用 timing は r45+ visual realism 次世代 milestone、本 work item (b) では「HDR への昇格余地を消さない format / color space 設計」を要件として残す
+
+#### support 検出
+
+`vkGetPhysicalDeviceSurfaceFormatsKHR` で driver/surface 支持 (format, color space) ペア list を query、優先順:
+1. `(B8G8R8A8_SRGB, SRGB_NONLINEAR_KHR)`
+2. `(R8G8B8A8_SRGB, SRGB_NONLINEAR_KHR)`
+3. list 先頭 (driver 推奨を信頼)
+
+### §7.4 resize / minimize / fullscreen 切替時の re-create 戦略
+
+#### trigger 条件
+
+- window resize event (LLWindow callback → LLPipeline / LLViewerWindow → swapchain re-create)
+- minimize / restore (一部 driver は minimize 中 acquire を block、resize 時と同じ path)
+- fullscreen ↔ windowed 切替
+- monitor 切替 (multi-monitor、§7.5)
+- `vkAcquireNextImageKHR` / `vkQueuePresentKHR` が `VK_ERROR_OUT_OF_DATE_KHR` / `VK_SUBOPTIMAL_KHR` を返却
+
+#### re-create sequence
+
+```
+1. vkDeviceWaitIdle  (全 in-flight frame の完了確実化、frame in flight = 3 全部 wait)
+   ← 例外: VK_EXT_swapchain_maintenance1 利用時は per-image fence 個別 wait で短縮可 (§7.6)
+
+2. vkDestroyImageView × N  (旧 swapchain image view)
+3. vkDestroySwapchainKHR(oldSwapchain) で旧 swapchain 解放
+   ← alternatively VkSwapchainCreateInfoKHR::oldSwapchain = oldSwapchain で in-place 渡し、driver 内最適化
+
+4. 再 vkGetPhysicalDeviceSurfaceCapabilitiesKHR で新 extent 取得
+5. vkCreateSwapchainKHR で新 swapchain 作成
+6. vkGetSwapchainImagesKHR で新 image 取得 + vkCreateImageView × N
+
+7. attachment (g-buffer / depth / shadow / post-process intermediate) も resolution 変更時は re-create
+   ← VMA 経由 vmaDestroyImage + vmaCreateImage、§6.4 attachment allocate template
+
+8. descriptor set の sampler binding も再 write 必要 (g-buffer / post-process intermediate のように
+   resize で recreate された image view を sampler binding していた set)
+
+9. command buffer も全 reset (record した dynamic rendering attachment が無効化)、
+   次 frame で再 record
+```
+
+#### minimize 時の制約
+
+- `VkSurfaceCapabilitiesKHR::currentExtent = { 0, 0 }` 返却ケース (Win 一部 driver の minimized window)
+- swapchain create 不可、`vkAcquireNextImageKHR` も呼べない
+- 対応: extent 0 検出時は render loop skip + minimize 解除 wait、`WM_RESTORE` 相当 event で再開
+
+#### fullscreen 切替 (Linux X11 / Wayland)
+
+- X11: 既存 LLWindow flow で対応、swapchain re-create のみ Vulkan 側で対応
+- Wayland: `xdg_toplevel.set_fullscreen()` 経由、surface re-create 不要 (extent change のみ)、swapchain re-create で対応
+- Win: borderless fullscreen が大半、true fullscreen exclusive は `VK_EXT_full_screen_exclusive` で取得可、ただし AYAstorm では benefit 限定 (撮影章 = borderless で十分) なので本 design では非採用
+
+#### Mac MoltenVK
+
+- CAMetalLayer の `drawableSize` 変更で swapchain 自動 invalidate、`OUT_OF_DATE_KHR` 経路で re-create
+- ProMotion (可変 refresh) の refresh rate 変更は MoltenVK 内部処理、Vulkan 側追加処理不要
+
+### §7.5 multi-monitor / DPI scaling
+
+#### multi-monitor 切替
+
+- LLWindow が monitor 切替を検出 → swapchain re-create (§7.4 sequence)
+- monitor 間の color space 差 (sRGB monitor ↔ HDR monitor 等) は将来 HDR 採用時に対応、本 design では sRGB 統一 (§7.3)
+- monitor ごとの refresh rate 差は FIFO/MAILBOX で driver 側が自動追従
+
+#### DPI scaling
+
+- Win: per-monitor DPI awareness manifest (既存 viewer で設定済 想定)、`GetDpiForWindow` 経由で scale factor 取得、UI 側 (pass 7、§4.3) で対応
+- Mac: NSWindow `backingScaleFactor`、CAMetalLayer の `contentsScale` 設定 (MoltenVK が自動)
+- Linux X11: `XGetWindowAttributes` + `XRRGetScreenResources` 経由、Wayland: `wl_output::scale`
+- swapchain image extent は scale 後の物理 pixel で確保、UI render は scale を反映した projection (LLViewerWindow 既存 path で対応)
+
+Vulkan 側は **swapchain extent = 物理 pixel** で扱う、scale 計算は LLWindow / LLViewerWindow 側責務 (現 GL 実装と同じ役割分担)
+
+### §7.6 VK_EXT_swapchain_maintenance1 採用判断
+
+#### extension の追加機能
+
+- `VK_PRESENT_MODE_FIFO_LATEST_READY_EXT`: FIFO の queue 最後の image を present、tear 無しで latency 緩和
+- `VkSwapchainPresentScalingCreateInfoEXT`: swapchain extent と window extent の mismatch を driver scale で吸収 (resize 中の transient 状態緩和)
+- `VkSwapchainPresentFenceInfoEXT`: per-image fence で present 完了を CPU side wait、§7.4 の `vkDeviceWaitIdle` を per-image wait に置換可能 (re-create 中の latency 短縮)
+
+#### 採用判断
+
+§9.3 で必須採用 listed 済、本 design で利用する具体機能:
+
+1. **`PresentFenceInfoEXT`**: re-create 時の `vkDeviceWaitIdle` を **per-image fence wait** に置換、resize 時 frame drop を 3 frame → 1 frame 程度に短縮
+2. **`PresentScalingCreateInfoEXT`**: resize 中の transient extent mismatch を `VK_PRESENT_SCALING_ONE_TO_ONE_EXT` で driver scale 吸収、ちらつき抑制
+
+`FIFO_LATEST_READY_EXT` は §7.1 cvar mapping の adaptive (= FIFO_RELAXED) 上位互換として、driver 対応駆動で将来導入。
+
+#### driver 対応
+
+2026-05-28 時点:
+- Mesa RADV / ANV / NVIDIA proprietary: 対応
+- Win NVIDIA / AMD: 対応
+- Win Intel: 一部 driver 未対応 (要 runtime feature query で fallback)
+- Mac MoltenVK: 未対応 (Metal 側に対応物なし)、`vkDeviceWaitIdle` fallback で機能維持
+
+#### runtime feature query
+
+```cpp
+VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT scm1{};
+scm1.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT;
+VkPhysicalDeviceFeatures2 f2{ .pNext = &scm1 };
+vkGetPhysicalDeviceFeatures2(physDev, &f2);
+if (scm1.swapchainMaintenance1) { /* enable + use */ }
+else                            { /* fallback to vkDeviceWaitIdle */ }
+```
+
+extension enable は § 9.3 で device extension list に追加、未対応 driver は graceful degradation (機能差は re-create latency のみ、user 影響軽微)。
 
 ---
 
 ## §8 3 OS 対応詳細 (Mac MoltenVK 制約含む)
 
-**status**: 次 session で draft (a-4 §6.4.3 の通り Mac 詳細は vk-RC 直前 phase へ後送り、本 §8 は方針のみ)
+a-4 §6.4.3 の通り **Mac 詳細は vk-RC 直前 phase で詳細化**、本 §8 は方針 + 既知 capability matrix のみ。Linux/Win は §1.1 driver coverage 表を OS 別に展開し、本 design で採用する extension の対応状況を列挙。
 
-draft 予定の項目:
-- §8.1 Linux: Vulkan native (Mesa RADV / ANV / NVIDIA / AMDGPU-PRO) の driver capability matrix
-- §8.2 Windows: NVIDIA / AMD / Intel ICD 仕様の差分
-- §8.3 Mac: MoltenVK 経由の portability subset (Vulkan 1.2 core + 一部 1.3 KHR)、§9.4 と整合
-- §8.4 WSI: VK_KHR_xcb_surface (Linux X11) / VK_KHR_wayland_surface (Linux Wayland) / VK_KHR_win32_surface (Win) / VK_EXT_metal_surface (Mac)
-- §8.5 「Linux 先行 + Mac 互換性 maintain 方針」(§4 (2) Linux 先行 + Mac 後追い の Vulkan 設計反映)
+### §8.1 Linux driver capability matrix
+
+#### driver 別 status (2026-05-28 時点)
+
+| driver | Vulkan core | 採用 KHR/EXT 対応 | AYAstorm priority |
+|---|---|---|---|
+| **Mesa RADV** (AMD open source) | 1.3 full | §9.2/§9.3 全部対応 (`swapchain_maintenance1` Mesa 24.x 以降) | **first-class** (AYAstorm 開発機 = AMD/Linux) |
+| **Mesa ANV** (Intel open source) | 1.3 full | 同上、`push_descriptor` `inline_uniform_block` OK | first-class (Intel Arc / iGPU) |
+| **NVIDIA proprietary** | 1.3 full | 全部対応、`buffer_device_address` も hardware 加速 | first-class (大半の Linux gamer) |
+| **AMDGPU-PRO** (AMD proprietary) | 1.3 | 大半対応 (`swapchain_maintenance1` 確認要)、professional 用途 | second-class (Mesa RADV で十分) |
+| **Mesa LLVMpipe** (CPU fallback) | 1.3 (低 perf) | 大半対応、本 design は GPU 前提なので非対応扱い | non-goal |
+
+#### Linux 採用 GPU の現実分布
+
+- AYAstorm 開発機 = AMD RX 7900 XTX + Mesa RADV (本線検証 baseline)
+- AYAstorm user base は Linux 比率高めだが NVIDIA proprietary 利用者も多い、RADV / NVIDIA 両 driver で動作確認必須
+- Intel ARC / iGPU は AYAstorm 規模描画では perf 不足が想定、対応 (起動 + 描画可) は維持、quality 段は要求しない
+
+#### Vulkan 1.3 minimum requirement の妥当性
+
+- Mesa 22.x 以降で RADV / ANV ともに 1.3 declare、Ubuntu 22.04 LTS 標準で 1.3 利用可
+- NVIDIA proprietary 525+ で 1.3 安定 (2022 年末以降)、現行 580+ で full support
+- Ubuntu 24.04 LTS / Fedora 40+ / Arch rolling では 1.3 が default
+- AYAstorm の Linux user base は rolling / LTS-22 以降が大半、Vulkan 1.3 minimum は妥当 (Ubuntu 20.04 LTS user は対象外、本線 GL build からの強制移行も r41+ で発生するので別途案内)
+
+### §8.2 Windows ICD 仕様の差分
+
+#### driver 別 status
+
+| driver | Vulkan core | 採用 KHR/EXT 対応 | 備考 |
+|---|---|---|---|
+| **NVIDIA GeForce / Quadro** | 1.3 full | §9.2/§9.3 全部対応 | RTX 20/30/40 系 stable、GTX 10 系も 1.3 declare |
+| **AMD Radeon Software (Adrenalin)** | 1.3 full | 全部対応、`swapchain_maintenance1` 対応済 | RDNA 1/2/3 stable |
+| **Intel ARC / Iris Xe** | 1.3 | 大半対応、`swapchain_maintenance1` 一部 driver 未対応 | runtime feature query で fallback (§7.6) |
+
+#### Windows 固有事項
+
+- ICD (Installable Client Driver) registry は driver installer が登録、loader (volk) が自動列挙
+- `VK_LAYER_KHRONOS_validation` は LunarG SDK installer 経由で global 配置、開発 build で enable
+- WHCK (Windows Hardware Compatibility Kit) Vulkan logo program 経由で driver 認定、AYAstorm 対応 driver の minimum 版数を release note に記載
+
+#### swapchain WSI
+
+- `VK_KHR_win32_surface` 経由 `HWND` + `HINSTANCE` で surface 作成
+- LLWindow Win32 implementation の HWND を流用 (現 GL は WGL 経由、Vulkan で WGL 不要化、context 削除)
+- exclusive fullscreen は `VK_EXT_full_screen_exclusive` で取得可、本 design 非採用 (§7.4)
+
+### §8.3 Mac MoltenVK 経由の portability subset
+
+#### 基本方針
+
+a-4 §6.4.3 + charter §4 (2) で確定:
+- **Linux 先行 + Mac 互換性 maintain** が r40 章の前提
+- 本 (b) 設計では「Mac portable subset から外れない範囲で設計」が制約
+- 詳細 (driver/MoltenVK 版数 / Metal API version / shader 互換) は **vk-RC 直前 phase** (r45+ 相当) で詳細化
+
+#### MoltenVK 経由の Vulkan version
+
+- MoltenVK は **Vulkan 1.2 core + 一部 1.3 KHR extension** を portable subset として export
+- 本 design で利用する 1.3 core feature (dynamic rendering / synchronization2 / push descriptor / inline uniform block) は MoltenVK で portable subset 経由対応
+- 詳細 mapping は §9.4 で確定済 (MoltenVK 1.2.x 以降)
+
+#### Mac で利用不可 / 制約のある機能
+
+| Vulkan 機能 | Mac MoltenVK status | 本 design 対応 |
+|---|---|---|
+| geometry shader | 非対応 (Metal なし) | shader 棚卸し (§2.2) でゼロ確定済、影響なし |
+| tessellation shader | Metal tessellation で代替、対応 | 棚卸しゼロ、影響なし |
+| compute shader | 対応 (Metal compute) | 棚卸しゼロ、本 design 範囲外 |
+| `VK_FORMAT_*_D24_UNORM_S8_UINT` | Metal 直接対応なし、`D32_SFLOAT_S8_UINT` に内部置換 | depth attachment format は driver query 後選定 (§4.2 では D24S8 仮、§9.4 vk-RC で確定) |
+| transfer queue | unified queue、graphics queue で transfer 兼用 | §5.5 で fallback path 確定済 |
+| `VK_EXT_swapchain_maintenance1` | 非対応 | §7.6 で `vkDeviceWaitIdle` fallback 確定済 |
+| ray tracing | 非対応 | r45+ 検討項目、本 design 範囲外 |
+
+#### Apple Silicon 固有事項
+
+- M1/M2/M3 系 = unified memory architecture (UMA)、VMA `_AUTO_PREFER_HOST` で実質 ReBAR 相当に動作 (§6.2)
+- ProMotion (120 Hz 可変 refresh) = Metal 側で自動対応、Vulkan 側追加処理不要 (§7.4)
+- macOS 14+ minimum (t-noami さん Mac 移植時に確定): Metal 3 minimum、MoltenVK 1.2.x 安定動作の前提条件
+
+#### t-noami さん Mac 移植 workflow との連携
+
+- AYAstorm Mac build は t-noami さんが担当 (CLAUDE memory `feedback_credit_t_noami_equal_billing`)、Linux build 完成 → t-noami さん検証 → Mac 固有問題は patch return の現行 flow を Vulkan 化でも維持
+- Mac build 用 autobuild 設定 (MoltenVK 同梱、LunarG SDK Mac 版) は r41 終盤 / r42-α 初期で整備
+- 本 §8.3 確定方針は t-noami さんに事前共有、Mac portage 着手前に review
+
+### §8.4 WSI (window system integration)
+
+#### platform 別 surface extension
+
+| OS | platform | extension | surface 入力 |
+|---|---|---|---|
+| Linux X11 | X11 | `VK_KHR_xcb_surface` (xcb) or `VK_KHR_xlib_surface` (Xlib) | `xcb_connection_t*` + `xcb_window_t` |
+| Linux Wayland | Wayland | `VK_KHR_wayland_surface` | `wl_display*` + `wl_surface*` |
+| Windows | Win32 | `VK_KHR_win32_surface` | `HINSTANCE` + `HWND` |
+| Mac | Cocoa + Metal | `VK_EXT_metal_surface` (推奨) or `VK_MVK_macos_surface` (legacy) | `CAMetalLayer*` |
+
+#### Linux X11/Wayland 自動選択
+
+- LLWindow Linux implementation が現在 X11 (SDL2 経由) 採用、Wayland 対応は phoenix-firestorm 系統で部分対応
+- Vulkan 化で `VK_KHR_xcb_surface` (X11) と `VK_KHR_wayland_surface` (Wayland) の両方を instance extension に enable、LLWindow 検出した backend に応じて surface create を分岐
+- Wayland native 化は AYAstorm r40+ 範囲外、r45+ 検討 (現 SDL2 X11 path を当面維持)
+
+#### Mac `VK_EXT_metal_surface` 採用
+
+- `VK_MVK_macos_surface` は MoltenVK legacy extension、Khronos 標準化された `VK_EXT_metal_surface` (Vulkan SDK 1.2+) を推奨
+- LLWindow Mac implementation で NSView → CAMetalLayer 取得、`VkMetalSurfaceCreateInfoEXT` で surface 作成
+- t-noami さんの Mac 移植 workflow で確認、現 GL Mac は AGL/CGL 経由、Vulkan 化で MoltenVK 経由に置換
+
+### §8.5 Linux 先行 + Mac 互換性 maintain 方針 (Vulkan 設計反映)
+
+#### charter §4 (2) の Vulkan 設計反映
+
+charter §4 (2)「Linux 先行 (Mac は後追い / 互換性 maintain)」を本 design 各所で具体反映:
+
+| 項目 | Linux 先行で確定 | Mac 互換 maintain 制約 |
+|---|---|---|
+| Vulkan 1.3 default (§1.1) | Linux/Win native 1.3 | Mac は 1.2 core + portable subset、不一致は §9.4 で明示 |
+| dynamic rendering (§4.1) | Linux/Win 1.3 core | Mac portable subset で対応、shader 側 modify 無し |
+| `_SRGB` swapchain (§7.3) | Linux/Win full | Mac 同 format 対応 |
+| `VK_EXT_swapchain_maintenance1` (§7.6) | Linux/Win 対応 driver で利用 | Mac 未対応 = `vkDeviceWaitIdle` fallback |
+| transfer queue (§5.5) | Linux/Win discrete GPU で並列 | Mac unified queue = graphics queue 兼用 fallback |
+| depth format D24S8 (§4.2) | Linux/Win 全 driver 対応 | Mac は D32_SFLOAT_S8_UINT に内部置換 (MoltenVK 自動) |
+| ray tracing (§9.5) | Linux/Win RTX/RDNA で将来検討 | Mac 非対応 (Metal RT は別 API)、AYAstorm 非採用方向 |
+
+#### 「互換性 maintain」の運用意味
+
+- 「Mac で全機能動く」ではなく「**Mac portable subset で起動 + 描画基本動作する**」が r40 章 minimum bar
+- 機能差 (上記表の Mac 制約列) は Mac user 向け release note で明示、Linux/Win first-class 機能を Mac で graceful degradation
+- t-noami さん Mac 移植検証で問題発生時は本 §8 / §9.4 の portable subset 前提に照らして対処 (driver 修正待ち / fallback path 追加 / 機能 OFF default Mac のみ)
+
+#### Linux 先行が許容される根拠
+
+- charter §4 (2) で明示確定 (AYAstorm 開発機 = AMD/Linux baseline)
+- 3 OS 大前提 (memory `project_ayastorm_three_platforms`) は r40 章で **段階的 (phase 化) に達成**、r41 = Linux only OK、r42-α = Win 追加、r42-β-γ-δ = Mac 追加の順 (a-4 §6.3.2)
+- r41 着手時点で Win/Mac は GL build 維持、新 user 体感の連続性は確保
 
 ---
 
@@ -744,41 +1313,211 @@ a-4 §6.4.3 で本 design では「Linux 先行 + Mac 互換性 maintain 方針�
 
 ## §10 abstraction interface 設計 (r41.5 分離 skeleton のみ)
 
-**status**: 次 session で draft (a-4 §6.4.3 の通り「分離可能な skeleton」のみ本 (b) で扱う、詳細 interface は r41.5 charter で確定)
+a-4 §6.4.3 + charter §6 / §4 (4) Phase 2 の通り、**詳細 interface は r41.5 charter で確定**。本 §10 は r41 = 本線同居 段階で「**r41.5 分離を阻害しない skeleton を本線に仕込んでおく**」ことが主眼。
 
-draft 予定の項目:
-- §10.1 r41.5 milestone の AYAstorm VK repo 分離前提 (charter §6 / §4 (4) Phase 2)
-- §10.2 interface skeleton (header のみ公開、本線 ↔ VK repo の API surface)
-- §10.3 dynamic link 構成 (本線 LGPL ↔ VK repo 独自 license の合法的境界)
-- §10.4 LL UI 変更時の defensibility (charter §7 判断軸 3 (iv) 選択肢の有効化条件)
-- §10.5 interface 詳細は r41.5 charter (= 本 doc とは別、r41 達成後に起草) で確定する旨
+### §10.1 r41.5 milestone と AYAstorm VK repo 分離前提
+
+#### charter での位置付け再掲
+
+| milestone | 内容 | 本 §10 との関係 |
+|---|---|---|
+| r41 (GL 除去 + Vulkan 空転) | Vulkan layer は本線 in-tree、描画は最低限 (clear + present 程度) | 本 §10 skeleton を本線内 `indra/llrender/vk/` 配下に配置 |
+| r41.5 (VK repo 分離) | Vulkan layer を別 repo (AYAstorm VK) に切出、本線とは header API + dynamic link で接続 | r41 で仕込んだ skeleton を r41.5 で repo 分離、本線 ↔ VK repo の API 不変 |
+| r42-α 以降 (描画機能 port) | VK repo 側で描画機能段階拡張 (g-buffer / deferred lighting / forward alpha 等) | 本線側 unmodified、VK repo 側 update のみで描画進化 |
+
+#### 分離の目的 (charter §4 (4) Phase 2 再掲)
+
+1. **license 境界の明確化**: 本線 = LGPL (LL viewer license 継承)、VK repo = 独自 license (AYAstorm 著作部分 = Vulkan 描画 layer) を dynamic link 境界で合法分離
+2. **AYAstorm 描画 layer の独立進化**: LL 上流 merge 影響を受けず、Vulkan 描画 layer 単独で release / version 管理
+3. **VK repo の reuse 可能性**: 将来別 viewer base / 別 project でも AYAstorm VK layer 再利用可、ecosystem 化
+
+#### r41 → r41.5 移行の前提
+
+r41 完成時点で本 §10 skeleton が本線にあり、`indra/llrender/vk/` を別 repo 切出 → header API のみ本線残置 (dynamic link 化) の作業が r41.5。
+
+### §10.2 interface skeleton (header surface)
+
+#### skeleton 構成方針
+
+本線 ↔ VK repo 間の API surface を **C++ pure virtual interface** + **C ABI 互換 entry point** の 2 層構成:
+
+| 層 | 役割 | r41 配置 | r41.5 分離後 |
+|---|---|---|---|
+| pure virtual interface (`ILLVKRenderer` 等) | 本線 code が呼ぶ抽象 interface | 本線 header に置く | 同左 (本線内 header) |
+| C ABI entry point (`LLVKRenderer_create()` 等) | shared library boundary、symbol 解決 | static link (r41) | dynamic link (r41.5、`.so` / `.dll` / `.dylib`) |
+| concrete 実装 (`LLVKRenderer_Impl`) | Vulkan call の実装本体 | 本線内 `indra/llrender/vk/` | **VK repo 側** に切出 |
+
+#### interface skeleton draft (例)
+
+```cpp
+// indra/llrender/llvkrenderer_interface.h (本線、r41/r41.5 両方で同じ)
+class ILLVKRenderer {
+public:
+    virtual ~ILLVKRenderer() = default;
+
+    // lifecycle
+    virtual bool initialize(const LLVKInitParams& params) = 0;
+    virtual void shutdown() = 0;
+
+    // frame
+    virtual void beginFrame() = 0;
+    virtual void endFrame() = 0;
+    virtual void present() = 0;
+
+    // resource (本線 GL world と互換維持)
+    virtual LLVKBufferHandle createVertexBuffer(size_t size, const void* data) = 0;
+    virtual LLVKTextureHandle createTexture2D(uint32_t w, uint32_t h, VkFormat fmt, const void* pixels) = 0;
+    virtual void destroyBuffer(LLVKBufferHandle h) = 0;
+    virtual void destroyTexture(LLVKTextureHandle h) = 0;
+
+    // render pass dispatch (§4.3 7 pass chain)
+    virtual void beginPass(LLVKPassID pass) = 0;
+    virtual void endPass() = 0;
+
+    // descriptor / pipeline (§3)
+    virtual LLVKPipelineHandle createGraphicsPipeline(const LLVKPipelineDesc& desc) = 0;
+    virtual void bindPipeline(LLVKPipelineHandle h) = 0;
+    virtual void pushDescriptor(uint32_t set, const LLVKDescriptorWrite* writes, uint32_t count) = 0;
+    virtual void pushConstants(VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void* data) = 0;
+    virtual void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex) = 0;
+
+    // sync (§5)
+    virtual void waitIdle() = 0;  // re-create / screenshot 時
+};
+
+// indra/llrender/llvkrenderer_factory.h (本線、C ABI 境界)
+extern "C" {
+    LLVK_API ILLVKRenderer* LLVKRenderer_create();
+    LLVK_API void LLVKRenderer_destroy(ILLVKRenderer*);
+}
+```
+
+注: 上記は **skeleton level の概念図**、具体 API は r41 実装で確定 → r41.5 charter で詳細化。
+
+#### handle 型は不透明 (opaque) 維持
+
+- `LLVKBufferHandle` / `LLVKTextureHandle` / `LLVKPipelineHandle` は `struct LLVKBufferHandle_T*` opaque pointer
+- VK repo 側で `VkBuffer + VmaAllocation + VkBufferView` を保持、本線側からは pointer のみ
+- これで VK repo 側内部 struct 変更が本線に伝播しない、ABI 安定
+
+#### 本線側依存 (header) の最小化
+
+- 本線 header は **Vulkan header 直接 include しない** (`vulkan.h` / `volk.h` を本線 header に出さない)
+- `VkFormat` 等の Vulkan enum は本線側で `LLVKFormat` 等の独自 enum に shadow (header forward declare で逃げる)、実装で variant 変換
+- 例外: `VkShaderStageFlags` 等 bit flag は同値の LLVK 別名 enum で代替
+
+→ 本線 188 file (a-1 §1.2 wrapper 局在化対象) は Vulkan header 非露出、r41.5 で VK repo 切出時に header 配布範囲が最小限で済む。
+
+### §10.3 dynamic link 構成 (本線 LGPL ↔ VK repo 独自 license 境界)
+
+#### r41.5 分離後の link 構成
+
+```
+[本線 ayastorm executable, LGPL]
+  ├── libayastorm_core.so (本線 common, LGPL)
+  ├── libayastorm_llrender.so (本線 render abstraction, LGPL)
+  │     └── dynamic link → libayastorm_vk.so (VK repo, 独自 license)
+  └── libayastorm_vk.so (VK repo 側ビルド成果物、独自 license)
+        ├── volk (MIT)
+        ├── VMA (MIT)
+        ├── LunarG Vulkan SDK headers (Apache 2.0 系)
+        └── Vulkan ICD (system installed、Khronos)
+```
+
+#### license 境界の合法性
+
+- 本線 = **LGPL** (Linden Lab viewer license 継承)
+- VK repo = **独自 license** (AYAstorm 著作物 license、proprietary or permissive 選択は r41.5 charter で確定)
+- **dynamic link 境界** は LGPL の「library との link」ルール内、VK repo を proprietary 化しても LGPL 違反にならない (LGPL の core 主張点)
+- Vulkan SDK / VMA / volk は MIT 等 permissive、再配布制約なし
+- AYAstorm executable distribution には両 binary 同梱、binary download = LGPL source 提供義務 = 本線 + LGPL part の source を別途公開 (現 AYAstorm release で実施済 flow)
+
+#### dynamic link 実装
+
+- Linux: `dlopen("libayastorm_vk.so")` + `dlsym("LLVKRenderer_create")`
+- Win: `LoadLibrary("ayastorm_vk.dll")` + `GetProcAddress`
+- Mac: `dlopen("libayastorm_vk.dylib")` 同様
+
+LLVK_API symbol 1 個 (`LLVKRenderer_create` / `LLVKRenderer_destroy`) を `extern "C"` で公開、それ以外は internal symbol (visibility hidden)。
+
+#### r41 段階 (本線同居) の link
+
+- r41 では VK repo は本線 in-tree (`indra/llrender/vk/`)、static link
+- ただし interface skeleton は §10.2 の通り C ABI + opaque handle で設計、static→dynamic 移行で本線 code 修正不要にしておく
+
+### §10.4 LL UI 変更時の defensibility
+
+charter §7 判断軸 3 (iv) で言及された「LL 上流が UI 大幅変更で AYAstorm の base UI を侵食した場合の選択肢」を本 §10 skeleton で defensibility 確保:
+
+#### 選択肢有効化条件
+
+| LL 上流 状況 | AYAstorm 側 選択肢 | 本 §10 skeleton が必要な理由 |
+|---|---|---|
+| LL UI 軽微変更 (現状想定) | upstream merge 継続、本線同居維持 | skeleton 不要 (本線 modify で対応) |
+| **LL UI 大幅変更 (例 UE 系 UI 全置換)** | **AYAstorm VK repo を別 viewer base に接続切替** | **本 §10 skeleton が前提**、別 base の渡し先で同 interface 維持 |
+| LL viewer 開発停止 | AYAstorm 独自 fork 化 + VK repo は AYAstorm fork の描画 layer として継続 | skeleton 不要 (fork 内で自由) |
+
+#### 「VK repo を別 viewer base に接続」の現実性
+
+- 別 viewer base (例: Alchemy / Catznip / 別 metaverse viewer / 自作 viewer) で AYAstorm 描画 layer を流用する場合、§10.2 interface に準じた wrapper を別 base 側に書けば即接続可能
+- 別 base が異なる API surface を持つ場合も、wrapper layer 経由で adaptation 可能 = AYAstorm 投資 (Vulkan 描画 layer) を捨てずに済む
+- これが AYAstorm の長期戦略的価値 (charter §7 で言及)
+
+#### r41.5 charter での扱い
+
+- 上記 defensibility は r41.5 charter §X (本 (b) で確定ではなく、r41.5 charter 起草時に専用 section で詳細化)
+- 本 §10 では「interface skeleton が defensibility の前提」事実のみ確定、詳細条件は r41.5 charter 預け
+
+### §10.5 interface 詳細は r41.5 charter で確定する旨
+
+#### 本 §10 の確定範囲
+
+本 work item (b) で確定したのは以下:
+
+1. r41 = 本線同居、r41.5 = VK repo 分離 (charter 既定方針の Vulkan 設計反映)
+2. interface skeleton = C++ pure virtual + C ABI entry point の 2 層 (§10.2)
+3. handle 型 opaque + 本線 header 内 Vulkan header 非露出 (§10.2)
+4. dynamic link 境界が LGPL ↔ 独自 license の合法分離 (§10.3)
+5. defensibility (別 viewer base 接続切替) の skeleton 前提 (§10.4)
+
+#### r41.5 charter で確定する事項 (本 §10 範囲外)
+
+- API surface の全 method list (本 §10.2 skeleton example は概念図、実装で確定)
+- API version 管理 (semver / 互換性保証範囲)
+- thread safety guarantee の細部
+- 別 viewer base 接続の wrapper 設計 (defensibility 詳細)
+- VK repo の license 確定 (proprietary / permissive / dual)
+- VK repo の test harness (本線非依存で VK repo 単体 test 可能性)
+- VK repo の package 配布形式 (autobuild package / 独自 release / debian package 等)
+
+#### 起草 timing
+
+- r41.5 charter は **r41 達成後** に起草 (本 §10 skeleton の実 use 経験を反映)
+- r41 達成までに本 §10 skeleton を本線 implement、API surface の実用妥当性を検証
+- r41.5 charter は r41 達成宣言と同時 or 直後に起草開始
 
 ---
 
 ## draft 進行状況の整理
 
-### §1-§5 + §9 で確定した設計 input (work item (c) 工程算定 への引継ぎ事項)
+### 全 10 section 完成 (group B + C 追加で finalize)
 
 - **Vulkan 基盤 (§1)**: Vulkan 1.3 default + volk loader + LunarG SDK 1.3.x の 3 OS 同梱 = 段階 1 (GL header wrapper 置換) の具体 dependency 確定
 - **shader chain (§2)**: glslang single-stage、SPIR-V binary を runtime load = build integration の cmake target 設計 input
 - **descriptor (§3)**: descriptor set 3 構成 (per-frame / per-material / per-draw) + push descriptor for per-draw = 段階 3 (state machine → PSO 化) の API 表面確定
 - **render pass (§4)**: dynamic rendering 採用確定、7 pass chain (shadow / g-buffer+picker / deferred lighting / forward alpha / sky / post-process / UI) 確定、r14+ post-process sub-chain (7 sub-pass) + r21.1 picker gbuffer3 inline 統合 + LLRenderTarget interface 残置移行マップ確定
 - **sync (§5)**: frame in flight = 3 確定、fence / binary / timeline 使い分け確定、image layout transition 表確定、sync2 access mask 細分化方針確定、worker thread upload timeline semaphore 同期確定、per-frame barrier sequence 確定
+- **memory allocator (§6)**: VMA 全 allocation 採用確定、memory type 5 分類 + VMA usage hint mapping 確定、per-thread staging pool 3 種別確定、defragmentation interactive (16MB/32alloc per frame、r42-α 以降) 確定、`VK_EXT_memory_budget` 経由 VRAM 監視確定
+- **swapchain (§7)**: present mode 3 候補 (FIFO / FIFO_RELAXED / MAILBOX) cvar mapping 確定、swapchain image = 3 (frame in flight align) 確定、`_SRGB` swapchain + sRGB color space 確定 (HDR 予約)、re-create sequence 確定、`VK_EXT_swapchain_maintenance1` で `vkDeviceWaitIdle` → per-image fence wait 高速化確定
+- **3 OS (§8)**: Linux driver matrix (Mesa RADV/ANV/NVIDIA/AMDGPU-PRO) + Win ICD 仕様 + Mac MoltenVK portable subset 制約 + WSI 4 surface extension + Linux 先行 + Mac maintain 方針の Vulkan 設計反映確定
 - **extension (§9)**: KHR 必須 5 + EXT 必須 5 + future 予約 3 = device feature query / `vkCreateInstance` / `vkCreateDevice` の enable list 確定
-
-### §6-§8 + §10 で詰める残り設計 input
-
-- **memory allocator (§6)**: VMA 採用 + memory type 分配 + staging buffer 戦略 + defragmentation 採用判断
-- **swapchain (§7)**: present mode / image 数 / surface format / re-create 戦略
-- **3 OS (§8)**: Linux / Win driver matrix + Mac MoltenVK portable subset 詳細
-- **abstraction (§10)**: r41.5 分離 skeleton (interface skeleton only、詳細は r41.5 charter)
+- **abstraction (§10)**: r41 本線同居 → r41.5 VK repo 分離の skeleton 確定、C++ pure virtual interface + C ABI entry point の 2 層、opaque handle で本線側 Vulkan header 非露出、dynamic link 境界で LGPL ↔ 独自 license 合法分離、defensibility (別 viewer base 接続切替) 前提
 
 ### 次 step
 
-1. 本 doc §1-§5 + §9 draft の AYA review 反映 (修正指示あれば適用)
-2. group B (§6 + §7) を draft 化
-3. group C (§8 + §10) を draft 化
-4. 10 section 揃ったら work item (b) 完了宣言、work item (c) 工程算定 (06-effort-estimation.md) 着手
+1. 本 doc §1-§10 draft の AYA review 反映 (修正指示あれば適用)
+2. work item (b) 完了宣言、03 doc §2 status を「完了」に更新
+3. work item (c) 工程算定 (`06-effort-estimation.md`) 着手
 
 ---
 
