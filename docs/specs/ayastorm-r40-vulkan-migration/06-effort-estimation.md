@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (c): 工程算定
 
-**status**: foundation group (§1 per-file + §2 per-shader) draft 完了 — §3-§8 は group A/B/C で順次 draft 予定
+**status**: foundation + group A (§3 per-milestone + §4 per-OS) draft 完了 — §5-§8 は group B/C で順次 draft 予定
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (c)
 **前置 doc**:
 - `04-portage-inventory.md` (work item (a)) — per-file 工数の input source
@@ -479,37 +479,549 @@ base 248 file の階層分布が §2.1 「A 階層 ~85% / B 階層 ~15%」と整
 
 ## §3 per-milestone 工数積算 (r41 / r41.5 / r42 / r43 / r44 / r45+)
 
-**status**: 次々 group で draft
+### §3.0 振り分け方針
 
-draft 予定の項目:
-- §3.1 r41 (GL 除去 + Vulkan 空転) work 工数 + 余裕係数 (04 doc §5.4.1 段階 1-5 base port 4-5 人月 を起点に AYA 並走化)
-- §3.2 r41.5 (VK repo 分離) work 工数 + 余裕係数 (05 doc §10 skeleton 詳細化 + dynamic link 化 + license 分離手続)
-- §3.3 r42-α (r21.1 picker port) work 工数 + 余裕係数
-- §3.4 r42-β (r30 Cinematic port) work 工数 + 余裕係数
-- §3.5 r42-γ (r14+ visual realism port) work 工数 + 余裕係数
-- §3.6 r42-δ (parity 残機能 / vk-RC 直前 polish) work 工数 + 余裕係数
-- §3.7 r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化) work 工数 + 余裕係数
-- §3.8 r45+ (visual realism 次世代 / ray tracing / HDR / GPU-driven 検討) 範囲外 (本算定では「予約のみ」、charter §6 で明示)
-- §3.9 milestone 工数積算 sum (フルタイム dev 換算)
+foundation §1+§2 算出の **12.92 PM (フルタイム dev)** を milestone に振り分け、a-3 §B.1-§B.3 で foundation 外計上指示のあった「AYAstorm 3 機能 C++ + テスト残分」と、charter §6 で確定済の r41.5 / r42-δ / r43-r44 milestone 新規 work を追加計上、最後に余裕係数 +30-50% を **per-milestone 適用**。
+
+#### foundation 12.92 PM の milestone 帰属
+
+foundation 算出値は per-file / per-shader 単位で領域別に積み上げ、milestone 区切りで分解すると以下の通り:
+
+| 出処 | 工数 (PM) | milestone 帰属 |
+|---|---|---|
+| §1.2 llrender 51 file | 3.53 | r41 (段階 1-5 全領域 GL 除去対象) |
+| §1.3 pipeline.cpp + .h | 1.05 | r41 (3 大グローバル frame context 化、最難関) |
+| §1.4 lldrawpool 13 file | 0.97 | r41 (段階 2、Vulkan command buffer 化 base) |
+| §1.5 llspatialpartition | 0.50 | r41 (段階 5、occlusion query Vulkan 化) |
+| §1.5 llviewershadermgr | 0.45 | r41 (段階 5、shader manager Vulkan 化) |
+| §1.5 llvosky + llvowlsky | 0.27 | **r42-γ** (r14+ visual realism 基盤、a-3 §B.2) |
+| §1.6 wrapper + platform-specific | 1.00 | r41 (段階 1 + 例外 10 file) |
+| §2.2 base 248 file SPIR-V 化 | 2.32 | r41 (build integration + cross compile main pass) |
+| §2.3 AYAstorm picker shader 2 file | 0.10 | **r42-α** (a-3 §B.1) |
+| §2.3 AYAstorm Cinematic shader 4 file | 0.40 | **r42-β** (a-3 §B.3) |
+| §2.3 AYAstorm visual realism shader 7 file | 0.60 | **r42-γ** (a-3 §B.2) |
+| §2.4 descriptor set 反映 (script 整備 + 全 261 file 波及) | 1.73 | r41 (script 整備 + 全 file 一括 layout 注入、AYAstorm 改変 shader は §2.3 工数内で smoke test 込み) |
+| **foundation 合計** | **12.92** | r41 11.55 + r42-α 0.10 + r42-β 0.40 + r42-γ 0.87 |
+
+#### a-3 §B.1-§B.3 で foundation 外計上指示済 work
+
+foundation §2.3 注 (06 doc §2.3 末尾) で「shader 部分のみ抽出、C++ + テスト工数は §3 milestone で別計上」と明示済の残分:
+
+| 出処 | 残分 work | 工数 (PM) | milestone |
+|---|---|---|---|
+| a-3 §B.1 picker 0.5 PM | pipeline.cpp 4 LOC 0.05 + render pass attachment 設計 0.20 + read-pick テスト 0.15 | **0.40** | r42-α |
+| a-3 §B.3 Cinematic 2-3 PM 中央値 2.5 | pipeline.cpp 6 分岐 frame context bleed 0.20 + DoF state enum 化 0.50 + visual quality テスト 1.0 + 余 0.15 | **1.85** | r42-β |
+| a-3 §B.2 visual realism 2-3 PM 中央値 2.5 | post-process descriptor set 整備 (05 doc §3) 0.30 + pipeline.cpp post-process chain 5 LOC 0.10 + performance profile 0.50 + visual A/B 0.50 | **1.40** | r42-γ |
+
+a-3 §B.1-§B.3 中央値合計 5.5 PM = foundation 帰属 (0.10 + 0.40 + 0.87) + 追加 (0.40 + 1.85 + 1.40) = 1.37 + 3.65 = 5.02 PM (整合 ≈、a-3 中央値内)。
+
+#### a-3 範囲外の新規 milestone work
+
+a-3 段階 port + §B.x AYAstorm 3 機能 だけでカバーされない milestone (charter §6 で確定済) の新規算定:
+
+| milestone | 内容 | 工数 (PM) |
+|---|---|---|
+| r41.5 (VK repo 分離) | LLVKRenderer interface 詳細化 (05 doc §10.2) 0.30 + directory 移動 + dynamic link 化 0.20 + 本線側 header / build 整備 0.20 + license 分離手続 0.30 | **1.00** |
+| r42-δ (parity 残機能 / vk-RC 直前 polish) | r25-r29 3D stream Vulkan 描画 stage 接続 0.50 + r1-r13 audio 系の Vulkan 非依存確認 0.30 + vk-RC 直前 regression sweep + 残機能 polish 0.70 | **1.50** |
+| r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化) | Mac MoltenVK 詳細化 (05 doc §8.3 / §9.4 portable subset check + t-noami さん workflow 連携) 1.00 + Win driver matrix 対応 (05 doc §8.2) 0.50 + 性能 polish (frame in flight tuning / barrier sequence / VMA strategy) 0.50 | **2.00** |
+| **a-3 範囲外 新規 合計** | — | **4.50** |
+
+§4 (3 OS 増分) と一部 overlap する Mac/Win 部分は §4 で重複排除予定 (本 §3 はあくまで milestone 軸、§4 は OS 軸)。
+
+#### 余裕係数の per-milestone 適用方針
+
+charter §4 (3) + 03 doc §5 算定軸 5 = work 工数 + **30-50%** 余裕。本 §3 では milestone 性質別に分配:
+
+| milestone | 余裕係数 | 根拠 |
+|---|---|---|
+| r41 | +40% | 新領域 (Vulkan 初見) + 段階 4 設計議論 1-2 月 (a-3 §5.4.1 段階 4 注記) |
+| r41.5 | +50% | license 設計議論 + 初分離 unknown (proprietary / permissive 選択 + 法的 review) |
+| r42-α | +30% | touchpoint 局在 + AYAstorm 既存実装あり、低 risk |
+| r42-β | +40% | DoF state enum 化 + visual quality verify (live A/B 必須) |
+| r42-γ | +40% | post-process descriptor 整備 + perf profile (sky/atmospherics は r14+ 章再演) |
+| r42-δ | +50% | vk-RC 直前 unknown (parity 残機能の発掘 cost) |
+| r43-r44 | +50% | Mac t-noami workflow 不確定性 + 性能 polish の iterate |
+
+平均余裕 ≈ +43% (charter §4 (3) 30-50% 範囲内、後半 milestone に重み付け)。本 §3 は **中央値想定**、§6 で uncertainty band の上下振れを別途反映。
+
+### §3.1 r41 (GL 除去 + Vulkan 空転) work 工数
+
+#### r41 達成基準 (charter §5)
+
+- C++ critical path 約 63K LOC + GLSL shader 248 file の完全置換
+- Vulkan 空転 (描画は最低限、segfault せず frame loop が回る + 何らかの描画が出る)
+- AYAstorm 固有機能の port は r42+ で行う、r41 では parity 不要
+
+#### foundation 帰属 (11.55 PM)
+
+| 領域 | 工数 (PM) |
+|---|---|
+| §1.2 llrender 51 file | 3.53 |
+| §1.3 pipeline.cpp + .h | 1.05 |
+| §1.4 lldrawpool 13 file | 0.97 |
+| §1.5 llspatialpartition | 0.50 |
+| §1.5 llviewershadermgr | 0.45 |
+| §1.6 wrapper + platform-specific 10 file | 1.00 |
+| §2.2 base 248 file SPIR-V 化 | 2.32 |
+| §2.4 descriptor set 反映 (script 整備 + 全 261 file layout 注入 + smoke test) | 1.73 |
+| **r41 foundation 帰属** | **11.55** |
+
+#### 追加 work
+
+なし (a-3 段階 1-5 = foundation §1 + §2 で全カバー、r41 で foundation 外追加 work は計上しない)。
+
+#### work 工数 + 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| base work (foundation 帰属) | 11.55 |
+| 余裕係数 +40% (新領域 + 段階 4 設計議論) | +4.62 |
+| **r41 total (フルタイム dev 換算)** | **~16.17** |
+
+### §3.2 r41.5 (VK repo 分離) work 工数
+
+#### r41.5 達成基準 (charter §6 + 05 doc §10)
+
+- Vulkan code の abstraction 化 (本線 ↔ VK repo 間の API surface = C++ pure virtual + C ABI entry point、05 doc §10.2 skeleton 詳細化)
+- AYAstorm VK repo の新規立ち上げ (GitHub 二次 fork 制約に依らない完全独立 git init)
+- 物理分離 = directory 単位移動 (Vulkan layer を本線 `ayastorm-release` から VK repo へ)
+- dynamic link 構成 (本線 LGPL ↔ VK repo 独自 license、05 doc §10.3 で license 境界の合法性確定済)
+- ビルド統合 (本線 build script から VK repo を fetch + build + link)
+
+描画 stage は進行しない構造 refactor milestone (charter §6 r42+ ロードマップ表 r41.5 「描画 stage 進行なし」)。
+
+#### foundation 帰属
+
+なし (foundation §1+§2 は r41 までで完結、r41.5 構造 refactor は a-3 / foundation 範囲外)。
+
+#### 追加 work
+
+| 項目 | 工数 (PM) |
+|---|---|
+| LLVKRenderer interface 詳細化 (05 doc §10.2 skeleton から実装定義、handle opaque 化 + Vulkan header 非露出) | 0.30 |
+| directory 単位移動 + dynamic link 化 (`.so` / `.dll` / `.dylib` 構成、05 doc §10.3) | 0.20 |
+| 本線側 header / build script 整備 (autobuild 連携、3 OS で dlopen / LoadLibrary 経路化) | 0.20 |
+| license 分離手続 (legal review + repo init + 初版 release 整備 + LGPL ↔ 独自 license 境界の社内 audit) | 0.30 |
+| **r41.5 追加 work 合計** | **1.00** |
+
+#### work 工数 + 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| base work (追加) | 1.00 |
+| 余裕係数 +50% (license 設計議論 + 初分離 unknown) | +0.50 |
+| **r41.5 total (フルタイム dev 換算)** | **~1.50** |
+
+注: r41.5 は r41 達成後の構造 refactor、描画 stage 進行なしのため visual regression risk は低く、余裕係数は license + 法的 review の不確定性が支配的。
+
+### §3.3 r42-α (r21.1 self-rigged picker port) work 工数
+
+#### r42-α 達成基準 (a-4 §6.3.2 + a-3 §B.1)
+
+- mObjectIDBuffer (gbuffer3 inline attachment) を Vulkan render pass attachment に統合 (05 doc §3.4 + §4.5)
+- picker shader 2 file (`fsObjectIDV.glsl` + `fsObjectIDF.glsl`) SPIR-V 化
+- read-pick (CPU 側 ObjectID readback) の Vulkan staging buffer + transfer queue 経路化
+- 単一回 click → ObjectID 取得 (existing AYAstorm r21.1 機能 parity)
+
+#### foundation 帰属 (0.10 PM)
+
+| 領域 | 工数 (PM) |
+|---|---|
+| §2.3 picker shader 2 file (fsObjectIDV/F.glsl SPIR-V 化) | 0.10 |
+| **r42-α foundation 帰属** | **0.10** |
+
+#### 追加 work (a-3 §B.1 残分)
+
+| 項目 | 工数 (PM) |
+|---|---|
+| pipeline.cpp 4 LOC (mObjectIDBuffer setup → Vulkan attachment binding) | 0.05 |
+| render pass attachment 設計 + inline 統合 (05 doc §4.5、deferred main pass 内 inline) | 0.20 |
+| read-pick テスト (single click + drag select、existing AYAstorm test 流用) | 0.15 |
+| **r42-α 追加 work 合計** | **0.40** |
+
+a-3 §B.1 工数感 0.5 PM 合計 ≈ foundation 0.10 + 追加 0.40 = 0.50 PM、整合 ✓。
+
+#### work 工数 + 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| base work (foundation + 追加) | 0.50 |
+| 余裕係数 +30% (touchpoint 局在 + 既存実装あり、低 risk) | +0.15 |
+| **r42-α total (フルタイム dev 換算)** | **~0.65** |
+
+### §3.4 r42-β (r30 Cinematic mode port) work 工数
+
+#### r42-β 達成基準 (a-4 §6.3.2 + a-3 §B.3)
+
+- DoF state enum 化 (現 pipeline.cpp 6 分岐 → frame context 統合)
+- Cinematic 関連 shader 4 file (volumetricLightF class1/class3 + screenSpaceReflUtil class3 + DoF 関連 1 file) SPIR-V 化
+- visual quality テスト (r30 Cinematic Controls 13 件 BD live cvar との live A/B、既存 release branch `experiment/r30-bd-improvement-cinematic-optin` ベース)
+- AYAstorm View (mode==2 = Cinematic) の parity 完遂
+
+#### foundation 帰属 (0.40 PM)
+
+| 領域 | 工数 (PM) |
+|---|---|
+| §2.3 Cinematic shader 4 file (volumetricLightF×2 + screenSpaceReflUtil + DoF) | 0.40 |
+| **r42-β foundation 帰属** | **0.40** |
+
+#### 追加 work (a-3 §B.3 残分)
+
+| 項目 | 工数 (PM) |
+|---|---|
+| pipeline.cpp 6 分岐 frame context bleed (Cinematic 関連 DoF mode 分岐の LLPipelineFrameContext 統合) | 0.20 |
+| DoF state enum 化 (現 hardcoded → enum class + frame context 経由配信) | 0.50 |
+| visual quality テスト (BD live cvar 13 件 + Cinematic Controls の visual A/B、live screenshot 比較) | 1.00 |
+| 余 (regression sweep / 残細部 polish) | 0.15 |
+| **r42-β 追加 work 合計** | **1.85** |
+
+a-3 §B.3 工数感 2-3 PM 中央値 2.5 PM ≈ foundation 0.40 + 追加 1.85 = 2.25 PM、整合 ✓ (中央値内、適切)。
+
+#### work 工数 + 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| base work (foundation + 追加) | 2.25 |
+| 余裕係数 +40% (DoF state enum 化 + visual quality verify) | +0.90 |
+| **r42-β total (フルタイム dev 換算)** | **~3.15** |
+
+### §3.5 r42-γ (r14+ visual realism port) work 工数
+
+#### r42-γ 達成基準 (a-4 §6.3.2 + a-3 §B.2)
+
+- post-process pass chain 統合 (05 doc §4.4 r14+ post-process 7 sub-pass の Vulkan render pass chain 化)
+- visual realism 関連 shader 7 file (vignette / tone map / godrays / bloom / glow / atmospherics 関連) SPIR-V 化
+- llvosky + llvowlsky (2.2K LOC) の sky dome + atmospherics Vulkan 化
+- performance profile (post-process pass chain の per-pass cost 計測)
+- visual A/B (r14+ visual realism の既存 AYAstorm 実装と Vulkan port の visual 同等性確認)
+
+#### foundation 帰属 (0.87 PM)
+
+| 領域 | 工数 (PM) |
+|---|---|
+| §1.5 llvosky + llvowlsky (r14+ 基盤、sky dome + atmospherics) | 0.27 |
+| §2.3 visual realism shader 7 file | 0.60 |
+| **r42-γ foundation 帰属** | **0.87** |
+
+#### 追加 work (a-3 §B.2 残分)
+
+| 項目 | 工数 (PM) |
+|---|---|
+| post-process descriptor set 整備 (05 doc §3 7 sub-pass 分の sampler binding 設計) | 0.30 |
+| pipeline.cpp post-process chain 5 LOC (post-process pass dispatch の Vulkan render pass chain 接続) | 0.10 |
+| performance profile (post-process per-pass cost、`VK_EXT_calibrated_timestamps` 経由) | 0.50 |
+| visual A/B (godrays / volumetricLight / vignette / scene buffer alpha invariant 確認、memory `project_aya_visual_realism_alpha_protect.md`) | 0.50 |
+| **r42-γ 追加 work 合計** | **1.40** |
+
+a-3 §B.2 工数感 2-3 PM 中央値 2.5 PM ≈ foundation 0.87 + 追加 1.40 = 2.27 PM、整合 ✓ (中央値内、適切)。
+
+#### work 工数 + 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| base work (foundation + 追加) | 2.27 |
+| 余裕係数 +40% (post-process descriptor 整備 + perf profile + visual A/B の iterate) | +0.91 |
+| **r42-γ total (フルタイム dev 換算)** | **~3.18** |
+
+### §3.6 r42-δ (parity 残機能 / vk-RC 直前 polish) work 工数
+
+#### r42-δ 達成基準 (charter §6 仮 line up + a-4 §6.3.2 補完)
+
+- r25-r29 3D stream (audio 系) の Vulkan 描画 stage 接続確認 (描画 stage 軽依存だが Vulkan 化で接続 cleanup 必要)
+- r1-r13 audio 系の Vulkan 非依存確認 (FMOD + Dullahan callback path が Vulkan に invariant、charter §6 仮 line up で audio は r42 並行 port)
+- vk-RC 直前 regression sweep (r41 / r41.5 / r42-α/β/γ で発見の bug の集中 polish)
+- AYAstorm r1-r30 全機能 parity 完遂 (charter §4 (1) 完遂 goal の前段、Linux/Win baseline)
+
+#### foundation 帰属
+
+なし (foundation §1+§2 は r41 + AYAstorm 3 機能 で完結、r42-δ parity 残機能 は a-3 範囲外)。
+
+#### 追加 work
+
+| 項目 | 工数 (PM) |
+|---|---|
+| r25-r29 3D stream Vulkan 描画 stage 接続 (NDI / OBS 等の Vulkan-side hook 検討、05 doc §9.2 `VK_KHR_external_memory_*` 予約のみ採用判断) | 0.50 |
+| r1-r13 audio 系 Vulkan 非依存確認 (FMOD callback + Dullahan path の Vulkan-agnostic invariant 検証) | 0.30 |
+| vk-RC 直前 regression sweep (r41-r42-γ 残 bug 集中 fix、parity 残機能 polish) | 0.70 |
+| **r42-δ 追加 work 合計** | **1.50** |
+
+#### work 工数 + 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| base work (追加) | 1.50 |
+| 余裕係数 +50% (vk-RC 直前 unknown + parity 残機能の発掘 cost) | +0.75 |
+| **r42-δ total (フルタイム dev 換算)** | **~2.25** |
+
+### §3.7 r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化) work 工数
+
+#### r43-r44 達成基準 (charter §6 仮 line up + 05 doc §8.3 / §9.4)
+
+- Mac MoltenVK portable subset 詳細化 (05 doc §9.4 で vk-RC 直前 phase 詳細化指示済、本 milestone で実施)
+- Win driver matrix 対応 (05 doc §8.2 NVIDIA / AMD / Intel Arc 完全動作、`VK_EXT_swapchain_maintenance1` Intel Arc 一部未対応 fallback 等)
+- 性能 polish (frame in flight tuning / barrier sequence / VMA allocation strategy の本格 tuning、05 doc §5 + §6)
+- 3 OS parity 完遂 (charter §4 (1) vk-RC 相当、AYAstorm r1-r30 全機能 Linux + Win + Mac 全部で Vulkan 上に再現)
+
+#### foundation 帰属
+
+なし (foundation は Linux baseline、Mac/Win 増分は §4 で OS 軸別途算出、本 §3.7 では milestone 軸の追加 work を計上)。
+
+#### 追加 work
+
+| 項目 | 工数 (PM) |
+|---|---|
+| Mac MoltenVK 詳細化 (portable subset check + t-noami さん workflow 連携、05 doc §8.3 + §9.4) | 1.00 |
+| Win driver matrix 対応 (NVIDIA / AMD / Intel Arc 全 driver 動作確認 + 旧 driver fallback、05 doc §8.2) | 0.50 |
+| 性能 polish (frame in flight tuning / barrier sequence / VMA allocation strategy 微調整) | 0.50 |
+| **r43-r44 追加 work 合計** | **2.00** |
+
+注: Mac / Win 増分の OS 軸別積算は §4 で重複排除しつつ別途算出、本 §3.7 は **milestone 軸の Linux baseline 上の追加 polish 工数** (3 OS 増分の OS 軸算定は §4)。
+
+#### work 工数 + 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| base work (追加) | 2.00 |
+| 余裕係数 +50% (Mac t-noami workflow 不確定性 + 性能 polish の iterate) | +1.00 |
+| **r43-r44 total (フルタイム dev 換算)** | **~3.00** |
+
+### §3.8 r45+ (visual realism 次世代 / ray tracing / HDR / GPU-driven) — 本算定範囲外
+
+#### charter §6 + 05 doc §9.5 の位置付け
+
+- vk-RC parity 完遂 (= r44 達成) **後**、AYAstorm visual realism 次世代の自由扱い章
+- 05 doc §9.5 で `VK_KHR_ray_tracing_pipeline` + `VK_KHR_acceleration_structure` + `VK_EXT_mesh_shader` を将来 extension として **予約のみ採用、本 design 範囲外**
+- charter §3 「無期限 / AYA life plan」前提で、r45+ work 工数は本算定 (work item (c)) では算定しない
+
+#### 本算定範囲外の根拠
+
+- charter §3 「時間軸では撤退条件を設けない」 → r45+ 着手 timing は r44 達成後の AYAstorm 体制 / industry 状況 / LL 着地 status 次第で判断 (charter §7 LL 着地時判断指針 + §8 plan B trigger 評価対象)
+- 本算定の目的 = r40 達成 (= 工程プラン完成) 時点で r41-r44 の vk-RC 完遂までの算定、r45+ は parity 完遂後の self-driven 章として独立算定 (将来別 work item or 別章 charter)
+
+### §3.9 milestone 工数積算 sum (フルタイム dev 換算)
+
+#### milestone 別 work 工数 sum (余裕係数前 + 適用後)
+
+| milestone | foundation 帰属 (PM) | 追加 work (PM) | base work (PM) | 余裕係数 | total (PM) |
+|---|---|---|---|---|---|
+| r41 (GL 除去 + Vulkan 空転) | 11.55 | 0 | 11.55 | +40% | **16.17** |
+| r41.5 (VK repo 分離) | 0 | 1.00 | 1.00 | +50% | **1.50** |
+| r42-α (r21.1 picker port) | 0.10 | 0.40 | 0.50 | +30% | **0.65** |
+| r42-β (r30 Cinematic port) | 0.40 | 1.85 | 2.25 | +40% | **3.15** |
+| r42-γ (r14+ visual realism port) | 0.87 | 1.40 | 2.27 | +40% | **3.18** |
+| r42-δ (parity 残機能 / vk-RC 直前 polish) | 0 | 1.50 | 1.50 | +50% | **2.25** |
+| r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化) | 0 | 2.00 | 2.00 | +50% | **3.00** |
+| **§3.9 sum (Linux baseline, vk-RC parity 完遂まで)** | **12.92** | **8.15** | **21.07** | — | **~29.90** |
+| r45+ (visual realism 次世代) | (本算定範囲外、charter §3 / §6) | — | — | — | — |
+
+#### a-3 工数感との突合
+
+| 算定 | 工数 (PM、フルタイム dev) |
+|---|---|
+| a-3 §5.4.1 段階 1-5 (base port、r41 相当) 中央値 | 4.5 |
+| a-3 §5.4.2 AYAstorm 3 機能 (r42-α/β/γ) 中央値 | 3.0 |
+| a-3 合計 | **7.5** |
+| 本 §3 r41 + r42-α/β/γ (余裕係数前 base work) | 11.55 + 0.50 + 2.25 + 2.27 = **16.57** |
+| 本 §3 r41 + r42-α/β/γ (余裕係数適用後) | 16.17 + 0.65 + 3.15 + 3.18 = **23.15** |
+| 差 (base) | +9.07 PM (+121%) |
+| 差 (余裕係数込) | +15.65 PM (+209%) |
+
+差の主因:
+1. **per-file 精緻化** (foundation §1.7 の +3.27 PM、§1.7 で説明) → +3.27 PM
+2. **shader 工数の新規可視化** (foundation §2.5 の +4.05 PM、a-3 で未明示の SPIR-V cross compile + descriptor set 反映) → +4.05 PM
+3. **AYAstorm 3 機能の C++ + テスト残分** (a-3 §B.x で foundation 外計上指示済、§3.0 で取込) → 0.40 + 1.85 + 1.40 = +3.65 PM (a-3 §B.x 内含は元から計上のため重複に見えるが、foundation §2.3 は shader 部分のみ抽出のため §3 で C++ 部分が新規に表面化)
+4. **余裕係数 +30-50% per milestone 適用** → +6.58 PM (差の余裕係数込 - 差 base = 15.65 - 9.07 = 6.58、本 §3 で初適用、a-3 は work 工数のみ提示)
+
+合計差 ≈ 3.27 + 4.05 + 3.65 = 10.97 PM (base) + 6.58 (余裕係数) = 17.55 PM、概算 ≈ 15.65 PM と整合 (差は r42-α/β/γ の foundation 帰属 + 追加 の per-milestone 配分微差)。
+
+#### a-3 範囲外の新規 milestone 分
+
+r41.5 + r42-δ + r43-r44 = 1.00 + 1.50 + 2.00 = 4.50 PM (work 工数) → 余裕係数適用後 = 1.50 + 2.25 + 3.00 = 6.75 PM。
+
+a-3 段階 port + AYAstorm 3 機能では未明示の milestone で、charter §6 仮 line up + 05 doc §8/§10 で本算定段階に新規導入。
+
+#### r45+ 範囲外の宣言
+
+§3.8 の通り、r45+ visual realism 次世代は本算定範囲外。vk-RC parity 完遂 (= r44 達成) までの 29.90 PM (フルタイム dev、Linux baseline) が本 §3 算出範囲。
+
+#### 本算定 base 値の確定
+
+**§3.9 sum 21.07 PM (work 工数、foundation 12.92 + 追加 8.15) / 29.90 PM (余裕係数適用後、平均 +42%) を本算定の milestone work 値 (Linux baseline、フルタイム dev、本職並走 ratio + 学習曲線 適用前) として採用**。§4 で 3 OS 増分、§5 で本職並走 ratio + 学習曲線、§6 で uncertainty band 適用予定。
 
 ---
 
 ## §4 3 OS per-OS 増分
 
-**status**: 次々 group で draft
+### §4.0 算定方針
 
-draft 予定の項目:
-- §4.1 Linux first-class baseline 工数 (§3 milestone work 工数の全体)
-- §4.2 Win 追加 増分工数 (WSI win32 / driver matrix 対応 / Win-specific bug fix 余裕、05 doc §8.2)
-- §4.3 Mac 追加 増分工数 (MoltenVK 経由 + portable subset 制約対応 + t-noami さん移植 workflow との連携、05 doc §8.3 + §9.4)
-- §4.4 OS 別 milestone 着手 timing 反映 (charter §4 (2) Linux 先行 → r42-α Win 追加 → r42-β-γ-δ Mac 追加の段階対応)
-- §4.5 3 OS 合計 工数 (フルタイム dev 換算、Linux × 1.0 + Win 増分 + Mac 増分)
+§3 milestone 工数は **Linux baseline** (charter §4 (2) Linux 先行 + AYAstorm 開発機 = AMD/Linux baseline)。本 §4 で Win / Mac の **増分工数** を OS 軸で算出。
+
+#### 3 OS 大前提と Linux 先行の整合 (memory `project_ayastorm_three_platforms`)
+
+- AYAstorm は 3 OS 完遂が大前提、Linux 単独判断は明示指示が無い限り取らない
+- charter §4 (2) で「Linux 先行 → Win/Mac 後追い」が明示指示の例外、3 OS 完遂自体は維持
+- 段階対応 = r41 = Linux only OK / r42-α 以降 Win 追加 / r42-β-γ-δ で Mac 追加 (a-4 §6.3.2 + 05 doc §8.5)
+- vk-RC parity 完遂 (= r44 達成) 時点で 3 OS parity を達成
+
+#### 増分の OS 軸算定方針
+
+- Linux baseline = §3 milestone work 全体 (foundation §1+§2 12.92 PM + a-3 §B.x 残分 3.65 PM + a-3 範囲外新規 4.50 PM = base 21.07 PM、余裕係数 +42% 適用後 ≈ 29.90 PM)
+- Win 増分 = Linux baseline に対する +Δ (driver matrix / WSI win32 / 旧 driver fallback 等、05 doc §8.2)
+- Mac 増分 = Linux baseline に対する +Δ (MoltenVK 経由 / portable subset 制約対応 / t-noami さん workflow 連携、05 doc §8.3 + §9.4)
+- §3.7 r43-r44 milestone work 内で **「Mac MoltenVK 詳細化 1.00 + Win driver matrix 0.50」** は milestone 軸で算出済、本 §4 で OS 軸別途算出する分は **重複排除済の純増分**
+
+### §4.1 Linux first-class baseline 工数
+
+#### Linux baseline 確定 (charter §4 (2) + 05 doc §8.1)
+
+- 開発機 = AMD RX 7900 XTX + Mesa RADV (本線検証 baseline、05 doc §8.1 Linux driver capability matrix)
+- Vulkan 1.3 default、Mesa 22.x 以降 + NVIDIA proprietary 525+ で 1.3 安定 (05 doc §8.1)
+- WSI = `VK_KHR_xcb_surface` / `VK_KHR_wayland_surface` (LLWindow Linux implementation の X11/Wayland backend に応じて分岐、05 doc §8.4)
+- driver coverage = Mesa RADV (first-class) + Mesa ANV (first-class) + NVIDIA proprietary (first-class) + AMDGPU-PRO (second-class) + LLVMpipe (non-goal)
+
+#### Linux baseline 工数
+
+§3.9 sum で算出済:
+
+| 項目 | 工数 (PM) |
+|---|---|
+| Linux baseline base work (foundation + 追加) | 21.07 |
+| Linux baseline 余裕係数適用後 (per-milestone、平均 +42%) | 29.90 |
+
+注: §3 で算出した work 工数 全体が Linux baseline。Win / Mac 増分は別途 §4.2 / §4.3 で OS 軸算出。§3.7 r43-r44 milestone 内で「Mac MoltenVK 詳細化 1.00 + Win driver matrix 0.50」を計上済のため、本 §4.2 / §4.3 では r43-r44 milestone 計上分以外の **純増分** のみ算出 (重複排除)。
+
+### §4.2 Win 追加 増分工数
+
+#### Win 追加の Vulkan 設計反映 (05 doc §8.2 + §8.4)
+
+- driver coverage = NVIDIA GeForce/Quadro (1.3 full、RTX 20/30/40 系 stable) + AMD Radeon Software (1.3 full、RDNA 1/2/3 stable) + Intel ARC/Iris Xe (1.3、`VK_EXT_swapchain_maintenance1` 一部 driver 未対応)
+- WSI = `VK_KHR_win32_surface` (LLWindow Win32 implementation の HWND 流用、現 GL WGL 経由は廃止)
+- ICD registry は driver installer が登録、loader (volk) が自動列挙
+- LunarG SDK Win 版 (Linux と path 構造の差分、autobuild Win 統合)
+- WHCK (Windows Hardware Compatibility Kit) Vulkan logo program 経由 driver 認定 minimum 版数の release note 整備
+
+#### Win 増分 work 内訳
+
+| 項目 | 工数 (PM) | 出処 |
+|---|---|---|
+| LLWindow Win32 surface 化 (WGL 廃止 → `VK_KHR_win32_surface`) | 0.20 | 05 doc §8.2 + §8.4 |
+| Win driver matrix 動作確認 (NVIDIA / AMD / Intel Arc) — §3.7 計上分超過 | 0.30 | 05 doc §8.2 (§3.7 r43-r44 で 0.50 計上済 → §4.2 では超過分の +0.30 のみ重複排除後) |
+| 旧 driver fallback path 追加実装 (`VK_EXT_swapchain_maintenance1` Intel Arc 未対応 → `vkDeviceWaitIdle` fallback、05 doc §7.6) | 0.20 | 05 doc §7.6 + §8.2 |
+| LunarG SDK Win 統合 (autobuild、path 構造差吸収) | 0.15 | 05 doc §1.3 |
+| Win-specific bug fix 余裕 (driver-specific quirks、起動時 instance 初期化 timing 等) | 0.50 | (経験則、Linux baseline の +20-30% 想定) |
+| **Win 増分 base work 合計** | **1.35** | — |
+
+注: §3.7 r43-r44 milestone で Win driver matrix 0.50 計上済。本 §4.2 では「LLWindow Win32 surface 化 + 旧 driver fallback + LunarG SDK 統合 + Win-specific bug fix 余裕」の純増分 1.05 PM + r43-r44 内 driver matrix 超過分 0.30 PM = 1.35 PM。
+
+#### Win 増分 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| Win 増分 base work | 1.35 |
+| 余裕係数 +40% (Win-specific bug fix +20-30% / driver matrix の不確定性 +10% / WHCK 認定の手続 +10%) | +0.54 |
+| **Win 増分 total (フルタイム dev 換算)** | **~1.89** |
+
+### §4.3 Mac 追加 増分工数
+
+#### Mac 追加の Vulkan 設計反映 (05 doc §8.3 + §9.4 + §8.4)
+
+- MoltenVK 経由 (Vulkan 1.2 core + 一部 1.3 KHR portable subset、05 doc §8.3)
+- Apple Silicon (M1/M2/M3) UMA → VMA `_AUTO_PREFER_HOST` で実質 ReBAR 相当 (05 doc §6.2 + §8.3)
+- macOS 14+ minimum (Metal 3 minimum、MoltenVK 1.2.x 安定動作の前提、05 doc §8.3)
+- WSI = `VK_EXT_metal_surface` 採用 (NSView → CAMetalLayer、05 doc §8.4)
+- Mac で利用不可 / 制約のある機能 (05 doc §8.3): geometry shader 非対応 (shader 棚卸しゼロ確定で影響なし) / D24S8 → D32_SFLOAT_S8_UINT 内部置換 (MoltenVK 自動) / transfer queue unified queue 兼用 fallback / `VK_EXT_swapchain_maintenance1` 非対応 → `vkDeviceWaitIdle` fallback / ray tracing 非対応 (r45+ 範囲外)
+- t-noami さん Mac 移植 workflow との連携 (Linux build 完成 → t-noami さん検証 → Mac 固有問題 patch return、memory `feedback_credit_t_noami_equal_billing`)
+
+#### Mac 増分 work 内訳
+
+| 項目 | 工数 (PM) | 出処 |
+|---|---|---|
+| LLWindow Mac surface 化 (CGL/AGL 廃止 → `VK_EXT_metal_surface`、NSView → CAMetalLayer) | 0.30 | 05 doc §8.4 |
+| MoltenVK portable subset 対応 (本 design 利用 feature の MoltenVK 実装確認 + `VK_KHR_portability_subset` enable) — §3.7 計上分超過 | 0.40 | 05 doc §8.3 + §9.4 (§3.7 r43-r44 で 1.00 計上済 → §4.3 では超過分の +0.40 のみ重複排除後) |
+| Apple Silicon UMA 対応 (VMA `_AUTO_PREFER_HOST` 動作確認、`VK_EXT_memory_budget` query 整合) | 0.20 | 05 doc §6.2 + §6.6 + §8.3 |
+| MoltenVK 1.2 core fallback path (1.3 機能の 1.2 fallback コード追加、dynamic rendering / sync2 / push descriptor 等の MoltenVK 実装 path) | 0.40 | 05 doc §8.3 + §9.1-§9.3 |
+| MSL (Metal Shading Language) 経由 shader 動作確認 (spirv-cross MSL 変換 + MoltenVK runtime、248 + 13 file の Mac 上 smoke test) | 0.50 | 05 doc §2 + §9.4 |
+| t-noami さん移植 workflow 連携 (Linux build 完成 → 検証 → patch return cycle、本 §8.3 確定方針の事前共有 + review) | 0.30 | 05 doc §8.3 |
+| Mac-specific bug fix 余裕 (macOS 14+ Metal 3 制約、MoltenVK 個別 quirk) | 0.60 | (経験則、Linux baseline の +30-40% 想定、t-noami さん workflow の cycle 待ち含む) |
+| **Mac 増分 base work 合計** | **2.70** | — |
+
+注: §3.7 r43-r44 milestone で Mac MoltenVK 詳細化 1.00 計上済。本 §4.3 では「LLWindow Mac surface 化 + UMA 対応 + 1.2 fallback path + MSL 動作確認 + t-noami workflow 連携 + Mac-specific bug fix 余裕」の純増分 2.30 PM + r43-r44 内 MoltenVK 詳細化超過分 0.40 PM = 2.70 PM。
+
+#### Mac 増分 余裕係数
+
+| 項目 | 工数 (PM) |
+|---|---|
+| Mac 増分 base work | 2.70 |
+| 余裕係数 +50% (t-noami さん workflow 不確定性 + MoltenVK portable subset の untested feature + macOS 14+ minimum の動作確認 cycle) | +1.35 |
+| **Mac 増分 total (フルタイム dev 換算)** | **~4.05** |
+
+### §4.4 OS 別 milestone 着手 timing
+
+charter §4 (2) + a-4 §6.3.2 + 05 doc §8.5 + 03 doc §3 進め方:
+
+| milestone | Linux | Win | Mac |
+|---|---|---|---|
+| r41 (GL 除去 + Vulkan 空転) | first-class baseline (全 work) | (本線 GL build 維持、未着手) | (本線 GL build 維持、未着手) |
+| r41.5 (VK repo 分離) | first-class baseline (構造 refactor) | (Win/Mac 着手前) | (Win/Mac 着手前) |
+| r42-α (r21.1 picker port) | first-class | **Win 追加開始** (LLWindow Win32 surface 化 + driver matrix 着手) | (本線 GL 維持) |
+| r42-β (r30 Cinematic port) | first-class | Win 並走 (driver matrix 継続) | **Mac portable subset check 開始** (t-noami さん事前共有、05 doc §8.3) |
+| r42-γ (r14+ visual realism port) | first-class | Win 並走 | Mac 並走 (t-noami さん検証 cycle 始動 + MoltenVK 1.2 fallback path 整備) |
+| r42-δ (parity 残機能 / vk-RC 直前 polish) | first-class | Win polish (旧 driver fallback + WHCK 整備) | **Mac MoltenVK 詳細化** (05 doc §9.4 / §8.3 vk-RC 直前 phase) |
+| r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化) | first-class | Win parity 補強 | **Mac parity 完遂** (vk-RC 達成、3 OS 全 parity) |
+
+#### Win / Mac 着手 timing の根拠
+
+- **Win 着手 = r42-α**: r41 で Linux baseline 確定 + Vulkan 空転動作確認後、最初の AYAstorm 機能 (picker) port と並走で Win surface 化を着手。Win driver matrix は r42-α/β/γ で incremental に網羅、r42-δ で polish。
+- **Mac 着手 = r42-β**: t-noami さん workflow の cycle を要するため Win より遅延、r42-β Cinematic port 開始時点で Mac portable subset check を t-noami さんに事前共有。r42-γ で並走確立、r42-δ で MoltenVK 詳細化、r43-r44 で parity 完遂。
+- **3 OS parity 完遂 = r44 達成**: charter §4 (1) vk-RC 相当、AYAstorm r1-r30 全機能を 3 OS で Vulkan 上に再現。
+
+### §4.5 3 OS 合計 工数 (フルタイム dev 換算)
+
+#### OS 別 work 工数 sum (余裕係数前 + 適用後)
+
+| OS | base work (PM) | 余裕係数 | total (PM) |
+|---|---|---|---|
+| Linux baseline (§3.9 sum) | 21.07 | 平均 +42% (per-milestone) | **29.90** |
+| Win 増分 (§4.2) | 1.35 | +40% | **1.89** |
+| Mac 増分 (§4.3) | 2.70 | +50% | **4.05** |
+| **3 OS 合計** | **25.12** | — | **~35.84** |
+
+#### a-3 / charter §4 (2) との突合
+
+| 算定 | 工数 (PM、フルタイム dev) |
+|---|---|
+| a-3 §5.4 base port (4-5 PM) + AYAstorm 3 機能 (3 PM) | **7.5** (Linux のみ表現) |
+| charter §4 (2) 「Linux 先行 → Win/Mac 後追い」 | (per-OS 増分明示なし、3 OS 完遂のみ) |
+| 本 §4.5 3 OS 合計 (余裕係数適用後) | **~35.84** |
+
+差の主因:
+1. **Linux baseline の per-file 精緻化** (§1.7 + §2.5 + §3.0 追加 + r41.5/r42-δ/r43-r44 新規 milestone) → 29.90 PM
+2. **Win 増分の OS 軸新規可視化** (a-3 / charter §4 (2) では Linux 先行明示のみ、本 §4.2 で +1.89 PM 新規)
+3. **Mac 増分の OS 軸新規可視化** (charter §4 (2) で t-noami さん workflow 言及あるが工数算定なし、本 §4.3 で +4.05 PM 新規)
+
+#### 3 OS 合計 ≠ Linux × 3 の根拠
+
+- Win/Mac 増分は **Linux baseline 上の追加 work** であり、各 OS で独立 Linux baseline を再実施する work ではない
+- Win 増分 1.89 PM / Mac 増分 4.05 PM は本 §4.2 / §4.3 で「Linux baseline に対する +Δ」として算出済
+- 3 OS 合計 35.84 PM = Linux baseline 29.90 + Win Δ 1.89 + Mac Δ 4.05 が本算定の妥当な集約 (per-OS 重複排除済)
+
+#### Mac 増分 > Win 増分 の根拠
+
+- Win 増分 1.89 PM vs Mac 増分 4.05 PM = Mac 約 2.1 倍の理由:
+  1. MoltenVK 経由 (Vulkan 1.2 core + 一部 1.3 portable subset) = 1.3 機能の fallback path コード必要
+  2. MSL 経由 shader 動作確認 (spirv-cross + MoltenVK runtime) = Linux/Win より 1 段階多い変換 chain
+  3. t-noami さん workflow cycle = Linux build 完成 → 検証 → patch return の lead time が増加
+  4. macOS 14+ minimum (Metal 3) = OS 動作 baseline の制約 (Linux/Win より厳しい minimum)
+
+#### 本算定 base 値の確定
+
+**§4.5 3 OS 合計 25.12 PM (work 工数、Linux 21.07 + Win 1.35 + Mac 2.70) / 35.84 PM (余裕係数適用後、Linux +42% / Win +40% / Mac +50%) を本算定の 3 OS 合計工数 (フルタイム dev、本職並走 ratio + 学習曲線 適用前) として採用**。§5 で本職並走 ratio + 学習曲線、§6 で uncertainty band 適用予定。
 
 ---
 
 ## §5 各 milestone の所要月数 / 年数 (本職並走前提)
 
-**status**: 次々々 group で draft
+**status**: group B (次) で draft
 
 draft 予定の項目:
 - §5.1 AYA 本職並走 ratio 確定 (フルタイム dev 1 人月 = AYA 並走 N 暦月、charter §4 (3) 想定 3-5x の精緻化)
@@ -523,7 +1035,7 @@ draft 予定の項目:
 
 ## §6 算定の uncertainty band (上方 / 下方)
 
-**status**: 次々々 group で draft
+**status**: group B (次) で draft
 
 draft 予定の項目:
 - §6.1 不確実性要因の分類 (体制変動 / 技術選定 drift / 外部 dependency / scope creep / personal life event)
@@ -586,18 +1098,28 @@ work item (b) と同様に group 分けで進行、各 group が密接に絡む 
 
 1. ~~本 doc skeleton + 算定方針 の AYA review~~ ✓ 完了
 2. ~~foundation group (§1 per-file + §2 per-shader) draft 着手~~ ✓ 完了 (§1 = 7.77 PM / §2 = 5.15 PM / 合計 12.92 PM フルタイム dev)
-3. **foundation group review → group A (§3 per-milestone + §4 3 OS) draft 着手** ← 次
-4. group B (§5 月数 + §6 uncertainty) draft
+3. ~~group A (§3 per-milestone + §4 3 OS) draft 着手~~ ✓ 完了 (§3.9 Linux baseline = 21.07 PM work / 29.90 PM 余裕係数適用後 平均 +42%、§4.5 3 OS 合計 = 25.12 PM work / 35.84 PM 余裕係数適用後、フルタイム dev)
+4. **group A review → group B (§5 月数 + §6 uncertainty) draft 着手** ← 次
 5. group C (§7 Doom Blender + §8 plan B) draft
 6. 8 section 揃ったら work item (c) 完了宣言、work item (d) r42+ 区切り確定 着手
 
-### foundation group 算出値 (group A 以降の base 値)
+### foundation 算出値 (group A draft で消化済)
 
 | section | 算出値 | 単位 | 用途 |
 |---|---|---|---|
-| §1.7 C++ critical path 合計 | **7.77 PM** | フルタイム dev | §3 milestone に振り分け |
-| §2.5 shader 合計 | **5.15 PM** | フルタイム dev | §3 milestone に振り分け |
-| **foundation 合計** | **~12.92 PM** | フルタイム dev | §5 で本職並走 ratio + 学習曲線適用、§6 で uncertainty band |
+| §1.7 C++ critical path 合計 | **7.77 PM** | フルタイム dev | §3 milestone に振り分け済 |
+| §2.5 shader 合計 | **5.15 PM** | フルタイム dev | §3 milestone に振り分け済 |
+| **foundation 合計** | **~12.92 PM** | フルタイム dev | §3 で消化、§5/§6 で本職並走 ratio + 学習曲線 + uncertainty band 適用予定 |
+
+### group A 算出値 (group B 以降の base 値)
+
+| section | 算出値 | 単位 | 用途 |
+|---|---|---|---|
+| §3.9 milestone work sum (Linux baseline、余裕係数前) | **21.07 PM** | フルタイム dev | §5 で本職並走 ratio + 学習曲線適用の base |
+| §3.9 milestone work sum (Linux baseline、余裕係数適用後 平均 +42%) | **29.90 PM** | フルタイム dev | §5 で暦月変換、§6 で uncertainty band |
+| §4.2 Win 増分 (余裕係数適用後 +40%) | **1.89 PM** | フルタイム dev | §5 OS 別 timing 反映、§4.4 と整合 |
+| §4.3 Mac 増分 (余裕係数適用後 +50%) | **4.05 PM** | フルタイム dev | §5 OS 別 timing 反映、§4.4 と整合 |
+| §4.5 3 OS 合計 (余裕係数適用後) | **~35.84 PM** | フルタイム dev | §5 で 3 OS 完遂までの暦月変換 base |
 
 ---
 
