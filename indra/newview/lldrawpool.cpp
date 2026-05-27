@@ -109,6 +109,8 @@ namespace
         U64 mOtherAvatarDrawInfos = 0;
         U64 mSuppressedDrawInfos = 0;
         U64 mSuppressedIndices = 0;
+        U64 mAutoHeavySuppressedDrawInfos = 0;
+        U64 mAutoHeavySuppressedIndices = 0;
         U64 mPassDrawInfos[LLRenderPass::NUM_RENDER_TYPES] = {};
         U64 mPassIndices[LLRenderPass::NUM_RENDER_TYPES] = {};
         std::map<U32, FSR34MouselookWorldSourceStats> mWorldSources;
@@ -127,6 +129,8 @@ namespace
             mOtherAvatarDrawInfos = 0;
             mSuppressedDrawInfos = 0;
             mSuppressedIndices = 0;
+            mAutoHeavySuppressedDrawInfos = 0;
+            mAutoHeavySuppressedIndices = 0;
             for (U32 i = 0; i < LLRenderPass::NUM_RENDER_TYPES; ++i)
             {
                 mPassDrawInfos[i] = 0;
@@ -143,8 +147,12 @@ namespace
         LLViewerObject* mRoot = nullptr;
         U32 mRootLocalID = 0;
         F32 mRootDistance = 0.f;
+        F32 mObjectDistance = 0.f;
         F32 mObjectCameraDot = 1.f;
+        F32 mObjectProjectedPct = 0.f;
         S32 mRootChildren = 0;
+        bool mObjectIsMesh = false;
+        bool mSelected = false;
         bool mStream3DProtected = false;
     };
 
@@ -153,6 +161,8 @@ namespace
         S32 mFrame = -1;
         std::unordered_map<U32, LLViewerObject*> mObjects;
         std::unordered_map<U32, FSR34MouselookSourceCacheEntry> mSources;
+        std::unordered_map<U32, U64> mRootIndices;
+        std::unordered_map<U32, U64> mChildIndices;
 
         void update()
         {
@@ -165,6 +175,8 @@ namespace
             mFrame = frame;
             mObjects.clear();
             mSources.clear();
+            mRootIndices.clear();
+            mChildIndices.clear();
 
             const S32 count = gObjectList.getNumObjects();
             mObjects.reserve(count);
@@ -201,6 +213,15 @@ namespace
     {
         static LLCachedControl<bool> trace_enabled(gSavedSettings, "AYAR34MouselookTopSourceTraceEnabled", false);
         return trace_enabled;
+    }
+
+    F32 fsr34_projected_height_pct(F32 distance, F32 radius)
+    {
+        LLViewerCamera* camera = LLViewerCamera::getInstance();
+        const F32 view_height = static_cast<F32>(llmax(1, camera->getViewHeightInPixels()));
+        const F32 safe_distance = llmax(distance, 0.001f);
+        const F32 projected_height = (camera->getPixelMeterRatio() / safe_distance) * radius * 2.f;
+        return llclamp((projected_height / view_height) * 100.f, 0.f, 1000.f);
     }
 
     bool fsr34_world_volume_draw_info(const LLDrawInfo& params)
@@ -342,6 +363,10 @@ namespace
         entry.mRoot = entry.mObject ? entry.mObject->getRootEdit() : nullptr;
         entry.mRootLocalID = entry.mRoot ? entry.mRoot->getLocalID() : local_id;
         entry.mRootChildren = entry.mRoot ? entry.mRoot->numChildren() : 0;
+        entry.mObjectIsMesh = entry.mObject && entry.mObject->isMesh();
+        entry.mSelected =
+            (entry.mObject && entry.mObject->isSelected()) ||
+            (entry.mRoot && entry.mRoot->isSelected());
         entry.mStream3DProtected =
             (entry.mObject && LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(entry.mObject->getID())) ||
             (entry.mRoot && LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(entry.mRoot->getID()));
@@ -364,17 +389,19 @@ namespace
 
         if (entry.mObject)
         {
-            F32 distance = 0.f;
             F32 forward_distance = 0.f;
             F32 camera_angle = 0.f;
             fsr34_measure_camera_relation(
                 entry.mObject->getPositionAgent(),
                 camera_pos,
                 camera_at,
-                distance,
+                entry.mObjectDistance,
                 forward_distance,
                 entry.mObjectCameraDot,
                 camera_angle);
+            entry.mObjectProjectedPct = fsr34_projected_height_pct(
+                entry.mObjectDistance,
+                llmax(0.001f, entry.mObject->getMaxScale() * 0.5f));
         }
 
         const auto inserted = sFSR34MouselookFrameCache.mSources.emplace(local_id, entry);
@@ -608,6 +635,8 @@ namespace
             << " other_avatar_draw_infos=" << sFSR34MouselookVolumeTraceStats.mOtherAvatarDrawInfos
             << " suppressed_draw_infos=" << sFSR34MouselookVolumeTraceStats.mSuppressedDrawInfos
             << " suppressed_triangles=" << sFSR34MouselookVolumeTraceStats.mSuppressedIndices / 3
+            << " auto_heavy_suppressed_draw_infos=" << sFSR34MouselookVolumeTraceStats.mAutoHeavySuppressedDrawInfos
+            << " auto_heavy_suppressed_triangles=" << sFSR34MouselookVolumeTraceStats.mAutoHeavySuppressedIndices / 3
             << " pass_draw_infos/triangles:" << passes.str()
             << LL_ENDL;
 
@@ -687,8 +716,13 @@ namespace
         static LLCachedControl<bool> auto_root_enabled(gSavedSettings, "AYAR34MouselookSuppressAutoRootEnabled", false);
         static LLCachedControl<F32> auto_root_max_distance(gSavedSettings, "AYAR34MouselookSuppressAutoRootMaxDistance", 12.f);
         static LLCachedControl<S32> auto_root_min_children(gSavedSettings, "AYAR34MouselookSuppressAutoRootMinChildren", 50);
+        static LLCachedControl<bool> auto_heavy_enabled(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyEnabled", false);
+        static LLCachedControl<F32> auto_heavy_max_distance(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyMaxDistance", 96.f);
+        static LLCachedControl<S32> auto_heavy_min_source_tris(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyMinSourceTriangles", 250000);
+        static LLCachedControl<F32> auto_heavy_outer_dot(gSavedSettings, "AYAR34MouselookSuppressAutoHeavyOuterDot", 0.75f);
+        static LLCachedControl<F32> auto_heavy_small_screen_pct(gSavedSettings, "AYAR34MouselookSuppressAutoHeavySmallScreenPct", 1.5f);
 
-        if ((!target_local_id && !target_root_local_id && !auto_root_enabled) || !gAgentCamera.cameraMouselook())
+        if ((!target_local_id && !target_root_local_id && !auto_root_enabled && !auto_heavy_enabled) || !gAgentCamera.cameraMouselook())
         {
             return false;
         }
@@ -699,11 +733,13 @@ namespace
         }
 
         bool suppress = target_local_id && params.mFSPickerLocalID == target_local_id;
+        bool auto_heavy_suppress = false;
 
-        if (!suppress && (target_root_local_id || auto_root_enabled) && target_root_pass_mode)
+        if (!suppress &&
+            (((target_root_local_id || auto_root_enabled) && target_root_pass_mode) || auto_heavy_enabled))
         {
             const FSR34MouselookSourceCacheEntry& source = fsr34_get_source_cache_entry(params.mFSPickerLocalID);
-            if (source.mStream3DProtected)
+            if (source.mStream3DProtected || source.mSelected)
             {
                 return false;
             }
@@ -722,6 +758,32 @@ namespace
                        fsr34_mouselook_suppress_pass_matches(root_pass_mode, type) &&
                        (root_pass_mode != 2 ||
                         source.mObjectCameraDot <= llclamp(static_cast<F32>(target_root_outer_dot), -1.f, 1.f));
+
+            if (!suppress && auto_heavy_enabled)
+            {
+                sFSR34MouselookFrameCache.update();
+                const U64 child_indices =
+                    (sFSR34MouselookFrameCache.mChildIndices[params.mFSPickerLocalID] += params.mCount);
+                const U64 root_indices =
+                    (sFSR34MouselookFrameCache.mRootIndices[root_local_id] += params.mCount);
+                const U64 source_tris = llmax(child_indices, root_indices) / 3;
+                const F32 max_distance = llmax(0.f, static_cast<F32>(auto_heavy_max_distance));
+                const U64 min_source_tris = static_cast<U64>(llmax(0, static_cast<S32>(auto_heavy_min_source_tris)));
+                const F32 outer_dot = llclamp(static_cast<F32>(auto_heavy_outer_dot), -1.f, 1.f);
+                const F32 small_screen_pct = llmax(0.f, static_cast<F32>(auto_heavy_small_screen_pct));
+                const bool off_axis_or_small =
+                    source.mObjectCameraDot <= outer_dot ||
+                    source.mObjectProjectedPct <= small_screen_pct;
+
+                auto_heavy_suppress =
+                    source.mObject &&
+                    source.mObjectIsMesh &&
+                    source.mObjectDistance <= max_distance &&
+                    source_tris >= min_source_tris &&
+                    off_axis_or_small &&
+                    fsr34_mouselook_outer_cone_pass(type);
+                suppress = auto_heavy_suppress;
+            }
         }
 
         if (!suppress)
@@ -737,6 +799,11 @@ namespace
             }
             ++sFSR34MouselookVolumeTraceStats.mSuppressedDrawInfos;
             sFSR34MouselookVolumeTraceStats.mSuppressedIndices += params.mCount;
+            if (auto_heavy_suppress)
+            {
+                ++sFSR34MouselookVolumeTraceStats.mAutoHeavySuppressedDrawInfos;
+                sFSR34MouselookVolumeTraceStats.mAutoHeavySuppressedIndices += params.mCount;
+            }
         }
 
         return true;

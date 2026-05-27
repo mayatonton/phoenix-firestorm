@@ -919,6 +919,14 @@ Phase 4: 汎用化判定
 - `AYAR34MouselookForceLODRefreshIntervalFrames` を追加し、同一 local id の forced refresh を既定 4 frame 間隔に抑える。
 - `dense_lod` summary に `forced_refresh` を追加した。ここが増え、同時に `heavy_mesh` / `screen_forced` が top source に追随するか確認する。
 
+2026-05-28 追加修正:
+
+- 実測ログでは `forced_refresh` が増えて LOD refresh path は動作していたが、`world_top_sources` には 100 万 triangle 超の source が残った。つまり主問題は「LOD 再評価されていない」から「LOD bias だけでは描画投入 triangle が十分落ちない」に移った。
+- r34 検証用に `AYAR34MouselookSuppressAutoHeavyEnabled` を追加した。既定 ON とし、mouselook 中だけ per-frame の root / child source triangle を積算して、`AYAR34MouselookSuppressAutoHeavyMinSourceTriangles` 以上の heavy world mesh source を selected outer-cone passes から除外する。
+- 対象は world mesh のみ。avatar / attachment / selected object / 3D Stream protected prim は除外する。これにより MOAP/3D Stream、装着物、編集対象を壊さない。
+- suppression 判定は `AYAR34MouselookSuppressAutoHeavyMaxDistance`、`AYAR34MouselookSuppressAutoHeavyOuterDot`、`AYAR34MouselookSuppressAutoHeavySmallScreenPct` で制御する。正面の大きい形状は残し、視界外または小さく映る high-triangle source を先に落とす。
+- `AYAR34MouselookVolumeTraceEnabled` の summary に `auto_heavy_suppressed_draw_infos` / `auto_heavy_suppressed_triangles` を追加した。ここが増え、同時に `world triangles` と FPS が改善するか確認する。
+
 ビルド:
 
 - Mac Release app build 成功。
@@ -932,4 +940,5 @@ Phase 4: 汎用化判定
 4. `AYAR34MouselookDenseRootLODBiasEnabled=FALSE` で baseline を取る。
 5. `AYAR34MouselookDenseRootLODBiasEnabled=TRUE` にして同じ mouselook idle / rotate を取る。
 6. `dense_lod candidates/biased/bands` と FPS、`world_draw_infos`、triangles、見た目破綻を比較する。
-7. 検証後は `AYAR34MouselookDenseRootLODBiasEnabled=FALSE` に戻す。
+7. `AYAR34MouselookSuppressAutoHeavyEnabled=TRUE` で同じ mouselook idle / rotate を取り、`auto_heavy_suppressed_triangles` と `world_top_sources` の残り方を見る。
+8. 検証後は `AYAR34MouselookDenseRootLODBiasEnabled=FALSE`、`AYAR34MouselookSuppressAutoHeavyEnabled=FALSE` に戻す。
