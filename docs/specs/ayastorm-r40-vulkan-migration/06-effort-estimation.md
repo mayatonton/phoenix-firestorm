@@ -1,13 +1,13 @@
 # r40 sub-phase 3 work item (c): 工程算定
 
-**status**: foundation + group A + group B + group C (§7 Doom/Blender 比較 + §8 plan B trigger) draft 完了 — work item (c) 全 §1-§8 draft 完成 (AYA review → work item (d) r42+ 区切り確定 着手)
+**status**: **確定 (AYA review PASS 2026-05-28)** — work item (c) 全 §1-§8 完成 → work item (d) r42+ 区切り確定 着手 (`07-r42-plus-milestone-mapping.md`)
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (c)
 **前置 doc**:
 - `04-portage-inventory.md` (work item (a)) — per-file 工数の input source
 - `05-vulkan-api-design.md` (work item (b)) — per-section 設計から派生する工数算定 input
 - `00-charter.md` §4 (3) — 参照点 (Doom / Blender) + 6-15 人年 + 本職並走 ratio
 - `00-charter.md` §8 (B) — plan B trigger 条件の閾値設定対象
-**達成条件**: §1-§8 全 section draft 完成 + AYA review PASS → work item (d) r42+ 区切り確定 着手
+**達成条件**: §1-§8 全 section draft 完成 + AYA review PASS → work item (d) r42+ 区切り確定 着手 — **達成 (2026-05-28)**
 
 ---
 
