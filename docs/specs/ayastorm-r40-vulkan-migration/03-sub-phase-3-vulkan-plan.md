@@ -1,6 +1,6 @@
 # r40 sub-phase 3: Vulkan 化選択 + 工程プラン策定 (active 2026-05-28〜)
 
-**status**: active (work item (a) 全完了 2026-05-28 / work item (b) Vulkan API 設計 **完了** 2026-05-28 AYA review PASS / work item (c) 工程算定 **完了** 2026-05-28 AYA review PASS / work item (d) r42+ 区切り確定 draft 作成中)
+**status**: active (work item (a) 全完了 2026-05-28 / work item (b) Vulkan API 設計 **完了** 2026-05-28 AYA review PASS / work item (c) 工程算定 **完了** 2026-05-28 AYA review PASS / work item (d) r42+ 区切り確定 foundation group + group A draft 完了、group B 残)
 **親 charter**: `00-charter.md`
 **位置付け**: r40 章の sub-phase 3 (Vulkan 化選択を正式採用、工程プラン策定中)
 **前章**: sub-phase 2 (`02-sub-phase-2-extended-falsify.md`)
@@ -23,7 +23,7 @@ charter §9 で定義した (a)-(e) work item の status tracker:
 | (a) | Vulkan portage 棚卸し phase | `04-portage-inventory.md` | (なし、最初) | **完了 (2026-05-28)** |
 | (b) | Vulkan API 設計 | `05-vulkan-api-design.md` | (a) 完了後 | **完了 (2026-05-28)** (foundation + group A + B + C 全 10 section、AYA review PASS) |
 | (c) | 工程算定 | `06-effort-estimation.md` | (a)(b) 完了後 | **完了 (2026-05-28)** (foundation + group A + B + C 全 §1-§8、AYA review PASS) |
-| (d) | r42+ 区切り確定 | `07-r42-plus-milestone-mapping.md` + `00-charter.md` §6 更新 | (a)(b)(c) 完了後 | **draft 作成中** |
+| (d) | r42+ 区切り確定 | `07-r42-plus-milestone-mapping.md` + `00-charter.md` §6 更新 | (a)(b)(c) 完了後 | **draft 作成中** (foundation group §1+§2 + group A §3+§4 完了、group B §5+§6 残) |
 | (e) | charter 完成 → r40 達成 | 全 doc final review | (a)(b)(c)(d) 完了後 | 未着手 |
 
 work item は **逐次進行** (並列不可、(a) → (b) → (c) → (d) → (e) 順序依存)。

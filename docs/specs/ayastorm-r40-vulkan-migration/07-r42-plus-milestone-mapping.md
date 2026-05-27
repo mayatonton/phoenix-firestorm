@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (d): r42+ 区切り確定
 
-**status**: foundation group (§1 r42 区切り algorithm 化 + §2 r42 milestone 内訳) draft 完了 — group A (§3 r43-r44 + §4 r45+) / group B (§5 charter outline + §6 charter §6 反映) は次 session 以降
+**status**: foundation group (§1 r42 区切り algorithm 化 + §2 r42 milestone 内訳) + group A (§3 r43-r44 + §4 r45+) draft 完了 — group B (§5 charter outline + §6 charter §6 反映) は次 session 以降
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (d)
 **前置 doc**:
 - `00-charter.md` §6 — r42+ 仮 line up (本 work item (d) で正式 mapping 化)
@@ -435,32 +435,345 @@ charter §6 仮 line up の「r42 = r1-r13 audio port 並行」+ AYAstorm r25-r2
 
 ---
 
-## §3 r43-r44 区切り — group A 着手予定 (本 session 未着手)
+## §3 r43-r44 区切り
 
-(placeholder、group A で draft 着手)
+### §3.0 算定方針
 
-### 予定 sub-section
+charter §6 仮 line up では「r43 = vk-γ / r44 = vk-δ / r45+ = vk-RC」と stage 単位で割当てていたが、本 §1.3 で確定の通り **r42 内で vk-γ + vk-δ 大半完遂** する設計に切替えたため、r43-r44 は **vk-RC (parity 補強 + 性能 polish + 3 OS parity 完遂)** に振替える。本 §3 で r43 と r44 を **3 OS parity 完遂順** に分割し、各 sub-milestone の内訳 + acceptance criteria draft + vk-RC 達成宣言の acceptance criteria を確定する。
 
-- §3.0 算定方針 (charter §6 仮 line up の r43-r45+ 振替え logic)
-- §3.1 r43 sub-milestone 構成 (parity 補強 + Win driver matrix polish)
-- §3.2 r44 sub-milestone 構成 (Mac portable subset 詳細化 + 性能 polish + vk-RC 達成)
-- §3.3 vk-RC 達成宣言の acceptance criteria
-- §3.4 3 OS parity 完遂 marker
-- §3.5 §3 結論
+#### 振替え logic の根拠
+
+| 旧 charter §6 仮 line up | 本 §1.3 確定 mapping | 振替え理由 |
+|---|---|---|
+| r43 = vk-γ (deferred lighting + 基本 material) | r42-γ で vk-γ 着手 + r42-δ で vk-γ 完遂 | r14+ visual realism pull-in が描画 stage を引っ張るため (本 §1.3) |
+| r44 = vk-δ (reflection / SMAA / SSAO / DoF / shadow cascade) | r42-β で vk-δ 部分 (DoF) + r42-γ で vk-δ 部分 (post-process) + r42-δ で vk-δ 完遂 | r30 Cinematic + r14+ visual realism pull-in が vk-δ を分散完遂するため (本 §1.3) |
+| r45+ = vk-RC (parity 完遂) | r43-r44 = vk-RC (parity 補強 + 性能 polish + 3 OS parity 完遂)、r45+ = 本算定範囲外 (visual realism 次世代) | vk-RC は r42-δ までで Linux baseline 達成、r43-r44 で Win/Mac parity 完遂 + 性能 polish に振替え (本 §1.5) |
+
+#### r43 / r44 の分割方針
+
+06 doc §3.7 では r43-r44 を **合算** (3.00 PM、Linux baseline 上の追加 polish 軸算定) し、§4.2 / §4.3 で Win 増分 1.89 PM / Mac 増分 4.05 PM を OS 軸で重複排除済純増分として算出。本 §3 では **3 OS parity 完遂順** で r43 と r44 を分割:
+
+- **r43 = Linux baseline parity 完遂 + Win parity 完遂**: 06 doc §3.7 r43-r44 milestone work の Linux baseline 部分 + Win driver matrix 部分 + Win 増分 (§4.2)
+- **r44 = Mac portable subset 詳細化 + Mac parity 完遂 = vk-RC 達成**: 06 doc §3.7 r43-r44 milestone work の Mac MoltenVK 詳細化部分 + Mac 増分 (§4.3) + 性能 polish 仕上げ
+
+この分割は 06 doc §5.6 marker 暦年とも整合 (r43-r44 達成 = Linux baseline parity ~144 暦月 → +Win 増分完遂 ~152 暦月 → vk-RC 3 OS parity 完遂 ~170 暦月 の 3 段 marker が r43 と r44 の境界に対応)。
+
+#### 各 sub-milestone の提示項目
+
+§3.1 / §3.2 で各 sub-milestone について以下を提示:
+
+- **目的** (vk-RC 達成軸での該当 work + 描画 stage 達成範囲)
+- **work breakdown** (06 doc §3.7 + §4.2 / §4.3 反映、foundation 帰属 + 追加 work + 余裕係数)
+- **acceptance criteria draft** (parity 達成 + Win/Mac 動作確認 + 性能 ≤10% + regression 無し の 4 軸、本 (d) 段階では outline)
+- **OS 着手 timing** (06 doc §4.4 反映、本 milestone での state)
+- **依存 milestone** (前 milestone 完了 + Vulkan interface 確立済 + Win/Mac surface 化済)
+
+### §3.1 r43 (Linux baseline parity 完遂 + Win parity 完遂) sub-milestone 構成
+
+#### 目的
+
+r42-δ までで達成済の Linux baseline AYAstorm r1-r30 全機能 Vulkan 動作を **stable parity 状態に補強** + **Win parity 完遂** (Win driver matrix 全 driver 動作 + 旧 driver fallback + WHCK 認定整備)。描画 stage は **vk-RC (parity 補強 + 性能 polish 一部)**。
+
+#### work breakdown (06 doc §3.7 r43-r44 milestone work の Win 寄与 + §4.2 Win 純増分 反映)
+
+| 領域 | 工数 (PM) | 主作業 | 出典 |
+|---|---|---|---|
+| Win driver matrix 完遂 (§3.7 r43-r44 milestone work の Win 寄与) | 0.50 | NVIDIA / AMD / Intel Arc 全 driver 動作確認、旧 driver fallback path 動作検証、driver-specific quirks 対応 (起動時 instance 初期化 timing 等) | 06 doc §3.7 |
+| Win 純増分 (§4.2 = 1.35 base、§3.7 r43-r44 milestone との OS 軸重複排除済) | 1.35 | LLWindow Win32 surface 化 + `VK_KHR_win32_surface` 統合 + `VK_EXT_swapchain_maintenance1` Intel Arc 未対応 fallback + LunarG SDK Win 統合 + Win-specific bug fix 余裕 | 06 doc §4.2 + 05 doc §8.2 + §8.4 |
+| **base work 計** | **1.85** | — | — |
+| 余裕係数 +42% (Linux baseline 軸 +50% / Win 増分 +40% 加重平均) | +0.78 | WHCK 認定の手続 + driver matrix iterate + Win-specific quirks に対する加重 (Mac t-noami workflow 不確定性は r44 に集中、本 r43 は Linux baseline 補強 + Win の確定性高い work) | — |
+| **r43 total (フルタイム dev 換算)** | **~2.63** | — | — |
+
+注: Linux baseline parity 完遂自体は r42-δ acceptance #4 (vk-RC 直前 polish) + 06 doc §3.6 r42-δ work (1.50 base / 2.25 余裕係数後) で達成済、本 r43 では **Linux baseline 安定維持 (stable parity 状態の継続)** であり追加 work 計上なし。r43 は **Win parity 完遂 = 本 milestone の新規 work** が中心。
+
+#### 工数の 06 doc との対応
+
+- 06 doc §3.7 r43-r44 milestone work (2.00 PM base / 3.00 PM 余裕係数後、Linux baseline 軸の追加 polish): Mac MoltenVK 1.00 + Win driver matrix 0.50 + 性能 polish 0.50 のうち、**Win driver matrix 0.50 を本 r43 に配分** (Mac 1.00 + 性能 polish 0.50 は r44 へ)
+- 06 doc §4.2 Win 純増分 (1.35 PM base / 1.89 PM 余裕係数後、OS 軸重複排除済): 本 r43 に全配分
+- 合計 r43 base = 0.50 + 1.35 = **1.85 PM** → 余裕係数 +42% 加重平均適用後 ~**2.63 PM** ✓ (06 doc §3.7 + §4.2 + §4.3 の Win 寄与 + 重複排除構造と整合)
+
+#### 暦月変換 (06 doc §5.3 + §5.6 整合)
+
+| 換算項目 | 値 | 出処 |
+|---|---|---|
+| r43 base PM (Linux baseline 安定維持 + Win parity 完遂) | ~2.63 | 本 §3.1 work breakdown |
+| 並走 ratio 中央値 4x (06 doc §5.2 確定) + 学習曲線 + Win 固有 quirks lead time + WHCK 認定の手続 | — | 06 doc §5.1 + §5.2 + §5.3 |
+| r43 中央値暦月 (Linux baseline 安定維持 + Win 増分完遂までの total 期間) | ~20 暦月 (累積 ~152 暦月、~2039 年初) | 06 doc §5.3 + §5.6 (r42-δ 達成 ~132 + r43-r44 milestone Linux ~12 + Win 増分 ~8 = ~152 暦月) |
+| 暦年マーカー | ~2038 年中 〜 2039 年初 | 06 doc §5.6 marker (Linux baseline parity 完遂 ~144 + Win 増分完遂 ~152 を r43 達成の終端と扱う) |
+
+#### acceptance criteria draft (r43 着手前の charter 起草で詳細化)
+
+1. **Linux baseline parity 完遂**: AYAstorm r1-r30 全機能 (audio r1-r13 / 視覚表現 r14-r24 / 3D stream r25-r29 / Cinematic r30 / chat / picker) が Linux 上で Vulkan 動作、本線 GL 実装と visual + 機能同等、edge case regression 無し
+2. **Win driver matrix 完遂**: NVIDIA GeForce/Quadro (RTX 20/30/40 系) + AMD Radeon (RDNA 1/2/3) + Intel Arc/Iris Xe の Win 上での全 driver 動作確認、`VK_EXT_swapchain_maintenance1` Intel Arc 一部未対応 fallback (`vkDeviceWaitIdle` fallback) 動作、旧 driver fallback path 動作
+3. **Win surface 化完遂**: LLWindow Win32 implementation で `VK_KHR_win32_surface` 経由 swapchain 動作、HWND 流用、現 GL WGL 経由は廃止
+4. **WHCK 認定 minimum 版数の release note 整備**: Windows Hardware Compatibility Kit Vulkan logo program 経由 driver 認定 minimum 版数を release note に記載 (運用 doc 整備、AYA さん配信告知の前提)
+5. **LunarG SDK Win 統合**: autobuild Win 統合 (LunarG SDK Win 版の path 構造差吸収)、Win build から SPIR-V cross compile chain 動作
+6. **Win-specific bug fix 集中対応**: 起動時 instance 初期化 timing / driver-specific quirks 等、Win 限定 bug の集中 fix (memory `feedback_mac_only_fixes_accept_as_is` に倣い、Win 限定 fix は他開発者検証信任で as-is 受入の方針を Win にも適用)
+7. **regression 無し**: r41 / r41.5 / r42-α/β/γ/δ baseline が stable、Linux baseline parity 状態が r43 work で degradation 無し
+
+#### OS 着手 timing (06 doc §4.4)
+
+- **Linux**: first-class、parity 補強完遂
+- **Win**: **Win parity 完遂** (driver matrix 全 driver 動作 + 旧 driver fallback + WHCK 整備、r42-α 以降の累積 work を r43 で完遂宣言)
+- **Mac**: Mac MoltenVK 詳細化 phase 継続 (r42-δ で詳細化開始、r43 では並走、parity 完遂は r44)
+
+#### 依存 milestone
+
+- **前 milestone**: r42-δ 達成 (Linux baseline parity 残機能 完遂 + vk-RC 直前 polish + Mac MoltenVK 詳細化開始)
+- **interface 確立**: r42-α 以降の Win surface 化 base work が r42-α/β/γ/δ の各 milestone で incremental に進行済
+- **設計 doc 確定**: 05 doc §8.2 Win driver matrix + §8.4 WSI Win32 + §7.6 旧 driver fallback
+
+### §3.2 r44 (Mac portable subset 詳細化 + Mac parity 完遂 = vk-RC 達成) sub-milestone 構成
+
+#### 目的
+
+r43 で達成済の Linux + Win parity を **Mac MoltenVK 経由で 3 OS parity 完遂** + **vk-RC 達成宣言** (charter §4 (1) parity 完遂 goal の到達)。描画 stage は **vk-RC 完遂** (parity 補強 + 性能 polish + Mac portable subset 詳細化)。
+
+#### work breakdown (06 doc §3.7 Mac 部分 + §4.3 Mac 増分 + 性能 polish 反映)
+
+| 領域 | 工数 (PM) | 主作業 | 出典 |
+|---|---|---|---|
+| Mac MoltenVK 詳細化 (§3.7 の r43-r44 milestone 計上分 = 1.00) | 1.00 | MoltenVK portable subset (Vulkan 1.2 core + 一部 1.3 KHR) 詳細化、`VK_KHR_portability_subset` enable、t-noami さん workflow 連携での Mac 固有問題対応 | 06 doc §3.7 + 05 doc §8.3 + §9.4 |
+| 性能 polish (frame in flight tuning / barrier sequence / VMA allocation strategy、§3.7 で 0.50 計上) | 0.50 | frame in flight 数の本格 tuning (2/3 切替の per-OS 最適化)、barrier sequence の per-pass optimal 化、VMA allocation strategy の本格 tuning (UMA Apple Silicon 含む 3 OS 全部) | 06 doc §3.7 + 05 doc §5 + §6 |
+| Mac 純増分 (§4.3 = 2.70 base、重複排除済) | 2.70 | LLWindow Mac surface 化 (`VK_EXT_metal_surface`) + Apple Silicon UMA 対応 + MoltenVK 1.2 core fallback path + MSL 経由 shader 動作確認 (spirv-cross MSL 変換 + MoltenVK runtime) + t-noami さん workflow cycle + Mac-specific bug fix 余裕 | 06 doc §4.3 + 05 doc §8.3 + §8.4 + §9.1-§9.4 |
+| **base work 計** | **4.20** | — | — |
+| 余裕係数 +50% (Mac t-noami workflow cycle + MoltenVK portable subset untested feature + macOS 14+ Metal 3 minimum 動作確認 cycle) | +2.10 | — | — |
+| **r44 total (フルタイム dev 換算)** | **~6.30** | — | — |
+
+#### 工数の 06 doc との対応
+
+- 06 doc §3.7 r43-r44 milestone work (3.00 PM、余裕係数 +50% 適用後) のうち、Mac MoltenVK 詳細化 1.00 + 性能 polish 0.50 を本 r44 に配分: ~1.50 PM (work) → 余裕係数適用後 ~2.25 PM (Mac + 性能 polish 寄与)
+- 06 doc §4.3 Mac 増分 (4.05 PM、余裕係数 +50% 適用後) を本 r44 に配分: 4.05 PM
+- 合計 ~6.30 PM (= 2.25 + 4.05 = §3.7 r43-r44 milestone の Mac + 性能 polish 寄与 + §4.3 Mac 純増分)
+
+注: r43 + r44 合計 ~2.63 + ~6.30 = **~8.93 PM**、06 doc §4.5 3 OS 合計 (35.84 PM) - r41 (16.17) - r41.5 (1.50) - r42 α+β+γ+δ (9.23) = **8.94 PM** と整合 ✓ (差 ~0.01 PM は丸め誤差範囲内、本 (d) の r43/r44 sub-milestone level 分割が 06 doc §4.5 の vk-RC 累積と整合)。
+
+#### 暦月変換 (06 doc §5.3 + §5.6 整合)
+
+| 換算項目 | 値 | 出処 |
+|---|---|---|
+| r44 base PM (Mac + 性能 polish) | ~6.30 | 本 §3.2 work breakdown |
+| 並走 ratio 中央値 4x + 学習曲線 +5-10% (Vulkan 経験 + MoltenVK 経験積み済、学習曲線は最も低い段階) | — | 06 doc §5.1 + §5.2 |
+| r44 中央値暦月 | ~18 暦月 (累積 ~170 暦月、~2040 年後半 = vk-RC 達成) | 06 doc §5.3 + §5.6 (vk-RC 3 OS parity 完遂 ~170 暦月) |
+| 暦年マーカー | ~2039 年初 〜 2040 年後半 (vk-RC 達成) | 06 doc §5.6 marker |
+
+#### acceptance criteria draft (r44 着手前の charter 起草で詳細化)
+
+1. **Mac parity 完遂**: AYAstorm r1-r30 全機能 (audio r1-r13 / 視覚表現 r14-r24 / 3D stream r25-r29 / Cinematic r30 / chat / picker) が Mac (macOS 14+ Metal 3 minimum) 上で MoltenVK 経由 Vulkan 動作、Linux baseline と visual + 機能同等
+2. **MoltenVK portable subset 動作確認**: `VK_KHR_portability_subset` enable 下で本 design 利用 feature の MoltenVK 実装動作確認、1.3 機能の MoltenVK 1.2 fallback path 動作 (dynamic rendering / sync2 / push descriptor 等)
+3. **Mac surface 化完遂**: LLWindow Mac implementation で `VK_EXT_metal_surface` 経由 swapchain 動作 (NSView → CAMetalLayer)、CGL/AGL 廃止
+4. **Apple Silicon UMA 対応**: VMA `_AUTO_PREFER_HOST` 動作確認、`VK_EXT_memory_budget` query 整合、M1/M2/M3 (Apple Silicon) で UMA 経由 frame time が NVIDIA/AMD/Intel discrete GPU と同等帯
+5. **MSL 経由 shader 動作確認**: 248 + 13 file (base port + AYAstorm 機能) の spirv-cross MSL 変換 + MoltenVK runtime 動作、Mac 上での shader 動作 smoke test (memory `feedback_credit_t_noami_equal_billing` 反映、t-noami さん検証 cycle 経由)
+6. **t-noami workflow cycle 完遂**: Linux build 完成 → t-noami さん検証 → patch return cycle が回り、r44 終盤までに Mac 固有 quirk が全て resolve (memory `feedback_credit_t_noami_equal_billing` 対等並列、`feedback_mac_only_fixes_accept_as_is` 受入方針)
+7. **性能 polish 3 OS 適用**: frame in flight tuning (2/3 切替の per-OS 最適化) + barrier sequence per-pass optimal 化 + VMA allocation strategy 本格 tuning が Linux + Win + Mac 全部で適用、本線 GL と同等以上の frame time (regression ≤10%)
+8. **vk-RC 達成宣言**: §3.3 acceptance criteria draft 全項目 PASS で **vk-RC 達成** = **r44 達成** = **charter §4 (1) parity 完遂 goal の到達** = **r40 章工程プランの完遂 marker** (詳細 §3.3)
+9. **regression 無し**: r41 / r41.5 / r42-α/β/γ/δ / r43 baseline が stable、Linux baseline parity + Win parity が r44 work で degradation 無し
+
+#### OS 着手 timing (06 doc §4.4)
+
+- **Linux**: first-class baseline、性能 polish 適用
+- **Win**: r43 parity 完遂状態の維持 + 性能 polish 適用 (Linux baseline と同等 frame time 帯)
+- **Mac**: **Mac parity 完遂** (MoltenVK 詳細化 + t-noami workflow cycle の最終 lap、vk-RC 3 OS parity 完遂)
+
+#### 依存 milestone
+
+- **前 milestone**: r43 達成 (Linux baseline + Win parity 完遂)
+- **interface 確立**: r42-β 以降の Mac portable subset check 累積 + r42-δ Mac MoltenVK 詳細化開始 work
+- **設計 doc 確定**: 05 doc §8.3 Mac driver capability matrix + §8.4 WSI metal surface + §9.4 MoltenVK portable subset 詳細化
+
+### §3.3 vk-RC 達成宣言の acceptance criteria draft
+
+#### vk-RC 達成 = r44 達成 = charter §4 (1) parity 完遂 goal の到達 marker
+
+vk-RC 達成宣言は **r40 章工程プランの最終 marker** (本 (d) §1.5 確定済)。AYAstorm r1-r30 全機能を Linux + Win + Mac 3 OS で Vulkan 上に再現、charter §4 (1) で確定済の完遂 goal を達成した時点で宣言。
+
+#### vk-RC 達成 acceptance criteria draft (charter §4 (1) parity 完遂 goal の具体 metric)
+
+| 軸 | acceptance criterion | source |
+|---|---|---|
+| (1) **全機能 parity (3 OS)** | AYAstorm r1-r30 全機能が Linux + Win + Mac の 3 OS 全部で Vulkan 上に再現、本線 GL 実装と visual + 機能同等、edge case regression 無し | charter §4 (1) |
+| (2) **audio chapter (r1-r13)** | r1-r13 audio 系全機能 (FMOD callback + Dullahan path + 配信周辺) が 3 OS Vulkan 上で本線 GL と同等動作、Vulkan invariant (memory `project_pr69_fallback_switch` 反映) | r42-δ acceptance #2 + 本 §3.2 acceptance #1 |
+| (3) **視覚表現 chapter (r14-r24)** | r14+ visual realism (sky dome + atmospherics + post-process chain 7 sub-pass + scene buffer alpha invariant 遵守) が 3 OS Vulkan 上で本線 GL と visual 同等、live A/B (sustained viewing) で cumulative 効果も観測 (memory `project_aya_visual_realism_alpha_protect` / `project_atmos_atten_scalarized` / `feedback_shader_color_space_correction` / `feedback_instant_ab_vs_sustained` / `feedback_visual_decisions_need_live_ab` 反映) | r42-γ acceptance #1-#6 + 本 §3.2 acceptance #1 |
+| (4) **3D stream chapter (r25-r29)** | NDI / OBS / 3D stream 配信機能が 3 OS Vulkan 上で本線 GL と同等の stream quality、`VK_KHR_external_memory_*` 予約活用 (r42-δ で最低限実装、本格は r45+) | r42-δ acceptance #1 + 本 §3.2 acceptance #1 |
+| (5) **Cinematic chapter (r30)** | r30 Cinematic mode (DoF state enum 化 + BD cvar 13 件 visual A/B + Cinematic Controls 全機能) が 3 OS Vulkan 上で本線 GL と visual 同等、BD cvar 13 件 live A/B で visual 同等性確認 (memory `project_r30_cinematic_control_tuning_deferred` 反映) | r42-β acceptance #1-#4 + 本 §3.2 acceptance #1 |
+| (6) **picker / chat / その他** | r21.1 self-rigged picker + chat tab split + その他 r1-r30 全機能の 3 OS Vulkan parity | r42-α acceptance #1-#3 + 本 §3.2 acceptance #1 |
+| (7) **3 OS driver coverage** | Linux: Mesa RADV + Mesa ANV + NVIDIA proprietary first-class / Win: NVIDIA GeForce + AMD Radeon + Intel Arc first-class + 旧 driver fallback / Mac: macOS 14+ Metal 3 + MoltenVK 1.2.x portable subset first-class | 05 doc §8.1-§8.3 + 本 §3.1-§3.2 acceptance |
+| (8) **性能 polish** | frame in flight tuning + barrier sequence + VMA allocation strategy 本格 tuning 適用、本線 GL と同等以上の frame time (regression ≤10%)、AYAstorm 開発機 (AMD RX 7900 XTX + Mesa RADV) で baseline 確認 + 各 OS で baseline 比較 | 本 §3.1 acceptance #1 + §3.2 acceptance #7 |
+| (9) **release note + 運用 doc** | vk-RC 達成 release note + 3 OS driver minimum 版数 + WHCK 認定情報 + MoltenVK 1.2 fallback note の整備 (memory `feedback_release_notes_link_only` / `feedback_release_note_per_feature` 反映、永続 spec は本 (d) + r41-r44 charter doc に集約) | 本 §3.1 acceptance #4 + §3.2 acceptance #2 |
+| (10) **regression sweep** | r41 / r41.5 / r42-α/β/γ/δ / r43 baseline が stable、本 r44 work で **全 milestone の累積 regression 無し** | 本 §3.1 acceptance #7 + §3.2 acceptance #9 |
+
+#### vk-RC 達成宣言時の運用
+
+- **宣言主体**: AYA さんが acceptance criteria 全項目 PASS 確認後に宣言
+- **宣言場所**: r44 charter の達成宣言 section + r40 章 charter §4 (1) 完遂 marker の到達記録
+- **宣言効果**: r40 章工程プランの完遂 marker、charter §3 「時間軸では撤退条件を設けない」遵守下での parity 完遂 goal 到達
+- **宣言後の作業**: r45+ scope (本算定範囲外 = 本 §4) の broad outline 確認 → 別章 charter 起草の AYA 擦り合わせ開始 (本 §4.3 反映)
+
+#### draft の位置付け再掲
+
+本 §3.3 acceptance criteria は **draft** (各 milestone 着手前の charter 起草時に詳細化)。各項目の具体 metric / test procedure / regression criteria は r44 charter 起草時に詳細化 (本 §2.5 運用方針継承)。
+
+### §3.4 3 OS parity 完遂 marker
+
+#### 3 OS 着手 → 完遂 cadence (06 doc §4.4 反映)
+
+charter §4 (2) Linux 先行 + 3 OS 大前提 (memory `project_ayastorm_three_platforms`) を本 (d) で正式 mapping:
+
+| milestone | Linux | Win | Mac |
+|---|---|---|---|
+| r41 | **着手 + first-class baseline** (全 work) | (本線 GL 維持) | (本線 GL 維持) |
+| r41.5 | first-class | (Win/Mac 着手前) | (Win/Mac 着手前) |
+| r42-α | first-class | **着手** (LLWindow Win32 surface 化 + driver matrix 着手) | (本線 GL 維持) |
+| r42-β | first-class | 並走 (driver matrix 継続) | **着手** (portable subset check + t-noami さん事前共有) |
+| r42-γ | first-class | 並走 | 並走 (t-noami さん検証 cycle 始動 + MoltenVK 1.2 fallback path 整備) |
+| r42-δ | first-class | polish (旧 driver fallback + WHCK 整備) | **MoltenVK 詳細化開始** (05 doc §9.4 / §8.3 vk-RC 直前 phase) |
+| **r43** | **first-class baseline parity 完遂** (~144 暦月、~2038 年中) | **Win parity 完遂** (~152 暦月、~2039 年初) | MoltenVK 詳細化継続 |
+| **r44** | first-class baseline 維持 + 性能 polish | Win parity 維持 + 性能 polish | **Mac parity 完遂 = vk-RC 達成** (~170 暦月、~2040 年後半) |
+
+#### 3 OS parity 完遂順の根拠
+
+- **Linux 先行 (r41-r43 完遂)**: charter §4 (2) Linux 先行 + 開発機 AMD/Linux baseline (memory `project_ayastorm_three_platforms`)、AYAstorm 開発機での first-class 検証が最優先
+- **Win 完遂 (r43)**: r42-α で着手 → r42-β/γ/δ 並走 + polish 累積 → r43 で parity 完遂、driver matrix 全 driver + 旧 driver fallback + WHCK 認定の incremental 整備
+- **Mac 完遂 (r44 = vk-RC 達成)**: r42-β で着手 → r42-γ で並走 → r42-δ で MoltenVK 詳細化開始 → r43 で MoltenVK 詳細化継続 → r44 で parity 完遂、t-noami さん workflow cycle 経由の Mac 固有 quirk resolve
+
+#### t-noami さん workflow cycle の lead time
+
+memory `feedback_credit_t_noami_equal_billing` + `feedback_mac_only_fixes_accept_as_is` 反映:
+
+- t-noami さん検証 cycle は Linux build 完成 → 検証 → patch return の lead time が cycle 単位で発生
+- r42-β 〜 r44 の cycle 数 = AYAstorm 進化中の各 milestone × t-noami さん検証 lap
+- r44 終盤までに全 Mac 固有 quirk を resolve、Mac 限定 fix は他開発者検証信任で as-is 受入 (本 §3.2 acceptance #6)
+
+#### 3 OS parity 完遂宣言の運用
+
+- **r43 完遂宣言**: Linux + Win parity 完遂 (charter §4 (2) Linux 先行 + Win 後追いの中間 marker)、r44 着手前提
+- **r44 完遂宣言 = vk-RC 達成宣言**: 3 OS parity 完遂 (charter §4 (1) 完遂 goal 到達)、本 §3.3 acceptance criteria 全項目 PASS で宣言
+- **宣言後**: r40 章工程プラン完遂 marker、本 (d) 算定範囲終了、r45+ scope (本算定範囲外) の broad outline 確認 → 別章 charter 起草 (本 §4.3 反映)
+
+### §3.5 §3 結論 (r43-r44 区切り確定)
+
+本 §3 で確定した r43-r44 区切り:
+
+1. **r43-r44 = vk-RC (parity 補強 + 性能 polish + 3 OS parity 完遂) に振替え** (§3.0)、charter §6 仮 line up の r43 = vk-γ / r44 = vk-δ は本 §1.3 で r42-β/γ/δ に分散完遂、r43-r44 は parity 補強に振替え
+2. **r43 = Linux baseline 安定維持 + Win parity 完遂** (~2.63 PM / ~20 暦月 / ~2038 年中 〜 2039 年初): Win driver matrix 全 driver + 旧 driver fallback + WHCK 認定整備 + LunarG SDK Win 統合 (§3.1、Linux baseline parity 完遂自体は r42-δ acceptance #4 で達成済、r43 は安定維持のみ。暦月は Win 固有 quirks lead time + WHCK 認定手続で並走 ratio 名目より長期化)
+3. **r44 = Mac portable subset 詳細化 + Mac parity 完遂 = vk-RC 達成** (~6.30 PM / ~18 暦月 / ~2039 年初 〜 2040 年後半): MoltenVK portable subset + Apple Silicon UMA + MSL 経由 shader + t-noami workflow cycle + 性能 polish 3 OS 適用 (§3.2)
+4. **vk-RC 達成 acceptance criteria draft 10 軸確定**: 全機能 parity (3 OS) / audio / 視覚表現 / 3D stream / Cinematic / picker / 3 OS driver coverage / 性能 polish / release note / regression sweep (§3.3)
+5. **3 OS parity 完遂順 = Linux 先行 → Win 後追い (r43) → Mac 後追い (r44)** が確定 (§3.4)、charter §4 (2) Linux 先行 + 3 OS 大前提 (memory `project_ayastorm_three_platforms`) 整合
+6. **r43-r44 合計 ~8.93 PM / ~38 暦月 / ~3.2 年**、06 doc §4.5 3 OS 合計 (35.84) - r41 (16.17) - r41.5 (1.50) - r42 (9.23) = 8.94 PM と整合 ✓ (差 ~0.01 PM は丸め誤差範囲内、暦月は 06 doc §5.6 marker (~170 - ~132 = ~38 暦月) と整合)
+
+→ 本 §3 確定値 + 本 §2 r42 内訳 (~9.23 PM / ~40.7 暦月) + r41 (16.17 PM / ~84.1 暦月) + r41.5 (1.50 PM / ~7.2 暦月) で **vk-RC 累積 ~35.84 PM / ~170 暦月 / ~14.2 年 / ~2040 年後半** が確定、charter §4 (3) 想定 15-30 年帯の下方近接で **本算定中央値 = charter §4 (3) 想定範囲内** ✓
 
 ---
 
-## §4 r45+ 区切り (本算定範囲外) — group A 着手予定 (本 session 未着手)
+## §4 r45+ 区切り (本算定範囲外)
 
-(placeholder、group A で draft 着手)
+### §4.0 算定方針
 
-### 予定 sub-section
+charter §3 「時間軸では撤退条件を設けない」 + charter §4 (3) 「無期限 / AYA life plan」 + 06 doc §3.8 範囲外宣言 + 本 (d) §1.5 r45+ 範囲外宣言 を 4 重に遵守し、本 §4 では **r45+ scope の broad placeholder** のみ提示。詳細化は r44 達成宣言後の別章 charter 起草で実施。
 
-- §4.0 算定方針 (charter §3 時間軸非設定遵守 + 06 doc §3.8 範囲外宣言)
-- §4.1 r45+ scope の broad outline (visual realism 次世代 / ray tracing / HDR / GPU-driven の topic 列挙)
-- §4.2 r45+ 着手 trigger 条件 (r44 達成 + AYA judgment、時間軸 trigger 無し)
-- §4.3 r45+ charter 起草 timing (r44 達成後の AYA 擦り合わせ)
-- §4.4 §4 結論
+#### 4 重遵守の根拠
+
+| 出典 | 内容 | 本 §4 への含意 |
+|---|---|---|
+| charter §3 | 「時間軸では撤退条件を設けない」 | r45+ 着手 timing は r44 達成後の AYAstorm 体制 / industry 状況 / LL 着地 status 次第、本 (d) で時期を固定すると charter §3 違反 |
+| charter §4 (3) | 「無期限 / AYA life plan 前提で 6-15 人年規模」 | 本算定は vk-RC 完遂 (r44 達成) までの 6-15 人年規模算定、r45+ を含めると charter §4 (3) 上限超過の risk、charter §4 (3) 想定範囲を維持するため r45+ は別算定 |
+| 06 doc §3.8 | 「r45+ visual realism 次世代は本算定範囲外」 | 06 doc 段階で範囲外宣言済、本 (d) は同方針継承 |
+| 本 (d) §1.5 | 「vk-RC 達成 = r44 達成 = 本算定終了 marker」 | foundation group §1.5 で確定済、group A §4 で broad outline のみ提示 |
+
+#### 本 §4 で扱う範囲
+
+- §4.1 r45+ scope の broad outline (visual realism 次世代 / ray tracing / HDR / GPU-driven の topic 列挙、詳細化なし)
+- §4.2 r45+ 着手 trigger 条件 (r44 達成 + AYA judgment、時間軸 trigger 無し、charter §7 LL 着地時判断指針 + §8 plan B trigger との連動方針)
+- §4.3 r45+ charter 起草 timing (r44 達成宣言 + 6 か月以内に AYA さんと擦り合わせて別章 charter 起草)
+
+詳細 acceptance criteria / work breakdown / 暦月変換 / uncertainty band は本 §4 では **扱わない** (詳細化は別章 charter で実施)。
+
+### §4.1 r45+ scope の broad outline
+
+#### r45+ topic 列挙 (charter §6 仮 line up + 05 doc §9.5 反映)
+
+charter §6 仮 line up + 05 doc §9.5 で予約のみ採用された topic を broad outline で列挙:
+
+| topic 領域 | 内容 broad outline | 出典 |
+|---|---|---|
+| **visual realism 次世代** | r14+ 章 thesis 「写真を撮るに値する空気と空間」(memory `project_ayastorm_visual_realism_chapter`) の next iteration、AYAstorm 独自進化路線 | charter §3 + memory |
+| **ray tracing** | `VK_KHR_ray_tracing_pipeline` + `VK_KHR_acceleration_structure` 活用、reflection / shadow / GI 等の hardware ray tracing 実装 (Mac MoltenVK 非対応のため 3 OS parity 対象外、Linux/Win first-class) | 05 doc §9.5 予約 |
+| **HDR (High Dynamic Range)** | 10-bit / 12-bit per channel HDR display 対応 + HDR-aware tonemap + monitor calibration | charter §3 |
+| **GPU-driven rendering** | indirect draw / draw call merging / GPU-side culling + scene graph traversal、`VK_EXT_mesh_shader` 活用での mesh shader pipeline 導入 | 05 doc §9.5 予約 |
+| **AYAstorm 独自進化** | r14+ 章を含む AYAstorm 独自路線の自由扱い (charter §3 「parity 完遂後の self-driven 章」) | charter §3 |
+
+#### outline 詳細化を本 §4 で扱わない理由
+
+- **時系列長による不確実性**: r45+ 着手 timing が ~2040 年後半以降 = AYAstorm + Vulkan ecosystem + industry 状況の予測不可
+- **AYAstorm 進化追随**: r44 達成時点で AYAstorm 本体が r31 / r32 等の追加機能を持っている可能性、r45+ scope は r44 達成時の AYAstorm parity goal に追加される形で決まる
+- **LL 着地 status 反映**: charter §7 LL 着地時判断指針に従い、r45+ 着手前に LL 公式 Vulkan の status を audit、scope に LL 着地 reset の選択肢を反映
+- **本 (d) の目的 (r40 達成)**: r40 章工程プランの完遂 = vk-RC parity 完遂 (r44 達成) までの算定、r45+ は parity 完遂後の self-driven 章として独立算定 (06 doc §3.8 範囲外宣言継承)
+
+### §4.2 r45+ 着手 trigger 条件
+
+#### 着手 trigger = r44 達成 + AYA judgment、時間軸 trigger 無し
+
+charter §3 「時間軸では撤退条件を設けない」を r45+ 着手 trigger にも適用、時間軸 trigger 無し:
+
+| trigger 種別 | r45+ 着手判断への含意 |
+|---|---|
+| **必須 trigger**: r44 達成 (= vk-RC parity 完遂 = charter §4 (1) 完遂 goal 到達) | r44 達成前に r45+ 着手は不可、本 (d) §3.3 acceptance criteria 全項目 PASS が前提 |
+| **必須 trigger**: AYA judgment (charter §3 「AYA life plan」前提) | r44 達成後の AYAstorm 体制 / 健康 / industry 状況の AYA 評価、r45+ scope への commit 可否を AYA さんが判断 |
+| **任意 trigger**: charter §7 LL 着地時判断指針 + §8 plan B trigger の発動 | LL 公式 Vulkan 着地 + AYAstorm-vk parity 完遂後の場合、charter §7 判断軸 1 「vk-RC 後」では reset cost 最大 / LL 採用 merit 低の評価、§7 (iii) maintain + 独自 visual realism 路線 が r45+ scope に重なる可能性 |
+| **時間軸 trigger 無し** (charter §3 遵守) | r44 達成後 N 年以内に r45+ 着手の義務 / N 年経過で r45+ 諦め 等の時間軸条件は **設けない** |
+
+#### r45+ 着手と charter §7 / §8 の連動
+
+charter §7 LL 着地時判断指針:
+
+- r44 達成後 (= vk-RC parity 完遂後) に LL 公式 Vulkan 着地した場合、charter §7 判断軸 1 「vk-RC 後 (parity 完遂)」 = reset cost 最大 / LL 採用 merit 低、AYAstorm-vk maintain + 独自 visual realism 路線 = r45+ scope に重なる
+- r44 達成前に LL 公式 Vulkan 着地した場合、charter §7 判断軸 1 / 2 / 3 を本 (d) §1.5 r45+ 範囲外宣言と独立に発動、r45+ scope は影響を受けない (r45+ 着手 trigger 必須 = r44 達成のため)
+
+charter §8 plan B trigger:
+
+- charter §8 (E) 「LL Vulkan release されたが quality が AYAstorm 用途 (撮影描画 / Cinematic) に届かない」 → (ii) maintain に倒すか plan B 別 backend (D3D12 / Metal native / WebGPU) 検討、r45+ scope は plan B 検討対象から外す方針 (charter §8 trigger 発動時は別 backend 検討が優先、r45+ scope は AYAstorm-vk 継続前提)
+
+#### 着手 trigger の判定主体
+
+- **AYA judgment 主体**: r44 達成後の AYAstorm 体制 / 健康 / industry 状況の評価は AYA さん主体
+- **Claude 補助**: r45+ scope の broad outline + 別章 charter 起草の technical draft + memory / charter / doc cross-reference は Claude 補助
+
+### §4.3 r45+ charter 起草 timing
+
+#### 起草 cadence = r44 達成宣言 + 6 か月以内に AYA 擦り合わせ開始
+
+r44 達成宣言後の r45+ charter 起草の cadence:
+
+| 段階 | timing | 主体 | 内容 |
+|---|---|---|---|
+| r44 達成宣言 | ~2040 年後半 (06 doc §5.6 marker) | AYA + Claude | vk-RC 3 OS parity 完遂 + 本 (d) §3.3 acceptance criteria 全項目 PASS |
+| r45+ 着手 trigger 評価 | r44 達成宣言直後 | AYA 主体 | 本 §4.2 trigger 条件評価 (AYA judgment + charter §7 / §8 連動評価) |
+| r45+ scope 擦り合わせ開始 | r44 達成宣言 + ~3 か月以内 | AYA + Claude | 本 §4.1 broad outline を base に AYA さんと scope 擦り合わせ、AYAstorm 進化路線の next iteration を確定 |
+| r45+ charter 起草 | r44 達成宣言 + ~6 か月以内 | Claude 主体 (AYA review) | `docs/specs/ayastorm-r45-plus-xxx/00-charter.md` 起草 (xxx は scope による、例: `r45-plus-raytracing` / `r45-plus-hdr` / `r45-plus-gpu-driven` 等の分章) |
+| r45+ 着手 | r45+ charter 完成後 | AYA + Claude | r45+ 章 active 化、本 (d) 算定範囲外 |
+
+#### 起草 cadence の根拠
+
+- **r44 達成宣言 + 6 か月以内**: charter §3 時間軸非設定遵守下での「合理的な擦り合わせ期間」、AYA さんの体制 / 健康 / industry 状況の評価期間として 3-6 か月の cadence
+- **6 か月以内に擦り合わせ完了しない場合**: charter §3 「時間軸では撤退条件を設けない」遵守、r45+ scope 擦り合わせを継続 (期限切れでの r45+ 諦めは無し)
+- **r45+ scope 分章**: r45+ は visual realism 次世代 / ray tracing / HDR / GPU-driven が独立 topic なので 1 charter にまとめず、必要に応じて分章可能 (`r45-plus-raytracing` / `r45-plus-hdr` 等)
+
+#### 起草 doc の location
+
+- **r40 章内**: 本 (d) §4 placeholder のみ、詳細は r40 章外の別 doc
+- **r45+ charter 起草先**: `docs/specs/ayastorm-r45-plus-xxx/00-charter.md` (r40 章とは別 directory)
+- **r40 章 charter (00-charter.md) §6 への反映**: r45+ broad outline のみ、charter §6 末尾に「r45+ は別章 charter で扱う、本 charter §6 では broad outline のみ反映」を記載 (group B §6 反映で実施予定)
+
+### §4.4 §4 結論 (r45+ 区切り = 本算定範囲外確定)
+
+本 §4 で確定した r45+ 区切り:
+
+1. **r45+ = 本算定範囲外、broad placeholder のみ** (§4.0): charter §3 / §4 (3) + 06 doc §3.8 + 本 (d) §1.5 の 4 重遵守、詳細化は r44 達成後の別章 charter で実施
+2. **r45+ scope = visual realism 次世代 / ray tracing / HDR / GPU-driven / AYAstorm 独自進化** (§4.1): charter §6 仮 line up + 05 doc §9.5 予約継承、本 (d) では broad outline 列挙のみ
+3. **r45+ 着手 trigger = r44 達成 + AYA judgment、時間軸 trigger 無し** (§4.2): charter §7 LL 着地時判断指針 + §8 plan B trigger と連動、AYA 主体 + Claude 補助
+4. **r45+ charter 起草 cadence = r44 達成宣言 + 6 か月以内に AYA 擦り合わせ開始** (§4.3): `docs/specs/ayastorm-r45-plus-xxx/00-charter.md` 別 directory、必要に応じて分章
+
+→ 本 §4 確定により、**r40 章工程プランの終了 marker = vk-RC 達成 (r44 達成) = ~2040 年後半** が確定、r45+ は本算定範囲外 + 別章 charter で扱う方針。group B §5 charter outline + §6 charter §6 反映 で本 §4 結論を 00-charter.md §6 に反映予定。
 
 ---
 
@@ -494,7 +807,7 @@ charter §6 仮 line up の「r42 = r1-r13 audio port 並行」+ AYAstorm r25-r2
 
 ---
 
-## foundation group 確定値 summary (work item (d) §1 + §2 draft 完成)
+## foundation group + group A 確定値 summary (work item (d) §1-§4 draft 完成)
 
 ### §1 r42 区切り algorithm 確定値
 
@@ -515,11 +828,43 @@ charter §6 仮 line up の「r42 = r1-r13 audio port 並行」+ AYAstorm r25-r2
 | r42-δ (parity 残機能 / vk-RC 直前 polish) | ~2.25 PM / ~9.9 暦月 | 6 件 draft | Linux + Win polish + **Mac MoltenVK 詳細化** |
 | **r42 合計** | **~9.23 PM / ~40.7 暦月 / ~3.4 年** | 27 件 draft | 3 OS 全並走 (Linux first-class + Win/Mac 追従) |
 
+### §3 r43-r44 区切り確定値
+
+| sub-milestone | work breakdown total | acceptance criteria 件数 | OS parity 完遂 marker |
+|---|---|---|---|
+| r43 (Linux baseline 安定維持 + Win parity 完遂) | ~2.63 PM / ~20 暦月 / ~2038 中 - 2039 初 | 7 件 draft (Win driver matrix + WHCK + LunarG SDK Win 含む) | **Linux baseline + Win parity 完遂** (~144 → ~152 暦月) |
+| r44 (Mac portable subset 詳細化 + Mac parity 完遂 = vk-RC 達成) | ~6.30 PM / ~18 暦月 / ~2039 初 - 2040 後半 | 9 件 draft (MoltenVK + UMA + MSL + t-noami workflow 含む) | **Mac parity 完遂 = vk-RC 達成** (~170 暦月) |
+| **r43-r44 合計** | **~8.93 PM / ~38 暦月 / ~3.2 年** | 16 件 draft | 3 OS parity 完遂 = charter §4 (1) 達成 |
+| vk-RC 達成 acceptance criteria (§3.3) | — | **10 軸** (全機能 parity / audio / 視覚表現 / 3D stream / Cinematic / picker / 3 OS driver / 性能 polish / release note / regression sweep) | r44 達成宣言の基準 |
+
+### §4 r45+ 区切り (本算定範囲外) 確定値
+
+| 出処 | 値 | 用途 |
+|---|---|---|
+| §4.0 4 重遵守 | charter §3 + §4 (3) + 06 doc §3.8 + 本 (d) §1.5 で範囲外確定 | r45+ 詳細化を本 (d) で扱わない根拠 |
+| §4.1 scope broad outline | visual realism 次世代 / ray tracing / HDR / GPU-driven / AYAstorm 独自進化 | 別章 charter 起草の input |
+| §4.2 着手 trigger | r44 達成 + AYA judgment、時間軸 trigger 無し | charter §3 / §7 / §8 連動方針 |
+| §4.3 charter 起草 cadence | r44 達成宣言 + 6 か月以内に AYA 擦り合わせ開始、`docs/specs/ayastorm-r45-plus-xxx/00-charter.md` 別 directory | r40 章 close 後の cadence |
+
+### vk-RC 累積確定値 (本 (d) §1-§4 draft 完了時点)
+
+| milestone 累積 | base PM | 中央値暦月 | 暦年マーカー |
+|---|---|---|---|
+| r41 (Linux baseline) | 16.17 | ~84.1 | ~2033 中 |
+| r41 + r41.5 | 17.67 | ~91.3 | ~2034 初 |
+| r41 + r41.5 + r42 (α+β+γ+δ) | 26.90 | ~132 | ~2037 中 |
+| r41 + r41.5 + r42 + r43 (Linux + Win parity 完遂) | ~29.53 | ~152 | ~2039 初 |
+| r41 + r41.5 + r42 + r43 + r44 (vk-RC 達成 = 3 OS parity) | **~35.83 (= 06 doc §4.5 35.84 と丸め誤差 0.01 範囲整合 ✓)** | **~170 (= 06 doc §5.6 整合 ✓)** | **~2040 後半 (= 06 doc §5.6 整合 ✓)** |
+
+→ 本 (d) §3.5 結論で確定の **vk-RC 累積 ~35.84 PM / ~170 暦月 / ~14.2 年 / ~2040 年後半** = charter §4 (3) 想定 15-30 年帯の下方近接、本算定中央値 = charter §4 (3) 想定範囲内 ✓
+
 ### 次 step
 
-- **group A (§3 r43-r44 + §4 r45+)**: charter §6 仮 line up の r43-r44 振替え logic + vk-RC 達成 acceptance criteria + r45+ 別章 charter 指針
-- **group B (§5 charter outline + §6 charter §6 反映)**: 全 milestone charter outline + 00-charter.md §6 update draft
-- **work item (d) 完了宣言 → work item (e) charter 完成 → r40 達成宣言** が cadence
+- **group B (§5 charter outline + §6 charter §6 反映)**: 全 milestone charter outline (r41 / r41.5 / r42-α/β/γ/δ / r43 / r44) + 00-charter.md §6 update draft
+- **work item (d) 完了宣言** (group B 完了で全 §1-§6 draft 完成 → AYA review PASS で work item (d) 完了)
+- **work item (e) charter 完成** (sub-phase 3 全 work item (a)-(d) の statement of completion + 03 doc 最終 review + 00-charter.md §6 update 確定)
+- **r40 達成宣言** (work item (e) 完了 = r40 章 close)
+- **r41 着手** (`docs/specs/ayastorm-r41-gl-removal/00-charter.md` 起草)
 
 ---
 
@@ -535,16 +880,19 @@ charter §6 仮 line up の「r42 = r1-r13 audio port 並行」+ AYAstorm r25-r2
 
 ### memory
 
-- `project_ayastorm_r40_cpu_parallel.md` — r40 章 active memory (本 foundation group 完了を反映予定)
+- `project_ayastorm_r40_cpu_parallel.md` — r40 章 active memory (本 group A 完了を反映予定)
 - `project_ayastorm_r41_vulkan_migration.md` — r41 milestone (本 §2.1 + §5.1 charter outline で詳細化反映)
-- `project_ayastorm_three_platforms.md` — 3 OS 大前提 (本 §1.3 + §2 OS 着手 timing で反映)
+- `project_ayastorm_three_platforms.md` — 3 OS 大前提 (本 §1.3 + §2 OS 着手 timing + §3.4 3 OS parity 完遂順 で反映)
 - `project_r30_cinematic_control_tuning_deferred.md` — r30 BD cvar 13 件 tuning (本 §2.2 r42-β visual A/B 反映)
-- `project_aya_visual_realism_alpha_protect.md` — scene buffer alpha invariant (本 §2.3 r42-γ acceptance criteria 反映)
-- `project_atmos_atten_scalarized.md` — atmosFragLighting atten scalarization (本 §2.3 r42-γ sky dome 反映)
-- `feedback_shader_color_space_correction.md` — shader 出力 linear / sRGB 逆引き (本 §2.3 r42-γ shader cross compile 反映)
-- `feedback_visual_decisions_need_live_ab.md` — visual 決定は live A/B 必須 (本 §2.2 / §2.3 visual A/B 反映)
-- `feedback_instant_ab_vs_sustained.md` — instant vs sustained A/B (本 §2.3 sustained viewing 反映)
-- `feedback_credit_t_noami_equal_billing.md` — Mac t-noami workflow (本 §2.2 / §2.3 / §2.4 Mac 着手 timing 反映)
-- `feedback_mac_only_fixes_accept_as_is.md` — Mac 限定 fix 受入 (本 §2.4 Mac MoltenVK 詳細化 反映)
-- `feedback_proactive_handoff.md` — group 境界 handoff (本 foundation group 完了で次 session への handoff doc 作成)
-- `feedback_self_verify_before_handoff.md` — group 完了時 self-trace (本 foundation group 完了で実施)
+- `project_aya_visual_realism_alpha_protect.md` — scene buffer alpha invariant (本 §2.3 r42-γ + §3.3 vk-RC acceptance criteria 反映)
+- `project_atmos_atten_scalarized.md` — atmosFragLighting atten scalarization (本 §2.3 r42-γ sky dome + §3.3 vk-RC 視覚表現 acceptance 反映)
+- `project_pr69_fallback_switch.md` — LL_DULLAHAN_AUDIO_CALLBACK 整合 (本 §2.4 r42-δ + §3.3 vk-RC audio acceptance 反映)
+- `feedback_shader_color_space_correction.md` — shader 出力 linear / sRGB 逆引き (本 §2.3 r42-γ shader cross compile + §3.3 vk-RC 視覚表現 acceptance 反映)
+- `feedback_visual_decisions_need_live_ab.md` — visual 決定は live A/B 必須 (本 §2.2 / §2.3 visual A/B + §3.3 Cinematic acceptance 反映)
+- `feedback_instant_ab_vs_sustained.md` — instant vs sustained A/B (本 §2.3 sustained viewing + §3.3 視覚表現 acceptance 反映)
+- `feedback_credit_t_noami_equal_billing.md` — Mac t-noami workflow (本 §2.2 / §2.3 / §2.4 Mac 着手 timing + §3.2 r44 Mac parity 完遂 + §3.4 t-noami cycle 反映)
+- `feedback_mac_only_fixes_accept_as_is.md` — Mac 限定 fix 受入 (本 §2.4 Mac MoltenVK 詳細化 + §3.1 r43 Win 限定 fix にも適用 + §3.2 r44 Mac 固有 quirk 受入 反映)
+- `feedback_release_notes_link_only.md` — Release Notes は詳細資料へのリンクで十分 (本 §3.3 vk-RC release note + 運用 doc 整備 acceptance 反映)
+- `feedback_release_note_per_feature.md` — 1 feature 1 note (本 §3.3 vk-RC release note 整備 acceptance 反映)
+- `feedback_proactive_handoff.md` — group 境界 handoff (本 group A 完了で次 session への handoff doc 作成)
+- `feedback_self_verify_before_handoff.md` — group 完了時 self-trace (本 group A 完了で実施)
