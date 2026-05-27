@@ -961,3 +961,40 @@ Phase 4: 汎用化判定
 6. `dense_lod candidates/biased/bands` と FPS、`world_draw_infos`、triangles、見た目破綻を比較する。
 7. `AYAR34MouselookSuppressAutoHeavyEnabled=TRUE` で同じ mouselook idle / rotate を取り、`auto_heavy_suppressed_triangles` と `world_top_sources` の残り方を見る。
 8. 検証後は `AYAR34MouselookDenseRootLODBiasEnabled=FALSE`、`AYAR34MouselookSuppressAutoHeavyEnabled=FALSE` に戻す。
+
+### 12.8 三人称で効いて見える場合の扱い
+
+2026-05-28 の検証中、mouselook 用に入れた dense linkset / heavy mesh LOD 最適化が三人称でも効いているように見えるケースが確認された。
+
+この挙動は、次の 2 つを切り分ける必要がある。
+
+- 意図した汎用効果: mouselook に限らず、近距離 dense world volume linkset / high-triangle source に LOD bias や heavy suppression を掛けることで、三人称でも FPS が改善している。
+- 副作用: mouselook 中に一度落とした LOD / drawinfo 状態が、mouselook 解除後に十分 refresh されず、三人称でも低 LOD / 抑制状態が残っている。
+
+前者であれば機能として価値があるが、後者はバグとして扱う。確認には、mouselook 解除時または設定 OFF 時に対象 root / child の LOD refresh と rebuild が発火するかをログで見る必要がある。追加計測候補は `sample_lod`、`mLODDistance`、`mLODAdjustedDistance`、`group_change_lod`、`forced_lod_refresh_hit`、設定 OFF 後の rebuild 有無。
+
+リリース向け方針:
+
+- 恒常 ON の隠し挙動にはしない。
+- Viewer logic 側の最適化として残す場合も、UI のチェックボックスで明示的に選択可能にする。
+- 初期値はリリースでは OFF を基本にする。r34 検証ビルドでは ON にして計測してよいが、検証後に設定を戻せることを必須にする。
+- UI 名は mouselook 専用に誤読されない名前へ整理する。候補は `Dense linkset LOD optimization` または `Optimize dense world objects`。
+- 適用範囲は別設定で分けるのが望ましい。候補は `Mouselook only` と `All camera views`。
+
+設定整理案:
+
+- 現行検証設定: `AYAR34MouselookDenseRootLODBiasEnabled`
+- 現行検証設定: `AYAR34MouselookSuppressAutoHeavyEnabled`
+- リリース候補の親設定: `AYAOptimizeDenseWorldLOD`
+- リリース候補の範囲設定: `AYAOptimizeDenseWorldLODScope`
+  - `0`: off
+  - `1`: mouselook only
+  - `2`: all camera views
+
+重要な設計判断:
+
+- 三人称でも改善すること自体は否定しない。ただしユーザーの画質期待に直接影響するため、勝手に恒常機能化しない。
+- `RenderVolumeLODFactor` とは別の機能として扱う。`RenderVolumeLODFactor` は全 volume の LOD 距離係数であり、r34 の dense-world LOD は camera relation / root density / high triangle / screen size を見た限定的な追加 bias である。
+- `RenderVolumeLODFactor=1` でも r34 bias は成立する。通常 LOD の結果に対して、対象 child だけ 1-2 段下げるため。
+- `All camera views` を許可する場合は、mouselook 条件を外すだけではなく、三人称での選択・編集・撮影・乗り物外観確認に対する破綻を別途検証する。
+- mouselook 解除時、scope 変更時、設定 OFF 時には対象 drawable の LOD refresh / rebuild を強制し、低 LOD や suppression が残留しないようにする。
