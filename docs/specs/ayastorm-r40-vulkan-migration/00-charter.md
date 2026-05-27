@@ -60,7 +60,7 @@ r40 章は **3 つの sub-phase** を包摂する。
 | # | 要点 | 確定値 |
 |---|---|---|
 | 1 | 完遂 goal | **parity 完遂** — vk-RC 相当、AYAstorm r1-r30 全機能を Linux+Win+Mac 全部で Vulkan 上に再現するまで章を閉じない |
-| 2 | scope | **Linux 先行 → Win/Mac 後追い**、GL 完全削除 (描画 backend 完全置換、indra/llrender 16 files / 28.2K LOC / 464 GL calls + GL header include 212 files 全置換) |
+| 2 | scope | **Linux 先行 → Win/Mac 後追い**、GL 完全削除。Vulkan portage critical path = **C++ ~63K LOC** (llrender 28K / pipeline.cpp+.h 16K / lldrawpool 8K / llspatialpartition 4K / llviewershadermgr 4K / llvosky+llvowlsky 2K) + **GLSL shader 248 file** + **GL header 依存 189 file (99% は llgl.h wrapper 経由)**。wrapper 局在化により llglheaders.h + llglstates.h + llgltypes.h の **3 file 置換 + volk loader 導入で 188 file の上流 file は変更不要** = abstraction 設計の最大の追い風。詳細 → `04-portage-inventory.md` §6 |
 | 3 | time horizon | **無期限 / AYA life plan** — 6-15 人年規模を charter 明記、撤退条件は時間軸では設けない |
 | 4 | branch 戦略 | **2 phase 構成** — Phase 1 (r41 達成まで): 本線 `ayastorm-release` 内 long-lived feature branch 群 / Phase 2 (r41 達成後 = r41.5): AYAstorm VK repo 新規 git init で立ち上げ + 物理分離 (dynamic link、LGPL 法的分離達成) |
 | 5 | LL 着地時 reset | **その時点で判断** — charter で固定せず、AYAstorm-vk 進捗 × LL 公式の質的評価で reset / maintain / merge を選別 (判断指針は §7) |
@@ -92,6 +92,7 @@ r40 章は **3 つの sub-phase** を包摂する。
   - 1 人 full-time 換算で物理 6-15 年、本職並走なら 15-30 年
 - 撤退条件は時間軸では設けない、plan B trigger は外部条件のみ (§8)
 - 5 年 / 10 年 / 終わるまでのスケールを許容
+- **a-3 / a-4 段階 port 戦略 工数感との関係**: a-3 §5.4 で段階 port 戦略 (base LL port 5 段階 + AYAstorm 3 機能合成順) の **フルタイム dev / 経験者前提 概算工数感** が **合計 7-8 人月** (base 4-5 + AYAstorm 3) と出ているが、本 (3) 6-15 人年は **AYA 本職並走 / Vulkan 初見前提**。乖離理由 = 並走係数 3-5x + 学習曲線 + 不確実性 2-3x。a-3/a-4 工数感は段階順序 + 概算オーダー確認の目的のみ、絶対値の精緻化は work item (c) 工程算定で実施 (`04-portage-inventory.md` §5.4.3 / §6.3)
 
 #### (4) branch 戦略 (2 phase 構成)
 
@@ -142,12 +143,21 @@ r40 章は **3 つの sub-phase** を包摂する。
 
 **r41 達成 = GL 依存除去 + Vulkan 空転 (描画は最低限)**
 
-### GL 依存除去
+### GL 依存除去 (a-4 棚卸し final 反映)
 
-- `indra/llrender/` 配下 16 files / 28.2K LOC / 464 GL calls の Vulkan 等価実装への完全置換
-- GL header include 212 files の Vulkan header 移行 (vulkan/vulkan.h or volk.h or 等)
-- GLSL shader 248 file の SPIR-V 移行 (glslang/spirv-cross 半自動 + descriptor set 再設計)
-- pipeline.cpp の 3 大グローバル (`sCull` / `sShadowRender` / `sCurCameraID`) + cull/stateSort 内 GL 呼出の abstract base 経由化
+C++ critical path 約 63K LOC + GLSL shader 248 file の完全置換:
+
+- `indra/llrender/` 配下 51 files (header 25 + source 26) / 28.2K LOC / 381 GL calls の Vulkan 等価実装への完全置換 (header wrapper 3 file 含む)
+- `indra/newview/pipeline.cpp + .h` 15.9K LOC の Vulkan 化 + 3 大グローバル (`sCull` / `sShadowRender` / `sCurCameraID`) の frame context 集約 (LLPipelineFrameContext 仮称)
+- `indra/newview/lldrawpool*.cpp` 13 file / 7.9K LOC の Vulkan command buffer 化 (terrain.cpp glTexGen → shader 側 explicit UV)
+- `indra/newview/llspatialpartition.cpp` 4.4K LOC の geometry rebuild + occlusion 再設計 (occlusion query → VkQueryPool)
+- `indra/newview/llviewershadermgr.{cpp,h}` 4.4K LOC の shader manager Vulkan 化
+- `indra/newview/llvosky.cpp + llvowlsky.cpp` 2.2K LOC の sky dome + atmospherics Vulkan 化 (r14+ visual realism 関連)
+- GL header 依存 189 file の Vulkan header 移行 — **99% は llgl.h wrapper 経由**、llglheaders.h + llglstates.h + llgltypes.h の 3 file 置換 + volk loader で 188 file の上流 file は変更不要
+- GLSL shader 248 file の SPIR-V 移行 (glslang/spirv-cross 半自動 + descriptor set 再設計 / sampler 206 個収容)
+  - compute / geometry / tessellation / bindless / atomic ゼロ → cross compile で ~85% 素直に通る見込み
+
+詳細 → `04-portage-inventory.md` §6.1 / §6.2 / §6.3
 
 ### Vulkan 空転 (描画は最低限)
 
@@ -183,6 +193,16 @@ r40 章は **3 つの sub-phase** を包摂する。
 | r45+ | vk-RC (parity 完遂) | r25-r29 3D stream / r30 Cinematic / chat / picker / 残り全機能 + Win/Mac 移植 | 本線 + VK repo |
 
 **注**: 上記は仮 line up。Vulkan portage 棚卸し (§9 (a)) 完了後に正式区切りを確定、本 §6 を更新する。
+
+### a-4 棚卸しで確定した AYAstorm 機能 pull-in 順 (本 line up 格上げは work item (d) で確定)
+
+work item (a) a-4 §6.3.2 で touchpoint 規模順 + 独立度順を確定 (合計 20-30 call、base portage の 0.03% 未満で **局在性確定**、base LL port 完成後の modular patch 合成可能):
+
+- **r42-α**: r21.1 self-rigged picker (mObjectIDBuffer → render pass attachment、shader 2 file SPIR-V 化)
+- **r42-β**: r30 Cinematic mode (DoF state enum 化 + frame context 統合、shader 4 file SPIR-V 化)
+- **r42-γ**: r14+ visual realism (post-process pass chain 統合、shader 7 file SPIR-V 化、llvosky/llvowlsky port 含む)
+
+上記 3 順序の **仮 line up §6 r42-r45+ への正式 mapping** は work item (d) r42+ 区切り確定で行う。
 
 ### r41.5 milestone (新規追加 2026-05-28)
 
