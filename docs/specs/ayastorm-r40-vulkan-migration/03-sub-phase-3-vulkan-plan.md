@@ -1,6 +1,6 @@
 # r40 sub-phase 3: Vulkan 化選択 + 工程プラン策定 (active 2026-05-28〜)
 
-**status**: active (work item (a) 全完了 2026-05-28 / work item (b) Vulkan API 設計 **draft 全 10 section 完成** (group B + C 追加で finalize、AYA review 待ち))
+**status**: active (work item (a) 全完了 2026-05-28 / work item (b) Vulkan API 設計 **完了** 2026-05-28 AYA review PASS / work item (c) 工程算定 draft 作成中)
 **親 charter**: `00-charter.md`
 **位置付け**: r40 章の sub-phase 3 (Vulkan 化選択を正式採用、工程プラン策定中)
 **前章**: sub-phase 2 (`02-sub-phase-2-extended-falsify.md`)
@@ -21,8 +21,8 @@ charter §9 で定義した (a)-(e) work item の status tracker:
 | ID | work item | 出力 doc | 順序依存 | status |
 |---|---|---|---|---|
 | (a) | Vulkan portage 棚卸し phase | `04-portage-inventory.md` | (なし、最初) | **完了 (2026-05-28)** |
-| (b) | Vulkan API 設計 | `05-vulkan-api-design.md` | (a) 完了後 | **draft 全 10 section 完成** (foundation + group A + group B + C 全部、AYA review 待ち) |
-| (c) | 工程算定 | `06-effort-estimation.md` | (a)(b) 完了後 | 未着手 |
+| (b) | Vulkan API 設計 | `05-vulkan-api-design.md` | (a) 完了後 | **完了 (2026-05-28)** (foundation + group A + B + C 全 10 section、AYA review PASS) |
+| (c) | 工程算定 | `06-effort-estimation.md` | (a)(b) 完了後 | **draft 作成中** |
 | (d) | r42+ 区切り確定 | `00-charter.md` §6 更新 | (a)(b)(c) 完了後 | 未着手 |
 | (e) | charter 完成 → r40 達成 | 全 doc final review | (a)(b)(c)(d) 完了後 | 未着手 |
 
