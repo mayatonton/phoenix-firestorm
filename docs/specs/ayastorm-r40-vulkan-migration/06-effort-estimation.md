@@ -1,6 +1,6 @@
 # r40 sub-phase 3 work item (c): 工程算定
 
-**status**: foundation + group A (§3 per-milestone + §4 per-OS) draft 完了 — §5-§8 は group B/C で順次 draft 予定
+**status**: foundation + group A + group B (§5 暦月変換 + §6 uncertainty band) draft 完了 — §7-§8 は group C で draft 予定
 **親 doc**: `03-sub-phase-3-vulkan-plan.md` work item (c)
 **前置 doc**:
 - `04-portage-inventory.md` (work item (a)) — per-file 工数の input source
@@ -1021,35 +1021,473 @@ charter §4 (2) + a-4 §6.3.2 + 05 doc §8.5 + 03 doc §3 進め方:
 
 ## §5 各 milestone の所要月数 / 年数 (本職並走前提)
 
-**status**: group B (次) で draft
+### §5.0 算定方針
 
-draft 予定の項目:
-- §5.1 AYA 本職並走 ratio 確定 (フルタイム dev 1 人月 = AYA 並走 N 暦月、charter §4 (3) 想定 3-5x の精緻化)
-- §5.2 Vulkan 学習曲線 反映 (r41 序盤 + r41.5 で +20-30% / r42+ 以降は inline 化想定)
-- §5.3 milestone 別 所要暦月 (r41 / r41.5 / r42-α/β/γ/δ / r43 / r44) 中央値
-- §5.4 milestone 累積 所要暦月 (r41 達成までの year scale + r45+ までの total year scale)
-- §5.5 charter §4 (3) 6-15 年想定との整合性 verification
-- §5.6 marker 暦年 (例: r41 達成は 202X 年頃、r42-γ は 202Y 年頃) — 撤退条件には使わない (charter §8 (A))、進捗 marker のみ
+§3 + §4 で算出した **フルタイム dev 換算 PM** を、AYA さん **本職並走** の **暦月** に変換する。変換係数は 2 段:
+
+1. **Vulkan 学習曲線** (milestone 別 weight、charter §4 (3) +20-30% 想定の精緻化) — PM の上方修正
+2. **本職並走 ratio** (フルタイム 1 PM = AYA 並走 N 暦月、charter §4 (3) 想定 3-5x の中央値確定) — PM → 暦月変換
+
+#### 不確実性 (§6) との分離
+
+本 §5 では **中央値のみ** を算出。
+
+- charter §4 (3) 乖離理由 4 要素 (a-3 7.5 PM → 6-15 人年) のうち、**並走係数 + 学習曲線** を本 §5 で適用
+- **不確実性 2-3x** は §6 uncertainty band で扱う、本 §5 中央値には含めない
+
+#### 本 §5 範囲
+
+- §3 + §4 で算出済 (Linux 29.90 PM / Win 1.89 PM / Mac 4.05 PM / 3 OS 合計 35.84 PM、余裕係数込) を input
+- 学習曲線 + 並走 ratio 適用後の **暦月 / 年** を milestone 別 + 累積で算出
+- 本算定 base = vk-RC parity 完遂 (= r44 達成、charter §4 (1)) までの total year scale
+- r45+ は本算定範囲外 (§3.8、charter §3 / §6)
+
+### §5.1 AYA 本職並走 ratio 確定
+
+#### charter §4 (3) 想定の精緻化
+
+charter §4 (3) 注 「**乖離理由 = 並走係数 3-5x + 学習曲線 + 不確実性 2-3x**」の **並走係数 3-5x** を本 §5.1 で具体値に確定。
+
+並走係数の定義: **フルタイム dev 1 PM の作業量を AYA さん本職並走で達成する暦月数**。
+
+#### AYA さん本職並走の time budget 推定
+
+| 項目 | 時間 | 注 |
+|---|---|---|
+| AYA さん本職 | 平日 full time (40 時間 / 週) | 並走負荷の base |
+| AYAstorm work 平日夜 | 2-3 時間 × 5 日 = 10-15 時間 / 週 | 本職後の集中時間 |
+| AYAstorm work 週末 | 4-8 時間 × 2 日 = 8-16 時間 / 週 | 連続時間が取れる時間帯 |
+| AYAstorm work weekly hours (生) | 18-31 時間 / 週、中央値 ~25 時間 | フルタイム 40 時間の 62% |
+
+#### 並走係数の補正要因
+
+| 補正要因 | 係数 | 根拠 |
+|---|---|---|
+| 生 work hours ratio (フルタイム 40 hr/週 ÷ AYAstorm 25 hr/週) | × 1.60 | 上記 time budget の単純比 |
+| Context switch loss (本職 ↔ AYAstorm 切替で ramp-up 30-50% 時間損失) | × 1.40 | 本職集中作業との切替で 1 session 30-60 min が ramp-up に消える |
+| 体調 / 疲労 / 個人事情で AYAstorm work skip 週が 1/4 程度 | × 1.33 | charter §8 (C) AYA life plan trigger は band §6 (1) で扱う、ここは恒常的な skip 率のみ |
+| **合成 並走係数 (本 §5 中央値採用)** | **× ~3.0 〜 ~5.0** | 1.60 × 1.40 × 1.33 ≈ 2.97、加えて r41 初期の Vulkan 設計 cycle が長い場合に上方振れで 5x、charter §4 (3) 想定 3-5x と整合 |
+
+#### 本 §5.1 確定値
+
+**並走係数 中央値 = 4x** (フルタイム dev 1 PM = AYA 並走 4 暦月)。
+
+- 中央値 4x は charter §4 (3) 想定 3-5x の middle、補正要因合成の中央値 ~3.0 と Vulkan 設計 cycle 上方振れ ~5.0 の median
+- 並走係数の振れ幅 ±25% (3x 〜 5x) は §6 uncertainty band (1) 体制変動 + (5) personal life event + (6) Vulkan 学習曲線実測偏差 で扱う
+- 学習曲線は §5.2 で milestone 別に上乗せ (本 §5.1 並走係数とは別軸)
+
+### §5.2 Vulkan 学習曲線の milestone 別反映
+
+#### charter §4 (3) 想定の精緻化
+
+charter §4 (3) 注 「学習曲線 +20-30%」を milestone 別に分配。Vulkan 経験は r41 序盤で集中、r41.5 で abstraction 設計、r42+ で inline 化想定。
+
+#### milestone 別 学習曲線 weight
+
+| milestone | 学習曲線 weight | 根拠 |
+|---|---|---|
+| r41 (GL 除去 + Vulkan 空転) | **+30%** | Vulkan instance / swapchain / render pass / descriptor / sync / VMA の初回学習、charter §4 (3) 上限 |
+| r41.5 (VK repo 分離) | **+20%** | Vulkan API は r41 で習得済、abstraction interface 設計 + license 分離手続が新規、charter §4 (3) 下限近 |
+| r42-α (r21.1 picker port) | **+10%** | Vulkan API inline 化済、AYAstorm picker 知識は既習、新規 work は render pass attachment の確立済 pattern 適用 |
+| r42-β (r30 Cinematic port) | **+10%** | DoF frame context refactor は確立済 pattern + Cinematic 機能知識は既習 |
+| r42-γ (r14+ visual realism port) | **+10%** | post-process pass chain は確立済 pattern、visual A/B は AYAstorm 既習 |
+| r42-δ (parity 残機能 / vk-RC 直前 polish) | **+10%** | regression sweep + parity polish、新規学習は少 |
+| r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化) | **+0%** | Vulkan API + Mac MoltenVK + Win driver matrix の knowledge は r42-δ までで習得済、polish 期は inline 化済 |
+| Win 増分 (r42-α 以降 並走) | **+10%** | Win 側 LunarG SDK + WGL → `VK_KHR_win32_surface` 移行の初回学習 |
+| Mac 増分 (r42-β 以降 並走) | **+10%** | MoltenVK + MSL + t-noami workflow cycle の初回学習 |
+
+#### 学習曲線 weighted PM
+
+| 出処 | base PM (Linux baseline、余裕係数込) | 学習曲線 weight | weighted PM |
+|---|---|---|---|
+| r41 | 16.17 | × 1.30 | 21.02 |
+| r41.5 | 1.50 | × 1.20 | 1.80 |
+| r42-α | 0.65 | × 1.10 | 0.72 |
+| r42-β | 3.15 | × 1.10 | 3.47 |
+| r42-γ | 3.18 | × 1.10 | 3.50 |
+| r42-δ | 2.25 | × 1.10 | 2.48 |
+| r43-r44 | 3.00 | × 1.00 | 3.00 |
+| **Linux baseline 合計** | **29.90** | weighted avg +20.4% | **~35.97** |
+| Win 増分 | 1.89 | × 1.10 | 2.08 |
+| Mac 増分 | 4.05 | × 1.10 | 4.46 |
+| **3 OS 合計** | **35.84** | weighted avg +18.7% | **~42.51** |
+
+#### 学習曲線 weight の振れ幅
+
+- 本 §5.2 中央値 = 上記 milestone 別 weight (charter §4 (3) +20-30% 範囲内)
+- r41 学習曲線の実測偏差で +20% → +50% に上方振れる risk は §6 (6) Vulkan 初見学習曲線実測偏差で扱う
+- 学習曲線 inline 化が想定より早く r42-α 以降 +0% に下方振れる可能性は低い (Vulkan extension / driver-specific quirk で継続的に学習発生)
+
+### §5.3 milestone 別 所要暦月 中央値
+
+#### 計算式
+
+**milestone 別 所要暦月 = base PM × 学習曲線 weight × 並走係数 4x**
+
+Linux baseline + 3 OS 増分の中央値:
+
+| milestone | base PM | 学習曲線 weight | weighted PM | × 並走 4x | 所要暦月 (中央値) | 年換算 |
+|---|---|---|---|---|---|---|
+| r41 (GL 除去 + Vulkan 空転) | 16.17 | × 1.30 | 21.02 | × 4 | **~84.1 暦月** | ~7.01 年 |
+| r41.5 (VK repo 分離) | 1.50 | × 1.20 | 1.80 | × 4 | **~7.2 暦月** | ~0.60 年 |
+| r42-α (r21.1 picker port) | 0.65 | × 1.10 | 0.72 | × 4 | **~2.9 暦月** | ~0.24 年 |
+| r42-β (r30 Cinematic port) | 3.15 | × 1.10 | 3.47 | × 4 | **~13.9 暦月** | ~1.16 年 |
+| r42-γ (r14+ visual realism port) | 3.18 | × 1.10 | 3.50 | × 4 | **~14.0 暦月** | ~1.17 年 |
+| r42-δ (parity 残機能 / vk-RC 直前 polish) | 2.25 | × 1.10 | 2.48 | × 4 | **~9.9 暦月** | ~0.83 年 |
+| r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化) | 3.00 | × 1.00 | 3.00 | × 4 | **~12.0 暦月** | ~1.00 年 |
+| **Linux baseline 小計** | **29.90** | — | **35.97** | × 4 | **~143.9 暦月** | **~11.99 年** |
+| Win 増分 (r42-α 以降 並走) | 1.89 | × 1.10 | 2.08 | × 4 | **~8.3 暦月** | ~0.69 年 |
+| Mac 増分 (r42-β 以降 並走) | 4.05 | × 1.10 | 4.46 | × 4 | **~17.8 暦月** | ~1.49 年 |
+| **3 OS 合計** | **35.84** | — | **42.51** | × 4 | **~170.0 暦月** | **~14.17 年** |
+
+#### 注記
+
+- 本 §5.3 は **AYA 1 人体制** が前提のため、Win/Mac 増分は Linux baseline と calendar 上 serialize (本職並走 1 dev は同時並列不可、time-slice で interleave 可能だが累計 calendar には影響しない)
+- 並走 4x は本 §5.1 確定値、§5.2 学習曲線と独立に適用
+- r45+ は §3.8 / charter §3 / §6 で本算定範囲外、本 §5.3 表に含めない
+
+### §5.4 milestone 累積 所要暦月
+
+§5.3 の milestone 別暦月を順次積算 (charter §4 (2) Linux 先行 → Win/Mac 後追い + §4.4 OS 別 milestone 着手 timing 反映):
+
+| 達成段階 | 累積 base PM | 累積 weighted PM | 累積暦月 (中央値) | 暦年マーカー (2026-05-28 着手起点) |
+|---|---|---|---|---|
+| r40 達成 (工程プラン完成、本算定 close) | 0 | 0 | 0 暦月 | 2026-05-28 |
+| r41 達成 (Linux GL 除去 + Vulkan 空転) | 16.17 | 21.02 | ~84.1 暦月 | **~2033 年中** |
+| r41.5 達成 (VK repo 分離) | 17.67 | 22.82 | ~91.3 暦月 | ~2034 年初 |
+| r42-α 達成 (r21.1 picker port、Win 着手始動) | 18.32 | 23.54 | ~94.1 暦月 | ~2034 年前半 |
+| r42-β 達成 (r30 Cinematic port、Mac 着手始動) | 21.47 | 27.01 | ~108.0 暦月 | ~2035 年中 |
+| r42-γ 達成 (r14+ visual realism port、Win/Mac 並走) | 24.65 | 30.51 | ~122.0 暦月 | ~2036 年後半 |
+| r42-δ 達成 (parity 残機能 / vk-RC 直前 polish) | 26.90 | 32.99 | ~131.9 暦月 | ~2037 年中 |
+| r43-r44 達成 (Linux baseline parity 補強完遂) | 29.90 | 35.97 | ~143.9 暦月 | ~2038 年中 |
+| + Win 増分完遂 | 31.79 | 38.05 | ~152.2 暦月 | ~2039 年初 |
+| + Mac 増分完遂 (= vk-RC 3 OS parity 完遂、charter §4 (1) 達成) | 35.84 | 42.51 | **~170.0 暦月** | **~2040 年後半** |
+
+#### r41 達成までの year scale
+
+- **~7 年 (2033 年中)** — Linux GL 除去 + Vulkan 空転、charter §4 (1) parity 完遂 goal の最初の足場
+- r41 work は本算定の最大集中 milestone (16.17 PM = base work の 54%、学習曲線 weight も最大 +30%)
+
+#### vk-RC 3 OS parity 完遂までの total year scale
+
+- **~14 年 (2040 年後半)** — AYAstorm r1-r30 全機能を 3 OS で Vulkan 上に再現、charter §4 (1) 達成
+- Linux baseline 完遂が ~12 年 (2038 年中)、Win/Mac 増分の絶対量 (合計 5.94 PM = 全体の 14%) は r42-α/β 以降 並走で進めても calendar は ~2 年加算
+
+### §5.5 charter §4 (3) 6-15 人年想定との整合性 verification
+
+#### charter §4 (3) の想定値
+
+charter §4 (3) より:
+- **a-3 §5.4 フルタイム dev / 経験者前提**: 合計 **7-8 人月** (base 4-5 + AYAstorm 3)
+- **本 (3) AYA 本職並走 / Vulkan 初見前提**: **6-15 人年** (= 72-180 PM)、本職並走 calendar = **15-30 年**
+- 乖離理由 = 並走係数 3-5x + 学習曲線 + 不確実性 2-3x
+
+#### 本算定との突合
+
+| 指標 | charter §4 (3) | 本算定 §5 (3 OS 合計、中央値) | 整合判定 |
+|---|---|---|---|
+| a-3 base 工数感 (フルタイム dev 経験者、Linux only) | 7-8 PM | 21.07 PM (本 §3.9 base、3 OS 増分 + 余裕係数前 = a-3 + per-file 精緻化 + 新規 milestone 反映、§3.9 self-trace で整合確認済) | per-file 精緻化反映、a-3 概算オーダーから +180% |
+| 1 人 full-time 換算 (フルタイム dev、本職並走 ratio 適用前) | 6-15 人年 (= 72-180 PM) | 35.84 PM = ~2.99 人年 (本 §4.5、3 OS 余裕係数込) | charter 下限 6 人年 (72 PM) の 50%、下回る |
+| 1 人 full-time 換算 (本 §5.2 学習曲線適用後) | (上記と同) | 42.51 PM = ~3.54 人年 | charter 下限 6 人年の 59%、下回る |
+| 本職並走 calendar (本 §5.3 並走 4x 適用後) | 15-30 年 | **~14.17 年** | charter 下限 15 年の 94%、**ほぼ整合 (下限近接)** |
+| 本算定 + §6 uncertainty band 上方 (本職並走 calendar) | (charter 上限) 30 年 | ~27 年 (§6.5 上方シナリオ、§6.4 累積) | **整合範囲内 (charter 上限 30 年の 90%)** |
+
+#### 整合判定の解釈
+
+- **本算定 中央値 (本職並走 calendar 14.17 年) は charter §4 (3) 下限 15 年に近接、整合範囲内 (charter 想定の下限近)**
+- charter §4 (3) は Doom 6-12 か月 (3 名経験者) / Blender 7 年未完 (rotating contributor) との比較で broad-stroke の top-down 推定、本算定は a-3 / a-4 棚卸し からの bottom-up 精緻化
+- 本算定の bottom-up 結果が charter top-down 推定の下限近に着地 = charter §4 (3) の broad 6-15 人年想定が本算定で **下限寄りに精緻化** された結果
+
+#### 過小評価 risk の整理
+
+本算定が charter §4 (3) 下限 (1 人 full-time 換算 6 人年 = 72 PM) を下回る分 (本算定 42.51 PM、下限の 59%) の解釈:
+
+1. **a-3 経験者前提**: 本算定は a-3 段階 port 戦略 (フルタイム dev / 経験者前提) を base に精緻化、Vulkan 経験者の作業量を baseline、AYA 本職並走の不熟練 work は学習曲線で +20.4% のみ反映
+2. **不確実性 2-3x は §5 中央値には含めない**: charter §4 (3) 乖離理由 4 要素のうち「不確実性 2-3x」は §6 uncertainty band で扱う、§5 中央値に含めると band 算定と二重計上になる
+3. **不確実性 を含めた upper bound**: 本算定 §6.5 上方シナリオ (+90%) = 27 年 (3 OS parity 完遂、本職並走 calendar) → charter §4 (3) 上限 30 年に近接、整合範囲内
+4. **結論**: 本算定 §5 中央値 14.17 年 + §6 uncertainty band 上方 27 年は、charter §4 (3) 想定 15-30 年帯の **下限 〜 上限近接** に着地、整合 ✓
+
+#### 過大評価 risk の整理
+
+本算定 §6 下方シナリオ (-30%) = ~10 年 (3 OS parity 完遂、本職並走 calendar) は charter §4 (3) 下限 15 年を下回るが、これは **low-likelihood シナリオ** (scope shrink + 体制好転 + 学習曲線 inline 化が同時に発生):
+
+- 本算定の下方振れは scope creep が想定外に少ない + AYA 体制が想定外に好転 + Vulkan 学習曲線が +0% に inline 化 の同時発生が必要
+- charter §4 (3) は不確実性 2-3x を含む top-down 推定、本算定下方シナリオ -30% は §6 (1)-(8) 要因合成の最良ケース
+- 過大評価 risk = §6 (4) scope creep 下方振れ -5% が限定的なので、現実的には -15% 程度 (~12 年)、charter §4 (3) 下限 15 年に近接
+
+### §5.6 marker 暦年 (進捗 marker)
+
+#### marker 暦年の位置付け
+
+- 本 §5.6 暦年は **進捗 marker** (charter §3 / §8 (A) 「時間軸では撤退条件を設けない」遵守)
+- **撤退条件には使わない**、charter §8 (B) 工程プラン破綻 trigger 閾値は §8 (group C) で別途定義
+- 暦年は AYA さん / 外部観察者 が r40 章の進捗を時系列で参照できる目安として記録
+
+#### marker 暦年 table (中央値、§5.4 累積暦月 + 着手日 2026-05-28 起点)
+
+| 達成段階 | 中央値暦月 (累積) | 暦年マーカー | charter §8 (B) plan B trigger 関連 (§8 で詳細化) |
+|---|---|---|---|
+| r40 達成 (本算定 close、r41 着手起点) | 0 | 2026-05-28 | — |
+| r41 達成 (Linux GL 除去 + Vulkan 空転) | ~84 暦月 (~7 年) | **~2033 年中** | charter §8 (B) 「r41 達成が 3 年経過しても未達」trigger は本 marker の半分、§8 で確認 |
+| r41.5 達成 (VK repo 分離) | ~91 暦月 (~7.6 年) | ~2034 年初 | — |
+| r42-α 達成 (r21.1 picker port、Win 着手始動) | ~94 暦月 (~7.9 年) | ~2034 年前半 | — |
+| r42-β 達成 (r30 Cinematic port、Mac 着手始動) | ~108 暦月 (~9 年) | ~2035 年中 | — |
+| r42-γ 達成 (r14+ visual realism port) | ~122 暦月 (~10.2 年) | ~2036 年後半 | — |
+| r42-δ 達成 (parity 残機能 / vk-RC 直前 polish) | ~132 暦月 (~11 年) | ~2037 年中 | — |
+| r43-r44 達成 (Linux baseline parity 補強完遂) | ~144 暦月 (~12 年) | ~2038 年中 | — |
+| + Win 増分完遂 | ~152 暦月 (~12.7 年) | ~2039 年初 | — |
+| **vk-RC 3 OS parity 完遂 (charter §4 (1) 達成)** | **~170 暦月 (~14.2 年)** | **~2040 年後半** | charter §8 (D) 「5 年経過 (2031-05-28) で LL Vulkan release ETA も公開されない」も別 trigger、本 marker は vk-RC 達成 marker のみ |
+
+#### 進捗 marker としての使い方
+
+- **中央値の暦年が経過しても milestone 達成しない場合** → §6 uncertainty band 上方シナリオに振れている兆候、§8 plan B trigger 閾値 (§8 で詳細化) と比較して charter §8 (B) plan B trigger 発動判断
+- **中央値より早く milestone 達成した場合** → §6 下方シナリオ、進捗良好、次 milestone への着手前倒し可
+- **暦年マーカーで進捗を比較する際は、各 milestone の §6 uncertainty band (上方 +N% / 下方 -M%) を併用** (§6.3 milestone 別 band 表参照)
+
+#### r45+ marker は本算定範囲外
+
+- §3.8 / charter §3 / §6 で r45+ visual realism 次世代は本算定範囲外
+- vk-RC parity 完遂 (= r44 達成、~2040 年後半) 後の AYAstorm 体制 / industry 状況 / LL 着地 status 次第で r45+ 着手 timing は判断
+- 本 §5.6 marker 暦年は **vk-RC parity 完遂 (~2040 年後半) で終了**
 
 ---
 
 ## §6 算定の uncertainty band (上方 / 下方)
 
-**status**: group B (次) で draft
+### §6.0 算定方針
 
-draft 予定の項目:
-- §6.1 不確実性要因の分類 (体制変動 / 技術選定 drift / 外部 dependency / scope creep / personal life event)
-- §6.2 各要因の振れ幅 (中央値 ±%)
-- §6.3 milestone 別 uncertainty band (r41 = ±N% / r42-α/β/γ = ±M% / r45+ = ±K%)
-- §6.4 累積 uncertainty band (r41 達成までの band / r42-δ までの band)
-- §6.5 上方 (最悪) / 中央 / 下方 (最良) の 3 シナリオ tabulation
+§5 で算出した **中央値** に対する **uncertainty band** (上方 = 最悪シナリオ / 下方 = 最良シナリオ) を本 §6 で算出。
+
+#### band 算定の対象
+
+- §5.3 milestone 別 暦月 中央値、§5.4 累積暦月、§5.6 marker 暦年 すべてに band を適用
+- band 適用後の上方 = §8 plan B trigger 閾値 (charter §8 (B)) の設定対象 (§8 group C で詳細化)
+- band 適用後の下方 = 進捗良好時の前倒し marker (charter §3 「時間軸では撤退条件を設けない」、下方も marker のみ)
+
+#### charter §4 (3) 不確実性 2-3x との関係
+
+- charter §4 (3) 注 「不確実性 2-3x」は本 §6 で扱う、§5 中央値には含めない (§5.0 算定方針再掲)
+- 本 §6 で算出する uncertainty band 上方 (~+90%) は charter §4 (3) 不確実性 2-3x の下限 ~2x に近接、整合範囲内
+- band 上方の合成根拠は §6.2 で 8 要因 × 振れ幅 として詳細化
+
+#### 本 §6 範囲
+
+- §6.1 不確実性要因の分類 (8 要因)
+- §6.2 各要因の振れ幅 (中央値 ±%、合成 ±%)
+- §6.3 milestone 別 band (r41 / r41.5 / r42-α/β/γ/δ / r43-r44 / Win / Mac)
+- §6.4 累積 band (r41 達成までの band / r44 vk-RC parity 完遂までの band)
+- §6.5 上方 / 中央 / 下方 の 3 シナリオ tabulation
 - §6.6 band を縮める方策 (sub-milestone 区切り強化 / 早期 prototype / 並走外注検討の閾値)
+
+### §6.1 不確実性要因の分類
+
+charter §4 (3) 乖離理由 + a-3 / a-4 棚卸し棚卸し + 本 §5 算定経緯から、本算定に効く不確実性要因を **8 件** に分類:
+
+| # | 要因 | 性質 | charter / 算定 source |
+|---|---|---|---|
+| (1) | **体制変動** | AYA 本職 / 健康 / 家庭の状況変化、AYAstorm work hours の長期変動 (本職並走の負荷累積) | charter §8 (C) AYA life plan trigger に近接 |
+| (2) | **技術選定 drift** | Vulkan SDK / extension / driver 仕様変更、MoltenVK 進化、glslang 等 tooling 進化 | charter §5 LL 着地時判断 + 業界動向 / 05 doc §1 (loader / SDK 選定) |
+| (3) | **外部 dependency** | LL upstream merge cost、t-noami workflow cycle、third-party lib (VMA / volk / spirv-cross) 進化 | charter §4 (2) 3 OS / charter §7 LL 着地時判断 / 05 doc §1.2 (volk) + §6 (VMA) |
+| (4) | **scope creep** | a-3 範囲外 milestone (r41.5 / r42-δ / r43-r44) の追加発見 work、parity 残機能 expand | charter §4 (1) parity 完遂 / §3 r41.5 + r42-δ + r43-r44 新規 milestone |
+| (5) | **personal life event** | charter §8 (C) trigger 相当の個人的事情変化、project pause / restart | charter §8 (C) |
+| (6) | **Vulkan 初見学習曲線の実測偏差** | charter §4 (3) +20-30% 想定が +50% に超過の可能性 (設計 cycle が想定より長い、Vulkan extension 学習が再発) | charter §4 (3) 並走係数 / 学習曲線 / §5.2 milestone 別 weight |
+| (7) | **余裕係数の過小 / 過大** | §3 で per-milestone +30-50% 設定、実工程で +60% 以上 or +20% 以内に収束 | §3 per-milestone 余裕係数 (charter §4 (3) + 03 doc §5 算定軸 5) |
+| (8) | **per-file 工数原単位の偏差** | foundation §1 / §2 の原単位値 (PM/file、PM/shader) が想定外で偏差 (LOC 加重補正の ±50% を超える file が発見される、shader 複雑度の想定外偏差) | foundation §1.1 + §2.1 原単位 |
+
+#### 要因間の correlation 仮定
+
+要因間は完全独立ではなく、**正 correl** で連動する傾向 (本算定では保守側に倒して採用):
+
+- (1) 体制変動 ↔ (4) scope creep ↔ (6) Vulkan 学習曲線超過 = 連動 (体制悪化期に学習曲線が伸びる + scope 縮小も難しい)
+- (3) 外部 dependency ↔ (2) 技術選定 drift = 連動 (lib 進化が技術選定再評価を引き起こす)
+- (7) 余裕係数偏差 ↔ (8) per-file 偏差 = 連動 (per-file 偏差が大きいと余裕係数も外れる傾向)
+- (5) personal life event = 独立 (他要因と connection 弱、突発性高い)
+
+合成方法は §6.2 で 「**正 correl 寄せの中間合成**」 を採用。
+
+### §6.2 各要因の振れ幅 (中央値 ±%)
+
+各要因の振れ幅と合成方法:
+
+#### 要因別 振れ幅
+
+| # | 要因 | 上方 (PM 増加) | 下方 (PM 減少) | 根拠 |
+|---|---|---|---|---|
+| (1) | 体制変動 | **+30%** | **-10%** | 体制悪化が改善より発生確率高い (本職並走の負荷累積、健康変動、家庭事情の不可逆性) |
+| (2) | 技術選定 drift | **+20%** | **-10%** | Vulkan SDK 進化で portage cost 減 (downward) or extension 仕様変更 cost 増 (upward)、過去 7 年の Vulkan 進化が示す両方向の振れ |
+| (3) | 外部 dependency | **+25%** | **-15%** | LL upstream merge cost / t-noami workflow cycle 想定超え (upward) / lib 進化で workaround 不要 (downward) |
+| (4) | scope creep | **+30%** | **-5%** | parity 完遂 goal で scope 縮小は難しい (downward 限定的)、a-3 範囲外発掘 work の追加発見 risk (upward) |
+| (5) | personal life event | **+50%** | **-5%** | pause / restart が work 延長を引き起こす、短縮は稀、charter §8 (C) trigger 一歩手前の状況も含む |
+| (6) | Vulkan 初見学習曲線 | **+20%** | **-10%** | 学習曲線が +30% (charter §4 (3) 上限) を超え +50% に振れる可能性 (上方) / Vulkan API inline 化が想定より早い (下方) |
+| (7) | 余裕係数偏差 | **+20%** | **-15%** | per-milestone +30-50% 設定が想定外で偏差、a-3 範囲外 milestone (r41.5 / r42-δ / r43-r44) で余裕推定の信頼度が低い |
+| (8) | per-file 偏差 | **+20%** | **-15%** | foundation §1 / §2 原単位の実工程偏差、LOC 加重補正 ±50% で吸収しきれない file の存在可能性 |
+
+#### 合成 ±%
+
+合成方法と結果:
+
+| 合成方法 | 上方 ±% | 下方 ±% | 解釈 |
+|---|---|---|---|
+| 独立性仮定 (root-sum-square 近似) | +60% | -25% | 全要因が独立、振れが部分相殺 (本算定では非採用、根拠 §6.1 correlation 仮定参照) |
+| 完全 correl 仮定 (単純合算、worst case) | +215% | -85% | 全要因が完全連動、最悪 (本算定では過大、現実的でない) |
+| **正 correl 寄せの中間合成 (本算定採用)** | **+90%** | **-30%** | 連動要因群が同方向に振れ、独立要因 ((5) personal life event) は部分独立で合成 |
+
+#### 中間合成の根拠
+
+- 連動要因 (1)/(4)/(6) は同方向に振れて upper bound +30% + +30% + +20% = +80% (連動寄り、互いに reinforce)
+- 連動要因 (2)/(3) は upper +20% + +25% = +45% だが (1)/(4)/(6) と部分独立、本算定では +20% で wash-out
+- 独立要因 (5) personal life event は upper +50% で他要因と部分独立、本算定では +30% で部分加算 (発生確率を考慮した加重)
+- (7)/(8) は (1)/(4)/(6) と部分連動、上方 +20% を (1)/(4)/(6) に吸収して合算しない
+- **上方 +90%** = (1)+(4)+(6) 連動 (+30+30+20=+80) + (5) 加重 (+10、+50% × 確率 0.2) ≈ +90%
+- 下方 (1)/(4)/(6) 反対方向は同程度の発生確率が低い (-10-5-10=-25)、(5) 反対方向はゼロ、(2)/(3) 下方 -10/-15、合成 ~-30% (保守的に下げる)
+
+#### 本 §6.2 確定 band
+
+**uncertainty band 上方 = +90%、下方 = -30%** を §6.3 milestone 別 band の base 値として採用。milestone 別の局所 band は §6.3 で +/- 補正。
+
+### §6.3 milestone 別 uncertainty band
+
+§6.2 base band (+90% / -30%) を milestone 別に補正 (要因の milestone 集中度を反映):
+
+| milestone | base PM (3 OS 合計の Linux baseline 分、§3.9) | 上方 band | 下方 band | 上方 PM | 下方 PM | 性質 |
+|---|---|---|---|---|---|---|
+| **r41 (GL 除去 + Vulkan 空転)** | 16.17 | **+120%** | **-30%** | 35.57 | 11.32 | 最大不確実性 (Vulkan 初見学習曲線 + a-3 範囲の絶対 work 最大、要因 (1)(4)(6)(8) 集中) |
+| **r41.5 (VK repo 分離)** | 1.50 | **+80%** | **-25%** | 2.70 | 1.13 | 中程度 (新規 milestone、a-3 範囲外、構造 refactor 経験少 + license 分離手続 unknown) |
+| **r42-α (r21.1 picker port)** | 0.65 | **+50%** | **-25%** | 0.98 | 0.49 | 軽量、不確実性低 (foundation 帰属が大半、追加 work 軽量) |
+| **r42-β (r30 Cinematic port)** | 3.15 | **+60%** | **-25%** | 5.04 | 2.36 | 中程度 (Cinematic frame context refactor + DoF state enum、知識は AYAstorm 既習) |
+| **r42-γ (r14+ visual realism port)** | 3.18 | **+70%** | **-25%** | 5.41 | 2.39 | 中程度 (visual realism post-process descriptor + perf profile + visual A/B iterate) |
+| **r42-δ (parity 残機能 / vk-RC 直前 polish)** | 2.25 | **+90%** | **-25%** | 4.28 | 1.69 | 高不確実性 (a-3 範囲外、parity 残機能発掘 cost が高 unknown、vk-RC 直前の regression sweep) |
+| **r43-r44 (parity 補強 / 性能 polish / Mac portable subset 詳細化)** | 3.00 | **+100%** | **-30%** | 6.00 | 2.10 | 高不確実性 (Mac MoltenVK + Win driver matrix の untested feature + 性能 polish iterate) |
+| Win 増分 (r42-α 以降 並走) | 1.89 | +50% | -20% | 2.84 | 1.51 | 中程度 (driver matrix + 旧 driver fallback、現 GL viewer の Win 対応経験を踏まえる) |
+| Mac 増分 (r42-β 以降 並走) | 4.05 | +80% | -25% | 7.29 | 3.04 | 高不確実性 (t-noami workflow cycle + MoltenVK portable subset + macOS 14+ Metal 3 minimum 制約) |
+| **3 OS 合計 (base PM)** | **35.84** | weighted avg **+90%** | weighted avg **-30%** | **~68.1** | **~25.1** | base + 全 milestone band の weighted 合成 |
+
+#### milestone 別 band 補正の根拠
+
+- **r41 +120%**: 16.17 PM の絶対量 + Vulkan 初見学習曲線が最大 + a-3 範囲内なので per-file 工数原単位の偏差 (8) も最大、上方 band を §6.2 base +90% から +30% 上方修正
+- **r41.5 +80%**: 1.50 PM の絶対量小、license 分離手続の unknown が局所的、上方 band を §6.2 base -10% 下方修正
+- **r42-α +50%**: 0.65 PM の絶対量最小、foundation 帰属が大半、上方 band を §6.2 base -40% 下方修正
+- **r42-δ +90%**: a-3 範囲外、parity 残機能発掘の unknown、上方 band を §6.2 base 並み
+- **r43-r44 +100%**: Mac MoltenVK + Win driver matrix の untested feature が集中、§6.2 base +10% 上方修正
+- **Mac 増分 +80%**: t-noami workflow cycle + MoltenVK portable subset で §6.2 base -10% 下方修正 (driver matrix unknown は r43-r44 で吸収)
+
+#### r45+ band
+
+§3.8 / charter §3 / §6 で本算定範囲外、本 §6.3 表に含めない。
+
+### §6.4 累積 uncertainty band
+
+§6.3 milestone 別 band を順次積算 (charter §4 (2) Linux 先行 → Win/Mac 後追い):
+
+| 達成段階 | 中央値 累積暦月 | 上方 累積暦月 (+%) | 下方 累積暦月 (-%) | 上方 暦年マーカー | 下方 暦年マーカー |
+|---|---|---|---|---|---|
+| r41 達成 (Linux GL 除去 + Vulkan 空転) | ~84 暦月 (~7 年) | +120% = **~185 暦月 (~15.4 年)** | -30% = ~59 暦月 (~4.9 年) | ~2042 年 | ~2031 年 |
+| r41.5 達成 (VK repo 分離) | ~91 暦月 (~7.6 年) | +110% weighted = ~192 暦月 (~16.0 年) | -28% weighted = ~66 暦月 (~5.5 年) | ~2042 年 | ~2032 年 |
+| r42-α 達成 (Win 着手始動) | ~94 暦月 (~7.9 年) | +108% weighted = ~196 暦月 (~16.3 年) | -28% weighted = ~68 暦月 (~5.6 年) | ~2042 年 | ~2032 年 |
+| r42-β 達成 (Mac 着手始動) | ~108 暦月 (~9 年) | +103% weighted = ~219 暦月 (~18.3 年) | -27% weighted = ~79 暦月 (~6.6 年) | ~2044 年 | ~2033 年 |
+| r42-γ 達成 | ~122 暦月 (~10.2 年) | +99% weighted = ~243 暦月 (~20.2 年) | -27% weighted = ~89 暦月 (~7.4 年) | ~2046 年 | ~2034 年 |
+| r42-δ 達成 | ~132 暦月 (~11 年) | +97% weighted = ~260 暦月 (~21.7 年) | -26% weighted = ~98 暦月 (~8.1 年) | ~2048 年 | ~2034 年 |
+| r43-r44 達成 (Linux baseline 完遂) | ~144 暦月 (~12 年) | +95% weighted = ~281 暦月 (~23.4 年) | -27% weighted = ~105 暦月 (~8.8 年) | ~2049 年 | ~2035 年 |
+| + Win 増分完遂 | ~152 暦月 (~12.7 年) | +93% weighted = ~294 暦月 (~24.5 年) | -27% weighted = ~111 暦月 (~9.3 年) | ~2051 年 | ~2036 年 |
+| **vk-RC 3 OS parity 完遂 (charter §4 (1) 達成)** | **~170 暦月 (~14.2 年)** | **+90% weighted = ~323 暦月 (~26.9 年)** | **-30% weighted = ~119 暦月 (~9.9 年)** | **~2053 年** | **~2036 年** |
+
+#### r41 達成までの band
+
+- **上方 (最悪) = ~15 年 (2042 年)** — charter §8 (B) plan B trigger 「r41 達成が 3 年経過しても未達」とは別軸、本 §6 上方 band は中央値の 2.2 倍に振れた場合の到達点
+- **中央値 = ~7 年 (2033 年中)**
+- **下方 (最良) = ~5 年 (2031 年)** — scope shrink + 体制好転 + 学習曲線 inline 化 の同時発生 (low-likelihood)
+
+#### vk-RC 3 OS parity 完遂までの band
+
+- **上方 (最悪) = ~27 年 (2053 年)** — charter §4 (3) 上限 30 年に近接、整合範囲内 (charter §8 (B) plan B trigger 評価対象は §8 group C で詳細化)
+- **中央値 = ~14 年 (2040 年後半)**
+- **下方 (最良) = ~10 年 (2036 年)** — low-likelihood、scope shrink + 体制好転
+
+### §6.5 上方 / 中央 / 下方 の 3 シナリオ tabulation
+
+#### 3 シナリオ の charter §4 (3) 想定との対比
+
+| シナリオ | 性質 | r41 達成 | vk-RC parity 完遂 (3 OS) | charter §4 (3) 想定 (本職並走 15-30 年) との関係 |
+|---|---|---|---|---|
+| **上方 (最悪、+90% weighted)** | charter §8 (B) plan B trigger 評価対象、体制悪化 + scope creep + 学習曲線超過 同時発生 | ~15 年 (2042 年) | **~27 年 (2053 年)** | charter 上限 30 年の 90%、**整合範囲内 (上限近)** |
+| **中央値 (本算定 §5)** | 本算定 base 値 | ~7 年 (2033 年中) | **~14 年 (2040 年後半)** | charter 下限 15 年の 94%、**ほぼ整合 (下限近)** |
+| **下方 (最良、-30% weighted)** | low-likelihood、scope shrink + 体制好転 + 学習曲線 inline 化 同時発生 | ~5 年 (2031 年) | **~10 年 (2036 年)** | charter 下限 15 年を下回る、本算定は a-3 経験者前提 base を反映 |
+
+#### 各シナリオの発生確率 (定性評価)
+
+| シナリオ | 推定確率 | 根拠 |
+|---|---|---|
+| 上方 (最悪) | ~10-15% | 全 8 要因が同時に上方振れる確率は低い、(1)(4)(6) 連動要因が同時悪化する場合 |
+| 上方 75 percentile (+45% weighted) | ~25-30% | (1)(4)(6) のいずれかが想定超え |
+| **中央値** | ~50% (中央値 ± 25% 内) | 本算定の base 値、各要因が想定範囲内で着地 |
+| 下方 25 percentile (-15% weighted) | ~25-30% | scope shrink + lib 進化 + 余裕係数余りのいずれか |
+| 下方 (最良) | ~5-10% | 全 8 要因が同時に下方振れる確率は最低 |
+
+#### 3 シナリオの暦年 marker (中央値 + ±band)
+
+| 達成段階 | 上方 (最悪) | **中央値** | 下方 (最良) |
+|---|---|---|---|
+| r41 達成 | ~2042 年 | **~2033 年中** | ~2031 年 |
+| r41.5 達成 | ~2042 年 | ~2034 年初 | ~2032 年 |
+| r42-α 達成 | ~2042 年 | ~2034 年前半 | ~2032 年 |
+| r42-β 達成 | ~2044 年 | ~2035 年中 | ~2033 年 |
+| r42-γ 達成 | ~2046 年 | ~2036 年後半 | ~2034 年 |
+| r42-δ 達成 | ~2048 年 | ~2037 年中 | ~2034 年 |
+| r43-r44 達成 | ~2049 年 | ~2038 年中 | ~2035 年 |
+| **vk-RC 3 OS parity 完遂** | **~2053 年** | **~2040 年後半** | **~2036 年** |
+
+#### charter §4 (3) との最終整合確認
+
+- charter §4 (3) 本職並走 15-30 年想定 → 本算定上方 27 年 (上限 30 年の 90%) + 中央値 14 年 (下限 15 年の 94%) で整合範囲内
+- charter §4 (3) 1 人 full-time 換算 6-15 人年想定 (= 72-180 PM) → 本算定 35.84 PM (中央値) + 上方 68.1 PM (charter 下限 72 PM の 95%) で **本算定上方が charter 下限に接続**
+- 本算定の bottom-up 精緻化 (a-3 / a-4 → §1-§4) は charter §4 (3) top-down 推定の **下限-上限 範囲内に着地**、broad scale 整合 ✓
+
+### §6.6 band を縮める方策
+
+§6.4 累積 band の振れ幅を実工程で縮める方策 (charter §8 (B) plan B trigger 発動を回避する積極的な手段):
+
+#### 方策 list
+
+| # | 方策 | 効果 (band 縮小) | 発動 trigger / threshold |
+|---|---|---|---|
+| (a) | **sub-milestone 区切り強化** (r41 内 phase 別 acceptance criteria、r42-α/β/γ/δ 内 sub-phase 別 review) | 1 milestone 過度遅延の早期検出、scope creep 抑制、要因 (1)(4) 上方振れの早期 detect | r41 着手時の sub-milestone phase 設計で導入 (r41 charter 起草時) |
+| (b) | **早期 prototype** (foundation 完了直後の Vulkan 空転 minimum spike) | 学習曲線 +30% 想定の実測検証、要因 (6) 上方振れの早期 detect、+50% 超過 risk の早期見極め | r41 着手 1-3 か月内 |
+| (c) | **並走外注検討** (Mac portage / driver matrix 検証等) | t-noami さん workflow cycle 対価支払、要因 (3) Mac 増分 bottleneck 解消、Mac band -50% 圧縮可能性 | r42-β Mac 着手時に判断、r43-r44 Mac MoltenVK 詳細化前 |
+| (d) | **LL 着地時の reset 判断** (charter §7 判断指針) | LL 公式 VK が AYAstorm 用途に十分なら work loss 回避、要因 (2)(3) 同時改善 | charter §7 LL 着地時判断指針 (charter §8 (A) trigger 連動) |
+| (e) | **scope 縮小** (parity 完遂を一部 feature 単位で r45+ に押し出す) | charter §4 (1) parity 完遂 goal を一部 r45+ に押し出し、要因 (4) scope creep を下方振れに転換 | r42-δ までで進捗 evaluation、上方 band 上限近接時に発動 |
+| (f) | **abstraction interface の前倒し導入** (r41.5 構造 refactor を r41 内で前倒し or r41 着手時から interface 経由実装) | r41 → r41.5 移行 cost 削減、要因 (4) scope creep 上方振れ抑制 | r41 着手時の設計判断 (05 doc §10 skeleton 参照) |
+| (g) | **shader cross compile chain の自動化強化** (a-3 §B.x で 248 + 13 file 半自動化、cross compile 失敗 file の self-trace 自動化) | shader 工数の偏差 (8) 上方振れ抑制 | foundation §2 完了後の tool 整備 |
+
+#### 方策の優先順位 (本算定からの推奨)
+
+1. **(a) sub-milestone 区切り強化** — 最優先、r41 charter 起草時に詳細化、上方 band 早期 detect の base
+2. **(b) 早期 prototype** — r41 着手 1-3 か月内、要因 (6) 学習曲線実測偏差の早期 detect
+3. **(f) abstraction interface 前倒し** — r41 着手時の設計判断、r41.5 → r41 内化で scope creep 抑制
+4. **(c) 並走外注検討** — r42-β Mac 着手時、Mac 増分 band -50% 圧縮効果
+5. **(g) shader 自動化強化** — foundation §2 完了後の継続的整備
+6. **(d) LL 着地時 reset 判断** — charter §7 + §8 (A) trigger 連動、本算定範囲外の積極策
+7. **(e) scope 縮小** — r42-δ までで進捗 evaluation、最終手段
+
+#### 方策発動の cadence
+
+- **r41 charter 起草時**: (a) (f) の前提を charter に組込
+- **r41 着手 1-3 か月内**: (b) Vulkan 空転 minimum spike
+- **r41 進捗 review (annual or milestone 完遂時)**: (a) sub-milestone 区切り review、上方 band 近接の早期 detect
+- **r42-β Mac 着手時**: (c) 並走外注検討
+- **r42-δ までで進捗 evaluation**: (e) scope 縮小発動判断、charter §8 (B) plan B trigger 評価対象
+- **LL 着地時 (charter §8 (A) trigger)**: (d) reset 判断
+
+#### band 縮小目標
+
+- 上方 band を §6.4 累積 +90% から **+50-60%** に圧縮できれば、vk-RC 3 OS parity 完遂上方が ~27 年 → ~22 年に短縮、charter §4 (3) 上限 30 年から余裕確保
+- 中央値の前倒しは方策 (e) (g) 中心、ただし scope 縮小は charter §4 (1) parity 完遂 goal との trade-off
+- 下方 band の改善 (-30% → -40%) は scope shrink + lib 進化 + 学習曲線 inline 化 の同時発生で 10% 程度の前倒し可能性
 
 ---
 
 ## §7 Doom / Blender 参照点との比較
 
-**status**: 最終 group で draft
+**status**: group C (次) で draft
 
 draft 予定の項目:
 - §7.1 Doom 2016 (id Tech 6) との比較 (体制 3 名経験者 + clean abstraction × 6-12 か月 = 実工数 18-36 人月)、AYAstorm 換算と本算定の差分根拠
@@ -1062,7 +1500,7 @@ draft 予定の項目:
 
 ## §8 plan B trigger 条件 (charter §8 (B) 工程プラン破綻判定の閾値設定)
 
-**status**: 最終 group で draft
+**status**: group C (次) で draft
 
 draft 予定の項目:
 - §8.1 charter §8 (A) 外部条件 trigger (LL Vulkan 先着地 / AYA life plan 変更) は本 §8 範囲外、charter §8 (B) 工程プラン破綻のみ本 §8 で扱う
@@ -1099,8 +1537,8 @@ work item (b) と同様に group 分けで進行、各 group が密接に絡む 
 1. ~~本 doc skeleton + 算定方針 の AYA review~~ ✓ 完了
 2. ~~foundation group (§1 per-file + §2 per-shader) draft 着手~~ ✓ 完了 (§1 = 7.77 PM / §2 = 5.15 PM / 合計 12.92 PM フルタイム dev)
 3. ~~group A (§3 per-milestone + §4 3 OS) draft 着手~~ ✓ 完了 (§3.9 Linux baseline = 21.07 PM work / 29.90 PM 余裕係数適用後 平均 +42%、§4.5 3 OS 合計 = 25.12 PM work / 35.84 PM 余裕係数適用後、フルタイム dev)
-4. **group A review → group B (§5 月数 + §6 uncertainty) draft 着手** ← 次
-5. group C (§7 Doom Blender + §8 plan B) draft
+4. ~~group B (§5 milestone 月数 + §6 uncertainty band) draft 着手~~ ✓ 完了 (§5 並走 4x × 学習曲線 weighted +18.7% / vk-RC 3 OS parity 完遂 中央値 ~170 暦月 = 14.17 年 / §6 band 上方 +90% = ~27 年 / 下方 -30% = ~10 年)
+5. **group B review → group C (§7 Doom Blender + §8 plan B) draft 着手** ← 次
 6. 8 section 揃ったら work item (c) 完了宣言、work item (d) r42+ 区切り確定 着手
 
 ### foundation 算出値 (group A draft で消化済)
@@ -1109,17 +1547,32 @@ work item (b) と同様に group 分けで進行、各 group が密接に絡む 
 |---|---|---|---|
 | §1.7 C++ critical path 合計 | **7.77 PM** | フルタイム dev | §3 milestone に振り分け済 |
 | §2.5 shader 合計 | **5.15 PM** | フルタイム dev | §3 milestone に振り分け済 |
-| **foundation 合計** | **~12.92 PM** | フルタイム dev | §3 で消化、§5/§6 で本職並走 ratio + 学習曲線 + uncertainty band 適用予定 |
+| **foundation 合計** | **~12.92 PM** | フルタイム dev | §3 で消化、§5/§6 で本職並走 ratio + 学習曲線 + uncertainty band 適用済 |
 
-### group A 算出値 (group B 以降の base 値)
+### group A 算出値 (group B draft で消化済)
 
 | section | 算出値 | 単位 | 用途 |
 |---|---|---|---|
-| §3.9 milestone work sum (Linux baseline、余裕係数前) | **21.07 PM** | フルタイム dev | §5 で本職並走 ratio + 学習曲線適用の base |
-| §3.9 milestone work sum (Linux baseline、余裕係数適用後 平均 +42%) | **29.90 PM** | フルタイム dev | §5 で暦月変換、§6 で uncertainty band |
-| §4.2 Win 増分 (余裕係数適用後 +40%) | **1.89 PM** | フルタイム dev | §5 OS 別 timing 反映、§4.4 と整合 |
-| §4.3 Mac 増分 (余裕係数適用後 +50%) | **4.05 PM** | フルタイム dev | §5 OS 別 timing 反映、§4.4 と整合 |
-| §4.5 3 OS 合計 (余裕係数適用後) | **~35.84 PM** | フルタイム dev | §5 で 3 OS 完遂までの暦月変換 base |
+| §3.9 milestone work sum (Linux baseline、余裕係数前) | **21.07 PM** | フルタイム dev | §5 で本職並走 ratio + 学習曲線適用済 |
+| §3.9 milestone work sum (Linux baseline、余裕係数適用後 平均 +42%) | **29.90 PM** | フルタイム dev | §5 で暦月変換済、§6 で uncertainty band 適用済 |
+| §4.2 Win 増分 (余裕係数適用後 +40%) | **1.89 PM** | フルタイム dev | §5 OS 別 timing 反映済 |
+| §4.3 Mac 増分 (余裕係数適用後 +50%) | **4.05 PM** | フルタイム dev | §5 OS 別 timing 反映済 |
+| §4.5 3 OS 合計 (余裕係数適用後) | **~35.84 PM** | フルタイム dev | §5 で 3 OS 完遂までの暦月変換済 |
+
+### group B 算出値 (group C 以降の base 値)
+
+| section | 算出値 | 単位 | 用途 |
+|---|---|---|---|
+| §5.1 本職並走 ratio 確定 | **4x** (フルタイム dev 1 PM = AYA 並走 4 暦月) | calendar/PM | §5.3 milestone 別暦月変換、§6 band 算定の base |
+| §5.2 学習曲線 weighted PM (Linux baseline) | **~35.97 weighted PM** (weighted avg +20.4%) | フルタイム dev | §5.3 計算式 input |
+| §5.2 学習曲線 weighted PM (3 OS 合計) | **~42.51 weighted PM** (weighted avg +18.7%) | フルタイム dev | §5.3 計算式 input |
+| §5.3 vk-RC 3 OS parity 完遂 中央値 | **~170 暦月 (~14.17 年)** | 本職並走 calendar | §5.4 累積、§6 band 適用 base |
+| §5.5 charter §4 (3) 整合判定 | 中央値 14.17 年 (charter 下限 15 年の 94%) + 上方 27 年 (charter 上限 30 年の 90%) で **整合範囲内** | 本職並走 calendar | §7 group C で 参照点との cross check 継続 |
+| §5.6 marker 暦年 (r41 達成 / vk-RC 3 OS parity 完遂) | **r41 = ~2033 年中 / vk-RC = ~2040 年後半** | 進捗 marker (撤退条件には使わない) | §8 plan B trigger 閾値設定の reference |
+| §6.2 base band (上方 +90% / 下方 -30%) | 8 要因 × 振れ幅 の正 correl 寄せ合成 | PM | §6.3 milestone 別 band の base |
+| §6.4 累積 band (vk-RC 3 OS parity 完遂) | **上方 +90% = ~323 暦月 (~26.9 年、~2053 年) / 下方 -30% = ~119 暦月 (~9.9 年、~2036 年)** | 本職並走 calendar | §8 plan B trigger 閾値の input |
+| §6.5 3 シナリオ tabulation (charter §4 (3) 想定 15-30 年 との整合) | 上方 27 年 (上限 90%) + 中央 14 年 (下限 94%) + 下方 10 年 (下限を下回るが low-likelihood) で **整合範囲内** | 本職並走 calendar | §7 group C で 参照点との cross check 継続 |
+| §6.6 band を縮める方策 (a)-(g) 7 件 | 上方 band を +90% → +50-60% に圧縮で ~22 年に短縮可能 | 方策 list | §8 group C で plan B trigger 発動回避策と連動 |
 
 ---
 
