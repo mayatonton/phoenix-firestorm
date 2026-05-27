@@ -46,7 +46,6 @@
 #include "llface.h"
 #include "llagentcamera.h"
 #include "llframetimer.h"
-#include "llpositionalstreammgr.h"
 #include "llviewerobject.h"
 #include "llviewerobjectlist.h" // For debug listing.
 #include "pipeline.h"
@@ -153,7 +152,6 @@ namespace
         S32 mRootChildren = 0;
         bool mObjectIsMesh = false;
         bool mSelected = false;
-        bool mStream3DProtected = false;
     };
 
     struct FSR34MouselookFrameCache
@@ -367,10 +365,6 @@ namespace
         entry.mSelected =
             (entry.mObject && entry.mObject->isSelected()) ||
             (entry.mRoot && entry.mRoot->isSelected());
-        entry.mStream3DProtected =
-            (entry.mObject && LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(entry.mObject->getID())) ||
-            (entry.mRoot && LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(entry.mRoot->getID()));
-
         const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
         const LLVector3& camera_at = LLViewerCamera::getInstance()->getAtAxis();
         if (entry.mRoot)
@@ -739,7 +733,7 @@ namespace
             (((target_root_local_id || auto_root_enabled) && target_root_pass_mode) || auto_heavy_enabled))
         {
             const FSR34MouselookSourceCacheEntry& source = fsr34_get_source_cache_entry(params.mFSPickerLocalID);
-            if (source.mStream3DProtected || source.mSelected)
+            if (source.mSelected)
             {
                 return false;
             }

@@ -673,7 +673,7 @@ Phase 3:
 
 - avatar / self avatar / attachment / HUD
 - selected object / edit 対象
-- MOAP / 3D Stream protected source
+- selected source
 - media 面、speaker、stream source と判定できる prim
 - small linkset や通常の屋外 world geometry
 
@@ -892,7 +892,7 @@ Phase 4: 汎用化判定
 変更点:
 
 - `LLVOVolume::calcLOD()` で通常 LOD detail 算出後、mouselook dense-root 条件に合う world volume child だけ追加 LOD bias を掛ける。
-- 対象外条件は `HUD`, `avatar`, `attachment`, `selected`, `MOAP/3D Stream protected`。
+- 対象外条件は `HUD`, `avatar`, `attachment`, `selected`。
 - dense root 条件は `root distance <= AYAR34MouselookDenseRootMaxDistance` かつ `root child count >= AYAR34MouselookDenseRootMinChildren`。
 - 追加検証で、root child count が少なくても近距離 high triangle mesh を拾う heavy-mesh 条件を追加した。条件は `root distance <= AYAR34MouselookHeavyMeshMaxDistance` かつ `max(current triangles, estimated max triangles) >= AYAR34MouselookHeavyMeshMinTriangles`。
 - band 判定は `camera dot` と projected screen height percentage で行う。
@@ -915,7 +915,7 @@ Phase 4: 汎用化判定
 2026-05-27 追加修正 2:
 
 - 実測では top source に出ている high-triangle world mesh が `LLVOVolume::calcLOD()` 側に十分流れていなかった。render-by-group の visible spatial group は group distance だけ更新され、個別 drawable の LOD 再評価が毎秒十分に走らないケースがあるため。
-- `LLSpatialGroup::updateDistance()` に r34 mouselook 限定の per-object LOD refresh を追加した。対象は existing LOD bias と同じく、world volume かつ dense root または heavy mesh candidate のみ。HUD / avatar / attachment / selected / 3D Stream protected は除外する。
+- `LLSpatialGroup::updateDistance()` に r34 mouselook 限定の per-object LOD refresh を追加した。対象は existing LOD bias と同じく、world volume かつ dense root または heavy mesh candidate のみ。HUD / avatar / attachment / selected は除外する。
 - `AYAR34MouselookForceLODRefreshIntervalFrames` を追加し、同一 local id の forced refresh を既定 4 frame 間隔に抑える。
 - `dense_lod` summary に `forced_refresh` を追加した。ここが増え、同時に `heavy_mesh` / `screen_forced` が top source に追随するか確認する。
 
@@ -923,9 +923,15 @@ Phase 4: 汎用化判定
 
 - 実測ログでは `forced_refresh` が増えて LOD refresh path は動作していたが、`world_top_sources` には 100 万 triangle 超の source が残った。つまり主問題は「LOD 再評価されていない」から「LOD bias だけでは描画投入 triangle が十分落ちない」に移った。
 - r34 検証用に `AYAR34MouselookSuppressAutoHeavyEnabled` を追加した。既定 ON とし、mouselook 中だけ per-frame の root / child source triangle を積算して、`AYAR34MouselookSuppressAutoHeavyMinSourceTriangles` 以上の heavy world mesh source を selected outer-cone passes から除外する。
-- 対象は world mesh のみ。avatar / attachment / selected object / 3D Stream protected prim は除外する。これにより MOAP/3D Stream、装着物、編集対象を壊さない。
+- 対象は world mesh のみ。avatar / attachment / selected object は除外する。MOAP/3D Stream は Dullahan 紐づけの問題と切り分け、r34 mouselook fast path では保護条件に使わない。
 - suppression 判定は `AYAR34MouselookSuppressAutoHeavyMaxDistance`、`AYAR34MouselookSuppressAutoHeavyOuterDot`、`AYAR34MouselookSuppressAutoHeavySmallScreenPct` で制御する。正面の大きい形状は残し、視界外または小さく映る high-triangle source を先に落とす。
 - `AYAR34MouselookVolumeTraceEnabled` の summary に `auto_heavy_suppressed_draw_infos` / `auto_heavy_suppressed_triangles` を追加した。ここが増え、同時に `world triangles` と FPS が改善するか確認する。
+
+2026-05-28 追加修正 2:
+
+- 実測ログで `auto_heavy_suppressed_triangles=0` のまま、近距離の `root_children=104` linkset 配下 child mesh が 90 万〜100 万 triangles 残っていた。MOAP/3D Stream 保護はこの FPS 最適化とは別問題で、Dullahan 紐づけ不備の影響を r34 fast path 側で回避する必要はない。
+- `LLPositionalStreamMgr::isStream3DPrimOrRoot()` による保護条件を LOD bias / forced LOD refresh / auto-heavy suppression から外した。r34 mouselook fast path は world mesh、mouselook、selected 以外という条件に絞る。
+- 検証では `auto_heavy_suppressed_triangles` が 0 から増えるかを最優先で確認する。
 
 ビルド:
 

@@ -76,7 +76,6 @@
 #include "llnotificationsutil.h"
 #include "llagent.h"
 #include "llagentcamera.h"
-#include "llpositionalstreammgr.h"
 #include "llviewermediafocus.h"
 #include "lldatapacker.h"
 #include "llviewershadermgr.h"
@@ -365,12 +364,6 @@ namespace
             return 0;
         }
 
-        if (LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(objectp->getID()) ||
-            LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(rootp->getID()))
-        {
-            return 0;
-        }
-
         const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
         const LLVector3& camera_at = LLViewerCamera::getInstance()->getAtAxis();
         const LLVector3 root_delta = rootp->getPositionAgent() - camera_pos;
@@ -506,12 +499,6 @@ bool aya_r34_mouselook_force_lod_update_candidate(LLVOVolume* objectp)
 
     LLViewerObject* rootp = objectp->getRootEdit();
     if (!rootp || aya_r34_any_selected(objectp, rootp))
-    {
-        return false;
-    }
-
-    if (LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(objectp->getID()) ||
-        LLPositionalStreamMgr::instance().isStream3DPrimOrRoot(rootp->getID()))
     {
         return false;
     }
