@@ -98,11 +98,18 @@ lldrawpool.cpp (base orchestrator、1,186 LOC)
 
 | sub-step | scope | 対象 file (LOC) | 完了 marker |
 |---|---|---|---|
-| **2.1** | base orchestrator + 軽量 pool 4 件 | lldrawpool.cpp (1,186) + sky (57) + waterexclusion (79) + pbropaque (148) + simple (380) = 5 file 1,850 LOC | base orchestrator が Vulkan command buffer setup 動作、軽量 4 pool が validation layer error 0 件で record 完遂、bridging template 確定 |
+| **2.1a** | Vulkan command 基盤 + minimal render pass | `llvkloader.{cpp,h}` 拡張 (VkCommandPool + VkCommandBuffer + minimal VkRenderPass + minimal VkFramebuffer (offscreen attachment)、record begin/end の空転動作) | viewer 起動時 command pool / cmd buffer / render pass / framebuffer 作成成功 + per-frame `vkBeginCommandBuffer` → `vkCmdBeginRenderPass` → `vkCmdEndRenderPass` → `vkEndCommandBuffer` の空 record サイクル動作 + validation layer error 0 件 + submit せず discard (本段階で表示変化なし) |
+| **2.1b** | base orchestrator + 軽量 pool 4 件 | lldrawpool.cpp (1,186) + sky (57) + waterexclusion (79) + pbropaque (148) + simple (380) = 5 file 1,850 LOC | base orchestrator が 2.1a 基盤を経由 record 配線、軽量 4 pool が `vkCmdDraw*` placeholder record (PSO 統合は段階 3、本段階は dummy pipeline binding で record 単体動作) + validation 0 件、bridging template 確定 |
 | **2.2** | 標準 pool 中量 5 件 | alpha (1,169) + tree (243) + bump (1,122) + materials (367) + water (358) = 5 file 3,259 LOC | 5 pool 独立 port 完遂、blend / alpha-test / multi-texture / PBR uniform / dual-layer の bridging code が validation 0 件で動作 |
 | **2.3** | atmospherics pool 1 件 | wlsky (521) = 1 file 521 LOC | Windlight sky の atmospherics shader binding placeholder で record 完遂、shader 側 final 化は領域 6 完遂時 |
 | **2.4** | 特殊対応 pool 2 件 | terrain (1,167) + avatar (1,110) = 2 file 2,277 LOC | terrain glTexGen 廃止 + shader 側 UV 化整合 (領域 6 並走)、avatar skinning SSBO 基本実装、bridging code 肥大は許容 (段階 3 で解消) |
 | **2.5** | 段階 2 self-check + AYA review + handoff doc | (本 sub-step) | §4.1 acceptance 4 件 self-trace PASS + handoff doc `handoff-stage-2-complete.md` 作成 |
+
+**sub-step 2.1 分割の経緯 (2026-05-28 boundary refine、charter §7.5 反映)**:
+- 段階 1 完遂時点で構築済の Vulkan resource は `VkInstance` + `VkPhysicalDevice` + `VkDevice` + `VkQueue` の 4 件のみ
+- §4.1 #3 acceptance「13 pool の `render()` が VkCommandBuffer に record + validation 0 件」を満たすには command pool / command buffer / render pass / framebuffer が前提として必要
+- 当初 sub-step 2.1 単体で 5 file 一括 port を想定していたが、record 対象 (command buffer) 不在で着手不可と判明 → **2.1a (基盤工事) と 2.1b (base orchestrator + 軽量 4 pool record 配線) に分割**
+- 2.1a は llrender 層拡張で、lldrawpool.cpp の編集なし。**LOC 影響**: 段階 2 全体の対象 LOC (7,907) は不変、新規追加は llvkloader.{cpp,h} +~150 LOC 想定 (command pool 作成 + render pass 作成 + per-frame cycle hook)
 
 ### §3.2 sub-step 内 file 順序の柔軟性 (charter §7.5 boundary refine 可)
 
@@ -206,7 +213,7 @@ charter §3 acceptance criterion #1 (GL 除去) + #3 (段階 1-5 全完遂) の 
 
 完成宣言後の次 action:
 
-- 段階 2 sub-step 2.1 着手 (base orchestrator + 軽量 4 pool)
+- 段階 2 sub-step 2.1a 着手 (command 基盤 + minimal render pass)、続けて 2.1b (base orchestrator + 軽量 4 pool)
 - 段階 2 sub-step 2.5 完遂時に handoff doc `handoff-stage-2-complete.md` 作成
 - 段階 3 着手前に sub-doc `03-state-machine-pso.md` (仮称) 起草
 
