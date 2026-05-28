@@ -52,7 +52,7 @@ memory `project_ayastorm_three_platforms.md` 「3 OS 揃える、Linux のみ判
 ### scope 境界 (parity 不要の明示)
 
 - **動作可**: audio (r1-r13) / chat (r22 tab 等の非描画部分) / network / UI / scene state / picker の CPU 側 (描画は不可)
-- **動作不可 (r42 以降で順次回復)**: 描画依存 AYAstorm 機能 — picker GPU side (r42-α) / Cinematic Controls 描画系 (r42-β) / visual realism r14+ 系 (r42-γ) / chat の描画依存部分 (r42-δ 範囲)
+- **動作不可 (r42 以降で順次回復)**: 描画依存 AYAstorm 機能 — picker GPU side (r42-α) / Cinematic Controls 描画系 (r42-β) / visual realism r14+ 系 (r42-γ) / chat の描画依存部分 (r42-δ 範囲) / **llpostprocess legacy effects (bloom / NightVision / ColorFilter) — upstream Firestorm 由来 dead code stub、本実装は r42-δ basket 移管 2026-05-29 (sub-step 3.2 smoke-test target が sky pool 1 draw に refine された経緯、`03-state-machine-pso.md` §3.1 sub-step 3.2 marker 参照)**
 - **本線 GL 維持 (r41 段階)**: Win/Mac (r42-α/β で Vulkan 着手、r41 では本線 GL 維持 — r40 章 charter §4 (2)(6) 遵守)
 
 ---

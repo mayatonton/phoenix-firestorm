@@ -365,10 +365,11 @@ charter §6 仮 line up の「r42 = r1-r13 audio port 並行」+ AYAstorm r25-r2
 |---|---|---|---|
 | r25-r29 3D stream Vulkan 描画 stage 接続 | 0.50 | NDI / OBS 等の Vulkan-side hook 検討、05 doc §9.2 `VK_KHR_external_memory_*` 予約のみ採用判断 (r42-δ で実装は最低限、本格は r45+) | 追加 work |
 | r1-r13 audio 系 Vulkan 非依存確認 | 0.30 | FMOD callback + Dullahan path の Vulkan-agnostic invariant 検証、memory `project_pr69_fallback_switch.md` 反映 (LL_DULLAHAN_AUDIO_CALLBACK フラグ整合確認) | 追加 work |
+| **llpostprocess legacy effects 現代化** (2026-05-29 追加、本 §2.4 base 1.50 外) | +0.20 (再算定保留) | upstream Firestorm 由来 stub 状態の bloom / NightVision / ColorFilter 3 effect を Vulkan PSO 上で実装し直し (r41 sub-step 3.2 着手時の dead code 発見で r41 scope 外 → r42-δ basket 移管、r41 charter §1 scope 境界 + `03-state-machine-pso.md` §3.1 sub-step 3.2 marker 参照、totals 反映は r42-δ 着手時に他項目と一括再算定) | 追加 work (re-budget 保留) |
 | vk-RC 直前 regression sweep | 0.70 | r41-r42-γ 残 bug 集中 fix、parity 残機能 polish (chat / picker / Cinematic / visual realism の細部) | 追加 work |
-| **base work 計** | **1.50** | — | 06 doc §3.6 |
+| **base work 計** | **1.50** (+0.20 llpostprocess 後日算入予定) | — | 06 doc §3.6 |
 | 余裕係数 +50% | +0.75 | vk-RC 直前 unknown + parity 残機能の発掘 cost (charter §4 (3) 不確実性 2-3x の中央寄り反映) | — |
-| **r42-δ total (フルタイム dev 換算)** | **~2.25** | — | 06 doc §3.6 |
+| **r42-δ total (フルタイム dev 換算)** | **~2.25** (llpostprocess 0.20 別途、r42-δ 着手時に一括再算定) | — | 06 doc §3.6 |
 
 #### acceptance criteria draft
 
