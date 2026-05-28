@@ -35,9 +35,11 @@ Venue IRs bundled in r11 (and still shipping) are from OpenAIR (CC-BY 4.0). Sour
 
 ## Downloads
 
-- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261441503_Setup.exe)
-- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81209.dmg)
-- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261442337.tar.xz)
+> [!IMPORTANT]
+> **r31-bugfix-1 binaries have been consolidated into the r31-bugfix-2 release page.**
+> The r31-bugfix-1 SSS pink-shadow fix is fully carried into r31-bugfix-2. Please download from the latest release page below:
+>
+> 👉 **[AYAstorm r31-bugfix-2 Release page](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)**
 
 ## Contributors
 
