@@ -812,6 +812,17 @@
         <key>Value</key>
             <integer>0</integer>
         </map>
+    <key>FSAOHiddenSets</key>
+        <map>
+        <key>Comment</key>
+            <string>List of AO set inventory UUIDs hidden from the AO floater (AYAstorm r31.2 soft hide). Inventory data is preserved; this only controls UI visibility.</string>
+        <key>Persist</key>
+            <integer>1</integer>
+        <key>Type</key>
+            <string>LLSD</string>
+        <key>Value</key>
+            <array/>
+        </map>
     <key>LockAOFolders</key>
         <map>
         <key>Comment</key>

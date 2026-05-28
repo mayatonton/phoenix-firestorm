@@ -4230,8 +4230,13 @@ https://wiki.firestormviewer.org/fs_voice
 		すでにその名前のアニメーションセットは存在しています。
 	</notification>
 	<notification name="RemoveAOSet">
-		リストからＡＯセット「[AO_SET_NAME]」を削除してもよろしいですか？
-		<usetemplate name="okcancelbuttons" notext="キャンセル" yestext="削除する"/>
+ＡＯセット「[AO_SET_NAME]」をＡＹＡｓｔｏｒｍ上で非表示にします。
+
+ＳＬインベントリ内の #Firestorm/#AO のデータは削除されません。
+同じアカウントで Firestorm や他の Firestorm 派生ビューアからログインすると引き続き表示・使用できます。
+
+後で再表示するには「非表示にしたＡＯセットの管理」から復元できます。
+		<usetemplate name="okcancelbuttons" notext="キャンセル" yestext="非表示にする"/>
 	</notification>
 	<notification name="AOForeignItemsFound">
 		アニメーションオーバーライダーは、構成に属さない項目を少なくとも１つ見つけました。

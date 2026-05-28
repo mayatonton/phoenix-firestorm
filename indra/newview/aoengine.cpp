@@ -1340,8 +1340,160 @@ void AOEngine::purgeFolder(const LLUUID& uuid) const
 
 bool AOEngine::removeSet(AOSet* set)
 {
-    purgeFolder(set->getInventoryUUID());
+    // AYAstorm r31.2: soft hide instead of inventory purge.
+    // The original behaviour purged the AO set folder from #Firestorm/#AO, which is
+    // a shared SL inventory location used by Firestorm and all FS-derived viewers
+    // on the same account. That made cross-viewer data destruction trivial.
+    // We now record the set's inventory UUID in FSAOHiddenSets and let update()
+    // skip it, leaving the underlying inventory intact.
+    if (!set)
+    {
+        return false;
+    }
 
+    const LLUUID inventoryUUID = set->getInventoryUUID();
+    if (inventoryUUID.isNull())
+    {
+        LL_WARNS("AOEngine") << "removeSet called with null inventory UUID, ignoring." << LL_ENDL;
+        return false;
+    }
+
+    LLSD hidden = gSavedPerAccountSettings.getLLSD("FSAOHiddenSets");
+    if (!hidden.isArray())
+    {
+        hidden = LLSD::emptyArray();
+    }
+
+    const std::string uuidStr = inventoryUUID.asString();
+    bool alreadyHidden = false;
+    for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
+    {
+        if (it->asString() == uuidStr)
+        {
+            alreadyHidden = true;
+            break;
+        }
+    }
+    if (!alreadyHidden)
+    {
+        hidden.append(LLSD(uuidStr));
+        gSavedPerAccountSettings.setLLSD("FSAOHiddenSets", hidden);
+    }
+
+    LL_INFOS("AOEngine") << "Soft-hiding AO set '" << set->getName()
+                         << "' (inv " << uuidStr << "). Inventory left intact." << LL_ENDL;
+
+    mTimerCollection.enableReloadTimer(true);
+    return true;
+}
+
+bool AOEngine::isSetHidden(const LLUUID& inventoryUUID) const
+{
+    if (inventoryUUID.isNull())
+    {
+        return false;
+    }
+
+    LLSD hidden = gSavedPerAccountSettings.getLLSD("FSAOHiddenSets");
+    if (!hidden.isArray())
+    {
+        return false;
+    }
+
+    const std::string uuidStr = inventoryUUID.asString();
+    for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
+    {
+        if (it->asString() == uuidStr)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<std::pair<LLUUID, std::string>> AOEngine::getHiddenSets() const
+{
+    std::vector<std::pair<LLUUID, std::string>> result;
+
+    LLSD hidden = gSavedPerAccountSettings.getLLSD("FSAOHiddenSets");
+    if (!hidden.isArray())
+    {
+        return result;
+    }
+
+    for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
+    {
+        LLUUID id(it->asString());
+        if (id.isNull())
+        {
+            continue;
+        }
+
+        std::string name;
+        if (LLViewerInventoryCategory* cat = gInventory.getCategory(id))
+        {
+            std::string folderName = cat->getName();
+            std::vector<std::string> params;
+            LLStringUtil::getTokens(folderName, params, ":");
+            name = params.empty() ? folderName : params[0];
+        }
+        else
+        {
+            name = "(missing in inventory)";
+        }
+
+        result.emplace_back(id, name);
+    }
+    return result;
+}
+
+bool AOEngine::unhideSet(const LLUUID& inventoryUUID)
+{
+    if (inventoryUUID.isNull())
+    {
+        return false;
+    }
+
+    LLSD hidden = gSavedPerAccountSettings.getLLSD("FSAOHiddenSets");
+    if (!hidden.isArray())
+    {
+        return false;
+    }
+
+    const std::string uuidStr = inventoryUUID.asString();
+    LLSD newHidden = LLSD::emptyArray();
+    bool removed = false;
+    for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
+    {
+        if (it->asString() == uuidStr)
+        {
+            removed = true;
+            continue;
+        }
+        newHidden.append(*it);
+    }
+
+    if (!removed)
+    {
+        return false;
+    }
+
+    gSavedPerAccountSettings.setLLSD("FSAOHiddenSets", newHidden);
+    LL_INFOS("AOEngine") << "Un-hiding AO set (inv " << uuidStr << ")." << LL_ENDL;
+    mTimerCollection.enableReloadTimer(true);
+    return true;
+}
+
+bool AOEngine::unhideAllSets()
+{
+    LLSD hidden = gSavedPerAccountSettings.getLLSD("FSAOHiddenSets");
+    if (!hidden.isArray() || hidden.size() == 0)
+    {
+        return false;
+    }
+
+    gSavedPerAccountSettings.setLLSD("FSAOHiddenSets", LLSD::emptyArray());
+    LL_INFOS("AOEngine") << "Un-hiding all " << hidden.size() << " AO sets." << LL_ENDL;
     mTimerCollection.enableReloadTimer(true);
     return true;
 }
@@ -1600,6 +1752,13 @@ void AOEngine::update()
             if (params.empty())
             {
                 LL_WARNS("AOEngine") << "Unexpected folder found in ao set folder: " << currentCategory->getName() << LL_ENDL;
+                continue;
+            }
+
+            // AYAstorm r31.2: skip sets that have been soft-hidden via removeSet().
+            if (isSetHidden(currentCategory->getUUID()))
+            {
+                LL_DEBUGS("AOEngine") << "Skipping hidden AO set: " << setFolderName << LL_ENDL;
                 continue;
             }
 

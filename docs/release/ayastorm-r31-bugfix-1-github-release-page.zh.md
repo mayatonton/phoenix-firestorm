@@ -35,9 +35,11 @@ r11 同捆并持续出货的 venue IR 来自 OpenAIR(CC-BY 4.0)。来源: [`app_
 
 ## Downloads
 
-- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261441503_Setup.exe)
-- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81209.dmg)
-- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261442337.tar.xz)
+> [!IMPORTANT]
+> **r31-bugfix-1 的 binary 已集中於 r31-bugfix-2 的 release page。**
+> r31-bugfix-1 的 SSS pink-shadow 修正已完整繼承至 r31-bugfix-2。請從下方最新版的 release page 下載:
+>
+> 👉 **[AYAstorm r31-bugfix-2 Release page](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)**
 
 ## Contributors
 

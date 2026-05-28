@@ -61,6 +61,26 @@ static const std::string UPLOAD_SCRIPT_CURRENT = "EBEDD1D2-A320-43f5-88CF-DD47BB
 static const std::string FS_STATE_ATTRIBUTE = "state=";
 static const std::string FS_ERROR_ATTRIBUTE = "error=";
 
+// AYAstorm r31.2: parse "<major>.<minor>" from bridgeVer payload.
+static bool parseBridgeVersionString(const std::string& bVer, S32& major, S32& minor)
+{
+    const size_t dot = bVer.find('.');
+    if (dot == std::string::npos)
+    {
+        return false;
+    }
+    try
+    {
+        major = std::stoi(bVer.substr(0, dot));
+        minor = std::stoi(bVer.substr(dot + 1));
+    }
+    catch (...)
+    {
+        return false;
+    }
+    return true;
+}
+
 class NameCollectFunctor : public LLInventoryCollectFunctor
 {
 public:
@@ -238,6 +258,34 @@ bool FSLSLBridge::lslToViewer(std::string_view message, const LLUUID& fromID, co
         std::string receivedBridgeVersion = llformat("%s%s", FS_BRIDGE_NAME.c_str(), bVer.c_str());
         if (receivedBridgeVersion != mCurrentFullName)
         {
+            // AYAstorm r31.2: if the bridge in the shared #Firestorm folder is NEWER than
+            // what we know about, adopt it without recreating. This avoids the time-bomb
+            // where AYAstorm and the upstream Firestorm viewer destroy each other's
+            // bridge on every login when their minor versions drift.
+            S32 recvMajor = 0;
+            S32 recvMinor = 0;
+            const bool parsed = parseBridgeVersionString(bVer, recvMajor, recvMinor);
+            const bool received_is_newer = parsed &&
+                (recvMajor > static_cast<S32>(FS_BRIDGE_MAJOR_VERSION) ||
+                 (recvMajor == static_cast<S32>(FS_BRIDGE_MAJOR_VERSION) &&
+                  recvMinor > static_cast<S32>(FS_BRIDGE_MINOR_VERSION)));
+            if (received_is_newer)
+            {
+                LL_INFOS("FSLSLBridge") << "Found newer bridge v" << recvMajor << "." << recvMinor
+                                        << " (we know v" << FS_BRIDGE_MAJOR_VERSION << "."
+                                        << FS_BRIDGE_MINOR_VERSION << "), adopting it without recreate." << LL_ENDL;
+                mBridgeUUID = fromID;
+                mCurrentURL = bURL;
+                if (!mpBridge)
+                {
+                    LLUUID catID = findFSCategory();
+                    LLViewerInventoryItem* fsBridge = findInvObject(receivedBridgeVersion, catID);
+                    mpBridge = fsBridge;
+                }
+                status = viewerToLSL("URL Confirmed");
+                return true;
+            }
+
             LL_WARNS("FSLSLBridge") << "BridgeVer message received from ("<< bAuth <<") was ("<< receivedBridgeVersion <<"), but it should be different ("<< mCurrentFullName <<"). Recreating." << LL_ENDL;
             recreateBridge();
             return true;

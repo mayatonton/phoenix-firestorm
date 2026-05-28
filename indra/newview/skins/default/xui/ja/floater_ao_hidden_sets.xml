@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<floater name="ao_hidden_sets" title="非表示にしたＡＯセット">
+	<text name="hidden_sets_help_text">
+下記のＡＯセットはＡＯフロータから非表示にされていますが、インベントリ (#Firestorm/#AO) には残っています。セットを選択して「選択を再表示」、または「すべて再表示」を押してください。
+	</text>
+	<scroll_list name="hidden_sets_list">
+		<scroll_list.columns name="set_name" label="セット名"/>
+		<scroll_list.columns name="inventory_uuid" label="インベントリ ＵＵＩＤ"/>
+	</scroll_list>
+	<button name="restore_selected" label="選択を再表示"/>
+	<button name="restore_all" label="すべて再表示"/>
+</floater>
