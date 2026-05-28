@@ -5267,6 +5267,11 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             if (dispatch_r20)
             {
                 doSkinSSS();
+                // SSS enables alpha writes for its fullscreen composite. Restore
+                // the post-deferred default before FullBright/Glow pools so
+                // color passes do not leak into mRT->screen.a.
+                gGL.setSceneBlendType(LLRender::BT_ALPHA);
+                gGL.setColorMask(true, false);
             }
             done_sss = true;
         }

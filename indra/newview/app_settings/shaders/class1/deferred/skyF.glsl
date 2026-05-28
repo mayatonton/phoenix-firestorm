@@ -121,18 +121,12 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 uses
-    // gbuffer3.a as the SSS skin mask, so sky writes 0 to opt out of
-    // the screen-space SSS blur.
-    // <FS:AYAstorm r30 BD改善> Cinematic mode でも r20 SSS dispatch が
-    //   走るため (r20 consolidation で mode 1/2 共通)、alpha=1 leak で
-    //   horizon / 半透明 SIM 装飾物に skin_mask 誤発火する。alpha は
-    //   SSS skin_mask に専有し、cinematic でも 0 を書く。
-    frag_data[3] = vec4(color.rgb, 0.0);
+    // Preserve sky visual alpha for emissive-buffer blending. skinSSS rejects
+    // sky-domain pixels by far-plane depth before using gbuffer3.a.
+    frag_data[3] = vec4(color.rgb, 1.0);
     // </FS:AYAstorm>
     // </FS:AYA>
 #else
     frag_data[0] = vec4(color.rgb, 1.0);
 #endif
 }
-
