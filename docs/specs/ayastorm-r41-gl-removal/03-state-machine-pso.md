@@ -1,6 +1,6 @@
 # AYAstorm r41 sub-doc 03-state-machine-pso — 段階 3 llrender state machine → Vulkan PSO 化
 
-**status**: **closed 2026-05-29 (Pattern α 一括 draft AYA review PASS) → 3.1a-iv 加筆 pending AYA review (§1.5 新規 + §3.1 sub-step 3.1/3.4 marker refine + §4.1 #1-段階 3 refine + §5.1 関連 doc 表 refine)**
+**status**: **closed 2026-05-29 (Pattern α 一括 draft + 3.1a-iv 加筆、AYA review PASS)**
 **親 charter**: `docs/specs/ayastorm-r41-gl-removal/00-charter.md` (closed 2026-05-28)
 **前 sub-doc**: `02-portage-execution.md` (closed 2026-05-28、段階 2 完遂で役割完了)
 **前 handoff**: `handoff-stage-2-complete.md` (段階 2 完遂 → 段階 3 着手境界)
