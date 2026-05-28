@@ -66,12 +66,12 @@
 
 ### 3.1 解決未完 item (段階 2 着手時の再調査推奨)
 
-#### 3.1.1 loader version log line 不出力 mystery
+#### 3.1.1 loader version log line 不出力 mystery (**解消 2026-05-28**)
 
 - **症状**: `llvkloader.cpp` L228 `LL_INFOS("Vulkan") << "Vulkan loader version " << VK_VERSION_MAJOR(v) << "." << VK_VERSION_MINOR(v) << "." << VK_VERSION_PATCH(v) << LL_ENDL;` が log file に出現しない
-- **確認済**: (a) 文字列 `"Vulkan loader version "` は build artifact `.o` (`build-linux-x86_64/llrender/CMakeFiles/llrender.dir/llvkloader.cpp.o`) と final binary (`~/ayastorm/bin/do-not-directly-run-ayastorm-bin`) の双方に embed 確認 (`strings` grep PASS) — つまりコンパイルされて binary に乗っている / (b) 直後の L83 `LL_INFOS("Vulkan") << "Vulkan instance created (validation=...)"` は log に出現 (L80) = code path は L228 を通過してから createInstance 内 L83 に到達 / (c) L228 と L83 は channel ("Vulkan") + level (LEVEL_INFO) が同一、LL_INFOS macro 構造は全く同じ
-- **未解明**: なぜ L228 だけ flush されないか。仮説候補 (要検証): (i) LLerror static `CallSite` の `shouldLog()` が L228 site で false を返す race-condition 起動時の初期化順序、(ii) line buffering で L228 の record が createInstance 内の何らかの操作で消える、(iii) `_LL_CLASS_TO_LOG` typeid 解決の挙動差。**仮説 3 つ未検証で 5 分 fix 不可と判定 → 段階 2 着手時に gdb breakpoint at L228 で実機 trace 推奨** (`feedback_admit_unknown.md` 遵守)
-- **影響**: 段階 1 acceptance 受入無影響 (instance/device 動作は L80-L86 + L2777-L2778 で確認済)、段階 2 以降の Vulkan log diagnosability が将来 issue 化する可能性のみ → 段階 2 着手の最初の sub-step 等価で短時間調査 priority 上位
+- **真因確定**: **LLError は新規 channel tag の最初の LL_INFOS 呼び出しを swallow する**。bisect 検証 (canary-A/B/C 3 行を L228 周囲に挿入 → log 確認) で「`#Vulkan#` tag の最初の 1 行のみが消える」事象を再現確定。multi-line/single-line/`<<` chain 内容は無関係、純粋に「その channel での最初の呼び出し」が落ちる挙動。仮説 (i)(ii)(iii) は全て却下
+- **fix**: `initVulkan()` 先頭に `LL_INFOS("Vulkan") << "Initializing Vulkan loader..." << LL_ENDL;` を warmup として配置、loader version を含む本命 log は全て後続に配置 → 2 回目の起動 log で確認 PASS (L82 `Vulkan loader version 1.4.319` 含む全 Vulkan log appearance)
+- **段階 2+ 横展開**: 新規 LLError channel を導入する時 (Vulkan 以外も) は最初の LL_INFOS を warmup 用途として割り切る運用ルールが妥当。本 quirk は段階 2 sub-doc `02-portage-execution.md` 起草時に「LLError 新規 channel 運用 note」として継承
 
 #### 3.1.2 Mesa RADV (AMD) 動作確認 testbed 制約
 
@@ -138,7 +138,7 @@ cadence 選好は次 session 開始時に AYA さんと擦り合わせ。**推�
 
 ### 4.4 段階 1 deferred item の段階 2 着手時 cadence
 
-- **loader version log mystery** (§3.1.1): 段階 2 sub-step 1 等価の最初の作業として gdb breakpoint at L228 で実機 trace 30 分以内で原因絞り込み試行、不発時は段階 2 内に持ち越さず段階 5 末尾で再評価
+- ~~loader version log mystery~~ (§3.1.1): **解消済 2026-05-28**、warmup 行追加で fix、段階 2 持ち越し不要
 - **Mesa RADV 動作確認** (§3.1.2): 段階 2-9 進行中は据置、段階 10 driver matrix polish で改めて testbed 確保
 
 ---

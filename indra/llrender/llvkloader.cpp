@@ -224,6 +224,7 @@ bool initVulkan()
         return false;
     }
 
+    LL_INFOS("Vulkan") << "Initializing Vulkan loader..." << LL_ENDL;
     U32 instance_version = volkGetInstanceVersion();
     LL_INFOS("Vulkan") << "Vulkan loader version "
                        << VK_VERSION_MAJOR(instance_version) << "."
