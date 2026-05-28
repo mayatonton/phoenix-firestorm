@@ -61,6 +61,10 @@ public:
     /*virtual*/ bool isFacePool() { return false; }
     /*virtual*/ void resetDrawOrders();
 
+    // <AYAstorm r41> sub-step 2.3: Vulkan record hook (empty marker).
+    /*virtual*/ void recordPoolDraws(VkCommandBuffer cmd_buf);
+    // </AYAstorm r41>
+
     static void cleanupGL();
     static void restoreGL();
 private:
