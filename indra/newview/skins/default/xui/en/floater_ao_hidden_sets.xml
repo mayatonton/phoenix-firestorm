@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<floater
+	positioning="centered"
+	legacy_header_height="18"
+	can_resize="true"
+	can_dock="false"
+	can_close="true"
+	height="340"
+	min_height="260"
+	min_width="320"
+	layout="topleft"
+	name="ao_hidden_sets"
+	help_topic="ao_hidden_sets"
+	save_rect="false"
+	save_visibility="true"
+	single_instance="true"
+	save_dock_state="false"
+	title="Hidden AO Sets"
+	width="360">
+
+	<text
+		name="hidden_sets_help_text"
+		left="10"
+		top="22"
+		right="-10"
+		height="80"
+		word_wrap="true"
+		follows="left|right|top"
+		layout="topleft">
+	These AO sets are hidden from the AO floater but still exist in your inventory (#Firestorm/#AO). Select a set and click "Restore selected", use "Restore all", or use "Delete selected" to permanently delete the selected inventory folder.
+	</text>
+
+	<scroll_list
+		name="hidden_sets_list"
+		left="10"
+		top="110"
+		right="-10"
+		bottom="-70"
+		multi_select="false"
+		draw_heading="true"
+		follows="all"
+		layout="topleft">
+		<scroll_list.columns
+			name="set_name"
+			label="Set name"
+			relative_width="0.6"
+			dynamic_width="false" />
+		<scroll_list.columns
+			name="inventory_uuid"
+			label="Inventory UUID"
+			relative_width="0.4"
+			dynamic_width="false" />
+	</scroll_list>
+
+	<button
+		name="restore_selected"
+		label="Restore selected"
+		left="10"
+		bottom="-38"
+		width="145"
+		height="22"
+		follows="left|bottom"
+		layout="topleft" />
+
+	<button
+		name="restore_all"
+		label="Restore all"
+		left_pad="10"
+		bottom="-38"
+		width="145"
+		height="22"
+		follows="left|bottom"
+		layout="topleft" />
+
+	<button
+		name="delete_selected"
+		label="Delete selected"
+		left="10"
+		bottom="-12"
+		width="145"
+		height="22"
+		follows="left|bottom"
+		layout="topleft" />
+
+</floater>

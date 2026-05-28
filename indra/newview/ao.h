@@ -156,6 +156,36 @@ class FloaterAO
         bool mCanDragAndDrop;
         bool mImportRunning;
         bool mMore;
+
+        void onClickManageHidden();
+};
+
+// AYAstorm r31.2 soft hide: floater to manage AO sets hidden via FSAOHiddenSets.
+class FloaterAOHiddenSets
+:   public LLFloater
+{
+    friend class LLFloaterReg;
+
+    private:
+        FloaterAOHiddenSets(const LLSD& key);
+        ~FloaterAOHiddenSets() = default;
+
+    public:
+        bool postBuild() override;
+        void onOpen(const LLSD& key) override;
+
+    protected:
+        void refreshList();
+        void onClickRestoreSelected();
+        void onClickRestoreAll();
+        void onClickDeleteSelected();
+        bool deleteSelectedCallback(const LLSD& notification, const LLSD& response);
+
+        LLScrollListCtrl* mHiddenList;
+        LLButton* mRestoreSelectedButton;
+        LLButton* mRestoreAllButton;
+        LLButton* mDeleteSelectedButton;
+        LLUUID mPendingDeleteUUID;
 };
 
 #endif // AO_H

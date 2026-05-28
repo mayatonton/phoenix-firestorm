@@ -4,7 +4,7 @@
 	left="0"
 	top="0"
 	width="200"
-	height="314"
+	height="342"
 	follows="all"
 	visible="true"
 	layout="topleft">
@@ -16,7 +16,7 @@
 		left="10"
 		top="4"
 		width="180"
-		height="306"
+		height="334"
 		follows="all"
 		visible="true"
 		layout="topleft">
@@ -76,11 +76,11 @@
 
 		<button
 			name="ao_remove"
-			tool_tip="Remove this animation set."
+			tool_tip="Hide this animation set from the list."
 			left_pad="4"
 			width="20"
 			height="20"
-			image_overlay="TrashItem_Press"
+			image_overlay="Profile_Group_Visibility_Off"
 			follows="right|top"
 			layout="topleft" />
 
@@ -227,6 +227,17 @@
 			max_val="999"
 			increment="1"
 			follows="right|bottom"
+			layout="topleft" />
+
+		<button
+			name="ao_manage_hidden"
+			label="Manage hidden sets"
+			tool_tip="Show AO sets that have been hidden from the list (AYAstorm r31.2 soft hide). You can restore them from here."
+			left="0"
+			top_pad="8"
+			right="-1"
+			height="20"
+			follows="left|right|bottom"
 			layout="topleft" />
 
 		<button

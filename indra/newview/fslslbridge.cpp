@@ -61,6 +61,92 @@ static const std::string UPLOAD_SCRIPT_CURRENT = "EBEDD1D2-A320-43f5-88CF-DD47BB
 static const std::string FS_STATE_ATTRIBUTE = "state=";
 static const std::string FS_ERROR_ATTRIBUTE = "error=";
 
+enum class BridgeVersionRelation
+{
+    Older,
+    Same,
+    Newer,
+    Invalid
+};
+
+// AYAstorm r31.2: parse "<major>.<minor>" from bridgeVer payload.
+static bool parseBridgeVersionString(const std::string& bVer, S32& major, S32& minor)
+{
+    const size_t dot = bVer.find('.');
+    if (dot == std::string::npos)
+    {
+        return false;
+    }
+    try
+    {
+        const std::string major_part = bVer.substr(0, dot);
+        const std::string minor_part = bVer.substr(dot + 1);
+        size_t major_end = 0;
+        size_t minor_end = 0;
+        major = std::stoi(major_part, &major_end);
+        minor = std::stoi(minor_part, &minor_end);
+        if (major_end != major_part.size() || minor_end != minor_part.size() || major < 0 || minor < 0)
+        {
+            return false;
+        }
+    }
+    catch (...)
+    {
+        return false;
+    }
+    return true;
+}
+
+static BridgeVersionRelation compareBridgeVersion(S32 major, S32 minor)
+{
+    if (major > static_cast<S32>(FS_BRIDGE_MAJOR_VERSION) ||
+        (major == static_cast<S32>(FS_BRIDGE_MAJOR_VERSION) &&
+         minor > static_cast<S32>(FS_BRIDGE_MINOR_VERSION)))
+    {
+        return BridgeVersionRelation::Newer;
+    }
+    if (major == static_cast<S32>(FS_BRIDGE_MAJOR_VERSION) &&
+        minor == static_cast<S32>(FS_BRIDGE_MINOR_VERSION))
+    {
+        return BridgeVersionRelation::Same;
+    }
+    return BridgeVersionRelation::Older;
+}
+
+static BridgeVersionRelation compareBridgeVersionString(const std::string& bVer, S32* major_out = nullptr, S32* minor_out = nullptr)
+{
+    S32 major = 0;
+    S32 minor = 0;
+    if (!parseBridgeVersionString(bVer, major, minor))
+    {
+        return BridgeVersionRelation::Invalid;
+    }
+    if (major_out)
+    {
+        *major_out = major;
+    }
+    if (minor_out)
+    {
+        *minor_out = minor;
+    }
+    return compareBridgeVersion(major, minor);
+}
+
+static BridgeVersionRelation compareBridgeObjectName(const std::string& object_name)
+{
+    if (object_name.compare(0, FS_BRIDGE_NAME.size(), FS_BRIDGE_NAME) != 0)
+    {
+        return BridgeVersionRelation::Invalid;
+    }
+    return compareBridgeVersionString(object_name.substr(FS_BRIDGE_NAME.size()));
+}
+
+static bool isCurrentOrNewerBridgeObjectName(const std::string& object_name)
+{
+    BridgeVersionRelation relation = compareBridgeObjectName(object_name);
+    return relation == BridgeVersionRelation::Same || relation == BridgeVersionRelation::Newer;
+}
+
 class NameCollectFunctor : public LLInventoryCollectFunctor
 {
 public:
@@ -238,6 +324,29 @@ bool FSLSLBridge::lslToViewer(std::string_view message, const LLUUID& fromID, co
         std::string receivedBridgeVersion = llformat("%s%s", FS_BRIDGE_NAME.c_str(), bVer.c_str());
         if (receivedBridgeVersion != mCurrentFullName)
         {
+            // AYAstorm r31.2: if the bridge in the shared #Firestorm folder is NEWER than
+            // what we know about, adopt it without recreating. This avoids the time-bomb
+            // where AYAstorm and the upstream Firestorm viewer destroy each other's
+            // bridge on every login when their minor versions drift.
+            S32 recvMajor = 0;
+            S32 recvMinor = 0;
+            if (compareBridgeVersionString(bVer, &recvMajor, &recvMinor) == BridgeVersionRelation::Newer)
+            {
+                LL_INFOS("FSLSLBridge") << "Found newer bridge v" << recvMajor << "." << recvMinor
+                                        << " (we know v" << FS_BRIDGE_MAJOR_VERSION << "."
+                                        << FS_BRIDGE_MINOR_VERSION << "), adopting it without recreate." << LL_ENDL;
+                mBridgeUUID = fromID;
+                mCurrentURL = bURL;
+                if (!mpBridge)
+                {
+                    LLUUID catID = findFSCategory();
+                    LLViewerInventoryItem* fsBridge = findInvObject(receivedBridgeVersion, catID);
+                    mpBridge = fsBridge;
+                }
+                status = confirmBridgeURLAndSendSettings();
+                return true;
+            }
+
             LL_WARNS("FSLSLBridge") << "BridgeVer message received from ("<< bAuth <<") was ("<< receivedBridgeVersion <<"), but it should be different ("<< mCurrentFullName <<"). Recreating." << LL_ENDL;
             recreateBridge();
             return true;
@@ -257,50 +366,7 @@ bool FSLSLBridge::lslToViewer(std::string_view message, const LLUUID& fromID, co
             mpBridge = fsBridge;
         }
 
-        status = viewerToLSL("URL Confirmed");
-        if (!mIsFirstCallDone)
-        {
-            //on first call from bridge, confirm that we are here
-            //then check options use
-
-            if (gSavedPerAccountSettings.getF32("UseLSLFlightAssist") > 0.f)
-            {
-                viewerToLSL(llformat("UseLSLFlightAssist|%.1f", gSavedPerAccountSettings.getF32("UseLSLFlightAssist")) );
-                LLNotificationsUtil::add("FlightAssistEnabled", LLSD());
-            }
-
-            // <FS:PP> Inform user, if movelock was enabled at login
-            if (gSavedPerAccountSettings.getBOOL("UseMoveLock"))
-            {
-                updateBoolSettingValue("UseMoveLock");
-                LLNotificationsUtil::add("MovelockEnabling", LLSD());
-                make_ui_sound("UISndMovelockToggle");
-            }
-            // </FS:PP>
-
-            updateBoolSettingValue("RelockMoveLockAfterMovement");
-            updateIntegrations();
-            mIsFirstCallDone = true;
-
-        }
-        // <FS:PP> FIRE-11924: Refresh movelock position after region change (crossing/teleporting), if lock was enabled
-        // Not called right after logging in, and only if movelock was enabled during transition
-        else if (gSavedPerAccountSettings.getBOOL("UseMoveLock"))
-        {
-            make_ui_sound("UISndMovelockToggle");
-            if (!gSavedSettings.getBOOL("RelockMoveLockAfterRegionChange"))
-            {
-                // Don't call for update here and only change setting to 'false', getCommitSignal()->connect->boost in llviewercontrol.cpp will send a message to Bridge anyway
-                gSavedPerAccountSettings.setBOOL("UseMoveLock", false);
-                LLNotificationsUtil::add("MovelockDisabling", LLSD());
-            }
-            else
-            {
-                // RelockMoveLockAfterRegionChange is 'true'? Then re-lock the movelock by sending a request to Bridge for coordinates update with current 'true' from UseMoveLock
-                updateBoolSettingValue("UseMoveLock");
-            }
-        }
-        // </FS:PP>
+        status = confirmBridgeURLAndSendSettings();
 
         return true;
     }
@@ -577,6 +643,53 @@ bool FSLSLBridge::viewerToLSL(std::string_view message, Callback_t aCallback)
     return true;
 }
 
+bool FSLSLBridge::confirmBridgeURLAndSendSettings()
+{
+    const bool status = viewerToLSL("URL Confirmed");
+    if (!mIsFirstCallDone)
+    {
+        // On first bridge contact, confirm viewer-side options after the URL handshake.
+        if (gSavedPerAccountSettings.getF32("UseLSLFlightAssist") > 0.f)
+        {
+            viewerToLSL(llformat("UseLSLFlightAssist|%.1f", gSavedPerAccountSettings.getF32("UseLSLFlightAssist")) );
+            LLNotificationsUtil::add("FlightAssistEnabled", LLSD());
+        }
+
+        // <FS:PP> Inform user, if movelock was enabled at login
+        if (gSavedPerAccountSettings.getBOOL("UseMoveLock"))
+        {
+            updateBoolSettingValue("UseMoveLock");
+            LLNotificationsUtil::add("MovelockEnabling", LLSD());
+            make_ui_sound("UISndMovelockToggle");
+        }
+        // </FS:PP>
+
+        updateBoolSettingValue("RelockMoveLockAfterMovement");
+        updateIntegrations();
+        mIsFirstCallDone = true;
+    }
+    // <FS:PP> FIRE-11924: Refresh movelock position after region change (crossing/teleporting), if lock was enabled
+    // Not called right after logging in, and only if movelock was enabled during transition
+    else if (gSavedPerAccountSettings.getBOOL("UseMoveLock"))
+    {
+        make_ui_sound("UISndMovelockToggle");
+        if (!gSavedSettings.getBOOL("RelockMoveLockAfterRegionChange"))
+        {
+            // Don't call for update here and only change setting to 'false', getCommitSignal()->connect->boost in llviewercontrol.cpp will send a message to Bridge anyway
+            gSavedPerAccountSettings.setBOOL("UseMoveLock", false);
+            LLNotificationsUtil::add("MovelockDisabling", LLSD());
+        }
+        else
+        {
+            // RelockMoveLockAfterRegionChange is 'true'? Then re-lock the movelock by sending a request to Bridge for coordinates update with current 'true' from UseMoveLock
+            updateBoolSettingValue("UseMoveLock");
+        }
+    }
+    // </FS:PP>
+
+    return status;
+}
+
 bool FSLSLBridge::updateBoolSettingValue(const std::string& msgVal)
 {
     const std::string boolVal = gSavedPerAccountSettings.getBOOL(msgVal) ? "1" : "0";
@@ -789,7 +902,7 @@ void FSLSLBridge::startCreation()
     //if bridge object doesn't exist - create and attach it, update script.
     setupFSCategory([this](const LLUUID& bridge_folder_id)
         {
-            LLViewerInventoryItem* fsBridge = findInvObject(mCurrentFullName, bridge_folder_id);
+            LLViewerInventoryItem* fsBridge = findUsableBridgeObject(bridge_folder_id);
 
             //detach everything else
             LL_INFOS("FSLSLBridge") << "Detaching other bridges..." << LL_ENDL;
@@ -893,12 +1006,13 @@ void FSLSLBridge::processAttach(LLViewerObject* object, const LLViewerJointAttac
     {
         LL_INFOS("FSLSLBridge") << "mpBridge is NULL" << LL_ENDL;
 
-        //is it the right version?
-        if (fsObject->getName() != mCurrentFullName)
+        //is it the right version? Accept current and newer bridge objects so
+        // a newer upstream bridge can survive until its BridgeVer handshake.
+        if (!isCurrentOrNewerBridgeObjectName(fsObject->getName()))
         {
             mAllowDetach = true;
             LLVOAvatarSelf::detachAttachmentIntoInventory(fsObject->getUUID());
-            LL_WARNS("FSLSLBridge") << "Attempt to attach to bridge point an object other than current bridge" << LL_ENDL;
+            LL_WARNS("FSLSLBridge") << "Attempt to attach to bridge point an object other than a current/newer bridge" << LL_ENDL;
             FSCommon::report_to_nearby_chat(LLTrans::getString("fsbridge_failure_attach_wrong_object"));
             if (mBridgeCreating)
             {
@@ -1636,6 +1750,41 @@ LLViewerInventoryItem* FSLSLBridge::findInvObject(const std::string& obj_name, c
     return nullptr;
 }
 
+LLViewerInventoryItem* FSLSLBridge::findUsableBridgeObject(const LLUUID& catID)
+{
+    LLViewerInventoryCategory::cat_array_t cats;
+    LLViewerInventoryItem::item_array_t items;
+    gInventory.collectDescendents(catID, cats, items, false);
+
+    for (const auto& item : items)
+    {
+        if (!item->getIsLinkType() &&
+            item->getType() == LLAssetType::AT_OBJECT &&
+            get_is_item_worn(item->getUUID()) &&
+            isCurrentOrNewerBridgeObjectName(item->getName()))
+        {
+            return gInventory.getItem(item->getUUID());
+        }
+    }
+
+    if (LLViewerInventoryItem* currentBridge = findInvObject(mCurrentFullName, catID))
+    {
+        return currentBridge;
+    }
+
+    for (const auto& item : items)
+    {
+        if (!item->getIsLinkType() &&
+            item->getType() == LLAssetType::AT_OBJECT &&
+            compareBridgeObjectName(item->getName()) == BridgeVersionRelation::Newer)
+        {
+            return gInventory.getItem(item->getUUID());
+        }
+    }
+
+    return nullptr;
+}
+
 void FSLSLBridge::cleanUpBridgeFolder(const std::string& nameToCleanUp)
 {
     //LL_INFOS("FSLSLBridge") << "Cleaning leftover scripts and bridges for folder " << nameToCleanUp << LL_ENDL;
@@ -1702,15 +1851,12 @@ void FSLSLBridge::detachOtherBridges()
     LLViewerInventoryCategory::cat_array_t cats;
     LLViewerInventoryItem::item_array_t items;
 
-    LLViewerInventoryItem* fsBridge = findInvObject(mCurrentFullName, catID);
-
-    //detach everything except current valid bridge - if any
+    //detach everything except the current bridge or a newer bridge we can adopt - if any
     gInventory.collectDescendents(catID, cats, items, false);
 
     for (const auto& item : items)
     {
-        if (get_is_item_worn(item->getUUID()) &&
-            ((!fsBridge) || (item->getUUID() != fsBridge->getUUID())))
+        if (get_is_item_worn(item->getUUID()) && !isCurrentOrNewerBridgeObjectName(item->getName()))
         {
             LLVOAvatarSelf::detachAttachmentIntoInventory(item->getUUID());
         }

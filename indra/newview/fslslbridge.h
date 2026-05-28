@@ -129,6 +129,8 @@ protected:
     LLUUID findFSBridgeContainerCategory();
 
     bool isItemAttached(const LLUUID& iID);
+    LLViewerInventoryItem* findUsableBridgeObject(const LLUUID& catID);
+    bool confirmBridgeURLAndSendSettings();
     void createNewBridge();
     void create_script_inner();
     void cleanUpBridgeFolder();

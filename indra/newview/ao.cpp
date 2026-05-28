@@ -32,7 +32,9 @@
 #include "aoset.h"
 #include "llcheckboxctrl.h"
 #include "llcombobox.h"
+#include "llfloaterreg.h"
 #include "llnotificationsutil.h"
+#include "llscrolllistctrl.h"
 #include "llspinctrl.h"
 #include "llviewercontrol.h"
 #include "utilitybar.h"
@@ -266,6 +268,10 @@ bool FloaterAO::postBuild()
     mRandomizeCheckBox->setCommitCallback(boost::bind(&FloaterAO::onCheckRandomize, this));
     mCycleTimeSpinner->setCommitCallback(boost::bind(&FloaterAO::onChangeCycleTime, this));
 
+    if (LLButton* manage_hidden = mMainInterfacePanel->findChild<LLButton>("ao_manage_hidden"))
+    {
+        manage_hidden->setCommitCallback(boost::bind(&FloaterAO::onClickManageHidden, this));
+    }
     mReloadButton->setCommitCallback(boost::bind(&FloaterAO::onClickReload, this));
     mPreviousButton->setCommitCallback(boost::bind(&FloaterAO::onClickPrevious, this));
     mNextButton->setCommitCallback(boost::bind(&FloaterAO::onClickNext, this));
@@ -544,6 +550,13 @@ bool FloaterAO::newSetCallback(const LLSD& notification, const LLSD& response)
         if (AOEngine::instance().getSetByName(newSetName))
         {
             LLNotificationsUtil::add("NewAONameCantExist");
+            return false;
+        }
+        if (AOEngine::instance().hiddenSetNameExists(newSetName))
+        {
+            LLSD args;
+            args["AO_SET_NAME"] = newSetName;
+            LLNotificationsUtil::add("AOSetNameHiddenConflict", args);
             return false;
         }
 
@@ -984,4 +997,125 @@ bool FloaterAO::handleDragAndDrop(S32 x, S32 y, MASK mask, bool drop, EDragAndDr
     }
 
     return true;
+}
+
+// AYAstorm r31.2 soft hide: open the hidden-sets management floater.
+void FloaterAO::onClickManageHidden()
+{
+    LLFloaterReg::showInstance("ao_hidden_sets");
+}
+
+FloaterAOHiddenSets::FloaterAOHiddenSets(const LLSD& key)
+:   LLFloater(key),
+    mHiddenList(nullptr),
+    mRestoreSelectedButton(nullptr),
+    mRestoreAllButton(nullptr),
+    mDeleteSelectedButton(nullptr),
+    mPendingDeleteUUID(LLUUID::null)
+{
+}
+
+bool FloaterAOHiddenSets::postBuild()
+{
+    mHiddenList = getChild<LLScrollListCtrl>("hidden_sets_list");
+    mRestoreSelectedButton = getChild<LLButton>("restore_selected");
+    mRestoreAllButton = getChild<LLButton>("restore_all");
+    mDeleteSelectedButton = getChild<LLButton>("delete_selected");
+
+    mRestoreSelectedButton->setCommitCallback(boost::bind(&FloaterAOHiddenSets::onClickRestoreSelected, this));
+    mRestoreAllButton->setCommitCallback(boost::bind(&FloaterAOHiddenSets::onClickRestoreAll, this));
+    mDeleteSelectedButton->setCommitCallback(boost::bind(&FloaterAOHiddenSets::onClickDeleteSelected, this));
+
+    return LLFloater::postBuild();
+}
+
+void FloaterAOHiddenSets::onOpen(const LLSD& /*key*/)
+{
+    refreshList();
+}
+
+void FloaterAOHiddenSets::refreshList()
+{
+    if (!mHiddenList)
+    {
+        return;
+    }
+
+    mHiddenList->deleteAllItems();
+
+    const auto entries = AOEngine::instance().getHiddenSets();
+    for (const auto& entry : entries)
+    {
+        LLSD row;
+        row["id"] = entry.first;
+        row["columns"][0]["column"] = "set_name";
+        row["columns"][0]["value"] = entry.second;
+        row["columns"][1]["column"] = "inventory_uuid";
+        row["columns"][1]["value"] = entry.first.asString();
+        mHiddenList->addElement(row);
+    }
+
+    const bool has_entries = !entries.empty();
+    mRestoreSelectedButton->setEnabled(has_entries);
+    mRestoreAllButton->setEnabled(has_entries);
+    mDeleteSelectedButton->setEnabled(has_entries);
+}
+
+void FloaterAOHiddenSets::onClickRestoreSelected()
+{
+    if (!mHiddenList)
+    {
+        return;
+    }
+    LLScrollListItem* item = mHiddenList->getFirstSelected();
+    if (!item)
+    {
+        return;
+    }
+    const LLUUID inventory_uuid = item->getUUID();
+    if (AOEngine::instance().unhideSet(inventory_uuid))
+    {
+        refreshList();
+    }
+}
+
+void FloaterAOHiddenSets::onClickDeleteSelected()
+{
+    if (!mHiddenList)
+    {
+        return;
+    }
+    LLScrollListItem* item = mHiddenList->getFirstSelected();
+    if (!item)
+    {
+        return;
+    }
+
+    mPendingDeleteUUID = item->getUUID();
+
+    LLSD args;
+    args["AO_SET_NAME"] = item->getColumn(0) ? item->getColumn(0)->getValue().asString() : mPendingDeleteUUID.asString();
+    LLNotificationsUtil::add("AOSetDeleteHiddenConfirm", args, LLSD(), boost::bind(&FloaterAOHiddenSets::deleteSelectedCallback, this, _1, _2));
+}
+
+bool FloaterAOHiddenSets::deleteSelectedCallback(const LLSD& notification, const LLSD& response)
+{
+    S32 option = LLNotificationsUtil::getSelectedOption(notification, response);
+    if (option == 0 && mPendingDeleteUUID.notNull())
+    {
+        if (AOEngine::instance().deleteHiddenSetPermanently(mPendingDeleteUUID))
+        {
+            refreshList();
+        }
+    }
+    mPendingDeleteUUID.setNull();
+    return false;
+}
+
+void FloaterAOHiddenSets::onClickRestoreAll()
+{
+    if (AOEngine::instance().unhideAllSets())
+    {
+        refreshList();
+    }
 }

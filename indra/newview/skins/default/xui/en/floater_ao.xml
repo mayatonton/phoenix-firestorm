@@ -5,8 +5,8 @@
 	can_resize="true"
 	can_dock="false"
 	can_close="true"
-	height="352"
-	min_height="320"
+	height="380"
+	min_height="348"
 	min_width="200"
 	layout="topleft"
 	name="animation_overrider"
@@ -38,7 +38,7 @@ You can only drag and drop an animation notecard on the full interface window. C
 		left="0"
 		top="16"
 		width="200"
-		height="334"
+		height="362"
 		follows="all"
 		layout="topleft">
 	</panel>

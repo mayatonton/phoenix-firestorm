@@ -4395,9 +4395,38 @@ https://wiki.firestormviewer.org/fs_voice
 	<notification name="NewAONameCantExist">
 		已經存在同名的動畫集。
 	</notification>
+	<notification name="AOSetNameHiddenConflict">
+		名為「[AO_SET_NAME]」的動畫覆蓋集目前已被隱藏。
+
+在建立或匯入同名集合之前，請先還原或永久刪除該隱藏集合。
+		<usetemplate name="okbutton" yestext="確定"/>
+	</notification>
+	<notification name="AOSetRestoreNameConflict">
+		無法還原動畫覆蓋集「[AO_SET_NAME]」，因為另一個可見集合已使用相同名稱。
+
+請先重新命名、隱藏或永久刪除可見集合。
+		<usetemplate name="okbutton" yestext="確定"/>
+	</notification>
+	<notification name="AOSetRestoreSomeNameConflicts">
+		有 [COUNT] 個隱藏動畫覆蓋集因名稱與可見或已還原的集合衝突而未被還原。
+		<usetemplate name="okbutton" yestext="確定"/>
+	</notification>
+	<notification name="AOSetDeleteHiddenConfirm">
+		要從庫存中刪除隱藏動畫覆蓋集「[AO_SET_NAME]」嗎？
+
+這會永久刪除 #Firestorm/#AO 底下的實際資料夾。使用相同帳號登入 Firestorm 或其他 Firestorm 衍生瀏覽器時，該集合也會消失。
+
+AYAstorm 無法復原此操作。若沒有備份或記事卡，AO 資料將無法還原。
+		<usetemplate name="okcancelbuttons" notext="取消" yestext="刪除所選"/>
+	</notification>
 	<notification name="RemoveAOSet">
-		刪除名為「[AO_SET_NAME]」的動畫覆蓋集？
-		<usetemplate name="okcancelbuttons" notext="取消" yestext="刪除"/>
+動畫覆蓋集「[AO_SET_NAME]」將從 AYAstorm 介面中隱藏。
+
+SL 庫存中 #Firestorm/#AO 內的資料不會被刪除，
+使用相同帳號從 Firestorm 或其他 Firestorm 衍生瀏覽器登入時，仍可正常顯示與使用。
+
+如需復原，可透過「管理已隱藏的動畫覆蓋集」進行還原。
+		<usetemplate name="okcancelbuttons" notext="取消" yestext="隱藏"/>
 	</notification>
 	<notification name="AOForeignItemsFound">
 		在動畫覆蓋中發現了不屬於設定的物件。請檢查「失物招領」檔案夾中是否有從動畫覆蓋設定中移除的物件。

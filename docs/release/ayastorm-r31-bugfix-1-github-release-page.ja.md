@@ -35,9 +35,11 @@ r11 で同梱し以降も出荷中の venue IR は OpenAIR (CC-BY 4.0) 由来で
 
 ## Downloads
 
-- [Windows Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-261441503_Setup.exe)
-- [macOS Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-81209.dmg)
-- [Linux Installer](https://github.com/mayatonton/phoenix-firestorm/releases/download/v7.2.4-ayastorm-r31-bugfix-1/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261442337.tar.xz)
+> [!IMPORTANT]
+> **r31-bugfix-1 の binary は r31-bugfix-2 の release page に集約しています。**
+> r31-bugfix-1 の SSS pink-shadow 修正は r31-bugfix-2 にもそのまま継承されています。下記の最新版 release page からダウンロードしてください:
+>
+> 👉 **[AYAstorm r31-bugfix-2 Release page](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)**
 
 ## Contributors
 
