@@ -186,6 +186,8 @@ if (LINUX)
   # our 3rd party libs may need their *own* SIGCHLD handler to work. Sigh! The
   # viewer doesn't need to catch SIGCHLD anyway.
   add_definitions(-DLL_IGNORE_SIGCHLD)
+  # AYAstorm r41 Vulkan WSI platform (XLIB); Wayland is deferred to stage 10 polish
+  add_definitions(-DVK_USE_PLATFORM_XLIB_KHR)
   if (ADDRESS_SIZE EQUAL 32)
     add_compile_options(-march=pentium4)
   endif (ADDRESS_SIZE EQUAL 32)

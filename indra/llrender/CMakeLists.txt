@@ -4,6 +4,7 @@ project(llrender)
 
 include(00-Common)
 include(OpenGL)
+include(Vulkan)
 include(FreeType)
 include(LLCommon)
 include(LLImage)
@@ -34,6 +35,7 @@ set(llrender_SOURCE_FILES
     lluiimage.cpp
     llvertexbuffer.cpp
     llglcommonfunc.cpp
+    volk.c
     )
     
 set(llrender_HEADER_FILES
@@ -66,6 +68,7 @@ set(llrender_HEADER_FILES
     lluiimage.inl
     llvertexbuffer.h
     llglcommonfunc.h
+    volk.h
     )
 
 list(APPEND llrender_SOURCE_FILES ${llrender_HEADER_FILES})
@@ -106,5 +109,6 @@ target_link_libraries(llrender
         ll::freetype
         OpenGL::GL
         OpenGL::GLU
+        ll::vulkan
         )
 
