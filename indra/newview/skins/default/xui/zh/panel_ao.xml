@@ -19,6 +19,7 @@
 		<check_box name="ao_randomize" label="隨機順序" left_pad="10" tool_tip="在迴圈模式下設定動畫的隨機順序。" />
 		<text name="ao_cycle_time_seconds_label" value="迴圈時間（秒）：" />
 		<spinner name="ao_cycle_time" tool_tip="切換到下一個動畫之前的延遲時間。設定為0以禁用自動迴圈動畫。" />
+		<button name="ao_manage_hidden" label="管理已隱藏的集合" tool_tip="顯示已從列表隱藏的動畫覆蓋集 (AYAstorm r31.2 soft hide)。可從此處還原。" />
 		<button name="ao_reload" label="重新載入" tool_tip="重新載入動畫覆蓋設定。" />
 		<layout_stack name="next_previous_buttons_stack">
 			<layout_panel name="next_previous_buttons_stack_left">

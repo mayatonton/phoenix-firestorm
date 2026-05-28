@@ -4396,8 +4396,13 @@ https://wiki.firestormviewer.org/fs_voice
 		已經存在同名的動畫集。
 	</notification>
 	<notification name="RemoveAOSet">
-		刪除名為「[AO_SET_NAME]」的動畫覆蓋集？
-		<usetemplate name="okcancelbuttons" notext="取消" yestext="刪除"/>
+動畫覆蓋集「[AO_SET_NAME]」將從 AYAstorm 介面中隱藏。
+
+SL 庫存中 #Firestorm/#AO 內的資料不會被刪除，
+使用相同帳號從 Firestorm 或其他 Firestorm 衍生瀏覽器登入時，仍可正常顯示與使用。
+
+如需復原，可透過「管理已隱藏的動畫覆蓋集」進行還原。
+		<usetemplate name="okcancelbuttons" notext="取消" yestext="隱藏"/>
 	</notification>
 	<notification name="AOForeignItemsFound">
 		在動畫覆蓋中發現了不屬於設定的物件。請檢查「失物招領」檔案夾中是否有從動畫覆蓋設定中移除的物件。

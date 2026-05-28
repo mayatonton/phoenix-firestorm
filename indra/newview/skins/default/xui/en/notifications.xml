@@ -11174,11 +11174,17 @@ An animation set with this name already exists.
    icon="alertmodal.tga"
    name="RemoveAOSet"
    type="alertmodal">
-Remove AO set "[AO_SET_NAME]" from the list?
+"[AO_SET_NAME]" will be hidden from AYAstorm.
+
+The inventory data in #Firestorm/#AO is NOT deleted &#8212;
+it remains visible and usable in Firestorm and other
+Firestorm-derived viewers using the same account.
+
+You can restore it later via "Manage hidden sets".
     <usetemplate
      name="okcancelbuttons"
      notext="Cancel"
-     yestext="Remove"/>
+     yestext="Hide"/>
   </notification>
 
   <notification

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<floater name="ao_hidden_sets" title="已隱藏的動畫覆蓋集">
+	<text name="hidden_sets_help_text">
+下方的動畫覆蓋集已從 AO 視窗中隱藏，但仍保留在 SL 庫存 (#Firestorm/#AO) 中。選擇後點按「還原所選」，或使用「全部還原」。
+	</text>
+	<scroll_list name="hidden_sets_list">
+		<scroll_list.columns name="set_name" label="集合名稱"/>
+		<scroll_list.columns name="inventory_uuid" label="庫存 UUID"/>
+	</scroll_list>
+	<button name="restore_selected" label="還原所選"/>
+	<button name="restore_all" label="全部還原"/>
+</floater>
