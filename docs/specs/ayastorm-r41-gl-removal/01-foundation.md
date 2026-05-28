@@ -106,9 +106,9 @@
 
 | file | 役割 (現状) | 置換方針 (段階 1) |
 |---|---|---|
-| `indra/llrender/llglheaders.h` | GL header include 中継 (`#include <GL/gl.h>` 等) | **volk include + Vulkan header 経由に置換** (`#include <volk.h>` + `#include <vulkan/vulkan.h>`)、OpenGL include 完全削除 |
-| `indra/llrender/llglstates.h` | GL state 定数 / enum 中継 (`GL_BLEND` / `GL_DEPTH_TEST` 等の alias) | **Vulkan VK_* 定数に置換** (`VK_BLEND_OP_*` / `VK_DYNAMIC_STATE_*` 等)、段階 2-3 で各 GL state を Vulkan PSO state に mapping、本段階 1 では基盤 alias 整備のみ |
-| `indra/llrender/llgltypes.h` | GL types alias 中継 (`GLuint` / `GLfloat` 等) | **Vulkan vk* 型 alias に置換** (`VkBuffer` / `VkImage` 等)、段階 2-5 の per-file port で type 一貫性確保 |
+| `indra/llrender/llglheaders.h` | GL header include 中継 (`#include <GL/gl.h>` 等) | **volk 並走追加** (`#include "volk.h"` を最末尾 `#endif` 前に追加、GL include 残置)。volk は内部で `VK_NO_PROTOTYPES` 後に `vulkan.h` を内包 + 全 entry を function pointer で再宣言するため、独立 `vulkan/vulkan.h` include は **proto 衝突 risk で技術的に不要**。**GL include 完全削除は段階 5 完遂時** (wrapper 内部のみ参照状態になった時点で実施、charter §3 #1 acceptance) |
+| `indra/llrender/llglstates.h` | GL state 定数 / enum 中継 (`GL_BLEND` / `GL_DEPTH_TEST` 等の alias) | **段階 1 では touch しない**。中身は `LLGLDepthTest` / `LLGLSDefault` 等の state machine RAII class で、charter §2 領域 3 「段階 3: state machine → PSO 化 llrender 主要 5 file (1.50 PM)」 scope。段階 1 で並走 alias を入れる意味ある接点が無い (GL_BLEND は API capability、`VK_BLEND_OP_*` は PSO blend state、1:1 mapping 不可)。段階 3 着手時に Vulkan PSO state alias 整備 |
+| `indra/llrender/llgltypes.h` | GL types alias 中継 (`GLuint` / `GLfloat` 等) | **GL type alias 残置 + Vulkan Vk* 型 alias 並走追記** (`#include "volk.h"` + `LLVkBuffer` / `LLVkImage` / `LLVkDeviceMemory` 等の placeholder typedef)、段階 2-5 の per-file port で type 一貫性確保 |
 
 ### §3.3 volk + Vulkan loader 統合 file (新規)
 
@@ -126,7 +126,7 @@
 | **1.1** | volk + Vulkan SDK 3rdparty 取込 + autobuild + cmake 検出 | `cmake` configure pass + viewer build pass (GL 並行残置、本段階では GL 削除しない) |
 | **1.2** | `llvkloader.cpp` + `.h` 新規追加 (volk 初期化 + Vulkan instance 作成) | viewer 起動時に volk 初期化成功 + Vulkan instance 作成成功 (validation layer error 0 件) |
 | **1.3** | physical device 列挙 + queue family 選択 | Mesa RADV / NVIDIA proprietary で physical device 検出 + graphics + present queue 取得成功 (LL_INFOS log 確認) |
-| **1.4** | wrapper 3 file 置換 (`llglheaders.h` / `llglstates.h` / `llgltypes.h`) | viewer build pass + 起動 pass (GL call は段階 2-5 で順次除去、本段階では header alias 置換のみ) |
+| **1.4** | wrapper 段階 1 scope file 並走追加 (`llglheaders.h` + `llgltypes.h`、`llglstates.h` は段階 3 PSO 化時) | viewer build pass + 起動 pass (GL call は段階 2-5 で順次除去、本段階では Vulkan header / Vk* 型 placeholder typedef の並走追加のみ) |
 | **1.5** | 段階 1 self-check + AYA review + handoff doc | 04 §5.4 段階 1 file 全置換 + 本 §4 completion criteria PASS |
 
 ### §3.5 段階 1 で touch しない file (段階 2-5 scope、本 §3 外)
@@ -148,7 +148,7 @@ charter §3 acceptance criterion #1 (GL 除去) + #3 (段階 1-5 全完遂) の 
 
 | criterion | metric | test procedure |
 |---|---|---|
-| **#1-段階 1 (wrapper 3 file 置換)** | wrapper 3 file が volk + Vulkan header 経由に置換済、GL include 0 件 | `grep -E "^#include.*<GL/" indra/llrender/llgl{headers,states,types}.h` が **0 件** + `grep -E "^#include.*<vulkan/" indra/llrender/llgl{headers,states,types}.h` が **3 file 全件 hit** |
+| **#1-段階 1 (wrapper 段階 1 scope file Vulkan header 並走追加)** | `llglheaders.h` + `llgltypes.h` に volk include / LLVk* placeholder typedef が並走追加済 (GL include 残置、完全削除は段階 5 完遂時)、`llglstates.h` は段階 3 PSO 化時に着手 | `grep -E "^#include \"volk\.h\"" indra/llrender/llglheaders.h indra/llrender/llgltypes.h` が **2 file 全件 hit** + `grep -E "typedef.*LLVk" indra/llrender/llgltypes.h` が **1 件以上 hit** + GL include は **残置許容** (charter §3 #1 acceptance の 0 件判定は r41 全完遂時) |
 | **#3-段階 1 (Vulkan instance + device 動作)** | Vulkan instance 作成 + physical device 列挙 + queue family 選択動作 | viewer 起動 + LL_INFOS log で instance handle + device name + queue family index 出力確認、validation layer error 0 件 |
 | **環境前提 (Linux driver 2 件動作)** | Mesa RADV + NVIDIA proprietary 2 driver で sub-step 1.1-1.5 全動作 | 各 driver で起動 pass + validation error 0 件 (ANV は段階 10 polish で対応、段階 1 は 2 driver で十分) |
 | **regression (本線動作維持)** | viewer build pass + 起動 pass + 1 セッション動作 (GL call は段階 2-5 で除去、段階 1 では GL 並行残置) | autobuild + 起動 + 1 セッション (~10 分) 動作確認、AYAstorm 機能 (audio + chat + login 等) regression 0 件 |

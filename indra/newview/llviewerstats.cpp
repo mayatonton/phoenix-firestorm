@@ -67,52 +67,10 @@
 #include "lluiusage.h"
 #include "lltranslate.h"
 
-// "Minimal Vulkan" to get max API Version
-
-// Calls
-    #if defined(_WIN32)
-        #define VKAPI_ATTR
-        #define VKAPI_CALL __stdcall
-        #define VKAPI_PTR  VKAPI_CALL
-    #else
-        #define VKAPI_ATTR
-        #define VKAPI_CALL
-        #define VKAPI_PTR
-    #endif // _WIN32
-
-// Macros
-    // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    // |31|30|29|28|27|26|25|24|23|22|21|20|19|18|17|16|15|14|13|12|11|10| 9| 8| 7| 6| 5| 4| 3| 2| 1| 0|
-    // +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
-    // <variant> <-------major-------><-----------minor-----------> <--------------patch-------------->
-    //      0x7          0x7F                     0x3FF                           0xFFF
-    #define VK_API_VERSION_MAJOR(  version) (((uint32_t)(version) >> 22) & 0x07FU)  //  7 bits
-    #define VK_API_VERSION_MINOR(  version) (((uint32_t)(version) >> 12) & 0x3FFU)  // 10 bits
-    #define VK_API_VERSION_PATCH(  version) (((uint32_t)(version)      ) & 0xFFFU)  // 12 bits
-    #define VK_API_VERSION_VARIANT(version) (((uint32_t)(version) >> 29) & 0x007U)  //  3 bits
-
-    // NOTE: variant is first parameter!  This is to match vulkan/vulkan_core.h
-    #define VK_MAKE_API_VERSION(variant, major, minor, patch) (0\
-        | (((uint32_t)(major   & 0x07FU)) << 22) \
-        | (((uint32_t)(minor   & 0x3FFU)) << 12) \
-        | (((uint32_t)(patch   & 0xFFFU))      ) \
-        | (((uint32_t)(variant & 0x007U)) << 29) )
-
-    #define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
-
-// Types
-    VK_DEFINE_HANDLE(VkInstance);
-
-    typedef enum VkResult
-    {
-        VK_SUCCESS = 0,
-        VK_RESULT_MAX_ENUM = 0x7FFFFFFF
-    } VkResult;
-
-// Prototypes
-    typedef void               (VKAPI_PTR *PFN_vkVoidFunction            )(void);
-    typedef PFN_vkVoidFunction (VKAPI_PTR *PFN_vkGetInstanceProcAddr     )(VkInstance instance, const char* pName);
-    typedef VkResult           (VKAPI_PTR *PFN_vkEnumerateInstanceVersion)(uint32_t* pApiVersion);
+// AYAstorm r41 段階 1: 旧 "Minimal Vulkan" stub (Win vulkan-1.dll probe 用) を削除、
+// volk が本物の VkInstance / VkResult / VK_MAKE_API_VERSION / PFN_vk* を提供。
+// Win 用 LoadLibraryA("vulkan-1.dll") probe は r42-α 着手時に volk 経由へ refactor 予定。
+#include "volk.h"
 
 namespace LLStatViewer
 {

@@ -1091,5 +1091,9 @@ extern void glGetBufferPointervARB (GLenum, GLenum, GLvoid* *);
     #include <tracy/TracyOpenGL.hpp>
 #endif
 
+// AYAstorm r41 段階 1: Vulkan header 並走追加
+// volk が内部で vulkan.h を内包 (VK_NO_PROTOTYPES 後 include + 全 entry を function pointer で再宣言)
+// GL include は段階 2-5 で順次除去、完全削除は段階 5 完遂時 (charter §3 #1 acceptance)
+#include "volk.h"
 
 #endif // LL_LLGLHEADERS_H
