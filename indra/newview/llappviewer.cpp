@@ -1779,6 +1779,7 @@ bool LLAppViewer::doFrame()
                 gGLActive = true;
 
                 LLVKLoader::beginFrame();
+                gPipeline.recordVulkanPools(); // <AYAstorm r41> sub-step 2.1b: empty record cycle
                 display();
                 LLVKLoader::endFrame();
 

@@ -48,6 +48,7 @@
 #include "llui.h"
 #include "llglheaders.h"
 #include "llrender.h"
+#include "llvkloader.h" // <AYAstorm r41> sub-step 2.1b: Vulkan command buffer hook
 #include "llstartup.h"
 #include "llwindow.h"   // swapBuffers()
 
@@ -4904,6 +4905,31 @@ void LLPipeline::renderHighlights()
 
 //debug use
 U32 LLPipeline::sCurRenderPoolType = 0 ;
+
+// <AYAstorm r41> sub-step 2.1b bridging template: walks mPools once per frame
+// and calls each pool's recordPoolDraws() with the current Vulkan command
+// buffer. Called from llappviewer.cpp display() loop within the
+// LLVKLoader::beginFrame()/endFrame() envelope. The command buffer is in
+// "begin / inside render pass" state when this fires (set up by beginFrame()).
+// Stage 3 will layer PSO bind + vkCmdDraw* on top of the same hook surface.
+void LLPipeline::recordVulkanPools()
+{
+    VkCommandBuffer cmd_buf = LLVKLoader::getCurrentCommandBuffer();
+    if (cmd_buf == VK_NULL_HANDLE)
+    {
+        // Vulkan init failed or not yet ready; skip silently.
+        return;
+    }
+    for (pool_set_t::iterator iter = mPools.begin(); iter != mPools.end(); ++iter)
+    {
+        LLDrawPool* poolp = *iter;
+        if (poolp)
+        {
+            poolp->recordPoolDraws(cmd_buf);
+        }
+    }
+}
+// </AYAstorm r41>
 
 // <AYAstorm r30 P2> Velocity pass (BD lineage). Bind mVelocityMap, clear, run
 // each pool's renderMotionBlur(). Step 5 wires the display() callsite; until

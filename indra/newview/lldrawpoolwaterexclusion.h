@@ -56,6 +56,10 @@ public:
     virtual void beginRenderPass(S32 pass) {}
     virtual void endRenderPass(S32 pass) {}
     virtual S32  getNumPasses() { return 1; }
+
+    // <AYAstorm r41> sub-step 2.1b: Vulkan record hook (empty marker).
+    virtual void recordPoolDraws(VkCommandBuffer cmd_buf);
+    // </AYAstorm r41>
 };
 
 #endif // LL_LLDRAWPOOLWATEREXCLUSION_H

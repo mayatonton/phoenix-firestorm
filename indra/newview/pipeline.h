@@ -318,6 +318,13 @@ public:
     void renderGeomDeferred(LLCamera& camera, bool do_occlusion = false);
     void renderGeomPostDeferred(LLCamera& camera);
     void renderGeomShadow(LLCamera& camera);
+    // <AYAstorm r41> sub-step 2.1b bridging template: walks mPools and calls
+    // each pool's recordPoolDraws() against the current Vulkan command buffer.
+    // Called once per frame from llappviewer.cpp display() loop, inside the
+    // LLVKLoader::beginFrame()/endFrame() envelope. Stage 3 will gain PSO bind
+    // + vkCmdDraw* on top of the same hook surface.
+    void recordVulkanPools();
+    // </AYAstorm r41>
     // <AYAstorm r30 P2> Velocity pass for SMAA T2x / motion blur. Iterates
     // each pool's renderMotionBlur() into mVelocityMap (RG16F). Cinematic
     // mode only — caller (display() in Step 5) gates by mVelocityMap state.

@@ -57,6 +57,9 @@ public:
     /*virtual*/ void prerender();
     /*virtual*/ void render(S32 pass = 0);
     /*virtual*/ void endRenderPass(S32 pass);
+    // <AYAstorm r41> sub-step 2.1b: Vulkan record hook (empty marker).
+    /*virtual*/ void recordPoolDraws(VkCommandBuffer cmd_buf);
+    // </AYAstorm r41>
     void setSkyTex(LLSkyTex* const st) { mSkyTex = st; }
 
     void renderSkyFace(U8 index);

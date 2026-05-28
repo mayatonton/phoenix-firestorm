@@ -77,3 +77,16 @@ void LLDrawPoolWaterExclusion::render(S32 pass)
         gDrawColorProgram.unbind();
     }
 }
+
+// <AYAstorm r41> sub-step 2.1b: empty Vulkan record hook. Stage 3 replaces the
+// marker with PSO bind + vkCmdDraw* against cmd_buf.
+void LLDrawPoolWaterExclusion::recordPoolDraws(VkCommandBuffer cmd_buf)
+{
+    static bool logged_once = false;
+    if (!logged_once)
+    {
+        LL_INFOS("VkRecord") << "WaterExclusion pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
+        logged_once = true;
+    }
+}
+// </AYAstorm r41>

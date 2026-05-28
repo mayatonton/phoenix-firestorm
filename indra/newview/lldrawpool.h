@@ -32,6 +32,11 @@
 #include "v3math.h"
 #include "llvertexbuffer.h"
 
+// <AYAstorm r41> Vulkan command buffer hook for sub-step 2.1b wiring template.
+// Forward-declared to avoid dragging volk.h into every TU that includes lldrawpool.h.
+typedef struct VkCommandBuffer_T* VkCommandBuffer;
+// </AYAstorm r41>
+
 class LLFace;
 class LLViewerTexture;
 class LLViewerFetchedTexture;
@@ -120,6 +125,14 @@ public:
 
     virtual void render(S32 pass = 0) {};
     virtual void prerender() {};
+
+    // <AYAstorm r41> sub-step 2.1b bridging template: per-pool Vulkan command
+    // record hook. Default impl is a no-op; derived pools override to log a
+    // marker (and, in stage 3, bind PSO + emit vkCmdDraw*). Called once per
+    // frame by LLPipeline::recordVulkanPools() within the LLVKLoader frame
+    // envelope.
+    virtual void recordPoolDraws(VkCommandBuffer cmd_buf) {}
+    // </AYAstorm r41>
     virtual U32 getVertexDataMask() { return 0; } // DEPRECATED -- draw pool doesn't actually determine vertex data mask any more
     virtual bool verify() const { return true; }        // Verify that all data in the draw pool is correct!
     virtual S32 getShaderLevel() const { return mShaderLevel; }
