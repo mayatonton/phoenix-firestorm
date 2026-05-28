@@ -87,6 +87,7 @@
 #include "llurldispatcher.h"
 #include "llurlhistory.h"
 #include "llrender.h"
+#include "llvkloader.h"
 #include "llteleporthistory.h"
 #include "lltoast.h"
 #include "llsdutil_math.h"
@@ -2590,6 +2591,8 @@ bool LLAppViewer::cleanup()
 
     LLSplashScreen::hide();
 
+    LLVKLoader::shutdownVulkan();
+
     LL_INFOS() << "Goodbye!" << LL_ENDL;
 
     removeDumpDir();
@@ -3764,6 +3767,9 @@ void LLAppViewer::sendOutOfDiskSpaceNotification()
 bool LLAppViewer::initWindow()
 {
     LL_INFOS("AppInit") << "Initializing window..." << LL_ENDL;
+
+    // AYAstorm r41: Vulkan loader + instance (volk-based, GL is still primary)
+    LLVKLoader::initVulkan();
 
     // store setting in a global for easy access and modification
     gHeadlessClient = gSavedSettings.getBOOL("HeadlessClient");

@@ -35,6 +35,7 @@ set(llrender_SOURCE_FILES
     lluiimage.cpp
     llvertexbuffer.cpp
     llglcommonfunc.cpp
+    llvkloader.cpp
     volk.c
     )
     
@@ -68,6 +69,7 @@ set(llrender_HEADER_FILES
     lluiimage.inl
     llvertexbuffer.h
     llglcommonfunc.h
+    llvkloader.h
     volk.h
     )
 
