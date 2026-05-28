@@ -395,18 +395,6 @@ public:
     virtual void wait() = 0;
 };
 
-class LLGLSyncFence : public LLGLFence
-{
-public:
-    GLsync mSync;
-
-    LLGLSyncFence();
-    virtual ~LLGLSyncFence();
-
-    void placeFence();
-    bool isCompleted();
-    void wait();
-};
 
 extern LLMatrix4 gGLObliqueProjectionInverse;
 

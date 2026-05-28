@@ -62,11 +62,11 @@
 
 sub-doc 03 §1.5.3 の最終配置を本 handoff で固定。3.1b 着手時に implementation reference として参照。
 
-### 3.1 sub-step 3.1 配置 (5 件 + 部分前倒し 2 件、計 7 件 max)
+### 3.1 sub-step 3.1 配置 (4 件 + 部分前倒し 2 件、計 6 件 max、item #1 は 段階 4 移管 refine 2026-05-29)
 
 | # | item | 主担当 |
 |---|---|---|
-| 1 | LLGLState RAII setter no-op 化 | **必須** (state alias root) |
+| ~~1~~ | ~~LLGLState RAII setter no-op 化~~ | **段階 4 移管** (2026-05-29 refine、charter §2.1 領域 4 LLPipelineFrameContext 配置時に dead-store 化、3.1b 着手時に setter no-op 化 vs 段階 1+2 動作維持の構造的矛盾発覚 → AYA 指示で受け入れ先工程修正) |
 | 2 | LLGLDepthTest dynamic state 化 (VK_EXT_extended_dynamic_state2 / Vulkan 1.3 core) | **必須** (state alias root) |
 | 4 | LLGLUserClipPlane 経路 PSO 化 | **必須** (state alias root) |
 | 10 | gl_debug_callback → VK_EXT_debug_utils messenger 移管 | **必須** (段階 1 hook reuse) |
@@ -168,17 +168,17 @@ sub-step 3.1a-iv 完了時点で charter §3 acceptance との整合再確認 (s
 
 ## 7. 3.1b 着手前 scope 確認
 
-### 7.1 sub-step 3.1b scope (PSO 基盤 + state alias root 実装)
+### 7.1 sub-step 3.1b scope (PSO 基盤配線 + bridging items #2/#4/#10/#11 物理実装、item #1 は 段階 4 移管 refine 2026-05-29)
 
-sub-doc 03 §3.1 sub-step 3.1 完了 marker (本 handoff §2.1 で refine 済) を実装:
+sub-doc 03 §3.1 sub-step 3.1 完了 marker (本 handoff §2.1 で refine 済、2026-05-29 scope refine 反映) を実装:
 
 1. **llvkloader.{cpp,h} 拡張**:
    - VkPipelineCache 作成 + persist
    - VkPipelineLayout 標準形 helper
    - PSO compile helper
    - §1.5.4 device limit query 6 件 + log baseline 出力
-2. **llgl.{cpp,h} 改修 (3,514 LOC)**:
-   - RAII state class (12 件) → PSO state alias 化、setter no-op (item #1)
+2. **llgl.{cpp,h} 改修 (bridging items #2/#4/#10/#11 物理実装、item #1 は 段階 4 移管)**:
+   - ~~RAII state class (12 件) → PSO state alias 化、setter no-op (item #1)~~ — **段階 4 LLPipelineFrameContext 配置時に dead-store 化 (2026-05-29 refine、AYA 指示)**。本段階内では setter body 内 GL call 残置許容 (caller source-level compat 維持、sub-doc 03 §3.3 touch しない file list 追記 + §4.1 #1-段階 3 metric refine 済)
    - LLGLDepthTest dynamic state 化 (item #2、`VK_EXT_extended_dynamic_state2` Vulkan 1.3 core)
    - LLGLUserClipPlane PSO 化 (item #4、`VkPipelineRasterizationStateCreateInfo` clip distance)
    - gl_debug_callback → VK_EXT_debug_utils messenger 置換 (item #10)
@@ -246,7 +246,7 @@ AYA 環境 Intel GPU 不在の可能性 → sub-step 3.4 着手前に確認、�
 ### 9.2 本 handoff 固有 (3.1b 着手前)
 
 - **PSO compile + bind 失敗時の対処**: 仮説 2 連続外れたら validation layer message detail (`VK_LAYER_KHRONOS_validation` strict force-enable) + gdb breakpoint at `vkCreateGraphicsPipelines` + RenderDoc capture で実データ取得に切替、speculation 継続禁止
-- **state alias 化の source-level compat 維持**: 46 + 43 file caller の RAII stack 構築 (`LLGLDepthTest depth(GL_TRUE);` 等) は variable name 含めて改変しない、setter のみ no-op 化、charter §1 thesis 整合
+- **state alias 化の source-level compat 維持** (item #1、段階 4 移管 refine 2026-05-29): 46 + 43 file caller の RAII stack 構築 (`LLGLDepthTest depth(GL_TRUE);` 等) は variable name 含めて改変しない、setter のみ dead-store 化、charter §1 thesis 整合。**3.1b 着手時に AYA 指示で 段階 4 (LLPipelineFrameContext 配置時) へ受入工程修正**、本段階内では setter 内 GL call 残置許容で 段階 1+2 動作維持と整合
 - **LLGLSyncFence 物理削除時の確認**: caller 0 件 grep を再確認 (3.1b 着手時に再 grep `grep -rE "LLGLSyncFence" indra/`) してから削除、Cluster F sealed 結果を信任しすぎない
 - **`VK_EXT_extended_dynamic_state2` driver support 確認**: 3 driver baseline (NVIDIA / RADV / ANV) で Vulkan 1.3 core promotion 確認、device query で `apiVersion >= VK_API_VERSION_1_3` baseline 取得 → log 出力で確認 → 仮に 1.2 driver 対応必要が出た場合は `VK_EXT_extended_dynamic_state2` extension 単独 enable に fallback (本 handoff §4 measurement-first cadence の枠内)
 

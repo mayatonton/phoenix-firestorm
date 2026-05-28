@@ -101,11 +101,12 @@ memory `project_ayastorm_three_platforms.md` 「3 OS 揃える、Linux のみ判
 - **依存順序**: 領域 2 (drawpool) + 領域 7 (descriptor/render pass) + 領域 6 (shader SPIR-V) と協調必須
 - **risk**: **高** — state machine の PSO 化は最大の refactor、a-3 §5.4 段階 3 = 不確実性 main source、06 §3.2 余裕係数 +37% の主要因
 
-#### 領域 4: 段階 4 — pipeline.cpp 3 大グローバル → frame context (1.00 PM)
+#### 領域 4: 段階 4 — pipeline.cpp 3 大グローバル → frame context + LLGLState RAII setter dead-store 化 (1.00 PM)
 
-- **境界条件**: 領域 5 着手前に LLPipelineFrameContext が render path 全体で機能
-- **依存順序**: 領域 3 PSO 化と並走可 (refactor 対象が独立、PSO は drawpool/llrender 側、frame context は pipeline.cpp 側)
+- **境界条件**: 領域 5 着手前に LLPipelineFrameContext が render path 全体で機能 + llgl.{cpp,h} RAII state class (LLGLState / LLGLDepthTest / LLGLSDefault 等 12 件) の setter 内 GL call 物理削除 (dead-store 化)
+- **依存順序**: 領域 3 PSO 化と並走可 (refactor 対象が独立、PSO は drawpool/llrender 側、frame context は pipeline.cpp 側)、領域 3 完了後に LLGLState setter dead-store 化追加実施 (PSO state alias 基盤 + frame context で render path context 確定後に safe に物理削除)
 - **risk**: **高** — sub-phase 1 で「pipeline.cpp 3 大グローバル + cull/stateSort 内 GL 呼出が並列化阻止」確認済の領域、refactor 自体は本線 GL 除去と独立だが r41 完遂 = 並列化準備の前提
+- **scope refine 2026-05-29**: sub-step 3.1b 着手時に **bridging item #1 (LLGLState setter dead-store 化)** を本領域 4 に移管 (03 §1.5.3 / §3.1 / §4.1 / §3.3 + handoff §3.1 / §7.1 反映済)。受け入れ理由: PSO state alias 基盤 (領域 3 sub-step 3.1 で配線) + LLPipelineFrameContext (本領域) が揃った後に caller source-level compat 維持しつつ setter 内 GL call 物理削除可能、3.1b 時点で先行実施すると 段階 1+2 動作維持 (sub-doc 03 §3.5) と構造矛盾
 
 #### 領域 5: 段階 5 — llspatialpartition / llviewershadermgr / llvertexbuffer / llvosky / llvowlsky 依存解決 (0.50 PM)
 

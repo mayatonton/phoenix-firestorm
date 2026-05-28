@@ -49,6 +49,7 @@
 
 #include "llglheaders.h"
 #include "llglslshader.h"
+#include "llvkloader.h"     // r41 sub-step 3.1b item #2: Vulkan dynamic state parallel-rail
 
 #include "glm/glm.hpp"
 #include <glm/gtc/matrix_access.hpp>
@@ -2819,6 +2820,24 @@ LLGLUserClipPlane::~LLGLUserClipPlane()
     disable();
 }
 
+// r41 sub-step 3.1b item #2: GL depth func enum → VkCompareOp mapping.
+// VK_EXT_extended_dynamic_state2 (Vulkan 1.3 core) dynamic state parallel-rail.
+static VkCompareOp glDepthFuncToVk(GLenum gl_func)
+{
+    switch (gl_func)
+    {
+        case GL_NEVER:    return VK_COMPARE_OP_NEVER;
+        case GL_LESS:     return VK_COMPARE_OP_LESS;
+        case GL_EQUAL:    return VK_COMPARE_OP_EQUAL;
+        case GL_LEQUAL:   return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case GL_GREATER:  return VK_COMPARE_OP_GREATER;
+        case GL_NOTEQUAL: return VK_COMPARE_OP_NOT_EQUAL;
+        case GL_GEQUAL:   return VK_COMPARE_OP_GREATER_OR_EQUAL;
+        case GL_ALWAYS:   return VK_COMPARE_OP_ALWAYS;
+        default:          return VK_COMPARE_OP_LESS;
+    }
+}
+
 LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, GLenum depth_func)
 : mPrevDepthEnabled(sDepthEnabled), mPrevDepthFunc(sDepthFunc), mPrevWriteEnabled(sWriteEnabled)
 {
@@ -2833,24 +2852,40 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
         write_enabled = GL_FALSE;
     }
 
+    // r41 sub-step 3.1b item #2: Vulkan dynamic state parallel-rail.
+    // VK path is no-op outside an active frame (getCurrentCommandBuffer returns VK_NULL_HANDLE).
+    VkCommandBuffer vk_cb = LLVKLoader::getCurrentCommandBuffer();
+
     if (depth_enabled != sDepthEnabled)
     {
         gGL.flush();
         if (depth_enabled) glEnable(GL_DEPTH_TEST);
         else glDisable(GL_DEPTH_TEST);
         sDepthEnabled = depth_enabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthTestEnable(vk_cb, depth_enabled ? VK_TRUE : VK_FALSE);
+        }
     }
     if (depth_func != sDepthFunc)
     {
         gGL.flush();
         glDepthFunc(depth_func);
         sDepthFunc = depth_func;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthCompareOp(vk_cb, glDepthFuncToVk(depth_func));
+        }
     }
     if (write_enabled != sWriteEnabled)
     {
         gGL.flush();
         glDepthMask(write_enabled);
         sWriteEnabled = write_enabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthWriteEnable(vk_cb, write_enabled ? VK_TRUE : VK_FALSE);
+        }
     }
 }
 
@@ -2858,24 +2893,40 @@ LLGLDepthTest::~LLGLDepthTest()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     checkState();
+
+    // r41 sub-step 3.1b item #2: Vulkan dynamic state parallel-rail (restore on RAII exit).
+    VkCommandBuffer vk_cb = LLVKLoader::getCurrentCommandBuffer();
+
     if (sDepthEnabled != mPrevDepthEnabled )
     {
         gGL.flush();
         if (mPrevDepthEnabled) glEnable(GL_DEPTH_TEST);
         else glDisable(GL_DEPTH_TEST);
         sDepthEnabled = mPrevDepthEnabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthTestEnable(vk_cb, mPrevDepthEnabled ? VK_TRUE : VK_FALSE);
+        }
     }
     if (sDepthFunc != mPrevDepthFunc)
     {
         gGL.flush();
         glDepthFunc(mPrevDepthFunc);
         sDepthFunc = mPrevDepthFunc;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthCompareOp(vk_cb, glDepthFuncToVk(mPrevDepthFunc));
+        }
     }
     if (sWriteEnabled != mPrevWriteEnabled )
     {
         gGL.flush();
         glDepthMask(mPrevWriteEnabled);
         sWriteEnabled = mPrevWriteEnabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthWriteEnable(vk_cb, mPrevWriteEnabled ? VK_TRUE : VK_FALSE);
+        }
     }
 }
 
@@ -2943,52 +2994,6 @@ LLGLSquashToFarClip::~LLGLSquashToFarClip()
 }
 
 
-
-LLGLSyncFence::LLGLSyncFence()
-{
-    mSync = 0;
-}
-
-LLGLSyncFence::~LLGLSyncFence()
-{
-    if (mSync)
-    {
-        glDeleteSync(mSync);
-    }
-}
-
-void LLGLSyncFence::placeFence()
-{
-    if (mSync)
-    {
-        glDeleteSync(mSync);
-    }
-    mSync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-}
-
-bool LLGLSyncFence::isCompleted()
-{
-    bool ret = true;
-    if (mSync)
-    {
-        GLenum status = glClientWaitSync(mSync, 0, 1);
-        if (status == GL_TIMEOUT_EXPIRED)
-        {
-            ret = false;
-        }
-    }
-    return ret;
-}
-
-void LLGLSyncFence::wait()
-{
-    if (mSync)
-    {
-        while (glClientWaitSync(mSync, 0, FENCE_WAIT_TIME_NANOSECONDS) == GL_TIMEOUT_EXPIRED)
-        { //track the number of times we've waited here
-        }
-    }
-}
 
 LLGLSPipelineSkyBox::LLGLSPipelineSkyBox()
 : mCullFace(GL_CULL_FACE)

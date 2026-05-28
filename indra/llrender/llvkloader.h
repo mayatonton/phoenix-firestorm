@@ -28,6 +28,22 @@ namespace LLVKLoader
     bool beginFrame();
     bool endFrame();
     VkCommandBuffer getCurrentCommandBuffer();
+
+    // r41 sub-step 3.1b PSO foundation (sub-doc 03 §1.5 / §3.1 sub-step 3.1)
+    VkDevice         getDevice();
+    VkPipelineCache  getPipelineCache();
+
+    // Standard pipeline layout helper. Caller owns returned handle (destroy with vkDestroyPipelineLayout).
+    // Pass nullptr / 0 for descriptor sets or push constants to omit.
+    VkPipelineLayout createStandardPipelineLayout(
+        const VkDescriptorSetLayout* descriptor_set_layouts,
+        U32                          descriptor_set_layout_count,
+        const VkPushConstantRange*   push_constant_ranges,
+        U32                          push_constant_range_count);
+
+    // Compile a graphics pipeline using the persistent VkPipelineCache.
+    // ci.layout / ci.renderPass / ci.pStages etc. must be filled by caller.
+    bool compileGraphicsPipeline(const VkGraphicsPipelineCreateInfo& ci, VkPipeline& out_pipeline);
 }
 
 #endif // LL_LLVKLOADER_H
