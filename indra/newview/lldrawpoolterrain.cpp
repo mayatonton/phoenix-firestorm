@@ -1165,3 +1165,16 @@ LLColor3 LLDrawPoolTerrain::getDebugColor() const
 {
     return LLColor3(0.f, 0.f, 1.f);
 }
+
+// <AYAstorm r41> sub-step 2.4: empty Vulkan record hook. Stage 3 replaces the
+// marker with PSO bind + vkCmdDraw* against cmd_buf.
+void LLDrawPoolTerrain::recordPoolDraws(VkCommandBuffer cmd_buf)
+{
+    static bool logged_once = false;
+    if (!logged_once)
+    {
+        LL_INFOS("VkRecord") << "Terrain pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
+        logged_once = true;
+    }
+}
+// </AYAstorm r41>

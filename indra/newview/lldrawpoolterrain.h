@@ -69,6 +69,10 @@ public:
     /*virtual*/ LLViewerTexture *getDebugTexture();
     /*virtual*/ LLColor3 getDebugColor() const; // For AGP debug display
 
+    // <AYAstorm r41> sub-step 2.4: Vulkan record hook (empty marker).
+    /*virtual*/ void recordPoolDraws(VkCommandBuffer cmd_buf) override;
+    // </AYAstorm r41>
+
     LLPointer<LLViewerTexture> mAlphaRampImagep;
     LLPointer<LLViewerTexture> m2DAlphaRampImagep;
     LLPointer<LLViewerTexture> mAlphaNoiseImagep;

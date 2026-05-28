@@ -1107,4 +1107,16 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
 }
 // </AYAstorm r30 P2>
 
+// <AYAstorm r41> sub-step 2.4: empty Vulkan record hook. Stage 3 replaces the
+// marker with PSO bind + vkCmdDraw* against cmd_buf.
+void LLDrawPoolAvatar::recordPoolDraws(VkCommandBuffer cmd_buf)
+{
+    static bool logged_once = false;
+    if (!logged_once)
+    {
+        LL_INFOS("VkRecord") << "Avatar pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
+        logged_once = true;
+    }
+}
+// </AYAstorm r41>
 

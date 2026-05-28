@@ -106,6 +106,10 @@ typedef enum
     /*virtual*/ void renderMotionBlur(S32 pass) override;
     // </AYAstorm r30 P2>
 
+    // <AYAstorm r41> sub-step 2.4: Vulkan record hook (empty marker).
+    /*virtual*/ void recordPoolDraws(VkCommandBuffer cmd_buf) override;
+    // </AYAstorm r41>
+
     void beginRigid();
     void beginImpostor();
     void beginSkinned();
