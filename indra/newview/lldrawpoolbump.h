@@ -90,6 +90,11 @@ private:
     static bool bindBumpMap(U8 bump_code, LLViewerTexture* tex, S32 channel);
     bool mRigged = false; // if true, doing a rigged pass
 
+public:
+    // <AYAstorm r41> sub-step 2.2: Vulkan record hook (empty marker).
+    void recordPoolDraws(VkCommandBuffer cmd_buf) override;
+    // </AYAstorm r41>
+
 };
 
 enum EBumpEffect

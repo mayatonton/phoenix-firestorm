@@ -72,6 +72,10 @@ public:
     void endMotionBlurPass(S32 pass) override;
     void renderMotionBlur(S32 pass) override;
     // </AYAstorm r30 P2>
+
+    // <AYAstorm r41> sub-step 2.2: Vulkan record hook (empty marker).
+    void recordPoolDraws(VkCommandBuffer cmd_buf) override;
+    // </AYAstorm r41>
 };
 
 #endif //LL_LLDRAWPOOLMATERIALS_H

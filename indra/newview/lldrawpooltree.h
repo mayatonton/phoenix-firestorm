@@ -67,6 +67,10 @@ public:
     /*virtual*/ LLViewerTexture *getDebugTexture();
     /*virtual*/ LLColor3 getDebugColor() const; // For AGP debug display
 
+    // <AYAstorm r41> sub-step 2.2: Vulkan record hook (empty marker).
+    /*virtual*/ void recordPoolDraws(VkCommandBuffer cmd_buf);
+    // </AYAstorm r41>
+
     static S32 sDiffTex;
 };
 

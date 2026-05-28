@@ -76,6 +76,10 @@ public:
 
     void pushWaterPlanes(int pass);
 
+    // <AYAstorm r41> sub-step 2.2: Vulkan record hook (empty marker).
+    void recordPoolDraws(VkCommandBuffer cmd_buf) override;
+    // </AYAstorm r41>
+
 protected:
     void renderOpaqueLegacyWater();
 
