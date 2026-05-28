@@ -1,6 +1,6 @@
 # AYAstorm r41 sub-doc 03-state-machine-pso — 段階 3 llrender state machine → Vulkan PSO 化
 
-**status**: **closed 2026-05-29 (Pattern α 一括 draft、AYA review PASS)**
+**status**: **closed 2026-05-29 (Pattern α 一括 draft AYA review PASS) → 3.1a-iv 加筆 pending AYA review (§1.5 新規 + §3.1 sub-step 3.1/3.4 marker refine + §4.1 #1-段階 3 refine + §5.1 関連 doc 表 refine)**
 **親 charter**: `docs/specs/ayastorm-r41-gl-removal/00-charter.md` (closed 2026-05-28)
 **前 sub-doc**: `02-portage-execution.md` (closed 2026-05-28、段階 2 完遂で役割完了)
 **前 handoff**: `handoff-stage-2-complete.md` (段階 2 完遂 → 段階 3 着手境界)
@@ -63,6 +63,141 @@ handoff §1.3-1.4 で確定した 2 件の段階 3 一体運用項目を sub-ste
 | **特殊対応 (terrain glTexGen 廃止 + shader 側 UV 化)** | **sub-step 3.4** で領域 6 並走、`lldrawpoolterrain.cpp` 内 `glTexGen` 直接呼出削除 + shader 側 explicit UV attribute 化 (領域 6 sub-step 6.x で SPIR-V port)。**完了 marker**: `grep -E "glTexGen" indra/newview/lldrawpoolterrain.cpp` が **0 件 hit** |
 | **特殊対応 (avatar skinning SSBO)** | **sub-step 3.4** で `lldrawpoolavatar.cpp` 内 bone matrix uniform → `VkBuffer (storage buffer)` 配信、descriptor set=2 per-draw (push descriptor) で bind。**完了 marker**: avatar.cpp 内 bone matrix → VkBuffer 配線確認 + descriptor binding validation 0 件 |
 
+### §1.5 sub-step 3.1a-i/ii 設計素材 (sealed 2026-05-29、3.1a-iv 加筆)
+
+sub-step 3.1 (PSO 基盤 + state alias root) 実装着手前の **trace-before-implement** (`feedback_render_full_trace_first.md` 遵守) として sub-step 3.1a を 4 段階 (i/ii/iii/iv) に AYA 指示で再 scope。本 §1.5 は 3.1a-i (trace inventory) + 3.1a-ii (bridging 設計素材収集) の sealed 結果を sub-doc 内に保全し、sub-step 3.1 以降の実装に直接渡す。
+
+#### §1.5.1 sub-step 3.1a 4 段階構成 (再 scope 2026-05-29)
+
+| stage | scope | 完了状態 |
+|---|---|---|
+| **3.1a-i** | llgl.{cpp,h} + 関連 caller の GL state machine trace inventory (file / line / 関数別) | **完了 2026-05-29** (6 Agent cluster 並列 trace、本 §1.5.2 に sealed) |
+| **3.1a-ii** | 11 件非自明 bridging items の繋ぎ方設計 (素材収集) | **完了 2026-05-29** (本 §1.5.3 に sealed) |
+| **3.1a-iii** | 作業項目化 + PD 算出 | **AYA 指示で de-prioritize** (charter §6 1.50 PM 据置き、「やってみて変動するもの」)、本 §1.5.6 で軽い refresh のみ |
+| **3.1a-iv** | sub-doc 03 spec 訂正 + handoff-substep-3-1a-complete.md 起草 | **本 §1.5 + §3.1 / §4.1 / §5.1 加筆で satisfy** |
+
+#### §1.5.2 Cluster A-F trace inventory (sealed)
+
+本項は Cluster A / B / D / E / F の trace 結果を sealed 形で保全 (Cluster C false alarm 訂正は §1.5.5)。再 trace 不要。
+
+**Cluster A: llgl.cpp = 3,027 LOC、23 unique GL functions / 79 total direct calls**
+
+| section | line range | 内容 | Vulkan 化方針 |
+|---|---|---|---|
+| PFNGL function pointer declarations | L227-L992 | ~765 LOC、extern function pointer typedef | volk 化対象 (段階 1 で完了)、物理削除は段階 5 (§5 #1-段階 3 acceptance 反映) |
+| LLGLManager init / extensions | L1075-L1810 | ~735 LOC、`glGetString` / `glGetIntegerv` / extension query | `VkPhysicalDeviceFeatures` + `VkPhysicalDeviceProperties` 化 (sub-step 3.1) |
+| LLGLState (RAII root) | L2552-L2624 | ~73 LOC、setter は `glEnable` / `glDisable` 直接呼出 | PSO state alias 化 + setter no-op (bridging item #1) |
+| LLGLUserClipPlane | L2767-L2820 | ~54 LOC、`glEnable(GL_CLIP_DISTANCE0)` + shader 側 clipPlane uniform 連携 | `VkPipelineRasterizationStateCreateInfo` clip distance enable + shader-side `gl_ClipDistance` (bridging item #4) |
+| LLGLDepthTest | L2822-L2906 | ~85 LOC、`glDepthFunc` / `glDepthMask` 動的切替 | `VK_EXT_extended_dynamic_state2` (Vulkan 1.3 core) で dynamic state 化 (bridging item #2) |
+| LLGLSquashToFarClip | L2908-L2943 | ~36 LOC、projection matrix depth-squash | matrix stack push constant 64 bytes 内に統合 (bridging item #3) |
+| LLGLSyncFence | L2947-L2991 | ~45 LOC、`glFenceSync` / `glClientWaitSync` | **caller = 0 件 (dead code)** → 物理削除 (bridging item #11) |
+
+**Cluster A: llgl.h = 487 LOC + llglstates.h = 197 LOC、12 state class declarations**
+
+`LLGLDepthTest` / `LLGLSDefault` / `LLGLSObjectSelect` / `LLGLSUIDefault` / `LLGLSPipeline` / `LLGLSPipelineAlpha` / `LLGLSPipelineSelection` / `LLGLSPipelineSkyBox` / `LLGLSPipelineDepthTestSkyBox` / `LLGLSPipelineBlendSkyBox` / `LLGLSTracker` / `LLGLSSpecular`
+
+これらは PSO 内 state alias header に refactor、setter は no-op 化 (PSO compile 時 state 固定の Vulkan モデルに整合)。
+
+**Cluster A: caller 集計**
+
+- 46 + 43 file (state class header 経由 + 直接 llgl.h include)
+- 195 + 85 direct usage line
+- 大半は RAII stack 構築 (`LLGLDepthTest depth(GL_TRUE);` 等)、setter no-op 化で **source-level compat 維持可能** (charter §1 thesis = parity 不要、ただし内部 GL call 削除が acceptance #1)
+
+**Cluster B: AYAstorm 改変 13 file shader boundary (clip + sky 経路 safe 確認済)**
+
+| 経路 | 改変状況 | safe 確認結果 |
+|---|---|---|
+| **clipF.glsl 経路** | LL 標準 fragment shader (AYAstorm **未改変**) | `LLGLUserClipPlane` 連携 PSO 化で `clip distance` を `VkPipelineRasterizationStateCreateInfo` / shader-side `gl_ClipDistance` 経由維持 → **改変なしで PSO 化可** |
+| **skybox skyV.glsl 経路** | AYAstorm r14 改変含む (r14+ visual realism scope) が、改変範囲は L65-L225 に **isolated** | L95 の **push constant matrix swap** (`mat4` viewProj 注入) は r14 改変 block と **independent**、PSO 化で L95 swap を `VkPushConstantRange { offset=0, size=64, stageFlags=VK_SHADER_STAGE_VERTEX_BIT }` に置換、r14 改変 block (L65-L225) は untouched 維持可能 → **safe** |
+
+**結論**: charter §3 #4 regression acceptance (AYAstorm 改変 13 file は r41 内 untouched) は 3.1a で **clip + sky の 2 経路は安全確認済**、残 11 file は段階 3 後続 sub-step (3.4 特殊対応) + r42-α/β/γ scope で順次確認。
+
+**Cluster D: PFNGL 削除 + 189 file 波及**
+
+- llgl.cpp 内 PFNGL declarations 765 LOC + ProcAddr loading 310 LOC + extern declarations 718 = **計 ~1,793 LOC 規模**
+- llglheaders.h 経由で **189 file に波及** (GL 関数 prototype 利用)
+- volk が `vkGetInstanceProcAddr` + `vkGetDeviceProcAddr` 経由で全 Vulkan 関数 pointer を auto-load (段階 1 で完了)
+- GL 側 PFNGL を一括削除すると 189 file の include 連鎖で広範な compile error 発生 → **段階 5 (残依存解決) と一体運用が望ましい**
+- 段階 3 内では llrender 5 file のみ GL call 削除 (acceptance #1-段階 3、§4.1 反映)、PFNGL declarations の物理削除は段階 5 で実施 (波及 segment 化)
+
+**Cluster E: glHint + VRAM detection**
+
+- `glHint` は **trivial deletion** (Vulkan に hint API 無し、PSO compile 時に driver 最適化任せ)
+- VRAM detection (`glGetIntegerv(GL_GPU_MEMORY_INFO_*)` NVX extension) は **`VkPhysicalDeviceMemoryProperties` で unified** (heap iteration で device-local heap size 取得、3 driver baseline 全対応)
+
+**Cluster F: LLGLSyncFence dead code + debug callback**
+
+- **LLGLSyncFence** (llgl.cpp L2947-L2991, 45 LOC): caller grep **0 件 hit** (本 fork で完全 dead code)、削除 (bridging item #11)
+- **gl_debug_callback** (`GL_ARB_debug_output`): llgl.cpp 内に GL debug message callback 配線あり、**`VK_EXT_debug_utils` messenger に直接置換可** (段階 1 で `VkDebugUtilsMessengerEXT` 配線は validation strict 検証で動作確認済、本 callback はその hook を再利用) (bridging item #10)
+
+#### §1.5.3 11 件 非自明 bridging items 設計表 (sealed)
+
+| # | item | 設計方針 | 主担当 sub-step | 備考 |
+|---|---|---|---|---|
+| 1 | **LLGLState RAII setter no-op 化** | PSO compile 時 state 固定モデルに整合、setter は dead-store 化、caller (46+43 file) source-level compat 維持 | 3.1 | charter §1 thesis 整合、parity 不要 |
+| 2 | **LLGLDepthTest dynamic state 化** | `VK_EXT_extended_dynamic_state2` (Vulkan 1.3 core) で `vkCmdSetDepthTestEnable` / `vkCmdSetDepthCompareOp` / `vkCmdSetDepthWriteEnable` 経由動的切替、3 driver baseline (NVIDIA / RADV / ANV) で query 確認 | 3.1 | 3 driver 全 1.3 core で支持、追加 extension 不要 |
+| 3 | **LLGLSquashToFarClip push constant 化** | projection matrix depth-squash を push constant range 内に統合 (matrix stack push constant 64 bytes 共有) | 3.1 / 3.3 | shader 側 layout 配線変更必須 (領域 6 並走) |
+| 4 | **LLGLUserClipPlane 経路 PSO 化** | `VkPipelineRasterizationStateCreateInfo` で clip distance enable、shader-side `gl_ClipDistance` 経由値配信、clipF.glsl 改変なし | 3.1 / 3.3 | Cluster B safe 確認済 (§1.5.2) |
+| 5 | **skybox skyV.glsl L95 push constant swap 維持** | matrix stack push constant 化に伴う swap、r14 改変 L65-L225 と independent | 3.1 / 3.3 | Cluster B safe 確認済 (§1.5.2) |
+| 6 | **matrix stack → push constant 64 bytes 化** | modelview + projection を mat4 × 1 (64 bytes) で push constant、shader layout cross-update (領域 6 並走) | 3.3 | Vulkan minimum 128 bytes 内、余裕あり (07 §1.2.2 整合) |
+| 7 | **texture unit → descriptor set=1 per-material mapping** | 7 PBR slot (DIFFUSE/NORMAL/SPECULAR/BASECOLOR/METALLIC_ROUGHNESS/GLTF_NORMAL/EMISSIVE) を set=1 binding 0-6 配置 | 3.4 (texture lifecycle) | Cluster C measurement-first で AYA 環境実測確定 (§1.5.4) |
+| 8 | **VkImage + VkImageView + VMA lifecycle** | LL `LLImageGL` を VkImage + VMA allocation + VkImageView trio で置換、format conversion table を VkFormat 表に化 | 3.4 | VMA は段階 1 で device 配線済、本 sub-step で alloc API 活用 |
+| 9 | **FBO → VK_KHR_dynamic_rendering** | `vkCmdBeginRenderingKHR` / `vkCmdEndRenderingKHR` + inline `VkRenderingAttachmentInfo`、`VkRenderPass` + `VkFramebuffer` 廃止 (05 §4.7 移行マップ準拠) | 3.3 | 3 driver baseline 全支持 (Vulkan 1.3 core)、07 §1.2.3 整合 |
+| 10 | **gl_debug_callback → VK_EXT_debug_utils messenger 移管** | 段階 1 messenger 配線を reuse、GL ARB debug output callback を Vulkan 側に集約 | 3.1 | 段階 1 で動作実績あり (validation strict 検証で確認済) |
+| 11 | **LLGLSyncFence dead code 削除** | caller 0 件確認済 (Cluster F)、llgl.cpp L2947-L2991 物理削除で段階 3 scope 縮減 | 3.1 | 削除のみで段階 3 acceptance #1 への副作用 0 |
+
+**各 sub-step マッピング (§3.1 と整合)**:
+
+| sub-step | 本 §1.5.3 配置設計項目 |
+|---|---|
+| 3.1 (PSO 基盤 + state alias root) | 1 / 2 / 4 / 10 / 11 (+ 3 / 5 部分前倒し可) |
+| 3.2 (軽量 smoke-test = llpostprocess) | (新規 bridging item 無し、本 §3 設計済 effect uniform → push constant + UBO) |
+| 3.3 (標準 PSO 配線 = llrender + llrendertarget) | 3 / 5 / 6 / 9 |
+| 3.4 (texture lifecycle + 段階 2 引継ぎ) | 7 / 8 + 段階 2 引継ぎ (acceptance #1 + 特殊対応 2 件、§1.4 整合) |
+| 3.5 (self-check + handoff) | (verify 中心、新規 bridging item 無し) |
+
+#### §1.5.4 measurement-first 採用 (redesign-first 回避)
+
+Cluster C false alarm (§1.5.5) 教訓を踏まえ、**sub-step 3.1 着手時** に `LLVKLoader::createDevice` 内で以下 device limit を query + log 出力:
+
+- `maxBoundDescriptorSets` (Vulkan 1.3 minimum = 4)
+- `maxPushConstantsSize` (Vulkan 1.3 minimum = 128 bytes)
+- `maxPushDescriptors` (`VK_KHR_push_descriptor` extension property、minimum = 32)
+- `maxPerStageDescriptorSampledImages` (Vulkan 1.3 minimum = 16)
+- `maxColorAttachments` (Vulkan 1.3 minimum = 4)
+- `maxDescriptorSetSamplers` (Vulkan 1.3 minimum = 80)
+
+**3 driver baseline** (NVIDIA RTX 5090 / Mesa RADV / Mesa ANV (Intel)) で実測値 log を取得 → 設計 budget 確定 → AYA 共有 → sub-step 3.4 texture lifecycle 配線時に descriptor 設計 final 化。
+
+**redesign-first 採用回避の理由**: Cluster C で Agent が「106+ sampler breach 可能性」と speculation した時、実態 (per-draw 6-8 samplers、descriptor set=2 push descriptor 32 binding minimum を十分下回る) を確認せず redesign 議論に走るのを防ぐため、measurement-first で device 実測 → 設計判断の cadence を sub-step 3.1 完了 marker に組込む (§3.1 sub-step 3.1 marker 反映)。
+
+#### §1.5.5 Cluster C false alarm 訂正記録
+
+- **Agent speculation**: 「106+ sampler breach の可能性」
+- **実態**: per-draw binding = 6-8 samplers、PBR texture slot 数 = 7 (DIFFUSE / NORMAL / SPECULAR / BASECOLOR / METALLIC_ROUGHNESS / GLTF_NORMAL / EMISSIVE)、descriptor set=2 push descriptor 32 binding minimum を十分に下回る
+- **訂正根拠**: Agent は texture slot 総数 (全 material × 全 PBR map 合計の上界) を per-draw binding と混同 (speculation)
+- **設計対応**: 現状の sub-doc 03 §1.2.5 + 07 §3 設計を維持、redesign-first は不要、measurement-first で AYA 環境実測 (§1.5.4) で確定
+- **教訓 (`feedback_doubt_self_first.md` 違反の自認)**: Agent speculation を自分でも再 trace せず AYA に伝達 → AYA 反論「これは作業量が想像よりずっと多いということを言っていますか?」で気付いて撤回。**hedged 表現 (「可能性」「breach 寄り」) はエスカレートせず原文 hedge 維持、自分で再 trace してから AYA に伝達** を 3.1a-iv 以降全 sub-step で徹底
+
+#### §1.5.6 PD 算出 軽い refresh (AYA 指示で de-prioritize)
+
+AYA guidance「工数はやってみれば変動するものですからこの数字の精度をどうこう言ってもしかたない」「本 Step を正しい結果で積み上げる方にこそ重点において以降の Step を盤石にしましょう」を遵守、本項は精度よりも sub-step 間相対比較に留める。
+
+- charter §6 / 06 §3.1 領域 3 PM 1.50 (1.5 人月) **据置き** (refine 不要)
+- 04 §5.4.1 段階 3 工数感 = **4-5 週間 / 1.5 人月** で現 charter 整合
+- 段階 3 完遂時に実工数 vs 1.50 PM の retrospective を `handoff-stage-3-complete.md` で 1 行記録 (charter §6.4 並走方針整合)
+
+**sub-step 間相対工数感** (実装着手前感覚、精度二次):
+
+| sub-step | 相対工数感 | 主要 driver |
+|---|---|---|
+| 3.1 | 中-大 | 11 件中 5-7 件配置、state alias root が refactor 起点 |
+| 3.2 | 小 | smoke-test path、bridging template 動作確認用 |
+| 3.3 | 中 | matrix stack + FBO の 2 大 surface 並列着手 (Agent 並列候補) |
+| 3.4 | 大 | texture lifecycle + 段階 2 引継ぎ 3 件、12 pool hook body 配線 |
+| 3.5 | 小 | self-check + validation strict 再 verify + handoff doc |
+
 ---
 
 ## §2 port 順序 + dependency graph
@@ -106,10 +241,10 @@ llgl.{cpp,h} (PSO state alias root、3,514 LOC)
 
 | sub-step | scope | 対象 file (LOC) | 完了 marker |
 |---|---|---|---|
-| **3.1** | PSO 基盤 + state alias root | llvkloader.{cpp,h} 拡張 (VkPipelineCache + VkPipelineLayout 標準形 + PSO compile helper) + `llgl.{cpp,h}` の RAII state class → PSO state alias 化 (3,514 LOC) | 起動時 VkPipelineCache 作成成功 + 最小 PSO (sky pool 用 placeholder) compile 成功 + 動作中 1 frame 内に PSO bind が validation 0 件で完了、`LLGLDepthTest` / `LLGLSDefault` 等の setter が PSO state alias 経由 no-op 化、bridging template 確定 |
+| **3.1** | PSO 基盤 + state alias root + measurement-first device limit query | llvkloader.{cpp,h} 拡張 (VkPipelineCache + VkPipelineLayout 標準形 + PSO compile helper + §1.5.4 device limit query 6 件 + log baseline) + `llgl.{cpp,h}` の RAII state class → PSO state alias 化 (3,514 LOC) + §1.5.3 bridging items #1/#2/#4/#10/#11 配置 | 起動時 VkPipelineCache 作成成功 + 最小 PSO (sky pool 用 placeholder) compile 成功 + 動作中 1 frame 内に PSO bind が validation 0 件で完了、`LLGLDepthTest` / `LLGLSDefault` 等の setter が PSO state alias 経由 no-op 化 + `VK_EXT_extended_dynamic_state2` dynamic state 配線動作 (item #2) + `LLGLUserClipPlane` PSO 化動作 (item #4) + `VK_EXT_debug_utils` messenger 経由 GL ARB debug callback 置換動作 (item #10) + `LLGLSyncFence` 物理削除 (item #11) + §1.5.4 device limit query 6 件 log 出力成功 (3 driver baseline 取得は AYA 環境実機で sub-step 3.4 着手前に確定) + bridging template 確定 |
 | **3.2** | 軽量 smoke-test port | llpostprocess.{cpp,h} (legacy effect、721 LOC) | legacy post-process effect の uniform 配信 → push constant + per-frame UBO 化、起動 + 1 セッション validation 0 件 |
 | **3.3** | 標準 PSO 配線 (matrix stack + FBO → dynamic rendering) | llrender.{cpp,h} (2,789) + llrendertarget.{cpp,h} (783) = 4 file 3,572 LOC | matrix stack → push constant 化動作 + texture unit → set=1 mapping 動作 + FBO → `vkCmdBeginRenderingKHR` 化動作、領域 7 並走 sub-step との descriptor set 整合確認 |
-| **3.4** | texture lifecycle + 段階 2 引継ぎ特殊対応 | llimagegl.{cpp,h} (3,034 LOC) + 12 pool hook body PSO bind 配線 + terrain glTexGen 廃止 + avatar SSBO 基本実装 | VkImage + VkImageView + VMA lifecycle 動作 + 12 pool 全 hook 内 `vkCmdDraw*` 投入動作 + render path GL call 削除 (acceptance #1-段階 2 satisfy) + terrain.cpp 内 `glTexGen` 0 件 + avatar.cpp 内 bone matrix → VkBuffer 配線 + validation 0 件 |
+| **3.4** | texture lifecycle + descriptor set=1 per-material 7 PBR slot 配置 + 段階 2 引継ぎ特殊対応 | llimagegl.{cpp,h} (3,034 LOC) + §1.5.3 bridging items #7/#8 配置 + 12 pool hook body PSO bind 配線 + terrain glTexGen 廃止 + avatar SSBO 基本実装 | VkImage + VkImageView + VMA lifecycle 動作 (item #8) + descriptor set=1 per-material 7 PBR slot (DIFFUSE/NORMAL/SPECULAR/BASECOLOR/METALLIC_ROUGHNESS/GLTF_NORMAL/EMISSIVE) を binding 0-6 配置動作 (item #7、§1.5.4 device limit 実測値 base で final 化) + 12 pool 全 hook 内 `vkCmdDraw*` 投入動作 + render path GL call 削除 (acceptance #1-段階 2 satisfy) + terrain.cpp 内 `glTexGen` 0 件 + avatar.cpp 内 bone matrix → VkBuffer 配線 + validation 0 件 |
 | **3.5** | 段階 3 self-check + validation strict 検証 + handoff doc | (本 sub-step) | §4.1 acceptance 5 件 self-trace PASS (charter §3 #1/#3/#5/#6 段階 3 分 + regression) + validation strict force-enable build で validation 0 件再確認 + handoff doc `handoff-stage-3-complete.md` 作成 |
 
 ### §3.2 sub-step 内 file 順序の柔軟性 (charter §7.5 boundary refine 可)
@@ -137,7 +272,7 @@ charter §3 acceptance criterion #1 (GL 除去) + #3 (段階 1-5 全完遂) + #5
 
 | criterion | metric | test procedure |
 |---|---|---|
-| **#1-段階 3 (llrender 主要 5 file + lldrawpool 13 file の GL call 除去)** | llrender 5 file (10,841 LOC) + lldrawpool 13 file 内で `gl[A-Z][a-zA-Z]+\s*\(` 直接呼出が 0 件、PSO bind + `vkCmdDraw*` + dynamic rendering call 経由に置換済 | `grep -rE "gl[A-Z][a-zA-Z]+\s*\(" indra/llrender/llgl.{cpp,h} indra/llrender/llrender.{cpp,h} indra/llrender/llimagegl.{cpp,h} indra/llrender/llrendertarget.{cpp,h} indra/llrender/llpostprocess.{cpp,h}` が **0 件 hit** + `grep -rE "gl[A-Z][a-zA-Z]+\s*\(" indra/newview/lldrawpool*.cpp` が **0 件 hit** (段階 2 引継ぎ satisfy 後) |
+| **#1-段階 3 (llrender 主要 5 file + lldrawpool 13 file の GL call 除去)** | llrender 5 file (10,841 LOC) + lldrawpool 13 file 内で `gl[A-Z][a-zA-Z]+\s*\(` 直接呼出が 0 件、PSO bind + `vkCmdDraw*` + dynamic rendering call 経由に置換済。**PFNGL function pointer declarations の物理削除は段階 5 一体運用** (§1.5.2 Cluster D 189 file 波及、本段階内 scope 過大) | `grep -rE "gl[A-Z][a-zA-Z]+\s*\(" indra/llrender/llgl.{cpp,h} indra/llrender/llrender.{cpp,h} indra/llrender/llimagegl.{cpp,h} indra/llrender/llrendertarget.{cpp,h} indra/llrender/llpostprocess.{cpp,h}` が **0 件 hit** (直接呼出 GL call 削除、PFNGL declarations は段階 5 scope) + `grep -rE "gl[A-Z][a-zA-Z]+\s*\(" indra/newview/lldrawpool*.cpp` が **0 件 hit** (段階 2 引継ぎ satisfy 後)。**PFNGL declarations 物理削除 metric は段階 5 acceptance 側で別計上** |
 | **#3-段階 3 (PSO bind 動作 + validation 0 件)** | 12 pool 全 hook で PSO bind + `vkCmdDraw*` 動作、validation layer error / warning 0 件 | viewer 起動 + login 後 sustained ~10 分動作 + 各 pool の PSO bind 通過確認 (LL_INFOS log + per-pool PSO compile counter)、`VK_LAYER_KHRONOS_validation` で起動 + 動作中 error / warning 0 件 (sub-step 3.5 で validation strict force-enable build) |
 | **#5-段階 3 (descriptor set + render pass 実装、領域 7 並走 satisfy)** | set=0 per-frame / set=1 per-material / set=2 per-draw 3 階層 + `VK_KHR_push_descriptor` (set=2) + `VK_KHR_dynamic_rendering` 採用動作 | validation layer で descriptor binding mismatch / render pass dependency violation **0 件** + `grep -E "VK_KHR_push_descriptor\|vkCmdPushDescriptorSetKHR" indra/llrender/` で配線 hit + `grep -E "vkCmdBeginRenderingKHR\|VkRenderingAttachmentInfo" indra/llrender/` で配線 hit |
 | **#6-段階 3 (LLVKRenderer skeleton signature 整合)** | charter §3 #6: pipeline.cpp 内 inline 実装と LLVKRenderer skeleton hook の signature 整合、r41.5 interface 経由 call 化前提担保 | `grep -rE "class LLVKRenderer" indra/` で skeleton declaration 存在 + 段階 3 で確定した PSO bind / pool record / descriptor 配信 関数 signature が 05 §10.1-§10.2 hook と一致 |
@@ -170,6 +305,8 @@ charter §3 acceptance criterion #1 (GL 除去) + #3 (段階 1-5 全完遂) + #5
 | `docs/specs/ayastorm-r41-gl-removal/01-foundation.md` | §3.4 sub-step 範式継承 + §3.5 段階 1 で touch しない file の段階 3 scope 反映 |
 | `docs/specs/ayastorm-r41-gl-removal/02-portage-execution.md` | §3 sub-step 範式継承 + §3.3 段階 2 で touch しない file の段階 3 scope 反映 + §4.1 段階 2 acceptance 引継ぎ |
 | `docs/specs/ayastorm-r41-gl-removal/handoff-stage-2-complete.md` | §1.3-1.4 段階 2 引継ぎ (acceptance #1 + 特殊対応の段階 3 内 satisfy 解釈、AYA 承認済 2026-05-28) + §2 段階 3 着手前の scope 確認 |
+| `docs/specs/ayastorm-r41-gl-removal/handoff-substep-3-1a-iv-ready.md` | sub-step 3.1a-i/ii 完了 (6 Agent cluster 並列 trace) → 3.1a-iv 着手境界、本 sub-doc §1.5 起源 (trace inventory + 11 件 bridging items + measurement-first 設計素材) |
+| `docs/specs/ayastorm-r41-gl-removal/handoff-substep-3-1a-complete.md` | sub-step 3.1a 4 段階全完遂宣言 (i/ii/iii/iv) → 3.1b (PSO 基盤 + state alias root **実装**) 着手境界、本 sub-doc §1.5 内容を実装期 reference として固定 |
 | `docs/specs/ayastorm-r41-gl-removal/06-shader-spirv.md` (本 sub-doc と同時起草) | 領域 6 SPIR-V port 進捗 base、本 sub-doc §1.3 並走領域協調事項 + §3.1 sub-step 3.3-3.4 同期 |
 | `docs/specs/ayastorm-r41-gl-removal/07-descriptor-renderpass.md` (本 sub-doc と同時起草) | 領域 7 descriptor set 3 階層 + 7 pass chain 実装、本 sub-doc §1.3 並走領域協調事項 + §3.1 sub-step 3.3-3.4 同期 |
 | `docs/specs/ayastorm-r40-vulkan-migration/04-portage-inventory.md` | §2.1.2 要再設計 10 file (llgl/llrender/llimagegl/llrendertarget/llpostprocess 含む) + §4.3 段階 3 構造変更案 + §5.4.1 段階 3 工数感 (4-5 週間 / 1.5 人月) + §6.3.1 段階 3 順位 |
