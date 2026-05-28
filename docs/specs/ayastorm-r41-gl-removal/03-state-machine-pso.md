@@ -27,7 +27,7 @@
 |---|---|---|---|---|
 | 1 | llgl.cpp | 3,027 | GL capability detect / extension query / state machine root (depth test / blend / cull / scissor 等の RAII state class 群) | `VkPhysicalDeviceFeatures` + `VkPhysicalDeviceProperties` query 化 + `LLGLDepthTest` / `LLGLSDefault` 等 RAII を **PSO 内 state alias** へ置換 (state object は PSO compile 時固定、setter は no-op) |
 | 2 | llgl.h | 487 | state machine RAII class declaration + GL enum alias | state class は PSO state alias header に refactor、enum alias は Vulkan VkBlendOp/VkCompareOp 系へ並走 typedef 追加 (charter §3 #1 acceptance 整合) |
-| 3 | llrender.cpp | 2,207 | matrix stack (modelview / projection) + immediate-mode emulation + texture unit state + LLRender 中心 dispatcher | matrix stack → **push constant (mat4 = 64 bytes)** へ移行 (05 §3.5 採用)、texture unit state → set=1 per-material binding mapping、immediate-mode は段階 2 hook 化済の `recordPoolDraws(VkCommandBuffer)` 側で吸収 |
+| 3 | llrender.cpp | 2,207 | matrix stack (modelview / projection / **texture × 4** [MM_TEXTURE0..3]) + immediate-mode emulation + texture unit state + LLRender 中心 dispatcher | matrix stack → **二段構え** (push constant 64 B = `model_matrix` + per-frame UBO 2 binding = view/projection 系 6 mat4 + texture_matrix[0..3] 4 mat4) (05 §3.5 改訂採用、3.3-A 設計確定 2026-05-29)、texture unit state → set=1 per-material binding mapping、UI matrix (mUIOffset/Scale) は段階 4 frame context refactor に持越し、immediate-mode は段階 2 hook 化済の `recordPoolDraws(VkCommandBuffer)` 側で吸収 |
 | 4 | llrender.h | 582 | LLRender public interface + matrix mode enum + texture unit slot 定数 | interface 信号 (signature) は **段階 4 frame context refactor 前提で維持**、内部実装のみ PSO 化、enum alias を VkPipelineLayoutCreateInfo 由来 stage 定数に並走追加 |
 | 5 | llimagegl.cpp | 2,663 | GL texture object lifecycle (glGenTextures / glTexImage2D / glTexParameteri / glDeleteTextures 等) + format conversion | `VkImage` + `VkImageView` + `VMA allocation` lifecycle (06 §6 VMA 採用)、format conversion table を `VkFormat` 表へ置換、descriptor set binding 経由 sampler 参照は領域 7 並走で配線 |
 | 6 | llimagegl.h | 371 | LLImageGL public interface + GL texture target enum (TEXTURE_2D / CUBE_MAP 等) | interface signature 維持、target enum を VkImageViewType (VK_IMAGE_VIEW_TYPE_2D / CUBE 等) alias へ並走追加 |
@@ -38,7 +38,7 @@
 
 **特記**:
 - **#1 llgl.cpp + #2 llgl.h** は state machine の root、PSO 内 state alias 化が段階 3 最大 refactor (charter §2 領域 3 risk = 高 の主要因)
-- **#3 llrender.cpp** matrix stack は push constant 64 bytes 制約 (05 §3.5、Vulkan minimum 128 bytes 内) に収まる、ただし shader 側 layout 配線変更必須 → 領域 6 並走
+- **#3 llrender.cpp** matrix stack は **二段構え** (push constant 64 B = `model_matrix` 1 mat4 + per-frame UBO 2 binding = view/projection 系 6 mat4 + texture_matrix[0..3] 4 mat4) に分解、shader uniform 9 種 / 574 参照 (base 248 file) を push constant + UBO へ再配信、shader 側 layout 配線変更必須 → 領域 6 並走 (3.3-A 設計確定 2026-05-29、push constant 64 B 単独では 9 種 uniform 収まらず二段構え採用)
 - **#5 llimagegl.cpp + #6 llimagegl.h** は領域 7 (descriptor set / sampler) と最密結合、texture binding 配線は 07-descriptor-renderpass.md §3 と同期
 - **#7 llrendertarget.cpp + #8 llrendertarget.h** dynamic rendering 化は 05 §4.7 移行マップ準拠、charter §3 #5 acceptance #5 の satisfy 経路
 - **#9 llpostprocess.cpp** は AYAstorm 改変 r14+ post-process chain (r42-γ scope) と分離、本段階では legacy LL 部分のみ port
@@ -243,9 +243,40 @@ llgl.{cpp,h} (PSO state alias root、3,514 LOC)
 |---|---|---|---|
 | **3.1** | PSO 基盤配線 + measurement-first device limit query + bridging items #2/#4/#10/#11 物理実装 | llvkloader.{cpp,h} 拡張 (VkPipelineCache + VkPipelineLayout 標準形 + PSO compile helper + §1.5.4 device limit query 6 件 + log baseline) + `llgl.{cpp,h}` 内 §1.5.3 bridging items #2/#4/#10/#11 物理実装 (item #1 = LLGLState setter dead-store 化は 段階 4 LLPipelineFrameContext 配置時、3.1b 着手時 refine 2026-05-29) | 起動時 VkPipelineCache 作成成功 + 最小 PSO (sky pool 用 placeholder) compile 成功 + 動作中 1 frame 内に PSO bind が validation 0 件で完了 + `VK_EXT_extended_dynamic_state2` dynamic state 配線動作 (item #2) + `LLGLUserClipPlane` PSO 化動作 (item #4) + `VK_EXT_debug_utils` messenger 経由 GL ARB debug callback 置換動作 (item #10) + `LLGLSyncFence` 物理削除 (item #11) + §1.5.4 device limit query 6 件 log 出力成功 (3 driver baseline 取得は AYA 環境実機で sub-step 3.4 着手前に確定) + bridging template 確定 (item #1 setter dead-store 化動作は 段階 4 acceptance 側で計上) |
 | **3.2** | 軽量 smoke-test port (sky pool 1 draw、2026-05-29 refine) | llvkloader.{cpp,h} 内 sky pool 用 minimal SPIR-V (vert + frag) 埋込 + sky pool `recordPoolDraws` body 配線 | sky pool `recordPoolDraws(VkCommandBuffer)` body に PSO bind + fullscreen quad vertex buffer + `vkCmdDraw` 投入動作、起動時画面に Vulkan 経由 sky color 描画 + validation 0 件 (※llpostprocess は upstream Firestorm 由来 `apply()` 呼出 0 件 + effect 関数 empty body の dead code、本実装は r42-δ basket に移管 2026-05-29) |
-| **3.3** | 標準 PSO 配線 (matrix stack + FBO → dynamic rendering) | llrender.{cpp,h} (2,789) + llrendertarget.{cpp,h} (783) = 4 file 3,572 LOC | matrix stack → push constant 化動作 + texture unit → set=1 mapping 動作 + FBO → `vkCmdBeginRenderingKHR` 化動作、領域 7 並走 sub-step との descriptor set 整合確認 |
+| **3.3** | 標準 PSO 配線 (matrix stack **二段構え** 化 + FBO → dynamic rendering) | llrender.{cpp,h} (2,789) + llrendertarget.{cpp,h} (783) = 4 file 3,572 LOC | matrix stack → **二段構え** (push constant 64 B `model_matrix` + per-frame UBO 2 binding: [view/projection 系 6 mat4] + [texture_matrix[0..3]]) 化動作 + texture unit → set=1 mapping 動作 + FBO → `vkCmdBeginRenderingKHR` 化動作、領域 7 並走 sub-step との descriptor set 整合確認。**UI matrix (mUIOffset/Scale) は段階 4 frame context refactor へ持越し** (本 sub-step scope 外、§3.3 末尾参照)。**3.3 は AYA 指示 (2026-05-29「段階を分けて安全に」「粒度過大化防止」) で 3.3-A (matrix stack push constant+UBO 化) を α/β/γ/δ/ε に細分化** (本 §3.1.1 参照)、3.3-B (shader port、領域 6 並走) + 3.3-C (FBO → dynamic rendering) は別タイムライン |
 | **3.4** | texture lifecycle + descriptor set=1 per-material 7 PBR slot 配置 + 段階 2 引継ぎ特殊対応 | llimagegl.{cpp,h} (3,034 LOC) + §1.5.3 bridging items #7/#8 配置 + 12 pool hook body PSO bind 配線 + terrain glTexGen 廃止 + avatar SSBO 基本実装 | VkImage + VkImageView + VMA lifecycle 動作 (item #8) + descriptor set=1 per-material 7 PBR slot (DIFFUSE/NORMAL/SPECULAR/BASECOLOR/METALLIC_ROUGHNESS/GLTF_NORMAL/EMISSIVE) を binding 0-6 配置動作 (item #7、§1.5.4 device limit 実測値 base で final 化) + 12 pool 全 hook 内 `vkCmdDraw*` 投入動作 + render path GL call 削除 (acceptance #1-段階 2 satisfy) + terrain.cpp 内 `glTexGen` 0 件 + avatar.cpp 内 bone matrix → VkBuffer 配線 + validation 0 件 |
 | **3.5** | 段階 3 self-check + validation strict 検証 + handoff doc | (本 sub-step) | §4.1 acceptance 5 件 self-trace PASS (charter §3 #1/#3/#5/#6 段階 3 分 + regression) + validation strict force-enable build で validation 0 件再確認 + handoff doc `handoff-stage-3-complete.md` 作成 |
+
+### §3.1.1 sub-step 3.3-A 細分化 (α/β/γ/δ/ε、3.3-A 設計確定 2026-05-29)
+
+3.3-A (matrix stack push constant + UBO 化) は AYA 指示 (2026-05-29「段階を分けて安全に」「粒度過大化防止」) で以下に細分化。各 sub-step は完遂境界で handoff timing 能動チェック (`feedback_proactive_handoff.md` 遵守)。
+
+| sub-step | scope | 対象 file | 完了 marker |
+|---|---|---|---|
+| **3.3-α** | spec refine (本 §1.2 #3 / §3.1 sub-step 3.3 / §3.1.1 本表 / §3.3 持越し記録 + sub-doc 05 §3.5 訂正 + UI matrix 段階 4 持越し明示 + texture × 3 → × 4 訂正 + 二段構え反映) | sub-doc 03 / sub-doc 05 | spec 改訂 commit 投入 |
+| **3.3-β** | descriptor set=0 layout + per-frame UBO 構造体定義 (binding 0: matrix 系 6 mat4 / binding 1: texture_matrix[0..3]) + VkBuffer (HOST_VISIBLE_BIT 経由 host write or VK_EXT_memory_priority 経由 device) 配置 + push constant range 配線 | llvkloader.{cpp,h} | UBO 作成成功 + descriptor set 0 allocation 成功 + validation 0 件、着手前に β-1/β-2/β-3 細分化要否を AYA 確認 |
+| **3.3-γ** | placeholder + sky smoke PSO の VkPipelineLayout 二段構え準拠化 (set=0 + push constant range 反映)、3.1b/3.2 PSO 引継ぎ動作維持 | llvkloader.cpp | 2 PSO bind 成功 + validation 0 件 (3.1b/3.2 動作維持) |
+| **3.3-δ** | LLRender::syncMatrices() Vulkan path 並走 (vkCmdPushConstants + UBO update path) + GL path 残置 (sub-doc 03 §3.5 動作維持) | llrender.cpp | syncMatrices Vulkan path 動作 + GL path 並走動作、着手前に δ-1 (UBO write) / δ-2 (push constant) 細分化要否を AYA 確認 |
+| **3.3-ε** | build + AYA launch verify + validation log 0 件確認 + `handoff-substep-3-3-A-complete.md` 起草 → 3.3-B/C 着手境界 | (verify) | AYA launch PASS + handoff doc 完成 |
+
+3.3-B (shader port、領域 6 並走) + 3.3-C (FBO → dynamic rendering) は 3.3-A 完遂後の別タイムライン (本 §3.1 sub-step list 3.3 行参照)。
+
+#### §3.1.1 設計根拠 trace inventory (3.3-A 設計確定 2026-05-29)
+
+二段構え採用の確定根拠は llrender.{cpp,h} + caller 棚卸し (Agent 並列 cluster A/B trace、`handoff-substep-3-3-A-complete.md` で sealed 予定):
+
+| 確定事実 | 数字 / 出典 |
+|---|---|
+| `mMatrix[NUM_MATRIX_MODES][LL_MATRIX_STACK_DEPTH]` | 6 × 32 = 192 mat4 (12,288 bytes)、llrender.h:515 |
+| matrix mode | MM_MODELVIEW/MM_PROJECTION/MM_TEXTURE0..3 = **6 mode** (texture **4 個**)、llrender.h:370-376 |
+| LLRender 内 GL matrix call (`glLoadMatrixf`/`glMatrixMode`/`glPushMatrix` 等) | **0 件** (glm 算術置換済、push constant 化に GL 障害なし) |
+| syncMatrices 配信 uniform 種類 | MODELVIEW / NORMAL / INV_MODELVIEW / MVP / PROJECTION / INV_PROJECTION / IDENTITY / TEXTURE_MATRIX0..3 = **9 種** |
+| caller (newview + llrender) | 919 件 (newview 859 / llrender 60) |
+| shader uniform 参照 (base 248 file) | unique 9 種 / 574 参照 (`projection_matrix` 204 / `mvp_matrix` 128 / `modelview_matrix` 105 が主) |
+| AYAstorm 改変 13 file 内 matrix 参照 | 7 件 (picker 2 + Cinematic 5) → **既存 layout 互換必須** |
+| UI matrix (mUIOffset/Scale std::vector stack) | syncMatrices scope 外で独立管理 → **段階 4 frame context refactor 持越し** |
+
+push constant 64 B 単独では 9 種 uniform 収まらない → 二段構え (push constant + per-frame UBO 2 binding) 採用。
 
 ### §3.2 sub-step 内 file 順序の柔軟性 (charter §7.5 boundary refine 可)
 
@@ -257,6 +288,7 @@ llgl.{cpp,h} (PSO state alias root、3,514 LOC)
 
 - pipeline.cpp 3 大グローバル (`sCull` / `sShadowRender` / `sCurCameraID`) — 段階 4 frame context 化
 - **llgl.{cpp,h} RAII setter body 内 GL call (LLGLState / LLGLDepthTest 等)** — 段階 4 dead-store 化 (item #1、2026-05-29 refine、charter §2.1 領域 4 LLPipelineFrameContext 配置と同時、source-level caller compat 維持目的で本段階内残置)
+- **LLRender::mUIOffset / mUIScale (UI matrix `std::vector` stack)** — 段階 4 frame context refactor 持越し (3.3-A 設計確定 2026-05-29、syncMatrices scope 外で独立管理されており、frame context 配置時に配信先決定、本 sub-step 3.3 scope 外)
 - llspatialpartition / llviewershadermgr / llvertexbuffer / llvosky / llvowlsky — 段階 5
 - 248 shader SPIR-V 化 — 領域 6 (本段階 3 と並走着手、本 sub-doc と同時起草の `06-shader-spirv.md` で scope plan)
 - descriptor set 3 階層 + 7 render pass chain 設計実装 — 領域 7 (本段階 3 と並走着手、本 sub-doc と同時起草の `07-descriptor-renderpass.md` で scope plan)
