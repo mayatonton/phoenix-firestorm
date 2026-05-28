@@ -16,7 +16,7 @@ In Second Life's Inventory, the storage location for AO sets is shared across al
 
 This was designed so that "the same AO works no matter which viewer you log in with," but the side effect was that "deleting an AO in one viewer also deletes it from every other viewer."
 
-AYAstorm r31.2 fixes this so that "delete" no longer destroys the data.
+AYAstorm r31.2 fixes this by replacing normal AO-set "Delete" with non-destructive Hide. The exception is **Delete selected** inside the Hidden manager: that is an explicit cleanup action that permanently deletes the real inventory folder after confirmation.
 
 ---
 
@@ -27,6 +27,8 @@ AYAstorm r31.2 fixes this so that "delete" no longer destroys the data.
 3. From now on, "Delete" in the AO window **keeps the data intact** — it just hides the set
 
 That alone prevents the problem from happening again.
+
+Note: **Delete selected** in the Hidden manager is the exception. It permanently deletes the selected hidden set's real inventory folder, so use it only when you intentionally want to clean up inventory.
 
 ---
 
@@ -80,7 +82,18 @@ In AYAstorm r31.2, "Delete" is replaced by "Hide." To inspect and restore hidden
 4. To restore one: select the set → "Restore selected"
 5. To restore all: "Restore all"
 
-The data is never touched, so these sets remain visible and usable from other viewers (including upstream Firestorm).
+With normal Hide, the data is not touched, so these sets remain visible and usable from other viewers (including upstream Firestorm).
+
+### About Delete selected
+
+The Hidden manager also has **Delete selected**. This is not the same as Hide.
+
+- It permanently deletes the selected hidden AO set's real inventory folder from `#Firestorm/#AO`
+- The AO set will also be gone when you log in from upstream Firestorm or another Firestorm-derived viewer
+- AYAstorm cannot undo this
+- Without a backup / notecard, the deleted AO data cannot be recovered
+
+If you only want the set to disappear from the AO window, do **not** use Delete selected. Use normal Hide and Restore instead.
 
 ---
 

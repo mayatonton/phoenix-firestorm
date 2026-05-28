@@ -15,7 +15,7 @@
 
 Firestorm 系 viewer (Firestorm 本家 / 旧版 AYAstorm / その他 FS 派生) で AO ウィンドウの「削除」を押すと、その AO セットの Inventory 実体 (`#Firestorm/#AO` 配下のフォルダと配下の全アニメーション / notecard) が `purgeFolder` で永久消去されていました。`#Firestorm` root が Firestorm 派生 viewer 全体で共有されているため、ある viewer で削除すると、後で別の viewer (含 Firestorm 本家) でログインしても消えたままという cross-viewer 連鎖事故になっていました。
 
-r31-bugfix-2 では viewer 側で実 inventory 操作を完全に止め、per-account 設定の隠しフラグで UI 上の非表示のみを行います。同時に LSL Bridge の version 不一致時の自動再作成ロジックを修正し、Firestorm 本家が将来 Bridge をマイナーバンプした際の AYAstorm 側 Bridge 消失を片方向で防御します。
+r31-bugfix-2 では通常の AO セット「削除」を実 inventory 削除ではなく、per-account 設定の隠しフラグによる UI 上の非表示に置き換えます。Hidden 管理画面内の「選択を削除」 (`Delete selected`) だけは、確認 dialog を経た明示的な完全削除として残します。同時に LSL Bridge の version 不一致時の自動再作成ロジックを修正し、Firestorm 本家が将来 Bridge をマイナーバンプした際の AYAstorm 側 Bridge 消失を片方向で防御します。
 
 この振る舞いは r31 で導入されたものではありません。Firestorm 系 viewer に長く存在してきた構造的なものであり、AYAstorm を含む全 FS 派生 viewer が影響を受けていました (バグか仕様かの判断は upstream にあります)。
 
@@ -39,7 +39,10 @@ r31-bugfix-2 では viewer 側で実 inventory 操作を完全に止め、per-ac
 - per-account 設定 `FSAOHiddenSets` (LLSD array, Persist=1) に inventory UUID を append するだけに変更
 - AO 列挙時 (`update()`) に hidden filter で UI から除外
 - 「Manage hidden sets」フロータを新規追加し、UUID 一覧から個別 / 全 restore 可能
-- 削除 Dialog の文言を 3 言語で書き直し、ボタンを「Delete」→「Hide」に変更、inventory が残ることを明示
+- 同名 AO セットの hidden / visible 衝突を避けるため、hidden 中の名前との新規作成 / import 衝突と restore 時の visible 名衝突を拒否
+- Hidden 管理画面に「選択を削除」 (`Delete selected`) を追加。これは通常の Remove とは別の明示的な完全削除であり、確認 dialog 後に選択済み hidden set の実 inventory folder だけを削除
+- 削除 Dialog の文言を 3 言語で書き直し、通常の AO セット操作は「Delete」ではなく「Hide」として表示、inventory が残ることを明示
+- AO set の soft-hide ボタン icon を trash ではなく非表示 icon に変更
 
 **LSL Bridge 片方向 fix**:
 - 受信 version 文字列を数値 parse し、`major.minor` で大小比較
@@ -47,6 +50,8 @@ r31-bugfix-2 では viewer 側で実 inventory 操作を完全に止め、per-ac
 - 受信 == 自分 ⇒ 既存挙動
 - 受信 < 自分 ⇒ 既存挙動 (`recreateBridge` で更新)
 - parse 失敗 ⇒ 既存挙動 (安全側)
+- 起動時 attach でも newer bridge を `BridgeVer` 受信前に detach しないよう、attach / detach 判定にも同じ version 比較を適用
+- newer bridge adopt 経路も通常経路と同じ handshake 後処理に合流し、`URL Confirmed` と初回設定同期を送信
 
 ### Migration note
 
@@ -59,17 +64,17 @@ r31-bugfix-2 では viewer 側で実 inventory 操作を完全に止め、per-ac
 
 - **片方向防御のみ**: AYAstorm が Firestorm 本家より version 先行する場合、Firestorm 本家側 (未修正) は AYAstorm Bridge を引き続き削除します。実害は AYA が FS より先行する状況に限られ稀ですが、長期的には upstream Firestorm への PR / root 分離 (`#Firestorm/` → `#AYAstorm/`) を検討
 - **Firestorm 本家側の AO 削除は依然破壊的**: 推奨運用は AO 編集 / 削除を AYAstorm r31.2 以降に集約し、Firestorm 本家側からは「使う」だけにする (recovery guide に明記)
-- **hidden 機能の UI フォールバック**: UI が機能不全になった場合、Debug Settings (`Ctrl+Alt+Shift+S`) で `FSAOHiddenSets` を空配列にすれば全 restore 可能
+- **hidden 機能の UI フォールバック**: UI が機能不全になった場合、Debug Settings (`Ctrl+Alt+Shift+S`) で `FSAOHiddenSets` を空配列にすれば全 restore 可能。ただし Hidden 管理画面の「選択を削除」 (`Delete selected`) で明示的に完全削除した folder は復元できません
 
 ### Implementation summary
 
-- `indra/newview/aoengine.cpp` / `aoengine.h` — `removeSet()` soft hide 化、`getHiddenSets()` / `unhideSet()` / `unhideAllSets()` / `isSetHidden()` 新規、`update()` に hidden filter
-- `indra/newview/ao.cpp` / `ao.h` — `FloaterAOHiddenSets` controller + Manage hidden sets ボタン配線
+- `indra/newview/aoengine.cpp` / `aoengine.h` — `removeSet()` soft hide 化、`getHiddenSets()` / `unhideSet()` / `unhideAllSets()` / `isSetHidden()`、`update()` の hidden filter、hidden set の完全削除 / 同名衝突 helper
+- `indra/newview/ao.cpp` / `ao.h` — `FloaterAOHiddenSets` controller + Manage hidden sets / Restore / Delete selected ボタン配線
 - `indra/newview/llviewerfloaterreg.cpp` — `ao_hidden_sets` フロータ登録
-- `indra/newview/fslslbridge.cpp` — `parseBridgeVersionString()` helper 新規 + adopt path
+- `indra/newview/fslslbridge.cpp` / `fslslbridge.h` — bridge version 比較 helper、起動時 attach の newer bridge 受け入れ、adopt path、handshake 後処理の共通化
 - `indra/newview/app_settings/settings_per_account.xml` — `FSAOHiddenSets` (LLSD, Persist=1) 追加
-- `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `RemoveAOSet` 文言 + ボタンラベル書き換え
-- `indra/newview/skins/default/xui/{en,ja,zh}/panel_ao.xml` — 「Manage hidden sets」ボタン
+- `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `RemoveAOSet` 文言 + ボタンラベル書き換え、hidden set 衝突 / 完全削除確認通知
+- `indra/newview/skins/default/xui/{en,ja,zh}/panel_ao.xml` — 「Manage hidden sets」ボタン、AO set soft-hide icon / tooltip 調整
 - `indra/newview/skins/default/xui/{en,ja,zh}/floater_ao_hidden_sets.xml` — 新規フロータ (3 言語)
 - `indra/newview/skins/default/xui/en/floater_ao.xml` — フロータ高さ調整
 - `docs/specs/ayastorm-r31-2-ao-bridge-recovery.md` — 技術 spec (新規)

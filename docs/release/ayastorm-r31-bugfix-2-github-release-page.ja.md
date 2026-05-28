@@ -7,10 +7,10 @@
 >
 > AYAstorm 固有の問題ではなく、Firestorm 派生 viewer 全体で共有される inventory root に起因する構造的な振る舞いへの対応です (バグか仕様かの判断は upstream にあります)。
 
-1. **AO 削除事象**: Firestorm 系 viewer (Firestorm 本家 / 旧版 AYAstorm / その他 FS 派生) で AO セットを「削除」すると、共有 inventory root `#Firestorm` 配下の AO データが永久消去され、別の viewer でログインしても消えたままになる cross-viewer 連鎖事象。1000 人規模で観測済。r31-bugfix-2 では viewer 側で実 inventory 操作を完全に止め、per-account 設定の隠しフラグで UI 非表示のみを行います
-2. **LSL Bridge version 衝突**: `fslslbridge.cpp` の version 不一致時自動再作成ロジックが、Firestorm 本家のマイナーバンプ時に AYAstorm Bridge を巻き添えで削除しうる構造。現状 v2.29 同一で未発火だが、片方向防御として `受信 version > 自分なら adopt` ロジックを導入
+1. **AO 削除事象**: Firestorm 系 viewer (Firestorm 本家 / 旧版 AYAstorm / その他 FS 派生) で AO セットを「削除」すると、共有 inventory root `#Firestorm` 配下の AO データが永久消去され、別の viewer でログインしても消えたままになる cross-viewer 連鎖事象。1000 人規模で観測済。r31-bugfix-2 では通常の AO セット削除を per-account 設定の隠しフラグによる UI 非表示に置き換え、実 inventory を削除しません。Hidden 管理画面の「選択を削除」 (`Delete selected`) だけは、確認 dialog 後の明示的な完全削除として残します
+2. **LSL Bridge version 衝突**: `fslslbridge.cpp` の version 不一致時自動再作成ロジックが、Firestorm 本家のマイナーバンプ時に AYAstorm Bridge を巻き添えで削除しうる構造。現状 v2.29 同一で未発火だが、片方向防御として `受信 version > 自分なら adopt` ロジックを導入し、起動時 attach でも newer bridge を `BridgeVer` 受信前に detach しないようにしました
 
-修正は Firestorm 系 viewer 全体に存在する構造的振る舞いへの対応です。AYAstorm 側のみで `#Firestorm` root への破壊的操作を止め、Firestorm 本家 / 他派生 viewer での再発はそれぞれの viewer が patch される必要があります (推奨運用と回避策は recovery guide に明記)。
+修正は Firestorm 系 viewer 全体に存在する構造的振る舞いへの対応です。AYAstorm 側では通常の AO 削除から `#Firestorm` root への破壊的操作を外します。Firestorm 本家 / 他派生 viewer での再発はそれぞれの viewer が patch される必要があります (推奨運用と回避策は recovery guide に明記)。
 
 ## すでに AO セットが消えてしまった方へ — AO 機能の再セットアップ手順
 
@@ -35,10 +35,11 @@ Firestorm 系 viewer (Firestorm 本家 / 旧版 AYAstorm / 他 FS 派生) です
 
 r31 / r31-bugfix-1 環境を乱さずに出荷:
 
-- **AO 削除事象 fix**: 自動適用。設定変更不要。r31 / r31-bugfix-1 install 済の方は r31-bugfix-2 を上書き install するだけで再発防止
+- **AO 削除事象 fix**: 自動適用。設定変更不要。r31 / r31-bugfix-1 install 済の方は r31-bugfix-2 を上書き install するだけで、通常の AO セット削除は非破壊の Hide になります
 - **LSL Bridge 衝突防御**: 自動適用。Firestorm 本家のマイナーバンプ時に AYAstorm Bridge が削除される事象を防止 (現状未発火、将来防御)
 - **r31 / r31-bugfix-1 の全機能** (3D Stream unified tag / AYAstorm View / parcel music Vorbis fix / MOAP audio routing / macOS branding / GPU other-rigged picker / chat tab split / venue reverb / SSS pink-shadow 修正等): そのまま保持されます
-- **AO を編集 / 削除しない方**: 見た目の変化はありません。「Delete」ボタンが「Hide」になり Dialog 文言が変わるだけです
+- **AO を編集 / 削除しない方**: 見た目の変化はほぼありません。AO set の Trash icon は非表示 icon になり、Dialog 文言が Hide 前提に変わります
+- **AO を整理したい方**: Hidden 管理画面の「選択を削除」 (`Delete selected`) から、確認後に選択済み hidden set の実 inventory folder を完全削除できます。これは元に戻せません
 - **すでに AO セットが消えてしまった方**: r31-bugfix-2 を入れていただくと **以降は同じ事象は起きません**。すでに消えた AO データ自体は戻せませんが、上の再セットアップ手順で AO 機能はすぐ使える状態に戻せます
 
 ## IR licence

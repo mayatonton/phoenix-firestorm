@@ -104,9 +104,11 @@ public:
     // AYAstorm r31.2 soft hide: hide an AO set from the UI without touching inventory.
     // Hidden state is persisted in per-account setting FSAOHiddenSets.
     bool isSetHidden(const LLUUID& inventoryUUID) const;
+    bool hiddenSetNameExists(std::string_view name) const;
     std::vector<std::pair<LLUUID, std::string>> getHiddenSets() const;
     bool unhideSet(const LLUUID& inventoryUUID);
     bool unhideAllSets();
+    bool deleteHiddenSetPermanently(const LLUUID& inventoryUUID);
 
     void addAnimation(const AOSet* set, AOSet::AOState* state, const LLInventoryItem* item, bool reload = true);
     bool removeAnimation(const AOSet* set, AOSet::AOState* state, S32 index);

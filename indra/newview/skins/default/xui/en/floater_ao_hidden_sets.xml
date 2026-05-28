@@ -27,7 +27,7 @@
 		word_wrap="true"
 		follows="left|right|top"
 		layout="topleft">
-These AO sets are hidden from the AO floater but still exist in your inventory (#Firestorm/#AO). Select a set and click "Restore selected", or use "Restore all".
+	These AO sets are hidden from the AO floater but still exist in your inventory (#Firestorm/#AO). Select a set and click "Restore selected", use "Restore all", or use "Delete selected" to permanently delete the selected inventory folder.
 	</text>
 
 	<scroll_list
@@ -35,7 +35,7 @@ These AO sets are hidden from the AO floater but still exist in your inventory (
 		left="10"
 		top="110"
 		right="-10"
-		bottom="-44"
+		bottom="-70"
 		multi_select="false"
 		draw_heading="true"
 		follows="all"
@@ -56,8 +56,8 @@ These AO sets are hidden from the AO floater but still exist in your inventory (
 		name="restore_selected"
 		label="Restore selected"
 		left="10"
-		bottom="-12"
-		width="160"
+		bottom="-38"
+		width="145"
 		height="22"
 		follows="left|bottom"
 		layout="topleft" />
@@ -66,8 +66,18 @@ These AO sets are hidden from the AO floater but still exist in your inventory (
 		name="restore_all"
 		label="Restore all"
 		left_pad="10"
+		bottom="-38"
+		width="145"
+		height="22"
+		follows="left|bottom"
+		layout="topleft" />
+
+	<button
+		name="delete_selected"
+		label="Delete selected"
+		left="10"
 		bottom="-12"
-		width="160"
+		width="145"
 		height="22"
 		follows="left|bottom"
 		layout="topleft" />

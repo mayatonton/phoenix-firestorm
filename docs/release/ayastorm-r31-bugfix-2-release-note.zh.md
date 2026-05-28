@@ -15,7 +15,7 @@
 
 在 Firestorm 系列 viewer (Firestorm 本家 / 舊版 AYAstorm / 其他 FS 衍生) 中按下 AO 視窗的「刪除」時，該 AO 集合的 Inventory 實體 (`#Firestorm/#AO` 之下的資料夾及其下所有動畫 / notecard) 會被 `purgeFolder` 永久消除。由於 `#Firestorm` root 在 Firestorm 衍生 viewer 全體共用，在某個 viewer 刪除後，之後從別的 viewer (含 Firestorm 本家) 登入仍然消失，形成跨 viewer 連鎖事象。
 
-r31-bugfix-2 完全停止 viewer 側對 inventory 的實際操作，只以 per-account 設定的隱藏 flag 進行 UI 上的非顯示。同時修正 LSL Bridge 版本不一致時的自動再建立邏輯，對 Firestorm 本家未來 Bridge 進行 minor bump 時的 AYAstorm 側 Bridge 消失採單向防禦。
+r31-bugfix-2 將一般 AO 集合「刪除」改為不刪除實際 inventory，只以 per-account 設定的隱藏 flag 進行 UI 上的非顯示。Hidden 管理畫面內的「刪除所選」 (`Delete selected`) 則作為經確認 dialog 後才執行的明示完全刪除保留。同時修正 LSL Bridge 版本不一致時的自動再建立邏輯，對 Firestorm 本家未來 Bridge 進行 minor bump 時的 AYAstorm 側 Bridge 消失採單向防禦。
 
 此行為並非 r31 引入。在 Firestorm 系列 viewer 中長期存在，是結構性的，包含 AYAstorm 在內的所有 FS 衍生 viewer 都受到影響 (屬於 bug 或仕樣的判斷由 upstream 決定)。
 
@@ -39,7 +39,10 @@ r31-bugfix-2 完全停止 viewer 側對 inventory 的實際操作，只以 per-a
 - 只在 per-account 設定 `FSAOHiddenSets` (LLSD array, Persist=1) append inventory UUID
 - AO 列舉時 (`update()`) 以 hidden filter 從 UI 排除
 - 新增「Manage hidden sets」浮動視窗，可由 UUID 一覽進行個別 / 全部 restore
-- 刪除 Dialog 文字以 3 種語言重寫，按鈕由「Delete」改為「Hide」，明示 inventory 保留
+- 為避免 hidden / visible 同名 AO 集合衝突，禁止以目前 hidden 中的名稱新建 / import，並在 restore 時拒絕與 visible 集合同名的 hidden set
+- Hidden 管理畫面新增「刪除所選」 (`Delete selected`)。這是不同於一般 Remove 的明示完全刪除，經確認 dialog 後只刪除所選 hidden set 的實際 inventory folder
+- 刪除 Dialog 文字以 3 種語言重寫，一般 AO 集合操作顯示為「Hide」而非「Delete」，明示 inventory 保留
+- AO set 的 soft-hide 按鈕 icon 改為非顯示 icon，而非 trash icon
 
 **LSL Bridge 單向 fix**:
 - 將收到的 version 字串數值 parse 為 `major.minor` 並比較大小
@@ -47,6 +50,8 @@ r31-bugfix-2 完全停止 viewer 側對 inventory 的實際操作，只以 per-a
 - 收到 == 自己 ⇒ 既有行為
 - 收到 < 自己 ⇒ 既有行為 (`recreateBridge` 更新)
 - parse 失敗 ⇒ 既有行為 (安全側)
+- 起動時 attach / detach 判定也使用同一 version 比較，避免 newer bridge 在送達 `BridgeVer` 前先被 detach
+- newer bridge adopt 路徑與一般 handshake 完成處理合流，會送出 `URL Confirmed` 與初次設定同步
 
 ### Migration note
 
@@ -59,17 +64,17 @@ r31-bugfix-2 完全停止 viewer 側對 inventory 的實際操作，只以 per-a
 
 - **僅單向防禦**: AYAstorm 版本領先 Firestorm 本家時，Firestorm 本家側 (未修正) 仍會破壞 AYAstorm Bridge。AYA 領先 FS 的情形罕見，長期解為對 upstream Firestorm 發 PR / root 分離 (`#Firestorm/` → `#AYAstorm/`)
 - **Firestorm 本家側的 AO 刪除仍為破壞性**: 推薦運用為將 AO 編輯 / 刪除集中於 AYAstorm r31.2+，Firestorm 本家側僅作 read-only 用 AO (在 recovery guide 中明示)
-- **hidden 集合的 UI fallback**: 萬一新 UI 在某環境不可用，開啟 Debug Settings (`Ctrl+Alt+Shift+S`) 將 `FSAOHiddenSets` 清為空陣列即可全 restore
+- **hidden 集合的 UI fallback**: 萬一新 UI 在某環境不可用，開啟 Debug Settings (`Ctrl+Alt+Shift+S`) 將 `FSAOHiddenSets` 清為空陣列即可全 restore。不過透過 Hidden 管理畫面的「刪除所選」 (`Delete selected`) 明示完全刪除的 folder 無法復原
 
 ### Implementation summary
 
-- `indra/newview/aoengine.cpp` / `aoengine.h` — `removeSet()` 改為 soft hide，新增 `getHiddenSets()` / `unhideSet()` / `unhideAllSets()` / `isSetHidden()`，`update()` 加入 hidden filter
-- `indra/newview/ao.cpp` / `ao.h` — `FloaterAOHiddenSets` controller + Manage hidden sets 按鈕配線
+- `indra/newview/aoengine.cpp` / `aoengine.h` — `removeSet()` 改為 soft hide，`getHiddenSets()` / `unhideSet()` / `unhideAllSets()` / `isSetHidden()`，`update()` 加入 hidden filter，hidden set 的完全刪除 / 同名衝突 helper
+- `indra/newview/ao.cpp` / `ao.h` — `FloaterAOHiddenSets` controller + Manage hidden sets / Restore / Delete selected 按鈕配線
 - `indra/newview/llviewerfloaterreg.cpp` — 註冊 `ao_hidden_sets` 浮動視窗
-- `indra/newview/fslslbridge.cpp` — 新增 `parseBridgeVersionString()` helper + adopt path
+- `indra/newview/fslslbridge.cpp` / `fslslbridge.h` — bridge version 比較 helper、起動時 attach 對 newer bridge 的接受、adopt path、handshake 完成處理共通化
 - `indra/newview/app_settings/settings_per_account.xml` — 加入 `FSAOHiddenSets` (LLSD, Persist=1)
-- `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `RemoveAOSet` 文言 + 按鈕標籤改寫
-- `indra/newview/skins/default/xui/{en,ja,zh}/panel_ao.xml` — 「Manage hidden sets」按鈕
+- `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `RemoveAOSet` 文言 + 按鈕標籤改寫、hidden set 衝突 / 完全刪除確認通知
+- `indra/newview/skins/default/xui/{en,ja,zh}/panel_ao.xml` — 「Manage hidden sets」按鈕、AO set soft-hide icon / tooltip 調整
 - `indra/newview/skins/default/xui/{en,ja,zh}/floater_ao_hidden_sets.xml` — 新增浮動視窗 (3 語言)
 - `indra/newview/skins/default/xui/en/floater_ao.xml` — 浮動視窗高度調整
 - `docs/specs/ayastorm-r31-2-ao-bridge-recovery.md` — 技術 spec (新增)

@@ -16,7 +16,7 @@
 
 這個設計原本是為了「無論用哪個 viewer 登入都能使用相同的 AO」，但副作用是「在某個 viewer 中刪除 AO，會造成所有其他 viewer 中的 AO 也消失」。
 
-AYAstorm r31.2 已修正此問題，「刪除」操作不再破壞資料。
+AYAstorm r31.2 已修正此問題，將一般 AO 集合「刪除」改為非破壞性的隱藏。例外是 Hidden 管理畫面中的 **「刪除所選」** (`Delete selected`): 這是經確認後永久刪除實際 inventory folder 的整理用操作。
 
 ---
 
@@ -27,6 +27,8 @@ AYAstorm r31.2 已修正此問題，「刪除」操作不再破壞資料。
 3. 之後，在 AO 視窗中「刪除」一個集合 **不會破壞資料** (僅變更為隱藏)
 
 只要做到這一步就能防止再次發生。
+
+注意: Hidden 管理畫面中的 **「刪除所選」** (`Delete selected`) 是例外。它會永久刪除所選 hidden set 的實際 inventory folder，只有在您明確要整理 inventory 時才應使用。
 
 ---
 
@@ -77,10 +79,21 @@ AYAstorm r31.2 將「刪除」改為「隱藏」。檢視與還原已隱藏的�
 1. 開啟 AO 視窗
 2. 點擊 **「Manage hidden sets」** 按鈕 (視窗下方)
 3. 出現已隱藏集合的清單
-4. 還原單一集合 → 選取 → 「Restore selected」
-5. 還原全部 → 「Restore all」
+4. 還原單一集合 → 選取 → **「還原所選」** (`Restore selected`)
+5. 還原全部 → **「全部還原」** (`Restore all`)
 
-由於資料本身未被觸動，這些集合在其他 viewer (包括 Firestorm 本家) 登入時仍可正常看見、使用。
+一般 Hide 不會觸動資料本身，因此這些集合在其他 viewer (包括 Firestorm 本家) 登入時仍可正常看見、使用。
+
+### 關於「刪除所選」
+
+Hidden 管理畫面也有 **「刪除所選」** (`Delete selected`)。這不是一般 Hide。
+
+- 它會從 `#Firestorm/#AO` 永久刪除所選 hidden AO set 的實際 inventory folder
+- 從 Firestorm 本家或其他 Firestorm 衍生 viewer 登入時，該 AO set 也會消失
+- AYAstorm 無法復原此操作
+- 若沒有 backup / notecard，被刪除的 AO 資料無法復原
+
+如果只是想讓 AO set 從 AO 視窗中消失，請**不要**使用「刪除所選」。請使用一般 Hide 與 Restore。
 
 ---
 

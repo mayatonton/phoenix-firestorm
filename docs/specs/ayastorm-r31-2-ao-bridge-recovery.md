@@ -2,7 +2,8 @@
 
 **作成日**: 2026-05-28
 **対象**: AYA + Claude Code
-**作業ブランチ**: `fix/r31-2-ao-bridge-recovery` (予定)
+**作業ブランチ**: `fix/r31-2-ao-bridge-recovery`
+**レビュー修正ブランチ**: `review/pr118-fixups`
 **ベース**: `ayastorm-release`
 **関連仕様**:
 - `docs/specs/ayastorm-r31-2-sss-fullbright-glow-fix-report.md` (同 r31.2 release の既 merged 分)
@@ -154,6 +155,13 @@ bool AOEngine::removeSet(AOSet* set)
 - C++: 一覧取得 / restore action (`AOEngine::getHiddenSets()` / `unhideSet()` 等)
 - AO floater 本体に「Manage hidden sets」trigger 追加
 
+レビュー修正後の確定仕様:
+- Hidden sets floater には `Restore selected` / `Restore all` / `Delete selected` を置く
+- `Restore selected` / `Restore all` は hidden flag を外すだけで inventory は触らない
+- `Delete selected` は通常の AO Remove とは別の明示的な完全削除で、確認 dialog 後に選択済み hidden set の実 inventory folder だけを削除する
+- `Restore selected` / `Restore all` / `Delete selected` は 145px 固定幅に統一し、`min_width=320` でも右端がはみ出さないようにする
+- 完全削除は hidden manager の中に限定し、通常 AO floater には置かない
+
 #### 3.1.5 削除操作時の警告 Dialog 強化 (3 言語)
 
 ユーザーが Trash アイコンを押した時に「inventory は触らず hidden 化のみ」であることを明示する Dialog に差し替える。1000 人被害の引き金になった「軽い気持ちで削除」を 1 段抑止し、AYAstorm 上は消えるが Firestorm 本家からは引き続き見える、というギャップを事前に説明する。
@@ -162,7 +170,7 @@ bool AOEngine::removeSet(AOSet* set)
 
 書き換える言語: **en / ja / zh** の 3 言語。他 11 言語 (az/da/de/es/fr/it/pl/pt/ru/tr) は en フォールバック (既存 AYAstorm 改修の標準パターン)。
 
-ボタン label: `Remove`/`削除する`/`刪除` → `Hide`/`非表示にする`/`隱藏`。Trash アイコンの tooltip も同様に変更。
+ボタン label: `Remove`/`削除する`/`刪除` → `Hide`/`非表示にする`/`隱藏`。AO set soft-hide ボタンは Trash icon ではなく既存の visibility-off icon を使い、tooltip も「削除」ではなく「一覧から非表示」に変更する。
 
 ##### en (`indra/newview/skins/default/xui/en/notifications.xml:11173-11183`)
 
@@ -209,6 +217,39 @@ SL 庫存中 #Firestorm/#AO 內的資料不會被刪除，
     <usetemplate name="okcancelbuttons" notext="取消" yestext="隱藏"/>
 </notification>
 ```
+
+#### 3.1.6 hidden / visible 同名衝突の扱い
+
+Second Life inventory 自体は UUID 管理なので同名 folder が複数あっても成立する。しかし Firestorm / AYAstorm の AO 実装では viewer 内部で AO set を名前で解決している箇所がある (`AOEngine::getSetByName()`、combo box の選択復元、`FSCurrentAOState` など)。
+
+そのため次のような流れでは UI 上の解決が曖昧になる:
+
+1. `My AO` を作る
+2. `My AO` を Hide する
+3. 同名の `My AO` を作る
+4. それも Hide する
+5. Hidden manager から両方 restore する
+
+対策:
+- hidden 中の set 名と同じ名前での新規 AO set 作成を拒否
+- hidden 中の set 名と同じ名前の notecard import を拒否
+- `Restore selected` では visible set と同名なら restore しない
+- `Restore all` では衝突しないものだけ restore し、衝突した hidden set は hidden のまま残す
+
+これは inventory 破壊対策ではなく、AO UI / AOEngine の名前解決を曖昧にしないための境界条件対策。
+
+#### 3.1.7 Hidden manager の `Delete selected`
+
+通常の AO Remove は soft-hide のまま維持する。一方、ユーザーが不要な AO folder を整理したい場合のため、Hidden manager 内に限って明示的な完全削除を提供する。
+
+仕様:
+- 対象は `FSAOHiddenSets` に含まれる hidden set UUID のみ
+- 対象 category が `#Firestorm/#AO` 直下であることを確認する
+- `#AO` 自体、`#AO` 外の category、未初期化の AO folder は拒否する
+- 確認 dialog で「実 inventory folder を削除する」「Firestorm 本家 / 他派生 viewer からも消える」「AYAstorm からは戻せない」ことを明記する
+- 確認後に `purgeFolder(uuid)` を呼び、`FSAOHiddenSets` からも UUID を外す
+
+release notes では「通常の AO 削除は実 inventory を触らない」ことと、「Hidden manager の `Delete selected` は明示的な完全削除である」ことを必ず分けて説明する。
 
 ### 3.2 (削除) 内蔵 default AO セット同梱
 
@@ -303,22 +344,49 @@ static bool parseBridgeVersionString(const std::string& bVer, S32& major, S32& m
 #### 3.3.4 「Adopt した Bridge を使う」の意味
 `mBridgeUUID` に新 Bridge の UUID を保存することで AYA 起動中はその Bridge を使用。`FS_BRIDGE_MAJOR_VERSION` / `FS_BRIDGE_MINOR_VERSION` は AYA が知っている古い数値のままなので、新版 Bridge の **追加機能** (もしあれば) は使えない。基本機能 (RLV `@adjustheight=force` 等) は version 互換で動く前提。
 
+#### 3.3.5 起動時 attach 経路への適用
+
+当初の adopt 判定は `lslToViewer()` で `BridgeVer` を受け取った後にしか効かない。起動時にはその前に `processAttach()` / `detachOtherBridges()` が attachment 名を見て current name 以外を detach する可能性がある。
+
+そのため、version 比較 helper を `lslToViewer()` だけでなく attach / detach 判定にも適用する。
+
+実装方針:
+- bridge object 名から version を parse する helper を共通化
+- same / newer bridge 名は `processAttach()` で受け入れる
+- same / newer bridge candidate は `detachOtherBridges()` で detach しない
+- `startCreation()` でも exact current bridge だけでなく usable な same / newer bridge を探す
+
+これにより「BridgeVer を受け取れたら recreate しない」だけでなく、「起動時 attach の段階で newer bridge を先に外さない」状態にする。
+
+#### 3.3.6 newer adopt 経路の handshake 後処理
+
+newer bridge adopt 経路が `URL Confirmed` 直後に return すると、通常経路で行っている初回同期が抜ける。
+
+通常経路と newer adopt 経路を共通 helper に合流させ、次を同じように送信する:
+
+- `URL Confirmed`
+- `UseLSLFlightAssist`
+- `UseMoveLock`
+- `RelockMoveLockAfterMovement`
+- `updateIntegrations()`
+
+これにより newer bridge を採用した場合も、bridge の初期状態が通常 path と一致する。
+
 ## 4. 実装範囲
 
 | ファイル | 変更内容 | 規模 |
 |---|---|---|
-| `indra/newview/aoengine.cpp` | `removeSet()` soft hide 化 / 列挙時 hidden filter / `getHiddenSets()` / `unhideSet()` 新規 | +60 行 / -2 行 |
-| `indra/newview/aoengine.h` | `getHiddenSets()`, `unhideSet()` 宣言 | +6 行 |
-| `indra/newview/skins/default/xui/en/floater_ao.xml` (or `fs_floater_ao.xml`) | "Manage hidden sets" trigger 追加 | +10 行 |
-| `indra/newview/skins/default/xui/en/floater_ao_hidden_sets.xml` | hidden sets 管理 floater (新規) | +60 行 |
-| `indra/newview/ao.cpp` (旧 FloaterAO controller) | trigger handler + hidden sets floater controller | +60 行 |
+| `indra/newview/aoengine.cpp` | `removeSet()` soft hide 化 / `getHiddenSets()` / `unhideSet()` / `unhideAllSets()` / `isSetHidden()` / 列挙時 hidden filter / hidden permanent delete / 同名衝突 helper | 中 |
+| `indra/newview/aoengine.h` | hidden sets / restore / is-hidden / permanent delete / 同名衝突 API 宣言 | 小 |
+| `indra/newview/skins/default/xui/{en,ja,zh}/panel_ao.xml` | "Manage hidden sets" trigger、AO set soft-hide icon / tooltip 調整 | 小 |
+| `indra/newview/skins/default/xui/{en,ja,zh}/floater_ao_hidden_sets.xml` | hidden sets 管理 floater (restore / delete selected) | 中 |
+| `indra/newview/ao.cpp` / `ao.h` | trigger handler + hidden sets floater controller + permanent delete 確認 callback | 中 |
 | `indra/newview/app_settings/settings_per_account.xml` | `FSAOHiddenSets` (LLSD) 追加 | +10 行 |
-| `indra/newview/skins/default/xui/en/notifications.xml` | `RemoveAOSet` 文言書き換え + label `Hide` | -3 / +12 行 |
-| `indra/newview/skins/default/xui/ja/notifications.xml` | `RemoveAOSet` 日本語訳書き換え + label 「非表示にする」 | -3 / +9 行 |
-| `indra/newview/skins/default/xui/zh/notifications.xml` | `RemoveAOSet` 繁體中文訳書き換え + label `隱藏` | -3 / +9 行 |
-| `indra/newview/fslslbridge.cpp` | version 比較ロジック書き換え + parse helper 追加 | +30 行 / -2 行 |
+| `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` | `RemoveAOSet` 文言 / hidden 同名衝突 / restore 衝突 / permanent delete 確認 | 中 |
+| `indra/newview/fslslbridge.cpp` / `fslslbridge.h` | version 比較 helper、起動時 attach 受け入れ、adopt path、handshake 共通化 | 中 |
 | `docs/specs/ayastorm-r31-2-ao-bridge-recovery.md` | 本 spec | new file |
-| Release Notes (該当 location) | r31.2 release notes 追記 (本 spec へのリンク) | +20 行 |
+| `docs/guides/ao-data-recovery-guide.{en,ja,zh}.md` | 復旧手順、hidden manager、Delete selected 注意書き | doc |
+| `docs/release/ayastorm-r31-bugfix-2-*.md` | r31.2 release notes / GitHub Release page 更新 | doc |
 
 ヘッダ変更は最小、設定追加 1 件 (per-account, Persist=1)、新規 file 2 (本 spec + hidden sets XUI)。
 
@@ -329,7 +397,7 @@ static bool parseBridgeVersionString(const std::string& bVer, S32& major, S32& m
 ### 5.1 r31.2 をインストール → 再発防止
 1. AYAstorm の Web サイトから r31.2 build をダウンロード
 2. インストール、起動、SL アカウントでログイン
-3. 以後、AO セット削除操作 (Trash) は soft hide 化されており **inventory は破壊されない**
+3. 以後、AO セット削除操作は soft hide 化されており **inventory は破壊されない**
 
 ### 5.2 notecard backup を持っている場合
 SL では昔から AO 設定を notecard に backup する文化がある。backup を持っているなら:
@@ -354,8 +422,11 @@ SL では昔から AO 設定を notecard に backup する文化がある。back
 ### 5.5 hidden を解除したい場合
 1. AO floater を開く
 2. 「Manage hidden sets」ボタン (またはコンテキストメニュー) を押す
-3. hidden set 一覧から該当セットを選択し "Restore"
-4. AO セット一覧に戻る
+3. hidden set 一覧から該当セットを選択し `Restore selected`
+4. 全部戻す場合は `Restore all`
+5. AO セット一覧に戻る
+
+Hidden manager には `Delete selected` もあるが、これは hidden 解除ではなく完全削除。選択した hidden set の実 inventory folder を `#Firestorm/#AO` から削除し、Firestorm 本家や他の Firestorm 派生 viewer からも消える。backup / notecard がなければ復旧できないため、単に AO floater から見えなくしたいだけなら使用しない。
 
 (Debug Settings 経由のフォールバック手順は §7.3 を参照)
 
@@ -374,6 +445,8 @@ SL では昔から AO 設定を notecard に backup する文化がある。back
 4. AYAstorm を再起動 → hidden 状態が維持される (削除したセットが UI に出てこない) ことを確認
 5. Firestorm 本家で同じ account にログイン → 「削除」したはずの AO セットが `#Firestorm/#AO` に **無傷で存在** することを確認 (= 破壊しなくなった)
 6. AYAstorm の AO floater で「Manage hidden sets」→ restore → セットが再び UI に出ることを確認
+7. visible set と同名の hidden set restore が拒否されることを確認
+8. Hidden manager の `Delete selected` は確認 dialog を出し、確認後のみ選択済み hidden set の folder を削除することを確認
 
 ### 6.3 Bridge 衝突の検証
 **実機での完全な再現は難しい** (Bridge の LSL script 内部 version 文字列まで偽装する必要)。確認できる範囲:
@@ -387,6 +460,13 @@ SL では昔から AO 設定を notecard に backup する文化がある。back
 | Linux x86_64 | AYA | build, install, §6.1〜6.3 実施 |
 | Windows x86_64 | AYA or @t-noami | build, install, §6.1〜6.2 実施 (1000 人被害者の OS) |
 | macOS arm64 | @t-noami | build, install, §6.2 実施 (再現未経験だが回帰確認) |
+
+2026-05-29 時点のレビュー修正ブランチ確認:
+- macOS app-only 差分ビルド実施済み (`ayastorm-bin`, Release)
+- DMG は作成していない
+- `build-darwin-universal/newview/Release/AYAstorm.app` 生成済み
+- `codesign --verify --deep --strict` 成功
+- app bundle 内の XUI に hidden manager / AO set soft-hide icon / 145px 固定幅ボタンが反映済み
 
 ### 6.5 Regression 確認
 - Outfit / 服 / 持ち物 / Trash / Sound / Animation 等 SL 標準フォルダは触られないことを確認
@@ -411,6 +491,8 @@ UI が機能不全になった場合のフォールバック手順:
 4. AO floater を再読込
 
 `FSAOHiddenSets` は per-account, Persist=1 の LLSD array なので、AYA 再起動後も hidden 状態は維持される。Debug Settings 経由でいつでも全 restore 可能。
+
+注意: Hidden manager の `Delete selected` で完全削除した folder は `FSAOHiddenSets` を空にしても戻らない。これは実 inventory folder を削除する明示的な整理操作であり、通常の soft-hide とは別物。
 
 ### 7.4 既存 1000 人のうち「Bridge 衝突」未経験者
 本 fix は Bridge 衝突を AYA 側で防御するが、現状 FS と AYA は同 v2.29 で衝突未発生。FS が version bump した時に「AYA 側 fix が効いた結果削除されなかった」ことに気づくのは難しい (silent fix)。release notes で「将来の FS Bridge アップデートに備えた防御」と説明。
@@ -451,3 +533,4 @@ AO セット保存時に notecard 自動 backup を inventory に作成する案
 ## 9. 改訂履歴
 - **v1 (2026-05-28)**: 初版。1000 人被害報告に基づく緊急 r31.2 spec drafting。Background agent 2 回による横展開チェック + 3 案比較 + 案 A 採用までの判断履歴を含む。
 - **v2 (2026-05-28)**: UUID 調査 agent 結果 + `override()` 実装確認に基づき「内蔵 default AO 同梱」案を drop (§3.2 / §5 / §6 / §8 整合更新)。AYA 質問「AYAstorm 固有のバグか?」に対し Firestorm 共通バグ判定を §1.3 に追記、upstream PR 候補を §8 末尾に追加。
+- **v3 (2026-05-29)**: PR #118 review fix を反映。Hidden manager の `Delete selected`、hidden / visible 同名衝突ガード、AO set soft-hide icon、LSL Bridge 起動時 attach 受け入れ、newer adopt handshake 共通化、macOS app-only build 結果を追記。

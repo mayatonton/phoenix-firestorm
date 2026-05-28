@@ -7,10 +7,10 @@
 >
 > These are not AYAstorm-specific issues; they originate from the shared inventory root used by every Firestorm-derived viewer (whether they are bugs or by-design is upstream's call to make).
 
-1. **AO delete behavior**: in Firestorm-family viewers (upstream Firestorm / older AYAstorm builds / other FS-derived viewers), pressing "Delete" on an AO set permanently erases AO data under the shared inventory root `#Firestorm`, so logging in from a different viewer still shows it gone — a cross-viewer cascading deletion. Observed at ~1000-user scale. In r31-bugfix-2 the actual inventory operation is stopped entirely on the viewer side, and a per-account hidden flag suppresses the set from the UI only
-2. **LSL Bridge version collision**: the version-mismatch auto-recreate logic in `fslslbridge.cpp` is structured so that a future minor-version bump on upstream Firestorm could take AYAstorm-side Bridges down with it. Both sides are currently at `v2.29` so it has not fired yet; we ship a one-way defense — `if received version > ours, adopt` — to prevent it
+1. **AO delete behavior**: in Firestorm-family viewers (upstream Firestorm / older AYAstorm builds / other FS-derived viewers), pressing "Delete" on an AO set permanently erases AO data under the shared inventory root `#Firestorm`, so logging in from a different viewer still shows it gone — a cross-viewer cascading deletion. Observed at ~1000-user scale. In r31-bugfix-2, normal AO-set delete becomes a non-destructive per-account Hide. The only destructive path is the explicit `Delete selected` action in the Hidden manager, behind a confirmation dialog
+2. **LSL Bridge version collision**: the version-mismatch auto-recreate logic in `fslslbridge.cpp` is structured so that a future minor-version bump on upstream Firestorm could take AYAstorm-side Bridges down with it. Both sides are currently at `v2.29` so it has not fired yet; we ship a one-way defense — `if received version > ours, adopt` — and also accept newer bridges during startup attach before the `BridgeVer` message arrives
 
-These fixes address structural behaviors that exist across the Firestorm viewer family. We only stop the destructive operation on `#Firestorm` from the AYAstorm side; recurrence in upstream Firestorm or other derived viewers needs each viewer to be patched on its own (the recommended workflow and workarounds are spelled out in the recovery guide).
+These fixes address structural behaviors that exist across the Firestorm viewer family. We remove destructive `#Firestorm` operations from the normal AO delete path on the AYAstorm side; recurrence in upstream Firestorm or other derived viewers needs each viewer to be patched on its own (the recommended workflow and workarounds are spelled out in the recovery guide).
 
 ## For users whose AO sets are already gone — AO re-setup procedure
 
@@ -35,10 +35,11 @@ If you have already pressed "Delete" on an AO set in a Firestorm-family viewer (
 
 Ships without disturbing r31 / r31-bugfix-1 environments:
 
-- **AO delete-behavior fix**: applies automatically. No setting change required. Users on r31 / r31-bugfix-1 install r31-bugfix-2 on top and the event stops recurring
+- **AO delete-behavior fix**: applies automatically. No setting change required. Users on r31 / r31-bugfix-1 install r31-bugfix-2 on top and normal AO-set delete becomes non-destructive Hide
 - **LSL Bridge collision defense**: applies automatically. Prevents AYAstorm-side Bridges from being destroyed when upstream Firestorm bumps the Bridge minor version (not yet firing today, defensive for the future)
 - **All r31 / r31-bugfix-1 features** (3D Stream unified tag / AYAstorm View / parcel music Vorbis fix / MOAP audio routing / macOS branding / GPU other-rigged picker / chat tab split / venue reverb / SSS pink-shadow fix, etc.): preserved unchanged
-- **Users who don't edit or delete AO sets**: no visible change. The "Delete" button is relabeled "Hide" and the dialog wording changes; that's all
+- **Users who don't edit or delete AO sets**: almost no visible change. The AO-set trash icon becomes a visibility-off icon, and the dialog wording changes to Hide
+- **Users who want to clean up AO inventory**: the Hidden manager has `Delete selected`, which permanently deletes the selected hidden inventory folder after confirmation. This cannot be undone
 - **Users whose AO sets are already gone**: installing r31-bugfix-2 **stops the same event from recurring**. Lost AO data itself cannot be restored, but the re-setup procedure above gets AO functionality back into working order right away
 
 ## IR licence
