@@ -15,6 +15,8 @@
 #ifndef LL_LLVKLOADER_H
 #define LL_LLVKLOADER_H
 
+#include "volk.h"
+
 namespace LLVKLoader
 {
     bool initVulkan();
@@ -22,6 +24,10 @@ namespace LLVKLoader
 
     bool isVulkanInitialized();
     bool isValidationEnabled();
+
+    bool beginFrame();
+    bool endFrame();
+    VkCommandBuffer getCurrentCommandBuffer();
 }
 
 #endif // LL_LLVKLOADER_H

@@ -35,6 +35,19 @@ namespace
     bool sInitialized = false;
     bool sValidationEnabled = false;
 
+    VkCommandPool sCommandPool = VK_NULL_HANDLE;
+    VkCommandBuffer sCommandBuffer = VK_NULL_HANDLE;
+    VkRenderPass sRenderPass = VK_NULL_HANDLE;
+    VkImage sOffscreenImage = VK_NULL_HANDLE;
+    VkDeviceMemory sOffscreenMemory = VK_NULL_HANDLE;
+    VkImageView sOffscreenImageView = VK_NULL_HANDLE;
+    VkFramebuffer sFramebuffer = VK_NULL_HANDLE;
+    bool sInFrame = false;
+
+    constexpr U32 OFFSCREEN_WIDTH = 64;
+    constexpr U32 OFFSCREEN_HEIGHT = 64;
+    constexpr VkFormat OFFSCREEN_FORMAT = VK_FORMAT_R8G8B8A8_UNORM;
+
     bool createInstance()
     {
         std::vector<const char*> layers;
@@ -207,6 +220,184 @@ namespace
                            << sGraphicsQueueFamily << ")" << LL_ENDL;
         return true;
     }
+
+    S32 findMemoryType(U32 type_filter, VkMemoryPropertyFlags properties)
+    {
+        VkPhysicalDeviceMemoryProperties mem_props;
+        vkGetPhysicalDeviceMemoryProperties(sPhysicalDevice, &mem_props);
+
+        for (U32 i = 0; i < mem_props.memoryTypeCount; i++)
+        {
+            if ((type_filter & (1u << i)) &&
+                (mem_props.memoryTypes[i].propertyFlags & properties) == properties)
+            {
+                return (S32)i;
+            }
+        }
+        return -1;
+    }
+
+    bool createCommandPool()
+    {
+        VkCommandPoolCreateInfo pool_info = {};
+        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+                          VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        pool_info.queueFamilyIndex = sGraphicsQueueFamily;
+
+        VkResult result = vkCreateCommandPool(sDevice, &pool_info, nullptr, &sCommandPool);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateCommandPool failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        VkCommandBufferAllocateInfo alloc_info = {};
+        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        alloc_info.commandPool = sCommandPool;
+        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        alloc_info.commandBufferCount = 1;
+
+        result = vkAllocateCommandBuffers(sDevice, &alloc_info, &sCommandBuffer);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkAllocateCommandBuffers failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Command pool + primary command buffer created" << LL_ENDL;
+        return true;
+    }
+
+    bool createOffscreenImage()
+    {
+        VkImageCreateInfo image_info = {};
+        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_info.imageType = VK_IMAGE_TYPE_2D;
+        image_info.format = OFFSCREEN_FORMAT;
+        image_info.extent = { OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, 1 };
+        image_info.mipLevels = 1;
+        image_info.arrayLayers = 1;
+        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VkResult result = vkCreateImage(sDevice, &image_info, nullptr, &sOffscreenImage);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateImage failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        VkMemoryRequirements mem_req;
+        vkGetImageMemoryRequirements(sDevice, sOffscreenImage, &mem_req);
+
+        S32 mem_type = findMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mem_type < 0)
+        {
+            LL_WARNS("Vulkan") << "No suitable memory type for offscreen image" << LL_ENDL;
+            return false;
+        }
+
+        VkMemoryAllocateInfo alloc_info = {};
+        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize = mem_req.size;
+        alloc_info.memoryTypeIndex = (U32)mem_type;
+
+        result = vkAllocateMemory(sDevice, &alloc_info, nullptr, &sOffscreenMemory);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkAllocateMemory failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        vkBindImageMemory(sDevice, sOffscreenImage, sOffscreenMemory, 0);
+
+        VkImageViewCreateInfo view_info = {};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = sOffscreenImage;
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = OFFSCREEN_FORMAT;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        view_info.subresourceRange.baseMipLevel = 0;
+        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.baseArrayLayer = 0;
+        view_info.subresourceRange.layerCount = 1;
+
+        result = vkCreateImageView(sDevice, &view_info, nullptr, &sOffscreenImageView);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateImageView failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Offscreen image " << OFFSCREEN_WIDTH << "x" << OFFSCREEN_HEIGHT
+                           << " created (" << (S32)mem_req.size << " bytes)" << LL_ENDL;
+        return true;
+    }
+
+    bool createRenderPass()
+    {
+        VkAttachmentDescription color_attachment = {};
+        color_attachment.format = OFFSCREEN_FORMAT;
+        color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference color_ref = {};
+        color_ref.attachment = 0;
+        color_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass = {};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &color_ref;
+
+        VkRenderPassCreateInfo rp_info = {};
+        rp_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rp_info.attachmentCount = 1;
+        rp_info.pAttachments = &color_attachment;
+        rp_info.subpassCount = 1;
+        rp_info.pSubpasses = &subpass;
+
+        VkResult result = vkCreateRenderPass(sDevice, &rp_info, nullptr, &sRenderPass);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateRenderPass failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Minimal render pass created (1 color attachment)" << LL_ENDL;
+        return true;
+    }
+
+    bool createFramebuffer()
+    {
+        VkFramebufferCreateInfo fb_info = {};
+        fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb_info.renderPass = sRenderPass;
+        fb_info.attachmentCount = 1;
+        fb_info.pAttachments = &sOffscreenImageView;
+        fb_info.width = OFFSCREEN_WIDTH;
+        fb_info.height = OFFSCREEN_HEIGHT;
+        fb_info.layers = 1;
+
+        VkResult result = vkCreateFramebuffer(sDevice, &fb_info, nullptr, &sFramebuffer);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateFramebuffer failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Framebuffer created" << LL_ENDL;
+        return true;
+    }
 }
 
 bool initVulkan()
@@ -246,6 +437,12 @@ bool initVulkan()
         return false;
     }
 
+    if (!createCommandPool() || !createOffscreenImage() || !createRenderPass() || !createFramebuffer())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     sInitialized = true;
     return true;
 }
@@ -254,6 +451,40 @@ void shutdownVulkan()
 {
     if (sDevice != VK_NULL_HANDLE)
     {
+        vkDeviceWaitIdle(sDevice);
+
+        if (sFramebuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(sDevice, sFramebuffer, nullptr);
+            sFramebuffer = VK_NULL_HANDLE;
+        }
+        if (sOffscreenImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(sDevice, sOffscreenImageView, nullptr);
+            sOffscreenImageView = VK_NULL_HANDLE;
+        }
+        if (sOffscreenImage != VK_NULL_HANDLE)
+        {
+            vkDestroyImage(sDevice, sOffscreenImage, nullptr);
+            sOffscreenImage = VK_NULL_HANDLE;
+        }
+        if (sOffscreenMemory != VK_NULL_HANDLE)
+        {
+            vkFreeMemory(sDevice, sOffscreenMemory, nullptr);
+            sOffscreenMemory = VK_NULL_HANDLE;
+        }
+        if (sRenderPass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(sDevice, sRenderPass, nullptr);
+            sRenderPass = VK_NULL_HANDLE;
+        }
+        if (sCommandPool != VK_NULL_HANDLE)
+        {
+            vkDestroyCommandPool(sDevice, sCommandPool, nullptr);
+            sCommandPool = VK_NULL_HANDLE;
+            sCommandBuffer = VK_NULL_HANDLE;
+        }
+
         vkDestroyDevice(sDevice, nullptr);
         sDevice = VK_NULL_HANDLE;
         sGraphicsQueue = VK_NULL_HANDLE;
@@ -274,6 +505,70 @@ void shutdownVulkan()
         sInitialized = false;
         sValidationEnabled = false;
     }
+}
+
+bool beginFrame()
+{
+    if (!sInitialized || sInFrame)
+    {
+        return false;
+    }
+
+    vkResetCommandBuffer(sCommandBuffer, 0);
+
+    VkCommandBufferBeginInfo begin_info = {};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    VkResult result = vkBeginCommandBuffer(sCommandBuffer, &begin_info);
+    if (result != VK_SUCCESS)
+    {
+        LL_WARNS("Vulkan") << "vkBeginCommandBuffer failed: " << (S32)result << LL_ENDL;
+        return false;
+    }
+
+    VkClearValue clear_value = {};
+    clear_value.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+    VkRenderPassBeginInfo rp_begin = {};
+    rp_begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    rp_begin.renderPass = sRenderPass;
+    rp_begin.framebuffer = sFramebuffer;
+    rp_begin.renderArea.offset = { 0, 0 };
+    rp_begin.renderArea.extent = { OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT };
+    rp_begin.clearValueCount = 1;
+    rp_begin.pClearValues = &clear_value;
+
+    vkCmdBeginRenderPass(sCommandBuffer, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
+
+    sInFrame = true;
+    return true;
+}
+
+bool endFrame()
+{
+    if (!sInitialized || !sInFrame)
+    {
+        return false;
+    }
+
+    vkCmdEndRenderPass(sCommandBuffer);
+
+    VkResult result = vkEndCommandBuffer(sCommandBuffer);
+    if (result != VK_SUCCESS)
+    {
+        LL_WARNS("Vulkan") << "vkEndCommandBuffer failed: " << (S32)result << LL_ENDL;
+        sInFrame = false;
+        return false;
+    }
+
+    sInFrame = false;
+    return true;
+}
+
+VkCommandBuffer getCurrentCommandBuffer()
+{
+    return sInFrame ? sCommandBuffer : VK_NULL_HANDLE;
 }
 
 bool isVulkanInitialized()
