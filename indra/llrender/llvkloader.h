@@ -44,6 +44,10 @@ namespace LLVKLoader
     // Compile a graphics pipeline using the persistent VkPipelineCache.
     // ci.layout / ci.renderPass / ci.pStages etc. must be filled by caller.
     bool compileGraphicsPipeline(const VkGraphicsPipelineCreateInfo& ci, VkPipeline& out_pipeline);
+
+    // r41 sub-step 3.2 smoke-test: sky pool 用 minimal PSO bind + vkCmdDraw 投入
+    // (sub-doc 03 §3.1 sub-step 3.2、2026-05-29 refine、llpostprocess は r42-δ 移管)
+    void recordSkySmokeDraw(VkCommandBuffer cmd_buf);
 }
 
 #endif // LL_LLVKLOADER_H

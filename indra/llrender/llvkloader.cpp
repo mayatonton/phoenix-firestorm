@@ -48,6 +48,13 @@ namespace
     VkPipelineLayout sPlaceholderLayout     = VK_NULL_HANDLE;
     VkPipeline       sPlaceholderPipeline   = VK_NULL_HANDLE;
 
+    // r41 sub-step 3.2 (refine 2026-05-29): sky pool smoke-test PSO (sub-doc 03 §3.1 sub-step 3.2、
+    // fullscreen triangle + 定数色 frag、vkCmdDraw(3,1,0,0) 投入 smoke、descriptor 不要)
+    VkShaderModule   sSkySmokeVertModule = VK_NULL_HANDLE;
+    VkShaderModule   sSkySmokeFragModule = VK_NULL_HANDLE;
+    VkPipelineLayout sSkySmokeLayout     = VK_NULL_HANDLE;
+    VkPipeline       sSkySmokePipeline   = VK_NULL_HANDLE;
+
     VkRenderPass sRenderPass = VK_NULL_HANDLE;
     VkImage sOffscreenImage = VK_NULL_HANDLE;
     VkDeviceMemory sOffscreenMemory = VK_NULL_HANDLE;
@@ -768,6 +775,183 @@ namespace
                            << " B, sky pool placeholder for sub-doc 03 §3.1 acceptance)" << LL_ENDL;
         return true;
     }
+
+    // r41 sub-step 3.2 smoke-test (refine 2026-05-29): sky pool 1 draw PSO。
+    // GLSL source (offline compiled、glslc -O / Target: SPIR-V 1.0):
+    //   sky_smoke.vert: fullscreen triangle、gl_VertexIndex 0/1/2 で
+    //                   (-1,-1)/(3,-1)/(-1,3) を生成、vertex input binding 不要
+    //   sky_smoke.frag: layout(location=0) out vec4 outColor;
+    //                   void main() { outColor = vec4(0.4, 0.6, 0.9, 1.0); }
+    // descriptor / push constant 不要、depth test/write OFF、blend OFF、cull NONE。
+    // 完遂 marker (sub-doc 03 §3.1 sub-step 3.2): sky pool recordPoolDraws() で
+    // vkCmdBindPipeline + vkCmdDraw(3,1,0,0) 投入、validation 0 件。
+    static const uint32_t kSkySmokeVertSpv[] = {
+        0x07230203, 0x00010000, 0x000d000b, 0x0000002c, 0x00000000, 0x00020011,
+        0x00000001, 0x0006000b, 0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e,
+        0x00000000, 0x0003000e, 0x00000000, 0x00000001, 0x0007000f, 0x00000000,
+        0x00000004, 0x6e69616d, 0x00000000, 0x0000000c, 0x0000001d, 0x00040047,
+        0x0000000c, 0x0000000b, 0x0000002a, 0x00050048, 0x0000001b, 0x00000000,
+        0x0000000b, 0x00000000, 0x00050048, 0x0000001b, 0x00000001, 0x0000000b,
+        0x00000001, 0x00050048, 0x0000001b, 0x00000002, 0x0000000b, 0x00000003,
+        0x00050048, 0x0000001b, 0x00000003, 0x0000000b, 0x00000004, 0x00030047,
+        0x0000001b, 0x00000002, 0x00020013, 0x00000002, 0x00030021, 0x00000003,
+        0x00000002, 0x00030016, 0x00000006, 0x00000020, 0x00040017, 0x00000007,
+        0x00000006, 0x00000002, 0x00040015, 0x0000000a, 0x00000020, 0x00000001,
+        0x00040020, 0x0000000b, 0x00000001, 0x0000000a, 0x0004003b, 0x0000000b,
+        0x0000000c, 0x00000001, 0x0004002b, 0x0000000a, 0x0000000e, 0x00000001,
+        0x0004002b, 0x0000000a, 0x00000010, 0x00000002, 0x00040017, 0x00000017,
+        0x00000006, 0x00000004, 0x00040015, 0x00000018, 0x00000020, 0x00000000,
+        0x0004002b, 0x00000018, 0x00000019, 0x00000001, 0x0004001c, 0x0000001a,
+        0x00000006, 0x00000019, 0x0006001e, 0x0000001b, 0x00000017, 0x00000006,
+        0x0000001a, 0x0000001a, 0x00040020, 0x0000001c, 0x00000003, 0x0000001b,
+        0x0004003b, 0x0000001c, 0x0000001d, 0x00000003, 0x0004002b, 0x0000000a,
+        0x0000001e, 0x00000000, 0x0004002b, 0x00000006, 0x00000020, 0x40000000,
+        0x0004002b, 0x00000006, 0x00000022, 0x3f800000, 0x0004002b, 0x00000006,
+        0x00000025, 0x00000000, 0x00040020, 0x00000029, 0x00000003, 0x00000017,
+        0x0005002c, 0x00000007, 0x0000002b, 0x00000022, 0x00000022, 0x00050036,
+        0x00000002, 0x00000004, 0x00000000, 0x00000003, 0x000200f8, 0x00000005,
+        0x0004003d, 0x0000000a, 0x0000000d, 0x0000000c, 0x000500c4, 0x0000000a,
+        0x0000000f, 0x0000000d, 0x0000000e, 0x000500c7, 0x0000000a, 0x00000011,
+        0x0000000f, 0x00000010, 0x0004006f, 0x00000006, 0x00000012, 0x00000011,
+        0x000500c7, 0x0000000a, 0x00000014, 0x0000000d, 0x00000010, 0x0004006f,
+        0x00000006, 0x00000015, 0x00000014, 0x00050050, 0x00000007, 0x00000016,
+        0x00000012, 0x00000015, 0x0005008e, 0x00000007, 0x00000021, 0x00000016,
+        0x00000020, 0x00050083, 0x00000007, 0x00000024, 0x00000021, 0x0000002b,
+        0x00050051, 0x00000006, 0x00000026, 0x00000024, 0x00000000, 0x00050051,
+        0x00000006, 0x00000027, 0x00000024, 0x00000001, 0x00070050, 0x00000017,
+        0x00000028, 0x00000026, 0x00000027, 0x00000025, 0x00000022, 0x00050041,
+        0x00000029, 0x0000002a, 0x0000001d, 0x0000001e, 0x0003003e, 0x0000002a,
+        0x00000028, 0x000100fd, 0x00010038,
+    };
+
+    static const uint32_t kSkySmokeFragSpv[] = {
+        0x07230203, 0x00010000, 0x000d000b, 0x0000000f, 0x00000000, 0x00020011,
+        0x00000001, 0x0006000b, 0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e,
+        0x00000000, 0x0003000e, 0x00000000, 0x00000001, 0x0006000f, 0x00000004,
+        0x00000004, 0x6e69616d, 0x00000000, 0x00000009, 0x00030010, 0x00000004,
+        0x00000007, 0x00040047, 0x00000009, 0x0000001e, 0x00000000, 0x00020013,
+        0x00000002, 0x00030021, 0x00000003, 0x00000002, 0x00030016, 0x00000006,
+        0x00000020, 0x00040017, 0x00000007, 0x00000006, 0x00000004, 0x00040020,
+        0x00000008, 0x00000003, 0x00000007, 0x0004003b, 0x00000008, 0x00000009,
+        0x00000003, 0x0004002b, 0x00000006, 0x0000000a, 0x3ecccccd, 0x0004002b,
+        0x00000006, 0x0000000b, 0x3f19999a, 0x0004002b, 0x00000006, 0x0000000c,
+        0x3f666666, 0x0004002b, 0x00000006, 0x0000000d, 0x3f800000, 0x0007002c,
+        0x00000007, 0x0000000e, 0x0000000a, 0x0000000b, 0x0000000c, 0x0000000d,
+        0x00050036, 0x00000002, 0x00000004, 0x00000000, 0x00000003, 0x000200f8,
+        0x00000005, 0x0003003e, 0x00000009, 0x0000000e, 0x000100fd, 0x00010038,
+    };
+
+    bool createSkySmokePipeline()
+    {
+        VkShaderModuleCreateInfo vs_info = {};
+        vs_info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        vs_info.codeSize = sizeof(kSkySmokeVertSpv);
+        vs_info.pCode    = kSkySmokeVertSpv;
+        if (vkCreateShaderModule(sDevice, &vs_info, nullptr, &sSkySmokeVertModule) != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "Sky smoke vertex shader module create failed" << LL_ENDL;
+            return false;
+        }
+
+        VkShaderModuleCreateInfo fs_info = {};
+        fs_info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        fs_info.codeSize = sizeof(kSkySmokeFragSpv);
+        fs_info.pCode    = kSkySmokeFragSpv;
+        if (vkCreateShaderModule(sDevice, &fs_info, nullptr, &sSkySmokeFragModule) != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "Sky smoke fragment shader module create failed" << LL_ENDL;
+            return false;
+        }
+
+        sSkySmokeLayout = createStandardPipelineLayout(nullptr, 0, nullptr, 0);
+        if (sSkySmokeLayout == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "Sky smoke pipeline layout create failed" << LL_ENDL;
+            return false;
+        }
+
+        VkPipelineShaderStageCreateInfo stages[2] = {};
+        stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[0].module = sSkySmokeVertModule;
+        stages[0].pName  = "main";
+        stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[1].module = sSkySmokeFragModule;
+        stages[1].pName  = "main";
+
+        VkPipelineVertexInputStateCreateInfo vi = {};
+        vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+        VkPipelineInputAssemblyStateCreateInfo ia = {};
+        ia.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        // Dynamic viewport/scissor: 実 swapchain サイズに合わせて recordPoolDraws 内で
+        // vkCmdSetViewport/Scissor 配信予定 (本 sub-step では offscreen 64x64 を流用、
+        // sub-step 3.3 で swapchain 配線時に dynamic 化を活かす)。
+        VkViewport viewport = { 0.0f, 0.0f, (F32)OFFSCREEN_WIDTH, (F32)OFFSCREEN_HEIGHT, 0.0f, 1.0f };
+        VkRect2D   scissor  = { { 0, 0 }, { OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT } };
+
+        VkPipelineViewportStateCreateInfo vp = {};
+        vp.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        vp.viewportCount = 1;
+        vp.pViewports    = &viewport;
+        vp.scissorCount  = 1;
+        vp.pScissors     = &scissor;
+
+        VkPipelineRasterizationStateCreateInfo rs = {};
+        rs.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rs.polygonMode = VK_POLYGON_MODE_FILL;
+        rs.cullMode    = VK_CULL_MODE_NONE;
+        rs.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rs.lineWidth   = 1.0f;
+
+        VkPipelineMultisampleStateCreateInfo ms = {};
+        ms.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineDepthStencilStateCreateInfo ds = {};
+        ds.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        ds.depthTestEnable  = VK_FALSE;
+        ds.depthWriteEnable = VK_FALSE;
+        ds.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
+
+        VkPipelineColorBlendAttachmentState cba = {};
+        cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+                           | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+        VkPipelineColorBlendStateCreateInfo cb = {};
+        cb.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        cb.attachmentCount = 1;
+        cb.pAttachments    = &cba;
+
+        VkGraphicsPipelineCreateInfo ci = {};
+        ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        ci.stageCount          = 2;
+        ci.pStages             = stages;
+        ci.pVertexInputState   = &vi;
+        ci.pInputAssemblyState = &ia;
+        ci.pViewportState      = &vp;
+        ci.pRasterizationState = &rs;
+        ci.pMultisampleState   = &ms;
+        ci.pDepthStencilState  = &ds;
+        ci.pColorBlendState    = &cb;
+        ci.layout              = sSkySmokeLayout;
+        ci.renderPass          = sRenderPass;
+        ci.subpass             = 0;
+
+        if (!compileGraphicsPipeline(ci, sSkySmokePipeline))
+        {
+            LL_WARNS("Vulkan") << "Sky smoke graphics pipeline compile failed" << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Sky smoke PSO compiled (vert " << sizeof(kSkySmokeVertSpv)
+                           << " B / frag " << sizeof(kSkySmokeFragSpv)
+                           << " B, sub-doc 03 §3.1 sub-step 3.2 sky pool 1 draw)" << LL_ENDL;
+        return true;
+    }
 }
 
 bool initVulkan()
@@ -821,6 +1005,13 @@ bool initVulkan()
         return false;
     }
 
+    if (!createSkySmokePipeline())
+    {
+        LL_WARNS("Vulkan") << "Sky smoke PSO creation failed" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+
     sInitialized = true;
     return true;
 }
@@ -855,6 +1046,26 @@ void shutdownVulkan()
         {
             vkDestroyRenderPass(sDevice, sRenderPass, nullptr);
             sRenderPass = VK_NULL_HANDLE;
+        }
+        if (sSkySmokePipeline != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(sDevice, sSkySmokePipeline, nullptr);
+            sSkySmokePipeline = VK_NULL_HANDLE;
+        }
+        if (sSkySmokeLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(sDevice, sSkySmokeLayout, nullptr);
+            sSkySmokeLayout = VK_NULL_HANDLE;
+        }
+        if (sSkySmokeFragModule != VK_NULL_HANDLE)
+        {
+            vkDestroyShaderModule(sDevice, sSkySmokeFragModule, nullptr);
+            sSkySmokeFragModule = VK_NULL_HANDLE;
+        }
+        if (sSkySmokeVertModule != VK_NULL_HANDLE)
+        {
+            vkDestroyShaderModule(sDevice, sSkySmokeVertModule, nullptr);
+            sSkySmokeVertModule = VK_NULL_HANDLE;
         }
         if (sPlaceholderPipeline != VK_NULL_HANDLE)
         {
@@ -1050,6 +1261,19 @@ bool compileGraphicsPipeline(const VkGraphicsPipelineCreateInfo& ci, VkPipeline&
         return false;
     }
     return true;
+}
+
+// r41 sub-step 3.2 smoke-test (refine 2026-05-29): sky pool 1 draw 投入
+// (sub-doc 03 §3.1 sub-step 3.2、LLDrawPoolSky::recordPoolDraws から呼出、
+// fullscreen triangle で sky blue (0.4, 0.6, 0.9, 1.0) 出力)。
+void recordSkySmokeDraw(VkCommandBuffer cmd_buf)
+{
+    if (cmd_buf == VK_NULL_HANDLE || sSkySmokePipeline == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sSkySmokePipeline);
+    vkCmdDraw(cmd_buf, 3, 1, 0, 0);
 }
 
 } // namespace LLVKLoader

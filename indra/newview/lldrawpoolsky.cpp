@@ -28,6 +28,8 @@
 
 #include "lldrawpoolsky.h"
 
+#include "llvkloader.h" // <AYAstorm r41> sub-step 3.2 sky pool smoke-test draw
+
 // DEPRECATED
 
 LLDrawPoolSky::LLDrawPoolSky()
@@ -55,8 +57,9 @@ void LLDrawPoolSky::endRenderPass( S32 pass )
 {
 }
 
-// <AYAstorm r41> sub-step 2.1b: empty Vulkan record hook. Stage 3 replaces the
-// marker with PSO bind + vkCmdDraw* against cmd_buf.
+// <AYAstorm r41> sub-step 3.2 (refine 2026-05-29): sky pool 1 draw smoke-test。
+// LLVKLoader::recordSkySmokeDraw が fullscreen triangle で sky blue (0.4, 0.6, 0.9, 1.0)
+// を出力、sub-doc 03 §3.1 sub-step 3.2 完遂 marker (Vulkan 経由 vkCmdDraw 投入 + validation 0 件)。
 void LLDrawPoolSky::recordPoolDraws(VkCommandBuffer cmd_buf)
 {
     static bool logged_once = false;
@@ -65,6 +68,7 @@ void LLDrawPoolSky::recordPoolDraws(VkCommandBuffer cmd_buf)
         LL_INFOS("VkRecord") << "Sky pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
         logged_once = true;
     }
+    LLVKLoader::recordSkySmokeDraw(cmd_buf);
 }
 // </AYAstorm r41>
 
