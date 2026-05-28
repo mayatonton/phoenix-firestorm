@@ -20,6 +20,7 @@
 #include <vector>
 #include <string>
 #include <climits>
+#include <cstring>
 
 namespace LLVKLoader
 {
@@ -65,6 +66,23 @@ namespace
     constexpr U32 OFFSCREEN_WIDTH = 64;
     constexpr U32 OFFSCREEN_HEIGHT = 64;
     constexpr VkFormat OFFSCREEN_FORMAT = VK_FORMAT_R8G8B8A8_UNORM;
+
+    // r41 sub-step 3.3-β-2: per-frame matrix UBO buffer + descriptor (sub-doc 03 §3.1.1)
+    // 二段構え binding 0 (PerFrameMatrixUBO 192 B) + binding 1 (TextureMatrixUBO 256 B) を
+    // 単一 VkBuffer に offset 配置 (256 B align 安全側) × frame in flight 3 個。
+    constexpr U32          FRAMES_IN_FLIGHT      = 3;
+    constexpr VkDeviceSize PERFRAME_UBO_OFFSET   = 0;
+    constexpr VkDeviceSize PERFRAME_UBO_SIZE     = sizeof(PerFrameMatrixUBO);  // 192
+    constexpr VkDeviceSize TEXTURE_UBO_OFFSET    = 256;                        // 256 B align (vendor 安全側)
+    constexpr VkDeviceSize TEXTURE_UBO_SIZE      = sizeof(TextureMatrixUBO);   // 256
+    constexpr VkDeviceSize UBO_BUFFER_SIZE_FRAME = TEXTURE_UBO_OFFSET + TEXTURE_UBO_SIZE;  // 512
+
+    VkDescriptorSetLayout sPerFrameDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool      sPerFrameDescriptorPool      = VK_NULL_HANDLE;
+    VkBuffer              sPerFrameUboBuffer[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDeviceMemory        sPerFrameUboMemory[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+    void*                 sPerFrameUboMapped[FRAMES_IN_FLIGHT] = { nullptr, nullptr, nullptr };
+    VkDescriptorSet       sPerFrameDescriptorSet[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
 
     bool createInstance()
     {
@@ -610,6 +628,180 @@ namespace
         return true;
     }
 
+    // r41 sub-step 3.3-β-2: per-frame matrix UBO descriptor set layout (sub-doc 03 §3.1.1)
+    // binding 0 = PerFrameMatrixUBO (192 B, VERTEX|FRAGMENT)
+    // binding 1 = TextureMatrixUBO  (256 B, VERTEX|FRAGMENT)
+    bool createPerFrameDescriptorSetLayout()
+    {
+        VkDescriptorSetLayoutBinding bindings[2] = {};
+        bindings[0].binding         = 0;
+        bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bindings[0].descriptorCount = 1;
+        bindings[0].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        bindings[1].binding         = 1;
+        bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bindings[1].descriptorCount = 1;
+        bindings[1].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkDescriptorSetLayoutCreateInfo info = {};
+        info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        info.bindingCount = 2;
+        info.pBindings    = bindings;
+
+        VkResult result = vkCreateDescriptorSetLayout(sDevice, &info, nullptr, &sPerFrameDescriptorSetLayout);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateDescriptorSetLayout (per-frame) failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Per-frame descriptor set layout created (binding 0=PerFrameMatrixUBO, 1=TextureMatrixUBO)" << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 3.3-β-2: per-frame UBO buffer × FRAMES_IN_FLIGHT
+    // 単一 VkBuffer (512 B) に PerFrame (offset 0 / 192 B) + Texture (offset 256 / 256 B) 配置、
+    // HOST_VISIBLE_COHERENT + persistent mapping、起動時 zero write。
+    bool createPerFrameUbos()
+    {
+        for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
+        {
+            VkBufferCreateInfo buf_info = {};
+            buf_info.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            buf_info.size        = UBO_BUFFER_SIZE_FRAME;
+            buf_info.usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            VkResult result = vkCreateBuffer(sDevice, &buf_info, nullptr, &sPerFrameUboBuffer[frame]);
+            if (result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "vkCreateBuffer (per-frame UBO " << frame << ") failed: " << (S32)result << LL_ENDL;
+                return false;
+            }
+
+            VkMemoryRequirements mem_req;
+            vkGetBufferMemoryRequirements(sDevice, sPerFrameUboBuffer[frame], &mem_req);
+
+            S32 mem_type = findMemoryType(mem_req.memoryTypeBits,
+                                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            if (mem_type < 0)
+            {
+                LL_WARNS("Vulkan") << "No HOST_VISIBLE_COHERENT memory type for per-frame UBO" << LL_ENDL;
+                return false;
+            }
+
+            VkMemoryAllocateInfo alloc_info = {};
+            alloc_info.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            alloc_info.allocationSize  = mem_req.size;
+            alloc_info.memoryTypeIndex = (U32)mem_type;
+
+            result = vkAllocateMemory(sDevice, &alloc_info, nullptr, &sPerFrameUboMemory[frame]);
+            if (result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "vkAllocateMemory (per-frame UBO " << frame << ") failed: " << (S32)result << LL_ENDL;
+                return false;
+            }
+
+            result = vkBindBufferMemory(sDevice, sPerFrameUboBuffer[frame], sPerFrameUboMemory[frame], 0);
+            if (result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "vkBindBufferMemory (per-frame UBO " << frame << ") failed: " << (S32)result << LL_ENDL;
+                return false;
+            }
+
+            result = vkMapMemory(sDevice, sPerFrameUboMemory[frame], 0, VK_WHOLE_SIZE, 0, &sPerFrameUboMapped[frame]);
+            if (result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "vkMapMemory (per-frame UBO " << frame << ") failed: " << (S32)result << LL_ENDL;
+                return false;
+            }
+
+            // 初期 zero write smoke (β-2 完了 marker)
+            std::memset(sPerFrameUboMapped[frame], 0, (size_t)UBO_BUFFER_SIZE_FRAME);
+        }
+
+        LL_INFOS("Vulkan") << "Per-frame UBO buffers created (" << FRAMES_IN_FLIGHT
+                           << " frames × " << UBO_BUFFER_SIZE_FRAME
+                           << " B, HOST_VISIBLE_COHERENT + persistent map + zero write)" << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 3.3-β-2: descriptor pool (3 set × 2 binding) + 3 set alloc + vkUpdateDescriptorSets
+    bool createPerFrameDescriptorSets()
+    {
+        VkDescriptorPoolSize pool_size = {};
+        pool_size.type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        pool_size.descriptorCount = FRAMES_IN_FLIGHT * 2;  // 2 binding × 3 set
+
+        VkDescriptorPoolCreateInfo pool_info = {};
+        pool_info.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.maxSets       = FRAMES_IN_FLIGHT;
+        pool_info.poolSizeCount = 1;
+        pool_info.pPoolSizes    = &pool_size;
+
+        VkResult result = vkCreateDescriptorPool(sDevice, &pool_info, nullptr, &sPerFrameDescriptorPool);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateDescriptorPool (per-frame) failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        VkDescriptorSetLayout layouts[FRAMES_IN_FLIGHT] = {
+            sPerFrameDescriptorSetLayout,
+            sPerFrameDescriptorSetLayout,
+            sPerFrameDescriptorSetLayout,
+        };
+
+        VkDescriptorSetAllocateInfo alloc_info = {};
+        alloc_info.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        alloc_info.descriptorPool     = sPerFrameDescriptorPool;
+        alloc_info.descriptorSetCount = FRAMES_IN_FLIGHT;
+        alloc_info.pSetLayouts        = layouts;
+
+        result = vkAllocateDescriptorSets(sDevice, &alloc_info, sPerFrameDescriptorSet);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkAllocateDescriptorSets (per-frame) failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
+        {
+            VkDescriptorBufferInfo perframe_info = {};
+            perframe_info.buffer = sPerFrameUboBuffer[frame];
+            perframe_info.offset = PERFRAME_UBO_OFFSET;
+            perframe_info.range  = PERFRAME_UBO_SIZE;
+
+            VkDescriptorBufferInfo texture_info = {};
+            texture_info.buffer = sPerFrameUboBuffer[frame];
+            texture_info.offset = TEXTURE_UBO_OFFSET;
+            texture_info.range  = TEXTURE_UBO_SIZE;
+
+            VkWriteDescriptorSet writes[2] = {};
+            writes[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[0].dstSet          = sPerFrameDescriptorSet[frame];
+            writes[0].dstBinding      = 0;
+            writes[0].descriptorCount = 1;
+            writes[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            writes[0].pBufferInfo     = &perframe_info;
+
+            writes[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[1].dstSet          = sPerFrameDescriptorSet[frame];
+            writes[1].dstBinding      = 1;
+            writes[1].descriptorCount = 1;
+            writes[1].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            writes[1].pBufferInfo     = &texture_info;
+
+            vkUpdateDescriptorSets(sDevice, 2, writes, 0, nullptr);
+        }
+
+        LL_INFOS("Vulkan") << "Per-frame descriptor sets allocated + updated ("
+                           << FRAMES_IN_FLIGHT << " sets × 2 binding)" << LL_ENDL;
+        return true;
+    }
+
     // r41 sub-step 3.1b item #8: minimal placeholder PSO (sky pool placeholder)。
     // GLSL source は本 source の上の comment block で sealed (offline glslc compile)、
     // vert/frag SPIR-V を C++ const array で embed。本 PSO は sRenderPass (1 color attachment) 互換、
@@ -999,6 +1191,13 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 3.3-β-2: per-frame matrix UBO descriptor + buffer + set (sub-doc 03 §3.1.1)
+    if (!createPerFrameDescriptorSetLayout() || !createPerFrameUbos() || !createPerFrameDescriptorSets())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     if (!createPlaceholderPipeline())
     {
         shutdownVulkan();
@@ -1086,6 +1285,39 @@ void shutdownVulkan()
         {
             vkDestroyShaderModule(sDevice, sPlaceholderVertModule, nullptr);
             sPlaceholderVertModule = VK_NULL_HANDLE;
+        }
+        // r41 sub-step 3.3-β-2: per-frame matrix UBO teardown (descriptor pool 経由で set は自動 free)
+        if (sPerFrameDescriptorPool != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(sDevice, sPerFrameDescriptorPool, nullptr);
+            sPerFrameDescriptorPool = VK_NULL_HANDLE;
+            for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
+            {
+                sPerFrameDescriptorSet[frame] = VK_NULL_HANDLE;
+            }
+        }
+        for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
+        {
+            if (sPerFrameUboMemory[frame] != VK_NULL_HANDLE && sPerFrameUboMapped[frame] != nullptr)
+            {
+                vkUnmapMemory(sDevice, sPerFrameUboMemory[frame]);
+                sPerFrameUboMapped[frame] = nullptr;
+            }
+            if (sPerFrameUboBuffer[frame] != VK_NULL_HANDLE)
+            {
+                vkDestroyBuffer(sDevice, sPerFrameUboBuffer[frame], nullptr);
+                sPerFrameUboBuffer[frame] = VK_NULL_HANDLE;
+            }
+            if (sPerFrameUboMemory[frame] != VK_NULL_HANDLE)
+            {
+                vkFreeMemory(sDevice, sPerFrameUboMemory[frame], nullptr);
+                sPerFrameUboMemory[frame] = VK_NULL_HANDLE;
+            }
+        }
+        if (sPerFrameDescriptorSetLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(sDevice, sPerFrameDescriptorSetLayout, nullptr);
+            sPerFrameDescriptorSetLayout = VK_NULL_HANDLE;
         }
         if (sPipelineCache != VK_NULL_HANDLE)
         {
@@ -1261,6 +1493,13 @@ bool compileGraphicsPipeline(const VkGraphicsPipelineCreateInfo& ci, VkPipeline&
         return false;
     }
     return true;
+}
+
+// r41 sub-step 3.3-β-2: per-frame matrix descriptor set layout getter (sub-doc 03 §3.1.1)
+// 所有は LLVKLoader (initVulkan で create、shutdownVulkan で destroy)、caller は破棄しない。
+VkDescriptorSetLayout getPerFrameDescriptorSetLayout()
+{
+    return sPerFrameDescriptorSetLayout;
 }
 
 // r41 sub-step 3.2 smoke-test (refine 2026-05-29): sky pool 1 draw 投入
