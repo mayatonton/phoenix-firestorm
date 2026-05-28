@@ -218,14 +218,15 @@ a-4 §B.1 確定の r21.1 self-rigged picker:
 
 設計検討事項 a-4 §6.4.2 (5) 「r21.1 picker attachment 統合方針」= **deferred main pass 内 inline attachment** で確定 (別 pass は不採用、frame context overhead 削減のため)。
 
-### §3.5 pipeline layout 設計 (改訂 2026-05-29: r41 sub-step 3.3-A trace 結果反映)
+### §3.5 pipeline layout 設計 (改訂 2026-05-29: r41 sub-step 3.3-A trace + β-1 refine 結果反映)
 
 - **descriptor set layout × 3** (set=0/1/2 別々に `VkDescriptorSetLayout` 作成)
-- **push constant range**: model matrix を push constant 化 (mat4 = 64 bytes、Vulkan minimum guaranteed 128 bytes 内)
-- **per-frame UBO (set=0)**: matrix 配信を **二段構え** (r41 sub-step 3.3-A trace 確定):
-  - **binding 0**: view/projection 系 6 mat4 (`view_matrix` / `projection_matrix` / `mvp_matrix` [cached] / `inv_projection` / `normal_matrix` (mat3 → mat4 拡張) / `identity_matrix`、padding 込み ~384 bytes)
+- **push constant range**: `modelview_matrix` (mat4 = 64 bytes、Vulkan minimum guaranteed 128 bytes 内、GL 流儀継承 = view × model 結合済、`modelview` 分解 refactor は r41 sub-step 3.3 scope 伸展のため不採用、3.3-β-1 refine 2026-05-29)
+- **per-frame UBO (set=0)**: matrix 配信を **二段構え** (r41 sub-step 3.3-A trace + β-1 refine 確定):
+  - **binding 0**: projection 系 3 mat4 (`projection_matrix` / `inverse_projection_matrix` / `identity_matrix`、std140 で 192 bytes)
   - **binding 1**: `texture_matrix[0..3]` (4 mat4 = 256 bytes)
-  - 二段構え採用根拠: LLRender::syncMatrices() で配信する uniform 9 種 (base 248 shader 574 参照) が push constant 64 B 単独では収まらない (r41 sub-step 3.3-A trace 2026-05-29、`docs/specs/ayastorm-r41-gl-removal/03-state-machine-pso.md` §3.1.1 設計根拠 trace inventory 参照)
+  - **shader 内計算 (3.3-B shader port 範疇)**: MVP / `normal_matrix` / `inverse_modelview_matrix` は vertex shader 内で `projection_matrix × modelview_matrix` 等から算出 (CPU side で per-draw 行列演算するコストを回避、shader uniform 名は base 248 file 側で push constant block / UBO に再 mapping)
+  - 二段構え採用根拠: LLRender::syncMatrices() で配信する uniform 9 種 (base 248 shader 574 参照) が push constant 64 B 単独では収まらない、shader 内計算移譲 3 種で UBO binding 0 を 192 B に縮約、合計 push constant 64 B + UBO 448 B (r41 sub-step 3.3-A trace 2026-05-29、`docs/specs/ayastorm-r41-gl-removal/03-state-machine-pso.md` §3.1.1 設計根拠 trace inventory 参照)
 - **UI matrix (mUIOffset/Scale)**: LLRender 内 `std::vector` stack で独立管理、syncMatrices scope 外 → r41 段階 4 frame context refactor で配信先決定 (本段階 3 scope 外)
 - **pipeline layout cache**: 同一 layout を共有する PSO を grouping、`vkCreatePipelineLayout` の重複回避
 
@@ -234,15 +235,15 @@ a-4 §B.1 確定の r21.1 self-rigged picker:
 .setLayoutCount = 3
 .pSetLayouts = [perFrameLayout, perMaterialLayout, perDrawLayout]
 .pushConstantRangeCount = 1
-.pPushConstantRanges = [{ VK_SHADER_STAGE_VERTEX_BIT, 0, 64 (mat4 model_matrix) }]
+.pPushConstantRanges = [{ VK_SHADER_STAGE_VERTEX_BIT, 0, 64 (mat4 modelview_matrix) }]
 ```
 
-`perFrameLayout` (set=0) descriptor 構成 (3.3-A trace 確定):
+`perFrameLayout` (set=0) descriptor 構成 (3.3-A trace + β-1 refine 確定):
 ```
 binding 0: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, stage = VERTEX | FRAGMENT, count = 1
-           (matrix 系 6 mat4: view/projection/mvp/inv_projection/normal_matrix/identity)
+           (PerFrameMatrixUBO: projection / inverse_projection / identity、192 B)
 binding 1: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, stage = VERTEX | FRAGMENT, count = 1
-           (texture_matrix[0..3])
+           (TextureMatrixUBO: texture_matrix[0..3]、256 B)
 ```
 
 ### §3.6 descriptor pool sizing 戦略
