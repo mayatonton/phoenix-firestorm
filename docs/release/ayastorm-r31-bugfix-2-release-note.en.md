@@ -15,7 +15,7 @@ Implementation details, scope analysis, and the recovery procedure live permanen
 
 In Firestorm-family viewers (upstream Firestorm / older AYAstorm builds / other FS-derived viewers), pressing "Delete" on an AO set used to call `purgeFolder` on the inventory entity (the folder under `#Firestorm/#AO` along with every animation and notecard inside it). Because `#Firestorm` is the shared root used by every Firestorm-derived viewer, a delete in one viewer would propagate: log into another viewer (including upstream Firestorm) and the AO was still gone. This is a cross-viewer cascading deletion.
 
-In r31-bugfix-2 we stop the actual inventory operation entirely on the viewer side, and only record a per-account hidden flag that suppresses the set from the UI. Alongside this, we fix the LSL Bridge auto-recreate-on-version-mismatch logic so that a future minor-version bump in upstream Firestorm will not silently destroy the AYAstorm-side Bridge.
+In r31-bugfix-2, the normal AO-set "Delete" operation no longer deletes real inventory. It records a per-account hidden flag and suppresses the set from the UI. The only remaining destructive path is the explicit `Delete selected` action inside the Hidden manager, behind a confirmation dialog. Alongside this, we fix the LSL Bridge auto-recreate-on-version-mismatch logic so that a future minor-version bump in upstream Firestorm will not silently destroy the AYAstorm-side Bridge.
 
 This behavior was not introduced in r31. It has been structurally present in the Firestorm viewer family for a long time, affecting every FS-derived viewer including AYAstorm (whether it counts as a bug or by-design is upstream's call to make).
 
@@ -39,7 +39,10 @@ This behavior was not introduced in r31. It has been structurally present in the
 - The set's inventory UUID is appended to a per-account setting `FSAOHiddenSets` (LLSD array, Persist=1)
 - During AO enumeration (`update()`), hidden filter excludes them from the UI
 - New "Manage hidden sets" floater added; supports per-UUID restore as well as restore-all
-- Delete dialog re-worded in 3 languages, button changed from "Delete" to "Hide", with explicit text that the inventory is preserved
+- Hidden / visible name-collision guards prevent creating or importing a set whose name is currently hidden, and prevent restoring a hidden set over an already-visible set with the same name
+- The Hidden manager now has `Delete selected`. This is separate from normal Remove: after a confirmation dialog, it permanently deletes only the selected hidden set's real inventory folder
+- Delete dialog re-worded in 3 languages; the normal AO-set action is presented as "Hide" rather than "Delete", with explicit text that inventory is preserved
+- The AO-set soft-hide button now uses a visibility-off icon instead of a trash icon
 
 **LSL Bridge one-way fix**:
 - Parse the received version string into `major.minor` and compare numerically
@@ -47,6 +50,8 @@ This behavior was not introduced in r31. It has been structurally present in the
 - Received == ours ⇒ existing behavior
 - Received < ours ⇒ existing behavior (`recreateBridge` to update)
 - Parse failure ⇒ existing behavior (fail safe)
+- The same version comparison is also used during startup attach / detach decisions, so a newer bridge is not detached before its `BridgeVer` message arrives
+- The newer-bridge adopt path now shares the normal handshake completion path, including `URL Confirmed` and first-time settings sync
 
 ### Migration note
 
@@ -59,17 +64,17 @@ This behavior was not introduced in r31. It has been structurally present in the
 
 - **One-way defense only**: if AYAstorm version-leads upstream Firestorm, upstream Firestorm (still unpatched) will continue to destroy AYAstorm-side Bridges. AYA leading FS is rare, but the long-term fix is either an upstream PR or root separation (`#Firestorm/` → `#AYAstorm/`)
 - **Upstream Firestorm "Delete AO" is still destructive**: recommended workflow is to centralize AO edit/delete on AYAstorm r31.2+ and treat upstream Firestorm as read-only for AO (documented in the recovery guide)
-- **UI fallback for hidden sets**: if the new UI is broken in some environment, opening Debug Settings (`Ctrl+Alt+Shift+S`) and clearing `FSAOHiddenSets` to an empty array restores every hidden set
+- **UI fallback for hidden sets**: if the new UI is broken in some environment, opening Debug Settings (`Ctrl+Alt+Shift+S`) and clearing `FSAOHiddenSets` to an empty array restores every hidden set. This cannot restore a folder that was explicitly permanently deleted through `Delete selected` in the Hidden manager
 
 ### Implementation summary
 
-- `indra/newview/aoengine.cpp` / `aoengine.h` — `removeSet()` soft hide, new `getHiddenSets()` / `unhideSet()` / `unhideAllSets()` / `isSetHidden()`, hidden filter in `update()`
-- `indra/newview/ao.cpp` / `ao.h` — `FloaterAOHiddenSets` controller + Manage-hidden-sets button wiring
+- `indra/newview/aoengine.cpp` / `aoengine.h` — `removeSet()` soft hide, `getHiddenSets()` / `unhideSet()` / `unhideAllSets()` / `isSetHidden()`, hidden filter in `update()`, plus permanent delete and name-collision helpers for hidden sets
+- `indra/newview/ao.cpp` / `ao.h` — `FloaterAOHiddenSets` controller + Manage hidden sets / Restore / Delete selected button wiring
 - `indra/newview/llviewerfloaterreg.cpp` — register `ao_hidden_sets` floater
-- `indra/newview/fslslbridge.cpp` — new `parseBridgeVersionString()` helper + adopt path
+- `indra/newview/fslslbridge.cpp` / `fslslbridge.h` — bridge-version comparison helpers, startup attach acceptance for newer bridges, adopt path, shared handshake completion
 - `indra/newview/app_settings/settings_per_account.xml` — `FSAOHiddenSets` (LLSD, Persist=1)
-- `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `RemoveAOSet` re-worded; button label changed
-- `indra/newview/skins/default/xui/{en,ja,zh}/panel_ao.xml` — "Manage hidden sets" button
+- `indra/newview/skins/default/xui/{en,ja,zh}/notifications.xml` — `RemoveAOSet` re-worded, hidden-set conflict notifications, permanent-delete confirmation
+- `indra/newview/skins/default/xui/{en,ja,zh}/panel_ao.xml` — "Manage hidden sets" button, AO-set soft-hide icon / tooltip adjustments
 - `indra/newview/skins/default/xui/{en,ja,zh}/floater_ao_hidden_sets.xml` — new floater (3 languages)
 - `indra/newview/skins/default/xui/en/floater_ao.xml` — floater height adjustments
 - `docs/specs/ayastorm-r31-2-ao-bridge-recovery.md` — technical spec (new)

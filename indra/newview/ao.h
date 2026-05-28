@@ -178,10 +178,14 @@ class FloaterAOHiddenSets
         void refreshList();
         void onClickRestoreSelected();
         void onClickRestoreAll();
+        void onClickDeleteSelected();
+        bool deleteSelectedCallback(const LLSD& notification, const LLSD& response);
 
         LLScrollListCtrl* mHiddenList;
         LLButton* mRestoreSelectedButton;
         LLButton* mRestoreAllButton;
+        LLButton* mDeleteSelectedButton;
+        LLUUID mPendingDeleteUUID;
 };
 
 #endif // AO_H

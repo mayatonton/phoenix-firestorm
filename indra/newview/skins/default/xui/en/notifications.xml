@@ -11170,6 +11170,55 @@ An animation set with this name already exists.
      yestext="OK"/>
   </notification>
 
+  <notification
+   icon="alertmodal.tga"
+   name="AOSetNameHiddenConflict"
+   type="alertmodal">
+An AO set named "[AO_SET_NAME]" is currently hidden.
+
+Restore or permanently delete the hidden set before creating or importing another set with the same name.
+    <usetemplate
+     name="okbutton"
+     yestext="OK"/>
+  </notification>
+
+  <notification
+   icon="alertmodal.tga"
+   name="AOSetRestoreNameConflict"
+   type="alertmodal">
+Could not restore AO set "[AO_SET_NAME]" because another visible AO set already uses that name.
+
+Rename, hide, or permanently delete the visible set first.
+    <usetemplate
+     name="okbutton"
+     yestext="OK"/>
+  </notification>
+
+  <notification
+   icon="alertmodal.tga"
+   name="AOSetRestoreSomeNameConflicts"
+   type="alertmodal">
+[COUNT] hidden AO set(s) were not restored because their names conflict with visible or already-restored sets.
+    <usetemplate
+     name="okbutton"
+     yestext="OK"/>
+  </notification>
+
+  <notification
+   icon="alertmodal.tga"
+   name="AOSetDeleteHiddenConfirm"
+   type="alertmodal">
+Delete hidden AO set "[AO_SET_NAME]" from inventory?
+
+This permanently deletes the real folder under #Firestorm/#AO. It will also disappear from Firestorm and other Firestorm-derived viewers using this account.
+
+AYAstorm cannot undo this. Without a backup or notecard, the AO data cannot be restored.
+	    <usetemplate
+	     name="okcancelbuttons"
+	     notext="Cancel"
+	     yestext="Delete selected"/>
+	  </notification>
+
 <notification
    icon="alertmodal.tga"
    name="RemoveAOSet"

@@ -76,11 +76,11 @@
 
 		<button
 			name="ao_remove"
-			tool_tip="Remove this animation set."
+			tool_tip="Hide this animation set from the list."
 			left_pad="4"
 			width="20"
 			height="20"
-			image_overlay="TrashItem_Press"
+			image_overlay="Profile_Group_Visibility_Off"
 			follows="right|top"
 			layout="topleft" />
 

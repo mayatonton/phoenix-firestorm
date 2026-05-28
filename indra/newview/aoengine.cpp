@@ -42,10 +42,25 @@
 #include "llviewercontrol.h"
 #include "llxorcipher.h"
 
+#include <set>
+
 #define ROOT_AO_FOLDER "#AO"
 
 static const LLUUID ENCRYPTION_MAGIC_ID("4b552ff5-fd63-408c-8288-cd09429852ba");
 constexpr F32 INVENTORY_POLLING_INTERVAL = 5.0f;
+
+static std::string getAOSetNameFromCategory(const LLUUID& category_id)
+{
+    LLViewerInventoryCategory* cat = gInventory.getCategory(category_id);
+    if (!cat)
+    {
+        return std::string();
+    }
+
+    std::vector<std::string> params;
+    LLStringUtil::getTokens(cat->getName(), params, ":");
+    return params.empty() ? cat->getName() : params[0];
+}
 
 AOEngine::AOEngine() :
     LLSingleton<AOEngine>(),
@@ -1411,6 +1426,36 @@ bool AOEngine::isSetHidden(const LLUUID& inventoryUUID) const
     return false;
 }
 
+bool AOEngine::hiddenSetNameExists(std::string_view name) const
+{
+    if (name.empty())
+    {
+        return false;
+    }
+    const std::string requestedName(name.data(), name.size());
+
+    LLSD hidden = gSavedPerAccountSettings.getLLSD("FSAOHiddenSets");
+    if (!hidden.isArray())
+    {
+        return false;
+    }
+
+    for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
+    {
+        LLUUID id(it->asString());
+        if (id.isNull())
+        {
+            continue;
+        }
+
+        if (getAOSetNameFromCategory(id) == requestedName)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<std::pair<LLUUID, std::string>> AOEngine::getHiddenSets() const
 {
     std::vector<std::pair<LLUUID, std::string>> result;
@@ -1429,15 +1474,8 @@ std::vector<std::pair<LLUUID, std::string>> AOEngine::getHiddenSets() const
             continue;
         }
 
-        std::string name;
-        if (LLViewerInventoryCategory* cat = gInventory.getCategory(id))
-        {
-            std::string folderName = cat->getName();
-            std::vector<std::string> params;
-            LLStringUtil::getTokens(folderName, params, ":");
-            name = params.empty() ? folderName : params[0];
-        }
-        else
+        std::string name = getAOSetNameFromCategory(id);
+        if (name.empty())
         {
             name = "(missing in inventory)";
         }
@@ -1461,6 +1499,15 @@ bool AOEngine::unhideSet(const LLUUID& inventoryUUID)
     }
 
     const std::string uuidStr = inventoryUUID.asString();
+    const std::string setName = getAOSetNameFromCategory(inventoryUUID);
+    if (!setName.empty() && getSetByName(setName))
+    {
+        LLSD args;
+        args["AO_SET_NAME"] = setName;
+        LLNotificationsUtil::add("AOSetRestoreNameConflict", args);
+        return false;
+    }
+
     LLSD newHidden = LLSD::emptyArray();
     bool removed = false;
     for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
@@ -1479,7 +1526,7 @@ bool AOEngine::unhideSet(const LLUUID& inventoryUUID)
     }
 
     gSavedPerAccountSettings.setLLSD("FSAOHiddenSets", newHidden);
-    LL_INFOS("AOEngine") << "Un-hiding AO set (inv " << uuidStr << ")." << LL_ENDL;
+    LL_INFOS("AOEngine") << "Un-hiding AO set '" << setName << "' (inv " << uuidStr << ")." << LL_ENDL;
     mTimerCollection.enableReloadTimer(true);
     return true;
 }
@@ -1492,8 +1539,90 @@ bool AOEngine::unhideAllSets()
         return false;
     }
 
-    gSavedPerAccountSettings.setLLSD("FSAOHiddenSets", LLSD::emptyArray());
-    LL_INFOS("AOEngine") << "Un-hiding all " << hidden.size() << " AO sets." << LL_ENDL;
+    LLSD newHidden = LLSD::emptyArray();
+    std::set<std::string> restoredNames;
+    S32 restoredCount = 0;
+    S32 skippedCount = 0;
+
+    for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
+    {
+        LLUUID id(it->asString());
+        if (id.isNull())
+        {
+            continue;
+        }
+
+        const std::string setName = getAOSetNameFromCategory(id);
+        if (!setName.empty() && (getSetByName(setName) || restoredNames.find(setName) != restoredNames.end()))
+        {
+            newHidden.append(*it);
+            ++skippedCount;
+            continue;
+        }
+
+        if (!setName.empty())
+        {
+            restoredNames.insert(setName);
+        }
+        ++restoredCount;
+    }
+
+    gSavedPerAccountSettings.setLLSD("FSAOHiddenSets", newHidden);
+    LL_INFOS("AOEngine") << "Un-hiding " << restoredCount << " AO sets; skipped "
+                         << skippedCount << " name conflicts." << LL_ENDL;
+
+    if (skippedCount > 0)
+    {
+        LLSD args;
+        args["COUNT"] = skippedCount;
+        LLNotificationsUtil::add("AOSetRestoreSomeNameConflicts", args);
+    }
+
+    if (restoredCount == 0)
+    {
+        return false;
+    }
+
+    mTimerCollection.enableReloadTimer(true);
+    return true;
+}
+
+bool AOEngine::deleteHiddenSetPermanently(const LLUUID& inventoryUUID)
+{
+    if (inventoryUUID.isNull() || mAOFolder.isNull() || inventoryUUID == mAOFolder || !isSetHidden(inventoryUUID))
+    {
+        return false;
+    }
+
+    LLViewerInventoryCategory* cat = gInventory.getCategory(inventoryUUID);
+    if (!cat || cat->getParentUUID() != mAOFolder)
+    {
+        LL_WARNS("AOEngine") << "Refusing to permanently delete hidden AO set outside #AO folder: "
+                             << inventoryUUID << LL_ENDL;
+        return false;
+    }
+
+    LLSD hidden = gSavedPerAccountSettings.getLLSD("FSAOHiddenSets");
+    if (!hidden.isArray())
+    {
+        return false;
+    }
+
+    const std::string uuidStr = inventoryUUID.asString();
+    LLSD newHidden = LLSD::emptyArray();
+    for (LLSD::array_const_iterator it = hidden.beginArray(); it != hidden.endArray(); ++it)
+    {
+        if (it->asString() != uuidStr)
+        {
+            newHidden.append(*it);
+        }
+    }
+
+    LL_INFOS("AOEngine") << "Permanently deleting hidden AO set '"
+                         << getAOSetNameFromCategory(inventoryUUID)
+                         << "' (inv " << uuidStr << ")." << LL_ENDL;
+    purgeFolder(inventoryUUID);
+    gSavedPerAccountSettings.setLLSD("FSAOHiddenSets", newHidden);
     mTimerCollection.enableReloadTimer(true);
     return true;
 }
@@ -2333,6 +2462,13 @@ bool AOEngine::importNotecard(const LLInventoryItem* item)
         if (getSetByName(item->getName()))
         {
             LLNotificationsUtil::add("AOImportSetAlreadyExists", LLSD());
+            return false;
+        }
+        if (hiddenSetNameExists(item->getName()))
+        {
+            LLSD args;
+            args["AO_SET_NAME"] = item->getName();
+            LLNotificationsUtil::add("AOSetNameHiddenConflict", args);
             return false;
         }
 

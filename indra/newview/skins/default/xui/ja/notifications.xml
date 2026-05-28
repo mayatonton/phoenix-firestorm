@@ -4229,6 +4229,30 @@ https://wiki.firestormviewer.org/fs_voice
 	<notification name="NewAONameCantExist">
 		すでにその名前のアニメーションセットは存在しています。
 	</notification>
+	<notification name="AOSetNameHiddenConflict">
+		ＡＯセット「[AO_SET_NAME]」は現在非表示になっています。
+
+同じ名前で新規作成またはインポートする前に、非表示セットを再表示するか完全削除してください。
+		<usetemplate name="okbutton" yestext="ＯＫ"/>
+	</notification>
+	<notification name="AOSetRestoreNameConflict">
+		表示中の別のＡＯセットがすでに「[AO_SET_NAME]」という名前を使っているため、この非表示セットを再表示できません。
+
+先に表示中のセットを名前変更、非表示、または完全削除してください。
+		<usetemplate name="okbutton" yestext="ＯＫ"/>
+	</notification>
+	<notification name="AOSetRestoreSomeNameConflicts">
+		[COUNT] 件の非表示ＡＯセットは、表示中または今回すでに再表示したセットと名前が重複するため再表示されませんでした。
+		<usetemplate name="okbutton" yestext="ＯＫ"/>
+	</notification>
+	<notification name="AOSetDeleteHiddenConfirm">
+		非表示ＡＯセット「[AO_SET_NAME]」をインベントリから削除しますか？
+
+これは #Firestorm/#AO 配下の実フォルダを完全に削除します。同じアカウントで Firestorm 本家や他の Firestorm 派生ビューアからログインした場合も、このＡＯセットは消えます。
+
+AYAstorm からは元に戻せません。バックアップやノートカードがない場合、ＡＯデータは復元できません。
+		<usetemplate name="okcancelbuttons" notext="キャンセル" yestext="選択を削除"/>
+	</notification>
 	<notification name="RemoveAOSet">
 ＡＯセット「[AO_SET_NAME]」をＡＹＡｓｔｏｒｍ上で非表示にします。
 
