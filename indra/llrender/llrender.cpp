@@ -1162,6 +1162,13 @@ void LLRender::syncMatrices()
 
             LLVKLoader::writeCurrentPerFrameMatrixUBO(perframe);
             LLVKLoader::writeCurrentTextureMatrixUBO(texmat);
+
+            // <AYAstorm r41> sub-step 3.3-δ-2: modelview push constant 並走投入
+            // (sub-doc 03 §3.1.1 δ、案 P = getCurrentCommandBuffer() nullptr 時 no-op)。
+            // in-frame (beginFrame...endFrame 間、llappviewer.cpp:1781 display() 包み) 中の
+            // syncMatrices 呼出時に sPlaceholderLayout (γ で二段構え準拠化) 経由で投入。
+            const glm::mat4& modelview_mat = mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]];
+            LLVKLoader::pushCurrentModelviewMatrix(glm::value_ptr(modelview_mat));
         }
         // </AYAstorm r41>
 

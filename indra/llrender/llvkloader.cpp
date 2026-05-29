@@ -1573,6 +1573,37 @@ void writeCurrentTextureMatrixUBO(const TextureMatrixUBO& data)
     }
 }
 
+// r41 sub-step 3.3-δ-2: modelview push constant 投入 helper (sub-doc 03 §3.1.1 δ)
+// LLRender::syncMatrices() Vulkan path 並走で呼出、in-frame (beginFrame...endFrame 間) のみ
+// sCommandBuffer に vkCmdPushConstants(mat4 modelview_matrix / 64 B / VERTEX_BIT) 投入。
+// 未初期化 / out-of-frame / layout 未確定時は no-op (案 P 安全 gating)。
+// 現状 sPlaceholderLayout は γ で二段構え準拠化済 (push constant range 0..64 B / VERTEX_BIT)、
+// shader 側は本 push を未参照だが Vulkan validation 仕様で extra resources として許容。
+void pushCurrentModelviewMatrix(const float modelview_matrix[16])
+{
+    if (!sInitialized || !sInFrame || sPlaceholderLayout == VK_NULL_HANDLE ||
+        sCommandBuffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    vkCmdPushConstants(sCommandBuffer,
+                       sPlaceholderLayout,
+                       VK_SHADER_STAGE_VERTEX_BIT,
+                       0,
+                       64,
+                       modelview_matrix);
+
+    static bool s_first_push = true;
+    if (s_first_push)
+    {
+        s_first_push = false;
+        LL_INFOS("Vulkan") << "syncMatrices modelview push constant path active (frame_index="
+                           << sFrameIndex
+                           << ", layout=sPlaceholderLayout, range=0..64 B / VERTEX_BIT)"
+                           << LL_ENDL;
+    }
+}
+
 // r41 sub-step 3.2 smoke-test (refine 2026-05-29): sky pool 1 draw 投入
 // (sub-doc 03 §3.1 sub-step 3.2、LLDrawPoolSky::recordPoolDraws から呼出、
 // fullscreen triangle で sky blue (0.4, 0.6, 0.9, 1.0) 出力)。

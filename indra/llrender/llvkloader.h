@@ -96,6 +96,13 @@ namespace LLVKLoader
     // Vulkan 未初期化 / 未 map 時は no-op (GL path 単独動作環境で safe)。
     void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data);
     void writeCurrentTextureMatrixUBO(const TextureMatrixUBO& data);
+
+    // r41 sub-step 3.3-δ-2: modelview push constant helper (sub-doc 03 §3.1.1 δ)。
+    // in-frame (beginFrame...endFrame 間) のみ vkCmdPushConstants 投入、それ以外 no-op。
+    // 現状 sPlaceholderLayout 使用 (beginFrame で sPlaceholderPipeline bind 済、layout は γ で
+    // 二段構え準拠化 = push constant range 0..64 B / VERTEX_BIT)。実 draw call 経路への
+    // PSO bind / descriptor set bind / push 投入統合は 3.3 後続 sub-step。
+    void pushCurrentModelviewMatrix(const float modelview_matrix[16]);
 }
 
 #endif // LL_LLVKLOADER_H
