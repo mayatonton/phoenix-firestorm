@@ -360,12 +360,31 @@
 	 label_width="60"
 	 show_text="false"
 	 volume="true"
+	>
+		<slider.commit_callback
+		 function="Pref.setControlFalse"
+		 parameter="MuteStream3D"
+		/>
+	</slider>
+	<button
+	 name="mute_audio"
+	 left_pad="5"
+	 height="16"
+	 width="16"
+	 follows="top|left"
+	 layout="topleft"
+	 control_name="MuteStream3D"
+	 disabled_control="MuteAudio"
+	 image_selected="AudioMute_Off"
+	 image_unselected="Audio_Off"
+	 is_toggle="true"
+	 tab_stop="false"
 	/>
 	<check_box
 	 name="enable_stream3d_check"
 	 tool_tip="Positional 3D audio streams from prims"
 	 top_delta="2"
-	 left_pad="26"
+	 left_pad="5"
 	 height="16"
 	 width="16"
 	 follows="left|top"

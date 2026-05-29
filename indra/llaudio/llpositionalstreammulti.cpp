@@ -57,6 +57,15 @@ namespace
         return true;
     }
 
+    bool isAllowedStream3DUrlScheme(const std::string& url)
+    {
+        std::string lowered(url);
+        LLStringUtil::trim(lowered);
+        LLStringUtil::toLower(lowered);
+        return lowered.compare(0, 7, "http://") == 0 ||
+               lowered.compare(0, 8, "https://") == 0;
+    }
+
     size_t nextPow2(size_t v)
     {
         size_t p = 1;
@@ -332,6 +341,12 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     if (clean_url.empty())
     {
         LL_WARNS("Stream3D") << "Refusing to start multi stream with empty URL" << LL_ENDL;
+        return false;
+    }
+    if (!isAllowedStream3DUrlScheme(clean_url))
+    {
+        LL_WARNS("Stream3D") << "Refusing to start multi stream with unsupported URL scheme: "
+                              << clean_url << LL_ENDL;
         return false;
     }
 

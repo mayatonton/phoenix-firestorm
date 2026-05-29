@@ -666,6 +666,9 @@ with the same filename but different name
   <texture name="Music_Off" file_name="icons/Music_Off.png" preload="true" />
   <texture name="Music_Over" file_name="icons/Music_Over.png" preload="true" />
   <texture name="Music_Press" file_name="icons/Music_Press.png" preload="true" />
+  <texture name="3dstream_Off" file_name="icons/3dstream_Off.png" preload="true" />
+  <texture name="3dstream_Over" file_name="icons/3dstream_Over.png" preload="true" />
+  <texture name="3dstream_Press" file_name="icons/3dstream_Press.png" preload="true" />
 
   <texture name="ProgressBar" file_name="widgets/ProgressBar.png" preload="true" scale.left="4" scale.top="11" scale.right="48" scale.bottom="3" />
   <texture name="ProgressBarSolid" file_name="widgets/ProgressBarSolid.png" preload="true" scale.left="4" scale.top="11" scale.right="48" scale.bottom="3" />

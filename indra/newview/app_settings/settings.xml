@@ -28704,6 +28704,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>0.5</real>
     </map>
+    <key>MuteStream3D</key>
+    <map>
+      <key>Comment</key>
+      <string>3D Stream plays at 0 volume.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>Stream3DReconnectAttempts</key>
     <map>
       <key>Comment</key>
@@ -28718,18 +28729,18 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Stream3DEnabled</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm M8: Master kill switch for the positional stream feature. When false, every active prim and debug stream is torn down immediately, polling stops, and new debug toggles are refused. Re-enabling does NOT re-bind by itself; M3b polling will re-discover tagged prims on its next pass.</string>
+      <string>AYAstorm M8: Master kill switch for the positional stream feature. When false, every active prim and debug stream is torn down immediately, polling stops, and new debug toggles are refused. Defaults off so users explicitly opt in before in-world Description tags can trigger external 3D Stream URLs.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>0</integer>
     </map>
     <key>Stream3DDescriptionScan</key>
     <map>
       <key>Comment</key>
-      <string>AYAstorm M8: When false, prim Description tags are no longer scanned (active polling stops, ObjectProperties replies are ignored) and ALL prim-bound streams are torn down. Debug streams are unaffected. Re-enabling will re-discover tagged prims on the next polling pass.</string>
+      <string>AYAstorm M8: Advanced developer setting for prim Description tag scanning. When false, active polling stops, ObjectProperties replies are ignored, and all prim-bound streams are torn down. Defaults on so the user-facing Stream3DEnabled setting is the opt-in; URL sources still require per-URL playback confirmation.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

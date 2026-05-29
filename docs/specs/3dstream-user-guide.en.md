@@ -2,7 +2,7 @@
 
 > **Language / 言語 / 语言**: **English** · [日本語](./3dstream-user-guide.ja.md) · [中文](./3dstream-user-guide.zh.md)
 
-**Available in**: AYAstorm r31 and later.
+**Available in**: AYAstorm r31 and later. In r32 and later, 3D Stream is disabled by default.
 
 **Audience**: Streamers, DJs, live venue owners, and builders of exhibition, cinema, or event spaces.
 
@@ -23,7 +23,17 @@ Typical uses:
 - Spatial placement of a 5.1ch source
 - Routing MOAP screen audio to the screen position or to venue speakers
 
-## 2. Minimal Setup: One Prim
+## 2. Before Playback: Enable and Allow
+
+3D Stream is disabled by default. To use it, enable it from the status bar 3D Stream button, the 3D Stream checkbox in the volume popup, or the 3D Stream control in **Preferences > Sound**.
+
+When a 3D Stream tag uses `{url:...}`, the viewer shows a confirmation dialog before the first playback from that URL. Playback starts only if the user allows it. If the user denies it, that URL does not play during the same viewer session, and the viewer does not repeatedly ask for the same URL.
+
+URL sources can use `http://` and `https://`. Other schemes are not played.
+
+`{source:media}` routes audio from a MOAP / media face in the same linkset into 3D Stream. It does not make 3D Stream open a new URL directly, so it follows the normal media display and playback permission flow.
+
+## 3. Minimal Setup: One Prim
 
 Write the following in the prim **Description**:
 
@@ -41,7 +51,7 @@ To adjust distance attenuation:
 
 `min` is the near distance where volume remains 100%. `max` is the far distance where volume reaches 0%.
 
-## 3. Place Left/Right Speakers
+## 4. Place Left/Right Speakers
 
 Link two or more prims and assign a role to the root and child prims.
 
@@ -61,7 +71,7 @@ The root becomes the left speaker, and the child prim becomes the right speaker.
 
 You can assign the same channel to more than one speaker. For example, if multiple prims have `{ch:L}`, all of them play the L channel.
 
-## 4. 5.1ch / Multi-speaker Layouts
+## 5. 5.1ch / Multi-speaker Layouts
 
 For a 5.1ch source, place prims for each channel.
 
@@ -92,7 +102,7 @@ To expand a stereo stream to a 6-speaker layout, add `{upmix:on}` to the root ta
 
 If `{upmix:on}` is attached to a 5.1ch source, the viewer detects the 6ch source and automatically bypasses upmixing.
 
-## 5. Use MOAP / Media Audio as a 3D Stream Source
+## 6. Use MOAP / Media Audio as a 3D Stream Source
 
 Instead of an HTTP URL, you can use a media face inside the same linkset as the audio source.
 
@@ -116,7 +126,7 @@ If the linkset has multiple media faces, choose the target face on the root tag 
 
 `{url:...}` and `{source:media}` cannot be used together in the same 3D Stream source declaration. If you want to show a media screen while positioning a separate URL stream in 3D, keep the 3D Stream tag as `{url:...}` and let the media face behave as normal MOAP.
 
-## 6. Sound Adjustments
+## 7. Sound Adjustments
 
 Common controls:
 
@@ -133,7 +143,7 @@ If omitted, `binaural` is `off` and `venue` is `dry`. Start by checking the spea
 
 Venue reverb is easier to tune when the streamed source itself does not already contain heavy reverb.
 
-## 7. Behavior in Other Viewers
+## 8. Behavior in Other Viewers
 
 3D Stream tags are AYAstorm-specific. Mainline Firestorm, the official Second Life Viewer, Catznip, and other viewers do not interpret them as 3D Stream.
 
@@ -142,11 +152,12 @@ Venue reverb is easier to tune when the streamed source itself does not already 
 - `{ch:...}` routing, upmix, binaural, and venue reverb apply only for AYAstorm users
 - Parcel music, if configured, remains audible in other viewers as usual
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Check |
 |---|---|
 | No sound | Make sure 3D Stream is enabled in Preferences and the volume is not zero |
+| A URL stream confirmation appears | A new `{url:...}` source must be allowed before playback |
 | Only one side plays | Make sure both `{ch:L}` and `{ch:R}` exist in the linkset |
 | `{source:media}` does not play | Make sure the media face is in the same linkset, and specify `{link}` / `{face}` if needed |
 | Some 5.1ch channels are silent | Make sure corresponding speaker prims such as `{ch:FL}` exist |
@@ -155,7 +166,7 @@ Venue reverb is easier to tune when the streamed source itself does not already 
 
 While checking a layout, enable **Preferences > Sound > Show channel routing diagnostics in chat** to see in Local Chat which prim is playing which channel.
 
-## 9. Detailed References
+## 10. Detailed References
 
 - Full key list and error messages: [3D Stream Tag Format Guide](../guides/3dstream-tag-guide.en.md)
 - Opus 6ch streaming tool: [SurroundStreamer](https://github.com/t-noami/SurroundStreamer)

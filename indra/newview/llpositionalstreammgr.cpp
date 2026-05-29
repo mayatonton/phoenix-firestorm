@@ -41,6 +41,7 @@
 #include "llviewerobject.h"
 #include "llviewerobjectlist.h"
 #include "llviewermedia.h"
+#include "llviewerparcelmedia.h"
 #include "llvovolume.h"
 
 #include "llagent.h"
@@ -142,6 +143,20 @@ namespace
         }
 
         return nullptr;
+    }
+
+    F32 stream3DVolumeMaster()
+    {
+        if (gSavedSettings.getBOOL("MuteStream3D"))
+        {
+            return 0.f;
+        }
+        return gSavedSettings.getF32("Stream3DVolumeMaster");
+    }
+
+    F32 effectiveStream3DVolumeMaster(F32 volume)
+    {
+        return gSavedSettings.getBOOL("MuteStream3D") ? 0.f : volume;
     }
 
     F32 effectiveDistributedStreamVolume(
@@ -965,6 +980,125 @@ void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
 }
 
 // static
+bool LLPositionalStreamMgr::isStream3DUrlSchemeAllowed(const std::string& url)
+{
+    std::string clean_url(url);
+    LLStringUtil::trim(clean_url);
+    std::string lowered(clean_url);
+    LLStringUtil::toLower(lowered);
+    return lowered.compare(0, 7, "http://") == 0 ||
+           lowered.compare(0, 8, "https://") == 0;
+}
+
+LLPositionalStreamMgr::UrlPermissionDecision
+LLPositionalStreamMgr::checkUrlPermissionForStream3D(const std::string& url,
+                                                     const LLUUID& source_id,
+                                                     bool distributed)
+{
+    std::string clean_url(url);
+    LLStringUtil::trim(clean_url);
+
+    if (!isStream3DUrlSchemeAllowed(clean_url))
+    {
+        LL_WARNS("Stream3D") << "Blocking 3D Stream URL with unsupported scheme: "
+                              << clean_url << LL_ENDL;
+        notifyStream3D("blocked unsupported URL scheme: " + clean_url);
+        return UrlPermissionDecision::Block;
+    }
+
+    if (mSessionAllowedStream3DUrls.find(clean_url) != mSessionAllowedStream3DUrls.end())
+    {
+        return UrlPermissionDecision::Allow;
+    }
+    if (mSessionDeniedStream3DUrls.find(clean_url) != mSessionDeniedStream3DUrls.end())
+    {
+        return UrlPermissionDecision::Block;
+    }
+
+    LLViewerParcelMedia* media_filter = LLViewerParcelMedia::getInstance();
+    switch (media_filter->classifyMediaFilterUrl(clean_url, true))
+    {
+        case LLViewerParcelMedia::MediaFilterResult::Allow:
+            return UrlPermissionDecision::Allow;
+        case LLViewerParcelMedia::MediaFilterResult::Deny:
+            LL_INFOS("Stream3D") << "3D Stream URL blocked by media filter: "
+                                  << clean_url << LL_ENDL;
+            notifyStream3D("blocked by media filter: " + clean_url);
+            return UrlPermissionDecision::Block;
+        case LLViewerParcelMedia::MediaFilterResult::Ask:
+            break;
+    }
+
+    if (distributed)
+    {
+        mPendingStream3DDistByUrl[clean_url].insert(source_id);
+    }
+    else
+    {
+        mPendingStream3DMonoByUrl[clean_url].insert(source_id);
+    }
+
+    if (mPendingStream3DUrlPrompts.insert(clean_url).second)
+    {
+        LL_INFOS("Stream3D") << "Requesting user permission for 3D Stream URL: "
+                              << clean_url << LL_ENDL;
+        media_filter->promptStream3DUrl(
+            clean_url,
+            [clean_url](bool allowed)
+            {
+                LLPositionalStreamMgr::instance().onStream3DUrlPermissionResult(
+                    clean_url, allowed);
+            });
+    }
+
+    return UrlPermissionDecision::Pending;
+}
+
+void LLPositionalStreamMgr::onStream3DUrlPermissionResult(const std::string& url,
+                                                         bool allowed)
+{
+    std::string clean_url(url);
+    LLStringUtil::trim(clean_url);
+
+    mPendingStream3DUrlPrompts.erase(clean_url);
+
+    std::set<LLUUID> mono_ids;
+    if (auto mono_it = mPendingStream3DMonoByUrl.find(clean_url);
+        mono_it != mPendingStream3DMonoByUrl.end())
+    {
+        mono_ids = mono_it->second;
+        mPendingStream3DMonoByUrl.erase(mono_it);
+    }
+
+    std::set<LLUUID> dist_roots;
+    if (auto dist_it = mPendingStream3DDistByUrl.find(clean_url);
+        dist_it != mPendingStream3DDistByUrl.end())
+    {
+        dist_roots = dist_it->second;
+        mPendingStream3DDistByUrl.erase(dist_it);
+    }
+
+    if (!allowed)
+    {
+        LL_INFOS("Stream3D") << "User denied 3D Stream URL: " << clean_url << LL_ENDL;
+        mSessionDeniedStream3DUrls.insert(clean_url);
+        return;
+    }
+
+    LL_INFOS("Stream3D") << "User allowed 3D Stream URL: " << clean_url << LL_ENDL;
+    mSessionDeniedStream3DUrls.erase(clean_url);
+    mSessionAllowedStream3DUrls.insert(clean_url);
+    for (const LLUUID& id : mono_ids)
+    {
+        evaluateBinding(id);
+    }
+    for (const LLUUID& root_id : dist_roots)
+    {
+        mPendingLinksetEval.insert(root_id);
+    }
+}
+
+// static
 bool LLPositionalStreamMgr::effectiveBinaural(std::optional<bool> tag_value)
 {
     // r11 P5 / r31 policy: debug override (sentinel `-1` = follow tag)
@@ -1611,6 +1745,17 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
                                llformat("declared=%d, used=%d", total, kMaxSpeakers));
     }
 
+    if (!source_is_media)
+    {
+        const UrlPermissionDecision permission =
+            checkUrlPermissionForStream3D(url, root_id, true);
+        if (permission != UrlPermissionDecision::Allow)
+        {
+            teardownDistributedBinding(root_id);
+            return;
+        }
+    }
+
     // r8 F3-3: detect "no audible change" so we can keep the running stream
     // when an unrelated tag in the linkset is re-polled. Comparison covers
     // url + element-wise speaker tuple (prim, ch, range); volume is excluded
@@ -1774,7 +1919,7 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     binding.next_retry_time = 0.0;
     auto stream = std::make_unique<LLPositionalStreamMulti>();
     stream->setVolume(effectiveDistributedStreamVolume(
-        gSavedSettings.getF32("Stream3DVolumeMaster"),
+        stream3DVolumeMaster(),
         binding.parcel_audible,
         source_is_media,
         binding.media_source_uses_viewer_volume,
@@ -2352,6 +2497,13 @@ void LLPositionalStreamMgr::evaluateMonoBinding(const LLUUID& id, const TagData&
         mBindings.erase(bind_it);
     }
 
+    const UrlPermissionDecision permission =
+        checkUrlPermissionForStream3D(tag.url, id, false);
+    if (permission != UrlPermissionDecision::Allow)
+    {
+        return;
+    }
+
     const S32 cap = gSavedSettings.getS32("Stream3DMaxConcurrent");
     if (cap > 0 && static_cast<S32>(mBindings.size()) >= cap)
     {
@@ -2369,7 +2521,7 @@ void LLPositionalStreamMgr::evaluateMonoBinding(const LLUUID& id, const TagData&
 
     auto stream = std::make_unique<LLPositionalStream>();
     stream->setRolloffDistances(want_min, want_max);
-    stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+    stream->setVolume(stream3DVolumeMaster());
     if (!stream->start(tag.url, pos))
     {
         return;
@@ -2516,11 +2668,24 @@ void LLPositionalStreamMgr::update()
             }
             else if (now >= b.next_retry_time)
             {
+                const UrlPermissionDecision permission =
+                    checkUrlPermissionForStream3D(b.url, id, false);
+                if (permission != UrlPermissionDecision::Allow)
+                {
+                    if (permission == UrlPermissionDecision::Block)
+                    {
+                        it = mBindings.erase(it);
+                        continue;
+                    }
+                    b.next_retry_time = now + kRetryDelay;
+                    ++it;
+                    continue;
+                }
                 ++b.reconnect_attempts;
                 b.next_retry_time = 0.0;
                 const LLVector3 pos = toFloatVec(obj->getPositionGlobal());
                 b.stream->setRolloffDistances(b.applied_min, b.applied_max);
-                b.stream->setVolume(gSavedSettings.getF32("Stream3DVolumeMaster"));
+                b.stream->setVolume(stream3DVolumeMaster());
                 // r23: reset the idempotent guard so the per-poll push next
                 // frame applies the parcel gate to the fresh FMOD channel.
                 b.last_pushed_volume = std::numeric_limits<F32>::quiet_NaN();
@@ -2569,7 +2734,7 @@ void LLPositionalStreamMgr::update()
         // SOUND_LOCAL rule), and skip the FMOD setVolume call when the
         // effective value hasn't changed since the last push.
         {
-            const F32 master_vol = gSavedSettings.getF32("Stream3DVolumeMaster");
+            const F32 master_vol = stream3DVolumeMaster();
             const F32 effective_vol = b.parcel_audible ? master_vol : 0.f;
             if (std::isnan(b.last_pushed_volume) || b.last_pushed_volume != effective_vol)
             {
@@ -2696,6 +2861,23 @@ void LLPositionalStreamMgr::update()
             }
             else if (now_dist >= b.next_retry_time)
             {
+                if (b.source_key.kind == DistSourceKind::Url)
+                {
+                    const UrlPermissionDecision permission =
+                        checkUrlPermissionForStream3D(b.url, root_id, true);
+                    if (permission != UrlPermissionDecision::Allow)
+                    {
+                        if (permission == UrlPermissionDecision::Block)
+                        {
+                            dead_roots.push_back(root_id);
+                        }
+                        else
+                        {
+                            b.next_retry_time = now_dist + kRetryDelayDist;
+                        }
+                        continue;
+                    }
+                }
                 ++b.reconnect_attempts;
                 b.next_retry_time = 0.0;
                 std::vector<LLPositionalStreamMulti::SpeakerConfig> configs;
@@ -2720,7 +2902,7 @@ void LLPositionalStreamMgr::update()
                         ? findMediaFor3DSource(b.source_key)
                         : nullptr;
                 b.stream->setVolume(effectiveDistributedStreamVolume(
-                    gSavedSettings.getF32("Stream3DVolumeMaster"),
+                    stream3DVolumeMaster(),
                     b.parcel_audible,
                     b.source_key.kind == DistSourceKind::Media,
                     b.media_source_uses_viewer_volume,
@@ -2842,7 +3024,7 @@ void LLPositionalStreamMgr::update()
         // also keeps the existing media UI/global volume semantics as a
         // source gain before per-speaker volume is applied by llaudio.
         {
-            const F32 master_vol = gSavedSettings.getF32("Stream3DVolumeMaster");
+            const F32 master_vol = stream3DVolumeMaster();
             const bool is_media_source = b.source_key.kind == DistSourceKind::Media;
             LLViewerMediaImpl* media = is_media_source
                 ? findMediaFor3DSource(b.source_key)
@@ -2962,6 +3144,11 @@ void LLPositionalStreamMgr::shutdownPrimBindings()
     mPriorityPollQueue.clear();
     // r8 F8: deferred re-evaluations referenced roots we just tore down.
     mPendingLinksetEval.clear();
+    mPendingStream3DUrlPrompts.clear();
+    mPendingStream3DMonoByUrl.clear();
+    mPendingStream3DDistByUrl.clear();
+    mSessionAllowedStream3DUrls.clear();
+    mSessionDeniedStream3DUrls.clear();
     // r8 F11: drain pending deselects synchronously instead of just clearing
     // — otherwise a kill-switch toggle within the 1 s hold window would leave
     // phantom selections on the sim. Forcing now=+infinity makes drainChild
@@ -3031,6 +3218,7 @@ void LLPositionalStreamMgr::forceRescan()
 
 void LLPositionalStreamMgr::applyMasterVolume(F32 volume)
 {
+    volume = effectiveStream3DVolumeMaster(volume);
     if (mDebugStream)
     {
         mDebugStream->setVolume(volume);
@@ -3131,6 +3319,33 @@ void LLPositionalStreamMgr::stopDebug()
         mDebugStream->stop();
         mDebugStream.reset();
     }
+}
+
+bool LLPositionalStreamMgr::isAnyStreamPlaying() const
+{
+    if (mDebugStream && mDebugStream->isPlaying())
+    {
+        return true;
+    }
+    if (mDebugStereoStream && mDebugStereoStream->isPlaying())
+    {
+        return true;
+    }
+    for (const auto& [id, binding] : mBindings)
+    {
+        if (binding.stream && binding.stream->isPlaying())
+        {
+            return true;
+        }
+    }
+    for (const auto& [root_id, binding] : mDistributedBindings)
+    {
+        if (binding.stream && binding.stream->isPlaying())
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 void LLPositionalStreamMgr::startDebugStereo(const std::string& url,

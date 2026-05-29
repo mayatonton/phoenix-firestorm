@@ -609,7 +609,24 @@
          show_text="false"
          slider_label.halign="right"
          volume="true"
-         width="300"/>
+         width="300">
+            <slider.commit_callback
+             function="Pref.setControlFalse"
+             parameter="MuteStream3D" />
+        </slider>
+        <button
+         control_name="MuteStream3D"
+         disabled_control="MuteAudio"
+         follows="top|left"
+         height="16"
+         image_selected="AudioMute_Off"
+         image_unselected="Audio_Off"
+         is_toggle="true"
+         layout="topleft"
+         left_pad="5"
+         name="mute_audio"
+         tab_stop="false"
+         width="16" />
         <check_box
          label_text.halign="left"
          follows="left|top"
@@ -618,9 +635,9 @@
          label="Enabled"
          layout="topleft"
          top_delta="2"
-         left_pad="26"
+         left_pad="5"
          name="enable_stream3d_check_volume"
-         tool_tip="Positional 3D audio streams that prims publish via Description tags. Unlike parcel music, these streams start automatically based on what is in-world."
+         tool_tip="Enable 3D Stream. External stream URLs ask before playback."
          width="110"/>
         <check_box
          label_text.halign="left"
