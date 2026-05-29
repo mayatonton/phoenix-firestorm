@@ -2983,6 +2983,10 @@ URL：[AUDIOURL]
 
 域名：[AUDIODOMAIN]
 URL：[AUDIOURL]
+
+物件：[OBJECTNAME]
+擁有者：[OWNERNAME]
+使用者名稱：[OWNERUSERNAME]
 		<form name="form">
 			<button name="Allow" text="允許"/>
 			<button name="Deny" text="拒絕"/>
@@ -2993,6 +2997,10 @@ URL：[AUDIOURL]
 
 域名：[AUDIODOMAIN]
 URL：[AUDIOURL]
+
+物件：[OBJECTNAME]
+擁有者：[OWNERNAME]
+使用者名稱：[OWNERUSERNAME]
 		<form name="form">
 			<button name="Do Now" text="現在[ACTION]"/>
 			<button name="RememberDomain" text="[CONDITION]允許此域名"/>

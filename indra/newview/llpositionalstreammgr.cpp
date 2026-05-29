@@ -802,7 +802,9 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
 }
 
 void LLPositionalStreamMgr::onObjectPropertiesReceived(const LLUUID& id,
-                                                       const std::string& description)
+                                                       const std::string& description,
+                                                       const std::string& object_name,
+                                                       const LLUUID& owner_id)
 {
     if (id.isNull())
     {
@@ -826,6 +828,14 @@ void LLPositionalStreamMgr::onObjectPropertiesReceived(const LLUUID& id,
     // (e.g., teleport out and back) need to re-bind even when the text matches.
     auto& entry = mDescriptionCache[id];
     entry.description = description;
+    if (!object_name.empty())
+    {
+        entry.object_name = object_name;
+    }
+    if (owner_id.notNull())
+    {
+        entry.owner_id = owner_id;
+    }
     const F64 reply_now = LLTimer::getElapsedSeconds();
     entry.last_polled  = reply_now;
     entry.last_replied = reply_now;
@@ -1042,8 +1052,18 @@ LLPositionalStreamMgr::checkUrlPermissionForStream3D(const std::string& url,
     {
         LL_INFOS("Stream3D") << "Requesting user permission for 3D Stream URL: "
                               << clean_url << LL_ENDL;
+        std::string object_name;
+        LLUUID owner_id;
+        if (auto source_it = mDescriptionCache.find(source_id);
+            source_it != mDescriptionCache.end())
+        {
+            object_name = source_it->second.object_name;
+            owner_id = source_it->second.owner_id;
+        }
         media_filter->promptStream3DUrl(
             clean_url,
+            object_name,
+            owner_id,
             [clean_url](bool allowed)
             {
                 LLPositionalStreamMgr::instance().onStream3DUrlPermissionResult(

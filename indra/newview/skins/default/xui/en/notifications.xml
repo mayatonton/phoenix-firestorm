@@ -7560,6 +7560,10 @@ This parcel provides a 3D audio stream from:
 
 Domain: [AUDIODOMAIN]
 URL: [AUDIOURL]
+
+Object: [OBJECTNAME]
+Owner: [OWNERNAME]
+Username: [OWNERUSERNAME]
    <form name="form">
     <button
          index="0"
@@ -7580,6 +7584,10 @@ Do you want to remember your choice and [LCONDITION] allow 3D audio streams from
 
 Domain: [AUDIODOMAIN]
 URL: [AUDIOURL]
+
+Object: [OBJECTNAME]
+Owner: [OWNERNAME]
+Username: [OWNERUSERNAME]
    <form name="form">
     <button
          index="0"

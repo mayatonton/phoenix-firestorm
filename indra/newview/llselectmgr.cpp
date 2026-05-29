@@ -6225,7 +6225,7 @@ void LLSelectMgr::processObjectProperties(LLMessageSystem* msg, void** user_data
         msg->getStringFast(_PREHASH_ObjectData, _PREHASH_Description, desc, i);
 
         // <FS:AYA> [PositionalStream] feed Description into positional stream mgr
-        LLPositionalStreamMgr::instance().onObjectPropertiesReceived(id, desc);
+        LLPositionalStreamMgr::instance().onObjectPropertiesReceived(id, desc, name, owner_id);
         // </FS:AYA>
         // <FS:AYA> [r13 spike] feed Description into OBB occlusion mgr
         LLOcclusionGeometryMgr::instance().onObjectPropertiesReceived(id, desc);
@@ -6444,7 +6444,7 @@ void LLSelectMgr::processObjectPropertiesFamily(LLMessageSystem* msg, void** use
     msg->getStringFast(_PREHASH_ObjectData, _PREHASH_Description, desc);
 
     // <FS:AYA> [PositionalStream] feed Description into positional stream mgr
-    LLPositionalStreamMgr::instance().onObjectPropertiesReceived(id, desc);
+    LLPositionalStreamMgr::instance().onObjectPropertiesReceived(id, desc, name, owner_id);
     // </FS:AYA>
     // <FS:AYA> [r13 spike] feed Description into OBB occlusion mgr
     LLOcclusionGeometryMgr::instance().onObjectPropertiesReceived(id, desc);
@@ -9347,4 +9347,3 @@ bool LLCheckIdenticalFunctor<class LLFace *>::same(class LLFace* const & a, clas
     (void)tolerance;                                                                \
     return a == b;                                                                  \
 }
-

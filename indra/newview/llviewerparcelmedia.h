@@ -29,6 +29,7 @@
 
 #include "llviewermedia.h"
 #include "llparcel.h"
+#include "lluuid.h"
 
 #include <functional>
 
@@ -65,7 +66,10 @@ public:
     typedef std::function<void(bool allowed)> stream3d_url_callback_t;
     MediaFilterResult classifyMediaFilterUrl(const std::string& media_url,
                                              bool require_prompt_if_unknown = false);
-    void promptStream3DUrl(const std::string& media_url, stream3d_url_callback_t callback);
+    void promptStream3DUrl(const std::string& media_url,
+                           const std::string& object_name,
+                           const LLUUID& owner_id,
+                           stream3d_url_callback_t callback);
     // side-effect-free media filter helpers used by AYAstorm Stream3D URL sources
     std::string extractDomain(std::string url);
     // helper function to extract domain from url and conve

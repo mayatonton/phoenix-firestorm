@@ -59,7 +59,10 @@ public:
     // Called from the message handlers that decode ObjectProperties /
     // ObjectPropertiesFamily. Caches the description, and (re)evaluates
     // whether this prim should be bound to a stream.
-    void onObjectPropertiesReceived(const LLUUID& id, const std::string& description);
+    void onObjectPropertiesReceived(const LLUUID& id,
+                                    const std::string& description,
+                                    const std::string& object_name = std::string(),
+                                    const LLUUID& owner_id = LLUUID::null);
 
     // Apply a global default rolloff to all currently-active streams.
     // Per-prim tags that explicitly set min/max are NOT overridden.
@@ -700,6 +703,8 @@ private:
     struct CacheEntry
     {
         std::string description;
+        std::string object_name;
+        LLUUID owner_id;
         // Monotonic seconds (LLTimer::getElapsedSeconds) of the most recent
         // request send. 0 means "never sent". Round-robin re-poll uses this
         // to space sends out at Stream3DPollInterval. Priority drain uses it

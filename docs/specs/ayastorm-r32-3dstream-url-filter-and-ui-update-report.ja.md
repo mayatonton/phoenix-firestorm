@@ -11,6 +11,7 @@
 - [修正内容](#修正内容)
 - [実機確認結果](#実機確認結果)
 - [主な変更ファイル](#主な変更ファイル)
+- [ローカライズ](#ローカライズ)
 - [修正後の仕様](#修正後の仕様)
 - [結論](#結論)
 
@@ -98,15 +99,19 @@ manager 側だけでなく、`LLPositionalStream::start()` / `LLPositionalStream
 
 3D Stream URL source 用に `Stream3DAudioAlert` / `Stream3DAudioAlert2` を追加した。
 
-表示内容は、接続先 domain / URL とユーザー選択に絞り、土地音楽の確認 dialog に近い構成とした。
+表示内容は、接続先 domain / URL、音源を提供した object、object owner を確認できる形にし、土地音楽の確認 dialog に近い構成とした。
 
 基本 dialog:
 
 ```xml
-This object provides a 3D audio stream from:
+This parcel provides a 3D audio stream from:
 
 Domain: [AUDIODOMAIN]
 URL: [AUDIOURL]
+
+Object: [OBJECTNAME]
+Owner: [OWNERNAME]
+Username: [OWNERUSERNAME]
 ```
 
 選択肢:
@@ -118,7 +123,19 @@ URL: [AUDIOURL]
 - Never Allow This Domain
 - Never Allow This URL
 
-### 6. 3D Stream UI を追加・調整
+### 6. 音源 object / owner 情報を permission dialog に表示
+
+3D Stream の URL source は object Description 由来であるため、permission dialog に以下の情報を追加した。
+
+- `Object`: object name
+- `Owner`: owner の display name。display name がない場合は username を表示する。
+- `Username`: owner の legacy username。クリック可能なプロフィールリンクとして表示する。
+
+実装上は、object properties 受信時に `object_name` と `owner_id` を 3D Stream manager の cache に保持し、URL source の permission gate へ渡す。
+
+owner 表示名は `LLAvatarNameCache` から取得する。cache 未取得の場合も permission dialog の表示は遅延させず、プロフィールリンクは owner UUID を使って生成する。
+
+### 7. 3D Stream UI を追加・調整
 
 ステータスバーの media controls に 3D Stream button を追加した。
 
@@ -128,7 +145,7 @@ URL: [AUDIOURL]
 
 また、ステータスバー右側 panel の幅は広げず、時刻表示幅を調整して既存領域に収めた。これにより、FPS 表示やシミュレーターバージョン表示用の区画情報領域を右へ押し出さない。
 
-### 7. 音量 UI を追加
+### 8. 音量 UI を追加
 
 Preferences の Sound パネルとステータスバーの volume pulldown に 3D Stream の音量行を追加した。
 
@@ -139,6 +156,19 @@ Preferences の Sound パネルとステータスバーの volume pulldown に 3
 - `Stream3DEnabled` checkbox
 
 日本語 XUI では、既存の音量行と同じ幅になるよう `Stream3D Volume` の label / slider 幅を上書きした。
+
+### 9. 日本語 permission dialog の文言を調整
+
+日本語 XUI の media filter 2段目確認 dialog では、`[CONDITION]` / `[LCONDITION]` の位置によって拒否時の文言が不自然になる箇所があった。
+
+以下の notification で、既存の置換値は維持したまま、文中の位置を調整した。
+
+- `MediaAlert2`
+- `AudioAlert2`
+- `Stream3DAudioAlert2`
+- `AudioAlertSingle`
+
+これにより、拒否側の表示は `常に不許可` のように文として連結される。
 
 ## 実機確認結果
 
@@ -152,6 +182,7 @@ macOS 実機で以下を確認済み。
 - unsupported scheme は再生前に拒否される。
 - 3D Stream 再生中、ステータスバーの 3D Stream button は pause 表示になる。
 - volume pulldown の 3D Stream 行は、他の音量行と同じ幅・配置で表示される。
+- 3D Stream permission dialog に object name、owner display name、owner username が表示される。
 - 通常 MOAP / parcel media の再生経路は維持される。
 - `{source:media}` で 3D Stream に渡す media 音声について、実機上の再生挙動に問題がないことを確認した。
 
@@ -160,6 +191,7 @@ macOS 実機で以下を確認済み。
 - `indra/newview/app_settings/settings.xml`
 - `indra/newview/llpositionalstreammgr.cpp`
 - `indra/newview/llpositionalstreammgr.h`
+- `indra/newview/llselectmgr.cpp`
 - `indra/llaudio/llpositionalstream.cpp`
 - `indra/llaudio/llpositionalstreammulti.cpp`
 - `indra/newview/llviewerparcelmedia.cpp`
@@ -168,6 +200,8 @@ macOS 実機で以下を確認済み。
 - `indra/newview/llstatusbar.cpp`
 - `indra/newview/llstatusbar.h`
 - `indra/newview/skins/default/xui/en/notifications.xml`
+- `indra/newview/skins/default/xui/ja/notifications.xml`
+- `indra/newview/skins/default/xui/zh/notifications.xml`
 - `indra/newview/skins/default/xui/en/panel_preferences_sound.xml`
 - `indra/newview/skins/default/xui/en/panel_status_bar.xml`
 - `indra/newview/skins/default/xui/ja/panel_status_bar.xml`
@@ -179,6 +213,14 @@ macOS 実機で以下を確認済み。
 - `indra/newview/skins/default/textures/icons/3dstream_Over.png`
 - `indra/newview/skins/default/textures/icons/3dstream_Press.png`
 
+## ローカライズ
+
+3D Stream permission dialog の通知文は、英語・日本語・中国語 XUI に反映した。
+
+他言語の XUI に該当 notification がない場合は、既存の viewer 挙動に従って英語表記へ fallback する。
+
+日本語では、`[CONDITION]` / `[LCONDITION]` の位置を調整し、拒否時の文言が `常に不許可` と読めるようにした。英語と中国語は、既存の語順で `never allow` / `從不允許` と自然に連結されるため、同じ位置調整は不要と判断した。
+
 ## 修正後の仕様
 
 修正後の 3D Stream URL source は、以下の仕様で扱う。
@@ -189,7 +231,9 @@ macOS 実機で以下を確認済み。
 4. URL source は FMOD に渡す前に allow / deny / prompt を通す。
 5. Deny または unsupported scheme は fail-closed とする。
 6. `{source:media}` は URL source ではなく、既存 MOAP media ring を 3D Stream の定位処理に使う。
-7. 通常 MOAP / parcel media の既存 permission model は変更しない。
+7. permission dialog には URL source を提供した object name、owner display name、owner username を表示する。
+8. owner username はプロフィールリンクとして表示し、クリックすると owner profile を開ける。
+9. 通常 MOAP / parcel media の既存 permission model は変更しない。
 
 ## 結論
 
