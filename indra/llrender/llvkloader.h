@@ -103,6 +103,42 @@ namespace LLVKLoader
     // 二段構え準拠化 = push constant range 0..64 B / VERTEX_BIT)。実 draw call 経路への
     // PSO bind / descriptor set bind / push 投入統合は 3.3 後続 sub-step。
     void pushCurrentModelviewMatrix(const float modelview_matrix[16]);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 3.3-C-β-1: dynamic rendering attachment + begin/end helper
+    // sub-doc 03 §3.1.2 (AYA 確定 2026-05-29、案 A 承認)
+    //
+    // LLRenderTarget::bindTarget() / flush() の Vulkan path 並走で使用。
+    // 3.3-C は API surface 並走化のみで、VkImage / VkImageView 実体作成 +
+    // 実 attachment 提供は領域 7 sub-step 7.5 移管 (sub-doc 07 §1.2.3 + §3.1
+    // sub-step 7.5)。3.3-C-β-2 以降の transit smoke では placeholder image view
+    // (nullable) を渡す。実 attachment 提供は領域 7 sub-step 7.5 で本配線。
+    // ------------------------------------------------------------------
+
+    // color × ≤4 + depth × 1 の attachment 1 件記述 (VkRenderingAttachmentInfoKHR の wrap)。
+    // β-2 transit smoke では image_view = VK_NULL_HANDLE 可 (helper 側で skip 判定)。
+    struct DynamicRenderingAttachment
+    {
+        VkImageView         image_view;     // β-2 transit smoke は VK_NULL_HANDLE 可、sub-step 7.5 で実 view 提供
+        VkImageLayout       image_layout;   // 通例 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL / VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+        VkAttachmentLoadOp  load_op;        // VK_ATTACHMENT_LOAD_OP_CLEAR / LOAD / DONT_CARE
+        VkAttachmentStoreOp store_op;       // VK_ATTACHMENT_STORE_OP_STORE / DONT_CARE
+        VkClearValue        clear_value;    // load_op == CLEAR の時のみ参照
+    };
+
+    // dynamic rendering 開始 / 終了 helper (δ-2 case P gating pattern 継承)。
+    // in-frame (beginFrame...endFrame 間) かつ Vulkan 初期化済 + sCommandBuffer 有効時のみ
+    // vkCmdBeginRenderingKHR / vkCmdEndRenderingKHR を発行、それ以外 no-op (GL path
+    // 単独動作環境で safe)。color_attachments == nullptr / color_count == 0 + depth_attachment == nullptr
+    // の場合は何も発行しない (β-2 transit smoke 時の placeholder 受入)。
+    // color_attachments[].image_view または depth_attachment->image_view が VK_NULL_HANDLE の場合も
+    // helper 側で個別 skip (β-2 transit smoke 時の placeholder 受入)。
+    void beginDynamicRendering(U32                               width,
+                               U32                               height,
+                               const DynamicRenderingAttachment* color_attachments,
+                               U32                               color_count,
+                               const DynamicRenderingAttachment* depth_attachment);
+    void endDynamicRendering();
 }
 
 #endif // LL_LLVKLOADER_H
