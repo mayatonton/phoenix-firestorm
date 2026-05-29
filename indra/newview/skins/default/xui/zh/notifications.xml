@@ -2978,6 +2978,27 @@ URL：[AUDIOURL]
 			<button name="RememberURL" text="[CONDITION]允許此URL"/>
 		</form>
 	</notification>
+	<notification name="Stream3DAudioAlert">
+		此地塊提供以下 3D 音訊串流：
+
+域名：[AUDIODOMAIN]
+URL：[AUDIOURL]
+		<form name="form">
+			<button name="Allow" text="允許"/>
+			<button name="Deny" text="拒絕"/>
+		</form>
+	</notification>
+	<notification name="Stream3DAudioAlert2">
+		您想記住您的選擇並且[LCONDITION]允許來自這個源的 3D 音訊串流嗎？
+
+域名：[AUDIODOMAIN]
+URL：[AUDIOURL]
+		<form name="form">
+			<button name="Do Now" text="現在[ACTION]"/>
+			<button name="RememberDomain" text="[CONDITION]允許此域名"/>
+			<button name="RememberURL" text="[CONDITION]允許此URL"/>
+		</form>
+	</notification>
 	<notification name="AudioAlertSingle" type="alert">
 		您想記住您的選擇並且[LCONDITION]允許來自這個源的音樂嗎？
 
