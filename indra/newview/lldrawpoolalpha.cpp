@@ -261,27 +261,25 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     }
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
-    // <AYAstorm r30 P5 二重アルファブロック対策> POST_WATER 内の forward
-    // render を non-rigged → rigged の back-to-front 順に **常時 default 化**。
-    // 元の rigged-first 順は `write_depth = rigged` (forwardRender 行 379)
-    // で attachment alpha BLEND (hair / clothing) の z を共有 depth に
-    // 書き込み、後続の non-rigged alpha (Rez Object 側の窓ガラス / lace /
-    // 葉先) を GL_LEQUAL で reject → fragment 自体が走らず画素は opaque 段
-    // の sky のまま残る = 「髪越しに窓ガラスが sky に抜ける」二重アルファ
-    // ブロック regression。以前は use_alpha_rt 時のみ限定 swap だったが、
-    // RenderDepthOfField = false (use_alpha_rt=false) の path で同症状が
-    // 実機再現 (canary=12 緑で確認、Cinematic mode + DoF OFF) したため、
-    // POST_WATER 全 path で swap を default 化。PRE_WATER は water fog
-    // 計算 (write_depth が always true) のため rigged-first を維持。HUD は
-    // forwardRender 1 回のみで対象外。
+    // <AYAstorm r30 P5 二重アルファブロック対策 (3-pass 版)> POST_WATER 内の
+    // forward render を 3 pass に分割:
+    //   pass 1: SIM rezzed の N-BL (mAttachedToAvatar.isNull())     - 背景透過
+    //   pass 2: 全 R-BL (rigged hair / clothing)                     - 装着物 rigged
+    //   pass 3: 装着物の N-BL (mAttachedToAvatar.notNull())          - 装着物 prim
+    // 旧 §5 swap (POST_WATER 全 non-rigged → 全 rigged) は SIM の窓越し背景
+    // 透過は解消したが、装着物 N-BL prim (まつ毛 prim 等) が rigged 段の前に
+    // 描かれ、その後 rigged hair に上書きされる S1/S2 regression を生んだ。
+    // pass 3 を rigged 後にずらすことで装着物 prim が hair より前面に並び、
+    // かつ pass 1 で SIM 側 N-BL (背景窓ガラス / 葉先) は rigged 前に描いて
+    // 「髪越し背景透過」二重アルファブロックの当初 fix は維持。PRE_WATER は
+    // water fog 整合性で rigged-first 維持。HUD は forwardRender 1 回のみ。
+    // 詳細: docs/specs/ayastorm-double-alpha-c-plan-extension.md §7
     if (!LLPipeline::sRenderingHUDs &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
-        // back-to-front: non-rigged (background — windows / foliage) 先 →
-        // rigged (foreground — hair) 後。use_alpha_rt 時は mAYAAlphaColor
-        // 上で同じ順序で over-blend、非使用時は mRT->screen 上で同様。
-        forwardRender();
-        forwardRender(true);
+        forwardRender(false, ATTACHMENT_NONE);  // pass 1: SIM rezz N-BL
+        forwardRender(true);                     // pass 2: 全 R-BL
+        forwardRender(false, ATTACHMENT_ONLY);   // pass 3: 装着物 N-BL
     }
     else
     {
@@ -292,7 +290,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         }
         forwardRender();
     }
-    // </AYAstorm r30 P5 二重アルファブロック対策>
+    // </AYAstorm r30 P5 二重アルファブロック対策 (3-pass 版)>
 
     // <AYAstorm r30 P5 transparent-DoF C-(a)> Pop alpha plate RT — flush()
     // auto-restores mRT->screen from the FBO stack.
@@ -391,7 +389,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // </AYAstorm r30 P5 transparent-DoF L2-β>
 }
 
-void LLDrawPoolAlpha::forwardRender(bool rigged)
+void LLDrawPoolAlpha::forwardRender(bool rigged, AttachmentFilter filter)
 {
     gPipeline.enableLightsDynamic();
 
@@ -441,11 +439,18 @@ void LLDrawPoolAlpha::forwardRender(bool rigged)
 
     // If the face is more than 90% transparent, then don't update the Depth buffer for Dof
     // We don't want the nearly invisible objects to cause of DoF effects
-    renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, false, rigged);
+    renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, false, rigged, filter);
 
     gGL.setColorMask(true, false);
 
-    if (!rigged && getType() == LLDrawPoolAlpha::POOL_ALPHA_POST_WATER)
+    // <AYAstorm double-alpha-block fix> renderDebugAlpha は全 non-rigged batch
+    // を 1 度だけ点灯したい (SIM + 装着物両方 highlight)。3-pass 化で
+    // pass 1 (SIM_ONLY) と pass 3 (ATTACHMENT_ONLY) が両方走るので、
+    // pass 3 末尾 (filter==ATTACHMENT_ONLY) のときだけ呼ぶ。filter==ALL は
+    // 旧 swap 互換 (使われない経路) として元の !rigged で発火させる。
+    const bool last_nonrigged_pass = !rigged && getType() == LLDrawPoolAlpha::POOL_ALPHA_POST_WATER &&
+        (filter == ATTACHMENT_ALL || filter == ATTACHMENT_ONLY);
+    if (last_nonrigged_pass)
     { //render "highlight alpha" on final non-rigged pass
         // NOTE -- hacky call here protected by !rigged instead of alongside "forwardRender"
         // so renderDebugAlpha is executed while gls_pipeline_alpha and depth GL state
@@ -757,7 +762,7 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
     }
 }
 
-void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
+void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, AttachmentFilter filter)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     bool initialized_lighting = false;
@@ -858,6 +863,27 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 {
                     continue;
                 }
+
+                // <AYAstorm double-alpha-block fix> 3-pass dispatch:
+                // pass 1 (filter=ATTACHMENT_NONE) は SIM rezzed (mAttachedToAvatar
+                // が NULL) のみ通す。pass 3 (filter=ATTACHMENT_ONLY) は装着物
+                // (notNull) のみ通す。これで「装着物 N-BL prim を R-BL hair より
+                // 後に描く」順序を作り、S1 (前後反転) / S2 (手前透過上書き) =
+                // 装着物アルファプリムが髪に上書きされる二重アルファブロック
+                // regression を解消。rigged path は ALL のまま (filter は
+                // non-rigged 経路だけ意味を持つ)。
+                if (!rigged)
+                {
+                    if (filter == ATTACHMENT_NONE && params.mAttachedToAvatar.notNull())
+                    {
+                        continue;
+                    }
+                    if (filter == ATTACHMENT_ONLY && params.mAttachedToAvatar.isNull())
+                    {
+                        continue;
+                    }
+                }
+                // </AYAstorm double-alpha-block fix>
 
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("ra - push batch");
 

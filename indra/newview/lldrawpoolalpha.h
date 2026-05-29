@@ -65,13 +65,26 @@ public:
     /*virtual*/ void renderMotionBlur(S32 pass) override;
     // </AYAstorm r30 P2>
 
-    void forwardRender(bool write_depth = false);
+    // <AYAstorm double-alpha-block fix> per-draw avatar-attachment filter for
+    // non-rigged BLEND dispatch. The §5 swap put all non-rigged before rigged;
+    // that overdraws avatar-attachment prims with rigged hair (S1/S2 = 装着物
+    // アルファプリムが髪に上書きされる)。新しい順序 = SIM N-BL → 全 R-BL →
+    // 装着物 N-BL (3-pass)。filter は non-rigged path のみ作用、rigged は ALL
+    // のまま (= LLDrawInfo::mAttachedToAvatar 判定で SIM/attachment を分ける)。
+    enum AttachmentFilter
+    {
+        ATTACHMENT_ALL = 0,    // (legacy 互換用) 装着物 / SIM 両方描く
+        ATTACHMENT_NONE,       // SIM rezzed のみ (mAttachedToAvatar.isNull())
+        ATTACHMENT_ONLY        // 装着物のみ (mAttachedToAvatar.notNull())
+    };
+    // </AYAstorm double-alpha-block fix>
+    void forwardRender(bool rigged = false, AttachmentFilter filter = ATTACHMENT_ALL);
     /*virtual*/ void prerender();
 
     void renderDebugAlpha();
 
     void renderGroupAlpha(LLSpatialGroup* group, U32 type, U32 mask, bool texture = true);
-    void renderAlpha(U32 mask, bool depth_only = false, bool rigged = false);
+    void renderAlpha(U32 mask, bool depth_only = false, bool rigged = false, AttachmentFilter filter = ATTACHMENT_ALL);
     void renderAlphaHighlight();
 
     static bool sShowDebugAlpha;
