@@ -29,6 +29,7 @@
 #include "llrendertarget.h"
 #include "llrender.h"
 #include "llgl.h"
+#include "llvkloader.h"  // r41 sub-step 3.3-C-γ: Vulkan path 並走 (sub-doc 03 §3.1.2)
 
 LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
 U32 LLRenderTarget::sBytesAllocated = 0;
@@ -450,6 +451,47 @@ void LLRenderTarget::bindTarget()
 
     mPreviousRT = sBoundTarget;
     sBoundTarget = this;
+
+    // r41 sub-step 3.3-C-γ: Vulkan path 並走 (sub-doc 03 §3.1.2 / sub-doc 07 §1.2.3 boundary)
+    // 実 VkImageView は領域 7 sub-step 7.5 移管 (VMA = sub-step 7.1 前提)、
+    // γ は API surface 並走化 = placeholder attachment (image_view=VK_NULL_HANDLE) 提供のみ。
+    // 全 view null path で helper 側 no-op return、sInDynamicRendering false 維持 (δ flush の
+    // endDynamicRendering と pair 対称性維持)。GL path 動作は依然 GL 担当 (sub-doc 03 §3.5)。
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        static bool s_first_bind_active = true;
+        if (s_first_bind_active)
+        {
+            s_first_bind_active = false;
+            LL_INFOS("Vulkan") << "LLRenderTarget::bindTarget : bindTarget dynamic rendering "
+                                  "begin path active (sub-step 3.3-C-γ API surface 並走、"
+                                  "placeholder attachment image_view=VK_NULL_HANDLE / "
+                                  "実 attachment 配線は領域 7 sub-step 7.5 移管)"
+                               << LL_ENDL;
+        }
+
+        LLVKLoader::DynamicRenderingAttachment color_attachments[4] = {};
+        U32 color_count = static_cast<U32>(mTex.size() < 4 ? mTex.size() : 4);
+        for (U32 i = 0; i < color_count; ++i)
+        {
+            color_attachments[i].image_view   = VK_NULL_HANDLE;  // 領域 7 sub-step 7.5 移管
+            color_attachments[i].image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            color_attachments[i].load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+            color_attachments[i].store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        }
+
+        LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
+        depth_attachment.image_view   = VK_NULL_HANDLE;  // 領域 7 sub-step 7.5 移管
+        depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+
+        LLVKLoader::beginDynamicRendering(
+            mResX, mResY,
+            color_count > 0 ? color_attachments : nullptr,
+            color_count,
+            mUseDepth ? &depth_attachment : nullptr);
+    }
 }
 
 void LLRenderTarget::clear(U32 mask_in)
