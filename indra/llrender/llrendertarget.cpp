@@ -550,6 +550,29 @@ void LLRenderTarget::flush()
     llassert(sCurFBO == mFBO);
     llassert(sBoundTarget == this);
 
+    // r41 sub-step 3.3-C-δ: Vulkan path 並走 (sub-doc 03 §3.1.2 / sub-doc 07 §1.2.3 boundary)
+    // γ bindTarget の beginDynamicRendering と pair 対称。実 vkCmdEndRendering 発火は
+    // sInDynamicRendering guard で gating: γ 側 placeholder (image_view=VK_NULL_HANDLE) で
+    // begin が no-op return している間は end も no-op (sInDynamicRendering false 維持)。
+    // 領域 7 sub-step 7.5 で実 attachment 配線後に始めて vkCmdEndRendering 発火する。
+    // mPreviousRT → bindTarget() 再帰の前に end を発行することで begin/end ペアの 1:1 整合性を保つ
+    // (前 RT の bindTarget が次の begin を発行する前に現 RT の end を完了させる)。
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        static bool s_first_flush_active = true;
+        if (s_first_flush_active)
+        {
+            s_first_flush_active = false;
+            LL_INFOS("Vulkan") << "LLRenderTarget::flush : flush dynamic rendering end path "
+                                  "active (sub-step 3.3-C-δ API surface 並走、"
+                                  "endDynamicRendering 呼出 / γ begin と pair 対称 / "
+                                  "実 vkCmdEndRendering は sInDynamicRendering guard で no-op = "
+                                  "領域 7 sub-step 7.5 実 attachment 配線後に発火)"
+                               << LL_ENDL;
+        }
+        LLVKLoader::endDynamicRendering();
+    }
+
     if (mGenerateMipMaps == LLTexUnit::TMG_AUTO)
     {
         LL_PROFILE_GPU_ZONE("rt generate mipmaps");
