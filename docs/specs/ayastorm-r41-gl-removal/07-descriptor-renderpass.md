@@ -56,6 +56,8 @@ pipeline layout cache で同一 layout を共有する PSO を grouping、`vkCre
 
 各 pass は **独立 `vkCmdBeginRenderingKHR` / `vkCmdEndRenderingKHR`** でくくる、`VkRenderPass` + `VkFramebuffer` 明示作成は使わない (05 §4.1 採用)。
 
+**段階 3 sub-step 3.3-C との boundary 明確化 (2026-05-29 追記)**: 段階 3 sub-step 3.3-C (FBO → dynamic rendering、sub-doc 03 §3.1.2 参照) で `LLRenderTarget::bindTarget()` / `flush()` を `vkCmdBeginRenderingKHR` / `vkCmdEndRenderingKHR` wrap helper (`beginDynamicRendering()` / `endDynamicRendering()`) 経由で並走化、3.3-C 完遂時の Vulkan path は placeholder attachment による transit smoke。本領域 7 sub-step 7.5 で実 attachment (color × N + depth、`VkImage` + `VkImageView` via VMA = sub-step 7.1) を提供して 7 pass chain の final 配線完了 (3.3-C 設計確定 2026-05-29、本領域 sub-step 7.5 で 3.3-C 並走 path の placeholder を実 attachment へ差替)。
+
 ### §1.3 並走領域との関係 (charter §2 領域 7 依存順序)
 
 | 並走領域 | 領域 7 内での協調事項 |
