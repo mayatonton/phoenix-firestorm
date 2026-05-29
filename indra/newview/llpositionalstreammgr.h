@@ -59,7 +59,10 @@ public:
     // Called from the message handlers that decode ObjectProperties /
     // ObjectPropertiesFamily. Caches the description, and (re)evaluates
     // whether this prim should be bound to a stream.
-    void onObjectPropertiesReceived(const LLUUID& id, const std::string& description);
+    void onObjectPropertiesReceived(const LLUUID& id,
+                                    const std::string& description,
+                                    const std::string& object_name = std::string(),
+                                    const LLUUID& owner_id = LLUUID::null);
 
     // Apply a global default rolloff to all currently-active streams.
     // Per-prim tags that explicitly set min/max are NOT overridden.
@@ -104,6 +107,7 @@ public:
     // the prim binding map.
     void startDebug(const std::string& url, const LLVector3& world_pos);
     void stopDebug();
+    bool isAnyStreamPlaying() const;
 
     // Stereo debug stream (driven by Stream3DDebugStereoPlay, M5-a spike).
     // Pulls PCM from a source HTTP stream and feeds two OPENUSER 3D mono
@@ -600,6 +604,18 @@ private:
     void evaluateBinding(const LLUUID& id);
     void evaluateMonoBinding(const LLUUID& id, const TagData& tag);
 
+    enum class UrlPermissionDecision
+    {
+        Allow,
+        Block,
+        Pending,
+    };
+    UrlPermissionDecision checkUrlPermissionForStream3D(const std::string& url,
+                                                        const LLUUID& source_id,
+                                                        bool distributed);
+    void onStream3DUrlPermissionResult(const std::string& url, bool allowed);
+    static bool isStream3DUrlSchemeAllowed(const std::string& url);
+
     // r23: register the parcel-change callback once gAgent is alive. Called
     // lazily on the first update() tick. Tier 1 (static-source bindings)
     // refresh their cached parcel_audible only on this signal, so the
@@ -687,6 +703,8 @@ private:
     struct CacheEntry
     {
         std::string description;
+        std::string object_name;
+        LLUUID owner_id;
         // Monotonic seconds (LLTimer::getElapsedSeconds) of the most recent
         // request send. 0 means "never sent". Round-robin re-poll uses this
         // to space sends out at Stream3DPollInterval. Priority drain uses it
@@ -734,6 +752,11 @@ private:
     // coalesces into a single evaluateLinkset / stream rebuild instead of
     // N consecutive ones — N rebuilds blocked the main thread visibly.
     std::set<LLUUID> mPendingLinksetEval;
+    std::set<std::string> mPendingStream3DUrlPrompts;
+    std::map<std::string, std::set<LLUUID>> mPendingStream3DMonoByUrl;
+    std::map<std::string, std::set<LLUUID>> mPendingStream3DDistByUrl;
+    std::set<std::string> mSessionAllowedStream3DUrls;
+    std::set<std::string> mSessionDeniedStream3DUrls;
 
     // r8 F11: deferred ObjectDeselect for child prims we briefly selected
     // (via requestChildDescViaSelect) to force a full ObjectProperties reply.

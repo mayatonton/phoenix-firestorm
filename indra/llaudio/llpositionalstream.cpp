@@ -46,6 +46,15 @@ namespace
         LL_WARNS("Stream3D") << what << " error: " << FMOD_ErrorString(result) << LL_ENDL;
         return true;
     }
+
+    bool isAllowedStream3DUrlScheme(const std::string& url)
+    {
+        std::string lowered(url);
+        LLStringUtil::trim(lowered);
+        LLStringUtil::toLower(lowered);
+        return lowered.compare(0, 7, "http://") == 0 ||
+               lowered.compare(0, 8, "https://") == 0;
+    }
 }
 
 LLPositionalStream::LLPositionalStream()
@@ -90,6 +99,12 @@ bool LLPositionalStream::start(const std::string& url, const LLVector3& world_po
     if (clean_url.empty())
     {
         LL_WARNS("Stream3D") << "Refusing to start positional stream with empty URL" << LL_ENDL;
+        return false;
+    }
+    if (!isAllowedStream3DUrlScheme(clean_url))
+    {
+        LL_WARNS("Stream3D") << "Refusing to start positional stream with unsupported URL scheme: "
+                              << clean_url << LL_ENDL;
         return false;
     }
 

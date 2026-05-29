@@ -2,7 +2,7 @@
 
 > **Language / 言語 / 语言**: [English](./3dstream-user-guide.en.md) · **日本語** · [中文](./3dstream-user-guide.zh.md)
 
-**搭載**: AYAstorm r31 以降。
+**搭載**: AYAstorm r31 以降。r32 以降では 3D Stream は初期状態で無効です。
 
 **対象**: 配信者、DJ、ライブ会場オーナー、展示・映画館・イベント会場を作る人。
 
@@ -23,7 +23,17 @@
 - 5.1ch ソースの空間配置
 - MOAP 画面の音声を、画面位置や会場スピーカーから鳴らす構成
 
-## 2. 最小構成: 1 個のプリムから鳴らす
+## 2. 再生前の準備と許可確認
+
+3D Stream は初期状態では無効です。使う場合は、ステータスバーの 3D Stream ボタン、音量ポップアップの 3D Stream チェック、または **Preferences > Sound** の 3D Stream 項目で有効にします。
+
+`{url:...}` を使う 3D Stream は、初回再生時に接続先の確認ダイアログを表示します。ユーザーが許可した場合のみ、その URL の再生が始まります。拒否した場合、その URL は同じ viewer セッション内では再生されず、同じ URL で確認を繰り返しません。
+
+URL source で利用できる scheme は `http://` と `https://` です。その他の scheme は再生対象になりません。
+
+`{source:media}` は、リンクセット内の MOAP / media 面の音声を 3D Stream に渡す指定です。3D Stream が新しい URL を直接開くものではないため、通常の media 表示・再生の許可処理に従います。
+
+## 3. 最小構成: 1 個のプリムから鳴らす
 
 プリムの **Description** に次のように書きます。
 
@@ -41,7 +51,7 @@
 
 `min` は音量 100% の近距離、`max` は音量 0% になる遠距離です。
 
-## 3. 左右スピーカーを置く
+## 4. 左右スピーカーを置く
 
 2 個以上のプリムをリンクし、ルートと子プリムに役割を書きます。
 
@@ -61,7 +71,7 @@
 
 複数のスピーカーから同じチャンネルを鳴らすこともできます。たとえば `{ch:L}` を複数プリムに書けば、すべてが L スピーカーとして鳴ります。
 
-## 4. 5.1ch / 多点スピーカー配置
+## 5. 5.1ch / 多点スピーカー配置
 
 5.1ch ソースを配置する場合は、各チャンネル用のプリムを置きます。
 
@@ -92,7 +102,7 @@ SR:  [3dstream:{ch:SR}]
 
 5.1ch ソースに `{upmix:on}` が付いていても、viewer は 6ch source を検出すると upmix を自動的に bypass します。
 
-## 5. MOAP / media 音声を 3D Stream に使う
+## 6. MOAP / media 音声を 3D Stream に使う
 
 HTTP URL ではなく、リンクセット内の media 面を音源にすることもできます。
 
@@ -116,7 +126,7 @@ media 面が複数ある場合は、ルート側で `{link:N}` / `{face:N}` を�
 
 `{url:...}` と `{source:media}` は同時に指定できません。media 画面を表示しつつ別の URL ストリームを 3D 配置したい場合は、3D Stream 側は `{url:...}` のままにし、media 面は通常の MOAP として扱います。
 
-## 6. 音の調整
+## 7. 音の調整
 
 よく使う調整:
 
@@ -133,7 +143,7 @@ media 面が複数ある場合は、ルート側で `{link:N}` / `{face:N}` を�
 
 会場残響を使う場合は、配信音源側に強い reverb を入れすぎない方が調整しやすくなります。
 
-## 7. 他 Viewer での見え方
+## 8. 他 Viewer での見え方
 
 3D Stream のタグは AYAstorm 専用です。本家 Firestorm、公式 Viewer、Catznip などでは 3D Stream としては解釈されません。
 
@@ -142,11 +152,12 @@ media 面が複数ある場合は、ルート側で `{link:N}` / `{face:N}` を�
 - ただし `{ch:...}` routing、upmix、binaural、venue reverb は AYAstorm 利用者にだけ適用されます
 - パーセル BGM が設定されている場合、それは他 Viewer でも通常どおり聞こえます
 
-## 8. よくあるトラブル
+## 9. よくあるトラブル
 
 | 症状 | 確認すること |
 |---|---|
 | 音が鳴らない | Preferences の 3D Stream が有効か、音量が 0 でないか |
+| URL stream の確認が出る | 初めての `{url:...}` source は再生前に許可が必要 |
 | 左右の片方しか鳴らない | `{ch:L}` と `{ch:R}` の両方がリンクセット内にあるか |
 | `{source:media}` で鳴らない | media 面が同じリンクセット内にあるか、必要なら `{link}` / `{face}` を指定しているか |
 | 5.1ch の一部が無音 | 対応する `{ch:FL}` などのスピーカープリムがあるか |
@@ -155,7 +166,7 @@ media 面が複数ある場合は、ルート側で `{link:N}` / `{face:N}` を�
 
 配置確認中は **Preferences > Sound > Show channel routing diagnostics in chat** を有効にすると、どのプリムがどのチャンネルを鳴らしているかを Local Chat で確認できます。
 
-## 9. 詳細リファレンス
+## 10. 詳細リファレンス
 
 - タグの全キーとエラー文言: [3D Stream タグ書式ガイド](../guides/3dstream-tag-guide.ja.md)
 - Opus 6ch 配信ツール: [SurroundStreamer](https://github.com/t-noami/SurroundStreamer)

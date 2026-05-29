@@ -7551,6 +7551,58 @@ URL: [AUDIOURL]
          text="[CONDITION] Allow This URL"/>
    </form>
   </notification>
+
+  <notification
+   icon="alert.tga"
+   name="Stream3DAudioAlert"
+   type="alert">
+This parcel provides a 3D audio stream from:
+
+Domain: [AUDIODOMAIN]
+URL: [AUDIOURL]
+
+Object: [OBJECTNAME]
+Owner: [OWNERNAME]
+Username: [OWNERUSERNAME]
+   <form name="form">
+    <button
+         index="0"
+         name="Allow"
+         text="Allow"/>
+        <button
+         index="1"
+         name="Deny"
+         text="Deny"/>
+   </form>
+  </notification>
+
+  <notification
+   icon="alert.tga"
+   name="Stream3DAudioAlert2"
+   type="alert">
+Do you want to remember your choice and [LCONDITION] allow 3D audio streams from this source?
+
+Domain: [AUDIODOMAIN]
+URL: [AUDIOURL]
+
+Object: [OBJECTNAME]
+Owner: [OWNERNAME]
+Username: [OWNERUSERNAME]
+   <form name="form">
+    <button
+         index="0"
+         name="Do Now"
+         text="[ACTION] Now"/>
+        <button
+         index="1"
+         name="RememberDomain"
+         text="[CONDITION] Allow This Domain"/>
+        <button
+         index="2"
+         name="RememberURL"
+         text="[CONDITION] Allow This URL"/>
+   </form>
+  </notification>
   
   <notification
    icon="alert.tga"  

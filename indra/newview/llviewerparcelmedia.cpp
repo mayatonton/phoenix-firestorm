@@ -28,6 +28,7 @@
 #include "llviewerparcelmedia.h"
 
 #include "llagent.h"
+#include "llavatarnamecache.h"
 #include "llaudioengine.h"
 #include "llmimetypes.h"
 #include "llviewercontrol.h"
@@ -62,6 +63,75 @@ bool callback_enable_audio_filter(const LLSD& notification, const LLSD& response
 void callback_audio_alert(const LLSD& notification, const LLSD& response, std::string media_url);
 void callback_audio_alert2(const LLSD& notification, const LLSD& response, std::string media_url, bool allow);
 void callback_audio_alert_single(const LLSD& notification, const LLSD& response, std::string media_url);
+void callback_stream3d_audio_alert(const LLSD& notification, const LLSD& response,
+                                   std::string media_url,
+                                   LLViewerParcelMedia::stream3d_url_callback_t callback);
+void callback_stream3d_audio_alert2(const LLSD& notification, const LLSD& response,
+                                    std::string media_url, bool allow,
+                                    LLViewerParcelMedia::stream3d_url_callback_t callback);
+
+namespace
+{
+std::string stream3DProfileLink(const LLUUID& owner_id, const std::string& label)
+{
+    if (owner_id.isNull() || label.empty())
+    {
+        return "Unknown";
+    }
+    return "[secondlife:///app/agent/" + owner_id.asString() + "/about " + label + "]";
+}
+
+void stream3DOwnerArgs(const LLUUID& owner_id,
+                       const LLAvatarName& av_name,
+                       LLSD& args)
+{
+    std::string username = av_name.getAccountName();
+    if (username.empty())
+    {
+        username = av_name.getUserName();
+    }
+
+    std::string display_name = av_name.isDisplayNameDefault()
+                                   ? username
+                                   : av_name.getDisplayName(true);
+    if (display_name.empty())
+    {
+        display_name = username;
+    }
+
+    args["OWNERNAME"] = display_name.empty() ? "Unknown" : display_name;
+    args["OWNERUSERNAME"] = stream3DProfileLink(owner_id, username);
+}
+
+void showStream3DUrlPrompt(const std::string& media_url,
+                           const std::string& object_name,
+                           const LLUUID& owner_id,
+                           LLViewerParcelMedia::stream3d_url_callback_t callback,
+                           const LLAvatarName* av_name = nullptr)
+{
+    LLSD args;
+    args["AUDIOURL"] = media_url;
+    args["AUDIODOMAIN"] = LLViewerParcelMedia::getInstance()->extractDomain(media_url);
+    args["OBJECTNAME"] = object_name.empty() ? "Unknown" : object_name;
+
+    if (av_name)
+    {
+        stream3DOwnerArgs(owner_id, *av_name, args);
+    }
+    else
+    {
+        const std::string waiting = LLTrans::getString("AvatarNameWaiting");
+        args["OWNERNAME"] = waiting;
+        args["OWNERUSERNAME"] = stream3DProfileLink(owner_id, waiting);
+    }
+
+    LLNotifications::instance().add(
+        "Stream3DAudioAlert",
+        args,
+        LLSD(),
+        boost::bind(callback_stream3d_audio_alert, _1, _2, media_url, callback));
+}
+}
 
 LLViewerParcelMedia::LLViewerParcelMedia():
 mMediaParcelLocalID(0)
@@ -1340,6 +1410,89 @@ void LLViewerParcelMedia::filterAudioUrl(std::string media_url)
     mMediaReFilter = false;
 }
 
+LLViewerParcelMedia::MediaFilterResult LLViewerParcelMedia::classifyMediaFilterUrl(
+    const std::string& media_url,
+    bool require_prompt_if_unknown)
+{
+    if (media_url.empty())
+    {
+        return MediaFilterResult::Allow;
+    }
+
+    std::string domain = extractDomain(media_url);
+    for (LLSD::array_iterator it = mMediaFilterList.beginArray();
+         it != mMediaFilterList.endArray();
+         ++it)
+    {
+        bool found = false;
+        std::string listed_domain = (*it)["domain"].asString();
+        if (media_url == listed_domain)
+        {
+            found = true;
+        }
+        else if (domain.length() >= listed_domain.length())
+        {
+            size_t pos = domain.rfind(listed_domain);
+            if ((pos != std::string::npos) &&
+                (pos == domain.length() - listed_domain.length()))
+            {
+                found = true;
+            }
+        }
+
+        if (!found)
+        {
+            continue;
+        }
+
+        const std::string media_action = (*it)["action"].asString();
+        if (media_action == "allow")
+        {
+            return MediaFilterResult::Allow;
+        }
+        if (media_action == "deny")
+        {
+            return MediaFilterResult::Deny;
+        }
+    }
+
+    if (require_prompt_if_unknown || gSavedSettings.getBOOL("MediaEnableFilter"))
+    {
+        return MediaFilterResult::Ask;
+    }
+    return MediaFilterResult::Allow;
+}
+
+void LLViewerParcelMedia::promptStream3DUrl(
+    const std::string& media_url,
+    const std::string& object_name,
+    const LLUUID& owner_id,
+    LLViewerParcelMedia::stream3d_url_callback_t callback)
+{
+    if (!callback)
+    {
+        return;
+    }
+
+    if (media_url.empty())
+    {
+        callback(false);
+        return;
+    }
+
+    if (owner_id.notNull())
+    {
+        LLAvatarName av_name;
+        if (LLAvatarNameCache::get(owner_id, &av_name))
+        {
+            showStream3DUrlPrompt(media_url, object_name, owner_id, callback, &av_name);
+            return;
+        }
+    }
+
+    showStream3DUrlPrompt(media_url, object_name, owner_id, callback);
+}
+
 void callback_audio_alert(const LLSD &notification, const LLSD &response, std::string media_url)
 {
     S32 option = LLNotificationsUtil::getSelectedOption(notification, response);
@@ -1496,6 +1649,127 @@ void callback_audio_alert2(const LLSD &notification, const LLSD &response, std::
             inst->seek(inst->mMediaCommandTime);
         }
         inst->mMediaCommandQueue = 0;
+    }
+}
+
+void callback_stream3d_audio_alert(
+    const LLSD& notification,
+    const LLSD& response,
+    std::string media_url,
+    LLViewerParcelMedia::stream3d_url_callback_t callback)
+{
+    S32 option = LLNotificationsUtil::getSelectedOption(notification, response);
+    if (option < 0)
+    {
+        if (callback)
+        {
+            callback(false);
+        }
+        return;
+    }
+
+    LLSD args;
+    const bool allow = (option == 0);
+    if (allow)
+    {
+        args["ACTION"] = LLTrans::getString("MediaFilterActionAllow");
+        args["CONDITION"] = LLTrans::getString("MediaFilterConditionAlways");
+        args["LCONDITION"] = LLTrans::getString("MediaFilterConditionAlwaysLower");
+    }
+    else
+    {
+        args["ACTION"] = LLTrans::getString("MediaFilterActionDeny");
+        args["CONDITION"] = LLTrans::getString("MediaFilterConditionNever");
+        args["LCONDITION"] = LLTrans::getString("MediaFilterConditionNeverLower");
+    }
+    args["AUDIOURL"] = media_url;
+    args["AUDIODOMAIN"] = LLViewerParcelMedia::getInstance()->extractDomain(media_url);
+    args["OBJECTNAME"] = notification["substitutions"]["OBJECTNAME"];
+    args["OWNERNAME"] = notification["substitutions"]["OWNERNAME"];
+    args["OWNERUSERNAME"] = notification["substitutions"]["OWNERUSERNAME"];
+
+    LLNotifications::instance().add(
+        "Stream3DAudioAlert2",
+        args,
+        LLSD(),
+        boost::bind(callback_stream3d_audio_alert2, _1, _2, media_url, allow, callback));
+}
+
+void callback_stream3d_audio_alert2(
+    const LLSD& notification,
+    const LLSD& response,
+    std::string media_url,
+    bool allow,
+    LLViewerParcelMedia::stream3d_url_callback_t callback)
+{
+    LLViewerParcelMedia* inst = LLViewerParcelMedia::getInstance();
+
+    S32 option = LLNotificationsUtil::getSelectedOption(notification, response);
+    std::string domain = inst->extractDomain(media_url);
+    bool allowed_now = false;
+
+    if ((option == 0) && allow) // allow now
+    {
+        allowed_now = true;
+    }
+    else if ((option == 0) && !allow) // deny now
+    {
+        allowed_now = false;
+    }
+    else if ((option == 1) && allow) // Whitelist domain
+    {
+        LLSD newmedia;
+        newmedia["domain"] = domain;
+        newmedia["action"] = "allow";
+        inst->mMediaFilterList.append(newmedia);
+        inst->saveDomainFilterList();
+        LLStringUtil::format_map_t format_args;
+        format_args["[DOMAIN]"] = domain;
+        FSCommon::report_to_nearby_chat(
+            LLTrans::getString("MediaFilterAudioContentDomainAlwaysAllowed", format_args));
+        allowed_now = true;
+    }
+    else if ((option == 1) && !allow) // Blacklist domain
+    {
+        LLSD newmedia;
+        newmedia["domain"] = domain;
+        newmedia["action"] = "deny";
+        inst->mMediaFilterList.append(newmedia);
+        inst->saveDomainFilterList();
+        LLStringUtil::format_map_t format_args;
+        format_args["[DOMAIN]"] = domain;
+        FSCommon::report_to_nearby_chat(
+            LLTrans::getString("MediaFilterAudioContentDomainAlwaysBlocked", format_args));
+    }
+    else if ((option == 2) && allow) // Whitelist URL
+    {
+        LLSD newmedia;
+        newmedia["domain"] = media_url;
+        newmedia["action"] = "allow";
+        inst->mMediaFilterList.append(newmedia);
+        inst->saveDomainFilterList();
+        LLStringUtil::format_map_t format_args;
+        format_args["[MEDIAURL]"] = media_url;
+        FSCommon::report_to_nearby_chat(
+            LLTrans::getString("MediaFilterAudioContentUrlAlwaysAllowed", format_args));
+        allowed_now = true;
+    }
+    else if ((option == 2) && !allow) // Blacklist URL
+    {
+        LLSD newmedia;
+        newmedia["domain"] = media_url;
+        newmedia["action"] = "deny";
+        inst->mMediaFilterList.append(newmedia);
+        inst->saveDomainFilterList();
+        LLStringUtil::format_map_t format_args;
+        format_args["[MEDIAURL]"] = media_url;
+        FSCommon::report_to_nearby_chat(
+            LLTrans::getString("MediaFilterAudioContentUrlAlwaysBlocked", format_args));
+    }
+
+    if (callback)
+    {
+        callback(allowed_now);
     }
 }
 

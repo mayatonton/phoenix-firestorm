@@ -319,7 +319,7 @@
      left="2"
      name="TimeText"
      tool_tip="Current time (Pacific)"
-     width="96">
+     width="78">
         24:00:00 AM PST
     </text>
     <button
@@ -366,6 +366,22 @@
      top="1"
      name="media_toggle_btn"
      tool_tip="Start/Stop All Media (Music, Video, Web pages)"
+     width="16" >
+    </button>
+    <button
+     follows="right|top"
+     height="16"
+     image_selected="3dstream_Off"
+     image_unselected="Pause_Off"
+     image_hover_selected="3dstream_Over"
+     image_hover_unselected="Pause_Over"
+     image_pressed="Pause_Press"
+     image_pressed_selected="3dstream_Press"
+     is_toggle="true"
+     left_pad="2"
+     top="1"
+     name="3dstream_toggle_btn"
+     tool_tip="Start/Stop 3D Stream"
      width="16" >
     </button>
     <button

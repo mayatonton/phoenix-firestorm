@@ -587,10 +587,10 @@ static void handleStream3DRolloffChanged(const LLSD&)
         gSavedSettings.getF32("Stream3DRolloffMax"));
 }
 
-static void handleStream3DVolumeMasterChanged(const LLSD& newvalue)
+static void handleStream3DVolumeChanged(const LLSD&)
 {
     LLPositionalStreamMgr::instance().applyMasterVolume(
-        static_cast<F32>(newvalue.asReal()));
+        gSavedSettings.getF32("Stream3DVolumeMaster"));
 }
 
 static void handleStream3DEnabledChanged(const LLSD& newvalue)
@@ -1713,7 +1713,8 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "Stream3DDebugStereoPlay", handleStream3DDebugStereoPlayChanged);
     setting_setup_signal_listener(gSavedSettings, "Stream3DRolloffMin", handleStream3DRolloffChanged);
     setting_setup_signal_listener(gSavedSettings, "Stream3DRolloffMax", handleStream3DRolloffChanged);
-    setting_setup_signal_listener(gSavedSettings, "Stream3DVolumeMaster", handleStream3DVolumeMasterChanged);
+    setting_setup_signal_listener(gSavedSettings, "Stream3DVolumeMaster", handleStream3DVolumeChanged);
+    setting_setup_signal_listener(gSavedSettings, "MuteStream3D", handleStream3DVolumeChanged);
     setting_setup_signal_listener(gSavedSettings, "Stream3DEnabled", handleStream3DEnabledChanged);
     setting_setup_signal_listener(gSavedSettings, "Stream3DDescriptionScan", handleStream3DDescriptionScanChanged);
     setting_setup_signal_listener(gSavedSettings, "FSParcelStreamQuality", handleParcelStreamQualityChanged);

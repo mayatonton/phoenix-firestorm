@@ -13,4 +13,6 @@
 	<check_box name="enable_media" tool_tip="ストリーミングメディアを有効にします。"/>
 	<slider label_width="85" width="185" label="ボイス" name="Voice Volume"/>
 	<check_box name="enable_voice_check" tool_tip="ボイスチャットを有効にします。"/>
+	<slider label_width="85" width="185" label="3D Stream" name="Stream3D Volume"/>
+	<check_box name="enable_stream3d_check" tool_tip="プリムからの3D音声ストリームを有効にします。"/>
 </panel>

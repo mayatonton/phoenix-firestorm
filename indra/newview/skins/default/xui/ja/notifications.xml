@@ -2806,14 +2806,14 @@ Webページにリンクすると、他人がこの場所に簡単にアクセ�
 		</form>
 	</notification>
 	<notification name="MediaAlert2">
-		選択内容を記憶し、[LCONDITION]からのソースのメディアを許可しますか？
+		選択内容を記憶し、このソースのメディアを[LCONDITION]許可しますか？
 
 ドメイン： [MEDIADOMAIN]
 ＵＲＬ： [MEDIAURL]
 		<form name="form">
 			<button name="Do Now" text="[ACTION]する"/>
-			<button name="RememberDomain" text="[CONDITION]このドメインを許可"/>
-			<button name="RememberURL" text="[CONDITION]このＵＲＬを許可"/>
+			<button name="RememberDomain" text="このドメインを[CONDITION]許可"/>
+			<button name="RememberURL" text="このＵＲＬを[CONDITION]許可"/>
 		</form>
 	</notification>
 	<notification name="MediaAlertSingle">
@@ -2839,18 +2839,47 @@ Webページにリンクすると、他人がこの場所に簡単にアクセ�
 		</form>
 	</notification>
 	<notification name="AudioAlert2">
-選択内容を記憶し、[LCONDITION]からのソースの音楽を許可しますか？
+選択内容を記憶し、このソースの音楽を[LCONDITION]許可しますか？
 
 ドメイン： [AUDIODOMAIN]
 ＵＲＬ： [AUDIOURL]
 		<form name="form">
 			<button name="Do Now" text="[ACTION]する"/>
-			<button name="RememberDomain" text="[CONDITION]このドメインを許可"/>
-			<button name="RememberURL" text="[CONDITION]このＵＲＬを許可"/>
+			<button name="RememberDomain" text="このドメインを[CONDITION]許可"/>
+			<button name="RememberURL" text="このＵＲＬを[CONDITION]許可"/>
+		</form>
+	</notification>
+	<notification name="Stream3DAudioAlert">
+		この区画では以下の3D音声ストリームが提供されます：
+
+ドメイン： [AUDIODOMAIN]
+ＵＲＬ： [AUDIOURL]
+
+オブジェクト： [OBJECTNAME]
+所有者： [OWNERNAME]
+ユーザー名： [OWNERUSERNAME]
+		<form name="form">
+			<button name="Allow" text="許可"/>
+			<button name="Deny" text="拒否"/>
+		</form>
+	</notification>
+	<notification name="Stream3DAudioAlert2">
+選択内容を記憶し、このソースの3D音声ストリームを[LCONDITION]許可しますか？
+
+ドメイン： [AUDIODOMAIN]
+ＵＲＬ： [AUDIOURL]
+
+オブジェクト： [OBJECTNAME]
+所有者： [OWNERNAME]
+ユーザー名： [OWNERUSERNAME]
+		<form name="form">
+			<button name="Do Now" text="[ACTION]する"/>
+			<button name="RememberDomain" text="このドメインを[CONDITION]許可"/>
+			<button name="RememberURL" text="このＵＲＬを[CONDITION]許可"/>
 		</form>
 	</notification>
 	<notification name="AudioAlertSingle">
-選択内容を記憶し、[LCONDITION]からのソースの音楽を許可しますか？
+選択内容を記憶し、このソースの音楽を[LCONDITION]許可しますか？
 
 ドメイン： [AUDIODOMAIN]
 ＵＲＬ： [AUDIOURL]
