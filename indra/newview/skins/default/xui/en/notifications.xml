@@ -7556,7 +7556,7 @@ URL: [AUDIOURL]
    icon="alert.tga"
    name="Stream3DAudioAlert"
    type="alert">
-This object provides a 3D audio stream from:
+This parcel provides a 3D audio stream from:
 
 Domain: [AUDIODOMAIN]
 URL: [AUDIOURL]
