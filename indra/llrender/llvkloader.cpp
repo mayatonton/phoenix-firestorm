@@ -63,6 +63,11 @@ namespace
     VkFramebuffer sFramebuffer = VK_NULL_HANDLE;
     bool sInFrame = false;
 
+    // r41 sub-step 3.3-C-β-2: dynamic rendering begin/end pair tracker (sub-doc 03 §3.1.2)。
+    // beginDynamicRendering() で実 vkCmdBeginRendering 発火時のみ true、endDynamicRendering()
+    // で対称 reset。begin が no-op early return した場合 end も no-op skip して pair 維持。
+    bool sInDynamicRendering = false;
+
     constexpr U32 OFFSCREEN_WIDTH = 64;
     constexpr U32 OFFSCREEN_HEIGHT = 64;
     constexpr VkFormat OFFSCREEN_FORMAT = VK_FORMAT_R8G8B8A8_UNORM;
@@ -411,8 +416,35 @@ namespace
                                << LL_ENDL;
         }
 
+        // r41 sub-step 3.3-C-β-2: enable Vulkan 1.3 dynamicRendering feature
+        // (LLRenderTarget::bindTarget/flush の Vulkan path 並走 = vkCmdBeginRendering /
+        //  vkCmdEndRendering、sub-doc 03 §3.1.2 + sub-doc 07 §1.2.3)。
+        // Vulkan 1.3 では dynamicRendering は mandatory feature (spec 保証)。
+        VkPhysicalDeviceDynamicRenderingFeatures dr_features_query = {};
+        dr_features_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+
+        VkPhysicalDeviceFeatures2 features2_query = {};
+        features2_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2_query.pNext = &dr_features_query;
+
+        vkGetPhysicalDeviceFeatures2(sPhysicalDevice, &features2_query);
+
+        VkPhysicalDeviceDynamicRenderingFeatures dr_features_enable = {};
+        dr_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+        if (dr_features_query.dynamicRendering)
+        {
+            dr_features_enable.dynamicRendering = VK_TRUE;
+        }
+        else
+        {
+            LL_WARNS("Vulkan") << "Device feature dynamicRendering NOT supported "
+                                  "(Vulkan 1.3 spec 保証違反、sub-step 3.3-C 並走 path 無効化)"
+                               << LL_ENDL;
+        }
+
         VkDeviceCreateInfo device_info = {};
         device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_info.pNext = &dr_features_enable;  // r41 3.3-C-β-2: chain dynamic rendering feature
         device_info.queueCreateInfoCount = 1;
         device_info.pQueueCreateInfos = &queue_info;
         device_info.enabledExtensionCount = 0;
@@ -431,6 +463,16 @@ namespace
 
         LL_INFOS("Vulkan") << "Vulkan device created (graphics queue family "
                            << sGraphicsQueueFamily << ")" << LL_ENDL;
+
+        // r41 sub-step 3.3-C-β-2 marker: dynamicRendering feature status (LLRenderTarget Vulkan
+        // 並走基盤、sub-doc 03 §3.1.2)
+        if (dr_features_enable.dynamicRendering)
+        {
+            LL_INFOS("Vulkan") << "Vulkan 1.3 dynamicRendering feature enabled "
+                                  "(LLRenderTarget bindTarget/flush Vulkan path 並走基盤、"
+                                  "sub-step 3.3-C-β-2)"
+                               << LL_ENDL;
+        }
         return true;
     }
 
@@ -1425,6 +1467,15 @@ bool beginFrame()
     }
 
     sInFrame = true;
+
+    // r41 sub-step 3.3-C-β-2: dynamic rendering helper transit smoke (sub-doc 03 §3.1.2)。
+    // no-op early return (all-null args) で in-frame gating + 1 度限りの marker emit を verify。
+    // 実 attachment 配線は γ (LLRenderTarget::bindTarget Vulkan 並走) + 領域 7 sub-step 7.5 で本配信。
+    // 注: legacy vkCmdBeginRenderPass の内側だが、all-null path は vkCmdBeginRendering を発行せず、
+    //     no-op で帰るため legacy render pass と衝突しない。
+    beginDynamicRendering(0, 0, nullptr, 0, nullptr);
+    endDynamicRendering();
+
     return true;
 }
 
@@ -1615,6 +1666,100 @@ void recordSkySmokeDraw(VkCommandBuffer cmd_buf)
     }
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sSkySmokePipeline);
     vkCmdDraw(cmd_buf, 3, 1, 0, 0);
+}
+
+// ============================================================
+// r41 sub-step 3.3-C-β-2: dynamic rendering helper (sub-doc 03 §3.1.2 + sub-doc 07 §1.2.3)
+//
+// LLRenderTarget::bindTarget() / flush() の Vulkan path 並走で使用 (γ で wire up)。
+// in-frame (beginFrame...endFrame 間) かつ Vulkan 初期化済 + sCommandBuffer 有効時のみ
+// vkCmdBeginRendering / vkCmdEndRendering を発火、それ以外 no-op (案 P gating pattern 継承)。
+// β-2 transit smoke は all-null args (color_count=0 + depth=nullptr) で no-op 早期 return
+// path のみ動作実証 + 1 度限りの marker emit、実 attachment 提供 + 実 begin/end 発火は
+// 領域 7 sub-step 7.5 で本配線 (本 helper を γ/δ 経由で呼ぶ LLRenderTarget も同様)。
+// ============================================================
+void beginDynamicRendering(U32                               width,
+                           U32                               height,
+                           const DynamicRenderingAttachment* color_attachments,
+                           U32                               color_count,
+                           const DynamicRenderingAttachment* depth_attachment)
+{
+    if (!sInitialized || !sInFrame || sCommandBuffer == VK_NULL_HANDLE)
+    {
+        return;  // out-of-frame or pre-init: no-op (GL path 単独動作環境で safe)
+    }
+
+    static bool s_first_call = true;
+    if (s_first_call)
+    {
+        s_first_call = false;
+        LL_INFOS("Vulkan") << "beginDynamicRendering : dynamic rendering helper "
+                              "path active (Vulkan 1.3 dynamicRendering / in-frame guard PASS / "
+                              "β-2 transit smoke = all-null args no-op early return)"
+                           << LL_ENDL;
+    }
+
+    // attachment infos 組立 (β-2 transit smoke では null view を skip)
+    VkRenderingAttachmentInfo color_infos[4] = {};
+    U32 valid_color_count = 0;
+    for (U32 i = 0; i < color_count && i < 4; ++i)
+    {
+        if (color_attachments == nullptr || color_attachments[i].image_view == VK_NULL_HANDLE)
+        {
+            continue;  // β-2 transit smoke: null view を skip
+        }
+        color_infos[valid_color_count].sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_infos[valid_color_count].imageView   = color_attachments[i].image_view;
+        color_infos[valid_color_count].imageLayout = color_attachments[i].image_layout;
+        color_infos[valid_color_count].loadOp      = color_attachments[i].load_op;
+        color_infos[valid_color_count].storeOp     = color_attachments[i].store_op;
+        color_infos[valid_color_count].clearValue  = color_attachments[i].clear_value;
+        ++valid_color_count;
+    }
+
+    VkRenderingAttachmentInfo depth_info = {};
+    bool has_depth = false;
+    if (depth_attachment != nullptr && depth_attachment->image_view != VK_NULL_HANDLE)
+    {
+        depth_info.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depth_info.imageView   = depth_attachment->image_view;
+        depth_info.imageLayout = depth_attachment->image_layout;
+        depth_info.loadOp      = depth_attachment->load_op;
+        depth_info.storeOp     = depth_attachment->store_op;
+        depth_info.clearValue  = depth_attachment->clear_value;
+        has_depth = true;
+    }
+
+    if (valid_color_count == 0 && !has_depth)
+    {
+        return;  // 全 view null: no-op (β-2 transit smoke 受入、対称 endDynamicRendering も no-op)
+    }
+
+    VkRenderingInfo rendering_info = {};
+    rendering_info.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    rendering_info.renderArea.offset    = { 0, 0 };
+    rendering_info.renderArea.extent    = { width, height };
+    rendering_info.layerCount           = 1;
+    rendering_info.viewMask             = 0;
+    rendering_info.colorAttachmentCount = valid_color_count;
+    rendering_info.pColorAttachments    = (valid_color_count > 0 ? color_infos : nullptr);
+    rendering_info.pDepthAttachment     = (has_depth ? &depth_info : nullptr);
+    rendering_info.pStencilAttachment   = nullptr;
+
+    vkCmdBeginRendering(sCommandBuffer, &rendering_info);
+    sInDynamicRendering = true;
+}
+
+void endDynamicRendering()
+{
+    if (!sInitialized || !sInFrame || sCommandBuffer == VK_NULL_HANDLE ||
+        !sInDynamicRendering)
+    {
+        return;  // begin が no-op だった場合は対称で skip (pair 維持)
+    }
+
+    vkCmdEndRendering(sCommandBuffer);
+    sInDynamicRendering = false;
 }
 
 } // namespace LLVKLoader
