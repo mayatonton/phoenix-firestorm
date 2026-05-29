@@ -888,7 +888,15 @@ namespace
             return false;
         }
 
-        sPlaceholderLayout = createStandardPipelineLayout(nullptr, 0, nullptr, 0);
+        // r41 sub-step 3.3-γ: 二段構え準拠 layout (set=0 = per-frame matrix UBO + push constant = modelview_matrix mat4 / VERTEX_BIT)
+        // sub-doc 05 §3.5 / sub-doc 03 §3.1.1。実 descriptor set bind / push constant 投入は δ で初実施、γ は layout signature 統合のみ。
+        // placeholder SPIR-V は uniform 未参照のため shader 改変不要 (compile/bind は通る)。
+        VkDescriptorSetLayout set_layouts[1]      = { sPerFrameDescriptorSetLayout };
+        VkPushConstantRange   push_constants[1]  = {};
+        push_constants[0].stageFlags             = VK_SHADER_STAGE_VERTEX_BIT;
+        push_constants[0].offset                 = 0;
+        push_constants[0].size                   = 64; // mat4 modelview_matrix
+        sPlaceholderLayout = createStandardPipelineLayout(set_layouts, 1, push_constants, 1);
         if (sPlaceholderLayout == VK_NULL_HANDLE)
         {
             LL_WARNS("Vulkan") << "Placeholder pipeline layout create failed" << LL_ENDL;
@@ -1055,7 +1063,15 @@ namespace
             return false;
         }
 
-        sSkySmokeLayout = createStandardPipelineLayout(nullptr, 0, nullptr, 0);
+        // r41 sub-step 3.3-γ: 二段構え準拠 layout (set=0 = per-frame matrix UBO + push constant = modelview_matrix mat4 / VERTEX_BIT)
+        // sub-doc 05 §3.5 / sub-doc 03 §3.1.1。実 descriptor set bind / push constant 投入は δ で初実施、γ は layout signature 統合のみ。
+        // sky smoke SPIR-V は uniform 未参照のため shader 改変不要 (compile/bind は通る)。
+        VkDescriptorSetLayout set_layouts[1]      = { sPerFrameDescriptorSetLayout };
+        VkPushConstantRange   push_constants[1]  = {};
+        push_constants[0].stageFlags             = VK_SHADER_STAGE_VERTEX_BIT;
+        push_constants[0].offset                 = 0;
+        push_constants[0].size                   = 64; // mat4 modelview_matrix
+        sSkySmokeLayout = createStandardPipelineLayout(set_layouts, 1, push_constants, 1);
         if (sSkySmokeLayout == VK_NULL_HANDLE)
         {
             LL_WARNS("Vulkan") << "Sky smoke pipeline layout create failed" << LL_ENDL;
