@@ -84,6 +84,10 @@ namespace
     void*                 sPerFrameUboMapped[FRAMES_IN_FLIGHT] = { nullptr, nullptr, nullptr };
     VkDescriptorSet       sPerFrameDescriptorSet[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
 
+    // r41 sub-step 3.3-δ-1: frame in flight index counter (sub-doc 03 §3.1.1 δ)。
+    // beginFrame() で advance、syncMatrices Vulkan path / δ-2 push constant が共有参照。
+    U32 sFrameIndex = 0;
+
     bool createInstance()
     {
         std::vector<const char*> layers;
@@ -1381,6 +1385,10 @@ bool beginFrame()
         return false;
     }
 
+    // r41 sub-step 3.3-δ-1: frame in flight index advance (sub-doc 03 §3.1.1 δ)。
+    // syncMatrices Vulkan path / δ-2 push constant / 将来 descriptor set bind が共有参照。
+    sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT;
+
     vkResetCommandBuffer(sCommandBuffer, 0);
 
     VkCommandBufferBeginInfo begin_info = {};
@@ -1516,6 +1524,53 @@ bool compileGraphicsPipeline(const VkGraphicsPipelineCreateInfo& ci, VkPipeline&
 VkDescriptorSetLayout getPerFrameDescriptorSetLayout()
 {
     return sPerFrameDescriptorSetLayout;
+}
+
+// r41 sub-step 3.3-δ-1: frame in flight index getter (sub-doc 03 §3.1.1 δ)
+U32 getCurrentFrameIndex()
+{
+    return sFrameIndex;
+}
+
+// r41 sub-step 3.3-δ-1: per-frame matrix UBO write helper (sub-doc 03 §3.1.1 δ)
+// LLRender::syncMatrices() Vulkan path 並走で呼出、sPerFrameUboMapped[sFrameIndex] へ memcpy。
+// 未初期化 / 未 map 時は no-op (GL path 単独動作環境で safe)。
+void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data)
+{
+    if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
+    {
+        return;
+    }
+    std::memcpy(static_cast<U8*>(sPerFrameUboMapped[sFrameIndex]) + PERFRAME_UBO_OFFSET,
+                &data,
+                sizeof(PerFrameMatrixUBO));
+
+    static bool s_first_write = true;
+    if (s_first_write)
+    {
+        s_first_write = false;
+        LL_INFOS("Vulkan") << "syncMatrices PerFrame UBO write path active (frame_index="
+                           << sFrameIndex << ")" << LL_ENDL;
+    }
+}
+
+void writeCurrentTextureMatrixUBO(const TextureMatrixUBO& data)
+{
+    if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
+    {
+        return;
+    }
+    std::memcpy(static_cast<U8*>(sPerFrameUboMapped[sFrameIndex]) + TEXTURE_UBO_OFFSET,
+                &data,
+                sizeof(TextureMatrixUBO));
+
+    static bool s_first_write = true;
+    if (s_first_write)
+    {
+        s_first_write = false;
+        LL_INFOS("Vulkan") << "syncMatrices TextureMatrix UBO write path active (frame_index="
+                           << sFrameIndex << ")" << LL_ENDL;
+    }
 }
 
 // r41 sub-step 3.2 smoke-test (refine 2026-05-29): sky pool 1 draw 投入

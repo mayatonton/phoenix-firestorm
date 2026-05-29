@@ -35,8 +35,10 @@
 #include "llrendertarget.h"
 #include "lltexture.h"
 #include "llshadermgr.h"
+#include "llvkloader.h" // <AYAstorm r41> sub-step 3.3-δ-1: syncMatrices Vulkan UBO write 並走
 #include "hbxxh.h"
 #include "glm/gtc/type_ptr.hpp"
+#include <cstring>
 
 thread_local LLRender gGL;
 
@@ -1124,6 +1126,44 @@ void LLRender::syncMatrices()
             }
         }
 
+        // <AYAstorm r41> sub-step 3.3-δ-1: Vulkan path 並走 - per-frame matrix UBO write
+        // (sub-doc 03 §3.1.1 δ、handoff-substep-3-3-gamma-complete.md §5.2)。
+        // GL path と並走、persistent map に memcpy のみ (command buffer 不要)。
+        // push constant (modelview) + descriptor bind は δ-2 で配線。
+        // 二段構え binding 0 = PerFrameMatrixUBO (projection / inv_projection / identity)、
+        // binding 1 = TextureMatrixUBO (texture_matrix[0..3])。
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::PerFrameMatrixUBO perframe = {};
+            LLVKLoader::TextureMatrixUBO  texmat   = {};
+
+            const glm::mat4& proj_mat = mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]];
+            std::memcpy(perframe.projection_matrix,
+                        glm::value_ptr(proj_mat),
+                        sizeof(perframe.projection_matrix));
+
+            const glm::mat4 inv_proj = glm::inverse(proj_mat);
+            std::memcpy(perframe.inverse_projection_matrix,
+                        glm::value_ptr(inv_proj),
+                        sizeof(perframe.inverse_projection_matrix));
+
+            const glm::mat4 identity = glm::identity<glm::mat4>();
+            std::memcpy(perframe.identity_matrix,
+                        glm::value_ptr(identity),
+                        sizeof(perframe.identity_matrix));
+
+            for (U32 tex = 0; tex < 4; ++tex)
+            {
+                const glm::mat4& tex_mat = mMatrix[MM_TEXTURE0 + tex][mMatIdx[MM_TEXTURE0 + tex]];
+                std::memcpy(texmat.texture_matrix[tex],
+                            glm::value_ptr(tex_mat),
+                            sizeof(texmat.texture_matrix[tex]));
+            }
+
+            LLVKLoader::writeCurrentPerFrameMatrixUBO(perframe);
+            LLVKLoader::writeCurrentTextureMatrixUBO(texmat);
+        }
+        // </AYAstorm r41>
 
         if (shader->mFeatures.hasLighting || shader->mFeatures.calculatesLighting || shader->mFeatures.calculatesAtmospherics)
         { //also sync light state

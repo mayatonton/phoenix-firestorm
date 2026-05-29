@@ -85,6 +85,17 @@ namespace LLVKLoader
     // Owned by LLVKLoader; do not destroy. Returns VK_NULL_HANDLE before
     // sub-step 3.3-β-2 wires the layout up.
     VkDescriptorSetLayout getPerFrameDescriptorSetLayout();
+
+    // r41 sub-step 3.3-δ-1: frame in flight index counter (sub-doc 03 §3.1.1 δ)。
+    // beginFrame() 呼出毎に (sFrameIndex + 1) % FRAMES_IN_FLIGHT で進む。δ-2 の
+    // vkCmdPushConstants + vkCmdBindDescriptorSets でも同 index を共有する。
+    U32 getCurrentFrameIndex();
+
+    // r41 sub-step 3.3-δ-1: per-frame matrix UBO write helper (sub-doc 03 §3.1.1 δ)。
+    // sPerFrameUboMapped[getCurrentFrameIndex()] の対応 offset へ memcpy。
+    // Vulkan 未初期化 / 未 map 時は no-op (GL path 単独動作環境で safe)。
+    void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data);
+    void writeCurrentTextureMatrixUBO(const TextureMatrixUBO& data);
 }
 
 #endif // LL_LLVKLOADER_H
