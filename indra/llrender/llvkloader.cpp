@@ -949,21 +949,23 @@ namespace
                            << LL_ENDL;
     }
 
-    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): set=1 per-material descriptor set bind helper。
-    // sPlaceholderLayout 二段構え (set=0 PerFrame + set=1 PerMaterial + push constant 64 B) 前提、
-    // firstSet=1 で sPerMaterialDescriptorSet を bind。in-frame guard / sCommandBuffer 有効性は
-    // caller 側 (beginFrame 内 sPlaceholderPipeline bind 直後) 前提、本 helper は handle null guard のみ。
-    void bindPerMaterialDescriptorSet(VkCommandBuffer cmd_buf)
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4) / 3.4-δ-1 layout 引数化:
+    // set=1 per-material descriptor set bind helper。caller 側 layout (sPlaceholderLayout for
+    // beginFrame transit smoke / sSkySmokeLayout for recordPlaceholderPoolDraw) を受取、
+    // firstSet=1 で sPerMaterialDescriptorSet を bind。両 layout は γ 二段構え準拠
+    // (set=0 PerFrame + set=1 PerMaterial + push constant 64 B) で descriptor set 互換性確保。
+    // in-frame guard / sCommandBuffer 有効性は caller 側前提、本 helper は handle null guard のみ。
+    void bindPerMaterialDescriptorSet(VkCommandBuffer cmd_buf, VkPipelineLayout layout)
     {
         if (cmd_buf == VK_NULL_HANDLE ||
-            sPlaceholderLayout == VK_NULL_HANDLE ||
+            layout == VK_NULL_HANDLE ||
             sPerMaterialDescriptorSet == VK_NULL_HANDLE)
         {
             return;
         }
         vkCmdBindDescriptorSets(cmd_buf,
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                sPlaceholderLayout,
+                                layout,
                                 /*firstSet=*/1,
                                 /*descriptorSetCount=*/1,
                                 &sPerMaterialDescriptorSet,
@@ -1780,7 +1782,7 @@ namespace
         // r41 sub-step 3.4-γ: 二段構え準拠 layout を set=0 PerFrame + set=1 PerMaterial に拡張
         // (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1)。push constant range 0..64 B / VERTEX_BIT (modelview_matrix)
         // は 3.3-γ 設計継承。sky smoke SPIR-V は set=1 binding 未参照のため shader 改変不要
-        // (sub-step 3.4-δ で recordSkySmokeDraw 経由 12 pool hook body に組込予定)。
+        // (sub-step 3.4-δ-1 で recordPlaceholderPoolDraw 経由 12 pool hook body に組込)。
         VkDescriptorSetLayout set_layouts[2]     = { sPerFrameDescriptorSetLayout, sPerMaterialDescriptorSetLayout };
         VkPushConstantRange   push_constants[1]  = {};
         push_constants[0].stageFlags             = VK_SHADER_STAGE_VERTEX_BIT;
@@ -2220,7 +2222,7 @@ bool beginFrame()
         // descriptor 参照は発生しないが、bind 経路の validation 0 件 + INFO marker 経由で 4 transit
         // (allocate / update / bindFirstSet / firstSet=1 hit) を 1 度限り emit。実 per-material 更新は
         // 領域 7 sub-step 7.5 (LLImageGL → VkImage 抱合せ後) で本配信。
-        bindPerMaterialDescriptorSet(sCommandBuffer);
+        bindPerMaterialDescriptorSet(sCommandBuffer, sPlaceholderLayout);
     }
 
     sInFrame = true;
@@ -2417,17 +2419,65 @@ void pushCurrentModelviewMatrix(const float modelview_matrix[16])
     }
 }
 
-// r41 sub-step 3.2 smoke-test (refine 2026-05-29): sky pool 1 draw 投入
-// (sub-doc 03 §3.1 sub-step 3.2、LLDrawPoolSky::recordPoolDraws から呼出、
-// fullscreen triangle で sky blue (0.4, 0.6, 0.9, 1.0) 出力)。
-void recordSkySmokeDraw(VkCommandBuffer cmd_buf)
+// r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
+// (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。
+// PSO bind (sSkySmokePipeline、fullscreen triangle + 定数色 frag = sky blue 0.4/0.6/0.9/1.0) +
+// set=0 PerFrame descriptor (sPerFrameDescriptorSet[sFrameIndex]) + set=1 PerMaterial descriptor
+// (γ 確立 sPerMaterialDescriptorSet、layout 引数化済 helper 経由) + push constant 64 B identity
+// modelview / VERTEX_BIT + vkCmdDraw(3, 1, 0, 0)。各 pool recordPoolDraws hook body から呼出、
+// in-frame 前提 (caller 側 sCommandBuffer 有効性確認)。
+void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
 {
-    if (cmd_buf == VK_NULL_HANDLE || sSkySmokePipeline == VK_NULL_HANDLE)
+    if (cmd_buf == VK_NULL_HANDLE ||
+        sSkySmokePipeline == VK_NULL_HANDLE ||
+        sSkySmokeLayout == VK_NULL_HANDLE)
     {
         return;
     }
+
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sSkySmokePipeline);
+
+    // set=0 PerFrame descriptor set (γ 二段構え layout 経由、sFrameIndex の set を bind)
+    if (sPerFrameDescriptorSet[sFrameIndex] != VK_NULL_HANDLE)
+    {
+        vkCmdBindDescriptorSets(cmd_buf,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sSkySmokeLayout,
+                                /*firstSet=*/0,
+                                /*descriptorSetCount=*/1,
+                                &sPerFrameDescriptorSet[sFrameIndex],
+                                /*dynamicOffsetCount=*/0,
+                                /*pDynamicOffsets=*/nullptr);
+    }
+
+    // set=1 PerMaterial descriptor set (γ helper、3.4-δ-1 layout 引数化で sSkySmokeLayout 経路)
+    bindPerMaterialDescriptorSet(cmd_buf, sSkySmokeLayout);
+
+    // push constant: modelview_matrix = identity (4x4)、fullscreen triangle は NDC 直書きで identity OK
+    const float identity_modelview[16] = {
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
+    vkCmdPushConstants(cmd_buf,
+                       sSkySmokeLayout,
+                       VK_SHADER_STAGE_VERTEX_BIT,
+                       /*offset=*/0,
+                       /*size=*/64,
+                       identity_modelview);
+
     vkCmdDraw(cmd_buf, 3, 1, 0, 0);
+
+    static bool s_first_call = true;
+    if (s_first_call)
+    {
+        s_first_call = false;
+        LL_INFOS("Vulkan") << "Placeholder pool draw fired (PSO bind sSkySmokePipeline + "
+                              "set=0 PerFrame + set=1 PerMaterial + push constant 64 B identity / "
+                              "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
+                           << LL_ENDL;
+    }
 }
 
 // ============================================================

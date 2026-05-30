@@ -45,9 +45,12 @@ namespace LLVKLoader
     // ci.layout / ci.renderPass / ci.pStages etc. must be filled by caller.
     bool compileGraphicsPipeline(const VkGraphicsPipelineCreateInfo& ci, VkPipeline& out_pipeline);
 
-    // r41 sub-step 3.2 smoke-test: sky pool 用 minimal PSO bind + vkCmdDraw 投入
-    // (sub-doc 03 §3.1 sub-step 3.2、2026-05-29 refine、llpostprocess は r42-δ 移管)
-    void recordSkySmokeDraw(VkCommandBuffer cmd_buf);
+    // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
+    // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。
+    // PSO bind (sSkySmokePipeline) + set=0 PerFrame descriptor + set=1 PerMaterial descriptor +
+    // push constant 64 B identity modelview / VERTEX_BIT + vkCmdDraw(3, 1, 0, 0)。
+    // 各 pool の recordPoolDraws hook body から呼出、in-frame 前提 (caller 側 guard)。
+    void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf);
 
     // ------------------------------------------------------------------
     // r41 sub-step 3.3-β-1: per-frame matrix UBO layout (二段構え)

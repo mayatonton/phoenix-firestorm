@@ -57,9 +57,10 @@ void LLDrawPoolSky::endRenderPass( S32 pass )
 {
 }
 
-// <AYAstorm r41> sub-step 3.2 (refine 2026-05-29): sky pool 1 draw smoke-test。
-// LLVKLoader::recordSkySmokeDraw が fullscreen triangle で sky blue (0.4, 0.6, 0.9, 1.0)
-// を出力、sub-doc 03 §3.1 sub-step 3.2 完遂 marker (Vulkan 経由 vkCmdDraw 投入 + validation 0 件)。
+// <AYAstorm r41> sub-step 3.4-δ-1 (sub-doc 03 §3.1.4、旧 3.2 sky-smoke 由来):
+// LLVKLoader::recordPlaceholderPoolDraw が PSO bind + set=0/1 + push constant 64 B identity +
+// vkCmdDraw(3, 1, 0, 0) で fullscreen triangle + sky blue (0.4, 0.6, 0.9, 1.0) を投入。
+// 他 11 pool は δ-2 で同 helper 呼出を hook body に投入予定。
 void LLDrawPoolSky::recordPoolDraws(VkCommandBuffer cmd_buf)
 {
     static bool logged_once = false;
@@ -68,7 +69,7 @@ void LLDrawPoolSky::recordPoolDraws(VkCommandBuffer cmd_buf)
         LL_INFOS("VkRecord") << "Sky pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
         logged_once = true;
     }
-    LLVKLoader::recordSkySmokeDraw(cmd_buf);
+    LLVKLoader::recordPlaceholderPoolDraw(cmd_buf);
 }
 // </AYAstorm r41>
 
