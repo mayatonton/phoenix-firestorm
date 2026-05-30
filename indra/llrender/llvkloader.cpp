@@ -1024,15 +1024,41 @@ namespace
         return true;
     }
 
-    // r41 sub-step 3.2 smoke-test (refine 2026-05-29): sky pool 1 draw PSO。
-    // GLSL source (offline compiled、glslc -O / Target: SPIR-V 1.0):
-    //   sky_smoke.vert: fullscreen triangle、gl_VertexIndex 0/1/2 で
-    //                   (-1,-1)/(3,-1)/(-1,3) を生成、vertex input binding 不要
-    //   sky_smoke.frag: layout(location=0) out vec4 outColor;
-    //                   void main() { outColor = vec4(0.4, 0.6, 0.9, 1.0); }
-    // descriptor / push constant 不要、depth test/write OFF、blend OFF、cull NONE。
-    // 完遂 marker (sub-doc 03 §3.1 sub-step 3.2): sky pool recordPoolDraws() で
-    // vkCmdBindPipeline + vkCmdDraw(3,1,0,0) 投入、validation 0 件。
+    // r41 sub-step 3.3-B-γ: SPIR-V file loader helper (sub-doc 03 §3.1.3)
+    // β-2 で確立した build chain (glslangValidator → .spv → viewer_manifest deploy) で
+    // packaged dir 配置の .spv binary を読込み → loadSpirvShaderModule 経由で
+    // VkShaderModule 化。caller が vkDestroyShaderModule で破棄、PSO compile 後は安全に破棄可。
+    VkShaderModule loadSpirvShaderModuleFromFile(const char* rel_path)
+    {
+        const std::string path = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, rel_path);
+        std::ifstream f(path, std::ios::binary | std::ios::ate);
+        if (!f)
+        {
+            LL_WARNS("Vulkan") << "SPIR-V file not found: " << path << LL_ENDL;
+            return VK_NULL_HANDLE;
+        }
+        const std::streamsize size = f.tellg();
+        if (size <= 0 || (size % 4) != 0)
+        {
+            LL_WARNS("Vulkan") << "SPIR-V bad size: " << path
+                               << " size=" << (S32)size << LL_ENDL;
+            return VK_NULL_HANDLE;
+        }
+        f.seekg(0, std::ios::beg);
+        std::vector<U32> spv(static_cast<size_t>(size) / 4);
+        if (!f.read(reinterpret_cast<char*>(spv.data()), size))
+        {
+            LL_WARNS("Vulkan") << "SPIR-V read failed: " << path << LL_ENDL;
+            return VK_NULL_HANDLE;
+        }
+        return loadSpirvShaderModule(spv.data(), static_cast<size_t>(size));
+    }
+
+#ifdef AYA_R41_USE_EMBEDDED_SPIRV_FALLBACK
+    // r41 sub-step 3.3-B-γ: Mac/Win build host で glslangValidator 不在時の embedded fallback (sub-doc 03 §3.1.3)。
+    // Linux build (glslangValidator 検出時) では cmake が macro 未定義化 = dead code として binary から除外。
+    // (元 r41 sub-step 3.2 smoke-test SPIR-V、refine 2026-05-29、GLSL source: fullscreen triangle vert +
+    //  定数色 frag = vec4(0.4, 0.6, 0.9, 1.0)、descriptor/push constant 不要。)
     static const uint32_t kSkySmokeVertSpv[] = {
         0x07230203, 0x00010000, 0x000d000b, 0x0000002c, 0x00000000, 0x00020011,
         0x00000001, 0x0006000b, 0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e,
@@ -1088,24 +1114,45 @@ namespace
         0x00050036, 0x00000002, 0x00000004, 0x00000000, 0x00000003, 0x000200f8,
         0x00000005, 0x0003003e, 0x00000009, 0x0000000e, 0x000100fd, 0x00010038,
     };
+#endif // AYA_R41_USE_EMBEDDED_SPIRV_FALLBACK
 
     bool createSkySmokePipeline()
     {
-        VkShaderModuleCreateInfo vs_info = {};
-        vs_info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        vs_info.codeSize = sizeof(kSkySmokeVertSpv);
-        vs_info.pCode    = kSkySmokeVertSpv;
-        if (vkCreateShaderModule(sDevice, &vs_info, nullptr, &sSkySmokeVertModule) != VK_SUCCESS)
+        // r41 sub-step 3.3-B-γ: SPIR-V build chain 経由 file load primary (sub-doc 03 §3.1.3)。
+        // β-2 build chain (glslangValidator → .spv → viewer_manifest deploy) で同梱した
+        // sky_placeholder{V,F}.spv を loadSpirvShaderModuleFromFile 経由で読込み。
+        // Mac/Win build host で glslangValidator 不在時 (cmake が AYA_R41_USE_EMBEDDED_SPIRV_FALLBACK 定義)
+        // は embedded byte array (kSkySmokeVertSpv/kSkySmokeFragSpv) で fallback。
+        sSkySmokeVertModule = loadSpirvShaderModuleFromFile("shaders/aya_r41_exemplar/sky_placeholderV.spv");
+        sSkySmokeFragModule = loadSpirvShaderModuleFromFile("shaders/aya_r41_exemplar/sky_placeholderF.spv");
+
+#ifdef AYA_R41_USE_EMBEDDED_SPIRV_FALLBACK
+        if (sSkySmokeVertModule == VK_NULL_HANDLE)
+        {
+            LL_INFOS("Vulkan") << "Sky smoke vert: file load failed, using embedded byte array fallback" << LL_ENDL;
+            VkShaderModuleCreateInfo vs_info = {};
+            vs_info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            vs_info.codeSize = sizeof(kSkySmokeVertSpv);
+            vs_info.pCode    = kSkySmokeVertSpv;
+            vkCreateShaderModule(sDevice, &vs_info, nullptr, &sSkySmokeVertModule);
+        }
+        if (sSkySmokeFragModule == VK_NULL_HANDLE)
+        {
+            LL_INFOS("Vulkan") << "Sky smoke frag: file load failed, using embedded byte array fallback" << LL_ENDL;
+            VkShaderModuleCreateInfo fs_info = {};
+            fs_info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            fs_info.codeSize = sizeof(kSkySmokeFragSpv);
+            fs_info.pCode    = kSkySmokeFragSpv;
+            vkCreateShaderModule(sDevice, &fs_info, nullptr, &sSkySmokeFragModule);
+        }
+#endif
+
+        if (sSkySmokeVertModule == VK_NULL_HANDLE)
         {
             LL_WARNS("Vulkan") << "Sky smoke vertex shader module create failed" << LL_ENDL;
             return false;
         }
-
-        VkShaderModuleCreateInfo fs_info = {};
-        fs_info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        fs_info.codeSize = sizeof(kSkySmokeFragSpv);
-        fs_info.pCode    = kSkySmokeFragSpv;
-        if (vkCreateShaderModule(sDevice, &fs_info, nullptr, &sSkySmokeFragModule) != VK_SUCCESS)
+        if (sSkySmokeFragModule == VK_NULL_HANDLE)
         {
             LL_WARNS("Vulkan") << "Sky smoke fragment shader module create failed" << LL_ENDL;
             return false;
@@ -1203,9 +1250,7 @@ namespace
             return false;
         }
 
-        LL_INFOS("Vulkan") << "Sky smoke PSO compiled (vert " << sizeof(kSkySmokeVertSpv)
-                           << " B / frag " << sizeof(kSkySmokeFragSpv)
-                           << " B, sub-doc 03 §3.1 sub-step 3.2 sky pool 1 draw)" << LL_ENDL;
+        LL_INFOS("Vulkan") << "Sky smoke PSO compiled via SPIR-V build chain (sub-step 3.3-B-γ)" << LL_ENDL;
         return true;
     }
 }
@@ -1478,47 +1523,10 @@ bool beginFrame()
     beginDynamicRendering(0, 0, nullptr, 0, nullptr);
     endDynamicRendering();
 
-    // r41 sub-step 3.3-B-β-2: SPIR-V exemplar load transit smoke (sub-doc 03 §3.1.3)。
-    // 1 度限り (first frame) sky_placeholder{V,F}.spv を読み込み → loadSpirvShaderModule
-    // → 即破棄。build chain (glslangValidator → .spv → vkCreateShaderModule) 全段の動作確認。
-    // 実 PSO compile への移行は γ で配線、現状は build chain 実証のみ。
-    static bool s_spirv_exemplar_smoke_done = false;
-    if (!s_spirv_exemplar_smoke_done)
-    {
-        s_spirv_exemplar_smoke_done = true;
-
-        auto try_load = [](const char* rel_path)
-        {
-            const std::string path = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, rel_path);
-            std::ifstream f(path, std::ios::binary | std::ios::ate);
-            if (!f)
-            {
-                LL_WARNS("Vulkan") << "SPIR-V exemplar not found: " << path << LL_ENDL;
-                return;
-            }
-            const std::streamsize size = f.tellg();
-            if (size <= 0 || (size % 4) != 0)
-            {
-                LL_WARNS("Vulkan") << "SPIR-V exemplar bad size: " << path
-                                   << " size=" << (S32)size << LL_ENDL;
-                return;
-            }
-            f.seekg(0, std::ios::beg);
-            std::vector<U32> spv(static_cast<size_t>(size) / 4);
-            if (!f.read(reinterpret_cast<char*>(spv.data()), size))
-            {
-                LL_WARNS("Vulkan") << "SPIR-V exemplar read failed: " << path << LL_ENDL;
-                return;
-            }
-            VkShaderModule mod = loadSpirvShaderModule(spv.data(), static_cast<size_t>(size));
-            if (mod != VK_NULL_HANDLE)
-            {
-                vkDestroyShaderModule(sDevice, mod, nullptr);
-            }
-        };
-        try_load("shaders/aya_r41_exemplar/sky_placeholderV.spv");
-        try_load("shaders/aya_r41_exemplar/sky_placeholderF.spv");
-    }
+    // r41 sub-step 3.3-B-γ (2026-05-31): β-2 transit smoke 撤去済。
+    // SPIR-V build chain 経路は createSkySmokePipeline 経由で initVulkan 内 1 度実行
+    // (loadSpirvShaderModuleFromFile → loadSpirvShaderModule → vkCreateShaderModule)、
+    // beginFrame 内の transit smoke は不要。
 
     return true;
 }
@@ -1806,12 +1814,15 @@ void endDynamicRendering()
     sInDynamicRendering = false;
 }
 
-// r41 sub-step 3.3-B-β-2: SPIR-V shader module load helper (sub-doc 03 §3.1.3)
+// r41 sub-step 3.3-B-β-2/γ: SPIR-V shader module load helper (sub-doc 03 §3.1.3)
 // build 時 glslangValidator で pre-compile した .spv binary を VkShaderModule 化。
 // 領域 6 sub-step 6.1 一括化までの 1 shader exemplar pre-flight (sky placeholder)。
+// γ 改修 (2026-05-31): initVulkan 内 createSkySmokePipeline からの呼出に対応するため
+// sInitialized ガードを撤去 (sDevice の null check のみで safety 担保、PSO compile は
+// initVulkan の sInitialized=true 設定前に実行されるため)。
 VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes)
 {
-    if (!sInitialized || sDevice == VK_NULL_HANDLE)
+    if (sDevice == VK_NULL_HANDLE)
     {
         return VK_NULL_HANDLE;
     }
@@ -1837,7 +1848,7 @@ VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes
         return VK_NULL_HANDLE;
     }
 
-    LL_INFOS("Vulkan") << "SPIR-V shader module loaded (sub-step 3.3-B-β-2 exemplar pre-flight)"
+    LL_INFOS("Vulkan") << "SPIR-V shader module loaded"
                        << " size=" << (S32)code_size_bytes << " bytes" << LL_ENDL;
     return module;
 }

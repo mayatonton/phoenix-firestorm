@@ -5,6 +5,7 @@ project(llrender)
 include(00-Common)
 include(OpenGL)
 include(Vulkan)
+include(AyaShaderCompile)
 include(FreeType)
 include(LLCommon)
 include(LLImage)
@@ -96,6 +97,14 @@ endif (BUILD_HEADLESS)
 
 add_library (llrender ${llrender_SOURCE_FILES})
 target_include_directories( llrender  INTERFACE   ${CMAKE_CURRENT_SOURCE_DIR})
+
+# r41 sub-step 3.3-B-γ (sub-doc 03 §3.1.3):
+# glslangValidator が build host に無い場合は SPIR-V file load が runtime で失敗するため、
+# llvkloader.cpp の embedded byte array fallback を有効化。Linux build (glslangValidator 検出)
+# では未定義 → embedded byte array は dead code として binary から除外。
+if (NOT AYA_GLSLANG_VALIDATOR)
+    target_compile_definitions(llrender PRIVATE AYA_R41_USE_EMBEDDED_SPIRV_FALLBACK)
+endif()
 
 set_property(TARGET llrender PROPERTY POSITION_INDEPENDENT_CODE ON)
 
