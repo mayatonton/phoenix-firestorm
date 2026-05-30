@@ -217,6 +217,26 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // here the alpha plate gets filled but never composited back over the
     // DoF result — alpha BLEND surfaces vanish from the screen while edit
     // tool is open. Keep the redirect gate aligned with renderDoF()'s gate.
+    // <AYAstorm r31.2 underwater alpha plate fix 2026-05-30>
+    // Underwater gate: when LLPipeline::sUnderWaterRender is true, the main
+    // RT (mRT->screen) already contains water-fog-tinted opaque scene, but the
+    // alpha plate (mAYAAlphaColor) is cleared to (0,0,0,0) and forward alpha
+    // shaders write into it. The pre-tonemap composite uses
+    // GL_ONE / GL_ONE_MINUS_SRC_ALPHA, so where forward alpha writes pixels
+    // with high src.a the plate over-blends and overrides the underwater-
+    // tinted main RT — alpha BLEND surfaces (eyelash attachments, particles)
+    // render visually black underwater. Same break also surfaces transiently
+    // when the camera crosses from below the water plane back to above: the
+    // first frame above water is fine (plate redirect off), then plate state
+    // resyncs and the black bleed reappears for a few frames as the depth /
+    // fragment-level water-fog sampling settles.
+    // Drop the plate redirect entirely while sUnderWaterRender is true so the
+    // alpha BLEND writes go straight to mRT->screen exactly like upstream
+    // Firestorm, restoring underwater fog continuity. The transparent-DoF
+    // C-(a) bg-blur effect is lost while underwater, but underwater scenes
+    // are already a fog-saturated wash where DoF bokeh is structurally
+    // invisible — the visual cost is near zero, and water-fog correctness
+    // beats it.
     const bool use_alpha_rt =
         !LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
         !gCubeSnapshot && LLPipeline::RenderDepthOfField &&
@@ -224,7 +244,9 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
          !LLToolMgr::getInstance()->inBuildMode()) &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
         gPipeline.mRT == &gPipeline.mMainRT &&
+        !LLPipeline::sUnderWaterRender &&
         gPipeline.mAYAAlphaColor.isComplete();
+    // </AYAstorm r31.2 underwater alpha plate fix>
 
     // <AYAstorm r30 P5 plate-clear unconditional 2026-05-23>
     // Clear mAYAAlphaColor every frame regardless of use_alpha_rt. When
