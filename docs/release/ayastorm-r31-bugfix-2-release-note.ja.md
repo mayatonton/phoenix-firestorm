@@ -5,6 +5,8 @@
 >
 > AYAstorm 固有の問題ではなく、Firestorm 派生 viewer 全体で共有される inventory root に起因する構造的な振る舞いへの対応です (バグか仕様かの判断は upstream にあります)。
 
+AO + Bridge 修正と並ぶ **2 大修正項目** として、装着物 N-BL prim アルファ render-order の 3-pass dispatch (PR #122) も本リリースに同梱します。それに加え r31-bugfix-1 以降に着地した次の 3 件の修正も含んでいます: 3D Stream URL filter + UI 更新 (PR #121)、Cinematic mode glow min-luminance bugfix (PR #123)、水中アルファ plate redirect 修正 (PR #124)。各 feature 別の section は本ノート下部を参照。
+
 実装詳細、影響範囲、復旧手順は `docs/specs/` および `docs/guides/` 配下に常設しています。本ノートは入口と差分ハイライトです。
 
 ---
@@ -91,3 +93,128 @@ r31-bugfix-2 では通常の AO セット「削除」を実 inventory 削除で�
 - ユーザー復旧手順 (日本語): [`docs/guides/ao-data-recovery-guide.ja.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.ja.md)
 - ユーザー復旧手順 (English): [`docs/guides/ao-data-recovery-guide.en.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.en.md)
 - ユーザー復旧手順 (繁體中文): [`docs/guides/ao-data-recovery-guide.zh.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.zh.md)
+
+---
+
+## すでに AO セットが消えてしまった方 — AO 再セットアップ手順
+
+> [!IMPORTANT]
+> 上に書いた事象によりすでに AO セットが消えてしまった方の **AO データそのものは viewer 側でも SL サーバ側でも取り戻せません**。ただし AO 機能自体は簡単な再セットアップで普通に使える状態に戻せます。**手順を 3 言語で公開していますので、ご自身の環境に合うものをご利用ください:**
+>
+> - 🇯🇵 [**日本語復旧手順**](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.ja.md)
+> - 🇺🇸 [**English Recovery Guide**](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.en.md)
+> - 🇨🇳 [**繁體中文復原指南**](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.zh.md)
+>
+> r31-bugfix-2 を install していただくと **以降 AYAstorm 側では同じ事象は起きません**。Firestorm 本家 / 他 FS 派生 viewer での再発は各 viewer 側で patch される必要がありますが、その場合の回避策も復旧 guide 内に明記されています。
+
+---
+
+## 装着物 N-BL prim アルファ render-order — 3-pass dispatch (PR [#122](https://github.com/mayatonton/phoenix-firestorm/pull/122))
+
+### 見出し: r31-bugfix-2 の 2 大修正項目その 2 — POST_WATER forward pass を SIM N-BL → R-BL → 装着物 N-BL の 3 段に分割し per-draw discriminator で振り分け
+
+これは AO + Bridge 救済と **並ぶ 2 大修正項目** の 1 つです。r30 §5 の render-order swap (POST_WATER 全 non-rigged → 全 rigged) は rigged hair 越しの空抜けを解消しましたが、副作用として装着物 N-BL prim (まつ毛 prim 等) が rigged hair の前ではなく後に描かれて over-blend で潰される regression (spec 用語で S1 / S2) を出していました。POST_WATER の forward pass を以下 3 sub-pass に分割します:
+
+- **pass 1**: `forwardRender(false, ATTACHMENT_NONE)` — SIM rezz N-BL のみ
+- **pass 2**: `forwardRender(true)` — 全 R-BL (rigged hair 等)
+- **pass 3**: `forwardRender(false, ATTACHMENT_ONLY)` — 装着物 N-BL prim のみ
+
+per-draw discriminator は `LLDrawInfo::mAttachedToAvatar.notNull()`。pass 3 を rigged の後にずらすことで装着物 prim が hair の前面に整列し、同時に pass 1 で SIM 側 N-BL を rigged 前に描いて §5 swap fix (髪越し空抜け解消) は維持します。PRE_WATER は water fog 整合性のため rigged-first 維持。HUD は forwardRender 1 回のみで対象外。
+
+falsified した代替案 (alpha plate の独立 depth など) と 3-pass 採用の構造的比較は `docs/specs/ayastorm-double-alpha-c-plan-extension.md §3` に記録。
+
+### Implementation summary
+
+- `indra/newview/lldrawpoolalpha.cpp` / `lldrawpoolalpha.h` — `AttachmentFilter` enum と `forwardRender(rigged, filter)` overload、POST_WATER の 3 sub-pass 分割、per-draw `LLDrawInfo::mAttachedToAvatar` discriminator
+- `docs/specs/ayastorm-double-alpha-c-plan-extension.md` — falsified 案 A/B/C との構造的比較 (新規)
+- `docs/specs/ayastorm-six-category-render-order-trace.md` — 3-pass 境界の根拠となった 6 カテゴリ render order trace 全文 (新規)
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — 3-pass dispatch の設計・実装、falsification analysis (A/B/C 案)、spec 整備。
+
+### Special thanks
+
+- neria (neriamm) — アルファ render-order 問題の調査と検証協力。複数の SL avatar での再現環境構築と候補修正の hands-on 検証が、構造的比較と最終的な実装選択の絞り込みに大きく貢献しました。neria さんは Second Life のレジデント貢献者です (GitHub アカウントではありません)。
+
+### Documentation
+
+- 構造的比較 (拡張報告書): [`docs/specs/ayastorm-double-alpha-c-plan-extension.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/ayastorm-double-alpha-c-plan-extension.md)
+- 6 カテゴリ render order trace: [`docs/specs/ayastorm-six-category-render-order-trace.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/ayastorm-six-category-render-order-trace.md)
+
+---
+
+## 3D Stream URL filter + UI 更新 (PR [#121](https://github.com/mayatonton/phoenix-firestorm/pull/121))
+
+### 見出し: 3D Stream を初期 OFF に。URL 再生確認に送信元の object 名 / owner を表示
+
+3D Stream 機能 (r26 で導入、r31 で unified tag として整理) を r31.2 以降は `Stream3DEnabled = false` 初期値で出荷します。すでに 3D Stream を有効で運用していたユーザーは persist 値を引き継ぎます。新規 install のみ初期 OFF からの開始です。in-world オブジェクトから stream URL が送られたときの再生確認 dialog には送信元の object 名 / owner を表示し、誰が送ってきた URL なのかを各 viewer が判断できるようにします。rezz されたオブジェクト経由の意図しない自動再生は UI で後追いブロックするのではなく source-of-truth の段階で落とします。
+
+### 修正の仕組み
+
+- `settings.xml` で `Stream3DEnabled` 初期値を `false` に。既存ユーザーの persist 値は保持
+- URL 再生確認 dialog 文言に送信元の object 名 / owner を含める (3 言語)
+- source-of-truth 強制: 3D Stream が disabled のとき、rezz されたオブジェクトからの URL emit は auto-play 経路に届く前に落とす (UI 後追いではない)
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — 3D Stream URL filter + UI 更新の実装、3 言語プロンプトローカライズ。
+
+### Documentation
+
+- 技術報告 (日本語): [`docs/specs/ayastorm-r31-2-3dstream-url-filter-and-ui-update-report.ja.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/ayastorm-r31-2-3dstream-url-filter-and-ui-update-report.ja.md)
+- ユーザーガイド (English): [`docs/specs/3dstream-user-guide.en.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/3dstream-user-guide.en.md)
+- ユーザーガイド (日本語): [`docs/specs/3dstream-user-guide.ja.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/3dstream-user-guide.ja.md)
+- ユーザーガイド (繁體中文): [`docs/specs/3dstream-user-guide.zh.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/3dstream-user-guide.zh.md)
+
+---
+
+## Cinematic glow min-luminance bugfix (PR [#123](https://github.com/mayatonton/phoenix-firestorm/pull/123))
+
+### 見出し: Cinematic mode `RenderGlowMinLuminance` を 0.0 → 0.5 に。既出荷ユーザーは one-shot migration で強制矯正
+
+Cinematic mode で適用される BD parity overlay が `RenderGlowMinLuminance = 0.0` を持ち込み、HDR linear 空間の bloom-extract 閾値を下げていました。`glowExtractF.glsl` は bloom 寄与を `smoothstep(min, min+1.0, x)` で計算するため、`min = 0.0` だと HDR `0..1.0` の中間 lit でも発火し、`warmth = max(r*0.75, g*0.6, b*0.712)` 経路で色付きプリム (blank texture + color picker) が prim 側 Glow=0 設定でも光ってしまいます。装着物と SIM rez object の両方で症状が報告され、texture 適用プリムや白色プリムでは発火しないという観測でした。
+
+閾値を `0.5` に引き上げます。Cinematic の強い bloom 表現 (空 / 強い反射 / 強い emissive — HDR `0.5` 以上) は引き続き発火し、装着物クラスの中間 lit による意図しない bloom だけを切ります。r31.0 / r31.1 で `0.0` を persist 焼きしてしまったユーザーは one-shot migration (sentinel `AYAR31GlowMinLuminanceMigrationVersion`) で強制矯正しますが、**次回 Cinematic mode 起動時に限ります** — Firestorm mode 専用ユーザーは影響なし (LL default `1.0` のまま、migration は skip し version も bump せず、次回 Cinematic 起動で再検査)。
+
+### 修正の仕組み
+
+- `settings_cinematic_bd.xml`: `RenderGlowMinLuminance` `0.0` → `0.5`
+- `settings.xml`: `AYAR31GlowMinLuminanceMigrationVersion` sentinel (S32, Persist=1, default 0) 追加
+- `llcinematicoverlay.{h,cpp}`: `applyR31GlowMinLuminanceMigrationIfNeeded()` 実装。`AYAVisualRealismEnabled != 2` (Firestorm mode) の場合は version を bump せず skip、次回 Cinematic 起動で再検査
+- `llappviewer.cpp`: 起動 sequence の既存 `applyR15GodraysCinematicMigrationIfNeeded()` 呼出後に migration 呼出を追加
+
+### Implementation summary
+
+- `indra/newview/app_settings/settings_cinematic_bd.xml` — `RenderGlowMinLuminance` 閾値引き上げ
+- `indra/newview/app_settings/settings.xml` — migration sentinel
+- `indra/newview/llcinematicoverlay.cpp` / `llcinematicoverlay.h` — `applyR31GlowMinLuminanceMigrationIfNeeded()` (mode==2 ガード付き)
+- `indra/newview/llappviewer.cpp` — 起動 sequence への組込み
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — bloom 閾値の調査、修正設計、one-shot migration 実装。
+
+---
+
+## 水中アルファ plate redirect 修正 (PR [#124](https://github.com/mayatonton/phoenix-firestorm/pull/124))
+
+### 見出し: `mAYAAlphaColor` redirect を `!sUnderWaterRender` で gate、水中は forward alpha を main RT へ直書き (FS 互換挙動)
+
+r30 P5 transparent-DoF C-(a) で導入した `mAYAAlphaColor` redirect は、forward alpha BLEND を独立 alpha plate に書かせて tonemap 前に main RT に over-blend (`GL_ONE / GL_ONE_MINUS_SRC_ALPHA`) composite します。この redirect 有効化条件 (`use_alpha_rt`) が `LLPipeline::sUnderWaterRender` に対応していませんでした。水中時は main RT に underwater fog 着色済みの opaque scene があるのに、独立 plate は `(0,0,0,0)` で clear → forward alpha が plate に書き込み、pre-tonemap composite で plate が underwater 着色 main RT を上書きし、まつ毛 / 眉などの装着物アルファプリムと SIM particle の透過部分が **水中で真っ黒** で描画されていました。水上に出た後にも数フレーム再発する症状あり (カメラ上昇に伴い redirect が一旦水上状態に戻り、その後また水中状態に drift する)。
+
+修正は単一条件 gate: `use_alpha_rt` に `!LLPipeline::sUnderWaterRender` を追加します。水中時は redirect を skip して forward alpha を main RT に直書き — 水中での upstream FS 互換挙動。水上時の振る舞いは旧と完全一致。
+
+### 修正の仕組み
+
+- `indra/newview/lldrawpoolalpha.cpp`: `use_alpha_rt` 条件の既存 `gPipeline.mAYAAlphaColor.isComplete()` 直前に `!LLPipeline::sUnderWaterRender &&` を追加
+- gate が redirect を抑えると alpha plate は clear 済の `(0,0,0,0)` のまま。pre-tonemap composite は main RT に対して no-op (`A_plate * 1 + RT * 1 = RT`) となるため、水中専用 composite 経路は不要
+- 水上時の transparent-DoF C-(a) plate composite 効果は変更なし。水中は全画面 fog で bokeh 構造的に不可視のため、水中で plate composite を落としても知覚的差はない
+
+### Implementation summary
+
+- `indra/newview/lldrawpoolalpha.cpp` — `use_alpha_rt` 条件に `!LLPipeline::sUnderWaterRender` を追加、inline コメントで水中時 no-op composite の根拠を明記
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — 水中症状の調査、単一 gate 修正、5 connection point (`mForwardToAlphaRT` / alpha blend factors / emissive routing / plate clear / plate composite) の影響範囲トレース。

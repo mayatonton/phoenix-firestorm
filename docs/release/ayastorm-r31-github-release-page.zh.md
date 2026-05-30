@@ -85,11 +85,11 @@ AYAstorm View pipeline 大量借鉴自 NiranV Dean 的 Black Dragon viewer (LGPL
 
 ## Downloads
 
-> **请改用 [AYAstorm r31-bugfix-1](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)。** r31 中存在的 FullBright prim 透过 SSS pink-shadow 渗漏的结构性 bug 已在 r31-bugfix-1 中修复,并同捆全部 3 个 OS(Linux / Windows / macOS)的安装包。
+> **请改用 [AYAstorm r31-bugfix-2](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)。** r31-bugfix-2 同捆了 AO 删除事象救济 + LSL Bridge 冲突防御、装着物 alpha render-order 之 3-pass dispatch、3D Stream URL filter、Cinematic glow min-luminance 修正、水中 alpha plate 修正,以及 r31-bugfix-1 的 SSS pink-shadow 修正。并同捆全部 3 个 OS(Linux / Windows / macOS)的安装包。
 
-- Linux Installer → [使用 r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
-- Windows Installer → [使用 r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
-- macOS Installer → [使用 r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
+- Linux Installer → [使用 r31-bugfix-2 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)
+- Windows Installer → [使用 r31-bugfix-2 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)
+- macOS Installer → [使用 r31-bugfix-2 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)
 
 ## Contributors
 
