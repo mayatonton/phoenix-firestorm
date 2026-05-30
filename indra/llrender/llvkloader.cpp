@@ -16,11 +16,13 @@
 #include "llvkloader.h"
 
 #include "volk.h"
+#include "lldir.h"
 
 #include <vector>
 #include <string>
 #include <climits>
 #include <cstring>
+#include <fstream>
 
 namespace LLVKLoader
 {
@@ -1476,6 +1478,48 @@ bool beginFrame()
     beginDynamicRendering(0, 0, nullptr, 0, nullptr);
     endDynamicRendering();
 
+    // r41 sub-step 3.3-B-β-2: SPIR-V exemplar load transit smoke (sub-doc 03 §3.1.3)。
+    // 1 度限り (first frame) sky_placeholder{V,F}.spv を読み込み → loadSpirvShaderModule
+    // → 即破棄。build chain (glslangValidator → .spv → vkCreateShaderModule) 全段の動作確認。
+    // 実 PSO compile への移行は γ で配線、現状は build chain 実証のみ。
+    static bool s_spirv_exemplar_smoke_done = false;
+    if (!s_spirv_exemplar_smoke_done)
+    {
+        s_spirv_exemplar_smoke_done = true;
+
+        auto try_load = [](const char* rel_path)
+        {
+            const std::string path = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, rel_path);
+            std::ifstream f(path, std::ios::binary | std::ios::ate);
+            if (!f)
+            {
+                LL_WARNS("Vulkan") << "SPIR-V exemplar not found: " << path << LL_ENDL;
+                return;
+            }
+            const std::streamsize size = f.tellg();
+            if (size <= 0 || (size % 4) != 0)
+            {
+                LL_WARNS("Vulkan") << "SPIR-V exemplar bad size: " << path
+                                   << " size=" << (S32)size << LL_ENDL;
+                return;
+            }
+            f.seekg(0, std::ios::beg);
+            std::vector<U32> spv(static_cast<size_t>(size) / 4);
+            if (!f.read(reinterpret_cast<char*>(spv.data()), size))
+            {
+                LL_WARNS("Vulkan") << "SPIR-V exemplar read failed: " << path << LL_ENDL;
+                return;
+            }
+            VkShaderModule mod = loadSpirvShaderModule(spv.data(), static_cast<size_t>(size));
+            if (mod != VK_NULL_HANDLE)
+            {
+                vkDestroyShaderModule(sDevice, mod, nullptr);
+            }
+        };
+        try_load("shaders/aya_r41_exemplar/sky_placeholderV.spv");
+        try_load("shaders/aya_r41_exemplar/sky_placeholderF.spv");
+    }
+
     return true;
 }
 
@@ -1760,6 +1804,42 @@ void endDynamicRendering()
 
     vkCmdEndRendering(sCommandBuffer);
     sInDynamicRendering = false;
+}
+
+// r41 sub-step 3.3-B-β-2: SPIR-V shader module load helper (sub-doc 03 §3.1.3)
+// build 時 glslangValidator で pre-compile した .spv binary を VkShaderModule 化。
+// 領域 6 sub-step 6.1 一括化までの 1 shader exemplar pre-flight (sky placeholder)。
+VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes)
+{
+    if (!sInitialized || sDevice == VK_NULL_HANDLE)
+    {
+        return VK_NULL_HANDLE;
+    }
+    if (spv_code == nullptr || code_size_bytes == 0 || (code_size_bytes % 4) != 0)
+    {
+        LL_WARNS("Vulkan") << "loadSpirvShaderModule: invalid args"
+                           << " (spv_code=" << (spv_code ? "non-null" : "null")
+                           << " size=" << (S32)code_size_bytes << " bytes)" << LL_ENDL;
+        return VK_NULL_HANDLE;
+    }
+
+    VkShaderModuleCreateInfo info = {};
+    info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    info.codeSize = code_size_bytes;
+    info.pCode    = spv_code;
+
+    VkShaderModule module = VK_NULL_HANDLE;
+    VkResult result = vkCreateShaderModule(sDevice, &info, nullptr, &module);
+    if (result != VK_SUCCESS)
+    {
+        LL_WARNS("Vulkan") << "vkCreateShaderModule failed: " << (S32)result
+                           << " (size=" << (S32)code_size_bytes << " bytes)" << LL_ENDL;
+        return VK_NULL_HANDLE;
+    }
+
+    LL_INFOS("Vulkan") << "SPIR-V shader module loaded (sub-step 3.3-B-β-2 exemplar pre-flight)"
+                       << " size=" << (S32)code_size_bytes << " bytes" << LL_ENDL;
+    return module;
 }
 
 } // namespace LLVKLoader

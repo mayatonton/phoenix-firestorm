@@ -18,6 +18,10 @@
 *.code-workspace
 *~
 
+# AYAstorm r41 sub-step 3.3-B-β-2: SPIR-V build artifacts in source tree
+# (.glsl は commit、.spv は build-time generate / viewer_manifest.py で deploy)
+*.spv
+
 # Specific paths and/or names
 CMakeCache.txt
 cmake_install.cmake

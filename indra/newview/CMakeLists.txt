@@ -50,6 +50,7 @@ include(ViewerMiscLibs)
 #include(ViewerManager) # <FS:Ansariel> Remove VMP
 include(VisualLeakDetector)
 include(VulkanGltf)
+include(AyaShaderCompile)
 include(ZLIBNG)
 include(LLPrimitive)
 include(Growl)
@@ -2202,6 +2203,23 @@ set_source_files_properties(${viewer_SHADER_FILES}
                             PROPERTIES HEADER_FILE_ONLY TRUE)
 list(APPEND viewer_SOURCE_FILES ${viewer_SHADER_FILES})
 
+# AYAstorm r41 sub-step 3.3-B-β-2: SPIR-V exemplar pre-compile (sub-doc 03 §3.1.3)
+# 1 shader pre-flight (sky placeholder)。領域 6 sub-step 6.1 一括化までの仮配置。
+set(AYA_R41_EXEMPLAR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/app_settings/shaders/aya_r41_exemplar")
+set(AYA_R41_SPV_OUTPUTS "")
+aya_compile_shader_spirv(vert
+    "${AYA_R41_EXEMPLAR_DIR}/sky_placeholderV.glsl"
+    "${AYA_R41_EXEMPLAR_DIR}/sky_placeholderV.spv")
+aya_compile_shader_spirv(frag
+    "${AYA_R41_EXEMPLAR_DIR}/sky_placeholderF.glsl"
+    "${AYA_R41_EXEMPLAR_DIR}/sky_placeholderF.spv")
+if (AYA_GLSLANG_VALIDATOR)
+    list(APPEND AYA_R41_SPV_OUTPUTS
+        "${AYA_R41_EXEMPLAR_DIR}/sky_placeholderV.spv"
+        "${AYA_R41_EXEMPLAR_DIR}/sky_placeholderF.spv")
+    add_custom_target(aya_r41_shaders DEPENDS ${AYA_R41_SPV_OUTPUTS})
+endif()
+
 
 set(viewer_APPSETTINGS_FILES
     app_settings/anim.ini
@@ -2329,6 +2347,11 @@ add_executable(${VIEWER_BINARY_NAME}
     MACOSX_BUNDLE
     ${viewer_SOURCE_FILES}
     )
+
+# AYAstorm r41 sub-step 3.3-B-β-2: viewer binary depends on SPIR-V exemplar (sub-doc 03 §3.1.3)
+if (TARGET aya_r41_shaders)
+    add_dependencies(${VIEWER_BINARY_NAME} aya_r41_shaders)
+endif()
 
 # add package files
 file(GLOB EVENT_HOST_SCRIPT_GLOB_LIST
