@@ -77,6 +77,20 @@ namespace
     VkPipelineLayout sSkySmokeLayout     = VK_NULL_HANDLE;
     VkPipeline       sSkySmokePipeline   = VK_NULL_HANDLE;
 
+    // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4 push descriptor 部分内包):
+    // avatar bone matrix SSBO + push descriptor 配線。set=2 binding 0 = STORAGE_BUFFER (mat4 × 110 bones
+    // = 7040 B)、VERTEX_BIT、VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR flag (set 本体は
+    // pool 不要、vkCmdPushDescriptorSetKHR で in-frame 投入)。
+    // VK_KHR_push_descriptor 未支援 device では layout/buffer/pipeline 作成 skip し、
+    // recordAvatarPlaceholderDraw は recordPlaceholderPoolDraw に fallback (機能 graceful degrade)。
+    constexpr U32         AVATAR_BONE_MATRIX_COUNT          = 110; // SL viewer max bone count 想定
+    VkDescriptorSetLayout sAvatarBoneDescriptorSetLayout    = VK_NULL_HANDLE;
+    VkPipelineLayout      sAvatarBoneLayout                 = VK_NULL_HANDLE;
+    VkPipeline            sAvatarBonePipeline               = VK_NULL_HANDLE;
+    VkBuffer              sAvatarBoneStorageBuffer          = VK_NULL_HANDLE;
+    VmaAllocation         sAvatarBoneStorageAllocation      = VK_NULL_HANDLE;
+    void*                 sAvatarBoneStorageMapped          = nullptr;
+
     VkRenderPass sRenderPass = VK_NULL_HANDLE;
     VkImage sOffscreenImage = VK_NULL_HANDLE;
     VkDeviceMemory sOffscreenMemory = VK_NULL_HANDLE;
@@ -512,13 +526,19 @@ namespace
         // device extension の最小 enable set。
         //  - VK_EXT_memory_budget : 支援される場合のみ enable、VMA に渡して
         //    heap 毎 budget/usage 取得を有効化。未支援 device では fallback path。
-        // 注: VK_KHR_push_descriptor は sub-step 3.4-γ 以降 (set=2 per-draw push descriptor 配線)
-        //     で enable 対象。本 sub-step では VMA + 共有 pool 雛形のみで extension は memory_budget
-        //     1 件に限定し、device 作成失敗 risk を最小化する。
+        // 注: VK_KHR_push_descriptor は sub-step 3.4-δ-4 で enable (set=2 avatar bone SSBO
+        //     push descriptor 配線、vkCmdPushDescriptorSetKHR 経由)。未支援 device では
+        //     extension push スキップ + recordAvatarPlaceholderDraw が recordPlaceholderPoolDraw へ
+        //     graceful fallback (機能 degrade、device 作成は継続)。
         std::vector<const char*> device_extensions;
         if (sDeviceLimits.memoryBudgetSupported)
         {
             device_extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+        }
+        if (sDeviceLimits.pushDescriptorSupported)
+        {
+            device_extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+            LL_INFOS("Vulkan") << "Device extension VK_KHR_push_descriptor enabled (sub-step 3.4-d-4 avatar bone SSBO foundation)" << LL_ENDL;
         }
 
         VkDeviceCreateInfo device_info = {};
@@ -1876,6 +1896,215 @@ namespace
         LL_INFOS("Vulkan") << "Sky placeholder vert binding active (PerFrameMatrixUBO + push constant modelview)" << LL_ENDL;
         return true;
     }
+
+    // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4):
+    // set=2 binding 0 = STORAGE_BUFFER (mat4 × N bones)、VERTEX_BIT、
+    // VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR flag (pool 不要、
+    // vkCmdPushDescriptorSetKHR で in-frame 投入)。VK_KHR_push_descriptor 未支援
+    // device では skip (success return)、recordAvatarPlaceholderDraw 側で fallback。
+    bool createAvatarBoneDescriptorSetLayout()
+    {
+        if (!sDeviceLimits.pushDescriptorSupported)
+        {
+            LL_INFOS("Vulkan") << "Avatar bone descriptor set layout skipped (VK_KHR_push_descriptor unsupported, fallback to placeholder pool draw)" << LL_ENDL;
+            return true;
+        }
+
+        VkDescriptorSetLayoutBinding binding = {};
+        binding.binding         = 0;
+        binding.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        binding.descriptorCount = 1;
+        binding.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+
+        VkDescriptorSetLayoutCreateInfo lci = {};
+        lci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        lci.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+        lci.bindingCount = 1;
+        lci.pBindings    = &binding;
+
+        VkResult r = vkCreateDescriptorSetLayout(sDevice, &lci, nullptr, &sAvatarBoneDescriptorSetLayout);
+        if (r != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "createAvatarBoneDescriptorSetLayout failed: " << (S32)r << LL_ENDL;
+            return false;
+        }
+        LL_INFOS("Vulkan") << "Avatar bone descriptor set layout created (set=2 binding 0 STORAGE_BUFFER VERTEX_BIT PUSH_DESCRIPTOR_KHR)" << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4):
+    // HOST_VISIBLE + MAPPED な storage buffer を 1 件確保し、110 mat4 = 7040 B を
+    // identity matrix で初期化 (1 度限り)。実 rigged draw 経路の bone matrix 上書きは
+    // 段階 4 本実装で各 frame 毎 mDrawInfo.mSkin->mInvBindMatrix 経由で writeBoneMatrices
+    // 系 helper (本 sub-step では未実装) を介する想定。
+    bool allocateAvatarBoneStorageBuffer()
+    {
+        if (!sDeviceLimits.pushDescriptorSupported)
+        {
+            return true;
+        }
+        if (sAllocator == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "allocateAvatarBoneStorageBuffer: VMA allocator not ready" << LL_ENDL;
+            return false;
+        }
+
+        constexpr VkDeviceSize buffer_size = AVATAR_BONE_MATRIX_COUNT * 64; // mat4 = 64 B
+
+        VkBufferCreateInfo bci = {};
+        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bci.size        = buffer_size;
+        bci.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo aci = {};
+        aci.usage         = VMA_MEMORY_USAGE_AUTO;
+        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+
+        VmaAllocationInfo info = {};
+        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci,
+                                     &sAvatarBoneStorageBuffer,
+                                     &sAvatarBoneStorageAllocation,
+                                     &info);
+        if (r != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "allocateAvatarBoneStorageBuffer vmaCreateBuffer failed: " << (S32)r << LL_ENDL;
+            return false;
+        }
+        sAvatarBoneStorageMapped = info.pMappedData;
+
+        if (sAvatarBoneStorageMapped)
+        {
+            float* data = static_cast<float*>(sAvatarBoneStorageMapped);
+            for (U32 i = 0; i < AVATAR_BONE_MATRIX_COUNT; ++i)
+            {
+                float* m = data + i * 16;
+                m[0]  = 1.f; m[1]  = 0.f; m[2]  = 0.f; m[3]  = 0.f;
+                m[4]  = 0.f; m[5]  = 1.f; m[6]  = 0.f; m[7]  = 0.f;
+                m[8]  = 0.f; m[9]  = 0.f; m[10] = 1.f; m[11] = 0.f;
+                m[12] = 0.f; m[13] = 0.f; m[14] = 0.f; m[15] = 1.f;
+            }
+        }
+        LL_INFOS("Vulkan") << "Avatar bone storage buffer allocated (" << (U32)buffer_size
+                           << " B = 110 mat4 identity, HOST_VISIBLE + MAPPED)" << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4):
+    // avatar 専用 PipelineLayout (set_layouts[3] = { PerFrame, PerMaterial, AvatarBone })
+    // と PSO (sSkySmoke vert/frag shader 流用、shader 改変ゼロ = Vulkan 仕様 layout-set ≥
+    // shader-set 許容)。push constant 64 B / VERTEX_BIT は γ 二段構え準拠継承。
+    bool createAvatarBonePipeline()
+    {
+        if (!sDeviceLimits.pushDescriptorSupported)
+        {
+            return true;
+        }
+        if (sAvatarBoneDescriptorSetLayout == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "createAvatarBonePipeline: avatar bone descriptor set layout not ready" << LL_ENDL;
+            return false;
+        }
+        if (sSkySmokeVertModule == VK_NULL_HANDLE || sSkySmokeFragModule == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "createAvatarBonePipeline: sky smoke shader modules not ready" << LL_ENDL;
+            return false;
+        }
+
+        VkDescriptorSetLayout set_layouts[3]    = {
+            sPerFrameDescriptorSetLayout,
+            sPerMaterialDescriptorSetLayout,
+            sAvatarBoneDescriptorSetLayout,
+        };
+        VkPushConstantRange   push_constants[1] = {};
+        push_constants[0].stageFlags            = VK_SHADER_STAGE_VERTEX_BIT;
+        push_constants[0].offset                = 0;
+        push_constants[0].size                  = 64;
+        sAvatarBoneLayout = createStandardPipelineLayout(set_layouts, 3, push_constants, 1);
+        if (sAvatarBoneLayout == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "Avatar bone pipeline layout create failed" << LL_ENDL;
+            return false;
+        }
+
+        VkPipelineShaderStageCreateInfo stages[2] = {};
+        stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[0].module = sSkySmokeVertModule;
+        stages[0].pName  = "main";
+        stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[1].module = sSkySmokeFragModule;
+        stages[1].pName  = "main";
+
+        VkPipelineVertexInputStateCreateInfo vi = {};
+        vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+        VkPipelineInputAssemblyStateCreateInfo ia = {};
+        ia.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        VkViewport viewport = { 0.0f, 0.0f, (F32)OFFSCREEN_WIDTH, (F32)OFFSCREEN_HEIGHT, 0.0f, 1.0f };
+        VkRect2D   scissor  = { { 0, 0 }, { OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT } };
+
+        VkPipelineViewportStateCreateInfo vp = {};
+        vp.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        vp.viewportCount = 1;
+        vp.pViewports    = &viewport;
+        vp.scissorCount  = 1;
+        vp.pScissors     = &scissor;
+
+        VkPipelineRasterizationStateCreateInfo rs = {};
+        rs.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rs.polygonMode = VK_POLYGON_MODE_FILL;
+        rs.cullMode    = VK_CULL_MODE_NONE;
+        rs.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rs.lineWidth   = 1.0f;
+
+        VkPipelineMultisampleStateCreateInfo ms = {};
+        ms.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineDepthStencilStateCreateInfo ds = {};
+        ds.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        ds.depthTestEnable  = VK_FALSE;
+        ds.depthWriteEnable = VK_FALSE;
+        ds.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
+
+        VkPipelineColorBlendAttachmentState cba = {};
+        cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+                           | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+        VkPipelineColorBlendStateCreateInfo cb = {};
+        cb.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        cb.attachmentCount = 1;
+        cb.pAttachments    = &cba;
+
+        VkGraphicsPipelineCreateInfo ci = {};
+        ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        ci.stageCount          = 2;
+        ci.pStages             = stages;
+        ci.pVertexInputState   = &vi;
+        ci.pInputAssemblyState = &ia;
+        ci.pViewportState      = &vp;
+        ci.pRasterizationState = &rs;
+        ci.pMultisampleState   = &ms;
+        ci.pDepthStencilState  = &ds;
+        ci.pColorBlendState    = &cb;
+        ci.layout              = sAvatarBoneLayout;
+        ci.renderPass          = sRenderPass;
+        ci.subpass             = 0;
+
+        if (!compileGraphicsPipeline(ci, sAvatarBonePipeline))
+        {
+            LL_WARNS("Vulkan") << "Avatar bone graphics pipeline compile failed" << LL_ENDL;
+            return false;
+        }
+        LL_INFOS("Vulkan") << "Avatar bone PSO compiled (set_layouts[3] = PerFrame + PerMaterial + AvatarBone, shader = sky smoke 流用、shader 改変ゼロ)" << LL_ENDL;
+        return true;
+    }
 }
 
 bool initVulkan()
@@ -1970,6 +2199,17 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4 push descriptor 部分内包):
+    // avatar bone descriptor set layout + storage buffer + pipeline layout + PSO 配線。
+    // VK_KHR_push_descriptor 未支援 device では各 helper 内で skip (success return)、
+    // recordAvatarPlaceholderDraw は recordPlaceholderPoolDraw へ graceful fallback。
+    if (!createAvatarBoneDescriptorSetLayout() || !allocateAvatarBoneStorageBuffer() || !createAvatarBonePipeline())
+    {
+        LL_WARNS("Vulkan") << "Avatar bone foundation creation failed" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+
     // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): set=1 transit smoke = sSharedDescriptorPool から
     // 1 set allocate + 7 binding 全部に β-2 placeholder white image view + 共用 sampler を bind。
     // beginFrame で sPlaceholderPipeline bind 後に bindPerMaterialDescriptorSet 経由で transit。
@@ -2024,6 +2264,31 @@ void shutdownVulkan()
         {
             vkDestroyRenderPass(sDevice, sRenderPass, nullptr);
             sRenderPass = VK_NULL_HANDLE;
+        }
+        // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4):
+        // avatar bone artifacts teardown。pipeline → layout → SSBO (VMA) → descriptor set layout の順、
+        // shader 流用元 sSkySmokePipeline / sSkySmokeLayout より先に発火 (PSO は shader module 非依存)。
+        if (sAvatarBonePipeline != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(sDevice, sAvatarBonePipeline, nullptr);
+            sAvatarBonePipeline = VK_NULL_HANDLE;
+        }
+        if (sAvatarBoneLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(sDevice, sAvatarBoneLayout, nullptr);
+            sAvatarBoneLayout = VK_NULL_HANDLE;
+        }
+        if (sAvatarBoneStorageBuffer != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(sAllocator, sAvatarBoneStorageBuffer, sAvatarBoneStorageAllocation);
+            sAvatarBoneStorageBuffer     = VK_NULL_HANDLE;
+            sAvatarBoneStorageAllocation = VK_NULL_HANDLE;
+            sAvatarBoneStorageMapped     = nullptr;
+        }
+        if (sAvatarBoneDescriptorSetLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(sDevice, sAvatarBoneDescriptorSetLayout, nullptr);
+            sAvatarBoneDescriptorSetLayout = VK_NULL_HANDLE;
         }
         if (sSkySmokePipeline != VK_NULL_HANDLE)
         {
@@ -2475,6 +2740,99 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
         s_first_call = false;
         LL_INFOS("Vulkan") << "Placeholder pool draw fired (PSO bind sSkySmokePipeline + "
                               "set=0 PerFrame + set=1 PerMaterial + push constant 64 B identity / "
+                              "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
+                           << LL_ENDL;
+    }
+}
+
+// r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4 push descriptor 部分内包):
+// avatar pool 専用 placeholder draw helper。基本 placeholder draw に加え set=2 binding 0 へ
+// avatar bone storage buffer (mat4 × 110 identity) を vkCmdPushDescriptorSetKHR 経由で投入する。
+// VK_KHR_push_descriptor 未支援 device / avatar foundation 未整備時は recordPlaceholderPoolDraw
+// へ graceful fallback (機能 degrade、validation 違反 0 件維持)。
+//
+// 段階 4 本実装で各 rigged mesh draw 毎に LLMeshSkinInfo の bone matrix × N を
+// sAvatarBoneStorageMapped に書込→本 helper の bone size 引数化拡張で投入する経路の foundation。
+void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
+{
+    // VK_KHR_push_descriptor 未支援 device / avatar foundation 未整備時の fallback。
+    if (!sDeviceLimits.pushDescriptorSupported ||
+        sAvatarBonePipeline == VK_NULL_HANDLE ||
+        sAvatarBoneLayout == VK_NULL_HANDLE ||
+        sAvatarBoneStorageBuffer == VK_NULL_HANDLE ||
+        vkCmdPushDescriptorSetKHR == nullptr)
+    {
+        recordPlaceholderPoolDraw(cmd_buf);
+        return;
+    }
+
+    if (cmd_buf == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sAvatarBonePipeline);
+
+    // set=0 PerFrame descriptor set (γ 二段構え layout 経由、sFrameIndex の set を bind)
+    if (sPerFrameDescriptorSet[sFrameIndex] != VK_NULL_HANDLE)
+    {
+        vkCmdBindDescriptorSets(cmd_buf,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sAvatarBoneLayout,
+                                /*firstSet=*/0,
+                                /*descriptorSetCount=*/1,
+                                &sPerFrameDescriptorSet[sFrameIndex],
+                                /*dynamicOffsetCount=*/0,
+                                /*pDynamicOffsets=*/nullptr);
+    }
+
+    // set=1 PerMaterial descriptor set (γ helper、layout 引数化済み)
+    bindPerMaterialDescriptorSet(cmd_buf, sAvatarBoneLayout);
+
+    // set=2 binding 0 = avatar bone storage buffer (push descriptor 経路)
+    VkDescriptorBufferInfo bone_buffer_info = {};
+    bone_buffer_info.buffer = sAvatarBoneStorageBuffer;
+    bone_buffer_info.offset = 0;
+    bone_buffer_info.range  = AVATAR_BONE_MATRIX_COUNT * 64;
+
+    VkWriteDescriptorSet bone_write = {};
+    bone_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    bone_write.dstSet          = VK_NULL_HANDLE; // push descriptor: dstSet ignored
+    bone_write.dstBinding      = 0;
+    bone_write.descriptorCount = 1;
+    bone_write.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bone_write.pBufferInfo     = &bone_buffer_info;
+
+    vkCmdPushDescriptorSetKHR(cmd_buf,
+                              VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              sAvatarBoneLayout,
+                              /*set=*/2,
+                              /*descriptorWriteCount=*/1,
+                              &bone_write);
+
+    // push constant: modelview_matrix = identity (4x4)
+    const float identity_modelview[16] = {
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
+    vkCmdPushConstants(cmd_buf,
+                       sAvatarBoneLayout,
+                       VK_SHADER_STAGE_VERTEX_BIT,
+                       /*offset=*/0,
+                       /*size=*/64,
+                       identity_modelview);
+
+    vkCmdDraw(cmd_buf, 3, 1, 0, 0);
+
+    static bool s_first_avatar_call = true;
+    if (s_first_avatar_call)
+    {
+        s_first_avatar_call = false;
+        LL_INFOS("Vulkan") << "Avatar placeholder pool draw fired (PSO bind sAvatarBonePipeline + "
+                              "set=0 PerFrame + set=1 PerMaterial + set=2 BoneStorage push descriptor "
+                              "(vkCmdPushDescriptorSetKHR, 110 mat4 identity) + push constant 64 B / "
                               "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
                            << LL_ENDL;
     }

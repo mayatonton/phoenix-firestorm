@@ -52,6 +52,18 @@ namespace LLVKLoader
     // 各 pool の recordPoolDraws hook body から呼出、in-frame 前提 (caller 側 guard)。
     void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf);
 
+    // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4 部分内包):
+    // avatar pool 専用 placeholder draw helper (bone matrix SSBO 並走基本配線)。
+    // PSO bind (sAvatarBonePipeline、shader は sSkySmoke 共用 = 段階 3 placeholder 用途) +
+    // set=0 PerFrame descriptor + set=1 PerMaterial descriptor +
+    // set=2 AvatarBone push descriptor (vkCmdPushDescriptorSetKHR、STORAGE_BUFFER、
+    // 110 mat4 identity HOST_VISIBLE+MAPPED) +
+    // push constant 64 B identity modelview / VERTEX_BIT + vkCmdDraw(3, 1, 0, 0)。
+    // VK_KHR_push_descriptor 未対応 / Vulkan 未初期化 / PSO 未作成時は
+    // recordPlaceholderPoolDraw() へ graceful fallback (一般 12 pool 共用挙動)。
+    // lldrawpoolavatar.cpp::recordPoolDraws() hook body から呼出、in-frame 前提。
+    void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf);
+
     // ------------------------------------------------------------------
     // r41 sub-step 3.3-β-1: per-frame matrix UBO layout (二段構え)
     // sub-doc 03 §3.1.1 / sub-doc 05 §3.5 (AYA 確定 2026-05-29)

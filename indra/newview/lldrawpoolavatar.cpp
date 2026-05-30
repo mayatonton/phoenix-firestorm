@@ -1118,7 +1118,11 @@ void LLDrawPoolAvatar::recordPoolDraws(VkCommandBuffer cmd_buf)
         LL_INFOS("VkRecord") << "Avatar pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
         logged_once = true;
     }
-    LLVKLoader::recordPlaceholderPoolDraw(cmd_buf);
+    // sub-step 3.4-δ-4: avatar pool は SSBO push descriptor 並走配線で専用 helper を経由
+    // (sub-doc 03 §3.1.4 / sub-doc 07 sub-step 7.4 部分内包、bone matrix 110 mat4 identity)。
+    // VK_KHR_push_descriptor 未対応環境では helper 内部で recordPlaceholderPoolDraw へ
+    // graceful fallback するため、12 pool 共用挙動と互換。
+    LLVKLoader::recordAvatarPlaceholderDraw(cmd_buf);
 }
 // </AYAstorm r41>
 
