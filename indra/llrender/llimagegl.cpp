@@ -39,6 +39,7 @@
 #include "llgl.h"
 #include "llglslshader.h"
 #include "llrender.h"
+#include "llvkloader.h"
 #include "llwindow.h"
 #include "llframetimer.h"
 #include <unordered_set>
@@ -1256,6 +1257,20 @@ bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_
 void LLImageGL::generateTextures(S32 numTextures, U32 *textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+
+    // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): Vulkan path mirror marker (1 度のみ)。
+    // per-LLImageGL VkImage 配線は領域 7 sub-step 7.5 持越し、本 sub-step では
+    // LLImageGL::generateTextures が Vulkan 初期化済 environment で 1 度通る事実を記録するだけ。
+    static bool sVulkanPathSampled = false;
+    if (!sVulkanPathSampled && LLVKLoader::isVulkanInitialized())
+    {
+        sVulkanPathSampled = true;
+        LL_INFOS("Vulkan") << "LLImageGL::generateTextures Vulkan path mirror sampled "
+                              "(numTextures=" << numTextures
+                           << ", per-LLImageGL VkImage 配線は領域 7 sub-step 7.5 持越し)"
+                           << LL_ENDL;
+    }
+
     static constexpr U32 pool_size = 1024;
     static thread_local U32 name_pool[pool_size]; // pool of texture names
     static thread_local U32 name_count = 0; // number of available names in the pool

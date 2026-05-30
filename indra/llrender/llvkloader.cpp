@@ -349,6 +349,14 @@ namespace
     VkDescriptorPool sSharedDescriptorPool      = VK_NULL_HANDLE;
     bool             sSharedVmaBudgetLogged     = false;
 
+    // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): 1×1 white placeholder texture transit smoke。
+    // per-LLImageGL 抱合せは領域 7 sub-step 7.5 持越し、本 sub-step は llvkloader 単独で
+    // vmaCreateImage + vkCreateImageView + (β-2-3) staging upload + 2 段 layout transition +
+    // 破棄まで一連動作実証する file-local placeholder。VmaAllocation は本 TU 限定 (header 不露出)。
+    VkImage       sPlaceholderWhiteImage      = VK_NULL_HANDLE;
+    VkImageView   sPlaceholderWhiteImageView  = VK_NULL_HANDLE;
+    VmaAllocation sPlaceholderWhiteAllocation = VK_NULL_HANDLE;
+
     bool queryAndLogDeviceLimits()
     {
         // r41 sub-step 3.1b measurement-first cadence (sub-doc 03 §1.5.4):
@@ -850,6 +858,283 @@ namespace
                                << " (VMA allocations=" << b.statistics.allocationCount
                                << ", blocks=" << b.statistics.blockCount << ")"
                                << LL_ENDL;
+        }
+    }
+
+    // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): LL GL internalformat → VkFormat 集約変換 impl。
+    // llvkloader は GL header から独立するため、OpenGL spec 確定値を hex literal で照合。
+    // 20 entry: 8/16/32-bit normalized + float + depth/stencil + sRGB + packed HDR
+    // (sub-doc 07 §1.2.1 set=1 想定 7 PBR slot + LLImageGL 主要 internalformat 網羅)。
+    VkFormat llGlEnumToVkFormatImpl(U32 ll_gl_intformat)
+    {
+        switch (ll_gl_intformat)
+        {
+            // 8-bit normalized (UNORM)
+            case 0x8229: return VK_FORMAT_R8_UNORM;            // GL_R8
+            case 0x822B: return VK_FORMAT_R8G8_UNORM;          // GL_RG8
+            case 0x8051: return VK_FORMAT_R8G8B8_UNORM;        // GL_RGB8
+            case 0x8058: return VK_FORMAT_R8G8B8A8_UNORM;      // GL_RGBA8
+
+            // 16-bit normalized (UNORM)
+            case 0x822A: return VK_FORMAT_R16_UNORM;           // GL_R16
+            case 0x822C: return VK_FORMAT_R16G16_UNORM;        // GL_RG16
+            case 0x805B: return VK_FORMAT_R16G16B16A16_UNORM;  // GL_RGBA16
+
+            // 16-bit float (SFLOAT)
+            case 0x822D: return VK_FORMAT_R16_SFLOAT;          // GL_R16F
+            case 0x822F: return VK_FORMAT_R16G16_SFLOAT;       // GL_RG16F
+            case 0x881B: return VK_FORMAT_R16G16B16_SFLOAT;    // GL_RGB16F
+            case 0x881A: return VK_FORMAT_R16G16B16A16_SFLOAT; // GL_RGBA16F
+
+            // 32-bit float (SFLOAT)
+            case 0x822E: return VK_FORMAT_R32_SFLOAT;          // GL_R32F
+            case 0x8230: return VK_FORMAT_R32G32_SFLOAT;       // GL_RG32F
+            case 0x8814: return VK_FORMAT_R32G32B32A32_SFLOAT; // GL_RGBA32F
+
+            // sRGB
+            case 0x8C41: return VK_FORMAT_R8G8B8_SRGB;         // GL_SRGB8
+            case 0x8C43: return VK_FORMAT_R8G8B8A8_SRGB;       // GL_SRGB8_ALPHA8
+
+            // Depth / Stencil
+            case 0x81A5: return VK_FORMAT_D16_UNORM;           // GL_DEPTH_COMPONENT16
+            case 0x81A6: return VK_FORMAT_X8_D24_UNORM_PACK32; // GL_DEPTH_COMPONENT24
+            case 0x8CAC: return VK_FORMAT_D32_SFLOAT;          // GL_DEPTH_COMPONENT32F
+            case 0x88F0: return VK_FORMAT_D24_UNORM_S8_UINT;   // GL_DEPTH24_STENCIL8
+            case 0x8CAD: return VK_FORMAT_D32_SFLOAT_S8_UINT;  // GL_DEPTH32F_STENCIL8
+
+            // Packed HDR
+            case 0x8C3A: return VK_FORMAT_B10G11R11_UFLOAT_PACK32; // GL_R11F_G11F_B10F
+
+            default:     return VK_FORMAT_UNDEFINED;
+        }
+    }
+
+    // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): 1×1 white placeholder texture lifecycle smoke。
+    // vmaCreateImage + vkCreateImageView を初期化 path で 1 度発行、shutdownVulkan で破棄。
+    // β-2-3 で staging upload + 2 段 layout transition を本関数の後段に追加予定。
+    bool createPlaceholderWhiteImage()
+    {
+        if (sAllocator == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "createPlaceholderWhiteImage: allocator/device not ready" << LL_ENDL;
+            return false;
+        }
+
+        VkImageCreateInfo image_ci{};
+        image_ci.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_ci.imageType     = VK_IMAGE_TYPE_2D;
+        image_ci.format        = VK_FORMAT_R8G8B8A8_UNORM;
+        image_ci.extent.width  = 1;
+        image_ci.extent.height = 1;
+        image_ci.extent.depth  = 1;
+        image_ci.mipLevels     = 1;
+        image_ci.arrayLayers   = 1;
+        image_ci.samples       = VK_SAMPLE_COUNT_1_BIT;
+        image_ci.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        image_ci.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        image_ci.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        image_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VmaAllocationCreateInfo alloc_ci{};
+        alloc_ci.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VkResult create_result = vmaCreateImage(sAllocator, &image_ci, &alloc_ci,
+                                                &sPlaceholderWhiteImage,
+                                                &sPlaceholderWhiteAllocation, nullptr);
+        if (create_result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vmaCreateImage failed (placeholder white) result=" << create_result << LL_ENDL;
+            sPlaceholderWhiteImage      = VK_NULL_HANDLE;
+            sPlaceholderWhiteAllocation = VK_NULL_HANDLE;
+            return false;
+        }
+
+        VkImageViewCreateInfo view_ci{};
+        view_ci.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_ci.image                           = sPlaceholderWhiteImage;
+        view_ci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        view_ci.format                          = VK_FORMAT_R8G8B8A8_UNORM;
+        view_ci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        view_ci.subresourceRange.baseMipLevel   = 0;
+        view_ci.subresourceRange.levelCount     = 1;
+        view_ci.subresourceRange.baseArrayLayer = 0;
+        view_ci.subresourceRange.layerCount     = 1;
+
+        VkResult view_result = vkCreateImageView(sDevice, &view_ci, nullptr, &sPlaceholderWhiteImageView);
+        if (view_result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateImageView failed (placeholder white) result=" << view_result << LL_ENDL;
+            vmaDestroyImage(sAllocator, sPlaceholderWhiteImage, sPlaceholderWhiteAllocation);
+            sPlaceholderWhiteImage      = VK_NULL_HANDLE;
+            sPlaceholderWhiteAllocation = VK_NULL_HANDLE;
+            sPlaceholderWhiteImageView  = VK_NULL_HANDLE;
+            return false;
+        }
+
+        return true;
+    }
+
+    // r41 sub-step 3.4-β-2-3 (sub-doc 03 §3.1.4): staging buffer 経由 1×1 white pixel upload。
+    // 2 段 layout transition (UNDEFINED → TRANSFER_DST_OPTIMAL → SHADER_READ_ONLY_OPTIMAL) +
+    // vkCmdCopyBufferToImage を 1 度限りの scratch command buffer (sCommandPool 由来) で実行、
+    // vkQueueWaitIdle で完了同期後 staging buffer / scratch cb を即時破棄。
+    bool uploadPlaceholderWhiteSmoke()
+    {
+        if (sAllocator == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE ||
+            sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE ||
+            sPlaceholderWhiteImage == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "uploadPlaceholderWhiteSmoke: prerequisites missing" << LL_ENDL;
+            return false;
+        }
+
+        // staging buffer (4 byte = 1px RGBA8) を host-visible で確保。
+        const VkDeviceSize staging_size = 4;
+        VkBuffer       staging_buf   = VK_NULL_HANDLE;
+        VmaAllocation  staging_alloc = VK_NULL_HANDLE;
+
+        VkBufferCreateInfo buf_ci{};
+        buf_ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buf_ci.size        = staging_size;
+        buf_ci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo buf_alloc_ci{};
+        buf_alloc_ci.usage = VMA_MEMORY_USAGE_AUTO;
+        buf_alloc_ci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                             VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        VmaAllocationInfo staging_info{};
+        VkResult buf_result = vmaCreateBuffer(sAllocator, &buf_ci, &buf_alloc_ci,
+                                              &staging_buf, &staging_alloc, &staging_info);
+        if (buf_result != VK_SUCCESS || staging_info.pMappedData == nullptr)
+        {
+            LL_WARNS("Vulkan") << "uploadPlaceholderWhiteSmoke: vmaCreateBuffer failed result="
+                               << buf_result << LL_ENDL;
+            if (staging_buf != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, staging_buf, staging_alloc);
+            }
+            return false;
+        }
+
+        // 1×1 white pixel (RGBA = 0xFF, 0xFF, 0xFF, 0xFF) 書込み。
+        const U32 white_pixel = 0xFFFFFFFFu;
+        memcpy(staging_info.pMappedData, &white_pixel, sizeof(white_pixel));
+
+        // scratch one-time command buffer (sCommandPool 由来、submit 後即 free)。
+        VkCommandBufferAllocateInfo cb_ai{};
+        cb_ai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cb_ai.commandPool        = sCommandPool;
+        cb_ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cb_ai.commandBufferCount = 1;
+
+        VkCommandBuffer cb = VK_NULL_HANDLE;
+        VkResult cb_result = vkAllocateCommandBuffers(sDevice, &cb_ai, &cb);
+        if (cb_result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "uploadPlaceholderWhiteSmoke: vkAllocateCommandBuffers failed result="
+                               << cb_result << LL_ENDL;
+            vmaDestroyBuffer(sAllocator, staging_buf, staging_alloc);
+            return false;
+        }
+
+        VkCommandBufferBeginInfo begin_info{};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cb, &begin_info);
+
+        // Barrier 1: UNDEFINED → TRANSFER_DST_OPTIMAL
+        VkImageMemoryBarrier to_xfer{};
+        to_xfer.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        to_xfer.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        to_xfer.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        to_xfer.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        to_xfer.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        to_xfer.image                           = sPlaceholderWhiteImage;
+        to_xfer.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_xfer.subresourceRange.baseMipLevel   = 0;
+        to_xfer.subresourceRange.levelCount     = 1;
+        to_xfer.subresourceRange.baseArrayLayer = 0;
+        to_xfer.subresourceRange.layerCount     = 1;
+        to_xfer.srcAccessMask                   = 0;
+        to_xfer.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(cb,
+                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &to_xfer);
+
+        // CopyBufferToImage
+        VkBufferImageCopy copy_region{};
+        copy_region.bufferOffset                    = 0;
+        copy_region.bufferRowLength                 = 0;
+        copy_region.bufferImageHeight               = 0;
+        copy_region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        copy_region.imageSubresource.mipLevel       = 0;
+        copy_region.imageSubresource.baseArrayLayer = 0;
+        copy_region.imageSubresource.layerCount     = 1;
+        copy_region.imageOffset                     = {0, 0, 0};
+        copy_region.imageExtent                     = {1, 1, 1};
+        vkCmdCopyBufferToImage(cb, staging_buf, sPlaceholderWhiteImage,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+        // Barrier 2: TRANSFER_DST_OPTIMAL → SHADER_READ_ONLY_OPTIMAL
+        VkImageMemoryBarrier to_read{};
+        to_read.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        to_read.oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        to_read.newLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        to_read.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        to_read.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        to_read.image                           = sPlaceholderWhiteImage;
+        to_read.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_read.subresourceRange.baseMipLevel   = 0;
+        to_read.subresourceRange.levelCount     = 1;
+        to_read.subresourceRange.baseArrayLayer = 0;
+        to_read.subresourceRange.layerCount     = 1;
+        to_read.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_read.dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cb,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &to_read);
+
+        vkEndCommandBuffer(cb);
+
+        VkSubmitInfo submit{};
+        submit.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers    = &cb;
+        VkResult submit_result = vkQueueSubmit(sGraphicsQueue, 1, &submit, VK_NULL_HANDLE);
+        if (submit_result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "uploadPlaceholderWhiteSmoke: vkQueueSubmit failed result="
+                               << submit_result << LL_ENDL;
+            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cb);
+            vmaDestroyBuffer(sAllocator, staging_buf, staging_alloc);
+            return false;
+        }
+        vkQueueWaitIdle(sGraphicsQueue);
+
+        vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cb);
+        vmaDestroyBuffer(sAllocator, staging_buf, staging_alloc);
+
+        LL_INFOS("Vulkan") << "VkImage placeholder lifecycle smoke (1x1 white、"
+                              "VkFormat=R8G8B8A8_UNORM、image+view+destroy 一連 OK)" << LL_ENDL;
+        return true;
+    }
+
+    void destroyPlaceholderWhiteImage()
+    {
+        if (sPlaceholderWhiteImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(sDevice, sPlaceholderWhiteImageView, nullptr);
+            sPlaceholderWhiteImageView = VK_NULL_HANDLE;
+        }
+        if (sPlaceholderWhiteImage != VK_NULL_HANDLE)
+        {
+            vmaDestroyImage(sAllocator, sPlaceholderWhiteImage, sPlaceholderWhiteAllocation);
+            sPlaceholderWhiteImage      = VK_NULL_HANDLE;
+            sPlaceholderWhiteAllocation = VK_NULL_HANDLE;
         }
     }
 
@@ -1487,6 +1772,15 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): 1×1 white placeholder image lifecycle smoke。
+    // VMA allocator 立ち上げ直後に発行、shutdownVulkan で vmaDestroyAllocator 前に破棄する。
+    // β-2-3: staging buffer 経由 1px upload + 2 段 layout transition を 1 度限り実行 (INFO marker 出力)。
+    if (!createPlaceholderWhiteImage() || !uploadPlaceholderWhiteSmoke())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     // r41 sub-step 3.3-β-2: per-frame matrix UBO descriptor + buffer + set (sub-doc 03 §3.1.1)
     if (!createPerFrameDescriptorSetLayout() || !createPerFrameUbos() || !createPerFrameDescriptorSets())
     {
@@ -1629,6 +1923,10 @@ void shutdownVulkan()
             sCommandPool = VK_NULL_HANDLE;
             sCommandBuffer = VK_NULL_HANDLE;
         }
+
+        // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): placeholder image teardown。
+        // vmaDestroyImage は sAllocator 生存中に呼ぶ必要があるため、共有 pool 破棄前に発行。
+        destroyPlaceholderWhiteImage();
 
         // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
         // 共有 descriptor pool teardown (set は pool 経由で自動 free)。
@@ -2056,6 +2354,13 @@ VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes
     LL_INFOS("Vulkan") << "SPIR-V shader module loaded"
                        << " size=" << (S32)code_size_bytes << " bytes" << LL_ENDL;
     return module;
+}
+
+// r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): LLGLenum → VkFormat 集約変換 公開 API。
+// 実体は file-local llGlEnumToVkFormatImpl (GL header 非依存、hex literal 照合)。
+VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat)
+{
+    return llGlEnumToVkFormatImpl(ll_gl_intformat);
 }
 
 } // namespace LLVKLoader

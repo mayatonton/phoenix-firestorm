@@ -160,6 +160,37 @@ namespace LLVKLoader
     // code_size_bytes : spv_code が指すデータの byte 数 (4 の倍数必須)。
     // ------------------------------------------------------------------
     VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 3.4-β-2: LLImageGL → VkImage + VkImageView lifecycle 並走化
+    // sub-doc 03 §3.1.4 (AYA 確定 2026-05-31、案 1 (image lifecycle 先行) 採用)
+    //
+    // β-2 scope:
+    //   - format conversion table (LL GL internalformat → VkFormat) 公開
+    //   - placeholder 1×1 white texture transit smoke を llvkloader 内部で
+    //     vmaCreateImage + vkCreateImageView + (β-2-3) staging upload +
+    //     2 段 layout transition + 破棄まで一連動作実証
+    //   - LLImageGL 側は generateTextures に Vulkan path mirror marker のみ
+    //     (per-LLImageGL VkImage 配線は領域 7 sub-step 7.5 持越し)
+    //
+    // 設計境界:
+    //   - VmaAllocation は llvkloader.cpp 1 TU 限定 (β-1 設計継承、vk_mem_alloc.h
+    //     を header へ持込まない)、本 sub-step で公開するのは VkFormat 変換 API のみ
+    //   - VkImageResource 集約 struct は file-local 留置 (placeholder smoke 専用)、
+    //     per-LLImageGL 抱合せ型の header 露出は 7.5 で抱合せ要件確定後に検討
+    // ------------------------------------------------------------------
+
+    // LLImageGL の mFormatInternal (GL internalformat、e.g. GL_RGBA8 / GL_DEPTH24_STENCIL8 /
+    // GL_RGBA16F 等) を入力に VkFormat へ集約変換。llvkloader は GL header から独立する
+    // ため、OpenGL spec 確定値を U32 hex literal で受信 (LLImageGL 側は llgltypes.h
+    // 経由で LLGLenum = U32 として運用、本 API は LLGLenum 互換 U32 受け)。
+    //
+    // 戻り値: 対応する VkFormat、未対応 enum / 0 入力時は VK_FORMAT_UNDEFINED
+    //         (caller 側で fallback / assert 判断)。
+    // 対応 enum: 20 entry (8/16/32-bit normalized + float + depth/stencil + sRGB +
+    //            packed HDR、sub-doc 07 §1.2.1 set=1 想定 7 PBR slot + LLImageGL
+    //            主要 internalformat 網羅)。
+    VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat);
 }
 
 #endif // LL_LLVKLOADER_H
