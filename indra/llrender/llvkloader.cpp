@@ -357,6 +357,18 @@ namespace
     VkImageView   sPlaceholderWhiteImageView  = VK_NULL_HANDLE;
     VmaAllocation sPlaceholderWhiteAllocation = VK_NULL_HANDLE;
 
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1 set=1 / §3.1 sub-step 7.3 layout 部分内包):
+    // per-material 7 PBR slot descriptor set layout + 共用 placeholder sampler + 1 transit smoke set。
+    // binding 0=DIFFUSE / 1=NORMAL / 2=SPECULAR / 3=BASECOLOR / 4=METALLIC_ROUGHNESS / 5=GLTF_NORMAL /
+    // 6=EMISSIVE、descriptor type = COMBINED_IMAGE_SAMPLER × 7、stage = FRAGMENT_BIT。
+    // sampler 作成は本 sub-step 内 1 件のみ (placeholder linear/clamp 共用)、per-texture sampler 配信
+    // (mipmap / anisotropy) は領域 7 sub-step 7.3 残置。material cache 本実装 (~50 material × frame
+    // in flight 3 = 150 pool sizing) も 7.3 残置、本 sub-step は layout + 1 set transit smoke のみ scope。
+    constexpr U32         PER_MATERIAL_BINDING_COUNT      = 7;
+    VkDescriptorSetLayout sPerMaterialDescriptorSetLayout = VK_NULL_HANDLE;
+    VkSampler             sPlaceholderSampler             = VK_NULL_HANDLE;
+    VkDescriptorSet       sPerMaterialDescriptorSet       = VK_NULL_HANDLE;
+
     bool queryAndLogDeviceLimits()
     {
         // r41 sub-step 3.1b measurement-first cadence (sub-doc 03 §1.5.4):
@@ -813,6 +825,150 @@ namespace
                               "UBO=16, COMBINED_IMAGE_SAMPLER=64; precision deferred to 7.3)"
                            << LL_ENDL;
         return true;
+    }
+
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1 set=1 / §3.1 sub-step 7.3 layout 部分内包):
+    // set=1 per-material 7 PBR slot descriptor set layout 作成。binding 0..6 すべて
+    // COMBINED_IMAGE_SAMPLER × 1、stage = FRAGMENT_BIT、immutable sampler は本 sub-step 範囲外
+    // (per-material sampler 配信は 7.3 残置)。material params UBO 統合も 7.3 残置で本 sub-step 外。
+    bool createPerMaterialDescriptorSetLayout()
+    {
+        VkDescriptorSetLayoutBinding bindings[PER_MATERIAL_BINDING_COUNT] = {};
+        for (U32 i = 0; i < PER_MATERIAL_BINDING_COUNT; ++i)
+        {
+            bindings[i].binding            = i;
+            bindings[i].descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            bindings[i].descriptorCount    = 1;
+            bindings[i].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT;
+            bindings[i].pImmutableSamplers = nullptr;
+        }
+
+        VkDescriptorSetLayoutCreateInfo info = {};
+        info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        info.bindingCount = PER_MATERIAL_BINDING_COUNT;
+        info.pBindings    = bindings;
+
+        VkResult result = vkCreateDescriptorSetLayout(sDevice, &info, nullptr, &sPerMaterialDescriptorSetLayout);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateDescriptorSetLayout (per-material set=1 3.4-γ) failed: "
+                               << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Per-material descriptor set layout created "
+                              "(set=1, 7 PBR slot binding 0-6, COMBINED_IMAGE_SAMPLER × 7)"
+                           << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): 共用 placeholder sampler 1 件 (linear / clamp)。
+    // 7 binding 全部に同 sampler を bind して transit smoke、per-texture / per-material sampler
+    // (mipmap LOD bias / anisotropy / wrap / border color) は領域 7 sub-step 7.3 残置。
+    bool createPlaceholderSampler()
+    {
+        VkSamplerCreateInfo info = {};
+        info.sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        info.magFilter    = VK_FILTER_LINEAR;
+        info.minFilter    = VK_FILTER_LINEAR;
+        info.mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        info.maxLod       = VK_LOD_CLAMP_NONE;
+
+        VkResult result = vkCreateSampler(sDevice, &info, nullptr, &sPlaceholderSampler);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateSampler (placeholder 3.4-γ) failed: "
+                               << (S32)result << LL_ENDL;
+            return false;
+        }
+        return true;
+    }
+
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): sSharedDescriptorPool から set=1 layout の
+    // 1 set を allocate。material cache (~50 material × frame in flight 3 = 150 pool sizing) は
+    // 領域 7 sub-step 7.3 残置、本 sub-step は 1 set transit smoke のみ。
+    bool allocatePerMaterialDescriptorSet()
+    {
+        if (sSharedDescriptorPool == VK_NULL_HANDLE || sPerMaterialDescriptorSetLayout == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "allocatePerMaterialDescriptorSet: pool/layout not ready" << LL_ENDL;
+            return false;
+        }
+
+        VkDescriptorSetAllocateInfo info = {};
+        info.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        info.descriptorPool     = sSharedDescriptorPool;
+        info.descriptorSetCount = 1;
+        info.pSetLayouts        = &sPerMaterialDescriptorSetLayout;
+
+        VkResult result = vkAllocateDescriptorSets(sDevice, &info, &sPerMaterialDescriptorSet);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkAllocateDescriptorSets (per-material 3.4-γ) failed: "
+                               << (S32)result << LL_ENDL;
+            return false;
+        }
+        return true;
+    }
+
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): 7 binding 全部に同 VkImageView + sPlaceholderSampler を
+    // bind して transit smoke (β-2 placeholder white texture × 7 binding 共用)。per-texture sampler /
+    // mipmap / anisotropy 配信は領域 7 sub-step 7.3 残置、本 sub-step は VkImageView[7] 受け取り
+    // (現状は呼出側で sPlaceholderWhiteImageView × 7 を渡す) で transit smoke 配線のみ。
+    void updatePerMaterialDescriptorSet(const VkImageView image_views[PER_MATERIAL_BINDING_COUNT])
+    {
+        if (sPerMaterialDescriptorSet == VK_NULL_HANDLE || sPlaceholderSampler == VK_NULL_HANDLE)
+        {
+            return;
+        }
+
+        VkDescriptorImageInfo image_infos[PER_MATERIAL_BINDING_COUNT] = {};
+        VkWriteDescriptorSet  writes[PER_MATERIAL_BINDING_COUNT]      = {};
+        for (U32 i = 0; i < PER_MATERIAL_BINDING_COUNT; ++i)
+        {
+            image_infos[i].sampler     = sPlaceholderSampler;
+            image_infos[i].imageView   = image_views[i];
+            image_infos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            writes[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet          = sPerMaterialDescriptorSet;
+            writes[i].dstBinding      = i;
+            writes[i].dstArrayElement = 0;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writes[i].pImageInfo      = &image_infos[i];
+        }
+
+        vkUpdateDescriptorSets(sDevice, PER_MATERIAL_BINDING_COUNT, writes, 0, nullptr);
+
+        LL_INFOS("Vulkan") << "Per-material descriptor set transit smoke "
+                              "(white placeholder × 7 binding, bind via vkCmdBindDescriptorSets)"
+                           << LL_ENDL;
+    }
+
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): set=1 per-material descriptor set bind helper。
+    // sPlaceholderLayout 二段構え (set=0 PerFrame + set=1 PerMaterial + push constant 64 B) 前提、
+    // firstSet=1 で sPerMaterialDescriptorSet を bind。in-frame guard / sCommandBuffer 有効性は
+    // caller 側 (beginFrame 内 sPlaceholderPipeline bind 直後) 前提、本 helper は handle null guard のみ。
+    void bindPerMaterialDescriptorSet(VkCommandBuffer cmd_buf)
+    {
+        if (cmd_buf == VK_NULL_HANDLE ||
+            sPlaceholderLayout == VK_NULL_HANDLE ||
+            sPerMaterialDescriptorSet == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        vkCmdBindDescriptorSets(cmd_buf,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sPlaceholderLayout,
+                                /*firstSet=*/1,
+                                /*descriptorSetCount=*/1,
+                                &sPerMaterialDescriptorSet,
+                                /*dynamicOffsetCount=*/0,
+                                /*pDynamicOffsets=*/nullptr);
     }
 
     // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
@@ -1398,15 +1554,16 @@ namespace
             return false;
         }
 
-        // r41 sub-step 3.3-γ: 二段構え準拠 layout (set=0 = per-frame matrix UBO + push constant = modelview_matrix mat4 / VERTEX_BIT)
-        // sub-doc 05 §3.5 / sub-doc 03 §3.1.1。実 descriptor set bind / push constant 投入は δ で初実施、γ は layout signature 統合のみ。
-        // placeholder SPIR-V は uniform 未参照のため shader 改変不要 (compile/bind は通る)。
-        VkDescriptorSetLayout set_layouts[1]      = { sPerFrameDescriptorSetLayout };
+        // r41 sub-step 3.4-γ: 二段構え準拠 layout を set=0 PerFrame + set=1 PerMaterial に拡張
+        // (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1)。push constant range 0..64 B / VERTEX_BIT (modelview_matrix)
+        // は 3.3-γ 設計継承。placeholder SPIR-V は set=1 binding 未参照のため shader 改変不要
+        // (Vulkan は layout が含む set 番号より shader 参照が少ない構成を許容、validation 0 件)。
+        VkDescriptorSetLayout set_layouts[2]     = { sPerFrameDescriptorSetLayout, sPerMaterialDescriptorSetLayout };
         VkPushConstantRange   push_constants[1]  = {};
         push_constants[0].stageFlags             = VK_SHADER_STAGE_VERTEX_BIT;
         push_constants[0].offset                 = 0;
         push_constants[0].size                   = 64; // mat4 modelview_matrix
-        sPlaceholderLayout = createStandardPipelineLayout(set_layouts, 1, push_constants, 1);
+        sPlaceholderLayout = createStandardPipelineLayout(set_layouts, 2, push_constants, 1);
         if (sPlaceholderLayout == VK_NULL_HANDLE)
         {
             LL_WARNS("Vulkan") << "Placeholder pipeline layout create failed" << LL_ENDL;
@@ -1620,15 +1777,16 @@ namespace
             return false;
         }
 
-        // r41 sub-step 3.3-γ: 二段構え準拠 layout (set=0 = per-frame matrix UBO + push constant = modelview_matrix mat4 / VERTEX_BIT)
-        // sub-doc 05 §3.5 / sub-doc 03 §3.1.1。実 descriptor set bind / push constant 投入は δ で初実施、γ は layout signature 統合のみ。
-        // sky smoke SPIR-V は uniform 未参照のため shader 改変不要 (compile/bind は通る)。
-        VkDescriptorSetLayout set_layouts[1]      = { sPerFrameDescriptorSetLayout };
+        // r41 sub-step 3.4-γ: 二段構え準拠 layout を set=0 PerFrame + set=1 PerMaterial に拡張
+        // (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1)。push constant range 0..64 B / VERTEX_BIT (modelview_matrix)
+        // は 3.3-γ 設計継承。sky smoke SPIR-V は set=1 binding 未参照のため shader 改変不要
+        // (sub-step 3.4-δ で recordSkySmokeDraw 経由 12 pool hook body に組込予定)。
+        VkDescriptorSetLayout set_layouts[2]     = { sPerFrameDescriptorSetLayout, sPerMaterialDescriptorSetLayout };
         VkPushConstantRange   push_constants[1]  = {};
         push_constants[0].stageFlags             = VK_SHADER_STAGE_VERTEX_BIT;
         push_constants[0].offset                 = 0;
         push_constants[0].size                   = 64; // mat4 modelview_matrix
-        sSkySmokeLayout = createStandardPipelineLayout(set_layouts, 1, push_constants, 1);
+        sSkySmokeLayout = createStandardPipelineLayout(set_layouts, 2, push_constants, 1);
         if (sSkySmokeLayout == VK_NULL_HANDLE)
         {
             LL_WARNS("Vulkan") << "Sky smoke pipeline layout create failed" << LL_ENDL;
@@ -1788,6 +1946,15 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1 / §3.1 sub-step 7.3 layout 部分内包):
+    // set=1 per-material 7 PBR slot descriptor set layout + 共用 placeholder sampler を
+    // PSO 作成前に立ち上げる (sPlaceholderLayout / sSkySmokeLayout が二段構え参照する前提)。
+    if (!createPerMaterialDescriptorSetLayout() || !createPlaceholderSampler())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     if (!createPlaceholderPipeline())
     {
         shutdownVulkan();
@@ -1799,6 +1966,23 @@ bool initVulkan()
         LL_WARNS("Vulkan") << "Sky smoke PSO creation failed" << LL_ENDL;
         shutdownVulkan();
         return false;
+    }
+
+    // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): set=1 transit smoke = sSharedDescriptorPool から
+    // 1 set allocate + 7 binding 全部に β-2 placeholder white image view + 共用 sampler を bind。
+    // beginFrame で sPlaceholderPipeline bind 後に bindPerMaterialDescriptorSet 経由で transit。
+    if (!allocatePerMaterialDescriptorSet())
+    {
+        shutdownVulkan();
+        return false;
+    }
+    {
+        VkImageView views[PER_MATERIAL_BINDING_COUNT];
+        for (U32 i = 0; i < PER_MATERIAL_BINDING_COUNT; ++i)
+        {
+            views[i] = sPlaceholderWhiteImageView;
+        }
+        updatePerMaterialDescriptorSet(views);
     }
 
     // r41 sub-step 3.4-β-1: VMA budget 1 度 smoke 出力 (INFO marker #3)。
@@ -1912,6 +2096,14 @@ void shutdownVulkan()
             vkDestroyDescriptorSetLayout(sDevice, sPerFrameDescriptorSetLayout, nullptr);
             sPerFrameDescriptorSetLayout = VK_NULL_HANDLE;
         }
+        // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1 set=1):
+        // per-material descriptor set layout teardown。descriptor set 自体は sSharedDescriptorPool 経由で自動 free。
+        if (sPerMaterialDescriptorSetLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(sDevice, sPerMaterialDescriptorSetLayout, nullptr);
+            sPerMaterialDescriptorSetLayout = VK_NULL_HANDLE;
+        }
+        sPerMaterialDescriptorSet = VK_NULL_HANDLE;
         if (sPipelineCache != VK_NULL_HANDLE)
         {
             vkDestroyPipelineCache(sDevice, sPipelineCache, nullptr);
@@ -1934,6 +2126,13 @@ void shutdownVulkan()
         {
             vkDestroyDescriptorPool(sDevice, sSharedDescriptorPool, nullptr);
             sSharedDescriptorPool = VK_NULL_HANDLE;
+        }
+        // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): per-material 共用 placeholder sampler teardown。
+        // sSharedDescriptorPool 破棄後 / sAllocator 破棄前に発行 (sampler は VMA 非経由・sDevice 直属)。
+        if (sPlaceholderSampler != VK_NULL_HANDLE)
+        {
+            vkDestroySampler(sDevice, sPlaceholderSampler, nullptr);
+            sPlaceholderSampler = VK_NULL_HANDLE;
         }
         // r41 sub-step 3.4-β-1: VMA allocator teardown (sDevice 破棄前必須)。
         if (sAllocator != VK_NULL_HANDLE)
@@ -2014,6 +2213,14 @@ bool beginFrame()
     if (sPlaceholderPipeline != VK_NULL_HANDLE)
     {
         vkCmdBindPipeline(sCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sPlaceholderPipeline);
+
+        // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1 set=1):
+        // per-material descriptor set transit smoke。sPlaceholderLayout 二段構え (set=0 per-frame +
+        // set=1 per-material) に揃え、firstSet=1 で 7 PBR slot 白 placeholder × 7 を bind。draw 未発行のため
+        // descriptor 参照は発生しないが、bind 経路の validation 0 件 + INFO marker 経由で 4 transit
+        // (allocate / update / bindFirstSet / firstSet=1 hit) を 1 度限り emit。実 per-material 更新は
+        // 領域 7 sub-step 7.5 (LLImageGL → VkImage 抱合せ後) で本配信。
+        bindPerMaterialDescriptorSet(sCommandBuffer);
     }
 
     sInFrame = true;
