@@ -48,8 +48,8 @@
 | acceptance criterion | 段階 3 sub-step での state | 判定 |
 |---|---|---|
 | **#1-段階 3 (llrender 主要 5 file + lldrawpool 13 file の GL call 除去、RAII setter 内呼出は除外)** | llrender 5 file (`llgl.{cpp,h}` / `llrender.{cpp,h}` / `llimagegl.{cpp,h}` / `llrendertarget.{cpp,h}` / `llpostprocess.{cpp,h}`) のうち `llpostprocess.{cpp,h}` は upstream Firestorm 由来 `apply()` 呼出 0 件 + effect 関数 empty body の dead code として r42-δ basket 移管、残 4 file は段階 1+2+3 全 sub-step で render path 動作維持に必須な GL call が依然存在 (PSO state alias 基盤 + PerFrame UBO + dynamic rendering helper による Vulkan path **並走**、GL path 動作維持 = sub-doc 03 §3.5 起源) → **RAII setter 内 GL call 除去 (bridging item #1) は段階 4 LLPipelineFrameContext 配置時 dead-store 化に scope refine 2026-05-29** (§4.1 metric 側で本除外を明示)、lldrawpool 13 file は 3.4-δ-2 で 11 pool + δ-1 で sky pool + δ-4 で avatar pool の全 12 pool hook 内 PSO bind + vkCmdDraw 配線完遂 (3.4-δ-3 で terrain.cpp 内 `glTexGen` 物理削除済)。**PFNGL function pointer declarations 物理削除は 189 file 波及 (§1.5.2 Cluster D) で段階 5 一体運用** | **本段階 metric 範囲内 satisfy** ✓ (RAII setter 内呼出は段階 4 / PFNGL declarations 物理削除は段階 5 へ scope refine、charter §7.5 boundary refine 範囲内) |
-| **#3-段階 3 (PSO bind 動作 + validation 0 件)** | 12 pool 全 hook で PSO bind + vkCmdDraw* 動作 (sub-step 3.4-δ-1/δ-2/δ-4 配線、3.4 launch verify 確認済 12/12 pool one-shot fire、δ-5 verify でも 12/12 維持)、sub-step 3.5-a validation strict force-enable build (VK_LAYER_KHRONOS_validation + VK_EXT_debug_utils 強制有効化) で起動 + sustained ~10 分動作中 vulkanDebugCallback 経由 `[VK ERROR]` / `[VK WARN]` 真の **0 件** | **達成** ✓ |
-| **#5-段階 3 (descriptor set + render pass 実装、領域 7 並走 satisfy)** | 3 階層 descriptor set + dynamic rendering 採用動作: set=0 PerFrame UBO 2 binding (3.3-β-2 / γ / δ-1 / δ-2)、set=1 PerMaterial 7 PBR slot COMBINED_IMAGE_SAMPLER (3.4-γ で binding 0-6 配置 + immutable null + placeholder sampler、material cache 本実装は領域 7 sub-step 7.3 残置)、set=2 AvatarBone STORAGE_BUFFER (3.4-δ-4 で `VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR` + `vkCmdPushDescriptorSetKHR` 基本配線、本 push descriptor 全配線は領域 7 sub-step 7.4 残置)、dynamic rendering 採用 (3.3-C-β-2 で `VkPhysicalDeviceDynamicRenderingFeatures` enable + helper body + transit smoke、3.3-C-γ/δ で `LLRenderTarget::bindTarget`/`flush` Vulkan path 並走、実 attachment は領域 7 sub-step 7.5 残置)、validation strict build で descriptor binding mismatch / render pass dependency violation **0 件** | **達成** ✓ |
+| **#3-段階 3 (PSO bind 動作 + validation 0 件)** | 12 pool 全 hook で **共用 `recordPlaceholderPoolDraw` helper (avatar のみ `recordAvatarPlaceholderDraw`) 経由** PSO bind + descriptor bind + `vkCmdDraw(3,1,0,0)` 動作 (= fullscreen NDC 三角形 × 12 重ね描き = 視覚 no-op 等価 placeholder、**per-pool 実 scene draw 移植は段階 4 LLPipelineFrameContext 配置後**、sub-step 3.4-δ-1/δ-2/δ-4 配線、3.4 launch verify 確認済 12/12 pool one-shot fire、δ-5 verify でも 12/12 維持)、avatar bone SSBO は init 時 identity mat4 × 110 書込のみ・recordAvatarPlaceholderDraw 時 bone データ流入無し (foundation 配線として有、実 skin matrix 投入は段階 4 持越し)、sub-step 3.5-a validation strict force-enable build (VK_LAYER_KHRONOS_validation + VK_EXT_debug_utils 強制有効化) で起動 + sustained ~10 分動作中 vulkanDebugCallback 経由 `[VK ERROR]` / `[VK WARN]` 真の **0 件** | **段階 metric satisfy** ✓ (per-pool 実 scene draw 移植は段階 4 移管 = charter §3 #3-段階 3 acceptance 本文「PSO bind 動作 + validation 0 件」に literal satisfy、charter §7.5 boundary refine 範囲内) |
+| **#5-段階 3 (descriptor set + render pass 実装、領域 7 並走 satisfy)** | 3 階層 descriptor set + dynamic rendering 採用動作: set=0 PerFrame UBO 2 binding (3.3-β-2 / γ / δ-1 / δ-2)、set=1 PerMaterial 7 PBR slot COMBINED_IMAGE_SAMPLER (3.4-γ で binding 0-6 配置、**non-immutable sampler = `pImmutableSamplers=nullptr` で descriptor write で動的差し替え可能、placeholder sampler は共用 `LINEAR` / `CLAMP_TO_EDGE` / `maxLod=VK_LOD_CLAMP_NONE` 1 件 allocate**、material cache 本実装は領域 7 sub-step 7.3 残置)、set=2 AvatarBone STORAGE_BUFFER (3.4-δ-4 で `VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR` + `vkCmdPushDescriptorSetKHR` 基本配線、本 push descriptor 全配線は領域 7 sub-step 7.4 残置)、dynamic rendering 採用 (3.3-C-β-2 で `VkPhysicalDeviceDynamicRenderingFeatures` enable + helper body + transit smoke、3.3-C-γ/δ で `LLRenderTarget::bindTarget`/`flush` Vulkan path 並走、実 attachment は領域 7 sub-step 7.5 残置)、validation strict build で descriptor binding mismatch / render pass dependency violation **0 件** | **達成** ✓ |
 | **#6-段階 3 (LLVKRenderer skeleton signature 整合)** | charter §3 #6 要件 = pipeline.cpp 内 inline 実装と LLVKRenderer skeleton hook の signature 整合は段階 3 完遂時に **領域 8 (LLVKRenderer skeleton) と並走 satisfy** が前提。段階 3 では PSO bind / 12 pool record hook / descriptor 配信 関数 (`recordPlaceholderPoolDraw` / `recordAvatarPlaceholderDraw` / `bindPerMaterialDescriptorSet` / `beginDynamicRendering` / `endDynamicRendering` 等) の signature 確定済、skeleton declaration 物理配置は領域 8 sub-doc (`08-llvkrenderer-skeleton.md` 仮称) で段階 4 並走起草。本段階 3 metric は **signature 確定 + 領域 8 並走着手 ready** を satisfy 判定 | **本段階 metric 範囲内 satisfy** ✓ (skeleton declaration 物理配置は領域 8 で段階 4 並走、charter §7.5 boundary refine 範囲内) |
 | **特殊対応 (terrain glTexGen 廃止 + avatar skinning SSBO)** | 3.4-δ-3 で `lldrawpoolterrain.cpp` 内 `renderFull4TU` / `renderFull2TU` / `renderSimple` 3 関数 (計 381 行) を死蔵 dead-code として物理削除 → `grep -E "glTexGen" indra/newview/lldrawpoolterrain.cpp` **0 件 hit** + INFO marker `Terrain fixed-function texgen path physically removed` 1 件出力、3.4-δ-4 で `lldrawpoolavatar.cpp` recordPoolDraws hook body を `recordAvatarPlaceholderDraw` に swap → set=2 binding 0 STORAGE_BUFFER で bone matrix → VkBuffer (7040 B = 110 mat4 identity、HOST_VISIBLE_COHERENT + MAPPED) 配線 + `vkCmdPushDescriptorSetKHR` 投入動作 (Avatar bone PSO compile + storage buffer alloc + Avatar placeholder pool draw fired marker 全 hit)、validation strict build で binding mismatch 0 件 | **達成** ✓ |
 | **regression (段階 1-2 動作維持)** | Vulkan instance + device + command pool + render pass + 12 pool record hook 動作維持 (3.5-a launch verify で 57 unique #Vulkan# marker + 12 #VkRecord# pool hook 全 hit、shutdown clean、AYAstorm 機能 [audio / chat / login / inventory] regression 0 件、validation 違反 0 件)、`feedback_release_with_user_feedback.md` 遵守 exhaustive solo session 不要 + AYA launch ~10 分動作 PASS | **達成** ✓ |
@@ -61,7 +61,7 @@
 - acceptance #1 の PFNGL function pointer declarations 物理削除 (§1.5.2 Cluster D 189 file 波及) は **段階 5 (依存解決) と一体運用**
 - acceptance #6 (LLVKRenderer skeleton signature 整合) の skeleton declaration 物理配置は **領域 8 sub-doc で段階 4 並走起草**、signature 確定 + 並走着手 ready で本段階 satisfy
 - charter §3 全体 acceptance #1 (GL 除去) は 段階 4 + 段階 5 完遂時に最終 satisfy 見込
-- **段階 4 着手は GO** (PSO 基盤 + 3 階層 descriptor set + dynamic rendering 並走基盤 + 12 pool record hook 動作維持 = LLPipelineFrameContext refactor の前提整備済)
+- **段階 4 着手は GO** (PSO 基盤 + 3 階層 descriptor set + dynamic rendering 並走基盤 + 12 pool record hook 動作維持 = LLPipelineFrameContext refactor の前提整備済、**per-pool 実 scene draw 移植経路は段階 4 内で frame context 経由 frame state 集約後に追加配置 = 段階 4 acceptance に併合**、charter §3 #3-段階 3 acceptance 本文 literal satisfy で段階 3 closure)
 
 ### 1.5 status close / next active
 
@@ -155,6 +155,23 @@ L87: 2026-05-30T23:04:26Z INFO #Vulkan# llrender/llvkloader.cpp(243) createDebug
 2026-05-30T23:05:38Z INFO #Vulkan# llrender/llvkloader.cpp(2416) shutdownVulkan : Vulkan device destroyed
 2026-05-30T23:05:38Z INFO #Vulkan# llrender/llvkloader.cpp(2429) shutdownVulkan : Vulkan instance destroyed
 ```
+
+**実コード shutdownVulkan 14 段階順** (llvkloader.cpp:2237-2414、依存関係 [allocator > image, device > sampler] 厳守):
+
+1. avatar bone pipeline destroy (2271)
+2. avatar bone layout + storage buffer + descriptor set layout destroy (2278-2292)
+3. sky-smoke pipeline + layout + shader modules destroy
+4. placeholder pipeline + layout + shader modules destroy
+5. PerFrame descriptor pool destroy
+6. PerFrame UBO buffer + memory destroy
+7. PerFrame descriptor set layout destroy (2361)
+8. PerMaterial descriptor set layout destroy (2368)
+9. pipeline cache destroy
+10. command pool destroy
+11. placeholder image destroy (2388、vmaDestroyAllocator 前必須)
+12. sSharedDescriptorPool destroy (2392)
+13. sPlaceholderSampler destroy (2399、vkDestroyDevice 前必須)
+14. vmaDestroyAllocator (2407) → vkDestroyDevice (2412) → vkDestroyInstance
 
 ### 3.4 validation 違反 grep 結果
 
