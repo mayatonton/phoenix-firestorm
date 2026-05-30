@@ -2,7 +2,7 @@
 
 > **Language / 言語 / 语言**: **English** · [日本語](./3dstream-user-guide.ja.md) · [中文](./3dstream-user-guide.zh.md)
 
-**Available in**: AYAstorm r31 and later. In r32 and later, 3D Stream is disabled by default.
+**Available in**: AYAstorm r31 and later. In r31.2 and later, 3D Stream is disabled by default.
 
 **Audience**: Streamers, DJs, live venue owners, and builders of exhibition, cinema, or event spaces.
 

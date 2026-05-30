@@ -2,7 +2,7 @@
 
 > **Language / 言語 / 语言**: [English](./3dstream-user-guide.en.md) · [日本語](./3dstream-user-guide.ja.md) · **中文**
 
-**搭载版本**: AYAstorm r31 及以后。r32 以后，3D Stream 默认关闭。
+**搭载版本**: AYAstorm r31 及以后。r31.2 以后，3D Stream 默认关闭。
 
 **对象**: 直播者、DJ、现场会场所有者，以及展览、影院、活动空间的制作者。
 

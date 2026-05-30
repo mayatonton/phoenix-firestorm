@@ -1,4 +1,4 @@
-# AYAstorm r32 3D Stream URL Filter and UI Update 修正報告書
+# AYAstorm r31.2 3D Stream URL Filter and UI Update 修正報告書
 
 作成日: 2026-05-29
 更新日: 2026-05-30
