@@ -98,6 +98,11 @@ endif (BUILD_HEADLESS)
 add_library (llrender ${llrender_SOURCE_FILES})
 target_include_directories( llrender  INTERFACE   ${CMAKE_CURRENT_SOURCE_DIR})
 
+# r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+# VMA (Vulkan Memory Allocator) v3.3.0 vendor 配置、header-only / MIT license。
+# 利用は llvkloader.cpp 1 translation unit に限定 (#define VMA_IMPLEMENTATION 経由)。
+target_include_directories(llrender PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
+
 # r41 sub-step 3.3-B-γ (sub-doc 03 §3.1.3):
 # glslangValidator が build host に無い場合は SPIR-V file load が runtime で失敗するため、
 # llvkloader.cpp の embedded byte array fallback を有効化。Linux build (glslangValidator 検出)

@@ -24,6 +24,25 @@
 #include <cstring>
 #include <fstream>
 
+// r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+// VMA (Vulkan Memory Allocator) v3.3.0 を本 translation unit に impl 展開。
+// volk と組み合わせるため static vulkan functions は無効化、
+// dynamic vulkan functions で vkGetInstanceProcAddr / vkGetDeviceProcAddr 経由 auto-resolve。
+#define VMA_STATIC_VULKAN_FUNCTIONS  0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+#define VMA_IMPLEMENTATION
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wunused-variable"
+#  pragma GCC diagnostic ignored "-Wunused-parameter"
+#  pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#  pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+#include "vk_mem_alloc.h"
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
+
 namespace LLVKLoader
 {
 
@@ -312,8 +331,23 @@ namespace
         U32  maxColorAttachments                = 0;
         U32  maxDescriptorSetSamplers           = 0;
         bool pushDescriptorSupported            = false;
+        // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+        // VK_EXT_memory_budget が device に存在すれば VMA に渡し、vmaGetBudget() で
+        // heap 毎の budget/usage を logVmaBudgetSmoke() で 1 回 INFO 出力する。
+        // unsupported の場合は VMA 側 fallback path (allocation 累積) が動作する。
+        bool memoryBudgetSupported              = false;
     };
     DeviceLimits sDeviceLimits;
+
+    // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+    // VMA allocator + 段階 3 段階共有 descriptor pool 雛形 + budget 1 回 smoke 出力 flag。
+    // sSharedDescriptorPool は sub-step 3.4-γ 以降で set=1 (per-material 7 PBR slot)
+    // および set=2 (per-draw push descriptor fallback) を割り当てる雛形 pool。
+    // 暫定 sizing は overshoot (UBO 16 + COMBINED_IMAGE_SAMPLER 64, maxSets=200)、
+    // 最終精度は領域 7 sub-step 7.3 で確定する (sub-doc 05 §3.6 参照)。
+    VmaAllocator     sAllocator                 = VK_NULL_HANDLE;
+    VkDescriptorPool sSharedDescriptorPool      = VK_NULL_HANDLE;
+    bool             sSharedVmaBudgetLogged     = false;
 
     bool queryAndLogDeviceLimits()
     {
@@ -328,14 +362,20 @@ namespace
         }
 
         bool push_desc_supported = false;
+        bool mem_budget_supported = false;
         for (const auto& e : exts)
         {
-            if (std::string(e.extensionName) == VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME)
+            const std::string name(e.extensionName);
+            if (name == VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME)
             {
                 push_desc_supported = true;
-                break;
+            }
+            else if (name == VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)
+            {
+                mem_budget_supported = true;
             }
         }
+        sDeviceLimits.memoryBudgetSupported = mem_budget_supported;
 
         VkPhysicalDevicePushDescriptorPropertiesKHR push_desc_props = {};
         push_desc_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR;
@@ -384,6 +424,10 @@ namespace
         LL_INFOS("Vulkan") << "  maxDescriptorSetSamplers           = "
                            << sDeviceLimits.maxDescriptorSetSamplers
                            << " (Vulkan 1.3 minimum 80)" << LL_ENDL;
+        LL_INFOS("Vulkan") << "  VK_EXT_memory_budget               = "
+                           << (sDeviceLimits.memoryBudgetSupported ? "supported (VMA budget query enabled)"
+                                                                   : "NOT supported (VMA fallback path)")
+                           << LL_ENDL;
         return true;
     }
 
@@ -444,13 +488,26 @@ namespace
                                << LL_ENDL;
         }
 
+        // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+        // device extension の最小 enable set。
+        //  - VK_EXT_memory_budget : 支援される場合のみ enable、VMA に渡して
+        //    heap 毎 budget/usage 取得を有効化。未支援 device では fallback path。
+        // 注: VK_KHR_push_descriptor は sub-step 3.4-γ 以降 (set=2 per-draw push descriptor 配線)
+        //     で enable 対象。本 sub-step では VMA + 共有 pool 雛形のみで extension は memory_budget
+        //     1 件に限定し、device 作成失敗 risk を最小化する。
+        std::vector<const char*> device_extensions;
+        if (sDeviceLimits.memoryBudgetSupported)
+        {
+            device_extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+        }
+
         VkDeviceCreateInfo device_info = {};
         device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_info.pNext = &dr_features_enable;  // r41 3.3-C-β-2: chain dynamic rendering feature
         device_info.queueCreateInfoCount = 1;
         device_info.pQueueCreateInfos = &queue_info;
-        device_info.enabledExtensionCount = 0;
-        device_info.ppEnabledExtensionNames = nullptr;
+        device_info.enabledExtensionCount = (U32)device_extensions.size();
+        device_info.ppEnabledExtensionNames = device_extensions.empty() ? nullptr : device_extensions.data();
         device_info.pEnabledFeatures = &enabled_features;
 
         VkResult result = vkCreateDevice(sPhysicalDevice, &device_info, nullptr, &sDevice);
@@ -674,6 +731,126 @@ namespace
 
         LL_INFOS("Vulkan") << "VkPipelineCache created" << LL_ENDL;
         return true;
+    }
+
+    // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+    // VMA (Vulkan Memory Allocator) v3.3.0 を初期化。
+    // - vulkan API version は Vulkan 1.3 (instance/device 共通)。
+    // - VMA_STATIC_VULKAN_FUNCTIONS=0 / VMA_DYNAMIC_VULKAN_FUNCTIONS=1 のため、
+    //   vkGetInstanceProcAddr / vkGetDeviceProcAddr 2 entry のみ fill すれば VMA が残りを auto-resolve。
+    // - VK_EXT_memory_budget enable 済の場合は VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT を立て、
+    //   vmaGetBudget 経由で heap 毎 budget/usage を取得可能にする。
+    // INFO marker #1: "VMA allocator created ..."
+    bool createVmaAllocator()
+    {
+        VmaVulkanFunctions vk_funcs = {};
+        vk_funcs.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+        vk_funcs.vkGetDeviceProcAddr   = vkGetDeviceProcAddr;
+
+        VmaAllocatorCreateInfo info = {};
+        info.vulkanApiVersion = VK_API_VERSION_1_3;
+        info.instance         = sInstance;
+        info.physicalDevice   = sPhysicalDevice;
+        info.device           = sDevice;
+        info.pVulkanFunctions = &vk_funcs;
+        if (sDeviceLimits.memoryBudgetSupported)
+        {
+            info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+        }
+
+        VkResult result = vmaCreateAllocator(&info, &sAllocator);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vmaCreateAllocator failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "VMA allocator created (Vulkan 1.3, dynamic functions via volk, memory_budget="
+                           << (sDeviceLimits.memoryBudgetSupported ? "ON" : "OFF")
+                           << ")" << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+    // 段階 3 共有 descriptor pool 雛形 (sub-doc 05 §3.6)。
+    // 暫定 overshoot sizing:
+    //   - UNIFORM_BUFFER: 16 (3.4-γ 以降の追加 UBO 余裕)
+    //   - COMBINED_IMAGE_SAMPLER: 64 (set=1 per-material 7 PBR slot × ~9 set 想定)
+    //   - maxSets: 200 (sub-doc 05 §3.6 strategy 準拠、~150 + 余裕)
+    // 最終精度は領域 7 sub-step 7.3 で確定する。FREE_DESCRIPTOR_SET_BIT は付けない
+    // (段階 3 phase は pool reset 一括戦略前提)。
+    // INFO marker #2: "Shared descriptor pool created ..."
+    bool createSharedDescriptorPool()
+    {
+        VkDescriptorPoolSize pool_sizes[2] = {};
+        pool_sizes[0].type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        pool_sizes[0].descriptorCount = 16;
+        pool_sizes[1].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        pool_sizes[1].descriptorCount = 64;
+
+        VkDescriptorPoolCreateInfo info = {};
+        info.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        info.maxSets       = 200;
+        info.poolSizeCount = 2;
+        info.pPoolSizes    = pool_sizes;
+
+        VkResult result = vkCreateDescriptorPool(sDevice, &info, nullptr, &sSharedDescriptorPool);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "vkCreateDescriptorPool (shared 3.4-β-1) failed: " << (S32)result << LL_ENDL;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Shared descriptor pool created (3.4-β-1 placeholder, maxSets=200, "
+                              "UBO=16, COMBINED_IMAGE_SAMPLER=64; precision deferred to 7.3)"
+                           << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+    // VMA budget smoke 1 回出力。VK_EXT_memory_budget 支援時は実 budget/usage を取得、
+    // 未支援時は VMA fallback の累積 statistics を表示。INFO marker #3。
+    // FRAMES_IN_FLIGHT loop 内で誤って毎フレーム呼ばないよう sSharedVmaBudgetLogged で 1 回固定。
+    void logVmaBudgetSmoke()
+    {
+        if (sSharedVmaBudgetLogged || sAllocator == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        sSharedVmaBudgetLogged = true;
+
+        const VkPhysicalDeviceMemoryProperties* mem_props = nullptr;
+        vmaGetMemoryProperties(sAllocator, &mem_props);
+        const U32 heap_count = mem_props ? mem_props->memoryHeapCount : 0;
+
+        if (heap_count == 0)
+        {
+            LL_INFOS("Vulkan") << "VMA budget smoke: heapCount=0 (skip)" << LL_ENDL;
+            return;
+        }
+
+        std::vector<VmaBudget> budgets(heap_count);
+        vmaGetHeapBudgets(sAllocator, budgets.data());
+
+        LL_INFOS("Vulkan") << "VMA budget smoke (3.4-β-1 1 度のみ、heapCount=" << heap_count
+                           << ", VK_EXT_memory_budget="
+                           << (sDeviceLimits.memoryBudgetSupported ? "ON" : "OFF (fallback)")
+                           << "):" << LL_ENDL;
+        for (U32 i = 0; i < heap_count; ++i)
+        {
+            const VmaBudget& b = budgets[i];
+            const U64 heap_size = mem_props->memoryHeaps[i].size;
+            const bool is_device_local =
+                (mem_props->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+            LL_INFOS("Vulkan") << "  heap " << i
+                               << (is_device_local ? " [DEVICE_LOCAL]" : " [HOST]")
+                               << " size=" << (heap_size / (1024 * 1024)) << " MB"
+                               << " budget=" << (b.budget / (1024 * 1024)) << " MB"
+                               << " usage=" << (b.usage / (1024 * 1024)) << " MB"
+                               << " (VMA allocations=" << b.statistics.allocationCount
+                               << ", blocks=" << b.statistics.blockCount << ")"
+                               << LL_ENDL;
+        }
     }
 
     // r41 sub-step 3.3-β-2: per-frame matrix UBO descriptor set layout (sub-doc 03 §3.1.1)
@@ -1301,6 +1478,15 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+    // VMA allocator + 段階 3 共有 descriptor pool 雛形を per-frame UBO 構築前に立ち上げる。
+    // 段階 3 phase の per-frame UBO 自体は既存 raw vkAllocateMemory path で継続 (置換は領域 7 で実施)。
+    if (!createVmaAllocator() || !createSharedDescriptorPool())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     // r41 sub-step 3.3-β-2: per-frame matrix UBO descriptor + buffer + set (sub-doc 03 §3.1.1)
     if (!createPerFrameDescriptorSetLayout() || !createPerFrameUbos() || !createPerFrameDescriptorSets())
     {
@@ -1320,6 +1506,9 @@ bool initVulkan()
         shutdownVulkan();
         return false;
     }
+
+    // r41 sub-step 3.4-β-1: VMA budget 1 度 smoke 出力 (INFO marker #3)。
+    logVmaBudgetSmoke();
 
     sInitialized = true;
     return true;
@@ -1440,6 +1629,21 @@ void shutdownVulkan()
             sCommandPool = VK_NULL_HANDLE;
             sCommandBuffer = VK_NULL_HANDLE;
         }
+
+        // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
+        // 共有 descriptor pool teardown (set は pool 経由で自動 free)。
+        if (sSharedDescriptorPool != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(sDevice, sSharedDescriptorPool, nullptr);
+            sSharedDescriptorPool = VK_NULL_HANDLE;
+        }
+        // r41 sub-step 3.4-β-1: VMA allocator teardown (sDevice 破棄前必須)。
+        if (sAllocator != VK_NULL_HANDLE)
+        {
+            vmaDestroyAllocator(sAllocator);
+            sAllocator = VK_NULL_HANDLE;
+        }
+        sSharedVmaBudgetLogged = false;
 
         vkDestroyDevice(sDevice, nullptr);
         sDevice = VK_NULL_HANDLE;
