@@ -1251,6 +1251,7 @@ namespace
         }
 
         LL_INFOS("Vulkan") << "Sky smoke PSO compiled via SPIR-V build chain (sub-step 3.3-B-γ)" << LL_ENDL;
+        LL_INFOS("Vulkan") << "Sky placeholder vert binding active (PerFrameMatrixUBO + push constant modelview)" << LL_ENDL;
         return true;
     }
 }
