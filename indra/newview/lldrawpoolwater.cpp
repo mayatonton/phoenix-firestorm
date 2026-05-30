@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 #include "llfeaturemanager.h"
 #include "lldrawpoolwater.h"
+#include "llvkloader.h" // <AYAstorm r41> sub-step 3.4-δ-2 placeholder pool draw helper
 
 #include "llviewercontrol.h"
 #include "lldir.h"
@@ -367,5 +368,6 @@ void LLDrawPoolWater::recordPoolDraws(VkCommandBuffer cmd_buf)
         LL_INFOS("VkRecord") << "Water pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
         logged_once = true;
     }
+    LLVKLoader::recordPlaceholderPoolDraw(cmd_buf);
 }
 // </AYAstorm r41>

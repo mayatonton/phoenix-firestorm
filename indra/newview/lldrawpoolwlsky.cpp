@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "lldrawpoolwlsky.h"
+#include "llvkloader.h" // <AYAstorm r41> sub-step 3.4-δ-2 placeholder pool draw helper
 
 #include "llerror.h"
 #include "llface.h"
@@ -530,5 +531,6 @@ void LLDrawPoolWLSky::recordPoolDraws(VkCommandBuffer cmd_buf)
         LL_INFOS("VkRecord") << "WLSky pool recordPoolDraws hook fired (one-shot)" << LL_ENDL;
         logged_once = true;
     }
+    LLVKLoader::recordPlaceholderPoolDraw(cmd_buf);
 }
 // </AYAstorm r41>
