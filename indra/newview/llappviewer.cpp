@@ -3288,6 +3288,13 @@ bool LLAppViewer::initConfiguration()
     LLCinematicOverlay::applyR15GodraysCinematicMigrationIfNeeded();
     // </FS:AYAstorm>
 
+    // <FS:AYAstorm> r31.2 Cinematic overlay RenderGlowMinLuminance bugfix migration.
+    // One-shot; safe in every startup path (no-op once
+    // AYAR31GlowMinLuminanceMigrationVersion >= 1). 既存 r31.0 / r31.1 ユーザーの
+    // persist 値 0.0 を 0.5 に強制矯正。
+    LLCinematicOverlay::applyR31GlowMinLuminanceMigrationIfNeeded();
+    // </FS:AYAstorm>
+
     // <FS:Ansariel> Debug setting to disable log throttle
     nd::logging::setThrottleEnabled(gSavedSettings.getBOOL("FSEnableLogThrottle"));
 

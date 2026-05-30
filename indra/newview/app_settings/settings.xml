@@ -10263,6 +10263,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>AYAR31GlowMinLuminanceMigrationVersion</key>
+    <map>
+      <key>Comment</key>
+      <string>Cinematic overlay RenderGlowMinLuminance 値の bugfix one-shot migration version sentinel。BD 由来の 0.0 が「blank texture + 色付きプリム」で意図しない bloom 発火を起こす副作用に対し、0.5 へ強制上書きする。0=未適用 (起動時に強制 0.5 上書き)、1=適用済 (no-op)。手動で 0 に戻すと再 migration が走る</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>AYAR16AerialPerspectiveStrength</key>
     <map>
       <key>Comment</key>

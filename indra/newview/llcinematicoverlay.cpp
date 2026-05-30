@@ -208,3 +208,47 @@ void LLCinematicOverlay::applyR15GodraysCinematicMigrationIfNeeded()
         << ENABLED_CONTROL << " " << (old_value ? "true" : "false") << " -> true" << LL_ENDL;
 }
 // </FS:AYAstorm>
+
+// <FS:AYAstorm> r31.2 Cinematic overlay RenderGlowMinLuminance bugfix migration.
+// BD parity port で持ち込まれた RenderGlowMinLuminance=0.0 が、blank texture +
+// 色付きプリム (装着物 / SIM rez object 両方) で意図しない bloom 発火を起こす。
+// shader (glowExtractF.glsl) は smoothstep(minLuminance, minLuminance+1.0, x)
+// で bloom 寄与を計算するため、0.0 では HDR linear 空間 0〜1.0 の中間 lit でも
+// 発火し、`warmth = max(r*0.75, g*0.6, b*0.712)` 経路で色付きが優位に光る。
+// 0.5 に上げると HDR > 0.5 (sky lit / 強い反射 / 強い emissive) だけ拾い、
+// 装着物クラスの中間 lit は切れる。空 / 街灯 / 強い反射などの Cinematic
+// 表現は維持される。
+// Persist 値が r31.0 / r31.1 で 0.0 に焼かれているユーザーを一度だけ強制矯正。
+void LLCinematicOverlay::applyR31GlowMinLuminanceMigrationIfNeeded()
+{
+    static const char VERSION_CONTROL[] = "AYAR31GlowMinLuminanceMigrationVersion";
+    static const char CVAR_CONTROL[]    = "RenderGlowMinLuminance";
+    static const char MODE_CONTROL[]    = "AYAVisualRealismEnabled";
+    static const F32  NEW_VALUE         = 0.5f;
+
+    const S32 ver = gSavedSettings.getS32(VERSION_CONTROL);
+    if (ver >= 1)
+    {
+        return;
+    }
+
+    // RenderGlowMinLuminance は LL 標準 cvar で全 mode 共通。BD overlay の不正値
+    // (0.0) が焼かれているのは Cinematic mode で起動した経験のあるユーザーだけ。
+    // Firestorm mode のみ使うユーザーは LL default 1.0 で問題なく動作しているので
+    // 上書きしない (skip し、version も bump せず次回起動で再検査)。Cinematic mode
+    // に初めて切り替えて再起動した時に migration が走る。
+    const U32 mode = gSavedSettings.getU32(MODE_CONTROL);
+    if (mode != 2)
+    {
+        return;
+    }
+
+    const F32 old_value = gSavedSettings.getF32(CVAR_CONTROL);
+    gSavedSettings.setF32(CVAR_CONTROL, NEW_VALUE);
+    gSavedSettings.setS32(VERSION_CONTROL, 1);
+
+    LL_INFOS("CinematicOverlay")
+        << "r31.2 glow min luminance migration v0->v1: "
+        << CVAR_CONTROL << " " << old_value << " -> " << NEW_VALUE << LL_ENDL;
+}
+// </FS:AYAstorm>
