@@ -85,11 +85,11 @@ The AYAstorm View pipeline draws extensively from NiranV Dean's Black Dragon vie
 
 ## Downloads
 
-> **Please use [AYAstorm r31-bugfix-1](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1) instead.** r31-bugfix-1 fixes a structural SSS pink-shadow leak through FullBright prims that was present in r31, and ships installers for all 3 OS (Linux / Windows / macOS).
+> **Please use [AYAstorm r31-bugfix-2](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2) instead.** r31-bugfix-2 bundles the AO delete-event recovery, LSL Bridge collision defense, attachment alpha render-order (3-pass dispatch), 3D Stream URL filter, Cinematic glow min-luminance fix, underwater alpha plate fix, and the earlier r31-bugfix-1 SSS pink-shadow fix. Installers for all 3 OS (Linux / Windows / macOS) are bundled.
 
-- Linux Installer → [use r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
-- Windows Installer → [use r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
-- macOS Installer → [use r31-bugfix-1 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-1)
+- Linux Installer → [use r31-bugfix-2 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)
+- Windows Installer → [use r31-bugfix-2 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)
+- macOS Installer → [use r31-bugfix-2 release](https://github.com/mayatonton/phoenix-firestorm/releases/tag/v7.2.4-ayastorm-r31-bugfix-2)
 
 ## Contributors
 

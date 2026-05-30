@@ -5,6 +5,8 @@
 >
 > 並非 AYAstorm 特有的問題，而是對 Firestorm 衍生 viewer 全體共用的 inventory root 所衍生之結構性行為的對應 (屬於 bug 或仕樣的判斷由 upstream 決定)。
 
+與 AO + Bridge 修正並列的 **2 大修正項目** — 裝著物 N-BL prim alpha render-order 之 3-pass dispatch (PR #122) 也同捆於本版。此外還收錄了在 r31-bugfix-1 之後著陸的以下 3 件修正: 3D Stream URL filter + UI 更新 (PR #121)、Cinematic mode glow min-luminance bugfix (PR #123)、水中 alpha plate redirect 修正 (PR #124)。各 feature 別 section 請見本通知下方。
+
 實作細節、影響範圍、復原手順常設於 `docs/specs/` 與 `docs/guides/` 之下。本通知為入口與差異重點。
 
 ---
@@ -91,3 +93,128 @@ r31-bugfix-2 將一般 AO 集合「刪除」改為不刪除實際 inventory，�
 - 使用者復原手順 (繁體中文): [`docs/guides/ao-data-recovery-guide.zh.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.zh.md)
 - 使用者復原手順 (English): [`docs/guides/ao-data-recovery-guide.en.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.en.md)
 - 使用者復原手順 (日本語): [`docs/guides/ao-data-recovery-guide.ja.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.ja.md)
+
+---
+
+## AO 集合已消失的使用者 — AO 再設置手順
+
+> [!IMPORTANT]
+> 已被上述事象抹去的 AO 集合的 **AO 資料本身在 viewer 側或 SL 伺服器側均無法找回**。不過 AO 機能本身可以透過簡單的再設置回到正常使用狀態。**手順以 3 種語言公開，請使用符合您環境的版本:**
+>
+> - 🇨🇳 [**繁體中文復原指南**](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.zh.md)
+> - 🇺🇸 [**English Recovery Guide**](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.en.md)
+> - 🇯🇵 [**日本語復旧手順**](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/guides/ao-data-recovery-guide.ja.md)
+>
+> 安裝 r31-bugfix-2 本身 **可在 AYAstorm 側阻止相同事象再次發生**。Firestorm 本家 / 其他 FS 衍生 viewer 中的再發各別需要 viewer 端 patch，相應的規避手段在復原指南內亦有明示。
+
+---
+
+## 裝著物 N-BL prim alpha render-order — 3-pass dispatch (PR [#122](https://github.com/mayatonton/phoenix-firestorm/pull/122))
+
+### 標題: r31-bugfix-2 之 2 大修正項目 其二 — POST_WATER forward pass 切分為 SIM N-BL → R-BL → 裝著物 N-BL 三段並以 per-draw discriminator 分流
+
+這是 AO + Bridge 救濟 **並列的 2 大修正項目** 之一。r30 §5 的 render-order swap (POST_WATER 全 non-rigged → 全 rigged) 解消了 rigged hair 越過的天空空抜，但副作用是裝著物 N-BL prim (睫毛 prim 等) 反而被繪在 rigged hair 之前然後被 over-blend 蓋掉的 regression (spec 用語為 S1 / S2)。將 POST_WATER 的 forward pass 切分為以下 3 sub-pass:
+
+- **pass 1**: `forwardRender(false, ATTACHMENT_NONE)` — 僅 SIM rezz N-BL
+- **pass 2**: `forwardRender(true)` — 全 R-BL (rigged hair 等)
+- **pass 3**: `forwardRender(false, ATTACHMENT_ONLY)` — 僅裝著物 N-BL prim
+
+per-draw discriminator 為 `LLDrawInfo::mAttachedToAvatar.notNull()`。將 pass 3 移到 rigged 之後使裝著物 prim 整列於 hair 前面，同時 pass 1 仍將 SIM 側 N-BL 繪於 rigged 之前以維持 §5 swap fix (透過頭髮的天空空抜解消)。PRE_WATER 為了 water fog 整合性維持 rigged-first。HUD 僅一次 forwardRender，不在範圍內。
+
+被 falsify 的替代案 (alpha plate 獨立 depth 等) 與採用 3-pass 的結構性比較記錄於 `docs/specs/ayastorm-double-alpha-c-plan-extension.md §3`。
+
+### Implementation summary
+
+- `indra/newview/lldrawpoolalpha.cpp` / `lldrawpoolalpha.h` — `AttachmentFilter` enum 與 `forwardRender(rigged, filter)` overload、POST_WATER 切分為 3 sub-pass、per-draw `LLDrawInfo::mAttachedToAvatar` discriminator
+- `docs/specs/ayastorm-double-alpha-c-plan-extension.md` — 與 falsified A/B/C 案的結構性比較 (新增)
+- `docs/specs/ayastorm-six-category-render-order-trace.md` — 推導 3-pass 邊界所依據的 6 類別 render order trace 全文 (新增)
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — 3-pass dispatch 的設計、實作、falsification analysis (A/B/C 案)、spec 整備。
+
+### Special thanks
+
+- neria (neriamm) — alpha render-order 問題的調查與檢證協助。在多個 SL avatar 上的再現環境構築與候補修正的 hands-on 檢證，對結構性比較與最終實作選擇的縮小範圍有重大貢獻。neria 是 Second Life 的居民貢獻者 (並非 GitHub 帳號)。
+
+### Documentation
+
+- 結構性比較 (擴充報告書): [`docs/specs/ayastorm-double-alpha-c-plan-extension.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/ayastorm-double-alpha-c-plan-extension.md)
+- 6 類別 render order trace: [`docs/specs/ayastorm-six-category-render-order-trace.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/ayastorm-six-category-render-order-trace.md)
+
+---
+
+## 3D Stream URL filter + UI 更新 (PR [#121](https://github.com/mayatonton/phoenix-firestorm/pull/121))
+
+### 標題: 將 3D Stream 改為初期 OFF；URL 播放確認顯示送來方 object 名稱 / owner
+
+3D Stream 機能 (r26 導入、r31 以 unified tag 整理) 自 r31.2 起以 `Stream3DEnabled = false` 為初期值出貨。已在 3D Stream 啟用狀態下運用中的使用者會保留 persist 值，只有新安裝才從初期 OFF 開始。in-world 物件送來 stream URL 時的播放確認 dialog 改為顯示送來方的 object 名稱 / owner，讓各 viewer 能根據送來方判斷是否接受 URL。透過 rezz 物件導致的非預期自動播放不再以 UI 後追擋下，而是於 source-of-truth 階段就被擋住。
+
+### 修正的原理
+
+- `settings.xml` 中 `Stream3DEnabled` 初期值改為 `false`，既有使用者的 persist 值保留
+- URL 播放確認 dialog 文字加入送來方 object 名稱 / owner (3 語言)
+- source-of-truth 強制: 3D Stream 為 disabled 時，rezz 物件送出的 URL 在抵達 auto-play 路徑前就被丟棄 (非 UI 後追)
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — 3D Stream URL filter + UI 更新的實作、3 語言提示在地化。
+
+### Documentation
+
+- 技術報告 (日語): [`docs/specs/ayastorm-r31-2-3dstream-url-filter-and-ui-update-report.ja.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/ayastorm-r31-2-3dstream-url-filter-and-ui-update-report.ja.md)
+- 使用者指南 (English): [`docs/specs/3dstream-user-guide.en.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/3dstream-user-guide.en.md)
+- 使用者指南 (日語): [`docs/specs/3dstream-user-guide.ja.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/3dstream-user-guide.ja.md)
+- 使用者指南 (繁體中文): [`docs/specs/3dstream-user-guide.zh.md`](https://github.com/mayatonton/phoenix-firestorm/blob/v7.2.4-ayastorm-r31-bugfix-2/docs/specs/3dstream-user-guide.zh.md)
+
+---
+
+## Cinematic glow min-luminance bugfix (PR [#123](https://github.com/mayatonton/phoenix-firestorm/pull/123))
+
+### 標題: 將 Cinematic mode 的 `RenderGlowMinLuminance` 從 0.0 提升到 0.5；既出貨使用者以 one-shot migration 強制矯正
+
+Cinematic mode 套用的 BD parity overlay 帶入了 `RenderGlowMinLuminance = 0.0`，降低了 HDR linear 空間的 bloom-extract 閾值。`glowExtractF.glsl` 以 `smoothstep(min, min+1.0, x)` 計算 bloom 寄與，故 `min = 0.0` 時連 HDR `0..1.0` 的中間 lit 都會發火，且 `warmth = max(r*0.75, g*0.6, b*0.712)` 路徑會讓著色 prim (blank texture + color picker) 即使 prim 側 Glow=0 也會發光。裝著物與 SIM rez object 兩者皆有症狀回報，而 texture 套用 prim 或白色 prim 不會發火。
+
+將閾值提升到 `0.5`。Cinematic 的強力 bloom 表現 (空 / 強反射 / 強 emissive — HDR `0.5` 以上) 仍會發火，只切掉裝著物等級的中間 lit 所致非預期 bloom。對於在 r31.0 / r31.1 已將 `0.0` 持久化的使用者，以 one-shot migration (sentinel `AYAR31GlowMinLuminanceMigrationVersion`) 強制矯正，但 **僅在下次 Cinematic mode 起動時** — Firestorm mode 專用使用者不受影響 (LL default `1.0` 維持，migration 跳過且不 bump version，於下次 Cinematic 起動時再檢查)。
+
+### 修正的原理
+
+- `settings_cinematic_bd.xml`: `RenderGlowMinLuminance` `0.0` → `0.5`
+- `settings.xml`: 加入 `AYAR31GlowMinLuminanceMigrationVersion` sentinel (S32, Persist=1, default 0)
+- `llcinematicoverlay.{h,cpp}`: 實作 `applyR31GlowMinLuminanceMigrationIfNeeded()`。當 `AYAVisualRealismEnabled != 2` (Firestorm mode) 時不 bump version 而 skip，下次 Cinematic 起動再檢查
+- `llappviewer.cpp`: 起動 sequence 中在既有 `applyR15GodraysCinematicMigrationIfNeeded()` 呼叫後追加 migration 呼叫
+
+### Implementation summary
+
+- `indra/newview/app_settings/settings_cinematic_bd.xml` — `RenderGlowMinLuminance` 閾值提升
+- `indra/newview/app_settings/settings.xml` — migration sentinel
+- `indra/newview/llcinematicoverlay.cpp` / `llcinematicoverlay.h` — `applyR31GlowMinLuminanceMigrationIfNeeded()` (帶 mode==2 保護)
+- `indra/newview/llappviewer.cpp` — 起動 sequence 中的整合
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — bloom 閾值調查、修正設計、one-shot migration 實作。
+
+---
+
+## 水中 alpha plate redirect 修正 (PR [#124](https://github.com/mayatonton/phoenix-firestorm/pull/124))
+
+### 標題: 將 `mAYAAlphaColor` redirect 以 `!sUnderWaterRender` 進行 gate；水中時 forward alpha 直接寫入 main RT (FS 互換動作)
+
+r30 P5 transparent-DoF C-(a) 導入的 `mAYAAlphaColor` redirect 會將 forward alpha BLEND 寫入獨立 alpha plate，然後在 tonemap 前以 (`GL_ONE / GL_ONE_MINUS_SRC_ALPHA`) over-blend composite 至 main RT。此 redirect 的啟用條件 (`use_alpha_rt`) 並未對應 `LLPipeline::sUnderWaterRender`。水中時 main RT 已含 underwater fog 著色的 opaque scene，獨立 plate 卻被 clear 為 `(0,0,0,0)` → forward alpha 寫入 plate，pre-tonemap composite 讓 plate 覆蓋 underwater 著色的 main RT，導致睫毛 / 眉等裝著物 alpha prim 與 SIM particle 透明區域 **在水中顯示為純黑**。上浮到水面後也會數 frame 再發 (camera 上升時 redirect 一度回到水面狀態，之後又漂回水中狀態)。
+
+修正為單一條件 gate: 在 `use_alpha_rt` 加上 `!LLPipeline::sUnderWaterRender`。水中時跳過 redirect，forward alpha 直接寫入 main RT — 水中時與 upstream FS 互換的動作。水面以上路徑與舊版完全一致。
+
+### 修正的原理
+
+- `indra/newview/lldrawpoolalpha.cpp`: 在 `use_alpha_rt` 條件既有的 `gPipeline.mAYAAlphaColor.isComplete()` 前加上 `!LLPipeline::sUnderWaterRender &&`
+- gate 抑制 redirect 時，alpha plate 維持 clear 狀態的 `(0,0,0,0)`。pre-tonemap composite 對 main RT 變為 no-op (`A_plate * 1 + RT * 1 = RT`)，因此不需要水中專用的 composite 路徑
+- 水面以上的 transparent-DoF C-(a) plate composite 效果無變化。水中是全畫面 fog 使 bokeh 結構性不可見，故水中放棄 plate composite 在知覺上無差異
+
+### Implementation summary
+
+- `indra/newview/lldrawpoolalpha.cpp` — `use_alpha_rt` 條件加上 `!LLPipeline::sUnderWaterRender`，並以 inline 註解記錄水中 no-op composite 的依據
+
+### Credits
+
+- [@mayatonton](https://github.com/mayatonton) — 水中症狀調查、單一 gate 修正、5 連線點 (`mForwardToAlphaRT` / alpha blend factors / emissive routing / plate clear / plate composite) 的影響範圍追蹤。
