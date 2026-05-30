@@ -139,6 +139,27 @@ namespace LLVKLoader
                                U32                               color_count,
                                const DynamicRenderingAttachment* depth_attachment);
     void endDynamicRendering();
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 3.3-B-β-1: SPIR-V shader module load helper
+    // sub-doc 03 §3.1.3 (AYA 確定 2026-05-30、1 shader exemplar pre-flight)
+    //
+    // 既存 GL compile chain (llshadermgr.cpp:909-955 = glCreateShader →
+    // glShaderSource → glCompileShader) に対する SPIR-V 並走分岐の最小 entry point。
+    // β-2 で実装 body 配信 (build 時 pre-compile した .spv binary を
+    // vkCreateShaderModule() 経由で VkShaderModule 化、領域 6 sub-step 6.1 一括化
+    // までの 1 shader exemplar pre-flight 配置)。
+    //
+    // 戻り値: 成功時 VkShaderModule、失敗時 VK_NULL_HANDLE
+    //         (Vulkan 未初期化 / spv_code == nullptr / code_size_bytes == 0 /
+    //          code_size_bytes % 4 != 0 を含む)。
+    // 所有: caller (vkDestroyShaderModule で破棄)。PSO compile 後は安全に破棄可
+    //       (VkPipeline は内部で SPIR-V を取り込む)。
+    //
+    // spv_code        : SPIR-V binary (SPIR-V spec で U32 alignment 保証)。
+    // code_size_bytes : spv_code が指すデータの byte 数 (4 の倍数必須)。
+    // ------------------------------------------------------------------
+    VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes);
 }
 
 #endif // LL_LLVKLOADER_H
