@@ -2,7 +2,7 @@
 
 > **Language / 言語 / 语言**: [English](./3dstream-user-guide.en.md) · **日本語** · [中文](./3dstream-user-guide.zh.md)
 
-**搭載**: AYAstorm r31 以降。r32 以降では 3D Stream は初期状態で無効です。
+**搭載**: AYAstorm r31 以降。r31.2 以降では 3D Stream は初期状態で無効です。
 
 **対象**: 配信者、DJ、ライブ会場オーナー、展示・映画館・イベント会場を作る人。
 
