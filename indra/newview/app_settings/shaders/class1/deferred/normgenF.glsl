@@ -32,7 +32,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=57) uniform sampler2D srcMap;
+#else
 uniform sampler2D srcMap;
+#endif
 
 in vec2 vary_texcoord0;
 

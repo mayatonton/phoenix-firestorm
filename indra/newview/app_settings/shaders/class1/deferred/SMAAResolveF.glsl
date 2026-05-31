@@ -43,10 +43,19 @@ out vec4 frag_color;
 
 in vec2 vary_texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=4) uniform sampler2D diffuseRect;
+layout(set=1, binding=62) uniform sampler2D previousColorTex;
+#else
 uniform sampler2D diffuseRect;
 uniform sampler2D previousColorTex;
+#endif
 #if SMAA_REPROJECTION
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=55) uniform sampler2D velocityTex;
+#else
 uniform sampler2D velocityTex;
+#endif
 #endif
 
 #define float4 vec4

@@ -25,7 +25,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=13) uniform sampler2D tex0;
+#else
 uniform sampler2D tex0;
+#endif
 uniform float tolerance;
 
 in vec2 vary_texcoord0;

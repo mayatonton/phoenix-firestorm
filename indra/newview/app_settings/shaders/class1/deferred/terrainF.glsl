@@ -27,11 +27,19 @@
 
 out vec4 frag_data[4];
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=20) uniform sampler2D detail_0;
+layout(set=1, binding=25) uniform sampler2D detail_1;
+layout(set=1, binding=30) uniform sampler2D detail_2;
+layout(set=1, binding=35) uniform sampler2D detail_3;
+layout(set=1, binding=51) uniform sampler2D alpha_ramp;
+#else
 uniform sampler2D detail_0;
 uniform sampler2D detail_1;
 uniform sampler2D detail_2;
 uniform sampler2D detail_3;
 uniform sampler2D alpha_ramp;
+#endif
 
 in vec3 pos;
 in vec3 vary_normal;

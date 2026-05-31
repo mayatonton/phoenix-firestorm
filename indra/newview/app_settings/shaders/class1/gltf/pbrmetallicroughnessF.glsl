@@ -61,7 +61,11 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
 #else
 uniform sampler2D diffuseMap;  //always in sRGB space
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=5) uniform sampler2D emissiveMap;
+#else
 uniform sampler2D emissiveMap;
+#endif
 in vec3 vary_position;
 in vec4 vertex_color;
 in vec2 base_color_uv;
@@ -84,8 +88,13 @@ layout(set=1, binding=2) uniform sampler2D normalMap;
 #else
 uniform sampler2D normalMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=8) uniform sampler2D metallicRoughnessMap;
+layout(set=1, binding=9) uniform sampler2D occlusionMap;
+#else
 uniform sampler2D metallicRoughnessMap;
 uniform sampler2D occlusionMap;
+#endif
 in vec3 vary_normal;
 in vec3 vary_tangent;
 flat in float vary_sign;

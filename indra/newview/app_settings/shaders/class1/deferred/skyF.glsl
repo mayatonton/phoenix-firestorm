@@ -65,8 +65,13 @@ uniform sampler2D environmentMap;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=59) uniform sampler2D rainbow_map;
+layout(set=1, binding=58) uniform sampler2D halo_map;
+#else
 uniform sampler2D rainbow_map;
 uniform sampler2D halo_map;
+#endif
 
 uniform float moisture_level;
 uniform float droplet_radius;

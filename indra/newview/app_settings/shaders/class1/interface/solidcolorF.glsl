@@ -25,7 +25,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=13) uniform sampler2D tex0;
+#else
 uniform sampler2D tex0;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=0, std140) uniform MaterialUBO {

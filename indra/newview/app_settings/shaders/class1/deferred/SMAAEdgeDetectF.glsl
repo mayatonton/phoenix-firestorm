@@ -29,9 +29,17 @@ out vec4 frag_color;
 in vec2 vary_texcoord0;
 in vec4 vary_offset[3];
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=4) uniform sampler2D diffuseRect;
+#else
 uniform sampler2D diffuseRect;
+#endif
 #if SMAA_PREDICATION
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=61) uniform sampler2D predicationTex;
+#else
 uniform sampler2D predicationTex;
+#endif
 #endif
 
 #define float4 vec4

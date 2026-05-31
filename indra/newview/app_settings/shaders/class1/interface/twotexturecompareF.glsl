@@ -25,9 +25,15 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=13) uniform sampler2D tex0;
+layout(set=1, binding=14) uniform sampler2D tex1;
+layout(set=1, binding=60) uniform sampler2D dither_tex;
+#else
 uniform sampler2D tex0;
 uniform sampler2D tex1;
 uniform sampler2D dither_tex;
+#endif
 uniform float dither_scale;
 uniform float dither_scale_s;
 uniform float dither_scale_t;

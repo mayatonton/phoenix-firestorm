@@ -23,11 +23,20 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=4) uniform sampler2D diffuseRect;
+layout(set=1, binding=12) uniform sampler2D specularRect;
+#else
 uniform sampler2D diffuseRect;
 uniform sampler2D specularRect;
+#endif
 
 #if defined(HAS_EMISSIVE)
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=7) uniform sampler2D emissiveRect;
+#else
 uniform sampler2D emissiveRect;
+#endif
 #endif
 
 vec4 getNormRaw(vec2 screenpos);

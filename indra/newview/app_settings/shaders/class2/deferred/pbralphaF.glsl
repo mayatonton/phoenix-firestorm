@@ -40,8 +40,13 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
 #else
 uniform sampler2D diffuseMap;  //always in sRGB space
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=6) uniform sampler2D bumpMap;
+layout(set=1, binding=5) uniform sampler2D emissiveMap;
+#else
 uniform sampler2D bumpMap;
 uniform sampler2D emissiveMap;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=3) uniform sampler2D specularMap; // PBR: Packed: Occlusion, Metal, Roughness
 #else

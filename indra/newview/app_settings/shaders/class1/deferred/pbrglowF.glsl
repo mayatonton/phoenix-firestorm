@@ -45,7 +45,11 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
 #else
 uniform vec3 emissiveColor;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=5) uniform sampler2D emissiveMap;
+#else
 uniform sampler2D emissiveMap;
+#endif
 
 out vec4 frag_color;
 

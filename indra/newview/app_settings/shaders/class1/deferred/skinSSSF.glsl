@@ -34,7 +34,11 @@ out vec4 frag_color;
 
 in vec2 vary_fragcoord;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=4) uniform sampler2D diffuseRect;       // source color (screen for pass 1, scratch for pass 2)
+#else
 uniform sampler2D diffuseRect;       // source color (screen for pass 1, scratch for pass 2)
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;
@@ -62,7 +66,11 @@ uniform int       aya_r20_skin_sss_enabled;
 // draws. Bound on pass 2 (composite). On pass 1 (scratch fill) the mask read
 // is harmless because pass 1 ignores alpha. Reusing the existing reserved
 // uniform name avoids adding a new shader binding plumbing.
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=7) uniform sampler2D emissiveRect;
+#else
 uniform sampler2D emissiveRect;
+#endif
 // </FS:AYA>
 
 // <FS:AYA r20 Phase D world-scale blur> screen-space SSS は blur 半径が

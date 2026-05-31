@@ -58,7 +58,11 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 #else
 uniform sampler2D diffuseMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=6) uniform sampler2D bumpMap;
+#else
 uniform sampler2D bumpMap;
+#endif
 
 in vec3 vary_mat0;
 in vec3 vary_mat1;

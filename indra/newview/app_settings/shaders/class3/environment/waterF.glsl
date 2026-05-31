@@ -80,11 +80,20 @@ vec3 pbrBaseLight(vec3 diffuseColor,
                   vec3 additive,
                   vec3 atten);
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=6) uniform sampler2D bumpMap;
+layout(set=1, binding=10) uniform sampler2D bumpMap2;
+#else
 uniform sampler2D bumpMap;
 uniform sampler2D bumpMap2;
+#endif
 uniform float     blend_factor;
 #ifdef TRANSPARENT_WATER
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=54) uniform sampler2D screenTex;
+#else
 uniform sampler2D screenTex;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=3) uniform sampler2D depthMap;
 #else
@@ -92,7 +101,11 @@ uniform sampler2D depthMap;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=50) uniform sampler2D exclusionTex;
+#else
 uniform sampler2D exclusionTex;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {

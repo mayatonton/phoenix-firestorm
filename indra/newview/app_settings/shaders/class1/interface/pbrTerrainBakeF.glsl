@@ -35,7 +35,11 @@ struct TerrainMix
 
 TerrainMix get_terrain_mix_weights(float alpha1, float alpha2, float alphaFinal);
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=51) uniform sampler2D alpha_ramp;
+#else
 uniform sampler2D alpha_ramp;
+#endif
 
 // vary_texcoord* are used for terrain composition
 in vec4 vary_texcoord0;

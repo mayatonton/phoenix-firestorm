@@ -25,7 +25,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=4) uniform sampler2D diffuseRect;
+#else
 uniform sampler2D diffuseRect;
+#endif
 
 uniform float resScale;
 

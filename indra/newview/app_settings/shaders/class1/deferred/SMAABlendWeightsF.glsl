@@ -31,9 +31,15 @@ in vec2 vary_texcoord0;
 in vec2 vary_pixcoord;
 in vec4 vary_offset[3];
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=64) uniform sampler2D edgesTex;
+layout(set=1, binding=65) uniform sampler2D areaTex;
+layout(set=1, binding=63) uniform sampler2D searchTex;
+#else
 uniform sampler2D edgesTex;
 uniform sampler2D areaTex;
 uniform sampler2D searchTex;
+#endif
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> BD wires
 // subsampleIndices as a uniform for SMAA T2x jitter. AY hard-codes
 // vec4(0.0) since the AY T2x path doesn't use the SMAA helper.

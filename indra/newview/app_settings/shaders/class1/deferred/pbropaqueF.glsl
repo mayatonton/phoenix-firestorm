@@ -50,8 +50,13 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
 #else
 uniform vec3 emissiveColor;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=6) uniform sampler2D bumpMap;
+layout(set=1, binding=5) uniform sampler2D emissiveMap;
+#else
 uniform sampler2D bumpMap;
 uniform sampler2D emissiveMap;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=3) uniform sampler2D specularMap;
 #else
@@ -214,7 +219,11 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
 #else
 uniform vec3 emissiveColor;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=5) uniform sampler2D emissiveMap;
+#else
 uniform sampler2D emissiveMap;
+#endif
 
 out vec4 frag_color;
 

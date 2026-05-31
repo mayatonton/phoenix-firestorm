@@ -34,7 +34,11 @@ layout(set=0, binding=7) uniform samplerCubeArray reflectionProbes;
 #else
 uniform samplerCubeArray   reflectionProbes;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=40) uniform samplerCubeArray irradianceProbes;
+#else
 uniform samplerCubeArray   irradianceProbes;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=18) uniform sampler2D sceneMap;
@@ -728,7 +732,11 @@ vec3 sampleProbeAmbient(vec3 pos, vec3 dir, vec3 amblit)
 #if defined(HERO_PROBES)
 
 uniform vec4 clipPlane;
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=41) uniform samplerCubeArray heroProbes;
+#else
 uniform samplerCubeArray   heroProbes;
+#endif
 
 void tapHeroProbe(inout vec3 glossenv, vec3 pos, vec3 norm, float glossiness)
 {

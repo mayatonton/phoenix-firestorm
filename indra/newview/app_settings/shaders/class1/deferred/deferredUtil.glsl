@@ -58,7 +58,11 @@ layout(set=0, binding=3) uniform sampler2D depthMap;
 #else
 uniform sampler2D depthMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=53) uniform sampler2D projectionMap; // rgba
+#else
 uniform sampler2D projectionMap; // rgba
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=20) uniform sampler2D brdfLut;
 #else

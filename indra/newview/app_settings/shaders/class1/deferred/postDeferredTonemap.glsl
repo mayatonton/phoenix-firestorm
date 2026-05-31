@@ -27,7 +27,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=4) uniform sampler2D diffuseRect;
+#else
 uniform sampler2D diffuseRect;
+#endif
 
 in vec2 vary_fragcoord;
 
@@ -40,7 +44,11 @@ uniform float color_contrast;
 uniform float color_temperature;
 uniform float color_brightness;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=42) uniform sampler3D color_grading_lut;
+#else
 uniform sampler3D color_grading_lut;
+#endif
 uniform float color_grading_lut_intensity;
 uniform int color_grading_lut_enabled;
 

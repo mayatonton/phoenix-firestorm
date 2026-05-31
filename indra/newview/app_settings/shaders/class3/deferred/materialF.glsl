@@ -258,7 +258,11 @@ uniform sampler2D diffuseMap;  //always in sRGB space
 #endif
 
 #ifdef HAS_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=6) uniform sampler2D bumpMap;
+#else
 uniform sampler2D bumpMap;
+#endif
 #endif
 
 #ifdef HAS_SPECULAR_MAP

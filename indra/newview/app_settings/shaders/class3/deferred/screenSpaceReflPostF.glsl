@@ -50,8 +50,13 @@ uniform float zFar;
 in vec2 vary_fragcoord;
 in vec3 camera_ray;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=12) uniform sampler2D specularRect;
+layout(set=1, binding=4) uniform sampler2D diffuseRect;
+#else
 uniform sampler2D specularRect;
 uniform sampler2D diffuseRect;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=1) uniform sampler2D diffuseMap;
 #else

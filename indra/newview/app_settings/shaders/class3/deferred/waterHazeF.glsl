@@ -35,7 +35,11 @@ vec4 getWaterFogView(vec3 pos);
 
 uniform int above_water;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=50) uniform sampler2D exclusionTex;
+#else
 uniform sampler2D exclusionTex;
+#endif
 
 void main()
 {

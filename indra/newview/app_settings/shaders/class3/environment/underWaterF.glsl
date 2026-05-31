@@ -25,11 +25,20 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=6) uniform sampler2D bumpMap;
+layout(set=1, binding=50) uniform sampler2D exclusionTex;
+#else
 uniform sampler2D bumpMap;
 uniform sampler2D exclusionTex;
+#endif
 
 #ifdef TRANSPARENT_WATER
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=54) uniform sampler2D screenTex;
+#else
 uniform sampler2D screenTex;
+#endif
 #endif
 
 uniform vec4 fogCol;

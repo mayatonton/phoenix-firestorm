@@ -34,7 +34,11 @@
 out vec4 frag_color;
 in vec2 vary_fragcoord;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=4) uniform sampler2D diffuseRect;
+#else
 uniform sampler2D diffuseRect;
+#endif
 uniform vec2 out_screen_res;
 uniform uvec4 cas_param_0;
 uniform uvec4 cas_param_1;

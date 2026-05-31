@@ -102,35 +102,80 @@ PBRMix mix_pbr(PBRMix mix1, PBRMix mix2, float mix2_weight);
 out vec4 frag_data[4];
 
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=51) uniform sampler2D alpha_ramp;
+#else
 uniform sampler2D alpha_ramp;
+#endif
 #elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=52) uniform sampler2D paint_map;
+#else
 uniform sampler2D paint_map;
+#endif
 #endif
 
 // https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#additional-textures
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=21) uniform sampler2D detail_0_base_color;
+layout(set=1, binding=26) uniform sampler2D detail_1_base_color;
+layout(set=1, binding=31) uniform sampler2D detail_2_base_color;
+layout(set=1, binding=36) uniform sampler2D detail_3_base_color;
+#else
 uniform sampler2D detail_0_base_color;
 uniform sampler2D detail_1_base_color;
 uniform sampler2D detail_2_base_color;
 uniform sampler2D detail_3_base_color;
+#endif
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=22) uniform sampler2D detail_0_normal;
+layout(set=1, binding=27) uniform sampler2D detail_1_normal;
+layout(set=1, binding=32) uniform sampler2D detail_2_normal;
+layout(set=1, binding=37) uniform sampler2D detail_3_normal;
+#else
 uniform sampler2D detail_0_normal;
 uniform sampler2D detail_1_normal;
 uniform sampler2D detail_2_normal;
 uniform sampler2D detail_3_normal;
 #endif
+#endif
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_METALLIC_ROUGHNESS)
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=23) uniform sampler2D detail_0_metallic_roughness;
+layout(set=1, binding=28) uniform sampler2D detail_1_metallic_roughness;
+layout(set=1, binding=33) uniform sampler2D detail_2_metallic_roughness;
+layout(set=1, binding=38) uniform sampler2D detail_3_metallic_roughness;
+#else
 uniform sampler2D detail_0_metallic_roughness;
 uniform sampler2D detail_1_metallic_roughness;
 uniform sampler2D detail_2_metallic_roughness;
 uniform sampler2D detail_3_metallic_roughness;
 #endif
+#endif
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_EMISSIVE)
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=24) uniform sampler2D detail_0_emissive;
+layout(set=1, binding=29) uniform sampler2D detail_1_emissive;
+layout(set=1, binding=34) uniform sampler2D detail_2_emissive;
+layout(set=1, binding=39) uniform sampler2D detail_3_emissive;
+#else
 uniform sampler2D detail_0_emissive;
 uniform sampler2D detail_1_emissive;
 uniform sampler2D detail_2_emissive;
 uniform sampler2D detail_3_emissive;
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=17, std140) uniform TerrainDetailUBO {
+    vec4 baseColorFactors[4];   // 64 byte
+    vec3 emissiveColors[4];     // 64 byte (std140: vec3 array stride = 16)
+    vec4 metallicFactors;       // 16 byte
+    vec4 roughnessFactors;      // 16 byte
+    vec4 minimum_alphas;        // 16 byte
+};
+#else
 uniform vec4[4] baseColorFactors; // See also vertex_color in pbropaqueV.glsl
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_METALLIC_ROUGHNESS)
 uniform vec4 metallicFactors;
@@ -140,6 +185,7 @@ uniform vec4 roughnessFactors;
 uniform vec3[4] emissiveColors;
 #endif
 uniform vec4 minimum_alphas; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
 
 in vec3 vary_position;
 in vec3 vary_normal;

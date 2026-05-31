@@ -34,7 +34,11 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 #else
 uniform sampler2D diffuseMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=11) uniform sampler2D altDiffuseMap;
+#else
 uniform sampler2D altDiffuseMap;
+#endif
 uniform float blend_factor; // interp factor between sunDisc A/B
 in vec2 vary_texcoord0;
 in float sun_fade;
