@@ -1,6 +1,6 @@
 # AYAstorm r41 sub-doc 06-shader-spirv — 領域 6 248 GLSL shader SPIR-V 化 base port
 
-**status**: **active 2026-05-31 re-author (sub-step 4.3-γ'-port-α-prep で case ② = runtime SPIR-V 生成 path に re-author、AYA review 待ち / 旧 closed 2026-05-29 Pattern α 一括 draft + AYA review PASS は §6.4 改訂履歴で歴史保存)**
+**status**: **active 2026-05-31 re-author #2 (sub-step 4.3-γ'-port-β-prep で case ② case-validity 部分 falsify + (α) = base 228 file 全件 LL_VULKAN_GLSL macro switch structural rewrite 採用、AYA review 待ち / 旧 closed 2026-05-29 Pattern α 一括 draft + 2026-05-31 re-author #1 case ② path は §6.5 改訂履歴で歴史保存)**
 **親 charter**: `docs/specs/ayastorm-r41-gl-removal/00-charter.md` (§2 領域 6 + §3 #4 + §7.5 boundary refine 履歴 2026-05-31 case ② 採用反映済)
 **並走 sub-doc**: `03-state-machine-pso.md` (段階 3 = 領域 3、§3.1.3 役割再定義注記で 3.3-B exemplar = 試作レール扱い反映済) + `07-descriptor-renderpass.md` (領域 7 = descriptor set binding と shader binding の整合)
 **前 handoff**: `handoff-substep-4-3-gamma-prime-prep.md` (sub-step 4.3-γ' 着手前 prep + case ② 採用境界、本 sub-doc re-author の起点)
@@ -33,12 +33,29 @@ a-4 §1.3 directory 別:
 | class1/objects | 14 | object 描画 (avatar / mesh / terrain) | terrain shader は段階 3 sub-step 3.4 (terrain glTexGen 廃止) と並走、shader 側 explicit UV attribute 化を本領域で配信 (terrain shader port は領域 3 + 領域 6 ジョイントで satisfy) |
 | その他 | 54 | windlight / cinematic_bd / 等 | windlight base shader は本領域 port、cinematic_bd の AYAstorm 改変 2 file (r42-β scope、γ'-1 trace 確定値) は本領域で touch しない |
 
-#### §1.2.2 cross compile 分類 (05 §2.2 反映)
+#### §1.2.2 cross compile 分類 (05 §2.2 反映 + 2026-05-31 runtime model falsify 注記)
 
-| cross compile classification | file 数 | 内容 | 領域 6 実装方針 |
+**旧分類 (build-time pre-compile model 前提、05 §2.2 + closed 2026-05-29 spec、歴史保存)**:
+
+| cross compile classification | file 数 | 内容 | 旧 spec での 実装方針 |
 |---|---|---|---|
-| **A: 素通り** | 195 file | LLShaderMgr 加工済み GLSL → glslang runtime API で 1 pass compile 成功想定、修正不要 | sub-step 6.2 で viewer 起動時 LLShaderMgr 経由 runtime SPIR-V 生成成功 + `vkCreateShaderModule` load 成功 verify |
-| **B: 要修正** | 53 file | 残 15% issue (built-in 座標 `gl_FragCoord` / `gl_PointCoord` Y 反転、`attribute|varying` legacy 残存、`#extension GL_ARB_*` 依存、`precision highp|mediump|lowp` qualifier) | sub-step 6.3 で issue type 別 bundle で base GLSL 直 patch、各修正後 runtime 経路再 verify |
+| **A: 素通り** | 195 file | glslangValidator 一括 `--target-env vulkan1.3` で 1 pass compile 成功想定、修正不要 | 旧 sub-step 6.2 で `.spv` 一括生成 verify |
+| **B: 要修正** | 53 file | 残 15% issue (built-in 座標 Y 反転、`attribute|varying` legacy 残存、`#extension GL_ARB_*` 依存、`precision` qualifier) | 旧 sub-step 6.3 で issue type 別 bundle 修正 |
+| **AYAstorm 改変 11 file** | 11 file | r42-α/β/γ scope 外 (γ'-1 trace 確定値) | sub-step 6.5 で untouched 維持 verify |
+
+**新分類 (case ② runtime model、2026-05-31 sub-step 4.3-γ'-port-β-1 計測で確定)**:
+
+sub-step 4.3-γ'-port-α 完遂 (commit `ff48b21d88`) 後の sub-step 4.3-γ'-port-β-1 実機計測 (handoff `handoff-substep-4-3-gamma-prime-port-beta-prep.md` §1) で **LLShaderMgr hook fire 517 件全件 / SPIR-V 生成成功率 0% / cache file 0 件 / glslang parse 失敗 3 issue type 確定**:
+
+1. `'non-opaque uniforms outside a block' : not allowed when using GLSL for Vulkan` (全 file fire、Vulkan GLSL は uniform を UBO block 化必須)
+2. `'location' : SPIR-V requires location for user input/output` (varying / attribute に layout(location=N) qualifier 必須)
+3. `Missing entry point: Each stage requires one entry point` (#version 460 + 適切な extension declare 必須)
+
+→ **旧 A 195 / B 53 分類は build-time pre-compile model 前提のみで成立** (glslangValidator が緩い OpenGL semantic を許容)。**runtime model (case ②) では base 228 file 全件が Vulkan GLSL 仕様への structural rewrite 要 = 全件 B 相当**。新分類 table:
+
+| runtime model classification | file 数 | 内容 | 領域 6 実装方針 |
+|---|---|---|---|
+| **base 228 file 全件 = bundle-A + bundle-B + bundle-C 適用対象** | 228 file | (旧 A 195 + 旧 B 53 を runtime model で再分類、case ② case-validity 部分 falsify) Vulkan GLSL 仕様 3 issue 同時解消が必須、`#ifdef LL_VULKAN_GLSL` macro switch で GL/Vulkan 並走 (GL path 既存維持) | sub-step 6.3 で 3 bundle 並列 patch (bundle-A uniform → UBO 化 / bundle-B location qualifier 追加 / bundle-C entry point + #version 460 + extension declare)、各 bundle 完遂時 incremental SPIR-V 生成成功率 measurement |
 | **AYAstorm 改変 11 file** | 11 file | r42-α/β/γ scope 外 (γ'-1 trace 確定値) | sub-step 6.5 で untouched 維持 verify (`git diff` で 11 file が touch 0 件確認) |
 
 ### §1.2.3 case ② 採用注記 (2026-05-31 sub-step 4.3-γ'-port-α-prep、charter §7.5 boundary refine 履歴と同期)
@@ -52,7 +69,35 @@ a-4 §1.3 directory 別:
 | build host に glslangValidator install 必須 (Linux apt / Mac brew / Win Vulkan SDK) | **glslang library を viewer 配信物に bundled SO/dylib/DLL 同梱** (3 OS、autobuild.xml dependency 追加、size +5-10MB 推定) |
 | 3.3-B exemplar `aya_r41_exemplar/sky_placeholder{V,F}.glsl` purpose-built Vulkan-ready GLSL を 6.1 一括化までの prep 配置、6.1 完遂後正規 path 移管判断 | **3.3-B exemplar = 試作レール扱い** (sub-doc 03 §3.1.3 役割再定義注記反映)、build-time `.spv` sink `loadSpirvShaderModuleFromFile()` (`llvkloader.cpp:1761-1770`) は試作レール sink として保持、production sink = `loadSpirvShaderModuleFromMemory()` (新規、γ'-port-α-5 で配置) |
 
-**case-validity 担保**: §1.2.2 A 195 / B 53 / AYAstorm 11 (旧 13) 分類は LLShaderMgr 加工済み GLSL → glslang runtime でも同分類が成立する見込み (旧 spec 妥当性継承、6.2/6.3 で per-file 検証)。LL/FS shader variant 爆発 model (`#define HAS_NORMAL_MAP` / `WATER_FOG` / `HAS_SKIN` 等数十 feature flag × runtime compile で数百-数千 variant) は LLShaderMgr 既存 preprocessing path 1 source of truth として保持、case ② はその出口を SPIR-V binary に追加するだけ (GL path 完全並行維持、charter §3 #1 acceptance 担保)。
+**case-validity 担保** (2026-05-31 re-author #2 で部分 falsify、§1.2.2 新分類 + (α) 採用反映): §1.2.2 旧分類 A 195 / B 53 / AYAstorm 11 (旧 13) は build-time pre-compile model 前提で成立、**case ② runtime model では sub-step 4.3-γ'-port-β-1 実機計測で部分 falsify** (hook fire 517 件 / SPIR-V 生成成功率 0%、3 issue type 確定)。runtime model では base 228 file 全件が Vulkan GLSL 仕様への structural rewrite 要 = 全件 B 相当。LL/FS shader variant 爆発 model (`#define HAS_NORMAL_MAP` / `WATER_FOG` / `HAS_SKIN` 等数十 feature flag × runtime compile で数百-数千 variant) は LLShaderMgr 既存 preprocessing path 1 source of truth として保持、**(α) = `#ifdef LL_VULKAN_GLSL` macro switch で GL/Vulkan 並走** (GL path 既存維持 = charter §3 #1 acceptance 担保、Vulkan path = bundle-A/B/C 3 bundle 並列 patch で 3 issue 同時解消)。
+
+#### §1.2.4 (α) LL_VULKAN_GLSL macro switch 採用根拠 (2026-05-31 sub-step 4.3-γ'-port-β-prep、handoff `handoff-substep-4-3-gamma-prime-port-beta-prep.md` §1 同期)
+
+sub-step 4.3-γ'-port-β-1 実機計測で case ② case-validity 部分 falsify 後、3 案検討:
+
+| 案 | 内容 | 判定 |
+|---|---|---|
+| **(α)** | LL_VULKAN_GLSL macro switch で GL/Vulkan 並走 base 228 file 全件 structural rewrite (bundle-A uniform → UBO 化 / bundle-B location qualifier / bundle-C entry point + #version 460) | **採用** (2026-05-31) — case ② runtime model + PSO + descriptor 配線で機能する Vulkan-compliant SPIR-V 生成可、charter §3 #1 acceptance (GL 並走) 担保、推定工期 ~1 month (Agent 並列で短縮可) |
+| **(β)** | partial = bundle-A のみ実施 + bundle-B/C skip | reject — case ② case-validity 部分否定維持不可、3 issue 同時解消が parse pass の必要条件 |
+| **(γ)** | glslang flag 緩和 (EShMsgDefault のみ で Vulkan rule disable) | reject — parse のみ pass で OpenGL semantic SPIR-V が PSO + descriptor 配線で機能せず r41 完遂不能 (`feedback_doubt_self_first` 適用、AYA 「γで十分？」質問で (α) 直接採用に補正) |
+
+**設計詳細**:
+
+- **macro 注入経路**: LLShaderMgr 既存 preprocessing path 内 `#version` prepend 直後に `gVK.isEnabled()` 条件下で `#define LL_VULKAN_GLSL 1` 注入 (existing preprocessing 1 source of truth 維持、GL path 影響 0)
+- **sample pattern 3 件** (bundle-A/B/C 対応):
+  - **bundle-A (uniform → UBO 化)**: `uniform mat4 projection_matrix;` → `#ifdef LL_VULKAN_GLSL` `layout(set=0, binding=0) uniform PerFrame { mat4 projection_matrix; ... };` `#else` `uniform mat4 projection_matrix;` `#endif`
+  - **bundle-B (location qualifier)**: `varying vec2 vary_texcoord0;` → `#ifdef LL_VULKAN_GLSL` `layout(location=0) in vec2 vary_texcoord0;` (frag) / `layout(location=0) out vec2 vary_texcoord0;` (vert) `#else` `varying vec2 vary_texcoord0;` `#endif`
+  - **bundle-C (entry point + #version)**: file 冒頭 `#ifdef LL_VULKAN_GLSL` `#version 460` + 必要 extension declare `#else` (既存 #version 維持) `#endif`、`void main()` entry point は GLSL 既定で fire (entry point name 明示変更不要)
+- **binding 番号設計 全 base file 共通既定値** (sub-doc 07 §3.1 同期確定):
+  - set=0 per-frame UBO: binding 0 = ViewProj / binding 1 = Lights / binding 2 = Atmosphere
+  - set=1 per-material UBO + texture: binding 0 = MaterialUBO / binding 1 = DiffuseTex / binding 2 = NormalTex / binding 3 = SpecTex
+  - set=2 push_descriptor 動的: binding 0 = per-draw UBO / binding 1+ = per-draw texture
+  - push_constant: 64 byte (mat4 modelMatrix、VK_SHADER_STAGE_VERTEX_BIT)
+- **228 file 3 bundle 構成**:
+  - **bundle-A** uniform → UBO block 化 全 195 file (LLShaderMgr 加工対象 uniform 全件)
+  - **bundle-B** location qualifier 追加 全 228 file (varying / attribute / out / in 全件)
+  - **bundle-C** entry point + #version 460 + extension declare 全 228 file
+- **全 3 bundle 完遂時に SPIR-V 生成成功率 >>0% 目標**、bundle-A 単独完遂 / A+B 完遂 / A+B+C 完遂で 3 段階 incremental measurement
 
 ### §1.3 並走領域との関係 (charter §2 領域 6 依存順序)
 
@@ -116,7 +161,7 @@ descriptor set binding 統合 (sub-step 6.4、領域 7 §3 sub-step 7.2-7.4 と�
 |---|---|---|---|
 | **6.1** | LLShaderMgr Vulkan path hook + glslang library bundling + SPIR-V cache layer (case ② 採用、3.3-B exemplar = 試作レール扱い) | `llshadermgr.cpp:908` 直前 `gVK.isEnabled()` conditional branch 配置 + `llvkloader.cpp` 新規 helper `loadSpirvShaderModuleFromMemory(const std::vector<uint32_t>&)` 配置 + glslang library を autobuild dependency 化 (3 OS: Linux apt / Mac brew / Win Vulkan SDK、size +5-10MB 推定) + SPIR-V cache layer 案 C (`~/.ayastorm_x64/cache/shader_cache/<mShaderHash>_{vert,frag}.spv` + `shaderdata.llsd` metadata、`mShaderHash` = `llglslshader.cpp:2055-2083` HBXXH128 流用) + AyaShaderCompile.cmake / `aya_r41_exemplar/sky_placeholder{V,F}.glsl` は **試作レール sink として保持** (sub-doc 03 §3.1.3 反映) | 任意 1 exemplar file (例: `class1/deferred/diffuseV.glsl`) を LLShaderMgr 経由 runtime SPIR-V 生成 + `vkCreateShaderModule` load 成功 (validation 0 件) + cache miss → 生成 → 再起動時 cache hit 経路動作 + AYA launch verify PASS (regression 0、`gVK.isEnabled()` OFF 時 GL path 完全並行維持) |
 | **6.2** | A 195 file runtime SPIR-V 生成 素通り検証 | A 分類 195 file (class1/deferred 大半 + class1/interface 大半 + class3/deferred 一部 + class1/objects 大半 + その他大半) | 195 file 全 runtime SPIR-V 生成成功 + `vkCreateShaderModule` load 成功 + validation 0 件 + cache layer hit/miss 動作、acceptance #4 base portion 80% 早期 satisfy |
-| **6.3** | B 53 file 要修正 (issue type 別 bundle、base GLSL 直 patch) | B 分類 53 file を 4 issue type bundle 化 (built-in 座標 Y 反転 / legacy `attribute|varying` / `#extension GL_ARB_*` / `precision` qualifier) を base GLSL 直 patch、LLShaderMgr preprocessing path はそのまま | 53 file 全 runtime SPIR-V 生成成功 + load 成功 + validation 0 件、issue type 別修正内容 doc 化 (handoff 含み) |
+| **6.3** | **(α) base 228 file 全件 LL_VULKAN_GLSL macro switch structural rewrite** (2026-06-01 spec revision、case ② case-validity 部分 falsify 反映、§1.2.4 (α) 設計詳細同期) | base 228 file 全件を 3 bundle 並列 patch: **bundle-A** uniform → UBO block 化 全 195 file (layout(set=N, binding=M) uniform Block { ... }) + **bundle-B** location qualifier 追加 全 228 file (varying/attribute → layout(location=N) in/out) + **bundle-C** entry point + #version 460 + 必要 extension declare 全 228 file、`#ifdef LL_VULKAN_GLSL` macro switch で GL/Vulkan 並走 (GL path 既存維持)、Agent 並列 patch (bundle 単位 commit)、binding 番号は §1.2.4 全 base file 共通既定値遵守 (sub-doc 07 §3.1 sub-step 7.2-7.4 と同期) | 228 file 全 runtime SPIR-V 生成成功率 incremental measurement: bundle-A 単独完遂時 / A+B 完遂時 / A+B+C 完遂時 で 3 段階測定、全 3 bundle 完遂時 runtime SPIR-V 生成成功率 >>0% + `vkCreateShaderModule` load 成功 + validation 0 件、AYAstorm 改変 11 file は untouched (charter §3 #1 acceptance GL 並走担保)、bundle 別修正内容 doc 化 (handoff 含み) |
 | **6.4** | descriptor set binding 統合 (領域 7 同期) | shader 側 `layout(set=N, binding=M)` qualifier 配信 (set=0 per-frame / set=1 per-material / set=2 per-draw) + matrix stack → push constant 受領 (段階 3 sub-step 3.3 同期) | 228 file 全 shader binding が 07 §3 descriptor set 3 階層と一致 + validation layer で descriptor binding mismatch 0 件 + 段階 3 PSO compile 成功 |
 | **6.5** | 領域 6 self-check + AYAstorm 11 file untouched verify + handoff doc | (本 sub-step) | §4.1 acceptance 4 件 self-trace PASS (charter §3 #4 領域 6 分 + AYAstorm 11 file untouched + regression) + `git diff` で 11 file touch 0 件確認 + handoff doc `handoff-stage-6-complete.md` 作成 |
 
@@ -268,4 +313,5 @@ push は AYA 手動 (`feedback_release_flow.md` 遵守)。
 |---|---|---|
 | 2026-05-28 | 起草着手 (Pattern α 一括 draft) | AYA + Claude で `01-foundation.md` / `02-portage-execution.md` / `03-state-machine-pso.md` 範式継承、228 file 分類 + 5 sub-step + acceptance 5 件 を Pattern α 一括起草 |
 | 2026-05-29 | closed (AYA review PASS) | build-time pre-compile model (CMake glob + glslangValidator 一括 `.spv` 生成 → autobuild package 同梱) 前提で完成宣言 |
-| 2026-05-31 | active re-author | sub-step 4.3-γ' 着手で案 A target extension build verify が spec 想定相違 4 点で fail → revert → case ② = runtime SPIR-V 生成 採用 (`handoff-substep-4-3-gamma-prime-prep.md` §1)、本 sub-doc を case ② runtime path へ全面 re-author、AYAstorm 改変 file 13 → 11 (γ'-1 trace 確定値) 反映、charter §3 #4 + §7.5 boundary refine 履歴と同期 |
+| 2026-05-31 | active re-author #1 | sub-step 4.3-γ' 着手で案 A target extension build verify が spec 想定相違 4 点で fail → revert → case ② = runtime SPIR-V 生成 採用 (`handoff-substep-4-3-gamma-prime-prep.md` §1)、本 sub-doc を case ② runtime path へ全面 re-author、AYAstorm 改変 file 13 → 11 (γ'-1 trace 確定値) 反映、charter §3 #4 + §7.5 boundary refine 履歴と同期 |
+| 2026-06-01 | active re-author #2 | sub-step 4.3-γ'-port-α 完遂 (commit `ff48b21d88`) 後の sub-step 4.3-γ'-port-β-1 実機計測で **case ② case-validity 部分 falsify** (hook fire 517 件 / SPIR-V 生成成功率 0% / cache file 0 件 / glslang parse 失敗 3 issue type 確定: non-opaque uniforms outside block + location qualifier 欠如 + entry point missing)、§1.2.2 runtime model 新分類 (base 228 file 全件 B 相当) + §1.2.3 case-validity 部分 falsify 注記 + §1.2.4 (α) LL_VULKAN_GLSL macro switch 採用根拠 (3 案検討 + 設計詳細 + binding 番号 全 base file 共通既定値 + 228 file 3 bundle 構成) + §3.1 sub-step 6.3 scope 拡張 (旧 B 53 file 改修 → 新 base 228 file 全件 LL_VULKAN_GLSL macro structural rewrite、bundle-A/B/C 3 bundle 並列 patch、incremental SPIR-V 生成成功率 measurement) 全面 re-author、handoff `handoff-substep-4-3-gamma-prime-port-beta-prep.md` (commit `485ec3c1be`) 同期、charter §7.5 boundary refine 履歴 + sub-doc 07 §3.1 binding plan 同期改訂、AYAstorm 改変 11 file untouched 維持 (charter §3 #1 acceptance GL 並走担保) |
