@@ -54,6 +54,7 @@
 #include "llworldmapmessage.h"          // @tpto
 #include "llviewertexturelist.h"        // @setcam_texture
 #include "pipeline.h"                   // @setsphere
+#include "llpipelineframecontext.h"
 
 // RLVa includes
 #include "rlvactions.h"
@@ -2182,12 +2183,12 @@ ERlvCmdRet RlvBehaviourHandler<RLV_BHVR_SETSPHERE>::onCommand(const RlvCommand& 
     //          LLViewerShaderMgr::instance()->setShaders();
     //      }
     //      else
-            if (!gPipeline.mRT->deferredLight.isComplete())
+            if (!LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete())
             {
                 // In case of deferred with no shadows, no ambient occlusion, no depth of field, and no antialiasing
                 gPipeline.releaseGLBuffers();
                 gPipeline.createGLBuffers();
-                RLV_ASSERT(gPipeline.mRT->deferredLight.isComplete());
+                RLV_ASSERT(LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete());
             }
         }
         else

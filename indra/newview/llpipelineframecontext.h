@@ -15,6 +15,8 @@
 #ifndef LL_LLPIPELINEFRAMECONTEXT_H
 #define LL_LLPIPELINEFRAMECONTEXT_H
 
+#include "pipeline.h"
+
 class LLCullResult;
 
 // AYAstorm r41 sub-doc 04 §3 LLPipelineFrameContext
@@ -49,6 +51,24 @@ public:
     LLCullResult* getCullResult() const { return mCullResult; }
     void          setCullResult(LLCullResult* cull) { mCullResult = cull; }
 
+    // sub-step 4.1-β: mRT aggregation. mRT は LLPipeline::init() + allocateScreenBufferInternal()
+    // 内の transient juggling 経路のみで mutate、frame lifecycle では reset しない (既存挙動 1:1 維持)。
+    LLPipeline::RenderTargetPack* getActiveRT() const { return mActiveRT; }
+    void                          setActiveRT(LLPipeline::RenderTargetPack* rt) { mActiveRT = rt; }
+
+    // sub-step 4.1-β: RAII helper for transient mRT juggling (replaces the
+    // SetTemporarily<RenderTargetPack*> pattern used at llgltfmaterialpreviewmgr.cpp).
+    class ScopedActiveRT
+    {
+    public:
+        explicit ScopedActiveRT(LLPipeline::RenderTargetPack* new_rt);
+        ~ScopedActiveRT();
+        ScopedActiveRT(const ScopedActiveRT&) = delete;
+        ScopedActiveRT& operator=(const ScopedActiveRT&) = delete;
+    private:
+        LLPipeline::RenderTargetPack* mPrevRT;
+    };
+
     EPassType getCurrentPass() const { return mCurrentPass; }
 
 private:
@@ -57,8 +77,9 @@ private:
     LLPipelineFrameContext(const LLPipelineFrameContext&) = delete;
     LLPipelineFrameContext& operator=(const LLPipelineFrameContext&) = delete;
 
-    LLCullResult* mCullResult;
-    EPassType     mCurrentPass;
+    LLCullResult*                 mCullResult;
+    LLPipeline::RenderTargetPack* mActiveRT;
+    EPassType                     mCurrentPass;
 };
 
 #endif // LL_LLPIPELINEFRAMECONTEXT_H

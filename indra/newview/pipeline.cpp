@@ -477,14 +477,24 @@ static LLPipelineListener sPipelineListener;
 
 // <AYAstorm r41> sub-step 4.1-α: previous sCull static pointer removed. Cull
 // result is now owned by LLPipelineFrameContext (see grabReferences /
-// clearReferences for lifecycle wiring). File-local helper getFrameCull()
-// keeps caller sites concise; const-ref passing through render path is a
-// later sub-step (4.3+) decision.
+// clearReferences for lifecycle wiring). sub-step 4.1-β: the mRT class member
+// pointer is now aggregated into LLPipelineFrameContext as well (see
+// LLPipeline::init() and allocateScreenBufferInternal() for setActiveRT call
+// sites; write paths are transient juggling only, not frame entry/exit, so
+// no reset wiring is added in beginFrameContext / endFrameContext). The mRT
+// field declaration in pipeline.h remains as a dead member; physical removal
+// is deferred to sub-step 4.5. File-local helpers keep caller sites concise;
+// const-ref passing through render path is a later sub-step (4.3+) decision.
 namespace
 {
     inline LLCullResult* getFrameCull()
     {
         return LLPipelineFrameContext::getInstance().getCullResult();
+    }
+
+    inline LLPipeline::RenderTargetPack* getFrameRT()
+    {
+        return LLPipelineFrameContext::getInstance().getActiveRT();
     }
 }
 // </AYAstorm r41>
@@ -581,7 +591,7 @@ void LLPipeline::init()
 {
     refreshCachedSettings();
 
-    mRT = &mMainRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&mMainRT);
 
     gOctreeMaxCapacity = gSavedSettings.getU32("OctreeMaxNodeCapacity");
     gOctreeMinSize = gSavedSettings.getF32("OctreeMinimumNodeSize");
@@ -957,7 +967,7 @@ void LLPipeline::resizeShadowTexture()
 {
     releaseSunShadowTargets();
     releaseSpotShadowTargets();
-    allocateShadowBuffer(mRT->screen.getWidth(), mRT->screen.getHeight()); // <FS:Beq> revert and correct previous shadowres fix that leads to FPS drop (FIRE-3200)
+    allocateShadowBuffer(getFrameRT()->screen.getWidth(), getFrameRT()->screen.getHeight()); // <FS:Beq> revert and correct previous shadowres fix that leads to FPS drop (FIRE-3200)
     gResizeShadowTexture = false;
 }
 
@@ -983,9 +993,9 @@ void LLPipeline::resizeScreenTexture()
         }
 // [/SL:KB]
 
-//      if (gResizeScreenTexture || (resX != mRT->screen.getWidth()) || (resY != mRT->screen.getHeight()))
+//      if (gResizeScreenTexture || (resX != getFrameRT()->screen.getWidth()) || (resY != getFrameRT()->screen.getHeight()))
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
-        if (gResizeScreenTexture || (scaledResX != mRT->screen.getWidth()) || (scaledResY != mRT->screen.getHeight()))
+        if (gResizeScreenTexture || (scaledResX != getFrameRT()->screen.getWidth()) || (scaledResY != getFrameRT()->screen.getHeight()))
 // [/SL:KB]
         {
             releaseScreenBuffers();
@@ -1056,7 +1066,7 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
     static LLCachedControl<bool> has_hdr(gSavedSettings, "RenderHDREnabled", true);
     bool hdr = gGLManager.mGLVersion > 4.05f && has_hdr();
 
-    if (mRT == &mMainRT)
+    if (getFrameRT() == &mMainRT)
     { // hacky -- allocate auxillary buffer
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("check reflection map setup"); // <FS:Beq/> improve Tracy scoping 
 
@@ -1067,7 +1077,7 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
             mReflectionMapManager.initReflectionMaps();
         }
 
-        mRT = &mAuxillaryRT;
+        LLPipelineFrameContext::getInstance().setActiveRT(&mAuxillaryRT);
         U32 res = mReflectionMapManager.mProbeResolution * 4;  //multiply by 4 because probes will be 16x super sampled
         allocateScreenBufferInternal(res, res);
 
@@ -1075,17 +1085,17 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         {
             mHeroProbeManager.initReflectionMaps();
             res = mHeroProbeManager.mProbeResolution;  // We also scale the hero probe RT to the probe res since we don't super sample it.
-            mRT = &mHeroProbeRT;
+            LLPipelineFrameContext::getInstance().setActiveRT(&mHeroProbeRT);
             allocateScreenBufferInternal(res, res);
         }
 
-        mRT = &mMainRT;
+        LLPipelineFrameContext::getInstance().setActiveRT(&mMainRT);
         gCubeSnapshot = false;
     }
 
     // remember these dimensions
-    mRT->width = resX;
-    mRT->height = resY;
+    getFrameRT()->width = resX;
+    getFrameRT()->height = resY;
 
     U32 res_mod = RenderResolutionDivisor;
 
@@ -1118,25 +1128,25 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
     bool ssao = RenderDeferredSSAO;
 
     //allocate deferred rendering color buffers
-    if (!mRT->deferredScreen.allocate(resX, resY, GL_RGBA, true)) return false;
-    if (!addDeferredAttachments(mRT->deferredScreen)) return false;
+    if (!getFrameRT()->deferredScreen.allocate(resX, resY, GL_RGBA, true)) return false;
+    if (!addDeferredAttachments(getFrameRT()->deferredScreen)) return false;
 
     GLuint screenFormat = hdr ? GL_RGBA16F : GL_RGBA;
 
-    if (!mRT->screen.allocate(resX, resY, GL_RGBA16F)) return false;
+    if (!getFrameRT()->screen.allocate(resX, resY, GL_RGBA16F)) return false;
 
-    mRT->deferredScreen.shareDepthBuffer(mRT->screen);
+    getFrameRT()->deferredScreen.shareDepthBuffer(getFrameRT()->screen);
 
     // <FS:Beq> restore setSphere
     // if (hdr || shadow_detail > 0 || ssao || RenderDepthOfField))
     if (hdr || shadow_detail > 0 || ssao || RenderDepthOfField || RlvActions::hasPostProcess())
     // </FS:Beq>
-    { //only need mRT->deferredLight for shadows OR ssao OR dof OR fxaa
-        if (!mRT->deferredLight.allocate(resX, resY, screenFormat)) return false;
+    { //only need getFrameRT()->deferredLight for shadows OR ssao OR dof OR fxaa
+        if (!getFrameRT()->deferredLight.allocate(resX, resY, screenFormat)) return false;
     }
     else
     {
-        mRT->deferredLight.release();
+        getFrameRT()->deferredLight.release();
     }
 
     allocateShadowBuffer(resX, resY);
@@ -1159,11 +1169,11 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         // the real scene without re-writing depth. Note the call order:
         // `A.shareDepthBuffer(B)` lends A's depth to B, so the lender (the
         // one that already owns depth) goes on the left.
-        if (mRT == &mMainRT)
+        if (getFrameRT() == &mMainRT)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("ObjectIDBuffer");
             if (!mObjectIDBuffer.allocate(resX, resY, GL_RGBA, false)) return false;
-            mRT->deferredScreen.shareDepthBuffer(mObjectIDBuffer);
+            getFrameRT()->deferredScreen.shareDepthBuffer(mObjectIDBuffer);
         }
         // </AYAstorm:r21.1>
 
@@ -1175,14 +1185,14 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         // away mid-session does not actually re-enter this code path until
         // the next allocateScreenBufferInternal call, and the display() side
         // gate checks mVelocityMap.isComplete() before using it.
-        if (mRT == &mMainRT)
+        if (getFrameRT() == &mMainRT)
         {
             static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
             if (aya_view_mode == 2)
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("CinematicBuffers");
                 if (!mVelocityMap.allocate(resX, resY, GL_RG16F, false)) return false;
-                mRT->deferredScreen.shareDepthBuffer(mVelocityMap);
+                getFrameRT()->deferredScreen.shareDepthBuffer(mVelocityMap);
                 if (!mSMAAHistory.allocate(resX, resY, GL_RGBA, false)) return false;
                 LL_INFOS("Pipeline") << "AYAstorm r30 P2: allocated mVelocityMap (RG16F) + mSMAAHistory (RGBA) at " << resX << "x" << resY << LL_ENDL;
             }
@@ -1199,7 +1209,7 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         // but LLRenderTarget needs depth+color for gCopyDepthProgram to
         // emit gl_FragDepth. Main RT only — DoF doesn't run on aux/probe
         // paths.
-        if (mRT == &mMainRT)
+        if (getFrameRT() == &mMainRT)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYAAlphaDepth");
             if (!mAYAAlphaDepth.allocate(resX, resY, GL_RGBA, true)) return false;
@@ -1208,19 +1218,19 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
 
         // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color RT for
         // forward alpha BLEND. RGBA16F to preserve HDR scene buffer
-        // precision (matches mRT->screen). depth=false here — we share
-        // mRT->screen's depth attachment via shareDepthBuffer below so
+        // precision (matches getFrameRT()->screen). depth=false here — we share
+        // getFrameRT()->screen's depth attachment via shareDepthBuffer below so
         // alpha BLEND draws still depth-test against opaque geometry
         // without re-allocating depth. Main RT only — DoF doesn't run on
         // aux / probe / impostor / HUD paths.
-        if (mRT == &mMainRT)
+        if (getFrameRT() == &mMainRT)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYAAlphaColor");
             if (!mAYAAlphaColor.allocate(resX, resY, GL_RGBA16F, false)) return false;
             // deferredScreen owns depth (allocate(..., true) above) and has
-            // already lent it to mRT->screen. Borrow the same attachment so
+            // already lent it to getFrameRT()->screen. Borrow the same attachment so
             // alpha BLEND depth-tests/writes match the rest of the scene.
-            mRT->deferredScreen.shareDepthBuffer(mAYAAlphaColor);
+            getFrameRT()->deferredScreen.shareDepthBuffer(mAYAAlphaColor);
         }
         // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
@@ -1320,9 +1330,9 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
             if (cinematic_per_channel_shadow)
             {
                 U32 res = (U32)llmax(64.f, RenderShadowResolution.mV[i] * scale);
-                if (mRT->shadow[i].getWidth() != res)
+                if (getFrameRT()->shadow[i].getWidth() != res)
                 {
-                    if (!mRT->shadow[i].allocate(res, res, 0, true))
+                    if (!getFrameRT()->shadow[i].allocate(res, res, 0, true))
                     {
                         return false;
                     }
@@ -1330,7 +1340,7 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
                 continue;
             }
             // </FS:AYAstorm:r30-bd-port>
-            if (!mRT->shadow[i].allocate(sun_shadow_map_width, sun_shadow_map_height, 0, true))
+            if (!getFrameRT()->shadow[i].allocate(sun_shadow_map_width, sun_shadow_map_height, 0, true))
             {
                 return false;
             }
@@ -1688,9 +1698,9 @@ void LLPipeline::releaseShadowBuffers()
 
 void LLPipeline::releaseScreenBuffers()
 {
-    mRT->screen.release();
-    mRT->deferredScreen.release();
-    mRT->deferredLight.release();
+    getFrameRT()->screen.release();
+    getFrameRT()->deferredScreen.release();
+    getFrameRT()->deferredLight.release();
 
     mAuxillaryRT.screen.release();
     mAuxillaryRT.deferredScreen.release();
@@ -1723,7 +1733,7 @@ void LLPipeline::releaseScreenBuffers()
 void LLPipeline::releaseSunShadowTarget(U32 index)
 {
     llassert(index < 4);
-    mRT->shadow[index].release();
+    getFrameRT()->shadow[index].release();
 }
 
 void LLPipeline::releaseSunShadowTargets()
@@ -1768,11 +1778,11 @@ void LLPipeline::createGLBuffers()
     }
 
     allocateScreenBuffer(resX, resY);
-    // Do not zero out mRT dimensions here. allocateScreenBuffer() above
+    // Do not zero out getFrameRT() dimensions here. allocateScreenBuffer() above
     // already sets the correct dimensions. Zeroing them caused resizeShadowTexture()
     // to fail if called immediately after createGLBuffers (e.g., post graphics change).
-    // mRT->width = 0;
-    // mRT->height = 0;
+    // getFrameRT()->width = 0;
+    // getFrameRT()->height = 0;
 
 
     if (!mNoiseMap)
@@ -5300,7 +5310,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         }
 
         // <FS:AYAstorm bug fix> SSS を FullBright/postDeferred より前で発火。
-        //   旧: atmospherics と同 block (POOL_ALPHA_POST_WATER) で発火、mRT->screen が
+        //   旧: atmospherics と同 block (POOL_ALPHA_POST_WATER) で発火、getFrameRT()->screen が
         //       FB で塗られた状態を sample → FB pixel に skin pink shadow が滲む bug。
         //   新: POOL_FULLBRIGHT 到達直前で発火、scene color は softenLight 直後の素 skin 色のまま、
         //       FB が後で覆い被さるので SSS は FB pixel に乗らない。
@@ -8721,7 +8731,7 @@ void LLPipeline::generateLuminance(LLRenderTarget* src, LLRenderTarget* dst)
         if (channel > -1)
         {
             // bind the normal map to get the environment mask
-            mRT->deferredScreen.bindTexture(2, channel, LLTexUnit::TFO_POINT);
+            getFrameRT()->deferredScreen.bindTexture(2, channel, LLTexUnit::TFO_POINT);
         }
 
         static LLStaticHashedString diffuse_luminance_scale_s("diffuse_luminance_scale");
@@ -8998,7 +9008,7 @@ void LLPipeline::copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget*
         LL_PROFILE_GPU_ZONE("ssr copy");
         LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
-        LLRenderTarget& depth_src = mRT->deferredScreen;
+        LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
 
         dst->bindTarget();
         dst->clear();
@@ -9255,7 +9265,7 @@ void LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
             {
                 LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
                 S32 depth_channel = shader->getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
-                gGL.getTexUnit(depth_channel)->bind(&mRT->deferredScreen, true);
+                gGL.getTexUnit(depth_channel)->bind(&getFrameRT()->deferredScreen, true);
 
                 mScreenTriangleVB->setBuffer();
                 mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -9521,7 +9531,7 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
     gDeferredPostNoDoFProgram.bind();
 
     gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
-    gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+    gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &getFrameRT()->deferredScreen, true);
 
     // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic で chroma 完全 OFF
@@ -9941,7 +9951,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 
             const F32 default_fov = CameraFieldOfView * F_PI / 180.f;
 
-            // F32 aspect_ratio = (F32) mRT->screen.getWidth()/(F32)mRT->screen.getHeight();
+            // F32 aspect_ratio = (F32) getFrameRT()->screen.getWidth()/(F32)getFrameRT()->screen.getHeight();
 
             F32 dv = 2.f * default_focal_length * tanf(default_fov / 2.f);
 
@@ -9964,7 +9974,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
             F32 adj_COF = CameraMaxCoF / screen_to_target_scale_factor;
             // </FS:Beq>
             { // build diffuse+bloom+CoF
-                mRT->deferredLight.bindTarget();
+                getFrameRT()->deferredLight.bindTarget();
 
                 gDeferredCoFProgram.bind();
 
@@ -9980,7 +9990,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 // pixels the two buffers carry the same z so behaviour is
                 // unchanged. Falls back to deferredScreen.depth if the L2
                 // RT is unavailable (e.g. probe paths).
-                LLRenderTarget* cof_depth_src = mAYAAlphaDepth.isComplete() ? &mAYAAlphaDepth : &mRT->deferredScreen;
+                LLRenderTarget* cof_depth_src = mAYAAlphaDepth.isComplete() ? &mAYAAlphaDepth : &getFrameRT()->deferredScreen;
                 gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, cof_depth_src, true);
                 // </AYAstorm r30 P5 transparent-DoF L2-β>
 
@@ -10004,11 +10014,11 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 mScreenTriangleVB->setBuffer();
                 mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
                 gDeferredCoFProgram.unbind();
-                mRT->deferredLight.flush();
+                getFrameRT()->deferredLight.flush();
             }
 
-            U32 dof_width = (U32)(mRT->screen.getWidth() * CameraDoFResScale);
-            U32 dof_height = (U32)(mRT->screen.getHeight() * CameraDoFResScale);
+            U32 dof_width = (U32)(getFrameRT()->screen.getWidth() * CameraDoFResScale);
+            U32 dof_height = (U32)(getFrameRT()->screen.getHeight() * CameraDoFResScale);
 
             { // perform DoF sampling at half-res (preserve alpha channel)
                 src->bindTarget();
@@ -10017,9 +10027,9 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gGL.setColorMask(true, false);
 
                 gDeferredPostProgram.bind();
-                gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mRT->deferredLight, LLTexUnit::TFO_POINT);
+                gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &getFrameRT()->deferredLight, LLTexUnit::TFO_POINT);
                 // <AYAstorm r30 P4 step 4> HQ DoF needs depthMap for the s.a <= depth*0.50 gate
-                gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+                gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &getFrameRT()->deferredScreen, true);
                 // </AYAstorm r30 P4 step 4>
 
                 gDeferredPostProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
@@ -10052,7 +10062,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 
                 gDeferredDoFCombineProgram.bind();
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
-                gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_LIGHT, &mRT->deferredLight, LLTexUnit::TFO_POINT);
+                gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_LIGHT, &getFrameRT()->deferredLight, LLTexUnit::TFO_POINT);
 
                 gDeferredDoFCombineProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
@@ -10101,13 +10111,13 @@ void LLPipeline::renderFinalize()
 
     // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
     // Over-blend the linear premultiplied alpha plate (mAYAAlphaColor) onto
-    // mRT->screen BEFORE generateLuminance / tonemap. Without this step the
+    // getFrameRT()->screen BEFORE generateLuminance / tonemap. Without this step the
     // HDR auto-exposure path (generateLuminance → generateExposure → tonemap)
     // sees only opaque scene contents on LMB-up (use_alpha_rt=true) — alpha
     // BLEND brightness is invisible to exposure calibration, so the later
     // post-tonemap composite produces an exposure mismatch versus the
     // LMB-on-HUD (use_alpha_rt=false) path where alpha was written into
-    // mRT->screen directly. By compositing here both paths feed exposure
+    // getFrameRT()->screen directly. By compositing here both paths feed exposure
     // calibration the same merged scene, and the plate is no longer
     // composited inside dofCombineF (post-tonemap) where it would be in a
     // different color space. mAYAAlphaColor is cleared unconditionally at
@@ -10116,7 +10126,7 @@ void LLPipeline::renderFinalize()
     if (mAYAAlphaColor.isComplete() && gAYAAlphaPlateCompositeProgram.isComplete())
     {
         LL_PROFILE_GPU_ZONE("aya plate pre-tonemap composite");
-        mRT->screen.bindTarget();
+        getFrameRT()->screen.bindTarget();
 
         LLGLEnable blend_on(GL_BLEND);
         // RGB: premultiplied "over" composite onto opaque scene.
@@ -10151,7 +10161,7 @@ void LLPipeline::renderFinalize()
         // aren't surprised.
         glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ONE, GL_ZERO);
 
-        mRT->screen.flush();
+        getFrameRT()->screen.flush();
     }
     // </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 
@@ -10159,26 +10169,26 @@ void LLPipeline::renderFinalize()
     bool hdr = gGLManager.mGLVersion > 4.05f && has_hdr();
     if (hdr)
     {
-        copyScreenSpaceReflections(&mRT->screen, &mSceneMap);
+        copyScreenSpaceReflections(&getFrameRT()->screen, &mSceneMap);
 
-        generateLuminance(&mRT->screen, &mLuminanceMap);
+        generateLuminance(&getFrameRT()->screen, &mLuminanceMap);
 
         generateExposure(&mLuminanceMap, &mExposureMap);
 
         static LLCachedControl<F32> cas_sharpness(gSavedSettings, "RenderCASSharpness", 0.4f);
         bool apply_cas = cas_sharpness != 0.0f && gCASProgram.isComplete() && gCASLegacyGammaProgram.isComplete();
 
-        tonemap(&mRT->screen, apply_cas ? &mRT->deferredLight : &mPostPingMap, !apply_cas);
+        tonemap(&getFrameRT()->screen, apply_cas ? &getFrameRT()->deferredLight : &mPostPingMap, !apply_cas);
 
         if (apply_cas)
         {
             // Gamma Corrects
-            applyCAS(&mRT->deferredLight, &mPostPingMap);
+            applyCAS(&getFrameRT()->deferredLight, &mPostPingMap);
         }
     }
     else
     {
-        gammaCorrect(&mRT->screen, &mPostPingMap);
+        gammaCorrect(&getFrameRT()->screen, &mPostPingMap);
     }
 
     LLVertexBuffer::unbind();
@@ -10274,7 +10284,7 @@ void LLPipeline::renderFinalize()
 
     // <FS:Beq> Restore shader post proc for Vignette
     LLRenderTarget* auxActiveBuffer = sourceBuffer;
-    LLRenderTarget* auxTargetBuffer = RenderFSAAType ? &mRT->screen : &mPostPingMap;
+    LLRenderTarget* auxTargetBuffer = RenderFSAAType ? &getFrameRT()->screen : &mPostPingMap;
 // [RLVa:KB] - @setsphere
     if (RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE))
     {
@@ -10307,7 +10317,7 @@ void LLPipeline::renderFinalize()
         case 1:
         case 2:
         case 3:
-            visualizeBuffers(&mRT->deferredScreen, sourceBuffer, RenderBufferVisualization);
+            visualizeBuffers(&getFrameRT()->deferredScreen, sourceBuffer, RenderBufferVisualization);
             break;
         case 4:
             visualizeBuffers(&mLuminanceMap, sourceBuffer, 0);
@@ -10349,7 +10359,7 @@ void LLPipeline::renderFinalize()
 
     // Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems.
     gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, sourceBuffer);
-    gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
+    gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &getFrameRT()->deferredScreen, true);
 
     gDeferredPostNoDoFNoiseProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)sourceBuffer->getWidth(), (GLfloat)sourceBuffer->getHeight());
     // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
@@ -10378,9 +10388,9 @@ void LLPipeline::renderFinalize()
     }
 
     /*if (LLRenderTarget::sUseFBO && !gCubeSnapshot)
-    { // copy depth buffer from mRT->screen to framebuffer
-        LLRenderTarget::copyContentsToFramebuffer(mRT->screen, 0, 0, mRT->screen.getWidth(), mRT->screen.getHeight(), 0, 0,
-                                                  mRT->screen.getWidth(), mRT->screen.getHeight(),
+    { // copy depth buffer from getFrameRT()->screen to framebuffer
+        LLRenderTarget::copyContentsToFramebuffer(getFrameRT()->screen, 0, 0, getFrameRT()->screen.getWidth(), getFrameRT()->screen.getHeight(), 0, 0,
+                                                  getFrameRT()->screen.getWidth(), getFrameRT()->screen.getHeight(),
                                                   GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
     }*/
 
@@ -10455,8 +10465,8 @@ void LLPipeline::bindDeferredShaderFast(LLGLSLShader& shader)
 void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target, LLRenderTarget* depth_target)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    LLRenderTarget* deferred_target       = &mRT->deferredScreen;
-    LLRenderTarget* deferred_light_target = &mRT->deferredLight;
+    LLRenderTarget* deferred_target       = &getFrameRT()->deferredScreen;
+    LLRenderTarget* deferred_light_target = &getFrameRT()->deferredLight;
 
     shader.bind();
     S32 channel = 0;
@@ -10640,7 +10650,7 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     shader.uniform3fv(LLShaderMgr::DEFERRED_SUN_DIR, 1, mTransformedSunDir.mV);
     shader.uniform3fv(LLShaderMgr::DEFERRED_MOON_DIR, 1, mTransformedMoonDir.mV);
-    shader.uniform2f(LLShaderMgr::DEFERRED_SHADOW_RES, (GLfloat)mRT->shadow[0].getWidth(), (GLfloat)mRT->shadow[0].getHeight());
+    shader.uniform2f(LLShaderMgr::DEFERRED_SHADOW_RES, (GLfloat)getFrameRT()->shadow[0].getWidth(), (GLfloat)getFrameRT()->shadow[0].getHeight());
     shader.uniform2f(LLShaderMgr::DEFERRED_PROJ_SHADOW_RES, (GLfloat)mSpotShadow[0].getWidth(), (GLfloat)mSpotShadow[0].getHeight());
     shader.uniform1f(LLShaderMgr::DEFERRED_DEPTH_CUTOFF, RenderEdgeDepthCutoff);
     shader.uniform1f(LLShaderMgr::DEFERRED_NORM_CUTOFF, RenderEdgeNormCutoff);
@@ -11128,8 +11138,8 @@ void LLPipeline::renderDeferredLighting()
         light_scale = mReflectionMapManager.mLightScale;
     }
 
-    LLRenderTarget *screen_target         = &mRT->screen;
-    LLRenderTarget* deferred_light_target = &mRT->deferredLight;
+    LLRenderTarget *screen_target         = &getFrameRT()->screen;
+    LLRenderTarget* deferred_light_target = &getFrameRT()->deferredLight;
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("deferred");
@@ -11630,16 +11640,16 @@ void LLPipeline::renderDeferredLighting()
         LL_PROFILE_GPU_ZONE("aya alpha depth snapshot");
         LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
-        LLRenderTarget& depth_src = mRT->deferredScreen;
+        LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
 
-        mRT->screen.flush();
+        getFrameRT()->screen.flush();
         mAYAAlphaDepth.bindTarget();
         gCopyDepthProgram.bind();
 
         S32 diff_map  = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
         S32 depth_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
 
-        gGL.getTexUnit(diff_map)->bind(&mRT->screen);
+        gGL.getTexUnit(diff_map)->bind(&getFrameRT()->screen);
         gGL.getTexUnit(depth_map)->bind(&depth_src, true);
 
         gGL.setColorMask(false, false);
@@ -11648,7 +11658,7 @@ void LLPipeline::renderDeferredLighting()
         gGL.setColorMask(true, true);
 
         mAYAAlphaDepth.flush();
-        mRT->screen.bindTarget();
+        getFrameRT()->screen.bindTarget();
     }
     // </AYAstorm r30 P5 transparent-DoF L2-β>
 
@@ -11726,11 +11736,11 @@ void LLPipeline::doAtmospherics()
             // copy depth buffer for use in haze shader (use water displacement map as temp storage)
             LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
-            LLRenderTarget& src = gPipeline.mRT->screen;
-            LLRenderTarget& depth_src = gPipeline.mRT->deferredScreen;
+            LLRenderTarget& src = getFrameRT()->screen;
+            LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
             LLRenderTarget& dst = gPipeline.mWaterDis;
 
-            mRT->screen.flush();
+            getFrameRT()->screen.flush();
             dst.bindTarget();
             gCopyDepthProgram.bind();
 
@@ -11745,7 +11755,7 @@ void LLPipeline::doAtmospherics()
             gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
             dst.flush();
-            mRT->screen.bindTarget();
+            getFrameRT()->screen.bindTarget();
         }
 
         LLGLEnable blend(GL_BLEND);
@@ -11779,7 +11789,7 @@ void LLPipeline::doAtmospherics()
 // <FS:AYA r15 P1> godrays: screen-space shadow-driven ray-march pass.
 // Mirrors the doAtmospherics() pattern (bindDeferredShader on the HDR
 // scene buffer, fullscreen triangle, additive blend) so godrays land on
-// mRT->screen while it is still HDR / pre-tonemap.
+// getFrameRT()->screen while it is still HDR / pre-tonemap.
 void LLPipeline::doGodrays()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -11887,18 +11897,18 @@ void LLPipeline::doSkinSSS()
 
     // <FS:AYA r20 Phase C> gbuffer3 holds the per-pixel skin bit in .a.
     // Pass 1 ignores alpha, but binding it both passes keeps state simple.
-    LLRenderTarget* deferred_target = &mRT->deferredScreen;
+    LLRenderTarget* deferred_target = &getFrameRT()->deferredScreen;
     // </FS:AYA>
 
     // Pass 1: horizontal blur, screen → mWaterDis (replace; blend off)
     {
         LLGLDisable blend_off(GL_BLEND);
 
-        mRT->screen.flush();
+        getFrameRT()->screen.flush();
         mWaterDis.bindTarget();
 
         shader.bind();
-        shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mRT->screen, false, LLTexUnit::TFO_BILINEAR);
+        shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &getFrameRT()->screen, false, LLTexUnit::TFO_BILINEAR);
         // <FS:AYA r20 Phase C> bind gbuffer3 as the skin mask source.
         {
             S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_EMISSIVE, deferred_target->getUsage());
@@ -11914,7 +11924,7 @@ void LLPipeline::doSkinSSS()
         shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
         // </FS:AYA>
         shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-            (GLfloat)mRT->screen.getWidth(), (GLfloat)mRT->screen.getHeight());
+            (GLfloat)getFrameRT()->screen.getWidth(), (GLfloat)getFrameRT()->screen.getHeight());
         shader.uniform2f(s_blur_dir, 1.0f, 0.0f);
         shader.uniform1f(s_strength, 1.0f);
         shader.uniform1f(s_blur_radius, blur_radius);
@@ -11943,7 +11953,7 @@ void LLPipeline::doSkinSSS()
     // alpha kept untouched so the scene-buffer sky mask is preserved —
     // memory project_aya_visual_realism_alpha_protect.md)
     {
-        mRT->screen.bindTarget();
+        getFrameRT()->screen.bindTarget();
 
         LLGLEnable blend_on(GL_BLEND);
         gGL.blendFunc(LLRender::BF_SOURCE_ALPHA, LLRender::BF_ONE_MINUS_SOURCE_ALPHA,
@@ -11966,7 +11976,7 @@ void LLPipeline::doSkinSSS()
         shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
         // </FS:AYA>
         shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-            (GLfloat)mRT->screen.getWidth(), (GLfloat)mRT->screen.getHeight());
+            (GLfloat)getFrameRT()->screen.getWidth(), (GLfloat)getFrameRT()->screen.getHeight());
         shader.uniform2f(s_blur_dir, 0.0f, 1.0f);
         shader.uniform1f(s_strength, strength);
         shader.uniform1f(s_blur_radius, blur_radius);
@@ -12007,11 +12017,11 @@ void LLPipeline::doWaterHaze()
         {
             LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
-            LLRenderTarget& src = gPipeline.mRT->screen;
-            LLRenderTarget& depth_src = gPipeline.mRT->deferredScreen;
+            LLRenderTarget& src = getFrameRT()->screen;
+            LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
             LLRenderTarget& dst = gPipeline.mWaterDis;
 
-            mRT->screen.flush();
+            getFrameRT()->screen.flush();
             dst.bindTarget();
             gCopyDepthProgram.bind();
 
@@ -12026,7 +12036,7 @@ void LLPipeline::doWaterHaze()
             gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
             dst.flush();
-            mRT->screen.bindTarget();
+            getFrameRT()->screen.bindTarget();
         }
 
         LLGLEnable blend(GL_BLEND);
@@ -12236,8 +12246,8 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep)
 
 void LLPipeline::unbindDeferredShader(LLGLSLShader &shader)
 {
-    LLRenderTarget* deferred_target       = &mRT->deferredScreen;
-    LLRenderTarget* deferred_light_target = &mRT->deferredLight;
+    LLRenderTarget* deferred_target       = &getFrameRT()->deferredScreen;
+    LLRenderTarget* deferred_light_target = &getFrameRT()->deferredLight;
 
     stop_glerror();
     shader.disableTexture(LLShaderMgr::NORMAL_MAP, deferred_target->getUsage());
@@ -12850,7 +12860,7 @@ void LLPipeline::renderHighlight(const LLViewerObject* obj, F32 fade)
 LLRenderTarget* LLPipeline::getSunShadowTarget(U32 i)
 {
     llassert(i < 4);
-    return &mRT->shadow[i];
+    return &getFrameRT()->shadow[i];
 }
 
 LLRenderTarget* LLPipeline::getSpotShadowTarget(U32 i)
@@ -13211,12 +13221,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     mShadowCamera[j+4] = shadow_cam;
                 }
 
-                mRT->shadow[j].bindTarget();
+                getFrameRT()->shadow[j].bindTarget();
                 {
                     LLGLDepthTest depth(GL_TRUE);
-                    mRT->shadow[j].clear();
+                    getFrameRT()->shadow[j].clear();
                 }
-                mRT->shadow[j].flush();
+                getFrameRT()->shadow[j].flush();
 
                 mShadowError.mV[j] = 0.f;
                 mShadowFOV.mV[j] = 0.f;
@@ -13501,16 +13511,16 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
             stop_glerror();
 
-            mRT->shadow[j].bindTarget();
-            mRT->shadow[j].getViewport(gGLViewport);
-            mRT->shadow[j].clear();
+            getFrameRT()->shadow[j].bindTarget();
+            getFrameRT()->shadow[j].getViewport(gGLViewport);
+            getFrameRT()->shadow[j].clear();
 
             {
                 static LLCullResult result[4];
                 renderShadow(view[j], proj[j], shadow_cam, result[j], true);
             }
 
-            mRT->shadow[j].flush();
+            getFrameRT()->shadow[j].flush();
 
             if (!gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
@@ -13745,8 +13755,8 @@ void LLPipeline::profileAvatar(LLVOAvatar* avatar, bool profile_attachments)
 
     LLGLSLShader* cur_shader = LLGLSLShader::sCurBoundShaderPtr;
 
-    mRT->deferredScreen.bindTarget();
-    mRT->deferredScreen.clear();
+    getFrameRT()->deferredScreen.bindTarget();
+    getFrameRT()->deferredScreen.clear();
 
     if (!profile_attachments)
     {
@@ -13793,7 +13803,7 @@ void LLPipeline::profileAvatar(LLVOAvatar* avatar, bool profile_attachments)
         }
     }
 
-    mRT->deferredScreen.flush();
+    getFrameRT()->deferredScreen.flush();
 
     if (cur_shader)
     {
@@ -14537,9 +14547,9 @@ void LLPipeline::skipRenderingShadows()
 
     for (S32 j = 0; j < 4; j++)
     {
-        mRT->shadow[j].bindTarget();
-        mRT->shadow[j].clear();
-        mRT->shadow[j].flush();
+        getFrameRT()->shadow[j].bindTarget();
+        getFrameRT()->shadow[j].clear();
+        getFrameRT()->shadow[j].flush();
     }
 }
 

@@ -192,6 +192,7 @@
 #include "llworld.h"
 #include "llworldmapview.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llappviewer.h"
 #include "llviewerdisplay.h"
 #include "llspatialpartition.h"
@@ -6246,8 +6247,8 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
             // </FS:Ansariel>
             if (scratch_space.allocate(image_width, image_height, color_fmt, true))
             {
-                original_width = gPipeline.mRT->deferredScreen.getWidth();
-                original_height = gPipeline.mRT->deferredScreen.getHeight();
+                original_width = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth();
+                original_height = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight();
 
                 if (gPipeline.allocateScreenBuffer(image_width, image_height))
                 {
@@ -6550,8 +6551,8 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     LLRect window_rect = getWorldViewRectRaw();
 
-    S32 original_width = LLPipeline::sRenderDeferred ? gPipeline.mRT->deferredScreen.getWidth() : gViewerWindow->getWorldViewWidthRaw();
-    S32 original_height = LLPipeline::sRenderDeferred ? gPipeline.mRT->deferredScreen.getHeight() : gViewerWindow->getWorldViewHeightRaw();
+    S32 original_width = LLPipeline::sRenderDeferred ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth() : gViewerWindow->getWorldViewWidthRaw();
+    S32 original_height = LLPipeline::sRenderDeferred ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight() : gViewerWindow->getWorldViewHeightRaw();
 
     LLRenderTarget scratch_space;
     U32 color_fmt = GL_RGBA;
@@ -6645,10 +6646,10 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, LLCubeMapArray* cubea
     llassert(LLPipeline::sRenderDeferred);
     llassert(!gCubeSnapshot); //assert a snapshot isn't already in progress
 
-    U32 res = gPipeline.mRT->deferredScreen.getWidth();
+    U32 res = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth();
 
-    //llassert(res <= gPipeline.mRT->deferredScreen.getWidth());
-    //llassert(res <= gPipeline.mRT->deferredScreen.getHeight());
+    //llassert(res <= LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth());
+    //llassert(res <= LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight());
 
     // save current view/camera settings so we can restore them afterwards
     S32 old_occlusion = LLPipeline::sUseOcclusion;

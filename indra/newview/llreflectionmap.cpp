@@ -28,6 +28,7 @@
 
 #include "llreflectionmap.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewerwindow.h"
 #include "llviewerregion.h"
 #include "llworld.h"
@@ -61,8 +62,8 @@ void LLReflectionMap::update(U32 resolution, U32 face, bool force_dynamic, F32 n
     //llassert(LLPipeline::sRenderDeferred);
 
     // make sure we don't walk off the edge of the render target
-    while (resolution > gPipeline.mRT->deferredScreen.getWidth() ||
-        resolution > gPipeline.mRT->deferredScreen.getHeight())
+    while (resolution > LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth() ||
+        resolution > LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight())
     {
         resolution /= 2;
     }

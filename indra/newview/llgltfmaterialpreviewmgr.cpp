@@ -41,6 +41,7 @@
 #include "llviewerwindow.h"
 #include "llvolumemgr.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 LLGLTFMaterialPreviewMgr gGLTFMaterialPreviewMgr;
 
@@ -435,7 +436,7 @@ bool LLGLTFPreviewTexture::render()
     SetTemporarily<bool> no_glow(&LLPipeline::sRenderGlow, false);
     SetTemporarily<bool> no_ssr(&LLPipeline::RenderScreenSpaceReflections, false);
     SetTemporarily<U32> no_aa(&LLPipeline::RenderFSAAType, U32(0));
-    SetTemporarily<LLPipeline::RenderTargetPack*> use_auxiliary_render_target(&gPipeline.mRT, &gPipeline.mAuxillaryRT);
+    LLPipelineFrameContext::ScopedActiveRT use_auxiliary_render_target(&gPipeline.mAuxillaryRT);
 
     LLVector3 light_dir3(1.0f, 1.0f, 1.0f);
     light_dir3.normalize();

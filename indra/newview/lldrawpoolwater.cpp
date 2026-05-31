@@ -45,6 +45,7 @@
 #include "llvowater.h"
 #include "llworld.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llenvironment.h"
 #include "llsettingssky.h"
@@ -120,8 +121,8 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
         // reflections and refractions
         LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
-        LLRenderTarget& src = gPipeline.mRT->screen;
-        LLRenderTarget& depth_src = gPipeline.mRT->deferredScreen;
+        LLRenderTarget& src = LLPipelineFrameContext::getInstance().getActiveRT()->screen;
+        LLRenderTarget& depth_src = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen;
         LLRenderTarget& dst = gPipeline.mWaterDis;
 
         dst.bindTarget();

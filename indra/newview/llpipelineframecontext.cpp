@@ -24,6 +24,7 @@ LLPipelineFrameContext& LLPipelineFrameContext::getInstance()
 
 LLPipelineFrameContext::LLPipelineFrameContext()
     : mCullResult(nullptr)
+    , mActiveRT(nullptr)
     , mCurrentPass(PASS_NONE)
 {
 }
@@ -51,4 +52,15 @@ void LLPipelineFrameContext::beginPass(EPassType pass_type)
 void LLPipelineFrameContext::endPass()
 {
     mCurrentPass = PASS_NONE;
+}
+
+LLPipelineFrameContext::ScopedActiveRT::ScopedActiveRT(LLPipeline::RenderTargetPack* new_rt)
+    : mPrevRT(LLPipelineFrameContext::getInstance().getActiveRT())
+{
+    LLPipelineFrameContext::getInstance().setActiveRT(new_rt);
+}
+
+LLPipelineFrameContext::ScopedActiveRT::~ScopedActiveRT()
+{
+    LLPipelineFrameContext::getInstance().setActiveRT(mPrevRT);
 }

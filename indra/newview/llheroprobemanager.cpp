@@ -32,6 +32,7 @@
 #include "llspatialpartition.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewercontrol.h"
 #include "llenvironment.h"
@@ -316,11 +317,11 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
     LL_PROFILE_GPU_ZONE("hero probe update");
 
     // hacky hot-swap of camera specific render targets
-    gPipeline.mRT = &gPipeline.mHeroProbeRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mHeroProbeRT);
 
     probe->update(mRenderTarget.getWidth(), face, is_dynamic, near_clip);
 
-    gPipeline.mRT = &gPipeline.mMainRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mMainRT);
 
     S32 sourceIdx = mReflectionProbeCount;
 

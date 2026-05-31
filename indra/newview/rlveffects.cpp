@@ -23,6 +23,7 @@
 #include "llviewerwindow.h"
 #include "llvoavatarself.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 #include "rlveffects.h"
 #include "rlvhandler.h"
@@ -298,7 +299,7 @@ ERlvCmdRet RlvSphereEffect::onValueMaxChanged(const LLUUID& idRlvObj, const boos
 
 void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
 {
-    pShader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)gPipeline.mRT->screen.getWidth(), (GLfloat)gPipeline.mRT->screen.getHeight());
+    pShader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)LLPipelineFrameContext::getInstance().getActiveRT()->screen.getWidth(), (GLfloat)LLPipelineFrameContext::getInstance().getActiveRT()->screen.getHeight());
     pShader->uniform1i(LLShaderMgr::RLV_EFFECT_MODE, llclamp((int)m_eMode, 0, (int)ESphereMode::Count));
     // Pass the sphere origin to the shader
     LLVector4 posSphereOrigin;
@@ -354,17 +355,17 @@ void RlvSphereEffect::renderPass(LLGLSLShader* pShader, const LLShaderEffectPara
         gGL.getTexUnit(nDiffuseChannel)->setTextureFilteringOption(LLTexUnit::TFO_BILINEAR);
     }
 
-    S32 nDepthChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DEPTH, gPipeline.mRT->deferredScreen.getUsage());
+    S32 nDepthChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DEPTH, LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getUsage());
     if (nDepthChannel > -1)
     {
-        gGL.getTexUnit(nDepthChannel)->bind(&gPipeline.mRT->deferredScreen, true);
+        gGL.getTexUnit(nDepthChannel)->bind(&LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen, true);
     }
 
     gPipeline.mScreenTriangleVB->setBuffer();
     gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
     pShader->disableTexture(LLShaderMgr::DEFERRED_DIFFUSE, pParams->m_pSrcBuffer->getUsage());
-    pShader->disableTexture(LLShaderMgr::DEFERRED_DEPTH, gPipeline.mRT->deferredScreen.getUsage());
+    pShader->disableTexture(LLShaderMgr::DEFERRED_DEPTH, LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getUsage());
 
     if (pParams->m_pDstBuffer)
     {

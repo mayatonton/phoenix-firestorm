@@ -86,6 +86,7 @@
 #include "llvograss.h"
 #include "llworld.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 #include <boost/json.hpp>
 // [RLVa:KB] - Checked: 2011-05-22 (RLVa-1.3.1a)
@@ -1082,7 +1083,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         gGL.setColorMask(true, true);
 
-        gPipeline.mRT->deferredScreen.bindTarget();
+        LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.bindTarget();
         if (gUseWireframe)
         {
             constexpr F32 g = 0.5f;
@@ -1092,7 +1093,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             glClearColor(1, 0, 1, 1);
         }
-        gPipeline.mRT->deferredScreen.clear();
+        LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
 
         gGL.setColorMask(true, false);
 
@@ -1144,7 +1145,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderFlush");
 
-        LLRenderTarget &rt = (gPipeline.sRenderDeferred ? gPipeline.mRT->deferredScreen : gPipeline.mRT->screen);
+        LLRenderTarget &rt = (gPipeline.sRenderDeferred ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen : LLPipelineFrameContext::getInstance().getActiveRT()->screen);
         rt.flush();
 
         if (LLPipeline::sRenderDeferred)
@@ -1353,7 +1354,7 @@ void display_cube_face()
 
     gGL.setColorMask(true, true);
 
-    gPipeline.mRT->deferredScreen.bindTarget();
+    LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.bindTarget();
     if (gUseWireframe)
     {
         glClearColor(0.5f, 0.5f, 0.5f, 1.f);
@@ -1362,13 +1363,13 @@ void display_cube_face()
     {
         glClearColor(1.f, 0.f, 1.f, 1.f);
     }
-    gPipeline.mRT->deferredScreen.clear();
+    LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
 
     LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
 
     gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance());
 
-    gPipeline.mRT->deferredScreen.flush();
+    LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.flush();
 
     gPipeline.renderDeferredLighting();
 

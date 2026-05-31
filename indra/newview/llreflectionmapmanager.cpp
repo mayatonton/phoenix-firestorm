@@ -34,6 +34,7 @@
 #include "llspatialpartition.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewercontrol.h"
 #include "llenvironment.h"
@@ -775,7 +776,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("probe update");
     // hacky hot-swap of camera specific render targets
-    gPipeline.mRT = &gPipeline.mAuxillaryRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mAuxillaryRT);
 
     mLightScale = 1.f;
     static LLCachedControl<F32> max_local_light_ambiance(gSavedSettings, "RenderReflectionProbeMaxLocalLightAmbiance", 8.f);
@@ -804,7 +805,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         probe->update(mRenderTarget.getWidth(), face);
     }
 
-    gPipeline.mRT = &gPipeline.mMainRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mMainRT);
 
     S32 sourceIdx = mReflectionProbeCount;
 

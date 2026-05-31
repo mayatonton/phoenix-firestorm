@@ -44,6 +44,7 @@
 #include "llviewerobjectlist.h" // For debugging
 #include "llviewerwindow.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewerregion.h"
 #include "lldrawpoolwater.h"
@@ -209,7 +210,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // separated alpha plate is composited back over the DoF result in
     // dofCombineF. Only POST_WATER pool — PRE_WATER stays on mRT->screen
     // (water haze / fog mixing relies on it being there).
-    // gPipeline.mRT == &mMainRT: mAYAAlphaColor's depth attachment is shared
+    // LLPipelineFrameContext::getInstance().getActiveRT() == &mMainRT: mAYAAlphaColor's depth attachment is shared
     // with mMainRT->deferredScreen at allocate time, so the redirect is only
     // valid while the main RT pack is current. preview/profile/probe paths
     // call renderPostDeferred with a non-main mRT and would mismatch depth.
@@ -224,7 +225,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         (LLPipeline::RenderDepthOfFieldInEditMode ||
          !LLToolMgr::getInstance()->inBuildMode()) &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        gPipeline.mRT == &gPipeline.mMainRT &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaColor.isComplete();
 
     // <AYAstorm r30 P5 plate-clear unconditional 2026-05-23>
@@ -236,7 +237,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // frame.
     if (!LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
         !gCubeSnapshot && getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        gPipeline.mRT == &gPipeline.mMainRT &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaColor.isComplete())
     {
         LL_PROFILE_GPU_ZONE("aya alpha color clear");
@@ -371,7 +372,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     if (!LLPipeline::sImpostorRender && LLPipeline::RenderDepthOfField &&
         !gCubeSnapshot && !LLPipeline::sRenderingHUDs &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        gPipeline.mRT == &gPipeline.mMainRT &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaDepth.isComplete() &&
         !gPipeline.mAYAAlphaColor.isComplete())
     {
