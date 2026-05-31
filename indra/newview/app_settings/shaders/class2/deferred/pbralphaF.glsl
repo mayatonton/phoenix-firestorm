@@ -27,14 +27,32 @@
 
 #ifndef IS_HUD
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
+#endif
 uniform sampler2D bumpMap;
 uniform sampler2D emissiveMap;
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=3) uniform sampler2D specularMap; // PBR: Packed: Occlusion, Metal, Roughness
+#else
 uniform sampler2D specularMap; // PBR: Packed: Occlusion, Metal, Roughness
+#endif
 
 uniform float metallicFactor;
 uniform float roughnessFactor;
+#ifndef LL_VULKAN_GLSL
 uniform vec3 emissiveColor;
+#endif
 
 #if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
 #ifdef LL_VULKAN_GLSL
@@ -266,10 +284,24 @@ void main()
 
 #else
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
+#endif
 uniform sampler2D emissiveMap;
 
+#ifndef LL_VULKAN_GLSL
 uniform vec3 emissiveColor;
+#endif
 
 out vec4 frag_color;
 

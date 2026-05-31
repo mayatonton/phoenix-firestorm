@@ -27,9 +27,24 @@
 
 // forward fullbright implementation for HUDs
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+#else
 uniform vec3 emissiveColor;
+#endif
 uniform sampler2D emissiveMap;
 
 out vec4 frag_color;

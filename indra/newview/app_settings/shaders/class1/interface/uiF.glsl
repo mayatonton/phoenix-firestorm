@@ -25,7 +25,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 
 in vec2 vary_texcoord0;
 in vec4 vertex_color;

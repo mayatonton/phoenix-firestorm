@@ -55,12 +55,25 @@ uniform mat3 normal_matrix;
 uniform mat4 modelview_projection_matrix;
 #endif
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+#else
 uniform mat4 texture_matrix0;
 
 uniform vec4[2] texture_base_color_transform;
+#endif
 uniform vec4[2] texture_normal_transform;
 uniform vec4[2] texture_metallic_roughness_transform;
+#ifndef LL_VULKAN_GLSL
 uniform vec4[2] texture_emissive_transform;
+#endif
 
 in vec3 position;
 in vec4 diffuse_color;
@@ -131,10 +144,21 @@ void main()
 uniform mat4 modelview_projection_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+#else
 uniform mat4 texture_matrix0;
 
 uniform vec4[2] texture_base_color_transform;
 uniform vec4[2] texture_emissive_transform;
+#endif
 
 in vec3 position;
 in vec4 diffuse_color;

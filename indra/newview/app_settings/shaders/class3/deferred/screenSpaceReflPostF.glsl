@@ -52,7 +52,11 @@ in vec3 camera_ray;
 
 uniform sampler2D specularRect;
 uniform sampler2D diffuseRect;
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 
 vec4 getNorm(vec2 screenpos);
 float getDepth(vec2 pos_screen);

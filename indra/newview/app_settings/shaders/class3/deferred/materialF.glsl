@@ -251,14 +251,22 @@ vec3 calcPointLightOrSpotLight(vec3 light_col, vec3 npos, vec3 diffuse, vec4 spe
 out vec4 frag_data[4];
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
+#endif
 
 #ifdef HAS_NORMAL_MAP
 uniform sampler2D bumpMap;
 #endif
 
 #ifdef HAS_SPECULAR_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=3) uniform sampler2D specularMap;
+#else
 uniform sampler2D specularMap;
+#endif
 
 in vec2 vary_texcoord2;
 #endif

@@ -31,7 +31,11 @@ in vec4 vertex_color;
 in vec2 vary_texcoord0;
 in vec2 screenpos;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 uniform float blend_factor;
 uniform float custom_alpha;
 uniform float time;

@@ -28,7 +28,11 @@ out vec4 frag_color;
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 
 vec3 atmosLighting(vec3 light);
 vec3 scaleSoftClip(vec3 light);

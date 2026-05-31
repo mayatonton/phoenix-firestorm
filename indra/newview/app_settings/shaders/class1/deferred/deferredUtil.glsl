@@ -48,7 +48,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=2) uniform sampler2D normalMap;
+#else
 uniform sampler2D normalMap;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=3) uniform sampler2D depthMap;
 #else

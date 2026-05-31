@@ -27,7 +27,18 @@ out vec4 frag_color;
 
 uniform sampler2D tex0;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+#else
 uniform vec4 color;
+#endif
 
 in vec2 vary_texcoord0;
 

@@ -46,7 +46,18 @@ in vec2 texcoord0;
 out vec4 vertex_color;
 out vec2 vary_texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+#else
 uniform vec4 color;
+#endif
 
 vec4 calcLighting(vec3 pos, vec3 norm, vec4 color);
 mat4 getSkinnedTransform();

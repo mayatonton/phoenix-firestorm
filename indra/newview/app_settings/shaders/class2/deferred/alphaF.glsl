@@ -89,7 +89,11 @@ uniform int classic_mode;
 #endif
 
 #ifdef USE_DIFFUSE_TEX
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 #endif
 
 in vec3 vary_fragcoord;

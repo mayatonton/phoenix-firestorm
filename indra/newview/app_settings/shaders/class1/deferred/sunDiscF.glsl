@@ -29,7 +29,11 @@ out vec4 frag_data[4];
 
 vec3 srgb_to_linear(vec3 c);
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 uniform sampler2D altDiffuseMap;
 uniform float blend_factor; // interp factor between sunDisc A/B
 in vec2 vary_texcoord0;

@@ -33,7 +33,11 @@ uniform sampler2D depthMap;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 
 out vec4 frag_color;
 

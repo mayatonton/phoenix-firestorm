@@ -34,7 +34,11 @@ in vec2 vary_fragcoord;
 
 uniform sampler2D diffuseRect;
 uniform sampler2D emissiveRect;
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=2) uniform sampler2D normalMap;
+#else
 uniform sampler2D normalMap;
+#endif
 uniform float diffuse_luminance_scale;
 
 float lum(vec3 col)

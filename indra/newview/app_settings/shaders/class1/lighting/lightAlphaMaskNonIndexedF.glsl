@@ -52,7 +52,11 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere {
 uniform float minimum_alpha;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 
 vec3 atmosLighting(vec3 light);
 vec3 scaleSoftClip(vec3 light);

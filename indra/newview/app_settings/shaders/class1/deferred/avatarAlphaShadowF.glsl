@@ -52,12 +52,27 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere {
 uniform float minimum_alpha;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 
 in float pos_w;
 in float target_pos_x;
 in vec2 vary_texcoord0;
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;
+    vec4  texture_base_color_transform[2];
+    vec4  texture_emissive_transform[2];
+    vec4  color;
+    vec3  emissiveColor;
+    float _pad_emissive;
+};
+#else
 uniform vec4 color;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
 #if AYASTORM_CINEMATIC

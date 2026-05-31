@@ -55,9 +55,15 @@ uniform float minimum_alpha;
 #endif
 
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+layout(set=1, binding=2) uniform sampler2D normalMap;
+layout(set=1, binding=3) uniform sampler2D specularMap;
+#else
 uniform sampler2D diffuseMap;
 uniform sampler2D normalMap;
 uniform sampler2D specularMap;
+#endif
 
 in vec2 vary_texcoord0;
 

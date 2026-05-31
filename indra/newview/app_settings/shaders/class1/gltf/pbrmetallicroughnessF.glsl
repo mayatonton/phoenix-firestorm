@@ -56,7 +56,11 @@ void unpackMaterial()
 // ==================================
 // needed by all variants
 // ==================================
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
+#endif
 uniform sampler2D emissiveMap;
 in vec3 vary_position;
 in vec4 vertex_color;
@@ -75,7 +79,11 @@ vec3 srgb_to_linear(vec3 c);
 // needed by all lit variants
 // ==================================
 #ifndef UNLIT
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=2) uniform sampler2D normalMap;
+#else
 uniform sampler2D normalMap;
+#endif
 uniform sampler2D metallicRoughnessMap;
 uniform sampler2D occlusionMap;
 in vec3 vary_normal;

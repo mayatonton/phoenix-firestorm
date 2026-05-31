@@ -31,7 +31,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
 #if HAS_NOISE
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=17) uniform sampler2D glowNoiseMap;
