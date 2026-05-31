@@ -592,7 +592,7 @@ bool LLShaderMgr::createSPIRVFromGLSL(GLenum type,
     return !out_spirv.empty();
 }
 
-GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines, S32 texture_index_channels)
+GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines, S32 texture_index_channels, std::vector<std::string>* out_sources)
 {
 
 // endsure work-around for missing GLSL funcs gets propogated to feature shader files (e.g. srgbF.glsl)
@@ -1022,109 +1022,30 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 
     fclose(file);
 
-    // ------------------------------------------------------------------
-    // r41 sub-step 4.3-γ'-port-α-4 (sub-doc 06 §3.1 case ② runtime path):
-    // LLShaderMgr Vulkan path hook。preprocessed GLSL string array
-    // (shader_code_text / shader_code_count) を glslang runtime API 経由で
-    // SPIR-V binary 化 → loadSpirvShaderModuleFromMemory → mVk{Vertex,Fragment}
-    // ShaderModules に格納。
+    // r41 sub-step 4.3-γ'-port-β-2 (handoff-substep-4-3-gamma-prime-port-beta-2-prep.md
+    // §2 axis (a)): β-1 per-file SPIR-V hook はここに配置していたが、β-1 で実機計測
+    // (parse pass 検証成功 / SPIR-V 生成成功率 0% / forward declaration link fail =
+    // mirrorClip / encodeNormal / passTextureIndex / getObjectSkinnedTransform) で
+    // architectural mismatch が確定したため削除。β-2 では LLGLSLShader::createShader()
+    // 内 loadShaderFile() loop 完遂後に generatePerProgramSPIRV() (per-program hook) で
+    // 全 stage concat → 単一 glslang::TProgram link 経路に置換。
     //
-    // r41 sub-step 4.3-γ'-port-α-6 (sub-doc 06 §3.5 §3.1 案 C):
-    // SPIR-V cache layer。mShaderCacheDir (~/.ayastorm_x64/cache/shader_cache/) 内に
-    // <hash>_{v,f}.spv で per-file persistent cache、HBXXH128 1:1 流用
-    // (llglshader.cpp:2055-2083 algorithm)。cache hit = file load → skip glslang
-    // 生成、cache miss = glslang 生成 → file write → 次回起動 hit 経路。
-    // GL binary cache (.shaderbin) と同 dir 内で suffix 違いで併存。
-    //
-    // GL path はそのまま続行 (case ② = 並走、charter §3 #1 acceptance + AYAstorm
-    // 改変 11 file untouched + 段階 1-4.3-β' 動作維持)。
-    //
-    // 失敗時 (Vulkan 未初期化 / glslang parse 失敗 / VkShaderModule 生成失敗):
-    //   - early return せず、GL path に流れる (no-op、charter §3 #1 acceptance)
-    //   - parse 失敗は createSPIRVFromGLSL 内で WARN 出力済
-    //   - LLShaderMgr 加工済み GLSL の Vulkan 解釈成立率は sub-doc 06 §3.2
-    //     §1.2.3 で「見込」、γ'-port-α exemplar PoC (γ'-port-α-7) で確認
-    // ------------------------------------------------------------------
-    if (LLVKLoader::isVulkanInitialized() &&
-        (type == GL_VERTEX_SHADER || type == GL_FRAGMENT_SHADER))
+    // Vulkan path 限定で preprocessed GLSL を caller (LLGLSLShader::createShader()) の
+    // mStageSources に蓄積するため、out_sources パラメータ経由で std::string 配列を copy。
+    // shader_code_text[] は下の free() で消滅するので、ここで copy する必要がある。
+    if (out_sources && LLVKLoader::isVulkanInitialized())
     {
-        // γ'-port-α-6 cache key: HBXXH128 of (open_file_name + concatenated source)
-        HBXXH128 spirv_hash_obj;
-        spirv_hash_obj.update(open_file_name);
+        out_sources->clear();
+        out_sources->reserve(shader_code_count);
         for (GLuint i = 0; i < shader_code_count; ++i)
         {
             if (shader_code_text[i])
             {
-                spirv_hash_obj.update(std::string(shader_code_text[i]));
+                out_sources->emplace_back(shader_code_text[i]);
             }
-        }
-        LLUUID spirv_hash = spirv_hash_obj.digest();
-        const char type_suffix = (type == GL_VERTEX_SHADER) ? 'v' : 'f';
-        std::string spirv_cache_path;
-        if (!mShaderCacheDir.empty())
-        {
-            spirv_cache_path = gDirUtilp->add(mShaderCacheDir,
-                                              spirv_hash.asString() + "_" + type_suffix + ".spv");
-        }
-
-        std::vector<unsigned int> spirv;
-        bool cache_hit = false;
-        if (!spirv_cache_path.empty())
-        {
-            LLFILE* cache_file = LLFile::fopen(spirv_cache_path, "rb");
-            if (cache_file)
+            else
             {
-                fseek(cache_file, 0, SEEK_END);
-                long file_size = ftell(cache_file);
-                fseek(cache_file, 0, SEEK_SET);
-                if (file_size > 0 && (file_size % 4) == 0)
-                {
-                    spirv.resize(file_size / 4);
-                    size_t read_words = fread(spirv.data(), sizeof(unsigned int),
-                                              spirv.size(), cache_file);
-                    cache_hit = (read_words == spirv.size());
-                    if (!cache_hit)
-                    {
-                        spirv.clear();
-                    }
-                }
-                fclose(cache_file);
-            }
-        }
-
-        bool produced = cache_hit;
-        if (!produced)
-        {
-            produced = createSPIRVFromGLSL(type, shader_code_count,
-                                           (const GLchar**)shader_code_text, spirv,
-                                           open_file_name);
-            if (produced && !spirv_cache_path.empty())
-            {
-                LLFILE* write_file = LLFile::fopen(spirv_cache_path, "wb");
-                if (write_file)
-                {
-                    fwrite(spirv.data(), sizeof(unsigned int), spirv.size(), write_file);
-                    fclose(write_file);
-                }
-            }
-        }
-
-        if (produced)
-        {
-            VkShaderModule vk_module = LLVKLoader::loadSpirvShaderModuleFromMemory(spirv);
-            if (vk_module != VK_NULL_HANDLE)
-            {
-                if (type == GL_VERTEX_SHADER)
-                {
-                    mVkVertexShaderModules[open_file_name] = vk_module;
-                }
-                else
-                {
-                    mVkFragmentShaderModules[open_file_name] = vk_module;
-                }
-                LL_INFOS("Vulkan") << "LLShaderMgr Vulkan path: SPIR-V module "
-                                   << (cache_hit ? "(cache hit) " : "(cache miss, generated) ")
-                                   << "for " << open_file_name << LL_ENDL;
+                out_sources->emplace_back();
             }
         }
     }
@@ -1221,7 +1142,7 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         if (shader_level > 1)
         {
             shader_level--;
-            return loadShaderFile(filename, shader_level, type, defines, texture_index_channels);
+            return loadShaderFile(filename, shader_level, type, defines, texture_index_channels, out_sources);
         }
         LL_WARNS("ShaderLoading") << "Failed to load " << filename << LL_ENDL;
     }

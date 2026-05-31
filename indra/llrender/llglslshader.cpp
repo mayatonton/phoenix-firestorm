@@ -36,10 +36,20 @@
 
 #include "hbxxh.h"
 #include "llsdserialize.h"
+#include "lldir.h"
 
 #if LL_DARWIN
 #include "OpenGL/OpenGL.h"
 #endif
+
+// r41 sub-step 4.3-γ'-port-β-2: per-program SPIR-V hook で VkShaderModule 生成 +
+// Vulkan 初期化確認 + glslang 多段 stage TProgram link 経路。
+#include "llvkloader.h"
+#include <glslang/Public/ShaderLang.h>
+#include <glslang/Public/ResourceLimits.h>
+#include <glslang/SPIRV/GlslangToSpv.h>
+#include <map>
+#include <memory>
 
  // Print-print list of shader included source files that are linked together via glAttachShader()
  // i.e. On macOS / OSX the AMD GLSL linker will display an error if a varying is left in an undefined state.
@@ -451,21 +461,45 @@ bool LLGLSLShader::createShader()
         fprintf(stderr, "--- %s ---\n", mName.c_str());
 #endif // DEBUG_SHADER_INCLUDES
 
+        // r41 sub-step 4.3-γ'-port-β-2 (handoff-substep-4-3-gamma-prime-port-beta-2-prep.md
+        // §2 axis (a)): per-program SPIR-V hook のため stage 単位 source 蓄積を準備。
+        // GL path / Vulkan 未初期化時は collect_for_vulkan = false で loadShaderFile()
+        // への out_sources 渡し不要 → mStageSources untouched。
+        mStageSources.clear();
+        const bool collect_for_vulkan = LLVKLoader::isVulkanInitialized();
+
         //compile new source
         vector< pair<string, GLenum> >::iterator fileIter = mShaderFiles.begin();
         for (; fileIter != mShaderFiles.end(); fileIter++)
         {
-            GLuint shaderhandle = LLShaderMgr::instance()->loadShaderFile((*fileIter).first, mShaderLevel, (*fileIter).second, &mDefines, mFeatures.mIndexedTextureChannels);
+            std::vector<std::string> stage_sources;
+            GLuint shaderhandle = LLShaderMgr::instance()->loadShaderFile((*fileIter).first, mShaderLevel, (*fileIter).second, &mDefines, mFeatures.mIndexedTextureChannels, collect_for_vulkan ? &stage_sources : nullptr);
             LL_DEBUGS("ShaderLoading") << "SHADER FILE: " << (*fileIter).first << " mShaderLevel=" << mShaderLevel << LL_ENDL;
             if (shaderhandle)
             {
                 attachObject(shaderhandle);
+                if (collect_for_vulkan && !stage_sources.empty())
+                {
+                    mStageSources.push_back({ (*fileIter).second, (*fileIter).first, std::move(stage_sources) });
+                }
             }
             else
             {
                 success = false;
             }
         }
+
+        // r41 sub-step 4.3-γ'-port-β-2: loop 完遂後 mapAttributes() 直前に per-program
+        // SPIR-V hook 配置。全 stage concat → 単一 glslang::TProgram link → 各 stage 個別
+        // GlslangToSpv → cache (program_hash_program.spv custom container) → VkShaderModule
+        // 生成。失敗時 WARN 出力のみで GL path 続行 (charter §3 #1 acceptance)。生成後
+        // mStageSources は clear で memory 緩和 (217 file × stage 数 × source 長 ~数 MB peak)。
+        if (success && collect_for_vulkan && !mStageSources.empty())
+        {
+            generatePerProgramSPIRV(mStageSources);
+        }
+        mStageSources.clear();
+        mStageSources.shrink_to_fit();
     }
 
     // Attach existing objects
@@ -552,6 +586,314 @@ bool LLGLSLShader::createShader()
 #endif
 
     return success;
+}
+
+// ------------------------------------------------------------------
+// r41 sub-step 4.3-γ'-port-β-2 (handoff-substep-4-3-gamma-prime-port-beta-2-prep.md
+// §2 axis (a)): per-program SPIR-V 生成 hook 本体。createShader() 内 loadShaderFile()
+// loop 完遂後、mapAttributes() 直前に呼出される。
+//
+// 入力: mStageSources (全 stage の type + file_name + preprocessing 後 source 配列)
+// 出力: LLShaderMgr::mVk{Vertex,Fragment}ShaderModules に file_name キーで VkShaderModule 格納
+// cache: ~/.ayastorm_x64/cache/shader_cache/<program_hash>_program.spv (custom container)
+//
+// container layout: [u32 stage_count][repeat: u32 type, u32 spv_word_count, spv_words...]
+// hash: HBXXH128(全 stage file_name + 全 source 連結) で program 単位確定
+//
+// β-1 per-file model で発生していた architectural mismatch (forward decl 経由の
+// passTextureIndex / mirrorClip / encodeNormal / getObjectSkinnedTransform link fail)
+// を、全 stage を単一 glslang::TProgram に addShader → link で解消。SPIR-V binary は
+// 各 stage 個別 GlslangToSpv で抽出 (SPIR-V は stage 単位 module = Vulkan spec)。
+//
+// 失敗時: WARN 出力 + false return (caller はそのまま GL path 続行、charter §3 #1
+// acceptance = GL/Vulkan 並走)。
+// ------------------------------------------------------------------
+namespace {
+    // r41 sub-step 4.3-γ'-port-β-2: glslang process-global init を function-local static で
+    // 単発化。LLShaderMgr::createSPIRVFromGLSL 内にも独自 init guard が存在するが、β-2 で
+    // 既存 per-file hook 削除に伴い唯一の SPIR-V 生成 path は generatePerProgramSPIRV()。
+    void ensureGlslangInitialized()
+    {
+        static const bool s_initialized = []() {
+            glslang::InitializeProcess();
+            return true;
+        }();
+        (void)s_initialized;
+    }
+
+    EShLanguage glToGlslangStage(GLenum type)
+    {
+        switch (type)
+        {
+            case GL_VERTEX_SHADER:   return EShLangVertex;
+            case GL_FRAGMENT_SHADER: return EShLangFragment;
+            case GL_GEOMETRY_SHADER: return EShLangGeometry;
+            default: return EShLangCount;
+        }
+    }
+}
+
+bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stages)
+{
+    if (stages.empty())
+    {
+        return false;
+    }
+
+    LLShaderMgr* mgr = LLShaderMgr::instance();
+
+    // cache key = HBXXH128(全 stage file_name + 全 source 連結) で program 単位確定
+    HBXXH128 program_hash_obj;
+    for (const auto& stage : stages)
+    {
+        program_hash_obj.update(stage.file_name);
+        for (const auto& src : stage.sources)
+        {
+            program_hash_obj.update(src);
+        }
+    }
+    LLUUID program_hash = program_hash_obj.digest();
+
+    std::string cache_path;
+    if (!mgr->mShaderCacheDir.empty())
+    {
+        cache_path = gDirUtilp->add(mgr->mShaderCacheDir,
+                                    program_hash.asString() + "_program.spv");
+    }
+
+    // Vulkan SPIR-V は stage 単位 module = 1 stage type につき 1 SPIR-V。複数 file が同じ
+    // stage type を持つ場合は同 stage 内で concat (std::map で sorted unique 化、cache
+    // ordering 決定性を確保)。
+    std::map<GLenum, std::vector<size_t>> stages_by_type;
+    for (size_t i = 0; i < stages.size(); ++i)
+    {
+        stages_by_type[stages[i].type].push_back(i);
+    }
+
+    struct StageSpv { GLenum type; std::vector<unsigned int> spirv; };
+    std::vector<StageSpv> stage_spvs;
+    bool cache_hit = false;
+
+    // cache hit: custom container parse [u32 stage_count][repeat: u32 type, u32 word_count, words...]
+    if (!cache_path.empty())
+    {
+        LLFILE* cache_file = LLFile::fopen(cache_path, "rb");
+        if (cache_file)
+        {
+            uint32_t stored_stage_count = 0;
+            bool ok = (fread(&stored_stage_count, sizeof(uint32_t), 1, cache_file) == 1);
+            if (ok && stored_stage_count == (uint32_t)stages_by_type.size())
+            {
+                stage_spvs.reserve(stored_stage_count);
+                for (uint32_t i = 0; ok && i < stored_stage_count; ++i)
+                {
+                    uint32_t stage_type = 0;
+                    uint32_t word_count = 0;
+                    ok = (fread(&stage_type, sizeof(uint32_t), 1, cache_file) == 1 &&
+                          fread(&word_count, sizeof(uint32_t), 1, cache_file) == 1);
+                    if (ok && word_count > 0)
+                    {
+                        StageSpv ss;
+                        ss.type = (GLenum)stage_type;
+                        ss.spirv.resize(word_count);
+                        size_t read_words = fread(ss.spirv.data(), sizeof(unsigned int),
+                                                  word_count, cache_file);
+                        ok = (read_words == word_count);
+                        if (ok)
+                        {
+                            stage_spvs.push_back(std::move(ss));
+                        }
+                    }
+                    else
+                    {
+                        ok = false;
+                    }
+                }
+                cache_hit = ok && (stage_spvs.size() == stages_by_type.size());
+            }
+            fclose(cache_file);
+            if (!cache_hit)
+            {
+                stage_spvs.clear();
+            }
+        }
+    }
+
+    // cache miss: per stage 内 source concat → TShader 構築 + parse → 全 stage TProgram
+    // link → 各 stage GlslangToSpv で SPIR-V 抽出 (prep doc §2 axis (a) literal 設計)。
+    // β-1 per-file model の architectural mismatch (forward decl link fail) は本 path で
+    // 単一 TProgram に全 stage が addShader されることで構造的解消、ただし最終的な
+    // parse/link 成立は bundle-A/B/C (217 file structural rewrite) 完遂後に >>0% 目標。
+    if (!cache_hit)
+    {
+        ensureGlslangInitialized();
+
+        std::vector<std::unique_ptr<glslang::TShader>> tshaders;
+        std::vector<std::string> concat_buffers;
+        std::vector<EShLanguage> stage_langs_in_order;
+        std::vector<GLenum> stage_types_in_order;
+
+        // Reserve to avoid string reallocation invalidating c_str() pointers passed to setStrings.
+        concat_buffers.reserve(stages_by_type.size());
+
+        for (const auto& kv : stages_by_type)
+        {
+            GLenum stage_type = kv.first;
+            const std::vector<size_t>& stage_indices = kv.second;
+
+            EShLanguage lang = glToGlslangStage(stage_type);
+            if (lang == EShLangCount)
+            {
+                LL_WARNS("Vulkan") << "generatePerProgramSPIRV: unsupported stage type 0x"
+                                   << std::hex << (S32)stage_type << std::dec
+                                   << " (program " << mName << ")" << LL_ENDL;
+                return false;
+            }
+
+            // Concat all source fragments for this stage type. LL_VULKAN_GLSL macro is
+            // injected after the first source string of each file (matches existing
+            // LLShaderMgr::createSPIRVFromGLSL pattern, sub-doc 06 §1.2.4).
+            std::string concatenated;
+            for (size_t idx : stage_indices)
+            {
+                const auto& stage = stages[idx];
+                if (!stage.sources.empty() && !stage.sources[0].empty())
+                {
+                    concatenated.append(stage.sources[0]);
+                }
+                concatenated.append("#define LL_VULKAN_GLSL 1\n");
+                for (size_t i = 1; i < stage.sources.size(); ++i)
+                {
+                    concatenated.append(stage.sources[i]);
+                }
+            }
+
+            if (concatenated.empty())
+            {
+                LL_WARNS("Vulkan") << "generatePerProgramSPIRV: empty source for stage type 0x"
+                                   << std::hex << (S32)stage_type << std::dec
+                                   << " (program " << mName << ")" << LL_ENDL;
+                return false;
+            }
+
+            concat_buffers.push_back(std::move(concatenated));
+
+            auto shader = std::make_unique<glslang::TShader>(lang);
+            const char* src_cstr = concat_buffers.back().c_str();
+            shader->setStrings(&src_cstr, 1);
+            shader->setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientVulkan, 450);
+            shader->setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_2);
+            shader->setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_5);
+
+            const TBuiltInResource* resources = GetDefaultResources();
+            EShMessages messages = static_cast<EShMessages>(EShMsgDefault | EShMsgVulkanRules | EShMsgSpvRules);
+
+            if (!shader->parse(resources, 450, false, messages))
+            {
+                LL_WARNS("Vulkan") << "generatePerProgramSPIRV: glslang parse failed for stage type 0x"
+                                   << std::hex << (S32)stage_type << std::dec
+                                   << " (program " << mName << ")\n"
+                                   << shader->getInfoLog() << LL_ENDL;
+                return false;
+            }
+
+            tshaders.push_back(std::move(shader));
+            stage_langs_in_order.push_back(lang);
+            stage_types_in_order.push_back(stage_type);
+        }
+
+        // 全 stage TProgram link (prep doc §2 axis (a) literal: cross-stage interface 整合
+        // 検証 + forward decl resolution)
+        glslang::TProgram program;
+        for (auto& ts : tshaders)
+        {
+            program.addShader(ts.get());
+        }
+        EShMessages messages = static_cast<EShMessages>(EShMsgDefault | EShMsgVulkanRules | EShMsgSpvRules);
+        if (!program.link(messages))
+        {
+            LL_WARNS("Vulkan") << "generatePerProgramSPIRV: glslang link failed for program "
+                               << mName << "\n" << program.getInfoLog() << LL_ENDL;
+            return false;
+        }
+
+        // 各 stage 個別 GlslangToSpv で SPIR-V 抽出 (SpvOptions は createSPIRVFromGLSL 継承)
+        glslang::SpvOptions spv_options;
+        spv_options.generateDebugInfo = false;
+        spv_options.stripDebugInfo    = true;
+        spv_options.disableOptimizer  = true;  // γ' 段階 = optimizer off (PoC 重視)
+        spv_options.validate          = false;
+
+        stage_spvs.reserve(stage_langs_in_order.size());
+        for (size_t i = 0; i < stage_langs_in_order.size(); ++i)
+        {
+            StageSpv ss;
+            ss.type = stage_types_in_order[i];
+            glslang::GlslangToSpv(*program.getIntermediate(stage_langs_in_order[i]),
+                                  ss.spirv, &spv_options);
+            if (ss.spirv.empty())
+            {
+                LL_WARNS("Vulkan") << "generatePerProgramSPIRV: GlslangToSpv produced empty SPIR-V "
+                                   << "for stage type 0x" << std::hex << (S32)ss.type << std::dec
+                                   << " (program " << mName << ")" << LL_ENDL;
+                return false;
+            }
+            stage_spvs.push_back(std::move(ss));
+        }
+
+        // Write cache: custom container
+        if (!cache_path.empty())
+        {
+            LLFILE* write_file = LLFile::fopen(cache_path, "wb");
+            if (write_file)
+            {
+                uint32_t stage_count = (uint32_t)stage_spvs.size();
+                fwrite(&stage_count, sizeof(uint32_t), 1, write_file);
+                for (const auto& ss : stage_spvs)
+                {
+                    uint32_t stage_type = (uint32_t)ss.type;
+                    uint32_t word_count = (uint32_t)ss.spirv.size();
+                    fwrite(&stage_type, sizeof(uint32_t), 1, write_file);
+                    fwrite(&word_count, sizeof(uint32_t), 1, write_file);
+                    fwrite(ss.spirv.data(), sizeof(unsigned int), word_count, write_file);
+                }
+                fclose(write_file);
+            }
+        }
+    }
+
+    // VkShaderModule 生成 + LLShaderMgr maps 格納。同 stage type の複数 file は同一 SPIR-V
+    // を共有するが、vkCreateShaderModule は file_name 単位で個別 module ハンドル発行
+    // (1:N module sharing による destroy 時 dangling 回避)。β-1 file_name キー lookup
+    // 互換性維持、後段 β-3 PSO 構築で file_name キー lookup。
+    for (const auto& stage : stages)
+    {
+        const StageSpv* ss_ptr = nullptr;
+        for (const auto& ss : stage_spvs)
+        {
+            if (ss.type == stage.type) { ss_ptr = &ss; break; }
+        }
+        if (!ss_ptr) continue;
+
+        VkShaderModule vk_module = LLVKLoader::loadSpirvShaderModuleFromMemory(ss_ptr->spirv);
+        if (vk_module == VK_NULL_HANDLE) continue;
+
+        if (stage.type == GL_VERTEX_SHADER)
+        {
+            mgr->mVkVertexShaderModules[stage.file_name] = vk_module;
+        }
+        else if (stage.type == GL_FRAGMENT_SHADER)
+        {
+            mgr->mVkFragmentShaderModules[stage.file_name] = vk_module;
+        }
+    }
+
+    LL_INFOS("Vulkan") << "LLGLSLShader per-program SPIR-V "
+                       << (cache_hit ? "(cache hit) " : "(cache miss, generated) ")
+                       << "for program " << mName
+                       << " (" << stage_spvs.size() << " stages, "
+                       << stages.size() << " files)" << LL_ENDL;
+    return true;
 }
 
 #if DEBUG_SHADER_INCLUDES

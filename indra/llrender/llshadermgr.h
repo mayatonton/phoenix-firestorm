@@ -438,7 +438,12 @@ public:
     void dumpShaderSource(U32 shader_code_count, GLchar** shader_code_text);
     bool    linkProgramObject(GLuint obj, bool suppress_errors = false);
     bool    validateProgramObject(GLuint obj);
-    GLuint loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1);
+    // r41 sub-step 4.3-γ'-port-β-2 (handoff-substep-4-3-gamma-prime-port-beta-2-prep.md
+    // §2 axis (a)): out_sources パラメータは Vulkan path 限定 (LLVKLoader::isVulkanInitialized()
+    // 条件下) で preprocessing 後 shader_code_text[] を std::string 配列 copy 出力。
+    // GL path / nullptr 渡しでは untouched。caller (LLGLSLShader::createShader()) は loop
+    // 完遂後 mStageSources を generatePerProgramSPIRV() に渡し per-program SPIR-V 生成。
+    GLuint loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1, std::vector<std::string>* out_sources = nullptr);
 
     // r41 sub-step 4.3-γ'-port-α (sub-doc 06 §3.1 case ② = runtime SPIR-V 生成):
     // 加工済み GLSL string array (loadShaderFile() preprocessing 後の shader_code_text[]) を

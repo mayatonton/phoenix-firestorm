@@ -169,6 +169,21 @@ public:
     LLGLSLShader();
     ~LLGLSLShader();
 
+    // r41 sub-step 4.3-γ'-port-β-2 (sub-doc 06 §3.1 sub-step 6.3 / handoff
+    // -substep-4-3-gamma-prime-port-beta-2-prep.md §2 axis (a)):
+    // per-program SPIR-V hook で渡す stage 単位 source 蓄積。LLGLSLShader::createShader()
+    // 内の loadShaderFile() loop が Vulkan path 限定で push_back。loop 完遂後
+    // generatePerProgramSPIRV() に渡し、全 stage concat → 単一 glslang::TProgram link
+    // → 各 stage 個別 GlslangToSpv で program 単位 SPIR-V 生成。β-1 per-file model の
+    // architectural mismatch (forward declaration mirrorClip / encodeNormal /
+    // passTextureIndex / getObjectSkinnedTransform link fail) 解消が目的。
+    struct StageSource
+    {
+        GLenum type;                        // GL_VERTEX_SHADER / GL_FRAGMENT_SHADER
+        std::string file_name;              // open_file_name (gpu_class 解決後)
+        std::vector<std::string> sources;   // loadShaderFile() preprocessing 後 shader_code_text[] copy
+    };
+
     static GLuint sCurBoundShader;
     static LLGLSLShader* sCurBoundShaderPtr;
     static S32 sIndexedTextureChannels;
@@ -366,11 +381,22 @@ public:
     // hacky flag used for optimization in LLDrawPoolAlpha
     bool mCanBindFast = false;
 
+    // r41 sub-step 4.3-γ'-port-β-2: Vulkan path 限定で createShader() 内 loop が充填、
+    // 全 stage 蓄積後 generatePerProgramSPIRV() に渡す。GL path / Vulkan 未初期化時 untouched。
+    std::vector<StageSource> mStageSources;
+
 #if LL_PROFILER_ENABLE_RENDER_DOC
     void setLabel(const char* label);
 #endif
 
 private:
+    // r41 sub-step 4.3-γ'-port-β-2: 全 stage concat → glslang::TProgram link → 各 stage
+    // 個別 GlslangToSpv で program 単位 SPIR-V 生成 + cache layer + VkShaderModule 生成。
+    // cache key = HBXXH128(全 stage file_name + 全 stage source concat)、cache file 命名
+    // <program_hash>_program.spv (custom container: [u32 stage_count][repeat: u32 type,
+    // u32 spv_word_count, spv_words...])。生成後 mStageSources を clear で memory 緩和。
+    bool generatePerProgramSPIRV(const std::vector<StageSource>& stages);
+
     void unloadInternal();
     // This must be static because finishProfile() is called at least once
     // within a __try block. If we default its stats parameter to a temporary
