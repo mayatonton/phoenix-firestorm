@@ -117,8 +117,8 @@ memory `project_ayastorm_three_platforms.md` 「3 OS 揃える、Linux のみ判
 #### 領域 6: 248 GLSL shader SPIR-V 化 base port ~228 file (4.96 PM)
 
 - **境界条件**: 領域 3 PSO 化 + 領域 7 descriptor set 整合と協調 (shader binding が descriptor set 3 階層に従う)
-- **依存順序**: 領域 1 完了後着手、領域 2-3 と並走、AYAstorm 改変 13 file は **本 r41 scope 外** (r42-α picker 2 file / r42-β Cinematic 4 file / r42-γ visual realism 7 file)
-- **risk**: **中** — glslang cross compile ~85% 素通り見込み (A 195 file)、B 53 file の修正は内容次第 (extension/binding/precision 等)、06 §3.1 で base 算定済
+- **依存順序**: 領域 1 完了後着手、領域 2-3 と並走、AYAstorm 改変 13 file は **本 r41 scope 外** (r42-α picker 2 file / r42-β Cinematic 4 file / r42-γ visual realism 7 file、γ'-1 trace 確定値は 11 file = §3 #4 spec drift 反映)
+- **risk**: **中** — sub-step 6.1 着手 model = **LLShaderMgr Vulkan path 配線 + glslang library runtime API + SPIR-V cache layer (case ② 採用 2026-05-31、handoff-substep-4-3-gamma-prime-prep.md §4 経由、§7.5 boundary refine 範囲)**、cross compile 素通り率は 06 §3.1 で base 算定済 (A 195 / B 53)、glslang library 3 OS 配信 (Linux apt / Mac brew / Windows Vulkan SDK) が新規 install path
 
 #### 領域 7: descriptor set + render pass 設計反映 (1.50 PM)
 
@@ -178,9 +178,9 @@ memory `project_ayastorm_three_platforms.md` 「3 OS 揃える、Linux のみ判
 
 ### #4 248 shader SPIR-V 化 base port (~228 file)
 
-- **metric**: base 228 file (cross compile A 195 素通り + B 53 要修正) の glslang コンパイル成功 + SPIR-V binary 生成 + runtime load 成功
-- **test procedure**: shader build script で 228 file 全 file の `.spv` 生成成功 + runtime descriptor set binding mismatch validation error **0 件**、AYAstorm 改変 13 file (picker 2 / Cinematic 4 / visual realism 7) は **untouched** (r42-α/β/γ で port)
-- **regression**: shader compile error / link error **0 件**、AYAstorm 改変 13 file の port が本 r41 scope に含まれていないこと (git diff で 13 file が untouched 確認)
+- **metric**: base 228 file (cross compile A 195 素通り + B 53 要修正) の **LLShaderMgr Vulkan path 経由** glslang runtime API での SPIR-V binary 生成 + `vkCreateShaderModule` load 成功 + SPIR-V cache layer hit/miss 動作 (case ② 採用 2026-05-31、§7.5 boundary refine 履歴反映)
+- **test procedure**: viewer 起動時 LLShaderMgr Vulkan path (`gVK.isEnabled()` 条件下 conditional branch) 経由で 228 file 全 file の SPIR-V binary 生成成功 (初回 cache miss compile + 2 回目以降 `~/.ayastorm_x64/cache/shader_cache/<mShaderHash>_{vert,frag}.spv` cache hit load) + runtime descriptor set binding mismatch validation error **0 件**、AYAstorm 改変 file (γ'-1 trace 確定値 **11 file** = picker 2 / Cinematic 2 / visual realism 7、本 charter 旧記載 13 → 実 11 の spec drift) は **untouched** (r42-α/β/γ で port)
+- **regression**: shader compile error / link error **0 件**、AYAstorm 改変 11 file (spec drift 反映) の port が本 r41 scope に含まれていないこと (git diff で 11 file が untouched 確認)
 
 ### #5 descriptor set + render pass 設計実装
 
@@ -471,6 +471,9 @@ r41 着手中に **段階別** で詳細化する内容 (本 charter §2 領域�
 - **r41 着手中 sub-doc で詳細化**: 各段階 file list + interface signature + driver quirks audit + shader cross compile audit + descriptor mapping 実装詳細
 - **r41 着手中に refine 可な本 charter content**: §3 metric / test procedure (本 §3 acceptance 運用方針)、§2 領域別 PM 配分 (実装中の実測値で refine 可)
 - **AYA 確認なしに変更しない本 charter content**: §3 #1-#9 criterion 趣旨 (§3 acceptance 運用方針 反映) + §1 thesis 3 軸 + §4 plan B trigger 閾値 + §5 依存 milestone 構成
+- **boundary refine 履歴** (AYA review PASS 反映、sub-doc 内処理可境界の明示記録):
+  - **2026-05-31**: 段階 5 LLVertexBuffer Vk 化を sub-step 4.3 内へ前出し (`handoff-substep-4-3-beta-prep.md` §5、AYA 「OK」承認、sub-step 4.3-β' 完遂 commit `78820a6edf` で literal satisfy)
+  - **2026-05-31**: 領域 6 sub-step 6.1 着手 model を **case ② = LLShaderMgr Vulkan path 配線 + glslang library runtime API + SPIR-V cache layer** に refine (`handoff-substep-4-3-gamma-prime-prep.md` §4、案 A target extension build-time pre-compile から path 変更、根拠 = LL/FS shader variant 爆発 model + LLShaderMgr 既存 preprocessing 1 source of truth + 3 OS 整合)、本 §3 #4 acceptance test procedure + §2 領域 6 risk 内訳 を同時 refine、AYA review 待ち
 
 ---
 

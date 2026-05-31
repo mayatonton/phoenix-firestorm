@@ -353,6 +353,18 @@ API surface 並走化採用の確定根拠は llrendertarget.{cpp,h} 棚卸し:
 
 3.3-B = exemplar pre-flight pattern (1 shader build chain 確立 → 6.1 で全 file 一般化)、視覚は依然 GL 担当 (sub-doc 03 §3.5 「GL path 動作維持」と整合)、Vulkan path は 3.3-A/3.3-C 同様 transit smoke (PSO compile + module load 成功で acceptance、実描画 deliver は領域 7 sub-step 7.5 attachment 配線後)。
 
+#### §3.1.3 役割再定義注記 (2026-05-31 sub-step 4.3-γ'-port-α-prep 反映、charter §7.5 boundary refine 履歴と同期)
+
+**3.3-B exemplar の役割を「試作レール」へ再定義**:
+
+- 領域 6 sub-step 6.1 着手境界で **案 A target extension (CMake glob + glslangValidator 一括 pre-compile) を試行 → build verify で spec 想定相違 4 点露呈 (`#version` 無し / 自由 uniform / location 無し / forward decl concat 前提) → revert** (詳細は `handoff-substep-4-3-gamma-prime-prep.md` §1.1)
+- AYA 「完全に動作させる必要があるので」基準下で **case ② = runtime SPIR-V 生成 (LLShaderMgr Vulkan path 配線 + glslang library runtime API + `vkCreateShaderModule` + SPIR-V cache layer) を採用** (production path 確定、charter §2 領域 6 + §3 #4 + §7.5 で boundary refine 履歴反映済)
+- 3.3-B で配置済の **build-time pre-compile chain (AyaShaderCompile.cmake + `aya_r41_shaders` custom target + `aya_r41_exemplar/sky_placeholder{V,F}.glsl` purpose-built Vulkan-ready GLSL + `loadSpirvShaderModuleFromFile()` `llvkloader.cpp:1761-1770` sink)** = **試作レール扱い** (3.3-B α-ε 完遂 marker = sub-step 4.3-γ' 着手時の動作 baseline として保持、案 D 配線時の dead code 化は γ'-port-γ 以降で再評価)
+- production path sink = **`loadSpirvShaderModuleFromMemory(const std::vector<uint32_t>&)` (新規、binary blob 受領、sub-step 4.3-γ'-port-α-5 で配置)**
+- 領域 6 sub-step 6.1 一般化は **sub-doc 06 §3.1 sub-step 6.1 を case ② path に re-author** (handoff-substep-4-3-gamma-prime-prep.md §4.1 経由、sub-doc 06 active 復帰)、本 §3.1.3 はその根拠 anchor として保持
+
+**`AYA_R41_USE_EMBEDDED_SPIRV_FALLBACK` macro guard 取扱**: 3.3-B-ε で AYA 確認 「α (glslangValidator 必須化) 採用」反映済 = case ② 採用後も r42-α/β Mac/Win Vulkan 着手まで temporary safety net 維持、廃止 timing は r42-α/β glslangValidator install validation 完了後 (§3.1.3 既存表 3.3-B-ε row + handoff-substep-4-3-gamma-prime-prep.md §7.3 critical reminders と整合)。
+
 ### §3.1.4 sub-step 3.4 細分化 (α/β-1/β-2/γ/δ/ε、3.4 設計確定 2026-05-31)
 
 3.4 (texture lifecycle + descriptor set=1 per-material + 12 pool hook body + 段階 2 引継ぎ特殊対応) は 3.3-B 完遂後の AYA 確認 (2026-05-31「案 1 (image lifecycle 先行) 推奨でお願いします」承認) で以下に細分化。3.3-A/3.3-B/3.3-C pattern (α/β-1/β-2/γ/δ/ε) 継承。
