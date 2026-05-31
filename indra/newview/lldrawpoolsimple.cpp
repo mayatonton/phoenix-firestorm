@@ -34,6 +34,7 @@
 #include "llface.h"
 #include "llsky.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llspatialpartition.h"
 #include "llviewershadermgr.h"
 #include "llrender.h"
@@ -159,7 +160,7 @@ void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_FULLBRIGHT);
 
     LLGLSLShader* shader = nullptr;
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     {
         shader = &gHUDFullbrightProgram;
     }
@@ -174,7 +175,7 @@ void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
     shader->bind();
     pushBatches(LLRenderPass::PASS_FULLBRIGHT, true, true);
 
-    if (!LLPipeline::sRenderingHUDs)
+    if (!LLPipelineFrameContext::getInstance().isHUDPass())
     {
         // render rigged
         shader->bind(true);
@@ -191,7 +192,7 @@ void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
     LL::GLTFSceneManager::instance().render(true, true, true);
 
     LLGLSLShader* shader = nullptr;
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     {
         shader = &gHUDFullbrightAlphaMaskProgram;
     }
@@ -206,7 +207,7 @@ void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
     shader->bind();
     pushMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true);
 
-    if (!LLPipeline::sRenderingHUDs)
+    if (!LLPipelineFrameContext::getInstance().isHUDPass())
     {
         // render rigged
         shader->bind(true);

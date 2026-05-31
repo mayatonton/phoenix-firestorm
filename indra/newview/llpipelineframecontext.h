@@ -56,6 +56,31 @@ public:
     LLPipeline::RenderTargetPack* getActiveRT() const { return mActiveRT; }
     void                          setActiveRT(LLPipeline::RenderTargetPack* rt) { mActiveRT = rt; }
 
+    // sub-step 4.2 (a): 5 個 pass-specific bool flags. 入れ子発火可 (generateImpostor() 内
+    // shadow / reflection / impostor 多重)、5 個独立 field + ScopedXxxPass RAII helper
+    // (下方 nested class 群、4.1-β ScopedActiveRT 範式継承)。
+    bool isShadowPass()                 const { return mShadowPass; }
+    void setShadowPass(bool b)                { mShadowPass = b; }
+    bool isReflectionPass()             const { return mReflectionPass; }
+    void setReflectionPass(bool b)            { mReflectionPass = b; }
+    bool isImpostorPass()               const { return mImpostorPass; }
+    void setImpostorPass(bool b)              { mImpostorPass = b; }
+    bool isHUDPass()                    const { return mHUDPass; }
+    void setHUDPass(bool b)                   { mHUDPass = b; }
+    bool isDoFPass()                    const { return mDoFPass; }
+    void setDoFPass(bool b)                   { mDoFPass = b; }
+
+    // sub-step 4.2 (b): 4 個 frame-global bool flags. frame entry で settle、
+    // frame 終端まで persist (4.1-α/β 範式継承 = field + getter/setter のみ)。
+    bool isRenderingGlow()              const { return mRenderingGlow; }
+    void setRenderingGlow(bool b)             { mRenderingGlow = b; }
+    bool isRenderingDeferred()          const { return mRenderingDeferred; }
+    void setRenderingDeferred(bool b)         { mRenderingDeferred = b; }
+    bool isUnderWaterRendering()        const { return mUnderWaterRendering; }
+    void setUnderWaterRendering(bool b)       { mUnderWaterRendering = b; }
+    bool isReflectionProbesEnabled()    const { return mReflectionProbesEnabled; }
+    void setReflectionProbesEnabled(bool b)   { mReflectionProbesEnabled = b; }
+
     // sub-step 4.1-β: RAII helper for transient mRT juggling (replaces the
     // SetTemporarily<RenderTargetPack*> pattern used at llgltfmaterialpreviewmgr.cpp).
     class ScopedActiveRT
@@ -69,6 +94,76 @@ public:
         LLPipeline::RenderTargetPack* mPrevRT;
     };
 
+    // sub-step 4.2 (a) ScopedXxxPass RAII helpers (4.1-β ScopedActiveRT 範式継承)
+    class ScopedShadowPass
+    {
+    public:
+        explicit ScopedShadowPass(bool new_val);
+        ~ScopedShadowPass();
+        ScopedShadowPass(const ScopedShadowPass&) = delete;
+        ScopedShadowPass& operator=(const ScopedShadowPass&) = delete;
+    private:
+        bool mPrev;
+    };
+
+    class ScopedReflectionPass
+    {
+    public:
+        explicit ScopedReflectionPass(bool new_val);
+        ~ScopedReflectionPass();
+        ScopedReflectionPass(const ScopedReflectionPass&) = delete;
+        ScopedReflectionPass& operator=(const ScopedReflectionPass&) = delete;
+    private:
+        bool mPrev;
+    };
+
+    class ScopedImpostorPass
+    {
+    public:
+        explicit ScopedImpostorPass(bool new_val);
+        ~ScopedImpostorPass();
+        ScopedImpostorPass(const ScopedImpostorPass&) = delete;
+        ScopedImpostorPass& operator=(const ScopedImpostorPass&) = delete;
+    private:
+        bool mPrev;
+    };
+
+    class ScopedHUDPass
+    {
+    public:
+        explicit ScopedHUDPass(bool new_val);
+        ~ScopedHUDPass();
+        ScopedHUDPass(const ScopedHUDPass&) = delete;
+        ScopedHUDPass& operator=(const ScopedHUDPass&) = delete;
+    private:
+        bool mPrev;
+    };
+
+    class ScopedDoFPass
+    {
+    public:
+        explicit ScopedDoFPass(bool new_val);
+        ~ScopedDoFPass();
+        ScopedDoFPass(const ScopedDoFPass&) = delete;
+        ScopedDoFPass& operator=(const ScopedDoFPass&) = delete;
+    private:
+        bool mPrev;
+    };
+
+    // sub-step 4.2 (b): transient frame-global flip helper (llgltfmaterialpreviewmgr
+    // preview render path で sRenderGlow を一時 false 化する SetTemporarily<bool>
+    // を 1:1 置換、4.1-β ScopedActiveRT / 4.2 (a) ScopedXxxPass 範式継承)。
+    class ScopedRenderingGlow
+    {
+    public:
+        explicit ScopedRenderingGlow(bool new_val);
+        ~ScopedRenderingGlow();
+        ScopedRenderingGlow(const ScopedRenderingGlow&) = delete;
+        ScopedRenderingGlow& operator=(const ScopedRenderingGlow&) = delete;
+    private:
+        bool mPrev;
+    };
+
     EPassType getCurrentPass() const { return mCurrentPass; }
 
 private:
@@ -80,6 +175,19 @@ private:
     LLCullResult*                 mCullResult;
     LLPipeline::RenderTargetPack* mActiveRT;
     EPassType                     mCurrentPass;
+
+    // sub-step 4.2 (a): pass-specific 5 件 (入れ子発火可)
+    bool mShadowPass;
+    bool mReflectionPass;
+    bool mImpostorPass;
+    bool mHUDPass;
+    bool mDoFPass;
+
+    // sub-step 4.2 (b): frame-global 4 件 (settle 後 frame 終端まで persist)
+    bool mRenderingGlow;
+    bool mRenderingDeferred;
+    bool mUnderWaterRendering;
+    bool mReflectionProbesEnabled;
 };
 
 #endif // LL_LLPIPELINEFRAMECONTEXT_H

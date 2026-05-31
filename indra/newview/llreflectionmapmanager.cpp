@@ -206,7 +206,7 @@ static bool check_priority(LLReflectionMap* a, LLReflectionMap* b)
 // helper class to seed octree with probes
 void LLReflectionMapManager::update()
 {
-    if (!LLPipeline::sReflectionProbesEnabled || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
+    if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
     {
         return;
     }
@@ -530,7 +530,7 @@ void LLReflectionMapManager::refreshSettings()
 
 LLReflectionMap* LLReflectionMapManager::addProbe(LLSpatialGroup* group)
 {
-    if (gGLManager.mGLVersion < 4.05f || !LLPipeline::sReflectionProbesEnabled)
+    if (gGLManager.mGLVersion < 4.05f || !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         return nullptr;
     }
@@ -663,7 +663,7 @@ LLReflectionMap* LLReflectionMapManager::registerSpatialGroup(LLSpatialGroup* gr
 LLReflectionMap* LLReflectionMapManager::registerViewerObject(LLViewerObject* vobj)
 {
     // <FS:Beq> [FIRE-35070] Don't register manual probes if we're not using them
-    // if (!LLPipeline::sReflectionProbesEnabled)
+    // if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     if (LLPipeline::sReflectionProbeLevel == (S32)LLReflectionMap::ProbeLevel::NONE)
     // </FS:Beq>
     {
@@ -1084,7 +1084,7 @@ void LLReflectionMapManager::updateNeighbors(LLReflectionMap* probe)
 
 void LLReflectionMapManager::updateUniforms()
 {
-    if (!LLPipeline::sReflectionProbesEnabled)
+    if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         return;
     }
@@ -1322,7 +1322,7 @@ void LLReflectionMapManager::updateUniforms()
 
 void LLReflectionMapManager::setUniforms()
 {
-    if (!LLPipeline::sReflectionProbesEnabled)
+    if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         return;
     }

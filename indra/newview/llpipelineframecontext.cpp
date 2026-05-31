@@ -26,6 +26,15 @@ LLPipelineFrameContext::LLPipelineFrameContext()
     : mCullResult(nullptr)
     , mActiveRT(nullptr)
     , mCurrentPass(PASS_NONE)
+    , mShadowPass(false)
+    , mReflectionPass(false)
+    , mImpostorPass(false)
+    , mHUDPass(false)
+    , mDoFPass(false)
+    , mRenderingGlow(false)
+    , mRenderingDeferred(false)
+    , mUnderWaterRendering(false)
+    , mReflectionProbesEnabled(false)
 {
 }
 
@@ -63,4 +72,70 @@ LLPipelineFrameContext::ScopedActiveRT::ScopedActiveRT(LLPipeline::RenderTargetP
 LLPipelineFrameContext::ScopedActiveRT::~ScopedActiveRT()
 {
     LLPipelineFrameContext::getInstance().setActiveRT(mPrevRT);
+}
+
+LLPipelineFrameContext::ScopedShadowPass::ScopedShadowPass(bool new_val)
+    : mPrev(LLPipelineFrameContext::getInstance().isShadowPass())
+{
+    LLPipelineFrameContext::getInstance().setShadowPass(new_val);
+}
+
+LLPipelineFrameContext::ScopedShadowPass::~ScopedShadowPass()
+{
+    LLPipelineFrameContext::getInstance().setShadowPass(mPrev);
+}
+
+LLPipelineFrameContext::ScopedReflectionPass::ScopedReflectionPass(bool new_val)
+    : mPrev(LLPipelineFrameContext::getInstance().isReflectionPass())
+{
+    LLPipelineFrameContext::getInstance().setReflectionPass(new_val);
+}
+
+LLPipelineFrameContext::ScopedReflectionPass::~ScopedReflectionPass()
+{
+    LLPipelineFrameContext::getInstance().setReflectionPass(mPrev);
+}
+
+LLPipelineFrameContext::ScopedImpostorPass::ScopedImpostorPass(bool new_val)
+    : mPrev(LLPipelineFrameContext::getInstance().isImpostorPass())
+{
+    LLPipelineFrameContext::getInstance().setImpostorPass(new_val);
+}
+
+LLPipelineFrameContext::ScopedImpostorPass::~ScopedImpostorPass()
+{
+    LLPipelineFrameContext::getInstance().setImpostorPass(mPrev);
+}
+
+LLPipelineFrameContext::ScopedHUDPass::ScopedHUDPass(bool new_val)
+    : mPrev(LLPipelineFrameContext::getInstance().isHUDPass())
+{
+    LLPipelineFrameContext::getInstance().setHUDPass(new_val);
+}
+
+LLPipelineFrameContext::ScopedHUDPass::~ScopedHUDPass()
+{
+    LLPipelineFrameContext::getInstance().setHUDPass(mPrev);
+}
+
+LLPipelineFrameContext::ScopedDoFPass::ScopedDoFPass(bool new_val)
+    : mPrev(LLPipelineFrameContext::getInstance().isDoFPass())
+{
+    LLPipelineFrameContext::getInstance().setDoFPass(new_val);
+}
+
+LLPipelineFrameContext::ScopedDoFPass::~ScopedDoFPass()
+{
+    LLPipelineFrameContext::getInstance().setDoFPass(mPrev);
+}
+
+LLPipelineFrameContext::ScopedRenderingGlow::ScopedRenderingGlow(bool new_val)
+    : mPrev(LLPipelineFrameContext::getInstance().isRenderingGlow())
+{
+    LLPipelineFrameContext::getInstance().setRenderingGlow(new_val);
+}
+
+LLPipelineFrameContext::ScopedRenderingGlow::~ScopedRenderingGlow()
+{
+    LLPipelineFrameContext::getInstance().setRenderingGlow(mPrev);
 }

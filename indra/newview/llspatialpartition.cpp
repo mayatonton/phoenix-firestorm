@@ -44,6 +44,7 @@
 #include "llviewerregion.h"
 #include "llcamera.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llmeshrepository.h"
 #include "llrender.h"
 #include "lldrawpool.h"
@@ -1054,7 +1055,7 @@ public:
 
     virtual bool earlyFail(LLViewerOctreeGroup* base_group)
     {
-        if (LLPipeline::sReflectionRender)
+        if (LLPipelineFrameContext::getInstance().isReflectionPass())
         {
             return false;
         }
@@ -1457,7 +1458,7 @@ S32 LLSpatialPartition::cull(LLCamera &camera, bool do_occlusion)
     ((LLSpatialGroup*)mOctree->getListener(0))->validate();
 #endif
 
-    if (LLPipeline::sShadowRender)
+    if (LLPipelineFrameContext::getInstance().isShadowPass())
     {
         LLOctreeCullShadow culler(&camera);
         culler.traverse(mOctree);

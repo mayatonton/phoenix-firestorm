@@ -47,6 +47,7 @@
 #include "llviewercamera.h"
 #include "llviewertexturelist.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llspatialpartition.h"
 #include "llviewershadermgr.h"
 #include "llmodel.h"
@@ -215,7 +216,7 @@ S32 LLDrawPoolBump::numBumpPasses()
 void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
 {
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled )
+    if( cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() )
     {
         if (shader )
         {
@@ -262,7 +263,7 @@ void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& di
 void LLDrawPoolBump::unbindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
 {
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled)
+    if( cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         if (shader_level > 1)
         {
@@ -291,7 +292,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
 
     // Second pass: environment map
     shader = &gDeferredFullbrightShinyProgram;
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     {
         shader = &gHUDFullbrightShinyProgram;
     }
@@ -311,7 +312,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
 
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
 
-    if (cube_map && !LLPipeline::sReflectionProbesEnabled)
+    if (cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         // Make sure that texture coord generation happens for tex unit 1, as that's the one we use for
         // the cube map in the one pass shiny shaders
@@ -336,7 +337,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
         LLVector4 vec4(vec, gShinyOrigin.mV[3]);
         shader->uniform4fv(LLViewerShaderMgr::SHINY_ORIGIN, 1, vec4.mV);
 
-        if (LLPipeline::sReflectionProbesEnabled)
+        if (LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
         {
             gPipeline.bindReflectionProbes(*shader);
         }
@@ -391,7 +392,7 @@ void LLDrawPoolBump::endFullbrightShiny()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SHINY);
 
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled )
+    if( cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() )
     {
         cube_map->disable();
         if (shader->mFeatures.hasReflectionProbes)
@@ -600,7 +601,7 @@ void LLDrawPoolBump::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
-    S32 num_passes = LLPipeline::sRenderingHUDs ? 1 : 2; // skip rigged pass when rendering HUDs
+    S32 num_passes = LLPipelineFrameContext::getInstance().isHUDPass() ? 1 : 2; // skip rigged pass when rendering HUDs
 
     for (int i = 0; i < num_passes; ++i)
     { // two passes -- static and rigged
@@ -793,7 +794,7 @@ LLViewerTexture* LLBumpImageList::getBrightnessDarknessImage(LLViewerFetchedText
 
 void LLBumpImageList::onSourceStandardLoaded( bool success, LLViewerFetchedTexture* src_vi, LLImageRaw* src, LLImageRaw* aux_src, S32 discard_level, bool final, void* userdata)
 {
-    if (success && LLPipeline::sRenderDeferred)
+    if (success && LLPipelineFrameContext::getInstance().isRenderingDeferred())
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
         LLPointer<LLImageRaw> nrm_image = new LLImageRaw(src->getWidth(), src->getHeight(), 4);

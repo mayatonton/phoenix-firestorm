@@ -41,6 +41,7 @@
 #include "llviewershadermgr.h"
 #include "llviewercamera.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llsky.h"
 #include "llvowlsky.h"
 #include "llsettingsvo.h"
@@ -101,7 +102,7 @@ void LLDrawPoolWLSky::renderDome(const LLVector3& camPosLocal, F32 camHeightLoca
     gGL.pushMatrix();
 
     //chop off translation
-    if (LLPipeline::sReflectionRender && camPosLocal.mV[2] > 256.f)
+    if (LLPipelineFrameContext::getInstance().isReflectionPass() && camPosLocal.mV[2] > 256.f)
     {
         gGL.translatef(camPosLocal.mV[0], camPosLocal.mV[1], 256.f-camPosLocal.mV[2]*0.5f);
     }
@@ -268,7 +269,7 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
     gGL.rotatef(gFrameTimeSeconds*0.01f, 0.f, 0.f, 1.f);
     gDeferredStarProgram.uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
 
-    if (LLPipeline::sReflectionRender)
+    if (LLPipelineFrameContext::getInstance().isReflectionPass())
     {
         star_alpha = 1.0f;
     }

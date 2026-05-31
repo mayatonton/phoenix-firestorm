@@ -433,7 +433,7 @@ bool LLGLTFPreviewTexture::render()
     LLGLDisable stencil(GL_STENCIL_TEST);
     LLGLDisable scissor(GL_SCISSOR_TEST);
     SetTemporarily<bool> no_dof(&LLPipeline::RenderDepthOfField, false);
-    SetTemporarily<bool> no_glow(&LLPipeline::sRenderGlow, false);
+    LLPipelineFrameContext::ScopedRenderingGlow no_glow(false);
     SetTemporarily<bool> no_ssr(&LLPipeline::RenderScreenSpaceReflections, false);
     SetTemporarily<U32> no_aa(&LLPipeline::RenderFSAAType, U32(0));
     LLPipelineFrameContext::ScopedActiveRT use_auxiliary_render_target(&gPipeline.mAuxillaryRT);

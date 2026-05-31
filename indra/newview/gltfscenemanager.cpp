@@ -38,6 +38,7 @@
 #include "llvolumeoctree.h"
 #include "gltf/asset.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewertexturelist.h"
 #include "llimagej2c.h"
@@ -820,7 +821,7 @@ void GLTFSceneManager::bind(Asset& asset, Material& material)
 
     bindTexture(asset, TextureType::BASE_COLOR, material.mPbrMetallicRoughness.mBaseColorTexture, LLViewerFetchedTexture::sWhiteImagep);
 
-    if (!LLPipeline::sShadowRender)
+    if (!LLPipelineFrameContext::getInstance().isShadowPass())
     {
         bindTexture(asset, TextureType::NORMAL, material.mNormalTexture, LLViewerFetchedTexture::sFlatNormalImagep);
         bindTexture(asset, TextureType::METALLIC_ROUGHNESS, material.mPbrMetallicRoughness.mMetallicRoughnessTexture, LLViewerFetchedTexture::sWhiteImagep);

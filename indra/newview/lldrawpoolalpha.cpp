@@ -112,7 +112,7 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
     shader->bind();
     shader->uniform1f(LLShaderMgr::DISPLAY_GAMMA, (gamma > 0.1f) ? 1.0f / gamma : (1.0f / 2.2f));
 
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     { // for HUD attachments, only the pre-water pass is executed and we never want to clip anything
         LLVector4 near_clip(0, 0, -1, 0);
         shader->uniform1f(waterSign, 1.f);
@@ -124,7 +124,7 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
         shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
     }
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         shader->setMinimumAlpha(MINIMUM_IMPOSTOR_ALPHA);
     }
@@ -158,13 +158,13 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         water_sign = -1.f;
     }
 
-    if (LLPipeline::sUnderWaterRender)
+    if (LLPipelineFrameContext::getInstance().isUnderWaterRendering())
     {
         water_sign *= -1.f;
     }
 
     // prepare shaders
-    llassert(LLPipeline::sRenderDeferred);
+    llassert(LLPipelineFrameContext::getInstance().isRenderingDeferred());
 
     emissive_shader = &gDeferredEmissiveProgram;
     prepare_alpha_shader(emissive_shader, false, water_sign);
@@ -174,14 +174,14 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
 
     fullbright_shader   =
-        (LLPipeline::sImpostorRender) ? &gDeferredFullbrightAlphaMaskProgram :
-        (LLPipeline::sRenderingHUDs) ? &gHUDFullbrightAlphaMaskAlphaProgram :
+        (LLPipelineFrameContext::getInstance().isImpostorPass()) ? &gDeferredFullbrightAlphaMaskProgram :
+        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDFullbrightAlphaMaskAlphaProgram :
         &gDeferredFullbrightAlphaMaskAlphaProgram;
     prepare_alpha_shader(fullbright_shader, true, water_sign);
 
     simple_shader   =
-        (LLPipeline::sImpostorRender) ? &gDeferredAlphaImpostorProgram :
-        (LLPipeline::sRenderingHUDs) ? &gHUDAlphaProgram :
+        (LLPipelineFrameContext::getInstance().isImpostorPass()) ? &gDeferredAlphaImpostorProgram :
+        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDAlphaProgram :
         &gDeferredAlphaProgram;
 
     prepare_alpha_shader(simple_shader, true, water_sign); //prime simple shader (loads shadow relevant uniforms)
@@ -193,7 +193,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     }
 
     pbr_shader =
-        (LLPipeline::sRenderingHUDs) ? &gHUDPBRAlphaProgram :
+        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDPBRAlphaProgram :
         &gDeferredPBRAlphaProgram;
 
     prepare_alpha_shader(pbr_shader, true, water_sign);
@@ -220,7 +220,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // DoF result — alpha BLEND surfaces vanish from the screen while edit
     // tool is open. Keep the redirect gate aligned with renderDoF()'s gate.
     const bool use_alpha_rt =
-        !LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
+        !LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         !gCubeSnapshot && LLPipeline::RenderDepthOfField &&
         (LLPipeline::RenderDepthOfFieldInEditMode ||
          !LLToolMgr::getInstance()->inBuildMode()) &&
@@ -235,7 +235,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // next frame's composite. The pre-tonemap composite step (renderFinalize)
     // reads mAYAAlphaColor unconditionally, so it must start clean every
     // frame.
-    if (!LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
+    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         !gCubeSnapshot && getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
         LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaColor.isComplete())
@@ -276,7 +276,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // POST_WATER 全 path で swap を default 化。PRE_WATER は water fog
     // 計算 (write_depth が always true) のため rigged-first を維持。HUD は
     // forwardRender 1 回のみで対象外。
-    if (!LLPipeline::sRenderingHUDs &&
+    if (!LLPipelineFrameContext::getInstance().isHUDPass() &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
         // back-to-front: non-rigged (background — windows / foliage) 先 →
@@ -288,7 +288,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     else
     {
         // PRE_WATER / HUD の元順 — water fog 整合性のため touch しない。
-        if (!LLPipeline::sRenderingHUDs)
+        if (!LLPipelineFrameContext::getInstance().isHUDPass())
         {
             forwardRender(true);
         }
@@ -325,7 +325,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // </AYAstorm r30 P3 step 5>
 
     // final pass, render to depth for depth of field effects
-    if (!LLPipeline::sImpostorRender && (LLPipeline::RenderDepthOfField || volumetric_wants_alpha_depth) && !gCubeSnapshot && !LLPipeline::sRenderingHUDs && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
+    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && (LLPipeline::RenderDepthOfField || volumetric_wants_alpha_depth) && !gCubeSnapshot && !LLPipelineFrameContext::getInstance().isHUDPass() && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
         //update depth buffer sampler
         simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
@@ -369,8 +369,8 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // grille z here would tell cofF "this pixel is subject" and prevent bg
     // blur behind grilles — exactly the regression C-(a) avoids. Skip the
     // re-injection when mAYAAlphaColor is alive.
-    if (!LLPipeline::sImpostorRender && LLPipeline::RenderDepthOfField &&
-        !gCubeSnapshot && !LLPipeline::sRenderingHUDs &&
+    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && LLPipeline::RenderDepthOfField &&
+        !gCubeSnapshot && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
         LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaDepth.isComplete() &&
@@ -607,7 +607,7 @@ bool LLDrawPoolAlpha::TexSetup(LLDrawInfo* draw, bool use_material)
     }
     else
     {
-        if (!LLPipeline::sRenderingHUDs && use_material && current_shader)
+        if (!LLPipelineFrameContext::getInstance().isHUDPass() && use_material && current_shader)
         {
             if (draw->mNormalMap)
             {
@@ -788,7 +788,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
     F32 water_height = env.getWaterHeight();
 
     bool above_water = getType() == LLDrawPool::POOL_ALPHA_POST_WATER;
-    if (LLPipeline::sUnderWaterRender)
+    if (LLPipelineFrameContext::getInstance().isUnderWaterRendering())
     {
         above_water = !above_water;
     }
@@ -808,7 +808,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
             LLSpatialBridge* bridge = group->getSpatialPartition()->asBridge();
             const LLVector4a* ext = bridge ? bridge->getSpatialExtents() : group->getExtents();
 
-            if (!LLPipeline::sRenderingHUDs) // ignore above/below water for HUD render
+            if (!LLPipelineFrameContext::getInstance().isHUDPass()) // ignore above/below water for HUD render
             {
                 if (above_water)
                 { // reject any spatial groups that have no part above water
@@ -888,7 +888,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 }
                 else
                 {
-                    mat = LLPipeline::sRenderingHUDs ? nullptr : params.mMaterial;
+                    mat = LLPipelineFrameContext::getInstance().isHUDPass() ? nullptr : params.mMaterial;
 
                     if (params.mFullbright)
                     {
@@ -909,7 +909,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         light_enabled = true;
                     }
 
-                    if (LLPipeline::sRenderingHUDs)
+                    if (LLPipelineFrameContext::getInstance().isHUDPass())
                     {
                         target_shader = fullbright_shader;
                     }
@@ -981,7 +981,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     gGL.blendFunc((LLRender::eBlendFactor) params.mBlendFuncSrc, (LLRender::eBlendFactor) params.mBlendFuncDst, mAlphaSFactor, mAlphaDFactor);
 
                     bool reset_minimum_alpha = false;
-                    if (!LLPipeline::sImpostorRender &&
+                    if (!LLPipelineFrameContext::getInstance().isImpostorPass() &&
                         params.mBlendFuncDst != LLRender::BF_SOURCE_ALPHA &&
                         params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA)
                     { // this draw call has a custom blend function that may require rendering of "invisible" fragments

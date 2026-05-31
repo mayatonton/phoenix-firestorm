@@ -37,6 +37,7 @@
 #include "llappviewer.h"
 
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "lltexturefetch.h"
 #include "llviewerobjectlist.h"
 #include "llviewertexturelist.h"
@@ -692,7 +693,7 @@ void send_viewer_stats(bool include_preferences)
 
 
     S32 shader_level = 0;
-    if (LLPipeline::sRenderDeferred)
+    if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
     {
         if (LLPipeline::RenderShadowDetail > 0)
         {

@@ -496,6 +496,19 @@ namespace
     {
         return LLPipelineFrameContext::getInstance().getActiveRT();
     }
+
+    // sub-step 4.2 (a) pass-specific 5 件 (file-local read helpers, 4.1-α/β 範式継承)
+    inline bool isFrameShadowPass()     { return LLPipelineFrameContext::getInstance().isShadowPass(); }
+    inline bool isFrameReflectionPass() { return LLPipelineFrameContext::getInstance().isReflectionPass(); }
+    inline bool isFrameImpostorPass()   { return LLPipelineFrameContext::getInstance().isImpostorPass(); }
+    inline bool isFrameHUDPass()        { return LLPipelineFrameContext::getInstance().isHUDPass(); }
+    inline bool isFrameDoFPass()        { return LLPipelineFrameContext::getInstance().isDoFPass(); }
+
+    // sub-step 4.2 (b) frame-global 4 件 (file-local read helpers)
+    inline bool isFrameRenderingGlow()           { return LLPipelineFrameContext::getInstance().isRenderingGlow(); }
+    inline bool isFrameRenderingDeferred()       { return LLPipelineFrameContext::getInstance().isRenderingDeferred(); }
+    inline bool isFrameUnderWaterRendering()     { return LLPipelineFrameContext::getInstance().isUnderWaterRendering(); }
+    inline bool isFrameReflectionProbesEnabled() { return LLPipelineFrameContext::getInstance().isReflectionProbesEnabled(); }
 }
 // </AYAstorm r41>
 
@@ -1072,7 +1085,7 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
 
         gCubeSnapshot = true;
 
-        if (sReflectionProbesEnabled)
+        if (isFrameReflectionProbesEnabled())
         {
             mReflectionMapManager.initReflectionMaps();
         }
@@ -1592,7 +1605,7 @@ void LLPipeline::refreshCachedSettings()
     RenderHeroProbeConservativeUpdateMultiplier = gSavedSettings.getS32("RenderHeroProbeConservativeUpdateMultiplier");
     RenderAvatarCloth = gSavedSettings.getBOOL("RenderAvatarCloth");
 
-    sReflectionProbesEnabled = LLFeatureManager::getInstance()->isFeatureAvailable("RenderReflectionsEnabled") && gSavedSettings.getBOOL("RenderReflectionsEnabled");
+    LLPipelineFrameContext::getInstance().setReflectionProbesEnabled(LLFeatureManager::getInstance()->isFeatureAvailable("RenderReflectionsEnabled") && gSavedSettings.getBOOL("RenderReflectionsEnabled"));
     // <FS:Beq> [FIRE-35070] Instead of using the above we'll add a new static level variable to save some lookups. Making the above "work" with ProbeLevel will break everything.
     sReflectionProbeLevel = gSavedSettings.getS32("RenderReflectionProbeLevel");
     // <FS:Beq/>
@@ -3025,7 +3038,7 @@ static LLTrace::BlockTimerStatHandle FTM_CULL("Object Culling");
 bool LLPipeline::isWaterClip()
 {
     // We always pretend that we're not clipping water when rendering mirrors.
-    return (gPipeline.mHeroProbeManager.isMirrorPass()) ? false : (!sRenderTransparentWater || gCubeSnapshot) && !sRenderingHUDs;
+    return (gPipeline.mHeroProbeManager.isMirrorPass()) ? false : (!sRenderTransparentWater || gCubeSnapshot) && !isFrameHUDPass();
 }
 
 // <FS:AYAstorm r30 BD full port Phase 5 R3 (A4)>
@@ -3057,7 +3070,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
 
         F32 water_height = LLEnvironment::instance().getWaterHeight();
 
-        if (sUnderWaterRender)
+        if (isFrameUnderWaterRendering())
         {
             //camera is below water, cull above water
             pnorm.setVec(0, 0, 1);
@@ -3193,7 +3206,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
     LL_PROFILE_GPU_ZONE("doOcclusion");
     llassert(!gCubeSnapshot);
 
-    if (sReflectionProbesEnabled && sUseOcclusion > 1 && !LLPipeline::sShadowRender && !gCubeSnapshot)
+    if (isFrameReflectionProbesEnabled() && sUseOcclusion > 1 && !isFrameShadowPass() && !gCubeSnapshot)
     {
         gGL.setColorMask(false, false);
         LLGLDepthTest depth(GL_TRUE, GL_FALSE);
@@ -3214,7 +3227,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         gGL.setColorMask(true, true);
     }
 
-    if (sReflectionProbesEnabled && sUseOcclusion > 1 && !LLPipeline::sShadowRender && !gCubeSnapshot)
+    if (isFrameReflectionProbesEnabled() && sUseOcclusion > 1 && !isFrameShadowPass() && !gCubeSnapshot)
     {
         gGL.setColorMask(false, false);
         LLGLDepthTest depth(GL_TRUE, GL_FALSE);
@@ -3784,7 +3797,7 @@ void LLPipeline::markVisible(LLDrawable *drawablep, LLCamera& camera)
                     {
                         LLVOAvatar* av = vobj->asAvatar();
                         if (av &&
-                            ((!sImpostorRender && av->isImpostor()) //ignore impostor flag during impostor pass
+                            ((!isFrameImpostorPass() && av->isImpostor()) //ignore impostor flag during impostor pass
                              //|| av->isInMuteList() // <FS:Ansariel> Partially undo MAINT-5700: Draw imposter for muted avatars
                              || (LLVOAvatar::AOA_JELLYDOLL == av->getOverallAppearance() && !av->needsImpostorUpdate()) ))
                         {
@@ -4536,7 +4549,7 @@ void LLPipeline::postSort(LLCamera &camera)
                 LLDrawInfo *info = *k;
 
                 getFrameCull()->pushDrawInfo(j->first, info);
-                if (!sShadowRender && !sReflectionRender && !gCubeSnapshot)
+                if (!isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
                 {
                     addTrianglesDrawn(info->mCount);
                 }
@@ -4618,7 +4631,7 @@ void LLPipeline::postSort(LLCamera &camera)
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("sort alpha groups");
-    if (!sShadowRender)
+    if (!isFrameShadowPass())
     {
         // order alpha groups by distance
         std::sort(getFrameCull()->beginAlphaGroups(), getFrameCull()->endAlphaGroups(), LLSpatialGroup::CompareDepthGreater());
@@ -4633,7 +4646,7 @@ void LLPipeline::postSort(LLCamera &camera)
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("beacon rendering flags");
     // only render if the flag is set. The flag is only set if we are in edit mode or the toggle is set in the menus
     // <FS:Ansariel> Make beacons also show when beacons floater is closed.
-    if (/*LLFloaterReg::instanceVisible("beacons") &&*/ !sShadowRender && !gCubeSnapshot)
+    if (/*LLFloaterReg::instanceVisible("beacons") &&*/ !isFrameShadowPass() && !gCubeSnapshot)
     {
         if (sRenderScriptedTouchBeacons)
         {
@@ -4718,12 +4731,12 @@ void LLPipeline::postSort(LLCamera &camera)
     }
     LL_PUSH_CALLSTACKS();
     // If managing your telehub, draw beacons at telehub and currently selected spawnpoint.
-    if (LLFloaterTelehub::renderBeacons() && !sShadowRender && !gCubeSnapshot)
+    if (LLFloaterTelehub::renderBeacons() && !isFrameShadowPass() && !gCubeSnapshot)
     {
         LLFloaterTelehub::addBeacons();
     }
 
-    if (!sShadowRender && !gCubeSnapshot)
+    if (!isFrameShadowPass() && !gCubeSnapshot)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("Render face highlights");
         mSelectedFaces.clear();
@@ -4801,7 +4814,7 @@ void render_hud_elements()
     gGL.color4f(1, 1, 1, 1);
     LLGLDepthTest depth(GL_TRUE, GL_FALSE);
 
-    if (!LLPipeline::sReflectionRender && gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI))
+    if (!isFrameReflectionPass() && gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI))
     {
         gViewerWindow->renderSelections(false, false, false); // For HUD version in render_ui_3d()
 
@@ -5098,7 +5111,7 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_GEOMETRY);
     LL_PROFILE_GPU_ZONE("renderGeomDeferred");
 
-    llassert(!sRenderingHUDs);
+    llassert(!isFrameHUDPass());
 
     if (gUseWireframe)
     {
@@ -5245,11 +5258,11 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 
     LLGLEnable cull(GL_CULL_FACE);
 
-    bool done_atmospherics = LLPipeline::sRenderingHUDs; //skip atmospherics on huds
+    bool done_atmospherics = isFrameHUDPass(); //skip atmospherics on huds
     bool done_water_haze = done_atmospherics;
     bool done_water_exclusion = false;
     // <FS:AYAstorm bug fix> SSS dispatch を FB pool より前に動かすため独立 flag を導入。
-    bool done_sss = LLPipeline::sRenderingHUDs;
+    bool done_sss = isFrameHUDPass();
     // </FS:AYAstorm>
 
     // do water exclusion just before water pass.
@@ -5258,7 +5271,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     // do atmospheric haze just before post water alpha
     U32 atmospherics_pass = LLDrawPool::POOL_ALPHA_POST_WATER;
 
-    if (LLPipeline::sUnderWaterRender)
+    if (isFrameUnderWaterRendering())
     { // if under water, do atmospherics just before the water pass
         atmospherics_pass = LLDrawPool::POOL_WATER;
     }
@@ -5852,7 +5865,7 @@ void LLPipeline::renderSnapshotGuidesOverlay()
 void LLPipeline::renderFocusPoint()
 {
     static LLCachedControl<bool> render_focus_point_crosshair(gSavedSettings, "FSFocusPointRender", false);
-    if (sDoFEnabled && render_focus_point_crosshair && gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI))
+    if (isFrameDoFPass() && render_focus_point_crosshair && gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI))
     {
         gDebugProgram.bind();
         LLVector3 focus_point = sLastFocusPoint;
@@ -7103,7 +7116,7 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     assertInitialized();
 
-    if (LLPipeline::sReflectionRender || gCubeSnapshot || LLPipeline::sRenderingHUDs || LLApp::isExiting())
+    if (isFrameReflectionPass() || gCubeSnapshot || isFrameHUDPass() || LLApp::isExiting())
     {
         return;
     }
@@ -7118,7 +7131,7 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
         LLVector3 cam_pos = camera.getOrigin();
 
         F32 max_dist;
-        if (LLPipeline::sRenderDeferred)
+        if (isFrameRenderingDeferred())
         {
             max_dist = RenderFarClip;
         }
@@ -7266,7 +7279,7 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
                 continue;
             }
             new_nearby_lights.insert(Light(drawable, dist, 0.f));
-            if (!LLPipeline::sRenderDeferred && new_nearby_lights.size() > (U32)MAX_LOCAL_LIGHTS)
+            if (!isFrameRenderingDeferred() && new_nearby_lights.size() > (U32)MAX_LOCAL_LIGHTS)
             {
                 new_nearby_lights.erase(--new_nearby_lights.end());
                 const Light& last = *new_nearby_lights.rbegin();
@@ -7279,7 +7292,7 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
              iter != new_nearby_lights.end(); iter++)
         {
             const Light* light = &(*iter);
-            if (LLPipeline::sRenderDeferred || mNearbyLights.size() < (U32)MAX_LOCAL_LIGHTS)
+            if (isFrameRenderingDeferred() || mNearbyLights.size() < (U32)MAX_LOCAL_LIGHTS)
             {
                 mNearbyLights.insert(*light);
                 ((LLDrawable*) light->drawable)->setState(LLDrawable::NEARBY_LIGHT);
@@ -7331,7 +7344,7 @@ void LLPipeline::setupHWLights()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     assertInitialized();
 
-    if (LLPipeline::sRenderingHUDs)
+    if (isFrameHUDPass())
     {
         return;
     }
@@ -7508,7 +7521,7 @@ void LLPipeline::setupHWLights()
             LLVector3 light_pos(light->getRenderPosition());
             LLVector4 light_pos_gl(light_pos, 1.0f);
 
-            F32 adjusted_radius = light->getLightRadius() * (sRenderDeferred ? 1.5f : 1.0f);
+            F32 adjusted_radius = light->getLightRadius() * (isFrameRenderingDeferred() ? 1.5f : 1.0f);
             if (adjusted_radius <= 0.001f)
             {
                 continue;
@@ -7527,7 +7540,7 @@ void LLPipeline::setupHWLights()
             light_state->setSize(light->getLightRadius() * 1.5f);
             light_state->setFalloff(light->getLightFalloff(DEFERRED_LIGHT_FALLOFF));
 
-            if (sRenderDeferred)
+            if (isFrameRenderingDeferred())
             {
                 light_state->setLinearAttenuation(linatten);
                 light_state->setQuadraticAttenuation(light->getLightFalloff(DEFERRED_LIGHT_FALLOFF) + 1.f); // get falloff to match for forward deferred rendering lights
@@ -7540,7 +7553,7 @@ void LLPipeline::setupHWLights()
 
 
             if (light->isLightSpotlight() // directional (spot-)light
-                && (LLPipeline::sRenderDeferred || RenderSpotLightsInNondeferred)) // these are only rendered as GL spotlights if we're in deferred rendering mode *or* the setting forces them on
+                && (isFrameRenderingDeferred() || RenderSpotLightsInNondeferred)) // these are only rendered as GL spotlights if we're in deferred rendering mode *or* the setting forces them on
             {
                 LLQuaternion quat = light->getRenderRotation();
                 LLVector3 at_axis(0,0,-1); // this matches deferred rendering's object light direction
@@ -9030,7 +9043,7 @@ void LLPipeline::copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget*
 void LLPipeline::generateGlow(LLRenderTarget* src)
 {
     LL_PROFILE_GPU_ZONE("glow generate");
-    if (sRenderGlow)
+    if (isFrameRenderingGlow())
     {
         mGlow[2].bindTarget();
         mGlow[2].clear();
@@ -9131,7 +9144,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
         gGlowProgram.unbind();
 
     }
-    else // !sRenderGlow, skip the glow ping-pong and just clear the result target
+    else // !isFrameRenderingGlow(), skip the glow ping-pong and just clear the result target
     {
         mGlow[1].bindTarget();
         glClearColor(0.f, 0.f, 0.f, 0.f);
@@ -9836,14 +9849,14 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
 {
     LL_PROFILE_GPU_ZONE("dof");
     {
-        sDoFEnabled = // <FS:Beq/> // FIRE-32023 Render focus point
+        LLPipelineFrameContext::getInstance().setDoFPass( // <FS:Beq/> // FIRE-32023 Render focus point
             (RenderDepthOfFieldInEditMode || !LLToolMgr::getInstance()->inBuildMode()) &&
             RenderDepthOfField &&
-            !gCubeSnapshot;
+            !gCubeSnapshot);
 
         gViewerWindow->setup3DViewport();
 
-        if (sDoFEnabled) // <FS:Beq/> // FIRE-32023 Render focus point
+        if (isFrameDoFPass()) // <FS:Beq/> // FIRE-32023 Render focus point
         {
             if (!gDeferredCoFProgram.isComplete() ||
                 !gDeferredPostProgram.isComplete() ||
@@ -10526,7 +10539,7 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
                                     (F32) gGLViewport[3]);
     }
 
-    if (sReflectionRender && !shader.getUniformLocation(LLShaderMgr::MODELVIEW_MATRIX))
+    if (isFrameReflectionPass() && !shader.getUniformLocation(LLShaderMgr::MODELVIEW_MATRIX))
     {
         shader.uniformMatrix4fv(LLShaderMgr::MODELVIEW_MATRIX, 1, false, glm::value_ptr(mReflectionModelView));
     }
@@ -10577,7 +10590,7 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     stop_glerror();
 
-    if (!LLPipeline::sReflectionProbesEnabled)
+    if (!isFrameReflectionProbesEnabled())
     {
         channel = shader.enableTexture(LLShaderMgr::ENVIRONMENT_MAP, LLTexUnit::TT_CUBE_MAP);
         if (channel > -1)
@@ -11111,7 +11124,7 @@ void LLPipeline::renderDeferredLighting()
         return;
     }
 
-    llassert(!sRenderingHUDs);
+    llassert(!isFrameHUDPass());
 
     // <AYAstorm:r21.1> GPU self-rigged picker:
     // Write the self attachment LocalIDs into mObjectIDBuffer now — the
@@ -11725,7 +11738,7 @@ void LLPipeline::doAtmospherics()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
-    if (sImpostorRender)
+    if (isFrameImpostorPass())
     { // do not attempt atmospherics on impostors
         return;
     }
@@ -11794,7 +11807,7 @@ void LLPipeline::doGodrays()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
-    if (sImpostorRender || gCubeSnapshot)
+    if (isFrameImpostorPass() || gCubeSnapshot)
     { // no godrays on impostors / reflection probe snapshots
         return;
     }
@@ -11842,7 +11855,7 @@ void LLPipeline::doSkinSSS()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
-    if (sImpostorRender || gCubeSnapshot)
+    if (isFrameImpostorPass() || gCubeSnapshot)
     {
         return;
     }
@@ -12006,7 +12019,7 @@ void LLPipeline::doSkinSSS()
 void LLPipeline::doWaterHaze()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    if (sImpostorRender)
+    if (isFrameImpostorPass())
     { // do not attempt water haze on impostors
         return;
     }
@@ -12053,11 +12066,11 @@ void LLPipeline::doWaterHaze()
         haze_shader.uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
 
         static LLStaticHashedString above_water_str("above_water");
-        haze_shader.uniform1i(above_water_str, sUnderWaterRender ? -1 : 1);
+        haze_shader.uniform1i(above_water_str, isFrameUnderWaterRendering() ? -1 : 1);
 
         haze_shader.bindTexture(LLShaderMgr::WATER_EXCLUSIONTEX, &mWaterExclusionMask);
 
-        if (LLPipeline::sUnderWaterRender)
+        if (isFrameUnderWaterRendering())
         {
             LLGLDepthTest depth(GL_FALSE);
 
@@ -12280,7 +12293,7 @@ void LLPipeline::unbindDeferredShader(LLGLSLShader &shader)
     shader.disableTexture(LLShaderMgr::DEFERRED_NOISE);
     shader.disableTexture(LLShaderMgr::DEFERRED_LIGHTFUNC);
 
-    if (!LLPipeline::sReflectionProbesEnabled)
+    if (!isFrameReflectionProbesEnabled())
     {
         S32 channel = shader.disableTexture(LLShaderMgr::ENVIRONMENT_MAP, LLTexUnit::TT_CUBE_MAP);
         if (channel > -1)
@@ -12313,7 +12326,7 @@ void LLPipeline::setEnvMat(LLGLSLShader& shader)
 
 void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
 {
-    if (!sReflectionProbesEnabled)
+    if (!isFrameReflectionProbesEnabled())
     {
         return;
     }
@@ -12462,7 +12475,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_RENDER);
     LL_PROFILE_GPU_ZONE("renderShadow");
 
-    LLPipeline::sShadowRender = true;
+    LLPipelineFrameContext::getInstance().setShadowPass(true);
 
     // disable occlusion culling during shadow render
     U32 saved_occlusion = sUseOcclusion;
@@ -12658,7 +12671,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 
     // reset occlusion culling flag
     sUseOcclusion = saved_occlusion;
-    LLPipeline::sShadowRender = false;
+    LLPipelineFrameContext::getInstance().setShadowPass(false);
 }
 
 bool LLPipeline::getVisiblePointCloud(LLCamera& camera, LLVector3& min, LLVector3& max, std::vector<LLVector3>& fp, LLVector3 light_dir)
@@ -12892,7 +12905,7 @@ public:
 
 void LLPipeline::generateSunShadow(LLCamera& camera)
 {
-    if (!sRenderDeferred || RenderShadowDetail <= 0)
+    if (!isFrameRenderingDeferred() || RenderShadowDetail <= 0)
     {
         return;
     }
@@ -13879,10 +13892,10 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     S32 occlusion = sUseOcclusion;
     sUseOcclusion = 0;
 
-    sReflectionRender = ! sRenderDeferred;
+    LLPipelineFrameContext::getInstance().setReflectionPass(!isFrameRenderingDeferred());
 
-    sShadowRender = true;
-    sImpostorRender = true;
+    LLPipelineFrameContext::getInstance().setShadowPass(true);
+    LLPipelineFrameContext::getInstance().setImpostorPass(true);
 
     LLViewerCamera* viewer_camera = LLViewerCamera::getInstance();
 
@@ -14037,7 +14050,7 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
             {
                 avatar->mImpostor.allocate(resX, resY, GL_RGBA, true);
 
-                if (LLPipeline::sRenderDeferred)
+                if (isFrameRenderingDeferred())
                 {
                     addDeferredAttachments(avatar->mImpostor, true);
                 }
@@ -14095,7 +14108,7 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
 
     if (!for_profile)
     { //create alpha mask based on depth buffer (grey out if muted)
-        if (LLPipeline::sRenderDeferred)
+        if (isFrameRenderingDeferred())
         {
             GLuint buff = GL_COLOR_ATTACHMENT0;
             glDrawBuffers(1, &buff);
@@ -14167,9 +14180,9 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     }
 
     sUseOcclusion = occlusion;
-    sReflectionRender = false;
-    sImpostorRender = false;
-    sShadowRender = false;
+    LLPipelineFrameContext::getInstance().setReflectionPass(false);
+    LLPipelineFrameContext::getInstance().setImpostorPass(false);
+    LLPipelineFrameContext::getInstance().setShadowPass(false);
     popRenderTypeMask();
 
     if (!preview_avatar)

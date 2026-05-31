@@ -52,6 +52,7 @@
 #include "llviewertexturelist.h"
 #include "llviewercontrol.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llappviewer.h"
 #include "llface.h"
 #include "llviewercamera.h"
@@ -1804,7 +1805,7 @@ void LLViewerFetchedTexture::processTextureStats()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     llassert(!gCubeSnapshot);  // should only be called when the main camera is active
-    llassert(!LLPipeline::sShadowRender);
+    llassert(!LLPipelineFrameContext::getInstance().isShadowPass());
 
     if(mFullyLoaded)
     {

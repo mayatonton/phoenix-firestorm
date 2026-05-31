@@ -2172,7 +2172,7 @@ ERlvCmdRet RlvBehaviourHandler<RLV_BHVR_SETSPHERE>::onCommand(const RlvCommand& 
             // Rlv::forceAtmosphericShadersIfAvailable();
     // <FS:Beq> Note to Kitty, this can all go I think.
     //      // If we're not using deferred but are using Windlight shaders we need to force use of FBO and depthmap texture
-    //      if ( (!LLPipeline::sRenderDeferred) && (LLPipeline::WindLightUseAtmosShaders) && (!LLPipeline::sUseDepthTexture) )
+    //      if ( (!LLPipelineFrameContext::getInstance().isRenderingDeferred()) && (LLPipeline::WindLightUseAtmosShaders) && (!LLPipeline::sUseDepthTexture) )
     //      {
     //          LLRenderTarget::sUseFBO = true;
     //          LLPipeline::sUseDepthTexture = true;

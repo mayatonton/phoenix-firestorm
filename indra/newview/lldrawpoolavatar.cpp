@@ -45,6 +45,7 @@
 #include "llviewerregion.h"
 #include "noise.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llvovolume.h"
 #include "llvolume.h"
@@ -177,7 +178,7 @@ void LLDrawPoolAvatar::beginDeferredPass(S32 pass)
     sSkipTransparent = true;
     is_deferred_render = true;
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     { //impostor pass does not have impostor rendering
         ++pass;
     }
@@ -203,7 +204,7 @@ void LLDrawPoolAvatar::endDeferredPass(S32 pass)
     sSkipTransparent = false;
     is_deferred_render = false;
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         ++pass;
     }
@@ -267,7 +268,7 @@ void LLDrawPoolAvatar::renderPostDeferred(S32 pass)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
     is_post_deferred_render = true;
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     { //HACK for impostors so actual pass ends up being proper pass
         render(0);
     }
@@ -387,7 +388,7 @@ void LLDrawPoolAvatar::renderShadow(S32 pass)
     }
 
     LLVOAvatar::AvatarOverallAppearance oa = avatarp->getOverallAppearance();
-    bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor();
+    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor();
     // no shadows if the shadows are causing this avatar to breach the limit.
     if (avatarp->isTooSlow() || impostor || (oa == LLVOAvatar::AOA_INVISIBLE))
     {
@@ -432,7 +433,7 @@ S32 LLDrawPoolAvatar::getNumDeferredPasses()
 void LLDrawPoolAvatar::render(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         renderAvatars(NULL, ++pass);
         return;
@@ -447,7 +448,7 @@ void LLDrawPoolAvatar::beginRenderPass(S32 pass)
     //reset vertex buffer mappings
     LLVertexBuffer::unbind();
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     { //impostor render does not have impostors or rigid rendering
         ++pass;
     }
@@ -475,7 +476,7 @@ void LLDrawPoolAvatar::endRenderPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         ++pass;
     }
@@ -498,7 +499,7 @@ void LLDrawPoolAvatar::beginImpostor()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (!LLPipeline::sReflectionRender)
+    if (!LLPipelineFrameContext::getInstance().isReflectionPass())
     {
         LLVOAvatar::sNumVisibleAvatars = 0;
     }
@@ -553,7 +554,7 @@ void LLDrawPoolAvatar::beginDeferredImpostor()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (!LLPipeline::sReflectionRender)
+    if (!LLPipelineFrameContext::getInstance().isReflectionPass())
     {
         LLVOAvatar::sNumVisibleAvatars = 0;
     }
@@ -834,7 +835,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         return;
     }
 
-    bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor() && !single_avatar;
+    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor() && !single_avatar;
 
 // <FS:Beq> rendertime Tracy annotations
 {
@@ -849,7 +850,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     }
 }// <FS:Beq/> rendertime Tracy annotations
 
-    if (pass == 0 && !impostor && LLPipeline::sUnderWaterRender)
+    if (pass == 0 && !impostor && LLPipelineFrameContext::getInstance().isUnderWaterRendering())
     { //don't draw foot shadows under water
         return;
     }
@@ -864,7 +865,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     if (pass == 0)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("pass 0"); // <FS:Beq/> Tracy markup
-        if (!LLPipeline::sReflectionRender)
+        if (!LLPipelineFrameContext::getInstance().isReflectionPass())
         {
             LLVOAvatar::sNumVisibleAvatars++;
         }
@@ -873,7 +874,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         if (impostor || (LLVOAvatar::AOA_NORMAL != avatarp->getOverallAppearance() && !avatarp->needsImpostorUpdate()))
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("render impostor"); // <FS:Beq/> Tracy markup
-            if (LLPipeline::sRenderDeferred && !LLPipeline::sReflectionRender && avatarp->mImpostor.isComplete())
+            if (LLPipelineFrameContext::getInstance().isRenderingDeferred() && !LLPipelineFrameContext::getInstance().isReflectionPass() && avatarp->mImpostor.isComplete())
             {
                 // <FS:Ansariel> FIRE-9179: Crash fix
                 //if (normal_channel > -1)
@@ -1063,7 +1064,7 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     }
 
     LLVOAvatar::AvatarOverallAppearance oa = avatarp->getOverallAppearance();
-    bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor();
+    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor();
     if (avatarp->isTooSlow() || impostor || (oa == LLVOAvatar::AOA_INVISIBLE))
     {
         return;

@@ -41,6 +41,7 @@
 #include "llsky.h"
 
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 #include "llfile.h"
 #include "llviewerwindow.h"
@@ -646,7 +647,7 @@ void LLViewerShaderMgr::setShaders()
 
     unloadShaders();
 
-    LLPipeline::sRenderGlow = gSavedSettings.getBOOL("RenderGlow");
+    LLPipelineFrameContext::getInstance().setRenderingGlow(gSavedSettings.getBOOL("RenderGlow"));
     LLPipeline::RenderAvatarCloth = gSavedSettings.getBOOL("RenderAvatarCloth");
 
     if (gViewerWindow)
@@ -1103,7 +1104,7 @@ bool LLViewerShaderMgr::loadShadersEffects()
         success = gGlowProgram.createShader();
         if (!success)
         {
-            LLPipeline::sRenderGlow = false;
+            LLPipelineFrameContext::getInstance().setRenderingGlow(false);
         }
     }
 
@@ -1126,7 +1127,7 @@ bool LLViewerShaderMgr::loadShadersEffects()
         success = gGlowExtractProgram.createShader();
         if (!success)
         {
-            LLPipeline::sRenderGlow = false;
+            LLPipelineFrameContext::getInstance().setRenderingGlow(false);
         }
     }
 

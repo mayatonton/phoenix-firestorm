@@ -47,6 +47,7 @@
 #include "llviewertexturelist.h" // To get alpha gradients
 #include "llworld.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llrender.h"
 #include "llenvironment.h"
@@ -104,7 +105,7 @@ LLDrawPoolTerrain::~LLDrawPoolTerrain()
 
 U32 LLDrawPoolTerrain::getVertexDataMask()
 {
-    if (LLPipeline::sShadowRender)
+    if (LLPipelineFrameContext::getInstance().isShadowPass())
     {
         return LLVertexBuffer::MAP_VERTEX;
     }

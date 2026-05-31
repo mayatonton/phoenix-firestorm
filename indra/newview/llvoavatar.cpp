@@ -97,6 +97,7 @@
 #include "llvovolume.h"
 #include "llworld.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llsky.h"
 #include "llanimstatelabels.h"
@@ -6101,7 +6102,7 @@ U32 LLVOAvatar::renderSkinned()
                 }
             }
 
-            if (!isSelf() || gAgent.needsRenderHead() || LLPipeline::sShadowRender)
+            if (!isSelf() || gAgent.needsRenderHead() || LLPipelineFrameContext::getInstance().isShadowPass())
             {
                 if(eyelash_mesh)
                 {
@@ -6186,7 +6187,7 @@ U32 LLVOAvatar::renderSkinned()
                 }
                 first_pass = false;
             }
-            if (!isSelf() || gAgent.needsRenderHead() || LLPipeline::sShadowRender)
+            if (!isSelf() || gAgent.needsRenderHead() || LLPipelineFrameContext::getInstance().isShadowPass())
             {
 
                 if (isTextureVisible(TEX_HEAD_BAKED) || (getOverallAppearance() == AOA_JELLYDOLL && !isControlAvatar()) || isUIAvatar())
@@ -6220,7 +6221,7 @@ U32 LLVOAvatar::renderSkinned()
             }
         }
 
-        if (!LLDrawPoolAvatar::sSkipTransparent || LLPipeline::sImpostorRender)
+        if (!LLDrawPoolAvatar::sSkipTransparent || LLPipelineFrameContext::getInstance().isImpostorPass())
         {
             LLGLState blend(GL_BLEND, !mIsDummy);
             num_indices += renderTransparent(first_pass);
@@ -6245,9 +6246,9 @@ U32 LLVOAvatar::renderTransparent(bool first_pass)
         gGL.flush();
     }
 
-    if (!isSelf() || gAgent.needsRenderHead() || LLPipeline::sShadowRender)
+    if (!isSelf() || gAgent.needsRenderHead() || LLPipelineFrameContext::getInstance().isShadowPass())
     {
-        if (LLPipeline::sImpostorRender)
+        if (LLPipelineFrameContext::getInstance().isImpostorPass())
         {
             gGL.flush();
         }
@@ -6270,7 +6271,7 @@ U32 LLVOAvatar::renderTransparent(bool first_pass)
             }
             first_pass = false;
         }
-        if (LLPipeline::sImpostorRender)
+        if (LLPipelineFrameContext::getInstance().isImpostorPass())
         {
             gGL.flush();
         }
@@ -12004,7 +12005,7 @@ bool LLVOAvatar::updateLOD()
         return false;
     }
 
-    if (!LLPipeline::sImpostorRender && isImpostor() && 0 != mDrawable->getNumFaces() && mDrawable->getFace(0)->hasGeometry())
+    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && isImpostor() && 0 != mDrawable->getNumFaces() && mDrawable->getFace(0)->hasGeometry())
     {
         return true;
     }

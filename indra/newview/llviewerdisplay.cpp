@@ -498,7 +498,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     gSnapshot = for_snapshot;
 
-    if (LLPipeline::sRenderDeferred)
+    if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
     { //hack to make sky show up in deferred snapshots
         for_snapshot = false;
     }
@@ -895,7 +895,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         static LLCullResult result;
         LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
-        LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
+        LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
         gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
         stop_glerror();
 
@@ -1069,12 +1069,12 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         //  gGL.popMatrix();
         //}
 
-        LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
+        LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
 
 // <FS:CR> Aurora Sim
         if (!LLWorld::getInstance()->getAllowRenderWater())
         {
-            LLPipeline::sUnderWaterRender = false;
+            LLPipelineFrameContext::getInstance().setUnderWaterRendering(false);
         }
 // </FS:CR> Aurora Sim
         LLGLState::checkStates();
@@ -1145,15 +1145,15 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderFlush");
 
-        LLRenderTarget &rt = (gPipeline.sRenderDeferred ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen : LLPipelineFrameContext::getInstance().getActiveRT()->screen);
+        LLRenderTarget &rt = (LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen : LLPipelineFrameContext::getInstance().getActiveRT()->screen);
         rt.flush();
 
-        if (LLPipeline::sRenderDeferred)
+        if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
         {
             gPipeline.renderDeferredLighting();
         }
 
-        LLPipeline::sUnderWaterRender = false;
+        LLPipelineFrameContext::getInstance().setUnderWaterRendering(false);
 
         {
             //capture the frame buffer.
@@ -1320,7 +1320,7 @@ void display_cube_face()
 
     static LLCullResult result;
     LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
-    LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
+    LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
     gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
 
     gGL.setColorMask(true, true);
@@ -1350,7 +1350,7 @@ void display_cube_face()
 
     LLAppViewer::instance()->pingMainloopTimeout("Display:RenderStart");
 
-    LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
+    LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
 
     gGL.setColorMask(true, true);
 
@@ -1373,7 +1373,7 @@ void display_cube_face()
 
     gPipeline.renderDeferredLighting();
 
-    LLPipeline::sUnderWaterRender = false;
+    LLPipelineFrameContext::getInstance().setUnderWaterRendering(false);
 
     // Finalize scene
     //gPipeline.renderFinalize();
@@ -1404,7 +1404,7 @@ void render_hud_attachments()
 
     if (LLPipeline::sShowHUDAttachments && !gDisconnected && setup_hud_matrices())
     {
-        LLPipeline::sRenderingHUDs = true;
+        LLPipelineFrameContext::getInstance().setHUDPass(true);
         LLCamera hud_cam = *LLViewerCamera::getInstance();
         hud_cam.setOrigin(-1.f, 0.f, 0.f);
         hud_cam.setAxes(LLVector3(1.f, 0.f, 0.f), LLVector3(0.f, 1.f, 0.f), LLVector3(0.f, 0.f, 1.f));
@@ -1489,7 +1489,7 @@ void render_hud_attachments()
             gPipeline.toggleRenderDebugFeature(LLPipeline::RENDER_DEBUG_FEATURE_UI);
         }
         LLPipeline::sUseOcclusion = use_occlusion;
-        LLPipeline::sRenderingHUDs = false;
+        LLPipelineFrameContext::getInstance().setHUDPass(false);
     }
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.popMatrix();
