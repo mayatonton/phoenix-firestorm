@@ -23,6 +23,31 @@
  * $/LicenseInfo$
  */
 
+// r41 sub-step 4.3-γ'-port-β-1 (sub-doc 06 §1.2.4 LL_VULKAN_GLSL macro switch):
+// bundle-A (uniform → UBO) + bundle-B (location qualifier) for Vulkan path、GL path 維持
+// (set=0/binding=0 PerFrame / set=1/binding=0 MaterialUBO は全 base file 共通既定値、
+// sub-doc 07 §3.1 sub-step 7.2/7.3 確定値)。
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0) uniform PerFrame {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat3 normal_matrix;
+};
+layout(set=1, binding=0) uniform MaterialUBO {
+    mat4 texture_matrix0;
+};
+
+layout(location=0) in vec3 position;
+layout(location=1) in vec4 diffuse_color;
+layout(location=2) in vec3 normal;
+layout(location=3) in vec2 texcoord0;
+
+layout(location=0) out vec3 vary_normal;
+layout(location=1) out vec4 vertex_color;
+layout(location=2) out vec2 vary_texcoord0;
+layout(location=3) out vec3 vary_position;
+#else
 uniform mat3 normal_matrix;
 uniform mat4 texture_matrix0;
 uniform mat4 modelview_projection_matrix;
@@ -37,14 +62,19 @@ out vec3 vary_normal;
 out vec4 vertex_color;
 out vec2 vary_texcoord0;
 out vec3 vary_position;
+#endif
 
 void passTextureIndex();
 
+#ifndef LL_VULKAN_GLSL
 uniform mat4 modelview_matrix;
+#endif
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();
+#ifndef LL_VULKAN_GLSL
 uniform mat4 projection_matrix;
+#endif
 
 #endif
 

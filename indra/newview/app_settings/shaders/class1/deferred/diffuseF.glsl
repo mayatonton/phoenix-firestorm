@@ -25,6 +25,19 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+// r41 sub-step 4.3-γ'-port-β-1 (sub-doc 06 §1.2.4 LL_VULKAN_GLSL macro switch):
+// bundle-A (sampler binding) + bundle-B (location qualifier) for Vulkan path、GL path 維持
+// (set=1/binding=1 DiffuseTex は全 base file 共通既定値、sub-doc 07 §3.1 sub-step 7.3 確定値)。
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+
+layout(set=1, binding=1) uniform sampler2D diffuseMap;
+
+layout(location=0) in vec3 vary_normal;
+layout(location=1) in vec4 vertex_color;
+layout(location=2) in vec2 vary_texcoord0;
+layout(location=3) in vec3 vary_position;
+#else
 out vec4 frag_data[4];
 
 uniform sampler2D diffuseMap;
@@ -33,6 +46,7 @@ in vec3 vary_normal;
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
 in vec3 vary_position;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);

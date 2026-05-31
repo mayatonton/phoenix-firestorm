@@ -447,7 +447,8 @@ public:
     bool createSPIRVFromGLSL(GLenum type,
                              U32 source_count,
                              const GLchar** sources,
-                             std::vector<unsigned int>& out_spirv);
+                             std::vector<unsigned int>& out_spirv,
+                             const std::string& file_name = std::string());
 
     // Implemented in the application to actually point to the shader directory.
     virtual std::string getShaderDirPrefix(void) = 0; // Pure Virtual

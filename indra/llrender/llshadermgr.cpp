@@ -507,7 +507,8 @@ void LLShaderMgr::dumpObjectLog(GLuint ret, bool warns, const std::string& filen
 bool LLShaderMgr::createSPIRVFromGLSL(GLenum type,
                                       U32 source_count,
                                       const GLchar** sources,
-                                      std::vector<unsigned int>& out_spirv)
+                                      std::vector<unsigned int>& out_spirv,
+                                      const std::string& file_name)
 {
     static bool s_glslang_initialized = false;
     if (!s_glslang_initialized)
@@ -531,8 +532,16 @@ bool LLShaderMgr::createSPIRVFromGLSL(GLenum type,
     // LLShaderMgr 加工済み GLSL は複数 string fragment を strdup で配列化しているため、
     // glslang setStrings に渡す前に single buffer へ concat (setStrings の多段渡しでも
     // 動作するが、エラー時の line number 報告を簡潔化するため concat 採用)。
+    // r41 sub-step 4.3-γ'-port-β-1 (sub-doc 06 §1.2.4): #version prepend 直後に
+    // LL_VULKAN_GLSL macro を Vulkan path 限定で局所注入 (GL path 共有 shader_code_text を
+    // 汚染しない、GL compile path 影響 0、charter §3 #1 acceptance)。
     std::string concatenated;
-    for (U32 i = 0; i < source_count; ++i)
+    if (source_count > 0 && sources[0])
+    {
+        concatenated.append(sources[0]);
+    }
+    concatenated.append("#define LL_VULKAN_GLSL 1\n");
+    for (U32 i = 1; i < source_count; ++i)
     {
         if (sources[i])
         {
@@ -557,7 +566,8 @@ bool LLShaderMgr::createSPIRVFromGLSL(GLenum type,
 
     if (!shader.parse(resources, 450, false, messages))
     {
-        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang parse failed\n"
+        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang parse failed for "
+                           << (file_name.empty() ? "<unknown>" : file_name) << "\n"
                            << shader.getInfoLog() << LL_ENDL;
         return false;
     }
@@ -566,7 +576,8 @@ bool LLShaderMgr::createSPIRVFromGLSL(GLenum type,
     program.addShader(&shader);
     if (!program.link(messages))
     {
-        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang link failed\n"
+        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang link failed for "
+                           << (file_name.empty() ? "<unknown>" : file_name) << "\n"
                            << program.getInfoLog() << LL_ENDL;
         return false;
     }
@@ -1085,7 +1096,8 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         if (!produced)
         {
             produced = createSPIRVFromGLSL(type, shader_code_count,
-                                           (const GLchar**)shader_code_text, spirv);
+                                           (const GLchar**)shader_code_text, spirv,
+                                           open_file_name);
             if (produced && !spirv_cache_path.empty())
             {
                 LLFILE* write_file = LLFile::fopen(spirv_cache_path, "wb");
