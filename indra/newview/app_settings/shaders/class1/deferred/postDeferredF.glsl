@@ -53,7 +53,32 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform float max_cof;
+#endif
 uniform float res_scale;
 
 // <AYAstorm r30 P4 step 1> BD chroma uniform (gated by HAS_DOF_CHROMA permutation)

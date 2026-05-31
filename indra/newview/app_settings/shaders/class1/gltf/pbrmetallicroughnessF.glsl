@@ -114,6 +114,19 @@ uniform vec2 screen_res;
 
 // Lights
 // See: LLRender::syncLightState()
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+#else
 uniform vec4 light_position[8];
 uniform vec3 light_direction[8]; // spot direction
 uniform vec4 light_attenuation[8]; // linear, quadratic, is omni, unused, See: LLPipeline::setupHWLights() and syncLightState()
@@ -123,6 +136,7 @@ uniform vec2 light_deferred_attenuation[8]; // light size and falloff
 uniform int sun_up_factor;
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);

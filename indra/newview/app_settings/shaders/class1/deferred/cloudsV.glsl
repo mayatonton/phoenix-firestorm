@@ -61,20 +61,58 @@ out float altitude_blend_factor;
 uniform vec3 camPosLocal;
 
 uniform vec3 lightnorm;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform vec3 sunlight_color;
 uniform vec3 moonlight_color;
 uniform int sun_up_factor;
 uniform vec3 ambient_color;
 uniform vec3 blue_horizon;
 uniform vec3 blue_density;
-uniform float haze_horizon;
 uniform float haze_density;
 
-uniform float cloud_shadow;
 uniform float density_multiplier;
 uniform float max_y;
 
 uniform vec3 glow;
+#endif
+uniform float haze_horizon;
+
+uniform float cloud_shadow;
+
 uniform float sun_moon_glow_factor;
 
 uniform vec3 cloud_color;

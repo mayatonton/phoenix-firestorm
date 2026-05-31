@@ -76,7 +76,43 @@ uniform float proj_lod  ; // (number of mips in proj map)
 uniform float proj_range; // range between near clip and far clip plane of projection
 uniform float proj_ambiance;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform int classic_mode;
+#endif
 
 // light params
 uniform vec3 color; // light_color
@@ -638,7 +674,9 @@ vec3 pbrBaseLight(vec3 diffuseColor, vec3 specularColor, float metallic, vec3 v,
     return color;
 }
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 waterPlane;
+#endif
 uniform float waterSign;
 
 // discard if given position in eye space is on the wrong side of the waterPlane according to waterSign

@@ -37,8 +37,22 @@ uniform sampler2DShadow shadowMap4;
 uniform sampler2DShadow shadowMap5;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+#else
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
+#endif
 uniform vec2 shadow_res;
 uniform vec2 proj_shadow_res;
 uniform mat4 shadow_matrix[6];
@@ -64,7 +78,9 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform int sun_up_factor;
+#endif
 
 float pcfShadow(sampler2DShadow shadowMap, vec3 norm, vec4 stc, float bias_mul, vec2 pos_screen, vec3 light_dir)
 {

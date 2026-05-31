@@ -47,7 +47,21 @@ out vec4 vary_fragcoord;
 void setAtmosAttenuation(vec3 c);
 void setAdditiveColor(vec3 c);
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+#else
 uniform vec4 waterPlane;
+#endif
 
 uniform int above_water;
 

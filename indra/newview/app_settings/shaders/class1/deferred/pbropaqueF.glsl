@@ -52,7 +52,32 @@ in vec2 normal_texcoord;
 in vec2 metallic_roughness_texcoord;
 in vec2 emissive_texcoord;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
 
 // <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
 // is on the SSS whitelist, 0.0 otherwise. Packed into frag_data[3].a so the
@@ -165,7 +190,9 @@ in vec4 vertex_color;
 in vec2 base_color_texcoord;
 in vec2 emissive_texcoord;
 
+#ifndef LL_VULKAN_GLSL
 uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
 
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);

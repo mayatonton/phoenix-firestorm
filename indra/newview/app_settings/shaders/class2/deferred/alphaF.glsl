@@ -48,9 +48,45 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform mat3 env_mat;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int classic_mode;
+#endif
 
 #ifdef USE_DIFFUSE_TEX
 uniform sampler2D diffuseMap;
@@ -65,18 +101,22 @@ in vec3 vary_norm;
 in vec4 vertex_color; //vertex color should be treated as sRGB
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float minimum_alpha;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform mat4 proj_mat;
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform int sun_up_factor;
 uniform vec4 light_position[8];
 uniform vec3 light_direction[8];
 uniform vec4 light_attenuation[8];
 uniform vec3 light_diffuse[8];
+#endif
 
 void waterClip(vec3 pos);
 

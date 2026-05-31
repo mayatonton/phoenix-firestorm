@@ -31,7 +31,32 @@ in vec4 post_pos;
 in float target_pos_x;
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform float minimum_alpha;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
 #if AYASTORM_CINEMATIC

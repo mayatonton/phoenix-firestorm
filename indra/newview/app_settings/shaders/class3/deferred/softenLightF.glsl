@@ -63,10 +63,46 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform mat3 env_mat;
 #endif
 uniform mat3  ssao_effect_mat;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int  sun_up_factor;
 uniform int classic_mode;
+#endif
 
 in vec2 vary_fragcoord;
 
@@ -94,11 +130,17 @@ float getDepth(vec2 pos_screen);
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 waterPlane;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform int cube_snapshot;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float sky_hdr_scale;
+#endif
 
 // r19 Translucency: wrap-around diffuse + back-light transmission.
 // Pipeline pushes strength=0 when r19 is OFF, so helpers below short-circuit.

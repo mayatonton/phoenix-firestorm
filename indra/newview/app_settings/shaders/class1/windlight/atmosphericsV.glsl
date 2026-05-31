@@ -26,9 +26,23 @@
 // out param funcs
 
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+#else
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int sun_up_factor;
+#endif
 
 void setSunlitColor(vec3 v);
 void setAmblitColor(vec3 v);

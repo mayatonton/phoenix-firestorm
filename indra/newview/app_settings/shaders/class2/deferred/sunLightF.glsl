@@ -32,7 +32,21 @@ out vec4 frag_color;
 // Inputs
 in vec2 vary_fragcoord;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+#else
 uniform vec3 sun_dir;
+#endif
 uniform float shadow_bias;
 
 vec4 getNorm(vec2 pos_screen);

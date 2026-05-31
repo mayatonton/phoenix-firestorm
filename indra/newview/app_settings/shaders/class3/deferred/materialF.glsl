@@ -35,8 +35,44 @@
 #define DIFFUSE_ALPHA_MODE_EMISSIVE 3
 
 uniform float emissive_brightness;  // fullbright flag, 1.0 == fullbright, 0.0 otherwise
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform int sun_up_factor;
 uniform int classic_mode;
+#endif
 
 vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
 vec3 scaleSoftClipFragLinear(vec3 l);
@@ -93,8 +129,10 @@ uniform mat3 env_mat;
 
 uniform float is_mirror;
 
+#ifndef LL_VULKAN_GLSL
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform mat4 proj_mat;
@@ -102,10 +140,12 @@ uniform mat4 inv_proj;
 uniform vec2 screen_res;
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 light_position[8];
 uniform vec3 light_direction[8];
 uniform vec4 light_attenuation[8];
 uniform vec3 light_diffuse[8];
+#endif
 
 float getAmbientClamp();
 void waterClip(vec3 pos);
@@ -228,7 +268,9 @@ uniform float aya_sss_skin_flag;
 // </FS:AYA>
 
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_MASK)
+#ifndef LL_VULKAN_GLSL
 uniform float minimum_alpha;
+#endif
 #endif
 
 #ifdef HAS_NORMAL_MAP
