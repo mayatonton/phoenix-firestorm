@@ -74,6 +74,7 @@
 #include "llhudtext.h"
 #include "lllightconstants.h"
 #include "llmeshrepository.h"
+#include "llpipelineframecontext.h" // <AYAstorm r41> sub-step 4.1-α: per-frame state aggregation
 #include "llpipelinelistener.h"
 #include "llresmgr.h"
 #include "llselectmgr.h"
@@ -474,7 +475,19 @@ bool    LLPipeline::sRenderTextures = true;
 // EventHost API LLPipeline listener.
 static LLPipelineListener sPipelineListener;
 
-static LLCullResult* sCull = NULL;
+// <AYAstorm r41> sub-step 4.1-α: previous sCull static pointer removed. Cull
+// result is now owned by LLPipelineFrameContext (see grabReferences /
+// clearReferences for lifecycle wiring). File-local helper getFrameCull()
+// keeps caller sites concise; const-ref passing through render path is a
+// later sub-step (4.3+) decision.
+namespace
+{
+    inline LLCullResult* getFrameCull()
+    {
+        return LLPipelineFrameContext::getInstance().getCullResult();
+    }
+}
+// </AYAstorm r41>
 
 void validate_framebuffer_object();
 
@@ -2739,13 +2752,20 @@ F32 LLPipeline::calcPixelArea(const LLVector4a& center, const LLVector4a& size, 
 
 void LLPipeline::grabReferences(LLCullResult& result)
 {
-    sCull = &result;
+    // <AYAstorm r41> sub-step 4.1-α: frame context lifecycle entry +
+    // cull result aggregation through LLPipelineFrameContext.
+    LLPipelineFrameContext::getInstance().beginFrameContext();
+    LLPipelineFrameContext::getInstance().setCullResult(&result);
+    // </AYAstorm r41>
 }
 
 void LLPipeline::clearReferences()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    sCull = NULL;
+    // <AYAstorm r41> sub-step 4.1-α: clear cull pointer + frame context exit.
+    LLPipelineFrameContext::getInstance().setCullResult(nullptr);
+    LLPipelineFrameContext::getInstance().endFrameContext();
+    // </AYAstorm r41>
     mGroupSaveQ1.clear();
 }
 
@@ -2787,27 +2807,27 @@ void check_references(LLSpatialGroup* group, LLFace* face)
 void LLPipeline::checkReferences(LLFace* face)
 {
 #if 0
-    if (sCull)
+    if (getFrameCull())
     {
-        for (LLCullResult::sg_iterator iter = sCull->beginVisibleGroups(); iter != sCull->endVisibleGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, face);
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginAlphaGroups(); iter != sCull->endAlphaGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginAlphaGroups(); iter != getFrameCull()->endAlphaGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, face);
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginDrawableGroups(); iter != sCull->endDrawableGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginDrawableGroups(); iter != getFrameCull()->endDrawableGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, face);
         }
 
-        for (LLCullResult::drawable_iterator iter = sCull->beginVisibleList(); iter != sCull->endVisibleList(); ++iter)
+        for (LLCullResult::drawable_iterator iter = getFrameCull()->beginVisibleList(); iter != getFrameCull()->endVisibleList(); ++iter)
         {
             LLDrawable* drawable = *iter;
             check_references(drawable, face);
@@ -2819,27 +2839,27 @@ void LLPipeline::checkReferences(LLFace* face)
 void LLPipeline::checkReferences(LLDrawable* drawable)
 {
 #if 0
-    if (sCull)
+    if (getFrameCull())
     {
-        for (LLCullResult::sg_iterator iter = sCull->beginVisibleGroups(); iter != sCull->endVisibleGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, drawable);
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginAlphaGroups(); iter != sCull->endAlphaGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginAlphaGroups(); iter != getFrameCull()->endAlphaGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, drawable);
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginDrawableGroups(); iter != sCull->endDrawableGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginDrawableGroups(); iter != getFrameCull()->endDrawableGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, drawable);
         }
 
-        for (LLCullResult::drawable_iterator iter = sCull->beginVisibleList(); iter != sCull->endVisibleList(); ++iter)
+        for (LLCullResult::drawable_iterator iter = getFrameCull()->beginVisibleList(); iter != getFrameCull()->endVisibleList(); ++iter)
         {
             if (drawable == *iter)
             {
@@ -2870,21 +2890,21 @@ void check_references(LLSpatialGroup* group, LLDrawInfo* draw_info)
 void LLPipeline::checkReferences(LLDrawInfo* draw_info)
 {
 #if 0
-    if (sCull)
+    if (getFrameCull())
     {
-        for (LLCullResult::sg_iterator iter = sCull->beginVisibleGroups(); iter != sCull->endVisibleGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, draw_info);
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginAlphaGroups(); iter != sCull->endAlphaGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginAlphaGroups(); iter != getFrameCull()->endAlphaGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, draw_info);
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginDrawableGroups(); iter != sCull->endDrawableGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginDrawableGroups(); iter != getFrameCull()->endDrawableGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             check_references(group, draw_info);
@@ -2896,9 +2916,9 @@ void LLPipeline::checkReferences(LLDrawInfo* draw_info)
 void LLPipeline::checkReferences(LLSpatialGroup* group)
 {
 #if CHECK_PIPELINE_REFERENCES
-    if (sCull)
+    if (getFrameCull())
     {
-        for (LLCullResult::sg_iterator iter = sCull->beginVisibleGroups(); iter != sCull->endVisibleGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
         {
             if (group == *iter)
             {
@@ -2906,7 +2926,7 @@ void LLPipeline::checkReferences(LLSpatialGroup* group)
             }
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginAlphaGroups(); iter != sCull->endAlphaGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginAlphaGroups(); iter != getFrameCull()->endAlphaGroups(); ++iter)
         {
             if (group == *iter)
             {
@@ -2914,7 +2934,7 @@ void LLPipeline::checkReferences(LLSpatialGroup* group)
             }
         }
 
-        for (LLCullResult::sg_iterator iter = sCull->beginDrawableGroups(); iter != sCull->endDrawableGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginDrawableGroups(); iter != getFrameCull()->endDrawableGroups(); ++iter)
         {
             if (group == *iter)
             {
@@ -3050,7 +3070,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
 
     grabReferences(result);
 
-    sCull->clear();
+    getFrameCull()->clear();
 
     for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
             iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
@@ -3084,7 +3104,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
         gSky.mVOSkyp->mDrawable.notNull())
     {
         gSky.mVOSkyp->mDrawable->setVisible(camera);
-        sCull->pushDrawable(gSky.mVOSkyp->mDrawable);
+        getFrameCull()->pushDrawable(gSky.mVOSkyp->mDrawable);
         gSky.updateCull();
         stop_glerror();
     }
@@ -3095,7 +3115,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
         gSky.mVOWLSkyp->mDrawable.notNull())
     {
         gSky.mVOWLSkyp->mDrawable->setVisible(camera);
-        sCull->pushDrawable(gSky.mVOWLSkyp->mDrawable);
+        getFrameCull()->pushDrawable(gSky.mVOWLSkyp->mDrawable);
     }
 }
 
@@ -3117,11 +3137,11 @@ void LLPipeline::markNotCulled(LLSpatialGroup* group, LLCamera& camera)
 
     if (!group->getSpatialPartition()->mRenderByGroup)
     { //render by drawable
-        sCull->pushDrawableGroup(group);
+        getFrameCull()->pushDrawableGroup(group);
     }
     else
     {   //render by group
-        sCull->pushVisibleGroup(group);
+        getFrameCull()->pushVisibleGroup(group);
     }
 
     if (group->needsUpdate() ||
@@ -3142,7 +3162,7 @@ void LLPipeline::markOccluder(LLSpatialGroup* group)
 
         if (!parent || !parent->isOcclusionState(LLSpatialGroup::OCCLUDED))
         { //only mark top most occluders as active occlusion
-            sCull->pushOcclusionGroup(group);
+            getFrameCull()->pushOcclusionGroup(group);
             group->setOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
 
             if (parent &&
@@ -3150,7 +3170,7 @@ void LLPipeline::markOccluder(LLSpatialGroup* group)
                 parent->getElementCount() == 0 &&
                 parent->needsUpdate())
             {
-                sCull->pushOcclusionGroup(group);
+                getFrameCull()->pushOcclusionGroup(group);
                 parent->setOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
             }
         }
@@ -3205,7 +3225,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
     }
 
     if (LLPipeline::sUseOcclusion > 1 &&
-        (sCull->hasOcclusionGroups() || LLVOCachePartition::sNeedsOcclusionCheck))
+        (getFrameCull()->hasOcclusionGroups() || LLVOCachePartition::sNeedsOcclusionCheck))
     {
         LLVertexBuffer::unbind();
 
@@ -3225,7 +3245,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         }
         mCubeVB->setBuffer();
 
-        for (LLCullResult::sg_iterator iter = sCull->beginOcclusionGroups(); iter != sCull->endOcclusionGroups(); ++iter)
+        for (LLCullResult::sg_iterator iter = getFrameCull()->beginOcclusionGroups(); iter != getFrameCull()->endOcclusionGroups(); ++iter)
         {
             LLSpatialGroup* group = *iter;
             if (!group->isDead())
@@ -3763,12 +3783,12 @@ void LLPipeline::markVisible(LLDrawable *drawablep, LLCamera& camera)
                     }
                 }
             }
-            sCull->pushBridge((LLSpatialBridge*) drawablep);
+            getFrameCull()->pushBridge((LLSpatialBridge*) drawablep);
         }
         else
         {
 
-            sCull->pushDrawable(drawablep);
+            getFrameCull()->pushDrawable(drawablep);
         }
 
         drawablep->setVisible(camera);
@@ -3997,7 +4017,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     grabReferences(result);
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("checkOcclusionAndRebuildMesh");
-    for (LLCullResult::sg_iterator iter = sCull->beginDrawableGroups(); iter != sCull->endDrawableGroups(); ++iter)
+    for (LLCullResult::sg_iterator iter = getFrameCull()->beginDrawableGroups(); iter != getFrameCull()->endDrawableGroups(); ++iter)
     {
         LLSpatialGroup* group = *iter;
         if (group->isDead())
@@ -4030,7 +4050,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("WorldCamera");
         LLSpatialGroup* last_group = NULL;
         bool fov_changed = LLViewerCamera::getInstance()->isDefaultFOVChanged();
-        for (LLCullResult::bridge_iterator i = sCull->beginVisibleBridge(); i != sCull->endVisibleBridge(); ++i)
+        for (LLCullResult::bridge_iterator i = getFrameCull()->beginVisibleBridge(); i != getFrameCull()->endVisibleBridge(); ++i)
         {
             LLCullResult::bridge_iterator cur_iter = i;
             LLSpatialBridge* bridge = *cur_iter;
@@ -4063,7 +4083,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     }
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("StateSort: visible groups");
-    for (LLCullResult::sg_iterator iter = sCull->beginVisibleGroups(); iter != sCull->endVisibleGroups(); ++iter)
+    for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
     {
         LLSpatialGroup* group = *iter;
         if (group->isDead())
@@ -4088,8 +4108,8 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWABLE("stateSort"); // LL_RECORD_BLOCK_TIME(FTM_STATESORT_DRAWABLE);
-        for (LLCullResult::drawable_iterator iter = sCull->beginVisibleList();
-             iter != sCull->endVisibleList(); ++iter)
+        for (LLCullResult::drawable_iterator iter = getFrameCull()->beginVisibleList();
+             iter != getFrameCull()->endVisibleList(); ++iter)
         {
             LLDrawable *drawablep = *iter;
             if (!drawablep->isDead())
@@ -4253,8 +4273,8 @@ void forAllDrawables(LLCullResult::sg_iterator begin,
 
 void LLPipeline::forAllVisibleDrawables(void (*func)(LLDrawable*))
 {
-    forAllDrawables(sCull->beginDrawableGroups(), sCull->endDrawableGroups(), func);
-    forAllDrawables(sCull->beginVisibleGroups(), sCull->endVisibleGroups(), func);
+    forAllDrawables(getFrameCull()->beginDrawableGroups(), getFrameCull()->endDrawableGroups(), func);
+    forAllDrawables(getFrameCull()->beginVisibleGroups(), getFrameCull()->endVisibleGroups(), func);
 }
 
 //function for creating scripted beacons
@@ -4448,7 +4468,7 @@ void LLPipeline::postSort(LLCamera &camera)
     if (!gCubeSnapshot)
     {
         // rebuild drawable geometry
-        for (LLCullResult::sg_iterator i = sCull->beginDrawableGroups(); i != sCull->endDrawableGroups(); ++i)
+        for (LLCullResult::sg_iterator i = getFrameCull()->beginDrawableGroups(); i != getFrameCull()->endDrawableGroups(); ++i)
         {
             LLSpatialGroup *group = *i;
             if (group->isDead())
@@ -4462,7 +4482,7 @@ void LLPipeline::postSort(LLCamera &camera)
         }
         LL_PUSH_CALLSTACKS();
         // rebuild groups
-        sCull->assertDrawMapsEmpty();
+        getFrameCull()->assertDrawMapsEmpty();
 
         rebuildPriorityGroups();
     }
@@ -4472,7 +4492,7 @@ void LLPipeline::postSort(LLCamera &camera)
     // build render map
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("build render map");
-    for (LLCullResult::sg_iterator i = sCull->beginVisibleGroups(); i != sCull->endVisibleGroups(); ++i)
+    for (LLCullResult::sg_iterator i = getFrameCull()->beginVisibleGroups(); i != getFrameCull()->endVisibleGroups(); ++i)
     {
         LLSpatialGroup *group = *i;
 
@@ -4505,7 +4525,7 @@ void LLPipeline::postSort(LLCamera &camera)
             {
                 LLDrawInfo *info = *k;
 
-                sCull->pushDrawInfo(j->first, info);
+                getFrameCull()->pushDrawInfo(j->first, info);
                 if (!sShadowRender && !sReflectionRender && !gCubeSnapshot)
                 {
                     addTrianglesDrawn(info->mCount);
@@ -4536,7 +4556,7 @@ void LLPipeline::postSort(LLCamera &camera)
 
                 if (hasRenderType(LLDrawPool::POOL_ALPHA))
                 {
-                    sCull->pushAlphaGroup(group);
+                    getFrameCull()->pushAlphaGroup(group);
                 }
             }
 
@@ -4546,7 +4566,7 @@ void LLPipeline::postSort(LLCamera &camera)
             {  // store rigged alpha groups for LLDrawPoolAlpha prepass (skip distance update, rigged attachments use depth buffer)
                 if (hasRenderType(LLDrawPool::POOL_ALPHA))
                 {
-                    sCull->pushRiggedAlphaGroup(group);
+                    getFrameCull()->pushRiggedAlphaGroup(group);
                 }
             }
         }
@@ -4591,10 +4611,10 @@ void LLPipeline::postSort(LLCamera &camera)
     if (!sShadowRender)
     {
         // order alpha groups by distance
-        std::sort(sCull->beginAlphaGroups(), sCull->endAlphaGroups(), LLSpatialGroup::CompareDepthGreater());
+        std::sort(getFrameCull()->beginAlphaGroups(), getFrameCull()->endAlphaGroups(), LLSpatialGroup::CompareDepthGreater());
 
         // order rigged alpha groups by avatar attachment order
-        std::sort(sCull->beginRiggedAlphaGroups(), sCull->endRiggedAlphaGroups(), LLSpatialGroup::CompareRenderOrder());
+        std::sort(getFrameCull()->beginRiggedAlphaGroups(), getFrameCull()->endRiggedAlphaGroups(), LLSpatialGroup::CompareRenderOrder());
     }
     }
 
@@ -6280,7 +6300,7 @@ void LLPipeline::renderDebug()
             }
         }
 
-        for (LLCullResult::bridge_iterator i = sCull->beginVisibleBridge(); i != sCull->endVisibleBridge(); ++i)
+        for (LLCullResult::bridge_iterator i = getFrameCull()->beginVisibleBridge(); i != getFrameCull()->endVisibleBridge(); ++i)
         {
             LLSpatialBridge* bridge = *i;
             if (!bridge->isDead() && hasRenderType(bridge->mDrawableType))
@@ -11076,7 +11096,7 @@ void LLPipeline::renderDeferredLighting()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("renderDeferredLighting");
-    if (!sCull)
+    if (!getFrameCull())
     {
         return;
     }
@@ -13683,7 +13703,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
 void LLPipeline::renderGroups(LLRenderPass* pass, U32 type, bool texture)
 {
-    for (LLCullResult::sg_iterator i = sCull->beginVisibleGroups(); i != sCull->endVisibleGroups(); ++i)
+    for (LLCullResult::sg_iterator i = getFrameCull()->beginVisibleGroups(); i != getFrameCull()->endVisibleGroups(); ++i)
     {
         LLSpatialGroup* group = *i;
         if (!group->isDead() &&
@@ -13698,7 +13718,7 @@ void LLPipeline::renderGroups(LLRenderPass* pass, U32 type, bool texture)
 
 void LLPipeline::renderRiggedGroups(LLRenderPass* pass, U32 type, bool texture)
 {
-    for (LLCullResult::sg_iterator i = sCull->beginVisibleGroups(); i != sCull->endVisibleGroups(); ++i)
+    for (LLCullResult::sg_iterator i = getFrameCull()->beginVisibleGroups(); i != getFrameCull()->endVisibleGroups(); ++i)
     {
         LLSpatialGroup* group = *i;
         if (!group->isDead() &&
@@ -14163,72 +14183,72 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
 
 bool LLPipeline::hasRenderBatches(const U32 type) const
 {
-    // <FS:ND>  FIRE-31942, sCull can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
-    if( !sCull )
+    // <FS:ND>  FIRE-31942, getFrameCull() can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
+    if( !getFrameCull() )
         return {};
     // </FS:ND>
 
-    return sCull->getRenderMapSize(type) > 0;
+    return getFrameCull()->getRenderMapSize(type) > 0;
 }
 
 LLCullResult::drawinfo_iterator LLPipeline::beginRenderMap(U32 type)
 {
-    // <FS:ND>  FIRE-31942, sCull can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
-    if( !sCull )
+    // <FS:ND>  FIRE-31942, getFrameCull() can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
+    if( !getFrameCull() )
         return {};
     // </FS:ND>
 
-    return sCull->beginRenderMap(type);
+    return getFrameCull()->beginRenderMap(type);
 }
 
 LLCullResult::drawinfo_iterator LLPipeline::endRenderMap(U32 type)
 {
-    // <FS:ND>  FIRE-31942, sCull can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
-    if( !sCull )
+    // <FS:ND>  FIRE-31942, getFrameCull() can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
+    if( !getFrameCull() )
         return {};
     // </FS:ND>
 
-    return sCull->endRenderMap(type);
+    return getFrameCull()->endRenderMap(type);
 }
 
 LLCullResult::sg_iterator LLPipeline::beginAlphaGroups()
 {
-    // <FS:ND>  FIRE-31942, sCull can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
-    if( !sCull )
+    // <FS:ND>  FIRE-31942, getFrameCull() can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
+    if( !getFrameCull() )
         return {};
     // </FS:ND>
 
-    return sCull->beginAlphaGroups();
+    return getFrameCull()->beginAlphaGroups();
 }
 
 LLCullResult::sg_iterator LLPipeline::endAlphaGroups()
 {
-    // <FS:ND>  FIRE-31942, sCull can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
-    if( !sCull )
+    // <FS:ND>  FIRE-31942, getFrameCull() can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
+    if( !getFrameCull() )
         return {};
     // </FS:ND>
 
-    return sCull->endAlphaGroups();
+    return getFrameCull()->endAlphaGroups();
 }
 
 LLCullResult::sg_iterator LLPipeline::beginRiggedAlphaGroups()
 {
-    // <FS:ND>  FIRE-31942, sCull can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
-    if( !sCull )
+    // <FS:ND>  FIRE-31942, getFrameCull() can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
+    if( !getFrameCull() )
         return {};
     // </FS:ND>
 
-    return sCull->beginRiggedAlphaGroups();
+    return getFrameCull()->beginRiggedAlphaGroups();
 }
 
 LLCullResult::sg_iterator LLPipeline::endRiggedAlphaGroups()
 {
-    // <FS:ND>  FIRE-31942, sCull can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
-    if( !sCull )
+    // <FS:ND>  FIRE-31942, getFrameCull() can be invalid if triggering 360 snapshosts fast enough  (due to snapshots running in their own co routine)
+    if( !getFrameCull() )
         return {};
     // </FS:ND>
 
-    return sCull->endRiggedAlphaGroups();
+    return getFrameCull()->endRiggedAlphaGroups();
 }
 
 bool LLPipeline::hasRenderType(const U32 type) const
