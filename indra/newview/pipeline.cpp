@@ -3002,8 +3002,7 @@ bool LLPipeline::getVisibleExtents(LLCamera& camera, LLVector3& min, LLVector3& 
     min = LLVector3(X,X,X);
     max = LLVector3(-X,-X,-X);
 
-    LLViewerCamera::eCameraID saved_camera_id = LLViewerCamera::sCurCameraID;
-    LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+    LLPipelineFrameContext::ScopedCameraID camera_scope(LLViewerCamera::CAMERA_WORLD);
 
     bool res = true;
 
@@ -3028,7 +3027,6 @@ bool LLPipeline::getVisibleExtents(LLCamera& camera, LLVector3& min, LLVector3& 
         }
     }
 
-    LLViewerCamera::sCurCameraID = saved_camera_id;
     return res;
 }
 
@@ -3151,7 +3149,7 @@ void LLPipeline::markNotCulled(LLSpatialGroup* group, LLCamera& camera)
 
     group->setVisible();
 
-    if (LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
+    if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
     {
         group->updateDistance(camera);
     }
@@ -3168,7 +3166,7 @@ void LLPipeline::markNotCulled(LLSpatialGroup* group, LLCamera& camera)
     }
 
     if (group->needsUpdate() ||
-        group->getVisible(LLViewerCamera::sCurCameraID) < LLDrawable::getCurrentFrame() - 1)
+        group->getVisible(LLViewerCamera::getCurCameraID()) < LLDrawable::getCurrentFrame() - 1)
     {
         // include this group in occlusion groups, not because it is an occluder, but because we want to run
         // an occlusion query to find out if it's an occluder
@@ -4068,7 +4066,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     }
     }
 
-    if (LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
+    if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("WorldCamera");
         LLSpatialGroup* last_group = NULL;
@@ -4089,7 +4087,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
                 stateSort(bridge, camera, fov_changed);
             }
 
-            if (LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD &&
+            if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD &&
                 last_group != group && last_group->changeLOD())
             {
                 last_group->mLastUpdateDistance = last_group->mDistance;
@@ -4098,7 +4096,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
             last_group = group;
         }
 
-        if (LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD &&
+        if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD &&
             last_group && last_group->changeLOD())
         {
             last_group->mLastUpdateDistance = last_group->mDistance;
@@ -4155,7 +4153,7 @@ void LLPipeline::stateSort(LLSpatialGroup* group, LLCamera& camera)
             stateSort(drawablep, camera);
         }
 
-        if (LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
+        if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
         { //avoid redundant stateSort calls
             group->mLastUpdateDistance = group->mDistance;
         }
@@ -4231,7 +4229,7 @@ void LLPipeline::stateSort(LLDrawable* drawablep, LLCamera& camera)
         }
     }
 
-    if (LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
+    if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
     {
         //if (drawablep->isVisible()) isVisible() check here is redundant, if it wasn't visible, it wouldn't be here
         {
@@ -4564,7 +4562,7 @@ void LLPipeline::postSort(LLCamera &camera)
             if (alpha != group->mDrawMap.end())
             {  // store alpha groups for sorting
                 LLSpatialBridge *bridge = group->getSpatialPartition()->asBridge();
-                if (LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
+                if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
                 {
                     if (bridge)
                     {
@@ -13178,7 +13176,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 mShadowFrustPoints[j].clear();
             }
 
-            LLViewerCamera::sCurCameraID = (LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SUN_SHADOW0+j);
+            LLViewerCamera::setCurCameraID((LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SUN_SHADOW0+j));
 
             //restore render matrices
             set_current_modelview(saved_view);
@@ -13559,7 +13557,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             //update shadow targets
             for (U32 i = 0; i < 2; i++)
             { //for each current shadow
-                LLViewerCamera::sCurCameraID = (LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SPOT_SHADOW0 + i);
+                LLViewerCamera::setCurCameraID((LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SPOT_SHADOW0 + i));
 
                 if (mShadowSpotLight[i].notNull() &&
                     (mShadowSpotLight[i] == mTargetShadowSpotLight[0] ||
@@ -13679,7 +13677,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 static LLCullResult result[2];
 
-                LLViewerCamera::sCurCameraID = (LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SPOT_SHADOW0 + i);
+                LLViewerCamera::setCurCameraID((LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SPOT_SHADOW0 + i));
 
                 RenderSpotLight = drawable;
 

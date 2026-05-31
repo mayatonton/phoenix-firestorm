@@ -611,7 +611,7 @@ LLSpatialGroup::LLSpatialGroup(OctreeNode* node, LLSpatialPartition* part) : LLO
 
 void LLSpatialGroup::updateDistance(LLCamera &camera)
 {
-    if (LLViewerCamera::sCurCameraID != LLViewerCamera::CAMERA_WORLD)
+    if (LLViewerCamera::getCurCameraID() != LLViewerCamera::CAMERA_WORLD)
     {
         LL_WARNS() << "Attempted to update distance for camera other than world camera!" << LL_ENDL;
         llassert(false);
@@ -1102,7 +1102,7 @@ public:
         LL_PROFILE_ZONE_SCOPED;
         LLSpatialGroup* group = (LLSpatialGroup*)base_group;
         /*if (group->needsUpdate() ||
-            group->getVisible(LLViewerCamera::sCurCameraID) < LLDrawable::getCurrentFrame() - 1)
+            group->getVisible(LLViewerCamera::getCurCameraID()) < LLDrawable::getCurrentFrame() - 1)
         {
             group->doOcclusion(mCamera);
         }*/

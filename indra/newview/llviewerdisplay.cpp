@@ -894,7 +894,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLGLState::checkStates();
 
         static LLCullResult result;
-        LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+        LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
         LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
         gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
         stop_glerror();
@@ -996,7 +996,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLAppViewer::instance()->pingMainloopTimeout("Display:StateSort");
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 4")
-            LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+            LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
             gPipeline.stateSort(camera, result); // <FS:Ansariel> Factor out calls to getInstance
             stop_glerror();
 
@@ -1103,7 +1103,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                 && !gRestoreGL)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 5")
-            LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+            LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
 
             static LLCachedControl<bool> render_depth_pre_pass(gSavedSettings, "RenderDepthPrePass", false);
             if (render_depth_pre_pass)
@@ -1319,7 +1319,7 @@ void display_cube_face()
     //gDepthDirty = true; //let "real" render pipe know it can't trust the depth buffer for occlusion data
 
     static LLCullResult result;
-    LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+    LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
     LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
     gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
 
@@ -1331,7 +1331,7 @@ void display_cube_face()
     glClear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
 
     {
-        LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+        LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
         gPipeline.stateSort(*LLViewerCamera::getInstance(), result);
 
         if (rebuild)
@@ -1365,7 +1365,7 @@ void display_cube_face()
     }
     LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
 
-    LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+    LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
 
     gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance());
 
@@ -1443,7 +1443,7 @@ void render_hud_attachments()
         static LLCullResult result;
         LLSpatialGroup::sNoDelete = true;
 
-        LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+        LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
         gPipeline.updateCull(hud_cam, result, true);
 
         // Toggle render types

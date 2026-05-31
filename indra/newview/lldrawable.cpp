@@ -880,7 +880,7 @@ void LLDrawable::updateDistance(LLCamera& camera, bool force_update)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWABLE;
 
-    if (LLViewerCamera::sCurCameraID != LLViewerCamera::CAMERA_WORLD)
+    if (LLViewerCamera::getCurCameraID() != LLViewerCamera::CAMERA_WORLD)
     {
         LL_WARNS() << "Attempted to update distance for non-world camera." << LL_ENDL;
         return;

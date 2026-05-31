@@ -60,6 +60,11 @@ public:
 
     static eCameraID sCurCameraID;
 
+    // AYAstorm r41 sub-step 4.3-α: accessor 配線 (LLPipelineFrameContext から forward)。
+    // sCurCameraID は cross-class transient 状態、4.3-β 以降 per-pool draw で active camera 配線。
+    static eCameraID getCurCameraID()                 { return sCurCameraID; }
+    static void      setCurCameraID(eCameraID id)     { sCurCameraID = id; }
+
     bool updateCameraLocation(const LLVector3 &center,
                                 const LLVector3 &up_direction,
                                 const LLVector3 &point_of_interest);

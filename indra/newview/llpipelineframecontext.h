@@ -16,6 +16,7 @@
 #define LL_LLPIPELINEFRAMECONTEXT_H
 
 #include "pipeline.h"
+#include "llviewercamera.h"
 
 class LLCullResult;
 
@@ -80,6 +81,11 @@ public:
     void setUnderWaterRendering(bool b)       { mUnderWaterRendering = b; }
     bool isReflectionProbesEnabled()    const { return mReflectionProbesEnabled; }
     void setReflectionProbesEnabled(bool b)   { mReflectionProbesEnabled = b; }
+
+    // sub-step 4.3-α: sCurCameraID accessor 配線 (LLViewerCamera::sCurCameraID への forward call)。
+    // cross-class transient 状態、4.3-β 以降 per-pool draw で active camera 配線。
+    LLViewerCamera::eCameraID getCurCameraID() const  { return LLViewerCamera::getCurCameraID(); }
+    void                      setCurCameraID(LLViewerCamera::eCameraID id) { LLViewerCamera::setCurCameraID(id); }
 
     // sub-step 4.1-β: RAII helper for transient mRT juggling (replaces the
     // SetTemporarily<RenderTargetPack*> pattern used at llgltfmaterialpreviewmgr.cpp).
@@ -162,6 +168,19 @@ public:
         ScopedRenderingGlow& operator=(const ScopedRenderingGlow&) = delete;
     private:
         bool mPrev;
+    };
+
+    // sub-step 4.3-α: sCurCameraID transient swap RAII (llviewerregion.cpp / pipeline.cpp
+    // 既存手動 save/restore 2 件を 1:1 置換、4.2 ScopedXxxPass 範式継承)。
+    class ScopedCameraID
+    {
+    public:
+        explicit ScopedCameraID(LLViewerCamera::eCameraID new_id);
+        ~ScopedCameraID();
+        ScopedCameraID(const ScopedCameraID&) = delete;
+        ScopedCameraID& operator=(const ScopedCameraID&) = delete;
+    private:
+        LLViewerCamera::eCameraID mPrev;
     };
 
     EPassType getCurrentPass() const { return mCurrentPass; }

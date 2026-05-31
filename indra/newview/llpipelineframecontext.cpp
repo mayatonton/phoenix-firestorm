@@ -139,3 +139,14 @@ LLPipelineFrameContext::ScopedRenderingGlow::~ScopedRenderingGlow()
 {
     LLPipelineFrameContext::getInstance().setRenderingGlow(mPrev);
 }
+
+LLPipelineFrameContext::ScopedCameraID::ScopedCameraID(LLViewerCamera::eCameraID new_id)
+    : mPrev(LLPipelineFrameContext::getInstance().getCurCameraID())
+{
+    LLPipelineFrameContext::getInstance().setCurCameraID(new_id);
+}
+
+LLPipelineFrameContext::ScopedCameraID::~ScopedCameraID()
+{
+    LLPipelineFrameContext::getInstance().setCurCameraID(mPrev);
+}

@@ -305,8 +305,8 @@ public:
     void clearOcclusionState(U32 state, S32 mode = STATE_MODE_SINGLE);
     void checkOcclusion(); //read back last occlusion query (if any)
     void doOcclusion(LLCamera* camera, const LLVector4a* shift = NULL); //issue occlusion query
-    bool isOcclusionState(U32 state) const { return mOcclusionState[LLViewerCamera::sCurCameraID] & state; }
-    U32  getOcclusionState() const { return mOcclusionState[LLViewerCamera::sCurCameraID];}
+    bool isOcclusionState(U32 state) const { return mOcclusionState[LLViewerCamera::getCurCameraID()] & state; }
+    U32  getOcclusionState() const { return mOcclusionState[LLViewerCamera::getCurCameraID()];}
 
     bool needsUpdate();
     U32  getLastOcclusionIssuedTime();
