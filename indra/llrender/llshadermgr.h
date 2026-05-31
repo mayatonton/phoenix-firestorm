@@ -440,6 +440,15 @@ public:
     bool    validateProgramObject(GLuint obj);
     GLuint loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1);
 
+    // r41 sub-step 4.3-γ'-port-α (sub-doc 06 §3.1 case ② = runtime SPIR-V 生成):
+    // 加工済み GLSL string array (loadShaderFile() preprocessing 後の shader_code_text[]) を
+    // glslang library runtime API で SPIR-V binary 化。out_spirv に格納成功で true、
+    // compile fail で false (caller は GL fallback へ)。`type` は GL_VERTEX_SHADER / GL_FRAGMENT_SHADER.
+    bool createSPIRVFromGLSL(GLenum type,
+                             U32 source_count,
+                             const GLchar** sources,
+                             std::vector<unsigned int>& out_spirv);
+
     // Implemented in the application to actually point to the shader directory.
     virtual std::string getShaderDirPrefix(void) = 0; // Pure Virtual
 
@@ -483,6 +492,13 @@ public:
     LLUUID mShaderCacheVersion;
     bool mShaderCacheEnabled = false;
     std::string mShaderCacheDir;
+
+    // r41 sub-step 4.3-γ'-port-α (sub-doc 06 §3.1 case ②、3.3-B exemplar 試作レール sink と並存):
+    // LLShaderMgr Vulkan path で生成された VkShaderModule の filename ベース cache。
+    // SPIR-V cache layer 案 C (~/.ayastorm_x64/cache/shader_cache/<mShaderHash>_{vert,frag}.spv +
+    // shaderdata.llsd metadata) と組合せ、起動時 cache hit 経路で vkCreateShaderModule をスキップ。
+    std::map<std::string, VkShaderModule> mVkVertexShaderModules;
+    std::map<std::string, VkShaderModule> mVkFragmentShaderModules;
 
     // <FS:AYA r30 Phase 3.8> Cinematic mount: when true, loadShaderFile
     // injects `#define AYASTORM_CINEMATIC 1` so Strategy C shaders branch

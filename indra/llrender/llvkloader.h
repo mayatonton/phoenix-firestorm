@@ -17,6 +17,8 @@
 
 #include "volk.h"
 
+#include <vector>
+
 namespace LLVKLoader
 {
     bool initVulkan();
@@ -175,6 +177,22 @@ namespace LLVKLoader
     // code_size_bytes : spv_code が指すデータの byte 数 (4 の倍数必須)。
     // ------------------------------------------------------------------
     VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-γ'-port-α-5 (sub-doc 06 §3.1 case ② runtime path):
+    // production SPIR-V sink。std::vector<unsigned int> blob を VkShaderModule 化。
+    // LLShaderMgr Vulkan path (llshadermgr.cpp:908 直前 hook) + SPIR-V cache layer
+    // 案 C (~/.ayastorm_x64/cache/shader_cache/<mShaderHash>_{vert,frag}.spv) の
+    // memory 載った blob 共通 sink。loadSpirvShaderModule (primitive 配列+size sink)
+    // を内部委譲。
+    //
+    // 戻り値: VK_NULL_HANDLE = 失敗 (spirv.empty() / loadSpirvShaderModule 失敗)。
+    // 所有: caller (vkDestroyShaderModule で破棄)。
+    //
+    // 3.3-B exemplar (試作レール) の loadSpirvShaderModuleFromFile() とは sink 分離、
+    // sub-doc 03 §3.1.3 役割再定義注記に従い両者並存。
+    // ------------------------------------------------------------------
+    VkShaderModule loadSpirvShaderModuleFromMemory(const std::vector<unsigned int>& spirv);
 
     // ------------------------------------------------------------------
     // r41 sub-step 3.4-β-2: LLImageGL → VkImage + VkImageView lifecycle 並走化

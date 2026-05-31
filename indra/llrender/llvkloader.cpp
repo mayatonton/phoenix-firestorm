@@ -2971,6 +2971,20 @@ VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes
     return module;
 }
 
+// r41 sub-step 4.3-γ'-port-α-5 (sub-doc 06 §3.1 case ② runtime path):
+// production SPIR-V sink。LLShaderMgr Vulkan path + SPIR-V cache layer 案 C の
+// memory-resident blob 共通 sink、loadSpirvShaderModule (primitive sink) 委譲。
+// 3.3-B exemplar (試作レール) の loadSpirvShaderModuleFromFile() とは sink 分離。
+VkShaderModule loadSpirvShaderModuleFromMemory(const std::vector<unsigned int>& spirv)
+{
+    if (spirv.empty())
+    {
+        LL_WARNS("Vulkan") << "loadSpirvShaderModuleFromMemory: empty SPIR-V blob" << LL_ENDL;
+        return VK_NULL_HANDLE;
+    }
+    return loadSpirvShaderModule(spirv.data(), spirv.size() * sizeof(unsigned int));
+}
+
 // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): LLGLenum → VkFormat 集約変換 公開 API。
 // 実体は file-local llGlEnumToVkFormatImpl (GL header 非依存、hex literal 照合)。
 VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat)

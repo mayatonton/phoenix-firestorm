@@ -5,6 +5,7 @@ project(llrender)
 include(00-Common)
 include(OpenGL)
 include(Vulkan)
+include(Glslang)
 include(AyaShaderCompile)
 include(FreeType)
 include(LLCommon)
@@ -126,5 +127,6 @@ target_link_libraries(llrender
         OpenGL::GL
         OpenGL::GLU
         ll::vulkan
+        ll::glslang
         )
 
