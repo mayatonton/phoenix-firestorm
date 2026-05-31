@@ -23,10 +23,26 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#else
 uniform mat3 normal_matrix;
+#endif
 uniform mat4 texture_matrix0;
 uniform vec4 ambient_color; // <FS:Beq/> add ambient color to preview shader
+#ifndef LL_VULKAN_GLSL
 uniform mat4 modelview_projection_matrix;
+#endif
 
 in vec3 position;
 in vec3 normal;
@@ -56,8 +72,10 @@ float calcDirectionalLight(vec3 n, vec3 l)
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();
+#ifndef LL_VULKAN_GLSL
 uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
+#endif
 #endif
 
 void main()

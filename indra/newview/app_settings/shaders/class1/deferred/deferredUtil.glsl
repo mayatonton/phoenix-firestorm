@@ -54,7 +54,21 @@ uniform sampler2D projectionMap; // rgba
 uniform sampler2D brdfLut;
 
 // projected lighted params
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#else
 uniform mat4 proj_mat; //screen space to light space projector
+#endif
 uniform vec3 proj_n; // projector normal
 uniform vec3 proj_p; //plane projection is emitting from (in screen space)
 uniform float proj_focus; // distance from plane to begin blurring
@@ -68,8 +82,10 @@ uniform int classic_mode;
 uniform vec3 color; // light_color
 uniform float size; // light_size
 
+#ifndef LL_VULKAN_GLSL
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
+#endif
 
 const float M_PI = 3.14159265;
 const float ONE_OVER_PI = 0.3183098861;

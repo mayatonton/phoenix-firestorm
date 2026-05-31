@@ -47,7 +47,21 @@ uniform float ssao_irradiance_max;
 
 // Inputs
 uniform vec4 clipPlane;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#else
 uniform mat3 env_mat;
+#endif
 uniform mat3  ssao_effect_mat;
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
@@ -56,8 +70,10 @@ uniform int classic_mode;
 
 in vec2 vary_fragcoord;
 
+#ifndef LL_VULKAN_GLSL
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
+#endif
 
 vec4 getNorm(vec2 pos_screen);
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);

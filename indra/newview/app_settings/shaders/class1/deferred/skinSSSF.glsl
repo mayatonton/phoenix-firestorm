@@ -35,7 +35,21 @@ out vec4 frag_color;
 in vec2 vary_fragcoord;
 
 uniform sampler2D diffuseRect;       // source color (screen for pass 1, scratch for pass 2)
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#else
 uniform vec2      screen_res;        // viewport size in pixels
+#endif
 uniform vec2      aya_blur_dir;      // (1,0) horizontal pass 1, (0,1) vertical pass 2
 uniform float     aya_strength;      // alpha output (= mix factor when blended)
 uniform float     aya_blur_radius;   // tap spacing in pixels at ref_dist=1m (world-scaled per-pixel by depth)
@@ -65,7 +79,9 @@ uniform sampler2D emissiveRect;
 // 上限を aya_blur_radius に固定することで、超近接 (< 1m) でも blur が
 // 暴走しないようにする。
 uniform sampler2D depthMap;
+#ifndef LL_VULKAN_GLSL
 uniform mat4      inv_proj;
+#endif
 // </FS:AYA>
 
 void main()

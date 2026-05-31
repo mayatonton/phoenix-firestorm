@@ -36,10 +36,26 @@ uniform float debug_normal_draw_length;
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();
 #else
+#ifndef LL_VULKAN_GLSL
 uniform mat3 normal_matrix;
 #endif
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#else
 uniform mat4 projection_matrix;
 uniform mat4 modelview_matrix;
+#endif
 
 // *NOTE: Should use the modelview_projection_matrix here in the non-skinned
 // case for efficiency, but opting for the simplier implementation for now as
