@@ -26,7 +26,11 @@
 in vec2 tc;
 
 #if defined(COPY_DEPTH)
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=3) uniform sampler2D depthMap;
+#else
 uniform sampler2D depthMap;
+#endif
 #endif
 
 uniform sampler2D diffuseMap;

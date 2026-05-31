@@ -58,7 +58,11 @@ uniform float sky_hdr_scale;
 #endif
 uniform float hdri_split_screen;
 uniform mat3 env_mat;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=6) uniform sampler2D environmentMap;
+#else
 uniform sampler2D environmentMap;
+#endif
 #endif
 
 uniform sampler2D rainbow_map;

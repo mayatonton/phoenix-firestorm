@@ -26,15 +26,27 @@
 uniform sampler2D   normalMap;
 
 #if defined(SUN_SHADOW)
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=8) uniform sampler2DShadow shadowMap0;
+layout(set=0, binding=9) uniform sampler2DShadow shadowMap1;
+layout(set=0, binding=10) uniform sampler2DShadow shadowMap2;
+layout(set=0, binding=11) uniform sampler2DShadow shadowMap3;
+#else
 uniform sampler2DShadow shadowMap0;
 uniform sampler2DShadow shadowMap1;
 uniform sampler2DShadow shadowMap2;
 uniform sampler2DShadow shadowMap3;
 #endif
+#endif
 
 #if defined(SPOT_SHADOW)
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=12) uniform sampler2DShadow shadowMap4;
+layout(set=0, binding=13) uniform sampler2DShadow shadowMap5;
+#else
 uniform sampler2DShadow shadowMap4;
 uniform sampler2DShadow shadowMap5;
+#endif
 #endif
 
 #ifdef LL_VULKAN_GLSL

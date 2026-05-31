@@ -78,7 +78,11 @@ uniform sampler2D emissiveRect;
 // (近接ロールプレイ距離の見えを保つ)、1m を超えると逆スケール。
 // 上限を aya_blur_radius に固定することで、超近接 (< 1m) でも blur が
 // 暴走しないようにする。
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=3) uniform sampler2D depthMap;
+#else
 uniform sampler2D depthMap;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform mat4      inv_proj;
 #endif

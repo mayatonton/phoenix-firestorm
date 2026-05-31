@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=21) uniform sampler2D exposureMap;
+#else
 uniform sampler2D exposureMap;
+#endif
 uniform vec2 screen_res;
 in vec2 vary_fragcoord;
 

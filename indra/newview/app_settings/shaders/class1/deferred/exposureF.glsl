@@ -29,7 +29,11 @@ out vec4 frag_color;
 
 uniform sampler2D emissiveRect;
 #ifdef USE_LAST_EXPOSURE
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=21) uniform sampler2D exposureMap;
+#else
 uniform sampler2D exposureMap;
+#endif
 #endif
 
 uniform float dt;

@@ -34,8 +34,13 @@ in vec3 vary_CloudColorSun;
 in vec3 vary_CloudColorAmbient;
 in float vary_CloudDensity;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=15) uniform sampler2D cloud_noise_texture;
+layout(set=0, binding=16) uniform sampler2D cloud_noise_texture_next;
+#else
 uniform sampler2D cloud_noise_texture;
 uniform sampler2D cloud_noise_texture_next;
+#endif
 uniform float blend_factor;
 uniform vec3 cloud_pos_density1;
 uniform vec3 cloud_pos_density2;

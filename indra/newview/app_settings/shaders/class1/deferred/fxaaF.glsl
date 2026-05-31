@@ -2102,7 +2102,11 @@ half4 FxaaPixelShader(
 #endif
 
 uniform sampler2D diffuseMap;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=3) uniform sampler2D depthMap;
+#else
 uniform sampler2D depthMap;
+#endif
 
 uniform vec2 rcp_screen_res;
 uniform vec4 rcp_frame_opt;

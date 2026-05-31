@@ -32,10 +32,18 @@ out vec4 frag_color;
 const float M_PI = 3.14159265;
 
 #if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=4) uniform sampler2D lightMap;
+#else
 uniform sampler2D lightMap;
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=5) uniform sampler2D lightFunc;
+#else
 uniform sampler2D     lightFunc;
+#endif
 
 uniform float blur_size;
 uniform float blur_fidelity;

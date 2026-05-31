@@ -85,7 +85,11 @@ uniform sampler2D bumpMap2;
 uniform float     blend_factor;
 #ifdef TRANSPARENT_WATER
 uniform sampler2D screenTex;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=3) uniform sampler2D depthMap;
+#else
 uniform sampler2D depthMap;
+#endif
 #endif
 
 uniform sampler2D exclusionTex;

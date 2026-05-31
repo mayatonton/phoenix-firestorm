@@ -29,10 +29,18 @@
 float tapScreenSpaceReflection(int totalSamples, vec2 tc, vec3 viewPos, vec3 n, inout vec4 collectedColor, sampler2D source, float glossiness);
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=7) uniform samplerCubeArray reflectionProbes;
+#else
 uniform samplerCubeArray   reflectionProbes;
+#endif
 uniform samplerCubeArray   irradianceProbes;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=18) uniform sampler2D sceneMap;
+#else
 uniform sampler2D sceneMap;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
     vec3  sunlight_color;

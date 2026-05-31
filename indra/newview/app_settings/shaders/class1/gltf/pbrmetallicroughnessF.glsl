@@ -108,7 +108,11 @@ vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
 #if defined(ALPHA_BLEND) && !defined(UNLIT)
 
 #ifdef HAS_SUN_SHADOW
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=4) uniform sampler2D lightMap;
+#else
 uniform sampler2D lightMap;
+#endif
 uniform vec2 screen_res;
 #endif
 

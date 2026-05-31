@@ -33,7 +33,11 @@ out vec4 frag_color;
 
 uniform sampler2D diffuseMap;
 #if HAS_NOISE
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=17) uniform sampler2D glowNoiseMap;
+#else
 uniform sampler2D glowNoiseMap;
+#endif
 uniform vec2 screen_res;
 #endif
 uniform float minLuminance;

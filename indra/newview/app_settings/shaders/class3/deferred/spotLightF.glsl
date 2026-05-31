@@ -27,9 +27,15 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=6) uniform samplerCube environmentMap;
+layout(set=0, binding=4) uniform sampler2D lightMap;
+layout(set=0, binding=5) uniform sampler2D lightFunc;
+#else
 uniform samplerCube environmentMap;
 uniform sampler2D lightMap;
 uniform sampler2D lightFunc;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {

@@ -117,8 +117,13 @@ void sampleReflectionProbesLegacy(inout vec3 ambenv, inout vec3 glossenv, inout 
 void applyGlossEnv(inout vec3 color, vec3 glossenv, vec4 spec, vec3 pos, vec3 norm);
 void applyLegacyEnv(inout vec3 color, vec3 legacyenv, vec4 spec, vec3 pos, vec3 norm, float envIntensity);
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=6) uniform samplerCube environmentMap;
+layout(set=0, binding=5) uniform sampler2D lightFunc;
+#else
 uniform samplerCube environmentMap;
 uniform sampler2D     lightFunc;
+#endif
 
 // Inputs
 uniform vec4 morphFactor;

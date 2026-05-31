@@ -49,9 +49,17 @@ SOFTWARE.
 */
 
 uniform sampler2D normalMap;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=3) uniform sampler2D depthMap;
+#else
 uniform sampler2D depthMap;
+#endif
 uniform sampler2D projectionMap; // rgba
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=20) uniform sampler2D brdfLut;
+#else
 uniform sampler2D brdfLut;
+#endif
 
 // projected lighted params
 #ifdef LL_VULKAN_GLSL

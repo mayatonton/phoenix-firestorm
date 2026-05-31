@@ -25,8 +25,13 @@
 
 // Based on https://imanolfotia.com/blog/1
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=18) uniform sampler2D sceneMap;
+layout(set=0, binding=19) uniform sampler2D sceneDepth;
+#else
 uniform sampler2D sceneMap;
 uniform sampler2D sceneDepth;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {

@@ -37,7 +37,11 @@ uniform float roughnessFactor;
 uniform vec3 emissiveColor;
 
 #if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=4) uniform sampler2D lightMap;
+#else
 uniform sampler2D lightMap;
+#endif
 #endif
 
 #ifdef LL_VULKAN_GLSL

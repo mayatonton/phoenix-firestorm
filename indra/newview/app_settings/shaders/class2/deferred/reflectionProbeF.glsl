@@ -27,7 +27,11 @@
 
 uniform float reflection_probe_ambiance;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=6) uniform samplerCube environmentMap;
+#else
 uniform samplerCube environmentMap;
+#endif
 
 uniform mat3 env_mat;
 

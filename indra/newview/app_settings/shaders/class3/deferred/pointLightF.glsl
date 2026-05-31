@@ -27,7 +27,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=5) uniform sampler2D lightFunc;
+#else
 uniform sampler2D lightFunc;
+#endif
 
 uniform vec3 env_mat[3];
 uniform float sun_wash;

@@ -28,7 +28,11 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=7) uniform samplerCubeArray reflectionProbes;
+#else
 uniform samplerCubeArray   reflectionProbes;
+#endif
 uniform int sourceIdx;
 
 uniform float max_probe_lod;

@@ -23,8 +23,13 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=14) uniform sampler2D   noiseMap;
+layout(set=0, binding=3) uniform sampler2D   depthMap;
+#else
 uniform sampler2D   noiseMap;
 uniform sampler2D   depthMap;
+#endif
 
 uniform float ssao_radius;
 uniform float ssao_max_radius;

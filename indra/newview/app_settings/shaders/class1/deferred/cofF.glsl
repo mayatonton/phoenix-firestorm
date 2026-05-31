@@ -28,7 +28,11 @@
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=3) uniform sampler2D depthMap;
+#else
 uniform sampler2D depthMap;
+#endif
 
 uniform float depth_cutoff;
 uniform float norm_cutoff;

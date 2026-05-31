@@ -37,7 +37,11 @@ in vec2 vary_texcoord0;
 in vec3 vary_texcoord1;
 in vec3 vary_position;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=6) uniform samplerCube environmentMap;
+#else
 uniform samplerCube environmentMap;
+#endif
 
 vec3 atmosFragLighting(vec3 light, vec3 additive, vec3 atten);
 vec4 applyWaterFogViewLinear(vec3 pos, vec4 color);
