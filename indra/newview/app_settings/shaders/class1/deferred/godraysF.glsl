@@ -29,16 +29,61 @@ out vec4 frag_color;
 in vec2 vary_fragcoord;
 
 // view-space sun / moon dir, set via LLPipeline::bindDeferredShader
+// atmospheric color uniforms set via LLSettingsVOSky shader binding flow
+// inverse projection for far-plane reconstruction when depth==1.0 (sky)
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int  sun_up_factor;
-
-// atmospheric color uniforms set via LLSettingsVOSky shader binding flow
 uniform vec3 sunlight_color;
 uniform vec3 moonlight_color;
-
-// inverse projection for far-plane reconstruction when depth==1.0 (sky)
 uniform mat4 inv_proj;
+#endif
 
 // Cascaded sun shadow far-clip vector. Redeclared here so we can skip
 // ray-march samples that fall *beyond* the cascade range — sampleDirectional-

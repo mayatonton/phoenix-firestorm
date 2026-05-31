@@ -23,25 +23,61 @@
  * $/LicenseInfo$
  */
 
-uniform vec3  lightnorm;
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=1, std140) uniform FrameLights {
+    int  sun_up_factor;
+    vec3 sun_dir;
+    vec3 moon_dir;
+    vec4 waterPlane;
+    vec4 light_position[8];
+    vec3 light_direction[8];
+    vec4 light_attenuation[8];
+    vec3 light_diffuse[8];
+    vec2 light_deferred_attenuation[8];
+};
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform vec3  sunlight_color;
 uniform vec3  moonlight_color;
 uniform int   sun_up_factor;
 uniform vec3  ambient_color;
 uniform vec3  blue_horizon;
 uniform vec3  blue_density;
-uniform float haze_horizon;
 uniform float haze_density;
-uniform float cloud_shadow;
 uniform float density_multiplier;
 uniform float distance_multiplier;
 uniform float max_y;
 uniform vec3  glow;
 uniform float scene_light_strength;
-uniform float sun_moon_glow_factor;
 uniform float sky_sunlight_scale;
 uniform float sky_ambient_scale;
 uniform int classic_mode;
+#endif
+uniform vec3  lightnorm;
+uniform float haze_horizon;
+uniform float cloud_shadow;
+uniform float sun_moon_glow_factor;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14> Visual Realism master switch
 uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
 uniform float aya_r14_strength;  // <FS:AYAstorm r30 BD改善> r14 効果強度 (0=OFF / 1=ON)
