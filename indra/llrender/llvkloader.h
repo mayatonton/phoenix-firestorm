@@ -206,6 +206,60 @@ namespace LLVKLoader
     //            packed HDR、sub-doc 07 §1.2.1 set=1 想定 7 PBR slot + LLImageGL
     //            主要 internalformat 網羅)。
     VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-β': LLVertexBuffer Vulkan 化 (charter §7.5 boundary refine)
+    // sub-doc 04 §3.4 (AYA 確定 2026-05-31、案 D hybrid 採用)
+    //
+    // β' scope (placement のみ):
+    //   - VkBuffer + VmaAllocation の lifecycle helper (create/destroy)
+    //   - HOST_VISIBLE + MAPPED 想定 (GL VBO/IBO mapped region 経路 parallel)
+    //   - bind helper 配置 (β'-3、caller fire は 4.3-ε' 範囲)
+    //
+    // 設計境界:
+    //   - VmaAllocation handle は void* opaque で公開 (vk_mem_alloc.h header 持込み回避、
+    //     既存 llvkloader.h:192 / sub-step 3.4-β-2 設計継承)。impl 側で
+    //     reinterpret_cast<VmaAllocation> 経由で取扱い。
+    //   - out_mapped は HOST_VISIBLE+MAPPED 確保時のみ非 nullptr、device-local 経路
+    //     (将来拡張) では nullptr。
+    //   - 失敗時 caller-owned out_buffer / out_allocation は VK_NULL_HANDLE / nullptr のまま
+    //     (caller 側追加破棄不要)。
+    // ------------------------------------------------------------------
+
+    // VERTEX_BUFFER_BIT + HOST_VISIBLE + MAPPED で確保。size_bytes は LLVertexBuffer::mSize
+    // 想定 (>0、0 入力は失敗)。Vulkan 未初期化 / VMA 未確保時も false を返し caller-owned
+    // ハンドル群は VK_NULL_HANDLE のまま (caller 側 GL fallback 想定)。
+    bool createVertexBufferVk(U32     size_bytes,
+                              VkBuffer& out_buffer,
+                              void*&    out_allocation,
+                              void**    out_mapped);
+
+    // INDEX_BUFFER_BIT + HOST_VISIBLE + MAPPED で確保。size_bytes は LLVertexBuffer::mIndicesSize 想定。
+    bool createIndexBufferVk (U32     size_bytes,
+                              VkBuffer& out_buffer,
+                              void*&    out_allocation,
+                              void**    out_mapped);
+
+    // create*BufferVk で取得した buffer / allocation を破棄。VK_NULL_HANDLE / nullptr は no-op。
+    // Vulkan 未初期化時も no-op (caller 側未確保を前提に対称呼出)。
+    void destroyBufferVk     (VkBuffer  buffer,
+                              void*     allocation);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-β'-3: vkCmdBindVertexBuffers / vkCmdBindIndexBuffer 配置 (1:1 wrap)。
+    // β' 段階 = caller 配置のみ (実 fire は 4.3-ε' per-pool draw 配線時)。
+    // cmd_buf == VK_NULL_HANDLE / buffer == VK_NULL_HANDLE 時は no-op (caller 側 in-frame /
+    // GL fallback 経路と対称運用)。binding 番号は 0 固定 (LLVertexBuffer interleaved 1 binding
+    // pattern、4.3-ε' で per-pool layout 確定時に多段化判断)。
+    // ------------------------------------------------------------------
+    void bindVertexBufferVk(VkCommandBuffer cmd_buf,
+                            VkBuffer        buffer,
+                            VkDeviceSize    offset);
+
+    void bindIndexBufferVk (VkCommandBuffer cmd_buf,
+                            VkBuffer        buffer,
+                            VkDeviceSize    offset,
+                            VkIndexType     index_type);
 }
 
 #endif // LL_LLVKLOADER_H

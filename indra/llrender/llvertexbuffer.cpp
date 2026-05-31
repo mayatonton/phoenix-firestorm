@@ -36,6 +36,7 @@
 #include "llshadermgr.h"
 #include "llglslshader.h"
 #include "llmemory.h"
+#include "llvkloader.h" // r41 sub-step 4.3-β': Vulkan vertex/index buffer parallel lifecycle
 #include <glm/gtc/type_ptr.hpp>
 
 //Next Highest Power Of Two
@@ -1120,6 +1121,14 @@ void LLVertexBuffer::genBuffer(U32 size)
         mSize = size;
         sVBOPool->allocate(GL_ARRAY_BUFFER, mSize, mGLBuffer, mMappedData);
     }
+
+    // r41 sub-step 4.3-β': Vulkan vertex buffer parallel 確保 (placement only)。
+    // Vulkan 未初期化時は静かに skip (caller 側 GL fallback で動作維持)。
+    // bind/draw fire は 4.3-ε' per-pool 配線時に接続。
+    if (mSize > 0 && mVkVertexBuffer == VK_NULL_HANDLE)
+    {
+        LLVKLoader::createVertexBufferVk(mSize, mVkVertexBuffer, mVkVertexAlloc, &mVkVertexMapped);
+    }
 }
 
 void LLVertexBuffer::genIndices(U32 size)
@@ -1134,6 +1143,12 @@ void LLVertexBuffer::genIndices(U32 size)
         llassert(mMappedIndexData == nullptr);
         mIndicesSize = size;
         sVBOPool->allocate(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mGLIndices, mMappedIndexData);
+    }
+
+    // r41 sub-step 4.3-β': Vulkan index buffer parallel 確保 (placement only)。
+    if (mIndicesSize > 0 && mVkIndexBuffer == VK_NULL_HANDLE)
+    {
+        LLVKLoader::createIndexBufferVk(mIndicesSize, mVkIndexBuffer, mVkIndexAlloc, &mVkIndexMapped);
     }
 }
 
@@ -1198,6 +1213,16 @@ void LLVertexBuffer::destroyGLBuffer()
         mGLBuffer = 0;
         mMappedData = nullptr;
     }
+
+    // r41 sub-step 4.3-β': Vulkan vertex buffer parallel 破棄。
+    // VK_NULL_HANDLE / nullptr は no-op (createVertexBufferVk 失敗 / Vulkan 未初期化時)。
+    if (mVkVertexBuffer != VK_NULL_HANDLE || mVkVertexAlloc != nullptr)
+    {
+        LLVKLoader::destroyBufferVk(mVkVertexBuffer, mVkVertexAlloc);
+        mVkVertexBuffer = VK_NULL_HANDLE;
+        mVkVertexAlloc  = nullptr;
+        mVkVertexMapped = nullptr;
+    }
 }
 
 void LLVertexBuffer::destroyGLIndices()
@@ -1214,6 +1239,15 @@ void LLVertexBuffer::destroyGLIndices()
         mIndicesSize = 0;
         mGLIndices = 0;
         mMappedIndexData = nullptr;
+    }
+
+    // r41 sub-step 4.3-β': Vulkan index buffer parallel 破棄。
+    if (mVkIndexBuffer != VK_NULL_HANDLE || mVkIndexAlloc != nullptr)
+    {
+        LLVKLoader::destroyBufferVk(mVkIndexBuffer, mVkIndexAlloc);
+        mVkIndexBuffer = VK_NULL_HANDLE;
+        mVkIndexAlloc  = nullptr;
+        mVkIndexMapped = nullptr;
     }
 }
 

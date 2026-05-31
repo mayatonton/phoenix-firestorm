@@ -2978,4 +2978,143 @@ VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat)
     return llGlEnumToVkFormatImpl(ll_gl_intformat);
 }
 
+// ------------------------------------------------------------------
+// r41 sub-step 4.3-β': LLVertexBuffer Vulkan 化 (charter §7.5 boundary refine)
+// sub-doc 04 §3.4 案 D hybrid 採用 (AYA 確定 2026-05-31)。
+//
+// β' = placement のみ。bind/draw fire は 4.3-ε' 範囲で配線。
+// HOST_VISIBLE + MAPPED で確保し、persistent mapped pointer を caller (LLVertexBuffer)
+// へ返却。GL VBO/IBO の mMappedData 経路と parallel 動作 (lazy upload 接続は 4.3-ε')。
+// VmaAllocation handle は void* opaque で公開 (vk_mem_alloc.h header 持込み回避、
+// 既存 llvkloader.h:192 / sub-step 3.4-β-2 設計継承)。
+// ------------------------------------------------------------------
+namespace
+{
+    bool createBufferVkImpl(U32                 size_bytes,
+                            VkBufferUsageFlags  usage,
+                            const char*         tag,
+                            VkBuffer&           out_buffer,
+                            void*&              out_allocation,
+                            void**              out_mapped)
+    {
+        out_buffer     = VK_NULL_HANDLE;
+        out_allocation = nullptr;
+        if (out_mapped)
+        {
+            *out_mapped = nullptr;
+        }
+
+        if (size_bytes == 0)
+        {
+            LL_WARNS("Vulkan") << tag << ": size_bytes=0 (skip)" << LL_ENDL;
+            return false;
+        }
+        if (sAllocator == VK_NULL_HANDLE)
+        {
+            // Vulkan 未初期化 / VMA 未確保時は静かに false (caller 側 GL fallback 想定)。
+            return false;
+        }
+
+        VkBufferCreateInfo bci = {};
+        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bci.size        = size_bytes;
+        bci.usage       = usage;
+        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo aci = {};
+        aci.usage         = VMA_MEMORY_USAGE_AUTO;
+        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+
+        VkBuffer       buffer     = VK_NULL_HANDLE;
+        VmaAllocation  allocation = VK_NULL_HANDLE;
+        VmaAllocationInfo info    = {};
+        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &buffer, &allocation, &info);
+        if (r != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << tag << ": vmaCreateBuffer failed result=" << (S32)r
+                               << " size=" << (S32)size_bytes << LL_ENDL;
+            if (buffer != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, buffer, allocation);
+            }
+            return false;
+        }
+
+        out_buffer     = buffer;
+        out_allocation = reinterpret_cast<void*>(allocation);
+        if (out_mapped)
+        {
+            *out_mapped = info.pMappedData;
+        }
+        return true;
+    }
+}
+
+bool createVertexBufferVk(U32       size_bytes,
+                          VkBuffer& out_buffer,
+                          void*&    out_allocation,
+                          void**    out_mapped)
+{
+    return createBufferVkImpl(size_bytes,
+                              VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                              "createVertexBufferVk",
+                              out_buffer, out_allocation, out_mapped);
+}
+
+bool createIndexBufferVk(U32       size_bytes,
+                         VkBuffer& out_buffer,
+                         void*&    out_allocation,
+                         void**    out_mapped)
+{
+    return createBufferVkImpl(size_bytes,
+                              VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                              "createIndexBufferVk",
+                              out_buffer, out_allocation, out_mapped);
+}
+
+void destroyBufferVk(VkBuffer buffer, void* allocation)
+{
+    if (buffer == VK_NULL_HANDLE && allocation == nullptr)
+    {
+        return;
+    }
+    if (sAllocator == VK_NULL_HANDLE)
+    {
+        // Vulkan 未初期化 / 既に shutdown 後 (caller 側対称呼出を想定、no-op で許容)。
+        return;
+    }
+    vmaDestroyBuffer(sAllocator, buffer, reinterpret_cast<VmaAllocation>(allocation));
+}
+
+// r41 sub-step 4.3-β'-3: vkCmdBindVertexBuffers / vkCmdBindIndexBuffer wrap 配置。
+// 段階 β' は placement のみ (caller fire は 4.3-ε' per-pool draw 配線時)。
+void bindVertexBufferVk(VkCommandBuffer cmd_buf, VkBuffer buffer, VkDeviceSize offset)
+{
+    if (cmd_buf == VK_NULL_HANDLE || buffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    VkBuffer     buffers[1] = { buffer };
+    VkDeviceSize offsets[1] = { offset };
+    vkCmdBindVertexBuffers(cmd_buf,
+                           /*firstBinding=*/0,
+                           /*bindingCount=*/1,
+                           buffers,
+                           offsets);
+}
+
+void bindIndexBufferVk(VkCommandBuffer cmd_buf,
+                       VkBuffer        buffer,
+                       VkDeviceSize    offset,
+                       VkIndexType     index_type)
+{
+    if (cmd_buf == VK_NULL_HANDLE || buffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    vkCmdBindIndexBuffer(cmd_buf, buffer, offset, index_type);
+}
+
 } // namespace LLVKLoader

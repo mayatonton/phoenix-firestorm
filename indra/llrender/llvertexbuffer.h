@@ -301,6 +301,19 @@ protected:
     std::vector<MappedRegion> mMappedVertexRegions;  // list of mMappedData byte ranges that must be sent to GL
     std::vector<MappedRegion> mMappedIndexRegions;   // list of mMappedIndexData byte ranges that must be sent to GL
 
+    // r41 sub-step 4.3-β': Vulkan vertex/index buffer parallel handles.
+    // β' 段階 = placement のみ (bind/draw fire は 4.3-ε' 範囲)。
+    // Allocation handle は void* opaque (VmaAllocation = llvkloader.cpp 1 TU 限定の
+    // 既存設計 [llvkloader.h:192] 継承、vk_mem_alloc.h を header propagate しない)。
+    // HOST_VISIBLE + MAPPED 想定で persistent mapped pointer 並列保持 (GL VBO/IBO の
+    // mMappedData 経路に parallel、4.3-ε' で actual upload 経路と接続)。
+    VkBuffer mVkVertexBuffer = VK_NULL_HANDLE;
+    VkBuffer mVkIndexBuffer  = VK_NULL_HANDLE;
+    void*    mVkVertexAlloc  = nullptr;  // VmaAllocation (opaque)
+    void*    mVkIndexAlloc   = nullptr;  // VmaAllocation (opaque)
+    void*    mVkVertexMapped = nullptr;  // persistent mapped pointer (HOST_VISIBLE+MAPPED)
+    void*    mVkIndexMapped  = nullptr;  // persistent mapped pointer (HOST_VISIBLE+MAPPED)
+
 private:
     // DEPRECATED
     // These function signatures are deprecated, but for some reason
