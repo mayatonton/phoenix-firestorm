@@ -221,9 +221,21 @@ private:
 5. **vertex/index buffer bind**: `vkCmdBindVertexBuffers` + `vkCmdBindIndexBuffer` (drawable の vertex buffer cache 経由、領域 5 llvertexbuffer Vulkan 化と協調)
 6. **draw call**: `vkCmdDrawIndexed(index_count, instance_count, first_index, vertex_offset, first_instance)`
 
-**完了 marker** (sub-step 4.3): AYA launch 時 placeholder fullscreen 三角形消失 + scene 描画 (黒画面ベース、vk-α 空転 baseline)、validation strict 動作中 violation 0 件、12/12 pool 全 hook 内実 scene 描画動作、段階 3 範式継承 (one-shot INFO marker = 「Pool N real scene draw fired (frame=M)」風)。
+**完了 marker** (sub-step 4.3 集約 = 4.3-ε' + 4.3-ζ' 完遂時): AYA launch 時 placeholder fullscreen 三角形消失 + scene 描画 (黒画面ベース、vk-α 空転 baseline)、validation strict 動作中 violation 0 件、12/12 pool 全 hook 内実 scene 描画動作、段階 3 範式継承 (one-shot INFO marker = 「Pool N real scene draw fired (frame=M)」風)。
 
-**partial 配線許容**: sub-step 4.3 範囲では領域 7 sub-step 7.3 (material cache 本実装) / 7.4 (push descriptor 全配線) / 7.5 (実 attachment 配線) と協調必須、これらの sub-step が partial state でも sub-step 4.3 は placeholder material + placeholder descriptor で動作確認可、領域 5-7 完遂時に最終整合。
+**(refine 2026-05-31、handoff-substep-4-3-beta-prep.md §4.2 反映)**: 旧 §3.4 spec は sub-step 4.3-β/γ/δ/ε で 4 commit 分割 per-pool 移植を想定していたが、4.3-α 完遂後の 3-agent 並列 trace で **infrastructure 前提誤り発覚** = 上記 1-6 配線は領域 5 (LLVertexBuffer Vulkan 化) + 領域 6 sub-step 6.1 (WLSky 4 shader + WaterExclusion 等 SPIR-V port) + 領域 7 sub-step 7.3/7.4/7.5 (material cache + push descriptor + 実 attachment 配線) 着手前提だが未着手。案 D 採用 (AYA 「D お願いします」承認 2026-05-31) で新 cadence 再設計:
+
+| 新 sub-step | scope | infrastructure 前提整備 |
+|---|---|---|
+| 4.3-β-prep ✓ | scope refine 提案 doc (AYA review PASS 2026-05-31) | — |
+| **4.3-β'** | 領域 5 LLVertexBuffer Vulkan 化 (段階 5 部分前出し) | (VkBuffer + bind helper + `vkCmdBindVertexBuffers` / `vkCmdBindIndexBuffer` caller 配置) |
+| **4.3-γ'** | 領域 6 sub-step 6.1 本格着手 (autobuild integration + base port ~228 file SPIR-V port) | (旧「sub-step 6.1 本格着手 = 段階 4 sub-step 4.5 完遂後」縛り解除、AYA 承認 update) |
+| **4.3-δ'** | 領域 7 sub-step 7.3/7.4/7.5 本格化 (material cache + push descriptor 全配線 + 実 attachment 配線) | (旧「段階 4-5 並走判断保留」→ 段階 4 内本格化、AYA 承認 update) |
+| **4.3-ε'** | Sky+WLSky+WaterExclusion + 9 pool 一括 per-pool 実 scene draw 移植 (旧 β+γ 集約、上記 1-6 配線を 12 pool 一括適用) | 4.3-β' + γ' + δ' 完遂前提で機械的 1:1 GL → Vk 替換 |
+| **4.3-ζ'** | Avatar bone per-draw + GLTFPBR per-draw 移植 (旧 δ+ε 集約) | 4.3-β' + γ' + δ' 完遂前提で機械的 1:1 GL → Vk 替換 |
+| **4.3-η'** | self-check + handoff (旧 ζ 範式継承) | — |
+
+**partial 配線許容 (再評価 2026-05-31)**: 旧 spec の「partial 配線許容 = 領域 7 sub-step 7.3/7.4/7.5 が partial state でも placeholder material + placeholder descriptor で動作確認可」literal は valid だが、実 scene draw 移植が視覚効果を持つには領域 5+6+7 整備が前提 (Sky=stub iterate 0 件、WLSky=shader 未 port で bind 不可、WaterExclusion=gDrawColorProgram 未 port で bind 不可)。新 cadence では 4.3-δ' まで infrastructure を整備した後 4.3-ε' / 4.3-ζ' で機械的移植する設計に refine、partial 配線注記は 4.3-δ' 完遂前のみ適用 (handoff-substep-4-3-beta-prep.md §6.5 case-validity 担保)。
 
 ---
 
@@ -312,16 +324,27 @@ charter §7.5 で boundary refine 可、本 §5 は段階 3 5 sub-step (3.1a/3.1
 
 ### §5.3 sub-step 4.3 (標準、sCurCameraID accessor 化 + 残 frame state + per-pool 実 scene draw 移植)
 
-- **対象**: sCurCameraID accessor 化 + sVisibleLightCount / sLastFocusPoint / sCompiles / sIndicesDrawnCount / mNumVisibleNodes / mNumVisibleFaces 移行 + **12 pool record hook signature 変更 + 実 scene draw 移植 (段階 3 引継ぎ)**
-- **完了 marker**:
-  - sCurCameraID accessor 経由 (LLViewerCamera::getCurCameraID() / setCurCameraID()) spatial partition + visibility test 動作維持
-  - 残 frame state 6 件全 frame context 経由 access 動作
-  - 12 pool 全 record hook signature 変更 + 実 scene visibility iteration + per-draw PSO bind + descriptor set bind + vertex/index buffer bind + `vkCmdDrawIndexed` 投入動作 (§3.4 反映)
-  - AYA launch 時 **placeholder fullscreen 三角形消失 + scene 描画 (黒画面ベース、vk-α 空転 baseline)**
-  - validation strict 動作中 violation 0 件
-- **相対工数感**: 大 (sub-step 4 最大、cross-class accessor + 12 pool 全 hook body 配線変更)
-- **risk**: high (sub-doc 03 §1.5.6 sub-step 3.4 範式継承、段階 4 最大 refactor)
-- **partial 配線許容**: 領域 7 sub-step 7.3/7.4/7.5 が partial state でも sub-step 4.3 は placeholder material + placeholder descriptor で動作確認可
+**(refine 2026-05-31、handoff-substep-4-3-beta-prep.md §4.2 反映)**: 旧 sub-step 4.3 は単一 sub-step 想定だったが、4.3-α 完遂 (commit `9f13302078` = sCurCameraID accessor 配線) 後の 3-agent 並列 trace で infrastructure 前提誤り発覚 (§3.4 refine note 反映)、案 D 採用下 7 sub-step に再設計:
+
+- **対象**: sCurCameraID accessor 化 + sVisibleLightCount / sLastFocusPoint / sCompiles / sIndicesDrawnCount / mNumVisibleNodes / mNumVisibleFaces 移行 + **12 pool record hook signature 変更 + 実 scene draw 移植 (段階 3 引継ぎ)** + **領域 5 LLVertexBuffer Vulkan 化 (段階 5 部分前出し)** + **領域 6 sub-step 6.1 本格着手 (前出し)** + **領域 7 sub-step 7.3/7.4/7.5 本格化 (前出し)**
+
+| 新 sub-step | scope | 完了 marker | risk |
+|---|---|---|---|
+| **4.3-α (完遂 2026-05-31、commit `9f13302078`)** | sCurCameraID accessor 配線 (LLViewerCamera::getCurCameraID/setCurCameraID inline 配置 + LLPipelineFrameContext forward accessor + ScopedCameraID nested RAII 配置) + write 14 件 + read 38 件 + include 配線 | spatial partition + visibility test 動作維持 + AYA launch verify PASS | low-medium |
+| **4.3-β-prep (AYA review PASS 2026-05-31)** | scope refine 提案 doc 起草 (handoff-substep-4-3-beta-prep.md = 案 D 採用下起草、infrastructure 前提誤り発覚 + 新 cadence 再設計 + AYA 承認境界 update 提案) | AYA 「OK」承認 | — |
+| **4.3-β'** | 領域 5 LLVertexBuffer Vulkan 化 (VkBuffer + bind helper + `vkCmdBindVertexBuffers` / `vkCmdBindIndexBuffer` caller 配置 + LLVertexBuffer instance lifecycle Vk 化) | LLVertexBuffer Vk 経路動作 + 既存 GL drawpool regression 0 件 + AYA launch verify PASS | medium-high |
+| **4.3-γ'** | 領域 6 sub-step 6.1 本格着手 (autobuild integration 一括化、base port ~228 file 全 SPIR-V port、AYAstorm 改変 13 file は r42-α/β/γ scope 外維持) | 248 shader SPIR-V port 完遂 + glslangValidator install + autobuild integration 動作 + AYA launch verify PASS | high (旧「段階 4 sub-step 4.5 完遂後」縛り解除、AYA 承認 update) |
+| **4.3-δ'** | 領域 7 sub-step 7.3 material cache 本実装 + 7.4 push descriptor 全配線 + 7.5 実 attachment 配線 | 3 pool + 9 pool + Avatar + GLTFPBR の per-material descriptor 配信動作 + AYA launch verify PASS | medium-high (旧「段階 4-5 並走判断保留」→ 段階 4 内本格化、AYA 承認 update) |
+| **4.3-ε'** | Sky+WLSky+WaterExclusion + 9 pool per-pool 実 scene draw 移植 (旧 β+γ 集約、§3.4 上記 1-6 配線を 12 pool 一括適用) | AYA launch 時 placeholder fullscreen 三角形消失 + scene 描画 (黒画面ベース、vk-α 空転 baseline) + validation strict 動作中 violation 0 件 | high (sub-doc 03 §1.5.6 sub-step 3.4 範式継承、段階 4 最大 refactor) |
+| **4.3-ζ'** | Avatar bone per-draw + GLTFPBR per-draw 移植 (旧 δ+ε 集約) | Avatar bone push descriptor 経由 per-draw 動作 + GLTFPBR per-material descriptor 動作 + AYA launch verify PASS | high |
+| **4.3-η'** | self-check + handoff (旧 ζ 範式継承) | 4.3-α/β-prep/β'/γ'/δ'/ε'/ζ' 全完遂 evidence + acceptance #3-段階 4 satisfy 確認 + handoff-substep-4-3-complete.md 起草 | low (verify 中心) |
+
+- **partial 配線許容 (再評価 2026-05-31)**: 旧注記「領域 7 sub-step 7.3/7.4/7.5 が partial state でも sub-step 4.3 は placeholder material + placeholder descriptor で動作確認可」は literal valid だが、視覚効果を持つには領域 5+6+7 整備が前提。新 cadence では 4.3-δ' 完遂前のみ partial 配線注記適用 (handoff-substep-4-3-beta-prep.md §6.5 case-validity 担保 + §3.4 refine note 反映)。
+- **AYA 承認境界 update 必要事項 (handoff-substep-4-3-beta-prep.md §5.1 反映)**:
+  - sub-step 6.1 本格着手: 旧「段階 4 sub-step 4.5 完遂後、並走しない」→ **新「sub-step 4.3-γ' (段階 4 内前出し)、4.3-β' 完遂後着手」**
+  - 領域 7 sub-step 7.3/7.4/7.5 着手判断: 旧「段階 4-5 並走、handoff で擦り合わせ」→ **新「sub-step 4.3-δ' (段階 4 内本格化)、4.3-γ' 完遂後着手」**
+  - 段階 5 着手: 旧「段階 4 完遂後」→ **新「領域 5 LLVertexBuffer Vulkan 化のみ sub-step 4.3-β' で前出し、残 段階 5 scope (llspatialpartition / llviewershadermgr / llvosky / llvowlsky + PFNGL 削除) は段階 4 完遂後維持」**
+- **boundary refine 根拠**: charter §7.5 「r41 着手中に refine 可な本 charter content」(§2 領域別 着手順序 refine)、§3 acceptance criterion 趣旨維持 (charter §7.5 「AYA 確認なしに変更しない」遵守)、§6.1 acceptance #1/#3/#5/#6 段階 4 内 satisfy 経路維持
 
 ### §5.4 sub-step 4.4 (特殊、12 件 LLGLState RAII dead-store + LLVKRenderer skeleton)
 
@@ -388,6 +411,8 @@ charter §7.5 で boundary refine 可、本 §5 は段階 3 5 sub-step (3.1a/3.1
 - `docs/specs/ayastorm-r41-gl-removal/handoff-stage-1-complete.md` — 段階 1 完遂 → 段階 2 着手前 prep (役割完了 2026-05-28)
 - `docs/specs/ayastorm-r41-gl-removal/handoff-stage-2-complete.md` — 段階 2 完遂 → 段階 3 着手前 prep (役割完了 2026-05-29)
 - `docs/specs/ayastorm-r41-gl-removal/handoff-stage-3-complete.md` — 段階 3 完遂 → 段階 4 着手境界 (active、本 sub-doc 04 起草の direct trigger)
+- `docs/specs/ayastorm-r41-gl-removal/handoff-substep-4-3-alpha-complete.md` — sub-step 4.3-α 完遂 → 4.3-β 着手境界 handoff (役割完了、4.3-β-prep で新 cadence に置換)
+- `docs/specs/ayastorm-r41-gl-removal/handoff-substep-4-3-beta-prep.md` — **sub-step 4.3-α 完遂後 4.3-β scope refine 提案 doc (active 2026-05-31、案 D 採用下起草、AYA review PASS、§3.4 / §5.3 refine の direct trigger)**
 
 ### §7.2 関連 memory
 
