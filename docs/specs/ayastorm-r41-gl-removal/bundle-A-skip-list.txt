@@ -1,0 +1,25 @@
+# r41 sub-step 4.3-γ'-port-β-2-bundle-A skip list
+# bundle-A patch 対象から機械的に除外する 13 file (AYAstorm 改変 11 + exemplar 2)
+# 全 Agent patch session で必須注入、pre-commit Bash check で integrity 担保
+# 詳細は handoff-substep-4-3-gamma-prime-port-beta-2-bundle-A-prep.md §4 参照
+
+# Picker (2) — AYAstorm r21 self rigged picker
+indra/newview/app_settings/shaders/class1/deferred/fsObjectIDV.glsl
+indra/newview/app_settings/shaders/class1/deferred/fsObjectIDF.glsl
+
+# Cinematic BD (2) — AYAstorm r30 Cinematic chapter
+indra/newview/app_settings/shaders/cinematic_bd/class1/deferred/shadowUtil.glsl
+indra/newview/app_settings/shaders/cinematic_bd/class3/deferred/screenSpaceReflUtil.glsl
+
+# Visual Realism (7) — AYAstorm r14+ 視覚表現章
+indra/newview/app_settings/shaders/class1/deferred/godraysV.glsl
+indra/newview/app_settings/shaders/class1/deferred/godraysF.glsl
+indra/newview/app_settings/shaders/class1/deferred/volumetricLightF.glsl
+indra/newview/app_settings/shaders/class3/deferred/volumetricLightF.glsl
+indra/newview/app_settings/shaders/class1/deferred/blurLightV.glsl
+indra/newview/app_settings/shaders/class1/deferred/blurLightF.glsl
+indra/newview/app_settings/shaders/class1/windlight/atmosphericsFuncs.glsl
+
+# Exemplar β-1 PoC (2) — bundle-A scope frozen (sub-doc 03 §3.1.3 試作レール扱い継続)
+indra/newview/app_settings/shaders/class1/deferred/diffuseV.glsl
+indra/newview/app_settings/shaders/class1/deferred/diffuseF.glsl
