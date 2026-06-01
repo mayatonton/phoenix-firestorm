@@ -76,6 +76,21 @@ public:
 
     std::string getLLViewerVersion() const; // <FS:PP>
 
+    /// return the embedded AYAstorm release tag, e.g. v7.2.4-ayastorm-r32.
+    std::string getAYAstormReleaseTag() const;
+
+    /// return the embedded AYAstorm release family, e.g. classic, vulkan, metal.
+    std::string getAYAstormReleaseFamily() const;
+
+    /// return the git branch embedded into dev builds.
+    std::string getAYAstormSourceBranch() const;
+
+    /// return a user-facing AYAstorm version label derived from the embedded release tag.
+    std::string getAYAstormDisplayVersion() const;
+
+    /// return a user-facing Firestorm base-version label for AYAstorm branding.
+    std::string getAYAstormBaseVersionLabel() const;
+
     /// return the viewer version and channel as a string
     /// like "Second Life Release 2.0.0.200030"
     std::string getChannelAndVersion();

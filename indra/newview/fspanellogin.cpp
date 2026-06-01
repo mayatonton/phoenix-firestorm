@@ -29,6 +29,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "fspanellogin.h"
+#include "llayaupdatechecker.h"
 #include "lllayoutstack.h"
 
 #include "indra_constants.h"        // for key and mask constants
@@ -188,7 +189,8 @@ FSPanelLogin::FSPanelLogin(const LLRect &rect,
     mLocationLength(0),
     mShowFavorites(false),
     mInitialized(false),
-    mGridListChangedCallbackConnection()
+    mGridListChangedCallbackConnection(),
+    mAYAUpdateCallbackConnection()
 {
     setBackgroundVisible(false);
     setBackgroundOpaque(true);
@@ -304,6 +306,15 @@ FSPanelLogin::FSPanelLogin(const LLRect &rect,
     getChild<LLPanel>("login")->setDefaultBtn(findChild<LLButton>("connect_btn"));
     getChild<LLPanel>("start_location_panel")->setDefaultBtn(findChild<LLButton>("connect_btn"));
 
+    if (LLTextBox* brand_line = findChild<LLTextBox>("aya_brand_line1"))
+    {
+        brand_line->setValue(LLVersionInfo::instance().getAYAstormDisplayVersion());
+    }
+    if (LLTextBox* brand_line = findChild<LLTextBox>("aya_brand_line2"))
+    {
+        brand_line->setValue(LLVersionInfo::instance().getAYAstormBaseVersionLabel());
+    }
+
     std::string channel = LLVersionInfo::getInstance()->getChannel();
     std::string version = llformat("%s (%d)",
                                    LLVersionInfo::getInstance()->getShortVersion().c_str(),
@@ -322,7 +333,20 @@ FSPanelLogin::FSPanelLogin(const LLRect &rect,
 
     childSetAction("password_show_btn", onShowHidePasswordClick, this);
     childSetAction("password_hide_btn", onShowHidePasswordClick, this);
+    if (LLButton* button = findChild<LLButton>("aya_update_open_btn"))
+    {
+        button->setClickedCallback(onClickAYAUpdateOpen, this);
+    }
+    if (LLButton* button = findChild<LLButton>("aya_update_later_btn"))
+    {
+        button->setClickedCallback(onClickAYAUpdateLater, this);
+    }
+    if (LLButton* button = findChild<LLButton>("aya_update_skip_btn"))
+    {
+        button->setClickedCallback(onClickAYAUpdateSkip, this);
+    }
     syncShowHidePasswordButton();
+    startAYAUpdateCheck();
 
     mInitialized = true;
 }
@@ -406,6 +430,10 @@ FSPanelLogin::~FSPanelLogin()
     {
         mGridListChangedCallbackConnection.disconnect();
     }
+    if (mAYAUpdateCallbackConnection.connected())
+    {
+        mAYAUpdateCallbackConnection.disconnect();
+    }
 
     FSPanelLogin::sInstance = NULL;
 
@@ -484,6 +512,75 @@ void FSPanelLogin::showLoginWidgets()
         web_browser->navigateTo( splash_screen_url, HTTP_CONTENT_TEXT_HTML );
         LLUICtrl* username_combo = sInstance->getChild<LLUICtrl>("username_combo");
         username_combo->setFocus(true);
+    }
+}
+
+void FSPanelLogin::startAYAUpdateCheck()
+{
+    LLAyastormUpdateChecker& checker = LLAyastormUpdateChecker::instance();
+    mAYAUpdateCallbackConnection = checker.addUpdateCallback(boost::bind(&FSPanelLogin::showAYAUpdateBanner, this));
+    checker.start();
+
+    if (checker.hasUpdate())
+    {
+        showAYAUpdateBanner();
+    }
+}
+
+void FSPanelLogin::showAYAUpdateBanner()
+{
+    LLPanel* banner = findChild<LLPanel>("aya_update_banner");
+    if (!banner)
+    {
+        return;
+    }
+
+    const LLAyastormUpdateChecker::UpdateInfo& update = LLAyastormUpdateChecker::instance().getUpdateInfo();
+    if (!update.available)
+    {
+        hideAYAUpdateBanner();
+        return;
+    }
+
+    LLTextBox* title = findChild<LLTextBox>("aya_update_title");
+    if (title)
+    {
+        title->setFont(LLFontGL::getFont(LLFontDescriptor("SansSerif", "AYAUpdateTitle", LLFontGL::BOLD)));
+        title->setValue("AYAstorm update available");
+    }
+
+    LLTextBox* message = findChild<LLTextBox>("aya_update_message");
+    if (message)
+    {
+        message->setFont(LLFontGL::getFont(LLFontDescriptor("SansSerif", "AYAUpdateBody", LLFontGL::NORMAL)));
+        message->setValue("Latest: " + update.latest_tag + "\nCurrent: " + update.current_tag);
+    }
+
+    const LLFontGL* button_font = LLFontGL::getFont(LLFontDescriptor("SansSerif", "AYAUpdateButton", LLFontGL::BOLD));
+    if (LLButton* button = findChild<LLButton>("aya_update_open_btn"))
+    {
+        button->setFont(button_font);
+    }
+    if (LLButton* button = findChild<LLButton>("aya_update_later_btn"))
+    {
+        button->setFont(button_font);
+    }
+    if (LLButton* button = findChild<LLButton>("aya_update_skip_btn"))
+    {
+        button->setFont(button_font);
+    }
+
+    banner->centerWithin(getLocalRect());
+    banner->setVisible(true);
+    sendChildToFront(banner);
+}
+
+void FSPanelLogin::hideAYAUpdateBanner()
+{
+    LLPanel* banner = findChild<LLPanel>("aya_update_banner");
+    if (banner)
+    {
+        banner->setVisible(false);
     }
 }
 
@@ -909,10 +1006,10 @@ void FSPanelLogin::loadLoginPage()
     }
 
     // Channel and Version
-    params["version"] = llformat("%s (%d)",
-                                 LLVersionInfo::getInstance()->getShortVersion().c_str(),
-                                 LLVersionInfo::getInstance()->getBuild());
-    params["channel"] = LLVersionInfo::getInstance()->getChannel();
+    // AYAstorm uses Firestorm's hosted login page, but the "Your version" card
+    // should describe the running AYAstorm build rather than the upstream FS build.
+    params["version"] = LLVersionInfo::instance().getAYAstormDisplayVersion();
+    params["channel"] = LLVersionInfo::instance().getAYAstormBaseVersionLabel();
 
     // Grid
     params["grid"] = LLGridManager::getInstance()->getGridId();
@@ -1114,6 +1211,36 @@ void FSPanelLogin::onShowHidePasswordClick(void*)
         LL_INFOS("AppInit") << "Showing password text now " << (sInstance->mShowPassword ? "on" : "off") << LL_ENDL;
 
         sInstance->syncShowHidePasswordButton();
+    }
+}
+
+// static
+void FSPanelLogin::onClickAYAUpdateOpen(void*)
+{
+    LLAyastormUpdateChecker::instance().openReleasePage();
+    if (sInstance)
+    {
+        sInstance->hideAYAUpdateBanner();
+    }
+}
+
+// static
+void FSPanelLogin::onClickAYAUpdateLater(void*)
+{
+    LLAyastormUpdateChecker::instance().suppressForSession();
+    if (sInstance)
+    {
+        sInstance->hideAYAUpdateBanner();
+    }
+}
+
+// static
+void FSPanelLogin::onClickAYAUpdateSkip(void*)
+{
+    LLAyastormUpdateChecker::instance().skipCurrentVersion();
+    if (sInstance)
+    {
+        sInstance->hideAYAUpdateBanner();
     }
 }
 
