@@ -69,7 +69,15 @@ in vec4 clothing;
 mat4 getSkinnedTransform();
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-7: weight attribute guard wrap (η-5 (c) 範式拡張)
+// avatarV.glsl (deferred、本 file) と avatarSkinV.glsl (auto-attach via hasSkinning)
+// 双方が `layout(location=9) in vec4 weight` を独立宣言、Vulkan/glslang strict mode で
+// redefinition。先 attach (avatarSkinV.glsl) が WEIGHT_LOCATION_DEFINED を define、
+// 後 attach (本 file) は skip。GL path `#else` 側は byte-for-byte 不変 (charter §3 #1 担保)。
+#ifndef WEIGHT_LOCATION_DEFINED
+#define WEIGHT_LOCATION_DEFINED 1
 layout(location=9) in vec4 weight;
+#endif
 #else
 in vec4 weight;
 #endif
@@ -91,9 +99,23 @@ out vec3 vary_position;
 #endif
 
 #ifdef AVATAR_CLOTH
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-7 phase 1 追補: AVATAR_CLOTH bare uniforms UBO wrap
+// (η-5 §3.2 5th-level scope refinement = cascade emergence sub-bundle 内取込み)
+// 'weight' redefinition 解消 (上記 WEIGHT_LOCATION_DEFINED guard) で parse 進行 →
+// AVATAR_CLOTH 内 bare uniform 3 件 (gWindDir / gSinWaveParams / gGravity) が
+// 露出 (Deferred Avatar Shader vertex 0:464)。η-6 UBO wrap 範式継承。
+// GL `#else` path は byte-for-byte 不変 (charter §3 #1 担保)。
+layout(set=3, binding=57, std140) uniform AvatarClothVParamUBO_Legacy {
+    vec4 gWindDir;
+    vec4 gSinWaveParams;
+    vec4 gGravity;
+};
+#else
 uniform vec4 gWindDir;
 uniform vec4 gSinWaveParams;
 uniform vec4 gGravity;
+#endif
 
 const vec4 gMinMaxConstants = vec4(1.0, 0.166666, 0.0083143, .00018542);     // #minimax-generated coefficients
 const vec4 gPiConstants = vec4(0.159154943, 6.28318530, 3.141592653, 1.5707963); // # {1/2PI, 2PI, PI, PI/2}

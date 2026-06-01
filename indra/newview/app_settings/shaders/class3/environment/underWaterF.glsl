@@ -54,6 +54,12 @@ uniform sampler2D screenTex;
 // scope`) が発生する。本 UBO 内側のみ per-block 固有化 rename で衝突解消、
 // GL `#else` path は byte-for-byte 不可触 (charter §3 #1 担保)。
 // 該当 member は本 file の main() 内で参照されないため #define alias 不要。
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-7 追補:
+// `waterFogColor` / `waterFogKS` は waterFogF.glsl `WaterFogUBO_Legacy` (set=3,
+// binding=9) member と同名で nameless block member の global scope export 衝突。
+// η-6 §3.3 範式 (nameless block × nameless block member collision) 同形 rename で
+// 衝突解消。本 file main() で未参照 (`waterFogColorLinear` のみ参照) なので
+// #define alias 不要。GL `#else` path 不可触。
 layout(set=3, binding=39, std140) uniform UnderWaterFParamUBO_Legacy {
     vec4  fogCol;
     vec3  lightDir_underwater_legacy;
@@ -65,9 +71,9 @@ layout(set=3, binding=39, std140) uniform UnderWaterFParamUBO_Legacy {
     float zfar;
     float kd;
     vec3  eyeVec_underwater_legacy;
-    vec4  waterFogColor;
+    vec4  waterFogColor_underwater_legacy;
     vec3  waterFogColorLinear;
-    float waterFogKS;
+    float waterFogKS_underwater_legacy;
     vec2  screenRes;
 };
 #else

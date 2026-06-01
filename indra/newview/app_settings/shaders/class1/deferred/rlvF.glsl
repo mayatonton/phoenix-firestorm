@@ -52,12 +52,33 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform vec2 screen_res;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-7 phase 1: RLVa Sphere bare uniforms UBO wrap (非 opaque uniforms outside a block 解消)
+// bvec2 は std140 layout で許可されないため uvec2 へ uint promote、
+// main() body 内 `SPHERE_DISTEXTEND` 参照を不変に保つため #define alias で
+// `rlvEffectParam3` を bvec2 へ cast し直す。η-6 phase 2-A skinSSSF.glsl
+// `aya_visual_realism_enabled` の #define alias 範式継承 + bvec2→uvec2
+// uint promote 範式 (η-7 新規)。GL `#else` path は byte-for-byte 不変。
+layout(set=3, binding=56, std140) uniform RlvFParamUBO_Legacy {
+    vec4  rlvEffectParam1;            // 0-15  Sphere origin (in local coordinates)
+    vec4  rlvEffectParam2;            // 16-31 Min/max dist + min/max value
+    vec4  rlvEffectParam4;            // 32-47 Sphere params (=color when using blend)
+    vec2  rlvEffectParam5;            // 48-55 Blur direction (not used for blend)
+    uvec2 rlvEffectParam3_uvec;       // 56-63 Min/max dist extend (bvec2 → uvec2 promote)
+    int   rlvEffectMode;              // 64-67 ESphereMode
+    int   _pad_rlv_legacy_0;          // 68-71
+    int   _pad_rlv_legacy_1;          // 72-75
+    int   _pad_rlv_legacy_2;          // 76-79
+};
+#define rlvEffectParam3 bvec2(rlvEffectParam3_uvec.x != 0u, rlvEffectParam3_uvec.y != 0u)
+#else
 uniform int  rlvEffectMode;     // ESphereMode
 uniform vec4 rlvEffectParam1;   // Sphere origin (in local coordinates)
 uniform vec4 rlvEffectParam2;   // Min/max dist + min/max value
 uniform bvec2 rlvEffectParam3;  // Min/max dist extend
 uniform vec4 rlvEffectParam4;   // Sphere params (=color when using blend)
 uniform vec2 rlvEffectParam5;   // Blur direction (not used for blend)
+#endif
 
 #define SPHERE_ORIGIN       rlvEffectParam1.xyz
 #define SPHERE_DISTMIN      rlvEffectParam2.y

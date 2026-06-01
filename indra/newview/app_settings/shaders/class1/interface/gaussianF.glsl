@@ -35,10 +35,24 @@ layout(set=1, binding=4) uniform sampler2D diffuseRect;
 uniform sampler2D diffuseRect;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-7 phase 2: gaussianF bare uniforms UBO wrap
+// "Reflection Mip Shader" program 名は gReflectionMipProgram (reflectionmipF.glsl) と
+// gGaussianProgram (本 file = gaussianF.glsl) で共有 (llviewershadermgr.cpp L3963/L3977)、
+// 本 file の `resScale` `direction` 2 件 bare uniform が 0:1969 non-opaque uniforms
+// outside a block error 源。`direction` `resScale` は本 file のみ宣言 (全 shader grep
+// 確認済) で nameless block member global scope export 衝突なし。η-6 UBO wrap 範式
+// 継承。GL `#else` path は byte-for-byte 不変 (charter §3 #1 担保)。
+layout(set=3, binding=58, std140) uniform GaussianFParamUBO_Legacy {
+    float resScale;
+    vec2 direction;          // std140 vec2 alignment 8 で resScale との間に 4 byte padding 自動挿入
+};
+#else
 uniform float resScale;
 
 // texture direction, will be <1, 0> or <0, 1>
 uniform vec2 direction;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) in vec2 vary_texcoord0;
