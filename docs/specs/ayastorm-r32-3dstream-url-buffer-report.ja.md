@@ -78,7 +78,7 @@ VBR/CVBR 無音で Ogg EOS page が見えていない `FMOD_ERR_FILE_EOF + 0 byt
 | NOTREADY empty ring grace | `0.50 sec` | NOTREADY + underrun 後の reconnect 猶予 |
 | final zero-fill safety valve | `10.0 sec` | 最終安全弁 |
 
-CBR 前提では `393216 frames` で再生開始し、定常時も `393216 frames` 前後を維持する。開始待ちは約 8 秒台へ増えるが、FMOD `readData()` の平均 3.26 秒 / 最大 4.77 秒級 block を吸収する短期対策として、起動時から深く積む。
+CBR 前提では `393216 frames` で再生開始し、定常時も `393216 frames` 前後を維持する。開始待ちは約 8 秒台へ増えるが、FMOD `readData()` の平均 3.26 秒 / 最大 4.77 秒級 block への耐性を上げる短期対策として、起動時から深く積む。実ログではこの設定後も dropout が残っているため、これは品質目標を満たす最終対策ではない。
 
 ### 0.4 実装済み変更
 
@@ -95,7 +95,7 @@ CBR 前提では `393216 frames` で再生開始し、定常時も `393216 frame
 
 ### 0.5 実機ログで確認済みのこと
 
-- 新ビルドでは `ring cap 524288 frames x 6 tracks` として起動する想定
+- 新ビルドでは `ring cap 524288 frames x 6 tracks` として起動する
 - 4 秒前後の pump 停滞で ring が残るケースもあるが、CBR 実ログでは ring が 0.17-1.8 秒程度まで落ち、dropout も発生した
 - 18:02:07Z に `Ogg feed starved ... bytes=0 eos=0` が発生し、Ogg EOS 未検出の starvation として扱えた
 - 旧 `NOTREADY` 猶予 10 秒では、ring が空になった後も数秒 zero-fill が残った
@@ -535,7 +535,7 @@ ring capacity は増やしたが、定常時に満杯まで読まない。CBR �
 - speaker callback 側で underrun が実際に増えている
 - NOTREADY が `0.50 sec` 以上継続
 
-2026-06-01 の実機ログでは、`NOTREADY` 開始から約 6 秒で ring が空になり、その後 `10.0 sec` 猶予まで待ったため、約 4 秒の audible zero-fill が残った。そのため `kNotReadyEmptyRingGraceSec` は `0.50 sec` に下げる。ring に PCM が残っている間は条件を満たさないため、正常な一時 starvation では reconnect しない。
+2026-06-01 の旧猶予設定での実機ログでは、`NOTREADY` 開始から約 6 秒で ring が空になり、その後 `10.0 sec` 猶予まで待ったため、約 4 秒の audible zero-fill が残った。そのため現行設定では `kNotReadyEmptyRingGraceSec` を `0.50 sec` に下げる。ring に PCM が残っている間は条件を満たさないため、正常な一時 starvation では reconnect しない。
 
 ログ:
 
@@ -1131,7 +1131,7 @@ MOAP / MediaRing への影響:
 
 ### 7.2 聴感確認
 
-- サーバー正常時に最大 10 秒の無音が再現しない
+- サーバー正常時に最大 10 秒の無音が再現しないこと。2026-06-01T09:00-09:15Z の CBR 実ログでは dropout が残っているため、この条件は未達として扱う
 - 短い jitter で過剰 reconnect しない
 - reconnect 発生時、残ringを不必要に捨てたことによる余計な音切れが増えない
 
