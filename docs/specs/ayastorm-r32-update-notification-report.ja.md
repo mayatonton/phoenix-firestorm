@@ -690,7 +690,7 @@ AYAstorm r32 向けに、GitHub Releases 上の最新版を検出して通知す
 
 - Mac 実機で表示・動作確認済み
 - Mac arm64 app build 済み
-- ローカル test tag `v7.2.4-ayastorm-r0+test.update-notification` で `AYASTORM_RELEASE_TAG` の埋め込みと binary 反映を確認済み
+- ローカル test tag で `AYASTORM_RELEASE_TAG` の埋め込みと binary 反映を確認済み
 - Windows / Linux は実機確認をお願いします
 
 ## 補足
