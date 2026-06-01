@@ -366,6 +366,9 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     mReadFailStreak = 0;
     mLastReadFailLogTime = 0.0;
     mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
     mFailReason.store(FailReason::Ok, std::memory_order_relaxed);
     mFailDetail.clear();
 
@@ -504,6 +507,9 @@ bool LLPositionalStreamMulti::openSourceStream(const std::string& url)
     const FMOD_MODE source_mode = FMOD_2D
                                 | FMOD_NONBLOCKING
                                 | FMOD_IGNORETAGS;
+
+    checkFmod(system->setStreamBufferSize(kFmodStreamBufferBytes, FMOD_TIMEUNIT_RAWBYTES),
+              "System::setStreamBufferSize(Stream3D URL source)");
 
     if (checkFmod(system->createStream(url.c_str(), source_mode, nullptr, &mSourceSound),
                   "createStream(source)"))
@@ -764,6 +770,10 @@ void LLPositionalStreamMulti::resetMediaRuntimeForReopen()
     mMediaFormatSerial = 0;
     mMediaRingChannels = 0;
     mRing.clear();
+    mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
     mSampleRate = 0;
     mSourceChannels = 0;
     mSourceBytesPerSample = 0;
@@ -791,6 +801,10 @@ void LLPositionalStreamMulti::releaseAll()
     mMediaLogicalChannels = 0;
     mMediaReopenRequested.store(false, std::memory_order_release);
     mRing.clear();
+    mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
     mSampleRate = 0;
     mSourceChannels = 0;
     mSourceBytesPerSample = 0;
@@ -1418,8 +1432,15 @@ size_t LLPositionalStreamMulti::pumpSource()
     constexpr size_t kMaxFramesPerPump = 8192;
 
     const size_t free_frames = mRing.writeAvailable();
-    const size_t want_frames = std::min(free_frames, kMaxFramesPerPump);
-    if (want_frames == 0) return 0;
+    const size_t buffered_frames = mRing.readAvailable(0);
+    const size_t target_room = (buffered_frames < kTargetBufferedFrames)
+                             ? (kTargetBufferedFrames - buffered_frames)
+                             : 0;
+    const size_t want_frames = std::min({ free_frames, target_room, kMaxFramesPerPump });
+    if (want_frames == 0 || want_frames < kMaxFramesPerPump)
+    {
+        return 0;
+    }
 
     const size_t bytes_per_frame = static_cast<size_t>(mSourceBytesPerSample)
                                  * static_cast<size_t>(mSourceChannels);
@@ -1433,11 +1454,45 @@ size_t LLPositionalStreamMulti::pumpSource()
     FMOD_RESULT rr = mSourceSound->readData(mReadScratch.data(),
                                             static_cast<U32>(want_bytes),
                                             &read_bytes);
+
     if (rr != FMOD_OK && rr != FMOD_ERR_FILE_EOF)
     {
-        // FMOD_ERR_NOTREADY just means "decoder hasn't fed us yet" — not a
-        // fault. Real socket / EOF cascades return other codes; those count
-        // toward kMaxReadFailStreak so the manager can rebuild this stream.
+        if (rr == FMOD_ERR_NOTREADY)
+        {
+            // VBR silence can legitimately leave the custom Ogg codec waiting
+            // for the next compressed page. That is not EOF. Only reconnect if
+            // it becomes a sustained no-progress stall after the playback ring
+            // has drained and listeners are underrunning.
+            const F64 now = LLTimer::getElapsedSeconds();
+            const U64 underrun_callbacks =
+                mUnderrunCallbacks.load(std::memory_order_relaxed);
+            if (mNotReadyStreakStart == 0.0)
+            {
+                mNotReadyStreakStart = now;
+                mNotReadyStartUnderrunCallbacks = underrun_callbacks;
+            }
+
+            const F64 notready_elapsed = now - mNotReadyStreakStart;
+            const size_t buffered_frames = mRing.readAvailable(0);
+            const F64 buffered_sec = (mSampleRate > 0)
+                                   ? static_cast<F64>(buffered_frames) / static_cast<F64>(mSampleRate)
+                                   : 0.0;
+            const U64 underrun_delta =
+                (underrun_callbacks >= mNotReadyStartUnderrunCallbacks)
+                    ? (underrun_callbacks - mNotReadyStartUnderrunCallbacks)
+                    : 0;
+
+            if (buffered_sec <= kZeroFillMinBufferedSec &&
+                underrun_delta > 0 &&
+                notready_elapsed >= kNotReadyEmptyRingGraceSec)
+            {
+                setFailed(FailReason::Network, "notready empty ring");
+            }
+            return 0;
+        }
+
+        mNotReadyStreakStart = 0.0;
+        mNotReadyStartUnderrunCallbacks = 0;
         if (rr != FMOD_ERR_NOTREADY)
         {
             ++mReadFailStreak;
@@ -1460,22 +1515,47 @@ size_t LLPositionalStreamMulti::pumpSource()
     }
     if (read_bytes == 0)
     {
-        // r10.x: FMOD's HTTP source can return OK with 0 bytes when the
-        // upstream Icecast source has died — there's no error to count
-        // toward mReadFailStreak, so without this branch we'd zero-fill
-        // forever. Time-stamp the streak start; if it persists past the
-        // threshold, flip to Failed so the manager's reconnect cascade
-        // rebuilds us. Reset below on any non-zero read.
+        mNotReadyStreakStart = 0.0;
+        mNotReadyStartUnderrunCallbacks = 0;
+
+        // r10.x/r34: FMOD's HTTP source can return OK/EOF with 0 bytes when no
+        // decoded PCM is available. Do not reconnect solely from that signal:
+        // the speaker callbacks may still have buffered PCM in mRing. Rebuild
+        // only once the ring is nearly empty and listeners are actually seeing
+        // underruns, with the old 10s limit kept as a final safety valve.
         const F64 now0 = LLTimer::getElapsedSeconds();
+        const U64 underrun_callbacks =
+            mUnderrunCallbacks.load(std::memory_order_relaxed);
         if (mZeroFillStreakStart == 0.0)
         {
             mZeroFillStreakStart = now0;
+            mZeroFillStartUnderrunCallbacks = underrun_callbacks;
         }
-        else if (now0 - mZeroFillStreakStart >= kZeroFillStreakLimit)
+
+        const F64 zero_elapsed = now0 - mZeroFillStreakStart;
+        const size_t buffered_frames = mRing.readAvailable(0);
+        const F64 buffered_sec = (mSampleRate > 0)
+                               ? static_cast<F64>(buffered_frames) / static_cast<F64>(mSampleRate)
+                               : 0.0;
+        const U64 underrun_delta =
+            (underrun_callbacks >= mZeroFillStartUnderrunCallbacks)
+                ? (underrun_callbacks - mZeroFillStartUnderrunCallbacks)
+                : 0;
+        const bool eof_zero = (rr == FMOD_ERR_FILE_EOF);
+        const bool ring_nearly_empty = (buffered_sec <= kZeroFillMinBufferedSec);
+        const bool underrun_seen = (underrun_delta > 0);
+
+        if (eof_zero && ring_nearly_empty)
         {
-            LL_WARNS("Stream3D") << "Multi source returned 0 bytes for "
-                                  << (now0 - mZeroFillStreakStart) << "s for " << mUrl
-                                  << "; transitioning to Failed for reconnect" << LL_ENDL;
+            setFailed(FailReason::Network, "eof zero empty ring");
+        }
+        else if (ring_nearly_empty && underrun_seen &&
+                 zero_elapsed >= kZeroFillEmptyRingGraceSec)
+        {
+            setFailed(FailReason::Network, "zero read underrun");
+        }
+        else if (zero_elapsed >= kZeroFillStreakLimit)
+        {
             setFailed(FailReason::Network, "zero-fill streak");
         }
         return 0;
@@ -1484,6 +1564,9 @@ size_t LLPositionalStreamMulti::pumpSource()
     // outage gets its own full budget rather than inheriting old strikes.
     mReadFailStreak = 0;
     mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
 
     const size_t frames_read = read_bytes / bytes_per_frame;
     const size_t n_tracks = mRing.numTracks();

@@ -75,6 +75,7 @@ namespace
         bool             stream_init_done   = false;
         int              header_packets_seen = 0;
         bool             eof = false;
+        bool             saw_ogg_eos = false;
 
         std::vector<float> pending;
         size_t           pending_pos = 0;
@@ -102,8 +103,18 @@ namespace
         if (bytes_read_out) *bytes_read_out = bytes_read;
         if (r == FMOD_ERR_FILE_EOF)
         {
-            state->eof = true;
-            if (bytes_read == 0) return false;
+            if (bytes_read == 0)
+            {
+                // Live HTTP Ogg/Opus can temporarily expose no compressed bytes
+                // while the logical stream is still alive, especially during
+                // very low bitrate VBR silence. Treat this as starvation unless
+                // libogg has already seen a real EOS page.
+                if (state->saw_ogg_eos)
+                {
+                    state->eof = true;
+                }
+                return false;
+            }
         }
         else if (r != FMOD_OK)
         {
@@ -112,7 +123,6 @@ namespace
         }
         if (bytes_read == 0)
         {
-            state->eof = true;
             return false;
         }
         ogg_sync_wrote(&state->oy, static_cast<long>(bytes_read));
@@ -637,6 +647,10 @@ namespace
             int sync = ogg_sync_pageout(&state->oy, &page);
             if (sync == 1)
             {
+                if (ogg_page_eos(&page))
+                {
+                    state->saw_ogg_eos = true;
+                }
                 ogg_stream_pagein(&state->os, &page);
                 continue;
             }
@@ -652,7 +666,11 @@ namespace
         }
 
         if (samples_out) *samples_out = frames_written;
-        return (frames_written == 0) ? FMOD_ERR_FILE_EOF : FMOD_OK;
+        if (frames_written > 0)
+        {
+            return FMOD_OK;
+        }
+        return state->eof ? FMOD_ERR_FILE_EOF : FMOD_ERR_NOTREADY;
     }
 
     FMOD_RESULT F_CALL opusSetPosition(FMOD_CODEC_STATE* /*codec*/,
