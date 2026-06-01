@@ -750,18 +750,22 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
                 return false;
             }
 
-            // Concat all source fragments for this stage type. LL_VULKAN_GLSL macro is
-            // injected after the first source string of each file (matches existing
-            // LLShaderMgr::createSPIRVFromGLSL pattern, sub-doc 06 §1.2.4).
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B3: Vulkan profile #version override.
+            // 同 stage に複数 file が連結される構成 (例 SMAA VERTEX = SMAAEdgeDetectV.glsl +
+            // SMAA.glsl(VERTEX)) で、各 file の sources[0] (= GL profile "#version XXX\n") を
+            // そのまま append すると glslang が 2 回目以降を 'must occur first' で reject。
+            // 加えて GL profile (#version 420 等) は Vulkan glslang で 'bad profile name' 扱い。
+            // stage 先頭 1 回のみ Vulkan profile (#version 460 + GL_KHR_vulkan_glsl extension +
+            // LL_VULKAN_GLSL macro) を出力し、各 file の sources[0] は skip (GL path
+            // loadShaderFile の strdup には影響なし、collect_for_vulkan=false の GL compile
+            // path 不変、charter §3 #1 acceptance)。
             std::string concatenated;
+            concatenated.append("#version 460\n");
+            concatenated.append("#extension GL_KHR_vulkan_glsl : enable\n");
+            concatenated.append("#define LL_VULKAN_GLSL 1\n");
             for (size_t idx : stage_indices)
             {
                 const auto& stage = stages[idx];
-                if (!stage.sources.empty() && !stage.sources[0].empty())
-                {
-                    concatenated.append(stage.sources[0]);
-                }
-                concatenated.append("#define LL_VULKAN_GLSL 1\n");
                 for (size_t i = 1; i < stage.sources.size(); ++i)
                 {
                     concatenated.append(stage.sources[i]);
