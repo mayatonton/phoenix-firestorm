@@ -37,6 +37,7 @@
   - [6.14 5.1 / 7.1 scope](#614-51--71-scope)
   - [6.15 将来設計: audio streaming core の共通化](#615-将来設計-audio-streaming-core-の共通化)
   - [6.17 ayastorm-release 比の 3D Stream 負荷見積もり](#617-ayastorm-release-比の-3d-stream-負荷見積もり)
+  - [6.18 MOAP / Dullahan / CEF 経由で同じ現象が出にくい理由](#618-moap--dullahan--cef-経由で同じ現象が出にくい理由)
 - [7. 受入条件](#7-受入条件)
 - [8. 判断ポイント](#8-判断ポイント)
 
@@ -1118,6 +1119,52 @@ MOAP / MediaRing への影響:
 - 6ch URL Source の多重同時再生ではメモリ増が無視できないため、将来的には同時 URL Source 数の上限、または inactive source の早期解放を検討する
 - CPU が問題になる可能性は現時点では低い。今回の実ログで問題になっているのは CPU 飽和ではなく、FMOD `readData()` の同期 block と ring 枯渇
 - ayastorm-release 比で犠牲にしているのは、主に起動レイテンシーと ring memory。得ているものは、CBR 配信時の数秒級 `readData()` block への耐性
+
+### 6.18 MOAP / Dullahan / CEF 経由で同じ現象が出にくい理由
+
+MOAP source の 3D Stream redirect は、3D Stream URL Source と入力経路が違う。
+
+URL Source:
+
+```text
+HTTP URL
+  -> FMOD createStream
+  -> FMOD / Ogg codec
+  -> LLPositionalStreamMulti::pumpSource()
+  -> FMOD::Sound::readData()
+  -> decoded PCM ring
+  -> per-speaker FMOD OPENUSER sounds
+```
+
+MOAP / CEF source:
+
+```text
+Dullahan / CEF media pipeline
+  -> CEF audio callback
+  -> plugin shared-memory audio ring
+  -> LLPositionalStreamMulti::pumpMediaRingSource()
+  -> decoded PCM ring
+  -> per-speaker FMOD OPENUSER sounds
+```
+
+根拠:
+
+- `LLPluginClassMedia::ensureAudioSharedMemory()` は media plugin 用の audio shared memory を作り、`audio_shm_set` で CEF plugin へ渡す
+- `MediaPluginCEF::onAudioStreamStartedCallback()` は Dullahan の audio stream format を受け、shared memory ring の sample rate / channels / float format を設定する
+- `MediaPluginCEF::onAudioStreamPacketCallback()` は Dullahan / CEF から来た audio packet を `writeAudioPacketToRing()` で shared memory ring へ書く
+- `LLViewerMediaImpl::getAudioRingForStream3D()` はその shared memory ring を 3D Stream manager へ渡す
+- `LLPositionalStreamMulti::pumpSource()` は URL Source の場合だけ `mSourceSound->readData()` を呼ぶ
+- `LLPositionalStreamMulti::pumpSource()` は `SourceKind::MediaRing` の場合、即 `pumpMediaRingSource()` へ分岐する
+- `pumpMediaRingSource()` は shared memory ring の `mWriteFrame` / `mReadFrame` 差分から利用可能な decoded PCM frames を読み、FMOD `readData()` を呼ばない
+
+したがって、今回 CBR 実ログで確認した「FMOD `readData()` が 2.8-4.8 秒同期 block し、その間に 3D Stream URL Source の decoded PCM ring が枯れる」現象は、MOAP / Dullahan / CEF 経由の 3D redirect には同じ形では発生しない。MOAP 側では CBR / CVBR / VBR、Ogg page size、HTTP compressed byte 数、`FMOD_ERR_FILE_EOF + read_bytes == 0` は 3D Stream 側の直接入力ではなく、CEF がすでに decode した PCM frame の増減として見える。
+
+注意:
+
+- MOAP が絶対に音切れしないという意味ではない
+- CEF media pipeline 側のネットワーク stall、JavaScript player の停止、タブ / priority / autoplay policy、plugin process 停止、shared memory ring 消失では別の音切れは起こり得る
+- ただしその場合の原因は `FMOD::Sound::readData()` block ではなく、CEF audio callback から shared memory ring へ decoded PCM が供給されないこと
+- MediaRing source は `kMediaPrebufferFrames`, `kMediaTargetBufferedFrames`, `kMediaRingFrames` を使うため、今回の URL Source ring 拡張とは別設計で動く
 
 ## 7. 受入条件
 
