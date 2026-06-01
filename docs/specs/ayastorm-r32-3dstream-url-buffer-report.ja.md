@@ -1122,7 +1122,18 @@ MOAP / MediaRing への影響:
 
 ### 6.18 MOAP / Dullahan / CEF 経由で同じ現象が出にくい理由
 
-MOAP source の 3D Stream redirect は、3D Stream URL Source と入力経路が違う。
+結論:
+
+MOAP 3D redirect では、今回問題になった `FMOD::Sound::readData()` 経路を通らない。そのため、URL Source で確認した「FMOD `readData()` が数秒 block し、その間に 3D Stream の decoded PCM ring が枯れる」という現象は、MOAP では同じ形では起きにくい。
+
+違いは、3D Stream へ渡される時点のデータ形式にある。
+
+- 3D Stream URL Source は、HTTP stream を FMOD に読ませ、AYAstorm が `readData()` で decoded PCM を取り出す
+- MOAP は、Dullahan / CEF が先に media audio を decode し、AYAstorm へは decoded PCM が shared memory ring 経由で渡る
+
+つまり、URL Source は「compressed stream を FMOD から同期 read する経路」、MOAP は「CEF が作った decoded PCM を読む経路」。
+
+今回の CBR 実ログで問題になったのは前者だけ。
 
 URL Source:
 
@@ -1136,18 +1147,29 @@ HTTP URL
   -> per-speaker FMOD OPENUSER sounds
 ```
 
-MOAP / CEF source:
+MOAP / Dullahan / CEF:
 
 ```text
 Dullahan / CEF media pipeline
+  -> media decode
   -> CEF audio callback
-  -> plugin shared-memory audio ring
+  -> decoded PCM in plugin shared-memory audio ring
   -> LLPositionalStreamMulti::pumpMediaRingSource()
   -> decoded PCM ring
   -> per-speaker FMOD OPENUSER sounds
 ```
 
-根拠:
+このため、MOAP 側では以下が 3D Stream URL Source と同じ意味を持たない。
+
+- CBR / CVBR / VBR
+- Ogg page size
+- HTTP compressed byte 数
+- `FMOD_ERR_FILE_EOF + read_bytes == 0`
+- `FMOD::Sound::readData()` の同期 block
+
+MOAP 3D redirect が見るのは、基本的には「CEF audio callback から decoded PCM frame が来ているか」だけ。stream の codec や bitrate の揺れは、3D Stream 側へ届く前に CEF 側で処理されている。
+
+コード上の根拠:
 
 - `LLPluginClassMedia::ensureAudioSharedMemory()` は media plugin 用の audio shared memory を作り、`audio_shm_set` で CEF plugin へ渡す
 - `MediaPluginCEF::onAudioStreamStartedCallback()` は Dullahan の audio stream format を受け、shared memory ring の sample rate / channels / float format を設定する
@@ -1157,14 +1179,23 @@ Dullahan / CEF media pipeline
 - `LLPositionalStreamMulti::pumpSource()` は `SourceKind::MediaRing` の場合、即 `pumpMediaRingSource()` へ分岐する
 - `pumpMediaRingSource()` は shared memory ring の `mWriteFrame` / `mReadFrame` 差分から利用可能な decoded PCM frames を読み、FMOD `readData()` を呼ばない
 
-したがって、今回 CBR 実ログで確認した「FMOD `readData()` が 2.8-4.8 秒同期 block し、その間に 3D Stream URL Source の decoded PCM ring が枯れる」現象は、MOAP / Dullahan / CEF 経由の 3D redirect には同じ形では発生しない。MOAP 側では CBR / CVBR / VBR、Ogg page size、HTTP compressed byte 数、`FMOD_ERR_FILE_EOF + read_bytes == 0` は 3D Stream 側の直接入力ではなく、CEF がすでに decode した PCM frame の増減として見える。
+ただし、MOAP が絶対に音切れしないという意味ではない。MOAP で音が切れる場合は、疑う場所が違う。
 
-注意:
+MOAP 側で起こり得る別原因:
 
-- MOAP が絶対に音切れしないという意味ではない
-- CEF media pipeline 側のネットワーク stall、JavaScript player の停止、タブ / priority / autoplay policy、plugin process 停止、shared memory ring 消失では別の音切れは起こり得る
-- ただしその場合の原因は `FMOD::Sound::readData()` block ではなく、CEF audio callback から shared memory ring へ decoded PCM が供給されないこと
-- MediaRing source は `kMediaPrebufferFrames`, `kMediaTargetBufferedFrames`, `kMediaRingFrames` を使うため、今回の URL Source ring 拡張とは別設計で動く
+- CEF media pipeline 側の network stall
+- Web player / JavaScript 側の停止
+- tab priority / autoplay policy による audio callback 停止
+- plugin process 停止
+- shared memory ring 消失
+- CEF audio callback から shared memory ring へ decoded PCM が供給されない状態
+
+したがって切り分け方はこうなる。
+
+- URL Source の音切れ: `readData()` block、0 byte / EOF / NOTREADY、Ogg codec、FMOD HTTP stream buffer を見る
+- MOAP の音切れ: CEF audio callback、plugin shared memory ring、media plugin 状態、Web player 側の再生状態を見る
+
+MediaRing source は `kMediaPrebufferFrames`, `kMediaTargetBufferedFrames`, `kMediaRingFrames` を使うため、今回の URL Source ring 拡張とは別設計で動く。
 
 ## 7. 受入条件
 
