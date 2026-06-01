@@ -49,6 +49,9 @@ layout(set=1, binding=0, std140) uniform MaterialUBO_Legacy {
 uniform float emissive_brightness;  // fullbright flag, 1.0 == fullbright, 0.0 otherwise
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-2: FrameLights guard wrap (B?-ζ §3.1 範式)
+#ifndef FRAME_LIGHTS_DEFINED
+#define FRAME_LIGHTS_DEFINED 1
 layout(set=0, binding=1, std140) uniform FrameLights {
     int  sun_up_factor;
     vec3 sun_dir;
@@ -60,6 +63,7 @@ layout(set=0, binding=1, std140) uniform FrameLights {
     vec3 light_diffuse[8];
     vec2 light_deferred_attenuation[8];
 };
+#endif
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
 #ifndef FRAME_ATMOSPHERE_DEFINED
 #define FRAME_ATMOSPHERE_DEFINED 1
