@@ -37,9 +37,19 @@ layout(set=0, binding=7) uniform samplerCubeArray reflectionProbes;
 #else
 uniform samplerCubeArray   reflectionProbes;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: IrradianceGenF non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=52, std140) uniform IrradianceGenFParamUBO_Legacy {
+    int   sourceIdx;
+    float max_probe_lod;
+    float _pad_irradiance_gen_f_legacy_0;
+    float _pad_irradiance_gen_f_legacy_1;
+};
+#else
 uniform int sourceIdx;
 
 uniform float max_probe_lod;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=20) in vec3 vary_dir;

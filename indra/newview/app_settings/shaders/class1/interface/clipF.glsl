@@ -41,7 +41,14 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
 #else
 uniform vec4 color;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: clipF non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=32, std140) uniform ClipFParamUBO_Legacy {
+    vec4 clip_plane;
+};
+#else
 uniform vec4 clip_plane;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=3) in vec3 vary_position;

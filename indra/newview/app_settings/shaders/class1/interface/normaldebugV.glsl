@@ -51,7 +51,14 @@ out vec4 tangent_g;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: normaldebugV non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=37, std140) uniform NormaldebugVParamUBO_Legacy {
+    float debug_normal_draw_length;
+};
+#else
 uniform float debug_normal_draw_length;
+#endif
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();

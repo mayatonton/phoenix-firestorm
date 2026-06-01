@@ -61,7 +61,14 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform vec2 screen_res;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: motionBlurF non-opaque uniforms UBO wrap (Cluster E)
+layout(set=3, binding=27, std140) uniform MotionBlurFParamUBO_Legacy {
+    int motion_blur_strength;
+};
+#else
 uniform int motion_blur_strength;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec2 vary_fragcoord;

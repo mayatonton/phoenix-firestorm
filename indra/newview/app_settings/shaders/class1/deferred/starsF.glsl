@@ -52,9 +52,18 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 #else
 uniform sampler2D diffuseMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: starsF non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=42, std140) uniform StarsFParamUBO_Legacy {
+    float blend_factor;
+    float custom_alpha;
+    float time;
+};
+#else
 uniform float blend_factor;
 uniform float custom_alpha;
 uniform float time;
+#endif
 
 float twinkle(){
     float d = fract(screenpos.x + screenpos.y);

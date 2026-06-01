@@ -62,7 +62,14 @@ layout(set=0, binding=1, std140) uniform FrameLights {
 #else
 uniform vec3 moon_dir;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: moonF non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=44, std140) uniform MoonFParamUBO_Legacy {
+    float moon_brightness;
+};
+#else
 uniform float moon_brightness;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=1) uniform sampler2D diffuseMap;
 #else

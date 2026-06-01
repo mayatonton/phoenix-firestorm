@@ -66,11 +66,22 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform vec2 screen_res;
 #endif
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: Glow non-opaque uniforms UBO wrap (Cluster B)
+layout(set=3, binding=20, std140) uniform GlowExtractFParamUBO_Legacy {
+    vec3 lumWeights;
+    float minLuminance;
+    vec3 warmthWeights;
+    float maxExtractAlpha;
+    float warmthAmount;
+};
+#else
 uniform float minLuminance;
 uniform float maxExtractAlpha;
 uniform vec3 lumWeights;
 uniform vec3 warmthWeights;
 uniform float warmthAmount;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) in vec2 vary_texcoord0;

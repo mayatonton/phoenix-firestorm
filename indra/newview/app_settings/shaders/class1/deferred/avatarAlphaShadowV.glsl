@@ -54,7 +54,14 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform mat4 projection_matrix;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: ShadowTargetWidth UBO wrap (Cluster D)
+layout(set=3, binding=22, std140) uniform AvatarAlphaShadowVParamUBO_Legacy {
+    float shadow_target_width;
+};
+#else
 uniform float shadow_target_width;
+#endif
 
 mat4 getSkinnedTransform();
 void passTextureIndex();

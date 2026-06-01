@@ -52,8 +52,16 @@ uniform vec2 screen_res;
 uniform mat4 projection_matrix;
 uniform mat4 inv_proj;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: screenSpaceReflPostF non-opaque uniforms UBO wrap (Cluster E)
+layout(set=3, binding=28, std140) uniform ScreenSpaceReflPostFParamUBO_Legacy {
+    float zNear;
+    float zFar;
+};
+#else
 uniform float zNear;
 uniform float zFar;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec2 vary_fragcoord;

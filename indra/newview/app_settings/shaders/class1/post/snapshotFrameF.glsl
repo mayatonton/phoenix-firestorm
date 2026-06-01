@@ -28,9 +28,18 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform vec2 screen_res;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: snapshotFrameF non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=38, std140) uniform SnapshotFrameFParamUBO_Legacy {
+    vec4  frame_rect;
+    vec3  border_color;
+    float border_thickness;
+};
+#else
 uniform vec4 frame_rect; // x, y, width, height (normalized 0->1)
 uniform vec3 border_color;
 uniform float border_thickness; // in pixels
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec2 vary_fragcoord;

@@ -44,11 +44,21 @@ uniform sampler2D exposureMap;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: exposureF non-opaque uniforms UBO wrap (Cluster E)
+layout(set=3, binding=25, std140) uniform ExposureFParamUBO_Legacy {
+    float dt;
+    vec2 noiseVec;
+    vec4 dynamic_exposure_params;
+    vec4 dynamic_exposure_params2;
+};
+#else
 uniform float dt;
 uniform vec2 noiseVec;
 
 uniform vec4 dynamic_exposure_params;
 uniform vec4 dynamic_exposure_params2;
+#endif
 
 float lum(vec3 col)
 {

@@ -45,6 +45,32 @@ uniform sampler2D screenTex;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-A: underWaterF non-opaque uniforms UBO wrap (Cluster F)
+// (η-4 §3.2 範式 member-level 拡張) `lightDir` / `eyeVec` は waterV.glsl で
+// bare uniform として宣言されており、同一 program (gUnderWaterProgram = waterV +
+// underWaterF) に attach されると nameless block member の global scope export
+// 衝突 (`nameless block contains a member that already has a name at global
+// scope`) が発生する。本 UBO 内側のみ per-block 固有化 rename で衝突解消、
+// GL `#else` path は byte-for-byte 不可触 (charter §3 #1 担保)。
+// 該当 member は本 file の main() 内で参照されないため #define alias 不要。
+layout(set=3, binding=39, std140) uniform UnderWaterFParamUBO_Legacy {
+    vec4  fogCol;
+    vec3  lightDir_underwater_legacy;
+    float lightExp;
+    vec3  specular;
+    float refScale;
+    vec2  fbScale;
+    float znear;
+    float zfar;
+    float kd;
+    vec3  eyeVec_underwater_legacy;
+    vec4  waterFogColor;
+    vec3  waterFogColorLinear;
+    float waterFogKS;
+    vec2  screenRes;
+};
+#else
 uniform vec4 fogCol;
 uniform vec3 lightDir;
 uniform vec3 specular;
@@ -54,6 +80,7 @@ uniform float refScale;
 uniform float znear;
 uniform float zfar;
 uniform float kd;
+#endif
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-2: FrameLights guard wrap (B?-ζ §3.1 範式)
 #ifndef FRAME_LIGHTS_DEFINED
@@ -73,11 +100,13 @@ layout(set=0, binding=1, std140) uniform FrameLights {
 #else
 uniform vec4 waterPlane;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform vec3 eyeVec;
 uniform vec4 waterFogColor;
 uniform vec3 waterFogColorLinear;
 uniform float waterFogKS;
 uniform vec2 screenRes;
+#endif
 
 //bigWave is (refCoord.w, view.w);
 #ifdef LL_VULKAN_GLSL

@@ -59,7 +59,14 @@ layout(set=0, binding=1, std140) uniform FrameLights {
 #else
 uniform vec4 waterPlane;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: simpleColorF non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=41, std140) uniform SimpleColorFParamUBO_Legacy {
+    float waterSign;
+};
+#else
 uniform float waterSign;
+#endif
 
 void waterClip(vec3 pos)
 {

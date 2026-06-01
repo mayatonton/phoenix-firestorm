@@ -73,8 +73,16 @@ uniform mat4 texture_matrix0;
 
 uniform vec4[2] texture_base_color_transform;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: PbrOpaqueV non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=53, std140) uniform PbrOpaqueVParamUBO_Legacy {
+    vec4 texture_normal_transform[2];
+    vec4 texture_metallic_roughness_transform[2];
+};
+#else
 uniform vec4[2] texture_normal_transform;
 uniform vec4[2] texture_metallic_roughness_transform;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform vec4[2] texture_emissive_transform;
 #endif

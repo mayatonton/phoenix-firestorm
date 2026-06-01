@@ -75,9 +75,17 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
 #else
 uniform int cube_snapshot;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: ReflectionProbe non-opaque uniforms UBO wrap (Cluster C)
+layout(set=3, binding=17, std140) uniform ReflectionProbeUBO_Legacy {
+    float max_probe_lod;
+    bool transparent_surface;
+};
+#else
 uniform float max_probe_lod;
 
 uniform bool transparent_surface;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform int classic_mode;

@@ -93,9 +93,18 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
 #else
 uniform float max_cof;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: dofCombineF non-opaque uniforms UBO wrap (Cluster E)
+layout(set=3, binding=24, std140) uniform DofCombineFParamUBO_Legacy {
+    float res_scale;
+    float dof_width;
+    float dof_height;
+};
+#else
 uniform float res_scale;
 uniform float dof_width;
 uniform float dof_height;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec2 vary_fragcoord;

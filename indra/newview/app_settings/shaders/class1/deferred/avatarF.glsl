@@ -71,7 +71,17 @@ uniform float minimum_alpha;
 // <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
 // is on the SSS whitelist, 0.0 otherwise. Written into frag_data[3].a so the
 // screen-space SSS pass can gate its blur to skin pixels only.
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: AvatarF non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=54, std140) uniform AvatarFParamUBO_Legacy {
+    float aya_sss_skin_flag;
+    float _pad_avatar_f_legacy_0;
+    float _pad_avatar_f_legacy_1;
+    float _pad_avatar_f_legacy_2;
+};
+#else
 uniform float aya_sss_skin_flag;
+#endif
 // </FS:AYA>
 
 #ifdef LL_VULKAN_GLSL

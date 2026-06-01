@@ -58,7 +58,23 @@ uniform mat4 projection_matrix;
 #endif
 mat4 getObjectSkinnedTransform();
 #else
-#ifndef LL_VULKAN_GLSL
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-B: FrameViewProj guard wrap for non-skinned permutation (η-5 (a) scope leak fix)
+#ifndef FRAME_VIEW_PROJ_DEFINED
+#define FRAME_VIEW_PROJ_DEFINED 1
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#endif
+#else
 uniform mat4 modelview_projection_matrix;
 #endif
 #endif
@@ -68,7 +84,14 @@ uniform vec4[2] texture_base_color_transform;
 #endif
 vec2 texture_transform(vec2 vertex_texcoord, vec4[2] khr_gltf_transform, mat4 sl_animation_transform);
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: ShadowTargetWidth UBO wrap (Cluster D)
+layout(set=3, binding=21, std140) uniform PbrShadowAlphaMaskVParamUBO_Legacy {
+    float shadow_target_width;
+};
+#else
 uniform float shadow_target_width;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) in vec3 position;

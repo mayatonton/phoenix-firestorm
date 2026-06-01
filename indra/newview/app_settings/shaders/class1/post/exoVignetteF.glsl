@@ -37,7 +37,15 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform vec2 screen_res;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: Vignette non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=46, std140) uniform VignetteParamUBO_Legacy {
+    vec3  vignette;
+    float _pad_vignette_legacy_0;
+};
+#else
 uniform vec3 vignette;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec2 vary_fragcoord;
 #else

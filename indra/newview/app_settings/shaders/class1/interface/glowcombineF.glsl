@@ -39,9 +39,19 @@ uniform sampler2D diffuseRect;
 uniform sampler2D emissiveRect;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: GlowCombineF non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=49, std140) uniform GlowCombineFParamUBO_Legacy {
+    float greyscale_str;
+    float sepia_str;
+    float num_colors;
+    float _pad_glowcombine_f_legacy_0;
+};
+#else
 uniform float greyscale_str;
 uniform float sepia_str;
 uniform float num_colors;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=20) in vec2 tc;

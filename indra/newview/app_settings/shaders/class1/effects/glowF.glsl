@@ -34,7 +34,14 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 #else
 uniform sampler2D diffuseMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: Glow non-opaque uniforms UBO wrap (Cluster B)
+layout(set=3, binding=18, std140) uniform GlowFParamUBO_Legacy {
+    float glowStrength;
+};
+#else
 uniform float glowStrength;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) in vec4 vary_texcoord0;

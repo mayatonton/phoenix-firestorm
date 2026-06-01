@@ -65,9 +65,19 @@ layout(location=2) out vec4 vertex_color;
 out vec4 vertex_color;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: PathfindingV non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=47, std140) uniform PathfindingVParamUBO_Legacy {
+    float tint;
+    float ambiance;
+    float alpha_scale;
+    float _pad_pathfinding_v_legacy_0;
+};
+#else
 uniform float tint;
 uniform float ambiance;
 uniform float alpha_scale;
+#endif
 
 void main()
 {

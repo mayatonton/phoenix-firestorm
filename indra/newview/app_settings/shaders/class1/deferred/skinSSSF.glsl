@@ -66,6 +66,28 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform vec2      screen_res;        // viewport size in pixels
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-A: skinSSSF non-opaque uniforms UBO wrap (Cluster E)
+// (η-4 §3.2 範式 member-level 拡張) `aya_visual_realism_enabled` は
+// atmosphericsFuncs.glsl の AtmoExtraUBO_Legacy nameless block でも
+// member として宣言されており、同一 program (gDeferredSkinSSSProgram =
+// skinSSSV + skinSSSF + atmosphericsFuncs (isDeferred 経由 fragment attach))
+// に attach されると nameless block member の global scope export 衝突
+// (`nameless block contains a member that already has a name at global
+// scope`) が発生する。本 UBO 内側のみ per-block 固有化 rename + Vulkan path
+// 内側 #define alias で main() 側参照を不変に保つ。GL `#else` path は
+// byte-for-byte 不可触 (charter §3 #1 担保)。
+layout(set=3, binding=30, std140) uniform SkinSSSPrototypeFParamUBO_Legacy {
+    vec2  aya_blur_dir;
+    float aya_strength;
+    float aya_blur_radius;
+    float aya_glow_gain;
+    vec3  aya_glow_color;
+    int   aya_visual_realism_enabled_skinsss_legacy;
+    int   aya_r20_skin_sss_enabled;
+};
+#define aya_visual_realism_enabled aya_visual_realism_enabled_skinsss_legacy
+#else
 uniform vec2      aya_blur_dir;      // (1,0) horizontal pass 1, (0,1) vertical pass 2
 uniform float     aya_strength;      // alpha output (= mix factor when blended)
 uniform float     aya_blur_radius;   // tap spacing in pixels at ref_dist=1m (world-scaled per-pixel by depth)
@@ -73,6 +95,7 @@ uniform float     aya_glow_gain;     // <FS:AYA r20 Phase D> highlight restore s
 uniform vec3      aya_glow_color;    // <FS:AYA r20 Phase D> highlight restore tint
 uniform int       aya_visual_realism_enabled;
 uniform int       aya_r20_skin_sss_enabled;
+#endif
 // <FS:AYA r20 Phase C> gbuffer3 (DEFERRED_EMISSIVE / "emissiveRect") carries
 // the per-pixel skin bit in .a — written by the gbuffer pass for whitelisted
 // draws. Bound on pass 2 (composite). On pass 1 (scratch fill) the mask read

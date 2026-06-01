@@ -43,7 +43,14 @@ layout(set=1, binding=11) uniform sampler2D altDiffuseMap;
 #else
 uniform sampler2D altDiffuseMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: sunDiscF non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=43, std140) uniform SunDiscFParamUBO_Legacy {
+    float blend_factor;
+};
+#else
 uniform float blend_factor; // interp factor between sunDisc A/B
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=0) in vec2 vary_texcoord0;
 #else

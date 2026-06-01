@@ -48,10 +48,20 @@ layout(location=0) in vec2 vary_texcoord0;
 in vec2 vary_texcoord0;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: normgenF non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=33, std140) uniform NormgenFParamUBO_Legacy {
+    float stepX;
+    float stepY;
+    float norm_scale;
+    int   bump_code;
+};
+#else
 uniform float stepX;
 uniform float stepY;
 uniform float norm_scale;
 uniform int bump_code;
+#endif
 
 #define BE_BRIGHTNESS 1
 #define BE_DARKNESS 2

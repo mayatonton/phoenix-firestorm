@@ -49,7 +49,14 @@ uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 last_modelview_matrix;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: VelocityV non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=55, std140) uniform VelocityVParamUBO_Legacy {
+    mat4 last_object_matrix;
+};
+#else
 uniform mat4 last_object_matrix;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) in vec3 position;

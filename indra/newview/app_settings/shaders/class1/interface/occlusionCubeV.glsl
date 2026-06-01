@@ -49,8 +49,18 @@ layout(location=0) in vec3 position;
 in vec3 position;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6 phase 2-C: OcclusionCubeV non-opaque uniforms UBO wrap (η-5 §3.1 (b-1) 範式継承)
+layout(set=3, binding=50, std140) uniform OcclusionCubeVParamUBO_Legacy {
+    vec3  box_center;
+    float _pad_occlusion_cube_v_legacy_0;
+    vec3  box_size;
+    float _pad_occlusion_cube_v_legacy_1;
+};
+#else
 uniform vec3 box_center;
 uniform vec3 box_size;
+#endif
 
 void main()
 {

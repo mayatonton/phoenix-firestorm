@@ -49,7 +49,14 @@ layout(location=0) in vec3 position;
 in vec3 position;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: Glow non-opaque uniforms UBO wrap (Cluster B)
+layout(set=3, binding=19, std140) uniform GlowVParamUBO_Legacy {
+    vec2 glowDelta;
+};
+#else
 uniform vec2 glowDelta;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) out vec4 vary_texcoord0;

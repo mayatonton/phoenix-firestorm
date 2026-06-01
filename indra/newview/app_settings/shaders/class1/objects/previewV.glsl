@@ -42,9 +42,20 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform mat3 normal_matrix;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: previewV non-opaque uniforms UBO wrap (Cluster F)
+layout(set=3, binding=40, std140) uniform PreviewVParamUBO_Legacy {
+    mat4 texture_matrix0;
+    vec4 ambient_color;
+    vec4 color;
+    vec4 light_position[8];
+    vec4 light_direction[8];
+    vec4 light_attenuation[8];
+    vec4 light_diffuse[8];
+};
+#else
 uniform mat4 texture_matrix0;
 uniform vec4 ambient_color; // <FS:Beq/> add ambient color to preview shader
-#ifndef LL_VULKAN_GLSL
 uniform mat4 modelview_projection_matrix;
 #endif
 
@@ -52,7 +63,9 @@ in vec3 position;
 in vec3 normal;
 in vec2 texcoord0;
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=2) out vec4 vertex_color;
@@ -65,10 +78,12 @@ layout(location=0) out vec2 vary_texcoord0;
 out vec2 vary_texcoord0;
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 light_position[8];
 uniform vec3 light_direction[8];
 uniform vec3 light_attenuation[8];
 uniform vec3 light_diffuse[8];
+#endif
 
 //===================================================================================================
 //declare these here explicitly to separate them from atmospheric lighting elsewhere to work around

@@ -52,7 +52,14 @@ layout(set=1, binding=2) uniform sampler2D normalMap;
 #else
 uniform sampler2D normalMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: luminanceF non-opaque uniforms UBO wrap (Cluster E)
+layout(set=3, binding=26, std140) uniform LuminanceFParamUBO_Legacy {
+    float diffuse_luminance_scale;
+};
+#else
 uniform float diffuse_luminance_scale;
+#endif
 
 float lum(vec3 col)
 {
