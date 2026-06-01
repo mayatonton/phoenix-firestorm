@@ -918,7 +918,17 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
     }
 
     // Master definition can be found in deferredUtil.glsl
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-ζ: GBufferInfo struct 定義を
+    // '#ifndef GBUFFER_INFO_DEFINED' guard で wrap。Vulkan path では utility cache
+    // (例 gbufferUtil.glsl) と program-specific cache (例 softenLightF.glsl) の
+    // 各々が extra_code_text を独立 copy で保持するため、concat 結果に struct 定義
+    // が複数回現れ 'GBufferInfo : redefinition struct' で reject される。guard
+    // により 1 度目で define、2 度目以降 skip され redefinition 解消。GL path は
+    // [EXTRA_CODE_HERE] marker 1 回展開で 1 度しか実行されないため semantic 不変。
+    extra_code_text[extra_code_count++] = strdup("#ifndef GBUFFER_INFO_DEFINED\n");
+    extra_code_text[extra_code_count++] = strdup("#define GBUFFER_INFO_DEFINED 1\n");
     extra_code_text[extra_code_count++] = strdup("struct GBufferInfo { vec4 albedo; vec4 specular; vec3 normal; vec4 emissive; float gbufferFlag; float envIntensity; };\n");
+    extra_code_text[extra_code_count++] = strdup("#endif\n");
 
     //copy file into memory
     enum {
