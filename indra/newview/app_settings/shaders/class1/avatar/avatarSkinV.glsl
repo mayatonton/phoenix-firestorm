@@ -26,7 +26,13 @@
 
 in vec4 weight;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec4 matrixPalette[45];
+};
+#else
 uniform vec4 matrixPalette[45];
+#endif
 
 mat4 getSkinnedTransform()
 {

@@ -100,8 +100,15 @@ uniform vec3 center;
 #else
 in vec3 trans_center;
 #endif
-uniform float size;
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec3  color;
+    float size;
+};
+#else
 uniform vec3 color;
+uniform float size;
+#endif
 uniform float falloff;
 
 in vec4 vary_fragcoord;

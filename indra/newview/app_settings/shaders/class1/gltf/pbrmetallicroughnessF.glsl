@@ -110,7 +110,13 @@ in vec2 occlusion_uv;
 // ==================================
 #ifdef ALPHA_BLEND
 in vec3 vary_fragcoord;
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec4 clipPlane;
+};
+#else
 uniform vec4 clipPlane;
+#endif
 uniform float clipSign;
 void waterClip(vec3 pos);
 void calcAtmosphericVarsLinear(vec3 inPositionEye, vec3 norm, vec3 light_dir, out vec3 sunlit, out vec3 amblit, out vec3 atten, out vec3 additive);

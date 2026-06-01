@@ -42,7 +42,13 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform mat4 projection_matrix;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec4 lastMatrixPalette[45];
+};
+#else
 uniform vec4 lastMatrixPalette[45];
+#endif
 
 in vec3 position;
 in vec4 weight;

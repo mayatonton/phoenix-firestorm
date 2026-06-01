@@ -69,7 +69,13 @@ in vec2 texcoord0;
 out vec2 vary_texcoord0;
 out vec4 vertex_color;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+};
+#else
 uniform mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#endif
 
 mat4 getObjectSkinnedTransform();
 mat4 getLastObjectSkinnedTransform();

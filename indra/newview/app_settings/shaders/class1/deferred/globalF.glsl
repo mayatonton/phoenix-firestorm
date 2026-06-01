@@ -29,7 +29,13 @@
  // them out
 
 uniform float mirror_flag;
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec4 clipPlane;
+};
+#else
 uniform vec4 clipPlane;
+#endif
 uniform float clipSign;
 
 void mirrorClip(vec3 pos)

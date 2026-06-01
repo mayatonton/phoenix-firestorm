@@ -112,7 +112,13 @@ uniform float aya_sss_skin_flag;
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);
 
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec4 clipPlane;
+};
+#else
 uniform vec4 clipPlane;
+#endif
 uniform float clipSign;
 
 void mirrorClip(vec3 pos);

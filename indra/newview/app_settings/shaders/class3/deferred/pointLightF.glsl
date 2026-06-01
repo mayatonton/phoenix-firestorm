@@ -37,9 +37,16 @@ uniform vec3 env_mat[3];
 uniform float sun_wash;
 
 // light params
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec3  color;
+    float size;
+};
+#else
 uniform vec3 color;
-uniform float falloff;
 uniform float size;
+#endif
+uniform float falloff;
 
 in vec4 vary_fragcoord;
 in vec3 trans_center;

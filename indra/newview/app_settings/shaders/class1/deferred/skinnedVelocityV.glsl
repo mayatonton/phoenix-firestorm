@@ -54,7 +54,13 @@ uniform mat4 last_modelview_matrix;
 in vec3 position;
 in vec4 weight4;
 
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+};
+#else
 uniform mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#endif
 
 mat4 getObjectSkinnedTransform();
 mat4 getLastObjectSkinnedTransform();

@@ -54,7 +54,13 @@ uniform float ssao_irradiance_max;
 #endif
 
 // Inputs
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec4 clipPlane;
+};
+#else
 uniform vec4 clipPlane;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;

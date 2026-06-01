@@ -131,8 +131,15 @@ uniform int classic_mode;
 #endif
 
 // light params
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec3  color;
+    float size;
+};
+#else
 uniform vec3 color; // light_color
 uniform float size; // light_size
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform mat4 inv_proj;

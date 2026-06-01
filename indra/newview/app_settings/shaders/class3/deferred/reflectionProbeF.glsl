@@ -731,7 +731,13 @@ vec3 sampleProbeAmbient(vec3 pos, vec3 dir, vec3 amblit)
 
 #if defined(HERO_PROBES)
 
+#ifdef LL_VULKAN_GLSL
+layout(set=2, binding=0, std140) uniform PerDrawUBO {
+    vec4 clipPlane;
+};
+#else
 uniform vec4 clipPlane;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=41) uniform samplerCubeArray heroProbes;
 #else
