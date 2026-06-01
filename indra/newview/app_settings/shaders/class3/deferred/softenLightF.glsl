@@ -57,7 +57,7 @@ layout(set=3, binding=5, std140) uniform SoftenLightParamUBO_Legacy {
     float blur_fidelity;
     float ssao_irradiance_scale;
     float ssao_irradiance_max;
-    float _pad_legacy_0;
+    float _pad_soften_light_legacy_0;
     mat3  ssao_effect_mat;
 };
 #endif
@@ -124,10 +124,10 @@ layout(set=0, binding=1, std140) uniform FrameLights {
     vec2 light_deferred_attenuation[8];
 };
 #endif
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
-#ifndef FRAME_ATMOSPHERE_DEFINED
-#define FRAME_ATMOSPHERE_DEFINED 1
-layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Lighting per-group rename (η-3 §3.2 範式)
+#ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
+#define FRAME_ATMOSPHERE_LIGHTING_DEFINED 1
+layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
     vec3  sunlight_color;
     float scene_light_strength;
     vec3  moonlight_color;

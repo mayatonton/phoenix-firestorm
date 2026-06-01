@@ -78,7 +78,7 @@ out vec3 vary_rel_pos;
 #ifdef LL_VULKAN_GLSL
 layout(set=3, binding=1, std140) uniform SkyVParamUBO_Legacy {
     vec3 camPosLocal;
-    vec3 _pad_legacy_0;
+    vec3 _pad_sky_v_legacy_0;
 };
 #else
 uniform vec3 camPosLocal;
@@ -103,10 +103,10 @@ layout(set=0, binding=1, std140) uniform FrameLights {
     vec2 light_deferred_attenuation[8];
 };
 #endif
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
-#ifndef FRAME_ATMOSPHERE_DEFINED
-#define FRAME_ATMOSPHERE_DEFINED 1
-layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Skybox per-group rename (η-3 §3.2 範式)
+#ifndef FRAME_ATMOSPHERE_SKYBOX_DEFINED
+#define FRAME_ATMOSPHERE_SKYBOX_DEFINED 1
+layout(set=0, binding=2, std140) uniform FrameAtmosphere_Skybox {
     vec3  sunlight_color;
     float scene_light_strength;
     vec3  moonlight_color;

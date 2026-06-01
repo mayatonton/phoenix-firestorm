@@ -31,10 +31,10 @@ vec3 srgb_to_linear(vec3 col);
 vec3 linear_to_srgb(vec3 col);
 
 #ifdef LL_VULKAN_GLSL
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
-#ifndef FRAME_ATMOSPHERE_DEFINED
-#define FRAME_ATMOSPHERE_DEFINED 1
-layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Lighting per-group rename (η-3 §3.2 範式)
+#ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
+#define FRAME_ATMOSPHERE_LIGHTING_DEFINED 1
+layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
     vec3  sunlight_color;
     float scene_light_strength;
     vec3  moonlight_color;

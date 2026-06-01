@@ -84,9 +84,9 @@ layout(set=3, binding=7, std140) uniform ShadowUtilParamUBO_Legacy {
     float shadow_softness;
     float spot_shadow_bias;
     float spot_shadow_offset;
-    float _pad_legacy_0;
-    float _pad_legacy_1;
-    float _pad_legacy_2;
+    float _pad_shadow_util_legacy_0;
+    float _pad_shadow_util_legacy_1;
+    float _pad_shadow_util_legacy_2;
 };
 #else
 uniform vec2 shadow_res;

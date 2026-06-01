@@ -43,7 +43,7 @@ layout(set=1, binding=0, std140) uniform MaterialUBO_Legacy {
     float is_mirror;
     float env_intensity;
     float aya_sss_skin_flag;
-    float _pad_legacy_0;
+    float _pad_material_legacy_0;
 };
 #else
 uniform float emissive_brightness;  // fullbright flag, 1.0 == fullbright, 0.0 otherwise
@@ -64,10 +64,10 @@ layout(set=0, binding=1, std140) uniform FrameLights {
     vec2 light_deferred_attenuation[8];
 };
 #endif
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
-#ifndef FRAME_ATMOSPHERE_DEFINED
-#define FRAME_ATMOSPHERE_DEFINED 1
-layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Lighting per-group rename (η-3 §3.2 範式)
+#ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
+#define FRAME_ATMOSPHERE_LIGHTING_DEFINED 1
+layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
     vec3  sunlight_color;
     float scene_light_strength;
     vec3  moonlight_color;

@@ -39,10 +39,10 @@ layout(set=0, binding=1, std140) uniform FrameLights {
     vec2 light_deferred_attenuation[8];
 };
 #endif
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
-#ifndef FRAME_ATMOSPHERE_DEFINED
-#define FRAME_ATMOSPHERE_DEFINED 1
-layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Lighting per-group rename (η-3 §3.2 範式)
+#ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
+#define FRAME_ATMOSPHERE_LIGHTING_DEFINED 1
+layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
     vec3  sunlight_color;
     float scene_light_strength;
     vec3  moonlight_color;
@@ -83,6 +83,9 @@ uniform float sky_ambient_scale;
 uniform int classic_mode;
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: AtmoExtraUBO_Legacy guard wrap (η-1 §3.1 + η-3 §3.2 範式)
+#ifndef ATMO_EXTRA_UBO_LEGACY_DEFINED
+#define ATMO_EXTRA_UBO_LEGACY_DEFINED 1
 layout(set=3, binding=0, std140) uniform AtmoExtraUBO_Legacy {
     vec3  lightnorm;
     float haze_horizon;
@@ -93,8 +96,9 @@ layout(set=3, binding=0, std140) uniform AtmoExtraUBO_Legacy {
     float aya_r14_strength;
     int   aya_r16_aerial_perspective_enabled;
     float aya_r16_strength;
-    float _pad_legacy_0;
+    float _pad_atmo_extra_legacy_0;
 };
+#endif
 #else
 uniform vec3  lightnorm;
 uniform float haze_horizon;

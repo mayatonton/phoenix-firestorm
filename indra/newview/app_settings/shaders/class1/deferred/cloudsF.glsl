@@ -65,8 +65,8 @@ layout(set=3, binding=4, std140) uniform CloudsFParamUBO_Legacy {
     float cloud_variance;
     int   aya_r18_cloud_volumetric_enabled;
     float aya_r18_strength;
-    float _pad_legacy_0;
-    float _pad_legacy_1;
+    float _pad_clouds_f_legacy_0;
+    float _pad_clouds_f_legacy_1;
 };
 #else
 uniform float blend_factor;
