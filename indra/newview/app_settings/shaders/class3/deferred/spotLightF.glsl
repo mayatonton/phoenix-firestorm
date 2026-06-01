@@ -72,6 +72,9 @@ uniform float sun_wash;
 uniform int proj_shadow_idx;
 uniform float shadow_fade;
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
+#ifndef FRAME_ATMOSPHERE_DEFINED
+#define FRAME_ATMOSPHERE_DEFINED 1
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
     vec3  sunlight_color;
     float scene_light_strength;
@@ -94,6 +97,7 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere {
     float _pad_atm0;
     float _pad_atm1;
 };
+#endif
 #else
 uniform int classic_mode;
 #endif
@@ -109,10 +113,14 @@ in vec3 trans_center;
 #endif
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: PerDrawUBO guard wrap (B?-ζ §3.1 範式)
+#ifndef PER_DRAW_UBO_DEFINED
+#define PER_DRAW_UBO_DEFINED 1
 layout(set=2, binding=0, std140) uniform PerDrawUBO {
     vec3  color;
     float size;
 };
+#endif
 #else
 uniform vec3 color;
 uniform float size;

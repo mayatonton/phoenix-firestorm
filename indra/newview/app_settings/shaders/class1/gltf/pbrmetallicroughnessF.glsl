@@ -155,9 +155,13 @@ layout(location=1) in vec3 vary_fragcoord;
 in vec3 vary_fragcoord;
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: PerDrawUBO guard wrap (B?-ζ §3.1 範式)
+#ifndef PER_DRAW_UBO_DEFINED
+#define PER_DRAW_UBO_DEFINED 1
 layout(set=2, binding=0, std140) uniform PerDrawUBO {
     vec4 clipPlane;
 };
+#endif
 #else
 uniform vec4 clipPlane;
 #endif

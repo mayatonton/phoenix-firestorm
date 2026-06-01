@@ -60,6 +60,9 @@ uniform vec2 screen_res;
 #endif
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: FrameAtmosphere guard wrap (B?-ζ §3.1 範式)
+#ifndef FRAME_ATMOSPHERE_DEFINED
+#define FRAME_ATMOSPHERE_DEFINED 1
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
     vec3  sunlight_color;
     float scene_light_strength;
@@ -82,6 +85,7 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere {
     float _pad_atm0;
     float _pad_atm1;
 };
+#endif
 #else
 uniform float max_cof;
 #endif
