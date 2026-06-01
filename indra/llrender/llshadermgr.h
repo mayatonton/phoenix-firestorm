@@ -483,6 +483,15 @@ public:
     std::map<std::string, GLuint> mVertexShaderObjects;
     std::map<std::string, GLuint> mFragmentShaderObjects;
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: Vulkan path utility (basic library)
+    // shader source cache. loadShaderFile() が preprocessing 後 shader_code_text[] を
+    // filename key で copy 保存し、generatePerProgramSPIRV() が attachShaderFeatures()
+    // 経由で push された per-program utility list を引いて concat する。GL path
+    // 非依存 (mVertex/FragmentShaderObjects は GL handle、こちらは preprocessed source)。
+    // 各 entry の sources[0] は GL profile "#version XXX\n" で、concat 時は skip。
+    std::map<std::string, std::vector<std::string>> mVertexShaderSourceCache;
+    std::map<std::string, std::vector<std::string>> mFragmentShaderSourceCache;
+
     //global (reserved slot) shader parameters
     std::vector<std::string> mReservedAttribs;
 

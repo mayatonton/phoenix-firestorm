@@ -385,6 +385,15 @@ public:
     // 全 stage 蓄積後 generatePerProgramSPIRV() に渡す。GL path / Vulkan 未初期化時 untouched。
     std::vector<StageSource> mStageSources;
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: Vulkan path 限定で
+    // attachVertexObject / attachFragmentObject が attach 順 (= attachShaderFeatures()
+    // が決める順序) で filename を push。generatePerProgramSPIRV() は LLShaderMgr 側の
+    // mVertex/FragmentShaderSourceCache から各 filename で source を引いて、stage 単位
+    // concat の program-specific mShaderFiles より前に prepend する。GL path / Vulkan
+    // 未初期化時 untouched。createShader() 完遂後 clear + shrink_to_fit。
+    std::vector<std::string> mVulkanAttachedVertexUtilities;
+    std::vector<std::string> mVulkanAttachedFragmentUtilities;
+
 #if LL_PROFILER_ENABLE_RENDER_DOC
     void setLabel(const char* label);
 #endif

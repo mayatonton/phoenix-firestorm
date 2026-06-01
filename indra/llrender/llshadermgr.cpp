@@ -1050,6 +1050,49 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         }
     }
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: Vulkan path utility (basic library)
+    // shader source cache. out_sources == nullptr の loadShaderFile() 呼出は
+    // loadBasicShaders() 経由 utility shader compile (例 deferred/globalF.glsl /
+    // avatar/objectSkinV.glsl / windlight/atmosphericsV.glsl 等)。これらは
+    // attachShaderFeatures() 経由で per-program に attachVertexObject /
+    // attachFragmentObject される再利用部品で、β-1/β-2-α/β-2-β/β-3 では SPIR-V
+    // concat に乗らないため "No function definition for mirrorClip / encodeNormal /
+    // getObjectSkinnedTransform / srgb_to_linear ..." 206 件の link 失敗を発生させた。
+    // filename key で preprocessed source 配列を copy 保存し、generatePerProgramSPIRV()
+    // が attachVertexObject/attachFragmentObject 内で push された per-program utility
+    // 順序に従い、stage-type 別に prepend する (各 entry の sources[0] は GL profile
+    // #version で concat 時 skip)。GL path strdup には不干渉 (本 cache は std::string
+    // copy のみ、charter §3 #1 acceptance)。program-specific path (out_sources != nullptr)
+    // はそのまま mStageSources 経路に乗るため本 cache 対象外。
+    if (out_sources == nullptr && LLVKLoader::isVulkanInitialized())
+    {
+        std::vector<std::string>* cache_entry = nullptr;
+        if (type == GL_VERTEX_SHADER)
+        {
+            cache_entry = &mVertexShaderSourceCache[filename];
+        }
+        else if (type == GL_FRAGMENT_SHADER)
+        {
+            cache_entry = &mFragmentShaderSourceCache[filename];
+        }
+        if (cache_entry)
+        {
+            cache_entry->clear();
+            cache_entry->reserve(shader_code_count);
+            for (GLuint i = 0; i < shader_code_count; ++i)
+            {
+                if (shader_code_text[i])
+                {
+                    cache_entry->emplace_back(shader_code_text[i]);
+                }
+                else
+                {
+                    cache_entry->emplace_back();
+                }
+            }
+        }
+    }
+
     //create shader object
     GLuint ret = glCreateShader(type);
 

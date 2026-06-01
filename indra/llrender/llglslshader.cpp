@@ -489,17 +489,14 @@ bool LLGLSLShader::createShader()
             }
         }
 
-        // r41 sub-step 4.3-γ'-port-β-2: loop 完遂後 mapAttributes() 直前に per-program
-        // SPIR-V hook 配置。全 stage concat → 単一 glslang::TProgram link → 各 stage 個別
-        // GlslangToSpv → cache (program_hash_program.spv custom container) → VkShaderModule
-        // 生成。失敗時 WARN 出力のみで GL path 続行 (charter §3 #1 acceptance)。生成後
-        // mStageSources は clear で memory 緩和 (217 file × stage 数 × source 長 ~数 MB peak)。
-        if (success && collect_for_vulkan && !mStageSources.empty())
-        {
-            generatePerProgramSPIRV(mStageSources);
-        }
-        mStageSources.clear();
-        mStageSources.shrink_to_fit();
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: SPIR-V hook を attachShaderFeatures()
+        // の後ろに移動。β-2-β までは loadShaderFile loop 直後で生成していたが、その時点
+        // では attachShaderFeatures() が未実行のため per-program utility 集合
+        // (mVulkanAttached{Vertex,Fragment}Utilities) が空で、SPIR-V concat に utility
+        // shader (deferred/globalF.glsl 等) の source が乗らず "No function definition"
+        // 206 件 link 失敗の構造原因となっていた。本 reorder で attach 完了後の utility
+        // list を generatePerProgramSPIRV() に渡せる (実体 call は下記 attachShaderFeatures()
+        // 直後)。memory 緩和の mStageSources.clear() / shrink_to_fit() も生成後に移動。
     }
 
     // Attach existing objects
@@ -508,6 +505,21 @@ bool LLGLSLShader::createShader()
         unloadInternal();
         return false;
     }
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: per-program SPIR-V 生成は
+    // attachShaderFeatures() による mVulkanAttached{Vertex,Fragment}Utilities 充填後に実行。
+    // 失敗時 WARN 出力のみで GL path 続行 (charter §3 #1 acceptance、GL 既 attach 済 handle
+    // は破棄しない)。生成後 mStageSources + utility list を clear で memory 緩和。
+    if (!mUsingBinaryProgram && success && LLVKLoader::isVulkanInitialized() && !mStageSources.empty())
+    {
+        generatePerProgramSPIRV(mStageSources);
+    }
+    mStageSources.clear();
+    mStageSources.shrink_to_fit();
+    mVulkanAttachedVertexUtilities.clear();
+    mVulkanAttachedVertexUtilities.shrink_to_fit();
+    mVulkanAttachedFragmentUtilities.clear();
+    mVulkanAttachedFragmentUtilities.shrink_to_fit();
     // Map attributes and uniforms
     if (success)
     {
@@ -763,6 +775,49 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
             concatenated.append("#version 460\n");
             concatenated.append("#extension GL_KHR_vulkan_glsl : enable\n");
             concatenated.append("#define LL_VULKAN_GLSL 1\n");
+
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: utility (basic library) shader
+            // source の prepend。attachShaderFeatures() が GL path で glAttachShader 連発
+            // するのと同じ意味論を Vulkan path で再現するため、attach 順を保ったまま
+            // LLShaderMgr の filename key cache から preprocessed source を引いて
+            // program-specific mShaderFiles より前に append する (各 entry の sources[0]
+            // = GL profile #version は skip)。β-1/β-2-α/β-2-β/β-3 で発生した
+            // "No function definition for mirrorClip / encodeNormal /
+            // getObjectSkinnedTransform / srgb_to_linear ..." 206 件の link 失敗の
+            // 構造原因 = utility source が SPIR-V concat に乗っていなかったこと、これを解消。
+            const std::vector<std::string>* utility_files = nullptr;
+            const std::map<std::string, std::vector<std::string>>* source_cache = nullptr;
+            if (stage_type == GL_VERTEX_SHADER)
+            {
+                utility_files = &mVulkanAttachedVertexUtilities;
+                source_cache  = &mgr->mVertexShaderSourceCache;
+            }
+            else if (stage_type == GL_FRAGMENT_SHADER)
+            {
+                utility_files = &mVulkanAttachedFragmentUtilities;
+                source_cache  = &mgr->mFragmentShaderSourceCache;
+            }
+            if (utility_files && source_cache)
+            {
+                for (const std::string& util_file : *utility_files)
+                {
+                    auto it = source_cache->find(util_file);
+                    if (it == source_cache->end())
+                    {
+                        LL_WARNS("Vulkan") << "generatePerProgramSPIRV: utility source cache miss for '"
+                                           << util_file << "' (stage type 0x"
+                                           << std::hex << (S32)stage_type << std::dec
+                                           << ", program " << mName << ")" << LL_ENDL;
+                        continue;
+                    }
+                    const std::vector<std::string>& util_sources = it->second;
+                    for (size_t i = 1; i < util_sources.size(); ++i)
+                    {
+                        concatenated.append(util_sources[i]);
+                    }
+                }
+            }
+
             for (size_t idx : stage_indices)
             {
                 const auto& stage = stages[idx];
@@ -931,6 +986,14 @@ bool LLGLSLShader::attachVertexObject(std::string object_path)
         dumpAttachObject("attachVertexObject", mProgramObject, object_path);
 #endif // DEBUG_SHADER_INCLUDES
         stop_glerror();
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: Vulkan path で attach 順記録。
+        // generatePerProgramSPIRV() が attach 順 (= attachShaderFeatures() 仕様順)
+        // でこの list を辿り、LLShaderMgr::mVertexShaderSourceCache から source を引いて
+        // stage concat の最先頭 (program-specific mShaderFiles 直前) に prepend する。
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            mVulkanAttachedVertexUtilities.push_back(object_path);
+        }
         return true;
     }
     else
@@ -953,6 +1016,12 @@ bool LLGLSLShader::attachFragmentObject(std::string object_path)
         dumpAttachObject("attachFragmentObject", mProgramObject, object_path);
 #endif // DEBUG_SHADER_INCLUDES
         stop_glerror();
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B2-γ: Vulkan path で attach 順記録。
+        // attachVertexObject と対称、Fragment 側 utility cache を参照 source として記録。
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            mVulkanAttachedFragmentUtilities.push_back(object_path);
+        }
         return true;
     }
     else
