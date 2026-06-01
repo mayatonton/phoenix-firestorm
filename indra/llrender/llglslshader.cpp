@@ -814,6 +814,17 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
                     for (size_t i = 1; i < util_sources.size(); ++i)
                     {
                         concatenated.append(util_sources[i]);
+                        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-ε: 各 utility source entry
+                        // 末尾の '\n' 担保。glslang は preprocessor directive ('#ifdef' 等) が
+                        // 前行末 token と同行扱いになると "preprocessor directive cannot be
+                        // preceded by another token" で reject する。utility 境界 (前 utility
+                        // 末尾 + 次 utility 先頭) でこの状態が ALL 191 件 0:127 cascade として
+                        // 現れたため、append 直後に末尾改行有無を検査して欠落時のみ "\n" を
+                        // 補う (cache 内 entry 自体は不変、concat path のみ補正)。
+                        if (!util_sources[i].empty() && util_sources[i].back() != '\n')
+                        {
+                            concatenated.append("\n");
+                        }
                     }
                 }
             }
