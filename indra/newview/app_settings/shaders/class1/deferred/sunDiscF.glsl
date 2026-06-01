@@ -57,7 +57,7 @@ layout(location=0) in vec2 vary_texcoord0;
 in vec2 vary_texcoord0;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in float sun_fade;
+layout(location=26) in float sun_fade;
 #else
 in float sun_fade;
 #endif

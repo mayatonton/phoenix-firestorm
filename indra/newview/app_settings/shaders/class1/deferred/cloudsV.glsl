@@ -60,7 +60,7 @@ in vec2 texcoord0;
 
 // Output parameters
 #ifdef LL_VULKAN_GLSL
-layout(location=20) out vec3 vary_CloudColorSun;
+layout(location=26) out vec3 vary_CloudColorSun;
 #else
 out vec3 vary_CloudColorSun;
 #endif

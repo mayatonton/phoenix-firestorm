@@ -81,7 +81,7 @@ in vec2 texcoord1;
 #endif
 
 #ifdef LL_VULKAN_GLSL
-layout(location=20) out vec3 pos;
+layout(location=26) out vec3 pos;
 #else
 out vec3 pos;
 #endif

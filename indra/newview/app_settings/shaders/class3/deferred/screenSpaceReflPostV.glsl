@@ -60,7 +60,7 @@ layout(location=1) out vec2 vary_fragcoord;
 out vec2 vary_fragcoord;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=20) out vec3 camera_ray;
+layout(location=26) out vec3 camera_ray;
 #else
 out vec3 camera_ray;
 #endif

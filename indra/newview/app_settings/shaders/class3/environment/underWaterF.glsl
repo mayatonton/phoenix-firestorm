@@ -116,7 +116,7 @@ uniform vec2 screenRes;
 
 //bigWave is (refCoord.w, view.w);
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec4 refCoord;
+layout(location=26) in vec4 refCoord;
 #else
 in vec4 refCoord;
 #endif

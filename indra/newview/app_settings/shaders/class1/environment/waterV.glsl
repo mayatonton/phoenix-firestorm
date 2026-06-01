@@ -62,7 +62,7 @@ uniform float waterHeight;
 uniform vec3 lightDir;
 
 #ifdef LL_VULKAN_GLSL
-layout(location=20) out vec4 refCoord;
+layout(location=26) out vec4 refCoord;
 #else
 out vec4 refCoord;
 #endif

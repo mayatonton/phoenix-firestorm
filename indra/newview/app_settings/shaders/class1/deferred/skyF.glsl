@@ -25,7 +25,7 @@
 
 // Inputs
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec3 vary_HazeColor;
+layout(location=26) in vec3 vary_HazeColor;
 #else
 in vec3 vary_HazeColor;
 #endif

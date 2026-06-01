@@ -46,7 +46,7 @@ uniform sampler2D alpha_ramp;
 #endif
 
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec3 pos;
+layout(location=26) in vec3 pos;
 #else
 in vec3 pos;
 #endif

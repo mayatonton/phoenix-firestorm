@@ -35,7 +35,7 @@ out vec4 frag_data[4];
 /////////////////////////////////////////////////////////////////////////
 
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec3 vary_CloudColorSun;
+layout(location=26) in vec3 vary_CloudColorSun;
 #else
 in vec3 vary_CloudColorSun;
 #endif
