@@ -85,12 +85,25 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform mat4 proj_mat; //screen space to light space projector
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=6, std140) uniform DeferredUtilParamUBO_Legacy {
+    vec3  proj_n;          // projector normal
+    float proj_focus;      // distance from plane to begin blurring
+    vec3  proj_p;          // plane projection is emitting from (in screen space)
+    float proj_lod;        // (number of mips in proj map)
+    float proj_range;      // range between near clip and far clip plane of projection
+    float proj_ambiance;
+    float waterSign;
+    float _pad_legacy_0;
+};
+#else
 uniform vec3 proj_n; // projector normal
 uniform vec3 proj_p; //plane projection is emitting from (in screen space)
 uniform float proj_focus; // distance from plane to begin blurring
 uniform float proj_lod  ; // (number of mips in proj map)
 uniform float proj_range; // range between near clip and far clip plane of projection
 uniform float proj_ambiance;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=1, std140) uniform FrameLights {
@@ -700,7 +713,9 @@ vec3 pbrBaseLight(vec3 diffuseColor, vec3 specularColor, float metallic, vec3 v,
 #ifndef LL_VULKAN_GLSL
 uniform vec4 waterPlane;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform float waterSign;
+#endif
 
 // discard if given position in eye space is on the wrong side of the waterPlane according to waterSign
 void waterClip(vec3 pos)

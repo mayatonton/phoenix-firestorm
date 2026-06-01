@@ -72,7 +72,9 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere {
 #else
 uniform float sky_hdr_scale;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform float hdri_split_screen;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;
@@ -103,9 +105,18 @@ uniform sampler2D rainbow_map;
 uniform sampler2D halo_map;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=2, std140) uniform SkyFParamUBO_Legacy {
+    float hdri_split_screen;
+    float moisture_level;
+    float droplet_radius;
+    float ice_level;
+};
+#else
 uniform float moisture_level;
 uniform float droplet_radius;
 uniform float ice_level;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) out vec4 frag_data[4];

@@ -49,12 +49,33 @@ layout(set=0, binding=5) uniform sampler2D lightFunc;
 uniform sampler2D     lightFunc;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=5, std140) uniform SoftenLightParamUBO_Legacy {
+    vec4  aya_translucency_params;
+    vec3  aya_translucency_tint;
+    float blur_size;
+    float blur_fidelity;
+    float ssao_irradiance_scale;
+    float ssao_irradiance_max;
+    float _pad_legacy_0;
+    mat3  ssao_effect_mat;
+};
+#endif
+
+#ifndef LL_VULKAN_GLSL
 uniform float blur_size;
+#endif
+#ifndef LL_VULKAN_GLSL
 uniform float blur_fidelity;
+#endif
 
 #if defined(HAS_SSAO)
+#ifndef LL_VULKAN_GLSL
 uniform float ssao_irradiance_scale;
+#endif
+#ifndef LL_VULKAN_GLSL
 uniform float ssao_irradiance_max;
+#endif
 #endif
 
 // Inputs
@@ -80,7 +101,9 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform mat3 env_mat;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform mat3  ssao_effect_mat;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=1, std140) uniform FrameLights {
     int  sun_up_factor;
@@ -166,8 +189,12 @@ uniform float sky_hdr_scale;
 
 // r19 Translucency: wrap-around diffuse + back-light transmission.
 // Pipeline pushes strength=0 when r19 is OFF, so helpers below short-circuit.
+#ifndef LL_VULKAN_GLSL
 uniform vec4  aya_translucency_params; // (wrap, k_back, k_view, strength)
+#endif
+#ifndef LL_VULKAN_GLSL
 uniform vec3  aya_translucency_tint;   // warm skin/leaf tint (linear)
+#endif
 
 float ayaTranslucencyWrap(float ndotl)
 {

@@ -28,7 +28,16 @@
  // DO NOT declare sampler uniforms here as OS X doesn't compile
  // them out
 
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=11, std140) uniform GlobalFParamUBO_Legacy {
+    float mirror_flag;
+    float clipSign;
+    float _pad_globalf_0;
+    float _pad_globalf_1;
+};
+#else
 uniform float mirror_flag;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=2, binding=0, std140) uniform PerDrawUBO {
     vec4 clipPlane;
@@ -36,7 +45,9 @@ layout(set=2, binding=0, std140) uniform PerDrawUBO {
 #else
 uniform vec4 clipPlane;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform float clipSign;
+#endif
 
 void mirrorClip(vec3 pos)
 {

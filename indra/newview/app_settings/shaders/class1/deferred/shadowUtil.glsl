@@ -69,6 +69,22 @@ layout(set=0, binding=1, std140) uniform FrameLights {
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=7, std140) uniform ShadowUtilParamUBO_Legacy {
+    mat4  shadow_matrix[6];
+    vec4  shadow_clip;
+    vec2  shadow_res;
+    vec2  proj_shadow_res;
+    float shadow_bias;
+    float shadow_offset;
+    float shadow_softness;
+    float spot_shadow_bias;
+    float spot_shadow_offset;
+    float _pad_legacy_0;
+    float _pad_legacy_1;
+    float _pad_legacy_2;
+};
+#else
 uniform vec2 shadow_res;
 uniform vec2 proj_shadow_res;
 uniform mat4 shadow_matrix[6];
@@ -78,6 +94,7 @@ uniform float shadow_offset;
 uniform float shadow_softness;
 uniform float spot_shadow_bias;
 uniform float spot_shadow_offset;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;

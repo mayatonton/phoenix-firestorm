@@ -31,10 +31,19 @@ uniform sampler2D   noiseMap;
 uniform sampler2D   depthMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=8, std140) uniform AOUtilParamUBO_Legacy {
+    float ssao_radius;
+    float ssao_max_radius;
+    float ssao_factor;
+    float ssao_factor_inv;
+};
+#else
 uniform float ssao_radius;
 uniform float ssao_max_radius;
 uniform float ssao_factor;
 uniform float ssao_factor_inv;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {

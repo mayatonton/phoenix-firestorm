@@ -98,9 +98,20 @@ out float altitude_blend_factor;
 #endif
 
 // Inputs
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=3, std140) uniform CloudsVParamUBO_Legacy {
+    vec3  camPosLocal;
+    float cloud_scale;
+    vec3  cloud_color;
+    float _pad_legacy_0;
+};
+#else
 uniform vec3 camPosLocal;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec3 lightnorm;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=1, std140) uniform FrameLights {
     int  sun_up_factor;
@@ -155,13 +166,21 @@ uniform vec3 glow;
 uniform float haze_horizon;
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float cloud_shadow;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float sun_moon_glow_factor;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec3 cloud_color;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float cloud_scale;
+#endif
 
 // NOTE: Keep these in sync!
 //       indra\newview\app_settings\shaders\class1\deferred\skyV.glsl

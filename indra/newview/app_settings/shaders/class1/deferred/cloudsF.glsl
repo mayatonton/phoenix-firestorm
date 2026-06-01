@@ -57,6 +57,18 @@ layout(set=0, binding=16) uniform sampler2D cloud_noise_texture_next;
 uniform sampler2D cloud_noise_texture;
 uniform sampler2D cloud_noise_texture_next;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=4, std140) uniform CloudsFParamUBO_Legacy {
+    vec3  cloud_pos_density1;
+    float blend_factor;
+    vec3  cloud_pos_density2;
+    float cloud_variance;
+    int   aya_r18_cloud_volumetric_enabled;
+    float aya_r18_strength;
+    float _pad_legacy_0;
+    float _pad_legacy_1;
+};
+#else
 uniform float blend_factor;
 uniform vec3 cloud_pos_density1;
 uniform vec3 cloud_pos_density2;
@@ -64,6 +76,7 @@ uniform float cloud_scale;
 uniform float cloud_variance;
 uniform int aya_r18_cloud_volumetric_enabled;  // <FS:AYA r18>
 uniform float aya_r18_strength;  // <FS:AYAstorm r30 BD改善> r18 効果強度 (0=legacy / 1=volumetric、enabled 内で lerp)
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) in vec2 vary_texcoord0;

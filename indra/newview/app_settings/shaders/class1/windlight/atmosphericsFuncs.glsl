@@ -74,6 +74,20 @@ uniform float sky_sunlight_scale;
 uniform float sky_ambient_scale;
 uniform int classic_mode;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=0, std140) uniform AtmoExtraUBO_Legacy {
+    vec3  lightnorm;
+    float haze_horizon;
+    float cloud_shadow;
+    float sun_moon_glow_factor;
+    int   aya_visual_realism_enabled;
+    int   aya_r14_volumetric_atmosphere_enabled;
+    float aya_r14_strength;
+    int   aya_r16_aerial_perspective_enabled;
+    float aya_r16_strength;
+    float _pad_legacy_0;
+};
+#else
 uniform vec3  lightnorm;
 uniform float haze_horizon;
 uniform float cloud_shadow;
@@ -83,6 +97,7 @@ uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善
 uniform float aya_r14_strength;  // <FS:AYAstorm r30 BD改善> r14 効果強度 (0=OFF / 1=ON)
 uniform int aya_r16_aerial_perspective_enabled;  // <FS:AYA r16> r16 個別 switch (master 独立)
 uniform float aya_r16_strength;  // <FS:AYAstorm r30 BD改善> r16 効果強度 (0=OFF / 1=ON、enabled 内で lerp)
+#endif
 
 float getAmbientClamp() { return 1.0f; }
 

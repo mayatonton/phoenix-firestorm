@@ -75,9 +75,18 @@ out vec3 vary_rel_pos;
 #endif
 
 // Inputs
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=1, std140) uniform SkyVParamUBO_Legacy {
+    vec3 camPosLocal;
+    vec3 _pad_legacy_0;
+};
+#else
 uniform vec3 camPosLocal;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec3  lightnorm;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=1, std140) uniform FrameLights {
     int  sun_up_factor;
@@ -135,12 +144,14 @@ uniform int cube_snapshot;
 uniform float haze_horizon;
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float cloud_shadow;
 
 uniform float sun_moon_glow_factor;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14 P2.a> Visual Realism master switch
 uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate
 uniform float aya_r14_strength;  // <FS:AYAstorm r30 BD改善> r14 効果強度 (0=OFF / 1=ON)
+#endif
 
 // <FS:AYA r14 P2.a> vertex shader 内のインライン sRGB <-> linear helper
 // skyV.glsl は vertex shader で srgbF.glsl が attach されないため、ここで直接定義する

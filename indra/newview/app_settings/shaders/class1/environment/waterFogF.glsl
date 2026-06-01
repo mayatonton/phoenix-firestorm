@@ -40,9 +40,19 @@ layout(set=0, binding=1, std140) uniform FrameLights {
 #else
 uniform vec4 waterPlane;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=9, std140) uniform WaterFogUBO_Legacy {
+    vec4  waterFogColor;
+    float waterFogDensity;
+    float waterFogKS;
+    float _pad_waterfog_0;
+    float _pad_waterfog_1;
+};
+#else
 uniform vec4 waterFogColor;
 uniform float waterFogDensity;
 uniform float waterFogKS;
+#endif
 
 vec3 srgb_to_linear(vec3 col);
 vec3 linear_to_srgb(vec3 col);

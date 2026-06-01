@@ -135,9 +135,18 @@ vec3 PBRNeutralToneMapping( vec3 color )
   return mix(color, newPeak * vec3(1, 1, 1), g);
 }
 
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=10, std140) uniform TonemapUBO_Legacy {
+    float exposure;
+    float tonemap_mix;
+    int   tonemap_type;
+    float _pad_tonemap_0;
+};
+#else
 uniform float exposure;
 uniform float tonemap_mix;
 uniform int tonemap_type;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
 //   Cinematic — BD original tonemap dispatch:
