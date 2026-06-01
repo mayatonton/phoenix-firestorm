@@ -90,6 +90,7 @@ xcodebuild -project SecondLife.xcodeproj ...
 - [11. repo 管理者 / release 担当者へのお願い](#11-repo-管理者--release-担当者へのお願い)
 - [12. 実装結果と検証観点](#12-実装結果と検証観点)
 - [13. 判断](#13-判断)
+- [14. PR 下書き](#14-pr-下書き)
 
 ## 1. 目的
 
@@ -632,6 +633,34 @@ AYAstorm update available: local=... remote=...
 
 このログが出て banner が表示される場合、少なくとも「ログイン画面の見た目だけ」ではなく、ネットワーク取得、release list parse、tag family filter、version compare、native UI 表示まで通っている。
 
+### 12.1 ローカル test tag 検証
+
+PR 前の確認として、remote へ push しないローカル tag を HEAD に付け、release tag 埋め込みと update 判定用 local tag の反映を検証した。
+
+使用した test tag:
+
+```text
+v7.2.4-ayastorm-r0+test.update-notification
+```
+
+この tag は `v<base>-ayastorm-r<r>[+metadata]` 形式に合致し、classic AYAstorm tag として parser を通る。`r0` として扱われるため、GitHub Releases 側に既存の `r31` / `r32` 系 release が存在する環境では、「remote の方が新しい」経路を検証できる。
+
+確認結果:
+
+```text
+build-darwin-universal/newview/fsversionvalues.h:
+const std::string AYASTORM_RELEASE_TAG{"v7.2.4-ayastorm-r0+test.update-notification"};
+```
+
+生成済み app binary にも同じ tag 文字列が含まれることを確認した。
+
+```text
+strings AYAstorm | rg 'v7\.2\.4-ayastorm-r0\+test\.update-notification'
+v7.2.4-ayastorm-r0+test.update-notification
+```
+
+この状態で macOS arm64 app の差分 build を実行し、`BUILD SUCCEEDED` を確認済み。
+
 ## 13. 判断
 
 今回の実装は「最新版があることを知らせる」通知機能に限定する。自動更新、強制更新、download/install、既存 updater との統合は行わない。
@@ -639,3 +668,32 @@ AYAstorm update available: local=... remote=...
 最初に解くべき問題は、実行中 app が AYAstorm release tag と release family を正確に持つこと。ここがないと GitHub Releases の一覧から classic / Vulkan / Metal などの別系統 release を安全に分離できず、`7.2.4` 系の同一 base version 内で `r31/r32` の差分も安定して判断できない。
 
 表示方式は、Firestorm の login HTML を変更する方式ではなく、viewer native UI の login banner とする。理由は、Firestorm の外部 login HTML を AYAstorm 側で制御できず、更新判定に必要な local release tag と抑制状態も viewer 側の状態だからである。
+
+## 14. PR 下書き
+
+```md
+## 概要
+
+AYAstorm r32 向けに、GitHub Releases 上の最新版を検出して通知する update notification を追加します。
+
+主な変更点:
+
+- AYAstorm release tag を build に埋め込む仕組みを追加
+- GitHub Releases から AYAstorm classic 系 release を取得して比較
+- ログイン画面に update banner を表示
+- AYAstorm Controls に手動 Update Check を追加
+- update なし / 取得失敗 / update あり の表示を追加
+- About / Release Notes link / ログイン画面の AYAstorm version 表示を release tag 由来に整理
+- release tag の運用手順をドキュメント化
+
+## 確認
+
+- Mac 実機で表示・動作確認済み
+- Mac arm64 app build 済み
+- ローカル test tag `v7.2.4-ayastorm-r0+test.update-notification` で `AYASTORM_RELEASE_TAG` の埋め込みと binary 反映を確認済み
+- Windows / Linux は実機確認をお願いします
+
+## 補足
+
+release build では `AYASTORM_RELEASE_TAG` が `dev` のままにならないよう、tag checkout または configure 時の `-DAYASTORM_RELEASE_TAG=...` 指定が必要です。
+```
