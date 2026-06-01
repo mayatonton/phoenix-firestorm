@@ -329,3 +329,68 @@ cadence (B1/B2-α/B2-β/B3 同):
 | SMAA program 構成 source-of-truth | `llviewershadermgr.cpp:2877-2881` (gSMAAEdgeDetectProgram[i].mShaderFiles に SMAAEdgeDetectF.glsl + SMAA.glsl(FRAGMENT) + SMAAEdgeDetectV.glsl + SMAA.glsl(VERTEX) の 4 file push) | 同 stage 複数 file concat 構成証拠 |
 
 これら artifact は fresh context で本 doc + commit message `71a8f87cde` + `llglslshader.cpp:636-810` (generatePerProgramSPIRV 全体) + `llshadermgr.cpp:743-777` (loadShaderFile #version strdup) から再生成可能 (persist 性 stable、コード trace 範式が source of truth)。
+
+---
+
+## §12 metric correction (post-hoc 2026-06-01、B2-γ trace 開始時に検出)
+
+**§4 / §10 の metric 主張は誤計上。B3 patch 実効果は #version cluster -36 のみ**。本節は後続 fresh context に正確な baseline を引き継ぐための訂正記録。§4 / §10 は historical record として残置 (commit `71a8f87cde` / `44422cb14f` の本文と整合)、本節を最優先 source of truth とする。
+
+### §12.1 検出経緯
+
+B2-γ cadence step 1 (trace) で `~/.ayastorm_x64/logs/AYAstorm.log` (B3 verify、19:15 mtime) と `~/.ayastorm_x64/logs/AYAstorm.old` (B2-β baseline、17:15 mtime) を pattern-by-pattern 直接 grep 比較した結果、§4.3 / §10 で主張された複数 cascade clear / cascade exposure が実 log で発生していないことが判明。`feedback_doubt_self_first` / `feedback_build_only_verified` 発動。
+
+### §12.2 実計測 (.old → .log)
+
+| pattern | B2-β (.old) | B3 (.log) | 実 delta | §4.3 / commit message 主張 | 判定 |
+|---|---|---|---|---|---|
+| `must occur first` | 12 | 0 | **-12** | (-36 の構成要素) | ✓ 正確 |
+| `bad profile name` | 12 | 0 | **-12** | (-36 の構成要素) | ✓ 正確 |
+| `bad tokens following profile` | 12 | 0 | **-12** | (-36 の構成要素) | ✓ 正確 |
+| **#version cluster 合計** | **36** | **0** | **-36** | -36 ✓ | ✓ 正確 |
+| `non-opaque uniforms outside a block` | 74 | 74 | **±0** | -74 cascade clear | ❌ 誤計上 |
+| `0:N: 'location'` | 13 | 13 | **±0** | ±0 | ✓ 正確 |
+| `binding` | 45 | 45 | **±0** | ±0 | ✓ 正確 |
+| `missing #endif` | 15 | 15 | **±0** | ±0 | ✓ 正確 |
+| `link failed for program` | 55 | 55 | **±0** | 205→261 (+56) | ❌ 誤計上 |
+| `No function definition` | 206 | 206 | **±0** | (-) | - |
+| `parse failed for stage` | 147 | 147 | **±0** | 120→147 (+27) | ❌ 誤計上 |
+
+### §12.3 正確な B3 net delta
+
+**B3 net delta = -36 errors (#version cluster のみ)**。§4.3 / commit message の「-54 controlled cascade improvement」「#version + non-opaque 合計 -110」は誤り。
+
+### §12.4 構造的整合性
+
+B3 patch (`generatePerProgramSPIRV()` 内 concat ロジック per-stage prepend) は **uniform 宣言行に touch しない**。よって `non-opaque uniforms outside a block` 解消は構造上不可能。§4.3 の「cascade clear (旧 first-error 位置が消失)」解釈は誤り = B2-β baseline の時点で既に non-opaque error は 74 件先に観測可能だった (line 1 reject されていなかった program に対して計測されていた)。B3 で line 1 reject が解消したことで「parse 深部到達 program 数増加」を期待したが、実 log では parse failed for stage = 147 件不変、link failed for program = 55 件不変で、構造的にも program 数進行は 0 件だった。
+
+### §12.5 B2-γ scope への影響
+
+handoff §7.3 / §10.1 で「Linking failed 261 件」と記述されているが、これは case-insensitive な `link` 一致行 (`#Vulkan#` log marker 等の偶発一致含む) を Linking 失敗数と誤って attribution したもの。**正確な B2-γ scope は以下の通り**:
+
+- **link failed program 数**: **55 program** (B2-β baseline で既に 55、B3 でも 55、不変)
+- **"No function definition (body) found:" 個別 error 行数**: **206 件** (1 program 内複数関数 missing で複数行)
+- **observed missing function 主要例**: `getObjectSkinnedTransform` / `sampleReflectionProbesDebug` / `getPositionWithDepth` / `getDepth` (B2-γ trace 進捗で追加抽出)
+- **由来**: B2-β (location -89 cascade improvement) 完遂時点で既に link 段階到達 = B3 patch とは独立、B2-α / B2-β の SPIR-V layout 注入による parse 段階突破の副次効果
+
+### §12.6 §4.3 / §10.1 の literal 訂正版
+
+| 項目 | §4.3 旧記述 (誤) | 正確値 |
+|---|---|---|
+| non-opaque type delta | -74 ✓ cascade clear | **±0 (74→74、構造的に解消不可能)** |
+| Linking failed delta | +56 (205→261 cascade exposure) | **±0 (55→55、case-insensitive grep の false positive)** |
+| parse failed (program) | +27 (120→147) | **±0 (147→147)** |
+| 7 error category 合計 | -54 (388→334) | **-36 (#version cluster のみ)** |
+| #version + non-opaque 合計 | -110 解消 | **-36 (#version cluster -36 のみ)** |
+| §10.1 B2-γ Linking 261 件 | 261 件 | **55 program / 206 No function definition error 行** |
+
+### §12.7 commit message の扱い
+
+`71a8f87cde` / `44422cb14f` の commit message も同じ誤計上を含むが、git history は immutable。本 §12 の存在を後続 commit / handoff から明示参照することで、fresh context が誤値を継承しないように担保する。
+
+### §12.8 教訓 / 防止策
+
+- metric は **B3 verify log と B2-β baseline log の直接 pair-grep** で確定する (`~/.ayastorm_x64/logs/AYAstorm.log` vs `AYAstorm.old` 同時 grep 比較)
+- case-insensitive な partial match (`link` 一致) を category metric として採用しない。明示 pattern (`link failed for program` / `No function definition`) を使う
+- 「cascade clear」「cascade exposure」を主張する場合、patch が **構造的に該当 error 行に touch するか** を先に確認 (`feedback_doubt_self_first`)
+- handoff 起草前に self-verify §5 に **metric 整合性チェック** を追加 (`feedback_self_verify_before_handoff`)
