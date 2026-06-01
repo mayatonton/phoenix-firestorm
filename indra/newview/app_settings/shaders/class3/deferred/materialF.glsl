@@ -104,6 +104,9 @@ vec3 srgb_to_linear(vec3 cs);
 vec3 linear_to_srgb(vec3 cs);
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5: FrameViewProj guard wrap (η-1 §3.1 範式継承)
+#ifndef FRAME_VIEW_PROJ_DEFINED
+#define FRAME_VIEW_PROJ_DEFINED 1
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;
     mat4 modelview_matrix;
@@ -115,6 +118,7 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat3 normal_matrix;
     vec2 screen_res;
 };
+#endif
 #else
 uniform mat4 modelview_matrix;
 uniform mat3 normal_matrix;

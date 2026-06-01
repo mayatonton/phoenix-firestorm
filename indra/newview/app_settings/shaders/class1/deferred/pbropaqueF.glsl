@@ -156,7 +156,18 @@ uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlpha
 // <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
 // is on the SSS whitelist, 0.0 otherwise. Packed into frag_data[3].a so the
 // screen-space SSS pass can gate its blur to skin pixels only.
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5 (b-1): bare uniform → nameless UBO wrap (PBROpaqueExtraUBO_Legacy)
+// clipSign は globalF.glsl の GlobalFParamUBO_Legacy 既存 member を共有 (η-4 §3.2 member 名 global scope export 衝突回避)
+layout(set=3, binding=13, std140) uniform PBROpaqueExtraUBO_Legacy {
+    float aya_sss_skin_flag;
+    float _pad_pbropaque_0;
+    float _pad_pbropaque_1;
+    float _pad_pbropaque_2;
+};
+#else
 uniform float aya_sss_skin_flag;
+#endif
 // </FS:AYA>
 
 vec3 linear_to_srgb(vec3 c);
@@ -173,12 +184,17 @@ layout(set=2, binding=0, std140) uniform PerDrawUBO_ClipPlane {
 #else
 uniform vec4 clipPlane;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform float clipSign;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5: FrameViewProj guard wrap (η-1 §3.1 範式継承)
+#ifndef FRAME_VIEW_PROJ_DEFINED
+#define FRAME_VIEW_PROJ_DEFINED 1
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;
     mat4 modelview_matrix;
@@ -190,6 +206,7 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat3 normal_matrix;
     vec2 screen_res;
 };
+#endif
 #else
 uniform mat3 normal_matrix;
 #endif
@@ -317,7 +334,34 @@ layout(location=7) in vec2 emissive_texcoord;
 in vec2 emissive_texcoord;
 #endif
 
-#ifndef LL_VULKAN_GLSL
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5 (b-2): HUD path で minimum_alpha undeclared 解消 (η-4 §3.2 範式同形 guard wrap、FrameAtmosphere_Lighting UBO 経由)
+#ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
+#define FRAME_ATMOSPHERE_LIGHTING_DEFINED 1
+layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#endif
+#else
 uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
 #endif
 

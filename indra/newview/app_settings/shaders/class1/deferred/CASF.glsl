@@ -47,9 +47,20 @@ layout(set=1, binding=4) uniform sampler2D diffuseRect;
 #else
 uniform sampler2D diffuseRect;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5 (b-1): bare uniform → nameless UBO wrap (CASParamUBO_Legacy)
+layout(set=3, binding=12, std140) uniform CASParamUBO_Legacy {
+    vec2  out_screen_res;
+    float _pad_cas_0;
+    float _pad_cas_1;
+    uvec4 cas_param_0;
+    uvec4 cas_param_1;
+};
+#else
 uniform vec2 out_screen_res;
 uniform uvec4 cas_param_0;
 uniform uvec4 cas_param_1;
+#endif
 
 vec3 srgb_to_linear(vec3 cs);
 vec3 linear_to_srgb(vec3 cl);

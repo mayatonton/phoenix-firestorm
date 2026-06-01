@@ -28,6 +28,9 @@
 // License: LGPL-2.1-only (same as Second Life Viewer Source Code, no relicensing)
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5: FrameViewProj guard wrap (η-1 §3.1 範式継承)
+#ifndef FRAME_VIEW_PROJ_DEFINED
+#define FRAME_VIEW_PROJ_DEFINED 1
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;
     mat4 modelview_matrix;
@@ -39,6 +42,7 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat3 normal_matrix;
     vec2 screen_res;
 };
+#endif
 #else
 uniform mat4 projection_matrix;
 #endif
@@ -60,7 +64,15 @@ layout(location=0) in vec3 position;
 in vec3 position;
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5 (c): weight attribute guard wrap (B?-η-1 §3.1 範式 variable-level 応用)。
+// avatarSkinV.glsl (auto-attach via hasSkinning) と本 file 双方が
+// `layout(location=9) in vec4 weight` を独立宣言、Vulkan/glslang strict mode で redefinition。
+// 先 attach (avatarSkinV.glsl) が guard sentinel を define、後 attach (本 file) は skip。
+// GL path `#else` 側は byte-for-byte 不変 (charter §3 #1 担保)。
+#ifndef WEIGHT_LOCATION_DEFINED
+#define WEIGHT_LOCATION_DEFINED 1
 layout(location=9) in vec4 weight;
+#endif
 #else
 in vec4 weight;
 #endif

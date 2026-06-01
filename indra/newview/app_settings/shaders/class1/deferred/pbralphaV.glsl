@@ -30,6 +30,9 @@
 
 #ifdef HAS_SKIN
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5: FrameViewProj guard wrap (η-1 §3.1 範式継承)
+#ifndef FRAME_VIEW_PROJ_DEFINED
+#define FRAME_VIEW_PROJ_DEFINED 1
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;
     mat4 modelview_matrix;
@@ -41,6 +44,7 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat3 normal_matrix;
     vec2 screen_res;
 };
+#endif
 #else
 uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
@@ -212,7 +216,23 @@ void main()
 
 // fullbright HUD alpha implementation
 
-#ifndef LL_VULKAN_GLSL
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5 (b-2): HUD path で modelview_projection_matrix undeclared 解消 (η-1 §3.1 範式同形 guard wrap)
+#ifndef FRAME_VIEW_PROJ_DEFINED
+#define FRAME_VIEW_PROJ_DEFINED 1
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#endif
+#else
 uniform mat4 modelview_projection_matrix;
 #endif
 

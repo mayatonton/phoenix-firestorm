@@ -30,6 +30,9 @@
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> Keep both uniform
 // sets so both main() paths link; pick at runtime via AYASTORM_CINEMATIC.
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5: FrameViewProj guard wrap (η-1 §3.1 範式継承)
+#ifndef FRAME_VIEW_PROJ_DEFINED
+#define FRAME_VIEW_PROJ_DEFINED 1
 layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat4 modelview_projection_matrix;
     mat4 modelview_matrix;
@@ -41,6 +44,7 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
     mat3 normal_matrix;
     vec2 screen_res;
 };
+#endif
 #else
 uniform mat4 modelview_projection_matrix;
 uniform mat4 modelview_matrix;
@@ -98,7 +102,7 @@ out vec4 vertex_color;
 #ifndef PER_DRAW_UBO_SKINNED_VELOCITY_DEFINED
 #define PER_DRAW_UBO_SKINNED_VELOCITY_DEFINED 1
 layout(set=2, binding=0, std140) uniform PerDrawUBO_SkinnedVelocity {
-    mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+    mat3x4 lastMatrixPalette_skinned_velocity[MAX_JOINTS_PER_MESH_OBJECT];
 };
 #endif
 #else

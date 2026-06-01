@@ -25,7 +25,15 @@
 
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5 (c): weight attribute guard wrap (B?-η-1 §3.1 範式 variable-level 応用)。
+// avatarSkinV.glsl (auto-attach via hasSkinning) と avatarVelocityV.glsl 双方が
+// `layout(location=9) in vec4 weight` を独立宣言、Vulkan/glslang strict mode で redefinition。
+// 先 attach (本 file) が guard sentinel を define、後 attach (avatarVelocityV.glsl) は skip。
+// GL path `#else` 側は byte-for-byte 不変 (charter §3 #1 担保)。
+#ifndef WEIGHT_LOCATION_DEFINED
+#define WEIGHT_LOCATION_DEFINED 1
 layout(location=9) in vec4 weight;
+#endif
 #else
 in vec4 weight;
 #endif
