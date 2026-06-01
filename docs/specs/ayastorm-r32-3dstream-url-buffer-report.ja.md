@@ -2,7 +2,7 @@
 
 **作成日**: 2026-05-31
 **最終更新**: 2026-06-01
-**対象ブランチ**: `fix/stream3d-url-buffer-reconnect-plan`
+**対象ブランチ**: `fix/ayastorm-r32-3dstream-url-buffer`
 **対象 app**: `build-darwin-universal/newview/Release/AYAstorm.app`
 **報告対象**: 3D Stream URL Source の Ogg Opus / Vorbis live stream 再生安定化
 **パッケージ化**: 未実施
@@ -14,6 +14,31 @@
 
 **調査対象コード**:
 - `indra/llaudio/llstreamingaudio_fmodstudio.cpp`
+
+## 目次
+
+- [0. 修正報告サマリ](#0-修正報告サマリ)
+  - [0.1 結論](#01-結論)
+  - [0.2 修正概要](#02-修正概要)
+  - [0.3 現在の実装値](#03-現在の実装値)
+  - [0.8 再検証用ログメモ](#08-再検証用ログメモ)
+- [1. 問題定義](#1-問題定義)
+- [2. 調査開始時のバッファ構造](#2-調査開始時のバッファ構造)
+  - [2.1 3D Stream URL Source](#21-3d-stream-url-source)
+  - [2.2 Parcel Music の 163,840 bytes との違い](#22-parcel-music-の-163840-bytes-との違い)
+- [3. 根本原因仮説](#3-根本原因仮説)
+- [4. 修正方針](#4-修正方針)
+- [5. 実装計画](#5-実装計画)
+  - [5.1 2026-06-01 実測ログによる更新](#51-2026-06-01-実測ログによる更新)
+- [6. 2026-06-01 実装修正](#6-2026-06-01-実装修正)
+  - [6.1 Ogg Opus codec](#61-ogg-opus-codec)
+  - [6.2 3D Stream URL Source](#62-3d-stream-url-source)
+  - [6.10 CBR target buffer retune](#610-2026-06-01-cbr-target-buffer-retune)
+  - [6.14 5.1 / 7.1 scope](#614-51--71-scope)
+  - [6.15 将来設計: audio streaming core の共通化](#615-将来設計-audio-streaming-core-の共通化)
+  - [6.17 ayastorm-release 比の 3D Stream 負荷見積もり](#617-ayastorm-release-比の-3d-stream-負荷見積もり)
+- [7. 受入条件](#7-受入条件)
+- [8. 判断ポイント](#8-判断ポイント)
 
 ## 0. 修正報告サマリ
 
