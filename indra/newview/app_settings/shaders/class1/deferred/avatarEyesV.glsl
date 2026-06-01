@@ -80,18 +80,20 @@ layout(location=2) in vec2 texcoord0;
 in vec2 texcoord0;
 #endif
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-9: location 番号を fragment side (diffuseF.glsl) と整合
+// (diffuseF.glsl は diffuseV.glsl と共有、location 0/1/2/3 が canonical)
 #ifdef LL_VULKAN_GLSL
-layout(location=4) out vec3 vary_normal;
+layout(location=0) out vec3 vary_normal;
 #else
 out vec3 vary_normal;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=2) out vec4 vertex_color;
+layout(location=1) out vec4 vertex_color;
 #else
 out vec4 vertex_color;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=0) out vec2 vary_texcoord0;
+layout(location=2) out vec2 vary_texcoord0;
 #else
 out vec2 vary_texcoord0;
 #endif
