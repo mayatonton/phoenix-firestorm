@@ -91,6 +91,29 @@ uniform mat4 inv_proj;
 uniform vec2 screen_res;
 uniform int sun_up_factor;
 #endif
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-8: cinematic_bd shadow_* bare uniforms UBO wrap.
+// class1/deferred/shadowUtil.glsl では η-1 範式で ShadowUtilParamUBO_Legacy (set=3, binding=7)
+// に取込み済だが、cinematic_bd override は未処理で Deferred Avatar Eyes 0:570 'non-opaque
+// uniforms outside a block' 直撃。cinematic_bd は class1 と mutually exclusive (loader が
+// cinematic_bd_first → class1 fallback) のため binding=7 共有可、std140 layout も
+// class1 版と byte-identical (shadow_softness 含む 12 member) で将来 C++ side binding 共有可。
+// GL #else path は元 8 bare 宣言を byte-for-byte 維持 (charter §3 #1 担保)。
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=7, std140) uniform ShadowUtilParamUBO_Legacy {
+    mat4  shadow_matrix[6];
+    vec4  shadow_clip;
+    vec2  shadow_res;
+    vec2  proj_shadow_res;
+    float shadow_bias;
+    float shadow_offset;
+    float shadow_softness;
+    float spot_shadow_bias;
+    float spot_shadow_offset;
+    float _pad_shadow_util_legacy_0;
+    float _pad_shadow_util_legacy_1;
+    float _pad_shadow_util_legacy_2;
+};
+#else
 uniform vec2 shadow_res;
 uniform vec2 proj_shadow_res;
 uniform mat4 shadow_matrix[6];
@@ -99,6 +122,7 @@ uniform float shadow_bias;
 uniform float shadow_offset;
 uniform float spot_shadow_bias;
 uniform float spot_shadow_offset;
+#endif
 
 // Helper function for optimized PCF sampling
 float sampleShadowMap(sampler2DShadow shadowMap, vec2 base_uv, float u, float v, vec2 shadowMapSizeInv, float lightDepth)

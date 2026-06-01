@@ -860,9 +860,21 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         extra_code_text[extra_code_count++] = strdup("#define HAS_DIFFUSE_LOOKUP\n");
 
         //uniform declartion
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-8: bare `uniform sampler2D tex%d;`
+        // を Vulkan path で `layout(set=1, binding=100+i)` annotation 付き UBO 化、GL path
+        // は `#else` 内で元の bare 宣言維持 (charter §3 #1 byte-for-byte 担保)。set=1 は
+        // per-material 帯、binding=100-115 (16 slot reserve) を indexed texture rendering
+        // 専用に予約 (set=1 既存 binding=1=diffuseMap / 40=irradianceProbes / 41=heroProbes
+        // と衝突なし)。sIndexedTextureChannels=4 default で tex0-tex3 のみ実 emit。
+        // 'binding' sampler/texture/image requires layout(binding=X) 21 件解消対象。
         for (S32 i = 0; i < texture_index_channels; ++i)
         {
-            std::string decl = llformat("uniform sampler2D tex%d;\n", i);
+            std::string decl;
+            decl += "#ifdef LL_VULKAN_GLSL\n";
+            decl += llformat("layout(set=1, binding=%d) uniform sampler2D tex%d;\n", 100 + i, i);
+            decl += "#else\n";
+            decl += llformat("uniform sampler2D tex%d;\n", i);
+            decl += "#endif\n";
             extra_code_text[extra_code_count++] = strdup(decl.c_str());
         }
 

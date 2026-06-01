@@ -93,6 +93,28 @@ uniform int classic_mode;
 
 #define MAX_REFMAP_COUNT 256  // must match LL_MAX_REFLECTION_PROBE_COUNT
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-8: ReflectionProbes block Vulkan wrap.
+// 'layout(set=, binding=)' 欠落で Reflection Probe Display + 3×FullbrightShiny 0:1405
+// 'binding' error 4 件 直撃。set=3 binding=59 (η-7 末 58 → 59 連続割当、η-6 で同 file 内
+// ReflectionProbeUBO_Legacy が set=3 binding=17 として既存)。GL #else path は元 block を
+// byte-for-byte 維持 (charter §3 #1 担保)。
+#ifdef LL_VULKAN_GLSL
+layout(set=3, binding=59, std140) uniform ReflectionProbes
+{
+    mat4 refBox[MAX_REFMAP_COUNT];
+    mat4 heroBox;
+    vec4 refSphere[MAX_REFMAP_COUNT];
+    vec4 refParams[MAX_REFMAP_COUNT];
+    vec4 heroSphere;
+    ivec4 refIndex[MAX_REFMAP_COUNT];
+    ivec4 refNeighbor[1024];
+    ivec4 refBucket[256];
+    int refmapCount;
+    int heroShape;
+    int heroMipCount;
+    int heroProbeCount;
+};
+#else
 layout (std140) uniform ReflectionProbes
 {
     // list of OBBs for user override probes
@@ -131,6 +153,7 @@ layout (std140) uniform ReflectionProbes
     int heroMipCount;
     int heroProbeCount;
 };
+#endif
 
 // Inputs
 #ifdef LL_VULKAN_GLSL
