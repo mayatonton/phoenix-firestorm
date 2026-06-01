@@ -67,7 +67,7 @@ layout(location=26) out vec4 refCoord;
 out vec4 refCoord;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=21) out vec4 littleWave;
+layout(location=27) out vec4 littleWave;
 #else
 out vec4 littleWave;
 #endif

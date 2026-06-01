@@ -60,7 +60,7 @@ layout(location=26) out vec3 vary_HazeColor;
 out vec3 vary_HazeColor;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=21) out float vary_LightNormPosDot;
+layout(location=27) out float vary_LightNormPosDot;
 #else
 out float vary_LightNormPosDot;
 #endif

@@ -40,7 +40,7 @@ layout(location=26) in vec3 vary_CloudColorSun;
 in vec3 vary_CloudColorSun;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=21) in vec3 vary_CloudColorAmbient;
+layout(location=27) in vec3 vary_CloudColorAmbient;
 #else
 in vec3 vary_CloudColorAmbient;
 #endif
