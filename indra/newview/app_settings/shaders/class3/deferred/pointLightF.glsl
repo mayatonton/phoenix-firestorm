@@ -33,7 +33,9 @@ layout(set=0, binding=5) uniform sampler2D lightFunc;
 uniform sampler2D lightFunc;
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec3 env_mat[3];
+#endif
 uniform float sun_wash;
 
 // light params

@@ -92,6 +92,8 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere {
     int   cube_snapshot;
     float minimum_alpha;
     float max_cof;
+    float haze_horizon;
+    float gamma;
     float _pad_atm0;
     float _pad_atm1;
 };
@@ -109,7 +111,9 @@ uniform float max_y;
 
 uniform vec3 glow;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform float haze_horizon;
+#endif
 
 uniform float cloud_shadow;
 

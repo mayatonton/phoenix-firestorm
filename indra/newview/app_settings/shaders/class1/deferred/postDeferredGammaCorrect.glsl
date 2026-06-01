@@ -33,8 +33,49 @@ layout(set=1, binding=4) uniform sampler2D diffuseRect;
 uniform sampler2D diffuseRect;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=2, std140) uniform FrameAtmosphere {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float haze_horizon;
+    float gamma;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#else
 uniform float gamma;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set=0, binding=0, std140) uniform FrameViewProj {
+    mat4 modelview_projection_matrix;
+    mat4 modelview_matrix;
+    mat4 projection_matrix;
+    mat4 inv_proj;
+    mat4 proj_mat;
+    mat4 last_modelview_matrix;
+    mat3 env_mat;
+    mat3 normal_matrix;
+    vec2 screen_res;
+};
+#else
 uniform vec2 screen_res;
+#endif
 in vec2 vary_fragcoord;
 
 vec3 linear_to_srgb(vec3 cl);

@@ -35,6 +35,10 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
 #else
@@ -53,8 +57,10 @@ layout(set=1, binding=3) uniform sampler2D specularMap; // PBR: Packed: Occlusio
 uniform sampler2D specularMap; // PBR: Packed: Occlusion, Metal, Roughness
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float metallicFactor;
 uniform float roughnessFactor;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform vec3 emissiveColor;
 #endif
@@ -297,12 +303,20 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 layout(set=1, binding=1) uniform sampler2D diffuseMap;  //always in sRGB space
 #else
 uniform sampler2D diffuseMap;  //always in sRGB space
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=5) uniform sampler2D emissiveMap;
+#else
 uniform sampler2D emissiveMap;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform vec3 emissiveColor;

@@ -36,8 +36,10 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 uniform sampler2D diffuseMap;  //always in sRGB space
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float metallicFactor;
 uniform float roughnessFactor;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=0, std140) uniform MaterialUBO {
     mat4  texture_matrix0;
@@ -46,6 +48,10 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 #else
 uniform vec3 emissiveColor;
@@ -221,6 +227,10 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 #else
 uniform vec3 emissiveColor;
