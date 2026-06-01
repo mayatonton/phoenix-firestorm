@@ -80,10 +80,10 @@ uniform float ssao_irradiance_max;
 
 // Inputs
 #ifdef LL_VULKAN_GLSL
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-1: PerDrawUBO guard wrap (B?-ζ §3.1 範式)
-#ifndef PER_DRAW_UBO_DEFINED
-#define PER_DRAW_UBO_DEFINED 1
-layout(set=2, binding=0, std140) uniform PerDrawUBO {
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-3: PerDrawUBO per-group 固有化 (B?-η-1 patch refinement、§3.1 scope refinement 3rd-level、Group A = clip_plane)
+#ifndef PER_DRAW_UBO_CLIP_PLANE_DEFINED
+#define PER_DRAW_UBO_CLIP_PLANE_DEFINED 1
+layout(set=2, binding=0, std140) uniform PerDrawUBO_ClipPlane {
     vec4 clipPlane;
 };
 #endif
