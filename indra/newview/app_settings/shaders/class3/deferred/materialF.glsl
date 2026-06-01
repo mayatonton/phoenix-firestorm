@@ -34,7 +34,20 @@
 #define DIFFUSE_ALPHA_MODE_MASK     2
 #define DIFFUSE_ALPHA_MODE_EMISSIVE 3
 
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=0, std140) uniform MaterialUBO_Legacy {
+    vec4  morphFactor;
+    vec4  specular_color;
+    vec3  camPosLocal;
+    float emissive_brightness;
+    float is_mirror;
+    float env_intensity;
+    float aya_sss_skin_flag;
+    float _pad_legacy_0;
+};
+#else
 uniform float emissive_brightness;  // fullbright flag, 1.0 == fullbright, 0.0 otherwise
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=1, std140) uniform FrameLights {
     int  sun_up_factor;
@@ -126,13 +139,17 @@ uniform sampler2D     lightFunc;
 #endif
 
 // Inputs
+#ifndef LL_VULKAN_GLSL
 uniform vec4 morphFactor;
 uniform vec3 camPosLocal;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform mat3 env_mat;
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float is_mirror;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform vec3 sun_dir;
@@ -275,13 +292,17 @@ uniform sampler2D specularMap;
 in vec2 vary_texcoord2;
 #endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float env_intensity;
 uniform vec4 specular_color;  // specular color RGB and specular exponent (glossiness) in alpha
+#endif
 
 // <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
 // is on the SSS whitelist, 0.0 otherwise. Written into frag_data[3].a so the
 // screen-space SSS pass can gate its blur to skin pixels only.
+#ifndef LL_VULKAN_GLSL
 uniform float aya_sss_skin_flag;
+#endif
 // </FS:AYA>
 
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_MASK)
