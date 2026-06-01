@@ -75,17 +75,17 @@ in vec3 vary_position;
 #endif
 
 #ifdef LL_VULKAN_GLSL
-layout(location=4) in vec3 vary_normal;
+layout(location=0) in vec3 vary_normal;
 #else
 in vec3 vary_normal;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=2) in vec4 vertex_color;
+layout(location=1) in vec4 vertex_color;
 #else
 in vec4 vertex_color;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=0) in vec2 vary_texcoord0;
+layout(location=2) in vec2 vary_texcoord0;
 #else
 in vec2 vary_texcoord0;
 #endif
