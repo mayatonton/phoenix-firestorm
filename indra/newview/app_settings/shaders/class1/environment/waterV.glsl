@@ -41,7 +41,11 @@ uniform mat3 normal_matrix;
 uniform mat4 modelview_projection_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 
 void calcAtmospherics(vec3 inPositionEye);

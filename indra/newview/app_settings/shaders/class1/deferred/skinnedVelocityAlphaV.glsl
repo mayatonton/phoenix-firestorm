@@ -61,10 +61,26 @@ uniform mat4 texture_matrix0;
 #endif
 // </FS:AYA>
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) in vec4 weight4;
+#else
 in vec4 weight4;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec4 diffuse_color;
+#else
 in vec4 diffuse_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) out vec2 vary_texcoord0;

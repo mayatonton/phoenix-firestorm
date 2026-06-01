@@ -60,19 +60,35 @@ uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 #ifdef USE_INDEXED_TEX
 void passTextureIndex();
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 normal;
+#else
 in vec3 normal;
-
-#ifdef USE_VERTEX_COLOR
-in vec4 diffuse_color;
 #endif
 
+#ifdef USE_VERTEX_COLOR
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec4 diffuse_color;
+#else
+in vec4 diffuse_color;
+#endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();

@@ -53,7 +53,11 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
 uniform vec4 color;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=2) out vec4 vertex_color;

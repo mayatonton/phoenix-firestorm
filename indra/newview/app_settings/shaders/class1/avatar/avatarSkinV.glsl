@@ -24,7 +24,11 @@
  */
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location=9) in vec4 weight;
+#else
 in vec4 weight;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=2, binding=0, std140) uniform PerDrawUBO {

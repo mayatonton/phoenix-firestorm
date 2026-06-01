@@ -43,7 +43,11 @@ uniform mat4 projection_matrix;
 #endif
 
 #ifdef MULTI_UV
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec2 texcoord1;
+#else
 in vec2 texcoord1;
+#endif
 int base_color_texcoord = 0;
 int emissive_texcoord = 0;
 #ifndef UNLIT
@@ -130,9 +134,21 @@ void unpackTextureTransforms()
 }
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec4 diffuse_color;
+#else
 in vec4 diffuse_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=20) out vec2 base_color_uv;
 #else
@@ -155,8 +171,16 @@ out vec3 vary_position;
 #endif
 
 #ifndef UNLIT
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 normal;
+#else
 in vec3 normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=8) in vec4 tangent;
+#else
 in vec4 tangent;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=22) out vec2 normal_uv;
 #else
@@ -259,8 +283,16 @@ layout (std140) uniform GLTFJoints
 };
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location=12) in uvec4 joint;
+#else
 in uvec4 joint;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) in vec4 weight4;
+#else
 in vec4 weight4;
+#endif
 
 mat4 getGLTFTransform()
 {

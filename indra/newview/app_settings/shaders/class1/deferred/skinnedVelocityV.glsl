@@ -51,8 +51,16 @@ uniform mat4 last_modelview_matrix;
 #endif
 // </FS:AYA>
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) in vec4 weight4;
+#else
 in vec4 weight4;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=2, binding=0, std140) uniform PerDrawUBO {

@@ -40,7 +40,11 @@ uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 mat4 getObjectSkinnedTransform();
 

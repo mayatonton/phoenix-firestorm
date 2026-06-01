@@ -23,7 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=13) in int texture_index;
+#else
 in int texture_index;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=20) flat out int vary_texture_index;

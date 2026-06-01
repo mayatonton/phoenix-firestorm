@@ -63,11 +63,27 @@ uniform vec4 origin;
 
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 void passTextureIndex();
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 normal;
+#else
 in vec3 normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec4 diffuse_color;
+#else
 in vec4 diffuse_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=2) out vec4 vertex_color;

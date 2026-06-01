@@ -39,7 +39,11 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform mat4 modelview_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=20) out vec3 vary_dir;

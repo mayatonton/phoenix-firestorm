@@ -23,15 +23,27 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 normal;
+#else
 in vec3 normal;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=20) out vec4 normal_g;
 #else
 out vec4 normal_g;
 #endif
 #ifdef HAS_ATTRIBUTE_TANGENT
+#ifdef LL_VULKAN_GLSL
+layout(location=8) in vec4 tangent;
+#else
 in vec4 tangent;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=21) out vec4 tangent_g;
 #else

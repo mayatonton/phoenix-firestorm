@@ -47,7 +47,11 @@ uniform mat4 last_modelview_matrix;
 #endif
 uniform mat4 last_object_matrix;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 void writeVaryVelocity(vec4 pos, vec4 last_pos);
 

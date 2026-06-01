@@ -39,16 +39,36 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform mat4 projection_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 normal;
+#else
 in vec3 normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 #ifdef AVATAR_CLOTH
+#ifdef LL_VULKAN_GLSL
+layout(location=11) in vec4 clothing;
+#else
 in vec4 clothing;
+#endif
 #endif
 
 mat4 getSkinnedTransform();
 
+#ifdef LL_VULKAN_GLSL
+layout(location=9) in vec4 weight;
+#else
 in vec4 weight;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=4) out vec3 vary_normal;

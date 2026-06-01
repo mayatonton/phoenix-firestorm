@@ -64,10 +64,22 @@ uniform vec4[2] texture_base_color_transform;
 uniform vec4[2] texture_emissive_transform;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=7) in vec4 emissive;
+#else
 in vec4 emissive;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=6) out vec2 base_color_texcoord;

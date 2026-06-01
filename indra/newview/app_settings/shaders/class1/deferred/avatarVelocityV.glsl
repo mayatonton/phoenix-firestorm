@@ -50,9 +50,21 @@ layout(set=2, binding=0, std140) uniform PerDrawUBO {
 uniform vec4 lastMatrixPalette[45];
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=9) in vec4 weight;
+#else
 in vec4 weight;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) out vec2 vary_texcoord0;

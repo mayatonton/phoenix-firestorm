@@ -40,7 +40,11 @@ uniform mat4 projection_matrix;
 uniform mat4 inv_proj;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform vec2 screen_res;

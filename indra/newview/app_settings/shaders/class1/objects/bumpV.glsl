@@ -54,9 +54,21 @@ uniform mat4 texture_matrix0;
 uniform mat4 modelview_projection_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec2 texcoord1;
+#else
 in vec2 texcoord1;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=0) out vec2 vary_texcoord0;

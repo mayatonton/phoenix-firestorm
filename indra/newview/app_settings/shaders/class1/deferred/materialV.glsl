@@ -73,15 +73,39 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
 uniform mat4 texture_matrix0;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec4 diffuse_color;
+#else
 in vec4 diffuse_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 normal;
+#else
 in vec3 normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 
 
 #ifdef HAS_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(location=8) in vec4 tangent;
+#else
 in vec4 tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec2 texcoord1;
+#else
 in vec2 texcoord1;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=9) out vec3 vary_tangent;
@@ -113,7 +137,11 @@ out vec3 vary_normal;
 #endif
 
 #ifdef HAS_SPECULAR_MAP
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec2 texcoord2;
+#else
 in vec2 texcoord2;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=16) out vec2 vary_texcoord2;
 #else

@@ -66,12 +66,32 @@ uniform mat4 modelview_projection_matrix;
 uniform float region_scale;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec3 position;
+#else
 in vec3 position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 normal;
+#else
 in vec3 normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=8) in vec4 tangent;
+#else
 in vec4 tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec4 diffuse_color;
+#else
 in vec4 diffuse_color;
+#endif
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec2 texcoord1;
+#else
 in vec2 texcoord1;
+#endif
 #endif
 
 #ifdef LL_VULKAN_GLSL
