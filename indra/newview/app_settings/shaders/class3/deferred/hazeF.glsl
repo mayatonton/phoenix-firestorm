@@ -23,7 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 // Inputs
 #ifdef LL_VULKAN_GLSL
@@ -65,7 +69,11 @@ uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int  sun_up_factor;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 vec4 getNorm(vec2 pos_screen);
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);

@@ -41,7 +41,11 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform vec2 screen_res;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec4 vary_fragcoord;
+#else
 out vec4 vary_fragcoord;
+#endif
 
 // forwards
 void setAtmosAttenuation(vec3 c);

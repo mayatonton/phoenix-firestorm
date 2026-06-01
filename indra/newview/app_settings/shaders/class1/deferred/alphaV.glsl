@@ -82,15 +82,35 @@ mat4 getSkinnedTransform();
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec3 vary_fragcoord;
+#else
 out vec3 vary_fragcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
-
-#ifdef USE_VERTEX_COLOR
-out vec4 vertex_color;
 #endif
 
+#ifdef USE_VERTEX_COLOR
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
+out vec4 vertex_color;
+#endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 vary_norm;
+#else
 out vec3 vary_norm;
+#endif
 
 uniform float near_clip;
 

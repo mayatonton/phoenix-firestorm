@@ -69,10 +69,22 @@ in vec4 emissive;
 
 in vec2 texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=6) out vec2 base_color_texcoord;
+#else
 out vec2 base_color_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=7) out vec2 emissive_texcoord;
+#else
 out vec2 emissive_texcoord;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec4 vertex_emissive;
+#else
 out vec4 vertex_emissive;
+#endif
 
 vec2 texture_transform(vec2 vertex_texcoord, vec4[2] khr_gltf_transform, mat4 sl_animation_transform);
 

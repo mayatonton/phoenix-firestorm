@@ -31,7 +31,11 @@
 #define NON_INDEXED 2
 #define NON_INDEXED_NO_COLOR 3
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {
@@ -96,13 +100,33 @@ uniform sampler2D diffuseMap;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 vary_fragcoord;
+#else
 in vec3 vary_fragcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_norm;
+#else
 in vec3 vary_norm;
+#endif
 
 #ifdef USE_VERTEX_COLOR
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color; //vertex color should be treated as sRGB
+#else
 in vec4 vertex_color; //vertex color should be treated as sRGB
+#endif
 #endif
 
 #ifndef LL_VULKAN_GLSL

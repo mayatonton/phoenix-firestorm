@@ -27,7 +27,11 @@
 
 #define FLT_MAX 3.402823466e+38
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 const float M_PI = 3.14159265;
 
@@ -118,7 +122,11 @@ uniform int  sun_up_factor;
 uniform int classic_mode;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform mat4 inv_proj;

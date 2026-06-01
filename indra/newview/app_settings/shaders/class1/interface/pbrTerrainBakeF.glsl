@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 struct TerrainMix
 {
@@ -42,8 +46,16 @@ uniform sampler2D alpha_ramp;
 #endif
 
 // vary_texcoord* are used for terrain composition
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec4 vary_texcoord0;
+#else
 in vec4 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) in vec4 vary_texcoord1;
+#else
 in vec4 vary_texcoord1;
+#endif
 
 void main()
 {

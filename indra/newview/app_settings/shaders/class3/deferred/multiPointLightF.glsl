@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 uniform sampler2D     lightFunc;
 
@@ -59,7 +63,11 @@ uniform int classic_mode;
 //BD
 uniform float global_light_strength;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec4 vary_fragcoord;
+#else
 in vec4 vary_fragcoord;
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);

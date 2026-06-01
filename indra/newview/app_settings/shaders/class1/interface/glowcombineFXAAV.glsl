@@ -26,7 +26,11 @@
 
 in vec3 position;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec2 vary_tc;
+#else
 out vec2 vary_tc;
+#endif
 
 void main()
 {

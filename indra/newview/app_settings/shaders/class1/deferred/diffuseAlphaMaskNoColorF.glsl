@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
@@ -60,8 +64,16 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 uniform sampler2D diffuseMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
+#else
 in vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
 
 void main()

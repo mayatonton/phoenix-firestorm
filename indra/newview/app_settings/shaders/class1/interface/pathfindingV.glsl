@@ -43,7 +43,11 @@ in vec3 position;
 in vec4 diffuse_color;
 in vec3 normal;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
 
 uniform float tint;
 uniform float ambiance;

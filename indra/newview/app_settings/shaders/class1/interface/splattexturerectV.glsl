@@ -41,7 +41,11 @@ uniform mat4 modelview_projection_matrix;
 
 in vec3 position;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
 
 void main()
 {

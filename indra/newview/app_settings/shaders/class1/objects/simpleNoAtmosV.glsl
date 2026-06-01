@@ -55,8 +55,16 @@ uniform vec4 color;
 
 in vec3 position;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec4 vertex_position;
+#else
 out vec4 vertex_position;
+#endif
 
 void main()
 {

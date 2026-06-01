@@ -43,10 +43,26 @@ in vec3 position;
 
 uniform vec2 glowDelta;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 vary_texcoord0;
+#else
 out vec4 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) out vec4 vary_texcoord1;
+#else
 out vec4 vary_texcoord1;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=16) out vec4 vary_texcoord2;
+#else
 out vec4 vary_texcoord2;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=17) out vec4 vary_texcoord3;
+#else
 out vec4 vary_texcoord3;
+#endif
 
 void main()
 {

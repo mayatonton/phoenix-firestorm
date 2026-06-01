@@ -112,14 +112,22 @@ uniform mat4 modelview_matrix;
 uniform mat3 normal_matrix;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
 
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef HAS_SUN_SHADOW
 float sampleDirectionalShadow(vec3 pos, vec3 norm, vec2 pos_screen);
@@ -265,7 +273,11 @@ vec3 calcPointLightOrSpotLight(vec3 light_col, vec3 npos, vec3 diffuse, vec4 spe
 }
 
 #else
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 #endif
 
 #ifdef LL_VULKAN_GLSL
@@ -289,7 +301,11 @@ layout(set=1, binding=3) uniform sampler2D specularMap;
 uniform sampler2D specularMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=16) in vec2 vary_texcoord2;
+#else
 in vec2 vary_texcoord2;
+#endif
 #endif
 
 #ifndef LL_VULKAN_GLSL
@@ -312,16 +328,44 @@ uniform float minimum_alpha;
 #endif
 
 #ifdef HAS_NORMAL_MAP
-in vec3 vary_normal;
-in vec3 vary_tangent;
-flat in float vary_sign;
-in vec2 vary_texcoord1;
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
 #else
 in vec3 vary_normal;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(location=9) in vec3 vary_tangent;
+#else
+in vec3 vary_tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) flat in float vary_sign;
+#else
+flat in float vary_sign;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) in vec2 vary_texcoord1;
+#else
+in vec2 vary_texcoord1;
+#endif
+#else
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
+#else
+in vec3 vary_normal;
+#endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color;
+#else
 in vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 
 // get the transformed normal and apply glossiness component from normal map
 vec3 getNormal(inout float glossiness)

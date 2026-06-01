@@ -53,14 +53,46 @@ uniform vec3 eyeVec;
 uniform float waterHeight;
 uniform vec3 lightDir;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec4 refCoord;
+#else
 out vec4 refCoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec4 littleWave;
+#else
 out vec4 littleWave;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) out vec4 view;
+#else
 out vec4 view;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=23) out vec3 vary_light_dir;
+#else
 out vec3 vary_light_dir;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=9) out vec3 vary_tangent;
+#else
 out vec3 vary_tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
+#else
 out vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec2 vary_fragcoord;
+#else
 out vec2 vary_fragcoord;
+#endif
 
 float wave(vec2 v, float t, float f, vec2 d, float s)
 {

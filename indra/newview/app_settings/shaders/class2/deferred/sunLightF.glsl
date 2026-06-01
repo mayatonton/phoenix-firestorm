@@ -25,12 +25,20 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 //class 2, shadows, no SSAO
 
 // Inputs
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=1, std140) uniform FrameLights {

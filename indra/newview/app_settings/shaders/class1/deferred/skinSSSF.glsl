@@ -30,9 +30,17 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=4) uniform sampler2D diffuseRect;       // source color (screen for pass 1, scratch for pass 2)

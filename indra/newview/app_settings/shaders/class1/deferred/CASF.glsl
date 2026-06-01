@@ -31,8 +31,16 @@
 #define CAS_BETTER_DIAGONALS
 #define CAS_SLOW
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=4) uniform sampler2D diffuseRect;

@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=0, std140) uniform FrameViewProj {
@@ -47,8 +51,16 @@ uniform mat4 inv_proj;
 uniform float zNear;
 uniform float zFar;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 camera_ray;
+#else
 in vec3 camera_ray;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=12) uniform sampler2D specularRect;

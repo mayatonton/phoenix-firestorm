@@ -25,10 +25,22 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
+#else
 in vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
@@ -57,8 +69,16 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere {
 uniform float minimum_alpha;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color;
+#else
 in vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);

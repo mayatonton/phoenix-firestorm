@@ -23,7 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=1) uniform sampler2D diffuseMap;
@@ -31,7 +35,11 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 uniform sampler2D diffuseMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec2 tc0;
+#else
 in vec2 tc0;
+#endif
 
 void main()
 {

@@ -81,17 +81,53 @@ in vec3 normal;
 in vec4 tangent;
 in vec2 texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=6) out vec2 base_color_texcoord;
+#else
 out vec2 base_color_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec2 normal_texcoord;
+#else
 out vec2 normal_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec2 metallic_roughness_texcoord;
+#else
 out vec2 metallic_roughness_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=7) out vec2 emissive_texcoord;
+#else
 out vec2 emissive_texcoord;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=9) out vec3 vary_tangent;
+#else
 out vec3 vary_tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) flat out float vary_sign;
+#else
 flat out float vary_sign;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
+#else
 out vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
 
 vec2 texture_transform(vec2 vertex_texcoord, vec4[2] khr_gltf_transform, mat4 sl_animation_transform);
 vec4 tangent_space_transform(vec4 vertex_tangent, vec3 vertex_normal, vec4[2] khr_gltf_transform, mat4 sl_animation_transform);
@@ -164,10 +200,22 @@ in vec3 position;
 in vec4 diffuse_color;
 in vec2 texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=6) out vec2 base_color_texcoord;
+#else
 out vec2 base_color_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=7) out vec2 emissive_texcoord;
+#else
 out vec2 emissive_texcoord;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
 
 vec2 texture_transform(vec2 vertex_texcoord, vec4[2] khr_gltf_transform, mat4 sl_animation_transform);
 

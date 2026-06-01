@@ -26,7 +26,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=7) uniform samplerCubeArray reflectionProbes;
@@ -37,7 +41,11 @@ uniform int sourceIdx;
 
 uniform float max_probe_lod;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_dir;
+#else
 in vec3 vary_dir;
+#endif
 
 // Code below is derived from the Khronos GLTF Sample viewer:
 // https://github.com/KhronosGroup/glTF-Sample-Viewer/blob/master/source/shaders/ibl_filtering.frag

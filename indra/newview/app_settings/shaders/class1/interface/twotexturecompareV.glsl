@@ -43,8 +43,16 @@ in vec3 position;
 in vec2 texcoord0;
 in vec2 texcoord1;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) out vec2 vary_texcoord1;
+#else
 out vec2 vary_texcoord1;
+#endif
 
 void main()
 {

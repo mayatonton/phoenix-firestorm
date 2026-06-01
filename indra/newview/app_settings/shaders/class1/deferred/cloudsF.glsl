@@ -24,15 +24,31 @@
  */
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 /////////////////////////////////////////////////////////////////////////
 // The fragment shader for the sky
 /////////////////////////////////////////////////////////////////////////
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_CloudColorSun;
+#else
 in vec3 vary_CloudColorSun;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in vec3 vary_CloudColorAmbient;
+#else
 in vec3 vary_CloudColorAmbient;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) in float vary_CloudDensity;
+#else
 in float vary_CloudDensity;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=15) uniform sampler2D cloud_noise_texture;
@@ -49,11 +65,31 @@ uniform float cloud_variance;
 uniform int aya_r18_cloud_volumetric_enabled;  // <FS:AYA r18>
 uniform float aya_r18_strength;  // <FS:AYAstorm r30 BD改善> r18 効果強度 (0=legacy / 1=volumetric、enabled 内で lerp)
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) in vec2 vary_texcoord1;
+#else
 in vec2 vary_texcoord1;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=16) in vec2 vary_texcoord2;
+#else
 in vec2 vary_texcoord2;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=17) in vec2 vary_texcoord3;
+#else
 in vec2 vary_texcoord3;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=23) in float altitude_blend_factor;
+#else
 in float altitude_blend_factor;
+#endif
 
 vec4 cloudNoise(vec2 uv)
 {

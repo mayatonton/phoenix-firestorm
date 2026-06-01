@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifndef HAS_DIFFUSE_LOOKUP
 #ifdef LL_VULKAN_GLSL
@@ -36,10 +40,26 @@ uniform sampler2D diffuseMap;
 #endif
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color;
+#else
 in vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) in vec3 vary_texcoord1;
+#else
 in vec3 vary_texcoord1;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=6) uniform samplerCube environmentMap;

@@ -24,12 +24,28 @@
  */
 
 // Inputs
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_HazeColor;
+#else
 in vec3 vary_HazeColor;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in float vary_LightNormPosDot;
+#else
 in float vary_LightNormPosDot;
+#endif
 
 #ifdef HAS_HDRI
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec4 vary_position;
+#else
 in vec4 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) in vec3 vary_rel_pos;
+#else
 in vec3 vary_rel_pos;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
     vec3  sunlight_color;
@@ -91,7 +107,11 @@ uniform float moisture_level;
 uniform float droplet_radius;
 uniform float ice_level;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 vec3 srgb_to_linear(vec3 c);
 vec3 linear_to_srgb(vec3 c);

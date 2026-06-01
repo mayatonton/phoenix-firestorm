@@ -133,20 +133,60 @@ void unpackTextureTransforms()
 in vec3 position;
 in vec4 diffuse_color;
 in vec2 texcoord0;
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec2 base_color_uv;
+#else
 out vec2 base_color_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec2 emissive_uv;
+#else
 out vec2 emissive_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
 
 #ifndef UNLIT
 in vec3 normal;
 in vec4 tangent;
+#ifdef LL_VULKAN_GLSL
+layout(location=22) out vec2 normal_uv;
+#else
 out vec2 normal_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=23) out vec2 metallic_roughness_uv;
+#else
 out vec2 metallic_roughness_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=24) out vec2 occlusion_uv;
+#else
 out vec2 occlusion_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=9) out vec3 vary_tangent;
+#else
 out vec3 vary_tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) flat out float vary_sign;
+#else
 flat out float vary_sign;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
+#else
 out vec3 vary_normal;
+#endif
 #endif
 
 vec2 gltf_texture_transform(vec2 texcoord, vec4[2] p)
@@ -204,7 +244,11 @@ vec3 gltf_tangent_space_transform(vec4 vertex_tangent, vec3 vertex_normal, vec4[
 #endif
 
 #ifdef ALPHA_BLEND
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec3 vary_fragcoord;
+#else
 out vec3 vary_fragcoord;
+#endif
 #endif
 
 #ifdef HAS_SKIN

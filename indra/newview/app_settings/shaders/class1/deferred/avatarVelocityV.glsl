@@ -54,7 +54,11 @@ in vec3 position;
 in vec4 weight;
 in vec2 texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
 
 mat4 getSkinnedTransform();
 

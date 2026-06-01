@@ -23,7 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=0, std140) uniform MaterialUBO {
@@ -40,7 +44,11 @@ uniform sampler2D diffuseMap;
 uniform vec4 color;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 
 //====================================================================================================
 

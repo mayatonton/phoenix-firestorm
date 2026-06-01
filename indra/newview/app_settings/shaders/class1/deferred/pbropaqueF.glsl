@@ -69,18 +69,58 @@ layout(set=1, binding=3) uniform sampler2D specularMap;
 uniform sampler2D specularMap; // Packed: Occlusion, Metal, Roughness
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color;
+#else
 in vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
+#else
 in vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=9) in vec3 vary_tangent;
+#else
 in vec3 vary_tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) flat in float vary_sign;
+#else
 flat in float vary_sign;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec2 base_color_texcoord;
+#else
 in vec2 base_color_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec2 normal_texcoord;
+#else
 in vec2 normal_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in vec2 metallic_roughness_texcoord;
+#else
 in vec2 metallic_roughness_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=7) in vec2 emissive_texcoord;
+#else
 in vec2 emissive_texcoord;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
@@ -241,13 +281,33 @@ layout(set=1, binding=5) uniform sampler2D emissiveMap;
 uniform sampler2D emissiveMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color;
+#else
 in vec4 vertex_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec2 base_color_texcoord;
+#else
 in vec2 base_color_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=7) in vec2 emissive_texcoord;
+#else
 in vec2 emissive_texcoord;
+#endif
 
 #ifndef LL_VULKAN_GLSL
 uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()

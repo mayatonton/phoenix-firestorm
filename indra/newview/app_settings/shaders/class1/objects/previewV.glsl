@@ -50,8 +50,16 @@ in vec2 texcoord0;
 
 uniform vec4 color;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
 
 uniform vec4 light_position[8];
 uniform vec3 light_direction[8];

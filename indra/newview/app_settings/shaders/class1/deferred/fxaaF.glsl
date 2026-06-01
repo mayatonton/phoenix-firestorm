@@ -28,7 +28,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #define FXAA_PC 1
 //#define FXAA_GLSL_130 1
@@ -2115,8 +2119,16 @@ uniform sampler2D depthMap;
 uniform vec2 rcp_screen_res;
 uniform vec4 rcp_frame_opt;
 uniform vec4 rcp_frame_opt2;
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=19) in vec2 vary_tc;
+#else
 in vec2 vary_tc;
+#endif
 
 void main()
 {

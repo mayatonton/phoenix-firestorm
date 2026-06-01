@@ -74,27 +74,67 @@ in vec4 diffuse_color;
 in vec2 texcoord1;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
+#else
 out vec3 vary_normal;
+#endif
 #if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 vary_vertex_normal; // Used by pbrterrainUtilF.glsl
+#else
 out vec3 vary_vertex_normal; // Used by pbrterrainUtilF.glsl
 #endif
+#endif
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec3 vary_tangents[4];
+#else
 out vec3 vary_tangents[4];
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=25) flat out float vary_signs[4];
+#else
 flat out float vary_signs[4];
+#endif
 #endif
 
 // vary_texcoord* are used for terrain composition, vary_coords are used for terrain UVs
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 vary_texcoord0;
+#else
 out vec4 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) out vec4 vary_texcoord1;
+#else
 out vec4 vary_texcoord1;
+#endif
 #elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
+#ifdef LL_VULKAN_GLSL
+layout(location=29) out vec2 vary_texcoord;
+#else
 out vec2 vary_texcoord;
 #endif
+#endif
 #if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+#ifdef LL_VULKAN_GLSL
+layout(location=30) out vec4[10] vary_coords;
+#else
 out vec4[10] vary_coords;
+#endif
 #elif TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 1
+#ifdef LL_VULKAN_GLSL
+layout(location=30) out vec4[2] vary_coords;
+#else
 out vec4[2] vary_coords;
+#endif
 #endif
 
 // *HACK: Each material uses only one texture transform, but the KHR texture

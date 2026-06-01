@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {
@@ -64,13 +68,37 @@ layout(set=1, binding=6) uniform sampler2D bumpMap;
 uniform sampler2D bumpMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_mat0;
+#else
 in vec3 vary_mat0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in vec3 vary_mat1;
+#else
 in vec3 vary_mat1;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) in vec3 vary_mat2;
+#else
 in vec3 vary_mat2;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color;
+#else
 in vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);

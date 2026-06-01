@@ -57,10 +57,26 @@ in vec3 position;
 in vec3 normal;
 in vec2 texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
+#else
 out vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
 
 void main()
 {

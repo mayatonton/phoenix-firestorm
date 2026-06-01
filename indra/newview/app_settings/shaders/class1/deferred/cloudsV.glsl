@@ -47,15 +47,47 @@ in vec2 texcoord0;
 ///////////////////////////////////////////////////////////////////////////////
 
 // Output parameters
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 vary_CloudColorSun;
+#else
 out vec3 vary_CloudColorSun;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec3 vary_CloudColorAmbient;
+#else
 out vec3 vary_CloudColorAmbient;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) out float vary_CloudDensity;
+#else
 out float vary_CloudDensity;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) out vec2 vary_texcoord1;
+#else
 out vec2 vary_texcoord1;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=16) out vec2 vary_texcoord2;
+#else
 out vec2 vary_texcoord2;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=17) out vec2 vary_texcoord3;
+#else
 out vec2 vary_texcoord3;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=23) out float altitude_blend_factor;
+#else
 out float altitude_blend_factor;
+#endif
 
 // Inputs
 uniform vec3 camPosLocal;

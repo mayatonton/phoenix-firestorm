@@ -24,8 +24,16 @@
  */
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 vary_AdditiveColor;
+#else
 out vec3 vary_AdditiveColor;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec3 vary_AtmosAttenuation;
+#else
 out vec3 vary_AtmosAttenuation;
+#endif
 
 vec3 additive_color;
 vec3 atmos_attenuation;

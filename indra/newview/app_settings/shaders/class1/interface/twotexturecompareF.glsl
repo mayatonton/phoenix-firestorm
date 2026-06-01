@@ -23,7 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=13) uniform sampler2D tex0;
@@ -38,8 +42,16 @@ uniform float dither_scale;
 uniform float dither_scale_s;
 uniform float dither_scale_t;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) in vec2 vary_texcoord1;
+#else
 in vec2 vary_texcoord1;
+#endif
 
 void main()
 {

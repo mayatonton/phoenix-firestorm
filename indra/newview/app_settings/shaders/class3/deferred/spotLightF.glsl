@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=6) uniform samplerCube environmentMap;
@@ -98,7 +102,11 @@ uniform int classic_mode;
 #if defined(MULTI_SPOTLIGHT)
 uniform vec3 center;
 #else
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 trans_center;
+#else
 in vec3 trans_center;
+#endif
 #endif
 #ifdef LL_VULKAN_GLSL
 layout(set=2, binding=0, std140) uniform PerDrawUBO {
@@ -111,7 +119,11 @@ uniform float size;
 #endif
 uniform float falloff;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec4 vary_fragcoord;
+#else
 in vec4 vary_fragcoord;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform vec2 screen_res;
 #endif

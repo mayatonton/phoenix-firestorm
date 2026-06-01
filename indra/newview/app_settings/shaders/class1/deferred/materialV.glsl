@@ -54,7 +54,11 @@ uniform mat3 normal_matrix;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=0, std140) uniform MaterialUBO {
@@ -79,22 +83,54 @@ in vec2 texcoord0;
 in vec4 tangent;
 in vec2 texcoord1;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=9) out vec3 vary_tangent;
+#else
 out vec3 vary_tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) flat out float vary_sign;
+#else
 flat out float vary_sign;
-out vec3 vary_normal;
-
-out vec2 vary_texcoord1;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
 #else
 out vec3 vary_normal;
 #endif
 
-#ifdef HAS_SPECULAR_MAP
-in vec2 texcoord2;
-out vec2 vary_texcoord2;
+#ifdef LL_VULKAN_GLSL
+layout(location=5) out vec2 vary_texcoord1;
+#else
+out vec2 vary_texcoord1;
+#endif
+#else
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
+#else
+out vec3 vary_normal;
+#endif
 #endif
 
+#ifdef HAS_SPECULAR_MAP
+in vec2 texcoord2;
+#ifdef LL_VULKAN_GLSL
+layout(location=16) out vec2 vary_texcoord2;
+#else
+out vec2 vary_texcoord2;
+#endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
 
 void main()
 {

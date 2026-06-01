@@ -59,9 +59,21 @@ in vec3 position;
 in vec3 normal;
 in vec2 texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out float pos_w;
+#else
 out float pos_w;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=8) out float target_pos_x;
+#else
 out float target_pos_x;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
 
 void main()
 {

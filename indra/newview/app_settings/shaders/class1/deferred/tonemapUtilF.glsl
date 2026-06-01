@@ -45,7 +45,11 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform vec2 screen_res;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 //===============================================================
 // tone mapping taken from Khronos sample implementation

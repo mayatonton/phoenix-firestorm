@@ -16,7 +16,11 @@
 
 in vec3 position;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec2 vary_fragcoord;
+#else
 out vec2 vary_fragcoord;
+#endif
 
 void main()
 {

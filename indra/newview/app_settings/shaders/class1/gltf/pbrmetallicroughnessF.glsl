@@ -66,10 +66,26 @@ layout(set=1, binding=5) uniform sampler2D emissiveMap;
 #else
 uniform sampler2D emissiveMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) in vec4 vertex_color;
+#else
 in vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec2 base_color_uv;
+#else
 in vec2 base_color_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in vec2 emissive_uv;
+#else
 in vec2 emissive_uv;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
@@ -95,12 +111,36 @@ layout(set=1, binding=9) uniform sampler2D occlusionMap;
 uniform sampler2D metallicRoughnessMap;
 uniform sampler2D occlusionMap;
 #endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
+#else
 in vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=9) in vec3 vary_tangent;
+#else
 in vec3 vary_tangent;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=10) flat in float vary_sign;
+#else
 flat in float vary_sign;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) in vec2 normal_uv;
+#else
 in vec2 normal_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=23) in vec2 metallic_roughness_uv;
+#else
 in vec2 metallic_roughness_uv;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=24) in vec2 occlusion_uv;
+#else
 in vec2 occlusion_uv;
+#endif
 #endif
 // ==================================
 
@@ -109,7 +149,11 @@ in vec2 occlusion_uv;
 // needed by all alpha variants
 // ==================================
 #ifdef ALPHA_BLEND
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec3 vary_fragcoord;
+#else
 in vec3 vary_fragcoord;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=2, binding=0, std140) uniform PerDrawUBO {
     vec4 clipPlane;
@@ -222,9 +266,17 @@ vec3 pbrCalcPointLightOrSpotLight(vec3 diffuseColor, vec3 specularColor,
 // output definition
 // ==================================
 #if defined(ALPHA_BLEND) || defined(UNLIT)
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
+#else
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
 #else
 out vec4 frag_data[4];
+#endif
 #endif
 // ==================================
 

@@ -42,7 +42,11 @@ uniform mat4 modelview_matrix;
 
 in vec3 position;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
 
 void main()
 {

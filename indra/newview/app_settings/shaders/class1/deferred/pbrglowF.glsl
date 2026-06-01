@@ -51,13 +51,33 @@ layout(set=1, binding=5) uniform sampler2D emissiveMap;
 uniform sampler2D emissiveMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec4 vertex_emissive;
+#else
 in vec4 vertex_emissive;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=6) in vec2 base_color_texcoord;
+#else
 in vec2 base_color_texcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=7) in vec2 emissive_texcoord;
+#else
 in vec2 emissive_texcoord;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=2, std140) uniform FrameAtmosphere {

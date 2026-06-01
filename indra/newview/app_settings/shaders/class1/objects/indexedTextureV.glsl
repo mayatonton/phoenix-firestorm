@@ -25,7 +25,11 @@
 
 in int texture_index;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) flat out int vary_texture_index;
+#else
 flat out int vary_texture_index;
+#endif
 
 void passTextureIndex()
 {

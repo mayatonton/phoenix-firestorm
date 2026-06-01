@@ -46,12 +46,28 @@ in vec3 position;
 ///////////////////////////////////////////////////////////////////////////////
 
 // Output parameters
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 vary_HazeColor;
+#else
 out vec3 vary_HazeColor;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out float vary_LightNormPosDot;
+#else
 out float vary_LightNormPosDot;
+#endif
 
 #ifdef HAS_HDRI
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec4 vary_position;
+#else
 out vec4 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) out vec3 vary_rel_pos;
+#else
 out vec3 vary_rel_pos;
+#endif
 #endif
 
 // Inputs

@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=20) uniform sampler2D detail_0;
@@ -41,10 +45,26 @@ uniform sampler2D detail_3;
 uniform sampler2D alpha_ramp;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 pos;
+#else
 in vec3 pos;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
+#else
 in vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec4 vary_texcoord0;
+#else
 in vec4 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) in vec4 vary_texcoord1;
+#else
 in vec4 vary_texcoord1;
+#endif
 
 void mirrorClip(vec3 position);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);

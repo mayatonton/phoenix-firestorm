@@ -55,8 +55,16 @@ uniform mat4 modelview_projection_matrix;
 in vec3 position;
 in vec2 texcoord0;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out float sun_fade;
+#else
 out float sun_fade;
+#endif
 
 void calcAtmospherics(vec3 eye_pos);
 

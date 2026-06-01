@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=4) uniform sampler2D diffuseRect;
@@ -39,7 +43,11 @@ uniform float greyscale_str;
 uniform float sepia_str;
 uniform float num_colors;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec2 tc;
+#else
 in vec2 tc;
+#endif
 
 void main()
 {

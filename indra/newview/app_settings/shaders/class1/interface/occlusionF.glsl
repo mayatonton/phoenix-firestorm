@@ -23,7 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 void main()
 {

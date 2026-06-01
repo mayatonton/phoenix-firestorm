@@ -26,7 +26,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=7) uniform samplerCubeArray   reflectionProbes;
@@ -35,7 +39,11 @@ uniform samplerCubeArray   reflectionProbes;
 #endif
 uniform int sourceIdx;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_dir;
+#else
 in vec3 vary_dir;
+#endif
 
 //uniform float roughness;
 

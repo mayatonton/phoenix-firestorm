@@ -99,7 +99,11 @@ PBRMix terrain_sample_and_multiply_pbr(
 
 PBRMix mix_pbr(PBRMix mix1, PBRMix mix2, float mix2_weight);
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
 #ifdef LL_VULKAN_GLSL
@@ -187,24 +191,60 @@ uniform vec3[4] emissiveColors;
 uniform vec4 minimum_alphas; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) in vec3 vary_normal;
+#else
 in vec3 vary_normal;
+#endif
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_tangents[4];
+#else
 in vec3 vary_tangents[4];
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=24) flat in float vary_signs[4];
+#else
 flat in float vary_signs[4];
+#endif
 #endif
 
 // vary_texcoord* are used for terrain composition, vary_coords are used for terrain UVs
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec4 vary_texcoord0;
+#else
 in vec4 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) in vec4 vary_texcoord1;
+#else
 in vec4 vary_texcoord1;
+#endif
 #elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
+#ifdef LL_VULKAN_GLSL
+layout(location=28) in vec2 vary_texcoord;
+#else
 in vec2 vary_texcoord;
 #endif
+#endif
 #if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+#ifdef LL_VULKAN_GLSL
+layout(location=29) in vec4[10] vary_coords;
+#else
 in vec4[10] vary_coords;
+#endif
 #elif TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 1
+#ifdef LL_VULKAN_GLSL
+layout(location=29) in vec4[2] vary_coords;
+#else
 in vec4[2] vary_coords;
+#endif
 #endif
 
 void mirrorClip(vec3 position);

@@ -46,8 +46,16 @@ in vec3 position;
 uniform vec2 screen_res;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec2 vary_fragcoord;
+#else
 out vec2 vary_fragcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 camera_ray;
+#else
 out vec3 camera_ray;
+#endif
 
 
 void main()

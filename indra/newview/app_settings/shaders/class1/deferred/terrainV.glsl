@@ -60,10 +60,26 @@ in vec3 normal;
 in vec4 diffuse_color;
 in vec2 texcoord1;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 pos;
+#else
 out vec3 pos;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=4) out vec3 vary_normal;
+#else
 out vec3 vary_normal;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 vary_texcoord0;
+#else
 out vec4 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=5) out vec4 vary_texcoord1;
+#else
 out vec4 vary_texcoord1;
+#endif
 
 uniform vec4 object_plane_s;
 uniform vec4 object_plane_t;

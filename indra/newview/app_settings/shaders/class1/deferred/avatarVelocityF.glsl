@@ -29,7 +29,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=1) uniform sampler2D diffuseMap;
@@ -37,9 +41,21 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 uniform sampler2D diffuseMap;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=12) in vec4 vary_cur_clip;
+#else
 in vec4 vary_cur_clip;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=13) in vec4 vary_last_clip;
+#else
 in vec4 vary_last_clip;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 
 void main()
 {

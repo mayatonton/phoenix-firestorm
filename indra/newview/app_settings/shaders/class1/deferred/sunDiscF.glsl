@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 vec3 srgb_to_linear(vec3 c);
 
@@ -40,8 +44,16 @@ layout(set=1, binding=11) uniform sampler2D altDiffuseMap;
 uniform sampler2D altDiffuseMap;
 #endif
 uniform float blend_factor; // interp factor between sunDisc A/B
+#ifdef LL_VULKAN_GLSL
+layout(location=0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in float sun_fade;
+#else
 in float sun_fade;
+#endif
 
 void main()
 {

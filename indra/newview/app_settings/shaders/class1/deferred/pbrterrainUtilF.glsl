@@ -55,7 +55,11 @@
 #define TERRAIN_PAINT_TYPE_PBR_PAINTMAP 1
 
 #if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+#ifdef LL_VULKAN_GLSL
+layout(location=50) in vec3 vary_vertex_normal;
+#else
 in vec3 vary_vertex_normal;
+#endif
 #endif
 
 vec3 srgb_to_linear(vec3 c);

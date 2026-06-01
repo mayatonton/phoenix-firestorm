@@ -25,10 +25,18 @@
 
 in vec3 position;
 in vec3 normal;
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec4 normal_g;
+#else
 out vec4 normal_g;
+#endif
 #ifdef HAS_ATTRIBUTE_TANGENT
 in vec4 tangent;
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec4 tangent_g;
+#else
 out vec4 tangent_g;
+#endif
 #endif
 
 uniform float debug_normal_draw_length;

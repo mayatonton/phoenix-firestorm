@@ -25,7 +25,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=4) uniform sampler2D diffuseRect;
@@ -85,7 +89,11 @@ uniform float res_scale;
 uniform float dof_width;
 uniform float dof_height;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 vec4 dofSample(sampler2D tex, vec2 tc)
 {

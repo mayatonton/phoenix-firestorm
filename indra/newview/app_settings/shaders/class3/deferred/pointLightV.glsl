@@ -45,8 +45,16 @@ in vec3 position;
 uniform vec3 center;
 uniform float size;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) out vec4 vary_fragcoord;
+#else
 out vec4 vary_fragcoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 trans_center;
+#else
 out vec3 trans_center;
+#endif
 
 void main()
 {

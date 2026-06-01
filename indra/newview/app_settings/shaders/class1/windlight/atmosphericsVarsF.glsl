@@ -24,8 +24,16 @@
  */
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec3 vary_AdditiveColor;
+#else
 in vec3 vary_AdditiveColor;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in vec3 vary_AtmosAttenuation;
+#else
 in vec3 vary_AtmosAttenuation;
+#endif
 
 vec3 getSunlitColor()
 {

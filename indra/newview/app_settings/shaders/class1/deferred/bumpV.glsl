@@ -61,12 +61,36 @@ in vec3 normal;
 in vec2 texcoord0;
 in vec4 tangent;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) out vec3 vary_mat0;
+#else
 out vec3 vary_mat0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) out vec3 vary_mat1;
+#else
 out vec3 vary_mat1;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) out vec3 vary_mat2;
+#else
 out vec3 vary_mat2;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec2 vary_texcoord0;
+#else
 out vec2 vary_texcoord0;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();

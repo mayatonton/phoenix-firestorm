@@ -41,7 +41,11 @@
 #define FRONT_BLUR 0
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=4) uniform sampler2D diffuseRect;
@@ -100,7 +104,11 @@ uniform float res_scale;
 
 uniform float chroma_str;
 
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc, float depth)
 {

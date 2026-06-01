@@ -7,7 +7,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=4) uniform sampler2D diffuseRect;
@@ -30,7 +34,11 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform vec2 screen_res;
 #endif
 uniform vec3 vignette;
+#ifdef LL_VULKAN_GLSL
+layout(location=1) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 
 void main ()

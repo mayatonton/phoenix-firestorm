@@ -23,7 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location=0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=6) uniform sampler2D bumpMap;
@@ -72,10 +76,26 @@ uniform float waterFogKS;
 uniform vec2 screenRes;
 
 //bigWave is (refCoord.w, view.w);
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec4 refCoord;
+#else
 in vec4 refCoord;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in vec4 littleWave;
+#else
 in vec4 littleWave;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=22) in vec4 view;
+#else
 in vec4 view;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(location=3) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
 
 vec4 applyWaterFogViewLinearNoClip(vec3 pos, vec4 color);
 void mirrorClip(vec3 position);
