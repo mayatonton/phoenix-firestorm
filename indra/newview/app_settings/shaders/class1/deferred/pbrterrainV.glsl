@@ -130,7 +130,10 @@ layout(location=52) out vec3 vary_tangents[4];
 out vec3 vary_tangents[4];
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=25) flat out float vary_signs[4];
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 2: vary_signs location 25 → 56
+// (pbrterrainF.glsl L211 旧 loc=24 と V↔F mismatch 解消、η-24 §5.6 56 帯使用、
+//  vary_tangents[4] = slots 52-55 直後で連続、η-18 §3.1 範式類)
+layout(location=56) flat out float vary_signs[4];
 #else
 flat out float vary_signs[4];
 #endif

@@ -111,7 +111,9 @@ uniform int classic_mode;
 uniform vec3 center;
 #else
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec3 trans_center;
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 1d (第23層 cascade): trans_center
+// location 20 → 60 移動 (pointLightV.glsl out 側と同期、η-18 §3.1 50-59 帯使用済で 60 起点)
+layout(location=60) in vec3 trans_center;
 #else
 in vec3 trans_center;
 #endif

@@ -102,7 +102,12 @@ uniform mat4 inv_proj;
 // Shadow() returns 1.0 (lit) for those positions, which is correct for
 // surface shading but produces a constant full-screen additive term in our
 // godrays accumulator (scene whites out / greens shift yellow).
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 3: GL-only wrap
+// (shadowUtil.glsl ShadowUtilParamUBO_Legacy (set=3 binding=7) で shadow_clip 取得済、
+//  Vulkan path では bare uniform 重複 redefinition、η-20 §3.1 範式類)
+#ifndef LL_VULKAN_GLSL
 uniform vec4 shadow_clip;
+#endif
 
 // AYAstorm r15 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
 // <FS:AYAstorm r30 BD改善> master ではなく r15 個別 uniform を見る (Cinematic で master OFF のまま r15 だけ ON 可能)

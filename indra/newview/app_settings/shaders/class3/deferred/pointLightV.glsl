@@ -50,8 +50,25 @@ layout(location=0) in vec3 position;
 in vec3 position;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 1c: center / size bare uniform を
+// PerProgramUBO_PointLightV (set=2, binding=5) に集約。main() で position*size+center として
+// vertex 変換に使用、dead でないため η-23 §3.1 GL-only wrap 不適用、η-24 §3.2
+// PerProgramUBO_GammaCorrect 派生範式類。set=2 namespace 連番継続
+// (η-24 binding=2 GammaCorrect / η-25 binding=3 AlphaParams / η-25 binding=4 ColorGrading /
+//  η-25 binding=5 PointLightV)。vec3 + float = 16-byte (1 vec4 chunk) std140 整合。
+// Deferred Light + Deferred SpotLight 2 program 共通 vertex source 救済。
+#ifndef PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED
+#define PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED 1
+layout(set=2, binding=5, std140) uniform PerProgramUBO_PointLightV {
+    vec3  center;
+    float size;
+};
+#endif
+#else
 uniform vec3 center;
 uniform float size;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) out vec4 vary_fragcoord;
@@ -59,7 +76,11 @@ layout(location=1) out vec4 vary_fragcoord;
 out vec4 vary_fragcoord;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=20) out vec3 trans_center;
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 1d (第23層 cascade): trans_center
+// location 20 → 60 移動 (Phase 1c で center/size bare uniform を UBO 化 → parser advance
+// → atmosphericsVarsV.glsl vary_AdditiveColor location=20 と overlap 露呈、η-18 §3.1
+// 50-59 帯使用済のため 60 起点)。V↔F 鎖 3 file (pointLightV/pointLightF/spotLightF) 同期。
+layout(location=60) out vec3 trans_center;
 #else
 out vec3 trans_center;
 #endif

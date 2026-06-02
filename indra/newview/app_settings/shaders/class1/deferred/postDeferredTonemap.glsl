@@ -61,18 +61,41 @@ uniform float gamma;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 1b: color grading 6 件 bare uniform を
+// PerProgramUBO_ColorGrading (set=2, binding=4) に集約。applyColorGrading() 経由で main() 参照
+// (color_saturation/color_contrast/color_temperature/color_brightness/color_grading_lut_intensity/
+//  color_grading_lut_enabled) で dead でないため η-23 §3.1 GL-only wrap 不適用、η-24 §3.2
+// PerProgramUBO_GammaCorrect 派生範式類。set=2 namespace 連番継続
+// (η-24 binding=2 GammaCorrect / η-25 binding=3 AlphaParams / η-25 binding=4 ColorGrading)。
+// float×5 + int×1 + float×2 pad = 32-byte (2 vec4 chunk) std140 整合。
+#ifndef PER_PROGRAM_UBO_COLOR_GRADING_DEFINED
+#define PER_PROGRAM_UBO_COLOR_GRADING_DEFINED 1
+layout(set=2, binding=4, std140) uniform PerProgramUBO_ColorGrading {
+    float color_saturation;
+    float color_contrast;
+    float color_temperature;
+    float color_brightness;
+    float color_grading_lut_intensity;
+    int   color_grading_lut_enabled;
+    float _pad_cg0;
+    float _pad_cg1;
+};
+#endif
+#else
 uniform float color_saturation;
 uniform float color_contrast;
 uniform float color_temperature;
 uniform float color_brightness;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=42) uniform sampler3D color_grading_lut;
 #else
 uniform sampler3D color_grading_lut;
-#endif
 uniform float color_grading_lut_intensity;
 uniform int color_grading_lut_enabled;
+#endif
 
 vec3 applyLUT(sampler3D lut, vec3 color, int size)
 {

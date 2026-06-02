@@ -203,12 +203,18 @@ in vec3 vary_normal;
 #endif
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec3 vary_tangents[4];
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 2: vary_tangents location 20 → 52
+// (pbrterrainV.glsl L128 既存 loc=52 と V↔F 整合、atmosphericsVarsF.glsl vary_AdditiveColor
+//  at location=20 との overlap 解消、vec3[4] = slots 52-55、η-18 §3.1 範式類)
+layout(location=52) in vec3 vary_tangents[4];
 #else
 in vec3 vary_tangents[4];
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=24) flat in float vary_signs[4];
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 2: vary_signs location 24 → 56
+// (pbrterrainV.glsl L133 既存 loc=56 と V↔F 整合、float[4] = slots 56-59、η-24 §5.6 56 帯使用、
+//  η-18 §3.1 範式類)
+layout(location=56) flat in float vary_signs[4];
 #else
 flat in float vary_signs[4];
 #endif

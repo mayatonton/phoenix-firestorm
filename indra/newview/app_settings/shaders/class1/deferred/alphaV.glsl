@@ -134,7 +134,24 @@ layout(location=51) out vec3 vary_norm;
 out vec3 vary_norm;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 1a: near_clip を PerProgramUBO_AlphaParams
+// (set=2, binding=3) に集約。main() で vary_fragcoord.xyz = pos + vec3(0,0,near_clip) を 3 use site
+// 参照 (L195/L199/L202) で dead でないため η-23 §3.1 GL-only wrap 不適用、η-24 §3.2
+// PerProgramUBO_GammaCorrect 派生範式類で per-program UBO 集約。set=2 namespace 連番継続
+// (η-3 binding=0 / η-23 binding=1 / η-24 binding=2 / η-25 binding=3)。float×4 = 16-byte chunk std140 整合。
+#ifndef PER_PROGRAM_UBO_ALPHA_PARAMS_DEFINED
+#define PER_PROGRAM_UBO_ALPHA_PARAMS_DEFINED 1
+layout(set=2, binding=3, std140) uniform PerProgramUBO_AlphaParams {
+    float near_clip;
+    float _pad_ap0;
+    float _pad_ap1;
+    float _pad_ap2;
+};
+#endif
+#else
 uniform float near_clip;
+#endif
 
 void main()
 {
