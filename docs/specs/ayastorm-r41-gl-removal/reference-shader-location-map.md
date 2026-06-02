@@ -1,4 +1,4 @@
-# r41 Vulkan migration: shader interface location map (η-25 末時点)
+# r41 Vulkan migration: shader interface location map (η-28 Phase 2a 末時点)
 
 **目的**: GLSL `layout(location=N)` qualifier の **slot 識別子** としての確定割当を全 shader 横断で資料化。η-26+ の location reassign 着手時の **事前 trace 範式** (空き slot 即座確定) として参照する。
 
@@ -123,24 +123,36 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 
 `layout(location=N)` (本 doc) と `layout(set=S, binding=B)` (UBO 用) は **完全独立 namespace**。同一番号でも衝突しない。UBO 側 binding map は handoff doc chain (η-3 §3 / η-23 §3 / η-24 §3 / η-25 §3.1) を参照。
 
-η-27 末の UBO binding 占有 (set=2 namespace):
+η-28 Phase 2a 末の UBO binding 占有 (set=2 namespace):
 
-| set | binding | UBO 名 | 起源 sub-step |
-|---|---|---|---|
-| 2 | 0 | PerDrawUBO_LightParams | η-3 |
-| 2 | 1 | PerDrawUBO_MultiLight | η-23 |
-| 2 | 2 | PerProgramUBO_GammaCorrect | η-24 |
-| 2 | 3 | PerProgramUBO_AlphaParams | η-25 Phase 1a |
-| 2 | 4 | PerProgramUBO_ColorGrading | η-25 Phase 1b |
-| 2 | 5 | PerProgramUBO_PointLightV | η-25 Phase 1c |
-| 2 | 6 | PerProgramUBO_ShadowAlphaMaskV | η-26 Phase 1a |
-| 2 | 7 | PerProgramUBO_PostDeferredV | η-26 Phase 1b |
-| 2 | 8 | PerProgramUBO_FullbrightShinyV | η-26 Phase 1c |
-| 2 | 9 | PerProgramUBO_FxaaF | η-27 Phase 1a |
-| 2 | 10 | PerProgramUBO_SpotLightF | η-27 Phase 1d |
-| 2 | 11 | PerProgramUBO_PbrAlphaV | η-27 Phase 1c |
-| 2 | 12 | PerProgramUBO_PostDeferredNoDoFF | η-27 Phase 1b |
-| 2 | 13+ | (空き、η-28+ 連番継続) | - |
+**stage 列の読み方** (η-28 Phase 2a 新規追加):
+- `V` / `F` = UBO ブロック宣言が **その stage 単独** に閉じている
+- `V+F` = **同一 program の V/F 両 stage** に同名 UBO ブロックを宣言し共有 (host bind 1 回で両 stage 参照)
+- UBO 名末尾の `V` / `F` suffix は宣言の **起源 stage** を示すだけで、必ずしも attach 範囲を示さない (実 attach は本列で確認)
+- 新規 UBO 追加時は member uniform 名を `indra/newview/app_settings/shaders/` 全体で grep し、対 stage 使用を必ずクロスチェック (η-28-C 範式)
+
+| set | binding | UBO 名 | stage | 起源 sub-step |
+|---|---|---|---|---|
+| 2 | 0 | PerDrawUBO_LightParams | (per-draw) | η-3 |
+| 2 | 1 | PerDrawUBO_MultiLight | (per-draw) | η-23 |
+| 2 | 2 | PerProgramUBO_GammaCorrect | F | η-24 |
+| 2 | 3 | PerProgramUBO_AlphaParams | F | η-25 Phase 1a |
+| 2 | 4 | PerProgramUBO_ColorGrading | F | η-25 Phase 1b |
+| 2 | 5 | PerProgramUBO_PointLightV | V | η-25 Phase 1c |
+| 2 | 6 | PerProgramUBO_ShadowAlphaMaskV | V | η-26 Phase 1a |
+| 2 | 7 | PerProgramUBO_PostDeferredV | V | η-26 Phase 1b |
+| 2 | 8 | PerProgramUBO_FullbrightShinyV | V | η-26 Phase 1c |
+| 2 | 9 | PerProgramUBO_FxaaF | F | η-27 Phase 1a |
+| 2 | 10 | PerProgramUBO_SpotLightF | F | η-27 Phase 1d |
+| 2 | 11 | PerProgramUBO_PbrAlphaV | V | η-27 Phase 1c |
+| 2 | 12 | PerProgramUBO_PostDeferredNoDoFF | F | η-27 Phase 1b |
+| 2 | 13 | PerProgramUBO_FsObjectIdF | F | η-28 Phase 2a |
+| 2 | 14 | PerProgramUBO_ShadowCubeV | V | η-28 Phase 2a |
+| 2 | 15 | PerProgramUBO_WaterHazeV | **V+F** | η-28 Phase 2a |
+| 2 | 16 | PerProgramUBO_VisualizeBuffersF | F | η-28 Phase 2a |
+| 2 | 17+ | (空き、η-28 Phase 2b+ 連番継続) | - | - |
+
+**stage 列の retroactive 注意**: 既存 (binding 0-12) は UBO 名 suffix から `V` / `F` を推定記載。新規 cascade 表面化時に再確認推奨。`PerProgramUBO_WaterHazeV` (binding=15) は η-28 Phase 2a self-trace で V+F 両 stage attach が判明した実例 (waterHazeV / waterHazeF 両者に `above_water` 使用、waterHazeV 単独 UBO 化では F stage cascade error 浮上の見込みだったため両 stage 宣言で予防)。
 
 ---
 
