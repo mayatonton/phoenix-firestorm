@@ -125,7 +125,7 @@ inventory §6.6 で確定したルール。設計議論の含意:
 | 06c | `06c-descriptor-set-bind-wiring.md` | descriptor set bind 配線 + UB_* binding 4 種 vs 84 blueprint 接合 | ✅ 起案済 |
 | 07 | `07-vulkan-api-state.md` | 現状 Vulkan API 実装状況棚卸し + (V1)(V3)(S3) 解消 + pool 容量 / ring buffer / fence sync / 共通 PSO layout 確定 | ✅ 起案済 |
 | 08 | `08-build-codegen-pipeline.md` | build system 統合 (CMake / glslang / preprocess script) | ✅ 起案済 |
-| 09 | `09-phase-roadmap.md` | Phase 番号体系再編 + 1 UBO ずつ migration scope | 未起案 |
+| 09 | `09-phase-roadmap.md` | Phase 番号体系再編 + 1 UBO ずつ migration scope | ✅ 起案済 |
 | 10 | `10-open-questions.md` | 未確定事項 / 次セッションへ持ち越し | 未起案 |
 
 **関連外部 doc**:
