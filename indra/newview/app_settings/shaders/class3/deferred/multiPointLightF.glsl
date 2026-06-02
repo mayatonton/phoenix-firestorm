@@ -42,7 +42,15 @@ layout(set=0, binding=5) uniform sampler2D lightFunc;
 uniform sampler2D     lightFunc;
 #endif
 
+#ifndef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-22 Phase 1: legacy bare
+// `uniform vec3 env_mat[3]` を GL path 限定 wrap。Vulkan path では
+// FrameViewProj UBO `mat3 env_mat` (L62) と redeclare 衝突
+// (cannot redeclare a user-block member array)。multiPointLightF main()
+// 内で env_mat 未参照 (dead in this file)、pointLightF.glsl L40-42 と
+// 同範式統一。影響: Deferred MultiLight Shader 0-15 全 16 件 parse error 解消。
 uniform vec3  env_mat[3];
+#endif
 uniform float sun_wash;
 uniform int   light_count;
 uniform vec4  light[LIGHT_COUNT];     // .w = size; see C++ fullscreen_lights.push_back()
