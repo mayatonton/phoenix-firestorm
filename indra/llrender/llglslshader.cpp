@@ -50,6 +50,15 @@
 #include <glslang/SPIRV/GlslangToSpv.h>
 #include <map>
 #include <memory>
+#include <regex>
+#include <set>
+#include <sstream>
+
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D: kill-switch / dump 用 LLCachedControl
+// 経由で gSavedSettings 参照 (llfontregistry.cpp と同型 pattern)。
+#include "llcontrol.h"
+
+extern LLControlGroup gSavedSettings;
 
  // Print-print list of shader included source files that are linked together via glAttachShader()
  // i.e. On macOS / OSX the AMD GLSL linker will display an error if a varying is left in an undefined state.
@@ -643,6 +652,139 @@ namespace {
             default: return EShLangCount;
         }
     }
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D Phase 1:
+    // Vulkan SPIR-V path で bare `out <type> <ident>;` を `layout(location=N) out ...;` に
+    // 書換える runtime transformer。Phase 1 は fragment stage の output のみ対象
+    // (vertex attribute / V↔F varying pair / geometry stage は Phase 2-3 で対応)。
+    // 設計根拠は handoff doc §4 (handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-16-prep-D-switch.md)。
+    // 範式名: 「C++ runtime location emit 範式」(η-8 §3.3 mIndexedTextureChannels Vulkan-aware 範式の自然延長)。
+    struct LocationAllocator
+    {
+        std::set<int> mUsedFragOutSlots;
+        int           mFragOutCursor = 0;
+    };
+
+    std::string vulkanizeStageSource(const std::string& source, GLenum stage_type)
+    {
+        if (stage_type != GL_FRAGMENT_SHADER)
+        {
+            return source;
+        }
+
+        // bare `out <quals?> <type> <ident> (\[...\])? ;` 1 line match
+        // groups: 1=leading ws, 2=quals (連結可), 3=type, 4=ident, 5=array suffix
+        static const std::regex bare_out_pattern(
+            R"(^(\s*)out\s+((?:(?:flat|smooth|noperspective|centroid|highp|mediump|lowp)\s+)*)([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(\s*\[[^;]*\])?\s*;\s*$)"
+        );
+        // 既存 `layout(location=N) out ...` を pre-pass で audit
+        static const std::regex existing_layout_out_pattern(
+            R"(^\s*layout\s*\(\s*location\s*=\s*(\d+)\s*\)\s*out\b)"
+        );
+
+        LocationAllocator alloc;
+        {
+            std::istringstream pre(source);
+            std::string preline;
+            while (std::getline(pre, preline))
+            {
+                std::smatch m;
+                if (std::regex_search(preline, m, existing_layout_out_pattern))
+                {
+                    try { alloc.mUsedFragOutSlots.insert(std::stoi(m[1].str())); }
+                    catch (...) { /* malformed: skip */ }
+                }
+            }
+        }
+
+        std::ostringstream out;
+        std::istringstream in(source);
+        std::string line;
+        while (std::getline(in, line))
+        {
+            // line-comment trim (GLSL に文字列 literal 無し、block comment は state machine 無しの簡易処理: 行内 // のみ)
+            std::string trimmed = line;
+            size_t slash = trimmed.find("//");
+            if (slash != std::string::npos)
+            {
+                trimmed.resize(slash);
+            }
+
+            // skip: 既 layout / 関数宣言 (`(` 含む) / uniform 行
+            if (trimmed.find("layout") != std::string::npos
+                || trimmed.find('(') != std::string::npos
+                || trimmed.find("uniform") != std::string::npos)
+            {
+                out << line << '\n';
+                continue;
+            }
+
+            std::smatch m;
+            if (std::regex_match(trimmed, m, bare_out_pattern))
+            {
+                while (alloc.mUsedFragOutSlots.count(alloc.mFragOutCursor))
+                {
+                    ++alloc.mFragOutCursor;
+                }
+                int slot = alloc.mFragOutCursor++;
+                alloc.mUsedFragOutSlots.insert(slot);
+
+                const std::string  leading_ws = m[1].str();
+                const std::string  quals      = m[2].str();
+                const std::string  type       = m[3].str();
+                const std::string  ident      = m[4].str();
+                const std::string  array      = m[5].matched ? m[5].str() : "";
+
+                out << leading_ws << "layout(location=" << slot << ") out "
+                    << quals << type << " " << ident << array << ";\n";
+            }
+            else
+            {
+                out << line << '\n';
+            }
+        }
+        return out.str();
+    }
+
+    void dumpTransformedStageSource(
+        const std::string& transformed,
+        const LLUUID&      program_hash,
+        GLenum             stage_type,
+        const std::string& shader_cache_dir,
+        const std::string& program_name)
+    {
+        if (shader_cache_dir.empty())
+        {
+            return;
+        }
+        std::string dump_dir = gDirUtilp->add(shader_cache_dir, "transformed");
+        LLFile::mkdir(dump_dir);
+
+        const char* stage_tag = "unknown";
+        switch (stage_type)
+        {
+            case GL_VERTEX_SHADER:   stage_tag = "vert"; break;
+            case GL_FRAGMENT_SHADER: stage_tag = "frag"; break;
+            case GL_GEOMETRY_SHADER: stage_tag = "geom"; break;
+            default: break;
+        }
+        std::string dump_path = gDirUtilp->add(
+            dump_dir, program_hash.asString() + "_" + stage_tag + ".glsl");
+        LLFILE* f = LLFile::fopen(dump_path, "wb");
+        if (f)
+        {
+            fwrite(transformed.data(), 1, transformed.size(), f);
+            fclose(f);
+            LL_INFOS("Vulkan") << "generatePerProgramSPIRV: dumped transformed source for '"
+                               << program_name << "' stage_tag=" << stage_tag
+                               << " -> " << dump_path << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Vulkan") << "generatePerProgramSPIRV: failed to open dump path '"
+                               << dump_path << "' for program '" << program_name << "'" << LL_ENDL;
+        }
+    }
 }
 
 bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stages)
@@ -654,8 +796,24 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
 
     LLShaderMgr* mgr = LLShaderMgr::instance();
 
-    // cache key = HBXXH128(全 stage file_name + 全 source 連結) で program 単位確定
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D: transformer kill-switch / dump 機構
+    // (handoff §4.5 / §4.6)。LLCachedControl は static 化で gSavedSettings の lookup を 1 回
+    // に抑える。disable で transformer skip、η-15 末まで baseline 動作 (charter §3 #1 acceptance)。
+    static LLCachedControl<bool> sVulkanShaderAutoLocation(
+        gSavedSettings, "RenderVulkanShaderAutoLocation", true);
+    static LLCachedControl<bool> sVulkanShaderDumpTransformed(
+        gSavedSettings, "RenderVulkanShaderDumpTransformed", false);
+    const bool auto_location_enabled    = sVulkanShaderAutoLocation;
+    const bool dump_transformed_enabled = sVulkanShaderDumpTransformed;
+
+    // cache key = HBXXH128(transformer version tag + kill-switch state + 全 stage file_name +
+    // 全 source 連結)。transformer 投入で transformed source が SPIR-V emit の真の入力に
+    // なるため、kill-switch 切替時に旧 cache hit (stale binary) を構造防止する版数 tag を
+    // 先頭に混ぜる。version tag bump は transformer 仕様変更時に必須 (Phase 1 = "v1_p1_fragout"、
+    // Phase 2 で V↔F pair 拡張時に v2 へ bump 予定)。
     HBXXH128 program_hash_obj;
+    program_hash_obj.update(std::string("vulkanize:v1_p1_fragout"));
+    program_hash_obj.update(std::string(auto_location_enabled ? "auto_loc=1" : "auto_loc=0"));
     for (const auto& stage : stages)
     {
         program_hash_obj.update(stage.file_name);
@@ -844,6 +1002,25 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
                                    << std::hex << (S32)stage_type << std::dec
                                    << " (program " << mName << ")" << LL_ENDL;
                 return false;
+            }
+
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D Phase 1: bare `out` runtime
+            // wrap (kill-switch ON 時のみ)。stage 全体に shared util + program-specific
+            // source が連結済の concatenated buffer に対して line 単位で書換える。Phase 1
+            // は fragment stage の output のみ対象 (vulkanizeStageSource() 内で stage_type
+            // != GL_FRAGMENT_SHADER は no-op)。
+            if (auto_location_enabled)
+            {
+                concatenated = vulkanizeStageSource(concatenated, stage_type);
+            }
+
+            // r41 D diagnostic dump (RenderVulkanShaderDumpTransformed=true 時のみ)。
+            // shader_cache/transformed/<program_hash>_<stage_tag>.glsl に書き出す。η-15 §3.2
+            // 範式 (検証完了後 default disable) に従い、sub-bundle 完遂で settings 戻す前提。
+            if (dump_transformed_enabled)
+            {
+                dumpTransformedStageSource(
+                    concatenated, program_hash, stage_type, mgr->mShaderCacheDir, mName);
             }
 
             concat_buffers.push_back(std::move(concatenated));

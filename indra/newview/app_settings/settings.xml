@@ -14717,6 +14717,28 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <string>00000000-0000-0000-0000-000000000000</string>
     </map>
+    <key>RenderVulkanShaderAutoLocation</key>
+    <map>
+      <key>Comment</key>
+      <string>r41 sub-step 4.3-gamma-prime-port-beta-2-bundle-B-B?-eta-16 D: enable LLGLSLShader::generatePerProgramSPIRV() runtime transformer that auto-emits layout(location=N) for bare in/out declarations in Vulkan SPIR-V path. Kill-switch (false = skip transformer = pre-eta-16 behavior).</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>RenderVulkanShaderDumpTransformed</key>
+    <map>
+      <key>Comment</key>
+      <string>r41 sub-step 4.3-gamma-prime-port-beta-2-bundle-B-B?-eta-16 D diagnostic: dump transformer output (preprocess+location-emit-applied concatenated source) to shader_cache_dir/transformed/PROGRAM_HASH_STAGE.glsl per program. Default false; enable temporarily to verify transformer output, then disable.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>RenderCASSharpness</key>
     <map>
         <key>Comment</key>
