@@ -23,11 +23,14 @@
  * $/LicenseInfo$
  */
 
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=2) uniform sampler2D normalMap;
 #else
 uniform sampler2D   normalMap;
 #endif
+#endif // DECL_NORMAL_MAP
 
 #if defined(SUN_SHADOW)
 #ifdef LL_VULKAN_GLSL

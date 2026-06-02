@@ -48,16 +48,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=2) uniform sampler2D normalMap;
 #else
 uniform sampler2D normalMap;
 #endif
+#endif // DECL_NORMAL_MAP
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=3) uniform sampler2D depthMap;
 #else
 uniform sampler2D depthMap;
 #endif
+#endif // DECL_DEPTH_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=53) uniform sampler2D projectionMap; // rgba
 #else

@@ -84,7 +84,10 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform vec2 screen_res;
 #endif
+#ifndef DECL_VARY_FRAGCOORD
+#define DECL_VARY_FRAGCOORD
 in vec2 vary_fragcoord;
+#endif // DECL_VARY_FRAGCOORD
 
 vec3 linear_to_srgb(vec3 cl);
 

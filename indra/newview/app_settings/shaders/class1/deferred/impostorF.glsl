@@ -65,11 +65,20 @@ uniform float minimum_alpha;
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=1) uniform sampler2D diffuseMap;
-layout(set=1, binding=2) uniform sampler2D normalMap;
-layout(set=1, binding=3) uniform sampler2D specularMap;
 #else
 uniform sampler2D diffuseMap;
+#endif
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=2) uniform sampler2D normalMap;
+#else
 uniform sampler2D normalMap;
+#endif
+#endif // DECL_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set=1, binding=3) uniform sampler2D specularMap;
+#else
 uniform sampler2D specularMap;
 #endif
 

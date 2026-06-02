@@ -99,11 +99,14 @@ vec3 srgb_to_linear(vec3 c);
 // needed by all lit variants
 // ==================================
 #ifndef UNLIT
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=2) uniform sampler2D normalMap;
 #else
 uniform sampler2D normalMap;
 #endif
+#endif // DECL_NORMAL_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=8) uniform sampler2D metallicRoughnessMap;
 layout(set=1, binding=9) uniform sampler2D occlusionMap;

@@ -2110,11 +2110,14 @@ layout(set=1, binding=1) uniform sampler2D diffuseMap;
 #else
 uniform sampler2D diffuseMap;
 #endif
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=3) uniform sampler2D depthMap;
 #else
 uniform sampler2D depthMap;
 #endif
+#endif // DECL_DEPTH_MAP
 
 uniform vec2 rcp_screen_res;
 uniform vec4 rcp_frame_opt;

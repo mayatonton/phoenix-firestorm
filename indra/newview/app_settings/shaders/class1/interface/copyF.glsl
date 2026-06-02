@@ -30,11 +30,14 @@ in vec2 tc;
 #endif
 
 #if defined(COPY_DEPTH)
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=0, binding=3) uniform sampler2D depthMap;
 #else
 uniform sampler2D depthMap;
 #endif
+#endif // DECL_DEPTH_MAP
 #endif
 
 #ifdef LL_VULKAN_GLSL

@@ -47,11 +47,14 @@ layout(set=1, binding=7) uniform sampler2D emissiveRect;
 uniform sampler2D diffuseRect;
 uniform sampler2D emissiveRect;
 #endif
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=2) uniform sampler2D normalMap;
 #else
 uniform sampler2D normalMap;
 #endif
+#endif // DECL_NORMAL_MAP
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: luminanceF non-opaque uniforms UBO wrap (Cluster E)
 layout(set=3, binding=26, std140) uniform LuminanceFParamUBO_Legacy {

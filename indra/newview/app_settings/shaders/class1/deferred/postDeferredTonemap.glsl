@@ -33,7 +33,10 @@ layout(set=1, binding=4) uniform sampler2D diffuseRect;
 uniform sampler2D diffuseRect;
 #endif
 
+#ifndef DECL_VARY_FRAGCOORD
+#define DECL_VARY_FRAGCOORD
 in vec2 vary_fragcoord;
+#endif // DECL_VARY_FRAGCOORD
 
 #ifdef GAMMA_CORRECT
 #ifdef LL_VULKAN_GLSL
