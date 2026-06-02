@@ -47,7 +47,7 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 | location | varying (全 family 列挙) | 衝突 risk |
 |---|---|---|
 | **20** | `vary_AdditiveColor` (atmospherics) / `vertex_position` / `vertex_emissive` / `vary_mat0` / `vary_dir` / `tc` / `tc0` / `vary_tc` / `vary_uv` / `screenpos` / `base_color_uv` / `normal_texcoord` / `normal_g` / `pos_w` | **最重 14 種、η-24 で alpha 系 51 / pbrterrain 系 50 へ救出済、η-25 で trans_center 60 へ救出済** |
-| **21** | `vary_AtmosAttenuation` (atmospherics) / `vary_mat1` / `emissive_uv` / `metallic_roughness_texcoord` / `tangent_g[]` | **η-24 で pbrterrain vary_tangents 52 へ救出済 (case X)** |
+| **21** | `vary_AtmosAttenuation` (atmospherics) / `vary_mat1` / `emissive_uv` / `metallic_roughness_texcoord` / `tangent_g[]` | **η-24 で pbrterrain vary_tangents 52 へ救出済 (case X)、η-27 Phase 1e-C で pbralpha metallic_roughness_texcoord 40 へ救出済** |
 | **22** | `vary_CloudDensity` / `vary_mat2` / `vary_rel_pos` / `normal_uv` / `view` | 5 種 |
 | **23** | `vary_light_dir` / `altitude_blend_factor` / `metallic_roughness_uv` | 3 種 |
 | **24** | `occlusion_uv` | 1 種 (旧 pbrterrain vary_signs、η-25 Phase 2 で 56 へ救出済) |
@@ -59,7 +59,8 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 | **30** | `vary_coords[2]` / `vary_coords[10]` (V out) | (29 の続き) |
 | **31-38** | `vary_coords[10]` tail (該当 shader のみ) | 限定 occupation |
 | **39** | `normal_texcoord` (η-27 Phase 1e-B で旧 20 から救出済、pbralphaV/F) | 1 種、§3 表参照 |
-| **40-49** | (空き) | **η-26+ の reassign 帯 candidate (49 まで 10 slot 空き)** |
+| **40** | `metallic_roughness_texcoord` (η-27 Phase 1e-C で旧 21 から救出済、pbralphaV/F) | 1 種、§3 表参照 |
+| **41-49** | (空き) | **η-26+ の reassign 帯 candidate (49 まで 9 slot 空き)** |
 
 **実運用 rule**: 20-30 帯は **新規 varying 追加禁止**、衝突発覚した既存 varying は **50-60 帯へ救出**。
 
@@ -78,11 +79,12 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 | **60** | vec3 | `trans_center` | 旧 20 (V+F+F) | η-25 Phase 1d (cascade) | pointLightV.glsl | pointLightF.glsl / spotLightF.glsl |
 | **61-63** | - | (空き) | - | - | - | - |
 
-**η-27 Phase 1e-B (39-49 空き帯への救出、§2 で予告済 candidate 帯使用例)**:
+**η-27 Phase 1e-B / 1e-C (39-49 空き帯への救出、§2 で予告済 candidate 帯使用例)**:
 
 | location | type | varying | 救出元 | 救出 sub-step | V file | F file |
 |---|---|---|---|---|---|---|
 | **39** | vec2 | `normal_texcoord` | 旧 20 (atmospherics vary_AdditiveColor と衝突) | η-27 Phase 1e-B | class1/deferred/pbralphaV.glsl | class2/deferred/pbralphaF.glsl |
+| **40** | vec2 | `metallic_roughness_texcoord` | 旧 21 (atmospherics vary_AtmosAttenuation と衝突) | η-27 Phase 1e-C | class1/deferred/pbralphaV.glsl | class2/deferred/pbralphaF.glsl |
 
 **実運用 rule**:
 - **array varying 配置時は tail を確実に占有**: vec3[4] @ 52 = 52-55 全部消費 = 53/54/55 を別 varying に割り当てない

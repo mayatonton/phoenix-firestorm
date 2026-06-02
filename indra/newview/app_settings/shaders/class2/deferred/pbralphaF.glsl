@@ -157,7 +157,9 @@ layout(location=39) in vec2 normal_texcoord;
 in vec2 normal_texcoord;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=21) in vec2 metallic_roughness_texcoord;
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-27 Phase 1e-C: location 21 → 40 reassign
+// (V 側 pbralphaV.glsl と同期、旧 21 は atmosphericsVarsV.glsl vary_AtmosAttenuation と衝突)
+layout(location=40) in vec2 metallic_roughness_texcoord;
 #else
 in vec2 metallic_roughness_texcoord;
 #endif
