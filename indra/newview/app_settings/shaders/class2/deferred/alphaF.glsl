@@ -128,7 +128,9 @@ layout(location=0) in vec2 vary_texcoord0;
 in vec2 vary_texcoord0;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec3 vary_norm;
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-24 Phase C: vary_norm location 20 → 51
+// (alphaV.glsl 側と整合、atmosphericsVarsF.glsl vary_AdditiveColor at location=20 との overlap 解消)
+layout(location=51) in vec3 vary_norm;
 #else
 in vec3 vary_norm;
 #endif

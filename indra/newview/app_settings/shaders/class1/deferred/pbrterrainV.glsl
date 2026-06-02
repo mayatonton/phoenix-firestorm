@@ -110,14 +110,22 @@ out vec3 vary_normal;
 #endif
 #if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
 #ifdef LL_VULKAN_GLSL
-layout(location=20) out vec3 vary_vertex_normal; // Used by pbrterrainUtilF.glsl
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-24 Phase C: vary_vertex_normal location 20 → 50
+// (atmosphericsVarsV.glsl vary_AdditiveColor at location=20 との overlap 解消、pbrterrainUtilF.glsl L59
+//  既存 location=50 と V↔F 整合、η-18 §3.1 範式類)
+layout(location=50) out vec3 vary_vertex_normal; // Used by pbrterrainUtilF.glsl
 #else
 out vec3 vary_vertex_normal; // Used by pbrterrainUtilF.glsl
 #endif
 #endif
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
 #ifdef LL_VULKAN_GLSL
-layout(location=21) out vec3 vary_tangents[4];
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-24 第2巡 Phase C: vary_tangents location 21 → 52
+// (atmosphericsVarsV.glsl vary_AtmosAttenuation at location=21 との overlap 解消、η-18 §3.1 範式類)
+// vec3[4] = 4 slots (52,53,54,55)、location 50 vary_vertex_normal / 51 vary_norm の直後で連続
+// 予測 cascade: pbrterrainF.glsl L206 vary_tangents loc=20 (vary_AdditiveColor との overlap +
+//   V↔F mismatch) は次 η iteration で resolve
+layout(location=52) out vec3 vary_tangents[4];
 #else
 out vec3 vary_tangents[4];
 #endif

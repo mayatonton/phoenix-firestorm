@@ -34,32 +34,19 @@ uniform sampler2D diffuseRect;
 #endif
 
 #ifdef LL_VULKAN_GLSL
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Skybox per-group rename (η-3 §3.2 範式)
-#ifndef FRAME_ATMOSPHERE_SKYBOX_DEFINED
-#define FRAME_ATMOSPHERE_SKYBOX_DEFINED 1
-layout(set=0, binding=2, std140) uniform FrameAtmosphere_Skybox {
-    vec3  sunlight_color;
-    float scene_light_strength;
-    vec3  moonlight_color;
-    float haze_density;
-    vec3  ambient_color;
-    float density_multiplier;
-    vec3  blue_horizon;
-    float distance_multiplier;
-    vec3  blue_density;
-    float max_y;
-    vec3  glow;
-    float sky_sunlight_scale;
-    float sky_ambient_scale;
-    float sky_hdr_scale;
-    int   classic_mode;
-    int   cube_snapshot;
-    float minimum_alpha;
-    float max_cof;
-    float haze_horizon;
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-24 Phase D: FrameAtmosphere_Skybox 削除
+// (η-14 Path G 範式継承)。FrameAtmosphere_Lighting (set=0 binding=2 from
+// atmosphericsHelpersV/atmosphericsFuncs) と member 名 sunlight_color 等 17 件
+// が global scope で重複 = nameless block name collision。この file の main() で
+// 必要な Skybox 単独 member は `gamma` のみ。新規 PerProgramUBO_GammaCorrect
+// (set=2, binding=2、η-3 §3.2 PerDrawUBO 範式類) で gamma 専用 UBO を declare。
+#ifndef PER_PROGRAM_UBO_GAMMA_CORRECT_DEFINED
+#define PER_PROGRAM_UBO_GAMMA_CORRECT_DEFINED 1
+layout(set=2, binding=2, std140) uniform PerProgramUBO_GammaCorrect {
     float gamma;
-    float _pad_atm0;
-    float _pad_atm1;
+    float _pad_gc0;
+    float _pad_gc1;
+    float _pad_gc2;
 };
 #endif
 #else
