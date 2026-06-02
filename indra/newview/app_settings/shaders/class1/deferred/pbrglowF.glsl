@@ -57,11 +57,10 @@ layout(location=0) out vec4 frag_color;
 out vec4 frag_color;
 #endif
 
-#ifdef LL_VULKAN_GLSL
-layout(location=3) in vec3 vary_position;
-#else
-in vec3 vary_position;
-#endif
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-21 Phase 2-D: pbrglowF main() で vary_position
+// が一度も参照されない (dead declaration)。V 側 (pbrglowV.glsl) でも宣言なし → glslang link
+// 失敗 (Input 'vary_position' in fragment shader has no corresponding output in vertex shader)。
+// 影響: Skinned PBR Glow / PBR Glow 2 件。dead 宣言を削除して整合させる。
 #ifdef LL_VULKAN_GLSL
 layout(location=20) in vec4 vertex_emissive;
 #else

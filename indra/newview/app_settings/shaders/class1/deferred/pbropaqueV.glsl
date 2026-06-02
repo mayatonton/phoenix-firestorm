@@ -60,6 +60,12 @@ uniform mat4 modelview_projection_matrix;
 #endif
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-21 Phase 2-C: V/F MaterialUBO member alignment
+// pbropaqueF.glsl L44 では metallicFactor/roughnessFactor/_pad_material0/_pad_material1
+// 4 members 含む (V 不在で glslang link 失敗: fragment block member has no corresponding
+// member in vertex block, Block: MaterialUBO, Member: metallicFactor)。V/F 跨ぎ block
+// 同一 layout 必須のため V 側にも同 members 追加 (使用しない場合は V で参照ゼロ = optimize
+// される、binding は std140 alignment 維持で float×4=16B 末尾追加)。
 layout(set=1, binding=0, std140) uniform MaterialUBO {
     mat4  texture_matrix0;
     vec4  texture_base_color_transform[2];
@@ -67,6 +73,10 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 #else
 uniform mat4 texture_matrix0;
@@ -213,6 +223,7 @@ uniform mat4 modelview_projection_matrix;
 #endif
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-21 Phase 2-C: HUD path V/F MaterialUBO 同期 (上記非 HUD path と同内容)
 layout(set=1, binding=0, std140) uniform MaterialUBO {
     mat4  texture_matrix0;
     vec4  texture_base_color_transform[2];
@@ -220,6 +231,10 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 #else
 uniform mat4 texture_matrix0;

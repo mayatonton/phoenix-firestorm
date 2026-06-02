@@ -31,7 +31,16 @@ layout(location=0) out vec4 frag_color;
 out vec4 frag_color;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-21 Phase 1: bare `uniform sampler2D
+// lightFunc` (opaque) を Vulkan binding 付与 wrap。Vulkan strict mode では sampler/
+// texture/image は layout(binding=X) 必須。materialF/pointLightF/softenLightF/spotLightF
+// と同 binding (set=0, binding=5) で統一 (lightFunc は viewer 全体で同 channel)。
+// 影響: Deferred MultiLight Shader 0-15 全 16 件の parse error 解消。
+layout(set=0, binding=5) uniform sampler2D lightFunc;
+#else
 uniform sampler2D     lightFunc;
+#endif
 
 uniform vec3  env_mat[3];
 uniform float sun_wash;

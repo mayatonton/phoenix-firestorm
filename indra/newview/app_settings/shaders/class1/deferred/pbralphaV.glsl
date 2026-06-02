@@ -57,6 +57,8 @@ uniform mat4 modelview_projection_matrix;
 #endif
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-21 Phase 2-C: V/F MaterialUBO member alignment
+// (pbralphaF.glsl L31 / L351 と同内容、metallicFactor 等 4 members 追加で V/F link 整合)
 layout(set=1, binding=0, std140) uniform MaterialUBO {
     mat4  texture_matrix0;
     vec4  texture_base_color_transform[2];
@@ -64,6 +66,10 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 #else
 uniform mat4 texture_matrix0;
@@ -237,6 +243,7 @@ uniform mat4 modelview_projection_matrix;
 #endif
 
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-21 Phase 2-C: HUD path V/F MaterialUBO 同期 (上記非 HUD path と同内容)
 layout(set=1, binding=0, std140) uniform MaterialUBO {
     mat4  texture_matrix0;
     vec4  texture_base_color_transform[2];
@@ -244,6 +251,10 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
     vec4  color;
     vec3  emissiveColor;
     float _pad_emissive;
+    float metallicFactor;
+    float roughnessFactor;
+    float _pad_material0;
+    float _pad_material1;
 };
 #else
 uniform mat4 texture_matrix0;

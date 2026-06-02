@@ -312,11 +312,11 @@ layout(location=0) out vec4 frag_color;
 out vec4 frag_color;
 #endif
 
-#ifdef LL_VULKAN_GLSL
-layout(location=3) in vec3 vary_position;
-#else
-in vec3 vary_position;
-#endif
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-21 Phase 2-D: HUD path main() で vary_position
+// が一度も参照されない (dead declaration、L371-396 で未使用)。HUD path V (pbropaqueV.glsl
+// L209-) は vary_position 不在 → glslang link 失敗 (Input 'vary_position' in fragment shader
+// has no corresponding output in vertex shader)。影響: HUD PBR Opaque 1 件。dead 宣言削除。
+// (非 HUD path L79 の vary_position 宣言は L216 mirrorClip(vary_position) で使用、残置)
 #ifdef LL_VULKAN_GLSL
 layout(location=2) in vec4 vertex_color;
 #else
