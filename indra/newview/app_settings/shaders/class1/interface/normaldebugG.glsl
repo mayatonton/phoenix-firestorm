@@ -29,11 +29,23 @@
 // vouch for this in performance-critical areas.
 // -Cosmic,2023-09-28
 
+#ifdef LL_VULKAN_GLSL
+layout(location=2) out vec4 vertex_color;
+#else
 out vec4 vertex_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location=20) in vec4 normal_g[];
+#else
 in vec4 normal_g[];
+#endif
 #ifdef HAS_ATTRIBUTE_TANGENT
+#ifdef LL_VULKAN_GLSL
+layout(location=21) in vec4 tangent_g[];
+#else
 in vec4 tangent_g[];
+#endif
 #endif
 
 layout(triangles) in;

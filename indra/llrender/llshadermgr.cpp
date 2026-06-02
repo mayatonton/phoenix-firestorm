@@ -880,7 +880,26 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 
         if (texture_index_channels > 1)
         {
-            extra_code_text[extra_code_count++] = strdup("flat in int vary_texture_index;\n");
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-17 option E-1:
+            // bare `flat in int vary_texture_index;` を Vulkan path で
+            // `layout(location=18) flat in int vary_texture_index;` に wrap。
+            // location=18 は 0-30 帯の唯一の未使用番号 (E-1 self-verify 確定)。
+            // 旧 location=20 は atmosphericsVarsF.glsl L28 の vary_AdditiveColor
+            // (location=20 in F) と同 program で衝突 (Diffuse / Fullbright 系で
+            // 両 utility が Fragment stage に attach、overlapping use of location
+            // error 退行リスク = 13 種既達主指標 `overlapping use of location` 0
+            // 維持破壊)。indexedTextureV.glsl L33 を 20→18 に同期変更。
+            // η-8 mIndexedTextureChannels Vulkan-aware 範式の隣接行 補修
+            // (η-8 では同 block の `uniform sampler2D tex%d;` のみ wrap 済、
+            //  vary_texture_index 1 行は取りこぼし)。
+            // Fragment 24 件 SPIR-V missing location error の真因 (dump audit 確定)。
+            std::string decl;
+            decl += "#ifdef LL_VULKAN_GLSL\n";
+            decl += "layout(location=18) flat in int vary_texture_index;\n";
+            decl += "#else\n";
+            decl += "flat in int vary_texture_index;\n";
+            decl += "#endif\n";
+            extra_code_text[extra_code_count++] = strdup(decl.c_str());
         }
 
         extra_code_text[extra_code_count++] = strdup("vec4 diffuseLookup(vec2 texcoord)\n");
