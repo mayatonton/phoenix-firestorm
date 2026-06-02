@@ -68,6 +68,21 @@ layout(set=3, binding=4, std140) uniform CloudsFParamUBO_Legacy {
     float _pad_clouds_f_legacy_0;
     float _pad_clouds_f_legacy_1;
 };
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-14: CloudsVParamUBO_Legacy 複製 (Path G-β)
+//   cloudsF.main() L127/L132/L133 が cloud_scale を参照するが、Vulkan path の
+//   CloudsFParamUBO_Legacy には未収載。cloud_scale は元から CloudsVParamUBO_Legacy
+//   (set=3 binding=3) member で、C++ 側 descriptor set は pipeline 単位で両 stage
+//   から参照可能なため、fragment 側にも同 layout を guard 付きで複製して解決する。
+//   shader-only (charter §3 #1)、C++ struct 改修不要。
+#ifndef CLOUDS_V_PARAM_UBO_LEGACY_DEFINED
+#define CLOUDS_V_PARAM_UBO_LEGACY_DEFINED 1
+layout(set=3, binding=3, std140) uniform CloudsVParamUBO_Legacy {
+    vec3  camPosLocal;
+    float cloud_scale;
+    vec3  cloud_color;
+    float _pad_clouds_v_legacy_0;
+};
+#endif
 #else
 uniform float blend_factor;
 uniform vec3 cloud_pos_density1;

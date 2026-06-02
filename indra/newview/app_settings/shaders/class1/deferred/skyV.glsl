@@ -107,34 +107,12 @@ layout(set=0, binding=1, std140) uniform FrameLights {
     vec2 light_deferred_attenuation[8];
 };
 #endif
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Skybox per-group rename (η-3 §3.2 範式)
-#ifndef FRAME_ATMOSPHERE_SKYBOX_DEFINED
-#define FRAME_ATMOSPHERE_SKYBOX_DEFINED 1
-layout(set=0, binding=2, std140) uniform FrameAtmosphere_Skybox {
-    vec3  sunlight_color;
-    float scene_light_strength;
-    vec3  moonlight_color;
-    float haze_density;
-    vec3  ambient_color;
-    float density_multiplier;
-    vec3  blue_horizon;
-    float distance_multiplier;
-    vec3  blue_density;
-    float max_y;
-    vec3  glow;
-    float sky_sunlight_scale;
-    float sky_ambient_scale;
-    float sky_hdr_scale;
-    int   classic_mode;
-    int   cube_snapshot;
-    float minimum_alpha;
-    float max_cof;
-    float haze_horizon;
-    float gamma;
-    float _pad_atm0;
-    float _pad_atm1;
-};
-#endif
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-14: FrameAtmosphere_Skybox 削除 (Path G)
+//   Lighting (set=0 binding=2 from atmosphericsHelpersV/atmosphericsFuncs) と
+//   AtmoExtraUBO_Legacy (set=3 binding=0 from atmosphericsFuncs) で main() 必要 member
+//   は全て解決可能。Skybox 単独 member は haze_horizon (AtmoExtra にあり) と
+//   gamma (元から未使用) のみ。Skybox vs Lighting の binding=2 nameless block 名衝突
+//   (sunlight_color/ambient_color 等の global scope 重複) を構造的に解消。
 #else
 uniform vec3  sunlight_color;
 uniform vec3  moonlight_color;
