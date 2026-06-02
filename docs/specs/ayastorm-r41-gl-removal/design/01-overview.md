@@ -119,7 +119,10 @@ inventory §6.6 で確定したルール。設計議論の含意:
 | 03 | `03-cadence-classification.md` | cadence 分類体系 + cadence source rule | ✅ 起案済 |
 | 04 | `04-codegen-ubo.md` | Codegen-UBO 全体機構 / pre-process pipeline | ✅ 起案済 |
 | 05 | `05-existing-inventory-link.md` | 既存 84 UBO blueprint の cadence 別 mapping + bare uniform 集約対応表 | ✅ 起案済 |
-| 06 | `06-redirect-layer-design.md` | host C++ redirect 層 (name-based setter → UBO offset 書込) | 未起案 |
+| 06a | `06a-cache-structure-and-setter-redirect.md` | mUniformUBOLoc cache 構造 + 16 method setter Vulkan path 分岐 | ✅ 起案済 |
+| 06a-prep | `06a-prep-phase0-measurement.md` | Phase 0 計測 spec (= (H1b) LL_INFOS hook / (E') binding 重複 grep / (F) MaterialUBO 比較 / 解析 spec)、実装 phase 入口の手順書 | ✅ 起案済 |
+| 06b | `06b-cadence-update-site-and-dirty.md` | cadence 別 update site + dirty flag + flush timing | ✅ 起案済 |
+| 06c | `06c-descriptor-set-bind-wiring.md` | descriptor set bind 配線 + UB_* binding 4 種 vs 84 blueprint 接合 | ✅ 起案済 |
 | 07 | `07-vulkan-api-state.md` | 現状 Vulkan API 実装状況棚卸し (vkQueueSubmit / swapchain / descriptor 等) | 未起案 |
 | 08 | `08-build-codegen-pipeline.md` | build system 統合 (CMake / glslang / preprocess script) | 未起案 |
 | 09 | `09-phase-roadmap.md` | Phase 番号体系再編 + 1 UBO ずつ migration scope | 未起案 |
