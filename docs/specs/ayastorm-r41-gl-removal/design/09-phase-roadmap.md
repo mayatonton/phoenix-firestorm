@@ -69,6 +69,13 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 | **Phase 0** | 計測 phase | 06a-prep §2-§4 の (H1b)(E')(F) 実機計測 + 結果 chapter 反映 | η-29 | 起案予定 | 06a-prep §6 反映 flow 全行「反映済」 |
 | **Phase 1** | codegen + redirect 層整備 | chapter 08 codegen pipeline 実装 + chapter 06a redirect 層 + 06b dirty flag + 06c descriptor set bind | η-30 (.A/.B/.C 細分) | 起案予定 | Phase 1.A/B/C 各 Exit 全 PASS |
 | **Phase 2..K** | 1 UBO ずつ migration | (Q1) で確定する第 1 UBO から順に migration、各 Phase = 1 UBO (= (Q2) で cluster 許可なら例外) | η-31, η-32, ... | Phase ごと起案 | cold launch + canary + log で当該 UBO 経路成立 |
+
+**Phase K 確定条件 (= 設計 review 2026-06-03 §3.4 K 確定明示)**: 「K」は Phase 2 から始まる migration Phase 群の最終 Phase 番号 (= 1 UBO ずつ migration を全 UBO 分続けた最後)。**K の具体数値は以下 3 条件揃ったときに確定**:
+1. **Phase 0 計測結果**: 06a-prep §2 (H1b) cadence hook 計測完了で、84 + 不明 16 件 cadence 帰属 確定後の **実 migration 対象 UBO 総数** (= 推定 88-104 個) が確定
+2. **(Q1) 第 1 UBO 選定**: AYA 判断で第 1 UBO 確定 → Phase 2 が確定 → migration order template (= §5.2 A/B/C) も確定
+3. **(Q2) Phase 当たり migration UBO 数**: AYA 判断で cluster 許可 (= 1 Phase に 2-3 UBO 同 batch) 採否確定 → K = (UBO 総数 / Phase 当たり UBO 数) で K 値計算可能
+
+→ K 確定は **Phase 0 Exit + (Q1)(Q2) AYA 判断 揃った時点** = Phase 1 開始前。それまで本 chapter §2/§3/§5/§6/§7/§8 の「K」「K+1」「K+2」等の表記は **暫定 placeholder** として扱う (= 確定後本 chapter §2.1 表で具体数値に置換)。
 | **Phase K+1** | 3 OS 確証 (Linux) | 08 §13.4 X-α = Linux 全 UBO 動作確認 + log 検証 + sample scene 確認 | η-(K+2) | 起案予定 | Linux build pass + cold launch normal + render parity |
 | **Phase K+2** | 3 OS 確証 (Windows) | 08 §13.4 X-β = Windows build + 起動 + render parity (= AYA 実機) | η-(K+3) | 起案予定 | Windows build pass + render parity |
 | **Phase K+3** | 3 OS 確証 (macOS) | 08 §13.4 X-γ = macOS build + 起動 + render parity (= @t-noami 実機委任) | η-(K+4) | 起案予定 | macOS build pass + render parity |
@@ -158,6 +165,14 @@ Phase K+5 (release)
 - Phase 1.B: 30 setter Vulkan path 分岐の **call site から見て transparent** = 既存 program 1 個の動作 unchanged
 - Phase 1.C: test UBO 1 個 (= 後の Phase 2 で本実装する第 1 UBO の試作版、本実装は Phase 2、ここでは shell のみ) で per-cadence update + descriptor bind 通電
 
+**Phase 1.C ↔ Phase 2 境界明示 (= 設計 review 2026-06-03 §3.4 boundary clarify)**:
+- **Phase 1.C の「test UBO 1 個」 = Phase 2 で本実装する「第 1 UBO」と同一実体** (= (Q1) で AYA が選定する第 1 UBO の **shell 版**)
+  - 1.C では shell = 空 struct + 空 dirty flag + 空 flush 実装 (= 経路通電のみ確認、データは zero memcpy)
+  - Phase 2 で同 UBO の shell を **実 member + 実 dirty 判定 + 実 flush logic** に置換、call site (= setter) からの値書込開始 → 実描画反映
+- **境界判定基準**: Phase 1.C Exit = test UBO shell の 5 cadence 全経路で `vkCmdBindDescriptorSets` が空 dummy buffer で成功 (= API 呼出層の通電確認、render 出力は OpenGL path のまま)。Phase 2 Entry = 同 UBO の実データ流入開始 + render 出力が Vulkan path に切替 (= mUseUBO flag 該当 program で ON)
+- **shell vs 実装の差分**: shell は Phase 1.C で **書き捨て可能** = Phase 2 で全面書換しても 1.C Exit Criteria の遡及検証は不要 (= Phase 1.C は API 経路通電の証明、Phase 2 は data path の証明、独立に閉じる)
+- = Phase 1.C と Phase 2 は **同一 UBO を実体に持つ連続 Phase** だが、判定軸 (API 通電 vs データ通電) が独立しているため Phase 番号を分離して管理
+
 **注**: Phase 1 完了時点では **既存 program 動作 unchanged** (= Vulkan path 分岐 ON でも OpenGL path 経路を選ぶ default 動作)。Phase 2 で第 1 UBO migration を実施するまで実 Vulkan 描画は始まらない (= migration 前提整備完了が Exit)。
 
 ### §4.3 紐付け持越項目
@@ -223,9 +238,39 @@ Phase 内手順 (= 1 UBO 当たり):
 - Linux cold launch normal (= crash 0 / shader compile error 0 / render normal)
 - 該当 UBO を経路上に持つ既存 scene で **render parity** = OpenGL path と Vulkan path で screen diff が visible 差以下 (= AYA 目視確認)
 - LL_DEBUGS log で該当 UBO bind / flush 回数が想定範囲内
-- canary cvar flip で render 反映確認
+- canary cvar flip で render 反映確認 (= 下記 §5.3.1 canary cvar 規約 inline)
 - 検証用 LL_DEBUGS log は **commit 前に必ず除去** (= memory `feedback_remove_verification_logs`)
 - handoff doc (= 1 Phase 1 件) 起案 + 次 Phase prerequisite 化
+
+#### §5.3.1 canary cvar 規約 inline (= 設計 review 2026-06-03 §3.4 値表 inline 化)
+
+**canary cvar 命名規約** (= 各 Phase 1 個 1 UBO 用):
+- 命名 pattern: `AYAUboCanary_<UboName>` (= 例: `AYAUboCanary_ReflectionProbes` / `AYAUboCanary_GLTFMaterials` / `AYAUboCanary_LightParams` 等)
+- type: `U32`
+- 配置: `app_settings/settings.xml` に追加 (= Persist=0、再起動で消える、検証用一時 cvar)
+- scope: Phase 内検証中のみ、Phase Exit 時に削除 (= 検証用 LL_DEBUGS log と同じ廃棄規律、`feedback_remove_verification_logs`)
+
+**canary cvar 値表 (= 全 Phase 共通の意味付け)**:
+
+| 値 | render 期待動作 | 検証目的 |
+|---|---|---|
+| `0` | normal render (= 該当 UBO 経路は実値、tint なし) | default 経路の生存確認 |
+| `1` | 該当 UBO 経路の **diffuse** に **純赤** tint (= `vec3(1, 0, 0)` を該当 UBO の color slot に強制 inject) | shader 内で該当 UBO が **読まれている** ことを視覚確認 |
+| `2` | 該当 UBO 経路の **diffuse** に **純緑** tint | 1 と区別、cadence ごとの bind 差分視覚確認 (= 同一 frame 内で 1→2 切替で再描画即反映なら per-frame/per-program、draw 完了後即反映なら per-draw) |
+| `3` | 該当 UBO 経路で **bind 自体を skip** (= dummy buffer bind) | UBO bind が無いと描画 broken になることを反証で確認 (= 経路が **必須経路** であることの証明) |
+
+**canary 設置位置**:
+- inject point = redirect 層 `forwardToUboUpload` (= 06b §5.1) の cadence 別 routing 内に `if (gAYAUboCanary_<UboName> != 0) { override 該当 member; }` を仕込む
+- 上書き対象 member = 該当 UBO の **最も視覚反映しやすい色 slot** (= diffuse_color / tint / ambient 等)、無い場合は alpha slot 等を選定
+- 色値は **linear 色空間で直書きでなく `srgb_to_linear()` で逆引き** (= memory `feedback_shader_color_space_correction` 準拠、純赤 sRGB `(1,0,0)` → linear `(1,0,0)` で OK だが、tonemap 経由する path は要確認)
+
+**canary 検証手順 (= AYA 実機)**:
+1. 該当 Phase build → cold launch → 該当 UBO 経路を含む scene 表示
+2. `AYAUboCanary_<UboName>` を 0→1 flip (debug settings 経由) → diffuse が純赤に変わることを目視確認 → screenshot
+3. 1→2 flip → 純緑に変わることを目視確認 → screenshot
+4. 2→3 flip → 描画 broken (= 黒画面 / 色化け) になることを目視確認 → screenshot
+5. 3→0 flip → normal render に戻ることを目視確認 → Phase Exit
+6. Phase Exit 後 cvar 削除 + `settings.xml` から該当行除去 + commit
 
 ### §5.4 Phase REJECT 処理
 

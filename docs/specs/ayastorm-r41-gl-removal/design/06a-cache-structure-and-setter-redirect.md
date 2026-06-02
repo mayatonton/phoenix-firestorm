@@ -207,9 +207,12 @@ void LLGLSLShader::mapUniforms() {
 
 (H1a) Axis 2 で確認した 67 個の LLStaticHashedString 経由 uniform は `mReservedUniforms` 未登録 = `mUniformUBOLoc[index]` 経由不可。
 
-補助 cache 構築 step (= `mapUniforms()` Vulkan path 内の追加 step、§4.1 拡張部の後):
+補助 cache 構築 step (= `mapUniforms()` Vulkan path 内の追加 step、§4.1 拡張部の後)。
+
+**⚠ 重要 (= 仮 code shape、本査読 2026-06-03 §3.4 致命傷候補解消)**: 下記 code shape の `LLStaticHashedString::getGlobalRegistry()` は **実装が存在しないことが確認済** (= chapter 06a-prep §2.2.1 但し書き)。本 code shape のまま実装 phase に進めばコンパイルエラー直行する。実装に当たっては §4.3.1 の代替案いずれかを採用、最終確定は (S1) を chapter 06b / Phase 0 で消化した後。
 
 ```cpp
+// ⚠ 仮 code shape: getGlobalRegistry() は実装無し、§4.3.1 代替案で書き換え必須
 #ifdef LL_VULKAN_GLSL
     if (mUseUBO) {
         // (§4.1 mUniformUBOLoc 構築の後)
@@ -224,10 +227,21 @@ void LLGLSLShader::mapUniforms() {
 #endif
 ```
 
+#### §4.3.1 代替案 (= (S1) 消化候補、いずれかを chapter 06b / Phase 0 完了時に確定)
+
+| 案 | 内容 | 利点 | 欠点 |
+|---|---|---|---|
+| S1-A | `LLStaticHashedString` 内部 static container を直接 iterate する helper (例: `LLStaticHashedString::forEachInstance(callback)`) を新設、本 chapter §4.3 code shape の `getGlobalRegistry()` 部分を helper 呼出に置換 | 1 helper 追加で本 chapter code shape の構造維持、call site 1 箇所 | LLStaticHashedString class への侵襲、upstream divergence 1 件 (原則 1 軽微違反) |
+| S1-B | shader link 時 `mReservedUniforms` に **無い** uniform を `glGetActiveUniform` 列挙結果から拾い、それぞれを `LLStaticHashedString(name)` で hash 計算 → `mUniformUBOLocByHash` に登録 | 既存 API のみで実装可、LLStaticHashedString 側無改修 | shader link 時 GL call 増、Vulkan path 専用 cache のため OpenGL build には影響なし |
+| S1-C | LLStaticHashedString 経由 setter 67 個の名前を chapter 05 集約表確定時に build-time list 化 (= 静的配列 `g_static_hashed_uniform_names[]`)、shader link 時はその配列を iterate | runtime registry iterate 不要、build-time decidable | 67 個 list の保守責任が chapter 05 集約表に追加、追加忘れで silent skip |
+| S1-D | 補助 path (= `mUniformUBOLocByHash`) を **廃止**、LLStaticHashedString 経由 setter 67 個を全て chapter 05 集約表で `mReservedUniforms` 化 (= integer index 経路に統合) | path 分岐削減 (32 entry point → 16)、cache 構造単純化 | 67 個全て mReservedUniforms 増要、chapter 05 集約表 67 行追加、各 program で全 67 個が active uniform 化される負担 |
+
+**default 候補** (= chapter 06b / Phase 0 (S1) 消化時の起点): **S1-C** (= build-time list 化)。理由: (1) runtime registry iterate を回避できる確定性、(2) chapter 05 集約表との一体管理で saving は明示的、(3) LLStaticHashedString class 無侵襲。最終確定は chapter 06b 起案時 / Phase 0 (S1) で AYA 判断。
+
 注:
-- `LLStaticHashedString::getGlobalRegistry()` は仮 API 名 (= 実装は LLStaticHashedString の global static container を期待、無ければ chapter 06b 起案時に実装提案)
 - 67 個のうち UBO 化対象有無は **chapter 05 §7.3 集約表 (= 切出し後の `05a-bare-uniform-mapping.md`) で個別判定** (= 未確定 (R1)、§9 持越)
 - 集約しない uniform は `mUniformUBOLocByHash` に entry が無く、setter 内 `find()` で `end()` 返却 → OpenGL path fallback
+- 上記 §4.3 code shape は **設計意図の表現** であり、実コードは §4.3.1 代替案 + (S1) 消化結果で置換
 
 ### §4.4 pre-cache フローの整合 check
 

@@ -7,7 +7,7 @@
 - `02-naming-convention.md` §2.3.1 (UB_\* enum 命名) / §3 (84 UBO rename 表)
 - `03-cadence-classification.md` §2 (cadence 5 分類) / §4 (cadence 別 update site overview)
 - `04-codegen-ubo.md` §5 (生成物 = `ubo_metadata.inl` で block_name → (size, set, binding)) / §5.3 (`UniformLocation` / `CadenceTag`)
-- `05-existing-inventory-link.md` §3 (cadence 別 mapping) / §4 (E3 rename 確定) / §6 (G1 per-material → per-draw)
+- `05-existing-inventory-link.md` §3 (cadence 別 mapping) / §4 (E3 rename 確定) / §6 (MC1 = 旧 G1 per-material → per-draw、設計 review 2026-06-03 §3.1 ID rename = material cadence prefix)
 - `06a-cache-structure-and-setter-redirect.md` §3 (cache 構造) / §5.4 (`mUseUBO` flag 配置、初期化方針は本 chapter 持越)
 - `06b-cadence-update-site-and-dirty.md` §4 (flush 関数 5 種) / §5.3 (L1+L2 推奨) / §8 ((K)/(L)/(U1) default 採用案)
 - `ayastorm-r41-ubo-current-state-inventory.md` §1 (OpenGL 実働 UBO 4 種 + UB_\* enum) / §3 (84 GLSL blueprint)
@@ -48,7 +48,7 @@
 | `04-codegen-ubo.md` §5.1 `ubo_metadata.inl` (block_name → (size, set, binding)) | §2 配置決定の Codegen 出力契約 |
 | `04-codegen-ubo.md` §5.3 `UniformLocation` struct (= `block_hash` で物理 UBO 識別) | §5 dynamic offset の loc → block_hash 解決 |
 | `05-existing-inventory-link.md` §4 E3 (= 79 個独立保持) | §2.2 set=1 帯への 79 個集約 |
-| `05-existing-inventory-link.md` §6 G1 (= Material\* per-draw 統合) | §2.3 set=2 帯への Material\* 配置 |
+| `05-existing-inventory-link.md` §6 MC1 (= 旧 G1、Material\* per-draw 統合、ID rename 経緯は chapter 05 §6 header 注) | §2.3 set=2 帯への Material\* 配置 |
 | `06a-cache-structure-and-setter-redirect.md` §3.2 `mUseUBO` flag 配置 | §6 initial 設定方針確定 |
 | `06b-cadence-update-site-and-dirty.md` §4.1 flush 関数 5 種 | §4 flush 直後 bind 配線 |
 | `06b-cadence-update-site-and-dirty.md` §5.3 L1+L2 default | §5 dynamic offset bind 側責務 |
@@ -59,15 +59,15 @@
 
 ## §2 descriptor set 4 帯 cadence 別配置
 
-### §2.1 配置原則 (= M1 採用、§0.2 (M) default)
+### §2.1 配置原則 (= M1 採用、§0.2 (MD) default)
 
-**descriptor set 4 帯 ↔ cadence 5 分類の 1:1 マッピング** (= **M1 採用、本 chapter §10 (M) で AYA 確認対象**):
+**descriptor set 4 帯 ↔ cadence 5 分類の 1:1 マッピング** (= **M1 採用、本 chapter §10 (MD) で AYA 確認対象**):
 
 | set | cadence 帯 | rebind 頻度 | 物理 UBO 数 | bind 駆動関数 (06b §4.1) |
 |---|---|---|---|---|
 | **set=0** | per-frame + singleton | frame 開始時 1 回 | 3 (Frame\*) + 1 (Global_\*) = 4 | `flushFrameUbos()` 直後 + reflection update 時に該当 entry のみ rebind |
 | **set=1** | per-program | shader bind 時 | 79 (Program_\*) | `flushProgramUbos(LLGLSLShader*)` 直後 |
-| **set=2** | per-draw (Draw_\* + Material\* G1 統合) | draw call ごと (= dynamic offset で参照点切替、descriptor set rebind は最小限) | 4 (Draw_\* 2 + Material\* 2) | `flushDrawUbos()` 直後 (= dynamic offset 更新主体、descriptor set 自体は program 切替時のみ rebind) |
+| **set=2** | per-draw (Draw_\* + Material\* MC1 統合) | draw call ごと (= dynamic offset で参照点切替、descriptor set rebind は最小限) | 4 (Draw_\* 2 + Material\* 2) | `flushDrawUbos()` 直後 (= dynamic offset 更新主体、descriptor set 自体は program 切替時のみ rebind) |
 | **set=3** | per-asset + per-skin | asset/skin owner 切替時 | (Asset_\* 2 × N) + (Skin_\* 1 × M) per-owner instance、descriptor set は owner 単位 | `flushAssetUbos(asset)` / `flushSkinUbos(skin)` 直後 |
 
 **根拠** (= M1 採用 default の判定 4 軸):
@@ -111,11 +111,11 @@
 |---|---|---|---|---|---|
 | 0 | `Draw_LightParams` | `UB_DRAW_LIGHT_PARAMS` | per-draw | ring buffer 内 dynamic offset 参照 | L1+L2 (= 06b §5.3) |
 | 1 | `Draw_MultiLight` | `UB_DRAW_MULTI_LIGHT` | per-draw | 同上 | 同上 |
-| 2 | `MaterialUBO` (= G1 統合で per-draw cadence、命名は §2.1 chapter 05 §6.3 で温存) | `UB_MATERIAL` | per-draw (G1) | 同上 | 同上 |
-| 3 | `MaterialLegacyBlinn` (= 暫定名、chapter 05 §5 / (F) で確定後 update) | `UB_MATERIAL_LEGACY` | per-draw (G1) | 同上 | 同上 |
+| 2 | `MaterialUBO` (= MC1 統合で per-draw cadence、命名は §2.1 chapter 05 §6.3 で温存) | `UB_MATERIAL` | per-draw (MC1) | 同上 | 同上 |
+| 3 | `MaterialLegacyBlinn` (= 暫定名、chapter 05 §5 / (F) で確定後 update) | `UB_MATERIAL_LEGACY` | per-draw (MC1) | 同上 | 同上 |
 
 **配置根拠**:
-- chapter 05 §6 G1 採用 = Material\* は per-draw cadence + dirty flag 統合 → set=2 per-draw 帯に配置 (cadence と命名の独立性、chapter 02 §2.2)
+- chapter 05 §6 MC1 (= 旧 G1) 採用 = Material\* は per-draw cadence + dirty flag 統合 → set=2 per-draw 帯に配置 (cadence と命名の独立性、chapter 02 §2.2)
 - 4 binding 全件が dynamic offset (= L2、`VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC`) 参照 = descriptor set 自体は **program 切替時のみ rebind**、draw call ごとは offset 数値変更のみ (= §5)
 
 ### §2.5 set=3 (per-asset + per-skin 帯) — 3 binding × N owner
@@ -146,16 +146,25 @@
 | set=0 binding=2 | `FrameAtmosphere` | `UB_FRAME_ATMOSPHERE` (新規) | (GL path 未確立) | per-frame | 同上 |
 | set=0 binding=3 | `Global_ReflectionProbes` | `UB_GLOBAL_REFLECTION_PROBES` (= 旧 `UB_REFLECTION_PROBES` rename) | GL binding=0 (upstream LL 確立) | singleton | 同上 + reflection update 時 |
 
-#### set=1 帯 (= per-program、79 個)
+#### set=1 帯 (= per-program、77 個 + (V2) 確定後 +2)
 
 | Vulkan space | block 名 (chapter 02 §3.3 / §3.4 rename 後) | 旧名 | 起源 sub-step |
 |---|---|---|---|
-| set=1 binding=0 | `Program_LightParams` | `PerDrawUBO_LightParams` (= 旧) — 旧表記 per-draw だったが cadence 確定で per-program 再分類対象? → **§10 (V2) 持越**: inventory §3.3 で「per-draw」と分類されているが、`LightParams` の実体が per-program (= shader bind 時 1 回) なら set=1 配置、per-draw (= draw 毎) なら set=2 配置。06b (H1b) 計測で確定 |
-| set=1 binding=1 | `Program_MultiLight` | `PerDrawUBO_MultiLight` | 同上、(V2) 持越対象 |
-| set=1 binding=2-24 | `Program_GammaCorrect` / `Program_AlphaParams` / ... | chapter 02 §3.3 PerProgramUBO_\* 23 個 | η-24 〜 η-28 Phase 2c |
-| set=1 binding=25-78 | `Program_AtmoExtra` / `Program_SkyVParam` / ... | chapter 02 §3.4 \<Name\>UBO_Legacy 54 個 (E3 採用) | η-6 / η-13 期 |
+| set=1 binding=0-22 | `Program_GammaCorrect` / `Program_AlphaParams` / ... | chapter 02 §3.3 PerProgramUBO_\* 23 個 | η-24 〜 η-28 Phase 2c |
+| set=1 binding=23-76 | `Program_AtmoExtra` / `Program_SkyVParam` / ... | chapter 02 §3.4 \<Name\>UBO_Legacy 54 個 (E3 採用) | η-6 / η-13 期 |
 
-**注**: 上記 binding=0/1 の cadence 帰属は 06b §1.4 chapter 05 §3.3 で **per-draw** 確定 (= inventory §3.3 binding=0/1 を `Draw_LightParams` / `Draw_MultiLight` に rename 確定)。本 chapter §2.4 set=2 帯 binding=0/1 に既配置済。本表は **chapter 02 §3.3 旧名 `PerDrawUBO_*` の rename 確認の意味で残す**、cadence 帰属は per-draw 確定。
+**= set=1 帯の実配置 = 77 個** (= 23 + 54、(V2) 確定後最終 77-79)。下記 set=1 binding 番号は (V2) 解消結果に依存し、`Program_LightParams` / `Program_MultiLight` が per-program 帰属に確定した場合のみ binding=77/78 として追加される。
+
+##### set=1 帯 rename audit trail (= 設計 review 2026-06-03 §3.1 set=1/set=2 重複表示解消、配置外)
+
+下記 2 行は **配置でない** (= 上記 set=1 表に含めない、set=2 帯 binding=0/1 に実配置済)。chapter 02 §3.3 旧名 `PerDrawUBO_*` から `Draw_*` への rename 経緯を audit trail として記録するためだけのリスト:
+
+| 旧 inventory §3.3 binding 配置 (= 旧表記) | 旧名 | 新名 | 実配置 (本 chapter §2.4) |
+|---|---|---|---|
+| (旧) set=1 binding=0 候補 | `PerDrawUBO_LightParams` | `Draw_LightParams` | **set=2 binding=0** |
+| (旧) set=1 binding=1 候補 | `PerDrawUBO_MultiLight` | `Draw_MultiLight` | **set=2 binding=1** |
+
+**注**: 06b §1.4 / chapter 05 §3.3 で binding=0/1 の cadence 帰属は **per-draw** 確定 (= 旧 inventory §3.3 表現の `PerDrawUBO_*` 名前空間そのまま per-draw 帯)。`Program_LightParams` / `Program_MultiLight` 候補は (V2) で「同一 binding 複数 UBO 名疑い」の文脈で per-program 再分類が必要かを (H1b) 計測で確定する論点として残存、確定後 per-program 帯入りすれば上記 set=1 表に binding=77/78 として追記。
 
 (V2) 持越は inventory §3.3.1 の同一 binding 複数 UBO 名疑い (= ClipPlane / SkinnedVelocity / AvatarVelocity / AvatarSkin / ObjectSkin) のみ、(E') として Phase 0 計測対象 (= `06a-prep` §3)。本 chapter は **確定済 2 個 (LightParams / MultiLight) は per-draw 帯**、その他 23 + 54 = 77 個 Program_\* を set=1 帯に配置。
 
@@ -165,8 +174,8 @@
 |---|---|---|---|---|
 | set=2 binding=0 | `Draw_LightParams` | `PerDrawUBO_LightParams` | per-draw | あり (= L2、§5) |
 | set=2 binding=1 | `Draw_MultiLight` | `PerDrawUBO_MultiLight` | per-draw | あり |
-| set=2 binding=2 | `MaterialUBO` | `MaterialUBO` (温存) | per-draw (G1) | あり |
-| set=2 binding=3 | `MaterialLegacyBlinn` | `MaterialUBO_Legacy` (= 暫定名、(F) 確定後 update) | per-draw (G1) | あり |
+| set=2 binding=2 | `MaterialUBO` | `MaterialUBO` (温存) | per-draw (MC1) | あり |
+| set=2 binding=3 | `MaterialLegacyBlinn` | `MaterialUBO_Legacy` (= 暫定名、(F) 確定後 update) | per-draw (MC1) | あり |
 
 #### set=3 帯 (= per-asset + per-skin、3 個)
 
@@ -182,7 +191,7 @@
 |---|---|---|---|
 | set=0 | 4 | 3 + 1 = 4 (per-frame slot 3 + singleton 1) | per-frame + singleton |
 | set=1 | 77 (= 23 + 54、(V2) 確定後最終 77-79) | program 単位、bind されている program 数 (= 典型 20-50) | per-program |
-| set=2 | 4 | ring buffer 1 + dynamic offset (= L1+L2、§5) | per-draw + Material\* G1 統合 |
+| set=2 | 4 | ring buffer 1 + dynamic offset (= L1+L2、§5) | per-draw + Material\* MC1 統合 |
 | set=3 | 3 | (Asset 2 × N) + (Skin 1 × M)、owner 数 scene 規模次第 | per-asset + per-skin |
 | **合計** | **88** | scene 規模で 1 + 2N + M + (典型 20-50) + 数物理 instance | — |
 
@@ -292,6 +301,11 @@ flushDrawUbos()                                 ← 06b §4.1
 | set=3 layout = Asset_\* 2 + Skin_\* 1 binding | 全 shader 共通固定 layout (= GLTF 描画 program のみ参照、非 GLTF program は set=3 を dummy bind) |
 
 **(V3) 持越** = set=1 layout を全 program 共通にするか program 別にするかは PSO cache 効率 vs descriptor set 効率のトレードオフ、chapter 07 で実 device feature query + 計測後決定。default は **全 program 共通 79 binding layout** (= PSO compatibility 最大、不使用 binding は dummy で埋める)。
+
+**(V3) と (MD)/M1 採用の関係明示 (= 設計 review 2026-06-03 §3.4 修正)**:
+- 本 chapter §2.1 で **M1 採用 (= descriptor set 4 帯 ↔ cadence 5 分類 1:1 配置)** を default に置いた前提で、(V3) は set=1 帯 (= per-program) 内部の layout 統一/分散のトレードオフ議論
+- もし §10 (MD) で AYA が **M2 (= cadence 別 set 拡張)** を選択すると (V3) は前提崩壊: set=1 帯自体が複数 set に分散され「set=1 layout を全 program で共通にするか」という設問が成立しなくなる (= per-program 帯の各 sub-set がそれぞれ別の compatibility 判定)
+- → (V3) chapter 07 消化は (MD) 解消 (chapter 10 / AYA 判断) 後でないと正しい論点設定にならない、(MD) → (V3) の順序依存あり (chapter 09 Phase Roadmap で順序保証)
 
 ---
 
@@ -459,7 +473,7 @@ chapter 07 で sampler 配置 (S1 / S2 / 別案) 確定後、本 chapter §3 接
 | chapter | 本 chapter からの入力 | 本 chapter への出力 |
 |---|---|---|
 | **04** (codegen-ubo) | `ubo_metadata.inl` (= block_name → set/binding/size) / `UniformLocation` struct / `CadenceTag` enum | (本 chapter は受け側) — `ubo_metadata.inl` の set/binding 出力値が本 chapter §2/§3 配置と一致することを Codegen 側で保証 |
-| **05** (existing-inventory-link) | 84 UBO の cadence 別 mapping (= §3) / E3 (= 79 個独立保持) / G1 (= Material\* per-draw 統合) | (本 chapter は受け側) — chapter 05 §7 集約 mapping は 06c 配置に従う |
+| **05** (existing-inventory-link) | 84 UBO の cadence 別 mapping (= §3) / E3 (= 79 個独立保持) / MC1 (= 旧 G1、Material\* per-draw 統合) | (本 chapter は受け側) — chapter 05 §7 集約 mapping は 06c 配置に従う |
 | **06a** (cache-structure-and-setter-redirect) | `mUseUBO` flag 配置 / `mUniformUBOLoc[index]` cache / setter redirect 入口 | (Q1) `mUseUBO` initial 設定方針確定 (= §6 N2 採用) |
 | **06b** (cadence-update-site-and-dirty) | flush 関数 5 種 / L1+L2 default / triple-buffering (U1=3) / dirty 二段階 dedup | (本 chapter は受け側) — flush 直後 bind 配線 (§4) / dynamic offset bind 側責務 (§5) / set=0 rotate (§7) で 06b 確定事項を bind 側に展開 |
 | **07** (vulkan-api-state) | (本 chapter は提供側) | descriptor set layout 確定 (§2/§3) / bind sequence (§4) / dynamic offset bind 側責務 (§5) / triple-buffering rotate 方式 (§7) / sampler 配置決定 (§8 持越) / device limit 検知 (§2.3 (V1) / §4.3 (V3)) |
@@ -469,15 +483,17 @@ chapter 07 で sampler 配置 (S1 / S2 / 別案) 確定後、本 chapter §3 接
 
 ## §10 未確定事項 (→ chapter 07 / 09 持越 / AYA 判断仰ぎ)
 
-| # | 項目 | 解消先 | default 採用案 |
-|---|---|---|---|
-| (M) | descriptor set 4 帯 ↔ cadence 5 分類 1:1 配置 (M1) vs cadence 別 set 拡張 (M2) | **chapter 10 / AYA 判断** | M1 (= 1:1 配置、§2.1) |
-| (N) | `mUseUBO` initial 設定 = N1 全 ON / N2 shader 単位 phase migration | **chapter 10 / AYA 判断** | N2 (= phase migration、§6.2) |
-| (O) | UB_\* 4 binding 拡張 = O1 既存維持 + 新規追加 / O2 全体再構成 | **chapter 10 / AYA 判断** | O1 (= 既存維持、§3.4) |
-| (V1) | set=1 が 79 binding で device `maxDescriptorSetUniformBuffers` 限界懸念 | chapter 07 | default 79 binding 1 set、device limit 検知時に split 検討 |
-| (V2) | inventory §3.3.1 同一 binding 複数 UBO 名疑い (= ClipPlane / SkinnedVelocity 等 5 個) | 実装 phase 入口 (= `06a-prep` §3 (E')) | A/B/C 案いずれか、Phase 0 計測待ち |
-| (V3) | set=1 layout = 全 program 共通 79 binding (= dummy 埋め) / program 別 layout | chapter 07 | 全 program 共通 (= PSO compatibility 最大) |
-| (S3) | sampler 49 個の descriptor set 配置帯 | chapter 07 | 配置決定は chapter 07 譲り、§8.2 で 3 案併記 |
+**読み方 (= 設計 review 2026-06-03 §3.4 修正)**: 「default 採用案」列は **本 chapter 全節が当該案を採用済前提で記述されている** ことを意味する (= Claude が已に default として配線済、chapter 内本文・表・code shape の全てが当該案で整合)。AYA が解消先で別案を選択した場合は本 chapter の該当節 (= 列内 § ポインタ) を覆って書換が必要。
+
+| # | 項目 | 解消先 | default 採用案 (= 本 chapter 採用済) | 別案採用時 影響範囲 |
+|---|---|---|---|---|
+| **(MD)** (= 旧 (M)、設計 review 2026-06-03 §3.1 ID rename = material domain prefix、chapter 06b §8 thread-safe の (M) と衝突回避) | descriptor set 4 帯 ↔ cadence 5 分類 1:1 配置 (M1) vs cadence 別 set 拡張 (M2) | **chapter 10 / AYA 判断** | **M1 (= 1:1 配置、§2.1) — 採用済** | M2 採用時: §2 全体 / §3 接合表 / §4 bind sequence / §10 (V3) 前提崩壊 (= 上記 §4.3 (V3) 関係明示) |
+| (N) | `mUseUBO` initial 設定 = N1 全 ON / N2 shader 単位 phase migration | **chapter 10 / AYA 判断** | **N2 (= phase migration、§6.2) — 採用済** | N1 採用時: §6.3.1 / §6.3.2 / §6.3.3 を full ON 形に書換 |
+| (O) | UB_\* 4 binding 拡張 = O1 既存維持 + 新規追加 / O2 全体再構成 | **chapter 10 / AYA 判断** | **O1 (= 既存維持、§3.4) — 採用済** | O2 採用時: §3.3 既存 GL binding 番号差分が全面再構成、原則 1 (= upstream 取込互換) 影響大 |
+| (V1) | set=1 が 79 binding で device `maxDescriptorSetUniformBuffers` 限界懸念 | chapter 07 | **default 79 binding 1 set、device limit 検知時に split 検討 — 採用済** | split 化採用時: §2.3 set=1 を 2 set に分割、§4.1 bind sequence + §10 (MD)/M1 維持判定再評価 |
+| (V2) | inventory §3.3.1 同一 binding 複数 UBO 名疑い (= ClipPlane / SkinnedVelocity 等 5 個) | 実装 phase 入口 (= `06a-prep` §3 (E')) | A/B/C 案いずれか、Phase 0 計測待ち (= 本 chapter は **計測結果待ち、暫定 §3.1 set=1 帯 77 個**) | 確定次第 §3.1 set=1 帯に binding=77/78 追加可能性、§3.2 集計表 update |
+| (V3) | set=1 layout = 全 program 共通 79 binding (= dummy 埋め) / program 別 layout | chapter 07 | **全 program 共通 (= PSO compatibility 最大) — 採用済** | program 別採用時: §4.3 PSO compatibility 表全面書換 + PSO cache 戦略再設計 |
+| (S3) | sampler 49 個の descriptor set 配置帯 | chapter 07 | **配置決定は chapter 07 譲り、§8.2 で 3 案併記 — 採用未済 (= 本 chapter は bridge のみ)** | 確定次第 §3.1 接合表 + §3.2 集計表に set=4 or set=1 拡張形を追記 |
 
 ---
 
@@ -490,7 +506,7 @@ chapter 07 で sampler 配置 (S1 / S2 / 別案) 確定後、本 chapter §3 接
 - §6 `mUseUBO` 設定方針は chapter 09 Phase Roadmap 確定で whitelist 具体形を反映
 - §7 set=0 rotate は chapter 07 実装で方式 A 確定したら §7.2 を確定形に書換え
 - §8 sampler 配置は chapter 07 で S1/S2/別案確定後、本 chapter §3 接合表 + §3.2 集計表に追記
-- §10 (M)(N)(O)(V1)(V2)(V3)(S3) 持越は chapter 07 / 09 / 10 / 実装 phase で消化したら本 chapter から「保留候補」を剥がして reflect
+- §10 (MD)(N)(O)(V1)(V2)(V3)(S3) 持越は chapter 07 / 09 / 10 / 実装 phase で消化したら本 chapter から「保留候補」を剥がして reflect。なお (MD) は設計 review 2026-06-03 §3.1 で旧 (M) から rename (= material domain、chapter 06b §8 thread-safe の (M) と衝突回避)
 
 ---
 

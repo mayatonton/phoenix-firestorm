@@ -6,7 +6,7 @@
 - `ayastorm-r41-ubo-current-state-inventory.md` (現状 84 UBO + bare uniform dispatcher 棚卸し)
 - `01-overview.md` §3 (用語) / §5 (確定済事項 9-11)
 - `02-naming-convention.md` (命名 + rename 表)
-- `03-cadence-classification.md` (cadence 6 分類)
+- `03-cadence-classification.md` (cadence 5 分類、= 旧 6 分類から per-material を per-draw + dirty flag 統合 = 本 chapter §6 G1 確定)
 - `04-codegen-ubo.md` (Codegen 入力契約)
 
 ---
@@ -18,7 +18,7 @@
 1. 既存 **84 UBO blueprint の cadence 別 mapping** (chapter 02 rename + chapter 03 cadence 適用後の最終配置)
 2. **set=2 (25 個) vs set=3 (`_Legacy` 54 個) の役割重複統廃合方針** (= inventory 持越 item B)
 3. **`MaterialUBO` vs `MaterialUBO_Legacy` の処遇** (= inventory §7 課題 #5、持越 C)
-4. **per-material cadence の最終判定** (= per-draw 統合 / 独立保持、持越 G)
+4. **per-material cadence の最終判定** (= per-draw 統合 / 独立保持、持越 MC = ex 持越 G、ID rename = chapter 04 §10 (G) perfect hash generator との別概念衝突回避、2026-06-03 査読 §5.6)
 5. **bare uniform → UBO 集約対応表の書式 / owner / フロー** (= 持越 H)
 6. chapter 09 (phase roadmap) への **migration 入力**: どの UBO から手を付け、どの bare uniform を先に集約するか
 
@@ -40,7 +40,7 @@
 | inventory §3 (84 GLSL blueprint) | §3 cadence 別 mapping の対象 |
 | inventory §4.3 (host redirect 16 method) | §7 集約表が指す setter family |
 | chapter 02 §3 rename 表 | §3 で新名適用 |
-| chapter 03 §2 cadence 6 分類 | §3 各 UBO の cadence 判定 |
+| chapter 03 §2 cadence 5 分類 (= 旧 6 分類から per-material → per-draw + dirty flag 統合済、本 chapter §6 G1) | §3 各 UBO の cadence 判定 |
 | chapter 04 §7.3 集約フロー | §7.4 で本 chapter 出力を Codegen に渡す |
 
 ---
@@ -164,7 +164,9 @@ member 比較 / program 単位 attach grep は chapter 09 Phase 0 計測 task �
 
 ---
 
-## §6 per-material cadence の最終判定 (= 持越 G、**確定 2026-06-03**)
+## §6 per-material cadence の最終判定 (= 持越 MC、**確定 2026-06-03**)
+
+**ID 注**: 本節持越 ID は当初 (G) だったが、chapter 04 §10 (G) (= perfect hash generator) と別概念衝突するため (MC) (material cadence prefix) に rename (2026-06-03 査読 §5.6)。MC1/MC2 = G1/G2 の対応。
 
 ### §6.1 論点 (chapter 03 §2 の注を再開)
 
@@ -172,22 +174,22 @@ chapter 03 §2 で「per-material = per-draw cadence の特化 (material が同�
 
 ### §6.2 選択肢
 
-| # | 案 | 影響 |
+| # | 案 (= MC1/MC2 = 旧 G1/G2) | 影響 |
 |---|---|---|
-| G1 | **per-draw + dirty flag に統合** = per-material cadence は独立軸として持たない、Material* UBO は per-draw cadence で扱い dirty 判定で同 material 連続時 skip | cadence 軸 5 分類に縮約、命名 prefix は `Material*` 温存 |
-| G2 | **独立 cadence として保持** = per-material 独立 update site / descriptor set | cadence 軸 6 分類維持、material 切替頻度に応じた最適化余地 |
+| MC1 (= G1) | **per-draw + dirty flag に統合** = per-material cadence は独立軸として持たない、Material* UBO は per-draw cadence で扱い dirty 判定で同 material 連続時 skip | cadence 軸 5 分類に縮約、命名 prefix は `Material*` 温存 |
+| MC2 (= G2) | **独立 cadence として保持** = per-material 独立 update site / descriptor set | cadence 軸 6 分類維持、material 切替頻度に応じた最適化余地 |
 
-### §6.3 採用案 = **G1 (per-draw + dirty flag)** (= 2026-06-03 AYA 確認)
+### §6.3 採用案 = **MC1 (per-draw + dirty flag、= 旧 G1)** (= 2026-06-03 AYA 確認)
 
 #### 採用根拠 (= 「現状動作にいちばん近い」軸)
 
 1. **現状 OpenGL path に per-material 独立 cadence が存在しない**: `MaterialUBO` / `MaterialUBO_Legacy` は GLSL blueprint のみ、host 側 `glUniformBlockBinding` 経路ゼロ (inventory §1.2)。material parameters は **bare uniform setter で per-draw 投入** されている (inventory §2)
 2. **既存 `mValue` cache (inventory §4.3) が dirty flag と意味論的に同じ**: 同値時 GL call 省略 = dirty 判定の言い換え。G1 dirty flag はこの cache を Vulkan UBO upload 側に **乗せ替えるだけ**
-3. **G2 採用には material 切替検知 hook を C++ 側に新規建設が必要** = call site 改変必須、原則 1 抵触
+3. **MC2 (= 旧 G2) 採用には material 切替検知 hook を C++ 側に新規建設が必要** = call site 改変必須、原則 1 抵触
 4. **cadence 軸が 5 分類に縮約** = chapter 06 redirect 層 / chapter 09 phase 設計が簡素化
 5. **命名 prefix `Material*` は温存** = upstream 取込互換 (chapter 02 §2.1)、cadence と命名は独立軸 (chapter 03 §2.2)
 
-### §6.4 G1 採用に伴う整合 update
+### §6.4 MC1 (= 旧 G1) 採用に伴う整合 update
 
 | update 先 | 内容 |
 |---|---|
@@ -320,15 +322,17 @@ chapter 04 (Codegen) は GLSL 不改変 (= 判断 A)。一方 **chapter 05 は�
 
 | # | 項目 | 解消先 |
 |---|---|---|
-| ~~E~~ | ~~set=2 vs set=3 統廃合方針~~ → **解消 (2026-06-03 AYA 判断: E3 採用、§4.3 reflect 済)**。統合判定の再評価は §4.4 経由で chapter 09 後半 / chapter 10 へ移管 | — |
+| E (解消) | set=2 vs set=3 統廃合方針 → **解消 (2026-06-03 AYA 判断: E3 採用、§4.3 reflect 済)**。統合判定の再評価は §4.4 経由で chapter 09 後半 / chapter 10 へ移管 | — |
 | E' | inventory §3.3.1 同一 binding 複数 UBO 名疑い (`PerDrawUBO_ClipPlane` 等) | chapter 09 Phase 0 計測 task |
 | F | `MaterialUBO` vs `MaterialUBO_Legacy` 処遇 (F1 統合 / F2 別名分離 / F3 廃止) | chapter 09 Phase 0 member 比較 + program 単位 attach grep |
-| ~~G~~ | ~~per-material cadence~~ → **解消 (2026-06-03 AYA 判断: G1 採用、§6.3 reflect 済)** | — |
+| MC (解消、= 旧 G、rename = chapter 04 §10 (G) との衝突回避) | per-material cadence → **解消 (2026-06-03 AYA 判断: MC1 採用 = 旧 G1、§6.3 reflect 済)** | — |
 | H1 | bare uniform 集合の完全 enumerate | chapter 06 起案時 grep + LL_INFOS hook |
 | H2 | 集約表の owner (inline 維持 vs 別 file `05a-` 切出し) | 表 size > 50 行で再判定 |
 | H3 | 集約判定 conflict 時の AYA 判断ループ | chapter 09 Phase 進行中に case-by-case |
 
-**(E) / (G) ともに解消済 (2026-06-03)** = §4.3 / §6.3 確定 reflect 済、chapter 02 / chapter 03 / chapter 01 整合 update 完了。本 chapter の AYA 判断仰ぎ事項は全件クローズ、残持越は Phase 0 計測 task ((E') / (F)) と migration 進行 live 表 ((H1) / (H2) / (H3)) のみ。
+**(E) / (MC) ともに解消済 (2026-06-03)** = §4.3 / §6.3 確定 reflect 済、chapter 02 / chapter 03 / chapter 01 整合 update 完了。本 chapter の AYA 判断仰ぎ事項は全件クローズ、残持越は Phase 0 計測 task ((E') / (F)) と migration 進行 live 表 ((H1) / (H2) / (H3)) のみ。
+
+**表記注**: 解消マークは他 chapter (= chapter 06b §3.4 / chapter 10 §2 等) と統一して plain text `(解消)` 接尾辞を採用 (= 取消線 `~~~~` から変更、2026-06-03 査読 §5.7)。
 
 ---
 
@@ -337,7 +341,7 @@ chapter 04 (Codegen) は GLSL 不改変 (= 判断 A)。一方 **chapter 05 は�
 - §3 cadence mapping は inventory 棚卸し変化で update
 - §7.3 集約表は live 表として migration 進行で update (= 候補 → 確定 → 移行済)
 - 表 size > 50 行で `05a-bare-uniform-mapping.md` 切出し、本 chapter は §7.3.1 書式と §7.4 フローのみ残存
-- (E)(F)(G) AYA 判断後に §4 / §5 / §6 / chapter 03 / chapter 04 §10 と整合 reflect
+- (E)(F)(MC) AYA 判断後に §4 / §5 / §6 / chapter 03 / chapter 04 §10 と整合 reflect
 - chapter 09 Phase 進行で migration 完了した bare uniform / UBO は本 chapter §3 / §7.3 表で移行済マーク
 
 ---

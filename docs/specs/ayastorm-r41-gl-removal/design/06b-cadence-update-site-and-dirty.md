@@ -158,6 +158,11 @@ setter call
 
 #### §3.2.3 Vulkan 側 dirty flag の配置
 
+**⚠ 重要 (= 設計 review 2026-06-03 §3.4 修正)**: 下記 code shape は **K2 (UBO 単位 dirty、§3.4) を default 採用した前提形** であり、(K) は chapter 10 持越で AYA 判断待ち。AYA が **K1 / K3 を選択した場合** は本 §3.2.3 code shape を以下のように差し替える:
+- **K1 採用時**: `UboInstance::dirty` を `std::atomic<bool>` 単一値ではなく **`std::vector<std::atomic<uint64_t>>` (= member 数 / 64 の bitset)** に変更、`forwardToUboUpload` で member offset 単位の bit set、flush 関数は dirty bit 範囲を partial upload に翻訳 (= chapter 07 で `vkCmdUpdateBuffer` 等)
+- **K3 採用時**: `UboInstance::dirty` は廃し、cadence 単位の **`std::array<std::atomic<bool>, 5>`** を upload ownership に追加、§5.2 routing は cadence index 単位で dirty set
+- いずれの場合も §5.2 routing の 5 case 分岐構造と §4.1 flush 関数の cadence 別呼出順序 (= 本 chapter 確定事項) は不変
+
 dirty flag は **UBO physical instance 単位** で持つ (= §3.4 K 論点で Claude 推奨 = K2):
 
 ```cpp
@@ -355,6 +360,8 @@ per-draw cadence は数百〜数千 / frame の upload が走るため、physica
 
 → **(L)** chapter 07 / 06c 持越 (= 実 buffer / dynamic offset 配線は chapter 07、bind タイミング は 06c)。L1+L2 が default 採用。
 
+**⚠ 依存性明示 (= 設計 review 2026-06-03 §3.4 修正)**: 上記 §5.2 routing 内 `case CADENCE_PER_DRAW` の `getDrawUboRingSlot(loc.block_hash)` helper は **L1+L2 default 採用前提**の signature。AYA が **L3 (sub-allocation)** を選択した場合は同 case で `getDrawUboFreshBuffer(loc.block_hash)` 相当の helper に差し替え + descriptor set rewrite path (= 06c 側) も同時改修必須。本 chapter §5.2 の case 分岐構造自体は (L) 解消後も不変。
+
 ### §5.4 thread 配線
 
 #### §5.4.1 現 phase = main thread 専有
@@ -379,6 +386,8 @@ per-draw cadence は数百〜数千 / frame の upload が走るため、physica
 - `dirty` flag = `std::atomic<bool>` (= §3.2.3 既述、現 phase でも安全側設計)
 - `getXxxUboInstance(block_hash)` helper の owner table = 現 phase は **non-mutex** (= main thread 専有前提)、将来 phase で `std::shared_mutex` 追加
 - = **(M)** thread-safe 化方式の chapter 07 持越
+
+**⚠ 依存性明示 (= 設計 review 2026-06-03 §3.4 修正)**: 上記 §5.4.3 の `getXxxUboInstance(block_hash)` owner table = 現 phase non-mutex は **「現 phase main thread 専有」前提**。AYA が **mutex (shared_mutex)** を選択した場合は helper 内で reader-writer lock 追加、**lock-free (= cmd buffer per-thread sub-allocation)** を選択した場合は owner table 自体を thread-local 化 (= chapter 07 secondary cmdbuf 設計と一体)。本 §5.4.3 の `dirty` `std::atomic<bool>` (= §3.2.3) は (M) 解消に依存せず安全側設計のため不変。
 
 ---
 
@@ -411,6 +420,7 @@ per-draw cadence は数百〜数千 / frame の upload が走るため、physica
 | (K) | dirty 判定粒度 = K1 member 単位 / K2 UBO 単位 / K3 cadence 単位 | **chapter 10 / AYA 判断** | K2 (= UBO 単位、§3.4) |
 | (L) | per-draw Vulkan 最適化 = L1 ring buffer / L2 dynamic offset / L3 sub-allocation | **chapter 07 / 06c** | L1 + L2 組合せ (= §5.3) |
 | (M) | thread-safe 化方式 = mutex / atomic / lock-free | chapter 07 | 現 phase atomic (= §5.4.3) |
+| **(M) ID 衝突注 (= 設計 review 2026-06-03 §3.1 ID rename 整合)** | 本 chapter §8 (M) = thread-safe 化方式 (本 chapter 06b 固有)。chapter 06c §10 でも別概念に (M) ID が使われていた歴史があり、chapter 06c 側のみ **(M) → (MD)** rename (= material domain) を実施。**本 chapter 06b の (M) ID は thread-safe を指すまま維持** (= 06b ↔ 06c の (M) ID は別概念で、文脈で識別) | — | — |
 | (U1) | per-frame triple-buffering buffer 個数 = 2 (double) / 3 (triple) / N | chapter 07 | 3 (= triple-buffering 標準、§4.3) |
 | (U2) | per-asset / per-skin dirty 判定 = 既存 owner state 変化検知継承 / Vulkan 側 dirty bit 追加 | chapter 07 | 既存 owner 変化検知 + Vulkan 側 dirty bit の両立 (= 既存 path 改変ゼロ + Vulkan upload dedup 両得) |
 | (U3) | flush timing で per-program ↔ per-draw 境界 = bind 直後 upload vs draw 直前 upload | (H1b) hook 計測後再評価 | bind 直後 upload (= per-program 帯)、draw 直前 upload (= per-draw 帯) で分離 (= §4.1) |

@@ -12,7 +12,7 @@ inventory §3 で確認した通り、現状の GLSL UBO blueprint は 4 系統�
 
 - `Frame*` (set=0 帯、3 個)
 - `MaterialUBO` / `MaterialUBO_Legacy` (set=1 帯、2 個)
-- `PerProgramUBO_*` / `PerDrawUBO_*` (set=2 帯、25 個)
+- `PerProgramUBO_*` / `PerDrawUBO_*` (set=2 帯、26 個、binding 0-25) — 注: 設計 doc 群で慣性的に「25 個」と書かれた箇所あり (= inventory §3.3 header / chapter 01 §3.3 / chapter 05)、本数値 26 が正 (= 表本体 binding 0-25 で 26 unique entry を確認、2026-06-03 査読)
 - `<Name>UBO_Legacy` (set=3 帯、54 個)
 
 これらは **起源 sub-step ごとに ad-hoc に命名された結果** で、cadence と命名が **必ずしも対応していない**。設計 doc 群で「PerProgramUBO_GammaCorrect は per-program cadence」「FrameViewProj は per-frame cadence」と書くたびに自明性が無い。
@@ -124,16 +124,20 @@ inventory §3 の現状 84 個に対する命名規則適用後の最終名。**
 |---|---|---|---|---|
 | `FrameViewProj` | `FrameViewProj` | per-frame | `LLGLSLShader` の per-frame slot | 既存命名と規則が一致、変更なし |
 | `FrameLights` | `FrameLights` | per-frame | 同上 | 同上 |
-| `FrameAtmosphere_Lighting` | `FrameAtmosphere` | per-frame | 同上 | `_Lighting` suffix を削除 (atmospheric には lighting 以外無いため自明) |
+| `FrameAtmosphere_Lighting` | `FrameAtmosphere` | per-frame | 同上 | `_Lighting` suffix を削除 (atmospheric には lighting 以外無いため自明)。**移行注**: rename 完了は Codegen-UBO 出力 phase (chapter 09 phase roadmap 参照)、それまでは inventory §3.1 / chapter 05 §3.1 / handoff docs / reference-shader-location-map / 既存 GLSL (`#ifdef LL_VULKAN_GLSL` 内側) は旧名 `FrameAtmosphere_Lighting` を保持 (= 既知 / 過渡期許容) |
 
 ### §3.2 set=1 帯 (2 個 → 再構成検討)
 
 | 現名 | 新名 | cadence | 備考 |
 |---|---|---|---|
-| `MaterialUBO` | `MaterialUBO` (暫定) | per-material | 既存名温存、chapter 05 で member 細分 / 分割を検討 |
-| `MaterialUBO_Legacy` | `MaterialLegacyBlinn` (案) | per-material | `_Legacy` は移行完了時に剥がす、別 program 用と確認できれば独立名へ |
+| `MaterialUBO` | `MaterialUBO` (暫定) | per-draw (material dirty flag、chapter 01 §5 確定事項 #12) | 既存名温存 (`Material*` 例外、§4 警告対象外)、chapter 05 で member 細分 / 分割を検討 |
+| `MaterialUBO_Legacy` | `MaterialLegacyBlinn` (案) | per-draw (material dirty flag、chapter 01 §5 確定事項 #12) | `_Legacy` は移行完了時に剥がす、別 program 用と確認できれば独立名へ |
 
-### §3.3 set=2 帯 (25 個 → `PerProgramUBO_` / `PerDrawUBO_` rename)
+**cadence 注**: chapter 01 §5 確定事項 #12 = per-material cadence は per-draw + dirty flag に統合 (= 独立軸として持たない)、cadence 軸は 5 分類 (per-frame / per-program / per-draw / per-asset / per-skin) に縮約。本 chapter §2.1 と同じ表記を §3.2 にも適用。
+
+### §3.3 set=2 帯 (26 個、binding 0-25 → `PerProgramUBO_` / `PerDrawUBO_` rename)
+
+**個数注**: 設計 doc 群で慣性的に「25 個」と書かれた箇所あり (= inventory §3.3 header / chapter 01 §3.3 / chapter 05 §3.3 等)、実数は **26** (= 表本体 binding 0-25、unique entry 26、本査読 2026-06-03 確認)。inventory + chapter 01 + chapter 05 は別 task で後追い修正対象。
 
 | 現名 | 新名 | cadence |
 |---|---|---|
@@ -170,7 +174,9 @@ inventory §3 の現状 84 個に対する命名規則適用後の最終名。**
 
 **chapter 05 §4 で E3 (rename だけ) 採用** (= 2026-06-03 AYA 確認)。set=2 (`Program_*`) との統合 / 分割の個別判定は **本 chapter では行わない**。全件 `<Name>UBO_Legacy` → `Program_<Name>` の機械的 rename のみ実施。
 
-rename pattern 例 (= 全 54 件は inventory §3.4 全件を同パターンで):
+**完全 list 参照モデル**: 本 chapter §3.4 は rename **規則** のみを定義 (= 機械的 1:1 変換)、全 54 件の完全 mapping は inventory §3.4 (= 旧名 list 完全版) と本規則の組合せで decidable。完全 mapping 表が必要なら chapter 05 §4 (existing-inventory-link) が canonical (= rename 表の完全版を持つ)。本 chapter は規則の唯一 source、chapter 05 は適用結果の唯一 source。
+
+rename pattern 例 (= 全 54 件は inventory §3.4 全件を同パターンで、完全表は chapter 05 §4):
 
 | 旧名 | 新名 |
 |---|---|
@@ -193,8 +199,10 @@ build-time check として以下を **Codegen-UBO pipeline で自動検証** (ch
 - `Frame` prefix + non per-frame cadence の宣言 → error
 - `Program_` prefix + non per-program cadence の宣言 → error
 - `Draw_` prefix + non per-draw cadence の宣言 → error
-- `UBO` suffix が残っている → warning (`_Legacy` 以外)
+- `UBO` suffix が残っている → warning (`_Legacy` **および `Material*` family 例外**)
 - `Per*UBO_` prefix が残っている → warning (移行未完成)
+
+**`Material*` 例外**: §3.2 表で `MaterialUBO` 新名は `UBO` suffix を温存 (= 原則 1 upstream 取込互換)、§4 warning ルールの対象外。`Material*` prefix family (`MaterialUBO` / `MaterialLegacyBlinn` 等) は per-draw cadence (chapter 01 §5 #12、material dirty flag) として §2.1 表で定義済。
 
 ---
 

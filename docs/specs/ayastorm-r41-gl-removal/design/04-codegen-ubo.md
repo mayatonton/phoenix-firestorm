@@ -299,9 +299,14 @@ LL の GLSL 現状調査必要事項:
 - array uniform は **N 固定展開** (= `light[0].color`, `light[1].color`, ... が GLSL preprocess 後に flatten される) か
 - 動的 index 経由 setter (= `uniform4fv("light[" + i + "].color", ...)` 等) が C++ 側に存在するか
 
-→ **(D) 動的 uniform 名の存在確認** を chapter 10 保留、chapter 06 起案時に実 grep で判定。
+→ **(D) 動的 uniform 名の存在確認** を chapter 10 保留、**chapter 06a-prep §7 (P1)-(P4) Phase 0 grep task に接続** (= chapter 06 系列分割後の新接続先、本査読 2026-06-03 §3.2)。
 
 現時点の前提: LL の uniform は GLSL preprocess 後に flatten され、N 固定で perfect hash 可能と想定。例外発生時は chapter 06 で local fallback 設計。
+
+**(D) Phase 0 接続 task 仕様** (= chapter 06a-prep §7 起案要事項):
+- 対象 dir: `indra/newview/app_settings/shaders/` 配下全 GLSL ファイル
+- grep pattern: array uniform 宣言 (`uniform <type> <name>[<N>]`) + setter call site (`uniform*fv("<name>[" + ... + "]"`)
+- pass-fail criteria: 動的 index 経由 setter 0 件 (= 全 array が N 固定展開) なら perfect hash 成立、1 件以上検出なら chapter 06 redirect 層に local fallback 仕様追加
 
 ---
 
@@ -320,6 +325,18 @@ bare uniform (= `uniform vec4 color;` のような UBO ブロック外宣言) �
 - **OpenGL path**: bare uniform は従来通り `glUniform*` 直呼び (= 原則 1 維持)
 - **Vulkan path**: bare uniform は GLSL spec 上 opaque type 以外宣言禁止 → chapter 05 集約表で **UBO の member に集約された後** Codegen 経由で処理
 - **両 path 共存期**: bare uniform の setter call site は **chapter 06 redirect 層で path 分岐** (OpenGL → 従来 `glUniform*`、Vulkan → UBO offset 書込)
+
+#### §7.2.1 過渡期動作 (= chapter 09 Phase Exit Criteria 接続、2026-06-03 査読 §3.3)
+
+chapter 09 phase roadmap で「N UBO ずつ移行」する間、まだ chapter 05 集約表で UBO に取り込まれていない bare uniform は **Vulkan path 上で未 redirect** (= chapter 01 §1.2 の「84 blueprint が dead」と同型の過渡期状態)。
+
+**chapter 09 Phase Exit Criteria 要求事項** (= 本 chapter から chapter 09 への入力契約):
+- 各 Phase で「未集約 bare uniform の Vulkan path 動作」を Exit Criteria に明示
+- 取り得る policy 案 (chapter 09 で確定):
+  - (a) 未集約 bare の Vulkan path 投入は no-op (= 値ゼロ / 初期値で描画)
+  - (b) 未集約 bare の Vulkan path 投入は build-time check で error (= 集約済 bare のみ Vulkan path 通過許可)
+  - (c) Phase 単位 staging (= 該当 Phase で集約済の bare のみ Vulkan path 有効、他は OpenGL path 強制)
+- chapter 09 Phase 0 計測完了後、上記 (a)/(b)/(c) のいずれを採用するか確定
 
 ### §7.3 chapter 05 集約対応表との関係
 

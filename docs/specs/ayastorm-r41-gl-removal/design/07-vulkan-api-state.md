@@ -84,7 +84,7 @@
 
 | field | 現状値出典 | 本設計での用途 |
 |---|---|---|
-| `maxBoundDescriptorSets` | `VkPhysicalDeviceLimits` (Vulkan 1.3 最小 4) | §4 set=0/1/2/3 = 4 帯運用、Vulkan 1.3 最小値で必要十分 |
+| `maxBoundDescriptorSets` | `VkPhysicalDeviceLimits` (Vulkan 1.3 最小 4) | §4.4 で論理 set 帯は 5 (set=0/1a/1b/2/3) に拡張、§4.4.1 + §9.2 で「shader bind 時 = set=0/1a/1b/2 の 4 set 同時 / draw 切替時 = set=2↔set=3 入替で 4 set 維持」設計 = `maxBoundDescriptorSets=4` 死守 (= 設計 review 2026-06-03 §3.4 整合) |
 | `maxPushConstantsSize` | (Vulkan 1.3 最小 128) | 既存 modelview push (64 B) のみ、本設計で拡張なし |
 | `maxPushDescriptors` | `VkPhysicalDevicePushDescriptorPropertiesKHR` | per-skin (set=3) 既存使用、本設計で温存 |
 | `maxPerStageDescriptorSampledImages` | (Vulkan 1.3 最小 16) | §5 sampler 配置の (S3) 評価軸 |
@@ -108,7 +108,7 @@
 - `llvkloader.cpp:1422-1450` = `vkCreateDescriptorPool` + `vkAllocateDescriptorSets` for per-frame
 - `llvkloader.cpp:927` = `vkAllocateDescriptorSets` for per-material
 - `llvkloader.cpp:986` = `vkCmdBindDescriptorSets` (placeholder pool draw)
-- = **既存は placeholder 3 setup のみ** (per-frame 1 種 + per-material 1 種 + avatar bone 1 種)、本設計の 4 帯 (= set=0/1/2/3) フル配線は **§6 で新規確定**
+- = **既存は placeholder 3 setup のみ** (per-frame 1 種 + per-material 1 種 + avatar bone 1 種)、本設計の **論理 5 帯** (= set=0/1a/1b/2/3、§4.4) + **bind 時 4 set 維持** (= §4.4.1 + §9.2) フル配線は **§6 (pool) + §4.4.1 (bind) + §9 (PSO layout) で新規確定** (= 設計 review 2026-06-03 §3.4 整合: 旧版で "4 帯" 単独表記だった箇所を 5 帯 + 4 bind 制約 の正確な構成記述に更新)
 
 ### §2.5 descriptor set layout / pipeline layout
 
@@ -249,22 +249,26 @@ set 帯総数 **4 → 5** に拡張:
 
 → §4.4.1 で **set=2 / set=3 への dynamic offset 寄せ** を確定 (= bind set 数を 4 に維持)。
 
-### §4.4.1 5 set → 4 bind set 縮減
+### §4.4.1 論理 5 set → bind 時 4 set 縮減 (= 設計 review 2026-06-03 §3.4 表現整合)
 
-shader bind 時 (= `vkCmdBindDescriptorSets` 呼出) は **必ず set=0..3 の 4 set 同時 bind** を維持:
+論理 set 帯 = 5 (= §4.4: set=0, set=1a, set=1b, set=2, set=3) に対し、shader bind 時 (= `vkCmdBindDescriptorSets` 呼出) は **同時 bind 数を 4 set に制約** (= `maxBoundDescriptorSets=4` 死守、§2.3):
 
-- set=0 (per-frame, frame 開始 1 回 bind)
-- set=1a (per-program 40 binding)
-- set=1b (per-program 39 binding) — **set=1a と同時 bind**
-- set=2 (per-draw dynamic offset)
+- bind 時 構成 (= shader 切替直後):
+  - set=0 (per-frame, frame 開始 1 回 bind)
+  - set=1a (per-program 40 binding)
+  - set=1b (per-program 39 binding) — **set=1a と同時 bind**
+  - set=2 (per-draw dynamic offset)
+- = **計 4 set 同時 bind**、set=3 は除外
 
 set=3 (per-asset+per-skin) は **draw 直前に set=2 と入れ替え bind** (= owner 切替時のみ):
-- 例: rigged GLTF draw = set=2 + set=3 同時 bind (= 4 set 制約に収まる)
-- 非 skinned static = set=2 only (= 3 set bind)
+- rigged GLTF draw 例: `vkCmdBindDescriptorSets(set=2)` 直後に `vkCmdBindDescriptorSets(set=3)` で **set=2 が unbind、set=3 が同 slot に入替** (= 同時 bind 数 = 4 set 維持: set=0/1a/1b/3)。実装は §9.2
+- non-skinned static = set=2 のみ bind = 同時 bind 数 = 4 set (= set=0/1a/1b/2)
+
+注: 上記の「set=0..3」相当の番号付けは **set=0/1a/1b/2** の 4 slot を指す (= set=1 を 1a/1b に split したため連続番号でない)。set=3 は 4 slot 目を「set=2 と排他で占有」する形で運用 (= §9.2 swap)。
 
 = `maxBoundDescriptorSets=4` を**死守**しつつ、PSO compatibility (V3a) を維持。
 
-= **(V3) 解消、§4.4 で set 帯 5 個へ拡張 + bind 時 4 set 制約死守を確定**。
+= **(V3) 解消、§4.4 で論理 set 帯 5 個へ拡張 + bind 時 4 set 制約死守を確定** (= §9.1 pipeline layout は論理 5 帯を保持、§9.2 swap で bind 4 set 制約を達成)。
 
 ---
 
@@ -452,9 +456,9 @@ triple-buffering を per-program / per-draw / per-asset にも適用するか:
 
 ## §9 PSO layout / VkPipelineLayout compatibility
 
-### §9.1 pipeline layout 構成
+### §9.1 pipeline layout 構成 (= 設計 review 2026-06-03 §3.4 4帯/5帯整合)
 
-shader 全体で **共通 pipeline layout**:
+shader 全体で **共通 pipeline layout** (= 論理 5 set 帯を全て layout 内宣言、bind 時は 4 set に絞る = §4.4.1):
 
 ```
 VkPipelineLayout sAYAStandardLayout = {
@@ -463,7 +467,8 @@ VkPipelineLayout sAYAStandardLayout = {
         sProgramSetLayoutA,         // set=1a
         sProgramSetLayoutB,         // set=1b
         sDrawSetLayout,             // set=2 (dynamic offset)
-        // set=3 (per-asset) は draw 時に sDrawSetLayout と入替 bind (§4.4.1)
+        sAssetSetLayout,            // set=3 (per-asset+per-skin+sampler 49、§5.3)
+                                    //        bind 時は set=2 と swap (§9.2)、layout には常時宣言
     },
     .push_constant_ranges = {
         { 0, 64, VK_SHADER_STAGE_VERTEX_BIT },  // modelview push (既存)
@@ -471,7 +476,12 @@ VkPipelineLayout sAYAStandardLayout = {
 };
 ```
 
-= **shader 全体で 1 pipeline layout 共有** (= V3a 採用直結、§4.2)。
+**4帯/5帯整合**: 
+- **論理 5 set 帯 = pipeline layout 内宣言** (= 上記 `descriptor_set_layouts` 配列 5 要素、set=0/1a/1b/2/3 全部)
+- **bind 時 4 set 制約 = `vkCmdBindDescriptorSets` 呼出時の同時 bind 数** (= §4.4.1: shader bind 時 set=0/1a/1b/2、draw 切替時 set=2 ↔ set=3 swap)
+- `maxBoundDescriptorSets=4` 制約は **bind 時の数値** で、layout 宣言数 (= 5) には課されない (= Vulkan spec: `pSetLayouts` array size ≤ `maxBoundDescriptorSets` ではなく、`vkCmdBindDescriptorSets(firstSet+descriptorSetCount)` ≤ `maxBoundDescriptorSets` が正しい仕様)
+
+= **shader 全体で 1 pipeline layout 共有** (= V3a 採用直結、§4.2) + **論理 5 帯 / bind 4 set の同居** (= §4.4.1 swap 設計)。
 
 ### §9.2 set=3 swap 配線
 
@@ -541,16 +551,18 @@ reflection update 1 回ごとに LL_DEBUGS 出力 (= 起動 1 分間に 100 回�
 
 ## §12 未確定事項 (→ chapter 08 / 09 / 10 持越 / AYA 判断仰ぎ)
 
-| # | 項目 | 解消先 | default 採用案 |
+**読み方 (= 設計 review 2026-06-03 §3.4 表記統一)**: 「default 採用済」列は **本 chapter 全節が当該案を採用済前提で記述されている** ことを示す (= Claude が already default で配線済)。AYA が解消先で別案を選択した場合は本 chapter の該当節 (= 列内 § ポインタ) を覆って書換が必要。
+
+| # | 項目 | 解消先 | default 採用済 (= 本 chapter 採用済) |
 |---|---|---|---|
-| (V1') | set=1 79 binding → 40/39 split 採用 | **chapter 10 / AYA 判断** | **本 chapter §3.2 で V1' default、AYA 判断仰ぎ候補** |
-| (V3') | 全 program 共通 layout (V3a) vs program 別 (V3b) | **chapter 10 / AYA 判断** | **本 chapter §4.2 で V3a default、AYA 判断仰ぎ候補** |
-| (S3') | sampler 49 set=3 per-asset 同居 vs 別案 | **chapter 10 / AYA 判断** | **本 chapter §5.2 で S3' default、AYA 判断仰ぎ候補** |
-| (W) | `sProgramUboPool` maxSets = 6 (active × 3 × 2) vs 1200 (shader 数 × 3 × 2) | **chapter 10 / AYA 判断** | **本 chapter §6.2 で maxSets=6 default、AYA 判断仰ぎ候補** |
-| (W2) | `sAssetUboPool` 起動時 prealloc N=64 / grow chunk 64 | **chapter 09 Phase Roadmap** | N=64 prealloc + 64 grow chunk default |
-| (R1) | ring buffer 起動時 4 MB / 上限 16 MB | **chapter 09 Phase Roadmap** | initial=4 / max=16 default、cvar `AYARingBufferSizeMB` で配信 |
-| (PSC) | PSO cache disk persist path / 容量上限 | **chapter 09 Phase Roadmap** | `~/.ayastorm_x64/cache/pipeline_cache.bin`、上限 64 MB |
-| (RF) | reflection update fence throttle (> 100 回/分で warn) | 実装 phase 入口 | LL_DEBUGS log + chapter 09 Phase で throttle 判定 |
+| (V1') | set=1 79 binding → 40/39 split 採用 | **chapter 10 / AYA 判断** | **本 chapter §3.2 採用済 = split (40/39) で配線、device limit 不足時の追加 split を含む** |
+| (V3') | 全 program 共通 layout (V3a) vs program 別 (V3b) | **chapter 10 / AYA 判断** | **本 chapter §4.2 採用済 = V3a (全 program 共通 layout)** |
+| (S3') | sampler 49 set=3 per-asset 同居 vs 別案 | **chapter 10 / AYA 判断** | **本 chapter §5.2 採用済 = S3' (set=3 per-asset+per-skin+sampler 49 同居)** |
+| (W) | `sProgramUboPool` maxSets = 6 (active × 3 × 2) vs 1200 (shader 数 × 3 × 2) | **chapter 10 / AYA 判断** | **本 chapter §6.2 採用済 = maxSets=6 (active × 3 frame × 2 set 帯)** |
+| (W2) | `sAssetUboPool` 起動時 prealloc N=64 / grow chunk 64 | **chapter 09 Phase Roadmap** | **本 chapter §6.1 採用済 = N=64 prealloc + 64 grow chunk** |
+| **(RB)** (= 旧 (R1)、設計 review 2026-06-03 §3.1 ID rename = ring buffer prefix、handoff §4.4 で「R1」が redirect path 識別子と衝突する懸念から retire) | ring buffer 起動時 4 MB / 上限 16 MB | **chapter 09 Phase Roadmap** | **本 chapter §7.2 採用済 = initial=4 MB / max=16 MB、cvar `AYARingBufferSizeMB` で配信** |
+| (PSC) | PSO cache disk persist path / 容量上限 | **chapter 09 Phase Roadmap** | **本 chapter §9.3 採用済 = `~/.ayastorm_x64/cache/pipeline_cache.bin`、上限 64 MB** |
+| (RF) | reflection update fence throttle (> 100 回/分で warn) | 実装 phase 入口 | **本 chapter §10.2 採用済 = LL_DEBUGS log のみ、throttle は chapter 09 Phase 判定** |
 
 ---
 
@@ -564,7 +576,7 @@ reflection update 1 回ごとに LL_DEBUGS 出力 (= 起動 1 分間に 100 回�
 - §7 ring buffer 容量 / chunk 構造 は実装 phase 入口で AYA 実機計測値 reflect、本 chapter §7.2 を update
 - §8 全 cadence rotate は実装で各 cadence 段階的に配線、本 chapter §8.3 表を **段階 reflect**
 - §10 reflection fence は実装で `LLReflectionMapManager::updateProbeFace()` への hook 追加後、本 chapter §10.1 コードスニペットを実装形に reflect
-- §12 (V1')(V3')(S3')(W)(W2)(R1)(PSC)(RF) 持越は AYA 判断 / 実装 phase / chapter 09/10 で消化したら本 chapter §12 から「保留候補」を剥がして reflect
+- §12 (V1')(V3')(S3')(W)(W2)(RB)(PSC)(RF) 持越は AYA 判断 / 実装 phase / chapter 09/10 で消化したら本 chapter §12 から「保留候補」を剥がして reflect (= (RB) は 設計 review 2026-06-03 §3.1 で旧 (R1) から rename = ring buffer prefix、redirect path 識別子と衝突回避)
 
 ---
 

@@ -121,7 +121,12 @@ indra/newview/llviewershadermgr 等
 ### §3.2 確定案 = **B1a (Python)** default
 
 **B1a 採用根拠**:
-1. **3 OS 揃え**: Python 3.8+ は Linux (apt/dnf 標準) / macOS (system Python 3 / Homebrew) / Windows (公式 installer / autobuild bundle) で広く存在、AYAstorm 既存 autobuild stack にも Python 入っており追加 dependency 影響小
+1. **3 OS 揃え (= 設計 review 2026-06-03 §3.4 詳細化)**: 
+   - **Linux**: apt/dnf 標準で Python 3.10+ 提供 (Ubuntu 24.04+/Fedora 39+ 等、AYA dev 環境含む)
+   - **macOS**: system Python 3.9+ (Xcode 14+ 標準) または Homebrew/autobuild bundle、@t-noami さん検証信任の Mac 環境では autobuild 経由が default
+   - **Windows**: 公式 installer (`python.org`) または autobuild bundle、AYAstorm autobuild は Python 3.11 bundle 配信実績 (= `autobuild.xml` `python` package、3 OS 一律 version)
+   - AYAstorm 既存 autobuild stack には `develop.py` / `autobuild` 用に Python 必須なため、本 Codegen tool の追加 dependency 影響ゼロ (= 既存 stack 内)
+   - 万一 system Python 不在の Win 環境では autobuild が Python bundle を install (= `autobuild install python`)、build 時 `find_package(Python3 3.8 REQUIRED)` で autobuild 提供 path を解決
 2. **文字列 / parse / hash 処理に最適**: GLSL 中 UBO block parse / std140 offset 計算 / perfect hash 生成 (= §5) いずれも Python の str/dict/list/struct で素直に書ける、~500-1000 行で完結
 3. **CMake 統合容易**: `find_package(Python3 REQUIRED)` + `add_custom_command(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/codegen_ubo.py ...)` で 1 行
 4. **debug / iterate コスト最小**: tool 改修時に rebuild 不要 (= script は直接実行)、GLSL 変更検出後の Codegen 単独実行も `python codegen_ubo.py` で完結
@@ -209,6 +214,11 @@ indra/newview/llviewershadermgr 等
 
 **A1a 採用根拠**:
 1. **二重保証**: GLSL spec 7.6.2.2 std140 を Python ~100 行で実装 (= chapter 04 §3.3 既述) + glslang SPIR-V reflection の offset 値と build-time check = 不一致なら build error、両系の bug を相互検出
+
+**set 帯 5 化注 (= 設計 review 2026-06-03 §3.4 chapter 07 §4.4 整合)**:
+- A1a の二重保証 check は **set=1a / set=1b で個別実施**: Codegen 独自 calculator も SPIR-V reflection も、`subset=0` (set=1a) / `subset=1` (set=1b) を別 layout として offset 算出 → 不一致 check は subset 単位で実施
+- 理由: chapter 07 §4.4 で set=1 を 1a/1b に split したため、set=1 内の binding 番号は subset 内で 0 から振り直し (= §6.3) → std140 layout は subset 単位で独立 (= UBO 単位の offset は subset 跨いで影響受けない、ただし pipeline layout 構築は両 subset 揃って 1 set として presented = §6.3)
+- 実装: Codegen Python は `program_ubos` を §7.1 sort 後に 40/39 で split し、各 subset を独立 layout として offset 算出 → glslang SPIR-V reflection も `descriptor_set=1` の binding を `subset` で grouping → subset 内の binding 同士で offset 比較
 2. **glslang version drift 耐性**: glslang reflection format が変わっても、Codegen 計算側が独立しているため runtime layout 自体は不変、reflection 抽出パス側だけ修復で済む
 3. **debug 容易**: Codegen 出力の offset 値を Python で計算履歴付き log 可能、SPIR-V reflection 出力と diff 表示で不一致箇所即座に特定
 
@@ -279,7 +289,14 @@ inline constexpr const UniformLocation* lookup_runtime(const char* name) {
 
 ## §6 `ubo_metadata.inl` 出力契約 (= chapter 07 反映)
 
-### §6.1 出力 schema
+### §6.1 出力 schema (= 設計 review 2026-06-03 §3.4 schema 整合)
+
+**schema の論理 5 set 帯 表現規約**:
+- `descriptor_set` field は **論理 set ID をそのまま 0/1/2/3 で格納**、`subset` field で set=1 の subset (1a/1b) を区別する 2 段構造
+- 論理 set 帯 = 5 (= set=0/1a/1b/2/3、chapter 07 §4.4) ↔ schema field = `(descriptor_set, subset)` 2 タプル
+- 例: set=1a → `(descriptor_set=1, subset=0)` / set=1b → `(descriptor_set=1, subset=1)` / set=2 → `(descriptor_set=2, subset=0)` (= subset 未使用は常に 0)
+- host 側 `sProgramSetLayoutA` / `sProgramSetLayoutB` 構築時 (= chapter 07 §9.1) は `descriptor_set==1` を `subset` で 2 グループに分割して別 `VkDescriptorSetLayout` 生成 (= §6.3)
+- chapter 07 §4.4.1 「bind 時 4 set 制約」は **schema 側では関与しない** (= host 側の `vkCmdBindDescriptorSets` 呼出 sequence で表現)
 
 ```cpp
 // build/codegen/ubo/ubo_metadata.inl (auto-generated)
@@ -289,21 +306,21 @@ inline constexpr const UniformLocation* lookup_runtime(const char* name) {
 namespace ubo {
 
 enum class CadenceTag : uint8_t {
-    PerFrame   = 0,  // set=0
-    PerProgram = 1,  // set=1a or set=1b
-    PerDraw    = 2,  // set=2 (dynamic offset)
-    PerAsset   = 3,  // set=3
-    PerSkin    = 4,  // set=3 (SSBO 同居、binding 別)
-    Singleton  = 5,  // set=0 binding 末尾 (= Global_*)
+    PerFrame   = 0,  // → descriptor_set=0
+    PerProgram = 1,  // → descriptor_set=1, subset=0 or 1 (§7.1 sort で振分)
+    PerDraw    = 2,  // → descriptor_set=2 (dynamic offset)
+    PerAsset   = 3,  // → descriptor_set=3
+    PerSkin    = 4,  // → descriptor_set=3 (UBO binding 番号別、sampler 49 も同 set=3 §5.4)
+    Singleton  = 5,  // → descriptor_set=0 binding 末尾 (= Global_*)
 };
 
 struct UboMetadata {
     const char* block_name;
     uint32_t    block_hash;
-    uint32_t    block_size;        // std140 final size (= alignment padding 込み)
-    uint16_t    descriptor_set;    // 0 / 1 / 2 / 3 (= set=1a/1b は 1 として、subset は §6.3)
-    uint16_t    binding;           // set 内 binding 番号
-    uint16_t    subset;            // 0=1a / 1=1b (= set=1 split 時のみ意味あり、他は 0)
+    uint32_t    block_size;        // std140 final size (= alignment padding 込み、§6.4 で 256 B 切上)
+    uint16_t    descriptor_set;    // 論理 set ID = 0 / 1 / 2 / 3 (set=1 内 subset は subset field、§6.3)
+    uint16_t    binding;           // set 内 binding 番号 (= subset 内 0-39 / 0-38 for set=1a/1b)
+    uint16_t    subset;            // descriptor_set==1 時のみ意味 (0=1a / 1=1b)、他は 0 固定
     CadenceTag  cadence;
     uint16_t    member_count;
 };
@@ -339,16 +356,17 @@ inline constexpr SamplerBinding g_sampler_metadata[/* 49 */] = {
 } // namespace ubo
 ```
 
-### §6.2 chapter 07 反映項目
+### §6.2 chapter 07 反映項目 + (B1)-(B5) handoff item 接続 (= 設計 review 2026-06-03 §3.4 接続明示)
 
-| chapter 07 確定事項 | 本 chapter §6 反映 |
-|---|---|
-| §3.1 device limit 拡張 (4 field) | 直接出力なし (= runtime query で host が取得)、Codegen 出力には影響なし |
-| §3.2 V1' set=1 79 → 40/39 split | `subset` field 出力 (= 0/1)、§7 で sort 規則確定 |
-| §4.4 set 帯 5 化 (set=0/1a/1b/2/3) | `descriptor_set` 値 0/1/2/3、set=1a/1b は subset で区別 |
-| §5.4 sampler 49 set=3 同居 | `g_sampler_metadata[]` 配列出力、binding 3..51 |
-| §7.3 256 B alignment | `block_size` は std140 計算後 256 B multiple 切上 (= padding 込み)、§6.4 |
-| §9.1 共通 PSO layout | 直接出力なし (= host 側 init コード §10 で参照)、layout 構築は host 側 |
+| chapter 07 確定事項 | 本 chapter §6 反映 | 関連 (B1)-(B5) handoff item |
+|---|---|---|
+| §3.1 device limit 拡張 (4 field) | 直接出力なし (= runtime query で host が取得)、Codegen 出力には影響なし | — |
+| §3.2 V1' set=1 79 → 40/39 split | `subset` field 出力 (= 0/1)、§7 で sort 規則確定 | (B3) perfect hash も subset 単位で衝突 check (= §5.6 G2/B3b、subset 内で hash 衝突保証) |
+| §4.4 set 帯 5 化 (set=0/1a/1b/2/3) | `descriptor_set` 値 0/1/2/3、set=1a/1b は subset で区別 (= §6.1 schema 規約) | (B5) 自動 trigger で GLSL 変更 → set=1 sort + subset 再振分が自動波及 (§7.2) |
+| §5.4 sampler 49 set=3 同居 | `g_sampler_metadata[]` 配列出力、binding 3..51 | (B1) Python tool が GLSL parse で sampler 抽出 (= §3 + §5.1 P3) |
+| §7.3 256 B alignment | `block_size` は std140 計算後 256 B multiple 切上 (= padding 込み)、§6.4 | (A1) A1a 二重保証は padding 後 size でも実施、SPIR-V reflection の `Block.size` と比較 |
+| §9.1 共通 PSO layout | 直接出力なし (= host 側 init コード §10 で参照)、layout 構築は host 側 | (B2) glslang autobuild vendoring で 3 OS layout 出力一律性確保 |
+| §4.4.1 bind 時 4 set 制約 | 直接出力なし (= bind sequence は host 側 §9.2) | (B4) cache 機構は bind sequence の変更検知不要 (= GLSL 不変なら cache hit) |
 
 ### §6.3 set=1a / set=1b の subset 表現
 
@@ -677,6 +695,31 @@ target_include_directories(llvkloader PUBLIC "${CMAKE_BINARY_DIR}/codegen")
 
 = **(B5) → B5a 自動 + 手動 target 併設 default 確定、§17 で AYA 判断仰ぎ候補に登録**。
 
+### §12.4 generator timing 全体接続 (= 設計 review 2026-06-03 §3.4 §5/§8/§12 timing 明示)
+
+3 generator (= §5 perfect hash / §8 dummy buffer init / §12 全 Codegen trigger) の build cycle 内 timing 関係:
+
+| timing 段階 | 走る generator | 入力 | 出力 |
+|---|---|---|---|
+| build 開始 | (B5) `add_custom_command` 起動判定 | GLSL files + Python script の mtime/hash (= §11) | cache hit なら skip / miss なら §5/§8 走る |
+| Codegen tool 起動 (1) | Codegen Python tool 起動 + GLSL parse (= §5.1 P3) | GLSL files + glslang -E (= §5.1) | UBO block 構造 (in-memory) |
+| Codegen tool 起動 (2) | §5.3 std140 offset calculator + §5.4 SPIR-V reflection 二重保証 | UBO block + glslang SPIR-V reflection | offset 確定済 UBO + binding 番号 |
+| Codegen tool 起動 (3) | §7 set=1 split (sort → 40/39 振分) | per-program UBO 79 個 | subset 振分済 metadata |
+| Codegen tool 起動 (4) | §5.5 perfect hash generator (G2/B3b) | name 列 (= UBO block name + member name) | `ubo_perfect_hash.inl` (= §5.7) |
+| Codegen tool 起動 (5) | §6 `ubo_metadata.inl` 出力 (= schema 序列化) | (2)+(3) 結果 | `ubo_metadata.inl` |
+| Codegen tool 起動 (6) | §8 dummy buffer init 出力 | unused UBO 判定 (= §8.4) | `ubo_dummy_init.inl` |
+| Codegen tool 起動 (7) | §10 host loader header 出力 | (5)+(6) ↔ host C++ I/F | `ubo_host_loader.inl` |
+| Codegen tool 終了 | (B5) cache 更新 (= §11.3 sha256 + mtime 記録) | 全出力 .inl files | `codegen_state.json` |
+| 後続 build | host C++ compile | (5)+(6)+(7) include | `llrender` / `llvkloader` の object files |
+
+**timing 制約**:
+- (1) ↔ (2) sequential (= parse 完了後に std140 計算)
+- (3) は (2) 完了後 (= subset 振分は offset 確定後の単純振分)
+- (4)/(5)/(6)/(7) は (3) 完了後に **並列可能** (= 出力 .inl files が独立)、現 phase は Python single thread で sequential、将来 phase で `multiprocessing` 並列化検討余地
+- (B5) cache 機構は **全出力 .inl files の sha256 を一括 record**、cache hit 時は (1)-(7) を skip して cmake DEPENDS 解消のための touch のみ実施 (= §11.3)
+
+**異常系**: いずれかの段階で error (= §9 build error 7 種) → Codegen tool が non-zero exit → CMake が後続 host compile を中止 → AYA に build error 表示 (= §9.4 format)
+
 ---
 
 ## §13 3 OS 互換性保証
@@ -760,6 +803,7 @@ chapter 06a §5.6 で「sampler は OpenGL path 強制 + Vulkan path descriptor 
 | (A1) | std140 offset 計算: Codegen 独自 calculator + SPIR-V reflection 二重保証 vs reflection only | **A1a 二重保証** | **chapter 10 / AYA 判断** |
 | (P) | GLSL parse 手段: 独自 mini-parser + glslang -E vs glslang library reflection | **P3 mini-parser + glslang -E** | **chapter 10 / AYA 判断** |
 | (G/B3) | perfect hash generator: 独自 Python frozen-table vs gperf vs frozen library | **G2/B3b Python frozen-table** | **chapter 10 / AYA 判断** |
+| **(G/B3) ID 衝突注 (= 設計 review 2026-06-03 §3.1 ID rename 整合)**: 本 chapter §17 / §5.5 / chapter 04 §10 の (G) = **perfect hash generator** を指す (= 本 chapter 固有 ID)。chapter 05 §6 の旧 (G) = **per-material cadence** は設計 review §3.1 で **(MC)** に rename 済 (= material cadence prefix)、別概念で衝突しない。本 chapter / chapter 04 の (G) ID はそのまま維持、handoff §4.4 にも (G) ID 衝突解消経緯を反映予定 (= chapter 05 (G)→(MC) のみ rename、chapter 04/08 (G) は不変) | — | — |
 | (B1) | Codegen 実装言語: Python vs C++ standalone vs CMake script | **B1a Python 3.8+** | **chapter 10 / AYA 判断** |
 | (B2) | glslang 統合: autobuild vendoring vs system pkg vs 自前実装 | **B2a autobuild vendoring (既存温存)** | **chapter 10 / AYA 判断** |
 | (B4) | 増分 build cache strategy: hash+mtime vs mtime only vs hash only vs ccache | **B4a hash + mtime 併用** | **chapter 10 / AYA 判断** |

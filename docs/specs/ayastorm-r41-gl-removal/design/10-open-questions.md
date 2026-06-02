@@ -27,6 +27,8 @@
 
 **AYA 判断後の反映先**: chapter 07 §3.2 / §4.2 / §5.2 / §6.2 を default → 確定形に書換え、06c §3 接合表 / §8 sampler 配置 / chapter 04 §5.1 `ubo_metadata.inl` 出力契約も連動 update。
 
+**注 (RF 配置)**: chapter 07 §12 持越のうち **(RF) reflection update fence throttle** は **AYA 判断不要** (= 客観計測 only) のため本 §1.1 表 4 件には含めず、§2.2 (= 実装 phase 入口消化) 単独配置。chapter 07 §12 由来は本 §1.1 (= AYA 判断仰ぎ 4 件) + §2.2 (= 計測消化 1 件) で **計 5 件** に分解されている (= 性質別の意図的 split、二重参照ではない)。
+
 ### §1.2 chapter 08 §17 chapter 10 送り 7 件 (Codegen / build pipeline)
 
 | (Q) | 項目 | default 採用案 | 判断ポイント | 出典 |
@@ -80,25 +82,29 @@
 
 ### §2.1 chapter 06a-prep §7 (P1)-(P4) (Phase 0 入口 grep 消化)
 
+**消化方法の記法**: 各項目は **(a) 実行 command + (b) 対象 dir + (c) 判定閾値 + (d) pass-fail criteria** を imperative で明示。
+
 | (P) | 項目 | 消化方法 |
 |---|---|---|
-| (P1) | `LL_INFOS("UBO_CADENCE")` class 名衝突有無 | grep `LL_INFOS\("UBO_CADENCE"\)` 全 source、衝突あれば rename |
-| (P2) | CMake patch 配置先 (`00-Common.cmake` vs `LLRender.cmake` 等) | grep `cmake/*.cmake`、build flag 追加位置確定 |
-| (P3) | frame counter 公開方式 (`extern` / helper / 既存流用) | (P4) 結果次第、既存流用優先 |
-| (P4) | 既存 frame counter 流用可能性 (`gFrameCount` 等) | grep `llviewercontrol` / `llappviewer`、流用可能なら (P3) は extern 不要 |
+| (P1) | `LL_INFOS("UBO_CADENCE")` class 名衝突有無 | (a) Grep `LL_INFOS\("UBO_CADENCE"\)` (b) `indra/` 配下全 `.cpp` / `.h` / `.glsl` (c) ヒット件数 ≥ 1 で衝突判定 (d) PASS = 0 件 / FAIL → 衝突 class を別 log tag (`UBO_CADENCE_NEW` 等) に rename して再 grep PASS 確認 |
+| (P2) | CMake patch 配置先 (`00-Common.cmake` vs `LLRender.cmake` 等) | (a) Grep `AYASTORM_UBO_CADENCE_HOOK\|AYASTORM_.*_HOOK` (b) `indra/cmake/*.cmake` (c) 既存 AYASTORM_* flag のヒット位置 listing (d) 既存 flag が `00-Common.cmake` 集中なら同位置に追加 / 別 cmake 分散なら最頻出位置を採用、判断結果は本表に追記して chapter 06a-prep §7 (P2) に反映 |
+| (P3) | frame counter 公開方式 (`extern` / helper / 既存流用) | (a) (P4) 結果を入力に判定 (b) `indra/newview/llappviewer.{h,cpp}` (c) 流用可否 boolean (d) 流用可 → 既存 symbol を `#include` で参照のみ (extern / helper 追加不要) / 流用不可 → `llappviewer.h` に `extern U64 gAyaFrameCount;` 宣言 + `.cpp` で `LLAppViewer::idle()` 末尾 increment 追加 |
+| (P4) | 既存 frame counter 流用可能性 (`gFrameCount` 等) | (a) Grep `gFrameCount\|gFrameCounter\|mFrameCount\|sFrameCount` (b) `indra/newview/llappviewer.{h,cpp}` + `indra/llcommon/llapp.{h,cpp}` + `indra/llrender/` (c) 定義 1 件以上 AND 単調増加 logic 確認 (d) PASS (定義 + monotonic) → (P3) で流用宣言 / FAIL (未定義 OR rollover あり) → (P3) で新規追加宣言 |
 
 ### §2.2 chapter 07 §12 (RF) reflection update fence throttle
 
+**配置**: chapter 07 §12 持越項目だが **AYA 判断不要 (= 客観計測 only)** のため §1.1 表 (AYA 判断仰ぎ 4 件) には含めず、本 §2.2 単独配置。本 chapter §1.1 注 (RF 配置) と対応。
+
 | 項目 | 消化方法 |
 |---|---|
-| (RF) reflection update fence throttle (> 100 回/分で warn) | 実装 phase で `LLReflectionMapManager::updateProbeFace()` hook 追加 → log 取得 → throttle 判定 (= (H1b) hook 計測と同 build) |
+| (RF) reflection update fence throttle (> 100 回/分で warn) | (a) 実装 phase で `LLReflectionMapManager::updateProbeFace()` 入口に `LL_INFOS("RF_FENCE")` hook 追加 (= wall-clock 1 分 window の call count 記録、循環 buffer 60 slot で 1 秒粒度) (b) 計測対象は AYAstorm baseline build (= H1b と同 build flag `-DAYASTORM_UBO_CADENCE_HOOK=ON`) (c) 判定閾値 = 1 分 window 内 call count ≥ 100 (d) PASS (≤ 99) → throttle 不要マーク / FAIL (≥ 100) → `LL_WARNS("RF_FENCE")` 1 回出力 + cvar `AYAReflectionFenceWarned=true` で以降抑制、warn 検知時は chapter 07 §12 (RF) を「throttle 実装要」に解消マーク変更 |
 
 ### §2.3 chapter 08 §17 実装 phase 評価項目
 
 | 項目 | 消化方法 |
 |---|---|
-| (P-future) 「unused mask」判定基準 (GLSL 宣言の有無 only vs member 参照解析) | **default = 宣言の有無 only (= 安全側 dummy 投入)**、実装 phase 入口で再評価 |
-| (cache-grow) cache file (= `codegen_state.json`) サイズ上限 / 古 entry GC | chapter 09 Phase Roadmap で増分 build cache 肥大化時 Phase 内 sub-task 発動 (= 持越紐付け確定済) |
+| (P-future) 「unused mask」判定基準 (GLSL 宣言の有無 only vs member 参照解析) | (a) default = 「GLSL UBO block 内 member **宣言有無** only」(= 安全側 dummy 投入) を採用 (b) 実装 phase 入口で `indra/newview/app_settings/shaders/class*/` 配下全 `.glsl` の `layout(std140)` block を grep + member 参照解析 (= `glsl_unused_member` linter pass) を試走 (c) 判定閾値 = false positive 率 ≤ 1% (= 「未宣言だが実 GPU で参照ある」事案件数 / 全 UBO 数) (d) PASS (≤ 1%) → member 参照解析昇格、chapter 08 §17 (P-future) 「member 解析採用」確定 / FAIL (> 1%) → default 維持、(P-future) 「宣言 only 維持」確定 |
+| (cache-grow) cache file (= `codegen_state.json`) サイズ上限 / 古 entry GC | (a) 実装 phase で `build-{linux,darwin,windows}*/codegen_state.json` (= Codegen 出力位置、§4 (P3) 配置確定後 fix) のサイズを毎 build 後測定 (b) 対象 = AYAstorm 3 OS build artifact (c) 判定閾値 = サイズ ≥ 10 MB (= 推定 GLSL 1500 file × 8 byte hash + member meta 想定上限) (d) PASS (< 10 MB) → GC 不要 / FAIL (≥ 10 MB) → chapter 09 §10.1 sub-task pool に「mtime ≥ 30 days entry GC + post-GC size shrink check」task 投入 (= 持越紐付け確定済) |
 
 ### §2.4 chapter 06b §8 (default 確定済 + chapter 07 / Phase 進行中で消化)
 
@@ -239,6 +245,19 @@ inventory §7 残課題のうち、設計 chapter 群 (01-10) でカバーされ
 - inventory §7 #7 / #8 (= §6.1 / §6.2) は実装 phase 入口で調査 → 解消マーク + inventory 本体更新
 - chapter 10 完了 / 各 chapter 確定形書換え完了 で 01-overview §4 進捗表を update
 - 実装 phase 進行で Phase 完了毎に §7.3 以降の Phase 入口 handoff doc を起案、本 chapter §3 (K の確定値 / 担当者 / 具体 UBO 順) を順次確定形に書換え
+
+### §8.1 spot check 持越 task (= 次 session で消化)
+
+- **task**: §1.1 〜 §1.5 全 21 件 AYA 判断仰ぎ候補の **「AYA 判断後の反映先」 §N が実 chapter §N で実在するか** を pinpoint Read で全件確認
+- **判定基準**: 各 reflect §N について該当 chapter §N の本文を Read → default 採用案の reflect 先として意味的に整合するか check、ズレあれば §N 修正
+- **対象範囲**:
+  - §1.1 (4 件) → chapter 07 §3.2 / §4.2 / §5.2 / §6.2 + 06c §3 / §8 + chapter 04 §5.1
+  - §1.2 (7 件) → chapter 08 §1-§16 各節 (= (A1)/(P)/(G/B3)/(B1)/(B2)/(B4)/(B5) ごとの owner §N) + chapter 04 §3 / §5 / §7
+  - §1.3 (5 件) → chapter 09 §2.1 / §5.2 / §6.1 / §7.1 / §3.1 / §3.2
+  - §1.4 (4 件) → 06b §3.2.3 / §5.2 + 06c §2 / §3 / §6 / §3.4
+  - §1.5 (1 件) → chapter 05 §5 / §7.3 + 06a-prep §3
+- **trigger**: 本 chapter 10 完了 AYA commit 後、AYA 判断確定 session 前に handoff doc 起案 + 次 session で消化
+- **失敗時 fallback**: ズレ ≥ 1 件発見時は本 §8.1 task 結果に基づき該当 §1.X 表の reflect 文を修正、AYA 判断仰ぎ前に整合確保
 
 ---
 

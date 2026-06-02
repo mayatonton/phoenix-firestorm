@@ -77,6 +77,8 @@
 
 shader link 時 caller context grep (= 06a §0.2 Agent 解析) で得られた cadence 推定のうち **不明 16 件** + **per-program ↔ per-draw 境界 (= caller 関数名から判定不能な uniform)** を、実機 frame 内 setter call rate histogram で **確証取得** する。
 
+**並走計測**: sampler binding (= 49 個、`uniform1i` 経由) も同一 hook で独立 band として histogram 化する (= UBO cadence inventory への合算は §5 で行わない、§2.2.1 注を参照)。
+
 ### §2.2 配線位置 (= 全 30 setter + frame counter)
 
 #### §2.2.1 integer index 経由 setter (= 17 method、`llglslshader.cpp`)
@@ -101,7 +103,13 @@ shader link 時 caller context grep (= 06a §0.2 Agent 解析) で得られた c
 | `uniformMatrix3x4fv` | 2517 | 同上 |
 | `uniformMatrix4fv` | 2538 | 同上 |
 
-**注**: 06a §5.1 は 16 method を listing したが、本 doc では `uniform1i` (line 2141) を追加した **17 method 構成**。`uniform1i` は sampler binding setter (= texture unit assignment) で UBO 化対象外だが、hook histogram で「sampler binding 呼出は per-program cadence で頻度低」を確証して inventory §2 cadence 推定と整合させる用途。
+**注**: 06a §5.1 は 16 method を listing したが、本 doc では `uniform1i` (line 2141) を追加した **17 method 構成**。
+
+**`uniform1i` の位置付け (= 設計 review 2026-06-03 §3.5 矛盾解消)**:
+- `uniform1i` は sampler binding setter (= texture unit assignment) で **UBO 化対象外** (= chapter 06a §0.2 の 261 unique uniform inventory にも非合算)
+- ただし sampler binding cadence も「shader bind 時のみ呼出」仮説を実測で確証する必要があるため、本 hook では **独立 band** (= §2.7 表の最終 band「sampler binding」枠) として histogram に並走計測する
+- §5 解析時点で **sampler band は UBO inventory の cadence 結論には合算せず別表で報告**、chapter 05 §3 UBO 表の cadence 列には反映しない (= UBO 数値の汚染回避)
+- inventory §2 への効果 = sampler 49 個の cadence band を別軸で確証 → texture binding 高速 path (= per-program cadence 維持 or per-draw 化が必要か) の Vulkan descriptor 化 (= chapter 07 §3 sampler 帯) の前提資料
 
 #### §2.2.2 LLStaticHashedString 経由 setter (= 13 method、`llglslshader.cpp`)
 
@@ -281,7 +289,7 @@ INFO: UBO_CADENCE: frame=<N> shader=<shader_name> uniform=<uniform_name> setter=
 | per-draw | 100-5000 / frame | 68 |
 | per-asset | 10-500 / frame (= rezzed asset 数次第) | 45 |
 | per-skin | 5-100 / frame (avatar-heavy scene) | 12 |
-| sampler binding (= UBO 化対象外) | 5-50 / frame (= shader bind 時のみ) | 49 |
+| sampler binding (= UBO 化対象外、独立報告軸 = §2.2.1 注) | 5-50 / frame (= shader bind 時のみ) | 49 |
 | 不明 16 個 (= 本 hook で確定) | 上記いずれかの band に分布 | 16 |
 
 ### §2.8 検証完了後の除去 protocol
