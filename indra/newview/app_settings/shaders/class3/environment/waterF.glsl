@@ -92,28 +92,40 @@ uniform sampler2D bumpMap;
 uniform sampler2D bumpMap2;
 #endif
 #ifdef LL_VULKAN_GLSL
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
-//   Water surface PBR uniform を UBO 化 (blend_factor L94 + lightDir/specular/blurMultiplier/refScale/kd/
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c (Issue A fix 後):
+//   Water surface PBR uniform を UBO 化 (blend_factor L94 + specular/blurMultiplier/refScale/kd/
 //   normScale/fresnelScale/fresnelOffset L147-L154 を 1 UBO に統合)。
 //   host = LLSettingsVOWater::applyToShader 系 (BLEND_FACTOR + WATER_*reserved 群)。
 //   FrameAtmosphere_Lighting 内 classic_mode 既参照、二重宣言禁止。
 //   class1/environment/waterF.glsl は error fallback stub (plain uniform 無し) → cross-variant 適用不要。
-//   waterV (V pair) は η-6 で WaterVParamUBO_Legacy set=3 binding=60 に UBO 化済 → 別 descriptor、本 binding 23 と独立。
+//   lightDir は WaterVParamUBO_Legacy set=3 binding=60 (waterV η-6 既 UBO) に存在 → η-28-C type 1
+//   (cross-stage V+F shared) で本 F-stage に同 UBO 宣言を持込 (Phase 2a waterHazeV/F と同範式)。
+//   PerProgramUBO_WaterF から lightDir 除外 (anonymous member の global symbol 衝突回避、Phase 2c 検証で
+//   "Anonymous member name used for global variable" link error 観測 → vec4 boundary 再揃え 64B→48B)。
 //   kd は host setter 無し (declared-but-unused、BD legacy)、parse 通過のため UBO 含める。
+#ifndef WATER_V_PARAM_UBO_LEGACY_DEFINED
+#define WATER_V_PARAM_UBO_LEGACY_DEFINED 1
+layout(set=3, binding=60, std140) uniform WaterVParamUBO_Legacy {
+    vec2 waveDir1;
+    vec2 waveDir2;
+    float time;
+    vec3 eyeVec;
+    float waterHeight;
+    vec3 lightDir;
+};
+#endif
 #ifndef PER_PROGRAM_UBO_WATER_F_DEFINED
 #define PER_PROGRAM_UBO_WATER_F_DEFINED 1
 layout(set=2, binding=23, std140) uniform PerProgramUBO_WaterF {
-    vec3  lightDir;         // offset 0
+    vec3  specular;         // offset 0
     float blend_factor;     // offset 12 (vec3 直後 4byte に詰め)
-    vec3  specular;         // offset 16
+    vec3  normScale;        // offset 16
     float blurMultiplier;   // offset 28
-    vec3  normScale;        // offset 32
-    float refScale;         // offset 44
-    float kd;               // offset 48 (declared-but-unused、host setter 無し)
-    float fresnelScale;     // offset 52
-    float fresnelOffset;    // offset 56
-    float _pad0;            // offset 60 (vec4 boundary 揃え)
-};  // total 64
+    float refScale;         // offset 32
+    float kd;               // offset 36 (declared-but-unused、host setter 無し)
+    float fresnelScale;     // offset 40
+    float fresnelOffset;    // offset 44
+};  // total 48 (vec4 boundary 揃え済)
 #endif
 #else
 uniform float     blend_factor;
