@@ -653,46 +653,134 @@ namespace {
         }
     }
 
-    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D Phase 1:
-    // Vulkan SPIR-V path で bare `out <type> <ident>;` を `layout(location=N) out ...;` に
-    // 書換える runtime transformer。Phase 1 は fragment stage の output のみ対象
-    // (vertex attribute / V↔F varying pair / geometry stage は Phase 2-3 で対応)。
-    // 設計根拠は handoff doc §4 (handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-16-prep-D-switch.md)。
-    // 範式名: 「C++ runtime location emit 範式」(η-8 §3.3 mIndexedTextureChannels Vulkan-aware 範式の自然延長)。
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D Phase 1 / η-18 Phase 2 拡張:
+    // Vulkan SPIR-V path で bare `out/in <type> <ident>;` を `layout(location=N) ...` に
+    // 書換える runtime transformer。
+    //   - Phase 1 (η-16):    fragment stage の output (`out`) のみ対象
+    //   - Phase 2 (η-18):    vertex stage の output + fragment stage の input を pair で対象、
+    //                        V out で割当てた slot を同 ident F in に再利用 (V↔F pair allocator)
+    //   - Phase 3 (η-19+):   vertex attribute (V stage の bare `in`) + geometry stage 対応予定
+    // 設計根拠は handoff doc §4 (η-16 prep-D-switch) + §10.7 (η-17 complete) の pair allocator 仕様。
+    // 範式名: 「C++ runtime location emit 範式 + V↔F pair 範式」
+    //         (η-8 §3.3 mIndexedTextureChannels Vulkan-aware 範式 + η-9 §3.1 V/F pair canonical
+    //         partner 同定範式 + η-17 §3.2 V↔F pair location 同期変更範式 の自然延長)。
     struct LocationAllocator
     {
+        // Phase 1 (η-16): F stage out
         std::set<int> mUsedFragOutSlots;
         int           mFragOutCursor = 0;
+
+        // Phase 2 (η-18): V↔F pair
+        //   mUsedVertOutSlots    = V stage out で既に使用済の location (手動 wrap 由来 + 本 transformer 由来)
+        //   mUsedFragInSlots     = F stage in  で既に使用済の location (手動 wrap 由来、collision 回避用)
+        //   mVertOutCursor       = V stage out の次空き slot 探索 cursor
+        //   mVertOutIdentToSlot  = V stage out 識別子 → 割当 slot mapping (F stage 同 ident in で再利用)
+        std::set<int>              mUsedVertOutSlots;
+        std::set<int>              mUsedFragInSlots;
+        int                        mVertOutCursor = 0;
+        std::map<std::string, int> mVertOutIdentToSlot;
     };
 
-    std::string vulkanizeStageSource(const std::string& source, GLenum stage_type)
+    std::string vulkanizeStageSource(
+        const std::string& source,
+        GLenum             stage_type,
+        LocationAllocator& alloc)
     {
-        if (stage_type != GL_FRAGMENT_SHADER)
+        // Phase 2 (η-18): V stage / F stage の両方を対象 (geometry / compute は touch しない)。
+        if (stage_type != GL_FRAGMENT_SHADER && stage_type != GL_VERTEX_SHADER)
         {
             return source;
         }
 
-        // bare `out <quals?> <type> <ident> (\[...\])? ;` 1 line match
-        // groups: 1=leading ws, 2=quals (連結可), 3=type, 4=ident, 5=array suffix
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-18 Phase 1-1 拡張:
+        // GLSL では interpolation/precision qualifier (smooth/flat/highp 等) が storage qualifier
+        // (out/in) の **前後どちらにも書ける** (spec 4.60 §4.3)。η-16 originale は `out\s+(quals?)\s+`
+        // = quals が out の後にしか書けない設計で、η-18 V varying では `smooth out vec3 vary_normal;`
+        // が dominant で全数 match miss していた = link failed 4 件 / overlapping 5 件 / qualifier
+        // 12 件の真因。Phase 1-1 で quals_before / quals_after 両対応に re-design。
+        static const std::string kQuals =
+            R"((?:(?:flat|smooth|noperspective|centroid|highp|mediump|lowp|invariant)\s+)*)";
+
+        // bare `<quals?> out <quals?> <type> <ident> (\[...\])? ;` 1 line match
+        //   groups: 1=leading ws, 2=quals_before, 3=quals_after, 4=type, 5=ident, 6=array
         static const std::regex bare_out_pattern(
-            R"(^(\s*)out\s+((?:(?:flat|smooth|noperspective|centroid|highp|mediump|lowp)\s+)*)([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(\s*\[[^;]*\])?\s*;\s*$)"
+            R"(^(\s*)()" + kQuals + R"()out\s+()" + kQuals
+            + R"()([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(\s*\[[^;]*\])?\s*;\s*$)"
         );
-        // 既存 `layout(location=N) out ...` を pre-pass で audit
+        // bare `<quals?> in <quals?> <type> <ident> (\[...\])? ;` 1 line match (F stage 用、V↔F pair)
+        //   groups: 1=leading ws, 2=quals_before, 3=quals_after, 4=type, 5=ident, 6=array
+        static const std::regex bare_in_pattern(
+            R"(^(\s*)()" + kQuals + R"()in\s+()" + kQuals
+            + R"()([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(\s*\[[^;]*\])?\s*;\s*$)"
+        );
+        // 既存 `layout(location=N) <quals?> out|in ...` を pre-pass で audit (location N のみ捕捉)
         static const std::regex existing_layout_out_pattern(
-            R"(^\s*layout\s*\(\s*location\s*=\s*(\d+)\s*\)\s*out\b)"
+            R"(^\s*layout\s*\(\s*location\s*=\s*(\d+)\s*\)\s*)" + kQuals + R"(out\b)"
+        );
+        static const std::regex existing_layout_in_pattern(
+            R"(^\s*layout\s*\(\s*location\s*=\s*(\d+)\s*\)\s*)" + kQuals + R"(in\b)"
+        );
+        // V stage 既存 `layout(location=N) <quals?> out <quals?> <type> <ident>;` を pre-pass で
+        // ident → slot 記録 (手動 wrap 済の V out を F in 側の transformer が同 slot で再利用するため)
+        //   groups: 1=location, 2=ident
+        static const std::regex existing_layout_out_with_ident_pattern(
+            R"(^\s*layout\s*\(\s*location\s*=\s*(\d+)\s*\)\s*)"
+            + kQuals + R"(out\s+)" + kQuals
+            + R"([a-zA-Z_][a-zA-Z0-9_]*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\[[^;]*\])?\s*;)"
+        );
+        // F stage 既存 `layout(location=N) <quals?> in <quals?> <type> <ident>;` を main pass で
+        // 検出 → V mapping table と照合 → mismatch なら override 書換 (V↔F pair alignment 強制保証)
+        //   groups: 1=ws, 2=loc, 3=quals_before, 4=quals_after, 5=type, 6=ident, 7=array
+        static const std::regex existing_layout_in_with_ident_pattern(
+            R"(^(\s*)layout\s*\(\s*location\s*=\s*(\d+)\s*\)\s*()"
+            + kQuals + R"()in\s+()" + kQuals
+            + R"()([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(\s*\[[^;]*\])?\s*;\s*$)"
         );
 
-        LocationAllocator alloc;
+        // pre-pass: 当該 stage の既存 layout 由来 location を audit + V stage では ident → slot mapping
+        //          を mVertOutIdentToSlot に記録 (手動 wrap 済 varying を F stage 同 ident in で再利用)
         {
             std::istringstream pre(source);
             std::string preline;
             while (std::getline(pre, preline))
             {
                 std::smatch m;
-                if (std::regex_search(preline, m, existing_layout_out_pattern))
+                if (stage_type == GL_VERTEX_SHADER)
                 {
-                    try { alloc.mUsedFragOutSlots.insert(std::stoi(m[1].str())); }
-                    catch (...) { /* malformed: skip */ }
+                    if (std::regex_search(preline, m, existing_layout_out_with_ident_pattern))
+                    {
+                        try
+                        {
+                            // groups: 1=location, 2=ident (kQuals は non-capturing `(?:...)` で
+                            // 追加 group を作らないため、ident は m[2] が正)
+                            int slot = std::stoi(m[1].str());
+                            alloc.mUsedVertOutSlots.insert(slot);
+                            const std::string ident = m[2].str();
+                            if (!ident.empty())
+                            {
+                                alloc.mVertOutIdentToSlot[ident] = slot;
+                            }
+                        }
+                        catch (...) { /* malformed: skip */ }
+                    }
+                    else if (std::regex_search(preline, m, existing_layout_out_pattern))
+                    {
+                        try { alloc.mUsedVertOutSlots.insert(std::stoi(m[1].str())); }
+                        catch (...) { /* malformed: skip */ }
+                    }
+                }
+                else // GL_FRAGMENT_SHADER
+                {
+                    if (std::regex_search(preline, m, existing_layout_out_pattern))
+                    {
+                        try { alloc.mUsedFragOutSlots.insert(std::stoi(m[1].str())); }
+                        catch (...) { /* malformed: skip */ }
+                    }
+                    else if (std::regex_search(preline, m, existing_layout_in_pattern))
+                    {
+                        try { alloc.mUsedFragInSlots.insert(std::stoi(m[1].str())); }
+                        catch (...) { /* malformed: skip */ }
+                    }
                 }
             }
         }
@@ -710,6 +798,49 @@ namespace {
                 trimmed.resize(slash);
             }
 
+            std::smatch m;
+
+            // F stage で 既存 `layout(location=N) <quals?> in <quals?> <type> <ident>;` を捕捉 →
+            // V mapping table と照合 → mismatch なら V slot で override 書換 (V↔F pair 強制保証)。
+            // skip 条件 ("layout" 含むため通常 skip) より先に判定する必要があるため、ここに置く。
+            if (stage_type == GL_FRAGMENT_SHADER
+                && std::regex_match(trimmed, m, existing_layout_in_with_ident_pattern))
+            {
+                const std::string  leading_ws    = m[1].str();
+                const std::string  existing_loc  = m[2].str();
+                const std::string  quals_before  = m[3].str();
+                const std::string  quals_after   = m[4].str();
+                const std::string  type          = m[5].str();
+                const std::string  ident         = m[6].str();
+                const std::string  array         = m[7].matched ? m[7].str() : "";
+
+                auto it = alloc.mVertOutIdentToSlot.find(ident);
+                if (it != alloc.mVertOutIdentToSlot.end())
+                {
+                    int v_slot = it->second;
+                    int f_slot = -1;
+                    try { f_slot = std::stoi(existing_loc); } catch (...) {}
+
+                    if (f_slot != v_slot)
+                    {
+                        // mismatch 検出: V↔F pair alignment 違反 = link failed の真因
+                        // V slot で override (F stage の手動 wrap location を上書き)
+                        alloc.mUsedFragInSlots.insert(v_slot);
+                        out << leading_ws << "layout(location=" << v_slot << ") "
+                            << quals_before << "in " << quals_after
+                            << type << " " << ident << array << ";\n";
+                        LL_DEBUGS("Vulkan") << "vulkanizeStageSource: F stage layout in '" << ident
+                                            << "' location override " << f_slot << " -> " << v_slot
+                                            << " (V↔F pair alignment)" << LL_ENDL;
+                        continue;
+                    }
+                    // match している場合は touch しない (pre-pass で既に mUsedFragInSlots 登録済)
+                }
+                // V mapping table に不在 = F 独自 in (touch しない)
+                out << line << '\n';
+                continue;
+            }
+
             // skip: 既 layout / 関数宣言 (`(` 含む) / uniform 行
             if (trimmed.find("layout") != std::string::npos
                 || trimmed.find('(') != std::string::npos
@@ -719,29 +850,102 @@ namespace {
                 continue;
             }
 
-            std::smatch m;
+            // bare `out` 検出: stage により処理を分岐
             if (std::regex_match(trimmed, m, bare_out_pattern))
             {
-                while (alloc.mUsedFragOutSlots.count(alloc.mFragOutCursor))
+                const std::string  leading_ws   = m[1].str();
+                const std::string  quals_before = m[2].str();
+                const std::string  quals_after  = m[3].str();
+                const std::string  type         = m[4].str();
+                const std::string  ident        = m[5].str();
+                const std::string  array        = m[6].matched ? m[6].str() : "";
+
+                if (stage_type == GL_FRAGMENT_SHADER)
                 {
-                    ++alloc.mFragOutCursor;
+                    // F stage の bare out: η-16 既存 logic (fragment color attachment slot 割当)
+                    while (alloc.mUsedFragOutSlots.count(alloc.mFragOutCursor))
+                    {
+                        ++alloc.mFragOutCursor;
+                    }
+                    int slot = alloc.mFragOutCursor++;
+                    alloc.mUsedFragOutSlots.insert(slot);
+
+                    out << leading_ws << "layout(location=" << slot << ") "
+                        << quals_before << "out " << quals_after
+                        << type << " " << ident << array << ";\n";
                 }
-                int slot = alloc.mFragOutCursor++;
-                alloc.mUsedFragOutSlots.insert(slot);
+                else // GL_VERTEX_SHADER
+                {
+                    // V stage の bare out (varying): slot 割当 + ident → slot mapping 記録
+                    // 同 program の F stage で同 ident in を transformer が同 slot で wrap
+                    //
+                    // Phase 1-2 (η-18): pre-pass で記録済 (manual layout wrap 由来) の slot は
+                    // 上書きせず再利用。preprocessor 別分岐に bare 版と manual wrap 版が
+                    // 共存する case (e.g. Underwater Shader: vary_AdditiveColor は #if 分岐 A で
+                    // manual layout(location=20)、分岐 B で bare) で、bare 版を 0 で wrap して
+                    // map を 0 に上書きしてしまうと live 分岐 (location=20) と mismatch、F 側で
+                    // 0 へ override してしまい結果的に V live=20 ≠ F=0 で link failed が回帰する。
+                    // manual wrap slot を canonical truth と扱い、bare 版も同 slot で wrap する。
+                    int slot;
+                    auto existing_it = alloc.mVertOutIdentToSlot.find(ident);
+                    if (existing_it != alloc.mVertOutIdentToSlot.end())
+                    {
+                        slot = existing_it->second;
+                    }
+                    else
+                    {
+                        while (alloc.mUsedVertOutSlots.count(alloc.mVertOutCursor))
+                        {
+                            ++alloc.mVertOutCursor;
+                        }
+                        slot = alloc.mVertOutCursor++;
+                        alloc.mUsedVertOutSlots.insert(slot);
+                        alloc.mVertOutIdentToSlot[ident] = slot;
+                    }
 
-                const std::string  leading_ws = m[1].str();
-                const std::string  quals      = m[2].str();
-                const std::string  type       = m[3].str();
-                const std::string  ident      = m[4].str();
-                const std::string  array      = m[5].matched ? m[5].str() : "";
-
-                out << leading_ws << "layout(location=" << slot << ") out "
-                    << quals << type << " " << ident << array << ";\n";
+                    out << leading_ws << "layout(location=" << slot << ") "
+                        << quals_before << "out " << quals_after
+                        << type << " " << ident << array << ";\n";
+                }
+                continue;
             }
-            else
+
+            // bare `in` 検出: F stage のみ V↔F pair として処理 (V stage の bare in = vertex attribute
+            //                 は Phase 3 / η-19+ 移管、本 Phase では touch しない)
+            if (stage_type == GL_FRAGMENT_SHADER && std::regex_match(trimmed, m, bare_in_pattern))
             {
-                out << line << '\n';
+                const std::string  leading_ws   = m[1].str();
+                const std::string  quals_before = m[2].str();
+                const std::string  quals_after  = m[3].str();
+                const std::string  type         = m[4].str();
+                const std::string  ident        = m[5].str();
+                const std::string  array        = m[6].matched ? m[6].str() : "";
+
+                auto it = alloc.mVertOutIdentToSlot.find(ident);
+                if (it != alloc.mVertOutIdentToSlot.end())
+                {
+                    // V stage 同 ident out で割当てた slot を再利用 = V↔F pair location alignment 構造保証
+                    int slot = it->second;
+                    alloc.mUsedFragInSlots.insert(slot);
+
+                    out << leading_ws << "layout(location=" << slot << ") "
+                        << quals_before << "in " << quals_after
+                        << type << " " << ident << array << ";\n";
+                }
+                else
+                {
+                    // V stage に同 ident 不在 = mapping miss (touch しない、observable に warn record)。
+                    // 想定 case: F stage 独自 in (理論上 GLSL では V↔F pair 必須だが、preprocessor
+                    //           分岐 / built-in 由来 derived 等で V 側未出現の case がある)。
+                    LL_WARNS("Vulkan") << "vulkanizeStageSource: F stage bare in '" << ident
+                                       << "' has no matching V stage out (slot allocation skipped, "
+                                       << "may trigger SPIR-V missing location)" << LL_ENDL;
+                    out << line << '\n';
+                }
+                continue;
             }
+
+            out << line << '\n';
         }
         return out.str();
     }
@@ -809,10 +1013,12 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     // cache key = HBXXH128(transformer version tag + kill-switch state + 全 stage file_name +
     // 全 source 連結)。transformer 投入で transformed source が SPIR-V emit の真の入力に
     // なるため、kill-switch 切替時に旧 cache hit (stale binary) を構造防止する版数 tag を
-    // 先頭に混ぜる。version tag bump は transformer 仕様変更時に必須 (Phase 1 = "v1_p1_fragout"、
-    // Phase 2 で V↔F pair 拡張時に v2 へ bump 予定)。
+    // 先頭に混ぜる。version tag bump は transformer 仕様変更時に必須:
+    //   Phase 1 (η-16) = "v1_p1_fragout"     (fragment out のみ)
+    //   Phase 2 (η-18) = "v2_p2_inout_pair"  (V↔F pair = V out + F in、本 sub-bundle で bump)
+    //   Phase 3 (η-19+) = "v3_*"             (vertex attribute / geometry stage 対応時に bump 予定)
     HBXXH128 program_hash_obj;
-    program_hash_obj.update(std::string("vulkanize:v1_p1_fragout"));
+    program_hash_obj.update(std::string("vulkanize:v5_p2_inout_pair_prepass_group_fix"));
     program_hash_obj.update(std::string(auto_location_enabled ? "auto_loc=1" : "auto_loc=0"));
     for (const auto& stage : stages)
     {
@@ -906,10 +1112,28 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         // Reserve to avoid string reallocation invalidating c_str() pointers passed to setStrings.
         concat_buffers.reserve(stages_by_type.size());
 
-        for (const auto& kv : stages_by_type)
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-18 Phase 2:
+        // V↔F pair allocator は program 単位で 1 instance、stage 跨いで shared state を持つ
+        // (V stage out で割当てた slot を F stage 同 ident in で再利用)。
+        // stages_by_type は std::map<GLenum, ...> で key sort 順だと F (0x8B30) → V (0x8B31)
+        // → G (0x8DD9) の順となり、F が先に process されると V↔F pair mapping が空のため
+        // 必ず V → G → F の固定順で iterate する (data flow と一致、G stage は in/out 両方
+        // 持つが η-18 では transformer 対象外 = 既存 manual wrap audit のみ実施で influence なし)。
+        LocationAllocator alloc;
+        static const GLenum kFixedStageOrder[] = {
+            GL_VERTEX_SHADER,
+            GL_GEOMETRY_SHADER,
+            GL_FRAGMENT_SHADER,
+        };
+
+        for (GLenum stage_type : kFixedStageOrder)
         {
-            GLenum stage_type = kv.first;
-            const std::vector<size_t>& stage_indices = kv.second;
+            auto stage_it = stages_by_type.find(stage_type);
+            if (stage_it == stages_by_type.end())
+            {
+                continue;
+            }
+            const std::vector<size_t>& stage_indices = stage_it->second;
 
             EShLanguage lang = glToGlslangStage(stage_type);
             if (lang == EShLangCount)
@@ -1004,14 +1228,16 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
                 return false;
             }
 
-            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D Phase 1: bare `out` runtime
-            // wrap (kill-switch ON 時のみ)。stage 全体に shared util + program-specific
-            // source が連結済の concatenated buffer に対して line 単位で書換える。Phase 1
-            // は fragment stage の output のみ対象 (vulkanizeStageSource() 内で stage_type
-            // != GL_FRAGMENT_SHADER は no-op)。
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D Phase 1 / η-18 Phase 2: bare
+            // `out` / `in` runtime wrap (kill-switch ON 時のみ)。stage 全体に shared util +
+            // program-specific source が連結済の concatenated buffer に対して line 単位で書換える。
+            //   Phase 1 (η-16): F stage の bare `out` のみ
+            //   Phase 2 (η-18): V stage の bare `out` + F stage の bare `in` の pair allocator
+            //                    (V stage の bare `in` = vertex attribute は Phase 3 / η-19+ 移管)
+            // alloc は program 単位 instance で stage 跨ぎ shared state を持つ。
             if (auto_location_enabled)
             {
-                concatenated = vulkanizeStageSource(concatenated, stage_type);
+                concatenated = vulkanizeStageSource(concatenated, stage_type, alloc);
             }
 
             // r41 D diagnostic dump (RenderVulkanShaderDumpTransformed=true 時のみ)。
@@ -1047,6 +1273,27 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
             tshaders.push_back(std::move(shader));
             stage_langs_in_order.push_back(lang);
             stage_types_in_order.push_back(stage_type);
+        }
+
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-18 Phase 2 defensive observability:
+        // kFixedStageOrder enumerate が stages_by_type 全 stage を網羅したか確認。SL viewer 現
+        // 実装では V/F/G のみで mismatch 発生は理論的に 0、未知 stage type 混入時のみ literal
+        // 観測可能化 (process は skip、SPIR-V generation 自体は stage 数 mismatch で下流の
+        // link 段階が fail = clean abort)。
+        if (tshaders.size() != stages_by_type.size())
+        {
+            for (const auto& kv : stages_by_type)
+            {
+                if (kv.first != GL_VERTEX_SHADER
+                    && kv.first != GL_GEOMETRY_SHADER
+                    && kv.first != GL_FRAGMENT_SHADER)
+                {
+                    LL_WARNS("Vulkan") << "generatePerProgramSPIRV: stage type 0x"
+                                       << std::hex << (S32)kv.first << std::dec
+                                       << " not in kFixedStageOrder (skipped, program "
+                                       << mName << ")" << LL_ENDL;
+                }
+            }
         }
 
         // 全 stage TProgram link (prep doc §2 axis (a) literal: cross-stage interface 整合
