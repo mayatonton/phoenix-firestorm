@@ -275,6 +275,26 @@ uniform vec3 box_size;
 
 waterHazeV / waterHazeF 両 file に **同一 UBO 名 + 同一 binding + 同一 guard 名** を宣言する場合、Vulkan は両 stage で **descriptor 1 個共有** で扱い、host 側は 1 回 bind で両 stage 参照可能。guard は stage 毎に独立 `#define` が立つので衝突なし。詳細は handoff doc §2 (発見経緯) + §7 (範式定式化) 参照、ここでは再定義しない。
 
+#### deferredUtil alias scope refinement (η-28-E 範式、η-28 Phase 2d-α 確立)
+
+utility file (例: `class1/deferred/deferredUtil.glsl`) が `PerDrawUBO_LightParams` 等の UBO 宣言と alias (`#define color spot_light_color` / `#define size spot_light_size`、L173-185) + 末尾 `#undef` (L780-783、η-20 範式の name pollution 防止) を持つ場合、後段 attach file (例: `class3/deferred/pointLightF.glsl` / `class3/deferred/spotLightF.glsl`) が本体で alias 名 (`color`/`size`) を参照すると、`#undef` 後の領域では symbol 不在で undeclared error。
+
+**範式**: 後段 file 本体側で alias 名でなく UBO member 名 (`spot_light_color`/`spot_light_size`) を直接参照する形に **Vulkan path のみ rename** (`#ifdef LL_VULKAN_GLSL` / `#else` 分岐)。utility 側の alias 機構は維持 (他後段 file の name pollution 防止のため)。
+
+実証: η-28 Phase 2d-α Issue B (pointLightF L195/L199/L216/L237/L251) + Issue E (spotLightF L384)。
+
+#### struct redefinition guard wrap (η-28-F 範式、η-28 Phase 2d-α 確立)
+
+同一 program 内に多重 attach される utility file (例: `class1/deferred/pbrterrainUtilF.glsl`、`llviewershadermgr.cpp:966` `addCommonShader` 経由で frag stage 共通 attach) と main file (例: `class1/deferred/pbrterrainF.glsl`) が **同名 struct を宣言** している場合、glslang strict mode で `'struct' : '<name>' redefinition` error。
+
+**範式**: 全宣言地点を `#ifndef <STRUCT>_DEFINED` / `#define <STRUCT>_DEFINED 1` / `#endif` で wrap (η-19 M_PI guard wrap の **struct 派生形**)。guard 名は struct 名を SHOUT_SNAKE_CASE 変換 + `_DEFINED` suffix。
+
+**前提条件**: 全宣言地点で member 名・型・順序が完全一致。divergence あれば同型化を先行。
+
+**予防適用**: 別 program で同 struct 宣言を持つが現状 redef 未発生 file (例: `class1/interface/pbrTerrainBakeF.glsl`) も将来 common shader 経路で多重 attach される変更に備えて同 guard wrap 推奨。
+
+実証: η-28 Phase 2d-α Issue C (pbrterrainF L47 + pbrterrainUtilF L183 + pbrTerrainBakeF L34、`struct TerrainMix` を `TERRAIN_MIX_DEFINED` guard wrap)。
+
 ---
 
 ### §6-A set=2 = `PerProgramUBO_*` / `PerDrawUBO_*` 帯 (η-28 Phase 2c 末時点)
@@ -299,7 +319,7 @@ waterHazeV / waterHazeF 両 file に **同一 UBO 名 + 同一 binding + 同一 
 | 2 | 7 | PerProgramUBO_PostDeferredV | V | η-26 Phase 1b |
 | 2 | 8 | PerProgramUBO_FullbrightShinyV | V | η-26 Phase 1c |
 | 2 | 9 | PerProgramUBO_FxaaF | F | η-27 Phase 1a |
-| 2 | 10 | PerProgramUBO_SpotLightF | F | η-27 Phase 1d |
+| 2 | 10 | PerProgramUBO_SpotLightF | F (permutation 共有) | η-27 Phase 1d + 1e-A (η-28 Phase 2d-α で `vec3 center` field 追加、Issue F MULTI_SPOTLIGHT permutation 吸収、η-28-C type 3 範式) |
 | 2 | 11 | PerProgramUBO_PbrAlphaV | V | η-27 Phase 1c |
 | 2 | 12 | PerProgramUBO_PostDeferredNoDoFF | F | η-27 Phase 1b |
 | 2 | 13 | PerProgramUBO_FsObjectIdF | F | η-28 Phase 2a |
