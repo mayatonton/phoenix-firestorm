@@ -117,8 +117,8 @@ inventory §6.6 で確定したルール。設計議論の含意:
 | 01 | `01-overview.md` (本 doc) | 全体概観 + 設計原則 + 用語定義 | ✅ 起案済 |
 | 02 | `02-naming-convention.md` | UBO 命名規則 / 接頭辞ルール / 互換性表記 | ✅ 起案済 |
 | 03 | `03-cadence-classification.md` | cadence 分類体系 + cadence source rule | ✅ 起案済 |
-| 04 | `04-codegen-ubo.md` | Codegen-UBO 全体機構 / pre-process pipeline | 未起案 |
-| 05 | `05-existing-inventory-link.md` | 既存 80+ UBO blueprint の cadence 別 mapping | 未起案 |
+| 04 | `04-codegen-ubo.md` | Codegen-UBO 全体機構 / pre-process pipeline | ✅ 起案済 |
+| 05 | `05-existing-inventory-link.md` | 既存 84 UBO blueprint の cadence 別 mapping + bare uniform 集約対応表 | ✅ 起案済 |
 | 06 | `06-redirect-layer-design.md` | host C++ redirect 層 (name-based setter → UBO offset 書込) | 未起案 |
 | 07 | `07-vulkan-api-state.md` | 現状 Vulkan API 実装状況棚卸し (vkQueueSubmit / swapchain / descriptor 等) | 未起案 |
 | 08 | `08-build-codegen-pipeline.md` | build system 統合 (CMake / glslang / preprocess script) | 未起案 |
@@ -144,6 +144,11 @@ inventory §6.6 で確定したルール。設計議論の含意:
 | 6 | storage lifetime は owner class lifetime に従う (新規判断不要) | session 議論 | 06 |
 | 7 | 設計判断は **論理 binding 軸 / 物理 instance 軸の両軸で評価** | inventory §6.6 | 全 chapter |
 | 8 | UBO migration は **1 UBO ずつ実装 → cold launch 検証 → 次へ** (大塊バッチ禁止) | feedback memory | 09 |
+| 9 | Codegen は **GLSL を改変しない** (= read-only 入力、出力は C++ header のみ、std140 整合は build-time check) | AYA 判断 2026-06-03 | 04 / 08 |
+| 10 | name → offset dispatch = **compile-time perfect hash** (= 全 uniform 名 build-time enumerate、衝突 0 build-time 保証) | AYA 判断 2026-06-03 | 04 / 06 |
+| 11 | Codegen は **bare uniform を取り込まない** (= 集約は chapter 05 集約表が決定権者、Codegen は出力 UBO 層のみ処理) | AYA 判断 2026-06-03 | 04 / 05 / 06 |
+| 12 | per-material cadence は **per-draw + dirty flag に統合** (= 独立軸として持たない、現状 `mValue` cache を Vulkan UBO upload の dirty 判定にそのまま継承、cadence 軸は 5 分類に縮約) | AYA 判断 2026-06-03 | 02 / 03 / 05 / 06 |
+| 13 | set=2 vs set=3 統廃合方針は **E3 (rename だけ)** を採用 (= 79 UBO 独立保持、`<Name>UBO_Legacy` → `Program_<Name>` 機械的 rename、program 単位 grouping 温存、統合判定の再評価は chapter 09 後半 / chapter 10) | AYA 判断 2026-06-03 | 02 / 05 / 09 / 10 |
 
 ---
 

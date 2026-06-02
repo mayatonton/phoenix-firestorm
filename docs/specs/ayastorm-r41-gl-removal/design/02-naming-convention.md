@@ -38,7 +38,7 @@ GLSL 中で `layout(set=N, binding=M) uniform <BlockName> { ... }` の `<BlockNa
 | per-frame | `Frame` | `FrameViewProj` / `FrameLights` / `FrameAtmosphere` | 既存命名を踏襲 |
 | per-program | `Program_` | `Program_GammaCorrect` / `Program_AlphaParams` | `PerProgramUBO_` → `Program_` に短縮 |
 | per-draw | `Draw_` | `Draw_LightParams` / `Draw_MultiLight` | `PerDrawUBO_` → `Draw_` に短縮 |
-| per-material | `Material` | `MaterialUBO` (既存) → `MaterialPBR` / `MaterialLegacyBlinn` 等に細分検討 | 既存命名を踏襲 |
+| per-draw (material dirty flag、chapter 05 §6 G1 確定) | `Material` | `MaterialUBO` (既存) → `MaterialPBR` / `MaterialLegacyBlinn` 等に細分検討 | 既存命名を踏襲 (cadence と命名は独立軸、§3.2.2) |
 | per-asset (GLTF) | `Asset_` | `Asset_GLTFNodes` / `Asset_GLTFMaterials` | 新規 |
 | per-skin (GLTF rigged) | `Skin_` | `Skin_GLTFJoints` | 新規 |
 | singleton (manager 等) | `Global_` | `Global_ReflectionProbes` | 新規 |
@@ -166,14 +166,23 @@ inventory §3 の現状 84 個に対する命名規則適用後の最終名。**
 
 **rename 規則**: `PerProgramUBO_<X>` → `Program_<X>` / `PerDrawUBO_<X>` → `Draw_<X>` (機械的)
 
-### §3.4 set=3 帯 (54 個 → `_Legacy` 剥がし or 統合)
+### §3.4 set=3 帯 (54 個 → 全件 `<Name>UBO_Legacy` → `Program_<Name>` 機械的 rename)
 
-54 個全件は inventory §3.4 参照。**Codegen-UBO 完成後に `_Legacy` suffix を剥がす** が、cadence 上は per-program と同じため、set=2 (Program_*) との **統合 / 分割は chapter 05 で個別判定**。
+**chapter 05 §4 で E3 (rename だけ) 採用** (= 2026-06-03 AYA 確認)。set=2 (`Program_*`) との統合 / 分割の個別判定は **本 chapter では行わない**。全件 `<Name>UBO_Legacy` → `Program_<Name>` の機械的 rename のみ実施。
 
-判定基準 (chapter 05 で確定予定):
-1. host C++ redirect 対象の bare uniform 群と member 重複がある → 統合候補
-2. shader file が独立 program 専属 → そのまま `Program_<Name>` で独立保持
-3. shader file が複数 program で共有 → `Program_<Name>` 共有 or 廃止再構成
+rename pattern 例 (= 全 54 件は inventory §3.4 全件を同パターンで):
+
+| 旧名 | 新名 |
+|---|---|
+| `AtmoExtraUBO_Legacy` | `Program_AtmoExtra` |
+| `SkyVParamUBO_Legacy` | `Program_SkyVParam` |
+| `SkyFParamUBO_Legacy` | `Program_SkyFParam` |
+| `CloudsVParamUBO_Legacy` | `Program_CloudsVParam` |
+| `WaterFogUBO_Legacy` | `Program_WaterFog` |
+| `TonemapUBO_Legacy` | `Program_Tonemap` |
+| ... (残 48 件、inventory §3.4 全件を同パターンで) | ... |
+
+統合判定の旧 3 基準 (host C++ redirect 対象 member 重複 / shader file 専属性 / 複数 program 共有) は **migration 進捗で実 upload cost を測ってから再評価** する持越事項として chapter 09 後半 / chapter 10 に移管 (= chapter 05 §4.4)。
 
 ---
 

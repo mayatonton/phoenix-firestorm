@@ -19,18 +19,17 @@ UBO の **update 頻度** が異なれば、以下が全て変わる:
 
 ---
 
-## §2 cadence 分類体系 (= 6 分類確定版)
+## §2 cadence 分類体系 (= 5 分類確定版、2026-06-03 update)
 
 | cadence | update 契機 | 典型 owner | 典型 member | 名前 prefix (chapter 02) | 典型 update 回数 / frame |
 |---|---|---|---|---|---|
 | **per-frame** | frame loop 開始時に必ず 1 回 | global (LLGLSLShader frame slot 等) | `view` / `proj` / `time` / `light direction sun` | `Frame*` | 1 |
 | **per-program** | shader program bind 時に 1 回 | per-program slot | tonemap parameters / atmospheric coeffs | `Program_*` | bind されている program 数 (典型 20-50) |
-| **per-draw** | draw call ごとに 1 回 | per-shader local slot | per-light parameters (in multi-light fragment) | `Draw_*` | 数百〜数千 |
+| **per-draw** | draw call ごとに 1 回 (material 切替も本 cadence の dirty flag で吸収) | per-shader local slot | per-light parameters / PBR material params | `Draw_*` / `Material*` | 数百〜数千 (dirty flag で同 material 連続時 skip) |
 | **per-asset** | GLTF asset state 変化時 | `gltf::Asset` per-instance | `mNodes` / `mMaterials` | `Asset_*` | N (rezzed GLTF 数、典型 1-10) |
 | **per-skin** | rigged animation 毎 frame | `gltf::Skin` per-instance | joint palette matrices | `Skin_*` | M (rigged skin 数、典型 1-10) |
-| **per-material** | material 切替時 (cadence 上は per-draw の partial 化) | (TBD chapter 05) | PBR material params | `Material*` | per-draw を material change 単位で間引いた回数 |
 
-**注**: `per-material` は **per-draw cadence の特化** (material が同じ draw 群を batch upload で間引く)。実体は **per-draw + dirty flag** で実装することで cadence の実体は per-draw に縮約しうる。chapter 05 で確定。
+**注 (per-material cadence の扱い、2026-06-03 chapter 05 §6 で G1 確定)**: 旧 6 分類に存在した `per-material` は **per-draw cadence + dirty flag に統合** (= 独立軸として保持しない)。根拠は「現状 OpenGL path が material parameter を bare uniform setter で per-draw 投入 + `mValue` cache で同値時 skip」している事実 (inventory §1.2 / §2 / §4.3) — G1 はこの cache を Vulkan UBO upload 側の dirty flag に乗せ替えるだけで等価。命名 prefix `Material*` は cadence と独立軸 (§2.2) のため温存される。
 
 ### §2.1 cadence 軸の独立性
 
@@ -124,7 +123,7 @@ chapter 01 §3.2 で確定済。storage lifetime (= owner の生存期間) は c
 |---|---|
 | update site | draw call 直前 (`LLDrawPool` 系の geom render 直前) |
 | upload thread | main thread (draw call と同一 thread) |
-| dirty 判定 | draw 毎 update が前提 (dirty 判定 overhead と update の差が小さい) |
+| dirty 判定 | draw 毎 update が前提 (dirty 判定 overhead と update の差が小さい)、ただし **material 切替は本 cadence の dirty flag で吸収** (= 既存 `mValue` cache 機構を継承、chapter 05 §6 G1 確定) |
 | descriptor set | set=2 (= per-draw、頻繁 rebind) |
 | 物理 instance scaling | 数百〜数千 / frame、ring buffer / dynamic offset 等の Vulkan 最適化が必要 (chapter 06+) |
 
