@@ -66,8 +66,28 @@ uniform mat4 texture_matrix0;
 uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
+//   PBR terrain V-stage terrain_texture_transforms + region_scale を UBO 化 (元 L178 + L70 を統合)。
+//   host = pipeline.cpp PBR terrain pass (TERRAIN_TEXTURE_TRANSFORMS + REGION_SCALE reserved)。
+//   2 permutation (HEIGHTMAP_WITH_NOISE / PBR_PAINTMAP) で同 UBO 共有、両 field 常時含める
+//   (region_scale は heightmap 側 declared-but-unused 容認)。
+//   F pair = pbrterrainF.glsl は η-21+ で TerrainDetailUBO set=1 binding=17 に UBO 化済 → 別 descriptor。
+//   η-28-C 範式の type 3 (同 file 内 preprocessor permutation 共有)。
+#ifndef PER_PROGRAM_UBO_PBR_TERRAIN_V_DEFINED
+#define PER_PROGRAM_UBO_PBR_TERRAIN_V_DEFINED 1
+layout(set=2, binding=24, std140) uniform PerProgramUBO_PbrTerrainV {
+    vec4  terrain_texture_transforms[5];  // offset 0 (vec4 array stride 16 × 5 = 80 bytes)
+    float region_scale;                   // offset 80
+    float _pad0;                          // offset 84 (vec4 boundary 揃え)
+    float _pad1;                          // offset 88
+    float _pad2;                          // offset 92
+};  // total 96
+#endif
+#else
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
 uniform float region_scale;
+#endif
 #endif
 
 #ifdef LL_VULKAN_GLSL
@@ -175,7 +195,11 @@ out vec4[2] vary_coords;
 // *HACK: Each material uses only one texture transform, but the KHR texture
 // transform spec allows handling texture transforms separately for each
 // individual texture info.
+#ifndef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
+//   Vulkan 側は PerProgramUBO_PbrTerrainV (binding 24、region_scale と統合) に移動済。
 uniform vec4[5] terrain_texture_transforms;
+#endif
 
 vec2 terrain_texture_transform(vec2 vertex_texcoord, vec4[2] khr_gltf_transform);
 vec4 terrain_tangent_space_transform(vec4 vertex_tangent, vec3 vertex_normal, vec4[2] khr_gltf_transform);

@@ -40,7 +40,27 @@ uniform sampler2D lightFunc;
 #ifndef LL_VULKAN_GLSL
 uniform vec3 env_mat[3];
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
+//   pointLightF.glsl ("Deferred Light Shader" F-stage 実 attach) の plain uniform を UBO 化。
+//   sun_wash / falloff / viewport / global_light_strength を 1 UBO に統合 (元 L43 / L59 / L95 / L128)。
+//   sun_wash は GLSL 本体未参照 dead-uniform だが parse 通過のため UBO 含める。
+//   FrameViewProj 内 inv_proj/screen_res、FrameAtmosphere_Lighting 内 classic_mode、
+//   PerDrawUBO_LightParams 内 color/size 既参照、二重宣言禁止。
+//   V pair = pointLightV.glsl は η-23 で PerProgramUBO_PointLightV set=2 binding=5 既 UBO 化、本群不所持。
+#ifndef PER_PROGRAM_UBO_POINT_LIGHT_F_DEFINED
+#define PER_PROGRAM_UBO_POINT_LIGHT_F_DEFINED 1
+layout(set=2, binding=25, std140) uniform PerProgramUBO_PointLightF {
+    vec4  viewport;                // offset 0
+    float sun_wash;                // offset 16 (dead uniform、host setter あり / GLSL 本体未参照)
+    float falloff;                 // offset 20
+    float global_light_strength;   // offset 24
+    float _pad0;                   // offset 28 (vec4 boundary 揃え)
+};  // total 32
+#endif
+#else
 uniform float sun_wash;
+#endif
 
 // light params
 #ifdef LL_VULKAN_GLSL
@@ -56,7 +76,9 @@ layout(set=2, binding=0, std140) uniform PerDrawUBO_LightParams {
 uniform vec3 color;
 uniform float size;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform float falloff;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec4 vary_fragcoord;
@@ -92,7 +114,9 @@ uniform vec2 screen_res;
 
 uniform mat4 inv_proj;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform vec4 viewport;
+#endif
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Lighting per-group rename (η-3 §3.2 範式)
 #ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
@@ -125,7 +149,9 @@ uniform int classic_mode;
 #endif
 
 //BD
+#ifndef LL_VULKAN_GLSL
 uniform float global_light_strength;
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);

@@ -45,12 +45,33 @@ uniform sampler2D depthMap;
 #endif
 #endif // DECL_DEPTH_MAP
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
+//   DoF cofF.glsl の 6 plain float uniform を UBO 化。
+//   host = pipeline.cpp DoF gather pass、reserved = DOF_FOCAL_DISTANCE / DEFERRED_DEPTH_CUTOFF 群。
+//   max_cof は既に FrameAtmosphere_Lighting、screen_res / inv_proj は FrameViewProj 内。
+//   V pair = postDeferredNoTCV.glsl は本群不使用 → F 単独 attach。
+#ifndef PER_PROGRAM_UBO_COF_F_DEFINED
+#define PER_PROGRAM_UBO_COF_F_DEFINED 1
+layout(set=2, binding=21, std140) uniform PerProgramUBO_CofF {
+    float depth_cutoff;     // offset 0
+    float norm_cutoff;      // offset 4
+    float focal_distance;   // offset 8
+    float blur_constant;    // offset 12
+    float tan_pixel_angle;  // offset 16
+    float magnification;    // offset 20
+    float _pad0;            // offset 24 (vec4 boundary 揃え)
+    float _pad1;            // offset 28
+};  // total 32
+#endif
+#else
 uniform float depth_cutoff;
 uniform float norm_cutoff;
 uniform float focal_distance;
 uniform float blur_constant;
 uniform float tan_pixel_angle;
 uniform float magnification;
+#endif
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Lighting per-group rename (η-3 §3.2 範式)
 #ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED

@@ -53,11 +53,32 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 uniform vec2 screen_res;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
+//   SSAO/shadow blur kernel uniform を UBO 化。
+//   host = pipeline.cpp::renderDeferredLighting (sDelta/sKern/sDistFactor/sKernScale LLStaticHashedString
+//   + DEFERRED_BLUR_SIZE reserved)。screen_res は FrameViewProj 既参照、二重宣言禁止。
+//   AYASTORM_CINEMATIC 2 main() 実装は同 UBO 共有 (uniform 宣言は #if の外)。
+#ifndef PER_PROGRAM_UBO_BLUR_LIGHT_F_DEFINED
+#define PER_PROGRAM_UBO_BLUR_LIGHT_F_DEFINED 1
+layout(set=2, binding=22, std140) uniform PerProgramUBO_BlurLightF {
+    vec2  delta;            // offset 0
+    float dist_factor;      // offset 8
+    float blur_size;        // offset 12
+    vec3  kern[4];          // offset 16 (vec3 array stride 16 × 4 = 64 bytes)
+    float kern_scale;       // offset 80
+    float _pad0;            // offset 84 (vec4 boundary 揃え)
+    float _pad1;            // offset 88
+    float _pad2;            // offset 92
+};  // total 96
+#endif
+#else
 uniform float dist_factor;
 uniform float blur_size;
 uniform vec2 delta;
 uniform vec3 kern[4];
 uniform float kern_scale;
+#endif
 
 in vec2 vary_fragcoord;
 

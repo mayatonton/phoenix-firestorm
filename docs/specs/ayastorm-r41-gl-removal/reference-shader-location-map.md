@@ -1,4 +1,4 @@
-# r41 Vulkan migration: shader interface location map (η-28 Phase 2b 末時点)
+# r41 Vulkan migration: shader interface location map (η-28 Phase 2c 末時点)
 
 **目的**: GLSL `layout(location=N)` qualifier の **slot 識別子** としての確定割当を全 shader 横断で資料化。η-26+ の location reassign 着手時の **事前 trace 範式** (空き slot 即座確定) として参照する。
 
@@ -277,11 +277,13 @@ waterHazeV / waterHazeF 両 file に **同一 UBO 名 + 同一 binding + 同一 
 
 ---
 
-### §6-A set=2 = `PerProgramUBO_*` / `PerDrawUBO_*` 帯 (η-28 Phase 2b 末時点)
+### §6-A set=2 = `PerProgramUBO_*` / `PerDrawUBO_*` 帯 (η-28 Phase 2c 末時点)
 
-**stage 列の読み方** (η-28 Phase 2a 新規追加):
+**stage 列の読み方** (η-28 Phase 2a 新規追加、Phase 2b/2c で type 拡張):
 - `V` / `F` = UBO ブロック宣言が **その stage 単独** に閉じている
-- `V+F` = **同一 program の V/F 両 stage** に同名 UBO ブロックを宣言し共有 (η-28-C 範式)
+- `V+F` = **同一 program の V/F 両 stage** に同名 UBO ブロックを宣言し共有 (η-28-C type 1: stage 跨ぎ)
+- `F (+ <variant> cross-variant)` = **同一 program で cvar 切替される 2 file** に同名 UBO 宣言 (η-28-C type 2: cvar variant 跨ぎ)
+- `V (permutation 共有)` = **同一 file 内 preprocessor permutation 2 種** に同 UBO 宣言 (η-28-C type 3: preprocessor 跨ぎ)
 - `(per-draw)` = 描画 call 毎 host 側更新、stage は文脈依存
 - UBO 名末尾の `V` / `F` suffix は **起源 stage** を示すだけ、実 attach 範囲は本列で確認
 
@@ -308,7 +310,12 @@ waterHazeV / waterHazeF 両 file に **同一 UBO 名 + 同一 binding + 同一 
 | 2 | 18 | PerProgramUBO_VolumetricLightF | F | η-28 Phase 2b |
 | 2 | 19 | PerProgramUBO_VelocityAlphaV | V | η-28 Phase 2b |
 | 2 | 20 | PerProgramUBO_PostDeferredF | F (+ HQDoFF cross-variant) | η-28 Phase 2b |
-| 2 | 21+ | (空き、η-28 Phase 2c+ 連番継続) | - | - |
+| 2 | 21 | PerProgramUBO_CofF | F | η-28 Phase 2c |
+| 2 | 22 | PerProgramUBO_BlurLightF | F | η-28 Phase 2c |
+| 2 | 23 | PerProgramUBO_WaterF | F | η-28 Phase 2c |
+| 2 | 24 | PerProgramUBO_PbrTerrainV | V (permutation 共有) | η-28 Phase 2c |
+| 2 | 25 | PerProgramUBO_PointLightF | F | η-28 Phase 2c |
+| 2 | 26+ | (空き、η-28 Phase 2d+ 連番継続) | - | - |
 
 **stage 列の retroactive 注意**: 既存 (binding 0-12) は UBO 名 suffix から `V` / `F` を推定記載。新規 cascade 表面化時に再確認推奨。`PerProgramUBO_WaterHazeV` (binding=15) は η-28 Phase 2a self-trace で V+F 両 stage attach が判明した実例 (waterHazeV / waterHazeF 両者に `above_water` 使用、waterHazeV 単独 UBO 化では F stage cascade error 浮上の見込みだったため両 stage 宣言で予防)。
 

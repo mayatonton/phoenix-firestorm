@@ -91,7 +91,33 @@ layout(set=1, binding=10) uniform sampler2D bumpMap2;
 uniform sampler2D bumpMap;
 uniform sampler2D bumpMap2;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
+//   Water surface PBR uniform を UBO 化 (blend_factor L94 + lightDir/specular/blurMultiplier/refScale/kd/
+//   normScale/fresnelScale/fresnelOffset L147-L154 を 1 UBO に統合)。
+//   host = LLSettingsVOWater::applyToShader 系 (BLEND_FACTOR + WATER_*reserved 群)。
+//   FrameAtmosphere_Lighting 内 classic_mode 既参照、二重宣言禁止。
+//   class1/environment/waterF.glsl は error fallback stub (plain uniform 無し) → cross-variant 適用不要。
+//   waterV (V pair) は η-6 で WaterVParamUBO_Legacy set=3 binding=60 に UBO 化済 → 別 descriptor、本 binding 23 と独立。
+//   kd は host setter 無し (declared-but-unused、BD legacy)、parse 通過のため UBO 含める。
+#ifndef PER_PROGRAM_UBO_WATER_F_DEFINED
+#define PER_PROGRAM_UBO_WATER_F_DEFINED 1
+layout(set=2, binding=23, std140) uniform PerProgramUBO_WaterF {
+    vec3  lightDir;         // offset 0
+    float blend_factor;     // offset 12 (vec3 直後 4byte に詰め)
+    vec3  specular;         // offset 16
+    float blurMultiplier;   // offset 28
+    vec3  normScale;        // offset 32
+    float refScale;         // offset 44
+    float kd;               // offset 48 (declared-but-unused、host setter 無し)
+    float fresnelScale;     // offset 52
+    float fresnelOffset;    // offset 56
+    float _pad0;            // offset 60 (vec4 boundary 揃え)
+};  // total 64
+#endif
+#else
 uniform float     blend_factor;
+#endif
 #ifdef TRANSPARENT_WATER
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=54) uniform sampler2D screenTex;
@@ -144,6 +170,9 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
 #else
 uniform int classic_mode;
 #endif
+#ifndef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2c:
+//   本群は Vulkan 側 PerProgramUBO_WaterF (binding 23、L94 直後で宣言) に統合済。
 uniform vec3 lightDir;
 uniform vec3 specular;
 uniform float blurMultiplier;
@@ -152,6 +181,7 @@ uniform float kd;
 uniform vec3 normScale;
 uniform float fresnelScale;
 uniform float fresnelOffset;
+#endif
 
 //bigWave is (refCoord.w, view.w);
 #ifdef LL_VULKAN_GLSL
