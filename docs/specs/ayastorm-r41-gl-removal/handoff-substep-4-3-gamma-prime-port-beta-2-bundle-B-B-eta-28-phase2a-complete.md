@@ -325,9 +325,14 @@ grep -E "VK_ERROR|fatal|panic|abort|signal SIG" log.txt
 - [x] feat commit (`c53f6e0782`)
 - [x] reference-shader-location-map.md §6 に stage 列追加
 - [x] 本 handoff doc 起草 (§6 = 次 session 計画 / §6-A = A-E 詳細 / §6-B = Phase 2b 直前準備)
-- [ ] **docs commit** (本 doc + prep doc + reference doc 更新分、AYA 明示指示後)
-- [ ] **次 session**: §6-A A-E 5 項目を `reference-shader-location-map.md` に追記 (Phase 2b 着手前提条件)
-- [ ] **次々 session**: 本 doc §4 Phase 2b 表 + §6-B + 整備済 reference doc を起点に Phase 2b 着手
+- [x] **docs commit** (本 doc + prep doc + reference doc 更新分、commit `527d572388`)
+- [x] **次 session**: §6-A A-E 5 項目を `reference-shader-location-map.md` に追記 (Phase 2b 着手前提条件、commit `057cd8b299`)
+  - §4-B std140 alignment 既知パターン集 (A)
+  - §6 冒頭 UBO 命名規約 + `#ifndef <NAME>_DEFINED` guard 範式 (C)
+  - §6-A〜D set namespace 分割 (set=2 / set=0 / set=1 / set=3 Legacy) (B)
+  - §7 cascade ERROR 種別表 (D)
+  - §8 log 観測 checklist (E)
+- [ ] **次々 session**: 本 doc §4 Phase 2b 表 + §6-B + 整備済 reference doc (§4-B / §6 命名規約 / §6-A〜D / §7 / §8) を起点に Phase 2b 着手
 
 ---
 
