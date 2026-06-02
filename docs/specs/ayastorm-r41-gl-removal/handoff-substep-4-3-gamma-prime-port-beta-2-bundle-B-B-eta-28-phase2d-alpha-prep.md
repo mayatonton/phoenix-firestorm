@@ -52,6 +52,31 @@ Phase 2c complete handoff §4.2 で提案した 2 sub-phase 分離を本 prep �
 | link failed | 0 | 0 維持 | 0 維持 | 0 維持 |
 | SPIR-V 全 program 生成 | 5 program PASS + PbrTerrainV V-stage 2 permutation PASS | + PbrTerrainF 2 permutation + PointLight + SpotLight + MultiSpotLight PASS (5 program 追加) | + PbrAlpha 2 program PASS | 全 program PASS |
 
+### §0.5 Phase 2d-α scope re-confirmation (host C++ UBO redirect は Phase 3 scope、2026-06-03 確定)
+
+prep 起草後の §6-A self-verify 段階で **重要な前提誤認** が発見された (2026-06-03 Agent 2 段 trace):
+
+- `LLGLSLShader::uniform*fv()` の Vulkan path 実装 (`llglslshader.cpp:2166-2554`) は **unconditional `glUniform*` call のみ**、UBO buffer redirect 層 (memcpy / vkCmdUpdateBuffer / mUBOCache) **不存在**
+- η-23 / η-27 で GLSL UBO 化済の全 program (`PerDrawUBO_LightParams` `PerProgramUBO_SpotLightF` 等) も host C++ 側は **plain uniform setter のまま** (pipeline.cpp L11481-11483 / L11543-11545 / L11620-11622 / L12175-12252 等)
+- 含意: 現状の UBO 化は **GLSL parse pass 目標のみ** 達成、host C++ → Vulkan UBO buffer の value flow は **未整備** (実 runtime では dead data)
+
+**設計判断 (AYA 指示 2026-06-03)**:
+- AYAstorm r41 Vulkan 化の 2 大原則 (`project_ayastorm_r41_design_principles.md`):
+  - (1) Upstream OpenGL 取り込みやすさ維持 — call site API (`gShader.uniform3fv(LIGHT_CENTER, ...)`) 変更禁止
+  - (2) Core プロセス分散実現 — UBO 更新 worker 化容易な設計
+- Phase 構造再整理:
+  - **Phase 2 (本 phase 含む)**: GLSL parse pass 達成のみ scope、host C++ は据え置き
+  - **Phase 3 (別 phase、別 prep)**: host C++ UBO redirect 層整備、UBO 1 つずつ実装 (`feedback_ubo_migration_one_at_a_time.md`)
+    - Phase 3a 起点: PerDrawUBO_LightParams (color/size、3 program 共有) で redirect 層基盤完成
+    - Phase 3b+: 1 UBO ずつ map 拡張 + cold launch 検証
+  - Phase 4: Vulkan runtime 実 draw 動作確認
+
+**本 prep doc の訂正適用**:
+- §6-A: 「host C++ setter を UBO buffer 経由書込みに変更」記述を **「Phase 3 scope、本 phase は plain uniform setter のまま据え置き」** に訂正
+- §6-E: Issue F center UBO 化に伴う host setter 整備 → **Phase 3 で他 UBO 同時に実施**、本 phase スコープ削除
+- §2 / §3 / §7 / §8 各所の host C++ 整合 / setter 経路言及 → 「Phase 3 forward reference」明示
+- **Issue F GLSL 編集 (spotLightF L74-88 に vec3 center 追加 + L139-140 plain uniform 削除) は本 phase で実施** (GLSL UBO 化 = parse pass 目標)、host 側は Phase 3 まで plain uniform setter (既存 PerProgramUBO_SpotLightF 他 field と同状態を維持)
+
 ---
 
 ## §1 Scope 詳細 (Phase 2c complete §3 表ベース、Phase 2d-α 直接対象 4 root)
@@ -161,7 +186,7 @@ in vec3 trans_center;
 | Issue C pbrterrainUtilF other-program 露呈 | `pbrterrainUtilF.glsl` は `addCommonShader` 経路で frag stage common として全 frag program に attach される可能性、ただし `struct TerrainMix` 自体は **TERRAIN_PBR_DETAIL define が有効な program 限定**で実 compile される (Vulkan path の preprocessor scope)。pbrterrainF 以外の program で同 struct を参照する path 確認 → 現状無し。ただし guard wrap は副作用ゼロで予防価値あり | 予防 guard wrap |
 | Issue C pbrTerrainBakeF program (`gPbrTerrainBakeProgram`) | `pbrTerrainBakeV+pbrTerrainBakeF` attach、pbrterrainUtilF を attach しないため現状 redef 発生せず | 予防 guard wrap |
 | Issue E spotLightF cross-stage (V pair = `pointLightV.glsl` for gDeferredSpotLightProgram / `multiPointLightV.glsl` for gDeferredMultiSpotLightProgram) | 両 V は `color` 不参照 | 編集不要 |
-| Issue F spotLightF `vec3 center` cross-stage (V pair = `multiPointLightV.glsl`) | multiPointLightV.glsl 側で `center` を out attribute として送信していないか要確認 (host C++ setter が direct UBO 書き込みでなく attribute 経路の可能性) | **本 prep §2.4 で trace、host C++ 側 setter も確認** |
+| Issue F spotLightF `vec3 center` cross-stage (V pair = `multiPointLightV.glsl`) | multiPointLightV.glsl 側で `center` を out attribute として送信していないか要確認 (本 phase の GLSL UBO 化 scope 妥当性) | **本 prep §2.4 で trace、host C++ setter 経路は §0.5 通り Phase 3 で対処** |
 | Issue F !MULTI_SPOTLIGHT permutation 影響 | spotLightF !MULTI_SPOTLIGHT permutation (`gDeferredSpotLightProgram`) では UBO に `vec3 center` field 追加されても declared-but-unused (本体 L228 で `c = trans_center;` を参照、`c = center;` は MULTI_SPOTLIGHT only) | η-28-C type 3 範式適用、parse 通過確認のみ |
 
 ---
@@ -515,8 +540,10 @@ in vec3 trans_center;
 
 L226 `c = center;` は MULTI_SPOTLIGHT 時のみ評価される、Vulkan path では `center` を PerProgramUBO_SpotLightF.center 経由で参照する形に自動解決される (UBO member 名 `center` が global scope に anonymous で expose、η-28-C type 1 範式同型)。本体側 source 修正不要。
 
-**host C++ 整合 (要 deploy 前 grep)**:
-- `center` は host C++ で reserved uniform `CENTER` (要 enum 名 grep)、setter は `pipeline.cpp` の MULTI_SPOTLIGHT pass で書込み。本 phase で UBO 化したため、setter 側は **PerProgramUBO_SpotLightF buffer 経由書込み** に変更必要 (既存 PerProgramUBO_SpotLightF 経路に従う)。η-27 で UBO 化された他 field (proj_near 等) と同経路で setter 化、本 prep §6-A で確認。
+**host C++ 整合 (§0.5 通り、本 phase scope 外)**:
+- `center` の host C++ setter は `LLShaderMgr::LIGHT_CENTER` enum (llshadermgr.h:154 / llshadermgr.cpp:1630)、pipeline.cpp L11620-11622 で `gDeferredMultiSpotLightProgram.uniform3fv(LLShaderMgr::LIGHT_CENTER, 1, glm::value_ptr(tc))` で plain uniform setter 経由 (η-27 既存 UBO field proj_near 等 setupSpotLight L12175 も plain uniform setter 維持)
+- 本 phase は **GLSL UBO 化のみ実施**、host C++ setter は **plain uniform setter のまま据え置き** (既存 PerProgramUBO_SpotLightF 他 field と同状態を維持)
+- Vulkan path host UBO buffer redirect 層整備は **Phase 3 で 1 UBO ずつ実施** (`feedback_ubo_migration_one_at_a_time.md`、Phase 3a 起点 = PerDrawUBO_LightParams、Phase 3b = PerProgramUBO_SpotLightF で center 含めまとめて redirect 化)
 
 ### §2.5 本 phase 編集対象 file 集約
 
@@ -634,21 +661,19 @@ Phase 2c で binding 21-25 まで埋まり、本 phase は **binding 26+ を消�
 
 ## §6 Phase 2d-α 着手前 self-verify (Claude 側、AYA "OK" 後の deploy 前)
 
-### §6-A reserved uniform 名 + UBO setter 整合 (host C++ vs GLSL)
+### §6-A reserved uniform 名 + host C++ setter 現状確定 (Phase 3 参照用、§0.5 通り)
 
-deploy 前に Claude が再確認 (本 prep §2.x の host 整合記述の裏取り):
+§0.5 で確定済の host C++ 現状 (Phase 3 で UBO redirect 層整備時の reference):
 
-| GLSL 名 | LLShaderMgr enum (要 grep) | reserved push_back 場所 (要 grep) | host C++ setter 場所 (要 grep) | Phase 2d-α deploy 前確認 |
-|---|---|---|---|---|
-| `color` (PerDrawUBO_LightParams.spot_light_color) | LIGHT_COLOR 系 (η-3 起源、要 grep) | (要再 grep) | `pipeline.cpp` light volume pass の per-draw color setter (要再 grep、η-3 整備時に UBO buffer 経由化済の前提) | **deploy 前 grep** |
-| `size` (PerDrawUBO_LightParams.spot_light_size) | LIGHT_SIZE 系 (η-3 起源、要 grep) | (要再 grep) | `pipeline.cpp` light volume pass の per-draw size setter (同上) | **deploy 前 grep** |
-| `center` (PerProgramUBO_SpotLightF.center、Issue F 新規追加) | CENTER 系 (要 enum 名 grep) | (要 push_back 場所 grep) | `pipeline.cpp` MULTI_SPOTLIGHT pass の per-draw center setter (η-27 PerProgramUBO_SpotLightF 経由化済の他 field と同経路、本 phase で center も同経路化が必要) | **deploy 前 grep + setter 経路確認必須** |
+| GLSL 名 | LLShaderMgr enum | reserved push_back 場所 | host C++ setter 場所 (現状 plain uniform setter のまま据え置き) |
+|---|---|---|---|
+| `color` (PerDrawUBO_LightParams.spot_light_color) | `DIFFUSE_COLOR` | llshadermgr.h:96 / llshadermgr.cpp:1568 | pipeline.cpp L11483 (`gDeferredLightProgram.uniform3fv`) / L11545 (`gDeferredSpotLightProgram`) / L11622 (`gDeferredMultiSpotLightProgram`) |
+| `size` (PerDrawUBO_LightParams.spot_light_size) | `LIGHT_SIZE` | llshadermgr.h:155 / llshadermgr.cpp:1631 | pipeline.cpp L11482 / L11544 / L11621 (同 3 program、plain uniform setter) |
+| `center` (PerProgramUBO_SpotLightF.center、Issue F GLSL UBO 化対象) | `LIGHT_CENTER` | llshadermgr.h:154 / llshadermgr.cpp:1630 | pipeline.cpp L11481 / L11543 / L11620 (同 3 program、plain uniform setter) |
 
-**特記 (center)**: `vec3 center` を `PerProgramUBO_SpotLightF` に field 追加するため、**host C++ 側 setter も UBO buffer 経由書込みに変更**が必要。η-27 で proj_near 等が UBO 経由化された経路と同じパターンで対応:
-- 既存 `gDeferredMultiSpotLightProgram.uniform3fv(CENTER, ...)` 経路を **PerProgramUBO_SpotLightF buffer 内 center offset (48-59 bytes) への書込み** に変更
-- 該当箇所は llviewershadermgr.cpp / pipeline.cpp の MULTI_SPOTLIGHT pass、deploy 前 grep で特定
+**本 phase scope (§0.5 確定)**: 上記 host C++ setter は **一切変更しない**。GLSL 側のみ編集 (Issue F = spotLightF L74-88 PerProgramUBO_SpotLightF に center field 追加 + L139-140 plain uniform 削除)。Vulkan path で host 値が UBO buffer に届かない状態は **既存 η-23/η-27 UBO 化済 field と同じ未整備状態**、Phase 3 で redirect 層整備時に一括対応。
 
-`feedback_self_verify_before_handoff` 適用、AYA "OK" 後 commit 直前で Claude が 10-15 分で消化 (本 prep §6-A の 3 件は host C++ 整合の核心、確認漏れは Issue A 同型 regression に直結)。
+**deploy 前 grep 不要** (上記情報は §0.5 self-verify 時点で確定済、本 phase 編集は GLSL のみ)。本 phase の self-verify は §6-B (5 file edit cross-check) と §6-C (cold launch parse pass 観測) のみ。
 
 ### §6-B 5 file edit 後の cross-check
 
@@ -690,14 +715,11 @@ Phase 2d-α は **struct/alias scope 修正のみ** で UBO 化 0、新 binding 
 Δ event = -5 (cascade 0) → 期待通り Phase 2d-β scope は 2 root のみ
 Δ event = -6 / -7 (cascade reveal -1 〜 -2、他隠れ root が表面化) → reference doc §7 cascade chain 同定 protocol で新規 chain を trace、2d-β scope 拡張
 
-### §6-E host C++ setter 経路確認 (Issue F center UBO 化に伴う必須確認)
+### §6-E [削除済 / Phase 3 forward reference]
 
-`PerProgramUBO_SpotLightF.center` 新 field の host C++ setter 経路:
-1. `pipeline.cpp` の `gDeferredMultiSpotLightProgram` 関連箇所で `center` または `CENTER` reserved uniform を grep
-2. 既存の同 UBO 内 field (proj_near, proj_ambient_lod 等) が UBO buffer 経由でどう書き込まれているか確認 (η-27 起源、推定: LLGLSLShader::uniformXXX 系から UBO buffer 経由 dispatch)
-3. center 用に同経路を整備、または既存経路に center を追加
+§0.5 確定通り、Issue F center UBO 化に伴う host C++ setter 経路整備は **本 phase scope 外**、Phase 3 で他 UBO 同時に redirect 層経由化。本 phase は GLSL UBO 化のみ実施、host plain uniform setter のまま据え置き (既存 η-27 UBO 化 field 群と同状態維持)。
 
-deploy 前に上記 3 段 trace を Claude が消化、setter 不整合があると Vulkan path で center 値が garbage となり描画 regression。AYA cold launch で MULTI_SPOTLIGHT pass の動作確認 (light 描画が破綻していないか) を含める。
+cold launch verify 時の描画 regression は **本 phase で観測対象外** (Vulkan path 実 draw は Phase 4 で初検証、parse pass のみが本 phase goal)。AYA cold launch は §6-C cookbook の parse fail / ERROR / link 観測のみ実施。
 
 ---
 
@@ -707,10 +729,12 @@ deploy 前に上記 3 段 trace を Claude が消化、setter 不整合がある
 
 - `feedback_one_step_at_a_time` (本 prep は 2d-α scope 単独、2d-β は別 prep で次々 session)
 - `feedback_no_scope_shrink` (4 root 全消化 = literal scope、Issue F の既存 UBO 拡張は「UBO 化作業」のように見えるが新 binding 消費なし = struct/alias scope category)
-- `feedback_doubt_self_first` (本 prep §1 で Phase 2c complete §3 表記載の各 root を source-tree grep で再確認、特に Issue C の attach 経路 (addCommonShader L966) と Issue F の host C++ setter 経路を新規 trace)
+- `feedback_doubt_self_first` (本 prep §1 で Phase 2c complete §3 表記載の各 root を source-tree grep で再確認、特に Issue C の attach 経路 (addCommonShader L966) を新規 trace、Issue F host C++ setter 経路は §0.5 で確定済 = Phase 3 scope)
 - `feedback_render_full_trace_first` (4 root を deferredUtil/pointLightF/spotLightF/pbrterrainF/pbrterrainUtilF の 5 file + llviewershadermgr.cpp attach map で完全 trace)
 - `feedback_no_auto_commit` (AYA "OK" 明示後に feat commit)
-- `feedback_self_verify_before_handoff` (本 prep §6 self-verify で AYA cold launch 浪費を防ぐ、特に §6-A の host C++ setter 経路は Issue A 同型 regression 予防の核心)
+- `feedback_self_verify_before_handoff` (本 prep §6 self-verify で AYA cold launch 浪費を防ぐ、§6-A の host C++ setter は §0.5 で Phase 3 scope に切出済のため本 phase self-verify は §6-B / §6-C のみ消化)
+- `project_ayastorm_r41_design_principles` (§0.5 通り、call site API 温存 + Core 分散容易設計を Phase 3 redirect 層実装時の制約に継承)
+- `feedback_ubo_migration_one_at_a_time` (Phase 3 を 1 UBO ずつ sub-phase 分割、Phase 3a = PerDrawUBO_LightParams 起点)
 - `feedback_proactive_handoff` (本 prep doc 自体)
 - `feedback_falsification_as_progress` (Phase 2c で Issue A regression + Issue B/C cascade reveal を honest に記録した範式拡張を本 prep の trace 強化に継承)
 - **η-28-A** (dump marker 信用せず source tree grep) — 本 prep §1 全 root の root cause trace で適用
@@ -751,26 +775,24 @@ deploy 前に上記 3 段 trace を Claude が消化、setter 不整合がある
 ### 本 phase 完了 checklist
 
 - [ ] AYA prep doc レビュー + "OK" 明示
-- [ ] §6-A host C++ setter 経路 deploy 前 grep 消化 (Claude 10-15 分、特に `center` setter UBO 経由化が核心)
-- [ ] §6-B 5 file edit 後 cross-check (Claude re-read)
+- [ ] §6-B 5 file edit 後 cross-check (Claude re-read、host C++ setter は §0.5 通り Phase 3 scope のため対象外)
 - [ ] §4 の 5 file 修正 feat commit
 - [ ] reference-shader-location-map.md §6-A binding 10 note 更新 + §6 命名規約 η-28-E / η-28-F 追記 (feat commit 同梱 or 直後 docs commit)
 - [ ] deploy + shader cache clear (~/.ayastorm_x64/cache/shader_cache/ 全 clear)
 - [ ] AYA cold launch + log 採取 (`~/.ayastorm_x64/logs/AYAstorm.log`)
-- [ ] Claude self-verify: ERROR ~8-10 / parse failure 2 / link 0 / 5 program (PointLight + SpotLight + MultiSpotLight + PbrTerrain F heightmap/paintmap) SPIR-V 全成功 / clean shutdown / MULTI_SPOTLIGHT pass の center 値が garbage でないこと (描画 regression なし) を AYA 確認 (本 prep §6-C cookbook + §6-E setter 経路確認)
-- [ ] Phase 2d-α complete handoff 起草 (§4 Phase 2d-β 表更新 + 残 2 root を 2d-β scope として明示、η-28-E / η-28-F 範式昇格を doc 本体反映)
+- [ ] Claude self-verify: ERROR ~8-10 / parse failure 2 / link 0 / 5 program (PointLight + SpotLight + MultiSpotLight + PbrTerrain F heightmap/paintmap) SPIR-V 全成功 / clean shutdown (本 prep §6-C cookbook、Vulkan runtime 実 draw 動作は Phase 4 検証のため本 phase 対象外)
+- [ ] Phase 2d-α complete handoff 起草 (§4 Phase 2d-β 表更新 + 残 2 root を 2d-β scope として明示、η-28-E / η-28-F 範式昇格を doc 本体反映、§0.5 設計判断を complete handoff §1 に継承記載)
 - [ ] **次々 session**: Phase 2d-α complete handoff の §4 Phase 2d-β 表起点に Phase 2d-β prep 起草 (pbralpha class2 F + pbralphaV !HAS_SKIN path、binding 26+ 消費見込み)
 
-### 本 phase 着手前の追加 trace (Claude 側、本 prep §6-A / §6-E 消化前に AYA "OK" 待ちで実施)
+### 本 phase 着手前の追加 trace (Claude 側、AYA "OK" 待ちで実施)
 
 - `class2/deferred/pbralphaF.glsl` の L3692 付近 root cause file 内 trace (本 phase 直接対象ではないが、2d-β prep 起草時の助走として既に位置確認)
-- `class3/deferred/multiPointLightV.glsl` の `center` out attribute 存在確認 (Issue F の cross-stage check、§1.5 で予防的に挙げた項目、本 prep §6-A deploy 前 grep で消化)
-- `pipeline.cpp` の `gDeferredMultiSpotLightProgram` 関連 center setter 経路 (§6-E、本 prep §6-A の必須項目)
+- `class3/deferred/multiPointLightV.glsl` の `center` out attribute 存在確認 (Issue F の cross-stage check、§1.5 で予防的に挙げた項目、本 prep §6-B cross-check で消化)
 
 ### 次々 session への引き継ぎ事項 (Phase 2d-β prep 起草起点)
 
 1. **Phase 2d-β scope (本 prep §0.3 表)**:
-   - **2d-β-G** (Skinned Deferred PBR Alpha Shader F、L687-690): `class2/deferred/pbralphaF.glsl` HAS_SKIN path で L3692 付近の non-opaque uniforms outside a block。新 `PerProgramUBO_PbrAlphaF` 系 UBO 化 (binding 26 推定)、host C++ setter 経路整備
+   - **2d-β-G** (Skinned Deferred PBR Alpha Shader F、L687-690): `class2/deferred/pbralphaF.glsl` HAS_SKIN path で L3692 付近の non-opaque uniforms outside a block。新 `PerProgramUBO_PbrAlphaF` 系 GLSL UBO 化 (binding 26 推定)、host C++ setter は §0.5 通り plain uniform setter 据え置き (Phase 3 で redirect 層整備時に対処)
    - **2d-β-H** (Deferred PBR Alpha Shader V、L696-699): `class1/deferred/pbralphaV.glsl` !HAS_SKIN path で `modelview_projection_matrix` undeclared = FrameViewProj attach 漏れ (L54-58 が `#ifndef LL_VULKAN_GLSL` で wrap されているが Vulkan path で attach されていない)。FrameViewProj guard wrap 追加 (η-1 範式継承)、binding 連番未消費の可能性も (UBO 不要なら 0 消費、新 UBO 必要なら 27 消費)
 2. **2d-β feat 適用前の追加 trace**:
    - class2/pbralphaF.glsl 全 plain uniform リスト (L3692 だけでなく他にも guard 漏れがあれば一括対応)
@@ -783,7 +805,7 @@ deploy 前に上記 3 段 trace を Claude が消化、setter 不整合がある
 
 - **`feedback_no_scope_shrink` の境界線**: 本 prep の sub-phase 分離 (2d-α + 2d-β) は **AYA 事前合意済の分離** (Phase 2c complete §4.2 提案を AYA が前提として本 prep 起草指示) で、scope shrink ではない。AYA が「全 7 root 1 phase で」と指示した場合は本 prep を破棄し 1 phase に統合する形で対応。
 - **deferredUtil 編集を避けた理由**: utility 側の alias 機構 (L173-185 + L780-783) を編集すると **shadowUtil / reflectionProbeF / main shader** の他後段 attach file で name pollution が再発する可能性。η-20 範式の rename 動機 (V stage MaterialUBO.color と衝突 36 件) を維持しつつ pointLight/spotLight の本体 rename のみで対応 = 影響範囲最小。
-- **host C++ side 整合は本 phase 範式拡張で重要**: Issue F の `center` UBO 化に伴う setter 経路変更は **Issue A regression と同型リスク** (Phase 2c で waterF lightDir cross-stage import 漏れ)。`feedback_self_verify_before_handoff` の核心、本 prep §6-A / §6-E を AYA cold launch 前に消化必須。
+- **host C++ side 整合は §0.5 通り Phase 3 scope に切出**: Issue F `center` GLSL UBO 化に対し host plain uniform setter 据え置きは **既存 η-23/η-27 UBO 化済 field 群と同じ未整備状態**、本 phase の GLSL parse pass 目標に影響なし。Phase 3 (1 UBO ずつ redirect 層整備、Phase 3a 起点 = PerDrawUBO_LightParams) で全 UBO 一括対応。Issue A 型 regression (Phase 2c cross-stage import 漏れ) は本 phase 範囲外。
 
 ---
 
@@ -806,10 +828,13 @@ deploy 前に上記 3 段 trace を Claude が消化、setter 不整合がある
 - 関連 deferredUtil.glsl 行:
   - L173-185 (PerDrawUBO_LightParams { vec3 spot_light_color; float spot_light_size; } 宣言 + alias `#define color spot_light_color` / `#define size spot_light_size`)
   - L780-783 (file 末尾 `#undef color` / `#undef size`、η-20 範式の name pollution 防止)
-- 関連 reserved uniform push_back (host C++ 整合、deploy 前再 grep 対象):
-  - LIGHT_COLOR / LIGHT_SIZE (η-3 起源、要再 grep)
-  - CENTER (Issue F 用、要 enum 名 + push_back 行 grep)
+- 関連 reserved uniform 確定 (host C++ 現状、§0.5 self-verify 確定済、Phase 3 redirect 層整備時 reference):
+  - `DIFFUSE_COLOR` = llshadermgr.h:96 / llshadermgr.cpp:1568 / pipeline.cpp L11483 / L11545 / L11622
+  - `LIGHT_SIZE` = llshadermgr.h:155 / llshadermgr.cpp:1631 / pipeline.cpp L11482 / L11544 / L11621
+  - `LIGHT_CENTER` = llshadermgr.h:154 / llshadermgr.cpp:1630 / pipeline.cpp L11481 / L11543 / L11620
+- 関連設計原則 doc: `~/.claude/projects/.../memory/project_ayastorm_r41_design_principles.md` (Upstream OpenGL 取り込みやすさ + Core 分散の 2 大原則、Phase 3 redirect 層実装時の制約)
+- 関連段階化方針 doc: `~/.claude/projects/.../memory/feedback_ubo_migration_one_at_a_time.md` (Phase 3 を 1 UBO ずつ sub-phase 分割)
 
 ---
 
-**本 prep は η-28 Phase 2d-α scope の source of truth**。AYA レビュー + "OK" 明示後、Claude が §6-A / §6-E deploy 前 grep を消化 → 5 file 修正 feat commit + reference doc 更新 commit → AYA push + deploy + cold launch verify → Phase 2d-α complete handoff 起草 (本 prep §8 checklist 順)。
+**本 prep は η-28 Phase 2d-α scope の source of truth**。AYA レビュー + "OK" 明示後、Claude が §6-B 5-file edit 後 cross-check (host C++ setter は §0.5 通り Phase 3 scope のため本 phase 対象外) → 5 file 修正 feat commit + reference doc 更新 commit → AYA push + deploy + cold launch verify → Phase 2d-α complete handoff 起草 (本 prep §8 checklist 順)。
