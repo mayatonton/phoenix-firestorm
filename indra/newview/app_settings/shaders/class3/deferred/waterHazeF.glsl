@@ -41,7 +41,22 @@ float getDepth(vec2 pos_screen);
 
 vec4 getWaterFogView(vec3 pos);
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2a: PerProgramUBO_WaterHazeV
+// (η-28-C 新規範式: program 跨ぎ uniform は V/F 両 stage に同名 UBO 宣言、
+// set=2 binding=15 共有、host 側は 1 回 bind で両 stage が参照)
+#ifndef PER_PROGRAM_UBO_WATER_HAZE_V_DEFINED
+#define PER_PROGRAM_UBO_WATER_HAZE_V_DEFINED 1
+layout(set=2, binding=15, std140) uniform PerProgramUBO_WaterHazeV {
+    int   above_water;
+    float _pad_waterhaze0;
+    float _pad_waterhaze1;
+    float _pad_waterhaze2;
+};
+#endif
+#else
 uniform int above_water;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=50) uniform sampler2D exclusionTex;

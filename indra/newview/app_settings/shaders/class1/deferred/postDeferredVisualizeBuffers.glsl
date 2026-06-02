@@ -32,7 +32,21 @@ layout(set=1, binding=4) uniform sampler2D diffuseRect;
 #else
 uniform sampler2D diffuseRect;
 #endif
+
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2a: PerProgramUBO_VisualizeBuffersF (η-3 §3.2 PerDrawUBO 派生範式)
+#ifndef PER_PROGRAM_UBO_VISUALIZE_BUFFERS_F_DEFINED
+#define PER_PROGRAM_UBO_VISUALIZE_BUFFERS_F_DEFINED 1
+layout(set=2, binding=16, std140) uniform PerProgramUBO_VisualizeBuffersF {
+    float mipLevel;
+    float _pad_visbuf0;
+    float _pad_visbuf1;
+    float _pad_visbuf2;
+};
+#endif
+#else
 uniform float mipLevel;
+#endif
 
 in vec2 vary_fragcoord;
 

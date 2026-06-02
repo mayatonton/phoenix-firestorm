@@ -26,7 +26,17 @@
 
 out vec4 frag_color;
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2a: PerProgramUBO_FsObjectIdF (η-3 §3.2 PerDrawUBO 派生範式)
+#ifndef PER_PROGRAM_UBO_FS_OBJECT_ID_F_DEFINED
+#define PER_PROGRAM_UBO_FS_OBJECT_ID_F_DEFINED 1
+layout(set=2, binding=13, std140) uniform PerProgramUBO_FsObjectIdF {
+    vec4 object_id_packed;
+};
+#endif
+#else
 uniform vec4 object_id_packed;
+#endif
 
 void main()
 {

@@ -49,8 +49,22 @@ layout(location=0) in vec3 position;
 in vec3 position;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2a: PerProgramUBO_ShadowCubeV (η-3 §3.2 PerDrawUBO 派生範式)
+// std140: vec3 は 16-byte align (size 12 + 4 pad) で安全のため明示 pad
+#ifndef PER_PROGRAM_UBO_SHADOW_CUBE_V_DEFINED
+#define PER_PROGRAM_UBO_SHADOW_CUBE_V_DEFINED 1
+layout(set=2, binding=14, std140) uniform PerProgramUBO_ShadowCubeV {
+    vec3  box_center;
+    float _pad_shadowcube0;
+    vec3  box_size;
+    float _pad_shadowcube1;
+};
+#endif
+#else
 uniform vec3 box_center;
 uniform vec3 box_size;
+#endif
 
 void main()
 {
