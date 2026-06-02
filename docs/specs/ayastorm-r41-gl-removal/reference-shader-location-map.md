@@ -58,7 +58,8 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 | **29** | `vary_coords[2]` / `vary_coords[10]` (F in) | **vary_coords[10] = 29-38 slot 連続占有** |
 | **30** | `vary_coords[2]` / `vary_coords[10]` (V out) | (29 の続き) |
 | **31-38** | `vary_coords[10]` tail (該当 shader のみ) | 限定 occupation |
-| **39-49** | (空き) | **η-26+ の reassign 帯 candidate (49 まで 11 slot 空き)** |
+| **39** | `normal_texcoord` (η-27 Phase 1e-B で旧 20 から救出済、pbralphaV/F) | 1 種、§3 表参照 |
+| **40-49** | (空き) | **η-26+ の reassign 帯 candidate (49 まで 10 slot 空き)** |
 
 **実運用 rule**: 20-30 帯は **新規 varying 追加禁止**、衝突発覚した既存 varying は **50-60 帯へ救出**。
 
@@ -76,6 +77,12 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 | **56,57,58,59** | float[4] | `vary_signs[4]` | 旧 25 (V) / 旧 24 (F) | η-25 Phase 2 | pbrterrainV.glsl | pbrterrainF.glsl |
 | **60** | vec3 | `trans_center` | 旧 20 (V+F+F) | η-25 Phase 1d (cascade) | pointLightV.glsl | pointLightF.glsl / spotLightF.glsl |
 | **61-63** | - | (空き) | - | - | - | - |
+
+**η-27 Phase 1e-B (39-49 空き帯への救出、§2 で予告済 candidate 帯使用例)**:
+
+| location | type | varying | 救出元 | 救出 sub-step | V file | F file |
+|---|---|---|---|---|---|---|
+| **39** | vec2 | `normal_texcoord` | 旧 20 (atmospherics vary_AdditiveColor と衝突) | η-27 Phase 1e-B | class1/deferred/pbralphaV.glsl | class2/deferred/pbralphaF.glsl |
 
 **実運用 rule**:
 - **array varying 配置時は tail を確実に占有**: vec3[4] @ 52 = 52-55 全部消費 = 53/54/55 を別 varying に割り当てない
@@ -114,7 +121,7 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 
 `layout(location=N)` (本 doc) と `layout(set=S, binding=B)` (UBO 用) は **完全独立 namespace**。同一番号でも衝突しない。UBO 側 binding map は handoff doc chain (η-3 §3 / η-23 §3 / η-24 §3 / η-25 §3.1) を参照。
 
-η-25 末の UBO binding 占有 (set=2 namespace):
+η-27 末の UBO binding 占有 (set=2 namespace):
 
 | set | binding | UBO 名 | 起源 sub-step |
 |---|---|---|---|
@@ -124,7 +131,14 @@ vertex stage `in` 側で **頂点バッファ binding と対応**。CPU side の
 | 2 | 3 | PerProgramUBO_AlphaParams | η-25 Phase 1a |
 | 2 | 4 | PerProgramUBO_ColorGrading | η-25 Phase 1b |
 | 2 | 5 | PerProgramUBO_PointLightV | η-25 Phase 1c |
-| 2 | 6+ | (空き、η-26+ 連番継続) | - |
+| 2 | 6 | PerProgramUBO_ShadowAlphaMaskV | η-26 Phase 1a |
+| 2 | 7 | PerProgramUBO_PostDeferredV | η-26 Phase 1b |
+| 2 | 8 | PerProgramUBO_FullbrightShinyV | η-26 Phase 1c |
+| 2 | 9 | PerProgramUBO_FxaaF | η-27 Phase 1a |
+| 2 | 10 | PerProgramUBO_SpotLightF | η-27 Phase 1d |
+| 2 | 11 | PerProgramUBO_PbrAlphaV | η-27 Phase 1c |
+| 2 | 12 | PerProgramUBO_PostDeferredNoDoFF | η-27 Phase 1b |
+| 2 | 13+ | (空き、η-28+ 連番継続) | - |
 
 ---
 

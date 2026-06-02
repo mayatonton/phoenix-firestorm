@@ -90,8 +90,20 @@ out vec3 vary_position;
 #ifndef LL_VULKAN_GLSL
 uniform vec4[2] texture_base_color_transform;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-27 Phase 1c: PerProgramUBO_PbrAlphaV (η-3 §3.2 PerDrawUBO 派生範式)
+// V 単独 (F 側 link 影響なし)
+#ifndef PER_PROGRAM_UBO_PBR_ALPHA_V_DEFINED
+#define PER_PROGRAM_UBO_PBR_ALPHA_V_DEFINED 1
+layout(set=2, binding=11, std140) uniform PerProgramUBO_PbrAlphaV {
+    vec4 texture_normal_transform[2];
+    vec4 texture_metallic_roughness_transform[2];
+};
+#endif
+#else
 uniform vec4[2] texture_normal_transform;
 uniform vec4[2] texture_metallic_roughness_transform;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform vec4[2] texture_emissive_transform;
 #endif
@@ -134,7 +146,9 @@ layout(location=6) out vec2 base_color_texcoord;
 out vec2 base_color_texcoord;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=20) out vec2 normal_texcoord;
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-27 Phase 1e-B: location 20 → 39 reassign
+// (旧 20 は atmosphericsVarsV.glsl vary_AdditiveColor と衝突、reference-shader-location-map §3 表追加)
+layout(location=39) out vec2 normal_texcoord;
 #else
 out vec2 normal_texcoord;
 #endif

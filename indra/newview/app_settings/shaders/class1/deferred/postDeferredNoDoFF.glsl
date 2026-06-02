@@ -74,7 +74,20 @@ layout(location=1) in vec2 vary_fragcoord;
 in vec2 vary_fragcoord;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-27 Phase 1b: PerProgramUBO_PostDeferredNoDoFF (η-3 §3.2 PerDrawUBO 派生範式)
+#ifndef PER_PROGRAM_UBO_POST_DEFERRED_NO_DOF_F_DEFINED
+#define PER_PROGRAM_UBO_POST_DEFERRED_NO_DOF_F_DEFINED 1
+layout(set=2, binding=12, std140) uniform PerProgramUBO_PostDeferredNoDoFF {
+    float chroma_str;
+    float _pad_nodof0;
+    float _pad_nodof1;
+    float _pad_nodof2;
+};
+#endif
+#else
 uniform float chroma_str;
+#endif
 
 //=================================
 // borrowed noise from:

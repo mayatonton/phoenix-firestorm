@@ -60,6 +60,34 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform mat4 proj_mat; //screen space to light space
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-27 Phase 1d + Phase 1e-A cascade fix:
+// PerProgramUBO_SpotLightF (η-3 §3.2 PerDrawUBO 派生範式)
+// 10 件 bare uniform 集約 (proj_near / proj_ambient_lod / near_clip / far_clip /
+//                          proj_origin / sun_wash / proj_shadow_idx / shadow_fade /
+//                          falloff / global_light_strength)
+// 除外: proj_n / proj_focus / proj_p / proj_lod / proj_range / proj_ambiance
+//   = deferredUtil.glsl DeferredUtilParamUBO_Legacy (set=3, binding=6) 経由で
+//     global scope 取得済 = 重複 declare 禁止
+#ifndef PER_PROGRAM_UBO_SPOT_LIGHT_F_DEFINED
+#define PER_PROGRAM_UBO_SPOT_LIGHT_F_DEFINED 1
+layout(set=2, binding=10, std140) uniform PerProgramUBO_SpotLightF {
+    // chunk 0 (4 scalar)
+    float proj_near;
+    float proj_ambient_lod;
+    float near_clip;
+    float far_clip;
+    // chunk 1 (vec3 + float)
+    vec3  proj_origin;
+    float sun_wash;
+    // chunk 2 (4 scalar)
+    int   proj_shadow_idx;
+    float shadow_fade;
+    float falloff;
+    float global_light_strength;
+};
+#endif
+#else
 uniform float proj_near; //near clip for projection
 uniform vec3 proj_p; //plane projection is emitting from (in screen space)
 uniform vec3 proj_n;
@@ -75,6 +103,7 @@ uniform vec3 proj_origin; //origin of projection to be used for angular attenuat
 uniform float sun_wash;
 uniform int proj_shadow_idx;
 uniform float shadow_fade;
+#endif
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-4: FrameAtmosphere_Lighting per-group rename (η-3 §3.2 範式)
 #ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
@@ -131,7 +160,9 @@ layout(set=2, binding=0, std140) uniform PerDrawUBO_LightParams {
 uniform vec3 color;
 uniform float size;
 #endif
+#ifndef LL_VULKAN_GLSL
 uniform float falloff;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec4 vary_fragcoord;
@@ -147,7 +178,9 @@ uniform mat4 inv_proj;
 #endif
 
 //BD
+#ifndef LL_VULKAN_GLSL
 uniform float global_light_strength;
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);

@@ -150,7 +150,9 @@ layout(location=6) in vec2 base_color_texcoord;
 in vec2 base_color_texcoord;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(location=20) in vec2 normal_texcoord;
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-27 Phase 1e-B: location 20 → 39 reassign
+// (V 側 pbralphaV.glsl と同期、旧 20 は atmosphericsVarsV.glsl vary_AdditiveColor と衝突)
+layout(location=39) in vec2 normal_texcoord;
 #else
 in vec2 normal_texcoord;
 #endif

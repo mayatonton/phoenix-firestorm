@@ -2119,9 +2119,23 @@ uniform sampler2D depthMap;
 #endif
 #endif // DECL_DEPTH_MAP
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-27 Phase 1a: PerProgramUBO_FxaaF (η-3 §3.2 PerDrawUBO 派生範式)
+#ifndef PER_PROGRAM_UBO_FXAA_F_DEFINED
+#define PER_PROGRAM_UBO_FXAA_F_DEFINED 1
+layout(set=2, binding=9, std140) uniform PerProgramUBO_FxaaF {
+    vec2  rcp_screen_res;
+    float _pad_fxaa0;
+    float _pad_fxaa1;
+    vec4  rcp_frame_opt;
+    vec4  rcp_frame_opt2;
+};
+#endif
+#else
 uniform vec2 rcp_screen_res;
 uniform vec4 rcp_frame_opt;
 uniform vec4 rcp_frame_opt2;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec2 vary_fragcoord;
 #else
