@@ -51,10 +51,41 @@ uniform sampler2D     lightFunc;
 // 同範式統一。影響: Deferred MultiLight Shader 0-15 全 16 件 parse error 解消。
 uniform vec3  env_mat[3];
 #endif
+#ifndef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-23 Phase 1: legacy bare
+// `uniform float sun_wash` / `uniform int light_count` を GL path 限定 wrap
+// (η-22 §3.1 GL-only wrap 範式継承)。multiPointLightF main() 内で sun_wash /
+// light_count 共に未参照 = dead in this file、Vulkan path での代替宣言不要。
 uniform float sun_wash;
 uniform int   light_count;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-23 Phase 1: alive な
+// `light[LIGHT_COUNT]` / `light_col[LIGHT_COUNT]` / `far_z` /
+// `global_light_strength` を PerDrawUBO_MultiLight に集約 (η-3 §3.2 PerDrawUBO
+// 範式継承)。LIGHT_COUNT は viewer側 #define で固定 (std140 array size 固定可能)。
+// far_z + global_light_strength は Multi-Light pass per-draw scalar、std140
+// alignment 揃えで vec[] block 末尾の 16-byte chunk に float×2 + pad×2 として
+// 配置。multiPointLightF.glsl 専用 binding (set=2, binding=1)、pointLightF.glsl
+// の PerDrawUBO_LightParams (set=2, binding=0) と分離。影響: Deferred MultiLight
+// Shader 0-15 全 16 件 parse error 解消 (cascade 第21層 far_z / classic_mode /
+// global_light_strength まとめ)。
+#ifndef PER_DRAW_UBO_MULTILIGHT_DEFINED
+#define PER_DRAW_UBO_MULTILIGHT_DEFINED 1
+layout(set=2, binding=1, std140) uniform PerDrawUBO_MultiLight {
+    vec4  light[LIGHT_COUNT];
+    vec4  light_col[LIGHT_COUNT];
+    float far_z;
+    float global_light_strength;
+    float _pad_ml0;
+    float _pad_ml1;
+};
+#endif
+#else
 uniform vec4  light[LIGHT_COUNT];     // .w = size; see C++ fullscreen_lights.push_back()
 uniform vec4  light_col[LIGHT_COUNT]; // .a = falloff
+#endif
 
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5: FrameViewProj guard wrap (η-1 §3.1 範式継承)
@@ -75,14 +106,57 @@ layout(set=0, binding=0, std140) uniform FrameViewProj {
 #else
 uniform vec2  screen_res;
 #endif
+#ifndef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-23 Phase 1: legacy bare
+// `uniform float far_z` を GL path 限定 wrap。Vulkan path では
+// PerDrawUBO_MultiLight (set=2, binding=1) の member で代替。
 uniform float far_z;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform mat4  inv_proj;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-23 Phase 1: classic_mode 用に
+// FrameAtmosphere_Lighting UBO を Vulkan path で declare
+// (η-4 §3.2 FrameAtmosphere_Lighting per-group rename 範式継承、pointLightF.glsl
+// L98-L120 と同範式統一)。GUARD で重複定義を防ぐ。block 内 member の global
+// scope アクセスにより main() 内 classic_mode 参照は無修正で機能。
+#ifndef FRAME_ATMOSPHERE_LIGHTING_DEFINED
+#define FRAME_ATMOSPHERE_LIGHTING_DEFINED 1
+layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
+    vec3  sunlight_color;
+    float scene_light_strength;
+    vec3  moonlight_color;
+    float haze_density;
+    vec3  ambient_color;
+    float density_multiplier;
+    vec3  blue_horizon;
+    float distance_multiplier;
+    vec3  blue_density;
+    float max_y;
+    vec3  glow;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float sky_hdr_scale;
+    int   classic_mode;
+    int   cube_snapshot;
+    float minimum_alpha;
+    float max_cof;
+    float _pad_atm0;
+    float _pad_atm1;
+};
+#endif
+#else
 uniform int classic_mode;
+#endif
 
 //BD
+#ifndef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-23 Phase 1: legacy bare
+// `uniform float global_light_strength` を GL path 限定 wrap。Vulkan path では
+// PerDrawUBO_MultiLight (set=2, binding=1) の member で代替。
 uniform float global_light_strength;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec4 vary_fragcoord;
