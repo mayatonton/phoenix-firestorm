@@ -18,16 +18,27 @@
 
 ---
 
-## §1 OpenGL path で実働している UBO (= 確定 4 個)
+## §1 OpenGL path で実働している UBO (= 論理 binding 4 種 / 物理 instance 1+2N+M 個)
 
-OpenGL path で host C++ が `glBindBufferBase(GL_UNIFORM_BUFFER, ...)` を呼んで実際に bind している UBO は **4 個のみ**。
+OpenGL path で host C++ が `glBindBufferBase(GL_UNIFORM_BUFFER, ...)` を呼んで bind している UBO は、**論理 binding point = 4 種** (= `LLGLSLShader::UB_*` enum の 4 値、`llglslshader.h:157-160`) に対して **物理 GL buffer instance = scene 規模に依存して 1+2N+M 個** が動的に生成される (= 同じ binding point に対して owner 毎に別 instance を順次 bind)。
 
-| # | UBO 名 | 内部 binding (LLGLSLShader::UB_*) | 主 caller | 寿命 | 1 frame の呼出 frequency 推定 |
-|---|---|---|---|---|---|
-| 1 | `UB_REFLECTION_PROBES` | 0 (UB enum) | `LLReflectionMapManager::doProfilingRender()` (`llreflectionmapmanager.cpp:1334`) | per-frame (reflection cube update 時) | 1 回 / frame (cube update は 6 frame 周期で実体は更に間引かれる) |
-| 2 | `UB_GLTF_NODES` | 1 (UB enum) | `GLTFSceneManager::render(variant)` (`gltfscenemanager.cpp:693`) | per-asset | rezzed GLTF asset 数 × 描画 variant 数 (典型 1-3 / frame) |
-| 3 | `UB_GLTF_MATERIALS` | 2 (UB enum) | `GLTFSceneManager::render(variant)` (`gltfscenemanager.cpp:696`) | per-asset | 同上 (典型 1-3 / frame) |
-| 4 | `UB_GLTF_JOINTS` | 3 (UB enum) | `GLTFSceneManager::render(variant)` (`gltfscenemanager.cpp:736`) | per-rigged-asset | rigged GLTF primitive 数 (典型 1-10 / frame、rigged avatar 数次第) |
+| # | binding 名 (`LLGLSLShader::UB_*`) | binding 値 | 物理 instance owner | instance 数 | 主 caller (bind 箇所) | 寿命 | 1 frame の bind 回数推定 |
+|---|---|---|---|---|---|---|---|
+| 1 | `UB_REFLECTION_PROBES` | 0 | `LLReflectionMapManager::mUBO` (**singleton**、`llreflectionmapmanager.cpp:1295-1297` で `glGenBuffers`) | **1 個** | `LLReflectionMapManager::setUniforms()` (`llreflectionmapmanager.cpp:1334`) | per-frame (reflection cube update 時) | 1 回 / frame (cube update は 6 frame 周期で更に間引き) |
+| 2 | `UB_GLTF_NODES` | 1 | `gltf::Asset::mNodesUBO` (**per-Asset** メンバ、`asset.cpp:181-184` で `glGenBuffers`) | **N 個** (rezzed GLTF asset 数) | `GLTFSceneManager::render(variant)` (`gltfscenemanager.cpp:693`) | per-asset | N × 描画 variant 数 (典型 1-3 / frame、上限は rezzed GLTF 数) |
+| 3 | `UB_GLTF_MATERIALS` | 2 | `gltf::Asset::mMaterialsUBO` (**per-Asset** メンバ、`asset.cpp:230-233` で `glGenBuffers`) | **N 個** (rezzed GLTF asset 数) | `GLTFSceneManager::render(variant)` (`gltfscenemanager.cpp:696`) | per-asset | 同上 (典型 1-3 / frame) |
+| 4 | `UB_GLTF_JOINTS` | 3 | `gltf::Skin::mUBO` (**per-Skin** メンバ、`animation.cpp:409-412` で `glGenBuffers`、`animation.cpp:394-400` の `~Skin()` で `glDeleteBuffers`) | **M 個** (rigged GLTF primitive の Skin 数) | `GLTFSceneManager::render(variant)` (`gltfscenemanager.cpp:736`) | per-rigged-asset | M × draw call 数 (典型 1-10 / frame、rigged GLTF avatar 数次第) |
+
+**所有パターンの整理**:
+- 論理 binding 種類は **静的に 4 確保** (= `glUniformBlockBinding` で program 内 block index と紐付ける binding point 数)
+- 物理 GL buffer instance は **動的に owner class が個別所有** (Manager singleton / Asset per-instance / Skin per-instance)、dtor で `glDeleteBuffers` 解放 (`Skin::~Skin()` で確認、Asset / Manager も同等想定)
+- frame 内では同じ `binding=N` に対して **owner A の `mXxxUBO` → owner B の `mXxxUBO` → ...** と順次 bind 切替で描画
+- = OpenGL UBO の典型「**論理 binding 静的・物理 buffer per-owner**」パターン
+- scene 規模での scaling 例: 5 GLTF asset (うち rigged 2、各 Skin 1) なら `1 + 2×5 + 2 = 13 instance` / 大規模 GLTF avatar 描画 sim では数十 instance
+
+**含意**:
+- 「C++ 側 UBO は 4 個」は **binding 種類数の意味のみ正確**、物理 buffer instance 数は scene 規模で変動
+- 設計 doc 議論で「UBO 数」を扱う時は **「binding 種類 (= 寿命分類 / shader 内宣言数)」** と **「物理 buffer instance (= memory footprint / upload 回数 / Core 分散単位)」** を **必ず区別** すること
 
 ### §1.1 UBO 生成 / upload site
 
@@ -229,18 +240,18 @@ handoff doc §2.1 の確定情報は binding=0 = `PerDrawUBO_LightParams` / bind
 
 ## §4 host C++ 側 UBO 管理 API 棚卸し
 
-### §4.1 `LLGLSLShader::UB_*` enum (= host から見た UBO 識別子)
+### §4.1 `LLGLSLShader::UB_*` enum (= host から見た UBO 論理 binding 識別子)
 
 `llglslshader.h:157-160` で定義される UBO enum (= **2026-06-03 確定**、全件):
 
-| enum 値 | shader 内 block 名 |
-|---|---|
-| `UB_REFLECTION_PROBES` | `ReflectionProbes` |
-| `UB_GLTF_JOINTS` | `GLTFJoints` |
-| `UB_GLTF_NODES` | `GLTFNodes` |
-| `UB_GLTF_MATERIALS` | `GLTFMaterials` |
+| enum 値 | shader 内 block 名 | 物理 instance owner | instance 数 |
+|---|---|---|---|
+| `UB_REFLECTION_PROBES` | `ReflectionProbes` | `LLReflectionMapManager::mUBO` (singleton) | 1 個 |
+| `UB_GLTF_JOINTS` | `GLTFJoints` | `gltf::Skin::mUBO` (per-Skin) | M 個 (rigged GLTF Skin 数) |
+| `UB_GLTF_NODES` | `GLTFNodes` | `gltf::Asset::mNodesUBO` (per-Asset) | N 個 (rezzed GLTF asset 数) |
+| `UB_GLTF_MATERIALS` | `GLTFMaterials` | `gltf::Asset::mMaterialsUBO` (per-Asset) | N 個 (rezzed GLTF asset 数) |
 
-**= 4 個のみ**。これ以外の UBO 名 (= §3 で列挙した 80+ 個の Vulkan blueprint) は **enum 未登録 = host 側で bind する識別子そのものが無い**。
+**= 論理 binding 種類 4 のみ**。物理 GL buffer instance は §1 / §1.1 で詳述した通り **1 + 2N + M 個** が scene 規模に応じて動的生成。これ以外の UBO 名 (= §3 で列挙した 80+ 個の Vulkan blueprint) は **enum 未登録 = host 側で bind する識別子そのものが無い**。
 
 ### §4.2 既存 bind / upload mechanism
 
@@ -292,10 +303,12 @@ handoff doc §2.1 の確定情報は binding=0 = `PerDrawUBO_LightParams` / bind
 
 | 種別 | 推定回数 / frame | source |
 |---|---|---|
-| UBO bind (`glBindBufferBase`) | **~5-20 回** | §1 の 4 個 × frequency |
-| UBO upload (`glBufferData` / `glBufferSubData`) | **~5-20 回** | bind と同程度 |
+| UBO bind (`glBindBufferBase`) | **~(1) + (2N) + (M × draw)** = scene 規模次第で **10〜100 回** | §1 の owner pattern (singleton 1 + per-Asset 2N + per-Skin M × draw call 数) |
+| UBO upload (`glBufferData` / `glBufferSubData`) | **owner state 変化時のみ** (reflection cube 更新 / GLTF asset transform 変化 / rigged animation 毎 frame) | upload は dirty 時、bind とは独立 |
 | bare uniform set (`glUniform*`) | **~数百〜数千回** | §2.2 |
-| **合計 GL API call** | **~数百〜数千 / frame** | scene 規模次第 |
+| **合計 GL API call** | **~数百〜数千 / frame** | scene 規模次第 (bare uniform が支配的、UBO bind は副次) |
+
+**注**: 旧版で「UBO bind ~5-20 回」と推定していたが、これは `binding` 種類数 (4) ベースの誤算。実際は **per-Asset / per-Skin instance を順次 bind 切替** するため、GLTF asset 数 × draw call 数で 10〜100 回オーダーになりうる (大規模 GLTF avatar sim では更に多い)。
 
 ### §5.2 Vulkan 化後の理想形 (= 設計目標)
 
@@ -351,6 +364,23 @@ GLSL の `#ifdef LL_VULKAN_GLSL` gate により、OpenGL path は §3 の UBO bl
 - = どの bare uniform を **どの UBO に集約するか** の対応表が未整備
 - 現状 §3 の 80+ 個 UBO は **「parse error が出た uniform を 1 個ずつ UBO 化」** で発生しており、bare uniform → UBO 集約の対応表として完全ではない
 
+### §6.6 「論理 binding 種類」と「物理 buffer instance」は **必ず区別** する (= 2026-06-03 AYA 指摘で追加)
+
+§1 / §4.1 で確定した通り、UBO の数え方には 2 軸ある:
+
+- **論理 binding 種類**: `LLGLSLShader::UB_*` enum 値の数 (= shader 内 `layout(binding=N)` で参照される binding point 数 = `glUniformBlockBinding` で program 内 block index と紐付ける論理 slot 数)
+  - 現状 OpenGL path = **4 種** (REFLECTION_PROBES / GLTF_NODES / GLTF_MATERIALS / GLTF_JOINTS)
+  - GLSL Vulkan blueprint = **84 個** (set=0:3 / set=1:2 / set=2:25 / set=3:54) だが host enum 未登録のため OpenGL path には現れない
+- **物理 GL buffer instance**: 実際に `glGenBuffers` で生成された GL buffer object の数 (= memory footprint / upload 対象 / Core 分散単位)
+  - 現状 OpenGL path = **1 (singleton) + 2N (per-Asset) + M (per-Skin) 個**、scene 規模で動的変動
+  - 大規模 GLTF avatar sim では数十〜100 個オーダー
+
+**設計議論時の含意**:
+- 「UBO を統合/分割するか」議論時は **論理 binding 軸** (= 寿命分類 / shader 宣言数 / call site refactor)
+- 「memory 削減 / upload cost 削減 / worker thread 分散」議論時は **物理 instance 軸** (= owner class 数 / per-instance scaling)
+- 両軸を混同すると「24 個の per-program UBO」 ↔ 「数千個の per-draw light instance」のような不当な比較が発生する
+- 旧 §5.1 「UBO bind ~5-20 回 / frame」推定は **論理軸のみ** で算出した誤算、物理 instance ベースで再評価済
+
 ---
 
 ## §7 不確実点 / 追加調査必要事項 (= 設計 doc 起案前に解消)
@@ -365,6 +395,7 @@ GLSL の `#ifdef LL_VULKAN_GLSL` gate により、OpenGL path は §3 の UBO bl
 | 6 | `LLGLSLShader::uniform*fv()` (`llglslshader.cpp:2166-2557`) の現状 GL path のみか / Vulkan path redirect の痕跡 | **✓ 解消 (2026-06-03)**: redirect 痕跡 0 件確定、§4.3 update 済 | - |
 | 7 | upstream Firestorm との UBO blueprint 差分 | 未解消 | upstream HEAD との diff |
 | 8 | OpenGL path に存在するが棚卸し外の SSBO / image binding 有無 | 未解消 | `glBindBufferBase` の non-GL_UNIFORM_BUFFER target 全件 |
+| 9 | 典型 scene での実 instance 数 (N = rezzed GLTF asset 数 / M = rigged GLTF Skin 数) | 未解消 (2026-06-03 §6.6 追加に伴う) | AYA 機 typical 撮影 scene 起動時 log で `glGenBuffers` 由来 owner 数を `LL_INFOS` hook 一時挿入で計測、または GLTF asset/Skin 生成 site にカウンタ |
 
 ---
 
@@ -391,6 +422,15 @@ per-frame / per-view / per-program / per-material / per-draw の 5 分類で過�
 ### §8.5 第五 議題: Phase 2d-α 適用済 commit 群の処遇
 
 η-28 Phase 2d-α で適用済 5 file feat (`0587c574da`) + 3 docs commit は **本棚卸しの含意 (§6.2: Vulkan blueprint は dead) からして実害ゼロ・実効果ゼロ**。設計 doc 確定後に push / 保留 / revert を決定。
+
+### §8.6 第六 議題 (2026-06-03 追加): instance 数 axis での設計評価
+
+§6.6 で確定した「論理 binding 種類」と「物理 buffer instance」の二軸を、設計 doc の各議題に **両軸で評価する** ルールとして組み込む:
+
+- **redirect 層 (§8.1)**: dirty flag 粒度は「論理 binding 単位 = 84 bit」と「物理 instance 単位 = scene 規模で動的」のどちらを基準にするか (現状の OpenGL 4 種 per-owner instance パターンを Vulkan で再現するか、あるいは redirect 層では論理 binding 単位に閉じて物理 instance は別レイヤー)
+- **bare uniform → UBO 集約 (§8.2)**: per-program bare uniform は **論理 binding 1 個** に集約しても、frame 内で同一 binding に対し program × N draw call 分の **物理 upload + bind** が発生する点を見落とさない
+- **set=2 + set=3 再構成 (§8.3)**: 「統合 / 削除 / 保持」判断は論理軸 (= 寿命分類整合) で行うが、Core 分散時の **物理 upload 並列度** にも影響するため、両軸チェック
+- **寿命分類 (§8.4)**: per-frame / per-program / per-draw は **論理軸**、per-asset / per-skin / per-light など **owner 単位** は物理軸の細分。両軸を分けて分類体系を定義する必要あり
 
 ---
 
