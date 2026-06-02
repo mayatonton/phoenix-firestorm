@@ -126,7 +126,7 @@ inventory §6.6 で確定したルール。設計議論の含意:
 | 07 | `07-vulkan-api-state.md` | 現状 Vulkan API 実装状況棚卸し + (V1)(V3)(S3) 解消 + pool 容量 / ring buffer / fence sync / 共通 PSO layout 確定 | ✅ 起案済 |
 | 08 | `08-build-codegen-pipeline.md` | build system 統合 (CMake / glslang / preprocess script) | ✅ 起案済 |
 | 09 | `09-phase-roadmap.md` | Phase 番号体系再編 + 1 UBO ずつ migration scope | ✅ 起案済 |
-| 10 | `10-open-questions.md` | 未確定事項 / 次セッションへ持ち越し | 未起案 |
+| 10 | `10-open-questions.md` | 未確定事項 / 次セッションへ持ち越し / AYA 判断仰ぎ候補集約 | ✅ 起案済 |
 
 **関連外部 doc**:
 - `../ayastorm-r41-ubo-current-state-inventory.md` (現状棚卸し、本設計の前提資料)
