@@ -163,14 +163,22 @@ uniform int classic_mode;
 
 // light params
 #ifdef LL_VULKAN_GLSL
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-3: PerDrawUBO per-group 固有化 (B?-η-1 patch refinement、§3.1 scope refinement 3rd-level、Group B = light_params)
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: PerDrawUBO_LightParams の anonymous member
+// `color` が V stage の MaterialUBO.color (vec4) と name 衝突し glslang link 失敗 (36 件:
+// Material/Skinned Material 0-31 + Star + Fullbright Alpha Masking ×3)。UBO member を
+// `spot_light_color`/`spot_light_size` に rename し、deferredUtil 内 use site は backward-compat
+// 用 #define alias で `color`/`size` のまま参照 (関数 param/local 同名は影響なし)。後段 attach
+// 文書 (shadowUtil/reflectionProbeF/main shader) への漏れ防止に file 末尾で #undef。GL 経路は
+// 変更なし (C++ binding 名 "color"/"size" は GL only でそのまま生存)。
 #ifndef PER_DRAW_UBO_LIGHT_PARAMS_DEFINED
 #define PER_DRAW_UBO_LIGHT_PARAMS_DEFINED 1
 layout(set=2, binding=0, std140) uniform PerDrawUBO_LightParams {
-    vec3  color;
-    float size;
+    vec3  spot_light_color;
+    float spot_light_size;
 };
 #endif
+#define color spot_light_color
+#define size spot_light_size
 #else
 uniform vec3 color; // light_color
 uniform float size; // light_size
@@ -181,7 +189,13 @@ uniform mat4 inv_proj;
 uniform vec2 screen_res;
 #endif
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: M_PI guard wrap (η-19 §3.1 範式継承)
+// deferredUtil.glsl と softenLightF.glsl / spotLightF.glsl が同一 program 内で attach される
+// 経路で `const float M_PI` の重複宣言 → glslang strict mode redefinition。
+#ifndef M_PI_DEFINED
+#define M_PI_DEFINED 1
 const float M_PI = 3.14159265;
+#endif
 const float ONE_OVER_PI = 0.3183098861;
 
 vec3 srgb_to_linear(vec3 cs);
@@ -759,4 +773,12 @@ void waterClip(vec3 pos)
     }
 
 }
+
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: scope-limit PerDrawUBO_LightParams alias
+//   (`color`/`size` → `spot_light_color`/`spot_light_size`) so後段 attach 文書 (shadowUtil/
+//   reflectionProbeF/main shader) の同名 token が誤 rewrite されない。
+#ifdef LL_VULKAN_GLSL
+#undef color
+#undef size
+#endif
 

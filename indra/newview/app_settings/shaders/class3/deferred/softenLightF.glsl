@@ -33,7 +33,11 @@ layout(location=0) out vec4 frag_color;
 out vec4 frag_color;
 #endif
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: M_PI guard wrap (η-19 §3.1 範式継承)
+#ifndef M_PI_DEFINED
+#define M_PI_DEFINED 1
 const float M_PI = 3.14159265;
+#endif
 
 #if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
 #ifdef LL_VULKAN_GLSL

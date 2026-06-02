@@ -71,7 +71,13 @@ layout(location=0) in vec3 position;
 in vec3 position;
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: weight4 attribute guard wrap (η-5 (c) §3.1 範式 継承)
+// skinnedVelocityAlphaV.glsl と objectSkinV.glsl/skinnedVelocityV.glsl が併存 attach 経路で
+// `layout(location=10) in vec4 weight4` 重複宣言 → glslang strict mode redefinition。
+#ifndef WEIGHT4_LOCATION_DEFINED
+#define WEIGHT4_LOCATION_DEFINED 1
 layout(location=10) in vec4 weight4;
+#endif
 #else
 in vec4 weight4;
 #endif

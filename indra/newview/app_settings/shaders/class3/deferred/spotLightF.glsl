@@ -159,7 +159,11 @@ vec4 texture2DLodSpecular(vec2 tc, float lod);
 
 vec4 getPosition(vec2 pos_screen);
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: M_PI guard wrap (η-19 §3.1 範式継承)
+#ifndef M_PI_DEFINED
+#define M_PI_DEFINED 1
 const float M_PI = 3.14159265;
+#endif
 
 void pbrPunctual(vec3 diffuseColor, vec3 specularColor,
                     float perceptualRoughness,

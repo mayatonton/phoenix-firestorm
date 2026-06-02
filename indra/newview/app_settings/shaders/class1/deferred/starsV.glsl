@@ -56,9 +56,19 @@ uniform mat4 modelview_projection_matrix;
 #endif
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-6: starsV non-opaque uniforms UBO wrap (Cluster F)
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: anonymous member `time` が starsF.glsl の
+// StarsFParamUBO_Legacy.time (offset=8) と name 衝突 → glslang link 失敗 (Deferred Star Program)。
+// Phase 1 PerDrawUBO_LightParams と同 §3.1 範式: V 側 member を `stars_v_time` に rename し、
+// 使用箇所は `#define time stars_v_time` alias で source 不変、後段 attach 文書 (atmosphericsV /
+// transportV など) の同名 token 誤 rewrite 防止に file 末尾で #undef。GL 経路 (`uniform float time`)
+// は C++ binding 名 "time" を保持するため変更しない。
+#ifndef STARS_V_TIME_DEFINED
+#define STARS_V_TIME_DEFINED 1
 layout(set=3, binding=45, std140) uniform StarsVParamUBO_Legacy {
-    float time;
+    float stars_v_time;
 };
+#endif
+#define time stars_v_time
 #else
 uniform float time;
 #endif
@@ -112,3 +122,10 @@ void main()
     vary_texcoord0 = (texture_matrix0 * vec4(texcoord0,0,1)).xy;
     vertex_color = diffuse_color;
 }
+
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: scope-limit StarsVParamUBO_Legacy alias
+//   (`time` → `stars_v_time`) so後段 attach 文書 (atmosphericsV / transportV など) の同名 token が
+//   誤 rewrite されない。
+#ifdef LL_VULKAN_GLSL
+#undef time
+#endif

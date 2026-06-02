@@ -59,7 +59,12 @@ layout(set=0, binding=1, std140) uniform FrameLights {
 #else
 uniform vec3 sun_dir;
 #endif
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: shadow_bias は shadowUtil.glsl の Vulkan UBO
+// (FrameShadow_Geom) 経由で提供される。GLSL-for-Vulkan strict mode では non-opaque uniform を
+// block 外で宣言不可 → Vulkan path では削除し、GL path のみ bare uniform を残す。
+#ifndef LL_VULKAN_GLSL
 uniform float shadow_bias;
+#endif
 
 vec4 getNorm(vec2 pos_screen);
 vec4 getPosition(vec2 pos_screen);

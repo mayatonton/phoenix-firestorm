@@ -293,7 +293,13 @@ layout(location=12) in uvec4 joint;
 in uvec4 joint;
 #endif
 #ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-20: weight4 attribute guard wrap (η-5 (c) §3.1 範式 継承)
+// pbrmetallicroughnessV.glsl と objectSkinV.glsl/skinnedVelocityV.glsl が併存 attach 経路で
+// `layout(location=10) in vec4 weight4` 重複宣言 → glslang strict mode redefinition。
+#ifndef WEIGHT4_LOCATION_DEFINED
+#define WEIGHT4_LOCATION_DEFINED 1
 layout(location=10) in vec4 weight4;
+#endif
 #else
 in vec4 weight4;
 #endif
