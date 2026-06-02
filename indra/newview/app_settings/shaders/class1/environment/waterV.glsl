@@ -54,12 +54,27 @@ in vec3 position;
 
 void calcAtmospherics(vec3 inPositionEye);
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-15: WaterVParamUBO_Legacy wrap (η-8 §3.4 範式継承)
+#ifdef LL_VULKAN_GLSL
+#ifndef WATER_V_PARAM_UBO_LEGACY_DEFINED
+#define WATER_V_PARAM_UBO_LEGACY_DEFINED 1
+layout(set=3, binding=60, std140) uniform WaterVParamUBO_Legacy {
+    vec2 waveDir1;
+    vec2 waveDir2;
+    float time;
+    vec3 eyeVec;
+    float waterHeight;
+    vec3 lightDir;
+};
+#endif
+#else
 uniform vec2 waveDir1;
 uniform vec2 waveDir2;
 uniform float time;
 uniform vec3 eyeVec;
 uniform float waterHeight;
 uniform vec3 lightDir;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=26) out vec4 refCoord;

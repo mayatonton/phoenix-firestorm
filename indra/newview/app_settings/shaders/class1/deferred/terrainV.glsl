@@ -101,8 +101,19 @@ layout(location=5) out vec4 vary_texcoord1;
 out vec4 vary_texcoord1;
 #endif
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-15: TerrainVParamUBO_Legacy wrap (η-8 §3.4 範式継承)
+#ifdef LL_VULKAN_GLSL
+#ifndef TERRAIN_V_PARAM_UBO_LEGACY_DEFINED
+#define TERRAIN_V_PARAM_UBO_LEGACY_DEFINED 1
+layout(set=3, binding=61, std140) uniform TerrainVParamUBO_Legacy {
+    vec4 object_plane_s;
+    vec4 object_plane_t;
+};
+#endif
+#else
 uniform vec4 object_plane_s;
 uniform vec4 object_plane_t;
+#endif
 
 vec2 texgen_object(vec4 vpos, mat4 mat, vec4 tp0, vec4 tp1)
 {
