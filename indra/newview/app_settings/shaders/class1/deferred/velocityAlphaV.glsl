@@ -49,7 +49,21 @@ uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 last_modelview_matrix;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2b:
+//   last_object_matrix mat4 を UBO 化。velocityAlphaF は plain uniform 無し、
+//   skinnedVelocityAlphaV は last_object_matrix 不使用 (skin matrix 経由)、本 V 単独 attach。
+//   host = lldrawpool.cpp:845/934 + lldrawpooltree.cpp:199 + lldrawpoolterrain.cpp:245、
+//   reserved uniform LAST_OBJECT_MATRIX (llshadermgr.h:395)。
+#ifndef PER_PROGRAM_UBO_VELOCITY_ALPHA_V_DEFINED
+#define PER_PROGRAM_UBO_VELOCITY_ALPHA_V_DEFINED 1
+layout(set=2, binding=19, std140) uniform PerProgramUBO_VelocityAlphaV {
+    mat4 last_object_matrix;     // offset 0, size 64 (4 × vec4 配置、std140 素直)
+};  // total 64
+#endif
+#else
 uniform mat4 last_object_matrix;
+#endif
 #ifdef LL_VULKAN_GLSL
 layout(set=1, binding=0, std140) uniform MaterialUBO {
     mat4  texture_matrix0;

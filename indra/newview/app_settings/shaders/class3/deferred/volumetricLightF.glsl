@@ -119,11 +119,27 @@ uniform vec3 sunlight_color;
 
 in vec2 vary_fragcoord;
 
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2b:
+//   BD-borrow godrays composite uniform を UBO 化。host = pipeline.cpp doRenderGodrays
+//   (uniform1i GODRAY_RES / uniform1f GODRAY_MULTIPLIER / uniform1f FALLOFF_MULTIPLIER)。
+//   seconds60 は宣言のみで本体未使用 (BD legacy)、host setter も無いが parse 通過のため UBO 含める。
+#ifndef PER_PROGRAM_UBO_VOLUMETRIC_LIGHT_F_DEFINED
+#define PER_PROGRAM_UBO_VOLUMETRIC_LIGHT_F_DEFINED 1
+layout(set=2, binding=18, std140) uniform PerProgramUBO_VolumetricLightF {
+    int   godray_res;            // offset 0,  size 4 + 12 pad
+    float godray_multiplier;     // offset 16, size 4 + 12 pad
+    float falloff_multiplier;    // offset 32, size 4 + 12 pad
+    float seconds60;             // offset 48, size 4 + 12 pad (BD legacy dead uniform、host setter なし)
+};  // total 64
+#endif
+#else
 uniform int godray_res;
 uniform float godray_multiplier;
 uniform float falloff_multiplier;
 
 uniform float seconds60;
+#endif
 
 float rand(vec2 co)
 {

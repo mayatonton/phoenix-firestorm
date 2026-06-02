@@ -111,13 +111,27 @@ uniform vec4 shadow_clip;
 
 // AYAstorm r15 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
 // <FS:AYAstorm r30 BD改善> master ではなく r15 個別 uniform を見る (Cinematic で master OFF のまま r15 だけ ON 可能)
-uniform int aya_r15_godrays_enabled;
-
 // <FS:AYAstorm r30 BD改善> r15 ビーム感 live cvar tuning
 //   phase_exponent: Mie 前方ピーク (pow(cos_theta, e))。大きいほど太陽方向に集中、ビーム感増
 //   strength: 加算強度。HDR 加算なので大きすぎると空白飛び。
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2b:
+//   AYAstorm r15 cvar 群 (aya_r15_godrays_*) を UBO 化。godraysV は uniform 不使用 = F 単独 attach。
+//   host = LLSettingsVOSky::applyToShader (llsettingsvo.cpp:1001/1005/1006)、reserved uniform
+//   AYA_R15_GODRAYS_ENABLED/PHASE_EXPONENT/STRENGTH (llshadermgr.h:130-132 / cpp:1603-1605)。
+#ifndef PER_PROGRAM_UBO_GODRAYS_F_DEFINED
+#define PER_PROGRAM_UBO_GODRAYS_F_DEFINED 1
+layout(set=2, binding=17, std140) uniform PerProgramUBO_GodraysF {
+    int   aya_r15_godrays_enabled;          // offset 0,  size 4 + 12 pad
+    float aya_r15_godrays_phase_exponent;   // offset 16, size 4 + 12 pad
+    float aya_r15_godrays_strength;         // offset 32, size 4 + 12 pad
+};  // total 48
+#endif
+#else
+uniform int aya_r15_godrays_enabled;
 uniform float aya_r15_godrays_phase_exponent;
 uniform float aya_r15_godrays_strength;
+#endif
 
 // helpers provided by deferred/deferredUtil.glsl + deferred/shadowUtil.glsl
 float getDepth(vec2 pos_screen);

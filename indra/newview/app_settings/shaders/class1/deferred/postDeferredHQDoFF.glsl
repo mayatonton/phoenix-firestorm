@@ -111,9 +111,22 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
 #else
 uniform float max_cof;
 #endif
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2b:
+//   postDeferredF.glsl と同 UBO + 同 binding + 同 guard 名 (η-28-C cross-variant)。
+//   "Deferred Post Shader" は cvar RenderDepthOfFieldHighQuality で本 file へ切替、
+//   default=0 では cold launch parse 対象外だが flip 時の cascade 防止のため予防 wrap。
+#ifndef PER_PROGRAM_UBO_POST_DEFERRED_F_DEFINED
+#define PER_PROGRAM_UBO_POST_DEFERRED_F_DEFINED 1
+layout(set=2, binding=20, std140) uniform PerProgramUBO_PostDeferredF {
+    float res_scale;   // offset 0,  size 4 + 12 pad
+    float chroma_str;  // offset 16, size 4 + 12 pad
+};  // total 32
+#endif
+#else
 uniform float res_scale;
-
 uniform float chroma_str;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 layout(location=1) in vec2 vary_fragcoord;

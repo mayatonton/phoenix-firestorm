@@ -1,4 +1,4 @@
-# r41 Vulkan migration: shader interface location map (η-28 Phase 2a 末時点)
+# r41 Vulkan migration: shader interface location map (η-28 Phase 2b 末時点)
 
 **目的**: GLSL `layout(location=N)` qualifier の **slot 識別子** としての確定割当を全 shader 横断で資料化。η-26+ の location reassign 着手時の **事前 trace 範式** (空き slot 即座確定) として参照する。
 
@@ -277,7 +277,7 @@ waterHazeV / waterHazeF 両 file に **同一 UBO 名 + 同一 binding + 同一 
 
 ---
 
-### §6-A set=2 = `PerProgramUBO_*` / `PerDrawUBO_*` 帯 (η-28 Phase 2a 末時点)
+### §6-A set=2 = `PerProgramUBO_*` / `PerDrawUBO_*` 帯 (η-28 Phase 2b 末時点)
 
 **stage 列の読み方** (η-28 Phase 2a 新規追加):
 - `V` / `F` = UBO ブロック宣言が **その stage 単独** に閉じている
@@ -304,7 +304,11 @@ waterHazeV / waterHazeF 両 file に **同一 UBO 名 + 同一 binding + 同一 
 | 2 | 14 | PerProgramUBO_ShadowCubeV | V | η-28 Phase 2a |
 | 2 | 15 | PerProgramUBO_WaterHazeV | **V+F** | η-28 Phase 2a |
 | 2 | 16 | PerProgramUBO_VisualizeBuffersF | F | η-28 Phase 2a |
-| 2 | 17+ | (空き、η-28 Phase 2b+ 連番継続) | - | - |
+| 2 | 17 | PerProgramUBO_GodraysF | F | η-28 Phase 2b |
+| 2 | 18 | PerProgramUBO_VolumetricLightF | F | η-28 Phase 2b |
+| 2 | 19 | PerProgramUBO_VelocityAlphaV | V | η-28 Phase 2b |
+| 2 | 20 | PerProgramUBO_PostDeferredF | F (+ HQDoFF cross-variant) | η-28 Phase 2b |
+| 2 | 21+ | (空き、η-28 Phase 2c+ 連番継続) | - | - |
 
 **stage 列の retroactive 注意**: 既存 (binding 0-12) は UBO 名 suffix から `V` / `F` を推定記載。新規 cascade 表面化時に再確認推奨。`PerProgramUBO_WaterHazeV` (binding=15) は η-28 Phase 2a self-trace で V+F 両 stage attach が判明した実例 (waterHazeV / waterHazeF 両者に `above_water` 使用、waterHazeV 単独 UBO 化では F stage cascade error 浮上の見込みだったため両 stage 宣言で予防)。
 

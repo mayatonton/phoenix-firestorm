@@ -95,10 +95,25 @@ layout(set=0, binding=2, std140) uniform FrameAtmosphere_Lighting {
 #else
 uniform float max_cof;
 #endif
-uniform float res_scale;
-
 // <AYAstorm r30 P4 step 1> BD chroma uniform (gated by HAS_DOF_CHROMA permutation)
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2b:
+//   res_scale / chroma_str を UBO 化。"Deferred Post Shader" program は cvar
+//   RenderDepthOfFieldHighQuality で postDeferredF / postDeferredHQDoFF を切替、
+//   両 file は同名 uniform を共有 → 同 UBO + 同 binding を両方に宣言 (η-28-C cross-variant)。
+//   host = pipeline.cpp:10051/10056 (gDeferredPostProgram.uniform1f DOF_RES_SCALE / DEFERRED_CHROMA_STRENGTH)、
+//   reserved uniform llshadermgr.h:220 / 411。
+#ifndef PER_PROGRAM_UBO_POST_DEFERRED_F_DEFINED
+#define PER_PROGRAM_UBO_POST_DEFERRED_F_DEFINED 1
+layout(set=2, binding=20, std140) uniform PerProgramUBO_PostDeferredF {
+    float res_scale;   // offset 0,  size 4 + 12 pad
+    float chroma_str;  // offset 16, size 4 + 12 pad
+};  // total 32
+#endif
+#else
+uniform float res_scale;
 uniform float chroma_str;
+#endif
 // </AYAstorm r30 P4 step 1>
 
 #ifdef LL_VULKAN_GLSL
