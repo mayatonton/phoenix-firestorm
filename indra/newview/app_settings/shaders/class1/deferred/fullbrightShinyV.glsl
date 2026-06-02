@@ -54,7 +54,16 @@ layout(set=1, binding=0, std140) uniform MaterialUBO {
 #else
 uniform mat4 texture_matrix0;
 #endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_PROGRAM_UBO_FULLBRIGHT_SHINY_V_DEFINED
+#define PER_PROGRAM_UBO_FULLBRIGHT_SHINY_V_DEFINED 1
+layout(set=2, binding=8, std140) uniform PerProgramUBO_FullbrightShinyV {
+    mat4 texture_matrix1;
+};
+#endif
+#else
 uniform mat4 texture_matrix1;
+#endif
 #ifndef LL_VULKAN_GLSL
 uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
@@ -63,7 +72,9 @@ uniform mat4 modelview_projection_matrix;
 
 void calcAtmospherics(vec3 inPositionEye);
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 origin;
+#endif
 
 
 

@@ -40,7 +40,17 @@ layout(location=19) out vec2 vary_tc;
 out vec2 vary_tc;
 #endif
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_PROGRAM_UBO_POST_DEFERRED_V_DEFINED
+#define PER_PROGRAM_UBO_POST_DEFERRED_V_DEFINED 1
+layout(set=2, binding=7, std140) uniform PerProgramUBO_PostDeferredV {
+    vec2 tc_scale;
+    vec2 _pad_pdv0;
+};
+#endif
+#else
 uniform vec2 tc_scale;
+#endif
 
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-5: FrameViewProj guard wrap (η-1 §3.1 範式継承)
