@@ -180,11 +180,15 @@ struct TerrainTriplanar
     int type;
 };
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue C): 同 guard wrap (pbrterrainF.glsl L47 と対、η-28-F 範式)
+#ifndef TERRAIN_MIX_DEFINED
+#define TERRAIN_MIX_DEFINED 1
 struct TerrainMix
 {
     vec4 weight;
     int type;
 };
+#endif
 
 #define TerrainMixSample vec4[4]
 #define TerrainMixSample3 vec3[4]

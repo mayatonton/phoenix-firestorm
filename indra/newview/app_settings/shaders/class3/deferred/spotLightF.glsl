@@ -85,6 +85,11 @@ layout(set=2, binding=10, std140) uniform PerProgramUBO_SpotLightF {
     float shadow_fade;
     float falloff;
     float global_light_strength;
+    // chunk 3 (vec3 + float) - r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue F):
+    //   MULTI_SPOTLIGHT permutation で参照される `vec3 center` を本 UBO に吸収。
+    //   !MULTI_SPOTLIGHT permutation では declared-but-unused (η-28-C type 3 範式)。
+    vec3  center;
+    float _pad_center;
 };
 #endif
 #else
@@ -137,7 +142,9 @@ uniform int classic_mode;
 
 // Light params
 #if defined(MULTI_SPOTLIGHT)
-uniform vec3 center;
+#ifndef LL_VULKAN_GLSL
+uniform vec3 center;   // GL path のみ (Vulkan path は PerProgramUBO_SpotLightF.center 経由、本 file L74-)
+#endif
 #else
 #ifdef LL_VULKAN_GLSL
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-25 Phase 1d (第23層 cascade): trans_center
@@ -148,14 +155,11 @@ in vec3 trans_center;
 #endif
 #endif
 #ifdef LL_VULKAN_GLSL
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-3: PerDrawUBO per-group 固有化 (B?-η-1 patch refinement、§3.1 scope refinement 3rd-level、Group B = light_params)
-#ifndef PER_DRAW_UBO_LIGHT_PARAMS_DEFINED
-#define PER_DRAW_UBO_LIGHT_PARAMS_DEFINED 1
-layout(set=2, binding=0, std140) uniform PerDrawUBO_LightParams {
-    vec3  color;
-    float size;
-};
-#endif
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue E、Issue B 同型):
+//   PerDrawUBO_LightParams の宣言は deferredUtil.glsl L173-185 に 1 元化
+//   (η-20 範式の rename `spot_light_color`/`spot_light_size` を source of truth)。
+//   本体 L384 `color.rgb` 参照は `spot_light_color.rgb` に rename (本 file 末尾編集)。
+//   旧記述: η-3 起源の自前 PerDrawUBO_LightParams (anonymous member `color`/`size`) を本 phase で削除。
 #else
 uniform vec3 color;
 uniform float size;
@@ -381,7 +385,12 @@ void main()
                         stc.x > 0.0 &&
                         stc.y > 0.0)
                     {
+#ifdef LL_VULKAN_GLSL
+                        // r41 η-28 Phase 2d-α (Issue E): deferredUtil 末尾 #undef color 後の本体参照は UBO member 名直接
+                        final_color += spot_light_color.rgb * texture2DLodSpecular(stc.xy, (1 - spec.a) * (proj_lod * 0.6)).rgb * shadow * envIntensity;
+#else
                         final_color += color.rgb * texture2DLodSpecular(stc.xy, (1 - spec.a) * (proj_lod * 0.6)).rgb * shadow * envIntensity;
+#endif
                     }
                 }
             }

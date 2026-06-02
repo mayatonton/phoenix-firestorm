@@ -31,11 +31,17 @@ layout(location=0) out vec4 frag_color;
 out vec4 frag_color;
 #endif
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α: 予防 guard wrap (η-28-F 範式)。
+//   pbrTerrainBake program は pbrterrainUtilF を attach せず現状 redef は発生しないが、
+//   将来 common shader 経路で同 utility を bake program に加えた場合の衝突予防。
+#ifndef TERRAIN_MIX_DEFINED
+#define TERRAIN_MIX_DEFINED 1
 struct TerrainMix
 {
     vec4 weight;
     int type;
 };
+#endif
 
 TerrainMix get_terrain_mix_weights(float alpha1, float alpha2, float alphaFinal);
 

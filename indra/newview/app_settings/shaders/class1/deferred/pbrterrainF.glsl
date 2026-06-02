@@ -44,11 +44,19 @@
 #define MIX_Z    1 << 5
 #define MIX_W    1 << 6
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue C):
+//   struct TerrainMix は pbrterrainF.glsl + pbrterrainUtilF.glsl + interface/pbrTerrainBakeF.glsl の
+//   3 file で同 member 名・同順序で宣言。pbrterrainUtilF は llviewershadermgr.cpp:966
+//   `addCommonShader` 経路で pbrterrainF と同一 program に attach されるため struct redefinition
+//   となる。guard wrap で 1 度だけ宣言 (η-28-F 範式、η-19 M_PI guard wrap の struct 派生形)。
+#ifndef TERRAIN_MIX_DEFINED
+#define TERRAIN_MIX_DEFINED 1
 struct TerrainMix
 {
     vec4 weight;
     int type;
 };
+#endif
 
 TerrainMix get_terrain_mix_weights(float alpha1, float alpha2, float alphaFinal);
 TerrainMix get_terrain_usage_from_weight3(vec3 weight3);

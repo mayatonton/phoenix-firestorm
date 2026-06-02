@@ -64,14 +64,14 @@ uniform float sun_wash;
 
 // light params
 #ifdef LL_VULKAN_GLSL
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-3: PerDrawUBO per-group 固有化 (B?-η-1 patch refinement、§3.1 scope refinement 3rd-level、Group B = light_params)
-#ifndef PER_DRAW_UBO_LIGHT_PARAMS_DEFINED
-#define PER_DRAW_UBO_LIGHT_PARAMS_DEFINED 1
-layout(set=2, binding=0, std140) uniform PerDrawUBO_LightParams {
-    vec3  color;
-    float size;
-};
-#endif
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue B):
+//   PerDrawUBO_LightParams の宣言は deferredUtil.glsl L173-185 に 1 元化
+//   (η-20 範式の rename `spot_light_color`/`spot_light_size` を source of truth)。
+//   同 guard `PER_DRAW_UBO_LIGHT_PARAMS_DEFINED` で deferredUtil 先行 attach 時
+//   self UBO 宣言は skip され、deferredUtil L780-783 末尾の `#undef color`/`#undef size`
+//   で alias 切断後、本 pointLightF 本体は alias 経路を通さず UBO member 名
+//   (`spot_light_color`/`spot_light_size`) を直接参照する形 (本体 rename、§2.1 (2)/(3))。
+//   旧記述: η-3 起源の自前 PerDrawUBO_LightParams (anonymous member `color`/`size`) を本 phase で削除。
 #else
 uniform vec3 color;
 uniform float size;
@@ -192,11 +192,20 @@ void main()
     float nh, nl, nv, vh, lightDist;
     calcHalfVectors(lv, n, v, h, l, nh, nl, nv, vh, lightDist);
 
+#ifdef LL_VULKAN_GLSL
+    // r41 η-28 Phase 2d-α (Issue B): deferredUtil 末尾 #undef size 後の本体参照は UBO member 名直接参照
+    if (lightDist >= spot_light_size)
+    {
+        discard;
+    }
+    float dist = lightDist / spot_light_size;
+#else
     if (lightDist >= size)
     {
         discard;
     }
     float dist = lightDist / size;
+#endif
     float dist_atten = calcLegacyDistanceAttenuation(dist, falloff);
 
     if (GET_GBUFFER_FLAG(gb.gbufferFlag, GBUFFER_FLAG_HAS_PBR))
@@ -213,7 +222,12 @@ void main()
 
         vec3 specularColor = mix(f0, baseColor.rgb, metallic);
 
+#ifdef LL_VULKAN_GLSL
+        // r41 η-28 Phase 2d-α (Issue B): UBO member 名直接参照
+        vec3 intensity = dist_atten * spot_light_color * 3.25; // Legacy attenuation, magic number to balance with legacy materials
+#else
         vec3 intensity = dist_atten * color * 3.25; // Legacy attenuation, magic number to balance with legacy materials
+#endif
 
         float nl = 0;
         vec3 diffPunc = vec3(0);
@@ -234,7 +248,12 @@ void main()
 
         float lit = nl * dist_atten;
 
+#ifdef LL_VULKAN_GLSL
+        // r41 η-28 Phase 2d-α (Issue B): UBO member 名直接参照
+        final_color = spot_light_color.rgb*lit*diffuse;
+#else
         final_color = color.rgb*lit*diffuse;
+#endif
 
         if (spec.a > 0.0)
         {
@@ -248,7 +267,12 @@ void main()
             if (nh > 0.0)
             {
                 float scol = fres*texture(lightFunc, vec2(nh, spec.a)).r*gt/(nh*nl);
+#ifdef LL_VULKAN_GLSL
+                // r41 η-28 Phase 2d-α (Issue B): UBO member 名直接参照
+                final_color += lit*scol*spot_light_color.rgb*spec.rgb;
+#else
                 final_color += lit*scol*color.rgb*spec.rgb;
+#endif
             }
         }
 
