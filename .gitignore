@@ -141,3 +141,13 @@ checks.json
 out_r11_venue_ir/
 out_r11_test_material/
 out_r10_test_material/
+
+# Claude Code per-checkout settings (machine-local, no upstream value)
+.claude/
+
+# AYAstorm r41 — local glslang source/packaging artifacts (Vulkan SPIR-V build tool,
+# not shipped in tree; install system glslang or stage out-of-tree)
+glslang-*/
+glslang_*.tar.gz
+glslang_*.tar.xz
+glslang_*.dsc
