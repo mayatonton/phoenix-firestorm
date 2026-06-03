@@ -191,6 +191,8 @@ def _ubo_to_block_spec(ubo: UboBlockDecl, layout: BlockLayout) -> BlockSpec:
         name=ubo.block_name,
         layout=layout,
         cadence_tag=_derive_cadence(ubo.block_name),
+        descriptor_set=int(ubo.layout_qual.get("set", 0)),
+        binding=int(ubo.layout_qual.get("binding", 0)),
     )
 
 
