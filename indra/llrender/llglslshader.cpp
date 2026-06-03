@@ -989,6 +989,32 @@ namespace {
                                << dump_path << "' for program '" << program_name << "'" << LL_ENDL;
         }
     }
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-3:
+    // LLStaticHashedString 経路 uniform 名 build-time list (= S1-C 採用、spec 06a §4.3.1)。
+    // mReservedUniforms 未登録 = integer index 経路非対応の uniform を、mapUniforms() Vulkan
+    // path で lookup_runtime → hash 計算 → mUniformUBOLocByHash 登録 (= PB-3 block)。
+    // setter 側 (= PB-5) は LLStaticHashedString::Hash() で同 hash 引きで O(1) lookup
+    // (= 構築側 / setter 側で同 API 使用が hash 一致保証)。
+    // 名前 list は 2026-06-04 indra/newview + indra/llrender 全 grep 抽出結果 (80 unique)。
+    // 新規 uniform 追加時 = 本 list 追記必須 (silent skip risk、UBO 集約表登録時に同期更新)。
+    const char* const g_static_hashed_uniform_names[] = {
+        "SMAA_RT_METRICS", "NoiseTexture", "RenderTexture", "above_water", "alpha_scale",
+        "ambiance", "aya_blur_dir", "aya_blur_radius", "aya_glow_color", "aya_glow_gain",
+        "aya_strength", "aya_translucency_params", "aya_translucency_tint", "bloomStrength",
+        "blurDirection", "blurWidth", "brightMult", "brightness", "bump_code", "camPosLocal",
+        "cas_param_0", "cas_param_1", "clip_plane", "contrast", "contrastBase", "custom_alpha",
+        "delta", "diffuse_luminance_scale", "direction", "dist_factor", "dither_scale",
+        "dither_scale_s", "dither_scale_t", "dither_tex", "dt", "dynamic_exposure_enabled",
+        "dynamic_exposure_params", "dynamic_exposure_params2", "exposure", "extractHigh",
+        "extractLow", "glowMap", "hdri_split_screen", "kern", "kern_scale", "lumWeights",
+        "maxRoughness", "maxZDepth", "mipLevel", "noiseStrength", "noiseVec", "norm_mat",
+        "norm_scale", "object_id_packed", "offset", "out_screen_res", "probe_strength",
+        "resScale", "roughness", "saturation", "screenMap", "screenRes", "sourceIdx",
+        "ssao_irradiance_max", "ssao_irradiance_scale", "stepX", "stepY", "tex0", "tex1",
+        "texelSize", "texture0", "texture1", "tint", "tolerance", "tonemap_mix",
+        "tonemap_type", "u_width", "waterSign", "zfar", "znear",
+    };
 }
 
 bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stages)
@@ -1892,6 +1918,27 @@ bool LLGLSLShader::mapUniforms()
                 // UBO 集約表に entry 無し = bare uniform 残存中の silent skip path
                 // (spec 06a §3.3 CADENCE_INVALID = 0xFFFFFFFF sentinel、setter 側で skip)。
                 mUniformUBOLoc[i] = ubo::UniformLocation{ 0u, 0u, 0u, 0xFFFFFFFFu };
+            }
+        }
+    }
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-3:
+    // Vulkan path LLStaticHashedString 経路補助 cache 構築 (spec 06a §4.3 / §4.3.1 S1-C)。
+    // build-time list g_static_hashed_uniform_names[] iterate で lookup_runtime → hash 計算 →
+    // mUniformUBOLocByHash 登録。setter 側 (= PB-5) は uniform.Hash() で同 hash 引きで O(1)
+    // lookup (= hash 一致保証は LLStaticHashedString::Hash() 共通使用)。
+    // GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 不使用、mUseUBO runtime flag 単独 gate。
+    // miss 時 = UBO 集約表に entry 無し = silent skip (setter 側 find() で end() 返却 →
+    // OpenGL path fallback、bare uniform 残存中の正常 path)。
+    if (mUseUBO)
+    {
+        for (const char* name : g_static_hashed_uniform_names)
+        {
+            const ubo::UniformLocation* loc = ubo::lookup_runtime(name);
+            if (loc)
+            {
+                const U64 hash = static_cast<U64>(LLStaticHashedString(name).Hash());
+                mUniformUBOLocByHash[hash] = *loc;
             }
         }
     }
