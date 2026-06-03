@@ -258,12 +258,3 @@ if (LINUX OR DARWIN)
   add_compile_options(${GCC_WARNINGS})
   add_compile_options(-m${ADDRESS_SIZE})
 endif (LINUX OR DARWIN)
-
-# r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-29 Phase 0 Step 2:
-# LL_INFOS hook for UBO setter cadence measurement. Default OFF; opt-in for the
-# Phase 0 measurement build. See
-# docs/specs/ayastorm-r41-gl-removal/design/06a-prep-phase0-measurement.md §2.4
-option(AYASTORM_UBO_CADENCE_HOOK "Enable r41 UBO cadence hook for Phase 0 measurement" OFF)
-if(AYASTORM_UBO_CADENCE_HOOK)
-  add_compile_definitions(AYASTORM_UBO_CADENCE_HOOK=1)
-endif()
