@@ -69,6 +69,14 @@ _PREFIX_TO_CADENCE = (
     ("Asset_", CADENCE_PER_ASSET),
     ("Skin_", CADENCE_PER_SKIN),
     ("Global_", CADENCE_SINGLETON),
+    ("PerDrawUBO_", CADENCE_PER_DRAW),
+    ("PerProgramUBO_", CADENCE_PER_PROGRAM),
+)
+
+# AYAstorm legacy UBO naming (= <Name>UBO_Legacy / <Name>UBO_Legacy_*)
+# treated as per-program (= MaterialUBO_Legacy etc are bound once per shader use)
+_SUFFIX_TO_CADENCE = (
+    ("UBO_Legacy", CADENCE_PER_PROGRAM),
 )
 
 # chapter 08 §5.4.1.1 — filename stage suffix lookup for SPIR-V reflection
@@ -153,6 +161,9 @@ def _ensure_output_dir(output_dir: Path, log: logging.Logger) -> None:
 def _derive_cadence(block_name: str) -> int:
     for prefix, cadence in _PREFIX_TO_CADENCE:
         if block_name.startswith(prefix):
+            return cadence
+    for suffix, cadence in _SUFFIX_TO_CADENCE:
+        if block_name.endswith(suffix):
             return cadence
     return CADENCE_PER_PROGRAM  # safe default until PA-8 wires routing fully
 
