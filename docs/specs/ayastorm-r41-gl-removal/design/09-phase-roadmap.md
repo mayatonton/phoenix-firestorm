@@ -512,6 +512,8 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 **Phase 0 結果次第**: 「per-frame 単一 UBO 候補が確定するため、(H1b) 計測完了後に最終確定」(§3.5 参照)。
 **AYA 判断ポイント**: A の保守性を取るか、B の大 risk 早期消化を取るか、C の同一 system batch 効率を取るか。
 
+**✅ 2026-06-03 ST-5 batch verdict = A 確定** (= chapter 10 §1.3 「全 default 採用」AYA 応答)。具体 UBO 順 (= 第 1 UBO 〜 第 K UBO) は Phase 0 計測完了済を受けて chapter 06b 起案中に「最小リスク順」原則で決定 = `UB_REFLECTION_PROBES` 単体から開始、最後に最頻出 per-draw (= 06a-prep §5.5 観察 = matrix 系 cpf 400-700 per-draw 群が最後)。K 値は具体順確定後に算出、本 §2.1 Phase 全体マップに反映予定 (= chapter 06b 起案中 task)。
+
 ### §11.2 (Q2) Phase 当たり migration UBO 数
 
 | 選択肢 | 内容 | 根拠 |
@@ -521,6 +523,8 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 
 **default 提案 = A (1 UBO 厳守)**: feedback memory 直接準拠、cluster 化は cold launch 検証で REJECT 時の切り分け困難化リスク。
 **例外**: (Q1) で同一 owner UBO 群 (= `UB_GLTF_NODES` / `UB_GLTF_MATERIALS` / `UB_GLTF_JOINTS` は全て `gltf::Asset` / `gltf::Skin` owner) を識別、cluster 単位を AYA 判断で例外許可するかは Phase 0 完了後の (Q1) 確定タイミングで再評価。
+
+**✅ 2026-06-03 ST-5 batch verdict = A 確定** (= chapter 10 §1.3 「全 default 採用」AYA 応答、memory `feedback_ubo_migration_one_at_a_time` 直接準拠)。`UB_GLTF_NODES` / `UB_GLTF_MATERIALS` / `UB_GLTF_JOINTS` cluster 例外も「1 UBO 厳守」原則優先で **非適用**、各 UBO は別 Phase で個別 cold launch 検証する。
 
 ### §11.3 (Q3) OpenGL path 維持期間
 
@@ -542,6 +546,8 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 | C | Linux 完了後 Win/Mac 並走 | baseline 確定 + Mac 委任両立、§6.1 default |
 
 **default 提案 = C (Linux 完了後 Win/Mac 並走)**: §6.1 default、Mac 不所持制約 (`feedback_mac_only_fixes_accept_as_is`) と整合。
+
+**✅ 2026-06-03 ST-5 batch verdict = C 確定** (= chapter 10 §1.3 「全 default 採用」AYA 応答)。Phase K+1 (Linux baseline 確定) 完了後に Phase K+2 (Windows) と Phase K+3 (macOS) を並走、Mac 担当は @t-noami (= memory `feedback_release_flow` の AYAstorm release flow 整合)。Phase 順序図 §2.2.1 案別を C 採用に確定。
 
 ### §11.5 (Q5) Phase 0 計測 phase の Phase 番号化
 
@@ -652,6 +658,8 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 - (Q3) / (Q5) は Phase 1.A 入口時点で default 採用継続可、AYA 判断は Phase 1.A 中盤までに後追い可
 
 **Stage 2 entry verdict**: (Q1) / (Q2) 確定 (= K 値計算可能 state 到達) ✅ → Stage 2 完了、Stage 3 入口 (= Phase 1.A 着手 ready)。
+
+**✅ 2026-06-03 ST-5 batch Stage 2 完了 = (Q1) A / (Q2) A / (Q4) C 確定** (= chapter 10 §1.3 「全 default 採用」AYA 応答)。(Q3)(Q5) は default 採用継続、Phase 1.A 中盤まで後ろ倒し可 (= handoff §3.5 規律 7)。本 §14.4 表で 5 件中 3 件 ✅ 完了 = (Q1)(Q2) 必須条件達成 = K 値計算可能 state 到達 = **Stage 3 入口 entry 達成**。Stage 3 self-check 14 項目 (= §14.5) のうち 3-3 (Stage 2 (Q1)(Q2) AYA 判断 ✅) 完了。残 13 項目のうち 3-7 (chapter 06a 設計起案済) と 3-8 (chapter 06b cadence 5 種 update site + 06c descriptor set bind 起案済) は ST-6 chapter 06b 起案で消化、他は 2026-06-03 段階で起案済 / Phase 1.A 入口で実施。
 
 ### §14.5 Stage 3: Phase 1.A 入口 readiness (= 着手 ready state)
 

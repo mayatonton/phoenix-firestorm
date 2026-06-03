@@ -162,6 +162,33 @@ E3 採用 = 統合は本 phase では行わないが、**実 update cost 測定�
 
 member 比較 / program 単位 attach grep は chapter 09 Phase 0 計測 task として持越。本 chapter §5 は **判定フローの確定** に留め、最終名は chapter 09 で確定。
 
+### §5.4 Phase 0 Step 1 (F) 確定 + ST-3 batch Q26-MUL 確定 (= 2026-06-03)
+
+#### §5.4.1 Phase 0 Step 1 (F) 確定 = F2 採用
+
+2026-06-03 Phase 0 Step 1 Pre-hook Static Analysis (= 06a-prep §4.6) で member 完全別物確認:
+- `MaterialUBO` = 52 件宣言 (= 全 `class1/2`-deferred V/F file 等)、PBR transform 系 member (`texture_matrix0` / `texture_base_color_transform[2]` / `texture_emissive_transform[2]` / `color` / `emissiveColor` / `_pad_emissive` = 160 B)
+- `MaterialUBO_Legacy` = 1 件宣言のみ (= `class3/deferred/materialF.glsl:38` 単独)、Blinn Legacy 系 member (`morphFactor` / `specular_color` / `camPosLocal` / `emissive_brightness` / `is_mirror` / `env_intensity` / `aya_sss_skin_flag` / `_pad_material_legacy_0` = 64 B)
+
+→ **共通 member 0 件、type / 名前 / 順序 全て差異** = §5.2 表で **F1 反証** (member 同一 ≠ 成立)、**F3 反証** (両者とも実 attach 確定、= `gDeferredMaterialProgram` の mShaderLevel=class3 path で MaterialUBO_Legacy 使用)、**F2 第一候補 narrowing 確定**。
+
+#### §5.4.2 ST-3 batch Q26-MUL 確定 = MUL-A1 + MUL-B1
+
+2026-06-03 ST-3 batch (= chapter 10 §1.5 (Q26-MUL) AYA 判断「全 default 採用」応答):
+- **MUL-A1**: rename `MaterialUBO_Legacy` → **`MaterialUBO_Class3_Legacy`** (= specific 名、chapter 02 §3.2 命名規則 `*_{class}_{用途}` と整合)
+- **MUL-B1**: 同 program 内 set=1 binding=0 二重宣言解消 = **class3 専用 V shader `class3/deferred/materialV.glsl` を新規追加** (= MaterialUBO 不宣言、F=`class3/deferred/materialF.glsl` (= MaterialUBO_Class3_Legacy 単独宣言) と組合せ)、mShaderLevel=class3 path で本 V を選択
+
+#### §5.4.3 反映先 (= Phase 1.A 入口実装 task)
+
+| 反映先 | 内容 | 実施 phase |
+|---|---|---|
+| chapter 02 §3.2 命名規則表 | `MaterialUBO_Class3_Legacy` 確定形書換、`MaterialUBO` 暫定 → 確定マーク | ✅ 2026-06-03 反映済 |
+| 本 chapter §3.2 set=1 帯 mapping | `MaterialUBO_Legacy` → `MaterialUBO_Class3_Legacy` rename 反映 (= 既存 mapping table が `MaterialUBO_Legacy` を直接参照しているか別途確認) | Phase 1.A 入口実装と同時 |
+| `class3/deferred/materialV.glsl` 新規 file 起案 | mShaderLevel=class3 専用 V shader (= MaterialUBO 不宣言)、attribute / varying / `main()` は `class1/deferred/materialV.glsl` から派生、ただし UBO 部分のみ削除 | Phase 1.A 入口実装 (= `indra/` 改変、本 design-phase scope 外) |
+| `class3/deferred/materialF.glsl:38` UBO 名 rename | `MaterialUBO_Legacy` → `MaterialUBO_Class3_Legacy` (= 1 file 1 行書換) | 同上 |
+| inventory §3.2 「2 UBO 名共存」記述補正 | 「共存ではなく Legacy 側 1 件、ただし mShaderLevel=class3 で同 program V+F 共存 risk → MUL-B1 で解消」へ書換 | Phase 1.A 入口 doc update |
+| chapter 10 §1.5 (Q26-MUL) verdict マーク | ✅ A1+B1 確定 | ✅ 2026-06-03 反映済 |
+
 ---
 
 ## §6 per-material cadence の最終判定 (= 持越 MC、**確定 2026-06-03**)
@@ -253,6 +280,22 @@ cadence 判定基準 = chapter 03 §3 cadence source rule (= 既存 C++ 呼出 p
 #### §7.3.3 表本体 (= 起案時点では空、migration 進行で埋まる)
 
 `(2026-06-03 起案時点: 空。chapter 06 起案時の grep / LL_INFOS hook 結果で埋める)`
+
+#### §7.3.4 Phase 0 計測由来 cadence 補正 (= 2026-06-03 ST-4 batch、表本体起案時の cadence 列入力規律)
+
+2026-06-03 Phase 0 Step 4 AYA 実機計測 + Step 4 解析 (= 06a-prep §5.5.7) で **matrix 系 group 4-5 件** が per-program 推定 → **per-draw 確定** に補正:
+
+| uniform 名 | 推定 cadence | 観察 cadence (= Phase 0 計測) | 観察 rate | 観察 shader/frame |
+|---|---|---|---|---|
+| `modelview_matrix` | per-program | **per-draw** | 437/688 cpf | 93/97 shader (s2/s3) |
+| `inv_modelview` | per-program | **per-draw** | 同 | 同 |
+| `modelview_projection_matrix` | per-program | **per-draw** | 375/619 cpf | 37/46 shader (s2/s3) |
+| `modelview_projection_inverse` (= group 4 件目候補) | per-program | **per-draw** (= R-MAT4 chapter 10 §2.7 listing、再 grep 確認待ち) | 要再計測 | 要再計測 |
+| `normal_matrix` (= group 5 件目候補) | per-program | **per-draw** (= R-MAT4 同上) | 要再計測 | 要再計測 |
+
+**反映規律**: §7.3 表本体起案時 (= chapter 06b 起案中の bare uniform 集約段階) に matrix 系の cadence 列を **per-draw として記入** (= 推定欄でなく観察欄を採用)。group 4-5 件目 (= R-MAT4) は §7.3 表起案直前に 06a-prep §5.5.7 補正 + 再 grep で確定。chapter 10 §2.7 (R-MAT1)-(R-MAT4) と連動。
+
+**3 件 (R-AYA1)(R-AYA2)(R-AYA3) 連動**: 06a-prep §5.5.5 dead candidate 中 `aya_*` 3 件 (= `aya_alpha_plate` / `aya_alpha_plate_enabled` / `aya_sss_skin_flag`) は **本 §7.3 表起案直前に grep で hash 経由配線 / dead path / shader 種別を確認** (= chapter 10 §2.7 (R-AYA1)-(R-AYA3) と連動)。`aya_sss_skin_flag` は MaterialUBO_Class3_Legacy member とも同名 (= §5.4.1) で二重配線疑い、Q26-MUL 構造改修と整合確認必要。
 
 ### §7.4 chapter 04 Codegen との繋ぎ (= chapter 04 §7.3 集約フローの再掲)
 

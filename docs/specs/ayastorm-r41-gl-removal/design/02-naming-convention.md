@@ -126,14 +126,16 @@ inventory §3 の現状 85 個に対する命名規則適用後の最終名。**
 | `FrameLights` | `FrameLights` | per-frame | 同上 | 同上 |
 | `FrameAtmosphere_Lighting` | `FrameAtmosphere` | per-frame | 同上 | `_Lighting` suffix を削除 (atmospheric には lighting 以外無いため自明)。**移行注**: rename 完了は Codegen-UBO 出力 phase (chapter 09 phase roadmap 参照)、それまでは inventory §3.1 / chapter 05 §3.1 / handoff docs / reference-shader-location-map / 既存 GLSL (`#ifdef LL_VULKAN_GLSL` 内側) は旧名 `FrameAtmosphere_Lighting` を保持 (= 既知 / 過渡期許容) |
 
-### §3.2 set=1 帯 (2 個 → 再構成検討)
+### §3.2 set=1 帯 (2 個 → 再構成済 = Q26-MUL ST-3 batch 確定 2026-06-03)
 
 | 現名 | 新名 | cadence | 備考 |
 |---|---|---|---|
-| `MaterialUBO` | `MaterialUBO` (暫定) | per-draw (material dirty flag、chapter 01 §5 確定事項 #12) | 既存名温存 (`Material*` 例外、§4 警告対象外)、chapter 05 で member 細分 / 分割を検討 |
-| `MaterialUBO_Legacy` | `MaterialLegacyBlinn` (案) | per-draw (material dirty flag、chapter 01 §5 確定事項 #12) | `_Legacy` は移行完了時に剥がす、別 program 用と確認できれば独立名へ |
+| `MaterialUBO` | `MaterialUBO` (確定) | per-draw (material dirty flag、chapter 01 §5 確定事項 #12) | 既存名温存 (`Material*` 例外、§4 警告対象外)。**Q26-MUL ST-3 batch (2026-06-03) 確定 = MUL-B1 採用** = class3 専用 V shader `class3/deferred/materialV.glsl` を新規追加 (= `gDeferredMaterialProgram[i]` の mShaderLevel=class3 path で MaterialUBO 不宣言 V を選択)、MaterialUBO 自体は他 program で温存 |
+| `MaterialUBO_Legacy` | `MaterialUBO_Class3_Legacy` (確定) | per-draw (material dirty flag、chapter 01 §5 確定事項 #12) | **Q26-MUL ST-3 batch (2026-06-03) 確定 = MUL-A1 採用** = `*_{class}_{用途}` 命名規則と整合した specific 名、`class3/deferred/materialF.glsl` 単独宣言 (= 52 vs 1 非対称、§4.6 確定)。`_Class3_Legacy` suffix で「class3 path 専用 + Blinn Legacy 用途」を明示、migration 完了時も `_Legacy` 保持 (= 当面 OpenGL path 並走で互換性確保、Q3 deferred 期間内) |
 
 **cadence 注**: chapter 01 §5 確定事項 #12 = per-material cadence は per-draw + dirty flag に統合 (= 独立軸として持たない)、cadence 軸は 5 分類 (per-frame / per-program / per-draw / per-asset / per-skin) に縮約。本 chapter §2.1 と同じ表記を §3.2 にも適用。
+
+**Q26-MUL 反映規律**: 本 §3.2 表は **2026-06-03 ST-3 batch 確定形**。実 GLSL file 改変 (= `class3/deferred/materialV.glsl` 新規 + `class3/deferred/materialF.glsl` 内 UBO 名 `MaterialUBO_Legacy` → `MaterialUBO_Class3_Legacy` rename) は **Phase 1.A 入口実装 task** (= `indra/` 改変、本 design-phase scope 外、`feedback_design_phase_no_code_write` 復帰中)。chapter 05 §5 / §7.3 集約表との整合は chapter 05 側で連動 update。
 
 ### §3.3 set=2 帯 (26 個、binding 0-25 → `PerProgramUBO_` / `PerDrawUBO_` rename)
 
