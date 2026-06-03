@@ -7,6 +7,7 @@ include(OpenGL)
 include(Vulkan)
 include(Glslang)
 include(AyaShaderCompile)
+include(AyaUboCodegen)
 include(FreeType)
 include(LLCommon)
 include(LLImage)
@@ -111,6 +112,12 @@ target_include_directories(llrender PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
 if (NOT AYA_GLSLANG_VALIDATOR)
     target_compile_definitions(llrender PRIVATE AYA_R41_USE_EMBEDDED_SPIRV_FALLBACK)
 endif()
+
+# r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.A PA-7
+# (sub-doc 08 §12.3 / §12.5.3): UBO Codegen 出力 (= ${CMAKE_BINARY_DIR}/codegen/ubo/*.inl)
+# を llrender に include 露出 + build order = codegen_ubo → llrender 強制。
+# llvkloader.cpp は llrender 内 TU のため llrender attach で同時 satisfy。
+aya_attach_ubo_codegen(llrender)
 
 set_property(TARGET llrender PROPERTY POSITION_INDEPENDENT_CODE ON)
 

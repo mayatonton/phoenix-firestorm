@@ -65,6 +65,8 @@ CACHE_SCHEMA_VERSION = 1
 OUTPUT_PERFECT_HASH = "ubo_perfect_hash.inl"
 OUTPUT_METADATA = "ubo_metadata.inl"
 OUTPUT_INDEX = "ubo_index.inl"
+OUTPUT_DUMMY_INIT = "ubo_dummy_init.inl"
+OUTPUT_HOST_LOADER = "ubo_host_loader.inl"
 LAYOUT_PREFIX = "ubo_layout_"
 LAYOUT_SUFFIX = ".inl"
 
@@ -356,9 +358,21 @@ def touch_outputs(output_dir: Path, output_file_names: Sequence[str], now: Optio
 # --- canonical output file enumeration -----------------------------------
 
 def canonical_output_files(block_names: Sequence[str]) -> List[str]:
-    """4 file 分割契約 (04 §5.1): per-block layout files + 3 aggregated files."""
+    """Phase 1.A emit set: per-block layouts + 5 aggregated files.
+
+    Aggregated set covers 04 §5.1 (= metadata, perfect_hash, index) plus
+    08 §8.2 dummy_init and 08 §10.1 host_loader, which together satisfy the
+    Phase 1.A Exit Criteria in 09 §4.2 (= 4 file generation + compile-time
+    name resolution conflict = 0).
+    """
     layouts = [f"{LAYOUT_PREFIX}{name.lower()}{LAYOUT_SUFFIX}" for name in block_names]
-    return layouts + [OUTPUT_PERFECT_HASH, OUTPUT_METADATA, OUTPUT_INDEX]
+    return layouts + [
+        OUTPUT_PERFECT_HASH,
+        OUTPUT_METADATA,
+        OUTPUT_INDEX,
+        OUTPUT_DUMMY_INIT,
+        OUTPUT_HOST_LOADER,
+    ]
 
 
 def layout_filename(block_name: str) -> str:

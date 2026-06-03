@@ -227,8 +227,30 @@ def parse_glsl(source: str, source_file_hint: str = "<input>") -> ParseResult:
     while i < len(tokens):
         tok = tokens[i]
         if tok.kind == "IDENT" and tok.text == "layout":
-            block, i = _parse_ubo_block(tokens, i, struct_lookup)
-            result.ubo_blocks.append(block)
+            # `layout(...)` は UBO 専用ではない (= location/binding 等 in/out/sampler
+            # にも付く)。直後を peek し、UBO block pattern (= `uniform <ident> {`)
+            # のみ _parse_ubo_block で消費、それ以外は semi まで skip。
+            j = i + 1
+            if j < len(tokens) and tokens[j].kind == "LPAREN":
+                depth = 1
+                j += 1
+                while j < len(tokens) and depth > 0:
+                    if tokens[j].kind == "LPAREN":
+                        depth += 1
+                    elif tokens[j].kind == "RPAREN":
+                        depth -= 1
+                    j += 1
+            is_ubo_block = (
+                j + 2 < len(tokens)
+                and tokens[j].kind == "IDENT" and tokens[j].text == "uniform"
+                and tokens[j + 1].kind == "IDENT"
+                and tokens[j + 2].kind == "LBRACE"
+            )
+            if is_ubo_block:
+                block, i = _parse_ubo_block(tokens, i, struct_lookup)
+                result.ubo_blocks.append(block)
+                continue
+            i = _skip_to_semi(tokens, i + 1)
             continue
         if tok.kind == "IDENT" and tok.text == "struct":
             sd, i = _parse_struct(tokens, i)

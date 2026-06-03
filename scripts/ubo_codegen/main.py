@@ -249,7 +249,11 @@ def _emit_all(
     output_dir: Path,
     log: logging.Logger,
 ) -> List[str]:
-    """Emit the 4-file split (04 §5.1) and return the list of file names written."""
+    """Emit the Phase 1.A set (= 04 §5.1 + 08 §8.2 + 08 §10.1).
+
+    Returns the list of file names written. Order = per-block layouts,
+    metadata, perfect_hash, index, dummy_init, host_loader.
+    """
     written: List[str] = []
     for block in blocks:
         name = build_cache.layout_filename(block.name)
@@ -261,6 +265,12 @@ def _emit_all(
     _write_file(output_dir / build_cache.OUTPUT_PERFECT_HASH,
                 perfect_hash.emit_perfect_hash_inl_split(blocks), log)
     written.append(build_cache.OUTPUT_PERFECT_HASH)
+    _write_file(output_dir / build_cache.OUTPUT_DUMMY_INIT,
+                perfect_hash.emit_dummy_init_inl(blocks), log)
+    written.append(build_cache.OUTPUT_DUMMY_INIT)
+    _write_file(output_dir / build_cache.OUTPUT_HOST_LOADER,
+                perfect_hash.emit_host_loader_inl(blocks), log)
+    written.append(build_cache.OUTPUT_HOST_LOADER)
     _write_file(output_dir / build_cache.OUTPUT_INDEX,
                 perfect_hash.emit_index_inl(blocks), log)
     written.append(build_cache.OUTPUT_INDEX)
