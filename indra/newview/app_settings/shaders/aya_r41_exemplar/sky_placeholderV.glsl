@@ -15,7 +15,7 @@
 #version 450
 
 // set=0 binding 0: PerFrameMatrixUBO (192 B, VERTEX|FRAGMENT)
-layout(set = 0, binding = 0) uniform PerFrameMatrixUBO
+layout(std140, set = 0, binding = 0) uniform PerFrameMatrixUBO
 {
     mat4 projection_matrix;
     mat4 inverse_projection_matrix;
@@ -23,13 +23,13 @@ layout(set = 0, binding = 0) uniform PerFrameMatrixUBO
 };
 
 // set=0 binding 1: TextureMatrixUBO (256 B, VERTEX|FRAGMENT)
-layout(set = 0, binding = 1) uniform TextureMatrixUBO
+layout(std140, set = 0, binding = 1) uniform TextureMatrixUBO
 {
     mat4 texture_matrix[4];
 };
 
 // push constant range (0..64 B / VERTEX_BIT)
-layout(push_constant) uniform PushConstants
+layout(std140, push_constant) uniform PushConstants
 {
     mat4 modelview_matrix;
 };

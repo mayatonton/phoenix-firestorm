@@ -54,8 +54,8 @@ set(AYA_UBO_CODEGEN_SCRIPT
 mark_as_advanced(AYA_UBO_CODEGEN_SCRIPT)
 
 set(AYA_UBO_CODEGEN_BLUEPRINT_DIR
-    "${CMAKE_SOURCE_DIR}/indra/newview/app_settings/shaders"
-    CACHE PATH "AYAstorm r41 UBO blueprint (.glsl) root directory")
+    "${CMAKE_SOURCE_DIR}/indra/newview/app_settings/shaders/aya_r41_blueprints"
+    CACHE PATH "AYAstorm r41 UBO blueprint (.glsl) root directory (= PA-8 85 UBO blueprint 専用 root、set{0,1,2,3}/<name>.glsl で 1 UBO 1 file、legacy LL shader + aya_r41_exemplar は scan 対象外)")
 mark_as_advanced(AYA_UBO_CODEGEN_BLUEPRINT_DIR)
 
 set(AYA_UBO_CODEGEN_OUTPUT_DIR
