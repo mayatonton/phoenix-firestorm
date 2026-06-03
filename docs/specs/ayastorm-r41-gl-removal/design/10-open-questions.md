@@ -16,7 +16,7 @@
 
 ## §1 AYA 判断仰ぎ候補 (= 主要 open question 集約)
 
-### §1.0 25 件分類 index (= 全 AYA 判断仰ぎ候補 一覧、2026-06-03 18 件 batch 反映で最終確定)
+### §1.0 27 件分類 index (= 全 AYA 判断仰ぎ候補 一覧、2026-06-03 Phase 0 Step 1 由来 Q26-MUL + Q27-CONFL 追加で 25 → 27 件)
 
 **集約方法**: 設計 chapter 群 (01-10) 第二次査読 + Phase 2d-β prep audit (= 2026-06-03 batch) で抽出された AYA 判断仰ぎ候補を **(Q) ID + 該当 §1.x + 状態** で index 化。本 §1.0 は §1.1-§1.6 各表の summary、各項目の **default 採用案 + 判断ポイント** は該当 §1.x 表本体で確認。
 
@@ -47,12 +47,14 @@
 | 23 | (Q23-K) | chapter 09 §5.2 Template 内 Phase 2/3/4 具体数値の placeholder 性質明示 | §1.6 | ✅ 判断済 (A, 2026-06-03) |
 | 24 | (Q24-S1) | chapter 06a §4.3.1 代替案 S1-A/B/C/D 採用 ((S1-存在) 解消済 + (S1-代替) 採用確定) | §1.6 | ✅ 判断済 (A, 2026-06-03) |
 | 25 | (Q25-21CNT) | 21 件 → 25 件 double-count 検証 + 18 件 batch 統合反映方針 | §1.6 | ✅ 判断済 (B, 2026-06-03) |
+| 26 | (Q26-MUL) | `MaterialUBO_Legacy` 構造改修方針 (= rename + 同 program set=1 binding=0 二重宣言解消) | §1.5 | 未判断 (Phase 0 Step 1 由来 新規) |
+| 27 | (Q27-CONFL) | (E') V/F 同 program 内 `set=2, binding=0` 共存 risk 解消方針 (= 5 UBO 同 binding ↔ V/F stage 跨ぎ link conflict 候補) | §1.5 | 未判断 (Phase 0 Step 1 由来 新規) |
 
-**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (5) + §1.4 (4) + §1.5 (1) + §1.6 (4) = **25 件**。
+**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (5) + §1.4 (4) + §1.5 (3) + §1.6 (4) = **27 件**。
 
 **判断済 4 件の反映先 cross-ref**: (Q22-NUM) → inventory §3.3.1 + 06c §3/§8 + 04 §5.3 + 01 §4.2 (= 計 13 箇所 `85 GLSL blueprint` rewrite 済) / (Q23-K) → 09 §5.2 冒頭注記 / (Q24-S1) → 06a §4.3 / §4.3.1 / §6.2 / §10 + 06a-prep §6 (S1-存在) / 本 chapter §4 live 表 / (Q25-21CNT) → 本 §1.0 表 + 各 chapter 反映 batch (= Wave A-G)。
 
-**未判断 21 件の解消順序**: §1.1 (chapter 07) + §1.2 (chapter 08) + §1.3 (chapter 09) + §1.4 (06b/06c) は **AYA 判断 batch session** で集約消化、§1.5 (F) のみ **Phase 0 計測結果** 待ち (= 客観 input)。
+**未判断 23 件の解消順序**: §1.1 (chapter 07) + §1.2 (chapter 08) + §1.3 (chapter 09) + §1.4 (06b/06c) は **AYA 判断 batch session** で集約消化、§1.5 (F)(Q26-MUL)(Q27-CONFL) は **Phase 0 計測結果由来** = (F) は Phase 0 Step 1 で F1/F3 反証 + F2 第一候補確定、(Q26-MUL) は (F)=F2 確定を受けた構造改修方針、(Q27-CONFL) は (E') 5 UBO 同 binding 確定 + V/F stage 跨ぎ link conflict 候補解消方針 = 3 件とも Phase 0 完了直後 AYA 判断 batch 対象。
 
 ---
 
@@ -106,13 +108,19 @@
 
 **AYA 判断後の反映先**: 06b §3.2.3 / §5.2 を K 確定形に、06c §2 / §3 / §6 / §3.4 を M/N/O 確定形に書換え。
 
-### §1.5 chapter 05 §10 統廃合再評価 (= E3 採用後の再評価系)
+### §1.5 chapter 05 §10 統廃合再評価 + Phase 0 Step 1 由来構造改修 (= 3 件)
 
 | (Q) | 項目 | default 採用案 | 判断ポイント | 出典 |
 |---|---|---|---|---|
-| (F) | `MaterialUBO` vs `MaterialUBO_Legacy` 処遇 | **F1 統合 (= 同一 binding 共有確認後、F1 統合へ移行)** | F1 統合で UBO 数削減 / F2 別名分離は E3 (rename だけ) 方針と整合 / F3 廃止は機能損失リスク、Phase 0 計測 (member 比較 + program 単位 attach grep) 結果待ち | 05 §10 |
+| (F) | `MaterialUBO` vs `MaterialUBO_Legacy` 処遇 | **F2 別名分離 (= 2026-06-03 Phase 0 Step 1 で member 完全別物確認 → F1 統合反証、両者実 attach 確認 → F3 廃止反証、F2 第一候補 narrowing 確定)** | Phase 0 Step 1 で member diff + attach 表確定 (= 06a-prep §4.6 / §4.6.2 / §4.6.3 / §4.6.5)、F2 確定後の **具体 rename 名 + 構造改修** は (Q26-MUL) に分離 | 05 §10 + 06a-prep §4.6 |
+| (Q26-MUL) | `MaterialUBO_Legacy` 構造改修方針 (= (F)=F2 確定後の sub-question) | **MUL-A1 + MUL-B1 組合せ default** (= rename `MaterialUBO_Class3_Legacy` 等 specific 名 + class3 専用 V shader 追加で MaterialUBO 不宣言、または MUL-B2 binding ずらしで `set=1, binding=1` 等別 slot) | (A) rename 名選定: `MaterialUBO_Class3_Legacy` / `MaterialUBO_BlinnLegacy` / `MaterialUBO_BB` 等の specific 名 (= chapter 02 §3.2 命名規則と整合) / (B) 同 program set=1 binding=0 二重宣言解消手段: B1 class3 用 V shader 別途用意 (= MaterialUBO 不宣言、F=class3/materialF.glsl と組合せ) / B2 binding ずらし (= MaterialUBO_Legacy → `set=1, binding=1`) / B3 set 帯分離 (= set=4 等の予備帯活用) / B4 集約 (= MaterialUBO + Legacy member 全件を 1 UBO に合体、program 別 permutation で member 選択) | 06a-prep §4.6.6 (F)-1 |
+| (Q27-CONFL) | (E') V/F 同 program 内 `set=2, binding=0` 共存 risk 解消方針 (= 5 UBO 同 binding ↔ V/F stage 跨ぎ link conflict 候補) | **CONFL-A1 + CONFL-B2 組合せ default** (= まず Phase 1.A 入口で V/F 共通 shaders list 経由 attach 全 program enumerate + V+F 同 binding 共存 program listing、共存程度に応じて B2 binding ずらし or B3 set 帯分離) | (A) enumerate 範囲: A1 `LLViewerShaderMgr::loadBasicShaders/loadShadersDeferred/loadShadersObject/loadShadersAvatar/loadShadersEnvironment/loadShadersInterface/loadShadersWindLight/loadShadersWater` 全 program / A2 部分 (= 高 risk program のみ) / (B) 解消手段: B1 V/F shader 分割 (= `avatarSkinV` を含む program で ClipPlane F を抜く) / B2 binding ずらし (= V 側 4 UBO を `set=2, binding=1/2/3/4` 等に分離 + F 側 ClipPlane を `binding=0` 維持) / B3 set 帯分離 (= V 側 skin/velocity UBO を `set=4` 等の予備帯へ移動) / B4 V/F 一括 UBO 集約 (= 同 program 内全 set=2 binding を 1 UBO に統合) / (C) 解消判定 phase: C1 Phase 1.A 入口で全件解消 (= LL_VULKAN_GLSL 有効化前に dormant 顕在化阻止) / C2 各 UBO migration phase 単位で逐次解消 | 06a-prep §3.5.6 (E')-1/(E')-2/(E')-3/(E')-4 |
 
-**AYA 判断後の反映先**: chapter 05 §5 / §7.3 集約表で F 解消マーク、chapter 09 Phase 0 入口手順書 (`06a-prep-phase0-measurement.md`) §3 で (F) 計測 spec を実施。
+**(F) AYA 判断後の反映先**: chapter 05 §5 / §7.3 集約表で F2 確定マーク、本 chapter §4 live 表 (F) 解消、Q26-MUL に sub-question 切出。
+
+**(Q26-MUL) AYA 判断後の反映先**: chapter 02 §3.2 命名規則表に `MaterialUBO_*Legacy` 確定名追加、chapter 05 §5 / §7.3 集約表に確定 binding/set 帯反映、`class3/deferred/materialF.glsl` の UBO 宣言行 + 必要なら `class3/deferred/materialV.glsl` 新規 file 作成、inventory §3.2 共存記述補正、chapter 06c §3 接合表に set/binding 確定反映。
+
+**(Q27-CONFL) AYA 判断後の反映先**: chapter 06c §3 接合表に確定 binding/set 帯反映、`avatarSkinV.glsl` / `objectSkinV.glsl` / `skinnedVelocityV.glsl` / `skinnedVelocityAlphaV.glsl` / `avatarVelocityV.glsl` (V 側 4 UBO 宣言 file) + `globalF.glsl` / `reflectionProbeF.glsl` / `softenLightF.glsl` / `pbrmetallicroughnessF.glsl` / `pbropaqueF.glsl` (F 側 ClipPlane 宣言 5 file) の `layout(set=N, binding=M)` 書換え、chapter 04 §5 `ubo_metadata.inl` 出力契約に確定 binding 反映、Phase 1.A 入口 handoff doc (= η-30) に enumerate 結果 attach。
 
 ### §1.6 Phase 2d-β prep audit 起因 新規 4 件 (2026-06-03 AYA 判断済 batch)
 
@@ -230,11 +238,11 @@
 
 | # | inventory §7 項目 | カバー状況 |
 |---|---|---|
-| 1 | set=2 同一 binding 複数 UBO 名疑い (§3.3.1) | **06c §10 (V2) + 06a-prep §3 (E')** = Phase 0 計測でカバー |
+| 1 | set=2 同一 binding 複数 UBO 名疑い (§3.3.1) | **06c §10 (V2) + 06a-prep §3 (E')(Q27-CONFL)** = Phase 0 Step 1 で C/B 案反証 + A 案純粋形不成立 + V/F 共存 risk 顕在化 → §1.5 (Q27-CONFL) で構造改修 |
 | 2 | `LLGLSLShader::UB_*` enum 全件 | **✓ 解消 (2026-06-03)** (inventory §4.1 / 06c §3.4) |
 | 3 | set=3 Legacy の正確な個数 | **✓ 解消 (2026-06-03)** (inventory §3.4 / 05 §3) |
 | 4 | `FrameViewProj` / `FrameLights` / `FrameAtmosphere_Lighting` member 一覧と他 UBO/bare uniform との重複 | **05 §3 + 06a-prep §3 (E')** = Phase 0 計測でカバー |
-| 5 | `MaterialUBO` と `MaterialUBO_Legacy` の関係 | **05 §5 / §10 (F)** = 本 chapter §1.5 でカバー |
+| 5 | `MaterialUBO` と `MaterialUBO_Legacy` の関係 | **05 §5 / §10 (F)(Q26-MUL)** = 本 chapter §1.5 でカバー (2026-06-03 Phase 0 Step 1 で (F)=F2 narrowing 確定 + (Q26-MUL) sub-question 新規分離) |
 | 6 | `LLGLSLShader::uniform*fv()` redirect 痕跡 | **✓ 解消 (2026-06-03)** (inventory §4.3) |
 | 7 | upstream Firestorm との UBO blueprint 差分 | **設計 chapter 未カバー** (= §6 で明示) |
 | 8 | OpenGL path 棚卸し外 SSBO / image binding 有無 | **設計 chapter 未カバー** (= §6 で明示) |
@@ -285,10 +293,10 @@ inventory §7 残課題のうち、設計 chapter 群 (01-10) でカバーされ
 ### §7.3 η-29 Phase 0 完了 → Phase 1.A 入口
 
 - (H1b) hook 計測完了 → (Q1) Template 確定の入力データ揃う
-- (E') 同一 binding 複数 UBO 名疑い解消 → (V2) 確定
-- (F) MaterialUBO 比較 → §1.5 (F) 確定
+- (E') 同一 binding 複数 UBO 名疑い解消 → Phase 0 Step 1 で C++ name attach 0 件 + 全 5 UBO `set=2 binding=0 std140` 確定済 + V/F 同 program 共存 risk 顕在化 → (V2) 確定は (Q27-CONFL) 構造改修方針確定後
+- (F) MaterialUBO 比較 → **Phase 0 Step 1 で F1/F3 反証 + F2 narrowing 確定済**、(Q26-MUL) 構造改修方針が次の判断対象
 - (RF) reflection update fence throttle 判定 → 07 §12 (RF) 解消
-- Phase 1.A = Codegen + redirect 層整備 (= chapter 08 §17 7 件 + chapter 09 §10.1 持越紐付け)
+- Phase 1.A = Codegen + redirect 層整備 (= chapter 08 §17 7 件 + chapter 09 §10.1 持越紐付け) + (Q26-MUL) 構造改修反映
 
 ---
 

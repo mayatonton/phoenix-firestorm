@@ -22,6 +22,9 @@
 # (.glsl は commit、.spv は build-time generate / viewer_manifest.py で deploy)
 *.spv
 
+# AYA local test artifacts (security info 含む、commit 禁止)
+tests/
+
 # Specific paths and/or names
 CMakeCache.txt
 cmake_install.cmake

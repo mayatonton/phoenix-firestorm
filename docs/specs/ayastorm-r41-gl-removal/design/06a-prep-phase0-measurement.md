@@ -144,16 +144,18 @@ shader link 時 caller context grep (= 06a §0.2 Agent 解析) で得られた c
 
 #### §2.3.1 helper function 配置 (= `llglslshader.cpp` 上部、anonymous namespace 内)
 
+**(2026-06-03 Phase 0 Step 1 update)**: §7 (P4) 解消結果 = 既存 `gFrameCount` (`U32` in `llappviewer.cpp:369` + `extern` in `llappviewer.h:422`) 流用に簡素化 (= 専用 counter `g_aya_ubo_hook_frame_counter` + §2.3.3 frame counter increment 配線は不要、setter 経路は現状 main thread 専有のため `gFrameCount` の `U32` 非 atomic で十分)。
+
 ```cpp
 #ifdef AYASTORM_UBO_CADENCE_HOOK
-namespace {
-    std::atomic<uint64_t> g_aya_ubo_hook_frame_counter{0};
+#include "llappviewer.h"  // for gFrameCount (extern U32, llappviewer.h:422)
 
+namespace {
     void ayaUboHookOnSetterByIndex(const char* setter_name, const LLGLSLShader* shader, U32 index)
     {
         const auto& reserved = LLShaderMgr::instance()->mReservedUniforms;
         const char* uniform_name = (index < reserved.size()) ? reserved[index].c_str() : "<oob>";
-        LL_INFOS("UBO_CADENCE") << "frame=" << g_aya_ubo_hook_frame_counter.load()
+        LL_INFOS("UBO_CADENCE") << "frame=" << gFrameCount
             << " shader=" << (shader->mName.empty() ? "<unnamed>" : shader->mName.c_str())
             << " uniform=" << uniform_name
             << " setter=" << setter_name
@@ -163,7 +165,7 @@ namespace {
 
     void ayaUboHookOnSetterByHashed(const char* setter_name, const LLGLSLShader* shader, const LLStaticHashedString& uniform)
     {
-        LL_INFOS("UBO_CADENCE") << "frame=" << g_aya_ubo_hook_frame_counter.load()
+        LL_INFOS("UBO_CADENCE") << "frame=" << gFrameCount
             << " shader=" << (shader->mName.empty() ? "<unnamed>" : shader->mName.c_str())
             << " uniform=" << uniform.String().c_str()
             << " setter=" << setter_name
@@ -180,9 +182,9 @@ namespace {
 ```
 
 **規律**:
-- `g_aya_ubo_hook_frame_counter` は `std::atomic<uint64_t>` (= worker thread からの setter call も想定して thread-safe、現状 main thread 専有でも将来の core 分散時の安全網)
-- `LL_INFOS` class 文字列 = `"UBO_CADENCE"` (= 既存 class 名と衝突しないこと、実装 phase 入口で `LL_INFOS\("UBO_CADENCE` を全 source grep して確認、衝突あれば `AYA_UBO_CADENCE` 等にずらす)
-- helper / macro / counter は `#ifdef AYASTORM_UBO_CADENCE_HOOK` で gate、release build には混入しない
+- frame counter = 既存 `gFrameCount` (`U32`) を直接参照 (= §7 (P4) 解消、`std::atomic` 不要)
+- `LL_INFOS` class 文字列 = `"UBO_CADENCE"` (= §7 (P1) で衝突 0 件確認済、実装時改 grep 不要)
+- helper / macro / `#include "llappviewer.h"` は `#ifdef AYASTORM_UBO_CADENCE_HOOK` で gate、release build には混入しない
 
 #### §2.3.2 各 setter 入口への hook 挿入 (= 30 method)
 
@@ -212,23 +214,19 @@ void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
 - `mProgramObject` check より **前** に挿入 (= 0 program での setter call も log、anomaly 検知用)
 - 既存 body は **1 文字も改変しない** (= 検証完了後の hook 除去で diff が hook 行のみになる、commit ミス防止)
 
-#### §2.3.3 frame counter increment 配線
+#### §2.3.3 frame counter increment 配線 (= **2026-06-03 Phase 0 Step 1: 不要マーク**)
 
-```cpp
-// llappviewer.cpp の LLAppViewer::idle() 入口
-bool LLAppViewer::idle()
-{
-#ifdef AYASTORM_UBO_CADENCE_HOOK
-    ++g_aya_ubo_hook_frame_counter;
-#endif
-    // ... 既存 body
-}
-```
+**結論**: §7 (P3)(P4) 解消結果 = 既存 `gFrameCount` (`llappviewer.cpp:369` で `LLAppViewer::idle()` 入口に既存 increment 配線あり) を §2.3.1 hook helper から直接参照 → 本 §2.3.3 の追加配線は **不要**。
+
+**確認済 (Phase 0 Step 1 grep 結果)**:
+- `gFrameCount` 定義: `indra/newview/llappviewer.cpp:369` (`U32 gFrameCount = 0;`)
+- `gFrameCount` 公開: `indra/newview/llappviewer.h:422` (`extern U32 gFrameCount;`)
+- increment 経路: `llappviewer.cpp` 内既存 main loop で frame 毎に自動 increment (= `gSimFrames = (F32)gFrameCount` 等、line 1344 / 1605 / 1864 / 6563 で読出済)
+- 流用方針: §2.3.1 helper 内で `gFrameCount` を直接読出 = 配線追加ゼロ
 
 **規律**:
-- `g_aya_ubo_hook_frame_counter` は `llglslshader.cpp` の anonymous namespace 内 = `llappviewer.cpp` から直接参照不可
-- → `llglslshader.h` に `extern` 宣言追加 (= `namespace ayastorm_ubo_cadence_hook { extern std::atomic<uint64_t> g_frame_counter; }`)、または専用 helper `void ayaUboCadenceHookOnFrame()` を `llglslshader.h` に公開 → `llappviewer.cpp` から呼ぶ
-- 推奨 = **helper 公開** (= internal counter を hide、ABI 安定)、実装 phase 入口で確定
+- 本 §2.3.3 は **実装 phase で skip** (= AYA build 時 `llappviewer.cpp` への hook 編集なし)
+- 実装 phase entry 時に「§2.3.3 不要、§2.3.1 helper に `#include "llappviewer.h"` 追加のみで完了」と確認 → §8 update 規律に従い本節を superseded mark せずそのまま保存 (= 経緯 archive)
 
 ### §2.4 build flag (CMake)
 
@@ -369,9 +367,88 @@ grep -rn "PerDrawUBO_\(ClipPlane\|SkinnedVelocity\|AvatarVelocity\|AvatarSkin\|O
 | inventory §3.3.1 補正 | 観測結果で書き換え |
 | `05-existing-inventory-link.md` §3.3 補正 | inventory 補正に追従 |
 
-### §3.5 確定情報 (= 実装 phase 入口で埋める)
+### §3.5 確定情報 (= **2026-06-03 Phase 0 Step 1 Pre-hook Static Analysis 結果**)
 
-`(2026-06-03 起案時点: 空。実装 phase で §3.2 step 1-3 実施結果を埋める)`
+#### §3.5.1 step 1-2: 全宣言 listing + binding / preprocessor gate 確認結果
+
+| UBO 名 | 宣言 file:line | set / binding | std140 | preprocessor gate |
+|---|---|---|---|---|
+| `PerDrawUBO_ClipPlane` | `class3/deferred/reflectionProbeF.glsl:791` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_ClipPlane` | `class3/deferred/softenLightF.glsl:90` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_ClipPlane` | `class1/gltf/pbrmetallicroughnessF.glsl:164` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_ClipPlane` | `class1/deferred/pbropaqueF.glsl:180` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_ClipPlane` | `class1/deferred/globalF.glsl:45` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_AvatarSkin` | `class1/avatar/avatarSkinV.glsl:45` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_ObjectSkin` | `class1/avatar/objectSkinV.glsl:43` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_SkinnedVelocity` | `class1/deferred/skinnedVelocityAlphaV.glsl:110` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_SkinnedVelocity` | `class1/deferred/skinnedVelocityV.glsl:81` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+| `PerDrawUBO_AvatarVelocity` | `class1/deferred/avatarVelocityV.glsl:53` | set=2, binding=0 | ✓ | `#ifdef LL_VULKAN_GLSL` |
+
+= 全 5 UBO 名 / 10 宣言行で **set=2, binding=0, std140 + `#ifdef LL_VULKAN_GLSL` gate** 確定。inventory §3.3.1 binding=0 listing は実観測一致 = **C 案 (Agent 抽出誤り) は反証**。
+
+#### §3.5.2 step 3: C++ shader manager attach 確認結果
+
+```
+grep -rn "PerDrawUBO_\(ClipPlane\|SkinnedVelocity\|AvatarVelocity\|AvatarSkin\|ObjectSkin\)" indra/newview/llviewershadermgr.cpp indra/llrender/llglslshader.cpp
+```
+**→ 0 matches**
+
+= **C++ 側で UBO 名による attach 配線は 0 件**。GLSL 宣言時の `layout(set=2, binding=0)` が binding 唯一の source of truth (= Vulkan-style 宣言)、`glUniformBlockBinding`-相当の rebind なし。
+
+#### §3.5.3 shader file → program attach 確認結果
+
+shader file 名で `llviewershadermgr.cpp` 内 grep:
+
+| shader file | attach program / 配置 line | stage |
+|---|---|---|
+| `avatar/avatarSkinV.glsl` | 共通 shaders list line 857 (= 多 program に自動 attach) | V |
+| `avatar/objectSkinV.glsl` | 共通 shaders list line 858 (= 同上) | V |
+| `deferred/globalF.glsl` | 共通 shaders list line 963 | F |
+| `deferred/reflectionProbeF.glsl` | 共通 shaders list line 968 | F |
+| `deferred/pbropaqueF.glsl` | `gDeferredPBROpaqueProgram` line 1479 / `gHUDPBROpaqueProgram` line 1546 | F |
+| `gltf/pbrmetallicroughnessF.glsl` | `gGLTFPBRMetallicRoughnessProgram` line 1502 | F |
+| `deferred/softenLightF.glsl` | `gDeferredSoftenProgram` line 2233 | F |
+| `deferred/skinnedVelocityV.glsl` | `gVelocitySkinnedProgram` line 3346 | V |
+| `deferred/skinnedVelocityAlphaV.glsl` | `gVelocityAlphaSkinnedProgram` line 3378 | V |
+| `deferred/avatarVelocityV.glsl` | `gAvatarVelocityProgram` line 3396 | V |
+
+#### §3.5.4 同 program 内 V+F 共存 risk 分析
+
+V stage の 4 UBO (AvatarSkin / ObjectSkin / SkinnedVelocity / AvatarVelocity) と F stage の ClipPlane が **同一 program に attach** されると、Vulkan link 時に set=2 binding=0 が **二重宣言** → link conflict 候補:
+
+| V 側 attach 経路 | F 側 attach 経路 | 同 program で共存？ | conflict 候補 |
+|---|---|---|---|
+| `avatarSkinV.glsl` (共通 list) | `globalF.glsl` / `reflectionProbeF.glsl` (共通 list) | 高 (= 多 program で auto-attach) | 高 |
+| `objectSkinV.glsl` (共通 list) | 同上 | 高 | 高 |
+| `skinnedVelocityV.glsl` (`gVelocitySkinnedProgram`) | 同 program 内 F は velocity-F (= `globalF.glsl` 等は別 attach) | 要 program 内 V+F enumerate | 低-中 |
+| `skinnedVelocityAlphaV.glsl` (`gVelocityAlphaSkinnedProgram`) | 同上 | 同上 | 低-中 |
+| `avatarVelocityV.glsl` (`gAvatarVelocityProgram`) | 同上 | 同上 | 低-中 |
+
+**現状**: `#ifdef LL_VULKAN_GLSL` は GL build で OFF = 全宣言 dormant = **未顕在化 dormant conflict** (= Phase 1.A で LL_VULKAN_GLSL 有効化時に link 失敗候補)。
+
+#### §3.5.5 A/B/C 案 verdict (= 暫定)
+
+- **B 案 (dead code)**: 全 UBO に実 attach 確定 = **反証**
+- **C 案 (Agent 抽出誤り)**: §3.5.1 表で 全件実観測一致 = **反証**
+- **A 案 (program 別 binding namespace 独立で binding=0 再割当)**:
+  - GL spec / Vulkan spec で **同 program 内 set+binding は unique 必須** (= V/F stage は同 set+binding 空間共有)
+  - → 純粋な A 案は Vulkan で成立しない
+  - 成立条件 = 各 V+F 組合せが **異なる program** で binding=0 を独立使用 (= program 跨ぎ binding namespace は独立、program 内は unique)
+  - §3.5.4 の共通 shaders list 経由 attach は high risk (= 多 program で V+F 共存疑い)
+
+#### §3.5.6 持越事項 (= Phase 1.A 入口 task)
+
+| # | item | 反映先 |
+|---|---|---|
+| (E')-1 | 共通 shaders list 経由 attach の全 program enumerate (= `LLViewerShaderMgr::loadBasicShaders()` / `loadShadersDeferred()` / `loadShadersObject()` 等 全 program の V+F shader file 一覧抽出) | Phase 1.A 入口 doc + chapter 06c descriptor set bind 配線 |
+| (E')-2 | enumerate 結果と本 §3.5.3 表の cross-check で V+F 共存 program 確定 listing | Phase 1.A 入口 doc |
+| (E')-3 | 共存検出 program に対する解決方針 (= binding ずらし / V 側 set 帯分離 / F 側 set 帯分離 / shader 分割) | **chapter 10 §1 (Q27-CONFL)** AYA 判断仰ぎ事項 (= 2026-06-03 Phase 0 Step 1 で新規登録済、26 → 27 件) |
+| (E')-4 | 計測 hook (§2) で実機の uniform 名 × shader 名対応取得 → 同 shader (= 同 program) 内で複数 UBO 出現確認 | §2 hook 実行時並走 |
+
+#### §3.5.7 inventory §3.3.1 補正方針
+
+- 5 UBO 全件「binding=0 listing 確実」と確証 → inventory §3.3.1 は補正なし、**注記追加**: 「同 program V+F 共存 risk → §3.5.6 で持越」
+- chapter 05 §3.3 set=2 帯 mapping = 5 UBO 全件登録継続、§3.5.4 risk を注記
 
 ---
 
@@ -443,9 +520,99 @@ attach program 一覧:
 | `05-existing-inventory-link.md` §5.2 / §5.3 | 判定結果で書き換え (= 暫定名 `MaterialUBO` (暫定温存) → 確定名へ) |
 | `02-naming-convention.md` §3.2 | 新名で表 update |
 
-### §4.6 確定情報 (= 実装 phase 入口で埋める)
+### §4.6 確定情報 (= **2026-06-03 Phase 0 Step 1 Pre-hook Static Analysis 結果**)
 
-`(2026-06-03 起案時点: 空。実装 phase で §4.3 step 1-3 実施結果を埋める)`
+#### §4.6.1 step 1: 全宣言 listing 結果
+
+| UBO 名 | 宣言件数 | 出現 file (代表 + 件数) |
+|---|---|---|
+| `MaterialUBO` | **52 件** | 多数 (例: `class1/objects/simpleNoColorV.glsl:46`, `class1/deferred/materialV.glsl:68`, `class1/deferred/pbropaqueV.glsl:69` 等、全 52 件 `set=1, binding=0, std140` 統一) |
+| `MaterialUBO_Legacy` | **1 件のみ** | `class3/deferred/materialF.glsl:38` (= 単独) |
+
+= **圧倒的非対称** (52 vs 1)、inventory §3.2 の「2 UBO 名共存」記述は **共存ではなく Legacy 側 1 件のみ**。
+
+C++ 参照 (`grep MaterialUBO_Legacy indra/`): **shader 宣言行 1 件のみ、C++ 配線なし** (= 純 GLSL 配線、attach は file 名経由)。
+
+#### §4.6.2 step 2: member 直接 diff
+
+**MaterialUBO** (`class1/objects/simpleNoColorV.glsl:46`, `class1/deferred/materialV.glsl:68` 共通):
+```glsl
+layout(set=1, binding=0, std140) uniform MaterialUBO {
+    mat4  texture_matrix0;                  // 64 B
+    vec4  texture_base_color_transform[2];  // 16×2 = 32 B
+    vec4  texture_emissive_transform[2];    // 16×2 = 32 B
+    vec4  color;                            // 16 B
+    vec3  emissiveColor;                    // 12 B
+    float _pad_emissive;                    //  4 B
+};
+// 総 size = 64 + 32 + 32 + 16 + 12 + 4 = 160 B (= std140 整列済)
+```
+
+**MaterialUBO_Legacy** (`class3/deferred/materialF.glsl:38`):
+```glsl
+layout(set=1, binding=0, std140) uniform MaterialUBO_Legacy {
+    vec4  morphFactor;             // 16 B
+    vec4  specular_color;          // 16 B
+    vec3  camPosLocal;             // 12 B
+    float emissive_brightness;     //  4 B
+    float is_mirror;               //  4 B
+    float env_intensity;           //  4 B
+    float aya_sss_skin_flag;       //  4 B
+    float _pad_material_legacy_0;  //  4 B
+};
+// 総 size = 16 + 16 + 12 + 4 + 16 = 64 B (= std140 整列済、vec3+float scalar 後の 4 float は同 16 B チャンク)
+```
+
+= **member 完全別物** (= 共通 member 0 件、type / 名前 / 順序 全て差異) → F1 統合 (member 同一) は **反証**。
+
+#### §4.6.3 step 3: attach program 確認結果
+
+```
+grep -n "deferred/materialF\.glsl" indra/newview/llviewershadermgr.cpp
+→ 1408: gDeferredMaterialProgram[i].mShaderFiles.push_back(make_pair("deferred/materialF.glsl", GL_FRAGMENT_SHADER));
+```
+
+`gDeferredMaterialProgram[i]` (`llviewershadermgr.cpp:1395-1408` 周辺):
+- V shader = `deferred/materialV.glsl` (= 自動 class 解決、mShaderLevel に従い `class1/deferred/materialV.glsl` 等が選択)
+- F shader = `deferred/materialF.glsl` (= 同上、mShaderLevel に従い `class1/` / `class3/` 等)
+- mShaderLevel = `mShaderLevel[SHADER_DEFERRED]` (= graphics 設定 high で class3 選択)
+- permutation = `HAS_NORMAL_MAP` / `HAS_SPECULAR_MAP` / `DIFFUSE_ALPHA_MODE`
+- Skinned 変種 = `gDeferredMaterialProgram[i]` に skinning V を追加 attach (= `if (...) "Skinned Material Shader %d"`)
+
+#### §4.6.4 同 program 内 set=1 binding=0 共存 risk 分析
+
+`mShaderLevel[SHADER_DEFERRED] = class3` 設定時:
+- V = `class1/deferred/materialV.glsl` (= MaterialUBO 宣言、§4.6.2 表)
+- F = `class3/deferred/materialF.glsl` (= MaterialUBO_Legacy 宣言、§4.6.2 表)
+- **両者とも `#ifdef LL_VULKAN_GLSL` gate + 同 `set=1, binding=0, std140`**
+- → Vulkan link 時に set=1 binding=0 が **MaterialUBO + MaterialUBO_Legacy** 両 UBO で二重宣言 = **link 失敗候補**
+
+`mShaderLevel[SHADER_DEFERRED] = class1/class2` 設定時:
+- F = `class1/deferred/materialF.glsl` or `class2/deferred/materialF.glsl` (= MaterialUBO_Legacy 宣言なし、本 grep で確認)
+- → 衝突回避
+
+**現状**: `#ifdef LL_VULKAN_GLSL` は GL build で OFF = 全 UBO 宣言 dormant = **未顕在化 dormant conflict** (= Phase 1.A で LL_VULKAN_GLSL 有効化時、mShaderLevel=class3 で顕在化)。
+
+#### §4.6.5 F1/F2/F3 verdict (= 確定)
+
+| 案 | 判定 | 根拠 |
+|---|---|---|
+| F1 (member 同一 → 統合) | **反証** | §4.6.2 member 完全別物 |
+| F2 (member 別物 → 別名分離) | **第一候補** | member 別物 + program 別シナリオ (= mShaderLevel 切替) で分離設計可能 |
+| F3 (片方 dead) | **反証** | 両者とも実 attach 確認 (= `gDeferredMaterialProgram` の class3 path で MaterialUBO_Legacy 使用) |
+| F3 重複版 (= 同 program 両 attach、GL spec 違反) | **顕在化候補** | mShaderLevel=class3 で MaterialUBO + Legacy が同 program 共存 (= Vulkan link 失敗) |
+
+**verdict = F2 + 同 program 内構造改修要** (= MaterialUBO_Legacy を別 binding / 別 set 帯に逃がす、または mShaderLevel=class3 用 V shader を別途用意して MaterialUBO 不宣言にする等)。
+
+#### §4.6.6 持越事項 (= Phase 1.A 入口 task)
+
+| # | item | 反映先 |
+|---|---|---|
+| (F)-1 | 構造改修方針確定 (= rename + binding ずらし / class3 専用 V shader / 集約 UBO 案) | **chapter 10 §1 新規 (Q26-MUL) AYA 判断仰ぎ事項** |
+| (F)-2 | `MaterialUBO_Legacy` → 確定名 rename (= 例: `MaterialUBO_Class3F_Legacy` 等の specific 名) | chapter 02 §3.2 |
+| (F)-3 | `05-existing-inventory-link.md` §5.2 / §5.3 補正 | chapter 05 |
+| (F)-4 | inventory §3.2 「2 UBO 名共存」記述補正 (= 「共存ではなく Legacy 側 1 件、ただし同 program V+F 共存 risk」へ) | inventory §3.2 |
+| (F)-5 | 計測 hook (§2) で実機の mShaderLevel=class3 build 時 link 試行確認 (= 現状 GL build で dormant、Phase 1.A 入口の Vulkan build で初検出) | Phase 1.A 入口
 
 ---
 
@@ -530,14 +697,16 @@ frame range は AYA build run 時に scenario 切替前後の frame 番号を記
 
 ---
 
-## §7 未確定事項
+## §7 未確定事項 (= **2026-06-03 Phase 0 Step 1 Pre-hook Static Analysis で全件解消**)
 
-| # | 項目 | 解消先 |
+| # | 項目 | 解消結果 |
 |---|---|---|
-| (P1) | `LL_INFOS("UBO_CADENCE")` class 名衝突有無 | 実装 phase 入口 grep |
-| (P2) | CMake patch 配置先 (`00-Common.cmake` vs `LLRender.cmake` 等) | 実装 phase 入口 grep |
-| (P3) | frame counter 公開方式 (= `extern` 宣言 vs helper 関数 vs 既存 frame counter 流用) | 実装 phase 入口 |
-| (P4) | 既存 frame counter 流用可能性 (= `gFrameCount` 等が `llviewercontrol` / `llappviewer` に存在するか) | 実装 phase 入口 grep、流用可能ならそちらを優先 |
+| (P1) | `LL_INFOS("UBO_CADENCE")` class 名衝突有無 | **解消 = 衝突 0 件** (`grep -rn "UBO_CADENCE" indra/` → 0 matches、`"UBO_CADENCE"` literal 安全採用) |
+| (P2) | CMake patch 配置先 (`00-Common.cmake` vs `LLRender.cmake` 等) | **解消 = `indra/cmake/00-Common.cmake` 確定** (260 行、`option(LL_*)` pattern 0 件 = プロジェクトで `option()` block 自体は使用可、`LL_DULLAHAN_AUDIO_CALLBACK` は autobuild 経由 `CEFPlugin.cmake:13` で `if(...)` 参照のみ。AYASTORM_UBO_CADENCE_HOOK は `option()` を `00-Common.cmake` 末尾に追加、`-DAYASTORM_UBO_CADENCE_HOOK=ON` で AYA 計測 build 切替) |
+| (P3) | frame counter 公開方式 (= `extern` 宣言 vs helper 関数 vs 既存 frame counter 流用) | **解消 = 既存 `gFrameCount` 流用** (= `extern U32 gFrameCount;` in `llappviewer.h:422`、§2.3.1 helper から `#include "llappviewer.h"` で直接参照) |
+| (P4) | 既存 frame counter 流用可能性 (= `gFrameCount` 等が `llviewercontrol` / `llappviewer` に存在するか) | **解消 = 流用可能** (`U32 gFrameCount = 0;` in `llappviewer.cpp:369`、main loop で increment 配線済、`llappviewer.cpp:1344/1605/1864/6563` で読出経験あり = 安定 inventory) |
+
+= 全 4 件解消、§2.3.1 / §2.3.3 / §2.4 への反映完了。実装 phase 入口時点で本 §7 は **追加 grep 不要**。
 
 ---
 
