@@ -77,6 +77,7 @@
 | flush 単位 | bound program に attach された Program_* UBO 群 (= chapter 04 §6.2 で shader link 時 pre-cache 済、bind 時に該当 set だけ flush) |
 | 対応 UBO | `Program_*` (80 個、= set=2 帯 24 + set=3 帯 54 + 2 extra、chapter 02 §3.3 / §3.4。**注**: 24+54+2=80 の +2 は 06c §2.3 の「上記の重複なし」 2 entry に対応、Q22-NUM 解消 A' 反映で per-program set=2 23→24) |
 | 注 | shader bind 数は典型 20-50 / frame、bind 時 dirty 立ってなければ skip = 大半は upload 走らない (= cache hit が主流、chapter 03 §4.2 ) |
+| 注 (Q27-CONFL 反映 = 2026-06-03 ST-6) | per-program set=2 帯で V/F stage 同 binding=0 共存 5 UBO (= `PerDrawUBO_ClipPlane` F 側 + `PerDrawUBO_AvatarSkin` / `PerDrawUBO_ObjectSkin` / `PerDrawUBO_SkinnedVelocity` / `PerDrawUBO_AvatarVelocity` V 側 4 件) は **A1+B2+C1 確定** (= chapter 10 §1.5 ST-3 batch verdict) = V 側 4 UBO を `set=2, binding=1/2/3/4` に振り直し + F 側 ClipPlane を `binding=0` 維持、Phase 1.A 入口 (= C1) で LL_VULKAN_GLSL 有効化前に全件解消。本 §2.2 per-program flush で Program_* 80 個 (= 上記 24 + 54 + 2 extra) は B2 binding ずらし後 layout を前提とする。具体 binding 確定 reflect 先 = chapter 06c §3 接合表 + chapter 04 §5 `ubo_metadata.inl` 出力契約。 |
 
 ### §2.3 per-draw cadence (= Material* 含)
 
@@ -89,6 +90,8 @@
 | flush 単位 | ring buffer 1 つにつき current draw slot 単位 (= §5.3 L 論点) |
 | 対応 UBO | `Draw_LightParams` / `Draw_MultiLight` + `Material*` (MC1 (= 旧 G1) で per-draw cadence 帯入り) |
 | 注 | 数百〜数千 / frame の upload を支える ring buffer / dynamic offset 設計が必須 (= §5.3 L 論点)、dirty hit 率は material 切替頻度次第 (= §3.3) |
+| 注 (R-MAT1-4 反映 = 2026-06-03 ST-6) | Phase 0 計測 (= 06a-prep §5.5.7 観察値 437-688 cpf) で **per-draw cadence 確定 4 件** = `modelview_matrix` / `inv_modelview` / `modelview_projection_matrix` / `normal_matrix` (= LLShaderMgr canonical "matrix state" reserved uniforms `llshadermgr.cpp:1505-1512` の 7 件中 4 件、残 3 件 = `projection_matrix` / `inv_proj` / `identity_matrix` は per-frame / per-program 帯)。本 §2.3 per-draw cadence flush で `Draw_*` + `Material*` と並列に matrix 系 4 件も per-draw 帯 upload に乗る (= R-MAT4 = `normal_matrix` は 172 occurrences で per-draw 確定、当初 R-MAT4 候補 `modelview_projection_inverse` は grep 0 件で撤回 = 2026-06-03 chapter 10 §2.7 ST-6 前段 (b))。具体 binding 確定 reflect 先 = chapter 10 §2.7 + chapter 05 §7.3.4。 |
+| 注 (R-AYA3 反映 = 2026-06-03 ST-6) | Phase 0 grep で R-AYA3 (= `aya_sss_skin_flag`) は **alive 確定** (= reserved enum 登録 + setter 4 site + shader 既使用 + Vulkan UBO `AvatarFParamUBO_Legacy` 既移植済 dual-path、chapter 10 §2.7 ST-6 前段 (a))。R-AYA1 (= `aya_alpha_plate`) / R-AYA2 (= `aya_alpha_plate_enabled`) は **dead 確定** (= grep 0 件、setter site 不在)、追記候補から除外。R-AYA3 cadence = per-draw (= avatar 描画毎切替 flag、`AvatarFParamUBO_Legacy` set=3 binding=54 経由)。 |
 
 ### §2.4 per-asset cadence
 
@@ -201,6 +204,13 @@ struct UboInstance {
 - `Material*` prefix (= 命名) は **既存命名温存** (= upstream 取込互換、原則 1)
 - cadence 軸 = per-draw (= MC1、= 旧 G1)
 - → cadence 表 (chapter 03 §2) は 5 分類で確定、`Material*` は per-draw 行の `Draw_*` と並列 prefix として共存
+
+#### §3.3.4 Q26-MUL 確定名 反映 (= 2026-06-03 ST-6 / chapter 10 §1.5)
+
+- `MaterialUBO` (= class3 path 主流名) / `MaterialUBO_Class3_Legacy` (= legacy class3 fallback、Q26-MUL `A1+B1` 確定 = chapter 02 §3.2 の MUL-A1/B1 規律 paragraph 反映済)
+- 旧 `MaterialUBO_Legacy` → **`MaterialUBO_Class3_Legacy` に改名確定** = AYA 「全 default 採用」 batch verdict 反映 (= chapter 10 §1.0 Q26-MUL 状態 ✅)
+- 本 §3.3 per-draw cadence 統合は `MaterialUBO` / `MaterialUBO_Class3_Legacy` の **両 prefix** が `Material*` 集合に属する前提で扱う = §2.3 per-draw flush で `mValue` cache miss → `forwardToUboUpload` → UBO 単位 dirty bit set の path 共通
+- = 命名差は cadence / dirty 機構には影響しない (= §3.3.3 命名と cadence の独立性の具体例)
 
 ### §3.4 dirty 判定粒度の論点 (= K)
 
@@ -425,6 +435,21 @@ per-draw cadence は数百〜数千 / frame の upload が走るため、physica
 | (U2) | per-asset / per-skin dirty 判定 = 既存 owner state 変化検知継承 / Vulkan 側 dirty bit 追加 | chapter 07 | 既存 owner 変化検知 + Vulkan 側 dirty bit の両立 (= 既存 path 改変ゼロ + Vulkan upload dedup 両得) |
 | (U3) | flush timing で per-program ↔ per-draw 境界 = bind 直後 upload vs draw 直前 upload | (H1b) hook 計測後再評価 | bind 直後 upload (= per-program 帯)、draw 直前 upload (= per-draw 帯) で分離 (= §4.1) |
 | (U4) | `mValue` cache 適用外 5 method (= `uniform4iv` / `uniformMatrix2/3/3x4/4fv`) の Vulkan dirty 判定 | chapter 07 / Phase 進行中 | stage 1 を bypass、stage 3 dirty bit のみで dedup (= 値比較せず常に `forwardToUboUpload`、UBO 単位 dirty で flush dedup) |
+
+### §8.1 確定 cross-ref (= 2026-06-03 ST-6 反映)
+
+本 chapter §8 持越 (K)(L)(M)(U1)(U2)(U3)(U4) と独立に、chapter 10 batch verdict で確定済の関連項目を列挙 (= 本 chapter 設計の前提条件確認):
+
+| Q-ID | 確定 verdict | 本 chapter での反映点 |
+|---|---|---|
+| **Q1** | A (= AYA 「全 default 採用」、chapter 09 §11.1) | §2.2 per-program flush 単位 / §5.2 routing `CADENCE_PER_PROGRAM` case の前提が確定 |
+| **Q2** | A (= AYA 「全 default 採用」、chapter 09 §11.2) | §3.2 二段階 dedup 構造 / §5.4 thread 配線の前提が確定 |
+| **Q4** | C (= AYA 「全 default 採用」、chapter 09 §11.4) | §3.4 K2 (= UBO 単位 dirty) Claude 推奨の前提が確定 (= 他案で覆らない場合 K2 採用) |
+| **Q26-MUL** | A1+B1 (= chapter 10 §1.0、`MaterialUBO_Class3_Legacy` 改名) | §3.3.4 命名 reflection 反映済 |
+| **Q27-CONFL** | A1+B2+C1 (= chapter 10 §1.5 ST-3 batch) | §2.2 注 Q27-CONFL paragraph 反映済 |
+| **Q28-FFDUP** | A1+B2 (= chapter 10 §1.5 ST-3 batch、F+F `PerDrawUBO_ClipPlane` 重複解消) | (本 chapter 06b は cadence 設計、binding 重複は 06c 接合表で扱う) |
+| **R-AYA1/2/3** | dead / dead / alive (= chapter 10 §2.7 ST-6 前段 (a) 確定) | §2.3 注 R-AYA3 反映 paragraph 反映済 |
+| **R-MAT1-4** | per-draw cadence 4 件 (= `modelview_matrix` / `inv_modelview` / `modelview_projection_matrix` / `normal_matrix`、chapter 10 §2.7 / chapter 05 §7.3.4 ST-6 前段 (b)) | §2.3 注 R-MAT1-4 反映 paragraph 反映済 |
 
 ---
 

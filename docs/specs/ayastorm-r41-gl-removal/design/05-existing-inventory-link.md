@@ -283,17 +283,18 @@ cadence 判定基準 = chapter 03 §3 cadence source rule (= 既存 C++ 呼出 p
 
 #### §7.3.4 Phase 0 計測由来 cadence 補正 (= 2026-06-03 ST-4 batch、表本体起案時の cadence 列入力規律)
 
-2026-06-03 Phase 0 Step 4 AYA 実機計測 + Step 4 解析 (= 06a-prep §5.5.7) で **matrix 系 group 4-5 件** が per-program 推定 → **per-draw 確定** に補正:
+2026-06-03 Phase 0 Step 4 AYA 実機計測 + Step 4 解析 (= 06a-prep §5.5.7) で **matrix 系 group 4 件** が per-program 推定 → **per-draw 確定** に補正:
 
 | uniform 名 | 推定 cadence | 観察 cadence (= Phase 0 計測) | 観察 rate | 観察 shader/frame |
 |---|---|---|---|---|
 | `modelview_matrix` | per-program | **per-draw** | 437/688 cpf | 93/97 shader (s2/s3) |
 | `inv_modelview` | per-program | **per-draw** | 同 | 同 |
 | `modelview_projection_matrix` | per-program | **per-draw** | 375/619 cpf | 37/46 shader (s2/s3) |
-| `modelview_projection_inverse` (= group 4 件目候補) | per-program | **per-draw** (= R-MAT4 chapter 10 §2.7 listing、再 grep 確認待ち) | 要再計測 | 要再計測 |
-| `normal_matrix` (= group 5 件目候補) | per-program | **per-draw** (= R-MAT4 同上) | 要再計測 | 要再計測 |
+| `normal_matrix` (= group 4 件目確定 = R-MAT4) | per-program | **per-draw** (= §5.5.7 group rate > 100 → per-draw 確定 group-level 適用、shader 内 normal transform per-draw 性質と物理整合) | 個別観察値なし (= §5.5.7 group-level 適用、再計測不要) | 個別観察値なし (= 同上) |
 
-**反映規律**: §7.3 表本体起案時 (= chapter 06b 起案中の bare uniform 集約段階) に matrix 系の cadence 列を **per-draw として記入** (= 推定欄でなく観察欄を採用)。group 4-5 件目 (= R-MAT4) は §7.3 表起案直前に 06a-prep §5.5.7 補正 + 再 grep で確定。chapter 10 §2.7 (R-MAT1)-(R-MAT4) と連動。
+**反映規律**: §7.3 表本体起案時 (= chapter 06b 起案中の bare uniform 集約段階) に matrix 系の cadence 列を **per-draw として記入** (= 推定欄でなく観察欄を採用)。group 4 件目 (= R-MAT4 = `normal_matrix`) は §5.5.7 group-level 観察値適用で個別 cpf 再計測不要。chapter 10 §2.7 (R-MAT1)-(R-MAT4) と連動。
+
+**2026-06-03 ST-6 前段 (b) literal 転記完了 + R-MAT4 訂正**: R-MAT1/2/3 (= named 3 件) の literal 観察値は 7735505d03 commit (= ST-4 batch) で本表に転記済。R-MAT4 候補名は前 commit 時点で `modelview_projection_inverse` + `normal_matrix` の 2 件候補だったが、ST-6 前段 (b) grep verify で `modelview_projection_inverse` は indra/ 内 **0 件 = 存在 uniform 名でない** ことが判明 (canonical 「matrix state」block = llshadermgr.cpp:1505-1518 にも該当名なし)、`normal_matrix` (= indra/ 172 occurrences) のみ R-MAT4 group 4 件目として確定。group 5 件目 candidate (= 前 commit `normal_matrix` 5 件目位置) は撤回 (= 案 A 採用 / `modelview_delta` 等 SSR-only 候補は per-draw cadence 確信度低く除外)。matrix 系 per-draw 確定総件数 = **4 件** (= R-MAT1 modelview_matrix / R-MAT2 inv_modelview / R-MAT3 modelview_projection_matrix / R-MAT4 normal_matrix)。「再計測しない」(= 前 handoff §3.4 規律 3) 厳守で個別 cpf 再観測なし、§5.5.7 group-level 観察値 (= group rate > 100、~20 件 per-draw 補正) を group 4 件全件に適用。
 
 **3 件 (R-AYA1)(R-AYA2)(R-AYA3) 連動**: 06a-prep §5.5.5 dead candidate 中 `aya_*` 3 件 (= `aya_alpha_plate` / `aya_alpha_plate_enabled` / `aya_sss_skin_flag`) は **本 §7.3 表起案直前に grep で hash 経由配線 / dead path / shader 種別を確認** (= chapter 10 §2.7 (R-AYA1)-(R-AYA3) と連動)。`aya_sss_skin_flag` は MaterialUBO_Class3_Legacy member とも同名 (= §5.4.1) で二重配線疑い、Q26-MUL 構造改修と整合確認必要。
 

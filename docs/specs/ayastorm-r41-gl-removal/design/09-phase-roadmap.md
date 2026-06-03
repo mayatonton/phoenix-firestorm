@@ -659,7 +659,9 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 
 **Stage 2 entry verdict**: (Q1) / (Q2) 確定 (= K 値計算可能 state 到達) ✅ → Stage 2 完了、Stage 3 入口 (= Phase 1.A 着手 ready)。
 
-**✅ 2026-06-03 ST-5 batch Stage 2 完了 = (Q1) A / (Q2) A / (Q4) C 確定** (= chapter 10 §1.3 「全 default 採用」AYA 応答)。(Q3)(Q5) は default 採用継続、Phase 1.A 中盤まで後ろ倒し可 (= handoff §3.5 規律 7)。本 §14.4 表で 5 件中 3 件 ✅ 完了 = (Q1)(Q2) 必須条件達成 = K 値計算可能 state 到達 = **Stage 3 入口 entry 達成**。Stage 3 self-check 14 項目 (= §14.5) のうち 3-3 (Stage 2 (Q1)(Q2) AYA 判断 ✅) 完了。残 13 項目のうち 3-7 (chapter 06a 設計起案済) と 3-8 (chapter 06b cadence 5 種 update site + 06c descriptor set bind 起案済) は ST-6 chapter 06b 起案で消化、他は 2026-06-03 段階で起案済 / Phase 1.A 入口で実施。
+**✅ 2026-06-03 ST-5 batch Stage 2 完了 = (Q1) A / (Q2) A / (Q4) C 確定** (= chapter 10 §1.3 「全 default 採用」AYA 応答)。(Q3)(Q5) は default 採用継続、Phase 1.A 中盤まで後ろ倒し可 (= handoff §3.5 規律 7)。本 §14.4 表で 5 件中 3 件 ✅ 完了 = (Q1)(Q2) 必須条件達成 = K 値計算可能 state 到達 = **Stage 3 入口 entry 達成**。
+
+**✅ 2026-06-03 ST-6 chapter 06b/06c 既起案済 verify + delta integration 完了 = §14.5 3-8 ✅** (= B 案採用、既存 `06b-cadence-update-site-and-dirty.md` 441 行 §2.1-§2.5 5 cadence + `06c-descriptor-set-bind-wiring.md` 513 行 §2/§4 descriptor set bind 配線 で要件物理充足、ST-6 前段 (a)(b) findings = R-AYA1/2 dead / R-AYA3 alive 既移植済 + R-MAT4 `normal_matrix` 確定 + Q26-MUL `MaterialUBO_Class3_Legacy` 確定 + Q27-CONFL B2 binding ずらし + Q1/Q2/Q4 確定を 06b §2.2/§2.3/§3.3/§8 に delta integration 済、handoff §3.2「起案契約」物理充足 + delta 整合保証)。Stage 3 self-check 14 項目 (= §14.5) のうち **3-3 + 3-8 = 2 件 ✅ 完了 / 残 12 項目**。残 12 項目のうち 3-7 (chapter 06a 設計起案済) は 06a-cache-structure-and-setter-redirect.md 既存で物理充足、3-9-3-14 等は 2026-06-03 段階で起案済 / Phase 1.A 入口で実施。
 
 ### §14.5 Stage 3: Phase 1.A 入口 readiness (= 着手 ready state)
 
@@ -674,7 +676,7 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 | 3-5 | chapter 08 §5.4.1 / §5.2.1 / §11.5 / §12.5 / §13.5 (= Deliverable B-1/B-2/B-3/B-4/B-5) 反映済 | grep '^#### §' 08-build-codegen-pipeline.md で 5 section 存在 + 内容確認 | 同上 |
 | 3-6 | chapter 09 §14 (= 本 §) 反映済 | grep '^## §14' 09-phase-roadmap.md | 同上 |
 | 3-7 | chapter 06a §3 mUniformUBOLoc cache 構造 + §5 16 method setter 分岐 設計起案済 | grep '^### §3\\.' 06a-cache-structure-and-setter-redirect.md | chapter 06a 起案 task |
-| 3-8 | chapter 06b cadence 別 update site 5 種 + 06c descriptor set bind 配線 起案済 | grep '^## §' 06b/06c | chapter 06b/06c 起案 task |
+| 3-8 | chapter 06b cadence 別 update site 5 種 + 06c descriptor set bind 配線 起案済 **✅ 2026-06-03 ST-6** (= `06b-cadence-update-site-and-dirty.md` 441 行 §2.1-§2.5 で 5 cadence (per-frame / per-program / per-draw / per-asset / per-skin) 全件起案済 + `06c-descriptor-set-bind-wiring.md` 513 行 §2 / §4 で descriptor set 4 帯 cadence 別配置 + flush 直後 bind 配線起案済、ST-6 前段 (a)(b) findings (= R-MAT4 `normal_matrix` 確定 + R-AYA1/2 dead / R-AYA3 alive 既移植済) は 06b §2.2 / §2.3 / §3.3 / §8 に delta integration 済) | grep '^## §' 06b/06c | chapter 06b/06c 起案 task |
 | 3-9 | chapter 02 §2.4 naming + chapter 07 set 帯 5 化 / 256B padding 反映済 (= chapter 04/08 出力契約と整合) | grep '^### §2.4' 02 + '§4.4' 07 | chapter 02/07 update task |
 | 3-10 | inventory + chapter 10 (open-questions) で持越項目 (V1')(V3')(S3')(W) + (A1)(P)(G/B3)(B1)(B2)(B4)(B5) + (NTTP) + (P-future)(cache-grow) 登録済 | grep 各 ID in chapter 10 | chapter 10 update task |
 | 3-11 | autobuild manifest で glslang / spirv-cross / Python version pin 状態確認 (= §5.4.1.5 format pin 用意) | (Phase 1.A 入口時点で実 manifest 編集予定 = §3-12 で実施) | (Phase 1.A 内 task) |
