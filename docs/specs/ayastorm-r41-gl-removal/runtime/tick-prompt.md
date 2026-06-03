@@ -258,11 +258,11 @@ SENTINEL="docs/specs/ayastorm-r41-gl-removal/runtime/{SENTINEL_NAME}.md"
 ### (b) timer 自己 disable
 
 ```
-RemoteTrigger {action: "update", trigger_id: "{TRIGGER_ID_PLACEHOLDER}", body: {enabled: false}}
+RemoteTrigger {action: "update", trigger_id: "trig_01Aadosy3szE85V8PWM4H2Q5", body: {enabled: false}}
 ```
 
-**trigger_id** = trigger create 時に発行された ID (= trigger 短 prompt 内に hardcoded、
-本 file は placeholder 表記)。
+**trigger_id** = `trig_01Aadosy3szE85V8PWM4H2Q5` (= 2026-06-04 create 時発行、trigger
+短 prompt 内にも hardcoded)。
 
 ### (c) sentinel commit + push
 

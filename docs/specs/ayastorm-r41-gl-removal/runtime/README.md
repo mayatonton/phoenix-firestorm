@@ -31,7 +31,9 @@ agent) で自動進行させる仕組み。
 - **git source**: `https://github.com/mayatonton/phoenix-firestorm`
 - **branch**: `feature/ayastorm-r41-gl-removal` (= tick 開始時 checkout)
 - **allowed_tools**: `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `RemoteTrigger`
-- **trigger_id**: trigger create 時に発行、本 README に追記 (hardcode reference)
+- **trigger_id**: `trig_01Aadosy3szE85V8PWM4H2Q5` (= 2026-06-04 create 時発行)
+- **status URL**: https://claude.ai/code/scheduled/trig_01Aadosy3szE85V8PWM4H2Q5
+- **next_run_at**: enable 後 `0 * * * *` 直近 UTC 時刻
 
 ## tick 動作 flow
 
@@ -95,8 +97,9 @@ ls docs/specs/ayastorm-r41-gl-removal/runtime/
 
 ```
 claude.ai 側で AYAstorm-r41-Phase1B-auto-progression trigger を enable
+  https://claude.ai/code/scheduled/trig_01Aadosy3szE85V8PWM4H2Q5
 または Claude Code session で:
-  RemoteTrigger {action: "update", trigger_id: "{TRIGGER_ID}", body: {enabled: true}}
+  RemoteTrigger {action: "update", trigger_id: "trig_01Aadosy3szE85V8PWM4H2Q5", body: {enabled: true}}
 ```
 
 ## AYA active 時の overlap 回避
