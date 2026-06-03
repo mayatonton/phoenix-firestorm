@@ -16,7 +16,7 @@
 
 ## §1 AYA 判断仰ぎ候補 (= 主要 open question 集約)
 
-### §1.0 29 件分類 index (= 全 AYA 判断仰ぎ候補 一覧、2026-06-03 Phase 0 Step 1 由来 Q26-MUL + Q27-CONFL 追加で 25 → 27 件、Phase 0 Step 1 enumerate (= ST-1) 由来 Q28-FFDUP 追加で 27 → 28 件、ST-7 sub-task 4 batch chapter 04 §6.4.7 由来 (Q-NTTP) 追加で 28 → 29 件、内 12 件判断済)
+### §1.0 29 件分類 index (= 全 AYA 判断仰ぎ候補 一覧、2026-06-03 Phase 0 Step 1 由来 Q26-MUL + Q27-CONFL 追加で 25 → 27 件、Phase 0 Step 1 enumerate (= ST-1) 由来 Q28-FFDUP 追加で 27 → 28 件、ST-7 sub-task 4 batch chapter 04 §6.4.7 由来 (Q-NTTP) 追加で 28 → 29 件、内 13 件判断済 = 2026-06-03 η-30 PA-1 entry 直前 gap remediation で (B2) 追加判断済)
 
 **集約方法**: 設計 chapter 群 (01-10) 第二次査読 + Phase 2d-β prep audit (= 2026-06-03 batch) で抽出された AYA 判断仰ぎ候補を **(Q) ID + 該当 §1.x + 状態** で index 化。本 §1.0 は §1.1-§1.6 各表の summary、各項目の **default 採用案 + 判断ポイント** は該当 §1.x 表本体で確認。
 
@@ -30,7 +30,7 @@
 | 6 | (P) | GLSL parse 手段 (mini-parser vs glslang library) | §1.2 | 未判断 |
 | 7 | (G/B3) | perfect hash generator (Python frozen-table vs gperf vs CHD) | §1.2 | 未判断 |
 | 8 | (B1) | Codegen 実装言語 (Python vs C++ vs CMake script) | §1.2 | 未判断 |
-| 9 | (B2) | glslang 統合方式 (autobuild vs system pkg vs 自前) | §1.2 | 未判断 |
+| 9 | (B2) | glslang 統合方式 (autobuild vs system pkg vs 自前) | §1.2 | ✅ 判断済 (B2b system pkg, 2026-06-03 η-30 PA-1 entry 直前 gap remediation = 実装で先行 commit 済 (`indra/cmake/Glslang.cmake`) + spirv-cross 同 pattern 拡張) |
 | 10 | (B4) | 増分 build cache (mtime vs hash vs ccache) | §1.2 | 未判断 |
 | 11 | (B5) | Codegen 実行 trigger (CMake DEPENDS vs 手動 target) | §1.2 | 未判断 |
 | 12 | (Q1) | 第 1 UBO migration template (Template A/B/C) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-5 batch) |
@@ -52,7 +52,7 @@
 | 28 | (Q28-FFDUP) | explicit F 群 (= pbropaqueF/pbrmetallicroughnessF/softenLightF/reflectionProbeF) + globalF 同 PerDrawUBO_ClipPlane F+F 重複宣言集約方針 (= GL spec で identical 宣言 link OK、code quality 観点で集約候補) | §1.5 | 未判断 (Phase 0 Step 1 ST-1 enumerate 由来 新規、Phase 1.A 中盤判断可 = default 提案 = 追記する確定) |
 | 29 | (Q-NTTP) | R1 compile-time literal path 採否 (= C++20 NTTP 採用 vs C++17 維持) (= chapter 04 §6.4.7 R1 path 採否判定 = AYAstorm 既存 build C++17 default との trade-off) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-7 sub-task 8 batch = R1 不採用 / C++17 維持 = default 採用継続) |
 
-**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (6) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **29 件** (内 12 件判断済 = §1.6 4 件 + §1.3 (Q1)(Q2)(Q3)(Q4)(Q5)(Q-NTTP) 6 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件、残 17 件 未判断 = §1.1 4 + §1.2 7 + §1.4 4 + §1.5 (F)(Q28-FFDUP) 2)。
+**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (6) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **29 件** (内 13 件判断済 = §1.6 4 件 + §1.3 (Q1)(Q2)(Q3)(Q4)(Q5)(Q-NTTP) 6 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件 + §1.2 (B2) 1 件、残 16 件 未判断 = §1.1 4 + §1.2 (A1)(P)(G/B3)(B1)(B4)(B5) 6 + §1.4 4 + §1.5 (F)(Q28-FFDUP) 2)。
 
 **判断済 4 件の反映先 cross-ref (= §1.6 batch、2026-06-03 Wave A-G)**: (Q22-NUM) → inventory §3.3.1 + 06c §3/§8 + 04 §5.3 + 01 §4.2 (= 計 13 箇所 `85 GLSL blueprint` rewrite 済) / (Q23-K) → 09 §5.2 冒頭注記 / (Q24-S1) → 06a §4.3 / §4.3.1 / §6.2 / §10 + 06a-prep §6 (S1-存在) / 本 chapter §4 live 表 / (Q25-21CNT) → 本 §1.0 表 + 各 chapter 反映 batch (= Wave A-G)。
 
@@ -64,7 +64,9 @@
 
 **判断済 1 件追加の反映先 cross-ref (= 2026-06-03 ST-7 sub-task 8 batch)**: (Q-NTTP) → 09 §11.6 default → 確定形書換 (= A 確定 / R1 不採用 / C++17 維持) / 09 §14.4 末尾 ST-7 sub-task 8 完了 paragraph / 09 §14.5 row 3-14 inline ✅ mark / 09 §14.8 Stage 3 entry verdict 達成 mark / 04 §6.4.7 default → 確定形書換 / 本 chapter §1.0 row 29 状態 column 「未判断」→「✅ 判断済 (A, ST-7 sub-task 8 batch)」 / 本 §1.0 count 内訳 11 → 12 判断済 / 18 → 17 未判断 / 本 §1.3 表 (Q-NTTP) 行 verdict マーク / 本 §1.3 末尾 ST-7 sub-task 8 batch verdict paragraph。本判断確定で **Stage 3 14/14 ✅ 全完走 = 設計 phase 完了 = `feedback_design_phase_no_code_write` 完全解禁条件達成 = Phase 1.A 実装 entry へ移行可能 state**。
 
-**未判断 17 件の解消順序**: §1.1 (chapter 07 4 件) + §1.2 (chapter 08 7 件) + §1.4 (06b/06c 4 件) は **後続 AYA 判断 batch session** で集約消化、§1.5 (Q28-FFDUP) 1 件は Phase 1.A 中盤判断可 (= default 提案: 追記する 確定 = entry のみ作成、judgement 後ろ倒し)、(F) 1 件は Q26-MUL 確定で実質消化済だが本表 status 未 update。§1.3 (Q-NTTP) は **2026-06-03 ST-7 sub-task 8 batch で A 確定 = 判断済 = 本「未判断」枠から外れた** (= count 18 → 17 件)。
+**判断済 1 件追加の反映先 cross-ref (= 2026-06-03 η-30 PA-1 entry 直前 gap remediation)**: (B2) → 09 §14.4 末尾 post-completion correction paragraph 新設 (= ST-7 sub-task 6 verdict 訂正 + (B2) verdict 確定 + PA-1 真 scope 訂正の連動 update batch 記録) / 09 §14.4 ST-7 sub-task 6 paragraph 末尾追記 (= post-completion correction note) / 09 §14.5 row 3-11 verdict 訂正 (= 設計 phase 内充足 ✅ は維持 + 失敗時対応欄 update = spirv-cross のみ取込) / 08 §5.4.1.5 format version pin paragraph 全書換 (= glslang B2b 確定 + spirv-cross 同 pattern 拡張 + Python find_package(Python3) 既存取込済 + version drift 抑制 mechanism = §11.5.1 cache key environment block runtime 取得 + r42-α/β + Phase K+4 で Win/Mac bundle + 最終 version pin policy 確定推奨) / handoff PA-1 entry doc §0 + §3 PA-1 cell + §3 (Q-NTTP) paragraph + §4 (B2) 行 + §5 規律 11/12 + §6 row 10 + §7 memory + §8 着手 1 line / 本 §1.0 row 9 状態 「未判断」→「✅ 判断済 (B2b)」 / 本 §1.0 count 12 → 13 判断済 / 17 → 16 未判断 / 本 §1.2 (B2) 行 default 「B2a」→「✅ B2b 確定」。**本判断確定経路** = `feedback_doubt_self_first` 適用 (= autobuild.xml 片側 grep 検証 gap 検出 = ST-7 sub-task 6 verdict は `indra/cmake/Glslang.cmake` + `indra/cmake/Python.cmake` 既存取込を見落としていた) → Agent Explore 横断 verify (= `indra/cmake/` + `scripts/` medium thoroughness) → AYA「A」応答 (= spirv-cross のみ追加 = `SpirvCross.cmake` 起案 + Glslang.cmake と同 pattern = Linux first-class baseline)。**本確定で**: 未判断 1 件 → 判断済 1 件 (= B2) = Stage 3 14/14 ✅ 維持 (= 設計 phase 完了 verdict 不変) + chapter 10 持越 1 件減 (= 16 件 未判断) + handoff doc §5 規律 11/12 に教訓 literal 反映 (= `feedback_doubt_self_first` 強化適用 + 両側検証規律 = autobuild manifest 単独 grep でなく `*.cmake` / `scripts/` / build config 横断で実装側既存確認)。
+
+**未判断 16 件の解消順序**: §1.1 (chapter 07 4 件) + §1.2 (chapter 08 6 件 = (A1)/(P)/(G/B3)/(B1)/(B4)/(B5)) + §1.4 (06b/06c 4 件) は **後続 AYA 判断 batch session** で集約消化、§1.5 (Q28-FFDUP) 1 件は Phase 1.A 中盤判断可 (= default 提案: 追記する 確定 = entry のみ作成、judgement 後ろ倒し)、(F) 1 件は Q26-MUL 確定で実質消化済だが本表 status 未 update。§1.3 (Q-NTTP) は **2026-06-03 ST-7 sub-task 8 batch で A 確定 = 判断済 = 本「未判断」枠から外れた** (= count 18 → 17 件)。§1.2 (B2) は **2026-06-03 η-30 PA-1 entry 直前 gap remediation で B2b system pkg 確定 = 判断済 = 本「未判断」枠から外れた** (= count 17 → 16 件、実装で先行 commit 済の verdict 追認形)。
 
 ---
 
@@ -89,7 +91,7 @@
 | (P) | GLSL parse 手段 | **P3 mini-parser + glslang -E 併用 (= mini-parser で UBO block / member 抽出、glslang -E で preprocessor 展開)** | 独自 mini-parser で軽量 / glslang library 全引込 (P-other) は build 時間増 | 08 §17 |
 | (G/B3) | perfect hash generator | **G2/B3b Python frozen-table (= Codegen Python で frozen-table 出力、C++ 側は header 読込のみ)** | Python 完結で外部依存 (gperf / frozen library) ゼロ、ただし衝突 0 検証 logic を独自実装 | 08 §17 |
 | (B1) | Codegen 実装言語 | **B1a Python 3.8+** | 既存 viewer-tools / autobuild が Python なので一致、C++ standalone は実装工数増 / CMake script は機能不足 | 08 §17 |
-| (B2) | glslang 統合 | **B2a autobuild vendoring (= 既存方式温存)** | 既存 build 整合性最大、system pkg は 3 OS 整合困難 / 自前実装は実装工数膨大 | 08 §17 |
+| (B2) | glslang 統合 | **✅ B2b system pkg 確定** (= 実装で先行 commit 済 = `indra/cmake/Glslang.cmake` で `find_package(glslang CONFIG REQUIRED)` + `glslang-15.1.0/` vendored + Ubuntu 24.04 `apt install glslang-dev` (15.1.0-2) 経路、Linux first-class baseline (r41 charter §1)、Win/Mac 3 OS bundle は r42-α/β 着手時 (charter §7.5)、spirv-cross 同 pattern 拡張 = PA-1 で `SpirvCross.cmake` 起案) (2026-06-03 η-30 PA-1 entry 直前 gap remediation) | autobuild vendoring (B2a) は 3 OS 整合と Win/Mac bundle 工数高、system pkg (B2b) は Linux first-class で開発容易 = 実装で先行採用済、Win/Mac は r42-α/β 時に再判断 (= 必要なら autobuild_package 起こす)。自前実装は工数膨大で不採用 | 08 §17 + chapter 09 §14.4 末尾 post-completion correction paragraph |
 | (B4) | 増分 build cache | **B4a hash + mtime 併用 (= mtime で fast path、hash で false positive 排除)** | 純 mtime only は IDE 編集で false rebuild、純 hash only は I/O cost、ccache は配線重 | 08 §17 |
 | (B5) | Codegen 実行 trigger | **B5a CMake DEPENDS 自動 + 手動 target 併設** | 自動 trigger で開発体験良好 + 手動 target で debug / re-codegen 容易、全 build 時 trigger は build 時間増 / 手動 only は trigger 漏れ | 08 §17 |
 

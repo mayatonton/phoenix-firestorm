@@ -535,7 +535,7 @@ A1a 二重保証の **抽出経路 + 照合 algorithm + format drift 耐性 mech
 **JSON intermediate 中継採用根拠**:
 - glslang reflection API は C++ で、Python 呼出には binding 必要 → 不採用
 - `spirv-cross --reflect --output-format json` は **3 OS 共通 / autobuild 既存配信** (= chapter 07 §2.8、`indra/llrender/llvkloader.cpp` で runtime 使用済)
-- JSON format は **glslang version 1.3.224+ で stable** (= AYAstorm autobuild bundle version 1.3.275 以降、format drift 観測対象は schema レベルのみ)
+- JSON format は **glslang version 1.3.224+ で stable** (= AYAstorm 実装 Ubuntu 24.04 `apt install glslang-dev` 15.1.0-2 以降 (= chapter 10 §1.2 (B2) **B2b system pkg 確定**、autobuild bundle 経路は不使用)、format drift 観測対象は schema レベルのみ)
 
 ##### §5.4.1.2 JSON schema 期待形 (= spirv-cross 出力)
 
@@ -700,7 +700,13 @@ glslang / spirv-cross の reflection output JSON schema が version upgrade で�
 
 **実装契約**: `extract_reflection()` 関数を **唯一の format 抽象化境界** とし、JSON schema 変動はここで局所化。本関数以外は正規化済 dict のみ受取 = 上位 layer は format drift 影響ゼロ。
 
-**format version pin**: autobuild manifest `autobuild.xml` で glslang / spirv-cross version を AYAstorm 既定 (= 現状 1.3.275) に pin、勝手な upgrade を抑制 (= chapter 09 Phase K+4 OpenGL 撤廃時に最終 version 確定推奨)。
+**format version pin** (= 2026-06-03 η-30 PA-1 entry 直前 post-completion correction = AYA「A」確定):
+
+- **glslang**: ✅ B2b system pkg 確定 (= 実装で先行 commit 済) = `indra/cmake/Glslang.cmake` で `find_package(glslang CONFIG REQUIRED)` + `glslang-15.1.0/` vendored + Ubuntu 24.04 `apt install glslang-dev` (15.1.0-2) 経路 (= chapter 10 §1.2 (B2) verdict)。Linux first-class baseline (r41 charter §1)、Win/Mac 3 OS bundle は r42-α/β 着手時に判断 (charter §7.5)。autobuild manifest `autobuild.xml` 経路は **不使用** (= system pkg 経路で version 制御 = `apt` 側固定 + `glslang-15.1.0/` vendored で reference 担保)
+- **spirv-cross**: η-30 PA-1 で取込 (= Glslang.cmake と同 pattern) = `indra/cmake/SpirvCross.cmake` 起案 + system install + `find_package(spirv_cross_c_shared CONFIG REQUIRED)` (= autobuild manifest 経路は不使用、Linux first-class baseline、Win/Mac 3 OS bundle は r42-α/β 時)
+- **Python**: `indra/cmake/Python.cmake` で `find_package(Python3 COMPONENTS Interpreter)` = build tool として host 環境探索 (= autobuild manifest 経路は不使用、system Python 3.x+ 前提)
+- **version drift 抑制 mechanism**: §11.5.1 cache key environment block (= `glslang_version` / `spirv_cross_version` / `python_version`) を Codegen tool が runtime 取得して cache invalidation key に使用 (= `apt` upgrade / virtualenv 切替で自動 invalidate)、autobuild manifest pin と等価な drift 検知効果を確保
+- **(将来 r42-α/β + Phase K+4 OpenGL 撤廃時)**: Win/Mac 3 OS bundle 判断 + 最終 version pin policy 確定推奨 (= 必要なら autobuild_package 起こす)。それまで Linux first-class + system pkg pattern で進行
 
 ##### §5.4.1.6 二重保証 完全省略 escape hatch (= 緊急 build 用)
 
@@ -1179,9 +1185,9 @@ B4a hash + mtime 併用の **cache key 構成 + invalidation trigger 完全 enum
     }
   },
   "environment": {
-    "python_version": "3.11.5",
-    "glslang_version": "1.3.275.0",
-    "spirv_cross_version": "2023-12-07",
+    "python_version": "3.12.3",
+    "glslang_version": "15.1.0",
+    "spirv_cross_version": "1.3.239.0",
     "host_platform": "linux"
   },
   "input_files": {

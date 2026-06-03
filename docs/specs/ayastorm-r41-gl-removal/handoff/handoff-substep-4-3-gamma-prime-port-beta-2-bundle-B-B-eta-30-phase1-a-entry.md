@@ -10,7 +10,9 @@
 
 ## §0 state 一行 summary
 
-η-29 **設計 phase 完了直前 state** (= 09 §14.5 Stage 3 14 項目 self-check **13/14 ✅ / 残 1 項目 = 3-14 (Q-NTTP) AYA 判断本体**)。本 file 作成 = row 3-13 (Phase 1.A handoff doc 起案) 物理充足 + 同 batch で row 3-12 (`indra/` 改変解禁 timing 整理) ✅ 反映で 13/14 到達。**残 1 項目 = AYA 判断 1 件のみ** (= (Q-NTTP) = chapter 04 §6.4.7 NTTP 判定材料 + chapter 09 §11.6 + chapter 10 §1.3 (Q-NTTP) 行 default A R1 不採用 = C++17 維持 を「default 採用継続」or B/C 採否判定)。default A 採用継続なら Phase 1.A 即着手可 (= 着手 ready state に影響なし宣言済、09 §11.6 末尾参照)。**本 file = η-30 Phase 1.A 実装 phase の entry handoff** = 全 14 ✅ + AYA 承認到達後、Phase 1.A Codegen Python tool 起草 session が読む handoff として待機。本 file 作成時点で `indra/` 改変なし継続 (= `feedback_design_phase_no_code_write` 厳守、本 file 自身も doc 配下のみ追加)、`indra/` 改変解禁は AYA (Q-NTTP) 承認到達時点で発動。
+η-30 **Phase 1.A 実装 entry state** (= 09 §14.5 Stage 3 14 項目 self-check **14/14 ✅ + AYA (Q-NTTP)=A 確定** = 設計 phase 完了 = `feedback_design_phase_no_code_write` 完全解禁 = `indra/` 改変自由化)。**本 session 着手地点 = PA-1 (= spirv-cross 取込)**。
+
+**🔴 重要 update (= 2026-06-03 PA-1 entry 直前 self-verify gap remediation)**: ST-7 sub-task 6 verdict (= row 3-11) は `autobuild.xml` grep のみで「3 dependency 0 件 = 全件追加必要」と判定したが、PA-1 entry 直前で `indra/cmake/Glslang.cmake` (= `find_package(glslang CONFIG REQUIRED)` + `glslang-15.1.0/` vendored + Ubuntu 24.04 `apt install glslang-dev` (15.1.0-2) 経路) + `indra/cmake/Python.cmake` (= `find_package(Python3 COMPONENTS Interpreter)`) 既存取込確認 = autobuild.xml grep のみの片側検証 gap 検出 = `feedback_doubt_self_first` 適用、AYA「A」応答で **PA-1 真 scope = spirv-cross のみ取込** (= `indra/cmake/SpirvCross.cmake` 起案 + system install + `find_package(spirv_cross_c_shared CONFIG REQUIRED)` = Glslang.cmake と同 pattern = Linux first-class baseline (r41 charter §1)、Win/Mac 3 OS bundle は r42-α/β 時に判断 (charter §7.5)) に scope 訂正済。本 PA-1 entry doc は本 update 内容で chapter 08 §5.4.1.5 + chapter 09 §14.4 / §14.5 + chapter 10 §1.0 / §1.2 (B2) の連動 update も実施 (= 4 message 分割 sequential 進行)。
 
 ---
 
@@ -63,7 +65,7 @@
 
 | sub-task | scope | 依存 chapter | 出力 / 完了条件 |
 |---|---|---|---|
-| **PA-1** | autobuild.xml に glslang / spirv-cross / Python version pin entry 追加 (= 3 dependency + Linux/Win/Mac 3 platform 配信 URL pin) | 08 §5.4.1.5 pin 仕様 + §11.5.1 expected version 例示 | `autobuild.xml` 編集 = 既存 `SDL2` / `gstreamer10` 等と同形式で 3 entry 追加、`autobuild install` で 3 OS 全 pull PASS |
+| **PA-1** | **spirv-cross 取込** (= **真 scope** = 2026-06-03 PA-1 entry 直前 gap remediation 結果) = `indra/cmake/SpirvCross.cmake` 起案 + system install + `find_package(spirv_cross_c_shared CONFIG REQUIRED)` (= Glslang.cmake と同 pattern = Linux first-class baseline、Win/Mac 3 OS bundle は r42-α/β 着手時に判断)。**glslang / Python は既存取込済 = PA-1 scope 外**: glslang = `indra/cmake/Glslang.cmake` で `find_package(glslang CONFIG REQUIRED)` + Ubuntu 24.04 `apt install glslang-dev` (15.1.0-2) + `glslang-15.1.0/` vendored、Python = `indra/cmake/Python.cmake` で `find_package(Python3 COMPONENTS Interpreter)` = autobuild bundle 経路使わず | 08 §5.4.1.5 format version pin paragraph (= post-completion correction 後 = glslang B2b 確定 + spirv-cross 同 pattern 拡張) + `indra/cmake/Glslang.cmake` 既存 pattern 参照 + chapter 10 §1.2 (B2) verdict ✅ B2b system pkg | `SpirvCross.cmake` 物理存在 + `find_package(spirv_cross_c_shared CONFIG REQUIRED)` で Linux build PASS + Codegen tool 経路で spirv-cross CLI / C API 経路選定 (= 後段 PA-4 で確定、本 PA-1 では取込のみ)。**autobuild.xml 編集は本 PA-1 では不要** (= glslang B2b system pkg 確定 + Python find_package(Python3) 既存取込済 + spirv-cross も同 system pkg 経路で取込、Win/Mac 3 OS bundle は r42-α/β 時に再検討) |
 | **PA-2** | Codegen Python script base 構造 (= entry point + arg parse + I/O 契約 + log 出力 + 失敗 exit code) | 08 §5 + §6 + §7 + 04 §10 (B1) Python 3.8+ | `scripts/ubo_codegen/main.py` 起草、`--input <blueprint_path> --output <header_dir>` で起動可能、空入力で正常終了 |
 | **PA-3** | GLSL mini-parser + glslang -E 前処理 (= UBO block 抽出 + member 列挙 + 型解決) | 08 §5.2.1 mini-parser 8 sub-subsection + 08 §17 (P) | mini-parser module 起草、85 UBO blueprint 入力に対し全 block / member 列挙 PASS、type token grammar EBNF 準拠 |
 | **PA-4** | std140 offset calculator + SPIR-V reflection 二重保証 mechanism | 04 §4.3.1 calculator 8 sub-subsection + 08 §5.4.1 reflection 8 sub-subsection + 08 §17 (A1) | std140 calculator module 起草、各 UBO の offset / SIZE / 256B padding 出力、glslang 経由 SPIR-V reflection 結果と全 member 照合 = mismatch 時 build error 出力 |
@@ -74,7 +76,7 @@
 
 **注**: sub-task PA-1 〜 PA-8 の順序は **strict 線形** (= 各 sub-task は前の sub-task の出力に依存)。例 = PA-2 が無いと PA-3 〜 PA-7 は import 不能、PA-4 が無いと PA-5 の出力先 (= name → offset 表) が undefined、PA-7 が無いと PA-8 の cmake build 統合不能。並列実施は **PA-3 と PA-4 のみ可** (= 両者 mini-parser 出力と glslang reflection 出力で独立に進行可、最終照合 phase で合流)。
 
-**(Q-NTTP) B/C 採用時 PA-0 = C++20 切替**: AYA (Q-NTTP) 判断で default A R3 + perfect hash CHD 不採用 (= B 案 R1 NTTP 採用 or C 案 R1+R3 hybrid 採用) 確定の場合、PA-0 = AYAstorm build standard C++17 → C++20 切替 (= CMakeLists.txt / build config 全 OS 統一更新) を PA-1 前に追加。default A 継続なら PA-0 不要 = PA-1 から開始可。
+**✅ (Q-NTTP) = A 確定済 (2026-06-03 ST-7 sub-task 8 batch)**: AYA「A」応答で **R1 不採用 / C++17 維持** = default A 採用継続 = R3 name-based dispatch + perfect hash CHD + frozen-table で十分高速、C++20 切替 cost (= 3 OS toolchain 確認 + dependent module re-validation + autobuild manifest 変更) 回避、R1 は Phase K+4 以降 polish 候補保留可。**PA-0 不要 = PA-1 (= spirv-cross 取込) から即着手**。
 
 ---
 
@@ -86,7 +88,8 @@
 | 08 §17 (P) | GLSL parse 独自 mini-parser + glslang -E 前処理 | PA-3 |
 | 08 §17 (G/B3) | perfect hash 独自 Python frozen-table | PA-5 |
 | 08 §17 (B1) | Codegen Python 3.8+ | PA-2 |
-| 08 §17 (B2) | glslang 統合 autobuild vendoring | PA-1 |
+| 08 §17 (B2) | glslang 統合 = **✅ B2b system pkg 確定** (= 実装で先行 commit 済 + `indra/cmake/Glslang.cmake` + `glslang-15.1.0/` vendored + system `apt install glslang-dev` 経路、2026-06-03 PA-1 entry 直前 gap remediation で B2 verdict 確定) | (取込済、scope 外) |
+| 08 §17 (B2 spirv-cross extension) | spirv-cross 取込 = Glslang.cmake と同 pattern (= `SpirvCross.cmake` + system install + `find_package(spirv_cross_c_shared CONFIG REQUIRED)`) | PA-1 |
 | 08 §17 (B4) | 増分 build cache hash + mtime 併用 | PA-6 |
 | 08 §17 (B5) | CMake DEPENDS 自動 + 手動 `codegen_ubo_force` target 併設 | PA-7 |
 | autobuild pin | autobuild.xml で glslang / spirv-cross / Python version pin entry 追加 (= 設計 review 2026-06-03 ST-7 sub-task 6 で「Phase 1.A 入口同タイミング実施」確定) | PA-1 |
@@ -110,7 +113,9 @@
 7. **`feedback_handoff_minimal_pre_req_read` 厳守**: 本 §1.1 3 件必読 + §1.2 pinpoint Read 切替、全件読み禁止
 8. **`feedback_proactive_handoff` 適用**: Phase 1.A 実装中も context 残量 Claude 側で能動監視、PA-X 単位境界で handoff doc (= `...phase1-a-PA-X-complete.md`) 起案候補
 9. **`feedback_remove_verification_logs` 適用**: PA-X 実装中の検証用 LL_INFOS hook は commit 前に必ず除去
-10. **(Q-NTTP) AYA 判断結果次第で PA-0 追加可能性**: B/C 案採用なら C++17 → C++20 切替 task = PA-0、default A 継続なら PA-1 から開始
+10. **✅ (Q-NTTP) = A 確定済** = R1 不採用 / C++17 維持 = PA-0 不要、PA-1 (= spirv-cross 取込) から着手済
+11. **`feedback_doubt_self_first` 強化適用 (= 2026-06-03 PA-1 entry 直前 gap remediation 教訓)**: PA-1 entry 直前で autobuild.xml grep のみの片側検証 gap 検出 → `indra/cmake/` + `scripts/` 横断 verify (Agent Explore) で実態確認後 AYA 判断仰ぎ = handoff doc pre-req 確認 phase でも本 feedback 適用 literal 教訓 (= ST-7 sub-task 6 verdict 起草時に `indra/cmake/Glslang.cmake` + `indra/cmake/Python.cmake` 確認漏れ = 片側 grep 検証 risk)
+12. **`feedback_self_verify_before_handoff` 強化適用**: 設計 phase 内 self-check では「verify pass」「✅」mark を付ける前に **両側検証** (= 対象 file 単独 grep + 関連 file 横断 grep) 必須、片側のみで verdict しない
 
 ---
 
@@ -127,6 +132,7 @@
 | (7) pre-requisite 最小読み 3 件 + pinpoint reference 構成 | 本 §1.1 3 件 (= 本 handoff + 09 §4/§14.5 + 08 §0-§17) + §1.2 pinpoint Read 8 file = `feedback_handoff_minimal_pre_req_read` 準拠 | ✅ |
 | (8) `feedback_no_claude_coauthor` 明示継続 | 本 §5-4 で Phase 1.A 全 commit 共著行禁止明示 | ✅ |
 | (9) Phase 1.B / 1.C / 2 への送り出し項目明示 | 本 §4 末 paragraph で 06a §3-§5 → Phase 1.B / 06b/06c → Phase 1.C / 07 §12 (W2)(R1)(PSC) → Phase 1.C を明示、本 Phase 1.A scope 外 | ✅ |
+| (10) PA-1 真 scope correction reflect (= 2026-06-03 PA-1 entry 直前 gap remediation) | §0 + §3 PA-1 cell + §3 (Q-NTTP) paragraph + §4 (B2) 行 + §5 規律 11/12 + §6 row 10 + §7 memory + §8 着手 1 line 全件 update 済、chapter 08 §5.4.1.5 + chapter 09 §14.4 / §14.5 + chapter 10 §1.0 / §1.2 (B2) も連動 update 済 | ✅ |
 
 ---
 
@@ -143,7 +149,7 @@
 - `feedback_self_verify_before_handoff` (= AYA 確認前に Claude 全 sub-task self-verify、本 handoff も 9 観点 self-verify PASS)
 - `feedback_remove_verification_logs` (= 検証用 LL_INFOS hook は commit 前除去)
 - `feedback_no_scope_shrink` (= PA-X scope を AYA 確認なしで縮小しない)
-- `feedback_doubt_self_first` (= Phase 1.A 実装中の verify gap 検出時は即時 remediation)
+- `feedback_doubt_self_first` (= Phase 1.A 実装中 + **handoff pre-req 確認 phase 中** の verify gap 検出時は即時 remediation、本 PA-1 entry 直前 gap remediation で literal 適用済 = autobuild.xml grep のみの片側検証 → `indra/cmake/` + `scripts/` 横断 verify で実態確認 → AYA「A」応答で真 scope = spirv-cross のみ取込 に scope 訂正)
 - `project_ayastorm_r41_vulkan_migration` (= r41 章 active pointer)
 - `project_ayastorm_r41_design_principles` (= upstream 取込容易性 + core 並列化容易性の 2 大設計原則、Phase 1.A 実装の前提)
 - `project_build_procedure` (= AYAstorm Linux build flow、PA-X 実装後の build 検証で使用)
@@ -154,4 +160,4 @@
 
 ## §8 次 session 着手 1 line (= Phase 1.A 実装 session 入り時)
 
-「前 session で η-29 設計 phase 全完走 = 09 §14.5 Stage 3 14 項目 self-check **全 14 ✅ + AYA (Q-NTTP) 承認到達 = `feedback_design_phase_no_code_write` 解禁** = `indra/` 改変自由化。本 session = **η-30 Phase 1.A 実装 entry = Codegen pipeline 実装** (= 09 §4.1 sub-Phase 1.A scope literal 継承)。即着手対象 = 本 handoff §3 sub-task 構成表に従い、(Q-NTTP) 判断結果別で PA-0 (= C++20 切替、B/C 採用時のみ) → PA-1 (= autobuild.xml glslang/spirv-cross/Python pin entry 追加) → PA-2 (= Codegen Python script base) → PA-3 (= GLSL mini-parser + glslang -E) → PA-4 (= std140 calculator + SPIR-V reflection 二重保証) → PA-5 (= perfect hash CHD frozen-table) → PA-6 (= 増分 build cache) → PA-7 (= CMake DEPENDS + 手動 target) → PA-8 (= 85 UBO blueprint 実行 + Exit Criteria 充足検証) の strict 線形順序 (PA-3 + PA-4 のみ並列可)。各 PA-X 単位で `feedback_build_only_verified` + `feedback_no_claude_coauthor` + `feedback_no_auto_commit` 準拠、handoff doc は PA-X 単位境界で起案候補 (= `...phase1-a-PA-X-complete.md` 形式)。Phase 1.A Exit Criteria = `ubo_metadata.inl` + `ubo_host_loader.inl` + `ubo_perfect_hash.inl` + `ubo_dummy_init.inl` 4 file 生成 + 85 UBO blueprint で build error 0 + 名前解決 compile-time 衝突 0 + 既存 program 1 個 include + bind 不変動作確認 = 達成で Phase 1.B (= 30 setter redirect 層) entry へ移行。Phase 1.A 完了時点でも実 Vulkan 描画は始まらない (= 第 1 UBO migration は Phase 2 で AYA (Q1) 判断後)」
+「前 session で η-29 設計 phase 全完走 = 09 §14.5 Stage 3 14 項目 self-check **全 14 ✅ + AYA (Q-NTTP)=A 確定** = `feedback_design_phase_no_code_write` 完全解禁 = `indra/` 改変自由化。本 session = **η-30 Phase 1.A 実装 entry = Codegen pipeline 実装** (= 09 §4.1 sub-Phase 1.A scope literal 継承)。**🔴 重要 update (= 2026-06-03 PA-1 entry 直前 gap remediation)**: ST-7 sub-task 6 verdict は `autobuild.xml` grep のみで「3 dependency 全件追加必要」と判定したが、PA-1 entry 直前で `indra/cmake/Glslang.cmake` + `indra/cmake/Python.cmake` 既存取込確認 = `feedback_doubt_self_first` 適用、AYA「A」応答で **PA-1 真 scope = spirv-cross のみ取込** (= `indra/cmake/SpirvCross.cmake` 起案 + system install + `find_package(spirv_cross_c_shared CONFIG REQUIRED)`) に訂正済。即着手対象 = 本 handoff §3 sub-task 構成表に従い、**PA-1 (= spirv-cross 取込、autobuild.xml 編集不要、Glslang.cmake と同 pattern)** → PA-2 (= Codegen Python script base) → PA-3 (= GLSL mini-parser + glslang -E) → PA-4 (= std140 calculator + SPIR-V reflection 二重保証) → PA-5 (= perfect hash CHD frozen-table) → PA-6 (= 増分 build cache) → PA-7 (= CMake DEPENDS + 手動 target) → PA-8 (= 85 UBO blueprint 実行 + Exit Criteria 充足検証) の strict 線形順序 (PA-3 + PA-4 のみ並列可)。各 PA-X 単位で `feedback_build_only_verified` + `feedback_no_claude_coauthor` + `feedback_no_auto_commit` 準拠、handoff doc は PA-X 単位境界で起案候補 (= `...phase1-a-PA-X-complete.md` 形式)。Phase 1.A Exit Criteria = `ubo_metadata.inl` + `ubo_host_loader.inl` + `ubo_perfect_hash.inl` + `ubo_dummy_init.inl` 4 file 生成 + 85 UBO blueprint で build error 0 + 名前解決 compile-time 衝突 0 + 既存 program 1 個 include + bind 不変動作確認 = 達成で Phase 1.B (= 30 setter redirect 層) entry へ移行。Phase 1.A 完了時点でも実 Vulkan 描画は始まらない (= 第 1 UBO migration は Phase 2 で AYA (Q1) 判断後)」
