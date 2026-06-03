@@ -49,12 +49,12 @@ endif()
 # ---- 入出力 path 定義 ----
 
 set(AYA_UBO_CODEGEN_SCRIPT
-    "${CMAKE_SOURCE_DIR}/scripts/ubo_codegen/main.py"
+    "${CMAKE_SOURCE_DIR}/../scripts/ubo_codegen/main.py"
     CACHE FILEPATH "AYAstorm r41 UBO Codegen entry script")
 mark_as_advanced(AYA_UBO_CODEGEN_SCRIPT)
 
 set(AYA_UBO_CODEGEN_BLUEPRINT_DIR
-    "${CMAKE_SOURCE_DIR}/indra/newview/app_settings/shaders/aya_r41_blueprints"
+    "${CMAKE_SOURCE_DIR}/newview/app_settings/shaders/aya_r41_blueprints"
     CACHE PATH "AYAstorm r41 UBO blueprint (.glsl) root directory (= PA-8 85 UBO blueprint 専用 root、set{0,1,2,3}/<name>.glsl で 1 UBO 1 file、legacy LL shader + aya_r41_exemplar は scan 対象外)")
 mark_as_advanced(AYA_UBO_CODEGEN_BLUEPRINT_DIR)
 
@@ -88,7 +88,7 @@ file(GLOB_RECURSE AYA_UBO_CODEGEN_GLSL_FILES
 # Python module 群 (= main.py が import する全 module) の変更も走行 trigger に。
 # CONFIGURE_DEPENDS なし = module 追加時は手動 reconfigure (= shader 追加と同流)。
 file(GLOB AYA_UBO_CODEGEN_MODULES
-    "${CMAKE_SOURCE_DIR}/scripts/ubo_codegen/*.py"
+    "${CMAKE_SOURCE_DIR}/../scripts/ubo_codegen/*.py"
 )
 
 # ---- 期待出力 (= add_custom_command OUTPUT 列挙) ----
@@ -112,7 +112,7 @@ set(_aya_codegen_common_args
     --input  "${AYA_UBO_CODEGEN_BLUEPRINT_DIR}"
     --output "${AYA_UBO_CODEGEN_OUTPUT_DIR}"
     --cache-file "${AYA_UBO_CODEGEN_CACHE_FILE}"
-    --project-root "${CMAKE_SOURCE_DIR}"
+    --project-root "${CMAKE_SOURCE_DIR}/.."
 )
 
 if (AYA_GLSLANG_VALIDATOR)
