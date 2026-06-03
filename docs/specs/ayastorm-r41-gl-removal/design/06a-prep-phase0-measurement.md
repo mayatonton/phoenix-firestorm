@@ -680,6 +680,115 @@ frame range は AYA build run 時に scenario 切替前後の frame 番号を記
 
 補正結果を 06a §0.2 表 + chapter 05 §7.3 集約表に反映。
 
+### §5.5 観察結果 (= **2026-06-03 Phase 0 Step 4 = AYA Linux 実機計測 + Claude 解析**)
+
+#### §5.5.1 計測条件 (= §5.1.2 単発 90 frame 案からの逸脱、AYA 指示)
+
+- **2 run 分割 + 各 run 前 cache clear** protocol を採用 (= §5.1.2 単発 1 run 案を AYA 判断で差替)
+  - 理由: 「２箇所とも一回キャッシュクリアしないと自分のアバター読み込みの処理負担が揃わない」(AYA、2026-06-03)
+  - cache clear 対象 = `~/.ayastorm_x64/cache/` (texture cache + shader_cache 含む全 cache)
+- 各 run = SLurl 直 login → 60 秒 rez 待機 → quit (= 60 sec 内の steady-state を観察)
+- scenario 1 (= §2.6.1 cold launch) は単独 run せず、scenario 2/3 各 run の **frame=0 cold launch init phase** で兼ねる (= 全 shader binds が `gFrameCount==0` の間に発生、§5.5.2 で別観察)
+- scenario 2 = Cocobolo Island/230/126/3004 (= **GLTF rez 主体**、projector light + PBR object 混在)
+- scenario 3 = Roleplay Heaven/48/129/23 (= **water/atmosphere/shader-heavy 主体**)
+- G3 体感計 (= §2.6.3) は ii 採用 (= 60 sec rez 待ち中の体感、定量計測不可)
+
+#### §5.5.2 全体統計 (= 2 run aggregate)
+
+| 項目 | scenario 2 (Cocobolo) | scenario 3 (Roleplay Heaven) |
+|---|---|---|
+| 総 frame 数 (run 開始から quit まで) | 922 | 740 |
+| frame=0 cold launch init lines | ~1.3M (= 全 shader 初回 bind の dump、38 shader) | 同等規模 |
+| 定常域 frame range | 100-915 (= **816 frame**) | 100-735 (= **636 frame**) |
+| 定常域 UBO_CADENCE event 総数 | **16.2M** | **19.7M** |
+| 定常域 unique shader 数 | 145 | 135 |
+| 定常域 unique uniform 数 | **230** | **231** |
+| 定常域 unique (shader, uniform, setter) tuple | 7,410 | 6,973 |
+
+- 定常域認定方法: per-frame line count を 30-frame rolling window で平滑化、mean 変化 < 10% の連続区間を「定常」と判定 (`identify_rez_boundary.py`)
+- 両 scenario 共通 = frame 100 前後で rez 完了 (= rolling mean 安定化)
+- **union 237 uniform** (= s2 230 + s3 231 / 重複 224 / s2-only 6 / s3-only 7)
+  - s2-only 6 = PBR/GLTF factor 系 (`baseColorFactors`, `emissiveColors`, `metallicFactors`, `roughnessFactors`, `terrain_texture_transforms`, `texture_base_color_transform`)
+  - s3-only 7 = water/bump 系 (`bump_code`, `bumpyScaleX`, `bumpyScaleY`, `bumpyStepX`, `bumpyStepY`, `aya_fog_density`, `gltf_alpha_mode`)
+  - = **scene complementarity 確認** (= GLTF vs water/atmosphere 系で uniform 群が補完関係)
+
+#### §5.5.3 cadence band 観察 vs §0.2 推定 delta
+
+| Band | §0.2 推定 (318 件分配) | 観察 (237 件分配) | delta 解釈 |
+|---|---|---|---|
+| per-draw | 68 | **72** | 推定とほぼ一致 (+4) |
+| per-frame | 85 | 69 + per-frame-or-conditional 4 = **73** | 推定より少 (-12) = 一部 per-frame 推定 uniform が観察ゼロ (= dead) |
+| per-program | 92 | 45 + per-program-narrow 24 = **69** | 推定より少 (-23) = 推定の一部が dead (= per-program 92 件のうち post-effect/terrain detail/cube map probe 系が観察 0) |
+| per-asset | 45 | per-asset-or-conditional **18** | 推定より少 (-27) = sampler 系 (= `bumpMap` / `diffuseMap` 等) は LLStaticHashedString 経由設定だが本計測 hook は **uniform 値 set 時のみ trace**、texture bind (`glActiveTexture` + `glBindTexture`) は別 cadence、setter 経由しない sampler は観察対象外 |
+| per-skin | 12 | **5** | -7 = 観察 5 件は `last_object_matrix` / `lastMatrixPalette` / `matrixPalette` / `glow_lod` / `texture_matrix0` (= **2 shader 限定**、cpf 200-500、narrow shader-set 高 rate path 確認) |
+| 不明 (= §0.2 16 件) | 16 | hashed-path 40 件として観察 (§5.5.6) | 観察済、§5.5.6 で詳細 |
+
+**解釈**: 318 reserved 中 121 件 (= 38%) は本 2 run で観察ゼロ (§5.5.5)。観察された 197 件 + hashed-path 40 件 = 237 件の cadence は spec 推定の主要 band (per-draw / per-frame / per-program 上位) を概ね支持する。per-asset (= sampler) は本 hook で観察不能 (= hook 対象は uniform 数値 setter 限定、texture bind は別経路)、推定値 45 件は spec doc 上で「sampler 系 = 別計測軸」と注記必要。
+
+#### §5.5.4 scene-scaling 観察 (= s3/s2 rate 比 ≥ 2.5x)
+
+scene 複雑度・shader 内容に応じて rate が大きく変化する uniform:
+
+| uniform | s2 cpf | s3 cpf | scaling | 解釈 |
+|---|---|---|---|---|
+| `minimum_alpha` | 1003.71 | 2859.69 | 2.85x | per-draw 最高頻度、s3 alpha mask object 多 |
+| `shadow_target_width` | 328.82 | 1512.17 | 4.60x | s3 shadow map sampling 集中 |
+| `env_intensity` / `specular_color` | 259.57 | 1229.40 | 4.74x | s3 reflection probe heavy |
+| `emissive_brightness` | 302.03 | 1322.89 | 4.38x | s3 emissive material 多 |
+| `sun_up_factor` | 499.10 | 1697.57 | 3.40x | s3 atmospheric scattering shader 集中 |
+
+**逆 scaling (s2 > s3、cocobolo の projector light + PBR factor 影響)**:
+
+| uniform | s2 cpf | s3 cpf | scaling | 解釈 |
+|---|---|---|---|---|
+| projector 系 (`proj_origin`, `proj_p`, `proj_n`, etc.) | 高 | 低 (~0.3x) | < 0.5x | s2 projector light 多 |
+| `baseColorFactor` / `emissiveColor` 等 PBR factor 系 | 中 | 0 (s3 dead) | inf 逆 | s2 GLTF object 集中 |
+
+**意味**: cadence band 帰属は scene 不変だが、`cpf_overall` 値は scene-scaling factor に強く依存。**設計上は band 帰属が確定値、絶対 rate は scene 依存可変** と扱う。
+
+#### §5.5.5 reserved 318 件中 **observed 0 件 = 121 件** (= dead candidate)
+
+`indra/llrender/llshadermgr.cpp:1506-1904` で `mReservedUniforms.push_back()` 登録 318 件 - 観察 union 237 件 = **観察ゼロ 121 件** (= 38%)。
+
+**category 別**:
+
+| category | dead 数 | 例 |
+|---|---|---|
+| terrain `detail_*` PBR 6 ch 別 | 20 | `detail_0_base_color`, `detail_0_emissive`, `detail_0_metallic_roughness`, `detail_0_normal`, ..., `detail_3_*` (= terrain は 2 scene 共未踏 area) |
+| post-effect sampler 系 | ~15 | `bloomMap`, `glowNoiseMap`, `color_grading_lut`, `noiseMap`, `edgesTex`, `blendTex`, `areaTex`, `exposureMap`, `halo_map` |
+| atmospheric next-frame interp | 2 | `cloud_noise_texture`, `cloud_noise_texture_next` (= sky shader 別 path) |
+| **`aya_*` AYAstorm 独自 3 件** | 3 | `aya_alpha_plate`, `aya_alpha_plate_enabled`, `aya_sss_skin_flag` (= **2 scene 共 dead = 該当 shader path 未踏 / または `LLStaticHashedString` 経由配線で本 hook 不通過 = 要確認**) |
+| その他 sampler / debug / SMAA 段階別 | ~80 | `altDiffuseMap`, `border_color`, `border_thickness`, `debug_normal_draw_length`, etc. |
+
+**要追跡 (= chapter 06b 起案前提に影響)**:
+- terrain `detail_*` 20 件 = AYA テスト 2 scene が terrain 不在、別 scene (= PBR terrain region) で再計測必要か? → **chapter 10 残課題追記候補**
+- `aya_*` 3 件 = AYAstorm 独自設定 path が dead か hash 経由か、grep 確認必要 → **chapter 10 残課題追記**
+- post-effect / SMAA = scenario によっては観察可 (= 全 post-effect 有効時)、現 2 run は default post-effect state、scenario 1 (cold launch) と差別化しない
+
+#### §5.5.6 LLStaticHashedString 経由 setter 40 件 (= `mReservedUniforms` 不在)
+
+`mReservedUniforms` 318 件には不在だが本 hook で観察された uniform = 40 件 (= union 237 - 在 reserved 197):
+
+**category**:
+- `aya_*` 経由 hash setter = `aya_blur_dir`, `aya_blur_radius`, `aya_glow_color`, `aya_glow_gain`, `aya_strength`, `aya_translucency_params`, `aya_translucency_tint` (= **AYAstorm 独自 uniform は hash 経由設定**、§5.5.5 で dead 扱いした `aya_alpha_plate` 等とは別群)
+- SMAA / CAS 関連 = `SMAA_RT_METRICS`, `cas_param_0`, `cas_param_1`
+- 動的 exposure = `dynamic_exposure_params`, `dynamic_exposure_params2`, `diffuse_luminance_scale`
+- 描画パス補助 = `above_water`, `bump_code`, `custom_alpha`, `delta`, `direction`, `dist_factor`, `dt`, etc.
+
+= **§0.2 「不明 16 件」推定 → 実観察 40 件**。chapter 06b 起案時に「reserved 318 + hashed-path 40 = 計測対象 358 件」inventory として確定。
+
+#### §5.5.7 per-program / per-draw 境界 verification (= §5.4 protocol 適用)
+
+§5.4 規則で再確認:
+
+| 推定 → 観察 | 件数 | 例 |
+|---|---|---|
+| per-program 推定 + 実 rate > 100 → per-draw 補正 | ~20 | `modelview_matrix` (437/688, 93/97 shader), `inv_modelview` 同、`modelview_projection_matrix` (375/619, 37/46 shader) = **matrix 系は per-draw 確定** |
+| per-draw 推定 + 実 rate < 30 → per-program 補正 | ~10 | `gltf_alpha_mode` (s2-only, rate < 10), `texture_base_color_transform` (低 rate) |
+| 推定一致 | ~140 件 | 大半が一致 |
+
+**結論**: §0.2 表は概ね正確だが、matrix 系 (= `modelview_*` group 4-5 件) は per-program 推定 → per-draw に上書き必要。chapter 05 §7.3 への補正反映は chapter 06b 起案直前で実施。
+
 ---
 
 ## §6 chapter 05 / 06a / 06b への反映 flow
