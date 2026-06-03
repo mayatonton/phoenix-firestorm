@@ -1949,6 +1949,19 @@ bool LLGLSLShader::mapUniforms()
     return res;
 }
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-6: UBO redirect 層
+// shell 実装 (= FWD-1 採用、空 stub)。spec 06a §5.2 literal「forwardToUboUpload(loc,
+// &x, sizeof(GLfloat));  // 06b で実装」の本体 = 実 memcpy / ring buffer / dynamic
+// offset / thread 配線は 06b / chapter 07 で実装する。本 sub-step は declaration +
+// 空 stub の link 通し限定 = PB-4 (= 17 method integer index 経路) / PB-5 (= 13 method
+// LLStaticHashedString 経路) で各 setter から call する link error 回避の technical
+// compile dependency 目的 (= 順序組替え PB-3 complete handoff §3.6 で PB-4 直前に前倒し)。
+// mUseUBO=false default ゆえ本 stub は実走しない (= MUSEUBO-A 整合、既存 OpenGL 挙動
+// 100% 維持)。Phase 1.C (= 06b 実装着手) で本体実装される。
+void LLGLSLShader::forwardToUboUpload(const ubo::UniformLocation& loc, const void* data, size_t size)
+{
+}
+
 
 bool LLGLSLShader::link(bool suppress_errors)
 {

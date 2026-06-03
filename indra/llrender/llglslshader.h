@@ -440,6 +440,19 @@ private:
     // u32 spv_word_count, spv_words...])。生成後 mStageSources を clear で memory 緩和。
     bool generatePerProgramSPIRV(const std::vector<StageSource>& stages);
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-6: UBO redirect 層
+    // shell 実装 (= FWD-1 採用、空 stub)。spec 06a §5.2 literal「forwardToUboUpload(loc,
+    // &x, sizeof(GLfloat));  // 06b で実装」の interface 宣言部のみ本 sub-step で確定し、
+    // 本体 (= 実 memcpy / ring buffer / dynamic offset / thread 配線) は 06b / chapter 07
+    // で実装する。本 sub-step は declaration + 空 stub の link 通し限定。
+    //
+    // PB-4 (= 17 method integer index 経路) / PB-5 (= 13 method LLStaticHashedString 経路)
+    // の各 setter から `if (mUseUBO) { ... forwardToUboUpload(loc, data, size); return; }`
+    // pattern で call する。mUseUBO=false default ゆえ本 stub は実走しない (= MUSEUBO-A
+    // 整合)。順序組替えで PB-4 直前に前倒し (= PB-3 complete handoff §3.6) = call site
+    // (PB-4) より先に declaration + stub が link error 回避の technical compile dependency。
+    void forwardToUboUpload(const ubo::UniformLocation& loc, const void* data, size_t size);
+
     void unloadInternal();
     // This must be static because finishProfile() is called at least once
     // within a __try block. If we default its stats parameter to a temporary
