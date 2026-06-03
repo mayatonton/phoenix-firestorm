@@ -42,7 +42,7 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 4.3-γ'-port-β-2-bundle-B-B?-η-29 以降
 ```
 
-η-1 〜 η-28 は **Vulkan parse error 解消 phase** (= 84 UBO blueprint 積み上げ + bare uniform 集約 + chapter 01-08 起案) として既消化済。η-29 以降が **UBO 化 migration phase** (= host C++ redirect 層実装 + per-UBO migration + 3 OS 確証 + release) となる。
+η-1 〜 η-28 は **Vulkan parse error 解消 phase** (= 85 UBO blueprint 積み上げ + bare uniform 集約 + chapter 01-08 起案) として既消化済。η-29 以降が **UBO 化 migration phase** (= host C++ redirect 層実装 + per-UBO migration + 3 OS 確証 + release) となる。
 
 ### §1.2 Phase 番号付与原則
 
@@ -82,7 +82,7 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 | **Phase K+4** | OpenGL path 撤廃 | (Q3) で OpenGL 並走撤廃時期を AYA 判断、撤廃後は Vulkan のみ | η-(K+5) | 起案予定 | OpenGL path code 削除 + 3 OS build pass |
 | **Phase K+5** | release 整備 | release note 起草 + tag 切り出し + AYAstorm release flow | η-(K+6) | 起案予定 | release note + tag commit |
 
-**K = (Q1)(Q2) 確定後に決まる migration UBO 個数依存**。論理 binding 4 種 + 84 blueprint 集約結果次第で K = 5-20 程度の範囲が想定 (= cadence 別集約で同一 layout cluster を 1 Phase に纏める案を (Q2) で議論)。
+**K = (Q1)(Q2) 確定後に決まる migration UBO 個数依存**。論理 binding 4 種 + 85 blueprint 集約結果次第で K = 5-20 程度の範囲が想定 (= cadence 別集約で同一 layout cluster を 1 Phase に纏める案を (Q2) で議論)。
 
 ### §2.2 Phase 依存関係 (= 前提が満たされないと開始できない)
 
@@ -109,6 +109,34 @@ Phase K+4 (OpenGL 撤廃) ─── (Q3) で並走 vs 中間撤廃判断
     ↓
 Phase K+5 (release)
 ```
+
+#### §2.2.1 Phase K+1/+2/+3 並列 / 順次 timeline 図 (= 第二次査読 §4.2 反映、(Q4) 案別)
+
+**(Q4) AYA 判断による 3 案** = Linux 先行 / Linux+Win/Mac 並列 / 全 OS 順次。各案の timeline (= 横軸 = wall-clock 時間):
+
+**(Q4-A) Linux 先行 (= default 提案)**:
+```
+時系列 →
+[K+1: Linux 確証] → [K+2: Windows 確証] → [K+3: macOS 確証] → [K+4 撤廃 → K+5 release]
+```
+= Linux で全 UBO 通電確認後、Windows/macOS を順次。Linux 検出 issue は K+1 内で fix、K+2 以降は build/起動 + render parity のみ。
+
+**(Q4-B) Linux 先行 + Win/Mac 並列**:
+```
+時系列 →
+[K+1: Linux 確証] → ┬─ [K+2: Windows 確証] ─┐
+                    └─ [K+3: macOS 確証]    ─┴→ [K+4 撤廃 → K+5 release]
+```
+= Linux 完了後、Windows/macOS は wall-clock 並列。Windows REJECT 検出時は K+2 Exit 後 K+3 で fix、macOS REJECT 同様。3 OS の中で 1 OS でも REJECT なら K+4 entry 延期 (= §6.2.2 line 324 言及形)。
+
+**(Q4-C) 全 OS 順次 (= 並列 risk 回避)**:
+```
+時系列 →
+[K+1: Linux] → [K+2: Win] → [K+3: Mac] → [K+4 撤廃 → K+5 release]
+```
+= (Q4-A) と同等、ただし「並列の余地が出ても採らない」明示 (= 並列起因の build/test 干渉 risk 完全排除)。
+
+**含意**: Phase 番号 (K+1/+2/+3) は **論理依存** であり **絶対時間軸** ではない (= (Q4-B) では K+2 と K+3 が wall-clock 同時並走可)。本 §2.2 dependency 図は **論理依存** 描画、time-axis 描画は §2.2.1 timeline 図側で表現。
 
 ---
 
@@ -147,6 +175,20 @@ Phase K+5 (release)
 - (Q1) 第 1 UBO 選定の候補 cadence 確定 (= per-frame 単一 UBO 候補が確定するため)
 - chapter 06b update site 5 種設計可能 state 到達 (= 06a-prep §6 反映 flow 完了で 06b 起案可能)
 
+#### §3.5.1 入力契約 pointer (= 第二次査読 §3.1 反映、(Q1)(Q2) 確定値の後続 Phase 流入先)
+
+(Q1) / (Q2) AYA 判断で確定する値は、後続 Phase の以下 doc 箇所に流入する (= input contract):
+
+| 確定値 | 流入先 doc | 流入先 §N | 流入時点 |
+|---|---|---|---|
+| (Q1) 第 1 UBO 識別子 (= 例: `UB_REFLECTION_PROBES`) | `chapter 04 §5.3` `UniformLocation` / `CadenceTag` enum | `04-codegen-ubo.md` §5.3 第 1 entry | Phase 1.A 入口 |
+| (Q1) 第 1 UBO の cadence | `chapter 06b §4` flush 関数 5 種 | `06b-cadence-update-site-and-dirty.md` §4 該当 cadence セクション | Phase 1.C 入口 |
+| (Q1) 第 1 UBO の descriptor set 帯 | `chapter 06c §3` 接合表 | `06c-descriptor-set-bind-wiring.md` §3 該当 set 帯 row | Phase 1.C 入口 |
+| (Q2) Phase 当たり UBO 数 (= cluster 許可有無) | 本 chapter `§5.1` Phase 単位 scope | `09-phase-roadmap.md` §5.1 (1 UBO 例外規定) | Phase 2 入口 |
+| (Q2) cluster 採用時の UBO 組合せ | `chapter 05 §6` MC1 確定表 + 本 chapter `§5.2` Template | `05-existing-inventory-link.md` §6 + 本 §5.2 | Phase 2 入口 |
+
+**設計 phase 完了判定**: Phase 0 Exit + (Q1)(Q2) AYA 判断 揃った時点で上記 5 row の流入先 doc が **全行更新可能** state に到達 (= Phase 1.A 入口 readiness 完成)。それまで本 chapter §2/§3/§5/§6/§7/§8 の K placeholder 表記は維持 (= §2.1 行 78)。
+
 ---
 
 ## §4 Phase 1: codegen + redirect 層整備 (η-30)
@@ -155,13 +197,13 @@ Phase K+5 (release)
 
 | sub-Phase | scope | 該当 chapter | Exit 判定 |
 |---|---|---|---|
-| **1.A** | Codegen pipeline 実装 (= Python script 起草 + glslang 統合 + std140 calculator + SPIR-V reflection 二重保証 + perfect hash + cache + CMake DEPENDS) | 08 全章 | codegen script が既存 84 UBO blueprint を入力に取り、`ubo_metadata.inl` + `ubo_host_loader.inl` を生成、build error 0、生成 header の名前解決 lookup が compile-time 衝突 0 |
+| **1.A** | Codegen pipeline 実装 (= Python script 起草 + glslang 統合 + std140 calculator + SPIR-V reflection 二重保証 + perfect hash + cache + CMake DEPENDS) | 08 全章 | codegen script が既存 85 UBO blueprint を入力に取り、`ubo_metadata.inl` + `ubo_host_loader.inl` を生成、build error 0、生成 header の名前解決 lookup が compile-time 衝突 0 |
 | **1.B** | redirect 層実装 (= 30 setter method 内部に Vulkan path 分岐 + name → offset 解決 dispatch + cache 構造 mUniformUBOLoc) | 06a §3 / §4 / §5 | 30 setter 全てで Vulkan path 分岐 working、OpenGL path 既存挙動 unchanged (= 1 setter call 1 path 決定論的、build flag で全 path 確認可能) |
 | **1.C** | cadence 別 update site + dirty flag + descriptor set bind 配線 | 06b / 06c | 5 種 cadence (per-frame / per-program / per-draw / per-asset / per-skin) の update site / dirty flag / descriptor set bind が 1 経路ずつ実装、test UBO 1 個で full path 通電確認 |
 
 ### §4.2 Phase 1 Exit Criteria
 
-- Phase 1.A: 既存 84 UBO blueprint に対する codegen 実行 PASS + 生成 header をテスト program (= 既存 program 1 個) で include + bind 不変動作確認
+- Phase 1.A: 既存 85 UBO blueprint に対する codegen 実行 PASS + 生成 header をテスト program (= 既存 program 1 個) で include + bind 不変動作確認
 - Phase 1.B: 30 setter Vulkan path 分岐の **call site から見て transparent** = 既存 program 1 個の動作 unchanged
 - Phase 1.C: test UBO 1 個 (= 後の Phase 2 で本実装する第 1 UBO の試作版、本実装は Phase 2、ここでは shell のみ) で per-cadence update + descriptor bind 通電
 
@@ -172,6 +214,12 @@ Phase K+5 (release)
 - **境界判定基準**: Phase 1.C Exit = test UBO shell の 5 cadence 全経路で `vkCmdBindDescriptorSets` が空 dummy buffer で成功 (= API 呼出層の通電確認、render 出力は OpenGL path のまま)。Phase 2 Entry = 同 UBO の実データ流入開始 + render 出力が Vulkan path に切替 (= mUseUBO flag 該当 program で ON)
 - **shell vs 実装の差分**: shell は Phase 1.C で **書き捨て可能** = Phase 2 で全面書換しても 1.C Exit Criteria の遡及検証は不要 (= Phase 1.C は API 経路通電の証明、Phase 2 は data path の証明、独立に閉じる)
 - = Phase 1.C と Phase 2 は **同一 UBO を実体に持つ連続 Phase** だが、判定軸 (API 通電 vs データ通電) が独立しているため Phase 番号を分離して管理
+
+**shell ↔ 本実装 layout 互換性 (= 第二次査読 §3.2 反映)**:
+- shell UBO の **descriptor set 帯 / binding 番号 / layout(set=N, binding=M) 宣言** は Phase 2 本実装と **完全一致** で生成 (= chapter 06c §3 接合表に従う)
+- shell の **buffer size (= padded std140 size、chapter 08 §6.4 で 256B 倍数 padding)** は Phase 2 本実装と一致 (= dummy 0 fill の size を本実装と同 byte 数で確保、Phase 2 で全面書換しても VkDescriptorBufferInfo / VkBufferCreateInfo の引数差分ゼロ)
+- shell の **PSO layout (= VkPipelineLayoutCreateInfo の descriptor set layout 列)** は本実装と互換 (= shell で生成した PSO は Phase 2 本実装の UBO bind 後も再生成不要、PSO cache (PSC) 経由で hit)
+- 含意: Phase 1.C で確定する shell の binding / set / size / PSO layout は **Phase 2 で再利用される契約済構造**。shell の「書き捨て可能」 (上記) は **データ内容 (= struct member 定義 / dirty 判定 / flush logic)** に限定、layout 構造は不可触 (= 1.C で確定 → 2 で温存)
 
 **注**: Phase 1 完了時点では **既存 program 動作 unchanged** (= Vulkan path 分岐 ON でも OpenGL path 経路を選ぶ default 動作)。Phase 2 で第 1 UBO migration を実施するまで実 Vulkan 描画は始まらない (= migration 前提整備完了が Exit)。
 
@@ -209,27 +257,31 @@ Phase 内手順 (= 1 UBO 当たり):
 
 ### §5.2 Phase 順序 (= (Q1) で第 1 UBO 確定後の order)
 
+**前提 (= Q23-K AYA 判断 (A) 反映、2026-06-03)**: 本 §5.2 の Template A/B/C 内の **「Phase 2」「Phase 3」「Phase 4」等の具体 phase 数値は (Q1)(Q2) 確定後の phase 振分 例示** (= §2.1 K 確定条件 = Phase 0 Exit + (Q1)(Q2) AYA 判断、行 73-78)。K 確定で具体数値は **置換される予定の placeholder 例示値**、Phase 1.A 入口で「Phase 2 開始」=「`UB_REFLECTION_PROBES` 開始」を確定形として読まないこと (= §2.1 行 78 placeholder 宣言と整合)。下記 phase 数値は **(Q1)(Q2) 確定後の order 提示用 sketch** であって、K 確定前は順序関係 (= Template A なら最小リスク UBO → 最頻出 per-draw UBO の順) のみが load-bearing。
+
 (Q1) 第 1 UBO 選定方針 (= AYA 判断仰ぎ候補) 別の order template:
 
 **Template A: 最小リスク UBO 優先**:
-1. Phase 2 = singleton 系最小 UBO (= `UB_REFLECTION_PROBES` 単体、per-frame cadence、物理 instance 1 個)
-2. Phase 3 = per-Asset 系最小 UBO (= `UB_GLTF_MATERIALS` 単体)
-3. Phase 4 = per-Asset 系大物 UBO (= `UB_GLTF_NODES`)
-4. Phase 5 = per-Skin 系 UBO (= `UB_GLTF_JOINTS`)
-5. Phase 6.. = bare uniform 集約由来の per-program UBO 群 (= chapter 05 集約表で集約された UBO を頻度低い順)
-6. Phase K = 最後に最頻出 per-draw 系 UBO (= 大 risk、最後に migration)
+1. Phase 2 = singleton 系最小 UBO (= `UB_REFLECTION_PROBES` 単体、per-frame cadence、物理 instance 1 個) — **canary 検証 scene 候補**: water reflection on / sky reflection (= reflection map が描画に反映される景観、AYA 操作 = 海沿いランドマーク + sun position 変更で確認)
+2. Phase 3 = per-Asset 系最小 UBO (= `UB_GLTF_MATERIALS` 単体) — **canary 検証 scene 候補**: GLTF material attach mesh (= GLTF 素材入り装着物または地形 prim、PBR material slot 差替で flip 確認)
+3. Phase 4 = per-Asset 系大物 UBO (= `UB_GLTF_NODES`) — **canary 検証 scene 候補**: GLTF scene graph 持ち item (= GLTF imported scene mesh、node transform 変更で flip 確認)
+4. Phase 5 = per-Skin 系 UBO (= `UB_GLTF_JOINTS`) — **canary 検証 scene 候補**: rigged GLTF avatar attachment (= bone animation 入り装着物、pose 変更で skinning 反映確認)
+5. Phase 6.. = bare uniform 集約由来の per-program UBO 群 (= chapter 05 集約表で集約された UBO を頻度低い順) — **canary 検証 scene 候補**: 該当 program 必須 scene (= 例 `terrainF` 系なら地形 region、`avatarF` 系なら avatar mesh、`waterF` 系なら water surface)
+6. Phase K = 最後に最頻出 per-draw 系 UBO (= 大 risk、最後に migration) — **canary 検証 scene 候補**: 高密度 draw 環境 (= Sandbox grid + 多数 prim + 複数 avatar、frame budget 内で 1k+ draw call 発火する景観)
 
 **Template B: 最頻出 UBO 優先**:
-- Phase 2 = 最頻出 per-draw UBO (= 大 risk 早期消化)
-- 以降は影響度大きい順で migration
-- Phase K 終盤に singleton 系の少 risk UBO
+- Phase 2 = 最頻出 per-draw UBO (= 大 risk 早期消化) — **canary 検証 scene 候補**: 高密度 draw 環境 (Template A Phase K と同)
+- 以降は影響度大きい順で migration — **canary 検証 scene**: 該当 UBO の cadence 性質別 (= per-program なら該当 program scene、per-asset なら該当 asset 必須 scene)
+- Phase K 終盤に singleton 系の少 risk UBO — **canary 検証 scene 候補**: water/sky reflection (Template A Phase 2 と同)
 
 **Template C: cadence 系統別 batch**:
-- Phase 2-3 = per-frame 系 (= 1-2 UBO)
-- Phase 4-5 = per-program 系
-- Phase 6-7 = per-asset 系
-- Phase 8-9 = per-draw 系
-- Phase 10 = per-skin 系
+- Phase 2-3 = per-frame 系 (= 1-2 UBO) — **canary 検証 scene 候補**: water/sky reflection + frame counter 確認 scene
+- Phase 4-5 = per-program 系 — **canary 検証 scene 候補**: 各 program 必須 scene を Phase 別に列挙 (terrain / avatar / water 等)
+- Phase 6-7 = per-asset 系 — **canary 検証 scene 候補**: GLTF asset 入り region (Template A Phase 3-4 と同)
+- Phase 8-9 = per-draw 系 — **canary 検証 scene 候補**: 高密度 draw 環境 (Template A Phase K と同)
+- Phase 10 = per-skin 系 — **canary 検証 scene 候補**: rigged GLTF avatar (Template A Phase 5 と同)
+
+**注 (= 第二次査読 §3.3 反映、canary 検証 scene annotation)**: 上記各 Phase の canary 検証 scene 候補は **AYA 動作確認の入力契約** (= Phase Exit 時に AYA が実際に visit するべき景観の候補)。Phase 起案時に handoff doc 内 §canary 検証 scene 節で確定 SLurl + scene 状態を明示 (= memory `feedback_render_bug_canary_protocol` 準拠)。
 
 **default 提案 = Template A** (= 最小リスク UBO 優先): cold launch 検証で経路が成立しない場合の影響範囲が最小、Phase 1 で実装した codegen + redirect 層 + cadence 別 update site の各経路を **少 risk な UBO で 1 経路ずつ通電** することで、後続の大 risk UBO 移行時には残り経路差分のみが新規 path となる。
 

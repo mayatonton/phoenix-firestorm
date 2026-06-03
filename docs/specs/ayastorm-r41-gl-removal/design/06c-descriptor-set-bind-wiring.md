@@ -1,16 +1,16 @@
 # r41 UBO 全体設計 Chapter 06c: descriptor set bind 配線
 
 **起案日**: 2026-06-03
-**位置付け**: chapter 06 (redirect-layer-design) を 3 sub-chapter に分割した第 3 部。**descriptor set 4 帯 (set=0/1/2/3) の cadence 別配置 + 既存 UB_\* 4 binding ↔ 84 blueprint 接合表 + flush 直後 bind 配線 + dynamic offset (L2) bind 側責務 + `mUseUBO` initial 設定方針 + PSO compatibility / cadence 跨ぎ rebind 範囲 + triple-buffering 配下 per-frame set rotate + sampler 49 個 chapter 07 bridge** を確定する。実 Vulkan API 実装 (= chapter 07) は別 chapter で扱う。
+**位置付け**: chapter 06 (redirect-layer-design) を 3 sub-chapter に分割した第 3 部。**descriptor set 4 帯 (set=0/1/2/3) の cadence 別配置 + 既存 UB_\* 4 binding ↔ 85 blueprint 接合表 + flush 直後 bind 配線 + dynamic offset (L2) bind 側責務 + `mUseUBO` initial 設定方針 + PSO compatibility / cadence 跨ぎ rebind 範囲 + triple-buffering 配下 per-frame set rotate + sampler 49 個 chapter 07 bridge** を確定する。実 Vulkan API 実装 (= chapter 07) は別 chapter で扱う。
 **pre-requisite**:
 - `01-overview.md` §2 (2 大設計原則) / §3 (用語) / §5 (確定事項 13 件)
-- `02-naming-convention.md` §2.3.1 (UB_\* enum 命名) / §3 (84 UBO rename 表)
+- `02-naming-convention.md` §2.3.1 (UB_\* enum 命名) / §3 (85 UBO rename 表)
 - `03-cadence-classification.md` §2 (cadence 5 分類) / §4 (cadence 別 update site overview)
 - `04-codegen-ubo.md` §5 (生成物 = `ubo_metadata.inl` で block_name → (size, set, binding)) / §5.3 (`UniformLocation` / `CadenceTag`)
 - `05-existing-inventory-link.md` §3 (cadence 別 mapping) / §4 (E3 rename 確定) / §6 (MC1 = 旧 G1 per-material → per-draw、設計 review 2026-06-03 §3.1 ID rename = material cadence prefix)
 - `06a-cache-structure-and-setter-redirect.md` §3 (cache 構造) / §5.4 (`mUseUBO` flag 配置、初期化方針は本 chapter 持越)
 - `06b-cadence-update-site-and-dirty.md` §4 (flush 関数 5 種) / §5.3 (L1+L2 推奨) / §8 ((K)/(L)/(U1) default 採用案)
-- `ayastorm-r41-ubo-current-state-inventory.md` §1 (OpenGL 実働 UBO 4 種 + UB_\* enum) / §3 (84 GLSL blueprint)
+- `ayastorm-r41-ubo-current-state-inventory.md` §1 (OpenGL 実働 UBO 4 種 + UB_\* enum) / §3 (85 GLSL blueprint)
 
 ---
 
@@ -19,7 +19,7 @@
 ### §0.1 scope (= 本 chapter で確定するもの)
 
 1. **descriptor set 4 帯 cadence 別配置** (= set=0 per-frame / set=1 per-program / set=2 per-draw / set=3 per-asset+per-skin+singleton)
-2. **既存 UB_\* 4 binding ↔ 84 blueprint 接合表** (= upstream LL 4 種温存 + Frame\* 3 + Program_\* 79 + Draw_\* 2 + Material\* 2 + Asset_\* 2 + Skin_\* 1 + Global_\* 1 の最終配線)
+2. **既存 UB_\* 4 binding ↔ 85 blueprint 接合表** (= upstream LL 4 種温存 + Frame\* 3 + Program_\* 80 + Draw_\* 2 + Material\* 2 + Asset_\* 2 + Skin_\* 1 + Global_\* 1 の最終配線)
 3. **flush 直後 descriptor set bind 配線** (= 06b §4.1 flush 関数 5 種の直後 rebind 範囲)
 4. **dynamic offset (L2) bind 側責務** (= 06b §5.3 L1+L2 default 採用の bind 側実装)
 5. **`mUseUBO` flag initial 設定方針確定** (= 06a 持越 (Q1) 解消)
@@ -47,7 +47,7 @@
 | `02-naming-convention.md` §3 rename 表 | §3 接合表で旧名 → 新名 適用 |
 | `04-codegen-ubo.md` §5.1 `ubo_metadata.inl` (block_name → (size, set, binding)) | §2 配置決定の Codegen 出力契約 |
 | `04-codegen-ubo.md` §5.3 `UniformLocation` struct (= `block_hash` で物理 UBO 識別) | §5 dynamic offset の loc → block_hash 解決 |
-| `05-existing-inventory-link.md` §4 E3 (= 79 個独立保持) | §2.2 set=1 帯への 79 個集約 |
+| `05-existing-inventory-link.md` §4 E3 (= 80 個独立保持) | §2.2 set=1 帯への 80 個集約 |
 | `05-existing-inventory-link.md` §6 MC1 (= 旧 G1、Material\* per-draw 統合、ID rename 経緯は chapter 05 §6 header 注) | §2.3 set=2 帯への Material\* 配置 |
 | `06a-cache-structure-and-setter-redirect.md` §3.2 `mUseUBO` flag 配置 | §6 initial 設定方針確定 |
 | `06b-cadence-update-site-and-dirty.md` §4.1 flush 関数 5 種 | §4 flush 直後 bind 配線 |
@@ -91,19 +91,19 @@
 - `Global_ReflectionProbes` (= 旧 `UB_REFLECTION_PROBES`) は singleton owner で per-frame cadence に近い (= reflection update 6 frame 周期、inventory §1)。Frame\* と同じ stable set に同居が論理的に綺麗
 - Vulkan space では既存 GL space の binding 番号 (= upstream LL 確立済 `binding=0`) と 1:1 対応せずに済む (= GL/Vulkan binding namespace 独立、設計判断として set=0 帯に集約)
 
-### §2.3 set=1 (per-program 帯) — 79 binding
+### §2.3 set=1 (per-program 帯) — 80 binding
 
 | binding 範囲 | block 名群 | UB_\* enum 範囲 | cadence | 物理 instance |
 |---|---|---|---|---|
 | 0-22 | `Program_*` (= 旧 set=2 帯 23 個、chapter 02 §3.3 rename 後) | `UB_PROGRAM_*` | per-program | `LLGLSLShader::mProgramUBO` slot 群 |
-| 23-78 | `Program_*` (= 旧 set=3 帯 54 個 + 上記の重複なし、chapter 02 §3.4 rename 後、chapter 05 §4 E3 採用で 79 個独立保持) | 同上 | 同上 | 同上 |
+| 24-79 | `Program_*` (= 旧 set=3 帯 54 個 + 上記の重複なし、chapter 02 §3.4 rename 後、chapter 05 §4 E3 採用で 80 個独立保持、Q22-NUM 解消 A' 反映で per-program set=2 23→24) | 同上 | 同上 | 同上 |
 
 **配置根拠**:
-- chapter 05 §4 E3 採用 = 旧 set=2 帯 23 個 + 旧 set=3 帯 54 個 = 79 個 Program_\* を独立保持
-- 全 79 個が同 cadence (= per-program) のため set=1 に集約
+- chapter 05 §4 E3 採用 = 旧 set=2 帯 24 個 + 旧 set=3 帯 54 個 + 上記の重複なし 2 entry = 80 個 Program_\* を独立保持 (Q22-NUM 解消 A' 反映で per-program set=2 23→24)
+- 全 80 個が同 cadence (= per-program) のため set=1 に集約
 - `flushProgramUbos(LLGLSLShader*)` (= 06b §4.1) で shader bind 時 1 回 rebind、bind されない program の Program_\* は upload も bind も走らない (= 06b §2.2)
 
-**注 (= §10 (V1) 持越)**: 79 binding は **Vulkan `maxDescriptorSetUniformBuffers` device limit** (= 通常 hardware 84-90、minimum spec 96+) ギリギリ。chapter 07 で実 device feature query + 不足時の split 対応 (= set=1 を 2 set に分割) を確認必要。本 chapter は default 79 binding 1 set 構成、chapter 07 で device 制約検知時に再評価。
+**注 (= §10 (V1) 持越)**: 80 binding は **Vulkan `maxDescriptorSetUniformBuffers` device limit** (= 通常 hardware 84-90、minimum spec 96+) ギリギリ。chapter 07 で実 device feature query + 不足時の split 対応 (= set=1 を 2 set に分割) を確認必要。本 chapter は default 80 binding 1 set 構成、chapter 07 で device 制約検知時に再評価。
 
 ### §2.4 set=2 (per-draw 帯) — 4 binding
 
@@ -133,7 +133,7 @@
 
 ---
 
-## §3 既存 UB_\* 4 binding ↔ 84 blueprint 接合表
+## §3 既存 UB_\* 4 binding ↔ 85 blueprint 接合表
 
 ### §3.1 接合表 (= 全 84 + 既存実働 4 の最終配線)
 
@@ -153,7 +153,7 @@
 | set=1 binding=0-22 | `Program_GammaCorrect` / `Program_AlphaParams` / ... | chapter 02 §3.3 PerProgramUBO_\* 23 個 | η-24 〜 η-28 Phase 2c |
 | set=1 binding=23-76 | `Program_AtmoExtra` / `Program_SkyVParam` / ... | chapter 02 §3.4 \<Name\>UBO_Legacy 54 個 (E3 採用) | η-6 / η-13 期 |
 
-**= set=1 帯の実配置 = 77 個** (= 23 + 54、(V2) 確定後最終 77-79)。下記 set=1 binding 番号は (V2) 解消結果に依存し、`Program_LightParams` / `Program_MultiLight` が per-program 帰属に確定した場合のみ binding=77/78 として追加される。
+**= set=1 帯の実配置 = 78 個** (= 24 + 54、(V2) 確定後最終 78-80、Q22-NUM 解消 A' 反映で per-program set=2 帯 23→24)。下記 set=1 binding 番号は (V2) 解消結果に依存し、`Program_LightParams` / `Program_MultiLight` が per-program 帰属に確定した場合のみ binding=78/79 として追加される。
 
 ##### set=1 帯 rename audit trail (= 設計 review 2026-06-03 §3.1 set=1/set=2 重複表示解消、配置外)
 
@@ -166,7 +166,7 @@
 
 **注**: 06b §1.4 / chapter 05 §3.3 で binding=0/1 の cadence 帰属は **per-draw** 確定 (= 旧 inventory §3.3 表現の `PerDrawUBO_*` 名前空間そのまま per-draw 帯)。`Program_LightParams` / `Program_MultiLight` 候補は (V2) で「同一 binding 複数 UBO 名疑い」の文脈で per-program 再分類が必要かを (H1b) 計測で確定する論点として残存、確定後 per-program 帯入りすれば上記 set=1 表に binding=77/78 として追記。
 
-(V2) 持越は inventory §3.3.1 の同一 binding 複数 UBO 名疑い (= ClipPlane / SkinnedVelocity / AvatarVelocity / AvatarSkin / ObjectSkin) のみ、(E') として Phase 0 計測対象 (= `06a-prep` §3)。本 chapter は **確定済 2 個 (LightParams / MultiLight) は per-draw 帯**、その他 23 + 54 = 77 個 Program_\* を set=1 帯に配置。
+(V2) 持越は inventory §3.3.1 の同一 binding 複数 UBO 名疑い (= ClipPlane / SkinnedVelocity / AvatarVelocity / AvatarSkin / ObjectSkin) のみ、(E') として Phase 0 計測対象 (= `06a-prep` §3)。本 chapter は **確定済 2 個 (LightParams / MultiLight) は per-draw 帯**、その他 24 + 54 = 78 個 Program_\* を set=1 帯に配置 (= Q22-NUM 解消 A' 反映で per-program set=2 帯 23→24)。
 
 #### set=2 帯 (= per-draw、4 個)
 
@@ -190,13 +190,13 @@
 | set | binding 数 | 物理 instance 数 | 帰属 cadence |
 |---|---|---|---|
 | set=0 | 4 | 3 + 1 = 4 (per-frame slot 3 + singleton 1) | per-frame + singleton |
-| set=1 | 77 (= 23 + 54、(V2) 確定後最終 77-79) | program 単位、bind されている program 数 (= 典型 20-50) | per-program |
+| set=1 | 78 (= 24 + 54、(V2) 確定後最終 78-80、Q22-NUM 解消 A' 反映) | program 単位、bind されている program 数 (= 典型 20-50) | per-program |
 | set=2 | 4 | ring buffer 1 + dynamic offset (= L1+L2、§5) | per-draw + Material\* MC1 統合 |
 | set=3 | 3 | (Asset 2 × N) + (Skin 1 × M)、owner 数 scene 規模次第 | per-asset + per-skin |
-| **合計** | **88** | scene 規模で 1 + 2N + M + (典型 20-50) + 数物理 instance | — |
+| **合計** | **89** | scene 規模で 1 + 2N + M + (典型 20-50) + 数物理 instance | — |
 
 **整合確認 (= chapter 01 §3.3 / §3.4 用語)**:
-- **論理 binding 種類** = 88 (= shader 内 `layout(set=N, binding=M)` 総数 = 既存 84 GLSL blueprint + 既存実働 UB_\* 4 種 (rename 後の set=3 帯 3 個 + set=0 帯 `Global_ReflectionProbes` 1 個))
+- **論理 binding 種類** = 89 (= shader 内 `layout(set=N, binding=M)` 総数 = 既存 85 GLSL blueprint + 既存実働 UB_\* 4 種 (rename 後の set=3 帯 3 個 + set=0 帯 `Global_ReflectionProbes` 1 個))
 - **物理 buffer instance** = scene 規模次第 (= owner 単位 dynamic 変動、chapter 01 §3.4)
 
 ### §3.3 既存 GL path との binding 番号差分 (= 原則 1 含意)
@@ -222,7 +222,7 @@
 
 **O1 採用根拠**:
 - 既存 `glBindBufferBase(GL_UNIFORM_BUFFER, UB_REFLECTION_PROBES, ...)` 等の call site (= `llreflectionmapmanager.cpp:1334` / `gltfscenemanager.cpp:693/696/736`) を改名・引数変更しない = 原則 1 (call site 温存) 完全達成
-- 新規 UBO (= 84 GLSL blueprint 由来) は新 enum 値 (= `UB_FRAME_*` / `UB_PROGRAM_*` / `UB_DRAW_*` / `UB_MATERIAL*` 等、chapter 02 §2.3.1) で追加 = 既存 4 種と独立 namespace
+- 新規 UBO (= 85 GLSL blueprint 由来) は新 enum 値 (= `UB_FRAME_*` / `UB_PROGRAM_*` / `UB_DRAW_*` / `UB_MATERIAL*` 等、chapter 02 §2.3.1) で追加 = 既存 4 種と独立 namespace
 - upstream Firestorm/Linden の OpenGL path 改修取込時、既存 4 種の binding 番号差分が出ない = upstream 互換最大
 
 ---
@@ -242,7 +242,7 @@ flushFrameUbos()                                ← 06b §4.1
   ↓
 flushProgramUbos(shaderA)                       ← 06b §4.1
   ↓ (dirty bit check → upload)
-[ set=1 rebind ]  bindDescriptorSet(set=1, shaderA_program_set) ← 79 binding 1 set
+[ set=1 rebind ]  bindDescriptorSet(set=1, shaderA_program_set) ← 80 binding 1 set
   ↓
 [ asset X draw 開始 ]
   ↓
@@ -296,11 +296,11 @@ flushDrawUbos()                                 ← 06b §4.1
 | compatibility 軸 | 本設計での扱い |
 |---|---|
 | set=0 layout = Frame\* 3 + Global_\* 1 binding | 全 shader 共通固定 layout = PSO 跨ぎ stable |
-| set=1 layout = Program_\* 79 binding | program ごとに layout 異なる可能性 → **§10 (V3) 持越**: 全 program 共通 79 binding layout で揃える (= 一部 program は dummy binding) vs program ごとに layout 異なる (= PSO 別 cache) のトレードオフ |
+| set=1 layout = Program_\* 80 binding | program ごとに layout 異なる可能性 → **§10 (V3) 持越**: 全 program 共通 80 binding layout で揃える (= 一部 program は dummy binding) vs program ごとに layout 異なる (= PSO 別 cache) のトレードオフ |
 | set=2 layout = Draw_\* 2 + Material\* 2 binding | 全 shader 共通固定 layout |
 | set=3 layout = Asset_\* 2 + Skin_\* 1 binding | 全 shader 共通固定 layout (= GLTF 描画 program のみ参照、非 GLTF program は set=3 を dummy bind) |
 
-**(V3) 持越** = set=1 layout を全 program 共通にするか program 別にするかは PSO cache 効率 vs descriptor set 効率のトレードオフ、chapter 07 で実 device feature query + 計測後決定。default は **全 program 共通 79 binding layout** (= PSO compatibility 最大、不使用 binding は dummy で埋める)。
+**(V3) 持越** = set=1 layout を全 program 共通にするか program 別にするかは PSO cache 効率 vs descriptor set 効率のトレードオフ、chapter 07 で実 device feature query + 計測後決定。default は **全 program 共通 80 binding layout** (= PSO compatibility 最大、不使用 binding は dummy で埋める)。
 
 **(V3) と (MD)/M1 採用の関係明示 (= 設計 review 2026-06-03 §3.4 修正)**:
 - 本 chapter §2.1 で **M1 採用 (= descriptor set 4 帯 ↔ cadence 5 分類 1:1 配置)** を default に置いた前提で、(V3) は set=1 帯 (= per-program) 内部の layout 統一/分散のトレードオフ議論
@@ -473,7 +473,7 @@ chapter 07 で sampler 配置 (S1 / S2 / 別案) 確定後、本 chapter §3 接
 | chapter | 本 chapter からの入力 | 本 chapter への出力 |
 |---|---|---|
 | **04** (codegen-ubo) | `ubo_metadata.inl` (= block_name → set/binding/size) / `UniformLocation` struct / `CadenceTag` enum | (本 chapter は受け側) — `ubo_metadata.inl` の set/binding 出力値が本 chapter §2/§3 配置と一致することを Codegen 側で保証 |
-| **05** (existing-inventory-link) | 84 UBO の cadence 別 mapping (= §3) / E3 (= 79 個独立保持) / MC1 (= 旧 G1、Material\* per-draw 統合) | (本 chapter は受け側) — chapter 05 §7 集約 mapping は 06c 配置に従う |
+| **05** (existing-inventory-link) | 85 UBO の cadence 別 mapping (= §3) / E3 (= 80 個独立保持) / MC1 (= 旧 G1、Material\* per-draw 統合) | (本 chapter は受け側) — chapter 05 §7 集約 mapping は 06c 配置に従う |
 | **06a** (cache-structure-and-setter-redirect) | `mUseUBO` flag 配置 / `mUniformUBOLoc[index]` cache / setter redirect 入口 | (Q1) `mUseUBO` initial 設定方針確定 (= §6 N2 採用) |
 | **06b** (cadence-update-site-and-dirty) | flush 関数 5 種 / L1+L2 default / triple-buffering (U1=3) / dirty 二段階 dedup | (本 chapter は受け側) — flush 直後 bind 配線 (§4) / dynamic offset bind 側責務 (§5) / set=0 rotate (§7) で 06b 確定事項を bind 側に展開 |
 | **07** (vulkan-api-state) | (本 chapter は提供側) | descriptor set layout 確定 (§2/§3) / bind sequence (§4) / dynamic offset bind 側責務 (§5) / triple-buffering rotate 方式 (§7) / sampler 配置決定 (§8 持越) / device limit 検知 (§2.3 (V1) / §4.3 (V3)) |
@@ -490,9 +490,9 @@ chapter 07 で sampler 配置 (S1 / S2 / 別案) 確定後、本 chapter §3 接
 | **(MD)** (= 旧 (M)、設計 review 2026-06-03 §3.1 ID rename = material domain prefix、chapter 06b §8 thread-safe の (M) と衝突回避) | descriptor set 4 帯 ↔ cadence 5 分類 1:1 配置 (M1) vs cadence 別 set 拡張 (M2) | **chapter 10 / AYA 判断** | **M1 (= 1:1 配置、§2.1) — 採用済** | M2 採用時: §2 全体 / §3 接合表 / §4 bind sequence / §10 (V3) 前提崩壊 (= 上記 §4.3 (V3) 関係明示) |
 | (N) | `mUseUBO` initial 設定 = N1 全 ON / N2 shader 単位 phase migration | **chapter 10 / AYA 判断** | **N2 (= phase migration、§6.2) — 採用済** | N1 採用時: §6.3.1 / §6.3.2 / §6.3.3 を full ON 形に書換 |
 | (O) | UB_\* 4 binding 拡張 = O1 既存維持 + 新規追加 / O2 全体再構成 | **chapter 10 / AYA 判断** | **O1 (= 既存維持、§3.4) — 採用済** | O2 採用時: §3.3 既存 GL binding 番号差分が全面再構成、原則 1 (= upstream 取込互換) 影響大 |
-| (V1) | set=1 が 79 binding で device `maxDescriptorSetUniformBuffers` 限界懸念 | chapter 07 | **default 79 binding 1 set、device limit 検知時に split 検討 — 採用済** | split 化採用時: §2.3 set=1 を 2 set に分割、§4.1 bind sequence + §10 (MD)/M1 維持判定再評価 |
+| (V1) | set=1 が 80 binding で device `maxDescriptorSetUniformBuffers` 限界懸念 | chapter 07 | **default 80 binding 1 set、device limit 検知時に split 検討 — 採用済** | split 化採用時: §2.3 set=1 を 2 set に分割、§4.1 bind sequence + §10 (MD)/M1 維持判定再評価 |
 | (V2) | inventory §3.3.1 同一 binding 複数 UBO 名疑い (= ClipPlane / SkinnedVelocity 等 5 個) | 実装 phase 入口 (= `06a-prep` §3 (E')) | A/B/C 案いずれか、Phase 0 計測待ち (= 本 chapter は **計測結果待ち、暫定 §3.1 set=1 帯 77 個**) | 確定次第 §3.1 set=1 帯に binding=77/78 追加可能性、§3.2 集計表 update |
-| (V3) | set=1 layout = 全 program 共通 79 binding (= dummy 埋め) / program 別 layout | chapter 07 | **全 program 共通 (= PSO compatibility 最大) — 採用済** | program 別採用時: §4.3 PSO compatibility 表全面書換 + PSO cache 戦略再設計 |
+| (V3) | set=1 layout = 全 program 共通 80 binding (= dummy 埋め) / program 別 layout | chapter 07 | **全 program 共通 (= PSO compatibility 最大) — 採用済** | program 別採用時: §4.3 PSO compatibility 表全面書換 + PSO cache 戦略再設計 |
 | (S3) | sampler 49 個の descriptor set 配置帯 | chapter 07 | **配置決定は chapter 07 譲り、§8.2 で 3 案併記 — 採用未済 (= 本 chapter は bridge のみ)** | 確定次第 §3.1 接合表 + §3.2 集計表に set=4 or set=1 拡張形を追記 |
 
 ---
@@ -510,4 +510,4 @@ chapter 07 で sampler 配置 (S1 / S2 / 別案) 確定後、本 chapter §3 接
 
 ---
 
-**= 本 chapter で descriptor set 4 帯 cadence 別配置 + UB_\* 4 binding ↔ 84 blueprint 接合表 + flush 直後 bind 配線 + dynamic offset bind 側責務 + `mUseUBO` initial 設定方針 + PSO compatibility + triple-buffering rotate + sampler bridge が確定したため、chapter 06 (06a / 06a-prep / 06b / 06c) 全件起案完了 state に到達。chapter 07 (vulkan-api-state) で実 Vulkan API 配線 (= VMA / descriptor pool / pipeline layout / 実 buffer 生成 / sampler 配置確定 / device limit query / triple-buffering 実装) に進める**。
+**= 本 chapter で descriptor set 4 帯 cadence 別配置 + UB_\* 4 binding ↔ 85 blueprint 接合表 + flush 直後 bind 配線 + dynamic offset bind 側責務 + `mUseUBO` initial 設定方針 + PSO compatibility + triple-buffering rotate + sampler bridge が確定したため、chapter 06 (06a / 06a-prep / 06b / 06c) 全件起案完了 state に到達。chapter 07 (vulkan-api-state) で実 Vulkan API 配線 (= VMA / descriptor pool / pipeline layout / 実 buffer 生成 / sampler 配置確定 / device limit query / triple-buffering 実装) に進める**。

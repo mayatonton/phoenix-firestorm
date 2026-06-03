@@ -107,7 +107,7 @@ memory `project_ayastorm_three_platforms.md` 「3 OS 揃える、Linux のみ判
 - **依存順序**: 領域 3 PSO 化と並走可 (refactor 対象が独立、PSO は drawpool/llrender 側、frame context は pipeline.cpp 側)、領域 3 完了後に LLGLState setter dead-store 化追加実施 (PSO state alias 基盤 + frame context で render path context 確定後に safe に物理削除)
 - **risk**: **高** — sub-phase 1 で「pipeline.cpp 3 大グローバル + cull/stateSort 内 GL 呼出が並列化阻止」確認済の領域、refactor 自体は本線 GL 除去と独立だが r41 完遂 = 並列化準備の前提
 - **scope refine 2026-05-29**: sub-step 3.1b 着手時に **bridging item #1 (LLGLState setter dead-store 化)** を本領域 4 に移管 (03 §1.5.3 / §3.1 / §4.1 / §3.3 + handoff §3.1 / §7.1 反映済)。受け入れ理由: PSO state alias 基盤 (領域 3 sub-step 3.1 で配線) + LLPipelineFrameContext (本領域) が揃った後に caller source-level compat 維持しつつ setter 内 GL call 物理削除可能、3.1b 時点で先行実施すると 段階 1+2 動作維持 (sub-doc 03 §3.5) と構造矛盾
-- **scope refine 2026-06-03 (η-28 後続)**: sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 で **UBO化への pivot** 確定 (= LLPipelineFrameContext を Codegen-UBO 化 + cadence 5 分類 + descriptor set 4/5 帯 + 84 UBO blueprint へ拡張)、本領域 4 は η-28 後続フェーズで UBO 受け入れ準備 (= struct field UBO binding 配置 + setter family 30 entry point redirect 配線 + canary cvar 規約 chapter 09 §5.3.1 反映) を内包、設計 chapter 群 (design/01-10 + 06a/06a-prep/06b/06c) で本領域 4 拡張内容 source of truth、本 charter §5.3 cross-ref + 04 sub-doc §1.1/§1.3/§6.1 で参照経路明示
+- **scope refine 2026-06-03 (η-28 後続)**: sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 で **UBO化への pivot** 確定 (= LLPipelineFrameContext を Codegen-UBO 化 + cadence 5 分類 + descriptor set 4/5 帯 + 85 UBO blueprint へ拡張)、本領域 4 は η-28 後続フェーズで UBO 受け入れ準備 (= struct field UBO binding 配置 + setter family 30 entry point redirect 配線 + canary cvar 規約 chapter 09 §5.3.1 反映) を内包、設計 chapter 群 (design/01-10 + 06a/06a-prep/06b/06c) で本領域 4 拡張内容 source of truth、本 charter §5.3 cross-ref + 04 sub-doc §1.1/§1.3/§6.1 で参照経路明示
 
 #### 領域 5: 段階 5 — llspatialpartition / llviewershadermgr / llvertexbuffer / llvosky / llvowlsky 依存解決 (0.50 PM)
 
@@ -310,7 +310,7 @@ trigger 発火時の対処順位 (06 §8.5、r41 段階で適用):
 | `design/01-codegen-ubo-overview.md` | §2 領域 4 (LLPipelineFrameContext UBO 化方針) / §3 #5 (descriptor set 帯構成 base) |
 | `design/02-cadence-classification.md` | §2 領域 4 (cadence 5 分類 = per-frame/per-program/per-draw/per-asset/per-skin) |
 | `design/03-descriptor-set-layout.md` | §2 領域 7 (set=0/1/1a/1b/2/3 4 帯 → 5 帯)、§3 #5 整合 |
-| `design/04-ubo-blueprint-84.md` | §2 領域 4 (84 UBO blueprint = set=0:3 / set=1:2 / set=2:25 or 26 / set=3:54) |
+| `design/04-ubo-blueprint-84.md` | §2 領域 4 (85 UBO blueprint = set=0:3 / set=1:2 / set=2:26 / set=3:54) |
 | `design/05-existing-inventory-link.md` | §2 領域 4 + 7 (既存 GL uniform inventory ↔ UBO blueprint 接続)、領域 7 sub-doc §7 整合 |
 | `design/06a-cache-structure-and-setter-redirect.md` | §2 領域 4 (setter family 30 entry point = 17 integer + 13 LLStaticHashedString redirect) |
 | `design/06a-prep-phase0-measurement.md` | §2 領域 4 (Phase 0 計測 = setter 17 method integer-index 列挙 + getGlobalRegistry() 不存在確認) |

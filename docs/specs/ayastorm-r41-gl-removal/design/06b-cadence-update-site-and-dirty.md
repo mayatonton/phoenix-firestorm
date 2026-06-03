@@ -7,7 +7,7 @@
 - `02-naming-convention.md` §2 (命名規則 + cadence prefix)
 - `03-cadence-classification.md` §2 (cadence 5 分類) / §4 (cadence 別 update site overview)
 - `04-codegen-ubo.md` §5.3 (`UniformLocation` / `CadenceTag` enum 値域) / §6 (R3 path)
-- `05-existing-inventory-link.md` §6 (G1 per-draw + dirty 確定) / §7 (集約フロー)
+- `05-existing-inventory-link.md` §6 (MC1 = 旧 G1, per-draw + dirty 確定) / §7 (集約フロー)
 - `06a-cache-structure-and-setter-redirect.md` §3 (cache 構造) / §5 (setter 分岐 + `forwardToUboUpload` 呼出位置)
 - `ayastorm-r41-ubo-current-state-inventory.md` §1.1 (既存 OpenGL upload site) / §4.3 (`mValue` cache 現状)
 
@@ -18,7 +18,7 @@
 ### §0.1 scope (= 本 chapter で確定するもの)
 
 1. **5 cadence 別 update site の C++ 配置点** (= per-frame / per-program / per-draw / per-asset / per-skin 各 cadence で `forwardToUboUpload` を呼ぶ既存 / 新設関数の特定)
-2. **dirty 判定機構** (= 既存 `mValue` cache を Vulkan UBO upload 側 dirty flag に乗せ替え + Material* per-draw cadence 統合の具体実装、chapter 05 §6 G1 の実体化)
+2. **dirty 判定機構** (= 既存 `mValue` cache を Vulkan UBO upload 側 dirty flag に乗せ替え + Material* per-draw cadence 統合の具体実装、chapter 05 §6 MC1 (= 旧 G1) の実体化)
 3. **flush timing 論理仕様** (= upload → descriptor set bind → draw の順序保証、cadence 跨ぎ memory barrier の論理要件、Vulkan API 詳細は chapter 07)
 4. **`forwardToUboUpload(loc, data, size)` interface 詳細** (= signature / cadence 別 routing / ring buffer 論点 (L) / thread 配線)
 
@@ -38,7 +38,7 @@
 |---|---|
 | `04-codegen-ubo.md` §5.3 `UniformLocation` struct + `CadenceTag` enum | §5 `forwardToUboUpload` signature と switch routing の input |
 | `04-codegen-ubo.md` §6.2 R3 path (`mUniform[index]` → `mUniformUBOLoc[index]`) | §2 各 cadence update site で setter 経由到達する path 前提 |
-| `05-existing-inventory-link.md` §6 G1 per-material → per-draw + dirty | §3.3 Material* 統合実装の根拠 |
+| `05-existing-inventory-link.md` §6 MC1 (= 旧 G1) per-material → per-draw + dirty | §3.3 Material* 統合実装の根拠 |
 | `06a-cache-structure-and-setter-redirect.md` §3 `mUniformUBOLoc[index]` cache | §2 / §3 各 update site で値書込先となる cache lookup の前提 |
 | `06a-cache-structure-and-setter-redirect.md` §5.2 setter 内 `forwardToUboUpload(loc, data, size)` 呼出位置 | §5 interface 本体実装が受ける契約点 |
 | `ayastorm-r41-ubo-current-state-inventory.md` §1.1 既存 OpenGL upload site (`updateNodeData` / `updateTransforms` / `setUniforms`) | §2.4 / §2.5 per-asset / per-skin update site が既存関数を継承する根拠 |
@@ -75,19 +75,19 @@
 | 配置点 (= flush 駆動側) | `LLGLSLShader::bind()` 内、`mUniformUBOLoc` 構築済の前提で `flushProgramUbos(this)` を呼ぶ (= bind 直後 / descriptor set bind 直前) |
 | upload thread | 現 phase = main thread / 将来 phase = program 単位 worker thread (= 原則 2、chapter 09 Phase Y+1) |
 | flush 単位 | bound program に attach された Program_* UBO 群 (= chapter 04 §6.2 で shader link 時 pre-cache 済、bind 時に該当 set だけ flush) |
-| 対応 UBO | `Program_*` (79 個、= set=2 帯 23 + set=3 帯 54、chapter 02 §3.3 / §3.4) |
+| 対応 UBO | `Program_*` (80 個、= set=2 帯 24 + set=3 帯 54 + 2 extra、chapter 02 §3.3 / §3.4。**注**: 24+54+2=80 の +2 は 06c §2.3 の「上記の重複なし」 2 entry に対応、Q22-NUM 解消 A' 反映で per-program set=2 23→24) |
 | 注 | shader bind 数は典型 20-50 / frame、bind 時 dirty 立ってなければ skip = 大半は upload 走らない (= cache hit が主流、chapter 03 §4.2 ) |
 
 ### §2.3 per-draw cadence (= Material* 含)
 
 | 項目 | 設計 |
 |---|---|
-| 更新契機 | draw call ごと + Material* は material 切替時 (= G1 統合、§3.3) |
+| 更新契機 | draw call ごと + Material* は material 切替時 (= MC1 (= 旧 G1) 統合、§3.3) |
 | 配置点 (= upload 駆動側) | `LLDrawPool*::render()` / `renderGeom*` 系の draw call 直前 setter (= 既存 path) |
 | 配置点 (= flush 駆動側) | draw call 直前、`LLDrawPool*::renderItem()` 等の最深 dispatcher 入口で `flushDrawUbos()` を呼ぶ |
 | upload thread | 現 phase = main thread / 将来 phase = secondary cmdbuf で draw call 単位分散 (= 原則 2、chapter 09 Phase Y+2) |
 | flush 単位 | ring buffer 1 つにつき current draw slot 単位 (= §5.3 L 論点) |
-| 対応 UBO | `Draw_LightParams` / `Draw_MultiLight` + `Material*` (G1 で per-draw cadence 帯入り) |
+| 対応 UBO | `Draw_LightParams` / `Draw_MultiLight` + `Material*` (MC1 (= 旧 G1) で per-draw cadence 帯入り) |
 | 注 | 数百〜数千 / frame の upload を支える ring buffer / dynamic offset 設計が必須 (= §5.3 L 論点)、dirty hit 率は material 切替頻度次第 (= §3.3) |
 
 ### §2.4 per-asset cadence
@@ -181,9 +181,9 @@ struct UboInstance {
 - `forwardToUboUpload` 内で member offset 書込時に `dirty.store(true, std::memory_order_release)` を立てる
 - flush 関数 (= §4) で `dirty.exchange(false, std::memory_order_acq_rel)` で true 時のみ upload 実行
 
-### §3.3 Material* per-draw cadence 統合 (= G1 確定の実装)
+### §3.3 Material* per-draw cadence 統合 (= MC1 (= 旧 G1) 確定の実装)
 
-#### §3.3.1 chapter 01 §5 #12 / chapter 05 §6 G1 の再掲
+#### §3.3.1 chapter 01 §5 #12 / chapter 05 §6 MC1 (= 旧 G1) の再掲
 
 - per-material cadence は **per-draw + dirty flag に統合** = 独立軸として保持しない
 - `Material*` UBO は per-draw cadence で扱い、material 切替を per-draw dirty flag で吸収
@@ -199,7 +199,7 @@ struct UboInstance {
 #### §3.3.3 命名と cadence の独立性 (= chapter 02 §2.2 / chapter 03 §2.2 の再確認)
 
 - `Material*` prefix (= 命名) は **既存命名温存** (= upstream 取込互換、原則 1)
-- cadence 軸 = per-draw (= G1)
+- cadence 軸 = per-draw (= MC1、= 旧 G1)
 - → cadence 表 (chapter 03 §2) は 5 分類で確定、`Material*` は per-draw 行の `Draw_*` と並列 prefix として共存
 
 ### §3.4 dirty 判定粒度の論点 (= K)
@@ -407,7 +407,7 @@ per-draw cadence は数百〜数千 / frame の upload が走るため、physica
 | chapter | 本 chapter からの入力 | 本 chapter への出力 |
 |---|---|---|
 | **04** (codegen-ubo) | `UniformLocation` struct / `CadenceTag` enum / perfect hash table / `<BlockName>Layout` struct | (なし、本 chapter は受け側) |
-| **05** (existing-inventory-link) | G1 per-material → per-draw + dirty 確定 (§6) / bare uniform 集約フロー | per-draw cadence dirty 実装で `Material*` 統合の具体形 (= §3.3) |
+| **05** (existing-inventory-link) | MC1 (= 旧 G1) per-material → per-draw + dirty 確定 (§6) / bare uniform 集約フロー | per-draw cadence dirty 実装で `Material*` 統合の具体形 (= §3.3) |
 | **06a** (cache-structure-and-setter-redirect) | `mUniformUBOLoc[index]` cache / `mUniformUBOLocByHash` / `forwardToUboUpload(loc, data, size)` 呼出位置 / `mUseUBO` flag 配置 | `forwardToUboUpload` interface 本体実装 (§5) / cadence 別 routing / dirty 機構の二段階 dedup 構造 (§3.2) |
 | **06c** (descriptor-set-bind-wiring) | (本 chapter は提供側) | flush 後の descriptor set bind タイミング契約 (= §4.1 flush 駆動関数 直後に bind が走る前提) / dynamic offset (L2) の bind 側責務 |
 

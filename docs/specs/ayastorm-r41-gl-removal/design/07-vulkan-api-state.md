@@ -5,7 +5,7 @@
 **pre-requisite**:
 - `01-overview.md` §2 (2 大設計原則) / §3 (用語) / §5 (確定事項 13 件)
 - `04-codegen-ubo.md` §5 (`ubo_metadata.inl` で block_name → (size, set, binding))
-- `05-existing-inventory-link.md` §4 E3 (= 79 個独立保持)
+- `05-existing-inventory-link.md` §4 E3 (= 80 個独立保持)
 - `06a-cache-structure-and-setter-redirect.md` §3 (cache 構造) / §5.6 (sampler は OpenGL path 強制 + Vulkan path descriptor set 経由)
 - `06b-cadence-update-site-and-dirty.md` §4 (flush 関数 5 種) / §4.3 (triple-buffering U1=3) / §5.3 (L1+L2)
 - `06c-descriptor-set-bind-wiring.md` §2 (set 4 帯配置) / §3 (UB_\* ↔ 84 接合表) / §7 (set=0 rotate 方式 A) / §8 (sampler bridge) / §10 ((V1)(V3)(S3) 持越)
@@ -44,7 +44,7 @@
 |---|---|
 | `04-codegen-ubo.md` §5.1 `ubo_metadata.inl` (block_name → (size, set, binding)) | §4 set=1 layout 構築、§6 pool 容量算定 |
 | `04-codegen-ubo.md` §5.3 `UniformLocation` (= `block_hash` で物理 UBO 識別) | §7 dynamic offset の loc → block_hash 解決 |
-| `05-existing-inventory-link.md` §4 E3 (= 79 個独立保持) | §4 set=1 layout binding 数確定 (79) |
+| `05-existing-inventory-link.md` §4 E3 (= 80 個独立保持) | §4 set=1 layout binding 数確定 (80) |
 | `06a-cache-structure-and-setter-redirect.md` §5.6 sampler 強制 OpenGL path | §5 sampler 配置決定の入力 |
 | `06b-cadence-update-site-and-dirty.md` §4.1 flush 関数 5 種 | §6 cadence 別 pool 容量算定 |
 | `06b-cadence-update-site-and-dirty.md` §4.3 triple-buffering (U1=3) | §8 実装方式、set=0 既存 + 他 cadence 波及判定 |
@@ -94,7 +94,7 @@
 | `memoryBudgetSupported` | extension 検出 | VMA budget log 用、本設計で温存 |
 
 **追加すべき field** (= 本設計で query 必要):
-- `maxDescriptorSetUniformBuffers` (Vulkan 1.3 最小 72) — §3.1 / §4 set=1 79 binding 評価で必須
+- `maxDescriptorSetUniformBuffers` (Vulkan 1.3 最小 72) — §3.1 / §4 set=1 80 binding 評価で必須
 - `maxDescriptorSetUniformBuffersDynamic` (Vulkan 1.3 最小 8) — §7 dynamic offset 上限
 - `maxPerStageDescriptorUniformBuffers` (Vulkan 1.3 最小 12) — §4 stage 単位上限
 - `minUniformBufferOffsetAlignment` (Vulkan 1.3 最大 256) — §7 ring buffer offset alignment
@@ -116,7 +116,7 @@
 - `llvkloader.cpp:120` = `sPerFrameDescriptorSetLayout` (set=0 帯、2 binding `PerFrameMatrixUBO` + `TextureMatrixUBO`)
 - `llvkloader.cpp:87` = `sAvatarBoneDescriptorSetLayout` (set=2 帯、avatar bone SSBO)
 - `llvkloader.cpp:2557-2576` = `createStandardPipelineLayout()` helper (`vkCreatePipelineLayout`)
-- = **placeholder 3 set 配線は既に成立**、本設計の per-program 79 binding / per-draw 4 binding / per-asset+per-skin owner instance への拡張は **§4 / §6 で新規確定**
+- = **placeholder 3 set 配線は既に成立**、本設計の per-program 80 binding / per-draw 4 binding / per-asset+per-skin owner instance への拡張は **§4 / §6 で新規確定**
 
 ### §2.6 sampler
 
@@ -131,7 +131,7 @@
 - `llvkloader.cpp:129` = `sFrameIndex` (= frame counter)
 - `llvkloader.cpp:2448` = `sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT` (= frame rotate)
 - `llvkloader.cpp:2620-2645` = `writeCurrentPerFrameMatrixUBO` / `writeCurrentTextureMatrixUBO` (= rotate buffer への memcpy)
-- = **set=0 帯の 3 set rotate (= 06c §7.2 方式 A) は既存配線で成立**、本 chapter §8 は他 cadence への波及判定 + 本設計 84 UBO 全体への適用
+- = **set=0 帯の 3 set rotate (= 06c §7.2 方式 A) は既存配線で成立**、本 chapter §8 は他 cadence への波及判定 + 本設計 85 UBO 全体への適用
 
 ### §2.8 SPIR-V module / dynamic rendering / vertex buffer 並走
 
@@ -161,29 +161,29 @@ struct DeviceLimits {
 
 = `queryAndLogDeviceLimits()` (`llvkloader.cpp:386`) で `VkPhysicalDeviceLimits` から追加 copy + LL_INFOS 出力。
 
-### §3.2 (V1) set=1 79 binding 評価
+### §3.2 (V1) set=1 80 binding 評価
 
-| device 想定 | `maxDescriptorSetUniformBuffers` | set=1 79 binding 可否 |
+| device 想定 | `maxDescriptorSetUniformBuffers` | set=1 80 binding 可否 |
 |---|---|---|
-| Vulkan 1.3 spec 最小 | 72 | **NG (= 7 不足)** |
+| Vulkan 1.3 spec 最小 | 72 | **NG (= 8 不足)** |
 | AMD RDNA2/3 driver | 1.5M (= 実質無制限) | OK |
 | NVIDIA Ampere/Ada | 1M+ | OK |
 | Intel Iris Xe (1.3) | 256+ | OK |
 
-**spec 最小 72 で 79 不足** = device 検知時の対応:
+**spec 最小 72 で 80 不足** = device 検知時の対応:
 
 | 案 | 内容 | 評価 |
 |---|---|---|
-| V1' | set=1 を 2 帯に split (= set=1a + set=1b、Codegen で 40/39 振分け) | **Claude 推奨 default、§4.3 で確定** |
-| V1'' | 79 binding 強制、device 検知時に **起動 abort + 説明 dialog** | 起動性損失大、不採用 |
-| V1''' | 79 binding 強制、device 検知時に **OpenGL fallback** | OpenGL 撤廃 (r41 章 thesis) と矛盾、不採用 |
+| V1' | set=1 を 2 帯に split (= set=1a + set=1b、Codegen で 40/40 振分け) | **Claude 推奨 default、§4.3 で確定** |
+| V1'' | 80 binding 強制、device 検知時に **起動 abort + 説明 dialog** | 起動性損失大、不採用 |
+| V1''' | 80 binding 強制、device 検知時に **OpenGL fallback** | OpenGL 撤廃 (r41 章 thesis) と矛盾、不採用 |
 
 **V1' 採用根拠**:
-- Vulkan 1.3 spec 最小 72 ≥ 39 = **半分 split で全 device 必ず 1 set 適合**
+- Vulkan 1.3 spec 最小 72 ≥ 40 = **半分 split で全 device 必ず 1 set 適合**
 - PSO layout は set=1a + set=1b の 2 帯固定 = shader compile 時に確定 (= runtime split 不要)
-- 79 個の Program\_\* UBO は **どの program でも同一 layout 参照** (= chapter 02 §3 rename 後、UB_\* enum 不変) のため、80/20 のような不均等 split は不要、Codegen 時 名前順 sort で 40/39 自動振分け可能
+- 80 個の Program\_\* UBO は **どの program でも同一 layout 参照** (= chapter 02 §3 rename 後、UB_\* enum 不変) のため、60/20 のような不均等 split は不要、Codegen 時 名前順 sort で 40/40 自動振分け可能
 
-**実装**: `ubo_metadata.inl` 出力時 (= chapter 04 §5.1) に set=1 帯の binding 数 = 79 を **2 帯に automatic split** + set 番号 1 → 1+2 へ shift (= set=2 が以降 set=3 へ shift)。chapter 06c §2 表は本 chapter §3.2 確定後、**set 帯総数 4 → 5 へ拡張案** に reflect。
+**実装**: `ubo_metadata.inl` 出力時 (= chapter 04 §5.1) に set=1 帯の binding 数 = 80 を **2 帯に automatic split** + set 番号 1 → 1+2 へ shift (= set=2 が以降 set=3 へ shift)。chapter 06c §2 表は本 chapter §3.2 確定後、**set 帯総数 4 → 5 へ拡張案** に reflect。
 
 ### §3.3 (V1) Phase 0 計測項目
 
@@ -191,7 +191,7 @@ struct DeviceLimits {
 
 | 項目 | LL_INFOS 出力例 |
 |---|---|
-| `maxDescriptorSetUniformBuffers` | "Device limit: maxDescriptorSetUniformBuffers=1535000 (set=1 79 binding OK / NG 判定)" |
+| `maxDescriptorSetUniformBuffers` | "Device limit: maxDescriptorSetUniformBuffers=1535000 (set=1 80 binding OK / NG 判定)" |
 | `maxDescriptorSetUniformBuffersDynamic` | "Device limit: maxDescriptorSetUniformBuffersDynamic=8 (set=2 dynamic offset 上限)" |
 | `maxPerStageDescriptorUniformBuffers` | "Device limit: maxPerStageDescriptorUniformBuffers=12 (stage 単位 = 1 stage で 12 UBO bind 可)" |
 
@@ -205,7 +205,7 @@ AYA 実機 (= AYAstorm 3 OS = Linux/Win/Mac) で OK 確認後、(V1') split を 
 
 | # | 方式 | layout | PSO compatibility | dummy 占有 |
 |---|---|---|---|---|
-| V3a | 全 program 共通 79 binding | 1 set layout | **最大 (= shader 単位 layout 同一)** | 各 program 未使用 binding は dummy buffer 参照 |
+| V3a | 全 program 共通 80 binding | 1 set layout | **最大 (= shader 単位 layout 同一)** | 各 program 未使用 binding は dummy buffer 参照 |
 | V3b | program 別 layout (= 必要 binding のみ) | program 数 layout | program 切替で pipeline layout 再 compile (= cache miss 増) | dummy なし |
 
 ### §4.2 V3a 採用根拠 (= **本 chapter §4 確定**)
@@ -213,7 +213,7 @@ AYA 実機 (= AYAstorm 3 OS = Linux/Win/Mac) で OK 確認後、(V1') split を 
 1. **PSO compatibility 最大**: PSO は `(pipeline_layout, render_pass)` キーで cache。layout 1 種 = shader 数 × 1 = cache hit 率最大、layout N 種 = cache miss × N = compile cost N 倍
 2. **shader bind cost 最小**: `vkCmdBindDescriptorSets` は **layout が同一なら descriptor set 切替のみ** (= driver internal cost 最小)。layout 異なれば re-validate 必要
 3. **dummy buffer cost 微小**: 未使用 binding に dummy `VkBuffer` を bind するのは memory + bind table の 1 pointer のみ、**実 upload は走らない** (= GPU read も走らない、shader 中で参照されない binding は driver が optimize out)
-4. **Codegen 静的生成と整合**: `ubo_metadata.inl` で 79 binding 固定出力 = compile-time layout 確定、runtime 動的 layout 構築不要
+4. **Codegen 静的生成と整合**: `ubo_metadata.inl` で 80 binding 固定出力 = compile-time layout 確定、runtime 動的 layout 構築不要
 
 = **V3a 採用、§4.3 で実装仕様確定**。
 
@@ -331,9 +331,9 @@ shader 数 × 3 frame × 2 (1a/1b) = 1200 set は **過剰**。実際は:
 **(b) 採用**:
 - pool sizing 大幅縮減 (1200 → 6 set)
 - 引換に shader bind 時に `vkUpdateDescriptorSets` が走る (= program 切替毎の cost 増)
-- frame 内 program 切替 ≈ 100 回想定 → cost 計算: 100 × 79 binding × 1 frame = **8K update / frame** = driver internal で OK (= AMD/NVIDIA spec で 数万 update / frame 想定範囲)
+- frame 内 program 切替 ≈ 100 回想定 → cost 計算: 100 × 80 binding × 1 frame = **8K update / frame** = driver internal で OK (= AMD/NVIDIA spec で 数万 update / frame 想定範囲)
 
-= (b) で **`sProgramUboPool` maxSets=6 / pool size = 79 × 6 = 474 UBO descriptor**。
+= (b) で **`sProgramUboPool` maxSets=6 / pool size = 80 × 6 = 480 UBO descriptor**。
 
 ### §6.3 確定 pool 容量
 
@@ -555,7 +555,7 @@ reflection update 1 回ごとに LL_DEBUGS 出力 (= 起動 1 分間に 100 回�
 
 | # | 項目 | 解消先 | default 採用済 (= 本 chapter 採用済) |
 |---|---|---|---|
-| (V1') | set=1 79 binding → 40/39 split 採用 | **chapter 10 / AYA 判断** | **本 chapter §3.2 採用済 = split (40/39) で配線、device limit 不足時の追加 split を含む** |
+| (V1') | set=1 80 binding → 40/40 split 採用 | **chapter 10 / AYA 判断** | **本 chapter §3.2 採用済 = split (40/40) で配線、device limit 不足時の追加 split を含む** |
 | (V3') | 全 program 共通 layout (V3a) vs program 別 (V3b) | **chapter 10 / AYA 判断** | **本 chapter §4.2 採用済 = V3a (全 program 共通 layout)** |
 | (S3') | sampler 49 set=3 per-asset 同居 vs 別案 | **chapter 10 / AYA 判断** | **本 chapter §5.2 採用済 = S3' (set=3 per-asset+per-skin+sampler 49 同居)** |
 | (W) | `sProgramUboPool` maxSets = 6 (active × 3 × 2) vs 1200 (shader 数 × 3 × 2) | **chapter 10 / AYA 判断** | **本 chapter §6.2 採用済 = maxSets=6 (active × 3 frame × 2 set 帯)** |
@@ -580,4 +580,4 @@ reflection update 1 回ごとに LL_DEBUGS 出力 (= 起動 1 分間に 100 回�
 
 ---
 
-**= 本 chapter で現状 Vulkan API 実装棚卸し + device limit query 拡張 + set=1 layout 方式 (V3a 全共通) + set=1 79 → 40/39 split (V1') + sampler 49 set=3 per-asset 同居 (S3') + descriptor pool 4 cadence split + 容量算定 + dynamic offset ring buffer 4 MB + triple-buffering 5 cadence 全適用 + 共通 PSO layout + reflection fence sync が確定したため、chapter 06 確定の redirect 層 / cadence / dirty / set 配置 を実 Vulkan API call レベルで満たすための実装仕様を確定 state に到達。chapter 08 (build-codegen-pipeline) で Codegen 側 build 統合 + `ubo_metadata.inl` 出力契約に進める**。
+**= 本 chapter で現状 Vulkan API 実装棚卸し + device limit query 拡張 + set=1 layout 方式 (V3a 全共通) + set=1 80 → 40/40 split (V1') + sampler 49 set=3 per-asset 同居 (S3') + descriptor pool 4 cadence split + 容量算定 + dynamic offset ring buffer 4 MB + triple-buffering 5 cadence 全適用 + 共通 PSO layout + reflection fence sync が確定したため、chapter 06 確定の redirect 層 / cadence / dirty / set 配置 を実 Vulkan API call レベルで満たすための実装仕様を確定 state に到達。chapter 08 (build-codegen-pipeline) で Codegen 側 build 統合 + `ubo_metadata.inl` 出力契約に進める**。

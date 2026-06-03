@@ -38,7 +38,7 @@ GLSL 中で `layout(set=N, binding=M) uniform <BlockName> { ... }` の `<BlockNa
 | per-frame | `Frame` | `FrameViewProj` / `FrameLights` / `FrameAtmosphere` | 既存命名を踏襲 |
 | per-program | `Program_` | `Program_GammaCorrect` / `Program_AlphaParams` | `PerProgramUBO_` → `Program_` に短縮 |
 | per-draw | `Draw_` | `Draw_LightParams` / `Draw_MultiLight` | `PerDrawUBO_` → `Draw_` に短縮 |
-| per-draw (material dirty flag、chapter 05 §6 G1 確定) | `Material` | `MaterialUBO` (既存) → `MaterialPBR` / `MaterialLegacyBlinn` 等に細分検討 | 既存命名を踏襲 (cadence と命名は独立軸、§3.2.2) |
+| per-draw (material dirty flag、chapter 05 §6 MC1 確定、= 旧 G1) | `Material` | `MaterialUBO` (既存) → `MaterialPBR` / `MaterialLegacyBlinn` 等に細分検討 | 既存命名を踏襲 (cadence と命名は独立軸、§3.2.2) |
 | per-asset (GLTF) | `Asset_` | `Asset_GLTFNodes` / `Asset_GLTFMaterials` | 新規 |
 | per-skin (GLTF rigged) | `Skin_` | `Skin_GLTFJoints` | 新規 |
 | singleton (manager 等) | `Global_` | `Global_ReflectionProbes` | 新規 |
@@ -114,9 +114,9 @@ build-time pre-process で生成される識別子の命名。
 
 ---
 
-## §3 既存 84 UBO blueprint の rename 表 (= 移行 mapping)
+## §3 既存 85 UBO blueprint の rename 表 (= 移行 mapping)
 
-inventory §3 の現状 84 個に対する命名規則適用後の最終名。**Codegen-UBO 完成時点での到達名**。
+inventory §3 の現状 85 個に対する命名規則適用後の最終名。**Codegen-UBO 完成時点での到達名**。
 
 ### §3.1 set=0 帯 (3 個 → 全て温存)
 

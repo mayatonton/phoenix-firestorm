@@ -1,12 +1,12 @@
 # r41 UBO 全体設計 Chapter 05: 既存 inventory link + bare uniform 集約対応表
 
 **起案日**: 2026-06-03
-**位置付け**: inventory (= `ayastorm-r41-ubo-current-state-inventory.md`) の **既存 84 UBO blueprint** と **OpenGL path bare uniform 群** を、chapter 02 命名規則 + chapter 03 cadence 軸で再配置する **意味論判断 doc**。chapter 04 Codegen の **入力 UBO 集合を決定** し、chapter 06 redirect 層の **集約 mapping 表** を提供する。
+**位置付け**: inventory (= `ayastorm-r41-ubo-current-state-inventory.md`) の **既存 85 UBO blueprint** と **OpenGL path bare uniform 群** を、chapter 02 命名規則 + chapter 03 cadence 軸で再配置する **意味論判断 doc**。chapter 04 Codegen の **入力 UBO 集合を決定** し、chapter 06 redirect 層の **集約 mapping 表** を提供する。
 **pre-requisite**:
-- `ayastorm-r41-ubo-current-state-inventory.md` (現状 84 UBO + bare uniform dispatcher 棚卸し)
+- `ayastorm-r41-ubo-current-state-inventory.md` (現状 85 UBO + bare uniform dispatcher 棚卸し)
 - `01-overview.md` §3 (用語) / §5 (確定済事項 9-11)
 - `02-naming-convention.md` (命名 + rename 表)
-- `03-cadence-classification.md` (cadence 5 分類、= 旧 6 分類から per-material を per-draw + dirty flag 統合 = 本 chapter §6 G1 確定)
+- `03-cadence-classification.md` (cadence 5 分類、= 旧 6 分類から per-material を per-draw + dirty flag 統合 = 本 chapter §6 MC1 確定、= 旧 G1)
 - `04-codegen-ubo.md` (Codegen 入力契約)
 
 ---
@@ -15,8 +15,8 @@
 
 ### §1.1 scope (= 本 chapter で確定するもの)
 
-1. 既存 **84 UBO blueprint の cadence 別 mapping** (chapter 02 rename + chapter 03 cadence 適用後の最終配置)
-2. **set=2 (25 個) vs set=3 (`_Legacy` 54 個) の役割重複統廃合方針** (= inventory 持越 item B)
+1. 既存 **85 UBO blueprint の cadence 別 mapping** (chapter 02 rename + chapter 03 cadence 適用後の最終配置)
+2. **set=2 (26 個) vs set=3 (`_Legacy` 54 個) の役割重複統廃合方針** (= inventory 持越 item B、Q22-NUM 解消 A' 反映で 25→26)
 3. **`MaterialUBO` vs `MaterialUBO_Legacy` の処遇** (= inventory §7 課題 #5、持越 C)
 4. **per-material cadence の最終判定** (= per-draw 統合 / 独立保持、持越 MC = ex 持越 G、ID rename = chapter 04 §10 (G) perfect hash generator との別概念衝突回避、2026-06-03 査読 §5.6)
 5. **bare uniform → UBO 集約対応表の書式 / owner / フロー** (= 持越 H)
@@ -24,7 +24,7 @@
 
 ### §1.2 非 scope (= 他 chapter / 他 phase 譲り)
 
-- 全 84 UBO × N bare uniform の **完全網羅 mapping**: live 表として migration 進行で順次確定 (= chapter 09 Phase ごと)
+- 全 85 UBO × N bare uniform の **完全網羅 mapping**: live 表として migration 進行で順次確定 (= chapter 09 Phase ごと)
 - GLSL に **UBO ブロック宣言を追加する diff** 本体: chapter 09 Phase ごとに発生する作業
 - Codegen build-time 詳細 → chapter 04 / chapter 08
 - runtime redirect 実装詳細 → chapter 06
@@ -35,17 +35,17 @@
 
 | 入力 source | 本 chapter での用途 |
 |---|---|
-| inventory §1 (OpenGL 実働 UBO 4 種) | §3 で「実働 4 × blueprint 84 = 統合後 N」の母集合 |
+| inventory §1 (OpenGL 実働 UBO 4 種) | §3 で「実働 4 × blueprint 85 = 統合後 N」の母集合 |
 | inventory §2 (bare uniform dispatcher) | §7 集約表の入力源 |
-| inventory §3 (84 GLSL blueprint) | §3 cadence 別 mapping の対象 |
+| inventory §3 (85 GLSL blueprint) | §3 cadence 別 mapping の対象 |
 | inventory §4.3 (host redirect 16 method) | §7 集約表が指す setter family |
 | chapter 02 §3 rename 表 | §3 で新名適用 |
-| chapter 03 §2 cadence 5 分類 (= 旧 6 分類から per-material → per-draw + dirty flag 統合済、本 chapter §6 G1) | §3 各 UBO の cadence 判定 |
+| chapter 03 §2 cadence 5 分類 (= 旧 6 分類から per-material → per-draw + dirty flag 統合済、本 chapter §6 MC1、= 旧 G1) | §3 各 UBO の cadence 判定 |
 | chapter 04 §7.3 集約フロー | §7.4 で本 chapter 出力を Codegen に渡す |
 
 ---
 
-## §3 既存 84 UBO blueprint の cadence 別 mapping
+## §3 既存 85 UBO blueprint の cadence 別 mapping
 
 ### §3.1 set=0 帯 (3 個): 全て per-frame、命名一致、Codegen 入力にそのまま投入
 
@@ -64,7 +64,7 @@
 | `MaterialUBO` | `MaterialUBO` (暫定温存) | per-material | §5 で program 単位の attach 排他確認後、最終名確定 |
 | `MaterialUBO_Legacy` | `MaterialLegacyBlinn` (案) | per-material | 同上、§5 で member 比較後、統合 / 別名分離 / 廃止を決定 |
 
-### §3.3 set=2 帯 (25 個): per-program 23 + per-draw 2、chapter 02 §3.3 機械的 rename
+### §3.3 set=2 帯 (26 個): per-program 24 + per-draw 2、chapter 02 §3.3 機械的 rename
 
 cadence 分類:
 
@@ -72,11 +72,11 @@ cadence 分類:
 |---|---|---|
 | 0 | `Draw_LightParams` | per-draw |
 | 1 | `Draw_MultiLight` | per-draw |
-| 2-25 | `Program_<X>` (= 23 個) | per-program |
+| 2-25 | `Program_<X>` (= 24 個) | per-program |
 
 **所見**:
 - per-draw 2 個 (`LightParams` / `MultiLight`) は inventory §3.3 確認済、`Draw_*` rename
-- per-program 23 個は chapter 02 §3.3 rename 表に従い `PerProgramUBO_<X>` → `Program_<X>` に変換
+- per-program 24 個は chapter 02 §3.3 rename 表に従い `PerProgramUBO_<X>` → `Program_<X>` に変換
 - Codegen 入力に rename 適用後そのまま投入、cadence 別 update site は chapter 06
 
 **`inventory §3.3.1` の同一 binding 複数 UBO 名疑い** (= `PerDrawUBO_ClipPlane` / `SkinnedVelocity` / `AvatarVelocity` / `AvatarSkin` / `ObjectSkin` 等):
@@ -95,15 +95,15 @@ cadence 上は set=2 帯 `Program_*` と同一 (= per-program)。命名規約の
 
 ### §4.1 論点
 
-inventory §6.3 で指摘: 「set=2 (新規 25 個) と set=3 (`_Legacy` 54 個) は **役割重複**、両者とも per-program 寿命」。**どちらかに統合すべき** が、統合の **粒度** が未定義。
+inventory §6.3 で指摘: 「set=2 (新規 26 個) と set=3 (`_Legacy` 54 個) は **役割重複**、両者とも per-program 寿命」。**どちらかに統合すべき** が、統合の **粒度** が未定義。
 
 ### §4.2 選択肢
 
 | # | 案 | 影響 |
 |---|---|---|
-| E1 | **全件統合** = set=2 + set=3 を全部 program 単位 1 UBO に集約 (= 79 個 → ~25 個程度に集約) | shader 改変規模大、原則 1 (upstream 取込) 影響大、descriptor set rebind 数減 |
+| E1 | **全件統合** = set=2 + set=3 を全部 program 単位 1 UBO に集約 (= 80 個 → ~26 個程度に集約) | shader 改変規模大、原則 1 (upstream 取込) 影響大、descriptor set rebind 数減 |
 | E2 | **統合候補のみ統合** = chapter 02 §3.4 判定基準 3 つで個別判定 | 個別判定の負担、移行進行中の継続判断 |
-| E3 | **rename だけ** = 命名規約違反 (`_Legacy`) を剥がし、UBO は独立保持 (= 79 個維持) | shader 改変最小、descriptor set rebind 数維持 (= 多い) |
+| E3 | **rename だけ** = 命名規約違反 (`_Legacy`) を剥がし、UBO は独立保持 (= 80 個維持) | shader 改変最小、descriptor set rebind 数維持 (= 多い) |
 
 ### §4.3 採用案 = **E3 (rename だけ)** + cadence prefix 統一 (= 2026-06-03 AYA 確認)
 
@@ -118,7 +118,7 @@ inventory §6.3 で指摘: 「set=2 (新規 25 個) と set=3 (`_Legacy` 54 個)
 
 - 54 個全件: `<Name>UBO_Legacy` → `Program_<Name>` (= chapter 02 §3.4 機械的 rename、表は §4.4 にも一部記載)
 - binding 番号は temporary に既存値温存、最終 descriptor set 設計時 (chapter 07) で再割当検討
-- chapter 04 Codegen 入力に **79 個全件** (= set=2 帯 25 + set=3 帯 54) を投入、`<BlockName>Layout` 79 構造体生成
+- chapter 04 Codegen 入力に **80 個全件** (= set=2 帯 26 + set=3 帯 54) を投入、`<BlockName>Layout` 80 構造体生成
 
 ### §4.4 統合判定の再評価持越 (= chapter 09 後半 / chapter 10)
 
@@ -193,7 +193,7 @@ chapter 03 §2 で「per-material = per-draw cadence の特化 (material が同�
 
 | update 先 | 内容 |
 |---|---|
-| chapter 03 §2 cadence 表 | per-material 行を削除 → **5 分類** に修正、注を G1 確定に書き換え |
+| chapter 03 §2 cadence 表 | per-material 行を削除 → **5 分類** に修正、注を MC1 確定 (= 旧 G1) に書き換え |
 | chapter 03 §4.3 per-draw cadence 表 | dirty 判定行に「material 切替は本 cadence の dirty flag で吸収 (= 既存 `mValue` cache 機構を継承)」を追記 |
 | chapter 02 §2.1 命名規則表 | per-material 行は **prefix `Material` 用途として温存**、cadence 列を「per-draw (material dirty flag、chapter 05 §6 確定)」に変更 |
 | chapter 01 §5 確定済事項表 | #12 として追加 |
@@ -346,4 +346,4 @@ chapter 04 (Codegen) は GLSL 不改変 (= 判断 A)。一方 **chapter 05 は�
 
 ---
 
-**= 本 chapter で既存 84 UBO blueprint の最終配置と bare uniform 集約フローが確定したため、chapter 06 で redirect 層 (= name → offset 解決後の UBO memcpy 実装) に進める**。
+**= 本 chapter で既存 85 UBO blueprint の最終配置と bare uniform 集約フローが確定したため、chapter 06 で redirect 層 (= name → offset 解決後の UBO memcpy 実装) に進める**。

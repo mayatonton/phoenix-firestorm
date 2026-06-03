@@ -185,17 +185,23 @@ Phase 2d-α verify 2 周完了 + Phase 2d-α 起因 5 root 全消化 + 5 program
 
 合計 = 85 + 92 + 68 + 45 + 12 + 16 = **318** (= 06a §0.2 unique uniform 261 + 重複検出 + 16 不明、最終確定は Phase 0 完了後)。
 
-### §4.3 軸 3: 既存 UBO 一覧 (= inventory §3 baseline、84 個総数 = Q22-NUM 解消方針依存)
+**cadence 5 分類の根拠 (= MC1 採用確定 / MC2 不採用、2026-06-03 AYA 確認)**: 本表 cadence 5 分類 (= per-frame / per-program / per-draw / per-asset / per-skin) は **chapter 05 §6.3 で MC1 (= 旧 G1) 採用確定** = per-material cadence を独立軸として持たず per-draw + dirty flag に統合した結果。**MC2 (= 旧 G2 = per-material 独立 cadence) は採用未済選択肢として chapter 05 §6.2 に並記** = 不採用理由は (i) cadence 軸 6 分類化の保守 cost、(ii) 既存 `mValue` cache が dirty flag と意味論同値 (= 05 §6.3 §2 解消理由)、(iii) MC2 採用は material 切替検知 hook 新規建設 = 原則 1 (call site 温存) 抵触 (= 05 §6.3 §3)。本 prep / 本 phase 以降の cookbook 反映 / Phase 0 計測 spec は全て **MC1 採用済 5 分類前提**、MC2 復活時は本 §4.2 cadence 表 + 06a-prep §2.x cookbook 全件 6 分類化が必要。
 
-| set | UBO 数 (現行 source of truth、Q22-NUM 依存) |
+### §4.3 軸 3: 既存 UBO 一覧 (= inventory §3 baseline、85 個総数 = Q22-NUM (A') 反映済 2026-06-03)
+
+| set | UBO 数 (現行 source of truth = Q22-NUM (A') 反映済) |
 |---|---|
 | set=0 | 3 |
 | set=1 | 2 |
-| set=2 | 25 (= 01/05/inventory) or 26 (= 02) |
+| set=2 | 26 |
 | set=3 | 54 |
-| **総数** | **84** (= 01/05/inventory) or **85** (= 02 集計) |
+| **総数** | **85** |
 
-**第二次査読 §6.1.1 数値突合 agent 結果**: 4 種 UB_* / cadence 5 分類 / 79 binding (40/39 split) / 物理 instance 式 = ✓ 全 chapter 一貫 (= 本 phase で再 verify 不要)。Q22-NUM 解消方針追従のみ Deliverable B 影響範囲。
+**Q22-NUM (A') 反映完了 (2026-06-03)**: 旧表「25 (= 01/05/inventory) or 26 (= 02)」「84 or 85」状態は AYA 判断 (A') = literal 全 14+6 箇所 rewrite 全件波及で **85 確定済**。反映先 cross-ref = inventory §3.3.1 (3 箇所) / 06c §3/§4.1/§8/§10 (7 箇所) / 04 §5.3 (2 箇所) / 01 §4.2 (2 箇所) / 09 §5.1 (1 箇所) = 計 15+ 箇所 (= chapter 10 §1.6 (Q22-NUM) 行参照)。
+
+**第二次査読 §6.1.1 数値突合 agent 結果**: 4 種 UB_* / cadence 5 分類 / 79 binding (40/39 split) / 物理 instance 式 = ✓ 全 chapter 一貫 (= 本 phase で再 verify 不要)。Q22-NUM 解消方針 = Deliverable B 反映範囲には **既に解消済の 85 確定値が前提**、本 phase 着手時点では「85 確定」を unconditionally 採用 (= 「84 or 85」 ambiguous state は記録上保持されない)。
+
+**V1' split 数値の整合性 (= 79 vs 80 binding)**: 第二次査読 §6.1.1 agent 結果 = 「79 binding (40/39 split)」、chapter 07 §3.2 (V1') = 「80 binding (40/40 split)」 — 両者の差 1 binding は **(Q22-NUM) 解消過程で発生済の派生** (= set=2 25 → 26 で set=1 集約候補が 1 増えた可能性) = 詳細整合は chapter 07 §3.2 (V1') 表内 数値再 verify で消化、本 phase 着手前に再 verify 不要 (= chapter 07 §3.2 内で 80 確定形維持)。
 
 ### §4.4 (G') 既存 vulkanize C++ slot allocation bug 2 件 (= §2.3 Deliverable C 起点)
 
@@ -222,7 +228,7 @@ Phase 2d-α verify 2 周完了 + Phase 2d-α 起因 5 root 全消化 + 5 program
 ### §5.2 前提 2: 設計 chapter 群 修正推奨 20 件 反映完了 (= 第二次査読 §8.1 + 本 audit §3.1)
 
 - 第二次査読 §8.1: chapter 01-1 + 02-2 + 05-3 + 06a-4 + 09-5 + 10-2 + inventory-1 + handoff-1 = **18 件**
-- 本 audit §3.1: Ch05 §3.3 25→26 (= Q22-NUM 解消方針追従) + `FrameAtmosphere_Lighting` → `Frame_Atmosphere` rename = **2 件**
+- 本 audit §3.1: Ch05 §3.3 25→26 (= Q22-NUM 解消方針追従) + `FrameAtmosphere_Lighting` → `FrameAtmosphere` rename (= `_Lighting` suffix 削除、chapter 02 §3.1 既存案準拠 = Wave G 反映済 2026-06-03) = **2 件**
 - = **計 20 件**、main session で AYA 判断後実施 → 全件「反映済」マーク後本 phase 着手
 
 ### §5.3 main session vs 本 phase の関係

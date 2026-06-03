@@ -209,7 +209,7 @@ void LLGLSLShader::mapUniforms() {
 
 補助 cache 構築 step (= `mapUniforms()` Vulkan path 内の追加 step、§4.1 拡張部の後)。
 
-**⚠ 重要 (= 仮 code shape、本査読 2026-06-03 §3.4 致命傷候補解消)**: 下記 code shape の `LLStaticHashedString::getGlobalRegistry()` は **実装が存在しないことが確認済** (= chapter 06a-prep §2.2.1 但し書き)。本 code shape のまま実装 phase に進めばコンパイルエラー直行する。実装に当たっては §4.3.1 の代替案いずれかを採用、最終確定は (S1) を chapter 06b / Phase 0 で消化した後。
+**⚠ 重要 (= 仮 code shape、本査読 2026-06-03 §3.4 致命傷候補解消、2026-06-03 Q24-S1 (A) 反映で 2 軸分割)**: 下記 code shape の `LLStaticHashedString::getGlobalRegistry()` は **実装が存在しないことが確認済** (= chapter 06a-prep §2.2.2 但し書き、(S1-存在) 解消マーク)。本 code shape のまま実装 phase に進めばコンパイルエラー直行する。実装に当たっては §4.3.1 の代替案 S1-A/B/C/D いずれかを採用、最終確定は **(S1-代替)** を chapter 06b / Phase 0 で消化した後 (= AYA 判断仰ぎ事項、Q24-S1 として chapter 10 §1 登録予定)。
 
 ```cpp
 // ⚠ 仮 code shape: getGlobalRegistry() は実装無し、§4.3.1 代替案で書き換え必須
@@ -227,7 +227,7 @@ void LLGLSLShader::mapUniforms() {
 #endif
 ```
 
-#### §4.3.1 代替案 (= (S1) 消化候補、いずれかを chapter 06b / Phase 0 完了時に確定)
+#### §4.3.1 代替案 (= (S1-代替) 消化候補、いずれかを chapter 06b / Phase 0 完了時に確定)
 
 | 案 | 内容 | 利点 | 欠点 |
 |---|---|---|---|
@@ -236,12 +236,12 @@ void LLGLSLShader::mapUniforms() {
 | S1-C | LLStaticHashedString 経由 setter 67 個の名前を chapter 05 集約表確定時に build-time list 化 (= 静的配列 `g_static_hashed_uniform_names[]`)、shader link 時はその配列を iterate | runtime registry iterate 不要、build-time decidable | 67 個 list の保守責任が chapter 05 集約表に追加、追加忘れで silent skip |
 | S1-D | 補助 path (= `mUniformUBOLocByHash`) を **廃止**、LLStaticHashedString 経由 setter 67 個を全て chapter 05 集約表で `mReservedUniforms` 化 (= integer index 経路に統合) | path 分岐削減 (32 entry point → 16)、cache 構造単純化 | 67 個全て mReservedUniforms 増要、chapter 05 集約表 67 行追加、各 program で全 67 個が active uniform 化される負担 |
 
-**default 候補** (= chapter 06b / Phase 0 (S1) 消化時の起点): **S1-C** (= build-time list 化)。理由: (1) runtime registry iterate を回避できる確定性、(2) chapter 05 集約表との一体管理で saving は明示的、(3) LLStaticHashedString class 無侵襲。最終確定は chapter 06b 起案時 / Phase 0 (S1) で AYA 判断。
+**default 候補** (= chapter 06b / Phase 0 (S1-代替) 消化時の起点): **S1-C** (= build-time list 化)。理由: (1) runtime registry iterate を回避できる確定性、(2) chapter 05 集約表との一体管理で saving は明示的、(3) LLStaticHashedString class 無侵襲。最終確定は chapter 06b 起案時 / Phase 0 (S1-代替) で AYA 判断 (= Q24-S1)。
 
 注:
 - 67 個のうち UBO 化対象有無は **chapter 05 §7.3 集約表 (= 切出し後の `05a-bare-uniform-mapping.md`) で個別判定** (= 未確定 (R1)、§9 持越)
 - 集約しない uniform は `mUniformUBOLocByHash` に entry が無く、setter 内 `find()` で `end()` 返却 → OpenGL path fallback
-- 上記 §4.3 code shape は **設計意図の表現** であり、実コードは §4.3.1 代替案 + (S1) 消化結果で置換
+- 上記 §4.3 code shape は **設計意図の表現** であり、実コードは §4.3.1 代替案 + (S1-代替) 消化結果で置換
 
 ### §4.4 pre-cache フローの整合 check
 
@@ -256,10 +256,11 @@ shader link 完了後、debug build で以下を `llassert` 検証:
 
 ## §5 16 method setter family の Vulkan path 分岐
 
-### §5.1 16 method 一覧 (= inventory §4.3 再掲、line 番号は HEAD 時点)
+### §5.1 17 method 一覧 (= inventory §4.3 再掲、line 番号は HEAD 時点、2026-06-03 second-pass §2.4 反映で uniform1i 追加)
 
 | method | line | 引数 type |
 |---|---|---|
+| `uniform1i` | 2141 | (U32 index, GLint) — sampler binding setter として該当 (= UBO 化対象外、§5.6 sampler 経路) |
 | `uniform1f` | 2166 | (U32 index, GLfloat) |
 | `fastUniform1f` | 2192 | (U32 index, GLfloat) |
 | `uniform2f` | 2202 | (U32 index, GLfloat, GLfloat) |
@@ -286,7 +287,7 @@ void LLGLSLShader::uniform1f(U32 index, GLfloat x)
 {
     if (mProgramObject) {
         // 既存 mValue cache check (= 同値時 GL call 省略の既存 dedup、本 chapter では維持)
-        // 注: dirty 判定の本格的 UBO upload 側乗せ替えは 06b の §G1
+        // 注: dirty 判定の本格的 UBO upload 側乗せ替えは 06b §3.3 MC1 (= 旧 G1)
         auto it = mValue.find(index);
         if (it != mValue.end() && it->second == LLVector4(x, 0.f, 0.f, 0.f)) {
             return;
@@ -353,7 +354,7 @@ void LLGLSLShader::uniform1f(U32 index, GLfloat x)
 
 ### §5.5 integer index 経路 vs LLStaticHashedString 経路の分岐
 
-setter family 16 method × 2 系統 = **計 32 entry point** (= integer index 版 + LLStaticHashedString 版):
+setter family = **integer index 17 method + LLStaticHashedString 13 method = 計 30 entry point** (= integer index 版 + LLStaticHashedString 版、2026-06-03 second-pass §2.4 反映で uniform1i 追加 + LLStaticHashedString 経路実態 13 method 反映):
 
 | 系統 | lookup | 出口 |
 |---|---|---|
@@ -475,7 +476,8 @@ CMake `option(AYASTORM_UBO_CADENCE_HOOK ... OFF)` で gate。AYA Linux build で
 | (Q1) | `mUseUBO` flag の決定方法 (= shader 種別自動判定 vs runtime cvar 切替) | 06c (= chapter 07 接続) |
 | (Q2) | `forwardToUboUpload(loc, data, size)` interface 詳細 (= signature / ring buffer / thread / dirty) | 06b |
 | (R1) | LLStaticHashedString 67 個のうち UBO 化対象有無 (= 集約しないなら `mUniformUBOLocByHash` 空のまま) | 05a (= bare-uniform-mapping 切出し doc、別 session) |
-| (S1) | `LLStaticHashedString::getGlobalRegistry()` API 存在確認 (= 仮 API 名、実装無ければ chapter 06b 起案時に提案) | 06b 起案時 grep |
+| (S1-存在) | `LLStaticHashedString::getGlobalRegistry()` API 存在確認 = **不存在確認済** (= 06a-prep §2.2.2 grep 確認、解消マーク) | **解消済** (2026-06-03 Q24-S1 (A) 反映) |
+| (S1-代替) | §4.3.1 代替案 S1-A/B/C/D のいずれを採用するか = AYA 判断仰ぎ事項 (= Q24-S1) | 06b / Phase 0 + chapter 10 §1 |
 | (T1) | `glUniform4iv` setter が内部で `glUniform1iv` を呼んでいる bug 疑い (= inventory §4.3 line 2330) | 本 migration とは独立、別 bug fix |
 
 ---
@@ -485,7 +487,7 @@ CMake `option(AYASTORM_UBO_CADENCE_HOOK ... OFF)` で gate。AYA Linux build で
 - §3 cache 構造 / `mUniformUBOLoc` member 配置の変更は本 chapter に集約、06b / 06c が後追い参照
 - §5 path 分岐 pattern (= `#ifdef LL_VULKAN_GLSL` + `if (mUseUBO)` + `cadence_tag` check) の追加 / 修正は本 chapter で確定
 - §7 hook 配線位置の変更 / re-run 提案は本 chapter で update
-- §9 持越 ((H1b) / (Q1) / (Q2) / (R1) / (S1)) が他 chapter / Phase 0 で解消したら本 chapter から「保留候補」を剥がして reflect
+- §9 持越 ((H1b) / (Q1) / (Q2) / (R1) / (S1-存在) / (S1-代替)) が他 chapter / Phase 0 で解消したら本 chapter から「保留候補」を剥がして reflect ((S1-存在) は既に解消済、(S1-代替) は Q24-S1 AYA 判断仰ぎ未消化)
 - (T1) `uniform4iv` bug 疑いは本 migration scope 外、別軸 bug fix track で扱う
 
 ---

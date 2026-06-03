@@ -24,7 +24,7 @@
 
 - CMake / glslang / Codegen tool の **build system 統合** → chapter 08
 - runtime での値書込実装 (cadence 別 upload site / dirty 判定 / descriptor set bind) → chapter 06
-- 既存 84 UBO blueprint の **cadence 別 mapping** + bare uniform → UBO 集約対応表 → chapter 05
+- 既存 85 UBO blueprint の **cadence 別 mapping** + bare uniform → UBO 集約対応表 → chapter 05
 - Vulkan API 接続点 (vkQueueSubmit / descriptor set / VMA / volk dynamic loader 状況) → chapter 07
 
 ---
@@ -328,7 +328,7 @@ bare uniform (= `uniform vec4 color;` のような UBO ブロック外宣言) �
 
 #### §7.2.1 過渡期動作 (= chapter 09 Phase Exit Criteria 接続、2026-06-03 査読 §3.3)
 
-chapter 09 phase roadmap で「N UBO ずつ移行」する間、まだ chapter 05 集約表で UBO に取り込まれていない bare uniform は **Vulkan path 上で未 redirect** (= chapter 01 §1.2 の「84 blueprint が dead」と同型の過渡期状態)。
+chapter 09 phase roadmap で「N UBO ずつ移行」する間、まだ chapter 05 集約表で UBO に取り込まれていない bare uniform は **Vulkan path 上で未 redirect** (= chapter 01 §1.2 の「85 blueprint が dead」と同型の過渡期状態)。
 
 **chapter 09 Phase Exit Criteria 要求事項** (= 本 chapter から chapter 09 への入力契約):
 - 各 Phase で「未集約 bare uniform の Vulkan path 動作」を Exit Criteria に明示
@@ -363,7 +363,7 @@ chapter 05 で整備すべき表 (概念):
 
 | inventory § | 課題 | Codegen-UBO の対応 |
 |---|---|---|
-| §6.2 | 84 GLSL UBO blueprint が host C++ で値来ず dead | Codegen 生成 layout に redirect 層 (chapter 06) が値を流せば実体化、blueprint は **discard せず再利用** (chapter 01 §5 #5) |
+| §6.2 | 85 GLSL UBO blueprint が host C++ で値来ず dead | Codegen 生成 layout に redirect 層 (chapter 06) が値を流せば実体化、blueprint は **discard せず再利用** (chapter 01 §5 #5) |
 | §6.4 | `LLGLSLShader::uniform*fv()` 16 method に Vulkan path redirect 痕跡ゼロ | Codegen 生成 perfect hash を redirect 層が利用、setter 内で **path 分岐 1 箇所** で吸収可能に |
 | §6.5 | bare uniform → UBO 集約粒度未定義 | Codegen は粒度判断しない (= 判断 C)、chapter 05 集約表が決定権者、Codegen はその出力 UBO だけ処理 |
 
@@ -402,4 +402,4 @@ chapter 05 で整備すべき表 (概念):
 
 ---
 
-**= 本 chapter で Codegen-UBO の機構が確定したため、chapter 05 で既存 84 UBO blueprint の cadence 別 mapping + bare uniform → UBO 集約対応表の整備に進める**。
+**= 本 chapter で Codegen-UBO の機構が確定したため、chapter 05 で既存 85 UBO blueprint の cadence 別 mapping + bare uniform → UBO 集約対応表の整備に進める**。

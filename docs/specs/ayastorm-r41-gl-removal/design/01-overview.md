@@ -11,7 +11,7 @@
 η-24 から η-28 Phase 2c までの 5 sub-step 期間中、Vulkan parse error が出た program に対して **その program 単独の新規 UBO を切る** 操作を 26 回反復した。結果として `set=2 binding 0-25` の 26 個が積み上がったが、棚卸し (inventory) で次の構造欠陥が判明:
 
 1. **OpenGL 実働 UBO = 論理 binding 4 種 / 物理 instance 1+2N+M 個** (`UB_REFLECTION_PROBES` / `UB_GLTF_NODES` / `UB_GLTF_MATERIALS` / `UB_GLTF_JOINTS` の 4 種、scene 規模で動的)
-2. **GLSL Vulkan blueprint = 84 個** だが、**host C++ 側 redirect 層が完全欠落** → 値が UBO に入らない dead 状態
+2. **GLSL Vulkan blueprint = 85 個** だが、**host C++ 側 redirect 層が完全欠落** → 値が UBO に入らない dead 状態
 3. **bare uniform setter (16 method)** は GL 直呼びのまま、Vulkan path 分岐ゼロ
 
 = 「Vulkan parse が通った」≠「Vulkan 描画が成立する」。**Vulkan 描画を成立させるための再設計** が本 doc 群の目的。
@@ -70,7 +70,7 @@
 - shader 内 `layout(set=N, binding=M) uniform <Name> { ... }` で参照される binding point の **種類数**
 - host 側 `LLGLSLShader::UB_*` enum 値の数
 - 現状 OpenGL path = **4 種** (`UB_REFLECTION_PROBES` / `UB_GLTF_NODES` / `UB_GLTF_MATERIALS` / `UB_GLTF_JOINTS`)
-- 現状 GLSL Vulkan blueprint = **84 個** (set=0:3 / set=1:2 / set=2:25 / set=3:54)
+- 現状 GLSL Vulkan blueprint = **85 個** (set=0:3 / set=1:2 / set=2:26 / set=3:54)
 
 ### §3.4 physical buffer instance (= 物理 GL/VK buffer instance)
 
@@ -103,7 +103,7 @@ inventory §6.6 で確定したルール。設計議論の含意:
   - OpenGL = `glUniform4fv` で値投入可能
   - Vulkan = **opaque type (sampler 系) 以外は宣言禁止** = bare uniform → UBO 化が **構造的に不可避**
 - **UBO blueprint**: GLSL に `uniform <Name> { ... }` ブロックは宣言されているが、host C++ 側に bind 経路が無く、値が来ない状態
-  - 現状 84 個の Vulkan blueprint が全件これ
+  - 現状 85 個の Vulkan blueprint が全件これ
   - chapter 06 (redirect-layer-design) で実体化経路を設計
 
 ---
@@ -118,11 +118,11 @@ inventory §6.6 で確定したルール。設計議論の含意:
 | 02 | `02-naming-convention.md` | UBO 命名規則 / 接頭辞ルール / 互換性表記 | ✅ 起案済 |
 | 03 | `03-cadence-classification.md` | cadence 分類体系 + cadence source rule | ✅ 起案済 |
 | 04 | `04-codegen-ubo.md` | Codegen-UBO 全体機構 / pre-process pipeline | ✅ 起案済 |
-| 05 | `05-existing-inventory-link.md` | 既存 84 UBO blueprint の cadence 別 mapping + bare uniform 集約対応表 | ✅ 起案済 |
+| 05 | `05-existing-inventory-link.md` | 既存 85 UBO blueprint の cadence 別 mapping + bare uniform 集約対応表 | ✅ 起案済 |
 | 06a | `06a-cache-structure-and-setter-redirect.md` | mUniformUBOLoc cache 構造 + 16 method setter Vulkan path 分岐 | ✅ 起案済 |
 | 06a-prep | `06a-prep-phase0-measurement.md` | Phase 0 計測 spec (= (H1b) LL_INFOS hook / (E') binding 重複 grep / (F) MaterialUBO 比較 / 解析 spec)、実装 phase 入口の手順書 | ✅ 起案済 |
 | 06b | `06b-cadence-update-site-and-dirty.md` | cadence 別 update site + dirty flag + flush timing | ✅ 起案済 |
-| 06c | `06c-descriptor-set-bind-wiring.md` | descriptor set bind 配線 + UB_* binding 4 種 vs 84 blueprint 接合 | ✅ 起案済 |
+| 06c | `06c-descriptor-set-bind-wiring.md` | descriptor set bind 配線 + UB_* binding 4 種 vs 85 blueprint 接合 | ✅ 起案済 |
 | 07 | `07-vulkan-api-state.md` | 現状 Vulkan API 実装状況棚卸し + (V1)(V3)(S3) 解消 + pool 容量 / ring buffer / fence sync / 共通 PSO layout 確定 | ✅ 起案済 |
 | 08 | `08-build-codegen-pipeline.md` | build system 統合 (CMake / glslang / preprocess script) | ✅ 起案済 |
 | 09 | `09-phase-roadmap.md` | Phase 番号体系再編 + 1 UBO ずつ migration scope | ✅ 起案済 |
@@ -143,7 +143,7 @@ inventory §6.6 で確定したルール。設計議論の含意:
 | 2 | name-based call site API (`uniform4fv("color", ...)`) を温存 | 原則 1 | 06 |
 | 3 | cadence source = 既存 C++ 呼出 path のスケジュール (新規 viewer settings 追加禁止) | session 議論 | 03 |
 | 4 | per-frame cadence は既存 frame loop (60 FPS 設定) に sync | session 議論 | 03 |
-| 5 | 既存 84 GLSL UBO blueprint は **discard しない** (parse error 解消の蓄積を温存) | AYA 指示 | 05 |
+| 5 | 既存 85 GLSL UBO blueprint は **discard しない** (parse error 解消の蓄積を温存) | AYA 指示 | 05 |
 | 6 | storage lifetime は owner class lifetime に従う (新規判断不要) | session 議論 | 06 |
 | 7 | 設計判断は **論理 binding 軸 / 物理 instance 軸の両軸で評価** | inventory §6.6 | 全 chapter |
 | 8 | UBO migration は **1 UBO ずつ実装 → cold launch 検証 → 次へ** (大塊バッチ禁止) | feedback memory | 09 |

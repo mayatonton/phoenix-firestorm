@@ -118,7 +118,7 @@ OpenGL path で **frame ごとに値を流している主要 mechanism は UBO �
 - `set=1` は他に sampler (`diffuseMap` / `normalMap` / `specularMap` 等) が混在 (reference doc §6-C 参照)
 - host C++ 側 upload 経路 **未整備** (両者とも `glBindBufferBase` 未呼出)
 
-### §3.3 set=2 帯 (PerDrawUBO / PerProgramUBO、25 個)
+### §3.3 set=2 帯 (PerDrawUBO / PerProgramUBO、26 個)
 
 η-24 から η-28 Phase 2c まで積み上げた 26 個 (Phase 2d-α 適用後で `vec3 center` field が binding=10 に追加されたのみ、binding 数は不変):
 
@@ -347,7 +347,7 @@ GLSL の `#ifdef LL_VULKAN_GLSL` gate により、OpenGL path は §3 の UBO bl
 - 実態は **「parse error が消えただけで、Vulkan 描画は値無しで成立しない」**
 - = η-24 から η-28 Phase 2c の 26 sub-step は **「Vulkan parse は通るが描画は無効」** な状態を積んでいた
 
-### §6.3 set=2 (新規 25 個) と set=3 Legacy (~53 個) は **役割重複**
+### §6.3 set=2 (新規 26 個) と set=3 Legacy (~53 個) は **役割重複**
 
 - 両者とも per-program 寿命
 - 命名規約は違うが grouping 単位は同じ "program param"
@@ -370,7 +370,7 @@ GLSL の `#ifdef LL_VULKAN_GLSL` gate により、OpenGL path は §3 の UBO bl
 
 - **論理 binding 種類**: `LLGLSLShader::UB_*` enum 値の数 (= shader 内 `layout(binding=N)` で参照される binding point 数 = `glUniformBlockBinding` で program 内 block index と紐付ける論理 slot 数)
   - 現状 OpenGL path = **4 種** (REFLECTION_PROBES / GLTF_NODES / GLTF_MATERIALS / GLTF_JOINTS)
-  - GLSL Vulkan blueprint = **84 個** (set=0:3 / set=1:2 / set=2:25 / set=3:54) だが host enum 未登録のため OpenGL path には現れない
+  - GLSL Vulkan blueprint = **85 個** (set=0:3 / set=1:2 / set=2:26 / set=3:54) だが host enum 未登録のため OpenGL path には現れない
 - **物理 GL buffer instance**: 実際に `glGenBuffers` で生成された GL buffer object の数 (= memory footprint / upload 対象 / Core 分散単位)
   - 現状 OpenGL path = **1 (singleton) + 2N (per-Asset) + M (per-Skin) 個**、scene 規模で動的変動
   - 大規模 GLTF avatar sim では数十〜100 個オーダー
@@ -411,7 +411,7 @@ GLSL の `#ifdef LL_VULKAN_GLSL` gate により、OpenGL path は §3 の UBO bl
 
 §6.5 で指摘した粒度設計。**OpenGL の bare uniform 群を寿命別に分類**し、それぞれを **どの UBO に集約するか** を表として確定。
 
-### §8.3 第三 議題: set=2 (25 個) + set=3 (53 個) の再構成
+### §8.3 第三 議題: set=2 (26 個) + set=3 (53 個) の再構成
 
 §6.3 で指摘した役割重複。**§8.2 の集約表に従って統合 / 削除 / 保持を決定**。
 

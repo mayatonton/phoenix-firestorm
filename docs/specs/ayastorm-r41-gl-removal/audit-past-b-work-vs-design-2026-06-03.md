@@ -41,7 +41,7 @@
 - `design/01-overview.md` (= 設計全体像)
 - `design/02-naming-convention.md` (= 命名規約 + rename 機械規則)
 - `design/03-cadence-classification.md` (= cadence 5 分類: per-frame / per-program / per-draw / per-asset / per-skin)
-- `design/04-codegen-ubo.md` (= 新 blueprint 84 UBO 確定)
+- `design/04-codegen-ubo.md` (= 新 blueprint 85 UBO 確定)
 - `design/05-existing-inventory-link.md` (= 既存 inventory ↔ 新 blueprint mapping)
 - `design/06a-cache-structure-and-setter-redirect.md` (= setter 30 entry point redirect)
 - `design/06c-descriptor-set-bind-wiring.md` (= set=0/1/2/3 配線確定)
@@ -68,16 +68,16 @@
 
 | 観点 | 結果 |
 |---|---|
-| cadence 分類一致 (chapter 03 5 分類) | 26/26 (per-program 23 + per-draw 2 + per-program 1 extra) |
+| cadence 分類一致 (chapter 03 5 分類) | 26/26 (per-program 24 + per-draw 2) |
 | naming 規約準拠 (chapter 02 §3.3 rename 表) | 26/26 (機械的 rename `PerDrawUBO_*` → `Draw_*`、`PerProgramUBO_*` → `Program_*`) |
-| chapter 05 §3.3 集約表掲載 | 25 件分しか掲載されておらず実数 26 と乖離 = **致命傷候補 1 (Q22-NUM) と同一現象** |
+| chapter 05 §3.3 集約表掲載 | 26 件掲載済 (= 2026-06-03 AYA 採用 A' で Q22-NUM 解消、Ch05 §3.3 = 26 個 + per-program 24 + per-draw 2 修正反映済) |
 | Phase 配置可能 (chapter 09 Phase 0-K) | 26/26 (1 UBO/Phase 原則で migration 可) |
 | field/member 整合 | 26/26 (既存 GLSL 宣言と cadence 分類が乖離無し) |
 
 **判定**: 全 26 件が **(1) そのまま残す** 判定 = 機械的 rename + Codegen-UBO pipeline 入力として確定状態。
 
 **軽微不整合 1 件**:
-- Ch05 §3.3 表 head「set=2 帯 (25 個)」記述精度 = 実数 26 個 (binding 0-25)、Ch02 §3.3「個数注」で「26 個が正」と明記済 = **Q22-NUM の解消方針反映待ち** (Ch05 → 26 個に修正、本 audit で別件として §3.1 に登録)
+- Ch05 §3.3 表 head「set=2 帯 (25 個)」記述精度 = 実数 26 個 (binding 0-25)、Ch02 §3.3「個数注」で「26 個が正」と明記済 = **Q22-NUM 解消済 (2026-06-03 AYA 採用 A' = 26 個 + 総数 85 個 確定、Ch05 §3.3 = 26 個 + per-program 24 + per-draw 2 修正完了)**
 
 ### §2.2 Agent B: set=3 Legacy 32 UBO audit
 
@@ -109,7 +109,7 @@
 | sampler 4 個 (set=0) | (sampler) | (3b) 昇格 (set=0 → set=4 or mixed) | chapter 07 持越 (§8 bridge S3) |
 | sampler 12 個 (set=1) | (sampler) | (3b) 昇格 (set=1 → set=4 or mixed) | chapter 07 持越 (§8 bridge S3) |
 
-**棚卸し漏れ「+ α」解明**: pivot doc §8 「62 + α」の正体 = set=2 (25) + set=3 (54) = 79 個が **chapter 04 blueprint 84 / reference §6-A / §6-D で既に inventory 化済** (= 漏れではなく集計形式の差)、本 audit で確定。
+**棚卸し漏れ「+ α」解明**: pivot doc §8 「62 + α」の正体 = set=2 (26) + set=3 (54) = 80 個が **chapter 04 blueprint 85 / reference §6-A / §6-D で既に inventory 化済** (= 漏れではなく集計形式の差)、本 audit で確定。**注**: 2026-06-03 Q22-NUM 解消 A' 反映で旧記 (25/79/84) → 新記 (26/80/85)、+1 per-program UBO 反映。
 
 ### §2.4 統合 audit 結果
 
@@ -130,10 +130,12 @@
 
 | 修正 | 内容 | 状態 |
 |---|---|---|
-| **追加 1** | Ch05 §3.3 表 head「set=2 帯 (25 個)」→「set=2 帯 (26 個)」 = Q22-NUM 解消方針追従 | AYA 判断 Q22-NUM 待ち (= 既存致命傷候補 §2.2 と統合解消) |
-| **追加 2** | Ch02 / 06c で `FrameAtmosphere_Lighting` → `Frame_Atmosphere` rename 推奨 | 軽微、第三次査読で確認可能 |
+| **追加 1** | Ch05 §3.3 表 head「set=2 帯 (25 個)」→「set=2 帯 (26 個)」 = Q22-NUM 解消方針追従 | **解消済** (2026-06-03 AYA 採用 A' = 26 個 + 総数 85 個 確定、Ch05 §3.3 修正反映完了) |
+| **追加 2** | Ch02 / 06c で `FrameAtmosphere_Lighting` → `FrameAtmosphere` rename 推奨 (= `_Lighting` suffix 削除のみ、chapter 02 §3.1 既存案準拠) | **解消済** (2026-06-03 Wave G 反映、本 audit §2.3 表 line 106 と本 §3.1 表記揺れ訂正完了、chapter 02 §3.1 既存案 `FrameAtmosphere` 維持 = prefix + 主名規則 `FrameViewProj` / `FrameLights` と整合、06c は該当 string 不在で no-op 確認) |
 
 **= 追加 2 件で設計 chapter 群 修正推奨 18 → 20 件** (= 第二次査読 §8.1 + 本 audit §3.1)、第二次査読 report §8.3 総計 23 件 → 25 件に更新。
+
+**Wave G 表記揺れ訂正 (2026-06-03)**: 本 audit doc 起案時、line 106 「`Atmosphere_Lighting` → `Atmosphere`」 (= member 名視点) と line 134 (旧) 「`Frame_Atmosphere`」 (= 区切り underscore 入り) で表記揺れ。整合 target は **chapter 02 §3.1 既存案 `FrameAtmosphere`** (= `_Lighting` suffix 削除のみ、prefix `Frame` + 主名規則 `FrameViewProj` / `FrameLights` と完全整合) = audit doc 内 `Frame_Atmosphere` (区切り入り) は単純な表記揺れ = chapter 02 §3.1 既存案維持で確定。handoff prep §5.2 / verify_prep §3.x の `Frame_Atmosphere` 言及も同方針で訂正済。
 
 ### §3.2 過去 B 作業 (η-3 〜 η-28 Phase 2d-α) の設計整合性結論
 
@@ -164,7 +166,7 @@ pivot doc §8 「**合計 UBO 62 + α (要棚卸し)**」の「+ α」は本 aud
 
 - 62 = pivot 査定時点 (η-28 Phase 2c 末) の表記
 - 本 audit 時点 (η-28 Phase 2d-α 末) = 63 UBO (= 62 + Phase 2d-α で `SpotLightF` に `vec3 center` field 追加 = UBO 数増加無し、count 1 増の見かけ差)
-- 「+ α」候補だった棚卸し未実施分は全件 reference doc §6-A 〜 §6-D に inventory 化済 = chapter 04 blueprint 84 に包含確認
+- 「+ α」候補だった棚卸し未実施分は全件 reference doc §6-A 〜 §6-D に inventory 化済 = chapter 04 blueprint 85 に包含確認 (= 2026-06-03 Q22-NUM 解消 A' 反映で 84→85)
 
 **= pivot doc §8 注記「要棚卸し」は本 audit で解消**。
 

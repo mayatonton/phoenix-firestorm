@@ -138,7 +138,7 @@ Phase 2d-β prep 起草後、AYA review PASS で着手。本 handoff は **Phase
 ### §5.3 設計 chapter 群 修正推奨 20 件 (= 第二次査読 §8.1 18 件 + 本 audit §3.1 2 件)
 
 - 第二次査読 §8.1: chapter 01-1 + 02-2 + 05-3 + 06a-4 + 09-5 + 10-2 + inventory-1 + handoff-1 = 18 件
-- 本 audit §3.1: Ch05 §3.3 25→26 (= Q22-NUM 解消方針追従) + `FrameAtmosphere_Lighting` → `Frame_Atmosphere` rename = 2 件
+- 本 audit §3.1: Ch05 §3.3 25→26 (= Q22-NUM 解消方針追従) + `FrameAtmosphere_Lighting` → `FrameAtmosphere` rename (= `_Lighting` suffix 削除、chapter 02 §3.1 既存案準拠 = Wave G 反映済 2026-06-03) = 2 件
 - = **計 20 件**、AYA 判断 4 件後に main session で実施予定
 
 ### §5.4 工程表追記 5 件 (= 本 session 実施済、commit `9b4033a735`)

@@ -21,7 +21,7 @@
 5. **std140 offset 計算** (= chapter 04 (A1) 解消、default Codegen 独自 calculator + SPIR-V reflection 二重保証 + AYA 判断仰ぎ)
 6. **perfect hash generator** (= chapter 04 (G) + chapter 07 handoff (B3) 統合解消、default 独自 frozen-table + AYA 判断仰ぎ)
 7. **`ubo_metadata.inl` 出力契約** (= chapter 07 §3.1 device limit / §4.4 set 帯 5 化 / §5.4 sampler / §7.3 256 B alignment / §9.1 共通 PSO layout の Codegen 側反映)
-8. **set=1 79 → 40/39 split 自動振分け** (= chapter 07 §3.2 V1' の Codegen 側自動化、name-sort deterministic 規則)
+8. **set=1 80 → 40/40 split 自動振分け** (= chapter 07 §3.2 V1' の Codegen 側自動化、name-sort deterministic 規則)
 9. **dummy buffer 連動 host 側 init コード** (= chapter 07 §4.3 全 program 未使用 binding dummy bind の host 側 init 生成)
 10. **build error 検出機構** (= std140 layout 不整合 / binding 衝突 / set 帯超過 / SPIR-V reflection 不一致 を build-time fail)
 11. **host 側 ubo_loader header 出力** (= chapter 04 §6.2 `mUniformUBOLoc[index]` ↔ block_name の物理 instance map)
@@ -50,7 +50,7 @@
 | `04-codegen-ubo.md` §5.3 perfect hash UniformLocation | §5 generator / §6 出力契約 |
 | `04-codegen-ubo.md` §10 (A1)(G)(P) 持越 | §3 / §4 / §5 で本 chapter 確定 |
 | `07-vulkan-api-state.md` §3.1 device limit struct 拡張 (4 field) | §6 `ubo_metadata.inl` の binding 数評価出力 |
-| `07-vulkan-api-state.md` §3.2 V1' 79 → 40/39 split | §7 自動振分け規則 |
+| `07-vulkan-api-state.md` §3.2 V1' 80 → 40/40 split | §7 自動振分け規則 |
 | `07-vulkan-api-state.md` §4.4 set 帯 5 化 (set=0/1a/1b/2/3) | §6 出力 set 番号 |
 | `07-vulkan-api-state.md` §5.4 sampler 49 set=3 同居 | §6 出力 sampler binding |
 | `07-vulkan-api-state.md` §7.3 256 B alignment | §6 padding 出力規則 |
@@ -218,7 +218,7 @@ indra/newview/llviewershadermgr 等
 **set 帯 5 化注 (= 設計 review 2026-06-03 §3.4 chapter 07 §4.4 整合)**:
 - A1a の二重保証 check は **set=1a / set=1b で個別実施**: Codegen 独自 calculator も SPIR-V reflection も、`subset=0` (set=1a) / `subset=1` (set=1b) を別 layout として offset 算出 → 不一致 check は subset 単位で実施
 - 理由: chapter 07 §4.4 で set=1 を 1a/1b に split したため、set=1 内の binding 番号は subset 内で 0 から振り直し (= §6.3) → std140 layout は subset 単位で独立 (= UBO 単位の offset は subset 跨いで影響受けない、ただし pipeline layout 構築は両 subset 揃って 1 set として presented = §6.3)
-- 実装: Codegen Python は `program_ubos` を §7.1 sort 後に 40/39 で split し、各 subset を独立 layout として offset 算出 → glslang SPIR-V reflection も `descriptor_set=1` の binding を `subset` で grouping → subset 内の binding 同士で offset 比較
+- 実装: Codegen Python は `program_ubos` を §7.1 sort 後に 40/40 で split し、各 subset を独立 layout として offset 算出 → glslang SPIR-V reflection も `descriptor_set=1` の binding を `subset` で grouping → subset 内の binding 同士で offset 比較
 2. **glslang version drift 耐性**: glslang reflection format が変わっても、Codegen 計算側が独立しているため runtime layout 自体は不変、reflection 抽出パス側だけ修復で済む
 3. **debug 容易**: Codegen 出力の offset 値を Python で計算履歴付き log 可能、SPIR-V reflection 出力と diff 表示で不一致箇所即座に特定
 
@@ -361,7 +361,7 @@ inline constexpr SamplerBinding g_sampler_metadata[/* 49 */] = {
 | chapter 07 確定事項 | 本 chapter §6 反映 | 関連 (B1)-(B5) handoff item |
 |---|---|---|
 | §3.1 device limit 拡張 (4 field) | 直接出力なし (= runtime query で host が取得)、Codegen 出力には影響なし | — |
-| §3.2 V1' set=1 79 → 40/39 split | `subset` field 出力 (= 0/1)、§7 で sort 規則確定 | (B3) perfect hash も subset 単位で衝突 check (= §5.6 G2/B3b、subset 内で hash 衝突保証) |
+| §3.2 V1' set=1 80 → 40/40 split | `subset` field 出力 (= 0/1)、§7 で sort 規則確定 | (B3) perfect hash も subset 単位で衝突 check (= §5.6 G2/B3b、subset 内で hash 衝突保証) |
 | §4.4 set 帯 5 化 (set=0/1a/1b/2/3) | `descriptor_set` 値 0/1/2/3、set=1a/1b は subset で区別 (= §6.1 schema 規約) | (B5) 自動 trigger で GLSL 変更 → set=1 sort + subset 再振分が自動波及 (§7.2) |
 | §5.4 sampler 49 set=3 同居 | `g_sampler_metadata[]` 配列出力、binding 3..51 | (B1) Python tool が GLSL parse で sampler 抽出 (= §3 + §5.1 P3) |
 | §7.3 256 B alignment | `block_size` は std140 計算後 256 B multiple 切上 (= padding 込み)、§6.4 | (A1) A1a 二重保証は padding 後 size でも実施、SPIR-V reflection の `Block.size` と比較 |
@@ -385,13 +385,13 @@ def pad_to_256(size):
 
 ---
 
-## §7 set=1 79 → 40/39 split 自動振分け (= chapter 07 §3.2 V1' 実装)
+## §7 set=1 80 → 40/40 split 自動振分け (= chapter 07 §3.2 V1' 実装)
 
 ### §7.1 sort 規則
 
-Program_* UBO 79 個を **block_name 文字列の lexicographic sort** で deterministic 順序化:
+Program_* UBO 80 個を **block_name 文字列の lexicographic sort** で deterministic 順序化:
 - 前半 40 個 → `subset=0` (= set=1a)
-- 後半 39 個 → `subset=1` (= set=1b)
+- 後半 40 個 → `subset=1` (= set=1b)
 
 ```python
 program_ubos = [u for u in all_ubos if u.cadence == CadenceTag.PerProgram]
@@ -406,10 +406,10 @@ for i, u in enumerate(program_ubos):
 - block_name は chapter 02 §3 rename 後、`Program_<Domain><Purpose>` 規約で固定 → sort 結果が GLSL 変更されない限り deterministic
 - 新規 Program_* UBO 追加時は **40 個目以降にずれ込み発生**、build 時に `g_ubo_metadata[]` 出力が変わる = 再 build 必要 (= CMake DEPENDS で自動検出、§12)
 
-### §7.3 79 → 40/39 split の妥当性 (= chapter 07 §3.2 再掲)
+### §7.3 80 → 40/40 split の妥当性 (= chapter 07 §3.2 再掲)
 
 - Vulkan 1.3 spec 最小 `maxDescriptorSetUniformBuffers=72` ≥ 40 = **全 device で set=1a / set=1b ともに 1 set fit**
-- 不均衡 split (= 例: 60/19) 不要、name-sort で 40/39 deterministic 化 = AYA 実機計測 (chapter 07 §3.3 = 06a-prep §3 と並走) で OK 検知時に **runtime split 不要、layout 固定で起動**
+- 不均衡 split (= 例: 60/20) 不要、name-sort で 40/40 deterministic 化 = AYA 実機計測 (chapter 07 §3.3 = 06a-prep §3 と並走) で OK 検知時に **runtime split 不要、layout 固定で起動**
 
 ### §7.4 set=1 split 妥当性 build-time check
 
@@ -493,7 +493,7 @@ for (uint32_t i = 0; i < 40; ++i) {
 | E4 | perfect hash 衝突 | §5.6 generator 内 build-time check | build error + 衝突 2 uniform 名出力 |
 | E5 | 同名 UBO 複数 GLSL 宣言の member 構成不一致 | §5.4 + chapter 04 §4.4 既述 | build error + 該当 UBO 名 + 不一致 GLSL ファイル名出力 |
 | E6 | sampler 49 + Asset/Skin UBO 合計 > `maxDescriptorSetSamplers` (= 96) | Codegen build-time check | build warn (= runtime device 計測で確認、build error にしない) |
-| E7 | set=1a / set=1b binding 数 > 40 / 39 (= V1' split 不適合) | §7.4 build-time check | build error + Program_* 数 出力、Codegen の sort 規則 review 要 |
+| E7 | set=1a / set=1b binding 数 > 40 / 40 (= V1' split 不適合) | §7.4 build-time check | build error + Program_* 数 出力、Codegen の sort 規則 review 要 |
 
 ### §9.2 全部 stop-the-line 方針
 
@@ -704,7 +704,7 @@ target_include_directories(llvkloader PUBLIC "${CMAKE_BINARY_DIR}/codegen")
 | build 開始 | (B5) `add_custom_command` 起動判定 | GLSL files + Python script の mtime/hash (= §11) | cache hit なら skip / miss なら §5/§8 走る |
 | Codegen tool 起動 (1) | Codegen Python tool 起動 + GLSL parse (= §5.1 P3) | GLSL files + glslang -E (= §5.1) | UBO block 構造 (in-memory) |
 | Codegen tool 起動 (2) | §5.3 std140 offset calculator + §5.4 SPIR-V reflection 二重保証 | UBO block + glslang SPIR-V reflection | offset 確定済 UBO + binding 番号 |
-| Codegen tool 起動 (3) | §7 set=1 split (sort → 40/39 振分) | per-program UBO 79 個 | subset 振分済 metadata |
+| Codegen tool 起動 (3) | §7 set=1 split (sort → 40/40 振分) | per-program UBO 80 個 | subset 振分済 metadata |
 | Codegen tool 起動 (4) | §5.5 perfect hash generator (G2/B3b) | name 列 (= UBO block name + member name) | `ubo_perfect_hash.inl` (= §5.7) |
 | Codegen tool 起動 (5) | §6 `ubo_metadata.inl` 出力 (= schema 序列化) | (2)+(3) 結果 | `ubo_metadata.inl` |
 | Codegen tool 起動 (6) | §8 dummy buffer init 出力 | unused UBO 判定 (= §8.4) | `ubo_dummy_init.inl` |
@@ -815,4 +815,4 @@ chapter 06a §5.6 で「sampler は OpenGL path 強制 + Vulkan path descriptor 
 
 ---
 
-**= 本 chapter で build system 統合 (CMake / glslang / Codegen tool / autobuild) + (A1)(P)(G/B3)(B1)(B2)(B4)(B5) 7 件確定形 (= default 採用案) + `ubo_metadata.inl` / `ubo_perfect_hash.inl` / `ubo_dummy_init.inl` / `ubo_host_loader.inl` 出力契約 + set=1 79 → 40/39 deterministic split + dummy buffer host 側 init + 7 種 build error 検出 + 3 OS 互換性方針 が確定したため、chapter 09 (phase-roadmap) で Phase 番号体系再編 + 1 UBO ずつ migration scope の起案に進める**。
+**= 本 chapter で build system 統合 (CMake / glslang / Codegen tool / autobuild) + (A1)(P)(G/B3)(B1)(B2)(B4)(B5) 7 件確定形 (= default 採用案) + `ubo_metadata.inl` / `ubo_perfect_hash.inl` / `ubo_dummy_init.inl` / `ubo_host_loader.inl` 出力契約 + set=1 80 → 40/40 deterministic split + dummy buffer host 側 init + 7 種 build error 検出 + 3 OS 互換性方針 が確定したため、chapter 09 (phase-roadmap) で Phase 番号体系再編 + 1 UBO ずつ migration scope の起案に進める**。

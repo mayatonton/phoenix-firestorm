@@ -130,7 +130,7 @@ shader link 時 caller context grep (= 06a §0.2 Agent 解析) で得られた c
 | `uniform4uiv` | 2826 | (const LLStaticHashedString&, U32 count, const GLuint*) |
 | `uniformMatrix4fv` | 2844 | (const LLStaticHashedString&, U32 count, GLboolean, const GLfloat*) |
 
-**注**: 06a §0.2 は 67 unique LLStaticHashedString literal を確認したが、実装 hook では **uniform.String() を直接 log に書き出す** (= value type で string を保持、`llstaticstringtable.h:45`)。`getGlobalRegistry()` は本 doc 起案時点で存在しないこと確認済 (= 06a §9 (S1) 解消)。
+**注**: 06a §0.2 は 67 unique LLStaticHashedString literal を確認したが、実装 hook では **uniform.String() を直接 log に書き出す** (= value type で string を保持、`llstaticstringtable.h:45`)。`getGlobalRegistry()` は本 doc 起案時点で存在しないこと確認済 (= 06a §9 **(S1-存在) のみ解消**、2026-06-03 Q24-S1 (A) 反映で 2 軸分割 = §4.3.1 代替案 S1-A/B/C/D の確定 = **(S1-代替)** は AYA 判断仰ぎ事項として未消化、Q24-S1 として chapter 10 §1 登録予定)。
 
 #### §2.2.3 frame counter increment 配線
 

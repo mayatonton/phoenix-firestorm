@@ -16,12 +16,52 @@
 
 ## §1 AYA 判断仰ぎ候補 (= 主要 open question 集約)
 
+### §1.0 25 件分類 index (= 全 AYA 判断仰ぎ候補 一覧、2026-06-03 18 件 batch 反映で最終確定)
+
+**集約方法**: 設計 chapter 群 (01-10) 第二次査読 + Phase 2d-β prep audit (= 2026-06-03 batch) で抽出された AYA 判断仰ぎ候補を **(Q) ID + 該当 §1.x + 状態** で index 化。本 §1.0 は §1.1-§1.6 各表の summary、各項目の **default 採用案 + 判断ポイント** は該当 §1.x 表本体で確認。
+
+| # | (Q) ID | 項目 | 該当 §1.x | 状態 |
+|---|---|---|---|---|
+| 1 | (V1') | set=1 80 binding split (40/40) | §1.1 | 未判断 |
+| 2 | (V3') | set=1 layout 共通性 (全 program 共通 vs 別最適) | §1.1 | 未判断 |
+| 3 | (S3') | sampler 49 個 descriptor set 配置 (set=3 同居 vs 分離) | §1.1 | 未判断 |
+| 4 | (W) | `sProgramUboPool` maxSets (6 vs 1200) | §1.1 | 未判断 |
+| 5 | (A1) | std140 offset 計算 (Codegen 独自 vs SPIR-V reflection vs 二重) | §1.2 | 未判断 |
+| 6 | (P) | GLSL parse 手段 (mini-parser vs glslang library) | §1.2 | 未判断 |
+| 7 | (G/B3) | perfect hash generator (Python frozen-table vs gperf vs CHD) | §1.2 | 未判断 |
+| 8 | (B1) | Codegen 実装言語 (Python vs C++ vs CMake script) | §1.2 | 未判断 |
+| 9 | (B2) | glslang 統合方式 (autobuild vs system pkg vs 自前) | §1.2 | 未判断 |
+| 10 | (B4) | 増分 build cache (mtime vs hash vs ccache) | §1.2 | 未判断 |
+| 11 | (B5) | Codegen 実行 trigger (CMake DEPENDS vs 手動 target) | §1.2 | 未判断 |
+| 12 | (Q1) | 第 1 UBO migration template (Template A/B/C) | §1.3 | 未判断 |
+| 13 | (Q2) | Phase 当たり UBO 数 (1 厳守 vs cluster 許可) | §1.3 | 未判断 |
+| 14 | (Q3) | OpenGL path 並走期間 (全 Phase vs 中間撤廃 vs 段階撤廃) | §1.3 | 未判断 |
+| 15 | (Q4) | 3 OS 確証 Phase 順序 (Linux 先行 vs 並走 vs 順次) | §1.3 | 未判断 |
+| 16 | (Q5) | Phase 0 計測の Phase 番号化 (η-29 独立 vs Phase 1.0 vs 並走) | §1.3 | 未判断 |
+| 17 | (K) | dirty 判定粒度 (member 単位 vs UBO 単位 vs cadence 単位) | §1.4 | 未判断 |
+| 18 | (M) | descriptor set 4 帯 ↔ cadence 5 分類 配置 (1:1 vs 拡張) | §1.4 | 未判断 |
+| 19 | (N) | `mUseUBO` initial 設定 (shader 単位 phase 移行 vs 全 ON) | §1.4 | 未判断 |
+| 20 | (O) | `UB_*` 4 binding 拡張 (既存維持 + 新規追加 vs 全体再構成) | §1.4 | 未判断 |
+| 21 | (F) | `MaterialUBO` vs `MaterialUBO_Legacy` 処遇 (統合 vs 別名分離 vs 廃止) | §1.5 | 未判断 |
+| 22 | (Q22-NUM) | UBO blueprint 数 84 vs 85 整合 + set=2 25 vs 26 整合 | §1.6 | ✅ 判断済 (A', 2026-06-03) |
+| 23 | (Q23-K) | chapter 09 §5.2 Template 内 Phase 2/3/4 具体数値の placeholder 性質明示 | §1.6 | ✅ 判断済 (A, 2026-06-03) |
+| 24 | (Q24-S1) | chapter 06a §4.3.1 代替案 S1-A/B/C/D 採用 ((S1-存在) 解消済 + (S1-代替) 採用確定) | §1.6 | ✅ 判断済 (A, 2026-06-03) |
+| 25 | (Q25-21CNT) | 21 件 → 25 件 double-count 検証 + 18 件 batch 統合反映方針 | §1.6 | ✅ 判断済 (B, 2026-06-03) |
+
+**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (5) + §1.4 (4) + §1.5 (1) + §1.6 (4) = **25 件**。
+
+**判断済 4 件の反映先 cross-ref**: (Q22-NUM) → inventory §3.3.1 + 06c §3/§8 + 04 §5.3 + 01 §4.2 (= 計 13 箇所 `85 GLSL blueprint` rewrite 済) / (Q23-K) → 09 §5.2 冒頭注記 / (Q24-S1) → 06a §4.3 / §4.3.1 / §6.2 / §10 + 06a-prep §6 (S1-存在) / 本 chapter §4 live 表 / (Q25-21CNT) → 本 §1.0 表 + 各 chapter 反映 batch (= Wave A-G)。
+
+**未判断 21 件の解消順序**: §1.1 (chapter 07) + §1.2 (chapter 08) + §1.3 (chapter 09) + §1.4 (06b/06c) は **AYA 判断 batch session** で集約消化、§1.5 (F) のみ **Phase 0 計測結果** 待ち (= 客観 input)。
+
+---
+
 ### §1.1 chapter 07 §12 chapter 10 送り 4 件 (set / pool / sampler / layout)
 
 | (Q) | 項目 | default 採用案 | 判断ポイント | 出典 |
 |---|---|---|---|---|
-| (V1') | set=1 79 binding split | **40/39 split (= per-program × triple-buffering × double-buffering を 2 set に分散)** | 1 set に 79 binding 詰めると device `maxDescriptorSetUniformBuffers` 限界 (= 多くの GPU で 72 / 84) に抵触可能性、split で安全側 / PSO layout 数倍化と trade | 07 §3.2 |
-| (V3') | set=1 layout 共通性 | **V3a 全 program 共通 layout (= 全 79 binding を全 program で同 layout 宣言、未使用 binding に dummy 投入)** | V3a は PSO compatibility 最大 / dummy 投入分の memory cost、V3b は program 別最適 layout / PSO layout 数 79 倍化 | 07 §4.2 |
+| (V1') | set=1 80 binding split | **40/40 split (= per-program × triple-buffering × double-buffering を 2 set に分散)** | 1 set に 80 binding 詰めると device `maxDescriptorSetUniformBuffers` 限界 (= 多くの GPU で 72 / 84) に抵触可能性、split で安全側 / PSO layout 数倍化と trade | 07 §3.2 |
+| (V3') | set=1 layout 共通性 | **V3a 全 program 共通 layout (= 全 80 binding を全 program で同 layout 宣言、未使用 binding に dummy 投入)** | V3a は PSO compatibility 最大 / dummy 投入分の memory cost、V3b は program 別最適 layout / PSO layout 数 80 倍化 | 07 §4.2 |
 | (S3') | sampler 49 個 descriptor set 配置 | **set=3 per-asset 同居 (= asset binding 群と sampler 49 個を同 set 内で混在)** | per-asset との同居で set 切替頻度最小化、ただし set=3 binding 数膨張、別 set 分離案 (S1/S2/別案) は 07 §8.2 で 3 案併記済 | 07 §5.2 |
 | (W) | `sProgramUboPool` maxSets | **maxSets = 6 (= active program × triple-buffer × double-buffer)** | active program 1 個前提の最小値、shader 数 200 × 3 × 2 = 1200 案は安全だが pool 容量肥大化 | 07 §6.2 |
 
@@ -74,6 +114,21 @@
 
 **AYA 判断後の反映先**: chapter 05 §5 / §7.3 集約表で F 解消マーク、chapter 09 Phase 0 入口手順書 (`06a-prep-phase0-measurement.md`) §3 で (F) 計測 spec を実施。
 
+### §1.6 Phase 2d-β prep audit 起因 新規 4 件 (2026-06-03 AYA 判断済 batch)
+
+第二次査読 §8.1 18 件 + audit §3.1 追加 2 件 = 計 20 件修正推奨の整合性確認過程で抽出された **AYA 判断仰ぎ 4 件** を本 §1.6 に追加登録。本 §1.6 4 件は **全て 2026-06-03 AYA 判断済** = 各 chapter 反映完了状態 (= Wave A-G 反映 batch で消化)、本表は judgement 履歴 + 反映先 cross-ref 保存用。
+
+| (Q) | 項目 | AYA 判断 | 反映先 | 出典 |
+|---|---|---|---|---|
+| (Q22-NUM) | UBO blueprint 数 84 → 85 整合 + set=2 25 → 26 整合 | **A' (= literal 全 14+6 箇所 rewrite 全件波及)** | inventory §3.3.1 (3 箇所) / 06c §3/§4.1/§8/§10 (7 箇所) / 04 §5.3 (2 箇所) / 01 §4.2 (2 箇所) / 09 §5.1 (1 箇所) = 計 15+ 箇所 | inventory §3.3.1 set=2 個数再集計 (24 → 25 → 26) |
+| (Q23-K) | chapter 09 §5.2 Template A/B/C 内 「Phase 2」「Phase 3」「Phase 4」具体数値の placeholder 性質 | **A (= §5.2 冒頭注記で placeholder 例示明示)** | 09 §5.2 冒頭注記追加 (= 「(Q1)(Q2) 確定後の phase 振分 例示、K 確定で置換される予定」明示) | 09 §11 K 確定条件 vs §5.2 具体数値の整合矛盾 |
+| (Q24-S1) | chapter 06a §4.3.1 代替案 S1-A/B/C/D 採用 | **A (= (S1) を (S1-存在) + (S1-代替) 2 軸分割、(S1-存在) 解消済マーク + (S1-代替) S1-C default 採用確定)** | 06a §4.3 但し書き / §4.3.1 / §6.2 / §10 持越表 (= 6 箇所) + 06a-prep §6 (S1-存在) 解消マーク + 本 chapter §4 live 表 (S1-存在)(S1-代替) split | 06a §4.3.1 API 不存在確認済だが代替案未確定 (= 2 軸混在) |
+| (Q25-21CNT) | 21 件 → 25 件 double-count 検証 + 18 件 batch 統合反映方針 | **B (= 18 件 batch 統合反映 + 25 件最初から再集計、本 §1.0 表で全件確認)** | 本 chapter §1.0 25 件分類 index + 各 chapter Wave A-G 反映 batch (= chapter 02/05/06a/09/10/handoff/audit 修正) | 第二次査読 §8.1 18 件 + audit §3.1 追加 2 件 = 修正推奨数の最終集計確認 |
+
+**反映完了確認**: 本 §1.6 4 件 = 設計 chapter 群 全件 audit + 修正 batch 完了済 = Phase 2d-β-revise 本体 (= chapter 04 + 08 prototype 深化, Deliverable A/B/C) 着手前提条件 (= AYA 判断 4 件完了 + 設計 chapter 群 修正推奨 20 件 反映完了) の **前者 4 件 完了マーク**。後者 20 件 反映完了は Wave A-G batch 完了報告で総括。
+
+**注 (本 §1.6 の位置付け)**: 本 §1.6 4 件は **judgement 履歴 archive** = 既消化済 = §1.1-§1.5 (= 未判断 21 件) と性質が異なる。implementation-phase 入口 (= η-29 Phase 0 計測 session) では §1.1-§1.5 のみ AYA 判断 batch session 対象、§1.6 は再判断不要 (= reference のみ)。
+
 ---
 
 ## §2 実装 phase 入口で消化される項目 (= 判断は持越、listing のみ)
@@ -121,7 +176,7 @@
 
 | 項目 | 消化先 | default 採用案 |
 |---|---|---|
-| (V1) set=1 79 binding device limit 懸念 | chapter 07 | **default 79 binding 1 set、device limit 検知時に split 検討** → **(V1') で 40/39 split** (= chapter 07 §3.2 で V1 → V1' に派生、本 chapter §1.1 で集約) |
+| (V1) set=1 80 binding device limit 懸念 | chapter 07 | **default 80 binding 1 set、device limit 検知時に split 検討** → **(V1') で 40/40 split** (= chapter 07 §3.2 で V1 → V1' に派生、本 chapter §1.1 で集約) |
 | (V2) inventory §3.3.1 同一 binding 複数 UBO 名疑い (= ClipPlane / SkinnedVelocity 等 5 個) | 実装 phase 入口 (= `06a-prep` §3 (E')) | **A/B/C 案いずれか、Phase 0 計測待ち** |
 
 ### §2.6 chapter 06a §9 (T1) glUniform4iv 内部 glUniform1iv bug 疑い
@@ -164,7 +219,7 @@
 | chapter 04 §10 | (D) shader 内動的 uniform 名 (array flatten 等) の存在確認 | chapter 06 起案時 grep で消化済 (= 06a §5 path 分岐内に dummy 名解決 logic 配線済) |
 | chapter 05 §7.3 | bare uniform → UBO 集約対応表 | migration 進行で 候補 → 確定 → 移行済 マーク |
 | chapter 05 §10 (H1)(H2)(H3) | bare uniform 集合 enumerate / 集約表 owner / conflict 判断ループ | chapter 06 起案時 grep + LL_INFOS hook で部分消化、live 表で残継続 |
-| chapter 06a §9 (H1b)(Q1)(Q2)(R1)(S1) | cache 構造 / `mUseUBO` flag / `forwardToUboUpload` interface / `LLStaticHashedString` 67 個 UBO 化対象有無 / API 存在確認 | chapter 06b / 06c / 07 / Phase 0 で消化進行中 |
+| chapter 06a §9 (H1b)(Q1)(Q2)(R1)(S1-存在)(S1-代替) | cache 構造 / `mUseUBO` flag / `forwardToUboUpload` interface / `LLStaticHashedString` 67 個 UBO 化対象有無 / API 存在確認 (= (S1-存在) 解消済) / §4.3.1 代替案 S1-A/B/C/D 採用確定 (= (S1-代替) = Q24-S1 AYA 判断仰ぎ未消化) | chapter 06b / 06c / 07 / Phase 0 で消化進行中 ((S1-代替) は 18 件修正 batch で chapter 10 §1 新規 Q24-S1 登録予定) |
 | chapter 06b §8 (K)(L)(M)(U1)(U2)(U3)(U4) | dirty 粒度 / per-draw 最適化 / thread-safe / triple-buffer / dirty 判定 / flush timing / mValue 適用外 5 method | (K) は本 chapter §1.4 で集約、その他は §2.4 listing 済 |
 
 ---

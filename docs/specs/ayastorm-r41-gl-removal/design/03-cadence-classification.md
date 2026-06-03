@@ -29,7 +29,7 @@ UBO の **update 頻度** が異なれば、以下が全て変わる:
 | **per-asset** | GLTF asset state 変化時 | `gltf::Asset` per-instance | `mNodes` / `mMaterials` | `Asset_*` | N (rezzed GLTF 数、典型 1-10) |
 | **per-skin** | rigged animation 毎 frame | `gltf::Skin` per-instance | joint palette matrices | `Skin_*` | M (rigged skin 数、典型 1-10) |
 
-**注 (per-material cadence の扱い、2026-06-03 chapter 05 §6 で G1 確定)**: 旧 6 分類に存在した `per-material` は **per-draw cadence + dirty flag に統合** (= 独立軸として保持しない)。根拠は「現状 OpenGL path が material parameter を bare uniform setter で per-draw 投入 + `mValue` cache で同値時 skip」している事実 (inventory §1.2 / §2 / §4.3) — G1 はこの cache を Vulkan UBO upload 側の dirty flag に乗せ替えるだけで等価。命名 prefix `Material*` は cadence と独立軸 (§2.2) のため温存される。
+**注 (per-material cadence の扱い、2026-06-03 chapter 05 §6 で MC1 確定、= 旧 G1)**: 旧 6 分類に存在した `per-material` は **per-draw cadence + dirty flag に統合** (= 独立軸として保持しない)。根拠は「現状 OpenGL path が material parameter を bare uniform setter で per-draw 投入 + `mValue` cache で同値時 skip」している事実 (inventory §1.2 / §2 / §4.3) — MC1 (= 旧 G1) はこの cache を Vulkan UBO upload 側の dirty flag に乗せ替えるだけで等価。命名 prefix `Material*` は cadence と独立軸 (§2.2) のため温存される。
 
 ### §2.1 cadence 軸の独立性
 
@@ -123,7 +123,7 @@ chapter 01 §3.2 で確定済。storage lifetime (= owner の生存期間) は c
 |---|---|
 | update site | draw call 直前 (`LLDrawPool` 系の geom render 直前) |
 | upload thread | main thread (draw call と同一 thread) |
-| dirty 判定 | draw 毎 update が前提 (dirty 判定 overhead と update の差が小さい)、ただし **material 切替は本 cadence の dirty flag で吸収** (= 既存 `mValue` cache 機構を継承、chapter 05 §6 G1 確定) |
+| dirty 判定 | draw 毎 update が前提 (dirty 判定 overhead と update の差が小さい)、ただし **material 切替は本 cadence の dirty flag で吸収** (= 既存 `mValue` cache 機構を継承、chapter 05 §6 MC1 確定、= 旧 G1) |
 | descriptor set | set=2 (= per-draw、頻繁 rebind) |
 | 物理 instance scaling | 数百〜数千 / frame、ring buffer / dynamic offset 等の Vulkan 最適化が必要 (chapter 06+) |
 
@@ -164,4 +164,4 @@ chapter 01 §3.2 で確定済。storage lifetime (= owner の生存期間) は c
 
 ---
 
-**= 本 chapter で cadence 軸が確定したため、chapter 04 (codegen-ubo) で各 cadence の Codegen-UBO 生成規則、chapter 05 で既存 84 UBO blueprint の cadence 別 mapping に進める**。
+**= 本 chapter で cadence 軸が確定したため、chapter 04 (codegen-ubo) で各 cadence の Codegen-UBO 生成規則、chapter 05 で既存 85 UBO blueprint の cadence 別 mapping に進める**。
