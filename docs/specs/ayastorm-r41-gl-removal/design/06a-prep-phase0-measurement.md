@@ -79,7 +79,7 @@ shader link 時 caller context grep (= 06a §0.2 Agent 解析) で得られた c
 
 **並走計測**: sampler binding (= 49 個、`uniform1i` 経由) も同一 hook で独立 band として histogram 化する (= UBO cadence inventory への合算は §5 で行わない、§2.2.1 注を参照)。
 
-### §2.2 配線位置 (= 全 30 setter + frame counter)
+### §2.2 配線位置 (= 全 31 setter + frame counter)
 
 #### §2.2.1 integer index 経由 setter (= 17 method、`llglslshader.cpp`)
 
@@ -111,7 +111,7 @@ shader link 時 caller context grep (= 06a §0.2 Agent 解析) で得られた c
 - §5 解析時点で **sampler band は UBO inventory の cadence 結論には合算せず別表で報告**、chapter 05 §3 UBO 表の cadence 列には反映しない (= UBO 数値の汚染回避)
 - inventory §2 への効果 = sampler 49 個の cadence band を別軸で確証 → texture binding 高速 path (= per-program cadence 維持 or per-draw 化が必要か) の Vulkan descriptor 化 (= chapter 07 §3 sampler 帯) の前提資料
 
-#### §2.2.2 LLStaticHashedString 経由 setter (= 13 method、`llglslshader.cpp`)
+#### §2.2.2 LLStaticHashedString 経由 setter (= 14 method、`llglslshader.cpp`)
 
 | method | line | 引数 type |
 |---|---|---|
@@ -146,9 +146,12 @@ shader link 時 caller context grep (= 06a §0.2 Agent 解析) で得られた c
 
 **(2026-06-03 Phase 0 Step 1 update)**: §7 (P4) 解消結果 = 既存 `gFrameCount` (`U32` in `llappviewer.cpp:369` + `extern` in `llappviewer.h:422`) 流用に簡素化 (= 専用 counter `g_aya_ubo_hook_frame_counter` + §2.3.3 frame counter increment 配線は不要、setter 経路は現状 main thread 専有のため `gFrameCount` の `U32` 非 atomic で十分)。
 
+**(2026-06-03 Phase 0 Step 2 update)**: 実装時に `#include "llappviewer.h"` は llrender → newview 上向き依存 = layering 違反 (= `libllrender.a` build TU から newview header 不可視) を検出。`extern U32 gFrameCount;` 直接宣言に置換 (= symbol は最終 viewer link 時に newview の `U32 gFrameCount = 0;` (`llappviewer.cpp:369`) で resolve、設計意図同等)。
+
 ```cpp
 #ifdef AYASTORM_UBO_CADENCE_HOOK
-#include "llappviewer.h"  // for gFrameCount (extern U32, llappviewer.h:422)
+extern U32 gFrameCount;  // declared in llappviewer.cpp:369, resolved at viewer link time
+                          // (avoid #include "llappviewer.h" — would violate llrender → newview layering)
 
 namespace {
     void ayaUboHookOnSetterByIndex(const char* setter_name, const LLGLSLShader* shader, U32 index)
@@ -184,9 +187,9 @@ namespace {
 **規律**:
 - frame counter = 既存 `gFrameCount` (`U32`) を直接参照 (= §7 (P4) 解消、`std::atomic` 不要)
 - `LL_INFOS` class 文字列 = `"UBO_CADENCE"` (= §7 (P1) で衝突 0 件確認済、実装時改 grep 不要)
-- helper / macro / `#include "llappviewer.h"` は `#ifdef AYASTORM_UBO_CADENCE_HOOK` で gate、release build には混入しない
+- helper / macro / `extern U32 gFrameCount;` 宣言は `#ifdef AYASTORM_UBO_CADENCE_HOOK` で gate、release build には混入しない
 
-#### §2.3.2 各 setter 入口への hook 挿入 (= 30 method)
+#### §2.3.2 各 setter 入口への hook 挿入 (= 31 method)
 
 各 setter body の **先頭 1 行** に macro 挿入:
 
@@ -210,7 +213,7 @@ void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
 ```
 
 **規律**:
-- 30 method 全てに 1 行追加、引数 type による差異は macro 名 (`_IDX` / `_HASH`) のみ
+- 31 method 全てに 1 行追加、引数 type による差異は macro 名 (`_IDX` / `_HASH`) のみ
 - `mProgramObject` check より **前** に挿入 (= 0 program での setter call も log、anomaly 検知用)
 - 既存 body は **1 文字も改変しない** (= 検証完了後の hook 除去で diff が hook 行のみになる、commit ミス防止)
 
@@ -226,7 +229,7 @@ void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
 
 **規律**:
 - 本 §2.3.3 は **実装 phase で skip** (= AYA build 時 `llappviewer.cpp` への hook 編集なし)
-- 実装 phase entry 時に「§2.3.3 不要、§2.3.1 helper に `#include "llappviewer.h"` 追加のみで完了」と確認 → §8 update 規律に従い本節を superseded mark せずそのまま保存 (= 経緯 archive)
+- 実装 phase entry 時に「§2.3.3 不要、§2.3.1 helper に `extern U32 gFrameCount;` 直接宣言追加のみで完了」と確認 → §8 update 規律に従い本節を superseded mark せずそのまま保存 (= 経緯 archive)。当初は `#include "llappviewer.h"` 案だったが llrender → newview 上向き依存 = layering 違反のため `extern` 直接宣言に変更 (= 2026-06-03 Phase 0 Step 2 実装時検出、§2.3.1 で詳細)
 
 ### §2.4 build flag (CMake)
 
@@ -296,7 +299,7 @@ memory `feedback_remove_verification_logs` 準拠:
 
 1. log 解析完了 → cadence histogram 全件確定 → 06a §0.2 表 + chapter 05 §3 表 update
 2. **commit 前に必ず除去**:
-   - `llglslshader.cpp` から helper / 30 method の `AYA_UBO_HOOK_*` 行 / anonymous namespace 内 counter / macro define を全削除
+   - `llglslshader.cpp` から helper / 31 method の `AYA_UBO_HOOK_*` 行 / anonymous namespace 内 counter / macro define を全削除
    - `llglslshader.h` から helper 公開宣言を削除
    - `llappviewer.cpp` から frame counter increment 行を削除
    - CMake 関連 `option()` + `add_definitions()` 行を削除
@@ -812,7 +815,7 @@ scene 複雑度・shader 内容に応じて rate が大きく変化する unifor
 |---|---|---|
 | (P1) | `LL_INFOS("UBO_CADENCE")` class 名衝突有無 | **解消 = 衝突 0 件** (`grep -rn "UBO_CADENCE" indra/` → 0 matches、`"UBO_CADENCE"` literal 安全採用) |
 | (P2) | CMake patch 配置先 (`00-Common.cmake` vs `LLRender.cmake` 等) | **解消 = `indra/cmake/00-Common.cmake` 確定** (260 行、`option(LL_*)` pattern 0 件 = プロジェクトで `option()` block 自体は使用可、`LL_DULLAHAN_AUDIO_CALLBACK` は autobuild 経由 `CEFPlugin.cmake:13` で `if(...)` 参照のみ。AYASTORM_UBO_CADENCE_HOOK は `option()` を `00-Common.cmake` 末尾に追加、`-DAYASTORM_UBO_CADENCE_HOOK=ON` で AYA 計測 build 切替) |
-| (P3) | frame counter 公開方式 (= `extern` 宣言 vs helper 関数 vs 既存 frame counter 流用) | **解消 = 既存 `gFrameCount` 流用** (= `extern U32 gFrameCount;` in `llappviewer.h:422`、§2.3.1 helper から `#include "llappviewer.h"` で直接参照) |
+| (P3) | frame counter 公開方式 (= `extern` 宣言 vs helper 関数 vs 既存 frame counter 流用) | **解消 = 既存 `gFrameCount` 流用** (= `extern U32 gFrameCount;` in `llappviewer.h:422`、§2.3.1 helper から `extern U32 gFrameCount;` 直接宣言で参照 = 2026-06-03 Phase 0 Step 2 実装時に当初の `#include "llappviewer.h"` 案を llrender → newview 上向き依存 layering 違反のため `extern` 宣言に変更) |
 | (P4) | 既存 frame counter 流用可能性 (= `gFrameCount` 等が `llviewercontrol` / `llappviewer` に存在するか) | **解消 = 流用可能** (`U32 gFrameCount = 0;` in `llappviewer.cpp:369`、main loop で increment 配線済、`llappviewer.cpp:1344/1605/1864/6563` で読出経験あり = 安定 inventory) |
 
 = 全 4 件解消、§2.3.1 / §2.3.3 / §2.4 への反映完了。実装 phase 入口時点で本 §7 は **追加 grep 不要**。
