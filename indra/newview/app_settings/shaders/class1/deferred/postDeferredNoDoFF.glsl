@@ -98,7 +98,7 @@ void main()
 
     float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
 
-    vec2 p = (vary_fragcoord.xy / screen_res.xy) * 2.0 - 1.0;
+    vec2 p = vary_fragcoord.xy * 2.0 - 1.0;
     float r = dot(p, p);
 
     float depth = texture(depthMap, vary_fragcoord.xy).r;

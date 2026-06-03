@@ -213,6 +213,9 @@ U32 LLPipeline::RenderResolutionDivisor;
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
 F32 LLPipeline::RenderResolutionMultiplier;
 // [/SL:KB]
+F32 LLPipeline::sAYADynamicRenderResolutionMultiplier = 1.f;
+F32 LLPipeline::sAYARestoreRenderResolutionMultiplier = 1.f;
+bool LLPipeline::sAYADynamicRenderResolutionSettingActive = false;
 bool LLPipeline::RenderUIBuffer;
 S32 LLPipeline::RenderShadowDetail;
 S32 LLPipeline::RenderShadowSplits;
@@ -939,6 +942,61 @@ void LLPipeline::requestResizeShadowTexture()
     gResizeShadowTexture = true;
 }
 
+void LLPipeline::setAYADynamicRenderResolutionMultiplier(F32 multiplier)
+{
+    const F32 clamped_multiplier =
+        (multiplier > 0.f && multiplier < 1.f)
+            ? llclamp(multiplier, 0.25f, 0.99f)
+            : 1.f;
+    if (llabs(sAYADynamicRenderResolutionMultiplier - clamped_multiplier) <= 0.001f)
+    {
+        return;
+    }
+
+    sAYADynamicRenderResolutionMultiplier = clamped_multiplier;
+    LLPointer<LLControlVariable> control = gSavedSettings.getControl("RenderResolutionMultiplier");
+    if (!control)
+    {
+        gResizeScreenTexture = true;
+        return;
+    }
+
+    if (sAYADynamicRenderResolutionMultiplier > 0.f && sAYADynamicRenderResolutionMultiplier < 1.f)
+    {
+        if (!sAYADynamicRenderResolutionSettingActive)
+        {
+            sAYARestoreRenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
+            sAYADynamicRenderResolutionSettingActive = true;
+        }
+
+        const F32 target_multiplier =
+            (sAYARestoreRenderResolutionMultiplier > 0.f && sAYARestoreRenderResolutionMultiplier < 1.f)
+                ? llmin(sAYARestoreRenderResolutionMultiplier, sAYADynamicRenderResolutionMultiplier)
+                : sAYADynamicRenderResolutionMultiplier;
+        control->setValue(LLSD::Real(target_multiplier), false);
+    }
+    else if (sAYADynamicRenderResolutionSettingActive)
+    {
+        control->setValue(LLSD::Real(sAYARestoreRenderResolutionMultiplier), false);
+        sAYADynamicRenderResolutionSettingActive = false;
+    }
+}
+
+F32 LLPipeline::getAYADynamicRenderResolutionMultiplier()
+{
+    return sAYADynamicRenderResolutionMultiplier;
+}
+
+F32 LLPipeline::getEffectiveRenderResolutionMultiplier()
+{
+    return RenderResolutionMultiplier;
+}
+
+F32 LLPipeline::getAYARestoreRenderResolutionMultiplier()
+{
+    return sAYARestoreRenderResolutionMultiplier;
+}
+
 void LLPipeline::resizeShadowTexture()
 {
     releaseSunShadowTargets();
@@ -1457,6 +1515,13 @@ void LLPipeline::refreshCachedSettings()
     // (1.0f = multiplier 無効、native 解像度) に固定。BD には resolution
     // multiplier 機構が無い。spec §3.2 phase3.5-ay-only Category B。
     RenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
+    if (sAYADynamicRenderResolutionMultiplier > 0.f && sAYADynamicRenderResolutionMultiplier < 1.f)
+    {
+        RenderResolutionMultiplier =
+            (RenderResolutionMultiplier > 0.f && RenderResolutionMultiplier < 1.f)
+                ? llmin(RenderResolutionMultiplier, sAYADynamicRenderResolutionMultiplier)
+                : sAYADynamicRenderResolutionMultiplier;
+    }
     // </FS:AYAstorm>
 // [/SL:KB]
     RenderUIBuffer = gSavedSettings.getBOOL("RenderUIBuffer");
@@ -9195,13 +9260,6 @@ void LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
                 mFXAAMap.bindTexture(0, channel, LLTexUnit::TFO_BILINEAR);
             }
 
-            gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
-            gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
-            gGLViewport[2] = gViewerWindow->getWorldViewRectRaw().getWidth();
-            gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
-
-            glViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
-
             F32 scale_x = (F32)width / mFXAAMap.getWidth();
             F32 scale_y = (F32)height / mFXAAMap.getHeight();
             shader->uniform2f(LLShaderMgr::FXAA_TC_SCALE, scale_x, scale_y);
@@ -10307,7 +10365,13 @@ void LLPipeline::renderFinalize()
     gDeferredPostNoDoFNoiseProgram.bind(); // Add noise as part of final render to screen pass to avoid damaging other post effects
 
     // Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems.
-    gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, sourceBuffer);
+    const bool presenting_scaled_render_target =
+        sourceBuffer->getWidth() != (U32)gGLViewport[2] ||
+        sourceBuffer->getHeight() != (U32)gGLViewport[3];
+    gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE,
+                                               sourceBuffer,
+                                               false,
+                                               presenting_scaled_render_target ? LLTexUnit::TFO_POINT : LLTexUnit::TFO_BILINEAR);
     gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, true);
 
     gDeferredPostNoDoFNoiseProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)sourceBuffer->getWidth(), (GLfloat)sourceBuffer->getHeight());

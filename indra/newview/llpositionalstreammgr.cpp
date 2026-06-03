@@ -2570,6 +2570,13 @@ static LLTrace::BlockTimerStatHandle FTM_STREAM3D_MGR_UPDATE("Stream3D Mgr Updat
 void LLPositionalStreamMgr::update()
 {
     LL_RECORD_BLOCK_TIME(FTM_STREAM3D_MGR_UPDATE);
+    static LLCachedControl<bool> perf_log(gSavedSettings, "AYAPerfStream3DLog", true);
+    static LLTimer perf_timer;
+    static F64 perf_total_ms = 0.0;
+    static F64 perf_max_ms = 0.0;
+    static U32 perf_updates = 0;
+    const bool perf_enabled = perf_log;
+    const F64 perf_start = perf_enabled ? LLTimer::getElapsedSeconds().value() : 0.0;
 
     // M8: master kill switch. Listener already tore down state when the
     // setting flipped to false, so just bail.
@@ -3103,6 +3110,39 @@ void LLPositionalStreamMgr::update()
         LL_INFOS("Stream3D") << "[3dstream-stereo] root " << r
                               << " gone; tearing down binding" << LL_ENDL;
         teardownDistributedBinding(r);
+    }
+
+    if (perf_enabled)
+    {
+        const F64 elapsed_ms = (LLTimer::getElapsedSeconds().value() - perf_start) * 1000.0;
+        perf_total_ms += elapsed_ms;
+        perf_max_ms = llmax(perf_max_ms, elapsed_ms);
+        ++perf_updates;
+
+        constexpr F32 LOG_INTERVAL = 10.f;
+        if (perf_timer.getElapsedTimeF32() >= LOG_INTERVAL)
+        {
+            size_t speaker_count = 0;
+            for (const auto& [root_id, b] : mDistributedBindings)
+            {
+                speaker_count += b.speakers.size();
+            }
+
+            LL_INFOS("AYAPerf")
+                << "stream3d updates=" << perf_updates
+                << " avg_ms=" << llformat("%.2f", perf_updates ? perf_total_ms / perf_updates : 0.0)
+                << " max_ms=" << llformat("%.2f", perf_max_ms)
+                << " mono=" << mBindings.size()
+                << " distributed=" << mDistributedBindings.size()
+                << " speakers=" << speaker_count
+                << " pending_linksets=" << mPendingLinksetEval.size()
+                << LL_ENDL;
+
+            perf_total_ms = 0.0;
+            perf_max_ms = 0.0;
+            perf_updates = 0;
+            perf_timer.reset();
+        }
     }
 }
 

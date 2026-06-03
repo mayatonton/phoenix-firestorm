@@ -1054,6 +1054,12 @@ LLAPRFile* LLTextureCache::openHeaderEntriesFile(bool readonly, S32 offset)
     llassert_always(mHeaderAPRFile == NULL);
     apr_int32_t flags = readonly ? APR_READ|APR_BINARY : APR_READ|APR_WRITE|APR_BINARY;
     mHeaderAPRFile = new LLAPRFile(mHeaderEntriesFileName, flags, mHeaderAPRFilePoolp);
+    if (!mHeaderAPRFile->getFileHandle())
+    {
+        delete mHeaderAPRFile;
+        mHeaderAPRFile = NULL;
+        return NULL;
+    }
     if(offset > 0)
     {
         mHeaderAPRFile->seek(APR_SET, offset);
@@ -1208,6 +1214,11 @@ void LLTextureCache::writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool 
     if(write_header)
     {
         aprfile = openHeaderEntriesFile(false, 0);
+        if (!aprfile)
+        {
+            idx = -1;
+            return;
+        }
         bytes_written = aprfile->write((U8*)&mHeaderEntriesInfo, sizeof(EntriesInfo)) ;
         if(bytes_written != sizeof(EntriesInfo))
         {
@@ -1221,6 +1232,11 @@ void LLTextureCache::writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool 
     else
     {
         aprfile = openHeaderEntriesFile(false, offset);
+        if (!aprfile)
+        {
+            idx = -1;
+            return;
+        }
     }
     bytes_written = aprfile->write((void*)&entry, (S32)sizeof(Entry));
     if(bytes_written != sizeof(Entry))
@@ -1240,6 +1256,11 @@ void LLTextureCache::readEntryFromHeaderImmediately(S32& idx, Entry& entry)
 {
     S32 offset = sizeof(EntriesInfo) + idx * sizeof(Entry);
     LLAPRFile* aprfile = openHeaderEntriesFile(true, offset);
+    if (!aprfile)
+    {
+        idx = -1;
+        return;
+    }
     S32 bytes_read = aprfile->read((void*)&entry, (S32)sizeof(Entry));
     closeHeaderEntriesFile();
 
@@ -1339,6 +1360,10 @@ U32 LLTextureCache::openAndReadEntries(std::vector<Entry>& entries)
     if(mUpdatedEntryMap.empty())
     {
         aprfile = openHeaderEntriesFile(true, (S32)sizeof(EntriesInfo));
+        if(!aprfile)
+        {
+            return 0;
+        }
     }
     else //update the header file first.
     {
@@ -1399,6 +1424,10 @@ void LLTextureCache::writeEntriesAndClose(const std::vector<Entry>& entries)
     if (!mReadOnly)
     {
         LLAPRFile* aprfile = openHeaderEntriesFile(false, (S32)sizeof(EntriesInfo));
+        if (!aprfile)
+        {
+            return;
+        }
         for (size_t idx=0; idx<num_entries; idx++)
         {
             S32 bytes_written = aprfile->write((void*)(&entries[idx]), (S32)sizeof(Entry));
@@ -1417,9 +1446,11 @@ void LLTextureCache::writeUpdatedEntries()
     lockHeaders() ;
     if (!mReadOnly && !mUpdatedEntryMap.empty())
     {
-        openHeaderEntriesFile(false, 0);
-        updatedHeaderEntriesFile() ;
-        closeHeaderEntriesFile();
+        if (openHeaderEntriesFile(false, 0))
+        {
+            updatedHeaderEntriesFile() ;
+            closeHeaderEntriesFile();
+        }
     }
     unlockHeaders() ;
 }
@@ -2063,6 +2094,10 @@ LLPointer<LLImageRaw> LLTextureCache::readFromFastCache(const LLUUID& id, S32& d
         LLMutexLock lock(&mFastCacheMutex);
 
         openFastCache();
+        if(!mFastCachep)
+        {
+            return NULL;
+        }
 
         mFastCachep->seek(APR_SET, offset);
 
@@ -2188,6 +2223,10 @@ bool LLTextureCache::writeToFastCache(LLUUID image_id, S32 id, LLPointer<LLImage
         LLMutexLock lock(&mFastCacheMutex);
 
         openFastCache();
+        if(!mFastCachep)
+        {
+            return false;
+        }
 
         mFastCachep->seek(APR_SET, offset);
 
@@ -2225,6 +2264,13 @@ void LLTextureCache::openFastCache(bool first_time)
         else
         {
             mFastCachep = new LLAPRFile(mFastCacheFileName, APR_READ|APR_WRITE|APR_BINARY, mFastCachePoolp) ;
+        }
+
+        if (!mFastCachep->getFileHandle())
+        {
+            delete mFastCachep;
+            mFastCachep = NULL;
+            return;
         }
 
         mFastCacheTimer.reset();

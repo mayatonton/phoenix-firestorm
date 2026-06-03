@@ -156,6 +156,8 @@ private:
     F32  updateImagesFetchTextures(F32 max_time);
     void updateImagesUpdateStats();
     F32  updateImagesLoadingFastCache(F32 max_time);
+    void startAYATeleportTextureSweep();
+    void processAYATeleportTextureSweep();
 
     void addImage(LLViewerFetchedTexture *image, ETexListType tex_type);
     void deleteImage(LLViewerFetchedTexture *image);
@@ -223,6 +225,9 @@ public:
     // images that must be downscaled quickly so we don't run out of memory
     image_queue_t mDownScaleQueue;
 
+    // pre-teleport textures checked after arrival for safe downscale if unused
+    image_queue_t mAYATeleportSweepQueue;
+
     image_list_t mCallbackList;
     image_list_t mFastCacheList;
 
@@ -247,6 +252,10 @@ private:
 
     bool mInitialized ;
     LLFrameTimer mForceDecodeTimer;
+    LLFrameTimer mAYATeleportSweepTimer;
+    LLFrameTimer mAYATeleportSweepLogTimer;
+    U32 mAYATeleportTextureGeneration;
+    bool mAYATeleportSweepActive;
 
 private:
     static S32 sNumImages;

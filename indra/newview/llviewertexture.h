@@ -207,6 +207,8 @@ protected:
     mutable S32  mMaxVirtualSizeResetCounter;
     mutable S32  mMaxVirtualSizeResetInterval;
     LLFrameTimer mLastReferencedTimer;
+    mutable U32 mAYATeleportSeenGeneration = 0;
+    mutable U32 mAYATeleportUsedGeneration = 0;
 
     ll_face_list_t    mFaceList[LLRender::NUM_TEXTURE_CHANNELS]; //reverse pointer pointing to the faces using this image as texture
     U32               mNumFaces[LLRender::NUM_TEXTURE_CHANNELS];
@@ -353,6 +355,7 @@ public:
      // ONLY call from LLViewerTextureList or ImageGL background thread
     bool createTexture(S32 usename = 0);
     void postCreateTexture();
+    void cancelCreateTexture();
     void scheduleCreateTexture();
 
     void destroyTexture() ;

@@ -30,7 +30,9 @@
 
 #include <stdio.h>
 #include <ctype.h>
+#include <algorithm>
 #include <sstream>
+#include <vector>
 
 #include "llaudioengine.h"
 #include "noise.h"
@@ -3728,7 +3730,13 @@ void LLVOAvatar::idleUpdateLoadingEffect()
 
             // Firestorm Clouds
             // do not generate particles for dummy or overly-complex avatars
-            if (!mIsDummy && !isTooComplex() && !isTooSlow())
+            static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
+            static LLCachedControl<bool> disable_avatar_loading_cloud_particles(gSavedSettings, "AYADisableAvatarLoadingCloudParticles", true);
+            if (loading_fps_guard_enabled && disable_avatar_loading_cloud_particles)
+            {
+                deleteParticleSource();
+            }
+            else if (!mIsDummy && !isTooComplex() && !isTooSlow())
             {
                 setParticleSource(sCloud, getID());
             }
@@ -12187,9 +12195,57 @@ void LLVOAvatar::updateImpostors()
 {
     LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
 
+    static LLCachedControl<U32> max_updates_per_frame(gSavedSettings, "RenderAvatarMaxImpostorUpdatesPerFrame", 1);
+    static LLCachedControl<F32> min_update_fps(gSavedSettings, "RenderAvatarImpostorMinUpdateFPS", 18.f);
+    static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
+    static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
+    const U32 update_budget = max_updates_per_frame();
+    static std::vector<LLVOAvatar*> candidates;
+    candidates.clear();
+
+    const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
+    const bool throttle_existing_refresh =
+        (loading_fps_guard_enabled && gFPSClamped < loading_fps_guard_target_fps) ||
+        (min_update_fps > 0.f && gFPSClamped < min_update_fps);
+
     for (LLCharacter* character : LLCharacter::sInstances)
     {
         LLVOAvatar* avatar = (LLVOAvatar*)character;
+        if (!avatar->isDead()
+            && avatar->isVisible()
+            && avatar->isImpostor()
+            && avatar->needsImpostorUpdate())
+        {
+            if (throttle_existing_refresh && avatar->mImpostor.isComplete())
+            {
+                continue;
+            }
+            candidates.push_back(avatar);
+        }
+    }
+
+    if (update_budget > 0 && candidates.size() > update_budget)
+    {
+        std::sort(candidates.begin(), candidates.end(),
+            [](const LLVOAvatar* lhs, const LLVOAvatar* rhs)
+            {
+                const bool lhs_complete = lhs->mImpostor.isComplete();
+                const bool rhs_complete = rhs->mImpostor.isComplete();
+                if (lhs_complete != rhs_complete)
+                {
+                    return !lhs_complete;
+                }
+                if (lhs->mVisibilityRank != rhs->mVisibilityRank)
+                {
+                    return lhs->mVisibilityRank < rhs->mVisibilityRank;
+                }
+                return lhs->mLastImpostorUpdateFrameTime < rhs->mLastImpostorUpdateFrameTime;
+            });
+        candidates.resize(update_budget);
+    }
+
+    for (LLVOAvatar* avatar : candidates)
+    {
         if (!avatar->isDead()
             && avatar->isVisible()
             && avatar->isImpostor()

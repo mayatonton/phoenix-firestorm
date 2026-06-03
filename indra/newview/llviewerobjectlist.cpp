@@ -929,6 +929,13 @@ void LLViewerObjectList::update(LLAgent &agent)
     static LLCachedControl<F32> regionCrossingInterpolationTime(gSavedSettings, "RegionCrossingInterpolationTime");
     static LLCachedControl<bool> animateTextures(gSavedSettings, "AnimateTextures");
     static LLCachedControl<bool> freezeTime(gSavedSettings, "FreezeTime");
+    static LLCachedControl<F32> object_idle_min_fps(gSavedSettings, "RenderObjectIdleMinFPS", 15.f);
+    static LLCachedControl<F32> object_idle_time_ms(gSavedSettings, "RenderObjectIdleTimeSliceMs", 6.f);
+    static LLCachedControl<U32> object_idle_min_updates(gSavedSettings, "RenderObjectIdleMinUpdatesPerFrame", 16);
+    static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
+    static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
+    static LLCachedControl<F32> object_idle_guard_time_ms(gSavedSettings, "RenderObjectIdleGuardTimeSliceMs", 2.f);
+    static LLCachedControl<U32> object_idle_guard_min_updates(gSavedSettings, "RenderObjectIdleGuardMinUpdatesPerFrame", 4);
     // </FS:Ansariel> Speed up debug settings
 
     // Update globals
@@ -1023,6 +1030,7 @@ void LLViewerObjectList::update(LLAgent &agent)
     }
 
     std::vector<LLViewerObject*>::iterator idle_end = idle_list.begin()+idle_count;
+    static U32 sIdleUpdateCursor = 0;
 
     // <FS:Ansariel> Speed up debug settings
     //if (gSavedSettings.getBOOL("FreezeTime"))
@@ -1042,12 +1050,75 @@ void LLViewerObjectList::update(LLAgent &agent)
     }
     else
     {
+        // Keep avatar animation responsive, but spread non-avatar idle work across
+        // frames when the viewer is already below the loading-FPS floor.
         for (std::vector<LLViewerObject*>::iterator idle_iter = idle_list.begin();
             idle_iter != idle_end; idle_iter++)
         {
             objectp = *idle_iter;
             llassert(objectp->isActive());
+            if (objectp->isAvatar())
+            {
                 objectp->idleUpdate(agent, frame_time);
+            }
+        }
+
+        const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
+        const bool loading_fps_guard =
+            loading_fps_guard_enabled &&
+            gFPSClamped < loading_fps_guard_target_fps;
+        const bool throttle_non_avatar_idle =
+            ((object_idle_min_fps > 0.f && gFPSClamped < object_idle_min_fps) ||
+             loading_fps_guard);
+
+        if (!throttle_non_avatar_idle)
+        {
+            for (std::vector<LLViewerObject*>::iterator idle_iter = idle_list.begin();
+                idle_iter != idle_end; idle_iter++)
+            {
+                objectp = *idle_iter;
+                llassert(objectp->isActive());
+                if (!objectp->isAvatar())
+                {
+                    objectp->idleUpdate(agent, frame_time);
+                }
+            }
+            sIdleUpdateCursor = 0;
+        }
+        else if (idle_count > 0)
+        {
+            sIdleUpdateCursor %= idle_count;
+
+            const F64 update_start = LLTimer::getElapsedSeconds().value();
+            const F32 effective_time_ms = loading_fps_guard ? object_idle_guard_time_ms() : object_idle_time_ms();
+            const U32 min_updates = loading_fps_guard ? object_idle_guard_min_updates() : object_idle_min_updates();
+            const F64 update_budget = llmax(0.1f, effective_time_ms) * 0.001;
+            U32 updates = 0;
+            U32 visited = 0;
+
+            while (visited < idle_count)
+            {
+                const U32 index = (sIdleUpdateCursor + visited) % idle_count;
+                ++visited;
+
+                objectp = idle_list[index];
+                if (!objectp || objectp->isAvatar())
+                {
+                    continue;
+                }
+
+                llassert(objectp->isActive());
+                objectp->idleUpdate(agent, frame_time);
+                ++updates;
+
+                if (updates >= min_updates &&
+                    LLTimer::getElapsedSeconds().value() - update_start >= update_budget)
+                {
+                    break;
+                }
+            }
+
+            sIdleUpdateCursor = (sIdleUpdateCursor + visited) % idle_count;
         }
 
         //update flexible objects

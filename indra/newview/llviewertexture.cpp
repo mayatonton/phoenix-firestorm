@@ -909,6 +909,12 @@ void LLViewerTexture::addTextureStats(F32 virtual_size, bool needs_gltexture) co
         mNeedsGLTexture = true;
     }
 
+    if (virtual_size <= 0.f)
+    {
+        mMaxVirtualSize = 0.f;
+        return;
+    }
+
     virtual_size = llmin(virtual_size, LLViewerFetchedTexture::sMaxVirtualSize);
 
     if (virtual_size > mMaxVirtualSize)
@@ -1681,6 +1687,14 @@ void LLViewerFetchedTexture::postCreateTexture()
     mNeedsCreateTexture = false;
 }
 
+void LLViewerFetchedTexture::cancelCreateTexture()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    mCreatePending = false;
+    mNeedsCreateTexture = false;
+    destroyRawImage();
+}
+
 void LLViewerFetchedTexture::scheduleCreateTexture()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -1766,6 +1780,14 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
 void LLViewerFetchedTexture::setKnownDrawSize(S32 width, S32 height)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    if (width <= 0 || height <= 0)
+    {
+        mKnownDrawWidth = 0;
+        mKnownDrawHeight = 0;
+        mKnownDrawSizeChanged = true;
+        return;
+    }
+
     if(mKnownDrawWidth < width || mKnownDrawHeight < height)
     {
         mKnownDrawWidth = llmax(mKnownDrawWidth, width);
@@ -3160,6 +3182,12 @@ void LLViewerLODTexture::processTextureStats()
             S32 draw_texels = mKnownDrawWidth * mKnownDrawHeight;
             draw_texels = llclamp(draw_texels, MIN_IMAGE_AREA, MAX_IMAGE_AREA);
 
+            static LLCachedControl<bool> distance_cap_enabled(gSavedSettings, "AYATextureDistanceCapEnabled", true);
+            if (distance_cap_enabled() && mMaxVirtualSize > 10.f)
+            {
+                draw_texels = llmin(draw_texels, (S32)llclamp(mMaxVirtualSize, (F32)MIN_IMAGE_AREA, (F32)MAX_IMAGE_AREA));
+            }
+
             // Use log_4 because we're in square-pixel space, so an image
             // with twice the width and twice the height will have mTexelsPerImage
             // 4 * draw_size
@@ -4216,4 +4244,3 @@ void LLTexturePipelineTester::LLTextureTestSession::reset()
 //----------------------------------------------------------------------------------------------
 //end of LLTexturePipelineTester
 //----------------------------------------------------------------------------------------------
-

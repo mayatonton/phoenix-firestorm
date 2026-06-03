@@ -23,6 +23,17 @@
             <text name="T_ReflectionDetail">反射プローブ品質</text>
             <button name="d_ReflectionDetail" tool_tip="デフォルトに戻す"/>
 
+            <text name="T_GeneralLoadingPerf">読み込み時パフォーマンス</text>
+            <check_box name="cb_LoadingFPSGuard" label="読み込み時の目標 FPS ガードを有効化"
+                       tool_tip="有効時、FPS が目標値を下回る間、重要度の低い読み込み/描画メンテナンスを抑制します。"/>
+            <button name="d_LoadingFPSGuard" tool_tip="デフォルトに戻す"/>
+            <text name="T_LoadingTargetFPS">目標 FPS</text>
+            <slider_bar name="sb_LoadingTargetFPS"
+                        tool_tip="読み込み時ガードの目標 FPS。低いほど介入は控えめ、高いほど応答性優先で強く介入します。"/>
+            <spinner name="s_LoadingTargetFPS"
+                     tool_tip="読み込み時ガードの目標 FPS。低いほど介入は控えめ、高いほど応答性優先で強く介入します。"/>
+            <button name="d_LoadingTargetFPS" tool_tip="デフォルトに戻す"/>
+
             <text name="T_GeneralNote">
                 ヒント: 表示モードは 環境設定 → グラフィック で切り替えます。切替後はビューア再起動で適用されます。
             </text>

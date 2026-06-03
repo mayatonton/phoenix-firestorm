@@ -28,6 +28,8 @@
 
 #include "llappviewer.h"
 
+#include <sstream>
+
 // Viewer includes
 #include "llcinematicoverlay.h"
 #include "llversioninfo.h"
@@ -5758,6 +5760,147 @@ static LLTrace::BlockTimerStatHandle FTM_VLMANAGER("VL Manager");
 static LLTrace::BlockTimerStatHandle FTM_AGENT_POSITION("Agent Position");
 static LLTrace::BlockTimerStatHandle FTM_HUD_EFFECTS("HUD Effects");
 
+namespace
+{
+enum AYAIdlePerfSection
+{
+    AYA_IDLE_TOTAL,
+    AYA_IDLE_AGENT_NETWORK,
+    AYA_IDLE_STATS,
+    AYA_IDLE_NETWORK,
+    AYA_IDLE_CALLBACKS,
+    AYA_IDLE_UI,
+    AYA_IDLE_AGENT_POSITION,
+    AYA_IDLE_OBJECTLIST,
+    AYA_IDLE_CLEANUP,
+    AYA_IDLE_HUD,
+    AYA_IDLE_VL_UNPACK,
+    AYA_IDLE_REGION,
+    AYA_IDLE_WORLD_MOVE,
+    AYA_IDLE_PARTICLES_CAMERA_MEDIA,
+    AYA_IDLE_LOD,
+    AYA_IDLE_AUDIO_CORE,
+    AYA_IDLE_STREAM3D,
+    AYA_IDLE_COUNT
+};
+
+const char* const AYA_IDLE_PERF_NAMES[AYA_IDLE_COUNT] =
+{
+    "total",
+    "agent_network",
+    "stats",
+    "network",
+    "callbacks",
+    "ui",
+    "agent_position",
+    "objectlist",
+    "cleanup",
+    "hud",
+    "vl_unpack",
+    "region",
+    "world_move",
+    "particles_camera_media",
+    "lod",
+    "audio_core",
+    "stream3d"
+};
+
+F64 sAYAIdlePerfMs[AYA_IDLE_COUNT] = {};
+F64 sAYAIdlePerfMaxMs[AYA_IDLE_COUNT] = {};
+U32 sAYAIdlePerfFrames = 0;
+LLTimer sAYAIdlePerfLogTimer;
+
+bool aya_idle_perf_enabled()
+{
+    static LLCachedControl<bool> enabled(gSavedSettings, "AYAPerfIdleLog", true);
+    return enabled;
+}
+
+void aya_idle_perf_add(AYAIdlePerfSection section, F64 seconds)
+{
+    if (!aya_idle_perf_enabled())
+    {
+        return;
+    }
+
+    const F64 ms = seconds * 1000.0;
+    sAYAIdlePerfMs[section] += ms;
+    sAYAIdlePerfMaxMs[section] = llmax(sAYAIdlePerfMaxMs[section], ms);
+}
+
+class AYAIdlePerfScope
+{
+public:
+    AYAIdlePerfScope(AYAIdlePerfSection section)
+        : mSection(section),
+          mStart(LLTimer::getElapsedSeconds().value()),
+          mEnabled(aya_idle_perf_enabled())
+    {
+    }
+
+    ~AYAIdlePerfScope()
+    {
+        if (mEnabled)
+        {
+            aya_idle_perf_add(mSection, LLTimer::getElapsedSeconds().value() - mStart);
+        }
+    }
+
+private:
+    AYAIdlePerfSection mSection;
+    F64 mStart;
+    bool mEnabled;
+};
+
+class AYAIdlePerfFrame
+{
+public:
+    AYAIdlePerfFrame()
+        : mStart(LLTimer::getElapsedSeconds().value()),
+          mEnabled(aya_idle_perf_enabled())
+    {
+    }
+
+    ~AYAIdlePerfFrame()
+    {
+        if (!mEnabled)
+        {
+            return;
+        }
+
+        aya_idle_perf_add(AYA_IDLE_TOTAL, LLTimer::getElapsedSeconds().value() - mStart);
+        ++sAYAIdlePerfFrames;
+
+        constexpr F32 LOG_INTERVAL = 10.f;
+        if (sAYAIdlePerfLogTimer.getElapsedTimeF32() < LOG_INTERVAL)
+        {
+            return;
+        }
+
+        std::ostringstream out;
+        out << "idle frames=" << sAYAIdlePerfFrames;
+        for (S32 i = 0; i < AYA_IDLE_COUNT; ++i)
+        {
+            const F64 avg = sAYAIdlePerfFrames ? sAYAIdlePerfMs[i] / sAYAIdlePerfFrames : 0.0;
+            out << " " << AYA_IDLE_PERF_NAMES[i]
+                << "_avg_ms=" << llformat("%.2f", avg)
+                << " " << AYA_IDLE_PERF_NAMES[i]
+                << "_max_ms=" << llformat("%.2f", sAYAIdlePerfMaxMs[i]);
+            sAYAIdlePerfMs[i] = 0.0;
+            sAYAIdlePerfMaxMs[i] = 0.0;
+        }
+        LL_INFOS("AYAPerf") << out.str() << LL_ENDL;
+
+        sAYAIdlePerfFrames = 0;
+        sAYAIdlePerfLogTimer.reset();
+    }
+
+private:
+    F64 mStart;
+    bool mEnabled;
+};
+}
+
 ///////////////////////////////////////////////////////
 // idle()
 //
@@ -5768,6 +5911,7 @@ void LLAppViewer::idle()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;
     pingMainloopTimeout("Main:Idle");
+    AYAIdlePerfFrame aya_idle_perf_frame;
 
     // Update frame timers
     static LLTimer idle_timer;
@@ -5868,6 +6012,7 @@ void LLAppViewer::idle()
 
     if (!gDisconnected)
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_AGENT_NETWORK);
         LL_PROFILE_ZONE_NAMED_CATEGORY_NETWORK("network"); //LL_RECORD_BLOCK_TIME(FTM_NETWORK);
         // Update spaceserver timeinfo
         LLWorld::getInstance()->setSpaceTimeUSec(LLWorld::getInstance()->getSpaceTimeUSec() + LLUnits::Seconds::fromValue(dt_raw));
@@ -5906,6 +6051,7 @@ void LLAppViewer::idle()
     //
     //
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_STATS);
         // Initialize the viewer_stats_timer with an already elapsed time
         // of SEND_STATS_PERIOD so that the initial stats report will
         // be sent immediately.
@@ -5944,6 +6090,7 @@ void LLAppViewer::idle()
 
     if (!gDisconnected)
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_NETWORK);
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Network");
 
         ////////////////////////////////////////////////
@@ -5975,6 +6122,7 @@ void LLAppViewer::idle()
     if (!mQuitRequested)  //MAINT-4243
 #endif
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_CALLBACKS);
 //      LL_RECORD_BLOCK_TIME(FTM_IDLE_CB);
 
         // Do event notifications if necessary.  Yes, we may want to move this elsewhere.
@@ -6009,7 +6157,10 @@ void LLAppViewer::idle()
     // updateUI() needs to be called even in case viewer disconected
     // since related notification still needs handling and allows
     // opening chat.
-    gViewerWindow->updateUI();
+    {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_UI);
+        gViewerWindow->updateUI();
+    }
 
     if (gDisconnected)
     {
@@ -6029,10 +6180,12 @@ void LLAppViewer::idle()
         {
             // Teleported, but waiting for things to load, start processing surface data
             {
+                AYAIdlePerfScope aya_idle_perf(AYA_IDLE_VL_UNPACK);
                 LL_RECORD_BLOCK_TIME(FTM_NETWORK);
                 gVLManager.unpackData();
             }
             {
+                AYAIdlePerfScope aya_idle_perf(AYA_IDLE_REGION);
                 LL_RECORD_BLOCK_TIME(FTM_REGION_UPDATE);
                 const F32 max_region_update_time = .001f; // 1ms
                 LLWorld::getInstance()->updateRegions(max_region_update_time);
@@ -6056,6 +6209,7 @@ void LLAppViewer::idle()
 
     {
         // Handle pending gesture processing
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_AGENT_POSITION);
         LL_RECORD_BLOCK_TIME(FTM_AGENT_POSITION);
         LLGestureMgr::instance().update();
 
@@ -6063,6 +6217,7 @@ void LLAppViewer::idle()
     }
 
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_OBJECTLIST);
         LL_RECORD_BLOCK_TIME(FTM_OBJECTLIST_UPDATE);
 
         if (!(logoutRequestSent() && hasSavedFinalSnapshot()))
@@ -6080,6 +6235,7 @@ void LLAppViewer::idle()
     //
 
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_CLEANUP);
         LL_RECORD_BLOCK_TIME(FTM_CLEANUP);
         {
             gObjectList.cleanDeadObjects();
@@ -6104,6 +6260,7 @@ void LLAppViewer::idle()
     //
 
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_HUD);
         LL_RECORD_BLOCK_TIME(FTM_HUD_EFFECTS);
         LLSelectMgr::getInstance()->updateEffects();
         LLHUDManager::getInstance()->cleanupEffects();
@@ -6116,6 +6273,7 @@ void LLAppViewer::idle()
     //
 
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_VL_UNPACK);
         LL_RECORD_BLOCK_TIME(FTM_NETWORK);
         gVLManager.unpackData();
     }
@@ -6125,8 +6283,9 @@ void LLAppViewer::idle()
     // Update surfaces, and surface textures as well.
     //
 
-    LLWorld::getInstance()->updateVisibilities();
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_REGION);
+        LLWorld::getInstance()->updateVisibilities();
         const F32 max_region_update_time = .001f; // 1ms
         LL_RECORD_BLOCK_TIME(FTM_REGION_UPDATE);
         LLWorld::getInstance()->updateRegions(max_region_update_time);
@@ -6165,39 +6324,44 @@ void LLAppViewer::idle()
     //
 
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_WORLD_MOVE);
         LL_PROFILE_ZONE_NAMED_CATEGORY_APP("world update"); //LL_RECORD_BLOCK_TIME(FTM_WORLD_UPDATE);
         gPipeline.updateMove();
     }
 
-    LLWorld::getInstance()->updateParticles();
+    {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_PARTICLES_CAMERA_MEDIA);
+        LLWorld::getInstance()->updateParticles();
 
-    if (gAgentPilot.isPlaying() && gAgentPilot.getOverrideCamera())
-    {
-        gAgentPilot.moveCamera();
-    }
-    else if (LLViewerJoystick::getInstance()->getOverrideCamera())
-    {
-        LLViewerJoystick::getInstance()->moveFlycam();
-    }
-    else
-    {
-        if (LLToolMgr::getInstance()->inBuildMode())
+        if (gAgentPilot.isPlaying() && gAgentPilot.getOverrideCamera())
         {
-            LLViewerJoystick::getInstance()->moveObjects();
+            gAgentPilot.moveCamera();
+        }
+        else if (LLViewerJoystick::getInstance()->getOverrideCamera())
+        {
+            LLViewerJoystick::getInstance()->moveFlycam();
+        }
+        else
+        {
+            if (LLToolMgr::getInstance()->inBuildMode())
+            {
+                LLViewerJoystick::getInstance()->moveObjects();
+            }
+
+            gAgentCamera.updateCamera();
         }
 
-        gAgentCamera.updateCamera();
+        // update media focus
+        LLViewerMediaFocus::getInstance()->update();
+
+        // Update marketplace
+        LLMarketplaceInventoryImporter::update();
+        LLMarketplaceInventoryNotifications::update();
     }
-
-    // update media focus
-    LLViewerMediaFocus::getInstance()->update();
-
-    // Update marketplace
-    LLMarketplaceInventoryImporter::update();
-    LLMarketplaceInventoryNotifications::update();
 
     // objects and camera should be in sync, do LOD calculations now
     {
+        AYAIdlePerfScope aya_idle_perf(AYA_IDLE_LOD);
         LL_RECORD_BLOCK_TIME(FTM_LOD_UPDATE);
         gObjectList.updateApparentAngles(gAgent);
     }
@@ -6210,15 +6374,21 @@ void LLAppViewer::idle()
 
         if (gAudiop)
         {
-            audio_update_volume(false);
-            audio_update_listener();
-            audio_update_wind(false);
+            {
+                AYAIdlePerfScope aya_idle_perf(AYA_IDLE_AUDIO_CORE);
+                audio_update_volume(false);
+                audio_update_listener();
+                audio_update_wind(false);
 
-            // this line actually commits the changes we've made to source positions, etc.
-            gAudiop->idle();
+                // this line actually commits the changes we've made to source positions, etc.
+                gAudiop->idle();
+            }
 
             // <FS:AYA> [PositionalStream] drive async opens, position refresh, dead-object cleanup
-            LLPositionalStreamMgr::instance().update();
+            {
+                AYAIdlePerfScope aya_idle_perf(AYA_IDLE_STREAM3D);
+                LLPositionalStreamMgr::instance().update();
+            }
             // </FS:AYA>
         }
     }

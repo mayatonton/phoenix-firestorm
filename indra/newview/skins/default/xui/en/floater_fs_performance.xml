@@ -39,7 +39,7 @@
   <floater.string name="tot_att_template">
   Total: [TOT_ATT] ([TOT_ATT_TIME]μs)
   </floater.string>
-  <flaoter.string
+  <floater.string
   name="fps_text"
   value="frames per second"/>
  <floater.string

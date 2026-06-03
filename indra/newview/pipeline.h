@@ -102,6 +102,10 @@ public:
     void restoreGL();
     void requestResizeScreenTexture(); // set flag only, no work, safer for callbacks...
     void requestResizeShadowTexture(); // set flag only, no work, safer for callbacks...
+    static void setAYADynamicRenderResolutionMultiplier(F32 multiplier);
+    static F32 getAYADynamicRenderResolutionMultiplier();
+    static F32 getEffectiveRenderResolutionMultiplier();
+    static F32 getAYARestoreRenderResolutionMultiplier();
 
     void resizeScreenTexture();
     void resizeShadowTexture();
@@ -1257,6 +1261,9 @@ public:
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
     static F32 RenderResolutionMultiplier;
 // [/SL:KB]
+    static F32 sAYADynamicRenderResolutionMultiplier;
+    static F32 sAYARestoreRenderResolutionMultiplier;
+    static bool sAYADynamicRenderResolutionSettingActive;
     static bool RenderUIBuffer;
     static S32 RenderShadowDetail;
     static S32 RenderShadowSplits;

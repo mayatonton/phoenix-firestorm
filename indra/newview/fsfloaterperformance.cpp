@@ -159,7 +159,7 @@ bool FSFloaterPerformance::postBuild()
     mNearbyPanel->getChild<LLSliderCtrl>("IndirectMaxComplexity")->setCommitCallback(boost::bind(&FSFloaterPerformance::updateMaxComplexity, this));
 
     mMaxARTChangedSignal = gSavedSettings.getControl("RenderAvatarMaxART")->getCommitSignal()->connect(boost::bind(&FSFloaterPerformance::updateMaxRenderTime, this));
-    mNearbyPanel->getChild<LLSliderCtrl>("RenderAvatarMaxART")->setCommitCallback(boost::bind(&FSFloaterPerformance::updateMaxRenderTime, this));
+    mNearbyPanel->getChild<LLSliderCtrl>("FSRenderAvatarMaxART")->setCommitCallback(boost::bind(&FSFloaterPerformance::updateMaxRenderTime, this));
 
     LLAvatarComplexityControls::setIndirectMaxArc();
     // store the current setting as the users desired reflection detail and DD
@@ -936,7 +936,7 @@ void FSFloaterPerformance::updateMaxRenderTimeText()
 {
     LLAvatarComplexityControls::setRenderTimeText(
         gSavedSettings.getF32("RenderAvatarMaxART"),
-        mNearbyPanel->getChild<LLTextBox>("RenderAvatarMaxARTText", true),
+        mNearbyPanel->getChild<LLTextBox>("FSRenderAvatarMaxARTText", true),
         true);
 }
 

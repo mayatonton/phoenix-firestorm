@@ -1745,6 +1745,925 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>AYAPerfDisplayLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm display/render frame section timing every 10 seconds</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAPerfIdleLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm main idle frame section timing every 10 seconds</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAPerfStream3DLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm Stream3D update timing every 10 seconds</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYALoadingFPSGuardEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Enable AYAstorm's low-FPS loading guard. While active, non-essential loading/render maintenance work is time-budgeted harder to preserve movement and UI responsiveness. Default OFF; AYAstorm Controls exposes this as the loading target FPS guard.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYALoadingFPSGuardMinFPS</key>
+    <map>
+      <key>Comment</key>
+      <string>Target FPS for AYAstorm's loading FPS guard. The guard activates while smoothed FPS is below this value; disable it with AYALoadingFPSGuardEnabled.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>30.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>30.0</real>
+        <real>288.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDynamicResolutionEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Enable AYAstorm's loading-only 3D resolution reduction while the loading FPS guard is active. This uses the existing RenderResolutionMultiplier cached pipeline path without changing the user's saved setting.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYALoadingDynamicResolutionLowFPSEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Allow loading dynamic resolution to enter from low FPS alone outside startup or teleport loading windows. Disabled by default because sudden RenderResolutionMultiplier resize during normal camera control can feel like camera drift.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYALoadingDynamicResolutionMultiplier</key>
+    <map>
+      <key>Comment</key>
+      <string>Legacy fixed 3D render target multiplier kept for compatibility with older AYAstorm test builds. The adaptive loading FPS guard no longer reads this value.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.25</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.25</real>
+        <real>1.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDynamicResolutionMinMultiplier</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum adaptive 3D render target multiplier used by the AYAstorm loading FPS guard through the existing RenderResolutionMultiplier pipeline path. The live multiplier is derived from current FPS divided by target FPS, then clamped to this floor and 1.0.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.25</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.25</real>
+        <real>1.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDynamicResolutionRestoreFPS</key>
+    <map>
+      <key>Comment</key>
+      <string>Restore native internal 3D resolution after the loading window closes and smoothed FPS is at least this value. 0 disables the FPS recovery requirement.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>30.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>120.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDynamicResolutionStartupWindowSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Keep AYAstorm dynamic internal resolution eligible for this many seconds after startup reaches the started state.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>20.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>120.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDynamicResolutionTeleportWindowSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Keep AYAstorm dynamic internal resolution eligible for this many seconds after teleport completes.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>20.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>120.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDynamicResolutionMinHoldSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum time to hold AYAstorm dynamic internal resolution after activation to avoid resize thrash.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>8.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>60.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDynamicResolutionLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm dynamic internal resolution guard transitions and active status.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYALoadingDynamicResolutionTextureCreateBacklogThreshold</key>
+    <map>
+      <key>Comment</key>
+      <string>Keep AYAstorm dynamic internal resolution eligible while decoded texture create/downscale backlog is at least this many items. 0 disables this loading backlog trigger.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>24</integer>
+    </map>
+    <key>AYALoadingDynamicResolutionTextureCallbackBacklogThreshold</key>
+    <map>
+      <key>Comment</key>
+      <string>Keep AYAstorm dynamic internal resolution eligible while texture callback backlog is at least this many items. 0 disables this loading backlog trigger.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>24</integer>
+    </map>
+    <key>AYADisableAvatarLoadingCloudParticles</key>
+    <map>
+      <key>Comment</key>
+      <string>Disable avatar loading cloud particles while AYAstorm's loading FPS guard is enabled. When the guard checkbox is OFF, avatar loading particles follow the normal viewer path.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureDistanceCapEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Limit world texture request resolution by camera distance to preserve FPS and texture memory after crowded scenes finish loading.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureDistanceCapNearMeters</key>
+    <map>
+      <key>Comment</key>
+      <string>Camera distance in meters up to which regular world textures may request AYATextureDistanceCapNearResolution.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>10.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>1.0</real>
+        <real>256.0</real>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapMidMeters</key>
+    <map>
+      <key>Comment</key>
+      <string>Camera distance in meters up to which regular world textures may request AYATextureDistanceCapMidResolution.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>20.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>1.0</real>
+        <real>512.0</real>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapFarMeters</key>
+    <map>
+      <key>Comment</key>
+      <string>Camera distance in meters up to which regular world textures may request AYATextureDistanceCapFarResolution. Beyond this distance AYATextureDistanceCapDistantResolution is used.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>50.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>1.0</real>
+        <real>1024.0</real>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapNearResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for regular world textures near the camera.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>2048</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapMidResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for regular world textures in the middle camera-distance band.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>1024</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapFarResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for regular world textures in the far camera-distance band.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>512</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapDistantResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for regular world textures beyond AYATextureDistanceCapFarMeters.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>256</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapAuxEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Apply stricter camera-distance texture caps to auxiliary material maps such as normal, specular, metallic-roughness, and emissive maps.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureDistanceCapAuxNearResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for auxiliary material maps near the camera.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>1024</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapAuxMidResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for auxiliary material maps in the middle camera-distance band.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>512</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapAuxFarResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for auxiliary material maps in the far camera-distance band.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>256</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureDistanceCapAuxDistantResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for auxiliary material maps beyond AYATextureDistanceCapFarMeters.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>128</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureOffscreenCapEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Apply a stricter texture resolution cap to faces outside the camera frustum. HUD attachments are excluded.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureOffscreenCapResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for regular world textures on faces outside the camera frustum.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>256</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATextureOffscreenCapAuxResolution</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum requested texture resolution in pixels for auxiliary material maps on faces outside the camera frustum.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>128</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>128</integer>
+        <integer>2048</integer>
+      </array>
+    </map>
+    <key>AYATeleportTextureSweepEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>After teleport, downscale pre-teleport LOD textures that are not reused in the destination scene and have no active face or volume references.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATeleportTextureSweepGraceSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Seconds to wait after teleport starts before sweeping pre-teleport textures, allowing destination scene reuse to be marked first.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>20.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>120.0</real>
+      </array>
+    </map>
+    <key>AYATeleportTextureSweepMaxTexturesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of pre-teleport textures to inspect per frame after the teleport texture sweep grace period.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>128</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>4096</integer>
+      </array>
+    </map>
+    <key>AYATeleportTextureSweepMaxQueuedTextures</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of inactive pre-teleport textures to keep in the teleport sweep snapshot queue.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>2048</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>16384</integer>
+      </array>
+    </map>
+    <key>AYATeleportTextureSweepLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm teleport texture sweep start, progress, and completion statistics.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureCreateBackpressureEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Release stale inactive pending texture creates when the GL texture create queue grows beyond the configured limit.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureCreateBackpressureQueueLimit</key>
+    <map>
+      <key>Comment</key>
+      <string>Soft queue size limit for pending GL texture creates before AYAstorm begins releasing inactive pending creates.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>4096</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>256</integer>
+        <integer>65536</integer>
+      </array>
+    </map>
+    <key>AYATextureCreateBackpressureHardLimit</key>
+    <map>
+      <key>Comment</key>
+      <string>Hard queue size threshold that allows AYAstorm to release more pending creates per frame.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>8192</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>256</integer>
+        <integer>65536</integer>
+      </array>
+    </map>
+    <key>AYATextureCreateBackpressureMaxDropsPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum stale inactive pending texture creates AYAstorm may release per frame while backpressure is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>512</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>8192</integer>
+      </array>
+    </map>
+    <key>AYATextureCreateBackpressureMinUnreferencedSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum seconds since last reference before AYAstorm may release an inactive unreferenced pending texture create under backpressure.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>20.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>300.0</real>
+      </array>
+    </map>
+    <key>AYATextureCreateBackpressureDeferDistanceEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>When the pending GL texture create queue exceeds the soft limit, cancel far, offscreen, or unreferenced non-protected pending creates so nearby visible content can rez first.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureCreateBackpressureLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm texture create queue backpressure drops.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYATextureMemorySweepEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Destroy stale GL textures and saved raw images for unreferenced, offscreen, or far non-protected textures when AYAstorm loading FPS guard or memory pressure is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureMemorySweepScanPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of texture records AYAstorm may inspect per frame during the memory sweep.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>256</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>8192</integer>
+      </array>
+    </map>
+    <key>AYATextureMemorySweepDestroyGLPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum unreferenced stale GL textures AYAstorm may destroy per frame during the memory sweep.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>16</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>1024</integer>
+      </array>
+    </map>
+    <key>AYATextureMemorySweepDestroyRawPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum saved raw images AYAstorm may destroy per frame during the memory sweep.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>64</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>4096</integer>
+      </array>
+    </map>
+    <key>AYATextureMemorySweepScaleDownPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum far or offscreen GL textures AYAstorm may schedule for downscale per frame during the memory sweep.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>32</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>4096</integer>
+      </array>
+    </map>
+    <key>AYATextureMemorySweepMinUnreferencedSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum seconds since last reference before AYAstorm may destroy an unreferenced GL texture during memory sweep.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>8.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>300.0</real>
+      </array>
+    </map>
+    <key>AYATextureMemorySweepFPSRatio</key>
+    <map>
+      <key>Comment</key>
+      <string>Run AYAstorm texture memory sweep under loading FPS guard when current FPS is at or below this fraction of the target FPS.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.75</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.1</real>
+        <real>1.0</real>
+      </array>
+    </map>
+    <key>AYATextureMemorySweepMinPhysicalMB</key>
+    <map>
+      <key>Comment</key>
+      <string>Run AYAstorm texture memory sweep when viewer resident physical memory reaches this many MB. 0 disables this memory-pressure trigger.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>7168</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>65536</integer>
+      </array>
+    </map>
+    <key>AYATextureMemorySweepLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm texture memory sweep activity and physical memory pressure.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYATextureCreatePriorityEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Prioritize nearby, visible, avatar bake, and protected texture creates ahead of far, offscreen, or unreferenced pending creates during loading.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureCreatePriorityMinQueue</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum pending GL texture create queue size before AYAstorm reorders pending creates by proximity and visibility priority.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>32</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>65536</integer>
+      </array>
+    </map>
+    <key>AYATextureCreatePriorityScanLimit</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of pending GL texture creates to score during one AYAstorm priority reorder pass. AYAstorm samples the front and tail of oversized queues so newly enqueued near textures can be promoted without scoring the full queue.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>2048</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>8192</integer>
+      </array>
+    </map>
+    <key>AYATextureCreatePriorityIntervalSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum seconds between AYAstorm pending GL texture create queue priority reorder passes.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.25</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.05</real>
+        <real>5.0</real>
+      </array>
+    </map>
+    <key>AYATextureCreatePriorityLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log AYAstorm texture create queue proximity and visibility priority reorder summaries.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYATextureDistanceCapLog</key>
+    <map>
+      <key>Comment</key>
+      <string>Log camera-distance texture cap and downscale queue statistics for AYAstorm performance validation.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>AnimateTextures</key>
     <map>
       <key>Comment</key>
@@ -5092,7 +6011,7 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
-    <key>DoubleClickTeleport</key> 
+    <key>DoubleClickTeleport</key>
     <map>
       <key>Comment</key>
       <string>Enable double-click to teleport where allowed (afects minimap and people panel)</string>
@@ -6089,7 +7008,7 @@
       <string>https://wiki.firestormviewer.org/start#basic_functions</string>
       <key>Backup</key>
       <integer>0</integer>
-    </map>    
+    </map>
     <key>HomeSidePanelURL</key>
     <map>
       <key>Comment</key>
@@ -6115,7 +7034,7 @@
       <string>https://search.[GRID]/viewer/?query_term=[QUERY]&amp;search_type=[TYPE][COLLECTION]&amp;maturity=[MATURITY]&amp;lang=[LANGUAGE]&amp;sid=[SESSION_ID]</string>
       <key>Backup</key>
       <integer>0</integer>
-      <!-- LL, possibly privacy leaking search string 
+      <!-- LL, possibly privacy leaking search string
       <string>https://search.[GRID]/viewer/?query_term=[QUERY]&amp;search_type=[TYPE][COLLECTION]&amp;maturity=[MATURITY]&amp;lang=[LANGUAGE]&amp;g=[GODLIKE]&amp;sid=[SESSION_ID]&amp;rid=[REGION_ID]&amp;pid=[PARCEL_ID]&amp;channel=[CHANNEL]&amp;version=[VERSION]&amp;major=[VERSION_MAJOR]&amp;minor=[VERSION_MINOR]&amp;patch=[VERSION_PATCH]&amp;build=[VERSION_BUILD]</string>
 	  -->
     </map>
@@ -6153,7 +7072,7 @@
       <integer>0</integer>
       <key>Backup</key>
       <integer>0</integer>
-    </map>	
+    </map>
     <key>HostID</key>
     <map>
       <key>Comment</key>
@@ -8082,7 +9001,7 @@
   </map>
   <key>MediaEnableFilter</key>
   <map>
-    <key>Comment</key>   
+    <key>Comment</key>
     <string>Enable media domain filtering</string>
     <key>Persist</key>
     <integer>1</integer>
@@ -12075,6 +12994,366 @@ Change of this parameter will affect the layout of buttons in notification toast
         <key>Value</key>
         <integer>0</integer>
     </map>
+    <key>RenderTextureCreateTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for GL texture creation per frame.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>4.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.5</real>
+        <real>16.0</real>
+      </array>
+    </map>
+    <key>RenderTextureDownscaleTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for GL texture downscaling per frame.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>2.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.5</real>
+        <real>16.0</real>
+      </array>
+    </map>
+    <key>RenderTextureMaxCreatesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of GL textures to create on the main thread in one frame. 0 disables creation.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>6</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>64</integer>
+      </array>
+    </map>
+    <key>RenderTextureMaxDownscalesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of GL texture downscale operations to run on the main thread in one frame. 0 disables per-frame downscaling.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>4</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>64</integer>
+      </array>
+    </map>
+    <key>RenderTextureGuardCreateTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for GL texture creation per frame while AYALoadingFPSGuard is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>1.5</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.1</real>
+        <real>16.0</real>
+      </array>
+    </map>
+    <key>RenderTextureGuardDownscaleTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for GL texture downscaling per frame while AYALoadingFPSGuard is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>2.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.1</real>
+        <real>16.0</real>
+      </array>
+    </map>
+    <key>RenderTextureGuardMaxCreatesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of GL textures to create on the main thread in one frame while AYALoadingFPSGuard is active. 0 pauses creation.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>2</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>64</integer>
+      </array>
+    </map>
+    <key>RenderTextureGuardMaxDownscalesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of GL texture downscale operations in one frame while AYALoadingFPSGuard is active. Keep nonzero to avoid swap pressure.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>4</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>64</integer>
+      </array>
+    </map>
+    <key>RenderTextureCallbackTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for texture loaded callbacks per frame.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>2.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.1</real>
+        <real>16.0</real>
+      </array>
+    </map>
+    <key>RenderTextureGuardCallbackTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for texture loaded callbacks per frame while AYALoadingFPSGuard is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.75</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.1</real>
+        <real>16.0</real>
+      </array>
+    </map>
+    <key>RenderTextureMaxCallbacksPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of texture loaded callbacks to run on the main thread in one frame. 0 pauses callbacks.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>16</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>128</integer>
+      </array>
+    </map>
+    <key>RenderTextureGuardMaxCallbacksPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of texture loaded callbacks to run in one frame while AYALoadingFPSGuard is active. 0 pauses callbacks.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>3</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>128</integer>
+      </array>
+    </map>
+    <key>RenderObjectIdleMinFPS</key>
+    <map>
+      <key>Comment</key>
+      <string>Spread non-avatar active object idle updates across frames while smoothed FPS is below this value. 0 disables the low-FPS throttle.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>15.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>60.0</real>
+      </array>
+    </map>
+    <key>RenderObjectIdleTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for non-avatar active object idle updates per frame while RenderObjectIdleMinFPS throttle is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>6.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.1</real>
+        <real>32.0</real>
+      </array>
+    </map>
+    <key>RenderObjectIdleMinUpdatesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum number of non-avatar active objects to idle update each frame before the low-FPS time budget may stop the pass.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>16</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>512</integer>
+      </array>
+    </map>
+    <key>RenderObjectIdleGuardTimeSliceMs</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum main-thread time budget for non-avatar active object idle updates per frame while AYALoadingFPSGuard is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>2.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.1</real>
+        <real>32.0</real>
+      </array>
+    </map>
+    <key>RenderObjectIdleGuardMinUpdatesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum number of non-avatar active objects to idle update per frame while AYALoadingFPSGuard is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>4</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>512</integer>
+      </array>
+    </map>
+    <key>RenderSunShadowMinUpdateFPS</key>
+    <map>
+      <key>Comment</key>
+      <string>Throttle sun shadow map regeneration while smoothed FPS is below this value. 0 disables the low-FPS throttle.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>18.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>60.0</real>
+      </array>
+    </map>
+    <key>RenderSunShadowLowFPSFrameInterval</key>
+    <map>
+      <key>Comment</key>
+      <string>Generate one sun shadow frame per this many frames while RenderSunShadowMinUpdateFPS throttle is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>6</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>60</integer>
+      </array>
+    </map>
+    <key>RenderSunShadowGuardFrameInterval</key>
+    <map>
+      <key>Comment</key>
+      <string>Generate one sun shadow frame per this many frames while AYALoadingFPSGuard is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>30</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>120</integer>
+      </array>
+    </map>
     <key>RenderDebugTextureBind</key>
     <map>
       <key>Comment</key>
@@ -14400,6 +15679,46 @@ Change of this parameter will affect the layout of buttons in notification toast
     <string>U32</string>
     <key>Value</key>
     <integer>12</integer>
+  </map>
+  <key>RenderAvatarMaxImpostorUpdatesPerFrame</key>
+  <map>
+    <key>Comment</key>
+    <string>Maximum number of avatar impostor render targets to regenerate in one frame. 0 disables the limit.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>U32</string>
+    <key>Value</key>
+    <integer>1</integer>
+    <key>SanityCheckType</key>
+    <string>Between</string>
+    <key>SanityValue</key>
+    <array>
+      <integer>0</integer>
+      <integer>16</integer>
+    </array>
+    <key>SanityComment</key>
+    <string>Setting this higher than 16 can reintroduce dense-crowd frame spikes.</string>
+  </map>
+  <key>RenderAvatarImpostorMinUpdateFPS</key>
+  <map>
+    <key>Comment</key>
+    <string>Skip refreshes of already-generated avatar impostor render targets while smoothed FPS is below this value. Missing impostor targets are still generated so distant avatars do not disappear. 0 disables the FPS guard.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>F32</string>
+    <key>Value</key>
+    <real>18.0</real>
+    <key>SanityCheckType</key>
+    <string>Between</string>
+    <key>SanityValue</key>
+    <array>
+      <real>0.0</real>
+      <real>60.0</real>
+    </array>
+    <key>SanityComment</key>
+    <string>Higher values favor frame pacing over keeping distant avatar impostors fresh while a scene is still loading.</string>
   </map>
   <key>RenderAutoMuteRenderWeightLimit</key>
   <map>
