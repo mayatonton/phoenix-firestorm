@@ -70,6 +70,46 @@ using std::pair;
 using std::make_pair;
 using std::string;
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-29 Phase 0 Step 2:
+// LL_INFOS hook for UBO setter cadence measurement. Default OFF, opt-in via
+// -DAYASTORM_UBO_CADENCE_HOOK=ON. See
+// docs/specs/ayastorm-r41-gl-removal/design/06a-prep-phase0-measurement.md §2.3
+#ifdef AYASTORM_UBO_CADENCE_HOOK
+// gFrameCount is defined in newview's llappviewer.cpp (U32 gFrameCount = 0;).
+// llrender sits below newview in the dependency graph, so we cannot #include
+// llappviewer.h here. Declare extern and let the final viewer link resolve it.
+extern U32 gFrameCount;
+
+namespace {
+    void ayaUboHookOnSetterByIndex(const char* setter_name, const LLGLSLShader* shader, U32 index)
+    {
+        const auto& reserved = LLShaderMgr::instance()->mReservedUniforms;
+        const char* uniform_name = (index < reserved.size()) ? reserved[index].c_str() : "<oob>";
+        LL_INFOS("UBO_CADENCE") << "frame=" << gFrameCount
+            << " shader=" << (shader->mName.empty() ? "<unnamed>" : shader->mName.c_str())
+            << " uniform=" << uniform_name
+            << " setter=" << setter_name
+            << " path=index"
+            << LL_ENDL;
+    }
+
+    void ayaUboHookOnSetterByHashed(const char* setter_name, const LLGLSLShader* shader, const LLStaticHashedString& uniform)
+    {
+        LL_INFOS("UBO_CADENCE") << "frame=" << gFrameCount
+            << " shader=" << (shader->mName.empty() ? "<unnamed>" : shader->mName.c_str())
+            << " uniform=" << uniform.String().c_str()
+            << " setter=" << setter_name
+            << " path=hashed"
+            << LL_ENDL;
+    }
+} // anonymous namespace
+#define AYA_UBO_HOOK_IDX(name)    ayaUboHookOnSetterByIndex(name, this, index)
+#define AYA_UBO_HOOK_HASH(name)   ayaUboHookOnSetterByHashed(name, this, uniform)
+#else
+#define AYA_UBO_HOOK_IDX(name)    ((void)0)
+#define AYA_UBO_HOOK_HASH(name)   ((void)0)
+#endif
+
 GLuint LLGLSLShader::sCurBoundShader = 0;
 LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
@@ -2140,6 +2180,7 @@ S32 LLGLSLShader::disableTexture(S32 uniform, LLTexUnit::eTextureType mode)
 
 void LLGLSLShader::uniform1i(U32 index, GLint x)
 {
+    AYA_UBO_HOOK_IDX("uniform1i");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
     if (mProgramObject)
@@ -2165,6 +2206,7 @@ void LLGLSLShader::uniform1i(U32 index, GLint x)
 
 void LLGLSLShader::uniform1f(U32 index, GLfloat x)
 {
+    AYA_UBO_HOOK_IDX("uniform1f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2191,6 +2233,7 @@ void LLGLSLShader::uniform1f(U32 index, GLfloat x)
 
 void LLGLSLShader::fastUniform1f(U32 index, GLfloat x)
 {
+    AYA_UBO_HOOK_IDX("fastUniform1f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
     llassert(mProgramObject);
@@ -2201,6 +2244,7 @@ void LLGLSLShader::fastUniform1f(U32 index, GLfloat x)
 
 void LLGLSLShader::uniform2f(U32 index, GLfloat x, GLfloat y)
 {
+    AYA_UBO_HOOK_IDX("uniform2f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2228,6 +2272,7 @@ void LLGLSLShader::uniform2f(U32 index, GLfloat x, GLfloat y)
 
 void LLGLSLShader::uniform3f(U32 index, GLfloat x, GLfloat y, GLfloat z)
 {
+    AYA_UBO_HOOK_IDX("uniform3f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2255,6 +2300,7 @@ void LLGLSLShader::uniform3f(U32 index, GLfloat x, GLfloat y, GLfloat z)
 
 void LLGLSLShader::uniform4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat w)
 {
+    AYA_UBO_HOOK_IDX("uniform4f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2282,6 +2328,7 @@ void LLGLSLShader::uniform4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat
 
 void LLGLSLShader::uniform1iv(U32 index, U32 count, const GLint* v)
 {
+    AYA_UBO_HOOK_IDX("uniform1iv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2309,6 +2356,7 @@ void LLGLSLShader::uniform1iv(U32 index, U32 count, const GLint* v)
 
 void LLGLSLShader::uniform4iv(U32 index, U32 count, const GLint* v)
 {
+    AYA_UBO_HOOK_IDX("uniform4iv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2337,6 +2385,7 @@ void LLGLSLShader::uniform4iv(U32 index, U32 count, const GLint* v)
 
 void LLGLSLShader::uniform1fv(U32 index, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniform1fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2364,6 +2413,7 @@ void LLGLSLShader::uniform1fv(U32 index, U32 count, const GLfloat* v)
 
 void LLGLSLShader::uniform2fv(U32 index, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniform2fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2391,6 +2441,7 @@ void LLGLSLShader::uniform2fv(U32 index, U32 count, const GLfloat* v)
 
 void LLGLSLShader::uniform3fv(U32 index, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniform3fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2418,6 +2469,7 @@ void LLGLSLShader::uniform3fv(U32 index, U32 count, const GLfloat* v)
 
 void LLGLSLShader::uniform4fv(U32 index, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniform4fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2446,6 +2498,7 @@ void LLGLSLShader::uniform4fv(U32 index, U32 count, const GLfloat* v)
 
 void LLGLSLShader::uniform4uiv(U32 index, U32 count, const GLuint* v)
 {
+    AYA_UBO_HOOK_IDX("uniform4uiv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2474,6 +2527,7 @@ void LLGLSLShader::uniform4uiv(U32 index, U32 count, const GLuint* v)
 
 void LLGLSLShader::uniformMatrix2fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniformMatrix2fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2495,6 +2549,7 @@ void LLGLSLShader::uniformMatrix2fv(U32 index, U32 count, GLboolean transpose, c
 
 void LLGLSLShader::uniformMatrix3fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniformMatrix3fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2516,6 +2571,7 @@ void LLGLSLShader::uniformMatrix3fv(U32 index, U32 count, GLboolean transpose, c
 
 void LLGLSLShader::uniformMatrix3x4fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniformMatrix3x4fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2537,6 +2593,7 @@ void LLGLSLShader::uniformMatrix3x4fv(U32 index, U32 count, GLboolean transpose,
 
 void LLGLSLShader::uniformMatrix4fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v)
 {
+    AYA_UBO_HOOK_IDX("uniformMatrix4fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     llassert(sCurBoundShaderPtr == this);
 
@@ -2616,6 +2673,7 @@ GLint LLGLSLShader::getAttribLocation(U32 attrib)
 
 void LLGLSLShader::uniform1i(const LLStaticHashedString& uniform, GLint v)
 {
+    AYA_UBO_HOOK_HASH("uniform1i");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2633,6 +2691,7 @@ void LLGLSLShader::uniform1i(const LLStaticHashedString& uniform, GLint v)
 
 void LLGLSLShader::uniform1iv(const LLStaticHashedString& uniform, U32 count, const GLint* v)
 {
+    AYA_UBO_HOOK_HASH("uniform1iv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2651,6 +2710,7 @@ void LLGLSLShader::uniform1iv(const LLStaticHashedString& uniform, U32 count, co
 
 void LLGLSLShader::uniform4iv(const LLStaticHashedString& uniform, U32 count, const GLint* v)
 {
+    AYA_UBO_HOOK_HASH("uniform4iv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2669,6 +2729,7 @@ void LLGLSLShader::uniform4iv(const LLStaticHashedString& uniform, U32 count, co
 
 void LLGLSLShader::uniform2i(const LLStaticHashedString& uniform, GLint i, GLint j)
 {
+    AYA_UBO_HOOK_HASH("uniform2i");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2687,6 +2748,7 @@ void LLGLSLShader::uniform2i(const LLStaticHashedString& uniform, GLint i, GLint
 
 void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
 {
+    AYA_UBO_HOOK_HASH("uniform1f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2704,6 +2766,7 @@ void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
 
 void LLGLSLShader::uniform2f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y)
 {
+    AYA_UBO_HOOK_HASH("uniform2f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2722,6 +2785,7 @@ void LLGLSLShader::uniform2f(const LLStaticHashedString& uniform, GLfloat x, GLf
 
 void LLGLSLShader::uniform3f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y, GLfloat z)
 {
+    AYA_UBO_HOOK_HASH("uniform3f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2739,6 +2803,7 @@ void LLGLSLShader::uniform3f(const LLStaticHashedString& uniform, GLfloat x, GLf
 
 void LLGLSLShader::uniform4f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y, GLfloat z, GLfloat w)
 {
+    AYA_UBO_HOOK_HASH("uniform4f");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2756,6 +2821,7 @@ void LLGLSLShader::uniform4f(const LLStaticHashedString& uniform, GLfloat x, GLf
 
 void LLGLSLShader::uniform1fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_HASH("uniform1fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2773,6 +2839,7 @@ void LLGLSLShader::uniform1fv(const LLStaticHashedString& uniform, U32 count, co
 
 void LLGLSLShader::uniform2fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_HASH("uniform2fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2790,6 +2857,7 @@ void LLGLSLShader::uniform2fv(const LLStaticHashedString& uniform, U32 count, co
 
 void LLGLSLShader::uniform3fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_HASH("uniform3fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2807,6 +2875,7 @@ void LLGLSLShader::uniform3fv(const LLStaticHashedString& uniform, U32 count, co
 
 void LLGLSLShader::uniform4fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
+    AYA_UBO_HOOK_HASH("uniform4fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2825,6 +2894,7 @@ void LLGLSLShader::uniform4fv(const LLStaticHashedString& uniform, U32 count, co
 
 void LLGLSLShader::uniform4uiv(const LLStaticHashedString& uniform, U32 count, const GLuint* v)
 {
+    AYA_UBO_HOOK_HASH("uniform4uiv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
@@ -2843,6 +2913,7 @@ void LLGLSLShader::uniform4uiv(const LLStaticHashedString& uniform, U32 count, c
 
 void LLGLSLShader::uniformMatrix4fv(const LLStaticHashedString& uniform, U32 count, GLboolean transpose, const GLfloat* v)
 {
+    AYA_UBO_HOOK_HASH("uniformMatrix4fv");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     GLint location = getUniformLocation(uniform);
 
