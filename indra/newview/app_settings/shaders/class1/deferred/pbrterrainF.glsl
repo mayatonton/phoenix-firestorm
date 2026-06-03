@@ -61,6 +61,12 @@ struct TerrainMix
 TerrainMix get_terrain_mix_weights(float alpha1, float alpha2, float alphaFinal);
 TerrainMix get_terrain_usage_from_weight3(vec3 weight3);
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue C 追補):
+//   struct PBRMix も TerrainMix と同型で pbrterrainF.glsl + pbrterrainUtilF.glsl の 2 file で
+//   同 member 構成を宣言し addCommonShader 経路 attach で redefinition となる。
+//   TerrainMix と対称的に guard wrap (η-28-F 範式の同型適用、初回 cold launch verify FAIL 起因)。
+#ifndef PBR_MIX_DEFINED
+#define PBR_MIX_DEFINED 1
 struct PBRMix
 {
     vec4 col;       // RGB color with alpha, linear space
@@ -76,6 +82,7 @@ struct PBRMix
     vec3 emissive;  // RGB emissive color, linear space
 #endif
 };
+#endif
 
 PBRMix init_pbr_mix();
 

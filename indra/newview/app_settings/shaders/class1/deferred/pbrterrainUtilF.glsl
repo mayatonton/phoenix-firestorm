@@ -84,6 +84,9 @@ vec3 srgb_to_linear(vec3 c);
 #define MIX_Z    1 << 5
 #define MIX_W    1 << 6
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue C 追補): 同 guard wrap (pbrterrainF.glsl と対、η-28-F 範式)
+#ifndef PBR_MIX_DEFINED
+#define PBR_MIX_DEFINED 1
 struct PBRMix
 {
     vec4 col;       // RGB color with alpha, linear space
@@ -99,6 +102,7 @@ struct PBRMix
     vec3 emissive;  // RGB emissive color, linear space
 #endif
 };
+#endif
 
 PBRMix init_pbr_mix()
 {

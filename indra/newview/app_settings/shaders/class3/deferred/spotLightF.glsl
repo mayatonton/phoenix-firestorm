@@ -85,11 +85,6 @@ layout(set=2, binding=10, std140) uniform PerProgramUBO_SpotLightF {
     float shadow_fade;
     float falloff;
     float global_light_strength;
-    // chunk 3 (vec3 + float) - r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α (Issue F):
-    //   MULTI_SPOTLIGHT permutation で参照される `vec3 center` を本 UBO に吸収。
-    //   !MULTI_SPOTLIGHT permutation では declared-but-unused (η-28-C type 3 範式)。
-    vec3  center;
-    float _pad_center;
 };
 #endif
 #else
@@ -142,8 +137,24 @@ uniform int classic_mode;
 
 // Light params
 #if defined(MULTI_SPOTLIGHT)
-#ifndef LL_VULKAN_GLSL
-uniform vec3 center;   // GL path のみ (Vulkan path は PerProgramUBO_SpotLightF.center 経由、本 file L74-)
+#ifdef LL_VULKAN_GLSL
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2d-α revised (設計 chapter 04/05 暗黙前提整合):
+//   独自 chunk 3 (vec3 center) を SpotLightF UBO に吸収する案 (η-28-C type 3) は
+//   blueprint 範囲外 (既存 inventory 現状温存原則と乖離)、cross-stage anonymous member
+//   name 衝突で link fail (初回 cold launch verify 検出)。本修正で vert pointLightV.glsl
+//   既存 PerProgramUBO_PointLightV (set=2, binding=5) を frag stage 側でも declare →
+//   cross-stage UBO 共有 (標準パターン) で `center` を取得、両 stage 同一 block 同一
+//   member 指して衝突解消。`size` 同梱は vert UBO inventory 温存、frag stage では
+//   declared-but-unused (η-28-C type 3 範式、frag は `spot_light_size` を別 UBO 経由で参照)。
+#ifndef PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED
+#define PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED 1
+layout(set=2, binding=5, std140) uniform PerProgramUBO_PointLightV {
+    vec3  center;
+    float size;
+};
+#endif
+#else
+uniform vec3 center;   // GL path のみ
 #endif
 #else
 #ifdef LL_VULKAN_GLSL
