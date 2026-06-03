@@ -203,6 +203,295 @@ indra/newview/llviewershadermgr 等
 3. **scope 限定**: LL の GLSL UBO 宣言は (preprocess 展開後) **純粋な block 列**、ネスト無し、`std140` layout qualifier 必須、~200 行 mini-parser で fully cover
 4. **debug 容易**: parse 失敗時に **入力 GLSL ファイル名 + 行番号 + 期待構文** を error log 出力可能、glslang library reflection の opaque error より診断性高
 
+#### §5.2.1 mini-parser 詳細化 (= Phase 2d-β-revise Deliverable B-2)
+
+P3 mini-parser の **token grammar + state machine + glslang -E 連動 + ~200 行実装 breakdown** 確定形。Phase 1.A 実装 source of truth。
+
+##### §5.2.1.1 input 契約 (= glslang -E 前処理後の GLSL)
+
+mini-parser 入力 = `glslangValidator -E <input.glsl>` の stdout 出力:
+
+```glsl
+// preprocess 展開後 (= AYA 想定 input 例):
+#line 1 "deferred_alphaF.glsl"
+
+layout(std140) uniform FrameViewProj {
+    mat4 view;
+    mat4 proj;
+    mat4 view_proj;
+};
+
+layout(std140) uniform Program_GammaCorrect {
+    float gamma;
+    vec3 white_point;
+    float exposure;
+};
+
+layout(std140) uniform Draw_MultiLight {
+    int   light_count;
+    vec4  light_color[8];
+    float light_radius[8];
+    LightCone light_cone;     // = nested struct (§5.2.1.4 対応)
+};
+
+struct LightCone {
+    float cos_inner;
+    float cos_outer;
+    vec3  axis;
+};
+
+uniform sampler2D diffuseMap;     // = sampler (§5.2.1.5 別 path)
+uniform vec4 color;               // = bare uniform (= chapter 04 §7.1 Codegen 対象外、skip)
+```
+
+**preprocess 後の特性**:
+- 全 `#ifdef` / `#define` 解決済 (= GLSL preprocess は glslang 担当)
+- comment は `#line` directive 以外残らない (= glslang -E が strip)
+- ネスト不要 (= UBO block 内に他の UBO 宣言は GLSL spec 上不可)
+- `layout(std140)` qualifier は **mini-parser が検証必須** (= 無いと std140 layout 保証なし、build error)
+
+##### §5.2.1.2 token grammar (= EBNF level)
+
+```ebnf
+program        = { top_level_decl } ;
+top_level_decl = ubo_block | struct_def | bare_uniform | sampler_decl | other_skip ;
+
+ubo_block      = "layout" "(" layout_qual ")" "uniform" ident "{" { member_decl } "}" [ ident ] ";" ;
+struct_def     = "struct" ident "{" { member_decl } "}" ";" ;
+bare_uniform   = "uniform" type_ident ident [ "[" int_lit "]" ] ";" ;
+sampler_decl   = "uniform" sampler_type ident ";" ;
+
+layout_qual    = qual_item { "," qual_item } ;
+qual_item      = "std140" | "binding" "=" int_lit | "set" "=" int_lit | ... ;
+
+member_decl    = type_ident ident [ "[" int_lit "]" ] ";" ;
+type_ident     = "float" | "vec2" | "vec3" | "vec4" | "int" | ... | ident ;  -- ident = nested struct name
+ident          = letter { letter | digit | "_" } ;
+int_lit        = digit { digit } ;
+
+sampler_type   = "sampler2D" | "sampler3D" | "samplerCube" | "sampler2DShadow" | ... ;
+
+other_skip     = ? not matching above, skip to next ";" ? ;
+```
+
+##### §5.2.1.3 state machine 実装 (= ~200 行の核)
+
+```python
+# scripts/codegen/glsl_parser.py
+import re
+from dataclasses import dataclass, field
+
+@dataclass
+class UboBlockDecl:
+    block_name: str
+    layout_qual: dict     # = {"std140": True, "binding": 0, ...}
+    members: list         # = [{name, type, array_count, nested_struct_or_None}]
+    source_file: str
+    source_line: int
+    instance_name: str = ""  # block 後の `} instance;` 形式 (= LL 慣用範囲外、検出時 warn)
+
+@dataclass
+class StructDef:
+    name: str
+    members: list
+    source_file: str
+    source_line: int
+
+@dataclass
+class BareUniformDecl:
+    type_str: str
+    name: str
+    array_count: int = 0  # 0 = non-array
+    source_file: str = ""
+    source_line: int = 0
+
+# Token 種別 (= regex で抽出)
+TOKEN_PATTERNS = [
+    ('LINE_DIR',  r'#line\s+(\d+)\s*"([^"]*)"'),
+    ('LBRACE',    r'\{'),
+    ('RBRACE',    r'\}'),
+    ('LPAREN',    r'\('),
+    ('RPAREN',    r'\)'),
+    ('LBRACK',    r'\['),
+    ('RBRACK',    r'\]'),
+    ('COMMA',     r','),
+    ('SEMI',      r';'),
+    ('EQ',        r'='),
+    ('INT',       r'\d+'),
+    ('IDENT',     r'[a-zA-Z_][a-zA-Z_0-9]*'),
+    ('WS',        r'\s+'),
+    ('SKIP',      r'.'),  # unknown char = skip 1 (= other_skip 緩衝)
+]
+TOKEN_RE = re.compile('|'.join(f'(?P<{name}>{pat})' for name, pat in TOKEN_PATTERNS))
+
+def tokenize(source: str):
+    """generator: 1 token / iter、WS skip、LINE_DIR で current_file/line 更新"""
+    line_no = 1
+    file_name = "<input>"
+    for m in TOKEN_RE.finditer(source):
+        kind = m.lastgroup
+        text = m.group()
+        if kind == 'LINE_DIR':
+            line_no = int(m.group(2))   # ※ m.group() で名前付き group 番号注意、実装簡略化
+            file_name = m.group(3)
+            continue
+        if kind == 'WS':
+            line_no += text.count('\n')
+            continue
+        yield (kind, text, file_name, line_no)
+
+
+SAMPLER_TYPES = {
+    'sampler2D', 'sampler3D', 'samplerCube', 'sampler2DShadow',
+    'sampler2DArray', 'samplerCubeArray', 'sampler2DArrayShadow',
+    'isampler2D', 'usampler2D', 'samplerBuffer', 'isamplerBuffer', 'usamplerBuffer',
+}
+
+PRIMITIVE_TYPE_IDENTS = {  # = chapter 04 §4.3.1.1 PRIMITIVE_TYPES の key 同期
+    'float', 'vec2', 'vec3', 'vec4', 'int', 'uint', 'bool',
+    'mat2', 'mat3', 'mat4',
+    'ivec2', 'ivec3', 'ivec4', 'uvec2', 'uvec3', 'uvec4',
+    'bvec2', 'bvec3', 'bvec4',
+    # 'double', 'dvec*', 'dmat*' は除外 (= §4.3.1.6 build error 対象)
+}
+
+
+def parse_glsl(source: str) -> tuple[list[UboBlockDecl], list[StructDef], list[BareUniformDecl], list]:
+    """top-level decl の state machine、struct_defs / ubo_blocks / bare_uniforms / sampler_decls 分離出力"""
+    tokens = list(tokenize(source))
+    i = 0
+    ubo_blocks = []
+    struct_defs = {}
+    bare_uniforms = []
+    sampler_decls = []
+    
+    while i < len(tokens):
+        kind, text, fn, ln = tokens[i]
+        
+        # Case 1: `layout ( ... ) uniform <Name> { ... }`
+        if kind == 'IDENT' and text == 'layout':
+            block, j = _parse_ubo_block(tokens, i, fn, ln, struct_defs)
+            ubo_blocks.append(block)
+            i = j
+            continue
+        
+        # Case 2: `struct <Name> { ... }`
+        if kind == 'IDENT' and text == 'struct':
+            sd, j = _parse_struct(tokens, i, fn, ln)
+            struct_defs[sd.name] = sd
+            i = j
+            continue
+        
+        # Case 3: `uniform <type> <name> [...] ;` (= bare or sampler)
+        if kind == 'IDENT' and text == 'uniform':
+            type_tok = tokens[i+1] if i+1 < len(tokens) else None
+            if type_tok and type_tok[0] == 'IDENT':
+                type_str = type_tok[1]
+                if type_str in SAMPLER_TYPES:
+                    sd, j = _parse_sampler(tokens, i, fn, ln)
+                    sampler_decls.append(sd)
+                else:
+                    bd, j = _parse_bare_uniform(tokens, i, fn, ln)
+                    bare_uniforms.append(bd)
+                i = j
+                continue
+        
+        # Case 4: skip 不明 token (= other_skip = "; まで読み飛ばし")
+        i = _skip_to_semi(tokens, i + 1)
+    
+    return ubo_blocks, list(struct_defs.values()), bare_uniforms, sampler_decls
+
+
+# helper 関数群 (~120 行、各 _parse_* / _skip_to_semi / _expect_token 等)
+def _parse_ubo_block(tokens, i, fn, ln, struct_defs):
+    # state: layout ( <qualifier_list> ) uniform <name> { <members> } [<instance>] ;
+    # 期待 token sequence を順次 expect、不一致なら CodegenError raise
+    ...
+
+def _parse_member_decl(tokens, i, struct_defs):
+    # state: <type_ident> <name> [ [ <int> ] ] ;
+    # type_ident が struct_defs 内なら nested 認識、外なら primitive 照合
+    ...
+
+# (実装詳細は省略、Phase 1.A 実装時に上記 grammar 通り具体化)
+```
+
+##### §5.2.1.4 nested struct 対応 (= chapter 04 §4.3.1.3 計算側との接合)
+
+GLSL の nested struct (= UBO block 内で `struct LightCone { ... }` を使用する member) は **2 step 処理**:
+
+1. **Pass 1**: top-level `struct` 定義を全て収集 (= struct_defs dict)
+2. **Pass 2**: UBO block 内 member の type_ident が struct_defs にあれば、その member info を `nested_struct=struct_defs[type]` で記録
+
+mini-parser 出力 → chapter 04 §4.3.1.3 `compute_struct_type_info()` が再帰計算で std140 layout 化。
+
+**実装上の制約**:
+- struct 定義は UBO block より **前方宣言必須** (= GLSL spec 順)、後方宣言は build error
+- 同名 struct 重複は build error (= struct_defs 上書き検知)
+
+##### §5.2.1.5 sampler 抽出 path (= chapter 08 §6.1 g_sampler_metadata 出力 source)
+
+bare `uniform sampler2D <name>;` は §6.1 `g_sampler_metadata[]` 出力 source:
+
+```python
+@dataclass
+class SamplerDecl:
+    sampler_type: str   # = 'sampler2D' / 'samplerCube' / ...
+    name: str
+    source_file: str
+    source_line: int
+
+# bare_uniform path で sampler_type 検出時に SamplerDecl emit、std140 layout 計算は対象外 (= opaque type)
+```
+
+= mini-parser の **第 4 出力** (= ubo_blocks / struct_defs / bare_uniforms / sampler_decls)、§6.1 sampler metadata generator の入力。
+
+##### §5.2.1.6 LL GLSL 慣用範囲外の検出 + build error
+
+LL GLSL 慣用範囲外構文の検出 + 出力 format:
+
+| 構文 | 検出箇所 | error 出力 |
+|---|---|---|
+| `layout(std430)` 等 std140 以外 | _parse_ubo_block layout_qual check | "ERROR: unsupported layout qualifier 'std430' in block '<name>', UBO は std140 必須" |
+| `double` / `dvec*` / `dmat*` | _parse_member_decl type check | "ERROR: unsupported type '<type>' (= chapter 04 §4.3.1.6 同型)" |
+| 動的 array sub-script (= `array[N]` の N が ident) | _parse_member_decl array check | "ERROR: dynamic array size '<expr>' (= compile-time const only)" |
+| UBO 内に function 宣言混入 | state machine 不一致 | "ERROR: unexpected token in UBO block '<name>'" |
+| 同名 UBO 重複宣言 (= chapter 04 §4.4 既述) | post-parse 集約時に dict 重複 | "ERROR: duplicate UBO block '<name>' in [file1.glsl, file2.glsl]" |
+| `uniform <name> { ... } var1, var2;` (= 複数 instance) | _parse_ubo_block 末尾 ident multi | "WARN: multiple instance name in UBO '<name>', Codegen は 1 instance のみ採用" |
+
+出力 format は chapter 08 §9.4 build error format 完全準拠:
+
+```
+[codegen_ubo] ERROR: unsupported layout qualifier 'std430'
+  GLSL file: app_settings/shaders/class3/deferred/materialF.glsl:42
+  Block: MaterialUBO_Legacy
+  Reason: AYAstorm r41 設計は std140 layout のみサポート (= chapter 04 §3.1 判断 A)
+  Action: GLSL 宣言を `layout(std140)` に修正
+```
+
+##### §5.2.1.7 #line directive 経由のエラー位置追跡
+
+glslang -E preprocess 後の GLSL は `#line N "file"` directive で **元の GLSL ファイル + 行番号** を保持。mini-parser の `tokenize()` 内で同 directive を track し、`(kind, text, fn, ln)` の `fn/ln` を常に **元 GLSL の位置** に維持 → §5.2.1.6 error 出力で `app_settings/shaders/class3/deferred/materialF.glsl:42` (= 元の path + line) を出力可能。
+
+= preprocess 後 token の line 番号がずれて debug 困難という P3 既知 risk を排除。
+
+##### §5.2.1.8 実装規模見積
+
+| 項目 | LoC |
+|---|---|
+| TOKEN_PATTERNS + tokenize() (§5.2.1.3) | ~30 |
+| parse_glsl top-level state machine (§5.2.1.3) | ~40 |
+| _parse_ubo_block + layout_qual parse | ~40 |
+| _parse_struct + nested 認識 (§5.2.1.4) | ~25 |
+| _parse_bare_uniform + _parse_sampler (§5.2.1.5) | ~20 |
+| LL 慣用範囲外検出 + error format (§5.2.1.6) | ~30 |
+| #line directive 追跡 (§5.2.1.7) | ~10 |
+| unit test (= sample GLSL 10 種 round-trip) | ~80 |
+| **合計** | **~275** |
+
+= chapter 04 §4.2 「~200 行 mini-parser で fully cover」見積に整合 (= test 込み ~275、本体 ~195)。
+
+
 ### §5.3 std140 offset 計算 (= chapter 04 (A1) 解消)
 
 | # | 候補 | 利点 | 欠点 |
@@ -225,6 +514,250 @@ indra/newview/llviewershadermgr 等
 **A1b 不採用根拠**: reflection 単独依存は glslang version 更新で format 変動した際、host 側 layout 認識まで一括破綻するリスク (= silent runtime corruption の温床)。
 
 = **(A1) → A1a 二重保証 default 確定、§17 で AYA 判断仰ぎ候補に登録**。
+
+#### §5.4.1 SPIR-V reflection 二重保証 mechanism 詳細化 (= Phase 2d-β-revise Deliverable B-1)
+
+A1a 二重保証の **抽出経路 + 照合 algorithm + format drift 耐性 mechanism** 確定形。Phase 1.A (chapter 09 §4.1) 実装 source of truth。
+
+##### §5.4.1.1 reflection 抽出経路 (= glslang → JSON intermediate)
+
+```
+[per GLSL block 単位 sequence]
+1. glslangValidator -V -S <stage> <glsl_file> -o /tmp/<block>.spv
+       → SPIR-V binary 出力
+2. spirv-cross --reflect --output-format json /tmp/<block>.spv
+       → JSON intermediate 出力 (= glslang 自身の --reflect-uniform-blocks も可、後述 §5.4.1.5)
+3. Python が JSON parse → dict[block_name][member_name] = {offset, size, array_stride}
+4. Codegen 独自 calculator (= chapter 04 §4.3.1) と per-member 比較
+5. 不一致なら build error (= §9.4 format)
+```
+
+**JSON intermediate 中継採用根拠**:
+- glslang reflection API は C++ で、Python 呼出には binding 必要 → 不採用
+- `spirv-cross --reflect --output-format json` は **3 OS 共通 / autobuild 既存配信** (= chapter 07 §2.8、`indra/llrender/llvkloader.cpp` で runtime 使用済)
+- JSON format は **glslang version 1.3.224+ で stable** (= AYAstorm autobuild bundle version 1.3.275 以降、format drift 観測対象は schema レベルのみ)
+
+##### §5.4.1.2 JSON schema 期待形 (= spirv-cross 出力)
+
+```json
+{
+  "types": {
+    "_FrameViewProj": {
+      "name": "FrameViewProj",
+      "members": [
+        {"name": "view",      "type": "mat4", "offset": 0,   "matrix_stride": 16},
+        {"name": "proj",      "type": "mat4", "offset": 64,  "matrix_stride": 16},
+        {"name": "view_proj", "type": "mat4", "offset": 128, "matrix_stride": 16}
+      ]
+    }
+  },
+  "ubos": [
+    {
+      "type": "_FrameViewProj",
+      "name": "FrameViewProj",
+      "block_size": 192,
+      "set": 0,
+      "binding": 0
+    }
+  ]
+}
+```
+
+**Codegen が抽出する field**:
+- 各 member の `offset` (= 必須 = 二重保証主軸)
+- 各 member の `array_stride` (= 配列時のみ)
+- block の `block_size` (= padding 後 size 確認 = §6.4 256B padding 前の std140 size)
+- block の `set` / `binding` (= chapter 07 §4 set 帯確認 = §9.1 E2 / E7 補強)
+
+##### §5.4.1.3 per-member 照合 algorithm (= chapter 04 §4.3.1.7 接合具体化)
+
+```python
+# scripts/codegen/spirv_reflect.py
+import subprocess
+import json
+from pathlib import Path
+
+def extract_reflection(glsl_file: Path, stage: str, glslang_path: Path, spirv_cross_path: Path) -> dict:
+    """1 GLSL ファイル → reflection dict"""
+    spv_tmp = glsl_file.with_suffix('.spv.tmp')
+    
+    # Stage 1: SPIR-V 化
+    res = subprocess.run(
+        [str(glslang_path), '-V', '-S', stage, str(glsl_file), '-o', str(spv_tmp)],
+        capture_output=True, text=True, check=False
+    )
+    if res.returncode != 0:
+        raise CodegenError(f"glslang SPIR-V 化失敗: {glsl_file}\n{res.stderr}")
+    
+    # Stage 2: reflection JSON 抽出
+    res = subprocess.run(
+        [str(spirv_cross_path), '--reflect', '--output-format', 'json', str(spv_tmp)],
+        capture_output=True, text=True, check=False
+    )
+    if res.returncode != 0:
+        raise CodegenError(f"spirv-cross reflection 失敗: {spv_tmp}\n{res.stderr}")
+    
+    refl = json.loads(res.stdout)
+    spv_tmp.unlink(missing_ok=True)
+    
+    # Stage 3: dict[block_name][member_name] = {offset, size, array_stride} に正規化
+    result = {}
+    for ubo in refl.get('ubos', []):
+        block_name = ubo['name']
+        type_def = refl['types'][ubo['type']]
+        result[block_name] = {
+            '_block_size': ubo.get('block_size', None),
+            '_set': ubo.get('set', None),
+            '_binding': ubo.get('binding', None),
+        }
+        for m in type_def['members']:
+            result[block_name][m['name']] = {
+                'offset': m['offset'],
+                'array_stride': m.get('array_stride', 0),
+            }
+    return result
+
+
+def verify_layout_against_spirv(
+    block_name: str,
+    codegen_layout: list,        # = chapter 04 §4.3.1.2 compute_layout 出力
+    codegen_block_size: int,
+    spirv_refl: dict,
+):
+    """照合 algorithm 本体 = per-member offset / block_size / array_stride 比較"""
+    if block_name not in spirv_refl:
+        raise CodegenError(
+            f"[codegen_ubo] ERROR: block '{block_name}' 未検出 in SPIR-V reflection\n"
+            f"  Codegen は parse 成功、SPIR-V reflection は未認識 → glslang preprocess 差 or block name 揺れ\n"
+            f"  Action: GLSL の `layout(std140) uniform <BlockName> {{ ... }}` 宣言を確認"
+        )
+    
+    spv_block = spirv_refl[block_name]
+    
+    # check 1: block_size 一致 (= padding 後 std140 size)
+    if spv_block.get('_block_size') != codegen_block_size:
+        raise CodegenError(
+            f"[codegen_ubo] ERROR: block size mismatch in '{block_name}'\n"
+            f"  Codegen calculation:        {codegen_block_size}\n"
+            f"  glslang SPIR-V reflection:  {spv_block['_block_size']}\n"
+            f"  Likely cause: 末尾 padding miss or member size 計算違い"
+        )
+    
+    # check 2: per-member offset 一致
+    for member in codegen_layout:
+        name = member['name']
+        if name not in spv_block:
+            raise CodegenError(
+                f"[codegen_ubo] ERROR: member '{block_name}.{name}' 未検出 in SPIR-V reflection"
+            )
+        spv_offset = spv_block[name]['offset']
+        if spv_offset != member['offset']:
+            raise CodegenError(
+                f"[codegen_ubo] ERROR: std140 offset mismatch in '{block_name}.{name}'\n"
+                f"  Codegen calculation:        OFFSET = {member['offset']}\n"
+                f"  glslang SPIR-V reflection:  OFFSET = {spv_offset}\n"
+                f"  Diff = {abs(spv_offset - member['offset'])} bytes\n"
+                f"  Likely cause: array stride / vec3 hole / nested struct padding\n"
+                f"  Action: chapter 04 §4.3.1 algorithm review or glslang version drift 確認"
+            )
+        # check 3: array stride 一致 (= array member のみ)
+        if member.get('array_stride', 0) > 0:
+            spv_stride = spv_block[name].get('array_stride', 0)
+            if spv_stride != member['array_stride']:
+                raise CodegenError(
+                    f"[codegen_ubo] ERROR: array stride mismatch in '{block_name}.{name}'\n"
+                    f"  Codegen: stride = {member['array_stride']}\n"
+                    f"  glslang: stride = {spv_stride}\n"
+                    f"  Action: chapter 04 §4.3.1.4 arrayify() review"
+                )
+```
+
+##### §5.4.1.4 二重保証 build error 出力 (= chapter 08 §9.4 format 完全準拠)
+
+照合不一致時の error 出力例:
+
+```
+[codegen_ubo] ERROR: std140 offset mismatch in 'FrameViewProj.view_proj'
+  Codegen calculation:        OFFSET = 128
+  glslang SPIR-V reflection:  OFFSET = 144
+  Diff = 16 bytes (= likely missing padding for mat3 or vec3 trailing)
+  Input GLSL: app_settings/shaders/class3/deferred/materialF.glsl:42
+  Action: chapter 04 §4.3.1 algorithm review or glslang version drift 確認
+```
+
+= AYA / Claude が **即座に GLSL ファイル + 行番号 + 不一致 byte 差** で原因究明可能。silent runtime corruption 排除。
+
+##### §5.4.1.5 format drift 耐性 mechanism
+
+glslang / spirv-cross の reflection output JSON schema が version upgrade で変動した場合の耐性:
+
+| drift 種別 | 検出 + 対応 |
+|---|---|
+| field 追加 (= 新 key 追加) | dict.get(...) で安全に skip、既存 check 影響なし |
+| field 削除 (= 既存 key 消滅) | `KeyError` → CodegenError で raise (= 既存 check 失敗で build error) |
+| field rename (= `offset` → `byte_offset` 等) | 同上 KeyError → 早期検知 |
+| nested 構造変更 (= `types`/`ubos` の階層変動) | extract_reflection 内で AttributeError → CodegenError で raise |
+
+**実装契約**: `extract_reflection()` 関数を **唯一の format 抽象化境界** とし、JSON schema 変動はここで局所化。本関数以外は正規化済 dict のみ受取 = 上位 layer は format drift 影響ゼロ。
+
+**format version pin**: autobuild manifest `autobuild.xml` で glslang / spirv-cross version を AYAstorm 既定 (= 現状 1.3.275) に pin、勝手な upgrade を抑制 (= chapter 09 Phase K+4 OpenGL 撤廃時に最終 version 確定推奨)。
+
+##### §5.4.1.6 二重保証 完全省略 escape hatch (= 緊急 build 用)
+
+通常運用では二重保証必須だが、Phase 1.A 開発中 (= glslang reflection 経路自身が WIP な期間) の escape として:
+
+```bash
+# 環境変数で reflection check 一時 skip:
+AYA_CODEGEN_SKIP_SPIRV_CHECK=1 cmake --build .
+```
+
+```python
+# scripts/codegen/codegen_ubo.py 内
+import os
+if os.environ.get('AYA_CODEGEN_SKIP_SPIRV_CHECK') == '1':
+    # warn を必ず出力 (= silent skip 禁止)
+    print("[codegen_ubo] WARN: SPIR-V reflection check skipped (= AYA_CODEGEN_SKIP_SPIRV_CHECK=1)")
+else:
+    verify_layout_against_spirv(...)
+```
+
+**運用規律**:
+- escape hatch 使用は Phase 1.A 入口 ~ Phase 1.A 中盤までの WIP 期間限定
+- 通常 build / CI / release では **必ず check ON** (= cmake script で warn → build error に昇格させる option 提供、chapter 09 §13 起案規律で固定)
+- escape hatch 使用中の commit は `[WIP]` prefix 必須 (= AYA release flow `feedback_release_flow` 補強)
+
+##### §5.4.1.7 set=1 split 整合 (= §5.4 既述の subset 単位 check)
+
+§5.4 既述: set=1a / set=1b で個別 check を実施。具体実装:
+
+```python
+# §7.1 split 後の subset 単位 verify:
+for ubo in all_ubos:
+    if ubo.descriptor_set == 1:
+        # subset で grouping 済 (= §7.1)、各 subset 内で binding が 0..39 / 0..38
+        verify_layout_against_spirv(
+            ubo.block_name, ubo.codegen_layout, ubo.codegen_block_size,
+            extract_reflection(ubo.glsl_file, ubo.shader_stage, ...)
+        )
+    else:
+        verify_layout_against_spirv(...)  # set=0/2/3 は subset 区別不要
+```
+
+subset の binding 番号は **layout 計算結果に影響しない** (= std140 offset は member 内の type/alignment のみで決定、binding 番号は descriptor set 配線情報) → subset 区別は §6.3 host 側 `sProgramSetLayoutA/B` 構築のみで反映、reflection 照合は通常 path。
+
+##### §5.4.1.8 実装規模見積
+
+| 項目 | LoC |
+|---|---|
+| extract_reflection (§5.4.1.3) | ~50 |
+| verify_layout_against_spirv (§5.4.1.3) | ~70 |
+| JSON schema 抽象化 + drift 検知 (§5.4.1.5) | ~30 |
+| escape hatch + warn (§5.4.1.6) | ~15 |
+| error format (§5.4.1.4) | ~30 |
+| unit test (= 既知 std140 sample 5 種で reflection vs calculator 一致) | ~80 |
+| **合計** | **~275** |
+
+= chapter 04 §4.3.1.8 calculator (~345 行) + 本 §5.4.1.8 reflection (~275 行) ≈ 620 行 = chapter 08 §3.2 Python tool 「~500-1000 行」の主要 module 2 件で大半占有。
 
 ### §5.5 perfect hash generator (= chapter 04 (G) + handoff (B3) 統合解消)
 
@@ -624,6 +1157,257 @@ inline constexpr VkDescriptorSetLayoutBinding g_set3_bindings[/* 52 */] = { /* p
 
 = **(B4) → B4a hash + mtime default 確定、§17 で AYA 判断仰ぎ候補に登録**。
 
+### §11.5 増分 build cache 詳細化 (= Phase 2d-β-revise Deliverable B-3)
+
+B4a hash + mtime 併用の **cache key 構成 + invalidation trigger 完全 enumerate + 3 OS path 正規化** 確定形。Phase 1.A 実装 source of truth。
+
+#### §11.5.1 cache key 構成 (= 何を hash 化するか)
+
+`codegen_state.json` の **完全 schema** (= §11.3 を拡張):
+
+```json
+{
+  "version": 1,
+  "codegen_tool_version": {
+    "script_sha256": "abc123...",
+    "script_path": "scripts/codegen/codegen_ubo.py",
+    "modules_sha256": {
+      "std140.py": "...",
+      "glsl_parser.py": "...",
+      "perfect_hash.py": "...",
+      "spirv_reflect.py": "..."
+    }
+  },
+  "environment": {
+    "python_version": "3.11.5",
+    "glslang_version": "1.3.275.0",
+    "spirv_cross_version": "2023-12-07",
+    "host_platform": "linux"
+  },
+  "input_files": {
+    "app_settings/shaders/class3/deferred/materialF.glsl": {
+      "mtime": 1717372800,
+      "sha256_normalized": "def456...",
+      "file_size": 4096
+    }
+  },
+  "output_files": {
+    "ubo_layout_program_materialbasic.inl": {
+      "sha256": "789xyz...",
+      "size_bytes": 2048
+    },
+    "ubo_perfect_hash.inl": { "sha256": "...", "size_bytes": 70000 },
+    "ubo_metadata.inl":     { "sha256": "...", "size_bytes": 12000 },
+    "ubo_dummy_init.inl":   { "sha256": "...", "size_bytes": 30000 },
+    "ubo_host_loader.inl":  { "sha256": "...", "size_bytes": 8000 }
+  },
+  "build_metadata": {
+    "last_build_timestamp_utc": "2026-06-03T14:30:00Z",
+    "total_ubos": 88,
+    "total_uniforms": 880,
+    "build_duration_ms": 850
+  }
+}
+```
+
+#### §11.5.2 cache hit / miss 判定 algorithm (= 段階判定)
+
+```python
+# scripts/codegen/cache.py
+import hashlib
+import json
+import os
+from pathlib import Path
+
+def check_cache(state_file: Path, input_files: list[Path], script_paths: list[Path]) -> bool:
+    """
+    returns True if cache hit (= Codegen skip 可)
+    """
+    if not state_file.exists():
+        return False  # 初回 build
+    
+    state = json.loads(state_file.read_text(encoding='utf-8'))
+    
+    # Step 1: schema version check
+    if state.get('version') != 1:
+        return False
+    
+    # Step 2: tool version check (= script self-modify 検出)
+    for script in script_paths:
+        rel = script.name
+        old_hash = state.get('codegen_tool_version', {}).get('modules_sha256', {}).get(rel)
+        new_hash = sha256_file(script)
+        if old_hash != new_hash:
+            return False
+    
+    # Step 3: environment check (= glslang / spirv-cross / Python version drift 検出)
+    env = state.get('environment', {})
+    if env.get('glslang_version')     != get_glslang_version()     \
+    or env.get('spirv_cross_version') != get_spirv_cross_version() \
+    or env.get('python_version')      != get_python_version():
+        return False
+    
+    # Step 4: input file 走査 = mtime 粗判定 → 不一致なら sha256 精判定
+    old_inputs = state.get('input_files', {})
+    
+    # 4-1: 入力 file 集合一致 (= 新規 GLSL 追加 / 既存 GLSL 削除 検出)
+    new_paths = {normalize_path(f, state_file.parent) for f in input_files}
+    old_paths = set(old_inputs.keys())
+    if new_paths != old_paths:
+        return False
+    
+    # 4-2: 各 file の mtime + content hash
+    for path in input_files:
+        norm = normalize_path(path, state_file.parent)
+        record = old_inputs[norm]
+        try:
+            cur_mtime = os.path.getmtime(path)
+        except FileNotFoundError:
+            return False  # 削除済
+        
+        if abs(cur_mtime - record['mtime']) < 1.0:
+            continue  # mtime 一致 = 高確率 unchanged、skip content hash
+        
+        # mtime drift 検出 → content hash で再確認
+        cur_hash = sha256_file_normalized(path)
+        if cur_hash != record['sha256_normalized']:
+            return False  # 真の change
+        # mtime 不一致 + content 一致 = git checkout 等の偽 drift、cache hit 維持
+    
+    # Step 5: output file 存在 + sha256 check (= 生成物 tamper 検出)
+    output_dir = state_file.parent / 'ubo'
+    for out_name, rec in state.get('output_files', {}).items():
+        out_path = output_dir / out_name
+        if not out_path.exists():
+            return False
+        if sha256_file(out_path) != rec['sha256']:
+            return False  # 手動編集 / 破損 検出
+    
+    return True  # 全 check pass = cache hit
+
+
+def sha256_file_normalized(path: Path) -> str:
+    """3 OS で binary identical な hash を返す (= §13 と接合):
+       - line ending CRLF → LF normalize
+       - trailing whitespace は維持 (= GLSL semantic 保持)
+    """
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        content = f.read()
+    content = content.replace(b'\r\n', b'\n')   # CRLF → LF
+    h.update(content)
+    return h.hexdigest()
+
+
+def normalize_path(p: Path, base: Path) -> str:
+    """3 OS 共通 cache key 用 path normalize"""
+    try:
+        rel = p.relative_to(base.parent.parent)  # = project root からの relative
+    except ValueError:
+        rel = p
+    # POSIX separator 強制 (= Win backslash → forward slash)
+    return rel.as_posix()
+```
+
+#### §11.5.3 cache invalidation trigger 完全 enumerate
+
+| trigger 種別 | 検出 | 対応 |
+|---|---|---|
+| GLSL ファイル content 変更 | Step 4-2 sha256 不一致 | partial 再 build (= 該当 GLSL に紐づく UBO 単位、ただし perfect hash は全 entry 再構築必須なので **実質全 invalidate**) |
+| GLSL ファイル追加 | Step 4-1 新規 path 検出 | 全 invalidate (= perfect hash table 再構築必須) |
+| GLSL ファイル削除 | Step 4-1 古 path 検出 | 全 invalidate |
+| GLSL ファイル mtime のみ変動 (= git checkout) | Step 4-2 mtime 不一致 + sha256 一致 | cache hit 維持 (= 偽 drift 吸収) |
+| Codegen script 自体変更 | Step 2 modules_sha256 不一致 | 全 invalidate |
+| glslang version upgrade | Step 3 environment 不一致 | 全 invalidate (= reflection format drift risk) |
+| spirv-cross version upgrade | 同上 | 全 invalidate |
+| Python version upgrade | 同上 | 全 invalidate |
+| 出力 file 手動編集 / 削除 | Step 5 sha256 不一致 or missing | 該当 file 再生成 (= ただし perfect hash table 整合性のため事実上全 invalidate) |
+| `codegen_state.json` 自体破損 | json.loads 失敗 | 全 invalidate (= 安全側 fail-soft) |
+| user の手動 `rm -rf build/codegen/` | state_file 不在 | 全 invalidate (= §11.4 既述、release note 明記) |
+| chapter 02 §2.4 ファイル分割規則変更 | (= tool 内 hardcoded、検出不能) | 手動 invalidate 必須 (= §11.4 既述) |
+
+#### §11.5.4 build 開始時 cache 適用 flow
+
+```python
+# scripts/codegen/codegen_ubo.py main entry
+def main(args):
+    state_file = Path(args.cache_file)
+    output_dir = Path(args.output_dir)
+    input_files = list(Path(args.input_glsl_dir).rglob('*.glsl'))
+    script_paths = list(Path(__file__).parent.glob('*.py'))
+    
+    if args.force or not check_cache(state_file, input_files, script_paths):
+        # cache miss = Codegen 走行
+        layouts, perfect_hash, metadata, dummy_masks, host_loader = run_codegen(input_files)
+        write_outputs(output_dir, layouts, perfect_hash, metadata, dummy_masks, host_loader)
+        write_cache(state_file, input_files, script_paths, output_dir)
+        print(f"[codegen_ubo] cache miss, regenerated ({len(input_files)} GLSL, {len(layouts)} UBO)")
+    else:
+        # cache hit = touch のみ (= CMake DEPENDS の OUTPUT を「更新済」と認識させる)
+        now = time.time()
+        for out_name in OUTPUT_FILE_LIST:
+            os.utime(output_dir / out_name, (now, now))
+        print(f"[codegen_ubo] cache hit, skipped")
+```
+
+#### §11.5.5 cache disk footprint + 上限
+
+| 項目 | 規模 |
+|---|---|
+| `codegen_state.json` 単独 | ~30-100 KB (= 200 GLSL × ~200 byte / entry + metadata) |
+| 出力 `.inl` 群 (= `build/codegen/ubo/`) | ~150 KB 合計 (= §5.6.6 + §6.1 + §8.2 + §10.3 合計) |
+| `build/codegen/spirv_reflect/` (= reflection JSON temp) | ~5 MB ピーク (= build 中のみ、§5.4.1.3 spv_tmp 都度削除) |
+| **build/codegen/ 全体最大** | **~6 MB** (= 上限 8 MB を release note `feedback_release_notes_link_only` で明記) |
+
+#### §11.5.6 cache GC (= (cache-grow) §17 持越接合)
+
+長期 build cycle で `build/codegen/cache/` が肥大化した場合の GC policy:
+
+```python
+# scripts/codegen/cache_gc.py (Phase 2..K 期間の sub-task として発動、§17 (cache-grow))
+def gc_old_outputs(cache_dir: Path, max_age_days: int = 30):
+    """state_file から外れた出力 file を削除 (= 古 UBO 名残り)"""
+    state = json.loads((cache_dir / 'codegen_state.json').read_text())
+    known_outputs = set(state['output_files'].keys())
+    
+    output_dir = cache_dir / 'ubo'
+    now = time.time()
+    for f in output_dir.iterdir():
+        if f.name in known_outputs:
+            continue
+        if now - f.stat().st_mtime > max_age_days * 86400:
+            f.unlink()
+            print(f"[codegen_ubo] GC: removed stale output {f.name}")
+```
+
+= chapter 09 §10.2 / §17 (cache-grow) Phase 紐付け = Phase 2..K 期間に発動可能 sub-task、本 chapter §11.5 で algorithm 確定。
+
+#### §11.5.7 race condition + 並列 build 耐性
+
+並列 build (= make -j4) で同 cache file を複数 process が同時 update する race を回避:
+
+```python
+# atomic write pattern = temp file → rename
+def write_cache(state_file: Path, ...):
+    tmp = state_file.with_suffix('.json.tmp')
+    tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding='utf-8')
+    tmp.replace(state_file)  # POSIX rename = atomic
+```
+
+**Codegen tool 自身は single thread / single invocation** (= CMake add_custom_command が 1 回呼ぶ、§12 で並列性は CMake 側で sequence 保証) → cache file 競合は **常識的に発生しない**、ただし安全側で atomic write を採用。
+
+#### §11.5.8 実装規模見積
+
+| 項目 | LoC |
+|---|---|
+| check_cache + sha256 normalize (§11.5.2) | ~80 |
+| write_cache + atomic write (§11.5.7) | ~25 |
+| invalidation trigger 検知 (§11.5.3) | ~30 |
+| environment check 関数群 (= get_glslang_version 等) | ~25 |
+| cache GC (§11.5.6) | ~20 |
+| unit test (= cache hit/miss 10 種シナリオ) | ~100 |
+| **合計** | **~280** |
+
 ---
 
 ## §12 Codegen 実行 trigger (= (B5) 解消)
@@ -720,6 +1504,194 @@ target_include_directories(llvkloader PUBLIC "${CMAKE_BINARY_DIR}/codegen")
 
 **異常系**: いずれかの段階で error (= §9 build error 7 種) → Codegen tool が non-zero exit → CMake が後続 host compile を中止 → AYA に build error 表示 (= §9.4 format)
 
+### §12.5 CMake DEPENDS + 手動 target 詳細化 (= Phase 2d-β-revise Deliverable B-4)
+
+B5a (CMake DEPENDS 自動 + 手動 target 併設) の **再生成 timing 完全 enumerate + 新規 GLSL 検出 + add_dependencies 連鎖 + build order 保証** 確定形。Phase 1.A 実装 source of truth。
+
+#### §12.5.1 再生成 timing 完全 enumerate (= どの編集で Codegen が走るか)
+
+| 編集種別 | DEPENDS 検出 | Codegen 走行 | cache 判定 |
+|---|---|---|---|
+| 既存 GLSL ファイルの content 変更 | ✅ mtime 変動 → CMake が DEPENDS 不整合判定 | ✅ 走行 | §11.5.3 sha256 不一致 → 全 invalidate |
+| 既存 GLSL ファイルの mtime のみ変動 (= git checkout) | ✅ mtime 変動 → CMake が走行命令 | ✅ Codegen 起動 | §11.5.3 sha256 一致 → cache hit、touch のみ |
+| 新規 GLSL ファイル追加 (= shader 増設) | ❌ **`file(GLOB_RECURSE)` の再評価が必要** (§12.5.2) | (CMake 再 configure 後に) ✅ | sha256 全 invalidate |
+| 既存 GLSL ファイル削除 | 同上 | 同上 | 同上 |
+| Codegen script (= `scripts/codegen/*.py`) 変更 | ✅ DEPENDS に列挙 | ✅ 走行 | §11.5.3 script_sha256 不一致 → 全 invalidate |
+| 出力 `.inl` の手動編集 | (DEPENDS 上は detect されない) | 次回 build 時に §11.5.2 Step 5 で sha256 不一致 → 走行 | 全 invalidate |
+| `codegen_state.json` 削除 | (DEPENDS 上は detect されない) | 次回 build 時に §11.5.2 state_file 不在 → 走行 | 初回 build 同型 |
+| CMakeLists.txt の DEPENDS 引数変更 | ✅ CMake 再 configure 必須 | (configure 後に) ✅ | configure 直後は全 invalidate |
+| glslang / spirv-cross / Python upgrade | ❌ DEPENDS 上は detect されない | (CMake configure を手動再実行で検出) | §11.5.3 environment 不一致 → 全 invalidate |
+
+#### §12.5.2 新規 GLSL ファイル追加検出 (= GLOB_RECURSE の取扱)
+
+CMake `file(GLOB_RECURSE)` は **configure 時点で展開**、build 時点では再評価されない → 新規 GLSL ファイル追加時 CMake configure 再実行が必要:
+
+**対応 1: 開発者運用ルール明記** (= AYAstorm 既存運用と整合)
+- GLSL 新規追加時は **必ず `cmake --build . --target reconfigure`** を release note + dev doc に明記
+- AYAstorm 既存 build flow (memory `project_build_procedure`) の configure step で自動取り込み
+
+**対応 2: CONFIGURE_DEPENDS option** (= CMake 3.12+)
+```cmake
+file(GLOB_RECURSE AYA_GLSL_FILES
+    CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/indra/newview/app_settings/shaders/*.glsl"
+)
+```
+- `CONFIGURE_DEPENDS` 指定で **build 時に GLSL dir mtime check** → 変動検出時 自動 reconfigure
+- AYAstorm 既存 CMake version: 3.16+ (= chapter 07 §2 build environment) → **使用可**
+
+**default 採用 = 対応 2 (CONFIGURE_DEPENDS)**:
+- 開発者運用ルールに頼らない安全側 (= memory `feedback_self_bug_no_defer_option` 準拠 = 自分の機構で対応)
+- CMake 公式機能、3 OS 共通動作 (= cmake 3.12+ doc 確認)
+- 副作用: build 開始時に GLSL dir スキャン cost 微増 (= ~ms order、許容)
+
+#### §12.5.3 add_dependencies 連鎖 + build order 保証
+
+```cmake
+# 上位 target の依存配線 (= 順序保証):
+add_dependencies(llrender codegen_ubo)
+add_dependencies(llvkloader codegen_ubo)
+
+# include path 露出 (= 生成 header の取込):
+target_include_directories(llrender   PUBLIC "${CMAKE_BINARY_DIR}/codegen")
+target_include_directories(llvkloader PUBLIC "${CMAKE_BINARY_DIR}/codegen")
+
+# 依存連鎖図 (= cmake target graph):
+codegen_ubo (= ${AYA_CODEGEN_OUTPUTS})
+    DEPENDS = ${AYA_GLSL_FILES} + scripts/codegen/codegen_ubo.py + 他 *.py
+    ↓
+llrender / llvkloader (= OBJECT lib)
+    ↓
+ayastorm-binary (= 最終 link)
+```
+
+**build order 保証 mechanism**:
+1. CMake が `codegen_ubo` を **leaf level** (= depend されるだけで何にも depend しない) と認識
+2. `llrender` / `llvkloader` の compile 開始前に **必ず `codegen_ubo` を完走** (= add_dependencies 効果)
+3. 並列 build (= make -j4) でも `codegen_ubo` だけは sequence 先頭で 1 回走行 (= 並列 compile による race 排除)
+4. `codegen_ubo` 内部は Python tool 単 process / single thread (= §11.5.7 race 自体発生せず)
+
+#### §12.5.4 手動 codegen_ubo_force target の cache 無効化動作
+
+```cmake
+add_custom_target(codegen_ubo_force
+    COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_SOURCE_DIR}/scripts/codegen/codegen_ubo.py"
+        --force
+        --input-glsl-dir "${CMAKE_SOURCE_DIR}/indra/newview/app_settings/shaders"
+        --output-dir "${CMAKE_BINARY_DIR}/codegen/ubo"
+        --cache-file "${CMAKE_BINARY_DIR}/codegen/cache/codegen_state.json"
+    COMMENT "Force-regenerating UBO codegen artifacts (= cache 完全 invalidate)"
+)
+```
+
+```python
+# scripts/codegen/codegen_ubo.py
+if args.force:
+    # cache を読まず全 invalidate、出力 .inl + state_file 全再生成
+    state_file.unlink(missing_ok=True)
+    for f in (output_dir / 'ubo').glob('*.inl'):
+        f.unlink()
+    print("[codegen_ubo] --force: cache invalidated, full regeneration")
+    # 通常 flow へ続行
+```
+
+**手動 target 使用 case**:
+- cache 破損疑い時の救済 (= §11.5.3 余 trigger 検出後の再 build)
+- Codegen tool の debug 中 (= cache hit 誤判定の切り分け)
+- chapter 02 §2.4 ファイル分割規則変更時 (= §11.4 既述、自動 invalidate 不可)
+
+呼出: `cmake --build build/ --target codegen_ubo_force`
+
+#### §12.5.5 build 失敗時のクリーンアップ + retry 規律
+
+Codegen tool が non-zero exit した時の build 状態:
+
+| 失敗段階 | 出力 file 状態 | state_file 状態 | retry 時挙動 |
+|---|---|---|---|
+| Stage 1 (parse fail) | 未生成 (= 部分書込なし) | 未更新 | 既存 cache 維持 (= 前回成功状態) |
+| Stage 2 (offset calc fail) | 未生成 | 未更新 | 同上 |
+| Stage 3 (SPIR-V reflection mismatch) | 未生成 | 未更新 | 同上 |
+| Stage 4-7 中の partial write | **部分書込済 .inl が残る** | 未更新 | 次回 §11.5.2 Step 5 で sha256 不一致 → 走行 |
+
+**実装契約** (= atomic write 拡張):
+
+```python
+# scripts/codegen/codegen_ubo.py write_outputs() 内
+def write_outputs_atomic(output_dir, ...):
+    """全 .inl を temp dir に書出 → 全成功時に一括 rename (= partial write 防止)"""
+    tmp_dir = output_dir / f'.tmp_{os.getpid()}'
+    tmp_dir.mkdir(exist_ok=True)
+    try:
+        write_layout_inl(tmp_dir, ...)
+        write_perfect_hash_inl(tmp_dir, ...)
+        write_metadata_inl(tmp_dir, ...)
+        write_dummy_init_inl(tmp_dir, ...)
+        write_host_loader_inl(tmp_dir, ...)
+        write_index_inl(tmp_dir, ...)
+        # 全成功 → 一括 move
+        for f in tmp_dir.iterdir():
+            (output_dir / f.name).unlink(missing_ok=True)
+            f.rename(output_dir / f.name)
+    finally:
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+```
+
+= silent partial write による次回 build 誤判定排除。
+
+#### §12.5.6 verbose log + build log integration
+
+Codegen tool 出力は **CMake build log に統合**:
+
+```python
+# scripts/codegen/codegen_ubo.py main()
+print(f"[codegen_ubo] start: {len(input_files)} GLSL files")
+print(f"[codegen_ubo] glslang: {get_glslang_version()}")
+print(f"[codegen_ubo] spirv-cross: {get_spirv_cross_version()}")
+print(f"[codegen_ubo] cache: {'hit' if cached else 'miss'}")
+if not cached:
+    print(f"[codegen_ubo] parsed: {n_ubos} UBO blocks, {n_members} members")
+    print(f"[codegen_ubo] perfect hash: {n_entries} entries, table_size={table_size}")
+    print(f"[codegen_ubo] outputs: {len(outputs)} files, total {total_bytes} bytes")
+print(f"[codegen_ubo] done: {elapsed_ms} ms")
+```
+
+`make` 経由 build の場合 stdout は build log に通常出力、`ninja` 経由でも同様。**CMake `COMMENT`** で build console に短文表示 (= "Generating UBO codegen artifacts")。
+
+#### §12.5.7 incremental build = "no change" path の verify
+
+cache hit (= GLSL 無変更 / Codegen skip) を CMake が認識する仕組み:
+
+1. `add_custom_command` の OUTPUT が **既存 file** + mtime が **DEPENDS より新しい** なら CMake は走行不要と判定
+2. Codegen tool が cache hit 時に **`touch` 相当の `os.utime(output_file, (now, now))`** で OUTPUT mtime を最新化
+3. 次回 build では OUTPUT mtime > DEPENDS mtime → CMake 走行 skip
+
+```python
+# scripts/codegen/codegen_ubo.py main() cache hit path
+if cached:
+    now = time.time()
+    for out_name in EXPECTED_OUTPUT_LIST:
+        out_path = output_dir / out_name
+        os.utime(out_path, (now, now))
+    print("[codegen_ubo] cache hit, touched outputs")
+    return 0
+```
+
+#### §12.5.8 build script 実装規模見積
+
+| 項目 | LoC |
+|---|---|
+| CMakeLists.txt 追加分 (= §12.3 snippet + CONFIGURE_DEPENDS + add_dependencies) | ~40 |
+| codegen_ubo.py main argparse + dispatch | ~50 |
+| write_outputs_atomic (§12.5.5) | ~30 |
+| --force handling (§12.5.4) | ~15 |
+| verbose log + version 取得 (§12.5.6) | ~20 |
+| touch on cache hit (§12.5.7) | ~10 |
+| **合計** | **~165** |
+
+= chapter 08 §3.2 Python tool 「~500-1000 行」見積に整合、tool main entry + CMake 追加分は ~165 行。
+
 ---
 
 ## §13 3 OS 互換性保証
@@ -757,6 +1729,186 @@ chapter 09 Phase Roadmap で **Codegen pipeline 起動確認 phase** を per-OS 
 - Phase X-γ: Mac autobuild 経由 build + 生成物確認 (= @t-noami さん検証信任)
 
 = 3 OS 一律 OK 確認後、本 chapter 確定 default を runtime 実利用 phase (= chapter 09 Phase 後続) で投入。
+
+### §13.5 3 OS binary identical 保証 mechanism 詳細化 (= Phase 2d-β-revise Deliverable B-5)
+
+`ubo_metadata.inl` / `ubo_perfect_hash.inl` 等 Codegen 出力が **3 OS で byte-for-byte 同一** を保証する mechanism 確定形。Phase 1.A 実装 source of truth。
+
+#### §13.5.1 なぜ binary identical が必要か
+
+- shader code 内 std140 offset は **GLSL spec 7.6.2.2 で OS 非依存** = 既に決定的
+- ただし **Codegen 出力 C++ header の文字列表現** が 3 OS で差分発生すると:
+  - host 側 compile 結果 (= `llrender.so` / `llrender.dll` / `llrender.dylib`) が OS 別に微妙に異なる
+  - 3 OS 共通 build artifact (= `ubo_metadata.inl` 等を deploy 物に含める運用) で確証困難
+  - chapter 09 Phase K+1/+2/+3 (= 3 OS 確証) で render parity 確認時、Codegen 出力差で false positive 検出
+- → **生成物 byte-identical** が確証 phase の **必須前提**
+
+#### §13.5.2 非決定要因 + 対策 完全 enumerate
+
+| # | 非決定要因 | 発生箇所 | 対策 |
+|---|---|---|---|
+| ND1 | dict / set iteration 順序 (= Python 3.7+ insertion order だが、set は順不定) | perfect hash table の entry 列挙 / ubo metadata の entry 列挙 | **常に explicit sort** (= §13.5.3) |
+| ND2 | GLSL ファイル列挙順 (= `glob.glob` / `Path.rglob` の OS 別差) | input GLSL file 順序 | **`sorted()` で path 文字列 lexicographic sort** |
+| ND3 | line ending (= CRLF vs LF) | Win 側で GLSL に CRLF 含む可能性 | content normalize (= §11.5.2 sha256_file_normalized) + Codegen 内も LF 統一出力 |
+| ND4 | path separator (`/` vs `\`) | Win 側で `Path.as_posix()` 必要 | normalize_path (= §11.5.2) |
+| ND5 | float の str() 表現 (= Python の浮動小数表現は IEEE 754 で deterministic だが、出力 format は実装依存) | std140 offset 表は全部 int のため発生せず、ただし将来 padding 計算で float 経由する可能性 | Python では `repr(float)` 使用、必要時 `f"{val:.17g}"` で IEEE 754 round-trip 保証 |
+| ND6 | hash 関数の seed (= FNV-1a の seed は固定 `0x811c9dc5`、対応済) | perfect hash 構築 | seed を hardcode (= §5.6.6 既述) |
+| ND7 | timestamp 埋め込み (= 自動 generated comment の build_date 等) | header 先頭の `// auto-generated YYYY-MM-DD HH:MM:SS` | **timestamp 埋め込み禁止** (= §13.5.4) |
+| ND8 | absolute path 埋め込み (= 開発者の workspace path leak) | header コメント内の source file path | **`Path.relative_to(project_root)` で relative path のみ出力** |
+| ND9 | random seed (= 衝突回避 reroll で乱数使用すると非決定) | perfect hash 構築 | CHD seed search は 0 から increment で deterministic (= §5.6.3 既述) |
+| ND10 | Python 内部 hash randomization (= PYTHONHASHSEED) | dict key 順序が起動毎に変動 | **Codegen 起動時に `PYTHONHASHSEED=0` 強制 or 全 dict/set を sorted iterate** |
+| ND11 | locale 依存 string sort (= Turkish I 等) | sort key 比較 | Python `sorted()` は default で codepoint 順 = locale 非依存、ただし `locale.strcoll()` 不使用を明示 |
+| ND12 | OS 別 newline output (= `print()` の line ending) | header 出力 | **常に `'\n'` literal で改行、`open(mode='w', newline='')` で auto-translate 抑制** |
+
+#### §13.5.3 explicit sort 規律 (= ND1 / ND2 対応)
+
+```python
+# perfect hash 構築前の key sort:
+all_keys = []
+for ubo in sorted(parsed_ubos, key=lambda u: u.block_name):    # ND1
+    for member in ubo.members:                                  # = parser が宣言順を保持済
+        all_keys.append(f"{ubo.block_name}::{member.name}")
+
+# input GLSL ファイル列挙:
+input_files = sorted(                                            # ND2
+    Path(args.input_glsl_dir).rglob('*.glsl'),
+    key=lambda p: p.as_posix()                                   # ND4 path separator 統一
+)
+
+# ubo_metadata.inl 出力時の entry 列挙:
+for ubo in sorted(all_ubos, key=lambda u: (u.descriptor_set, u.subset, u.binding)):  # ND1
+    emit_ubo_metadata_entry(ubo)
+
+# CHD displacement / value table 出力:
+for i in range(table_size):                                       # = index 順、deterministic
+    emit_chd_value(i, value_table[i])
+```
+
+#### §13.5.4 timestamp / absolute path 禁止 (= ND7 / ND8 対応)
+
+```python
+# ❌ 禁止 (= non-deterministic):
+header.append(f"// Generated on {datetime.now()}")
+header.append(f"// Source: {abs_glsl_path}")
+
+# ✅ 採用 (= deterministic):
+header.append("// auto-generated by codegen_ubo.py, do not edit")
+header.append(f"// Source: {rel_glsl_path.as_posix()}")  # = relative path + POSIX 統一
+```
+
+build_date / version 等の動的情報が必要な場合は **`codegen_state.json` 側に保存**、生成 `.inl` には埋め込まない (= §11.5.1 既述)。
+
+#### §13.5.5 出力 file 書込 規律 (= ND12 対応)
+
+```python
+def write_inl(path: Path, content: str):
+    """3 OS 共通 byte-identical 出力"""
+    # newline='' で OS 別 line ending auto-translate 抑制 (= LF 統一)
+    with path.open('w', encoding='utf-8', newline='') as f:
+        f.write(content)
+    # = 結果: Linux/Mac/Win 全 OS で同一 byte sequence
+```
+
+content 内の改行は全て **`'\n'` literal**、Python の `print()` (= OS 別改行) は使わない。
+
+#### §13.5.6 PYTHONHASHSEED 強制 (= ND10 対応)
+
+```cmake
+# CMake 側で環境変数を Codegen invocation に注入:
+add_custom_command(
+    OUTPUT ${AYA_CODEGEN_OUTPUTS}
+    DEPENDS ${AYA_GLSL_FILES} ...
+    COMMAND ${CMAKE_COMMAND} -E env PYTHONHASHSEED=0
+        ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/codegen/codegen_ubo.py" ...
+    COMMENT "Generating UBO codegen artifacts"
+)
+```
+
+加えて Codegen tool 内部で **全 dict / set を必ず sorted iterate** (= §13.5.3) として **二重保証**:
+
+```python
+# Python 起動時 self-check:
+import os, sys
+if os.environ.get('PYTHONHASHSEED') != '0':
+    print("[codegen_ubo] WARN: PYTHONHASHSEED not '0', output may be non-deterministic", file=sys.stderr)
+    # warn のみで継続 (= sorted iterate で実質保証されているため)
+```
+
+#### §13.5.7 binary identical 検証 mechanism (= chapter 09 Phase K+1/+2/+3 接合)
+
+3 OS 確証 phase で binary identical を検証する手順:
+
+```bash
+# Phase X-α (Linux 起動): 出力を保存
+cd build/codegen/ubo
+sha256sum *.inl > /tmp/codegen_linux.sha256
+
+# Phase X-β (Win): 出力 hash 比較
+sha256sum *.inl > /tmp/codegen_win.sha256
+diff /tmp/codegen_linux.sha256 /tmp/codegen_win.sha256
+# = empty diff なら byte identical 確証
+
+# Phase X-γ (Mac): 同上
+sha256sum *.inl > /tmp/codegen_mac.sha256
+diff /tmp/codegen_linux.sha256 /tmp/codegen_mac.sha256
+```
+
+**chapter 09 §6 Phase K+1/+2/+3 Exit Criteria 追加項目** (= 本 §13.5.7 由来):
+- "Codegen 出力 .inl 群が **3 OS で sha256 一致**" を Phase K+2/K+3 Exit Criteria に追加 (= 本 chapter §13.4 X-β/γ verify task)
+
+#### §13.5.8 unit test by ci 風 (= ローカル検証 task)
+
+CI 不在の AYAstorm でも、開発者が手動で 3 OS binary identical を検証可能な test runner:
+
+```bash
+# scripts/codegen/test_deterministic.sh (Phase 1.A で追加予定)
+set -e
+echo "[test] determinism check: run codegen 2 回連続で出力 sha256 一致"
+python3 scripts/codegen/codegen_ubo.py \
+    --input-glsl-dir indra/newview/app_settings/shaders \
+    --output-dir /tmp/codegen_run1 \
+    --force
+python3 scripts/codegen/codegen_ubo.py \
+    --input-glsl-dir indra/newview/app_settings/shaders \
+    --output-dir /tmp/codegen_run2 \
+    --force
+diff -r /tmp/codegen_run1 /tmp/codegen_run2 && echo "[test] PASS" || echo "[test] FAIL"
+```
+
+= 同 OS で 2 回実行して binary identical を確認 (= ND10 等の起動毎変動を検出)。3 OS 比較は実機 build 経由必須 (= chapter 09 Phase K+1/+2/+3)。
+
+#### §13.5.9 binary identical 失敗時の trace + debug
+
+失敗検出時の原因切り分け手順:
+
+1. **diff -r で異なる file 特定** (= どの `.inl` が違うか)
+2. **`diff` で line 単位 diff 表示** (= 順序差 / 内容差 / 改行差)
+3. 順序差なら ND1 / ND2 起源 → 該当 emit ループに sort 漏れ追加
+4. 内容差なら ND5 (float repr) / ND7 (timestamp leak) / ND8 (path leak) → 該当出力箇所修正
+5. 改行差なら ND12 → write_inl の newline 引数確認
+
+**diff trace example**:
+```
+$ diff /tmp/codegen_linux/ubo_perfect_hash.inl /tmp/codegen_win/ubo_perfect_hash.inl
+42c42
+< { 0xBLOCK_HASH_FrameViewProj, 64, 64, 0 },   // = "FrameViewProj::proj"
+---
+> { 0xBLOCK_HASH_FrameViewProj, 64, 64, 0 },   // = "FrameViewProj::proj"\r
+```
+= 末尾 CR 差 → ND12 違反、`open(newline='')` 適用漏れの specific 箇所特定。
+
+#### §13.5.10 実装規模見積
+
+| 項目 | LoC |
+|---|---|
+| sorted iterate 規律 (§13.5.3) | (本体 logic 内に内嵌、追加 LoC ~0) |
+| write_inl + newline 抑制 (§13.5.5) | ~15 |
+| PYTHONHASHSEED 検知 + warn (§13.5.6) | ~10 |
+| absolute path → relative 変換 (§13.5.4) | ~10 |
+| test_deterministic.sh (§13.5.8) | ~20 |
+| **合計** | **~55** |
+
+= 既存 Codegen tool に **追加 ~55 行** で 3 OS binary identical 保証完成。
 
 ---
 

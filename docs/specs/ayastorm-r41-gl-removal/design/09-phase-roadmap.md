@@ -577,4 +577,146 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 
 ---
 
-**= 本 chapter で r41 UBO migration の Phase 番号体系 (Phase 0 〜 Phase K+5) + 1 UBO ずつ migration scope + 3 OS 確証 + OpenGL 撤廃 + release 整備 + (Q1)-(Q5) AYA 判断仰ぎ候補が確定**。chapter 10 (open-questions) で chapter 07 §12 chapter 10 送り (V1')(V3')(S3')(W) + 本 chapter (Q1)-(Q5) を最終判断項目として整理 → 設計 chapter 群 (01-10) 起案完了 → implementation-phase 入口 (= η-29 Phase 0) へ移行可能 state 到達。
+## §14 Phase 1.A 入口 1 step state checklist (= Phase 2d-β-revise Deliverable C)
+
+**起案目的**: Phase 2d-β-revise 完了 → η-29 Phase 0 (計測 phase) → Phase 1.A (codegen pipeline 実装) 入口に至るまでの 1 step state checklist。「次に何があれば Phase 1.A に入れるか」を 1 ページで明示。本 §14 は Phase 2d-β-revise Deliverable §2.1/§2.2 の **深化結果が Phase 1.A 入口 readiness に到達したか self-check** リスト。
+
+### §14.1 readiness 4 階層 + 各階層 entry condition
+
+```
+[Stage 0: design-phase 完了 readiness] (= 本 §14 起案時点で確認)
+    ↓
+[Stage 1: η-29 Phase 0 実機計測 readiness]
+    ↓
+[Stage 2: AYA 判断 (Q1)-(Q5) 確定]
+    ↓
+[Stage 3: Phase 1.A 入口 readiness (= 着手 ready state)]
+```
+
+各 Stage の entry condition と本 §14 self-check 項目を分離して列挙。
+
+### §14.2 Stage 0: design-phase 完了 readiness (= 本 chapter 起案時点)
+
+**self-check 項目** (= Phase 2d-β-revise commit 直前で全件 ✅ 確認、未充足検出時は本 §14 で項目別に対応 doc 修正):
+
+| # | 項目 | 確認方法 | 本 chapter / 関連 doc |
+|---|---|---|---|
+| 0-1 | chapter 04 Codegen-UBO 機構確定 (= §1-§11 全節起案 + Deliverable A-1/A-2/A-3 深化反映) | `wc -l docs/specs/ayastorm-r41-gl-removal/design/04-codegen-ubo.md` で line 数増加確認 + §6.4 / §4.3.1 / §5.6 section 存在 | 04-codegen-ubo.md |
+| 0-2 | chapter 08 build pipeline 機構確定 (= §1-§17 全節起案 + Deliverable B-1/B-2/B-3/B-4/B-5 深化反映) | 同上 + §5.4.1 / §5.2.1 / §11.5 / §12.5 / §13.5 section 存在 | 08-build-codegen-pipeline.md |
+| 0-3 | chapter 09 Phase Roadmap 確定 (= §1-§14 + (Q1)-(Q5) AYA 判断仰ぎ候補登録) | `grep '^## §' 09-phase-roadmap.md` で §0-§14 全件存在 | 09-phase-roadmap.md |
+| 0-4 | chapter 06a-prep Phase 0 計測 spec 確定 (= §2 (H1b) hook + §3 (E') + §4 (F) + §5 結果反映 flow) | grep '^## §' 06a-prep + §2-§6 全節存在 | 06a-prep-phase0-measurement.md |
+| 0-5 | chapter 02 §2.4 naming convention 確定 (= 生成識別子規則 + chapter 04 §5.2 `<BlockName>Layout` 整合) | grep '^### §2.4' 02-naming-convention.md | 02-naming-convention.md |
+| 0-6 | chapter 05 集約対応表 (= bare uniform → UBO 集約) 起案 | grep '^## §' 05-existing-inventory-link.md で §1-§6 全件存在 + MC1 rename 反映 | 05-existing-inventory-link.md |
+| 0-7 | chapter 06b cadence 別 update site + chapter 06c descriptor set bind 配線 設計起案 | grep '^## §' 06b / 06c 全節存在 | 06b / 06c |
+| 0-8 | chapter 07 Vulkan API state (= device limit / set 帯 5 化 / V1' split / 256B alignment) 確定 | grep '^## §' 07-vulkan-api-state.md で §0-§12 全節存在 | 07-vulkan-api-state.md |
+| 0-9 | chapter 10 open questions 集約 (= (V1')(V3')(S3')(W) + (Q1)-(Q5) + (NTTP) + (A1)(P)(G/B3)(B1)(B2)(B4)(B5) 等の登録) | grep '^### §1\\.' 10-open-questions.md で 25 件全件 index | 10-open-questions.md |
+| 0-10 | chapter 01 overview の 2 大設計原則 + 確定事項 13 件 反映済 | grep '§5' 01-overview.md で確定事項 13 件 enumerate | 01-overview.md |
+| 0-11 | inventory §3.3.1 85 UBO blueprint table 確定 | grep '§3.3.1' inventory.md | inventory.md |
+| 0-12 | `feedback_design_phase_no_code_write` 継続 = `indra/` 配下改変ゼロ | `git status indra/` で modified 0 件 | (memory) |
+
+**Stage 0 entry verdict**: 全 12 項目 ✅ → Stage 0 完了、Stage 1 入口 (= η-29 Phase 0 着手 ready)。
+
+### §14.3 Stage 1: η-29 Phase 0 実機計測 readiness
+
+**Stage 0 完了後の next-step entry condition**:
+
+| # | 項目 | 確認方法 | 担当 |
+|---|---|---|---|
+| 1-1 | AYAstorm 既存 build flow 動作確認 (= `project_build_procedure` memory に従って Linux native build PASS) | AYA build 1 回 | AYA |
+| 1-2 | LL_INFOS hook (= 06a-prep §2 (H1b)) 配線 + flag-gated build (= `AYASTORM_UBO_CADENCE_HOOK`) 動作確認 | Claude が hook 行追記 (= Phase 0 で初解禁、design-phase 制約解除) | Claude (= η-29 Phase 0 で実施) |
+| 1-3 | 3 scenario (= 06a-prep §2.6 既定 scenario) で cold launch + log 取得 | AYA Linux 起動 × 3 | AYA |
+| 1-4 | log 解析 (= awk / grep / sort) で uniform 名 × frame call count histogram | Claude が log file 直接読込 + 解析 | Claude (= `feedback_log_reading`) |
+| 1-5 | (E') 同 binding 複数 UBO 名疑い 5 件 grep 確認 | Claude が grep 実施 | Claude |
+| 1-6 | (F) MaterialUBO vs MaterialUBO_Legacy member diff 確認 | Claude が grep + read 実施 | Claude |
+| 1-7 | (H1b) 不明 16 件の cadence 確定 + (E') 5 件 binding 帰属確定 + (F) MaterialUBO 処遇確定 | 計測結果 → 06a-prep §6 反映 flow へ | Claude (= doc update) |
+| 1-8 | 検証 hook 除去 + 通常 build (= flag OFF) pass + diff 0 件確認 | Claude が hook 行削除 + AYA build 確認 | Claude + AYA |
+| 1-9 | (RF) reflection update fence throttle 頻度 log 取得 | (1-2) と同 build に乗せる | Claude + AYA |
+
+**Stage 1 entry verdict**: Stage 0 完了 + Phase 0 計測着手 condition ✅ → Stage 1 入口完了、Stage 2 (= (Q1)-(Q5) AYA 判断) ready。
+
+### §14.4 Stage 2: AYA 判断 (Q1)-(Q5) 確定
+
+**Stage 1 (= Phase 0 計測完了) 後の AYA 判断 5 件**:
+
+| # | (Q) | 判断内容 | default 提案 | 確定タイミング |
+|---|---|---|---|---|
+| 2-1 | (Q1) | 第 1 UBO migration 選定方針 (= Template A/B/C) | A 最小リスク UBO 優先 | Phase 0 完了直後 |
+| 2-2 | (Q2) | Phase 当たり migration UBO 数 (= 1 UBO 厳守 vs cluster 許可) | A 1 UBO 厳守 | (Q1) と同時 |
+| 2-3 | (Q3) | OpenGL path 維持期間 (= 全 UBO 完了まで並走 vs 中間撤廃 vs 段階撤廃) | A 全 UBO 完了まで並走 | Phase 1.A 入口でも可、後ろ倒し許容 |
+| 2-4 | (Q4) | 3 OS 確証 Phase 順序 (= Linux first 順次 vs 並走 vs Linux 完了後 Win/Mac 並走) | C Linux 完了後 Win/Mac 並走 | Phase 0 完了直後 |
+| 2-5 | (Q5) | Phase 0 計測 phase の Phase 番号化 (= 独立 Phase η-29 vs Phase 1 入口 sub-task) | A 独立 Phase η-29 | 本 §14 時点で **default 確定 = 独立 Phase η-29 = 既反映済** |
+
+**Stage 2 entry condition**:
+- (Q1) / (Q2) 必須 (= K 値確定 + Phase 2 entry 確定の前提)
+- (Q4) 必須 (= Phase K+1/+2/+3 順序 確定で Phase 1.A 設計影響なし、ただし Phase K+1 入口で必要)
+- (Q3) / (Q5) は Phase 1.A 入口時点で default 採用継続可、AYA 判断は Phase 1.A 中盤までに後追い可
+
+**Stage 2 entry verdict**: (Q1) / (Q2) 確定 (= K 値計算可能 state 到達) ✅ → Stage 2 完了、Stage 3 入口 (= Phase 1.A 着手 ready)。
+
+### §14.5 Stage 3: Phase 1.A 入口 readiness (= 着手 ready state)
+
+**Phase 1.A 着手前の最終 self-check** (= Stage 0/1/2 全完了の必要条件 + Phase 1.A 固有 condition):
+
+| # | 項目 | 確認方法 | 失敗時対応 |
+|---|---|---|---|
+| 3-1 | Stage 0 全 12 項目 ✅ | §14.2 表で全件確認 | 不足 item を §14.2 表で特定 → 該当 chapter update |
+| 3-2 | Stage 1 全 9 項目 ✅ (= Phase 0 計測完了 + chapter 05/06a/06b/06c 反映済) | §14.3 表で全件確認 + 06a-prep §6 反映 flow 全行「反映済」 | 計測 task 再実施 (= chapter 06a-prep §3.x 再実施) |
+| 3-3 | Stage 2 (Q1) / (Q2) AYA 判断 ✅ | 本 §14.4 表で確認 + chapter 10 (open-questions) で判断履歴登録 | AYA 判断仰ぎ session |
+| 3-4 | chapter 04 §6.4 / §4.3.1 / §5.6 (= Deliverable A-1/A-2/A-3) 反映済 | grep '^#### §[456]\\.' 04-codegen-ubo.md で section 存在 + 内容確認 | Phase 2d-β-revise 本 session で起案 |
+| 3-5 | chapter 08 §5.4.1 / §5.2.1 / §11.5 / §12.5 / §13.5 (= Deliverable B-1/B-2/B-3/B-4/B-5) 反映済 | grep '^#### §' 08-build-codegen-pipeline.md で 5 section 存在 + 内容確認 | 同上 |
+| 3-6 | chapter 09 §14 (= 本 §) 反映済 | grep '^## §14' 09-phase-roadmap.md | 同上 |
+| 3-7 | chapter 06a §3 mUniformUBOLoc cache 構造 + §5 16 method setter 分岐 設計起案済 | grep '^### §3\\.' 06a-cache-structure-and-setter-redirect.md | chapter 06a 起案 task |
+| 3-8 | chapter 06b cadence 別 update site 5 種 + 06c descriptor set bind 配線 起案済 | grep '^## §' 06b/06c | chapter 06b/06c 起案 task |
+| 3-9 | chapter 02 §2.4 naming + chapter 07 set 帯 5 化 / 256B padding 反映済 (= chapter 04/08 出力契約と整合) | grep '^### §2.4' 02 + '§4.4' 07 | chapter 02/07 update task |
+| 3-10 | inventory + chapter 10 (open-questions) で持越項目 (V1')(V3')(S3')(W) + (A1)(P)(G/B3)(B1)(B2)(B4)(B5) + (NTTP) + (P-future)(cache-grow) 登録済 | grep 各 ID in chapter 10 | chapter 10 update task |
+| 3-11 | autobuild manifest で glslang / spirv-cross / Python version pin 状態確認 (= §5.4.1.5 format pin 用意) | (Phase 1.A 入口時点で実 manifest 編集予定 = §3-12 で実施) | (Phase 1.A 内 task) |
+| 3-12 | `indra/` 配下改変 解禁 = `feedback_design_phase_no_code_write` 解除点に到達 | Stage 1 で hook 配線時に既に解禁、Stage 3 entry 時点では継続改変可能 state | (常時継続) |
+| 3-13 | Phase 1.A handoff doc 起案 (= 本 chapter §4 Phase 1.A scope + Exit Criteria 反映) | `docs/specs/ayastorm-r41-gl-removal/handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B?-eta-30-phase1-a-entry.md` 起案 | Phase 1.A 入口直前 task |
+| 3-14 | C++ standard 確認 (= R1 path 用 C++20 NTTP の採否 = chapter 04 §6.4.7 (NTTP) 判定材料) | AYA 判断仰ぎ予定 (= Phase 1.A 入口) | (Q-NTTP) AYA 判断仰ぎ |
+
+**Stage 3 entry verdict**: 全 14 項目 ✅ → **Phase 1.A 着手 ready state 到達**。
+
+### §14.6 readiness 達成順序図
+
+```
+[Phase 2d-β-revise 完了]                  ← 本 §14 起案 + Deliverable A/B/C 反映
+        ↓
+[Stage 0 entry] = §14.2 全 12 ✅           ← 設計 chapter 群 (01-10) 起案完了
+        ↓
+[η-29 Phase 0 着手 (= sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-29)]
+        ↓
+[Stage 1 entry] = §14.3 全 9 ✅            ← 計測完了 + chapter 05/06a/06b/06c 反映
+        ↓
+[(Q1)(Q2)(Q4) AYA 判断 session]
+        ↓
+[Stage 2 entry] = §14.4 (Q1)(Q2) ✅         ← K 値確定
+        ↓
+[Phase 1.A handoff doc 起案 (= sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.A entry)]
+        ↓
+[Stage 3 entry] = §14.5 全 14 ✅           ← Phase 1.A 着手 ready state
+        ↓
+[Phase 1.A 実装 開始]                     ← Codegen Python tool 起草 + CMake 統合
+```
+
+### §14.7 本 §14 と他 chapter の整合 (= 検証 pointer)
+
+- §14.2 Stage 0 = chapter 04 / 08 / 09 起案完了確認 → 本 chapter (= 09) 内 self-consistent + chapter 04/08 への外部参照
+- §14.3 Stage 1 = chapter 06a-prep §2-§6 = 既起案 + Phase 0 解禁範式 (`feedback_design_phase_no_code_write` 解除条件)
+- §14.4 Stage 2 = 本 chapter §11.1-§11.5 = (Q1)-(Q5) default 提案完備
+- §14.5 Stage 3 = chapter 02/04/05/06a/06b/06c/07/08/09/10 + memory `feedback_design_phase_no_code_write` の **全 doc + 全 feedback と整合**
+- §14.6 達成順序 = 本 chapter §1.1 sub-step 体系 (η-29 / η-30 ...) と完全整合
+
+### §14.8 本 §14 self-evaluation (= 設計 phase 完了判定)
+
+本 §14 が要求する全 readiness 項目を「Phase 2d-β-revise 完了時点の自己評価」として確認:
+
+- Stage 0 entry (§14.2): **Phase 2d-β-revise 本 session commit 時点で達成** (= 12/12 ✅ 想定、commit 前 §14.2 表 self-verify で確認)
+- Stage 1 entry (§14.3): **次 session 以降の Phase 0 実機計測で達成**
+- Stage 2 entry (§14.4): **Phase 0 完了直後の AYA 判断 session で達成**
+- Stage 3 entry (§14.5): **(Q1)(Q2) 確定後の Phase 1.A 入口 handoff 起案 session で達成**
+
+= **本 §14 は Phase 1.A 入口までの 1 step state checklist を提供する唯一の doc** (= Deliverable C 完成形)、Phase 1.A 着手前の最終 self-check リファレンスとして本 §14 を使用。
+
+---
+
+**= 本 chapter で r41 UBO migration の Phase 番号体系 (Phase 0 〜 Phase K+5) + 1 UBO ずつ migration scope + 3 OS 確証 + OpenGL 撤廃 + release 整備 + (Q1)-(Q5) AYA 判断仰ぎ候補 + §14 Phase 1.A 入口 1 step state checklist が確定**。chapter 10 (open-questions) で chapter 07 §12 chapter 10 送り (V1')(V3')(S3')(W) + 本 chapter (Q1)-(Q5) を最終判断項目として整理 → 設計 chapter 群 (01-10) 起案完了 → implementation-phase 入口 (= η-29 Phase 0) へ移行可能 state 到達。
