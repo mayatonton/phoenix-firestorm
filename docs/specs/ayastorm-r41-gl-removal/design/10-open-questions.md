@@ -35,9 +35,9 @@
 | 11 | (B5) | Codegen 実行 trigger (CMake DEPENDS vs 手動 target) | §1.2 | 未判断 |
 | 12 | (Q1) | 第 1 UBO migration template (Template A/B/C) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-5 batch) |
 | 13 | (Q2) | Phase 当たり UBO 数 (1 厳守 vs cluster 許可) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-5 batch) |
-| 14 | (Q3) | OpenGL path 並走期間 (全 Phase vs 中間撤廃 vs 段階撤廃) | §1.3 | 未判断 (default 採用継続、Phase 1.A 中盤まで後ろ倒し可) |
+| 14 | (Q3) | OpenGL path 並走期間 (全 Phase vs 中間撤廃 vs 段階撤廃) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-7 batch) |
 | 15 | (Q4) | 3 OS 確証 Phase 順序 (Linux 先行 vs 並走 vs 順次) | §1.3 | ✅ 判断済 (C, 2026-06-03 ST-5 batch) |
-| 16 | (Q5) | Phase 0 計測の Phase 番号化 (η-29 独立 vs Phase 1.0 vs 並走) | §1.3 | 未判断 (default 採用継続、Phase 1.A 中盤まで後ろ倒し可) |
+| 16 | (Q5) | Phase 0 計測の Phase 番号化 (η-29 独立 vs Phase 1.0 vs 並走) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-7 batch = 既物理確定の形式 ✅ 化) |
 | 17 | (K) | dirty 判定粒度 (member 単位 vs UBO 単位 vs cadence 単位) | §1.4 | 未判断 |
 | 18 | (M) | descriptor set 4 帯 ↔ cadence 5 分類 配置 (1:1 vs 拡張) | §1.4 | 未判断 |
 | 19 | (N) | `mUseUBO` initial 設定 (shader 単位 phase 移行 vs 全 ON) | §1.4 | 未判断 |
@@ -51,13 +51,15 @@
 | 27 | (Q27-CONFL) | (E') V/F 同 program 内 `set=2, binding=0` 共存 risk 解消方針 (= 5 UBO 同 binding ↔ V/F stage 跨ぎ link conflict 候補) | §1.5 | ✅ 判断済 (A1+B2+C1, 2026-06-03 ST-3 batch) |
 | 28 | (Q28-FFDUP) | explicit F 群 (= pbropaqueF/pbrmetallicroughnessF/softenLightF/reflectionProbeF) + globalF 同 PerDrawUBO_ClipPlane F+F 重複宣言集約方針 (= GL spec で identical 宣言 link OK、code quality 観点で集約候補) | §1.5 | 未判断 (Phase 0 Step 1 ST-1 enumerate 由来 新規、Phase 1.A 中盤判断可 = default 提案 = 追記する確定) |
 
-**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (5) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **28 件** (内 9 件判断済 = §1.6 4 件 + §1.3 (Q1)(Q2)(Q4) 3 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件、残 19 件 未判断)。
+**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (5) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **28 件** (内 11 件判断済 = §1.6 4 件 + §1.3 (Q1)(Q2)(Q3)(Q4)(Q5) 5 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件、残 17 件 未判断)。
 
 **判断済 4 件の反映先 cross-ref (= §1.6 batch、2026-06-03 Wave A-G)**: (Q22-NUM) → inventory §3.3.1 + 06c §3/§8 + 04 §5.3 + 01 §4.2 (= 計 13 箇所 `85 GLSL blueprint` rewrite 済) / (Q23-K) → 09 §5.2 冒頭注記 / (Q24-S1) → 06a §4.3 / §4.3.1 / §6.2 / §10 + 06a-prep §6 (S1-存在) / 本 chapter §4 live 表 / (Q25-21CNT) → 本 §1.0 表 + 各 chapter 反映 batch (= Wave A-G)。
 
 **判断済 5 件の反映先 cross-ref (= 2026-06-03 ST-3/ST-5 batch 追加)**: (Q1) → 09 §11.1 / §5.2 / §14.4 / 本 §1.3 verdict マーク / (Q2) → 09 §11.2 / §14.4 / 本 §1.3 verdict マーク / memory `feedback_ubo_migration_one_at_a_time` 連動 / (Q4) → 09 §11.4 / §6.1 / §14.4 / 本 §1.3 verdict マーク / (Q26-MUL) → 02 §3.2 命名規則 `MaterialUBO_Class3_Legacy` 追加 / 05 §5 / §7.3 集約表 F2 確定マーク / `class3/deferred/materialV.glsl` 新規 file 起案 (= Phase 1.A 入口実装 task) / 本 §1.5 verdict マーク / (Q27-CONFL) → V 側 5 file (avatarSkinV / objectSkinV / skinnedVelocityV / skinnedVelocityAlphaV / avatarVelocityV) の `layout(set=2, binding=1/2/3/4)` 書換 (= Phase 1.A 入口実装 task) + 06c §3 接合表 / 04 §5 `ubo_metadata.inl` 出力契約 / 本 §1.5 verdict マーク。
 
-**未判断 19 件の解消順序**: §1.1 (chapter 07 4 件) + §1.2 (chapter 08 7 件) + §1.4 (06b/06c 4 件) は **後続 AYA 判断 batch session** で集約消化、§1.3 (Q3)(Q5) 2 件は default 採用継続可で Phase 1.A 中盤まで後ろ倒し可 (= handoff §3.5 規律 7)、§1.5 (Q28-FFDUP) 1 件は Phase 1.A 中盤判断可 (= default 提案: 追記する 確定 = entry のみ作成、judgement 後ろ倒し)。
+**判断済 2 件の反映先 cross-ref (= 2026-06-03 ST-7 batch 追加)**: (Q3) → 09 §11.3 default → 確定形書換 / §14.4 ST-7 verdict マーク / §7.1 / §2.1 Phase 全体マップへの確定反映は Phase 1.A 中盤 (= dual-path 並走運用安定動作確認後) で実施 / 本 §1.3 verdict マーク / (Q5) → 09 §11.5 default → 確定形書換 / §14.4 ST-7 verdict マーク / 既物理確定 (= sub-step 命名 η-29 active) の形式 ✅ 化 / 本 §1.3 verdict マーク。
+
+**未判断 17 件の解消順序**: §1.1 (chapter 07 4 件) + §1.2 (chapter 08 7 件) + §1.4 (06b/06c 4 件) は **後続 AYA 判断 batch session** で集約消化、§1.5 (Q28-FFDUP) 1 件は Phase 1.A 中盤判断可 (= default 提案: 追記する 確定 = entry のみ作成、judgement 後ろ倒し)、(F) 1 件は Q26-MUL 確定で実質消化済だが本表 status 未 update。
 
 ---
 
@@ -101,6 +103,8 @@
 **AYA 判断後の反映先**: chapter 09 §2.1 Phase 全体マップ + §5.2 / §6.1 / §7.1 default → 確定形に書換え、K 確定値 (= §3.1) と per-Phase 担当者 (= §3.2) も連動確定。
 
 **2026-06-03 ST-5 batch verdict** (= 「全 default 採用」AYA 応答): (Q1) = **A 確定** (= 最小リスク UBO 優先、`UB_REFLECTION_PROBES` 単体から開始、最後に最頻出 per-draw、Phase 0 結果次第で具体順位再確定) / (Q2) = **A 確定** (= 1 UBO 厳守、memory `feedback_ubo_migration_one_at_a_time` 直接準拠) / (Q4) = **C 確定** (= Linux 完了後 Win/Mac 並走、`feedback_mac_only_fixes_accept_as_is` と整合)。(Q3)(Q5) は default 採用継続、Phase 1.A 中盤まで後ろ倒し可 (= handoff §3.5 規律 7)。反映先: 09 §11.1 / §11.2 / §11.4 / §14.4 verdict マーク + 09 §2.1 / §5.2 / §6.1 / §7.1 default → 確定形書換 + K 確定値 (§3.1) と per-Phase 担当者 (§3.2) 連動確定。
+
+**2026-06-03 ST-7 batch verdict** (= 「推奨で」AYA 応答 = ST-5 batch 「全 default 採用」継承): (Q3) = **A 確定** (= 全 UBO 移行完了まで GL ↔ Vulkan dual-path 並走 = Phase K+4 で初めて OpenGL path 撤廃、REJECT 時 baseline 確保最大、memory `feedback_build_only_verified` 整合、B/C 案は Phase K+3 進行中に再評価可 = 後ろ倒し option 保持) / (Q5) = **A 確定** (= 独立 Phase η-29 として明示 = sub-step 命名 `4.3-γ'-port-β-2-bundle-B-B?-η-29` で物理現実が既 active = 既物理確定の形式 ✅ 化、09 §14.4 で既「default 確定 = 既反映済」と記載、B/C は sub-step rename cost / 時系列矛盾で技術的不成立)。反映先: 09 §11.3 / §11.5 default → 確定形書換 (= 本 batch で完了) + 09 §14.4 ST-7 verdict マーク (= Stage 2 5 件全件 ✅ 完了 = 完全達成宣言) + 本 §1.3 verdict マーク (= 本 paragraph) + 本 chapter §1.0 状態 column update (= (Q3) ✅ + (Q5) ✅) + count 内訳 update (= 9 → 11 件判断済 / 19 → 17 件未判断)。Stage 3 残 12 項目消化 phase = handoff §3.1 sub-task 1 完了、次 sub-task 2 = 3-4 + 3-5 chapter 04+08 反映済確認 batch (= Claude 自走 verify、AYA 判断不要)。
 
 ### §1.4 chapter 06b §8 / 06c §10 chapter 10 持越 (dirty / descriptor 配置 / mUseUBO)
 

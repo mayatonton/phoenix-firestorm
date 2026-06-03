@@ -537,6 +537,8 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 **default 提案 = A (並走)**: §7.1 default、memory `feedback_build_only_verified` と整合。
 **AYA 判断ポイント**: A の安全性を取るか、B/C で並走 cost 削減を取るか。
 
+**✅ 2026-06-03 ST-7 batch verdict = A 確定** (= chapter 10 §1.3 「推奨で」AYA 応答 = ST-5 batch default 採用継承)。Phase K+4 (= 全 UBO 移行完了 Phase) で初めて OpenGL path 撤廃、それまでは GL ↔ Vulkan dual-path 並走で REJECT 時 baseline 確保 (= memory `feedback_build_only_verified` 整合)。B/C 案は Phase K+3 進行中に再評価可 (= 後ろ倒し option 保持)。本 §11.3 default → 確定形書換完了、§7.1 / §2.1 Phase 全体マップへの確定反映は cluster `feedback_design_phase_no_code_write` 解除後の Phase 1.A 中盤で実施 (= dual-path 並走運用が安定動作確認後)。
+
 ### §11.4 (Q4) 3 OS 確証 Phase 順序
 
 | 選択肢 | 内容 | trade-off |
@@ -558,6 +560,8 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 | C | Phase 1 並行 task (= Phase 1.A 実装中に Phase 0 計測を並走) | 時系列重複、ただし計測結果が Phase 1.B 入力に必要 |
 
 **default 提案 = A (独立 Phase η-29)**: 06a-prep §0.2 の design-phase / implementation-phase 分離原則と整合、Phase 0 が完了しない限り Phase 1.B/.C 設計入力不足 (= 06a-prep §0.3 / §6 反映 flow)、独立 Phase 化が最も判定明瞭。
+
+**✅ 2026-06-03 ST-7 batch verdict = A 確定** (= chapter 10 §1.3 「推奨で」AYA 応答 = 既物理確定の形式 ✅ 化)。sub-step 命名 (= `4.3-γ'-port-β-2-bundle-B-B?-η-29`) で η-29 が既 active = 物理現実が既に A 採用済 + 本 chapter §14.4 で「default 確定 = 独立 Phase η-29 = 既反映済」と既記載 = 形式判断のみ。B (Phase 1.0 格納) / C (Phase 1 並走) は sub-step 命名 retrofit cost + 時系列矛盾 (= Phase 0 計測結果が Phase 1.B 入力必須) で技術的に成立せず、A 採用が唯一の物理整合解。
 
 ---
 
@@ -663,6 +667,10 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 
 **✅ 2026-06-03 ST-6 chapter 06b/06c 既起案済 verify + delta integration 完了 = §14.5 3-8 ✅** (= B 案採用、既存 `06b-cadence-update-site-and-dirty.md` 441 行 §2.1-§2.5 5 cadence + `06c-descriptor-set-bind-wiring.md` 513 行 §2/§4 descriptor set bind 配線 で要件物理充足、ST-6 前段 (a)(b) findings = R-AYA1/2 dead / R-AYA3 alive 既移植済 + R-MAT4 `normal_matrix` 確定 + Q26-MUL `MaterialUBO_Class3_Legacy` 確定 + Q27-CONFL B2 binding ずらし + Q1/Q2/Q4 確定を 06b §2.2/§2.3/§3.3/§8 に delta integration 済、handoff §3.2「起案契約」物理充足 + delta 整合保証)。Stage 3 self-check 14 項目 (= §14.5) のうち **3-3 + 3-8 = 2 件 ✅ 完了 / 残 12 項目**。残 12 項目のうち 3-7 (chapter 06a 設計起案済) は 06a-cache-structure-and-setter-redirect.md 既存で物理充足、3-9-3-14 等は 2026-06-03 段階で起案済 / Phase 1.A 入口で実施。
 
+**✅ 2026-06-03 ST-7 batch Stage 2 完全達成 = (Q3) A / (Q5) A 確定** (= chapter 10 §1.3 「推奨で」AYA 応答 = ST-5 batch 「全 default 採用」継承)。本 §14.4 表 **5 件中 5 件 ✅ 完了** = Stage 2 (Q1)-(Q5) 全件確定 = K 値計算可能 + Phase 順序確定 + OpenGL path 維持期間確定 + Phase 0 番号化形式 ✅ 化完了。(Q3) A = REJECT 時 baseline 確保継続 (= Phase K+4 で初撤廃)、(Q5) A = sub-step 命名 η-29 で既物理確定の形式 ✅ 化 (= 既反映済 → 確定マーク)。**§14.5 row count = 2 件 → 4 件 ✅** (= 本 ST-7 batch + sub-task 2 連続実施で 3-3 + 3-8 + 3-4 + 3-5 = 4 件 ✅ 完了 / 残 10 項目)。
+
+**✅ 2026-06-03 ST-7 sub-task 2 完了 = §14.5 3-4 + 3-5 ✅ 反映済確認** (= chapter 04 §6.4/§4.3.1/§5.6 (= Deliverable A-1/A-2/A-3) 8+7+7 sub-subsection 起案済 + chapter 08 §5.4.1/§5.2.1/§11.5/§12.5/§13.5 (= Deliverable B-1/B-2/B-3/B-4/B-5) 8+8 sub-subsection + 3 section 起案済、grep verify pass = Claude 自走 verify、AYA 判断不要)。**Stage 3 self-check 14 項目のうち 3-3 + 3-4 + 3-5 + 3-8 = 4 件 ✅ 完了 / 残 10 項目**。残 10 項目 = 3-6 (chapter 04 NTTP 判定) + 3-7 (chapter 06a 起案済確認) + 3-9 (chapter 02/07 反映済確認) + 3-10 (chapter 10 持越項目 登録済確認) + 3-11 (autobuild manifest pin) + 3-12 (`indra/` 改変解禁) + 3-13 (Phase 1.A handoff doc 起案) + 3-14 (C++ standard NTTP 採否 AYA 判断仰ぎ) + 残 sub-task 2 件 (= handoff §3.1 sub-task 3/4/5/6 + 3-14)。handoff §3.1 sub-task 番号体系の次 sub-task 3 = 3-6 (chapter 04 NTTP 判定) + 3-7 (chapter 06a 起案済確認) batch。
+
 ### §14.5 Stage 3: Phase 1.A 入口 readiness (= 着手 ready state)
 
 **Phase 1.A 着手前の最終 self-check** (= Stage 0/1/2 全完了の必要条件 + Phase 1.A 固有 condition):
@@ -672,8 +680,8 @@ Phase 内 migration が cold launch crash / render 大破 / log 矛盾で REJECT
 | 3-1 | Stage 0 全 12 項目 ✅ | §14.2 表で全件確認 | 不足 item を §14.2 表で特定 → 該当 chapter update |
 | 3-2 | Stage 1 全 9 項目 ✅ (= Phase 0 計測完了 + chapter 05/06a/06b/06c 反映済) | §14.3 表で全件確認 + 06a-prep §6 反映 flow 全行「反映済」 | 計測 task 再実施 (= chapter 06a-prep §3.x 再実施) |
 | 3-3 | Stage 2 (Q1) / (Q2) AYA 判断 ✅ | 本 §14.4 表で確認 + chapter 10 (open-questions) で判断履歴登録 | AYA 判断仰ぎ session |
-| 3-4 | chapter 04 §6.4 / §4.3.1 / §5.6 (= Deliverable A-1/A-2/A-3) 反映済 | grep '^#### §[456]\\.' 04-codegen-ubo.md で section 存在 + 内容確認 | Phase 2d-β-revise 本 session で起案 |
-| 3-5 | chapter 08 §5.4.1 / §5.2.1 / §11.5 / §12.5 / §13.5 (= Deliverable B-1/B-2/B-3/B-4/B-5) 反映済 | grep '^#### §' 08-build-codegen-pipeline.md で 5 section 存在 + 内容確認 | 同上 |
+| 3-4 | chapter 04 §6.4 / §4.3.1 / §5.6 (= Deliverable A-1/A-2/A-3) 反映済 **✅ 2026-06-03 ST-7 sub-task 2** (= §4.3.1 std140 calculator algorithm 詳細化 8 sub-subsection 起案済 (`§4.3.1.1` base alignment 表 / `.2` offset state machine / `.3` nested struct / `.4` array stride / `.5` 末尾 padding / `.6` unsupported type / `.7` SPIR-V reflection 接合 / `.8` 実装規模見積) + §5.6 perfect hash CHD algorithm 詳細化 7 sub-subsection 起案済 (`§5.6.1` 採用根拠 / `.2` 2 段 hash + displacement / `.3` 構築 step / `.4` 性能特性 / `.5` 衝突 0 invariant / `.6` 出力 C++ 形式 / `.7` 実装規模見積) + §6.4 name-based dispatch algorithm 詳細化 7 sub-subsection 起案済 (`§6.4.1` R3 primary / `.2` R1 補助 / `.3` R2 動的 / `.4` unresolved fallback / `.5` R1 path table / `.6` 3 path 性能比較 / `.7` C++20 NTTP 採否判定材料)) | grep '^#### §[456]\\.' 04-codegen-ubo.md で section 存在 + 内容確認 | Phase 2d-β-revise 本 session で起案 |
+| 3-5 | chapter 08 §5.4.1 / §5.2.1 / §11.5 / §12.5 / §13.5 (= Deliverable B-1/B-2/B-3/B-4/B-5) 反映済 **✅ 2026-06-03 ST-7 sub-task 2** (= §5.4.1 SPIR-V reflection 二重保証 mechanism 詳細化 8 sub-subsection 起案済 (`§5.4.1.1` reflection 抽出経路 / `.2` JSON schema / `.3` per-member 照合 algorithm / `.4` 二重保証 build error 出力 / `.5` format drift 耐性 / `.6` escape hatch / `.7` set=1 split 整合 / `.8` 実装規模見積) + §5.2.1 mini-parser 詳細化 8 sub-subsection 起案済 (`§5.2.1.1` input 契約 / `.2` token grammar EBNF / `.3` state machine 実装 / `.4` nested struct 対応 / `.5` sampler 抽出 path / `.6` LL 慣用範囲外検出 / `.7` #line directive 追跡 / `.8` 実装規模見積) + §11.5 増分 build cache 詳細化 + §12.5 CMake DEPENDS + 手動 target 詳細化 + §13.5 3 OS binary identical 保証 mechanism 詳細化 起案済) | grep '^#### §' 08-build-codegen-pipeline.md で 5 section 存在 + 内容確認 | 同上 |
 | 3-6 | chapter 09 §14 (= 本 §) 反映済 | grep '^## §14' 09-phase-roadmap.md | 同上 |
 | 3-7 | chapter 06a §3 mUniformUBOLoc cache 構造 + §5 16 method setter 分岐 設計起案済 | grep '^### §3\\.' 06a-cache-structure-and-setter-redirect.md | chapter 06a 起案 task |
 | 3-8 | chapter 06b cadence 別 update site 5 種 + 06c descriptor set bind 配線 起案済 **✅ 2026-06-03 ST-6** (= `06b-cadence-update-site-and-dirty.md` 441 行 §2.1-§2.5 で 5 cadence (per-frame / per-program / per-draw / per-asset / per-skin) 全件起案済 + `06c-descriptor-set-bind-wiring.md` 513 行 §2 / §4 で descriptor set 4 帯 cadence 別配置 + flush 直後 bind 配線起案済、ST-6 前段 (a)(b) findings (= R-MAT4 `normal_matrix` 確定 + R-AYA1/2 dead / R-AYA3 alive 既移植済) は 06b §2.2 / §2.3 / §3.3 / §8 に delta integration 済) | grep '^## §' 06b/06c | chapter 06b/06c 起案 task |
