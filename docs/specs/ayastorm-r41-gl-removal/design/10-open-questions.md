@@ -16,7 +16,7 @@
 
 ## §1 AYA 判断仰ぎ候補 (= 主要 open question 集約)
 
-### §1.0 29 件分類 index (= 全 AYA 判断仰ぎ候補 一覧、2026-06-03 Phase 0 Step 1 由来 Q26-MUL + Q27-CONFL 追加で 25 → 27 件、Phase 0 Step 1 enumerate (= ST-1) 由来 Q28-FFDUP 追加で 27 → 28 件、ST-7 sub-task 4 batch chapter 04 §6.4.7 由来 (Q-NTTP) 追加で 28 → 29 件、内 11 件判断済)
+### §1.0 29 件分類 index (= 全 AYA 判断仰ぎ候補 一覧、2026-06-03 Phase 0 Step 1 由来 Q26-MUL + Q27-CONFL 追加で 25 → 27 件、Phase 0 Step 1 enumerate (= ST-1) 由来 Q28-FFDUP 追加で 27 → 28 件、ST-7 sub-task 4 batch chapter 04 §6.4.7 由来 (Q-NTTP) 追加で 28 → 29 件、内 12 件判断済)
 
 **集約方法**: 設計 chapter 群 (01-10) 第二次査読 + Phase 2d-β prep audit (= 2026-06-03 batch) で抽出された AYA 判断仰ぎ候補を **(Q) ID + 該当 §1.x + 状態** で index 化。本 §1.0 は §1.1-§1.6 各表の summary、各項目の **default 採用案 + 判断ポイント** は該当 §1.x 表本体で確認。
 
@@ -50,9 +50,9 @@
 | 26 | (Q26-MUL) | `MaterialUBO_Legacy` 構造改修方針 (= rename + 同 program set=1 binding=0 二重宣言解消) | §1.5 | ✅ 判断済 (A1+B1, 2026-06-03 ST-3 batch) |
 | 27 | (Q27-CONFL) | (E') V/F 同 program 内 `set=2, binding=0` 共存 risk 解消方針 (= 5 UBO 同 binding ↔ V/F stage 跨ぎ link conflict 候補) | §1.5 | ✅ 判断済 (A1+B2+C1, 2026-06-03 ST-3 batch) |
 | 28 | (Q28-FFDUP) | explicit F 群 (= pbropaqueF/pbrmetallicroughnessF/softenLightF/reflectionProbeF) + globalF 同 PerDrawUBO_ClipPlane F+F 重複宣言集約方針 (= GL spec で identical 宣言 link OK、code quality 観点で集約候補) | §1.5 | 未判断 (Phase 0 Step 1 ST-1 enumerate 由来 新規、Phase 1.A 中盤判断可 = default 提案 = 追記する確定) |
-| 29 | (Q-NTTP) | R1 compile-time literal path 採否 (= C++20 NTTP 採用 vs C++17 維持) (= chapter 04 §6.4.7 R1 path 採否判定 = AYAstorm 既存 build C++17 default との trade-off) | §1.3 | 未判断 (chapter 04 §6.4.7 default 提案 = A R1 不採用 / C++17 維持、Phase 1.A 入口判定可、default A 採用継続で Phase 1.A 着手可) |
+| 29 | (Q-NTTP) | R1 compile-time literal path 採否 (= C++20 NTTP 採用 vs C++17 維持) (= chapter 04 §6.4.7 R1 path 採否判定 = AYAstorm 既存 build C++17 default との trade-off) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-7 sub-task 8 batch = R1 不採用 / C++17 維持 = default 採用継続) |
 
-**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (6) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **29 件** (内 11 件判断済 = §1.6 4 件 + §1.3 (Q1)(Q2)(Q3)(Q4)(Q5) 5 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件、残 18 件 未判断 = §1.1 4 + §1.2 7 + §1.3 (Q-NTTP) 1 + §1.4 4 + §1.5 (F)(Q28-FFDUP) 2)。
+**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (6) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **29 件** (内 12 件判断済 = §1.6 4 件 + §1.3 (Q1)(Q2)(Q3)(Q4)(Q5)(Q-NTTP) 6 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件、残 17 件 未判断 = §1.1 4 + §1.2 7 + §1.4 4 + §1.5 (F)(Q28-FFDUP) 2)。
 
 **判断済 4 件の反映先 cross-ref (= §1.6 batch、2026-06-03 Wave A-G)**: (Q22-NUM) → inventory §3.3.1 + 06c §3/§8 + 04 §5.3 + 01 §4.2 (= 計 13 箇所 `85 GLSL blueprint` rewrite 済) / (Q23-K) → 09 §5.2 冒頭注記 / (Q24-S1) → 06a §4.3 / §4.3.1 / §6.2 / §10 + 06a-prep §6 (S1-存在) / 本 chapter §4 live 表 / (Q25-21CNT) → 本 §1.0 表 + 各 chapter 反映 batch (= Wave A-G)。
 
@@ -62,7 +62,9 @@
 
 **未判断 1 件の新規登録 cross-ref (= 2026-06-03 ST-7 sub-task 4 batch)**: (Q-NTTP) → chapter 04 §6.4.7 既起案 default 「R1 不採用 (R3 で十分)」を chapter 09 §11.6 (= 本 batch で新設) + 本 chapter §1.0 row 29 + §1.3 表 (Q-NTTP) 行 (= 本 batch で追加) に集約 index 化、AYA 判断本体は §14.5 row 3-14 (Phase 1.A 入口) 保留継続、default A 採用継続で Phase 1.A 着手可。本登録は §14.5 row 3-10 (= chapter 10 持越項目登録済) + 遡及 §14.2 row 0-9 (= chapter 10 open questions 集約) の (NTTP) gap 解消連動 (= ST-7 sub-task 4 verify 時に検出、本 batch で remediation 実施)。
 
-**未判断 18 件の解消順序**: §1.1 (chapter 07 4 件) + §1.2 (chapter 08 7 件) + §1.4 (06b/06c 4 件) は **後続 AYA 判断 batch session** で集約消化、§1.5 (Q28-FFDUP) 1 件は Phase 1.A 中盤判断可 (= default 提案: 追記する 確定 = entry のみ作成、judgement 後ろ倒し)、§1.3 (Q-NTTP) 1 件は Phase 1.A 入口判定可 (= default A 採用継続で着手可)、(F) 1 件は Q26-MUL 確定で実質消化済だが本表 status 未 update。
+**判断済 1 件追加の反映先 cross-ref (= 2026-06-03 ST-7 sub-task 8 batch)**: (Q-NTTP) → 09 §11.6 default → 確定形書換 (= A 確定 / R1 不採用 / C++17 維持) / 09 §14.4 末尾 ST-7 sub-task 8 完了 paragraph / 09 §14.5 row 3-14 inline ✅ mark / 09 §14.8 Stage 3 entry verdict 達成 mark / 04 §6.4.7 default → 確定形書換 / 本 chapter §1.0 row 29 状態 column 「未判断」→「✅ 判断済 (A, ST-7 sub-task 8 batch)」 / 本 §1.0 count 内訳 11 → 12 判断済 / 18 → 17 未判断 / 本 §1.3 表 (Q-NTTP) 行 verdict マーク / 本 §1.3 末尾 ST-7 sub-task 8 batch verdict paragraph。本判断確定で **Stage 3 14/14 ✅ 全完走 = 設計 phase 完了 = `feedback_design_phase_no_code_write` 完全解禁条件達成 = Phase 1.A 実装 entry へ移行可能 state**。
+
+**未判断 17 件の解消順序**: §1.1 (chapter 07 4 件) + §1.2 (chapter 08 7 件) + §1.4 (06b/06c 4 件) は **後続 AYA 判断 batch session** で集約消化、§1.5 (Q28-FFDUP) 1 件は Phase 1.A 中盤判断可 (= default 提案: 追記する 確定 = entry のみ作成、judgement 後ろ倒し)、(F) 1 件は Q26-MUL 確定で実質消化済だが本表 status 未 update。§1.3 (Q-NTTP) は **2026-06-03 ST-7 sub-task 8 batch で A 確定 = 判断済 = 本「未判断」枠から外れた** (= count 18 → 17 件)。
 
 ---
 
@@ -102,7 +104,7 @@
 | (Q3) | OpenGL path 並走期間 | **A 全 UBO 移行完了まで並走 (= Phase K+4 で初撤廃)** | A は REJECT 時 baseline 確保 / B 中間 Phase 撤廃で並走 cost 削減 / C 段階撤廃で両者折衷 | 09 §7.1 / §11.3 |
 | (Q4) | 3 OS 確証 Phase 順序 | **C Linux 完了後 Win/Mac 並走** | C は baseline 確定 + Mac 委任両立 / A Linux first 順次は時系列長 / B 3 OS 並走は REJECT 切り分け困難、Mac 不所持制約 (`feedback_mac_only_fixes_accept_as_is`) と整合 | 09 §6.1 / §11.4 |
 | (Q5) | Phase 0 計測の Phase 番号化 | **A 独立 Phase η-29 として明示** | A は design-phase / implementation-phase 分離原則と整合 / B Phase 1.0 格納は Phase 1 入口連続実施 / C Phase 1 並走は計測結果が Phase 1.B 入力に必要なため時系列矛盾 | 09 §3 / §11.5 |
-| (Q-NTTP) | R1 compile-time literal path 採否 (= C++20 NTTP 採用 vs C++17 維持) | **A R1 不採用 (= R3 name-based dispatch のみ、C++17 維持)** | A は AYAstorm 既存 build C++17 default 整合 + R1 効果限定 (= compile-time vs runtime 1 indirection) / B R1 採用 + 全 module C++20 切替は 3 OS toolchain 確認 + dependent module re-validation cost / C 部分採用は機構複雑度増 + 効果 limited、Phase 1.A 入口で R3 動作確認後再評価可、default A 採用継続で Phase 1.A 着手可 | 09 §11.6 / 04 §6.4.7 |
+| (Q-NTTP) | R1 compile-time literal path 採否 (= C++20 NTTP 採用 vs C++17 維持) | **✅ A 確定 (= R1 不採用 / R3 name-based dispatch のみ、C++17 維持)** (2026-06-03 ST-7 sub-task 8 batch) | A は AYAstorm 既存 build C++17 default 整合 + R1 効果限定 (= compile-time vs runtime 1 indirection) / B R1 採用 + 全 module C++20 切替は 3 OS toolchain 確認 + dependent module re-validation cost / C 部分採用は機構複雑度増 + 効果 limited、R1 は Phase K+4 以降 polish 候補保留可 | 09 §11.6 / 04 §6.4.7 |
 
 **AYA 判断後の反映先**: chapter 09 §2.1 Phase 全体マップ + §5.2 / §6.1 / §7.1 default → 確定形に書換え、K 確定値 (= §3.1) と per-Phase 担当者 (= §3.2) も連動確定。
 
@@ -111,6 +113,8 @@
 **2026-06-03 ST-7 batch verdict** (= 「推奨で」AYA 応答 = ST-5 batch 「全 default 採用」継承): (Q3) = **A 確定** (= 全 UBO 移行完了まで GL ↔ Vulkan dual-path 並走 = Phase K+4 で初めて OpenGL path 撤廃、REJECT 時 baseline 確保最大、memory `feedback_build_only_verified` 整合、B/C 案は Phase K+3 進行中に再評価可 = 後ろ倒し option 保持) / (Q5) = **A 確定** (= 独立 Phase η-29 として明示 = sub-step 命名 `4.3-γ'-port-β-2-bundle-B-B?-η-29` で物理現実が既 active = 既物理確定の形式 ✅ 化、09 §14.4 で既「default 確定 = 既反映済」と記載、B/C は sub-step rename cost / 時系列矛盾で技術的不成立)。反映先: 09 §11.3 / §11.5 default → 確定形書換 (= 本 batch で完了) + 09 §14.4 ST-7 verdict マーク (= Stage 2 5 件全件 ✅ 完了 = 完全達成宣言) + 本 §1.3 verdict マーク (= 本 paragraph) + 本 chapter §1.0 状態 column update (= (Q3) ✅ + (Q5) ✅) + count 内訳 update (= 9 → 11 件判断済 / 19 → 17 件未判断)。Stage 3 残 12 項目消化 phase = handoff §3.1 sub-task 1 完了、次 sub-task 2 = 3-4 + 3-5 chapter 04+08 反映済確認 batch (= Claude 自走 verify、AYA 判断不要)。
 
 **2026-06-03 ST-7 sub-task 4 batch (Q-NTTP) 新規登録** (= §14.5 row 3-9 / 3-10 verify 連動で chapter 04 §6.4.7 由来の (NTTP) 未登録 gap を `feedback_doubt_self_first` 適用で検出 → remediation 実施): chapter 09 §11.6 (Q-NTTP) 新設 (= A/B/C 3 案 + default A 提案 + 確定タイミング Phase 1.A 入口判定可 明示) + 本 chapter §1.0 row 29 追加 (= 28 → 29 件、count 内訳 §1.3 5 → 6 件 / 未判断 17 → 18 件) + 本 §1.3 表に (Q-NTTP) 行追加 (= default A R1 不採用 / C++17 維持、判断ポイント trade-off 明示、出典 09 §11.6 + 04 §6.4.7)。判断本体は §14.5 row 3-14 (Phase 1.A 入口) 保留継続、default A 採用継続で Phase 1.A 着手可 = 着手 ready state に影響なし。本登録で §14.5 row 3-10 (= chapter 10 持越項目登録済) 14/14 ✅ 充足 + 遡及 §14.2 row 0-9 (= chapter 10 open questions 集約) (NTTP) gap 解消連動。
+
+**2026-06-03 ST-7 sub-task 8 batch verdict** (= AYA「A」応答 = default 採用継続): (Q-NTTP) = **A 確定** (= R1 compile-time literal path 不採用 / R3 name-based dispatch + perfect hash (CHD) + frozen-table 経路で十分高速 / AYAstorm 既存 build standard C++17 維持 / C++20 切替 cost = 3 OS toolchain 確認 + dependent module re-validation + autobuild manifest 変更 回避)。R1 は **task 完了後の polish 候補** (= Phase K+4 以降 optimization phase 候補) として保留可、Phase 1.A handoff doc §3 PA-0 (= C++20 切替 task) は不要 = PA-1 から即着手可。反映先: 09 §11.6 default → 確定形書換 + 09 §14.4 末尾 ST-7 sub-task 8 完了 paragraph + 09 §14.5 row 3-14 inline ✅ mark + 09 §14.8 Stage 3 entry verdict 達成 mark + 04 §6.4.7 default → 確定形書換 + 本 chapter §1.0 row 29 状態 ✅ + count 内訳 12 件判断済 / 17 件未判断 + 本 §1.3 (Q-NTTP) 行 verdict マーク + 本 §1.3 末尾 paragraph (= 本 paragraph)。**本 batch で Stage 3 14/14 ✅ 全完走 = 設計 phase 完了 = `feedback_design_phase_no_code_write` 完全解禁条件達成 = Phase 1.A 実装 entry へ移行可能 state**。次 session 着手地点 = Phase 1.A handoff doc PA-1 (= autobuild manifest pin)。
 
 ### §1.4 chapter 06b §8 / 06c §10 chapter 10 持越 (dirty / descriptor 配置 / mUseUBO)
 

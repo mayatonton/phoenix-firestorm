@@ -905,7 +905,9 @@ R1 の `template<auto NameLiteral>` は C++20 NTTP に依存:
 - AYAstorm 既存 build standard: C++17 default (= chapter 07 §2 既述、build flag `-std=c++17`)
 - C++20 切替判定: Phase 1.A 入口で **R1 採用必要性 vs C++20 切替 cost** で AYA 判断、現時点 default = **R1 不採用** (= R3 で十分、R1 は task 完了後の polish 候補)
 
-→ **(NTTP) R1 compile-time literal path 採否** = chapter 09 §11 (Q-NTTP) として AYA 判断仰ぎ候補に登録 (Phase 1.A 入口判定)。
+→ **(NTTP) R1 compile-time literal path 採否** = chapter 09 §11.6 (Q-NTTP) として登録 + 本 chapter 10 §1.0 row 29 + §1.3 表 (Q-NTTP) 行に集約 index 化。
+
+**✅ 2026-06-03 ST-7 sub-task 8 batch 確定 = A (R1 不採用 / C++17 維持)** (= AYA「A」応答 = default 採用継続)。R3 name-based dispatch + perfect hash (CHD) + frozen-table 経路で十分高速、R1 効果差 (= compile-time vs runtime 1 indirection) limited、C++20 切替 cost (= 3 OS toolchain 確認 + dependent module re-validation + autobuild manifest 変更) 回避。R1 は **Phase K+4 以降 optimization phase の polish 候補** として保留可。Phase 1.A handoff doc §3 PA-0 (= C++20 切替 task) は不要 = PA-1 から即着手可。本判断確定で **chapter 09 §14.5 row 3-14 ✅ + Stage 3 14/14 ✅ 全完走 = 設計 phase 完了 = `feedback_design_phase_no_code_write` 完全解禁条件達成**。
 
 ---
 
