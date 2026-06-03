@@ -1870,6 +1870,32 @@ bool LLGLSLShader::mapUniforms()
         }
     }
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-2:
+    // Vulkan path integer index 経路 cache 構築 (spec 06a §4.1 literal)。
+    // mReservedUniforms と並列に mUniformUBOLoc を構築、shader link 時 1 回限りで
+    // runtime hash 計算を済ませ、frame 内 setter は mUniformUBOLoc[index] 直引きで O(1)。
+    // GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 不使用、mUseUBO runtime flag 単独 gate。
+    // mUseUBO=false default (= MUSEUBO-A) ゆえ既存 OpenGL build / 既存挙動 100% 維持。
+    if (mUseUBO)
+    {
+        const auto& reserved = LLShaderMgr::instance()->mReservedUniforms;
+        mUniformUBOLoc.resize(reserved.size());
+        for (size_t i = 0; i < reserved.size(); ++i)
+        {
+            const ubo::UniformLocation* loc = ubo::lookup_runtime(reserved[i].c_str());
+            if (loc)
+            {
+                mUniformUBOLoc[i] = *loc;
+            }
+            else
+            {
+                // UBO 集約表に entry 無し = bare uniform 残存中の silent skip path
+                // (spec 06a §3.3 CADENCE_INVALID = 0xFFFFFFFF sentinel、setter 側で skip)。
+                mUniformUBOLoc[i] = ubo::UniformLocation{ 0u, 0u, 0u, 0xFFFFFFFFu };
+            }
+        }
+    }
+
     unbind();
 
     LL_DEBUGS("ShaderUniform") << "Total Uniform Size: " << mTotalUniformSize << LL_ENDL;
