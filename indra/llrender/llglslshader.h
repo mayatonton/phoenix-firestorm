@@ -33,6 +33,14 @@
 #include <boost/json.hpp>
 #include <unordered_map>
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-1: codegen-emitted
+// `ubo::UniformLocation` struct (= block_hash / offset / size / cadence_tag) を
+// LLGLSLShader member 宣言で使う。include path は AyaUboCodegen.cmake の
+// AYA_UBO_CODEGEN_INCLUDE_DIR (= ${CMAKE_BINARY_DIR}/codegen) を llrender が
+// PUBLIC export しているため、llrender 依存 target に透過 (= spec 08 §99 literal
+// 「shader 側 setter から `#include "ubo/ubo_index.inl"` 形」と整合)。
+#include "ubo/ubo_perfect_hash.inl"
+
 class LLShaderFeatures
 {
 public:
@@ -393,6 +401,32 @@ public:
     // 未初期化時 untouched。createShader() 完遂後 clear + shrink_to_fit。
     std::vector<std::string> mVulkanAttachedVertexUtilities;
     std::vector<std::string> mVulkanAttachedFragmentUtilities;
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-1:
+    // UBO redirect 層 cache 構造 (spec 06a §3 / §5)。
+    //
+    // mUniformUBOLoc: mUniform (= GL uniform location 配列) と並列 (同 size / 同 index 順)
+    //   で配置される ubo::UniformLocation 配列。integer index 経由 setter (= uniform1i /
+    //   uniformMatrix4fv 等 17 method) は `mUniformUBOLoc[index]` で O(1) 引き、UBO 内
+    //   offset / size / cadence_tag を得て forwardToUboUpload() に転送 (= PB-2 / PB-4)。
+    //
+    // mUniformUBOLocByHash: LLStaticHashedString 経由 setter (= uniform1f(const
+    //   LLStaticHashedString&, ...) 等 13 method) 用の補助 cache。mReservedUniforms 未登録
+    //   uniform は integer index 経路に存在しないため、hash → UniformLocation の hash map で
+    //   別途引く (S1-C 採用 = build-time list `g_static_hashed_uniform_names[]` iterate で
+    //   mapUniforms() 時に構築、= PB-3 / PB-5)。
+    //
+    // mUseUBO: false default で OpenGL path 維持 (= MUSEUBO-A 確定、09 §4.2 注 literal
+    //   「Phase 1 完了時点 mUseUBO=false default で OpenGL path 経路選択」)。Vulkan path
+    //   実走判定 (= 自動判定 vs cvar) は 06c で詰める = Phase 1.C 領域。
+    //
+    // C++ compile-time gate (= `#ifdef LL_VULKAN_GLSL`) は不使用 (= GATE-B 確定 2026-06-04、
+    // LL_VULKAN_GLSL は GLSL preprocessor 専用 macro で C++ context 未定義)。runtime gate は
+    // mUseUBO のみ。spec 06a §3.2 / §5.3 literal の `#ifdef LL_VULKAN_GLSL` は C++ 側のみ
+    // 非適用、GLSL shader 側は引き続き有効。
+    std::vector<ubo::UniformLocation> mUniformUBOLoc;
+    std::unordered_map<U64 /*hash*/, ubo::UniformLocation> mUniformUBOLocByHash;
+    bool mUseUBO = false;
 
 #if LL_PROFILER_ENABLE_RENDER_DOC
     void setLabel(const char* label);
