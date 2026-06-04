@@ -197,13 +197,27 @@ def _member_to_spec(m: Member) -> MemberSpec:
     )
 
 
+_V3A_PROGRAM_SET_A_BINDINGS = 40  # design 06c §2.3 — subset=1a binding range [0, 40)
+
+
+def _derive_subset(descriptor_set: int, binding: int) -> int:
+    # PC-7α' — design 06c §2.3: set=1 splits into subset=1a (binding<40) / subset=1b (binding>=40).
+    # Other sets always carry subset=0.
+    if descriptor_set == 1 and binding >= _V3A_PROGRAM_SET_A_BINDINGS:
+        return 1
+    return 0
+
+
 def _ubo_to_block_spec(ubo: UboBlockDecl, layout: BlockLayout) -> BlockSpec:
+    descriptor_set = int(ubo.layout_qual.get("set", 0))
+    binding = int(ubo.layout_qual.get("binding", 0))
     return BlockSpec(
         name=ubo.block_name,
         layout=layout,
         cadence_tag=_derive_cadence(ubo.block_name),
-        descriptor_set=int(ubo.layout_qual.get("set", 0)),
-        binding=int(ubo.layout_qual.get("binding", 0)),
+        descriptor_set=descriptor_set,
+        binding=binding,
+        subset=_derive_subset(descriptor_set, binding),
     )
 
 

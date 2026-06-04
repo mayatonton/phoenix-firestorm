@@ -4424,11 +4424,12 @@ bool registerProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 block_size)
             sProgramUboDirty.erase(it);
             return false;
         }
-        // <AYAstorm r41 PC-7δ (e)> register-once + bind-many = UboInstance 確保直後に
+        // <AYAstorm r41 PC-7α' (e)> register-once + bind-many = UboInstance 確保直後に
         //   vkUpdateDescriptorSets で set=1a/1b 経路 descriptor を triple-buffer 一括 update。
-        // PC-7α' codegen V1' split 未到達 (= meta.descriptor_set は legacy 値) ゆえ
-        // binding<40 → set=1a / binding>=40 → set=1b (binding -= 40) の heuristic で
-        // V3a layout に map。範囲外 (binding>=80) は once-warn + skip safe。
+        // PC-7α' codegen V1' split 通電済 = meta.subset (= 0:1a / 1:1b) を single source of
+        //   truth として参照、binding<40 / binding>=40 の heuristic は撤去。
+        //   subset 値は codegen `main.py _derive_subset` 経由で
+        //   `(descriptor_set==1 && binding>=V3A_PROGRAM_SET_A_BINDINGS) ? 1 : 0` 自動決定。
         if (sDevice != VK_NULL_HANDLE)
         {
             const ubo::BlockMetadata* meta = nullptr;
@@ -4445,22 +4446,22 @@ bool registerProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 block_size)
                 U32 src_binding = meta->binding;
                 VkDescriptorSet* set_array = nullptr;
                 U32 dst_binding = 0;
-                if (src_binding < V3A_PROGRAM_SET_A_BINDINGS)
+                if (meta->subset == 0)
                 {
                     set_array = sProgramUboSetA;
                     dst_binding = src_binding;
                 }
-                else if (src_binding < V3A_PROGRAM_SET_A_BINDINGS + V3A_PROGRAM_SET_B_BINDINGS)
+                else if (meta->subset == 1)
                 {
                     set_array = sProgramUboSetB;
                     dst_binding = src_binding - V3A_PROGRAM_SET_A_BINDINGS;
                 }
                 else
                 {
-                    LL_WARNS_ONCE("Vulkan") << "PC-7δ (e) registerProgramUbo: binding "
-                                            << src_binding << " out of V3a set=1a/1b range (>="
-                                            << (V3A_PROGRAM_SET_A_BINDINGS + V3A_PROGRAM_SET_B_BINDINGS)
-                                            << "), skip vkUpdateDescriptorSets" << LL_ENDL;
+                    LL_WARNS_ONCE("Vulkan") << "PC-7α' (e) registerProgramUbo: meta.subset "
+                                            << meta->subset
+                                            << " out of V3a {0:1a, 1:1b} range, skip vkUpdateDescriptorSets"
+                                            << LL_ENDL;
                     set_array = nullptr;
                 }
                 if (set_array != nullptr)
