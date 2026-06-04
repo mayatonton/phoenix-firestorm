@@ -408,6 +408,32 @@ namespace LLVKLoader
     //   writeFrameUbo signature 同形 + sSingletonUboInstances target。
     void writeSingletonUbo   (U32 block_hash, U32 offset, const void* data, size_t size);
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-N-1 (a):
+    //   PER_DRAW cadence write entry point (= dynamic offset 経路 ring buffer
+    //   chunk hand-off)。block_hash 単独 key + sDrawUboRingBufferMgr (= single
+    //   ring buffer per pool) + dynamic offset 返却。
+    //
+    //   設計根拠 (= AYA literal「OK」確認 2026-06-05、ambiguity (N1-1)..(N1-8)
+    //   採用):
+    //     (N1-1) A: signature = writeFrameUbo / writeSingletonUbo 同形 +
+    //              out_dynamic_offset 引数追加 (= caller bind 時に
+    //              dynamic_offsets[] へ展開する責任)
+    //     (N1-2) A: setter 内 immediate allocate = forwardToUboUpload PER_DRAW
+    //              case 内で本 helper 呼出 → 内部 ring buffer allocate + memcpy
+    //     (N1-3) A: PER_DRAW key = block_hash 単独 (= draw 内 in-place 上書き
+    //              許容、最後の write 勝ち)
+    //     (N1-4) A: dirty 不要 (= per-allocate per-frame chunk rotate で
+    //              write-after-read hazard 構造的回避、design 06b §4.4 + §4.3)
+    //     (N1-8) B: block_hash → block_size lookup = g_block_metadata 線形 walk
+    //              (= 既存 lookup_block_size_by_hash 同パターン)
+    //
+    //   MUSEUBO-A 整合: 呼出側 (= forwardToUboUpload PER_DRAW case +
+    //     recordPlaceholderPoolDraw) で gate、本 helper も sDrawUboRingBufferMgr
+    //     nullptr early return で多重保証 = mUseUBO=false default で既存 OpenGL
+    //     描画 100% 維持。
+    //   GATE-B 整合: Vulkan init 層単独動作、#ifdef LL_VULKAN_GLSL 不参照。
+    void writeDrawUbo        (U32 block_hash, U32 offset, const void* data, size_t size, U32& out_dynamic_offset);
+
     // ------------------------------------------------------------------
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-7γ-2:
     // per-asset / per-skin UBO register / unregister hook + write bridge helper +

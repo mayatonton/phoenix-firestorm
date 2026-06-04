@@ -4375,11 +4375,42 @@ void flushProgramUbos(LLGLSLShader* shader)
 
 void flushDrawUbos()
 {
-    // r41 PC-6ε-2: per-draw は shader / owner key 無し = 構造的 gate のみ。
-    // setter 側 mUseUBO 分岐で forwardToUboUpload 不呼出 → ring buffer に値入らず
-    // → 空書込 path 維持 (= PC-6δ 既存形踏襲)。残 pool 全配線 (15+ subclass) は
-    // PC-6ε-3 scope (= design 06b §2.3 + codebase trace)。
-    flushDummyUboWrite("flushDrawUbos");
+    // <AYAstorm r41 PC-N-1 (d)> flushDrawUbos 役割整理 (= AYA literal「OK」確認
+    //   2026-06-05、ambiguity (N1-6) B first-fire log 維持 + PC-N-4 hook 用
+    //   placeholder 採用)。
+    //
+    //   PC-N-1 段階で per-draw write 経路は forwardToUboUpload PER_DRAW case 内
+    //   writeDrawUbo (= setter 内 immediate allocate、(N1-2) A) で完結する。flush
+    //   側は no-op 等価 (= ring buffer per-allocate per-frame chunk rotate 自体が
+    //   hazard 回避 + clean state 維持、(N1-4) A no dirty)。
+    //
+    //   旧 PC-6δ の flushDummyUboWrite("flushDrawUbos") (= 256 B dummy allocate +
+    //   memset 0 + first-fire marker) は撤去 (= recordPlaceholderPoolDraw 経由で
+    //   writeDrawUbo 通電に置換済、二重 allocate 不要)。first-fire LL_INFOS は
+    //   経路通電確認用に局所保持。
+    //
+    //   PC-N-4 持越し hook = AllocateResult.grew 集約 + frame 末尾で
+    //   vkUpdateDescriptorSets 再発火 (= sDrawUboSetV3a が stale VkBuffer を
+    //   参照する状況の安全 re-wire、deferred、design 07 §7 grow safety net)。
+    //   現 PC-N-1 では placeholder comment のみ。
+    if (!sDrawUboRingBufferMgr)
+    {
+        return;
+    }
+    static std::atomic<bool> s_first_fire{true};
+    if (s_first_fire.exchange(false, std::memory_order_acq_rel))
+    {
+        LL_INFOS("Vulkan") << "PC-N-1 (d) flushDrawUbos first fire (per-draw write は "
+                              "setter 内 writeDrawUbo immediate allocate ゆえ flush 側は "
+                              "no-op 等価、PC-N-4 grow hook placeholder)"
+                           << LL_ENDL;
+    }
+    // PC-N-4 持越 hook:
+    //   if (sDrawUboRingBufferGrewThisFrame) {
+    //       wireDrawUboSetV3aToRingBuffer();
+    //       sDrawUboRingBufferGrewThisFrame = false;
+    //   }
+    // </AYAstorm r41 PC-N-1 (d)>
 }
 
 // r41 PC-6ε-2: per-asset cadence flush = 構造的 gate + dirty map key 化。
@@ -4708,6 +4739,105 @@ void writeProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 offset, const voi
 }
 // </AYAstorm r41 PC-7γ-1>
 
+// <AYAstorm r41 PC-N-1 (a)> PER_DRAW cadence write entry point。
+//   dynamic offset 経路 ring buffer chunk hand-off (= sDrawUboRingBufferMgr 経由
+//   1 allocate per writer call、block_hash → block_size lookup で full block 確保、
+//   memcpy 後 alloc.offset を caller へ返却 = bind 時に dynamic_offsets[] へ展開)。
+//
+//   AYA literal「OK」確認 2026-06-05、ambiguity (N1-1) A + (N1-2) A + (N1-3) A
+//   + (N1-4) A + (N1-8) B 採用:
+//     - (N1-1) A signature = writeFrameUbo / writeSingletonUbo 同形 +
+//       out_dynamic_offset 追加引数
+//     - (N1-2) A immediate allocate = setter 内 (= forwardToUboUpload PER_DRAW
+//       case 内) で本 helper 呼出 → 即時 ring buffer allocate + memcpy
+//     - (N1-3) A key = block_hash 単独 (= draw 内 in-place 上書き許容)
+//     - (N1-4) A no dirty (= per-allocate per-frame chunk rotate 自動 hazard 回避)
+//     - (N1-8) B = g_block_metadata 線形 walk (= 既存 PC-7γ-1
+//       lookup_block_size_by_hash 同パターン)
+//
+//   grow 観測時は LL_WARNS_ONCE のみ ((N1-6) B 整合、sDrawUboSetV3a 再 wire は
+//   PC-N-4 持越し)。MUSEUBO-A 整合 = sDrawUboRingBufferMgr nullptr early return。
+void writeDrawUbo(U32 block_hash, U32 offset, const void* data, size_t size, U32& out_dynamic_offset)
+{
+    out_dynamic_offset = 0u;
+    if (!data || size == 0)
+    {
+        return;
+    }
+    if (!sDrawUboRingBufferMgr)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: sDrawUboRingBufferMgr null (Vulkan 未起動 or pre-init)"
+                                << LL_ENDL;
+        return;
+    }
+
+    // (N1-8) B = g_block_metadata 線形 walk で block_size 解決。block 数 94 ゆえ
+    // 線形 walk で問題なし (= 既存 PC-7γ-1 lookup_block_size_by_hash 同形)。
+    const ubo::BlockMetadata* meta = nullptr;
+    for (U32 i = 0; i < ubo::g_block_count; ++i)
+    {
+        if (ubo::g_block_metadata[i].block_hash == block_hash)
+        {
+            meta = &ubo::g_block_metadata[i];
+            break;
+        }
+    }
+    if (!meta)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: block_hash 0x"
+                                << std::hex << block_hash << std::dec
+                                << " not in g_block_metadata (codegen drift?)" << LL_ENDL;
+        return;
+    }
+    if (offset + size > meta->block_size)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: out of range (block_hash=0x"
+                                << std::hex << block_hash << std::dec
+                                << ", offset=" << offset << ", size=" << size
+                                << ", block_size=" << meta->block_size << ")" << LL_ENDL;
+        return;
+    }
+
+    // (N1-2) A = block 全体 size で 1 chunk allocate (= bind 時 dynamic_offsets
+    // が chunk 先頭を指す前提、shader は chunk 先頭から block 全体を読む)。
+    const LLUboRingBuffer::AllocateResult alloc =
+        sDrawUboRingBufferMgr->allocate(meta->block_size);
+    if (!alloc.success)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: ring buffer allocate failed (block_hash=0x"
+                                << std::hex << block_hash << std::dec
+                                << ", block_size=" << meta->block_size << ")" << LL_ENDL;
+        return;
+    }
+    if (alloc.grew)
+    {
+        // (N1-6) B + PC-N-4 持越し: sDrawUboSetV3a が stale VkBuffer を参照する
+        // 可能性があるため次 frame 末尾で vkUpdateDescriptorSets 再発火が必要。
+        // 本 PC-N-1 では LL_WARNS_ONCE のみ (= flushDrawUbos PC-N-4 hook 配線
+        // 後に集約)。dummy phase では数 KB/frame ゆえ grow 想定外。
+        LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: ring buffer grew (block_hash=0x"
+                                << std::hex << block_hash << std::dec
+                                << "); sDrawUboSetV3a may reference stale VkBuffer "
+                                   "(自動 re-update は PC-N-4 持越)"
+                                << LL_ENDL;
+    }
+
+    auto it = sDrawUboRingBufferRecords.find(alloc.buffer);
+    if (it == sDrawUboRingBufferRecords.end() || it->second.mapped == nullptr)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: side-table mapped pointer lookup failed (buffer=0x"
+                                << std::hex << alloc.buffer << std::dec << ")" << LL_ENDL;
+        return;
+    }
+
+    // (N1-3) A + (N1-4) A = in-place 上書き許容 + no dirty (per-allocate hazard 回避)。
+    std::memcpy(static_cast<U8*>(it->second.mapped) + alloc.offset + offset, data, size);
+
+    // (N1-1) A = caller (= bind 経路) へ dynamic offset 返却。
+    out_dynamic_offset = alloc.offset;
+}
+// </AYAstorm r41 PC-N-1 (a)>
+
 // ------------------------------------------------------------------
 // <AYAstorm r41 PC-7γ-2> per-asset / per-skin register / unregister hook +
 // write bridge helper + sCurrentAsset / sCurrentSkin tracking accessor。
@@ -5007,52 +5137,51 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
 
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sSkySmokePipeline);
 
-    // <AYAstorm r41 PC-7ε (d)> per-draw ring buffer allocate-chain 配線 (= ambiguity
-    //   (ε-1) A + (ε-2) A + (ε-3) A + (ε-6) A 採用、AYA 確認 2026-06-05):
-    //     1. sDrawUboRingBufferMgr->allocate(256) で 1 個 chunk allocate
-    //        (= 4 binding 同 offset placeholder、PC-N で 4 個独立 allocate 拡張)
-    //     2. dummy zero memset (= placeholder phase、PC-6ε-3 で real per-draw data
-    //        write 置換予定)
-    //     3. dynamic_offsets[4] = { alloc.offset, alloc.offset, alloc.offset, alloc.offset }
-    //        構築 (= 同 offset × 4 binding)
-    //     4. bindV3aStatic 第 3 引数で hand-off (= caller 責任、(ε-3))
-    //     5. grew 観測時 LL_WARNS_ONCE = sDrawUboSetV3a が stale buffer 参照する可能性
-    //        ((ε-6) A 自動 re-update は PC-N 持越、dummy phase 数 KB/frame で grow 起きない想定)
+    // <AYAstorm r41 PC-N-1 (c)> per-draw ring buffer allocate-chain を
+    //   writeDrawUbo helper (= PC-N-1 (a) 新設) 経由 API path に置換
+    //   (= AYA literal「OK」確認 2026-06-05、ambiguity (N1-5) B zero write 経由置換
+    //   採用、real value 構築は PC-N-2 set=2 復活時 recordAvatarPlaceholderDraw
+    //   側で本格化)。
     //
-    //   MUSEUBO-A guard = sDrawUboRingBufferMgr nullptr (= Vulkan init 失敗 or
-    //   pre-init) で early return = bindV3aStatic / vkCmdDraw 不発火 = OpenGL 描画影響ゼロ。
+    //   旧 PC-7ε (d) との差分:
+    //     - 旧: sDrawUboRingBufferMgr->allocate(256) + 直接 mapped 書込 + memset 0
+    //     - 新: writeDrawUbo(PerDrawUBO_LightParams, 0, zero_buf, 256, dyn_off)
+    //       で API path 通電 (= 内部 metadata lookup → allocate → memcpy + dynamic
+    //       offset 返却)
+    //
+    //   placeholder phase ゆえ data は zero buffer 維持 ((N1-5) B literal scope =
+    //   API 経路通電が本質、placeholder PSO 用 real value 構築は別 sub-step、real
+    //   draw 経路 = PC-N-2 set=2 復活時に recordAvatarPlaceholderDraw 側で
+    //   bindV3aRigged 経由 set=2 dynamic offset 配線と一括)。
+    //
+    //   配線対象 block = PerDrawUBO_LightParams (= 0x9ebc071fu, 256 B, set=2,
+    //   binding=0) を placeholder 代表として採用 (= PER_DRAW cadence_tag=2 集合
+    //   中で最小 size + binding=0 で shader 未参照でも GPU error なし)。
+    //
+    //   4 binding 同 dynamic offset 構築 = (ε-2) A pattern 継承 (= placeholder
+    //   phase は 1 allocate で実装簡略化、PC-N-5 実 GLTF 通電時に 4 独立 allocate へ
+    //   拡張、binding=2/3 配置 + 4 binding 再分配は (N1-7) A 採用で別 sub-step 持越)。
+    //
+    //   MUSEUBO-A guard = sDrawUboRingBufferMgr nullptr で early return (=
+    //   bindV3aStatic / vkCmdDraw 不発火 = OpenGL 描画影響ゼロ、writeDrawUbo 内部も
+    //   nullptr guard 持つが二重 safety で skip draw)。
     if (!sDrawUboRingBufferMgr)
     {
         return;
     }
-    const LLUboRingBuffer::AllocateResult alloc = sDrawUboRingBufferMgr->allocate(256);
-    if (!alloc.success)
-    {
-        LL_WARNS_ONCE("Vulkan") << "PC-7ε: ring buffer allocate failed in recordPlaceholderPoolDraw "
-                                   "(skip draw)"
-                                << LL_ENDL;
-        return;
-    }
-    if (alloc.grew)
-    {
-        LL_WARNS_ONCE("Vulkan") << "PC-7ε: ring buffer grew in recordPlaceholderPoolDraw; "
-                                   "sDrawUboSetV3a may reference stale VkBuffer "
-                                   "(自動 re-update は PC-N 持越、dummy phase で grow 想定外)"
-                                << LL_ENDL;
-    }
-    // dummy write (= placeholder phase、PC-6ε-3 で real per-draw data write 置換)
-    {
-        auto it = sDrawUboRingBufferRecords.find(alloc.buffer);
-        if (it != sDrawUboRingBufferRecords.end() && it->second.mapped != nullptr)
-        {
-            std::memset(static_cast<U8*>(it->second.mapped) + alloc.offset, 0, alloc.size);
-        }
-    }
+    static const U8 zero_buf[256] = {};
+    U32 dynamic_offset = 0u;
+    LLVKLoader::writeDrawUbo(
+        ubo::block_hash::PerDrawUBO_LightParams,
+        /*offset=*/0u,
+        zero_buf,
+        sizeof(zero_buf),
+        dynamic_offset);
     const U32 dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
-        alloc.offset, alloc.offset, alloc.offset, alloc.offset,
+        dynamic_offset, dynamic_offset, dynamic_offset, dynamic_offset,
     };
     bindV3aStatic(cmd_buf, sFrameIndex, dynamic_offsets);
-    // </AYAstorm r41 PC-7ε (d)>
+    // </AYAstorm r41 PC-N-1 (c)>
 
     // push constant: modelview_matrix = identity (4x4)、fullscreen triangle は NDC 直書きで identity OK
     const float identity_modelview[16] = {
@@ -5075,9 +5204,10 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
     {
         s_first_call = false;
         LL_INFOS("Vulkan") << "Placeholder pool draw fired (PSO bind sSkySmokePipeline + "
-                              "per-draw ring buffer allocate (256 B) + bindV3aStatic "
-                              "set=0/1a/1b/2 (PC-7ε dynamic offset 配線済) + push constant 64 B identity / "
-                              "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
+                              "writeDrawUbo(PerDrawUBO_LightParams, 256 B zero) API 経路通電 + "
+                              "bindV3aStatic set=0/1a/1b/2 + push constant 64 B identity / "
+                              "VERTEX_BIT + vkCmdDraw(3,1,0,0); PC-N-1 (c) zero write 通電、"
+                              "real value 構築は PC-N-2 持越)"
                            << LL_ENDL;
     }
 }

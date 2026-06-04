@@ -2149,12 +2149,25 @@ void LLGLSLShader::forwardToUboUpload(const ubo::UniformLocation& loc, const voi
             return;
 
         case kCadencePerDraw:
-            // PC-7ε scope = ring buffer chunk hand-off + dynamic offset 経路
-            // (= sDrawUboRingBufferMgr 経由)。本 PC-7γ-1 では未配線、setter 経由
-            // call は warn-once で診断保留 (= mUseUBO=true 検証期に noise 抑止)。
-            LL_WARNS_ONCE("Vulkan") << "PC-7γ-1: PER_DRAW forwardToUboUpload not wired yet (PC-7ε scope), block_hash=0x"
-                                    << std::hex << loc.block_hash << std::dec << LL_ENDL;
+        {
+            // <AYAstorm r41 PC-N-1 (b)> PER_DRAW case 通電 (= AYA literal「OK」確認
+            //   2026-06-05、ambiguity (N1-2) A immediate allocate + (N1-5) B zero/real
+            //   write API path 通電採用)。
+            //   writeDrawUbo (= 直前 PC-N-1 (a) で新設) 経由で sDrawUboRingBufferMgr
+            //   から chunk allocate + memcpy + dynamic offset 取得。本 phase では
+            //   dynamic_offset は caller (= bind 経路) に伝達せず discard
+            //   (= placeholder pool 経路 = recordPlaceholderPoolDraw 側で別途 chunk
+            //   確保 + bindV3aStatic 配線)。real draw 経路の dynamic_offset 伝達 +
+            //   set=2 復活 + bindV3aRigged 配線は PC-N-2 / PC-N-5 持越し。
+            //   現 phase の通電目的 = forwardToUboUpload PER_DRAW case が
+            //   writeDrawUbo を呼び ring buffer allocate + memcpy まで実行する
+            //   API 経路の通電確認 (= mUseUBO=true 検証期に setter 経由 PER_DRAW
+            //   uniform が走ることを保証)。
+            U32 dynamic_offset = 0u;
+            LLVKLoader::writeDrawUbo(loc.block_hash, loc.offset, data, size, dynamic_offset);
+            (void)dynamic_offset; // PC-N-2 / PC-N-5 で bind 経路へ伝達予定
             return;
+        }
 
         case kCadencePerAsset:
         {
