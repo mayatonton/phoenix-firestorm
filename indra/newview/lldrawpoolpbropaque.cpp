@@ -55,6 +55,9 @@ S32 LLDrawPoolGLTFPBR::getNumDeferredPasses()
 void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
 {
     llassert(!LLPipelineFrameContext::getInstance().isHUDPass());
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
 
     if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
     {

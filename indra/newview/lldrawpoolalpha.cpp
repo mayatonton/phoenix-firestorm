@@ -145,6 +145,9 @@ extern bool gCubeSnapshot;
 void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
 
     if (LLPipeline::isWaterClip() && getType() == LLDrawPool::POOL_ALPHA_PRE_WATER)
     { // don't render alpha objects on the other side of the water plane if water is opaque

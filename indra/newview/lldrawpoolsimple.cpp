@@ -47,6 +47,11 @@ static LLTrace::BlockTimerStatHandle FTM_RENDER_GRASS_DEFERRED("Deferred Grass")
 void LLDrawPoolGlow::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
+
     LLGLSLShader* shader = &gDeferredEmissiveProgram;
 
     LLGLEnable blend(GL_BLEND);
@@ -124,6 +129,11 @@ static LLTrace::BlockTimerStatHandle FTM_RENDER_ALPHA_MASK_DEFERRED("Deferred Al
 void LLDrawPoolAlphaMask::renderDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_ALPHA_MASK_DEFERRED);
+
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
+
     LLGLSLShader* shader = &gDeferredDiffuseAlphaMaskProgram;
 
     //render static
@@ -145,6 +155,11 @@ LLDrawPoolGrass::LLDrawPoolGrass() :
 void LLDrawPoolGrass::renderDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
+
     {
         gDeferredNonIndexedDiffuseAlphaMaskProgram.bind();
         gDeferredNonIndexedDiffuseAlphaMaskProgram.setMinimumAlpha(0.5f);
@@ -164,6 +179,10 @@ LLDrawPoolFullbright::LLDrawPoolFullbright() :
 void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_FULLBRIGHT);
+
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
 
     LLGLSLShader* shader = nullptr;
     if (LLPipelineFrameContext::getInstance().isHUDPass())
@@ -192,6 +211,10 @@ void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
 void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_FULLBRIGHT);
+
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
 
     // render unrigged unlit GLTF
     LL::GLTFSceneManager::instance().render(true, false, true);

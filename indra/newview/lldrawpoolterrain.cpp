@@ -149,6 +149,9 @@ void LLDrawPoolTerrain::endDeferredPass(S32 pass)
 void LLDrawPoolTerrain::renderDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_TERRAIN);
+    // <AYAstorm r41 PC-6ε-3> per-draw cadence flush (design 06b §4.1、AYA (B') 採用 2026-06-04 = 1 pool 1 site)
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6ε-3>
     if (mDrawFace.empty())
     {
         return;
