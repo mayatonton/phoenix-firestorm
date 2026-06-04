@@ -10181,7 +10181,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>AYAR20AvatarSkinSSSWhitelist</key>
     <map>
       <key>Comment</key>
-      <string>r20 SSS 対象 mesh asset UUID whitelist。改行区切り、各行が 1 件の mesh UUID (36 文字 dash 区切り、完全一致)。装着物を右クリック > Add to SSS whitelist で自動追加されるのが基本ルート。手書きで paste も可。空行/無効な行は無視。Phase B/E 装着時照合済み、Phase A (本 build) の rendering は全画面 SSS のままで Phase C で per-pixel mask に切替予定</string>
+      <string>r20 SSS 対象 mesh asset UUID whitelist。改行区切り、各行が 1 件の mesh UUID (36 文字 dash 区切り、完全一致)。装着物を右クリック > Add to SSS whitelist で自動追加されるのが基本ルート。手書きで paste も可。空行/無効な行は無視。Phase C (per-pixel mask gate) 実装済 — 本 whitelist が空のとき SSS は全 mesh で発火しない (= isSSSTarget()==false → gbuffer3.a=0 → skinSSSF.glsl skin_bit=0 → Pass 2 alpha=0)。AYAR20AvatarSkinSSSEnabled=1 master ON にしても効果を見るには対象装着物を右クリック > Add to SSS whitelist で追加必須</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
