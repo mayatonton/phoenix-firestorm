@@ -53,6 +53,7 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <unordered_set>
 
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-16 D: kill-switch / dump 用 LLCachedControl
 // 経由で gSavedSettings 参照 (llfontregistry.cpp と同型 pattern)。
@@ -77,6 +78,45 @@ using std::vector;
 using std::pair;
 using std::make_pair;
 using std::string;
+
+// <AYAstorm r41 PC-7γ-1> cadence_tag literal constants + block_size lookup helper
+// = forwardToUboUpload switch case 分岐に必要 (= design 06a §3.3 / design 06b §5.2
+// + AYA (W2-A) 確認 2026-06-05、case label を literal 数値直書きせず named constant
+// で記述、ubo_metadata.inl + ubo_perfect_hash.inl の cadence_tag 値域と整合)。
+//
+// C++ 側に enum 定義は不在 (= codegen 出力 inl は数値 literal、design 06a §3.3 は
+// spec doc 上のみの enum)、本 PC-7γ-1 で anonymous ns 内 constexpr として localize。
+// PC-7γ-2 以降で CADENCE_PER_ASSET / CADENCE_PER_SKIN case を本格化予定 (= AYA
+// (W7-C) per-asset/skin 持越)。
+namespace
+{
+    constexpr U32 kCadencePerFrame   = 0u; // FrameAtmosphere_Lighting / FrameLights / FrameViewProj
+    constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大
+    constexpr U32 kCadencePerDraw    = 2u; // PC-7ε で ring buffer 経路本格化
+    constexpr U32 kCadencePerAsset   = 3u; // 現 codegen 0 件、PC-7γ-2 で本格化
+    constexpr U32 kCadencePerSkin    = 4u; // 同上
+    constexpr U32 kCadenceSingleton  = 5u; // Global_ReflectionProbes (flushSingletonUbos 別経路)
+    constexpr U32 kCadenceSampler    = 6u; // 2026-06-05 PC-6ζ で 5→6 移動、setter 側 skip
+    constexpr U32 kCadenceUnknown    = 7u;
+    constexpr U32 kCadenceInvalid    = 0xFFFFFFFFu;
+
+    // block_hash → block_size lookup (= ubo_metadata.inl g_block_metadata 線形 walk)。
+    // mapUniforms() の register hook で block_size を解決するために使用、
+    // forwardToUboUpload の hot path では使わない (= caller 側 loc.size で直接参照)。
+    // block 数 91 ゆえ線形 walk で問題なし、shader load 時 N block × 91 で O(N×91)。
+    U32 lookup_block_size_by_hash(U32 block_hash)
+    {
+        for (U32 i = 0; i < ubo::g_block_count; ++i)
+        {
+            if (ubo::g_block_metadata[i].block_hash == block_hash)
+            {
+                return ubo::g_block_metadata[i].block_size;
+            }
+        }
+        return 0u; // not found = register hook 側で skip
+    }
+} // anonymous ns
+// </AYAstorm r41 PC-7γ-1>
 
 GLuint LLGLSLShader::sCurBoundShader = 0;
 LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
@@ -383,6 +423,32 @@ void LLGLSLShader::unload()
 void LLGLSLShader::unloadInternal()
 {
     sInstances.erase(this);
+
+    // <AYAstorm r41 PC-7γ-1> per-program UBO unregister hook
+    // = design 06b §3.2 + AYA (W4-A)(W8-A) 確認 2026-06-05 対称配線:
+    //   mUniformUBOLoc を walk して PER_PROGRAM block_hash を unique 集約、
+    //   LLVKLoader::unregisterProgramUbo 経由で sProgramUboDirty 内 entry を
+    //   destroyUboInstanceBuffers + erase。mUniformUBOLoc.clear() (= 直後) より前
+    //   に発火する必要 (= clear 後だと block_hash 取得不能)。
+    //
+    // MUSEUBO-A 整合: `if (mUseUBO)` block 内側でのみ unregister、mUseUBO=false
+    //   default では register もされていないため対称 no-op。
+    // GATE-B 整合: #ifdef LL_VULKAN_GLSL 不参照。
+    // unregisterProgramUbo 側で entry 不在は safe (= find→end で no-op return)、
+    // shader 再 link case (= createShader → unloadInternal → mapUniforms) でも対称。
+    // </AYAstorm r41 PC-7γ-1>
+    if (mUseUBO)
+    {
+        std::unordered_set<U32 /*block_hash*/> seen_program_hashes;
+        for (const auto& loc : mUniformUBOLoc)
+        {
+            if (loc.cadence_tag != kCadencePerProgram) continue;
+            if (!seen_program_hashes.insert(loc.block_hash).second) continue;
+            LLVKLoader::unregisterProgramUbo(this, loc.block_hash);
+        }
+    }
+    mUniformUBOLoc.clear();
+    mUniformUBOLocByHash.clear();
 
     stop_glerror();
     mAttribute.clear();
@@ -1991,23 +2057,131 @@ bool LLGLSLShader::mapUniforms()
         bringupTestUBO();
     }
 
+    // <AYAstorm r41 PC-7γ-1> per-program UBO register hook
+    // = design 06b §3.2 + AYA (W4-A) 確認 2026-06-05 整合:
+    //   mUniformUBOLoc 構築完了直後に PER_PROGRAM cadence の unique block_hash を
+    //   集約 (= 1 shader が複数 PER_PROGRAM block を持つ場合に各 block 個別 register)、
+    //   LLVKLoader::registerProgramUbo 経由で sProgramUboDirty に triple-buffer
+    //   physical instance を allocate。block_size は ubo_metadata.inl から
+    //   lookup_block_size_by_hash で解決 (= UniformLocation には size 直接無し =
+    //   value 単位の write size、block 全体 size は metadata 別経路)。
+    //
+    // MUSEUBO-A 整合: `if (mUseUBO)` block 内側でのみ register、mUseUBO=false default
+    //   で sProgramUboDirty に entry 入らず = 既存 OpenGL 描画 100% 維持。
+    // GATE-B 整合: #ifdef LL_VULKAN_GLSL 不参照。
+    // W7-C 整合: PER_PROGRAM のみ集約、PER_ASSET / PER_SKIN は PC-7γ-2 持越。
+    // </AYAstorm r41 PC-7γ-1>
+    if (mUseUBO)
+    {
+        std::unordered_set<U32 /*block_hash*/> seen_program_hashes;
+        for (const auto& loc : mUniformUBOLoc)
+        {
+            if (loc.cadence_tag != kCadencePerProgram) continue;
+            if (!seen_program_hashes.insert(loc.block_hash).second) continue;
+            const U32 block_size = lookup_block_size_by_hash(loc.block_hash);
+            if (block_size == 0)
+            {
+                LL_WARNS("Shader") << "PC-7γ-1: registerProgramUbo skip — block_size 0 for block_hash=0x"
+                                   << std::hex << loc.block_hash << std::dec << LL_ENDL;
+                continue;
+            }
+            if (!LLVKLoader::registerProgramUbo(this, loc.block_hash, block_size))
+            {
+                LL_WARNS("Shader") << "PC-7γ-1: registerProgramUbo failed for block_hash=0x"
+                                   << std::hex << loc.block_hash << std::dec
+                                   << " block_size=" << block_size << LL_ENDL;
+            }
+        }
+        // mUniformUBOLocByHash 経路にも PER_PROGRAM block_hash が含まれ得るが
+        // (= LLStaticHashedString 経路 PB-5)、mUniformUBOLoc と同一 block_hash 集合
+        // ゆえ seen_program_hashes 重複排除で十分 (= 二重 try_emplace は idempotent
+        // ゆえ実害無し、ただし register 呼出数最小化のため統合 walk は本 PC-7γ-1
+        // scope 外 = 後段 sub で必要なら最適化)。
+    }
+
     unbind();
 
     LL_DEBUGS("ShaderUniform") << "Total Uniform Size: " << mTotalUniformSize << LL_ENDL;
     return res;
 }
 
-// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-6: UBO redirect 層
-// shell 実装 (= FWD-1 採用、空 stub)。spec 06a §5.2 literal「forwardToUboUpload(loc,
-// &x, sizeof(GLfloat));  // 06b で実装」の本体 = 実 memcpy / ring buffer / dynamic
-// offset / thread 配線は 06b / chapter 07 で実装する。本 sub-step は declaration +
-// 空 stub の link 通し限定 = PB-4 (= 17 method integer index 経路) / PB-5 (= 13 method
-// LLStaticHashedString 経路) で各 setter から call する link error 回避の technical
-// compile dependency 目的 (= 順序組替え PB-3 complete handoff §3.6 で PB-4 直前に前倒し)。
-// mUseUBO=false default ゆえ本 stub は実走しない (= MUSEUBO-A 整合、既存 OpenGL 挙動
-// 100% 維持)。Phase 1.C (= 06b 実装着手) で本体実装される。
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-6 (起案) / PC-7γ-1 (本格化):
+// UBO redirect 層 = setter 側 mUseUBO 分岐から渡された UniformLocation を cadence
+// 別に分岐 dispatch する。design 06b §5.2 + AYA (W2-A)(W3-B)(W6-A) 確認 2026-06-05
+// 整合:
+//
+//   case PER_FRAME (= 0)   : LLVKLoader::writeFrameUbo (= sFrameUboInstances 経由
+//                            triple-buffer mapped_ptr へ memcpy + dirty.store true)
+//   case PER_PROGRAM (= 1) : LLVKLoader::writeProgramUbo (= sProgramUboDirty 経由
+//                            shader × block_hash key で triple-buffer memcpy + dirty)
+//   case PER_DRAW (= 2)    : stub (LL_WARNS_ONCE)、PC-7ε で ring buffer 経路本格化
+//   case PER_ASSET (= 3)   : stub (LL_WARNS_ONCE)、PC-7γ-2 で GLTF path 配線
+//   case PER_SKIN (= 4)    : 同上
+//   case SINGLETON (= 5)   : llassert_always (= 別経路 flushSingletonUbos 整合違反)
+//   case SAMPLER (= 6)     : 呼出側 setter で skip 済 (= 06a §5.6)、defensive return
+//   case UNKNOWN (= 7)     : 呼出側で sentinel skip、defensive return
+//   case INVALID (0xFFFF)  : 同上、呼出側で skip 済 (= silent path)
+//
+// W3-B 整合: 本 PC-7γ-1 は memcpy + dirty.store(true) までで stop = host 側
+// write path 確立まで。flush 側 GPU 経路 (= vkCmdBindDescriptorSets) は PC-7δ scope。
+//
+// MUSEUBO-A 整合: 呼出側 setter (= 31 site) が `if (mUseUBO)` block 内側からのみ
+// call、mUseUBO=false default で本 entry 不到達 = 既存 OpenGL 描画 100% 維持。
+// 防御的に entry gate を追加せず caller 側 gate に委譲 (= 31 site 既存パターン保持)。
+// GATE-B 整合: #ifdef LL_VULKAN_GLSL 不参照、bridge 経由 Vulkan init 層 access。
 void LLGLSLShader::forwardToUboUpload(const ubo::UniformLocation& loc, const void* data, size_t size)
 {
+    switch (loc.cadence_tag)
+    {
+        case kCadencePerFrame:
+            LLVKLoader::writeFrameUbo(loc.block_hash, loc.offset, data, size);
+            return;
+
+        case kCadencePerProgram:
+            LLVKLoader::writeProgramUbo(this, loc.block_hash, loc.offset, data, size);
+            return;
+
+        case kCadencePerDraw:
+            // PC-7ε scope = ring buffer chunk hand-off + dynamic offset 経路
+            // (= sDrawUboRingBufferMgr 経由)。本 PC-7γ-1 では未配線、setter 経由
+            // call は warn-once で診断保留 (= mUseUBO=true 検証期に noise 抑止)。
+            LL_WARNS_ONCE("Vulkan") << "PC-7γ-1: PER_DRAW forwardToUboUpload not wired yet (PC-7ε scope), block_hash=0x"
+                                    << std::hex << loc.block_hash << std::dec << LL_ENDL;
+            return;
+
+        case kCadencePerAsset:
+            // PC-7γ-2 scope = GLTF path 配線 (= LL::GLTF::Asset key + sAssetUboDirty)。
+            // 現 codegen で cadence_tag=3 block 0 件ゆえ実走しない (= W7-C 整合)。
+            LL_WARNS_ONCE("Vulkan") << "PC-7γ-1: PER_ASSET forwardToUboUpload not wired yet (PC-7γ-2 scope), block_hash=0x"
+                                    << std::hex << loc.block_hash << std::dec << LL_ENDL;
+            return;
+
+        case kCadencePerSkin:
+            // PC-7γ-2 scope (= per-asset 同形)、現 codegen で cadence_tag=4 block 0 件。
+            LL_WARNS_ONCE("Vulkan") << "PC-7γ-1: PER_SKIN forwardToUboUpload not wired yet (PC-7γ-2 scope), block_hash=0x"
+                                    << std::hex << loc.block_hash << std::dec << LL_ENDL;
+            return;
+
+        case kCadenceSingleton:
+            // PC-6ε-1 確定 = singleton (= Global_ReflectionProbes) は
+            // LLVKLoader::flushSingletonUbos() 経路で flush、setter 経由
+            // forwardToUboUpload は本来発生しない (= 06a §5.6 + bringupTestUBO は
+            // 別 dummy path)。仮に setter 経路で SINGLETON が来た場合は設計違反
+            // ゆえ debug build で即停止 (= drift 検出)。
+            llassert_always(false && "SINGLETON forwarded via forwardToUboUpload unexpected (PC-6ε-1 flushSingletonUbos 別経路)");
+            return;
+
+        case kCadenceSampler:
+        case kCadenceUnknown:
+        case kCadenceInvalid:
+            // 呼出側 setter (= 31 site) で既 skip 済 = 防御的 return
+            // (= 06a §5.6 SAMPLER skip path / 06a §3.3 INVALID/UNKNOWN sentinel)。
+            return;
+
+        default:
+            llassert_always(false && "PC-7γ-1: invalid cadence_tag in forwardToUboUpload");
+            return;
+    }
 }
 
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-2 (起案) / PC-6ε-1 (本格化):

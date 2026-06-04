@@ -23,6 +23,12 @@
 #include "llcontrol.h"
 #include "llglslshader.h"
 
+// <AYAstorm r41 PC-7γ-1> ubo_metadata.inl 取込 (= cadence_tag=PER_FRAME 全 block
+// enumerate + block_size 参照に必要、AYA (W6-A) 確認 2026-06-05、initVulkan の
+// sFrameUboInstances allocate 配線で g_block_metadata[] walk)。
+// </AYAstorm r41 PC-7γ-1>
+#include "ubo/ubo_metadata.inl"
+
 #include <vector>
 #include <string>
 #include <climits>
@@ -30,6 +36,7 @@
 #include <fstream>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <atomic>
 
 extern LLControlGroup gSavedSettings;
@@ -476,9 +483,51 @@ namespace
         void*             mapped_ptr[FRAMES_IN_FLIGHT] = { nullptr, nullptr, nullptr };
         uint32_t          size                         = 0;
     };
-    std::unordered_map<LLGLSLShader*, UboInstance>    sProgramUboDirty;
+    // <AYAstorm r41 PC-7γ-1> per-program UBO physical instance key (= owner shader
+    // + block_hash の組)。design 06b §3.2.3 + design 09 §4.1 + AYA (W1-A)(K2)
+    // 確認 2026-06-05 整合:
+    //   1 program (shader) × N block_hash の組 = 物理 UBO instance 単位で dirty
+    //   propagation を行う (= 二段階 dedup 構造 stage 3、block 単位の重複 upload
+    //   抑止)。PC-6ε-2 では shader 単位 single dirty 形だったが、PC-7γ-1 で
+    //   block_hash dimension を追加 (= 1 shader が複数 block_hash を持つ場合に
+    //   block 個別に dirty 立て可能化)。
+    //
+    // sAssetUboDirty / sSkinUboDirty は PC-6ε-2 既存形 (LLGLSLShader* 不使用) を
+    // 維持、PC-7γ-2 で GLTF path 確定後に key 拡張予定 (= 本 PC-7γ-1 は per-program
+    // 専念で AYA (W7-C) 確認済)。
+    // </AYAstorm r41 PC-7γ-1>
+    using UboInstanceKey = std::pair<LLGLSLShader*, U32 /*block_hash*/>;
+    struct UboInstanceKeyHash
+    {
+        std::size_t operator()(const UboInstanceKey& k) const noexcept
+        {
+            // std::hash<void*>(owner) ^ std::hash<U32>(block_hash) で combine。
+            // owner pointer は 8 byte (64-bit) / 4 byte (32-bit) いずれも分散十分、
+            // block_hash は FNV-1a 既分散ゆえ単純 XOR で衝突実用上問題なし
+            // (= shader pool 上限が数百規模、block 上限 91)。
+            return std::hash<void*>{}(static_cast<void*>(k.first))
+                 ^ (std::hash<U32>{}(k.second) << 1);
+        }
+    };
+
+    std::unordered_map<UboInstanceKey, UboInstance, UboInstanceKeyHash> sProgramUboDirty;
     std::unordered_map<LL::GLTF::Asset*, UboInstance> sAssetUboDirty;
     std::unordered_map<LL::GLTF::Skin*, UboInstance>  sSkinUboDirty;
+
+    // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instances (= block_hash → UboInstance、
+    // owner 概念無し global static)。design 06b §2.1 + design 07 §8.2 + AYA (W6-A)
+    // 確認 2026-06-05 整合:
+    //   per-frame cadence (cadence_tag=0) は全 shader で共有、block_hash 単位で
+    //   一意な physical instance を持つ。initVulkan 時に ubo_metadata.inl の
+    //   g_block_metadata[] を walk して cadence_tag=PER_FRAME (=0) の全 block を
+    //   try_emplace + allocateUboInstanceBuffers (block_size 個別) で先回り確保
+    //   (= 3 block × FRAMES_IN_FLIGHT=3 = 9 buffer)。shutdownVulkan で対称 destroy。
+    //
+    // sProgramUboDirty と独立 (= PER_PROGRAM は shader × block_hash key、PER_FRAME は
+    // block_hash 単独 key) ゆえ別 map で管理、forwardToUboUpload switch case で
+    // cadence_tag に応じて分岐参照。
+    // </AYAstorm r41 PC-7γ-1>
+    std::unordered_map<U32 /*block_hash*/, UboInstance> sFrameUboInstances;
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
@@ -1264,11 +1313,11 @@ namespace
     // (= PC-6α..ζ 同形)。MUSEUBO-A 整合: 本 PC-7β では call site 未配線
     // (= dirty map 空のまま) で既存 OpenGL 描画 100% 維持。
     //
-    // [[maybe_unused]] = PC-7γ で per-owner register hook 配線時に call site 追加
-    // 予定 (= AYA (Y3-A) 整合、skeleton 性質)、本 PC-7β scope では未使用ゆえ
-    // -Werror=unused-function 抑止。destroy 側は shutdownVulkan で entry 走査
-    // 呼出済で属性不要。
-    [[maybe_unused]] bool allocateUboInstanceBuffers(UboInstance& ubo, uint32_t size, const char* owner_tag)
+    // PC-7γ-1 で [[maybe_unused]] 撤去 = registerProgramUbo / initVulkan
+    // sFrameUboInstances allocate path から呼出開始 (= AYA (W4-A)(W6-A)(W8-A)
+    // 確認 2026-06-05、Exit Criteria 9 項目 (vi) 整合)。destroy 側は
+    // shutdownVulkan + unregisterProgramUbo 経路から呼出。
+    bool allocateUboInstanceBuffers(UboInstance& ubo, uint32_t size, const char* owner_tag)
     {
         if (sAllocator == VK_NULL_HANDLE || size == 0)
         {
@@ -3018,6 +3067,43 @@ bool initVulkan()
     }
     // </AYAstorm r41 PC-7α>
 
+    // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instance 先回り allocate。
+    // = design 06b §2.1 + design 07 §8.2 + AYA (W6-A) 確認 2026-06-05 整合:
+    //   ubo_metadata.inl g_block_metadata[] を walk して cadence_tag=PER_FRAME
+    //   (= 0) の block を全件 try_emplace + allocateUboInstanceBuffers (block_size
+    //   個別、FRAMES_IN_FLIGHT=3 triple-buffer)。本 sub 時点 (2026-06-05) で
+    //   PER_FRAME block は 3 件 (FrameAtmosphere_Lighting / FrameLights /
+    //   FrameViewProj = 3 block × 3 frame = 9 buffer)。
+    //
+    // failure 時は allocateUboInstanceBuffers 内で確保済 frame の vmaDestroyBuffer
+    // 巻き戻し済 (= 部分 allocate state 残さない)、ここでは shutdownVulkan で
+    // 全体 teardown (= sFrameUboInstances 内 entry は size==0 sentinel ゆえ
+    // destroy 側 no-op safe)。
+    //
+    // MUSEUBO-A 整合: 本 allocate は Vulkan init 層単独動作、mUseUBO runtime gate
+    // 不参照 (= scaffolding object 化、bind 経路は PC-7δ scope)、mUseUBO=false
+    // default で forwardToUboUpload 経由 write は発生せず buffer は idle。
+    // GATE-B 整合: #ifdef LL_VULKAN_GLSL 新規追加 0、Vulkan init 層単独。
+    // </AYAstorm r41 PC-7γ-1>
+    for (U32 i = 0; i < ubo::g_block_count; ++i)
+    {
+        const ubo::BlockMetadata& meta = ubo::g_block_metadata[i];
+        if (meta.cadence_tag != 0u /*PER_FRAME*/) continue;
+        UboInstance& ubo_inst = sFrameUboInstances[meta.block_hash];
+        if (ubo_inst.size != 0)
+        {
+            continue; // 既 allocate (= 二重 init safe)
+        }
+        if (!allocateUboInstanceBuffers(ubo_inst, meta.block_size, meta.block_name))
+        {
+            LL_WARNS("Vulkan") << "PC-7γ-1: sFrameUboInstances allocate failed for "
+                               << meta.block_name << " (block_size=" << meta.block_size << ")" << LL_ENDL;
+            sFrameUboInstances.erase(meta.block_hash);
+            shutdownVulkan();
+            return false;
+        }
+    }
+
     // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1 / §3.1 sub-step 7.3 layout 部分内包):
     // set=1 per-material 7 PBR slot descriptor set layout + 共用 placeholder sampler を
     // PSO 作成前に立ち上げる (sPlaceholderLayout / sSkySmokeLayout が二段構え参照する前提)。
@@ -3362,6 +3448,15 @@ void shutdownVulkan()
         sProgramUboDirty.clear();
         sAssetUboDirty.clear();
         sSkinUboDirty.clear();
+
+        // <AYAstorm r41 PC-7γ-1> sFrameUboInstances teardown = initVulkan の対称
+        // destroy。sAllocator 生存中に発火 (= sProgramUboDirty 等 PC-7β 既存 dirty
+        // map teardown と同列、init reverse 順)。entry は initVulkan で先回り
+        // allocate 済 (= 3 PER_FRAME block)、size!=0 ゆえ destroy 側で 3 buffer ×
+        // FRAMES_IN_FLIGHT=3 = 9 vmaDestroyBuffer 発火。
+        // </AYAstorm r41 PC-7γ-1>
+        for (auto& kv : sFrameUboInstances) { destroyUboInstanceBuffers(kv.second); }
+        sFrameUboInstances.clear();
 
         // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
         // per-asset descriptor pool teardown。LLAssetUboPool::shutdown() が内部の
@@ -3764,12 +3859,24 @@ void flushProgramUbos(LLGLSLShader* shader)
     {
         return;
     }
-    auto it = sProgramUboDirty.find(shader);
-    if (it == sProgramUboDirty.end())
+    // <AYAstorm r41 PC-7γ-1> sProgramUboDirty key 化 (= shader + block_hash 組) に
+    // 伴う walk 形変更 = 同一 shader が複数 block_hash を持つため、entry を
+    // shader pointer 一致で走査 + dirty exchange (= 1 shader N block 個別 dedup)。
+    // PC-7β 既存形 (= shader 単独 key find) を PC-7γ-1 で key 拡張 (W1-A 整合)。
+    // 本 PC-7γ-1 では dirty=true 経路 (= writeProgramUbo 経由) で entry が生まれて
+    // も、GPU 側 bind は PC-7δ scope (= W3-B「memcpy までで stop」) ゆえ flush
+    // 時 dirty exchange + flushDummyUboWrite 既存形維持 (= GPU upload は別 sub)。
+    // </AYAstorm r41 PC-7γ-1>
+    bool any_dirty = false;
+    for (auto& kv : sProgramUboDirty)
     {
-        return;
+        if (kv.first.first != shader) continue;
+        if (kv.second.dirty.exchange(false, std::memory_order_acq_rel))
+        {
+            any_dirty = true;
+        }
     }
-    if (!it->second.dirty.exchange(false, std::memory_order_acq_rel))
+    if (!any_dirty)
     {
         return;
     }
@@ -3845,6 +3952,129 @@ void flushSingletonUbos()
 {
     flushDummyUboWrite("flushSingletonUbos");
 }
+
+// ------------------------------------------------------------------
+// <AYAstorm r41 PC-7γ-1> per-program register / unregister hook +
+// per-frame / per-program write bridge helper の 4 entry point。
+//
+// 設計根拠: design 06b §3.2 二段階 dedup 構造 + §3.2.3 UboInstance dirty bit
+// + §5.2 forwardToUboUpload routing の bridge。LLGLSLShader::forwardToUboUpload
+// は llglslshader.cpp 側 member 関数で this 参照を持つが、llvkloader.cpp の
+// anonymous ns 内 static map (= sFrameUboInstances / sProgramUboDirty) に直接
+// access 不能ゆえ、wrapper 経由で TU 隔離維持。
+//
+// AYA 確認 2026-06-05 records:
+//   (W1-A) UboInstanceKey = std::pair<LLGLSLShader*, U32 block_hash>
+//   (W4-A) register hook = mapUniforms() / unloadInternal() 対称配線
+//   (W6-A) per-frame UBO 配線 = sFrameUboInstances + initVulkan allocate
+//   (W7-C) per-program 専念 (per-asset/skin は PC-7γ-2 持越)
+//   (W8-A) [[maybe_unused]] 撤去 = register hook で call site 配線完了
+//
+// MUSEUBO-A 整合: 呼出側 (= mapUniforms()/unloadInternal()) で `if (mUseUBO)`
+//   gate 配置、write は forwardToUboUpload entry gate で多重保証 = mUseUBO=false
+//   default で既存 OpenGL 描画 100% 維持 (= 本 helper 群は呼出されない)。
+// GATE-B 整合: 本 helper 群は Vulkan init 層単独動作、#ifdef LL_VULKAN_GLSL 不参照。
+// ------------------------------------------------------------------
+bool registerProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 block_size)
+{
+    if (!shader || block_size == 0)
+    {
+        return false;
+    }
+    UboInstanceKey key{ shader, block_hash };
+    auto [it, inserted] = sProgramUboDirty.try_emplace(key);
+    if (inserted)
+    {
+        if (!allocateUboInstanceBuffers(it->second, block_size, "PER_PROGRAM"))
+        {
+            sProgramUboDirty.erase(it);
+            return false;
+        }
+    }
+    // 既存 entry の場合 idempotent 成功 (= mapUniforms 再呼出 case safe)
+    return true;
+}
+
+void unregisterProgramUbo(LLGLSLShader* shader, U32 block_hash)
+{
+    if (!shader)
+    {
+        return;
+    }
+    UboInstanceKey key{ shader, block_hash };
+    auto it = sProgramUboDirty.find(key);
+    if (it == sProgramUboDirty.end())
+    {
+        // shader が mUseUBO=false で未 register / 既 unregister 済 safe
+        return;
+    }
+    destroyUboInstanceBuffers(it->second);
+    sProgramUboDirty.erase(it);
+}
+
+void writeFrameUbo(U32 block_hash, U32 offset, const void* data, size_t size)
+{
+    if (!data || size == 0)
+    {
+        return;
+    }
+    auto it = sFrameUboInstances.find(block_hash);
+    if (it == sFrameUboInstances.end())
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-1 writeFrameUbo: block_hash 0x"
+                                << std::hex << block_hash << std::dec
+                                << " not registered in sFrameUboInstances" << LL_ENDL;
+        return;
+    }
+    UboInstance& ubo_inst = it->second;
+    if (ubo_inst.size == 0 || ubo_inst.mapped_ptr[sFrameIndex] == nullptr)
+    {
+        return; // allocate 失敗 / sentinel state safe
+    }
+    if (offset + size > ubo_inst.size)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-1 writeFrameUbo: out of range write (block_hash=0x"
+                                << std::hex << block_hash << std::dec
+                                << ", offset=" << offset << ", size=" << size
+                                << ", capacity=" << ubo_inst.size << ")" << LL_ENDL;
+        return;
+    }
+    std::memcpy(static_cast<U8*>(ubo_inst.mapped_ptr[sFrameIndex]) + offset, data, size);
+    ubo_inst.dirty.store(true, std::memory_order_release);
+}
+
+void writeProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 offset, const void* data, size_t size)
+{
+    if (!shader || !data || size == 0)
+    {
+        return;
+    }
+    UboInstanceKey key{ shader, block_hash };
+    auto it = sProgramUboDirty.find(key);
+    if (it == sProgramUboDirty.end())
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-1 writeProgramUbo: shader=" << shader
+                                << " block_hash=0x" << std::hex << block_hash << std::dec
+                                << " not registered in sProgramUboDirty" << LL_ENDL;
+        return;
+    }
+    UboInstance& ubo_inst = it->second;
+    if (ubo_inst.size == 0 || ubo_inst.mapped_ptr[sFrameIndex] == nullptr)
+    {
+        return;
+    }
+    if (offset + size > ubo_inst.size)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-1 writeProgramUbo: out of range write (shader="
+                                << shader << ", block_hash=0x" << std::hex << block_hash
+                                << std::dec << ", offset=" << offset << ", size=" << size
+                                << ", capacity=" << ubo_inst.size << ")" << LL_ENDL;
+        return;
+    }
+    std::memcpy(static_cast<U8*>(ubo_inst.mapped_ptr[sFrameIndex]) + offset, data, size);
+    ubo_inst.dirty.store(true, std::memory_order_release);
+}
+// </AYAstorm r41 PC-7γ-1>
 
 // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
 // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。

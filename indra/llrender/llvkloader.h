@@ -363,6 +363,44 @@ namespace LLVKLoader
     // GATE-B 整合: mUseUBO runtime gate 未依存 (= PC-6α..δ 同形)。
     // ------------------------------------------------------------------
     void flushSingletonUbos();
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-7γ-1:
+    // per-program UBO register / unregister hook + per-frame / per-program
+    // UBO write bridge helper (design 06b §3.2 二段階 dedup 構造 / §3.2.3
+    // UboInstance dirty bit / §5.2 forwardToUboUpload routing の bridge)。
+    //
+    // 設計根拠 (= (C3) 解決):
+    //   LLGLSLShader::forwardToUboUpload (llglslshader.cpp、PC-7γ-1 で本格化)
+    //   は member 関数で this 参照を持ち、llvkloader.cpp anonymous ns 内 static
+    //   map (= sFrameUboInstances / sProgramUboDirty) に直接 access 不能。本 4
+    //   method を bridge として llvkloader.h に公開、forwardToUboUpload は
+    //   wrapper 経由 access (= TU 隔離維持 + call site 改変ゼロ + design 06b §5.2
+    //   雛形コードの sFrameUboInstances.find() / std::memcpy → dirty.store(true)
+    //   を本 wrapper 内で再現)。
+    //
+    // PC-7γ-1 scope (= per-program 専念、per-asset / per-skin は PC-7γ-2 持越):
+    //   registerProgramUbo / unregisterProgramUbo : LLGLSLShader::mapUniforms()
+    //     完了 site (= mUniformUBOLoc 構築完了直後) / unloadInternal() (=
+    //     mUniformUBOLoc.clear() 前) で per-block_hash unique 集約 + try_emplace
+    //     + allocateUboInstanceBuffers (block_size = ubo_metadata.inl 経由
+    //     lookup) / 対称 destroy + erase。
+    //   writeFrameUbo / writeProgramUbo : forwardToUboUpload switch case で
+    //     CADENCE_PER_FRAME / CADENCE_PER_PROGRAM 経路から呼出、UboInstance
+    //     mapped_ptr[sFrameIndex] + offset へ memcpy + dirty.store(release)。
+    //
+    // MUSEUBO-A 整合: register/unregister は呼出側 (= mapUniforms() /
+    //   unloadInternal()) で `if (mUseUBO)` gate、write は forwardToUboUpload
+    //   entry gate `if (!mUseUBO) return;` で多重保証 = mUseUBO=false default
+    //   で既存 OpenGL 描画 100% 維持。
+    // GATE-B 整合: mUseUBO runtime 参照は呼出側のみ、本 helper 群は Vulkan
+    //   init 層単独動作 = #ifdef LL_VULKAN_GLSL 不参照 (= PC-6α..ζ + PC-7α/β
+    //   同形)。
+    // ------------------------------------------------------------------
+    bool registerProgramUbo  (LLGLSLShader* shader, U32 block_hash, U32 block_size);
+    void unregisterProgramUbo(LLGLSLShader* shader, U32 block_hash);
+    void writeFrameUbo       (U32 block_hash, U32 offset, const void* data, size_t size);
+    void writeProgramUbo     (LLGLSLShader* shader, U32 block_hash, U32 offset, const void* data, size_t size);
 }
 
 #endif // LL_LLVKLOADER_H
