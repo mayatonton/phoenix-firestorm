@@ -322,6 +322,16 @@ namespace LLVKLoader
     // 引数 (LLGLSLShader / Asset / Skin) は将来 PC-6ε で per-program / per-asset /
     // per-skin dirty map lookup の key として使用、本 PC-6δ では受信のみ
     // (空書込で hash / id 参照しない = (unused) ガード)。
+    //
+    // ---- PC-6ε-2 update (= dirty propagation 配線) ----
+    // 引数 key 化を本 PC-6ε-2 で実施。flushProgramUbos = entry gate
+    // `if (!shader || !shader->mUseUBO) return;` + sProgramUboDirty.find(shader)
+    // → dirty.exchange(false) で 1 度だけ flush 実行。flushAssetUbos / flushSkinUbos
+    // は構造的 gate (= setter 側 mUseUBO 分岐で forwardToUboUpload 不呼出 → map 空 →
+    // no-op、design 06a §5.4 整合) + nullptr 防御。flushDrawUbos は shader/owner
+    // key 無し、構造的 gate のみ (= PC-6δ 既存形踏襲、残 pool 配線は PC-6ε-3)。
+    // 詳細 = llvkloader.cpp 内 sProgramUboDirty / sAssetUboDirty / sSkinUboDirty
+    // 宣言 tag block + 各 flush 関数 body 内 comment。
     // ------------------------------------------------------------------
     void flushFrameUbos();
     void flushProgramUbos(LLGLSLShader* shader);

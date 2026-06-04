@@ -21,6 +21,7 @@
 #include "lluboringbuffer.h"
 #include "llpipelinecachestorage.h"
 #include "llcontrol.h"
+#include "llglslshader.h"
 
 #include <vector>
 #include <string>
@@ -29,6 +30,7 @@
 #include <fstream>
 #include <memory>
 #include <unordered_map>
+#include <atomic>
 
 extern LLControlGroup gSavedSettings;
 
@@ -397,6 +399,49 @@ namespace
     std::unordered_map<LLUboRingBuffer::BufferHandle, DrawUboRingBufferRecord>
         sDrawUboRingBufferRecords;
     std::unique_ptr<LLUboRingBuffer> sDrawUboRingBufferMgr;
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-2:
+    // per-program / per-asset / per-skin cadence dirty propagation 機構。
+    //
+    // design 06b §3.2.3 で確定の UboInstance owner 概念形 (= std::atomic<bool>
+    // dirty 単独) を minimal 形で先行新設。chapter 07 (= PC-7+) で VkBuffer /
+    // mapped_ptr / size の member append 拡充予定 (= 本 PC-6ε-2 では placeholder
+    // comment、struct shape は不変)。
+    //
+    // 二段階 dedup 構造 (design 06b §3.2):
+    //   stage 1 = setter 入口 mValue cache check (= 既存、値 dedup、06a §5.2)
+    //   stage 3 = UBO physical instance dirty bit (= 本 UboInstance::dirty、
+    //             upload dedup、本 PC-6ε-2 で wire up)
+    //   ※ stage 2 = forwardToUboUpload routing (= 06a §5.4 / 06b §5.2) は
+    //                Phase 1.B 既存 stub のまま、本格化は PC-7 で実施
+    //
+    // gate 配置 (design 06b §5.3 + AYA 確認 2026-06-04):
+    //   - per-program = entry gate `if (!shader->mUseUBO) return;` (= 明示 gate、
+    //                   shader 個別 mUseUBO 直接参照、design 06a §3.2 整合)
+    //   - per-asset / per-skin = 構造的 gate (= setter 側 mUseUBO 分岐で
+    //                   forwardToUboUpload 不呼出 → dirty map 空のまま →
+    //                   flush で dirty.exchange(false) == false で no-op)
+    //   - per-frame / per-draw / singleton = gate 無し (= GATE-B 整合維持、
+    //                   PC-6α..ε-1 既存形踏襲)
+    //
+    // std::atomic<bool> は move / copy 不可、std::unordered_map<K, UboInstance>
+    // への値 insert は operator[] (C++17 = piecewise default construct、try_emplace
+    // と等価) または try_emplace(key) 経由のみ。本 sub では flush 側 find(key)
+    // のみで値 insert は呼ばないため (= dirty=true 経路は PC-7 で完成)、map は
+    // 空のまま flush で no-op になる (= 設計上の構造的 gate)。
+    // ------------------------------------------------------------------
+    struct UboInstance
+    {
+        std::atomic<bool> dirty{false};
+        // PC-7 拡充 placeholder (= design 06b §3.2.3 完成形 + chapter 07):
+        //   VkBuffer      vk_buffer  = VK_NULL_HANDLE;
+        //   void*         mapped_ptr = nullptr;
+        //   uint32_t      size       = 0;
+    };
+    std::unordered_map<LLGLSLShader*, UboInstance>    sProgramUboDirty;
+    std::unordered_map<LL::GLTF::Asset*, UboInstance> sAssetUboDirty;
+    std::unordered_map<LL::GLTF::Skin*, UboInstance>  sSkinUboDirty;
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
@@ -2796,6 +2841,14 @@ void shutdownVulkan()
         }
         sDrawUboRingBufferRecords.clear();
 
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-2:
+        // per-program / per-asset / per-skin dirty map teardown。UboInstance は
+        // std::atomic<bool> dirty 単独で外部 resource 所有なし (= VkBuffer 等は
+        // PC-7 で追加予定 placeholder)、clear() のみで安全。
+        sProgramUboDirty.clear();
+        sAssetUboDirty.clear();
+        sSkinUboDirty.clear();
+
         // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
         // per-asset descriptor pool teardown。LLAssetUboPool::shutdown() が内部の
         // 全 grow pool を destroyer callback 経由で逆順 destroy するため、
@@ -3178,26 +3231,85 @@ void flushFrameUbos()
     flushDummyUboWrite("flushFrameUbos");
 }
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-2:
+// per-program cadence flush = entry gate (mUseUBO 明示) + dirty map key 化。
+// shader 引数を key として sProgramUboDirty を find、dirty.exchange(false) で
+// 1 度だけ flush 実行 (= upload dedup、design 06b §3.2 stage 3)。
+//
+// dirty=true 経路 = forwardToUboUpload (= 06a §5.4 / 06b §5.2、PC-7 で完成)。
+// 本 PC-6ε-2 では map insert path 無し → 空 map → 構造的 no-op (= mUseUBO=true
+// でも dirty 立たないため flush 走らず、PC-7 forwardToUboUpload 完成時に有効化)。
+//
+// entry gate `if (!shader || !shader->mUseUBO) return;` は design 06b §5.3 で
+// 確定 = shader 個別 mUseUBO 直接参照 (= LLGLSLShader::mUseUBO bool member、
+// 06a §3.2)。shader=nullptr 防御は PC-6δ 既存形 (= (void)shader cast 廃止に伴う
+// 安全側追加)。
 void flushProgramUbos(LLGLSLShader* shader)
 {
-    (void)shader; // PC-6ε で per-program dirty map key 化、本 sub では未参照
+    if (!shader || !shader->mUseUBO)
+    {
+        return;
+    }
+    auto it = sProgramUboDirty.find(shader);
+    if (it == sProgramUboDirty.end())
+    {
+        return;
+    }
+    if (!it->second.dirty.exchange(false, std::memory_order_acq_rel))
+    {
+        return;
+    }
     flushDummyUboWrite("flushProgramUbos");
 }
 
 void flushDrawUbos()
 {
+    // r41 PC-6ε-2: per-draw は shader / owner key 無し = 構造的 gate のみ。
+    // setter 側 mUseUBO 分岐で forwardToUboUpload 不呼出 → ring buffer に値入らず
+    // → 空書込 path 維持 (= PC-6δ 既存形踏襲)。残 pool 全配線 (15+ subclass) は
+    // PC-6ε-3 scope (= design 06b §2.3 + codebase trace)。
     flushDummyUboWrite("flushDrawUbos");
 }
 
+// r41 PC-6ε-2: per-asset cadence flush = 構造的 gate + dirty map key 化。
+// asset 引数文脈 mUseUBO 不在 (= shader 引数無し) のため entry gate 不可、
+// 代わりに setter 側 mUseUBO 分岐で forwardToUboUpload 不呼出 → sAssetUboDirty
+// 空のまま → flush で no-op (= 構造的 gate)。
+// asset=nullptr 防御は安全側追加 (= 06b §2.4 でも asset 単位 owner table 引き)。
 void flushAssetUbos(LL::GLTF::Asset* asset)
 {
-    (void)asset; // PC-6ε で per-asset dirty map key 化、本 sub では未参照
+    if (!asset)
+    {
+        return;
+    }
+    auto it = sAssetUboDirty.find(asset);
+    if (it == sAssetUboDirty.end())
+    {
+        return;
+    }
+    if (!it->second.dirty.exchange(false, std::memory_order_acq_rel))
+    {
+        return;
+    }
     flushDummyUboWrite("flushAssetUbos");
 }
 
+// r41 PC-6ε-2: per-skin cadence flush (= per-asset 同形、構造的 gate + key 化)。
 void flushSkinUbos(LL::GLTF::Skin* skin)
 {
-    (void)skin; // PC-6ε で per-skin dirty map key 化、本 sub では未参照
+    if (!skin)
+    {
+        return;
+    }
+    auto it = sSkinUboDirty.find(skin);
+    if (it == sSkinUboDirty.end())
+    {
+        return;
+    }
+    if (!it->second.dirty.exchange(false, std::memory_order_acq_rel))
+    {
+        return;
+    }
     flushDummyUboWrite("flushSkinUbos");
 }
 
