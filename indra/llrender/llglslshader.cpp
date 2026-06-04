@@ -2927,6 +2927,24 @@ GLint LLGLSLShader::getAttribLocation(U32 attrib)
 void LLGLSLShader::uniform1i(const LLStaticHashedString& uniform, GLint v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.1:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // hash lookup = map find + silent skip (= 集約表に entry 無し時 OpenGL path 含め全 skip)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, &v, sizeof(GLint));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -2944,6 +2962,24 @@ void LLGLSLShader::uniform1i(const LLStaticHashedString& uniform, GLint v)
 void LLGLSLShader::uniform1iv(const LLStaticHashedString& uniform, U32 count, const GLint* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.2:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // ptr+count pattern (= count * sizeof(GLint) 動的 size 計算、tmp array 不要)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * sizeof(GLint));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -2980,6 +3016,25 @@ void LLGLSLShader::uniform4iv(const LLStaticHashedString& uniform, U32 count, co
 void LLGLSLShader::uniform2i(const LLStaticHashedString& uniform, GLint i, GLint j)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.3:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // hash lookup = map find + silent skip (= 集約表に entry 無し時 OpenGL path 含め全 skip)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            GLint tmp[2] = {i, j};
+            forwardToUboUpload(loc, tmp, sizeof(tmp));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -2998,6 +3053,24 @@ void LLGLSLShader::uniform2i(const LLStaticHashedString& uniform, GLint i, GLint
 void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.4:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // hash lookup = map find + silent skip (= 集約表に entry 無し時 OpenGL path 含め全 skip)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, &v, sizeof(GLfloat));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3015,6 +3088,25 @@ void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
 void LLGLSLShader::uniform2f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.5:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // hash lookup = map find + silent skip (= 集約表に entry 無し時 OpenGL path 含め全 skip)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            GLfloat tmp[2] = {x, y};
+            forwardToUboUpload(loc, tmp, sizeof(tmp));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3033,6 +3125,25 @@ void LLGLSLShader::uniform2f(const LLStaticHashedString& uniform, GLfloat x, GLf
 void LLGLSLShader::uniform3f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y, GLfloat z)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.6:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // hash lookup = map find + silent skip (= 集約表に entry 無し時 OpenGL path 含め全 skip)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            GLfloat tmp[3] = {x, y, z};
+            forwardToUboUpload(loc, tmp, sizeof(tmp));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3050,6 +3161,25 @@ void LLGLSLShader::uniform3f(const LLStaticHashedString& uniform, GLfloat x, GLf
 void LLGLSLShader::uniform4f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y, GLfloat z, GLfloat w)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.7:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // hash lookup = map find + silent skip (= 集約表に entry 無し時 OpenGL path 含め全 skip)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            GLfloat tmp[4] = {x, y, z, w};
+            forwardToUboUpload(loc, tmp, sizeof(tmp));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3067,6 +3197,24 @@ void LLGLSLShader::uniform4f(const LLStaticHashedString& uniform, GLfloat x, GLf
 void LLGLSLShader::uniform1fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.8:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // ptr+count pattern (= count * sizeof(GLfloat) 動的 size 計算、tmp array 不要)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * sizeof(GLfloat));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3084,6 +3232,24 @@ void LLGLSLShader::uniform1fv(const LLStaticHashedString& uniform, U32 count, co
 void LLGLSLShader::uniform2fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.9:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // ptr+count pattern (= count * 2 * sizeof(GLfloat) 動的 size 計算、tmp array 不要)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * 2 * sizeof(GLfloat));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3101,6 +3267,24 @@ void LLGLSLShader::uniform2fv(const LLStaticHashedString& uniform, U32 count, co
 void LLGLSLShader::uniform3fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.10:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // ptr+count pattern (= count * 3 * sizeof(GLfloat) 動的 size 計算、tmp array 不要)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * 3 * sizeof(GLfloat));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3118,6 +3302,24 @@ void LLGLSLShader::uniform3fv(const LLStaticHashedString& uniform, U32 count, co
 void LLGLSLShader::uniform4fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.11:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // ptr+count pattern (= count * 4 * sizeof(GLfloat) 動的 size 計算、tmp array 不要)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * 4 * sizeof(GLfloat));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3136,6 +3338,24 @@ void LLGLSLShader::uniform4fv(const LLStaticHashedString& uniform, U32 count, co
 void LLGLSLShader::uniform4uiv(const LLStaticHashedString& uniform, U32 count, const GLuint* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.12:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // ptr+count pattern (= count * 4 * sizeof(GLuint) 動的 size 計算、tmp array 不要)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * 4 * sizeof(GLuint));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
@@ -3154,6 +3374,24 @@ void LLGLSLShader::uniform4uiv(const LLStaticHashedString& uniform, U32 count, c
 void LLGLSLShader::uniformMatrix4fv(const LLStaticHashedString& uniform, U32 count, GLboolean transpose, const GLfloat* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.13:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // matrix 4x4 (= count * 16 * sizeof(GLfloat))、(U4) 構造的自然成立 (= mValue check 既存不在 + stop_glerror wrap)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * 16 * sizeof(GLfloat));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)
