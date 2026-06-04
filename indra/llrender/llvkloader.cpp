@@ -18,6 +18,8 @@
 #include "volk.h"
 #include "lldir.h"
 #include "llassetubopool.h"
+#include "lluboringbuffer.h"
+#include "llcontrol.h"
 
 #include <vector>
 #include <string>
@@ -25,6 +27,9 @@
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <unordered_map>
+
+extern LLControlGroup gSavedSettings;
 
 // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
 // VMA (Vulkan Memory Allocator) v3.3.0 を本 translation unit に impl 展開。
@@ -371,6 +376,26 @@ namespace
     constexpr U32 ASSET_POOL_UBO_BINDINGS_PER_ASSET     = 3;   // design 07 §6.3
     constexpr U32 ASSET_POOL_SAMPLER_BINDINGS_PER_ASSET = 49;  // design 07 §6.3
     std::unique_ptr<LLAssetUboPool> sAssetUboPoolMgr;
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6β (RB):
+    // per-frame / per-pass cadence UBO ring buffer 実 wire up。LLUboRingBuffer は
+    // Vulkan device 非依存 bookkeeping algorithm で BufferHandle = std::uint64_t
+    // opaque 単独保持。実 VkBuffer + VmaAllocation + mapped pointer 三組は本 TU
+    // 内 side table (sDrawUboRingBufferRecords) で handle → record 解決する。
+    // factory は vmaCreateBuffer (HOST_VISIBLE + HOST_COHERENT + MAPPED)、
+    // destroyer は vmaDestroyBuffer。grow 時は invokeAllocator → destroyCurrent
+    // 順で一時的に 2 record が並走するため map 構造を採用 (= 1 entry slot 不可)。
+    // design 07 §7.2 (initial=4 MB / max=16 MB) / §7.3 (alignment 256 safe) /
+    // §7.5 (3 chunk wrap + grow on chunk 内枯渇) / §8.4 (FRAMES_IN_FLIGHT 同期 rotate)。
+    struct DrawUboRingBufferRecord
+    {
+        VkBuffer      buffer     = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
+        void*         mapped     = nullptr;
+    };
+    std::unordered_map<LLUboRingBuffer::BufferHandle, DrawUboRingBufferRecord>
+        sDrawUboRingBufferRecords;
+    std::unique_ptr<LLUboRingBuffer> sDrawUboRingBufferMgr;
 
     // sSharedDescriptorPool は sub-step 3.4-γ 以降で set=1 (per-material 7 PBR slot)
     // および set=2 (per-draw push descriptor fallback) を割り当てる雛形 pool。
@@ -935,6 +960,100 @@ namespace
                            << ", SAMPLER=" << (ASSET_POOL_SAMPLER_BINDINGS_PER_ASSET * prealloc * frames)
                            << ", grow chunk=" << grow << " asset, pool count="
                            << sAssetUboPoolMgr->getPoolCount() << ")" << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6β (RB):
+    // per-frame / per-pass cadence UBO ring buffer 実 wire up + cvar
+    // AYARingBufferSizeMB 読込 hookup。LLUboRingBuffer algorithm 層に
+    // (a) vmaCreateBuffer (HOST_VISIBLE + HOST_COHERENT + MAPPED) を closure
+    // capture した BufferAllocator + (b) vmaDestroyBuffer destroyer + (c)
+    // cvar 読込値 initial_mb (default 4) を ctor に渡し、initialize() で
+    // 起動時 1 物理 buffer (= 4 MB / chunk size = 4 MB / 3 ≈ 1.33 MB) prealloc。
+    // PC-6 後続で 5 cadence update site から allocate() / beginFrame() 呼出
+    // が走り始める (= PC-6δ scope)。design 07 §7.2 / §7.3 / §7.5 / §8.4 整合、
+    // cvar 値は静的 LLCachedControl<U32> で起動時 1 度 lookup (= settings.xml
+    // PC-4 block comment 「変更には viewer 再起動が必要」と整合)。
+    bool createDrawUboRingBuffer()
+    {
+        static LLCachedControl<U32> sRingBufferSizeMB(
+            gSavedSettings, "AYARingBufferSizeMB", LLUboRingBuffer::kInitialSizeMB);
+        const U32 initial_mb = (U32)sRingBufferSizeMB;
+
+        auto factory = [](std::uint32_t size_bytes) -> LLUboRingBuffer::BufferHandle {
+            if (sAllocator == VK_NULL_HANDLE)
+            {
+                LL_WARNS("Vulkan") << "createDrawUboRingBuffer factory: sAllocator == VK_NULL_HANDLE" << LL_ENDL;
+                return 0;
+            }
+
+            VkBufferCreateInfo bci = {};
+            bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bci.size        = size_bytes;
+            bci.usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            VmaAllocationCreateInfo aci = {};
+            aci.usage         = VMA_MEMORY_USAGE_AUTO;
+            aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                              | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+            aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                              | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+            VkBuffer          buffer     = VK_NULL_HANDLE;
+            VmaAllocation     allocation = VK_NULL_HANDLE;
+            VmaAllocationInfo info       = {};
+            VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &buffer, &allocation, &info);
+            if (r != VK_SUCCESS || info.pMappedData == nullptr)
+            {
+                LL_WARNS("Vulkan") << "createDrawUboRingBuffer vmaCreateBuffer failed: " << (S32)r
+                                   << " size=" << (S32)size_bytes << LL_ENDL;
+                if (buffer != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(sAllocator, buffer, allocation);
+                }
+                return 0;
+            }
+
+            const LLUboRingBuffer::BufferHandle handle =
+                static_cast<LLUboRingBuffer::BufferHandle>(reinterpret_cast<std::uintptr_t>(buffer));
+            DrawUboRingBufferRecord rec;
+            rec.buffer     = buffer;
+            rec.allocation = allocation;
+            rec.mapped     = info.pMappedData;
+            sDrawUboRingBufferRecords[handle] = rec;
+            return handle;
+        };
+
+        auto destroyer = [](LLUboRingBuffer::BufferHandle handle) {
+            if (handle == 0 || sAllocator == VK_NULL_HANDLE)
+            {
+                return;
+            }
+            auto it = sDrawUboRingBufferRecords.find(handle);
+            if (it == sDrawUboRingBufferRecords.end())
+            {
+                return;
+            }
+            vmaDestroyBuffer(sAllocator, it->second.buffer, it->second.allocation);
+            sDrawUboRingBufferRecords.erase(it);
+        };
+
+        sDrawUboRingBufferMgr = std::make_unique<LLUboRingBuffer>(factory, destroyer, initial_mb);
+        if (!sDrawUboRingBufferMgr->initialize())
+        {
+            LL_WARNS("Vulkan") << "LLUboRingBuffer::initialize() failed (PC-6β)" << LL_ENDL;
+            sDrawUboRingBufferMgr.reset();
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Draw UBO ring buffer wired up (PC-6β RB, cvar AYARingBufferSizeMB="
+                           << initial_mb << ", initial=" << sDrawUboRingBufferMgr->getCurrentSizeMB()
+                           << " MB, max=" << sDrawUboRingBufferMgr->getMaxSizeMB()
+                           << " MB, chunk=" << sDrawUboRingBufferMgr->getChunkSizeBytes()
+                           << " B (×" << LLUboRingBuffer::kFramesInFlight
+                           << " frame), alignment=" << sDrawUboRingBufferMgr->getAlignment()
+                           << " B, HOST_VISIBLE + HOST_COHERENT + MAPPED)" << LL_ENDL;
         return true;
     }
 
@@ -2263,6 +2382,17 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6β (RB):
+    // per-frame / per-pass cadence UBO ring buffer (= dynamic offset 投入経路、
+    // design 07 §7.2 / §7.4) を sAssetUboPoolMgr 直後に立ち上げる。
+    // cvar AYARingBufferSizeMB (default 4 MB) 経由で起動時 prealloc 容量配信、
+    // PC-6 後続 (PC-6δ) で allocate() / beginFrame() 呼出が走り始める。
+    if (!createDrawUboRingBuffer())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): 1×1 white placeholder image lifecycle smoke。
     // VMA allocator 立ち上げ直後に発行、shutdownVulkan で vmaDestroyAllocator 前に破棄する。
     // β-2-3: staging buffer 経由 1px upload + 2 段 layout transition を 1 度限り実行 (INFO marker 出力)。
@@ -2488,6 +2618,20 @@ void shutdownVulkan()
         // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): placeholder image teardown。
         // vmaDestroyImage は sAllocator 生存中に呼ぶ必要があるため、共有 pool 破棄前に発行。
         destroyPlaceholderWhiteImage();
+
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6β (RB):
+        // draw UBO ring buffer teardown。LLUboRingBuffer::shutdown() (~dtor 経由)
+        // が現 buffer を destroyer callback で vmaDestroyBuffer する。
+        // init reverse 順 = sAssetUboPoolMgr より先、sAllocator 生存中に発火。
+        // destroyer は sAllocator 早期 return guard 済 (= 万一の二重 shutdown
+        // 後でも safe)、record map は handle 経由でだけ参照されるため、shutdown
+        // 完走後 map は空になる。
+        if (sDrawUboRingBufferMgr)
+        {
+            sDrawUboRingBufferMgr->shutdown();
+            sDrawUboRingBufferMgr.reset();
+        }
+        sDrawUboRingBufferRecords.clear();
 
         // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
         // per-asset descriptor pool teardown。LLAssetUboPool::shutdown() が内部の
