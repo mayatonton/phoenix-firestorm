@@ -417,6 +417,15 @@ namespace
         sDrawUboRingBufferRecords;
     std::unique_ptr<LLUboRingBuffer> sDrawUboRingBufferMgr;
 
+    // <AYAstorm r41 PC-N-4 (a)> grow flag 新設 (= writeDrawUbo grow 観測 →
+    //   endFrame() 末尾 hook 経由 re-wire)。AYA literal「推奨案採用 OK」確認
+    //   2026-06-05、ambiguity (N4-1) A 採用 = anonymous namespace 内 file-static
+    //   std::atomic<bool>、writeDrawUbo で store(true)、endFrame 内 exchange(false)
+    //   で atomic に read+reset。LLUboRingBuffer 改変回避 (= algorithm 層汚染なし)、
+    //   既存 LL_WARNS_ONCE site 流用最小、PC-N-1 hook placeholder comment 同形。
+    std::atomic<bool> sDrawUboRingBufferGrewThisFrame{false};
+    // </AYAstorm r41 PC-N-4 (a)>
+
     // ------------------------------------------------------------------
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-2:
     // per-program / per-asset / per-skin cadence dirty propagation 機構。
@@ -4109,6 +4118,35 @@ bool endFrame()
     }
 
     sInFrame = false;
+
+    // <AYAstorm r41 PC-N-4 (c)> ring buffer grow 自動 re-wire hook。
+    //   writeDrawUbo 内 alloc.grew 観測時に sDrawUboRingBufferGrewThisFrame set、
+    //   本 hook で frame 末尾 (= vkEndCommandBuffer 後 sInFrame=false 直後) に
+    //   wireDrawUboSetV3aToRingBuffer() 再呼出 = sDrawUboSetV3a を新 VkBuffer に再 wire。
+    //   AYA literal「推奨案採用 OK」確認 2026-06-05、ambiguity (N4-2) D + (N4-4) A +
+    //   (N4-6) A 採用:
+    //     - (N4-2) D timing = endFrame 末尾 (= command buffer recording 終了状態
+    //       確定 + flushDrawUbos 全 site 終了後集約)
+    //     - (N4-4) A helper = 既存 wireDrawUboSetV3aToRingBuffer() 再呼出 (= PC-7ε
+    //       helper 再利用、4 binding × UNIFORM_BUFFER_DYNAMIC + offset=0 + range=256
+    //       同一 binding 構造を grow 後再適用)
+    //     - (N4-6) A reset = exchange(false) で atomic に read+reset (= re-wire 成功
+    //       失敗問わず reset、失敗は LL_WARNS_ONCE で重複抑制)
+    //   (N4-7) A 同 frame 内 stale 描画 1 frame 許容 (= grow は initial 4 MB → 8 MB
+    //   + 8 MB → 16 MB の起動初期数 frame のみ発火想定、design 07 §7.5)。
+    if (sDrawUboRingBufferGrewThisFrame.exchange(false, std::memory_order_acq_rel))
+    {
+        static std::atomic<bool> s_first_rewire{true};
+        if (s_first_rewire.exchange(false, std::memory_order_acq_rel))
+        {
+            LL_INFOS("Vulkan") << "PC-N-4 (c) endFrame: ring buffer grow detected, "
+                                  "re-wiring sDrawUboSetV3a to new VkBuffer (first fire)"
+                               << LL_ENDL;
+        }
+        wireDrawUboSetV3aToRingBuffer();
+    }
+    // </AYAstorm r41 PC-N-4 (c)>
+
     return true;
 }
 
@@ -4401,10 +4439,13 @@ void flushDrawUbos()
     //   writeDrawUbo 通電に置換済、二重 allocate 不要)。first-fire LL_INFOS は
     //   経路通電確認用に局所保持。
     //
-    //   PC-N-4 持越し hook = AllocateResult.grew 集約 + frame 末尾で
-    //   vkUpdateDescriptorSets 再発火 (= sDrawUboSetV3a が stale VkBuffer を
-    //   参照する状況の安全 re-wire、deferred、design 07 §7 grow safety net)。
-    //   現 PC-N-1 では placeholder comment のみ。
+    //   <AYAstorm r41 PC-N-4 (d)> ring buffer grow 自動 re-wire は PC-N-4 で
+    //   endFrame() 末尾 hook 経由実装済 (= frame 末尾集約、AYA literal「推奨案
+    //   採用 OK」確認 2026-06-05、ambiguity (N4-2) D timing 採用)。
+    //   flushDrawUbos 経由 hook は不要 (= per-pool 14 site redundant 回避、
+    //   vkUpdateDescriptorSets は command buffer recording 終了状態 = endFrame
+    //   末尾で発火が VUID 整合)。design 07 §7 grow safety net 整備済。
+    //   </AYAstorm r41 PC-N-4 (d)>
     if (!sDrawUboRingBufferMgr)
     {
         return;
@@ -4414,14 +4455,9 @@ void flushDrawUbos()
     {
         LL_INFOS("Vulkan") << "PC-N-1 (d) flushDrawUbos first fire (per-draw write は "
                               "setter 内 writeDrawUbo immediate allocate ゆえ flush 側は "
-                              "no-op 等価、PC-N-4 grow hook placeholder)"
+                              "no-op 等価、PC-N-4 grow re-wire は endFrame() 末尾 hook で実装済)"
                            << LL_ENDL;
     }
-    // PC-N-4 持越 hook:
-    //   if (sDrawUboRingBufferGrewThisFrame) {
-    //       wireDrawUboSetV3aToRingBuffer();
-    //       sDrawUboRingBufferGrewThisFrame = false;
-    //   }
     // </AYAstorm r41 PC-N-1 (d)>
 }
 
@@ -4767,8 +4803,9 @@ void writeProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 offset, const voi
 //     - (N1-8) B = g_block_metadata 線形 walk (= 既存 PC-7γ-1
 //       lookup_block_size_by_hash 同パターン)
 //
-//   grow 観測時は LL_WARNS_ONCE のみ ((N1-6) B 整合、sDrawUboSetV3a 再 wire は
-//   PC-N-4 持越し)。MUSEUBO-A 整合 = sDrawUboRingBufferMgr nullptr early return。
+//   grow 観測時は LL_WARNS_ONCE + sDrawUboRingBufferGrewThisFrame.store(true)
+//   ((N1-6) B + PC-N-4 (b) 整合、sDrawUboSetV3a 再 wire は endFrame() 末尾 hook
+//   経由実装済)。MUSEUBO-A 整合 = sDrawUboRingBufferMgr nullptr early return。
 void writeDrawUbo(U32 block_hash, U32 offset, const void* data, size_t size, U32& out_dynamic_offset)
 {
     out_dynamic_offset = 0u;
@@ -4823,15 +4860,21 @@ void writeDrawUbo(U32 block_hash, U32 offset, const void* data, size_t size, U32
     }
     if (alloc.grew)
     {
-        // (N1-6) B + PC-N-4 持越し: sDrawUboSetV3a が stale VkBuffer を参照する
-        // 可能性があるため次 frame 末尾で vkUpdateDescriptorSets 再発火が必要。
-        // 本 PC-N-1 では LL_WARNS_ONCE のみ (= flushDrawUbos PC-N-4 hook 配線
-        // 後に集約)。dummy phase では数 KB/frame ゆえ grow 想定外。
+        // <AYAstorm r41 PC-N-4 (b)> grow flag set (= endFrame() 末尾 hook で
+        //   re-wire 発火)。AYA literal「推奨案採用 OK」確認 2026-06-05、ambiguity
+        //   (N4-5) A 採用 = writeDrawUbo 内 1 箇所のみ (= PC-N-1 で
+        //   recordPlaceholderPoolDraw + PC-N-2 で recordAvatarPlaceholderDraw の
+        //   allocate は両方 writeDrawUbo 経由化済、生 sDrawUboRingBufferMgr->
+        //   allocate 呼出は 0 件)。PC-N-4 で実装済 (= endFrame() 末尾 hook、
+        //   sDrawUboRingBufferGrewThisFrame flag 経由)。
         LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: ring buffer grew (block_hash=0x"
                                 << std::hex << block_hash << std::dec
                                 << "); sDrawUboSetV3a may reference stale VkBuffer "
-                                   "(自動 re-update は PC-N-4 持越)"
+                                   "(PC-N-4 で実装済 = endFrame() 末尾 hook、"
+                                   "sDrawUboRingBufferGrewThisFrame flag 経由)"
                                 << LL_ENDL;
+        sDrawUboRingBufferGrewThisFrame.store(true, std::memory_order_release);
+        // </AYAstorm r41 PC-N-4 (b)>
     }
 
     auto it = sDrawUboRingBufferRecords.find(alloc.buffer);
