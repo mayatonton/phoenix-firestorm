@@ -10361,6 +10361,25 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm r41 Phase 1.C PC-4> per-frame / per-pass cadence UBO ring buffer の起動時 prealloc 容量 (MB)。
+         design/07-vulkan-api-state.md §7.2 確定値 = default 4 MB / grow 上限 16 MB。
+         本 cvar は debug settings 露出のみ (= PC-4 (α') = llcommon LLUboRingBuffer algorithm 単体 +
+         settings.xml cvar 露出)。実 cvar 読込 + Vulkan device 配線 (vmaCreateBuffer + HOST_VISIBLE+MAPPED) は
+         PC-6 (= 5 cadence update site 着手 timing) で llrender / llvkloader 側 wire up 予定。
+         変更には viewer 再起動が必要 (= ring buffer は起動時 1 回 prealloc、frame 中の動的変更非対応)。 -->
+    <key>AYARingBufferSizeMB</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.C) per-frame / per-pass cadence UBO ring buffer の起動時 prealloc 容量 (MB)。default=4 (= 5000 draw 通常 sim 想定 5000 × 4 × 64 B × 3 frame = 3.84 MB)、grow 上限 16 MB (= 20000 draw 過密 sim 想定 5.12 MB × 3 = 15.36 MB)。chunk size = total / FRAMES_IN_FLIGHT(3) を 1 alloc が超過しない範囲で使用。design/07-vulkan-api-state.md §7.2 確定値。実 wire up は PC-6 持越、本 cvar は debug settings 露出のみ。変更には viewer 再起動が必要</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>4</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>

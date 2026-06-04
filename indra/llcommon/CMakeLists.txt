@@ -100,6 +100,7 @@ set(llcommon_SOURCE_FILES
     lltraceaccumulators.cpp
     lltracerecording.cpp
     lltracethreadrecorder.cpp
+    lluboringbuffer.cpp
     lluri.cpp
     lluriparser.cpp
     lluuid.cpp
@@ -241,6 +242,7 @@ set(llcommon_HEADER_FILES
     lltracerecording.h
     lltracethreadrecorder.h
     lltreeiterators.h
+    lluboringbuffer.h
     llunits.h
     llunittype.h
     lluri.h
@@ -338,6 +340,7 @@ if (LL_TESTS)
   LL_ADD_INTEGRATION_TEST(apply "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(bitpack "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(llassetubopool "" "${test_libs}")
+  LL_ADD_INTEGRATION_TEST(lluboringbuffer "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(classic_callback "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(commonmisc "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(lazyeventapi "" "${test_libs}")
