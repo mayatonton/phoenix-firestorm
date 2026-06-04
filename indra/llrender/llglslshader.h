@@ -453,6 +453,18 @@ private:
     // (PB-4) より先に declaration + stub が link error 回避の technical compile dependency。
     void forwardToUboUpload(const ubo::UniformLocation& loc, const void* data, size_t size);
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-2: test UBO shell
+    // C++ 接続 = block-level test bring-up (= AYA 判断 2026-06-04 (c) 採用)。
+    // singleton (= cadence=5=SINGLETON、`Global_ReflectionProbes`) は per-uniform
+    // setter 経路 (= 06a §5.6 `cadence_tag == 5` SAMPLER skip path) を通らない
+    // = per-frame stable set で once bind / once upload の semantics ゆえ、
+    // mapUniforms() 末尾で 1 回限り `ubo::lookup_block()` で識別子 + binding 取出
+    // + `forwardToUboUpload` 空 dummy buffer 書込で経路通電のみ確認。
+    // mUseUBO=false default ゆえ実走しない (= MUSEUBO-A 整合)。実 data flush は
+    // PC-6 5 cadence update site で per-frame stable set 経路経由本格化、本 PC-2
+    // は graph 接続成立 + 空 dummy 書込 + 空 dirty flag set のみ。
+    void bringupTestUBO();
+
     void unloadInternal();
     // This must be static because finishProfile() is called at least once
     // within a __try block. If we default its stats parameter to a temporary

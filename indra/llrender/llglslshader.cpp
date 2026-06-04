@@ -58,6 +58,14 @@
 // 経由で gSavedSettings 参照 (llfontregistry.cpp と同型 pattern)。
 #include "llcontrol.h"
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-2: test UBO shell
+// C++ 接続 = block-level test bring-up = `ubo::lookup_block()` + `BlockMetadata`
+// 取得 + PC-1 emit `Global_ReflectionProbes_SIZE` constant 参照。
+// llglslshader.h は `ubo/ubo_perfect_hash.inl` (= `UniformLocation` + `lookup_runtime`)
+// 既 include、本 .cpp 側で metadata + layout header を追加 include。
+#include "ubo/ubo_metadata.inl"
+#include "ubo/ubo_layout_global_reflectionprobes.inl"
+
 extern LLControlGroup gSavedSettings;
 
  // Print-print list of shader included source files that are linked together via glAttachShader()
@@ -1970,6 +1978,17 @@ bool LLGLSLShader::mapUniforms()
         }
     }
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-2:
+    // test UBO shell C++ 接続 hook 呼出 (= block-level test bring-up、AYA 判断
+    // 2026-06-04 (c) 採用)。`Global_ReflectionProbes` (= PC-1 emit、singleton
+    // UBO、set=0 binding=3 size=256B) の lookup_block + forwardToUboUpload 空
+    // dummy buffer 書込で graph 接続経路通電のみ確認。mUseUBO=false default ゆえ
+    // 本 hook は実走しない (= MUSEUBO-A 整合、既存 OpenGL 挙動 100% 維持)。
+    if (mUseUBO)
+    {
+        bringupTestUBO();
+    }
+
     unbind();
 
     LL_DEBUGS("ShaderUniform") << "Total Uniform Size: " << mTotalUniformSize << LL_ENDL;
@@ -1987,6 +2006,68 @@ bool LLGLSLShader::mapUniforms()
 // 100% 維持)。Phase 1.C (= 06b 実装着手) で本体実装される。
 void LLGLSLShader::forwardToUboUpload(const ubo::UniformLocation& loc, const void* data, size_t size)
 {
+}
+
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-2: test UBO shell
+// C++ 接続 = block-level test bring-up (= AYA 判断 2026-06-04 (c) 採用)。
+// PC-1 確定 contract (= block name `Global_ReflectionProbes` / set=0 binding=3 /
+// size=256B / cadence=SINGLETON=5) を `ubo::lookup_block()` で runtime 引き、
+// `UniformLocation` を組立て、`forwardToUboUpload` に空 dummy buffer 書込で
+// graph 接続経路通電のみ確認。空 dirty flag set (= 本格 dirty 機構未実装、
+// shell 段階 marker のみ) も併設。
+//
+// (a)(b) 案非採用根拠 (= setter SAMPLER skip 修正案 / SINGLETON 別値 rebase 案):
+// 既 Phase 1.A / 1.B commit 不変、新 hook 1 件のみ追加で scope 最小化
+// (= `feedback_ubo_migration_one_at_a_time` 整合)。
+//
+// 06a §5.6 setter SAMPLER skip path (= `cadence_tag == 5` 強制 skip) と
+// codegen `CADENCE_SINGLETON = 5` の意味衝突は本 PC-2 では迂回、別 PC で正攻法対応予定。
+// singleton UBO (= 1 instance / 持続) は per-frame stable set で once bind / once
+// upload semantics、per-uniform setter 経路を通る必要がなく semantic 整合 (= Template
+// A 物理 instance 1 個 / pool 不要 / ring buffer 不要、prep §4.2-2)。
+//
+// mUseUBO=false default ゆえ本 hook は実走しない (= MUSEUBO-A 整合、既存 OpenGL 挙動
+// 100% 維持)。Phase 1.C PC-6 5 cadence update site で per-frame stable set 経路経由で
+// 本格 wire-up 予定 (= 本 hook の dummy buffer 書込は実 reflection probe data 流入で置換)。
+void LLGLSLShader::bringupTestUBO()
+{
+    const ubo::BlockMetadata* block = ubo::lookup_block("Global_ReflectionProbes");
+    if (!block)
+    {
+        LL_WARNS("Shader") << "PC-2 bringupTestUBO: Global_ReflectionProbes block "
+                              "metadata missing — codegen output drift suspected"
+                           << LL_ENDL;
+        return;
+    }
+
+    // 識別子取出経路成立確認 = PC-1 確定 contract と block metadata の整合 assert。
+    // 値 drift 検出時は debug build で即停止、release では silent (codegen 出力 drift
+    // は 06a § / codegen unittest 130/130 で別途 catch する layered safety)。
+    llassert(block->block_hash == 0xabdfdb31u);  // PC-1 contract: FNV-1a("Global_ReflectionProbes")
+    llassert(block->block_size == ubo::Global_ReflectionProbes_SIZE);  // PC-1 contract: 256B padded
+    llassert(block->descriptor_set == 0u);       // PC-1 contract: per-frame stable set
+    llassert(block->binding == 3u);              // PC-1 contract: Frame* 3 UBO の次 binding
+    llassert(block->cadence_tag == 5u);          // codegen CADENCE_SINGLETON=5 (main.py:63)
+
+    const ubo::UniformLocation loc{
+        block->block_hash,
+        0u,                          // offset = block-start (= shell 段階 single member)
+        block->block_size,           // size = 256B (= 256B 倍数 padded、PC-1 確定)
+        block->cadence_tag           // SINGLETON
+    };
+
+    // 空 dummy buffer 書込 (= zero-filled 256B、forwardToUboUpload は Phase 1.B PB-6
+    // 空 stub ゆえ実 memcpy せず return)。dummy size は PC-1 emit
+    // `Global_ReflectionProbes_SIZE` constant 参照 = codegen output linkage 強制。
+    static constexpr std::uint8_t s_dummy[ubo::Global_ReflectionProbes_SIZE] = {};
+    forwardToUboUpload(loc, s_dummy, ubo::Global_ReflectionProbes_SIZE);
+
+    // 空 dirty flag set (= PC-2 literal 充足、shell 段階 marker)。本格 dirty 機構は
+    // PC-6 5 cadence update site で cadence 別 flush 関数と組合せ実装、本変数は PC-6
+    // で正式な dirty 機構と置換予定。
+    static bool s_test_ubo_dirty = false;
+    s_test_ubo_dirty = false;
+    (void)s_test_ubo_dirty;
 }
 
 
