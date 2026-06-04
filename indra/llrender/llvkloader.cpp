@@ -19,6 +19,7 @@
 #include "lldir.h"
 #include "llassetubopool.h"
 #include "lluboringbuffer.h"
+#include "llpipelinecachestorage.h"
 #include "llcontrol.h"
 
 #include <vector>
@@ -396,6 +397,18 @@ namespace
     std::unordered_map<LLUboRingBuffer::BufferHandle, DrawUboRingBufferRecord>
         sDrawUboRingBufferRecords;
     std::unique_ptr<LLUboRingBuffer> sDrawUboRingBufferMgr;
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
+    // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
+    // 起動時に file (= gDirUtilp LL_PATH_CACHE + "pipeline_cache.bin") から
+    // blob を load し、createPipelineCache() が VkPipelineCacheCreateInfo.
+    // pInitialData に投入することで PSO compile hit を確保。shutdownVulkan()
+    // で vkGetPipelineCacheData → updateBlob → persistToDisk により次回起動
+    // 向け blob を上書き保存。64 MB 上限は LLPipelineCacheStorage 側で
+    // enforce ((e1) = load 時 size > cap で blob 破棄 + persist 時 size > cap
+    // で writer 不呼出 + false return)、cvar AYAPipelineCacheSizeMB で配信。
+    // design 07 §9.3 (PSO cache 戦略) + §12 (PSC) 整合。
+    std::unique_ptr<LLPipelineCacheStorage> sPipelineCacheStorageMgr;
 
     // sSharedDescriptorPool は sub-step 3.4-γ 以降で set=1 (per-material 7 PBR slot)
     // および set=2 (per-draw push descriptor fallback) を割り当てる雛形 pool。
@@ -798,11 +811,24 @@ namespace
     bool createPipelineCache()
     {
         // r41 sub-step 3.1b: persistent VkPipelineCache (sub-doc 03 §3.1 sub-step 3.1 marker)。
-        // disk persist は別 phase (起動高速化要件発生時) で追加、本段では empty cache で起動。
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
+        // sPipelineCacheStorageMgr が存在 + 起動時 load 済 blob が空でなければ
+        // pInitialData に投入 (= PSO compile cache hit、初回起動時は miss = empty)。
+        // shutdown 時の vkGetPipelineCacheData → updateBlob → persistToDisk は
+        // shutdownVulkan() 側で実装、本 helper では投入のみ。
         VkPipelineCacheCreateInfo info = {};
         info.sType           = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
         info.initialDataSize = 0;
         info.pInitialData    = nullptr;
+        if (sPipelineCacheStorageMgr)
+        {
+            const auto& blob = sPipelineCacheStorageMgr->getBlob();
+            if (!blob.empty())
+            {
+                info.initialDataSize = blob.size();
+                info.pInitialData    = blob.data();
+            }
+        }
 
         VkResult result = vkCreatePipelineCache(sDevice, &info, nullptr, &sPipelineCache);
         if (result != VK_SUCCESS)
@@ -811,7 +837,8 @@ namespace
             return false;
         }
 
-        LL_INFOS("Vulkan") << "VkPipelineCache created" << LL_ENDL;
+        LL_INFOS("Vulkan") << "VkPipelineCache created (PC-6γ PSC initial blob="
+                           << (S32)info.initialDataSize << " bytes)" << LL_ENDL;
         return true;
     }
 
@@ -1054,6 +1081,87 @@ namespace
                            << " B (×" << LLUboRingBuffer::kFramesInFlight
                            << " frame), alignment=" << sDrawUboRingBufferMgr->getAlignment()
                            << " B, HOST_VISIBLE + HOST_COHERENT + MAPPED)" << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
+    // VkPipelineCache 用 disk-persist storage (= LLPipelineCacheStorage) を立ち上げる。
+    // cvar AYAPipelineCacheSizeMB (default 64) を起動時 1 度 LLCachedControl 経由
+    // で lookup し、64 MB cap として storage に注入。FileReader / FileWriter lambda
+    // で std::ifstream / std::ofstream による file I/O を closure capture (algorithm
+    // 層は file system 非依存維持)。initialize() で file 存在時 blob を load、
+    // (e1) cap 超過時は破棄 = 起動初回 / cap 切替直後の 0 cache start。本 helper は
+    // createPipelineCache() より前に init chain で呼出さなければならない (= blob を
+    // VkPipelineCacheCreateInfo.pInitialData に投入するため、storage が先行)。
+    // shutdown は shutdownVulkan() 内で vkGetPipelineCacheData → updateBlob →
+    // persistToDisk → vkDestroyPipelineCache の順、本 helper では teardown 不要。
+    // design 07 §9.3 (PSO cache 戦略) + §12 (PSC) 整合。
+    bool createPipelineCacheStorage()
+    {
+        static LLCachedControl<U32> sPipelineCacheSizeMB(
+            gSavedSettings, "AYAPipelineCacheSizeMB",
+            LLPipelineCacheStorage::kDefaultMaxSizeMB);
+        const U32 cap_mb = (U32)sPipelineCacheSizeMB;
+
+        std::string file_path =
+            gDirUtilp->getExpandedFilename(LL_PATH_CACHE, "pipeline_cache.bin");
+
+        auto reader = [](const std::string& path,
+                         LLPipelineCacheStorage::CacheBlob& out) -> bool {
+            std::ifstream f(path, std::ios::binary | std::ios::ate);
+            if (!f.is_open())
+            {
+                return false;
+            }
+            const std::streamsize size = f.tellg();
+            if (size <= 0)
+            {
+                return false;
+            }
+            f.seekg(0, std::ios::beg);
+            out.resize(static_cast<std::size_t>(size));
+            if (!f.read(reinterpret_cast<char*>(out.data()), size))
+            {
+                out.clear();
+                out.shrink_to_fit();
+                return false;
+            }
+            return true;
+        };
+
+        auto writer = [](const std::string& path,
+                         const LLPipelineCacheStorage::CacheBlob& data) -> bool {
+            std::ofstream f(path, std::ios::binary | std::ios::trunc);
+            if (!f.is_open())
+            {
+                LL_WARNS("Vulkan") << "createPipelineCacheStorage writer: open failed path="
+                                   << path << LL_ENDL;
+                return false;
+            }
+            if (!data.empty())
+            {
+                f.write(reinterpret_cast<const char*>(data.data()),
+                        static_cast<std::streamsize>(data.size()));
+            }
+            return f.good();
+        };
+
+        sPipelineCacheStorageMgr = std::make_unique<LLPipelineCacheStorage>(
+            reader, writer, file_path, cap_mb);
+        if (!sPipelineCacheStorageMgr->initialize())
+        {
+            LL_WARNS("Vulkan") << "LLPipelineCacheStorage::initialize() failed (PC-6γ)" << LL_ENDL;
+            sPipelineCacheStorageMgr.reset();
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Pipeline cache storage wired up (PC-6γ PSC, cvar AYAPipelineCacheSizeMB="
+                           << cap_mb << " MB, path=" << file_path
+                           << ", initial blob=" << sPipelineCacheStorageMgr->getBlobSize()
+                           << " bytes (" << sPipelineCacheStorageMgr->getBlobSizeMB()
+                           << " MB), within limit="
+                           << (sPipelineCacheStorageMgr->isWithinLimit() ? "yes" : "no")
+                           << ")" << LL_ENDL;
         return true;
     }
 
@@ -2356,6 +2464,17 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
+    // VkPipelineCache 用 disk-persist storage を createPipelineCache() より前に
+    // 立ち上げる (= storage->getBlob() を VkPipelineCacheCreateInfo.pInitialData に
+    // 投入するため順序必須)。本 helper は file load (存在時) + (e1) 64 MB cap 超過
+    // blob 破棄を実施、blob 不在は許容 (= 起動初回想定で empty 開始)。
+    if (!createPipelineCacheStorage())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     if (!createCommandPool() || !createOffscreenImage() || !createRenderPass() || !createFramebuffer() || !createPipelineCache())
     {
         shutdownVulkan();
@@ -2603,10 +2722,54 @@ void shutdownVulkan()
             sPerMaterialDescriptorSetLayout = VK_NULL_HANDLE;
         }
         sPerMaterialDescriptorSet = VK_NULL_HANDLE;
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
+        // pipeline cache の disk persist。vkDestroyPipelineCache 前に
+        // vkGetPipelineCacheData → updateBlob → persistToDisk で次回起動向 cache
+        // を保存。64 MB cap 超過時は LLPipelineCacheStorage::persistToDisk() が
+        // writer 不呼出 + false return (= (e1) 戦略)、本層は LL_INFOS で観察可能。
+        if (sPipelineCache != VK_NULL_HANDLE && sPipelineCacheStorageMgr)
+        {
+            std::size_t blob_size = 0;
+            VkResult sz_res = vkGetPipelineCacheData(sDevice, sPipelineCache, &blob_size, nullptr);
+            if (sz_res == VK_SUCCESS && blob_size > 0)
+            {
+                LLPipelineCacheStorage::CacheBlob blob(blob_size);
+                VkResult get_res = vkGetPipelineCacheData(sDevice, sPipelineCache,
+                                                          &blob_size, blob.data());
+                if (get_res == VK_SUCCESS || get_res == VK_INCOMPLETE)
+                {
+                    blob.resize(blob_size);
+                    sPipelineCacheStorageMgr->updateBlob(std::move(blob));
+                    const bool persisted = sPipelineCacheStorageMgr->persistToDisk();
+                    LL_INFOS("Vulkan") << "Pipeline cache shutdown persist (PC-6γ PSC, blob="
+                                       << sPipelineCacheStorageMgr->getBlobSize()
+                                       << " bytes, persisted="
+                                       << (persisted ? "yes" : "no (cap exceeded or write failed)")
+                                       << ")" << LL_ENDL;
+                }
+                else
+                {
+                    LL_WARNS("Vulkan") << "vkGetPipelineCacheData (data) failed: "
+                                       << (S32)get_res << LL_ENDL;
+                }
+            }
+            else if (sz_res != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "vkGetPipelineCacheData (size) failed: "
+                                   << (S32)sz_res << LL_ENDL;
+            }
+        }
         if (sPipelineCache != VK_NULL_HANDLE)
         {
             vkDestroyPipelineCache(sDevice, sPipelineCache, nullptr);
             sPipelineCache = VK_NULL_HANDLE;
+        }
+        // PC-6γ (PSC): storage manager teardown。disk persist は vkDestroyPipelineCache
+        // 前に実施済、shutdown() は blob clear + state reset のみ (= auto-persist せず)。
+        if (sPipelineCacheStorageMgr)
+        {
+            sPipelineCacheStorageMgr->shutdown();
+            sPipelineCacheStorageMgr.reset();
         }
         if (sCommandPool != VK_NULL_HANDLE)
         {
