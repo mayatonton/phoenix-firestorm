@@ -17,12 +17,14 @@
 
 #include "volk.h"
 #include "lldir.h"
+#include "llassetubopool.h"
 
 #include <vector>
 #include <string>
 #include <climits>
 #include <cstring>
 #include <fstream>
+#include <memory>
 
 // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
 // VMA (Vulkan Memory Allocator) v3.3.0 を本 translation unit に impl 展開。
@@ -355,6 +357,21 @@ namespace
 
     // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
     // VMA allocator + 段階 3 段階共有 descriptor pool 雛形 + budget 1 回 smoke 出力 flag。
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
+    // per-asset (set=3) descriptor pool grow 機構実 wire up。
+    // design/07-vulkan-api-state.md §6.1 / §6.3 / §6.4:
+    //   per-pool sizing (= 1 物理 pool = 64 asset × FRAMES_IN_FLIGHT=3 frame):
+    //     maxSets               = 64 × 3 = 192
+    //     UBO  descriptorCount  = 3 binding × 64 × 3 = 576
+    //     SAMPLER descriptorCount = 49 binding × 64 × 3 = 9408
+    //   FREE_DESCRIPTOR_SET_BIT は付けない (= grow only、cleanup は cadence
+    //   単位 shutdown 時 reverse 順 destroy)。LLAssetUboPool 側 algorithm が
+    //   acquire 枯渇 detect で factory 再呼出して grow chunk pool を追加する
+    //   ため、本 wire up では callback を提供するだけ (実 pool 数は scene 依存)。
+    constexpr U32 ASSET_POOL_UBO_BINDINGS_PER_ASSET     = 3;   // design 07 §6.3
+    constexpr U32 ASSET_POOL_SAMPLER_BINDINGS_PER_ASSET = 49;  // design 07 §6.3
+    std::unique_ptr<LLAssetUboPool> sAssetUboPoolMgr;
+
     // sSharedDescriptorPool は sub-step 3.4-γ 以降で set=1 (per-material 7 PBR slot)
     // および set=2 (per-draw push descriptor fallback) を割り当てる雛形 pool。
     // 暫定 sizing は overshoot (UBO 16 + COMBINED_IMAGE_SAMPLER 64, maxSets=200)、
@@ -844,6 +861,80 @@ namespace
         LL_INFOS("Vulkan") << "Shared descriptor pool created (3.4-β-1 placeholder, maxSets=200, "
                               "UBO=16, COMBINED_IMAGE_SAMPLER=64; precision deferred to 7.3)"
                            << LL_ENDL;
+        return true;
+    }
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
+    // per-asset (set=3) descriptor pool grow 機構実 wire up。LLAssetUboPool は
+    // Vulkan device 非依存 bookkeeping algorithm = 実 pool 生成 / 破棄を caller
+    // injected callback (PoolFactory / PoolDestroyer) 経由で受ける。本 helper で
+    // sDevice / vkCreateDescriptorPool を closure capture した callback を渡し、
+    // initialize() で起動時 prealloc 1 物理 pool 作成 + 以降 acquire 枯渇時
+    // factory 再呼出で grow chunk pool 追加。FREE_DESCRIPTOR_SET_BIT 不要
+    // (design 07 §6.4)。
+    bool createAssetUboPool()
+    {
+        const U32 frames    = FRAMES_IN_FLIGHT;
+        const U32 prealloc  = LLAssetUboPool::kPreallocAssetCount;
+        const U32 grow      = LLAssetUboPool::kGrowChunkAssetCount;
+
+        auto factory = [frames]() -> LLAssetUboPool::PoolHandle {
+            if (sDevice == VK_NULL_HANDLE)
+            {
+                LL_WARNS("Vulkan") << "createAssetUboPool factory: sDevice == VK_NULL_HANDLE" << LL_ENDL;
+                return 0;
+            }
+
+            VkDescriptorPoolSize pool_sizes[2] = {};
+            pool_sizes[0].type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            pool_sizes[0].descriptorCount = ASSET_POOL_UBO_BINDINGS_PER_ASSET *
+                                            LLAssetUboPool::kPreallocAssetCount * frames;
+            pool_sizes[1].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            pool_sizes[1].descriptorCount = ASSET_POOL_SAMPLER_BINDINGS_PER_ASSET *
+                                            LLAssetUboPool::kPreallocAssetCount * frames;
+
+            VkDescriptorPoolCreateInfo info = {};
+            info.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            info.maxSets       = LLAssetUboPool::kPreallocAssetCount * frames;
+            info.poolSizeCount = 2;
+            info.pPoolSizes    = pool_sizes;
+            info.flags         = 0;
+
+            VkDescriptorPool pool = VK_NULL_HANDLE;
+            VkResult result = vkCreateDescriptorPool(sDevice, &info, nullptr, &pool);
+            if (result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "vkCreateDescriptorPool (asset PC-6α) failed: "
+                                   << (S32)result << LL_ENDL;
+                return 0;
+            }
+            return reinterpret_cast<LLAssetUboPool::PoolHandle>(pool);
+        };
+
+        auto destroyer = [](LLAssetUboPool::PoolHandle handle) {
+            if (handle == 0 || sDevice == VK_NULL_HANDLE)
+            {
+                return;
+            }
+            VkDescriptorPool pool = reinterpret_cast<VkDescriptorPool>(handle);
+            vkDestroyDescriptorPool(sDevice, pool, nullptr);
+        };
+
+        sAssetUboPoolMgr = std::make_unique<LLAssetUboPool>(factory, destroyer, prealloc, grow);
+        if (!sAssetUboPoolMgr->initialize())
+        {
+            LL_WARNS("Vulkan") << "LLAssetUboPool::initialize() failed (PC-6α)" << LL_ENDL;
+            sAssetUboPoolMgr.reset();
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Asset UBO pool wired up (PC-6α W2, prealloc="
+                           << prealloc << " asset × " << frames << " frame = "
+                           << (prealloc * frames) << " set / pool, "
+                           << "UBO=" << (ASSET_POOL_UBO_BINDINGS_PER_ASSET * prealloc * frames)
+                           << ", SAMPLER=" << (ASSET_POOL_SAMPLER_BINDINGS_PER_ASSET * prealloc * frames)
+                           << ", grow chunk=" << grow << " asset, pool count="
+                           << sAssetUboPoolMgr->getPoolCount() << ")" << LL_ENDL;
         return true;
     }
 
@@ -2161,6 +2252,17 @@ bool initVulkan()
         return false;
     }
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
+    // per-asset (set=3) descriptor pool grow 機構を sSharedDescriptorPool 直後に立ち上げる
+    // (design 07 §6.3 / §6.4 = 4 cadence pool split、asset pool は grow only)。
+    // 起動時 1 物理 pool (= 64 asset × 3 frame = 192 set) prealloc、PC-6 後続で
+    // 5 cadence update site から acquire 呼出が走り始める。
+    if (!createAssetUboPool())
+    {
+        shutdownVulkan();
+        return false;
+    }
+
     // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): 1×1 white placeholder image lifecycle smoke。
     // VMA allocator 立ち上げ直後に発行、shutdownVulkan で vmaDestroyAllocator 前に破棄する。
     // β-2-3: staging buffer 経由 1px upload + 2 段 layout transition を 1 度限り実行 (INFO marker 出力)。
@@ -2386,6 +2488,16 @@ void shutdownVulkan()
         // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): placeholder image teardown。
         // vmaDestroyImage は sAllocator 生存中に呼ぶ必要があるため、共有 pool 破棄前に発行。
         destroyPlaceholderWhiteImage();
+
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
+        // per-asset descriptor pool teardown。LLAssetUboPool::shutdown() が内部の
+        // 全 grow pool を destroyer callback 経由で逆順 destroy するため、
+        // sSharedDescriptorPool 破棄前 / sDevice 生存中に発火する。
+        if (sAssetUboPoolMgr)
+        {
+            sAssetUboPoolMgr->shutdown();
+            sAssetUboPoolMgr.reset();
+        }
 
         // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
         // 共有 descriptor pool teardown (set は pool 経由で自動 free)。
