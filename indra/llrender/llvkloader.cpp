@@ -492,9 +492,9 @@ namespace
     //   block_hash dimension を追加 (= 1 shader が複数 block_hash を持つ場合に
     //   block 個別に dirty 立て可能化)。
     //
-    // sAssetUboDirty / sSkinUboDirty は PC-6ε-2 既存形 (LLGLSLShader* 不使用) を
-    // 維持、PC-7γ-2 で GLTF path 確定後に key 拡張予定 (= 本 PC-7γ-1 は per-program
-    // 専念で AYA (W7-C) 確認済)。
+    // sAssetUboDirty / sSkinUboDirty は PC-7γ-2 で UboAssetKey / UboSkinKey
+    // (= <Owner*, block_hash> 対称構造) に key 拡張済 (= 本 file 下記
+    // <AYAstorm r41 PC-7γ-2> tag block 参照、AYA (D3-A) 確認 2026-06-05)。
     // </AYAstorm r41 PC-7γ-1>
     using UboInstanceKey = std::pair<LLGLSLShader*, U32 /*block_hash*/>;
     struct UboInstanceKeyHash
@@ -510,9 +510,41 @@ namespace
         }
     };
 
+    // <AYAstorm r41 PC-7γ-2> per-asset / per-skin UBO physical instance key
+    // (= owner (Asset*/Skin*) + block_hash の組)。design 06b §2.4 / §2.5 + AYA
+    // (D3-A) 確認 2026-06-05 整合 = PC-7γ-1 UboInstanceKey と対称構造で UBO
+    // physical instance 単位独立性確保 (= 1 asset が複数 block_hash を持つ場合に
+    // block 個別 dirty 立て可能化、PC-6ε-2 の owner 単一 key で発生する dirty
+    // 共有 = false sharing を回避)。
+    //
+    // 注: 現 codegen で PER_ASSET (=3) / PER_SKIN (=4) cadence_tag の entry は
+    // 0 件 (= ubo_metadata.inl 2026-06-05 確認)、Asset_*/Skin_* prefix block も
+    // 0 件 = 本 PC-7γ-2 は defensive 配線 only。本格化 (= codegen Asset_*/Skin_*
+    // block 追加 or synthetic ID scheme + bare OpenGL UBO 置換 + lifecycle hook)
+    // は PC-7γ-3 scope。
+    // </AYAstorm r41 PC-7γ-2>
+    using UboAssetKey = std::pair<LL::GLTF::Asset*, U32 /*block_hash*/>;
+    using UboSkinKey  = std::pair<LL::GLTF::Skin*,  U32 /*block_hash*/>;
+    struct UboAssetKeyHash
+    {
+        std::size_t operator()(const UboAssetKey& k) const noexcept
+        {
+            return std::hash<void*>{}(static_cast<void*>(k.first))
+                 ^ (std::hash<U32>{}(k.second) << 1);
+        }
+    };
+    struct UboSkinKeyHash
+    {
+        std::size_t operator()(const UboSkinKey& k) const noexcept
+        {
+            return std::hash<void*>{}(static_cast<void*>(k.first))
+                 ^ (std::hash<U32>{}(k.second) << 1);
+        }
+    };
+
     std::unordered_map<UboInstanceKey, UboInstance, UboInstanceKeyHash> sProgramUboDirty;
-    std::unordered_map<LL::GLTF::Asset*, UboInstance> sAssetUboDirty;
-    std::unordered_map<LL::GLTF::Skin*, UboInstance>  sSkinUboDirty;
+    std::unordered_map<UboAssetKey,    UboInstance, UboAssetKeyHash>    sAssetUboDirty;
+    std::unordered_map<UboSkinKey,     UboInstance, UboSkinKeyHash>     sSkinUboDirty;
 
     // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instances (= block_hash → UboInstance、
     // owner 概念無し global static)。design 06b §2.1 + design 07 §8.2 + AYA (W6-A)
@@ -528,6 +560,24 @@ namespace
     // cadence_tag に応じて分岐参照。
     // </AYAstorm r41 PC-7γ-1>
     std::unordered_map<U32 /*block_hash*/, UboInstance> sFrameUboInstances;
+
+    // <AYAstorm r41 PC-7γ-2> per-asset / per-skin current owner tracking
+    // (= sCurrentAsset / sCurrentSkin static)。design 06b §5.2 + §5.4.1 + AYA
+    // (D2-A) 確認 2026-06-05 整合 = main thread 専有ゆえ atomic 不要、static
+    // で thread-safe。
+    //
+    // 役割: forwardToUboUpload PER_ASSET / PER_SKIN case が "current owner" を
+    //       解決する経路。gltfscenemanager.cpp の asset/skin draw 直前で set、
+    //       直後 / loop end で clear。forwardToUboUpload 内側で getCurrentAsset
+    //       / getCurrentSkin accessor 経由読出 (= anonymous ns 直接参照不可)。
+    //
+    // 注: 現 codegen で PER_ASSET / PER_SKIN cadence_tag は 0 件で実走しない
+    //     (= defensive 配線)、本 PC-7γ-2 は将来 PC-7γ-3 通電時の owner 解決
+    //     経路を先回り確立。sCurrent* が null の場合 forwardToUboUpload 側で
+    //     LL_WARNS_ONCE + return (= 06b §5.4.1 main thread 専有前提下の安全側)。
+    // </AYAstorm r41 PC-7γ-2>
+    LL::GLTF::Asset* sCurrentAsset = nullptr;
+    LL::GLTF::Skin*  sCurrentSkin  = nullptr;
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
@@ -3893,6 +3943,16 @@ void flushDrawUbos()
 }
 
 // r41 PC-6ε-2: per-asset cadence flush = 構造的 gate + dirty map key 化。
+// PC-7γ-2 refactor: sAssetUboDirty key を UboAssetKey (= <Asset*, block_hash>) に
+// 拡張 (= AYA (D3-A) 確認 2026-06-05、UboInstanceKey 対称構造)、1 asset N block
+// 個別 dedup 対応。asset 引数で walk + kv.first.first == asset match check
+// (= PC-7γ-1 flushProgramUbos 同形)。
+//
+// 注: 現 codegen で PER_ASSET cadence_tag entry 0 件ゆえ sAssetUboDirty 空のまま、
+// 本 walk は no-op (= defensive 配線 only)。PC-7γ-3 (= GLTF host write 置換 +
+// lifecycle hook + codegen Asset_*/Skin_* block 追加 or synthetic ID scheme) で
+// 実走経路通電予定。
+//
 // asset 引数文脈 mUseUBO 不在 (= shader 引数無し) のため entry gate 不可、
 // 代わりに setter 側 mUseUBO 分岐で forwardToUboUpload 不呼出 → sAssetUboDirty
 // 空のまま → flush で no-op (= 構造的 gate)。
@@ -3903,12 +3963,16 @@ void flushAssetUbos(LL::GLTF::Asset* asset)
     {
         return;
     }
-    auto it = sAssetUboDirty.find(asset);
-    if (it == sAssetUboDirty.end())
+    bool any_dirty = false;
+    for (auto& kv : sAssetUboDirty)
     {
-        return;
+        if (kv.first.first != asset) continue;
+        if (kv.second.dirty.exchange(false, std::memory_order_acq_rel))
+        {
+            any_dirty = true;
+        }
     }
-    if (!it->second.dirty.exchange(false, std::memory_order_acq_rel))
+    if (!any_dirty)
     {
         return;
     }
@@ -3916,18 +3980,24 @@ void flushAssetUbos(LL::GLTF::Asset* asset)
 }
 
 // r41 PC-6ε-2: per-skin cadence flush (= per-asset 同形、構造的 gate + key 化)。
+// PC-7γ-2 refactor: sSkinUboDirty key を UboSkinKey (= <Skin*, block_hash>) に
+// 拡張 (= AYA (D3-A) 確認 2026-06-05)、walk + match check (= flushAssetUbos 同形)。
 void flushSkinUbos(LL::GLTF::Skin* skin)
 {
     if (!skin)
     {
         return;
     }
-    auto it = sSkinUboDirty.find(skin);
-    if (it == sSkinUboDirty.end())
+    bool any_dirty = false;
+    for (auto& kv : sSkinUboDirty)
     {
-        return;
+        if (kv.first.first != skin) continue;
+        if (kv.second.dirty.exchange(false, std::memory_order_acq_rel))
+        {
+            any_dirty = true;
+        }
     }
-    if (!it->second.dirty.exchange(false, std::memory_order_acq_rel))
+    if (!any_dirty)
     {
         return;
     }
@@ -4075,6 +4145,205 @@ void writeProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 offset, const voi
     ubo_inst.dirty.store(true, std::memory_order_release);
 }
 // </AYAstorm r41 PC-7γ-1>
+
+// ------------------------------------------------------------------
+// <AYAstorm r41 PC-7γ-2> per-asset / per-skin register / unregister hook +
+// write bridge helper + sCurrentAsset / sCurrentSkin tracking accessor。
+//
+// 設計根拠: design 06b §2.4 (per-asset cadence) + §2.5 (per-skin) + §5.2
+// (forwardToUboUpload routing PER_ASSET/PER_SKIN case) + §5.4.1 (main thread
+// 専有 = atomic 不要、static で thread-safe) の bridge。PC-7γ-1 4 method
+// (= registerProgramUbo / unregisterProgramUbo / writeFrameUbo /
+// writeProgramUbo) と対称展開。
+//
+// AYA 確認 2026-06-05 records:
+//   (D1-A) PER_ASSET/PER_SKIN write 経路 = forwardToUboUpload defensive +
+//          GLTF host write 置換 両方 in scope (本 PC-7γ-2 は前者のみ通電)
+//   (D2-A) sCurrentAsset / sCurrentSkin static (main thread 専有)
+//   (D3-A) map key 拡張 = UboAssetKey / UboSkinKey (上方 anonymous ns 参照)
+//   (D4-A) lifecycle hook = PC-7γ-3 持越し (= D5-rev 整合)
+//   (D5-rev) PC-7γ-2 を defensive 配線 only に再定義 + PC-7γ-3 後段新設
+//
+// 注: 現 codegen で PER_ASSET (=3) / PER_SKIN (=4) cadence_tag entry 0 件
+//   (= ubo_metadata.inl 2026-06-05 確認)、Asset_*/Skin_* prefix block 0 件
+//   ゆえ本 PC-7γ-2 commit 時点で 6 method の call site 不在。PC-7γ-3 で
+//   codegen 追加 + bare OpenGL UBO 置換 + lifecycle hook 配線で呼出開始。
+//
+// MUSEUBO-A 整合: register/unregister の call site は PC-7γ-3 で GLTF path
+//   内配線、write は forwardToUboUpload entry gate + sCurrent* null check で
+//   多重保証 = mUseUBO=false default で既存 OpenGL 描画 100% 維持。
+// GATE-B 整合: 本 helper 群は Vulkan init 層単独動作、#ifdef LL_VULKAN_GLSL
+//   不参照 (= PC-7γ-1 同形)。
+// ------------------------------------------------------------------
+bool registerAssetUbo(LL::GLTF::Asset* asset, U32 block_hash, U32 block_size)
+{
+    if (!asset || block_size == 0)
+    {
+        return false;
+    }
+    UboAssetKey key{ asset, block_hash };
+    auto [it, inserted] = sAssetUboDirty.try_emplace(key);
+    if (inserted)
+    {
+        if (!allocateUboInstanceBuffers(it->second, block_size, "PER_ASSET"))
+        {
+            sAssetUboDirty.erase(it);
+            return false;
+        }
+    }
+    // 既存 entry の場合 idempotent 成功
+    return true;
+}
+
+void unregisterAssetUbo(LL::GLTF::Asset* asset, U32 block_hash)
+{
+    if (!asset)
+    {
+        return;
+    }
+    UboAssetKey key{ asset, block_hash };
+    auto it = sAssetUboDirty.find(key);
+    if (it == sAssetUboDirty.end())
+    {
+        return;
+    }
+    destroyUboInstanceBuffers(it->second);
+    sAssetUboDirty.erase(it);
+}
+
+void writeAssetUbo(LL::GLTF::Asset* asset, U32 block_hash, U32 offset, const void* data, size_t size)
+{
+    if (!asset || !data || size == 0)
+    {
+        return;
+    }
+    UboAssetKey key{ asset, block_hash };
+    auto it = sAssetUboDirty.find(key);
+    if (it == sAssetUboDirty.end())
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-2 writeAssetUbo: asset=" << asset
+                                << " block_hash=0x" << std::hex << block_hash << std::dec
+                                << " not registered in sAssetUboDirty" << LL_ENDL;
+        return;
+    }
+    UboInstance& ubo_inst = it->second;
+    if (ubo_inst.size == 0 || ubo_inst.mapped_ptr[sFrameIndex] == nullptr)
+    {
+        return;
+    }
+    if (offset + size > ubo_inst.size)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-2 writeAssetUbo: out of range write (asset="
+                                << asset << ", block_hash=0x" << std::hex << block_hash
+                                << std::dec << ", offset=" << offset << ", size=" << size
+                                << ", capacity=" << ubo_inst.size << ")" << LL_ENDL;
+        return;
+    }
+    std::memcpy(static_cast<U8*>(ubo_inst.mapped_ptr[sFrameIndex]) + offset, data, size);
+    ubo_inst.dirty.store(true, std::memory_order_release);
+}
+
+bool registerSkinUbo(LL::GLTF::Skin* skin, U32 block_hash, U32 block_size)
+{
+    if (!skin || block_size == 0)
+    {
+        return false;
+    }
+    UboSkinKey key{ skin, block_hash };
+    auto [it, inserted] = sSkinUboDirty.try_emplace(key);
+    if (inserted)
+    {
+        if (!allocateUboInstanceBuffers(it->second, block_size, "PER_SKIN"))
+        {
+            sSkinUboDirty.erase(it);
+            return false;
+        }
+    }
+    return true;
+}
+
+void unregisterSkinUbo(LL::GLTF::Skin* skin, U32 block_hash)
+{
+    if (!skin)
+    {
+        return;
+    }
+    UboSkinKey key{ skin, block_hash };
+    auto it = sSkinUboDirty.find(key);
+    if (it == sSkinUboDirty.end())
+    {
+        return;
+    }
+    destroyUboInstanceBuffers(it->second);
+    sSkinUboDirty.erase(it);
+}
+
+void writeSkinUbo(LL::GLTF::Skin* skin, U32 block_hash, U32 offset, const void* data, size_t size)
+{
+    if (!skin || !data || size == 0)
+    {
+        return;
+    }
+    UboSkinKey key{ skin, block_hash };
+    auto it = sSkinUboDirty.find(key);
+    if (it == sSkinUboDirty.end())
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-2 writeSkinUbo: skin=" << skin
+                                << " block_hash=0x" << std::hex << block_hash << std::dec
+                                << " not registered in sSkinUboDirty" << LL_ENDL;
+        return;
+    }
+    UboInstance& ubo_inst = it->second;
+    if (ubo_inst.size == 0 || ubo_inst.mapped_ptr[sFrameIndex] == nullptr)
+    {
+        return;
+    }
+    if (offset + size > ubo_inst.size)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7γ-2 writeSkinUbo: out of range write (skin="
+                                << skin << ", block_hash=0x" << std::hex << block_hash
+                                << std::dec << ", offset=" << offset << ", size=" << size
+                                << ", capacity=" << ubo_inst.size << ")" << LL_ENDL;
+        return;
+    }
+    std::memcpy(static_cast<U8*>(ubo_inst.mapped_ptr[sFrameIndex]) + offset, data, size);
+    ubo_inst.dirty.store(true, std::memory_order_release);
+}
+
+// sCurrentAsset / sCurrentSkin tracking accessor (= forwardToUboUpload PER_ASSET/
+// PER_SKIN case が "current owner" を解決する経路、AYA (D2-A) 確認 2026-06-05)。
+// gltfscenemanager.cpp の asset/skin draw 直前で setCurrent*、直後 / scope end
+// で clearCurrent* 配線。main thread 専有 (= design 06b §5.4.1) ゆえ atomic 不要。
+void setCurrentAsset(LL::GLTF::Asset* asset)
+{
+    sCurrentAsset = asset;
+}
+
+void clearCurrentAsset()
+{
+    sCurrentAsset = nullptr;
+}
+
+LL::GLTF::Asset* getCurrentAsset()
+{
+    return sCurrentAsset;
+}
+
+void setCurrentSkin(LL::GLTF::Skin* skin)
+{
+    sCurrentSkin = skin;
+}
+
+void clearCurrentSkin()
+{
+    sCurrentSkin = nullptr;
+}
+
+LL::GLTF::Skin* getCurrentSkin()
+{
+    return sCurrentSkin;
+}
+// </AYAstorm r41 PC-7γ-2>
 
 // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
 // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。

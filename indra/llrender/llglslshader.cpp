@@ -86,14 +86,15 @@ using std::string;
 //
 // C++ 側に enum 定義は不在 (= codegen 出力 inl は数値 literal、design 06a §3.3 は
 // spec doc 上のみの enum)、本 PC-7γ-1 で anonymous ns 内 constexpr として localize。
-// PC-7γ-2 以降で CADENCE_PER_ASSET / CADENCE_PER_SKIN case を本格化予定 (= AYA
-// (W7-C) per-asset/skin 持越)。
+// PC-7γ-2 で PER_ASSET / PER_SKIN case を defensive 通電済 (= sCurrent* null check
+// + writeAssetUbo/Skin)。現 codegen 0 件で実走しない、本格化 (= GLTF host write
+// 置換 + codegen Asset_*/Skin_* block 追加 + lifecycle hook) は PC-7γ-3 持越。
 namespace
 {
     constexpr U32 kCadencePerFrame   = 0u; // FrameAtmosphere_Lighting / FrameLights / FrameViewProj
     constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大
     constexpr U32 kCadencePerDraw    = 2u; // PC-7ε で ring buffer 経路本格化
-    constexpr U32 kCadencePerAsset   = 3u; // 現 codegen 0 件、PC-7γ-2 で本格化
+    constexpr U32 kCadencePerAsset   = 3u; // 現 codegen 0 件、PC-7γ-2 defensive 通電 / PC-7γ-3 本格化
     constexpr U32 kCadencePerSkin    = 4u; // 同上
     constexpr U32 kCadenceSingleton  = 5u; // Global_ReflectionProbes (flushSingletonUbos 別経路)
     constexpr U32 kCadenceSampler    = 6u; // 2026-06-05 PC-6ζ で 5→6 移動、setter 側 skip
@@ -2115,8 +2116,10 @@ bool LLGLSLShader::mapUniforms()
 //   case PER_PROGRAM (= 1) : LLVKLoader::writeProgramUbo (= sProgramUboDirty 経由
 //                            shader × block_hash key で triple-buffer memcpy + dirty)
 //   case PER_DRAW (= 2)    : stub (LL_WARNS_ONCE)、PC-7ε で ring buffer 経路本格化
-//   case PER_ASSET (= 3)   : stub (LL_WARNS_ONCE)、PC-7γ-2 で GLTF path 配線
-//   case PER_SKIN (= 4)    : 同上
+//   case PER_ASSET (= 3)   : PC-7γ-2 defensive 通電 = sCurrentAsset null check +
+//                            LLVKLoader::writeAssetUbo (現 codegen 0 件で実走無し、
+//                            PC-7γ-3 で GLTF host write 置換 + lifecycle hook 後 hot)
+//   case PER_SKIN (= 4)    : 同 pattern (sCurrentSkin + writeSkinUbo)
 //   case SINGLETON (= 5)   : llassert_always (= 別経路 flushSingletonUbos 整合違反)
 //   case SAMPLER (= 6)     : 呼出側 setter で skip 済 (= 06a §5.6)、defensive return
 //   case UNKNOWN (= 7)     : 呼出側で sentinel skip、defensive return
@@ -2150,17 +2153,48 @@ void LLGLSLShader::forwardToUboUpload(const ubo::UniformLocation& loc, const voi
             return;
 
         case kCadencePerAsset:
-            // PC-7γ-2 scope = GLTF path 配線 (= LL::GLTF::Asset key + sAssetUboDirty)。
-            // 現 codegen で cadence_tag=3 block 0 件ゆえ実走しない (= W7-C 整合)。
-            LL_WARNS_ONCE("Vulkan") << "PC-7γ-1: PER_ASSET forwardToUboUpload not wired yet (PC-7γ-2 scope), block_hash=0x"
-                                    << std::hex << loc.block_hash << std::dec << LL_ENDL;
+        {
+            // PC-7γ-2 defensive 配線: sCurrentAsset (= gltfscenemanager.cpp で asset
+            // draw 直前 set) を accessor 経由で解決、writeAssetUbo 経由 memcpy +
+            // dirty.store(release)。現 codegen で cadence_tag=3 block 0 件
+            // (= ubo_metadata.inl 2026-06-05 確認) ゆえ実走しない (= AYA (D5-rev)
+            // 確認済 defensive 配線 only)。PC-7γ-3 で codegen Asset_* block 追加 +
+            // bare OpenGL UBO 置換 (= gltf/asset.cpp updateNodeData/updateMaterialData)
+            // + lifecycle hook 配線で hot path 通電予定。
+            LL::GLTF::Asset* asset = LLVKLoader::getCurrentAsset();
+            if (!asset)
+            {
+                // sCurrentAsset 未設定 = PC-7γ-3 で GLTF host write 置換完了前の
+                // 状態 (= 通常通過しない)。defensive 早期 return + 診断保留。
+                LL_WARNS_ONCE("Vulkan") << "PC-7γ-2: PER_ASSET forwardToUboUpload — "
+                                        << "sCurrentAsset is nullptr (PC-7γ-3 scope = "
+                                        << "GLTF host write 置換 + codegen Asset_* block "
+                                        << "emit 未完), block_hash=0x"
+                                        << std::hex << loc.block_hash << std::dec << LL_ENDL;
+                return;
+            }
+            LLVKLoader::writeAssetUbo(asset, loc.block_hash, loc.offset, data, size);
             return;
+        }
 
         case kCadencePerSkin:
-            // PC-7γ-2 scope (= per-asset 同形)、現 codegen で cadence_tag=4 block 0 件。
-            LL_WARNS_ONCE("Vulkan") << "PC-7γ-1: PER_SKIN forwardToUboUpload not wired yet (PC-7γ-2 scope), block_hash=0x"
-                                    << std::hex << loc.block_hash << std::dec << LL_ENDL;
+        {
+            // PC-7γ-2 defensive 配線 (= per-asset 同形)、現 codegen で cadence_tag=4
+            // block 0 件ゆえ実走しない。PC-7γ-3 で gltf/animation.cpp Skin::
+            // updateTransforms 置換 + codegen Skin_* block 追加で hot path 通電予定。
+            LL::GLTF::Skin* skin = LLVKLoader::getCurrentSkin();
+            if (!skin)
+            {
+                LL_WARNS_ONCE("Vulkan") << "PC-7γ-2: PER_SKIN forwardToUboUpload — "
+                                        << "sCurrentSkin is nullptr (PC-7γ-3 scope = "
+                                        << "GLTF host write 置換 + codegen Skin_* block "
+                                        << "emit 未完), block_hash=0x"
+                                        << std::hex << loc.block_hash << std::dec << LL_ENDL;
+                return;
+            }
+            LLVKLoader::writeSkinUbo(skin, loc.block_hash, loc.offset, data, size);
             return;
+        }
 
         case kCadenceSingleton:
             // PC-6ε-1 確定 = singleton (= Global_ReflectionProbes) は

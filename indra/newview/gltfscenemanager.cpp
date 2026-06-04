@@ -689,6 +689,14 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     gPipeline.bindDeferredShader(gGLTFPBRMetallicRoughnessProgram.mGLTFVariants[variant]);
                 }
 
+                // <AYAstorm r41 PC-7γ-2> per-asset current owner set (design 06b §5.2 + §5.4.1、
+                // AYA (D2-A) 確認 2026-06-05) = forwardToUboUpload PER_ASSET case が
+                // sCurrentAsset を解決する経路を asset draw 直前で確立。本 PC-7γ-2 は
+                // defensive 配線 only (= 現 codegen PER_ASSET 0 件)、PC-7γ-3 で GLTF host
+                // write 置換時に hot path 通電。clearCurrentAsset は ds loop 終了直前で対称配置。
+                LLVKLoader::setCurrentAsset(&asset);
+                // </AYAstorm r41 PC-7γ-2>
+
                 // <AYAstorm r41 PC-6δ> per-asset cadence flush 駆動位置 (design 06b §4.3)。
                 // mNodesUBO / mMaterialsUBO bind 直前で発火、sDrawUboRingBufferMgr 未初期化時 = no-op。
                 LLVKLoader::flushAssetUbos(&asset);
@@ -739,6 +747,13 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - bind skin");
                     llassert(node.mSkin != INVALID_INDEX);
                     Skin& skin = asset.mSkins[node.mSkin];
+                    // <AYAstorm r41 PC-7γ-2> per-skin current owner set (design 06b §5.2 + §5.4.1、
+                    // AYA (D2-A) 確認 2026-06-05) = forwardToUboUpload PER_SKIN case が
+                    // sCurrentSkin を解決する経路を skin draw 直前で確立。本 PC-7γ-2 は
+                    // defensive 配線 only (= 現 codegen PER_SKIN 0 件)、PC-7γ-3 で GLTF host
+                    // write 置換時に hot path 通電。clearCurrentSkin は drawRangeFast 直後で対称配置。
+                    LLVKLoader::setCurrentSkin(&skin);
+                    // </AYAstorm r41 PC-7γ-2>
                     // <AYAstorm r41 PC-6δ> per-skin cadence flush 駆動位置 (design 06b §4.3)。
                     // skin.mUBO bind 直前で発火、sDrawUboRingBufferMgr 未初期化時 = no-op。
                     LLVKLoader::flushSkinUbos(&skin);
@@ -755,8 +770,18 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
 
                     primitive.mVertexBuffer->drawRangeFast(primitive.mGLMode, primitive.mVertexOffset, primitive.mVertexOffset + primitive.getVertexCount() - 1, primitive.getIndexCount(), primitive.mIndexOffset);
                 }
+
+                // <AYAstorm r41 PC-7γ-2> per-skin current owner clear (per-primitive 対称配置、
+                // setCurrentSkin が if (rigged) 内で限定された為 unconditional clear で safe
+                // = setCurrentSkin 未呼出時は nullptr → nullptr の no-op)。
+                LLVKLoader::clearCurrentSkin();
+                // </AYAstorm r41 PC-7γ-2>
             }
         }
+
+        // <AYAstorm r41 PC-7γ-2> per-asset current owner clear (ds loop 終了直前で対称配置)。
+        LLVKLoader::clearCurrentAsset();
+        // </AYAstorm r41 PC-7γ-2>
     }
 }
 

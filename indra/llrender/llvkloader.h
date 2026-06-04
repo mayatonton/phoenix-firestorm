@@ -401,6 +401,59 @@ namespace LLVKLoader
     void unregisterProgramUbo(LLGLSLShader* shader, U32 block_hash);
     void writeFrameUbo       (U32 block_hash, U32 offset, const void* data, size_t size);
     void writeProgramUbo     (LLGLSLShader* shader, U32 block_hash, U32 offset, const void* data, size_t size);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-7γ-2:
+    // per-asset / per-skin UBO register / unregister hook + write bridge helper +
+    // sCurrentAsset / sCurrentSkin tracking accessor (design 06b §2.4 / §2.5 +
+    // §5.2 + §5.4.1 の bridge)。
+    //
+    // 設計根拠 (= AYA (D1-A)(D2-A)(D3-A)(D4-A)(D5-rev) 確認 2026-06-05):
+    //   PC-7γ-1 4 method (= registerProgramUbo / unregisterProgramUbo /
+    //   writeFrameUbo / writeProgramUbo) と対称展開、per-asset / per-skin の
+    //   physical UBO instance 管理 + forwardToUboUpload PER_ASSET / PER_SKIN
+    //   case の defensive 通電を実現。
+    //
+    // PC-7γ-2 scope (= defensive 配線 only、本格化は PC-7γ-3 持越):
+    //   - 6 method (= asset 3 + skin 3) = PC-7γ-1 4 method 対称形 (try_emplace
+    //     + allocateUboInstanceBuffers / find + destroyUboInstanceBuffers /
+    //     memcpy + dirty.store(release))。
+    //   - sCurrent* static + 4 method (= setCurrentAsset/Skin + clearCurrent*)
+    //     = forwardToUboUpload PER_ASSET/PER_SKIN case が "current owner" を
+    //     解決する経路。gltfscenemanager.cpp で asset/skin draw 直前 set、直後
+    //     clear。
+    //   - getCurrentAsset / getCurrentSkin = forwardToUboUpload 内側 accessor
+    //     (= llvkloader.cpp anonymous ns 直接参照不可、bridge 経由 TU 隔離)。
+    //
+    // 注: 現 codegen で PER_ASSET (=3) / PER_SKIN (=4) cadence_tag entry 0 件
+    //   (= ubo_metadata.inl 2026-06-05 確認)、Asset_*/Skin_* prefix block も
+    //   0 件 ゆえ register/write は本 PC-7γ-2 commit 時点で **call site 不在**
+    //   (= sCurrent* set/clear のみ gltfscenemanager.cpp 配線済)。PC-7γ-3 で
+    //   codegen Asset_*/Skin_* block 追加 or synthetic ID scheme + bare OpenGL
+    //   UBO 置換 (gltf/asset.cpp updateNodeData/updateMaterialData + gltf/
+    //   animation.cpp Skin::updateTransforms) + lifecycle hook (Asset/Skin ctor
+    //   / dtor) で 6 method 呼出開始予定。
+    //
+    // MUSEUBO-A 整合: register / unregister の call site は PC-7γ-3 で GLTF
+    //   path 内に配線 (= mUseUBO gate は GLTF subsystem 内 mUseUBO 相当 flag に
+    //   依存)、write は forwardToUboUpload entry gate (= 呼出側 setter 31 site
+    //   `if (mUseUBO)` block 内側) + sCurrent* null check で多重保証。
+    // GATE-B 整合: 本 helper 群は Vulkan init 層単独動作、#ifdef LL_VULKAN_GLSL
+    //   不参照 (= PC-6α..ζ + PC-7α/β/γ-1 同形)。
+    // ------------------------------------------------------------------
+    bool registerAssetUbo    (LL::GLTF::Asset* asset, U32 block_hash, U32 block_size);
+    void unregisterAssetUbo  (LL::GLTF::Asset* asset, U32 block_hash);
+    void writeAssetUbo       (LL::GLTF::Asset* asset, U32 block_hash, U32 offset, const void* data, size_t size);
+    bool registerSkinUbo     (LL::GLTF::Skin* skin, U32 block_hash, U32 block_size);
+    void unregisterSkinUbo   (LL::GLTF::Skin* skin, U32 block_hash);
+    void writeSkinUbo        (LL::GLTF::Skin* skin, U32 block_hash, U32 offset, const void* data, size_t size);
+
+    void setCurrentAsset     (LL::GLTF::Asset* asset);
+    void clearCurrentAsset   ();
+    LL::GLTF::Asset* getCurrentAsset();
+    void setCurrentSkin      (LL::GLTF::Skin* skin);
+    void clearCurrentSkin    ();
+    LL::GLTF::Skin*  getCurrentSkin();
 }
 
 #endif // LL_LLVKLOADER_H
