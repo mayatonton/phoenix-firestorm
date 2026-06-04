@@ -1730,14 +1730,23 @@ namespace
     // ゆえ rigged は 2 回 vkCmdBindDescriptorSets 呼出に分割
     // (= set=0..1b 3 set bind 1 回 + set=3 1 set bind 1 回)。
     //
-    // pDynamicOffsets は本 PC-7δ では一律 0 (= ring buffer の actual offset 計算は
-    // PC-7ε scope = dynamic offset 経路 ring buffer chunk hand-off)。
+    // <AYAstorm r41 PC-7ε (c)> bindV3aStatic signature 拡張 = caller (= recordPlaceholderPoolDraw)
+    // から sDrawUboRingBufferMgr->allocate() の AllocateResult.offset を 4 binding 分受領
+    // (= (ε-3) A 採用 = caller 責任分離 / allocate ↔ bind を call site で連結明示、AYA
+    // 確認 2026-06-05)。本 PC-7ε は per-draw chain で同 offset × 4 binding を渡す
+    // placeholder 形 (= 1 allocate per draw、(ε-2) A)、PC-N 実 GLTF 通電時に 4 個独立
+    // offset へ拡張。
+    //
     // set=2 (sDrawUboLayoutV3a) は UBO_DYNAMIC で V3A_DRAW_SET_BINDINGS=4 個分
-    // dynamic offset 必要、本 PC-7δ では 4 件 ゼロ埋め配列を渡す。
+    // dynamic offset 必要 (= Vulkan spec: descriptorSetCount で参照する set 群が
+    // 持つ UBO_DYNAMIC binding 数の総和 = pDynamicOffsets 配列長)。
     //
     // 早期 return: cmd_buf / layout NULL + 必要な set 群が VK_NULL_HANDLE な状態は
     // initVulkan 失敗 or scaffolding 未通電を意味、no-op safe (= MUSEUBO-A 整合)。
-    void bindV3aStatic(VkCommandBuffer cmd_buf, U32 frame_index)
+    // dynamic_offsets == nullptr は caller 側 ring buffer 未初期化 → 同様 no-op safe。
+    void bindV3aStatic(VkCommandBuffer cmd_buf,
+                       U32             frame_index,
+                       const U32       dynamic_offsets[V3A_DRAW_SET_BINDINGS])
     {
         if (cmd_buf == VK_NULL_HANDLE ||
             sAYAStandardLayout == VK_NULL_HANDLE ||
@@ -1745,7 +1754,8 @@ namespace
             sFrameUboSetV3a[frame_index]    == VK_NULL_HANDLE ||
             sProgramUboSetA[frame_index]    == VK_NULL_HANDLE ||
             sProgramUboSetB[frame_index]    == VK_NULL_HANDLE ||
-            sDrawUboSetV3a                  == VK_NULL_HANDLE)
+            sDrawUboSetV3a                  == VK_NULL_HANDLE ||
+            dynamic_offsets                 == nullptr)
         {
             return;
         }
@@ -1756,7 +1766,6 @@ namespace
             sProgramUboSetB[frame_index],
             sDrawUboSetV3a,
         };
-        const U32 dynamic_offsets[V3A_DRAW_SET_BINDINGS] = { 0u, 0u, 0u, 0u };
 
         vkCmdBindDescriptorSets(cmd_buf,
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1767,6 +1776,7 @@ namespace
                                 /*dynamicOffsetCount=*/V3A_DRAW_SET_BINDINGS,
                                 dynamic_offsets);
     }
+    // </AYAstorm r41 PC-7ε (c)>
 
     void bindV3aRigged(VkCommandBuffer cmd_buf, U32 frame_index)
     {
@@ -2616,6 +2626,78 @@ namespace
     // </AYAstorm r41 PC-7δ>
     // </AYAstorm r41 PC-7α>
 
+    // <AYAstorm r41 PC-7ε (a)> sDrawUboSetV3a (set=2 per-draw UBO_DYNAMIC) ↔ ring
+    //   buffer VkBuffer 接続 helper。design 07 §7.4 + ambiguity (ε-1) A + (ε-4) A
+    //   (= initVulkan 内 1 度のみ決定論的 timing) 採用 (AYA 確認 2026-06-05)。
+    //
+    //   PC-7δ 完了時点で sDrawUboSetV3a は allocate 済 (createV3aDescriptorSets
+    //   line 2594-2596) だが、ring buffer の VkBuffer を vkUpdateDescriptorSets で
+    //   write していない状態 = bindV3aStatic 時に空 descriptor set を参照 (Vulkan
+    //   validation layer enable 時 VUID 発火)。本 helper で 4 binding × UNIFORM_BUFFER_DYNAMIC
+    //   全件 ring buffer 同一 VkBuffer + offset=0 + range=256 placeholder write、
+    //   per-draw 実 offset は bindV3aStatic 第 3 引数 dynamic_offsets[4] で投入 (= caller 責任、(ε-3) A)。
+    //
+    //   range=256 placeholder = (ε-2) A 採用 = 4 binding 同 offset / 256 B 同 size、
+    //   PC-N 実 GLTF 通電時に binding 別 size + 4 個独立 allocate へ拡張。
+    //
+    //   ring buffer grow 時の自動 re-update = (ε-6) A 採用で PC-N 持越、本 PC-7ε
+    //   は recordPlaceholderPoolDraw 内 alloc.grew 観測時 LL_WARNS_ONCE log のみ
+    //   (dummy phase 数 KB/frame ゆえ grow 起きない想定)。
+    bool wireDrawUboSetV3aToRingBuffer()
+    {
+        if (sDevice == VK_NULL_HANDLE ||
+            !sDrawUboRingBufferMgr ||
+            sDrawUboSetV3a == VK_NULL_HANDLE)
+        {
+            LL_WARNS_ONCE("Vulkan") << "wireDrawUboSetV3aToRingBuffer (PC-7ε): prerequisite missing"
+                                    << " (sDevice=" << (sDevice != VK_NULL_HANDLE)
+                                    << " sDrawUboRingBufferMgr=" << (bool)sDrawUboRingBufferMgr
+                                    << " sDrawUboSetV3a=" << (sDrawUboSetV3a != VK_NULL_HANDLE)
+                                    << ")" << LL_ENDL;
+            return false;
+        }
+
+        const LLUboRingBuffer::BufferHandle handle = sDrawUboRingBufferMgr->getBuffer();
+        if (handle == 0)
+        {
+            LL_WARNS_ONCE("Vulkan") << "wireDrawUboSetV3aToRingBuffer (PC-7ε): ring buffer handle == 0"
+                                    << LL_ENDL;
+            return false;
+        }
+        auto it = sDrawUboRingBufferRecords.find(handle);
+        if (it == sDrawUboRingBufferRecords.end() || it->second.buffer == VK_NULL_HANDLE)
+        {
+            LL_WARNS_ONCE("Vulkan") << "wireDrawUboSetV3aToRingBuffer (PC-7ε): VkBuffer lookup miss"
+                                    << LL_ENDL;
+            return false;
+        }
+
+        VkDescriptorBufferInfo buffer_infos[V3A_DRAW_SET_BINDINGS] = {};
+        VkWriteDescriptorSet   writes[V3A_DRAW_SET_BINDINGS]       = {};
+        for (U32 i = 0; i < V3A_DRAW_SET_BINDINGS; ++i)
+        {
+            buffer_infos[i].buffer = it->second.buffer;
+            buffer_infos[i].offset = 0;
+            buffer_infos[i].range  = 256;
+
+            writes[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[i].dstSet          = sDrawUboSetV3a;
+            writes[i].dstBinding      = i;
+            writes[i].dstArrayElement = 0;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            writes[i].pBufferInfo     = &buffer_infos[i];
+        }
+        vkUpdateDescriptorSets(sDevice, V3A_DRAW_SET_BINDINGS, writes, 0, nullptr);
+
+        LL_INFOS("Vulkan") << "PC-7ε: sDrawUboSetV3a wired to ring buffer VkBuffer ("
+                           << V3A_DRAW_SET_BINDINGS
+                           << " binding × UNIFORM_BUFFER_DYNAMIC, offset=0, range=256 placeholder)"
+                           << LL_ENDL;
+        return true;
+    }
+    // </AYAstorm r41 PC-7ε (a)>
+
     // r41 sub-step 3.1b item #8: minimal placeholder PSO (sky pool placeholder)。
     // GLSL source は本 source の上の comment block で sealed (offline glslc compile)、
     // vert/frag SPIR-V を C++ const array で embed。本 PSO は sRenderPass (1 color attachment) 互換、
@@ -3337,6 +3419,18 @@ bool initVulkan()
         return false;
     }
     // </AYAstorm r41 PC-7δ (c)>
+    // <AYAstorm r41 PC-7ε (b)> sDrawUboSetV3a ↔ ring buffer VkBuffer 接続を
+    //   initVulkan 内 1 度のみ実行 (= (ε-4) A 採用 = 決定論的 timing)。
+    //   失敗時は LL_WARNS_ONCE で診断 log のみ + initVulkan 続行 (= bind 経路は
+    //   mUseUBO=false default で到達しないため fatal でない、MUSEUBO-A 整合)。
+    if (!wireDrawUboSetV3aToRingBuffer())
+    {
+        LL_WARNS_ONCE("Vulkan") << "wireDrawUboSetV3aToRingBuffer failed (PC-7ε); "
+                                   "Vulkan placeholder draw でも bindV3aStatic は空 descriptor set 参照になる "
+                                   "(mUseUBO=false default では到達しないため continue)"
+                                << LL_ENDL;
+    }
+    // </AYAstorm r41 PC-7ε (b)>
     // </AYAstorm r41 PC-7α>
 
     // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instance 先回り allocate。
@@ -4913,11 +5007,52 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
 
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sSkySmokePipeline);
 
-    // <AYAstorm r41 PC-7δ (i)> bind path = bindV3aStatic 経由 set=0/1a/1b/2 4-set
-    //   bind (= V3a layout 通電実 firing、旧 set=0 PerFrame + set=1 PerMaterial 2-set
-    //   経路を撤廃)。sky smoke SPIR-V は set=N binding 未参照 = bind 副作用ゼロ
-    //   (= H8 MUSEUBO-A 整合 = placeholder offscreen FBO 経路で OpenGL 描画 100% 維持)。
-    bindV3aStatic(cmd_buf, sFrameIndex);
+    // <AYAstorm r41 PC-7ε (d)> per-draw ring buffer allocate-chain 配線 (= ambiguity
+    //   (ε-1) A + (ε-2) A + (ε-3) A + (ε-6) A 採用、AYA 確認 2026-06-05):
+    //     1. sDrawUboRingBufferMgr->allocate(256) で 1 個 chunk allocate
+    //        (= 4 binding 同 offset placeholder、PC-N で 4 個独立 allocate 拡張)
+    //     2. dummy zero memset (= placeholder phase、PC-6ε-3 で real per-draw data
+    //        write 置換予定)
+    //     3. dynamic_offsets[4] = { alloc.offset, alloc.offset, alloc.offset, alloc.offset }
+    //        構築 (= 同 offset × 4 binding)
+    //     4. bindV3aStatic 第 3 引数で hand-off (= caller 責任、(ε-3))
+    //     5. grew 観測時 LL_WARNS_ONCE = sDrawUboSetV3a が stale buffer 参照する可能性
+    //        ((ε-6) A 自動 re-update は PC-N 持越、dummy phase 数 KB/frame で grow 起きない想定)
+    //
+    //   MUSEUBO-A guard = sDrawUboRingBufferMgr nullptr (= Vulkan init 失敗 or
+    //   pre-init) で early return = bindV3aStatic / vkCmdDraw 不発火 = OpenGL 描画影響ゼロ。
+    if (!sDrawUboRingBufferMgr)
+    {
+        return;
+    }
+    const LLUboRingBuffer::AllocateResult alloc = sDrawUboRingBufferMgr->allocate(256);
+    if (!alloc.success)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7ε: ring buffer allocate failed in recordPlaceholderPoolDraw "
+                                   "(skip draw)"
+                                << LL_ENDL;
+        return;
+    }
+    if (alloc.grew)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7ε: ring buffer grew in recordPlaceholderPoolDraw; "
+                                   "sDrawUboSetV3a may reference stale VkBuffer "
+                                   "(自動 re-update は PC-N 持越、dummy phase で grow 想定外)"
+                                << LL_ENDL;
+    }
+    // dummy write (= placeholder phase、PC-6ε-3 で real per-draw data write 置換)
+    {
+        auto it = sDrawUboRingBufferRecords.find(alloc.buffer);
+        if (it != sDrawUboRingBufferRecords.end() && it->second.mapped != nullptr)
+        {
+            std::memset(static_cast<U8*>(it->second.mapped) + alloc.offset, 0, alloc.size);
+        }
+    }
+    const U32 dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
+        alloc.offset, alloc.offset, alloc.offset, alloc.offset,
+    };
+    bindV3aStatic(cmd_buf, sFrameIndex, dynamic_offsets);
+    // </AYAstorm r41 PC-7ε (d)>
 
     // push constant: modelview_matrix = identity (4x4)、fullscreen triangle は NDC 直書きで identity OK
     const float identity_modelview[16] = {
@@ -4940,7 +5075,8 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
     {
         s_first_call = false;
         LL_INFOS("Vulkan") << "Placeholder pool draw fired (PSO bind sSkySmokePipeline + "
-                              "bindV3aStatic set=0/1a/1b/2 + push constant 64 B identity / "
+                              "per-draw ring buffer allocate (256 B) + bindV3aStatic "
+                              "set=0/1a/1b/2 (PC-7ε dynamic offset 配線済) + push constant 64 B identity / "
                               "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
                            << LL_ENDL;
     }
@@ -4975,6 +5111,10 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sAvatarBonePipeline);
 
     // V3a 5-set bind: set=0/1a/1b + set=3 swap (= rigged path = set=2 ↔ set=3 swap 実走)
+    // <AYAstorm r41 PC-7ε (e)> rigged path は set=2 skip (= dynamic offset 0 個) ゆえ
+    //   bindV3aRigged signature 不変。per-draw dynamic offset 配線 + set=2 復活は PC-N
+    //   実 GLTF avatar Vulkan draw 通電時に H10-A avatar bone storage 再配線と一括
+    //   ((ε-5) A 採用、AYA 確認 2026-06-05)。
     bindV3aRigged(cmd_buf, sFrameIndex);
 
     // push constant: modelview_matrix = identity (4x4)
