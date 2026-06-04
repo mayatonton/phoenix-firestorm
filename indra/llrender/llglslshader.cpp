@@ -2507,6 +2507,23 @@ void LLGLSLShader::uniform4iv(U32 index, U32 count, const GLint* v)
 
         if (mUniform[index] >= 0)
         {
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.8:
+            // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+            // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+            // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+            // (U4) 適用 = uniform4iv mValue cache 適用外 (06b:130-133 区分 + 06b:437 literal)、
+            //         本実装は (B) mValue 全 bypass = 06b:437 「stage 1 を bypass、stage 3 dirty bit のみで dedup」
+            //         literal 整合 + PB-5 batch 整合 (= method 先頭近傍挿入で uniform4iv hashed と pattern 統一、
+            //         AYA 判断 2026-06-04)。
+            if (mUseUBO)
+            {
+                llassert(index < mUniformUBOLoc.size());
+                const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                forwardToUboUpload(loc, v, count * 4 * sizeof(GLint));
+                return;
+            }
             const auto& iter = mValue.find(mUniform[index]);
             LLVector4 vec((F32)v[0], (F32)v[1], (F32)v[2], (F32)v[3]);
             if (iter == mValue.end() || shouldChange(iter->second, vec) || count != 1)
@@ -2998,6 +3015,27 @@ void LLGLSLShader::uniform1iv(const LLStaticHashedString& uniform, U32 count, co
 void LLGLSLShader::uniform4iv(const LLStaticHashedString& uniform, U32 count, const GLint* v)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-5.14:
+    // LLStaticHashedString 経路 Vulkan path 分岐追加。spec 06a §5.5 literal 準拠。
+    // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // (U4) 適用 = uniform4iv mValue cache 適用外 (06b:130-133 + 06b:437 literal)、
+    //         本実装は (B) mValue 全 bypass = PB-5.1〜.13 batch (method 先頭挿入) と pattern 統一
+    //         (AYA 判断 2026-06-04)。
+    if (mUseUBO)
+    {
+        auto it = mUniformUBOLocByHash.find(static_cast<U64>(uniform.Hash()));
+        if (it != mUniformUBOLocByHash.end())
+        {
+            const ubo::UniformLocation& loc = it->second;
+            if (loc.cadence_tag == 0xFFFFFFFFu) return;
+            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            forwardToUboUpload(loc, v, count * 4 * sizeof(GLint));
+        }
+        return;
+    }
+
     GLint location = getUniformLocation(uniform);
 
     if (location >= 0)

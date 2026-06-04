@@ -434,7 +434,7 @@ per-draw cadence は数百〜数千 / frame の upload が走るため、physica
 | (U1) | per-frame triple-buffering buffer 個数 = 2 (double) / 3 (triple) / N | chapter 07 | 3 (= triple-buffering 標準、§4.3) |
 | (U2) | per-asset / per-skin dirty 判定 = 既存 owner state 変化検知継承 / Vulkan 側 dirty bit 追加 | chapter 07 | 既存 owner 変化検知 + Vulkan 側 dirty bit の両立 (= 既存 path 改変ゼロ + Vulkan upload dedup 両得) |
 | (U3) | flush timing で per-program ↔ per-draw 境界 = bind 直後 upload vs draw 直前 upload | (H1b) hook 計測後再評価 | bind 直後 upload (= per-program 帯)、draw 直前 upload (= per-draw 帯) で分離 (= §4.1) |
-| (U4) | `mValue` cache 適用外 5 method (= `uniform4iv` / `uniformMatrix2/3/3x4/4fv`) の Vulkan dirty 判定 | chapter 07 / Phase 進行中 | stage 1 を bypass、stage 3 dirty bit のみで dedup (= 値比較せず常に `forwardToUboUpload`、UBO 単位 dirty で flush dedup) |
+| (U4) | `mValue` cache 適用外 5 method (= `uniform4iv` / `uniformMatrix2/3/3x4/4fv`) の Vulkan dirty 判定 | chapter 07 / **Phase 1.B 実装確定 2026-06-04** | stage 1 を bypass、stage 3 dirty bit のみで dedup (= 値比較せず常に `forwardToUboUpload`、UBO 単位 dirty で flush dedup) **= host update site 側は case (B) mValue block 外側挿入で確定 (= §8.1 (U4)-IMPL row 参照)** |
 
 ### §8.1 確定 cross-ref (= 2026-06-03 ST-6 反映)
 
@@ -450,6 +450,7 @@ per-draw cadence は数百〜数千 / frame の upload が走るため、physica
 | **Q28-FFDUP** | A1+B2 (= chapter 10 §1.5 ST-3 batch、F+F `PerDrawUBO_ClipPlane` 重複解消) | (本 chapter 06b は cadence 設計、binding 重複は 06c 接合表で扱う) |
 | **R-AYA1/2/3** | dead / dead / alive (= chapter 10 §2.7 ST-6 前段 (a) 確定) | §2.3 注 R-AYA3 反映 paragraph 反映済 |
 | **R-MAT1-4** | per-draw cadence 4 件 (= `modelview_matrix` / `inv_modelview` / `modelview_projection_matrix` / `normal_matrix`、chapter 10 §2.7 / chapter 05 §7.3.4 ST-6 前段 (b)) | §2.3 注 R-MAT1-4 反映 paragraph 反映済 |
+| **(U4)-IMPL** | AYA 判断 2026-06-04 = **case (B) mValue block 外側挿入採択** (PB-4.8 + PB-5.14 統合 sub-step 着手時、case (A) PB-4.7 整合 vs case (B) (U4) literal 整合 + PB-5 batch 整合の 2 案比較で B を採択) | 採択根拠 = (1) §8 (U4) row literal「stage 1 を bypass」が mValue cache check skip を直接指す + (2) §3.1 line 133 区分 (`uniform4iv` = 適用外側 / `uniform1iv` = 適用範囲側) と挿入位置の対応一貫 (= PB-4.7 内側挿入と PB-4.8 外側挿入は (U4) 区分通り) + (3) PB-5.1〜.13 batch 13 method (method 先頭挿入 = mValue 外側相当) と pattern 統一。実装 = `indra/llrender/llglslshader.cpp` PB-4.8 (line 2510 直前 `if (mUniform[index] >= 0)` block 内) + PB-5.14 (method 先頭 `LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER` 直後) で `if (mUseUBO) { ... forwardToUboUpload(loc, v, count * 4 * sizeof(GLint)); return; }` 挿入 |
 
 ---
 
