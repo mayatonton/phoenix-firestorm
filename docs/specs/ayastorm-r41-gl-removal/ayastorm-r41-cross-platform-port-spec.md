@@ -102,7 +102,7 @@ AYA literal「WindowsとMacOSですが、同時に開発する計画にありま
 | PC-N-2 | (= 着手済、bindV3aRigged set=2 復活 = descriptor set 数 5 → macOS 派生 fix 候補 §3 #4) | descriptor set 統合 fix 候補 | - | ✅ |
 | PC-N-3 | (= 着手済、placeholder skin sentinel 経路 = layering 制約遵守 address-only pattern、cross-platform 影響なし) | - | - | ✅ |
 | PC-N-4 | (= 着手済、ring buffer grow 自動 re-wire = vkUpdateDescriptorSets endFrame() 末尾 hook、cross-platform 影響なし) | - | - | ✅ |
-| **PC-N-5** | (= **次着手 = Phase 1.D 着手起点**、実 GLTF Vulkan draw 通電 1 stub) | (= 着手時追記) | (= 着手時追記) | ⏳ |
+| **PC-N-5** | (= **Phase 1.D 着手起点 = 実 GLTF Vulkan draw 通電 1 stub**、(N5-1) A 採用 = Skin_GLTFJoints UBO bind 経由 rigged draw、第 2 sentinel-like skin `sGltfStubSkin` 並走通電 + `recordGltfAssetDraw` 新設 + `AYAGltfStubDrawEnabled` cvar 切替) | descriptor set 数は PC-N-3 と同 5 set 維持 (= macOS MoltenVK 派生 fix は §3 #4 / PC-N-2 と一括対応) + sentinel pattern は layering 制約遵守ゆえ MoltenVK 側追加考慮なし + `AYAGltfStubDrawEnabled` cvar は cross-platform | full Vulkan ゆえ派生 fix 候補なし想定 | ⏳ design-lock complete 本 commit / 実装 ⏳ |
 | ... | ... | ... | ... | ⏳ |
 
 ---
@@ -123,5 +123,6 @@ AYA literal「WindowsとMacOSですが、同時に開発する計画にありま
 ## §A. 更新履歴
 
 - **2026-06-05**: 本 stub 起案 (= PC-8 marker doc §4 で起案 record、AYA literal「(PC-8-doc-1) B + (PC-8-doc-2) A で起案お願いします」record)
+- **2026-06-05**: §6 PC-N-5 行追記 (= Phase 1.D 着手起点 design-lock complete、AYA literal「OK」record + (N5-1) A 採用 = Skin_GLTFJoints UBO bind 経由 rigged draw、第 2 sentinel-like skin `sGltfStubSkin` 並走通電 + macOS MoltenVK 派生 fix 候補は §3 #4 / PC-N-2 と一括対応 + Windows 派生 fix 候補なし想定)
 
 ---
