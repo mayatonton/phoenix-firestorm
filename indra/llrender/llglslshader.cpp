@@ -2470,6 +2470,20 @@ void LLGLSLShader::uniform1iv(U32 index, U32 count, const GLint* v)
             LLVector4 vec((F32)v[0], 0.f, 0.f, 0.f);
             if (iter == mValue.end() || shouldChange(iter->second, vec) || count != 1)
             {
+                // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.7:
+                // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+                // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+                // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+                // ptr+count pattern 新系統初出 (= count*sizeof(GLint) 動的 size 計算、tmp array 不要)。
+                if (mUseUBO)
+                {
+                    llassert(index < mUniformUBOLoc.size());
+                    const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                    if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    forwardToUboUpload(loc, v, count * sizeof(GLint));
+                    return;
+                }
                 glUniform1iv(mUniform[index], count, v);
                 mValue[mUniform[index]] = vec;
             }
