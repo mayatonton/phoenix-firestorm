@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 from codegen_error import CodegenError, LOG_PREFIX, format_error
-from std140 import BlockLayout, MemberLayout
+from std140 import BlockLayout, MemberLayout, STRUCT_ALIGN_FLOOR, round_up
 
 
 SKIP_ENV_VAR = "AYA_CODEGEN_SKIP_SPIRV_CHECK"
@@ -116,7 +116,11 @@ def extract_reflection(
                 glsl_file=str(glsl_file),
                 reason=(r.stderr.strip() or f"exit code {r.returncode}"),
             ))
-        cross_cmd = [str(spirv_cross), "--reflect", "--output-format", "json", str(spv_path)]
+        # Ubuntu noble/universe spirv-cross 2021.01.15 requires the input file
+        # to precede --reflect (otherwise: exit 1, "Didn't specify input file."),
+        # and does not accept "--output-format json" — --reflect emits JSON by
+        # default. Argument order is also accepted by upstream Khronos builds.
+        cross_cmd = [str(spirv_cross), str(spv_path), "--reflect"]
         r = subprocess.run(cross_cmd, capture_output=True, text=True, check=False)
         if r.returncode != 0:
             raise CodegenError(format_error(
@@ -220,16 +224,23 @@ def verify_layout_against_spirv(
     spv = spirv_refl[block_name]
 
     expected_size = spv.get("_block_size")
-    if expected_size is not None and expected_size != layout.std140_size:
-        raise CodegenError(format_error(
-            f"block size mismatch in '{block_name}'",
-            glsl_file=glsl_file, block=block_name,
-            extra_lines=[
-                f"Codegen calculation:       {layout.std140_size}",
-                f"glslang SPIR-V reflection: {expected_size}",
-            ],
-            reason="trailing padding or member size calculation diverged",
-        ))
+    if expected_size is not None:
+        # SPIR-V reflection (glslang + spirv-cross) reports the raw member-end
+        # offset, while std140 §4.3.1.5 rounds the block size up to the block's
+        # base alignment (≥ 16 for UBOs). Accept either the raw value or the
+        # rounded-up value; anything else is a real layout drift.
+        expected_padded = round_up(expected_size, STRUCT_ALIGN_FLOOR)
+        if layout.std140_size not in (expected_size, expected_padded):
+            raise CodegenError(format_error(
+                f"block size mismatch in '{block_name}'",
+                glsl_file=glsl_file, block=block_name,
+                extra_lines=[
+                    f"Codegen calculation:       {layout.std140_size}",
+                    f"glslang SPIR-V reflection: {expected_size}",
+                    f"std140 trailing-pad ceil:  {expected_padded}",
+                ],
+                reason="trailing padding or member size calculation diverged",
+            ))
 
     for member in layout.members:
         if member.name not in spv:
@@ -272,16 +283,23 @@ def verify_layout_against_spirv(
 
 
 def version(spirv_cross_bin: Optional[Path] = None) -> str:
-    """spirv-cross version string for cache-key material (§11.5.1)."""
+    """spirv-cross version string for cache-key material (§11.5.1).
+
+    Ubuntu noble/universe `spirv-cross 2021.01.15+1.3.239.0-1build1` does not
+    accept `--version` (exits 1, dumps help to stderr); fall back to `--revision`
+    which is supported on both Ubuntu/Debian builds and upstream Khronos.
+    """
     binary = spirv_cross_bin if spirv_cross_bin is not None else _which(DEFAULT_SPIRV_CROSS, "spirv-cross", None)
-    r = subprocess.run([str(binary), "--version"], capture_output=True, text=True, check=False)
-    if r.returncode != 0:
-        raise CodegenError(format_error(
-            "spirv-cross --version failed",
-            reason=r.stderr.strip() or f"exit code {r.returncode}",
-        ))
-    for line in r.stdout.splitlines():
-        line = line.strip()
-        if line:
-            return line
-    return ""
+    for flag in ("--version", "--revision"):
+        r = subprocess.run([str(binary), flag], capture_output=True, text=True, check=False)
+        if r.returncode != 0:
+            continue
+        for stream in (r.stdout, r.stderr):
+            for line in stream.splitlines():
+                line = line.strip()
+                if line:
+                    return line
+    raise CodegenError(format_error(
+        "spirv-cross version probe failed (tried --version and --revision)",
+        reason=f"binary={binary}",
+    ))
