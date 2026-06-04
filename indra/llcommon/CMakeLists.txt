@@ -21,6 +21,7 @@ set(llcommon_SOURCE_FILES
     llapp.cpp
     llapr.cpp
     llassettype.cpp
+    llassetubopool.cpp
     llatomic.cpp
     llbase32.cpp
     llbase64.cpp
@@ -131,6 +132,7 @@ set(llcommon_HEADER_FILES
     llapp.h
     llapr.h
     llassettype.h
+    llassetubopool.h
     llatomic.h
     llbase32.h
     llbase64.h
@@ -335,6 +337,7 @@ if (LL_TESTS)
   set(test_libs llcommon)
   LL_ADD_INTEGRATION_TEST(apply "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(bitpack "" "${test_libs}")
+  LL_ADD_INTEGRATION_TEST(llassetubopool "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(classic_callback "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(commonmisc "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(lazyeventapi "" "${test_libs}")
