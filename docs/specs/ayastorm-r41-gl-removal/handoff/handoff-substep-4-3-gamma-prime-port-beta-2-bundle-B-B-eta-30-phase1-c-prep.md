@@ -87,7 +87,7 @@
 
 | sub-task | scope | 主体 | Exit |
 |---|---|---|---|
-| **PC-0** | (Q1) AYA 判断確定 (= 第 1 UBO 識別子 + Template A/B/C 選択 + cadence + descriptor set 帯) | AYA | 確定値 4 件を本 doc §4 に追記 + Phase 1.C 着手前 unblock |
+| **PC-0** ✅ | (Q1) AYA 判断確定 (= 第 1 UBO 識別子 + Template A/B/C 選択 + cadence + descriptor set 帯) | AYA | ✅ **確定済 2026-06-04** = `UB_REFLECTION_PROBES` + per-frame + Template A + 06c §3 接合表機械決定 (§4.1 記録) |
 | **PC-1** | test UBO header codegen (= scripts/ubo_codegen/ で第 1 UBO の shell blueprint emit) | Claude | `indra/llrender/codegen_ubo/<UBO 識別子>.h` 生成 + std140 size 256B 倍数 padding 確認 |
 | **PC-2** | test UBO shell C++ 接続 (= Phase 1.B 完了済 setter から test UBO 識別子 + binding 取出経路成立、空 dirty flag set) | Claude | test UBO 1 個の `if (mUseUBO)` redirect 内で `forwardToUboUpload` 空 dummy buffer 書込 PASS |
 | **PC-3** | (W2) `sAssetUboPool` 起動時 prealloc N=64 + grow chunk 64 実装 | Claude | per-asset cadence pool 起動時 N=64 alloc + dynamic grow chunk 64 動作 unittest PASS |
@@ -118,14 +118,16 @@
 
 ## §4 (Q1) AYA 判断要件 (= PC-0 scope)
 
-### §4.1 (Q1) 確定値 4 件
+### §4.1 (Q1) 確定値 4 件 (= **PC-0 AYA 確定済 2026-06-04**)
 
-| # | 項目 | 流入先 doc | 流入時点 |
-|---|---|---|---|
-| (Q1-a) | **第 1 UBO 識別子** (例: `UB_REFLECTION_PROBES` / `UB_GLTF_MATERIALS` / `UB_GLTF_NODES` / `UB_GLTF_JOINTS` 等) | `04-codegen-ubo.md` §5.3 第 1 entry | **Phase 1.A 入口** (本来は 1.A 前確定、現状 placeholder 維持) |
-| (Q1-b) | **第 1 UBO の cadence** (= per-frame / per-pass / per-asset / per-draw / per-skin の 5 種から 1 種) | `06b-cadence-update-site-and-dirty.md` §4 該当 cadence | **Phase 1.C 入口** (本 prep PC-0 確定対象) |
-| (Q1-c) | **第 1 UBO の descriptor set 帯** (= 06c §3 接合表 row 選定) | `06c-descriptor-set-bind-wiring.md` §3 接合表 | **Phase 1.C 入口** (本 prep PC-0 確定対象) |
-| (Q1-d) | **Template A/B/C 選択** (= Phase 2..K migration order) | `09-phase-roadmap.md` §5.2 | **Phase 1.C 確定不要、Phase 2 入口で確定可** (本 prep では参考情報のみ) |
+| # | 項目 | **確定値** | 流入先 doc | 流入時点 |
+|---|---|---|---|---|
+| (Q1-a) | **第 1 UBO 識別子** | ✅ **`UB_REFLECTION_PROBES`** (= Claude 推奨 Template A 採用、AYA literal「Claude 推奨で OK」2026-06-04) | `04-codegen-ubo.md` §5.3 第 1 entry | **Phase 1.A 入口** (本来は 1.A 前確定、PC-0 で確定) |
+| (Q1-b) | **第 1 UBO の cadence** | ✅ **per-frame** (= `UB_REFLECTION_PROBES` cadence、Template A 整合) | `06b-cadence-update-site-and-dirty.md` §4 per-frame セクション | **Phase 1.C 入口** (本 prep PC-0 確定済) |
+| (Q1-c) | **第 1 UBO の descriptor set 帯** | ✅ **06c §3 接合表で機械決定** (= per-frame cadence row、PC-1 codegen 時に物理 set/binding 確定) | `06c-descriptor-set-bind-wiring.md` §3 接合表 | **Phase 1.C 入口** (本 prep PC-0 確定済) |
+| (Q1-d) | **Template A/B/C 選択** | ✅ **Template A** (= singleton 系最小 UBO 起点、canary 検証容易、AYA literal「Claude 推奨で OK」2026-06-04) | `09-phase-roadmap.md` §5.2 | **Phase 1.C 確定済** (= Phase 2..K migration order 確定、PC-0 で確定) |
+
+**AYA 確定 literal** (= 2026-06-04 session): 「Claude 推奨で OK」(= §4.2 Claude 推奨 Template A + `UB_REFLECTION_PROBES` 採用、根拠 3 件全受領)。
 
 ### §4.2 (Q1-d) Template 3 案 (= 09 §5.2 literal)
 
@@ -190,8 +192,9 @@
 | Phase 1.B (host-side) | ✅ complete (= `35c4be1046`) |
 | (Z) AYAstorm r20 SSS verify | ✅ complete (= `7401feeb1f` + `4dde489ec4`、PR #130) |
 | (W) 上流 uniform4iv bug fix | ✅ complete (= `5aadf174f2` + `2a06e12f44`、PR #131) |
-| **(Y) Phase 1.C prep** | ⏳ **本 doc** |
-| Phase 1.C 実装 (PC-0..PC-N) | ⏳ 本 prep 後 AYA 判断 PC-0 確定で着手 |
+| **(Y) Phase 1.C prep** | ✅ **本 doc + PC-0 (Q1) AYA 確定済 2026-06-04** |
+| Phase 1.C 実装 PC-0 | ✅ 確定 (= `UB_REFLECTION_PROBES` + per-frame + Template A、AYA literal 受領) |
+| Phase 1.C 実装 PC-1..PC-N | ⏳ **次 session 引継** (= AYA 指示 literal「PC-1 次 session 引継」2026-06-04) |
 | (W) (b) upstream LL PR | ⏳ ayastorm-release work 時判断 (= `project_uniform4iv_upstream_pr_deferred`) |
 
 ### §6.2 Phase 1.C 着手後 strict 線形
@@ -202,10 +205,12 @@
   ✅ (Z) SSS verify
   ✅ (W) uniform4iv (a) fix
   ✅ (Y) Phase 1.C prep (= 本 doc)
-  → ⏳ PC-0 (Q1) AYA 判断 (= 第 1 UBO 識別子 + cadence + set 帯)
-    → ⏳ PC-1..PC-8 strict 線形
+  ✅ PC-0 (Q1) AYA 確定 (= `UB_REFLECTION_PROBES` + per-frame + Template A、2026-06-04)
+    → ⏳ **次 session 引継** PC-1 codegen (`UB_REFLECTION_PROBES` header emit)
+    → ⏳ PC-2 C++ shell 接続 → PC-3 (W2) → PC-4 (R1) → PC-5 (PSC)
+    → ⏳ PC-6 5 cadence update site → PC-7 vkCmdBindDescriptorSets 通電 → PC-8 build verify
     → ⏳ PC-N Phase 1.C complete marker
-  → ⏳ Phase 2 (= 第 1 UBO 本実装 migration、09 §5)
+  → ⏳ Phase 2 (= `UB_REFLECTION_PROBES` 本実装 migration、09 §5)
 ```
 
 ---
@@ -250,4 +255,4 @@
 
 ## §9 次 session 着手 1 line
 
-**「前 session で候補 (Y) Phase 1.C prep handoff doc 起案 + commit (= 本 doc + 1 commit)、Phase 1.A 章クローズ + Phase 1.B host-side complete + (Z) SSS verify + (W) uniform4iv (a) fix の 4 milestone 完結後の Phase 1.C 着手 prep。本 session = PC-0 (Q1) AYA 判断 確定 (= 第 1 UBO 識別子 + cadence + descriptor set 帯 + Template A/B/C 選択) 必要、Claude 推奨 = Template A 起点 `UB_REFLECTION_PROBES` (per-frame、singleton)。PC-0 確定後 strict 線形 PC-1 codegen → PC-2 C++ shell 接続 → PC-3 (W2) → PC-4 (R1) → PC-5 (PSC) → PC-6 5 cadence update site → PC-7 vkCmdBindDescriptorSets 通電 → PC-8 build verify → PC-N complete marker 着手。必読 3 件 = (1) 本 handoff doc 全文 + (2) `design/09-phase-roadmap.md` §4.2/§4.3/§5.2/§10.1 + (3) `07-descriptor-renderpass.md` §12。Phase 1.C Exit = 5 cadence 全経路で `vkCmdBindDescriptorSets` 空 dummy buffer 成功 + render 出力は OpenGL path のまま。」**
+**「前 session で候補 (Y) Phase 1.C prep handoff doc 起案 + PC-0 (Q1) AYA 確定済 (= `UB_REFLECTION_PROBES` + per-frame + Template A + descriptor set 帯 06c §3 接合表機械決定、AYA literal「Claude 推奨で OK」2026-06-04)。本 session = **PC-1 着手** = `scripts/ubo_codegen/` で `UB_REFLECTION_PROBES` shell blueprint emit (= `indra/llrender/codegen_ubo/UB_REFLECTION_PROBES.h` 生成 + std140 size 256B 倍数 padding 確認)。PC-1 後 strict 線形 PC-2 C++ shell 接続 → PC-3 (W2 `sAssetUboPool` prealloc N=64) → PC-4 (R1 ring buffer 4 MB/16 MB + cvar) → PC-5 (PSC PSO cache 64 MB) → PC-6 5 cadence update site → PC-7 `vkCmdBindDescriptorSets` 通電 → PC-8 build verify → PC-N complete marker 着手。必読 3 件 = (1) 本 handoff doc 全文 (= §4.1 PC-0 確定値 4 件 + §3.1 sub-task table) + (2) `design/09-phase-roadmap.md` §4.2/§4.3/§5.2/§10.1 + (3) `07-descriptor-renderpass.md` §12。Phase 1.C Exit = 5 cadence 全経路で `vkCmdBindDescriptorSets` 空 dummy buffer 成功 + render 出力は OpenGL path のまま。」**
