@@ -140,14 +140,17 @@ enum CadenceTag : uint32_t {
     CADENCE_PER_DRAW     = 2,
     CADENCE_PER_ASSET    = 3,
     CADENCE_PER_SKIN     = 4,
-    CADENCE_SAMPLER      = 5,  // UBO 化対象外、bare uniform 維持 / Vulkan は descriptor set 経由
-    CADENCE_UNKNOWN      = 6,  // (H1b) hook 取得まで暫定値、default routing = per-program (conservative)
+    CADENCE_SINGLETON    = 5,  // Global_* prefix UBO (= 6 cadence 体系の 6 番目、codegen main.py:63 CADENCE_SINGLETON=5 と一致、PC-1 contract Global_ReflectionProbes baked-in)
+    CADENCE_SAMPLER      = 6,  // UBO 化対象外、bare uniform 維持 / Vulkan は descriptor set 経由 (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON との衝突解消)
+    CADENCE_UNKNOWN      = 7,  // (H1b) hook 取得まで暫定値、default routing = per-program (conservative) (2026-06-05 PC-6ζ で 6→7 移動)
     CADENCE_INVALID      = 0xFFFFFFFF, // mReservedUniforms 登録だが UBO 集約表で未集約 (= chapter 05 §7 entry 無し)
 };
 } // namespace ubo
 ```
 
 `cadence_tag` は **build-time perfect hash table (`g_uniform_table[]`) entry に含まれる**。chapter 04 Codegen-UBO pipeline 内で uniform 名 → cadence 判定 → tag 付与 (= chapter 05 §7 集約表の cadence 列を Codegen 入力に流し込む)。
+
+**6 cadence 体系** (= literal-cross-ref-audit §4.2 + PC-6ε-1 で確定): 5 update cadence (= `CADENCE_PER_FRAME` / `CADENCE_PER_PROGRAM` / `CADENCE_PER_DRAW` / `CADENCE_PER_ASSET` / `CADENCE_PER_SKIN`) + 1 SINGLETON cadence (= `CADENCE_SINGLETON`、`Global_` prefix UBO = `LLVKLoader::flushSingletonUbos()` 経由 flush)。`CADENCE_SAMPLER` / `CADENCE_UNKNOWN` / `CADENCE_INVALID` は cadence 体系外の sentinel (= UBO upload skip 用)。
 
 ### §3.4 解放規律
 
@@ -248,7 +251,7 @@ void LLGLSLShader::mapUniforms() {
 shader link 完了後、debug build で以下を `llassert` 検証:
 - `mUniformUBOLoc.size() == mUniform.size()` (= 並列配置の維持)
 - 各 `mUniformUBOLoc[i].cadence_tag != CADENCE_INVALID` で対応する `mUniform[i] != -1` (= shader 内 active uniform は両 cache に存在)
-- cadence_tag == CADENCE_SAMPLER の uniform は OpenGL path 強制 (= §5.6)
+- cadence_tag == CADENCE_SAMPLER (= 6) の uniform は OpenGL path 強制 (= §5.6)
 
 検証失敗は build error ではなく runtime assert (= Vulkan path 動作確認の安全網)、release build で除去。
 
@@ -257,7 +260,7 @@ shader link 完了後、debug build で以下を `llassert` 検証:
 §4.4 整合 check 3 項目の `llassert` 実装方針:
 - (1) `mUniformUBOLoc.size() == mUniform.size()` = **assert として実装**
 - (2) cadence_tag != CADENCE_INVALID で対応する `mUniform[i] != -1` = **loop で per-element assert として実装**
-- (3) cadence_tag == CADENCE_SAMPLER の uniform は OpenGL path 強制 (= §5.6) = **コメント注釈のみ、本 §4.4 assert 対象外**
+- (3) cadence_tag == CADENCE_SAMPLER (= 6) の uniform は OpenGL path 強制 (= §5.6) = **コメント注釈のみ、本 §4.4 assert 対象外**
 
 (3) を assert 対象外とした根拠 (= AYA 判断採択):
 - spec literal の (1) (2) は等式・含意形式で assert に直接展開可、(3) は命題 + §5.6 への参照記述 (= 文体が異なる)
@@ -412,9 +415,11 @@ void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat x)
 sampler 系 uniform (= `diffuseMap` / `normalMap` / `shadowMap0-5` / `cloud_noise_texture` 等) は GLSL spec 上 UBO 化対象外。
 
 本 chapter 06a での扱い:
-- shader link 時 pre-cache で `cadence_tag = CADENCE_SAMPLER` を設定 (= Codegen-UBO pipeline 内で uniform 名 → sampler 判定、chapter 04 §7 で確定済の bare uniform 取込外集合に符号付与)
+- shader link 時 pre-cache で `cadence_tag = CADENCE_SAMPLER` (= 6、2026-06-05 PC-6ζ で 5→6 移動) を設定 (= Codegen-UBO pipeline 内で uniform 名 → sampler 判定、chapter 04 §7 で確定済の bare uniform 取込外集合に符号付与)
 - setter 内分岐で `if (loc.cadence_tag == CADENCE_SAMPLER) return;` で UBO upload skip
 - Vulkan path での **descriptor set 経由 binding** は chapter 07 (vulkan-api-state) で配線 (= 本 chapter scope 外)
+
+**現状実装注記** (2026-06-05 PC-6ζ trace 由来): 現 codegen pipeline は sampler uniform に対し `CADENCE_SAMPLER` tag を発行していない (= codegen は UBO block にしか `cadence_tag` を付けない、bare sampler は perfect hash table 未収録)。`mapUniforms()` Vulkan path で `ubo::lookup_runtime(sampler_name)` は `nullptr` 返却 → `cadence_tag = CADENCE_INVALID` set される (= line 1928)、setter 31 site の `CADENCE_INVALID` skip path で sampler は実 skip される。したがって `CADENCE_SAMPLER` skip path 31 件は **現状 defensive (= dead code)** で、将来 codegen が sampler に対し explicit tag を emit する拡張余地として保存される (= 6a §5.6 設計意図保存、Y1 選択根拠)。`CADENCE_SAMPLER` 値を 5 → 6 に移動した理由は codegen `CADENCE_SINGLETON=5` (= `Global_*` UBO) との衝突回避 = SINGLETON UBO setter write が誤 skip される future bug の予防 (= PC-1 contract `Global_ReflectionProbes` cadence_tag=5 baked-in 維持)。
 
 = **本 chapter は sampler 49 個を「UBO upload 経路に乗せない」 path 分岐の挙動までを確定**、実 texture binding は chapter 07 譲り。
 

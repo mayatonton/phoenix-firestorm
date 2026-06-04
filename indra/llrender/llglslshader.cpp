@@ -1961,9 +1961,11 @@ bool LLGLSLShader::mapUniforms()
     //   (1) `mUniformUBOLoc.size() == mUniform.size()` (= 並列配置の維持)
     //   (2) cadence_tag != CADENCE_INVALID で対応する mUniform[i] != -1
     //       (= shader 内 active uniform は両 cache に存在)
-    //   (3) cadence_tag == CADENCE_SAMPLER (= 5) の uniform は OpenGL path 強制 = §5.6
-    //       setter 側で別途 handle (AYA 判断 2026-06-04 = (a) コメント注釈のみ、本 §4.4
-    //       整合 check 対象外、現 Phase 1.B で sampler 集約未確定ゆえ assert なし)。
+    //   (3) cadence_tag == CADENCE_SAMPLER (= 6、2026-06-05 PC-6ζ で 5→6 移動) の
+    //       uniform は OpenGL path 強制 = §5.6 setter 側で別途 handle (AYA 判断
+    //       2026-06-04 = (a) コメント注釈のみ、本 §4.4 整合 check 対象外、現
+    //       Phase 1.B で sampler 集約未確定ゆえ assert なし)。SAMPLER 値変更根拠は
+    //       06a §3.3 enum 表 + §5.6 現状実装注記 (= codegen SINGLETON=5 衝突解消)。
     if (mUseUBO)
     {
         // (1) 並列配置の維持
@@ -2029,9 +2031,10 @@ void LLGLSLShader::forwardToUboUpload(const ubo::UniformLocation& loc, const voi
 //   - design 06c §2.2 で `Global_ReflectionProbes` = singleton 配置代表例。
 //   - design 06a §3.3 `CadenceTag` enum 値域に singleton 含む (= cadence_tag=5)。
 //
-// 06a §5.6 setter SAMPLER skip path (= `cadence_tag == 5` 強制 skip) と codegen
-// `CADENCE_SINGLETON = 5` の意味衝突は PC-6ζ で正攻法対応予定。本 PC-6ε-1 では
-// `flushSingletonUbos()` が dummy 書込のみ (= setter 経路非経由) のため衝突無し。
+// 06a §5.6 setter SAMPLER skip path と codegen `CADENCE_SINGLETON = 5` の意味衝突は
+// PC-6ζ (2026-06-05) で正攻法対応完了 = SAMPLER 値 5 → 6 移動、SINGLETON は 5 維持で
+// PC-1 contract `cadence_tag == 5u` assert (本 file:2061) 不変。詳細は 06a §3.3 enum
+// 表 + §5.6 現状実装注記、setter 31 site (本 file:2365-3538) 全件 `== 6` に追従済。
 //
 // MUSEUBO-A 整合: `flushDummyUboWrite` helper entry guard で sDrawUboRingBufferMgr
 // 未初期化 (= GL 単独動作 / Vulkan 未起動) 時は即時 return、既存 OpenGL 描画 path
@@ -2362,7 +2365,7 @@ void LLGLSLShader::uniform1i(U32 index, GLint x)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, &x, sizeof(GLint));
                     return;
                 }
@@ -2401,7 +2404,7 @@ void LLGLSLShader::uniform1f(U32 index, GLfloat x)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, &x, sizeof(GLfloat));
                     return;
                 }
@@ -2428,7 +2431,7 @@ void LLGLSLShader::fastUniform1f(U32 index, GLfloat x)
         llassert(index < mUniformUBOLoc.size());
         const ubo::UniformLocation& loc = mUniformUBOLoc[index];
         if (loc.cadence_tag == 0xFFFFFFFFu) return;
-        if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+        if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
         forwardToUboUpload(loc, &x, sizeof(GLfloat));
         return;
     }
@@ -2465,7 +2468,7 @@ void LLGLSLShader::uniform2f(U32 index, GLfloat x, GLfloat y)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     GLfloat tmp[2] = {x, y};
                     forwardToUboUpload(loc, tmp, sizeof(tmp));
                     return;
@@ -2507,7 +2510,7 @@ void LLGLSLShader::uniform3f(U32 index, GLfloat x, GLfloat y, GLfloat z)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     GLfloat tmp[3] = {x, y, z};
                     forwardToUboUpload(loc, tmp, sizeof(tmp));
                     return;
@@ -2549,7 +2552,7 @@ void LLGLSLShader::uniform4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     GLfloat tmp[4] = {x, y, z, w};
                     forwardToUboUpload(loc, tmp, sizeof(tmp));
                     return;
@@ -2591,7 +2594,7 @@ void LLGLSLShader::uniform1iv(U32 index, U32 count, const GLint* v)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, v, count * sizeof(GLint));
                     return;
                 }
@@ -2631,7 +2634,7 @@ void LLGLSLShader::uniform4iv(U32 index, U32 count, const GLint* v)
                 llassert(index < mUniformUBOLoc.size());
                 const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                 if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                 forwardToUboUpload(loc, v, count * 4 * sizeof(GLint));
                 return;
             }
@@ -2677,7 +2680,7 @@ void LLGLSLShader::uniform1fv(U32 index, U32 count, const GLfloat* v)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, v, count * sizeof(GLfloat));
                     return;
                 }
@@ -2718,7 +2721,7 @@ void LLGLSLShader::uniform2fv(U32 index, U32 count, const GLfloat* v)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, v, count * 2 * sizeof(GLfloat));
                     return;
                 }
@@ -2759,7 +2762,7 @@ void LLGLSLShader::uniform3fv(U32 index, U32 count, const GLfloat* v)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, v, count * 3 * sizeof(GLfloat));
                     return;
                 }
@@ -2801,7 +2804,7 @@ void LLGLSLShader::uniform4fv(U32 index, U32 count, const GLfloat* v)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, v, count * 4 * sizeof(GLfloat));
                     return;
                 }
@@ -2843,7 +2846,7 @@ void LLGLSLShader::uniform4uiv(U32 index, U32 count, const GLuint* v)
                     llassert(index < mUniformUBOLoc.size());
                     const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                     if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                     forwardToUboUpload(loc, v, count * 4 * sizeof(GLuint));
                     return;
                 }
@@ -2880,7 +2883,7 @@ void LLGLSLShader::uniformMatrix2fv(U32 index, U32 count, GLboolean transpose, c
                 llassert(index < mUniformUBOLoc.size());
                 const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                 if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                 forwardToUboUpload(loc, v, count * 4 * sizeof(GLfloat));
                 return;
             }
@@ -2915,7 +2918,7 @@ void LLGLSLShader::uniformMatrix3fv(U32 index, U32 count, GLboolean transpose, c
                 llassert(index < mUniformUBOLoc.size());
                 const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                 if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                 forwardToUboUpload(loc, v, count * 9 * sizeof(GLfloat));
                 return;
             }
@@ -2950,7 +2953,7 @@ void LLGLSLShader::uniformMatrix3x4fv(U32 index, U32 count, GLboolean transpose,
                 llassert(index < mUniformUBOLoc.size());
                 const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                 if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                 forwardToUboUpload(loc, v, count * 12 * sizeof(GLfloat));
                 return;
             }
@@ -2985,7 +2988,7 @@ void LLGLSLShader::uniformMatrix4fv(U32 index, U32 count, GLboolean transpose, c
                 llassert(index < mUniformUBOLoc.size());
                 const ubo::UniformLocation& loc = mUniformUBOLoc[index];
                 if (loc.cadence_tag == 0xFFFFFFFFu) return;
-                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
                 forwardToUboUpload(loc, v, count * 16 * sizeof(GLfloat));
                 return;
             }
@@ -3067,7 +3070,7 @@ void LLGLSLShader::uniform1i(const LLStaticHashedString& uniform, GLint v)
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, &v, sizeof(GLint));
         }
         return;
@@ -3102,7 +3105,7 @@ void LLGLSLShader::uniform1iv(const LLStaticHashedString& uniform, U32 count, co
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * sizeof(GLint));
         }
         return;
@@ -3141,7 +3144,7 @@ void LLGLSLShader::uniform4iv(const LLStaticHashedString& uniform, U32 count, co
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * 4 * sizeof(GLint));
         }
         return;
@@ -3177,7 +3180,7 @@ void LLGLSLShader::uniform2i(const LLStaticHashedString& uniform, GLint i, GLint
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             GLint tmp[2] = {i, j};
             forwardToUboUpload(loc, tmp, sizeof(tmp));
         }
@@ -3214,7 +3217,7 @@ void LLGLSLShader::uniform1f(const LLStaticHashedString& uniform, GLfloat v)
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, &v, sizeof(GLfloat));
         }
         return;
@@ -3249,7 +3252,7 @@ void LLGLSLShader::uniform2f(const LLStaticHashedString& uniform, GLfloat x, GLf
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             GLfloat tmp[2] = {x, y};
             forwardToUboUpload(loc, tmp, sizeof(tmp));
         }
@@ -3286,7 +3289,7 @@ void LLGLSLShader::uniform3f(const LLStaticHashedString& uniform, GLfloat x, GLf
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             GLfloat tmp[3] = {x, y, z};
             forwardToUboUpload(loc, tmp, sizeof(tmp));
         }
@@ -3322,7 +3325,7 @@ void LLGLSLShader::uniform4f(const LLStaticHashedString& uniform, GLfloat x, GLf
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             GLfloat tmp[4] = {x, y, z, w};
             forwardToUboUpload(loc, tmp, sizeof(tmp));
         }
@@ -3358,7 +3361,7 @@ void LLGLSLShader::uniform1fv(const LLStaticHashedString& uniform, U32 count, co
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * sizeof(GLfloat));
         }
         return;
@@ -3393,7 +3396,7 @@ void LLGLSLShader::uniform2fv(const LLStaticHashedString& uniform, U32 count, co
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * 2 * sizeof(GLfloat));
         }
         return;
@@ -3428,7 +3431,7 @@ void LLGLSLShader::uniform3fv(const LLStaticHashedString& uniform, U32 count, co
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * 3 * sizeof(GLfloat));
         }
         return;
@@ -3463,7 +3466,7 @@ void LLGLSLShader::uniform4fv(const LLStaticHashedString& uniform, U32 count, co
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * 4 * sizeof(GLfloat));
         }
         return;
@@ -3499,7 +3502,7 @@ void LLGLSLShader::uniform4uiv(const LLStaticHashedString& uniform, U32 count, c
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * 4 * sizeof(GLuint));
         }
         return;
@@ -3535,7 +3538,7 @@ void LLGLSLShader::uniformMatrix4fv(const LLStaticHashedString& uniform, U32 cou
         {
             const ubo::UniformLocation& loc = it->second;
             if (loc.cadence_tag == 0xFFFFFFFFu) return;
-            if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+            if (loc.cadence_tag == 6 /* CADENCE_SAMPLER (2026-06-05 PC-6ζ で 5→6 移動、codegen SINGLETON=5 との衝突解消) */) return;
             forwardToUboUpload(loc, v, count * 16 * sizeof(GLfloat));
         }
         return;
