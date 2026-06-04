@@ -3201,6 +3201,25 @@ void flushSkinUbos(LL::GLTF::Skin* skin)
     flushDummyUboWrite("flushSkinUbos");
 }
 
+// ------------------------------------------------------------------
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-1:
+// singleton cadence (= 第 6 cadence) flush 関数実装。flushDummyUboWrite
+// helper 経由で 5 cadence と同形 (= MUSEUBO-A guard / 256 B allocate /
+// side-table lookup / memset 0 / first-fire LL_INFOS marker) を継承。
+//
+// per-frame cadence のみ beginFrame() を呼ぶ (= frame index advance + chunk
+// reset、design 07 §8.4)。singleton は per-frame 跨ぎ持続なので beginFrame()
+// 呼出は不要 (= flushFrameUbos が一手に担当)。
+//
+// 設計根拠 = design 02 §3 (`Global_` prefix = singleton cadence 明示分類) +
+//          design 06c §2.2 (Global_ReflectionProbes singleton 配置例) +
+//          design 06a §3.3 (CadenceTag enum singleton 含む)。
+// ------------------------------------------------------------------
+void flushSingletonUbos()
+{
+    flushDummyUboWrite("flushSingletonUbos");
+}
+
 // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
 // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。
 // PSO bind (sSkySmokePipeline、fullscreen triangle + 定数色 frag = sky blue 0.4/0.6/0.9/1.0) +

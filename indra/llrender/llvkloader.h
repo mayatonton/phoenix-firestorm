@@ -328,6 +328,31 @@ namespace LLVKLoader
     void flushDrawUbos();
     void flushAssetUbos(LL::GLTF::Asset* asset);
     void flushSkinUbos(LL::GLTF::Skin* skin);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-1:
+    // singleton cadence (= 第 6 cadence) flush 関数。5 cadence (per-frame /
+    // per-program / per-draw / per-asset / per-skin) + singleton = 6 cadence
+    // 体系成立。
+    //
+    // 設計根拠 (= design 02 §3 + design 06c §2.2):
+    //   - design 02 §3 で `Global_` prefix = singleton cadence と明示分類
+    //     (= 5 cadence prefix `Frame_` / `Program_` / `Draw_` / `Asset_` / `Skin_`
+    //     + singleton prefix `Global_`)。
+    //   - design 06c §2.2 で `Global_ReflectionProbes` (= PC-1 で codegen 確定済
+    //     test UBO) = singleton 配置の代表例。
+    //   - design 06a §3.3 `CadenceTag` enum 値域に singleton 含む
+    //     (= cadence_tag=5 = SINGLETON、codegen main.py:63 CADENCE_SINGLETON=5)。
+    //
+    // 駆動位置 (PC-6ε-1):
+    //   bringupTestUBO() (llglslshader.cpp:2032) で PC-1 contract assertion 後に
+    //   呼出 (= PC-2 forwardToUboUpload 経路 → PC-6ε-1 で本格 cadence 経路置換)。
+    //
+    // MUSEUBO-A 整合: 本関数も sDrawUboRingBufferMgr 未初期化時 = no-op
+    // (= flushDummyUboWrite helper entry guard で 5 cadence と同形保証)。
+    // GATE-B 整合: mUseUBO runtime gate 未依存 (= PC-6α..δ 同形)。
+    // ------------------------------------------------------------------
+    void flushSingletonUbos();
 }
 
 #endif // LL_LLVKLOADER_H
