@@ -100,13 +100,18 @@ namespace
     // pool 不要、vkCmdPushDescriptorSetKHR で in-frame 投入)。
     // VK_KHR_push_descriptor 未支援 device では layout/buffer/pipeline 作成 skip し、
     // recordAvatarPlaceholderDraw は recordPlaceholderPoolDraw に fallback (機能 graceful degrade)。
-    constexpr U32         AVATAR_BONE_MATRIX_COUNT          = 110; // SL viewer max bone count 想定
+    //
+    // <AYAstorm r41 PC-N-3 (a)> sAvatarBoneStorageBuffer + Allocation + Mapped +
+    //   allocateAvatarBoneStorageBuffer() deprecate ((N3-1) A、AYA literal「推奨案採用 OK」
+    //   2026-06-05)。PC-7δ で配置済の 7040 B static mapped buffer (= H10-A 持越 placeholder)
+    //   を撤去し、per-Skin UboInstance (= sSkinUboDirty[<&sPlaceholderSkin, Skin_GLTFJoints>])
+    //   経路に統合。書込みは writeSkinUbo + flushSkinUbos、descriptor wire は
+    //   wireSkinUboSetV3aToBinding2 helper 経由 (= design 06b/06c §2.5 正準)。
+    constexpr U32         AVATAR_BONE_MATRIX_COUNT          = 110; // SL viewer max bone count 想定 (保持 = 将来 PC-N-5 で参照可能性)
     VkDescriptorSetLayout sAvatarBoneDescriptorSetLayout    = VK_NULL_HANDLE;
     VkPipelineLayout      sAvatarBoneLayout                 = VK_NULL_HANDLE;
     VkPipeline            sAvatarBonePipeline               = VK_NULL_HANDLE;
-    VkBuffer              sAvatarBoneStorageBuffer          = VK_NULL_HANDLE;
-    VmaAllocation         sAvatarBoneStorageAllocation      = VK_NULL_HANDLE;
-    void*                 sAvatarBoneStorageMapped          = nullptr;
+    // </AYAstorm r41 PC-N-3 (a)>
 
     VkRenderPass sRenderPass = VK_NULL_HANDLE;
     VkImage sOffscreenImage = VK_NULL_HANDLE;
@@ -554,6 +559,25 @@ namespace
     std::unordered_map<UboInstanceKey, UboInstance, UboInstanceKeyHash> sProgramUboDirty;
     std::unordered_map<UboAssetKey,    UboInstance, UboAssetKeyHash>    sAssetUboDirty;
     std::unordered_map<UboSkinKey,     UboInstance, UboSkinKeyHash>     sSkinUboDirty;
+
+    // <AYAstorm r41 PC-N-3 (b)> placeholder skin sentinel ((N3-6) A、AYA literal
+    //   「推奨案採用 OK」2026-06-05)。recordAvatarPlaceholderDraw の placeholder
+    //   phase で LL::GLTF::Skin* が nullptr ゆえ、sSkinUboDirty の UboSkinKey 第 1
+    //   要素として使う一意 sentinel address。
+    //
+    //   llvkloader.h:31-32 で LL::GLTF::Skin は forward declaration のみ (= newview
+    //   gltf/asset.h は llrender 層から include 不可 = layering violation 回避)。
+    //   default-constructed Skin instance は完全型不在ゆえ不可能なので、address-only
+    //   sentinel で代替 ((N3-6) A の本旨 = address が unique + safe + 触られない
+    //   = sSkinUboDirty key + writeSkinUbo / flushSkinUbos / registerSkinUbo
+    //   での pointer compare のみ、member access / method call 一切なし)。
+    //
+    //   PC-N-5 で実 GLTF avatar 投入時に並走 (= sPlaceholderSkin は撤去せず維持、
+    //   実 Skin* と sentinel を sSkinUboDirty 上で同居)。
+    alignas(void*) char sPlaceholderSkinStorage[1] = {};
+    LL::GLTF::Skin* const sPlaceholderSkin =
+        reinterpret_cast<LL::GLTF::Skin*>(&sPlaceholderSkinStorage[0]);
+    // </AYAstorm r41 PC-N-3 (b)>
 
     // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instances (= block_hash → UboInstance、
     // owner 概念無し global static)。design 06b §2.1 + design 07 §8.2 + AYA (W6-A)
@@ -2719,6 +2743,83 @@ namespace
     }
     // </AYAstorm r41 PC-7ε (a)>
 
+    // <AYAstorm r41 PC-N-3 (d)> per-Skin UBO ↔ set=3 binding=2 wire helper
+    //   ((N3-4) A、AYA literal「推奨案採用 OK」2026-06-05)。design 06b/06c §2.5
+    //   確定 = set=3 binding=2 = Skin_GLTFJoints per-skin owner。
+    //
+    //   wireDrawUboSetV3aToRingBuffer (PC-7ε) と同形 helper pattern (= per-frame
+    //   FRAMES_IN_FLIGHT 分 vkUpdateDescriptorSets ループ + LL_INFOS marker)。
+    //
+    //   per-Skin UboInstance は STATIC UNIFORM_BUFFER (= dynamic offset 不要、
+    //   register 時に固定 VkBuffer × FRAMES_IN_FLIGHT 確保、grow 不要)。ゆえに
+    //   PC-N-4 ring buffer grow hook 不要 = 1 度 wire で済む。
+    //
+    //   呼出 site: initVulkan 内 registerSkinUbo(&sPlaceholderSkin, ...) 直後で
+    //   初回 wire (= 決定論的 timing)。
+    //
+    //   NB: registerSkinUbo 自体も内部で同等の descriptor wire を実施 (llvkloader.cpp
+    //   line 5050-5089) するが、本 helper は (N3-4) A の独立 entry point 趣旨で
+    //   存在 = re-wire / test / 将来 grow hook 拡張時の単独 trigger 用。
+    bool wireSkinUboSetV3aToBinding2(LL::GLTF::Skin* skin)
+    {
+        if (sDevice == VK_NULL_HANDLE || !skin)
+        {
+            LL_WARNS_ONCE("Vulkan") << "wireSkinUboSetV3aToBinding2 (PC-N-3): prerequisite missing"
+                                    << " (sDevice=" << (sDevice != VK_NULL_HANDLE)
+                                    << " skin=" << (void*)skin << ")"
+                                    << LL_ENDL;
+            return false;
+        }
+
+        UboSkinKey key{ skin, ubo::block_hash::Skin_GLTFJoints };
+        auto it = sSkinUboDirty.find(key);
+        if (it == sSkinUboDirty.end())
+        {
+            LL_WARNS_ONCE("Vulkan") << "wireSkinUboSetV3aToBinding2 (PC-N-3): skin not registered"
+                                    << " (skin=" << (void*)skin
+                                    << " block_hash=0x" << std::hex
+                                    << ubo::block_hash::Skin_GLTFJoints << std::dec << ")"
+                                    << LL_ENDL;
+            return false;
+        }
+
+        const UboInstance& ubo_inst = it->second;
+        VkDescriptorBufferInfo binfo[FRAMES_IN_FLIGHT] = {};
+        VkWriteDescriptorSet   writes[FRAMES_IN_FLIGHT] = {};
+        U32 write_count = 0;
+        for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+        {
+            if (ubo_inst.vk_buffer[f] == VK_NULL_HANDLE) continue;
+            if (sAssetUboSetV3a[f] == VK_NULL_HANDLE) continue;
+            binfo[write_count] = { ubo_inst.vk_buffer[f], 0, ubo_inst.size };
+            VkWriteDescriptorSet& w = writes[write_count];
+            w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            w.dstSet          = sAssetUboSetV3a[f];
+            w.dstBinding      = 2;  // design 06c §2.5: set=3 binding=2 = Skin_GLTFJoints
+            w.dstArrayElement = 0;
+            w.descriptorCount = 1;
+            w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            w.pBufferInfo     = &binfo[write_count];
+            ++write_count;
+        }
+        if (write_count == 0)
+        {
+            LL_WARNS_ONCE("Vulkan") << "wireSkinUboSetV3aToBinding2 (PC-N-3): no frame to wire"
+                                    << LL_ENDL;
+            return false;
+        }
+        vkUpdateDescriptorSets(sDevice, write_count, writes, 0, nullptr);
+
+        LL_INFOS("Vulkan") << "PC-N-3 (d): sAssetUboSetV3a binding=2 wired to per-Skin UboInstance"
+                              " (skin=" << (void*)skin
+                           << " block_hash=Skin_GLTFJoints (0x" << std::hex
+                           << ubo::block_hash::Skin_GLTFJoints << std::dec
+                           << ") UNIFORM_BUFFER, frames=" << write_count << ")"
+                           << LL_ENDL;
+        return true;
+    }
+    // </AYAstorm r41 PC-N-3 (d)>
+
     // r41 sub-step 3.1b item #8: minimal placeholder PSO (sky pool placeholder)。
     // GLSL source は本 source の上の comment block で sealed (offline glslc compile)、
     // vert/frag SPIR-V を C++ const array で embed。本 PSO は sRenderPass (1 color attachment) 互換、
@@ -3160,65 +3261,14 @@ namespace
         return true;
     }
 
-    // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4):
-    // HOST_VISIBLE + MAPPED な storage buffer を 1 件確保し、110 mat4 = 7040 B を
-    // identity matrix で初期化 (1 度限り)。実 rigged draw 経路の bone matrix 上書きは
-    // 段階 4 本実装で各 frame 毎 mDrawInfo.mSkin->mInvBindMatrix 経由で writeBoneMatrices
-    // 系 helper (本 sub-step では未実装) を介する想定。
-    bool allocateAvatarBoneStorageBuffer()
-    {
-        if (!sDeviceLimits.pushDescriptorSupported)
-        {
-            return true;
-        }
-        if (sAllocator == VK_NULL_HANDLE)
-        {
-            LL_WARNS("Vulkan") << "allocateAvatarBoneStorageBuffer: VMA allocator not ready" << LL_ENDL;
-            return false;
-        }
-
-        constexpr VkDeviceSize buffer_size = AVATAR_BONE_MATRIX_COUNT * 64; // mat4 = 64 B
-
-        VkBufferCreateInfo bci = {};
-        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bci.size        = buffer_size;
-        bci.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo aci = {};
-        aci.usage         = VMA_MEMORY_USAGE_AUTO;
-        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-
-        VmaAllocationInfo info = {};
-        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci,
-                                     &sAvatarBoneStorageBuffer,
-                                     &sAvatarBoneStorageAllocation,
-                                     &info);
-        if (r != VK_SUCCESS)
-        {
-            LL_WARNS("Vulkan") << "allocateAvatarBoneStorageBuffer vmaCreateBuffer failed: " << (S32)r << LL_ENDL;
-            return false;
-        }
-        sAvatarBoneStorageMapped = info.pMappedData;
-
-        if (sAvatarBoneStorageMapped)
-        {
-            float* data = static_cast<float*>(sAvatarBoneStorageMapped);
-            for (U32 i = 0; i < AVATAR_BONE_MATRIX_COUNT; ++i)
-            {
-                float* m = data + i * 16;
-                m[0]  = 1.f; m[1]  = 0.f; m[2]  = 0.f; m[3]  = 0.f;
-                m[4]  = 0.f; m[5]  = 1.f; m[6]  = 0.f; m[7]  = 0.f;
-                m[8]  = 0.f; m[9]  = 0.f; m[10] = 1.f; m[11] = 0.f;
-                m[12] = 0.f; m[13] = 0.f; m[14] = 0.f; m[15] = 1.f;
-            }
-        }
-        LL_INFOS("Vulkan") << "Avatar bone storage buffer allocated (" << (U32)buffer_size
-                           << " B = 110 mat4 identity, HOST_VISIBLE + MAPPED)" << LL_ENDL;
-        return true;
-    }
+    // <AYAstorm r41 PC-N-3 (a)> allocateAvatarBoneStorageBuffer() deprecate
+    //   ((N3-1) A、AYA literal「推奨案採用 OK」2026-06-05)。PC-7δ で配置済の
+    //   7040 B static mapped buffer (= H10-A 持越 placeholder) を撤去し、per-Skin
+    //   UboInstance (= sSkinUboDirty[<&sPlaceholderSkin, Skin_GLTFJoints>]) 経路に
+    //   統合。bone matrix 書込みは writeSkinUbo + flushSkinUbos、descriptor wire は
+    //   wireSkinUboSetV3aToBinding2 経由 (= design 06b/06c §2.5 正準、
+    //   PC-7γ-2 既存 helper 通電)。
+    // </AYAstorm r41 PC-N-3 (a)>
 
     // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4):
     // avatar 専用 PipelineLayout (set_layouts[3] = { PerFrame, PerMaterial, AvatarBone })
@@ -3615,15 +3665,21 @@ bool initVulkan()
     }
 
     // r41 sub-step 3.4-δ-4 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.4 push descriptor 部分内包):
-    // avatar bone descriptor set layout + storage buffer + pipeline layout + PSO 配線。
+    // avatar bone descriptor set layout + pipeline layout + PSO 配線。
     // VK_KHR_push_descriptor 未支援 device では各 helper 内で skip (success return)、
     // recordAvatarPlaceholderDraw は recordPlaceholderPoolDraw へ graceful fallback。
-    if (!createAvatarBoneDescriptorSetLayout() || !allocateAvatarBoneStorageBuffer() || !createAvatarBonePipeline())
+    //
+    // <AYAstorm r41 PC-N-3 (a)> allocateAvatarBoneStorageBuffer 撤去 ((N3-1) A、
+    //   AYA literal「推奨案採用 OK」2026-06-05)。per-Skin UboInstance 経路統合で
+    //   sAvatarBoneStorageBuffer は不要、writeSkinUbo + flushSkinUbos + wireSkinUboSetV3aToBinding2
+    //   経由通電 (= design 06b/06c §2.5 正準)。
+    if (!createAvatarBoneDescriptorSetLayout() || !createAvatarBonePipeline())
     {
         LL_WARNS("Vulkan") << "Avatar bone foundation creation failed" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
+    // </AYAstorm r41 PC-N-3 (a)>
 
     // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4): set=1 transit smoke = sSharedDescriptorPool から
     // 1 set allocate + 7 binding 全部に β-2 placeholder white image view + 共用 sampler を bind。
@@ -3641,6 +3697,54 @@ bool initVulkan()
         }
         updatePerMaterialDescriptorSet(views);
     }
+
+    // <AYAstorm r41 PC-N-3 (c)+(d)> placeholder skin sentinel register + initial wire
+    //   ((N3-7) A + (N3-4) A、AYA literal「推奨案採用 OK」2026-06-05)。
+    //   ubo_metadata.inl から Skin_GLTFJoints の block_size を解決 (= 16384 B std140
+    //   upper bound、ubo_layout_skin_gltfjoints.inl line 15 確認済) + registerSkinUbo
+    //   経由 per-Skin UboInstance allocate + 内部 descriptor wire + 念のため
+    //   wireSkinUboSetV3aToBinding2 で明示再 wire ((N3-4) A 独立 entry point 趣旨)。
+    //   失敗時は LL_WARNS_ONCE で続行 (= mUseUBO=false default で recordAvatarPlaceholderDraw
+    //   は writeSkinUbo 早期 return + recordPlaceholderPoolDraw fallback で graceful degrade)。
+    {
+        U32 skin_block_size = 0u;
+        for (U32 i = 0; i < ubo::g_block_count; ++i)
+        {
+            if (ubo::g_block_metadata[i].block_hash == ubo::block_hash::Skin_GLTFJoints)
+            {
+                skin_block_size = ubo::g_block_metadata[i].block_size;
+                break;
+            }
+        }
+        if (skin_block_size == 0u)
+        {
+            LL_WARNS_ONCE("Vulkan") << "PC-N-3 (c): Skin_GLTFJoints block_size lookup miss "
+                                       "(ubo_metadata.inl Skin_GLTFJoints unavailable); "
+                                       "skin sentinel register skipped"
+                                    << LL_ENDL;
+        }
+        else if (!registerSkinUbo(sPlaceholderSkin,
+                                  ubo::block_hash::Skin_GLTFJoints,
+                                  skin_block_size))
+        {
+            LL_WARNS_ONCE("Vulkan") << "PC-N-3 (c): registerSkinUbo(sPlaceholderSkin) failed; "
+                                       "recordAvatarPlaceholderDraw will fallback to "
+                                       "recordPlaceholderPoolDraw (MUSEUBO-A graceful degrade)"
+                                    << LL_ENDL;
+        }
+        else
+        {
+            // (d) 明示再 wire (= registerSkinUbo 内部 wire と等価、independent entry
+            //   point 趣旨で残置、test 容易 + 将来 grow hook 拡張時の単独 trigger 用)。
+            if (!wireSkinUboSetV3aToBinding2(sPlaceholderSkin))
+            {
+                LL_WARNS_ONCE("Vulkan") << "PC-N-3 (d): wireSkinUboSetV3aToBinding2 failed; "
+                                           "set=3 binding=2 may reference stale buffer"
+                                        << LL_ENDL;
+            }
+        }
+    }
+    // </AYAstorm r41 PC-N-3 (c)+(d)>
 
     // r41 sub-step 3.4-β-1: VMA budget 1 度 smoke 出力 (INFO marker #3)。
     logVmaBudgetSmoke();
@@ -3695,13 +3799,11 @@ void shutdownVulkan()
             vkDestroyPipelineLayout(sDevice, sAvatarBoneLayout, nullptr);
         }
         sAvatarBoneLayout = VK_NULL_HANDLE;
-        if (sAvatarBoneStorageBuffer != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(sAllocator, sAvatarBoneStorageBuffer, sAvatarBoneStorageAllocation);
-            sAvatarBoneStorageBuffer     = VK_NULL_HANDLE;
-            sAvatarBoneStorageAllocation = VK_NULL_HANDLE;
-            sAvatarBoneStorageMapped     = nullptr;
-        }
+        // <AYAstorm r41 PC-N-3 (a)> sAvatarBoneStorageBuffer 撤去済
+        //   ((N3-1) A、AYA literal「推奨案採用 OK」2026-06-05)。teardown は
+        //   per-Skin UboInstance 側 (= unregisterSkinUbo 経由 destroyUboInstanceBuffers)
+        //   が担当 = unloadInternal で実施。本 site は no-op。
+        // </AYAstorm r41 PC-N-3 (a)>
         if (sAvatarBoneDescriptorSetLayout != VK_NULL_HANDLE)
         {
             vkDestroyDescriptorSetLayout(sDevice, sAvatarBoneDescriptorSetLayout, nullptr);
@@ -3946,6 +4048,13 @@ void shutdownVulkan()
         // site 未配線で entry は空のまま (= ubo.size==0 sentinel で no-op safe)
         // だが、PC-7γ 通電後の forward-safe な teardown 形を本 sub で確立する。
         // </AYAstorm r41 PC-7β>
+        // <AYAstorm r41 PC-N-3 (c)> placeholder skin sentinel unregister
+        //   ((N3-7) A、AYA literal「推奨案採用 OK」2026-06-05)。register / unregister
+        //   lifecycle 対称配線。後続の bulk teardown loop が generic 処理を担うため
+        //   本 explicit 呼出は idempotent (= unregister 後 entry が消えるだけ、loop
+        //   は残存 entry のみ destroy)、symmetry & lifecycle 明示の目的で残置。
+        unregisterSkinUbo(sPlaceholderSkin, ubo::block_hash::Skin_GLTFJoints);
+        // </AYAstorm r41 PC-N-3 (c)>
         for (auto& kv : sProgramUboDirty) { destroyUboInstanceBuffers(kv.second); }
         for (auto& kv : sAssetUboDirty)   { destroyUboInstanceBuffers(kv.second); }
         for (auto& kv : sSkinUboDirty)    { destroyUboInstanceBuffers(kv.second); }
@@ -5274,7 +5383,15 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
 // へ graceful fallback (機能 degrade、validation 違反 0 件維持)。
 //
 // 段階 4 本実装で各 rigged mesh draw 毎に LLMeshSkinInfo の bone matrix × N を
-// sAvatarBoneStorageMapped に書込→本 helper の bone size 引数化拡張で投入する経路の foundation。
+// per-Skin UboInstance (= sSkinUboDirty[<Skin*, Skin_GLTFJoints>].mapped_ptr[frame])
+// に書込 (writeSkinUbo 経由) + flushSkinUbos 経由 dirty exchange + bindV3aRigged
+// set=3 swap で set=3 binding=2 = Skin_GLTFJoints UBO 通電する経路の foundation。
+//
+// <AYAstorm r41 PC-N-3 (a)> sAvatarBoneStorageMapped 経路 deprecate ((N3-1) A、
+//   AYA literal「推奨案採用 OK」2026-06-05)。per-Skin UboInstance 経路統合 =
+//   design 06b/06c §2.5 正準。実装現状 (PC-7γ-2) で writeSkinUbo + flushSkinUbos +
+//   registerSkinUbo + unregisterSkinUbo 全て実装済、Skin_GLTFJoints codegen (PC-7γ-3)
+//   配置済ゆえ通電のみ。
 void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
 {
     // <AYAstorm r41 PC-7δ (j)> H10-A 採用: push descriptor 経路 (STORAGE_BUFFER) を本 PC-7δ で disable +
@@ -5302,18 +5419,28 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
     //   + (N2-3) A 4 個同一 offset + (N2-6) A sDrawUboRingBufferMgr nullptr 時
     //   recordPlaceholderPoolDraw fallback)。
     //
-    // <AYAstorm r41 PC-N-2 (d)> set=2 復活 = 本 PC-N-2 で実施 (= bindV3aRigged signature
+    // <AYAstorm r41 PC-N-2 (d)> set=2 復活 = PC-N-2 で実施 (= bindV3aRigged signature
     //   拡張 + recordAvatarPlaceholderDraw allocate-chain 配線、(N2-1)..(N2-9) AYA literal
-    //   「Claude 推奨案 OK」確認 2026-06-05)。H10-A avatar bone storage 再配線 (=
-    //   writeAvatarBoneStorage helper 新設 + set=3 経由再 wire) は PC-N-3 持越し、ring
-    //   buffer grow 自動 re-wire は PC-N-4 持越し (= PC-N decomposition design-lock commit
-    //   cf7b0b99b0、AYA literal「OK」確認 2026-06-05)。
+    //   「Claude 推奨案 OK」確認 2026-06-05)。ring buffer grow 自動 re-wire は PC-N-4
+    //   で endFrame() 末尾 hook 経由実装済 (= 2026-06-05、PC-N-4 (c) tag block)。
+    //
+    // <AYAstorm r41 PC-N-3 (e)> H10-A avatar bone storage 再配線 = 本 PC-N-3 で実施
+    //   ((N3-1) A + (N3-2) A + (N3-8) A、AYA literal「推奨案採用 OK」2026-06-05)。
+    //   旧 sAvatarBoneStorageBuffer (= 7040 B static mapped) を撤去 ((N3-1) A)、
+    //   per-Skin UboInstance 経路に統合 = sSkinUboDirty[<&sPlaceholderSkin,
+    //   Skin_GLTFJoints>] (= initVulkan で registerSkinUbo + wireSkinUboSetV3aToBinding2
+    //   で set=3 binding=2 wire 済) に対し writeSkinUbo (zero data) → flushSkinUbos
+    //   (dirty exchange) → bindV3aRigged (set=3 swap で sAssetUboSetV3a[frame] bind)
+    //   の正規 sequence (= design 06b §2.5「flushSkinUbos(skin) を GLTFSceneManager::
+    //   render(variant) 直前」pattern 整合 = recordAvatarPlaceholderDraw が
+    //   placeholder phase の GLTFSceneManager::render 相当)。
     //
     // placeholder phase ゆえ zero data 維持、real avatar data 構築 (= PerDrawUBO_AvatarSkin
     //   等) は PC-N-5 実 GLTF avatar Vulkan draw 通電持越し。
     //
     // MUSEUBO-A guard = sDrawUboRingBufferMgr nullptr で recordPlaceholderPoolDraw
-    //   fallback (= 多重 graceful degrade、視覚 no-op 等価維持)。
+    //   fallback (= 多重 graceful degrade、視覚 no-op 等価維持)。writeSkinUbo は
+    //   sentinel register 失敗時 LL_WARNS_ONCE + 早期 return ゆえ追加 guard 不要。
     if (!sDrawUboRingBufferMgr)
     {
         recordPlaceholderPoolDraw(cmd_buf);
@@ -5330,6 +5457,26 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
     const U32 dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
         dynamic_offset, dynamic_offset, dynamic_offset, dynamic_offset,
     };
+
+    // <AYAstorm r41 PC-N-3 (e)> per-Skin UBO write → flush → bind 正規 sequence。
+    //   sentinel skin (= sPlaceholderSkin、initVulkan で registerSkinUbo 済) に対し
+    //   Skin_GLTFJoints UBO へ zero data write → flush → 直後 bindV3aRigged の
+    //   set=3 swap で binding=2 = wireSkinUboSetV3aToBinding2 で wire 済の per-Skin
+    //   UboInstance.vk_buffer[sFrameIndex] を経路通電。
+    //
+    //   block_size = ubo_layout_skin_gltfjoints.inl Skin_GLTFJoints_SIZE = 16384 B
+    //   std140 upper bound、placeholder phase は zero 256 B 部分書き (= writeSkinUbo
+    //   は offset+size <= ubo_inst.size guard 済ゆえ部分書きで OK)。
+    static const U8 zero_skin_buf[256] = {};
+    LLVKLoader::writeSkinUbo(
+        sPlaceholderSkin,
+        ubo::block_hash::Skin_GLTFJoints,
+        /*offset=*/0u,
+        zero_skin_buf,
+        sizeof(zero_skin_buf));
+    LLVKLoader::flushSkinUbos(sPlaceholderSkin);
+    // </AYAstorm r41 PC-N-3 (e)>
+
     bindV3aRigged(cmd_buf, sFrameIndex, dynamic_offsets);
     // </AYAstorm r41 PC-N-2 (c)+(d)>
 
@@ -5359,7 +5506,10 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
                               "bindV3aRigged (set=0 Frame V3a + set=1a/1b ProgramUbo + "
                               "set=2 DrawUbo V3a + set=3 AssetUbo, "
                               "push descriptor 経路 disable 維持) + push constant 64 B / "
-                              "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
+                              "VERTEX_BIT + vkCmdDraw(3,1,0,0); "
+                              "PC-N-3 placeholder skin sentinel writeSkinUbo + flushSkinUbos 通電済 "
+                              "(set=3 binding=2 Skin_GLTFJoints, sPlaceholderSkin sentinel 経路, "
+                              "sAvatarBoneStorageBuffer deprecated))"
                            << LL_ENDL;
     }
 }
