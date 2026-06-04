@@ -1778,7 +1778,16 @@ namespace
     }
     // </AYAstorm r41 PC-7ε (c)>
 
-    void bindV3aRigged(VkCommandBuffer cmd_buf, U32 frame_index)
+    // <AYAstorm r41 PC-N-2 (a)> bindV3aRigged signature 拡張 = bindV3aStatic 同形
+    //   (= const U32 dynamic_offsets[V3A_DRAW_SET_BINDINGS] 引数追加 + guard 拡張
+    //   sDrawUboSetV3a + dynamic_offsets nullptr 追加、(N2-1) A + (N2-5) A 採用、
+    //   AYA literal「Claude 推奨案 OK」確認 2026-06-05)。
+    // <AYAstorm r41 PC-N-2 (b)> body 内 set=2 bind 復活 = 第 1 vkCmdBindDescriptorSets
+    //   を 3 set → 4 set (= set=0/1a/1b/2) + pDynamicOffsets に引数 wire、第 2 call
+    //   (= set=3 swap) は構造維持 ((N2-1) A + (N2-3) A + (N2-4) A 採用)。
+    void bindV3aRigged(VkCommandBuffer cmd_buf,
+                       U32             frame_index,
+                       const U32       dynamic_offsets[V3A_DRAW_SET_BINDINGS])
     {
         if (cmd_buf == VK_NULL_HANDLE ||
             sAYAStandardLayout == VK_NULL_HANDLE ||
@@ -1786,27 +1795,30 @@ namespace
             sFrameUboSetV3a[frame_index]    == VK_NULL_HANDLE ||
             sProgramUboSetA[frame_index]    == VK_NULL_HANDLE ||
             sProgramUboSetB[frame_index]    == VK_NULL_HANDLE ||
-            sAssetUboSetV3a[frame_index]    == VK_NULL_HANDLE)
+            sDrawUboSetV3a                  == VK_NULL_HANDLE ||
+            sAssetUboSetV3a[frame_index]    == VK_NULL_HANDLE ||
+            dynamic_offsets                 == nullptr)
         {
             return;
         }
 
-        // set=0/1a/1b 3 set 連続 bind
-        const VkDescriptorSet sets_0_to_1b[3] = {
+        // set=0/1a/1b/2 4 set 連続 bind (= bindV3aStatic 同形、(N2-1) A)
+        const VkDescriptorSet sets_0_to_2[V3A_DRAW_SET_BINDINGS] = {
             sFrameUboSetV3a[frame_index],
             sProgramUboSetA[frame_index],
             sProgramUboSetB[frame_index],
+            sDrawUboSetV3a,
         };
         vkCmdBindDescriptorSets(cmd_buf,
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 sAYAStandardLayout,
                                 /*firstSet=*/0,
-                                /*descriptorSetCount=*/3,
-                                sets_0_to_1b,
-                                /*dynamicOffsetCount=*/0,
-                                /*pDynamicOffsets=*/nullptr);
+                                /*descriptorSetCount=*/V3A_DRAW_SET_BINDINGS,
+                                sets_0_to_2,
+                                /*dynamicOffsetCount=*/V3A_DRAW_SET_BINDINGS,
+                                dynamic_offsets);
 
-        // set=3 単独 bind (= set=2 ↔ set=3 swap 実走)
+        // set=3 単独 bind (= set=2 ↔ set=3 swap 実走、(N2-4) A 構造維持)
         vkCmdBindDescriptorSets(cmd_buf,
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 sAYAStandardLayout,
@@ -1816,7 +1828,7 @@ namespace
                                 /*dynamicOffsetCount=*/0,
                                 /*pDynamicOffsets=*/nullptr);
     }
-    // </AYAstorm r41 PC-7δ>
+    // </AYAstorm r41 PC-N-2 (a)+(b)>
 
     // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
     // VMA budget smoke 1 回出力。VK_EXT_memory_budget 支援時は実 budget/usage を取得、
@@ -5240,12 +5252,43 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
 
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sAvatarBonePipeline);
 
-    // V3a 5-set bind: set=0/1a/1b + set=3 swap (= rigged path = set=2 ↔ set=3 swap 実走)
-    // <AYAstorm r41 PC-7ε (e)> rigged path は set=2 skip (= dynamic offset 0 個) ゆえ
-    //   bindV3aRigged signature 不変。per-draw dynamic offset 配線 + set=2 復活は PC-N
-    //   実 GLTF avatar Vulkan draw 通電時に H10-A avatar bone storage 再配線と一括
-    //   ((ε-5) A 採用、AYA 確認 2026-06-05)。
-    bindV3aRigged(cmd_buf, sFrameIndex);
+    // <AYAstorm r41 PC-N-2 (c)> per-draw ring buffer allocate-chain を writeDrawUbo
+    //   helper (= PC-N-1 (a) 新設) 経由 API path に置換 + bindV3aRigged 拡張 signature
+    //   呼出で set=2 復活通電 (= AYA literal「Claude 推奨案 OK」確認 2026-06-05、
+    //   ambiguity (N2-1) A 1 call 4 set bind + (N2-2) A PerDrawUBO_LightParams 共有
+    //   + (N2-3) A 4 個同一 offset + (N2-6) A sDrawUboRingBufferMgr nullptr 時
+    //   recordPlaceholderPoolDraw fallback)。
+    //
+    // <AYAstorm r41 PC-N-2 (d)> set=2 復活 = 本 PC-N-2 で実施 (= bindV3aRigged signature
+    //   拡張 + recordAvatarPlaceholderDraw allocate-chain 配線、(N2-1)..(N2-9) AYA literal
+    //   「Claude 推奨案 OK」確認 2026-06-05)。H10-A avatar bone storage 再配線 (=
+    //   writeAvatarBoneStorage helper 新設 + set=3 経由再 wire) は PC-N-3 持越し、ring
+    //   buffer grow 自動 re-wire は PC-N-4 持越し (= PC-N decomposition design-lock commit
+    //   cf7b0b99b0、AYA literal「OK」確認 2026-06-05)。
+    //
+    // placeholder phase ゆえ zero data 維持、real avatar data 構築 (= PerDrawUBO_AvatarSkin
+    //   等) は PC-N-5 実 GLTF avatar Vulkan draw 通電持越し。
+    //
+    // MUSEUBO-A guard = sDrawUboRingBufferMgr nullptr で recordPlaceholderPoolDraw
+    //   fallback (= 多重 graceful degrade、視覚 no-op 等価維持)。
+    if (!sDrawUboRingBufferMgr)
+    {
+        recordPlaceholderPoolDraw(cmd_buf);
+        return;
+    }
+    static const U8 zero_buf[256] = {};
+    U32 dynamic_offset = 0u;
+    LLVKLoader::writeDrawUbo(
+        ubo::block_hash::PerDrawUBO_LightParams,
+        /*offset=*/0u,
+        zero_buf,
+        sizeof(zero_buf),
+        dynamic_offset);
+    const U32 dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
+        dynamic_offset, dynamic_offset, dynamic_offset, dynamic_offset,
+    };
+    bindV3aRigged(cmd_buf, sFrameIndex, dynamic_offsets);
+    // </AYAstorm r41 PC-N-2 (c)+(d)>
 
     // push constant: modelview_matrix = identity (4x4)
     const float identity_modelview[16] = {
@@ -5267,9 +5310,12 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
     if (s_first_avatar_call)
     {
         s_first_avatar_call = false;
-        LL_INFOS("Vulkan") << "Avatar placeholder pool draw fired (PSO bind sAvatarBonePipeline + "
-                              "bindV3aRigged (set=0 Frame V3a + set=1a/1b ProgramUbo + set=3 AssetUbo, "
-                              "push descriptor 経路 disable) + push constant 64 B / "
+        LL_INFOS("Vulkan") << "Avatar placeholder pool draw fired (PC-N-2 set=2 復活通電済: "
+                              "writeDrawUbo(PerDrawUBO_LightParams, zero 256B) → "
+                              "dynamic_offsets[4] (= 4 個同一 offset) → "
+                              "bindV3aRigged (set=0 Frame V3a + set=1a/1b ProgramUbo + "
+                              "set=2 DrawUbo V3a + set=3 AssetUbo, "
+                              "push descriptor 経路 disable 維持) + push constant 64 B / "
                               "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
                            << LL_ENDL;
     }
