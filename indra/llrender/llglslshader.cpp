@@ -1952,13 +1952,17 @@ bool LLGLSLShader::mapUniforms()
 
     // Set up block binding, in a way supported by Apple (rather than binding = 1 in .glsl).
     // See slide 35 and more of https://docs.huihoo.com/apple/wwdc/2011/session_420__advances_in_opengl_for_mac_os_x_lion.pdf
+    // <AYAstorm r41 PC-7γ-3 (b)> host literal を GLSL block 名 rename (a) に追従
+    // (= Asset_/Skin_ prefix を付与して codegen cadence (PER_ASSET/PER_SKIN) と整合)
+    // design-lock §4.1.1 step (b) literal、UB_* enum 値は不変、name 文字列のみ変更
     const char* ubo_names[] =
     {
-        "ReflectionProbes", // UB_REFLECTION_PROBES
-        "GLTFJoints",       // UB_GLTF_JOINTS
-        "GLTFNodes",        // UB_GLTF_NODES
-        "GLTFMaterials",    // UB_GLTF_MATERIALS
+        "ReflectionProbes",      // UB_REFLECTION_PROBES
+        "Skin_GLTFJoints",       // UB_GLTF_JOINTS
+        "Asset_GLTFNodes",       // UB_GLTF_NODES
+        "Asset_GLTFMaterials",   // UB_GLTF_MATERIALS
     };
+    // </AYAstorm r41 PC-7γ-3 (b)>
 
     llassert(LL_ARRAY_SIZE(ubo_names) == NUM_UNIFORM_BLOCKS);
 

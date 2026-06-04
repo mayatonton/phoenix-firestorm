@@ -160,14 +160,18 @@ public:
         SG_COUNT
     } eGroup;
 
+    // <AYAstorm r41 PC-7γ-3 (c)> comment 文字列を GLSL block 名 rename (a) に追従
+    // (= Asset_/Skin_ prefix を付与、enum 値自体は不変)
+    // design-lock §4.1.1 step (c) literal、value 不変で host call site 改修不要
     enum UniformBlock : GLuint
     {
         UB_REFLECTION_PROBES,   // "ReflectionProbes"
-        UB_GLTF_JOINTS,         // "GLTFJoints"
-        UB_GLTF_NODES,          // "GLTFNodes"
-        UB_GLTF_MATERIALS,      // "GLTFMaterials"
+        UB_GLTF_JOINTS,         // "Skin_GLTFJoints"
+        UB_GLTF_NODES,          // "Asset_GLTFNodes"
+        UB_GLTF_MATERIALS,      // "Asset_GLTFMaterials"
         NUM_UNIFORM_BLOCKS
     };
+    // </AYAstorm r41 PC-7γ-3 (c)>
 
 
     static std::set<LLGLSLShader*> sInstances;

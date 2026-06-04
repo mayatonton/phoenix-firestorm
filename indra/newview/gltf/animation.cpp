@@ -30,6 +30,13 @@
 #include "buffer_util.h"
 #include "../llskinningutil.h"
 
+// <AYAstorm r41 PC-7γ-3> per-skin cadence UBO bridge (design 06b §2.5 / §5.3)。
+// LLVKLoader::{register,write,unregister}SkinUbo 経由で Vulkan UBO 並走 (= G3-A dual-write、
+// AYA 確認 2026-06-05)。bare OpenGL UBO 経路は不変温存。block_hash は codegen 出力。
+#include "llvkloader.h"
+#include "ubo/ubo_metadata.inl"
+// </AYAstorm r41 PC-7γ-3>
+
 using namespace LL::GLTF;
 using namespace boost::json;
 
@@ -397,6 +404,10 @@ Skin::~Skin()
     {
         glDeleteBuffers(1, &mUBO);
     }
+    // <AYAstorm r41 PC-7γ-3 (o)> per-skin lifecycle teardown (G6-A symmetric、AYA 確認 2026-06-05)。
+    // sSkinUboDirty 未 register 時は LLVKLoader 内側 .find() guard で no-op。
+    LLVKLoader::unregisterSkinUbo(this, ubo::block_hash::Skin_GLTFJoints);
+    // </AYAstorm r41 PC-7γ-3 (o)>
 }
 
 void Skin::uploadMatrixPalette(Asset& asset)
@@ -409,6 +420,10 @@ void Skin::uploadMatrixPalette(Asset& asset)
     if (mUBO == 0)
     {
         glGenBuffers(1, &mUBO);
+        // <AYAstorm r41 PC-7γ-3 (m)> lazy register on first upload (G4-A、AYA 確認 2026-06-05)。
+        // block_size = std140 upper bound (= G5-A1、ubo_metadata.inl Skin_GLTFJoints entry 整合)。
+        LLVKLoader::registerSkinUbo(this, ubo::block_hash::Skin_GLTFJoints, 16384u);
+        // </AYAstorm r41 PC-7γ-3 (m)>
     }
 
     size_t joint_count = llmin<size_t>(max_joints, mJoints.size());
@@ -455,6 +470,12 @@ void Skin::uploadMatrixPalette(Asset& asset)
     glBindBuffer(GL_UNIFORM_BUFFER, mUBO);
     glBufferData(GL_UNIFORM_BUFFER, glmp.size() * sizeof(F32), glmp.data(), GL_STREAM_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    // <AYAstorm r41 PC-7γ-3 (j)> dual-write defensive (G3-A、AYA 確認 2026-06-05)。
+    // sSkinUboDirty 未 register 時は LLVKLoader 内側 .find() guard で no-op。
+    LLVKLoader::writeSkinUbo(this, ubo::block_hash::Skin_GLTFJoints, 0,
+                             glmp.data(), glmp.size() * sizeof(F32));
+    // </AYAstorm r41 PC-7γ-3 (j)>
 }
 
 bool Skin::prep(Asset& asset)

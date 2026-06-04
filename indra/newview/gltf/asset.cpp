@@ -36,6 +36,16 @@
 #include "llimagejpeg.h"
 #include "../llskinningutil.h"
 
+// <AYAstorm r41 PC-7γ-3> per-asset cadence UBO bridge (design 06b §2.4 / §5.3)。
+// LLVKLoader::{register,write,unregister}AssetUbo の 3 method 経由で Vulkan UBO 経路を
+// 並走 (= G3-A dual-write defensive、AYA 確認 2026-06-05)。bare OpenGL UBO 経路は不変温存。
+// ubo::block_hash::Asset_GLTF{Nodes,Materials} は codegen 出力 (= ubo_metadata.inl) の
+// constexpr U32、include 連鎖は llrender PUBLIC target_include_directories 経由 (= newview
+// は llrender に link、AyaUboCodegen.cmake §159+ helper 経由で transitively 取得)。
+#include "llvkloader.h"
+#include "ubo/ubo_metadata.inl"
+// </AYAstorm r41 PC-7γ-3>
+
 #include <future>
 
 using namespace LL::GLTF;
@@ -120,6 +130,26 @@ void Node::updateTransforms(Asset& asset, const mat4& parentMatrix)
     }
 }
 
+// <AYAstorm r41 PC-7γ-3 (n)> Asset dtor 新設 (G6-A、AYA 確認 2026-06-05)。
+// 既存 leak fix 同梱 = mNodesUBO / mMaterialsUBO の glDeleteBuffers + Vulkan UBO 経路の
+// unregisterAssetUbo を symmetric 解放 (= Skin dtor animation.cpp:394 と対称 pattern、
+// feedback_root_cause_not_dump 整合)。sAssetUboDirty 未 register 時は LLVKLoader 内側
+// .find() guard で no-op。
+Asset::~Asset()
+{
+    if (mNodesUBO)
+    {
+        glDeleteBuffers(1, &mNodesUBO);
+    }
+    if (mMaterialsUBO)
+    {
+        glDeleteBuffers(1, &mMaterialsUBO);
+    }
+    LLVKLoader::unregisterAssetUbo(this, ubo::block_hash::Asset_GLTFNodes);
+    LLVKLoader::unregisterAssetUbo(this, ubo::block_hash::Asset_GLTFMaterials);
+}
+// </AYAstorm r41 PC-7γ-3 (n)>
+
 void Asset::updateTransforms()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
@@ -181,11 +211,24 @@ void Asset::uploadTransforms()
     if (mNodesUBO == 0)
     {
         glGenBuffers(1, &mNodesUBO);
+        // <AYAstorm r41 PC-7γ-3 (k)> lazy register on first upload (G4-A、AYA 確認 2026-06-05)。
+        // block_size は std140 upper bound (= G5-A1、Vulkan min UBO 16384 B、ubo_metadata.inl
+        // Asset_GLTFNodes entry の block_size 値と整合)。Vulkan 未初期化時 = LLVKLoader 内側
+        // sAllocator guard で no-op (MUSEUBO-A 整合、AYA §4.2 確認 2026-06-05)。
+        LLVKLoader::registerAssetUbo(this, ubo::block_hash::Asset_GLTFNodes, 16384u);
+        // </AYAstorm r41 PC-7γ-3 (k)>
     }
 
     glBindBuffer(GL_UNIFORM_BUFFER, mNodesUBO);
     glBufferData(GL_UNIFORM_BUFFER, glmp.size() * sizeof(F32), glmp.data(), GL_STREAM_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    // <AYAstorm r41 PC-7γ-3 (h)> dual-write defensive (G3-A、AYA 確認 2026-06-05) =
+    // bare OpenGL UBO 経路は不変温存、Vulkan UBO 経路を unconditional 並走 write。
+    // sAssetUboDirty 未 register 時は LLVKLoader 内側 .find() guard で no-op (PC-7γ-2 既実装)。
+    LLVKLoader::writeAssetUbo(this, ubo::block_hash::Asset_GLTFNodes, 0,
+                              glmp.data(), glmp.size() * sizeof(F32));
+    // </AYAstorm r41 PC-7γ-3 (h)>
 }
 
 void Asset::uploadMaterials()
@@ -230,11 +273,21 @@ void Asset::uploadMaterials()
     if (mMaterialsUBO == 0)
     {
         glGenBuffers(1, &mMaterialsUBO);
+        // <AYAstorm r41 PC-7γ-3 (l)> lazy register on first upload (G4-A、AYA 確認 2026-06-05)。
+        // block_size = std140 upper bound (= G5-A1、ubo_metadata.inl Asset_GLTFMaterials entry 整合)。
+        LLVKLoader::registerAssetUbo(this, ubo::block_hash::Asset_GLTFMaterials, 16384u);
+        // </AYAstorm r41 PC-7γ-3 (l)>
     }
 
     glBindBuffer(GL_UNIFORM_BUFFER, mMaterialsUBO);
     glBufferData(GL_UNIFORM_BUFFER, md.size() * sizeof(vec4), md.data(), GL_STREAM_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    // <AYAstorm r41 PC-7γ-3 (i)> dual-write defensive (G3-A、AYA 確認 2026-06-05)。
+    // sAssetUboDirty 未 register 時は LLVKLoader 内側 .find() guard で no-op。
+    LLVKLoader::writeAssetUbo(this, ubo::block_hash::Asset_GLTFMaterials, 0,
+                              md.data(), md.size() * sizeof(vec4));
+    // </AYAstorm r41 PC-7γ-3 (i)>
 }
 
 S32 Asset::lineSegmentIntersect(const LLVector4a& start, const LLVector4a& end,

@@ -35,7 +35,7 @@ float metallicFactor = 1.0;
 float roughnessFactor = 1.0;
 float minimum_alpha = -1.0;
 
-layout (std140) uniform GLTFMaterials
+layout (std140) uniform Asset_GLTFMaterials
 {
     // see pbrmetallicroughnessV.glsl for packing
     vec4 gltf_material_data[MAX_UBO_VEC4S];

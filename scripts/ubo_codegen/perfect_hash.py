@@ -468,6 +468,10 @@ def emit_metadata_inl(blocks: Sequence[BlockSpec]) -> str:
     sorted_blocks = sorted(blocks, key=lambda b: b.name)
     parts: List[str] = [_HEADER_METADATA, "namespace ubo {", ""]
     parts.append(_emit_block_metadata_table(sorted_blocks))
+    # PC-7γ-3 step (e) — per-block compile-time block_hash constants
+    # (= G5-A: caller can reference `ubo::block_hash::Asset_GLTFNodes` etc as
+    #  constexpr U32 without runtime name lookup, matches design 06a §4.2 R3 path).
+    parts.append(_emit_block_hash_constants(sorted_blocks))
     parts.append("} // namespace ubo")
     return "\n".join(parts) + "\n"
 
@@ -644,6 +648,36 @@ def _layout_member_comment(m: MemberLayout) -> str:
     if m.array_stride:
         bits.append(f"stride={m.array_stride}")
     return "  // " + " ".join(bits)
+
+
+def _emit_block_hash_constants(blocks: Sequence[BlockSpec]) -> str:
+    """PC-7γ-3 step (e) — emit one `constexpr std::uint32_t` per block (= G5-A).
+
+    Allows host call sites (e.g. `LLVKLoader::registerAssetUbo(this,
+    ubo::block_hash::Asset_GLTFNodes, size)`) to reference block_hash as a
+    compile-time constant, avoiding `lookup_runtime("Asset_GLTFNodes")` string
+    hashing every frame (= design 06a §4.2 R3 path goal).
+
+    Emit form: an inline-namespaced constexpr per block, name verbatim from
+    blueprint (= original CamelCase preserved for symmetry with block name).
+    """
+    if not blocks:
+        return (
+            "// (no blocks — block_hash constant namespace omitted)\n"
+        )
+    lines: List[str] = [
+        "// PC-7γ-3 step (e) — per-block compile-time block_hash constants",
+        "// caller usage: `ubo::block_hash::Asset_GLTFNodes` etc (constexpr U32)",
+        "namespace block_hash {",
+    ]
+    for spec in blocks:
+        h = fnv1a_32(spec.name)
+        lines.append(
+            f"inline constexpr std::uint32_t {spec.name} = 0x{h:08x}u;"
+        )
+    lines.append("} // namespace block_hash")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _emit_block_metadata_table(blocks: Sequence[BlockSpec]) -> str:

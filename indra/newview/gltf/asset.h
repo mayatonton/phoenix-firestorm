@@ -433,6 +433,13 @@ namespace LL
             Asset() = default;
             Asset(const Value& src);
 
+            // <AYAstorm r41 PC-7γ-3 (n)> Asset dtor 新設 (G6-A、AYA 確認 2026-06-05)。
+            // 既存 leak fix 同梱 = mNodesUBO / mMaterialsUBO の glDeleteBuffers + Vulkan UBO
+            // 経路の unregisterAssetUbo を symmetric に解放。Skin dtor (animation.cpp:394) と
+            // 対称 pattern (= 既存設計上の漏れ修正、feedback_root_cause_not_dump 整合)。
+            ~Asset();
+            // </AYAstorm r41 PC-7γ-3 (n)>
+
             // load from given file
             // accepts .gltf and .glb files
             // Any existing data will be lost

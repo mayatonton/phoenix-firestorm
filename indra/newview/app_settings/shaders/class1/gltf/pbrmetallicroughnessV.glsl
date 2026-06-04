@@ -63,7 +63,7 @@ int occlusion_texcoord = 0;
 
 uniform int gltf_material_id;
 
-layout (std140) uniform GLTFMaterials
+layout (std140) uniform Asset_GLTFMaterials
 {
     // index by gltf_material_id*12
 
@@ -281,7 +281,7 @@ out vec3 vary_fragcoord;
 
 #ifdef HAS_SKIN
 
-layout (std140) uniform GLTFJoints
+layout (std140) uniform Skin_GLTFJoints
 {
     vec4 gltf_joints[MAX_NODES_PER_GLTF_OBJECT];
 };
@@ -332,7 +332,7 @@ mat4 getGLTFTransform()
 
 #else
 
-layout (std140) uniform GLTFNodes
+layout (std140) uniform Asset_GLTFNodes
 {
     vec4 gltf_nodes[MAX_NODES_PER_GLTF_OBJECT];
 };
