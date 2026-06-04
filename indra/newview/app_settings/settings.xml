@@ -10380,6 +10380,28 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm r41 Phase 1.C PC-5> VkPipelineCache disk persist 上限 (MB)。
+         design/07-vulkan-api-state.md §9.3 + §12 (PSC) 確定値 = ~/.ayastorm_x64/cache/pipeline_cache.bin、
+         上限 64 MB。本 cvar は debug settings 露出のみ (= PC-5 (α'') = llcommon
+         LLPipelineCacheStorage algorithm 単体 + settings.xml cvar 露出)。実 cvar 読込 + 起動時 file load →
+         VkPipelineCacheCreateInfo.pInitialData 投入 + shutdown 時 vkGetPipelineCacheData + 64 MB 上限超過
+         時の戦略 (skip / delete / truncate) caller 決定は PC-6 (= 5 cadence update site 着手 timing) で
+         llrender / llvkloader 側 wire up 予定。algorithm 層 (= 本 PC-5) は load 時 size > max なら blob
+         破棄 (= (e1) load reject)、persistToDisk 時 size > max なら writer 不呼出 + false return で
+         caller 判断、の bool query 提供のみ。変更には viewer 再起動が必要。 -->
+    <key>AYAPipelineCacheSizeMB</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.C) VkPipelineCache disk persist 上限 (MB)。default=64 (= design/07-vulkan-api-state.md §9.3 + §12 (PSC) 確定値、~/.ayastorm_x64/cache/pipeline_cache.bin)。load 時 file size > max なら blob 破棄 = 0 cache から再生成 ((e1) load reject)、persist 時 blob size > max なら writer 不呼出 + 戦略 (skip / delete / truncate) caller 判断 ((e1) cap skip)。実 wire up は PC-6 持越、本 cvar は debug settings 露出のみ。変更には viewer 再起動が必要</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>64</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>

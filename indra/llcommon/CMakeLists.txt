@@ -69,6 +69,7 @@ set(llcommon_SOURCE_FILES
     llmetricperformancetester.cpp
     llmortician.cpp
     llmutex.cpp
+    llpipelinecachestorage.cpp
     llpointer.cpp
     llptrto.cpp 
     llpredicate.cpp
@@ -195,6 +196,7 @@ set(llcommon_HEADER_FILES
     llmortician.h
     llmutex.h
     llnametable.h
+    llpipelinecachestorage.h
     llpointer.h
     llpluginaudio.h
     llprofiler.h
@@ -341,6 +343,7 @@ if (LL_TESTS)
   LL_ADD_INTEGRATION_TEST(bitpack "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(llassetubopool "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(lluboringbuffer "" "${test_libs}")
+  LL_ADD_INTEGRATION_TEST(llpipelinecachestorage "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(classic_callback "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(commonmisc "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(lazyeventapi "" "${test_libs}")
