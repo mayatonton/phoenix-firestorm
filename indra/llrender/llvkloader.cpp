@@ -441,13 +441,40 @@ namespace
     // のみで値 insert は呼ばないため (= dirty=true 経路は PC-7 で完成)、map は
     // 空のまま flush で no-op になる (= 設計上の構造的 gate)。
     // ------------------------------------------------------------------
+    // <AYAstorm r41 PC-7β> UboInstance member 拡充 = triple-buffer (FRAMES_IN_FLIGHT=3)
+    // 一括確保形 (= design 06b §3.2.3 完成形 + design 07 §8.3 / §8.4 + AYA 確認
+    // 2026-06-05 (Y1-A)(Y2-A)(Y3-A)(Y4-A)):
+    //   (Y1-A) VkBuffer vk_buffer[FRAMES_IN_FLIGHT] = 3 別 buffer (= sPerFrameUboBuffer
+    //          同形、frame rotate write race 回避)
+    //   (Y2-A) per-block size = ubo_metadata.inl `block_size` field 個別 allocate
+    //          (= memory 節約 + source of truth 整合、PC-7γ allocate call site で
+    //           size を渡す)
+    //   (Y3-A) allocate/destroy helper のみ wired、actual allocate call site は
+    //          PC-7γ で per-owner register hook 配線時に追加 (= 本 PC-7β は
+    //          teardown 経路 + helper skeleton のみ)
+    //   (Y4-A) vmaCreateBuffer (HOST_VISIBLE + HOST_COHERENT + MAPPED + SEQUENTIAL_WRITE)
+    //          = sDrawUboRingBufferRecords factory / LLAssetUboPool 同形、persistent
+    //          map で memcpy 直書き化準備
+    //
+    // member layout 注:
+    //   dirty       = std::atomic<bool> = move/copy 不可、map 値 insert は
+    //                 try_emplace(key) / operator[] (C++17 piecewise default
+    //                 construct) 経由のみ (= PC-6ε-2 確定)
+    //   vk_buffer / allocation / mapped_ptr = trivially destructible、
+    //                 lifecycle 管理は allocateUboInstanceBuffers /
+    //                 destroyUboInstanceBuffers helper で集約 (= struct 単独で
+    //                 owner 化はせず、shutdown teardown 経路で sAllocator 生存
+    //                 中に明示 destroy)
+    //   size        = uint32_t 0 init = allocate 未実施 sentinel (= destroy 側
+    //                 でも size==0 で no-op safe)
+    // </AYAstorm r41 PC-7β>
     struct UboInstance
     {
         std::atomic<bool> dirty{false};
-        // PC-7 拡充 placeholder (= design 06b §3.2.3 完成形 + chapter 07):
-        //   VkBuffer      vk_buffer  = VK_NULL_HANDLE;
-        //   void*         mapped_ptr = nullptr;
-        //   uint32_t      size       = 0;
+        VkBuffer          vk_buffer[FRAMES_IN_FLIGHT]  = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VmaAllocation     allocation[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        void*             mapped_ptr[FRAMES_IN_FLIGHT] = { nullptr, nullptr, nullptr };
+        uint32_t          size                         = 0;
     };
     std::unordered_map<LLGLSLShader*, UboInstance>    sProgramUboDirty;
     std::unordered_map<LL::GLTF::Asset*, UboInstance> sAssetUboDirty;
@@ -1217,6 +1244,105 @@ namespace
                            << " B, HOST_VISIBLE + HOST_COHERENT + MAPPED)" << LL_ENDL;
         return true;
     }
+
+    // <AYAstorm r41 PC-7β> UboInstance triple-buffer allocate / destroy helper
+    //
+    // = design 06b §3.2.3 完成形 (VkBuffer / mapped_ptr / size 実体化) + design 07
+    //   §8.3 (per-program/asset/skin cadence triple-buffering 必須) + §8.4 (frame
+    //   index 共有) + AYA 確認 2026-06-05 (Y3-A) + (Y4-A) 整合。
+    //
+    // (Y3-A) actual allocate call site は PC-7γ で per-owner register hook 配線時に
+    //   追加。本 PC-7β は helper skeleton + shutdown teardown 経路のみ wired
+    //   (= 起動時全件先回り allocate / map insert path は本 sub 範囲外)。
+    //
+    // (Y4-A) vmaCreateBuffer (HOST_VISIBLE + HOST_COHERENT + MAPPED + SEQUENTIAL_WRITE)
+    //   = sDrawUboRingBufferRecords factory 同形、persistent map 経由で memcpy
+    //   直書き化準備 (PC-7γ scope)。failure 時は確保済 frame を destroy で巻き戻し
+    //   して全件 false return = 部分 allocate state を残さない。
+    //
+    // GATE-B 整合: 本 helper は Vulkan init 層単独動作、mUseUBO runtime gate 不参照
+    // (= PC-6α..ζ 同形)。MUSEUBO-A 整合: 本 PC-7β では call site 未配線
+    // (= dirty map 空のまま) で既存 OpenGL 描画 100% 維持。
+    //
+    // [[maybe_unused]] = PC-7γ で per-owner register hook 配線時に call site 追加
+    // 予定 (= AYA (Y3-A) 整合、skeleton 性質)、本 PC-7β scope では未使用ゆえ
+    // -Werror=unused-function 抑止。destroy 側は shutdownVulkan で entry 走査
+    // 呼出済で属性不要。
+    [[maybe_unused]] bool allocateUboInstanceBuffers(UboInstance& ubo, uint32_t size, const char* owner_tag)
+    {
+        if (sAllocator == VK_NULL_HANDLE || size == 0)
+        {
+            LL_WARNS("Vulkan") << "allocateUboInstanceBuffers: invalid args (sAllocator="
+                               << (sAllocator == VK_NULL_HANDLE ? "NULL" : "OK")
+                               << ", size=" << (S32)size
+                               << ", owner_tag=" << (owner_tag ? owner_tag : "?") << ")" << LL_ENDL;
+            return false;
+        }
+
+        for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
+        {
+            VkBufferCreateInfo bci = {};
+            bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bci.size        = size;
+            bci.usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            VmaAllocationCreateInfo aci = {};
+            aci.usage         = VMA_MEMORY_USAGE_AUTO;
+            aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                              | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+            aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                              | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+            VmaAllocationInfo info = {};
+            VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci,
+                                         &ubo.vk_buffer[frame], &ubo.allocation[frame], &info);
+            if (r != VK_SUCCESS || info.pMappedData == nullptr)
+            {
+                LL_WARNS("Vulkan") << "allocateUboInstanceBuffers vmaCreateBuffer failed: result="
+                                   << (S32)r << " size=" << (S32)size << " frame=" << frame
+                                   << " owner_tag=" << (owner_tag ? owner_tag : "?") << LL_ENDL;
+                if (ubo.vk_buffer[frame] != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(sAllocator, ubo.vk_buffer[frame], ubo.allocation[frame]);
+                    ubo.vk_buffer[frame]  = VK_NULL_HANDLE;
+                    ubo.allocation[frame] = VK_NULL_HANDLE;
+                    ubo.mapped_ptr[frame] = nullptr;
+                }
+                for (U32 prev = 0; prev < frame; ++prev)
+                {
+                    vmaDestroyBuffer(sAllocator, ubo.vk_buffer[prev], ubo.allocation[prev]);
+                    ubo.vk_buffer[prev]  = VK_NULL_HANDLE;
+                    ubo.allocation[prev] = VK_NULL_HANDLE;
+                    ubo.mapped_ptr[prev] = nullptr;
+                }
+                return false;
+            }
+            ubo.mapped_ptr[frame] = info.pMappedData;
+        }
+        ubo.size = size;
+        return true;
+    }
+
+    void destroyUboInstanceBuffers(UboInstance& ubo)
+    {
+        if (sAllocator == VK_NULL_HANDLE || ubo.size == 0)
+        {
+            return;
+        }
+        for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
+        {
+            if (ubo.vk_buffer[frame] != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, ubo.vk_buffer[frame], ubo.allocation[frame]);
+            }
+            ubo.vk_buffer[frame]  = VK_NULL_HANDLE;
+            ubo.allocation[frame] = VK_NULL_HANDLE;
+            ubo.mapped_ptr[frame] = nullptr;
+        }
+        ubo.size = 0;
+    }
+    // </AYAstorm r41 PC-7β>
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache 用 disk-persist storage (= LLPipelineCacheStorage) を立ち上げる。
@@ -3216,10 +3342,23 @@ void shutdownVulkan()
         }
         sDrawUboRingBufferRecords.clear();
 
-        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-2:
-        // per-program / per-asset / per-skin dirty map teardown。UboInstance は
-        // std::atomic<bool> dirty 単独で外部 resource 所有なし (= VkBuffer 等は
-        // PC-7 で追加予定 placeholder)、clear() のみで安全。
+        // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6ε-2 +
+        // <AYAstorm r41 PC-7β>:
+        // per-program / per-asset / per-skin dirty map teardown。
+        //   PC-6ε-2 = UboInstance::dirty std::atomic<bool> 単独 (外部 resource なし)
+        //   PC-7β  = UboInstance::vk_buffer[FRAMES_IN_FLIGHT] / allocation[] /
+        //             mapped_ptr[] / size を triple-buffer 一括確保 (= AYA (Y1-A)
+        //             (Y3-A)(Y4-A) 確認、本 PC-7β は helper skeleton + teardown
+        //             のみ wired = call site は PC-7γ で配線)。
+        // entry 走査で destroyUboInstanceBuffers を呼出し vmaDestroyBuffer × 3 を
+        // sAllocator 生存中に発火 (= init reverse 順 = sAssetUboPoolMgr / sAllocator
+        // destroy より前)、その後 map.clear()。本 PC-7β scope では allocate call
+        // site 未配線で entry は空のまま (= ubo.size==0 sentinel で no-op safe)
+        // だが、PC-7γ 通電後の forward-safe な teardown 形を本 sub で確立する。
+        // </AYAstorm r41 PC-7β>
+        for (auto& kv : sProgramUboDirty) { destroyUboInstanceBuffers(kv.second); }
+        for (auto& kv : sAssetUboDirty)   { destroyUboInstanceBuffers(kv.second); }
+        for (auto& kv : sSkinUboDirty)    { destroyUboInstanceBuffers(kv.second); }
         sProgramUboDirty.clear();
         sAssetUboDirty.clear();
         sSkinUboDirty.clear();
