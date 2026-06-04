@@ -2344,6 +2344,21 @@ void LLGLSLShader::uniform2f(U32 index, GLfloat x, GLfloat y)
             LLVector4 vec(x, y, 0.f, 0.f);
             if (iter == mValue.end() || shouldChange(iter->second, vec))
             {
+                // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.4:
+                // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+                // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+                // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+                // scalar 引数 → 一時 array pattern (= tick-prompt §4 type/size 早見表準拠)。
+                if (mUseUBO)
+                {
+                    llassert(index < mUniformUBOLoc.size());
+                    const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                    if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    GLfloat tmp[2] = {x, y};
+                    forwardToUboUpload(loc, tmp, sizeof(tmp));
+                    return;
+                }
                 glUniform2f(mUniform[index], x, y);
                 mValue[mUniform[index]] = vec;
             }
