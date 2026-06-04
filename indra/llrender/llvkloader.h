@@ -19,6 +19,20 @@
 
 #include <vector>
 
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6δ:
+// 5 cadence flush 関数 (flushProgramUbos / flushAssetUbos / flushSkinUbos) 用 forward decl。
+// LLGLSLShader と LL::GLTF::{Asset, Skin} 実体は llrender / newview の重い header に
+// 含まれるため、本 header では opaque pointer 受けに留め、include 連鎖を回避する。
+class LLGLSLShader;
+namespace LL
+{
+namespace GLTF
+{
+    class Asset;
+    class Skin;
+}
+}
+
 namespace LLVKLoader
 {
     bool initVulkan();
@@ -278,6 +292,42 @@ namespace LLVKLoader
                             VkBuffer        buffer,
                             VkDeviceSize    offset,
                             VkIndexType     index_type);
+
+    // ------------------------------------------------------------------
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6δ:
+    // 5 cadence (per-frame / per-program / per-draw / per-asset / per-skin)
+    // flush 関数。本 PC-6δ scope は LLUboRingBuffer allocate() / beginFrame()
+    // 経路を通電させ、各 cadence の駆動位置から空 dummy 書込 (256 B / memset 0) を
+    // 発射して ring buffer wrap + grow + side-table mapped ポインタ参照を実証する。
+    //
+    // 設計根拠 (canonical naming = "per-program"):
+    //   docs/specs/ayastorm-r41-gl-removal/design/06b-cadence-update-site-and-dirty.md
+    //     §2.2 5 cadence 分類 / §4.1 flush 駆動関数 名前 / §4.3 駆動位置 /
+    //     §5.3 mUseUBO runtime gate と dirty propagation
+    //
+    // 駆動位置 (P1 採用 2026-06-04 = design 06b canonical):
+    //   flushFrameUbos    : LLPipeline::renderGeomDeferred() 入口
+    //                       (= design 06b §4.3 renderGeom() 系の主経路、AYA Q3a)
+    //   flushProgramUbos  : LLGLSLShader::bind() 入口
+    //   flushDrawUbos     : 主要 pool render entry の canary 配線
+    //                       (= AYA Q3b、PC-6ε で残 pool 全配線)
+    //   flushAssetUbos    : gltfscenemanager.cpp 内 nodes/materials UBO bind 直前
+    //   flushSkinUbos     : gltfscenemanager.cpp 内 joints UBO bind 直前
+    //
+    // MUSEUBO-A 整合: 本 PC-6δ は OpenGL 描画 path に対して常に no-op。
+    //   - sDrawUboRingBufferMgr 未初期化 (= GL 単独動作 / Vulkan 未起動) 時は即時 return
+    //   - mUseUBO runtime gate は redirect 層 (PC-7+) で参照、本 PC-6δ flush は
+    //     ring buffer 上に空 256 B を流すだけで描画 state を一切変更しない
+    //
+    // 引数 (LLGLSLShader / Asset / Skin) は将来 PC-6ε で per-program / per-asset /
+    // per-skin dirty map lookup の key として使用、本 PC-6δ では受信のみ
+    // (空書込で hash / id 参照しない = (unused) ガード)。
+    // ------------------------------------------------------------------
+    void flushFrameUbos();
+    void flushProgramUbos(LLGLSLShader* shader);
+    void flushDrawUbos();
+    void flushAssetUbos(LL::GLTF::Asset* asset);
+    void flushSkinUbos(LL::GLTF::Skin* skin);
 }
 
 #endif // LL_LLVKLOADER_H

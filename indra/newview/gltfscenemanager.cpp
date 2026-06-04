@@ -38,6 +38,7 @@
 #include "llvolumeoctree.h"
 #include "gltf/asset.h"
 #include "pipeline.h"
+#include "llvkloader.h" // <AYAstorm r41 PC-6δ> per-asset / per-skin cadence flush 駆動位置
 #include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewertexturelist.h"
@@ -688,6 +689,11 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     gPipeline.bindDeferredShader(gGLTFPBRMetallicRoughnessProgram.mGLTFVariants[variant]);
                 }
 
+                // <AYAstorm r41 PC-6δ> per-asset cadence flush 駆動位置 (design 06b §4.3)。
+                // mNodesUBO / mMaterialsUBO bind 直前で発火、sDrawUboRingBufferMgr 未初期化時 = no-op。
+                LLVKLoader::flushAssetUbos(&asset);
+                // </AYAstorm r41 PC-6δ>
+
                 if (!rigged)
                 {
                     glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_NODES, asset.mNodesUBO);
@@ -733,6 +739,10 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - bind skin");
                     llassert(node.mSkin != INVALID_INDEX);
                     Skin& skin = asset.mSkins[node.mSkin];
+                    // <AYAstorm r41 PC-6δ> per-skin cadence flush 駆動位置 (design 06b §4.3)。
+                    // skin.mUBO bind 直前で発火、sDrawUboRingBufferMgr 未初期化時 = no-op。
+                    LLVKLoader::flushSkinUbos(&skin);
+                    // </AYAstorm r41 PC-6δ>
                     glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_JOINTS, skin.mUBO);
                 }
                 else

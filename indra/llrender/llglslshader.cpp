@@ -2096,6 +2096,12 @@ void LLGLSLShader::bind()
 
     llassert_always(mProgramObject != 0);
 
+    // <AYAstorm r41 PC-6δ> per-program cadence flush 駆動位置 (design 06b §4.3、
+    // canonical naming = "per-program" 採用 2026-06-04)。sDrawUboRingBufferMgr
+    // 未初期化時 = no-op、GL 単独動作 path で安全。
+    LLVKLoader::flushProgramUbos(this);
+    // </AYAstorm r41 PC-6δ>
+
     gGL.flush();
 
     if (sCurBoundShader != mProgramObject)  // Don't re-bind current shader

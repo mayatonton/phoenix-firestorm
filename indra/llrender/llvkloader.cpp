@@ -3103,6 +3103,104 @@ void pushCurrentModelviewMatrix(const float modelview_matrix[16])
     }
 }
 
+// ------------------------------------------------------------------
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6δ:
+// 5 cadence flush 関数 (空 dummy 書込 = ring buffer allocate / beginFrame 経路通電)。
+//
+// 共通動作 = (1) sDrawUboRingBufferMgr 未初期化 = 即時 return (GL 単独動作 / Vulkan
+//   未起動時の MUSEUBO-A 整合保証) + (2) allocate(256) で 1 record 確保 + 256 B
+//   align_up + chunk 内 wrap or grow trigger 評価 + (3) AllocateResult.buffer を
+//   side-table lookup → mapped pointer + offset 経由で memset 0 (= test UBO 空書込)。
+//
+// 設計根拠 = design 06b §2.2 (5 cadence 分類) / §4.1 (flush 駆動関数 名前) /
+//           §4.3 (駆動位置) / §5.3 (mUseUBO runtime gate と dirty propagation)、
+//           design 07 §7.2 (4 MB / 16 MB) / §7.3 (256 B alignment) / §7.5 (3 chunk
+//           wrap + grow) / §8.4 (FRAMES_IN_FLIGHT=3 同期 rotate)。
+//
+// 本 PC-6δ では shader / asset / skin 引数は受信のみで body 内未参照
+// (= 将来 PC-6ε で per-program / per-asset / per-skin dirty map lookup の key 化、
+//  本 sub では空書込で hash 不要)。(void) cast で unused-parameter 警告抑止。
+// ------------------------------------------------------------------
+namespace
+{
+    // 共通 helper: AllocateResult から sDrawUboRingBufferRecords 経由で mapped pointer 解決し
+    // offset 位置に memset 0 (= test UBO 空 dummy 書込 256 B)。
+    // sDrawUboRingBufferMgr 未初期化時は即時 return (= GL 単独動作 / Vulkan 未起動の MUSEUBO-A 保証)。
+    void flushDummyUboWrite(const char* cadence_label)
+    {
+        if (!sDrawUboRingBufferMgr)
+        {
+            return;
+        }
+
+        const LLUboRingBuffer::AllocateResult result = sDrawUboRingBufferMgr->allocate(256);
+        if (!result.success || result.buffer == 0)
+        {
+            return;
+        }
+
+        auto it = sDrawUboRingBufferRecords.find(result.buffer);
+        if (it == sDrawUboRingBufferRecords.end() || it->second.mapped == nullptr)
+        {
+            return;
+        }
+
+        std::memset(static_cast<U8*>(it->second.mapped) + result.offset, 0, result.size);
+
+        // 1 回だけ marker log (= cadence 毎に first-fire 検知できるよう label 引数で区別)。
+        // 2 回目以降は no-op、運用 log noise 抑止。
+        static std::unordered_map<std::string, bool> s_first_fire;
+        const std::string key(cadence_label);
+        if (!s_first_fire[key])
+        {
+            s_first_fire[key] = true;
+            LL_INFOS("Vulkan") << "PC-6δ " << cadence_label
+                               << " flush path active (buffer=0x" << std::hex << result.buffer
+                               << std::dec << ", offset=" << result.offset
+                               << ", size=" << result.size
+                               << ", grew=" << (result.grew ? "yes" : "no")
+                               << ", frame=" << sDrawUboRingBufferMgr->getFrameIndex()
+                               << ", chunk=" << sDrawUboRingBufferMgr->getActiveChunk()
+                               << ")" << LL_ENDL;
+        }
+    }
+}
+
+void flushFrameUbos()
+{
+    if (!sDrawUboRingBufferMgr)
+    {
+        return;
+    }
+    // per-frame cadence のみ beginFrame() で frame index advance + chunk reset
+    // (design 06b §4.3 + design 07 §8.4 FRAMES_IN_FLIGHT 同期 rotate)。
+    sDrawUboRingBufferMgr->beginFrame();
+    flushDummyUboWrite("flushFrameUbos");
+}
+
+void flushProgramUbos(LLGLSLShader* shader)
+{
+    (void)shader; // PC-6ε で per-program dirty map key 化、本 sub では未参照
+    flushDummyUboWrite("flushProgramUbos");
+}
+
+void flushDrawUbos()
+{
+    flushDummyUboWrite("flushDrawUbos");
+}
+
+void flushAssetUbos(LL::GLTF::Asset* asset)
+{
+    (void)asset; // PC-6ε で per-asset dirty map key 化、本 sub では未参照
+    flushDummyUboWrite("flushAssetUbos");
+}
+
+void flushSkinUbos(LL::GLTF::Skin* skin)
+{
+    (void)skin; // PC-6ε で per-skin dirty map key 化、本 sub では未参照
+    flushDummyUboWrite("flushSkinUbos");
+}
+
 // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
 // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。
 // PSO bind (sSkySmokePipeline、fullscreen triangle + 定数色 frag = sky blue 0.4/0.6/0.9/1.0) +

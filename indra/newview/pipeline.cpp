@@ -5109,6 +5109,11 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_GEOMETRY);
     LL_PROFILE_GPU_ZONE("renderGeomDeferred");
 
+    // <AYAstorm r41 PC-6δ> per-frame cadence flush 駆動位置 (design 06b §4.3)。
+    // sDrawUboRingBufferMgr 未初期化時 = no-op、GL 単独動作 path で安全。
+    LLVKLoader::flushFrameUbos();
+    // </AYAstorm r41 PC-6δ>
+
     llassert(!isFrameHUDPass());
 
     if (gUseWireframe)

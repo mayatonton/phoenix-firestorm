@@ -103,6 +103,12 @@ void LLDrawPoolSimple::renderDeferred(S32 pass)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SIMPLE_DEFERRED);
     LLGLDisable blend(GL_BLEND);
 
+    // <AYAstorm r41 PC-6δ> per-draw cadence flush 駆動位置 (design 06b §4.3、AYA Q3b
+    // canary 採用 2026-06-04 = 1 pool entry のみ配線、PC-6ε で残 pool 全配線)。
+    // sDrawUboRingBufferMgr 未初期化時 = no-op、GL 単独動作 path で安全。
+    LLVKLoader::flushDrawUbos();
+    // </AYAstorm r41 PC-6δ>
+
     //render static
     gDeferredDiffuseProgram.bind();
     pushBatches(LLRenderPass::PASS_SIMPLE, true, true);
