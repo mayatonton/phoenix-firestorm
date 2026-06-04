@@ -2742,6 +2742,20 @@ void LLGLSLShader::uniformMatrix2fv(U32 index, U32 count, GLboolean transpose, c
 
         if (mUniform[index] >= 0)
         {
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.14:
+            // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+            // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+            // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+            // matrix 2x2 (= count * 4 * sizeof(GLfloat))、(U4) 構造的自然成立 (= mValue check 既存不在)。
+            if (mUseUBO)
+            {
+                llassert(index < mUniformUBOLoc.size());
+                const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                forwardToUboUpload(loc, v, count * 4 * sizeof(GLfloat));
+                return;
+            }
             glUniformMatrix2fv(mUniform[index], count, transpose, v);
         }
     }
@@ -2763,6 +2777,20 @@ void LLGLSLShader::uniformMatrix3fv(U32 index, U32 count, GLboolean transpose, c
 
         if (mUniform[index] >= 0)
         {
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.15:
+            // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+            // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+            // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+            // matrix 3x3 (= count * 9 * sizeof(GLfloat))、(U4) 構造的自然成立 (= mValue check 既存不在)。
+            if (mUseUBO)
+            {
+                llassert(index < mUniformUBOLoc.size());
+                const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                forwardToUboUpload(loc, v, count * 9 * sizeof(GLfloat));
+                return;
+            }
             glUniformMatrix3fv(mUniform[index], count, transpose, v);
         }
     }
@@ -2784,6 +2812,20 @@ void LLGLSLShader::uniformMatrix3x4fv(U32 index, U32 count, GLboolean transpose,
 
         if (mUniform[index] >= 0)
         {
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.16:
+            // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+            // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+            // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+            // matrix 3x4 (= count * 12 * sizeof(GLfloat))、(U4) 構造的自然成立 (= mValue check 既存不在)。
+            if (mUseUBO)
+            {
+                llassert(index < mUniformUBOLoc.size());
+                const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                forwardToUboUpload(loc, v, count * 12 * sizeof(GLfloat));
+                return;
+            }
             glUniformMatrix3x4fv(mUniform[index], count, transpose, v);
         }
     }
@@ -2805,6 +2847,20 @@ void LLGLSLShader::uniformMatrix4fv(U32 index, U32 count, GLboolean transpose, c
 
         if (mUniform[index] >= 0)
         {
+            // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.17:
+            // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+            // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+            // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+            // matrix 4x4 (= count * 16 * sizeof(GLfloat))、(U4) 構造的自然成立 (= mValue check 既存不在)。
+            if (mUseUBO)
+            {
+                llassert(index < mUniformUBOLoc.size());
+                const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                forwardToUboUpload(loc, v, count * 16 * sizeof(GLfloat));
+                return;
+            }
             glUniformMatrix4fv(mUniform[index], count, transpose, v);
         }
     }
