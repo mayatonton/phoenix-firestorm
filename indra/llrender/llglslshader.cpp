@@ -1943,6 +1943,33 @@ bool LLGLSLShader::mapUniforms()
         }
     }
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-7:
+    // pre-cache フロー整合 check (spec 06a §4.4 literal)。
+    // debug build で mUniformUBOLoc / mUniform 並列配置 + cadence_tag 整合を assert。
+    // release build では除去 (llassert は debug-only ゆえ Vulkan path 動作確認の安全網)。
+    // GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 不使用、mUseUBO runtime flag 単独 gate。
+    // MUSEUBO-A 整合 = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+    // 06a §4.4 整合 check 3 項目のうち:
+    //   (1) `mUniformUBOLoc.size() == mUniform.size()` (= 並列配置の維持)
+    //   (2) cadence_tag != CADENCE_INVALID で対応する mUniform[i] != -1
+    //       (= shader 内 active uniform は両 cache に存在)
+    //   (3) cadence_tag == CADENCE_SAMPLER (= 5) の uniform は OpenGL path 強制 = §5.6
+    //       setter 側で別途 handle (AYA 判断 2026-06-04 = (a) コメント注釈のみ、本 §4.4
+    //       整合 check 対象外、現 Phase 1.B で sampler 集約未確定ゆえ assert なし)。
+    if (mUseUBO)
+    {
+        // (1) 並列配置の維持
+        llassert(mUniformUBOLoc.size() == mUniform.size());
+        // (2) shader 内 active uniform は両 cache に存在
+        for (size_t i = 0; i < mUniformUBOLoc.size(); ++i)
+        {
+            if (mUniformUBOLoc[i].cadence_tag != 0xFFFFFFFFu)
+            {
+                llassert(mUniform[i] != -1);
+            }
+        }
+    }
+
     unbind();
 
     LL_DEBUGS("ShaderUniform") << "Total Uniform Size: " << mTotalUniformSize << LL_ENDL;

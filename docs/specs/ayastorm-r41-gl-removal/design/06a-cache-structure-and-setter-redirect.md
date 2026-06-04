@@ -252,6 +252,20 @@ shader link 完了後、debug build で以下を `llassert` 検証:
 
 検証失敗は build error ではなく runtime assert (= Vulkan path 動作確認の安全網)、release build で除去。
 
+#### §4.4.1 PB-7 実装確定 (= AYA 判断 2026-06-04、Phase 1.B PB-7 sub-step)
+
+§4.4 整合 check 3 項目の `llassert` 実装方針:
+- (1) `mUniformUBOLoc.size() == mUniform.size()` = **assert として実装**
+- (2) cadence_tag != CADENCE_INVALID で対応する `mUniform[i] != -1` = **loop で per-element assert として実装**
+- (3) cadence_tag == CADENCE_SAMPLER の uniform は OpenGL path 強制 (= §5.6) = **コメント注釈のみ、本 §4.4 assert 対象外**
+
+(3) を assert 対象外とした根拠 (= AYA 判断採択):
+- spec literal の (1) (2) は等式・含意形式で assert に直接展開可、(3) は命題 + §5.6 への参照記述 (= 文体が異なる)
+- §5.6 setter 側で sampler は OpenGL path 強制が実体 = §4.4 はそれを案内する記述で本 check は (1) (2) の構造整合に限定するのが自然
+- 現 Phase 1.B で sampler 集約自体未確定の可能性ゆえ、(3) を assert 化すると将来 sampler 集約変更時に false trip risk
+
+実装位置 = `indra/llrender/llglslshader.cpp` `mapUniforms()` 末尾、PB-3 block 直後 (line 1944 直後)、`unbind()` 直前 (= PB-2/PB-3/PB-7 を 1 block 内集中、handoff PB-3 §3.1 (iv) の前後 maintenance 局所化方針通り)。
+
 ---
 
 ## §5 16 method setter family の Vulkan path 分岐
