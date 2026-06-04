@@ -402,6 +402,12 @@ namespace LLVKLoader
     void writeFrameUbo       (U32 block_hash, U32 offset, const void* data, size_t size);
     void writeProgramUbo     (LLGLSLShader* shader, U32 block_hash, U32 offset, const void* data, size_t size);
 
+    // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-7δ (l):
+    //   SINGLETON cadence write entry point。block_hash 単独 key
+    //   (= shader-agnostic、Global_ReflectionProbes 等 process-wide UBO)。
+    //   writeFrameUbo signature 同形 + sSingletonUboInstances target。
+    void writeSingletonUbo   (U32 block_hash, U32 offset, const void* data, size_t size);
+
     // ------------------------------------------------------------------
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-7γ-2:
     // per-asset / per-skin UBO register / unregister hook + write bridge helper +

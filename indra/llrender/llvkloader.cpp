@@ -676,6 +676,52 @@ namespace
     VkPipelineLayout      sAYAStandardLayout    = VK_NULL_HANDLE;  // 5 set layout array + push constant 64 B
     // </AYAstorm r41 PC-7α>
 
+    // ------------------------------------------------------------------
+    // <AYAstorm r41 PC-7δ> V3a 5-set 実体 (= VkDescriptorSet array) + per-singleton
+    // UboInstance map = PC-7δ scope (vkCmdBindDescriptorSets 通電 + set=3 swap +
+    // sAYAStandardLayout 経由 bind + SINGLETON case 本格化) で新設。
+    //
+    // 設計根拠 (= 2026-06-05 AYA literal「OK」 record + design 06c §2-§5 +
+    // design 07 §4.4.1 / §6.4 / §8.4 / §9.1 / §9.2):
+    //   (H2-A) initVulkan で V3a pool から eager allocate (= FRAMES_IN_FLIGHT=3
+    //          × cadence 固定数を一括 = 計 13 set)。grow only pool 整合
+    //          (= design 07 §6.4) + per-frame churn 回避。
+    //   (H3-A) vkUpdateDescriptorSets timing = register*Ubo 内 = UboInstance 確保
+    //          直後に update (= per-instance pair、hot path 除外)。
+    //   (H5-A) sSingletonUboInstances は sFrameUboInstances 別 map (= cadence
+    //          隔離、map key 単純化 = block_hash 単独)。writeSingletonUbo +
+    //          flushSingletonUbos 経由 setter ↔ flush 2 経路統合。
+    //
+    // 13 set 内訳:
+    //   set=0 sFrameUboSetV3a    × FRAMES_IN_FLIGHT (= 3) (per-frame + singleton 同居)
+    //   set=1a sProgramUboSetA   × FRAMES_IN_FLIGHT (= 3) (per-program first half)
+    //   set=1b sProgramUboSetB   × FRAMES_IN_FLIGHT (= 3) (per-program second half)
+    //   set=2 sDrawUboSetV3a     × 1                       (ring buffer + dynamic offset で 1 set 固定)
+    //   set=3 sAssetUboSetV3a    × FRAMES_IN_FLIGHT (= 3) (per-asset + per-skin 同居)
+    //
+    // shutdownVulkan teardown は pool destroy 時に implicit free
+    // (= FREE_DESCRIPTOR_SET_BIT 不付与 grow only pool、design 07 §6.4 整合)、
+    // 別途 vkFreeDescriptorSets 呼出不要。array は VK_NULL_HANDLE reset のみ。
+    //
+    // GATE-B 整合: #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= host C++ Vulkan init 層単独)
+    // MUSEUBO-A 整合: bind 実発火は placeholder draw 経路 (= sFramebuffer offscreen
+    //                FBO、画面到達なし)、mUseUBO=false default で setter→
+    //                forwardToUboUpload 不到達、既存 OpenGL 描画 100% 維持。
+    // ------------------------------------------------------------------
+    VkDescriptorSet sFrameUboSetV3a [FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDescriptorSet sProgramUboSetA [FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDescriptorSet sProgramUboSetB [FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+    VkDescriptorSet sDrawUboSetV3a                     = VK_NULL_HANDLE;
+    VkDescriptorSet sAssetUboSetV3a [FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+
+    // sSingletonUboInstances = block_hash 単独 key の per-singleton UboInstance map
+    // (= sFrameUboInstances と独立)。現 codegen で SINGLETON 1 件
+    // (= Global_ReflectionProbes、block_hash=0xabdfdb31、set=0 binding=3、size=256)、
+    // initVulkan で先回り allocate + vkUpdateDescriptorSets で sFrameUboSetV3a の
+    // binding=3 に紐付け。
+    std::unordered_map<U32 /*block_hash*/, UboInstance> sSingletonUboInstances;
+    // </AYAstorm r41 PC-7δ>
+
     bool queryAndLogDeviceLimits()
     {
         // r41 sub-step 3.1b measurement-first cadence (sub-doc 03 §1.5.4):
@@ -1670,6 +1716,98 @@ namespace
                                 /*pDynamicOffsets=*/nullptr);
     }
 
+    // <AYAstorm r41 PC-7δ> bindV3aStatic / bindV3aRigged = V3a 5-set bind 経路 helper
+    // (= design 07 §4.4.1 「論理 5 set → bind 時 4 set 縮減」 + §9.2 set=3 swap
+    // configuration、maxBoundDescriptorSets=4 死守)。
+    //
+    // bind 構成:
+    //   static draw : set=0 (frame+singleton) + set=1a (program A) + set=1b (program B) + set=2 (per-draw)
+    //   rigged draw : set=0                  + set=1a              + set=1b              + set=3 (per-asset+per-skin)
+    //
+    // 単一 vkCmdBindDescriptorSets 呼出で firstSet=0 + descriptorSetCount=4 を渡す
+    // (= contiguous 4 set bind、Vulkan spec で firstSet 起点の連続 set を 1 呼出で bind)。
+    // ただし static は set=0/1a/1b/2 (= 連続)、rigged は set=0/1a/1b/3 (= set=2 skip + set=3)
+    // ゆえ rigged は 2 回 vkCmdBindDescriptorSets 呼出に分割
+    // (= set=0..1b 3 set bind 1 回 + set=3 1 set bind 1 回)。
+    //
+    // pDynamicOffsets は本 PC-7δ では一律 0 (= ring buffer の actual offset 計算は
+    // PC-7ε scope = dynamic offset 経路 ring buffer chunk hand-off)。
+    // set=2 (sDrawUboLayoutV3a) は UBO_DYNAMIC で V3A_DRAW_SET_BINDINGS=4 個分
+    // dynamic offset 必要、本 PC-7δ では 4 件 ゼロ埋め配列を渡す。
+    //
+    // 早期 return: cmd_buf / layout NULL + 必要な set 群が VK_NULL_HANDLE な状態は
+    // initVulkan 失敗 or scaffolding 未通電を意味、no-op safe (= MUSEUBO-A 整合)。
+    void bindV3aStatic(VkCommandBuffer cmd_buf, U32 frame_index)
+    {
+        if (cmd_buf == VK_NULL_HANDLE ||
+            sAYAStandardLayout == VK_NULL_HANDLE ||
+            frame_index >= FRAMES_IN_FLIGHT ||
+            sFrameUboSetV3a[frame_index]    == VK_NULL_HANDLE ||
+            sProgramUboSetA[frame_index]    == VK_NULL_HANDLE ||
+            sProgramUboSetB[frame_index]    == VK_NULL_HANDLE ||
+            sDrawUboSetV3a                  == VK_NULL_HANDLE)
+        {
+            return;
+        }
+
+        const VkDescriptorSet sets[4] = {
+            sFrameUboSetV3a[frame_index],
+            sProgramUboSetA[frame_index],
+            sProgramUboSetB[frame_index],
+            sDrawUboSetV3a,
+        };
+        const U32 dynamic_offsets[V3A_DRAW_SET_BINDINGS] = { 0u, 0u, 0u, 0u };
+
+        vkCmdBindDescriptorSets(cmd_buf,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sAYAStandardLayout,
+                                /*firstSet=*/0,
+                                /*descriptorSetCount=*/4,
+                                sets,
+                                /*dynamicOffsetCount=*/V3A_DRAW_SET_BINDINGS,
+                                dynamic_offsets);
+    }
+
+    void bindV3aRigged(VkCommandBuffer cmd_buf, U32 frame_index)
+    {
+        if (cmd_buf == VK_NULL_HANDLE ||
+            sAYAStandardLayout == VK_NULL_HANDLE ||
+            frame_index >= FRAMES_IN_FLIGHT ||
+            sFrameUboSetV3a[frame_index]    == VK_NULL_HANDLE ||
+            sProgramUboSetA[frame_index]    == VK_NULL_HANDLE ||
+            sProgramUboSetB[frame_index]    == VK_NULL_HANDLE ||
+            sAssetUboSetV3a[frame_index]    == VK_NULL_HANDLE)
+        {
+            return;
+        }
+
+        // set=0/1a/1b 3 set 連続 bind
+        const VkDescriptorSet sets_0_to_1b[3] = {
+            sFrameUboSetV3a[frame_index],
+            sProgramUboSetA[frame_index],
+            sProgramUboSetB[frame_index],
+        };
+        vkCmdBindDescriptorSets(cmd_buf,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sAYAStandardLayout,
+                                /*firstSet=*/0,
+                                /*descriptorSetCount=*/3,
+                                sets_0_to_1b,
+                                /*dynamicOffsetCount=*/0,
+                                /*pDynamicOffsets=*/nullptr);
+
+        // set=3 単独 bind (= set=2 ↔ set=3 swap 実走)
+        vkCmdBindDescriptorSets(cmd_buf,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                sAYAStandardLayout,
+                                /*firstSet=*/3,
+                                /*descriptorSetCount=*/1,
+                                &sAssetUboSetV3a[frame_index],
+                                /*dynamicOffsetCount=*/0,
+                                /*pDynamicOffsets=*/nullptr);
+    }
+    // </AYAstorm r41 PC-7δ>
+
     // r41 sub-step 3.4-β-1 (sub-doc 03 §3.1.4 / sub-doc 07 §3.1 sub-step 7.1 内包):
     // VMA budget smoke 1 回出力。VK_EXT_memory_budget 支援時は実 budget/usage を取得、
     // 未支援時は VMA fallback の累積 statistics を表示。INFO marker #3。
@@ -2383,6 +2521,99 @@ namespace
                            << "bind 経路未通電 = PC-7δ scope)" << LL_ENDL;
         return true;
     }
+
+    // <AYAstorm r41 PC-7δ> V3a 5-set 実体を 4 V3a pool から eager allocate。
+    // 計 13 set (= sFrameUboSetV3a×3 + sProgramUboSetA×3 + sProgramUboSetB×3 +
+    // sDrawUboSetV3a×1 + sAssetUboSetV3a×3) を initVulkan で 1 度確保。
+    // sFrameUboPool maxSets=3 / sProgramUboPool maxSets=6 / sDrawUboPool
+    // maxSets=1 / sAssetUboPool maxSets=192 で全件収容可能 (= design 07 §6.3
+    // 整合)。
+    //
+    // 失敗時は本 helper が false return + 既 allocate 済 set は VK_NULL_HANDLE
+    // 状態維持 (= 個別 vkFreeDescriptorSets 呼出は不要 = grow only pool、
+    // shutdownVulkan の vkDestroyDescriptorPool で implicit free)。
+    bool createV3aDescriptorSets()
+    {
+        if (sDevice == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+
+        auto allocate_sets = [](VkDescriptorPool          pool,
+                                VkDescriptorSetLayout     layout,
+                                U32                       count,
+                                VkDescriptorSet*          out_sets,
+                                const char*               label) -> bool
+        {
+            if (pool == VK_NULL_HANDLE || layout == VK_NULL_HANDLE || count == 0)
+            {
+                LL_WARNS("Vulkan") << "createV3aDescriptorSets allocate_sets ("
+                                   << (label ? label : "?")
+                                   << "): invalid pool/layout/count" << LL_ENDL;
+                return false;
+            }
+
+            // 同一 layout を count 件分の array で渡す (= vkAllocateDescriptorSets spec:
+            // pSetLayouts は descriptorSetCount 要素配列)。
+            std::vector<VkDescriptorSetLayout> layouts(count, layout);
+            VkDescriptorSetAllocateInfo info = {};
+            info.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            info.descriptorPool     = pool;
+            info.descriptorSetCount = count;
+            info.pSetLayouts        = layouts.data();
+
+            VkResult r = vkAllocateDescriptorSets(sDevice, &info, out_sets);
+            if (r != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "vkAllocateDescriptorSets (" << (label ? label : "?")
+                                   << ") failed: result=" << (S32)r
+                                   << " count=" << count << LL_ENDL;
+                return false;
+            }
+            return true;
+        };
+
+        if (!allocate_sets(sFrameUboPoolV3a, sFrameUboLayoutV3a,
+                           FRAMES_IN_FLIGHT, sFrameUboSetV3a,
+                           "set=0 frame+singleton"))
+        {
+            return false;
+        }
+        if (!allocate_sets(sProgramUboPoolV3a, sProgramUboLayoutA,
+                           FRAMES_IN_FLIGHT, sProgramUboSetA,
+                           "set=1a per-program A"))
+        {
+            return false;
+        }
+        if (!allocate_sets(sProgramUboPoolV3a, sProgramUboLayoutB,
+                           FRAMES_IN_FLIGHT, sProgramUboSetB,
+                           "set=1b per-program B"))
+        {
+            return false;
+        }
+        if (!allocate_sets(sDrawUboPoolV3a, sDrawUboLayoutV3a,
+                           1, &sDrawUboSetV3a,
+                           "set=2 per-draw"))
+        {
+            return false;
+        }
+        if (!allocate_sets(sAssetUboPoolV3a, sAssetUboLayoutV3a,
+                           FRAMES_IN_FLIGHT, sAssetUboSetV3a,
+                           "set=3 per-asset+per-skin"))
+        {
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "V3a 13 descriptor sets allocated"
+                           << " (set=0 × " << FRAMES_IN_FLIGHT
+                           << " / set=1a × " << FRAMES_IN_FLIGHT
+                           << " / set=1b × " << FRAMES_IN_FLIGHT
+                           << " / set=2 × 1"
+                           << " / set=3 × " << FRAMES_IN_FLIGHT
+                           << ")" << LL_ENDL;
+        return true;
+    }
+    // </AYAstorm r41 PC-7δ>
     // </AYAstorm r41 PC-7α>
 
     // r41 sub-step 3.1b item #8: minimal placeholder PSO (sky pool placeholder)。
@@ -2694,21 +2925,20 @@ namespace
             return false;
         }
 
-        // r41 sub-step 3.4-γ: 二段構え準拠 layout を set=0 PerFrame + set=1 PerMaterial に拡張
-        // (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1)。push constant range 0..64 B / VERTEX_BIT (modelview_matrix)
-        // は 3.3-γ 設計継承。sky smoke SPIR-V は set=1 binding 未参照のため shader 改変不要
-        // (sub-step 3.4-δ-1 で recordPlaceholderPoolDraw 経由 12 pool hook body に組込)。
-        VkDescriptorSetLayout set_layouts[2]     = { sPerFrameDescriptorSetLayout, sPerMaterialDescriptorSetLayout };
-        VkPushConstantRange   push_constants[1]  = {};
-        push_constants[0].stageFlags             = VK_SHADER_STAGE_VERTEX_BIT;
-        push_constants[0].offset                 = 0;
-        push_constants[0].size                   = 64; // mat4 modelview_matrix
-        sSkySmokeLayout = createStandardPipelineLayout(set_layouts, 2, push_constants, 1);
-        if (sSkySmokeLayout == VK_NULL_HANDLE)
+        // <AYAstorm r41 PC-7δ (i)> sSkySmokeLayout を sAYAStandardLayout (V3a 5-set
+        //   + push constant 64 B) で alias 共用 = sSkySmokePipeline は sAYAStandardLayout
+        //   経路で bind/draw、recordPlaceholderPoolDraw 内の vkCmdBindDescriptorSets を
+        //   bindV3aStatic 経由 set=0/1a/1b/2 4-set bind に migrate。sky smoke SPIR-V は
+        //   set=N binding 未参照ゆえ shader 改変不要 (= H8 MUSEUBO-A 整合 = placeholder
+        //   offscreen FBO 経路で実 OpenGL 描画への影響ゼロ)。
+        // 旧 layout (set=0 PerFrame + set=1 PerMaterial + push 64 B) は廃止、shutdownVulkan
+        //   teardown は alias 検出 (= != sAYAStandardLayout) で double-destroy 回避。
+        if (sAYAStandardLayout == VK_NULL_HANDLE)
         {
-            LL_WARNS("Vulkan") << "Sky smoke pipeline layout create failed" << LL_ENDL;
+            LL_WARNS("Vulkan") << "Sky smoke pipeline: sAYAStandardLayout not initialized" << LL_ENDL;
             return false;
         }
+        sSkySmokeLayout = sAYAStandardLayout;
 
         VkPipelineShaderStageCreateInfo stages[2] = {};
         stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -2897,32 +3127,21 @@ namespace
         {
             return true;
         }
-        if (sAvatarBoneDescriptorSetLayout == VK_NULL_HANDLE)
-        {
-            LL_WARNS("Vulkan") << "createAvatarBonePipeline: avatar bone descriptor set layout not ready" << LL_ENDL;
-            return false;
-        }
         if (sSkySmokeVertModule == VK_NULL_HANDLE || sSkySmokeFragModule == VK_NULL_HANDLE)
         {
             LL_WARNS("Vulkan") << "createAvatarBonePipeline: sky smoke shader modules not ready" << LL_ENDL;
             return false;
         }
 
-        VkDescriptorSetLayout set_layouts[3]    = {
-            sPerFrameDescriptorSetLayout,
-            sPerMaterialDescriptorSetLayout,
-            sAvatarBoneDescriptorSetLayout,
-        };
-        VkPushConstantRange   push_constants[1] = {};
-        push_constants[0].stageFlags            = VK_SHADER_STAGE_VERTEX_BIT;
-        push_constants[0].offset                = 0;
-        push_constants[0].size                  = 64;
-        sAvatarBoneLayout = createStandardPipelineLayout(set_layouts, 3, push_constants, 1);
-        if (sAvatarBoneLayout == VK_NULL_HANDLE)
+        // <AYAstorm r41 PC-7δ (j)> sAvatarBoneLayout を sAYAStandardLayout で alias 共用
+        // (H10-A: push descriptor 経路 disable + V3a 5-set layout に統一)。
+        // avatar bone storage buffer 経路は PC-N 実 GLTF avatar Vulkan draw 通電時に再配線。
+        if (sAYAStandardLayout == VK_NULL_HANDLE)
         {
-            LL_WARNS("Vulkan") << "Avatar bone pipeline layout create failed" << LL_ENDL;
+            LL_WARNS("Vulkan") << "createAvatarBonePipeline: sAYAStandardLayout not initialized" << LL_ENDL;
             return false;
         }
+        sAvatarBoneLayout = sAYAStandardLayout;
 
         VkPipelineShaderStageCreateInfo stages[2] = {};
         stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -3107,14 +3326,17 @@ bool initVulkan()
 
     // <AYAstorm r41 PC-7α> V3a 5-set unified descriptor scaffolding
     // = design 06c §2 + 07 §3.2 V1' + §6.3 + §9.1 整合
-    // (scaffolding 純化 = bind 経路未通電、PC-7δ で vkCmdBindDescriptorSets 通電予定)
+    // <AYAstorm r41 PC-7δ (c)> createV3aDescriptorSets() を chain に追加 = 13 set
+    //   eager allocate (set=0 × 3 + set=1a × 3 + set=1b × 3 + set=2 × 1 + set=3 × 3)
     if (!createV3aDescriptorSetLayouts() ||
         !createV3aDescriptorPools()      ||
-        !createAYAStandardPipelineLayout())
+        !createAYAStandardPipelineLayout() ||
+        !createV3aDescriptorSets())
     {
         shutdownVulkan();
         return false;
     }
+    // </AYAstorm r41 PC-7δ (c)>
     // </AYAstorm r41 PC-7α>
 
     // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instance 先回り allocate。
@@ -3153,6 +3375,107 @@ bool initVulkan()
             return false;
         }
     }
+
+    // <AYAstorm r41 PC-7δ (d)> PER_FRAME 3 block の set=0 descriptor set
+    // (sFrameUboSetV3a[3]) を vkUpdateDescriptorSets で初期化 = binding 0/1/2 を
+    // 各 frame index 別の vk_buffer[frame_idx] に bind。register-once / bind-many
+    // 規律 (= H3-A 整合)、本 update 後 buffer 内容を memcpy しても descriptor
+    // 更新は不要 (= persistent map 経由)。
+    {
+        std::vector<VkDescriptorBufferInfo> buffer_infos;
+        std::vector<VkWriteDescriptorSet>   writes;
+        buffer_infos.reserve(FRAMES_IN_FLIGHT * V3A_FRAME_SET_BINDINGS);
+        writes.reserve(FRAMES_IN_FLIGHT * V3A_FRAME_SET_BINDINGS);
+        for (U32 i = 0; i < ubo::g_block_count; ++i)
+        {
+            const ubo::BlockMetadata& meta = ubo::g_block_metadata[i];
+            if (meta.cadence_tag != 0u /*PER_FRAME*/) continue;
+            auto it = sFrameUboInstances.find(meta.block_hash);
+            if (it == sFrameUboInstances.end()) continue;
+            UboInstance& ubo_inst = it->second;
+            for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+            {
+                if (ubo_inst.vk_buffer[f] == VK_NULL_HANDLE) continue;
+                buffer_infos.push_back({ ubo_inst.vk_buffer[f], 0, ubo_inst.size });
+                VkWriteDescriptorSet w = {};
+                w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w.dstSet          = sFrameUboSetV3a[f];
+                w.dstBinding      = meta.binding;
+                w.dstArrayElement = 0;
+                w.descriptorCount = 1;
+                w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                w.pBufferInfo     = &buffer_infos.back();
+                writes.push_back(w);
+            }
+        }
+        if (!writes.empty())
+        {
+            vkUpdateDescriptorSets(sDevice, static_cast<U32>(writes.size()), writes.data(), 0, nullptr);
+            LL_INFOS("Vulkan") << "PC-7δ (d) PER_FRAME descriptor set updated ("
+                               << writes.size() << " write entries)" << LL_ENDL;
+        }
+    }
+    // </AYAstorm r41 PC-7δ (d)>
+
+    // <AYAstorm r41 PC-7δ (m)> SINGLETON cadence allocate ループ =
+    // sSingletonUboInstances に cadence_tag=5 (SINGLETON) block 全件 allocate
+    // (= 2026-06-05 時点 1 件 Global_ReflectionProbes、set=0 binding=3)、
+    // FRAMES_IN_FLIGHT=3 triple-buffer (= PER_FRAME と同形ゆえ frame-rotate write
+    // race 回避明示)。allocate 完了後 vkUpdateDescriptorSets で set=0 binding=3 を
+    // 各 frame 別 vk_buffer[f] に bind。
+    for (U32 i = 0; i < ubo::g_block_count; ++i)
+    {
+        const ubo::BlockMetadata& meta = ubo::g_block_metadata[i];
+        if (meta.cadence_tag != 5u /*SINGLETON*/) continue;
+        UboInstance& ubo_inst = sSingletonUboInstances[meta.block_hash];
+        if (ubo_inst.size != 0)
+        {
+            continue;
+        }
+        if (!allocateUboInstanceBuffers(ubo_inst, meta.block_size, meta.block_name))
+        {
+            LL_WARNS("Vulkan") << "PC-7δ (m): sSingletonUboInstances allocate failed for "
+                               << meta.block_name << " (block_size=" << meta.block_size << ")" << LL_ENDL;
+            sSingletonUboInstances.erase(meta.block_hash);
+            shutdownVulkan();
+            return false;
+        }
+    }
+    {
+        std::vector<VkDescriptorBufferInfo> buffer_infos;
+        std::vector<VkWriteDescriptorSet>   writes;
+        for (U32 i = 0; i < ubo::g_block_count; ++i)
+        {
+            const ubo::BlockMetadata& meta = ubo::g_block_metadata[i];
+            if (meta.cadence_tag != 5u /*SINGLETON*/) continue;
+            auto it = sSingletonUboInstances.find(meta.block_hash);
+            if (it == sSingletonUboInstances.end()) continue;
+            UboInstance& ubo_inst = it->second;
+            buffer_infos.reserve(buffer_infos.size() + FRAMES_IN_FLIGHT);
+            writes.reserve(writes.size() + FRAMES_IN_FLIGHT);
+            for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+            {
+                if (ubo_inst.vk_buffer[f] == VK_NULL_HANDLE) continue;
+                buffer_infos.push_back({ ubo_inst.vk_buffer[f], 0, ubo_inst.size });
+                VkWriteDescriptorSet w = {};
+                w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w.dstSet          = sFrameUboSetV3a[f];
+                w.dstBinding      = meta.binding;
+                w.dstArrayElement = 0;
+                w.descriptorCount = 1;
+                w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                w.pBufferInfo     = &buffer_infos.back();
+                writes.push_back(w);
+            }
+        }
+        if (!writes.empty())
+        {
+            vkUpdateDescriptorSets(sDevice, static_cast<U32>(writes.size()), writes.data(), 0, nullptr);
+            LL_INFOS("Vulkan") << "PC-7δ (m) SINGLETON descriptor set updated ("
+                               << writes.size() << " write entries)" << LL_ENDL;
+        }
+    }
+    // </AYAstorm r41 PC-7δ (m)>
 
     // r41 sub-step 3.4-γ (sub-doc 03 §3.1.4 / sub-doc 07 §1.2.1 / §3.1 sub-step 7.3 layout 部分内包):
     // set=1 per-material 7 PBR slot descriptor set layout + 共用 placeholder sampler を
@@ -3250,11 +3573,13 @@ void shutdownVulkan()
             vkDestroyPipeline(sDevice, sAvatarBonePipeline, nullptr);
             sAvatarBonePipeline = VK_NULL_HANDLE;
         }
-        if (sAvatarBoneLayout != VK_NULL_HANDLE)
+        // <AYAstorm r41 PC-7δ (j)> sAvatarBoneLayout は sAYAStandardLayout alias 共用ゆえ
+        //   alias 検出で double-destroy 回避 (= sAYAStandardLayout は別箇所で destroy)。
+        if (sAvatarBoneLayout != VK_NULL_HANDLE && sAvatarBoneLayout != sAYAStandardLayout)
         {
             vkDestroyPipelineLayout(sDevice, sAvatarBoneLayout, nullptr);
-            sAvatarBoneLayout = VK_NULL_HANDLE;
         }
+        sAvatarBoneLayout = VK_NULL_HANDLE;
         if (sAvatarBoneStorageBuffer != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
         {
             vmaDestroyBuffer(sAllocator, sAvatarBoneStorageBuffer, sAvatarBoneStorageAllocation);
@@ -3272,11 +3597,13 @@ void shutdownVulkan()
             vkDestroyPipeline(sDevice, sSkySmokePipeline, nullptr);
             sSkySmokePipeline = VK_NULL_HANDLE;
         }
-        if (sSkySmokeLayout != VK_NULL_HANDLE)
+        // <AYAstorm r41 PC-7δ (i)> sSkySmokeLayout は sAYAStandardLayout alias 共用ゆえ
+        //   alias 検出で double-destroy 回避 (= sAYAStandardLayout は別箇所で destroy)。
+        if (sSkySmokeLayout != VK_NULL_HANDLE && sSkySmokeLayout != sAYAStandardLayout)
         {
             vkDestroyPipelineLayout(sDevice, sSkySmokeLayout, nullptr);
-            sSkySmokeLayout = VK_NULL_HANDLE;
         }
+        sSkySmokeLayout = VK_NULL_HANDLE;
         if (sSkySmokeFragModule != VK_NULL_HANDLE)
         {
             vkDestroyShaderModule(sDevice, sSkySmokeFragModule, nullptr);
@@ -3353,6 +3680,18 @@ void shutdownVulkan()
         // = pipeline layout → 4 pool → 5 layout の reverse 順 destroy。
         //   pool 経由 allocate された descriptor set は pool destroy で自動 free
         //   (= 本 PC-7α では allocate していないが PC-7δ 配線後も同形で問題なし)。
+        // <AYAstorm r41 PC-7δ (f)> 13 set handle は pool destroy で implicit free、
+        //   defensive nulling で再 init safe (= PC-7δ (b) createV3aDescriptorSets
+        //   が再呼出された case で前回 handle 残りによる UAF を防止)。
+        for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+        {
+            sFrameUboSetV3a[f] = VK_NULL_HANDLE;
+            sProgramUboSetA[f] = VK_NULL_HANDLE;
+            sProgramUboSetB[f] = VK_NULL_HANDLE;
+            sAssetUboSetV3a[f] = VK_NULL_HANDLE;
+        }
+        sDrawUboSetV3a = VK_NULL_HANDLE;
+        // </AYAstorm r41 PC-7δ (f)>
         if (sAYAStandardLayout != VK_NULL_HANDLE)
         {
             vkDestroyPipelineLayout(sDevice, sAYAStandardLayout, nullptr);
@@ -3507,6 +3846,13 @@ void shutdownVulkan()
         // </AYAstorm r41 PC-7γ-1>
         for (auto& kv : sFrameUboInstances) { destroyUboInstanceBuffers(kv.second); }
         sFrameUboInstances.clear();
+
+        // <AYAstorm r41 PC-7δ (n)> sSingletonUboInstances teardown = initVulkan の対称
+        // destroy。sAllocator 生存中に発火、entry は PC-7δ (m) で SINGLETON 全件
+        // allocate 済、size!=0 ゆえ destroy 側で N buffer × FRAMES_IN_FLIGHT=3 発火。
+        for (auto& kv : sSingletonUboInstances) { destroyUboInstanceBuffers(kv.second); }
+        sSingletonUboInstances.clear();
+        // </AYAstorm r41 PC-7δ (n)>
 
         // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6α (W2):
         // per-asset descriptor pool teardown。LLAssetUboPool::shutdown() が内部の
@@ -4018,8 +4364,26 @@ void flushSkinUbos(LL::GLTF::Skin* skin)
 //          design 06c §2.2 (Global_ReflectionProbes singleton 配置例) +
 //          design 06a §3.3 (CadenceTag enum singleton 含む)。
 // ------------------------------------------------------------------
+// <AYAstorm r41 PC-7δ (o)> flushSingletonUbos 本格化 = sSingletonUboInstances
+// walk + dirty exchange、entry 単位 dedup (= flushProgramUbos 対称形)。dirty=true
+// 経路は writeSingletonUbo 経由 (= forwardToUboUpload SINGLETON case 本格化、(p))、
+// flush 側は entry 走査 + dirty.exchange(false, acq_rel) で 1 度だけ flush。
+// PER_FRAME と異なり beginFrame() 不要 (= process 跨ぎ持続、frame index advance
+// は flushFrameUbos が一手担当)。
 void flushSingletonUbos()
 {
+    bool any_dirty = false;
+    for (auto& kv : sSingletonUboInstances)
+    {
+        if (kv.second.dirty.exchange(false, std::memory_order_acq_rel))
+        {
+            any_dirty = true;
+        }
+    }
+    if (!any_dirty)
+    {
+        return;
+    }
     flushDummyUboWrite("flushSingletonUbos");
 }
 
@@ -4059,6 +4423,73 @@ bool registerProgramUbo(LLGLSLShader* shader, U32 block_hash, U32 block_size)
         {
             sProgramUboDirty.erase(it);
             return false;
+        }
+        // <AYAstorm r41 PC-7δ (e)> register-once + bind-many = UboInstance 確保直後に
+        //   vkUpdateDescriptorSets で set=1a/1b 経路 descriptor を triple-buffer 一括 update。
+        // PC-7α' codegen V1' split 未到達 (= meta.descriptor_set は legacy 値) ゆえ
+        // binding<40 → set=1a / binding>=40 → set=1b (binding -= 40) の heuristic で
+        // V3a layout に map。範囲外 (binding>=80) は once-warn + skip safe。
+        if (sDevice != VK_NULL_HANDLE)
+        {
+            const ubo::BlockMetadata* meta = nullptr;
+            for (U32 i = 0; i < ubo::g_block_count; ++i)
+            {
+                if (ubo::g_block_metadata[i].block_hash == block_hash)
+                {
+                    meta = &ubo::g_block_metadata[i];
+                    break;
+                }
+            }
+            if (meta)
+            {
+                U32 src_binding = meta->binding;
+                VkDescriptorSet* set_array = nullptr;
+                U32 dst_binding = 0;
+                if (src_binding < V3A_PROGRAM_SET_A_BINDINGS)
+                {
+                    set_array = sProgramUboSetA;
+                    dst_binding = src_binding;
+                }
+                else if (src_binding < V3A_PROGRAM_SET_A_BINDINGS + V3A_PROGRAM_SET_B_BINDINGS)
+                {
+                    set_array = sProgramUboSetB;
+                    dst_binding = src_binding - V3A_PROGRAM_SET_A_BINDINGS;
+                }
+                else
+                {
+                    LL_WARNS_ONCE("Vulkan") << "PC-7δ (e) registerProgramUbo: binding "
+                                            << src_binding << " out of V3a set=1a/1b range (>="
+                                            << (V3A_PROGRAM_SET_A_BINDINGS + V3A_PROGRAM_SET_B_BINDINGS)
+                                            << "), skip vkUpdateDescriptorSets" << LL_ENDL;
+                    set_array = nullptr;
+                }
+                if (set_array != nullptr)
+                {
+                    VkDescriptorBufferInfo binfo[FRAMES_IN_FLIGHT];
+                    VkWriteDescriptorSet   writes[FRAMES_IN_FLIGHT];
+                    U32 write_count = 0;
+                    for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+                    {
+                        if (it->second.vk_buffer[f] == VK_NULL_HANDLE) continue;
+                        if (set_array[f] == VK_NULL_HANDLE) continue;
+                        binfo[write_count] = { it->second.vk_buffer[f], 0, it->second.size };
+                        VkWriteDescriptorSet& w = writes[write_count];
+                        w = {};
+                        w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                        w.dstSet          = set_array[f];
+                        w.dstBinding      = dst_binding;
+                        w.dstArrayElement = 0;
+                        w.descriptorCount = 1;
+                        w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                        w.pBufferInfo     = &binfo[write_count];
+                        ++write_count;
+                    }
+                    if (write_count > 0)
+                    {
+                        vkUpdateDescriptorSets(sDevice, write_count, writes, 0, nullptr);
+                    }
+                }
+            }
         }
     }
     // 既存 entry の場合 idempotent 成功 (= mapUniforms 再呼出 case safe)
@@ -4104,6 +4535,42 @@ void writeFrameUbo(U32 block_hash, U32 offset, const void* data, size_t size)
     if (offset + size > ubo_inst.size)
     {
         LL_WARNS_ONCE("Vulkan") << "PC-7γ-1 writeFrameUbo: out of range write (block_hash=0x"
+                                << std::hex << block_hash << std::dec
+                                << ", offset=" << offset << ", size=" << size
+                                << ", capacity=" << ubo_inst.size << ")" << LL_ENDL;
+        return;
+    }
+    std::memcpy(static_cast<U8*>(ubo_inst.mapped_ptr[sFrameIndex]) + offset, data, size);
+    ubo_inst.dirty.store(true, std::memory_order_release);
+}
+
+// r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-7δ (l):
+// SINGLETON cadence write entry point。block_hash 単独 key (= shader-agnostic、
+// Global_ReflectionProbes 等 process-wide UBO)。writeFrameUbo signature 同形 +
+// sSingletonUboInstances target。bringupTestUBO 経由 flushSingletonUbos の対称
+// write 経路 (= PC-6ε-1 で既設 flush と組合せて完成)。
+void writeSingletonUbo(U32 block_hash, U32 offset, const void* data, size_t size)
+{
+    if (!data || size == 0)
+    {
+        return;
+    }
+    auto it = sSingletonUboInstances.find(block_hash);
+    if (it == sSingletonUboInstances.end())
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7δ writeSingletonUbo: block_hash 0x"
+                                << std::hex << block_hash << std::dec
+                                << " not registered in sSingletonUboInstances" << LL_ENDL;
+        return;
+    }
+    UboInstance& ubo_inst = it->second;
+    if (ubo_inst.size == 0 || ubo_inst.mapped_ptr[sFrameIndex] == nullptr)
+    {
+        return;
+    }
+    if (offset + size > ubo_inst.size)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-7δ writeSingletonUbo: out of range write (block_hash=0x"
                                 << std::hex << block_hash << std::dec
                                 << ", offset=" << offset << ", size=" << size
                                 << ", capacity=" << ubo_inst.size << ")" << LL_ENDL;
@@ -4190,6 +4657,48 @@ bool registerAssetUbo(LL::GLTF::Asset* asset, U32 block_hash, U32 block_size)
             sAssetUboDirty.erase(it);
             return false;
         }
+        // <AYAstorm r41 PC-7δ (e)> register-once + bind-many = sAssetUboSetV3a (set=3) を
+        //   triple-buffer 一括 update。複数 asset が同一 set=3 を共有するため、後続
+        //   asset register 時に descriptor は上書きされる (= H4-B 整合、実 swap 発火は
+        //   PC-N 実 GLTF Vulkan draw 通電時)。
+        if (sDevice != VK_NULL_HANDLE)
+        {
+            const ubo::BlockMetadata* meta = nullptr;
+            for (U32 i = 0; i < ubo::g_block_count; ++i)
+            {
+                if (ubo::g_block_metadata[i].block_hash == block_hash)
+                {
+                    meta = &ubo::g_block_metadata[i];
+                    break;
+                }
+            }
+            if (meta && meta->binding < V3A_ASSET_SET_BINDINGS)
+            {
+                VkDescriptorBufferInfo binfo[FRAMES_IN_FLIGHT];
+                VkWriteDescriptorSet   writes[FRAMES_IN_FLIGHT];
+                U32 write_count = 0;
+                for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+                {
+                    if (it->second.vk_buffer[f] == VK_NULL_HANDLE) continue;
+                    if (sAssetUboSetV3a[f] == VK_NULL_HANDLE) continue;
+                    binfo[write_count] = { it->second.vk_buffer[f], 0, it->second.size };
+                    VkWriteDescriptorSet& w = writes[write_count];
+                    w = {};
+                    w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    w.dstSet          = sAssetUboSetV3a[f];
+                    w.dstBinding      = meta->binding;
+                    w.dstArrayElement = 0;
+                    w.descriptorCount = 1;
+                    w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                    w.pBufferInfo     = &binfo[write_count];
+                    ++write_count;
+                }
+                if (write_count > 0)
+                {
+                    vkUpdateDescriptorSets(sDevice, write_count, writes, 0, nullptr);
+                }
+            }
+        }
     }
     // 既存 entry の場合 idempotent 成功
     return true;
@@ -4257,6 +4766,46 @@ bool registerSkinUbo(LL::GLTF::Skin* skin, U32 block_hash, U32 block_size)
         {
             sSkinUboDirty.erase(it);
             return false;
+        }
+        // <AYAstorm r41 PC-7δ (e)> register-once + bind-many = sAssetUboSetV3a (set=3)
+        //   共有、Skin_GLTFJoints は set=3 binding=2 (X2-B sampler 除外整合)。
+        if (sDevice != VK_NULL_HANDLE)
+        {
+            const ubo::BlockMetadata* meta = nullptr;
+            for (U32 i = 0; i < ubo::g_block_count; ++i)
+            {
+                if (ubo::g_block_metadata[i].block_hash == block_hash)
+                {
+                    meta = &ubo::g_block_metadata[i];
+                    break;
+                }
+            }
+            if (meta && meta->binding < V3A_ASSET_SET_BINDINGS)
+            {
+                VkDescriptorBufferInfo binfo[FRAMES_IN_FLIGHT];
+                VkWriteDescriptorSet   writes[FRAMES_IN_FLIGHT];
+                U32 write_count = 0;
+                for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+                {
+                    if (it->second.vk_buffer[f] == VK_NULL_HANDLE) continue;
+                    if (sAssetUboSetV3a[f] == VK_NULL_HANDLE) continue;
+                    binfo[write_count] = { it->second.vk_buffer[f], 0, it->second.size };
+                    VkWriteDescriptorSet& w = writes[write_count];
+                    w = {};
+                    w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    w.dstSet          = sAssetUboSetV3a[f];
+                    w.dstBinding      = meta->binding;
+                    w.dstArrayElement = 0;
+                    w.descriptorCount = 1;
+                    w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                    w.pBufferInfo     = &binfo[write_count];
+                    ++write_count;
+                }
+                if (write_count > 0)
+                {
+                    vkUpdateDescriptorSets(sDevice, write_count, writes, 0, nullptr);
+                }
+            }
         }
     }
     return true;
@@ -4363,21 +4912,11 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
 
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sSkySmokePipeline);
 
-    // set=0 PerFrame descriptor set (γ 二段構え layout 経由、sFrameIndex の set を bind)
-    if (sPerFrameDescriptorSet[sFrameIndex] != VK_NULL_HANDLE)
-    {
-        vkCmdBindDescriptorSets(cmd_buf,
-                                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                sSkySmokeLayout,
-                                /*firstSet=*/0,
-                                /*descriptorSetCount=*/1,
-                                &sPerFrameDescriptorSet[sFrameIndex],
-                                /*dynamicOffsetCount=*/0,
-                                /*pDynamicOffsets=*/nullptr);
-    }
-
-    // set=1 PerMaterial descriptor set (γ helper、3.4-δ-1 layout 引数化で sSkySmokeLayout 経路)
-    bindPerMaterialDescriptorSet(cmd_buf, sSkySmokeLayout);
+    // <AYAstorm r41 PC-7δ (i)> bind path = bindV3aStatic 経由 set=0/1a/1b/2 4-set
+    //   bind (= V3a layout 通電実 firing、旧 set=0 PerFrame + set=1 PerMaterial 2-set
+    //   経路を撤廃)。sky smoke SPIR-V は set=N binding 未参照 = bind 副作用ゼロ
+    //   (= H8 MUSEUBO-A 整合 = placeholder offscreen FBO 経路で OpenGL 描画 100% 維持)。
+    bindV3aStatic(cmd_buf, sFrameIndex);
 
     // push constant: modelview_matrix = identity (4x4)、fullscreen triangle は NDC 直書きで identity OK
     const float identity_modelview[16] = {
@@ -4400,7 +4939,7 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
     {
         s_first_call = false;
         LL_INFOS("Vulkan") << "Placeholder pool draw fired (PSO bind sSkySmokePipeline + "
-                              "set=0 PerFrame + set=1 PerMaterial + push constant 64 B identity / "
+                              "bindV3aStatic set=0/1a/1b/2 + push constant 64 B identity / "
                               "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
                            << LL_ENDL;
     }
@@ -4416,12 +4955,12 @@ void recordPlaceholderPoolDraw(VkCommandBuffer cmd_buf)
 // sAvatarBoneStorageMapped に書込→本 helper の bone size 引数化拡張で投入する経路の foundation。
 void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
 {
-    // VK_KHR_push_descriptor 未支援 device / avatar foundation 未整備時の fallback。
-    if (!sDeviceLimits.pushDescriptorSupported ||
-        sAvatarBonePipeline == VK_NULL_HANDLE ||
+    // <AYAstorm r41 PC-7δ (j)> H10-A 採用: push descriptor 経路 (STORAGE_BUFFER) を本 PC-7δ で disable +
+    //   sAvatarBoneLayout は sAYAStandardLayout alias 共用 + bindV3aRigged で set=0/1a/1b + set=3 swap 実走。
+    //   placeholder ゆえ視覚 no-op 等価維持。avatar bone storage 経路は PC-N 実 GLTF avatar Vulkan draw 通電時に再配線。
+    if (sAvatarBonePipeline == VK_NULL_HANDLE ||
         sAvatarBoneLayout == VK_NULL_HANDLE ||
-        sAvatarBoneStorageBuffer == VK_NULL_HANDLE ||
-        vkCmdPushDescriptorSetKHR == nullptr)
+        sAYAStandardLayout == VK_NULL_HANDLE)
     {
         recordPlaceholderPoolDraw(cmd_buf);
         return;
@@ -4434,42 +4973,8 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
 
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sAvatarBonePipeline);
 
-    // set=0 PerFrame descriptor set (γ 二段構え layout 経由、sFrameIndex の set を bind)
-    if (sPerFrameDescriptorSet[sFrameIndex] != VK_NULL_HANDLE)
-    {
-        vkCmdBindDescriptorSets(cmd_buf,
-                                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                sAvatarBoneLayout,
-                                /*firstSet=*/0,
-                                /*descriptorSetCount=*/1,
-                                &sPerFrameDescriptorSet[sFrameIndex],
-                                /*dynamicOffsetCount=*/0,
-                                /*pDynamicOffsets=*/nullptr);
-    }
-
-    // set=1 PerMaterial descriptor set (γ helper、layout 引数化済み)
-    bindPerMaterialDescriptorSet(cmd_buf, sAvatarBoneLayout);
-
-    // set=2 binding 0 = avatar bone storage buffer (push descriptor 経路)
-    VkDescriptorBufferInfo bone_buffer_info = {};
-    bone_buffer_info.buffer = sAvatarBoneStorageBuffer;
-    bone_buffer_info.offset = 0;
-    bone_buffer_info.range  = AVATAR_BONE_MATRIX_COUNT * 64;
-
-    VkWriteDescriptorSet bone_write = {};
-    bone_write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    bone_write.dstSet          = VK_NULL_HANDLE; // push descriptor: dstSet ignored
-    bone_write.dstBinding      = 0;
-    bone_write.descriptorCount = 1;
-    bone_write.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bone_write.pBufferInfo     = &bone_buffer_info;
-
-    vkCmdPushDescriptorSetKHR(cmd_buf,
-                              VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              sAvatarBoneLayout,
-                              /*set=*/2,
-                              /*descriptorWriteCount=*/1,
-                              &bone_write);
+    // V3a 5-set bind: set=0/1a/1b + set=3 swap (= rigged path = set=2 ↔ set=3 swap 実走)
+    bindV3aRigged(cmd_buf, sFrameIndex);
 
     // push constant: modelview_matrix = identity (4x4)
     const float identity_modelview[16] = {
@@ -4492,8 +4997,8 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
     {
         s_first_avatar_call = false;
         LL_INFOS("Vulkan") << "Avatar placeholder pool draw fired (PSO bind sAvatarBonePipeline + "
-                              "set=0 PerFrame + set=1 PerMaterial + set=2 BoneStorage push descriptor "
-                              "(vkCmdPushDescriptorSetKHR, 110 mat4 identity) + push constant 64 B / "
+                              "bindV3aRigged (set=0 Frame V3a + set=1a/1b ProgramUbo + set=3 AssetUbo, "
+                              "push descriptor 経路 disable) + push constant 64 B / "
                               "VERTEX_BIT + vkCmdDraw(3,1,0,0))"
                            << LL_ENDL;
     }

@@ -2201,12 +2201,16 @@ void LLGLSLShader::forwardToUboUpload(const ubo::UniformLocation& loc, const voi
         }
 
         case kCadenceSingleton:
-            // PC-6ε-1 確定 = singleton (= Global_ReflectionProbes) は
-            // LLVKLoader::flushSingletonUbos() 経路で flush、setter 経由
-            // forwardToUboUpload は本来発生しない (= 06a §5.6 + bringupTestUBO は
-            // 別 dummy path)。仮に setter 経路で SINGLETON が来た場合は設計違反
-            // ゆえ debug build で即停止 (= drift 検出)。
-            llassert_always(false && "SINGLETON forwarded via forwardToUboUpload unexpected (PC-6ε-1 flushSingletonUbos 別経路)");
+            // <AYAstorm r41 PC-7δ (p)> SINGLETON cadence 本格化 = writeSingletonUbo
+            //   経路で sSingletonUboInstances[block_hash] へ memcpy + dirty.store。
+            //   PC-6ε-1 では設計違反扱いで llassert_always(false) 配置だったが、
+            //   PC-7δ で sSingletonUboInstances register-once + bind-many 経路完成
+            //   + writeSingletonUbo 新設 (= writeFrameUbo 同形 signature) を受けて
+            //   本格化。setter 経由 forwardToUboUpload SINGLETON case が legitimate
+            //   write path となる (= 06a §5.4 + 06b §5.2 整合)。
+            //   未 register block_hash は writeSingletonUbo 内 LL_WARNS_ONCE +
+            //   早期 return で safe (= initVulkan で全 SINGLETON 先回り allocate)。
+            LLVKLoader::writeSingletonUbo(loc.block_hash, loc.offset, data, size);
             return;
 
         case kCadenceSampler:
