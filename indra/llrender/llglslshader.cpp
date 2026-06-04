@@ -2539,6 +2539,20 @@ void LLGLSLShader::uniform1fv(U32 index, U32 count, const GLfloat* v)
             LLVector4 vec(v[0], 0.f, 0.f, 0.f);
             if (iter == mValue.end() || shouldChange(iter->second, vec) || count != 1)
             {
+                // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.9:
+                // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+                // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+                // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+                // ptr+count pattern (= count * sizeof(GLfloat))。
+                if (mUseUBO)
+                {
+                    llassert(index < mUniformUBOLoc.size());
+                    const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                    if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    forwardToUboUpload(loc, v, count * sizeof(GLfloat));
+                    return;
+                }
                 glUniform1fv(mUniform[index], count, v);
                 mValue[mUniform[index]] = vec;
             }
@@ -2566,6 +2580,20 @@ void LLGLSLShader::uniform2fv(U32 index, U32 count, const GLfloat* v)
             LLVector4 vec(v[0], v[1], 0.f, 0.f);
             if (iter == mValue.end() || shouldChange(iter->second, vec) || count != 1)
             {
+                // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.10:
+                // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+                // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+                // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+                // ptr+count pattern (= count * 2 * sizeof(GLfloat))。
+                if (mUseUBO)
+                {
+                    llassert(index < mUniformUBOLoc.size());
+                    const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                    if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    forwardToUboUpload(loc, v, count * 2 * sizeof(GLfloat));
+                    return;
+                }
                 glUniform2fv(mUniform[index], count, v);
                 mValue[mUniform[index]] = vec;
             }
@@ -2593,6 +2621,20 @@ void LLGLSLShader::uniform3fv(U32 index, U32 count, const GLfloat* v)
             LLVector4 vec(v[0], v[1], v[2], 0.f);
             if (iter == mValue.end() || shouldChange(iter->second, vec) || count != 1)
             {
+                // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.11:
+                // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+                // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+                // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+                // ptr+count pattern (= count * 3 * sizeof(GLfloat))。
+                if (mUseUBO)
+                {
+                    llassert(index < mUniformUBOLoc.size());
+                    const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                    if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    forwardToUboUpload(loc, v, count * 3 * sizeof(GLfloat));
+                    return;
+                }
                 glUniform3fv(mUniform[index], count, v);
                 mValue[mUniform[index]] = vec;
             }
@@ -2621,6 +2663,20 @@ void LLGLSLShader::uniform4fv(U32 index, U32 count, const GLfloat* v)
             if (iter == mValue.end() || shouldChange(iter->second, vec) || count != 1)
             {
                 LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+                // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.12:
+                // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+                // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+                // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+                // ptr+count pattern (= count * 4 * sizeof(GLfloat))。
+                if (mUseUBO)
+                {
+                    llassert(index < mUniformUBOLoc.size());
+                    const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                    if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    forwardToUboUpload(loc, v, count * 4 * sizeof(GLfloat));
+                    return;
+                }
                 glUniform4fv(mUniform[index], count, v);
                 mValue[mUniform[index]] = vec;
             }
@@ -2649,6 +2705,20 @@ void LLGLSLShader::uniform4uiv(U32 index, U32 count, const GLuint* v)
             if (iter == mValue.end() || shouldChange(iter->second, vec) || count != 1)
             {
                 LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+                // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.B PB-4.13:
+                // integer index 経路 Vulkan path 分岐追加。spec 06a §5.2 / §5.3 literal 準拠。
+                // GATE-B = #ifdef LL_VULKAN_GLSL 不使用、mUseUBO runtime flag 単独 gate。
+                // MUSEUBO-A = mUseUBO=false default で本 block 走らず既存 OpenGL 挙動 100% 維持。
+                // ptr+count pattern (= count * 4 * sizeof(GLuint))。
+                if (mUseUBO)
+                {
+                    llassert(index < mUniformUBOLoc.size());
+                    const ubo::UniformLocation& loc = mUniformUBOLoc[index];
+                    if (loc.cadence_tag == 0xFFFFFFFFu) return;
+                    if (loc.cadence_tag == 5 /* CADENCE_SAMPLER */) return;
+                    forwardToUboUpload(loc, v, count * 4 * sizeof(GLuint));
+                    return;
+                }
                 glUniform4uiv(mUniform[index], count, v);
                 mValue[mUniform[index]] = vec;
             }
