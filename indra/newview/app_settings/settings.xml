@@ -10402,6 +10402,25 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm r41 Phase 1.D PC-N-5> 実 GLTF Vulkan draw 通電 1 stub の live A/B 切替 cvar。
+         design-lock handoff-substep-...-phase1-d-pc-n-5-design-lock.md (= (N5-4) A、AYA literal「OK」record 2026-06-05)。
+         OFF (default) = recordAvatarPlaceholderDraw 単独経路維持 = PC-N-3 完了状態と機能等価 (MUSEUBO-A 整合)。
+         ON = recordAvatarPlaceholderDraw 末尾から recordGltfAssetDraw 並走発火 = sGltfStubSkin sentinel 経由
+         Skin_GLTFJoints UBO bind + identity matrix bone data 通電 baseline = Phase 1.D 着手起点。
+         GATE-B 整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ)。Persist=1 で起動間保持。 -->
+    <key>AYAGltfStubDrawEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.D PC-N-5) Enable GLTF stub draw (= Skin_GLTFJoints UBO bind 経由 rigged draw 1 stub for Phase 1.D 着手起点). Default OFF, debug live A/B 用. ON 時 recordAvatarPlaceholderDraw 末尾から sGltfStubSkin sentinel 経由 identity matrix bone data 通電 (= PC-N-5 (b) recordGltfAssetDraw 並走発火). OFF 時 PC-N-3 完了状態と機能等価.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>
