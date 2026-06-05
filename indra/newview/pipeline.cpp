@@ -223,6 +223,29 @@ bool LLPipeline::RenderDeferredSSAO;
 F32 LLPipeline::RenderShadowResolutionScale;
 // <FS:AYAstorm:r30-bd-port> Phase 3.9: BD sidebar gating flag for manual shadow distance entry.
 bool LLPipeline::RenderShadowAutomaticDistance;
+
+namespace
+{
+U32 aya_get_startup_safe_render_resolution_divisor()
+{
+    if (LLStartUp::getStartupState() < STATE_STARTED)
+    {
+        return 1;
+    }
+
+    return LLPipeline::RenderResolutionDivisor;
+}
+
+F32 aya_get_startup_safe_render_resolution_multiplier()
+{
+    if (LLStartUp::getStartupState() < STATE_STARTED)
+    {
+        return 1.f;
+    }
+
+    return LLPipeline::RenderResolutionMultiplier;
+}
+}
 // </FS:AYAstorm:r30-bd-port>
 // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation (Cinematic only)
 LLVector4 LLPipeline::RenderShadowResolution;
@@ -1013,17 +1036,19 @@ void LLPipeline::resizeScreenTexture()
         GLuint resY = gViewerWindow->getWorldViewHeightRaw();
 
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
+        const U32 effective_render_resolution_divisor = aya_get_startup_safe_render_resolution_divisor();
+        const F32 effective_render_resolution_multiplier = aya_get_startup_safe_render_resolution_multiplier();
         GLuint scaledResX = resX;
         GLuint scaledResY = resY;
-        if ( (RenderResolutionDivisor > 1) && (RenderResolutionDivisor < resX) && (RenderResolutionDivisor < resY) )
+        if ( (effective_render_resolution_divisor > 1) && (effective_render_resolution_divisor < resX) && (effective_render_resolution_divisor < resY) )
         {
-            scaledResX /= RenderResolutionDivisor;
-            scaledResY /= RenderResolutionDivisor;
+            scaledResX /= effective_render_resolution_divisor;
+            scaledResY /= effective_render_resolution_divisor;
         }
-        else if (RenderResolutionMultiplier > 0.f && RenderResolutionMultiplier < 1.f)
+        else if (effective_render_resolution_multiplier > 0.f && effective_render_resolution_multiplier < 1.f)
         {
-            scaledResX = (GLuint)(scaledResX * RenderResolutionMultiplier);
-            scaledResY = (GLuint)(scaledResY * RenderResolutionMultiplier);
+            scaledResX = (GLuint)(scaledResX * effective_render_resolution_multiplier);
+            scaledResY = (GLuint)(scaledResY * effective_render_resolution_multiplier);
         }
 // [/SL:KB]
 
@@ -1131,7 +1156,7 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
     mRT->width = resX;
     mRT->height = resY;
 
-    U32 res_mod = RenderResolutionDivisor;
+    U32 res_mod = aya_get_startup_safe_render_resolution_divisor();
 
     //<FS:TS> FIRE-7066: RenderResolutionDivisor broken if higher than
     //      smallest screen dimension
@@ -1145,16 +1170,17 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
     }
     //</FS:TS> FIRE-7066
 
+    const F32 effective_render_resolution_multiplier = aya_get_startup_safe_render_resolution_multiplier();
     if (res_mod > 1 && res_mod < resX && res_mod < resY)
     {
         resX /= res_mod;
         resY /= res_mod;
     }
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
-    else if (RenderResolutionMultiplier > 0.f && RenderResolutionMultiplier < 1.f)
+    else if (effective_render_resolution_multiplier > 0.f && effective_render_resolution_multiplier < 1.f)
     {
-        resX = (GLuint)(resX * RenderResolutionMultiplier);
-        resY = (GLuint)(resY * RenderResolutionMultiplier);
+        resX = (GLuint)(resX * effective_render_resolution_multiplier);
+        resY = (GLuint)(resY * effective_render_resolution_multiplier);
     }
 // [/SL:KB]
 

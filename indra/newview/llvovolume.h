@@ -513,5 +513,7 @@ protected:
     friend class LLVolumeImplFlexible;
 };
 
-#endif // LL_LLVOVOLUME_H
+bool aya_loading_dense_world_force_lod_update_candidate(LLVOVolume* objectp);
+void aya_loading_dense_world_record_forced_lod_update();
 
+#endif // LL_LLVOVOLUME_H

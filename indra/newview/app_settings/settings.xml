@@ -1781,7 +1781,29 @@
     <key>AYALoadingFPSGuardEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Enable AYAstorm's low-FPS loading guard. While active, non-essential loading/render maintenance work is time-budgeted harder to preserve movement and UI responsiveness. Default OFF; AYAstorm Controls exposes this as the loading target FPS guard.</string>
+      <string>Enable AYAstorm FPS stabilization during loading. This controls render relief such as dynamic 3D resolution, dense-world LOD, and low-FPS render maintenance throttles. Default OFF.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYALoadingPriorityControlEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Enable AYAstorm loading priority control. When enabled, nearby, visible, avatar, and protected texture creates are prioritized ahead of far, offscreen, or stale pending creates, and distance/offscreen texture caps may apply. Default OFF.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYALoadingTextureMemoryReliefEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Enable AYAstorm texture memory cleanup. When enabled, teleport sweep and memory sweep may downscale or release stale unreferenced textures under their own safeguards. Default OFF.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1792,7 +1814,7 @@
     <key>AYALoadingFPSGuardMinFPS</key>
     <map>
       <key>Comment</key>
-      <string>Target FPS for AYAstorm's loading FPS guard. The guard activates while smoothed FPS is below this value; disable it with AYALoadingFPSGuardEnabled.</string>
+      <string>FPS hint for AYAstorm loading optimization. FPS stabilization and adaptive texture caps use this value as a pressure threshold; disable their user-facing masters to bypass them.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1969,6 +1991,255 @@
       <string>U32</string>
       <key>Value</key>
       <integer>24</integer>
+    </map>
+    <key>AYALoadingDenseWorldLODEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Internal kill switch for AYAstorm dense-world LOD bias while the loading FPS guard is enabled and FPS is below target. The user-facing master switch remains AYALoadingFPSGuardEnabled; this affects only low-priority world volumes and excludes avatars, attachments, HUD attachments, and selected objects.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYALoadingDenseWorldLODTraceEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Log low-frequency AYAstorm dense-world LOD candidate and bias summaries while the dense-world LOD guard is active.</string>
+      <key>Persist</key>
+      <integer>0</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYALoadingDenseWorldLODMaxDistance</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum camera distance in meters for a dense world linkset root to receive AYAstorm loading LOD bias.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>12.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>256.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldNearProtectDistance</key>
+    <map>
+      <key>Comment</key>
+      <string>Camera distance in meters inside which AYAstorm dense-world LOD bias and forced LOD refresh are disabled, preserving nearby world object rez priority.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>8.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>128.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldLODMinChildren</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum child count for a nearby world linkset root to receive AYAstorm loading LOD bias.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>50</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>1000</integer>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldHeavyMeshMaxDistance</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum camera distance in meters for a high-triangle world volume to receive AYAstorm loading LOD bias even when its root linkset is not dense by child count.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>96.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>512.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldHeavyMeshMinTriangles</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum current or estimated maximum triangle count for a world volume to receive AYAstorm loading LOD bias even when its root linkset has few children.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>50000</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>1000000</integer>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldHeavyMeshScreenForceEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Allow high-triangle world volumes that occupy little screen space to receive AYAstorm loading LOD bias even when they are inside the camera forward cone.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYALoadingDenseWorldForwardDot</key>
+    <map>
+      <key>Comment</key>
+      <string>Camera direction dot threshold at or above which dense-world objects are treated as forward-cone and keep normal LOD unless heavy-mesh screen forcing applies.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.75</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>-1.0</real>
+        <real>1.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldSmallScreenPct</key>
+    <map>
+      <key>Comment</key>
+      <string>Projected screen height percentage below which a dense-world object can receive mild AYAstorm loading LOD bias outside the forward cone.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>1.5</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>100.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldVerySmallScreenPct</key>
+    <map>
+      <key>Comment</key>
+      <string>Projected screen height percentage below which a rear-cone dense-world object can receive stronger AYAstorm loading LOD bias.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.5</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>100.0</real>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldDecisionIntervalFrames</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum frame interval between AYAstorm dense-world LOD band decisions for the same world volume.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>4</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>120</integer>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldHysteresisFrames</key>
+    <map>
+      <key>Comment</key>
+      <string>Number of frames a world volume must remain in a lighter band before AYAstorm loading LOD bias is relaxed, reducing camera-motion flicker.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>8</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>240</integer>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldForceLODRefreshIntervalFrames</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum frame interval for forcing visible render-by-group world volumes through per-object LOD refresh while AYAstorm dense-world LOD is active.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>30</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>120</integer>
+      </array>
+    </map>
+    <key>AYALoadingDenseWorldForceLODRefreshMaxPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum number of AYAstorm dense-world forced per-object LOD refreshes allowed in one frame. 0 disables the per-frame cap.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>1</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>10000</integer>
+      </array>
     </map>
     <key>AYADisableAvatarLoadingCloudParticles</key>
     <map>
@@ -2313,6 +2584,17 @@
         <integer>16384</integer>
       </array>
     </map>
+    <key>AYATeleportTextureSweepDestroyGLEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Allow AYAstorm teleport texture sweep to destroy stale pre-teleport GL textures instead of only scheduling downscale when they were not reused after teleport.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>AYATeleportTextureSweepLog</key>
     <map>
       <key>Comment</key>
@@ -2432,7 +2714,7 @@
     <key>AYATextureMemorySweepEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Destroy stale GL textures and saved raw images for unreferenced, offscreen, or far non-protected textures when AYAstorm loading FPS guard or memory pressure is active.</string>
+      <string>Internal kill switch for stale GL texture and saved raw image cleanup. The user-facing master is AYALoadingTextureMemoryReliefEnabled; when both are enabled, sweep may run under FPS or memory pressure.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -2512,6 +2794,35 @@
         <integer>4096</integer>
       </array>
     </map>
+    <key>AYATextureMemorySweepDestroyFarOffscreenGLEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Allow AYAstorm texture memory cleanup to destroy far or offscreen GL textures, not only saved raw images, when memory pressure is active or the texture has been stale long enough.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYATextureMemorySweepDestroyFarOffscreenMinSeconds</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum seconds since last reference before AYAstorm may destroy a far or offscreen GL texture outside memory pressure.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>12.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>300.0</real>
+      </array>
+    </map>
     <key>AYATextureMemorySweepMinUnreferencedSeconds</key>
     <map>
       <key>Comment</key>
@@ -2533,7 +2844,7 @@
     <key>AYATextureMemorySweepFPSRatio</key>
     <map>
       <key>Comment</key>
-      <string>Run AYAstorm texture memory sweep under loading FPS guard when current FPS is at or below this fraction of the target FPS.</string>
+      <string>Run AYAstorm texture memory sweep under texture memory cleanup when current FPS is at or below this fraction of the FPS hint.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -2640,6 +2951,71 @@
       <array>
         <real>0.05</real>
         <real>5.0</real>
+      </array>
+    </map>
+    <key>AYATextureCreatePriorityCameraMotionBoostEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Trigger an immediate AYAstorm texture create priority reorder when the camera moves or turns enough that nearby and visible textures may have changed.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYATextureCreatePriorityCameraMoveMeters</key>
+    <map>
+      <key>Comment</key>
+      <string>Camera movement in meters that triggers AYAstorm texture create priority camera-motion rescue.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>2.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>128.0</real>
+      </array>
+    </map>
+    <key>AYATextureCreatePriorityCameraTurnDot</key>
+    <map>
+      <key>Comment</key>
+      <string>Camera direction dot product at or below which AYAstorm texture create priority camera-motion rescue triggers. Larger values are more sensitive.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.985</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>-1.0</real>
+        <real>1.0</real>
+      </array>
+    </map>
+    <key>AYATextureCreatePriorityCameraMotionScanMultiplier</key>
+    <map>
+      <key>Comment</key>
+      <string>Multiplier applied to AYAstorm texture create priority scan limit during camera-motion rescue.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>3</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>8</integer>
       </array>
     </map>
     <key>AYATextureCreatePriorityLog</key>

@@ -69,9 +69,9 @@
             <spinner    follows="left|top" layout="topleft" name="s_ReflectionDetail"    top="140" left="376" width="65"  height="20" control_name="RenderReflectionProbeLevel" min_val="0" max_val="3" increment="1" decimal_digits="0" label_width="0"/>
             <button     follows="left|top" layout="topleft" name="d_ReflectionDetail"    top="140" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderReflectionProbeLevel"/></button>
 
-            <text       follows="left|top" layout="topleft" name="T_GeneralLoadingPerf"  top="186" left="8"   width="472" height="18" font="SansSerif">Loading performance</text>
+            <text       follows="left|top" layout="topleft" name="T_GeneralLoadingPerf"  top="186" left="8"   width="472" height="18" font="SansSerif">Loading optimization</text>
 
-            <check_box  follows="left|top" layout="topleft" name="cb_LoadingFPSGuard"    control_name="AYALoadingFPSGuardEnabled" top="210" left="36" width="406" height="20" label="Enable loading target FPS guard" tool_tip="When enabled, AYAstorm reduces non-essential loading/render maintenance while FPS is below the target."/>
+            <check_box  follows="left|top" layout="topleft" name="cb_LoadingFPSGuard"    control_name="AYALoadingFPSGuardEnabled" top="210" left="36" width="406" height="20" label="FPS stabilization" tool_tip="Temporarily lowers render cost while loading and FPS is below the configured threshold."/>
             <button     follows="left|top" layout="topleft" name="d_LoadingFPSGuard"     top="210" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingFPSGuardEnabled"/></button>
 
             <text       follows="left|top" layout="topleft" name="T_LoadingTargetFPS"    top="238" left="12"  width="160" height="20">Target FPS</text>
@@ -79,7 +79,13 @@
             <spinner    follows="left|top" layout="topleft" name="s_LoadingTargetFPS"    top="238" left="376" width="65"  height="20" enabled_control="AYALoadingFPSGuardEnabled" control_name="AYALoadingFPSGuardMinFPS" min_val="30" max_val="288" increment="1" decimal_digits="0" label_width="0" tool_tip="Guard target while loading. Lower values intervene less often; higher values preserve responsiveness more aggressively."/>
             <button     follows="left|top" layout="topleft" name="d_LoadingTargetFPS"    top="238" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingFPSGuardMinFPS"/></button>
 
-            <text       follows="left|top|right" layout="topleft" name="T_GeneralNote"   top="284" left="8"   width="472" height="40" font="SansSerifSmall" word_wrap="true" text_color="White_50">
+            <check_box  follows="left|top" layout="topleft" name="cb_LoadingPriorityControl" control_name="AYALoadingPriorityControlEnabled" top="270" left="36" width="406" height="20" label="Loading priority control" tool_tip="Prioritizes nearby, visible, avatar, and protected texture work, and may cap distant or offscreen texture resolution while loading."/>
+            <button     follows="left|top" layout="topleft" name="d_LoadingPriorityControl" top="270" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingPriorityControlEnabled"/></button>
+
+            <check_box  follows="left|top" layout="topleft" name="cb_LoadingTextureMemoryRelief" control_name="AYALoadingTextureMemoryReliefEnabled" top="294" left="36" width="406" height="20" label="Texture memory cleanup" tool_tip="Allows teleport and memory sweeps to downscale or release stale unreferenced textures under safeguards."/>
+            <button     follows="left|top" layout="topleft" name="d_LoadingTextureMemoryRelief" top="294" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingTextureMemoryReliefEnabled"/></button>
+
+            <text       follows="left|top|right" layout="topleft" name="T_GeneralNote"   top="330" left="8"   width="472" height="54" font="SansSerifSmall" word_wrap="true" text_color="White_50">
                 Tip: change View Mode in Preferences → Graphics. Restart the viewer after switching to apply.
             </text>
         </panel>

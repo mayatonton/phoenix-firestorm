@@ -31,7 +31,9 @@
 #include "llvovolume.h"
 
 #include <sstream>
+#include <unordered_map>
 
+#include "llappviewer.h"
 #include "llviewercontrol.h"
 #include "lldir.h"
 #include "llflexibleobject.h"
@@ -74,6 +76,7 @@
 #include "llnotifications.h"
 #include "llnotificationsutil.h"
 #include "llagent.h"
+#include "llagentcamera.h"
 #include "llviewermediafocus.h"
 #include "lldatapacker.h"
 #include "llviewershadermgr.h"
@@ -134,6 +137,553 @@ static bool renderFullbrightEnabled()
 static bool teFullbrightEnabled(const LLTextureEntry* te)
 {
     return te && renderFullbrightEnabled() && te->getFullbright();
+}
+
+namespace
+{
+    struct AYALoadingDenseLODCacheEntry
+    {
+        LLUUID mObjectID;
+        S32 mBand = 0;
+        S32 mPendingBand = 0;
+        S32 mPendingFrame = 0;
+        S32 mLastDecisionFrame = -1;
+        S32 mLastForcedRefreshFrame = -1;
+        S32 mLastTouchedFrame = 0;
+
+        void resetForObject(const LLUUID& object_id, S32 frame)
+        {
+            mObjectID = object_id;
+            mBand = 0;
+            mPendingBand = 0;
+            mPendingFrame = frame;
+            mLastDecisionFrame = -1;
+            mLastForcedRefreshFrame = -1;
+            mLastTouchedFrame = frame;
+        }
+    };
+
+    struct AYALoadingDenseLODStats
+    {
+        bool mInitialized = false;
+        LLFrameTimer mTimer;
+        U64 mCandidates = 0;
+        U64 mBiased = 0;
+        U64 mDenseRootCandidates = 0;
+        U64 mHeavyMeshCandidates = 0;
+        U64 mHeavyMeshSeen = 0;
+        U64 mHeavyMeshDistanceRejected = 0;
+        U64 mHeavyMeshForwardProtected = 0;
+        U64 mHeavyMeshScreenForced = 0;
+        U64 mForcedLODRefreshes = 0;
+        U64 mBands[4] = {};
+        U64 mBiasTotal = 0;
+
+        void reset()
+        {
+            mInitialized = true;
+            mTimer.reset();
+            mCandidates = 0;
+            mBiased = 0;
+            mDenseRootCandidates = 0;
+            mHeavyMeshCandidates = 0;
+            mHeavyMeshSeen = 0;
+            mHeavyMeshDistanceRejected = 0;
+            mHeavyMeshForwardProtected = 0;
+            mHeavyMeshScreenForced = 0;
+            mForcedLODRefreshes = 0;
+            mBiasTotal = 0;
+            for (U32 i = 0; i < 4; ++i)
+            {
+                mBands[i] = 0;
+            }
+        }
+    };
+
+    std::unordered_map<U32, AYALoadingDenseLODCacheEntry> sAYALoadingDenseLODCache;
+    AYALoadingDenseLODStats sAYALoadingDenseLODStats;
+
+    bool aya_loading_dense_world_lod_enabled()
+    {
+        static LLCachedControl<bool> lod_enabled(gSavedSettings, "AYALoadingDenseWorldLODEnabled", true);
+        static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
+        static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
+        static bool active_latched = false;
+        static bool state_logged = false;
+        static bool last_active = false;
+        static bool last_lod_enabled = false;
+        static bool last_loading_fps_guard_enabled = false;
+        static bool last_mouselook = false;
+
+        const bool lod_setting = lod_enabled();
+        const bool fps_guard_setting = loading_fps_guard_enabled();
+        const bool mouselook = gAgentCamera.cameraMouselook();
+        const F32 target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
+        const F32 exit_fps = llclamp(target_fps * 1.05f, target_fps, 288.f);
+        if (!lod_setting || !fps_guard_setting)
+        {
+            active_latched = false;
+        }
+        else if (active_latched)
+        {
+            active_latched = gFPSClamped < exit_fps;
+        }
+        else
+        {
+            active_latched = gFPSClamped < target_fps;
+        }
+        const bool active = lod_setting && fps_guard_setting && (mouselook || active_latched);
+
+        if (!state_logged ||
+            active != last_active ||
+            lod_setting != last_lod_enabled ||
+            fps_guard_setting != last_loading_fps_guard_enabled ||
+            mouselook != last_mouselook)
+        {
+            LL_INFOS("AYAPerf")
+                << "AYA Loading dense-world LOD "
+                << (active ? "active" : "inactive")
+                << " lod_enabled=" << lod_setting
+                << " fps_guard_enabled=" << fps_guard_setting
+                << " mouselook=" << mouselook
+                << " fps=" << gFPSClamped
+                << " target_fps=" << target_fps
+                << " exit_fps=" << exit_fps
+                << LL_ENDL;
+
+            state_logged = true;
+            last_active = active;
+            last_lod_enabled = lod_setting;
+            last_loading_fps_guard_enabled = fps_guard_setting;
+            last_mouselook = mouselook;
+        }
+
+        return active;
+    }
+
+    bool aya_loading_dense_world_lod_trace_enabled()
+    {
+        static LLCachedControl<bool> trace_enabled(gSavedSettings, "AYALoadingDenseWorldLODTraceEnabled", false);
+        return trace_enabled && aya_loading_dense_world_lod_enabled();
+    }
+
+    bool aya_loading_dense_world_any_selected(LLViewerObject* objectp, LLViewerObject* rootp)
+    {
+        return (objectp && objectp->isSelected()) || (rootp && rootp->isSelected());
+    }
+
+    bool aya_loading_dense_world_excluded_object(LLVOVolume* objectp)
+    {
+        if (!objectp)
+        {
+            return true;
+        }
+
+        if (objectp->isHUDAttachment() || objectp->getAvatar() || objectp->isAttachment())
+        {
+            return true;
+        }
+
+        LLViewerObject* rootp = objectp->getRootEdit();
+        if (rootp &&
+            (rootp->isHUDAttachment() ||
+             rootp->getAvatar() ||
+             rootp->isAttachment() ||
+             objectp->getAvatarAncestor() ||
+             rootp->getAvatarAncestor()))
+        {
+            return true;
+        }
+
+        return !rootp || aya_loading_dense_world_any_selected(objectp, rootp);
+    }
+
+    F32 aya_loading_dense_world_projected_height_pct(F32 distance, F32 radius)
+    {
+        LLViewerCamera* camera = LLViewerCamera::getInstance();
+        const F32 view_height = static_cast<F32>(llmax(1, camera->getViewHeightInPixels()));
+        const F32 safe_distance = llmax(distance, 0.001f);
+        const F32 projected_height = (camera->getPixelMeterRatio() / safe_distance) * radius * 2.f;
+        return llclamp((projected_height / view_height) * 100.f, 0.f, 1000.f);
+    }
+
+    AYALoadingDenseLODCacheEntry& aya_loading_dense_world_cache_entry(LLVOVolume* objectp, S32 frame)
+    {
+        AYALoadingDenseLODCacheEntry& entry = sAYALoadingDenseLODCache[objectp->getLocalID()];
+        if (entry.mObjectID != objectp->getID())
+        {
+            entry.resetForObject(objectp->getID(), frame);
+        }
+        entry.mLastTouchedFrame = frame;
+        return entry;
+    }
+
+    void aya_loading_dense_world_prune_cache(S32 frame)
+    {
+        constexpr S32 CACHE_TTL_FRAMES = 1800;
+        static S32 sLastPruneFrame = 0;
+        if (frame - sLastPruneFrame < CACHE_TTL_FRAMES)
+        {
+            return;
+        }
+
+        sLastPruneFrame = frame;
+        for (auto iter = sAYALoadingDenseLODCache.begin(); iter != sAYALoadingDenseLODCache.end();)
+        {
+            if (frame - iter->second.mLastTouchedFrame > CACHE_TTL_FRAMES)
+            {
+                iter = sAYALoadingDenseLODCache.erase(iter);
+            }
+            else
+            {
+                ++iter;
+            }
+        }
+    }
+
+    S32 aya_loading_dense_world_apply_hysteresis(U32 local_id, const LLUUID& object_id, S32 raw_band, S32 interval_frames, S32 hysteresis_frames)
+    {
+        const S32 frame = LLFrameTimer::getFrameCount();
+        AYALoadingDenseLODCacheEntry& entry = sAYALoadingDenseLODCache[local_id];
+        if (entry.mObjectID != object_id)
+        {
+            entry.resetForObject(object_id, frame);
+        }
+        entry.mLastTouchedFrame = frame;
+        aya_loading_dense_world_prune_cache(frame);
+
+        if (entry.mLastDecisionFrame >= 0 && frame - entry.mLastDecisionFrame < interval_frames)
+        {
+            return entry.mBand;
+        }
+
+        entry.mLastDecisionFrame = frame;
+
+        if (raw_band >= entry.mBand)
+        {
+            entry.mBand = raw_band;
+            entry.mPendingBand = raw_band;
+            entry.mPendingFrame = frame;
+            return entry.mBand;
+        }
+
+        if (entry.mPendingBand != raw_band)
+        {
+            entry.mPendingBand = raw_band;
+            entry.mPendingFrame = frame;
+            return entry.mBand;
+        }
+
+        if (frame - entry.mPendingFrame >= hysteresis_frames)
+        {
+            entry.mBand = raw_band;
+        }
+
+        return entry.mBand;
+    }
+
+    void aya_loading_dense_world_record_lod_stats(
+        S32 band,
+        S32 bias,
+        bool dense_root_candidate,
+        bool heavy_mesh_candidate,
+        bool heavy_mesh_seen,
+        bool heavy_mesh_distance_rejected,
+        bool heavy_mesh_forward_protected,
+        bool heavy_mesh_screen_forced)
+    {
+        if (!aya_loading_dense_world_lod_trace_enabled())
+        {
+            if (sAYALoadingDenseLODStats.mInitialized)
+            {
+                sAYALoadingDenseLODStats.mInitialized = false;
+            }
+            return;
+        }
+
+        if (!sAYALoadingDenseLODStats.mInitialized)
+        {
+            sAYALoadingDenseLODStats.reset();
+        }
+
+        if (dense_root_candidate || heavy_mesh_candidate)
+        {
+            ++sAYALoadingDenseLODStats.mCandidates;
+        }
+        if (dense_root_candidate)
+        {
+            ++sAYALoadingDenseLODStats.mDenseRootCandidates;
+        }
+        if (heavy_mesh_candidate)
+        {
+            ++sAYALoadingDenseLODStats.mHeavyMeshCandidates;
+        }
+        if (heavy_mesh_seen)
+        {
+            ++sAYALoadingDenseLODStats.mHeavyMeshSeen;
+        }
+        if (heavy_mesh_distance_rejected)
+        {
+            ++sAYALoadingDenseLODStats.mHeavyMeshDistanceRejected;
+        }
+        if (heavy_mesh_forward_protected)
+        {
+            ++sAYALoadingDenseLODStats.mHeavyMeshForwardProtected;
+        }
+        if (heavy_mesh_screen_forced)
+        {
+            ++sAYALoadingDenseLODStats.mHeavyMeshScreenForced;
+        }
+        if (band >= 0 && band < 4)
+        {
+            ++sAYALoadingDenseLODStats.mBands[band];
+        }
+        if (bias > 0)
+        {
+            ++sAYALoadingDenseLODStats.mBiased;
+            sAYALoadingDenseLODStats.mBiasTotal += bias;
+        }
+
+        const F32 elapsed = sAYALoadingDenseLODStats.mTimer.getElapsedTimeF32();
+        if (elapsed >= 5.f)
+        {
+            static LLCachedControl<S32> force_interval(gSavedSettings, "AYALoadingDenseWorldForceLODRefreshIntervalFrames", 30);
+            static LLCachedControl<U32> max_force_refreshes(gSavedSettings, "AYALoadingDenseWorldForceLODRefreshMaxPerFrame", 1);
+            const F32 refresh_per_sec = static_cast<F32>(sAYALoadingDenseLODStats.mForcedLODRefreshes) / elapsed;
+            const F32 refresh_per_frame = refresh_per_sec / llmax(gFPSClamped, 1.f);
+            LL_INFOS("AYALoadingFPSGuard")
+                << "dense_world_lod dt=" << elapsed
+                << " candidates=" << sAYALoadingDenseLODStats.mCandidates
+                << " biased=" << sAYALoadingDenseLODStats.mBiased
+                << " bias_total=" << sAYALoadingDenseLODStats.mBiasTotal
+                << " dense_root=" << sAYALoadingDenseLODStats.mDenseRootCandidates
+                << " heavy_mesh=" << sAYALoadingDenseLODStats.mHeavyMeshCandidates
+                << " heavy_seen=" << sAYALoadingDenseLODStats.mHeavyMeshSeen
+                << " heavy_distance_rejected=" << sAYALoadingDenseLODStats.mHeavyMeshDistanceRejected
+                << " heavy_forward_protected=" << sAYALoadingDenseLODStats.mHeavyMeshForwardProtected
+                << " screen_forced=" << sAYALoadingDenseLODStats.mHeavyMeshScreenForced
+                << " forced_refresh=" << sAYALoadingDenseLODStats.mForcedLODRefreshes
+                << " bands="
+                << sAYALoadingDenseLODStats.mBands[0] << "/"
+                << sAYALoadingDenseLODStats.mBands[1] << "/"
+                << sAYALoadingDenseLODStats.mBands[2] << "/"
+                << sAYALoadingDenseLODStats.mBands[3]
+                << " refresh_per_sec=" << refresh_per_sec
+                << " refresh_per_frame=" << refresh_per_frame
+                << " force_interval_frames=" << force_interval()
+                << " force_max_per_frame=" << max_force_refreshes()
+                << " fps=" << gFPSClamped
+                << LL_ENDL;
+            sAYALoadingDenseLODStats.reset();
+        }
+    }
+
+    S32 aya_loading_dense_world_lod_bias(LLVOVolume* objectp, F32 distance, F32 radius)
+    {
+        static LLCachedControl<F32> max_distance(gSavedSettings, "AYALoadingDenseWorldLODMaxDistance", 12.f);
+        static LLCachedControl<F32> near_protect_distance(gSavedSettings, "AYALoadingDenseWorldNearProtectDistance", 8.f);
+        static LLCachedControl<S32> min_children(gSavedSettings, "AYALoadingDenseWorldLODMinChildren", 50);
+        static LLCachedControl<F32> heavy_max_distance(gSavedSettings, "AYALoadingDenseWorldHeavyMeshMaxDistance", 96.f);
+        static LLCachedControl<S32> heavy_min_tris(gSavedSettings, "AYALoadingDenseWorldHeavyMeshMinTriangles", 50000);
+        static LLCachedControl<bool> heavy_screen_force_enabled(gSavedSettings, "AYALoadingDenseWorldHeavyMeshScreenForceEnabled", true);
+        static LLCachedControl<F32> forward_dot(gSavedSettings, "AYALoadingDenseWorldForwardDot", 0.75f);
+        static LLCachedControl<F32> small_screen_pct(gSavedSettings, "AYALoadingDenseWorldSmallScreenPct", 1.5f);
+        static LLCachedControl<F32> very_small_screen_pct(gSavedSettings, "AYALoadingDenseWorldVerySmallScreenPct", 0.5f);
+        static LLCachedControl<S32> decision_interval(gSavedSettings, "AYALoadingDenseWorldDecisionIntervalFrames", 4);
+        static LLCachedControl<S32> hysteresis_frames(gSavedSettings, "AYALoadingDenseWorldHysteresisFrames", 8);
+
+        if (!aya_loading_dense_world_lod_enabled() || aya_loading_dense_world_excluded_object(objectp))
+        {
+            return 0;
+        }
+
+        LLViewerObject* rootp = objectp->getRootEdit();
+        const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
+        const LLVector3& camera_at = LLViewerCamera::getInstance()->getAtAxis();
+        const LLVector3 root_delta = rootp->getPositionAgent() - camera_pos;
+        const F32 root_distance = root_delta.magVec();
+        const LLVector3 object_delta = objectp->getPositionAgent() - camera_pos;
+        const F32 object_distance = object_delta.magVec();
+        const F32 protect_distance = llmax(0.f, static_cast<F32>(near_protect_distance));
+        if (protect_distance > 0.f &&
+            (root_distance <= protect_distance || object_distance <= protect_distance))
+        {
+            return 0;
+        }
+
+        const S32 root_children = rootp->numChildren();
+        const bool dense_root_candidate =
+            root_distance <= llmax(0.f, static_cast<F32>(max_distance)) &&
+            root_children >= llmax(0, static_cast<S32>(min_children));
+
+        S32 vertex_count = 0;
+        const F32 current_tris = static_cast<F32>(objectp->getTriangleCount(&vertex_count));
+        const F32 estimated_max_tris = objectp->getEstTrianglesMax();
+        const F32 cost_tris = llmax(current_tris, estimated_max_tris);
+        const bool heavy_mesh_seen = cost_tris >= static_cast<F32>(llmax(0, static_cast<S32>(heavy_min_tris)));
+        const bool heavy_mesh_distance_rejected =
+            heavy_mesh_seen && root_distance > llmax(0.f, static_cast<F32>(heavy_max_distance));
+        const bool heavy_mesh_candidate =
+            heavy_mesh_seen && !heavy_mesh_distance_rejected;
+
+        if (!dense_root_candidate && !heavy_mesh_candidate)
+        {
+            if (heavy_mesh_seen)
+            {
+                aya_loading_dense_world_record_lod_stats(
+                    -1,
+                    0,
+                    false,
+                    false,
+                    heavy_mesh_seen,
+                    heavy_mesh_distance_rejected,
+                    false,
+                    false);
+            }
+            return 0;
+        }
+
+        F32 object_dot = 1.f;
+        if (object_distance > 0.001f)
+        {
+            object_dot = llclamp((object_delta * camera_at) / object_distance, -1.f, 1.f);
+        }
+
+        const F32 projected_pct = aya_loading_dense_world_projected_height_pct(distance, radius);
+        const F32 clamped_forward_dot = llclamp(static_cast<F32>(forward_dot), -1.f, 1.f);
+        const F32 small_pct = llmax(0.f, static_cast<F32>(small_screen_pct));
+        const F32 very_small_pct = llmax(0.f, static_cast<F32>(very_small_screen_pct));
+
+        S32 raw_band = 0;
+        bool heavy_mesh_screen_forced = false;
+        bool heavy_mesh_forward_protected = false;
+        if (heavy_mesh_candidate &&
+            heavy_screen_force_enabled &&
+            object_dot >= clamped_forward_dot &&
+            projected_pct < small_pct * 2.f)
+        {
+            heavy_mesh_screen_forced = true;
+            raw_band = projected_pct < very_small_pct ? 2 : 1;
+        }
+        else if (object_dot >= clamped_forward_dot || projected_pct >= small_pct * 2.f)
+        {
+            raw_band = 0;
+            heavy_mesh_forward_protected = heavy_mesh_candidate && object_dot >= clamped_forward_dot;
+        }
+        else if (object_dot >= 0.f || projected_pct >= small_pct)
+        {
+            raw_band = 1;
+        }
+        else if (projected_pct >= very_small_pct)
+        {
+            raw_band = 2;
+        }
+        else
+        {
+            raw_band = 3;
+        }
+
+        const S32 band = aya_loading_dense_world_apply_hysteresis(
+            objectp->getLocalID(),
+            objectp->getID(),
+            raw_band,
+            llmax(1, static_cast<S32>(decision_interval)),
+            llmax(0, static_cast<S32>(hysteresis_frames)));
+        const S32 bias = band == 1 ? 1 : (band >= 2 ? 2 : 0);
+
+        aya_loading_dense_world_record_lod_stats(
+            band,
+            bias,
+            dense_root_candidate,
+            heavy_mesh_candidate,
+            heavy_mesh_seen,
+            heavy_mesh_distance_rejected,
+            heavy_mesh_forward_protected,
+            heavy_mesh_screen_forced);
+        return bias;
+    }
+}
+
+void aya_loading_dense_world_record_forced_lod_update()
+{
+    if (!aya_loading_dense_world_lod_trace_enabled())
+    {
+        return;
+    }
+
+    if (!sAYALoadingDenseLODStats.mInitialized)
+    {
+        sAYALoadingDenseLODStats.reset();
+    }
+
+    ++sAYALoadingDenseLODStats.mForcedLODRefreshes;
+}
+
+bool aya_loading_dense_world_force_lod_update_candidate(LLVOVolume* objectp)
+{
+    static LLCachedControl<F32> max_distance(gSavedSettings, "AYALoadingDenseWorldLODMaxDistance", 12.f);
+    static LLCachedControl<F32> near_protect_distance(gSavedSettings, "AYALoadingDenseWorldNearProtectDistance", 8.f);
+    static LLCachedControl<S32> min_children(gSavedSettings, "AYALoadingDenseWorldLODMinChildren", 50);
+    static LLCachedControl<F32> heavy_max_distance(gSavedSettings, "AYALoadingDenseWorldHeavyMeshMaxDistance", 96.f);
+    static LLCachedControl<S32> heavy_min_tris(gSavedSettings, "AYALoadingDenseWorldHeavyMeshMinTriangles", 50000);
+    static LLCachedControl<S32> force_interval(gSavedSettings, "AYALoadingDenseWorldForceLODRefreshIntervalFrames", 30);
+    static LLCachedControl<U32> max_force_refreshes(gSavedSettings, "AYALoadingDenseWorldForceLODRefreshMaxPerFrame", 1);
+
+    if (!aya_loading_dense_world_lod_enabled() || aya_loading_dense_world_excluded_object(objectp))
+    {
+        return false;
+    }
+
+    LLViewerObject* rootp = objectp->getRootEdit();
+    const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
+    const F32 root_distance = (rootp->getPositionAgent() - camera_pos).magVec();
+    const F32 object_distance = (objectp->getPositionAgent() - camera_pos).magVec();
+    const F32 protect_distance = llmax(0.f, static_cast<F32>(near_protect_distance));
+    if (protect_distance > 0.f &&
+        (root_distance <= protect_distance || object_distance <= protect_distance))
+    {
+        return false;
+    }
+
+    const bool dense_root_candidate =
+        root_distance <= llmax(0.f, static_cast<F32>(max_distance)) &&
+        rootp->numChildren() >= llmax(0, static_cast<S32>(min_children));
+
+    S32 vertex_count = 0;
+    const F32 current_tris = static_cast<F32>(objectp->getTriangleCount(&vertex_count));
+    const F32 estimated_max_tris = objectp->getEstTrianglesMax();
+    const bool heavy_mesh_candidate =
+        root_distance <= llmax(0.f, static_cast<F32>(heavy_max_distance)) &&
+        llmax(current_tris, estimated_max_tris) >= static_cast<F32>(llmax(0, static_cast<S32>(heavy_min_tris)));
+
+    if (!dense_root_candidate && !heavy_mesh_candidate)
+    {
+        return false;
+    }
+
+    const S32 frame = LLFrameTimer::getFrameCount();
+    static S32 sForceRefreshFrame = -1;
+    static U32 sForceRefreshCount = 0;
+    if (sForceRefreshFrame != frame)
+    {
+        sForceRefreshFrame = frame;
+        sForceRefreshCount = 0;
+    }
+    if (max_force_refreshes() > 0 && sForceRefreshCount >= max_force_refreshes())
+    {
+        return false;
+    }
+
+    AYALoadingDenseLODCacheEntry& entry = aya_loading_dense_world_cache_entry(objectp, frame);
+    const S32 interval = llmax(1, static_cast<S32>(force_interval));
+    if (entry.mLastForcedRefreshFrame >= 0 && frame - entry.mLastForcedRefreshFrame < interval)
+    {
+        return false;
+    }
+
+    entry.mLastForcedRefreshFrame = frame;
+    ++sForceRefreshCount;
+    return true;
 }
 
 // Implementation class of LLMediaDataClientObject.  See llmediadataclient.h
@@ -1776,6 +2326,11 @@ bool LLVOVolume::calcLOD()
     else
     {
         cur_detail = computeLODDetail(ll_round(distance, 0.01f), ll_round(radius, 0.01f), lod_factor);
+        const S32 aya_loading_dense_lod_bias = aya_loading_dense_world_lod_bias(this, mLODDistance, radius);
+        if (aya_loading_dense_lod_bias > 0)
+        {
+            cur_detail = llmax(0, cur_detail - aya_loading_dense_lod_bias);
+        }
     }
 
     if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_TRIANGLE_COUNT) && mDrawable->getFace(0))

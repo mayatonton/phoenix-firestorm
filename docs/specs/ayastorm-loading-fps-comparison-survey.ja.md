@@ -211,50 +211,121 @@ SL は worker thread を使っているが、最終的に描画可能な状態�
 
 現時点の実装方針は方向性として妥当だが、以下を明示しないまま進めると、FPS は一時的に上がってもロード完了遅延、見た目の残留、別機能の劣化を見逃す危険がある。
 
-1. guard 発動条件が `gFPSClamped < AYALoadingFPSGuardMinFPS` だけだと、すでに低 FPS になった後でしか効かない。
+1. FPS安定化の発動条件が `gFPSClamped < AYALoadingFPSGuardMinFPS` だけだと、すでに低 FPS になった後でしか効かない。
 2. ログイン直後、テレポート直後、カメラ大移動、視界内 avatar 急増などの「ロード予兆」を別トリガーとして扱う必要がある。
-3. guard にヒステリシスがないと、24fps 付近で有効/無効が頻繁に切り替わり、逆にフレーム pacing を悪化させる可能性がある。
+3. FPS安定化にヒステリシスがないと、24fps 付近で有効/無効が頻繁に切り替わり、逆にフレーム pacing を悪化させる可能性がある。
 4. texture, object idle, shadow, impostor, callback を同時に絞ると、どれが効いたか分からなくなる。
 5. visual な印象だけでは texture cap の効果判定ができない。ログで discard/downscale/queue/fps を見る必要がある。
 6. 「メモリが下がらない」だけで失敗判定しない。GL/Metal driver cache のため、RSS は遅れて変わるか、変わらないことがある。
-7. AutoTune との相互作用を分けて測る必要がある。AutoTune on での改善を AYA guard の効果と誤認しない。
-8. 起動が `initStrings()` で止まる問題は、FPS guard の効果検証とは別の blocker として扱う。
+7. AutoTune との相互作用を分けて測る必要がある。AutoTune on での改善を AYA の FPS安定化の効果と誤認しない。
+8. 起動が `initStrings()` で止まる問題は、FPS安定化の効果検証とは別の blocker として扱う。
 
 ### 追加すべき設計条件
 
 実装を続ける場合、以下を前提条件にする。
 
-- guard は `低 FPS` と `ロード直後時間窓` の両方で発動できるようにする。
-- guard 解除は即時ではなく、FPS が回復してから数秒待って段階的に戻す。
-- 各 Phase は debug setting で単独 on/off できるようにし、A/B 比較できる状態を維持する。
-- 低 FPS guard 中でも P0/P1 は止めない。入力、カメラ、UI、近傍衝突、近傍 avatar の存在把握を優先する。
+- FPS安定化は `低 FPS` と `ロード直後時間窓` の両方で発動できるようにする。
+- FPS安定化の解除は即時ではなく、FPS が回復してから数秒待って段階的に戻す。
+- 各 Phase と各機能系統は debug setting で単独 on/off できるようにし、A/B 比較できる状態を維持する。
+- FPS安定化中でも P0/P1 は止めない。入力、カメラ、UI、近傍衝突、近傍 avatar の存在把握を優先する。
 - queue が増え続ける場合は成功ではない。平均 FPS が上がっても、texture create/downscale/callback queue が発散するなら設定を戻す。
 - ログは最低 120 秒取り、最初の 30 秒だけで結論を出さない。
 
+### 2026-06-04: 機能分割方針
+
+これまで `AYALoadingFPSGuardEnabled` を中心に、描画解像度低下、dense-world LOD、texture cap、create queue priority、backpressure、memory sweep をまとめて扱っていた。しかし実機検証と UI 検討の結果、これらを 1 つの「FPSを指定する」機能として見せると、ユーザーも検証者も効果と副作用を切り分けにくい。
+
+分割する理由:
+
+- `RenderResolutionMultiplier` と dense-world LOD は描画負荷を下げる機能であり、主な効果指標は `geom`, `lighting`, `statesort`, GPU/driver stall, FPS である。
+- texture create priority / backpressure は、近距離 avatar/object/HUD を先に成立させるための読み込み順制御であり、主な効果指標は `created_near`, `queued_near`, `name_only avatar`, 近距離 object の表示完了である。
+- distance/offscreen cap は queue の順序そのものではなく、遠距離/視野外の品質上限を下げる補助機能である。読み込み優先制御と併用できるが、効果判定では priority/backpressure と分けて見る。
+- memory sweep / teleport sweep は、使わない GL texture / raw image を段階的に捨てるメモリ圧力対策であり、主な効果指標は RSS、downscale/destroy 件数、再読み込みの副作用である。
+- これらを同時に ON/OFF すると、FPS が上がらない時に「機能が効いていない」のか、「読み込み優先は効いているが描画負荷が残っている」のか、「sweep が逆に再確保負荷を増やしている」のか判定できない。
+
+ユーザー向けには、少なくとも以下の 3 系統を分ける。通常 UI では内部処理名を出さず、説明は体感ベースにする。
+
+| 表示名 | 通常 UI の説明 | OFF 時の意味 |
+| --- | --- | --- |
+| `FPS安定化` | 読み込み中だけ描画負荷を一時的に下げ、FPS の落ち込みを抑える | 自動で描画負荷を下げない |
+| `読み込み優先制御` | 近くのアバター、オブジェクト、HUD を先に表示する | 近くのものを優先する処理を使わない |
+| `テクスチャメモリ整理` | 使っていないテクスチャのメモリを一時的に解放する | 未使用テクスチャの一時解放を行わない |
+
+debug/advanced 側の内部対応:
+
+| 系統 | 内部処理候補 |
+| --- | --- |
+| `FPS安定化` | dynamic resolution, dense-world LOD, shadow/impostor/object throttle |
+| `読み込み優先制御` | texture create priority, backpressure, distance/offscreen texture cap |
+| `テクスチャメモリ整理` | memory sweep, teleport sweep, saved raw/GL texture destroy |
+
+設定名の扱い:
+
+- 短期実装では既存の `AYALoadingFPSGuardEnabled` を互換のため残す。ただし文書上の意味は「すべての AYA loading 対策の master」ではなく、`FPS安定化` 側の互換 master へ縮小する。
+- 後続実装で設定名を整理できるなら、`AYALoadingRenderReliefEnabled` を `FPS安定化` の明示 master とし、`AYALoadingFPSGuardEnabled` は移行 alias として扱う。
+- 新規に `AYALoadingPriorityControlEnabled` を追加し、`AYATextureCreatePriorityEnabled`, `AYATextureCreateBackpressureEnabled`, distance/offscreen texture cap の上位 master とする。cap は queue 順序ではなく品質上限補助だが、通常 UI では「近くのものを先に成立させる」読み込み優先制御の一部として扱う。`AYATextureDistanceCapEnabled` / `AYATextureOffscreenCapEnabled` は内部 kill switch として残す。
+- memory sweep は副作用が強いため、`AYALoadingTextureMemoryReliefEnabled` を通常 UI の上位 master とし、`AYATextureMemorySweepEnabled` / `AYATeleportTextureSweepEnabled` は内部 kill switch として残す。
+- FPS 到達保証に見える UI 表現は避ける。通常 UI に数値を残す場合は「到達目標」ではなく、発動/強度計算の目安であることを tooltip とドキュメントで明示する。後続で UI 文言を整理するなら `FPS基準値 (fps_hint)` へ寄せる。
+
+検証上のルール:
+
+- `FPS安定化` OFF / `読み込み優先制御` ON の組み合わせを許可する。これは「FPS は大きく上がらなくても、近いものを先に rez させる」効果を見るために必要である。
+- `FPS安定化` ON / `読み込み優先制御` OFF の組み合わせを許可する。これは RenderResolutionMultiplier / dense-world LOD だけの描画負荷低減を見るために必要である。
+- `テクスチャメモリ整理` は単独で A/B 比較する。sweep は再読み込みや GL 再確保を誘発し得るため、FPS安定化や読み込み優先と同時に評価しない。
+- ログには `render_relief_active`, `loading_priority_active`, `memory_sweep_active` のように系統別の active 状態を出し、FPS到達保証に見える旧名ではなく `fps_hint` / `baseline_fps` / `pressure_ratio` と表記する。
+
+検証マトリクス:
+
+| 記号 | FPS安定化 | 読み込み優先制御 | テクスチャメモリ整理 | cap 固定 | 主評価 | 見てはいけない誤解 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `000` | OFF | OFF | OFF | OFF | baseline。既存挙動、最低 FPS、近距離表示完了、メモリ推移 | これ単体で改善判断しない |
+| `100` | ON | OFF | OFF | OFF | `geom`, `lighting`, `statesort`, GPU/driver stall, FPS | 近距離 rez 改善を期待しない |
+| `010` | OFF | ON | OFF | OFF | `created_near`, `queued_near`, `name_only_duration`, 近距離 avatar/object 表示完了 | FPS が大きく上がらないだけで失敗扱いしない |
+| `110` | ON | ON | OFF | OFF | 描画負荷低減と近接優先が同時に成立するか | どちらが効いたかの単独効果として読まない |
+| `001` | OFF | OFF | ON | OFF | RSS、`destroyed_*`, `scaled_down_*`, 再読み込み副作用 | FPS安定化や近接優先の効果として読まない |
+| `111` | ON | ON | ON | OFF | smoke test。相互作用と副作用の確認 | 採用判断の主比較に使わない |
+
+cap 補助のサブマトリクス:
+
+| 記号 | priority | backpressure | distance/offscreen cap | 主評価 |
+| --- | --- | --- | --- | --- |
+| `P00` | ON | OFF | OFF | 近距離 texture create 順序だけを見る |
+| `P10` | ON | ON | OFF | queue 過多時の drop/defer が近距離保護を壊さないか見る |
+| `C01` | OFF | OFF | ON | cap 単独の可読性劣化、カメラ回転 pop-in、downscale 反映を見る |
+| `P11` | ON | ON | ON | 読み込み優先制御と cap 補助を併用した最終候補を見る |
+
+比較条件:
+
+- 同一リージョン、同一カメラ向き、同一グラフィック設定、AutoTune OFF、キャッシュ状態固定で 120 秒以上採取する。
+- 各 run に `run_id`, `region`, `cache_state`, `camera_pos/orientation bucket`, `settings snapshot hash`, `AutoTune state`, `feature active states` を残す。
+- sweep 系は `001` で単独確認するまで `000/100/010/110` では明示的に OFF にする。
+- distance/offscreen cap は cap サブマトリクス以外では明示的に OFF にし、可読性劣化を priority/backpressure の副作用と混同しない。
+
 ### 現状実装の位置付け
 
-現時点のコードは、厳密には「ロード専用 FPS guard」ではなく「低 FPS を検知して一部処理を絞る low-FPS throttle」である。
+現時点のコードは、厳密には「ロード専用の FPS安定化」ではなく「低 FPS を検知して一部処理を絞る low-FPS throttle」である。
 
 理由:
 
 - 発動条件が主に `gFPSClamped < AYALoadingFPSGuardMinFPS` であり、低 FPS になった後にしか効かない。
 - ログイン直後/テレポート直後の時間窓 trigger がまだない。
-- guard 解除のヒステリシス、段階解除、guard 状態ログがまだない。
+- FPS安定化解除のヒステリシス、段階解除、active 状態ログがまだない。
 - texture, callback, object idle, shadow, impostor が同じ FPS しきい値で同時に切り替わる。
 
-したがって、Phase 1 から Phase 3 の現状実装は検証用の throttle として扱う。Phase 4 の時間窓 trigger、ヒステリシス、段階解除、guard 状態ログが入るまで、通常配布へ「loading FPS guard」として採用しない。
+したがって、Phase 1 から Phase 3 の現状実装は検証用の throttle として扱う。Phase 4 の時間窓 trigger、ヒステリシス、段階解除、active 状態ログが入るまで、通常配布へ「読み込み中の FPS安定化」として採用しない。
 
 ### 採用/不採用の共通基準
 
 採用条件:
 
-- 最低 FPS と 1% low FPS が改善する。
+- 最低 FPS が悪化せず、1% low FPS が baseline 比で少なくとも +20% 改善する。ただし読み込み優先制御単独 (`010`) では FPS 改善を必須にしない。
 - `textures`, `objectlist`, `shadows_impostors`, `statesort`, `lighting` のどれが改善したかログで説明できる。
-- ロード完了時間の悪化が許容範囲内である。
-- queue が継続的に増え続けない。
+- ロード完了時間の悪化が baseline 比 +15% 以内である。
+- queue が 120 秒時点で継続的な増加傾向を示さない。
 - AutoTune off の状態でも効果が確認できる。
-- callback 最古待ち秒数、object idle 一巡秒数、shadow/impostor stale 秒数が許容範囲内に収まる。
-- 近距離看板、装着物、HUD 以外の UI 的な面、mouselook 時の自分の装備が読める。
+- callback 最古待ち秒数は 10 秒以内、近距離 avatar の `name_only_duration` は 5 秒以内を暫定目安にする。
+- object idle 一巡秒数は暫定 10 秒以内、近距離 shadow/impostor stale は暫定 2 秒以内、遠距離 shadow/impostor stale は暫定 10 秒以内に収まる。
+- 近距離看板、装着物、HUD 以外の UI 的な面、mouselook 時の自分の装備が、指定秒数内に読める。
 
 不採用または再調整条件:
 
@@ -268,7 +339,8 @@ SL は worker thread を使っているが、最終的に描画可能な状態�
 
 現在の `AYAPerf` と `AYATextureCap` だけでは、guard の副作用を十分に判定できない。次の実装/検証前に、少なくとも以下をログへ追加する。
 
-- guard: `guard_active`, `guard_reason`, `enter_count`, `exit_count`, `duration_sec`, `login_or_teleport_elapsed_sec`
+- run metadata: `run_id`, `sample_time_sec`, `region`, `cache_state`, `camera_pos/orientation bucket`, `settings_snapshot_hash`, `AutoTune state`
+- feature state: `render_relief_active`, `dynamic_resolution_active`, `dense_world_lod_active`, `loading_priority_active`, `memory_sweep_active`, `teleport_sweep_active`, `active_reason`, `fps_hint`, `baseline_fps`, `pressure_ratio`
 - texture create/downscale: queue 現在値、queue 最大値、可能なら最古 item 待ち秒数
 - texture callback: callback queue 現在値、processed、skipped、time_limit_hit、count_limit_hit、最古 callback 待ち秒数
 - distance cap: `faces`, `clamped_faces`, `aux_faces`, face 数上限で cap 対象外にした件数、大型 face/中心距離による cap 件数
@@ -286,12 +358,20 @@ SL は worker thread を使っているが、最終的に描画可能な状態�
 
 | 対象 | 無効化 setting |
 | --- | --- |
-| loading guard 全体 | `AYALoadingFPSGuardEnabled = false` |
+| FPS安定化全体 | 短期互換では `AYALoadingFPSGuardEnabled = false`。後続整理後は `AYALoadingRenderReliefEnabled = false` |
 | 3D 内部解像度の自動低下 | `AYALoadingDynamicResolutionEnabled = false` |
+| dense-world LOD | `AYALoadingDenseWorldLODEnabled = false` |
 | 通常操作中の低 FPS だけを理由にした 3D 内部解像度低下 | `AYALoadingDynamicResolutionLowFPSEnabled = false` |
 | avatar loading particle 停止 | `AYADisableAvatarLoadingCloudParticles = false` |
+| 読み込み優先制御全体 | `AYALoadingPriorityControlEnabled = false` |
+| texture create priority | `AYATextureCreatePriorityEnabled = false` |
+| texture create backpressure | `AYATextureCreateBackpressureEnabled = false` |
 | 距離 texture cap | `AYATextureDistanceCapEnabled = false` |
+| 視野外 texture cap | `AYATextureOffscreenCapEnabled = false` |
 | 補助マップ cap | `AYATextureDistanceCapAuxEnabled = false` |
+| テクスチャメモリ整理全体 | `AYALoadingTextureMemoryReliefEnabled = false` |
+| texture memory sweep | `AYATextureMemorySweepEnabled = false` |
+| teleport texture sweep | `AYATeleportTextureSweepEnabled = false` |
 | texture create 制限 | `RenderTextureMaxCreatesPerFrame` / `RenderTextureGuardMaxCreatesPerFrame` を大きくし、`RenderTextureCreateTimeSliceMs` / `RenderTextureGuardCreateTimeSliceMs` も上げる |
 | texture downscale | `RenderTextureMaxDownscalesPerFrame = 0`, `RenderTextureGuardMaxDownscalesPerFrame = 0` |
 | texture callback 制限 | `RenderTextureMaxCallbacksPerFrame` / `RenderTextureGuardMaxCallbacksPerFrame` を大きくし、`RenderTextureCallbackTimeSliceMs` / `RenderTextureGuardCallbackTimeSliceMs` も上げる |
@@ -302,8 +382,8 @@ SL は worker thread を使っているが、最終的に描画可能な状態�
 
 注意:
 
-- `RenderObjectIdleMinFPS = 0`, `RenderSunShadowMinUpdateFPS = 0`, `RenderAvatarImpostorMinUpdateFPS = 0` は低 FPS 単独 throttle を止めるだけで、`AYALoadingFPSGuardEnabled` 側の発動は残る。
-- 個別 throttle を完全に止めて A/B 比較する場合は、`AYALoadingFPSGuardEnabled = false` か `AYALoadingFPSGuardMinFPS = 0` も併用する。
+- `RenderObjectIdleMinFPS = 0`, `RenderSunShadowMinUpdateFPS = 0`, `RenderAvatarImpostorMinUpdateFPS = 0` は低 FPS 単独 throttle を止めるだけで、FPS安定化側の発動は残る。
+- 個別 throttle を完全に止めて A/B 比較する場合は、短期互換では `AYALoadingFPSGuardEnabled = false`、後続整理後は `AYALoadingRenderReliefEnabled = false` も併用する。
 - `RenderAvatarMaxImpostorUpdatesPerFrame` は FPS しきい値とは別に通常時も効く。impostor 更新数制限を完全に戻す場合は `0` にする。
 - `RenderTextureMaxDownscalesPerFrame` と `RenderTextureGuardMaxDownscalesPerFrame` は、現実装では非ゼロ値を最低 `4/frame` に丸める。`1` から `3` を指定しても実効値は `4` になる。
 - downscale time slice も現実装では最低 `2.0ms` として扱う。settings の説明もこの実効挙動に合わせて更新する必要がある。
@@ -474,7 +554,7 @@ Firestorm/AYAstorm には `Improve Graphics Speed` floater があり、現在 FP
 - `RenderFarClip`: 描画距離。
 - `AutoTuneRenderFarClipMin` / `AutoTuneRenderFarClipTarget`: 描画距離の下限と復帰目標。
 - `AutoTuneImpostorFarAwayDistance` / `AutoTuneImpostorByDistEnabled`: 距離ベースの avatar impostor 関連。
-- `TargetFPS`, `AutoTuneFPS`, `AutoTuneLock`, `TuningFPSStrategy`: 目標 FPS と自動調整モード。
+- `TargetFPS`, `AutoTuneFPS`, `AutoTuneLock`, `TuningFPSStrategy`: AutoTune の基準 FPS と自動調整モード。
 
 一方で、`RenderReflectionDetail` を調整する経路は残っているが、現在の調整処理では `#if 0` で無効化されている。つまり、現状の主戦場は avatar と描画距離である。
 
@@ -482,7 +562,7 @@ Firestorm/AYAstorm には `Improve Graphics Speed` floater があり、現在 FP
 
 - 混雑地で avatar 描画が支配的な場合。
 - 遠景の描画負荷が高く、`RenderFarClip` を下げるだけで負荷が減る場合。
-- 目標 FPS を十分高く設定し、continuous tuning を有効にしている場合。
+- AutoTune の基準 FPS を十分高く設定し、continuous tuning を有効にしている場合。
 
 この条件では、AutoTune が avatar を簡略化し、描画距離を落とすことで FPS が改善する可能性がある。
 
@@ -501,7 +581,7 @@ Firestorm/AYAstorm には `Improve Graphics Speed` floater があり、現在 FP
 
 ### 注意点
 
-- `TargetFPS` のデフォルトは低めで、標準状態では 40fps や 60fps 維持を目標にしているとは限らない。
+- `TargetFPS` のデフォルトは低めで、標準状態では 40fps や 60fps を基準値として使う設定とは限らない。
 - floater に表示される現在 FPS は、機能がその FPS を維持できることを意味しない。
 - AutoTune は後追いの調整であり、ログイン直後やテレポート直後の突発的な読み込みスパイクを事前に分散する仕組みではない。
 - UI には `Avatars Only` と `Avatars and Scene` が見えるが、実装上の調整範囲は広い意味の scene 全体ではなく、主に draw distance である。
@@ -513,7 +593,7 @@ Firestorm/AYAstorm には `Improve Graphics Speed` floater があり、現在 FP
 同じリージョン、同じカメラ方向、同じキャッシュ状態で以下を比較する。
 
 1. AutoTune off の基準値を取る。
-2. AutoTune on、continuous on、target FPS 30 または 45、strategy `Avatars and Scene` で取る。
+2. AutoTune on、continuous on、`AutoTuneFPS=30/45` を基準値として、strategy `Avatars and Scene` で取る。
 3. `RenderFarClip`, `RenderAvatarMaxART`, `RenderAvatarMaxNonImpostors`, FPS, AYAPerf 内訳を同時に記録する。
 4. FPS が改善した瞬間に、avatar 簡略化か draw distance 低下が起きているか確認する。
 5. 改善しない場合、同じ時間帯の `textures`, `objectlist`, `statesort`, `lighting`, `shadows_impostors` を見る。
@@ -525,7 +605,7 @@ Firestorm/AYAstorm には `Improve Graphics Speed` floater があり、現在 FP
 
 ### 結論
 
-`Improve Graphics Speed` は残す価値がある。ただし、これは「混雑時の描画負荷を落とす機能」であって、「ロード中に P0 から P4 へ優先順位を付けてフレーム予算を守る機能」ではない。AYAstorm で必要なのは、AutoTune を置き換えることではなく、AutoTune の外側にロード専用の FPS guard を追加し、texture/object/shadow/impostor の処理量を測定値に応じて制御することである。
+`Improve Graphics Speed` は残す価値がある。ただし、これは「混雑時の描画負荷を落とす機能」であって、「ロード中に P0 から P4 へ優先順位を付けてフレーム予算を守る機能」ではない。AYAstorm で必要なのは、AutoTune を置き換えることではなく、AutoTune の外側に読み込み中の描画負荷制御と読み込み優先制御を追加し、texture/object/shadow/impostor の処理量を測定値に応じて制御することである。
 
 ### Phase 0: 計測だけ
 
@@ -572,7 +652,7 @@ Firestorm/AYAstorm には `Improve Graphics Speed` floater があり、現在 FP
 実装メモ:
 
 - `AYALoadingFPSGuardEnabled` と `AYALoadingFPSGuardMinFPS` を追加した。
-- 低 FPS guard 発動中は `RenderTextureGuardCreateTimeSliceMs`, `RenderTextureGuardMaxCreatesPerFrame`, `RenderTextureGuardDownscaleTimeSliceMs`, `RenderTextureGuardMaxDownscalesPerFrame` を使い、通常時より texture 作成を強く絞る。
+- FPS安定化発動中は `RenderTextureGuardCreateTimeSliceMs`, `RenderTextureGuardMaxCreatesPerFrame`, `RenderTextureGuardDownscaleTimeSliceMs`, `RenderTextureGuardMaxDownscalesPerFrame` を使い、通常時より texture 作成を強く絞る。
 - 目的は texture 完成を急ぐことではなく、ロード中でも移動/カメラ/UI のフレーム予算を残すこと。
 - ただし create/downscale の時間予算化だけでは、近接優先は実現しない。queue 内の順序が FIFO のままなら、遠距離・視野外・旧リージョン由来の作業が近距離 avatar/object より先に処理され続ける可能性がある。
 
@@ -755,26 +835,28 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 - 到着後の decode/cache 処理が始まった texture は、`updateImageDecodePriority()` で face 使用が確認された時に `mAYATeleportUsedGeneration` を付ける。
 - `AYATeleportTextureSweepGraceSeconds` 経過後、snapshot queue を `AYATeleportTextureSweepMaxTexturesPerFrame` の範囲で走査する。
 - テレポート先で再利用された texture、まだ face/volume 参照がある texture、boost 付き、callback/raw 保存/fetch/fast cache 中の texture は downscale しない。
-- 安全に未使用と判断できた通常 LOD texture だけ `mMaxVirtualSize=0` として `processTextureStats()` に通し、既存の downscale queue に送る。
+- 安全に未使用と判断できた通常 LOD texture は、まず saved raw image を破棄し、`AYATeleportTextureSweepDestroyGLEnabled=true` なら GL texture も `destroyGLTexture()` で破棄する。既定ではこの強制破棄は OFF とし、通常は `mMaxVirtualSize=0` として `processTextureStats()` に通し、既存の downscale queue に送る。
 
 設定:
 
 | 設定 | 既定値 | 意味 |
 | --- | ---: | --- |
-| `AYATeleportTextureSweepEnabled` | `true` | テレポート後の pre-teleport texture sweep を有効化する |
+| `AYATeleportTextureSweepEnabled` | `true` | テレポート後の pre-teleport texture sweep を有効化する。分離検証では `001` 以外で明示的に OFF にする |
 | `AYATeleportTextureSweepGraceSeconds` | `20.0` | 到着側の再利用判定を待つ猶予秒数 |
 | `AYATeleportTextureSweepMaxTexturesPerFrame` | `128` | 1 frame に検査する snapshot texture 数 |
+| `AYATeleportTextureSweepMaxQueuedTextures` | `2048` | snapshot queue に保持する最大候補数 |
+| `AYATeleportTextureSweepDestroyGLEnabled` | `false` | テレポート先で再利用されなかった pre-teleport GL texture を実破棄する。強い検証用スイッチ |
 | `AYATeleportTextureSweepLog` | `true` | start/progress/complete をログ出力する |
 
 見るログ:
 
 - `AYATextureCap teleport_texture_sweep event=start queued=...`
-- `AYATextureCap teleport_texture_sweep event=progress scheduled=... kept_used=... kept_active=... kept_special=...`
+- `AYATextureCap teleport_texture_sweep event=progress scheduled=... destroyed_gl=... destroyed_raw=... kept_used=... kept_active=... kept_special=...`
 - `AYATextureCap teleport_texture_sweep event=complete downscale_queue=...`
 
 注意:
 
-- これは強制 purge ではない。GL texture の実際の縮小は既存の `mDownScaleQueue` と `RenderTextureMaxDownscalesPerFrame` / `RenderTextureGuardMaxDownscalesPerFrame` に従って進む。
+- `AYATeleportTextureSweepDestroyGLEnabled=true` の場合は強制 purge に近い動きになるため、既定 OFF とする。無効時の GL texture 縮小は既存の `mDownScaleQueue` と `RenderTextureMaxDownscalesPerFrame` / `RenderTextureGuardMaxDownscalesPerFrame` に従って進む。
 - face/volume 参照が残っている texture は保守的に保持するため、前リージョン由来の texture が一部残る可能性はある。
 - テレポート先で同じ UUID が再利用されている場合は `kept_used` として保持される。
 - メモリ表示は driver cache の影響を受けるため、効果判定は FPS、`downscaled`, `downscale_queue_now`, `teleport_texture_sweep scheduled` を合わせて見る。
@@ -792,7 +874,9 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 重要な前提:
 
 - loading cloud particle は OFF のままでよい。particle は未ロード中の演出であり、近接 avatar の実ロード優先度を上げる仕組みではない。
-- avatar attachment を一律で保護対象にするのは誤り。近距離 avatar の存在把握に必要なものと、装飾 attachment は分ける。
+- avatar attachment を一律で保護対象にするのは誤り。近距離 avatar の存在把握に必要なものと、遠距離/視野外の装飾 attachment は分ける。
+- 近距離かつ視野内の avatar 本体・avatar baked texture・avatar attachment は、queue priority では protected bucket に上げ、distance/offscreen cap では保護対象として扱う。これにより「近くにいる avatar が名前だけ見えて本体が rez しない」状態を先に潰す。
+- 遠距離・視野外の avatar attachment は、FPS/メモリ圧力下では通常の遠距離・視野外候補として扱う。全 attachment 保護に戻すと混雑地でメモリと create queue を占有し、近距離表示を逆に遅らせるため。
 - texture cap は「品質上限」であり、queue の「処理順」ではない。近接優先は fetch/decode/create/callback/object update 側で実装する。
 
 実装方針:
@@ -829,10 +913,15 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 
 | 設定 | 既定値 | 意味 |
 | --- | ---: | --- |
+| `AYALoadingPriorityControlEnabled` | `false` | 読み込み優先制御の上位 master。通常 UI では `読み込み優先制御` として扱う |
 | `AYATextureCreatePriorityEnabled` | `true` | pending GL texture create queue を近接/可視/保護優先で並べ替える |
 | `AYATextureCreatePriorityMinQueue` | `32` | reorder を始める最小 queue 件数 |
 | `AYATextureCreatePriorityScanLimit` | `2048` | 1回の reorder で score 計算する最大件数。巨大 queue では先頭・中央・末尾に分けて評価する |
 | `AYATextureCreatePriorityIntervalSeconds` | `0.25` | reorder の最小間隔 |
+| `AYATextureCreatePriorityCameraMotionBoostEnabled` | `true` | カメラ移動/回転時に interval を待たず priority reorder を発火する |
+| `AYATextureCreatePriorityCameraMoveMeters` | `2.0` | priority reorder を即時発火するカメラ移動量 |
+| `AYATextureCreatePriorityCameraTurnDot` | `0.985` | priority reorder を即時発火するカメラ向きの dot 閾値 |
+| `AYATextureCreatePriorityCameraMotionScanMultiplier` | `3` | カメラ移動/回転時に priority scan 件数へ掛ける倍率 |
 | `AYATextureCreatePriorityLog` | `false` | reorder summary をログ出力する |
 | `AYATextureCreateBackpressureEnabled` | `true` | queue 過多時に安全な pending create を cancel する |
 | `AYATextureCreateBackpressureQueueLimit` | `4096` | backpressure の soft limit |
@@ -840,6 +929,15 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 | `AYATextureCreateBackpressureMaxDropsPerFrame` | `512` | soft limit 時の最大 drop 数 |
 | `AYATextureCreateBackpressureMinUnreferencedSeconds` | `20.0` | 参照なし pending create を drop 可能にするまでの最小未参照秒数 |
 | `AYATextureCreateBackpressureDeferDistanceEnabled` | `true` | soft limit 超過時に遠距離・視野外・参照なし pending create を cancel/defer できるようにする |
+
+発動条件:
+
+- priority reorder は `AYALoadingPriorityControlEnabled && AYATextureCreatePriorityEnabled` でだけ有効化する。
+- カメラ位置・向きが変わった場合は、近距離/視野内判定も変わるため、`AYATextureCreatePriorityCameraMotionBoostEnabled` により次の interval を待たずに scan window を広げて再評価する。
+- ただし起動中の UI image preload では `LLViewerCamera` がまだ未初期化の場合があるため、camera-motion 判定は priority reorder の実行候補が成立し、かつ `LLViewerCamera` が取得できる場合だけ行う。`AYALoadingPriorityControlEnabled=false` のときはカメラ・queue reorder・backpressure・distance/offscreen cap を完全にスルーする。
+- backpressure は `AYALoadingPriorityControlEnabled && AYATextureCreateBackpressureEnabled` でだけ有効化する。
+- distance/offscreen cap は `AYALoadingPriorityControlEnabled` を上位 master とし、`AYATextureDistanceCapEnabled` / `AYATextureOffscreenCapEnabled` を内部 kill switch として併用する。これは queue 順序そのものではないが、遠距離・視野外の解像度上限を下げて近距離/可視 texture の成立を優先するため、通常 UI では読み込み優先制御に含める。
+- 後続の検証ビルドでは `AYATextureCreateBackpressureDryRun` / `AYATextureMemorySweepDryRun` 相当の dry-run ログを追加し、`would_drop`, `actually_dropped`, `would_destroy`, `actually_destroyed` を分けてログ化する。現時点では未実装のため、採用判定では actual counters と実機副作用を必ず併読する。
 
 破棄/縮小候補:
 
@@ -860,8 +958,8 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 ログ:
 
 - `AYATextureQueue priority_stats near=... mid=... far=... offscreen=... old_region=... unreferenced=...`
-- `AYATextureQueue create_order created_near=... created_mid=... created_far=... created_offscreen=...`
-- `AYATextureQueue drop_stats dropped_far=... dropped_offscreen=... dropped_old_region=... dropped_unreferenced=...`
+- `AYATextureCap texture_work_stats ... created_near=... created_mid=... created_far=... created_offscreen=... created_unreferenced=... created_protected=... queued_near=... queued_far=... queued_offscreen=... oldest_wait_near=... oldest_wait_far=...`
+- `AYATextureCap create_backpressure event=drop_pending ... cause=backpressure would_drop=... actually_dropped=... dropped_far=... dropped_offscreen=... dropped_old_region=... dropped_unreferenced=...`
 - `AYAAvatarLoad nearby pending=... fully_baked=... fully_loaded=... name_only=...`
 - `AYAObjectQueue near_updated=... far_skipped=... offscreen_skipped=...`
 
@@ -875,9 +973,10 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 
 - 近距離に avatar が少数しかいない状況で、名前だけ表示され本体が長時間出ない状態が改善する。
 - `name_only` または未 fully loaded の近距離 avatar が減る。
-- `create_order` で near が far/offscreen より先に処理されている。
-- `drop_stats` で破棄対象が遠距離・視野外・旧リージョン由来・参照なし候補に偏っている。
+- `texture_work_stats` で near が far/offscreen より先に処理されている。
+- `create_backpressure` で破棄対象が遠距離・視野外・旧リージョン由来・参照なし候補に偏っている。
 - FPS が 10 未満へ落ちても、入力、カメラ、UI、近距離存在把握が維持される。
+- `time_to_first_avatar_silhouette`, `time_to_fully_baked`, `name_only_duration`, `HUD texture clamped count`, `near sign readable seconds`, `click response latency` を採取し、主観だけで合否を決めない。
 
 失敗条件:
 
@@ -886,15 +985,23 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 - 近距離 object より遠距離/offscreen texture が先に GL create され続ける。
 - 破棄候補に近距離 P0/P1 が混ざる。
 
+固定回帰シナリオ:
+
+- 近距離 avatar 1 / 5 / 20 体。
+- HUD 装着、mouselook 時の自分の装備、alpha hair、装着ライト、クリック装備。
+- 近距離大型看板、ショップ商品、media surface、animated texture、moving platform。
+- 180 度カメラ回転、mouselook 開始/解除、カメラズーム、背後の UI 的オブジェクト再表示。
+- `HUD texture clamped count = 0`, `turnaround_rez_delay <= 3s`, `popin_count <= 3/回転`, `collision object visible before movement = true` を暫定合格条件にする。
+
 #### Phase 1.7: FPS/メモリ圧力時の texture memory sweep
 
 2026-06-03 の実機観察では、距離 cap と create queue backpressure だけではメモリ増加が残る可能性があった。特に一度 GL texture 化されたもの、または `mSavedRawImage` として保持されているものは、`scaleDown()` だけでは RSS/driver memory の圧力を十分に下げられないことがある。
 
 目的:
 
-- FPS target に対して実 FPS が大きく落ちている時、または process RSS が一定以上の時に、遠距離・視野外・参照なし候補から段階的にメモリを返す。
+- FPS 基準値に対して実 FPS が大きく落ちている時、または process RSS が一定以上の時に、遠距離・視野外・参照なし候補から段階的にメモリを返す。
 - 近距離 avatar、HUD、自分の表示、bake/callback/sculpt/fetch/create/downscale 中の texture は破壊しない。
-- `scaleDown()` だけでなく、必要な場合は `destroySavedRawImage()` と `destroyGLTexture()` まで進める。ただし `destroyGLTexture()` は無参照候補に限定し、可視/再利用中 texture の突然の消失を避ける。
+- `scaleDown()` だけでなく、必要な場合は `destroySavedRawImage()` と `destroyGLTexture()` まで進める。無参照候補は優先破棄し、遠距離/視野外候補も memory pressure 中、または一定時間 stale の場合は GL texture まで破棄できるようにする。
 
 実装済み:
 
@@ -902,27 +1009,32 @@ material の補助マップは、diffuse/basecolor と同じ見た目優先度�
 - `aya_texture_memory_sweep_bucket()` で候補を `keep`, `unreferenced`, `offscreen`, `far` に分類する。
 - avatar/self/HUD/protected boost/callback/fetch/create/downscale/sculpt/fast cache 等は sweep 対象外にする。
 - `unreferenced` は `destroySavedRawImage()` と、budget があれば `destroyGLTexture()` を実行する。
-- `offscreen` / `far` は `destroySavedRawImage()` と `scaleDown()` 予約に留める。GL texture の即時 destroy はしない。
+- `offscreen` / `far` は `destroySavedRawImage()` と `scaleDown()` 予約に留める。`AYATextureMemorySweepDestroyFarOffscreenGLEnabled=true` の明示検証時だけ、memory pressure 中、または `AYATextureMemorySweepDestroyFarOffscreenMinSeconds` 以上 stale の場合に `destroyGLTexture()` まで進める。
 - scan は `mUUIDMap` 全体を毎 frame 全走査せず、前回位置から `AYATextureMemorySweepScanPerFrame` 件ずつ進める。
-- active 条件は FPS pressure または memory pressure。FPS pressure は `AYALoadingFPSGuardEnabled` が有効で、`gFPSClamped < AYALoadingFPSGuardMinFPS` かつ `fps / target_fps <= AYATextureMemorySweepFPSRatio` の時。memory pressure は process RSS が `AYATextureMemorySweepMinPhysicalMB` 以上の時。
+- active 条件は FPS pressure または memory pressure。FPS pressure は `AYALoadingTextureMemoryReliefEnabled && AYATextureMemorySweepEnabled` が有効で、`gFPSClamped < fps_hint` かつ `pressure_ratio = fps / baseline_fps <= AYATextureMemorySweepFPSRatio` の時。memory pressure は process RSS が `AYATextureMemorySweepMinPhysicalMB` 以上の時。
+- sweep は `AYALoadingFPSGuardEnabled` に依存させない。`render_relief_active=false`, `loading_priority_active=false`, `memory_sweep_active=true` の単独検証モードを成立させる。
 
 設定:
 
 | 設定 | 既定値 | 意味 |
 | --- | ---: | --- |
-| `AYATextureMemorySweepEnabled` | `true` | FPS/メモリ圧力時の texture memory sweep を有効化する |
+| `AYALoadingTextureMemoryReliefEnabled` | `false` | テクスチャメモリ整理の上位 master。通常 UI では `テクスチャメモリ整理` として扱う |
+| `AYATextureMemorySweepEnabled` | `true` | FPS/メモリ圧力時の texture memory sweep を有効化する。分離検証では `001` 以外で明示的に OFF にする |
 | `AYATextureMemorySweepScanPerFrame` | `256` | 1 frame に検査する texture 数 |
-| `AYATextureMemorySweepDestroyGLPerFrame` | `16` | 1 frame に `destroyGLTexture()` できる最大数。無参照候補のみ |
+| `AYATextureMemorySweepDestroyGLPerFrame` | `16` | 1 frame に `destroyGLTexture()` できる最大数 |
 | `AYATextureMemorySweepDestroyRawPerFrame` | `64` | 1 frame に `destroySavedRawImage()` できる最大数 |
 | `AYATextureMemorySweepScaleDownPerFrame` | `32` | 1 frame に `scaleDown()` 予約できる最大数 |
+| `AYATextureMemorySweepDestroyFarOffscreenGLEnabled` | `false` | 遠距離/視野外 GL texture も memory pressure または stale 時に破棄対象にする。強い検証用スイッチ |
+| `AYATextureMemorySweepDestroyFarOffscreenMinSeconds` | `12.0` | memory pressure 外で遠距離/視野外 GL texture を破棄可能にするまでの未参照秒数 |
 | `AYATextureMemorySweepMinUnreferencedSeconds` | `8.0` | 無参照候補として扱うまでの猶予秒数 |
-| `AYATextureMemorySweepFPSRatio` | `0.75` | `fps / target_fps` がこの値以下なら FPS pressure とする |
+| `AYATextureMemorySweepFPSRatio` | `0.75` | `pressure_ratio = fps / baseline_fps` がこの値以下なら FPS pressure とする |
 | `AYATextureMemorySweepMinPhysicalMB` | `7168` | process RSS がこの値以上なら memory pressure とする。`0` で無効 |
 | `AYATextureMemorySweepLog` | `true` | `memory_sweep_stats` をログ出力する |
 
 ログ:
 
-- `AYATextureCap memory_sweep_stats enabled=... active=... fps_pressure=... memory_pressure=... physical_mb=... target_fps=... fps=... scanned=... destroyed_gl=... destroyed_raw=... scaled_down=... skipped=... unreferenced=... offscreen=... far=... image_count=...`
+- `AYATextureCap memory_sweep_stats enabled=... active=... cause=memory_sweep|teleport_sweep fps_pressure=... memory_pressure=... physical_mb=... baseline_fps=... fps_hint=... pressure_ratio=... fps=... scanned=... destroyed_gl=... destroyed_raw=... scaled_down=... skipped=... unreferenced=... offscreen=... far=... image_count=... destroyed_raw_bytes_est=... destroyed_gl_bytes_est=... scaled_down_bytes_est=... refetch_count=... gl_recreate_count=... post_sweep_texture_spike_ms=... near_protected_count=... hud_protected_count=...`
+- `refetched_after_drop cause=backpressure`, `recreated_after_destroy cause=memory_sweep|teleport_sweep`, `destroy_to_recreate_seconds`, `distance_cap_downscale` を追加し、backpressure、memory sweep、teleport sweep、distance cap downscale の副作用を分離する。
 
 通常検証時のログ設定:
 
@@ -962,7 +1074,7 @@ G * (1 - m^2) > lambda * R / F
 
 コード調査:
 
-- `llviewerdisplay.cpp` は `sqrt(current_fps / target_fps)` で倍率を推定し、従来は `0.05` 刻み、`1 秒` 間隔で調整していた。
+- `llviewerdisplay.cpp` は `sqrt(current_fps / baseline_fps)` 相当で倍率を推定し、従来は `0.05` 刻み、`1 秒` 間隔で調整していた。
 - `pipeline.cpp` は `RenderResolutionMultiplier` を `resX` / `resY` の両方に掛けるため、画面依存 RT 面積は概ね `m^2` に比例する。
 - 倍率変更は `resizeScreenTexture()` から `releaseScreenBuffers()`, shadow target release, `allocateScreenBufferInternal()` へ到達する。
 - 再確保対象は `deferredScreen`, `screen`, `deferredLight`, `mObjectIDBuffer`, `mVelocityMap`, `mSMAAHistory`, `mAYAAlphaDepth`, `mAYAAlphaColor`, FXAA/SMAA buffers, post buffers, water buffers 等であり、単なる scale 変更ではなく GPU texture/FBO lifecycle を多数走らせる。
@@ -977,18 +1089,18 @@ G * (1 - m^2) > lambda * R / F
 修正方針:
 
 - `m^2` の利益を残しつつ `lambda` を下げる。
-- 連続的な `0.05` 刻み調整をやめ、`sqrt(fps / target_fps)` に最も近い粗い bucket へ丸める。
+- 連続的な `0.05` 刻み調整をやめ、`sqrt(fps / baseline_fps)` に最も近い粗い bucket へ丸める。
 - bucket は `1.0`, `0.75`, `0.66`, `0.50`, `0.33`, `0.25`。
 - 解像度を下げる方向は短め cooldown、上げる方向は長め cooldown にする。
-- target FPS 近辺の往復を避けるため、上げる条件には回復側 hysteresis を入れる。
+- 基準 FPS 付近の往復を避けるため、上げる条件には回復側 hysteresis を入れる。
 - 正確な `R` を測る必要がある場合は、`resizeScreenTexture()` または `allocateScreenBufferInternal()` の所要時間ログを短時間だけ追加して検証する。
 
 確認ポイント:
 
-- `active=1` なのに `destroyed_raw`, `destroyed_gl`, `scaled_down` が長時間 0 のままなら、安全判定が厳しすぎるか、保護対象が多すぎる。
-- `destroyed_gl` は増えすぎないこと。増える対象は参照なし候補だけであり、近距離 avatar/object の表示が消えるなら分類ミス。
-- `destroyed_raw` が増えても Activity Monitor の memory が即時に下がるとは限らない。driver cache と allocator の影響があるため、FPS、`physical_mb` の長めの推移、texture queue、近接表示完了を合わせて見る。
-- 近距離 avatar/HUD が読み込めない場合は sweep よりも priority/backpressure 側の分類、または保護対象の判定を先に疑う。
+- `dynamic_resolution_active=1` の間、`RenderResolutionMultiplier` の bucket 変更頻度が cooldown と hysteresis 内に収まる。
+- `realloc_count_per_sec` が下がり、`total_max_ms` の再確保由来スパイクが増えない。
+- `geom`, `lighting`, `statesort`, GPU/driver stall が下がる一方、`textures`, callback queue, 近距離表示完了が悪化していない。
+- `RenderResolutionMultiplier` と dense-world LOD の両方が有効な `110` では、どちらの効果かを単独比較として読まない。
 
 2026-06-03 ビルド検証:
 
@@ -1013,7 +1125,7 @@ G * (1 - m^2) > lambda * R / F
 - app は起動し、`AYAstorm.log` は新しい app 内の `settings.xml` を読み込んだ。
 - ただし描画ループ到達前にログが止まり、`AYATextureCap` はまだ出ていない。
 - `sample` では main thread が `LLAppViewer::initStrings()` -> `LLTransUtil::parseStrings()` -> `LLXMLNode::parseFile()` -> `LLFile::getContents()` -> `fopen/open` にいた。
-- これは texture 距離 cap の検証段階より前の起動/ファイル読み込み問題であり、今回の FPS guard 効果検証とは分けて扱う。
+- これは texture 距離 cap の検証段階より前の起動/ファイル読み込み問題であり、今回の FPS安定化効果検証とは分けて扱う。
 
 次の確認:
 
@@ -1042,7 +1154,7 @@ G * (1 - m^2) > lambda * R / F
 
 実装メモ:
 
-- 低 FPS guard 発動中は非 avatar active object の `idleUpdate()` を `RenderObjectIdleGuardTimeSliceMs` / `RenderObjectIdleGuardMinUpdatesPerFrame` でさらに絞る。
+- FPS安定化発動中は非 avatar active object の `idleUpdate()` を `RenderObjectIdleGuardTimeSliceMs` / `RenderObjectIdleGuardMinUpdatesPerFrame` でさらに絞る。
 - avatar は P0/P1 の存在把握と操作感に近いため、この guard では毎フレーム更新を維持する。
 - ただし、この「avatar 維持」は avatar 本体の `idleUpdate()` を維持するという意味であり、attachment まで毎フレーム維持する保証ではない。attachment は非 avatar object として間引かれる可能性がある。
 
@@ -1081,7 +1193,7 @@ G * (1 - m^2) > lambda * R / F
 
 実装メモ:
 
-- 低 FPS guard 発動中は sun shadow 更新間隔を `RenderSunShadowGuardFrameInterval` に切り替える。
+- FPS安定化発動中は sun shadow 更新間隔を `RenderSunShadowGuardFrameInterval` に切り替える。
 - avatar impostor 更新は `AYALoadingFPSGuardMinFPS` 未満では停止する。遠距離 avatar の見た目更新より、入力応答と最低 FPS を優先する。
 
 取りこぼしやすいリスク:
@@ -1122,7 +1234,7 @@ G * (1 - m^2) > lambda * R / F
 - ログイン直後/テレポート直後の時間窓 guard。
 - FPS 回復後の段階解除。
 - guard 状態のログ出力。
-- AutoTune と AYA guard の優先順位。
+- AutoTune と AYA FPS安定化の優先順位。
 - ユーザーが UI から現在 guard 中か確認できる表示。
 - guard のヒステリシス。現状の即時 `gFPSClamped < AYALoadingFPSGuardMinFPS` 判定は採用前 blocker とする。
 
@@ -1174,8 +1286,8 @@ AYAstorm/Firestorm には、ウィンドウサイズを変えずに 3D scene の
 
 AYAstorm での扱い案:
 
-- 常時ユーザー設定として単に表へ出すより、loading FPS guard の一部として「読み込み中だけ一時的に下げる」方が筋がよい。
-- ログイン/テレポート直後の時間窓は「低 FPS 時に発動を許す期間」として扱い、時間窓だけでは内部 3D 解像度を下げない。実際の発動は `loading_window && fps < AYALoadingFPSGuardMinFPS` を基本条件にする。
+- 常時ユーザー設定として単に表へ出すより、`FPS安定化` の一部として「読み込み中だけ一時的に下げる」方が筋がよい。
+- ログイン/テレポート直後の時間窓は「低 FPS 時に発動を許す期間」として扱い、時間窓だけでは内部 3D 解像度を下げない。実際の発動は `loading_window && fps < fps_hint` を基本条件にする。
 - FPS が回復し、texture/object/shadow queue が落ち着いたら `1.0` へ段階復帰する。
 - 発動/復帰時は `gResizeScreenTexture = true` により render target 再確保が起きるため、切り替え頻度は抑える。ヒステリシスと最小維持秒数が必須。
 - 効果判定は FPS だけでなく、`lighting`, `geom`, `ui_swap`, `statesort`, `textures`, GPU/driver stall の変化を見る。CPU bound 区間では効果が薄い可能性がある。
@@ -1184,15 +1296,27 @@ AYAstorm での扱い案:
 2026-06-02 実装メモ:
 
 - `RenderResolutionMultiplier` をユーザー設定値として runtime 書き換えする経路は撤回する。ただし独自の effective multiplier を別経路で render target 計算へ合成するのも撤回する。既存 `RenderResolutionMultiplier` と違う合成/viewport 経路になると、3D render 部だけが不自然に拡大されたり、カメラ位置がずれたように見える UX 悪化を起こし得る。
-- AYA loading 用倍率は保存設定ではなく `LLPipeline` の内部一時状態として持つ。guard 有効中だけ、保存済み `RenderResolutionMultiplier` と AYA loading 用倍率の小さい方を `LLPipeline::RenderResolutionMultiplier` の cached 値そのものへ反映する。これにより既存の `resizeScreenTexture()` / `allocateScreenBufferInternal()` 分岐だけを通し、window/world view/UI サイズは変えず、3D render target だけを縮小する。
+- AYA loading 用倍率は保存設定ではなく `LLPipeline` の内部一時状態として持つ。FPS安定化有効中だけ、保存済み `RenderResolutionMultiplier` と AYA loading 用倍率の小さい方を `LLPipeline::RenderResolutionMultiplier` の cached 値そのものへ反映する。これにより既存の `resizeScreenTexture()` / `allocateScreenBufferInternal()` 分岐だけを通し、window/world view/UI サイズは変えず、3D render target だけを縮小する。
 - 既存仕様どおり `RenderResolutionDivisor > 1` が有効な場合は divisor 側が優先される。発動/復帰時は `gResizeScreenTexture = true` で screen/deferred render target の再確保だけを要求する。
-- 既定では `AYALoadingDynamicResolutionEnabled=TRUE`, `AYALoadingDynamicResolutionMultiplier=0.67`。発動条件はログイン直後、テレポート中/到着直後、または texture create/downscale/callback backlog が残っている loading window 中に `AYALoadingFPSGuardMinFPS` 未満へ落ちた場合とする。`loading_window` 単独では発動させない。
+- 既定では `AYALoadingDynamicResolutionEnabled=TRUE`, `AYALoadingDynamicResolutionMultiplier=0.67`。発動条件はログイン直後、テレポート中/到着直後、または texture create/downscale/callback backlog が残っている loading window 中に `fps_hint` 未満へ落ちた場合とする。`loading_window` 単独では発動させない。
 - `AYALoadingDynamicResolutionLowFPSEnabled=FALSE` を追加した。低 FPS だけを理由に通常操作中も render target を縮小する運用は、検証時に「通常操作のどのタイミングで解像度が切り替わるか」を切り分けづらい。既定では OFF にし、まずローディング実態がある場合だけを検証対象にする。
-- 低解像度化は user-facing な `RenderResolutionMultiplier` setting を保存値としては上書きしないが、guard 有効中は `LLPipeline::RenderResolutionMultiplier` の cached 値そのものへ一時反映する。独自の effective multiplier を別経路で解釈すると、既存 `RenderResolutionMultiplier` 使用時より合成/viewport 体験が悪化し得るため、不採用とする。つまり world view/window/UI のサイズは変えず、既存の `LLPipeline::resizeScreenTexture()` / `LLPipeline::allocateScreenBufferInternal()` で 3D render target だけを縮小し、最終合成で raw world view に拡大するのが正しい挙動である。
+- 低解像度化は user-facing な `RenderResolutionMultiplier` setting を保存値としては上書きしないが、FPS安定化有効中は `LLPipeline::RenderResolutionMultiplier` の cached 値そのものへ一時反映する。独自の effective multiplier を別経路で解釈すると、既存 `RenderResolutionMultiplier` 使用時より合成/viewport 体験が悪化し得るため、不採用とする。つまり world view/window/UI のサイズは変えず、既存の `LLPipeline::resizeScreenTexture()` / `LLPipeline::allocateScreenBufferInternal()` で 3D render target だけを縮小し、最終合成で raw world view に拡大するのが正しい挙動である。
 - 復帰条件は `AYALoadingDynamicResolutionMinHoldSeconds` 経過後、loading window 終了、または loading window 中でも `AYALoadingDynamicResolutionRestoreFPS` 以上へ回復した場合とする。低 FPS 単独 trigger を明示的に有効化した場合のみ、通常操作中でも `AYALoadingDynamicResolutionRestoreFPS` 以上への回復まで保持する。切り替え時は render target 再確保を要求するため、最小維持秒数で連続 resize を避ける。
-- ログは `AYALoadingFPSGuard` タグで `dynamic_resolution event=enter|exit|active` を出す。`multiplier`, `render_resolution_multiplier_setting`, `ayastorm_dynamic_multiplier`, `cached_render_resolution_multiplier`, `loading_window`, `startup_window`, `teleport_window`, `texture_backlog_window`, `fps` を確認する。
+- ログは `AYARenderRelief` タグで `dynamic_resolution event=enter|exit|active` を出す。`multiplier`, `render_resolution_multiplier_setting`, `ayastorm_dynamic_multiplier`, `cached_render_resolution_multiplier`, `loading_window`, `startup_window`, `teleport_window`, `texture_backlog_window`, `fps`, `fps_hint`, `pressure_ratio`, `render_relief_active` を確認する。
 - 実機ログで `fps=170.89` かつ `startup_window=true` のみを理由に `event=enter reason=loading_window` が出た。これは「ローディング中の FPS 低下時だけ使う」という計画から外れていたため、`reason=loading_low_fps` でのみ入るよう修正対象とした。
 - build 検証では arm64 Release の `AYAstorm.app` 生成まで通した。実機検証では、ログイン/テレポート直後に `event=enter` が出ること、視界が一時的に低解像度化すること、回復後に `event=exit` が出ることを確認する。
+
+#### ログイン画面/XUI 初期描画への防御策
+
+2026-06-05 の確認では、`aya_update_dynamic_resolution_guard()` は `display()` の早い段階で呼ばれ、`STATE_STARTED` 未満ではその後 `display_startup()` へ戻る構造である。つまり、ログイン画面表示中でも guard 関数自体は評価され得る。一方で、ログイン画面は XUI、HTML/media、フォント、画像ロード、初期 layout が数フレームかけて安定するため、この段階で `RenderResolutionMultiplier` 系の render target resize を起こすと、ログイン画面が一瞬崩れてから正しく見える症状を増幅する可能性がある。
+
+実装方針:
+
+- `LLStartUp::getStartupState() < STATE_STARTED` の間は dynamic resolution guard を完全に早期 return する。
+- 何らかの残留で dynamic resolution が active の場合は、早期 return 前に倍率を restore し、`event=exit reason=startup_not_started` をログへ出す。
+- ただし上記だけでは不十分である。`RenderResolutionMultiplier` 自体がユーザー設定または前回値として 1 未満に保存されている場合、AYA dynamic guard が inactive でも `LLPipeline::resizeScreenTexture()` / `LLPipeline::allocateScreenBufferInternal()` がログイン画面の render target を縮小してしまう。さらに同じ縮小経路には旧式の `RenderResolutionDivisor` も残っている。したがって `STATE_STARTED` 未満では pipeline 側の実効 multiplier を 1.0、実効 divisor を 1 として扱い、ログイン画面/XUI 初期描画では保存済みの解像度縮小設定を適用しない。
+- `STATE_STARTED` 到達時に従来どおり startup window timer を開始する。これにより、ログイン画面/XUI 初期描画は保護しつつ、ログイン後のローディング FPS 対策は維持する。
+- dense-world LOD は avatar/world volume の LOD bias であり、ログイン画面 XUI へ直接作用しない。XUI への防御対象は dynamic resolution の render target resize 経路に限定する。
 
 #### ResolutionMultiplier と FXAA の viewport 不整合
 
@@ -1238,6 +1362,108 @@ AYAstorm での扱い案:
 - header entries / fast cache の open 失敗時は `LLAPRFile` を即 delete し、ポインタを `NULL` に戻す。
 - 呼び出し側は open 失敗を cache I/O 失敗として扱い、read/write/seek に進まない。
 - これにより file descriptor 枯渇そのものを直接解決するというより、枯渇発生後に cache I/O が無限に壊れた file handle を叩き続け、ログとフレーム時間をさらに悪化させる経路を止める。
+
+### Phase 1.9: mouselook-fps ブランチの dense-world LOD 取り込み計画
+
+2026-06-03 時点の検証では、`RenderResolutionMultiplier` は pixel cost を下げる対策として有効だが、混雑地点や重いワールドで FPS が上がり切らない場面がある。これは負荷が `G_pixel * m^2` だけではなく、scene 側の drawinfo、triangle、state sort、geometry、lighting にも残っているためである。
+
+そのため、別ブランチ `feature/ayastorm-r34-mouselook-fps` の LOD 制御を「mouselook 専用機能」としてではなく、「FPS安定化の scene-bound 補助」として取り込めるか検証する。
+
+取り込む候補:
+
+- `LLVOVolume::calcLOD()` への LOD bias hook。近距離保護距離の外側にある、視野中心外、小画面占有、大量 child を持つ dense root、重い mesh に対して detail を 1-2 段落とす。
+- camera distance、camera forward dot、projected screen height、root child count、triangle count を使った candidate 判定。
+- decision interval と hysteresis。毎フレーム LOD を揺らさず、realloc や state churn を増やさない。
+- `LLSpatialGroup::updateDistance()` からの forced LOD refresh。距離や視野が変わったのに古い LOD が残り続ける状態を避ける。
+- 集計ログ。`biased`, `bias1`, `bias2`, `dense`, `heavy`, `behind_or_side`, `forced_refresh` などを低頻度で出し、FPS安定化の効果と副作用を確認する。
+
+取り込まない候補:
+
+- `lldrawpool.cpp` の draw pass suppression / drawinfo skip。これは描画欠落や近距離オブジェクト未 rez のリスクが高く、今回の「近いものから必ず表示する」方針と衝突する。
+- localID 指定の suppression 実験設定。
+- trace default ON。ログ出力自体が FPS と I/O を悪化させる可能性があるため、検証時だけ ON にする。
+- Stream3D protection を外す実験。
+- `AYAR34Mouselook...` の設定名と mouselook 専用条件をそのまま持ち込むこと。今回の対象は mouselook ではなく loading/dense-world の負荷制御である。
+
+LOD bias / forced refresh の除外対象:
+
+- 自分の avatar、他人の avatar 本体、avatar baked texture、avatar attachment、HUD attachment は今回取り込む LOD bias / forced refresh の対象にしない。
+- object 側だけでなく root 側が avatar / attachment / HUD に属する場合も除外する。
+- selected object、編集中 object は対象にしない。
+- 近距離保護距離内の object は dense root / heavy mesh でも対象にしない。まず近距離 avatar / attachment / HUD / 近距離 world object が rez することを優先する。
+- texture cap / sweep / backpressure 側の attachment 保護範囲は別途扱う。自分、HUD、近距離 avatar 成立に必要な attachment は保護するが、遠距離・視野外の他人装飾 attachment を永久保護する設計にはしない。
+
+設定名案:
+
+- `AYALoadingDenseWorldLODEnabled` default `TRUE`
+- `AYALoadingDenseWorldLODTraceEnabled` default `FALSE`
+- `AYALoadingDenseWorldLODMaxDistance`
+- `AYALoadingDenseWorldNearProtectDistance`
+- `AYALoadingDenseWorldLODMinChildren`
+- `AYALoadingDenseWorldHeavyMeshMaxDistance`
+- `AYALoadingDenseWorldHeavyMeshMinTriangles`
+- `AYALoadingDenseWorldForwardDot`
+- `AYALoadingDenseWorldSmallScreenPct`
+- `AYALoadingDenseWorldVerySmallScreenPct`
+- `AYALoadingDenseWorldDecisionIntervalFrames`
+- `AYALoadingDenseWorldHysteresisFrames`
+- `AYALoadingDenseWorldForceLODRefreshIntervalFrames`
+- `AYALoadingDenseWorldForceLODRefreshMaxPerFrame`
+
+発動方針:
+
+- ユーザー向けの master は `FPS安定化` とする。短期互換では `AYALoadingFPSGuardEnabled` を使うが、後続整理後は `AYALoadingRenderReliefEnabled` に寄せる。
+- `AYALoadingDenseWorldLODEnabled` は FPS安定化内の内部 kill switch として default ON 候補にする。ここを default OFF にすると、ユーザーが FPS安定化を ON にしても scene-bound 対策が発動せず、通常の実機検証で機能が届かない。
+- UI からの FPS安定化有効化と連動させる場合も、保存済みユーザー設定を勝手に変更せず、FPS安定化 master と `AYALoadingDenseWorldLODEnabled` の AND として扱う。
+- loading 用 dense-world LOD の実装条件は `AYALoadingDenseWorldLODEnabled && render_relief_enabled && loading_or_texture_backlog_window && fps_latch_active` とする。FPS が高いのに loading window だけで視覚品質を落とす挙動は避ける。
+- mouselook 中に基準 FPS 判定をバイパスして dense-world LOD を常時有効化する挙動は、読み込み中の FPS安定化と混ぜない。残す場合は `AYAMouselookDenseWorldLODEnabled` のような別設定・別ログへ分離する。
+- dense-world LOD の入口には latch hysteresis を入れる。`current_fps < baseline_fps` で ON、ON 後は `current_fps >= baseline_fps * 1.05` まで OFF に戻さない。`baseline_fps=60` なら 60 未満で ON、63 以上で OFF。これにより基準 FPS 付近で active/inactive が毎フレーム揺れる状態を避ける。
+- 検証用に dense-world LOD の active/inactive 状態遷移のみ `AYAPerf` ログへ出す。候補数、bias 数、forced refresh 数などの詳細集計は `AYALoadingDenseWorldLODTraceEnabled` が ON の時だけ出し、通常検証でログ負荷を増やさない。状態遷移ログは latch hysteresis 後の active 変化だけを出す。
+- dense-world LOD は破棄/縮小ではなく LOD bias / forced refresh のみを担当する。視野外、遠距離、旧リージョン由来、参照なし候補の破棄/縮小は distance/offscreen cap、teleport sweep、memory sweep 側で扱う。
+
+負荷式上の位置づけ:
+
+```text
+T_off = C_cpu + C_scene + G_pixel + U_swap
+T_on  = C_cpu + C_scene' + G_pixel * m^2 + U_swap(m) + lambda * R + S_recovery
+```
+
+`RenderResolutionMultiplier` は `G_pixel * m^2` を下げる。一方 dense-world LOD は `C_scene' <= C_scene` を狙う。つまり、画面解像度を下げても `geom`, `statesort`, `lighting` が残る場面では、LOD bias によって triangle / drawinfo / material cost を下げる必要がある。ただし LOD 更新頻度や texture 再確保が増えると `lambda * R + S_recovery` が増え、逆に重くなるため、decision interval と hysteresis は必須である。
+
+検証項目:
+
+- OFF/ON で `fps`, `total`, `geom`, `lighting`, `statesort`, `textures`, `ui_swap`, `realloc_count_per_sec` を比較する。
+- `RenderResolutionMultiplier` の倍率変化と LOD bias の発動が同時に暴れないこと。
+- forced LOD refresh が per-frame cap 内に収まり、`statesort` / `geom` を逆に悪化させないこと。
+- 近距離 avatar、attachment、HUD、近距離 world object が未 rez のまま残らないこと。
+- `near protect distance` 内の `bias=0`、selected/edit object の `bias=0`、HUD/avatar attachment の `bias=0` をログまたは実機で確認する。
+- OFF 後 N 秒以内に通常 LOD 経路へ戻り、低 LOD が固定化されないこと。
+- `forced_refresh_per_frame <= AYALoadingDenseWorldForceLODRefreshMaxPerFrame` を満たすこと。
+
+forced LOD refresh の検証式:
+
+```text
+F = fps * dt
+R_observed = forced_refresh
+R_per_sec = R_observed / dt
+R_per_frame = R_observed / F
+R_cap_frame = MaxPerFrame * F
+R_cap_object = N_refresh_candidates * ceil(F / IntervalFrames)
+R_upper <= min(R_cap_frame, R_cap_object)
+```
+
+2026-06-04 の実機ログでは、旧設定 `MaxPerFrame=64`, `IntervalFrames=4` で以下の burst が出た。
+
+```text
+dt=5.02 fps=29.2 candidates=1818 forced_refresh=1184
+F ~= 146 frames
+R_per_frame ~= 8.1 refresh/frame
+R_cap_frame = 64 * 146 = 9344
+```
+
+この場合、`MaxPerFrame=64` は上限としてほぼ効いていない。`MaxPerFrame=1` へ落とすと同じ 5 秒窓の理論上限は `1 * 146 = 146` になり、burst refresh は最大でも約 1/8 まで下がる。一方、安定区間では `forced_refresh ~= 64-69 / 5s` で `R_per_frame ~= 1` に張り付いていたため、`MaxPerFrame=1` だけでは安定区間の削減は限定的である。`IntervalFrames=30` へ上げ、同一 object への再 refresh を抑える追加検証が必要。
+
+比較ビルドでは `AYALoadingDenseWorldForceLODRefreshMaxPerFrame=1`, `AYALoadingDenseWorldForceLODRefreshIntervalFrames=30` を初期値にし、`dense_world_lod` ログへ `refresh_per_sec`, `refresh_per_frame`, `force_interval_frames`, `force_max_per_frame` を出す。FPS 改善を見る時は、`biased` が残り、`forced_refresh` と `refresh_per_frame` が下がり、`fps` が上がるかを同じ地点・同じカメラ条件で比較する。
 
 ## 比較計測計画
 

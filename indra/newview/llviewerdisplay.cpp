@@ -424,7 +424,20 @@ void aya_update_dynamic_resolution_guard()
     static LLCachedControl<U32> texture_callback_backlog_threshold(gSavedSettings, "AYALoadingDynamicResolutionTextureCallbackBacklogThreshold", 24);
 
     const LLAgent::ETeleportState teleport_state = gAgent.getTeleportState();
-    if (!sAYADynamicResolutionStartupSeen && LLStartUp::getStartupState() >= STATE_STARTED)
+    const EStartupState startup_state = LLStartUp::getStartupState();
+    if (startup_state < STATE_STARTED)
+    {
+        if (sAYADynamicResolutionActive)
+        {
+            sAYADynamicResolutionActive = false;
+            ++sAYADynamicResolutionExitCount;
+            aya_restore_dynamic_resolution_multiplier();
+            aya_log_dynamic_resolution_guard("exit", "startup_not_started", 1.f, 0.f, 0.f, false, false, false, false, teleport_state);
+        }
+        return;
+    }
+
+    if (!sAYADynamicResolutionStartupSeen)
     {
         sAYADynamicResolutionStartupSeen = true;
         sAYADynamicResolutionStartupTimer.reset();
