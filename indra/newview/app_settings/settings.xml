@@ -10541,6 +10541,37 @@ Change of this parameter will affect the layout of buttons in notification toast
       <integer>0</integer>
     </map>
     <!-- </AYAstorm r41 PC-N-13 (b)> -->
+
+    <!-- <AYAstorm r41 PC-N-15a (a)> AYAGltfWorkerThreadEnabled + AYAGltfWorkerThreadCount cvar 新設
+         ((N15a-7) B always at init + (N14-10)/(N14-11) AYA literal「OK」record 2026-06-05)。
+         Phase 1.E PC-N-14/PC-N-15a/b/c worker thread infra design = recordGltfAssetDraw per-Primitive
+         UBO write + cmdbuf record を secondary command buffer 経由 worker thread 並列化、設計原則 (2)
+         Core プロセス分散実現の本丸、α 案 = per-thread LLUboRingBuffer instance 化で lock-free
+         allocation 達成。PC-N-15a 段階 = infra 配線のみ、ON 切替でも描画経路は変化しない
+         (= worker storage 確保のみ、launch 経路は PC-N-15b 持越し)。Persist=1 で起動間保持。 -->
+    <key>AYAGltfWorkerThreadEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.E PC-N-14/PC-N-15a/b/c) Worker thread enable gate for recordGltfAssetDraw per-Primitive UBO write + secondary cmdbuf record 並列化 (= 設計原則 (2) Core プロセス分散実現). OFF (default) = single-thread linear sequential record 維持 (= Phase 1.D + PC-N-11/12/13 baseline 不変、MUSEUBO-A 整合). ON = worker thread pool launch + per-Primitive secondary cmd_buf record + vkCmdExecuteCommands 集約 + first-fire marker 3 件起動 (PC-N-15b 通電予定). PC-N-15a 段階では infra 配線のみ、ON 切替でも描画経路は変化しない (= worker storage 確保のみ、launch 経路は PC-N-15b 持越し). Prerequisite: AYAGltfRealDrawEnabled=1.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAGltfWorkerThreadCount</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.E PC-N-14/PC-N-15a) Worker thread count for AYAGltfWorkerThreadEnabled. AYAGltfWorkerThreadEnabled=1 時 worker storage 数決定、AYAGltfWorkerThreadEnabled=0 時も storage は確保される ((N15a-7) B always at init). 0 (default) = std::thread::hardware_concurrency() - 1 自動決定 (= main thread 1 件除外、HW 並列度上限活用). 1-N = fixed worker thread count (= 開発時 A/B testing 用、上限は HW 並列度). 変更は viewer 再起動で反映 (= initVulkan 1 度きり呼出ゆえ runtime 動的 re-init なし、((N15a-7) B 採用)).</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </AYAstorm r41 PC-N-15a (a)> -->
     <!-- </FS:AYAstorm> -->
 
     <key>PluginInstancesLow</key>

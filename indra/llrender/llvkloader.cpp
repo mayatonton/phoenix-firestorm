@@ -39,6 +39,14 @@
 #include <unordered_set>
 #include <utility>
 #include <atomic>
+// <AYAstorm r41 PC-N-15a (a)> worker thread infra header includes
+//   ((N15a-2) ⭐ A per-thread LLUboRingBuffer + (N15a-6) B mutex 保護 +
+//   (N15a-7) B always at init、AYA literal「OK」record 2026-06-05)。
+//   LL::WorkQueue header (= worker thread post / drain) は PC-N-15b で追加、
+//   PC-N-15a infra のみゆえ未追加。
+#include <thread>
+#include <mutex>
+// </AYAstorm r41 PC-N-15a (a)>
 
 extern LLControlGroup gSavedSettings;
 
@@ -665,8 +673,15 @@ namespace
     //     経路を先回り確立。sCurrent* が null の場合 forwardToUboUpload 側で
     //     LL_WARNS_ONCE + return (= 06b §5.4.1 main thread 専有前提下の安全側)。
     // </AYAstorm r41 PC-7γ-2>
-    LL::GLTF::Asset* sCurrentAsset = nullptr;
-    LL::GLTF::Skin*  sCurrentSkin  = nullptr;
+    // <AYAstorm r41 PC-N-15a (c)> thread_local 化 ((N15a-10) A 4 件のうち 2 件、
+    //   AYA literal「OK」record 2026-06-05)。PC-N-14 (N14-8) A 整合 = worker
+    //   thread 内 thread_local で per-thread context 維持、accessor signature
+    //   不変、layering 制約完全充足。main thread instance は thread_local 経由
+    //   main thread storage に bind され従来動作維持、worker thread launch
+    //   経路 (PC-N-15b 持越し) で per-thread instance 経路通電予定。
+    thread_local LL::GLTF::Asset* sCurrentAsset = nullptr;
+    thread_local LL::GLTF::Skin*  sCurrentSkin  = nullptr;
+    // </AYAstorm r41 PC-N-15a (c)>
 
     // <AYAstorm r41 PC-N-8 (e)> per-Primitive current owner tracking
     //   (= sCurrentPrimitive static)。((N8-12) A、AYA literal「全件推奨で進めて
@@ -676,7 +691,10 @@ namespace
     //         per-Primitive loop 内 set/clear (= PC-N-8 では accessor declare +
     //         storage 配置のみ、PC-N-8 単独発火なし = nullptr natural guard)。
     // </AYAstorm r41 PC-N-8 (e)>
-    LL::GLTF::Primitive* sCurrentPrimitive = nullptr;
+    // <AYAstorm r41 PC-N-15a (c)> thread_local 化 ((N15a-10) A 4 件のうち 3 件目、
+    //   PC-N-14 (N14-8) A 整合)。
+    thread_local LL::GLTF::Primitive* sCurrentPrimitive = nullptr;
+    // </AYAstorm r41 PC-N-15a (c)>
 
     // <AYAstorm r41 PC-N-12 (c)> per-Node current modelview tracking
     //   (= sCurrentNodeAssetMatrix static、案 A layering-safe pointer accessor
@@ -693,7 +711,10 @@ namespace
     //             scene.updateTransforms で更新済 = pointer stale 化なし (= per-draw 内
     //             で frame-stable、worker thread 分散は PC-N-14/15 持越し)。
     // </AYAstorm r41 PC-N-12 (c)>
-    const F32* sCurrentNodeAssetMatrix = nullptr;
+    // <AYAstorm r41 PC-N-15a (c)> thread_local 化 ((N15a-10) A 4 件のうち 4 件目、
+    //   PC-N-14 (N14-8) A 整合)。
+    thread_local const F32* sCurrentNodeAssetMatrix = nullptr;
+    // </AYAstorm r41 PC-N-15a (c)>
 
     // <AYAstorm r41 PC-N-13 (b)> multi-asset canary 用 seen asset address tracker
     //   ((N13-11) A、AYA literal「全件推奨で OK」record 2026-06-05)。
@@ -706,6 +727,49 @@ namespace
     //   pointer 比較のみ、deref せず layering 制約完全充足)。
     std::unordered_set<const void*> sPcn13MultiAssetSeen;
     // </AYAstorm r41 PC-N-13 (b)>
+
+    // <AYAstorm r41 PC-N-15a (c)> sPcn13MultiAssetSeen mutex 保護
+    //   ((N15a-6) B = (N14-8) revisit、AYA literal「OK」record 2026-06-05)。
+    //   PC-N-13 (b) canary semantics 維持 = thread_local 化すると同一 2 asset
+    //   が別 worker thread に分散時に canary 失火、main 単一 set を mutex 経由
+    //   access で 2 asset 以上同時描画通電検出を維持。PC-N-15a 段階では
+    //   declaration のみ、lock_guard 取得は PC-N-15b で worker thread context
+    //   fire 経路実装時に追加 (= 現 main thread context での access は
+    //   single-threaded ゆえ lock 未取得状態でも behavioral regression なし)。
+    std::mutex sPcn13MultiAssetSeenMutex;
+    // </AYAstorm r41 PC-N-15a (c)>
+
+    // <AYAstorm r41 PC-N-15a (a)> worker thread infrastructure storage
+    //   ((N15a-2) ⭐ A per-thread LLUboRingBuffer instance + (N15a-3) A
+    //   per-thread sDrawUboRingBufferRecords sub-map + (N15a-4) A per-instance
+    //   factory closure + (N15a-5) A per-thread sSkinUboDirty sub-map +
+    //   (N15a-7) B always at init + (N15a-8) A reverse-init cleanup、
+    //   AYA literal「OK」record 2026-06-05)。
+    //
+    //   worker thread 数 N = AYAGltfWorkerThreadCount cvar=0 時
+    //   std::thread::hardware_concurrency() - 1 (= main thread 除外)、>0 時
+    //   fixed N ((N14-3) C hybrid + (N15a-7) B always at init)。
+    //
+    //   PC-N-15a 段階 = storage 配線のみ、worker launch + actual allocate /
+    //   record 経路通電は PC-N-15b 持越し。
+    struct PcN14WorkerContext
+    {
+        VkCommandPool                              mCommandPool     = VK_NULL_HANDLE;
+        VkCommandBuffer                            mSecondaryCmdBuf = VK_NULL_HANDLE;
+        std::unique_ptr<LLUboRingBuffer>           mDrawUboRingBuffer;
+        std::unordered_map<LLUboRingBuffer::BufferHandle, DrawUboRingBufferRecord>
+                                                   mDrawUboSubRecords;
+        std::unordered_map<UboSkinKey, UboInstance, UboSkinKeyHash>
+                                                   mSkinUboSubDirty;
+    };
+    std::vector<PcN14WorkerContext> sPcn14WorkerCtx;  // size = N worker threads
+    std::atomic<U32>                sPcn14WorkerCount{0u};
+
+    static LLCachedControl<bool> sAyastormGltfWorkerThreadEnabled(
+        gSavedSettings, "AYAGltfWorkerThreadEnabled", false);
+    static LLCachedControl<U32>  sAyastormGltfWorkerThreadCount(
+        gSavedSettings, "AYAGltfWorkerThreadCount", 0u);
+    // </AYAstorm r41 PC-N-15a (a)>
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
@@ -1517,6 +1581,185 @@ namespace
                            << " B, HOST_VISIBLE + HOST_COHERENT + MAPPED)" << LL_ENDL;
         return true;
     }
+
+    // <AYAstorm r41 PC-N-15a (d)> worker thread infra 確保 helper
+    //   ((N15a-2) ⭐ A per-thread LLUboRingBuffer N instance + (N15a-7) B
+    //   always at init + Vulkan spec per-thread VkCommandPool external sync
+    //   ((N14-5) A) + secondary cmd_buf alloc ((N14-1) ⭐ A)、AYA literal「OK」
+    //   record 2026-06-05)。
+    //
+    //   N worker thread 数決定:
+    //     - cvar=0 → std::thread::hardware_concurrency() - 1 (= main thread 除外)
+    //     - cvar>0 → min(cvar, hardware_concurrency()) で fixed N
+    //   各 i ∈ [0, N) について:
+    //     (1) per-thread VkCommandPool create (TRANSIENT|RESET_COMMAND_BUFFER)
+    //     (2) secondary VkCommandBuffer alloc (level=SECONDARY、count=1)
+    //     (3) per-thread LLUboRingBuffer instance create + initialize
+    //         (factory closure は lambda capture [i] で sPcn14WorkerCtx[i].
+    //         mDrawUboSubRecords へ per-thread sub-map に書込)
+    //
+    //   PC-N-15a 段階 = storage 確保のみ、worker launch + actual record 経路
+    //   通電は PC-N-15b 持越し。
+    bool createWorkerThreadInfra()
+    {
+        const U32 cvar_count = (U32)sAyastormGltfWorkerThreadCount;
+        const U32 hw         = (U32)std::max(1, (int)std::thread::hardware_concurrency());
+        U32 worker_count;
+        if (cvar_count == 0u)
+        {
+            worker_count = std::max<U32>(1u, hw - 1u);
+        }
+        else
+        {
+            worker_count = std::min(cvar_count, hw);
+        }
+
+        sPcn14WorkerCtx.resize(worker_count);
+        sPcn14WorkerCount.store(worker_count, std::memory_order_release);
+
+        static LLCachedControl<U32> sRingBufferSizeMB(
+            gSavedSettings, "AYARingBufferSizeMB", LLUboRingBuffer::kInitialSizeMB);
+        const U32 initial_mb = (U32)sRingBufferSizeMB;
+
+        for (U32 i = 0; i < worker_count; ++i)
+        {
+            PcN14WorkerContext& ctx = sPcn14WorkerCtx[i];
+
+            // (1) per-thread VkCommandPool ((N14-5) A、Vulkan spec external sync)
+            VkCommandPoolCreateInfo pool_info = {};
+            pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+                              VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            pool_info.queueFamilyIndex = sGraphicsQueueFamily;
+            VkResult cp_r = vkCreateCommandPool(sDevice, &pool_info, nullptr, &ctx.mCommandPool);
+            if (cp_r != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "PC-N-15a worker[" << i
+                                   << "] vkCreateCommandPool failed: " << (S32)cp_r << LL_ENDL;
+                return false;
+            }
+
+            // (2) secondary VkCommandBuffer alloc ((N14-1) ⭐ A)
+            VkCommandBufferAllocateInfo cb_alloc = {};
+            cb_alloc.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cb_alloc.commandPool        = ctx.mCommandPool;
+            cb_alloc.level              = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+            cb_alloc.commandBufferCount = 1;
+            VkResult cb_r = vkAllocateCommandBuffers(sDevice, &cb_alloc, &ctx.mSecondaryCmdBuf);
+            if (cb_r != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "PC-N-15a worker[" << i
+                                   << "] vkAllocateCommandBuffers (SECONDARY) failed: "
+                                   << (S32)cb_r << LL_ENDL;
+                return false;
+            }
+
+            // (3) per-thread LLUboRingBuffer instance ((N15a-2) ⭐ A + (N15a-4) A
+            //     per-instance factory closure + (N15a-3) A per-thread sub-map)
+            auto factory = [i](std::uint32_t size_bytes) -> LLUboRingBuffer::BufferHandle {
+                if (sAllocator == VK_NULL_HANDLE)
+                {
+                    LL_WARNS("Vulkan") << "PC-N-15a worker[" << i
+                                       << "] factory: sAllocator == VK_NULL_HANDLE" << LL_ENDL;
+                    return 0;
+                }
+                VkBufferCreateInfo bci = {};
+                bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+                bci.size        = size_bytes;
+                bci.usage       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+                bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+                VmaAllocationCreateInfo aci = {};
+                aci.usage         = VMA_MEMORY_USAGE_AUTO;
+                aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                                  | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                                  | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+                VkBuffer          buffer     = VK_NULL_HANDLE;
+                VmaAllocation     allocation = VK_NULL_HANDLE;
+                VmaAllocationInfo info       = {};
+                VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &buffer, &allocation, &info);
+                if (r != VK_SUCCESS || info.pMappedData == nullptr)
+                {
+                    LL_WARNS("Vulkan") << "PC-N-15a worker[" << i
+                                       << "] vmaCreateBuffer failed: " << (S32)r
+                                       << " size=" << (S32)size_bytes << LL_ENDL;
+                    if (buffer != VK_NULL_HANDLE)
+                    {
+                        vmaDestroyBuffer(sAllocator, buffer, allocation);
+                    }
+                    return 0;
+                }
+                const LLUboRingBuffer::BufferHandle handle =
+                    static_cast<LLUboRingBuffer::BufferHandle>(reinterpret_cast<std::uintptr_t>(buffer));
+                DrawUboRingBufferRecord rec;
+                rec.buffer     = buffer;
+                rec.allocation = allocation;
+                rec.mapped     = info.pMappedData;
+                sPcn14WorkerCtx[i].mDrawUboSubRecords[handle] = rec;
+                return handle;
+            };
+            auto destroyer = [i](LLUboRingBuffer::BufferHandle handle) {
+                if (handle == 0 || sAllocator == VK_NULL_HANDLE)
+                {
+                    return;
+                }
+                auto it = sPcn14WorkerCtx[i].mDrawUboSubRecords.find(handle);
+                if (it == sPcn14WorkerCtx[i].mDrawUboSubRecords.end())
+                {
+                    return;
+                }
+                vmaDestroyBuffer(sAllocator, it->second.buffer, it->second.allocation);
+                sPcn14WorkerCtx[i].mDrawUboSubRecords.erase(it);
+            };
+            ctx.mDrawUboRingBuffer = std::make_unique<LLUboRingBuffer>(factory, destroyer, initial_mb);
+            if (!ctx.mDrawUboRingBuffer->initialize())
+            {
+                LL_WARNS("Vulkan") << "PC-N-15a worker[" << i
+                                   << "] LLUboRingBuffer::initialize() failed" << LL_ENDL;
+                return false;
+            }
+        }
+
+        LL_INFOS("Vulkan") << "PC-N-15a worker thread infra created: worker_count=" << worker_count
+                           << " (cvar=" << cvar_count << ", hw=" << hw
+                           << "), per-thread VkCommandPool + secondary VkCommandBuffer + "
+                              "LLUboRingBuffer instance (initial=" << initial_mb << " MB)" << LL_ENDL;
+        return true;
+    }
+
+    void destroyWorkerThreadInfra()
+    {
+        // reverse-init order ((N15a-8) A):
+        //   LLUboRingBuffer destroy → vkFreeCommandBuffers → vkDestroyCommandPool
+        //   → sPcn14WorkerCtx clear。LLUboRingBuffer 内部の BufferDestroyer
+        //   callback が vmaDestroyBuffer 呼ぶゆえ VMA allocator 有効性確保で
+        //   LLUboRingBuffer destroy 先行必須 (= sAllocator 生存中)。
+        for (auto& ctx : sPcn14WorkerCtx)
+        {
+            if (ctx.mDrawUboRingBuffer)
+            {
+                ctx.mDrawUboRingBuffer->shutdown();
+                ctx.mDrawUboRingBuffer.reset();
+            }
+            ctx.mDrawUboSubRecords.clear();
+            ctx.mSkinUboSubDirty.clear();
+            if (ctx.mSecondaryCmdBuf != VK_NULL_HANDLE && ctx.mCommandPool != VK_NULL_HANDLE)
+            {
+                vkFreeCommandBuffers(sDevice, ctx.mCommandPool, 1, &ctx.mSecondaryCmdBuf);
+                ctx.mSecondaryCmdBuf = VK_NULL_HANDLE;
+            }
+            if (ctx.mCommandPool != VK_NULL_HANDLE)
+            {
+                vkDestroyCommandPool(sDevice, ctx.mCommandPool, nullptr);
+                ctx.mCommandPool = VK_NULL_HANDLE;
+            }
+        }
+        sPcn14WorkerCtx.clear();
+        sPcn14WorkerCount.store(0u, std::memory_order_release);
+    }
+    // </AYAstorm r41 PC-N-15a (d)>
 
     // <AYAstorm r41 PC-7β> UboInstance triple-buffer allocate / destroy helper
     //
@@ -3682,6 +3925,23 @@ bool initVulkan()
         return false;
     }
 
+    // <AYAstorm r41 PC-N-15a (e)> worker thread infrastructure 起動 hook
+    //   ((N15a-7) B always at init = AYAGltfWorkerThreadEnabled 値に関わらず
+    //   storage 確保、AYA literal「OK」record 2026-06-05)。
+    //
+    //   位置: createDrawUboRingBuffer() 直後 = sAllocator + sGraphicsQueueFamily +
+    //   sDevice 全 valid。createWorkerThreadInfra() 失敗時は shutdownVulkan() で
+    //   graceful degrade = Vulkan disable → OpenGL fallback。
+    //
+    //   PC-N-15a 段階 = storage 確保のみ、worker launch + actual record 経路通電は
+    //   PC-N-15b 持越し ((N15a-1) ⭐ A 採用 = 3 sub-phase 分解)。
+    if (!createWorkerThreadInfra())
+    {
+        shutdownVulkan();
+        return false;
+    }
+    // </AYAstorm r41 PC-N-15a (e)>
+
     // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): 1×1 white placeholder image lifecycle smoke。
     // VMA allocator 立ち上げ直後に発行、shutdownVulkan で vmaDestroyAllocator 前に破棄する。
     // β-2-3: staging buffer 経由 1px upload + 2 段 layout transition を 1 度限り実行 (INFO marker 出力)。
@@ -4306,6 +4566,18 @@ void shutdownVulkan()
             sCommandPool = VK_NULL_HANDLE;
             sCommandBuffer = VK_NULL_HANDLE;
         }
+
+        // <AYAstorm r41 PC-N-15a (e)> worker thread infrastructure teardown hook
+        //   ((N15a-8) A reverse-init order = LLUboRingBuffer shutdown →
+        //   vkFreeCommandBuffers → vkDestroyCommandPool → sPcn14WorkerCtx clear、
+        //   AYA literal「OK」record 2026-06-05)。
+        //
+        //   位置: main vkDestroyCommandPool 直後 + sDrawUboRingBufferMgr destroy
+        //   前 = sAllocator 生存中ゆえ per-thread LLUboRingBuffer destroyer の
+        //   vmaDestroyBuffer 安全発火。sDevice 生存中ゆえ vkFreeCommandBuffers +
+        //   vkDestroyCommandPool 安全発火。
+        destroyWorkerThreadInfra();
+        // </AYAstorm r41 PC-N-15a (e)>
 
         // r41 sub-step 3.4-β-2 (sub-doc 03 §3.1.4): placeholder image teardown。
         // vmaDestroyImage は sAllocator 生存中に呼ぶ必要があるため、共有 pool 破棄前に発行。
