@@ -600,72 +600,11 @@ namespace
         reinterpret_cast<LL::GLTF::Skin*>(&sGltfStubSkinStorage[0]);
     // </AYAstorm r41 PC-N-5 (a)>
 
-    // <AYAstorm r41 PC-N-6 (a)> GLTF stub vertex buffer file-static + VMA allocation
-    //   ((N6-1) B + (N6-3) A + (N6-4) B + (N6-5) B + (N6-6) A 採用、AYA literal
-    //   「すべて推奨でお願いします」record 2026-06-05)。Phase 1.D 内 1st sub-step =
-    //   stub vertex buffer Vulkan 経路通電 = file-static `sGltfStubVertexBuffer` を
-    //   VMA host-visible mapped buffer 経由 1 回 initVulkan allocate + initial memcpy +
-    //   vkCmdBindVertexBuffers 配線 = PC-N-5 sGltfStubSkin sentinel と並列 lifecycle
-    //   (= shutdownVulkan で対称破棄)。
-    //
-    //   stub vertex data: NDC CCW triangle = position vec3 × 3 (= 9 float = 36 B、
-    //   stride=12 B、binding=0、attribute=0、location=0、format=R32G32B32_SFLOAT)。
-    //   shader 内 attribute 実 consumption は不要 (sky smoke shader 流用 =
-    //   gl_VertexIndex 経路設計)、vkCmdBindVertexBuffers 経路通電の事実確立が scope。
-    //   実 LL::GLTF::Asset 経路は PC-N-7..PC-N-10 持越し。
-    VkBuffer       sGltfStubVertexBuffer     = VK_NULL_HANDLE;
-    VmaAllocation  sGltfStubVertexAllocation = VK_NULL_HANDLE;
-    void*          sGltfStubVertexMapped     = nullptr;
-    constexpr U32  sGltfStubVertexCount      = 3u;  // (N6-10) B 採用 = 任意 N 経路、初期値 3
-    constexpr U32  sGltfStubVertexStride     = 12u; // (N6-3) A position vec3 = 3 × sizeof(F32)
-    constexpr U32  sGltfStubVertexBufferSize = sGltfStubVertexCount * sGltfStubVertexStride; // 36 B
-
-    // stub vertex data initial literal (= CCW triangle、NDC 内中央配置、shader 内で
-    //   未 consumption ゆえ可視性は問わない、vkCmdBindVertexBuffers 経路通電のみが
-    //   PC-N-6 scope)。
-    const F32 sGltfStubVertexData[9] = {
-        // position vec3 × 3 (= NDC CCW triangle、PC-N-5 shader generate stub と同形視覚)
-        -0.5f, -0.5f, 0.0f,  // v0
-         0.5f, -0.5f, 0.0f,  // v1
-         0.0f,  0.5f, 0.0f,  // v2
-    };
-    static_assert(sizeof(sGltfStubVertexData) == sGltfStubVertexBufferSize,
-                  "PC-N-6 (a) sGltfStubVertexData size mismatch sGltfStubVertexBufferSize");
-    // </AYAstorm r41 PC-N-6 (a)>
-
-    // <AYAstorm r41 PC-N-7 (a)> GLTF stub index buffer file-static + VMA allocation
-    //   ((N7-1) B + (N7-3) A + (N7-4) A + (N7-6) A + (N7-7) B + (N7-11) B 採用、AYA literal
-    //   「すべて推奨でお願いします」record 2026-06-05)。Phase 1.D 内 2nd sub-step =
-    //   stub index buffer Vulkan 経路通電 = file-static `sGltfStubIndexBuffer` を
-    //   VMA host-visible mapped buffer 経由 1 回 initVulkan allocate + initial memcpy +
-    //   vkCmdBindIndexBuffer 配線 + vkCmdDrawIndexed 置換 = PC-N-6 sGltfStubVertexBuffer
-    //   と並列 lifecycle (= shutdownVulkan で対称破棄)。
-    //
-    //   stub index data: U32 ascending CCW order { 0, 1, 2 } = 3 indices = 12 B
-    //   (= PC-N-6 sGltfStubVertexData[9] CCW triangle v0/v1/v2 と 1-to-1 reference)。
-    //   VK_INDEX_TYPE_UINT32 採用 ((N7-7) B) = LL::GLTF::Primitive::mIndexArray =
-    //   std::vector<U32> (primitive.h:66) ゆえ PC-N-8..PC-N-10 で実 Asset 経路移行時
-    //   rework 回避 (forward compat)。
-    //
-    //   sGltfStubAssetPipeline 再利用 ((N7-8) A) = Vulkan 仕様 (VkSpec §10.4) で
-    //   vkCmdBindIndexBuffer + index type は dynamic state (PSO immutable state ではない)
-    //   ゆえ PC-N-6 で確立済 PSO で vkCmdDraw / vkCmdDrawIndexed 両方 issue 可能、
-    //   新 pipeline 関数追加なし。
-    VkBuffer       sGltfStubIndexBuffer       = VK_NULL_HANDLE;
-    VmaAllocation  sGltfStubIndexAllocation   = VK_NULL_HANDLE;
-    void*          sGltfStubIndexMapped       = nullptr;
-    constexpr U32  sGltfStubIndexCount        = 3u;  // (N7-11) B 採用 = 任意 N 経路、初期値 3
-    constexpr U32  sGltfStubIndexStride       = 4u;  // (N7-7) B UINT32 = 4 B per index
-    constexpr U32  sGltfStubIndexBufferSize   = sGltfStubIndexCount * sGltfStubIndexStride; // 12 B
-
-    // stub index data initial literal (= ascending CCW order、PC-N-6
-    //   sGltfStubVertexData[9] の v0/v1/v2 と 1-to-1 reference)。
-    const U32 sGltfStubIndexData[3] = {
-        0u, 1u, 2u,  // ascending CCW = v0 → v1 → v2 (= sGltfStubVertexData CCW triangle order)
-    };
-    static_assert(sizeof(sGltfStubIndexData) == sGltfStubIndexBufferSize,
-                  "PC-N-7 (a) sGltfStubIndexData size mismatch sGltfStubIndexBufferSize");
-    // </AYAstorm r41 PC-N-7 (a)>
+    // <AYAstorm r41 PC-N-10 (d-1)> PC-N-6 (a) sGltfStubVertexBuffer + PC-N-7 (a)
+    //   sGltfStubIndexBuffer storage 撤去 marker ((N10-4) A: stub VB/IB storage 完全撤去、
+    //   AYA literal「全件推奨で OK」record 2026-06-05)。PC-N-5 (a) sGltfStubSkin sentinel
+    //   ((N10-3) B 維持) + PC-N-8 (a) per-Primitive ownership ((N10-5) B 維持) のみ残存。
+    // </AYAstorm r41 PC-N-10 (d-1)>
 
     // <AYAstorm r41 PC-N-8 (a)> per-Primitive Vulkan vertex/index buffer storage 新設
     //   ((N8-1) B + (N8-2) A + (N8-5) B 採用、AYA literal「全件推奨で進めてもらえますか?」
@@ -3538,9 +3477,11 @@ namespace
         //   binding=0, stride=12 B = position vec3、location=0 attribute は
         //   R32G32B32_SFLOAT。shader 内 layout(location=0) in vec3 declared でなくても
         //   valid Vulkan (= driver implementation-defined unused、PSO compile success)。
+        //   PC-N-10 (d-1) で sGltfStubVertexStride constexpr 撤去ゆえ literal 12u inline
+        //   ((N10-5) B sGltfStubAssetPipeline 維持 + (N10-4) A stub storage 撤去整合)。
         VkVertexInputBindingDescription vbd = {};
         vbd.binding   = 0;
-        vbd.stride    = sGltfStubVertexStride;
+        vbd.stride    = 12u;  // vec3 position = 3 × sizeof(F32)
         vbd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
         VkVertexInputAttributeDescription vad = {};
@@ -4051,127 +3992,20 @@ bool initVulkan()
     }
     // </AYAstorm r41 PC-N-5 (c)>
 
-    // <AYAstorm r41 PC-N-6 (c)> GLTF stub vertex buffer VMA allocate + initial upload +
-    //   sGltfStubAssetPipeline 配置 ((N6-5) B + (N6-6) A 採用、AYA literal「すべて推奨で
-    //   お願いします」record 2026-06-05)。host-visible 永続 mapped buffer 経由 1 回
-    //   initVulkan で memcpy(sGltfStubVertexData)、shutdownVulkan で対称破棄。
-    //   stub vertex data 36 B 極小ゆえ staging buffer overkill。
-    //
-    //   多段 graceful degrade: sAllocator nullptr (Vulkan 未初期化) で skip、
-    //   vmaCreateBuffer fail / pMappedData nullptr で LL_WARNS_ONCE + silent no-op。
-    //   AYAGltfStubVertexBufferEnabled cvar=false default で recordGltfAssetDraw 新経路
-    //   発火なし = MUSEUBO-A 整合。
-    if (sAllocator != VK_NULL_HANDLE && sGltfStubVertexBuffer == VK_NULL_HANDLE)
-    {
-        VkBufferCreateInfo buf_ci = {};
-        buf_ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buf_ci.size        = sGltfStubVertexBufferSize;
-        buf_ci.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo alloc_ci = {};
-        alloc_ci.usage = VMA_MEMORY_USAGE_AUTO;
-        alloc_ci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                      | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-        VmaAllocationInfo alloc_info = {};
-        if (vmaCreateBuffer(sAllocator, &buf_ci, &alloc_ci,
-                            &sGltfStubVertexBuffer,
-                            &sGltfStubVertexAllocation,
-                            &alloc_info) == VK_SUCCESS)
-        {
-            sGltfStubVertexMapped = alloc_info.pMappedData;
-            if (sGltfStubVertexMapped)
-            {
-                memcpy(sGltfStubVertexMapped, sGltfStubVertexData, sGltfStubVertexBufferSize);
-                LL_INFOS("Vulkan") << "PC-N-6 (c) sGltfStubVertexBuffer allocated + initial upload: "
-                                      "size=" << sGltfStubVertexBufferSize
-                                   << " B, vertices=" << sGltfStubVertexCount
-                                   << ", stride=" << sGltfStubVertexStride
-                                   << ", mapped=" << sGltfStubVertexMapped << LL_ENDL;
-            }
-            else
-            {
-                LL_WARNS_ONCE("Vulkan") << "PC-N-6 (c) sGltfStubVertexBuffer mapped=nullptr "
-                                           "(VMA host-visible mapped flag fail; "
-                                           "AYAGltfStubVertexBufferEnabled=true 時 zero-content draw)"
-                                        << LL_ENDL;
-            }
-        }
-        else
-        {
-            LL_WARNS_ONCE("Vulkan") << "PC-N-6 (c) sGltfStubVertexBuffer vmaCreateBuffer fail "
-                                       "(AYAGltfStubVertexBufferEnabled=true 時 silent no-op)"
-                                    << LL_ENDL;
-        }
-    }
-
-    // PC-N-6 (c) sGltfStubAssetPipeline 配置 (= createAvatarBonePipeline と同位置の
-    //   PSO compile cadence)。compile fail でも MUSEUBO-A graceful degrade
-    //   (= cvar=false default で発火なし、cvar=true 時 sGltfStubAssetPipeline nullptr
-    //   guard で silent no-op)。
+    // <AYAstorm r41 PC-N-10 (d-2)> PC-N-6 (c) sGltfStubVertexBuffer VMA allocate +
+    //   PC-N-7 (c) sGltfStubIndexBuffer VMA allocate 撤去 ((N10-4) A、AYA literal「全件
+    //   推奨で OK」record 2026-06-05)。createGltfStubAssetPipeline 配置のみ ((N10-5) B
+    //   sGltfStubAssetPipeline 維持 = PC-N-8 (f) real Asset path で再利用) を保持。
+    //   pipeline compile fail でも MUSEUBO-A graceful degrade (= AYAGltfRealDrawEnabled
+    //   cvar=false default で発火なし、cvar=true 時 sGltfStubAssetPipeline nullptr guard
+    //   で silent no-op)。
     if (!createGltfStubAssetPipeline())
     {
-        LL_WARNS_ONCE("Vulkan") << "PC-N-6 (c) createGltfStubAssetPipeline fail "
-                                   "(AYAGltfStubVertexBufferEnabled=true 時 silent no-op)"
+        LL_WARNS_ONCE("Vulkan") << "PC-N-10 (d-2) createGltfStubAssetPipeline fail "
+                                   "(AYAGltfRealDrawEnabled=true 時 silent no-op)"
                                 << LL_ENDL;
     }
-    // </AYAstorm r41 PC-N-6 (c)>
-
-    // <AYAstorm r41 PC-N-7 (c)> GLTF stub index buffer VMA allocate + initial upload
-    //   ((N7-5) A + (N7-6) A 採用、AYA literal「すべて推奨でお願いします」record 2026-06-05)。
-    //   host-visible 永続 mapped buffer 経由 1 回 initVulkan で memcpy(sGltfStubIndexData)、
-    //   shutdownVulkan で対称破棄。stub index data 12 B 極小ゆえ staging buffer overkill。
-    //
-    //   多段 graceful degrade: sAllocator nullptr (Vulkan 未初期化) で skip、
-    //   vmaCreateBuffer fail / pMappedData nullptr で LL_WARNS_ONCE + silent no-op。
-    //   AYAGltfStubIndexBufferEnabled cvar=false default で recordGltfAssetDraw 新経路
-    //   発火なし = MUSEUBO-A 整合。pipeline は PC-N-6 (c) で配置済 ((N7-8) A 再利用)。
-    if (sAllocator != VK_NULL_HANDLE && sGltfStubIndexBuffer == VK_NULL_HANDLE)
-    {
-        VkBufferCreateInfo buf_ci = {};
-        buf_ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buf_ci.size        = sGltfStubIndexBufferSize;
-        buf_ci.usage       = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;  // (N7-7) B INDEX_BUFFER usage
-        buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo alloc_ci = {};
-        alloc_ci.usage = VMA_MEMORY_USAGE_AUTO;
-        alloc_ci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                      | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-        VmaAllocationInfo alloc_info = {};
-        if (vmaCreateBuffer(sAllocator, &buf_ci, &alloc_ci,
-                            &sGltfStubIndexBuffer,
-                            &sGltfStubIndexAllocation,
-                            &alloc_info) == VK_SUCCESS)
-        {
-            sGltfStubIndexMapped = alloc_info.pMappedData;
-            if (sGltfStubIndexMapped)
-            {
-                memcpy(sGltfStubIndexMapped, sGltfStubIndexData, sGltfStubIndexBufferSize);
-                LL_INFOS("Vulkan") << "PC-N-7 (c) sGltfStubIndexBuffer allocated + initial upload: "
-                                      "size=" << sGltfStubIndexBufferSize
-                                   << " B, indices=" << sGltfStubIndexCount
-                                   << ", stride=" << sGltfStubIndexStride
-                                   << " (UINT32), mapped=" << sGltfStubIndexMapped << LL_ENDL;
-            }
-            else
-            {
-                LL_WARNS_ONCE("Vulkan") << "PC-N-7 (c) sGltfStubIndexBuffer mapped=nullptr "
-                                           "(VMA host-visible mapped flag fail; "
-                                           "AYAGltfStubIndexBufferEnabled=true 時 zero-content draw)"
-                                        << LL_ENDL;
-            }
-        }
-        else
-        {
-            LL_WARNS_ONCE("Vulkan") << "PC-N-7 (c) sGltfStubIndexBuffer vmaCreateBuffer fail "
-                                       "(AYAGltfStubIndexBufferEnabled=true 時 silent no-op)"
-                                    << LL_ENDL;
-        }
-    }
-    // </AYAstorm r41 PC-N-7 (c)>
+    // </AYAstorm r41 PC-N-10 (d-2)>
 
     // r41 sub-step 3.4-β-1: VMA budget 1 度 smoke 出力 (INFO marker #3)。
     logVmaBudgetSmoke();
@@ -4490,37 +4324,17 @@ void shutdownVulkan()
         unregisterSkinUbo(sGltfStubSkin, ubo::block_hash::Skin_GLTFJoints);
         // </AYAstorm r41 PC-N-5 (d)>
 
-        // <AYAstorm r41 PC-N-6 (d)> GLTF stub vertex buffer + pipeline 対称破棄
-        //   ((N6-6) A 採用、AYA literal「すべて推奨でお願いします」record 2026-06-05)。
-        //   PC-N-6 (c) initVulkan VMA allocate + createGltfStubAssetPipeline と対称
-        //   lifecycle。sDevice / sAllocator nullptr guard で graceful no-op。
+        // <AYAstorm r41 PC-N-10 (d-3)> PC-N-6 (d) sGltfStubVertexBuffer destroy +
+        //   PC-N-7 (d) sGltfStubIndexBuffer destroy 撤去 ((N10-4) A、AYA literal「全件
+        //   推奨で OK」record 2026-06-05)。sGltfStubAssetPipeline destroy のみ
+        //   ((N10-5) B 維持 = PC-N-8 (f) real Asset path で再利用ゆえ shutdown 対称破棄要)
+        //   を保持。sDevice nullptr guard で graceful no-op。
         if (sGltfStubAssetPipeline != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
         {
             vkDestroyPipeline(sDevice, sGltfStubAssetPipeline, nullptr);
             sGltfStubAssetPipeline = VK_NULL_HANDLE;
         }
-        if (sGltfStubVertexBuffer != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(sAllocator, sGltfStubVertexBuffer, sGltfStubVertexAllocation);
-            sGltfStubVertexBuffer     = VK_NULL_HANDLE;
-            sGltfStubVertexAllocation = VK_NULL_HANDLE;
-            sGltfStubVertexMapped     = nullptr;
-        }
-        // </AYAstorm r41 PC-N-6 (d)>
-
-        // <AYAstorm r41 PC-N-7 (d)> GLTF stub index buffer 対称破棄
-        //   ((N7-6) A 採用、AYA literal「すべて推奨でお願いします」record 2026-06-05)。
-        //   PC-N-7 (c) initVulkan VMA allocate と対称 lifecycle。
-        //   sAllocator nullptr guard で graceful no-op。
-        //   pipeline は PC-N-6 (d) で破棄済 ((N7-8) A 再利用ゆえ追加 vkDestroyPipeline なし)。
-        if (sGltfStubIndexBuffer != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(sAllocator, sGltfStubIndexBuffer, sGltfStubIndexAllocation);
-            sGltfStubIndexBuffer     = VK_NULL_HANDLE;
-            sGltfStubIndexAllocation = VK_NULL_HANDLE;
-            sGltfStubIndexMapped     = nullptr;
-        }
-        // </AYAstorm r41 PC-N-7 (d)>
+        // </AYAstorm r41 PC-N-10 (d-3)>
 
         // <AYAstorm r41 PC-N-8 (d')> per-Primitive Vulkan vertex/index buffer
         //   shutdownVulkan 防御的 cleanup ((N8-4) A 整合、AYA literal「全件推奨で進めて
@@ -6089,21 +5903,6 @@ namespace
             return;
         }
 
-        // <AYAstorm r41 PC-N-9 (b)> AYAGltfRealDrawEnabled cvar gate on PC-N-8 (f) block
-        //   ((N9-1) A + (N9-7) A、AYA literal「全件推奨で OK」record 2026-06-05) =
-        //   PC-N-8 (f) block 全体を `LLCachedControl<bool>` guard で wrap、
-        //   cvar=false 時 silent fall-through to PC-N-7 (e) stub IB 経路 (= 既存 stub
-        //   経路温存、MUSEUBO-A 整合)。PC-N-6/PC-N-7 同形 pattern (cvar guard 最外側)。
-        //   Cvar 優先順位 in recordGltfAssetDraw (PC-N-9 適用後):
-        //   PC-N-9 (AYAGltfRealDrawEnabled, real Asset) > PC-N-7 (AYAGltfStubIndexBufferEnabled, stub IB) >
-        //   PC-N-6 (AYAGltfStubVertexBufferEnabled, stub VB) > PC-N-5 (shader generate 3 vertex)。
-        //   AYAGltfStubDrawEnabled=true は依然 prerequisite (= recordGltfAssetDraw fire
-        //   入口は recordAvatarPlaceholderDraw 末尾 hook = PC-N-5 cvar gate 内)、
-        //   PC-N-10 で AYAGltfStubDrawEnabled deprecate 時に統合予定。
-        static LLCachedControl<bool> sAyastormGltfRealDrawEnabled(
-            gSavedSettings, "AYAGltfRealDrawEnabled", false);
-        if (sAyastormGltfRealDrawEnabled)
-        {
         // <AYAstorm r41 PC-N-8 (f)> real LL::GLTF::Asset 経由 vertex/index buffer
         //   draw 経路配線 ((N8-6) A signature 不変 + (N8-7) A cvar 新設 0 件 +
         //   sCurrentAsset/sCurrentPrimitive natural guard + (N8-8) A
@@ -6220,300 +6019,17 @@ namespace
             }
         }
         // </AYAstorm r41 PC-N-8 (f)>
-        }
-        // </AYAstorm r41 PC-N-9 (b)>
 
-        // <AYAstorm r41 PC-N-7 (e)> stub index buffer 経路 cvar 分岐
-        //   ((N7-2) A signature 不変 + (N7-8) A sGltfStubAssetPipeline 再利用 +
-        //   (N7-9) A 並走維持 + (N7-10) A `AYAGltfStubIndexBufferEnabled` 段階 cvar、
-        //   AYA literal「すべて推奨でお願いします」record 2026-06-05)。
+        // <AYAstorm r41 PC-N-10 (b)> PC-N-7 (e) stub index buffer 経路 撤去 marker
+        //   ((N10-7) A: PC-N-6 (e) + PC-N-7 (e) stub 経路全撤去 + PC-N-5 base shader
+        //   generate 3 vertex 経路撤去 = AYAGltfRealDrawEnabled 一本化、AYA literal
+        //   「全件推奨で OK」record 2026-06-05 + (N10-8) A: PC-N-9 (b) cvar guard wrap
+        //   撤去 = 二重 gate 冗長解消、entry hook 自体が cvar gate に切替わるゆえ)。
         //
-        //   cvar=true 時のみ PC-N-6 と同 pipeline `sGltfStubAssetPipeline` (= Vulkan 仕様
-        //   VkSpec §10.4 で vkCmdBindIndexBuffer + index type は dynamic state、PSO
-        //   immutable state ではない ゆえ同 PSO で vkCmdDraw / vkCmdDrawIndexed 両方
-        //   issue 可能) + PC-N-6 同 vertex buffer `sGltfStubVertexBuffer` + 新 index
-        //   buffer `sGltfStubIndexBuffer` (= UINT32 ascending CCW { 0, 1, 2 }、12 B、
-        //   VMA host-visible mapped) 経由 `bindIndexBufferVk(UINT32)` + `vkCmdDrawIndexed(M)`
-        //   経路発火 = Phase 1.D 2nd sub-step 通電 (= 実 index buffer bind + indexed draw
-        //   経路通電の事実確立)。
-        //
-        //   PC-N-7 (e) 分岐は PC-N-6 (e) 直前配置 = PC-N-7 cvar=true 時に PC-N-6 cvar
-        //   評価せず PC-N-7 経路 fire で 3 cvar 優先順位確定 (PC-N-7 > PC-N-6 > PC-N-5)。
-        //   PC-N-6 / PC-N-5 stub 経路は不変温存 = live A/B 経路独立 + MUSEUBO-A 整合
-        //   (cvar=false default で機能等価)。5 段 graceful degrade (= sAllocator /
-        //   sGltfStubIndexBuffer / sGltfStubVertexBuffer / sGltfStubAssetPipeline /
-        //   sGltfStubIndexMapped 各 nullptr guard で silent fall-through to PC-N-6 path)。
-        {
-            static LLCachedControl<bool> sAyastormGltfStubIbEnabled(
-                gSavedSettings, "AYAGltfStubIndexBufferEnabled", false);
-            if (sAyastormGltfStubIbEnabled
-                && sGltfStubAssetPipeline != VK_NULL_HANDLE
-                && sGltfStubVertexBuffer  != VK_NULL_HANDLE
-                && sGltfStubIndexBuffer   != VK_NULL_HANDLE)
-            {
-                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sGltfStubAssetPipeline);
-
-                // PC-N-7 (e) 同形 per-draw UBO 配線 (= PC-N-6 (e) 同形 sequence、
-                //   sGltfStubAssetPipeline は sAvatarBonePipeline と layout 共用 ゆえ完全同一)。
-                static const U8 stub_ib_draw_zero_buf[256] = {};
-                U32 stub_ib_dynamic_offset = 0u;
-                LLVKLoader::writeDrawUbo(
-                    ubo::block_hash::PerDrawUBO_LightParams,
-                    /*offset=*/0u,
-                    stub_ib_draw_zero_buf,
-                    sizeof(stub_ib_draw_zero_buf),
-                    stub_ib_dynamic_offset);
-                const U32 stub_ib_dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
-                    stub_ib_dynamic_offset, stub_ib_dynamic_offset,
-                    stub_ib_dynamic_offset, stub_ib_dynamic_offset,
-                };
-
-                // PC-N-7 (e) 同形 per-Skin UBO 配線 (= PC-N-5 sGltfStubSkin sentinel 共用、
-                //   identity matrix bone data → Skin_GLTFJoints UBO 経路通電)。
-                static const F32 stub_ib_identity_skin_buf[64] = {
-                    1.f, 0.f, 0.f, 0.f,
-                    0.f, 1.f, 0.f, 0.f,
-                    0.f, 0.f, 1.f, 0.f,
-                    0.f, 0.f, 0.f, 1.f,
-                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                };
-                LLVKLoader::writeSkinUbo(
-                    sGltfStubSkin,
-                    ubo::block_hash::Skin_GLTFJoints,
-                    /*offset=*/0u,
-                    reinterpret_cast<const U8*>(stub_ib_identity_skin_buf),
-                    sizeof(stub_ib_identity_skin_buf));
-                LLVKLoader::flushSkinUbos(sGltfStubSkin);
-                bindV3aRigged(cmd_buf, sFrameIndex, stub_ib_dynamic_offsets);
-
-                // PC-N-7 (e) 同形 push constant 64 B identity / VERTEX_BIT。
-                const float stub_ib_identity_modelview[16] = {
-                    1.f, 0.f, 0.f, 0.f,
-                    0.f, 1.f, 0.f, 0.f,
-                    0.f, 0.f, 1.f, 0.f,
-                    0.f, 0.f, 0.f, 1.f,
-                };
-                vkCmdPushConstants(cmd_buf,
-                                   sAvatarBoneLayout,
-                                   VK_SHADER_STAGE_VERTEX_BIT,
-                                   /*offset=*/0,
-                                   /*size=*/64,
-                                   stub_ib_identity_modelview);
-
-                // PC-N-7 (e) 核心差分: bindVertexBufferVk + bindIndexBufferVk(UINT32) +
-                //   vkCmdDrawIndexed(M) (= bindIndexBufferVk 初 caller、PC-N-6 vkCmdDraw 経路と
-                //   別経路で実 index buffer bind + indexed draw 経路通電)。
-                LLVKLoader::bindVertexBufferVk(cmd_buf, sGltfStubVertexBuffer, /*offset=*/0);
-                LLVKLoader::bindIndexBufferVk(cmd_buf, sGltfStubIndexBuffer, /*offset=*/0,
-                                              VK_INDEX_TYPE_UINT32);  // (N7-7) B UINT32
-                vkCmdDrawIndexed(cmd_buf, sGltfStubIndexCount, 1, 0, 0, 0);
-
-                // PC-N-7 (e) first-fire LL_INFOS marker (= Phase 1.D 2nd sub-step 通電 literal)。
-                static std::atomic<bool> s_first_pcn7_ib_fire{true};
-                if (s_first_pcn7_ib_fire.exchange(false, std::memory_order_acq_rel))
-                {
-                    LL_INFOS("Vulkan") << "PC-N-7 (e) GLTF stub index buffer draw 通電 (first fire): "
-                                          "sGltfStubAssetPipeline (= PC-N-6 reuse、(N7-8) A) + "
-                                          "sGltfStubVertexBuffer (= PC-N-6 reuse) + "
-                                          "sGltfStubIndexBuffer (= UINT32 ascending CCW { 0, 1, 2 }、"
-                                       << sGltfStubIndexBufferSize << " B、indices=" << sGltfStubIndexCount
-                                       << ", stride=" << sGltfStubIndexStride
-                                       << ", VMA host-visible mapped) = "
-                                          "writeDrawUbo → writeSkinUbo(sGltfStubSkin, identity 256B) → "
-                                          "flushSkinUbos → bindV3aRigged → push constant 64 B identity → "
-                                          "bindVertexBufferVk → bindIndexBufferVk(UINT32) → vkCmdDrawIndexed("
-                                       << sGltfStubIndexCount << ",1,0,0,0); "
-                                          "PC-N-6 / PC-N-5 経路並走温存、shader 改変ゼロ、Phase 1.D 2nd sub-step"
-                                       << LL_ENDL;
-                }
-                return; // PC-N-6 / PC-N-5 経路はスキップ = 別 cvar gate で 3 並走分離
-            }
-        }
-        // </AYAstorm r41 PC-N-7 (e)>
-
-        // <AYAstorm r41 PC-N-6 (e)> stub vertex buffer 経路 cvar 分岐
-        //   ((N6-2) A signature 不変 + (N6-7) B 別 pipeline + (N6-8) A 並走維持 +
-        //   (N6-9) C `AYAGltfStubVertexBufferEnabled` 段階 cvar、AYA literal
-        //   「すべて推奨でお願いします」record 2026-06-05)。
-        //
-        //   cvar=true 時のみ別 pipeline `sGltfStubAssetPipeline` (= vertex input state
-        //   1 binding stride=12 + 1 attribute R32G32B32_SFLOAT) + VMA host-visible mapped
-        //   vertex buffer 経由 `bindVertexBufferVk` + `vkCmdDraw(N)` 経路発火 =
-        //   Phase 1.D 1st sub-step 通電 (= 実 vertex buffer bind 経路通電の事実確立)。
-        //   PC-N-5 stub 経路 (= sAvatarBonePipeline + shader generate 3 vertex) は不変
-        //   温存 = live A/B 経路独立 + MUSEUBO-A 整合 (cvar=false default で機能等価)。
-        //   4 段 graceful degrade (= sAllocator / sGltfStubVertexBuffer /
-        //   sGltfStubAssetPipeline / sGltfStubVertexMapped 各 nullptr guard で silent
-        //   fall-through to PC-N-5 path)。
-        {
-            static LLCachedControl<bool> sAyastormGltfStubVbEnabled(
-                gSavedSettings, "AYAGltfStubVertexBufferEnabled", false);
-            if (sAyastormGltfStubVbEnabled
-                && sGltfStubAssetPipeline != VK_NULL_HANDLE
-                && sGltfStubVertexBuffer  != VK_NULL_HANDLE)
-            {
-                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sGltfStubAssetPipeline);
-
-                // PC-N-6 (e) 同形 per-draw UBO 配線 (= PC-N-5 (b) 同形 sequence、
-                //   sAvatarBonePipeline 経路と layout 共用 ゆえ完全同一)。
-                static const U8 stub_vb_draw_zero_buf[256] = {};
-                U32 stub_vb_dynamic_offset = 0u;
-                LLVKLoader::writeDrawUbo(
-                    ubo::block_hash::PerDrawUBO_LightParams,
-                    /*offset=*/0u,
-                    stub_vb_draw_zero_buf,
-                    sizeof(stub_vb_draw_zero_buf),
-                    stub_vb_dynamic_offset);
-                const U32 stub_vb_dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
-                    stub_vb_dynamic_offset, stub_vb_dynamic_offset,
-                    stub_vb_dynamic_offset, stub_vb_dynamic_offset,
-                };
-
-                // PC-N-6 (e) 同形 per-Skin UBO 配線 (= PC-N-5 sGltfStubSkin sentinel 共用、
-                //   identity matrix bone data → Skin_GLTFJoints UBO 経路通電)。
-                static const F32 stub_vb_identity_skin_buf[64] = {
-                    1.f, 0.f, 0.f, 0.f,
-                    0.f, 1.f, 0.f, 0.f,
-                    0.f, 0.f, 1.f, 0.f,
-                    0.f, 0.f, 0.f, 1.f,
-                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                };
-                LLVKLoader::writeSkinUbo(
-                    sGltfStubSkin,
-                    ubo::block_hash::Skin_GLTFJoints,
-                    /*offset=*/0u,
-                    reinterpret_cast<const U8*>(stub_vb_identity_skin_buf),
-                    sizeof(stub_vb_identity_skin_buf));
-                LLVKLoader::flushSkinUbos(sGltfStubSkin);
-                bindV3aRigged(cmd_buf, sFrameIndex, stub_vb_dynamic_offsets);
-
-                // PC-N-6 (e) 同形 push constant 64 B identity / VERTEX_BIT。
-                const float stub_vb_identity_modelview[16] = {
-                    1.f, 0.f, 0.f, 0.f,
-                    0.f, 1.f, 0.f, 0.f,
-                    0.f, 0.f, 1.f, 0.f,
-                    0.f, 0.f, 0.f, 1.f,
-                };
-                vkCmdPushConstants(cmd_buf,
-                                   sAvatarBoneLayout,
-                                   VK_SHADER_STAGE_VERTEX_BIT,
-                                   /*offset=*/0,
-                                   /*size=*/64,
-                                   stub_vb_identity_modelview);
-
-                // PC-N-6 (e) 核心差分: vkCmdBindVertexBuffers + vkCmdDraw(N)
-                //   (= bindVertexBufferVk 初 caller、PC-N-5 stub の shader generate 経路と
-                //   別経路で実 vertex buffer bind 経路通電)。
-                LLVKLoader::bindVertexBufferVk(cmd_buf, sGltfStubVertexBuffer, /*offset=*/0);
-                vkCmdDraw(cmd_buf, sGltfStubVertexCount, 1, 0, 0);
-
-                // PC-N-6 (e) first-fire LL_INFOS marker (= Phase 1.D 1st sub-step 通電 literal)。
-                static std::atomic<bool> s_first_pcn6_vb_fire{true};
-                if (s_first_pcn6_vb_fire.exchange(false, std::memory_order_acq_rel))
-                {
-                    LL_INFOS("Vulkan") << "PC-N-6 (e) GLTF stub vertex buffer draw 通電 (first fire): "
-                                          "sGltfStubAssetPipeline (= sAvatarBonePipeline 並列、vertex input "
-                                          "1 binding stride=" << sGltfStubVertexStride
-                                       << " + 1 attribute R32G32B32_SFLOAT) + sGltfStubVertexBuffer "
-                                          "(= VMA host-visible mapped, position vec3 × "
-                                       << sGltfStubVertexCount << " CCW triangle) = "
-                                          "writeDrawUbo → writeSkinUbo(sGltfStubSkin, identity 256B) → "
-                                          "flushSkinUbos → bindV3aRigged → push constant 64 B identity → "
-                                          "bindVertexBufferVk → vkCmdDraw("
-                                       << sGltfStubVertexCount << ",1,0,0); "
-                                          "sAvatarBonePipeline 並走温存、shader 改変ゼロ、Phase 1.D 1st sub-step"
-                                       << LL_ENDL;
-                }
-                return; // PC-N-5 経路 (shader generate) はスキップ = 別 cvar gate で並走分離
-            }
-        }
-        // </AYAstorm r41 PC-N-6 (e)>
-
-        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sAvatarBonePipeline);
-
-        // (b) per-draw ring buffer allocate-chain (= recordAvatarPlaceholderDraw 同形、
-        //   PerDrawUBO_LightParams zero 256B → dynamic_offsets[4] 同一 offset)。
-        static const U8 stub_draw_zero_buf[256] = {};
-        U32 stub_dynamic_offset = 0u;
-        LLVKLoader::writeDrawUbo(
-            ubo::block_hash::PerDrawUBO_LightParams,
-            /*offset=*/0u,
-            stub_draw_zero_buf,
-            sizeof(stub_draw_zero_buf),
-            stub_dynamic_offset);
-        const U32 stub_dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
-            stub_dynamic_offset, stub_dynamic_offset, stub_dynamic_offset, stub_dynamic_offset,
-        };
-
-        // (b) per-Skin UBO write → flush → bind 正規 sequence (= design 06b §2.5
-        //   GLTFSceneManager::render(variant) 直前 pattern 踏襲)。sGltfStubSkin
-        //   sentinel (= initVulkan PC-N-5 (c) で registerSkinUbo + 初回 wire 済)
-        //   に対し Skin_GLTFJoints UBO 先頭 256 B へ identity matrix 投入 →
-        //   flushSkinUbos (dirty exchange) → bindV3aRigged (set=3 swap で
-        //   wireSkinUboSetV3aToBinding2(sGltfStubSkin) 済 per-Skin UboInstance.
-        //   vk_buffer[sFrameIndex] 経路通電)。
-        //
-        //   identity matrix layout: GLSL std140 mat4 = 16 × float = 64 B、
-        //   先頭 64 B identity + 残 192 B zero (= 4 mat4 padding to 256 B、
-        //   Skin_GLTFJoints inMatrixPalette[0] 通電実例)。
-        static const F32 stub_identity_skin_buf[64] = {
-            // mat4[0] = identity
-            1.f, 0.f, 0.f, 0.f,
-            0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
-            0.f, 0.f, 0.f, 1.f,
-            // mat4[1..3] = zero padding (to 256 B)
-            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-        };
-        LLVKLoader::writeSkinUbo(
-            sGltfStubSkin,
-            ubo::block_hash::Skin_GLTFJoints,
-            /*offset=*/0u,
-            reinterpret_cast<const U8*>(stub_identity_skin_buf),
-            sizeof(stub_identity_skin_buf));
-        LLVKLoader::flushSkinUbos(sGltfStubSkin);
-
-        bindV3aRigged(cmd_buf, sFrameIndex, stub_dynamic_offsets);
-
-        // (b) push constant 64 B identity modelview / VERTEX_BIT (=
-        //   recordAvatarPlaceholderDraw 同形) + vkCmdDraw(3,1,0,0)。
-        const float stub_identity_modelview[16] = {
-            1.f, 0.f, 0.f, 0.f,
-            0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
-            0.f, 0.f, 0.f, 1.f,
-        };
-        vkCmdPushConstants(cmd_buf,
-                           sAvatarBoneLayout,
-                           VK_SHADER_STAGE_VERTEX_BIT,
-                           /*offset=*/0,
-                           /*size=*/64,
-                           stub_identity_modelview);
-
-        vkCmdDraw(cmd_buf, 3, 1, 0, 0);
-
-        // (b) first-fire LL_INFOS marker (= Phase 1.D 着手起点 通電 literal)。
-        static std::atomic<bool> s_first_gltf_stub_fire{true};
-        if (s_first_gltf_stub_fire.exchange(false, std::memory_order_acq_rel))
-        {
-            LL_INFOS("Vulkan") << "PC-N-5 (b) GLTF stub draw 通電 (first fire): "
-                                  "sGltfStubSkin (addr=" << (void*)sGltfStubSkin
-                               << ") Skin_GLTFJoints identity matrix path 経由 "
-                                  "(= 実 GLTF Vulkan draw 1 stub = Phase 1.D 着手起点) "
-                                  "= writeDrawUbo(PerDrawUBO_LightParams, zero 256B) → "
-                                  "writeSkinUbo(sGltfStubSkin, Skin_GLTFJoints, identity mat4 + zero pad 256B) → "
-                                  "flushSkinUbos(sGltfStubSkin) → "
-                                  "bindV3aRigged (set=0/1a/1b/2/3 V3a, "
-                                  "set=3 binding=2 = wireSkinUboSetV3aToBinding2(sGltfStubSkin)) → "
-                                  "push constant 64 B identity / VERTEX_BIT → vkCmdDraw(3,1,0,0)"
-                               << LL_ENDL;
-        }
+        //   削除内訳 = PC-N-9 (b) cvar guard wrap (二重 gate) + PC-N-7 (e) stub IB 経路 +
+        //   PC-N-6 (e) stub VB 経路 + PC-N-5 base shader generate 3 vertex 経路 = 4 経路撤去。
+        //   PC-N-8 (f) real LL::GLTF::Asset 経由経路のみ残存 + 5 段 graceful degrade 内部維持。
+        // </AYAstorm r41 PC-N-10 (b)>
     }
 }
 // </AYAstorm r41 PC-N-5 (b)>
@@ -6639,27 +6155,34 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
                            << LL_ENDL;
     }
 
-    // <AYAstorm r41 PC-N-5 (e)> AYAGltfStubDrawEnabled cvar=true 時、
-    //   recordGltfAssetDraw を並走発火 ((N5-4) A、AYA literal「OK」record
-    //   2026-06-05)。recordAvatarPlaceholderDraw 末尾 = caller (lldrawpoolavatar.cpp:
+    // <AYAstorm r41 PC-N-10 (a)> AYAGltfRealDrawEnabled cvar=true 時、
+    //   recordGltfAssetDraw を並走発火 ((N10-6) A + (N10-16) A、AYA literal
+    //   「全件推奨で OK」record 2026-06-05)。PC-N-5 (e) AYAGltfStubDrawEnabled
+    //   cvar から PC-N-9 AYAGltfRealDrawEnabled cvar に切替 = 3 stub cvar 統合 +
+    //   Phase 1.D complete marker 起案。entry hook 配置温存 = recordGltfAssetDraw
+    //   dead code 化回避、cvar 名のみ切替で fire 経路維持。
+    //
+    //   recordAvatarPlaceholderDraw 末尾 = caller (lldrawpoolavatar.cpp:
     //   recordPoolDraws) からの単一 entry point 内に hook 配置することで、
     //   lldrawpoolavatar 側改変 0 件で live A/B を実現 (= cross-platform 設計、
     //   GATE-B 整合 = #ifdef LL_VULKAN_GLSL 追加なし)。
     //
-    //   default OFF ゆえ recordGltfAssetDraw 発火なし = PC-N-3 完了状態と機能
-    //   等価 (MUSEUBO-A 整合)。ON 時のみ sGltfStubSkin sentinel 経由 identity
-    //   matrix bone data → Skin_GLTFJoints UBO bind の rigged draw 通電 baseline
-    //   = Phase 1.D 着手起点。LLCachedControl ゆえ毎 frame の getBOOL コスト
-    //   発生なし (= 既存 AYARingBufferSizeMB 等同形 pattern)。
+    //   default OFF ゆえ recordGltfAssetDraw 発火なし = PC-N-9 完了状態と機能
+    //   等価 (MUSEUBO-A 整合)。ON 時のみ PC-N-8 (f) real LL::GLTF::Asset 経由
+    //   vertex/index buffer bind + UBO sequence + bindVertexBufferVk +
+    //   bindIndexBufferVk(UINT32) + vkCmdDrawIndexed(real_index_count,1,0,0,0)
+    //   経路発火 = Phase 1.D complete marker = 1 GLTF asset 完全 Vulkan draw 通電。
+    //   LLCachedControl ゆえ毎 frame の getBOOL コスト発生なし (= 既存
+    //   AYARingBufferSizeMB 等同形 pattern)。
     {
-        static LLCachedControl<bool> sAyastormGltfStubDrawEnabled(
-            gSavedSettings, "AYAGltfStubDrawEnabled", false);
-        if (sAyastormGltfStubDrawEnabled)
+        static LLCachedControl<bool> sAyastormGltfRealDrawEnabled(
+            gSavedSettings, "AYAGltfRealDrawEnabled", false);
+        if (sAyastormGltfRealDrawEnabled)
         {
             recordGltfAssetDraw(cmd_buf);
         }
     }
-    // </AYAstorm r41 PC-N-5 (e)>
+    // </AYAstorm r41 PC-N-10 (a)>
 }
 
 // ============================================================
