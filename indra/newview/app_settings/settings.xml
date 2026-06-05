@@ -10442,6 +10442,29 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm r41 Phase 1.D PC-N-7> stub index buffer Vulkan 経路通電の live A/B 切替 cvar。
+         design-lock handoff-substep-...-phase1-d-pc-n-7-design-lock.md (= (N7-10) A、AYA literal「すべて推奨でお願いします」record 2026-06-05)。
+         OFF (default) = recordGltfAssetDraw 内 PC-N-6 stub vertex buffer 経路 (= cvar=true 時) または PC-N-5 stub draw 経路 (= cvar=false 時) を継続
+         = PC-N-6 完了状態と機能等価 (MUSEUBO-A 整合)。前提として AYAGltfStubDrawEnabled=true が必要 (= recordGltfAssetDraw 発火 hook)。
+         ON = 同 pipeline sGltfStubAssetPipeline (= PC-N-6 reuse、Vulkan 仕様 §10.4 で index buffer は dynamic state ゆえ同 PSO で OK) +
+         同 vertex buffer sGltfStubVertexBuffer (= PC-N-6 reuse) + 新 index buffer sGltfStubIndexBuffer (= UINT32 ascending CCW {0,1,2}、12 B、
+         VMA host-visible mapped) + bindIndexBufferVk(UINT32) + vkCmdDrawIndexed(3,1,0,0,0) 経路発火 = Phase 1.D 2nd sub-step 通電
+         (= 実 index buffer bind + indexed draw 経路通電の事実確立)。Cvar 優先順位 in recordGltfAssetDraw:
+         PC-N-7 (this) > PC-N-6 AYAGltfStubVertexBufferEnabled > PC-N-5 AYAGltfStubDrawEnabled。
+         GATE-B 整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ)。Persist=1 で起動間保持。PC-N-10 で deprecate 予定。 -->
+    <key>AYAGltfStubIndexBufferEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.D PC-N-7) Enable GLTF stub index buffer Vulkan draw 経路 (= sGltfStubAssetPipeline (PC-N-6 reuse) + sGltfStubVertexBuffer (PC-N-6 reuse) + 新 sGltfStubIndexBuffer (UINT32 ascending CCW {0,1,2}, 12B, VMA host-visible mapped) + bindIndexBufferVk(UINT32) + vkCmdDrawIndexed(3,1,0,0,0)). Default OFF, debug live A/B 用. 前提として AYAGltfStubDrawEnabled=true が必要 (= recordGltfAssetDraw 発火 hook). Cvar 優先順位 in recordGltfAssetDraw: PC-N-7 (this) > PC-N-6 AYAGltfStubVertexBufferEnabled > PC-N-5 AYAGltfStubDrawEnabled. ON 時 PC-N-6 経路 (vkCmdDraw) ではなく PC-N-7 経路 (vkCmdDrawIndexed) を選択発火 = sGltfStubAssetPipeline 再利用 + shader 改変ゼロ + sAvatarBonePipeline 並走温存. OFF 時 PC-N-6 完了状態と機能等価. PC-N-10 で deprecate 予定.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>
