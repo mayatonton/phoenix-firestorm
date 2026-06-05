@@ -8,7 +8,7 @@ layering-safe pointer accessor approach 採用**
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `c9c99d278f` (PC-N-12 design-lock complete)
+**Previous commit**: `9a62f11416` (PC-N-12 design-lock complete)
 
 ---
 
@@ -238,7 +238,7 @@ LLVKLoader::clearCurrentNodeAssetMatrix();
 | 3 | `INTEGRATION_TEST_llassetubopool` | ✅ 10/10 PASS YAY!! |
 | 4 | `INTEGRATION_TEST_llpipelinecachestorage` | ✅ 13/13 PASS YAY!! |
 | 5 | `python3 -m unittest discover tests` (codegen) | ✅ 131/131 OK |
-| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-11 commit `13bfb55b35` 同数、GATE-B integrity 維持) |
+| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-11 commit `797332ee81` 同数、GATE-B integrity 維持) |
 
 ---
 
@@ -252,7 +252,7 @@ LLVKLoader::clearCurrentNodeAssetMatrix();
 | iv | settings.xml `AYAGltfRealModelviewEnabled` Boolean cvar 1 件追加 (default=0 Persist=1、`AYAGltfMultiSkinEnabled` 直後並列 = Phase 1.E cvar group 連続配置、Comment 単独説明) ((N12-3)/(N12-4)/(N12-5) A/B) | ✅ |
 | v | `gltfscenemanager.cpp` per-Primitive loop に `LLVKLoader::setCurrentNodeAssetMatrix(glm::value_ptr(node.mAssetMatrix))` (setCurrentPrimitive 直後並列、`if (rigged)` 外 unconditional) + `LLVKLoader::clearCurrentNodeAssetMatrix()` (clearCurrentPrimitive 直前並列、unconditional clear) 配線 ((N12-14) A + Option A pivot) | ✅ |
 | vi | PC-N-12 (a) first-fire `LL_INFOS` marker (`s_first_pcn12_real_modelview_fire` atomic flag、PC-N-6/7/8/9/10/11 同形 pattern) ((N12-11) A) | ✅ |
-| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-11 commit `13bfb55b35` 同数) | ✅ |
+| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-11 commit `797332ee81` 同数) | ✅ |
 | viii | MUSEUBO-A 整合 = `AYAGltfRealModelviewEnabled=false` default で identity 64 B push constant 維持 + OpenGL 描画 100% 維持 + PC-N-8 (f) 5 段 graceful degrade 内部維持 | ✅ |
 | ix | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N12-12) A) + cross-platform spec §6 PC-N-12 行 ✅ 反映 + §A 履歴 1 行追記 ((N12-15) A 採用) + handoff complete doc 起案 ((N12-15) A 採用) | ✅ |
 | x | self-verify 9 観点 全 ✅ | ✅ |
@@ -355,9 +355,9 @@ shader 改変 0 件、codegen 改変 0 件、CMake 改変 0 件、tests/ 改変 
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF
   asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`) + PC-N-11
-  design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35`) +
-  PC-N-12 design-lock (commit `c9c99d278f`)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`) + PC-N-11
+  design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81`) +
+  PC-N-12 design-lock (commit `9a62f11416`)
 - ✅ **PC-N-12 実装 ✅ 本 commit = Phase 1.E 内 2nd sub-step 実装完了 =
   real node modelview 通電 (Option A pivot)**
 - ⏳ PC-N-13 design-lock + 実装 (= real per-draw + multi-asset verify)
@@ -396,7 +396,7 @@ Mac/Win 開発者補完 phase
    (N12-2)/(N12-10)/(N12-14)/(N12-15) literal 訂正 (Exit Criteria + scope
    literal 維持)
 5. ✅ GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6
-   不変、PC-N-11 commit `13bfb55b35` 同数)
+   不変、PC-N-11 commit `797332ee81` 同数)
 6. ✅ MUSEUBO-A 整合 = `AYAGltfRealModelviewEnabled=false` default で identity
    64 B push constant 維持 + OpenGL 描画 100% 維持 + PC-N-8 (f) 5 段 graceful
    degrade 内部維持
@@ -453,7 +453,7 @@ zero-buffer `PerDrawUBO_LightParams` 卒業 + `AYAGltfMultiAssetCanary` cvar
   modelview 単独 sub-step、PC-N-13..PC-N-15 (= real per-draw + multi-asset
   verify / worker thread design + 実装) は別 phase の別 session で別途分解)
 - ✅ `feedback_design_phase_no_code_write` 整合 (本 PC-N-12 は実装 phase = 改変
-  あり、design-lock commit `c9c99d278f` で `indra/` 改変 0 件完了済)
+  あり、design-lock commit `9a62f11416` で `indra/` 改変 0 件完了済)
 - ✅ `feedback_release_branch_workflow` (feature branch
   `feature/ayastorm-r41-gl-removal` 上 commit)
 - ✅ `feedback_no_auto_commit` (AYA 明示 commit 指示受領後 commit 予定)

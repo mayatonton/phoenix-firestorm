@@ -4,7 +4,7 @@
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `28caf822f1` (PC-N-9 design-lock complete)
+**Previous commit**: `825c4bb556` (PC-N-9 design-lock complete)
 
 ---
 
@@ -89,7 +89,7 @@ cvar=false 時 silent fall-through to PC-N-7 (e) stub IB 経路。
 | 3 | `INTEGRATION_TEST_llassetubopool` | ✅ 10/10 PASS YAY!! |
 | 4 | `INTEGRATION_TEST_llpipelinecachestorage` | ✅ 13/13 PASS YAY!! |
 | 5 | `python3 -m unittest discover tests` (codegen) | ✅ 131/131 OK |
-| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-8 commit `51b550585e` 同数、GATE-B integrity 維持) |
+| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-8 commit `f68fd15e15` 同数、GATE-B integrity 維持) |
 
 ---
 
@@ -100,7 +100,7 @@ cvar=false 時 silent fall-through to PC-N-7 (e) stub IB 経路。
 | i | GLTFSceneManager::render per-Primitive loop body 冒頭 `setCurrentPrimitive(&primitive)` + 末尾 `clearCurrentPrimitive()` 配線 ((N9-2) A) | ✅ |
 | ii | llvkloader.cpp PC-N-8 (f) block 全体を `static LLCachedControl<bool> sAyastormGltfRealDrawEnabled(gSavedSettings, "AYAGltfRealDrawEnabled", false)` guard で wrap ((N9-1) A + (N9-7) A) | ✅ |
 | iii | settings.xml `AYAGltfRealDrawEnabled` Boolean cvar 1 件追加 (Persist=1, default 0、PC-N-6/7 同形 Comment + Cvar 優先順位 + PC-N-10 deprecate 予定明示) ((N9-4) literal + (N9-5) A) | ✅ |
-| iv | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-8 commit `51b550585e` 同数) | ✅ |
+| iv | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-8 commit `f68fd15e15` 同数) | ✅ |
 | v | MUSEUBO-A 整合 = `AYAGltfRealDrawEnabled=false` default で PC-N-9 経路発火なし、PC-N-8 完了状態と機能等価 + 5 段 graceful degrade | ✅ |
 | vi | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N9-10) A) | ✅ |
 | vii | tag block 統一 PC-N-9 (a)/(b)/(c) + first-fire LL_INFOS marker (= PC-N-8 (f) 既配線温存) ((N9-8) A) | ✅ |
@@ -132,7 +132,7 @@ shader 改変 0 件、codegen 改変 0 件、CMake 改変 0 件、tests/ 改変 
 - ✅ PC-8 Linux primary marker (= Phase 1.C strict 線形終了)
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 (= Phase 1.D 1st-3rd sub-step)
-- ✅ PC-N-9 design-lock (commit `28caf822f1`) + **PC-N-9 実装 ✅ 本 commit** (=
+- ✅ PC-N-9 design-lock (commit `825c4bb556`) + **PC-N-9 実装 ✅ 本 commit** (=
   Phase 1.D 内 4th sub-step 実装完了)
 - ⏳ PC-N-10 design-lock + 実装 = cleanup + 3 stub cvar deprecate
 - ⏳ Phase 1.D complete → Phase 1 全完了 → Mac/Win 開発者補完 phase
@@ -161,7 +161,7 @@ PC-N-10 ⏳ + Phase 1.D complete ⏳
 4. ✅ ambiguity (N9-1)..(N9-14) 14 件 AYA literal「全件推奨で OK」record
    (2026-06-05) design-lock 継承 + 本実装で全件採用案通り実装
 5. ✅ GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6
-   不変、PC-N-8 commit `51b550585e` 同数)
+   不変、PC-N-8 commit `f68fd15e15` 同数)
 6. ✅ MUSEUBO-A 整合 = `AYAGltfRealDrawEnabled=false` default で PC-N-9 経路
    発火なし + PC-N-8 完了状態と機能等価 + 5 段 graceful degrade + OpenGL 描画
    100% 維持
@@ -208,7 +208,7 @@ PC-N-10 design-lock 着手 = cleanup + 3 stub cvar deprecate (=
   GLTFSceneManager::render 統合 + AYAGltfRealDrawEnabled cvar gate 配線単独
   sub-step、PC-N-10 残 1 sub-step は分離 = 3 stub cvar deprecate)
 - ✅ `feedback_design_phase_no_code_write` 整合 (本 PC-N-9 は実装 phase = 改変
-  あり、design-lock commit `28caf822f1` で `indra/` 改変 0 件完了済)
+  あり、design-lock commit `825c4bb556` で `indra/` 改変 0 件完了済)
 - ✅ `feedback_release_branch_workflow` (feature branch
   `feature/ayastorm-r41-gl-removal` 上 commit)
 - ✅ `feedback_no_auto_commit` (AYA 明示 commit 指示受領後 commit 予定)

@@ -10,7 +10,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.D PC-N-7 design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-6 complete commit `7e90245d10` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-6 complete handoff doc) Read + pinpoint reference 10 件 Read → ambiguity (N7-1)..(N7-13) 13 件 + 推奨案 + 採用根拠提示 → AYA literal「すべて推奨でお願いします」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
+**契機**: AYA 指示「r41 Phase 1.D PC-N-7 design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-6 complete commit `a68a45f5fd` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-6 complete handoff doc) Read + pinpoint reference 10 件 Read → ambiguity (N7-1)..(N7-13) 13 件 + 推奨案 + 採用根拠提示 → AYA literal「すべて推奨でお願いします」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
 
 **PC-N-7 literal scope** (= (N7-1) B + (N7-2) A + (N7-3) A + (N7-4) A + (N7-5) A + (N7-6) A + (N7-7) B + (N7-8) A + (N7-9) A + (N7-10) A + (N7-11) B 採用後):
 
@@ -54,7 +54,7 @@
 
 ## §2. 現状調査結果 (= pinpoint Read + PC-N-6 complete doc 確認)
 
-### §2.1 現 code 状態 (indra/、PC-N-6 commit `7e90245d10` 後)
+### §2.1 現 code 状態 (indra/、PC-N-6 commit `a68a45f5fd` 後)
 
 | # | 項目 | file:line | 現状要約 |
 |---|------|-----------|---------|
@@ -416,7 +416,7 @@ if (gltf_stub_ib_enabled
 
 ### §6.1 GATE-B / MUSEUBO-A integrity check (実装 phase 末尾検証項)
 
-- `git grep "LL_VULKAN_GLSL" indra/` 件数が PC-N-6 commit (`7e90245d10`) 時点と同数 = GATE-B 違反なし
+- `git grep "LL_VULKAN_GLSL" indra/` 件数が PC-N-6 commit (`a68a45f5fd`) 時点と同数 = GATE-B 違反なし
 - `AYAGltfStubIndexBufferEnabled=false` default で `recordGltfAssetDraw` 経路は PC-N-6 完了状態と機能等価 = MUSEUBO-A 整合
 - 5 段 graceful degrade を Vulkan 未初期化条件下で各個 trip させて silent no-op 確認 (= cold launch + `AYAGltfStubIndexBufferEnabled=true` でクラッシュなし)
 

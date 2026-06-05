@@ -10,7 +10,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.E PC-N-11 design-lock 着手お願いします。直前 commit = `01cd001d07` (Phase 1.E decomposition design-lock complete = PC-N-11..PC-N-15 5 sub-step 分解 + ambiguity (E-1)..(E-16) 16 件 AYA 全件推奨採用)。必読 1 件: `handoff-...-phase1-e-decomposition-design-lock.md`。PC-N-11 scope = multi-skin = `sGltfStubSkin` sentinel 段階卒業 + real Skin owner 切替 (= `sCurrentSkin` 経由、`gltfscenemanager.cpp:765` `setCurrentSkin` 既配線済) + Skin_GLTFJoints UBO 実 data write + `AYAGltfMultiSkinEnabled` cvar 新設。`feedback_ubo_migration_one_at_a_time` 厳格遵守で ambiguity 出し + 採用案提示 + AYA 確認 → design-lock doc 起案 (= `indra/` 改変 0 件、`feedback_design_phase_no_code_write` 遵守)。」literal 受領 (2026-06-05、Phase 1.E decomposition design-lock commit `01cd001d07` 後の継続 session = 別 session の fresh context)。
+**契機**: AYA 指示「r41 Phase 1.E PC-N-11 design-lock 着手お願いします。直前 commit = `094546889b` (Phase 1.E decomposition design-lock complete = PC-N-11..PC-N-15 5 sub-step 分解 + ambiguity (E-1)..(E-16) 16 件 AYA 全件推奨採用)。必読 1 件: `handoff-...-phase1-e-decomposition-design-lock.md`。PC-N-11 scope = multi-skin = `sGltfStubSkin` sentinel 段階卒業 + real Skin owner 切替 (= `sCurrentSkin` 経由、`gltfscenemanager.cpp:765` `setCurrentSkin` 既配線済) + Skin_GLTFJoints UBO 実 data write + `AYAGltfMultiSkinEnabled` cvar 新設。`feedback_ubo_migration_one_at_a_time` 厳格遵守で ambiguity 出し + 採用案提示 + AYA 確認 → design-lock doc 起案 (= `indra/` 改変 0 件、`feedback_design_phase_no_code_write` 遵守)。」literal 受領 (2026-06-05、Phase 1.E decomposition design-lock commit `094546889b` 後の継続 session = 別 session の fresh context)。
 
 **PC-N-11 literal scope** (= AYA task statement 直訳、4 項):
 
@@ -81,7 +81,7 @@
 | source | cvar 戦略 |
 |--------|----------|
 | Phase 1.E decomposition design-lock doc 本文 §3.3 (E-12) | B: 単一 cvar (`AYAGltfRealDrawEnabled`) で完結 = 追加 cvar 0 件 |
-| Phase 1.E decomposition design-lock commit `01cd001d07` commit message (E-6) | A: 各 sub-step 単一 cvar gate = `AYAGltfMultiSkinEnabled` / `AYAGltfRealModelviewEnabled` / `AYAGltfRealLightParamsEnabled` / `AYAGltfMultiAssetCanary` / `AYAGltfWorkerThreadEnabled` 5 cvar 段階通電 |
+| Phase 1.E decomposition design-lock commit `094546889b` commit message (E-6) | A: 各 sub-step 単一 cvar gate = `AYAGltfMultiSkinEnabled` / `AYAGltfRealModelviewEnabled` / `AYAGltfRealLightParamsEnabled` / `AYAGltfMultiAssetCanary` / `AYAGltfWorkerThreadEnabled` 5 cvar 段階通電 |
 | AYA PC-N-11 task statement (2026-06-05) | literal: `AYAGltfMultiSkinEnabled` cvar 新設 |
 | **(N11-1) AYA 全件推奨採用結果** | **A**: AYA task statement literal 採用 = `AYAGltfMultiSkinEnabled` cvar 新設 (commit msg (E-6) A 整合) |
 
@@ -280,7 +280,7 @@ make -j4 llrender
 # (5) codegen unittest
 cd scripts/ubo_codegen && python3 -m unittest discover tests
 # (6) GATE-B integrity
-grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp   # 期待値 = 6 (PC-N-10 commit cccd411486 同数)
+grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp   # 期待値 = 6 (PC-N-10 commit 16a26f6272 同数)
 ```
 
 期待 literal = (1) PASS / ERROR 0 / WARNING 0 + (2) 11/11 PASS YAY + (3) 10/10 PASS YAY + (4) 13/13 PASS YAY + (5) 131/131 OK + (6) 6。
@@ -328,7 +328,7 @@ grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp   # 期待値 = 6 (PC-N-10 
 | (ii) | step (b) `LLCachedControl<bool> sAyastormGltfMultiSkinEnabled` 宣言 (recordGltfAssetDraw 関数内) |
 | (iii) | step (c) PC-N-8 (f) writeSkinUbo + flushSkinUbos site の sCurrentSkin guard 追加 + cvar guard 追加 + wireSkinUboSetV3aToBinding2 per-draw 呼出追加 + tag block 新規 `<AYAstorm r41 PC-N-11 (a)>` ((N11-3)..(N11-8) 採用) |
 | (iv) | step (d) PC-N-11 (a) first-fire LL_INFOS marker 追加 ((N11-9) A) |
-| (v) | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-10 commit `cccd411486` 同数) |
+| (v) | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-10 commit `16a26f6272` 同数) |
 | (vi) | MUSEUBO-A 整合 = `AYAGltfMultiSkinEnabled=false` default で PC-N-11 (a) real Skin path 不発火 + sentinel fall-through path 維持 + OpenGL 描画 100% 維持 |
 | (vii) | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N11-12) A) |
 | (viii) | cross-platform spec §6 PC-N-11 行 ✅ 反映 + §A 履歴 1 行追記 |

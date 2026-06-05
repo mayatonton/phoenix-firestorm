@@ -10,7 +10,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.E PC-N-12 design-lock 着手お願いします。直前 commit = `13bfb55b35` (PC-N-11 complete = Phase 1.E 内 1st sub-step 実装完了 = multi-skin real Skin path 通電)。必読 1 件: `handoff-...-phase1-e-pc-n-11-complete.md`。PC-N-12 scope (= Phase 1.E 内 2nd sub-step = real node modelview): identity push constant modelview → real `Asset::mNodes[node_index].mMatrix` 経由 (= `recordGltfAssetDraw` 内 push constant 64 B identity block 卒業) + `AYAGltfRealModelviewEnabled` cvar 新設 (Boolean default=0 Persist=1、`AYAGltfMultiSkinEnabled` 直後並列 = Phase 1.E cvar group) + ambiguity 出し + 推奨案提示 + AYA 確認 → design-lock doc 起案 (`indra/` 改変 0 件、`feedback_design_phase_no_code_write` 遵守)。GATE-B: `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (count llvkloader.cpp=6 維持)。MUSEUBO-A: `AYAGltfRealModelviewEnabled=false` default で既 identity modelview 維持 + OpenGL 描画 100% 維持。`feedback_ubo_migration_one_at_a_time` 厳格遵守 (PC-N-13..PC-N-15 は別 session)。`feedback_self_verify_before_handoff` 遵守。」literal 受領 (2026-06-05、PC-N-11 complete commit `13bfb55b35` 後の継続 session = 別 session の fresh context)。
+**契機**: AYA 指示「r41 Phase 1.E PC-N-12 design-lock 着手お願いします。直前 commit = `797332ee81` (PC-N-11 complete = Phase 1.E 内 1st sub-step 実装完了 = multi-skin real Skin path 通電)。必読 1 件: `handoff-...-phase1-e-pc-n-11-complete.md`。PC-N-12 scope (= Phase 1.E 内 2nd sub-step = real node modelview): identity push constant modelview → real `Asset::mNodes[node_index].mMatrix` 経由 (= `recordGltfAssetDraw` 内 push constant 64 B identity block 卒業) + `AYAGltfRealModelviewEnabled` cvar 新設 (Boolean default=0 Persist=1、`AYAGltfMultiSkinEnabled` 直後並列 = Phase 1.E cvar group) + ambiguity 出し + 推奨案提示 + AYA 確認 → design-lock doc 起案 (`indra/` 改変 0 件、`feedback_design_phase_no_code_write` 遵守)。GATE-B: `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (count llvkloader.cpp=6 維持)。MUSEUBO-A: `AYAGltfRealModelviewEnabled=false` default で既 identity modelview 維持 + OpenGL 描画 100% 維持。`feedback_ubo_migration_one_at_a_time` 厳格遵守 (PC-N-13..PC-N-15 は別 session)。`feedback_self_verify_before_handoff` 遵守。」literal 受領 (2026-06-05、PC-N-11 complete commit `797332ee81` 後の継続 session = 別 session の fresh context)。
 
 **PC-N-12 literal scope** (= AYA task statement 直訳、4 項):
 
@@ -89,7 +89,7 @@
 
 | source | modelview matrix 選択 |
 |--------|---------------------|
-| Phase 1.E decomposition design-lock commit `01cd001d07` commit message (E-13) | A: real `Asset::mNodes[node_index].mMatrix` 経由 |
+| Phase 1.E decomposition design-lock commit `094546889b` commit message (E-13) | A: real `Asset::mNodes[node_index].mMatrix` 経由 |
 | AYA PC-N-12 task statement (2026-06-05) | literal: real `Asset::mNodes[node_index].mMatrix` 経由 |
 | upstream `Asset::uploadTransforms` 実装 (`asset.cpp:180`) | `t_mp[i] = node.mAssetMatrix` (= local→asset space 合成済) |
 | **(N12-1) AYA 全件推奨採用結果** | **A**: `node.mAssetMatrix` (= asset 空間、parent chain 合成済) |
@@ -350,7 +350,7 @@ PC-N-11 同形 ((N12-12) A):
 3. `INTEGRATION_TEST_llassetubopool` → 10/10 PASS
 4. `INTEGRATION_TEST_llpipelinecachestorage` → 13/13 PASS
 5. `python3 -m unittest discover tests` (codegen) → 131/131 OK
-6. `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` → 6 (= PC-N-11 commit `13bfb55b35` 同数、GATE-B integrity 維持)
+6. `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` → 6 (= PC-N-11 commit `797332ee81` 同数、GATE-B integrity 維持)
 
 ### §4.8 step (h) — handoff complete doc 起案
 
@@ -358,7 +358,7 @@ PC-N-11 同形 ((N12-12) A):
 
 ### §4.9 GATE-B 整合
 
-- `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count `llvkloader.cpp=6` 不変、PC-N-11 commit `13bfb55b35` 同数)
+- `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count `llvkloader.cpp=6` 不変、PC-N-11 commit `797332ee81` 同数)
 - `AYAGltfRealModelviewEnabled` cvar runtime gate のみで Vulkan path / identity path 分岐
 - shader 改変 0 件 (= 既 push constant `modelview_matrix` mat4 64 B / VERTEX_BIT layout 不変、shader 側は cvar 状態を知らない)
 - memory `project_r41_phase1b_vulkan_host_gate` 整合
@@ -408,7 +408,7 @@ PC-N-11 同形 ((N12-12) A):
 | iv | `recordGltfAssetDraw` PC-N-8 (f) 内 push constant identity block (line 6018-6031) を `<AYAstorm r41 PC-N-12 (a)>` tag block で wrap + `LLCachedControl<bool> sAyastormGltfRealModelviewEnabled` 配置 + cvar guard + sCurrentNodeIndex valid guard + bounds check + real Node.mAssetMatrix / identity fall-through 分岐 + 単一 push call ((N12-6)/(N12-7)/(N12-8)/(N12-9)/(N12-10) A) |
 | v | `gltfscenemanager.cpp` per-Primitive loop に `<AYAstorm r41 PC-N-12 (e)>` tag block で `setCurrentNodeIndex(pdata.mNodeIndex)` (setCurrentPrimitive 直後並列、`if (rigged)` 外 unconditional) + `clearCurrentNodeIndex()` (clearCurrentPrimitive 直前並列、unconditional clear) 配線 ((N12-14) A) |
 | vi | PC-N-12 (a) first-fire `LL_INFOS` marker (`s_first_pcn12_real_modelview_fire` atomic flag、PC-N-6/7/8/9/10/11 同形 pattern) ((N12-11) A) |
-| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-11 commit `13bfb55b35` 同数) |
+| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-11 commit `797332ee81` 同数) |
 | viii | MUSEUBO-A 整合 = `AYAGltfRealModelviewEnabled=false` default で identity modelview 維持 + OpenGL 描画 100% 維持 + 5 段 graceful degrade 内部維持 |
 | ix | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N12-12) A) + cross-platform spec §6 PC-N-12 行 ✅ 反映 + §A 履歴 1 行追記 + handoff complete doc 起案 |
 | x | self-verify 9 観点 全 ✅ + AYA literal commit 指示受領後 commit (= `feedback_no_auto_commit` + `feedback_release_branch_workflow` + `feedback_no_claude_coauthor` 遵守) |
@@ -438,8 +438,8 @@ PC-N-11 同形 ((N12-12) A):
 - ✅ PC-8 Linux primary marker (= Phase 1.C strict 線形終了)
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`)
-- ✅ PC-N-11 design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35` = Phase 1.E 内 1st sub-step 実装完了 = multi-skin real Skin path 通電)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`)
+- ✅ PC-N-11 design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81` = Phase 1.E 内 1st sub-step 実装完了 = multi-skin real Skin path 通電)
 - ✅ **PC-N-12 design-lock ✅ 本 commit = Phase 1.E 内 2nd sub-step design-lock 完了**
 - ⏳ PC-N-12 実装 (= 別 session、step (a)-(h) 8 step 実施 + Exit Criteria 10 項 self-verify + handoff complete doc 起案)
 - ⏳ PC-N-13 design-lock + 実装 (= real per-draw light params + multi-asset verify、`AYAGltfRealLightParamsEnabled` + `AYAGltfMultiAssetCanary` cvar 新設想定)

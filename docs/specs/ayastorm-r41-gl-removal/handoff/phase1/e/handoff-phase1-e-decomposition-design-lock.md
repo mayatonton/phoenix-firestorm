@@ -10,7 +10,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.E design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-10 complete commit `cccd411486` = Phase 1.D complete marker 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-10 complete handoff doc) Read + pinpoint reference (= recordGltfAssetDraw PC-N-8 (f) real Asset path block + GLTFSceneManager::render setCurrentAsset/Skin/Primitive 配線 + Phase 1.D decomposition design-lock template + cross-platform spec §6 table format) Read → ambiguity (E-1)..(E-16) 16 件 + 推奨案 + 採用根拠提示 → AYA literal「全件推奨で OK」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
+**契機**: AYA 指示「r41 Phase 1.E design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-10 complete commit `16a26f6272` = Phase 1.D complete marker 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-10 complete handoff doc) Read + pinpoint reference (= recordGltfAssetDraw PC-N-8 (f) real Asset path block + GLTFSceneManager::render setCurrentAsset/Skin/Primitive 配線 + Phase 1.D decomposition design-lock template + cross-platform spec §6 table format) Read → ambiguity (E-1)..(E-16) 16 件 + 推奨案 + 採用根拠提示 → AYA literal「全件推奨で OK」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
 
 **Phase 1.E 分解 literal scope** (= 5 sub-step、PC-N-11..PC-N-15):
 
@@ -46,7 +46,7 @@
 
 ## §2. 現状調査結果 (Phase 1.D complete baseline 把握)
 
-### §2.1 現 code 状態 (indra/) = Phase 1.D complete (commit `cccd411486`) baseline
+### §2.1 現 code 状態 (indra/) = Phase 1.D complete (commit `16a26f6272`) baseline
 
 | # | 項目 | file:line | 現状要約 |
 |---|------|-----------|---------|

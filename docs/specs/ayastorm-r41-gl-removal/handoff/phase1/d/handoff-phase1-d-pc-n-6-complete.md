@@ -2,15 +2,15 @@
 
 **作成日**: 2026-06-05
 **起案者**: Claude (AYAstorm r41 担当)
-**目的**: PC-N-6 (= Phase 1.D 内 1st sub-step = stub vertex buffer Vulkan 経路通電) **実装 phase 完了 marker**。design-lock (commit `c7154df5d4`) で確定した step (a)-(g) 7 step 実装 + Exit Criteria 10 項全充足 + build verify literal 取得 (llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131)。
+**目的**: PC-N-6 (= Phase 1.D 内 1st sub-step = stub vertex buffer Vulkan 経路通電) **実装 phase 完了 marker**。design-lock (commit `146c3002e5`) で確定した step (a)-(g) 7 step 実装 + Exit Criteria 10 項全充足 + build verify literal 取得 (llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131)。
 
-> **本 doc 位置付け**: PC-N-6 design-lock (= `c7154df5d4`) 後の **PC-N-6 実装 phase 完了 marker**。`sGltfStubVertexBuffer` file-static VMA buffer 新設 + `sGltfStubAssetPipeline` 新設 (= sAvatarBonePipeline 同形 + vertex input state 拡張) + initVulkan VMA allocate + initial upload + shutdownVulkan 対称破棄 + `recordGltfAssetDraw` 内 `AYAGltfStubVertexBufferEnabled` cvar 分岐 + bindVertexBufferVk + vkCmdDraw(N) 通電。次は PC-N-7 design-lock phase (= 実 LL::GLTF::Asset 経由 index buffer upload + vkCmdDrawIndexed)。
+> **本 doc 位置付け**: PC-N-6 design-lock (= `146c3002e5`) 後の **PC-N-6 実装 phase 完了 marker**。`sGltfStubVertexBuffer` file-static VMA buffer 新設 + `sGltfStubAssetPipeline` 新設 (= sAvatarBonePipeline 同形 + vertex input state 拡張) + initVulkan VMA allocate + initial upload + shutdownVulkan 対称破棄 + `recordGltfAssetDraw` 内 `AYAGltfStubVertexBufferEnabled` cvar 分岐 + bindVertexBufferVk + vkCmdDraw(N) 通電。次は PC-N-7 design-lock phase (= 実 LL::GLTF::Asset 経由 index buffer upload + vkCmdDrawIndexed)。
 
 ---
 
 ## §0. 本 session 着手契機 + PC-N-6 完了 scope record
 
-**契機**: AYA 指示「r41 Phase 1.D PC-N-6 実装着手お願いします」literal 受領 (2026-06-05、PC-N-6 design-lock commit `c7154df5d4` 後の継続 session = 別 session の fresh context) + 必読 1 件 = `handoff-substep-...-phase1-d-pc-n-6-design-lock.md` (= 13 件 ambiguity 全 AYA literal「すべて推奨でお願いします」record 済) Read + pinpoint reference 13 件 Read → step (a)-(g) 7 step 実装 → build verify literal 取得 → 本 complete doc 起案。
+**契機**: AYA 指示「r41 Phase 1.D PC-N-6 実装着手お願いします」literal 受領 (2026-06-05、PC-N-6 design-lock commit `146c3002e5` 後の継続 session = 別 session の fresh context) + 必読 1 件 = `handoff-substep-...-phase1-d-pc-n-6-design-lock.md` (= 13 件 ambiguity 全 AYA literal「すべて推奨でお願いします」record 済) Read + pinpoint reference 13 件 Read → step (a)-(g) 7 step 実装 → build verify literal 取得 → 本 complete doc 起案。
 
 **PC-N-6 完了 scope** (= design-lock §0 literal 7 件 + step (a)-(g) 7 step 全実装):
 
@@ -150,11 +150,11 @@
 ## §5. 残 strict 線形
 
 **Phase 1.C complete** ✅ (= PC-N-3 commit `71f7bb2a89`)
-**PC-8 Linux primary marker** ✅ (= commit `3c0c72d34f`、Phase 1.C strict 線形終了)
-**PC-N-5 design-lock** ✅ (= commit `efad5f0200`、Phase 1.D 着手起点 design-lock)
-**PC-N-5 実装** ✅ (= commit `675529a891`、Phase 1.D 着手起点 実装完了)
-**Phase 1.D decomposition design-lock** ✅ (= commit `901d51d3ac`、PC-N-6..PC-N-10 5 sub-step 分解)
-**PC-N-6 design-lock** ✅ (= commit `c7154df5d4`、Phase 1.D 内 1st sub-step design-lock)
+**PC-8 Linux primary marker** ✅ (= commit `8ba7296caf`、Phase 1.C strict 線形終了)
+**PC-N-5 design-lock** ✅ (= commit `d1fa626fad`、Phase 1.D 着手起点 design-lock)
+**PC-N-5 実装** ✅ (= commit `b7a67ce659`、Phase 1.D 着手起点 実装完了)
+**Phase 1.D decomposition design-lock** ✅ (= commit `44c81ea228`、PC-N-6..PC-N-10 5 sub-step 分解)
+**PC-N-6 design-lock** ✅ (= commit `146c3002e5`、Phase 1.D 内 1st sub-step design-lock)
 **PC-N-6 実装** ✅ 本 commit (= Phase 1.D 内 1st sub-step 実装完了)
 
 次:
@@ -221,7 +221,7 @@ Phase 1.A ✅ + Phase 1.B ✅ + (Z) SSS ✅ + (W) uniform4iv ✅ + (Y) Phase 1.C
 - **feedback_doubt_self_first** 遵守 = design-lock phase で ambiguity 13 件発見 + 推奨案提示 + AYA literal「すべて推奨でお願いします」受領後本実装、本実装中も createAvatarBonePipeline literal + VMA usage flag + bindVertexBufferVk signature を Read で literal 確認後配線、推測実装なし
 - **feedback_confirm_referent_before_acting** 遵守 = 13 件 batch AYA 確認 design-lock phase で完了、本実装中も namespace 配置 (= nested anonymous namespace 内 file-static) 判断は既存 sGltfStubSkin 配置 pattern を literal 確認後採用
 - **feedback_ubo_migration_one_at_a_time** 厳格遵守 = PC-N-6 = stub vertex buffer Vulkan 経路通電単独 sub-step (= file-static + 別 pipeline + cvar 切替)、PC-N-7..PC-N-10 残 4 sub-step は分離
-- **feedback_design_phase_no_code_write** 整合 = 本 PC-N-6 は実装 phase = design-lock commit `c7154df5d4` で `indra/` 改変 0 件完了済、本 session で `indra/llrender/llvkloader.cpp` + `indra/newview/app_settings/settings.xml` 改変は実装 phase ゆえ整合
+- **feedback_design_phase_no_code_write** 整合 = 本 PC-N-6 は実装 phase = design-lock commit `146c3002e5` で `indra/` 改変 0 件完了済、本 session で `indra/llrender/llvkloader.cpp` + `indra/newview/app_settings/settings.xml` 改変は実装 phase ゆえ整合
 - **feedback_release_branch_workflow** 遵守 = feature branch `feature/ayastorm-r41-gl-removal` 上 commit
 - **feedback_no_auto_commit** 遵守 = AYA 明示 commit 指示「commit してください」literal 受領後 commit 予定 (= 本 doc 起案完了時点では commit 未実施)
 - **feedback_no_claude_coauthor** 遵守 = Co-Authored-By 行不在予定

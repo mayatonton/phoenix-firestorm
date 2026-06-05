@@ -8,7 +8,7 @@ allocate + `AYAGltfWorkerThreadEnabled` + `AYAGltfWorkerThreadCount` 2 cvar 新�
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `93357fa44e` (PC-N-15a design-lock complete)
+**Previous commit**: `631794883d` (PC-N-15a design-lock complete)
 
 ---
 
@@ -194,7 +194,7 @@ tag block:
 - ✅ `INTEGRATION_TEST_llpipelinecachestorage` **13/13 PASS YAY!!**
 - ✅ `python3 -m unittest discover` from `scripts/ubo_codegen` = **131 tests, OK**
 - ✅ **GATE-B integrity** = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp`
-  = **6** (= PC-N-14 commit `1a83070f31` 同数、`feedback_design_phase_no_code_write`
+  = **6** (= PC-N-14 commit `e96f7e2a68` 同数、`feedback_design_phase_no_code_write`
   → 実装 phase で GATE-B 不変 maintained = `mUseUBO` runtime gate のみ)
 
 ---
@@ -209,7 +209,7 @@ tag block:
 | iv | `createWorkerThreadInfra()` helper = cvar guard + worker count 決定 + per-thread VkCommandPool + secondary VkCommandBuffer + per-thread LLUboRingBuffer (factory lambda capture `[i]` per-thread sub-map 書込) ((N15a-10) A) | ✅ |
 | v | `destroyWorkerThreadInfra()` helper = reverse-init order cleanup (= LLUboRingBuffer destroy → secondary VkCommandBuffer free → VkCommandPool destroy) | ✅ |
 | vi | `initVulkan` 内 `createDrawUboRingBuffer` 直後 `createWorkerThreadInfra()` 呼出 + `shutdownVulkan` 内主 `vkDestroyCommandPool` 直後 `destroyWorkerThreadInfra()` 呼出 (= sAllocator + sDevice alive 期間内) | ✅ |
-| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-14 commit `1a83070f31` 同数) | ✅ |
+| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-14 commit `e96f7e2a68` 同数) | ✅ |
 | viii | MUSEUBO-A 整合 = `AYAGltfWorkerThreadEnabled=false` default で worker storage 確保なし、main thread 経路維持 + OpenGL 描画 100% 維持 + PC-N-8 (f) 5 段 graceful degrade 内部維持 (= PC-N-15a 段階では ON 切替でも描画経路は不変、storage 確保のみ、worker launch + actual record 経路通電は PC-N-15b 持越し) | ✅ |
 | ix | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N15a-11) A) + cross-platform spec §6 PC-N-15a 行 ✅ 反映 + §A 履歴 1 行追記 + handoff complete doc 起案 | ✅ |
 | x | self-verify 9 観点 全 ✅ | ✅ |
@@ -343,12 +343,12 @@ class 改変 0 件 ((N15a-2) ⭐ A)。
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF
   asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`) + PC-N-11
-  design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35`) +
-  PC-N-12 design-lock (commit `c9c99d278f`) + PC-N-12 実装 (commit `4373c302d7`)
-  + PC-N-13 design-lock (commit `e13d00d4a6`) + PC-N-13 実装 (commit `faae1544d6`)
-  + PC-N-14 design-lock (commit `1a83070f31`) + PC-N-15a design-lock (commit
-  `93357fa44e`)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`) + PC-N-11
+  design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81`) +
+  PC-N-12 design-lock (commit `9a62f11416`) + PC-N-12 実装 (commit `b6b39bfd9f`)
+  + PC-N-13 design-lock (commit `cd253cb754`) + PC-N-13 実装 (commit `289d44b536`)
+  + PC-N-14 design-lock (commit `e96f7e2a68`) + PC-N-15a design-lock (commit
+  `631794883d`)
 - ✅ **PC-N-15a 実装 ✅ 本 commit = Phase 1.E 内 5th sub-step 実装完了 =
   worker thread infrastructure 配線**
 - ⏳ PC-N-15b design-lock + 実装 (= worker thread dispatch 配線)
@@ -388,7 +388,7 @@ Mac/Win 開発者補完 phase
    LLUboRingBuffer per-instance 化 = class 改変 0 件、(N15a-4) A 採用 =
    sPcn13MultiAssetSeen mutex 保護で canary semantic 維持)
 5. ✅ GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6
-   不変、PC-N-14 commit `1a83070f31` 同数)
+   不変、PC-N-14 commit `e96f7e2a68` 同数)
 6. ✅ MUSEUBO-A 整合 = `AYAGltfWorkerThreadEnabled=false` default で worker
    storage 確保なし、main thread 経路維持 + OpenGL 描画 100% 維持 + PC-N-8 (f)
    5 段 graceful degrade 内部維持 + PC-N-11/12/13 cvar baseline 不変、PC-N-15a
@@ -457,7 +457,7 @@ post/drain 配線 + per-Primitive worker dispatch + secondary cmdbuf record +
   (= dispatch 配線) + PC-N-15c (= cleanup + Phase 1.E complete marker) は別
   session の別 phase で別途分解)
 - ✅ `feedback_design_phase_no_code_write` 整合 (本 PC-N-15a は実装 phase = 改変
-  あり、design-lock commit `93357fa44e` で `indra/` 改変 0 件完了済)
+  あり、design-lock commit `631794883d` で `indra/` 改変 0 件完了済)
 - ✅ `feedback_release_branch_workflow` (feature branch
   `feature/ayastorm-r41-gl-removal` 上 commit)
 - ✅ `feedback_no_auto_commit` (AYA 明示 commit 指示受領後 commit 予定)

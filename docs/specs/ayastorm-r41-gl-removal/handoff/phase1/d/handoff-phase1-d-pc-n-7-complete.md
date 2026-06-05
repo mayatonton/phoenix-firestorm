@@ -4,13 +4,13 @@
 **起案者**: Claude (AYAstorm r41 担当)
 **目的**: Phase 1.D 内 **2nd sub-step (PC-N-7)** = stub index buffer Vulkan 経路通電 (= file-static `sGltfStubIndexBuffer` (= UINT32 ascending CCW `{ 0, 1, 2 }`、12 B) を VMA host-visible mapped buffer 経由 1 回 initVulkan allocate + initial memcpy + `vkCmdBindIndexBuffer` 配線 + `vkCmdDrawIndexed` 置換、`sGltfStubAssetPipeline` 再利用 ((N7-8) A、Vulkan 仕様 §10.4 で index buffer は dynamic state ゆえ PC-N-6 同 PSO で issue 可能)、`AYAGltfStubIndexBufferEnabled` 段階 cvar 新設) の **実装完了 marker**。step (a)/(c)/(d)/(e)/(e') 5 site 実装 + Exit Criteria 10 項全充足 + build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131。
 
-> **本 doc 位置付け**: PC-N-7 design-lock (= `handoff-...-phase1-d-pc-n-7-design-lock.md`、commit `a9d4820b89`) で確定された実装計画 (a)-(g) 7 step (b 除く、(b) は pipeline 再利用ゆえ作業なし) を順次実施 → build verify literal 取得 → Exit Criteria 10 項 self-verify 完了の **実装完了 handoff doc**。PC-N-8..PC-N-10 残 3 sub-step は別 session で個別 design-lock + 実装。
+> **本 doc 位置付け**: PC-N-7 design-lock (= `handoff-...-phase1-d-pc-n-7-design-lock.md`、commit `6a75b61924`) で確定された実装計画 (a)-(g) 7 step (b 除く、(b) は pipeline 再利用ゆえ作業なし) を順次実施 → build verify literal 取得 → Exit Criteria 10 項 self-verify 完了の **実装完了 handoff doc**。PC-N-8..PC-N-10 残 3 sub-step は別 session で個別 design-lock + 実装。
 
 ---
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.D PC-N-7 実装着手お願いします」literal 受領 (2026-06-05、PC-N-7 design-lock commit `a9d4820b89` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-7 design-lock handoff doc) 全文 Read + pinpoint reference 6 件 Read (= PC-N-6 (a) sGltfStubVertexBuffer declare 近傍 + PC-N-6 (c) initVulkan VMA allocate + createGltfStubAssetPipeline + PC-N-6 (d) shutdownVulkan + PC-N-6 (e) recordGltfAssetDraw cvar 分岐 + bindIndexBufferVk wrap signature + AYAGltfStubVertexBufferEnabled cvar 配置近傍) → step (a)/(c)/(d)/(e)/(e') 5 site 順次実装 → build verify literal 取得 → 本 complete doc 起案。
+**契機**: AYA 指示「r41 Phase 1.D PC-N-7 実装着手お願いします」literal 受領 (2026-06-05、PC-N-7 design-lock commit `6a75b61924` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-7 design-lock handoff doc) 全文 Read + pinpoint reference 6 件 Read (= PC-N-6 (a) sGltfStubVertexBuffer declare 近傍 + PC-N-6 (c) initVulkan VMA allocate + createGltfStubAssetPipeline + PC-N-6 (d) shutdownVulkan + PC-N-6 (e) recordGltfAssetDraw cvar 分岐 + bindIndexBufferVk wrap signature + AYAGltfStubVertexBufferEnabled cvar 配置近傍) → step (a)/(c)/(d)/(e)/(e') 5 site 順次実装 → build verify literal 取得 → 本 complete doc 起案。
 
 **PC-N-7 literal scope** (= design-lock §0 7 件、本 commit 全件実装):
 
@@ -115,7 +115,7 @@ cd scripts/ubo_codegen && python3 -m unittest discover tests
 
 ### §2.4 GATE-B integrity check
 
-`grep -c "LL_VULKAN_GLSL" indra/llrender/llvkloader.cpp` = **6** = PC-N-6 commit `7e90245d10` 時点と同数 = **GATE-B 違反なし** (= `#ifdef LL_VULKAN_GLSL` 新規追加 0 件、cvar runtime gate のみ)。
+`grep -c "LL_VULKAN_GLSL" indra/llrender/llvkloader.cpp` = **6** = PC-N-6 commit `a68a45f5fd` 時点と同数 = **GATE-B 違反なし** (= `#ifdef LL_VULKAN_GLSL` 新規追加 0 件、cvar runtime gate のみ)。
 
 ---
 
@@ -165,7 +165,7 @@ Phase 1.A ✅ + Phase 1.B ✅ + (Z) SSS ✅ + (W) uniform4iv ✅ + (Y) Phase 1.C
 2. **必読 1 件 §0 + pinpoint reference 6 件別記** (= PC-N-6 (a) sGltfStubVertexBuffer declare + PC-N-6 (c) initVulkan VMA + PC-N-6 (d) shutdownVulkan + PC-N-6 (e) recordGltfAssetDraw cvar 分岐 + bindIndexBufferVk wrap signature + AYAGltfStubVertexBufferEnabled cvar 配置) ✅
 3. **step (a)/(c)/(d)/(e)/(e') 5 site 全実装** ((b) は pipeline 再利用ゆえ作業なし note 明示) ✅
 4. **ambiguity (N7-1)..(N7-13) 13 件 AYA literal「すべて推奨でお願いします」record (2026-06-05) design-lock 継承 + 本実装で全件採用案通り実装** ✅
-5. **GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件** (= count=6 不変、PC-N-6 commit 7e90245d10 と同数) ✅
+5. **GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件** (= count=6 不変、PC-N-6 commit a68a45f5fd と同数) ✅
 6. **MUSEUBO-A 整合 = `AYAGltfStubIndexBufferEnabled=false` default で発火なし + PC-N-6 完了状態と機能等価 + `mUseUBO=false` default で OpenGL 描画 100% 維持 + 5 段 graceful degrade** ✅
 7. **build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11/11 + 10/10 + 13/13 + codegen 131/131 全 PASS** ✅
 8. **commit 内容 = 1 modified (`llvkloader.cpp` +185) + 1 modified (`settings.xml` +23) + 1 modified (cross-platform spec +2/-1) + 1 new doc (本 complete handoff) + 新 file 0 (除 doc) + CMake 改変 0 + codegen 改変 0 + shader 改変 0 + `.h` 改変 0 + Co-Authored-By 不在** ✅
@@ -189,7 +189,7 @@ Phase 1.A ✅ + Phase 1.B ✅ + (Z) SSS ✅ + (W) uniform4iv ✅ + (Y) Phase 1.C
 - **feedback_doubt_self_first** 遵守 = design-lock phase で ambiguity 13 件発見 + 推奨案提示 + AYA literal「すべて推奨でお願いします」受領後本実装、本実装中も PC-N-6 tag block site + bindIndexBufferVk signature + settings.xml 配置 pattern を Read で literal 確認後配線、推測実装なし
 - **feedback_confirm_referent_before_acting** 遵守 = 13 件 batch AYA 確認 design-lock phase で完了、本実装中も挿入順「PC-N-6 (e) 直前並列」は design-lock §4.5 literal 確認後採用
 - **feedback_ubo_migration_one_at_a_time** 厳格遵守 = PC-N-7 = stub index buffer 経路通電単独 sub-step = file-static + pipeline 再利用 + cvar 切替、PC-N-8..PC-N-10 残 3 sub-step は分離
-- **feedback_design_phase_no_code_write** 整合 = 本 PC-N-7 は実装 phase = design-lock commit `a9d4820b89` で `indra/` 改変 0 件完了済、本 session で `indra/llrender/llvkloader.cpp` + `indra/newview/app_settings/settings.xml` 改変は実装 phase ゆえ整合
+- **feedback_design_phase_no_code_write** 整合 = 本 PC-N-7 は実装 phase = design-lock commit `6a75b61924` で `indra/` 改変 0 件完了済、本 session で `indra/llrender/llvkloader.cpp` + `indra/newview/app_settings/settings.xml` 改変は実装 phase ゆえ整合
 - **feedback_release_branch_workflow** 遵守 = feature branch `feature/ayastorm-r41-gl-removal` 上 commit 予定
 - **feedback_no_auto_commit** 遵守 = AYA 明示 commit 指示「commit してください」literal 受領待ち
 - **feedback_no_claude_coauthor** 遵守 = Co-Authored-By 行不在

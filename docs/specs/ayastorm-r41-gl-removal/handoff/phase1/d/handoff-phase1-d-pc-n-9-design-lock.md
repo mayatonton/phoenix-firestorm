@@ -4,7 +4,7 @@
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `51b550585e` (PC-N-8 complete = Phase 1.D 内 3rd sub-step 実装完了)
+**Previous commit**: `f68fd15e15` (PC-N-8 complete = Phase 1.D 内 3rd sub-step 実装完了)
 
 ---
 
@@ -44,7 +44,7 @@ literal scope 4 件 (AYA 起案文 2026-06-05):
 
 - **PC-N-8 complete handoff**:
   `docs/specs/ayastorm-r41-gl-removal/handoff/handoff-substep-...-phase1-d-pc-n-8-complete.md`
-  = PC-N-8 commit `51b550585e` 結果 = `PrimitiveVulkanBuffer` struct + 2 map +
+  = PC-N-8 commit `f68fd15e15` 結果 = `PrimitiveVulkanBuffer` struct + 2 map +
   6 新 API + `Primitive::uploadVulkanBuffers()` + `Asset::uploadTransforms`
   末尾 hook + `Primitive` dtor unregister + shutdownVulkan 防御 cleanup +
   `sCurrentPrimitive` static + accessor + recordGltfAssetDraw real Asset path
@@ -333,7 +333,7 @@ codegen 改変 0 件、CMake 改変 0 件、tests/ 改変 0 件。
 経由ゆえ `#ifdef` 非依存 = GATE-B 違反なし。
 
 build verify literal target: `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp = 6`
-(= PC-N-8 commit `51b550585e` 同数、PC-N-7/PC-N-6 同数)。
+(= PC-N-8 commit `f68fd15e15` 同数、PC-N-7/PC-N-6 同数)。
 
 ### §4.6 MUSEUBO-A 整合 (= 5 段 graceful degrade)
 
@@ -405,7 +405,7 @@ PC-N-9 適用後、`recordGltfAssetDraw` 内の 3 cvar gate 評価順:
 | i | GLTFSceneManager::render per-Primitive loop body 冒頭 `setCurrentPrimitive(&primitive)` + 末尾 `clearCurrentPrimitive()` 配線 ((N9-2) A) |
 | ii | llvkloader.cpp PC-N-8 (f) block 全体を `static LLCachedControl<bool> sAyastormGltfRealDrawEnabled(gSavedSettings, "AYAGltfRealDrawEnabled", false)` guard で wrap ((N9-1) A + (N9-7) A) |
 | iii | settings.xml `AYAGltfRealDrawEnabled` Boolean cvar 1 件追加 (Persist=1, default 0、PC-N-6/7 同形 Comment + Cvar 優先順位 + PC-N-10 deprecate 予定明示) ((N9-4) literal + (N9-5) A) |
-| iv | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` = 6 不変、PC-N-8 commit `51b550585e` 同数) |
+| iv | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` = 6 不変、PC-N-8 commit `f68fd15e15` 同数) |
 | v | MUSEUBO-A 整合 = `AYAGltfRealDrawEnabled=false` default で PC-N-9 経路発火なし、PC-N-8 完了状態と機能等価 + 5 段 graceful degrade |
 | vi | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N9-10) A) |
 | vii | tag block 統一 PC-N-9 (a)/(b)/(c) + first-fire LL_INFOS marker (= PC-N-8 (f) 既配線温存) ((N9-8) A) |
@@ -467,7 +467,7 @@ design-lock 内容更新:
 - ✅ Phase 1.D decomposition design-lock (= PC-N-6..PC-N-10 5 sub-step 分解)
 - ✅ PC-N-6 design-lock + 実装 (= Phase 1.D 内 1st sub-step)
 - ✅ PC-N-7 design-lock + 実装 (= Phase 1.D 内 2nd sub-step)
-- ✅ PC-N-8 design-lock + 実装 (commit `51b550585e`) (= Phase 1.D 内 3rd sub-step)
+- ✅ PC-N-8 design-lock + 実装 (commit `f68fd15e15`) (= Phase 1.D 内 3rd sub-step)
 - ⏳ **PC-N-9 design-lock ✅ 本 commit / PC-N-9 実装 ⏳ 次 session** (= Phase
   1.D 内 4th sub-step)
 - ⏳ PC-N-10 design-lock + 実装 = cleanup + 3 stub cvar deprecate

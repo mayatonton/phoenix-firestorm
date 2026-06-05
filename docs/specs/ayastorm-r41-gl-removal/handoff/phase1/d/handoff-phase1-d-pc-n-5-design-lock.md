@@ -4,13 +4,13 @@
 **起案者**: Claude (AYAstorm r41 担当)
 **目的**: PC-N-5 (= Phase 1.D 着手起点 = 実 GLTF Vulkan draw 通電 1 stub) **design-lock phase 完了 marker**。ambiguity (N5-1)..(N5-10) 10 件 AYA literal「OK」record (2026-06-05) + 実装計画 (a)-(g) 7 step 分解 + Exit Criteria 10 項明文化。`indra/` 改変 0 件 (= `feedback_design_phase_no_code_write` 厳格遵守)。
 
-> **本 doc 位置付け**: PC-8 Linux primary marker (= `3c0c72d34f`) 後の PC-N-5 = **Phase 1.D 着手起点 design-lock phase** = 別 session で **PC-N-5 実装着手** 前の最後の準備 phase。実装は本 commit 完了後の別 session の fresh context で進行 (= ambiguity 確認 + 実装計画分解後の実装 phase)。
+> **本 doc 位置付け**: PC-8 Linux primary marker (= `8ba7296caf`) 後の PC-N-5 = **Phase 1.D 着手起点 design-lock phase** = 別 session で **PC-N-5 実装着手** 前の最後の準備 phase。実装は本 commit 完了後の別 session の fresh context で進行 (= ambiguity 確認 + 実装計画分解後の実装 phase)。
 
 ---
 
 ## §0. 本 session 着手契機 + PC-N-5 literal scope
 
-**契機**: AYA 指示「着手お願いします」literal 受領 (2026-06-05、PC-8 Linux primary marker commit `3c0c72d34f` 後の継続 session = 別 session の fresh context) + 必読 1 件 = `handoff-...-phase1-c-pc-8-linux-primary-marker.md` (= Phase 1.C strict 線形終了 marker + Linux primary build verify 取得済 §2) Read + pinpoint reference 3 件 (= PC-N-3 complete §2.7 address-only sentinel pattern + PC-N decomposition §5 PC-N-5 概略 + cross-platform spec §6 OS 依存懸念追記欄) Read → Explore agent 経由現状調査 (= design 09-phase-roadmap.md Phase 1.D 定義 + design 06b §2.5 GLTFSceneManager 経路 + design 06c §2.5 set=3 binding=2 wire + gltfscenemanager.cpp:640 render() + lldrawpoolpbropaque.cpp + pipeline.cpp renderGLTFObjects + recordAvatarPlaceholderDraw / recordPlaceholderPoolDraw 現状 + sSkinUboDirty 現状 + AYARingBufferSizeMB / AYAPipelineCacheSizeMB 既存 cvar) → ambiguity (N5-1)..(N5-10) 10 件 + 推奨案 + 採用根拠提示 → AYA literal「OK」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
+**契機**: AYA 指示「着手お願いします」literal 受領 (2026-06-05、PC-8 Linux primary marker commit `8ba7296caf` 後の継続 session = 別 session の fresh context) + 必読 1 件 = `handoff-...-phase1-c-pc-8-linux-primary-marker.md` (= Phase 1.C strict 線形終了 marker + Linux primary build verify 取得済 §2) Read + pinpoint reference 3 件 (= PC-N-3 complete §2.7 address-only sentinel pattern + PC-N decomposition §5 PC-N-5 概略 + cross-platform spec §6 OS 依存懸念追記欄) Read → Explore agent 経由現状調査 (= design 09-phase-roadmap.md Phase 1.D 定義 + design 06b §2.5 GLTFSceneManager 経路 + design 06c §2.5 set=3 binding=2 wire + gltfscenemanager.cpp:640 render() + lldrawpoolpbropaque.cpp + pipeline.cpp renderGLTFObjects + recordAvatarPlaceholderDraw / recordPlaceholderPoolDraw 現状 + sSkinUboDirty 現状 + AYARingBufferSizeMB / AYAPipelineCacheSizeMB 既存 cvar) → ambiguity (N5-1)..(N5-10) 10 件 + 推奨案 + 採用根拠提示 → AYA literal「OK」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
 
 **PC-N-5 literal scope** (= AYA 確認済 (N5-1) A + (N5-3) A + (N5-5) A 採用後):
 
@@ -371,7 +371,7 @@ if (ayastormGltfStubDrawEnabled) {
 ## §8. 残 strict 線形
 
 **Phase 1.C complete** ✅ (= PC-N-3 commit `71f7bb2a89`)
-**PC-8 Linux primary marker** ✅ (= commit `3c0c72d34f`、Phase 1.C strict 線形終了)
+**PC-8 Linux primary marker** ✅ (= commit `8ba7296caf`、Phase 1.C strict 線形終了)
 **PC-N-5 design-lock** ✅ 本 commit (= Phase 1.D 着手起点 design-lock)
 
 次:

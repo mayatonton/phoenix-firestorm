@@ -4,13 +4,13 @@
 **起案者**: Claude (AYAstorm r41 担当)
 **目的**: Phase 1.D 内 **3rd sub-step (PC-N-8)** = 実 `LL::GLTF::Asset` 経由 vertex/index buffer Vulkan infrastructure 新設 + register/write asset.cpp 側 + `recordGltfAssetDraw` 実 Asset path 配線 の **design-lock 完了 marker**。ambiguity (N8-1)..(N8-14) 14 件 AYA literal「全件推奨で進めてもらえますか?」record (2026-06-05) + 実装計画 (a)-(g) 7 step 分解 + Exit Criteria 9 (design-lock) + 10 (実装 phase) 項明文化。`indra/` 改変 0 件 (= `feedback_design_phase_no_code_write` 厳格遵守)。
 
-> **本 doc 位置付け**: PC-N-7 complete (= commit `01473751e9`) の継続 design-lock phase。Phase 1.D decomposition design-lock (= commit `901d51d3ac`) §4.3 で PC-N-8 = "material/transform UBO 実 bind 配線" と概略起案されていたが、AYA 起案文「実 `LL::GLTF::Asset` 経由 vertex/index buffer Vulkan infrastructure 新設 + register/write asset.cpp 側」が **literal scope** 確定。decomposition §4.3 概略は古い、本 doc literal scope が source of truth。
+> **本 doc 位置付け**: PC-N-7 complete (= commit `70e5faafff`) の継続 design-lock phase。Phase 1.D decomposition design-lock (= commit `44c81ea228`) §4.3 で PC-N-8 = "material/transform UBO 実 bind 配線" と概略起案されていたが、AYA 起案文「実 `LL::GLTF::Asset` 経由 vertex/index buffer Vulkan infrastructure 新設 + register/write asset.cpp 側」が **literal scope** 確定。decomposition §4.3 概略は古い、本 doc literal scope が source of truth。
 
 ---
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.D PC-N-8 design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-7 complete commit `01473751e9` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-7 complete doc) 全文 Read + pinpoint reference 4 件 Read (= Phase 1.D decomposition §4.2-4.3 + cross-platform spec §6 PC-N-8 行 + `recordGltfAssetDraw` 現状 + `asset.cpp` PC-7γ-3 dual-write 配線) + Explore agent 経由 10 項現状調査 → ambiguity (N8-1)..(N8-14) 14 件 + 推奨案 + 採用根拠提示 → AYA literal「全件推奨で進めてもらえますか?」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
+**契機**: AYA 指示「r41 Phase 1.D PC-N-8 design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-7 complete commit `70e5faafff` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-7 complete doc) 全文 Read + pinpoint reference 4 件 Read (= Phase 1.D decomposition §4.2-4.3 + cross-platform spec §6 PC-N-8 行 + `recordGltfAssetDraw` 現状 + `asset.cpp` PC-7γ-3 dual-write 配線) + Explore agent 経由 10 項現状調査 → ambiguity (N8-1)..(N8-14) 14 件 + 推奨案 + 採用根拠提示 → AYA literal「全件推奨で進めてもらえますか?」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
 
 **PC-N-8 literal scope** (= AYA 起案文 literal、本 design-lock で確定):
 
@@ -348,7 +348,7 @@ static LL::GLTF::Primitive* getCurrentPrimitive();
 - `INTEGRATION_TEST_llassetubopool` → 10/10 PASS
 - `INTEGRATION_TEST_llpipelinecachestorage` → 13/13 PASS
 - `cd scripts/ubo_codegen && python3 -m unittest discover tests` → 131/131 OK
-- `grep -c "LL_VULKAN_GLSL" indra/llrender/llvkloader.cpp` → 6 (= PC-N-7 commit `01473751e9` 時点と同数、GATE-B integrity)
+- `grep -c "LL_VULKAN_GLSL" indra/llrender/llvkloader.cpp` → 6 (= PC-N-7 commit `70e5faafff` 時点と同数、GATE-B integrity)
 
 ### §4.8 GATE-B 整合
 
@@ -404,7 +404,7 @@ static LL::GLTF::Primitive* getCurrentPrimitive();
 | (v) | `Primitive` dtor 内 `unregisterPrimitiveVertexBuffer` + `unregisterPrimitiveIndexBuffer` 対称配線 (PC-N-8 (d) tag block) |
 | (vi) | `sCurrentPrimitive` static + setter/getter/clear accessor 新設 (PC-N-8 (e) tag block、(N8-12) A、PC-N-9 で GLTFSceneManager::render が set) |
 | (vii) | `recordGltfAssetDraw` 内 real Asset path 配線 (PC-N-8 (f) tag block、PC-N-7 (e) 直前並列、sCurrentAsset + sCurrentPrimitive + map entry + VkBuffer 4 guard、`sGltfStubAssetPipeline` 再利用、UBO + Skin 配線 + bindVertexBufferVk + bindIndexBufferVk(UINT32) + vkCmdDrawIndexed + first-fire LL_INFOS marker) |
-| (viii) | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count=6 不変、PC-N-7 commit `01473751e9` と同数) |
+| (viii) | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count=6 不変、PC-N-7 commit `70e5faafff` と同数) |
 | (ix) | MUSEUBO-A 整合 = sCurrentAsset/sCurrentPrimitive == nullptr natural guard で PC-N-8 単独発火なし + 5 段 graceful degrade |
 | (x) | build verify literal = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 全 PASS + handoff complete doc 起案 |
 

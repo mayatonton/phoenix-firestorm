@@ -6,7 +6,7 @@ AYAGltfMultiSkinEnabled cvar 新設**
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `cdf4dccc0d` (PC-N-11 design-lock complete)
+**Previous commit**: `87560a4dc7` (PC-N-11 design-lock complete)
 
 ---
 
@@ -156,7 +156,7 @@ if (skin_to_use != sGltfStubSkin)
 | 3 | `INTEGRATION_TEST_llassetubopool` | ✅ 10/10 PASS YAY!! |
 | 4 | `INTEGRATION_TEST_llpipelinecachestorage` | ✅ 13/13 PASS YAY!! |
 | 5 | `python3 -m unittest discover tests` (codegen) | ✅ 131/131 OK |
-| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-10 commit `cccd411486` 同数、GATE-B integrity 維持) |
+| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-10 commit `16a26f6272` 同数、GATE-B integrity 維持) |
 
 ---
 
@@ -168,7 +168,7 @@ if (skin_to_use != sGltfStubSkin)
 | ii | `wireSkinUboSetV3aToBinding2(skin_to_use)` per-draw rewire + `flushSkinUbos(skin_to_use)` unconditional 呼出 + real Skin path inline `writeSkinUbo` 不要 (upstream `Skin::uploadMatrixPalette` PC-7γ-3 (j) dual-write 既配線資産活用) ((N11-4)/(N11-5)/(N11-6) A) | ✅ |
 | iii | settings.xml `AYAGltfMultiSkinEnabled` Boolean cvar 1 件追加 (default=0 Persist=1、`AYAGltfRealDrawEnabled` 直後並列 = Phase 1.E cvar group 起点、Comment 単独説明) ((N11-1)/(N11-2)/(N11-10)/(N11-11) A/B) | ✅ |
 | iv | PC-N-11 (a) first-fire `LL_INFOS` marker (`s_first_pcn11_real_skin_fire` atomic flag、PC-N-6/7/8/9/10 同形 pattern) ((N11-9) A) | ✅ |
-| v | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-10 commit `cccd411486` 同数) | ✅ |
+| v | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-10 commit `16a26f6272` 同数) | ✅ |
 | vi | MUSEUBO-A 整合 = `AYAGltfMultiSkinEnabled=false` default で sentinel fall-through 経路維持 + OpenGL 描画 100% 維持 + PC-N-8 (f) 5 段 graceful degrade 内部維持 | ✅ |
 | vii | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N11-12) A) | ✅ |
 | viii | cross-platform spec §6 PC-N-11 行 ✅ 反映 + §A 履歴 1 行追記 ((N11-15) A 採用) | ✅ |
@@ -242,8 +242,8 @@ CMake 改変 0 件、tests/ 改変 0 件。
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF
   asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`) + PC-N-11
-  design-lock (commit `cdf4dccc0d`)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`) + PC-N-11
+  design-lock (commit `87560a4dc7`)
 - ✅ **PC-N-11 実装 ✅ 本 commit = Phase 1.E 内 1st sub-step 実装完了 =
   multi-skin real Skin path 通電**
 - ⏳ PC-N-12 design-lock + 実装 (= real node modelview)
@@ -279,7 +279,7 @@ Mac/Win 開発者補完 phase
 4. ✅ ambiguity (N11-1)..(N11-16) 16 件 AYA literal「全件推奨で OK」record
    (2026-06-05) design-lock 継承 + 本実装で全件採用案通り実装
 5. ✅ GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6
-   不変、PC-N-10 commit `cccd411486` 同数)
+   不変、PC-N-10 commit `16a26f6272` 同数)
 6. ✅ MUSEUBO-A 整合 = `AYAGltfMultiSkinEnabled=false` default で sentinel
    fall-through 経路維持 + OpenGL 描画 100% 維持 + PC-N-8 (f) 5 段 graceful
    degrade 内部維持
@@ -335,7 +335,7 @@ PC-N-11 multi-skin 通電 baseline 上に Phase 1.E 内 2nd sub-step として
   multi-asset verify / worker thread design + 実装) は別 phase の別 session で
   別途分解)
 - ✅ `feedback_design_phase_no_code_write` 整合 (本 PC-N-11 は実装 phase = 改変
-  あり、design-lock commit `cdf4dccc0d` で `indra/` 改変 0 件完了済)
+  あり、design-lock commit `87560a4dc7` で `indra/` 改変 0 件完了済)
 - ✅ `feedback_release_branch_workflow` (feature branch
   `feature/ayastorm-r41-gl-removal` 上 commit)
 - ✅ `feedback_no_auto_commit` (AYA 明示 commit 指示受領後 commit 予定)

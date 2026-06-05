@@ -7,7 +7,7 @@ multi-asset GLTF draw canary 配線 + `AYAGltfRealLightParamsEnabled` +
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `e13d00d4a6` (PC-N-13 design-lock complete)
+**Previous commit**: `cd253cb754` (PC-N-13 design-lock complete)
 
 ---
 
@@ -234,7 +234,7 @@ if (sAyastormGltfMultiAssetCanary)
 | 3 | `INTEGRATION_TEST_llassetubopool` | ✅ 10/10 PASS YAY!! |
 | 4 | `INTEGRATION_TEST_llpipelinecachestorage` | ✅ 13/13 PASS YAY!! |
 | 5 | `python3 -m unittest discover tests` (codegen at `scripts/ubo_codegen/`) | ✅ 131/131 OK |
-| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-12 commit `4373c302d7` 同数、GATE-B integrity 維持) |
+| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-12 commit `b6b39bfd9f` 同数、GATE-B integrity 維持) |
 
 ---
 
@@ -248,7 +248,7 @@ if (sAyastormGltfMultiAssetCanary)
 | iv | settings.xml `AYAGltfRealLightParamsEnabled` + `AYAGltfMultiAssetCanary` 2 Boolean cvar 追加 (default=0 Persist=1、`AYAGltfRealModelviewEnabled` 直後並列 = Phase 1.E cvar group 連続配置、各 cvar 単独説明) ((N13-2)/(N13-3)/(N13-4)/(N13-5)/(N13-6)/(N13-7) A) | ✅ |
 | v | PC-N-13 (a) + PC-N-13 (b) first-fire `LL_INFOS` marker 2 件 (`s_first_pcn13_real_light_params_fire` + `s_first_pcn13_multi_asset_canary_fire` atomic flag、PC-N-6/7/8/9/10/11/12 同形 pattern) ((N13-10) A) | ✅ |
 | vi | writeDrawUbo unconditional 呼出維持 = cvar gate は marker 起動のみ作用、data path unchanged ((N13-1) ⭐ C 採用 = sky_smoke shader 非 consume architectural truth 尊重 +「zero IS real data」semantic 確立、Phase 1.F+ 実 PBR shader 接続時に PC-N-13.1 で data 内容置換予定) | ✅ |
-| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-12 commit `4373c302d7` 同数) | ✅ |
+| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-12 commit `b6b39bfd9f` 同数) | ✅ |
 | viii | MUSEUBO-A 整合 = `AYAGltfRealLightParamsEnabled=false` + `AYAGltfMultiAssetCanary=false` default で writeDrawUbo zero buffer write 維持 + canary skip + OpenGL 描画 100% 維持 + PC-N-8 (f) 5 段 graceful degrade 内部維持 | ✅ |
 | ix | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N13-14) A) + cross-platform spec §6 PC-N-13 行 ✅ 反映 + §A 履歴 1 行追記 + handoff complete doc 起案 ((N13-16) A 採用) | ✅ |
 | x | self-verify 9 観点 全 ✅ | ✅ |
@@ -279,7 +279,7 @@ shader 改変 0 件、codegen 改変 0 件、CMake 改変 0 件、tests/ 改変 
 ### §5.1 「zero IS real data」semantic 通電経路 (= `AYAGltfRealLightParamsEnabled=true` 時)
 
 1. **upstream owner 既配線**: `GLTFSceneManager::render` → `recordGltfAssetDraw`
-   real Asset path 到達 (= PC-N-9 commit `1b60381d67` 既配線)
+   real Asset path 到達 (= PC-N-9 commit `50b1171cff` 既配線)
 2. **per-draw UBO write** (PC-N-8 (f) 既配線、本 sub-step は cvar gate 付加のみ):
    `writeDrawUbo(PerDrawUBO_LightParams, ...)` で 256 B host write zero buffer
    を set=2 binding=0 dynamic offset ring buffer に配置
@@ -368,10 +368,10 @@ shader 改変 0 件、codegen 改変 0 件、CMake 改変 0 件、tests/ 改変 
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF
   asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`) + PC-N-11
-  design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35`) +
-  PC-N-12 design-lock (commit `c9c99d278f`) + PC-N-12 実装 (commit `4373c302d7`)
-  + PC-N-13 design-lock (commit `e13d00d4a6`)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`) + PC-N-11
+  design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81`) +
+  PC-N-12 design-lock (commit `9a62f11416`) + PC-N-12 実装 (commit `b6b39bfd9f`)
+  + PC-N-13 design-lock (commit `cd253cb754`)
 - ✅ **PC-N-13 実装 ✅ 本 commit = Phase 1.E 内 3rd sub-step 実装完了 =
   real per-draw light params cvar gate 通電 +「zero IS real data」semantic
   確立 + multi-asset GLTF draw canary 配線**
@@ -411,7 +411,7 @@ Mac/Win 開発者補完 phase
    architectural truth 尊重で Phase 1.F+ 実 PBR shader 接続時に PC-N-13.1 で
    data 内容置換予定)
 5. ✅ GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6
-   不変、PC-N-12 commit `4373c302d7` 同数)
+   不変、PC-N-12 commit `b6b39bfd9f` 同数)
 6. ✅ MUSEUBO-A 整合 = `AYAGltfRealLightParamsEnabled=false` +
    `AYAGltfMultiAssetCanary=false` default で writeDrawUbo zero buffer write
    維持 + canary skip + OpenGL 描画 100% 維持 + PC-N-8 (f) 5 段 graceful
@@ -475,7 +475,7 @@ multi-asset canary 配線 baseline 上に Phase 1.E 内 4th sub-step として�
   (= worker thread design + 実装) + PC-N-13.1 (= Phase 1.F+ 実 PBR shader
   接続時の data 内容置換) は別 phase の別 session で別途分解)
 - ✅ `feedback_design_phase_no_code_write` 整合 (本 PC-N-13 は実装 phase = 改変
-  あり、design-lock commit `e13d00d4a6` で `indra/` 改変 0 件完了済)
+  あり、design-lock commit `cd253cb754` で `indra/` 改変 0 件完了済)
 - ✅ `feedback_release_branch_workflow` (feature branch
   `feature/ayastorm-r41-gl-removal` 上 commit)
 - ✅ `feedback_no_auto_commit` (AYA 明示 commit 指示受領後 commit 予定)

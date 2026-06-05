@@ -4,7 +4,7 @@
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `dcdb5f4799` (PC-N-10 design-lock complete)
+**Previous commit**: `a4e979200b` (PC-N-10 design-lock complete)
 
 ---
 
@@ -130,7 +130,7 @@ PC-N-10 (b) removal marker tag block 配置済。
 | 3 | `INTEGRATION_TEST_llassetubopool` | ✅ 10/10 PASS YAY!! |
 | 4 | `INTEGRATION_TEST_llpipelinecachestorage` | ✅ 13/13 PASS YAY!! |
 | 5 | `python3 -m unittest discover tests` (codegen) | ✅ 131/131 OK |
-| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-9 commit `1b60381d67` 同数、GATE-B integrity 維持) |
+| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | ✅ 6 (= PC-N-9 commit `50b1171cff` 同数、GATE-B integrity 維持) |
 
 ---
 
@@ -142,7 +142,7 @@ PC-N-10 (b) removal marker tag block 配置済。
 | ii | `recordGltfAssetDraw` 内 PC-N-6 (e) + PC-N-7 (e) + PC-N-5 base + PC-N-9 (b) cvar guard wrap 全撤去 + PC-N-8 (f) のみ残存 ((N10-7) A + (N10-8) A + (N10-9) A) | ✅ |
 | iii | `sGltfStubVertexBuffer` + `sGltfStubIndexBuffer` storage + initVulkan VMA allocate + shutdownVulkan vmaDestroyBuffer 全撤去 + `sGltfStubSkin` sentinel + `sGltfStubAssetPipeline` 維持 ((N10-3) B + (N10-4) A + (N10-5) B) | ✅ |
 | iv | settings.xml 3 stub cvar 行完全削除 + `AYAGltfRealDrawEnabled` Comment 更新 (3 stub cvar 統合済 + Phase 1.D complete marker 記載) ((N10-2) A + (N10-10) A) | ✅ |
-| v | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-9 commit `1b60381d67` 同数) | ✅ |
+| v | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-9 commit `50b1171cff` 同数) | ✅ |
 | vi | MUSEUBO-A 整合 = `AYAGltfRealDrawEnabled=false` default で `recordGltfAssetDraw` 発火経路ゼロ + OpenGL 描画 100% 維持 + 5 段 graceful degrade 内部維持 | ✅ |
 | vii | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N10-13) A) | ✅ |
 | viii | cross-platform spec §6 PC-N-10 行 ✅ 反映 + §A 履歴 1 行追記 ((N10-12) A) | ✅ |
@@ -174,15 +174,15 @@ Phase 1.D = **実 GLTF Vulkan draw 通電** 章 5 sub-step:
 
 - ✅ **PC-N-5** (= 着手起点) `recordGltfAssetDraw` 新設 + `AYAGltfStubDrawEnabled`
   cvar gate + Skin_GLTFJoints UBO bind 経由 rigged stub draw 通電
-  (commit `675529a891`)
+  (commit `b7a67ce659`)
 - ✅ **PC-N-6** (= 1st sub-step) stub vertex buffer Vulkan 経路通電 = file-static
   `sGltfStubVertexBuffer` (= position vec3 × 3 hardcoded triangle) VMA buffer
   + `vkCmdBindVertexBuffers` + `sGltfStubAssetPipeline` 新設 +
-  `AYAGltfStubVertexBufferEnabled` 段階 cvar (commit `7e90245d10`)
+  `AYAGltfStubVertexBufferEnabled` 段階 cvar (commit `a68a45f5fd`)
 - ✅ **PC-N-7** (= 2nd sub-step) stub index buffer Vulkan 経路通電 = file-static
   `sGltfStubIndexBuffer` (= `{0,1,2}` CCW UINT32) + `vkCmdBindIndexBuffer` +
   `vkCmdDrawIndexed` + `AYAGltfStubIndexBufferEnabled` 段階 cvar
-  (commit `01473751e9`)
+  (commit `70e5faafff`)
 - ✅ **PC-N-8** (= 3rd sub-step) **実 LL::GLTF::Asset 経由 vertex/index buffer
   Vulkan infrastructure 新設** = per-Primitive ownership lifecycle +
   `sPrimitiveVertexBuffers`/`sPrimitiveIndexBuffers` `unordered_map` + 6 新 API
@@ -190,12 +190,12 @@ Phase 1.D = **実 GLTF Vulkan draw 通電** 章 5 sub-step:
   `unregisterPrimitiveVertexBuffer` + 同形 index) + `Primitive::uploadVulkanBuffers()`
   + `Asset::uploadTransforms` 末尾 hook + `Primitive` dtor 対称配線 +
   `sCurrentPrimitive` static + accessor + `recordGltfAssetDraw` 内 real Asset
-  path 配線 (commit `51b550585e`)
+  path 配線 (commit `f68fd15e15`)
 - ✅ **PC-N-9** (= 4th sub-step) **`GLTFSceneManager::render` 統合 +
   `AYAGltfRealDrawEnabled` cvar gate** = per-Primitive loop body 冒頭
   `setCurrentPrimitive` + 末尾 `clearCurrentPrimitive` 配線 + PC-N-8 (f) block
   全体を cvar guard で wrap + `AYAGltfRealDrawEnabled` Boolean cvar 1 件追加
-  (commit `1b60381d67`)
+  (commit `50b1171cff`)
 - ✅ **PC-N-10** (= 5th = 最終 sub-step) **cleanup + 3 stub cvar deprecate +
   Phase 1.D complete marker 起案** = 本 commit
 
@@ -230,7 +230,7 @@ Phase 1.D = **実 GLTF Vulkan draw 通電** 章 5 sub-step:
 - ✅ PC-8 Linux primary marker (= Phase 1.C strict 線形終了)
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 (= Phase 1.D 1st-4th sub-step)
-- ✅ PC-N-10 design-lock (commit `dcdb5f4799`) + **PC-N-10 実装 ✅ 本 commit** =
+- ✅ PC-N-10 design-lock (commit `a4e979200b`) + **PC-N-10 実装 ✅ 本 commit** =
   **Phase 1.D 内 5th = 最終 sub-step 実装完了 = Phase 1.D complete marker**
 - ⏳ Phase 1.E (= multi-asset / multi-skin / worker thread) = 別 phase の別
   session で別途分解 (= `feedback_ubo_migration_one_at_a_time` 厳格遵守)
@@ -263,7 +263,7 @@ draw 通電 達成** +
 4. ✅ ambiguity (N10-1)..(N10-16) 16 件 AYA literal「全件推奨で OK」record
    (2026-06-05) design-lock 継承 + 本実装で全件採用案通り実装
 5. ✅ GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6
-   不変、PC-N-9 commit `1b60381d67` 同数)
+   不変、PC-N-9 commit `50b1171cff` 同数)
 6. ✅ MUSEUBO-A 整合 = `AYAGltfRealDrawEnabled=false` default で
    `recordGltfAssetDraw` 発火経路ゼロ + OpenGL 描画 100% 維持 + 5 段 graceful
    degrade 内部維持
@@ -321,7 +321,7 @@ complete = 1 GLTF asset 完全 Vulkan draw 通電 baseline 上に Phase 1.E 章�
   cvar deprecate + Phase 1.D complete marker 起案単独 sub-step、Phase 1.E
   (multi-asset / multi-skin / worker thread) は別 phase の別 session で別途分解)
 - ✅ `feedback_design_phase_no_code_write` 整合 (本 PC-N-10 は実装 phase = 改変
-  あり、design-lock commit `dcdb5f4799` で `indra/` 改変 0 件完了済)
+  あり、design-lock commit `a4e979200b` で `indra/` 改変 0 件完了済)
 - ✅ `feedback_release_branch_workflow` (feature branch
   `feature/ayastorm-r41-gl-removal` 上 commit)
 - ✅ `feedback_no_auto_commit` (AYA 明示 commit 指示受領後 commit 予定)

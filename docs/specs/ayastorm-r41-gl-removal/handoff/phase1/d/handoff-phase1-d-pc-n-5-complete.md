@@ -2,15 +2,15 @@
 
 **作成日**: 2026-06-05
 **起案者**: Claude (AYAstorm r41 担当)
-**目的**: PC-N-5 (= Phase 1.D 着手起点 = 実 GLTF Vulkan draw 通電 1 stub) **実装 phase 完了 marker**。design-lock (commit `efad5f0200`) で確定した step (a)-(g) 7 step 実装 + Exit Criteria 10 項全充足 + build verify literal 取得 (llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131)。
+**目的**: PC-N-5 (= Phase 1.D 着手起点 = 実 GLTF Vulkan draw 通電 1 stub) **実装 phase 完了 marker**。design-lock (commit `d1fa626fad`) で確定した step (a)-(g) 7 step 実装 + Exit Criteria 10 項全充足 + build verify literal 取得 (llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131)。
 
-> **本 doc 位置付け**: PC-N-5 design-lock (= `efad5f0200`) 後の **PC-N-5 実装 phase 完了 marker**。`recordGltfAssetDraw` 新設 + `sGltfStubSkin` 第 2 address-only sentinel 新設 + initVulkan register / shutdownVulkan unregister + `AYAGltfStubDrawEnabled` cvar 切替 hook 配線。次は PC-N-5 complete 後の Phase 1.D 内後続 sub-step (= PC-N-6 仮定以降) design-lock phase。
+> **本 doc 位置付け**: PC-N-5 design-lock (= `d1fa626fad`) 後の **PC-N-5 実装 phase 完了 marker**。`recordGltfAssetDraw` 新設 + `sGltfStubSkin` 第 2 address-only sentinel 新設 + initVulkan register / shutdownVulkan unregister + `AYAGltfStubDrawEnabled` cvar 切替 hook 配線。次は PC-N-5 complete 後の Phase 1.D 内後続 sub-step (= PC-N-6 仮定以降) design-lock phase。
 
 ---
 
 ## §0. 本 session 着手契機 + PC-N-5 完了 scope record
 
-**契機**: AYA 指示「r41 Phase 1.D PC-N-5 実装着手お願いします」literal 受領 (2026-06-05、PC-N-5 design-lock commit `efad5f0200` 後の継続 session = 別 session の fresh context) + 必読 1 件 = `handoff-substep-...-phase1-d-pc-n-5-design-lock.md` (= 10 件 ambiguity 全 AYA literal「OK」record 済) Read + pinpoint reference 12 件 Read → step (a)-(g) 7 step 実装 → build verify literal 取得 → 本 complete doc 起案。
+**契機**: AYA 指示「r41 Phase 1.D PC-N-5 実装着手お願いします」literal 受領 (2026-06-05、PC-N-5 design-lock commit `d1fa626fad` 後の継続 session = 別 session の fresh context) + 必読 1 件 = `handoff-substep-...-phase1-d-pc-n-5-design-lock.md` (= 10 件 ambiguity 全 AYA literal「OK」record 済) Read + pinpoint reference 12 件 Read → step (a)-(g) 7 step 実装 → build verify literal 取得 → 本 complete doc 起案。
 
 **PC-N-5 完了 scope** (= design-lock §0 literal 5 件 + step (a)-(g) 7 step 全実装):
 
@@ -139,8 +139,8 @@
 ## §5. 残 strict 線形
 
 **Phase 1.C complete** ✅ (= PC-N-3 commit `71f7bb2a89`)
-**PC-8 Linux primary marker** ✅ (= commit `3c0c72d34f`、Phase 1.C strict 線形終了)
-**PC-N-5 design-lock** ✅ (= commit `efad5f0200`、Phase 1.D 着手起点 design-lock)
+**PC-8 Linux primary marker** ✅ (= commit `8ba7296caf`、Phase 1.C strict 線形終了)
+**PC-N-5 design-lock** ✅ (= commit `d1fa626fad`、Phase 1.D 着手起点 design-lock)
 **PC-N-5 実装** ✅ 本 commit (= Phase 1.D 着手起点 実装完了)
 
 次:
@@ -205,7 +205,7 @@ Phase 1.A ✅ + Phase 1.B ✅ + (Z) SSS ✅ + (W) uniform4iv ✅ + (Y) Phase 1.C
 - **feedback_doubt_self_first** 遵守 = design-lock phase で ambiguity 10 件発見 + 推奨案提示 + AYA literal「OK」受領後本実装、本実装中も recordAvatarPlaceholderDraw signature + bindV3aRigged calling convention + ubo_metadata.inl literal を Read で literal 確認後配線、推測実装なし
 - **feedback_confirm_referent_before_acting** 遵守 = 10 件 batch AYA 確認 design-lock phase で完了、本実装中も namespace 配置 (= nested anonymous namespace) 判断は既存 sPlaceholderSkin 配置 pattern を literal 確認後採用
 - **feedback_ubo_migration_one_at_a_time** 厳格遵守 = PC-N-5 = 実 GLTF Vulkan draw 通電 1 stub 単独 sub-step (= 第 2 sentinel-like skin + recordGltfAssetDraw 新設 + cvar 切替)、(N5-1) B (= 実 LL::GLTF::Asset 経由 vertex buffer) + (N5-1) C (= GLTFSceneManager::render 統合) は Phase 1.D 内後続 sub-step に分離
-- **feedback_design_phase_no_code_write** 整合 = 本 PC-N-5 は実装 phase = design-lock commit `efad5f0200` で `indra/` 改変 0 件完了済、本 session で `indra/llrender/llvkloader.cpp` + `indra/newview/app_settings/settings.xml` 改変は実装 phase ゆえ整合
+- **feedback_design_phase_no_code_write** 整合 = 本 PC-N-5 は実装 phase = design-lock commit `d1fa626fad` で `indra/` 改変 0 件完了済、本 session で `indra/llrender/llvkloader.cpp` + `indra/newview/app_settings/settings.xml` 改変は実装 phase ゆえ整合
 - **feedback_release_branch_workflow** 遵守 = feature branch `feature/ayastorm-r41-gl-removal` 上 commit
 - **feedback_no_auto_commit** 遵守 = AYA 明示 commit 指示「commit してください」literal 受領後 commit 予定
 - **feedback_no_claude_coauthor** 遵守 = Co-Authored-By 行不在予定
@@ -213,4 +213,4 @@ Phase 1.A ✅ + Phase 1.B ✅ + (Z) SSS ✅ + (W) uniform4iv ✅ + (Y) Phase 1.C
 - **feedback_tests_dir_never_commit** 整合 = `tests/` 改変 0 件、`git add` 個別 file 指定 + `git add -A` 不使用予定
 - **memory `project_ayastorm_r41_design_principles`** 整合 = (1) Upstream OpenGL 取り込みやすさ維持 = `GLTFSceneManager::render` 改変 0 件 ((N5-8) A 採用) + (2) Core プロセス分散実現 = sentinel + stub Skin* 並走 baseline (= 後段 per-Skin parallelization 基盤)
 - **memory `project_r41_phase1b_vulkan_host_gate`** 整合 = GATE-B = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件、cvar runtime gate のみ
-- **memory `project_ayastorm_three_platforms`** 整合 = PC-8 Linux primary marker 採用 + cross-platform spec §6 PC-N-5 行追記済 (= design-lock commit `efad5f0200` 内)、Linux primary 完成 → 他者補完 model と整合
+- **memory `project_ayastorm_three_platforms`** 整合 = PC-8 Linux primary marker 採用 + cross-platform spec §6 PC-N-5 行追記済 (= design-lock commit `d1fa626fad` 内)、Linux primary 完成 → 他者補完 model と整合

@@ -4,7 +4,7 @@
 **起案者**: Claude (AYAstorm r41 担当)
 **目的**: Phase 1.E 内 **3rd sub-step = PC-N-13 = real per-draw light params + multi-asset verify** (= zero-buffer `PerDrawUBO_LightParams` 卒業 + `AYAGltfRealLightParamsEnabled` cvar 新設 + `AYAGltfMultiAssetCanary` debug-only cvar 新設 + 複数 GLTF asset 同時 draw 動作検証) の design-lock phase 完了 marker = ambiguity (N13-1)..(N13-16) 16 件 全 AYA literal「全件推奨で OK」record (2026-06-05) + 実装計画 (a)-(g) 7 step 分解 + Exit Criteria 9+10 項明文化。`indra/` 改変 0 件 (= `feedback_design_phase_no_code_write` 整合)。
 
-> **本 doc 位置付け**: PC-N-13 詳細 design-lock。Phase 1.E decomposition design-lock (= `handoff-...-phase1-e-decomposition-design-lock.md`) + PC-N-11 design-lock + PC-N-11 実装 + PC-N-12 design-lock + PC-N-12 実装 (commit `4373c302d7`) baseline 上に、PC-N-13 単独の **詳細実装計画** + **想定 code diff example** + **ambiguity 16 件 (N13-1)..(N13-16)** + **Exit Criteria 10 項** を確定。PC-N-11/PC-N-12 design-lock doc と同形 pattern 踏襲。実装は別 session で別途着手 (= `feedback_ubo_migration_one_at_a_time` 厳格遵守)。
+> **本 doc 位置付け**: PC-N-13 詳細 design-lock。Phase 1.E decomposition design-lock (= `handoff-...-phase1-e-decomposition-design-lock.md`) + PC-N-11 design-lock + PC-N-11 実装 + PC-N-12 design-lock + PC-N-12 実装 (commit `b6b39bfd9f`) baseline 上に、PC-N-13 単独の **詳細実装計画** + **想定 code diff example** + **ambiguity 16 件 (N13-1)..(N13-16)** + **Exit Criteria 10 項** を確定。PC-N-11/PC-N-12 design-lock doc と同形 pattern 踏襲。実装は別 session で別途着手 (= `feedback_ubo_migration_one_at_a_time` 厳格遵守)。
 >
 > **⭐ 重大 finding (= (N13-1) C 採用根拠)**: `sGltfStubAssetPipeline` が消費する sky_smoke shader (`sSkySmokeVertModule`/`sSkySmokeFragModule`) は `PerDrawUBO_LightParams` を **shader 側で非 consume**。`PerDrawUBO_LightParams` 実消費 shader = `pointLightF.glsl` / `spotLightF.glsl` / `multiPointLightF.glsl` / `deferredUtil.glsl` / `starsV.glsl` (= 全て post-deferred lighting で GLTF asset draw とは無関係)。すなわち PC-N-8 (f) real Asset path での `writeDrawUbo` 256 B host write は **set=2 binding=0 descriptor layout 充足のみが目的** で、shader による consume は構造的に発生しない (= `llvkloader.cpp:5843-5845` literal comment「shader 未参照でも GPU error なし」既明示)。本 (N13-1) C 採用 = **zero IS real data 解釈** = sky_smoke pipeline 流用 architectural truth 尊重 + cvar gate 明示化 + first-fire marker で「現 phase で zero が real」を log 記録 + Phase 1.F+ 実 PBR shader 接続時に再着手。別 UBO 切替は scope 拡張で `feedback_ubo_migration_one_at_a_time` 違反 risk ゆえ回避。
 
@@ -12,7 +12,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.E PC-N-13 design-lock 着手お願いします。直前 commit = `4373c302d7` (PC-N-12 complete = Phase 1.E 内 2nd sub-step 実装完了 = real node modelview 通電、Option A layering-safe pointer accessor approach 採用)。PC-N-13 scope = real per-draw + multi-asset verify = zero-buffer `PerDrawUBO_LightParams` 卒業 (= 実 data 通電) + `AYAGltfMultiAssetCanary` cvar (debug-only) で複数 asset 同時描画検証 + `AYAGltfRealLightParamsEnabled` cvar 新設 (Boolean default=0 Persist=1、`AYAGltfRealModelviewEnabled` 直後並列 = Phase 1.E cvar group 連続配置)。必読 1 件: `handoff-...-phase1-e-pc-n-12-complete.md`。design-lock phase = `indra/` 改変 0 件、`feedback_design_phase_no_code_write` 厳格遵守で ambiguity 出し + 採用案提示 + AYA 確認 → design-lock doc 起案 + cross-platform spec §6 PC-N-13 行更新。GATE-B: `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (count llvkloader.cpp=6 維持)。MUSEUBO-A: 2 cvar default OFF + OpenGL 描画 100% 維持 + 5 段 graceful degrade 内部維持。`feedback_ubo_migration_one_at_a_time` 厳格遵守 (PC-N-14/PC-N-15 は別 session)。`feedback_self_verify_before_handoff` 遵守。」literal 受領 (2026-06-05、PC-N-12 complete commit `4373c302d7` 後の継続 session = 別 session の fresh context)。
+**契機**: AYA 指示「r41 Phase 1.E PC-N-13 design-lock 着手お願いします。直前 commit = `b6b39bfd9f` (PC-N-12 complete = Phase 1.E 内 2nd sub-step 実装完了 = real node modelview 通電、Option A layering-safe pointer accessor approach 採用)。PC-N-13 scope = real per-draw + multi-asset verify = zero-buffer `PerDrawUBO_LightParams` 卒業 (= 実 data 通電) + `AYAGltfMultiAssetCanary` cvar (debug-only) で複数 asset 同時描画検証 + `AYAGltfRealLightParamsEnabled` cvar 新設 (Boolean default=0 Persist=1、`AYAGltfRealModelviewEnabled` 直後並列 = Phase 1.E cvar group 連続配置)。必読 1 件: `handoff-...-phase1-e-pc-n-12-complete.md`。design-lock phase = `indra/` 改変 0 件、`feedback_design_phase_no_code_write` 厳格遵守で ambiguity 出し + 採用案提示 + AYA 確認 → design-lock doc 起案 + cross-platform spec §6 PC-N-13 行更新。GATE-B: `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (count llvkloader.cpp=6 維持)。MUSEUBO-A: 2 cvar default OFF + OpenGL 描画 100% 維持 + 5 段 graceful degrade 内部維持。`feedback_ubo_migration_one_at_a_time` 厳格遵守 (PC-N-14/PC-N-15 は別 session)。`feedback_self_verify_before_handoff` 遵守。」literal 受領 (2026-06-05、PC-N-12 complete commit `b6b39bfd9f` 後の継続 session = 別 session の fresh context)。
 
 **PC-N-13 literal scope** (= AYA task statement 直訳、4 項):
 
@@ -91,7 +91,7 @@
 
 | source | multi-asset verify アプローチ |
 |--------|-----------------------------|
-| Phase 1.E decomposition design-lock commit `01cd001d07` commit message (E-14) | A: `AYAGltfMultiAssetCanary` cvar (debug-only) |
+| Phase 1.E decomposition design-lock commit `094546889b` commit message (E-14) | A: `AYAGltfMultiAssetCanary` cvar (debug-only) |
 | AYA PC-N-13 task statement (2026-06-05) | literal: `AYAGltfMultiAssetCanary` cvar (debug-only) で複数 asset 同時描画検証 |
 | **(N13-3) AYA 全件推奨採用結果** | **A**: debug-only Boolean cvar (= 機能影響なし、log 出力のみ) |
 
@@ -133,7 +133,7 @@
 |---|------|--------|---------|---------|
 | (N13-12) | multi-asset 動作確認手順 | **A**: 既存 SL inv の複数 GLTF asset を AYA が同時 rez し実機目視 + log で `AYAGltfMultiAssetCanary` ON 時 multi-asset canary fire 確認 ((E-14) A integration approach 整合、real SL sample 信任、synthetic 不要) | OK (2026-06-05) | (E-14) A integration approach 整合、AYA 実機 with 複数 GLTF rez で自然発火、synthetic 不要 |
 | (N13-13) | 失敗時 escalation 経路 | **A**: 設計段階では成功想定 + 失敗時 PC-N-13 内 fix or 別 sub-step (= PC-N-13.1) 起案 = AYA 判断明示、解析段階では推測不可 | OK (2026-06-05) | upstream `mObjects` loop 既動作で multi-asset 自然 iterate ゆえ成功想定が design-lock default、失敗時の具体 fix path は実機現象見て初めて判断可能 |
-| (N13-14) | build verify scope | **A**: llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity `LL_VULKAN_GLSL count llvkloader.cpp=6` 不変 (= PC-N-12 commit `4373c302d7` 同数想定) | OK (2026-06-05) | (E-8) commit msg / (E-16) doc body 整合、既 PC-N-6/7/8/9/10/11/12 同形 build verify pattern 踏襲 |
+| (N13-14) | build verify scope | **A**: llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity `LL_VULKAN_GLSL count llvkloader.cpp=6` 不変 (= PC-N-12 commit `b6b39bfd9f` 同数想定) | OK (2026-06-05) | (E-8) commit msg / (E-16) doc body 整合、既 PC-N-6/7/8/9/10/11/12 同形 build verify pattern 踏襲 |
 
 ### §3.5 Exit + 改変規模 + design-lock 整合 系
 
@@ -323,7 +323,7 @@ PC-N-11/12 同形 ((N13-14) A):
 3. `INTEGRATION_TEST_llassetubopool` → 10/10 PASS
 4. `INTEGRATION_TEST_llpipelinecachestorage` → 13/13 PASS
 5. `python3 -m unittest discover tests` (codegen) → 131/131 OK
-6. `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` → 6 (= PC-N-12 commit `4373c302d7` 同数、GATE-B integrity 維持)
+6. `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` → 6 (= PC-N-12 commit `b6b39bfd9f` 同数、GATE-B integrity 維持)
 
 ### §4.6 step (f) — cross-platform spec §6 PC-N-13 行 ✅ 反映 + §A 履歴追記
 
@@ -337,7 +337,7 @@ PC-N-11/12 同形 ((N13-14) A):
 
 ### §4.8 GATE-B 整合
 
-- `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count `llvkloader.cpp=6` 不変、PC-N-12 commit `4373c302d7` 同数想定)
+- `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count `llvkloader.cpp=6` 不変、PC-N-12 commit `b6b39bfd9f` 同数想定)
 - `AYAGltfRealLightParamsEnabled` + `AYAGltfMultiAssetCanary` cvar runtime gate のみで marker 起動 vs canary log 制御
 - shader 改変 0 件 (= 既 sky_smoke shader pipeline + zero buffer 256 B host write の architectural truth 維持、shader 側は cvar 状態を知らない)
 - memory `project_r41_phase1b_vulkan_host_gate` 整合
@@ -387,7 +387,7 @@ PC-N-11/12 同形 ((N13-14) A):
 | iv | PC-N-8 (f) real Asset path 内 `<AYAstorm r41 PC-N-13 (b)>` tag block で multi-asset canary marker 配置 (= `AYAGltfMultiAssetCanary` cvar=ON + 2nd 以降 asset 検出時 LL_INFOS 1 回) ((N13-11) A) |
 | v | PC-N-13 (a) first-fire `LL_INFOS` marker (`s_first_pcn13_real_light_params_fire` atomic flag、PC-N-6/7/8/9/10/11/12 同形 pattern、log 内容で「現 phase は zero IS real data = sky_smoke shader 非 consume」明示) ((N13-10) A) |
 | vi | PC-N-13 (b) first-fire `LL_INFOS` marker (`s_first_pcn13_multi_asset_canary_fire` atomic flag、`sPcn13MultiAssetSeen.size() > 1` 時 fire) ((N13-11) A) |
-| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-12 commit `4373c302d7` 同数想定) |
+| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-12 commit `b6b39bfd9f` 同数想定) |
 | viii | MUSEUBO-A 整合 = 2 cvar default OFF で既 zero buffer + 既 multi-asset iteration log なし path 維持 + OpenGL 描画 100% 維持 + 5 段 graceful degrade 内部維持 |
 | ix | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N13-14) A) + cross-platform spec §6 PC-N-13 行 ✅ 反映 + §A 履歴 1 行追記 + handoff complete doc 起案 |
 | x | self-verify 9 観点 全 ✅ + AYA literal commit 指示受領後 commit (= `feedback_no_auto_commit` + `feedback_release_branch_workflow` + `feedback_no_claude_coauthor` 遵守) |
@@ -417,9 +417,9 @@ PC-N-11/12 同形 ((N13-14) A):
 - ✅ PC-8 Linux primary marker (= Phase 1.C strict 線形終了)
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`)
-- ✅ PC-N-11 design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35` = Phase 1.E 内 1st sub-step 実装完了 = multi-skin real Skin path 通電)
-- ✅ PC-N-12 design-lock (commit `c9c99d278f`) + PC-N-12 実装 (commit `4373c302d7` = Phase 1.E 内 2nd sub-step 実装完了 = real node modelview 通電 + 案 A layering-safe pointer accessor approach 採用)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`)
+- ✅ PC-N-11 design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81` = Phase 1.E 内 1st sub-step 実装完了 = multi-skin real Skin path 通電)
+- ✅ PC-N-12 design-lock (commit `9a62f11416`) + PC-N-12 実装 (commit `b6b39bfd9f` = Phase 1.E 内 2nd sub-step 実装完了 = real node modelview 通電 + 案 A layering-safe pointer accessor approach 採用)
 - ✅ **PC-N-13 design-lock ✅ 本 commit = Phase 1.E 内 3rd sub-step design-lock 完了**
 - ⏳ PC-N-13 実装 (= 別 session、step (a)-(g) 7 step 実施 + Exit Criteria 10 項 self-verify + handoff complete doc 起案)
 - ⏳ PC-N-14 design-lock (= worker thread design = per-Primitive UBO write + cmdbuf record 並列化 design)

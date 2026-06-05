@@ -25,7 +25,7 @@ r41 milestone の全 spec doc + handoff doc を集約。2026-06-06 整理で **l
 
 ### §1.2 design chapter (= UBO 全体設計、2026-06-03 起案)
 
-`design/` 配下 11 file = `01-overview.md`..`10-open-questions.md` (10 chapter) + `literal-cross-ref-audit.md`。η-28 で「ちゃんと設計」転換時に起案、UBO 26 個積み上げ era の構造欠陥への再設計。
+`design/` 配下 14 file = `01-overview.md`..`05-existing-inventory-link.md` (= chapter 01-05) + `06a-cache-structure-and-setter-redirect.md` + `06a-prep-phase0-measurement.md` + `06b-cadence-update-site-and-dirty.md` + `06c-descriptor-set-bind-wiring.md` (= chapter 06 を 4 sub-chapter 分割) + `07-vulkan-api-state.md`..`10-open-questions.md` (= chapter 07-10) + `literal-cross-ref-audit.md`。η-28 で「ちゃんと設計」転換時に起案、UBO 26 個積み上げ era の構造欠陥への再設計。
 
 ### §1.3 handoff (= phase 進捗記録)
 

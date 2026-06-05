@@ -10,7 +10,7 @@
 
 ## §0. 本 session 着手契機 + 案 B 統合方針 record + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.E PC-N-15b design-lock 着手お願いします。直前 commit: `a90883cbf9` = PC-N-15a complete (worker thread infrastructure 配線 = LLUboRingBuffer per-thread instance refactor + thread_local 4 件 + per-thread VkCommandPool + secondary VkCommandBuffer + AYAGltfWorkerThreadEnabled/Count 2 cvar + initVulkan/shutdownVulkan lifecycle)。必読 1 件 = PC-N-15a complete handoff doc。PC-N-15b = dispatch 配線 design = LL::WorkQueue post/drain + per-Primitive worker dispatch + secondary cmdbuf record + vkCmdExecuteCommands 集約 + sPcn13MultiAssetSeen mutex 保護 insert + sSkinUboDirty merge semantics + first-fire marker 3 件。design-lock phase なので indra/ 改変 0 件 (feedback_design_phase_no_code_write 厳格遵守)、ambiguity 確認 + 実装計画分解 + Exit Criteria 明文化 + handoff design-lock doc 起案まで。その後 PC-N-15c (cleanup + sGltfStubSkin sentinel 撤去 + Phase 1.E complete marker) で Phase 1.E 完結。」literal 受領 (2026-06-05)。
+**契機**: AYA 指示「r41 Phase 1.E PC-N-15b design-lock 着手お願いします。直前 commit: `708b8ff8a4` = PC-N-15a complete (worker thread infrastructure 配線 = LLUboRingBuffer per-thread instance refactor + thread_local 4 件 + per-thread VkCommandPool + secondary VkCommandBuffer + AYAGltfWorkerThreadEnabled/Count 2 cvar + initVulkan/shutdownVulkan lifecycle)。必読 1 件 = PC-N-15a complete handoff doc。PC-N-15b = dispatch 配線 design = LL::WorkQueue post/drain + per-Primitive worker dispatch + secondary cmdbuf record + vkCmdExecuteCommands 集約 + sPcn13MultiAssetSeen mutex 保護 insert + sSkinUboDirty merge semantics + first-fire marker 3 件。design-lock phase なので indra/ 改変 0 件 (feedback_design_phase_no_code_write 厳格遵守)、ambiguity 確認 + 実装計画分解 + Exit Criteria 明文化 + handoff design-lock doc 起案まで。その後 PC-N-15c (cleanup + sGltfStubSkin sentinel 撤去 + Phase 1.E complete marker) で Phase 1.E 完結。」literal 受領 (2026-06-05)。
 
 **案 B 統合方針確定の経緯**:
 - 当初 Claude が PC-N-15b ambiguity 18 件 batch 提示 → AYA literal「具体的に何が問題になるのかちょっとよくわからないです」literal feedback 受領 (2026-06-05)
@@ -67,10 +67,10 @@
 
 ### §1.3 background reference 5 件 (= Phase 1.E 全体 + 設計原則)
 
-- **PC-N-15a complete handoff**: `handoff-...-phase1-e-pc-n-15a-complete.md` (commit `a90883cbf9`) = worker thread infrastructure 配線 baseline、本 PC-N-15b 実装の前提
-- **PC-N-15a design-lock**: `handoff-...-phase1-e-pc-n-15a-design-lock.md` (commit `93357fa44e`) = (N15a-1)..(N15a-13) 13 件 ambiguity AYA OK record + LLUboRingBuffer per-instance 化方針確定 source
-- **PC-N-14 design-lock**: `handoff-...-phase1-e-pc-n-14-design-lock.md` (commit `1a83070f31`) = (N14-1)..(N14-20) 20 件 ambiguity AYA OK record + worker thread design source (= (N14-1) ⭐ A secondary cmdbuf + vkCmdExecuteCommands 集約 pattern)
-- **PC-N-13 complete handoff**: `handoff-...-phase1-e-pc-n-13-complete.md` (commit `faae1544d6`) = sPcn13MultiAssetSeen canary + zero IS real data semantic baseline
+- **PC-N-15a complete handoff**: `handoff-...-phase1-e-pc-n-15a-complete.md` (commit `708b8ff8a4`) = worker thread infrastructure 配線 baseline、本 PC-N-15b 実装の前提
+- **PC-N-15a design-lock**: `handoff-...-phase1-e-pc-n-15a-design-lock.md` (commit `631794883d`) = (N15a-1)..(N15a-13) 13 件 ambiguity AYA OK record + LLUboRingBuffer per-instance 化方針確定 source
+- **PC-N-14 design-lock**: `handoff-...-phase1-e-pc-n-14-design-lock.md` (commit `e96f7e2a68`) = (N14-1)..(N14-20) 20 件 ambiguity AYA OK record + worker thread design source (= (N14-1) ⭐ A secondary cmdbuf + vkCmdExecuteCommands 集約 pattern)
+- **PC-N-13 complete handoff**: `handoff-...-phase1-e-pc-n-13-complete.md` (commit `289d44b536`) = sPcn13MultiAssetSeen canary + zero IS real data semantic baseline
 - **memory `project_ayastorm_r41_design_principles`** = (1) Upstream OpenGL 取り込みやすさ維持 + (2) Core プロセス分散実現の 2 大設計原則 source
 
 ---
@@ -382,7 +382,7 @@ AYA literal record: 2026-06-05 受領 = Q1-Q4 + (N15b-1)..(N15b-18) 全 22 件 A
 - `INTEGRATION_TEST_llassetubopool` 10/10 PASS
 - `INTEGRATION_TEST_llpipelinecachestorage` 13/13 PASS
 - `python3 -m unittest discover` from `scripts/ubo_codegen` = 131 tests, OK
-- GATE-B integrity = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` = **6 不変** (= PC-N-15a commit `a90883cbf9` 同数)
+- GATE-B integrity = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` = **6 不変** (= PC-N-15a commit `708b8ff8a4` 同数)
 
 ### §5.8 step (h) cross-platform spec §6 PC-N-15b 行 ✅ 反映 + §A 履歴 1 行追記 + 本 design-lock doc §B「実装結果追記」section に PC-N-15b 結果記録 ((N15b-16) A 案 B 統合方針)
 
@@ -490,12 +490,12 @@ step (g) PC-N-15b 同形 = llrender PASS + WARNING 0 + TUT 11/11 + 10/10 + 13/13
 - ✅ PC-8 Linux primary marker (= Phase 1.C strict 線形終了)
 - ✅ PC-N-5 / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`)
-- ✅ PC-N-11 design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35`)
-- ✅ PC-N-12 design-lock (commit `c9c99d278f`) + PC-N-12 実装 (commit `4373c302d7`)
-- ✅ PC-N-13 design-lock (commit `e13d00d4a6`) + PC-N-13 実装 (commit `faae1544d6`)
-- ✅ PC-N-14 design-lock (commit `1a83070f31`)
-- ✅ PC-N-15a design-lock (commit `93357fa44e`) + PC-N-15a 実装 (commit `a90883cbf9`)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`)
+- ✅ PC-N-11 design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81`)
+- ✅ PC-N-12 design-lock (commit `9a62f11416`) + PC-N-12 実装 (commit `b6b39bfd9f`)
+- ✅ PC-N-13 design-lock (commit `cd253cb754`) + PC-N-13 実装 (commit `289d44b536`)
+- ✅ PC-N-14 design-lock (commit `e96f7e2a68`)
+- ✅ PC-N-15a design-lock (commit `631794883d`) + PC-N-15a 実装 (commit `708b8ff8a4`)
 - ✅ **PC-N-15b + PC-N-15c 統合 design-lock ✅ 本 commit (案 B 統合方針 = doc 4 件 → 2 件)**
 - ⏳ PC-N-15b 実装 (= 次 session、build verify + AYA live 確認 後本 doc §B 追記)
 - ⏳ PC-N-15c 実装 (= PC-N-15b 完了後別 session、Phase 1.E complete marker handoff doc 起案)
@@ -573,7 +573,7 @@ PC-N-15b 実装着手 = step (a)-(h) 8 step 実施 = (a) LL::WorkQueue infrastru
 ### §B.1 PC-N-15b 実装結果 (= step (a)-(h) 完了時追記、commit hash + build verify literal + Exit Criteria 10 項充足判定)
 
 **実装日**: 2026-06-05
-**HEAD 起点**: `26db10dfda` (= PC-N-15b/c 統合 design-lock complete)
+**HEAD 起点**: `4ea141964f` (= PC-N-15b/c 統合 design-lock complete)
 **着手契機**: AYA 指示「r41 Phase 1.E PC-N-15b 実装着手お願いします」literal record 2026-06-05
 
 #### §B.1.1 step (a)-(h) 8 step 全実施
@@ -633,8 +633,8 @@ PC-N-15b 実装着手 = step (a)-(h) 8 step 実施 = (a) LL::WorkQueue infrastru
   - `INTEGRATION_TEST_llassetubopool` = 10/10 PASS。
   - `INTEGRATION_TEST_llpipelinecachestorage` = 13/13 PASS。
   - `python3 -m unittest discover` from `scripts/ubo_codegen` = 131 tests OK。
-  - GATE-B integrity = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` = **6 不変** (= PC-N-15a commit `a90883cbf9` 同数、PC-N-13 commit `faae1544d6` 同数)。
-  - **注**: newview link build は pre-existing 別 file (`indra/newview/fslocalmeshimportgltf.cpp` Refactor commit `820c4a83fc` 由来の syntax error + `indra/newview/gltfscenemanager.cpp:449` `make_shared<Asset>(json)` `LL::LL::GLTF::Asset` namespace lookup error) で error 残るが、本 PC-N-15b 改変由来ではなく PC-N-15a commit `a90883cbf9` baseline 時点で既存。`git stash` で gltfscenemanager.cpp 改変外し検証で同 error 再現確認済 = 本 PC-N-15b 改変責任なし、`feedback_admit_unknown` 遵守で newview link build 実機検証は別 phase に持越し明示。本 PC-N-15b 改変由来 llrender library build + integration test + codegen + GATE-B integrity 全 PASS で Exit Criteria 10 項中 (x) build verify literal 取得 充足。
+  - GATE-B integrity = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` = **6 不変** (= PC-N-15a commit `708b8ff8a4` 同数、PC-N-13 commit `289d44b536` 同数)。
+  - **注**: newview link build は pre-existing 別 file (`indra/newview/fslocalmeshimportgltf.cpp` Refactor commit `820c4a83fc` 由来の syntax error + `indra/newview/gltfscenemanager.cpp:449` `make_shared<Asset>(json)` `LL::LL::GLTF::Asset` namespace lookup error) で error 残るが、本 PC-N-15b 改変由来ではなく PC-N-15a commit `708b8ff8a4` baseline 時点で既存。`git stash` で gltfscenemanager.cpp 改変外し検証で同 error 再現確認済 = 本 PC-N-15b 改変責任なし、`feedback_admit_unknown` 遵守で newview link build 実機検証は別 phase に持越し明示。本 PC-N-15b 改変由来 llrender library build + integration test + codegen + GATE-B integrity 全 PASS で Exit Criteria 10 項中 (x) build verify literal 取得 充足。
 
 - **(h) cross-platform spec §6 PC-N-15b 行 ✅ 反映 + §A 履歴 1 行追記 + 本 design-lock doc §B.1 追記 ((N15b-16) A 案 B 統合方針)**:
   - `docs/specs/ayastorm-r41-gl-removal/ayastorm-r41-cross-platform-port-spec.md` §6 PC-N-15b 行 状態 ⏳ → ✅ 反映 (= 実装内容 (a)-(h) 8 step 詳細追記)。
@@ -675,8 +675,8 @@ PC-N-15b 実装着手 = step (a)-(h) 8 step 実施 = (a) LL::WorkQueue infrastru
 
 PC-N-15c の N15c-12 timing gate「PC-N-15b 完了 + AYA live verify PASS 後着手」を物理的に充足するため、PC-N-15b 実装直後の live verify で発覚した 2 件の問題対応で bridge phase 2 件を実装:
 
-- **bridge `71a5dd2cea`** = newview link fix bridge (= primitive.h class Primitive 閉じ `};` 補填 + Firestorm fork patch 整合 test 群 build 復旧 + .gitignore root-anchor 訂正、改変 file 5 件、`cmake -DLL_TESTS=OFF` reconfigure 適用)
-- **bridge hotfix `1e2384af9c`** = (1) `bindV3aRigged` `firstSet=3` → `firstSet=4` (= Vulkan slot vs design naming 混同 fix、Asset descriptor set を Asset layout slot に正しく bind、Avatar pool draw 時 SIGSEGV 解消) + (2) `drainWorkersAndExecute` 冒頭 `AYAGltfWorkerThreadEnabled` cvar guard 追加 (= `postPrimitiveToWorker` 対称 gate)、改変 file 1 件、AYA live verify「OK ログインできました」record 2026-06-06 で PASS 立証
+- **bridge `cc027bb835`** = newview link fix bridge (= primitive.h class Primitive 閉じ `};` 補填 + Firestorm fork patch 整合 test 群 build 復旧 + .gitignore root-anchor 訂正、改変 file 5 件、`cmake -DLL_TESTS=OFF` reconfigure 適用)
+- **bridge hotfix `95fdbdedac`** = (1) `bindV3aRigged` `firstSet=3` → `firstSet=4` (= Vulkan slot vs design naming 混同 fix、Asset descriptor set を Asset layout slot に正しく bind、Avatar pool draw 時 SIGSEGV 解消) + (2) `drainWorkersAndExecute` 冒頭 `AYAGltfWorkerThreadEnabled` cvar guard 追加 (= `postPrimitiveToWorker` 対称 gate)、改変 file 1 件、AYA live verify「OK ログインできました」record 2026-06-06 で PASS 立証
 
 両 bridge commit で「PC-N-15b live verify PASS」gate 充足 → PC-N-15c 着手前提整備完了。
 
@@ -699,7 +699,7 @@ PC-N-15c の N15c-12 timing gate「PC-N-15b 完了 + AYA live verify PASS 後着
   - AYA live verify literal「通常通りに描画されてます」record 2026-06-06 = 起動 PASS + 通常描画継続 + worker thread infra 起動 (`PC-N-15a worker thread infra created: worker_count=19` + `PC-N-14 worker thread launch 成功 first fire` 確認) + MUSEUBO-A 整合維持
 - **(e) cross-platform spec §6 PC-N-15c 行 ✅ 反映 + §A 履歴 1 行追記**:
   - `docs/specs/ayastorm-r41-gl-removal/ayastorm-r41-cross-platform-port-spec.md` §6 PC-N-15c 行状態 ⏳ → ✅ + AYA live verify literal「通常通りに描画されてます」record 2026-06-06 注記追加
-  - §A 履歴 3 行追記 = bridge `71a5dd2cea` (newview link fix bridge) + bridge hotfix `1e2384af9c` (bindV3aRigged firstSet=4 + drainWorkersAndExecute cvar guard) + 本 PC-N-15c complete
+  - §A 履歴 3 行追記 = bridge `cc027bb835` (newview link fix bridge) + bridge hotfix `95fdbdedac` (bindV3aRigged firstSet=4 + drainWorkersAndExecute cvar guard) + 本 PC-N-15c complete
 - **(f) Phase 1.E complete marker handoff doc 起案 ((N15c-7) A 案 B 統合方針整合)**:
   - 新規 `docs/specs/ayastorm-r41-gl-removal/handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-30-phase1-e-complete.md` 起案
   - §0 着手契機 + 位置付け + §1 Phase 1.E 全 sub-step 完了状態 (= 7 sub-step + bridge commits 2 件) + §2 達成事項列挙 (実 data 通電 / multi-asset/multi-skin / worker thread 並列化 / cleanup 一本化) + §3 Phase 1 全完了状態確認 (全 sub-phase ✅ table + 設計原則 + MUSEUBO-A + GATE-B) + §4 Mac/Win 補完 phase entry + §5 残 strict 線形 + §6 self-verify 9 観点 + §A AYA literal record + feedback 遵守 record

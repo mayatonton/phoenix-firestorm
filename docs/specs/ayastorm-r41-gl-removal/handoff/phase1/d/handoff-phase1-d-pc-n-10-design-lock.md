@@ -4,7 +4,7 @@
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `1b60381d67` (PC-N-9 complete = Phase 1.D 内 4th sub-step 実装完了)
+**Previous commit**: `50b1171cff` (PC-N-9 complete = Phase 1.D 内 4th sub-step 実装完了)
 
 ---
 
@@ -30,7 +30,7 @@ PC-N-10 = **Phase 1.D 内 5th = 最終 sub-step = cleanup + 3 stub cvar deprecat
 
 ### §1.1 必読 1 件 (= 全文 Read 推奨)
 
-- `docs/specs/ayastorm-r41-gl-removal/handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-30-phase1-d-pc-n-9-complete.md` (= PC-N-9 complete handoff doc = HEAD `1b60381d67` 直前 baseline)
+- `docs/specs/ayastorm-r41-gl-removal/handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-30-phase1-d-pc-n-9-complete.md` (= PC-N-9 complete handoff doc = HEAD `50b1171cff` 直前 baseline)
 
 ### §1.2 pinpoint reference 11 件 (= full file dump せず literal 確認のみ)
 
@@ -170,7 +170,7 @@ PC-N-9 complete doc + gltfscenemanager.cpp 確認結果:
 | (N10-10) | settings.xml AYAGltfRealDrawEnabled Comment 更新 | **A**: 「PC-N-10 で 3 stub cvar deprecate 予定」記述を「3 stub cvar 統合済」「Phase 1.D complete marker」に更新 | OK (2026-06-05) | record の整合性、Comment 内 cvar 優先順位記述も「PC-N-9 単独」に簡素化 |
 | (N10-11) | Phase 1.D complete marker doc 起案位置 | **A**: PC-N-10 complete handoff doc 内に Phase 1.D complete marker 統合明示 + Phase 1.D summary 別記 | OK (2026-06-05) | Phase 1.C complete = PC-N-3 complete doc 内統合同形 pattern 踏襲、doc 数最小化、§4.5 「Phase 1.D complete marker 起案」literal 整合 |
 | (N10-12) | cross-platform spec §6 PC-N-10 行起案内容 | **A**: ⏳ → ✅ + Phase 1.D complete marker + 「stub 経路撤去 + cvar 統合は host-side cleanup ゆえ macOS 派生 fix なし + Windows full Vulkan ゆえ派生 fix なし」明示 | OK (2026-06-05) | PC-N-6/7/8/9 同形 pattern、Linux primary 完成 marker 整合 |
-| (N10-13) | build verify scope (PC-N-10 実装 phase) | **A**: llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity LL_VULKAN_GLSL count llvkloader.cpp=6 不変 (PC-N-6/7/8/9 同形) | OK (2026-06-05) | 一貫性、PC-N-9 commit `1b60381d67` と同数維持で regression なし確認 |
+| (N10-13) | build verify scope (PC-N-10 実装 phase) | **A**: llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity LL_VULKAN_GLSL count llvkloader.cpp=6 不変 (PC-N-6/7/8/9 同形) | OK (2026-06-05) | 一貫性、PC-N-9 commit `50b1171cff` と同数維持で regression なし確認 |
 | (N10-14) | Exit Criteria 項目数 | **A**: 10 項 (PC-N-6/7/8/9 同形) | OK (2026-06-05) | 一貫性 |
 | (N10-15) | 実装計画 step 分解粒度 | **A**: 10 step = (a) entry hook cvar 切替 + (b) PC-N-6 (e) + PC-N-7 (e) + PC-N-5 base 経路撤去 + (c) PC-N-9 (b) cvar guard 撤去 + (d) stub VB/IB storage + initVulkan + shutdownVulkan 撤去 + (e) settings.xml 3 stub cvar 削除 + (f) AYAGltfRealDrawEnabled Comment 更新 + (g) cross-platform spec §6 PC-N-10 行更新 + (h) Phase 1.D complete marker 起案 + (i) build verify literal 取得 + (j) handoff complete doc 起案 | OK (2026-06-05) | PC-N-6/7/8/9 同形粒度、各 site 独立 testable + build verify 独立 |
 | (N10-16) | `recordAvatarPlaceholderDraw` 末尾 PC-N-5 (e) tag block 名称 | **A**: PC-N-10 (a) に rename (cvar 切替で意味変わる) | OK (2026-06-05) | 機能 = AYAGltfRealDrawEnabled cvar gate に変化 = tag 名称も整合的に PC-N-10 (a) に更新、code archaeology 容易 |
@@ -310,7 +310,7 @@ PC-N-6/7/8/9 同形 scope ((N10-13) A):
 | 3 | `INTEGRATION_TEST_llassetubopool` | 10/10 PASS YAY!! |
 | 4 | `INTEGRATION_TEST_llpipelinecachestorage` | 13/13 PASS YAY!! |
 | 5 | `python3 -m unittest discover tests` (codegen) | 131/131 OK |
-| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | 6 (= PC-N-9 commit `1b60381d67` 同数、GATE-B integrity 維持) |
+| 6 | `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` | 6 (= PC-N-9 commit `50b1171cff` 同数、GATE-B integrity 維持) |
 
 ### §4.10 step (j) handoff complete doc 起案
 
@@ -331,7 +331,7 @@ PC-N-6/7/8/9 同形 pattern:
 
 ## §4.11 GATE-B 整合 (= memory `project_r41_phase1b_vulkan_host_gate`)
 
-- `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` 結果は PC-N-9 commit `1b60381d67` と同数 (= 6) 維持
+- `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` 結果は PC-N-9 commit `50b1171cff` と同数 (= 6) 維持
 - 撤去 phase ゆえ `LL_VULKAN_GLSL` 既存 6 件は無変更維持 (= count 不変)
 - cvar 新設 0 件 + 既存 4 cvar から 3 件削除 = 削減 phase
 
@@ -389,7 +389,7 @@ shader 改変 0 件、codegen 改変 0 件、CMake 改変 0 件、tests/ 改変 
 | (iv) | `sGltfStubVertexBuffer` / `sGltfStubIndexBuffer` storage + initVulkan VMA allocate + shutdownVulkan vmaDestroyBuffer 全撤去 ((N10-4) A) |
 | (v) | `sGltfStubSkin` sentinel + `sGltfStubAssetPipeline` 維持 ((N10-3) B + (N10-5) B) |
 | (vi) | settings.xml 3 stub cvar 行完全削除 + AYAGltfRealDrawEnabled Comment 更新 ((N10-2) A + (N10-10) A) |
-| (vii) | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-9 commit `1b60381d67` 同数) |
+| (vii) | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-9 commit `50b1171cff` 同数) |
 | (viii) | MUSEUBO-A 整合 = `AYAGltfRealDrawEnabled=false` default で recordGltfAssetDraw 全経路発火なし + PC-N-8 (f) 5 段 graceful degrade 維持 |
 | (ix) | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 ((N10-13) A) |
 | (x) | Phase 1.D complete marker 統合明示 + PC-N-10 complete handoff doc 起案 ((N10-11) A) + cross-platform spec §6 PC-N-10 行 ✅ 反映 + §A 履歴 1 行追記 ((N10-12) A) |

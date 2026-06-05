@@ -4,7 +4,7 @@
 **起案者**: Claude (AYAstorm r41 担当)
 **目的**: Phase 1.E 内 **5th sub-step = PC-N-15a = worker thread infra design-lock** (= per-thread `LLUboRingBuffer` instance + per-thread VkCommandPool + secondary VkCommandBuffer + thread_local accessor + 2 cvar の **storage 配線のみ**、worker thread launch + 並列実行は PC-N-15b 持越し) の design-lock phase 完了 marker = ambiguity (N15a-1)..(N15a-13) 13 件 全 AYA literal「OK」record (2026-06-05) + 実装計画 (a)-(e) 5 step 分解 + Exit Criteria 9+10 項明文化。`indra/` 改変 0 件 (= `feedback_design_phase_no_code_write` 整合)。実装は PC-N-15a 別 session、PC-N-15b/PC-N-15c は更に別 sub-step。
 
-> **本 doc 位置付け**: PC-N-15a 詳細 design-lock。PC-N-14 design-lock (= `handoff-...-phase1-e-pc-n-14-design-lock.md`、commit `1a83070f31`) baseline 上に、**PC-N-14 段階で「(N14-7) B per-thread sub-ring 化」approve 済の path を実装着手前 investigation で blocker 発見 + (E-14) B literal 維持の唯一 path として α 案 (`LLUboRingBuffer` per-thread instance 化) に pivot、その implementation を更に 3 sub-step (PC-N-15a / PC-N-15b / PC-N-15c) に分解した第 1 段 = infra 配線のみ**。`feedback_ubo_migration_one_at_a_time` 厳格遵守で各 sub-phase build verify + 段階通電 + issue 局所化。
+> **本 doc 位置付け**: PC-N-15a 詳細 design-lock。PC-N-14 design-lock (= `handoff-...-phase1-e-pc-n-14-design-lock.md`、commit `e96f7e2a68`) baseline 上に、**PC-N-14 段階で「(N14-7) B per-thread sub-ring 化」approve 済の path を実装着手前 investigation で blocker 発見 + (E-14) B literal 維持の唯一 path として α 案 (`LLUboRingBuffer` per-thread instance 化) に pivot、その implementation を更に 3 sub-step (PC-N-15a / PC-N-15b / PC-N-15c) に分解した第 1 段 = infra 配線のみ**。`feedback_ubo_migration_one_at_a_time` 厳格遵守で各 sub-phase build verify + 段階通電 + issue 局所化。
 >
 > **⭐ 重大 design pivot (= PC-N-15 着手前 investigation 経由 (N14-7) re-decide)**: PC-N-14 design-lock (N14-7) B literal「per-thread sub-ring buffer + main 集約 phase で merge」を investigation で具体化したところ、`LLUboRingBuffer` (`indra/llcommon/lluboringbuffer.h`) は **per-instance 独立 storage で thread-safe 動作可** (= chunk state は instance 内完結、copy/assignment delete で unique_ptr 経由のみ、constructor が factory+destroyer 注入型ゆえ N instance 独立生成可) と判明、ただし consumer-side `sDrawUboRingBufferRecords` map (`llvkloader.cpp:422`) は共有ゆえ per-thread sub-map 化必要。これが (N15a-2) ⭐ 確定 + AYA literal「OK」record (2026-06-05) で α 案 path 確定。β 案 (= mutex 保護 single instance) は AYA 指摘 (2026-06-05)「短い寿命な処理だけプロセス化できると読めるんだけどそれではあまり意味がない」literal で reject = mutex 直列化で worker thread 並列度が allocate 部分でゼロ化、(E-14) B literal「UBO write + cmdbuf 両方並列化」を見かけ上充足するが実質 cmdbuf 並列のみ = scope shrink 抵触。
 
@@ -12,7 +12,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.E PC-N-15 実装着手お願いします。直前 commit = `1a83070f31` (PC-N-14 design-lock complete = worker thread design = per-Primitive UBO write + cmdbuf record 並列化 design = 20 件 ambiguity AYA literal「OK」record + 実装計画 (a)-(k) 11 step 分解)。task = Phase 1.E 内 5th = 最終 sub-step = worker thread 実装 + cleanup + Phase 1.E complete marker 起案。実装 phase ゆえ feedback_design_phase_no_code_write 解除、indra/ 改変 OK。」literal 受領 (2026-06-05)。
+**契機**: AYA 指示「r41 Phase 1.E PC-N-15 実装着手お願いします。直前 commit = `e96f7e2a68` (PC-N-14 design-lock complete = worker thread design = per-Primitive UBO write + cmdbuf record 並列化 design = 20 件 ambiguity AYA literal「OK」record + 実装計画 (a)-(k) 11 step 分解)。task = Phase 1.E 内 5th = 最終 sub-step = worker thread 実装 + cleanup + Phase 1.E complete marker 起案。実装 phase ゆえ feedback_design_phase_no_code_write 解除、indra/ 改変 OK。」literal 受領 (2026-06-05)。
 
 **着手前 investigation 経由 pivot**: Claude が PC-N-14 design-lock §A「`sDrawUboRingBufferMgr` 内部 thread-safety **未確認**」flag を受けて explore agent 4 件並列調査 → `LLUboRingBuffer` は per-instance 化可能だが **`LLUboRingBuffer::allocate` 自体は mutex/lock-free 機構なし、複数 thread 同時 allocate 不可、per-thread instance 化が唯一の lock-free path** と判明。これを AYA に surface (= 3 案 α/β/γ 提示)、AYA literal「B でいきましょう」record (= 「B 案 = PC-N-15 を 3 sub-phase 分解」採用 + α 案 = per-thread instance refactor 選択) 受領 (2026-06-05)。続いて PC-N-15a 単独で確定すべき ambiguity 13 件 batch 提示 → AYA literal「OK」record 一括受領 (2026-06-05) で本 PC-N-15a design-lock doc 起案。
 
@@ -51,9 +51,9 @@
 
 ### §1.3 background reference 4 件 (= Phase 1.E 全体 + 設計原則)
 
-- **PC-N-14 design-lock**: `handoff-...-phase1-e-pc-n-14-design-lock.md` (commit `1a83070f31`) = (N14-1)..(N14-20) 20 件 ambiguity AYA OK record + (N14-7) B literal が本 PC-N-15a の implementation source
+- **PC-N-14 design-lock**: `handoff-...-phase1-e-pc-n-14-design-lock.md` (commit `e96f7e2a68`) = (N14-1)..(N14-20) 20 件 ambiguity AYA OK record + (N14-7) B literal が本 PC-N-15a の implementation source
 - **Phase 1.E decomposition design-lock**: `handoff-...-phase1-e-decomposition-design-lock.md` §4.4 = PC-N-14/15 想定 ambiguity 5 件 + (E-9) B + (E-14) B 整合確認
-- **PC-N-13 complete handoff**: `handoff-...-phase1-e-pc-n-13-complete.md` (commit `faae1544d6`) = baseline (= PC-N-8 (f) real Asset path + PC-N-11 (a) / PC-N-12 (a) / PC-N-13 (a) / (b) 既配線 tag block + `sPcn13MultiAssetSeen` 既配線確認)
+- **PC-N-13 complete handoff**: `handoff-...-phase1-e-pc-n-13-complete.md` (commit `289d44b536`) = baseline (= PC-N-8 (f) real Asset path + PC-N-11 (a) / PC-N-12 (a) / PC-N-13 (a) / (b) 既配線 tag block + `sPcn13MultiAssetSeen` 既配線確認)
 - **design 09 phase roadmap**: `docs/specs/ayastorm-r41-gl-removal/design/09-phase-roadmap.md` = Phase 1 全体 roadmap + worker thread 並列化方針 source ((E-9) B literal「design 09 参照」)
 
 ---
@@ -157,7 +157,7 @@
 |---|------|--------|---------|---------|
 | (N15a-10) | PC-N-15a 想定改変 file 件数 | **A**: **5 件** = (1) `indra/llrender/llvkloader.cpp` + (2) `indra/newview/app_settings/settings.xml` + (3) `cross-platform spec §6 PC-N-15a 行追加 + §A 履歴 1 行` + (4) **本 PC-N-15a design-lock doc 起案** + (5) **PC-N-15a complete handoff doc 起案** (= 別 session 実装後) | OK (2026-06-05) | PC-N-11/12/13/14 同形 5 件 pattern |
 | (N15a-11) | Exit Criteria 項目数 | **A**: design-lock phase **9 項** + 実装 phase **10 項** (PC-N-6..14 同形 pattern) | OK (2026-06-05) | 既配線 pattern 踏襲 |
-| (N15a-12) | build verify scope | **A**: PC-N-6..14 同形 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity `LL_VULKAN_GLSL count llvkloader.cpp=6` 不変 (= PC-N-14 design-lock commit `1a83070f31` 同数想定) | OK (2026-06-05) | 既配線 build verify pattern 踏襲、PC-N-15a 実装 phase で literal 検証取得予定 |
+| (N15a-12) | build verify scope | **A**: PC-N-6..14 同形 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity `LL_VULKAN_GLSL count llvkloader.cpp=6` 不変 (= PC-N-14 design-lock commit `e96f7e2a68` 同数想定) | OK (2026-06-05) | 既配線 build verify pattern 踏襲、PC-N-15a 実装 phase で literal 検証取得予定 |
 | (N15a-13) | PC-N-15a 失敗時 escalation 経路 | **A**: PC-N-15a 内 fix or 別 sub-step (= PC-N-15a.1) 起案 = AYA 判断 | OK (2026-06-05) | PC-N-11/12/13/14 同形 escalation pattern、infra 配線のみゆえ失敗想定低 (= LLUboRingBuffer 既実装の N instance 化 + VkCommandPool 既 pattern 複製) |
 
 ---
@@ -470,7 +470,7 @@ caller hook (= initVulkan + shutdownVulkan):
 
 ### §4.6 GATE-B 整合 (= `#ifdef LL_VULKAN_GLSL` 新規追加 0 件)
 
-PC-N-15a 改変は全て host-side C++ (= 2 cvar + storage 配線 + thread_local 化 + mutex 宣言 + initVulkan/shutdownVulkan hook)、shader/GLSL 改変なしゆえ `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 = `count llvkloader.cpp=6` 不変 (= PC-N-14 design-lock commit `1a83070f31` 同数想定)。
+PC-N-15a 改変は全て host-side C++ (= 2 cvar + storage 配線 + thread_local 化 + mutex 宣言 + initVulkan/shutdownVulkan hook)、shader/GLSL 改変なしゆえ `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 = `count llvkloader.cpp=6` 不変 (= PC-N-14 design-lock commit `e96f7e2a68` 同数想定)。
 
 ### §4.7 MUSEUBO-A 整合 (= OpenGL 描画 100% 維持 + runtime regression 0)
 
@@ -512,7 +512,7 @@ PC-N-15a 改変は全て host-side C++ (= 2 cvar + storage 配線 + thread_local
 | iv | 4 file-static accessor (`sCurrentAsset`/`sCurrentSkin`/`sCurrentPrimitive`/`sCurrentNodeAssetMatrix`) `thread_local` 修飾子追加 + comment 更新 ((N14-8) A 修正版 = (N15a-10) A) | ⏳ PC-N-15a |
 | v | `sPcn13MultiAssetSeen` `thread_local` 化 reject + `<AYAstorm r41 PC-N-15a (c)>` tag block で `std::mutex sPcn13MultiAssetSeenMutex` 新設 (lock_guard 取得は PC-N-15b で追加) ((N15a-6) B = (N14-8) revisit) | ⏳ PC-N-15a |
 | vi | `createWorkerThreadInfra()` + `destroyWorkerThreadInfra()` helper 新設 + initVulkan / shutdownVulkan caller hook 配線 ((N15a-7) B always at init + (N15a-8) A reverse-init cleanup + (N14-5) A per-thread VkCommandPool + (N14-1) ⭐ A secondary VkCommandBuffer + (N15a-2) ⭐ A per-thread LLUboRingBuffer instance + (N15a-3)/(N15a-4) per-instance factory closure + per-thread sub-map) | ⏳ PC-N-15a |
-| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-14 design-lock commit `1a83070f31` 同数想定) + MUSEUBO-A 整合 = `AYAGltfWorkerThreadEnabled=false`/`true` 両方で描画経路不変 (= PC-N-15a 段階 launch 経路未配線) + OpenGL 描画 100% 維持 ((N15a-12) A) | ⏳ PC-N-15a |
+| vii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-14 design-lock commit `e96f7e2a68` 同数想定) + MUSEUBO-A 整合 = `AYAGltfWorkerThreadEnabled=false`/`true` 両方で描画経路不変 (= PC-N-15a 段階 launch 経路未配線) + OpenGL 描画 100% 維持 ((N15a-12) A) | ⏳ PC-N-15a |
 | viii | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity ((N15a-12) A) | ⏳ PC-N-15a |
 | ix | cross-platform spec §6 PC-N-15a 行 ✅ 反映 + §A 履歴 1 行追記 ((N15a-10) A の (3)) + handoff PC-N-15a complete doc 起案 ((N15a-10) A の (5)) | ⏳ PC-N-15a |
 | x | self-verify 9 観点 全 ✅ | ⏳ PC-N-15a |
@@ -539,7 +539,7 @@ PC-N-15a 改変は全て host-side C++ (= 2 cvar + storage 配線 + thread_local
 - ✅ PC-8 Linux primary marker (= Phase 1.C strict 線形終了)
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`) + PC-N-11 design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35`) + PC-N-12 design-lock (commit `c9c99d278f`) + PC-N-12 実装 (commit `4373c302d7`) + PC-N-13 design-lock (commit `e13d00d4a6`) + PC-N-13 実装 (commit `faae1544d6`) + PC-N-14 design-lock (commit `1a83070f31`)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`) + PC-N-11 design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81`) + PC-N-12 design-lock (commit `9a62f11416`) + PC-N-12 実装 (commit `b6b39bfd9f`) + PC-N-13 design-lock (commit `cd253cb754`) + PC-N-13 実装 (commit `289d44b536`) + PC-N-14 design-lock (commit `e96f7e2a68`)
 - ✅ **PC-N-15a design-lock ✅ 本 commit = Phase 1.E 内 5th sub-step design-lock complete = worker thread infra design (= per-thread LLUboRingBuffer N instance + per-thread VkCommandPool + secondary VkCommandBuffer + thread_local 4 件 + sPcn13MultiAssetSeen mutex 保護 + 2 cvar 配線 + initVulkan/shutdownVulkan lifecycle、ambiguity 13 件 resolve + 実装計画 5 step + Exit Criteria 9+10 項)**
 - ⏳ PC-N-15a 実装 (= 別 session、infra 配線通電 + build verify)
 - ⏳ PC-N-15b design-lock + 実装 (= worker thread launch + secondary cmd_buf record + vkCmdExecuteCommands 集約 + drain + first-fire marker 3 件 + sPcn13MultiAssetSeen lock_guard 取得 + sSkinUboDirty merge 経路)
@@ -608,5 +608,5 @@ PC-N-15a 実装着手 = step (a)-(e) 5 step 実施 = (a) settings.xml `AYAGltfWo
 - ✅ `feedback_tests_dir_never_commit` 整合 (tests/ 改変 0 件、git add 個別 file 指定予定)
 - ✅ memory `project_ayastorm_r41_design_principles` 整合
   ((1) Upstream OpenGL 取り込みやすさ維持 = `recordGltfAssetDraw` signature 不変 + `GLTFSceneManager::render` caller-side 改変 0 件 + `LLUboRingBuffer` class 改変 0 件 ((N15a-2) ⭐ A) + accessor signature 不変 ((N14-8) A 修正版 = (N15a-10) A 4 件) + shader 改変ゼロ + (2) Core プロセス分散実現 = per-thread N instance storage 配線で PC-N-15b lock-free allocate 経路の foundation 完成 ((N15a-2) ⭐ A + (N15a-3)/(N15a-4)/(N15a-5) per-thread sub-map))
-- ✅ memory `project_r41_phase1b_vulkan_host_gate` 整合 (GATE-B = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 ((N15a-12) A)、`AYAGltfWorkerThreadEnabled` + `AYAGltfWorkerThreadCount` cvar runtime gate のみ ((N14-10) A)、count llvkloader.cpp=6 不変想定 (= PC-N-14 design-lock commit `1a83070f31` 同数))
+- ✅ memory `project_r41_phase1b_vulkan_host_gate` 整合 (GATE-B = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 ((N15a-12) A)、`AYAGltfWorkerThreadEnabled` + `AYAGltfWorkerThreadCount` cvar runtime gate のみ ((N14-10) A)、count llvkloader.cpp=6 不変想定 (= PC-N-14 design-lock commit `e96f7e2a68` 同数))
 - ✅ memory `project_ayastorm_three_platforms` 整合 (cross-platform spec §6 PC-N-15a 行追加で macOS / Windows 派生 fix 候補なし想定 = host-side `std::thread::hardware_concurrency()` + per-thread `VkCommandPool` + secondary `VkCommandBuffer` + per-thread `LLUboRingBuffer` instance + `thread_local` storage は OS 非依存 + VMA default thread-safe locking は OS 非依存 + 2 cvar XML は OS 非依存 + descriptor set 数 5 維持 ゆえ macOS 派生 fix 候補なし + Windows full Vulkan ゆえ派生 fix 候補なし、Linux primary 完成 → 他者補完 model 整合)

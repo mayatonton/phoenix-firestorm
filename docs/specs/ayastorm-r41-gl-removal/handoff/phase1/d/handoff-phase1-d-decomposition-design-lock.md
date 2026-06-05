@@ -10,7 +10,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.D 内後続 sub-step (= PC-N-6 仮定以降) design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-5 complete commit `675529a891` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-5 complete handoff doc) Read + pinpoint reference 6 件 (PC-N decomposition + design 06b §2.5 + design 06c §2.5 + cross-platform spec + recordGltfAssetDraw + GLTFSceneManager::render) Read → Explore agent 経由 10 項現状調査 (= A PC-N-5 design-lock deferred scope + B design 09 Phase 1.D 定義 + C GLTFSceneManager::render 現状 + D LL::GLTF::Asset vertex buffer OpenGL path + E Asset Vulkan path + F recordGltfAssetDraw 現状 + G recordAvatarPlaceholderDraw 対称性 + H mUseUBO gate 現状 + I AYAGltfStubDrawEnabled 状態 + J design 06b/06c §2.5 hook site 現状) → ambiguity (D-1)..(D-12) 12 件 batch 提示 → AYA literal「OK」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
+**契機**: AYA 指示「r41 Phase 1.D 内後続 sub-step (= PC-N-6 仮定以降) design-lock 着手お願いします」literal 受領 (2026-06-05、PC-N-5 complete commit `b7a67ce659` 後の継続 session = 別 session の fresh context) + 必読 1 件 (PC-N-5 complete handoff doc) Read + pinpoint reference 6 件 (PC-N decomposition + design 06b §2.5 + design 06c §2.5 + cross-platform spec + recordGltfAssetDraw + GLTFSceneManager::render) Read → Explore agent 経由 10 項現状調査 (= A PC-N-5 design-lock deferred scope + B design 09 Phase 1.D 定義 + C GLTFSceneManager::render 現状 + D LL::GLTF::Asset vertex buffer OpenGL path + E Asset Vulkan path + F recordGltfAssetDraw 現状 + G recordAvatarPlaceholderDraw 対称性 + H mUseUBO gate 現状 + I AYAGltfStubDrawEnabled 状態 + J design 06b/06c §2.5 hook site 現状) → ambiguity (D-1)..(D-12) 12 件 batch 提示 → AYA literal「OK」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
 
 **Phase 1.D 分解 literal scope** (= 5 sub-step、PC-N-6..PC-N-10):
 

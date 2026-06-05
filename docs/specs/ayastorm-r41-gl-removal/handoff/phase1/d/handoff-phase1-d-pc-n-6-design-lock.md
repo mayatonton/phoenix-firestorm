@@ -10,7 +10,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.D PC-N-6 design-lock 着手お願いします」literal 受領 (2026-06-05、Phase 1.D decomposition design-lock commit `901d51d3ac` 後の継続 session = 別 session の fresh context) + 必読 1 件 (Phase 1.D decomposition design-lock doc) Read + pinpoint reference 7 件 (= `recordGltfAssetDraw` 現状 + LL::GLTF::Primitive 構造体 + LL::GLTF::Asset uploadTransforms + GLTFSceneManager::render + sAvatarBonePipeline pipeline 構築 + bindVertexBufferVk wrap + cross-platform spec §6) Read → Explore agent 経由 10 項現状調査 → ambiguity (N6-1)..(N6-13) 13 件 + 推奨案 + 採用根拠提示 → AYA literal「すべて推奨でお願いします」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
+**契機**: AYA 指示「r41 Phase 1.D PC-N-6 design-lock 着手お願いします」literal 受領 (2026-06-05、Phase 1.D decomposition design-lock commit `44c81ea228` 後の継続 session = 別 session の fresh context) + 必読 1 件 (Phase 1.D decomposition design-lock doc) Read + pinpoint reference 7 件 (= `recordGltfAssetDraw` 現状 + LL::GLTF::Primitive 構造体 + LL::GLTF::Asset uploadTransforms + GLTFSceneManager::render + sAvatarBonePipeline pipeline 構築 + bindVertexBufferVk wrap + cross-platform spec §6) Read → Explore agent 経由 10 項現状調査 → ambiguity (N6-1)..(N6-13) 13 件 + 推奨案 + 採用根拠提示 → AYA literal「すべて推奨でお願いします」一括確認受領 (2026-06-05) で本 design-lock doc 起案。
 
 **PC-N-6 literal scope** (= (N6-1) B + (N6-2) A + (N6-3) A + (N6-4) B + (N6-5) B + (N6-6) A + (N6-7) B + (N6-8) A + (N6-9) C + (N6-10) B 採用後):
 
@@ -501,7 +501,7 @@ vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sAvatarBonePipeline)
 
 ### §6.1 GATE-B / MUSEUBO-A integrity check (実装 phase 末尾検証項)
 
-- `git grep "LL_VULKAN_GLSL" indra/` 件数が PC-N-5 commit (`675529a891`) 時点と同数 = GATE-B 違反なし
+- `git grep "LL_VULKAN_GLSL" indra/` 件数が PC-N-5 commit (`b7a67ce659`) 時点と同数 = GATE-B 違反なし
 - `AYAGltfStubVertexBufferEnabled=false` default で `recordGltfAssetDraw` 経路は PC-N-5 完了状態と機能等価 = MUSEUBO-A 整合
 - 4 段 graceful degrade を Vulkan 未初期化条件下で各個 trip させて silent no-op 確認 (= cold launch + AYAGltfStubVertexBufferEnabled=true でクラッシュなし)
 

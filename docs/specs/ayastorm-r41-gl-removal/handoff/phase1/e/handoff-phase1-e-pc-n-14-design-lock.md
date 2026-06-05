@@ -4,7 +4,7 @@
 **起案者**: Claude (AYAstorm r41 担当)
 **目的**: Phase 1.E 内 **4th sub-step = PC-N-14 = worker thread design-lock** (= per-Primitive UBO write + cmdbuf record 並列化 design = 設計原則 (2) Core プロセス分散実現の本丸) の design-lock phase 完了 marker = ambiguity (N14-1)..(N14-20) 20 件 全 AYA literal「OK」record (2026-06-05) + 実装計画 (a)-(k) 11 step 分解 + Exit Criteria 9+10 項明文化。`indra/` 改変 0 件 (= `feedback_design_phase_no_code_write` 整合)。実装は PC-N-15 で別 session ((E-10) B + `feedback_ubo_migration_one_at_a_time` 厳格遵守)。
 
-> **本 doc 位置付け**: PC-N-14 詳細 design-lock。Phase 1.E decomposition design-lock (= `handoff-...-phase1-e-decomposition-design-lock.md`) + PC-N-11 design-lock + PC-N-11 実装 + PC-N-12 design-lock + PC-N-12 実装 + PC-N-13 design-lock + PC-N-13 実装 (commit `faae1544d6`) baseline 上に、PC-N-14 単独の **詳細実装計画 (= PC-N-15 で別 session 実施)** + **想定 code diff example** + **ambiguity 20 件 (N14-1)..(N14-20)** + **Exit Criteria 10 項 (PC-N-15 実装 phase 用)** を確定。PC-N-11/PC-N-12/PC-N-13 design-lock doc と同形 pattern 踏襲、ただし PC-N-14 は **design-lock + 実装が PC-N-14 / PC-N-15 で別 sub-step 分割** ((E-9) B + (E-10) B 採用) ゆえ本 doc は PC-N-15 実装 phase の source of truth (= (N14-18) B 採用「別 design doc 新設不要」)。
+> **本 doc 位置付け**: PC-N-14 詳細 design-lock。Phase 1.E decomposition design-lock (= `handoff-...-phase1-e-decomposition-design-lock.md`) + PC-N-11 design-lock + PC-N-11 実装 + PC-N-12 design-lock + PC-N-12 実装 + PC-N-13 design-lock + PC-N-13 実装 (commit `289d44b536`) baseline 上に、PC-N-14 単独の **詳細実装計画 (= PC-N-15 で別 session 実施)** + **想定 code diff example** + **ambiguity 20 件 (N14-1)..(N14-20)** + **Exit Criteria 10 項 (PC-N-15 実装 phase 用)** を確定。PC-N-11/PC-N-12/PC-N-13 design-lock doc と同形 pattern 踏襲、ただし PC-N-14 は **design-lock + 実装が PC-N-14 / PC-N-15 で別 sub-step 分割** ((E-9) B + (E-10) B 採用) ゆえ本 doc は PC-N-15 実装 phase の source of truth (= (N14-18) B 採用「別 design doc 新設不要」)。
 >
 > **⭐ 重大 design decision (= (N14-1) ⭐ critical A 採用根拠)**: cmdbuf 分散方式は **secondary command buffer + `vkCmdExecuteCommands` 集約 pattern** を採用。Vulkan 標準 multi-thread cmdbuf record pattern (= worker thread が `VK_COMMAND_BUFFER_LEVEL_SECONDARY` を独立記録、main thread が 1 回の `vkCmdExecuteCommands` で集約) ゆえ submit は main thread 単一維持で synchronization 簡素 + (E-14) B「UBO write + cmdbuf 両方並列化」literal 完全整合。case B (primary cmdbuf per-thread + multi-submit) は submit 順序 + GPU side fence/semaphore 必要で複雑度過大、case C (UBO write のみ並列、cmdbuf main) は (E-14) B 違反 (= scope 縮小)。
 
@@ -12,7 +12,7 @@
 
 ## §0. 本 session 着手契機 + literal scope record
 
-**契機**: AYA 指示「r41 Phase 1.E PC-N-14 design-lock 着手お願いします。直前 commit = `faae1544d6` (PC-N-13 complete = real per-draw light params cvar gate 通電 +「zero IS real data」semantic 確立 + multi-asset canary 配線、Phase 1.E 内 3rd sub-step 実装完了)。task = Phase 1.E 内 4th sub-step = worker thread design-lock = per-Primitive UBO write + cmdbuf record 並列化 design + ambiguity 確認 + 実装計画分解 + Exit Criteria 明文化。持越し (`feedback_ubo_migration_one_at_a_time` 厳格遵守): PC-N-15 (worker thread 実装 + Phase 1.E complete marker) は別 session。design-lock phase: `indra/` 改変 0 件 (`feedback_design_phase_no_code_write` 厳格遵守)、doc 起案 + cross-platform spec §6 PC-N-14 行更新のみ。」literal 受領 (2026-06-05、PC-N-13 complete commit `faae1544d6` 後の継続 session = 別 session の fresh context)。
+**契機**: AYA 指示「r41 Phase 1.E PC-N-14 design-lock 着手お願いします。直前 commit = `289d44b536` (PC-N-13 complete = real per-draw light params cvar gate 通電 +「zero IS real data」semantic 確立 + multi-asset canary 配線、Phase 1.E 内 3rd sub-step 実装完了)。task = Phase 1.E 内 4th sub-step = worker thread design-lock = per-Primitive UBO write + cmdbuf record 並列化 design + ambiguity 確認 + 実装計画分解 + Exit Criteria 明文化。持越し (`feedback_ubo_migration_one_at_a_time` 厳格遵守): PC-N-15 (worker thread 実装 + Phase 1.E complete marker) は別 session。design-lock phase: `indra/` 改変 0 件 (`feedback_design_phase_no_code_write` 厳格遵守)、doc 起案 + cross-platform spec §6 PC-N-14 行更新のみ。」literal 受領 (2026-06-05、PC-N-13 complete commit `289d44b536` 後の継続 session = 別 session の fresh context)。
 
 **PC-N-14 literal scope** (= AYA task statement 直訳 + Phase 1.E decomposition (E-9) B + (E-14) B + (E-3) A 整合、3 項):
 
@@ -154,7 +154,7 @@
 |---|------|--------|---------|---------|
 | (N14-14) | integration 検証手順 | **A**: **`AYAGltfMultiAssetCanary` 既配線併用** + 専用 marker log + AYA 実機 multi-asset 同時 rez | OK (2026-06-05) | PC-N-13 (b) 既配線流用、scope 拡張回避、worker thread 並列度 literal は PC-N-13 (b) canary 経由で multi-asset 並列発火確認 + (N14-12) 3 marker log で worker thread 経路 literal 取得 |
 | (N14-15) | 失敗時 escalation 経路 | **A**: PC-N-14 内 fix or 別 sub-step (= PC-N-14.1) 起案 = AYA 判断、設計段階では成功想定 | OK (2026-06-05) | PC-N-11/12/13 同形 escalation pattern、worker thread 設計は Vulkan spec + LL::WorkQueue 既配線 + secondary cmd_buf 標準 pattern ゆえ成功想定が design-lock default、失敗時の具体 fix path は実機現象見て初めて判断可能 |
-| (N14-16) | build verify scope | **A**: **PC-N-6..13 同形** = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity `LL_VULKAN_GLSL count llvkloader.cpp=6` 不変 | OK (2026-06-05) | 既配線 build verify pattern 踏襲、PC-N-13 commit `faae1544d6` 同数想定 |
+| (N14-16) | build verify scope | **A**: **PC-N-6..13 同形** = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity `LL_VULKAN_GLSL count llvkloader.cpp=6` 不変 | OK (2026-06-05) | 既配線 build verify pattern 踏襲、PC-N-13 commit `289d44b536` 同数想定 |
 
 ### §3.7 Exit + 改変規模 + design-lock 整合 系
 
@@ -413,7 +413,7 @@ PC-N-6..13 同形:
 - `INTEGRATION_TEST_llassetubopool` → 10/10 PASS YAY!!
 - `INTEGRATION_TEST_llpipelinecachestorage` → 13/13 PASS YAY!!
 - `python3 -m unittest discover tests` (codegen at `scripts/ubo_codegen/`) → 131/131 OK
-- `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` → 6 (= PC-N-13 commit `faae1544d6` 同数、GATE-B integrity 維持)
+- `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` → 6 (= PC-N-13 commit `289d44b536` 同数、GATE-B integrity 維持)
 
 ### §4.10 step (j) — cross-platform spec §6 PC-N-14 + PC-N-15 行 ✅ 反映 + §A 履歴追記
 
@@ -427,7 +427,7 @@ PC-N-15 complete handoff doc 起案 = 本 PC-N-14 design-lock doc を必読 1 �
 
 ### §4.12 GATE-B 整合 (= `#ifdef LL_VULKAN_GLSL` 新規追加 0 件)
 
-PC-N-14 改変は全て host-side C++ (= worker thread infra + thread_local 化 + cvar 追加 + secondary cmd_buf record)、shader/GLSL 改変なしゆえ `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 = `count llvkloader.cpp=6` 不変 (= PC-N-13 commit `faae1544d6` 同数)。
+PC-N-14 改変は全て host-side C++ (= worker thread infra + thread_local 化 + cvar 追加 + secondary cmd_buf record)、shader/GLSL 改変なしゆえ `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 = `count llvkloader.cpp=6` 不変 (= PC-N-13 commit `289d44b536` 同数)。
 
 ### §4.13 MUSEUBO-A 整合 (= OpenGL 描画 100% 維持 + default OFF)
 
@@ -469,7 +469,7 @@ PC-N-14 改変は全て host-side C++ (= worker thread infra + thread_local 化 
 | v | per-worker thread `VkCommandPool` + secondary `VkCommandBuffer` storage `sPcn14WorkerCtx` array 新設 + initVulkan/shutdownVulkan lifecycle 配線 ((N14-5) A + (N14-6) A + (N14-20) A) | ⏳ PC-N-15 |
 | vi | PC-N-14 (a) worker thread launch + (b) secondary cmd_buf record + (c) `vkCmdExecuteCommands` merge の 3 first-fire `LL_INFOS` marker ((N14-12) A、`s_first_pcn14_*_fire` atomic flag 3 件、PC-N-6..13 同形 pattern) | ⏳ PC-N-15 |
 | vii | `sGltfStubSkin` sentinel storage 撤去 + PC-N-8 (f) sentinel fall-through 経路撤去 ((E-11) A + (N14-20) A、PC-N-15 cleanup phase) | ⏳ PC-N-15 |
-| viii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-13 commit `faae1544d6` 同数) + MUSEUBO-A 整合 = `AYAGltfWorkerThreadEnabled=false` default で既 single-thread linear sequential record 維持 + OpenGL 描画 100% 維持 ((N14-16) A) | ⏳ PC-N-15 |
+| viii | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count llvkloader.cpp=6 不変、PC-N-13 commit `289d44b536` 同数) + MUSEUBO-A 整合 = `AYAGltfWorkerThreadEnabled=false` default で既 single-thread linear sequential record 維持 + OpenGL 描画 100% 維持 ((N14-16) A) | ⏳ PC-N-15 |
 | ix | build verify literal 取得 = llrender PASS + WARNING 0 + TUT 11+10+13 + codegen 131/131 + GATE-B integrity ((N14-16) A) + cross-platform spec §6 PC-N-14 + PC-N-15 行 ✅ 反映 + §A 履歴 2 行追記 ((N14-18) B) + handoff PC-N-15 complete doc 起案 + Phase 1.E complete marker 統合明示 ((E-10) B) | ⏳ PC-N-15 |
 | x | self-verify 9 観点 全 ✅ | ⏳ PC-N-15 |
 
@@ -498,7 +498,7 @@ PC-N-14 改変は全て host-side C++ (= worker thread infra + thread_local 化 
 - ✅ PC-8 Linux primary marker (= Phase 1.C strict 線形終了)
 - ✅ PC-N-5 (= Phase 1.D 着手起点) / Phase 1.D decomposition design-lock
 - ✅ PC-N-6 / PC-N-7 / PC-N-8 / PC-N-9 / PC-N-10 (= Phase 1.D complete = 1 GLTF asset 完全 Vulkan draw 通電 達成)
-- ✅ Phase 1.E decomposition design-lock (commit `01cd001d07`) + PC-N-11 design-lock (commit `cdf4dccc0d`) + PC-N-11 実装 (commit `13bfb55b35`) + PC-N-12 design-lock (commit `c9c99d278f`) + PC-N-12 実装 (commit `4373c302d7`) + PC-N-13 design-lock (commit `e13d00d4a6`) + PC-N-13 実装 (commit `faae1544d6`)
+- ✅ Phase 1.E decomposition design-lock (commit `094546889b`) + PC-N-11 design-lock (commit `87560a4dc7`) + PC-N-11 実装 (commit `797332ee81`) + PC-N-12 design-lock (commit `9a62f11416`) + PC-N-12 実装 (commit `b6b39bfd9f`) + PC-N-13 design-lock (commit `cd253cb754`) + PC-N-13 実装 (commit `289d44b536`)
 - ✅ **PC-N-14 design-lock ✅ 本 commit = Phase 1.E 内 4th sub-step design-lock complete = worker thread design (= per-Primitive UBO write + cmdbuf record 並列化 design + ambiguity 20 件 resolve + 実装計画 11 step + Exit Criteria 10 項)**
 - ⏳ PC-N-15 実装 + cleanup (= worker thread 実装 + `sGltfStubSkin` sentinel storage 撤去 + Phase 1.E complete marker 起案)
 - ⏳ Phase 1.E complete → Phase 1 全完了 → Mac/Win 開発者補完 phase
@@ -563,5 +563,5 @@ PC-N-15 実装着手 = step (a)-(k) 11 step 実施 = (a) settings.xml `AYAGltfWo
 - ✅ `feedback_tests_dir_never_commit` 整合 (tests/ 改変 0 件、git add 個別 file 指定予定)
 - ✅ memory `project_ayastorm_r41_design_principles` 整合
   ((1) Upstream OpenGL 取り込みやすさ維持 = `recordGltfAssetDraw` signature 不変 + `GLTFSceneManager::render` caller-side 改変 0 件 ((N14-9) A) + per-Primitive UBO write API signature 不変 ((N14-7) B sub-ring 化は host-side detail) + `thread_local` 修飾子追加のみで accessor signature 不変 ((N14-8) A) + shader 改変ゼロ + (2) Core プロセス分散実現 = worker thread + secondary cmd_buf + per-thread sub-ring buffer = per-Primitive granularity の UBO write + cmdbuf record 完全並列化 = (E-14) B literal 完全整合)
-- ✅ memory `project_r41_phase1b_vulkan_host_gate` 整合 (GATE-B = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 ((N14-16) A)、`AYAGltfWorkerThreadEnabled` + `AYAGltfWorkerThreadCount` cvar runtime gate のみ ((N14-10) A)、count llvkloader.cpp=6 不変想定 (= PC-N-13 commit `faae1544d6` 同数))
+- ✅ memory `project_r41_phase1b_vulkan_host_gate` 整合 (GATE-B = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 ((N14-16) A)、`AYAGltfWorkerThreadEnabled` + `AYAGltfWorkerThreadCount` cvar runtime gate のみ ((N14-10) A)、count llvkloader.cpp=6 不変想定 (= PC-N-13 commit `289d44b536` 同数))
 - ✅ memory `project_ayastorm_three_platforms` 整合 (cross-platform spec §6 PC-N-14 行 design-lock 内容更新で macOS / Windows 派生 fix 候補なし想定 = host-side threading design ((N14-4) A LL::WorkQueue) は OS 非依存 + `VK_COMMAND_BUFFER_LEVEL_SECONDARY` + `vkCmdExecuteCommands` は MoltenVK 標準対応範囲 (= Metal parallel render encoder 経路) + per-thread `VkCommandPool` ((N14-5) A) は Vulkan spec 必須で MoltenVK 標準対応 + `thread_local` accessor ((N14-8) A) は C++ 標準で OS 非依存 + VMA default thread-safe locking ((N14-6) A) は MoltenVK 標準対応 + 2 cvar XML は OS 非依存 ゆえ macOS 派生 fix 候補なし想定 + Windows full Vulkan ゆえ派生 fix 候補なし想定、Linux primary 完成 → 他者補完 model 整合)

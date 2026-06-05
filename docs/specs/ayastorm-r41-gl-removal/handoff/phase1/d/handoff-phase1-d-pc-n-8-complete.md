@@ -4,7 +4,7 @@
 
 **Date**: 2026-06-05
 **Branch**: `feature/ayastorm-r41-gl-removal`
-**Previous commit**: `cb0460acab` (PC-N-8 design-lock complete)
+**Previous commit**: `8f315a7130` (PC-N-8 design-lock complete)
 
 ---
 
@@ -287,7 +287,7 @@ $ grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp
 6
 ```
 
-(= PC-N-7 commit `01473751e9` と同数、`#ifdef LL_VULKAN_GLSL` 新規追加 0 件)
+(= PC-N-7 commit `70e5faafff` と同数、`#ifdef LL_VULKAN_GLSL` 新規追加 0 件)
 
 llrender:
 
@@ -347,7 +347,7 @@ OK
 - ✅ Phase 1.D decomposition design-lock (= PC-N-6..PC-N-10 5 sub-step 分解)
 - ✅ PC-N-6 design-lock + 実装 (= Phase 1.D 内 1st sub-step)
 - ✅ PC-N-7 design-lock + 実装 (= Phase 1.D 内 2nd sub-step)
-- ✅ PC-N-8 design-lock (commit `cb0460acab`) + **PC-N-8 実装 ✅ 本 commit
+- ✅ PC-N-8 design-lock (commit `8f315a7130`) + **PC-N-8 実装 ✅ 本 commit
   (= Phase 1.D 内 3rd sub-step 実装完了)**
 - ⏳ PC-N-9 design-lock + 実装 = `GLTFSceneManager::render` 統合 +
   `AYAGltfRealDrawEnabled` cvar gate + `setCurrentPrimitive` /
@@ -431,7 +431,7 @@ infrastructure を baseline に GLTFSceneManager 経由実 draw 通電。
   recordGltfAssetDraw real Asset path 配線、`GLTFSceneManager::render` 統合 +
   cvar gate は PC-N-9 で別 design-lock)
 - ✅ `feedback_design_phase_no_code_write` 整合 (本 PC-N-8 は実装 phase =
-  design-lock commit `cb0460acab` で indra/ 改変 0 件完了済、本 session で
+  design-lock commit `8f315a7130` で indra/ 改変 0 件完了済、本 session で
   indra/ 改変は実装 phase ゆえ整合)
 - ✅ `feedback_release_branch_workflow` (feature branch
   `feature/ayastorm-r41-gl-removal` 上 commit)

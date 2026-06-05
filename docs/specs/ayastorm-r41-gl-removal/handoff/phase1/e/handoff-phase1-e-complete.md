@@ -10,17 +10,17 @@
 
 | # | sub-step | scope | 完了 commit | 状態 |
 |---|---------|-------|-------------|------|
-| 1 | **PC-N-11** | multi-skin sentinel 段階卒業 cvar 配線 = `AYAGltfMultiSkinEnabled` cvar + `recordGltfAssetDraw` PC-N-11 (a) fall-through path + real Skin owner `sCurrentSkin` 経由切替 | `13bfb55b35` | ✅ |
-| 2 | **PC-N-12** | real node modelview push constant 配線 = `AYAGltfRealModelviewEnabled` cvar + caller (gltfscenemanager.cpp per-Primitive loop) で `glm::value_ptr(node.mAssetMatrix)` 経由 raw column-major 64 B pointer 投入 + `sCurrentNodeAssetMatrix` accessor 経由 layering-safe pointer pattern | `4373c302d7` | ✅ |
-| 3 | **PC-N-13** | real per-draw light params cvar gate + zero IS real data semantic 確立 + multi-asset canary 配線 = `AYAGltfRealLightParamsEnabled` cvar + `AYAGltfMultiAssetCanary` cvar + `sPcn13MultiAssetSeen` `std::unordered_set<const void*>` + `size() > 1u` 判定 + first-fire marker | `faae1544d6` | ✅ |
-| 4 | **PC-N-14** | worker thread design-lock = `LL::WorkQueue` infrastructure 採用 + per-thread sub-ring 採用 + secondary cmdbuf + `vkCmdExecuteCommands` 集約 pattern + `VkCommandBufferInheritanceRenderingInfoKHR` 経由 dynamic rendering scope 継承 design | `1a83070f31` | ✅ |
-| 5 | **PC-N-15a** | worker thread infrastructure 配線 = `LLUboRingBuffer` per-thread instance refactor (class 改変 0 件 = constructor `BufferAllocator`/`BufferDestroyer` `std::function` injection pattern + unique_ptr) + `thread_local` 4 件 (`sCurrentAsset`/`sCurrentSkin`/`sCurrentPrimitive`/`sCurrentNodeAssetMatrix`) + per-thread `VkCommandPool` + secondary `VkCommandBuffer` allocate + `AYAGltfWorkerThreadEnabled` + `AYAGltfWorkerThreadCount` 2 cvar + initVulkan/shutdownVulkan lifecycle | `a90883cbf9` | ✅ |
-| 6 | **PC-N-15b** | worker thread dispatch 配線 = `LL::WorkQueue` + per-Primitive `postPrimitiveToWorker` hook + secondary cmdbuf record + `vkCmdExecuteCommands` 集約 + `writeDrawUbo`/`writeSkinUbo` thread-aware 拡張 + `sPcn13MultiAssetSeen` mutex 保護 + first-fire marker 3 件 (`s_first_pcn14_worker_thread_fire` + `s_first_pcn14_secondary_cmdbuf_fire` + `s_first_pcn14_ubo_parallel_fire`) | `3870285be4` | ✅ |
-| 6.5 | **bridge** (newview link fix) | `primitive.h` class Primitive 閉じ `};` 補填 (PC-N-8 commit `51b550585e` brace bug 修正) + Firestorm fork patch 整合 test 群 build 復旧 + .gitignore root-anchor 訂正 | `71a5dd2cea` | ✅ |
-| 6.7 | **bridge hotfix 2 件** | `bindV3aRigged` `firstSet=3` → `firstSet=4` (= Vulkan slot vs design naming 混同 fix、Asset descriptor set を Asset layout slot に正しく bind) + `drainWorkersAndExecute` 冒頭 `AYAGltfWorkerThreadEnabled` cvar guard 追加 (= `postPrimitiveToWorker` 対称 gate) | `1e2384af9c` | ✅ |
+| 1 | **PC-N-11** | multi-skin sentinel 段階卒業 cvar 配線 = `AYAGltfMultiSkinEnabled` cvar + `recordGltfAssetDraw` PC-N-11 (a) fall-through path + real Skin owner `sCurrentSkin` 経由切替 | `797332ee81` | ✅ |
+| 2 | **PC-N-12** | real node modelview push constant 配線 = `AYAGltfRealModelviewEnabled` cvar + caller (gltfscenemanager.cpp per-Primitive loop) で `glm::value_ptr(node.mAssetMatrix)` 経由 raw column-major 64 B pointer 投入 + `sCurrentNodeAssetMatrix` accessor 経由 layering-safe pointer pattern | `b6b39bfd9f` | ✅ |
+| 3 | **PC-N-13** | real per-draw light params cvar gate + zero IS real data semantic 確立 + multi-asset canary 配線 = `AYAGltfRealLightParamsEnabled` cvar + `AYAGltfMultiAssetCanary` cvar + `sPcn13MultiAssetSeen` `std::unordered_set<const void*>` + `size() > 1u` 判定 + first-fire marker | `289d44b536` | ✅ |
+| 4 | **PC-N-14** | worker thread design-lock = `LL::WorkQueue` infrastructure 採用 + per-thread sub-ring 採用 + secondary cmdbuf + `vkCmdExecuteCommands` 集約 pattern + `VkCommandBufferInheritanceRenderingInfoKHR` 経由 dynamic rendering scope 継承 design | `e96f7e2a68` | ✅ |
+| 5 | **PC-N-15a** | worker thread infrastructure 配線 = `LLUboRingBuffer` per-thread instance refactor (class 改変 0 件 = constructor `BufferAllocator`/`BufferDestroyer` `std::function` injection pattern + unique_ptr) + `thread_local` 4 件 (`sCurrentAsset`/`sCurrentSkin`/`sCurrentPrimitive`/`sCurrentNodeAssetMatrix`) + per-thread `VkCommandPool` + secondary `VkCommandBuffer` allocate + `AYAGltfWorkerThreadEnabled` + `AYAGltfWorkerThreadCount` 2 cvar + initVulkan/shutdownVulkan lifecycle | `708b8ff8a4` | ✅ |
+| 6 | **PC-N-15b** | worker thread dispatch 配線 = `LL::WorkQueue` + per-Primitive `postPrimitiveToWorker` hook + secondary cmdbuf record + `vkCmdExecuteCommands` 集約 + `writeDrawUbo`/`writeSkinUbo` thread-aware 拡張 + `sPcn13MultiAssetSeen` mutex 保護 + first-fire marker 3 件 (`s_first_pcn14_worker_thread_fire` + `s_first_pcn14_secondary_cmdbuf_fire` + `s_first_pcn14_ubo_parallel_fire`) | `159a8e3271` | ✅ |
+| 6.5 | **bridge** (newview link fix) | `primitive.h` class Primitive 閉じ `};` 補填 (PC-N-8 commit `f68fd15e15` brace bug 修正) + Firestorm fork patch 整合 test 群 build 復旧 + .gitignore root-anchor 訂正 | `cc027bb835` | ✅ |
+| 6.7 | **bridge hotfix 2 件** | `bindV3aRigged` `firstSet=3` → `firstSet=4` (= Vulkan slot vs design naming 混同 fix、Asset descriptor set を Asset layout slot に正しく bind) + `drainWorkersAndExecute` 冒頭 `AYAGltfWorkerThreadEnabled` cvar guard 追加 (= `postPrimitiveToWorker` 対称 gate) | `95fdbdedac` | ✅ |
 | 7 | **PC-N-15c** | cleanup + Phase 1.E complete marker = `sGltfStubSkin` storage + register/unregister 配線完全撤去 + `AYAGltfMultiSkinEnabled` cvar + `recordGltfAssetDraw` PC-N-11 (a) fall-through path 完全撤去 (= real Skin path 一本化) + `AYAGltfRealDrawEnabled` cvar + `recordAvatarPlaceholderDraw` 末尾 PC-N-10 (a) entry hook 撤去 + Phase 1.E complete marker 起案 (= 本 doc) | (本 commit) | ✅ |
 
-**bridge commits 6.5/6.7 補足**: PC-N-15b 完了直後の AYA live verify 段階で発覚した 2 件の問題 = (1) newview link build pre-existing error (= PC-N-8 commit 51b550585e の `primitive.h` brace 削除回し忘れによる cascade error)、(2) `bindV3aRigged` 内 Vulkan slot 番号誤解釈による Avatar pool draw 時 SIGSEGV。両方 PC-N-15c 着手の N15c-12 timing gate「PC-N-15b live verify PASS 後着手」を物理的に充足するため bridge phase として独立 commit、PC-N-15c 着手前提整備として位置付け。
+**bridge commits 6.5/6.7 補足**: PC-N-15b 完了直後の AYA live verify 段階で発覚した 2 件の問題 = (1) newview link build pre-existing error (= PC-N-8 commit f68fd15e15 の `primitive.h` brace 削除回し忘れによる cascade error)、(2) `bindV3aRigged` 内 Vulkan slot 番号誤解釈による Avatar pool draw 時 SIGSEGV。両方 PC-N-15c 着手の N15c-12 timing gate「PC-N-15b live verify PASS 後着手」を物理的に充足するため bridge phase として独立 commit、PC-N-15c 着手前提整備として位置付け。
 
 ## §2. 達成事項列挙 = Phase 1.E core deliverables
 
@@ -73,7 +73,7 @@
 
 ### §3.3 MUSEUBO-A 整合維持 (= 全 cvar OFF default で OpenGL 描画 100% 維持)
 
-- 全実装 cvar default OFF 状態で Phase 1.D + 1.E complete baseline = Phase 1.D complete (= PC-N-10 commit `cccd411486`) と機能等価
+- 全実装 cvar default OFF 状態で Phase 1.D + 1.E complete baseline = Phase 1.D complete (= PC-N-10 commit `16a26f6272`) と機能等価
 - PC-N-15c で cvar 2 件撤去 (`AYAGltfMultiSkinEnabled` + `AYAGltfRealDrawEnabled`) だが残存 cvar (= `AYAGltfWorkerThreadEnabled` 等) default OFF で baseline 維持
 - AYA live verify 2026-06-06「通常通りに描画されてます」record で OpenGL 経路維持確認
 
@@ -104,7 +104,7 @@ Phase 1 全完了 = **Linux primary 環境での r41 Phase 1 (Vulkan path 通電
 
 - Phase 1.A ✅ + Phase 1.B ✅ + (Z) SSS ✅ + (W) uniform4iv ✅ + (Y) Phase 1.C prep ✅ + PC-0..PC-6ζ ✅ + PC-7α..PC-7ε ✅ + PC-N decomposition design-lock ✅ + PC-N-1..PC-N-4 ✅ = **Phase 1.C complete ✅**
 - PC-8 Linux primary marker ✅ + PC-N-5 ✅ + Phase 1.D decomposition design-lock ✅ + PC-N-6..PC-N-10 ✅ = **Phase 1.D complete ✅**
-- Phase 1.E decomposition design-lock ✅ + PC-N-11..PC-N-13 ✅ + PC-N-14 design-lock ✅ + PC-N-15a design-lock + 実装 ✅ + PC-N-15b/c 統合 design-lock ✅ + PC-N-15b 実装 ✅ + bridge `71a5dd2cea` ✅ + bridge hotfix `1e2384af9c` ✅ + **PC-N-15c 実装 ✅ 本 commit** = **Phase 1.E complete ✅ 本 commit**
+- Phase 1.E decomposition design-lock ✅ + PC-N-11..PC-N-13 ✅ + PC-N-14 design-lock ✅ + PC-N-15a design-lock + 実装 ✅ + PC-N-15b/c 統合 design-lock ✅ + PC-N-15b 実装 ✅ + bridge `cc027bb835` ✅ + bridge hotfix `95fdbdedac` ✅ + **PC-N-15c 実装 ✅ 本 commit** = **Phase 1.E complete ✅ 本 commit**
 - = **Phase 1 全完了 ✅ 本 commit**
 - → **Mac/Win 開発者補完 phase** ⏳ (entry 移行)
 - → **Phase 1.F+** (実 PBR shader 接続 + real data 内容置換) ⏳
@@ -127,10 +127,10 @@ Phase 1 全完了 = **Linux primary 環境での r41 Phase 1 (Vulkan path 通電
 
 - **2026-06-05** AYA literal「OK」record = PC-N-15c ambiguity 12 件 (N15c-1)..(N15c-12) 全件推奨案承認
 - **2026-06-05** AYA literal「B でお願いします」record = PC-N-15b/c 統合 design-lock 案 B (= handoff doc 4 件 → 2 件削減) 採用
-- **2026-06-05** AYA literal「案 2 newview link fix phase 着手」+「案 X-B LL_TESTS=OFF」+「a commit」+「root /tests/ のみ excluded」record = bridge commit `71a5dd2cea` 確定
+- **2026-06-05** AYA literal「案 2 newview link fix phase 着手」+「案 X-B LL_TESTS=OFF」+「a commit」+「root /tests/ のみ excluded」record = bridge commit `cc027bb835` 確定
 - **2026-06-06** AYA literal「a」record = bindV3aRigged firstSet=4 hotfix 適用承認
 - **2026-06-06** AYA literal「LL_INFOS を入れてってトレースするしかない」+「視野狭くなってるけど、落ちる可能性は１箇所なくて」record = canary 多数挿入で root cause 特定 approach 採用 → bindV3aRigged 内 Vulkan slot 番号誤解釈 fix
-- **2026-06-06** AYA literal「OK ログインできました」record = bridge hotfix `1e2384af9c` live verify PASS
+- **2026-06-06** AYA literal「OK ログインできました」record = bridge hotfix `95fdbdedac` live verify PASS
 - **2026-06-06** AYA literal「了解ひきつづき予定通り作業を進めてください」record = cvar 撤去理由再確認後 PC-N-15c plan 通り続行確定
 - **2026-06-06** AYA literal「通常通りに描画されてます」record = PC-N-15c live verify PASS
 
@@ -148,9 +148,9 @@ Phase 1 全完了 = **Linux primary 環境での r41 Phase 1 (Vulkan path 通電
 - **feedback_no_claude_coauthor** = Co-Authored-By 行不在
 - **feedback_release_branch_workflow** = feature branch `feature/ayastorm-r41-gl-removal` 上での実装
 - **feedback_no_bare_reference_ids** = 各 PC-N-* ID + bridge commit hash に内容明記 + Phase 1.A..1.E table に scope 明記
-- **feedback_tests_dir_never_commit** = root `/tests/` 改変なし (= bridge commit `71a5dd2cea` で .gitignore root-anchor 訂正済)
+- **feedback_tests_dir_never_commit** = root `/tests/` 改変なし (= bridge commit `cc027bb835` で .gitignore root-anchor 訂正済)
 - **feedback_perf_map_bfs_drill** = bridge hotfix phase で recordAvatarPlaceholderDraw 単一関数のみ canary でなく callee 6 関数全周回 canary 投入で「層単位で全周回」原則適用
-- **feedback_remove_verification_logs** = canary は bridge hotfix commit `1e2384af9c` 直前で全撤去、解析履歴は永続コメント形式で保持
+- **feedback_remove_verification_logs** = canary は bridge hotfix commit `95fdbdedac` 直前で全撤去、解析履歴は永続コメント形式で保持
 - **feedback_ubo_migration_one_at_a_time** = Phase 1.E PC-N-11..PC-N-15c 全 sub-step を 1 つずつ実施、PC-N-15 → PC-N-15a/b/c 3 sub-phase 分解 + bridge commits 2 件分離 で大塊バッチ回避
 - **memory project_ayastorm_r41_design_principles** = §3.2 (1)/(2) 充足確認
 - **memory project_r41_phase1b_vulkan_host_gate** = §3.4 GATE-B 整合確認
