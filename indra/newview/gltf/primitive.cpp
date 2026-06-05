@@ -29,6 +29,11 @@
 #include "asset.h"
 #include "buffer_util.h"
 #include "../llviewershadermgr.h"
+// <AYAstorm r41 PC-N-8 (c)/(d)> per-Primitive Vulkan vertex/index buffer
+//   upload/unregister hook 経由で LLVKLoader API call 要 ((N8-3) A + (N8-4) A、
+//   AYA literal「全件推奨で進めてもらえますか?」record 2026-06-05)。
+#include "llvkloader.h"
+// </AYAstorm r41 PC-N-8 (c)/(d)>
 
 #include "mikktspace/mikktspace.hh"
 
@@ -770,7 +775,65 @@ const LLVolumeTriangle* Primitive::lineSegmentIntersect(const LLVector4a& start,
 Primitive::~Primitive()
 {
     mOctree = nullptr;
+    // <AYAstorm r41 PC-N-8 (d)> Primitive dtor 内 unregister 対称配線
+    //   ((N8-4) A、AYA literal「全件推奨で進めてもらえますか?」record 2026-06-05)。
+    //   registerPrimitiveVertexBuffer/registerPrimitiveIndexBuffer で取得した
+    //   per-Primitive Vulkan storage を解放。LLVKLoader 内側 .find() guard で
+    //   未 register 時 no-op (= moved-from instance の stale dtor 経路にも安全)、
+    //   Asset dtor unregister 対称 pattern (PC-7γ-3 lifecycle) 整合。
+    LLVKLoader::unregisterPrimitiveVertexBuffer(this);
+    LLVKLoader::unregisterPrimitiveIndexBuffer (this);
+    // </AYAstorm r41 PC-N-8 (d)>
 }
+
+// <AYAstorm r41 PC-N-8 (c)> per-Primitive Vulkan vertex/index buffer upload
+//   実装 ((N8-3) A + (N8-10) A、AYA literal「全件推奨で進めてもらえますか?」
+//   record 2026-06-05)。Asset::uploadTransforms 末尾 hook から per-Asset cadence
+//   で全 Primitive iterate 呼出し (PC-7γ-3 (k)/(h) lazy register on first upload
+//   pattern 踏襲)。
+//   - vertex buffer = mPositions (LLVector4a 配列、16 B/vertex) から position vec3
+//     (12 B/vertex) を packed array に抽出 (R32G32B32_SFLOAT, stride=12 B、PC-N-6
+//     sGltfStubVertexBuffer 同形 vertex input layout)。
+//   - index buffer = mIndexArray (U32 配列、4 B/index) を直接 memcpy
+//     (VK_INDEX_TYPE_UINT32、PC-N-7 sGltfStubIndexBuffer 同形)。
+//   Vulkan 未初期化時 / sAllocator nullptr 時 / vmaCreateBuffer fail 時 =
+//   LLVKLoader 内側 5 段 graceful degrade で no-op (MUSEUBO-A 整合)。
+void Primitive::uploadVulkanBuffers()
+{
+    const U32 vertex_count = (U32) mPositions.size();
+    const U32 index_count  = (U32) mIndexArray.size();
+
+    if (vertex_count > 0)
+    {
+        const U32 stride       = 12u;  // R32G32B32_SFLOAT = 3 * 4 B (PC-N-6 同形)
+        const U32 v_size_bytes = vertex_count * stride;
+
+        // LLVector4a -> packed vec3 抽出。mPositions[i].mQ = {x,y,z,w}、Vulkan
+        // VERTEX_BUFFER は xyz のみ要 (PC-N-6 sGltfStubVertexData[9] 同形 layout)。
+        std::vector<F32> packed(vertex_count * 3u);
+        for (U32 i = 0; i < vertex_count; ++i)
+        {
+            const F32* src = mPositions[i].getF32ptr();
+            packed[i * 3u + 0u] = src[0];
+            packed[i * 3u + 1u] = src[1];
+            packed[i * 3u + 2u] = src[2];
+        }
+
+        // lazy register on first upload (idempotent、2nd+ call は内側 .find() guard で early return)。
+        LLVKLoader::registerPrimitiveVertexBuffer(this, v_size_bytes, vertex_count);
+        LLVKLoader::writePrimitiveVertexBuffer   (this, 0u, packed.data(), v_size_bytes);
+    }
+
+    if (index_count > 0)
+    {
+        const U32 i_size_bytes = index_count * 4u;  // UINT32 = 4 B/index (PC-N-7 同形)
+
+        // lazy register on first upload (idempotent)。mIndexArray は std::vector<U32> ゆえ直接 memcpy 可。
+        LLVKLoader::registerPrimitiveIndexBuffer(this, i_size_bytes, index_count);
+        LLVKLoader::writePrimitiveIndexBuffer   (this, 0u, mIndexArray.data(), i_size_bytes);
+    }
+}
+// </AYAstorm r41 PC-N-8 (c)>
 
 LLRender::eGeomModes gltf_mode_to_gl_mode(Primitive::Mode mode)
 {

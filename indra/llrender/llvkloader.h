@@ -30,6 +30,10 @@ namespace GLTF
 {
     class Asset;
     class Skin;
+    // <AYAstorm r41 PC-N-8 (a)> Primitive forward decl (= layering 維持、
+    //   gltf/primitive.h は llrender 層から include 不可 = Asset/Skin 同形 pattern、
+    //   AYA literal「全件推奨で進めてもらえますか?」record 2026-06-05)。
+    class Primitive;
 }
 }
 
@@ -480,12 +484,36 @@ namespace LLVKLoader
     void unregisterSkinUbo   (LL::GLTF::Skin* skin, U32 block_hash);
     void writeSkinUbo        (LL::GLTF::Skin* skin, U32 block_hash, U32 offset, const void* data, size_t size);
 
+    // <AYAstorm r41 PC-N-8 (b)> per-Primitive Vulkan vertex/index buffer API 新設
+    //   ((N8-5) B、AYA literal「全件推奨で進めてもらえますか?」record 2026-06-05)。
+    //   Phase 1.D 内 3rd sub-step = 実 LL::GLTF::Asset 経由 vertex/index buffer
+    //   Vulkan infrastructure 新設 + register/write asset.cpp 側 = per-Primitive
+    //   ownership lifecycle (= PC-7γ-3 lazy register on first upload pattern 踏襲、
+    //   block_hash 概念は std140 layout 由来ゆえ生 buffer に不該当、unique key は
+    //   Primitive* identity)。
+    bool registerPrimitiveVertexBuffer  (LL::GLTF::Primitive* primitive, U32 size_bytes, U32 element_count);
+    void writePrimitiveVertexBuffer     (LL::GLTF::Primitive* primitive, U32 offset, const void* data, U32 size);
+    void unregisterPrimitiveVertexBuffer(LL::GLTF::Primitive* primitive);
+    bool registerPrimitiveIndexBuffer   (LL::GLTF::Primitive* primitive, U32 size_bytes, U32 element_count);
+    void writePrimitiveIndexBuffer      (LL::GLTF::Primitive* primitive, U32 offset, const void* data, U32 size);
+    void unregisterPrimitiveIndexBuffer (LL::GLTF::Primitive* primitive);
+    // </AYAstorm r41 PC-N-8 (b)>
+
     void setCurrentAsset     (LL::GLTF::Asset* asset);
     void clearCurrentAsset   ();
     LL::GLTF::Asset* getCurrentAsset();
     void setCurrentSkin      (LL::GLTF::Skin* skin);
     void clearCurrentSkin    ();
     LL::GLTF::Skin*  getCurrentSkin();
+
+    // <AYAstorm r41 PC-N-8 (e)> sCurrentPrimitive accessor 新設 ((N8-12) A)。
+    //   GLTFSceneManager::render が PC-N-9 で per-Primitive loop 内 set/clear。
+    //   PC-N-8 では accessor declare + storage 配置のみ、PC-N-8 単独発火なし
+    //   (= sCurrentPrimitive == nullptr natural guard)。
+    void setCurrentPrimitive (LL::GLTF::Primitive* primitive);
+    void clearCurrentPrimitive();
+    LL::GLTF::Primitive* getCurrentPrimitive();
+    // </AYAstorm r41 PC-N-8 (e)>
 }
 
 #endif // LL_LLVKLOADER_H

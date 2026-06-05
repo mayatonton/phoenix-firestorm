@@ -229,6 +229,21 @@ void Asset::uploadTransforms()
     LLVKLoader::writeAssetUbo(this, ubo::block_hash::Asset_GLTFNodes, 0,
                               glmp.data(), glmp.size() * sizeof(F32));
     // </AYAstorm r41 PC-7γ-3 (h)>
+
+    // <AYAstorm r41 PC-N-8 (c)> Asset::uploadTransforms 末尾 hook = 全 Primitive
+    //   iterate + uploadVulkanBuffers() call ((N8-3) A + (N8-10) A、AYA literal
+    //   「全件推奨で進めてもらえますか?」record 2026-06-05)。per-Asset cadence で
+    //   per-Primitive Vulkan vertex/index buffer の lazy register on first upload
+    //   pattern (PC-7γ-3 (k)/(h) 踏襲)。Vulkan 未初期化時 = LLVKLoader 内側
+    //   sAllocator guard で no-op (MUSEUBO-A 整合)。
+    for (Mesh& mesh : mMeshes)
+    {
+        for (Primitive& primitive : mesh.mPrimitives)
+        {
+            primitive.uploadVulkanBuffers();
+        }
+    }
+    // </AYAstorm r41 PC-N-8 (c)>
 }
 
 void Asset::uploadMaterials()

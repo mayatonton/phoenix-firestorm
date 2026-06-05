@@ -667,6 +667,34 @@ namespace
                   "PC-N-7 (a) sGltfStubIndexData size mismatch sGltfStubIndexBufferSize");
     // </AYAstorm r41 PC-N-7 (a)>
 
+    // <AYAstorm r41 PC-N-8 (a)> per-Primitive Vulkan vertex/index buffer storage 新設
+    //   ((N8-1) B + (N8-2) A + (N8-5) B 採用、AYA literal「全件推奨で進めてもらえますか?」
+    //   record 2026-06-05)。Phase 1.D 内 3rd sub-step = 実 LL::GLTF::Asset 経由 vertex/
+    //   index buffer Vulkan infrastructure 新設 = per-Primitive ownership で
+    //   LLVKLoader 内 encapsulate (= gltf/primitive.h から vulkan/vulkan.h include 回避、
+    //   設計原則 (1) Upstream OpenGL 取り込みやすさ維持整合)。
+    //
+    //   PrimitiveVulkanBuffer struct: VkBuffer + VmaAllocation + mapped + size + element_count
+    //   (= UboInstance struct と同形 single-buffer (FRAMES_IN_FLIGHT 不要、host-visible
+    //   永続 mapped 個別 buffer、ring buffer overkill)、PC-N-6/7 stub buffer 同形 pattern)。
+    //
+    //   storage map: unordered_map<Primitive*, PrimitiveVulkanBuffer>
+    //   (= UboAssetKey<Asset*, block_hash> と同形 owner identity key、Primitive 粒度が
+    //   PC-N-9 以降 multi-Primitive 並走時の最小単位、設計原則 (2) Core プロセス分散実現
+    //   整合)。register/write API は per-Primitive 形 6 件 ((N8-5) B、PC-N-8 (b))。
+    struct PrimitiveVulkanBuffer
+    {
+        VkBuffer        buffer        = VK_NULL_HANDLE;
+        VmaAllocation   allocation    = VK_NULL_HANDLE;
+        void*           mapped        = nullptr;
+        U32             size_bytes    = 0u;
+        U32             element_count = 0u;  // vertex_count or index_count
+    };
+
+    std::unordered_map<LL::GLTF::Primitive*, PrimitiveVulkanBuffer> sPrimitiveVertexBuffers;
+    std::unordered_map<LL::GLTF::Primitive*, PrimitiveVulkanBuffer> sPrimitiveIndexBuffers;
+    // </AYAstorm r41 PC-N-8 (a)>
+
     // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instances (= block_hash → UboInstance、
     // owner 概念無し global static)。design 06b §2.1 + design 07 §8.2 + AYA (W6-A)
     // 確認 2026-06-05 整合:
@@ -699,6 +727,16 @@ namespace
     // </AYAstorm r41 PC-7γ-2>
     LL::GLTF::Asset* sCurrentAsset = nullptr;
     LL::GLTF::Skin*  sCurrentSkin  = nullptr;
+
+    // <AYAstorm r41 PC-N-8 (e)> per-Primitive current owner tracking
+    //   (= sCurrentPrimitive static)。((N8-12) A、AYA literal「全件推奨で進めて
+    //   もらえますか?」record 2026-06-05) sCurrentAsset / sCurrentSkin 同形 pattern。
+    //   役割: recordGltfAssetDraw PC-N-8 (f) real Asset path 配線時に "current
+    //         primitive" を解決する経路。GLTFSceneManager::render が PC-N-9 で
+    //         per-Primitive loop 内 set/clear (= PC-N-8 では accessor declare +
+    //         storage 配置のみ、PC-N-8 単独発火なし = nullptr natural guard)。
+    // </AYAstorm r41 PC-N-8 (e)>
+    LL::GLTF::Primitive* sCurrentPrimitive = nullptr;
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
@@ -4484,6 +4522,33 @@ void shutdownVulkan()
         }
         // </AYAstorm r41 PC-N-7 (d)>
 
+        // <AYAstorm r41 PC-N-8 (d')> per-Primitive Vulkan vertex/index buffer
+        //   shutdownVulkan 防御的 cleanup ((N8-4) A 整合、AYA literal「全件推奨で進めて
+        //   もらえますか?」record 2026-06-05)。Primitive dtor は通常 path で
+        //   unregister 済だが、shutdown 順序で Vulkan 先停止 + Primitive 後解放
+        //   の race を防ぐため map 内残存 entry を bulk teardown。
+        //   sAssetUboDirty / sSkinUboDirty 同形 pattern。
+        if (sAllocator != VK_NULL_HANDLE)
+        {
+            for (auto& kv : sPrimitiveVertexBuffers)
+            {
+                if (kv.second.buffer != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(sAllocator, kv.second.buffer, kv.second.allocation);
+                }
+            }
+            for (auto& kv : sPrimitiveIndexBuffers)
+            {
+                if (kv.second.buffer != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(sAllocator, kv.second.buffer, kv.second.allocation);
+                }
+            }
+        }
+        sPrimitiveVertexBuffers.clear();
+        sPrimitiveIndexBuffers.clear();
+        // </AYAstorm r41 PC-N-8 (d')>
+
         for (auto& kv : sProgramUboDirty) { destroyUboInstanceBuffers(kv.second); }
         for (auto& kv : sAssetUboDirty)   { destroyUboInstanceBuffers(kv.second); }
         for (auto& kv : sSkinUboDirty)    { destroyUboInstanceBuffers(kv.second); }
@@ -5677,6 +5742,158 @@ void writeSkinUbo(LL::GLTF::Skin* skin, U32 block_hash, U32 offset, const void* 
     ubo_inst.dirty.store(true, std::memory_order_release);
 }
 
+// <AYAstorm r41 PC-N-8 (b)> per-Primitive Vulkan vertex/index buffer API 実装
+//   ((N8-5) B、AYA literal「全件推奨で進めてもらえますか?」record 2026-06-05)。
+//   PC-7γ-2 registerAssetUbo / writeAssetUbo / unregisterAssetUbo 同形 lifecycle pattern。
+//   register = lazy on first call (idempotent)、write = mapped pointer memcpy、unregister =
+//   vmaDestroyBuffer + map erase。5 段 graceful degrade ((1) sAllocator nullptr +
+//   (2) primitive nullptr / size==0 + (3) already registered idempotent + (4) vmaCreateBuffer
+//   失敗 + (5) mapped pointer nullptr)。
+bool registerPrimitiveVertexBuffer(LL::GLTF::Primitive* primitive, U32 size_bytes, U32 element_count)
+{
+    if (sAllocator == VK_NULL_HANDLE) { return false; }                  // (1/5) Vulkan 未初期化 graceful degrade
+    if (!primitive || size_bytes == 0u) { return false; }                // (2/5) param guard
+    auto it = sPrimitiveVertexBuffers.find(primitive);
+    if (it != sPrimitiveVertexBuffers.end()) { return true; }            // (3/5) idempotent: 既 register
+
+    PrimitiveVulkanBuffer entry;
+    entry.size_bytes    = size_bytes;
+    entry.element_count = element_count;
+
+    VkBufferCreateInfo buffer_info = {};
+    buffer_info.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size        = size_bytes;
+    buffer_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;         // (N8-11) A VERTEX_BUFFER usage
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo alloc_create_info = {};
+    alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;                     // (N8-9) A PC-N-6/7 stub 同形
+    alloc_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                            | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocationInfo alloc_info = {};
+    VkResult res = vmaCreateBuffer(sAllocator, &buffer_info, &alloc_create_info,
+                                   &entry.buffer, &entry.allocation, &alloc_info);
+    if (res != VK_SUCCESS)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-8 (b) registerPrimitiveVertexBuffer vmaCreateBuffer fail: primitive="
+                                << (void*)primitive << " size=" << size_bytes << " res=" << (S32)res << LL_ENDL;
+        return false;                                                     // (4/5) vmaCreateBuffer fail
+    }
+    if (alloc_info.pMappedData == nullptr)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-8 (b) registerPrimitiveVertexBuffer mapped=nullptr: primitive="
+                                << (void*)primitive << LL_ENDL;
+        vmaDestroyBuffer(sAllocator, entry.buffer, entry.allocation);
+        return false;                                                     // (5/5) mapped nullptr
+    }
+    entry.mapped = alloc_info.pMappedData;
+    sPrimitiveVertexBuffers.emplace(primitive, entry);
+    return true;
+}
+
+void writePrimitiveVertexBuffer(LL::GLTF::Primitive* primitive, U32 offset, const void* data, U32 size)
+{
+    if (!primitive || !data || size == 0u) { return; }
+    auto it = sPrimitiveVertexBuffers.find(primitive);
+    if (it == sPrimitiveVertexBuffers.end()) { return; }                  // 未 register no-op (MUSEUBO-A 整合)
+    PrimitiveVulkanBuffer& entry = it->second;
+    if (entry.mapped == nullptr || entry.size_bytes == 0u) { return; }
+    if (offset + size > entry.size_bytes)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-8 (b) writePrimitiveVertexBuffer out-of-range: primitive="
+                                << (void*)primitive << " offset=" << offset << " size=" << size
+                                << " capacity=" << entry.size_bytes << LL_ENDL;
+        return;
+    }
+    std::memcpy(static_cast<U8*>(entry.mapped) + offset, data, size);
+}
+
+void unregisterPrimitiveVertexBuffer(LL::GLTF::Primitive* primitive)
+{
+    if (!primitive) { return; }
+    auto it = sPrimitiveVertexBuffers.find(primitive);
+    if (it == sPrimitiveVertexBuffers.end()) { return; }                  // 未 register no-op
+    if (sAllocator != VK_NULL_HANDLE && it->second.buffer != VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(sAllocator, it->second.buffer, it->second.allocation);
+    }
+    sPrimitiveVertexBuffers.erase(it);
+}
+
+bool registerPrimitiveIndexBuffer(LL::GLTF::Primitive* primitive, U32 size_bytes, U32 element_count)
+{
+    if (sAllocator == VK_NULL_HANDLE) { return false; }
+    if (!primitive || size_bytes == 0u) { return false; }
+    auto it = sPrimitiveIndexBuffers.find(primitive);
+    if (it != sPrimitiveIndexBuffers.end()) { return true; }
+
+    PrimitiveVulkanBuffer entry;
+    entry.size_bytes    = size_bytes;
+    entry.element_count = element_count;
+
+    VkBufferCreateInfo buffer_info = {};
+    buffer_info.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size        = size_bytes;
+    buffer_info.usage       = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;          // (N8-11) A INDEX_BUFFER usage
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo alloc_create_info = {};
+    alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    alloc_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                            | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VmaAllocationInfo alloc_info = {};
+    VkResult res = vmaCreateBuffer(sAllocator, &buffer_info, &alloc_create_info,
+                                   &entry.buffer, &entry.allocation, &alloc_info);
+    if (res != VK_SUCCESS)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-8 (b) registerPrimitiveIndexBuffer vmaCreateBuffer fail: primitive="
+                                << (void*)primitive << " size=" << size_bytes << " res=" << (S32)res << LL_ENDL;
+        return false;
+    }
+    if (alloc_info.pMappedData == nullptr)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-8 (b) registerPrimitiveIndexBuffer mapped=nullptr: primitive="
+                                << (void*)primitive << LL_ENDL;
+        vmaDestroyBuffer(sAllocator, entry.buffer, entry.allocation);
+        return false;
+    }
+    entry.mapped = alloc_info.pMappedData;
+    sPrimitiveIndexBuffers.emplace(primitive, entry);
+    return true;
+}
+
+void writePrimitiveIndexBuffer(LL::GLTF::Primitive* primitive, U32 offset, const void* data, U32 size)
+{
+    if (!primitive || !data || size == 0u) { return; }
+    auto it = sPrimitiveIndexBuffers.find(primitive);
+    if (it == sPrimitiveIndexBuffers.end()) { return; }
+    PrimitiveVulkanBuffer& entry = it->second;
+    if (entry.mapped == nullptr || entry.size_bytes == 0u) { return; }
+    if (offset + size > entry.size_bytes)
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-8 (b) writePrimitiveIndexBuffer out-of-range: primitive="
+                                << (void*)primitive << " offset=" << offset << " size=" << size
+                                << " capacity=" << entry.size_bytes << LL_ENDL;
+        return;
+    }
+    std::memcpy(static_cast<U8*>(entry.mapped) + offset, data, size);
+}
+
+void unregisterPrimitiveIndexBuffer(LL::GLTF::Primitive* primitive)
+{
+    if (!primitive) { return; }
+    auto it = sPrimitiveIndexBuffers.find(primitive);
+    if (it == sPrimitiveIndexBuffers.end()) { return; }
+    if (sAllocator != VK_NULL_HANDLE && it->second.buffer != VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(sAllocator, it->second.buffer, it->second.allocation);
+    }
+    sPrimitiveIndexBuffers.erase(it);
+}
+// </AYAstorm r41 PC-N-8 (b)>
+
 // sCurrentAsset / sCurrentSkin tracking accessor (= forwardToUboUpload PER_ASSET/
 // PER_SKIN case が "current owner" を解決する経路、AYA (D2-A) 確認 2026-06-05)。
 // gltfscenemanager.cpp の asset/skin draw 直前で setCurrent*、直後 / scope end
@@ -5711,6 +5928,27 @@ LL::GLTF::Skin* getCurrentSkin()
     return sCurrentSkin;
 }
 // </AYAstorm r41 PC-7γ-2>
+
+// <AYAstorm r41 PC-N-8 (e)> sCurrentPrimitive accessor 実装 ((N8-12) A、
+//   AYA literal「全件推奨で進めてもらえますか?」record 2026-06-05)。
+//   sCurrentAsset / sCurrentSkin 同形 pattern。GLTFSceneManager::render が
+//   PC-N-9 で per-Primitive loop 内 set/clear (= PC-N-8 では accessor 配線のみ、
+//   PC-N-8 単独発火なし = nullptr natural guard)。
+void setCurrentPrimitive(LL::GLTF::Primitive* primitive)
+{
+    sCurrentPrimitive = primitive;
+}
+
+void clearCurrentPrimitive()
+{
+    sCurrentPrimitive = nullptr;
+}
+
+LL::GLTF::Primitive* getCurrentPrimitive()
+{
+    return sCurrentPrimitive;
+}
+// </AYAstorm r41 PC-N-8 (e)>
 
 // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
 // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。
@@ -5850,6 +6088,123 @@ namespace
         {
             return;
         }
+
+        // <AYAstorm r41 PC-N-8 (f)> real LL::GLTF::Asset 経由 vertex/index buffer
+        //   draw 経路配線 ((N8-6) A signature 不変 + (N8-7) A cvar 新設 0 件 +
+        //   sCurrentAsset/sCurrentPrimitive natural guard + (N8-8) A
+        //   sGltfStubAssetPipeline 再利用 + (N8-9) A PC-N-7 (e) 直前並列配置 +
+        //   (N8-11) A VERTEX_BUFFER + INDEX_BUFFER + VMA HOST_ACCESS_SEQUENTIAL_WRITE、
+        //   AYA literal「全件推奨で進めてもらえますか?」record 2026-06-05)。
+        //
+        //   sCurrentAsset / sCurrentPrimitive == nullptr 時 = PC-N-8 単独では発火経路
+        //   ゼロ (PC-N-9 で GLTFSceneManager::render が set した時点で自動発火)。
+        //   PC-N-7 / PC-N-6 / PC-N-5 stub 経路は不変温存 = live A/B 経路独立 + MUSEUBO-A
+        //   整合。pipeline は PC-N-6 で確立済 sGltfStubAssetPipeline を再利用 ((N8-8) A、
+        //   Vulkan 仕様 §10.4 で vertex/index buffer + index type は dynamic state)。
+        //   5 段 graceful degrade = sAllocator / sCurrentAsset / sCurrentPrimitive /
+        //   sGltfStubAssetPipeline / sPrimitiveVertexBuffers find / sPrimitiveIndexBuffers
+        //   find 各 nullptr/end guard で silent fall-through to PC-N-7 path。
+        //
+        //   cvar 優先順位確定 (PC-N-8 > PC-N-7 > PC-N-6 > PC-N-5): 本 PC-N-8 (f) 分岐は
+        //   PC-N-7 (e) 直前配置 = sCurrentAsset/sCurrentPrimitive 双方非 null + map
+        //   entry 双方存在時に PC-N-8 経路 fire し early return。
+        {
+            LL::GLTF::Primitive* primitive = sCurrentPrimitive;
+            LL::GLTF::Asset*     asset     = sCurrentAsset;
+            if (primitive != nullptr
+                && asset != nullptr
+                && sGltfStubAssetPipeline != VK_NULL_HANDLE)
+            {
+                auto vb_it = sPrimitiveVertexBuffers.find(primitive);
+                auto ib_it = sPrimitiveIndexBuffers.find(primitive);
+                if (vb_it != sPrimitiveVertexBuffers.end()
+                    && ib_it != sPrimitiveIndexBuffers.end()
+                    && vb_it->second.buffer != VK_NULL_HANDLE
+                    && ib_it->second.buffer != VK_NULL_HANDLE
+                    && ib_it->second.element_count > 0u)
+                {
+                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sGltfStubAssetPipeline);
+
+                    // PC-N-8 (f) 同形 per-draw UBO 配線 (= PC-N-7 (e) 同形 sequence)。
+                    static const U8 real_asset_draw_zero_buf[256] = {};
+                    U32 real_asset_dynamic_offset = 0u;
+                    LLVKLoader::writeDrawUbo(
+                        ubo::block_hash::PerDrawUBO_LightParams,
+                        /*offset=*/0u,
+                        real_asset_draw_zero_buf,
+                        sizeof(real_asset_draw_zero_buf),
+                        real_asset_dynamic_offset);
+                    const U32 real_asset_dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
+                        real_asset_dynamic_offset, real_asset_dynamic_offset,
+                        real_asset_dynamic_offset, real_asset_dynamic_offset,
+                    };
+
+                    // PC-N-8 (f) 同形 per-Skin UBO 配線 (= PC-N-7 (e) 同形、stub sentinel 共用)。
+                    //   PC-N-9 で real Skin 経路へ置換予定 ((N8-1) B = per-Primitive scope
+                    //   ゆえ Skin owner 切替は PC-N-9 GLTFSceneManager::render 統合 phase)。
+                    static const F32 real_asset_identity_skin_buf[64] = {
+                        1.f, 0.f, 0.f, 0.f,
+                        0.f, 1.f, 0.f, 0.f,
+                        0.f, 0.f, 1.f, 0.f,
+                        0.f, 0.f, 0.f, 1.f,
+                        0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                        0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                        0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                    };
+                    LLVKLoader::writeSkinUbo(
+                        sGltfStubSkin,
+                        ubo::block_hash::Skin_GLTFJoints,
+                        /*offset=*/0u,
+                        reinterpret_cast<const U8*>(real_asset_identity_skin_buf),
+                        sizeof(real_asset_identity_skin_buf));
+                    LLVKLoader::flushSkinUbos(sGltfStubSkin);
+                    bindV3aRigged(cmd_buf, sFrameIndex, real_asset_dynamic_offsets);
+
+                    // PC-N-8 (f) 同形 push constant 64 B identity / VERTEX_BIT
+                    //   (= PC-N-9 で real node modelview 置換予定)。
+                    const float real_asset_identity_modelview[16] = {
+                        1.f, 0.f, 0.f, 0.f,
+                        0.f, 1.f, 0.f, 0.f,
+                        0.f, 0.f, 1.f, 0.f,
+                        0.f, 0.f, 0.f, 1.f,
+                    };
+                    vkCmdPushConstants(cmd_buf,
+                                       sAvatarBoneLayout,
+                                       VK_SHADER_STAGE_VERTEX_BIT,
+                                       /*offset=*/0,
+                                       /*size=*/64,
+                                       real_asset_identity_modelview);
+
+                    // PC-N-8 (f) 核心差分: real Primitive 由来 vertex/index buffer bind +
+                    //   real index_count で vkCmdDrawIndexed = Phase 1.D 3rd sub-step 通電
+                    //   (= 実 LL::GLTF::Asset 経由 vertex/index buffer 経路通電の事実確立)。
+                    const U32 real_index_count = ib_it->second.element_count;
+                    LLVKLoader::bindVertexBufferVk(cmd_buf, vb_it->second.buffer, /*offset=*/0);
+                    LLVKLoader::bindIndexBufferVk (cmd_buf, ib_it->second.buffer, /*offset=*/0,
+                                                   VK_INDEX_TYPE_UINT32);  // (N8-11) UINT32
+                    vkCmdDrawIndexed(cmd_buf, real_index_count, 1, 0, 0, 0);
+
+                    // PC-N-8 (f) first-fire LL_INFOS marker (= Phase 1.D 3rd sub-step 通電 literal)。
+                    static std::atomic<bool> s_first_pcn8_real_fire{true};
+                    if (s_first_pcn8_real_fire.exchange(false, std::memory_order_acq_rel))
+                    {
+                        LL_INFOS("Vulkan") << "PC-N-8 (f) GLTF real Asset draw 通電 (first fire): "
+                                              "asset=" << asset << ", primitive=" << primitive
+                                           << ", vertex_buffer=" << (const void*)vb_it->second.buffer
+                                           << ", vertex_count=" << vb_it->second.element_count
+                                           << ", index_buffer=" << (const void*)ib_it->second.buffer
+                                           << ", index_count=" << real_index_count
+                                           << "; pipeline=sGltfStubAssetPipeline (= PC-N-6 reuse、(N8-8) A); "
+                                              "PC-N-7 / PC-N-6 / PC-N-5 経路並走温存、shader 改変ゼロ、"
+                                              "Phase 1.D 3rd sub-step (= 実 LL::GLTF::Asset 経由 vertex/index "
+                                              "buffer infrastructure 通電)"
+                                           << LL_ENDL;
+                    }
+                    return; // PC-N-7 / PC-N-6 / PC-N-5 経路はスキップ
+                }
+            }
+        }
+        // </AYAstorm r41 PC-N-8 (f)>
 
         // <AYAstorm r41 PC-N-7 (e)> stub index buffer 経路 cvar 分岐
         //   ((N7-2) A signature 不変 + (N7-8) A sGltfStubAssetPipeline 再利用 +

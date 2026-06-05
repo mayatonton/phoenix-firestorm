@@ -113,6 +113,17 @@ namespace LL
             // asserts that buffer is bound
             // asserts that buffer is valid for this primitive
             void upload(LLVertexBuffer* buffer);
-        };
+
+            // <AYAstorm r41 PC-N-8 (c)> per-Primitive Vulkan vertex/index buffer
+            //   upload entry ((N8-3) A、AYA literal「全件推奨で進めてもらえますか?」
+            //   record 2026-06-05)。Asset::uploadTransforms 末尾 hook から
+            //   per-Asset cadence で全 Primitive iterate 呼出し。
+            //   PC-7γ-3 (k)/(h) lazy register on first upload pattern 踏襲 =
+            //   初回 LLVKLoader::registerPrimitiveVertexBuffer/registerPrimitiveIndexBuffer
+            //   を call (idempotent) し、続けて writePrimitiveVertexBuffer/
+            //   writePrimitiveIndexBuffer で memcpy。Vulkan 未初期化時 = LLVKLoader 内側
+            //   sAllocator guard で no-op (MUSEUBO-A 整合)。
+            void uploadVulkanBuffers();
+            // </AYAstorm r41 PC-N-8 (c)>
     }
 }
