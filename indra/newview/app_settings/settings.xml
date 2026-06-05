@@ -10465,6 +10465,28 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm r41 Phase 1.D PC-N-9> 実 LL::GLTF::Asset 経由 Vulkan real draw 経路通電の live A/B 切替 cvar。
+         design-lock handoff-substep-...-phase1-d-pc-n-9-design-lock.md (= (N9-4) literal + (N9-5) A、AYA literal「全件推奨で OK」record 2026-06-05)。
+         OFF (default) = recordGltfAssetDraw 内 PC-N-7/PC-N-6/PC-N-5 stub 経路 (= 各 cvar=true 時) を継続 = PC-N-8 完了状態と機能等価 (MUSEUBO-A 整合)。
+         前提として AYAGltfStubDrawEnabled=true が必要 (= recordGltfAssetDraw 発火 hook、PC-N-10 で統合予定)。
+         ON = PC-N-8 (f) で配線済 real LL::GLTF::Asset 経由 vertex/index buffer bind + UBO sequence + bindVertexBufferVk + bindIndexBufferVk(UINT32) +
+         vkCmdDrawIndexed(real_index_count, 1, 0, 0, 0) 経路発火 = Phase 1.D 4th sub-step 通電 (= GLTFSceneManager::render 経由 per-Primitive owner 解決 +
+         実 Asset draw 通電の事実確立)。Cvar 優先順位 in recordGltfAssetDraw:
+         PC-N-9 (this) > PC-N-7 AYAGltfStubIndexBufferEnabled > PC-N-6 AYAGltfStubVertexBufferEnabled > PC-N-5 AYAGltfStubDrawEnabled。
+         GATE-B 整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ)。Persist=1 で起動間保持。PC-N-10 で 3 stub cvar deprecate 予定。 -->
+    <key>AYAGltfRealDrawEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.D PC-N-9) Enable GLTF real LL::GLTF::Asset Vulkan draw 経路 (= PC-N-8 (f) で配線済 real Asset path = sCurrentAsset/sCurrentPrimitive 経由 owner 解決 + sPrimitiveVertexBuffers/sPrimitiveIndexBuffers find + sGltfStubAssetPipeline 再利用 + UBO sequence + bindVertexBufferVk + bindIndexBufferVk(UINT32) + vkCmdDrawIndexed(real_index_count, 1, 0, 0, 0) for Phase 1.D 4th sub-step 通電). Default OFF, debug live A/B 用. 前提として AYAGltfStubDrawEnabled=true が必要 (= recordGltfAssetDraw 発火 hook, PC-N-10 で統合予定). Cvar 優先順位 in recordGltfAssetDraw: PC-N-9 (this) > PC-N-7 AYAGltfStubIndexBufferEnabled > PC-N-6 AYAGltfStubVertexBufferEnabled > PC-N-5 AYAGltfStubDrawEnabled. ON 時 PC-N-8 (f) block 発火 (= real Asset draw) + GLTFSceneManager::render per-Primitive loop 内 setCurrentPrimitive/clearCurrentPrimitive hook (PC-N-9 (a) 配線) で owner 解決. OFF 時 PC-N-7/6/5 stub 経路へ fall-through (= PC-N-8 完了状態と機能等価). PC-N-10 で 3 stub cvar (AYAGltfStubDrawEnabled, AYAGltfStubVertexBufferEnabled, AYAGltfStubIndexBufferEnabled) deprecate 予定.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>

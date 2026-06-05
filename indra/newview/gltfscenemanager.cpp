@@ -742,6 +742,16 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 Mesh& mesh = asset.mMeshes[node.mMesh];
                 Primitive& primitive = mesh.mPrimitives[pdata.mPrimitiveIndex];
 
+                // <AYAstorm r41 PC-N-9 (a)> per-Primitive current owner set ((N9-2) A、
+                // AYA literal「全件推奨で OK」record 2026-06-05) = recordGltfAssetDraw
+                // PC-N-8 (f) real Asset path 配線が sCurrentPrimitive を解決する経路を
+                // per-Primitive loop body 冒頭で確立 (= `if (rigged)` 外、primitive は
+                // rigged/non-rigged 問わず常に存在)。clearCurrentPrimitive は
+                // drawRangeFast 直後の clearCurrentSkin 並列で unconditional clear
+                // (= setCurrentSkin `if (rigged)` 限定パターン同形対称配置)。
+                LLVKLoader::setCurrentPrimitive(&primitive);
+                // </AYAstorm r41 PC-N-9 (a)>
+
                 if (rigged)
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - bind skin");
@@ -776,6 +786,11 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 // = setCurrentSkin 未呼出時は nullptr → nullptr の no-op)。
                 LLVKLoader::clearCurrentSkin();
                 // </AYAstorm r41 PC-7γ-2>
+
+                // <AYAstorm r41 PC-N-9 (a)> per-Primitive current owner clear ((N9-2) A、
+                // unconditional clear で safe = setCurrentPrimitive 必ず call 済)。
+                LLVKLoader::clearCurrentPrimitive();
+                // </AYAstorm r41 PC-N-9 (a)>
             }
         }
 

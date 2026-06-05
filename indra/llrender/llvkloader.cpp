@@ -6089,6 +6089,21 @@ namespace
             return;
         }
 
+        // <AYAstorm r41 PC-N-9 (b)> AYAGltfRealDrawEnabled cvar gate on PC-N-8 (f) block
+        //   ((N9-1) A + (N9-7) A、AYA literal「全件推奨で OK」record 2026-06-05) =
+        //   PC-N-8 (f) block 全体を `LLCachedControl<bool>` guard で wrap、
+        //   cvar=false 時 silent fall-through to PC-N-7 (e) stub IB 経路 (= 既存 stub
+        //   経路温存、MUSEUBO-A 整合)。PC-N-6/PC-N-7 同形 pattern (cvar guard 最外側)。
+        //   Cvar 優先順位 in recordGltfAssetDraw (PC-N-9 適用後):
+        //   PC-N-9 (AYAGltfRealDrawEnabled, real Asset) > PC-N-7 (AYAGltfStubIndexBufferEnabled, stub IB) >
+        //   PC-N-6 (AYAGltfStubVertexBufferEnabled, stub VB) > PC-N-5 (shader generate 3 vertex)。
+        //   AYAGltfStubDrawEnabled=true は依然 prerequisite (= recordGltfAssetDraw fire
+        //   入口は recordAvatarPlaceholderDraw 末尾 hook = PC-N-5 cvar gate 内)、
+        //   PC-N-10 で AYAGltfStubDrawEnabled deprecate 時に統合予定。
+        static LLCachedControl<bool> sAyastormGltfRealDrawEnabled(
+            gSavedSettings, "AYAGltfRealDrawEnabled", false);
+        if (sAyastormGltfRealDrawEnabled)
+        {
         // <AYAstorm r41 PC-N-8 (f)> real LL::GLTF::Asset 経由 vertex/index buffer
         //   draw 経路配線 ((N8-6) A signature 不変 + (N8-7) A cvar 新設 0 件 +
         //   sCurrentAsset/sCurrentPrimitive natural guard + (N8-8) A
@@ -6205,6 +6220,8 @@ namespace
             }
         }
         // </AYAstorm r41 PC-N-8 (f)>
+        }
+        // </AYAstorm r41 PC-N-9 (b)>
 
         // <AYAstorm r41 PC-N-7 (e)> stub index buffer 経路 cvar 分岐
         //   ((N7-2) A signature 不変 + (N7-8) A sGltfStubAssetPipeline 再利用 +
