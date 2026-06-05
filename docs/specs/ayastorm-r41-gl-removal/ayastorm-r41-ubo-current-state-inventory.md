@@ -94,6 +94,20 @@ OpenGL path で **frame ごとに値を流している主要 mechanism は UBO �
 
 ## §3 GLSL 側に宣言済の UBO blueprint (= Vulkan path 用前倒し設計)
 
+> **2026-06-06 audit 訂正注記 (= 全 UBO literal 件数 + literal name 全件 update)**:
+>
+> 本 §3 + §3.1-§3.4 個別 table 内件数 literal (= 旧「85 個 / set=0:3 / set=1:2 / set=2:26 / set=3:54」) は **本 doc 起案時 (2026-06-03) snapshot**。**2026-06-06 grep 確認時点の正確な件数**:
+> - **set=0 帯 = 6 unique UBO name** (旧 3 + 追加 3): `FrameViewProj` / `FrameLights` / `FrameAtmosphere_Lighting` (= 起案時 3 個) + `PerFrameMatrixUBO` / `TextureMatrixUBO` / `Global_ReflectionProbes` (= PA-7.5 + PC-0 + 後続追加 3 個)
+> - **set=1 帯 = 2 unique UBO name** (不変): `MaterialUBO` / `MaterialUBO_Legacy`
+> - **set=2 帯 = 31 unique UBO name** (旧 26 + 追加 5): 起案時 26 個 + `PerDrawUBO_AvatarSkin` / `PerDrawUBO_AvatarVelocity` / `PerDrawUBO_ClipPlane` / `PerDrawUBO_ObjectSkin` / `PerDrawUBO_SkinnedVelocity` (= binding=0 多重宣言、別 program 別 UBO name、(Q27-CONFL) 解消 batch で追加)
+> - **set=3 帯 = 57 unique UBO name** (旧 54 + 追加 3): 起案時 54 個 + `Asset_GLTFNodes` / `Asset_GLTFMaterials` / `Skin_GLTFJoints` (= PC-7γ-3 GLTF 系 + GLTF Skin 系追加) + binding 重複 3 個 (binding=0/1/2 で Legacy と GLTF 系並列宣言)
+> - **合計 unique UBO name = 96 個** (= 2026-06-06 `grep "layout(std140, set = " indra/newview/app_settings/shaders/` literal)
+> - **codegen block 数 = 94 件** (= `build-linux-x86_64/codegen/ubo/ubo_metadata.inl:24` `inline constexpr std::uint32_t g_block_count = 94u;` source-of-truth、同 binding 多重宣言の一部 codegen merge で 96→94)
+>
+> **本 §3 各 sub-section table (= §3.1-§3.4) は 2026-06-03 doc 起案時 snapshot として保持** (= history 性温存)、**現状件数 + 追加 UBO literal name list は本注記が source-of-truth**。inventory.md §3 全体 rewrite は scope 過大ゆえ実施せず、本注記で literal 全件記録。実装側 source-of-truth = `ubo_metadata.inl` `g_block_count = 94u`。
+
+`indra/newview/app_settings/shaders/` 配下の `.glsl` で `uniform <Name> { ... }` ブロックを宣言している UBO の全件。これらは **全て `#ifdef LL_VULKAN_GLSL` の内側** に置かれており、**OpenGL path には到達しない** (= 宣言だけ存在し、実体 bind は §1 の 4 個のみ)。
+
 `indra/newview/app_settings/shaders/` 配下の `.glsl` で `uniform <Name> { ... }` ブロックを宣言している UBO の全件。これらは **全て `#ifdef LL_VULKAN_GLSL` の内側** に置かれており、**OpenGL path には到達しない** (= 宣言だけ存在し、実体 bind は §1 の 4 個のみ)。
 
 ### §3.1 set=0 帯 (per-frame backbone、3 個)
@@ -353,9 +367,11 @@ GLSL の `#ifdef LL_VULKAN_GLSL` gate により、OpenGL path は §3 の UBO bl
 - 命名規約は違うが grouping 単位は同じ "program param"
 - = **どちらかに統合すべき** (= 設計 doc 主題の 1 つ)
 
-### §6.4 host C++ redirect 層は **未着手**
+### §6.4 host C++ redirect 層は **未着手** (= 2026-06-03 doc 起案時点 snapshot)
 
 §4.3 で詳述。これが無いと Vulkan 描画は値無しで dead。
+
+> **2026-06-06 全 doc audit 訂正 status update**: 本 §6.4 + §4.3 「未着手」literal は **本 doc 起案時 (2026-06-03) snapshot** で時間凍結。**2026-06-04 Phase 1.B complete (= commit `35c4be1046`、handoff/phase1/b/handoff-phase1-b-complete.md) で 30 setter Vulkan path 分岐 + `mUniformUBOLoc` cache + name → offset 解決 dispatch 実装済**。実 source 確認 = `mUseUBO` / `forwardToUboUpload` / `mUniformUBOLoc` literal は `indra/llrender/llglslshader.cpp` + `llglslshader.h` + `llvkloader.cpp` + `llvkloader.h` の 4 file に存在 (2026-06-06 grep 確認)。本 §6.4 + §4.3 の literal は historical snapshot として保持、現状 status は roadmap §2.1 上の Phase 1.B ✅ (= INDEX.md §6.2 + handoff-phase1-e-complete.md §3.1)。
 
 ### §6.5 bare uniform → UBO migration の **粒度設計が未定義**
 

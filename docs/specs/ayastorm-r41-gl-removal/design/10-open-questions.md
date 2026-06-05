@@ -26,13 +26,13 @@
 | 2 | (V3') | set=1 layout 共通性 (全 program 共通 vs 別最適) | §1.1 | 未判断 |
 | 3 | (S3') | sampler 49 個 descriptor set 配置 (set=3 同居 vs 分離) | §1.1 | 未判断 |
 | 4 | (W) | `sProgramUboPool` maxSets (6 vs 1200) | §1.1 | 未判断 |
-| 5 | (A1) | std140 offset 計算 (Codegen 独自 vs SPIR-V reflection vs 二重) | §1.2 | 未判断 |
-| 6 | (P) | GLSL parse 手段 (mini-parser vs glslang library) | §1.2 | 未判断 |
-| 7 | (G/B3) | perfect hash generator (Python frozen-table vs gperf vs CHD) | §1.2 | 未判断 |
-| 8 | (B1) | Codegen 実装言語 (Python vs C++ vs CMake script) | §1.2 | 未判断 |
+| 5 | (A1) | std140 offset 計算 (Codegen 独自 vs SPIR-V reflection vs 二重) | §1.2 | ✅ 判断済 (default 採用 = 二重保証 = `scripts/ubo_codegen/std140.py` 独自 calculator + spirv-cross cross-check、Phase 1.A 実装で物理確定、2026-06-06 audit 訂正) |
+| 6 | (P) | GLSL parse 手段 (mini-parser vs glslang library) | §1.2 | ✅ 判断済 (default 採用 = `scripts/ubo_codegen/glsl_parser.py` mini-parser + `glslang_preproc.py` -E 前処理、Phase 1.A 実装で物理確定、2026-06-06 audit 訂正) |
+| 7 | (G/B3) | perfect hash generator (Python frozen-table vs gperf vs CHD) | §1.2 | ✅ 判断済 (default 採用 = CHD 算法、`scripts/ubo_codegen/perfect_hash.py`、Phase 1.A 実装で物理確定、2026-06-06 audit 訂正) |
+| 8 | (B1) | Codegen 実装言語 (Python vs C++ vs CMake script) | §1.2 | ✅ 判断済 (default 採用 = Python、`scripts/ubo_codegen/main.py:55 PYTHON_MIN = (3, 8)`、Phase 1.A 実装で物理確定、2026-06-06 audit 訂正) |
 | 9 | (B2) | glslang 統合方式 (autobuild vs system pkg vs 自前) | §1.2 | ✅ 判断済 (B2b system pkg, 2026-06-03 η-30 PA-1 entry 直前 gap remediation = 実装で先行 commit 済 (`indra/cmake/Glslang.cmake`) + spirv-cross 同 pattern 拡張) |
-| 10 | (B4) | 増分 build cache (mtime vs hash vs ccache) | §1.2 | 未判断 |
-| 11 | (B5) | Codegen 実行 trigger (CMake DEPENDS vs 手動 target) | §1.2 | 未判断 |
+| 10 | (B4) | 増分 build cache (mtime vs hash vs ccache) | §1.2 | ✅ 判断済 (default 採用 = hash + mtime hybrid、`scripts/ubo_codegen/build_cache.py:check_cache`、Phase 1.A 実装で物理確定、2026-06-06 audit 訂正) |
+| 11 | (B5) | Codegen 実行 trigger (CMake DEPENDS vs 手動 target) | §1.2 | ✅ 判断済 (default 採用 = CMake DEPENDS + 手動 target 両方、`indra/cmake/AyaUboCodegen.cmake:83-86 CONFIGURE_DEPENDS` + `:100-106 AYA_UBO_CODEGEN_OUTPUTS add_custom_command` + 別途 `codegen_ubo_force` 手動 target、Phase 1.A 実装で物理確定、2026-06-06 audit 訂正) |
 | 12 | (Q1) | 第 1 UBO migration template (Template A/B/C) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-5 batch) |
 | 13 | (Q2) | Phase 当たり UBO 数 (1 厳守 vs cluster 許可) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-5 batch) |
 | 14 | (Q3) | OpenGL path 並走期間 (全 Phase vs 中間撤廃 vs 段階撤廃) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-7 batch) |
@@ -52,7 +52,7 @@
 | 28 | (Q28-FFDUP) | explicit F 群 (= pbropaqueF/pbrmetallicroughnessF/softenLightF/reflectionProbeF) + globalF 同 PerDrawUBO_ClipPlane F+F 重複宣言集約方針 (= GL spec で identical 宣言 link OK、code quality 観点で集約候補) | §1.5 | 未判断 (Phase 0 Step 1 ST-1 enumerate 由来 新規、Phase 1.A 中盤判断可 = default 提案 = 追記する確定) |
 | 29 | (Q-NTTP) | R1 compile-time literal path 採否 (= C++20 NTTP 採用 vs C++17 維持) (= chapter 04 §6.4.7 R1 path 採否判定 = AYAstorm 既存 build C++17 default との trade-off) | §1.3 | ✅ 判断済 (A, 2026-06-03 ST-7 sub-task 8 batch = R1 不採用 / C++17 維持 = default 採用継続) |
 
-**count 内訳**: §1.1 (4) + §1.2 (7) + §1.3 (6) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **29 件** (内 13 件判断済 = §1.6 4 件 + §1.3 (Q1)(Q2)(Q3)(Q4)(Q5)(Q-NTTP) 6 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件 + §1.2 (B2) 1 件、残 16 件 未判断 = §1.1 4 + §1.2 (A1)(P)(G/B3)(B1)(B4)(B5) 6 + §1.4 4 + §1.5 (F)(Q28-FFDUP) 2)。
+**count 内訳** (2026-06-06 audit 訂正後): §1.1 (4) + §1.2 (7) + §1.3 (6) + §1.4 (4) + §1.5 (4) + §1.6 (4) = **29 件** (内 **19 件判断済** = §1.6 4 件 + §1.3 (Q1)(Q2)(Q3)(Q4)(Q5)(Q-NTTP) 6 件 + §1.5 (Q26-MUL)(Q27-CONFL) 2 件 + §1.2 **(A1)(P)(G/B3)(B1)(B2)(B4)(B5) 7 件 (= 2026-06-06 audit 訂正で Phase 1.A 実装 default 採用形を物理確定 status に反映、`scripts/ubo_codegen/` で実体充足)**、残 **10 件 未判断** = §1.1 4 + §1.4 4 + §1.5 (F)(Q28-FFDUP) 2)。
 
 **判断済 4 件の反映先 cross-ref (= §1.6 batch、2026-06-03 Wave A-G)**: (Q22-NUM) → inventory §3.3.1 + 06c §3/§8 + 04 §5.3 + 01 §4.2 (= 計 13 箇所 `85 GLSL blueprint` rewrite 済) / (Q23-K) → 09 §5.2 冒頭注記 / (Q24-S1) → 06a §4.3 / §4.3.1 / §6.2 / §10 + 06a-prep §6 (S1-存在) / 本 chapter §4 live 表 / (Q25-21CNT) → 本 §1.0 表 + 各 chapter 反映 batch (= Wave A-G)。
 

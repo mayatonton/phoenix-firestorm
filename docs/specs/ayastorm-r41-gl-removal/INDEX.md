@@ -1,6 +1,6 @@
 # AYAstorm r41 Vulkan Migration — Doc Index
 
-**最終整理**: 2026-06-06 (= Phase 1 全完了 = Linux primary 完成 marker と同時)
+**最終整理**: 2026-06-06 全 doc audit + 実装側 verification + 追加訂正 commit (= handoff Phase 1.E (sub-letter) complete = Linux primary baseline 確立 + **roadmap §2.1 統一基準 Phase 1 完走 ✅ 確定** (AYA さん合意 2026-06-06)、次 phase entry = Phase 2 = R3 (= UB_REFLECTION_PROBES 本実装) ⏳)
 
 ## §0. このディレクトリの構成
 
@@ -17,10 +17,13 @@ r41 milestone の全 spec doc + handoff doc を集約。2026-06-06 整理で **l
 
 ### §1.1 source of truth
 
+> **2026-06-06 audit 訂正**: Phase 完了判定の source of truth は **`design/09-phase-roadmap.md` §2.1 + §4 + §5** (= roadmap 統一基準)。`ayastorm-r41-cross-platform-port-spec.md` §6 は **実装 sub-step (handoff sub-letter) tracking 軸** で並走、Phase 完了判定とは別軸。
+
 | doc | 役割 |
 |-----|------|
-| [`ayastorm-r41-cross-platform-port-spec.md`](ayastorm-r41-cross-platform-port-spec.md) | **§6 phase tracking** = Phase 1.A..1.E + PC-N-* 全 sub-step 進捗 + §A 履歴 (= chronological log) |
-| [`ayastorm-r41-ubo-current-state-inventory.md`](ayastorm-r41-ubo-current-state-inventory.md) | UBO 現状棚卸し (= 起源 handoff = η-28 pivot-to-ubo-design) |
+| [`design/09-phase-roadmap.md`](design/09-phase-roadmap.md) | **Phase 完了判定 source of truth** = §2.1 全 Phase マップ表 + §4 Phase 1 + §5 Phase 2..K + §6 K+1..K+3 + §7 K+4 + §8 K+5 |
+| [`ayastorm-r41-cross-platform-port-spec.md`](ayastorm-r41-cross-platform-port-spec.md) | **実装 sub-step (handoff sub-letter) tracking** = §6 PC-N-* 進捗 + §A 履歴 (= chronological log)、§6 表内に roadmap §2.1 上の position 列併記 |
+| [`ayastorm-r41-ubo-current-state-inventory.md`](ayastorm-r41-ubo-current-state-inventory.md) | UBO 現状棚卸し (= 起源 handoff = η-28 pivot-to-ubo-design、2026-06-03 snapshot で時間凍結、§6.4 など一部 status update 済) |
 | [`reference-shader-location-map.md`](reference-shader-location-map.md) | shader file 配置 reference |
 
 ### §1.2 design chapter (= UBO 全体設計、2026-06-03 起案)
@@ -141,9 +144,47 @@ handoff doc 内の narrative shorthand `handoff-substep-...-pc-N-X-...md` (= 一
 
 00-charter.md の §A 履歴 narrative + 本文内の handoff 参照は §3.2 規則で archive/ path に変換済 (= 2026-06-06 整理時点)、§A 時系列記述自体は historical chain として原文保持。
 
-## §6. r41 milestone state (= 2026-06-06 整理時点)
+## §6. r41 milestone state (= 2026-06-06 全 doc audit 訂正後)
 
-- Phase 1.A ✅ + Phase 1.B ✅ + Phase 1.C ✅ + Phase 1.D ✅ + Phase 1.E ✅ = **Phase 1 全完了 ✅ = Linux primary 完成**
-- 次 phase ⏳ = (1) **Mac/Win 開発者補完 phase** (= 他 OS 開発者が Linux primary を base に MoltenVK/Windows 派生 fix 投入) + (2) **Phase 1.F+** (= 実 PBR shader 接続 + real data 内容置換)
-- 詳細 = §1.1 `ayastorm-r41-cross-platform-port-spec.md` §6 phase tracking 参照
-- Phase 1 完了 marker handoff = [`handoff/phase1/e/handoff-phase1-e-complete.md`](handoff/phase1/e/handoff-phase1-e-complete.md)
+### §6.1 handoff sub-letter 完了状態 (= 実装進捗 tracking 軸)
+
+- Phase 1.A ✅ + Phase 1.B ✅ + Phase 1.C ✅ + Phase 1.D ✅ + Phase 1.E ✅ 本訂正 commit baseline = **handoff sub-letter Phase 1.E complete ✅ = Linux primary baseline 確立** (= Vulkan path 通電 + GLTF asset cluster pilot 通電 + worker thread 並列化 baseline)
+
+### §6.2 roadmap §2.1 統一基準 (= Phase 完了判定 source of truth、AYA さん合意 2026-06-06)
+
+- roadmap §2.1 Phase 0 (計測) ✅ (= eta-29 phase0-step1/2/4/5-complete archive + design/06a-prep-phase0-measurement.md §5.5)
+- roadmap §2.1 **Phase 1 (codegen + redirect 層整備 + shell UBO 1 個) ✅ 完走** (= 2026-06-06 audit + 追加訂正で確定):
+  - 1.A (codegen pipeline + 96 unique UBO name / 94 codegen block) ✅
+  - 1.B (31 setter Vulkan path 分岐 transparent) ✅ (= inventory.md §6.4 「未着手」literal は 2026-06-03 snapshot、本訂正で update 済)
+  - 1.C (UB_REFLECTION_PROBES shell `Global_ReflectionProbes` で 5 cadence 全経路 `vkCmdBindDescriptorSets` 通電) ✅ (= shell 段階 = roadmap §4.2 Exit Criteria literal 充足、shell の実 member + 実 dirty + 実 flush 置換は Phase 2 仕事)
+- roadmap §2.1 Phase 2..K (= 1 UBO ずつ migration、Template A 順 = UB_REFLECTION_PROBES → GLTFMaterials → GLTFNodes → GLTFJoints → ...) **次 phase entry**:
+  - **Phase 2 = R3 (= UB_REFLECTION_PROBES 本実装、shell に実 data 入れる) 着手**
+  - Phase 2/3 詳細 scope 定義 = AYA さん指示 2026-06-06 で Phase 2 着手前 separate session で確定
+  - 現実装 handoff Phase 1.D/1.E は **Template A 順序逸脱した pilot 先回り着手** (= Skin_GLTFJoints + PerDrawUBO_LightParams「zero IS real data」semantic) 状態で実装側 baseline 整備済、Phase 2 本実装の前提条件に資する
+- roadmap §2.1 Phase K+1/K+2/K+3 (3 OS 確証 Linux/Win/Mac、(Q4) C Linux 先行 → Win/Mac 並走) ⏳ = Linux primary 全 Phase 完走後着手 (= AYA さん明示 2026-06-05)
+- roadmap §2.1 Phase K+4 (OpenGL path 撤廃、(Q3) A 全 UBO 移行完了まで並走) ⏳
+- roadmap §2.1 Phase K+5 (release 整備) ⏳
+
+### §6.3 Phase 1 完走判定 + Phase 2 着手 scope (= handoff-phase1-e-complete.md §5.2 参照)
+
+**2026-06-06 audit + 追加訂正で Phase 1 完走 ✅ 確定** (= roadmap §2.1 統一基準 Phase 1.A/B/C 全 ✅ + handoff Phase 1.A..1.E 全 ✅):
+- ✅ R1 (inventory.md §3 件数 update + §6.4 status update) = 本訂正 commit で消化
+- ✅ R2 (Phase 1.C shell 段階 完了 verification = UB_REFLECTION_PROBES shell で 5 cadence 全経路 `vkCmdBindDescriptorSets` 通電) = 本 audit で literal 確認
+- ✅ R9 (handoff-phase1-e-complete.md 自己矛盾解消) = 本訂正 commit で消化
+- ✅ R10 (Phase 番号体系 4 系統整合) = 本訂正 commit で消化
+- ⏳ R7 (GLTF asset rez first-fire marker 発火確認) = minor item、AYA 実機 session 1 回で消化可能
+- ⏳ R8 (design/10 残 10 件 AYA 判断) = deferred、別 batch session で消化 (= 2026-06-06 audit で 16→10 件縮小)
+
+**Phase 2 着手 scope (= AYA さん指示 2026-06-06 = Phase 2 着手前 separate session で Phase 2/3 詳細 scope 定義)**:
+- R3 = roadmap Template A 順 Phase 2 = UB_REFLECTION_PROBES 本実装 (= shell `Global_ReflectionProbes` に実 member + 実 dirty 判定 + 実 flush logic 入れる)
+- R4 = 実 PBR shader 接続 (= sGltfStubAssetPipeline 撤去)
+- R5 = 「zero IS real data」semantic 卒業 (= PerDrawUBO_LightParams real 内容投入)
+- R6 = avatar Vulkan draw 通電 (= sPlaceholderSkin 撤去)
+- R4/R5/R6 所属 Phase 番号 = Phase 2/3 定義時に AYA さん判断確定
+
+### §6.4 詳細 reference
+
+- 実装 sub-step tracking (= handoff sub-letter 軸): §1.1 `ayastorm-r41-cross-platform-port-spec.md` §6 phase tracking
+- roadmap 統一基準: `design/09-phase-roadmap.md` §2.1 + §4 + §5
+- handoff Phase 1.E (sub-letter) complete marker: [`handoff/phase1/e/handoff-phase1-e-complete.md`](handoff/phase1/e/handoff-phase1-e-complete.md)
+- Phase 1 完走 gate 残件 R1-R10 詳細: 同 handoff §5.2

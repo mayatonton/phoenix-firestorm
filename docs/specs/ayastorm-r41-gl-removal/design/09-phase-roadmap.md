@@ -62,13 +62,15 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 
 ## §2 Phase 全体マップ (= Phase 0 〜 Phase N+3)
 
+> **2026-06-06 全 doc audit 訂正注記**: 本 §2.1 + 後続 §3-§8 = **Phase 完了判定の source of truth** (= AYA さん合意 2026-06-06、INDEX.md §1.1 整合)。実装側で並走している handoff sub-letter 体系 (= Phase 1.A..1.E + Phase 1.F+ + Mac/Win 補完 phase) は **実装 sub-step tracking 軸**、本 §2.1 Phase 番号体系と並走。各 sub-letter の本 §2.1 上の position は §2.1 表「handoff sub-letter 対応」列参照。**audit 確認事項** = 現実装 handoff Phase 1.D/1.E は本 §2.1 Phase 2..K Template A 順序 (= UB_REFLECTION_PROBES → GLTFMaterials → GLTFNodes → GLTFJoints) を逸脱した pilot 先回り着手 (= Skin_GLTFJoints + PerDrawUBO_LightParams「zero IS real data」semantic、UB_REFLECTION_PROBES 本実装 skip 状態) = roadmap 統一基準では **Phase 1 完走未達 + Phase 2..K 順序逸脱状態**。Phase 1 完走 gate 残件 R1-R10 は handoff-phase1-e-complete.md §5.2 参照。
+
 ### §2.1 Phase マップ表
 
-| Phase 番号 | 名称 | scope 要約 | sub-step | handoff doc | 入口 Exit 判定 |
-|---|---|---|---|---|---|
-| **Phase 0** | 計測 phase | 06a-prep §2-§4 の (H1b)(E')(F) 実機計測 + 結果 chapter 反映 | η-29 | 起案予定 | 06a-prep §6 反映 flow 全行「反映済」 |
-| **Phase 1** | codegen + redirect 層整備 | chapter 08 codegen pipeline 実装 + chapter 06a redirect 層 + 06b dirty flag + 06c descriptor set bind | η-30 (.A/.B/.C 細分) | 起案予定 | Phase 1.A/B/C 各 Exit 全 PASS |
-| **Phase 2..K** | 1 UBO ずつ migration | (Q1) で確定する第 1 UBO から順に migration、各 Phase = 1 UBO (= (Q2) で cluster 許可なら例外) | η-31, η-32, ... | Phase ごと起案 | cold launch + canary + log で当該 UBO 経路成立 |
+| Phase 番号 | 名称 | scope 要約 | sub-step | handoff doc | 入口 Exit 判定 | handoff sub-letter 対応 (= 2026-06-06 audit) | 現状 status |
+|---|---|---|---|---|---|---|---|
+| **Phase 0** | 計測 phase | 06a-prep §2-§4 の (H1b)(E')(F) 実機計測 + 結果 chapter 反映 | η-29 | archive eta-29 phase0-step1/2/4/5-complete | 06a-prep §6 反映 flow 全行「反映済」 | (η-29 phase 着手前 prep + AYA 実機計測 = step3) | ✅ (= 2026-06-03 完走、commit `4e40fd2ab0` mechanical revert) |
+| **Phase 1** | codegen + redirect 層整備 + shell UBO 1 個通電 | chapter 08 codegen pipeline 実装 + chapter 06a redirect 層 + 06b dirty flag + 06c descriptor set bind + 1.C で shell UBO 1 個 (= UB_REFLECTION_PROBES) 5 cadence 全経路 `vkCmdBindDescriptorSets` 通電 | η-30 (.A/.B/.C 細分) | handoff/phase1/{a,b,c}/handoff-phase1-{a,b,c}-complete.md | Phase 1.A/B/C 各 Exit 全 PASS | handoff Phase 1.A ✅ + 1.B ✅ + 1.C shell 段階 ✅ (= UB_REFLECTION_PROBES `Global_ReflectionProbes` shell zero dummy write までで停止) | **shell 段階 ✅、Phase 2 本実装着手 ⏳** (= R1/R2/R3 残、handoff-phase1-e-complete.md §5.2) |
+| **Phase 2..K** | 1 UBO ずつ migration | (Q1) A 確定 = Template A 最小リスク = UB_REFLECTION_PROBES 単体から順 = Phase 2 (UB_REFLECTION_PROBES) → Phase 3 (GLTFMaterials per-asset) → Phase 4 (GLTFNodes per-asset) → Phase 5 (GLTFJoints per-skin) → 残 UBO 順次、各 Phase = 1 UBO ((Q2) A 1 UBO 厳守) | η-31, η-32, ... | Phase ごと起案 (= Phase 2 着手前に Phase 2/3 詳細 scope 定義 separate session、AYA さん指示 2026-06-06) | cold launch + canary + log で当該 UBO 経路成立 | handoff Phase 1.D (PC-N-5..10) + 1.E (PC-N-11..15c) = **Template A 順序逸脱した pilot 先回り着手** (= Skin_GLTFJoints + PerDrawUBO_LightParams「zero IS real data」semantic、UB_REFLECTION_PROBES 本実装 skip) | **未着手** (= pilot 先回り着手のみ、本実装 ⏳) |
 
 **Phase K 確定条件 (= 設計 review 2026-06-03 §3.4 K 確定明示)**: 「K」は Phase 2 から始まる migration Phase 群の最終 Phase 番号 (= 1 UBO ずつ migration を全 UBO 分続けた最後)。**K の具体数値は以下 3 条件揃ったときに確定**:
 1. **Phase 0 計測結果**: 06a-prep §2 (H1b) cadence hook 計測完了で、84 + 不明 16 件 cadence 帰属 確定後の **実 migration 対象 UBO 総数** (= 推定 88-104 個) が確定
@@ -76,11 +78,11 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 3. **(Q2) Phase 当たり migration UBO 数**: AYA 判断で cluster 許可 (= 1 Phase に 2-3 UBO 同 batch) 採否確定 → K = (UBO 総数 / Phase 当たり UBO 数) で K 値計算可能
 
 → K 確定は **Phase 0 Exit + (Q1)(Q2) AYA 判断 揃った時点** = Phase 1 開始前。それまで本 chapter §2/§3/§5/§6/§7/§8 の「K」「K+1」「K+2」等の表記は **暫定 placeholder** として扱う (= 確定後本 chapter §2.1 表で具体数値に置換)。
-| **Phase K+1** | 3 OS 確証 (Linux) | 08 §13.4 X-α = Linux 全 UBO 動作確認 + log 検証 + sample scene 確認 | η-(K+2) | 起案予定 | Linux build pass + cold launch normal + render parity |
-| **Phase K+2** | 3 OS 確証 (Windows) | 08 §13.4 X-β = Windows build + 起動 + render parity (= AYA 実機) | η-(K+3) | 起案予定 | Windows build pass + render parity |
-| **Phase K+3** | 3 OS 確証 (macOS) | 08 §13.4 X-γ = macOS build + 起動 + render parity (= @t-noami 実機委任) | η-(K+4) | 起案予定 | macOS build pass + render parity |
-| **Phase K+4** | OpenGL path 撤廃 | (Q3) で OpenGL 並走撤廃時期を AYA 判断、撤廃後は Vulkan のみ | η-(K+5) | 起案予定 | OpenGL path code 削除 + 3 OS build pass |
-| **Phase K+5** | release 整備 | release note 起草 + tag 切り出し + AYAstorm release flow | η-(K+6) | 起案予定 | release note + tag commit |
+| **Phase K+1** | 3 OS 確証 (Linux) | 08 §13.4 X-α = Linux 全 UBO 動作確認 + log 検証 + sample scene 確認 | η-(K+2) | 起案予定 | Linux build pass + cold launch normal + render parity | (Linux primary baseline は handoff Phase 1.E (sub-letter) complete で確立 ✅、本 Phase K+1 = 全 UBO 通電後の最終 Linux 確証) | ⏳ |
+| **Phase K+2** | 3 OS 確証 (Windows) | 08 §13.4 X-β = Windows build + 起動 + render parity (= AYA 実機) | η-(K+3) | 起案予定 | Windows build pass + render parity | (Mac/Win 補完 phase = AYA さん指示 2026-06-05「Linux 完成後」literal record で Phase K+2/K+3 として deferred) | ⏳ |
+| **Phase K+3** | 3 OS 確証 (macOS) | 08 §13.4 X-γ = macOS build + 起動 + render parity (= @t-noami 実機委任) | η-(K+4) | 起案予定 | macOS build pass + render parity | (同上、@t-noami 実機委任) | ⏳ |
+| **Phase K+4** | OpenGL path 撤廃 | (Q3) で OpenGL 並走撤廃時期を AYA 判断、撤廃後は Vulkan のみ | η-(K+5) | 起案予定 | OpenGL path code 削除 + 3 OS build pass | ((Q3) A 確定 = 全 UBO 移行完了まで並走、本 Phase K+4 で初撤廃) | ⏳ |
+| **Phase K+5** | release 整備 | release note 起草 + tag 切り出し + AYAstorm release flow | η-(K+6) | 起案予定 | release note + tag commit | - | ⏳ |
 
 **K = (Q1)(Q2) 確定後に決まる migration UBO 個数依存**。論理 binding 4 種 + 85 blueprint 集約結果次第で K = 5-20 程度の範囲が想定 (= cadence 別集約で同一 layout cluster を 1 Phase に纏める案を (Q2) で議論)。
 
@@ -197,14 +199,14 @@ Phase K+5 (release)
 
 | sub-Phase | scope | 該当 chapter | Exit 判定 |
 |---|---|---|---|
-| **1.A** | Codegen pipeline 実装 (= Python script 起草 + glslang 統合 + std140 calculator + SPIR-V reflection 二重保証 + perfect hash + cache + CMake DEPENDS) | 08 全章 | codegen script が既存 85 UBO blueprint を入力に取り、`ubo_metadata.inl` + `ubo_host_loader.inl` を生成、build error 0、生成 header の名前解決 lookup が compile-time 衝突 0 |
-| **1.B** | redirect 層実装 (= 30 setter method 内部に Vulkan path 分岐 + name → offset 解決 dispatch + cache 構造 mUniformUBOLoc) | 06a §3 / §4 / §5 | 30 setter 全てで Vulkan path 分岐 working、OpenGL path 既存挙動 unchanged (= 1 setter call 1 path 決定論的、build flag で全 path 確認可能) |
+| **1.A** | Codegen pipeline 実装 (= Python script 起草 + glslang 統合 + std140 calculator + SPIR-V reflection 二重保証 + perfect hash + cache + CMake DEPENDS) | 08 全章 | codegen script が既存 UBO blueprint (= 2026-06-06 audit 確認 = 96 unique UBO name / 94 codegen block、source-of-truth = `ubo_metadata.inl` `g_block_count = 94u`、旧 doc literal「85」は 2026-06-03 起案時 snapshot) を入力に取り、`ubo_metadata.inl` + `ubo_host_loader.inl` を生成、build error 0、生成 header の名前解決 lookup が compile-time 衝突 0 |
+| **1.B** | redirect 層実装 (= 31 setter method 内部に Vulkan path 分岐 + name → offset 解決 dispatch + cache 構造 mUniformUBOLoc) | 06a §3 / §4 / §5 | 31 setter 全てで Vulkan path 分岐 working、OpenGL path 既存挙動 unchanged (= 1 setter call 1 path 決定論的、build flag で全 path 確認可能) |
 | **1.C** | cadence 別 update site + dirty flag + descriptor set bind 配線 | 06b / 06c | 5 種 cadence (per-frame / per-program / per-draw / per-asset / per-skin) の update site / dirty flag / descriptor set bind が 1 経路ずつ実装、test UBO 1 個で full path 通電確認 |
 
 ### §4.2 Phase 1 Exit Criteria
 
-- Phase 1.A: 既存 85 UBO blueprint に対する codegen 実行 PASS + 生成 header をテスト program (= 既存 program 1 個) で include + bind 不変動作確認
-- Phase 1.B: 30 setter Vulkan path 分岐の **call site から見て transparent** = 既存 program 1 個の動作 unchanged
+- Phase 1.A: 既存 UBO blueprint (= 2026-06-06 audit 訂正 = 96 unique UBO name / 94 codegen block) に対する codegen 実行 PASS + 生成 header をテスト program (= 既存 program 1 個) で include + bind 不変動作確認
+- Phase 1.B: 31 setter (= integer index 17 + LLStaticHashedString 14、PB-4.8+PB-5.14 統合で hashed 1 追加 + uniform2i(hashed) 含む、2026-06-06 audit 訂正) Vulkan path 分岐の **call site から見て transparent** = 既存 program 1 個の動作 unchanged
 - Phase 1.C: test UBO 1 個 (= 後の Phase 2 で本実装する第 1 UBO の試作版、本実装は Phase 2、ここでは shell のみ) で per-cadence update + descriptor bind 通電
 
 **Phase 1.C ↔ Phase 2 境界明示 (= 設計 review 2026-06-03 §3.4 boundary clarify)**:
