@@ -102,7 +102,13 @@ AYA literal「WindowsとMacOSですが、同時に開発する計画にありま
 | PC-N-2 | (= 着手済、bindV3aRigged set=2 復活 = descriptor set 数 5 → macOS 派生 fix 候補 §3 #4) | descriptor set 統合 fix 候補 | - | ✅ |
 | PC-N-3 | (= 着手済、placeholder skin sentinel 経路 = layering 制約遵守 address-only pattern、cross-platform 影響なし) | - | - | ✅ |
 | PC-N-4 | (= 着手済、ring buffer grow 自動 re-wire = vkUpdateDescriptorSets endFrame() 末尾 hook、cross-platform 影響なし) | - | - | ✅ |
-| **PC-N-5** | (= **Phase 1.D 着手起点 = 実 GLTF Vulkan draw 通電 1 stub**、(N5-1) A 採用 = Skin_GLTFJoints UBO bind 経由 rigged draw、第 2 sentinel-like skin `sGltfStubSkin` 並走通電 + `recordGltfAssetDraw` 新設 + `AYAGltfStubDrawEnabled` cvar 切替) | descriptor set 数は PC-N-3 と同 5 set 維持 (= macOS MoltenVK 派生 fix は §3 #4 / PC-N-2 と一括対応) + sentinel pattern は layering 制約遵守ゆえ MoltenVK 側追加考慮なし + `AYAGltfStubDrawEnabled` cvar は cross-platform | full Vulkan ゆえ派生 fix 候補なし想定 | ⏳ design-lock complete 本 commit / 実装 ⏳ |
+| **PC-N-5** | (= **Phase 1.D 着手起点 = 実 GLTF Vulkan draw 通電 1 stub**、(N5-1) A 採用 = Skin_GLTFJoints UBO bind 経由 rigged draw、第 2 sentinel-like skin `sGltfStubSkin` 並走通電 + `recordGltfAssetDraw` 新設 + `AYAGltfStubDrawEnabled` cvar 切替) | descriptor set 数は PC-N-3 と同 5 set 維持 (= macOS MoltenVK 派生 fix は §3 #4 / PC-N-2 と一括対応) + sentinel pattern は layering 制約遵守ゆえ MoltenVK 側追加考慮なし + `AYAGltfStubDrawEnabled` cvar は cross-platform | full Vulkan ゆえ派生 fix 候補なし想定 | ✅ design-lock + 実装 complete (commit 675529a891) |
+| **Phase 1.D decomposition design-lock** | (= **PC-N-6..PC-N-10 5 sub-step 分解**: PC-N-6 = 実 LL::GLTF::Asset 経由 vertex buffer upload + PC-N-7 = index buffer upload + vkCmdDrawIndexed + PC-N-8 = material/transform UBO 実 bind 配線 + PC-N-9 = GLTFSceneManager::render 統合 + `AYAGltfRealDrawEnabled` cvar gate + PC-N-10 = cleanup + `AYAGltfStubDrawEnabled` deprecate) | 各 sub-step は PC-N-5 同形の sentinel/UBO 経路踏襲ゆえ macOS MoltenVK 影響増なし (= descriptor set 数 5 維持) | full Vulkan ゆえ派生 fix 候補なし想定 | ⏳ design-lock complete 本 commit / 各 sub-step 実装 ⏳ |
+| PC-N-6 | (= 実 LL::GLTF::Asset 経由 vertex buffer upload、Phase 1.D 内 1st sub-step) | (= 後述 design-lock phase で詳細確定) | (= 後述) | ⏳ |
+| PC-N-7 | (= 実 LL::GLTF::Asset 経由 index buffer upload + vkCmdDrawIndexed) | (= 後述) | (= 後述) | ⏳ |
+| PC-N-8 | (= material/transform UBO 実 bind 配線) | (= 後述) | (= 後述) | ⏳ |
+| PC-N-9 | (= GLTFSceneManager::render 統合 + `AYAGltfRealDrawEnabled` cvar gate) | (= 後述) | (= 後述) | ⏳ |
+| PC-N-10 | (= cleanup + `AYAGltfStubDrawEnabled` deprecate) | (= 後述) | (= 後述) | ⏳ |
 | ... | ... | ... | ... | ⏳ |
 
 ---
@@ -124,5 +130,6 @@ AYA literal「WindowsとMacOSですが、同時に開発する計画にありま
 
 - **2026-06-05**: 本 stub 起案 (= PC-8 marker doc §4 で起案 record、AYA literal「(PC-8-doc-1) B + (PC-8-doc-2) A で起案お願いします」record)
 - **2026-06-05**: §6 PC-N-5 行追記 (= Phase 1.D 着手起点 design-lock complete、AYA literal「OK」record + (N5-1) A 採用 = Skin_GLTFJoints UBO bind 経由 rigged draw、第 2 sentinel-like skin `sGltfStubSkin` 並走通電 + macOS MoltenVK 派生 fix 候補は §3 #4 / PC-N-2 と一括対応 + Windows 派生 fix 候補なし想定)
+- **2026-06-05**: §6 PC-N-5 状態 ✅ 反映 (= commit 675529a891 で実装完了) + Phase 1.D decomposition design-lock 行追記 (= PC-N-6..PC-N-10 5 sub-step 分解、AYA literal「OK」record + 12 件 ambiguity (D-1)..(D-12) 全件推奨案採用 + PC-N-6..PC-N-10 5 行 stub 追記、各 sub-step は PC-N-5 同形の sentinel/UBO 経路踏襲ゆえ macOS MoltenVK 影響増なし + Windows 派生 fix 候補なし想定)
 
 ---
