@@ -175,3 +175,13 @@ layout(std140, set = 3, binding = 30) uniform SkinSSSPrototypeFParamUBO_Legacy
 7. **cadence 設計再検討** = PerProgram vs PerDraw (= multi-pass dirty pattern 適合性、Phase 2 で再評価)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 同期)
+
+**Layer**: L4-2 sub-cluster (a) (= visual_realism 2 UBO cross-write)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` (= single source of truth)
+**要点**: aya_visual_realism 2 UBO cross-write (= AtmoExtra + SkinSSS)、本 UBO `aya_visual_realism_enabled_skinsss_legacy` offset=44 rename 版 (η-6 phase 2-A 範式)、multi-pass SSS blur 2 連続 dirty (PerProgram cadence 妥当性 [要 L0-4 結果反映 / PerDraw 降格候補])、r14+ 視覚表現章機能維持必須 (memory `project_aya_visual_realism_alpha_protect`)、aya_blur_dir 値選択 logic 未取得 [要追加調査]、工数 L (group 全体)
+**関連**: L0-1 dispatch (= skinSSSF program 識別) / L0-4 cadence 再評価 (= multi-pass 2 連続 dirty + PerDraw 降格) / §3.5.1 r20 SSS (= AvatarF/PBROpaqueExtra と同 r20 章別系統) / §5.4 visual regression policy

@@ -219,3 +219,13 @@ OS-1〜OS-10 gate 照合:
 7. **per-shader UBO block 拡大対象 file 全列挙** = grep result 52 file で UBO block 宣言済、残 file の状況確認要
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.5 同期)
+
+**Layer**: L4-5 (= C 判定 GLTF texture transform 3 UBO program 識別 dispatch group)
+**status**: **起案済 (shell + write 通電済 = Phase 1.A/1.C 完了)** (= 2026-06-06 C-6、設計・工程 doc 化完了、本 group 中唯一通電済 UBO)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.5` (= single source of truth)
+**要点**: GLTF texture transform 3 UBO + 1 bare local (= PbrOpaqueV + PbrAlphaV + MaterialUBO + pbrmetallicroughnessV bare)、本 UBO 10-member PBR full canonical (= AYA option (I))、base_color/emissive offset (=64/96) 本 group で扱う + normal/metallic-roughness は PbrOpaque/PbrAlpha 経由、set=1 binding=0 排他 (§3.5.1 MaterialUBO_Legacy と program 単位選択排他)、45+ base shader 拡大 (L0-3 依存)、layout-compat 6-member view 合法性 [要 Phase 2 cold launch verify]、工数 L (group 全体)、AYA live verify (= PBR 描画 + factor + transform、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= set=1 排他切替 PBR-extended ↔ base) / L0-3 per-shader 拡大 (= 45+ base shader 対象) / L0-4 cadence 再評価 / §3.5.1 MaterialUBO_Legacy (= 排他切替) / §3.5.14 Asset_GLTFMaterials (= GLTF asset 連動) / §5.4 visual regression policy

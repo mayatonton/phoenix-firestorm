@@ -218,3 +218,13 @@ layout(std140, set = 3, binding = 0) uniform AtmoExtraUBO_Legacy
 
 - set=3 帯 bind は `bindV3aStatic` / `bindV3aRigged` で全帯一括 (= `llvkloader.cpp:2168, 2172`)
 - shader program switch 時に PerProgram cadence の triple-buffer 経路で update
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 同期)
+
+**Layer**: L4-2 sub-cluster (a) (= visual_realism 2 UBO cross-write)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` (= single source of truth)
+**要点**: aya_visual_realism 2 UBO cross-write (= AtmoExtra + SkinSSS)、本 UBO `aya_visual_realism_enabled` offset=24 部分 write、他 9 member (lightnorm/haze_horizon/cloud_shadow/sun_moon_glow_factor/aya_r14_*/aya_r16_*) は §3.5.7 sky/cloud group trigger、binding=0 衝突 (Asset_GLTFNodes と) L0-1 dispatch で解決、4 shader (atmosphericsFuncs/skyV/skinSSSF/cloudsV) 改変ゼロ、工数 L (group 全体)、AYA r14/r16 cvar setter 未取得 [要追加調査]
+**関連**: L0-1 dispatch (= binding=0 衝突解決) / L0-3 per-shader 拡大 (= atmosphericsFuncs snippet shader) / §3.5.7 sky/cloud group (= 9 member 共有) / §3.5.1 r20 SSS (= SkinSSS 経由交差) / §5.4 visual regression policy

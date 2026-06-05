@@ -226,3 +226,13 @@ OS-1〜OS-10 gate 照合:
 7. **PerProgram flush 経路の VkDescriptorBufferInfo bind 詳細** = verify 要
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 同期)
+
+**Layer**: L4-2 sub-cluster (c) (= light cvar 3 UBO V/F pair + cross-stage)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` (= single source of truth)
+**要点**: light cvar 3 UBO (= PointLightF + SpotLightF + PointLightV)、本 UBO 10 member 統合最大 (= projector 6 + sun_wash + falloff + global_light_strength + 他)、`sun_wash`/`falloff`/`global_light_strength` (offset=28/40/44) PointLightF と double-write、PointLightV binding=5 cross-stage declared-but-unused (η-28-C type 3)、far_clip setter 未取得 [要追加調査]、projector params 部分 write は §3.4.4 L2-4 DeferredUtil と交差、工数 L (group 全体)
+**関連**: L0-1 dispatch (= spot light program 識別) / L0-4 cadence 再評価 / PointLightF (= 同 cvar double-write) / PointLightV (= cross-stage 共有) / §3.4.4 DeferredUtil (= projector params 交差) / §5.4 visual regression policy

@@ -192,3 +192,13 @@ OS-1〜OS-10 gate 照合:
 7. **`PerProgramUBO_PointLightV` (binding=5) との shape 類似の意図** = 同 layout 共有設計か、独立設計か (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.4 同期)
+
+**Layer**: L4-4 (= C 判定 box_center/box_size 2 UBO program 識別 dispatch group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.4` (= single source of truth)
+**要点**: box_center/box_size 2 UBO program 識別 dispatch (= Occlusion + ShadowCube)、本 UBO shadowCubeV program 専用 (set=2 binding=14)、setter site 全件 [要追加調査] (= `LLPipeline::generateSunShadow` cube 経路候補)、PointLightV (binding=5) と shape 類似誤 bind 防止、cadence PerProgram 妥当性 verify、工数 M、AYA live verify (= shadow cube map 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= 同 enum で別 program 別 UBO 識別) / OcclusionCube (= 同 enum cross-UBO) / §3.5.2 PointLightV (= shape 類似誤 bind 防止) / §3.5.3 shadow_target_width (= shadow render 連動 verify) / §5.4 visual regression policy

@@ -174,3 +174,13 @@ avatar 系 Legacy 帯:
 
 - set=3 帯 bind は `bindV3aStatic` / `bindV3aRigged` で全帯一括
 - avatar program bind 時 PerProgram cadence triple-buffer flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.1 同期)
+
+**Layer**: L4-1 (= C 判定 cross-UBO triple-write group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.1` (= single source of truth)
+**要点**: aya_sss_skin_flag 3 UBO triple-write group (= MaterialUBO_Legacy + PBROpaqueExtraUBO_Legacy + AvatarFParamUBO_Legacy)、本 UBO offset=0 (1 active member)、avatar program 専用、cadence mismatch 重大 (= SSS skin flag は per-draw 性質、PerProgram cadence で stale risk)、PerDraw 降格候補、工数 M、setter 未取得 [要追加調査]、AYA live verify (= r20 SSS avatar 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= avatar program 識別) / L0-4 cadence 再評価 (= PerDraw 降格 AYA 判断) / §5.4 visual regression policy / §3.5.2 SkinSSS 経由交差 verify (= 同 r20 SSS pipeline)

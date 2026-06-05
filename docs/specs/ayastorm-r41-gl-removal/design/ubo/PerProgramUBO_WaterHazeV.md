@@ -158,3 +158,13 @@ layout(std140, set = 2, binding = 15) uniform PerProgramUBO_WaterHazeV
 7. **VkShaderStageFlags 指定** = V+F shared ゆえ VERTEX | FRAGMENT 両指定要 (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.6 同期)
+
+**Layer**: L4-6 (= C 判定 water 系 5 UBO 連動 dirty group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.6` (= single source of truth)
+**要点**: water 5 UBO 連動 (= WaterFog + WaterV + UnderWaterF + WaterF + WaterHazeV)、本 UBO waterHaze V+F shared host 1 bind (set=2 binding=15)、`above_water` int (offset=0 + 3 pad)、VkShaderStageFlags=VERTEX|FRAGMENT [要 verify]、SimpleColorF/DeferredUtil waterSign data 共有候補 [要 §3.4 整合]、工数 L (group 全体)、AYA live verify (= waterHaze 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= waterHaze V/F program 識別 + V+F shared bind) / §3.4.4 DeferredUtil (= waterSign cadence 整合) / §3.4.4 L3-4 SimpleColorF (= waterSign data 共有候補) / §5.4 visual regression policy

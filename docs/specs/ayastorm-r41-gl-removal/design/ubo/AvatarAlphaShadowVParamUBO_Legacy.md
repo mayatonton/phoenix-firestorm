@@ -160,3 +160,13 @@ avatar 系 Legacy 帯 binding 周辺:
 
 - set=3 帯 bind は `bindV3aStatic` / `bindV3aRigged` で全帯一括
 - avatar shadow program bind 時 PerProgram cadence triple-buffer flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.3 同期)
+
+**Layer**: L4-3 (= C 判定 shadow_target_width triple-write group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.3` (= single source of truth)
+**要点**: shadow_target_width 3 UBO triple-write (= ShadowAlphaMaskV + PbrShadowAlphaMaskV + AvatarAlphaShadowV)、本 UBO offset=0 (1 active member)、avatar alpha shadow program 専用、setter 7 site 全特定済、target_width data source [要追加調査 = cvar or runtime shadow buffer width]、工数 S-M、AYA live verify (= avatar shadow alpha 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= avatarAlphaShadowV program 識別) / L3-19 ShadowUtilParamUBO_Legacy (= shadow render 全 program 共有 pattern) / §5.4 visual regression policy

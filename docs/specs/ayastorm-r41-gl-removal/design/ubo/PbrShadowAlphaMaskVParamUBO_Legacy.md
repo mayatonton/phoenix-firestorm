@@ -166,3 +166,13 @@ layout(set=3, binding=21, std140) uniform PbrShadowAlphaMaskVParamUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - PBR shadow program 切替時 set=3 帯全 binding を一括 rebind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.3 同期)
+
+**Layer**: L4-3 (= C 判定 shadow_target_width triple-write group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.3` (= single source of truth)
+**要点**: shadow_target_width 3 UBO triple-write (= ShadowAlphaMaskV + PbrShadowAlphaMaskV + AvatarAlphaShadowV)、本 UBO offset=0 (1 active member)、PBR shadow alpha program 専用、setter 7 site 全特定済、3 UBO 同時 write vs program 識別 1 UBO write 選択 [要 AYA 判断]、工数 S-M、AYA live verify (= PBR shadow alpha mask 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= pbrShadowAlphaMaskV program 識別) / L3-19 ShadowUtilParamUBO_Legacy (= shadow render 全 program 共有 pattern) / §5.4 visual regression policy

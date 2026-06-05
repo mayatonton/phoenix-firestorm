@@ -213,3 +213,13 @@ OS-1〜OS-10 gate 照合:
 7. **同 shader consume UBO 完全特定** = class3/environment/underWaterF.glsl 内同時 consume UBO 群 (= 既 FrameLights 確認、他 grep verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.6 同期)
+
+**Layer**: L4-6 (= C 判定 water 系 5 UBO 連動 dirty group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.6` (= single source of truth)
+**要点**: water 5 UBO 連動 (= WaterFog + WaterV + UnderWaterF + WaterF + WaterHazeV)、本 UBO underWaterF program 専用 (set=3 binding=39)、14 member 最大、rename 4 member (= η-6 §3.3 範式) で WaterFog/WaterV と data 共有、FrameLights consume guard wrap (`#ifndef FRAME_LIGHTS_DEFINED`)、per-frame 変化 member (eyeVec/screenRes/znear/zfar) cadence stale risk [要 L0-4 結果反映]、工数 L (group 全体)
+**関連**: L0-1 dispatch (= underWaterF program 識別) / L0-4 cadence 再評価 (= PerFrame 降格) / WaterFog/WaterV (= rename duplicate source) / L1b-2 FrameLights (= guard wrap 整合) / §5.4 visual regression policy

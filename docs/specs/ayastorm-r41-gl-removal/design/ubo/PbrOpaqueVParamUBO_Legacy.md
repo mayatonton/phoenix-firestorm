@@ -175,3 +175,13 @@ layout(set=3, binding=53, std140) uniform PbrOpaqueVParamUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - PBR opaque V program 切替時 set=3 帯全 binding を一括 rebind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.5 同期)
+
+**Layer**: L4-5 (= C 判定 GLTF texture transform 3 UBO program 識別 dispatch group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.5` (= single source of truth)
+**要点**: GLTF texture transform 3 UBO + 1 bare local (= PbrOpaqueV + PbrAlphaV + MaterialUBO + pbrmetallicroughnessV bare)、本 UBO pbropaqueV program 専用 (set=3 binding=53)、`texture_normal_transform[2]`/`texture_metallic_roughness_transform[2]` (offset=0/32)、setter 全特定済 (`llfetchedgltfmaterial.cpp:136-140`)、cadence material 切替 per-draw 寄り → PerDraw 降格候補 [要 L0-4 結果反映]、工数 L (group 全体)、AYA live verify (= PBR opaque V 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= pbropaqueV program 識別) / L0-4 cadence 再評価 (= PerDraw 降格) / PbrAlphaV (= 同 layout pair) / MaterialUBO (= GLTF transform 統合) / §3.5.14 Asset_GLTFMaterials (= bare local path 経由) / §5.4 visual regression policy

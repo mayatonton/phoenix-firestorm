@@ -192,3 +192,13 @@ OS-1〜OS-10 gate 照合:
 7. **`PerProgramUBO_PostDeferredNoDoFF` (binding=12) との重複** = 同 `chroma_str` member、別 program 別 UBO で double-write 必要か、cadence 制約での共有可能性 (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 同期)
+
+**Layer**: L4-2 sub-cluster (b) (= chroma_str 2 UBO cross-write)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` (= single source of truth)
+**要点**: chroma_str 2 UBO cross-write (= PostDeferredF + NoDoFF)、本 UBO `chroma_str` offset=4 + `res_scale` offset=0、AYAstorm r30 P4 BD 改善 (RenderChromaStrength cvar)、HAS_DOF_CHROMA permutation で別 program 別 UBO instance、res_scale は §3.5.10 group DOF data 交差 [要 verify]、postDeferredF/HQDoFF 2 program 共有、工数 L (group 全体)
+**関連**: L0-1 dispatch (= postDeferredF/HQDoFF 2 program 識別) / §3.5.10 post-process group (= res_scale CameraDoFResScale 交差) / §5.4 visual regression policy

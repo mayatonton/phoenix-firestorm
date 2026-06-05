@@ -1292,27 +1292,541 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 
 ### §3.5 L4: C 16 group (= 62 件)
 
-[**C-6 で起案、大型・分割可能性**]
+**Layer 定義**: C 判定 (= 他 UBO 依存、cross-UBO 同期 / pair / sequential 必須)、READINESS.md §3 16 group 詳細 + RELATIONS.md §5.1 dirty 連動 group 由来
+**前提条件**: L0-1〜L0-4 全件確立、L1〜L3 経路 pattern 確立 + cadence 再評価結果反映 (= L0-4 依存 group 多数)、L1a-1 LLStaticHashedString redirect pilot 完了 (= setter redirect 形式利用)
+**verify 単位**: **group verify** (= group 全件揃って初めて整合 visual、中間状態は暫定 default 値で破綻回避、AYA literal 2026-06-06)
+**trace 順判定**: AYA 既存機能 risk 順 + 機能独立性 (= group 単位の cross-UBO 同期完結性) + group 内 UBO 数 + L0-4 cadence 再評価依存度
 
-予定 16 group:
-- §3.5.1 aya_sss_skin_flag 3 UBO (= 3 件)
-- §3.5.2 aya_visual_realism + chroma_str + light cvar (= 7 件)
-- §3.5.3 shadow_target_width 3 UBO (= 3 件)
-- §3.5.4 box_center/box_size 2 UBO (= 2 件)
-- §3.5.5 GLTF texture transform 3 UBO (= 3 件)
-- §3.5.6 water 系 5 UBO (= 5 件)
-- §3.5.7 sky/cloud/atmospheric 10 UBO (= 10 件)
-- §3.5.8 velocity 5 UBO (= 5 件)
-- §3.5.9 reflection probe / IBL 5 UBO (= 5 件)
-- §3.5.10 post-process chain 6 UBO (= 6 件)
-- §3.5.11 glow chain 4 UBO (= 4 件)
-- §3.5.12 SMAA 2 UBO (= 2 件)
-- §3.5.13 pathfinding 2 UBO (= 2 件)
-- §3.5.14 GLTF asset 2 UBO (= 2 件)
-- §3.5.15 set=2 binding=0 共有 (残) 2 UBO (= 2 件)
-- §3.5.16 MultiLight 1 UBO (= 1 件)
+**全件共通の (4) 設計 task 共通項** (= group 単位で確立):
+- register: 各 UBO 個別 register、program 識別で該当 UBO のみ wire (= L0-1 dispatch protocol)
+- write: 1 cvar/state setter call で group 内 N UBO 同時 forward → 各 program 識別で該当 UBO のみ `writeProgramUbo` (= cross-UBO 同期 protocol、RELATIONS.md §5.1 trigger 由来)
+- flush: 各 UBO 個別 (= 該当 program bind 単位)
+- shader 接続: 既存 `#ifdef LL_VULKAN_GLSL` block 活性化 (= 改変ゼロ、原則 4 維持)
+- cross-UBO 同期 protocol: trigger event (= cvar 変化 / preset 切替 / frame 開始 等) で group 内 N UBO 全 dirty (= RELATIONS.md §5.1 各 trigger entry 由来)
+
+**全件共通の (7) 4 原則 gate**:
+- 原則 1 (Core 分散): 各 UBO 担当 program = render thread 単独 → ✅、ただし group 内 cross-UBO 同期 logic は 1 setter call に集約 (= 分散粒度維持)
+- 原則 2 (3 OS 共通): ✅
+- 原則 3 (Phase 2/3): Phase 2 内、L0-4 結果 cadence 再分類対象あり → ✅
+- 原則 4 (OpenGL を殺さない): 各 shader `#else` block uniform 個別宣言維持 → ✅
+- visual regression ゼロ: AYA live verify (= §5.4 policy)、group verify 単位、中間状態は暫定 default 値で破綻回避
+
+#### §3.5.1 L4-1: aya_sss_skin_flag 3 UBO triple-write group (= AYAstorm r20 SSS skin flag)
+
+**AYA literal 命名 mapping**: READINESS §3.1 (= cross-UBO 3 UBO triple-write、AYA 単純配列で C-1〜C-3 相当)
+
+**位置付け**: L4 group 1 件目 = AYAstorm r20 SSS pipeline 直結、機能維持必須 (= memory `project_ayastorm_visual_realism_chapter` + `project_skin_hash_collision_bom_body`)、3 UBO triple-write 設計判断 + set=1 binding=0 排他切替 (= MaterialUBO ↔ MaterialUBO_Legacy)
+
+**group 概要**:
+- 3 UBO 重複格納:
+  - **MaterialUBO_Legacy** (set=1 binding=0、256B、8 member、`aya_sss_skin_flag` offset=56) — `class3/deferred/materialF.glsl:38` singleton site
+  - **PBROpaqueExtraUBO_Legacy** (set=3 binding=13、256B、4 member = 1 active + 3 pad、`aya_sss_skin_flag` offset=0) — `class1/deferred/pbropaqueF.glsl:160` singleton site (= 起案 sub-step η-5 (b-1) で bare uniform から wrap)
+  - **AvatarFParamUBO_Legacy** (set=3 binding=54、256B、4 member = 1 active + 3 pad、`aya_sss_skin_flag` offset=0) — `class1/deferred/avatarF.glsl:76` singleton site
+- data source: AYAstorm r20 Phase C `aya_sss_skin_flag` (= `llshadermgr.cpp:1611` `mReservedUniforms.push_back("aya_sss_skin_flag"); // <FS:AYA r20 Phase C>` literal + `llshadermgr.h:138` `AYA_SSS_SKIN_FLAG` enum)
+- 3 UBO 1 setter で同時 dirty (= RELATIONS.md §5.1「AYA r20 SSS skin flag cvar 変化 → 3 UBO triple-write」trigger entry)
+
+##### (1) 前提条件
+- L0-1 (= dispatch logic、特に set=1 binding=0 排他で MaterialUBO ↔ MaterialUBO_Legacy 切替、program 識別で 3 UBO 個別 wire)
+- L0-2 (= LLStaticHashedString UBO redirect 経路、setter redirect 形式利用)
+- L0-4 (= cadence 妥当性、AvatarFParamUBO_Legacy / PBROpaqueExtraUBO_Legacy は per-draw 性質を PerProgram で運ぶ stale data risk あり、結果反映待ち)
+- L1a-1 (= ClipFParamUBO_Legacy LLStaticHashedString redirect pilot 完了、同 pattern 利用)
+
+##### (2) 不明事項
+- `AYA_SSS_SKIN_FLAG` uniform setter call site (= `llshadermgr.cpp:1611` reserved 登録 + `llshadermgr.h:138` enum 登録のみ確認、writer 直接 call site 全件 grep 未取得) **[要追加調査]**
+- 3 UBO 同時 write vs program 識別で 1 UBO のみ write 設計選択 (= 全 SSS 関連 program 跨ぎ host 側 dispatch 設計) **[要 AYA 判断]**
+- AvatarFParamUBO_Legacy cadence 妥当性 (= SSS skin flag は LLDrawInfo 単位 per-draw attribute、PerProgram cadence で write すると 1 program 内 multi-draw で stale data risk) **[要 L0-4 結果反映 / 要 AYA 判断 = PerDraw 降格検討]**
+- PBROpaqueExtraUBO_Legacy cadence 妥当性 (= 同上、material 切替 trigger で per-draw 変化) **[要 L0-4 結果反映]**
+- AYAstorm r20 SSS skin 判定 trigger (= LLMaterial flag / texture detect / cvar / LLDrawInfo opt-in) **[要追加調査]**
+- bare uniform 残存 (= 3 shader `#else` block bare uniform `aya_sss_skin_flag` setter が OpenGL 経路で host C++ 側に残存しているか、特に PBROpaqueExtra は wrap 起案経緯ゆえ要確認) **[要追加調査]**
+- SkinSSSPrototypeFParamUBO_Legacy (= §3.5.2 group 所属、set=3 binding=30) との data source 関係 (= 同 r20 SSS pipeline、別 member 名 `aya_visual_realism_enabled_skinsss_legacy` で AtmoExtra 連動 = §3.5.2 と交差) **[要 verify]**
+- MaterialUBO_Legacy の他 7 member (= `morphFactor` / `specular_color` / `camPosLocal` / `emissive_brightness` / `is_mirror` / `env_intensity` / pad) は本 group の triple-write 対象外、それぞれ別 setter 経路で write → 同 UBO 内別 offset を別 trigger で部分 write する dirty 粒度設計 **[要 verify / 要 AYA 判断]**
+- `is_mirror` setter site (= `LLVOVolume::setReflectionProbeIsMirror` host 側 `uniform1f` 直接 call 未取得) **[要追加調査]**
+
+##### (3) 調査手法
+- **D1 setter Grep**: `AYA_SSS_SKIN_FLAG` enum / `aya_sss_skin_flag` literal uniform writer site 全件 (= `indra/newview` + `indra/llrender` + `indra/newview/lldrawpoolavatar.cpp` + `pipeline.cpp` SSS 経路)
+- **D2 既存実装読解**: AYAstorm r20 SSS 章実装 (= memory `reference_attachment_rendering_routing` + `reference_deferred_shader_routing` + `project_skin_hash_collision_bom_body`)、SSS skin 判定 trigger 経路
+- **D3 cadence verify**: AvatarF / PBROpaqueExtra per-draw 性質 vs PerProgram cadence stale data risk 実測 (= 1 program 内 multi-draw avatar/PBR 描画で同 UBO 値再 write 必要性)
+- **D4 突合**: 3 UBO 同 `aya_sss_skin_flag` offset/size 整合性 (= MaterialUBO_Legacy offset=56 vs PBROpaqueExtra offset=0 vs AvatarF offset=0、全 4B float 整合) + SkinSSSPrototypeFParamUBO_Legacy との data source 別系統 verify
+
+##### (4) 設計 task (= 4 経路、group 単位)
+- **register**: 3 UBO 個別 register (= PerProgram cadence triple-buffer)、program 識別で MaterialUBO/Legacy 排他 + PBR opaque program に PBROpaqueExtra + avatar program に AvatarF を limit
+- **write**: 1 `AYA_SSS_SKIN_FLAG` setter call → host C++ で program ID 識別 → 該当 program の所属 UBO に `writeProgramUbo` (= MaterialUBO_Legacy bound program なら set=1 binding=0、PBR opaque program なら set=3 binding=13、avatar program なら set=3 binding=54)
+- **flush**: 3 UBO 個別 (= 該当 program bind 単位、cmdbuf 経路で triple-buffer 経由 `vkCmdBindDescriptorSets`)
+- **shader 接続**: 既存 LL_VULKAN_GLSL block 活性化 (= materialF.glsl:38 + pbropaqueF.glsl:160 + avatarF.glsl:76、改変ゼロ、原則 4 維持)
+- **cross-UBO 同期 protocol**: 1 setter call で 3 UBO 全 dirty (= host 側 dispatch logic で SSS skin flag setter を受けて 3 program 系全 dirty bit を立てる、RELATIONS.md §5.1 trigger 実装)
+- **MaterialUBO_Legacy 部分 write 設計**: MaterialUBO_Legacy 内 `aya_sss_skin_flag` offset=56 (= 1 member) のみ本 group triggers で write、他 7 member は別 group / 別 trigger (= `is_mirror` / `emissive_brightness` 等の各 setter) で部分 write → 同 UBO 内 member 別 dirty 粒度設計必須
+
+##### (5) 工程 task
+- trace 順内位置: L4 group 1 件目 (= AYA 既存機能 risk 大、独立着手可、§3.5.2 visual realism と交差は SkinSSS 経由のみ)
+- group 内 並列性: 3 UBO 個別 register 並列可、ただし write 経路 1 setter 集約ゆえ dispatch logic 単一実装
+- group 間 並列性: §3.5.3 (shadow_target_width)〜§3.5.16 と並列可 (= 異 cvar/data source)、ただし §3.5.2 SkinSSS との交差は要 verify
+- 推定工数: **M** (= 半日 +、setter site 特定 + 3 UBO triple-write dispatch + cadence 再評価 + 3 program 識別 + 3 path visual verify)
+
+##### (6) A 確定条件
+- mUseUBO ON + 3 shader 活性化 + setter 通電 (= 3 UBO triple-write)
+- AYA live verify: **AYAstorm r20 SSS skin 描画 (= 顔/肌の subsurface scattering 効果) が既存と同一** (avatar + PBR opaque + material 3 path 全件 visual regression ゼロ §5.4、AYAstorm 視覚表現章機能維持必須)
+- Vulkan validation 0 件 (= 3 UBO 同 set=1+set=3 配線 + 排他切替 SPIR-V validation + cross-UBO 同期 logic validation)
+- 3 UBO 同 `aya_sss_skin_flag` 値同期 verify (= per-frame 整合 + cvar/state 変化時連動 dirty + program 切替時値継承)
+- bare uniform 残存ゼロ確認 (= OpenGL 経路でも UBO 経由化済み、3 shader `#else` block bare uniform setter が host C++ 側に残存しない)
+- AvatarF / PBROpaqueExtra cadence 判定確定 (= PerProgram 維持 or PerDraw 移行 AYA 判断、L0-4 結果反映)
+- MaterialUBO_Legacy 部分 write logic verify (= 本 group の `aya_sss_skin_flag` offset=56 write が他 member dirty を無効化しない、別 group trigger との独立性確認)
+- **verify 単位 = group verify** (= 3 UBO 揃って初めて整合 visual、中間状態 (= 1 UBO のみ通電) は暫定 default 値 = `0.0` で破綻回避 = SSS off で描画継続)
+
+##### (7) 4 原則 gate
+- **原則 1 (Core 分散)**: 3 program 個別 = render thread 単独 → ✅、cross-UBO 同期 logic は 1 setter call に集約 (= dispatch 粒度維持、3 UBO write 並列化候補 = 将来 Core 化で各 UBO 別 thread で write 可能、設計原則 (2) Core 分散実現整合)
+- **原則 2 (3 OS 共通)**: ✅
+- **原則 3 (Phase 2/3)**: Phase 2 内、AvatarF / PBROpaqueExtra cadence 再分類は L0-4 結果依存 → ✅
+- **原則 4 (OpenGL を殺さない)**: 3 shader `#else` block uniform 個別宣言維持、OpenGL 経路で bare uniform setter 並走可能 → ✅
+- **visual regression ゼロ**: AYAstorm r20 SSS skin 描画同一 → AYA live verify、AYAstorm 視覚表現章独自機能維持必須 (= memory `project_ayastorm_visual_realism_chapter` 整合)
 
 ---
+
+#### §3.5.2 L4-2: aya_visual_realism + chroma_str + light cvar 7 UBO cross-write group (= 3 sub-cluster 統合)
+
+**AYA literal 命名 mapping**: READINESS §3.2 (= cross-UBO 2 UBO cross-write × 3 sub-cluster、AYA 単純配列で C-5〜C-11 相当)
+
+**位置付け**: L4 group 2 件目 = AYAstorm 視覚表現章 / r30 BD 改善 / light cvar の cross-UBO 同期 protocol が 3 sub-cluster で同居、それぞれ独立 data source ながら「1 cvar → N UBO 同時 dirty」共通 pattern (= RELATIONS.md §5.1 trigger 3 entry)
+
+**group 概要** (= 3 sub-cluster 7 UBO):
+
+**sub-cluster (a) visual_realism 2 UBO** (= AYAstorm r14+ 視覚表現章 + r20 SSS 連動):
+- **AtmoExtraUBO_Legacy** (set=3 binding=0、256B、10 member、`aya_visual_realism_enabled` offset=24) — `atmosphericsFuncs.glsl:85` + `skyV.glsl:112` + `skinSSSF.glsl` + `cloudsV.glsl` 4 site
+- **SkinSSSPrototypeFParamUBO_Legacy** (set=3 binding=30、256B、7 member、`aya_visual_realism_enabled_skinsss_legacy` offset=44) — `skinSSSF.glsl:80` singleton site (= η-6 phase 2-A rename 範式)
+- data source: AYAstorm r14+ `aya_visual_realism_enabled` cvar (= 推定 `AYAVisualRealismEnabled` 等、`llshadermgr.cpp:1614/1616/1841` reserved)
+- 2 UBO 同 cvar で 1 setter → 2 UBO 同時 dirty (= RELATIONS.md §5.1「AYA r14+ visual realism enable cvar 変化」trigger)
+- **§3.5.1 group との交差**: SkinSSS は r20 SSS pipeline 直結 (= §3.5.1 AvatarF と同 r20 SSS 章)、ただし member 名異 (= `aya_visual_realism_enabled_skinsss_legacy` vs `aya_sss_skin_flag`)、data source 別系統
+
+**sub-cluster (b) chroma_str 2 UBO** (= AYAstorm r30 P4 BD 改善 chroma aberration):
+- **PerProgramUBO_PostDeferredF** (set=2 binding=20、256B、2 member、`chroma_str` offset=4) — `postDeferredF.glsl:108` + `postDeferredHQDoFF.glsl` 2 site
+- **PerProgramUBO_PostDeferredNoDoFF** (set=2 binding=12、256B、4 member = 1 active + 3 pad、`chroma_str` offset=0) — `postDeferredNoDoFF.glsl:81` singleton site
+- data source: `RenderChromaStrength` cvar (= AYAstorm r30 P4 step 4 BD chroma_str、`pipeline.cpp:10060` + `:9555-9557` 2 setter site)
+- HAS_DOF_CHROMA permutation 切替で本 UBO ↔ NoDoFF 切替 (= 2 program 別 UBO instance、同 cvar で 2 UBO 同時 dirty 必須)
+
+**sub-cluster (c) light cvar 3 UBO** (= sun_wash / falloff / global_light_strength + V/F pair):
+- **PerProgramUBO_PointLightF** (set=2 binding=25、256B、5 member、`viewport` + `sun_wash` (dead) + `falloff` + `global_light_strength`) — `pointLightF.glsl:53` singleton site
+- **PerProgramUBO_SpotLightF** (set=2 binding=10、256B、10 member = 統合 = projector 6 + sun_wash + falloff + global_light_strength + 他) — `spotLightF.glsl:74` singleton site
+- **PerProgramUBO_PointLightV** (set=2 binding=5、256B、2 member = `center` vec3 + `size` float) — `pointLightV.glsl:63` + `spotLightF.glsl:151` (= declared-but-unused cross-stage 共有、η-28-C type 3 範式)
+- data source: `RenderGlobalLightStrength` + `RenderDeferredSunWash` cvar + per-light `LIGHT_FALLOFF` / `LIGHT_CENTER` / `LIGHT_SIZE` (= `pipeline.cpp:10628/10705/10712/11486-11487/11548-11549/11551/11625-11628` 多 setter site)
+- 3 UBO 同 cvar (sun_wash/global_light_strength) で double/triple-write + V/F pair + cross-stage declared-but-unused (= RELATIONS.md §5.1「RenderGlobalLightStrength/RenderDeferredSunWash cvar 変化」trigger)
+
+##### (1) 前提条件
+- L0-1 (= dispatch logic、特に SpotLightF/PointLightF 別 program 識別 + PointLightV cross-stage 共有 binding=5 の declared-but-unused 対応、η-28-C type 3 範式 verify)
+- L0-2 (= LLStaticHashedString UBO redirect 経路、setter redirect 形式利用)
+- L0-3 (= per-shader UBO block 拡大方式、atmosphericsFuncs.glsl は windlight consumer 全 program に link = snippet shader)
+- L0-4 (= cadence 妥当性、SkinSSS multi-pass dirty pattern + light per-light dirty trigger 再評価)
+- L1a-1 (= ClipFParamUBO_Legacy LLStaticHashedString pilot 完了、setter redirect pattern 利用)
+- L1b-2 (= FrameLights per-shader block 拡大完了、light 系 UBO 経路 pattern 利用)
+- L3-15 (= PerProgramUBO_GodraysF AYAstorm cvar setter pattern 確立)、L3-19 (= ShadowUtilParamUBO_Legacy 大物 UBO multi-site identical 同期 pattern 確立)
+
+##### (2) 不明事項
+
+**sub-cluster (a) visual_realism**:
+- `aya_visual_realism_enabled` setter call site (= AYA cvar 推定、`llshadermgr.cpp` reserved 登録のみ確認、writer 直接 call site 全件 grep 未取得) **[要追加調査]**
+- AYAstorm r14 / r16 cvar 別 member (= `aya_r14_volumetric_atmosphere_enabled` / `aya_r14_strength` / `aya_r16_aerial_perspective_enabled` / `aya_r16_strength`) の writer site **[要追加調査]**
+- SkinSSS multi-pass `aya_blur_dir` 値設定 logic (= horizontal vec2(1,0) / vertical vec2(0,1) host 側選択) **[要追加調査]**
+- SkinSSS PerProgram cadence vs multi-pass 2 連続 dirty (= cadence_tag=1 で 1 frame 内 2 回連続 dirty 妥当性、PerDraw 移行候補) **[要 L0-4 結果反映 / 要 AYA 判断]**
+- AtmoExtra binding=0 衝突 (= Asset_GLTFNodes と同 set=3 binding=0、cadence 別経路で subset 分離か) **[要 L0-1 結果反映]**
+- §3.5.1 SSS skin flag との cross-reference (= AvatarFParamUBO_Legacy/PBROpaqueExtra と SkinSSS が同 r20 SSS pipeline、別 member 名で並列存在の意図) **[要 AYA 判断]**
+
+**sub-cluster (b) chroma_str**:
+- HAS_DOF_CHROMA permutation 切替条件 (= 2 program 切替 logic、frame 内動的切替 vs 起動時固定) **[要 verify]**
+- vignette path (= `pipeline.cpp:10381`) で `chroma_str` setter が別系統存在か **[要追加調査]**
+- DofCombineFParamUBO_Legacy / PerProgramUBO_CofF / PerProgramUBO_PostDeferredV (§3.5.10 group) との DOF data source 共有 (= `CameraDoFResScale` を本 group の res_scale と共有か別 UBO か) **[要 verify / 要 §3.5.10 group 整合]**
+- PostDeferredF tail pad (= chroma_str offset=4 後の暗黙 pad) と NoDoFF tail pad (= `_pad_nodof0/1/2`) layout 差分の意図 **[要 verify]**
+
+**sub-cluster (c) light cvar**:
+- SpotLightF `far_clip` setter call site (= `DEFERRED_FAR_CLIP` enum / pipeline.cpp 内 setter 行未取得) **[要追加調査]**
+- PointLightV cross-stage declared-but-unused (= spotLightF.glsl:151 で binding=5 を frag stage 別 UBO 経由) η-28-C type 3 範式の Vulkan SPIR-V validation 影響 **[要 L0-1 結果反映 / 要 Phase 2 cold launch verify]**
+- per-light dirty trigger (= LIGHT_CENTER/SIZE/FALLOFF は per-light 変化、PerProgram cadence で program 内 multi-light 描画時 stale risk) **[要 L0-4 結果反映 / 要 AYA 判断 = PerDraw 降格検討]**
+- multi-spot (= `pipeline.cpp:11625-11628` `gDeferredMultiSpotLightProgram`) は本 group の PointLightV か PerDrawUBO_MultiLight (§3.5.16) どちらに属するか **[要 §3.5.16 group 整合]**
+- `viewport` member の shader 本体使用箇所 (= pointLightF.glsl 内 grep 未取得、screen-space `gl_FragCoord` 連動推定) **[要 verify]**
+- PerProgramUBO_PointLightF 内 `sun_wash` (= dead uniform、shader 本体未参照) の UBO write 維持 vs 削除 **[要 AYA 判断 = layout 不変契約上維持必須だが host 側自由度あり]**
+
+##### (3) 調査手法
+
+**sub-cluster (a)**:
+- D1 setter Grep: `aya_visual_realism_enabled` / `aya_r14_*` / `aya_r16_*` / `aya_blur_dir` / `aya_strength` / `aya_glow_*` 全 uniform setter site
+- D2 既存実装読解: AYAstorm r14 / r16 / r20 章実装 (= memory `project_ayastorm_r14_pivot_to_light` + `project_ayastorm_visual_realism_chapter` + `project_aya_visual_realism_alpha_protect`)
+- D3 cadence verify: SkinSSS multi-pass 2 連続 dirty pattern + AtmoExtra sky preset cadence
+- D4 突合: AtmoExtra `aya_visual_realism_enabled` (int、offset=24) vs SkinSSS `aya_visual_realism_enabled_skinsss_legacy` (int、offset=44) data source 同期性 verify
+
+**sub-cluster (b)**:
+- D1 setter Grep: `RenderChromaStrength` cvar listener + 2 setter site (= `pipeline.cpp:10060/9555`) 詳細読解 + vignette path setter 別 grep
+- D2 既存実装読解: AYAstorm r30 P4 BD chroma_str 実装経緯 (= memory なし、source comment literal `<AYAstorm r30 P4 step 4>` 由来)
+- D3 cadence verify: HAS_DOF_CHROMA permutation 切替 trigger
+- D4 突合: PostDeferredF offset=4 vs NoDoFF offset=0 同 `chroma_str` data source 同期性
+
+**sub-cluster (c)**:
+- D1 setter Grep: `RenderGlobalLightStrength` / `RenderDeferredSunWash` cvar listener + `LIGHT_CENTER/SIZE/FALLOFF` 全 3 program (point/spot/multi-spot) setter site + `DEFERRED_FAR_CLIP` enum
+- D2 既存実装読解: η-28-C type 3 範式設計 doc + η-27 1d/1e-A + η-28 Phase 2d-α 設計経緯
+- D3 cadence verify: per-light dirty trigger 経路 (= light volume bind の都度 UBO write を `writeProgramUbo` 経由で実施するか) + PointLightV `center/size` per-light 変化対応
+- D4 突合: SpotLightF `sun_wash`/`falloff`/`global_light_strength` (offset=28/40/44) vs PointLightF (offset=16/20/24) 同 cvar data source 同期性 + multi-spot `pipeline.cpp:11625-11628` setter 経路で SpotLightF/PointLightF どちら UBO 書込
+
+##### (4) 設計 task (= 4 経路、3 sub-cluster 個別 + group 全体統合)
+
+**共通**:
+- register: 7 UBO 個別 register (= PerProgram cadence triple-buffer)、program 識別で各 UBO を該当 program のみ wire
+- shader 接続: 既存 LL_VULKAN_GLSL block 活性化 (= 7 file (AtmoExtra=4 + SkinSSS=1 + PostDeferredF=1 + NoDoFF=1 + PointLightF=1 + SpotLightF=1 + PointLightV=1) 改変ゼロ、原則 4 維持)
+
+**sub-cluster (a) visual_realism cross-UBO 同期 protocol**:
+- write: `aya_visual_realism_enabled` cvar listener → host C++ で 2 UBO 同時 dirty (= AtmoExtra `aya_visual_realism_enabled` offset=24 + SkinSSS `aya_visual_realism_enabled_skinsss_legacy` offset=44 同値書込み)
+- flush: 2 UBO 個別 (= AtmoExtra = windlight consumer 全 program、SkinSSS = skinSSSF program 単独)
+- AtmoExtra 部分 write 設計: 同 UBO 内 `aya_visual_realism_enabled` (offset=24) のみ本 group trigger、他 9 member (= lightnorm/haze_horizon/cloud_shadow/sun_moon_glow_factor/aya_r14_*/aya_r16_*) は §3.5.7 sky/cloud group trigger で部分 write
+- AtmoExtra binding=0 衝突解決: L0-1 dispatch protocol で Asset_GLTFNodes (cadence=3 PerAsset) と subset 分離
+
+**sub-cluster (b) chroma_str cross-UBO 同期 protocol**:
+- write: `RenderChromaStrength` cvar listener → host C++ で 2 UBO 同時 dirty (= PostDeferredF offset=4 + NoDoFF offset=0 同値書込み)
+- flush: 2 UBO 個別 (= PostDeferredF = postDeferredF/HQDoFF program、NoDoFF = postDeferredNoDoFF program、HAS_DOF_CHROMA permutation 動的切替で別 program 別 UBO instance bind)
+- PostDeferredF 部分 write 設計: 同 UBO 内 `chroma_str` (offset=4) + `res_scale` (offset=0) 両 member 本 group trigger、ただし `res_scale` は別 DOF data source (= `CameraDoFResScale`、§3.5.10 group 整合 verify 要)
+
+**sub-cluster (c) light cvar cross-UBO 同期 protocol**:
+- write: `RenderGlobalLightStrength` + `RenderDeferredSunWash` cvar listener → host C++ で 2 UBO 同時 dirty (= PointLightF `sun_wash`/`global_light_strength` (offset=16/24) + SpotLightF `sun_wash`/`global_light_strength` (offset=28/44) 同値書込み)
+- per-light write: `LIGHT_CENTER/SIZE/FALLOFF` setter → PointLightV `center/size` (offset=0/12) + PointLightF/SpotLightF `falloff` (offset=20/40) 同時 dirty、PerDraw 降格候補 (= L0-4 結果反映)
+- flush: 3 UBO 個別 (= pointLightV/F = point light program、spotLightF = spot light program、PointLightV declared-but-unused は spotLightF 同 binding=5 reuse = η-28-C type 3)
+- V/F pair: PointLightV + PointLightF = 同 point light program 内 同時 bind、PointLightV + SpotLightF = cross-stage 共有 (= declared-but-unused、host bind は本 UBO 1 instance、frag 側別 UBO 経由で size 参照)
+- multi-spot (= `pipeline.cpp:11625-11628`) は §3.5.16 PerDrawUBO_MultiLight に分岐、本 group では multi-spot 経路は light cvar 書込のみ担当
+
+**group 全体統合**:
+- 3 sub-cluster は 3 異 cvar/state listener で独立、ただし全て「1 cvar → N UBO 同時 dirty」共通 pattern
+- 各 sub-cluster cross-UBO 同期 logic は 1 setter call 集約 (= Core 分散原則整合、各 UBO write は将来 thread 分割候補)
+
+##### (5) 工程 task
+- trace 順内位置: L4 group 2 件目 (= §3.5.1 r20 SSS 完了後、AYAstorm 視覚表現章機能維持 risk 大)
+- group 内 並列性: 3 sub-cluster 並列着手可 (= 異 cvar/data source、独立 protocol)
+- group 間 並列性: §3.5.3 (shadow) / §3.5.4 (box) / §3.5.13 (pathfinding) と並列可、§3.5.7 sky/cloud + §3.5.10 post-process との交差は要 verify (= AtmoExtra 9 member 共有 + chroma_str/res_scale DOF data source)
+- 推定工数: **L** (= 1 日 +、7 UBO 多 setter + 3 sub-cluster 独立 protocol + cross-stage declared-but-unused + per-light dirty cadence + 2 program permutation 切替 + AYAstorm 章機能維持 verify)
+
+##### (6) A 確定条件
+- mUseUBO ON + 7 shader 活性化 + 全 setter 通電 (= 3 sub-cluster cross-UBO sync)
+- AYA live verify:
+  - sub-cluster (a): **AYAstorm r14+ visual realism (= 大気感/SSS 顔肌) + r14/r16 cvar 効果が既存と同一** (visual regression ゼロ §5.4)
+  - sub-cluster (b): **DoF chroma aberration (= AYAstorm r30 P4 BD 改善) 効果が既存と同一** (HAS_DOF_CHROMA on/off 両 path、edge-aware shift 同強度)
+  - sub-cluster (c): **point/spot/multi-spot light 描画 + sun_wash/global_light_strength 効果が既存と同一** (per-light volume 描画整合 + cvar 変化反映)
+- Vulkan validation 0 件 (= 7 UBO 配線 + cross-UBO sync logic + declared-but-unused cross-stage validation + binding=0 衝突解決 verify)
+- 各 sub-cluster cvar 変化時連動 dirty verify
+- AtmoExtra 部分 write logic verify (= `aya_visual_realism_enabled` offset=24 write が他 9 member dirty 無効化なし)
+- PostDeferredF `chroma_str` + `res_scale` 部分 write 整合 (= §3.5.10 group との交差 verify)
+- SkinSSS multi-pass `aya_blur_dir` 値設定確定 (= horizontal/vertical pass 別、PerDraw 降格候補)
+- light cadence 確定 (= PerProgram 維持 or PerDraw 降格 AYA 判断、L0-4 結果反映)
+- PointLightV declared-but-unused SPIR-V validation 0 warning (= η-28-C type 3 範式維持確認)
+- **verify 単位 = group verify** (= 7 UBO 揃って初めて整合 visual、中間状態は暫定 default 値 (= visual_realism=0 / chroma_str=0 / light cvar=既存値) で破綻回避)
+
+##### (7) 4 原則 gate
+- **原則 1 (Core 分散)**: 3 sub-cluster 独立 cvar listener = 各 sub-cluster 別 thread 担当可能 → ✅、各 UBO write 1 setter 集約で分散粒度維持
+- **原則 2 (3 OS 共通)**: ✅
+- **原則 3 (Phase 2/3)**: Phase 2 内、SkinSSS / light cadence 再分類は L0-4 結果依存 → ✅
+- **原則 4 (OpenGL を殺さない)**: 7 shader `#else` block uniform 個別宣言維持、OpenGL 経路で bare uniform setter 並走可能 → ✅
+- **visual regression ゼロ**: 3 sub-cluster 全 path 描画同一 → AYA live verify、AYAstorm 視覚表現章 (r14/r16/r20) + r30 BD 改善 (chroma_str) + light cvar 機能維持必須 (= memory `project_ayastorm_visual_realism_chapter` + `project_ayastorm_r30_bd_improvement_phase` 整合)
+
+---
+
+#### §3.5.3 L4-3: shadow_target_width 3 UBO triple-write group (= shadow target resize 同期)
+
+**AYA literal 命名 mapping**: READINESS §3.3 (= 3 UBO triple-write、AYA 単純配列で C-12〜C-14 相当)
+
+**位置付け**: L4 group 3 件目 = setter 集約 (= pipeline.cpp 7 site)、3 UBO 全 1 member only (= `shadow_target_width`)、最も単純な triple-write group、独立性高 (= AYA 視覚表現章機能と直接交差なし、shadow 系単独)
+
+**group 概要**:
+- 3 UBO 重複格納 (= 全 1 member only):
+  - **PerProgramUBO_ShadowAlphaMaskV** (set=2 binding=6、256B、4 member = 1 active + 3 pad、`shadow_target_width` offset=0) — `shadowAlphaMaskV.glsl:85` singleton site (= non-PBR shadow alpha mask)
+  - **PbrShadowAlphaMaskVParamUBO_Legacy** (set=3 binding=21、256B、1 member、`shadow_target_width` offset=0) — `pbrShadowAlphaMaskV.glsl:89` singleton site (= PBR shadow alpha mask)
+  - **AvatarAlphaShadowVParamUBO_Legacy** (set=3 binding=22、256B、1 member、`shadow_target_width` offset=0) — `avatarAlphaShadowV.glsl:59` singleton site (= avatar shadow alpha)
+- data source: `LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH` (= `llshadermgr.h:195` enum + `llshadermgr.cpp:1677` reserved)
+- setter site: **`pipeline.cpp:8562/8570/8584/8592` (4 site 連続) + `:12596/12611/12642` (3 site 別経路)** = 7 setter site 全特定済 (READINESS §4.3)、`LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width)`
+- 3 program 別 UBO instance、各 program bind 時に該当 UBO 1 件に write (= RELATIONS.md §5.1「shadow target resize → 3 UBO triple-write」trigger)
+- 共通 trigger: shadow target resize (= window resize 連動 / shadow buffer regen)
+
+##### (1) 前提条件
+- L0-1 (= dispatch logic、3 program 識別で該当 UBO のみ write)
+- L0-4 (= cadence 妥当性、PerProgram は 7 setter site 全て `sCurBoundShaderPtr` 経由ゆえ妥当)
+- L1b-1 (= FrameViewProj per-shader 拡大完了、shadow view-projection 経路 pattern 利用)
+- L3-19 (= ShadowUtilParamUBO_Legacy 9 setter site + shadow render 全 program 共有 pattern 確立)
+
+##### (2) 不明事項
+- 3 UBO 同時 write vs program 識別で 1 UBO のみ write の設計選択 (= shadow pass 内 3 program 切替時の冗長性回避) **[要 AYA 判断]**
+- 7 setter site の trigger 経路詳細 (= `pipeline.cpp:8562-8592` 4 site と `:12596-12642` 3 site の分離理由、sun/spot/cube shadow 分岐) **[要追加調査]**
+- `target_width` 値の source (= `LLPipeline` 内 shadow target 取得経路、cvar `RenderShadowTargetWidth` 由来 or `LLPipeline::mSunShadowMaps[i]->getWidth()` 由来) **[要追加調査]**
+- PerProgramUBO_ShadowAlphaMaskV tail pad 12 B の将来 member 追加意図 (= shadowAlphaMaskV 単独で 4 member、PBR/Avatar 版は 1 member only と非対称) **[要 verify]**
+- PerProgramUBO_ShadowCubeV (= set=2 binding=14、§3.5.4 group 所属) との同期 (= shadow cube も target_width 影響あり、別 trigger か) **[要 verify / 要 §3.5.4 整合]**
+- shadowAlphaMaskV/pbrShadowAlphaMaskV/avatarAlphaShadowV 3 shader での同 `shadow_target_width` 使用箇所 (= `target_pos_x = 0.5 * (shadow_target_width - 1.0) * pos.x` 共通 logic、3 shader 同 use) **[要 verify]**
+
+##### (3) 調査手法
+- **D1 setter Grep**: `DEFERRED_SHADOW_TARGET_WIDTH` 全 setter site (= 既 7 site 特定済、他経路 grep verify)
+- **D2 既存実装読解**: `pipeline.cpp:8562/12596` 周辺の shadow rendering flow (= sun shadow / spot shadow / cube shadow / avatar shadow 分岐)
+- **D3 cadence verify**: shadow target resize trigger (= window resize listener / shadow buffer regen / cvar 変更)
+- **D4 突合**: 3 UBO 同 offset=0 size=4 整合性 (= 全 1 member only、float 同 layout) + PerProgramUBO_ShadowCubeV (§3.5.4) との target_width 関係
+
+##### (4) 設計 task (= 4 経路、group 単位)
+- **register**: 3 UBO 個別 register (= PerProgram cadence triple-buffer)、program 識別で shadowAlphaMaskV → PerProgramUBO_ShadowAlphaMaskV / pbrShadowAlphaMaskV → PbrShadowAlphaMaskVParamUBO_Legacy / avatarAlphaShadowV → AvatarAlphaShadowVParamUBO_Legacy wire
+- **write**: 7 `DEFERRED_SHADOW_TARGET_WIDTH` setter call → host C++ で program ID 識別 → 該当 program の所属 UBO に `writeProgramUbo` (= `sCurBoundShaderPtr` 経由ゆえ既存経路 1:1 redirect)
+- **flush**: 3 UBO 個別 (= 該当 program bind 単位、shadow pass dispatch 毎)
+- **shader 接続**: 既存 LL_VULKAN_GLSL block 活性化 (= 3 shader 改変ゼロ、原則 4 維持)
+- **cross-UBO 同期 protocol**: shadow target resize 1 event → 3 UBO 全 dirty (= 次 shadow pass dispatch 時 3 program 切替で順次 7 setter site で UBO write、RELATIONS.md §5.1 trigger 実装)
+
+##### (5) 工程 task
+- trace 順内位置: L4 group 3 件目 (= §3.5.1/§3.5.2 後、setter 完全特定済で確実、AYA 視覚機能交差なし)
+- group 内 並列性: 3 UBO 個別 register/write 並列可、ただし 7 setter site 共通ゆえ write 経路集約必須
+- group 間 並列性: §3.5.4 box_center/box_size (= shadow cube 関連、要 verify) / §3.5.1-§3.5.16 残全件と並列可
+- 推定工数: **S-M** (= 半日、3 UBO 全 1 member only + setter 完全特定済 + visual verify が shadow visual 同一性で容易、cadence 単純)
+
+##### (6) A 確定条件
+- mUseUBO ON + 3 shader 活性化 + 7 setter 通電 (= 3 UBO triple-write)
+- AYA live verify: **shadow alpha mask 描画 (= sun shadow 4 cascade + spot shadow + avatar alpha shadow) が既存と同一** (visual regression ゼロ §5.4、shadow edge / fade 同一性確認)
+- Vulkan validation 0 件 (= 3 UBO 同 set=2+set=3 配線 + 3 program 識別 dispatch validation)
+- 3 UBO 同 `shadow_target_width` 値同期 verify (= shadow target resize 連動 dirty 反映)
+- 7 setter site 全件 redirect 確認 (= `pipeline.cpp:8562/8570/8584/8592/12596/12611/12642` 全 UBO 経由)
+- shadow pass 内 3 program 切替時 program 識別 dispatch 正常動作 (= 誤 UBO write による shadow artifact 発生なし)
+- ShadowCubeV (§3.5.4) との target_width 関係確定 (= 別 group 別 data source 確認)
+- **verify 単位 = group verify** (= 3 UBO 揃って初めて整合 visual、中間状態は暫定 default 値 (= shadow_target_width=既存 OpenGL 値) で破綻回避)
+
+##### (7) 4 原則 gate
+- **原則 1 (Core 分散)**: 3 program 個別 = render thread 単独 → ✅、7 setter site 集約 1 redirect logic で Core 化粒度維持
+- **原則 2 (3 OS 共通)**: ✅
+- **原則 3 (Phase 2/3)**: Phase 2 内、cadence 単純 (= PerProgram 妥当) → ✅
+- **原則 4 (OpenGL を殺さない)**: 3 shader `#else` block uniform 個別宣言維持、OpenGL 経路で bare uniform setter 並走可能 → ✅
+- **visual regression ゼロ**: shadow alpha mask 描画同一 → AYA live verify、shadow 系単独 group ゆえ AYAstorm 視覚機能交差なし
+
+---
+
+#### §3.5.4 L4-4: box_center/box_size 2 UBO program 識別 dispatch group (= occlusion + shadow cube)
+
+**AYA literal 命名 mapping**: READINESS §3.4 (= cross-UBO 2 UBO program 識別 dispatch、AYA 単純配列で C-15〜C-16 相当)
+
+**位置付け**: L4 group 4 件目 = 同 `BOX_CENTER`/`BOX_SIZE` enum 由来 2 UBO、別 program 別用途 (= occlusion query / shadow cube)、host C++ 側 program 識別必須 (= 誤 bind で undefined behavior)、setter site 全 grep 未取得 (= L4 group 中 setter 不明度高)
+
+**group 概要**:
+- 2 UBO 同 layout (= 全 4 member = 2 active vec3 + 2 pad):
+  - **OcclusionCubeVParamUBO_Legacy** (set=3 binding=50、256B、`box_center` offset=0 + `box_size` offset=16) — `occlusionCubeV.glsl:54` singleton site (= interface/occlusion query 用 bounding cube 描画)
+  - **PerProgramUBO_ShadowCubeV** (set=2 binding=14、256B、同 offset) — `shadowCubeV.glsl:57` singleton site (= shadow cube map dispatch、box-shaped occluder)
+- data source: `LLShaderMgr::BOX_CENTER` + `BOX_SIZE` enum (= `llshadermgr.h:157-158` + `llshadermgr.cpp:1634-1635` reserved)、setter call site 全件 grep 未取得 (= `pipeline.cpp` に直接 setter 不在、`LLSpatialGroup`/`LLDrawable`/`LLViewerOctree`/`llselectmgr.cpp` 候補)
+- 用途差: occlusion = occlusion query bounding cube 描画 (= `vec3 p = position*box_size+box_center` で頂点 transform)、shadow = shadow cube map 中 box-shaped occluder 描画 (= 同 logic、cadence は同 per-program)
+- program 識別 dispatch: `occlusionCubeV` program → OcclusionCubeVParamUBO_Legacy (set=3)、`shadowCubeV` program → PerProgramUBO_ShadowCubeV (set=2) 別 set 別 binding ゆえ pipeline layout 上分離
+
+##### (1) 前提条件
+- L0-1 (= dispatch logic、特に同 enum で別 program 別 UBO の正しい dispatch)
+- L0-4 (= cadence 妥当性、occlusion cube は per-draw 寄り = 1 program 内 多 cube 描画ゆえ PerProgram cadence 妥当性 question)
+- L1b-1 (= FrameViewProj per-shader 拡大完了、shadow view-projection 経路)
+- §3.5.3 (= shadow_target_width との交差 = ShadowCubeV と shadow target 関連 verify)
+
+##### (2) 不明事項
+- `BOX_CENTER` / `BOX_SIZE` 直接 setter call site 全件 (= `pipeline.cpp` に直接 setter 不在、`LLSpatialGroup::doOcclusion` / `LLDrawable` / `LLViewerOctree` / `llselectmgr.cpp` 候補) **[要追加調査]**
+- occlusion cube 実 cadence (= per-draw 寄り = 1 program 内多数 cube 描画、metadata cadence_tag=1 PerProgram と乖離) **[要 L0-4 結果反映 / 要 AYA 判断 = PerDraw 降格検討]**
+- shadow cube box data owner (= `LLPipeline::generateSunShadow` cube shadow 経路 / `LLDrawable` shadow box / `LLViewerOctree` occlusion box) **[要追加調査]**
+- 2 UBO box data source 共有性 (= 同 spatial group bounding box か、別 owner か、共有なら 1 setter で 2 UBO dirty 候補) **[要 verify]**
+- PerProgramUBO_PointLightV (= set=2 binding=5、§3.5.2 group 所属) との shape 類似の意図 (= `vec3 + float` 同 layout、誤 bind 防止 design pattern) **[要 verify / 要 §3.5.2 整合]**
+- §3.5.3 shadow_target_width との shadow cube 関連 (= ShadowCubeV も shadow render なので target_width 影響あり、別 trigger 別 cadence) **[要 verify / 要 §3.5.3 整合]**
+- occlusionCubeV.glsl/shadowCubeV.glsl 2 shader での同 `box_center`/`box_size` 使用箇所 (= 同 `position*box_size+box_center` 頂点 transform logic、共通 implementation) **[要 verify]**
+
+##### (3) 調査手法
+- **D1 setter Grep**: `BOX_CENTER` / `BOX_SIZE` 全 setter site 拡大 grep (= `indra/newview` + `indra/llrender` + spatial culling 関連 `LLSpatialGroup::doOcclusion` 経路)
+- **D2 既存実装読解**: `LLPipeline` shadow cube generation 経路 + `LLSpatialGroup` occlusion query dispatcher 構造
+- **D3 cadence verify**: occlusion cube per-draw 多数描画 vs PerProgram cadence stale risk + shadow cube box dirty trigger
+- **D4 突合**: 2 UBO 同 layout (offset=0/16、size=12/12、pad=4/4) 整合性 + box data source 共有性
+
+##### (4) 設計 task (= 4 経路、group 単位)
+- **register**: 2 UBO 個別 register、program 識別で occlusionCubeV → OcclusionCubeVParamUBO_Legacy / shadowCubeV → PerProgramUBO_ShadowCubeV wire
+- **write**: `BOX_CENTER` / `BOX_SIZE` setter call → host C++ で program ID 識別 → 該当 UBO に `writeProgramUbo` (= 別 set 別 binding ゆえ pipeline layout 上独立、program 識別誤りで cross-UBO 不正 write risk)
+- **flush**: 2 UBO 個別 (= 該当 program bind 単位)
+- **shader 接続**: 既存 LL_VULKAN_GLSL block 活性化 (= 2 shader 改変ゼロ、原則 4 維持)
+- **program 識別 dispatch protocol**: L0-1 dispatch logic で同 enum 由来 setter を program ID で振り分け、誤 dispatch 防止 (= unit test / validation layer 経由)
+- **cross-UBO data 共有 (条件付き)**: 2 UBO box data 共有なら 1 setter で 2 UBO dirty 候補、別 owner なら独立 trigger (= verify 結果次第)
+
+##### (5) 工程 task
+- trace 順内位置: L4 group 4 件目 (= §3.5.3 shadow group 直後、shadow cube 関連で group 間整合 verify)
+- group 内 並列性: 2 UBO 個別 register/write 並列可、ただし setter 共通 enum ゆえ dispatch logic 集約
+- group 間 並列性: §3.5.5 GLTF (= 異 data source) と並列可、§3.5.3 shadow + §3.5.2 PointLightV との整合 verify 要
+- 推定工数: **M** (= 半日 +、setter site 全 grep 未取得 + 2 UBO box owner 特定 + cadence 再評価 + program 識別 dispatch 設計)
+
+##### (6) A 確定条件
+- mUseUBO ON + 2 shader 活性化 + setter 通電 (= program 識別 dispatch)
+- AYA live verify:
+  - occlusion: **occlusion culling 描画 (= bounding cube visualization、debug-like)** が既存と同一 (visual regression ゼロ §5.4)
+  - shadow: **shadow cube map (= sun shadow / spot shadow box-shaped occluder)** が既存と同一 (= shadow edge / depth 同一性)
+- Vulkan validation 0 件 (= 2 UBO 同 layout 別 set 別 binding 配線 + program 識別 dispatch validation + cross-binding 不正 bind 0)
+- 2 UBO 各 box data 値同期 verify (= 共有 case = 同 box owner、独立 case = 別 owner trigger)
+- occlusion cube cadence 判定確定 (= PerProgram 維持 or PerDraw 降格、L0-4 結果反映)
+- shadow cube box owner 確定 (= setter site 特定後 data source 明示)
+- §3.5.3 shadow_target_width との関係確定 (= ShadowCubeV も shadow target 影響あり、別 UBO 別 cadence で独立 trigger)
+- §3.5.2 PointLightV との誤 bind 防止 verify (= `vec3 + float` 同 layout、別用途 binding 区別)
+- **verify 単位 = group verify** (= 2 UBO 揃って初めて整合 visual、中間状態は暫定 default 値 (= box_center=0/box_size=既存値) で破綻回避)
+
+##### (7) 4 原則 gate
+- **原則 1 (Core 分散)**: 2 program 個別 = render thread 単独 → ✅
+- **原則 2 (3 OS 共通)**: ✅
+- **原則 3 (Phase 2/3)**: Phase 2 内、occlusion cube cadence 再分類は L0-4 結果依存 → ✅
+- **原則 4 (OpenGL を殺さない)**: 2 shader `#else` block uniform 個別宣言維持、OpenGL 経路で bare uniform setter 並走可能 → ✅
+- **visual regression ゼロ**: occlusion + shadow cube 描画同一 → AYA live verify、occlusion は debug visualization ゆえ visual 影響軽微、shadow cube は影描画の core ゆえ厳密 verify 必須
+
+---
+
+#### §3.5.5 L4-5: GLTF texture transform 3 UBO program 識別 dispatch group (= material 切替連動)
+
+**AYA literal 命名 mapping**: READINESS §3.5 (= 4 UBO/path 整理、AYA 単純配列で C-17〜C-19 相当、+ pbrmetallicroughnessV.glsl bare local path 含む)
+
+**位置付け**: L4 group 5 件目 = GLTF KHR_texture_transform extension 由来、3 UBO + 1 bare local path、material 切替連動、**MaterialUBO は shell + write 経路通電済 (= Phase 1.A/1.C 完了)** = 本 group の中で唯一通電済 UBO、cadence mismatch 重大 (= material per-draw 切替 vs PerProgram cadence)
+
+**group 概要**:
+- 3 UBO + 1 bare local:
+  - **PbrOpaqueVParamUBO_Legacy** (set=3 binding=53、256B、2 member = `texture_normal_transform[2]` + `texture_metallic_roughness_transform[2]` = 各 vec4×2 stride=16) — `pbropaqueV.glsl:88` singleton site (= PBR opaque V program)
+  - **PerProgramUBO_PbrAlphaV** (set=2 binding=11、256B、同 2 member 同 layout) — `pbralphaV.glsl:98` singleton site (= PBR alpha V program)
+  - **MaterialUBO** (set=1 binding=0、256B、10 member full canonical = `texture_matrix0` mat4 + `texture_base_color_transform[2]` + `texture_emissive_transform[2]` + `color` + `emissiveColor` + `metallicFactor` + `roughnessFactor` + pad) — `pbropaqueF.glsl:44` + 3 PBR-extended site (= pbropaqueV/pbralphaV/class2/pbralphaF)、**shell + write 通電済**
+  - **bare local path**: `class1/gltf/pbrmetallicroughnessV.glsl:85-86` — UBO 不経由、`gltf_material_data` UBO (= Asset_GLTFMaterials、§3.5.14 group) 経由 derive
+- data source: `LLShaderMgr::TEXTURE_NORMAL_TRANSFORM` + `TEXTURE_METALLIC_ROUGHNESS_TRANSFORM` enum (= `llshadermgr.h:59-60` + `llshadermgr.cpp:1521-1522` reserved)、setter 全特定済 = **`llfetchedgltfmaterial.cpp:136-140`** `shader->uniform4fv(...TRANSFORM, 2, ...)` 2 setter site
+- MaterialUBO 内 `texture_base_color_transform[2]` + `texture_emissive_transform[2]` = 同 GLTF transform 系列だが別 enum (= `TEXTURE_BASE_COLOR_TRANSFORM`/`TEXTURE_EMISSIVE_TRANSFORM`)、本 group の `texture_normal_transform`/`texture_metallic_roughness_transform` とは別 member、ただし同 GLTF material 由来ゆえ同 trigger
+- 3 UBO 同 GLTF material data 由来 cross-write (= RELATIONS.md §5.1「material 切替 → MaterialUBO + Asset_GLTFMaterials + PbrOpaqueV + PbrAlphaV」trigger)
+
+##### (1) 前提条件
+- L0-1 (= dispatch logic、set=1 binding=0 排他 (MaterialUBO ↔ MaterialUBO_Legacy = §3.5.1 group) + PbrOpaqueV/PbrAlphaV program 識別)
+- L0-3 (= per-shader UBO block 拡大方式、MaterialUBO は 4 PBR-extended (10-member) + 45+ base (6-member layout-compat view) で 49+ file 対象 = upstream merge conflict 高 risk)
+- L0-4 (= cadence 妥当性、3 UBO 全 GLTF material per-draw 切替 vs PerProgram cadence、PerDraw 降格候補)
+- L1b-1 (= FrameViewProj per-shader 拡大完了、material V/F pair 経路)
+- §3.5.1 (= MaterialUBO_Legacy と排他切替 + `aya_sss_skin_flag` の SSS group との交差)
+- §3.5.14 (= Asset_GLTFMaterials/Nodes と GLTF asset 連動)
+
+##### (2) 不明事項
+- GLTF KHR_texture_transform encoding 詳細 (= `vec4[2]` の中身 = scale.xy/offset.xy/rotation packing、`llfetchedgltfmaterial.cpp:136-140` `normal_packed`/`metallic_roughness_packed` 32B memory layout vs UBO `vec4[2]` 整合) **[要 verify]**
+- 3 UBO 実 cadence vs PerProgram (= material per-draw 切替で PerProgram cadence では 1 program 内 multi-material 描画時 stale risk) **[要 L0-4 結果反映 / 要 AYA 判断 = PerDraw 降格検討]**
+- MaterialUBO 内 `texture_base_color_transform` / `texture_emissive_transform` setter site (= `LLDrawPoolPBR*` 内 draw-time setter call、grep 未取得) **[要追加調査]**
+- MaterialUBO 内 `metallicFactor` / `roughnessFactor` / `emissiveColor` / `color` setter site (= `LLShaderMgr::METALLIC_FACTOR`/`ROUGHNESS_FACTOR`/`EMISSIVE_COLOR`/`DIFFUSE_COLOR` draw-time setter call) **[要追加調査]**
+- MaterialUBO base 6-member 内訳 (= 45+ shader 宣言の 6 member 特定、推定 texture_matrix0 + texture_base_color_transform + texture_emissive_transform + color + emissiveColor + ?) **[要 verify]**
+- MaterialUBO layout-compat 慣用 (= 10-member full buffer に 6-member view、trailing 4 member 未参照) の Vulkan validation layer 挙動 **[要 Phase 2 cold launch verify]**
+- MaterialUBO 用 per-shader block 拡大対象 file 全列挙 (= 現 4 file 宣言済、残 45+ file の状況) **[要追加調査]**
+- pbrmetallicroughnessV.glsl bare local path (= `gltf_material_data` UBO 経由 derive) と本 3 UBO 経路の使い分け確立 **[要 verify]**
+- §3.5.1 set=1 binding=0 排他切替 (= MaterialUBO 10-member ↔ MaterialUBO_Legacy 6-member、program 単位排他選択) の具体 logic **[要 §3.5.1 整合]**
+
+##### (3) 調査手法
+- **D1 setter Grep**: `TEXTURE_NORMAL_TRANSFORM` / `TEXTURE_METALLIC_ROUGHNESS_TRANSFORM` / `TEXTURE_BASE_COLOR_TRANSFORM` / `TEXTURE_EMISSIVE_TRANSFORM` / `METALLIC_FACTOR` / `ROUGHNESS_FACTOR` / `EMISSIVE_COLOR` / `DIFFUSE_COLOR` 全 uniform setter site (= LLDrawPoolPBR / LLFetchedGLTFMaterial / draw-time 経路)
+- **D2 既存実装読解**: `LLFetchedGLTFMaterial::bind()` material bind 経路 + `LLDrawPoolPBR*::render` PBR draw flow + GLTF KHR_texture_transform spec 整合
+- **D3 cadence verify**: material 切替頻度 per-draw 実測 + PerProgram cadence stale data risk
+- **D4 突合**: 3 UBO 同 layout (offset=0/32、size=32/32、vec4[2] stride=16) 整合 + MaterialUBO 内 GLTF transform member offset (offset=64/96) との関係 + bare local path data flow
+
+##### (4) 設計 task (= 4 経路、group 単位)
+- **register**: 3 UBO 個別 register、program 識別で pbropaqueV → PbrOpaqueVParamUBO_Legacy / pbralphaV → PerProgramUBO_PbrAlphaV / PBR-extended program → MaterialUBO wire (= MaterialUBO は既通電、追加配線最小)
+- **write**: 2 `TEXTURE_NORMAL_TRANSFORM` / `TEXTURE_METALLIC_ROUGHNESS_TRANSFORM` setter call (`llfetchedgltfmaterial.cpp:136-140`) → host C++ で program ID 識別 → 該当 UBO に `writeProgramUbo` (= MaterialUBO は別 offset (= base color/emissive)、PbrOpaque/PbrAlpha は normal/metallic-roughness)
+- **flush**: 3 UBO 個別 (= 該当 program bind 単位、cmdbuf 経路で triple-buffer)
+- **shader 接続**: 3 file 既存 LL_VULKAN_GLSL block 活性化 + MaterialUBO 45+ base shader 拡大 (= L0-3 per-shader 拡大対象、layout-compat 6-member view、原則 4 維持 = `#ifdef LL_VULKAN_GLSL` gate で OpenGL 100% 維持)
+- **cross-UBO 同期 protocol**: material 切替 1 event → 3 UBO 全 dirty (= RELATIONS.md §5.1 trigger、ただし MaterialUBO は base color/emissive offset、PbrOpaque/PbrAlpha は normal/metallic-roughness offset で別 member 部分 write)
+- **MaterialUBO 部分 write 設計**: 同 UBO 内 GLTF transform 4 member (= base_color/emissive/normal/metallic-roughness 全) のうち base_color/emissive のみ本 group で扱う、normal/metallic-roughness は PbrOpaque/PbrAlpha 経由 (= 別 UBO 別 program)
+- **set=1 binding=0 排他 logic**: §3.5.1 group との整合 (= MaterialUBO 10-member full = PBR-extended 4 program / MaterialUBO_Legacy 6-member base = 残 45+ program、program 単位選択排他)
+
+##### (5) 工程 task
+- trace 順内位置: L4 group 5 件目 (= §3.5.4 後、MaterialUBO 通電済で着手容易性高、ただし per-shader 拡大 45+ file が L0-3 依存)
+- group 内 並列性: 3 UBO 個別 register/write 並列可、ただし setter 集約 (= `llfetchedgltfmaterial.cpp:136-140` 2 setter site)
+- group 間 並列性: §3.5.1 (MaterialUBO 排他) + §3.5.14 (Asset_GLTFMaterials/Nodes 連動) との整合 verify 要、他 group と並列可
+- 推定工数: **L** (= 1 日 +、3 UBO + 8 setter site (= GLTF transform 4 + PBR factor 4) + MaterialUBO 45+ base shader 拡大 + layout-compat 慣用 verify + cadence 再評価)
+
+##### (6) A 確定条件
+- mUseUBO ON + 3 shader + 45+ MaterialUBO base shader 活性化 + setter 通電
+- AYA live verify: **PBR 描画 (= opaque + alpha 両 path) + GLTF material texture transform (= normal/metallic-roughness/base_color/emissive UV scale/offset/rotation) + PBR factor (= metallic/roughness/emissive/diffuse color) が既存と同一** (visual regression ゼロ §5.4)
+- Vulkan validation 0 件 (= 3 UBO 配線 + layout-compat 6-member view 合法性 + set=1 排他 dispatch validation + 45+ shader 拡大 SPIR-V validation)
+- 3 UBO 各 transform 値同期 verify (= material 切替時連動 dirty + program 切替時値継承)
+- MaterialUBO 部分 write logic verify (= base_color/emissive offset と normal/metallic-roughness offset の独立性)
+- §3.5.1 set=1 排他切替動作 verify (= MaterialUBO ↔ Legacy 不正混在なし)
+- §3.5.14 Asset_GLTFMaterials との data source 共有性確定 (= bare local path との関係)
+- 3 UBO cadence 判定確定 (= PerProgram 維持 or PerDraw 降格、L0-4 結果反映)
+- MaterialUBO 用 per-shader 拡大対象 45+ file 全特定 + 拡大完了
+- **verify 単位 = group verify** (= 3 UBO 揃って初めて整合 visual、中間状態は暫定 default 値 (= transform=identity/factor=既存値) で破綻回避 = material 無装飾描画継続)
+
+##### (7) 4 原則 gate
+- **原則 1 (Core 分散)**: 3 program 個別 = render thread 単独 → ✅、2 setter call 集約 1 redirect logic で Core 化粒度維持
+- **原則 2 (3 OS 共通)**: ✅
+- **原則 3 (Phase 2/3)**: Phase 2 内、3 UBO cadence 再分類は L0-4 結果依存、MaterialUBO 45+ shader 拡大は L0-3 結果依存 → ✅
+- **原則 4 (OpenGL を殺さない)**: 3 shader `#else` block uniform 個別宣言維持 + MaterialUBO 45+ base shader 拡大は `#ifdef LL_VULKAN_GLSL` gate で OpenGL 100% 維持 → ✅
+- **visual regression ゼロ**: PBR 描画同一 → AYA live verify、PBR rendering core ゆえ厳密 verify 必須
+
+---
+
+#### §3.5.6 L4-6: water 系 5 UBO 連動 dirty group (= LLEnvironment LLSettingsWater 由来)
+
+**AYA literal 命名 mapping**: READINESS §3.6 (= water 系 4-5 UBO 連動 dirty、AYA 単純配列で C-20〜C-24 相当)
+
+**位置付け**: L4 group 6 件目 = water rendering 全 5 UBO 同 LLEnvironment LLSettingsWater data source、rename 範式 (= η-6 §3.3 nameless block member 衝突回避)、cadence mismatch 重大 (= time/eyeVec/lightDir per-frame 変化 vs PerProgram cadence)、water settings 切替 + camera move + day cycle 3 trigger 連動
+
+**group 概要**:
+- 5 UBO:
+  - **WaterFogUBO_Legacy** (set=3 binding=9、256B、5 member、`waterFogColor`/`waterFogDensity`/`waterFogKS` + 2 pad) — `waterFogF.glsl:48` singleton site
+  - **WaterVParamUBO_Legacy** (set=3 binding=60、256B、6 member、`waveDir1`/`waveDir2`/`time`/`eyeVec`/`waterHeight`/`lightDir`) — `waterV.glsl:61` + `waterF.glsl:108` V/F multi-site identical
+  - **UnderWaterFParamUBO_Legacy** (set=3 binding=39、256B、14 member 最大、rename 4 member = `lightDir_underwater_legacy`/`eyeVec_underwater_legacy`/`waterFogColor_underwater_legacy`/`waterFogKS_underwater_legacy` + `fogCol`/`lightExp`/`specular`/`refScale`/`fbScale`/`znear`/`zfar`/`kd`/`waterFogColorLinear`/`screenRes`) — `underWaterF.glsl:63` singleton site、**FrameLights consume guard wrap** (= `#ifndef FRAME_LIGHTS_DEFINED`)
+  - **PerProgramUBO_WaterF** (set=2 binding=23、256B、8 member、`specular`/`blend_factor`/`normScale`/`blurMultiplier`/`refScale`/`kd`(dead)/`fresnelScale`/`fresnelOffset`) — `waterF.glsl:119` singleton site
+  - **PerProgramUBO_WaterHazeV** (set=2 binding=15、256B、4 member = 1 active + 3 pad、`above_water` int) — `waterHazeV.glsl:86` + `waterHazeF.glsl` V+F shared host 1 bind
+- data source: LLEnvironment LLSettingsWater + LLDrawPoolWater + LLViewerCamera (= per-frame state) + framebuffer state
+- rename 4 member (= η-6 §3.3 範式) = WaterFog/WaterV と UnderWaterF 間で同 host data source duplicate write 解消の rename
+- `above_water` (WaterHazeV) = SimpleColorFParamUBO_Legacy.waterSign (= §3.4.4 L3 group 所属) と data 共有候補 [要 verify]
+- 連動 trigger:
+  - water settings 切替 → 4 UBO (Fog/V/UnderWater/WaterF) 連動 dirty
+  - camera move (= per-frame) → V (time/eyeVec) + UnderWater (eyeVec/screenRes/znear/zfar) cadence stale risk
+  - day cycle → V (lightDir) + UnderWater (lightDir_legacy) 連動 dirty
+
+##### (1) 前提条件
+- L0-1 (= dispatch logic、5 program 識別)
+- L0-2 (= LLStaticHashedString redirect、rename 4 member の cross-UBO 同期)
+- L0-3 (= per-shader 拡大、`atmosphericsFuncs.glsl` 等 windlight 連動)
+- L0-4 (= cadence 妥当性、per-frame 変化 member 多数 = time/eyeVec/lightDir/screenRes/znear/zfar、PerDraw/PerFrame 降格候補)
+- L1b-1 (= FrameViewProj per-shader 拡大完了、water V/F program で view+proj 経路)
+- L1b-2 (= FrameLights per-shader 拡大完了、underWaterF FrameLights guard 整合)
+- §3.4.4 L2-4 (= DeferredUtilParamUBO_Legacy `waterSign` per-program vs per-draw cadence 判断、本 group `above_water` 同種)
+- §3.4.7/9 L3 group (= SimpleColorFParamUBO_Legacy / SnapshotFrameFParamUBO_Legacy 等、waterSign cadence 整合)
+
+##### (2) 不明事項
+- 5 UBO 各 member の setter call site (= `LLDrawPoolWater::renderWater` + `LLEnvironment` water settings + `LLViewerCamera` 経路、grep 未取得) **[要追加調査]**
+- WaterFog ↔ UnderWaterF の rename 4 member duplicate write 最適化 (= 同 host data source から 2 UBO 同時 update 経路、duplicate write 性能 risk) **[要 verify / 要 AYA 判断]**
+- WaterV time per-frame stale risk (= PerProgram cadence で water animation time の per-frame 更新が反映されるか) **[要 L0-4 結果反映 / 要 PerFrame 降格検討]**
+- WaterV eyeVec per-frame stale risk (= camera move 反映) **[要 L0-4 結果反映]**
+- UnderWaterF eyeVec_underwater_legacy / screenRes / znear / zfar per-frame stale risk **[要 L0-4 結果反映]**
+- WaterHazeV `above_water` 判定 logic (= camera Z vs water plane Z 判定、`LLPipeline`/`LLViewerCamera` 経路) **[要追加調査]**
+- WaterHazeV V+F shared host bind の VkShaderStageFlags (= VERTEX | FRAGMENT 両指定) **[要 verify]**
+- WaterHazeV above_water vs SimpleColorFParamUBO_Legacy.waterSign / DeferredUtilParamUBO_Legacy.waterSign data 共有候補 **[要 verify / 要 §3.4 L3 group 整合]**
+- WaterF `kd` declared-but-unused 維持 (= layout 不変契約、host setter no-op) **[要 AYA 判断 = 維持必須前提]**
+- WaterV/F multi-site identical (= waterV.glsl:61 + waterF.glsl:108 byte-for-byte 一致) byte-level verify + blueprint 改変時の同期 gate **[要 verify]**
+- water cadence 再評価結果に応じた group 全体 PerProgram → PerFrame/PerDraw 降格選択 **[要 L0-4 結果反映 / 要 AYA 判断]**
+
+##### (3) 調査手法
+- **D1 setter Grep**: 5 UBO 全 member setter site (= rename 前後の名前で grep、WaterFog `waterFogColor`/`waterFogDensity`/`waterFogKS` / WaterV `waveDir1`/`waveDir2`/`time`/`eyeVec`/`waterHeight`/`lightDir` / UnderWaterF 14 member / WaterF 8 member / WaterHazeV `above_water`)
+- **D2 既存実装読解**: `LLDrawPoolWater::renderWater` + `LLEnvironment::getCurrentWater` + `LLPipeline::renderWaterHaze` 経路 + `LLViewerCamera::getOrigin/getNear/getFar` + day cycle blend
+- **D3 cadence verify**: per-frame 変化 member (time/eyeVec/lightDir/screenRes/znear/zfar/above_water) PerProgram cadence stale data risk 実測
+- **D4 突合**: rename 4 member 同 host data source 整合 (= WaterFog `waterFogColor` ↔ UnderWaterF `waterFogColor_underwater_legacy` value 同期) + WaterV/F multi-site byte 一致 + WaterHazeV V+F shared 整合
+
+##### (4) 設計 task (= 4 経路、group 単位)
+- **register**: 5 UBO 個別 register (= PerProgram cadence triple-buffer、L0-4 結果次第で PerFrame/PerDraw 降格)、program 識別で water 系 program (= waterFogF/waterV/waterF/underWaterF/waterHazeV/F) に該当 UBO wire
+- **write**: 5 UBO 個別 setter redirect、rename 4 member は 1 host setter で 2 UBO 同時 dirty (= WaterFog + UnderWaterF 同時 write)
+- **flush**: 5 UBO 個別 (= 該当 program bind 単位、cmdbuf 経路)
+- **shader 接続**: 5 file 既存 LL_VULKAN_GLSL block 活性化 (= 改変ゼロ、原則 4 維持)
+- **cross-UBO 同期 protocol**:
+  - water settings 切替 1 event → 4 UBO (Fog/V/UnderWater/WaterF) 連動 dirty
+  - camera move 1 event → V (time/eyeVec) + UnderWater (eyeVec_legacy/screenRes/znear/zfar) 連動 dirty (cadence 降格依存)
+  - day cycle 1 event → V (lightDir) + UnderWater (lightDir_legacy) 連動 dirty
+  - above_water 切替 1 event → WaterHazeV + (要 verify) SimpleColorF/DeferredUtil waterSign 連動 dirty
+- **rename 4 member duplicate write 最適化**: 1 host setter で 2 UBO 同時 forwardToUboUpload、cross-UBO data 同期 protocol で write overhead 抑制
+- **V+F shared host bind (WaterHazeV)**: VkShaderStageFlags = VERTEX | FRAGMENT 両指定で 1 bind に統合
+
+##### (5) 工程 task
+- trace 順内位置: L4 group 6 件目 (= §3.5.5 後、water rendering 単独 group ゆえ AYAstorm 視覚機能交差軽微 = AtmoExtra/SkinSSS 経由なし)
+- group 内 並列性: 5 UBO 個別 register/write 並列可、ただし rename 4 member 同期 logic 集約
+- group 間 並列性: §3.5.7 sky/cloud (= LLEnvironment 由来 sky settings 連動候補)、§3.4.4 L2-4 DeferredUtil waterSign との整合 verify 要
+- 推定工数: **L** (= 1 日 +、5 UBO + 30+ setter site + rename duplicate write 最適化 + cadence 再評価 + V/F multi-site verify + V+F shared bind)
+
+##### (6) A 確定条件
+- mUseUBO ON + 5 shader 活性化 + setter 通電 (= cross-UBO sync)
+- AYA live verify: **water rendering 全 path 描画 (= waterFog / water V (= 水面波) / water F (= 水面色) / underWater (= 水中描画) / waterHaze (= 水中靄) ) が既存と同一** (visual regression ゼロ §5.4、water settings 切替 + camera 水上/水中切替 + day cycle 連動 verify)
+- Vulkan validation 0 件 (= 5 UBO 配線 + V+F shared bind + V/F multi-site SPIR-V 整合 + rename 4 member 同期 validation)
+- 5 UBO 各 member 値同期 verify (= water settings + camera + day cycle 各 trigger 連動)
+- rename 4 member duplicate write 動作 verify (= WaterFog `waterFogColor` ↔ UnderWaterF `waterFogColor_underwater_legacy` 同値、cvar 変化反映)
+- WaterV/F multi-site byte-level 同期 verify (= 将来 blueprint 改変時の自動同期 gate)
+- WaterHazeV V+F shared bind 動作 verify (= V/F 両 stage で 1 UBO access)
+- water cadence 判定確定 (= PerProgram 維持 or PerFrame/PerDraw 降格 AYA 判断、L0-4 結果反映)
+- above_water vs waterSign 関係確定 (= §3.4.4 L2-4 + §3.4.4 L3-4 / L3-5 group 整合)
+- **verify 単位 = group verify** (= 5 UBO 揃って初めて整合 visual、中間状態は暫定 default 値 (= water_settings=既存 / above_water=0 / time=0) で破綻回避)
+
+##### (7) 4 原則 gate
+- **原則 1 (Core 分散)**: 5 program 個別 = render thread 単独 → ✅、rename 4 member 同期 logic 集約で Core 化粒度維持
+- **原則 2 (3 OS 共通)**: ✅
+- **原則 3 (Phase 2/3)**: Phase 2 内、water cadence 再分類は L0-4 結果依存 (PerFrame/PerDraw 降格選択) → ✅
+- **原則 4 (OpenGL を殺さない)**: 5 shader `#else` block uniform 個別宣言維持、OpenGL 経路で bare uniform setter 並走可能 → ✅
+- **visual regression ゼロ**: water rendering 全 path 描画同一 → AYA live verify、water 系単独 group ゆえ AYAstorm 視覚機能交差軽微、ただし AYA r12.1 FSParcelStreamQuality + r13 OBB occlusion (memory) との関連は別軸 (= 本 group 影響範囲外)
+
+---
+
+
 
 ### §3.6 L5: A-1 + B Tier γ (= 3 件)
 

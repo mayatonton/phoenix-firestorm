@@ -197,3 +197,13 @@ OS-1〜OS-10 gate 照合:
 7. **multi-site UBO 宣言 V/F 同期保証** = waterV.glsl + waterF.glsl の UBO 宣言 byte-for-byte 一致維持 (= verify 要、将来 blueprint 改変時の同期 gate 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.6 同期)
+
+**Layer**: L4-6 (= C 判定 water 系 5 UBO 連動 dirty group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.6` (= single source of truth)
+**要点**: water 5 UBO 連動 (= WaterFog + WaterV + UnderWaterF + WaterF + WaterHazeV)、本 UBO waterV/waterF V/F multi-site identical (set=3 binding=60、`waterV.glsl:61` + `waterF.glsl:108`)、6 member (time/eyeVec/lightDir per-frame 変化 → cadence stale risk = PerFrame 降格候補) [要 L0-4 結果反映]、UnderWaterF と rename duplicate (lightDir/eyeVec)、V/F byte 一致 verify、工数 L (group 全体)
+**関連**: L0-1 dispatch (= water V/F program 識別) / L0-4 cadence 再評価 (= PerFrame 降格) / UnderWaterF (= rename duplicate) / §5.4 visual regression policy

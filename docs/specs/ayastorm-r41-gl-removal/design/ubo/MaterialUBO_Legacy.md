@@ -209,3 +209,13 @@ layout(set=1, binding=0, std140) uniform MaterialUBO_Legacy {
 
 - program 切替時 set=1 帯全 binding を一括 rebind (= `vkCmdBindDescriptorSets` 1 回呼出で set=1 帯全 binding 含む想定、PC-7δ 経路)
 - 本 UBO の bind timing = program 切替時 (= per-program cadence 標準)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.1 同期)
+
+**Layer**: L4-1 (= C 判定 cross-UBO triple-write group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.1` (= single source of truth)
+**要点**: aya_sss_skin_flag 3 UBO triple-write group (= MaterialUBO_Legacy + PBROpaqueExtraUBO_Legacy + AvatarFParamUBO_Legacy)、`aya_sss_skin_flag` offset=56 部分 write、set=1 binding=0 排他 (MaterialUBO ↔ Legacy)、工数 M、setter 未取得 [要追加調査]、AYA live verify (= r20 SSS skin 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= 排他 + 3 program 識別) / L0-2 LLStaticHashedString redirect / L0-4 cadence 再評価 (= 部分 write 粒度設計) / §5.4 visual regression policy / §3.5.2 SkinSSS 経由交差 verify

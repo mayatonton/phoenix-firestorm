@@ -179,3 +179,13 @@ OS-1〜OS-10 gate 照合:
 7. **同 shader consume UBO 完全特定** = class1/environment/waterFogF.glsl 内同時 consume UBO 群 (= grep verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.6 同期)
+
+**Layer**: L4-6 (= C 判定 water 系 5 UBO 連動 dirty group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.6` (= single source of truth)
+**要点**: water 5 UBO 連動 (= WaterFog + WaterV + UnderWaterF + WaterF + WaterHazeV)、本 UBO waterFogF program 専用 (set=3 binding=9)、`waterFogColor`/`waterFogDensity`/`waterFogKS` host setter [要追加調査]、UnderWaterF と rename duplicate write (= `waterFogColor_underwater_legacy`/`waterFogKS_underwater_legacy`)、1 host setter 2 UBO 同期 [要 verify]、工数 L (group 全体)、AYA live verify (= waterFog 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= waterFogF program 識別) / L0-4 cadence 再評価 / UnderWaterF (= rename duplicate write) / §3.5.7 sky/cloud (= LLEnvironment 連動候補) / §5.4 visual regression policy

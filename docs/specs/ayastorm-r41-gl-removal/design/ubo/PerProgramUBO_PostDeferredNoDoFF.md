@@ -189,3 +189,13 @@ OS-1〜OS-10 gate 照合:
 7. **vignette path (`pipeline.cpp:10381`) の setter 経路** = `chroma_str` を vignette 経路でも write しているか (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 同期)
+
+**Layer**: L4-2 sub-cluster (b) (= chroma_str 2 UBO cross-write)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` (= single source of truth)
+**要点**: chroma_str 2 UBO cross-write (= PostDeferredF + NoDoFF)、本 UBO `chroma_str` offset=0 (1 active member + 3 pad)、AYAstorm r30 P4 BD 改善 (RenderChromaStrength cvar)、HAS_DOF_CHROMA==0 経路 (vignette path 含)、vignette path 別 setter `pipeline.cpp:10381` [要追加調査]、工数 L (group 全体)
+**関連**: L0-1 dispatch (= postDeferredNoDoFF program 識別 + HAS_DOF_CHROMA permutation 切替) / §5.4 visual regression policy

@@ -193,3 +193,13 @@ OS-1〜OS-10 gate 照合 (= memory `project_r41_phase2_4_principles` 原則 2):
 7. **`PbrOpaqueVParamUBO_Legacy` (set=3) との重複/関係性** = 別 UBO 別 set で同 GLTF transform を duplicate 持つか、片方が unused か (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消、確定後に「不明」記載削除 + 確定 literal 追記。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.5 同期)
+
+**Layer**: L4-5 (= C 判定 GLTF texture transform 3 UBO program 識別 dispatch group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.5` (= single source of truth)
+**要点**: GLTF texture transform 3 UBO + 1 bare local (= PbrOpaqueV + PbrAlphaV + MaterialUBO + pbrmetallicroughnessV bare)、本 UBO pbralphaV program 専用 (set=2 binding=11)、`texture_normal_transform[2]`/`texture_metallic_roughness_transform[2]` (offset=0/32) PbrOpaqueV と同 layout、setter 全特定済 (`llfetchedgltfmaterial.cpp:136-140`)、material 切替 PerDraw 降格候補 [要 L0-4 結果反映]、工数 L (group 全体)、AYA live verify (= PBR alpha V 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= pbralphaV program 識別) / L0-4 cadence 再評価 (= PerDraw 降格) / PbrOpaqueV (= 同 layout pair) / MaterialUBO (= GLTF transform 統合) / §5.4 visual regression policy

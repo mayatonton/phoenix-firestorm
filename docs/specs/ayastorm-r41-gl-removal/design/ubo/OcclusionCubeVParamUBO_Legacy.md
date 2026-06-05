@@ -165,3 +165,13 @@ layout(set=3, binding=50, std140) uniform OcclusionCubeVParamUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - occlusion cube program 切替時 set=3 帯全 binding を一括 rebind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.4 同期)
+
+**Layer**: L4-4 (= C 判定 box_center/box_size 2 UBO program 識別 dispatch group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.4` (= single source of truth)
+**要点**: box_center/box_size 2 UBO program 識別 dispatch (= Occlusion + ShadowCube)、本 UBO occlusionCubeV program 専用 (set=3 binding=50)、setter site 全件 [要追加調査] (= `pipeline.cpp` 直接 setter 不在、`LLSpatialGroup::doOcclusion` 候補)、cadence per-draw 寄り → PerDraw 降格候補 [要 L0-4 結果反映]、誤 bind risk (= ShadowCubeV と同 enum)、工数 M、AYA live verify (= occlusion culling 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= 同 enum で別 program 別 UBO 識別) / L0-4 cadence 再評価 (= PerDraw 降格) / ShadowCubeV (= 同 enum cross-UBO) / §3.5.3 shadow_target_width (= shadow render 連動 verify) / §5.4 visual regression policy

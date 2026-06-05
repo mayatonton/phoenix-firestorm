@@ -196,3 +196,13 @@ OS-1〜OS-10 gate 照合:
 7. **multi-spot (pipeline.cpp:11625) 経路の cadence** = MultiSpot は本 UBO 使用 or PerDrawUBO_MultiLight 使用、どちらか (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 同期)
+
+**Layer**: L4-2 sub-cluster (c) (= light cvar 3 UBO V/F pair + cross-stage)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` (= single source of truth)
+**要点**: light cvar 3 UBO (= PointLightF + SpotLightF + PointLightV)、本 UBO `center`/`size` (offset=0/12) per-light、PointLightF V/F pair + SpotLightF cross-stage declared-but-unused 共有 (η-28-C type 3、host bind 1 instance/frag 別 UBO 経由 size 参照)、per-light dirty PerDraw 降格候補 [要 L0-4 結果反映]、multi-spot (pipeline.cpp:11625) は §3.5.16 MultiLight に分岐、SPIR-V validation 0 warning verify [要 Phase 2 cold launch]、工数 L (group 全体)
+**関連**: L0-1 dispatch (= 同 binding=5 多 program reuse) / L0-4 cadence 再評価 (= per-light PerDraw 降格) / PointLightF (= V/F pair) / SpotLightF (= cross-stage declared-but-unused) / §3.5.16 MultiLight (= multi-spot 分岐) / §5.4 visual regression policy

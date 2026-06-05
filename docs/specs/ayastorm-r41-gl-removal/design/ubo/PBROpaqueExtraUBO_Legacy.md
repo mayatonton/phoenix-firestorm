@@ -163,3 +163,13 @@ layout(set=3, binding=13, std140) uniform PBROpaqueExtraUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - PBR opaque program 切替時 set=3 帯全 binding を一括 rebind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.1 同期)
+
+**Layer**: L4-1 (= C 判定 cross-UBO triple-write group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.1` (= single source of truth)
+**要点**: aya_sss_skin_flag 3 UBO triple-write group (= MaterialUBO_Legacy + PBROpaqueExtraUBO_Legacy + AvatarFParamUBO_Legacy)、本 UBO offset=0 (1 active member)、PBR opaque program 専用、wrap 起案経緯 (= η-5 (b-1)) ゆえ bare uniform 残存 verify、工数 M、setter 未取得 [要追加調査]、AYA live verify (= r20 SSS PBR opaque 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= PBR opaque program 識別) / L0-4 cadence 再評価 (= per-draw 性質 PerDraw 降格候補) / §5.4 visual regression policy / §3.5.2 SkinSSS 経由交差 verify

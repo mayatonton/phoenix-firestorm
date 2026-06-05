@@ -189,3 +189,13 @@ OS-1〜OS-10 gate 照合:
 7. **target_width 値の source** = `LLPipeline` 内 shadow rendering target の width 取得経路 (= verify 要、pipeline.cpp:8562 周辺の `target_width` 変数源)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.3 同期)
+
+**Layer**: L4-3 (= C 判定 shadow_target_width triple-write group)
+**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.3` (= single source of truth)
+**要点**: shadow_target_width 3 UBO triple-write (= ShadowAlphaMaskV + PbrShadowAlphaMaskV + AvatarAlphaShadowV)、本 UBO offset=0 (1 active member + 3 pad)、non-PBR shadow alpha program 専用、setter 7 site 全特定済 (`pipeline.cpp:8562/8570/8584/8592/12596/12611/12642`)、`sCurBoundShaderPtr` 経由ゆえ 1:1 redirect、tail pad 12B 将来 member 追加意図 [要 verify]、工数 S-M、AYA live verify (= shadow alpha mask 描画、visual regression ゼロ §5.4)
+**関連**: L0-1 dispatch (= shadowAlphaMaskV program 識別) / L3-19 ShadowUtilParamUBO_Legacy (= shadow render 全 program 共有 pattern) / §3.5.4 ShadowCubeV (= shadow cube target_width 関係 verify) / §5.4 visual regression policy
