@@ -1,0 +1,167 @@
+# OcclusionCubeVParamUBO_Legacy — UBO design (= 実コードベース調査資料)
+
+**通電状態**: untouched (= blueprint + codegen metadata 生成済、host C++ register/write/flush 経路未着工)
+
+**本実装化に必要な作業**: register/write/flush 経路新設 (= per-program cadence、`box_center`/`box_size` setter を UBO write に redirect) + occlusion query / shadow cube 描画経路の setter call site 棚卸し
+
+---
+
+## §1. UBO identity
+
+- **block_name**: `OcclusionCubeVParamUBO_Legacy`
+- **block_hash**: `0x3c50a5c6u` (= FNV-1a("OcclusionCubeVParamUBO_Legacy"))
+- **block_size**: 256 B (= std140 32 B、device-padded 256 B)
+- **member_count**: 4 (= 2 vec3 + 2 pad)
+- **struct definition** (= 実コード source 直接 reference):
+
+```cpp
+// build-linux-x86_64/codegen/ubo/ubo_layout_occlusioncubevparamubo_legacy.inl:12-17
+struct OcclusionCubeVParamUBO_LegacyLayout {
+    static constexpr std::uint32_t box_center_OFFSET = 0u;                            // size=12 align=16
+    static constexpr std::uint32_t _pad_occlusion_cube_v_legacy_0_OFFSET = 12u;       // size=4  align=4
+    static constexpr std::uint32_t box_size_OFFSET = 16u;                             // size=12 align=16
+    static constexpr std::uint32_t _pad_occlusion_cube_v_legacy_1_OFFSET = 28u;       // size=4  align=4
+};
+inline constexpr std::uint32_t OcclusionCubeVParamUBO_Legacy_SIZE = 256u; // std140=32, device-padded=256
+```
+
+```glsl
+// indra/newview/app_settings/shaders/class1/interface/occlusionCubeV.glsl:54-58
+layout(set=3, binding=50, std140) uniform OcclusionCubeVParamUBO_Legacy {
+    vec3  box_center;
+    float _pad_occlusion_cube_v_legacy_0;
+    vec3  box_size;
+    float _pad_occlusion_cube_v_legacy_1;
+};
+```
+
+= Blueprint (= `aya_r41_blueprints/set3/occlusion_cube_v_param_ubo_legacy.glsl:9-15`) 一致。
+
+---
+
+## §2. binding 配線
+
+- **descriptor_set**: 3
+- **binding**: 50
+- **VkDescriptorType**: `VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER` (= 推定)
+- **pipeline layout**: 不明 / verify 要
+- **source**: `ubo_metadata.inl:58` `{ "OcclusionCubeVParamUBO_Legacy", 0x3c50a5c6u, 256u, 3u, 50u, 0u, 1u, 4u }` + `class1/interface/occlusionCubeV.glsl:54` literal
+
+---
+
+## §3. cadence
+
+- **ubo_metadata.inl cadence_tag**: 1
+- **意味**: **per-program** (= `llglslshader.cpp:95`)
+- **意味詳細**: occlusion cube は occlusion query 用 cube 描画 (= bounding box visualization)、program は固定だが draw 毎に box_center/size 異なる = 真の cadence は per-draw 寄り (= ただし metadata は per-program)
+- **source**: ubo_metadata.inl + llglslshader.cpp:95 literal
+
+---
+
+## §4. 物理 owner
+
+- **owner**: 不明 / verify 要 (= `LLOcclusionCullingGroup` / `LLSpatialGroup` 等の per-group bounding box 候補、grep `uniform.*box_center` で正確 site 取得要)
+- **lifetime**: per-draw 寿命 (= 各 occlusion test cube が独立 box)
+- **用途**: occlusion query 用 bounding cube 頂点 transform (= `occlusionCubeV.glsl:67` `vec3 p = position*box_size+box_center;` literal)
+- **同 member 名 別 shader 使用**: `class1/deferred/shadowCubeV.glsl:58/60/72` (= shadow cube V でも `box_center` / `box_size` を同 layout で `#ifdef LL_VULKAN_GLSL` 内に宣言 = grep 結果 line 58, 60、ただし shadowCubeV は別 UBO (= PerProgramUBO_ShadowCubeV) で wrap されている可能性、verify 要)
+
+---
+
+## §5. use site (shader)
+
+- **blueprint file**: `indra/newview/app_settings/shaders/aya_r41_blueprints/set3/occlusion_cube_v_param_ubo_legacy.glsl`
+- **実 shader use site** = **`class1/interface/occlusionCubeV.glsl:54` 単独** (= blueprint header literal「Source: literal extract from class1/interface/occlusionCubeV.glsl:54」)
+- consume 内容 (= grep 確認済):
+  - `occlusionCubeV.glsl:67` `vec3 p = position*box_size+box_center;`
+- **同 member 別 UBO 使用**: `class1/deferred/shadowCubeV.glsl:58/60` も同 `box_center`/`box_size` を宣言 (= grep 結果)、ただし shadowCubeV.glsl は別 UBO (= PerProgramUBO_ShadowCubeV、metadata set=2 binding=14) で wrap = 同 member 名で別 UBO の例、host C++ 側 dispatch で混同しない注意必要
+
+---
+
+## §6. 既存 setter call site (host C++)
+
+- **shell 段階 setter**: 未配線
+- **既存 OpenGL 経路 setter**:
+  - 不明 / verify 要 (= `uniform3f(box_center, ...)` / `uniform3f(box_size, ...)` 直接 call site grep で取得できず、occlusion culling dispatcher の verify 要)
+- **reserved uniform 登録**:
+  - `box_center` = `indra/llrender/llshadermgr.cpp:1634` `mReservedUniforms.push_back("box_center");`
+  - `box_size` = `indra/llrender/llshadermgr.cpp:1635` `mReservedUniforms.push_back("box_size");`
+
+---
+
+## §7. 現状通電状態
+
+- **状態**: **untouched**
+- **codegen 生成済**: layout `inl` + metadata entry + block_hash constexpr 生成済
+- **blueprint 起案済**: `aya_r41_blueprints/set3/occlusion_cube_v_param_ubo_legacy.glsl`
+- **shader 宣言済**: `class1/interface/occlusionCubeV.glsl:54` `#ifdef LL_VULKAN_GLSL` block
+- **register/write/flush 経路**: 未配線
+
+---
+
+## §8. 本実装化に必要な作業
+
+1. **register 経路**: `mapUniforms()` で occlusion cube program に `registerProgramUbo(this, block_hash::OcclusionCubeVParamUBO_Legacy, 256u)` 呼出
+2. **write 経路**: `box_center` / `box_size` setter を `forwardToUboUpload` 経由 UBO write に redirect
+3. **flush 経路**: cmdbuf bind 経路で sProgramUboDirty を flush
+4. **shader 接続**: shader 追加改変なし
+5. **shadowCubeV.glsl 同 member 名 別 UBO 区別**: shadowCubeV.glsl は PerProgramUBO_ShadowCubeV (set=2 binding=14) で wrap、occlusionCubeV.glsl は本 UBO (set=3 binding=50) で wrap = host C++ 側 program 識別で正しい UBO に dispatch 必須
+
+---
+
+## §9. risk / 注意点
+
+| gate | 該当 risk | 対応 |
+|---|---|---|
+| OS-2 | descriptor set 数 5 維持 | ✅ 維持 |
+| OS-3 | std140 padding 厳守 | ✅ 32B → 256B padded (vec3 後 pad 4B × 2) |
+| OS-4 | minUniformBufferOffsetAlignment 動的取得 | ⚠️ verify 要 |
+| OS-5 | shader 改変ゼロ | ✅ 既に UBO 宣言済 |
+| OS-7 | Linux validation layer warnings 0 件 | ⚠️ verify 要 |
+
+**特記 risk**:
+- 実 cadence vs metadata cadence 乖離: occlusion test は per-cube (= per-draw 寄り) だが metadata は per-program、本実装化で per-draw 換算 = 多数 box を per-frame で flush するか、program-level で固定 box (= 全 cube 同 box?) で済むか未確定 (= 後者の場合 ring buffer 利用効率良、前者の場合 PerDraw cadence に格上げ要 = layout 設計変更)
+- 同 member 名 (= `box_center`/`box_size`) を別 UBO (= PerProgramUBO_ShadowCubeV) でも使用 = host C++ 側 dispatch logic で program 識別必須、混同で不正 UBO に write すると undefined behavior
+- pad member (= `_pad_occlusion_cube_v_legacy_0/1`) host C++ 側で touch 不要、ただし `memset(0)` で zero 化推奨
+
+---
+
+## §10. 不明事項
+
+1. **occlusion cube dispatcher** = `LLSpatialGroup::doOcclusion` 等の occlusion query 発行経路 (= verify 要)
+2. **`box_center`/`box_size` setter call site** = grep で `uniform.*box_center` 直接 call site 未取得
+3. **実 cadence: per-draw か per-program か** = 1 program で多数 cube を batch 描画する場合は per-draw cadence 必須、ただし metadata は cadence_tag=1 (per-program) = 設計と実態の乖離 verify 要
+4. **shadowCubeV.glsl との UBO 分離整合性** = `box_center`/`box_size` 同名で別 UBO に格納 = host C++ side で program 識別後 dispatch、混同 risk
+5. **set=3 帯 layout の binding 上限** = V3a 設計整合性
+
+---
+
+## §11. 他 UBO との関係
+
+### §11.1 同 set 同居 UBO (= set=3)
+
+- set=3 帯 Legacy UBO 群と共存
+- 直近 binding 同居: binding=49 GlowCombineFParamUBO_Legacy / binding=51 RadianceGenFParamUBO_Legacy
+
+### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram)
+
+- 73 件 (推定) per-program cluster 内の 1 UBO
+
+### §11.3 同 shader consume UBO (= `class1/interface/occlusionCubeV.glsl` で同時 consume)
+
+- 不明 / verify 要 (= occlusionCubeV.glsl 全文の UBO 宣言群確認要)
+
+### §11.4 同 data source UBO (= 同 host data source から派生)
+
+- **PerProgramUBO_ShadowCubeV** (set=2 binding=14) = `box_center`/`box_size` 同 member 名共有 = `LLSpatialGroup` 派生 box data 候補 (= verify 要、同 data source なら本 UBO と ShadowCubeV を同時 dirty 化候補)
+
+### §11.5 dirty 連動 UBO
+
+- **PerProgramUBO_ShadowCubeV** = 同 member 名共有ゆえ dirty 連動候補 (verify 要)
+
+### §11.6 layout 共有関係
+
+- 全 program 共通 `sAYAStandardLayout` 5-set V3a layout
+
+### §11.7 bind 順序関係
+
+- occlusion cube program 切替時 set=3 帯全 binding を一括 rebind
