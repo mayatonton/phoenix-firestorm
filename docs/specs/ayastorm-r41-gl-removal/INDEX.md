@@ -11,7 +11,7 @@ r41 milestone の全 spec doc + handoff doc を集約。2026-06-06 整理で **l
 - (2) η-30 以前 handoff 121 件 = `handoff/archive/` 集約
 - (3) 01-08 spec + audit/review 11 件 = `archive/` 集約
 - (4) 00-charter は historical chain origin として root 残置
-- (5) git commit log message 91 件 = `git filter-repo` で旧 path → 新 path 書換 + 47 件の intra-commit hash 参照は 2-pass mapping で保全 (= force-push 後の現状)
+- (5) git commit log message 92 件 = `git filter-repo` で旧 path → 新 path 書換 + 47 件の intra-commit hash 参照は filter-repo 内蔵 old→new hash mapping で自動追従更新 (= force-push 後の現状)
 
 ## §1. live = 現在参照すべき doc 群
 
@@ -120,12 +120,12 @@ handoff/archive/handoff-(stage|r41|session|substep-...)-*.md
 
 ## §4. git commit log との関係
 
-整理前 91 commit (= origin より ahead) の commit message 内で旧 filename / 旧 path を多数参照していた。2026-06-06 整理で `git filter-repo` 2-pass を実行:
-- **pass 1** = 全 commit message 内の旧 path 文字列を新 path に書換 + filter-repo 内部で old→new commit hash mapping 自動構築
-- **pass 2** = 内部 mapping を用いて 47 件の intra-commit hash 参照を新 hash に書換 (= 旧 commit hash を message 内で参照していた箇所も追従更新)
+整理前 91 commit (= origin より ahead) + doc cleanup commit 1 件 = 計 92 commit の message 内で旧 filename / 旧 path を多数参照していた。2026-06-06 整理で `git filter-repo` を実行:
+- **message-callback (path 書換)** = 全 commit message 内の旧 path 文字列 (= `handoff-substep-...-eta-30-` prefix / ellipsis form / pre-η-30 forms / spec archive forms) を新 path に置換
+- **filter-repo 内蔵 hash mapping** = path 書換で commit hash 全件変化 → message 内の 47 件 intra-commit hash 参照 (= 「commit `xxxxxx`」記述) を **同一 run 内で自動追従更新** (= filter-repo default 動作、`--replace-refs update-or-add` 効果)
 - **force-push** で feature branch `feature/ayastorm-r41-gl-removal` 上書き
 
-結果: 全 91 commit の message + 内部 hash 参照は **全て新構造と整合**。`git log --follow <new_path>` で rename 跨ぎ完全 history 取得可能。
+結果: 全 92 commit の message + 内部 hash 参照は **全て新構造と整合**。`git log --follow <new_path>` で rename 跨ぎ完全 history 取得可能。
 
 ### §4.1 git log --follow
 
