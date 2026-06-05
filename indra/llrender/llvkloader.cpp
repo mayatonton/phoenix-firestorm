@@ -5953,25 +5953,66 @@ namespace
                         real_asset_dynamic_offset, real_asset_dynamic_offset,
                     };
 
-                    // PC-N-8 (f) 同形 per-Skin UBO 配線 (= PC-N-7 (e) 同形、stub sentinel 共用)。
-                    //   PC-N-9 で real Skin 経路へ置換予定 ((N8-1) B = per-Primitive scope
-                    //   ゆえ Skin owner 切替は PC-N-9 GLTFSceneManager::render 統合 phase)。
-                    static const F32 real_asset_identity_skin_buf[64] = {
-                        1.f, 0.f, 0.f, 0.f,
-                        0.f, 1.f, 0.f, 0.f,
-                        0.f, 0.f, 1.f, 0.f,
-                        0.f, 0.f, 0.f, 1.f,
-                        0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                        0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                        0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                    };
-                    LLVKLoader::writeSkinUbo(
-                        sGltfStubSkin,
-                        ubo::block_hash::Skin_GLTFJoints,
-                        /*offset=*/0u,
-                        reinterpret_cast<const U8*>(real_asset_identity_skin_buf),
-                        sizeof(real_asset_identity_skin_buf));
-                    LLVKLoader::flushSkinUbos(sGltfStubSkin);
+                    // <AYAstorm r41 PC-N-11 (a)> multi-skin sentinel 段階卒業 ((N11-1)..(N11-16) AYA
+                    //   literal「全件推奨で OK」record 2026-06-05 採用)。AYAGltfMultiSkinEnabled cvar=true
+                    //   かつ sCurrentSkin != nullptr 時 real Skin owner path = upstream uploadMatrixPalette
+                    //   PC-7γ-3 (j) dual-write 既書込 real bone matrix palette を消費 (inline writeSkinUbo
+                    //   不要 (N11-4) A) + wireSkinUboSetV3aToBinding2(sCurrentSkin) per-draw rewire で
+                    //   multi-skin descriptor binding 正確性確保 ((N11-5) A、§2.3 stale 化 risk 解決 =
+                    //   registerSkinUbo 初回 register 時のみ wire ゆえ frame 内 2nd Skin register で
+                    //   binding=2 上書き → 1st Skin binding stale 化 risk を per-draw rewire で吸収)。
+                    //   cvar=false or sCurrentSkin==nullptr 時 fall-through to sGltfStubSkin sentinel path
+                    //   = 既 identity 64 B writeSkinUbo + flushSkinUbos 維持 ((N11-3) A、PC-N-15 cleanup phase
+                    //   まで storage 温存 = (E-11) A 整合)。flushSkinUbos + wireSkinUboSetV3aToBinding2 は
+                    //   real / sentinel 問わず unconditional 呼出 ((N11-5) A + (N11-6) A、code 簡素)。
+                    static LLCachedControl<bool> sAyastormGltfMultiSkinEnabled(
+                        gSavedSettings, "AYAGltfMultiSkinEnabled", false);
+                    LL::GLTF::Skin* const skin_to_use =
+                        (sAyastormGltfMultiSkinEnabled && sCurrentSkin != nullptr)
+                            ? sCurrentSkin
+                            : sGltfStubSkin;
+                    if (skin_to_use == sGltfStubSkin)
+                    {
+                        // fall-through sentinel path = 既 identity 64 B writeSkinUbo 維持 (PC-N-15 cleanup まで)。
+                        static const F32 real_asset_identity_skin_buf[64] = {
+                            1.f, 0.f, 0.f, 0.f,
+                            0.f, 1.f, 0.f, 0.f,
+                            0.f, 0.f, 1.f, 0.f,
+                            0.f, 0.f, 0.f, 1.f,
+                            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                        };
+                        LLVKLoader::writeSkinUbo(
+                            skin_to_use,
+                            ubo::block_hash::Skin_GLTFJoints,
+                            /*offset=*/0u,
+                            reinterpret_cast<const U8*>(real_asset_identity_skin_buf),
+                            sizeof(real_asset_identity_skin_buf));
+                    }
+                    // real Skin path では inline writeSkinUbo 不要 (= upstream uploadMatrixPalette 既書込)。
+                    // wireSkinUboSetV3aToBinding2 + flushSkinUbos は両 path unconditional ((N11-5)/(N11-6) A)。
+                    wireSkinUboSetV3aToBinding2(skin_to_use);
+                    LLVKLoader::flushSkinUbos(skin_to_use);
+
+                    // PC-N-11 (a) first-fire LL_INFOS marker ((N11-9) A、PC-N-8 (f) 同形 pattern)。
+                    if (skin_to_use != sGltfStubSkin)
+                    {
+                        static std::atomic<bool> s_first_pcn11_real_skin_fire{true};
+                        if (s_first_pcn11_real_skin_fire.exchange(false, std::memory_order_acq_rel))
+                        {
+                            LL_INFOS("Vulkan") << "PC-N-11 (a) multi-skin real Skin path 通電 (first fire): "
+                                                  "skin=" << (void*)skin_to_use
+                                               << ", sentinel(sGltfStubSkin)=" << (void*)sGltfStubSkin
+                                               << "; AYAGltfMultiSkinEnabled=true + sCurrentSkin 非 null = "
+                                                  "upstream Skin::uploadMatrixPalette PC-7γ-3 (j) dual-write 経由 "
+                                                  "real bone matrix palette 消費 + wireSkinUboSetV3aToBinding2 "
+                                                  "per-draw rewire で descriptor binding=2 を real Skin UBO buffer "
+                                                  "に切替、bindV3aRigged 後 set=3 binding=2 = real Skin UBO bind"
+                                               << LL_ENDL;
+                        }
+                    }
+                    // </AYAstorm r41 PC-N-11 (a)>
                     bindV3aRigged(cmd_buf, sFrameIndex, real_asset_dynamic_offsets);
 
                     // PC-N-8 (f) 同形 push constant 64 B identity / VERTEX_BIT
