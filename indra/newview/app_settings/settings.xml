@@ -10421,6 +10421,27 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm r41 Phase 1.D PC-N-6> stub vertex buffer Vulkan 経路通電の live A/B 切替 cvar。
+         design-lock handoff-substep-...-phase1-d-pc-n-6-design-lock.md (= (N6-9) C、AYA literal「すべて推奨でお願いします」record 2026-06-05)。
+         OFF (default) = recordGltfAssetDraw 内 PC-N-5 stub draw 経路維持 (= sAvatarBonePipeline + shader generate 3 vertex)
+         = PC-N-5 完了状態と機能等価 (MUSEUBO-A 整合)。前提として AYAGltfStubDrawEnabled=true が必要 (= recordGltfAssetDraw 発火 hook)。
+         ON = 別 pipeline sGltfStubAssetPipeline (= sAvatarBonePipeline 並列、vertex input state 1 binding stride=12 +
+         1 attribute R32G32B32_SFLOAT) + VMA host-visible mapped sGltfStubVertexBuffer (= position vec3 × 3 hardcoded CCW triangle)
+         + bindVertexBufferVk + vkCmdDraw(N) 経路発火 = Phase 1.D 1st sub-step 通電 (= 実 vertex buffer bind 経路通電の事実確立)。
+         GATE-B 整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ)。Persist=1 で起動間保持。 -->
+    <key>AYAGltfStubVertexBufferEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.D PC-N-6) Enable GLTF stub vertex buffer Vulkan draw 経路 (= 別 pipeline sGltfStubAssetPipeline + VMA host-visible mapped vertex buffer + bindVertexBufferVk + vkCmdDraw(N) for Phase 1.D 1st sub-step 通電). Default OFF, debug live A/B 用. 前提として AYAGltfStubDrawEnabled=true が必要 (= recordGltfAssetDraw 発火 hook). ON 時 recordGltfAssetDraw 内で PC-N-5 経路 (shader generate) ではなく PC-N-6 経路 (vertex buffer bind) を選択発火 = sAvatarBonePipeline 並走温存 + shader 改変ゼロ. OFF 時 PC-N-5 完了状態と機能等価. PC-N-10 で deprecate 予定.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>

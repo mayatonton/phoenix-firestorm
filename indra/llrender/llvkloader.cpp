@@ -600,6 +600,39 @@ namespace
         reinterpret_cast<LL::GLTF::Skin*>(&sGltfStubSkinStorage[0]);
     // </AYAstorm r41 PC-N-5 (a)>
 
+    // <AYAstorm r41 PC-N-6 (a)> GLTF stub vertex buffer file-static + VMA allocation
+    //   ((N6-1) B + (N6-3) A + (N6-4) B + (N6-5) B + (N6-6) A 採用、AYA literal
+    //   「すべて推奨でお願いします」record 2026-06-05)。Phase 1.D 内 1st sub-step =
+    //   stub vertex buffer Vulkan 経路通電 = file-static `sGltfStubVertexBuffer` を
+    //   VMA host-visible mapped buffer 経由 1 回 initVulkan allocate + initial memcpy +
+    //   vkCmdBindVertexBuffers 配線 = PC-N-5 sGltfStubSkin sentinel と並列 lifecycle
+    //   (= shutdownVulkan で対称破棄)。
+    //
+    //   stub vertex data: NDC CCW triangle = position vec3 × 3 (= 9 float = 36 B、
+    //   stride=12 B、binding=0、attribute=0、location=0、format=R32G32B32_SFLOAT)。
+    //   shader 内 attribute 実 consumption は不要 (sky smoke shader 流用 =
+    //   gl_VertexIndex 経路設計)、vkCmdBindVertexBuffers 経路通電の事実確立が scope。
+    //   実 LL::GLTF::Asset 経路は PC-N-7..PC-N-10 持越し。
+    VkBuffer       sGltfStubVertexBuffer     = VK_NULL_HANDLE;
+    VmaAllocation  sGltfStubVertexAllocation = VK_NULL_HANDLE;
+    void*          sGltfStubVertexMapped     = nullptr;
+    constexpr U32  sGltfStubVertexCount      = 3u;  // (N6-10) B 採用 = 任意 N 経路、初期値 3
+    constexpr U32  sGltfStubVertexStride     = 12u; // (N6-3) A position vec3 = 3 × sizeof(F32)
+    constexpr U32  sGltfStubVertexBufferSize = sGltfStubVertexCount * sGltfStubVertexStride; // 36 B
+
+    // stub vertex data initial literal (= CCW triangle、NDC 内中央配置、shader 内で
+    //   未 consumption ゆえ可視性は問わない、vkCmdBindVertexBuffers 経路通電のみが
+    //   PC-N-6 scope)。
+    const F32 sGltfStubVertexData[9] = {
+        // position vec3 × 3 (= NDC CCW triangle、PC-N-5 shader generate stub と同形視覚)
+        -0.5f, -0.5f, 0.0f,  // v0
+         0.5f, -0.5f, 0.0f,  // v1
+         0.0f,  0.5f, 0.0f,  // v2
+    };
+    static_assert(sizeof(sGltfStubVertexData) == sGltfStubVertexBufferSize,
+                  "PC-N-6 (a) sGltfStubVertexData size mismatch sGltfStubVertexBufferSize");
+    // </AYAstorm r41 PC-N-6 (a)>
+
     // <AYAstorm r41 PC-7γ-1> per-frame UBO physical instances (= block_hash → UboInstance、
     // owner 概念無し global static)。design 06b §2.1 + design 07 §8.2 + AYA (W6-A)
     // 確認 2026-06-05 整合:
@@ -3393,6 +3426,130 @@ namespace
         LL_INFOS("Vulkan") << "Avatar bone PSO compiled (set_layouts[3] = PerFrame + PerMaterial + AvatarBone, shader = sky smoke 流用、shader 改変ゼロ)" << LL_ENDL;
         return true;
     }
+
+    // <AYAstorm r41 PC-N-6 (b)> GLTF stub asset pipeline storage + 関数
+    //   ((N6-7) B + (N6-8) A 採用、AYA literal「すべて推奨でお願いします」record
+    //   2026-06-05)。createAvatarBonePipeline 同形 + vertex input state 拡張
+    //   (= 1 binding stride=12 + 1 attribute R32G32B32_SFLOAT)。sAvatarBonePipeline
+    //   は不変温存 = PC-N-5 stub draw 経路 (shader generate 3 vertex) を break
+    //   しない、live A/B 経路独立、shader 改変ゼロ維持。
+    VkPipeline sGltfStubAssetPipeline = VK_NULL_HANDLE;
+
+    bool createGltfStubAssetPipeline()
+    {
+        if (!sDeviceLimits.pushDescriptorSupported)
+        {
+            return true;
+        }
+        if (sSkySmokeVertModule == VK_NULL_HANDLE || sSkySmokeFragModule == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "createGltfStubAssetPipeline: sky smoke shader modules not ready" << LL_ENDL;
+            return false;
+        }
+        if (sAYAStandardLayout == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "createGltfStubAssetPipeline: sAYAStandardLayout not initialized" << LL_ENDL;
+            return false;
+        }
+
+        VkPipelineShaderStageCreateInfo stages[2] = {};
+        stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[0].module = sSkySmokeVertModule;
+        stages[0].pName  = "main";
+        stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[1].module = sSkySmokeFragModule;
+        stages[1].pName  = "main";
+
+        // PC-N-6 (b) vertex input state 拡張 (= sAvatarBonePipeline empty vi との差分)。
+        //   binding=0, stride=12 B = position vec3、location=0 attribute は
+        //   R32G32B32_SFLOAT。shader 内 layout(location=0) in vec3 declared でなくても
+        //   valid Vulkan (= driver implementation-defined unused、PSO compile success)。
+        VkVertexInputBindingDescription vbd = {};
+        vbd.binding   = 0;
+        vbd.stride    = sGltfStubVertexStride;
+        vbd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        VkVertexInputAttributeDescription vad = {};
+        vad.location = 0;
+        vad.binding  = 0;
+        vad.format   = VK_FORMAT_R32G32B32_SFLOAT;
+        vad.offset   = 0;
+
+        VkPipelineVertexInputStateCreateInfo vi = {};
+        vi.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vi.vertexBindingDescriptionCount   = 1;
+        vi.pVertexBindingDescriptions      = &vbd;
+        vi.vertexAttributeDescriptionCount = 1;
+        vi.pVertexAttributeDescriptions    = &vad;
+
+        VkPipelineInputAssemblyStateCreateInfo ia = {};
+        ia.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        VkViewport viewport = { 0.0f, 0.0f, (F32)OFFSCREEN_WIDTH, (F32)OFFSCREEN_HEIGHT, 0.0f, 1.0f };
+        VkRect2D   scissor  = { { 0, 0 }, { OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT } };
+
+        VkPipelineViewportStateCreateInfo vp = {};
+        vp.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        vp.viewportCount = 1;
+        vp.pViewports    = &viewport;
+        vp.scissorCount  = 1;
+        vp.pScissors     = &scissor;
+
+        VkPipelineRasterizationStateCreateInfo rs = {};
+        rs.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rs.polygonMode = VK_POLYGON_MODE_FILL;
+        rs.cullMode    = VK_CULL_MODE_NONE;
+        rs.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rs.lineWidth   = 1.0f;
+
+        VkPipelineMultisampleStateCreateInfo ms = {};
+        ms.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineDepthStencilStateCreateInfo ds = {};
+        ds.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        ds.depthTestEnable  = VK_FALSE;
+        ds.depthWriteEnable = VK_FALSE;
+        ds.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
+
+        VkPipelineColorBlendAttachmentState cba = {};
+        cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+                           | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+        VkPipelineColorBlendStateCreateInfo cb = {};
+        cb.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        cb.attachmentCount = 1;
+        cb.pAttachments    = &cba;
+
+        VkGraphicsPipelineCreateInfo ci = {};
+        ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        ci.stageCount          = 2;
+        ci.pStages             = stages;
+        ci.pVertexInputState   = &vi;
+        ci.pInputAssemblyState = &ia;
+        ci.pViewportState      = &vp;
+        ci.pRasterizationState = &rs;
+        ci.pMultisampleState   = &ms;
+        ci.pDepthStencilState  = &ds;
+        ci.pColorBlendState    = &cb;
+        ci.layout              = sAYAStandardLayout;
+        ci.renderPass          = sRenderPass;
+        ci.subpass             = 0;
+
+        if (!compileGraphicsPipeline(ci, sGltfStubAssetPipeline))
+        {
+            LL_WARNS("Vulkan") << "GLTF stub asset graphics pipeline compile failed" << LL_ENDL;
+            return false;
+        }
+        LL_INFOS("Vulkan") << "GLTF stub asset PSO compiled (layout=sAYAStandardLayout V3a 5-set + vertex input "
+                              "(1 binding stride=12, 1 attribute location=0 R32G32B32_SFLOAT), shader = sky smoke 流用、"
+                              "shader 改変ゼロ、sAvatarBonePipeline 並走温存)" << LL_ENDL;
+        return true;
+    }
+    // </AYAstorm r41 PC-N-6 (b)>
 }
 
 bool initVulkan()
@@ -3822,6 +3979,73 @@ bool initVulkan()
     }
     // </AYAstorm r41 PC-N-5 (c)>
 
+    // <AYAstorm r41 PC-N-6 (c)> GLTF stub vertex buffer VMA allocate + initial upload +
+    //   sGltfStubAssetPipeline 配置 ((N6-5) B + (N6-6) A 採用、AYA literal「すべて推奨で
+    //   お願いします」record 2026-06-05)。host-visible 永続 mapped buffer 経由 1 回
+    //   initVulkan で memcpy(sGltfStubVertexData)、shutdownVulkan で対称破棄。
+    //   stub vertex data 36 B 極小ゆえ staging buffer overkill。
+    //
+    //   多段 graceful degrade: sAllocator nullptr (Vulkan 未初期化) で skip、
+    //   vmaCreateBuffer fail / pMappedData nullptr で LL_WARNS_ONCE + silent no-op。
+    //   AYAGltfStubVertexBufferEnabled cvar=false default で recordGltfAssetDraw 新経路
+    //   発火なし = MUSEUBO-A 整合。
+    if (sAllocator != VK_NULL_HANDLE && sGltfStubVertexBuffer == VK_NULL_HANDLE)
+    {
+        VkBufferCreateInfo buf_ci = {};
+        buf_ci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buf_ci.size        = sGltfStubVertexBufferSize;
+        buf_ci.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo alloc_ci = {};
+        alloc_ci.usage = VMA_MEMORY_USAGE_AUTO;
+        alloc_ci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                      | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        VmaAllocationInfo alloc_info = {};
+        if (vmaCreateBuffer(sAllocator, &buf_ci, &alloc_ci,
+                            &sGltfStubVertexBuffer,
+                            &sGltfStubVertexAllocation,
+                            &alloc_info) == VK_SUCCESS)
+        {
+            sGltfStubVertexMapped = alloc_info.pMappedData;
+            if (sGltfStubVertexMapped)
+            {
+                memcpy(sGltfStubVertexMapped, sGltfStubVertexData, sGltfStubVertexBufferSize);
+                LL_INFOS("Vulkan") << "PC-N-6 (c) sGltfStubVertexBuffer allocated + initial upload: "
+                                      "size=" << sGltfStubVertexBufferSize
+                                   << " B, vertices=" << sGltfStubVertexCount
+                                   << ", stride=" << sGltfStubVertexStride
+                                   << ", mapped=" << sGltfStubVertexMapped << LL_ENDL;
+            }
+            else
+            {
+                LL_WARNS_ONCE("Vulkan") << "PC-N-6 (c) sGltfStubVertexBuffer mapped=nullptr "
+                                           "(VMA host-visible mapped flag fail; "
+                                           "AYAGltfStubVertexBufferEnabled=true 時 zero-content draw)"
+                                        << LL_ENDL;
+            }
+        }
+        else
+        {
+            LL_WARNS_ONCE("Vulkan") << "PC-N-6 (c) sGltfStubVertexBuffer vmaCreateBuffer fail "
+                                       "(AYAGltfStubVertexBufferEnabled=true 時 silent no-op)"
+                                    << LL_ENDL;
+        }
+    }
+
+    // PC-N-6 (c) sGltfStubAssetPipeline 配置 (= createAvatarBonePipeline と同位置の
+    //   PSO compile cadence)。compile fail でも MUSEUBO-A graceful degrade
+    //   (= cvar=false default で発火なし、cvar=true 時 sGltfStubAssetPipeline nullptr
+    //   guard で silent no-op)。
+    if (!createGltfStubAssetPipeline())
+    {
+        LL_WARNS_ONCE("Vulkan") << "PC-N-6 (c) createGltfStubAssetPipeline fail "
+                                   "(AYAGltfStubVertexBufferEnabled=true 時 silent no-op)"
+                                << LL_ENDL;
+    }
+    // </AYAstorm r41 PC-N-6 (c)>
+
     // r41 sub-step 3.4-β-1: VMA budget 1 度 smoke 出力 (INFO marker #3)。
     logVmaBudgetSmoke();
 
@@ -4138,6 +4362,25 @@ void shutdownVulkan()
         //   loop は残存 entry のみ destroy)、symmetry & lifecycle 明示の目的で残置。
         unregisterSkinUbo(sGltfStubSkin, ubo::block_hash::Skin_GLTFJoints);
         // </AYAstorm r41 PC-N-5 (d)>
+
+        // <AYAstorm r41 PC-N-6 (d)> GLTF stub vertex buffer + pipeline 対称破棄
+        //   ((N6-6) A 採用、AYA literal「すべて推奨でお願いします」record 2026-06-05)。
+        //   PC-N-6 (c) initVulkan VMA allocate + createGltfStubAssetPipeline と対称
+        //   lifecycle。sDevice / sAllocator nullptr guard で graceful no-op。
+        if (sGltfStubAssetPipeline != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(sDevice, sGltfStubAssetPipeline, nullptr);
+            sGltfStubAssetPipeline = VK_NULL_HANDLE;
+        }
+        if (sGltfStubVertexBuffer != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(sAllocator, sGltfStubVertexBuffer, sGltfStubVertexAllocation);
+            sGltfStubVertexBuffer     = VK_NULL_HANDLE;
+            sGltfStubVertexAllocation = VK_NULL_HANDLE;
+            sGltfStubVertexMapped     = nullptr;
+        }
+        // </AYAstorm r41 PC-N-6 (d)>
+
         for (auto& kv : sProgramUboDirty) { destroyUboInstanceBuffers(kv.second); }
         for (auto& kv : sAssetUboDirty)   { destroyUboInstanceBuffers(kv.second); }
         for (auto& kv : sSkinUboDirty)    { destroyUboInstanceBuffers(kv.second); }
@@ -5504,6 +5747,106 @@ namespace
         {
             return;
         }
+
+        // <AYAstorm r41 PC-N-6 (e)> stub vertex buffer 経路 cvar 分岐
+        //   ((N6-2) A signature 不変 + (N6-7) B 別 pipeline + (N6-8) A 並走維持 +
+        //   (N6-9) C `AYAGltfStubVertexBufferEnabled` 段階 cvar、AYA literal
+        //   「すべて推奨でお願いします」record 2026-06-05)。
+        //
+        //   cvar=true 時のみ別 pipeline `sGltfStubAssetPipeline` (= vertex input state
+        //   1 binding stride=12 + 1 attribute R32G32B32_SFLOAT) + VMA host-visible mapped
+        //   vertex buffer 経由 `bindVertexBufferVk` + `vkCmdDraw(N)` 経路発火 =
+        //   Phase 1.D 1st sub-step 通電 (= 実 vertex buffer bind 経路通電の事実確立)。
+        //   PC-N-5 stub 経路 (= sAvatarBonePipeline + shader generate 3 vertex) は不変
+        //   温存 = live A/B 経路独立 + MUSEUBO-A 整合 (cvar=false default で機能等価)。
+        //   4 段 graceful degrade (= sAllocator / sGltfStubVertexBuffer /
+        //   sGltfStubAssetPipeline / sGltfStubVertexMapped 各 nullptr guard で silent
+        //   fall-through to PC-N-5 path)。
+        {
+            static LLCachedControl<bool> sAyastormGltfStubVbEnabled(
+                gSavedSettings, "AYAGltfStubVertexBufferEnabled", false);
+            if (sAyastormGltfStubVbEnabled
+                && sGltfStubAssetPipeline != VK_NULL_HANDLE
+                && sGltfStubVertexBuffer  != VK_NULL_HANDLE)
+            {
+                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sGltfStubAssetPipeline);
+
+                // PC-N-6 (e) 同形 per-draw UBO 配線 (= PC-N-5 (b) 同形 sequence、
+                //   sAvatarBonePipeline 経路と layout 共用 ゆえ完全同一)。
+                static const U8 stub_vb_draw_zero_buf[256] = {};
+                U32 stub_vb_dynamic_offset = 0u;
+                LLVKLoader::writeDrawUbo(
+                    ubo::block_hash::PerDrawUBO_LightParams,
+                    /*offset=*/0u,
+                    stub_vb_draw_zero_buf,
+                    sizeof(stub_vb_draw_zero_buf),
+                    stub_vb_dynamic_offset);
+                const U32 stub_vb_dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
+                    stub_vb_dynamic_offset, stub_vb_dynamic_offset,
+                    stub_vb_dynamic_offset, stub_vb_dynamic_offset,
+                };
+
+                // PC-N-6 (e) 同形 per-Skin UBO 配線 (= PC-N-5 sGltfStubSkin sentinel 共用、
+                //   identity matrix bone data → Skin_GLTFJoints UBO 経路通電)。
+                static const F32 stub_vb_identity_skin_buf[64] = {
+                    1.f, 0.f, 0.f, 0.f,
+                    0.f, 1.f, 0.f, 0.f,
+                    0.f, 0.f, 1.f, 0.f,
+                    0.f, 0.f, 0.f, 1.f,
+                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                    0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
+                };
+                LLVKLoader::writeSkinUbo(
+                    sGltfStubSkin,
+                    ubo::block_hash::Skin_GLTFJoints,
+                    /*offset=*/0u,
+                    reinterpret_cast<const U8*>(stub_vb_identity_skin_buf),
+                    sizeof(stub_vb_identity_skin_buf));
+                LLVKLoader::flushSkinUbos(sGltfStubSkin);
+                bindV3aRigged(cmd_buf, sFrameIndex, stub_vb_dynamic_offsets);
+
+                // PC-N-6 (e) 同形 push constant 64 B identity / VERTEX_BIT。
+                const float stub_vb_identity_modelview[16] = {
+                    1.f, 0.f, 0.f, 0.f,
+                    0.f, 1.f, 0.f, 0.f,
+                    0.f, 0.f, 1.f, 0.f,
+                    0.f, 0.f, 0.f, 1.f,
+                };
+                vkCmdPushConstants(cmd_buf,
+                                   sAvatarBoneLayout,
+                                   VK_SHADER_STAGE_VERTEX_BIT,
+                                   /*offset=*/0,
+                                   /*size=*/64,
+                                   stub_vb_identity_modelview);
+
+                // PC-N-6 (e) 核心差分: vkCmdBindVertexBuffers + vkCmdDraw(N)
+                //   (= bindVertexBufferVk 初 caller、PC-N-5 stub の shader generate 経路と
+                //   別経路で実 vertex buffer bind 経路通電)。
+                LLVKLoader::bindVertexBufferVk(cmd_buf, sGltfStubVertexBuffer, /*offset=*/0);
+                vkCmdDraw(cmd_buf, sGltfStubVertexCount, 1, 0, 0);
+
+                // PC-N-6 (e) first-fire LL_INFOS marker (= Phase 1.D 1st sub-step 通電 literal)。
+                static std::atomic<bool> s_first_pcn6_vb_fire{true};
+                if (s_first_pcn6_vb_fire.exchange(false, std::memory_order_acq_rel))
+                {
+                    LL_INFOS("Vulkan") << "PC-N-6 (e) GLTF stub vertex buffer draw 通電 (first fire): "
+                                          "sGltfStubAssetPipeline (= sAvatarBonePipeline 並列、vertex input "
+                                          "1 binding stride=" << sGltfStubVertexStride
+                                       << " + 1 attribute R32G32B32_SFLOAT) + sGltfStubVertexBuffer "
+                                          "(= VMA host-visible mapped, position vec3 × "
+                                       << sGltfStubVertexCount << " CCW triangle) = "
+                                          "writeDrawUbo → writeSkinUbo(sGltfStubSkin, identity 256B) → "
+                                          "flushSkinUbos → bindV3aRigged → push constant 64 B identity → "
+                                          "bindVertexBufferVk → vkCmdDraw("
+                                       << sGltfStubVertexCount << ",1,0,0); "
+                                          "sAvatarBonePipeline 並走温存、shader 改変ゼロ、Phase 1.D 1st sub-step"
+                                       << LL_ENDL;
+                }
+                return; // PC-N-5 経路 (shader generate) はスキップ = 別 cvar gate で並走分離
+            }
+        }
+        // </AYAstorm r41 PC-N-6 (e)>
 
         vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sAvatarBonePipeline);
 
