@@ -125,5 +125,6 @@ namespace LL
             //   sAllocator guard で no-op (MUSEUBO-A 整合)。
             void uploadVulkanBuffers();
             // </AYAstorm r41 PC-N-8 (c)>
+        };
     }
 }

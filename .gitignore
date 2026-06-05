@@ -23,7 +23,8 @@
 *.spv
 
 # AYA local test artifacts (security info 含む、commit 禁止)
-tests/
+# 注: root tests/ のみ excluded、indra/**/tests/ は upstream Firestorm tracked source ゆえ excluded 対象外
+/tests/
 
 # Specific paths and/or names
 CMakeCache.txt
