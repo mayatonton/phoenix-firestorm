@@ -596,26 +596,12 @@ namespace
         reinterpret_cast<LL::GLTF::Skin*>(&sPlaceholderSkinStorage[0]);
     // </AYAstorm r41 PC-N-3 (b)>
 
-    // <AYAstorm r41 PC-N-5 (a)> GLTF stub skin sentinel = 第 2 の address-only
-    //   sentinel pattern ((N5-3) A、AYA literal「OK」record 2026-06-05)。
-    //   sPlaceholderSkin と異なる固定 address で、sSkinUboDirty 上に並走 register
-    //   され、Skin_GLTFJoints UBO bind 経由の rigged draw 通電 baseline を確立
-    //   (= UboSkinKey 第 1 要素 Skin* pointer compare で sentinel と discrimination
-    //   可能 ((N5-7) A))。
-    //
-    //   address-only pattern (= PC-N-3 §2.7 確立) 踏襲: LL::GLTF::Skin は
-    //   llvkloader.h で forward declaration のみゆえ default-constructed instance
-    //   不可、alignas(void*) char + reinterpret_cast で代替。pointer compare のみ
-    //   で member access / method call 一切なし、layering 制約遵守。
-    //
-    //   AYAGltfStubDrawEnabled cvar=true 時のみ recordGltfAssetDraw 経由で
-    //   identity matrix bone data を投入し通電 ((N5-4) A 採用 = GATE-B 整合 +
-    //   live A/B 可能)。default OFF ゆえ実走しない baseline は PC-N-3 完了状態
-    //   と機能等価 (MUSEUBO-A 整合)。
-    alignas(void*) char sGltfStubSkinStorage[1] = {};
-    LL::GLTF::Skin* const sGltfStubSkin =
-        reinterpret_cast<LL::GLTF::Skin*>(&sGltfStubSkinStorage[0]);
-    // </AYAstorm r41 PC-N-5 (a)>
+    // <AYAstorm r41 PC-N-15c (a)> sGltfStubSkin storage 完全撤去 ((N15c-1) ⭐ A、
+    //   AYA literal「OK」record 2026-06-05)。PC-N-5 (a) 導入の address-only sentinel
+    //   は PC-N-11 multi-skin 段階卒業 + PC-N-15b worker thread dispatch 通電後の
+    //   real Skin path 一本化で機能不要化。register/unregister 配線 (= initVulkan
+    //   旧 PC-N-5 (c) + shutdownVulkan 旧 PC-N-5 (d)) も同 commit で撤去。
+    // </AYAstorm r41 PC-N-15c (a)>
 
     // <AYAstorm r41 PC-N-10 (d-1)> PC-N-6 (a) sGltfStubVertexBuffer + PC-N-7 (a)
     //   sGltfStubIndexBuffer storage 撤去 marker ((N10-4) A: stub VB/IB storage 完全撤去、
@@ -4320,60 +4306,12 @@ bool initVulkan()
     }
     // </AYAstorm r41 PC-N-3 (c)+(d)>
 
-    // <AYAstorm r41 PC-N-5 (c)> GLTF stub skin sentinel register + initial wire
-    //   ((N5-3) A + (N5-7) A、AYA literal「OK」record 2026-06-05)。sPlaceholderSkin
-    //   と並走で sGltfStubSkin を sSkinUboDirty 上に register、Skin_GLTFJoints UBO
-    //   bind 経由の rigged draw 通電 baseline を確立 = Phase 1.D 着手起点 marker。
-    //   PC-N-3 (c)+(d) 同形 = ubo_metadata.inl から block_size 解決 + registerSkinUbo
-    //   経由 per-Skin UboInstance allocate + 内部 descriptor wire + 念のため
-    //   wireSkinUboSetV3aToBinding2 で明示再 wire。3 段 graceful degrade
-    //   (block lookup miss / register fail / wire fail で LL_WARNS_ONCE)。
-    //   AYAGltfStubDrawEnabled cvar=false default ゆえ register 成功でも
-    //   recordGltfAssetDraw 経路は発火しない (MUSEUBO-A 整合)。
-    {
-        U32 stub_skin_block_size = 0u;
-        for (U32 i = 0; i < ubo::g_block_count; ++i)
-        {
-            if (ubo::g_block_metadata[i].block_hash == ubo::block_hash::Skin_GLTFJoints)
-            {
-                stub_skin_block_size = ubo::g_block_metadata[i].block_size;
-                break;
-            }
-        }
-        if (stub_skin_block_size == 0u)
-        {
-            LL_WARNS_ONCE("Vulkan") << "PC-N-5 (c): Skin_GLTFJoints block_size lookup miss "
-                                       "(ubo_metadata.inl Skin_GLTFJoints unavailable); "
-                                       "sGltfStubSkin register skipped"
-                                    << LL_ENDL;
-        }
-        else if (!registerSkinUbo(sGltfStubSkin,
-                                  ubo::block_hash::Skin_GLTFJoints,
-                                  stub_skin_block_size))
-        {
-            LL_WARNS_ONCE("Vulkan") << "PC-N-5 (c): registerSkinUbo(sGltfStubSkin) failed; "
-                                       "recordGltfAssetDraw will early-return on "
-                                       "writeSkinUbo (graceful degrade)"
-                                    << LL_ENDL;
-        }
-        else if (!wireSkinUboSetV3aToBinding2(sGltfStubSkin))
-        {
-            LL_WARNS_ONCE("Vulkan") << "PC-N-5 (c): wireSkinUboSetV3aToBinding2(sGltfStubSkin) failed; "
-                                       "set=3 binding=2 may reference stale buffer for stub path"
-                                    << LL_ENDL;
-        }
-        else
-        {
-            LL_INFOS("Vulkan") << "PC-N-5 (c) GLTF stub skin register + initial wire 完了 = "
-                                  "Phase 1.D 着手起点 baseline 確立 "
-                                  "(sGltfStubSkin sentinel addr=" << (void*)sGltfStubSkin
-                               << ", Skin_GLTFJoints block_size=" << stub_skin_block_size
-                               << " B; AYAGltfStubDrawEnabled cvar=false default で stub draw 発火なし、"
-                                  "true 時 recordGltfAssetDraw 並走発火 = identity matrix bone data 通電)"
-                               << LL_ENDL;
-        }
-    }
-    // </AYAstorm r41 PC-N-5 (c)>
+    // <AYAstorm r41 PC-N-15c (a)> 旧 PC-N-5 (c) sGltfStubSkin register + initial wire
+    //   ブロック完全撤去 ((N15c-1) ⭐ A、AYA literal「OK」record 2026-06-05)。real Skin
+    //   path 一本化に伴い stub skin sentinel を sSkinUboDirty 上に register する必要
+    //   消失。real Skin の registerSkinUbo + wireSkinUboSetV3aToBinding2 は
+    //   GLTFSceneManager::render 経路の per-Skin lazy init で実行。
+    // </AYAstorm r41 PC-N-15c (a)>
 
     // <AYAstorm r41 PC-N-10 (d-2)> PC-N-6 (c) sGltfStubVertexBuffer VMA allocate +
     //   PC-N-7 (c) sGltfStubIndexBuffer VMA allocate 撤去 ((N10-4) A、AYA literal「全件
@@ -4711,13 +4649,9 @@ void shutdownVulkan()
         //   は残存 entry のみ destroy)、symmetry & lifecycle 明示の目的で残置。
         unregisterSkinUbo(sPlaceholderSkin, ubo::block_hash::Skin_GLTFJoints);
         // </AYAstorm r41 PC-N-3 (c)>
-        // <AYAstorm r41 PC-N-5 (d)> GLTF stub skin sentinel unregister
-        //   ((N5-3) A、AYA literal「OK」record 2026-06-05)。PC-N-5 (c) register
-        //   と対称 lifecycle。後続 bulk teardown loop が generic 処理を担うため
-        //   本 explicit 呼出は idempotent (= unregister 後 entry が消えるだけ、
-        //   loop は残存 entry のみ destroy)、symmetry & lifecycle 明示の目的で残置。
-        unregisterSkinUbo(sGltfStubSkin, ubo::block_hash::Skin_GLTFJoints);
-        // </AYAstorm r41 PC-N-5 (d)>
+        // <AYAstorm r41 PC-N-15c (a)> 旧 PC-N-5 (d) sGltfStubSkin unregister 撤去
+        //   ((N15c-1) ⭐ A)。register 経路と対称撤去、bulk teardown loop が残存 entry
+        //   ある場合のみ destroy するゆえ機能無影響。
 
         // <AYAstorm r41 PC-N-10 (d-3)> PC-N-6 (d) sGltfStubVertexBuffer destroy +
         //   PC-N-7 (d) sGltfStubIndexBuffer destroy 撤去 ((N10-4) A、AYA literal「全件
@@ -6709,66 +6643,24 @@ namespace
                         real_asset_dynamic_offset, real_asset_dynamic_offset,
                     };
 
-                    // <AYAstorm r41 PC-N-11 (a)> multi-skin sentinel 段階卒業 ((N11-1)..(N11-16) AYA
-                    //   literal「全件推奨で OK」record 2026-06-05 採用)。AYAGltfMultiSkinEnabled cvar=true
-                    //   かつ sCurrentSkin != nullptr 時 real Skin owner path = upstream uploadMatrixPalette
-                    //   PC-7γ-3 (j) dual-write 既書込 real bone matrix palette を消費 (inline writeSkinUbo
-                    //   不要 (N11-4) A) + wireSkinUboSetV3aToBinding2(sCurrentSkin) per-draw rewire で
-                    //   multi-skin descriptor binding 正確性確保 ((N11-5) A、§2.3 stale 化 risk 解決 =
-                    //   registerSkinUbo 初回 register 時のみ wire ゆえ frame 内 2nd Skin register で
-                    //   binding=2 上書き → 1st Skin binding stale 化 risk を per-draw rewire で吸収)。
-                    //   cvar=false or sCurrentSkin==nullptr 時 fall-through to sGltfStubSkin sentinel path
-                    //   = 既 identity 64 B writeSkinUbo + flushSkinUbos 維持 ((N11-3) A、PC-N-15 cleanup phase
-                    //   まで storage 温存 = (E-11) A 整合)。flushSkinUbos + wireSkinUboSetV3aToBinding2 は
-                    //   real / sentinel 問わず unconditional 呼出 ((N11-5) A + (N11-6) A、code 簡素)。
-                    static LLCachedControl<bool> sAyastormGltfMultiSkinEnabled(
-                        gSavedSettings, "AYAGltfMultiSkinEnabled", false);
-                    LL::GLTF::Skin* const skin_to_use =
-                        (sAyastormGltfMultiSkinEnabled && sCurrentSkin != nullptr)
-                            ? sCurrentSkin
-                            : sGltfStubSkin;
-                    if (skin_to_use == sGltfStubSkin)
+                    // <AYAstorm r41 PC-N-15c (b)> real Skin path 一本化 ((N15c-2) ⭐ A、
+                    //   AYA literal「OK」record 2026-06-05)。PC-N-11 (a) multi-skin sentinel
+                    //   fall-through path + AYAGltfMultiSkinEnabled cvar 完全撤去。sCurrentSkin
+                    //   nullptr 時 = real Skin owner 未確立 = draw skip (recordGltfAssetDraw
+                    //   return)。non-null 時 = upstream Skin::uploadMatrixPalette PC-7γ-3 (j)
+                    //   dual-write 既書込 real bone matrix palette 消費 (inline writeSkinUbo
+                    //   不要) + wireSkinUboSetV3aToBinding2 per-draw rewire で multi-skin
+                    //   descriptor binding 正確性確保 ((N11-5) A 継承 = §2.3 stale 化 risk
+                    //   解決 = registerSkinUbo 初回 wire ゆえ frame 内 2nd Skin register で
+                    //   binding=2 上書き → 1st Skin binding stale 化 risk を per-draw rewire
+                    //   で吸収)。
+                    if (sCurrentSkin == nullptr)
                     {
-                        // fall-through sentinel path = 既 identity 64 B writeSkinUbo 維持 (PC-N-15 cleanup まで)。
-                        static const F32 real_asset_identity_skin_buf[64] = {
-                            1.f, 0.f, 0.f, 0.f,
-                            0.f, 1.f, 0.f, 0.f,
-                            0.f, 0.f, 1.f, 0.f,
-                            0.f, 0.f, 0.f, 1.f,
-                            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                            0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f,
-                        };
-                        LLVKLoader::writeSkinUbo(
-                            skin_to_use,
-                            ubo::block_hash::Skin_GLTFJoints,
-                            /*offset=*/0u,
-                            reinterpret_cast<const U8*>(real_asset_identity_skin_buf),
-                            sizeof(real_asset_identity_skin_buf));
+                        return;
                     }
-                    // real Skin path では inline writeSkinUbo 不要 (= upstream uploadMatrixPalette 既書込)。
-                    // wireSkinUboSetV3aToBinding2 + flushSkinUbos は両 path unconditional ((N11-5)/(N11-6) A)。
-                    wireSkinUboSetV3aToBinding2(skin_to_use);
-                    LLVKLoader::flushSkinUbos(skin_to_use);
-
-                    // PC-N-11 (a) first-fire LL_INFOS marker ((N11-9) A、PC-N-8 (f) 同形 pattern)。
-                    if (skin_to_use != sGltfStubSkin)
-                    {
-                        static std::atomic<bool> s_first_pcn11_real_skin_fire{true};
-                        if (s_first_pcn11_real_skin_fire.exchange(false, std::memory_order_acq_rel))
-                        {
-                            LL_INFOS("Vulkan") << "PC-N-11 (a) multi-skin real Skin path 通電 (first fire): "
-                                                  "skin=" << (void*)skin_to_use
-                                               << ", sentinel(sGltfStubSkin)=" << (void*)sGltfStubSkin
-                                               << "; AYAGltfMultiSkinEnabled=true + sCurrentSkin 非 null = "
-                                                  "upstream Skin::uploadMatrixPalette PC-7γ-3 (j) dual-write 経由 "
-                                                  "real bone matrix palette 消費 + wireSkinUboSetV3aToBinding2 "
-                                                  "per-draw rewire で descriptor binding=2 を real Skin UBO buffer "
-                                                  "に切替、bindV3aRigged 後 set=3 binding=2 = real Skin UBO bind"
-                                               << LL_ENDL;
-                        }
-                    }
-                    // </AYAstorm r41 PC-N-11 (a)>
+                    wireSkinUboSetV3aToBinding2(sCurrentSkin);
+                    LLVKLoader::flushSkinUbos(sCurrentSkin);
+                    // </AYAstorm r41 PC-N-15c (b)>
                     bindV3aRigged(cmd_buf, sFrameIndex, real_asset_dynamic_offsets);
 
                     // <AYAstorm r41 PC-N-12 (a)> real node modelview push constant 配線
@@ -7045,34 +6937,13 @@ void recordAvatarPlaceholderDraw(VkCommandBuffer cmd_buf)
                            << LL_ENDL;
     }
 
-    // <AYAstorm r41 PC-N-10 (a)> AYAGltfRealDrawEnabled cvar=true 時、
-    //   recordGltfAssetDraw を並走発火 ((N10-6) A + (N10-16) A、AYA literal
-    //   「全件推奨で OK」record 2026-06-05)。PC-N-5 (e) AYAGltfStubDrawEnabled
-    //   cvar から PC-N-9 AYAGltfRealDrawEnabled cvar に切替 = 3 stub cvar 統合 +
-    //   Phase 1.D complete marker 起案。entry hook 配置温存 = recordGltfAssetDraw
-    //   dead code 化回避、cvar 名のみ切替で fire 経路維持。
-    //
-    //   recordAvatarPlaceholderDraw 末尾 = caller (lldrawpoolavatar.cpp:
-    //   recordPoolDraws) からの単一 entry point 内に hook 配置することで、
-    //   lldrawpoolavatar 側改変 0 件で live A/B を実現 (= cross-platform 設計、
-    //   GATE-B 整合 = #ifdef LL_VULKAN_GLSL 追加なし)。
-    //
-    //   default OFF ゆえ recordGltfAssetDraw 発火なし = PC-N-9 完了状態と機能
-    //   等価 (MUSEUBO-A 整合)。ON 時のみ PC-N-8 (f) real LL::GLTF::Asset 経由
-    //   vertex/index buffer bind + UBO sequence + bindVertexBufferVk +
-    //   bindIndexBufferVk(UINT32) + vkCmdDrawIndexed(real_index_count,1,0,0,0)
-    //   経路発火 = Phase 1.D complete marker = 1 GLTF asset 完全 Vulkan draw 通電。
-    //   LLCachedControl ゆえ毎 frame の getBOOL コスト発生なし (= 既存
-    //   AYARingBufferSizeMB 等同形 pattern)。
-    {
-        static LLCachedControl<bool> sAyastormGltfRealDrawEnabled(
-            gSavedSettings, "AYAGltfRealDrawEnabled", false);
-        if (sAyastormGltfRealDrawEnabled)
-        {
-            recordGltfAssetDraw(cmd_buf);
-        }
-    }
-    // </AYAstorm r41 PC-N-10 (a)>
+    // <AYAstorm r41 PC-N-15c (c)> 旧 PC-N-10 (a) AYAGltfRealDrawEnabled cvar +
+    //   recordGltfAssetDraw 末尾 entry hook 完全撤去 ((N15c-3) A、AYA literal「OK」
+    //   record 2026-06-05)。PC-N-15b worker thread dispatch 配線後 = recordGltfAssetDraw
+    //   は GLTFSceneManager::render per-Primitive loop 内の postPrimitiveToWorker
+    //   経由のみ通電 = recordAvatarPlaceholderDraw 末尾 entry hook は dead code 化
+    //   ゆえ撤去。AYAGltfRealDrawEnabled cvar も同時 settings.xml から撤去。
+    // </AYAstorm r41 PC-N-15c (c)>
 }
 
 // ============================================================

@@ -671,7 +671,69 @@ PC-N-15b 実装着手 = step (a)-(h) 8 step 実施 = (a) LL::WorkQueue infrastru
 
 ### §B.2 PC-N-15c 実装結果 (= step (a)-(g) 完了時追記、commit hash + build verify literal + Exit Criteria 10 項充足判定 + Phase 1.E complete marker handoff doc path)
 
-⏳ PC-N-15c 実装完了時追記。
+#### §B.2.0 PC-N-15c 着手前 bridge phase 2 件 commit
+
+PC-N-15c の N15c-12 timing gate「PC-N-15b 完了 + AYA live verify PASS 後着手」を物理的に充足するため、PC-N-15b 実装直後の live verify で発覚した 2 件の問題対応で bridge phase 2 件を実装:
+
+- **bridge `71a5dd2cea`** = newview link fix bridge (= primitive.h class Primitive 閉じ `};` 補填 + Firestorm fork patch 整合 test 群 build 復旧 + .gitignore root-anchor 訂正、改変 file 5 件、`cmake -DLL_TESTS=OFF` reconfigure 適用)
+- **bridge hotfix `1e2384af9c`** = (1) `bindV3aRigged` `firstSet=3` → `firstSet=4` (= Vulkan slot vs design naming 混同 fix、Asset descriptor set を Asset layout slot に正しく bind、Avatar pool draw 時 SIGSEGV 解消) + (2) `drainWorkersAndExecute` 冒頭 `AYAGltfWorkerThreadEnabled` cvar guard 追加 (= `postPrimitiveToWorker` 対称 gate)、改変 file 1 件、AYA live verify「OK ログインできました」record 2026-06-06 で PASS 立証
+
+両 bridge commit で「PC-N-15b live verify PASS」gate 充足 → PC-N-15c 着手前提整備完了。
+
+#### §B.2.1 step (a)-(g) 7 step 全実施
+
+- **(a) `sGltfStubSkin` storage + register/unregister 配線 完全撤去 ((N15c-1) ⭐ A)**:
+  - `indra/llrender/llvkloader.cpp` 旧 line 615-617 `sGltfStubSkinStorage[1]` + `sGltfStubSkin` const pointer 削除 → `<AYAstorm r41 PC-N-15c (a)>` tag block で撤去 marker comment に置換
+  - `indra/llrender/llvkloader.cpp` 旧 line 4309-4362 `initVulkan` 内 PC-N-5 (c) tag block `registerSkinUbo(sGltfStubSkin, Skin_GLTFJoints, block_size)` + `wireSkinUboSetV3aToBinding2(sGltfStubSkin)` + first-fire log block 完全撤去 → PC-N-15c (a) 撤去 marker comment に置換
+  - `indra/llrender/llvkloader.cpp` 旧 line 4652-4658 `shutdownVulkan` 内 PC-N-5 (d) tag block `unregisterSkinUbo(sGltfStubSkin, ubo::block_hash::Skin_GLTFJoints)` 完全撤去 → PC-N-15c (a) 撤去 marker comment に置換
+- **(b) `AYAGltfMultiSkinEnabled` cvar + `recordGltfAssetDraw` PC-N-11 (a) fall-through path 完全撤去 = real Skin path 一本化 ((N15c-2) ⭐ A)**:
+  - `indra/llrender/llvkloader.cpp` 旧 line 6646-6705 PC-N-11 (a) tag block 完全撤去 = `static LLCachedControl<bool> sAyastormGltfMultiSkinEnabled` 宣言 + `skin_to_use` 三項演算子選択 + `if (skin_to_use == sGltfStubSkin)` fall-through identity 64 B `writeSkinUbo` path + PC-N-11 (a) first-fire LL_INFOS marker 全撤去
+  - 置換 = real Skin path 一本化 `<AYAstorm r41 PC-N-15c (b)>` tag block = `if (sCurrentSkin == nullptr) return;` early return + `wireSkinUboSetV3aToBinding2(sCurrentSkin)` + `LLVKLoader::flushSkinUbos(sCurrentSkin)` 直列
+  - `indra/newview/app_settings/settings.xml` `AYAGltfMultiSkinEnabled` cvar entry 完全撤去 → PC-N-15c (b)+(c) 撤去 marker comment に置換
+- **(c) `AYAGltfRealDrawEnabled` cvar + `recordAvatarPlaceholderDraw` 末尾 PC-N-10 (a) entry hook 撤去 ((N15c-3) A)**:
+  - `indra/llrender/llvkloader.cpp` 旧 line 6940-6967 `recordAvatarPlaceholderDraw` 末尾 PC-N-10 (a) tag block 完全撤去 = `static LLCachedControl<bool> sAyastormGltfRealDrawEnabled` 宣言 + cvar guard + `recordGltfAssetDraw(cmd_buf)` 呼出全撤去 (= PC-N-15b worker thread dispatch 配線後 entry hook dead code 化)
+  - `indra/newview/app_settings/settings.xml` `AYAGltfRealDrawEnabled` cvar entry 完全撤去 → step (b) で起案した撤去 marker comment と統合
+- **(d) build verify literal 取得 ((N15c-8) A)**:
+  - `cmake --build build-linux-x86_64 --target ayastorm-bin -j 4` = `[100%] Built target ayastorm-bin` literal + binary 3.05 GB 生成
+  - error 0 / warning 0 / undefined reference 0 / GATE-B integrity = `LL_VULKAN_GLSL count llvkloader.cpp` 不変
+  - AYA live verify literal「通常通りに描画されてます」record 2026-06-06 = 起動 PASS + 通常描画継続 + worker thread infra 起動 (`PC-N-15a worker thread infra created: worker_count=19` + `PC-N-14 worker thread launch 成功 first fire` 確認) + MUSEUBO-A 整合維持
+- **(e) cross-platform spec §6 PC-N-15c 行 ✅ 反映 + §A 履歴 1 行追記**:
+  - `docs/specs/ayastorm-r41-gl-removal/ayastorm-r41-cross-platform-port-spec.md` §6 PC-N-15c 行状態 ⏳ → ✅ + AYA live verify literal「通常通りに描画されてます」record 2026-06-06 注記追加
+  - §A 履歴 3 行追記 = bridge `71a5dd2cea` (newview link fix bridge) + bridge hotfix `1e2384af9c` (bindV3aRigged firstSet=4 + drainWorkersAndExecute cvar guard) + 本 PC-N-15c complete
+- **(f) Phase 1.E complete marker handoff doc 起案 ((N15c-7) A 案 B 統合方針整合)**:
+  - 新規 `docs/specs/ayastorm-r41-gl-removal/handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-30-phase1-e-complete.md` 起案
+  - §0 着手契機 + 位置付け + §1 Phase 1.E 全 sub-step 完了状態 (= 7 sub-step + bridge commits 2 件) + §2 達成事項列挙 (実 data 通電 / multi-asset/multi-skin / worker thread 並列化 / cleanup 一本化) + §3 Phase 1 全完了状態確認 (全 sub-phase ✅ table + 設計原則 + MUSEUBO-A + GATE-B) + §4 Mac/Win 補完 phase entry + §5 残 strict 線形 + §6 self-verify 9 観点 + §A AYA literal record + feedback 遵守 record
+- **(g) 本 design-lock doc §B.2 追記**:
+  - 本 §B.2 section に PC-N-15c 実装結果 literal record (= 本 section)、案 B 統合方針整合
+
+#### §B.2.2 改変 file 5 件
+
+1. **`indra/llrender/llvkloader.cpp`** = sGltfStubSkin storage + register/unregister 配線 + PC-N-11 (a) fall-through path + PC-N-10 (a) entry hook 全撤去
+2. **`indra/newview/app_settings/settings.xml`** = AYAGltfMultiSkinEnabled + AYAGltfRealDrawEnabled 2 cvar entry 完全撤去
+3. **`docs/specs/ayastorm-r41-gl-removal/ayastorm-r41-cross-platform-port-spec.md`** = §6 PC-N-15c 行 ✅ 反映 + §A 履歴 3 行追記 (bridge × 2 + PC-N-15c complete)
+4. **本 design-lock doc §B.2 追記** = PC-N-15c 実装結果 literal record (= 本 section)
+5. **新 `handoff-substep-...-phase1-e-complete.md`** = Phase 1.E complete marker handoff doc 起案 = Phase 1 全完了 marker + Mac/Win 補完 phase entry 起点
+
+#### §B.2.3 Exit Criteria 10 項充足判定
+
+| # | criterion | 充足 |
+|---|-----------|------|
+| i | `sGltfStubSkin` storage 撤去 + `initVulkan` 内 register 配線 撤去 + `shutdownVulkan` 内 unregister 配線 撤去 ((N15c-1) ⭐ A) | ✅ |
+| ii | `AYAGltfMultiSkinEnabled` cvar 撤去 + `recordGltfAssetDraw` PC-N-11 (a) fall-through path 撤去 + real Skin path 一本化 ((N15c-2) ⭐ A) | ✅ |
+| iii | `AYAGltfRealDrawEnabled` cvar 撤去 + `recordAvatarPlaceholderDraw` 末尾 PC-N-10 (a) entry hook 撤去 ((N15c-3) A) | ✅ |
+| iv | その他 cvar (AYAGltfRealModelviewEnabled / RealLightParamsEnabled / MultiAssetCanary / WorkerThreadEnabled / WorkerThreadCount) 維持 ((N15c-4) A) | ✅ |
+| v | `sGltfStubAssetPipeline` 維持 (= Phase 1.F+ 持越し、(N15c-5) A) + `sPlaceholderSkin` 維持 (= avatar Vulkan draw 通電 phase 持越し、(N15c-6) A) | ✅ |
+| vi | GATE-B 整合 = `#ifdef LL_VULKAN_GLSL` 新規追加 0 件 (= count `llvkloader.cpp` 不変、PC-N-15b 同数) | ✅ |
+| vii | MUSEUBO-A 整合 = OpenGL 描画 100% 維持 (= AYA live verify「通常通りに描画されてます」record 2026-06-06) | ✅ |
+| viii | build verify literal 取得 ((N15c-8) A) = `[100%] Built target ayastorm-bin` + binary 3.05 GB + error 0 / warning 0 | ✅ |
+| ix | cross-platform spec §6 PC-N-15c 行 ✅ 反映 + §A 履歴 + 本 design-lock doc §B.2 追記 | ✅ |
+| x | **Phase 1.E complete marker handoff doc 起案 ((N15c-7) A 案 B 統合方針整合)** + Phase 1.E 全体総括 + Phase 1 全完了状態確認 + Mac/Win 補完 phase entry へ移行 marker | ✅ |
+
+#### §B.2.4 commit 内容予定 + 残 strict 線形
+
+- commit 内容 = 1 modified (`indra/llrender/llvkloader.cpp`) + 1 modified (`indra/newview/app_settings/settings.xml`) + 1 modified (`docs/specs/ayastorm-r41-gl-removal/ayastorm-r41-cross-platform-port-spec.md`) + 1 modified (本 design-lock doc §B.2 追記) + 1 new doc (= `handoff-substep-...-phase1-e-complete.md` Phase 1.E complete marker handoff)、CMake 改変 0 + codegen 改変 0 + shader 改変 0 + tests/ 改変 0 + Co-Authored-By 不在
+- 残 strict 線形 = **PC-N-15c ✅ 本 commit = Phase 1.E complete ✅ 本 commit = Phase 1 全完了 ✅ 本 commit** → Mac/Win 開発者補完 phase ⏳ (entry 移行) → Phase 1.F+ (実 PBR shader 接続 + real data 内容置換) ⏳
+- 次 phase 着手 1 line = Mac/Win 補完 phase = 他 OS 開発者が Linux primary baseline (= 本 commit) を base に MoltenVK (macOS) / Windows full Vulkan 環境での起動確認 + 派生 fix 投入 model 開始
 
 ---
 

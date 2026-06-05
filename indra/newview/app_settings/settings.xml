@@ -10402,60 +10402,11 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
-    <!-- <FS:AYAstorm r41 Phase 1.D PC-N-10 complete = Phase 1.D complete marker>
-         実 LL::GLTF::Asset 経由 Vulkan real draw 経路通電の live A/B 切替 cvar (= 一本化後の単独 cvar)。
-         design-lock handoff-substep-...-phase1-d-pc-n-10-design-lock.md (= (N10-1) A + (N10-10) A、AYA literal「全件推奨で OK」record 2026-06-05)。
-         **PC-N-10 で 3 stub cvar (AYAGltfStubDrawEnabled / AYAGltfStubVertexBufferEnabled / AYAGltfStubIndexBufferEnabled) 統合済**
-         = AYAGltfRealDrawEnabled 単独 cvar に一本化 + recordAvatarPlaceholderDraw 末尾 entry hook も AYAGltfRealDrawEnabled で gate
-         ((N10-6) A 採用 = entry hook cvar 名のみ切替で fire 経路維持) + recordGltfAssetDraw 内 PC-N-9 (b) cvar guard wrap 撤去 (二重 gate 冗長解消、(N10-8) A)
-         + recordGltfAssetDraw 内 PC-N-7 (e) / PC-N-6 (e) / PC-N-5 base shader generate 経路全撤去 ((N10-7) A) + stub VB/IB storage + VMA allocate/destroy 全撤去 ((N10-4) A)。
-         sGltfStubSkin sentinel 維持 ((N10-3) B = PC-N-8 (f) line 6170 sentinel 共用、real Skin owner 切替は Phase 1.E multi-skin scope) +
-         sGltfStubAssetPipeline 維持 ((N10-5) B = PC-N-8 (f) real Asset path で再利用、名称は legacy "Stub" 残るが機能は real 共用)。
-         OFF (default) = recordGltfAssetDraw 発火経路ゼロ (entry hook も発火しない) = OpenGL 描画 100% 維持 = MUSEUBO-A 整合。
-         ON = PC-N-8 (f) で配線済 real LL::GLTF::Asset 経由 vertex/index buffer bind + UBO sequence + bindVertexBufferVk + bindIndexBufferVk(UINT32) +
-         vkCmdDrawIndexed(real_index_count, 1, 0, 0, 0) 経路発火 = Phase 1.D complete 通電 (= GLTFSceneManager::render 経由 per-Primitive owner 解決 +
-         実 Asset draw 通電の事実確立)。GATE-B 整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ、count 不変)。Persist=1 で起動間保持。 -->
-    <key>AYAGltfRealDrawEnabled</key>
-    <map>
-      <key>Comment</key>
-      <string>(r41 Phase 1.D PC-N-10 complete = Phase 1.D complete marker) Enable GLTF real LL::GLTF::Asset Vulkan draw 経路 (= PC-N-10 で 3 stub cvar 統合済 = 単独 cvar 一本化). Default OFF, debug live A/B 用. ON 時 recordAvatarPlaceholderDraw 末尾 entry hook fire (= cvar gate 切替) + PC-N-8 (f) block 発火 (= real Asset draw) + GLTFSceneManager::render per-Primitive loop 内 setCurrentPrimitive/clearCurrentPrimitive hook (PC-N-9 (a) 配線) で owner 解決. sGltfStubSkin sentinel 維持 (= sentinel 共用、real Skin owner 切替は Phase 1.E scope) + sGltfStubAssetPipeline 維持 (= PC-N-8 (f) real Asset path 再利用). OFF 時 recordGltfAssetDraw 発火経路ゼロ = OpenGL 描画 100% 維持 (MUSEUBO-A 整合).</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>0</integer>
-    </map>
-    <!-- </FS:AYAstorm> -->
-
-    <!-- <FS:AYAstorm r41 Phase 1.E PC-N-11 = multi-skin sentinel 段階卒業 cvar>
-         AYAstorm r41 Phase 1.E PC-N-11 = multi-skin sentinel 段階卒業 cvar
-         (= recordGltfAssetDraw PC-N-8 (f) real Asset path 内 sCurrentSkin
-         経由 real Skin owner 切替 + Skin_GLTFJoints UBO 実 data write 経路
-         通電 = sGltfStubSkin sentinel fall-through path と独立 live A/B)。
-         design-lock handoff-substep-...-phase1-e-pc-n-11-design-lock.md
-         (= (N11-1)..(N11-16) AYA literal「全件推奨で OK」record 2026-06-05)。
-         OFF (default) = 既 PC-N-8 (f) sentinel + identity 64 B writeSkinUbo
-         path 維持 (= Phase 1.D complete baseline 不変)。
-         ON = sCurrentSkin 非 null 時 real Skin path 発火 = upstream
-         Skin::uploadMatrixPalette PC-7γ-3 (j) dual-write 既 real bone matrix
-         palette を消費 + wireSkinUboSetV3aToBinding2(sCurrentSkin) per-draw
-         rewire で multi-skin descriptor binding 正確性確保 ((N11-5) A、
-         registerSkinUbo 初回 register 時のみ wire 起因 stale 化 risk 解決)。
-         Prerequisite: AYAGltfRealDrawEnabled=1 (= recordGltfAssetDraw fire entry)。
-         GATE-B 整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ、
-         count 不変)。Persist=1 で起動間保持。 -->
-    <key>AYAGltfMultiSkinEnabled</key>
-    <map>
-      <key>Comment</key>
-      <string>(r41 Phase 1.E PC-N-11) Enable multi-skin sentinel 段階卒業 cvar = recordGltfAssetDraw PC-N-8 (f) real Asset path 内 sCurrentSkin 経由 real Skin owner 切替 + Skin_GLTFJoints UBO 実 data write 経路通電. Default OFF, debug live A/B 用. ON 時 sCurrentSkin 非 null 時 real Skin path 発火 = upstream Skin::uploadMatrixPalette PC-7γ-3 (j) dual-write 既 real bone matrix palette を消費 + wireSkinUboSetV3aToBinding2(sCurrentSkin) per-draw rewire で multi-skin descriptor binding 正確性確保. OFF 時 既 PC-N-8 (f) sentinel + identity 64 B writeSkinUbo path 維持 = Phase 1.D complete baseline 不変 (MUSEUBO-A 整合). Prerequisite: AYAGltfRealDrawEnabled=1.</string>
-      <key>Persist</key>
-      <integer>1</integer>
-      <key>Type</key>
-      <string>Boolean</string>
-      <key>Value</key>
-      <integer>0</integer>
-    </map>
+    <!-- <AYAstorm r41 PC-N-15c (b)+(c)> AYAGltfMultiSkinEnabled + AYAGltfRealDrawEnabled
+         cvar 完全撤去 ((N15c-2) ⭐ A + (N15c-3) A、AYA literal「OK」record 2026-06-05)。
+         MultiSkinEnabled = sentinel fall-through 段階卒業 gate 不要化、RealDrawEnabled =
+         PC-N-15b worker thread dispatch 配線後 recordAvatarPlaceholderDraw 末尾 entry
+         hook dead code 化ゆえ撤去。 -->
 
     <!-- <AYAstorm r41 PC-N-12 (a)> AYAGltfRealModelviewEnabled cvar 新設
          ((N12-1)..(N12-16) AYA literal「全件推奨で OK」record 2026-06-05、案 A
