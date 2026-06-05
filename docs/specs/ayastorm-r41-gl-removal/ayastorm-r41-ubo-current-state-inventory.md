@@ -1,7 +1,7 @@
 # AYAstorm r41 UBO 現状棚卸し (live document)
 
 **作成日**: 2026-06-03
-**起源 handoff**: `handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-28-pivot-to-ubo-design.md`
+**起源 handoff**: `handoff/archive/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-28-pivot-to-ubo-design.md`
 **位置付け**: r41 Vulkan UBO 全体設計 (= `ayastorm-r41-ubo-overall-design.md`、未起案) の **前提資料**。設計議論を始める前に、**OpenGL path で現在実際に動いている UBO 構造** と、これまで Vulkan 用に前倒しで仕込んだ **GLSL blueprint** とを完全に切り分けて把握するための live doc。
 
 ---
@@ -467,8 +467,8 @@ per-frame / per-view / per-program / per-material / per-draw の 5 分類で過�
 - `indra/newview/app_settings/shaders/class1/objects/` (simple 系 Legacy + MaterialUBO 観測)
 
 ### A.3 参照 handoff doc
-- `handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-28-pivot-to-ubo-design.md` (本 pivot の経緯資料)
-- `handoff/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-28-phase2d-alpha-prep.md` (Phase 2d-α 前 prep doc、本 pivot で前提変更)
+- `handoff/archive/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-28-pivot-to-ubo-design.md` (本 pivot の経緯資料)
+- `handoff/archive/handoff-substep-4-3-gamma-prime-port-beta-2-bundle-B-B-eta-28-phase2d-alpha-prep.md` (Phase 2d-α 前 prep doc、本 pivot で前提変更)
 - `reference-shader-location-map.md` §6-A〜E (既存 UBO binding マップ、本 doc で update が必要な箇所多数)
 
 ---
