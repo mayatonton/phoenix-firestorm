@@ -752,6 +752,32 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 LLVKLoader::setCurrentPrimitive(&primitive);
                 // </AYAstorm r41 PC-N-9 (a)>
 
+                // <AYAstorm r41 PC-N-15b (c)> per-Primitive worker dispatch hook
+                //   ((N15b-1) ⭐ A dispatch site = setCurrentPrimitive 直後並列 +
+                //   (N15b-13b) A cvar guard = LLVKLoader::postPrimitiveToWorker 内側
+                //   ((N15b-12) A cvar OFF 即時 false 返却で MUSEUBO-A 整合)、AYA
+                //   literal「全部 OK です」record 2026-06-05)。
+                //
+                //   AYAGltfWorkerThreadEnabled cvar=true + WorkQueue 起動済 + worker
+                //   context 空でない時のみ true 返却。本 hook は asset/primitive/skin
+                //   pointer + node.mAssetMatrix copy を work unit として worker
+                //   thread に投入 = main thread 経路に副作用 0 件 (= main thread の
+                //   setCurrentXxx / drawRangeFast / clearCurrentXxx 既経路は不変温存、
+                //   posted=true でも下流の OpenGL drawRangeFast は実行)。posted の
+                //   戻り値は本 PC-N-15b では使用せず (= main thread fallback path
+                //   全 hook 共存運用)、PC-N-15c 以降で recordAvatarPlaceholderDraw
+                //   entry hook 撤去後に整理予定。
+                {
+                    LL::GLTF::Skin* skin_ptr_for_worker =
+                        rigged ? &asset.mSkins[node.mSkin] : nullptr;
+                    (void)LLVKLoader::postPrimitiveToWorker(
+                        &asset,
+                        &primitive,
+                        skin_ptr_for_worker,
+                        glm::value_ptr(node.mAssetMatrix));
+                }
+                // </AYAstorm r41 PC-N-15b (c)>
+
                 // <AYAstorm r41 PC-N-12 (e)> per-Node real modelview source 配線
                 //   ((N12-14) A + 案 A layering-safe pointer accessor approach、
                 //   AYA literal「全件推奨で OK」record 2026-06-05 + 案 A 承認 2026-06-05)。
@@ -815,6 +841,21 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 // </AYAstorm r41 PC-N-9 (a)>
             }
         }
+
+        // <AYAstorm r41 PC-N-15b (c)> per-Asset 末尾 worker drain + secondary
+        //   cmdbuf 集約 hook ((N15b-3) ⭐ A per-Asset 末尾 aggregation 採用、AYA
+        //   literal「全部 OK です」record 2026-06-05)。
+        //
+        //   clearCurrentAsset 直前並列 = sCurrentAsset 有効状態下で drain 完了
+        //   (= worker thread 内 recordGltfAssetDraw 経路 thread_local sCurrentAsset
+        //   参照は worker 自身の thread_local 経路ゆえ main thread clear 影響なし、
+        //   ただし設計上の意図明示として asset scope 中での drain 配置)。
+        //   AYAGltfWorkerThreadEnabled cvar OFF / WorkQueue 未起動 / worker context
+        //   空時 drainWorkersAndExecute 内 early return ((N15b-12) A 整合)、primary
+        //   cmd_buf == VK_NULL_HANDLE 時 (= Vulkan 未 in-frame) も early return =
+        //   MUSEUBO-A 整合 + OpenGL 描画 100% 維持。
+        LLVKLoader::drainWorkersAndExecute(LLVKLoader::getCurrentCommandBuffer());
+        // </AYAstorm r41 PC-N-15b (c)>
 
         // <AYAstorm r41 PC-7γ-2> per-asset current owner clear (ds loop 終了直前で対称配置)。
         LLVKLoader::clearCurrentAsset();

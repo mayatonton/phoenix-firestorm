@@ -532,6 +532,33 @@ namespace LLVKLoader
     void clearCurrentNodeAssetMatrix();
     const F32* getCurrentNodeAssetMatrix();
     // </AYAstorm r41 PC-N-12 (b)>
+
+    // <AYAstorm r41 PC-N-15b (b)> worker thread dispatch API
+    //   ((N15b-1) ⭐ A per-Primitive dispatch site = gltfscenemanager.cpp 内
+    //   setCurrentPrimitive 直後並列 + (N15b-2) ⭐ A work unit = lambda capture
+    //   by value (Asset*, Primitive*, Skin*, F32[16] modelview copy) +
+    //   (N15b-3) ⭐ A per-Asset 末尾 aggregation = vkCmdExecuteCommands、
+    //   AYA literal「全部 OK です」record 2026-06-05)。
+    //
+    //   postPrimitiveToWorker = AYAGltfWorkerThreadEnabled cvar guard 内側で
+    //     work unit を WorkQueue へ post (return true 成功 / false fallback)。
+    //     cvar OFF 時 / WorkQueue 未起動時 / sPcn14WorkerCtx 空時は false 返却
+    //     = caller (= gltfscenemanager.cpp) は main thread fallback path 続行
+    //     ((N15b-10) A graceful degrade)。
+    //   drainWorkersAndExecute = main thread が per-Asset 末尾で呼出 = WorkQueue
+    //     drain 完了待ち + 全 worker secondary cmdbuf を vkCmdExecuteCommands で
+    //     primary_cmd_buf へ集約 + per-thread mSkinUboSubDirty を main thread
+    //     sSkinUboDirty へ merge ((N15b-3) ⭐ A + (N15b-7) A merge semantics)。
+    //
+    //   設計原則整合: (1) Upstream OpenGL 取り込みやすさ維持 = caller signature
+    //     はオプショナル hook (= 既経路に影響なし)、(2) Core プロセス分散実現
+    //     = per-Primitive granularity の worker thread dispatch で並列化達成。
+    bool postPrimitiveToWorker (LL::GLTF::Asset* asset,
+                                LL::GLTF::Primitive* primitive,
+                                LL::GLTF::Skin* skin,
+                                const F32* mAssetMatrix);
+    void drainWorkersAndExecute(VkCommandBuffer primary_cmd_buf);
+    // </AYAstorm r41 PC-N-15b (b)>
 }
 
 #endif // LL_LLVKLOADER_H

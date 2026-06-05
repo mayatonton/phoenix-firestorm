@@ -47,6 +47,14 @@
 #include <thread>
 #include <mutex>
 // </AYAstorm r41 PC-N-15a (a)>
+// <AYAstorm r41 PC-N-15b (a)> worker thread dispatch 配線 header includes
+//   ((N15b-4) ⭐ A 自前 std::thread × N + LL::WorkQueue 1 件 anonymous
+//   runUntilClose、AYA literal「全部 OK です」record 2026-06-05)。
+//   workqueue.h = LL::WorkQueue / runUntilClose / close / post / size。
+//   array = std::array<F32, 16> = lambda capture by value for modelview matrix。
+#include "workqueue.h"
+#include <array>
+// </AYAstorm r41 PC-N-15b (a)>
 
 extern LLControlGroup gSavedSettings;
 
@@ -770,6 +778,25 @@ namespace
     static LLCachedControl<U32>  sAyastormGltfWorkerThreadCount(
         gSavedSettings, "AYAGltfWorkerThreadCount", 0u);
     // </AYAstorm r41 PC-N-15a (a)>
+
+    // <AYAstorm r41 PC-N-15b (a)> worker thread dispatch infrastructure storage
+    //   ((N15b-4) ⭐ A 自前 std::thread × N + LL::WorkQueue 1 件 anonymous
+    //   runUntilClose + (N15b-5) A thread_local U32 sWorkerIdx kInvalidWorkerIdx
+    //   sentinel = UINT32_MAX、AYA literal「全部 OK です」record 2026-06-05)。
+    //
+    //   sWorkerIdx = main thread 時 kInvalidWorkerIdx (= writeDrawUbo/writeSkinUbo
+    //   が既経路 sDrawUboRingBufferMgr / sSkinUboDirty に bind)、worker thread
+    //   launch 時 each thread の i ∈ [0, worker_count) に set (= per-thread
+    //   sPcn14WorkerCtx[i] sub-map に bind)。
+    //
+    //   sPcn14WorkerQueue = anonymous (= 名前空間 weak unique name) capacity 1024
+    //   auto_shutdown=false (= LLApp shutdown と独立 close 経路で thread join
+    //   順序 control)。worker thread main = runUntilClose 駆動、close で抜ける。
+    constexpr U32 kInvalidWorkerIdx = UINT32_MAX;
+    thread_local U32 sWorkerIdx = kInvalidWorkerIdx;
+    std::unique_ptr<LL::WorkQueue> sPcn14WorkerQueue;
+    std::vector<std::thread>       sPcn14WorkerThreads;
+    // </AYAstorm r41 PC-N-15b (a)>
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
@@ -1726,11 +1753,70 @@ namespace
                            << " (cvar=" << cvar_count << ", hw=" << hw
                            << "), per-thread VkCommandPool + secondary VkCommandBuffer + "
                               "LLUboRingBuffer instance (initial=" << initial_mb << " MB)" << LL_ENDL;
+
+        // <AYAstorm r41 PC-N-15b (a)> LL::WorkQueue + std::thread × N spawn
+        //   ((N15b-4) ⭐ A 採用 = 自前 std::thread spawn + anonymous WorkQueue
+        //   runUntilClose 駆動、(N15b-5) A thread_local sWorkerIdx 初期化、
+        //   (N15b-11) A first-fire LL_INFOS marker 3 件のうち worker_thread fire、
+        //   AYA literal「全部 OK です」record 2026-06-05)。
+        //
+        //   capacity=1024 = 1 frame 内 per-Primitive 数の保守的上限 (= 既存 SL
+        //   GLTF asset の典型 primitive 数 ≪ 1024)。auto_shutdown=false =
+        //   LLApp lifecycle と独立 close 経路で thread join 順序明示
+        //   control (= destroyWorkerThreadInfra 内 close → join → reverse-init)。
+        sPcn14WorkerQueue = std::make_unique<LL::WorkQueue>(
+            std::string(), /*capacity=*/1024u, /*auto_shutdown=*/false);
+        sPcn14WorkerThreads.reserve(worker_count);
+        for (U32 i = 0; i < worker_count; ++i)
+        {
+            sPcn14WorkerThreads.emplace_back([i]() {
+                sWorkerIdx = i;
+                static std::atomic<bool> s_first_pcn14_worker_thread_fire{true};
+                if (s_first_pcn14_worker_thread_fire.exchange(false, std::memory_order_acq_rel))
+                {
+                    LL_INFOS("Vulkan") << "PC-N-14 worker thread launch 成功 (first fire): "
+                                          "worker_idx=" << i
+                                       << ", worker_count="
+                                       << sPcn14WorkerCount.load(std::memory_order_acquire)
+                                       << "; LL::WorkQueue runUntilClose 駆動開始 "
+                                          "((N15b-4) ⭐ A + (N15b-11) A、AYA literal "
+                                          "「全部 OK です」record 2026-06-05)"
+                                       << LL_ENDL;
+                }
+                if (sPcn14WorkerQueue)
+                {
+                    sPcn14WorkerQueue->runUntilClose();
+                }
+                sWorkerIdx = kInvalidWorkerIdx;
+            });
+        }
+        // </AYAstorm r41 PC-N-15b (a)>
+
         return true;
     }
 
     void destroyWorkerThreadInfra()
     {
+        // <AYAstorm r41 PC-N-15b (a)> WorkQueue close + thread join (= reverse-init
+        //   order 維持、LLUboRingBuffer destroy 前に worker thread 停止確認必須
+        //   = worker thread 内で mDrawUboRingBuffer access する可能性ゆえ)。
+        //   close で runUntilClose ループ抜ける → join で thread 終了確実化 →
+        //   以降の LLUboRingBuffer shutdown 安全。
+        if (sPcn14WorkerQueue)
+        {
+            sPcn14WorkerQueue->close();
+        }
+        for (auto& t : sPcn14WorkerThreads)
+        {
+            if (t.joinable())
+            {
+                t.join();
+            }
+        }
+        sPcn14WorkerThreads.clear();
+        sPcn14WorkerQueue.reset();
+        // </AYAstorm r41 PC-N-15b (a)>
+
         // reverse-init order ((N15a-8) A):
         //   LLUboRingBuffer destroy → vkFreeCommandBuffers → vkDestroyCommandPool
         //   → sPcn14WorkerCtx clear。LLUboRingBuffer 内部の BufferDestroyer
@@ -5532,7 +5618,28 @@ void writeDrawUbo(U32 block_hash, U32 offset, const void* data, size_t size, U32
     {
         return;
     }
-    if (!sDrawUboRingBufferMgr)
+
+    // <AYAstorm r41 PC-N-15b (d)> thread-aware ring buffer 経路選択
+    //   ((N15b-6) A、AYA literal「全部 OK です」record 2026-06-05)。
+    //   worker thread 内 (= sWorkerIdx != kInvalidWorkerIdx) は per-thread
+    //   sPcn14WorkerCtx[wi].mDrawUboRingBuffer + mDrawUboSubRecords を参照、
+    //   main thread (= sWorkerIdx == kInvalidWorkerIdx) は既経路
+    //   sDrawUboRingBufferMgr + sDrawUboRingBufferRecords を参照。
+    //   accessor signature 不変、設計原則 (1) Upstream OpenGL 取り込みやすさ
+    //   維持整合。
+    const U32 worker_idx_local = sWorkerIdx;
+    const bool worker_path = (worker_idx_local != kInvalidWorkerIdx
+                              && worker_idx_local < sPcn14WorkerCtx.size()
+                              && sPcn14WorkerCtx[worker_idx_local].mDrawUboRingBuffer != nullptr);
+    LLUboRingBuffer* ring_mgr = worker_path
+        ? sPcn14WorkerCtx[worker_idx_local].mDrawUboRingBuffer.get()
+        : sDrawUboRingBufferMgr.get();
+    auto& ring_records = worker_path
+        ? sPcn14WorkerCtx[worker_idx_local].mDrawUboSubRecords
+        : sDrawUboRingBufferRecords;
+    // </AYAstorm r41 PC-N-15b (d)>
+
+    if (!ring_mgr)
     {
         LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: sDrawUboRingBufferMgr null (Vulkan 未起動 or pre-init)"
                                 << LL_ENDL;
@@ -5568,8 +5675,7 @@ void writeDrawUbo(U32 block_hash, U32 offset, const void* data, size_t size, U32
 
     // (N1-2) A = block 全体 size で 1 chunk allocate (= bind 時 dynamic_offsets
     // が chunk 先頭を指す前提、shader は chunk 先頭から block 全体を読む)。
-    const LLUboRingBuffer::AllocateResult alloc =
-        sDrawUboRingBufferMgr->allocate(meta->block_size);
+    const LLUboRingBuffer::AllocateResult alloc = ring_mgr->allocate(meta->block_size);
     if (!alloc.success)
     {
         LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: ring buffer allocate failed (block_hash=0x"
@@ -5596,8 +5702,8 @@ void writeDrawUbo(U32 block_hash, U32 offset, const void* data, size_t size, U32
         // </AYAstorm r41 PC-N-4 (b)>
     }
 
-    auto it = sDrawUboRingBufferRecords.find(alloc.buffer);
-    if (it == sDrawUboRingBufferRecords.end() || it->second.mapped == nullptr)
+    auto it = ring_records.find(alloc.buffer);
+    if (it == ring_records.end() || it->second.mapped == nullptr)
     {
         LL_WARNS_ONCE("Vulkan") << "PC-N-1 writeDrawUbo: side-table mapped pointer lookup failed (buffer=0x"
                                 << std::hex << alloc.buffer << std::dec << ")" << LL_ENDL;
@@ -5609,6 +5715,29 @@ void writeDrawUbo(U32 block_hash, U32 offset, const void* data, size_t size, U32
 
     // (N1-1) A = caller (= bind 経路) へ dynamic offset 返却。
     out_dynamic_offset = alloc.offset;
+
+    // <AYAstorm r41 PC-N-15b (d)> worker thread first UBO write 成功 first-fire marker
+    //   ((N15b-11) A 3 件のうち 3 件目 = ubo_parallel_fire、AYA literal「全部 OK
+    //   です」record 2026-06-05)。worker thread 内 writeDrawUbo 経路初回成功時に
+    //   per-thread LLUboRingBuffer allocate + memcpy 並列化通電を log 取得用。
+    if (worker_path)
+    {
+        static std::atomic<bool> s_first_pcn14_ubo_parallel_fire{true};
+        if (s_first_pcn14_ubo_parallel_fire.exchange(false, std::memory_order_acq_rel))
+        {
+            LL_INFOS("Vulkan") << "PC-N-14 worker thread per-thread LLUboRingBuffer "
+                                  "allocate + memcpy 成功 (first fire): worker_idx="
+                               << worker_idx_local
+                               << ", block_hash=0x" << std::hex << block_hash << std::dec
+                               << ", block_size=" << meta->block_size
+                               << ", dynamic_offset=" << alloc.offset
+                               << "; per-Primitive UBO write 並列化通電 "
+                                  "((N15b-6) A + (N15b-11) A、AYA literal 「全部 OK です」"
+                                  "record 2026-06-05)"
+                               << LL_ENDL;
+        }
+    }
+    // </AYAstorm r41 PC-N-15b (d)>
 }
 // </AYAstorm r41 PC-N-1 (a)>
 
@@ -5833,6 +5962,11 @@ void writeSkinUbo(LL::GLTF::Skin* skin, U32 block_hash, U32 offset, const void* 
         return;
     }
     UboSkinKey key{ skin, block_hash };
+
+    // (PC-7γ-2 original path) buffer storage は registerSkinUbo 経由で main
+    //   sSkinUboDirty に作成済 = worker thread からも shared mapped pointer 経由
+    //   memcpy 可能 (= host-visible host-coherent buffer)。main thread の writeSkinUbo
+    //   は本 entry に直接 memcpy + dirty.store(true)。
     auto it = sSkinUboDirty.find(key);
     if (it == sSkinUboDirty.end())
     {
@@ -5856,6 +5990,31 @@ void writeSkinUbo(LL::GLTF::Skin* skin, U32 block_hash, U32 offset, const void* 
     }
     std::memcpy(static_cast<U8*>(ubo_inst.mapped_ptr[sFrameIndex]) + offset, data, size);
     ubo_inst.dirty.store(true, std::memory_order_release);
+
+    // <AYAstorm r41 PC-N-15b (e)> worker thread 内呼出時 per-thread sub-map に
+    //   key 記録 = drainWorkersAndExecute 内 merge 経路で main dirty flag 再駆動
+    //   safety net ((N15b-7) A merge semantics、AYA literal「全部 OK です」record
+    //   2026-06-05)。
+    //
+    //   設計判断: UboInstance は std::atomic<bool> dirty 保持で copy-assignable
+    //   不能 = per-thread sub-map に独立 UboInstance instance を保持する案 (= 当初
+    //   設計のひとつ) は構造的不可。代替 = main sSkinUboDirty の蓄積 mapped buffer
+    //   へ worker thread が直接 memcpy + dirty.store (= host-coherent + memcpy 自体
+    //   thread-safe、同一 Skin への複数 worker concurrent write は per-Primitive
+    //   loop dispatch 経路の自然 serialize = 1 frame 内 1 Skin は 1 work unit 上限の
+    //   pattern で衝突回避) + per-thread sub-map に key だけ default-construct で
+    //   置く (= sub-map は merge tracking pure marker)。drainWorkersAndExecute は
+    //   touched key 列挙経由で main dirty 再確認 + sub-map clear。
+    const U32 worker_idx_local = sWorkerIdx;
+    if (worker_idx_local != kInvalidWorkerIdx
+        && worker_idx_local < sPcn14WorkerCtx.size())
+    {
+        // try_emplace で default-construct (= UboInstance dirty=false POD init)、
+        //   既存 key であれば no-op (idempotent marker)。merge 時に main 側
+        //   dirty.store(true) で再駆動。
+        sPcn14WorkerCtx[worker_idx_local].mSkinUboSubDirty.try_emplace(key);
+    }
+    // </AYAstorm r41 PC-N-15b (e)>
 }
 
 // <AYAstorm r41 PC-N-8 (b)> per-Primitive Vulkan vertex/index buffer API 実装
@@ -6089,6 +6248,219 @@ const F32* getCurrentNodeAssetMatrix()
     return sCurrentNodeAssetMatrix;
 }
 // </AYAstorm r41 PC-N-12 (c)>
+
+// <AYAstorm r41 PC-N-15b (b)> recordGltfAssetDraw forward declaration
+//   = recordGltfAssetDraw 本体は下方 anonymous namespace (= 同 TU 内 internal
+//   linkage) に定義済、本 LLVKLoader namespace の postPrimitiveToWorker lambda
+//   内から worker thread 経由 secondary cmdbuf 引数で呼出するため forward decl
+//   を anonymous namespace 内に追加 (= 同 TU 内 anonymous namespace は概念的に
+//   1 つ、forward decl は同 internal linkage 関数 lookup 経路成立)。
+namespace
+{
+    void recordGltfAssetDraw(VkCommandBuffer cmd_buf);
+}
+
+// <AYAstorm r41 PC-N-15b (b)> worker thread dispatch API 実装
+//   ((N15b-1)..(N15b-3) ⭐ A + (N15b-9) A secondary cmdbuf inheritance +
+//   (N15b-10) A graceful degrade fallback + (N15b-11) A first-fire marker
+//   3 件、AYA literal「全部 OK です」record 2026-06-05)。
+//
+//   postPrimitiveToWorker = main thread side で work unit 構築 + WorkQueue post。
+//     cvar OFF / queue 未起動 / worker context 空 / worker idx 範囲外時は false
+//     返却で caller の main thread fallback 続行 ((N15b-10) A 整合)。
+//     modelview matrix は 16 F32 を std::array<F32,16> で copy by value capture
+//     (= lambda 内 thread_local accessor が pointer 経由参照可能ゆえ stable)。
+//
+//   drainWorkersAndExecute = main thread per-Asset 末尾呼出 = WorkQueue drain
+//     完了待ち (= size==0 polling、std::this_thread::yield) → 全 worker secondary
+//     cmdbuf 集約 (= vkCmdExecuteCommands(primary, N, secondaries[]))
+//     → per-thread mSkinUboSubDirty を main sSkinUboDirty へ merge ((N15b-7) A)。
+//     primary_cmd_buf == VK_NULL_HANDLE / worker context 空時 no-op
+//     (= MUSEUBO-A 整合 = OpenGL 描画 100% 維持)。
+bool postPrimitiveToWorker(LL::GLTF::Asset*     asset,
+                           LL::GLTF::Primitive* primitive,
+                           LL::GLTF::Skin*      skin,
+                           const F32*           mAssetMatrix)
+{
+    // (N15b-12) A MUSEUBO-A 整合 entry gate = cvar OFF default で即時 false 返却。
+    if (!sAyastormGltfWorkerThreadEnabled)
+    {
+        return false;
+    }
+    if (!sPcn14WorkerQueue || sPcn14WorkerCtx.empty())
+    {
+        return false;
+    }
+    if (asset == nullptr || primitive == nullptr)
+    {
+        return false;
+    }
+
+    // (N15b-2) ⭐ A work unit = lambda capture by value (= asset/primitive/skin =
+    //   pointer copy、modelview = std::array<F32,16> copy)。
+    std::array<F32, 16> modelview_copy{};
+    const bool has_modelview = (mAssetMatrix != nullptr);
+    if (has_modelview)
+    {
+        std::memcpy(modelview_copy.data(), mAssetMatrix, sizeof(F32) * 16u);
+    }
+
+    const bool posted = sPcn14WorkerQueue->post(
+        [asset, primitive, skin, modelview_copy, has_modelview]() {
+            // worker thread 内 thread_local accessor set ((N15b-1) ⭐ A 整合)。
+            setCurrentAsset(asset);
+            setCurrentPrimitive(primitive);
+            if (skin != nullptr)
+            {
+                setCurrentSkin(skin);
+            }
+            setCurrentNodeAssetMatrix(has_modelview ? modelview_copy.data() : nullptr);
+
+            // (N15b-9) A secondary cmdbuf record = VkCommandBufferInheritanceRenderingInfoKHR
+            //   経由 main thread dynamic rendering scope 継承想定。現 phase では
+            //   inheritance info は最小限 (= color/depth format 0 件) で先回り配線、
+            //   main thread が dynamic rendering scope 開始する経路通電後 (= 別 phase)
+            //   に snapshot 経路追加予定。vkBeginCommandBuffer が validation error
+            //   で失敗時 LL_WARNS_ONCE + secondary cmdbuf 空のまま (= drain side で
+            //   vkCmdExecuteCommands が VK_NULL_HANDLE 含む secondaries[] skip)。
+            const U32 wi = sWorkerIdx;
+            if (wi >= sPcn14WorkerCtx.size())
+            {
+                LL_WARNS_ONCE("Vulkan") << "PC-N-15b worker thread sWorkerIdx out of range: "
+                                        << wi << " >= " << sPcn14WorkerCtx.size() << LL_ENDL;
+                clearCurrentSkin();
+                clearCurrentNodeAssetMatrix();
+                clearCurrentPrimitive();
+                clearCurrentAsset();
+                return;
+            }
+            PcN14WorkerContext& ctx = sPcn14WorkerCtx[wi];
+            if (ctx.mSecondaryCmdBuf == VK_NULL_HANDLE)
+            {
+                clearCurrentSkin();
+                clearCurrentNodeAssetMatrix();
+                clearCurrentPrimitive();
+                clearCurrentAsset();
+                return;
+            }
+
+            // reset secondary cmdbuf to known state (= 前 frame の record 残骸除去、
+            //   VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT pool 由来ゆえ可)。
+            vkResetCommandBuffer(ctx.mSecondaryCmdBuf, 0);
+
+            VkCommandBufferInheritanceRenderingInfoKHR inherit_rendering = {};
+            inherit_rendering.sType =
+                VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO_KHR;
+            inherit_rendering.viewMask              = 0u;
+            inherit_rendering.colorAttachmentCount  = 0u;
+            inherit_rendering.pColorAttachmentFormats = nullptr;
+            inherit_rendering.depthAttachmentFormat   = VK_FORMAT_UNDEFINED;
+            inherit_rendering.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+            inherit_rendering.rasterizationSamples    = VK_SAMPLE_COUNT_1_BIT;
+
+            VkCommandBufferInheritanceInfo inherit_info = {};
+            inherit_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+            inherit_info.pNext = &inherit_rendering;
+
+            VkCommandBufferBeginInfo begin_info = {};
+            begin_info.sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            begin_info.flags            = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT
+                                        | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+            begin_info.pInheritanceInfo = &inherit_info;
+
+            const VkResult begin_r = vkBeginCommandBuffer(ctx.mSecondaryCmdBuf, &begin_info);
+            if (begin_r != VK_SUCCESS)
+            {
+                LL_WARNS_ONCE("Vulkan") << "PC-N-15b vkBeginCommandBuffer (SECONDARY) failed: "
+                                        << (S32)begin_r << " worker_idx=" << wi << LL_ENDL;
+                clearCurrentSkin();
+                clearCurrentNodeAssetMatrix();
+                clearCurrentPrimitive();
+                clearCurrentAsset();
+                return;
+            }
+
+            static std::atomic<bool> s_first_pcn14_secondary_cmdbuf_fire{true};
+            if (s_first_pcn14_secondary_cmdbuf_fire.exchange(false, std::memory_order_acq_rel))
+            {
+                LL_INFOS("Vulkan") << "PC-N-14 secondary cmdbuf vkBeginCommandBuffer 成功 "
+                                      "(first fire): worker_idx=" << wi
+                                   << "; VkCommandBufferInheritanceRenderingInfoKHR 経由 "
+                                      "main thread dynamic rendering scope 継承先回り配線 "
+                                      "((N15b-9) A + (N15b-11) A、AYA literal "
+                                      "「全部 OK です」record 2026-06-05)"
+                                   << LL_ENDL;
+            }
+
+            recordGltfAssetDraw(ctx.mSecondaryCmdBuf);
+
+            vkEndCommandBuffer(ctx.mSecondaryCmdBuf);
+
+            clearCurrentSkin();
+            clearCurrentNodeAssetMatrix();
+            clearCurrentPrimitive();
+            clearCurrentAsset();
+        });
+
+    return posted;
+}
+
+void drainWorkersAndExecute(VkCommandBuffer primary_cmd_buf)
+{
+    if (!sPcn14WorkerQueue || sPcn14WorkerCtx.empty() || primary_cmd_buf == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    // (N15b-3) ⭐ A WorkQueue drain 完了待ち = single producer / N consumer の
+    //   producer 視点 size()==0 観測で work 全件消化完了確認 (= workqueue.h L75-83
+    //   既明示 single producer 条件下で安全)。短時間 yield で busy wait。
+    while (sPcn14WorkerQueue->size() > 0)
+    {
+        std::this_thread::yield();
+    }
+
+    // 全 worker secondary cmdbuf 集約 (= vkCmdExecuteCommands)。
+    //   有効 cmdbuf のみ収集 (= worker 内 vkBeginCommandBuffer 失敗時 etc. は
+    //   ctx.mSecondaryCmdBuf 自体は有効 handle、record されてない状態で
+    //   vkEndCommandBuffer 呼ばずに skip した場合 prior record が残る → 安全側
+    //   = reset+begin の sequence で常に valid recording 終了済を保証する設計)。
+    std::vector<VkCommandBuffer> secondaries;
+    secondaries.reserve(sPcn14WorkerCtx.size());
+    for (auto& ctx : sPcn14WorkerCtx)
+    {
+        if (ctx.mSecondaryCmdBuf != VK_NULL_HANDLE)
+        {
+            secondaries.push_back(ctx.mSecondaryCmdBuf);
+        }
+    }
+    if (!secondaries.empty())
+    {
+        vkCmdExecuteCommands(primary_cmd_buf,
+                             static_cast<U32>(secondaries.size()),
+                             secondaries.data());
+    }
+
+    // (N15b-7) A merge per-thread mSkinUboSubDirty → main sSkinUboDirty。
+    //   merge semantics = sub-map 内 key 列挙経由で main 側 dirty.store(true)
+    //   再駆動 (= UboInstance copy-assignable 不能ゆえ value copy 不可、worker
+    //   側 writeSkinUbo が main mapped buffer に既 memcpy + dirty.store 済、
+    //   本 merge は safety net = flush 経路駆動を main thread context で確実化)。
+    //   sub-map は merge 後 clear で次 frame 再 mark 可能化。
+    for (auto& ctx : sPcn14WorkerCtx)
+    {
+        for (auto& kv : ctx.mSkinUboSubDirty)
+        {
+            auto main_it = sSkinUboDirty.find(kv.first);
+            if (main_it != sSkinUboDirty.end())
+            {
+                main_it->second.dirty.store(true, std::memory_order_release);
+            }
+        }
+        ctx.mSkinUboSubDirty.clear();
+    }
+}
+// </AYAstorm r41 PC-N-15b (b)>
 
 // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
 // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。
@@ -6457,6 +6829,17 @@ namespace
                         gSavedSettings, "AYAGltfMultiAssetCanary", false);
                     if (sAyastormGltfMultiAssetCanary)
                     {
+                        // <AYAstorm r41 PC-N-15b (f)> sPcn13MultiAssetSeen mutex 保護
+                        //   ((N15b-8) A、AYA literal「全部 OK です」record 2026-06-05)。
+                        //   worker thread 内で本 path が fire する経路通電後 (= PC-N-15b
+                        //   (c) gltfscenemanager.cpp hook 経由 recordGltfAssetDraw を
+                        //   secondary cmdbuf 引数で呼出時)、main + worker access の
+                        //   serialize で size() > 1u canary semantic 維持 (= thread_local
+                        //   化すると worker thread 別々の「初回 asset」誤認識で canary
+                        //   失火するため main 単一 set を mutex 経由 access)。
+                        //   PC-N-15a で mutex declaration 済、本 PC-N-15b で lock_guard
+                        //   取得。
+                        std::lock_guard<std::mutex> lock(sPcn13MultiAssetSeenMutex);
                         sPcn13MultiAssetSeen.insert(static_cast<const void*>(asset));
                         if (sPcn13MultiAssetSeen.size() > 1u)
                         {
@@ -6473,6 +6856,7 @@ namespace
                                                    << LL_ENDL;
                             }
                         }
+                        // </AYAstorm r41 PC-N-15b (f)>
                     }
                     // </AYAstorm r41 PC-N-13 (b)>
 

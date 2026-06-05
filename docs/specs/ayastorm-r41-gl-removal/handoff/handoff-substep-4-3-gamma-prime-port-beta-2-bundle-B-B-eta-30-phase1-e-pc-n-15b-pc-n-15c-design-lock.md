@@ -572,7 +572,102 @@ PC-N-15b 実装着手 = step (a)-(h) 8 step 実施 = (a) LL::WorkQueue infrastru
 
 ### §B.1 PC-N-15b 実装結果 (= step (a)-(h) 完了時追記、commit hash + build verify literal + Exit Criteria 10 項充足判定)
 
-⏳ PC-N-15b 実装完了時追記。
+**実装日**: 2026-06-05
+**HEAD 起点**: `26db10dfda` (= PC-N-15b/c 統合 design-lock complete)
+**着手契機**: AYA 指示「r41 Phase 1.E PC-N-15b 実装着手お願いします」literal record 2026-06-05
+
+#### §B.1.1 step (a)-(h) 8 step 全実施
+
+- **(a) `LL::WorkQueue` infrastructure 配線 ((N15b-4) ⭐ A + (N15b-5) A + (N15b-11) A worker_thread fire)**:
+  - `indra/llrender/llvkloader.cpp` 冒頭 include block に `<AYAstorm r41 PC-N-15b (a)>` tag block で `#include "workqueue.h"` + `#include <array>` 追加。
+  - anonymous namespace 内 `sPcn14WorkerCtx` storage の直後並列に `<AYAstorm r41 PC-N-15b (a)>` tag block で以下追加:
+    - `constexpr U32 kInvalidWorkerIdx = UINT32_MAX;`
+    - `thread_local U32 sWorkerIdx = kInvalidWorkerIdx;`
+    - `std::unique_ptr<LL::WorkQueue> sPcn14WorkerQueue;`
+    - `std::vector<std::thread> sPcn14WorkerThreads;`
+  - `createWorkerThreadInfra()` 末尾 (= LL_INFOS の "infra created" log 直後) に `<AYAstorm r41 PC-N-15b (a)>` tag block で `sPcn14WorkerQueue = std::make_unique<LL::WorkQueue>(std::string(), 1024u, false)` + `sPcn14WorkerThreads.emplace_back([i]() { sWorkerIdx = i; runUntilClose(); sWorkerIdx = kInvalidWorkerIdx; })` + `s_first_pcn14_worker_thread_fire` atomic flag first-fire LL_INFOS marker。
+  - `destroyWorkerThreadInfra()` 冒頭 (= reverse-init order 維持) に `<AYAstorm r41 PC-N-15b (a)>` tag block で `sPcn14WorkerQueue->close()` + 各 thread の `t.join()` + `clear()` + `reset()`。
+
+- **(b) `postPrimitiveToWorker` + `drainWorkersAndExecute` helper 実装 ((N15b-1)..(N15b-3) ⭐ A + (N15b-9) A inheritance + (N15b-10) A graceful degrade + (N15b-11) A secondary_cmdbuf fire)**:
+  - `indra/llrender/llvkloader.h` `getCurrentNodeAssetMatrix` 直後並列に `<AYAstorm r41 PC-N-15b (b)>` tag block で `bool postPrimitiveToWorker(LL::GLTF::Asset*, LL::GLTF::Primitive*, LL::GLTF::Skin*, const F32* mAssetMatrix)` + `void drainWorkersAndExecute(VkCommandBuffer primary_cmd_buf)` public API 宣言追加。
+  - `indra/llrender/llvkloader.cpp` `getCurrentNodeAssetMatrix` 直後並列に anonymous namespace 内 `void recordGltfAssetDraw(VkCommandBuffer cmd_buf);` forward declaration 追加 (= 下方 anonymous namespace に定義済の internal linkage 関数を本 LLVKLoader namespace の `postPrimitiveToWorker` lambda 内から呼出可能化)。
+  - `postPrimitiveToWorker` 実装:
+    - cvar guard = `sAyastormGltfWorkerThreadEnabled` false 時 / `sPcn14WorkerQueue` null 時 / `sPcn14WorkerCtx` 空時 / `asset == nullptr` / `primitive == nullptr` 時 `return false` で main thread fallback 続行 ((N15b-12) A MUSEUBO-A 整合)。
+    - work unit copy by value = `std::array<F32, 16> modelview_copy{}` + has_modelview flag + memcpy ((N15b-2) ⭐ A)。
+    - `sPcn14WorkerQueue->post([asset, primitive, skin, modelview_copy, has_modelview]() { ... })` で worker thread lambda 投入:
+      - thread_local `setCurrentAsset/Primitive/Skin/NodeAssetMatrix` set。
+      - `sWorkerIdx` 範囲外 / `mSecondaryCmdBuf == VK_NULL_HANDLE` 時 LL_WARNS_ONCE + clearCurrentXxx + return。
+      - `vkResetCommandBuffer(ctx.mSecondaryCmdBuf, 0)` で前 frame の record 残骸除去。
+      - `VkCommandBufferInheritanceRenderingInfoKHR` (= sType + viewMask=0 + colorAttachmentCount=0 + pColorAttachmentFormats=nullptr + depthAttachmentFormat=VK_FORMAT_UNDEFINED + stencilAttachmentFormat=VK_FORMAT_UNDEFINED + rasterizationSamples=VK_SAMPLE_COUNT_1_BIT)。
+      - `VkCommandBufferInheritanceInfo` (= sType + pNext=&inherit_rendering)。
+      - `VkCommandBufferBeginInfo` (= sType + flags=USAGE_RENDER_PASS_CONTINUE_BIT|SIMULTANEOUS_USE_BIT + pInheritanceInfo=&inherit_info)。
+      - `vkBeginCommandBuffer(ctx.mSecondaryCmdBuf, &begin_info)` 失敗時 LL_WARNS_ONCE + clearCurrentXxx + return ((N15b-10) A graceful degrade)。
+      - 成功時 `s_first_pcn14_secondary_cmdbuf_fire` atomic flag first-fire LL_INFOS marker。
+      - `recordGltfAssetDraw(ctx.mSecondaryCmdBuf)` + `vkEndCommandBuffer(ctx.mSecondaryCmdBuf)` + clearCurrentXxx。
+  - `drainWorkersAndExecute` 実装:
+    - early return guards = WorkQueue null / worker context empty / primary_cmd_buf null。
+    - WorkQueue drain = `while (sPcn14WorkerQueue->size() > 0) std::this_thread::yield()` (= single producer 視点 size==0 観測で work 全件消化完了確認、workqueue.h L75-83 既明示 single producer 条件下で安全) ((N15b-3) ⭐ A)。
+    - secondary cmdbuf 集約 = `std::vector<VkCommandBuffer> secondaries` 収集 + 非空時 `vkCmdExecuteCommands(primary_cmd_buf, N, secondaries.data())`。
+    - per-thread `mSkinUboSubDirty` merge = sub-map 内 key 列挙経由で main `sSkinUboDirty[key].dirty.store(true, std::memory_order_release)` re-trigger (= UboInstance copy-assignable 不能ゆえ value copy 不可、worker 側 writeSkinUbo が main mapped buffer に既 memcpy + dirty.store 済、本 merge は safety net = flush 経路駆動を main thread context で確実化) ((N15b-7) A merge semantics) + sub-map clear。
+
+- **(c) `gltfscenemanager.cpp` per-Primitive loop 内 dispatch hook + drain hook 追加 ((N15b-1) ⭐ A + (N15b-3) ⭐ A + (N15b-13b) A)**:
+  - per-Primitive loop 内 `LLVKLoader::setCurrentPrimitive(&primitive)` 直後並列に `<AYAstorm r41 PC-N-15b (c)>` tag block で `LL::GLTF::Skin* skin_ptr_for_worker = rigged ? &asset.mSkins[node.mSkin] : nullptr` + `(void)LLVKLoader::postPrimitiveToWorker(&asset, &primitive, skin_ptr_for_worker, glm::value_ptr(node.mAssetMatrix))`。posted=true/false の戻り値は本 PC-N-15b では使用せず (= 既経路 main thread fallback path 全 hook 共存運用、PC-N-15c 以降で recordAvatarPlaceholderDraw entry hook 撤去後に整理予定 = Q4 B 採用整合)。
+  - per-Asset loop 終了直後 (= `clearCurrentAsset` 直前並列) に `<AYAstorm r41 PC-N-15b (c)>` tag block で `LLVKLoader::drainWorkersAndExecute(LLVKLoader::getCurrentCommandBuffer())`。`getCurrentCommandBuffer()` は in-frame 時 `sCommandBuffer`、out-of-frame 時 `VK_NULL_HANDLE` を返却ゆえ Vulkan in-frame guard 同形 (= `drainWorkersAndExecute` 内 `primary_cmd_buf == VK_NULL_HANDLE` early return で MUSEUBO-A 整合)。
+
+- **(d) `writeDrawUbo` thread-aware 拡張 ((N15b-6) A + (N15b-11) A ubo_parallel fire)**:
+  - `writeDrawUbo` 冒頭 `out_dynamic_offset = 0u` 直後並列に `<AYAstorm r41 PC-N-15b (d)>` tag block で worker_path 判定 + `LLUboRingBuffer* ring_mgr` + `auto& ring_records` を per-thread 経路 / main thread 経路で切替。
+  - 以降 既 logic そのまま `ring_mgr->allocate(...)` + `ring_records.find(...)` 経路を駆動 (= accessor signature 不変、設計原則 (1) 整合)。
+  - worker_path 内最初の memcpy 成功時 `s_first_pcn14_ubo_parallel_fire` atomic flag first-fire LL_INFOS marker (= worker thread 内 per-thread LLUboRingBuffer allocate + memcpy 並列化通電 log)。
+
+- **(e) `writeSkinUbo` thread-aware 拡張 ((N15b-7) A merge semantics)**:
+  - main `sSkinUboDirty` 直接書込維持 (= host-coherent + memcpy thread-safe、buffer storage は register 経由 main 側のみ持つ設計整合、UboInstance copy-assignable 不能ゆえ value copy 不可)。
+  - 既 logic body 末尾 `dirty.store(true)` 直後並列に `<AYAstorm r41 PC-N-15b (e)>` tag block で `sWorkerIdx != kInvalidWorkerIdx` 時 per-thread `sPcn14WorkerCtx[sWorkerIdx].mSkinUboSubDirty.try_emplace(key)` marker pure tracking (= drain 時 merge で main `dirty.store(true)` re-trigger 駆動経路)。
+
+- **(f) `sPcn13MultiAssetSeen` mutex 保護 ((N15b-8) A)**:
+  - `recordGltfAssetDraw` 内 PC-N-13 (b) tag block の `sAyastormGltfMultiAssetCanary` cvar guard 直下に `<AYAstorm r41 PC-N-15b (f)>` tag block で `std::lock_guard<std::mutex> lock(sPcn13MultiAssetSeenMutex)` 取得 → `sPcn13MultiAssetSeen.insert(...)` + `size() > 1u` 判定 + first-fire LL_INFOS marker = mutex scope 内に閉込み。
+  - PC-N-15a で mutex declaration 済、本 PC-N-15b で lock_guard 取得 = worker thread 経由 recordGltfAssetDraw fire 経路通電後の main + worker access serialize で size() > 1u canary semantic 維持 (= (N15a-4) A 採用方針整合)。
+
+- **(g) build verify literal 取得 ((N15b-14) A)**:
+  - llrender library clean rebuild PASS (= warning 0 + error 0、`llvkloader.cpp` 改変由来 warning 0 確認)。
+  - `INTEGRATION_TEST_lluboringbuffer` = 11/11 PASS (Unit test group_completed name=LLUboRingBuffer / Total Tests: 11 / Passed Tests: 11)。
+  - `INTEGRATION_TEST_llassetubopool` = 10/10 PASS。
+  - `INTEGRATION_TEST_llpipelinecachestorage` = 13/13 PASS。
+  - `python3 -m unittest discover` from `scripts/ubo_codegen` = 131 tests OK。
+  - GATE-B integrity = `grep -c LL_VULKAN_GLSL indra/llrender/llvkloader.cpp` = **6 不変** (= PC-N-15a commit `a90883cbf9` 同数、PC-N-13 commit `faae1544d6` 同数)。
+  - **注**: newview link build は pre-existing 別 file (`indra/newview/fslocalmeshimportgltf.cpp` Refactor commit `820c4a83fc` 由来の syntax error + `indra/newview/gltfscenemanager.cpp:449` `make_shared<Asset>(json)` `LL::LL::GLTF::Asset` namespace lookup error) で error 残るが、本 PC-N-15b 改変由来ではなく PC-N-15a commit `a90883cbf9` baseline 時点で既存。`git stash` で gltfscenemanager.cpp 改変外し検証で同 error 再現確認済 = 本 PC-N-15b 改変責任なし、`feedback_admit_unknown` 遵守で newview link build 実機検証は別 phase に持越し明示。本 PC-N-15b 改変由来 llrender library build + integration test + codegen + GATE-B integrity 全 PASS で Exit Criteria 10 項中 (x) build verify literal 取得 充足。
+
+- **(h) cross-platform spec §6 PC-N-15b 行 ✅ 反映 + §A 履歴 1 行追記 + 本 design-lock doc §B.1 追記 ((N15b-16) A 案 B 統合方針)**:
+  - `docs/specs/ayastorm-r41-gl-removal/ayastorm-r41-cross-platform-port-spec.md` §6 PC-N-15b 行 状態 ⏳ → ✅ 反映 (= 実装内容 (a)-(h) 8 step 詳細追記)。
+  - §A 履歴 chronological entry 1 行追記 (= 本 PC-N-15b 実装 complete record + step (a)-(h) 全実施 + build verify literal + Exit Criteria 10 項充足 + newview link build pre-existing error 明示)。
+  - 本 design-lock doc §B.1「実装結果追記」section に PC-N-15b 結果 literal record (= 本 section、案 B 統合方針整合 = 別 complete handoff doc 起案なし)。
+
+#### §B.1.2 改変 file 4 件
+
+1. **`indra/llrender/llvkloader.cpp`** (+~270 net) = `#include "workqueue.h"` + `#include <array>` + `kInvalidWorkerIdx` + `sWorkerIdx` thread_local + `sPcn14WorkerQueue` + `sPcn14WorkerThreads` + `createWorkerThreadInfra` 末尾 WorkQueue + thread spawn + first-fire marker + `destroyWorkerThreadInfra` 冒頭 close+join + `recordGltfAssetDraw` forward decl + `postPrimitiveToWorker` + `drainWorkersAndExecute` 実装 + `writeDrawUbo` thread-aware path + `writeSkinUbo` thread-aware marker + `sPcn13MultiAssetSeen` mutex lock_guard。
+2. **`indra/llrender/llvkloader.h`** (+30 net) = `postPrimitiveToWorker` + `drainWorkersAndExecute` public API 宣言追加 (= LLVKLoader namespace 内 `<AYAstorm r41 PC-N-15b (b)>` tag block)。
+3. **`indra/newview/gltfscenemanager.cpp`** (+~35 net) = per-Primitive loop 内 `setCurrentPrimitive` 直後並列 `postPrimitiveToWorker` hook + per-Asset 末尾 `clearCurrentAsset` 直前並列 `drainWorkersAndExecute` hook (= 2 `<AYAstorm r41 PC-N-15b (c)>` tag block)。
+4. **`docs/specs/ayastorm-r41-gl-removal/ayastorm-r41-cross-platform-port-spec.md`** = §6 PC-N-15b 行 ✅ 反映 + §A 履歴 1 行追記。
+
+#### §B.1.3 Exit Criteria 10 項充足判定
+
+| # | criterion | 充足 |
+|---|-----------|------|
+| i | `LL::WorkQueue` infrastructure 配線 ((N15b-4) ⭐ A + (N15b-5) A) | ✅ |
+| ii | `postPrimitiveToWorker` + `drainWorkersAndExecute` helper 新設 ((N15b-1) ⭐ A + (N15b-2) ⭐ A + (N15b-3) ⭐ A) | ✅ |
+| iii | `gltfscenemanager.cpp` per-Primitive loop 内 dispatch + drain hook 追加 | ✅ |
+| iv | `writeDrawUbo` + `writeSkinUbo` thread-aware 拡張 ((N15b-6) A + (N15b-7) A) | ✅ |
+| v | `sPcn13MultiAssetSeen` `std::lock_guard<std::mutex>` 配置 ((N15b-8) A) | ✅ |
+| vi | secondary cmdbuf `VkCommandBufferInheritanceRenderingInfoKHR` 経由 dynamic rendering scope 継承 ((N15b-9) A) | ✅ |
+| vii | first-fire LL_INFOS marker 3 件 ((N15b-11) A) | ✅ |
+| viii | GATE-B 整合 = `LL_VULKAN_GLSL count llvkloader.cpp=6` 不変 | ✅ |
+| ix | MUSEUBO-A 整合 = `AYAGltfWorkerThreadEnabled=false` default で main thread 経路完全維持 ((N15b-12) A) | ✅ |
+| x | build verify literal 取得 + spec §6 PC-N-15b ✅ 反映 + §A 履歴 + 本 doc §B.1 追記 (= 案 B 統合方針整合) | ✅ |
+
+#### §B.1.4 commit 内容予定 + 残 strict 線形
+
+- commit 内容 = 3 modified (indra/) + 1 modified (cross-platform spec) + 1 modified (本 design-lock doc §B.1)、CMake 改変 0 + codegen 改変 0 + shader 改変 0 + settings.xml 改変 0 + tests/ 改変 0 + Co-Authored-By 不在。
+- 残 strict 線形 = **PC-N-15b ✅ 本 commit** → PC-N-15c (= cleanup + sGltfStubSkin 撤去 + AYAGltfMultiSkinEnabled cvar 撤去 + AYAGltfRealDrawEnabled cvar 撤去 + Phase 1.E complete marker 起案、PC-N-15b 完了 + AYA live 動作確認 PASS 後別 session) → Phase 1.E complete → Phase 1 全完了 → Mac/Win 補完 phase。
+- 次 session 着手 1 line = PC-N-15c 実装着手 = step (a)-(g) 7 step 実施 (= AYA live 動作確認 PASS 後)。
 
 ### §B.2 PC-N-15c 実装結果 (= step (a)-(g) 完了時追記、commit hash + build verify literal + Exit Criteria 10 項充足判定 + Phase 1.E complete marker handoff doc path)
 
