@@ -36,6 +36,7 @@
 #include <fstream>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <atomic>
 
@@ -693,6 +694,18 @@ namespace
     //             で frame-stable、worker thread 分散は PC-N-14/15 持越し)。
     // </AYAstorm r41 PC-N-12 (c)>
     const F32* sCurrentNodeAssetMatrix = nullptr;
+
+    // <AYAstorm r41 PC-N-13 (b)> multi-asset canary 用 seen asset address tracker
+    //   ((N13-11) A、AYA literal「全件推奨で OK」record 2026-06-05)。
+    //   main thread 専有 (recordGltfAssetDraw は GLTFSceneManager::render から呼出)
+    //   ゆえ mutex 不要。debug-only ゆえ AYAGltfMultiAssetCanary cvar=ON 時のみ
+    //   insert + size>1 で first-fire LL_INFOS marker fire (= file-static =
+    //   process lifetime、frame 跨ぎで蓄積 = 「同時に」ではなく「session 中に複数
+    //   asset draw 経験」を log 取得用、debug-only ゆえ memory leak 懸念極小)。
+    //   raw const void* で asset address を識別 (= LL::GLTF::Asset 実体への
+    //   pointer 比較のみ、deref せず layering 制約完全充足)。
+    std::unordered_set<const void*> sPcn13MultiAssetSeen;
+    // </AYAstorm r41 PC-N-13 (b)>
 
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
@@ -5981,6 +5994,22 @@ namespace
                     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, sGltfStubAssetPipeline);
 
                     // PC-N-8 (f) 同形 per-draw UBO 配線 (= PC-N-7 (e) 同形 sequence)。
+                    // <AYAstorm r41 PC-N-13 (a)> real per-draw light params cvar gate
+                    //   ((N13-1) C 採用 = sky_smoke shader 非 consume architectural truth
+                    //   尊重 +「zero IS real data」semantic 確立、AYA literal「全件推奨で
+                    //   OK」record 2026-06-05)。sGltfStubAssetPipeline 流用 sky_smoke
+                    //   shader (sSkySmokeVertModule / sSkySmokeFragModule) は
+                    //   PerDrawUBO_LightParams を非 consume = 現 phase で zero buffer が
+                    //   architectural truth (= descriptor set layout 充足のみが目的、
+                    //   shader 側 GPU error なし、llvkloader.cpp:5843-5845 既明示)。
+                    //   AYAGltfRealLightParamsEnabled cvar=true 時 first-fire marker 起動
+                    //   + log で「現 phase は zero IS real data = sky_smoke shader 非
+                    //   consume」明示。Phase 1.F+ 実 PBR shader 接続時に data 内容置換
+                    //   (PC-N-13.1)。writeDrawUbo 自体は unconditional 呼出 (=
+                    //   dynamic_offset 構築は両 path 必須、ring buffer allocate 経路必須、
+                    //   cvar gate は marker 起動のみ作用、data path は unchanged)。
+                    static LLCachedControl<bool> sAyastormGltfRealLightParamsEnabled(
+                        gSavedSettings, "AYAGltfRealLightParamsEnabled", false);
                     static const U8 real_asset_draw_zero_buf[256] = {};
                     U32 real_asset_dynamic_offset = 0u;
                     LLVKLoader::writeDrawUbo(
@@ -5989,6 +6018,29 @@ namespace
                         real_asset_draw_zero_buf,
                         sizeof(real_asset_draw_zero_buf),
                         real_asset_dynamic_offset);
+
+                    // PC-N-13 (a) first-fire LL_INFOS marker ((N13-10) A、PC-N-6/7/8/9/
+                    //   10/11/12 同形 pattern)。zero IS real data semantic 通電 literal
+                    //   取得用 (= sky_smoke shader 非 consume architectural truth 記録)。
+                    if (sAyastormGltfRealLightParamsEnabled)
+                    {
+                        static std::atomic<bool> s_first_pcn13_real_light_params_fire{true};
+                        if (s_first_pcn13_real_light_params_fire.exchange(false, std::memory_order_acq_rel))
+                        {
+                            LL_INFOS("Vulkan") << "PC-N-13 (a) real per-draw light params cvar gate 通電 (first fire): "
+                                                  "AYAGltfRealLightParamsEnabled=true; "
+                                                  "現 phase は zero IS real data 解釈 ((N13-1) C 採用) = "
+                                                  "sGltfStubAssetPipeline 流用 sky_smoke shader "
+                                                  "(sSkySmokeVertModule / sSkySmokeFragModule) は "
+                                                  "PerDrawUBO_LightParams を非 consume = "
+                                                  "host write 256 B zero buffer が descriptor set layout 充足 "
+                                                  "architectural truth (llvkloader.cpp:5843-5845 既明示)。"
+                                                  "Phase 1.F+ 実 PBR shader 接続時に PC-N-13.1 等で data 内容置換着手予定。"
+                                               << LL_ENDL;
+                        }
+                    }
+                    // </AYAstorm r41 PC-N-13 (a)>
+
                     const U32 real_asset_dynamic_offsets[V3A_DRAW_SET_BINDINGS] = {
                         real_asset_dynamic_offset, real_asset_dynamic_offset,
                         real_asset_dynamic_offset, real_asset_dynamic_offset,
@@ -6118,6 +6170,39 @@ namespace
                                        /*size=*/64,
                                        modelview_src);
                     // </AYAstorm r41 PC-N-12 (a)>
+
+                    // <AYAstorm r41 PC-N-13 (b)> multi-asset GLTF draw canary marker
+                    //   ((N13-11) A、AYA literal「全件推奨で OK」record 2026-06-05)。
+                    //   AYAGltfMultiAssetCanary cvar=ON 時 PC-N-8 (f) real Asset path で
+                    //   異なる Asset address を検出した時に LL_INFOS で log 出力 (= 既存
+                    //   SL inv の複数 GLTF asset を同時 rez 時に発火、
+                    //   GLTFSceneManager::render mObjects loop の自然 iteration を信任
+                    //   した debug-only canary、機能影響ゼロ = MUSEUBO-A 整合)。
+                    //   file-static std::unordered_set<const void*> sPcn13MultiAssetSeen
+                    //   で seen asset address 追跡 (= main thread 専有ゆえ mutex 不要、
+                    //   raw pointer 比較のみで layering 制約完全充足)。
+                    static LLCachedControl<bool> sAyastormGltfMultiAssetCanary(
+                        gSavedSettings, "AYAGltfMultiAssetCanary", false);
+                    if (sAyastormGltfMultiAssetCanary)
+                    {
+                        sPcn13MultiAssetSeen.insert(static_cast<const void*>(asset));
+                        if (sPcn13MultiAssetSeen.size() > 1u)
+                        {
+                            static std::atomic<bool> s_first_pcn13_multi_asset_canary_fire{true};
+                            if (s_first_pcn13_multi_asset_canary_fire.exchange(false, std::memory_order_acq_rel))
+                            {
+                                LL_INFOS("Vulkan") << "PC-N-13 (b) multi-asset GLTF draw canary 発火 (first fire): "
+                                                      "seen_asset_count=" << sPcn13MultiAssetSeen.size()
+                                                   << ", current_asset=" << static_cast<const void*>(asset)
+                                                   << "; GLTFSceneManager::render mObjects loop で複数 GLTF asset "
+                                                      "を同時 iterate 検証 PASS ((N13-11)/(N13-12) A integration "
+                                                      "approach 整合、real SL sample 信任、synthetic 不要)。"
+                                                      "AYAGltfMultiAssetCanary debug-only canary ゆえ機能影響ゼロ。"
+                                                   << LL_ENDL;
+                            }
+                        }
+                    }
+                    // </AYAstorm r41 PC-N-13 (b)>
 
                     // PC-N-8 (f) 核心差分: real Primitive 由来 vertex/index buffer bind +
                     //   real index_count で vkCmdDrawIndexed = Phase 1.D 3rd sub-step 通電

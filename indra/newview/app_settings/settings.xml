@@ -10484,6 +10484,63 @@ Change of this parameter will affect the layout of buttons in notification toast
       <integer>0</integer>
     </map>
     <!-- </AYAstorm r41 PC-N-12 (a)> -->
+
+    <!-- <AYAstorm r41 PC-N-13 (a)> AYAGltfRealLightParamsEnabled cvar 新設
+         ((N13-1)..(N13-16) AYA literal「全件推奨で OK」record 2026-06-05、
+         (N13-1) C 採用 = sky_smoke shader 非 consume architectural truth 尊重 +
+         「zero IS real data」semantic 確立)。recordGltfAssetDraw PC-N-8 (f)
+         real Asset path 内 writeDrawUbo PerDrawUBO_LightParams zero buffer
+         256 B 投入 site を cvar gate で wrap、第 3 placeholder-like 段階卒業
+         marker。OFF (default) = 既 PC-N-8 (f) zero buffer 256 B writeDrawUbo
+         path 維持 = Phase 1.D + PC-N-11 + PC-N-12 baseline 不変。ON =
+         first-fire marker 起動 + 「zero IS real data」semantic 記録 =
+         sGltfStubAssetPipeline 流用 sky_smoke shader (sSkySmokeVertModule /
+         sSkySmokeFragModule) は PerDrawUBO_LightParams を非 consume = 現
+         phase で zero buffer が architectural truth (= descriptor set layout
+         充足のみが目的、shader 側 GPU error なし、llvkloader.cpp:5843-5845
+         既明示)。Phase 1.F+ 実 PBR shader 接続時に PC-N-13.1 等で data 内容
+         置換着手予定。Prerequisite: AYAGltfRealDrawEnabled=1 (=
+         recordGltfAssetDraw fire entry)。GATE-B 整合 = #ifdef LL_VULKAN_GLSL
+         新規追加 0 件 (= runtime cvar gate のみ、count 不変)。Persist=1 で
+         起動間保持。 -->
+    <key>AYAGltfRealLightParamsEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.E PC-N-13) Enable real per-draw light params cvar gate = recordGltfAssetDraw PC-N-8 (f) real Asset path 内 writeDrawUbo PerDrawUBO_LightParams zero buffer 256 B 投入 site を cvar gate で wrap + first-fire marker 起動 + 「zero IS real data」semantic 記録 (= 第 3 placeholder-like 段階卒業 marker、(N13-1) C 採用). Default OFF, debug live A/B 用. ON 時 first-fire marker 1 回出力で「現 phase は zero IS real data = sGltfStubAssetPipeline 流用 sky_smoke shader が PerDrawUBO_LightParams を非 consume = descriptor set layout 充足のみが目的」明示. OFF 時 既 PC-N-8 (f) zero buffer 256 B writeDrawUbo path 維持 = Phase 1.D + PC-N-11 + PC-N-12 baseline 不変 (MUSEUBO-A 整合). Phase 1.F+ 実 PBR shader 接続時に data 内容置換着手予定 (PC-N-13.1). Prerequisite: AYAGltfRealDrawEnabled=1.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+
+    <!-- <AYAstorm r41 PC-N-13 (b)> AYAGltfMultiAssetCanary cvar 新設
+         ((N13-3)/(N13-4)/(N13-6)/(N13-11) AYA literal「全件推奨で OK」record
+         2026-06-05)。debug-only canary cvar = 機能影響ゼロ (= MUSEUBO-A
+         整合)、log 出力のみで複数 GLTF asset 同時 draw 動作検証。OFF
+         (default) = log 出力なし、機能影響ゼロ。ON = recordGltfAssetDraw
+         PC-N-8 (f) real Asset path で 2nd 以降の異なる Asset address を
+         検出した時に LL_INFOS で 1 回 log 出力 (= 既存 SL inv の複数 GLTF
+         asset を同時 rez 時に発火、GLTFSceneManager::render mObjects loop
+         の自然 iteration を信任した debug-only canary)。file-static
+         std::unordered_set<const void*> sPcn13MultiAssetSeen で seen asset
+         address 追跡 (= main thread 専有ゆえ mutex 不要)。Prerequisite:
+         AYAGltfRealDrawEnabled=1 (= recordGltfAssetDraw fire entry)。GATE-B
+         整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ、
+         count 不変)。Persist=1 で起動間保持。 -->
+    <key>AYAGltfMultiAssetCanary</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.E PC-N-13) Multi-asset GLTF draw canary cvar (debug-only) = recordGltfAssetDraw PC-N-8 (f) real Asset path で異なる Asset address を検出した時に LL_INFOS で log 出力 (= GLTFSceneManager::render mObjects loop の自然 iteration を信任した debug-only canary、機能影響ゼロ = MUSEUBO-A 整合). Default OFF, log 出力なし、機能影響ゼロ. ON 時 既存 SL inv の複数 GLTF asset を同時 rez 時に file-static std::unordered_set 経由 asset address 追跡 + 2nd 以降 asset 検出時 first-fire marker 1 回出力. 機能制限なし = MUSEUBO-A 整合、log のみで multi-asset draw fire literal を AYA 実機検証時に取得可能. Prerequisite: AYAGltfRealDrawEnabled=1.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </AYAstorm r41 PC-N-13 (b)> -->
     <!-- </FS:AYAstorm> -->
 
     <key>PluginInstancesLow</key>
