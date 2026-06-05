@@ -677,6 +677,23 @@ namespace
     // </AYAstorm r41 PC-N-8 (e)>
     LL::GLTF::Primitive* sCurrentPrimitive = nullptr;
 
+    // <AYAstorm r41 PC-N-12 (c)> per-Node current modelview tracking
+    //   (= sCurrentNodeAssetMatrix static、案 A layering-safe pointer accessor
+    //   approach、AYA literal「全件推奨で OK」record 2026-06-05 + 案 A 承認 2026-06-05)。
+    //   役割: recordGltfAssetDraw PC-N-8 (f) real Asset path 内で push constant 64 B
+    //         identity → real Asset::mNodes[node_index].mAssetMatrix 経由 source 解決。
+    //         GLTFSceneManager::render が per-Primitive loop 内 setCurrentNodeAssetMatrix
+    //         (glm::value_ptr(node.mAssetMatrix)) / clearCurrentNodeAssetMatrix() で
+    //         set/clear (= 案 A 採用根拠 = llrender 層は gltf/asset.h include 不可、
+    //         caller 側 newview 層で raw column-major float* 解決 → opaque pointer 投入)。
+    //         column-major 16 float = 64 B = vkCmdPushConstants mat4 layout 直投入用。
+    //   生存期間: per-Primitive draw 中のみ有効、clearCurrentNodeAssetMatrix で reset。
+    //             caller の Node 実体 (asset.mNodes[idx].mAssetMatrix) は per-frame
+    //             scene.updateTransforms で更新済 = pointer stale 化なし (= per-draw 内
+    //             で frame-stable、worker thread 分散は PC-N-14/15 持越し)。
+    // </AYAstorm r41 PC-N-12 (c)>
+    const F32* sCurrentNodeAssetMatrix = nullptr;
+
     // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.C PC-6γ (PSC):
     // VkPipelineCache blob の disk persist 機構 (= LLPipelineCacheStorage)。
     // 起動時に file (= gDirUtilp LL_PATH_CACHE + "pipeline_cache.bin") から
@@ -5764,6 +5781,30 @@ LL::GLTF::Primitive* getCurrentPrimitive()
 }
 // </AYAstorm r41 PC-N-8 (e)>
 
+// <AYAstorm r41 PC-N-12 (c)> sCurrentNodeAssetMatrix accessor 実装
+//   ((N12-2) A + 案 A layering-safe pointer accessor approach、AYA literal
+//   「全件推奨で OK」record 2026-06-05 + 案 A 承認 2026-06-05)。
+//   sCurrentAsset / sCurrentSkin / sCurrentPrimitive 同形 pattern (= main thread
+//   専有ゆえ atomic 不要)。GLTFSceneManager::render per-Primitive loop が
+//   PC-N-12 (e) で set/clear (= caller 側 newview 層で glm::value_ptr
+//   (node.mAssetMatrix) 経由 raw column-major float* 投入、llvkloader 層は
+//   opaque pointer として消費)。
+void setCurrentNodeAssetMatrix(const F32* mat4_column_major)
+{
+    sCurrentNodeAssetMatrix = mat4_column_major;
+}
+
+void clearCurrentNodeAssetMatrix()
+{
+    sCurrentNodeAssetMatrix = nullptr;
+}
+
+const F32* getCurrentNodeAssetMatrix()
+{
+    return sCurrentNodeAssetMatrix;
+}
+// </AYAstorm r41 PC-N-12 (c)>
+
 // r41 sub-step 3.4-δ-1 (sub-doc 03 §3.1.4): 12 pool 共用 placeholder draw helper
 // (旧名 recordSkySmokeDraw、3.2 sky-smoke 由来を 12 pool 共用へ unification)。
 // PSO bind (sSkySmokePipeline、fullscreen triangle + 定数色 frag = sky blue 0.4/0.6/0.9/1.0) +
@@ -6015,20 +6056,68 @@ namespace
                     // </AYAstorm r41 PC-N-11 (a)>
                     bindV3aRigged(cmd_buf, sFrameIndex, real_asset_dynamic_offsets);
 
-                    // PC-N-8 (f) 同形 push constant 64 B identity / VERTEX_BIT
-                    //   (= PC-N-9 で real node modelview 置換予定)。
-                    const float real_asset_identity_modelview[16] = {
+                    // <AYAstorm r41 PC-N-12 (a)> real node modelview push constant 配線
+                    //   ((N12-1)..(N12-16) AYA literal「全件推奨で OK」record 2026-06-05
+                    //   + 案 A layering-safe pointer accessor approach AYA 承認 2026-06-05)。
+                    //   AYAGltfRealModelviewEnabled cvar=true かつ sCurrentNodeAssetMatrix
+                    //   non-null 時 real Node.mAssetMatrix path = caller (GLTFSceneManager
+                    //   per-Primitive loop) が glm::value_ptr(node.mAssetMatrix) で投入した
+                    //   column-major raw float* = upstream Asset::uploadTransforms
+                    //   (asset.cpp:180) と同 source 流用 ((N12-1) A、mAssetMatrix =
+                    //   local→asset space 合成済 = parent chain 解決済)。cvar=false or
+                    //   nullptr 時 identity 投入 ((N12-8) A = MUSEUBO-A 整合、前 draw push
+                    //   value 残存防止)。単一 vkCmdPushConstants call ((N12-7) A、source
+                    //   pointer のみ if-else 切替で二重投入回避)。
+                    //   案 A 採用根拠 = llrender 層は gltf/asset.h include 不可 (= 既
+                    //   layering 制約)、Node 実体 field access 不可ゆえ caller 側で
+                    //   glm::value_ptr 解決 → opaque float* 投入 pattern (= setCurrentSkin
+                    //   / setCurrentPrimitive 同形)。
+                    static LLCachedControl<bool> sAyastormGltfRealModelviewEnabled(
+                        gSavedSettings, "AYAGltfRealModelviewEnabled", false);
+
+                    const float identity_modelview[16] = {
                         1.f, 0.f, 0.f, 0.f,
                         0.f, 1.f, 0.f, 0.f,
                         0.f, 0.f, 1.f, 0.f,
                         0.f, 0.f, 0.f, 1.f,
                     };
+
+                    const F32* node_asset_matrix = getCurrentNodeAssetMatrix();
+                    const bool real_path_eligible =
+                        (sAyastormGltfRealModelviewEnabled && node_asset_matrix != nullptr);
+                    const float* modelview_src =
+                        real_path_eligible ? node_asset_matrix : identity_modelview;
+
+                    if (real_path_eligible)
+                    {
+                        // PC-N-12 (a) first-fire LL_INFOS marker ((N12-11) A、PC-N-6/7/8/9/
+                        //   10/11 同形 pattern)。real modelview path 通電 literal 取得用。
+                        static std::atomic<bool> s_first_pcn12_real_modelview_fire{true};
+                        if (s_first_pcn12_real_modelview_fire.exchange(false, std::memory_order_acq_rel))
+                        {
+                            LL_INFOS("Vulkan") << "PC-N-12 (a) real node modelview path 通電 (first fire): "
+                                                  "asset=" << (const void*)asset
+                                               << ", node_asset_matrix_ptr=" << (const void*)node_asset_matrix
+                                               << ", mAssetMatrix[0..3]={"
+                                               << node_asset_matrix[0] << ", " << node_asset_matrix[1] << ", "
+                                               << node_asset_matrix[2] << ", " << node_asset_matrix[3] << "}"
+                                               << "; AYAGltfRealModelviewEnabled=true + sCurrentNodeAssetMatrix "
+                                                  "non-null = upstream Asset::uploadTransforms (asset.cpp:180) "
+                                                  "と同 source 流用 + glm::value_ptr column-major 64 B raw float* "
+                                                  "投入 (= caller 側 GLTFSceneManager per-Primitive loop "
+                                                  "setCurrentNodeAssetMatrix 経由、案 A layering-safe pointer "
+                                                  "accessor)"
+                                               << LL_ENDL;
+                        }
+                    }
+
                     vkCmdPushConstants(cmd_buf,
                                        sAvatarBoneLayout,
                                        VK_SHADER_STAGE_VERTEX_BIT,
                                        /*offset=*/0,
                                        /*size=*/64,
-                                       real_asset_identity_modelview);
+                                       modelview_src);
+                    // </AYAstorm r41 PC-N-12 (a)>
 
                     // PC-N-8 (f) 核心差分: real Primitive 由来 vertex/index buffer bind +
                     //   real index_count で vkCmdDrawIndexed = Phase 1.D 3rd sub-step 通電

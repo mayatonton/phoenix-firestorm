@@ -10456,6 +10456,34 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>0</integer>
     </map>
+
+    <!-- <AYAstorm r41 PC-N-12 (a)> AYAGltfRealModelviewEnabled cvar 新設
+         ((N12-1)..(N12-16) AYA literal「全件推奨で OK」record 2026-06-05、案 A
+         layering-safe pointer accessor approach AYA 承認 2026-06-05)。
+         recordGltfAssetDraw PC-N-8 (f) real Asset path 内 push constant 64 B
+         identity modelview → real Asset::mNodes[node_index].mAssetMatrix 経由
+         置換 = 第 2 sentinel-like placeholder 卒業。OFF (default) = 既 identity
+         push constant modelview path 維持 = Phase 1.D + PC-N-11 baseline 不変。
+         ON = sCurrentNodeAssetMatrix non-null 時 caller (gltfscenemanager.cpp)
+         が glm::value_ptr(node.mAssetMatrix) 経由で per-Primitive 投入した raw
+         column-major 64 B pointer を vkCmdPushConstants に直接渡す = upstream
+         Asset::uploadTransforms (asset.cpp:180) と同 source 流用、layering 維持
+         (= llrender 層は gltf/asset.h を include せず opaque pointer のみ消費)。
+         Prerequisite: AYAGltfRealDrawEnabled=1 (= recordGltfAssetDraw fire entry)。
+         GATE-B 整合 = #ifdef LL_VULKAN_GLSL 新規追加 0 件 (= runtime cvar gate のみ、
+         count 不変)。Persist=1 で起動間保持。 -->
+    <key>AYAGltfRealModelviewEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41 Phase 1.E PC-N-12) Enable real node modelview push constant 配線 cvar = recordGltfAssetDraw PC-N-8 (f) real Asset path 内 identity 64 B push constant modelview → real Asset::mNodes[node_index].mAssetMatrix 経由 (= 第 2 sentinel-like placeholder 卒業). Default OFF, debug live A/B 用. ON 時 sCurrentNodeAssetMatrix non-null 時 real path 発火 = caller (gltfscenemanager.cpp per-Primitive loop) が glm::value_ptr(node.mAssetMatrix) で投入した column-major raw float* を vkCmdPushConstants に直接渡す = upstream Asset::uploadTransforms (asset.cpp:180) と同 source 流用. OFF 時 既 identity 64 B push constant modelview path 維持 = Phase 1.D + PC-N-11 baseline 不変 (MUSEUBO-A 整合). Prerequisite: AYAGltfRealDrawEnabled=1.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <!-- </AYAstorm r41 PC-N-12 (a)> -->
     <!-- </FS:AYAstorm> -->
 
     <key>PluginInstancesLow</key>

@@ -514,6 +514,24 @@ namespace LLVKLoader
     void clearCurrentPrimitive();
     LL::GLTF::Primitive* getCurrentPrimitive();
     // </AYAstorm r41 PC-N-8 (e)>
+
+    // <AYAstorm r41 PC-N-12 (b)> sCurrentNodeAssetMatrix accessor 新設
+    //   ((N12-2) A + 案 A layering-safe pointer accessor approach、AYA literal
+    //   「全件推奨で OK」record 2026-06-05 + 案 A 承認 2026-06-05)。
+    //   PC-N-12 real node modelview 切替 = recordGltfAssetDraw PC-N-8 (f) 内
+    //   push constant identity → real Asset::mNodes[node_index].mAssetMatrix 経由。
+    //   GLTFSceneManager::render per-Primitive loop が PC-N-12 (e) で
+    //   setCurrentNodeAssetMatrix(glm::value_ptr(node.mAssetMatrix)) /
+    //   clearCurrentNodeAssetMatrix() 配線。
+    //   案 A 採用根拠 = llrender 層は gltf/asset.h include 不可 (= llvkloader.h:24-25
+    //   + llvkloader.cpp:568-569 既 layering 制約) ゆえ field access 経由不可、
+    //   caller 側 (newview 層) で raw column-major float* 解決 → opaque pointer
+    //   投入 pattern。PC-N-12 単独発火なし = sCurrentNodeAssetMatrix == nullptr
+    //   natural guard。
+    void setCurrentNodeAssetMatrix (const F32* mat4_column_major);
+    void clearCurrentNodeAssetMatrix();
+    const F32* getCurrentNodeAssetMatrix();
+    // </AYAstorm r41 PC-N-12 (b)>
 }
 
 #endif // LL_LLVKLOADER_H

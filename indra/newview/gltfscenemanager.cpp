@@ -752,6 +752,22 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 LLVKLoader::setCurrentPrimitive(&primitive);
                 // </AYAstorm r41 PC-N-9 (a)>
 
+                // <AYAstorm r41 PC-N-12 (e)> per-Node real modelview source 配線
+                //   ((N12-14) A + 案 A layering-safe pointer accessor approach、
+                //   AYA literal「全件推奨で OK」record 2026-06-05 + 案 A 承認 2026-06-05)。
+                //   setCurrentPrimitive 直後並列、`if (rigged)` 外 unconditional (= real
+                //   Node modelview は rigged/non-rigged 問わず必要)。glm::value_ptr で
+                //   column-major raw float* 解決 → llvkloader 層に opaque pointer 投入
+                //   (= 案 A: llrender 層は gltf/asset.h include 不可ゆえ caller 側で
+                //   field access)。node.mAssetMatrix は upstream
+                //   Asset::uploadTransforms (asset.cpp:180) と同 source = per-frame
+                //   scene.updateTransforms で更新済 = scene graph parent chain 解決済。
+                //   recordGltfAssetDraw PC-N-12 (a) が AYAGltfRealModelviewEnabled cvar
+                //   ON + non-null guard で real path 発火、cvar OFF or null 時 identity
+                //   fall-through (= MUSEUBO-A 整合)。
+                LLVKLoader::setCurrentNodeAssetMatrix(glm::value_ptr(node.mAssetMatrix));
+                // </AYAstorm r41 PC-N-12 (e)>
+
                 if (rigged)
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - bind skin");
@@ -786,6 +802,12 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 // = setCurrentSkin 未呼出時は nullptr → nullptr の no-op)。
                 LLVKLoader::clearCurrentSkin();
                 // </AYAstorm r41 PC-7γ-2>
+
+                // <AYAstorm r41 PC-N-12 (e)> per-Node real modelview source clear
+                //   (clearCurrentPrimitive 直前並列、unconditional clear で safe =
+                //   setCurrentNodeAssetMatrix 必ず call 済 = nullptr 明示 reset)。
+                LLVKLoader::clearCurrentNodeAssetMatrix();
+                // </AYAstorm r41 PC-N-12 (e)>
 
                 // <AYAstorm r41 PC-N-9 (a)> per-Primitive current owner clear ((N9-2) A、
                 // unconditional clear で safe = setCurrentPrimitive 必ず call 済)。
