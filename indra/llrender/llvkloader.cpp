@@ -2275,11 +2275,18 @@ namespace
                                 /*dynamicOffsetCount=*/V3A_DRAW_SET_BINDINGS,
                                 dynamic_offsets);
 
-        // set=3 単独 bind (= set=2 ↔ set=3 swap 実走、(N2-4) A 構造維持)
+        // <AYAstorm bindV3aRigged hotfix 2026-06-06> Vulkan slot 4 (= design naming
+        //   "set=3" = sAssetUboLayoutV3a) に Asset descriptor set を bind。元の
+        //   firstSet=3 は design 名 "set=3" を Vulkan slot 3 として誤解釈、Vulkan
+        //   slot 3 は sDrawUboLayoutV3a (UBO_DYNAMIC, 4 bindings)。Asset descriptor
+        //   set を Draw slot に bind すると layout 不互換 + dynamicOffsetCount=0
+        //   mismatch で driver SIGSEGV。pipeline layout array[4] = sAssetUboLayoutV3a
+        //   と整合するため firstSet=4 が正しい。AYA-CANARY 解析 2026-06-06 = b04 fire,
+        //   b05 fire せず ↔ 2nd vkCmdBindDescriptorSets 内 crash 確認後 fix。
         vkCmdBindDescriptorSets(cmd_buf,
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 sAYAStandardLayout,
-                                /*firstSet=*/3,
+                                /*firstSet=*/4,
                                 /*descriptorSetCount=*/1,
                                 &sAssetUboSetV3a[frame_index],
                                 /*dynamicOffsetCount=*/0,
@@ -6407,6 +6414,18 @@ bool postPrimitiveToWorker(LL::GLTF::Asset*     asset,
 
 void drainWorkersAndExecute(VkCommandBuffer primary_cmd_buf)
 {
+    // <AYAstorm r41 PC-N-15b (b) hotfix> MUSEUBO-A 整合 entry gate = cvar OFF
+    //   default で即時 return。postPrimitiveToWorker (line 6286) の cvar guard
+    //   と対称。本 gate なしで cvar OFF + GLTFSceneManager::render fire 時に
+    //   未 record secondary command buffer × N 件が vkCmdExecuteCommands に
+    //   渡され Vulkan UB → crash (2026-06-06 AYA live verify session 1 で発覚、
+    //   avatar 到着後の次 frame で SIGSEGV 同等 setStatus(STATUS_ERROR) 観測)。
+    //   AYA literal「a」record 2026-06-06 で本 1 行 hotfix 採用。
+    if (!sAyastormGltfWorkerThreadEnabled)
+    {
+        return;
+    }
+    // </AYAstorm r41 PC-N-15b (b) hotfix>
     if (!sPcn14WorkerQueue || sPcn14WorkerCtx.empty() || primary_cmd_buf == VK_NULL_HANDLE)
     {
         return;
