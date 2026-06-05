@@ -201,3 +201,22 @@ OS-1〜OS-10 gate 照合:
 7. **tail pad 12 B 将来 member 追加意図** = 予約 slot か、std140 padding のみか (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.1.3 同期)
+
+**Layer**: L1a-3 (= debug only + LLStaticHashedString 直接 setter pattern 補強)
+**status**: **起案済** (= 2026-06-06 C-3、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.1.3` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 + L0-2 + L1a-1 + L1a-2 pilot verify 完了 (= redirect 経路成熟確認)
+- **(2) 不明事項**: LLStaticHashedString 直接 setter pattern UBO 化対応 (= `LLShaderMgr` enum 経由でない直接呼出) [L0-2 protocol-A 確認] / debug-only path cold launch (= 通常 release で発火しない) [要 verify] / 同名 `mipLevel` 多 shader (= radianceGenF / screenSpaceReflUtil) 別 UBO 設計 [要追加調査] / 同 shader file 同時 consume UBO 一覧 [要追加調査] / tail pad 12 B 将来意図 [要 verify]
+- **(3) 調査手法**: D1 + D2 + D4
+- **(4) 設計 task**: PerProgram cadence triple-buffer (= debug visualize mode active 時のみ) / `pipeline.cpp:8709/8711` 2 LLStaticHashedString call intercept / `gDeferredBufferVisualProgram` bind flush / `class1/deferred/postDeferredVisualizeBuffers.glsl:40` LL_VULKAN_GLSL 活性化
+- **(5) 工程**: trace 順 L1a 3 件目 (= debug-only 補強、pilot 検証完了後)、工数 **S**、L1a-1 / L1a-2 並列可
+- **(6) A 確定**: mUseUBO ON + shader 活性化 + 2 setter 通電 + AYA live verify (= debug menu 経由 buffer visualize 起動、出力既存と同一、visual regression ゼロ §5.4、verify protocol 要事前 AYA 確認) + Vulkan validation 0 件 + 同名 `mipLevel` 別 UBO collision 解消 verify
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `postDeferredVisualizeBuffers.glsl #else` block uniform 個別宣言維持、通常 release path 影響なし (= debug-only)
+
+**関連**: L0-1 (= WORK_ORDER §2.1) + L0-2 (= §2.2) / visual regression policy (= §5.4)

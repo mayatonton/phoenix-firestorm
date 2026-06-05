@@ -194,3 +194,22 @@ OS-1〜OS-10 gate 照合:
 7. **`transform_vec4_count` の上限** = `lldrawpoolterrain.cpp:558` 第 2 引数で渡される count が **必ず 5 か** (= layout 80 B 確定の前提)、それとも variable で UBO size 不整合になり得るか
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.3.1 同期)
+
+**Layer**: L2-1 (= B Tier α setter 完全特定済、PerProgram cadence、terrain visual 容易判定)
+**status**: **起案済** (= 2026-06-06 C-4、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.3.1` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: terrain pool dirty trigger [要追加調査] / region_scale heightmap declared-but-unused [要追加調査] / PerProgram cadence の region 切替対応 [要追加調査] / `TerrainVParamUBO_Legacy` 関係 [要追加調査] / `transform_vec4_count` 上限 = 5 固定か [要 verify]
+- **(3) 調査手法**: D1 (`lldrawpoolterrain.cpp:558/586` redirect 後動作) + D3 (region 切替 trigger) + D4 (TerrainVParamUBO_Legacy data source 関係)
+- **(4) 設計 task**: PerProgram cadence triple-buffer (= terrain pool active 時) / `lldrawpoolterrain.cpp:558/586` 2 setter call を `forwardToUboUpload` → `writeProgramUbo` (= 80 B + 4 B memcpy) / terrain pool bind 単位 flush (= region 切替時) / `pbrterrainV.glsl:79` 既存 LL_VULKAN_GLSL block 活性化
+- **(5) 工程**: trace 順 L2 1 件目 (= setter 完全特定済で確実)、工数 **S-M** (= 半日)、L2-2 / L2-3 / L2-4 並列可
+- **(6) A 確定**: mUseUBO ON + shader 活性化 + 2 setter 通電 + AYA live verify (= PBR terrain region texture transform / region_scale 描画既存と同一、**visual regression ゼロ §5.4**) + Vulkan validation 0 + transform_vec4_count = 5 固定 verify
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `pbrterrainV.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 (= WORK_ORDER §2) / §5.4 visual regression policy / `TerrainVParamUBO_Legacy` (= 同 terrain 系候補、L3 内)

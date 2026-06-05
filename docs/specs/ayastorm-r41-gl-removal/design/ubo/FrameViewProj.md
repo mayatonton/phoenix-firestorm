@@ -223,3 +223,22 @@ OS-1〜OS-10 gate 照合 (= memory `project_r41_phase2_4_principles` 原則 2):
 7. **PER_FRAME `writeFrameUbo` の dirty 判定単位** = block_hash 単独 key (= `sFrameUboInstances` 同) と整合確認要、複数 member 同時更新時の dirty 重複排除有無
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消、確定後に「不明」記載削除 + 確定 literal 追記。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.2.1 同期)
+
+**Layer**: L1b-1 (= per-frame matrix fundamental + per-shader UBO block 50+ file 拡大)
+**status**: **起案済** (= 2026-06-06 C-4、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.2.1` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch (= set=0 binding=0 固定) + L0-3 per-shader UBO block 拡大方式 + L0-4 cadence
+- **(2) 不明事項**: screen_res / env_mat / last_modelview_matrix setter 3 件 [要追加調査] / per-shader 拡大対象 50+ file 列挙 [要追加調査] / FRAMES_IN_FLIGHT triple-buffer verify / flushFrameUbos GPU upload 経路 [要 verify]
+- **(3) 調査手法**: D1 (setter Grep 3 件) + D2 (syncMatrices + per-shader UBO block 既存 8 file pattern) + D4 (50+ file 拡大対象列挙)
+- **(4) 設計 task**: per-frame cadence triple-buffer (= 既通電) / 既存 31 setter PER_FRAME case (= 既通電) / `flushFrameUbos()` frame start (= 既通電) / **本 phase 主作業 = 50+ shader file `#ifdef LL_VULKAN_GLSL` block 追加 + `#else` raw uniform 維持** (= L0-3 include header / inject 方式)
+- **(5) 工程**: trace 順 L1b 1 件目 (= matrix fundamental)、工数 **L** (= 1 日 +)、L1b-2 並列可
+- **(6) A 確定**: per-shader UBO block 拡大 50+ file 全件完了 + cold launch + Vulkan validation 0 + AYA live verify (= 全 deferred/forward pass 描画既存と同一、**visual regression ゼロ §5.4**、一括 verify)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `#ifdef LL_VULKAN_GLSL` gate で全 file `#else` raw uniform 維持 (**重要 gate**、L0-3 protocol-C 整合)
+
+**関連**: L0-1 + L0-3 + L0-4 (= WORK_ORDER §2) / §5.4 visual regression policy / FrameLights (= L1b-2 同 cadence cluster)

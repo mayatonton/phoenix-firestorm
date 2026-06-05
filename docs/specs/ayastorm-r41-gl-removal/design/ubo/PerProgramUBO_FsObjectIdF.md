@@ -100,6 +100,16 @@ layout(std140, set = 2, binding = 13) uniform PerProgramUBO_FsObjectIdF
 
 ---
 
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.6.2 同期)
+
+**Layer**: L5-2 (= B Tier γ、cadence mismatch 重大、r21 self rigged picker 機能関連)
+**status**: **起案済** (= 2026-06-06 C-7、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.6.2` (= single source of truth)
+**要点**: trace L5-2 (= L0-4 cadence 結果待ち)、工数 M、cadence mismatch 重大 (PerProgram vs r21 per-draw)、setter 不明 (= `LLDrawInfo::mFSPickerLocalID` 経路推定)、AYA r21 機能維持必須 (memory `project_ayastorm_r21_self_rigged_picker`)、visual regression ゼロ §5.4、cadence 再分類 = PerProgram 維持 / PerDraw 移行 / sliced UBO **[要 AYA 判断 = L0-4 protocol-B]**
+**関連**: L0-1 + L0-4 (= cadence 再分類 strategy 必須) / §5.4 visual regression policy / memory `project_ayastorm_r21_self_rigged_picker`
+
+---
+
 ## §9. risk / 注意点
 
 | gate | 該当 risk | 対応 |

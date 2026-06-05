@@ -98,6 +98,16 @@ layout(set=3, binding=37, std140) uniform NormaldebugVParamUBO_Legacy {
 
 ---
 
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.6.3 同期)
+
+**Layer**: L5-3 (= B Tier γ、debug 用途、検証優先度低、Phase 2 前提条件 94 UBO 全件 A 化の締め)
+**status**: **起案済** (= 2026-06-06 C-7、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.6.3` (= single source of truth)
+**要点**: trace L5-3 (= L5 締め)、工数 S、1 member only、setter 不明 (= debug menu trigger / `DEBUG_NORMAL_DRAW_LENGTH` reserved enum)、debug-only ゆえ通常 release path 影響なし、AYA live verify (= debug menu 経由 normal 可視化、visual regression ゼロ §5.4、verify protocol 要事前 AYA 確認)
+**関連**: L0-1 + L0-4 / §5.4 visual regression policy
+
+---
+
 ## §9. risk / 注意点
 
 | gate | 該当 risk | 対応 |

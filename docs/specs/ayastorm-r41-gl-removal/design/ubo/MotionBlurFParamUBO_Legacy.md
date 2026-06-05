@@ -162,3 +162,22 @@ layout(set=3, binding=27, std140) uniform MotionBlurFParamUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - post-deferred motion blur program 切替時 set=3 帯全 binding を一括 rebind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.3.3 同期)
+
+**Layer**: L2-3 (= B Tier α setter 推定済、PerProgram cadence、1 member 単純)
+**status**: **起案済** (= 2026-06-06 C-4、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.3.3` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: `uniform1i(MOTION_BLUR_STRENGTH, ...)` setter 行 (= `pipeline.cpp:10240` 周辺の正確な行) [要 D1 Grep] / dirty trigger 詳細 (= `LLCachedControl` から `forwardToUboUpload` までの bridge logic) [要追加調査] / set=3 帯 binding 上限 [要 verify]
+- **(3) 調査手法**: D1 (`MOTION_BLUR_STRENGTH` uniform1i call 行特定) + D2 (`LLCachedControl<S32>` subscribe pattern + dirty trigger)
+- **(4) 設計 task**: PerProgram cadence triple-buffer (= motion blur program active 時) / setter 1 uniform1i call を `forwardToUboUpload` → `writeProgramUbo` (= 4 B memcpy) / motion blur program bind 単位 flush (= cvar 変更時 dirty) / `motionBlurF.glsl:66` 既存 LL_VULKAN_GLSL block 活性化
+- **(5) 工程**: trace 順 L2 3 件目、工数 **S** (= 数時間、1 member + setter 行特定のみ)、L2-1 / L2-2 / L2-4 並列可
+- **(6) A 確定**: mUseUBO ON + shader 活性化 + setter 通電 + AYA live verify (= motion blur 効果既存と同一強度、**visual regression ゼロ §5.4**) + Vulkan validation 0 + cvar `RenderMotionBlurStrength` 変更時 dirty trigger 反映 verify
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `motionBlurF.glsl #else` block uniform 維持
+
+**関連**: L0-1 + L0-4 (= WORK_ORDER §2) / §5.4 visual regression policy

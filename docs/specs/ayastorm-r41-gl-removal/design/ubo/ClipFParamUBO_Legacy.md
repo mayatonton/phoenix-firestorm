@@ -167,3 +167,22 @@ layout(std140, set = 3, binding = 32) uniform ClipFParamUBO_Legacy
 
 - set=3 帯 bind は `bindV3aStatic` 経路 (= manip translate は static draw)
 - gClipProgram bind 時 PerProgram cadence triple-buffer flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.1.1 同期)
+
+**Layer**: L1a-1 (= LLStaticHashedString redirect 経路 pilot 検証 UBO)
+**status**: **起案済** (= 2026-06-06 C-3、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.1.1` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 name-based dispatch + L0-2 LLStaticHashedString UBO redirect 経路確立
+- **(2) 不明事項**: LLStaticHashedString uniform4fv redirect [L0-2 待ち] / gClipProgram link 構造 [要追加調査] / clip_plane 座標系 [要追加調査]
+- **(3) 調査手法**: D1 (= `llmaniptranslate.cpp:1715-1716` redirect 後動作 verify) + D2 (= gClipProgram 構造)
+- **(4) 設計 task**: PerProgram cadence triple-buffer (= manip visible 時のみ) / `llmaniptranslate.cpp:1716` LLStaticHashedString uniform4fv intercept → `forwardToUboUpload` → `writeProgramUbo` / `gClipProgram` bind flush / `clipF.glsl:46` LL_VULKAN_GLSL 活性化
+- **(5) 工程**: trace 順 L1a 1 件目 (= pilot 検証用)、工数 **S**、L1a-2 / L1a-3 並列可
+- **(6) A 確定**: mUseUBO ON + shader 活性化 + setter 通電 + AYA live verify (= manip translate clip plane visual 既存と同一、visual regression ゼロ §5.4) + Vulkan validation 0 件 + redirect 経路 pilot verify
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `clipF.glsl #else` block uniform 個別宣言維持 (= L0-2 dual-write)
+
+**関連**: L0-1 (= WORK_ORDER §2.1) + L0-2 (= §2.2) / visual regression policy (= §5.4)

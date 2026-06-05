@@ -195,3 +195,22 @@ post-process 系 Legacy 帯:
 
 - set=3 帯 bind は `bindV3aStatic` 経路 (= post-process pass は static draw)
 - CAS pass bind 時 PerProgram cadence triple-buffer flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.1.2 同期)
+
+**Layer**: L1a-2 (= LLStaticHashedString redirect 影響大 + sharpening visual 容易判定)
+**status**: **起案済** (= 2026-06-06 C-3、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.1.2` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 + L0-2 確立 + L1a-1 pilot verify 完了 (= redirect 経路 effective 確認)
+- **(2) 不明事項**: LLStaticHashedString uniform4uiv/uniform2f UBO write path 整合 [L0-2 protocol-D] / cas_sharpness data source = cvar `RenderSharpness` 候補 [要追加調査] / blueprint comment member_count「6 member」不一致 [要追加調査] / CAS pass bind 単位 (= multi-bind risk) [要追加調査] / uvec4 packing 整合 (= AMD FidelityFX `varAU4` vs std140 uvec4 align) [要 verify]
+- **(3) 調査手法**: D1 + D2 + D3 + D4
+- **(4) 設計 task**: PerProgram cadence triple-buffer (= CAS pass active 時) / `pipeline.cpp:9196-9199` 3 LLStaticHashedString call intercept → `forwardToUboUpload` → `writeProgramUbo` (= uvec4 + vec2 mixed) / `sharpen_shader` bind flush / `CASF.glsl:52` LL_VULKAN_GLSL 活性化
+- **(5) 工程**: trace 順 L1a 2 件目、工数 **S-M** (= uvec4 packing verify 含む)、L1a-1 pilot 後着手、L1a-3 並列可
+- **(6) A 確定**: mUseUBO ON + shader 活性化 + 3 setter 通電 + AYA live verify (= CAS sharpening effect 既存と同一強度・色合い、visual regression ゼロ §5.4) + Vulkan validation 0 件 + uvec4 packing 整合 verify + blueprint comment member_count 不一致解消 (= 5 が正)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `CASF.glsl #else` block uniform 個別宣言維持 (= L0-2 dual-write)、副作用 risk = uvec4 packing 不整合で sharpening 強度ずれ可能性、verify 必須
+
+**関連**: L0-1 (= WORK_ORDER §2.1) + L0-2 (= §2.2) / visual regression policy (= §5.4) / L4 §3.10 post-process chain (= unblocking 関係)

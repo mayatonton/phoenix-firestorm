@@ -194,3 +194,22 @@ ubo_metadata.inl 上 cadence_tag=1 は 88 件最大 (= `llglslshader.cpp:95` lit
 
 - set=3 帯 bind は `bindV3aStatic` / `bindV3aRigged` 経路 (= `llvkloader.cpp:2168, 2172` literal)、Legacy UBO 個別 bind ではなく set=3 全帯一括 (= set=3 swap 1 回呼出)
 - shader program switch 時に PerProgram cadence の triple-buffer 経路で update + 自動 visibility (= dynamic offset 経路では本 binding=8 は固定 binding)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.3.2 同期)
+
+**Layer**: L2-2 (= B Tier α setter 完全特定済、PerProgram cadence、SSAO subtle visual)
+**status**: **起案済** (= 2026-06-06 C-4、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.3.2` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: consumer program 列挙 (= aoUtil.glsl link 先 SSAO consume program 全件) [要追加調査] / `screen_to_target_scale_factor` divisor Vulkan path 整合 (= per-frame 変動 PerProgram stale risk) [要 verify]
+- **(3) 調査手法**: D1 (`pipeline.cpp:10636-10643` redirect 後動作) + D2 (aoUtil.glsl link 先 program 列挙) + D3 (screen_to_target_scale_factor 変動 vs PerProgram cadence)
+- **(4) 設計 task**: PerProgram cadence triple-buffer (= 各 SSAO consume program で個別 register、seen_program_hashes 重複排除) / `pipeline.cpp:10636-10643` 4 uniform1f を `forwardToUboUpload` → `writeProgramUbo` / SSAO consume program bind 単位 flush / `aoUtil.glsl:40` 既存 LL_VULKAN_GLSL block 活性化
+- **(5) 工程**: trace 順 L2 2 件目、工数 **S-M** (= 半日、consumer program 列挙 + cadence verify)、L2-1 / L2-3 / L2-4 並列可
+- **(6) A 確定**: mUseUBO ON + shader 活性化 + 4 setter 通電 + AYA live verify (= SSAO 効果既存と同一強度・範囲、**visual regression ゼロ §5.4**、subtle effect ゆえ慎重判定) + Vulkan validation 0 + consumer program 全件 register verify
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `aoUtil.glsl #else` block uniform 個別宣言維持、副作用 risk = stale data で SSAO fluctuation 検知
+
+**関連**: L0-1 + L0-4 (= WORK_ORDER §2) / §5.4 visual regression policy / L3 SoftenLight / BlurLightF (= 同 SSAO 系 unblocking 関係)

@@ -217,3 +217,22 @@ OS-1〜OS-10 gate 照合:
 7. **dirty 連動 detail** = environment transition 時の同時 dirty trigger 経路 (= FrameAtmosphere_Lighting との連動 dirty 判定)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.2.2 同期)
+
+**Layer**: L1b-2 (= per-frame lighting + 全 lighting shader UBO block 拡大)
+**status**: **起案済** (= 2026-06-06 C-4、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.2.2` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch (= set=0 binding=1 固定) + L0-3 per-shader UBO block 拡大方式 + L0-4 cadence
+- **(2) 不明事項**: 4 array setter (= light_position/direction/attenuation/diffuse) [要追加調査] / sun_dir / moon_dir / waterPlane / sun_up_factor 4 single setter [要追加調査] / UBO block 宣言済 shader 全列挙 [要追加調査] / 8 array stride=16 host data layout [要 verify] / FrameAtmosphere_Lighting 連動 dirty [要 verify]
+- **(3) 調査手法**: D1 (4 array + 4 single setter Grep) + D2 (`LLPipeline::setupHWLights` + `LLEnvironment`) + D3 (per-frame 更新 trigger) + D4 (8 array stride=16 host vs std140)
+- **(4) 設計 task**: per-frame cadence triple-buffer (= 既通電) / 既存 setter PER_FRAME case / `flushFrameUbos()` (= L1b-1 共通) / **本 phase 主作業 = 全 lighting shader (= `class1/lighting/*` + `class1/environment/*` + softenLightF 等) UBO block 拡大**
+- **(5) 工程**: trace 順 L1b 2 件目、工数 **L** (= 1 日 +)、L1b-1 並列可
+- **(6) A 確定**: 全 lighting shader UBO block 拡大完了 + cold launch + Vulkan validation 0 + AYA live verify (= 8 local light + sun/moon lighting 既存と同一、**visual regression ゼロ §5.4**、一括 verify) + 8 array stride=16 整合 verify
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `#ifdef LL_VULKAN_GLSL` gate で raw uniform array 宣言維持、副作用 risk = 8 array stride 不整合で light 位置ずれ可能性、verify 必須
+
+**関連**: L0-1 + L0-3 + L0-4 (= WORK_ORDER §2) / §5.4 visual regression policy / FrameViewProj (= L1b-1 同 cadence cluster) / FrameAtmosphere_Lighting (= L4 §3.7 連動候補)

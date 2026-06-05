@@ -209,3 +209,13 @@ OS-1〜OS-10 gate 照合 (= memory `project_r41_phase2_4_principles` 原則 2):
 6. **worker thread 並列度実測** = PC-N-15a infra で worker_count=19 確立済、本 UBO の worker dispatch 実際の並列度 (= Phase 1.F+ 計測要)
 
 = 上記 6 項目は Phase 1.F+ 着手時に grep + Read で逐次解消、確定後に「不明」記載削除 + 確定 literal 追記。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.6.1 同期)
+
+**Layer**: **L5-1 / A-1** (= **唯一の A 判定**、pilot real data 通電済 2026-06-06、Phase 1.F+ real bone matrix 接続持越)
+**status**: **起案済 + pilot real data 通電済** (= 2026-06-06 C-7、Phase 1.E PC-N-5/11/15c 完了、Phase 1.F+ で real bone matrix payload 書込み持越)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.6.1` (= single source of truth)
+**要点**: trace L5-1、工数 M (= Phase 1.F+ 並走)、setter 完全特定済 (= 5 setter `llvkloader.cpp:5824/3180/5899/5250/5883`)、AYA live verify 「通常通りに描画されてます」record 2026-06-06、real bone matrix 接続後再 verify、visual regression ゼロ §5.4、原則 1 worker thread 並列化寄与
+**関連**: L0-1 (= set=3 binding=2 衝突 with SkyF 解消対象) + L0-4 / §5.4 visual regression policy / Phase 1.F+ avatar Vulkan draw 通電 phase

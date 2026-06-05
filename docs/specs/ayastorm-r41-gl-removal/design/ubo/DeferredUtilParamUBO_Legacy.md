@@ -218,3 +218,22 @@ layout(std140, set = 3, binding = 6) uniform DeferredUtilParamUBO_Legacy
 - set=3 帯 bind は `bindV3aStatic` 経路で全帯一括
 - deferred lighting program 毎に PerProgram cadence triple-buffer flush
 - deferredUtil.glsl が複数 program で link されるゆえ本 UBO の register は各 program で走る (= seen_program_hashes 重複排除で 1 block 1 UBO instance ゆえ問題なし、`llglslshader.cpp:2079-2099` literal 整合)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.3.4 同期)
+
+**Layer**: L2-4 (= B Tier α setter 部分特定済、PerProgram cadence、projector + waterSign 複雑)
+**status**: **起案済** (= 2026-06-06 C-4、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.3.4` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence + L2-3 完了 (= setter 行特定 D1 pattern 確立)
+- **(2) 不明事項**: `PROJECTOR_NEAR` 所属 UBO (= 本 UBO に proj_near member 不在) **[要 AYA 判断 / 設計再考]** / `PROJECTOR_AMBIENT_LOD` write 先 = proj_ambiance / proj_lod (推定 proj_lod) [要 verify] / `waterSign` PerProgram vs PerDraw 適合 **[要 AYA 判断]** / deferredUtil.glsl link 先 program 全列挙 [要追加調査]
+- **(3) 調査手法**: D1 (11 setter site 詳細読解) + D2 (deferredUtil.glsl link 先 program 全列挙) + D3 (waterSign per-draw 変動 vs PerProgram cadence) + D4 (`PerProgramUBO_SpotLightF` 重複宣言禁止整合)
+- **(4) 設計 task**: PerProgram cadence triple-buffer (= 各 deferred lighting program で register、seen_program_hashes 重複排除) / 11 setter call を `forwardToUboUpload` → `writeProgramUbo` (= projector 5 + waterSign 多 site) / 各 deferred lighting program bind 単位 flush / `deferredUtil.glsl:99` 既存 LL_VULKAN_GLSL block 活性化 + `PerProgramUBO_SpotLightF` 重複宣言禁止整合
+- **(5) 工程**: trace 順 L2 4 件目 (= L2 内最複雑、L2 締め)、工数 **M** (= 半日 +)、L2-1 / L2-2 / L2-3 並列可
+- **(6) A 確定**: mUseUBO ON + shader 活性化 + 11 setter 通電 + AYA live verify (= projector light + water exclusion + alpha pool 描画既存と同一、**visual regression ゼロ §5.4**) + Vulkan validation 0 + waterSign cadence 妥当性確定 (AYA 判断) + PROJECTOR_NEAR 所属 UBO 明確化 + SpotLightF 重複宣言禁止整合 verify
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `deferredUtil.glsl #else` block 維持、副作用 risk = waterSign stale で above/below water 切替 artifact
+
+**関連**: L0-1 + L0-4 (= WORK_ORDER §2) / §5.4 visual regression policy / `PerProgramUBO_SpotLightF` (= L4 §3.2 cross-stage 重複禁止) / L4 §3.6 water 系 (= waterSign 連動)
