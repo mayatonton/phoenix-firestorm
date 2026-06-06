@@ -3,7 +3,11 @@
 """GLSL mini-parser for preprocessed UBO blueprints.
 
 Input  = `glslangValidator -E` stdout (string), with `#line N "path"`
-         directives preserved.
+         directives preserved. 入力 source = `aya_r41_blueprints/` 配下 .glsl
+         (= codegen 入力 source of truth、Phase 2.α 案 X 確定 2026-06-06、
+         `aya_r41_blueprints/README.md` §0-§1 参照)、または `--verify-target-paths`
+         経由で actual class*/ + cinematic_bd/ 配下 .glsl (= AYAstorm shader runtime
+         compile target、二重 source 同期 verify 用)。
 Output = (ubo_blocks, struct_defs, bare_uniforms, sampler_decls)
 
 Grammar covered (§5.2.1.2 EBNF):

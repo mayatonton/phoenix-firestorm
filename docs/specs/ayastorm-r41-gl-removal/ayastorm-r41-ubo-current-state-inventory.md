@@ -247,6 +247,7 @@ handoff doc §2.1 の確定情報は binding=0 = `PerDrawUBO_LightParams` / bind
   - `CloudsVParamUBO_Legacy` (binding=3): `cloudsV.glsl` + `cloudsF.glsl` の 2 file
   - `WaterVParamUBO_Legacy` (binding=60): `waterV.glsl` + `waterF.glsl` の 2 file (V+F 共有)
   - `ShadowUtilParamUBO_Legacy` (binding=7): `class1/deferred/shadowUtil.glsl` + `cinematic_bd/class1/deferred/shadowUtil.glsl` の 2 file (cinematic_bd は AYAstorm 独自 BD overlay 由来、同 binding 共有)
+- **2026-06-06 update (= Phase 2.α 案 X 確定)**: 上記 3 UBO 含む同名 UBO 複数 file 整合は **Phase 2.α 案 X** で main.py `_verify_block_match` + `_verify_blueprint_actual_consistency` (= phase F commit `868bc38cc9`、`--verify-target-paths` option) により **blueprint dir (= `aya_r41_blueprints/`、codegen 入力 source of truth) + actual shader (= `class*/` + `cinematic_bd/`、runtime compile target) の二重 source 整合 verify を formal化** 済。set/binding/std140 layout/member 全件一致を build-time check、不一致時 `CodegenError` abort で **同期断裂を構造的に検知**。`cinematic_bd` 上書き path は同 layout なら PASS、案 X の別 GLSL 並列 build process 設計 (= `design/04-codegen-ubo.md §2.2` literal 訂正) と整合。詳細 = `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 + `handoff/phase2/alpha/handoff-phase2-alpha-3-cmake-blueprint-readme-propagation.md` §3.1-§3.7。
 - set=3 は program 単位の grouping だが、**`set=2 PerProgramUBO_*` と同じ寿命** (per-program)。命名規則だけ違って役割重複
 - host C++ 側 upload 経路 **未整備** (どれも `glBindBufferBase` で bind されていない)
 

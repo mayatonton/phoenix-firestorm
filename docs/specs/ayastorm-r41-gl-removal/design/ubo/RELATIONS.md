@@ -702,3 +702,40 @@ window resize 時連動 UBO 群:
 - 各 UBO file (`<UBO名>.md`) = 詳細個別資料
 - READINESS.md = A/B/C 実装判定資料 (= 同 dir)
 - handoff `phase2-prep/handoff-phase2-prep-ubo-files-complete.md` = 残作業 + 起案規律
+- **Phase 2.α 案 X cross-ref** (= 2026-06-06、UBO codegen 入力 source 整合修復 sub-phase):
+  - `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 (= 案 X 確定 source of truth)
+  - `handoff/phase2/alpha/handoff-phase2-alpha-3-cmake-blueprint-readme-propagation.md` §3.1-§3.7 (= α-3 7 phase 構造)
+  - `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= blueprint dir = **codegen 入力 source of truth** literal)
+  - **案 X 整合**: §3.3 V/F cross-stage 共有 (= CloudsV/F + WaterV/F 等同 binding 多 stage 参照) と §8 不明事項集約は **blueprint dir 単独 source** + actual との二重 source 同期 protocol で formal化 (= main.py phase F commit `868bc38cc9` `_verify_block_match` + `_verify_blueprint_actual_consistency` + `--verify-target-paths` option)。本 doc 内 blueprint 言及 (= §1.2 / §3.2 / §3.3 等の `blueprint header literal` / `blueprint コメント verified identical` 引用) は全件 GLSL declaration source 引用、案 X 整合済。
+
+---
+
+## §B. Phase 2.α 案 X 確定 record (= blueprint dir 位置付け + 二重 source 同期 protocol 詳細)
+
+### §B.1 blueprint dir = codegen 入力 source of truth (= 案 X 確定 2026-06-06)
+
+§A.3 末尾に概要記載済、本 §B で詳細補足:
+
+- **codegen 入力 source of truth path** = `indra/newview/app_settings/shaders/aya_r41_blueprints/<set>/<ubo_lower>.glsl` (= 94 file = ubo_metadata.inl g_block_count=94 整合)
+- **本 doc 内 blueprint 言及 (= §1.2 / §3.2 / §3.3 / §3.5 / §5 等)** = 全件 GLSL declaration source 引用 (= blueprint header literal `verified identical across N sample sites` / blueprint コメント / blueprint origin / blueprint comment `member_count` 不一致 等) であり、案 X 確定 (= blueprint dir = codegen 入力 source of truth) 整合済。
+- **AYAstorm shader runtime compile target は別 GLSL 系統** (= `class*/` + `cinematic_bd/` 配下の実 shader use site) で並列 build process (= design/04-codegen-ubo.md §2.2 literal「別 GLSL 並列 build process」)。本 doc §3 全 shader consume mapping の path = actual GLSL 系統、blueprint dir 内 file path は §1.2 等で別途 source として参照。
+
+### §B.2 二重 source 同期 protocol = main.py で formal化
+
+- **`_verify_block_match`** (= α-2 commit `b66ec99f72`) = 同名 UBO 複数 file (= blueprint + actual の cross-source pair、cinematic_bd 上書き path、CloudsV/F / WaterV/F の V/F cross-stage 共有等) の set/binding + subset/cadence + member 全件 layout 一致を構造的 verify。
+- **`_verify_blueprint_actual_consistency`** + **`--verify-target-paths`** option (= phase F commit `868bc38cc9`) = blueprint と actual の二重 source 整合 verify を formal化。
+- 本 doc §3.3 V/F cross-stage 共有 (= cloudsV/cloudsF.glsl + waterV/waterF.glsl + skinnedVelocityV/AlphaV.glsl + postDeferredGammaCorrect/Tonemap.glsl 等 verified identical pair) は本 §B.2 protocol で blueprint ↔ actual の cross-source verify が pre-requisite。
+- §5 dirty 連動 group (= 同 data source 複数 UBO triple-write / pair UBO 等) の各 UBO 改修時、blueprint dir 側と actual GLSL 系統側を **本 §B.2 protocol で同期 verify** する必要あり。
+
+### §B.3 §8 不明事項との関係
+
+- §8.1〜§8.15 dim 15 件不明事項のうち、blueprint comment vs metadata の表記揺れ (= §8 内 SoftenLight `member_count=8 vs blueprint header note=9` / CASParamUBO_Legacy `metadata=5 vs blueprint comment 「6 member」` 等) は本 §B.2 `_verify_block_match` で member_count 検証経路に formal化、blueprint comment 訂正 path が Phase 2.α 案 X 確定で明確化。
+
+### §B.4 cross-ref
+
+- 案 X 確定 source of truth = `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9
+- blueprint dir README = `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= phase B commit `f95182ded5`)
+- 設計 doc = `design/04-codegen-ubo.md` §2.2 / §4.4
+- 二重 source 同期 protocol = `scripts/ubo_codegen/main.py` `_verify_block_match` + `_verify_blueprint_actual_consistency`
+- phase E (= blueprint dir 内 7 UBO 同期書換) = commit `09ee5e8a8e`
+- 関連 doc = INDEX.md §B / READINESS.md §B / WORK_ORDER.md §B (= 同 dir)

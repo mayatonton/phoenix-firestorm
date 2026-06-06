@@ -216,3 +216,31 @@ OS-1〜OS-10 gate 照合:
 **詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.15` (= single source of truth)
 **要点**: 2 member (spot_light_color vec3 + spot_light_size float、1 vec4 slot tight pack)、10 file consume (= primary deferredUtil.glsl:175 + 9 file)、alias `#define color spot_light_color` + `#define size spot_light_size` で deferredUtil 後段 attach (shadowUtil 等) backward-compat、**pilot zero IS real data 通電済** (= Phase 1.E PC-N-13)、`AYAGltfRealLightParamsEnabled` cvar gate (= settings.xml Boolean default=0 Persist=1)、first-fire LL_INFOS marker (`llvkloader.cpp:6622-6638`)、writeDrawUbo 3 site (= `llvkloader.cpp:6470-6475` PC-N-1 (c) + `:6612-6617` PC-N-13 (a) + `:6870-6880` 付近 PC-N-2)、「zero IS real data」semantic = sGltfStubAssetPipeline 流用 sky_smoke 非 consume architectural truth、**Phase 3 R5 = real value 置換** (= spot_light_color/spot_light_size を実 light data へ、`LLShaderMgr::LIGHT_DIFFUSE`/`LIGHT_DEFERRED_ATTENUATION` 経由候補) [要追加調査]、AYAstorm light cvar §3.5.2 sub-cluster (c) 連動候補 [要 verify D4 突合]、cvar gate 撤去予定 (= AYAGltfRealDrawEnabled/AYAGltfMultiSkinEnabled 同位 PC-N-15c precedent)、工数 group 全体 M 内
 **関連**: L0-1 dispatch (= name-based dispatch 6 UBO 集約) / §3.5.15 sibling ClipPlane (= 同 binding=0 共有) / §3.5.8 group 4 UBO (= 同 binding=0 共有残) / §3.5.2 sub-cluster (c) PointLightF/SpotLightF/PointLightV (= AYAstorm light cvar 連動候補) / FrameLights (= light list 連動) / §3.5.16 PerDrawUBO_MultiLight (= 同 deferred lighting pipeline) / Phase 1.E PC-N-13 (= pilot 通電 commit) / Phase 3 R5 = real value 置換
+
+
+---
+
+## §13. Phase 2.α 案 X 確定 record (= blueprint dir 位置付け + 二重 source 同期 protocol)
+
+### §13.1 blueprint dir の位置付け = codegen 入力 source of truth
+
+- **blueprint file** (= `aya_r41_blueprints/<set>/<ubo_lower>.glsl`) は本 UBO の **codegen 入力 source of truth** (= 案 X 確定 2026-06-06)。`indra/cmake/AyaUboCodegen.cmake` の `AYA_UBO_CODEGEN_BLUEPRINT_DIR` 経由で `scripts/ubo_codegen/main.py` の入力に渡され、`ubo_metadata.inl` + `ubo_layout_<ubo>.inl` を生成する。
+- **AYAstorm shader runtime compile target は別 GLSL 系統** (= `class*/` + `cinematic_bd/` 配下の実 shader use site) で並列 build process (= design/04-codegen-ubo.md §2.2 literal「別 GLSL 並列 build process」)。
+- 二系統は二重 source として共存し、**`scripts/ubo_codegen/main.py` の二重 source 同期 protocol で整合 verify** される (= §13.2)。
+- 案 X 確定 source of truth = `docs/specs/ayastorm-r41-gl-removal/handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9
+- blueprint dir 内 README = `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= phase B commit `f95182ded5`、位置付け literal source)
+
+### §13.2 二重 source 同期 protocol (= main.py で formal化)
+
+- **`_verify_block_match`** (= α-2 commit `b66ec99f72`) = 同名 UBO 複数 file (= blueprint + actual の cross-source pair、または cinematic_bd 上書き path) の set/binding + subset/cadence + member 全件 layout 一致を構造的 verify。不一致時 `CodegenError` で abort。
+- **`_verify_blueprint_actual_consistency`** + **`--verify-target-paths`** option (= phase F commit `868bc38cc9`) = blueprint と actual の二重 source 整合 verify を formal化、`--verify-target-paths` で blueprint と actual を区別して対称的 cross-verify。
+- 本 UBO の場合 = blueprint file (= §5 / §1 で記載) と実 shader use site (= §5 で記載) が **両 path で同一 layout (set/binding/member)** を保持する protocol。改修時は両方を同期書換するか、blueprint 側のみ書換後 codegen 再生成 + actual の `#ifdef LL_VULKAN_GLSL` block を手動同期する。
+- sub-session 5 step 2-batch-0-a 7 UBO の同期書換 record = phase E commit `09ee5e8a8e` (= actual class*/ + cinematic_bd/ 14 file の新 set/binding を blueprint dir 内 7 UBO 7 file に同期反映、案 X 確定後の整合修復)
+
+### §13.3 cross-ref
+
+- 設計 doc = `design/04-codegen-ubo.md` §2.2 (= 別 GLSL 並列 build process) / §4.4 (= 同名 UBO 複数 GLSL 宣言の整合 verify)
+- handoff doc = `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 (= 案 X 確定 source of truth、6 commit revert record + 改修方針 9 件)
+- blueprint dir README = `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= phase B commit `f95182ded5`)
+- 二重 source 同期 protocol formal化 = `scripts/ubo_codegen/main.py` `_verify_block_match` + `_verify_blueprint_actual_consistency`
+

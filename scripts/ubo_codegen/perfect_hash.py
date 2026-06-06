@@ -659,7 +659,8 @@ def _emit_block_hash_constants(blocks: Sequence[BlockSpec]) -> str:
     hashing every frame (= design 06a §4.2 R3 path goal).
 
     Emit form: an inline-namespaced constexpr per block, name verbatim from
-    blueprint (= original CamelCase preserved for symmetry with block name).
+    blueprint (= `aya_r41_blueprints/` 配下 .glsl = codegen 入力 source of truth、
+    original CamelCase preserved for symmetry with block name).
     """
     if not blocks:
         return (

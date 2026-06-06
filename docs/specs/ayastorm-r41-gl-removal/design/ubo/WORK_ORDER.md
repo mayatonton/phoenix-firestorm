@@ -3657,4 +3657,42 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 - RELATIONS.md (= 関係図 7 dimension)
 - 各 `<UBO名>.md` (= 個別 UBO 詳細資料、§12 = 本 doc 進捗反映、C-9)
 - design/09-phase-roadmap.md §2.1 (= 本 doc サマリ + link、C-8 で訂正)
+- **Phase 2.α 案 X cross-ref** (= 2026-06-06、UBO codegen 入力 source 整合修復 sub-phase):
+  - `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 (= 案 X 確定 source of truth、案 Y/Z/Z' 撤回 record + 案 X 改修方針 9 件 + 全件波及更新範囲)
+  - `handoff/phase2/alpha/handoff-phase2-alpha-3-cmake-blueprint-readme-propagation.md` §3.1-§3.7 (= α-3 7 phase 構造 = A revert / B blueprint dir README / C handoff doc / D 設計 doc 5 件 / E blueprint dir 7 UBO 同期書換 / F main.py `_verify_block_match` 拡張 / G 波及 doc 全件)
+  - `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= blueprint dir = **codegen 入力 source of truth** literal、案 X 確定後の位置付け)
+  - **案 X 確定要点**: blueprint dir = codegen 入力 source of truth、`class*/` + `cinematic_bd/` = runtime compile target、別 GLSL 並列 build process + 二重 source 同期 protocol formal化 (= main.py phase F commit `868bc38cc9` `_verify_block_match` + `_verify_blueprint_actual_consistency` + `--verify-target-paths` option)。本 doc 内 blueprint 言及は全件 GLSL declaration / header literal 引用、案 X 整合済 (= 案 Z'+ 由来 literal 残存 0 件 confirm)。
 - handoff `phase2-prep/handoff-phase2-prep-relations-readiness-complete.md` (= 前 session handoff)
+
+---
+
+## §B. Phase 2.α 案 X 確定 record (= blueprint dir 位置付け + 二重 source 同期 protocol 詳細)
+
+### §B.1 blueprint dir = codegen 入力 source of truth (= 案 X 確定 2026-06-06)
+
+§A.3 末尾に概要記載済、本 §B で詳細補足:
+
+- **codegen 入力 source of truth path** = `indra/newview/app_settings/shaders/aya_r41_blueprints/<set>/<ubo_lower>.glsl` (= blueprint dir 内 .glsl file 群、94 file = `ubo_metadata.inl` g_block_count=94 整合)
+- **cmake 配線** = `indra/cmake/AyaUboCodegen.cmake` `AYA_UBO_CODEGEN_BLUEPRINT_DIR` (= revert commit `df38b7c994` で base state 復元、案 X 確定整合)
+- **runtime compile target** = `indra/newview/app_settings/shaders/class{1,2,3}/.../<file>.glsl` + `cinematic_bd/class*/.../<file>.glsl` (= 別 GLSL 系統並列 build process)
+- 本 doc §3 全 sub-work (= L1-L5 全 94 項目) 内の各 UBO setter call site / shader use site 記載は actual GLSL 系統 path = runtime compile target、blueprint dir 内 file 参照は §1 setter / §5 use site 記載で両系統並列。
+
+### §B.2 二重 source 同期 protocol = main.py で formal化
+
+- **`_verify_block_match`** (= α-2 commit `b66ec99f72`) = 同名 UBO 複数 file (= blueprint + actual の cross-source pair、cinematic_bd 上書き path、V/F cross-stage 共有等) の set/binding + subset/cadence + member 全件 layout 一致を構造的 verify。不一致時 `CodegenError` で abort。
+- **`_verify_blueprint_actual_consistency`** + **`--verify-target-paths`** option (= phase F commit `868bc38cc9`) = blueprint と actual の二重 source 整合 verify を formal化、5 test 同梱。
+- 本 doc 内 sub-work 7 dim 「(3) 調査手法」「(4) 設計 task」全件で blueprint + actual GLSL file 改修時に **本 §B.2 protocol で同期 verify** することが pre-requisite (= 設計 doc 04 §4.4 「同名 UBO 複数 GLSL 宣言の整合 verify」整合)。
+- L2-2 (AOUtil) / L2 SoftenLight / L3 cluster 等 cross-UBO same data dirty 同期 group は **blueprint dir 側と actual 側の両系統で layout 一致** を本 protocol で確認後に host 側 cross-UBO dispatch protocol 設計。
+
+### §B.3 sub-session 5 phase E (= blueprint dir 7 UBO 同期書換) との関係
+
+- sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`) で **actual class*/ + cinematic_bd/ 14 file の set/binding** を新値 (= subset 0/1 配置) に書換、phase E commit `09ee5e8a8e` で **blueprint dir 内 7 UBO 7 file に同期反映** = 二重 source 同期断裂解消、§3 sub-work 内 L0-1 dispatch slot 配分の起点。
+
+### §B.4 cross-ref
+
+- 案 X 確定 source of truth = `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9
+- blueprint dir README = `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= phase B commit `f95182ded5`)
+- 設計 doc = `design/04-codegen-ubo.md` §2.2 / §4.4
+- 二重 source 同期 protocol = `scripts/ubo_codegen/main.py` `_verify_block_match` + `_verify_blueprint_actual_consistency`
+- phase E (= blueprint dir 内 7 UBO 同期書換) = commit `09ee5e8a8e`
+- 関連 doc = INDEX.md §B / READINESS.md §B / RELATIONS.md §B (= 同 dir)

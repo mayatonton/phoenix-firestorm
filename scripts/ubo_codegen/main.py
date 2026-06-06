@@ -12,12 +12,27 @@ PA-3..PA-5 modules:
 PA-6 wiring (this file): parse → layout → reflection verify → 4-file emit →
 incremental build cache (B4a hash + mtime, §11.5).
 
+Phase 2.α 案 X 確定後の入力 source (= 2026-06-06):
+    `--input` = `aya_r41_blueprints/` 配下 GLSL = **codegen 入力 source of truth**
+    (= AYA 指示 #5「85 GLSL UBO blueprint は discard しない」literal 整合、
+    `design/01-overview.md:146` + `aya_r41_blueprints/README.md` §0-§1 参照)。
+    blueprint dir 内 .glsl は `#version 450` + 自己完結 1 UBO declaration、
+    AYAstorm shader runtime prepend chain (= `loadShaderFile()` 経由
+    `addPermutation` / `AYASTORM_CINEMATIC` 等) 不要の最小単位。
+
+    `class*/` + `cinematic_bd/` 配下 actual shader = **AYAstorm shader runtime
+    compile target** (= 別 GLSL 並列 build process、設計 doc 04 §2.2 訂正版)。
+    blueprint と actual の二重 source 同期 protocol は本 entry point 内
+    `_verify_block_match` + `_verify_blueprint_actual_consistency` で formal化、
+    `--verify-target-paths` option 経由で actual shader path を渡せば build-time
+    に整合 verify される (= 案 X 確定 phase F、handoff §D.9.5 #3)。
+
 Invocation:
     python3 main.py --input <blueprint_path> --output <header_dir> [--cache-file <state.json>] [--force]
 
-`<blueprint_path>` may be a single .glsl file or a directory traversed
-recursively for *.glsl. With zero inputs the script logs "0 inputs" and
-exits 0 (= empty-input contract, entry handoff §3 PA-2 row).
+`<blueprint_path>` = blueprint dir = codegen 入力 source of truth、単一 .glsl
+file または再帰探索される dir。zero input 時は "0 inputs" log + exit 0
+(= empty-input contract、entry handoff §3 PA-2 row)。
 """
 
 from __future__ import annotations
@@ -123,11 +138,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="incremental cache state file (default: <output>/codegen_state.json)")
     p.add_argument("--verify-target-paths", type=Path, nargs='+', metavar="<actual_shader_path>",
                    default=None,
-                   help="(= Phase 2.α α-3 phase F、2026-06-06、二重 source 同期 protocol formal化): "
-                        "blueprint dir 内 UBO declaration と整合 verify する actual shader path 群 "
-                        "(= class*/ + cinematic_bd/ 配下)。各 file を try-parse、parse 成功時は "
-                        "blueprint 対応 UBO と _verify_block_match で整合 verify、不一致時 CodegenError abort、"
-                        "parse 失敗時 (= addPermutation 等 unresolved) は warning + skip。"
+                   help="(= Phase 2.α α-3 phase F、2026-06-06、案 X 二重 source 同期 protocol formal化): "
+                        "blueprint dir (= codegen 入力 source of truth) 内 UBO declaration と整合 verify する "
+                        "actual shader path 群 (= class*/ + cinematic_bd/ 配下、AYAstorm shader runtime "
+                        "compile target)。各 file を try-parse、parse 成功時は blueprint 対応 UBO と "
+                        "_verify_block_match で整合 verify、不一致時 CodegenError abort、parse 失敗時 "
+                        "(= addPermutation 等 unresolved) は warning + skip。"
                         "default None = verify 走らせない (= 旧 behavior)。詳細 handoff §D.9.5 #3 + design 04 §4.4")
     p.add_argument("--project-root", type=Path, metavar="<dir>", default=None,
                    help="project root for cache key normalisation (default: repo root auto-detect)")
@@ -235,12 +251,12 @@ def _ubo_to_block_spec(ubo: UboBlockDecl, layout: BlockLayout) -> BlockSpec:
     )
 
 
-# Phase 2.α α-2 (= 2026-06-06): 同名 UBO 複数 file 整合 verify
-# 設計 doc 08:72-74/96 想定 = codegen 入力 = class*/ + cinematic_bd/ 配下
-# 同 UBO が複数 GLSL で再宣言されている (= inventory:247-249 既認識):
-#   CloudsVParamUBO_Legacy (cloudsV.glsl + cloudsF.glsl)
-#   WaterVParamUBO_Legacy (waterV.glsl + waterF.glsl)
-#   ShadowUtilParamUBO_Legacy (class1 + cinematic_bd 上書き path)
+# Phase 2.α α-2 (= 2026-06-06、案 X 確定後): 同名 UBO 複数 file 整合 verify
+# Codegen 入力 source of truth = `aya_r41_blueprints/` (= 案 X 確定、設計 doc 08:72-74/96
+# + AYA 指示 #5 整合)。blueprint dir 内でも同名 UBO 複数 file declaration が起きうる
+# (= 1 UBO 1 file 原則だが set 配下の cross-stage 共有 = 複数 stage 用同名 declaration)。
+# また `--verify-target-paths` 経由で actual class*/ + cinematic_bd/ 配下 file を渡した
+# 場合も本 logic で同 UBO 複数 declaration として集約 verify される。
 # 全 declaration が同 set/binding/layout/member であることを構造的に verify、
 # 不一致は SPIR-V binary ↔ host C++ pipeline layout mismatch の原因ゆえ即 fail。
 
@@ -301,11 +317,12 @@ def _verify_block_match(
             ))
 
 
-# --- 二重 source 同期 protocol formal化 (= Phase 2.α α-3 phase F、2026-06-06) ----
-# blueprint dir 内 UBO declaration と actual class*/ + cinematic_bd/ 内 declaration の
-# 対称的整合 verify。設計 doc 04 §2.2 literal「別 GLSL 系統並列の build process」整合、
-# §4.4 「同名 block を複数 GLSL で再宣言」literal 整合性要件の自動化。
-# 詳細: handoff §D.9.5 #3 + design 04 §4.5
+# --- 二重 source 同期 protocol formal化 (= Phase 2.α α-3 phase F、2026-06-06、案 X 確定) -
+# blueprint dir (= codegen 入力 source of truth) 内 UBO declaration と actual class*/ +
+# cinematic_bd/ (= AYAstorm shader runtime compile target) 内 declaration の対称的整合
+# verify。設計 doc 04 §2.2 訂正版「別 GLSL 並列 build process」整合、§4.4「同名 block を
+# 複数 GLSL で再宣言」literal 整合性要件の自動化。手動同期の漏れを build-time に構造的検知。
+# 詳細: handoff §D.9.5 #3 + design 04 §4.5 + aya_r41_blueprints/README.md §2
 
 def _verify_blueprint_actual_consistency(
     blueprint_blocks: Dict[str, BlockSpec],
@@ -316,12 +333,18 @@ def _verify_blueprint_actual_consistency(
     spirv_cross_bin: Optional[Path],
     skip_spirv: bool,
 ) -> Tuple[int, int, int]:
-    """Verify blueprint UBO declarations match actual shader declarations.
+    """Verify blueprint (= codegen 入力 source of truth) UBO declarations match actual shader declarations.
+
+    blueprint dir 内 UBO declaration は codegen 入力 source of truth (= 唯一の binding/
+    std140 layout/member 決定 source)、actual class*/ + cinematic_bd/ 内 declaration は
+    AYAstorm shader runtime compile target = 別 GLSL 並列 build process 関係。
+    両者は同 UBO 同 layout で整合維持必須、不整合時は SPIR-V binary ↔ host C++ pipeline
+    layout mismatch の原因ゆえ build-time 即 fail。
 
     Args:
-        blueprint_blocks: {block_name: BlockSpec} from blueprint dir parse
+        blueprint_blocks: {block_name: BlockSpec} from blueprint dir parse (= source of truth)
         blueprint_paths: {block_name: source_path_str} for diagnostics
-        verify_paths: actual shader file / dir paths to verify
+        verify_paths: actual shader file / dir paths to verify (= class*/ + cinematic_bd/ 配下)
         log/glslang_bin/spirv_cross_bin/skip_spirv: forwarded to _process_glsl_file
 
     Returns:
@@ -331,7 +354,9 @@ def _verify_blueprint_actual_consistency(
         - no_match_count = actual file 内 UBO 名が blueprint に存在しない (= 二重 source 同期断裂 candidate、warning)
 
     Raises:
-        CodegenError = integrity mismatch detected (= structural mismatch)
+        CodegenError = integrity mismatch detected (= structural mismatch、blueprint と actual の
+                       set/binding/layout/member 不一致 = 二重 source 同期断裂、aya_r41_blueprints/
+                       README.md §2 protocol で同期書換が必要)
     """
     # Discover all .glsl in verify_paths
     actual_files: List[Path] = []
@@ -410,9 +435,10 @@ def _process_glsl_file(
     """Process a single GLSL file → list of BlockSpec.
 
     `extra_defines` = preprocess 時に追加で glslang -E に渡す `-D<key>=<value>` 群
-    (= Phase 2.α α-3 phase F、2026-06-06、二重 source verify で actual class*/ +
-    cinematic_bd/ 内 `#ifdef LL_VULKAN_GLSL` block 内 UBO declaration を parse する用途)。
-    blueprint dir parse 時は不要 (= 既に自己完結 GLSL)。
+    (= Phase 2.α α-3 phase F、2026-06-06、案 X 確定後の二重 source verify で actual
+    class*/ + cinematic_bd/ 内 `#ifdef LL_VULKAN_GLSL` block 内 UBO declaration を parse
+    する用途)。blueprint dir (= codegen 入力 source of truth) parse 時は不要 (= 既に
+    `#version 450` + 自己完結 1 UBO declaration で AYAstorm runtime prepend chain 不要)。
     """
     stage = _detect_stage(glsl_path)
     log.debug("preprocess: %s (stage=%s)", glsl_path, stage)
@@ -593,10 +619,11 @@ def run(args: argparse.Namespace, log: logging.Logger) -> int:
         log.info("inputs yielded 0 UBO blocks (parser found no `layout(std140) uniform` decls)")
         # Still write an empty cache so a future input change re-runs codegen.
 
-    # Phase 2.α α-3 phase F (= 2026-06-06): 二重 source 同期 protocol formal化
-    # --verify-target-paths 指定時、blueprint dir 内 UBO declaration と actual class*/ + cinematic_bd/
+    # Phase 2.α α-3 phase F (= 2026-06-06、案 X 確定): 二重 source 同期 protocol formal化
+    # --verify-target-paths 指定時、blueprint dir (= codegen 入力 source of truth) 内 UBO
+    # declaration と actual class*/ + cinematic_bd/ (= AYAstorm shader runtime compile target)
     # 内 declaration の対称的整合 verify、不一致時 CodegenError abort、parse error skip。
-    # 詳細: handoff §D.9.5 #3 + design 04 §4.4 + 04 §4.5
+    # 詳細: handoff §D.9.5 #3 + design 04 §4.4 + 04 §4.5 + aya_r41_blueprints/README.md §2
     if args.verify_target_paths:
         blueprint_blocks_by_name = {b.name: b for b in blocks}
         try:

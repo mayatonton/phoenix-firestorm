@@ -249,3 +249,44 @@ cadence_tag mapping (= **確定**、`llglslshader.cpp:95-99` literal source):
 - memory `feedback_one_step_at_a_time` 遵守 = step 1 → AYA 確認 → step 2 サイクル
 - memory `feedback_handoff_minimal_pre_req_read` 遵守 = 各 UBO file は **その UBO に関する pinpoint 情報のみ**、全 UBO file の cross-reference 抑制
 - memory `feedback_proactive_handoff` 遵守 = context 残量 Claude 側で能動監視、不足時は AYA に handoff 提案
+
+### §A.3 関連 doc (= 同 dir + 外部)
+
+- WORK_ORDER.md (= 全 94 UBO 作業順序 + sub-work 7 dimension)
+- READINESS.md (= A/B/C 実装判定 + 不明事項詳細)
+- RELATIONS.md (= 関係図 7 dimension)
+- 各 `<UBO名>.md` (= 個別 UBO 詳細資料)
+- **Phase 2.α 案 X cross-ref** (= 2026-06-06、UBO codegen 入力 source 整合修復 sub-phase):
+  - `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 (= 案 X 確定 source of truth、案 Y/Z/Z' 撤回 record + 案 X 改修方針 9 件)
+  - `handoff/phase2/alpha/handoff-phase2-alpha-3-cmake-blueprint-readme-propagation.md` §3.1-§3.7 (= α-3 7 phase 構造 = A revert / B README / C handoff doc / D 設計 doc 5 件 / E blueprint dir 7 UBO 同期書換 / F main.py `_verify_block_match` 拡張 / G 波及 doc)
+  - `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= blueprint dir = **codegen 入力 source of truth** literal)
+  - **案 X 整合**: 全 94 UBO の codegen 入力 source は blueprint dir 単独 (= `ubo_metadata.inl` `g_block_count = 94u` literal source)、`class*/` + `cinematic_bd/` は runtime compile target、両者は別 GLSL 並列 build process + 二重 source 同期 protocol (= main.py phase F commit `868bc38cc9` `_verify_block_match` + `_verify_blueprint_actual_consistency` + `--verify-target-paths` option) で formal化。本 doc §2 UBO list table の **untouched / shell / pilot 通電状態** は actual shader 改修との同期 verify 対象。
+
+---
+
+## §B. Phase 2.α 案 X 確定 record (= blueprint dir 位置付け + 二重 source 同期 protocol 詳細)
+
+### §B.1 blueprint dir = codegen 入力 source of truth (= 案 X 確定 2026-06-06)
+
+§A.3 に概要記載済、本 §B で詳細を補足:
+
+- **codegen 入力 source of truth path** = `indra/newview/app_settings/shaders/aya_r41_blueprints/<set>/<ubo_lower>.glsl` (= blueprint dir 内 .glsl file 群、94 file = `ubo_metadata.inl` g_block_count=94 整合)
+- **cmake 配線** = `indra/cmake/AyaUboCodegen.cmake` `AYA_UBO_CODEGEN_BLUEPRINT_DIR` (= revert commit `df38b7c994` で base state 復元、案 X 確定整合)
+- **入力 → 出力 path** = blueprint dir → `scripts/ubo_codegen/main.py` → `build-linux-x86_64/codegen/ubo/ubo_metadata.inl` + `ubo_layout_<ubo>.inl`
+- **runtime compile target** = `indra/newview/app_settings/shaders/class{1,2,3}/.../<file>.glsl` + `cinematic_bd/class*/.../<file>.glsl` (= 別 GLSL 系統並列 build process)
+- 本 INDEX §2 全 94 UBO list table 整合先 = `ubo_metadata.inl` literal (= blueprint dir 入力で codegen 生成)
+
+### §B.2 二重 source 同期 protocol = main.py で formal化
+
+- **`_verify_block_match`** (= α-2 commit `b66ec99f72`) = 同名 UBO 複数 file (= blueprint + actual の cross-source pair、または cinematic_bd 上書き path) の set/binding + subset/cadence + member 全件 layout 一致を構造的 verify。不一致時 `CodegenError` で abort。
+- **`_verify_blueprint_actual_consistency`** + **`--verify-target-paths`** option (= phase F commit `868bc38cc9`) = blueprint と actual の二重 source 整合 verify を formal化、blueprint と actual を区別して対称的 cross-verify、5 test 同梱。
+- §4 横断不明事項 (= §4.4 SPIR-V 実 offset vs codegen literal 整合性) は本 protocol で formal verify 経路化、Phase 2 cold launch validation で確認。
+
+### §B.3 cross-ref
+
+- 案 X 確定 source of truth = `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9
+- blueprint dir README = `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (= phase B commit `f95182ded5`)
+- 設計 doc = `design/04-codegen-ubo.md` §2.2 / §4.4
+- 二重 source 同期 protocol = `scripts/ubo_codegen/main.py` `_verify_block_match` + `_verify_blueprint_actual_consistency`
+- phase E (= blueprint dir 内 7 UBO 同期書換) = commit `09ee5e8a8e`
+- 関連 doc = WORK_ORDER.md §B / READINESS.md §B / RELATIONS.md §B (= 同 dir)
