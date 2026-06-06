@@ -44,14 +44,23 @@ step 2 実装は **複数 sub-step + batch 分割、各 batch 完了で cold lau
 
 | sub-step | 内容 | `indra/` 改変 | cold launch | 想定 session |
 |---|---|---|---|---|
-| **§2.2.1 step 2-pre1** | `indra/llglslshader.cpp:95` source comment 訂正 = `// ubo_metadata.inl で 88 件最大` → `// ubo_metadata.inl で 80 件 (Phase 2.L0 step 1 grep 確定)` 1 行修正 | 1 file 1 行 | 不要 (= comment のみ、機能影響 0) | sub-session 4 内 |
-| **§2.2.2 step 2-pre2** | shader file × UBO consume mapping 確定 = 80 件 UBO × 各 shader file `#ifdef LL_VULKAN_GLSL` block 内宣言 grep + mapping table 起案 | ゼロ (= grep + mapping table doc のみ) | 不要 | sub-session 4 内 or sub-session 5 |
-| **§2.2.3 step 2-batch-1 (Compute)** | compute shader (`*C.glsl`) 内 UBO `layout(set=N, binding=M)` 書換 (= 件数 step 2-pre2 後確定) | `indra/newview/app_settings/shaders/` 配下 compute shader file | Vulkan validation 0 件 + AYA live verify | sub-session 6 想定 |
-| **§2.2.4 step 2-batch-2 (Vertex)** | vertex shader (`*V.glsl`) 内 UBO 書換 (= 件数 step 2-pre2 後確定、推定 ~20-30 件) | 同 vertex shader file | Vulkan validation 0 件 + AYA live verify | sub-session 7 想定 |
-| **§2.2.5 step 2-batch-3 (Fragment)** | fragment shader (`*F.glsl`) 内 UBO 書換 (= 件数 step 2-pre2 後確定、推定 ~40-50 件、件数次第で batch-3a/3b/3c 分割可能性) | 同 fragment shader file | Vulkan validation 0 件 + AYA live verify | sub-session 8-10 想定 |
-| **§2.2.6 step 2-exit** | step 2 出力 doc 起案 + step 3 着手承認 | - | - | sub-session 11 想定 |
+| **§2.2.1 step 2-pre1** | `indra/llglslshader.cpp:95` source comment 訂正 = `// ubo_metadata.inl で 88 件最大` → `// ubo_metadata.inl で 80 件 (Phase 2.L0 step 1 grep 確定)` 1 行修正 | 1 file 1 行 | 不要 (= comment のみ、機能影響 0) | sub-session 4 内 ✅ 完了 (= commit `4ed9c61095`) |
+| **§2.2.2 step 2-pre2** | shader file × UBO consume mapping 確定 = 80 件 UBO × 各 shader file `#ifdef LL_VULKAN_GLSL` block 内宣言 grep + mapping table 起案 | ゼロ (= grep + mapping table doc のみ) | 不要 | sub-session 4 内 ✅ 完了 (= mapping doc 起案) |
+| ~~**§2.2.3 step 2-batch-1 (Compute)**~~ → **B1 Compute skip** | ~~compute shader (`*C.glsl`) 内 UBO 書換~~ → **step 2-pre2 grep で C-only 0 件 finding、batch-1 skip 確定** (= mapping doc §3.1 + §7.1 AYA literal「a-1」受領) | - | - | **skip (= 想定 sub-session 縮減)** |
+| **§2.2.4 step 2-B0 multi-file** (= 新規 sub-step、step 2-pre2 後追加) | multi-file UBO 8 件 (= MaterialUBO 49 file + 7 件 × 2 file = 63 file) を 1 UBO 1 commit で全 declaration file 同期書換 (= AYA literal「b-1」受領) | 63 file (= 8 UBO 同期 group) | Vulkan validation 0 件 + AYA live verify | sub-session 5-6 想定 (= B0-a 小規模 7 件 / B0-b MaterialUBO 49 file 単独) |
+| **§2.2.5 step 2-B2 (Vertex 1-file)** | V-only 1-file UBO 22 件 (= 22 file) `layout(set=N, binding=M)` 書換 (= AYA literal「e 一部」V-only は 1 commit) | 22 file | Vulkan validation 0 件 + AYA live verify | sub-session 7 想定 |
+| **§2.2.6 step 2-B3 (Fragment 1-file 3 細分)** | F-only 1-file UBO 44 件 を **3 細分 (B3a 15+B3b 15+B3c 14、alphabetical sort 順)** で書換 (= AYA literal「e-2」受領) | 44 file (= 3 batch) | Vulkan validation 0 件 + AYA live verify (= 各 batch 単位) | sub-session 8-10 想定 |
+| **§2.2.7 step 2-B4 (util/lib)** (= 新規 sub-step、step 2-pre2 後追加) | other 1-file UBO 6 件 (= util/lib `aoUtil.glsl` 等、stage 不問共有 file) を独立 batch で書換 (= AYA literal「d-1」受領) | 6 file | Vulkan validation 0 件 + AYA live verify | sub-session 11 想定 |
+| **§2.2.8 step 2-exit** | step 2 出力 doc 起案 + step 3 着手承認 + step 3 持越項目 cross-ref (= mapping doc §4.5 = `cinematic_bd/` 影響評価項目) | - | - | sub-session 12 想定 |
 
-**1 sub-step 1 session 想定** = sub-session 4-11 想定 (= step 1 doc §C 想定 + batch 分割可能性)。
+**1 sub-step 1 session 想定** = sub-session 4-12 想定 (= mapping doc §5.2 batch 別着手見積もり整合)。
+
+**注**: 本 §2.2 table は **step 2-pre2 grep verify 完了後の確定 batch 構造** (= mapping doc §4.1 5 batch 構造、AYA literal 2026-06-06「confirm candidate 6 件 推奨案で進めてください」受領反映)。entry handoff 起案時 (= 2026-06-06 早期) の旧 §2.2.3-§2.2.6 想定 (= batch-1 Compute / batch-2 Vertex / batch-3 Fragment / batch-exit) は step 2-pre2 grep で:
+- batch-1 Compute = 0 件 finding (= skip)
+- multi-file UBO 8 件 = batch-stage 物理 NG (= B0 専用 batch 新設)
+- util/lib (= other 6 件) = stage 不問共有 (= B4 独立)
+
+の **3 件構造的 finding** を反映、5 batch 構造に再策定。memory `feedback_design_doc_number_literal_verify` 適用範囲拡張 record (= 数値 + 構造的属性 verify 規律) で再発防止。
 
 ### §2.3 着手前提 (= 悲報対応持越含む)
 
