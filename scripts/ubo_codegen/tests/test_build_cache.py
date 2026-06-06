@@ -142,24 +142,12 @@ class EnvBlockTests(unittest.TestCase):
         env = EnvVersions(glslang_version="x", spirv_cross_version="y",
                           python_version="3.12.3", host_platform="linux")
         d = env.to_dict()
-        # Phase 2.α α-3 improvement 1.5.c (= 2026-06-06): defines_hash field 追加、
-        # default sentinel "no-defines" (= --defines-file 未指定時) を round-trip 含む。
         self.assertEqual(d, {
             "python_version": "3.12.3",
             "glslang_version": "x",
             "spirv_cross_version": "y",
             "host_platform": "linux",
-            "defines_hash": "no-defines",
         })
-
-    def test_env_to_dict_with_explicit_defines_hash(self):
-        # --defines-file 指定時 = aya_r41_codegen_defines.toml の sha256 が hash として渡る、
-        # to_dict() で round-trip。cache invalidation 連動の前提。
-        env = EnvVersions(glslang_version="x", spirv_cross_version="y",
-                          python_version="3.12.3", host_platform="linux",
-                          defines_hash="abc123def456")
-        d = env.to_dict()
-        self.assertEqual(d["defines_hash"], "abc123def456")
 
     def test_collect_module_hashes_keyed_by_basename(self):
         with tempfile.TemporaryDirectory() as td:

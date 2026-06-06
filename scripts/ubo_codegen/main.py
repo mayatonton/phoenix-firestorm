@@ -23,12 +23,10 @@ exits 0 (= empty-input contract, entry handoff §3 PA-2 row).
 from __future__ import annotations
 
 import argparse
-import hashlib
 import logging
 import os
 import sys
 import time
-import tomllib  # = Phase 2.α α-3 improvement 1.5.c (= 2026-06-06)、stdlib 3.11+
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -54,7 +52,7 @@ EXIT_INPUT_NOT_FOUND = 3
 EXIT_OUTPUT_WRITE_ERROR = 4
 EXIT_CODEGEN_ERROR = 5
 
-PYTHON_MIN = (3, 11)  # Phase 2.α α-3 (= 2026-06-06、improvement 1.5.c): tomllib (= stdlib 3.11+) 利用
+PYTHON_MIN = (3, 8)
 
 # chapter 02 §2.1 — block-name prefix → CadenceTag (08 §6.1)
 CADENCE_PER_FRAME = 0
@@ -121,11 +119,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "(= Phase 2.α α-2 2026-06-06、複数 shader source dir 対応 = class*/ + cinematic_bd/ 入力想定)")
     p.add_argument("--output", required=True, type=Path, metavar="<header_dir>",
                    help="output directory for generated .inl headers (created if missing)")
-    p.add_argument("--defines-file", type=Path, metavar="<defines.toml>", default=None,
-                   help="TOML dump file mapping <macro_name> → <value> for C++ runtime emulation "
-                        "(= Phase 2.α α-3 improvement 1.5.c、2026-06-06、AYAstorm C++ runtime addPermutation "
-                        "経由 dynamic #define を build-time に static emulate、glslang -E に -D<key>=<value> で prepend、"
-                        "default = scripts/ubo_codegen/aya_r41_codegen_defines.toml、handoff §D.9.5 #4 + design 04 §4.5 + 08 §5.0)")
     p.add_argument("--cache-file", type=Path, metavar="<state.json>", default=None,
                    help="incremental cache state file (default: <output>/codegen_state.json)")
     p.add_argument("--project-root", type=Path, metavar="<dir>", default=None,
@@ -300,70 +293,6 @@ def _verify_block_match(
             ))
 
 
-# --- C++ runtime emulation 層 (= Phase 2.α α-3 improvement 1.5.c、2026-06-06) ----
-# AYAstorm shader runtime は LLGLSLShader::addPermutation() で dynamic #define を
-# viewer 起動時に inject、loadShaderFile() で [EXTRA_CODE_HERE] marker に prepend する。
-# codegen は build-time static ゆえ、identifier 値として配列 size 等に直接埋め込まれる
-# macro (= MAX_JOINTS_PER_MESH_OBJECT 等) が unresolved → parse error。
-# 本層 = TOML dump file (= aya_r41_codegen_defines.toml、improvement 1.5.b) を読込、
-# glslang -E + glslang -V に -D<key>=<value> として prepend、parse 完全性確保。
-# 詳細: handoff §D.9.5 #4 + design 04 §4.5 + 06a §4.5 + 08 §5.0
-
-def _load_defines_file(path: Path, log: logging.Logger) -> Dict[str, str]:
-    """Load AYAstorm C++ const dump file (= TOML), return [defines] table as dict.
-
-    Returns empty dict if path is None.
-    Raises CodegenError on file not found / TOML parse error / invalid schema.
-    """
-    if path is None:
-        return {}
-    if not path.is_file():
-        raise CodegenError(format_error(
-            f"defines file not found: {path}",
-            action="check --defines-file path / supply existing TOML file",
-        ))
-    try:
-        with path.open("rb") as fh:
-            data = tomllib.load(fh)
-    except tomllib.TOMLDecodeError as exc:
-        raise CodegenError(format_error(
-            f"defines file TOML parse failed: {path}",
-            reason=str(exc),
-            action="fix TOML syntax / check aya_r41_codegen_defines.toml format",
-        )) from exc
-    defines = data.get("defines", {})
-    if not isinstance(defines, dict):
-        raise CodegenError(format_error(
-            f"defines file [defines] table is not a dict: {path}",
-            reason=f"got {type(defines).__name__}",
-            action="check TOML schema: [defines] key1=\"val1\" key2=\"val2\"",
-        ))
-    result: Dict[str, str] = {}
-    for k, v in defines.items():
-        if not isinstance(k, str) or not isinstance(v, str):
-            raise CodegenError(format_error(
-                f"defines file [defines] entry must be str → str: {k} = {v}",
-                reason=f"got key={type(k).__name__} val={type(v).__name__}",
-                action="quote both key + value as string in TOML",
-            ))
-        result[k] = v
-    log.debug("loaded %d defines from %s", len(result), path)
-    return result
-
-
-def _defines_to_args(defines: Dict[str, str]) -> List[str]:
-    """Convert {name: value} dict to glslang `-D<name>=<value>` arg list."""
-    return [f"-D{k}={v}" for k, v in defines.items()]
-
-
-def _defines_hash(defines: Dict[str, str]) -> str:
-    """SHA-256 of sorted key=value pairs, used as cache-key material."""
-    if not defines:
-        return "no-defines"
-    canonical = "\n".join(f"{k}={defines[k]}" for k in sorted(defines.keys()))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
 # --- pipeline: parse + layout + reflection verify --------------------------
 
 def _process_glsl_file(
@@ -372,13 +301,11 @@ def _process_glsl_file(
     glslang_bin: Optional[Path],
     spirv_cross_bin: Optional[Path],
     skip_spirv: bool,
-    defines_args: Sequence[str] = (),
 ) -> List[BlockSpec]:
     stage = _detect_stage(glsl_path)
     log.debug("preprocess: %s (stage=%s)", glsl_path, stage)
     source = glslang_preproc.preprocess(
-        glsl_path, glslang_bin=glslang_bin,
-        extra_args=("-S", stage, *defines_args),
+        glsl_path, glslang_bin=glslang_bin, extra_args=("-S", stage),
     )
     parse_result = parse_glsl(source, source_file_hint=str(glsl_path))
     if not parse_result.ubo_blocks:
@@ -391,7 +318,6 @@ def _process_glsl_file(
             glsl_path, stage,
             glslang_bin=glslang_bin,
             spirv_cross_bin=spirv_cross_bin,
-            extra_glslang_args=tuple(defines_args),
         )
 
     blocks: List[BlockSpec] = []
@@ -457,19 +383,16 @@ def _collect_env(
     spirv_cross_bin: Optional[Path],
     skip_spirv: bool,
     log: logging.Logger,
-    defines_hash: str = "no-defines",
 ) -> EnvVersions:
     glslang_ver = glslang_preproc.version(glslang_bin=glslang_bin)
     if skip_spirv:
         spirv_cross_ver = "skipped"
     else:
         spirv_cross_ver = spirv_reflect.version(spirv_cross_bin=spirv_cross_bin)
-    log.debug("env: glslang=%s spirv-cross=%s python=%s platform=%s defines_hash=%s",
+    log.debug("env: glslang=%s spirv-cross=%s python=%s platform=%s",
               glslang_ver, spirv_cross_ver,
-              build_cache.get_python_version(), build_cache.get_host_platform(),
-              defines_hash[:8])
-    return EnvVersions(glslang_version=glslang_ver, spirv_cross_version=spirv_cross_ver,
-                       defines_hash=defines_hash)
+              build_cache.get_python_version(), build_cache.get_host_platform())
+    return EnvVersions(glslang_version=glslang_ver, spirv_cross_version=spirv_cross_ver)
 
 
 # --- main pipeline ---------------------------------------------------------
@@ -500,26 +423,8 @@ def run(args: argparse.Namespace, log: logging.Logger) -> int:
     if skip_spirv:
         log.warning("AYA_CODEGEN_SKIP_SPIRV_CHECK=1 — SPIR-V reflection verify disabled")
 
-    # Phase 2.α α-3 improvement 1.5.c (= 2026-06-06): C++ runtime emulation 層
-    # AYAstorm C++ const dump file (= aya_r41_codegen_defines.toml、improvement 1.5.b) を読込、
-    # glslang -E/-V に -D<key>=<value> として prepend。詳細 handoff §D.9.5 #4。
     try:
-        defines = _load_defines_file(args.defines_file, log)
-    except CodegenError as exc:
-        log.error("defines file load failed: %s", exc)
-        return EXIT_CODEGEN_ERROR
-    defines_args = _defines_to_args(defines)
-    defines_hash = _defines_hash(defines)
-    if defines:
-        log.info("C++ runtime emulation 層: %d defines loaded from %s (hash=%s...)",
-                 len(defines), args.defines_file, defines_hash[:8])
-    else:
-        log.info("C++ runtime emulation 層: no --defines-file (= bare preprocess、"
-                 "AYAstorm C++ runtime macro 未解決時は parse error 直撃想定 file 群でエラーになります)")
-
-    try:
-        env = _collect_env(args.glslang_bin, args.spirv_cross_bin, skip_spirv, log,
-                           defines_hash=defines_hash)
+        env = _collect_env(args.glslang_bin, args.spirv_cross_bin, skip_spirv, log)
     except CodegenError as exc:
         log.error("toolchain probe failed: %s", exc)
         return EXIT_CODEGEN_ERROR
@@ -549,7 +454,6 @@ def run(args: argparse.Namespace, log: logging.Logger) -> int:
         for glsl_path in inputs:
             file_blocks = _process_glsl_file(
                 glsl_path, log, args.glslang_bin, args.spirv_cross_bin, skip_spirv,
-                defines_args=defines_args,
             )
             for block in file_blocks:
                 blocks_by_name.setdefault(block.name, []).append((block, str(glsl_path)))

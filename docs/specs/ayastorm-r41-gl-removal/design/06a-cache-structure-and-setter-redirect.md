@@ -20,7 +20,7 @@
 | 軸 | 結論 |
 |---|---|
 | 軸 1: C++ setter call site の name 引数性質 | **全て build-time static** (integer index 経由 `mUniform[index]` 主流 + `LLStaticHashedString` literal 経由、動的名前生成 setter 0 件) |
-| 軸 2: GLSL 内 array uniform の N 固定性 | **全て preprocess-time 数値確定** (数値リテラル直記 + `#define` 経由 + `addPermutation("LIGHT_COUNT", ...)` の build-time variant 展開 = **viewer 起動時 C++ runtime injection (= `llglslshader.cpp:1754-1757` `mDefines[name]=value` + `llshadermgr.cpp:728-962` `[EXTRA_CODE_HERE]` prepend)** + **build-time codegen tool では dump file (= `scripts/ubo_codegen/aya_r41_codegen_defines.toml`) 経由 emulate** = 2-way、両者の値整合は dump file source-of-truth 単一化で保証、詳細 §4.5 + chapter 04 §4.5、runtime 動的 size 0 件) |
+| 軸 2: GLSL 内 array uniform の N 固定性 | **全て preprocess-time 数値確定** (数値リテラル直記 + `#define` 経由 + `addPermutation("LIGHT_COUNT", ...)` の build-time variant 展開、runtime 動的 size 0 件) |
 | 軸 3: shader link 時 uniform 名解決 | **shader link 時 1 回完結** (`LLGLSLShader::mapUniforms()` で `glGetActiveUniform` + `mReservedUniforms` match、frame 内再解決ゼロ) |
 
 → **compile-time perfect hash 事前 enumerate は完全成立、fallback 設計 0 件**。本 chapter §4 shader link 時 pre-cache フローはこの前提に立つ。
@@ -268,19 +268,6 @@ shader link 完了後、debug build で以下を `llassert` 検証:
 - 現 Phase 1.B で sampler 集約自体未確定の可能性ゆえ、(3) を assert 化すると将来 sampler 集約変更時に false trip risk
 
 実装位置 = `indra/llrender/llglslshader.cpp` `mapUniforms()` 末尾、PB-3 block 直後 (line 1944 直後)、`unbind()` 直前 (= PB-2/PB-3/PB-7 を 1 block 内集中、handoff PB-3 §3.1 (iv) の前後 maintenance 局所化方針通り)。
-
-### §4.5 C++ runtime emulation 層との関係 (= Phase 2.α 案 Z' 確定 2026-06-06)
-
-§0.1 軸 2 の「`addPermutation` の build-time variant 展開」literal の **2-way 構造** を本 § で明示。**redirect 層** (= 本 chapter §3-§5 が扱う) と **codegen build-time emulation 層** (= chapter 04 §4.5) は **同じ macro 値の異なる利用面** であり、整合は dump file source-of-truth 単一化で保証される。
-
-| 層 | 動作タイミング | 値の source | 利用形 |
-|---|---|---|---|
-| **redirect 層** (= 本 chapter) | **viewer runtime** (= shader load 時 + setter 呼出時) | C++ const (= `LLSkinningUtil::getMaxJointCount()` = 110 等) | `LLGLSLShader::addPermutation()` が `mDefines[name]=value` に格納、`loadShaderFile()` が `[EXTRA_CODE_HERE]` marker に prepend、shader binary は runtime compile 経由 |
-| **codegen emulation 層** (= chapter 04 §4.5) | **build-time** (= CMake configure / build step) | dump file (= `scripts/ubo_codegen/aya_r41_codegen_defines.toml`、AYAstorm C++ header からの static dump) | main.py `--defines-file <path>` option 経由で読込、glslang -E 呼出時に `-D<key>=<value>` で prepend、`ubo_metadata.inl` / `ubo_layout_*.inl` 生成は static 値で完結 |
-
-**整合保証** = 両者は **同じ C++ header (= `lljoint.h` 等) を value source** とし、redirect 層は header 値を runtime 参照、codegen emulation 層は header 値を dump file 経由 build-time 参照。**dump file 改訂忘れ** は CMake DEPENDS で build 時 reconfigure trigger により検知 (= chapter 04 §4.5 末尾 AYAstorm shader runtime 側との同期 protocol cross-ref)。
-
-**位置付け** = 本 § は Phase 2.α 案 Z' (= 2026-06-06 確定、handoff §D.9 source of truth) で「設計 doc literal 空白」を埋める追記。Phase 1 起案時には codegen build-time emulation 層の literal 不在で、案 Z (= 2026-06-06 改修 1 次) でも未補完だった = 設計時構造的見落とし。本 §4.5 で redirect 層 (= viewer runtime) と codegen emulation 層 (= build-time) の **2-way 関係を literal で明示** = memory `feedback_root_cause_no_shortcuts` §11「設計 doc literal 空白を見落とした罪」防止策。
 
 ---
 

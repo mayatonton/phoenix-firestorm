@@ -94,7 +94,6 @@ indra/newview/llviewershadermgr 等
 - **新規 CMake target**: `codegen_ubo` (custom command、Python 実行)
 - **依存関係**:
   - `codegen_ubo` DEPENDS = `app_settings/shaders/**.glsl` (= GLSL 変更検出で自動再生成、§12 (B5) 解消)
-    + **`scripts/ubo_codegen/aya_r41_codegen_defines.toml`** (= 案 Z' 新規追加、AYAstorm C++ const dump file、改訂時 reconfigure 自動 trigger、§5.0 C++ runtime emulation 層 参照、handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 cross-ref)
   - `llrender` / `llvkloader` の OBJECT lib DEPENDS = `codegen_ubo` (= 生成 header の include 順序保証)
 - **生成 dir**: `${CMAKE_BINARY_DIR}/codegen/ubo/` (= 既存 build dir 構造に整合、git ignore)
 - **include path**: `target_include_directories(llrender PUBLIC ${CMAKE_BINARY_DIR}/codegen)` (= shader 側 setter から `#include "ubo/ubo_index.inl"` 形)
@@ -115,7 +114,7 @@ indra/newview/llviewershadermgr 等
 
 | # | 候補 | 利点 | 欠点 |
 |---|---|---|---|
-| B1a | **Python (3.11+)** (= 2026-06-06 Phase 2.α α-3 improvement 1.5.c で 3.8+ → 3.11+ 引上げ、`tomllib` stdlib 利用要件 = AYAstorm C++ const dump file 読込) | 3 OS 揃え容易 (= 各 OS 標準 / autobuild 既存 Python 入っている)、文字列 / regex / dict 強力、CMake から `find_package(Python3)` で呼出容易 | tool 自体に Python 依存 |
+| B1a | **Python (3.8+)** | 3 OS 揃え容易 (= 各 OS 標準 / autobuild 既存 Python 入っている)、文字列 / regex / dict 強力、CMake から `find_package(Python3)` で呼出容易 | tool 自体に Python 依存 |
 | B1b | C++ standalone tool | runtime 依存ゼロ (= 実行ファイル単独) | **tool build を 3 OS で先行する必要** (= cross-compile / Linux→Win build 等の経路考慮、build dependency 大増)、文字列処理コード冗長 |
 | B1c | CMake script (= pure CMake) | 追加 dependency ゼロ | 文字列操作 / dict / std140 算術が弱い、独自 perfect hash 生成困難、debug 不能 |
 
@@ -127,7 +126,7 @@ indra/newview/llviewershadermgr 等
    - **macOS**: system Python 3.9+ (Xcode 14+ 標準) または Homebrew/autobuild bundle、@t-noami さん検証信任の Mac 環境では autobuild 経由が default
    - **Windows**: 公式 installer (`python.org`) または autobuild bundle、AYAstorm autobuild は Python 3.11 bundle 配信実績 (= `autobuild.xml` `python` package、3 OS 一律 version)
    - AYAstorm 既存 autobuild stack には `develop.py` / `autobuild` 用に Python 必須なため、本 Codegen tool の追加 dependency 影響ゼロ (= 既存 stack 内)
-   - 万一 system Python 不在の Win 環境では autobuild が Python bundle を install (= `autobuild install python`)、build 時 `find_package(Python3 3.11 REQUIRED)` で autobuild 提供 path を解決 (= Phase 2.α α-3 改、`tomllib` stdlib 利用要件)
+   - 万一 system Python 不在の Win 環境では autobuild が Python bundle を install (= `autobuild install python`)、build 時 `find_package(Python3 3.8 REQUIRED)` で autobuild 提供 path を解決
 2. **文字列 / parse / hash 処理に最適**: GLSL 中 UBO block parse / std140 offset 計算 / perfect hash 生成 (= §5) いずれも Python の str/dict/list/struct で素直に書ける、~500-1000 行で完結
 3. **CMake 統合容易**: `find_package(Python3 REQUIRED)` + `add_custom_command(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/codegen_ubo.py ...)` で 1 行
 4. **debug / iterate コスト最小**: tool 改修時に rebuild 不要 (= script は直接実行)、GLSL 変更検出後の Codegen 単独実行も `python codegen_ubo.py` で完結
@@ -141,30 +140,15 @@ indra/newview/llviewershadermgr 等
 
 ### §3.3 Codegen tool 配置
 
-- script path: `scripts/codegen/codegen_ubo.py` (= リポジトリ root 配下、既存 `scripts/` 構造に整合) (※実 path = `scripts/ubo_codegen/main.py`、Phase 1.A 実装で確定済 = handoff §D.9 cross-ref)
+- script path: `scripts/codegen/codegen_ubo.py` (= リポジトリ root 配下、既存 `scripts/` 構造に整合)
 - 補助 module: `scripts/codegen/std140.py` (offset 計算)、`scripts/codegen/glsl_parser.py` (parse)、`scripts/codegen/perfect_hash.py` (hash 生成)
 - entrypoint: `codegen_ubo.py --input-glsl-dir <path> --output-dir <path> --spirv-reflection-dir <path>` (= §11 cache key 計算もここ集約)
 
-#### §3.3.1 C++ runtime emulation 層 補完 (= 案 Z' 確定 2026-06-06、§5.0 参照)
-
-AYAstorm shader runtime は `LLGLSLShader::addPermutation()` 経由で **dynamic `#define` injection** (= 例 `MAX_JOINTS_PER_MESH_OBJECT=110` = `LLSkinningUtil::getMaxJointCount()` 由来) を行う。codegen は build-time static ゆえ、本 runtime 注入を **静的 dump file 経由 emulate** する必要 (= 詳細 §5.0 集約説明、handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 cross-ref)。
-
-- **新規 file**: `scripts/ubo_codegen/aya_r41_codegen_defines.toml` (or `.json`) = AYAstorm C++ const dump file
-  - 内容: `MAX_JOINTS_PER_MESH_OBJECT=110` (= `lljoint.h` 由来) 等、`addPermutation()` で injection される全 macro を **`key=value` 形式で static dump**
-  - 影響範囲: parse error 直撃 25-35 file / 影響 4-8 UBO (= 詳細 §5.0.4)
-  - source of truth: AYAstorm C++ header (= `lljoint.h` 等)、dump file との値整合は **手動 verify** (= `tests/test_main.py` 内 sanity check 追加)
-- **main.py 新規 option**: `--defines-file <path>` = dump file 読込 → `glslang -E` invocation に **`-D<key>=<value>` で prepend** (= §4.3 連動)
-- **CMake DEPENDS 追加**: `${CMAKE_SOURCE_DIR}/scripts/ubo_codegen/aya_r41_codegen_defines.toml` を `add_custom_command DEPENDS` に追加 (= dump file 改訂時 reconfigure 自動 trigger、§2.2 参照)
-- **dump file 更新 protocol**: AYAstorm C++ header (= `lljoint.h` 等) 改訂時、dump file を手動同期 → CMake DEPENDS で reconfigure 自動 trigger → codegen 再走行で新 macro 値反映
-
 ### §3.4 Python version 縛り
 
-- **Python 3.11+ 必須** (= 2026-06-06 Phase 2.α α-3 improvement 1.5.c で 3.8+ → 3.11+ 引上げ、`tomllib` stdlib 利用要件 = AYAstorm C++ const dump file 読込)
-  - 3.11 未満では `tomllib` stdlib 不在ゆえ、外部 `tomli` install or 自前 TOML parser 実装が必要 = 案 Z' 確定で stdlib 採用 (= `feedback_no_dual_doc_split` 整合、外部依存追加回避)
-  - 基本 stdlib features (= f-string / typed dict / dataclass) も 3.8+ で利用可能、引上げの根因は `tomllib` のみ
-- CMake check: `find_package(Python3 3.11 REQUIRED)` で起動時 fail → **build error**
-- 3 OS install gate は (B2) glslang + (B1) Python の 2 dependency のみ、AYAstorm 既存 autobuild が両方含むため新規追加なし想定 (= AYAstorm autobuild Python 3.11 bundle 配信実績、§3.2 #1 cross-ref)
-  - macOS system Python 3.9+ では 3.11+ 不在の場合あり = autobuild bundle (= 3.11) 経由 path 必須、`find_package(Python3 3.11 REQUIRED)` で gate
+- Python 3.8+ 必須 (= f-string / typed dict / dataclass)
+- CMake check: `find_package(Python3 3.8 REQUIRED)` で起動時 fail → **build error**
+- 3 OS install gate は (B2) glslang + (B1) Python の 2 dependency のみ、AYAstorm 既存 autobuild が両方含むため新規追加なし想定 (= §13 で確証 phase 明記)
 
 ---
 
@@ -189,82 +173,15 @@ AYAstorm shader runtime は `LLGLSLShader::addPermutation()` 経由で **dynamic
 
 **実利用範囲**:
 - Codegen は glslang を **`-E` (preprocessor 展開) のみ呼出** (= 後述 §5.1 P3 採用と整合)
-- build-time check の SPIR-V reflection 抽出は glslang `-V --reflect-uniform-blocks` (= §5.4 / §5.4.1)
-  - **案 Z' 確定 2026-06-06 (= §5.0 C++ runtime emulation 層 連動)**: `-V` invocation でも `-D<key>=<value>` の prepend が必要 (= §4.3 と同流、reflection 取得対象 GLSL の preprocess 完全性確保、dump file 由来 macro 未注入では SPIR-V 化自体が parse error で失敗 = §5.4.1.3 `extract_reflection()` 呼出 path)。詳細集約説明 = §5.0 / handoff §D.9 cross-ref
+- build-time check の SPIR-V reflection 抽出は glslang `-V --reflect-uniform-blocks` (= §5.2)
 
 = **(B2) → B2a autobuild vendoring default 確定、§17 で AYA 判断仰ぎ候補に登録**。
 
 ### §4.3 glslang 呼出経路
 
 - preprocessor 展開: `glslangValidator -E <input.glsl>` → preprocess 後 GLSL を stdout 取得 → Codegen Python が parse
-  - **案 Z' 確定 2026-06-06 (= §5.0 C++ runtime emulation 層 連動)**: `-E` invocation で `--defines-file` 経由で読込んだ dump file の `-D<key>=<value>` を **必ず prepend** する。未指定時は AYAstorm shader runtime の `addPermutation` 注入が解決されず unresolved identifier で parse error (= identifier 値として配列 size 等に直接埋め込まれる macro、例 `MAX_JOINTS_PER_MESH_OBJECT` = `class1/avatar/objectSkinV.glsl:49` で配列 size literal として登場) = 案 Z' で発覚した「同じ穴に二度落ちた」事例の根本原因。影響範囲 = parse error 直撃 25-35 file / 影響 4-8 UBO (= 詳細 §5.0.4、handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 cross-ref)
 - SPIR-V 化 + reflection: `glslangValidator -V -S vert <input.vert> -o tmp.spv && spirv-cross --reflect tmp.spv` (= reflection は `spirv-cross --reflect` or glslang 自身の reflection API)
 - glslang binary path: `find_program(GLSLANG_VALIDATOR glslangValidator REQUIRED)` で CMake 検出、autobuild bundle path を first priority に置く
-
----
-
-## §5.0 C++ runtime emulation 層 (= 案 Z' 確定 2026-06-06、設計時 literal 空白補完)
-
-**起案契機**: Phase 2.α α-3 improvement 3 (= codegen 単独走行 verify) で `MAX_JOINTS_PER_MESH_OBJECT` が `class1/avatar/objectSkinV.glsl:49` で unresolved identifier として parse error 発覚。原因 = AYAstorm shader runtime (= `llviewershadermgr.cpp:870`) が `LLGLSLShader::addPermutation()` 経由で **dynamic `#define`** (= `LLSkinningUtil::getMaxJointCount()` = 110) を inject、codegen 単独走行ではそれが解決されない構造。本 § は handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` **§D.9** の案 Z' 確定 source of truth を設計 doc 側に反映するもの。
-
-### §5.0.1 背景 (= structural mismatch)
-
-| 軸 | AYAstorm C++ shader runtime | 本 chapter codegen |
-|---|---|---|
-| timing | runtime (= shader load 時 `addPermutation()` 呼出) | build-time (= CMake configure / build 時 1 回) |
-| `#define` 注入手段 | `mDefines[name] = value` map + `loadShaderFile()` で source 先頭に prepend (= 108 件 `addPermutation()` 呼出を `llglslshader.cpp:1754-1757` 経由で集約) | static `-D<key>=<value>` 引数を glslang invocation に渡す |
-| 値 source | C++ const (= `LLSkinningUtil::getMaxJointCount()` 等) / runtime device query / shader feature flag | (= 本 § で補完する dump file) |
-| 影響 macro 例 | `MAX_JOINTS_PER_MESH_OBJECT` / `MAX_NODES_PER_GLTF_OBJECT` / `MAX_MATERIALS_PER_GLTF_OBJECT` / `MAX_UBO_VEC4S` / `LIGHT_COUNT` / `REFMAP_LEVEL` / `REF_SAMPLE_COUNT` / `PROBE_FILTER_SAMPLES` / `FXAA_QUALITY__PRESET` / `TERRAIN_PBR_*` 等 | 同左 (= identifier 値として配列 size 等に直接埋め込まれる macro) |
-
-⇒ **structural mismatch**: codegen は runtime injection を知らないため、parse error 直撃。設計 doc 04 / 08 / 06a 全文に C++ runtime emulation を扱う § literal 不在 (= 設計時構造的見落とし = handoff §D.9.3.2 checklist A 該当)。
-
-### §5.0.2 解決策 (= dump file + main.py option + CMake DEPENDS)
-
-| 構成要素 | 内容 | 関連 § |
-|---|---|---|
-| **dump file** `scripts/ubo_codegen/aya_r41_codegen_defines.toml` (or `.json`) | AYAstorm C++ 定数群を `key=value` 形式 で static dump (= 例 `MAX_JOINTS_PER_MESH_OBJECT=110` / `MAX_NODES_PER_GLTF_OBJECT=...` 等、影響 4-8 UBO で必要な全 macro 全件 enumerate) | §3.3.1 |
-| **main.py `--defines-file <path>` option** | dump file 読込 (= toml/json parser) → glslang invocation (`-E` / `-V`) に `-D<key>=<value>` で prepend、未指定時は従来 behavior (= fallback) | §3.3.1 / §4.3 |
-| **CMake DEPENDS 追加** | `${CMAKE_SOURCE_DIR}/scripts/ubo_codegen/aya_r41_codegen_defines.toml` を `add_custom_command DEPENDS` に追加、dump file 改訂時 reconfigure 自動 trigger | §2.2 / §12.3 |
-
-= 3 構成要素で C++ runtime injection を build-time に等価変換 = preprocess 完全性確保 = codegen 単独走行で parse error 0 件。
-
-### §5.0.3 dump file 更新 protocol (= source of truth 同期)
-
-- **source of truth**: AYAstorm C++ header (= `lljoint.h` 等)、dump file は C++ const から **静的 dump した値** を保持
-- **改訂 trigger**: AYAstorm C++ header 改訂 (= 例 `MAX_JOINTS_PER_MESH_OBJECT` 値変更) 時、dump file を**手動同期**
-- **整合 verify**: dump file 値 vs C++ header 値の整合は **手動 verify**、`scripts/ubo_codegen/tests/test_main.py` 内 sanity check 追加 (= dump file load + 既知 macro 値 expected 比較、Phase 2.α α-3 test 追加 scope)
-- **CMake DEPENDS による auto reconfigure**: dump file 改訂 → CMake が DEPENDS 不整合判定 → reconfigure 自動 trigger → codegen 再走行で新値反映 = 開発者の手動再走行不要
-
-### §5.0.4 影響範囲 (= 案 Z' 自走精査結果)
-
-| 軸 | 計測値 (= handoff §D.9.3.3) |
-|---|---|
-| shader 総 file 数 (`class*/` + `cinematic_bd/`) | 246 file |
-| 項目 `MAX_JOINTS_PER_MESH_OBJECT` 影響 file | 3 file (`objectSkinV.glsl` / `skinnedVelocityV.glsl` / `skinnedVelocityAlphaV.glsl`) |
-| parse error 直撃 file 数 (= identifier 値として配列 size 等に直接埋め込まれる macro 含有) | **約 25-35 file** |
-| 影響 UBO 数 (= 80 UBO 中) | **約 4-8 UBO** (= `PerDrawUBO_ObjectSkin` / `PerDrawUBO_SkinnedVelocity` 系 / GLTF PBR UBO 系等) |
-| AYAstorm shader runtime full trace (= 案 Z' checklist B) | `addPermutation()` 全呼出 = 108 件 / `#include` directive = 0 件 / dynamic `#define` injection 系統 = 10 系統 |
-
-### §5.0.5 散逸変更箇所 集約 cross-ref
-
-本 § 由来の変更箇所は他 § に分散記述、本 § がそれらを **集約説明** する役割:
-
-| 散逸 § | 変更内容 |
-|---|---|
-| §2.2 CMake target 構成 | dump file を `add_custom_command DEPENDS` に追加 |
-| §3.3.1 (新規) Codegen tool 配置 C++ runtime emulation 層 補完 | dump file + `--defines-file` option + CMake DEPENDS 追加点列挙 |
-| §4.3 glslang 呼出経路 | `-E` invocation で `-D<key>=<value>` prepend literal 追加 |
-| §4.2 実利用範囲 | `-V` (= SPIR-V reflection) invocation でも `-D<key>=<value>` prepend literal 追加 |
-| (将来) §11.5.1 cache key 構成 | dump file sha256 を cache key に追加検討 (= Phase 1.A 実装時 review) |
-
-### §5.0.6 設計原則整合 + 関連 doc cross-ref
-
-- **AYA 指示 #5 (= design/01-overview.md:146 「85 GLSL UBO blueprint は discard しない」)**: ✅ 本 § で blueprint dir 廃止示唆なし、reference 降格保持を前提に C++ runtime emulation 層 追加のみ
-- **設計 doc 08:72-74/96 想定 (= 「入力: `app_settings/shaders/class*/{deferred,interface,...}/**.glsl`」literal)**: ✅ 維持、本 § は preprocess 経路に C++ runtime emulation 層 を追加するもので入力 source path は不変
-- **設計原則 4 §4.4 O-2 `mUseUBO` runtime flag default OFF**: ✅ 本 § は build-time path のみ追加、runtime behavior 影響なし
-- **3 OS 同一実装 (= OS-1〜OS-10)**: ✅ dump file は 3 OS 共通、`--defines-file` option も 3 OS 共通、CMake DEPENDS も 3 OS 共通
-- **handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 cross-ref**: 本 § = 案 Z' 確定 source of truth の設計 doc 側反映
-- **memory `feedback_root_cause_no_shortcuts` §11** (= 2026-06-06 「同じ穴に二度落ちた」事例 = 自走精査網羅性 checklist 4 件義務化): 本 § が「設計 doc literal 空白を埋める」根治措置の体現
 
 ---
 
@@ -1522,7 +1439,7 @@ def write_cache(state_file: Path, ...):
 ### §12.3 CMake snippet 例
 
 ```cmake
-find_package(Python3 3.11 REQUIRED)  # Phase 2.α α-3 改 (= tomllib stdlib 利用、§3.4)
+find_package(Python3 3.8 REQUIRED)
 
 file(GLOB_RECURSE AYA_GLSL_FILES
     "${CMAKE_SOURCE_DIR}/indra/newview/app_settings/shaders/*.glsl"
@@ -1791,7 +1708,7 @@ AYAstorm は Linux/Win/Mac 3 OS 対応 (= memory `project_ayastorm_three_platfor
 
 | 項目 | Linux | Win | Mac |
 |---|---|---|---|
-| Python **3.11+** availability (= Phase 2.α α-3 改) | ✅ apt/dnf 標準 (Ubuntu 24.04 = 3.12) | ✅ autobuild bundle (= 3.11) / 公式 installer | △ system Python 3.9+ では 3.11+ 不在の場合あり、autobuild bundle 必須 |
+| Python 3.8+ availability | ✅ apt/dnf 標準 (3.10+) | ✅ autobuild bundle / 公式 installer | ✅ system Python 3.9+ / brew |
 | glslang vendoring (autobuild) | ✅ 既存配信 | ✅ 既存配信 | ✅ 既存配信 |
 | `add_custom_command` 動作 | ✅ make / ninja | ✅ MSBuild / ninja | ✅ Xcode / ninja |
 | path 区切り `/` vs `\` | ✅ POSIX | ⚠️ CMake が `/` を自動変換 | ✅ POSIX |
@@ -1806,7 +1723,7 @@ AYAstorm は Linux/Win/Mac 3 OS 対応 (= memory `project_ayastorm_three_platfor
 
 ### §13.3 Mac 固有注意点
 
-- system Python **3.11+** で動作確認 (= Phase 2.α α-3 改、`tomllib` stdlib 利用要件)、autobuild 経由の Python (= AYAstorm 既存 = 3.11 bundle) も併用可
+- system Python 3.9+ で動作確認、autobuild 経由の Python (= AYAstorm 既存) も併用可
 - glslang autobuild package は Mac でも同 version 配信 (= AYAstorm 既存運用、@t-noami さん検証信任、memory `feedback_mac_only_fixes_accept_as_is` 範囲内)
 - Codegen tool は Mac 動作確証を **AYA 実機 / @t-noami さん検証** で後追い (= chapter 09 Phase 入口で実 build 確認)
 
@@ -2045,7 +1962,7 @@ chapter 06a §5.6 で「sampler は OpenGL path 強制 + Vulkan path descriptor 
 | (P) | GLSL parse 手段: 独自 mini-parser + glslang -E vs glslang library reflection | **P3 mini-parser + glslang -E** | **chapter 10 / AYA 判断** |
 | (G/B3) | perfect hash generator: 独自 Python frozen-table vs gperf vs frozen library | **G2/B3b Python frozen-table** | **chapter 10 / AYA 判断** |
 | **(G/B3) ID 衝突注 (= 設計 review 2026-06-03 §3.1 ID rename 整合)**: 本 chapter §17 / §5.5 / chapter 04 §10 の (G) = **perfect hash generator** を指す (= 本 chapter 固有 ID)。chapter 05 §6 の旧 (G) = **per-material cadence** は設計 review §3.1 で **(MC)** に rename 済 (= material cadence prefix)、別概念で衝突しない。本 chapter / chapter 04 の (G) ID はそのまま維持、handoff §4.4 にも (G) ID 衝突解消経緯を反映予定 (= chapter 05 (G)→(MC) のみ rename、chapter 04/08 (G) は不変) | — | — |
-| (B1) | Codegen 実装言語: Python vs C++ standalone vs CMake script | **B1a Python 3.11+** (= 2026-06-06 Phase 2.α α-3 改、tomllib stdlib 利用要件) | **chapter 10 / AYA 判断** |
+| (B1) | Codegen 実装言語: Python vs C++ standalone vs CMake script | **B1a Python 3.8+** | **chapter 10 / AYA 判断** |
 | (B2) | glslang 統合: autobuild vendoring vs system pkg vs 自前実装 | **B2a autobuild vendoring (既存温存)** | **chapter 10 / AYA 判断** |
 | (B4) | 増分 build cache strategy: hash+mtime vs mtime only vs hash only vs ccache | **B4a hash + mtime 併用** | **chapter 10 / AYA 判断** |
 | (B5) | Codegen 実行 trigger: CMake DEPENDS 自動 vs 全 build 時 vs 手動 target only | **B5a 自動 + 手動 target 併設** | **chapter 10 / AYA 判断** |
