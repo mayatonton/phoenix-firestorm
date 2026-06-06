@@ -118,7 +118,7 @@ uniform float max_cof;
 //   default=0 では cold launch parse 対象外だが flip 時の cascade 防止のため予防 wrap。
 #ifndef PER_PROGRAM_UBO_POST_DEFERRED_F_DEFINED
 #define PER_PROGRAM_UBO_POST_DEFERRED_F_DEFINED 1
-layout(set=2, binding=20, std140) uniform PerProgramUBO_PostDeferredF {
+layout(set=1, binding=45, std140) uniform PerProgramUBO_PostDeferredF {
     float res_scale;   // offset 0,  size 4 + 12 pad
     float chroma_str;  // offset 16, size 4 + 12 pad
 };  // total 32
