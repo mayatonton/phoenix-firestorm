@@ -245,3 +245,124 @@
 ### §D.8 sub-session 5 step 2-batch-0-a 7 commit 整合性
 
 案 Z 採用で sub-session 5 step 2-batch-0-a 7 commit (= class*/ + cinematic_bd/ 14 file の set/binding 書換) は **freeze 維持**、Phase 2.α α-3 完了後の codegen 入力切替 (= class*/ + cinematic_bd/ 入力) で `ubo_metadata.inl` に新 binding 値が自動反映 = sub-session 5 続行点 (= cold launch + AYA live verify) 直接 resume 可能。revert 不要。
+
+---
+
+## §D.9 案 Z 撤回 + 案 Z' 撤回 + 案 X 確定 record (= 2026-06-06 4-5 件目発火、案 Z 全撤回 source of truth)
+
+### §D.9.1 起案契機 = AYA literal 4-5 件目受領 (= 2026-06-06)
+
+§D 案 Z 確定 → improvement 1 (= blueprint dir README 「reference 降格」 commit `862f9cb983`) + improvement 2 (= cmake input 切替 commit `246535626e`) 通過 → improvement 3 codegen 単独走行 verify で **parse error 第 1 階層発覚** = `MAX_JOINTS_PER_MESH_OBJECT` (= AYAstorm C++ runtime `llviewershadermgr.cpp:870` `addPermutation()` 経由 dynamic #define) が actual `class1/avatar/objectSkinV.glsl:49` で unresolved。
+
+AYA literal 4 件目「ミスの上にミスの上にミスの上のミス、わたしじゃ回答出来ない、根治案を出してといってこれです、はい ミス、どうしたらいいですか？って聞かれてもわからない」受領 = 「選択肢 1/2/3 + どうしたらいいですか」を AYA に投げた罪 (= memory `feedback_proactive_risk_management` + `feedback_self_bug_no_defer_option` + `feedback_explanation_lead_with_conclusion` 違反)、memory `feedback_root_cause_no_shortcuts` §11 起案。
+
+案 Z' = 案 Z + C++ runtime emulation 層追加 (= dump file + main.py `--defines-file` + cmake DEPENDS) を §11 自走精査 4 件 (= 設計 doc 全文逐語 + 実装 full trace + structural property + 影響範囲) 適用したつもりで確定、improvement 1.5.a-c commit 通過、improvement 1.5.d 改修途中で codegen 単独走行 verify で **parse error 第 2 階層発覚** = `#version` 不在 + `AYASTORM_CINEMATIC` 等 AYAstorm runtime `loadShaderFile()` prepend chain 全件 emulate scope は dump file 1 つを超過 (= `HAS_DIFFUSE_LOOKUP` + tex0..N stub + GBUFFER_FLAG_* 等)。
+
+AYA literal 5 件目「了解、どうしたらいいのかわたしにはもうわからないんですが、どうしたいんですか？」受領 = parse error 第 2 階層発覚後「案 X 採否ご判断ください」を AYA に投げた罪 (= §11 違反の再発火)、memory `feedback_root_cause_no_shortcuts` §12 起案。
+
+### §D.9.2 blueprint dir 単独走行 evidence = 案 X 真の根治確定
+
+§12 自走精査 sandbox 実証 protocol 適用で blueprint dir 単独走行を試行:
+
+```
+python3 scripts/ubo_codegen/main.py \
+  --input indra/newview/app_settings/shaders/aya_r41_blueprints \
+  --output /tmp/aya_r41_codegen_verify_blueprint \
+  --glslang-bin /usr/bin/glslangValidator \
+  --spirv-cross-bin /usr/bin/spirv-cross
+```
+
+結果: **94 .glsl input(s) discovered → emitted 99 file(s) for 94 block(s) / 386 member(s) in 10903 ms**、**dump file なし**、**parse error 0 件**。
+
+`frame_view_proj.glsl` 確認:
+```glsl
+#version 450
+layout(std140, set = 0, binding = 0) uniform FrameViewProj { ... };
+void main() {}
+```
+
+⇒ blueprint dir 内 .glsl は **`#version 450` + 自己完結 1 UBO declaration**、AYAstorm runtime prepend chain (= `loadShaderFile()` 経由 `addPermutation` / `AYASTORM_CINEMATIC` / `IS_AMD_CARD` / `HAS_DIFFUSE_LOOKUP` 等) を **一切必要としない最小単位**。
+
+### §D.9.3 設計 doc 04 §2.2 literal 誤り発覚
+
+設計 doc `04-codegen-ubo.md §2.2` literal「Codegen と glslang は **同じ GLSL 入力に対して 2 系統並列の build process**」自体が **実装と矛盾する誤った文言** だった = 設計時の真の想定は **別 GLSL 並列 build process**:
+
+| 系統 | GLSL 入力 | 役割 |
+|---|---|---|
+| codegen Python tool | `aya_r41_blueprints/` (= 本 dir、self-contained) | build-time に `ubo_metadata.inl` 等 generate |
+| AYAstorm shader runtime | `class*/` + `cinematic_bd/` (= actual shader) | viewer 起動時に `loadShaderFile()` prepend chain 適用後 glCompileShader / SPIR-V 化 |
+
+両者は **別 file**、両者間の UBO declaration 整合は **二重 source 同期 protocol** (= main.py `_verify_block_match` 拡張) で build-time check。
+
+AYA 指示 #5 `design/01-overview.md:146` 「85 GLSL UBO blueprint は **discard しない** (parse error 解消の蓄積を温存)」literal の真意 = **codegen 入力 source of truth 保護指示** (= 案 Y/Z/Z' で読み違えた「reference 降格保持」ではない)。「parse error 解消の蓄積」literal 真意 = AYAstorm runtime prepend chain 不要の自己完結 GLSL snapshot 群。
+
+### §D.9.4 案 Y/Z/Z' 撤回 + 案 X 確定 経緯
+
+| 案 | 内容 | 結果 | 撤回根拠 |
+|---|---|---|---|
+| 案 Y | blueprint 完全廃止 | 撤回 | AYA 指示 #5 違反確定 |
+| 案 Z | codegen 入力切替 = `class*/` + `cinematic_bd/` + blueprint reference 降格 | 撤回 | improvement 3 codegen 単独走行で parse error 第 1 階層発覚 (= `MAX_JOINTS_PER_MESH_OBJECT` unresolved) |
+| 案 Z' | 案 Z + C++ runtime emulation 層追加 (= dump file + `--defines-file` + cmake DEPENDS) | 撤回 | improvement 3 再走行で parse error 第 2 階層発覚 (= `#version` 不在 + `AYASTORM_CINEMATIC` 等 prepend chain 全件 emulate scope 超過、`HAS_DIFFUSE_LOOKUP` + tex stub 等 emulate 不可) |
+| **案 X (確定)** | **blueprint dir = codegen 入力 source of truth、`class*/` + `cinematic_bd/` = runtime compile target、別 GLSL 並列 build process + 二重 source 同期 protocol formal化** | **確定** | (a) blueprint dir 単独走行 = 94 .glsl → 94 UBO emit 成功 + dump file なし + parse error 0 件 evidence、(b) 設計 doc 04 §2.2 literal 誤り訂正 = 別 GLSL 並列 build process 整合、(c) AYA 指示 #5 真意 = source of truth 保護指示 整合、(d) 二重 source 構造の正当な共存 |
+
+### §D.9.5 6 commit revert + 案 X 採用 (= 2026-06-06 commit `df38b7c994`)
+
+| revert 対象 commit | 改修内容 | 案 X での扱い |
+|---|---|---|
+| `9c3b3f3d72` | improvement 1.5.c main.py + build_cache.py + tests + 08 doc | **revert** (= `--defines-file` 関連全件削除) |
+| `a97b3e1b6b` | improvement 1.5.b dump file 起案 | **revert** (= dump file 削除) |
+| `9abae83730` | improvement 4 設計 doc 5 件改修 (= C++ runtime emulation 層 § 新規追加 + 案 Z' 反映) | **revert** (= 案 X 確定で設計 doc 5 件は別途改修、§D.9.6 全件波及更新範囲) |
+| `bfacb1f50f` | improvement 1.5.a handoff doc 2 件改訂 (= 案 Z' source of truth) | **revert** (= 本 §D.9 で案 X 確定 source of truth 再起案) |
+| `246535626e` | improvement 2 cmake input dir 切替 (= `BLUEPRINT_DIR` → `SHADER_SOURCE_DIRS`) | **revert** (= `BLUEPRINT_DIR` 復元) |
+| `862f9cb983` | improvement 1 blueprint dir README (= reference 降格明示) | **revert** (= phase B で「codegen 入力 source of truth」literal で全面書換、commit `f95182ded5`) |
+
+revert 後 base state = test 138 件全 PASS + blueprint dir 単独走行 94 UBO emit 成功 = 案 X 動作 evidence 再現済。
+
+### §D.9.6 案 X 改修方針 (= §D.6 案 Z 改修方針を全面置換)
+
+| # | 改修対象 | 改修内容 (= 案 X 確定) |
+|---|---|---|
+| 1 | `aya_r41_blueprints/README.md` (= 本 dir README) | **新規追加** = 「**codegen 入力 source of truth**」literal で全面書換 (= phase B 完了 commit `f95182ded5`)、§0 位置付け + §1 役割 + §2 二重 source 同期 protocol + §3 Phase 履歴 9 sub-step + §4 参照優先順位 + §5 編集規律 + §A 関連 doc cross-ref |
+| 2 | `indra/cmake/AyaUboCodegen.cmake` | `AYA_UBO_CODEGEN_BLUEPRINT_DIR` 復元 (= revert で base state 完了)、追加改修なし (= 案 X = base state 整合) |
+| 3 | `scripts/ubo_codegen/main.py` | (a) `_verify_block_match` 拡張 (= phase F) = blueprint と actual の対称的整合 verify、(b) `--input` に blueprint dir + actual shader path 両方受領、(c) `--verify-target-paths` option 新規追加 = blueprint と actual を区別して二重 source 整合 verify、(d) 同名 UBO 複数 file (= blueprint + actual の cross-source pair) 検出 + 整合検証 logic |
+| 4 | `scripts/ubo_codegen/tests/test_main.py` | 拡張 test 追加 = blueprint + actual 二重 source 整合 verify test + mismatch detect test (= binding 不一致 / member 不一致) + cinematic_bd 上書き path test 互換性確認、案 Z'+ test (= `RuntimeEmulationDefinesTests`) は revert 済で対象外 |
+| 5 | sub-session 5 step 2-batch-0-a 7 commit 整合 = blueprint dir 内 7 UBO 14 file 同期書換 (= phase E) | actual class*/ + cinematic_bd/ 14 file (= sub-session 5 既改修) の新 set/binding を blueprint dir 内 7 UBO 14 file に同期反映 (= 案 Z'+ で「actual = codegen 入力で binding 自動反映」と想定したのを、案 X で「blueprint 側を手動同期 + verify で確認」に切替) |
+| 6 | 設計 doc 5 件 (= 04/06a/08/09/10) | (a) 04 §2.2 literal 訂正 = 「同じ GLSL 入力」誤りを「別 GLSL 並列 build process」literal に修正、(b) 04 §4.4 同名 UBO 複数 GLSL 宣言の literal 維持 (= blueprint + actual 二重 source の整合 verify 設計、`_verify_block_match` 拡張対応)、(c) 案 Z'+ 由来 「C++ runtime emulation 層」§ (= 04 §4.5 / 06a §4.5 / 08 §5.0) は revert で削除済、案 X では追加 § 不要 (= base state 整合)、(d) 09 Phase 2.α 案 X 確定反映、(e) 10 open questions 案 X 確定で blueprint 関連 closed 化 + 二重 source 同期関連 open question 棚卸し |
+| 7 | per-UBO doc 80+ 件 (= `design/ubo/*.md`) | blueprint 言及確認 + 「**codegen 入力 source of truth**」位置付けで literal 統一 (= 案 Z'+ revert で旧「reference 降格」literal は base state 復元済) + 二重 source 同期 protocol (= actual との対応) cross-ref 追加 |
+| 8 | `ayastorm-r41-ubo-current-state-inventory.md` | §247-249 同名 UBO 複数 file 認識 record を「Phase 2.α 案 X で main.py `_verify_block_match` 拡張で blueprint + actual の二重 source 整合 verify」に更新 |
+| 9 | 80 UBO 全件 cold launch validation | 改修後 codegen で blueprint dir 入力で `ubo_metadata.inl` 等再生成、SPIR-V ↔ `ubo_metadata.inl` 整合 confirm (= Vulkan validation 0 件 + AYA live verify) + actual class*/ + cinematic_bd/ との二重 source 整合 confirm |
+
+### §D.9.7 案 X 全件波及更新範囲 record (= §D.7 全面置換)
+
+| # | 対象 | 内容 |
+|---|---|---|
+| 1 | `aya_r41_blueprints/README.md` | **完了** (= phase B commit `f95182ded5`) |
+| 2 | Phase 2.α handoff doc 2 件 (= 本 doc + α-3 entry) | **phase C で改修** (= §D.9 本節新規追加 + α-3 entry §3 案 X 用 sub-step 再起案) |
+| 3 | 設計 doc 5 件 (= 04/06a/08/09/10) | phase D で改修 (= 04 §2.2 literal 訂正 + 05 §4.4 維持 + 案 Z'+ § revert 確認 + 09 案 X 反映 + 10 open questions 棚卸し) |
+| 4 | blueprint dir 内 7 UBO 14 file 同期書換 | phase E で改修 (= sub-session 5 改修 7 UBO の actual 新 set/binding を blueprint 側に同期反映) |
+| 5 | `scripts/ubo_codegen/main.py` `_verify_block_match` 拡張 + `--verify-target-paths` option | phase F で改修 (= blueprint + actual 二重 source 整合 verify formal化) |
+| 6 | per-UBO doc 80+ 件 (= `design/ubo/*.md`) | phase G で改修 (= blueprint 言及更新 + 二重 source 同期 cross-ref) |
+| 7 | source code 5+ file (= scripts/ubo_codegen/*.py) docstring | phase G で改修 |
+| 8 | `ayastorm-r41-ubo-current-state-inventory.md` §247-249 record | phase G で改修 |
+| 9 | design/ubo/WORK_ORDER.md / READINESS.md / RELATIONS.md / INDEX.md | phase G で改修 (= 二重 source 同期 protocol 反映) |
+| 10 | 全件 grep 走査残漏れ 0 件 confirm | phase G 最終で実施 |
+
+### §D.9.8 既保持 commit 整合性 (= revert 対象外)
+
+| commit | 内容 | 案 X での扱い |
+|---|---|---|
+| `b66ec99f72` | α-2 main.py multi-input + `_verify_block_match` | **保持** (= 案 X phase F で `_verify_block_match` 拡張 baseline) |
+| `64122994c1` | Phase 2.α 案 Z 確定反映 doc 3 件 | **保持** (= 案 Z 履歴として残存、本 §D.9 で案 X 確定 record 上書き) |
+| `db5cbcbc36` | Phase 2.α 起案 + Phase 2.L0 freeze record | **保持** (= 起案契機 + freeze 記録は案 X でも同) |
+| `310d58b556` | α-3 entry handoff 起案 | **保持** (= α-3 entry §3 のみ phase C で再起案) |
+| `887ddb5341`〜`e5f57d57ff` | sub-session 5 step 2-batch-0-a 7 commit | **freeze 維持** (= 案 X phase E で blueprint dir 側 14 file 同期書換実施、actual 改修は freeze 維持) |
+
+### §D.9.9 §11 §12 反省 + 5 段落ち防止 protocol 強化
+
+5 段連続同じ穴落ちの根本原因:
+- §11 自走精査 checklist B (= 実装 full trace) を subagent 1 結果「`#ifdef`/`#if` の中で parse error 至らず」を盲信 = 私の責任
+- §11 自走精査 checklist C (= blueprint / actual structural property) を blueprint dir 内 .glsl 単体構造未確認 = 私の責任
+- §12 sandbox 実証 protocol を案確定前に実施せず = 私の責任
+- §12 設計 doc literal 誤り疑念を持たず 04 §2.2 literal を盲信 = 私の責任
+
+memory `feedback_root_cause_no_shortcuts` §11 + §12 適用、案 X 進行中も sub-step 完了毎に **sandbox 実証 + 設計 doc literal 独立 verify + subagent 結果は raw evidence のみ信任** 義務化。

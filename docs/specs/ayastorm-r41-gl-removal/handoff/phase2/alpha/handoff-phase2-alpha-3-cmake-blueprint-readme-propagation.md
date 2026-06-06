@@ -65,37 +65,81 @@ scope (= Phase 2.α entry handoff §D.6/§D.7 詳細 cross-ref、全 10 範囲):
 
 ## §3. α-3 着手順序 + 想定 commit (= memory `feedback_ubo_migration_one_at_a_time` 整合)
 
+**2026-06-06 案 X 確定で sub-step 順序全面再起案** (= 案 Z'+ 全撤回 + revert + 案 X 採用、entry handoff §D.9 案 X 確定 source of truth、6 commit revert で base state 復元済)。
+
+### §3.1 phase A = revert (= 完了済)
+
 | # | 改修内容 | 改変対象 | 想定 commit | 検証 |
 |---|---|---|---|---|
-| 1 | `aya_r41_blueprints/README.md` 新規追加 (= reference 降格明示) | shader dir + README 1 file 追加 | 1 commit | doc 確認のみ |
-| 2 | `indra/cmake/AyaUboCodegen.cmake` 改修 (= input dir 切替) | cmake 1 file | 1 commit | CMake configure 走行 verify (= `cmake -B build-linux-x86_64` で error なし confirm) |
-| 3 | codegen 単独走行 verify (= 改修後 codegen で `class*/` + `cinematic_bd/` 入力で `ubo_metadata.inl` 再生成、80 UBO 全件 binding 値が alphabetical sort literal (= step 2-pre2 mapping §5.1) と整合 confirm) | (= verify のみ、build 不要) | 0 commit (= verify 結果は次 commit に同梱 or 別 record) | codegen tool 単独実行 |
-| 4 | 設計 doc 4 件 (= 04/08/09/10) blueprint 言及更新 | docs/specs/ 4 file | 1 commit (細分可) | doc 確認 |
-| 5 | per-UBO doc 80+ 件 blueprint 言及機械的書換 | design/ubo/*.md 80+ file | 1-3 commit (= sub-batch 分割可、grep + sed 一括 OK) | doc 確認 + git diff review |
-| 6 | source code 5 file (= main.py + glsl_parser.py + std140.py + perfect_hash.py + spirv_reflect.py) docstring 内 blueprint 言及更新 | scripts/ubo_codegen/*.py | 1 commit | python test 再実行 PASS confirm (= 138 test) |
-| 7 | inventory:247-249 record 更新 + 必要時 design/ubo/WORK_ORDER.md / READINESS.md / RELATIONS.md / INDEX.md 更新 | docs/specs/ 1-5 file | 1 commit | doc 確認 |
+| A | 案 Z'+ 全撤回 = 6 commit revert (= `9c3b3f3d72` + `a97b3e1b6b` + `9abae83730` + `bfacb1f50f` + `246535626e` + `862f9cb983`) | 14 file revert | 完了 (= commit `df38b7c994`) | test 138 件全 PASS + blueprint dir 単独走行 94 UBO emit 成功 |
+
+### §3.2 phase B = blueprint dir README 全面書換 (= 完了済)
+
+| # | 改修内容 | 改変対象 | 想定 commit | 検証 |
+|---|---|---|---|---|
+| B | `aya_r41_blueprints/README.md` 全面書換 = 「codegen 入力 source of truth」literal 確定 | shader dir + README 1 file 新規追加 | 完了 (= commit `f95182ded5`) | doc 確認 |
+
+### §3.3 phase C = handoff doc 2 件改訂 (= 本 sub-step、案 X 確定 source of truth)
+
+| # | 改修内容 | 改変対象 | 想定 commit | 検証 |
+|---|---|---|---|---|
+| C | entry handoff §D.9 (= 案 X 確定 source of truth) 新規追加 + α-3 entry §3 sub-step 順序全面再起案 (= 本表) | handoff doc 2 file | 1 commit (= 本 sub-step) | doc 確認 + cross-ref 整合 confirm |
+
+### §3.4 phase D = 設計 doc 5 件改修 (= 案 X 反映)
+
+| # | 改修内容 | 改変対象 | 想定 commit | 検証 |
+|---|---|---|---|---|
+| D | 設計 doc 5 件改修 = (a) 04 §2.2 literal 訂正 = 「同じ GLSL 入力」誤りを「**別 GLSL 並列 build process**」literal に修正、(b) 04 §4.4 同名 UBO 複数 GLSL 宣言の literal 維持 (= blueprint + actual 二重 source 整合 verify 設計、`_verify_block_match` 拡張対応)、(c) 案 Z'+ 由来 C++ runtime emulation 層 § (= 04 §4.5 + 06a §4.5 + 08 §5.0) は revert で削除済 = 案 X では追加 § 不要 (= base state 整合)、(d) 09 Phase 2.α 案 X 確定反映、(e) 10 open questions 案 X 確定で blueprint 関連 closed 化 + 二重 source 同期関連 open question 棚卸し | docs/specs/ 5 file | 1-2 commit | doc 確認 + grep 04 §2.2 literal 訂正確認 |
+
+### §3.5 phase E = blueprint dir 7 UBO 14 file 同期書換
+
+| # | 改修内容 | 改変対象 | 想定 commit | 検証 |
+|---|---|---|---|---|
+| E | Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit で actual `class*/` + `cinematic_bd/` 14 file 改修済の新 set/binding を **blueprint dir 内 対応 7 UBO 14 file に同期反映** (= 二重 source 同期断裂解消)、対象 UBO = CloudsVParamUBO_Legacy slot 8 / PerProgramUBO_GammaCorrect slot 39 / PerProgramUBO_PointLightV slot 44 / PerProgramUBO_PostDeferredF slot 45 / PerProgramUBO_WaterHazeV slot 55 / ShadowUtilParamUBO_Legacy slot 63 / WaterVParamUBO_Legacy slot 79 | blueprint dir 内 14 file | 1-2 commit (= sub-batch 分割可) | codegen 単独走行で `ubo_metadata.inl` 新 binding 反映 confirm |
+
+### §3.6 phase F = main.py `_verify_block_match` 拡張 (= 二重 source 同期 protocol formal化)
+
+| # | 改修内容 | 改変対象 | 想定 commit | 検証 |
+|---|---|---|---|---|
+| F | `scripts/ubo_codegen/main.py` 拡張 = (a) `_verify_block_match` 拡張 = blueprint と actual の対称的整合 verify、(b) `--input` で blueprint dir + actual shader path 両方受領、(c) `--verify-target-paths` option 新規追加 = blueprint と actual を区別して二重 source 整合 verify、(d) 同名 UBO 複数 file (= blueprint + actual の cross-source pair) 検出 + 整合検証 logic + test 追加 | scripts/ubo_codegen/ | 1 commit | python test 拡張 PASS (= 既 138 + 新規 5-7 件) + codegen 走行で blueprint + actual 整合 verify confirm |
+
+### §3.7 phase G = 波及 doc 全件改修
+
+| # | 改修内容 | 改変対象 | 想定 commit | 検証 |
+|---|---|---|---|---|
+| G-1 | per-UBO doc 80+ 件 (= `design/ubo/*.md`) blueprint 言及更新 = 「**codegen 入力 source of truth**」位置付け literal 統一 + 二重 source 同期 (= actual との対応) cross-ref 追加 | design/ubo/*.md 80+ file | 1-3 commit (= sub-batch 分割可、grep + sed 一括 OK) | doc 確認 + git diff review |
+| G-2 | source code 5+ file (= main.py + glsl_parser.py + std140.py + perfect_hash.py + spirv_reflect.py) docstring 内 blueprint 言及更新 = 案 X 確定後の「codegen 入力 source of truth」literal 反映 | scripts/ubo_codegen/*.py | 1 commit | python test 再実行 PASS confirm |
+| G-3 | inventory:247-249 record 更新 = 「Phase 2.α 案 X で main.py `_verify_block_match` 拡張で blueprint + actual の二重 source 整合 verify」反映 + 必要時 `design/ubo/WORK_ORDER.md` / `READINESS.md` / `RELATIONS.md` / `INDEX.md` 更新 | docs/specs/ 1-5 file | 1 commit | doc 確認 |
+| G-final | 全件 grep 走査残漏れ 0 件 confirm (= keyword = `blueprint` 言及 / `BLUEPRINT_DIR` / `class\*/` / `addPermutation` / `runtime emulation` 等) | (= verify のみ) | 0 commit (= verify 結果は inventory に追記) | grep 走査 |
 
 各 sub-step 完了で AYA literal commit 指示待ち (= memory `feedback_no_auto_commit` 適用)。連結 commit は AYA literal 指示で可。
 
 ---
 
-## §4. α-3 Exit 条件
+## §4. α-3 Exit 条件 (= 案 X で再起案)
 
 | # | Exit 項目 | 判定基準 |
 |---|---|---|
-| 1 | 改修 1 (CMake) + 改修 3 (blueprint README) 完了 | git log + git diff confirm |
-| 2 | 波及 doc 全件更新完了 (= §D.7 全 10 範囲) | grep `aya_r41_blueprints` で誤参照 / 古い記述 0 件 (= 設計 doc + per-UBO doc + source code) |
-| 3 | codegen 単独走行 verify (= `ubo_metadata.inl` 80 UBO 全件 binding 値整合) | step 2-pre2 mapping §5.1 alphabetical sort literal と整合、git diff `ubo_metadata.inl` で diff 確認 |
-| 4 | python test 138 件 PASS (= α-2 で確立) | regression 0 |
-| 5 | α-4 着手準備完了 (= cold launch validation handoff entry 起案候補) | doc 起案 + AYA literal 指示 |
+| 1 | phase A revert + phase B blueprint README + phase C handoff doc 完了 | git log + git diff confirm (= `df38b7c994` + `f95182ded5` + 本 commit) |
+| 2 | phase D 設計 doc 5 件改修完了 = 04 §2.2 literal「同じ GLSL 入力」→「別 GLSL 並列 build process」訂正 + 案 Z'+ 由来 § revert 確認 + 09/10 案 X 反映 | grep 04 §2.2 確認 + cross-ref 整合 confirm |
+| 3 | phase E blueprint dir 7 UBO 14 file 同期書換完了 | codegen 単独走行で `ubo_metadata.inl` 新 binding 反映 confirm (= step 2-pre2 mapping §5.1 alphabetical sort literal と整合) |
+| 4 | phase F main.py `_verify_block_match` 拡張完了 = blueprint + actual 二重 source 整合 verify formal化 | python test 拡張 PASS (= 既 138 + 新規 5-7 件) + codegen 走行で 整合 verify confirm |
+| 5 | phase G 波及 doc 全件改修完了 = per-UBO doc 80+ + source code + inventory + WORK_ORDER 等 + 全件 grep 走査残漏れ 0 件 confirm | grep keyword 全件確認 (= blueprint / BLUEPRINT_DIR / `class\*/` / addPermutation / runtime emulation) |
+| 6 | α-4 着手準備完了 (= cold launch validation handoff entry 起案候補) | doc 起案 + AYA literal 指示 |
 
 ---
 
 ## §5. 手戻り protocol
 
 - **α-3 内手戻り** = sub-step (= §3 表内) reject → 該当 sub-step 内 logic 再起案
-- **α-3 → α-2 戻り** = main.py 改修不備発覚 (= 例: multi-input + `_verify_block_match` で漏れ検出) → α-2 commit `b66ec99f72` に追加修正
-- **α-3 → α-1 戻り** = 設計方針破綻 (= 例: CMake 改修で別構造的問題発覚) → Phase 2.α entry handoff §D 再起案
+- **α-3 → α-2 戻り** = main.py 改修不備発覚 (= 例: `_verify_block_match` 拡張で漏れ検出) → α-2 commit `b66ec99f72` に追加修正
+- **α-3 → α-1 戻り** = 設計方針破綻 (= 例: 構造的問題発覚) → Phase 2.α entry handoff §D 再起案
+- **「同じ穴」事例 record** (= 2026-06-06 5 連続落ち):
+  - 案 Y (= blueprint 完全廃止) AYA 指示 #5 違反で撤回
+  - 案 Z (= class*/ + cinematic_bd/ 入力切替) parse error 第 1 階層発覚で撤回
+  - 案 Z' (= 案 Z + C++ runtime emulation 層追加) parse error 第 2 階層発覚で撤回
+  - 案 X (= blueprint dir = codegen 入力 source of truth) **確定** = blueprint dir 単独走行で 94 UBO emit + dump file なし + parse error 0 件 evidence、設計 doc 04 §2.2 literal 誤り訂正、AYA 指示 #5 真意 = source of truth 保護指示
+  - memory `feedback_root_cause_no_shortcuts` §11 + §12 適用 (= 自走精査網羅性 checklist 4 件 + sandbox 実証 protocol + 採否ご判断ください禁忌 + subagent 結果盲信禁止 + 設計 doc literal 誤り疑念)
 
 手戻りは **失敗ではなく cycle の正常動作** (= memory `feedback_falsification_as_progress`)。
 
@@ -120,10 +164,10 @@ scope (= Phase 2.α entry handoff §D.6/§D.7 詳細 cross-ref、全 10 範囲):
 
 | 種別 | 内容 |
 |---|---|
-| 関連 commit | `64122994c1` (= Phase 2.α 案 Z 確定反映 doc 3 件) / `b66ec99f72` (= α-2 main.py + test 改修) / `db5cbcbc36` (= Phase 2.α 起案 + Phase 2.L0 freeze record) / `887ddb5341`〜`e5f57d57ff` (= sub-session 5 step 2-batch-0-a 7 commit、freeze 維持) |
-| 関連 doc (本 entry の主要参照先) | `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D (= 案 Z 確定 source of truth、§D.2 設計 doc 精査結果 + §D.6 5 改修 + §D.7 全件波及更新範囲 + §D.8 sub-session 5 整合) |
+| 関連 commit | **保持**: `64122994c1` (= 案 Z 履歴) / `b66ec99f72` (= α-2 main.py + test 改修、案 X phase F baseline) / `db5cbcbc36` (= Phase 2.α 起案 + freeze record) / `310d58b556` (= α-3 entry handoff 起案) / `887ddb5341`〜`e5f57d57ff` (= sub-session 5 step 2-batch-0-a 7 commit、freeze 維持)。 **revert 済**: `9c3b3f3d72` / `a97b3e1b6b` / `9abae83730` / `bfacb1f50f` / `246535626e` / `862f9cb983` (= 案 Z'+ 6 件、revert `df38b7c994` で base state 復元)。 **案 X 確定 commit**: `df38b7c994` (= phase A) / `f95182ded5` (= phase B blueprint README 全面書換) |
+| 関連 doc (本 entry の主要参照先) | `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` **§D.9 (= 案 X 確定 source of truth、§D.9.1 4-5 件目発火経緯 + §D.9.2 blueprint dir 単独走行 evidence + §D.9.3 設計 doc 04 §2.2 literal 誤り発覚 + §D.9.4 案 Y/Z/Z' 撤回 + 案 X 確定経緯 + §D.9.5 6 commit revert + §D.9.6 案 X 改修方針 9 件 + §D.9.7 全件波及更新範囲 10 件 + §D.9.8 既保持 commit 整合性 + §D.9.9 §11+§12 反省)** + §D (= 案 Z 履歴) |
 | 関連 doc (Phase 2.L0 freeze) | `handoff/phase2/audit/handoff-phase2-l0-1-C-step2-batch-0-a-entry.md` §C (= sub-session 5 freeze record) + `handoff/phase2/audit/handoff-phase2-l0-1-C-step2-pre2-mapping.md` §C (= step 2-pre2 freeze record + §5.1 80 slot alphabetical sort literal、α-3 codegen verify 時の expected 値 source) |
-| 関連 source (改修対象) | `indra/cmake/AyaUboCodegen.cmake` (= 改修 1) + `indra/newview/app_settings/shaders/aya_r41_blueprints/README.md` (新規、改修 3) + 設計 doc 4 件 + per-UBO doc 80+ 件 + source code 5 file (= 波及 doc) |
+| 関連 source (改修対象、案 X) | **既 commit 保持/復元**: `indra/cmake/AyaUboCodegen.cmake` (= `BLUEPRINT_DIR` 復元、base state) + `aya_r41_blueprints/README.md` (= phase B commit `f95182ded5` 全面書換) + `scripts/ubo_codegen/main.py` (= α-2 commit `b66ec99f72`)。 **案 X 新規/拡張**: 設計 doc 5 件 (= 04 §2.2 literal 訂正等、phase D) + blueprint dir 内 7 UBO 14 file 同期書換 (= phase E) + main.py `_verify_block_match` 拡張 + `--verify-target-paths` option (= phase F) + per-UBO doc 80+ 件 + inventory + WORK_ORDER 等 (= phase G) |
 | 関連 memory | (本 doc §2.3 cross-ref) |
 | 本 doc | α-3 着手 entry handoff、commit 候補 (= AYA literal 指示後のみ) |
 
@@ -133,11 +177,11 @@ scope (= Phase 2.α entry handoff §D.6/§D.7 詳細 cross-ref、全 10 範囲):
 
 **Phase 2.α α-2 完了 commit `b66ec99f72` + AYA literal「別セッションで α-3 進めて」(= 2026-06-06) = 自然な session 境界**。次 session で **/clear → 本 handoff doc + 必読 3 件 cold read → α-3 sub-step 1 (= aya_r41_blueprints/README.md 新規追加) 着手** を推奨。
 
-**本 session 引継ぎ事項**:
-- 本 handoff doc commit 候補 (= AYA literal 指示後、本 session 内 commit 想定)
-- 次 session 初手 AYA 確認 = なし (= AYA literal 既発令で着手承認済、memory `feedback_root_cause_no_shortcuts` §9)
-- α-3 完了後 = α-4 cold launch validation (= AYA 立ち会い別 session、α-3 完了 commit 後に α-4 着手 entry handoff 別起案 OR 本 doc §3 表内 #5 で記載済の検証 protocol を α-4 で展開)
-- Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`) は **freeze 維持** (= class*/ + cinematic_bd/ 14 file 改修済、Phase 2.α 完了後 cold launch + AYA live verify で resume)
-- memory 4 件 (= 新規 `feedback_root_cause_no_shortcuts` + 拡張 `feedback_design_doc_number_literal_verify` + 拡張 `feedback_doubt_self_first` §5 + 拡張 `feedback_root_cause_no_shortcuts` §8/§9/§10) は本 session 起案済、次 session 開始時 MEMORY.md index で確認
+**本 session 引継ぎ事項** (= 案 X 確定後の record):
+- 本 session 内 phase A-C 完了 commit = `df38b7c994` (= revert) + `f95182ded5` (= blueprint README) + 本 sub-step commit (= handoff doc 2 件改訂)
+- 次 session 初手 AYA 確認 = なし (= AYA literal 既発令で着手承認済、memory `feedback_root_cause_no_shortcuts` §9 / §11 / §12)
+- α-3 完了後 = α-4 cold launch validation (= AYA 立ち会い別 session、α-3 完了 commit 後に α-4 着手 entry handoff 別起案 OR 本 doc §3.7 phase G verify protocol を α-4 で展開)
+- Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`) は **freeze 維持** (= class*/ + cinematic_bd/ 14 file 改修済、案 X phase E で blueprint dir 側 14 file 同期書換実施、Phase 2.α 完了後 cold launch + AYA live verify で resume)
+- memory 6 件 (= 新規 `feedback_root_cause_no_shortcuts` + 拡張 `feedback_design_doc_number_literal_verify` + 拡張 `feedback_doubt_self_first` §5 + 拡張 `feedback_root_cause_no_shortcuts` §8/§9/§10 + 拡張 §11 (= 自走精査網羅性 checklist 4 件) + 拡張 §12 (= sandbox 実証 protocol + 採否ご判断ください禁忌 + subagent 結果盲信禁止 + 設計 doc literal 誤り疑念)) は本 session 起案済、次 session 開始時 MEMORY.md index で確認
 
-**次 session 着手 1 手目**: §2.1 必読 3 件 cold read → §3 sub-step 1 (= aya_r41_blueprints/README.md 新規追加) 着手、各 sub-step 完了報告で AYA literal commit 指示受領後 commit。
+**次 session 着手 1 手目 (= 案 X 採用後)**: §2.1 必読 3 件 cold read + entry handoff §D.9 案 X source of truth 確認 → §3.1-§3.3 phase A-C 完了確認 → §3.4 phase D (= 設計 doc 5 件改修 = 04 §2.2 literal 訂正 + 案 Z'+ § revert 確認 + 09/10 案 X 反映) 着手、各 sub-step 完了報告で AYA literal commit 指示受領後 commit。
