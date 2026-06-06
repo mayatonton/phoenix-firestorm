@@ -47,7 +47,7 @@ vec4 getWaterFogView(vec3 pos);
 // set=2 binding=15 共有、host 側は 1 回 bind で両 stage が参照)
 #ifndef PER_PROGRAM_UBO_WATER_HAZE_V_DEFINED
 #define PER_PROGRAM_UBO_WATER_HAZE_V_DEFINED 1
-layout(set=2, binding=15, std140) uniform PerProgramUBO_WaterHazeV {
+layout(set=1, binding=55, std140) uniform PerProgramUBO_WaterHazeV {
     int   above_water;
     float _pad_waterhaze0;
     float _pad_waterhaze1;

@@ -83,7 +83,7 @@ uniform vec4 waterPlane;
 // r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-28 Phase 2a: PerProgramUBO_WaterHazeV (η-3 §3.2 PerDrawUBO 派生範式)
 #ifndef PER_PROGRAM_UBO_WATER_HAZE_V_DEFINED
 #define PER_PROGRAM_UBO_WATER_HAZE_V_DEFINED 1
-layout(set=2, binding=15, std140) uniform PerProgramUBO_WaterHazeV {
+layout(set=1, binding=55, std140) uniform PerProgramUBO_WaterHazeV {
     int   above_water;
     float _pad_waterhaze0;
     float _pad_waterhaze1;
