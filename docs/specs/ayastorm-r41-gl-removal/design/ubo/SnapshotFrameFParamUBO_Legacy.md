@@ -167,3 +167,22 @@ OS-1〜OS-10 gate 照合:
 6. **同 shader consume UBO 完全特定** = class1/post/snapshotFrameF.glsl 内同時 consume UBO 群 (= grep verify 要)
 
 = 上記 6 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.5 同期)
+
+**Layer**: L3-5 (= B Tier β setter 推定済、PerProgram cadence、snapshot UI border)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.5` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: snapshot UI floater (= `LLSnapshotFloater` / `llsnapshotlivepreview.cpp`) 内 setter call site [要追加調査] / snapshot UI 起動 timing [要 verify]
+- **(3) 調査手法**: D1 (`frame_rect` / `border_color` / `border_thickness` setter grep) + D2 (snapshot UI floater 構造)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `snapshotFrameF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-5、工数 **S** (= UI 起動 timing 確認含む)、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= snapshot UI 起動時 border 描画既存と同一、AYA r30 撮影描画章関連、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `snapshotFrameF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / AYA r30 撮影描画章 (= memory `project_ayastorm_r30_cinematic_chapter`)

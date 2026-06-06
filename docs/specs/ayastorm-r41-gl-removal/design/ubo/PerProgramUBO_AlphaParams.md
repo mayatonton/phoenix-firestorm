@@ -159,3 +159,22 @@ layout(std140, set = 2, binding = 3) uniform PerProgramUBO_AlphaParams
 ### §11.7 bind 順序関係
 
 - PerProgram cadence ゆえ program bind 時 flush + set=2 binding 構成内に常駐
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.1 同期)
+
+**Layer**: L3-1 (= B Tier β setter 推定済、PerProgram cadence、1 active member near_clip)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.1` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: `NEAR_CLIP` uniform 書込 site (= grep 要) [要追加調査] / `LLViewerCamera::getNear()` data source verify [要 verify]
+- **(3) 調査手法**: D1 (`LLShaderMgr::NEAR_CLIP` setter grep) + D2 (`LLViewerCamera` near plane state)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram cadence triple-buffer / `forwardToUboUpload` PER_PROGRAM case / program bind 単位 flush / `alphaV.glsl` `#ifdef LL_VULKAN_GLSL` block 活性化)
+- **(5) 工程**: trace L3-1、工数 **S** (= 数時間)、L3-2〜L3-9 並列可
+- **(6) A 確定**: setter 通電 + Vulkan validation 0 + AYA live verify (= alpha pass visual 既存と同一、**visual regression ゼロ §5.4**)
+- **(7) 4 原則 gate**: 全 ✅ (= L3 全件共通)、原則 4 = `alphaV.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 (= WORK_ORDER §2) / §5.4 visual regression policy / L1a-1 ClipF (= PerProgram cadence + manip pilot 経路 reference)

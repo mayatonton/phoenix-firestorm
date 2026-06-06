@@ -181,3 +181,22 @@ OS-1〜OS-10 gate 照合 (= memory `project_r41_phase2_4_principles` 原則 2):
 7. **OpenGL 経路 `#else` block の dead `seconds60` host setter 不在** = 上流 OpenGL コードでも setter が無いか (= grep verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消、確定後に「不明」記載削除 + 確定 literal 追記。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.14 同期)
+
+**Layer**: L3-14 (= B Tier β setter 推定済、PerProgram cadence、godray pipeline)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.14` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: godray cvar setter site (= `pipeline.cpp doRenderGodrays`) [要追加調査] / `seconds60` BD legacy dead 確認 (= UBO 起電時に 0 値 write OK か) [要 verify] / godray cvar 全件 (RenderGodraysRes / Multiplier / FalloffMultiplier) verify [要 verify]
+- **(3) 調査手法**: D1 (`GODRAY_RES` / `GODRAY_MULTIPLIER` / `FALLOFF_MULTIPLIER` setter grep) + D2 (`doRenderGodrays` 構造)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `volumetricLightF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-14、工数 **S-M**、L3-15 (godrays F) 並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= volumetric godray 描画既存と同一、AYA r15 連動、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `volumetricLightF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L3-15 GodraysF (= godray pipeline pair) / AYA r15 章

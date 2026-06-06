@@ -154,3 +154,22 @@ layout(std140, set = 3, binding = 28) uniform ScreenSpaceReflPostFParamUBO_Legac
 7. **同 post-process 内の他 zNear/zFar 使用 UBO** = 重複設計か独立か (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.3 同期)
+
+**Layer**: L3-3 (= B Tier β setter 推定済、PerProgram cadence、SSR zNear/zFar)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.3` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: `zNear` / `zFar` setter (= `LLViewerCamera::getNear()/getFar()` 由来明示) [要追加調査] / FrameViewProj から derive 可能性 (= 重複 owner risk) [要 verify]
+- **(3) 調査手法**: D1 (`zNear` / `zFar` setter grep) + D4 (FrameViewProj との重複 owner verify)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `screenSpaceReflPostF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-3、工数 **S**、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= SSR effect 既存と同一、glass 限定で勝つ既存挙動維持、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `screenSpaceReflPostF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / FrameViewProj (= 重複 owner risk verify) / memory `project_transparent_ssao_ssr_no_work` (= SSR no scheduled work)

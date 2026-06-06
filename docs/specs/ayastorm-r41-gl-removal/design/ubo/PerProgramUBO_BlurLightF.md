@@ -167,3 +167,22 @@ layout(std140, set = 2, binding = 22) uniform PerProgramUBO_BlurLightF
 ### §11.7 bind 順序関係
 
 - PerProgram cadence ゆえ blurLightF program bind 時 flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.13 同期)
+
+**Layer**: L3-13 (= B Tier β setter 推定済、PerProgram cadence、SSAO blur kernel)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.13` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence + L2-2 完了 (= AOUtil 経路 pattern 確立)
+- **(2) 不明事項**: SSAO blur kernel setter site (= `LLPipeline::doSSAO` 等候補) [要追加調査] / AOUtil / SoftenLight との data source 共有可能性 [要 verify]
+- **(3) 調査手法**: D1 (`blur_size` / `kern` / `dist_factor` setter grep) + D4 (AOUtil / SoftenLight との data 共有 verify)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `blurLightF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-13 (= L2-2 後)、工数 **S-M**、L3 内独立並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= SSAO blur 効果既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `blurLightF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L2-2 AOUtil (= 経路 pattern + data 共有) / L3-17 SoftenLight (= data 共有候補)

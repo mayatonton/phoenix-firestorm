@@ -199,3 +199,22 @@ OS-1〜OS-10 gate 照合:
 7. **同 shader consume UBO 完全特定** = class3/deferred/softenLightF.glsl 内同時 consume UBO 群 (= grep verify 要、memory `reference_deferred_shader_routing` 参照)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.17 同期)
+
+**Layer**: L3-17 (= B Tier β setter 推定済、PerProgram cadence、AYAstorm translucency + SSAO + blur)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.17` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence + L2-2 完了 (= AOUtil 経路 pattern 確立)
+- **(2) 不明事項**: AYAstorm 独自 host setter 経路 [要追加調査] / AOUtilParamUBO_Legacy / GaussianFParamUBO_Legacy / DeferredUtilParamUBO_Legacy と data source 共有可能性 [要 verify] / member_count 表記揺れ (= metadata=8 vs blueprint=9) [要 verify]
+- **(3) 調査手法**: D1 (`aya_translucency_params` / `aya_translucency_tint` / `blur_size` / `blur_fidelity` / `ssao_irradiance_*` / `ssao_effect_mat` setter grep) + D4 (AOUtil / Gaussian / DeferredUtil との data 共有 verify)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `softenLightF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-17、工数 **M** (= AYAstorm 独自 + AOUtil 関係 verify)、AYAstorm r14+ 視覚表現機能維持必須
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= AYAstorm translucency 効果 + SSAO 既存と同一、frag_color.a=0 維持確認 (memory `project_aya_visual_realism_alpha_protect`)、AYAstorm 視覚表現章機能維持、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `softenLightF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L2-2 AOUtil / L3-13 BlurLightF (= SSAO data 共有候補) / AYA r14+ 章 (= memory)

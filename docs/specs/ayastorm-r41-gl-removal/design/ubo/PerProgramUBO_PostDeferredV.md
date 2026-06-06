@@ -179,3 +179,22 @@ OS-1〜OS-10 gate 照合:
 7. **postDeferredV ↔ postDeferredF program pair 関係** = V/F が同 program に bind されるか、別 program か (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.2 同期)
+
+**Layer**: L3-2 (= B Tier β setter 推定済、PerProgram cadence、1 active vec2 tc_scale)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.2` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: `tc_scale` 直接 setter (= `FXAA_TC_SCALE` 共有か別 enum か) [要追加調査] / postDeferredV/F program pair 関係 [要 verify] / `_pad_pdv0` vec2 将来 member 追加意図 [要 verify]
+- **(3) 調査手法**: D1 (`FXAA_TC_SCALE` setter grep + `tc_scale` 直接 grep)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `postDeferredV.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-2、工数 **S**、L3-1 / L3-3〜L3-9 並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= post-deferred V pass 描画既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `postDeferredV.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L3-11 FxaaF (= FXAA_TC_SCALE 共有候補)

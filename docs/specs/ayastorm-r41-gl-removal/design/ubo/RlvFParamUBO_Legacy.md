@@ -172,3 +172,22 @@ layout(std140, set = 3, binding = 56) uniform RlvFParamUBO_Legacy
 7. **RLVa 機能 default OFF / ON** = AYAstorm における RLVa default 値 (= memory `project_ayastorm_rlv_user_base` で AYA 自身は不使用とあるが viewer 側 default OFF か ON か verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.18 同期)
+
+**Layer**: L3-18 (= B Tier β setter 推定済、PerProgram cadence、RLVa Sphere effect)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.18` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: `RlvHandler` / `RlvActions` 内 sphere effect uniform 書込 site [要追加調査] / `ESphereMode` enum 定義 [要 verify] / `rlvEffectParam3_uvec` bvec2→uvec2 promote cast 整合 [要 verify] / RLV 機能維持 (memory `project_ayastorm_rlv_user_base`) **[要 AYA 判断 = 機能維持必須]**
+- **(3) 調査手法**: D1 (`rlvEffectParam1/2/4/5` / `rlvEffectMode` setter grep + `RlvHandler` / `RlvActions` 内 sphere effect 関連 grep) + D4 (uvec2 promote cast 整合)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `rlvF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-18、工数 **M** (= RLVa core 調査 + uvec2 promote verify)、AYAstorm RLV ユーザー機能維持必須
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= RLVa Sphere effect (blur/blend/color overlay) 既存と同一、RLV ヘビーユーザー機能維持、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `rlvF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / `RlvHandler` / `RlvActions` (= setter 経路) / memory `project_ayastorm_rlv_user_base`

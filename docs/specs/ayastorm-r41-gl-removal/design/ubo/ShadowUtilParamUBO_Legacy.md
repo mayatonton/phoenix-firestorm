@@ -186,3 +186,22 @@ layout(std140, set = 3, binding = 7) uniform ShadowUtilParamUBO_Legacy
 7. **cadence 設計再検討** = PerProgram vs PerFrame、Phase 2 で再評価余地
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.19 同期)
+
+**Layer**: L3-19 (= B Tier β setter 推定済、PerProgram cadence、shadow_matrix[6] + bias/offset、最大 size 512 B)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.19` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence (= cadence 妥当性 verify: PerFrame 候補)
+- **(2) 不明事項**: 9 setter site (= `LLPipeline::generateSunShadow` + shadow_bias / offset / softness cvar 等) [要追加調査] / shadow_matrix order (= sun cascade 4 + spot 2 順序) [要 verify] / cinematic_bd multi-site identical 同期 [要 verify] / cadence (PerProgram vs PerFrame) 再評価 [要 L0-4 結果反映] / memory `project_bd_biaserror_pitfall` 整合 [要 AYA 判断]
+- **(3) 調査手法**: D1 (`shadow_matrix` / `shadow_bias` / `shadow_offset` / `shadow_softness` / `spot_shadow_bias/offset` setter grep + `LLPipeline::generateSunShadow` 内 setter) + D3 (cadence 再評価) + D4 (cinematic_bd 同期)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `shadowUtil.glsl` + `cinematic_bd/...` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-19、工数 **M** (= 9 setter + shared include + cadence 再評価)、shadow render 全 program 共有ゆえ広範影響
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= sun shadow 4 cascade + spot shadow 描画既存と同一、shadow bias 既存挙動維持、BD shadow_bias pitfall 整合、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `shadowUtil.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / `LLPipeline::generateSunShadow` (= 主 setter dispatcher) / memory `project_bd_biaserror_pitfall` / cinematic_bd shared include

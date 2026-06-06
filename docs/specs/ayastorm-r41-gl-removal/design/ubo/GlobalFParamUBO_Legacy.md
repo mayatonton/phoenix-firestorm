@@ -166,3 +166,22 @@ layout(std140, set = 3, binding = 11) uniform GlobalFParamUBO_Legacy
 5. **clipSign vs ClipFParamUBO_Legacy** = 別 UBO (= `ubo_metadata.inl:34` `ClipFParamUBO_Legacy` set=3 binding=32) との clip plane 機能重複の整理 (= verify 要)
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.20 同期)
+
+**Layer**: L3-20 (= B Tier β setter 推定済、PerProgram cadence、mirror_flag/clipSign、**shell + write 経路通電済**)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、shell + write 通電済 = Phase 1.A PA-8 + 1.C PC-7γ-1)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.20` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence (= 既 shell + write 経路通電済、L1a-1 pilot 経路と同様 cold launch verify)
+- **(2) 不明事項**: `MIRROR_FLAG` / `CLIP_SIGN` 実 setter call site (= `LLHeroProbeManager::isMirrorPass()` 経由推定) [要追加調査] / mirror pass setup 経路 [要 verify] / `clipSign` vs ClipFParamUBO_Legacy 機能重複整理 [要 AYA 判断]
+- **(3) 調査手法**: D1 (`MIRROR_FLAG` / `CLIP_SIGN` setter grep + `LLHeroProbeManager` 内 mirror state grep) + D4 (ClipFParamUBO_Legacy との機能重複 verify)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `globalF.glsl` + `pbropaqueF.glsl` LL_VULKAN_GLSL 活性化、既 shell + write 通電済ゆえ setter 行特定のみ)
+- **(5) 工程**: trace L3-20 (= L3 締め、shell 通電済で cold launch verify のみ)、工数 **S** (= 既通電、setter 行特定のみ)、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= mirror pass + reflection clip 描画既存と同一、visual regression ゼロ §5.4) + ClipFParamUBO_Legacy 機能重複整理 (= AYA 判断)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `globalF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L1a-1 ClipFParamUBO_Legacy (= clipSign 機能重複整理対象) / `LLHeroProbeManager` (= mirror pass dispatcher)

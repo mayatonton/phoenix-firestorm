@@ -193,3 +193,22 @@ OS-1〜OS-10 gate 照合 (= memory `project_r41_phase2_4_principles` 原則 2):
 7. **AYAR15GodraysInCinematicEnabled と本 UBO の relation** = cinematic gate が本 UBO の write/flush 経路を gate するか、それとも shader dispatch のみ gate するか (= `pipeline.cpp:5357 / 11819` verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消、確定後に「不明」記載削除 + 確定 literal 追記。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.15 同期)
+
+**Layer**: L3-15 (= B Tier β setter 推定済、PerProgram cadence、AYAstorm r15 godray cvar 3 件)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.15` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: AYAstorm r15 cvar setter (= `pipeline.cpp:5357` `aya_r15_in_cinematic` 周辺 + direct cvar 読出) [要追加調査] / shader `// offset 0/16/32 + 12 pad` vs codegen packed 整合 [要 verify]
+- **(3) 調査手法**: D1 (`aya_r15_godrays_enabled` / `_phase_exponent` / `_strength` setter grep) + D4 (shader vs codegen offset 整合)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `godraysF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-15、工数 **S-M**、L3-14 並列可、AYA r15 既存機能維持必須 (= memory `project_ayastorm_r30_bd_improvement_phase`)
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= godray 描画 + 強度・位相既存と同一、AYA r15 章機能維持、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `godraysF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L3-14 VolumetricLightF (= godray pipeline pair) / AYA r15 章 (= memory)

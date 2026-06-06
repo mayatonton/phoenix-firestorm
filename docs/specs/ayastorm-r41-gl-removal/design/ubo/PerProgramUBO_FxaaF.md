@@ -157,3 +157,22 @@ layout(std140, set = 2, binding = 9) uniform PerProgramUBO_FxaaF
 ### §11.7 bind 順序関係
 
 - PerProgram cadence ゆえ fxaaF program bind 時 flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.11 同期)
+
+**Layer**: L3-11 (= B Tier β setter 推定済、PerProgram cadence、NVIDIA FXAA constant)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.11` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: FXAA constant setter (= `LLPipeline::renderFXAA` 内) [要追加調査] / viewport resize trigger (= window resize 連動) [要 verify]
+- **(3) 調査手法**: D1 (`rcp_screen_res` / `rcp_frame_opt` / `rcp_frame_opt2` setter grep) + D2 (`LLPipeline::renderFXAA` 構造)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `fxaaF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-11、工数 **S-M** (= FXAA pass 経路確認)、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= FXAA antialiasing 効果既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `fxaaF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L3-2 PostDeferredV (= FXAA_TC_SCALE 共有候補)

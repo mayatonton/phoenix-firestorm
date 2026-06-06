@@ -166,3 +166,22 @@ layout(std140, set = 3, binding = 40) uniform PreviewVParamUBO_Legacy
 7. **previewV.glsl `_param_ubo_legacy` suffix の意味** = Legacy 標記の意味 (= 既存 OpenGL bare uniform pattern からの UBO 化、verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.16 同期)
+
+**Layer**: L3-16 (= B Tier β setter 推定済、PerProgram cadence、preview render light array 768 B 大物)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.16` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: preview render pipeline setter (= `LLImageGL` preview / `LLViewerObject` preview / texture preview UI) [要追加調査] / 8-light fixed array 上限 [要 verify] / 768 B 大物 UBO の ring buffer 配置 [要 verify]
+- **(3) 調査手法**: D1 (preview program setter grep) + D2 (`LLFloater*Preview` 構造) + D4 (8 array stride 整合)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `previewV.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-16、工数 **M** (= 大物 UBO + 4 array setter 多数)、L3-17/18/19/20 並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= preview render (= inventory item / texture preview) 既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `previewV.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / `LLFloater*Preview` (= inventory item / texture preview 経路)

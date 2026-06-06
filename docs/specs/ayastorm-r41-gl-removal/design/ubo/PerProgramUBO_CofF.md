@@ -165,3 +165,22 @@ layout(std140, set = 2, binding = 21) uniform PerProgramUBO_CofF
 ### §11.7 bind 順序関係
 
 - PerProgram cadence ゆえ cofF program bind 時 flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.12 同期)
+
+**Layer**: L3-12 (= B Tier β setter 推定済、PerProgram cadence、DoF Circle of Confusion 6 active)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.12` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: DoF CoF parameter setter site (= `LLPipeline::generateExposure` / `renderDoF` 推定) [要追加調査] / focus / fov 変化 dirty trigger [要 verify] / 透過 DoF 構造制約 (memory `project_transparent_dof_design_constraint`) との整合 [要 AYA 判断]
+- **(3) 調査手法**: D1 (`depth_cutoff` / `focal_distance` / `blur_constant` 等 setter grep) + D2 (`LLPipeline::renderDoF` 構造)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `cofF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-12、工数 **S-M** (= 6 setter 特定 + focus trigger verify)、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= DoF CoF computation 既存と同一、focus pull 動作 visual 同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `cofF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L3-6 DofCombine (= data source 共有候補) / memory `project_transparent_dof_design_constraint`

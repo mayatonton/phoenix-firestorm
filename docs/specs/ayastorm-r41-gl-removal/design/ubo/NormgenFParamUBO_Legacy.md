@@ -168,3 +168,22 @@ layout(set=3, binding=33, std140) uniform NormgenFParamUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - normgen program 切替時 set=3 帯全 binding を一括 rebind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.7 同期)
+
+**Layer**: L3-7 (= B Tier β setter 推定済、PerProgram cadence、bump-to-normal generation)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.7` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: bump-to-normal 生成 dispatcher (= `LLBumpImageList::onSourceLoaded` 候補) [要追加調査] / `stepX/stepY` setter site [要追加調査] / `bump_code` enum 値域 [要 verify]
+- **(3) 調査手法**: D1 (`LLBumpImageList` 内 setter grep + `bump_code` / `norm_scale` / `stepX` / `stepY` uniform setter site)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `normgenF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-7、工数 **S** (= texture upload trigger 確認)、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= bump material 描画既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `normgenF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / `LLBumpImageList` (= texture upload trigger dispatcher)

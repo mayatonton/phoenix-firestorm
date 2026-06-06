@@ -3385,17 +3385,170 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 
 ---
 
-## §4. 4 原則 gate 整合 + violation 検知 protocol
+## §4. 4 原則 gate 整合 + visual regression ゼロ + violation 検知 protocol
 
-[**C-8 で起案 (= 全 §完成後の総仕上げ)**]
+**起源**: AYA literal 確定 2026-06-06 (= memory `project_r41_phase2_4_principles`、本 design session 内 record)。Phase 2 以降の全 Phase + r42 milestone まで継続遵守。
 
-予定構成:
-- §4.1 原則 1: Core プロセス分散実現 (= C1-C6 設計制約)
-- §4.2 原則 2: 3 OS 共通 (= OS-1〜OS-10 gate)
-- §4.3 原則 3: Phase 2/3 範囲明確 (= Template A R3-R6 所属)
-- §4.4 原則 4: OpenGL を殺さない (= O3-2 採用、r41 dual-path 出荷、OpenGL 撤廃は r42 移管)
-- §4.5 各項目評価 protocol = sub-work (7) で全 94 項目逐次 check
-- §4.6 violation 検知時の対応 = 提案撤回 / 設計再考 / AYA literal 確認
+**位置付け**: 本 §4 = WORK_ORDER 全 94 UBO の **sub-work (7) 4 原則 gate 評価軸 normative 定義**。L0 横断 protocol 4 件 + L1〜L5 全 94 UBO 各項目で sub-work (7) を本 §4 の 4 原則 + 視覚 regression ゼロ + violation 検知 protocol に照らして評価。
+
+### §4.1 原則 1: Core プロセス分散を意識した設計を維持 (= C1-C6 設計制約)
+
+**根拠**: r41 Vulkan 化の根幹方針 (= memory `project_ayastorm_r41_design_principles` (2) Core 分散) の Phase 2 具体化。Phase 1.E PC-N-15a/b で確立した worker thread baseline (= `LLUboRingBuffer` per-thread + per-thread `VkCommandPool` + secondary cmdbuf + `LL::WorkQueue`) を Phase 2..K で意図せず破壊しない、r42 milestone での worker thread default ON 化を後付け可能な設計を維持。
+
+**6 件 gate**:
+
+| gate | 内容 | 検知点 |
+|---|---|---|
+| **C1** | UBO 書込は thread-local accessor 経由のみ (= `sCurrentAsset` / `sCurrentSkin` / `sCurrentPrimitive` / `sCurrentNodeAssetMatrix`)、global state 直書き禁止 | sub-work (4) write 経路設計 |
+| **C2** | dirty flag + ring buffer は per-thread `LLUboRingBuffer` instance 内、shared mutable state 回避 | sub-work (4) register/flush 経路設計 |
+| **C3** | UBO flush は secondary cmdbuf 内のみ (= `PcN14WorkerContext::mSecondaryCmdBuf` 経由)、primary cmdbuf 直書き禁止 | sub-work (4) flush 経路設計 |
+| **C4** | descriptor set bind は per-thread cmdbuf 内のみ | sub-work (4) flush 経路設計 |
+| **C5** | shared 書込は mutex 保護必須 (= `sPcn13MultiAssetSeenMutex` pattern)、可能な限り per-thread instance 化優先 | sub-work (4) write 経路設計 + (2) 不明事項 |
+| **C6** | call site API (= `recordGltfAssetDraw` / `recordAvatarPlaceholderDraw` / `writeDrawUbo` / `writeSkinUbo` / `bindV3aStatic` / `bindV3aRigged` signature) 不変維持 | sub-work (4) write 経路設計 (= host C++ 既存 setter call site 温存) |
+
+**sub-work (7) 評価**: 各 UBO で C1-C6 各 gate を **✅ / [要追加調査] / [要 AYA 判断] / violation** で逐次判定。violation 検知時は §4.7 protocol 適用。
+
+### §4.2 原則 2: 3 OS が同じ処理で動く実装 (= OS-1〜OS-10 gate)
+
+**根拠**: 3 OS (Linux / Windows / macOS) 同一 source compile + 同一動作前提 (= memory `project_ayastorm_three_platforms`)。OS 別分岐 code 追加禁止 (= MoltenVK 固有 hack / Windows driver 固有 workaround 等)。
+
+**10 件 gate**:
+
+| gate | 内容 | 検知点 |
+|---|---|---|
+| **OS-1** | Vulkan core spec 1.3 範囲内のみ使用、独自 extension 追加禁止 | sub-work (4) shader 接続 + register 経路設計 |
+| **OS-2** | descriptor set 数 5 維持 (= Phase 1.A 確立)、新 set 帯追加禁止 (= MoltenVK Argument Buffer Tier 2 制約整合) | sub-work (4) register 経路設計 + (2) 不明事項 |
+| **OS-3** | std140 padding 厳守 (= chapter 08 §6.4) + offset 二重保証 (= SPIR-V reflection + 独自 calculator 照合) | sub-work (4) register 経路設計 + (3) D4 layout 突合 |
+| **OS-4** | buffer alignment は `minUniformBufferOffsetAlignment` query 結果使用、hard-code 256 等禁止 | sub-work (4) register 経路設計 |
+| **OS-5** | shader 改変ゼロ維持 (= 既存 PBR shader 流用、新 shader 追加禁止) | sub-work (4) shader 接続 経路設計 |
+| **OS-6** | `vkCmdUpdateBuffer` size 65536 B 厳守、超過は staging buffer 経由 | sub-work (4) flush 経路設計 |
+| **OS-7** | Linux validation layer warnings 0 件 (= Phase X.C Exit 必須) | sub-work (6) A 確定条件 cold launch validation |
+| **OS-8** | threading は `std::thread` + `std::mutex` + `std::atomic` + `thread_local` のみ、lock-free 自前実装禁止 | sub-work (4) write/flush 経路設計 |
+| **OS-9** | OS 固有 path / dlopen / driver-specific code 不混入 | sub-work (4) 全経路 + (3) 調査手法 |
+| **OS-10** | PC-N-15a 確立 infra (= `LLUboRingBuffer` + per-thread `VkCommandPool` + secondary cmdbuf) の API 不変、既 3 OS 想定動作を破壊しない | sub-work (4) 全経路 設計 |
+
+**sub-work (7) 評価**: 各 UBO で OS-1〜OS-10 各 gate を逐次判定。validation warnings 検知時は §4.7 protocol 適用。
+
+### §4.3 原則 3: Phase 2 と 3 の作業範囲を明確にして工程を予定 (= Template A R3-R6 所属確定 + O3-2 r42 移管)
+
+**根拠**: roadmap §5 詳細化 + handoff Phase 1.D/1.E pilot 先回り着手の本実装化を Phase 番号で明示分離。
+
+**Phase 範囲 (= R3-R6 Template A 順序)**:
+
+| Phase | R# | scope | 対象 UBO |
+|---|---|---|---|
+| **Phase 2** | R3 | UB_REFLECTION_PROBES 単独本実装 | `Global_ReflectionProbes` (= shell zero dummy → 実 reflection data) |
+| **Phase 3** | R4 + R5 bundle | UB_GLTF_MATERIALS per-asset 本実装 + 実 PBR shader 接続 + PerDrawUBO_LightParams 実内容 | `Asset_GLTFMaterials` + `PerDrawUBO_LightParams` (= zero IS real data → 実 light) |
+| **Phase 4** | - | UB_GLTF_NODES per-asset 本実装 | `Asset_GLTFNodes` |
+| **Phase 5** | R6 | UB_GLTF_JOINTS per-skin 本実装 + avatar Vulkan draw 通電 + sPlaceholderSkin 撤去 | `Skin_GLTFJoints` (= placeholder → 実 bone matrix) |
+| **Phase 6..K** | - | 残 UBO (= bare uniform 集約 + 最頻出 per-draw) | L1〜L5 残 94 UBO 順次 |
+
+**Phase 範囲 gate**:
+
+| gate | 内容 | 検知点 |
+|---|---|---|
+| **R-1** | (Q2) A = 1 UBO 厳守維持、cluster 例外なし (= 1 Phase 2-3 UBO 同 batch 禁止) | sub-work (5) 工程 task |
+| **R-2** | pilot 通電済 (Skin/Asset/LightParams) は Template A 順序に従って Phase 3/4/5 で本実装化 | sub-work (1) 前提条件 + (5) 工程 task |
+| **R-3** | sub-step 命名 = handoff sub-letter (= Phase X.A / X.B / X.C)、PC-N-* 体系は Phase 1.C/1.D/1.E で役目終了 | sub-work (5) 工程 task |
+| **R-4** | O3-2 採用 = OpenGL 撤廃は r42 milestone 後半 sub-phase に移管 (= 旧 Phase K+4 → r42-8) | sub-work (5) 工程 task + 原則 4 (§4.4) cross-reference |
+
+**sub-work (7) 評価**: 各 UBO で「所属 Phase 確定 / Phase 範囲 violation 無し」を確認。Template A 順序逸脱提案は §4.7 protocol 適用。
+
+### §4.4 原則 4: OpenGL を殺さない (= dual-path 出荷 + `mUseUBO` runtime flag)
+
+**根拠**: r41 milestone 内で OpenGL path 撤廃しない (= O3-2 採用)。同 binary 内 A/B 比較 + 同 environment 計測 + iteration cycle fallback + ユーザー fallback を r41 release 後も維持。
+
+**重要 design 決定** (= memory `project_r41_phase1b_vulkan_host_gate`):
+- **host C++ 側 redirect 層**: `mUseUBO` runtime flag のみで gate (= default false で OpenGL path 維持)
+- **`LL_VULKAN_GLSL` macro 不使用** (C++ context): `LL_VULKAN_GLSL` は GLSL preprocessor 専用 (= `llglslshader.cpp:1159` / `llshadermgr.cpp:543` で shader source concat 時のみ)。C++ で使うと dead code 化
+- **GLSL shader 側**: `#ifdef LL_VULKAN_GLSL` は引き続き有効 (= shader source 内の Vulkan-only block gate)
+
+**5 件 gate**:
+
+| gate | 内容 | 検知点 |
+|---|---|---|
+| **O-1** | r41 milestone Phase 2..K 内で OpenGL path 撤廃しない | sub-work (4) 全経路 設計 + (5) 工程 task |
+| **O-2** | r41 release は dual-path 出荷 (= `mUseUBO` runtime flag default OFF、OpenGL path 経路 fallback 提供) | sub-work (4) write/flush 経路設計 |
+| **O-3** | host C++ redirect 層 = `mUseUBO` runtime gate のみ、`#ifdef LL_VULKAN_GLSL` C++ 側不使用 | sub-work (4) write 経路設計 (= LLGLSLShader 内 setter 全件) |
+| **O-4** | GLSL shader 側 `#ifdef LL_VULKAN_GLSL` block 維持 (= 既存 OpenGL path uniform 宣言 + Vulkan UBO block の dual 並走) | sub-work (4) shader 接続 経路設計 |
+| **O-5** | OpenGL 撤廃は r42 milestone 後半 sub-phase 移管 (= r41 milestone scope 外) | sub-work (5) 工程 task |
+
+**sub-work (7) 評価**: 各 UBO で O-1〜O-5 各 gate を逐次判定。`mUseUBO=false` 経路で既存 visual 同一保証が崩れる提案は §4.7 protocol 適用 + §4.5 visual regression ゼロ違反として連動判定。
+
+### §4.5 visual regression ゼロ (= AYA literal 2026-06-06 追加条件、§5.4 policy 参照)
+
+**根拠**: AYA literal 2026-06-06「**現状の見た目とほぼ変わらない描画が望まれる**」。4 原則 (= Core 分散 / 3 OS 共通 / Phase 範囲 / OpenGL を殺さない) に加え、**visual regression ゼロ を Phase 2 全工程の必須条件** として全 94 UBO に追加適用。
+
+**4 件 gate** (= §5.4 policy 参照):
+
+| gate | 内容 | 検知点 |
+|---|---|---|
+| **V-1** | sub-work (6) A 確定条件 全件に「**visual regression ゼロ (= 現状の見た目とほぼ変わらない描画)**」を含む | sub-work (6) A 確定条件 |
+| **V-2** | L1a / L1b / L2 / L3 / L5 (= 個別 verify / 一括 verify) = 各 UBO 通電後 AYA live verify で確認 | sub-work (6) A 確定条件 |
+| **V-3** | L4 (= group verify) = group 全件通電後 AYA live verify で確認 (= group 完成前の部分通電 visual 不整合は許容、ただし出荷時 visual regression ゼロ) | sub-work (6) A 確定条件 + L4 group サマリ |
+| **V-4** | visual regression 検知時 = 該当 UBO の (4) 設計 task 見直し、(7) 4 原則 gate (= 特に原則 4 OpenGL を殺さない dual-path 維持) 再検証 | §4.7 violation 検知 protocol 連動 |
+
+**例外**: 既存 bug fix (= AYA 明示承認)、性能改善で visual 副作用が許容範囲 (= AYA 明示判断) のみ例外。
+
+**含意 (= L0 / L1-L5 横断)**:
+- L0-2 LLStaticHashedString redirect = **dual-write 経路必須** (= GL path 既存 uniform 設定維持で visual 同一保証)
+- L0-3 per-shader UBO block 拡大 = **`LL_VULKAN_GLSL` gate 必須** (= GL path 既存 uniform 宣言維持で visual 同一保証)
+- L0-4 cadence 再評価 = **stale 許容判断は visual regression risk を含めて判定** (= per-program stale で visual 副作用ゼロの厳格確認)
+- L4 C group 中間状態 = **group 完成前の部分通電 visual 不整合は許容、ただし出荷時 visual regression ゼロ**
+
+### §4.6 各項目評価 protocol (= sub-work (7) 全 94 項目逐次 check)
+
+**適用範囲**: L0 横断 protocol 4 件 + L1 (3) + L1b (2) + L2 (4) + L3 (20) + L4 (62) + L5 (3) = 全 94 UBO + L0 4 protocol、合計 98 件 sub-work (7) 評価。
+
+**評価軸 5 軸** (= §4.1-§4.5):
+
+| 軸 | 評価対象 gate 数 | 評価方式 |
+|---|---|---|
+| 原則 1 Core 分散 | C1-C6 = 6 件 | ✅ / [要追加調査] / [要 AYA 判断] / violation |
+| 原則 2 3 OS 共通 | OS-1〜OS-10 = 10 件 | ✅ / [要追加調査] / [要 AYA 判断] / violation |
+| 原則 3 Phase 範囲 | R-1〜R-4 = 4 件 | ✅ / [要追加調査] / [要 AYA 判断] / violation |
+| 原則 4 OpenGL 殺さない | O-1〜O-5 = 5 件 | ✅ / [要追加調査] / [要 AYA 判断] / violation |
+| 視覚 regression ゼロ | V-1〜V-4 = 4 件 | ✅ / [要追加調査] / [要 AYA 判断] / violation |
+
+**合計 29 gate / 94 UBO = 2726 件 + L0 4 件 = 2842 件 評価 cell**。本 §3.1-§3.6 各 UBO sub-work (7) で既に gate 評価記載済 (= L0 4 件 + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 件 起案完了)。
+
+**評価記載 protocol**:
+- 各 UBO sub-work (7) に **「原則 1 (= C1〜C6)」「原則 2 (= OS-1〜OS-10)」「原則 3 (= R-1〜R-4)」「原則 4 (= O-1〜O-5)」「視覚 regression ゼロ (= V-1〜V-4)」** 5 行記載
+- 各行で該当 gate 番号と ✅ / マーク + 簡潔注記
+- violation 検知時は §4.7 protocol 連動
+
+**完成 verify**: C-8 完了時に全 98 件 sub-work (7) 5 行記載確認 (= grep `^##### \(7\) 4 原則 gate` で 98 件 hit 確認)。
+
+### §4.7 violation 検知時の対応 protocol
+
+**3 stage 対応**:
+
+| stage | trigger | 対応 |
+|---|---|---|
+| **stage 1: 提案撤回** | sub-work 起案中に 4 原則 + 視覚 regression ゼロ 1 件以上 violation 検知 | 該当 sub-work (4) 設計 task 即時撤回、(2) 不明事項に violation 内容記載、別案検討 |
+| **stage 2: 設計再考** | 別案検討で 4 原則整合解 が見つからない | 該当 UBO 設計を Layer 1 段上から再考 (= L1-L5 所属 Layer 見直し、cadence 再分類検討、L0 protocol 修正検討) |
+| **stage 3: AYA literal 確認** | 設計再考でも 4 原則整合解 が見つからない場合の最終判断 | AYA literal 確認 (= 例外承認 / 設計大幅変更 / Phase 移管 / Phase 範囲再定義)、AYA literal record |
+
+**stage 別記載 marker**:
+- **[要追加調査]** = 不明事項発生、調査後再評価可能
+- **[要 AYA 判断]** = AYA literal 判断要、stage 3 即時 escalation
+- **violation** = 4 原則 / 視覚 regression ゼロ いずれか確定 violation、stage 1 即時撤回
+
+**AYA literal 確認 trigger 例** (= L0 §2.5 review + L4 group 内既出含む):
+1. set=3 binding 衝突 3 site 解消方針 (= L0-1 protocol-C、AYA 判断要)
+2. LLStaticHashedString mapping table 構築方式 (= L0-2 protocol-B、AYA 判断要)
+3. shader build pipeline preprocessor inject 方式 (= L0-3 protocol-B、AYA 判断要)
+4. cadence 再分類 strategy (= L0-4 protocol-B、AYA 判断要)
+5. upstream merge conflict 自動検出 strategy (= L0-3 protocol-D、AYA 判断要)
+6. sliced UBO 化が Phase 3 移管対象か Phase 2 内か (= L0-4 (7) 原則 3、AYA 判断要)
+7. L4 group cross-reference 設計判断 (= §3.5.17 L4 サマリ + 各 group sub-work (4))
+
+**violation 記録**: 全 violation 検知 record は WORK_ORDER.md sub-work (7) + 該当 UBO file §12 に同期記載 (= single source of truth = WORK_ORDER.md §3.N、§12 = 個別 UBO ナビゲーション)。
+
+**起案規律遵守 reference**:
+- memory `feedback_admit_unknown` (= 推論禁止、不明明示)
+- memory `feedback_no_scope_shrink` (= AYA literal scope 厳守、4 原則 violation 提案禁止)
+- memory `feedback_self_bug_no_defer_option` (= 自作 violation の「先送り/disable」を提案として並べない)
 
 ---
 

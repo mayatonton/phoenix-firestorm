@@ -182,3 +182,22 @@ layout(std140, set = 3, binding = 24) uniform DofCombineFParamUBO_Legacy
 
 - set=3 帯 bind は `bindV3aStatic` 経路 (= post-process pass は static draw)
 - DoF combine pass bind 時 PerProgram cadence triple-buffer flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.6 同期)
+
+**Layer**: L3-6 (= B Tier β setter 推定済、PerProgram cadence、DoF combine 3 float)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.6` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: `DOF_RES_SCALE` / `DOF_WIDTH` 実 setter site (= `pipeline.cpp` DoF combine pass 推定) [要追加調査] / `dof_height` reserved list 漏れ確認 [要 verify] / CASParamUBO_Legacy / PerProgramUBO_CofF と data source 共有可能性 [要 verify]
+- **(3) 調査手法**: D1 (`DOF_RES_SCALE` / `DOF_WIDTH` setter grep) + D4 (CAS / CofF と data source 共有 verify)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `dofCombineF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-6、工数 **S**、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= DoF combine pass 既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `dofCombineF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / CASParamUBO_Legacy + L3-12 CofF (= data source 共有候補)

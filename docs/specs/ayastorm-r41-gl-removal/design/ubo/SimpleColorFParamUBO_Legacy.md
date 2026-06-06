@@ -148,3 +148,22 @@ layout(std140, set = 3, binding = 41) uniform SimpleColorFParamUBO_Legacy
 7. **`waterSign` 名 / float -1/+1 値選定理由** = 上流 OpenGL 由来 (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.4 同期)
+
+**Layer**: L3-4 (= B Tier β setter 推定済、PerProgram cadence、1 member waterSign)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.4` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence
+- **(2) 不明事項**: `waterSign` setter (= camera Z vs water plane Z 判定実装) [要追加調査] / PerProgramUBO_WaterHazeV.above_water との data 共有候補 [要 verify] / 1 member の存在意義 [要 AYA 判断]
+- **(3) 調査手法**: D1 (`waterSign` setter grep) + D4 (`above_water` との data 共有 verify)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `simpleColorF.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-4、工数 **S**、並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= simple color pass の水中/水上判定 visual 既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `simpleColorF.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / PerProgramUBO_WaterHazeV (= above_water data 共有候補)

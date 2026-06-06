@@ -165,3 +165,22 @@ OS-1〜OS-10 gate 照合:
 6. **dirty 判定 trigger** = terrain texture binding 切替 / texgen settings 変更 event hook (= verify 要)
 
 = 上記 6 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.4.9 同期)
+
+**Layer**: L3-9 (= B Tier β setter 推定済、PerProgram cadence、terrain texgen 2 vec4)
+**status**: **起案済** (= 2026-06-06 C-5、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.4.9` (= single source of truth)
+
+**sub-work 7 dim 要点**:
+- **(1) 前提条件**: L0-1 dispatch + L0-4 cadence + L2-1 完了 (= terrain pool 経路 pattern 確立)
+- **(2) 不明事項**: `object_plane_s/t` setter (= LLDrawPoolTerrain texgen 経路) [要追加調査] / `PerProgramUBO_PbrTerrainV` との data source 共有 [要 verify] / OpenGL 古典 `glTexGen(GL_OBJECT_PLANE)` 移植経路 [要 verify]
+- **(3) 調査手法**: D1 (`object_plane_s/t` setter grep + texgen 関連 setter) + D4 (PbrTerrainV との data 共有 verify)
+- **(4) 設計 task**: L3 全件共通 (= PerProgram triple-buffer / `forwardToUboUpload` PER_PROGRAM / program bind 単位 flush / `terrainV.glsl` LL_VULKAN_GLSL 活性化)
+- **(5) 工程**: trace L3-9 (= L2-1 完了後)、工数 **S**、L3 内独立並列可
+- **(6) A 確定**: setter 通電 + Vulkan 0 + AYA live verify (= terrain texgen 描画既存と同一、visual regression ゼロ §5.4)
+- **(7) 4 原則 gate**: 全 ✅、原則 4 = `terrainV.glsl #else` block uniform 個別宣言維持
+
+**関連**: L0-1 + L0-4 / §5.4 / L2-1 PerProgramUBO_PbrTerrainV (= 経路 pattern + data 共有候補)
