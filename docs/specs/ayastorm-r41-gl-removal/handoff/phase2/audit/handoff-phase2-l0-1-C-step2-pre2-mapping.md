@@ -389,11 +389,13 @@ next sub-session 5 着手前に handoff doc 起案要否 = sub-session 4 Exit �
 - `aya_r41_blueprints/` = codegen `ubo_metadata.inl` 入力、未書換 = 旧 binding 残存
 ⇒ cold launch で Vulkan validation error 高確率。
 
-### §C.2 対応 = Phase 2.α 独立起案
+### §C.2 対応 = Phase 2.α 独立起案 (= 案 Z 確定 2026-06-06)
 
-`class*/` + `cinematic_bd/` 配下 GLSL を codegen 入力に統一、blueprint dir 廃止 / reference 降格、二重 source 構造解消。
+`class*/` + `cinematic_bd/` 配下 GLSL を codegen 入力に統一 (= **設計 doc 08:72-74/96 想定整合復元**、現状 AyaUboCodegen.cmake の `aya_r41_blueprints/` 固定が設計乖離 = 二重 source 構造の真の原因)、**blueprint dir reference 降格保持** (= AYA 指示 #5「85 GLSL UBO blueprint は discard しない」literal 整合 = design/01-overview.md:146、設計時参考資料 / Phase 1 履歴として保持)、二重 source 構造解消。
 
-**Phase 2.α entry handoff doc**: `docs/specs/ayastorm-r41-gl-removal/handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md`
+**Phase 2.α entry handoff doc**: `docs/specs/ayastorm-r41-gl-removal/handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D 参照
+
+**前案 (= 案 Y blueprint 完全廃止) 撤回 record** (= 2026-06-06): Phase 2.α entry handoff §7.1 で Claude 推奨案として完全廃止 (= α-blueprint-1) 提示、AYA literal 3 連続受領で設計 doc 精査着手、AYA 指示 #5 違反 + 設計乖離見落し確定で案 Z (= 設計 doc 整合修復) に切替。
 
 ### §C.3 freeze 中 protocol
 
@@ -401,14 +403,31 @@ next sub-session 5 着手前に handoff doc 起案要否 = sub-session 4 Exit �
 - Phase 2.L0 sub-session 6 以降 (= step 2-batch-0-b MaterialUBO 49 file 単独 / B2 Vertex 22 件 / B3 Fragment 44 件 / B4 util/lib 6 件) も **freeze 中着手禁止**
 - Phase 2.α 完了後 = sub-session 5 続行点 (= codegen 再生成 + cold launch + AYA live verify) 直接 resume
 
-### §C.4 構造属性 verify 規律拡張 record
+### §C.4 構造属性 verify 規律拡張 record (= 2026-06-06 1 件目 + 3 件目発火反映)
 
-本 mapping doc §2.1 grep methodology は「同名 UBO 重複検出 noise 排除」目的、**codegen 入力 source path 確認は別軸**として扱うべきだった。memory `feedback_design_doc_number_literal_verify` を 2026-06-06 拡張、構造属性 verify に **codegen/build pipeline 入力 source path** を追加。今後の mapping doc 起案時は同 memory 適用範囲で `indra/cmake/`, `scripts/*/main.py` 等 build pipeline source path も verify 対象。
+**1 件目発火反映** (= codegen 入力 source path verify 追加): 本 mapping doc §2.1 grep methodology は「同名 UBO 重複検出 noise 排除」目的、**codegen 入力 source path 確認は別軸**として扱うべきだった。memory `feedback_design_doc_number_literal_verify` を 2026-06-06 拡張、構造属性 verify に **codegen/build pipeline 入力 source path** を追加。今後の mapping doc 起案時は同 memory 適用範囲で `indra/cmake/`, `scripts/*/main.py` 等 build pipeline source path も verify 対象。
 
-### §C.5 AYA literal record (= 2026-06-06)
+**3 件目発火反映** (= 設計 doc 整合確認規律追加、2026-06-06): 解決策提案前に **設計 doc (= source of truth) 整合確認** を verify 規律として正式追加。範囲 = `design/{00-charter, 01-overview, 04-codegen-ubo, 08-build-codegen-pipeline, 09-phase-roadmap, 10-open-questions, ...}` + `design/ubo/{WORK_ORDER, READINESS, RELATIONS, INDEX}` + `ayastorm-r41-ubo-current-state-inventory.md` + `ayastorm-r41-cross-platform-port-spec.md` の関連箇所。特に **AYA 指示 literal** (= design/01-overview.md §1.2 確定方針 #1〜#13、AYA 指示由来項目) は **literal 完全一致 verify**、推測ベース解決策で違反しない (= 本 Phase 2.α §7.1 案 Y blueprint 完全廃止が AYA 指示 #5 違反確定で撤回した事例)。memory `feedback_doubt_self_first` §5 + `feedback_root_cause_no_shortcuts` §10 適用。
 
+### §C.5 AYA literal record (= 2026-06-06、3 件目発火まで record)
+
+**1 件目発火 (= Phase 2.α 起案契機、構造属性 verify 漏れ + 工数下げ案並列罪)**:
 - 「ちょっと毎回根本解決をさけて適当に今だけしのいで先に進もうとするのをやめてもらわわないと戻り作業が莫大に増えて結局工数増大するので、この課題は Phase2.α とでもして着手、終わったら現在時点で戻って L0 作業再開の形をとってください。」
 - 「作業選択肢も工数を下げて根本解決を避けるのを２度としないでください。根治最優先です。」
 - 「これが何度も起きて出戻りだらけなんです。工数が４倍５倍になるのはこれが理由です。このようなことはもう２度と選択推奨しないでください。」
 
-⇒ memory `feedback_root_cause_no_shortcuts` 新規起案で永続化、本悲報原因は構造属性 verify 漏れ + 工数下げ案を選択肢として並べた罪の二重悲報。
+**2 件目発火 (= 同日後発、Phase 2.α §7.1 candidate 並列罪 + 波及 doc 修正要請)**:
+- 「これをわたしに確認すること自体が腹立たしいのですが、どうすれば根治するか確定して改修してください」
+- 「波及する資料もすべて更新するのを忘れないでください。また誤解して同じ穴に落ちます。」
+
+**3 件目発火 (= 同日後発、設計 doc 精査要請 + 案 Y 撤回契機)**:
+- 「この穴を作った原因元資料の精査はしないんですか？それが間違っていたから今間違えてるんじゃないんですか？解決方法は本当にこれで正しいのですか？」
+
+⇒ memory 更新 (= 永続化):
+- 新規: `feedback_root_cause_no_shortcuts` (= 1 件目発火時起案)
+- 拡張: `feedback_design_doc_number_literal_verify` (= 構造属性に codegen/build pipeline 入力 source path 追加、1 件目発火時)
+- 拡張: `feedback_root_cause_no_shortcuts` §8/§9 (= 根治徹底度の差 candidate 並列禁止 + 既 AYA literal 根治意思表示済で preflight 質問禁止、2 件目発火時)
+- 拡張: `feedback_root_cause_no_shortcuts` §10 (= 設計 doc 整合確認なしで根治確定する罪、3 件目発火時)
+- 拡張: `feedback_doubt_self_first` §5 (= 解決策確定前に設計 doc 精査 default、3 件目発火時)
+
+本悲報原因は **3 重悲報**: (1) 構造属性 verify 漏れ (= 1 件目発火時認識) + (2) 工数下げ案を選択肢として並べた罪 (= 1-2 件目発火) + (3) 設計 doc 整合確認なしで根治確定する罪 (= 3 件目発火、案 Y 撤回契機、本日最大の発火)。

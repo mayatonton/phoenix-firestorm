@@ -218,9 +218,13 @@ AYA literal「g-1 / g-2」回答受領 + 着手承認 → sub-session 5 step 2-b
 
 codegen 入力 source の **二重 source 構造発覚** (= `indra/cmake/AyaUboCodegen.cmake:56-86` で `AYA_UBO_CODEGEN_BLUEPRINT_DIR = aya_r41_blueprints/` を codegen 入力に固定、`class*/` + `cinematic_bd/` 配下 GLSL は SPIR-V binary 入力、両者の binding 値同期断裂で Vulkan validation error 高確率)。本 sub-session 5 7 commit は `class*/` + `cinematic_bd/` 側 14 file 書換完了、blueprint 側 7 UBO は旧 binding 残存 = mismatch。
 
+**真の原因 = 設計乖離確定** (= 2026-06-06 設計 doc 精査結果、Phase 2.α entry handoff §D 参照): **design/08-build-codegen-pipeline.md:72-74/96 で codegen 入力 = `app_settings/shaders/class*/{deferred,interface,...}/**.glsl` literal 想定**、現状 AyaUboCodegen.cmake の `aya_r41_blueprints/` 固定は **設計乖離** = 二重 source 構造はこの乖離が origin。修復方針 = codegen 入力を class*/ + cinematic_bd/ に切替 (= 設計時想定整合復元)。
+
 ### §C.2 対応 = Phase 2.α 独立起案
 
-Phase 2.α = UBO codegen single source of truth 化 を独立 phase で起案、`class*/` + `cinematic_bd/` 配下 GLSL を codegen 入力に統一、blueprint dir 廃止 / reference 降格、二重 source 構造解消。
+Phase 2.α = UBO codegen single source of truth 化 を独立 phase で起案、`class*/` + `cinematic_bd/` 配下 GLSL を codegen 入力に統一 (= **設計 doc 08:72-74/96 想定整合復元**)、**blueprint dir reference 降格保持** (= 案 Z 確定 2026-06-06、AYA 指示 #5「85 GLSL UBO blueprint は discard しない」literal 整合 = design/01-overview.md:146、設計時参考資料 / Phase 1 履歴として保持、Phase 2.α entry handoff §D 参照)、二重 source 構造解消。
+
+**前案 (= 案 Y blueprint 完全廃止) 撤回 record** (= 2026-06-06): Phase 2.α entry handoff §7.1 で Claude 推奨案として完全廃止 (= α-blueprint-1) 提示、AYA literal 3 連続受領 (= 「腹立たしい」「波及する資料も更新」「原因元資料の精査 / 解決方法は本当にこれで正しいのですか？」) で設計 doc 精査着手、AYA 指示 #5 違反 + 設計乖離見落し確定で案 Z (= 設計 doc 整合修復) に切替。
 
 **Phase 2.α entry handoff doc**: `docs/specs/ayastorm-r41-gl-removal/handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md`
 
@@ -233,8 +237,30 @@ Phase 2.α = UBO codegen single source of truth 化 を独立 phase で起案、
 
 ### §C.4 AYA literal record (= 2026-06-06)
 
+**1 件目発火 (= 2 件目 memory 起案前、Phase 2.α 起案契機)**:
 - 「ちょっと毎回根本解決をさけて適当に今だけしのいで先に進もうとするのをやめてもらわわないと戻り作業が莫大に増えて結局工数増大するので、この課題は Phase2.α とでもして着手、終わったら現在時点で戻って L0 作業再開の形をとってください。」
 - 「作業選択肢も工数を下げて根本解決を避けるのを２度としないでください。根治最優先です。」
 - 「これが何度も起きて出戻りだらけなんです。工数が４倍５倍になるのはこれが理由です。このようなことはもう２度と選択推奨しないでください。」
 
-⇒ memory `feedback_root_cause_no_shortcuts` 新規起案 + memory `feedback_design_doc_number_literal_verify` 適用範囲拡張 (= 構造属性に **codegen/build pipeline 入力 source path** 追加) で永続化。
+**2 件目発火 (= 同日後発、Phase 2.α §7.1 candidate 並列罪)**:
+- 「これをわたしに確認すること自体が腹立たしいのですが、どうすれば根治するか確定して改修してください」
+- 「波及する資料もすべて更新するのを忘れないでください。また誤解して同じ穴に落ちます。」
+
+**3 件目発火 (= 同日後発、設計 doc 精査要請)**:
+- 「この穴を作った原因元資料の精査はしないんですか？それが間違っていたから今間違えてるんじゃないんですか？解決方法は本当にこれで正しいのですか？」
+
+⇒ memory 更新 (= 永続化):
+- 新規: `feedback_root_cause_no_shortcuts` (= 1 件目発火時起案)
+- 拡張: `feedback_design_doc_number_literal_verify` (= 構造属性に **codegen/build pipeline 入力 source path** 追加、1 件目発火時)
+- 拡張: `feedback_root_cause_no_shortcuts` §8/§9 (= 「根治徹底度の差」candidate 並列禁止 + 既 AYA literal 根治意思表示済で preflight 質問禁止、2 件目発火時)
+- 拡張: `feedback_root_cause_no_shortcuts` §10 (= 設計 doc 整合確認なしで根治確定する罪、3 件目発火時)
+- 拡張: `feedback_doubt_self_first` §5 (= 解決策確定前に設計 doc 精査 default、3 件目発火時)
+
+### §C.5 設計 doc 整合確認規律追加 (= 2026-06-06)
+
+本 freeze record + Phase 2.α entry handoff §C.4 構造属性 verify 規律拡張 (= 既存) に加えて、**設計 doc (= source of truth) 整合確認** を verify 規律として正式追加 (= 3 件目発火受領反映):
+
+- 解決策提案前に **design/{00-charter, 01-overview, ..., 10-open-questions} + design/ubo/{WORK_ORDER, READINESS, RELATIONS, INDEX} + ayastorm-r41-ubo-current-state-inventory.md + ayastorm-r41-cross-platform-port-spec.md** の関連箇所を grep / Read で精査
+- 特に **AYA 指示 literal** (= design/01-overview.md §1.2 確定方針 #1〜#13、AYA 指示由来項目) は **literal 完全一致 verify**、推測ベース解決策で違反しないこと
+- 設計 doc 内 chapter 間 cross-ref (= 「chapter 04 §967 → chapter 01 §5 #5」等) も追跡、孤立解釈で誤読しない
+- memory `feedback_doubt_self_first` §5 + `feedback_root_cause_no_shortcuts` §10 適用
