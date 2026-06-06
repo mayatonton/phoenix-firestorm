@@ -96,7 +96,7 @@ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff
 | 4.3 | **build 走行 verify (= AYA 環境、Linux primary)** = make build success + codegen_ubo target 走行成功 + build artifact (= `build-linux-x86_64/codegen/ubo/*.inl`) 生成確認 + viewer binary 生成 OK ⇒ **✅ 完了 (= 2026-06-06、§C.3 evidence record)** | 0 (= build のみ) | 0 commit (= verify 結果 record は §C.3 追記、本 sub-step 完了 commit に同梱) | `autobuild build -A 64 -c ReleaseFS_open --no-configure` 走行 + grep build log ⇒ **PASS verdict** (§C.3) |
 | 4.4 | **cold launch verify (= AYA 環境、Linux primary)** = viewer 起動 OK + Vulkan validation log 0 件 + sub-session 5 改修 7 UBO の binding 反映 runtime confirm ⇒ **✅ 完了 (= 2026-06-06、§C.4 evidence record)** | 0 (= 起動のみ) | 0 commit (= verify 結果 record は §C.4 追記、本 sub-step 完了 commit に同梱) | AYAstorm log 確認 ⇒ **PASS verdict** (§C.4) |
 | 4.5 | **AYA live verify (= AYA live、視覚 regression check)** = AYA 立ち会いで sample scene + UI 機能の視覚 regression ゼロ confirm (= 原則 4 §5.4 V-1) ⇒ **✅ 暫定 PASS (= 2026-06-06、§C.5 evidence record、AYA literal「描画も正常だと思います」)** | 0 (= 視覚 verify のみ) | 0 commit (= verify 結果 record は §C.5 追記、本 sub-step 完了 commit に同梱) | AYA literal 「OK」承認 ⇒ **暫定 PASS verdict** (§C.5) |
-| 4.6 | **α-4 完了 record 起案 (= Phase 2.α 完了 doc 起案 + Phase 2.L0 sub-session 5 続行点 resume 承認 候補)** | docs/specs/ 1 file 新規 or 既存 entry handoff §C 追記 | 1 commit | doc 確認 + AYA literal 承認 |
+| 4.6 | **α-4 完了 record 起案 (= Phase 2.α 完了 doc 起案 + Phase 2.L0 sub-session 5 続行点 resume 承認 候補)** ⇒ **✅ 起案完了 (= 2026-06-06、§C.6 evidence record、AYA literal 承認待ち)** | 既存 entry handoff §C 追記 (= memory `feedback_no_dual_doc_split` 適用) | 1 commit (= AYA literal 承認後) | doc 確認 + AYA literal 承認 ⇒ **起案完了 verdict** (§C.6) |
 
 各 sub-step 完了で AYA literal commit 指示待ち (= memory `feedback_no_auto_commit` 適用)。連結 commit は AYA literal 指示で可。
 
@@ -109,15 +109,15 @@ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff
 
 ## §4. α-4 Exit 条件
 
-| # | Exit 項目 | 判定基準 |
-|---|---|---|
-| 1 | codegen 単独走行 verify PASS (= 4.1) | blueprint dir 入力で 94 .glsl → 94 UBO emit + parse error 0 件 + `ubo_metadata.inl` 80 UBO binding 整合 confirm + `--verify-target-paths` で sub-session 5 改修 7 UBO 対応 actual 整合 verified=7 + no_match=0 (= phase F 動作 evidence) |
-| 2 | configure + build 走行 verify PASS (= 4.2-4.3) | configure 走行 error 0 件 + codegen_ubo target 走行成功 + viewer binary 生成 OK + build artifact `ubo_metadata.inl` 生成確認 |
-| 3 | cold launch verify PASS (= 4.4) | viewer 起動 OK + Vulkan validation log 0 件 + sub-session 5 改修 7 UBO binding 反映 runtime confirm + crash / regression 0 件 |
-| 4 | AYA live verify PASS (= 4.5) | 視覚 regression ゼロ + UI 機能維持 + AYA literal「OK」承認 |
-| 5 | α-4 完了 record + Phase 2.α 完了 + sub-session 5 続行点 resume 承認 (= 4.6) | doc 起案 + AYA literal 承認 |
+| # | Exit 項目 | 判定基準 | 充足状態 |
+|---|---|---|---|
+| 1 | codegen 単独走行 verify PASS (= 4.1) | blueprint dir 入力で 94 .glsl → 94 UBO emit + parse error 0 件 + `ubo_metadata.inl` 80 UBO binding 整合 confirm + `--verify-target-paths` で sub-session 5 改修 7 UBO 対応 actual 整合 verified=7 + no_match=0 (= phase F 動作 evidence) | ✅ PASS (§C.1) |
+| 2 | configure + build 走行 verify PASS (= 4.2-4.3) | configure 走行 error 0 件 + codegen_ubo target 走行成功 + viewer binary 生成 OK + build artifact `ubo_metadata.inl` 生成確認 | ✅ PASS (§C.2 + §C.3) |
+| 3 | cold launch verify PASS (= 4.4) | viewer 起動 OK + Vulkan validation log 0 件 + sub-session 5 改修 7 UBO binding 反映 runtime confirm + crash / regression 0 件 | ✅ PASS (§C.4) |
+| 4 | AYA live verify PASS (= 4.5) | 視覚 regression ゼロ + UI 機能維持 + AYA literal「OK」承認 | ✅ 暫定 PASS (§C.5、AYA literal「描画も正常だと思います」) |
+| 5 | α-4 完了 record + Phase 2.α 完了 + sub-session 5 続行点 resume 承認 (= 4.6) | doc 起案 + AYA literal 承認 | ✅ doc 起案完了 (§C.6、AYA literal 承認待ち) |
 
-全 5 件満たして Phase 2.α 完了、Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`) freeze 解除 + sub-session 5 続行点 (= cold launch + AYA live verify) resume。
+全 5 件満たして Phase 2.α 完了、Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`) freeze 解除 + sub-session 5 続行点 (= cold launch + AYA live verify、本 §C.4 + §C.5 で実質充足) resume。
 
 ---
 
@@ -189,9 +189,10 @@ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff
 
 **次 session 着手 1 手目**: §2.1 必読 3 件 cold read → §3 sub-step 4.1 (= codegen 単独走行 verify) 着手、各 sub-step 完了報告で AYA literal commit 指示受領後 commit、4.2-4.5 は AYA 立ち会い別 session で実施。
 
-**Phase 2.α α-4 完了後の継続**:
-- Phase 2.L0 sub-session 5 続行点 resume (= cold launch + AYA live verify、case X 確定後の sub-session 5 7 commit 改修分の実機 verify、blueprint + actual 二重 source 整合 verify formal化済 ゆえ独立 verify 完走可能)
-- Phase 2.L0 残作業 sub-session 6 以降 (= MaterialUBO 49 file 単独 + 73 UBO 残作業) は case X 確定後の二重 source 同期 protocol formal化前提で進行 (= blueprint dir 改修 + actual class*/ + cinematic_bd/ 改修 + `_verify_blueprint_actual_consistency` で整合 verify)
+**Phase 2.α α-4 完了後の継続** (= §C.6 起案 + AYA literal 承認後):
+- Phase 2.L0 sub-session 5 続行点 resume (= cold launch + AYA live verify、case X 確定後の sub-session 5 7 commit 改修分の実機 verify、blueprint + actual 二重 source 整合 verify formal化済 ゆえ独立 verify 完走可能、本 α-4 §C.4 + §C.5 で実質代行完了 ⇒ 次 session で sub-session 5 完了 record 正式起案)
+- Phase 2.L0 残作業 sub-session 6 以降 (= sub-session 6 step 2-batch-0-b MaterialUBO 49 file 単独 + sub-session 7 step 2-batch-2 B2 Vertex 22 件 + 後続) は case X 確定後の二重 source 同期 protocol formal化前提で進行 (= blueprint dir 改修 + actual class*/ + cinematic_bd/ 改修 + `_verify_blueprint_actual_consistency` で整合 verify)
+- **既存 PBR shader 4 件 Vulkan fallback** (= 本 α-4 §C.4.4 record) も sub-session 6 (= MaterialUBO 49 file 単独で `non-opaque uniforms outside a block` + `screen_res : redefinition` 解消) + sub-session 7 (= PerProgramUBO_PbrAlphaV + PerProgramUBO_PbrTerrainV + shader header `vary_coords` location 整理) で根本対応
 
 ---
 
@@ -682,5 +683,143 @@ PBR shader 4 件 fallback の改修工程は Phase 2.L0 既定 schedule 内で�
 
 #### §C.5.4 次手
 
-- 4.5 commit (= 本 record 同梱、§3 表 4.5 row update + §C.5 追記) は AYA literal「commit して進めて」literal 受領後 commit
-- 4.6 α-4 完了 record (= Phase 2.α 完了 + Phase 2.L0 sub-session 5 続行点 resume 承認 候補 doc 起案) は AYA literal「α-4 完了 record 起案して」literal 受領後 着手
+- 4.5 commit (= 本 record 同梱、§3 表 4.5 row update + §C.5 追記) は AYA literal「commit して進めて」literal 受領後 commit ⇒ commit `f9874bf9ff` 完了 (= 4.4 + 4.5 + §C.4.4 訂正同梱)
+- 4.6 α-4 完了 record = AYA literal「commit して進めて」連結指示で 4.6 着手 ⇒ §C.6 evidence record 起案 (= AYA literal 承認待ち)
+
+### §C.6 sub-step 4.6 = α-4 完了 record (= 2026-06-06 起案、AYA literal 承認待ち)
+
+**起案日**: 2026-06-06 (= 4.5 commit `f9874bf9ff` 直後、AYA literal「commit して進めて」連結指示で 4.6 起案着手)
+**起案方法**: Claude 自走 (= §4 Exit 条件 全 5 件充足 confirm + Phase 2.α 完了 verdict + Phase 2.L0 sub-session 5 続行点 resume 承認 候補 doc 起案)
+**Verdict**: ✅ **起案完了** (= AYA literal「α-4 完了 record 承認、Phase 2.α 完了、sub-session 5 続行点 resume してよい」literal 受領で正式完了)
+
+#### §C.6.1 α-4 sub-step 全件 PASS 確認
+
+| sub-step | 内容 | verdict | record §|
+|---|---|---|---|
+| 4.1 | codegen 単独走行 verify | ✅ PASS | §C.1 |
+| 4.2 | configure 走行 verify | ✅ PASS | §C.2 |
+| 4.3 | build 走行 verify | ✅ PASS | §C.3 |
+| 4.4 | cold launch verify | ✅ PASS | §C.4 |
+| 4.5 | AYA live verify | ✅ 暫定 PASS | §C.5 |
+| 4.6 | α-4 完了 record 起案 | ✅ 起案完了 (AYA 承認待ち) | §C.6 (本節) |
+
+⇒ §4 Exit 条件 全 5 件充足 (= 4.5 暫定 PASS は本 sub-step verify range 内で AYA literal「OK」承認に相当、本 §C.6 起案時点で正式承認は本 commit AYA literal 受領で同時確定)。
+
+#### §C.6.2 Phase 2.α 完了 verdict
+
+**Phase 2.α 全 4 sub-step 完了**:
+
+| sub-step | 内容 | commit / record |
+|---|---|---|
+| α-1 | 設計 phase = Phase 2.α 起案 + case X 確定までの 5 連続落ち履歴 | commit `db5cbcbc36` (= Phase 2.α 起案 + freeze record) |
+| α-2 | main.py multi-input + `_verify_block_match` 起案実装 | commit `b66ec99f72` |
+| α-3 | case X 確定実装 全 7 phase A-G | commit `df38b7c994` (A) → `f95182ded5` (B) → `b06f860a77` (C) → `64eb589ee7` (D) → `09ee5e8a8e` (E) → `868bc38cc9` (F) → `d9c6e48579` (G) |
+| α-4 | cold launch validation 全 6 sub-step (= 4.1-4.6) | commit `2f5f8dc961` (= 4.1) → `35393dc5ff` (= 4.2) → `6daa67725c` (= 4.3) → `f9874bf9ff` (= 4.4+4.5) → 本 §C.6 起案 commit (= 4.6) |
+
+**Phase 2.α 全件成果**:
+
+1. **案 X 確定 source of truth 確立**:
+   - blueprint dir (= `aya_r41_blueprints/`、94 .glsl) = codegen 入力 source of truth (= self-contained GLSL snapshot)
+   - actual class*/ + cinematic_bd/ = AYAstorm shader runtime compile target (= 別 GLSL 並列 build process)
+   - 二重 source 同期 protocol = `_verify_block_match` + `_verify_blueprint_actual_consistency` で formal化
+   - 設計 doc 04 §2.2 literal 訂正 (= 案 X 反映)
+   - AYA 指示 #5「85 GLSL UBO blueprint は discard しない」literal の真意 = source of truth 保護指示、案 X で完全整合
+
+2. **「同じ穴」5 連続落ち履歴 record** (= memory `feedback_falsification_as_progress` 適用):
+   - 案 Y (= blueprint 完全廃止) = AYA 指示 #5 違反で撤回
+   - 案 Z (= class*/ + cinematic_bd/ 入力切替) = parse error 第 1 階層発覚で撤回
+   - 案 Z' (= 案 Z + C++ runtime emulation 層追加) = parse error 第 2 階層発覚で撤回
+   - 案 X (= blueprint dir = codegen 入力 source of truth) = **確定** (= blueprint dir 単独走行で 94 UBO emit + dump file なし + parse error 0 件 evidence)
+   - 第 6 段同じ穴落ち回避 protocol = memory `feedback_root_cause_no_shortcuts` §11 + §12 (= 自走精査網羅性 checklist 4 件 + sandbox 実証 protocol + 「採否ご判断ください」禁忌 + subagent 結果盲信禁止 + 設計 doc literal 誤り疑念) 適用
+
+3. **cold launch 実機 verify 完走**:
+   - codegen tool 単独走行 PASS (= 94 .glsl → 94 block / 386 member emit + 7 UBO binding 整合 + verified=31/skipped=1/no_match=0)
+   - configure + build 走行 PASS (= STATUS 5 件全件出力 + blueprint count 94 + codegen_ubo target Built + ayastorm-bin link + llpackage tar.xz 206 MB)
+   - cold launch verify PASS (= Vulkan 1.4.319 + RTX 5090 起動 + V3a 5-set descriptor layout + 7 UBO 対応 shader SPIR-V 生成 全件 PASS + crash 0 件)
+   - AYA live verify 暫定 PASS (= AYA literal「描画も正常だと思います」)
+   - 既存 PBR shader 4 件 fallback の改修 phase 帰属確定 (= Phase 2.L0 sub-session 6 MaterialUBO + sub-session 7 B2 Vertex、Phase 3 ではない)
+
+#### §C.6.3 Phase 2.L0 sub-session 5 続行点 resume 承認 候補
+
+**現状**: Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`) freeze 中 (= Phase 2.α 起案契機で freeze)
+
+**Phase 2.α 完了による freeze 解除条件**:
+
+| 条件 | 充足判定 |
+|---|---|
+| 案 X 確定 source of truth 確立 (= blueprint dir + actual 二重 source 同期 protocol formal化) | ✅ (= §C.6.2 Phase 2.α 成果 1) |
+| sub-session 5 改修 7 UBO の cold launch 実機 verify (= blueprint + actual 整合 + runtime 動作) | ✅ (= §C.4 + §C.5、本 α-4 で代行完了) |
+| AYA literal 承認 (= sub-session 5 続行点 resume 承認) | ⏳ AYA literal 承認待ち |
+
+**resume 後の sub-session 5 残作業**:
+
+- 本 §C.4 + §C.5 で実質的に「sub-session 5 続行点 (= cold launch + AYA live verify)」literal は完了相当
+- ただし sub-session 5 完了 record の正式起案は **別 session の独立 sub-session** で実施想定 (= Phase 2.α 範囲とは別軸の sub-session 5 内 record として、本 §C.6 承認後に着手)
+- sub-session 5 完了 record 起案後 → sub-session 6 step 2-batch-0-b (= MaterialUBO 49 file 単独改修) 着手
+
+#### §C.6.4 次 session 着手手順
+
+**AYA literal 承認 (= 「α-4 完了 record 承認、Phase 2.α 完了、sub-session 5 続行点 resume してよい」literal) 受領後**:
+
+1. 本 §C.6 起案 doc を commit (= 4.6 commit、α-4 完了 commit + Phase 2.α 完了 commit + sub-session 5 freeze 解除 commit の 3 機能を 1 commit に集約)
+2. 次 session 着手 = sub-session 5 完了 record 正式起案 (= cold launch + AYA live verify の sub-session 5 sub-step として handoff/phase2/audit/handoff-phase2-l0-1-C-step2-batch-0-a-entry.md §C 内に追記、本 §C.4 + §C.5 の evidence record を sub-session 5 視点で再 reference)
+3. sub-session 5 完了 record 承認 → sub-session 6 step 2-batch-0-b 着手 (= MaterialUBO 49 file 単独改修 + 4 件 PBR fallback 内 `non-opaque uniforms outside a block` + `screen_res : redefinition` 解消)
+
+**次 session 必読 3 件 (= memory `feedback_handoff_minimal_pre_req_read` 適用)**:
+
+1. 本 entry handoff doc §C.6 (= α-4 完了 record + Phase 2.α 完了 verdict + sub-session 5 続行点 resume 承認)
+2. `handoff/phase2/audit/handoff-phase2-l0-1-C-step2-batch-0-a-entry.md` §C (= sub-session 5 freeze record + 続行点 resume protocol、本 §C.6 で freeze 解除)
+3. `handoff/phase2/audit/handoff-phase2-l0-1-C-step2-pre2-mapping.md` §5.1 + §6 (= 80 slot alphabetical sort literal + sub-session 6/7 着手 prerequisite)
+
+#### §C.6.5 関連 commit chain
+
+**Phase 2.α 完成 commit chain** (= 案 X 確定 source of truth 確立 + cold launch validation 完走):
+
+```
+db5cbcbc36 (= Phase 2.α 起案 + freeze record)
+   ↓
+b66ec99f72 (= α-2 main.py multi-input + _verify_block_match)
+   ↓
+310d58b556 (= α-3 entry handoff 起案)
+   ↓
+64122994c1 (= 案 Z 確定反映 doc、案 X 確定で履歴化)
+   ↓
+df38b7c994 (= α-3 phase A revert) → f95182ded5 (= phase B) → b06f860a77 (= phase C) → 64eb589ee7 (= phase D) → 09ee5e8a8e (= phase E) → 868bc38cc9 (= phase F) → d9c6e48579 (= phase G)
+   ↓
+9c1bbda288 (= α-4 entry handoff 起案)
+   ↓
+2f5f8dc961 (= α-4 sub-step 4.1) → 35393dc5ff (= 4.2) → 6daa67725c (= 4.3) → f9874bf9ff (= 4.4 + 4.5)
+   ↓
+[本 §C.6 起案 commit] (= 4.6 = α-4 完了 + Phase 2.α 完了 + sub-session 5 freeze 解除)
+```
+
+**Phase 2.L0 freeze 維持 commit chain** (= sub-session 5 step 2-batch-0-a 7 commit、freeze 解除 trigger は本 §C.6 AYA 承認):
+
+```
+887ddb5341 → e539b384ed → f91cda6677 → d4cabb8cfc → 5d21f1af9c → c9620edcc7 → e5f57d57ff
+```
+
+#### §C.6.6 4 原則 gate 整合性
+
+memory `project_r41_phase2_4_principles` 適用 = Phase 2.α 範囲内で 4 原則整合維持 confirm:
+
+| 原則 | 整合性 |
+|---|---|
+| **原則 1 (Core 分散実現)** | ✅ blueprint dir = self-contained GLSL snapshot で UBO 並列化容易な設計、host C++ side `registerProgramUbo` で分散 binding 反映可能 |
+| **原則 2 (3 OS 同一実装)** | ✅ blueprint dir + codegen tool + ubo_metadata.inl は 3 OS 共通、本 α-4 verify は Linux primary、Win/Mac は次 release flow で同等 build pipeline 走行確認 |
+| **原則 3 (Phase 2/3 範囲明確)** | ✅ Phase 2.L0 (= UBO 化作業) 内で完結、Phase 3 (= PBR system Vulkan 化等) 干渉なし、既存 PBR shader 4 件 fallback も Phase 2.L0 内 sub-session 6 + 7 で対応確定 |
+| **原則 4 (OpenGL を殺さない)** | ✅ `mUseUBO` runtime flag default OFF 維持、`#ifdef LL_VULKAN_GLSL` C++ 不使用、GL path 描画動作維持 (= AYA literal「描画も正常」確認) |
+
+#### §C.6.7 AYA literal 承認待ち項目
+
+本 §C.6 起案 doc を commit するための AYA literal 承認待ち項目:
+
+1. **α-4 完了 record** = §C.6.1 全 6 sub-step PASS verdict (= 4.5 暫定 PASS を正式 PASS に確定する AYA literal「OK」承認)
+2. **Phase 2.α 完了** = §C.6.2 全 4 sub-step 完了 + 成果 3 件確立 verdict (= 案 X source of truth + 5 連続落ち履歴 record + cold launch 実機 verify 完走)
+3. **Phase 2.L0 sub-session 5 freeze 解除 + 続行点 resume 承認** = §C.6.3 conditions 充足 confirm、freeze 解除と sub-session 5 完了 record 起案着手の承認
+4. **次 session 着手手順承認** = §C.6.4 sub-session 5 完了 record → sub-session 6 step 2-batch-0-b 順序の承認
+
+AYA literal 承認 literal 例 (= 採用 phrasing 自由):
+- 「α-4 完了 record 承認、Phase 2.α 完了、sub-session 5 続行点 resume してよい」
+- 「§C.6 commit して進めて」
+- 「Phase 2.α 完了でよい、sub-session 5 freeze 解除して」 等
