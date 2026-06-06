@@ -3429,30 +3429,37 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 
 **sub-work (7) 評価**: 各 UBO で OS-1〜OS-10 各 gate を逐次判定。validation warnings 検知時は §4.7 protocol 適用。
 
-### §4.3 原則 3: Phase 2 と 3 の作業範囲を明確にして工程を予定 (= Template A R3-R6 所属確定 + O3-2 r42 移管)
+### §4.3 原則 3: Phase 2 と 3 の作業範囲を明確にして工程を予定 (= AYA literal 2026-06-06 確定 + O3-2 r42 移管)
 
-**根拠**: roadmap §5 詳細化 + handoff Phase 1.D/1.E pilot 先回り着手の本実装化を Phase 番号で明示分離。
+**根拠**: AYA literal 2026-06-06「**全 UBO を Phase 2 のスコープとする**、工程を勝手に解釈しない」literal 確定。Phase 2 = r41 milestone 内の **UBO 本実装 Phase** として全 94 UBO + L0 4 protocol を内包、Phase 3 以降は 3 OS 確証 + release に繰上げ。
 
-**Phase 範囲 (= R3-R6 Template A 順序)**:
+**Phase 範囲 (= AYA literal 2026-06-06 確定)**:
 
-| Phase | R# | scope | 対象 UBO |
-|---|---|---|---|
-| **Phase 2** | R3 | UB_REFLECTION_PROBES 単独本実装 | `Global_ReflectionProbes` (= shell zero dummy → 実 reflection data) |
-| **Phase 3** | R4 + R5 bundle | UB_GLTF_MATERIALS per-asset 本実装 + 実 PBR shader 接続 + PerDrawUBO_LightParams 実内容 | `Asset_GLTFMaterials` + `PerDrawUBO_LightParams` (= zero IS real data → 実 light) |
-| **Phase 4** | - | UB_GLTF_NODES per-asset 本実装 | `Asset_GLTFNodes` |
-| **Phase 5** | R6 | UB_GLTF_JOINTS per-skin 本実装 + avatar Vulkan draw 通電 + sPlaceholderSkin 撤去 | `Skin_GLTFJoints` (= placeholder → 実 bone matrix) |
-| **Phase 6..K** | - | 残 UBO (= bare uniform 集約 + 最頻出 per-draw) | L1〜L5 残 94 UBO 順次 |
+| Phase | scope | 内訳 |
+|---|---|---|
+| **Phase 2** | **全 94 UBO + L0 4 protocol 本実装** (= 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / 2.C ... 細分) | L0 4 protocol + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 UBO |
+| **Phase 3** | 3 OS 確証 (Linux) | 全 94 UBO 通電後最終 Linux 確証 + render parity |
+| **Phase 4** | 3 OS 確証 (Windows) | Windows build + 起動 + render parity (= AYA 実機) |
+| **Phase 5** | 3 OS 確証 (macOS) | macOS build + 起動 + render parity (= @t-noami 実機委任) |
+| **Phase 6** | release 整備 | release note + tag + AYAstorm release flow |
+| **r42 milestone 内** | OpenGL path 撤廃 | r42 milestone 後半 sub-phase で実施 (= 旧 Phase K+4 = r42-8 移管、原則 4 §4.4 整合) |
+
+**Phase 2 内 sub-step 着手順序ヒント** (= Template A R1-R10、AYA literal 順序 guide):
+- pilot 通電済 (= Skin_GLTFJoints + PerDrawUBO_LightParams + Asset_GLTFMaterials/Nodes) は Phase 2 sub-step 内 本実装化
+- L0 横断 protocol 4 件 = Phase 2 sub-step 最初 (= L1-L5 前提)
+- L1a/L1b/L2/L3/L4/L5 = §1.3 順序判定軸 (A1-A6) に従って Phase 2 sub-step 進行 (= 個別 UBO は §3.1-§3.6 trace 順)
+- 各 sub-step = 1 UBO 厳守 (= memory `feedback_ubo_migration_one_at_a_time`)、cold launch 検証 PASS → 次 sub-step
 
 **Phase 範囲 gate**:
 
 | gate | 内容 | 検知点 |
 |---|---|---|
-| **R-1** | (Q2) A = 1 UBO 厳守維持、cluster 例外なし (= 1 Phase 2-3 UBO 同 batch 禁止) | sub-work (5) 工程 task |
-| **R-2** | pilot 通電済 (Skin/Asset/LightParams) は Template A 順序に従って Phase 3/4/5 で本実装化 | sub-work (1) 前提条件 + (5) 工程 task |
-| **R-3** | sub-step 命名 = handoff sub-letter (= Phase X.A / X.B / X.C)、PC-N-* 体系は Phase 1.C/1.D/1.E で役目終了 | sub-work (5) 工程 task |
-| **R-4** | O3-2 採用 = OpenGL 撤廃は r42 milestone 後半 sub-phase に移管 (= 旧 Phase K+4 → r42-8) | sub-work (5) 工程 task + 原則 4 (§4.4) cross-reference |
+| **R-1** | Phase 2 sub-step = 1 UBO ずつ厳守維持 (= memory `feedback_ubo_migration_one_at_a_time`)、cluster 許可は AYA literal 確認要 (= §4.7 stage 3) | sub-work (5) 工程 task |
+| **R-2** | pilot 通電済 (Skin/Asset/LightParams) = Phase 2 sub-step 内 本実装化 (= 別 Phase に分けない) | sub-work (1) 前提条件 + (5) 工程 task |
+| **R-3** | sub-step 命名 = Phase 2.A / 2.B / 2.C ... (= PC-N-* 体系は Phase 1.C/1.D/1.E で役目終了) | sub-work (5) 工程 task |
+| **R-4** | O3-2 採用 = OpenGL 撤廃は r42 milestone 後半 sub-phase に移管 (= r41 内 Phase 一覧に含めない)、r41 Phase 6 = release | sub-work (5) 工程 task + 原則 4 (§4.4) cross-reference |
 
-**sub-work (7) 評価**: 各 UBO で「所属 Phase 確定 / Phase 範囲 violation 無し」を確認。Template A 順序逸脱提案は §4.7 protocol 適用。
+**sub-work (7) 評価**: 各 UBO で「Phase 2 内 sub-step 着手順序確定 / Phase 範囲 violation 無し (= 全 UBO Phase 2 内に内包確認)」を確認。Phase 分割提案 (= 本 §4.3 表 Phase 2 から UBO を別 Phase に切出す提案) は §4.7 protocol 適用 (= stage 3 AYA literal 確認 escalation、AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ」 literal 違反)。
 
 ### §4.4 原則 4: OpenGL を殺さない (= dual-path 出荷 + `mUseUBO` runtime flag)
 
@@ -3467,11 +3474,11 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 
 | gate | 内容 | 検知点 |
 |---|---|---|
-| **O-1** | r41 milestone Phase 2..K 内で OpenGL path 撤廃しない | sub-work (4) 全経路 設計 + (5) 工程 task |
+| **O-1** | r41 milestone 全 Phase (= Phase 2 全 94 UBO 本実装 + Phase 3-5 3 OS 確証 + Phase 6 release) 内で OpenGL path 撤廃しない | sub-work (4) 全経路 設計 + (5) 工程 task |
 | **O-2** | r41 release は dual-path 出荷 (= `mUseUBO` runtime flag default OFF、OpenGL path 経路 fallback 提供) | sub-work (4) write/flush 経路設計 |
 | **O-3** | host C++ redirect 層 = `mUseUBO` runtime gate のみ、`#ifdef LL_VULKAN_GLSL` C++ 側不使用 | sub-work (4) write 経路設計 (= LLGLSLShader 内 setter 全件) |
 | **O-4** | GLSL shader 側 `#ifdef LL_VULKAN_GLSL` block 維持 (= 既存 OpenGL path uniform 宣言 + Vulkan UBO block の dual 並走) | sub-work (4) shader 接続 経路設計 |
-| **O-5** | OpenGL 撤廃は r42 milestone 後半 sub-phase 移管 (= r41 milestone scope 外) | sub-work (5) 工程 task |
+| **O-5** | OpenGL 撤廃は r42 milestone 後半 sub-phase 移管 (= r41 milestone scope 外、r41 内 Phase 一覧に含めない、r41 Phase 6 = release) | sub-work (5) 工程 task |
 
 **sub-work (7) 評価**: 各 UBO で O-1〜O-5 各 gate を逐次判定。`mUseUBO=false` 経路で既存 visual 同一保証が崩れる提案は §4.7 protocol 適用 + §4.5 visual regression ゼロ違反として連動判定。
 

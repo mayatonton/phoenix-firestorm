@@ -70,29 +70,18 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 |---|---|---|---|---|---|---|---|
 | **Phase 0** | 計測 phase | 06a-prep §2-§4 の (H1b)(E')(F) 実機計測 + 結果 chapter 反映 | η-29 | archive eta-29 phase0-step1/2/4/5-complete | 06a-prep §6 反映 flow 全行「反映済」 | (η-29 phase 着手前 prep + AYA 実機計測 = step3) | ✅ (= 2026-06-03 完走、commit `4e40fd2ab0` mechanical revert) |
 | **Phase 1** | codegen + redirect 層整備 + shell UBO 1 個通電 | chapter 08 codegen pipeline 実装 + chapter 06a redirect 層 + 06b dirty flag + 06c descriptor set bind + 1.C で shell UBO 1 個 (= UB_REFLECTION_PROBES) 5 cadence 全経路 `vkCmdBindDescriptorSets` 通電 | η-30 (.A/.B/.C 細分) | handoff/phase1/{a,b,c}/handoff-phase1-{a,b,c}-complete.md | Phase 1.A/B/C 各 Exit 全 PASS | handoff Phase 1.A ✅ + 1.B ✅ + 1.C shell 段階 ✅ (= UB_REFLECTION_PROBES `Global_ReflectionProbes` shell zero dummy write までで停止) | **shell 段階 ✅、Phase 2 本実装着手 ⏳** (= R1/R2/R3 残、handoff-phase1-e-complete.md §5.2) |
-| **Phase 2** | UB_REFLECTION_PROBES 単独本実装 (= Template A R3) | R3 = `Global_ReflectionProbes` shell zero dummy → 実 reflection data per-frame mip chain | η-31 (.A/.B/.C 細分予定) | 起案予定 (= Phase 2 着手前 separate session、AYA さん指示 2026-06-06) | 1 UBO 通電 + cold launch + canary + log + visual regression ゼロ (= WORK_ORDER §4.5 V-1) | handoff Phase 1.C shell 段階で `Global_ReflectionProbes` shell zero dummy write 通電済 (= 本 Phase 2 = 実 reflection data 通電) | **着手前** ⏳ |
-| **Phase 3** | UB_GLTF_MATERIALS + PerDrawUBO_LightParams bundle (= Template A R4 + R5) | R4 + R5 bundle = `Asset_GLTFMaterials` per-asset 本実装 + 実 PBR shader 接続 + `PerDrawUBO_LightParams` 実 light data (= (Q2) 例外 = 2 UBO 同 Phase) | η-32 (.A/.B/.C 細分予定) | 起案予定 (= Phase 2 完走後 separate session、AYA さん指示 2026-06-06) | 2 UBO bundle 通電 + cold launch + canary + log + visual regression ゼロ | handoff Phase 1.D で `PerDrawUBO_LightParams` 「zero IS real data」 semantic pilot 着手済 (= 本 Phase 3 = 実 light data 通電 + Asset_GLTFMaterials 本実装) | **着手前** ⏳ |
-| **Phase 4** | UB_GLTF_NODES 単独本実装 (= Template A 残) | `Asset_GLTFNodes` per-asset 本実装 | η-33 (.A/.B/.C 細分予定) | 起案予定 | 1 UBO 通電 + cold launch + canary + log + visual regression ゼロ | handoff Phase 1.D で `Asset_GLTFNodes` pilot 着手済 (= 本 Phase 4 = 本実装) | **着手前** ⏳ |
-| **Phase 5** | UB_GLTF_JOINTS 単独本実装 + avatar Vulkan 通電 (= Template A R6) | R6 = `Skin_GLTFJoints` per-skin 本実装 + avatar Vulkan draw 通電 + `sPlaceholderSkin` 撤去 | η-34 (.A/.B/.C 細分予定) | 起案予定 | 1 UBO 通電 + avatar Vulkan draw 通電 + cold launch + canary + log + visual regression ゼロ | handoff Phase 1.E で `Skin_GLTFJoints` 「zero IS real data」 semantic pilot 着手済 (= 本 Phase 5 = 実 bone matrix 通電 + sPlaceholderSkin 撤去) | **着手前** ⏳ |
-| **Phase 6..K** | 残 UBO (= L1〜L5 残 88 UBO) 順次本実装 | L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 - Phase 2-5 既使用 6 UBO = 残 88 UBO 順次 (= 各 Phase 原則 1 UBO、cluster 許可 = (Q2) AYA 残判断) | η-35〜η-K (= K=93 想定、cluster 許可で短縮可能性) | Phase ごと起案予定 | 各 UBO 通電 + cold launch + canary + log + visual regression ゼロ | (WORK_ORDER.md §3 起案完了 = 各 UBO sub-work 7 dim 参照) | **着手前** ⏳ |
+| **Phase 2** | **全 94 UBO + L0 4 protocol 本実装** (= 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / 2.C ... 細分) | L0 4 protocol + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 UBO 全件本実装 (= AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ」確定) | η-31 (.A/.B/.C ... 細分予定) | 起案予定 (= Phase 2 着手前 separate session、AYA さん指示 2026-06-06) | 全 94 UBO 通電 + cold launch + canary + log + visual regression ゼロ (= WORK_ORDER §4.5 V-1) | handoff Phase 1.C shell 段階で `Global_ReflectionProbes` shell zero dummy write 通電済 + Phase 1.D/1.E で Skin_GLTFJoints / PerDrawUBO_LightParams / Asset_GLTFMaterials/Nodes pilot 通電済 (= 本 Phase 2 sub-step 内 本実装化) | **着手前** ⏳ |
+| **Phase 3** | 3 OS 確証 (Linux) | 08 §13.4 X-α = Linux 全 UBO 動作確認 + log 検証 + sample scene 確認 | η-32 | 起案予定 | Linux build pass + cold launch normal + render parity + visual regression ゼロ | (Linux primary baseline は handoff Phase 1.E (sub-letter) complete で確立 ✅、本 Phase 3 = Phase 2 全 UBO 通電後の最終 Linux 確証) | ⏳ |
+| **Phase 4** | 3 OS 確証 (Windows) | 08 §13.4 X-β = Windows build + 起動 + render parity (= AYA 実機) | η-33 | 起案予定 | Windows build pass + render parity + visual regression ゼロ | (Mac/Win 補完 phase = AYA さん指示 2026-06-05「Linux 完成後」literal record で Phase 4/5 として deferred) | ⏳ |
+| **Phase 5** | 3 OS 確証 (macOS) | 08 §13.4 X-γ = macOS build + 起動 + render parity (= @t-noami 実機委任) | η-34 | 起案予定 | macOS build pass + render parity + visual regression ゼロ | (同上、@t-noami 実機委任) | ⏳ |
+| **Phase 6** | release 整備 | release note 起草 + tag 切り出し + AYAstorm release flow | η-35 | 起案予定 | release note + tag commit | - | ⏳ |
+| **r42 milestone** | OpenGL path 撤廃 | r42 milestone 後半 sub-phase で実施 (= r41 内 Phase 一覧に含めない、原則 4 §4.4 整合) | r42-8 | r42 milestone 起案時 | OpenGL path code 削除 + 3 OS build pass | (r42 milestone Core 分散完成 + OpenGL 撤廃の 2 軸内 sub-phase) | r42 milestone scope |
 
-**Phase K 確定条件 (= 設計 review 2026-06-03 §3.4 K 確定明示、2026-06-06 (Q1)(Q2) 一部確定)**: 「K」は Phase 2 から始まる migration Phase 群の最終 Phase 番号 (= 全 UBO 分続けた最後)。**2026-06-06 時点 K 確定状況**:
-1. **Phase 0 計測結果**: ✅ 完了 (= 2026-06-03 commit `4e40fd2ab0` mechanical revert)、UBO 総数 = **94 UBO + L0 4 protocol** 確定 (= WORK_ORDER.md §1.1 Layer 体系 = L0 4 + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94)
-2. **(Q1) 第 1 UBO 選定**: ✅ 確定 (= UB_REFLECTION_PROBES = Phase 2 R3、AYA literal 2026-06-06 = memory `project_r41_phase2_4_principles`)、Template A R3-R6 順序確定
-3. **(Q2) Phase 当たり migration UBO 数**: **一部確定** = Phase 2 (R3 = 1 UBO) / Phase 3 (R4+R5 bundle = 2 UBO **例外**) / Phase 4 (Node = 1 UBO) / Phase 5 (R6 = 1 UBO) 確定 (= WORK_ORDER §4.3 Phase 範囲表整合)、**Phase 6..K cluster 許可 (= 1 Phase に 2-3 UBO 同 batch) 採否は残 AYA 判断**
+**Phase 番号体系確定** (= AYA literal 2026-06-06): Phase 2 = 全 94 UBO + L0 4 protocol 本実装 / Phase 3-5 = 3 OS 確証 / Phase 6 = release / OpenGL 撤廃 = r42 milestone 移管 (= 原則 4 §4.4)。旧 chapter で使用していた **K placeholder 体系は解消** (= K=2 確定、Phase 2-6 = 5 Phase 確定)。各 §3-§8 内の「K」「K+1」「K+2」等の表記は本 §2.1 表に従って **「Phase 2 sub-step」「Phase 3」「Phase 4」「Phase 5」「Phase 6」** に読替え。WORK_ORDER.md §4.3 Phase 範囲表 ↔ 本 §2.1 表 双方向 link (= memory `project_r41_phase2_4_principles` 原則 3、AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ + Phase 3 以降繰上げ」)。
 
-→ K 確定は **Phase 6..K cluster 許可 採否 = AYA 残判断 揃った時点**。それまで本 chapter §2/§3/§5/§6/§7/§8 の「K」「K+1」「K+2」等の表記は **暫定 placeholder** として扱う (= 確定後本 chapter §2.1 表で具体数値に置換)。**現状確定範囲では Phase 2-5 = 4 Phase / 計 5 UBO (Phase 3 のみ 2 UBO bundle 例外)、Phase 6..K = 残 88 UBO 順次 (= cluster 採否で K = 93 程度 or 数十)**。
-| **Phase K+1** | 3 OS 確証 (Linux) | 08 §13.4 X-α = Linux 全 UBO 動作確認 + log 検証 + sample scene 確認 | η-(K+2) | 起案予定 | Linux build pass + cold launch normal + render parity | (Linux primary baseline は handoff Phase 1.E (sub-letter) complete で確立 ✅、本 Phase K+1 = 全 UBO 通電後の最終 Linux 確証) | ⏳ |
-| **Phase K+2** | 3 OS 確証 (Windows) | 08 §13.4 X-β = Windows build + 起動 + render parity (= AYA 実機) | η-(K+3) | 起案予定 | Windows build pass + render parity | (Mac/Win 補完 phase = AYA さん指示 2026-06-05「Linux 完成後」literal record で Phase K+2/K+3 として deferred) | ⏳ |
-| **Phase K+3** | 3 OS 確証 (macOS) | 08 §13.4 X-γ = macOS build + 起動 + render parity (= @t-noami 実機委任) | η-(K+4) | 起案予定 | macOS build pass + render parity | (同上、@t-noami 実機委任) | ⏳ |
-| **Phase K+4** | OpenGL path 撤廃 | (Q3) で OpenGL 並走撤廃時期を AYA 判断、撤廃後は Vulkan のみ | η-(K+5) | 起案予定 | OpenGL path code 削除 + 3 OS build pass | ((Q3) A 確定 = 全 UBO 移行完了まで並走、本 Phase K+4 で初撤廃) | ⏳ |
-| **Phase K+5** | release 整備 | release note 起草 + tag 切り出し + AYAstorm release flow | η-(K+6) | 起案予定 | release note + tag commit | - | ⏳ |
+#### §2.1.1 Phase 2 内 sub-step level 詳細起案 = WORK_ORDER.md 参照 (= 全 94 UBO + L0 4 protocol 体系)
 
-**K = Phase 6..K cluster 許可 (= (Q2) 残判断) 確定後に決まる**。**現状確定範囲では Phase 2-5 = 4 Phase / 計 5 UBO (Phase 3 のみ 2 UBO bundle 例外 = R4+R5)、Phase 6..K = 残 88 UBO 順次 (= cluster 採否で K = 93 程度 or 数十)**。論理 binding 4 種 + 85 blueprint 集約結果次第で cluster 採用時 K = 5-20 程度に短縮可能 (= cadence 別集約で同一 layout cluster を 1 Phase に纏める案を (Q2) Phase 6..K で議論)。WORK_ORDER.md §4.3 Phase 範囲表 ↔ 本 §2.1 表 双方向 link (= memory `project_r41_phase2_4_principles` 原則 3、AYA literal 2026-06-06「Phase 2 と 3 の作業範囲を明確にして工程を予定」)。
-
-#### §2.1.1 Phase 2..K sub-step level 詳細起案 = WORK_ORDER.md 参照 (= 全 94 UBO 体系)
-
-**位置付け**: 上記 §2.1 Phase マップ表は **Phase 番号体系 source of truth**、Phase 2..K migration の **sub-step level 全 94 UBO 詳細起案** は別 doc `design/ubo/WORK_ORDER.md` 参照。本 §2.1.1 = 双方向 link + L0-L5 体系サマリ + 件数表 (= AYA literal 2026-06-06「94 項目維持」前提)。
+**位置付け**: 上記 §2.1 Phase マップ表は **Phase 番号体系 source of truth** (= AYA literal 2026-06-06 確定 = Phase 2 全 UBO + Phase 3-6 繰上げ)、Phase 2 内 migration の **sub-step level 全 94 UBO + L0 4 protocol 詳細起案** は別 doc `design/ubo/WORK_ORDER.md` 参照。本 §2.1.1 = 双方向 link + L0-L5 体系サマリ + 件数表 (= AYA literal 2026-06-06「94 項目維持」前提)。
 
 **WORK_ORDER.md scope** (= Phase 2 前提条件 work):
 - Phase 2 着手前の **94 UBO + L0 4 protocol** 全件 sub-work 7 dimension 起案
@@ -114,73 +103,71 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 件** (= INDEX §2 一致、AYA literal 94 項目維持) ✅
 
 **WORK_ORDER と本 chapter の役割分担**:
-- 本 chapter §2.1 = **Phase 番号体系 + Phase Exit Criteria + 全体 timeline** (= source of truth)
-- WORK_ORDER §3 = **Phase 2..K 内の sub-step 94 UBO 詳細起案** + L0-L5 trace 順 (= Phase 2 着手前の前提条件 work、sub-step level)
-- 双方向 link = 本 §2.1 ↔ WORK_ORDER §3 でPhase 番号と sub-step level の互参照
-- AYA literal 「Phase 2 着手前に Phase 2/3 詳細 scope 定義 separate session」 (= 2026-06-06) で起案する work = WORK_ORDER 本体 (= 既起案完了状態)
+- 本 chapter §2.1 = **Phase 番号体系 + Phase Exit Criteria + 全体 timeline** (= source of truth、AYA literal 2026-06-06 確定 = Phase 2 全 UBO + Phase 3-6 繰上げ)
+- WORK_ORDER §3 = **Phase 2 内の sub-step 94 UBO + L0 4 protocol 詳細起案** + L0-L5 trace 順 (= Phase 2 着手前の前提条件 work、sub-step level)
+- 双方向 link = 本 §2.1 ↔ WORK_ORDER §3 で Phase 番号 (= Phase 2 sub-step level) と全 UBO 体系の互参照
+- AYA literal 「Phase 2 着手前に Phase 2 詳細 scope 定義 separate session」 (= 2026-06-06) で起案する work = WORK_ORDER 本体 (= 既起案完了状態)
 
 **4 原則 + 視覚 regression ゼロ gate** (= WORK_ORDER §4 normative 定義):
 - 原則 1: Core プロセス分散 (= C1-C6 設計制約)
 - 原則 2: 3 OS 共通 (= OS-1〜OS-10 gate)
-- 原則 3: Phase 2/3 範囲明確 (= R-1〜R-4 = Template A R3-R6 所属 + O3-2 r42 移管)
-- 原則 4: OpenGL を殺さない (= O-1〜O-5 = dual-path + `mUseUBO` runtime flag)
+- 原則 3: Phase 2/3 範囲明確 (= R-1〜R-4 = AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ」+ Phase 3-5 3 OS 確証 + Phase 6 release + O3-2 r42 移管)
+- 原則 4: OpenGL を殺さない (= O-1〜O-5 = dual-path + `mUseUBO` runtime flag、r41 内 Phase 一覧に OpenGL 撤廃 Phase 含めない)
 - 視覚 regression ゼロ (= V-1〜V-4 = AYA literal 2026-06-06 追加条件、§5.4 policy)
 - 評価 protocol = sub-work (7) で全 94 UBO + L0 4 protocol 逐次 check (= 98 件)
 - violation 検知時 = stage 1 提案撤回 / stage 2 設計再考 / stage 3 AYA literal 確認
 
-### §2.2 Phase 依存関係 (= 前提が満たされないと開始できない)
+### §2.2 Phase 依存関係 (= 前提が満たされないと開始できない、2026-06-06 AYA literal 確定 = Phase 2 全 UBO + Phase 3-6 繰上げ)
 
 ```
-Phase 0 (計測)
+Phase 0 (計測) ✅
     ↓
-Phase 1.A (codegen pipeline 実装)
+Phase 1.A (codegen pipeline 実装) ✅
     ↓
-Phase 1.B (redirect 層 = setter 内部 Vulkan path)
+Phase 1.B (redirect 層 = setter 内部 Vulkan path) ✅
     ↓
-Phase 1.C (cadence 別 update site + dirty flag + descriptor set bind)
+Phase 1.C (cadence 別 update site + dirty flag + descriptor set bind) ✅ shell 段階
     ↓
-Phase 2 (第 1 UBO migration)
+Phase 2 (全 94 UBO + L0 4 protocol 本実装 = 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / ... 細分)
     ↓
-Phase 3 (第 2 UBO migration)
+Phase 3 (Linux 全 UBO 確証) ─── (Q4-C) で順次確定 (= 2026-06-03 ST-5 verdict)
+Phase 4 (Windows 確証)    ─── 並走候補
+Phase 5 (macOS 確証)      ─┘
     ↓
-... (K-1 個続く)
+Phase 6 (release 整備)
     ↓
-Phase K+1 (Linux 全 UBO 確証) ─── (Q4) で並走か順次か
-Phase K+2 (Windows 確証)    ─── 確定
-Phase K+3 (macOS 確証)      ─┘
-    ↓
-Phase K+4 (OpenGL 撤廃) ─── (Q3) で並走 vs 中間撤廃判断
-    ↓
-Phase K+5 (release)
+(r42 milestone scope = OpenGL path 撤廃 + Core 分散完成、r41 内 Phase 一覧に含めない、原則 4 §4.4)
 ```
 
-#### §2.2.1 Phase K+1/+2/+3 並列 / 順次 timeline 図 (= 第二次査読 §4.2 反映、(Q4) 案別)
+#### §2.2.1 Phase 3 / 4 / 5 並列 / 順次 timeline 図 (= 第二次査読 §4.2 反映、(Q4) 案別)
 
 **(Q4) AYA 判断による 3 案** = Linux 先行 / Linux+Win/Mac 並列 / 全 OS 順次。各案の timeline (= 横軸 = wall-clock 時間):
 
 **(Q4-A) Linux 先行 (= default 提案)**:
 ```
 時系列 →
-[K+1: Linux 確証] → [K+2: Windows 確証] → [K+3: macOS 確証] → [K+4 撤廃 → K+5 release]
+[Phase 3: Linux 確証] → [Phase 4: Windows 確証] → [Phase 5: macOS 確証] → [Phase 6: release]
 ```
-= Linux で全 UBO 通電確認後、Windows/macOS を順次。Linux 検出 issue は K+1 内で fix、K+2 以降は build/起動 + render parity のみ。
+= Linux で全 UBO 通電確認後、Windows/macOS を順次。Linux 検出 issue は Phase 3 内で fix、Phase 4 以降は build/起動 + render parity のみ。
 
 **(Q4-B) Linux 先行 + Win/Mac 並列**:
 ```
 時系列 →
-[K+1: Linux 確証] → ┬─ [K+2: Windows 確証] ─┐
-                    └─ [K+3: macOS 確証]    ─┴→ [K+4 撤廃 → K+5 release]
+[Phase 3: Linux 確証] → ┬─ [Phase 4: Windows 確証] ─┐
+                        └─ [Phase 5: macOS 確証]    ─┴→ [Phase 6: release]
 ```
-= Linux 完了後、Windows/macOS は wall-clock 並列。Windows REJECT 検出時は K+2 Exit 後 K+3 で fix、macOS REJECT 同様。3 OS の中で 1 OS でも REJECT なら K+4 entry 延期 (= §6.2.2 line 324 言及形)。
+= Linux 完了後、Windows/macOS は wall-clock 並列。Windows REJECT 検出時は Phase 4 Exit 後 Phase 5 で fix、macOS REJECT 同様。3 OS の中で 1 OS でも REJECT なら Phase 6 entry 延期 (= §6.2.2 line 324 言及形)。
 
-**(Q4-C) 全 OS 順次 (= 並列 risk 回避)**:
+**(Q4-C) 全 OS 順次 (= 並列 risk 回避、✅ 2026-06-03 ST-5 verdict 採用、ただし AYA literal 2026-06-06 = (Q4-B) Linux 先行 + Win/Mac 並走 採用に切替も検討)**:
 ```
 時系列 →
-[K+1: Linux] → [K+2: Win] → [K+3: Mac] → [K+4 撤廃 → K+5 release]
+[Phase 3: Linux] → [Phase 4: Win] → [Phase 5: Mac] → [Phase 6: release]
 ```
 = (Q4-A) と同等、ただし「並列の余地が出ても採らない」明示 (= 並列起因の build/test 干渉 risk 完全排除)。
 
-**含意**: Phase 番号 (K+1/+2/+3) は **論理依存** であり **絶対時間軸** ではない (= (Q4-B) では K+2 と K+3 が wall-clock 同時並走可)。本 §2.2 dependency 図は **論理依存** 描画、time-axis 描画は §2.2.1 timeline 図側で表現。
+**含意**: Phase 番号 (3/4/5) は **論理依存** であり **絶対時間軸** ではない (= (Q4-B) では Phase 4 と Phase 5 が wall-clock 同時並走可)。本 §2.2 dependency 図は **論理依存** 描画、time-axis 描画は §2.2.1 timeline 図側で表現。
+
+**OpenGL 撤廃 (= 旧 Phase K+4) は r42 milestone 移管** (= 原則 4 §4.4 + memory `project_r41_phase2_4_principles`)、r41 内 Phase 依存図 + timeline 図には含めない。
 
 ---
 

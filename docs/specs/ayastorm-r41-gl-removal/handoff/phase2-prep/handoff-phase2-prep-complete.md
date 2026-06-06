@@ -67,28 +67,26 @@
 - `mUseUBO` runtime gate: memory `project_r41_phase1b_vulkan_host_gate` (= `LL_VULKAN_GLSL` C++ 不使用、GLSL shader 側は引き続き有効)
 - Phase 2/3 範囲 + Template A R3-R6: memory `project_ayastorm_r41_design_principles` + roadmap §5
 
-### §2.3 09-phase-roadmap.md 訂正内容 (= §2.1 Phase 2..K split + §2.1.1 新規 + Phase K 整合化)
+### §2.3 09-phase-roadmap.md 訂正内容 (= §2.1 Phase 2 = 全 UBO + Phase 3-6 繰上げ + §2.1.1 新規 + §2.2 整合化)
 
-**起案位置**: `design/09-phase-roadmap.md` §2.1 Phase マップ表 + §2.1.1 新規 sub-section (= line 87 後、§2.2 直前)
+**起案位置**: `design/09-phase-roadmap.md` §2.1 Phase マップ表 + §2.1.1 新規 sub-section + §2.2 + §2.2.1
 
-**訂正 1**: §2.1 Phase マップ表「Phase 2..K」1 行 → **Phase 2 / Phase 3 / Phase 4 / Phase 5 / Phase 6..K** 5 行 split (= AYA literal 2026-06-06「UBO 調査前の Phase 2 作業範囲を UBO 1 個と書かれてしまったまま」指摘対応):
-- Phase 2 = R3 単独 (= UB_REFLECTION_PROBES、1 UBO)
-- Phase 3 = R4 + R5 bundle (= UB_GLTF_MATERIALS + PerDrawUBO_LightParams、**2 UBO 例外**)
-- Phase 4 = Node 単独 (= Asset_GLTFNodes、1 UBO)
-- Phase 5 = R6 単独 (= Skin_GLTFJoints + avatar Vulkan 通電、1 UBO)
-- Phase 6..K = 残 88 UBO 順次 (= cluster 採否で K=93 程度 or 数十)
+**訂正 1** (= AYA literal 2026-06-06 確定「全 UBO を Phase 2 のスコープとします、工程を勝手に解釈しないでください」): §2.1 Phase マップ表「Phase 2..K」1 行 → **Phase 2 = 全 UBO + Phase 3-6 繰上げ** 構造に確定:
+- Phase 2 = **全 94 UBO + L0 4 protocol 本実装** (= 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / 2.C ... 細分)
+- Phase 3 = 3 OS 確証 (Linux) (= 旧 Phase K+1 繰上げ)
+- Phase 4 = 3 OS 確証 (Windows) (= 旧 Phase K+2 繰上げ)
+- Phase 5 = 3 OS 確証 (macOS) (= 旧 Phase K+3 繰上げ)
+- Phase 6 = release 整備 (= 旧 Phase K+5 繰上げ)
+- r42 milestone = OpenGL path 撤廃 (= 旧 Phase K+4 移管、r41 内 Phase 一覧に含めない、原則 4 §4.4 整合)
 
-**訂正 2**: §2.1 Phase K 確定条件 (= line 75-80) を (Q1)(Q2) 一部確定状態 (= 2026-06-06) に整合化:
-- (1) Phase 0 計測結果 = ✅ 完了 (= UBO 総数 = 94 UBO + L0 4 protocol 確定)
-- (2) (Q1) 第 1 UBO 選定 = ✅ 確定 (= UB_REFLECTION_PROBES = Phase 2 R3)
-- (3) (Q2) Phase 当たり UBO 数 = **一部確定** (= Phase 2-5 確定、Phase 6..K cluster 許可 = AYA 残判断)
+**訂正 2** (= K placeholder 解消): §2.1 Phase K 確定条件 (= line 75-80) + line 87 K = ... を解消し「Phase 番号体系確定 = K=2 確定、Phase 2-6 = 5 Phase」明示
 
-**訂正 3**: §2.1 K = (Q1)(Q2) 確定後の表記 (= line 87) を「Phase 6..K cluster 許可 採否 = (Q2) 残判断」に整合化 + WORK_ORDER §4.3 双方向 link 明示
+**訂正 3** (= §2.2 + §2.2.1 整合化): K+1〜K+5 表記を Phase 3-6 に置換 + OpenGL 撤廃 = r42 milestone scope 移管明示
 
 **§2.1.1 新規 sub-section 内容**:
-- 双方向 link = 本 §2.1 (Phase 番号 source of truth) ↔ WORK_ORDER §3 (Phase 2..K sub-step 94 UBO 詳細起案)
+- 双方向 link = 本 §2.1 (Phase 番号 source of truth) ↔ WORK_ORDER §3 (Phase 2 内 sub-step 全 94 UBO + L0 4 protocol 詳細起案)
 - Layer 体系表 (= L0 4 protocol + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 + L0 4 protocol)
-- 役割分担明示 (= 本 chapter §2.1 + WORK_ORDER §3 + AYA literal 2026-06-06「Phase 2 着手前に Phase 2/3 詳細 scope 定義 separate session」整合)
+- 役割分担明示 (= 本 chapter §2.1 + WORK_ORDER §3 + AYA literal 2026-06-06「Phase 2 着手前に Phase 2 詳細 scope 定義 separate session」整合)
 - 4 原則 + 視覚 regression ゼロ gate cross-reference (= 原則 1 C1-C6 / 原則 2 OS-1〜OS-10 / 原則 3 R-1〜R-4 / 原則 4 O-1〜O-5 / V-1〜V-4)
 - violation 検知 protocol cross-reference (= stage 1/2/3)
 
@@ -152,8 +150,8 @@ C-1〜C-9 全完了。次の milestone は **r41 Phase 2 本実装着手** (= AY
 | 1 | L0 4 protocol AYA review 6 件 (= 設計判断) | WORK_ORDER §2.5.2 |
 | 2 | 4 原則 + 視覚 regression ゼロ gate 全体構成 (= 5 軸 29 gate 評価 protocol) | WORK_ORDER §4 |
 | 3 | 各 UBO §12 (= 94 file 全件、navigation 用) | 各 UBO file 末尾 §12 |
-| 4 | Phase 2 着手 UBO 順序 (= Template A R3 = UB_REFLECTION_PROBES 単体から) | WORK_ORDER §3.5.9 + 09-phase-roadmap §2.1.1 |
-| 5 | Phase 2 sub-step 命名規約 (= Phase 2.A / 2.B / 2.C) | WORK_ORDER §4.3 R-3 + 09-phase-roadmap §1.2 |
+| 4 | Phase 2 sub-step 着手順序 (= L0 4 protocol → L1a/L1b/L2/L3/L4/L5 順、§1.3 順序判定軸 A1-A6) | WORK_ORDER §1.3 + §3.1-§3.6 + 09-phase-roadmap §2.1.1 |
+| 5 | Phase 2 sub-step 命名規約 (= Phase 2.A / 2.B / 2.C ... 細分) | WORK_ORDER §4.3 R-3 + 09-phase-roadmap §1.2 |
 | 6 | 全 [要 AYA 判断] マーク全件 (= 各 UBO sub-work (2) 内) | grep `\[要 AYA 判断\]` でリストアップ可能 |
 
 ### §3.3 commit timing (= AYA 確認後)
@@ -294,6 +292,6 @@ Co-Authored-By 行不在 (= memory `feedback_no_claude_coauthor` 遵守)。
 2. memory pinpoint 確認 (= project_r41_phase2_4_principles + project_ayastorm_r41_design_principles + project_r41_phase1b_vulkan_host_gate + feedback_ubo_migration_one_at_a_time + feedback_build_only_verified)
 3. AYA literal 確認 (= §3.2 最終 review check 6 項目 + commit 案 A/B/C 選択)
 4. AYA 承認後 commit 実施 (= 案 C 推奨 = 2 commit)
-5. r41 Phase 2 本実装着手判断 → Phase 2 = UB_REFLECTION_PROBES 単体実装 separate session entry
+5. r41 Phase 2 本実装着手判断 → Phase 2 = **全 94 UBO + L0 4 protocol 本実装** (= AYA literal 2026-06-06 確定、sub-step Phase 2.A から順次) separate session entry
 
-**次 session 開始時の最初の AYA 確認**: 「上記要約を確認、Phase 2 前提条件 work 全完走を commit して、Phase 2 本実装 = UB_REFLECTION_PROBES 単体実装 separate session entry に進むで OK か?」
+**次 session 開始時の最初の AYA 確認**: 「上記要約を確認、Phase 2 前提条件 work 全完走 (= 本 session で AYA literal「全 UBO を Phase 2 のスコープ」確定反映済) を経て、Phase 2 本実装 = 全 94 UBO + L0 4 protocol 本実装 (= sub-step Phase 2.A から) separate session entry に進むで OK か?」
