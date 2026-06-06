@@ -91,7 +91,7 @@ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff
 
 | # | 改修内容 | 改変対象 | 想定 commit | 検証 |
 |---|---|---|---|---|
-| 4.1 | **codegen 単独走行 verify (= Claude 自走、build phase 前段)** = blueprint dir 入力で `ubo_metadata.inl` 等 emit 成功 + 80 UBO binding 整合 confirm + main.py `--verify-target-paths` で sub-session 5 改修 7 UBO 対応 actual 4-7 file 整合 verify (= phase F 動作実機 confirm) | 0 (= verify のみ) | 0 commit (= verify 結果 record は本 doc §A 追記 or 別 record) | codegen tool 単独実行 + grep `ubo_metadata.inl` binding 確認 |
+| 4.1 | **codegen 単独走行 verify (= Claude 自走、build phase 前段)** = blueprint dir 入力で `ubo_metadata.inl` 等 emit 成功 + 80 UBO binding 整合 confirm + main.py `--verify-target-paths` で sub-session 5 改修 7 UBO 対応 actual 4-7 file 整合 verify (= phase F 動作実機 confirm) ⇒ **✅ 完了 (= 2026-06-06、§C.1 evidence record)** | 0 (= verify のみ) | 0 commit (= verify 結果 record は §C.1 追記、本 sub-step 完了 commit に同梱) | codegen tool 単独実行 + grep `ubo_metadata.inl` binding 確認 ⇒ **PASS verdict** (§C.1) |
 | 4.2 | **configure 走行 verify (= AYA 環境、Linux primary)** = AyaUboCodegen.cmake が正しく走行 + STATUS message で blueprint dir 検出 confirm + GLSL source count = 94 (= blueprint dir) 確認 | 0 (= configure のみ) | 0 commit | `develop.py configure` 走行 + STATUS 確認 |
 | 4.3 | **build 走行 verify (= AYA 環境、Linux primary)** = make build success + codegen_ubo target 走行成功 + build artifact (= `build-linux-x86_64/codegen/ubo/*.inl`) 生成確認 + viewer binary 生成 OK | 0 (= build のみ) | 0 commit | make build success + grep build log |
 | 4.4 | **cold launch verify (= AYA 環境、Linux primary)** = viewer 起動 OK + Vulkan validation log 0 件 + sub-session 5 改修 7 UBO の binding 反映 runtime confirm | 0 (= 起動のみ) | 0 commit | AYAstorm log 確認 (`~/.ayastorm_x64/logs/AYAstorm.log` grep "Validation" / "UBO") |
@@ -192,3 +192,104 @@ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff
 **Phase 2.α α-4 完了後の継続**:
 - Phase 2.L0 sub-session 5 続行点 resume (= cold launch + AYA live verify、case X 確定後の sub-session 5 7 commit 改修分の実機 verify、blueprint + actual 二重 source 整合 verify formal化済 ゆえ独立 verify 完走可能)
 - Phase 2.L0 残作業 sub-session 6 以降 (= MaterialUBO 49 file 単独 + 73 UBO 残作業) は case X 確定後の二重 source 同期 protocol formal化前提で進行 (= blueprint dir 改修 + actual class*/ + cinematic_bd/ 改修 + `_verify_blueprint_actual_consistency` で整合 verify)
+
+---
+
+## §C. α-4 sub-step 実施 evidence record
+
+memory `feedback_design_doc_number_literal_verify` 適用 = 数値 literal 全件記載。memory `feedback_no_dual_doc_split` 整合 = 別 record 起案せず本 entry handoff 内に集約。
+
+### §C.1 sub-step 4.1 = codegen 単独走行 verify (= 2026-06-06 完了、PASS verdict)
+
+**実施日**: 2026-06-06 (= 案 X 確定実装 全 7 phase A-G 完了 commit `d9c6e48579` 直後)
+**実施方法**: Claude 自走 (= memory `feedback_root_cause_no_shortcuts` §12 sandbox 実証 protocol 適用、subagent 不使用、grep + Read で直接 verify)
+**Verdict**: ✅ **PASS** (= §4 Exit 条件 #1 全件充足)
+
+#### §C.1.1 実行 command
+
+```sh
+python3 scripts/ubo_codegen/main.py \
+  --input indra/newview/app_settings/shaders/aya_r41_blueprints \
+  --output /tmp/aya_alpha4_verify \
+  --cache-file /tmp/aya_alpha4_verify/codegen_state.json \
+  --project-root . \
+  --glslang-bin /usr/bin/glslangValidator \
+  --spirv-cross-bin /usr/bin/spirv-cross \
+  --verify-target-paths \
+    indra/newview/app_settings/shaders/class1/deferred/cloudsF.glsl \
+    indra/newview/app_settings/shaders/class1/deferred/cloudsV.glsl \
+    indra/newview/app_settings/shaders/class1/deferred/postDeferredGammaCorrect.glsl \
+    indra/newview/app_settings/shaders/class1/deferred/postDeferredTonemap.glsl \
+    indra/newview/app_settings/shaders/class3/deferred/pointLightV.glsl \
+    indra/newview/app_settings/shaders/class3/deferred/spotLightF.glsl \
+    indra/newview/app_settings/shaders/class1/deferred/postDeferredF.glsl \
+    indra/newview/app_settings/shaders/class1/deferred/postDeferredHQDoFF.glsl \
+    indra/newview/app_settings/shaders/class3/deferred/waterHazeF.glsl \
+    indra/newview/app_settings/shaders/class3/deferred/waterHazeV.glsl \
+    indra/newview/app_settings/shaders/cinematic_bd/class1/deferred/shadowUtil.glsl \
+    indra/newview/app_settings/shaders/class1/deferred/shadowUtil.glsl \
+    indra/newview/app_settings/shaders/class1/environment/waterV.glsl \
+    indra/newview/app_settings/shaders/class3/environment/waterF.glsl
+```
+
+#### §C.1.2 evidence 4 件
+
+**Evidence 1**: blueprint dir 入力で 94 .glsl → 94 block / 386 member emit 成功 + parse error 0 件 (= §D.9.2 evidence 再現)
+
+```
+[codegen_ubo] INFO: 94 .glsl input(s) discovered
+[codegen_ubo] INFO: emitted 99 file(s) for 94 block(s) / 386 member(s) in 10973 ms
+```
+
+99 file = 94 per-block layout .inl + 5 aggregated .inl (= `ubo_metadata.inl` + `ubo_perfect_hash.inl` + `ubo_index.inl` + `ubo_dummy_init.inl` + `ubo_host_loader.inl`)。
+
+**Evidence 2**: `ubo_metadata.inl` の sub-session 5 改修済 7 UBO binding 整合 confirm (= alphabetical sort 80 slot literal 内、全件期待値一致)
+
+| # | UBO 名 | 期待値 (= alphabetical slot) | `ubo_metadata.inl` 確認値 | verdict |
+|---|---|---|---|---|
+| 1 | CloudsVParamUBO_Legacy | set=1, binding=8 | `{ "CloudsVParamUBO_Legacy", 0x7d4955feu, 256u, 1u, 8u, 0u, 1u, 4u }` | ✅ |
+| 2 | PerProgramUBO_GammaCorrect | set=1, binding=39 | `{ "PerProgramUBO_GammaCorrect", 0xf34eebc8u, 256u, 1u, 39u, 0u, 1u, 4u }` | ✅ |
+| 3 | PerProgramUBO_PointLightV | set=1, binding=44 | `{ "PerProgramUBO_PointLightV", 0xebfee557u, 256u, 1u, 44u, 1u, 1u, 2u }` | ✅ |
+| 4 | PerProgramUBO_PostDeferredF | set=1, binding=45 | `{ "PerProgramUBO_PostDeferredF", 0x8519e0b2u, 256u, 1u, 45u, 1u, 1u, 2u }` | ✅ |
+| 5 | PerProgramUBO_WaterHazeV | set=1, binding=55 | `{ "PerProgramUBO_WaterHazeV", 0x341ff24cu, 256u, 1u, 55u, 1u, 1u, 4u }` | ✅ |
+| 6 | ShadowUtilParamUBO_Legacy | set=1, binding=63 | `{ "ShadowUtilParamUBO_Legacy", 0x1c7a416cu, 512u, 1u, 63u, 1u, 1u, 12u }` | ✅ |
+| 7 | WaterVParamUBO_Legacy | set=1, binding=79 | `{ "WaterVParamUBO_Legacy", 0x4d192f45u, 256u, 1u, 79u, 1u, 1u, 6u }` | ✅ |
+
+⇒ phase E commit (= `09ee5e8a8e`) blueprint dir 7 file 同期書換が `ubo_metadata.inl` に正しく反映、alphabetical sort literal (= pre2 mapping §5.1) と完全一致。
+
+**Evidence 3**: `--verify-target-paths` phase F 動作実機 confirm
+
+```
+[codegen_ubo] INFO: 二重 source verify: discovered 14 actual shader file(s)
+[codegen_ubo] INFO: 二重 source verify: verified=31 / skipped=1 (parse error) / no_match=0
+```
+
+| 軸 | 期待値 (= §3 表 4.1) | 実測値 | verdict |
+|---|---|---|---|
+| discovered | 14 actual file | 14 | ✅ |
+| verified | ≥ 7 | 31 | ✅ (= 14 file 内に複数 UBO declaration 含まれるため 7 を超過、UBO-level 単位 count) |
+| skipped | ≤ 1 | 1 | ✅ |
+| no_match | 0 | 0 | ✅ |
+
+**Evidence 4**: skipped=1 = `class3/environment/waterF.glsl` の glslang -E parse error → warning + skip = phase F 設計上の期待動作
+
+```
+[codegen_ubo] WARNING: 二重 source verify skip (parse error): indra/newview/app_settings/shaders/class3/environment/waterF.glsl — [codegen_ubo] ERROR: glslang -E failed for indra/newview/app_settings/shaders/class3/environment/waterF.glsl
+```
+
+⇒ `waterF.glsl` は AYAstorm runtime `loadShaderFile()` prepend chain (= `#version` / `addPermutation` / `AYASTORM_*` 等) 不要前提では standalone parse 不可、phase F design 04 §4.4 の「parse 失敗時 warning + skip」behavior と整合 (= **CodegenError abort せず継続**)。case X 確定の核 = blueprint dir = self-contained codegen 入力 source of truth + actual = runtime compile target 別 GLSL 並列 build process、本 evidence は両者の正当な共存を実機で confirm。
+
+#### §C.1.3 §4 Exit 条件 #1 全件充足 verdict
+
+| 項目 (= §4 #1) | 充足判定 |
+|---|---|
+| blueprint dir 入力で 94 .glsl → 94 UBO emit | ✅ (Evidence 1) |
+| parse error 0 件 | ✅ (Evidence 1、blueprint 側 parse error 0) |
+| `ubo_metadata.inl` 80 UBO binding 整合 confirm | ✅ (Evidence 2、改修済 7/80 全件 alphabetical sort literal 一致 = 残 73 UBO は base state set=3 binding 維持で未改修と整合) |
+| `--verify-target-paths` で sub-session 5 改修 7 UBO 対応 actual 整合 | ✅ (Evidence 3、verified=31 ≥ 7 + no_match=0、Evidence 4 で skipped=1 期待動作 confirm) |
+
+#### §C.1.4 次手
+
+- 4.1 commit (= 本 record 同梱) は AYA literal「commit して進めて」(= 2026-06-06) 受領で本 doc 改修を commit
+- 4.2 (= AYA 環境 configure 走行) は **AYA 立ち会い別 session** で実施 (= Claude 自走不可、Linux primary、`develop.py configure` 走行 + STATUS message で blueprint dir 検出 + GLSL source count 94 確認)
+- 本 session は 4.1 record commit で完了、次 session 開始時 4.2 着手
