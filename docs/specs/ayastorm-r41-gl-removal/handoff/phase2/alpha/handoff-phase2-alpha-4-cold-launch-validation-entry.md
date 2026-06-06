@@ -93,7 +93,7 @@ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff
 |---|---|---|---|---|
 | 4.1 | **codegen 単独走行 verify (= Claude 自走、build phase 前段)** = blueprint dir 入力で `ubo_metadata.inl` 等 emit 成功 + 80 UBO binding 整合 confirm + main.py `--verify-target-paths` で sub-session 5 改修 7 UBO 対応 actual 4-7 file 整合 verify (= phase F 動作実機 confirm) ⇒ **✅ 完了 (= 2026-06-06、§C.1 evidence record)** | 0 (= verify のみ) | 0 commit (= verify 結果 record は §C.1 追記、本 sub-step 完了 commit に同梱) | codegen tool 単独実行 + grep `ubo_metadata.inl` binding 確認 ⇒ **PASS verdict** (§C.1) |
 | 4.2 | **configure 走行 verify (= AYA 環境、Linux primary)** = AyaUboCodegen.cmake が正しく走行 + STATUS message で blueprint dir 検出 confirm + GLSL source count = 94 (= blueprint dir) 確認 ⇒ **✅ 完了 (= 2026-06-06、§C.2 evidence record)** | 0 (= configure のみ) | 0 commit (= verify 結果 record は §C.2 追記、本 sub-step 完了 commit に同梱) | `autobuild configure -A 64 -c ReleaseFS_open` 走行 + STATUS 5 件確認 ⇒ **PASS verdict** (§C.2) |
-| 4.3 | **build 走行 verify (= AYA 環境、Linux primary)** = make build success + codegen_ubo target 走行成功 + build artifact (= `build-linux-x86_64/codegen/ubo/*.inl`) 生成確認 + viewer binary 生成 OK | 0 (= build のみ) | 0 commit | make build success + grep build log |
+| 4.3 | **build 走行 verify (= AYA 環境、Linux primary)** = make build success + codegen_ubo target 走行成功 + build artifact (= `build-linux-x86_64/codegen/ubo/*.inl`) 生成確認 + viewer binary 生成 OK ⇒ **✅ 完了 (= 2026-06-06、§C.3 evidence record)** | 0 (= build のみ) | 0 commit (= verify 結果 record は §C.3 追記、本 sub-step 完了 commit に同梱) | `autobuild build -A 64 -c ReleaseFS_open --no-configure` 走行 + grep build log ⇒ **PASS verdict** (§C.3) |
 | 4.4 | **cold launch verify (= AYA 環境、Linux primary)** = viewer 起動 OK + Vulkan validation log 0 件 + sub-session 5 改修 7 UBO の binding 反映 runtime confirm | 0 (= 起動のみ) | 0 commit | AYAstorm log 確認 (`~/.ayastorm_x64/logs/AYAstorm.log` grep "Validation" / "UBO") |
 | 4.5 | **AYA live verify (= AYA live、視覚 regression check)** = AYA 立ち会いで sample scene + UI 機能の視覚 regression ゼロ confirm (= 原則 4 §5.4 V-1) | 0 (= 視覚 verify のみ) | 0 commit | AYA literal 「OK」承認 |
 | 4.6 | **α-4 完了 record 起案 (= Phase 2.α 完了 doc 起案 + Phase 2.L0 sub-session 5 続行点 resume 承認 候補)** | docs/specs/ 1 file 新規 or 既存 entry handoff §C 追記 | 1 commit | doc 確認 + AYA literal 承認 |
@@ -393,6 +393,137 @@ build dir 既存 (= 過去の build run 由来) artifact 状態 confirm:
 
 #### §C.2.5 次手
 
-- 4.2 commit (= 本 record 同梱、§3 表 4.2 row update + §C.2 追記) は AYA literal「commit して進めて」(= 2026-06-06) 受領で本 doc 改修を commit
-- 4.3 (= build 走行 verify) は AYA literal「4.3 進めて」literal 受領後 `autobuild build -A 64 -c ReleaseFS_open --no-configure` 走行 + log 解析 (= codegen_ubo target 走行成功 + build artifact 生成 + viewer binary 生成 OK 確認)
-- 本 session は 4.2 record commit で完了、4.3 着手は別 sub-step
+- 4.2 commit (= 本 record 同梱、§3 表 4.2 row update + §C.2 追記) は AYA literal「commit して進めて」(= 2026-06-06) 受領で本 doc 改修を commit ⇒ commit `35393dc5ff` 完了
+- 4.3 (= build 走行 verify) は AYA literal「commit して進めて」(= 2026-06-06) 連結指示で 4.3 着手 ⇒ §C.3 evidence record 起案
+- 本 session は 4.2 record commit + 4.3 record commit 連結進行
+
+### §C.3 sub-step 4.3 = build 走行 verify (= 2026-06-06 完了、PASS verdict)
+
+**実施日**: 2026-06-06 (= 4.2 commit `35393dc5ff` 直後、AYA literal「commit して進めて」連結指示で 4.3 着手)
+**実施方法**: Claude 自走 (= Linux primary、`autobuild build` 走行 + log 解析、memory `feedback_log_reading` 適用で Claude が直接 log 読み、memory `feedback_root_cause_no_shortcuts` §12 sandbox 実証 protocol 適用)
+**Verdict**: ✅ **PASS** (= §4 Exit 条件 #2 第二部 (= build 部分) 全件充足)
+
+#### §C.3.1 実行 command
+
+```sh
+cd ~/work_firestorm/phoenix-firestorm
+source .venv/bin/activate
+export AUTOBUILD_VARIABLES_FILE=$HOME/work_firestorm/fs-build-variables/variables
+autobuild build -A 64 -c ReleaseFS_open --no-configure \
+  > /tmp/aya_alpha4_4_3_build.log 2>&1
+```
+
+実行 log = `/tmp/aya_alpha4_4_3_build.log` (= 1360 行)。
+
+#### §C.3.2 evidence 6 件
+
+**Evidence 1**: codegen_ubo target 走行成功 (= line 52-73)
+
+```
+[codegen_ubo] INFO: tool=ubo_codegen version=0.1.0-PA6 python=3.12.3
+[codegen_ubo] INFO: input=[PosixPath('.../aya_r41_blueprints')] output=.../build-linux-x86_64/codegen/ubo
+[codegen_ubo] INFO: 94 .glsl input(s) discovered
+[codegen_ubo] INFO: cache miss: codegen main script sha256 changed
+[codegen_ubo] INFO: emitted 99 file(s) for 94 block(s) / 386 member(s) in 11008 ms
+[codegen_ubo] INFO: cache written: .../build-linux-x86_64/codegen/cache/codegen_state.json
+[ 26%] Built target codegen_ubo
+```
+
+| 軸 | 期待値 | 実測値 | verdict |
+|---|---|---|---|
+| codegen tool version | 0.1.0-PA6 (= phase F 適用済) | 0.1.0-PA6 | ✅ |
+| input source | `aya_r41_blueprints` (= case X 確定 source of truth) | 同左 | ✅ |
+| .glsl input 数 | 94 | 94 | ✅ (= case X 確定 source of truth literal 一致) |
+| cache miss → 再走行 | 期待 (= main.py sha256 変更で invalidate) | cache miss → 再走行成功 | ✅ |
+| emit 数 | 99 file (= 94 per-block layout + 5 aggregated) | 99 | ✅ |
+| block 数 | 94 | 94 | ✅ |
+| member 数 | 386 | 386 | ✅ (= 4.1 record §C.1.2 Evidence 1 と完全一致) |
+| Built target codegen_ubo | 成功 | `[ 26%] Built target codegen_ubo` | ✅ |
+
+**Evidence 2**: build artifact `build-linux-x86_64/codegen/ubo/` 配下 99 .inl file 生成確認
+
+```
+$ ls build-linux-x86_64/codegen/ubo/*.inl | wc -l
+99
+```
+
+内訳:
+- 5 aggregated .inl: `ubo_dummy_init.inl` + `ubo_host_loader.inl` + `ubo_index.inl` + `ubo_metadata.inl` (= 既存 verify) + `ubo_perfect_hash.inl`
+- 94 per-block layout .inl: `ubo_layout_<name>.inl` (= blueprint 94 .glsl の 1:1 対応)
+
+**Evidence 3**: `ubo_metadata.inl` 内 sub-session 5 改修済 7 UBO binding 整合 confirm (= 4.1 record §C.1.2 Evidence 2 の再現性 verify、build phase で同一 binding 出力)
+
+| # | UBO 名 | 期待値 (= alphabetical slot) | `build-linux-x86_64/.../ubo_metadata.inl` 確認値 | verdict |
+|---|---|---|---|---|
+| 1 | CloudsVParamUBO_Legacy | set=1, binding=8 | line 36: `{ "CloudsVParamUBO_Legacy", 0x7d4955feu, 256u, 1u, 8u, 0u, 1u, 4u }` | ✅ |
+| 2 | PerProgramUBO_GammaCorrect | set=1, binding=39 | line 78: `{ "PerProgramUBO_GammaCorrect", 0xf34eebc8u, 256u, 1u, 39u, 0u, 1u, 4u }` | ✅ |
+| 3 | PerProgramUBO_PointLightV | set=1, binding=44 | line 83: `{ "PerProgramUBO_PointLightV", 0xebfee557u, 256u, 1u, 44u, 1u, 1u, 2u }` | ✅ |
+| 4 | PerProgramUBO_PostDeferredF | set=1, binding=45 | line 84: `{ "PerProgramUBO_PostDeferredF", 0x8519e0b2u, 256u, 1u, 45u, 1u, 1u, 2u }` | ✅ |
+| 5 | PerProgramUBO_WaterHazeV | set=1, binding=55 | line 94: `{ "PerProgramUBO_WaterHazeV", 0x341ff24cu, 256u, 1u, 55u, 1u, 1u, 4u }` | ✅ |
+| 6 | ShadowUtilParamUBO_Legacy | set=1, binding=63 | line 102: `{ "ShadowUtilParamUBO_Legacy", 0x1c7a416cu, 512u, 1u, 63u, 1u, 1u, 12u }` | ✅ |
+| 7 | WaterVParamUBO_Legacy | set=1, binding=79 | line 119: `{ "WaterVParamUBO_Legacy", 0x4d192f45u, 256u, 1u, 79u, 1u, 1u, 6u }` | ✅ |
+
+⇒ /tmp 独立 verify (= 4.1) と build phase 出力 (= 4.3) で binding 値完全一致 = codegen tool deterministic 動作 confirm。
+
+**Evidence 4**: viewer binary 生成 OK (= `ayastorm-bin` target、AYAstorm release rename 後)
+
+```
+[100%] Linking CXX executable ayastorm-bin
+[100%] Built target ayastorm-bin
+```
+
+packaged/bin/ 配下:
+- `do-not-directly-run-ayastorm-bin` (= viewer binary、wrapper script 経由起動 design)
+- `SLPlugin` / `SLVoice` / `dullahan_host` / `chrome-sandbox` / `linux-crash-logger.bin` 等同梱
+
+**Evidence 5**: package tar.xz 生成 (= 206 MB)
+
+```
+[100%] Generating AYAstorm-x86_64-7.2.4.261570900.tar.xz
+[100%] Performing viewer_manifest copy
+[100%] Built target copy_l_viewer_manifest
+[100%] Built target llpackage
+================ Created base package Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261570900.tar.xz
+```
+
+- channel: `Firestorm-AYAstorm-release`
+- version: 7.2.4.261570900 (= revision 261570900、UTC date base autobuild id)
+- tar.xz size: 206,037,388 bytes (= 206 MB)
+- path: `build-linux-x86_64/newview/Phoenix-FirestormOS-AYAstorm-release_LEGACY-7-2-4-261570900.tar.xz`
+
+**Evidence 6**: error 0 件 + build EXIT=0
+
+```
+[100%] Built target llpackage
+finished
+EXIT=0
+```
+
+| 軸 | 期待値 | 実測値 | verdict |
+|---|---|---|---|
+| error: / fatal error / FATAL_ERROR / CMake Error | 0 件 | 0 件 (= grep count 0) | ✅ |
+| build EXIT code | 0 | 0 | ✅ |
+| `Built target llpackage` (= 最終 target) | 成功 | `[100%] Built target llpackage` | ✅ |
+
+#### §C.3.3 §4 Exit 条件 #2 第二部 (= build) 全件充足 verdict
+
+| 項目 (= §4 #2 build 部分) | 充足判定 |
+|---|---|
+| make build success | ✅ (Evidence 6、EXIT=0 + `[100%] Built target llpackage`) |
+| codegen_ubo target 走行成功 | ✅ (Evidence 1、`[ 26%] Built target codegen_ubo` + 94 .glsl → 99 file emit) |
+| build artifact `ubo_metadata.inl` 生成確認 | ✅ (Evidence 2 + Evidence 3、99 .inl file + 7 UBO binding 整合 alphabetical sort literal 一致) |
+| viewer binary 生成 OK | ✅ (Evidence 4、`[100%] Built target ayastorm-bin` + `do-not-directly-run-ayastorm-bin` 配置) |
+
+⇒ §4 Exit 条件 #2 完全充足 (= configure (= 4.2 §C.2) + build (= 4.3 §C.3) 両 phase PASS)。
+
+#### §C.3.4 副次的 verify
+
+- codegen tool `version=0.1.0-PA6` (= phase F 適用済 version) 走行 confirm = phase F commit `868bc38cc9` `_verify_blueprint_actual_consistency` 追加が build phase で正しく load されている
+- cache miss → 再走行成功 = AyaUboCodegen.cmake DEPENDS (= `CONFIGURE_DEPENDS` の `*.glsl` 全件 + `${AYA_UBO_CODEGEN_MODULES}` Python module 全件) で main.py sha256 変更を検知、§12.5.7 cache hit 時 touch path とは別の cache miss path で 11008 ms 再走行
+- glslangValidator 検出済 (= configure phase §C.2 Evidence 2) で codegen 内 SPIR-V cross-check 実施
+
+#### §C.3.5 次手
+
+- 4.3 commit (= 本 record 同梱、§3 表 4.3 row update + §C.3 追記) は AYA literal「commit して進めて」(= 2026-06-06) 受領で本 doc 改修を commit
+- 4.4 (= cold launch verify) は AYA 環境で install + 起動 + Vulkan validation log 0 件 + sub-session 5 改修 7 UBO binding 反映 runtime confirm + crash / regression 0 件 = build flow 続行 (= `rm -rf ~/ayastorm/` + `install.sh` + `rm -rf ~/.ayastorm_x64/cache/` + viewer 起動) は AYA literal 指示後実施
+- memory `project_build_procedure` の build flow 残り (= `cd build-linux-x86_64/newview/packaged` + `rm -rf ~/ayastorm/` + `rm -rf ~/.local/share/applications/ayastorm-viewer.desktop` + `./install.sh` + `rm -rf ~/.ayastorm_x64/cache/`) は 4.4 cold launch 着手と同義 = AYA literal「4.4 進めて」literal or「install して起動して」literal 受領後実施
