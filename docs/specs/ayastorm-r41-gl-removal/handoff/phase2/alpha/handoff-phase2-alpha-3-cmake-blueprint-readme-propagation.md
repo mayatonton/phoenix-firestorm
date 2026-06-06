@@ -95,7 +95,7 @@ scope (= Phase 2.α entry handoff §D.6/§D.7 詳細 cross-ref、全 10 範囲):
 
 | # | 改修内容 | 改変対象 | 想定 commit | 検証 |
 |---|---|---|---|---|
-| E | Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit で actual `class*/` + `cinematic_bd/` 14 file 改修済の新 set/binding を **blueprint dir 内 対応 7 UBO 14 file に同期反映** (= 二重 source 同期断裂解消)、対象 UBO = CloudsVParamUBO_Legacy slot 8 / PerProgramUBO_GammaCorrect slot 39 / PerProgramUBO_PointLightV slot 44 / PerProgramUBO_PostDeferredF slot 45 / PerProgramUBO_WaterHazeV slot 55 / ShadowUtilParamUBO_Legacy slot 63 / WaterVParamUBO_Legacy slot 79 | blueprint dir 内 14 file | 1-2 commit (= sub-batch 分割可) | codegen 単独走行で `ubo_metadata.inl` 新 binding 反映 confirm |
+| E | Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit で actual `class*/` + `cinematic_bd/` **14 file** 改修済 (= 同名 UBO 複数 file 構造ゆえ) の新 set/binding を **blueprint dir 内 対応 7 UBO の 7 file (= blueprint dir = 1 UBO 1 file 構造) に同期反映** (= 二重 source 同期断裂解消)、対象 UBO = CloudsVParamUBO_Legacy slot 8 / PerProgramUBO_GammaCorrect slot 39 / PerProgramUBO_PointLightV slot 44 / PerProgramUBO_PostDeferredF slot 45 / PerProgramUBO_WaterHazeV slot 55 / ShadowUtilParamUBO_Legacy slot 63 / WaterVParamUBO_Legacy slot 79 | blueprint dir 内 **7 file** (= 旧記載「14 file」は誤り、actual class*/ + cinematic_bd/ 側の 14 file との混同、blueprint dir 構造で 7 UBO = 7 file 整合) | 1 commit | codegen 単独走行で `ubo_metadata.inl` 新 binding 反映 confirm |
 
 ### §3.6 phase F = main.py `_verify_block_match` 拡張 (= 二重 source 同期 protocol formal化)
 
