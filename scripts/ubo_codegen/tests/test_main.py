@@ -1,7 +1,9 @@
 # Tests for main.py (PA-7.6 = set/binding forward fix + Phase 1.B entry 副次 (a) cadence prefix/suffix)
 # Run: python3 -m unittest discover -s scripts/ubo_codegen/tests -t scripts/ubo_codegen
 
+import logging
 import unittest
+from unittest.mock import MagicMock, patch
 
 from codegen_error import CodegenError
 from glsl_parser import Member, UboBlockDecl
@@ -11,6 +13,7 @@ from main import (
     _derive_cadence,
     _ubo_to_block_spec,
     _verify_block_match,
+    _verify_blueprint_actual_consistency,
 )
 from std140 import BlockLayout, MemberLayout
 
@@ -161,3 +164,108 @@ class MultiFileIntegrityTests(unittest.TestCase):
             spec_a, "cinematic_bd/class1/deferred/shadowUtil.glsl",
             spec_b, "class1/deferred/shadowUtil.glsl",
         )
+
+
+class BlueprintActualConsistencyTests(unittest.TestCase):
+    """Phase 2.α α-3 phase F (= 2026-06-06): 二重 source 同期 protocol formal化。
+
+    blueprint dir (= codegen 入力 source of truth) と actual class*/ + cinematic_bd/
+    (= AYAstorm shader runtime compile target) の UBO declaration 整合 verify、
+    parse error 時は warning + skip (= addPermutation 等 unresolved 想定)、
+    不一致時は CodegenError abort。
+    """
+
+    def _spec(self, name, set_id, binding, members):
+        layout = BlockLayout(name=name, members=list(members))
+        ubo = UboBlockDecl(
+            block_name=name,
+            layout_qual={"std140": True, "set": set_id, "binding": binding},
+            members=[Member(name=m.name, type_str="float") for m in members],
+        )
+        return _ubo_to_block_spec(ubo, layout)
+
+    def setUp(self):
+        self.log = logging.getLogger("test_blueprint_actual")
+        self.log.addHandler(logging.NullHandler())
+
+    def test_empty_verify_paths_returns_zero(self):
+        # verify_paths が空 = 走査 0 件、整合 verify なし (= 後方互換)
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        bp_spec = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        verified, skipped, no_match = _verify_blueprint_actual_consistency(
+            {bp_spec.name: bp_spec}, {bp_spec.name: "blueprint/waterV.glsl"},
+            [], self.log, None, None, True,
+        )
+        self.assertEqual((verified, skipped, no_match), (0, 0, 0))
+
+    def test_matching_blueprint_and_actual_verifies(self):
+        # blueprint + actual 同 UBO 同 layout → verify PASS、verified_count 加算
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        bp_spec = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        actual_spec = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        with patch("main._process_glsl_file", return_value=[actual_spec]):
+            from pathlib import Path
+            with patch.object(Path, "is_file", return_value=True), \
+                 patch.object(Path, "is_dir", return_value=False):
+                # waterV.glsl single file (= rglob 不要)
+                verified, skipped, no_match = _verify_blueprint_actual_consistency(
+                    {bp_spec.name: bp_spec}, {bp_spec.name: "blueprint/waterV.glsl"},
+                    [Path("class1/environment/waterV.glsl")],
+                    self.log, None, None, True,
+                )
+        self.assertEqual(verified, 1)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(no_match, 0)
+
+    def test_mismatched_blueprint_and_actual_raises(self):
+        # blueprint binding=79 / actual binding=78 → CodegenError abort
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        bp_spec = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        actual_spec = self._spec("WaterVParamUBO_Legacy", 1, 78, [m1])  # binding 不一致
+        with patch("main._process_glsl_file", return_value=[actual_spec]):
+            from pathlib import Path
+            with patch.object(Path, "is_file", return_value=True), \
+                 patch.object(Path, "is_dir", return_value=False):
+                with self.assertRaises(CodegenError) as ctx:
+                    _verify_blueprint_actual_consistency(
+                        {bp_spec.name: bp_spec}, {bp_spec.name: "blueprint/waterV.glsl"},
+                        [Path("class1/environment/waterV.glsl")],
+                        self.log, None, None, True,
+                    )
+        self.assertIn("set/binding", str(ctx.exception))
+
+    def test_actual_parse_error_skips_with_warning(self):
+        # actual file が parse error (= addPermutation 等 unresolved) → warning + skip、abort なし
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        bp_spec = self._spec("PerDrawUBO_ObjectSkin", 2, 0, [m1])
+        with patch("main._process_glsl_file",
+                   side_effect=CodegenError("[codegen_ubo] ERROR: unresolved MAX_JOINTS_PER_MESH_OBJECT")):
+            from pathlib import Path
+            with patch.object(Path, "is_file", return_value=True), \
+                 patch.object(Path, "is_dir", return_value=False):
+                verified, skipped, no_match = _verify_blueprint_actual_consistency(
+                    {bp_spec.name: bp_spec}, {bp_spec.name: "blueprint/per_draw_ubo_object_skin.glsl"},
+                    [Path("class1/avatar/objectSkinV.glsl")],
+                    self.log, None, None, True,
+                )
+        self.assertEqual(verified, 0)
+        self.assertEqual(skipped, 1)
+        self.assertEqual(no_match, 0)
+
+    def test_actual_ubo_without_blueprint_counterpart_warns_no_match(self):
+        # actual に UBO 宣言あるが blueprint に対応 UBO なし → warning + no_match_count 加算、abort なし
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        # blueprint = 空 dict (= 対応なし)
+        actual_spec = self._spec("NewUBO_NotInBlueprint", 1, 50, [m1])
+        with patch("main._process_glsl_file", return_value=[actual_spec]):
+            from pathlib import Path
+            with patch.object(Path, "is_file", return_value=True), \
+                 patch.object(Path, "is_dir", return_value=False):
+                verified, skipped, no_match = _verify_blueprint_actual_consistency(
+                    {}, {},  # blueprint 空
+                    [Path("class1/new_path.glsl")],
+                    self.log, None, None, True,
+                )
+        self.assertEqual(verified, 0)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(no_match, 1)

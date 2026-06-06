@@ -121,6 +121,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="output directory for generated .inl headers (created if missing)")
     p.add_argument("--cache-file", type=Path, metavar="<state.json>", default=None,
                    help="incremental cache state file (default: <output>/codegen_state.json)")
+    p.add_argument("--verify-target-paths", type=Path, nargs='+', metavar="<actual_shader_path>",
+                   default=None,
+                   help="(= Phase 2.α α-3 phase F、2026-06-06、二重 source 同期 protocol formal化): "
+                        "blueprint dir 内 UBO declaration と整合 verify する actual shader path 群 "
+                        "(= class*/ + cinematic_bd/ 配下)。各 file を try-parse、parse 成功時は "
+                        "blueprint 対応 UBO と _verify_block_match で整合 verify、不一致時 CodegenError abort、"
+                        "parse 失敗時 (= addPermutation 等 unresolved) は warning + skip。"
+                        "default None = verify 走らせない (= 旧 behavior)。詳細 handoff §D.9.5 #3 + design 04 §4.4")
     p.add_argument("--project-root", type=Path, metavar="<dir>", default=None,
                    help="project root for cache key normalisation (default: repo root auto-detect)")
     p.add_argument("--force", action="store_true",
@@ -293,6 +301,102 @@ def _verify_block_match(
             ))
 
 
+# --- 二重 source 同期 protocol formal化 (= Phase 2.α α-3 phase F、2026-06-06) ----
+# blueprint dir 内 UBO declaration と actual class*/ + cinematic_bd/ 内 declaration の
+# 対称的整合 verify。設計 doc 04 §2.2 literal「別 GLSL 系統並列の build process」整合、
+# §4.4 「同名 block を複数 GLSL で再宣言」literal 整合性要件の自動化。
+# 詳細: handoff §D.9.5 #3 + design 04 §4.5
+
+def _verify_blueprint_actual_consistency(
+    blueprint_blocks: Dict[str, BlockSpec],
+    blueprint_paths: Dict[str, str],
+    verify_paths: Sequence[Path],
+    log: logging.Logger,
+    glslang_bin: Optional[Path],
+    spirv_cross_bin: Optional[Path],
+    skip_spirv: bool,
+) -> Tuple[int, int, int]:
+    """Verify blueprint UBO declarations match actual shader declarations.
+
+    Args:
+        blueprint_blocks: {block_name: BlockSpec} from blueprint dir parse
+        blueprint_paths: {block_name: source_path_str} for diagnostics
+        verify_paths: actual shader file / dir paths to verify
+        log/glslang_bin/spirv_cross_bin/skip_spirv: forwarded to _process_glsl_file
+
+    Returns:
+        (verified_count, skipped_count, no_match_count)
+        - verified_count = actual file 内 UBO が blueprint 対応 UBO と整合 PASS
+        - skipped_count = actual file の parse error (= addPermutation 等 unresolved) で skip
+        - no_match_count = actual file 内 UBO 名が blueprint に存在しない (= 二重 source 同期断裂 candidate、warning)
+
+    Raises:
+        CodegenError = integrity mismatch detected (= structural mismatch)
+    """
+    # Discover all .glsl in verify_paths
+    actual_files: List[Path] = []
+    for path in verify_paths:
+        if path.is_file() and path.suffix == ".glsl":
+            actual_files.append(path)
+        elif path.is_dir():
+            actual_files.extend(sorted(path.rglob("*.glsl")))
+        else:
+            log.warning("--verify-target-paths: skipping non-glsl/non-dir: %s", path)
+    actual_files = sorted(set(actual_files))
+    log.info("二重 source verify: discovered %d actual shader file(s)", len(actual_files))
+
+    verified_count = 0
+    skipped_count = 0
+    no_match_count = 0
+
+    # Phase 2.α α-3 phase F (= 2026-06-06): actual file は `#ifdef LL_VULKAN_GLSL` block 内
+    # に UBO declaration を持つため、verify 時は -DLL_VULKAN_GLSL=1 prepend 必須。
+    # AYAstorm shader runtime の createSPIRVFromGLSL() で渡す compile-time #define と整合。
+    verify_extra_defines = ("-DLL_VULKAN_GLSL=1",)
+
+    # SPIR-V reflection は verify では skip = 整合 verify は parse + layout 構造比較のみ目的、
+    # actual file の SPIR-V compile (= attachShaderFeatures 等 full compile) は不可。
+    # SPIR-V reflection は blueprint dir 入力時のみ実施 (= run() 内既存 logic 経由)。
+    for actual_path in actual_files:
+        try:
+            actual_blocks = _process_glsl_file(
+                actual_path, log, glslang_bin, spirv_cross_bin, skip_spirv=True,
+                extra_defines=verify_extra_defines,
+            )
+        except CodegenError as exc:
+            # parse error 時 (= addPermutation 等 unresolved) は warning + skip、
+            # AYAstorm runtime 内で発覚予定の構造的問題は本 verify でカバー不可。
+            log.warning("二重 source verify skip (parse error): %s — %s",
+                        actual_path, str(exc).splitlines()[0] if str(exc) else "unknown")
+            skipped_count += 1
+            continue
+
+        if not actual_blocks:
+            continue  # actual file に UBO 宣言なし = verify 対象外
+
+        for actual_block in actual_blocks:
+            if actual_block.name not in blueprint_blocks:
+                # actual に UBO 宣言あるが blueprint に対応なし = 二重 source 同期断裂 candidate
+                log.warning("二重 source verify: UBO '%s' in %s has no blueprint counterpart "
+                            "(= 二重 source 同期断裂 candidate、blueprint dir 内に対応 declaration 追加要)",
+                            actual_block.name, actual_path)
+                no_match_count += 1
+                continue
+
+            # _verify_block_match で対称的整合 verify、不一致時 CodegenError raise
+            blueprint_block = blueprint_blocks[actual_block.name]
+            blueprint_path = blueprint_paths.get(actual_block.name, "<blueprint>")
+            _verify_block_match(
+                blueprint_block, blueprint_path,
+                actual_block, str(actual_path),
+            )
+            verified_count += 1
+
+    log.info("二重 source verify: verified=%d / skipped=%d (parse error) / no_match=%d",
+             verified_count, skipped_count, no_match_count)
+    return (verified_count, skipped_count, no_match_count)
+
+
 # --- pipeline: parse + layout + reflection verify --------------------------
 
 def _process_glsl_file(
@@ -301,11 +405,20 @@ def _process_glsl_file(
     glslang_bin: Optional[Path],
     spirv_cross_bin: Optional[Path],
     skip_spirv: bool,
+    extra_defines: Sequence[str] = (),
 ) -> List[BlockSpec]:
+    """Process a single GLSL file → list of BlockSpec.
+
+    `extra_defines` = preprocess 時に追加で glslang -E に渡す `-D<key>=<value>` 群
+    (= Phase 2.α α-3 phase F、2026-06-06、二重 source verify で actual class*/ +
+    cinematic_bd/ 内 `#ifdef LL_VULKAN_GLSL` block 内 UBO declaration を parse する用途)。
+    blueprint dir parse 時は不要 (= 既に自己完結 GLSL)。
+    """
     stage = _detect_stage(glsl_path)
     log.debug("preprocess: %s (stage=%s)", glsl_path, stage)
     source = glslang_preproc.preprocess(
-        glsl_path, glslang_bin=glslang_bin, extra_args=("-S", stage),
+        glsl_path, glslang_bin=glslang_bin,
+        extra_args=("-S", stage, *extra_defines),
     )
     parse_result = parse_glsl(source, source_file_hint=str(glsl_path))
     if not parse_result.ubo_blocks:
@@ -462,6 +575,7 @@ def run(args: argparse.Namespace, log: logging.Logger) -> int:
         return EXIT_CODEGEN_ERROR
 
     blocks: List[BlockSpec] = []
+    blueprint_paths: Dict[str, str] = {}  # block_name → blueprint source path (= phase F verify 用)
     try:
         for name, entries in blocks_by_name.items():
             spec_block, spec_path = entries[0]
@@ -470,6 +584,7 @@ def run(args: argparse.Namespace, log: logging.Logger) -> int:
             if len(entries) > 1:
                 log.debug("multi-file UBO '%s' verified identical across %d files", name, len(entries))
             blocks.append(spec_block)
+            blueprint_paths[name] = spec_path
     except CodegenError as exc:
         log.error("multi-file UBO integrity check failed: %s", exc)
         return EXIT_CODEGEN_ERROR
@@ -477,6 +592,22 @@ def run(args: argparse.Namespace, log: logging.Logger) -> int:
     if not blocks:
         log.info("inputs yielded 0 UBO blocks (parser found no `layout(std140) uniform` decls)")
         # Still write an empty cache so a future input change re-runs codegen.
+
+    # Phase 2.α α-3 phase F (= 2026-06-06): 二重 source 同期 protocol formal化
+    # --verify-target-paths 指定時、blueprint dir 内 UBO declaration と actual class*/ + cinematic_bd/
+    # 内 declaration の対称的整合 verify、不一致時 CodegenError abort、parse error skip。
+    # 詳細: handoff §D.9.5 #3 + design 04 §4.4 + 04 §4.5
+    if args.verify_target_paths:
+        blueprint_blocks_by_name = {b.name: b for b in blocks}
+        try:
+            _verify_blueprint_actual_consistency(
+                blueprint_blocks_by_name, blueprint_paths,
+                args.verify_target_paths, log,
+                args.glslang_bin, args.spirv_cross_bin, skip_spirv,
+            )
+        except CodegenError as exc:
+            log.error("二重 source verify failed: %s", exc)
+            return EXIT_CODEGEN_ERROR
 
     try:
         written = _emit_all(blocks, args.output, log)
