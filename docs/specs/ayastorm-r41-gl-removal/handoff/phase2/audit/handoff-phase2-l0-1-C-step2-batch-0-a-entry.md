@@ -207,3 +207,34 @@ AYA literal「g-1 / g-2」回答受領 + 着手承認 → sub-session 5 step 2-b
 - multi-file UBO 7 件 (= B0-a) 完了後、sub-session 6 で **MaterialUBO 49 file 単独 (= B0-b)** に進む (= AYA literal「f-1」採用、MaterialUBO 最後単独 protocol)
 - B0-b (= MaterialUBO) は 49 file 1 commit 内同期書換、書換後 grep verify (= `grep -c "set=1, binding=20" 49 files == 49`) で漏れ検出可能
 - step 3 持越 record = mapping doc §4.5 `cinematic_bd/` 影響評価項目を step 3 で `design/ubo/WORK_ORDER.md` 等に追加
+
+---
+
+## §C. Phase 2.L0 freeze status (= 2026-06-06 追記)
+
+**本 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341` CloudsVParamUBO_Legacy / `e539b384ed` PerProgramUBO_GammaCorrect / `f91cda6677` PerProgramUBO_PointLightV / `d4cabb8cfc` PerProgramUBO_PostDeferredF / `5d21f1af9c` PerProgramUBO_WaterHazeV / `c9620edcc7` ShadowUtilParamUBO_Legacy / `e5f57d57ff` WaterVParamUBO_Legacy) 完了時点で Phase 2.L0 freeze**。
+
+### §C.1 freeze 原因
+
+codegen 入力 source の **二重 source 構造発覚** (= `indra/cmake/AyaUboCodegen.cmake:56-86` で `AYA_UBO_CODEGEN_BLUEPRINT_DIR = aya_r41_blueprints/` を codegen 入力に固定、`class*/` + `cinematic_bd/` 配下 GLSL は SPIR-V binary 入力、両者の binding 値同期断裂で Vulkan validation error 高確率)。本 sub-session 5 7 commit は `class*/` + `cinematic_bd/` 側 14 file 書換完了、blueprint 側 7 UBO は旧 binding 残存 = mismatch。
+
+### §C.2 対応 = Phase 2.α 独立起案
+
+Phase 2.α = UBO codegen single source of truth 化 を独立 phase で起案、`class*/` + `cinematic_bd/` 配下 GLSL を codegen 入力に統一、blueprint dir 廃止 / reference 降格、二重 source 構造解消。
+
+**Phase 2.α entry handoff doc**: `docs/specs/ayastorm-r41-gl-removal/handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md`
+
+### §C.3 freeze 中 protocol
+
+- 本 sub-session 5 entry handoff §2.1 改修対象 14 file の **追加改変禁止** (= 7 commit 維持、cold launch せず Phase 2.α 完了待ち)
+- Phase 2.L0 sub-session 6 以降 (= step 2-batch-0-b MaterialUBO / B2 Vertex / B3 Fragment / B4 util/lib) も **freeze 中着手禁止**
+- Phase 2.α 完了後 = 本 sub-session 5 続行点 (= codegen 再生成 + cold launch + AYA live verify) 直接 resume
+- Phase 2.α 内手戻り (= 改修方針破綻時) は本 sub-session 5 の 7 commit revert 必要性判断対象 (= Phase 2.α entry handoff §5 手戻り protocol cross-ref)
+
+### §C.4 AYA literal record (= 2026-06-06)
+
+- 「ちょっと毎回根本解決をさけて適当に今だけしのいで先に進もうとするのをやめてもらわわないと戻り作業が莫大に増えて結局工数増大するので、この課題は Phase2.α とでもして着手、終わったら現在時点で戻って L0 作業再開の形をとってください。」
+- 「作業選択肢も工数を下げて根本解決を避けるのを２度としないでください。根治最優先です。」
+- 「これが何度も起きて出戻りだらけなんです。工数が４倍５倍になるのはこれが理由です。このようなことはもう２度と選択推奨しないでください。」
+
+⇒ memory `feedback_root_cause_no_shortcuts` 新規起案 + memory `feedback_design_doc_number_literal_verify` 適用範囲拡張 (= 構造属性に **codegen/build pipeline 入力 source path** 追加) で永続化。

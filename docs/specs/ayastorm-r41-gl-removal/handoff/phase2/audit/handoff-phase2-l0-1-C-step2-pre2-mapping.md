@@ -375,3 +375,40 @@ AYA literal 受領 = step 2-batch-0-a (= multi-file UBO 7 件、MaterialUBO 除�
 **handoff 切替**: 本 step 2-pre2 commit 完了 + AYA literal 受領済 = **sub-session 4 Exit**。次 sub-session 5 = step 2-batch-0-a (= multi-file UBO 7 件 = MaterialUBO 除く小規模、14 file 改変、推定 1 session) 着手。
 
 next sub-session 5 着手前に handoff doc 起案要否 = sub-session 4 Exit 時の AYA literal 判断 (= 自然な /clear タイミング、memory `feedback_proactive_handoff` 適用)。
+
+---
+
+## §C. Phase 2.L0 freeze status (= 2026-06-06 追記)
+
+**Phase 2.L0 freeze** = sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341` 〜 `e5f57d57ff`、`class*/` + `cinematic_bd/` 14 file 書換) 完了時点で Phase 2.L0 全 sub-session 凍結。
+
+### §C.1 freeze 原因 = codegen 入力 source の二重 source 構造
+
+本 mapping doc §2.1 grep methodology で `aya_r41_blueprints/` 除外を「source of truth ではない」と判定したが、**codegen 入力 source path 確認漏れ**で `indra/cmake/AyaUboCodegen.cmake:56-86` の `AYA_UBO_CODEGEN_BLUEPRINT_DIR = aya_r41_blueprints/` を見落とし、`class*/` + `cinematic_bd/` 14 file 7 commit (= sub-session 5) 実施後に二重 source 発覚:
+- `class*/` + `cinematic_bd/` = SPIR-V binary 入力、書換済
+- `aya_r41_blueprints/` = codegen `ubo_metadata.inl` 入力、未書換 = 旧 binding 残存
+⇒ cold launch で Vulkan validation error 高確率。
+
+### §C.2 対応 = Phase 2.α 独立起案
+
+`class*/` + `cinematic_bd/` 配下 GLSL を codegen 入力に統一、blueprint dir 廃止 / reference 降格、二重 source 構造解消。
+
+**Phase 2.α entry handoff doc**: `docs/specs/ayastorm-r41-gl-removal/handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md`
+
+### §C.3 freeze 中 protocol
+
+- Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= 14 file) の **追加改変禁止** (= 維持、cold launch せず Phase 2.α 完了待ち)
+- Phase 2.L0 sub-session 6 以降 (= step 2-batch-0-b MaterialUBO 49 file 単独 / B2 Vertex 22 件 / B3 Fragment 44 件 / B4 util/lib 6 件) も **freeze 中着手禁止**
+- Phase 2.α 完了後 = sub-session 5 続行点 (= codegen 再生成 + cold launch + AYA live verify) 直接 resume
+
+### §C.4 構造属性 verify 規律拡張 record
+
+本 mapping doc §2.1 grep methodology は「同名 UBO 重複検出 noise 排除」目的、**codegen 入力 source path 確認は別軸**として扱うべきだった。memory `feedback_design_doc_number_literal_verify` を 2026-06-06 拡張、構造属性 verify に **codegen/build pipeline 入力 source path** を追加。今後の mapping doc 起案時は同 memory 適用範囲で `indra/cmake/`, `scripts/*/main.py` 等 build pipeline source path も verify 対象。
+
+### §C.5 AYA literal record (= 2026-06-06)
+
+- 「ちょっと毎回根本解決をさけて適当に今だけしのいで先に進もうとするのをやめてもらわわないと戻り作業が莫大に増えて結局工数増大するので、この課題は Phase2.α とでもして着手、終わったら現在時点で戻って L0 作業再開の形をとってください。」
+- 「作業選択肢も工数を下げて根本解決を避けるのを２度としないでください。根治最優先です。」
+- 「これが何度も起きて出戻りだらけなんです。工数が４倍５倍になるのはこれが理由です。このようなことはもう２度と選択推奨しないでください。」
+
+⇒ memory `feedback_root_cause_no_shortcuts` 新規起案で永続化、本悲報原因は構造属性 verify 漏れ + 工数下げ案を選択肢として並べた罪の二重悲報。
