@@ -245,3 +245,117 @@
 ### §D.8 sub-session 5 step 2-batch-0-a 7 commit 整合性
 
 案 Z 採用で sub-session 5 step 2-batch-0-a 7 commit (= class*/ + cinematic_bd/ 14 file の set/binding 書換) は **freeze 維持**、Phase 2.α α-3 完了後の codegen 入力切替 (= class*/ + cinematic_bd/ 入力) で `ubo_metadata.inl` に新 binding 値が自動反映 = sub-session 5 続行点 (= cold launch + AYA live verify) 直接 resume 可能。revert 不要。
+
+---
+
+### §D.9 「同じ穴に二度落ちた」事例 + 案 Z' 確定 record (= 2026-06-06 4 件目発火)
+
+#### §D.9.1 4 件目発火経緯
+
+案 Z 確定 (= §D.6) を受けて improvement 1 (= blueprint dir README 新規 = commit `862f9cb983`) + improvement 2 (= AyaUboCodegen.cmake `class*/` + `cinematic_bd/` 入力切替 = commit `246535626e`) を完了、improvement 3 (= codegen 単独走行 verify) で **parse error 発覚** = `MAX_JOINTS_PER_MESH_OBJECT` が `class1/avatar/objectSkinV.glsl:49` で unresolved。
+
+原因 = AYAstorm C++ runtime (= `llviewershadermgr.cpp:870`) が `addPermutation()` で **dynamic #define** (= `LLSkinningUtil::getMaxJointCount()` = 110) を inject していて、codegen 単独走行ではそれが解決できない。
+
+AYA literal 4 件目「ミスの上にミスの上にミスの上のミス、わたしじゃ回答出来ない、根治案を出してといってこれです、はい ミス、どうしたらいいですか？って聞かれてもわからない」受領 = parse error 発覚後「選択肢 1/2/3 + どうしたらいいですか」を AYA に投げた = memory `feedback_proactive_risk_management` + `feedback_self_bug_no_defer_option` + `feedback_explanation_lead_with_conclusion` 違反、AYA リスク管理肩代わり拒否 literal。
+
+#### §D.9.2 §11 memory 起案 (= `feedback_root_cause_no_shortcuts` §11)
+
+「同じ穴に二度落ちた」事例として memory 起案、**自走精査網羅性 checklist 4 件義務化**:
+
+| # | checklist 項目 | 内容 |
+|---|---|---|
+| A | 設計 doc 全文逐語精査 | source of truth 全 literal + 全想定の明示確認 (= literal を見るだけでなく、その想定が何を前提にしているかまで literal で確認) |
+| B | 実装側 full trace | AYAstorm 独自実装 (= include resolver / addPermutation / dynamic #define / その他 macro) 全件 enumerate |
+| C | blueprint / actual 差分 structural property 棚卸し | hardcode dynamic 値 / include 文 / 独自 syntax / preprocessor pragma 等 |
+| D | 影響範囲計測 | 該当 file 数 + UBO 影響範囲 + 構造的整合の証拠付き確認 |
+
+4 件全件 verify が揃わない限り根治案を確定しない。
+
+#### §D.9.3 自走精査 result + 案 Z' 確定根拠
+
+##### §D.9.3.1 AYAstorm shader runtime full trace (= checklist B)
+
+| 項目 | 件数 | 主要 evidence |
+|---|---|---|
+| `addPermutation()` 全呼出 | 108 件 | `LLGLSLShader::addPermutation()` @ `llglslshader.cpp:1754-1757`、`mDefines[name] = value` + `loadShaderFile()` で prepend |
+| `#include` directive | **0 件** | LL は `attachShaderFeatures()` (`llshadermgr.cpp:85-394`) で C++ 側 file 単位 attach、`#include` 使わない方式 |
+| dynamic `#define` injection 系統 | 10 系統 | `AYASTORM_CINEMATIC` / `FRAGMENT_SHADER|VERTEX_SHADER` / `GBUFFER_FLAG_*` / `IS_AMD_CARD` / `HAS_DIFFUSE_LOOKUP` + tex0..N / `OLD_SELECT` / `LL_VULKAN_GLSL` / `mDefines` (= addPermutation 値) / `#version` 動的選択 / `[EXTRA_CODE_HERE]` marker |
+| その他 AYAstorm 独自操作 | `#extension` 静的記述 18 ヒット / 6 file + `cinematic_bd/` path probe + 文字列 mutation 0 件 |
+
+parse error 直撃 = **identifier 値として配列 size 等に直接埋め込まれる** macro = `MAX_JOINTS_PER_MESH_OBJECT` / `MAX_NODES_PER_GLTF_OBJECT` / `MAX_MATERIALS_PER_GLTF_OBJECT` / `MAX_UBO_VEC4S` / `LIGHT_COUNT` / `REFMAP_LEVEL` / `REF_SAMPLE_COUNT` / `PROBE_FILTER_SAMPLES` / `FXAA_QUALITY__PRESET` / `TERRAIN_PBR_*` / etc。
+
+##### §D.9.3.2 設計 doc 04 + 08 + 06a 全文逐語精査 (= checklist A)
+
+| literal 引用 | 確定 |
+|---|---|
+| `08-build-codegen-pipeline.md §2.1:72-74` literal 「入力: `app_settings/shaders/class*/{deferred,interface,...}/**.glsl`」 | codegen 入力 = actual shader 確定 (= 候補 B) |
+| `08 §2.2` literal 「Codegen と glslang は **同じ GLSL 入力に対して 2 系統並列の build process**」 | codegen + runtime 同一 GLSL 入力 |
+| `04 §8:967` literal 「blueprint は **discard せず再利用** ... Codegen 生成 layout に redirect 層が値を流せば実体化」 | blueprint dir は履歴温存、actual shader が source of truth |
+| `04 §4.4` literal 「同名 block を複数 GLSL で再宣言 ... 全宣言が **同一 member 構成** であることを build-time check で保証」 | sub-session 5 step 2-batch-0-a 14 file 同期書換は §4.4 literal 整合性要件の必然 |
+| `04 / 08 / 06a` 全文に **C++ runtime emulation を扱う § literal 不在** | **設計時構造的見落とし** (= §11 で見落とした真因) |
+
+##### §D.9.3.3 影響範囲計測 (= checklist D)
+
+| 軸 | 計測値 |
+|---|---|
+| shader 総 file 数 (`class*/` + `cinematic_bd/`) | 246 file |
+| 項目 `MAX_JOINTS_PER_MESH_OBJECT` 影響 file | 3 file (`objectSkinV.glsl` / `skinnedVelocityV.glsl` / `skinnedVelocityAlphaV.glsl`) |
+| parse error 直撃 file 数 | **約 25-35 file** (= identifier 値として配列 size 等に直接埋め込まれる macro 含有 file) |
+| 影響 UBO 数 (= 80 UBO 中) | **約 4-8 UBO** (= `PerDrawUBO_ObjectSkin` / `PerDrawUBO_SkinnedVelocity` 系 / GLTF PBR UBO 系等) |
+
+#### §D.9.4 案 Z' (= 案 Z + C++ runtime emulation 層追加) 確定根拠
+
+設計 doc literal 4 件で **案 Z 方向 (= class*/ + cinematic_bd/ 入力) は正しい**。「同じ穴」の真因は案 Z 方向ではなく、案 Z 実装時の **C++ runtime emulation 層必要性見落とし**。
+
+| 軸 | 案 Z' 整合根拠 |
+|---|---|
+| AYA 指示 #5 (= design/01:146 「discard しない」) | ✅ blueprint dir 物理保持 (= 案 Z と同) |
+| 設計 doc 08:72-74 想定 | ✅ codegen 入力 = `class*/` + `cinematic_bd/` (= 案 Z 方向、improvement 2 commit `246535626e` 保持) |
+| 設計 doc 04:967 「blueprint は discard せず再利用」 | ✅ blueprint dir = 履歴温存 (= 案 Z と同、improvement 1 commit `862f9cb983` 保持) |
+| 設計 doc 04 §2.2 「同じ GLSL 入力に対して 2 系統並列」 | ✅ codegen + runtime SPIR-V 化が同一 GLSL を入力 |
+| **C++ runtime emulation 層 (= 設計時 literal 空白)** | ✅ 新規 improvement 1.5 で codegen Python tool に **C++ 定数 dump file (= `aya_r41_codegen_defines.toml` 等) + main.py `--defines-file` option + glslang -E に `-D<key>=<value>` prepend** を追加 (= 設計時 literal 空白を埋める) |
+| memory `feedback_root_cause_no_shortcuts` 整合 | ✅ 案 Z' 単独提示、対症療法案並列なし、選択肢 1/2/3 を AYA に投げない |
+| sub-session 5 step 2-batch-0-a 7 commit 整合 | ✅ class*/ + cinematic_bd/ 14 file 改修済 = 案 Z' 採用で codegen 入力切替後 binding 値自動反映、freeze 維持 |
+
+#### §D.9.5 案 Z' 改修方針 (= §D.6 案 Z 改修方針を置換)
+
+| # | 改修対象 | 改修内容 (= 案 Z' 確定) |
+|---|---|---|
+| 1 | `indra/cmake/AyaUboCodegen.cmake` | **改修 1-A (= 既 commit `246535626e` 保持)**: `BLUEPRINT_DIR` 廃止 → `SHADER_SOURCE_DIRS` 4 path list 化、`GLOB_RECURSE` 連合、`--input` list 化、STATUS message 更新。**改修 1-B (= 新規 improvement 1.5.d)**: dump file path (= `AYA_UBO_CODEGEN_DEFINES_FILE`) 定義 + `add_custom_command DEPENDS` に追加 + `--defines-file` 引数を `_aya_codegen_common_args` に追加 |
+| 2 | `scripts/ubo_codegen/main.py` | **改修 2-A (= 既 commit `b66ec99f72` 保持)**: `--input nargs='+'` 多入力対応 + `_verify_block_match` 同名 UBO 複数 file 整合 verify logic。**改修 2-B (= 新規 improvement 1.5.c)**: `--defines-file <path>` option 追加 + dump file 読込 (= toml/json parser) + glslang -E に `-D<key>=<value>` で prepend + 138 test PASS 維持 |
+| 3 | `aya_r41_blueprints/` | **reference 降格保持 (= 既 commit `862f9cb983` 保持)**: dir + 全 .glsl file 維持、codegen 入力対象外、内部 `README.md` 反映済 (= 案 Z' で内容補足の必要性は次 sub-step で評価) |
+| 4 | **新規 = `scripts/ubo_codegen/aya_r41_codegen_defines.toml` (or .json) 起案 (= improvement 1.5.b)** | AYAstorm C++ 定数群を static dump = `MAX_JOINTS_PER_MESH_OBJECT=110` (= `lljoint.h` 経由) + 影響範囲 4-8 UBO で必要な全 macro 全件 enumerate、CMake DEPENDS 追加で改訂時 reconfigure 自動 trigger |
+| 5 | `scripts/ubo_codegen/tests/test_main.py` | (a) `--defines-file` option test 追加 (b) glslang -E への `-D<key>=<value>` prepend test (c) 不在時 fallback test (= dump file 未指定で従来 behavior) (d) class*/ + cinematic_bd/ 入力で 80 UBO codegen 出力整合 test |
+| 6 | **新規 = 設計 doc 04 + 08 + 06a に「C++ runtime emulation 層」§ 新規追加 (= improvement 4 拡張)** | literal 空白を埋める (= §11「設計 doc literal 空白を見落とした罪」防止策)、04 §3 / §4 / §5.2.1 / §6 / §11 のいずれかに新 § 追加 + 08 §3.3 / §4.3 / §5.2 に C++ runtime 注入 emulation 層 追加 + 06a §0.1 「addPermutation」の build-time variant 展開の literal 補完 |
+| 7 | 80 UBO 全件 cold launch validation | 改修後 codegen で `class*/` + `cinematic_bd/` 配下 80 UBO declaration を再生成、SPIR-V ↔ `ubo_metadata.inl` 整合 confirm (= Vulkan validation 0 件 + AYA live verify) = sub-session 5 step 2-batch-0-a 7 UBO 新 binding 反映 + 73 UBO 未改修 binding 反映 |
+
+#### §D.9.6 案 Z' 全件波及更新範囲 record (= §D.7 拡張)
+
+| # | 対象 | 内容 (= 案 Z' 追加分は **太字**) |
+|---|---|---|
+| 1 | `design/08-build-codegen-pipeline.md` | `BLUEPRINT_DIR` 言及全件、§5 走行 logic / §12 CMake wiring の入力 source 記述を「class*/ + cinematic_bd/」整合に更新、blueprint 言及を「reference 資料」位置付けに修正 + **§3.3 / §4.3 / §5.2 に C++ runtime emulation 層 § 新規追加** |
+| 2 | `design/04-codegen-ubo.md` | blueprint 言及 (= §27 / §932 / §967 等) を「reference 資料」位置付けに維持、codegen 入力 path 言及を「class*/ + cinematic_bd/」に統一 + **§3 / §4 / §5.2.1 / §6 / §11 のいずれかに C++ runtime emulation 層 § 新規追加** |
+| 3 | **`design/06a-host-redirect-layer.md`** (= 案 Z' 新規追加) | **§0.1 「`addPermutation` build-time variant 展開」literal を「= codegen Python tool が dump file 経由 emulate」literal で補完**、新 § で「C++ runtime emulation 層」の役割明示 |
+| 4 | `design/09-phase-roadmap.md` | blueprint 言及確認 + Phase 2.α 反映 + **案 Z' 確定反映 (= sub-phase α-1.5 = C++ runtime emulation 層追加)** |
+| 5 | `design/10-open-questions.md` | blueprint 関連 open question あれば closed 化 + **C++ runtime emulation 層関連 open question 棚卸し** |
+| 6 | `design/ubo/WORK_ORDER.md` + `READINESS.md` + `RELATIONS.md` + `INDEX.md` | blueprint 言及確認 + 「reference 資料」位置付け統一 + **影響 4-8 UBO (= dynamic #define 含有 UBO) の dependency entry 追加** |
+| 7 | `design/ubo/*.md` 80+ 件 per-UBO doc | 各 doc 内 blueprint 言及を「reference 資料」位置付け統一 + **影響 4-8 UBO (= `PerDrawUBO_ObjectSkin` 等) に C++ runtime emulation 層 dependency 明示** |
+| 8 | `ayastorm-r41-ubo-current-state-inventory.md` | §247-249 同名 UBO 複数 file 認識 record を「案 Z で main.py 整合 verify logic 追加」反映 + **C++ runtime emulation 層 dependency record 追加** |
+| 9 | `indra/cmake/AyaUboCodegen.cmake` | 改修 1-A (= 既 commit) + **改修 1-B (= dump file DEPENDS + --defines-file 引数追加、improvement 1.5.d)** |
+| 10 | `scripts/ubo_codegen/main.py` + `glsl_parser.py` + `perfect_hash.py` + `tests/test_main.py` + `tests/test_build_cache.py` | docstring / comment 内 blueprint 言及を「reference 資料 / codegen 入力対象外」位置付けに更新 (= 機能改修は §D.9.5 #2 + #5) + **C++ runtime emulation 層 docstring 反映** |
+| 11 | `aya_r41_blueprints/README.md` | 改修 3 (= 既 commit) + **案 Z' での「C++ runtime emulation 層 dump file 由来 C++ const 整合」literal 補足の必要性評価 (= sub-step 内で判断)** |
+| 12 | **`scripts/ubo_codegen/aya_r41_codegen_defines.toml` (or .json)** (= 案 Z' 新規追加) | **新規追加 (= improvement 1.5.b)**、AYAstorm C++ 定数群 static dump |
+| 13 | **Phase 2.α handoff doc 2 件** (= 本 doc + α-3 entry) | **§D.9 (本節) 追記 + α-3 entry §3 sub-step 順序を案 Z' 用に再起案 (= improvement 1.5.a)** |
+
+**phase1 archive doc + handoff/archive/ + archive/** = 履歴 doc ゆえ更新対象外 (= 時系列で「phase1 完了時点の状態」として読まれる、誤読リスク小)。
+
+#### §D.9.7 既 commit 整合性 (= revert 不要 record)
+
+| commit | 内容 | 案 Z' での扱い |
+|---|---|---|
+| `862f9cb983` | improvement 1 = blueprint dir README 新規追加 (= reference 降格明示) | **保持** (= 案 Z' で AYA 指示 #5 + design/04:967 整合維持) |
+| `246535626e` | improvement 2 = AyaUboCodegen.cmake `class*/` + `cinematic_bd/` 入力切替 | **保持** (= 案 Z' で design/08:72-74 整合維持、新規追加は dump file DEPENDS + `--defines-file` 引数のみ) |
+| `b66ec99f72` | Phase 2.α α-2 = main.py multi-input + `_verify_block_match` 追加 + 7 test 追加 | **保持** (= 案 Z' で integrity check 維持、新規追加は `--defines-file` option のみ) |
+| `64122994c1` | Phase 2.α 案 Z 確定 doc 3 件改修 | **§D 追記で更新** (= 本節 §D.9 が案 Z' 確定 source of truth) |
+| `db5cbcbc36` | Phase 2.α 起案 + Phase 2.L0 freeze record | **保持** (= 起案契機 + freeze 記録は案 Z' でも同) |
+| `887ddb5341`〜`e5f57d57ff` | sub-session 5 step 2-batch-0-a 7 commit (= class*/ + cinematic_bd/ 14 file 改修) | **freeze 維持** (= 案 Z' での codegen 入力切替で binding 値自動反映、resume 可能) |
