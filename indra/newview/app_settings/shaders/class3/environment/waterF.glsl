@@ -105,7 +105,7 @@ uniform sampler2D bumpMap2;
 //   kd は host setter 無し (declared-but-unused、BD legacy)、parse 通過のため UBO 含める。
 #ifndef WATER_V_PARAM_UBO_LEGACY_DEFINED
 #define WATER_V_PARAM_UBO_LEGACY_DEFINED 1
-layout(set=3, binding=60, std140) uniform WaterVParamUBO_Legacy {
+layout(set=1, binding=79, std140) uniform WaterVParamUBO_Legacy {
     vec2 waveDir1;
     vec2 waveDir2;
     float time;
