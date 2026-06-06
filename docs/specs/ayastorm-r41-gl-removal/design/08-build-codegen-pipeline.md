@@ -115,7 +115,7 @@ indra/newview/llviewershadermgr 等
 
 | # | 候補 | 利点 | 欠点 |
 |---|---|---|---|
-| B1a | **Python (3.8+)** | 3 OS 揃え容易 (= 各 OS 標準 / autobuild 既存 Python 入っている)、文字列 / regex / dict 強力、CMake から `find_package(Python3)` で呼出容易 | tool 自体に Python 依存 |
+| B1a | **Python (3.11+)** (= 2026-06-06 Phase 2.α α-3 improvement 1.5.c で 3.8+ → 3.11+ 引上げ、`tomllib` stdlib 利用要件 = AYAstorm C++ const dump file 読込) | 3 OS 揃え容易 (= 各 OS 標準 / autobuild 既存 Python 入っている)、文字列 / regex / dict 強力、CMake から `find_package(Python3)` で呼出容易 | tool 自体に Python 依存 |
 | B1b | C++ standalone tool | runtime 依存ゼロ (= 実行ファイル単独) | **tool build を 3 OS で先行する必要** (= cross-compile / Linux→Win build 等の経路考慮、build dependency 大増)、文字列処理コード冗長 |
 | B1c | CMake script (= pure CMake) | 追加 dependency ゼロ | 文字列操作 / dict / std140 算術が弱い、独自 perfect hash 生成困難、debug 不能 |
 
@@ -127,7 +127,7 @@ indra/newview/llviewershadermgr 等
    - **macOS**: system Python 3.9+ (Xcode 14+ 標準) または Homebrew/autobuild bundle、@t-noami さん検証信任の Mac 環境では autobuild 経由が default
    - **Windows**: 公式 installer (`python.org`) または autobuild bundle、AYAstorm autobuild は Python 3.11 bundle 配信実績 (= `autobuild.xml` `python` package、3 OS 一律 version)
    - AYAstorm 既存 autobuild stack には `develop.py` / `autobuild` 用に Python 必須なため、本 Codegen tool の追加 dependency 影響ゼロ (= 既存 stack 内)
-   - 万一 system Python 不在の Win 環境では autobuild が Python bundle を install (= `autobuild install python`)、build 時 `find_package(Python3 3.8 REQUIRED)` で autobuild 提供 path を解決
+   - 万一 system Python 不在の Win 環境では autobuild が Python bundle を install (= `autobuild install python`)、build 時 `find_package(Python3 3.11 REQUIRED)` で autobuild 提供 path を解決 (= Phase 2.α α-3 改、`tomllib` stdlib 利用要件)
 2. **文字列 / parse / hash 処理に最適**: GLSL 中 UBO block parse / std140 offset 計算 / perfect hash 生成 (= §5) いずれも Python の str/dict/list/struct で素直に書ける、~500-1000 行で完結
 3. **CMake 統合容易**: `find_package(Python3 REQUIRED)` + `add_custom_command(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/codegen_ubo.py ...)` で 1 行
 4. **debug / iterate コスト最小**: tool 改修時に rebuild 不要 (= script は直接実行)、GLSL 変更検出後の Codegen 単独実行も `python codegen_ubo.py` で完結
@@ -159,9 +159,12 @@ AYAstorm shader runtime は `LLGLSLShader::addPermutation()` 経由で **dynamic
 
 ### §3.4 Python version 縛り
 
-- Python 3.8+ 必須 (= f-string / typed dict / dataclass)
-- CMake check: `find_package(Python3 3.8 REQUIRED)` で起動時 fail → **build error**
-- 3 OS install gate は (B2) glslang + (B1) Python の 2 dependency のみ、AYAstorm 既存 autobuild が両方含むため新規追加なし想定 (= §13 で確証 phase 明記)
+- **Python 3.11+ 必須** (= 2026-06-06 Phase 2.α α-3 improvement 1.5.c で 3.8+ → 3.11+ 引上げ、`tomllib` stdlib 利用要件 = AYAstorm C++ const dump file 読込)
+  - 3.11 未満では `tomllib` stdlib 不在ゆえ、外部 `tomli` install or 自前 TOML parser 実装が必要 = 案 Z' 確定で stdlib 採用 (= `feedback_no_dual_doc_split` 整合、外部依存追加回避)
+  - 基本 stdlib features (= f-string / typed dict / dataclass) も 3.8+ で利用可能、引上げの根因は `tomllib` のみ
+- CMake check: `find_package(Python3 3.11 REQUIRED)` で起動時 fail → **build error**
+- 3 OS install gate は (B2) glslang + (B1) Python の 2 dependency のみ、AYAstorm 既存 autobuild が両方含むため新規追加なし想定 (= AYAstorm autobuild Python 3.11 bundle 配信実績、§3.2 #1 cross-ref)
+  - macOS system Python 3.9+ では 3.11+ 不在の場合あり = autobuild bundle (= 3.11) 経由 path 必須、`find_package(Python3 3.11 REQUIRED)` で gate
 
 ---
 
@@ -1519,7 +1522,7 @@ def write_cache(state_file: Path, ...):
 ### §12.3 CMake snippet 例
 
 ```cmake
-find_package(Python3 3.8 REQUIRED)
+find_package(Python3 3.11 REQUIRED)  # Phase 2.α α-3 改 (= tomllib stdlib 利用、§3.4)
 
 file(GLOB_RECURSE AYA_GLSL_FILES
     "${CMAKE_SOURCE_DIR}/indra/newview/app_settings/shaders/*.glsl"
@@ -1788,7 +1791,7 @@ AYAstorm は Linux/Win/Mac 3 OS 対応 (= memory `project_ayastorm_three_platfor
 
 | 項目 | Linux | Win | Mac |
 |---|---|---|---|
-| Python 3.8+ availability | ✅ apt/dnf 標準 (3.10+) | ✅ autobuild bundle / 公式 installer | ✅ system Python 3.9+ / brew |
+| Python **3.11+** availability (= Phase 2.α α-3 改) | ✅ apt/dnf 標準 (Ubuntu 24.04 = 3.12) | ✅ autobuild bundle (= 3.11) / 公式 installer | △ system Python 3.9+ では 3.11+ 不在の場合あり、autobuild bundle 必須 |
 | glslang vendoring (autobuild) | ✅ 既存配信 | ✅ 既存配信 | ✅ 既存配信 |
 | `add_custom_command` 動作 | ✅ make / ninja | ✅ MSBuild / ninja | ✅ Xcode / ninja |
 | path 区切り `/` vs `\` | ✅ POSIX | ⚠️ CMake が `/` を自動変換 | ✅ POSIX |
@@ -1803,7 +1806,7 @@ AYAstorm は Linux/Win/Mac 3 OS 対応 (= memory `project_ayastorm_three_platfor
 
 ### §13.3 Mac 固有注意点
 
-- system Python 3.9+ で動作確認、autobuild 経由の Python (= AYAstorm 既存) も併用可
+- system Python **3.11+** で動作確認 (= Phase 2.α α-3 改、`tomllib` stdlib 利用要件)、autobuild 経由の Python (= AYAstorm 既存 = 3.11 bundle) も併用可
 - glslang autobuild package は Mac でも同 version 配信 (= AYAstorm 既存運用、@t-noami さん検証信任、memory `feedback_mac_only_fixes_accept_as_is` 範囲内)
 - Codegen tool は Mac 動作確証を **AYA 実機 / @t-noami さん検証** で後追い (= chapter 09 Phase 入口で実 build 確認)
 
@@ -2042,7 +2045,7 @@ chapter 06a §5.6 で「sampler は OpenGL path 強制 + Vulkan path descriptor 
 | (P) | GLSL parse 手段: 独自 mini-parser + glslang -E vs glslang library reflection | **P3 mini-parser + glslang -E** | **chapter 10 / AYA 判断** |
 | (G/B3) | perfect hash generator: 独自 Python frozen-table vs gperf vs frozen library | **G2/B3b Python frozen-table** | **chapter 10 / AYA 判断** |
 | **(G/B3) ID 衝突注 (= 設計 review 2026-06-03 §3.1 ID rename 整合)**: 本 chapter §17 / §5.5 / chapter 04 §10 の (G) = **perfect hash generator** を指す (= 本 chapter 固有 ID)。chapter 05 §6 の旧 (G) = **per-material cadence** は設計 review §3.1 で **(MC)** に rename 済 (= material cadence prefix)、別概念で衝突しない。本 chapter / chapter 04 の (G) ID はそのまま維持、handoff §4.4 にも (G) ID 衝突解消経緯を反映予定 (= chapter 05 (G)→(MC) のみ rename、chapter 04/08 (G) は不変) | — | — |
-| (B1) | Codegen 実装言語: Python vs C++ standalone vs CMake script | **B1a Python 3.8+** | **chapter 10 / AYA 判断** |
+| (B1) | Codegen 実装言語: Python vs C++ standalone vs CMake script | **B1a Python 3.11+** (= 2026-06-06 Phase 2.α α-3 改、tomllib stdlib 利用要件) | **chapter 10 / AYA 判断** |
 | (B2) | glslang 統合: autobuild vendoring vs system pkg vs 自前実装 | **B2a autobuild vendoring (既存温存)** | **chapter 10 / AYA 判断** |
 | (B4) | 増分 build cache strategy: hash+mtime vs mtime only vs hash only vs ccache | **B4a hash + mtime 併用** | **chapter 10 / AYA 判断** |
 | (B5) | Codegen 実行 trigger: CMake DEPENDS 自動 vs 全 build 時 vs 手動 target only | **B5a 自動 + 手動 target 併設** | **chapter 10 / AYA 判断** |

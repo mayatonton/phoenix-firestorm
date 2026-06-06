@@ -127,6 +127,10 @@ class EnvVersions:
     spirv_cross_version: str
     python_version: str = field(default_factory=get_python_version)
     host_platform: str = field(default_factory=get_host_platform)
+    # Phase 2.α α-3 improvement 1.5.c (= 2026-06-06): C++ runtime emulation 層 dump file
+    # の sha256 hash (= aya_r41_codegen_defines.toml 改訂で cache invalidation 連動)。
+    # default = "no-defines" (= --defines-file 未指定時の sentinel)。
+    defines_hash: str = "no-defines"
 
     def to_dict(self) -> Dict[str, str]:
         return {
@@ -134,6 +138,7 @@ class EnvVersions:
             "glslang_version": self.glslang_version,
             "spirv_cross_version": self.spirv_cross_version,
             "host_platform": self.host_platform,
+            "defines_hash": self.defines_hash,
         }
 
 
