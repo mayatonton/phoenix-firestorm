@@ -11,9 +11,14 @@
 #
 # 動作概要:
 #   build 時 scripts/ubo_codegen/main.py が走り、
-#   indra/newview/app_settings/shaders/ 配下 *.glsl を入力に
-#   ${CMAKE_BINARY_DIR}/codegen/ubo/ に 5 aggregated .inl + per-block layout
-#   .inl 群を emit。cache (= codegen_state.json) hit 時は touch のみで早期 return。
+#   indra/newview/app_settings/shaders/{class1,class2,class3,cinematic_bd}/ 配下
+#   *.glsl を入力に ${CMAKE_BINARY_DIR}/codegen/ubo/ に 5 aggregated .inl + per-block
+#   layout .inl 群を emit。cache (= codegen_state.json) hit 時は touch のみで早期 return。
+#   設計時参考資料 aya_r41_blueprints/ は **入力対象外** (= Phase 2.α 案 Z 確定
+#   2026-06-06、設計 doc 整合修復、blueprint dir reference 降格、AYA 指示 #5 整合
+#   = design/01-overview.md:146 「85 GLSL UBO blueprint は discard しない」literal、
+#   blueprint dir は物理保持しつつ Codegen 入力からは除外、詳細 =
+#   aya_r41_blueprints/README.md + handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md §D)。
 #
 # 接続: 利用 target からは aya_attach_ubo_codegen(<target>) を呼ぶ。
 #   add_dependencies(<target> codegen_ubo) + target_include_directories(<target>
@@ -53,10 +58,20 @@ set(AYA_UBO_CODEGEN_SCRIPT
     CACHE FILEPATH "AYAstorm r41 UBO Codegen entry script")
 mark_as_advanced(AYA_UBO_CODEGEN_SCRIPT)
 
-set(AYA_UBO_CODEGEN_BLUEPRINT_DIR
-    "${CMAKE_SOURCE_DIR}/newview/app_settings/shaders/aya_r41_blueprints"
-    CACHE PATH "AYAstorm r41 UBO blueprint (.glsl) root directory (= PA-8 85 UBO blueprint 専用 root、set{0,1,2,3}/<name>.glsl で 1 UBO 1 file、legacy LL shader + aya_r41_exemplar は scan 対象外)")
-mark_as_advanced(AYA_UBO_CODEGEN_BLUEPRINT_DIR)
+# Phase 2.α 案 Z 確定 (= 2026-06-06): Codegen 入力 source は actual shader dir 群
+# (= class*/ + cinematic_bd/) = 設計 doc 想定 (design/08-build-codegen-pipeline.md:72-74) 整合復元。
+# 設計時参考資料 aya_r41_blueprints/ は **入力対象外** (= reference 降格、物理保持、
+# AYA 指示 #5 = design/01-overview.md:146 「discard しない」literal 整合、
+# blueprint dir 詳細 = aya_r41_blueprints/README.md)。
+# 同名 UBO 複数 file 整合 verify (= class*/ ↔ cinematic_bd/ 上書き path 同 layout
+# 一致 check) は main.py `_verify_block_match` (= Phase 2.α α-2 commit b66ec99f72) が担当。
+set(AYA_UBO_CODEGEN_SHADER_SOURCE_DIRS
+    "${CMAKE_SOURCE_DIR}/newview/app_settings/shaders/class1"
+    "${CMAKE_SOURCE_DIR}/newview/app_settings/shaders/class2"
+    "${CMAKE_SOURCE_DIR}/newview/app_settings/shaders/class3"
+    "${CMAKE_SOURCE_DIR}/newview/app_settings/shaders/cinematic_bd"
+    CACHE STRING "AYAstorm r41 UBO Codegen shader source dirs (= class*/ + cinematic_bd/ actual shader dirs、aya_r41_blueprints/ は reference 降格で対象外)")
+mark_as_advanced(AYA_UBO_CODEGEN_SHADER_SOURCE_DIRS)
 
 set(AYA_UBO_CODEGEN_OUTPUT_DIR
     "${CMAKE_BINARY_DIR}/codegen/ubo"
@@ -80,10 +95,16 @@ file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/codegen/cache")
 # ---- DEPENDS 構築 ----
 
 # §12.5.2: CONFIGURE_DEPENDS で build 時 GLSL dir mtime 検査 → 新規 .glsl 自動検出
+# (= Phase 2.α 案 Z 確定: SHADER_SOURCE_DIRS 全 dir に GLOB_RECURSE 連合 pattern)
+set(_aya_codegen_glsl_globs)
+foreach(_aya_codegen_dir IN LISTS AYA_UBO_CODEGEN_SHADER_SOURCE_DIRS)
+    list(APPEND _aya_codegen_glsl_globs "${_aya_codegen_dir}/*.glsl")
+endforeach()
 file(GLOB_RECURSE AYA_UBO_CODEGEN_GLSL_FILES
     CONFIGURE_DEPENDS
-    "${AYA_UBO_CODEGEN_BLUEPRINT_DIR}/*.glsl"
+    ${_aya_codegen_glsl_globs}
 )
+unset(_aya_codegen_glsl_globs)
 
 # Python module 群 (= main.py が import する全 module) の変更も走行 trigger に。
 # CONFIGURE_DEPENDS なし = module 追加時は手動 reconfigure (= shader 追加と同流)。
@@ -107,9 +128,11 @@ set(AYA_UBO_CODEGEN_OUTPUTS
 
 # ---- 走行 command 共通引数 ----
 
+# --input は main.py argparse `nargs='+'` (= α-2 commit b66ec99f72) で複数 dir 受領
+# (= SHADER_SOURCE_DIRS list を空白展開で複数 arg として渡す)
 set(_aya_codegen_common_args
     "${AYA_UBO_CODEGEN_SCRIPT}"
-    --input  "${AYA_UBO_CODEGEN_BLUEPRINT_DIR}"
+    --input  ${AYA_UBO_CODEGEN_SHADER_SOURCE_DIRS}
     --output "${AYA_UBO_CODEGEN_OUTPUT_DIR}"
     --cache-file "${AYA_UBO_CODEGEN_CACHE_FILE}"
     --project-root "${CMAKE_SOURCE_DIR}/.."
@@ -177,8 +200,11 @@ function(aya_attach_ubo_codegen TARGET_NAME)
 endfunction()
 
 message(STATUS "AYAstorm r41 (PA-7): UBO Codegen wired = ${AYA_UBO_CODEGEN_SCRIPT}")
-message(STATUS "AYAstorm r41 (PA-7):   blueprint dir   = ${AYA_UBO_CODEGEN_BLUEPRINT_DIR}")
+foreach(_aya_codegen_dir IN LISTS AYA_UBO_CODEGEN_SHADER_SOURCE_DIRS)
+    message(STATUS "AYAstorm r41 (PA-7):   shader source dir = ${_aya_codegen_dir}")
+endforeach()
+unset(_aya_codegen_dir)
 message(STATUS "AYAstorm r41 (PA-7):   output dir      = ${AYA_UBO_CODEGEN_OUTPUT_DIR}")
 message(STATUS "AYAstorm r41 (PA-7):   cache file      = ${AYA_UBO_CODEGEN_CACHE_FILE}")
 list(LENGTH AYA_UBO_CODEGEN_GLSL_FILES _aya_ubo_glsl_count)
-message(STATUS "AYAstorm r41 (PA-7):   blueprint count = ${_aya_ubo_glsl_count} .glsl files")
+message(STATUS "AYAstorm r41 (PA-7):   GLSL source count = ${_aya_ubo_glsl_count} .glsl files (class*/ + cinematic_bd/)")
