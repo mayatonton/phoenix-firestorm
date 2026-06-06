@@ -70,7 +70,8 @@ r41 Vulkan migration の sub-step 体系上、本 roadmap が扱うのは:
 |---|---|---|---|---|---|---|---|
 | **Phase 0** | 計測 phase | 06a-prep §2-§4 の (H1b)(E')(F) 実機計測 + 結果 chapter 反映 | η-29 | archive eta-29 phase0-step1/2/4/5-complete | 06a-prep §6 反映 flow 全行「反映済」 | (η-29 phase 着手前 prep + AYA 実機計測 = step3) | ✅ (= 2026-06-03 完走、commit `4e40fd2ab0` mechanical revert) |
 | **Phase 1** | codegen + redirect 層整備 + shell UBO 1 個通電 | chapter 08 codegen pipeline 実装 + chapter 06a redirect 層 + 06b dirty flag + 06c descriptor set bind + 1.C で shell UBO 1 個 (= UB_REFLECTION_PROBES) 5 cadence 全経路 `vkCmdBindDescriptorSets` 通電 | η-30 (.A/.B/.C 細分) | handoff/phase1/{a,b,c}/handoff-phase1-{a,b,c}-complete.md | Phase 1.A/B/C 各 Exit 全 PASS | handoff Phase 1.A ✅ + 1.B ✅ + 1.C shell 段階 ✅ (= UB_REFLECTION_PROBES `Global_ReflectionProbes` shell zero dummy write までで停止) | **shell 段階 ✅、Phase 2 本実装着手 ⏳** (= R1/R2/R3 残、handoff-phase1-e-complete.md §5.2) |
-| **Phase 2** | **全 94 UBO + L0 4 protocol 本実装** (= 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / 2.C ... 細分) | L0 4 protocol + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 UBO 全件本実装 (= AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ」確定) | η-31 (.A/.B/.C ... 細分予定) | 起案予定 (= Phase 2 着手前 separate session、AYA さん指示 2026-06-06) | 全 94 UBO 通電 + cold launch + canary + log + visual regression ゼロ (= WORK_ORDER §4.5 V-1) | handoff Phase 1.C shell 段階で `Global_ReflectionProbes` shell zero dummy write 通電済 + Phase 1.D/1.E で Skin_GLTFJoints / PerDrawUBO_LightParams / Asset_GLTFMaterials/Nodes pilot 通電済 (= 本 Phase 2 sub-step 内 本実装化) | **着手前** ⏳ |
+| **Phase 2** | **全 94 UBO + L0 4 protocol 本実装** (= 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / 2.C ... 細分) | L0 4 protocol + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 UBO 全件本実装 (= AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ」確定) | η-31 (.A/.B/.C ... 細分予定) | 起案予定 (= Phase 2 着手前 separate session、AYA さん指示 2026-06-06) | 全 94 UBO 通電 + cold launch + canary + log + visual regression ゼロ (= WORK_ORDER §4.5 V-1) | handoff Phase 1.C shell 段階で `Global_ReflectionProbes` shell zero dummy write 通電済 + Phase 1.D/1.E で Skin_GLTFJoints / PerDrawUBO_LightParams / Asset_GLTFMaterials/Nodes pilot 通電済 (= 本 Phase 2 sub-step 内 本実装化) | **Phase 2.L0 進行中、Phase 2.α freeze 中** ⏳ (= §2.1.2 参照) |
+| **Phase 2.α** | **codegen single source of truth 化** (= Phase 2.L0 freeze 中の独立 sub-phase = 案 Z' 確定 = 設計 doc 整合修復 + C++ runtime emulation 層追加) | (a) `aya_r41_blueprints/` reference 降格保持 + (b) AyaUboCodegen.cmake 入力 = `class*/` + `cinematic_bd/` 切替 + (c) main.py 同名 UBO 複数 file 整合 verify + multi-input + (d) 新規 dump file `aya_r41_codegen_defines.toml` 起案 + main.py `--defines-file` option + glslang -E `-D<k>=<v>` prepend + (e) 設計 doc 5 件 + 波及 doc 全件更新 | (α-1 設計 / α-2 main.py / α-3 cmake + dump file / α-4 cold launch) | `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` + `handoff/phase2/alpha/handoff-phase2-alpha-3-cmake-blueprint-readme-propagation.md` | α-1 設計確定 / α-2 main.py 整合 verify logic + 138 test PASS / α-3 cmake 入力切替 + dump file + 単独走行 verify / α-4 80 UBO codegen 出力整合 + cold launch + AYA live verify | (本 sub-phase = Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit freeze 後の独立起案、AYA literal 2026-06-06「根治最優先、Phase2.α とでも...着手、終わったら現在時点で戻って L0 作業再開」受領) | **α-3 進行中** (= α-1 ✅ entry handoff §D / α-2 ✅ main.py commit `b66ec99f72` / α-3 進行中 = improvement 1 ✅ `862f9cb983` + improvement 2 ✅ `246535626e` + improvement 3 で parse error 発覚 → 案 Z' 確定 commit `bfacb1f50f`、improvement 1.5.b-d + 設計 doc 5 件 + 波及 doc 全件改修中) |
 | **Phase 3** | 3 OS 確証 (Linux) | 08 §13.4 X-α = Linux 全 UBO 動作確認 + log 検証 + sample scene 確認 | η-32 | 起案予定 | Linux build pass + cold launch normal + render parity + visual regression ゼロ | (Linux primary baseline は handoff Phase 1.E (sub-letter) complete で確立 ✅、本 Phase 3 = Phase 2 全 UBO 通電後の最終 Linux 確証) | ⏳ |
 | **Phase 4** | 3 OS 確証 (Windows) | 08 §13.4 X-β = Windows build + 起動 + render parity (= AYA 実機) | η-33 | 起案予定 | Windows build pass + render parity + visual regression ゼロ | (Mac/Win 補完 phase = AYA さん指示 2026-06-05「Linux 完成後」literal record で Phase 4/5 として deferred) | ⏳ |
 | **Phase 5** | 3 OS 確証 (macOS) | 08 §13.4 X-γ = macOS build + 起動 + render parity (= @t-noami 実機委任) | η-34 | 起案予定 | macOS build pass + render parity + visual regression ゼロ | (同上、@t-noami 実機委任) | ⏳ |
@@ -117,6 +118,70 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 - 評価 protocol = sub-work (7) で全 94 UBO + L0 4 protocol 逐次 check (= 98 件)
 - violation 検知時 = stage 1 提案撤回 / stage 2 設計再考 / stage 3 AYA literal 確認
 
+#### §2.1.2 Phase 2.α 詳細 (= Phase 2.L0 freeze 中の独立 sub-phase = 案 Z' 確定、2026-06-06 起案)
+
+**位置付け**: 上記 §2.1 Phase マップ表 「Phase 2.α」 row の詳細。Phase 2.L0 sub-session 5 step 2-batch-0-a の **7 commit (= `887ddb5341`〜`e5f57d57ff`、class*/ + cinematic_bd/ 14 file 改修) 完了時点** で発覚した **codegen 入力 source の二重 source 構造** (= `class*/` + `cinematic_bd/` ↔ `aya_r41_blueprints/` 同期断裂、Vulkan validation error 高確率) を根治するための **独立 sub-phase**。AYA literal 2026-06-06「根治最優先、Phase2.α とでも...着手、終わったら現在時点で戻って L0 作業再開」受領で Phase 2.L0 freeze + Phase 2.α 起案。本 sub-phase 完了後 Phase 2.L0 sub-session 5 続行点 (= cold launch + AYA live verify) 直接 resume。詳細 source of truth = `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` **§D** (= 案 Z + §D.9 案 Z' 確定 record)。本節は roadmap 内 summary。
+
+**起案契機 (= 2026-06-06)**: Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit 完了時点で **二重 source 構造発覚** = `indra/newview/app_settings/shaders/class*/{deferred,interface,...}/**.glsl` + `cinematic_bd/` が SPIR-V binary 入力、`aya_r41_blueprints/` が codegen `ubo_metadata.inl` 入力、整合断裂。memory `feedback_root_cause_no_shortcuts` 適用で根治のみ提示 (= 対症療法 blueprint 同期 protocol 案並列禁止)。
+
+**sub-step 順序** (= memory `feedback_ubo_migration_one_at_a_time` 適用、Phase 2.α 内も大塊一括 reject):
+
+| sub-step | 内容 | 改変対象 | 検証 | 状態 (= 2026-06-06 時点) |
+|---|---|---|---|---|
+| **α-1 設計** | Phase 2.α 改修方針確定 (= 案 Z = 設計 doc 整合修復) ⇒ entry handoff §D で代替実施 (= memory `feedback_no_dual_doc_split` 整合で別 α-1 doc 起案省略)、AYA literal 3 連続受領 (= 「根治最優先」「波及資料更新」「原因元資料精査」) 反映、案 Y (= blueprint 完全廃止) 撤回 → 案 Z 確定 | doc のみ | doc 起案 | ✅ 完了 (= commit `64122994c1` + `db5cbcbc36`) |
+| **α-2 main.py 改修** | 同 UBO 複数 file 検出 + 整合検証 logic 追加 (= `_verify_block_match` function 新規 = set/binding + subset/cadence + member 全件 layout 一致 verify、不一致時 `CodegenError` abort) + `--input nargs='+'` multi-input 対応 + 7 test 追加 | `scripts/ubo_codegen/main.py` + `scripts/ubo_codegen/tests/test_main.py` | python test 全 138 PASS | ✅ 完了 (= commit `b66ec99f72`) |
+| **α-3 CMake 改修 + codegen 入力切替 + C++ runtime emulation 層** | (= improvement 1-1.5.d、案 Z' 確定で sub-step 拡張) **improvement 1** (= 既 ✅ commit `862f9cb983`): blueprint dir README 新規追加 (= reference 降格明示、AYA 指示 #5 + design/04:967 cross-ref) / **improvement 2** (= 既 ✅ commit `246535626e`): AyaUboCodegen.cmake 入力 dir 切替 = `BLUEPRINT_DIR` 廃止 → `SHADER_SOURCE_DIRS` 4 path list (= class1/2/3 + cinematic_bd) + `file(GLOB_RECURSE CONFIGURE_DEPENDS)` 連合 / **improvement 3** (= codegen 単独走行 verify) で **parse error 発覚** = `MAX_JOINTS_PER_MESH_OBJECT` が `class1/avatar/objectSkinV.glsl:49` で unresolved = AYAstorm C++ runtime (= `llviewershadermgr.cpp:870` `addPermutation()`) が dynamic `#define` (= `LLSkinningUtil::getMaxJointCount()` = 110) を inject 経路で解決していたが codegen 単独走行不可、AYA literal 4 件目「ミスの上にミスの上にミス、根治案を出してといってこれです」受領 → **案 Z' 確定** (= 案 Z + C++ runtime emulation 層追加、commit `bfacb1f50f` で entry handoff §D.9 + α-3 entry §3 改訂) / **improvement 1.5.b** (= 新規 dump file 起案): `scripts/ubo_codegen/aya_r41_codegen_defines.toml` (or .json) = AYAstorm C++ 定数 (= `MAX_JOINTS_PER_MESH_OBJECT=110` (= `lljoint.h` 経由) + 影響 4-8 UBO で必要な全 macro) を static dump / **improvement 1.5.c** (= main.py `--defines-file` option): dump file 読込 + glslang -E に `-D<key>=<value>` で prepend / **improvement 1.5.d** (= AyaUboCodegen.cmake dump file DEPENDS + `--defines-file` 引数追加): cmake DEPENDS で改訂時 reconfigure 自動 trigger / **設計 doc 5 件改修** (= 04 + 06a + 08 + 09 + 10) + **波及 doc 全件改修** (= per-UBO doc 80+ 件 + inventory 等、§2.1.2.1 参照) | `indra/cmake/AyaUboCodegen.cmake` + `scripts/ubo_codegen/{main.py,glsl_parser.py,perfect_hash.py,tests/*}` + 新規 `aya_r41_codegen_defines.toml` + `aya_r41_blueprints/README.md` + 設計 doc 5 件 + 波及 doc 全件 | configure 通過 + codegen 単独走行 verify (= `ubo_metadata.inl` が 80 UBO 全件 binding 整合出力) + 138 test PASS 維持 | **進行中** (= improvement 1 ✅ / improvement 2 ✅ / improvement 1.5.b-d 起案中 / 設計 doc 改修中) |
+| **α-4 cold launch validation** | 改修後 codegen で `class*/` + `cinematic_bd/` 配下 80 UBO declaration を再生成、SPIR-V ↔ `ubo_metadata.inl` 整合 confirm (= sub-session 5 step 2-batch-0-a 7 UBO 新 binding 反映 + 73 UBO 未改修 binding 反映)、Vulkan validation 0 件 + AYA live verify (= AYA 立ち会い別 session) | 0 (= 既存 class*/ + cinematic_bd/ source) | full cold launch (= AYA live) | ⏳ |
+| **α-exit** | Phase 2.α 完了 doc 起案 + Phase 2.L0 sub-session 5 続行点 (= cold launch + AYA live verify) 直接 resume 承認 | doc のみ | AYA literal 承認 | ⏳ |
+
+**case Z' 確定根拠** (= 2026-06-06 4 件目発火 = AYA literal「ミスの上にミスの上にミス」受領後の自走精査 4 件 checklist 全件 verify 結果、entry handoff §D.9 参照):
+
+| 軸 | 根拠 literal |
+|---|---|
+| AYA 指示 #5 (= design/01:146「85 GLSL UBO blueprint は discard しない」) | ✅ 案 Z' で blueprint dir 物理保持、reference 降格保持 (= improvement 1 commit `862f9cb983`) |
+| design/08-build-codegen-pipeline.md §2.1:72-74 literal「入力: `app_settings/shaders/class*/{deferred,interface,...}/**.glsl`」 | ✅ codegen 入力 = `class*/` + `cinematic_bd/` 整合復元 (= improvement 2 commit `246535626e`) |
+| design/04-codegen-ubo.md §8:967 literal「blueprint は discard せず再利用」 | ✅ blueprint dir = Phase 1 履歴温存 |
+| design/04 §2.2 literal「Codegen と glslang は **同じ GLSL 入力に対して 2 系統並列の build process**」 | ✅ codegen + runtime SPIR-V 化が同一 GLSL を入力 |
+| design/04 §4.4 literal「同名 block を複数 GLSL で再宣言 ... 全宣言が **同一 member 構成** であることを build-time check で保証」 | ✅ Phase 2.α α-2 `_verify_block_match` で構造的検出 (= commit `b66ec99f72`) |
+| **C++ runtime emulation 層** (= 設計 doc 04 + 08 + 06a 全文に literal 不在 = 設計時構造的見落とし) | ✅ 案 Z' 新規 improvement 1.5 で literal 空白を埋める (= dump file + main.py `--defines-file` + cmake DEPENDS) |
+
+**Phase 2.L0 freeze 維持 record**: sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`、class*/ + cinematic_bd/ 14 file 改修) は freeze 維持、案 Z' での codegen 入力切替後 `ubo_metadata.inl` に新 binding 値が自動反映 = revert 不要。
+
+##### §2.1.2.1 案 Z' 全件波及更新範囲 (= entry handoff §D.9.6 cross-ref、忘却防止)
+
+α-3 内で同時に **設計 doc + per-UBO doc + source code** 内の blueprint 関連記述を「reference 降格 + codegen 入力対象外」前提に揃える、かつ C++ runtime emulation 層 dependency 明示。範囲 (= 13 件):
+
+| # | 対象 | 内容 |
+|---|---|---|
+| 1 | `design/08-build-codegen-pipeline.md` | `BLUEPRINT_DIR` 言及全件、§5 走行 logic / §12 CMake wiring の入力 source 記述を「class*/ + cinematic_bd/」整合に更新、blueprint 言及 →「reference 資料」位置付け + §3.3 / §4.3 / §5.2 に C++ runtime emulation 層 § 新規追加 |
+| 2 | `design/04-codegen-ubo.md` | blueprint 言及 (= §27 / §932 / §967 等) →「reference 資料」位置付け維持、codegen 入力 path 言及 →「class*/ + cinematic_bd/」統一 + §3 / §4 / §5.2.1 / §6 / §11 のいずれかに C++ runtime emulation 層 § 新規追加 |
+| 3 | `design/06a-host-redirect-layer.md` | §0.1「`addPermutation` build-time variant 展開」literal を「= codegen Python tool が dump file 経由 emulate」literal で補完、新 § で C++ runtime emulation 層の役割明示 |
+| 4 | `design/09-phase-roadmap.md` | 本 chapter (= §2.1 表 + §2.1.2 + §2.1.2.1 + 影響 4-8 UBO 言及更新 + blueprint 言及更新) |
+| 5 | `design/10-open-questions.md` | blueprint 関連 open question closed 化 + C++ runtime emulation 層 open question 棚卸し |
+| 6 | `design/ubo/WORK_ORDER.md` + `READINESS.md` + `RELATIONS.md` + `INDEX.md` | blueprint 言及 →「reference 資料」位置付け + 影響 4-8 UBO (= dynamic #define 含有 UBO) の dependency entry 追加 |
+| 7 | `design/ubo/*.md` 80+ 件 per-UBO doc | 各 doc 内 blueprint 言及 →「reference 資料」位置付け + 影響 4-8 UBO (= `PerDrawUBO_ObjectSkin` 等) に C++ runtime emulation 層 dependency 明示 |
+| 8 | `ayastorm-r41-ubo-current-state-inventory.md` | §247-249 同名 UBO 複数 file 認識 record →「案 Z で main.py 整合 verify logic 追加」反映 + C++ runtime emulation 層 dependency record 追加 |
+| 9 | `indra/cmake/AyaUboCodegen.cmake` | 改修 1-A (= 既 commit `246535626e`) + 改修 1-B (= dump file DEPENDS + `--defines-file` 引数追加、improvement 1.5.d) |
+| 10 | `scripts/ubo_codegen/{main.py,glsl_parser.py,perfect_hash.py,tests/*}` | docstring / comment 内 blueprint 言及 →「reference 資料」位置付け + C++ runtime emulation 層 docstring 反映 |
+| 11 | `aya_r41_blueprints/README.md` | 改修 3 (= 既 commit `862f9cb983`) + 案 Z' での「C++ runtime emulation 層 dump file 由来 C++ const 整合」literal 補足の必要性評価 |
+| 12 | `scripts/ubo_codegen/aya_r41_codegen_defines.toml` (or .json) | 新規追加 (= improvement 1.5.b)、AYAstorm C++ 定数群 static dump |
+| 13 | Phase 2.α handoff doc 2 件 (= entry handoff §D.9 + α-3 entry §3 sub-step 順序) | 案 Z' 確定反映 (= 既 commit `bfacb1f50f`) |
+
+**phase1 archive doc + handoff/archive/ + archive/** = 履歴 doc ゆえ更新対象外 (= 時系列で「phase1 完了時点の状態」として読まれる、誤読リスク小)。
+
+##### §2.1.2.2 影響 4-8 UBO の C++ runtime emulation 層 dependency
+
+case Z' で **C++ runtime emulation 層 dump file dependency** を持つ UBO (= dynamic #define が identifier 値として配列 size 等に直接埋め込まれる UBO):
+
+| UBO 候補 | dynamic #define | C++ source |
+|---|---|---|
+| `PerDrawUBO_ObjectSkin` | `MAX_JOINTS_PER_MESH_OBJECT` | `LLSkinningUtil::getMaxJointCount()` = 110 (= `lljoint.h` 経由)、`llviewershadermgr.cpp:870` `addPermutation()` inject |
+| `PerDrawUBO_SkinnedVelocity` 系 | 同上 (= `skinnedVelocityV.glsl` / `skinnedVelocityAlphaV.glsl`) | 同上 |
+| GLTF PBR UBO 系 (= 候補) | `MAX_NODES_PER_GLTF_OBJECT` / `MAX_MATERIALS_PER_GLTF_OBJECT` 等 | 各 GLTF subsystem C++ const |
+| その他 | `MAX_UBO_VEC4S` / `LIGHT_COUNT` / `REFMAP_LEVEL` / `REF_SAMPLE_COUNT` / `PROBE_FILTER_SAMPLES` / `FXAA_QUALITY__PRESET` / `TERRAIN_PBR_*` 等 | 各 subsystem C++ const |
+
+**影響 file 計測** (= entry handoff §D.9.3.3): shader 総 file 数 (`class*/` + `cinematic_bd/`) = 246 file、parse error 直撃 file = **約 25-35 file** (= identifier 値として配列 size 等に直接埋め込まれる macro 含有 file)、影響 UBO 数 = **約 4-8 UBO** (= 80 UBO 中)。最終 enumeration は α-3 内で improvement 1.5.b dump file 確定時に fix。
+
 ### §2.2 Phase 依存関係 (= 前提が満たされないと開始できない、2026-06-06 AYA literal 確定 = Phase 2 全 UBO + Phase 3-6 繰上げ)
 
 ```
@@ -129,6 +194,17 @@ Phase 1.B (redirect 層 = setter 内部 Vulkan path) ✅
 Phase 1.C (cadence 別 update site + dirty flag + descriptor set bind) ✅ shell 段階
     ↓
 Phase 2 (全 94 UBO + L0 4 protocol 本実装 = 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / ... 細分)
+  │
+  ├─ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit ✅ (freeze 中、2026-06-06)
+  │       ↓ (freeze)
+  ├─ Phase 2.α (codegen single source of truth 化 = 案 Z' 確定、§2.1.2 参照)
+  │       ├─ α-1 設計 ✅ (= entry handoff §D)
+  │       ├─ α-2 main.py 整合 verify ✅ (commit `b66ec99f72`)
+  │       ├─ α-3 cmake + dump file + 設計 doc + 波及 doc (進行中)
+  │       ├─ α-4 cold launch validation (AYA live、別 session) ⏳
+  │       └─ α-exit (= Phase 2.L0 sub-session 5 続行点 直接 resume) ⏳
+  │       ↓ (resume)
+  └─ Phase 2.L0 sub-session 5 continue (= cold launch + AYA live verify) + 全 94 UBO 全件本実装
     ↓
 Phase 3 (Linux 全 UBO 確証) ─── (Q4-C) で順次確定 (= 2026-06-03 ST-5 verdict)
 Phase 4 (Windows 確証)    ─── 並走候補
@@ -228,13 +304,13 @@ Phase 6 (release 整備)
 
 | sub-Phase | scope | 該当 chapter | Exit 判定 |
 |---|---|---|---|
-| **1.A** | Codegen pipeline 実装 (= Python script 起草 + glslang 統合 + std140 calculator + SPIR-V reflection 二重保証 + perfect hash + cache + CMake DEPENDS) | 08 全章 | codegen script が既存 UBO blueprint (= 2026-06-06 audit 確認 = 96 unique UBO name / 94 codegen block、source-of-truth = `ubo_metadata.inl` `g_block_count = 94u`、旧 doc literal「85」は 2026-06-03 起案時 snapshot) を入力に取り、`ubo_metadata.inl` + `ubo_host_loader.inl` を生成、build error 0、生成 header の名前解決 lookup が compile-time 衝突 0 |
+| **1.A** | Codegen pipeline 実装 (= Python script 起草 + glslang 統合 + std140 calculator + SPIR-V reflection 二重保証 + perfect hash + cache + CMake DEPENDS) | 08 全章 | codegen script が既存 UBO 入力 (= **Phase 2.α 案 Z' 確定後 = `indra/newview/app_settings/shaders/class*/` + `cinematic_bd/` 配下 actual GLSL** = 80 UBO declaration、source-of-truth = `ubo_metadata.inl` `g_block_count = 80u` (= Phase 2.L0 sub-session 5 alphabetical sort literal、§2.1.2 参照)、`aya_r41_blueprints/` は **reference 降格保持** = Phase 1 履歴温存 + codegen 入力対象外 (= AYA 指示 #5 + design/01:146 + design/04:967 整合)、旧 doc literal「85」「96 unique UBO name / 94 codegen block」は Phase 1.A 起案時 snapshot) を入力に取り、`ubo_metadata.inl` + `ubo_host_loader.inl` を生成、build error 0、生成 header の名前解決 lookup が compile-time 衝突 0 |
 | **1.B** | redirect 層実装 (= 31 setter method 内部に Vulkan path 分岐 + name → offset 解決 dispatch + cache 構造 mUniformUBOLoc) | 06a §3 / §4 / §5 | 31 setter 全てで Vulkan path 分岐 working、OpenGL path 既存挙動 unchanged (= 1 setter call 1 path 決定論的、build flag で全 path 確認可能) |
 | **1.C** | cadence 別 update site + dirty flag + descriptor set bind 配線 | 06b / 06c | 5 種 cadence (per-frame / per-program / per-draw / per-asset / per-skin) の update site / dirty flag / descriptor set bind が 1 経路ずつ実装、test UBO 1 個で full path 通電確認 |
 
 ### §4.2 Phase 1 Exit Criteria
 
-- Phase 1.A: 既存 UBO blueprint (= 2026-06-06 audit 訂正 = 96 unique UBO name / 94 codegen block) に対する codegen 実行 PASS + 生成 header をテスト program (= 既存 program 1 個) で include + bind 不変動作確認
+- Phase 1.A: 既存 UBO 入力 (= **Phase 2.α 案 Z' 確定後 = `class*/` + `cinematic_bd/` 配下 actual GLSL = 80 UBO**、`aya_r41_blueprints/` は **reference 降格保持** = codegen 入力対象外、§2.1.2 参照) に対する codegen 実行 PASS + 生成 header をテスト program (= 既存 program 1 個) で include + bind 不変動作確認
 - Phase 1.B: 31 setter (= integer index 17 + LLStaticHashedString 14、PB-4.8+PB-5.14 統合で hashed 1 追加 + uniform2i(hashed) 含む、2026-06-06 audit 訂正) Vulkan path 分岐の **call site から見て transparent** = 既存 program 1 個の動作 unchanged
 - Phase 1.C: test UBO 1 個 (= 後の Phase 2 で本実装する第 1 UBO の試作版、本実装は Phase 2、ここでは shell のみ) で per-cadence update + descriptor bind 通電
 
@@ -666,7 +742,7 @@ chapter 04 §6.4.7 「C++20 NTTP 採否 (= chapter 09 持越判定材料)」由�
 | 0-8 | chapter 07 Vulkan API state (= device limit / set 帯 5 化 / V1' split / 256B alignment) 確定 | grep '^## §' 07-vulkan-api-state.md で §0-§12 全節存在 | 07-vulkan-api-state.md |
 | 0-9 | chapter 10 open questions 集約 (= (V1')(V3')(S3')(W) + (Q1)-(Q5) + (NTTP) + (A1)(P)(G/B3)(B1)(B2)(B4)(B5) 等の登録) **✅ 遡及 retroactive 充足 2026-06-03 ST-7 sub-task 4** (= 起案時点 Phase 2d-β-revise で (NTTP) 登録 intent のみ chapter 04 §6.4.7 文末に記述あり、実 entry は chapter 09 §11 / chapter 10 §1.0 / §1.3 未追加 = 起案時 ✅ verdict は (NTTP) 漏れ含む状態、`feedback_doubt_self_first` 適用で §14.5 row 3-10 verify 中に gap 検出、本 sub-task 4 batch で chapter 09 §11.6 (Q-NTTP) 新設 + chapter 10 §1.0 row 29 + §1.3 表 (Q-NTTP) 行追加 = 遡及 retroactive 充足、Stage 0 verdict 「全 12 項目 ✅」は不変 = 本 retro 充足で実体化) | grep '^### §1\\.' 10-open-questions.md で 29 件全件 index + (Q-NTTP) 実 entry 確認 | 10-open-questions.md |
 | 0-10 | chapter 01 overview の 2 大設計原則 + 確定事項 13 件 反映済 | grep '§5' 01-overview.md で確定事項 13 件 enumerate | 01-overview.md |
-| 0-11 | inventory §3.3.1 85 UBO blueprint table 確定 | grep '§3.3.1' inventory.md | inventory.md |
+| 0-11 | inventory §3.3.1 85 UBO blueprint table 確定 (= Phase 1.A 起案時 snapshot literal、Phase 2.α 案 Z' 確定後は **codegen 入力 = `class*/` + `cinematic_bd/` actual GLSL = 80 UBO**、blueprint は reference 降格保持、§2.1.2 参照) | grep '§3.3.1' inventory.md | inventory.md |
 | 0-12 | `feedback_design_phase_no_code_write` 継続 = `indra/` 配下改変ゼロ | `git status indra/` で modified 0 件 | (memory) |
 
 **Stage 0 entry verdict**: 全 12 項目 ✅ → Stage 0 完了、Stage 1 入口 (= η-29 Phase 0 着手 ready)。

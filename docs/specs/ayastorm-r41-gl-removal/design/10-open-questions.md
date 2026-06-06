@@ -68,6 +68,8 @@
 
 **未判断 16 件の解消順序**: §1.1 (chapter 07 4 件) + §1.2 (chapter 08 6 件 = (A1)/(P)/(G/B3)/(B1)/(B4)/(B5)) + §1.4 (06b/06c 4 件) は **後続 AYA 判断 batch session** で集約消化、§1.5 (Q28-FFDUP) 1 件は Phase 1.A 中盤判断可 (= default 提案: 追記する 確定 = entry のみ作成、judgement 後ろ倒し)、(F) 1 件は Q26-MUL 確定で実質消化済だが本表 status 未 update。§1.3 (Q-NTTP) は **2026-06-03 ST-7 sub-task 8 batch で A 確定 = 判断済 = 本「未判断」枠から外れた** (= count 18 → 17 件)。§1.2 (B2) は **2026-06-03 η-30 PA-1 entry 直前 gap remediation で B2b system pkg 確定 = 判断済 = 本「未判断」枠から外れた** (= count 17 → 16 件、実装で先行 commit 済の verdict 追認形)。
 
+**§1.7 別枠 case Z' batch 注記** (= 2026-06-06): Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit 完了時点で発覚した codegen 入力 source 二重 source 構造を根治するため Phase 2.α 独立 sub-phase が起案され (= 09 §2.1.2 参照)、**§1.7 に新規 6 件追加** (= closed 3 件 + open 3 件)。本 §1.0 29 件 index 枠外 (= Phase 2.α 由来の独立 sub-phase 起因、§1.0 は Phase 2 本体 scope の question 構成を維持)。§1.7 内訳: closed 3 件 = (Q-α1) blueprint dir 廃止可否 = reference 降格保持確定 / (Q-α2) 二重 source 構造解消 = class*/ + cinematic_bd/ actual shader 単一化確定 / (Q-α3) 同名 UBO 複数 file 整合 verify = main.py `_verify_block_match` 実装確定、open 3 件 = (Q-α4) C++ runtime emulation 層 dump file 生成方法 (= static vs auto-extract) / (Q-α5) dump file 漏れ検出 protocol (= test_main.py vs CMake header diff check) / (Q-α6) AYAstorm C++ header 改訂時 dump file 改訂強制 protocol (= CMake DEPENDS + 手動 sync vs 自動 sync script)。詳細 = 本 chapter §1.7 + entry handoff §D.9。
+
 ---
 
 ### §1.1 chapter 07 §12 chapter 10 送り 4 件 (set / pool / sampler / layout)
@@ -162,6 +164,26 @@
 **反映完了確認**: 本 §1.6 4 件 = 設計 chapter 群 全件 audit + 修正 batch 完了済 = Phase 2d-β-revise 本体 (= chapter 04 + 08 prototype 深化, Deliverable A/B/C) 着手前提条件 (= AYA 判断 4 件完了 + 設計 chapter 群 修正推奨 20 件 反映完了) の **前者 4 件 完了マーク**。後者 20 件 反映完了は Wave A-G batch 完了報告で総括。
 
 **注 (本 §1.6 の位置付け)**: 本 §1.6 4 件は **judgement 履歴 archive** = 既消化済 = §1.1-§1.5 (= 未判断 21 件) と性質が異なる。implementation-phase 入口 (= η-29 Phase 0 計測 session) では §1.1-§1.5 のみ AYA 判断 batch session 対象、§1.6 は再判断不要 (= reference のみ)。
+
+### §1.7 Phase 2.α 案 Z' 由来 新規 6 件 (2026-06-06 batch、closed 3 件 + open 3 件)
+
+**位置付け**: Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit 完了時点で発覚した **codegen 入力 source の二重 source 構造** (= `class*/` + `cinematic_bd/` ↔ `aya_r41_blueprints/` 同期断裂) を根治するための Phase 2.α 独立 sub-phase 起案 (= 09 §2.1.2 参照) に伴い、新規に登録された open question 6 件を本 §1.7 に集約。
+
+**source of truth cross-ref**:
+- `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` **§D** (= 案 Z 確定 source of truth、commit `64122994c1` + `db5cbcbc36`)
+- `handoff/phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` **§D.9** (= 案 Z' 確定 source of truth、commit `bfacb1f50f`)
+- `09-phase-roadmap.md` **§2.1.2** + **§2.1.2.1** + **§2.1.2.2** (= roadmap 内 Phase 2.α + 案 Z' summary)
+
+| (Q) | 項目 | AYA 判断 / default 採用案 | 状態 | 反映先 | 出典 |
+|---|---|---|---|---|---|
+| (Q-α1) | blueprint dir (= `aya_r41_blueprints/`) 廃止可否 | **AYA 指示 #5 整合 = discard しない (= design/01:146 literal) → reference 降格保持** | ✅ **closed (= 案 Z' で reference 降格保持確定、improvement 1 commit `862f9cb983`)** | `aya_r41_blueprints/README.md` + design/04:967 + design/01:146 | entry handoff §D.2 #1 + §D.4 |
+| (Q-α2) | 二重 source 構造 (= `class*/` + `cinematic_bd/` ↔ `aya_r41_blueprints/` 同期断裂) の解消方法 | **案 Z' = codegen 入力 = `class*/` + `cinematic_bd/` actual shader 単一化、blueprint dir = reference 降格保持** | ✅ **closed (= 案 Z' で確定、improvement 2 commit `246535626e`、設計 doc 08:72-74 想定整合復元)** | `indra/cmake/AyaUboCodegen.cmake` + 設計 doc 08 §5/§12 + 09 §2.1.2 | entry handoff §D.2 #2 + §D.4 + §D.9.4 |
+| (Q-α3) | 同名 UBO 複数 file 整合 verify 方式 (= `CloudsVParamUBO_Legacy` / `WaterVParamUBO_Legacy` / `ShadowUtilParamUBO_Legacy` 等 + cinematic_bd 上書き path) | **main.py `_verify_block_match` function 追加 = set/binding + subset/cadence + member 全件 layout 一致 verify、不一致時 `CodegenError` abort、cinematic_bd 上書き path は同 layout なら PASS** | ✅ **closed (= Phase 2.α α-2 で実装、commit `b66ec99f72`、全 138 test PASS)** | `scripts/ubo_codegen/main.py:_verify_block_match` + `scripts/ubo_codegen/tests/test_main.py` MultiFileIntegrityTests 7 test | inventory:247-249 + entry handoff §D.2 #3 + §D.6 #2 |
+| (Q-α4) | C++ runtime emulation 層 dump file (= `aya_r41_codegen_defines.toml`) の生成方法 (= static 起案 vs auto-extract) | **default 採用案 = static 起案 (= 初期は手動 maintain、影響 4-8 UBO の必要 macro 全件 enumerate)、auto-extract (= C++ const ↔ TOML auto-sync script) は将来課題** | **open** (= Phase 2.α α-3 improvement 1.5.b で初期 static 起案、auto-extract は Phase K+4 以降 polish 候補保留可) | `scripts/ubo_codegen/aya_r41_codegen_defines.toml` (新規) + 設計 doc 04 + 08 + 06a に C++ runtime emulation 層 § 新規追加 | entry handoff §D.9.5 #4 + §D.9.6 #12 |
+| (Q-α5) | dump file 漏れ検出 protocol (= test_main.py で sanity check vs CMake で AYAstorm C++ header diff check) | **default 採用案 = 初期 test_main.py sanity check (= dump file 不在時 fallback test + 不一致時 abort test)、後者 (= CMake で AYAstorm C++ header diff check で物理整合保証) は将来課題** | **open** (= Phase 2.α α-3 improvement 1.5.c で初期 test_main.py、後者は Phase K+4 以降 polish 候補保留可) | `scripts/ubo_codegen/tests/test_main.py` (= `--defines-file` option test 追加) + 将来 = `indra/cmake/AyaUboCodegen.cmake` C++ header diff check 拡張 | entry handoff §D.9.5 #5 + §D.9.6 #10 |
+| (Q-α6) | AYAstorm C++ header 改訂時 dump file 改訂強制 protocol (= CMake DEPENDS で auto reconfigure trigger でカバー、ただし header 値変更 (= 例 `LL_MAX_JOINTS_PER_MESH_OBJECT` の値変更) は dump file value 手動 sync 必要) | **default 採用案 = CMake DEPENDS で reconfigure trigger 自動化 + dump file value 手動 sync を release 規律で担保、自動 sync script (= C++ const ↔ TOML auto-sync) は (Q-α4) 将来課題と同 sub-question** | **open** (= Phase 2.α α-3 improvement 1.5.d で CMake DEPENDS 追加、手動 sync protocol は Phase 2.L0 resume 後の release 規律で担保、自動化は将来課題) | `indra/cmake/AyaUboCodegen.cmake` DEPENDS 追加 + release 規律 doc に「dump file value 手動 sync 確認」項目追加 | entry handoff §D.9.5 #1 + §D.9.6 #9 |
+
+**注 (本 §1.7 の位置付け)**: closed 3 件 (= Q-α1 / Q-α2 / Q-α3) は Phase 2.α 案 Z' 確定で物理確定済、judgement 履歴 archive 性質 (= §1.6 と同)。open 3 件 (= Q-α4 / Q-α5 / Q-α6) は Phase 2.α α-3 sub-step 内で default 案を採用しつつ、将来課題 (= auto-extract / C++ header diff check / 自動 sync script) は Phase K+4 以降 polish 候補保留可。本 §1.7 6 件は **§1.0 index 29 件枠外** (= 2026-06-06 Phase 2.α 由来の独立 sub-phase 起因、§1.0 既存 29 件 index は Phase 2 本体 scope の question で構成、§1.0 「29 件分類 index」 count は不変)。
 
 ---
 

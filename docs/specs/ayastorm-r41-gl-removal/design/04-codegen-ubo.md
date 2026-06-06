@@ -24,7 +24,7 @@
 
 - CMake / glslang / Codegen tool の **build system 統合** → chapter 08
 - runtime での値書込実装 (cadence 別 upload site / dirty 判定 / descriptor set bind) → chapter 06
-- 既存 85 UBO blueprint の **cadence 別 mapping** + bare uniform → UBO 集約対応表 → chapter 05
+- 既存 85 UBO blueprint の **cadence 別 mapping** + bare uniform → UBO 集約対応表 → chapter 05 (= blueprint は **reference 資料 / Phase 1 履歴温存**、source of truth は `class*/` + `cinematic_bd/` actual shader、§4.1 末尾 + 案 Z' handoff §D.9 cross-ref)
 - Vulkan API 接続点 (vkQueueSubmit / descriptor set / VMA / volk dynamic loader 状況) → chapter 07
 
 ---
@@ -125,6 +125,13 @@ build sequence:
 - bare uniform → UBO の集約 mapping は **chapter 05 で個別表として整備**、Codegen は集約結果として登場する UBO ブロック宣言だけを処理
 
 bare uniform 個別の path 詳細は §7。
+
+**Codegen 入力 source path** (= chapter 08 §2.1 と整合、Phase 2.α 案 Z' 確定 2026-06-06):
+
+- **`indra/newview/app_settings/shaders/class*/{deferred,interface,...}/**.glsl`** + **`indra/newview/app_settings/shaders/class*/cinematic_bd/**.glsl`** = **唯一の source of truth** (= actual shader、SPIR-V binary 化と同一入力で 2 系統並列 build)
+- **`indra/newview/app_settings/shaders/aya_r41_blueprints/`** = **reference 資料 / Phase 1 履歴温存** (= AYA 指示 #5 「85 GLSL UBO blueprint は discard しない」 = chapter 01 §5 #5 / 本 chapter §8 §967 整合、codegen 入力対象外、編集禁止、`aya_r41_blueprints/README.md` 反映済 = commit `862f9cb983`)
+
+前案 (= blueprint dir を codegen 入力とする構造) は二重 source による同期断裂悲報を構造的に内包、Phase 2.α 案 Z' 確定で `class*/` + `cinematic_bd/` 単独 source に統一 (= AyaUboCodegen.cmake 入力切替 = commit `246535626e`、main.py multi-input + 整合 verify logic = commit `b66ec99f72`、handoff §D.9 cross-ref)。
 
 ### §4.2 parse 手段
 
@@ -375,6 +382,39 @@ Codegen の扱い:
 - 全宣言が **同一 member 構成** であることを build-time check で保証
 - 不一致なら build error (= 静かな layout mismatch を排除)
 - 出力 C++ header は 1 block 1 file (= 重複生成しない)
+
+**整合 verify logic 実装状況** (= Phase 2.α α-2 = 2026-06-06):
+
+- `scripts/ubo_codegen/main.py` `_verify_block_match` function で **set/binding + subset/cadence + member 全件 (= name/offset/size/type)** layout 一致を全件 verify、不一致時 `CodegenError` abort 実装済 (= commit `b66ec99f72`)
+- `cinematic_bd/` 配下が `class*/` を path-overlay する場合 (= `ShadowUtilParamUBO_Legacy` 等) も同 layout なら PASS、layout 差分があれば build error で検知
+- `scripts/ubo_codegen/tests/test_main.py` `MultiFileIntegrityTests` 7 件で regression 防止 (= 整合 PASS / set 不一致 / binding 不一致 / member count/name/offset 不一致 / cinematic_bd 上書き PASS、全 138 test PASS = regression 0)
+
+### §4.5 C++ runtime emulation 層 (= Phase 2.α 案 Z' 確定 2026-06-06)
+
+**背景** = AYAstorm shader runtime は **dynamic `#define` injection** を viewer 起動時に行う仕組みを持つ:
+
+- `LLGLSLShader::addPermutation(name, value)` (`llglslshader.cpp:1754-1757`) が `mDefines[name] = value` に値を格納
+- shader load 時に `loadShaderFile()` (`llshadermgr.cpp:728-962`) が `[EXTRA_CODE_HERE]` marker 位置に `#define <name> <value>` 群を prepend
+- 値の source は **viewer C++ runtime** (= `LLSkinningUtil::getMaxJointCount()` = `MAX_JOINTS_PER_MESH_OBJECT` = 110、その他 108 件)
+- identifier 値として配列 size 等に **直接埋め込まれる** macro = `MAX_JOINTS_PER_MESH_OBJECT` / `MAX_NODES_PER_GLTF_OBJECT` / `MAX_MATERIALS_PER_GLTF_OBJECT` / `MAX_UBO_VEC4S` / `LIGHT_COUNT` / `REFMAP_LEVEL` / `REF_SAMPLE_COUNT` / `PROBE_FILTER_SAMPLES` / `FXAA_QUALITY__PRESET` / `TERRAIN_PBR_*` 等 (= chapter 06a §0.1 軸 2「`addPermutation` の build-time variant 展開」と同一系統)
+
+**構造的問題** = Codegen は **build-time static** で動作、runtime addPermutation 値は不可視。`class*/` + `cinematic_bd/` actual GLSL を直接 parse すると `MAX_JOINTS_PER_MESH_OBJECT` 等が unresolved → glslang -E (= §4.2 P3 推奨の preprocessor 展開) で **parse error** 直撃 = 約 25-35 file / 影響 4-8 UBO (= `PerDrawUBO_ObjectSkin` / `PerDrawUBO_SkinnedVelocity` 系 / GLTF PBR UBO 系等)。
+
+**設計方針** = Codegen Python tool に **C++ runtime emulation 層** を追加:
+
+| 構成 | 内容 |
+|---|---|
+| **C++ const dump file** (= 新規追加) | `scripts/ubo_codegen/aya_r41_codegen_defines.toml` (or .json) で AYAstorm C++ header (= `lljoint.h` 等) 由来の **static dump 値群** を保持 (= `MAX_JOINTS_PER_MESH_OBJECT=110` 等、影響 4-8 UBO で必要な全 macro 全件 enumerate) |
+| **main.py `--defines-file` option** (= 新規追加) | dump file path を引数で受け、toml/json parser で読込、glslang -E 呼出時に `-D<key>=<value>` 引数で prepend |
+| **CMake DEPENDS 追加** | AyaUboCodegen.cmake で `AYA_UBO_CODEGEN_DEFINES_FILE` 定数定義 + `add_custom_command DEPENDS` に追加 = dump file 改訂時に自動 reconfigure trigger |
+
+**AYAstorm shader runtime 側との同期 protocol**:
+
+- dump file は AYAstorm C++ header の値に依存 (= `lljoint.h` `MAX_JOINTS_PER_MESH_OBJECT` 等)
+- C++ header 改訂時 (= addPermutation の値 source 変更) は dump file 改訂必須 = CMake DEPENDS で **build 時自動 reconfigure trigger**、改訂忘れは build error で検知
+- 両者の値整合は **dump file 経由 source-of-truth 単一化** で保証 (= chapter 06a §0.1 / §4.5 cross-ref)
+
+**位置付け** = 本 § は Phase 2.α 案 Z' (= 2026-06-06 確定、handoff §D.9 source of truth) で「設計 doc literal 空白」を埋める追記。`class*/` + `cinematic_bd/` を codegen 入力単一化する案 Z (= §4.1 末尾) では runtime emulation 層を未定義のまま放置していた = 設計時構造的見落とし。本 §4.5 で literal 空白を埋める = memory `feedback_root_cause_no_shortcuts` §11 「設計 doc literal 空白を見落とした罪」防止策。
 
 ---
 
@@ -929,7 +969,7 @@ bare uniform (= `uniform vec4 color;` のような UBO ブロック外宣言) �
 
 #### §7.2.1 過渡期動作 (= chapter 09 Phase Exit Criteria 接続、2026-06-03 査読 §3.3)
 
-chapter 09 phase roadmap で「N UBO ずつ移行」する間、まだ chapter 05 集約表で UBO に取り込まれていない bare uniform は **Vulkan path 上で未 redirect** (= chapter 01 §1.2 の「85 blueprint が dead」と同型の過渡期状態)。
+chapter 09 phase roadmap で「N UBO ずつ移行」する間、まだ chapter 05 集約表で UBO に取り込まれていない bare uniform は **Vulkan path 上で未 redirect** (= chapter 01 §1.2 の「85 blueprint が dead」と同型の過渡期状態、なお blueprint dir 自体は §4.1 末尾通り **reference 資料 / Phase 1 履歴温存**、codegen 入力対象外)。
 
 **chapter 09 Phase Exit Criteria 要求事項** (= 本 chapter から chapter 09 への入力契約):
 - 各 Phase で「未集約 bare uniform の Vulkan path 動作」を Exit Criteria に明示
@@ -964,7 +1004,7 @@ chapter 05 で整備すべき表 (概念):
 
 | inventory § | 課題 | Codegen-UBO の対応 |
 |---|---|---|
-| §6.2 | 85 GLSL UBO blueprint が host C++ で値来ず dead | Codegen 生成 layout に redirect 層 (chapter 06) が値を流せば実体化、blueprint は **discard せず再利用** (chapter 01 §5 #5) |
+| §6.2 | 85 GLSL UBO blueprint が host C++ で値来ず dead | Codegen 生成 layout に redirect 層 (chapter 06) が値を流せば実体化、blueprint は **discard せず再利用** (chapter 01 §5 #5) = **Phase 2.α 案 Z' 確定 2026-06-06 で reference 資料 / Phase 1 履歴温存に位置付け**、codegen 入力 source of truth は `class*/` + `cinematic_bd/` actual shader (= §4.1 末尾 + handoff §D.9 cross-ref、commit `862f9cb983` blueprint README + commit `246535626e` cmake input 切替 + commit `b66ec99f72` main.py multi-input) |
 | §6.4 | `LLGLSLShader::uniform*fv()` 16 method に Vulkan path redirect 痕跡ゼロ | Codegen 生成 perfect hash を redirect 層が利用、setter 内で **path 分岐 1 箇所** で吸収可能に |
 | §6.5 | bare uniform → UBO 集約粒度未定義 | Codegen は粒度判断しない (= 判断 C)、chapter 05 集約表が決定権者、Codegen はその出力 UBO だけ処理 |
 
@@ -1003,4 +1043,4 @@ chapter 05 で整備すべき表 (概念):
 
 ---
 
-**= 本 chapter で Codegen-UBO の機構が確定したため、chapter 05 で既存 85 UBO blueprint の cadence 別 mapping + bare uniform → UBO 集約対応表の整備に進める**。
+**= 本 chapter で Codegen-UBO の機構が確定したため、chapter 05 で既存 85 UBO blueprint (= reference 資料 / Phase 1 履歴温存、§4.1 末尾) の cadence 別 mapping + bare uniform → UBO 集約対応表の整備に進める**。
