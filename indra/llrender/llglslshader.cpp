@@ -92,7 +92,7 @@ using std::string;
 namespace
 {
     constexpr U32 kCadencePerFrame   = 0u; // FrameAtmosphere_Lighting / FrameLights / FrameViewProj
-    constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大
+    constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 80 件 (Phase 2.L0 step 1 grep 確定)
     constexpr U32 kCadencePerDraw    = 2u; // PC-7ε で ring buffer 経路本格化
     constexpr U32 kCadencePerAsset   = 3u; // 現 codegen 0 件、PC-7γ-2 defensive 通電 / PC-7γ-3 本格化
     constexpr U32 kCadencePerSkin    = 4u; // 同上
