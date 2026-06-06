@@ -599,7 +599,7 @@ def next_prime(n: int) -> int:
 | 規模 | bucket 数 (λ=4) | 期待 seed reroll | 構築時間 |
 |---|---|---|---|
 | N=100 | 25 | <100 reroll / bucket | ~0.1 ms |
-| **N=880** (= 88 UBO × ~10 member) | **220** | **<200 reroll / bucket** | **~5 ms** |
+| **N=800** (= 80 UBO × ~10 member、Phase 2 step 1 grep 確定) | **200** | **<200 reroll / bucket** | **~5 ms** |
 | N=5000 | 1250 | <500 reroll / bucket | ~50 ms |
 
 = Codegen build cycle (= 全体 ~500-1000 ms) 内で **誤差 level** (= chapter 08 §3.2 / §12.4 timing 表参照)。

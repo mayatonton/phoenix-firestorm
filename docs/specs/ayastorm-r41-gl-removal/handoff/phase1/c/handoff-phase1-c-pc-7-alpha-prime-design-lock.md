@@ -66,7 +66,7 @@ PC-7α' **literal scope** (= 直前 commit `2cc05f0cd6` (PC-7δ complete) handof
 - `V3A_PROGRAM_SET_A_BINDINGS=40` / `V3A_PROGRAM_SET_B_BINDINGS=40` constexpr 設定済
 - 暫定 mapping: `if (binding < 40) → set=1a / else if (binding < 80) → set=1b (binding -= 40) / else → LL_WARNS_ONCE skip`
 - 実装: `sProgramUboSetA[FRAMES_IN_FLIGHT=3]` / `sProgramUboSetB[FRAMES_IN_FLIGHT=3]` triple-buffer + register-once + bind-many
-- 現状: `meta.descriptor_set` 参照のみ、`meta.subset` 未参照 (= subset フィールド runtime 経路 未通電)
+- 現状: `meta.descriptor_set` 参照のみ、`meta.subset` 未参照 (= subset フィールド runtime 経路 未通電) ※ **本記述は 2026-06-05 (Phase 1.C PC-7α' design-lock) 時点の historical record**、その後 PC-7α' 実装 (commit 11a46edd9b → 後続 PC-7α' implementation commit) で `llvkloader.cpp:5348-5385` `registerProgramUbo` 内に `meta->subset == 0` / `== 1` 参照分岐実装済、subset 列 runtime 経路通電完了 (= Phase 2.L0 sub-session 3 step 1 grep 確定 2026-06-06)、本 doc は historical lock record ゆえ本文未更新
 
 ---
 

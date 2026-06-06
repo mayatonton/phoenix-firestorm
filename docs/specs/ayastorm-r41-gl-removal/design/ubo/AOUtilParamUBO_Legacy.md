@@ -52,7 +52,7 @@ layout(std140, set = 3, binding = 8) uniform AOUtilParamUBO_Legacy
 ## §3. cadence
 
 - **ubo_metadata.inl cadence_tag**: 1
-- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大`)
+- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大` ※ source comment は historical literal、実数 80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、source comment 訂正は step 2 以降の `indra/` 改変 phase 持越)
 - **意味詳細**: shader program bind 単位で update、`sProgramUboDirty` triple-buffer 経路で flush (= `forwardToUboUpload` PerProgram case → `LLVKLoader::writeProgramUbo(this, loc.block_hash, loc.offset, data, size)` = `llglslshader.cpp:2148`)
 - **register**: `llglslshader.cpp:2079-2099` literal: `mUseUBO=true` block 内で `registerProgramUbo(this, loc.block_hash, block_size)` を `seen_program_hashes` で 1 block 1 回呼出
 - **source**: ubo_metadata.inl:26 + llglslshader.cpp:95 + llglslshader.cpp:2079-2099 + llglslshader.cpp:2147-2149
@@ -171,7 +171,7 @@ set=3 は Asset + Skin + Legacy 大同居帯 (Legacy 帯 binding 4..62)。本 UB
 
 ### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram)
 
-ubo_metadata.inl 上 cadence_tag=1 は 88 件最大 (= `llglslshader.cpp:95` literal)、Legacy 全 56 件 + Per* 系の一部含む。flush は `sProgramUboDirty` 統一経路。
+ubo_metadata.inl 上 cadence_tag=1 は **80 件** (= Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)、Legacy 全 55 件 + PerProgramUBO_* 系 23 件 + MaterialUBO/MaterialUBO_Legacy 2 件 = 80 件。flush は `sProgramUboDirty` 統一経路。
 
 ### §11.3 同 shader consume UBO (= aoUtil.glsl 内同時宣言 UBO)
 

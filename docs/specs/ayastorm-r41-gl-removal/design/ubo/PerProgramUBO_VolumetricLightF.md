@@ -54,7 +54,7 @@ layout(std140, set = 2, binding = 18) uniform PerProgramUBO_VolumetricLightF
 ## §3. cadence
 
 - **ubo_metadata.inl cadence_tag**: 1
-- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大`)
+- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大` ※ source comment は historical literal、実数 80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、source comment 訂正は step 2 以降の `indra/` 改変 phase 持越)
 - **意味詳細**: program 切替時に flush、program 単位で値を保持 (= `forwardToUboUpload` switch case `kCadencePerProgram` 経路、`llglslshader.cpp:2147`)
 - **source**: ubo_metadata.inl:92 + llglslshader.cpp:95 literal
 

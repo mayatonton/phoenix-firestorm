@@ -779,11 +779,11 @@ subset の binding 番号は **layout 計算結果に影響しない** (= std140
 **G2/B3b 採用根拠**:
 1. **dependency ゼロ**: gperf の OS 別 install gate (= G1) を回避、autobuild stack に gperf 追加不要、3 OS 共通動作
 2. **build 制御容易**: 衝突 0 を Python が build-time に保証 + 不一致時に **どの 2 つの uniform 名が衝突したか** を error log で人読可能 (= gperf の opaque error より良い)
-3. **algorithm**: CHD (Compress-Hash-Displace) または FCH (Fox-Chen-Heath) を採用、~500 行 Python で実装、入力 ~88 UBO × 平均 ~10 member ≈ 880 entry 規模に十分高速
+3. **algorithm**: CHD (Compress-Hash-Displace) または FCH (Fox-Chen-Heath) を採用、~500 行 Python で実装、入力 ~80 UBO × 平均 ~10 member ≈ 800 entry 規模に十分高速 (Phase 2 step 1 grep 確定)
 4. **出力形式**: chapter 04 §5.3.2 概念形 (= `constexpr UniformLocation g_uniform_table[N]` + `constexpr uint32_t hash_name(const char*)` + `template<auto Name> constexpr UniformLocation resolve()`) を C++ header に書き出す
 
 **G1 不採用根拠**: 3 OS 揃え (= Win で MSYS/mingw 必要) で autobuild に新規 package 追加コスト、現状 AYAstorm autobuild に gperf 不在。
-**G3 不採用根拠**: header-only library は compile time 負担と template instantiate 数で build time 増、~880 entry に過剰。
+**G3 不採用根拠**: header-only library は compile time 負担と template instantiate 数で build time 増、~800 entry に過剰。
 **G4 不採用根拠**: 衝突保証なし、本設計の build-time 衝突 0 要件 (chapter 04 §5.4) を達成不可。
 
 = **(G) + (B3) → G2/B3b Python frozen-table default 確定、§17 で AYA 判断仰ぎ候補に登録**。

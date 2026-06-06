@@ -178,7 +178,7 @@ design file 別 (= sub-session 2 §4 Read 結果):
 
 ### §4.4 本実装化時の顕在化 risk (= 推定、verify 要)
 
-Phase 2 で Legacy UBO 群 (= 88 件 PerProgram cluster) を本実装化すると:
+Phase 2 で Legacy UBO 群 (= 80 件 PerProgram cluster、Phase 2.L0 sub-session 3 step 1 grep 確定) を本実装化すると:
 1. `writeProgramUbo` 経路で `sProgramUboDirty[<shader, block_hash>]` entry が必要 → register 配線追加要
 2. PerProgram cadence の VkDescriptorSet は set=1a / set=1b layout 経路 (= 40+40=80 binding 確保) で運用想定 → **AtmoExtra/SkyV/SkyF の set=3 binding=0/1/2 宣言と矛盾**
 3. shader 側 GLSL の `layout(set=3, binding=0) uniform AtmoExtraUBO_Legacy` 宣言 → SPIR-V compile 時に set=3 layout の VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER binding=0 と shader 側 layout 宣言 binding=0 が整合する必要、しかし実 dispatch では sAssetUboSetV3a (= Asset_GLTFNodes) と同 binding 共有
@@ -208,17 +208,17 @@ protocol-B 整合 NG:
 - 「INDEX.md 記載 UBO 名 1:1 mapping」は **block 名 → block_hash mapping のみ正しい**、set/binding mapping は要再起案
 - ⇒ **L0-1 protocol-B 再起案要素**:
   - shader 側 GLSL `layout(set=N, binding=M)` 宣言の N/M を Legacy UBO で実 pipeline layout (= set=1a/1b binding=0..39) に合致させる
-  - ubo_metadata.inl の Legacy UBO 全件 (88 件 PerProgram cluster) で set/binding 値を **set=3 → set=1a or set=1b** に書き換える必要
-  - codegen pipeline (= `scripts/ubo_codegen/perfect_hash.py`) の set/binding 割当 logic も連動修正要
+  - ubo_metadata.inl の Legacy UBO 全件 (80 件 PerProgram cluster、Phase 2.L0 sub-session 3 step 1 grep 確定) で set/binding 値を **set=2/set=3/set=1 → set=1a or set=1b** に書き換える必要
+  - codegen pipeline は GLSL `layout(set=N, binding=M)` 直読みゆえ自動 allocation logic 無し (= Phase 2.L0 sub-session 3 step 1 確定、`main.py:211-221` `_ubo_to_block_spec`)、shader 側 GLSL 修正で完結 (= codegen 再実行で ubo_metadata.inl 自動追従)
 
 ### §5.3 未確定部分の含意 (= protocol-C)
 
 protocol-C は本質的に L0-1 protocol-B の解決 strategy の一部として AYA literal 判断要:
-- (i) 新規 binding allocation = Legacy UBO 88 件を set=1a/1b に再配置 (= V1' split 40+40 既存配置への流入)、binding 衝突解消
+- (i) 新規 binding allocation = Legacy UBO 80 件を set=1a/1b に再配置 (= V1' split 40+40 既存配置への流入、Phase 2.L0 sub-session 3 step 1 grep 確定 = 80 件 = 80 slot 丁度収まる)、binding 衝突解消
 - (ii) program 識別 runtime dispatch = 同 binding 共存 → **Vulkan 仕様上不可** (= 同 DescriptorSetLayout 内 binding 番号 unique 必須)
 - (iii) 設計再考 (衝突 UBO 統合) = AtmoExtra と Asset_GLTFNodes 等の data 統合 → **cadence 不一致 (PerProgram vs PerAsset) ゆえ不可**
 
-⇒ **推奨案 = (i)** (= 新規 binding allocation): 既設 V3A_PROGRAM_SET_A_BINDINGS=40 + V3A_PROGRAM_SET_B_BINDINGS=40 = 計 80 binding 確保済、PerProgram cluster 88 件のうち 80 件は割当可能、残 8 件は追加 binding allocation 要 (= verify 要)。
+⇒ **推奨案 = (i)** (= 新規 binding allocation): 既設 V3A_PROGRAM_SET_A_BINDINGS=40 + V3A_PROGRAM_SET_B_BINDINGS=40 = 計 80 binding 確保済、PerProgram cluster 80 件は 80 slot 丁度収まる、overflow 0 件 (= Phase 2.L0 sub-session 3 step 1 grep 確定 2026-06-06)。
 
 ---
 
@@ -228,23 +228,23 @@ protocol-C は本質的に L0-1 protocol-B の解決 strategy の一部として
 
 | 案 | 内容 | Vulkan 仕様適合 | 推奨度 |
 |---|---|---|---|
-| (i) | 新規 binding allocation = Legacy UBO 88 件を set=1a/1b に再配置 | ✅ 適合 | **推奨** |
+| (i) | 新規 binding allocation = Legacy UBO 80 件を set=1a/1b に再配置 (= 80 件 = 80 slot 丁度、overflow 0 件、Phase 2.L0 step 1 grep 確定) | ✅ 適合 | **推奨** |
 | (ii) | 同 binding 共存 (= program 別 dispatch) | ❌ 不可 (= 同 DescriptorSetLayout 内 binding unique 必須) | reject |
 | (iii) | 設計再考 (= 衝突 UBO 統合) | ❌ 不可 (= cadence 不一致) | reject |
 
-**Claude 推奨**: 案 (i) 採用、Legacy UBO 88 件の set/binding 値を **set=1a/1b 内 binding=0..39 + 必要時 set 拡張** に再配置。実 pipeline layout (= V3A_PROGRAM_SET_A/B_BINDINGS=40 + 40) は既設、binding 値の codegen 側 mapping 修正で対応可能。
+**Claude 推奨**: 案 (i) 採用、Legacy UBO 80 件の set/binding 値を **set=1a/1b 内 binding=0..79 (= subset=0 binding<40 / subset=1 binding 40..79)** に再配置。実 pipeline layout (= V3A_PROGRAM_SET_A/B_BINDINGS=40 + 40) は既設 80 slot に丁度収まる (= Phase 2.L0 sub-session 3 step 1 grep 確定)、shader 側 GLSL `layout(set=N, binding=M)` 修正で対応 (= codegen pipeline 自体は GLSL 直読みゆえ自動 allocation logic 無し、step 1 doc §4.2.1 cross-ref)。
 
 **AYA literal 確認要請**:
-- 案 (i) 採用で OK か?
-- 案 (i) 実装 timing = L0-1.C 実装内で codegen pipeline + ubo_metadata.inl 連動修正で対応するか?
-- 残 8 件 (= 88 - 80) の追加 binding allocation strategy は L0-1.C 内で詳細化するか、L0-3 (per-shader UBO block 拡大) protocol に統合するか?
+- 案 (i) 採用で OK か? **[AYA literal 2026-06-06 OK 受領]**
+- 案 (i) 実装 timing = L0-1.C 実装内で shader 側 GLSL 修正 (= 80 件 `layout(set=N, binding=M)` 書換) で対応するか? **[AYA literal 2026-06-06 OK 受領]**
+- 残 0 件 (= 80 件 = 80 slot 丁度収まる、Phase 2.L0 sub-session 3 step 1 grep 確定で「残 8 件 overflow」claim 解消)、overflow strategy は将来 UBO 追加時に再判断 (= step 1 doc §4.5 / AYA literal 2026-06-06 「将来時再判断」OK 受領)
 
 ### 確認 2: L0-1 protocol 整合判定 (= sub-session 2 結論パターン判断)
 
 | pattern | 含意 |
 |---|---|
 | (A) sub-session 3 (= L0-1.C 実装) 着手 OK | protocol-A + D 整合 OK ゆえ実装 unblocking、protocol-B 整合 NG 部分は L0-1.C 内で codegen 再起案で解決、protocol-C は確認 1 採用案 (i) で進行 |
-| (B) sub-session 1 (= L0-1.A 再精査) 戻り | protocol-B 整合 NG が重大判断、設計再起案要 (= WORK_ORDER §2.1 部分書き直し、ubo_metadata.inl 全 88 件 PerProgram cluster の set/binding 配置を再設計) |
+| (B) sub-session 1 (= L0-1.A 再精査) 戻り | protocol-B 整合 NG が重大判断、設計再起案要 (= WORK_ORDER §2.1 部分書き直し、ubo_metadata.inl 全 80 件 PerProgram cluster の set/binding 配置を再設計、Phase 2.L0 sub-session 3 step 1 grep 確定) |
 | (C) protocol 設計大幅変更 | L0-1 4 protocol 自体の枠組み再交渉 (= memory `project_r41_phase2_4_principles` 原則 3 再交渉) |
 
 **Claude 推奨**: pattern (A) 着手 OK。
@@ -260,8 +260,8 @@ protocol-C は本質的に L0-1 protocol-B の解決 strategy の一部として
 
 本 sub-session 2 で確定できなかった項目 (= memory `feedback_admit_unknown` 遵守):
 1. **shader compile 時の set=3 binding 衝突実際の挙動**: Legacy UBO `layout(set=3, binding=0) uniform AtmoExtraUBO_Legacy` を mUseUBO=true で compile した時の SPIR-V validation 結果 = sub-session 2 範囲外、L0-1.C 実装 sub-session で実機 verify 要
-2. **88 件 PerProgram cluster の set=1a/1b 残 8 件追加 binding allocation 詳細**: 確認 1 残課題、L0-1.C 実装内 or L0-3 統合で対応
-3. **ubo_metadata.inl の `subset` 列 (= 全件 0u)**: subset 値の dispatch 経路使用有無確認 = L0-1.C 実装内で grep verify
+2. **80 件 PerProgram cluster の set=1a/1b 配置 = 80 slot 丁度収まる、overflow 0 件**: Phase 2.L0 sub-session 3 step 1 grep 確定 2026-06-06 解消、当初 claim「88 件 / 残 8 件」は誤り
+3. **ubo_metadata.inl の `subset` 列 (= 全件 0u)**: subset 値は PC-7α' で dispatch 経路通電済 (= `llvkloader.cpp:5348-5385` `registerProgramUbo`、Phase 2.L0 sub-session 3 step 1 grep 確定 2026-06-06 解消)、ただし現状 80 件全件 subset=0 ゆえ subset=1 経路は Legacy UBO 再配置で初めて active 化
 
 **AYA literal 確認要請**: 上記 3 件を L0-1.C 実装 sub-session 内 verify 持越で OK か?
 
@@ -282,7 +282,7 @@ protocol-C は本質的に L0-1 protocol-B の解決 strategy の一部として
 
 | # | sub-session | scope | 着手契機 |
 |---|---|---|---|
-| 3 | **L0-1.C 実装** | name-based dispatch logic 実装 = ubo_metadata.inl set/binding 値修正 + codegen pipeline 連動修正 + shader layout 宣言整合化 + cold launch validation | 本 sub-session 2 Exit (4) AYA literal「sub-session 3 着手 OK + protocol-C 採用案 (i)」受領 |
+| 3 | **L0-1.C 実装** | name-based dispatch logic 実装 = shader 側 GLSL `layout(set=N, binding=M)` 80 件書換 + codegen 再実行で ubo_metadata.inl 自動追従 + cold launch validation (= codegen pipeline は GLSL 直読みゆえ自動 allocation logic 無し、Phase 2.L0 step 1 確定) | 本 sub-session 2 Exit (4) AYA literal「sub-session 3 着手 OK + protocol-C 採用案 (i)」受領 |
 | 4 | L0-2.A 再精査 | LLStaticHashedString redirect 関連 doc cold read | sub-session 3 Exit 後 |
 | 5-12 | (entry handoff §2.2 cross-ref) | 同 cycle 繰返し | 各 sub-session Exit 後 |
 
@@ -320,7 +320,7 @@ protocol-C は本質的に L0-1 protocol-B の解決 strategy の一部として
 
 ## §C. 次 sub-session 開始時の AYA 確認
 
-「上記 dispatch trace doc 確認、§6 AYA literal 確認 3 件への回答受領後、**Phase 2.L0 sub-session 3 = L0-1.C 実装 sub-session (= name-based dispatch logic 実装 = ubo_metadata.inl set/binding 値修正 + codegen pipeline 連動修正 + shader layout 宣言整合化 + cold launch validation、`indra/` 改変開始 = design-phase 規律解除)** で着手 OK か?」
+「上記 dispatch trace doc 確認、§6 AYA literal 確認 3 件への回答受領後、**Phase 2.L0 sub-session 3 = L0-1.C 実装 sub-session (= name-based dispatch logic 実装 = shader 側 GLSL `layout(set=N, binding=M)` 80 件書換 + codegen 再実行で ubo_metadata.inl 自動追従 + cold launch validation、`indra/` 改変開始 = design-phase 規律解除、Phase 2.L0 sub-session 3 step 1 grep 確定)** で着手 OK か?」
 
 **AYA literal 確認内容 (= §6 cross-ref)**:
 1. L0-1 protocol-C 採用案 = (i) 新規 binding allocation で OK か?

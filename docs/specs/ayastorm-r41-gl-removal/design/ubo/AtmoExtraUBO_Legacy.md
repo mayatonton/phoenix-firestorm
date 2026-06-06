@@ -181,7 +181,7 @@ layout(std140, set = 3, binding = 0) uniform AtmoExtraUBO_Legacy
 - SoftenLightParamUBO_Legacy (binding=5)
 - DeferredUtilParamUBO_Legacy (binding=6)
 
-### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram、88 件最大)
+### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram、80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)
 
 主要関連 (= 同じく atmospheric / windlight 系):
 - SkyVParamUBO_Legacy (set=3 binding=1)

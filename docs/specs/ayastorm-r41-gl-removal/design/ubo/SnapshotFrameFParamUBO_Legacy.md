@@ -132,7 +132,7 @@ OS-1〜OS-10 gate 照合:
 
 ### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram)
 
-- PerProgram cluster 全 88 件
+- PerProgram cluster 全 **80 件** (= Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)
 
 ### §11.3 同 shader consume UBO (= 同 shader file 内同時 consume)
 

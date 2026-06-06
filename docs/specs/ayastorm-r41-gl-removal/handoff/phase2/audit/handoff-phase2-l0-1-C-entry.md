@@ -17,16 +17,15 @@
 
 | # | sub-session 2 §6 確認 | AYA literal 回答 | 含意 |
 |---|---|---|---|
-| 1 | L0-1 protocol-C 採用案 | **(i) 新規 binding allocation** | Legacy UBO 88 件 PerProgram cluster を実 pipeline layout の set=1a/1b (= V3A_PROGRAM_SET_A/B_BINDINGS=40+40) に再配置 |
-| 2 | sub-session 2 結論パターン | **(A) sub-session 3 着手 OK** | protocol-A + D 整合 OK ゆえ host dispatch logic 新規実装不要、protocol-B 整合 NG 部分は L0-1.C 内で codegen pipeline 修正で対応 |
-| 3 | trace 範囲補足 verify 3 件持越 | **OK** | SPIR-V compile 衝突実 behaviour + 残 8 件 binding allocation + ubo_metadata.inl `subset` 列使用有無 = 本 sub-session 3 内で逐次解消 |
+| 1 | L0-1 protocol-C 採用案 | **(i) 新規 binding allocation** | Legacy UBO 80 件 PerProgram cluster を実 pipeline layout の set=1a/1b (= V3A_PROGRAM_SET_A/B_BINDINGS=40+40) に再配置 (= Phase 2.L0 sub-session 3 step 1 grep 確定で 80 件 = 80 slot 丁度収まる、overflow 0 件) |
+| 2 | sub-session 2 結論パターン | **(A) sub-session 3 着手 OK** | protocol-A + D 整合 OK ゆえ host dispatch logic 新規実装不要、protocol-B 整合 NG 部分は L0-1.C 内で shader 側 GLSL `layout(set=N, binding=M)` 修正で対応 (= codegen pipeline は GLSL 直読みゆえ自動 allocation logic 無し、step 1 doc §4.2.1 cross-ref) |
+| 3 | trace 範囲補足 verify 3 件持越 | **OK** | SPIR-V compile 衝突実 behaviour (= step 2 で実機 verify) + 80 件 = 80 slot 丁度収まる overflow 0 件 (= step 1 grep 確定 2026-06-06 解消) + ubo_metadata.inl `subset` 列は PC-7α' で dispatch 経路通電済 (= `llvkloader.cpp:5348-5385`、step 1 grep 確定 2026-06-06 解消) |
 
 ### §1.2 sub-session 3 着手目的
 
 **name-based dispatch logic 実装**:
-- ubo_metadata.inl set/binding 値修正 = Legacy UBO 88 件の set/binding 値を実 pipeline layout 配置 (= set=1a/1b binding=0..39) に整合化
-- codegen pipeline (= `scripts/ubo_codegen/perfect_hash.py`) 連動修正 = ubo_metadata.inl 出力と shader 側 layout 宣言の自動連動
-- shader 側 GLSL `layout(set=N, binding=M)` 宣言整合化 = Legacy UBO 全 file の `#ifdef LL_VULKAN_GLSL` block 内 set/binding 値書換
+- shader 側 GLSL `layout(set=N, binding=M)` 宣言整合化 = Legacy UBO 80 件全 file の `#ifdef LL_VULKAN_GLSL` block 内 set/binding 値書換 (= Phase 2.L0 sub-session 3 step 1 grep 確定で 80 件 = 80 slot 丁度収まる、overflow 0 件)
+- codegen 再実行で ubo_metadata.inl 自動追従 (= codegen pipeline は GLSL `layout(set=N, binding=M)` 直読みゆえ自動 allocation logic 無し、shader 側修正 → ubo_metadata.inl 自動連動、step 1 doc §4.2.1 cross-ref)
 - cold launch validation = Linux validation layer warnings 0 件 + visual regression ゼロ + AYA live verify
 
 ---
@@ -41,7 +40,7 @@ L0-1.C 実装は **複数 step に分割、各 step 完了で cold launch 検証
 
 | step | 内容 | `indra/` 改変 | cold launch |
 |---|---|---|---|
-| **§2.2.1 step 1** | codegen pipeline 側 set/binding 割当 logic 修正起案 + AYA literal 採用案確認 | `scripts/ubo_codegen/` 配下のみ (= `indra/` 改変ゼロ) | 不要 |
+| **§2.2.1 step 1** | codegen pipeline cold read + 80 件 PerProgram 現状値 grep + 80 slot 割当 plan 起案 + AYA literal 採用案確認 (= 修正起案 phase、codegen pipeline は GLSL 直読みゆえ allocation logic 自体は持たない確認済 step 1 doc §2.2) | `scripts/ubo_codegen/` 配下のみ (= `indra/` 改変ゼロ) | 不要 |
 | **§2.2.2 step 2** | codegen 再実行 + ubo_metadata.inl set/binding 値更新 verify | `build-linux-x86_64/codegen/ubo/` generated file 更新 | build only (= visual regression なし) |
 | **§2.2.3 step 3** | shader 側 GLSL Legacy UBO 全 file `layout(set=N, binding=M)` 宣言整合化 | `indra/newview/app_settings/shaders/` 配下 | shader compile + Linux validation 0 件 |
 | **§2.2.4 step 4** | host C++ Legacy UBO register 配線追加 (= mUseUBO=true 時 dispatch 経路接続) | `indra/llrender/` 配下 | mUseUBO 既存 cvar gate、default OFF 維持 |
@@ -54,7 +53,7 @@ L0-1.C 実装は **複数 step に分割、各 step 完了で cold launch 検証
 
 本 sub-session 3 内で逐次解消:
 1. **SPIR-V compile 時の set=3 binding 衝突実際の挙動**: step 3 (= shader 整合化) 時に Linux validation layer warnings 確認
-2. **88 件 PerProgram cluster の set=1a/1b 残 8 件追加 binding allocation 詳細**: step 1 (= codegen 起案) 時に AYA literal 確認 candidate
+2. **80 件 PerProgram cluster の set=1a/1b 配置 = 80 slot 丁度収まる、overflow 0 件**: step 1 grep 確定 2026-06-06 解消、当初 claim「88 件 / 残 8 件」は誤り
 3. **ubo_metadata.inl `subset` 列 (= 全件 0u) の dispatch 経路使用有無**: step 1 (= codegen 起案) 時に grep verify
 
 ---
@@ -69,7 +68,7 @@ L0-1.C 実装は **複数 step に分割、各 step 完了で cold launch 検証
 
 ### §3.2 必要時 pinpoint Read 候補
 
-- **`build-linux-x86_64/codegen/ubo/ubo_metadata.inl`** = literal 88 件 Legacy UBO set/binding 値 (= step 1 時)
+- **`build-linux-x86_64/codegen/ubo/ubo_metadata.inl`** = literal 80 件 Legacy UBO set/binding 値 (= step 1 grep 確定、94 件全 cluster 中 cadence_tag=1 PerProgram 80 件)
 - **`scripts/ubo_codegen/perfect_hash.py`** = codegen pipeline logic (= step 1/2 時)
 - **`indra/llrender/llvkloader.cpp:858-868`** = V3A_*_BINDINGS literal (= step 4 時)
 - **`indra/newview/app_settings/shaders/class1/windlight/atmosphericsFuncs.glsl:85-101`** 等 Legacy UBO `LL_VULKAN_GLSL` block 起源 (= step 3 時)
@@ -129,8 +128,8 @@ L0-1.C 実装は **複数 step に分割、各 step 完了で cold launch 検証
 
 **step 1 着手内容** (= AYA literal「OK」受領後):
 - codegen pipeline (`scripts/ubo_codegen/perfect_hash.py` 等) cold read
-- Legacy UBO 88 件の set/binding 現状値 grep + 実 pipeline layout (= set=1a/1b) への割当 plan 起案
-- AYA literal 確認 candidate (= 88 件中 80 件は割当可能、残 8 件追加 binding allocation strategy) 提示
+- Legacy UBO 80 件の set/binding 現状値 grep + 実 pipeline layout (= set=1a/1b) への割当 plan 起案 (= step 1 grep 確定で 80 件 = 80 slot 丁度収まる、overflow 0 件)
+- AYA literal 確認 candidate (= shader 修正方式 / 割当方針 / batch 単位 / overflow strategy = 4 件) 提示
 
 ---
 

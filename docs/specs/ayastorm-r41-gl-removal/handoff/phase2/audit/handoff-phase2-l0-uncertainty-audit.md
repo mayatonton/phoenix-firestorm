@@ -73,13 +73,13 @@ L0 横断 protocol は §2 (WORK_ORDER) §2.1〜§2.4 各 section 内 + §3 (各
 
 | protocol | §2 直接 marker 件数 | 影響 UBO 数 | 解消 AYA review candidate 件数 (§2.5.2 cross-ref) | 実装試行必要件数 |
 |---|---|---|---|---|
-| **L0-1** name-based dispatch | 4 (= [要追加調査] 2 + [要 AYA 判断] 2) | 11 UBO (= set=1 排他 2 + set=2 binding=0 共有 6 + set=3 binding 衝突 3) | **1 件** = set=3 binding 衝突 3 site 解消方針 (= protocol-C 候補 i/ii/iii 選択) | 1 件 (= 既存 pilot 通電 UBO 5 件 dispatch logic trace) |
+| **L0-1** name-based dispatch | 4 (= [要追加調査] 2 + [要 AYA 判断] 2) | **80 件 PerProgram cluster 全件** (= AYA review 重点 site 11 UBO = set=1 binding=0 排他 2 + set=2 binding=0 共有 6 + set=3 binding 衝突 3、実不整合 site = 全 3 set 80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定) | **1 件** = set=3 binding 衝突 3 site 解消方針 (= protocol-C 候補 i/ii/iii 選択、AYA literal「(i) 新規 binding allocation」採用済 2026-06-06) | 1 件 (= 既存 pilot 通電 UBO 5 件 dispatch logic trace) |
 | **L0-2** LLStaticHashedString redirect | 4 (= [要追加調査] 2 + [要 AYA 判断] 2) | **40 件 = Phase 0 計測実測** (= 06a §5.5.6 LLStaticHashedString 経由 setter 観察 40 件、当初 5+ 推定の 8 倍) | **1 件** = mapping table 構築方式 (= code-gen / introspection / ハードコード) | 1 件 (= LLGLSLShader::uniformN(LLStaticHashedString) 既存実装読解) |
 | **L0-3** per-shader UBO block 拡大 | 4 (= [要追加調査] 2 + [要 AYA 判断] 2) | 50+ shader file (= FrameViewProj 主要 deferred/forward + FrameLights 全 lighting consume = 現 8 件確認 + 残 lighting shader) | **2 件** = preprocessor inject 方式 + upstream merge conflict strategy | 1 件 (= 試験的 1 shader file pilot 拡大 = 別途 Phase 1.G 候補) |
 | **L0-4** cadence 再評価 | 5 (= [要追加調査] 1 + [要 AYA 判断] 3 + [要 verify] 1) | **~24 件 = READINESS §4.2 + RELATIONS §8.2 集約** (= velocity 系 7 + GLTF material 系 3 + per-frame 変化 member 系 ~8 + post-process cadence question 系 ~3 + FsObjectIdF + ObjectSkin + RadianceGen + OcclusionCube + Normgen) | **2 件** = 再分類 strategy (sliced UBO / PerDraw 移行 / stale 許容) + sliced UBO 化 Phase 3 移管判断 | 1 件 (= cadence 再分類影響範囲 verify、他 UBO 関係 RELATIONS.md §5 dirty 連動 group 20+ 全件影響可能) |
 
 **含意**:
-- §2 直接 marker は protocol あたり 4-5 件 (= 計 17 件) と相対小、しかし **影響 UBO 数で展開すると合計 125+ UBO** (= 11 + 40 + 50 shader + 24 = 重複 cross あり) → L0 4 protocol 一括着手 reject は妥当判断
+- §2 直接 marker は protocol あたり 4-5 件 (= 計 17 件) と相対小、しかし **影響 UBO 数で展開すると合計 194+ UBO** (= 80 + 40 + 50 shader + 24 = 重複 cross あり、L0-1 = 80 件 PerProgram cluster 全件、Phase 2.L0 step 1 grep 確定) → L0 4 protocol 一括着手 reject は妥当判断
 - AYA review candidate 計 **6 件** (= §2.5.2 一致)、各 L0-N.A sub-session 末尾で個別確認
 - 実装試行必要 計 **4 件** (= 各 L0-N.B sub-session 1 件、既存 pilot trace + LLGLSLShader 読解 + 1 shader file 拡大 + cadence verify)
 

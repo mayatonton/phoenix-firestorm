@@ -55,7 +55,7 @@ layout(std140, set = 3, binding = 2) uniform SkyFParamUBO_Legacy
 ## §3. cadence
 
 - **ubo_metadata.inl cadence_tag**: 1
-- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大`)
+- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大` ※ source comment は historical literal、実数 80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、source comment 訂正は step 2 以降の `indra/` 改変 phase 持越)
 - **意味詳細**: per-program cadence、`flushPerProgramUbos` 等価経路 (= llglslshader.cpp:2147 case kCadencePerProgram)、program bind 時 UBO 更新
 - **source**: ubo_metadata.inl:106 + llglslshader.cpp:95
 
@@ -143,10 +143,10 @@ OS-1〜OS-10 gate 照合:
 - Skin_GLTFJoints (set=3 binding=2、本 UBO と同 binding、別 program で運用)
 - **SkyFParamUBO_Legacy (set=3 binding=2、本 UBO)**
 
-### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram、88 件最大)
+### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram、80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)
 
-- PerProgram cluster = ubo_metadata.inl 全 94 UBO 中 88 件 (= llglslshader.cpp:95 注記 "88 件最大")
-- 本 UBO 含む PerProgram cluster 全 88 件は `flushPerProgramUbos` 等価経路で一括 flush
+- PerProgram cluster = ubo_metadata.inl 全 94 UBO 中 **80 件** (= Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)
+- 本 UBO 含む PerProgram cluster 全 **80 件**は `flushPerProgramUbos` 等価経路で一括 flush
 
 ### §11.3 同 shader consume UBO (= 同 shader file 内同時 consume)
 

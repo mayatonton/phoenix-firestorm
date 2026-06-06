@@ -69,7 +69,7 @@ layout(std140, set = 1, binding = 0) uniform MaterialUBO
 ## §3. cadence
 
 - **ubo_metadata.inl cadence_tag**: 1
-- **意味**: **per-program** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大`)
+- **意味**: **per-program** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大` ※ source comment は historical literal、実数 80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、source comment 訂正は step 2 以降の `indra/` 改変 phase 持越)
 - **flush 経路**: `LLVKLoader::flushProgramUbos(shader)` (= `llvkloader.cpp:5142`)
 - **write 経路**: `LLVKLoader::writeProgramUbo(shader, block_hash, offset, data, size)` (= `llglslshader.cpp:2148` literal)
 - **storage**: `sProgramUboDirty` map<UboInstanceKey, UboInstance> (= shader × block_hash key、`llvkloader.cpp:576` literal)
@@ -177,7 +177,7 @@ OS-1〜OS-10 gate 照合:
 
 ### §11.2 同 cadence cluster UBO (= cadence_tag=1 per-program、`flushProgramUbos` 共通経路)
 
-- ubo_metadata.inl で cadence_tag=1 は 88 件中最大 (= `llglslshader.cpp:95` literal)
+- ubo_metadata.inl で cadence_tag=1 は **80 件** (= Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)
 - 全 Legacy UBO + PerProgramUBO_* + 本 UBO + MaterialUBO_Legacy が同 cluster
 
 ### §11.3 同 shader consume UBO

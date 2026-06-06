@@ -54,7 +54,7 @@ layout(std140, set = 2, binding = 3) uniform PerProgramUBO_AlphaParams
 ## §3. cadence
 
 - **ubo_metadata.inl cadence_tag**: 1
-- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大`)
+- **意味**: **PerProgram** (= `llglslshader.cpp:95` literal: `constexpr U32 kCadencePerProgram = 1u; // ubo_metadata.inl で 88 件最大` ※ source comment は historical literal、実数 80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、source comment 訂正は step 2 以降の `indra/` 改変 phase 持越)
 - **flush 経路**: PerProgram cadence setter (= `llglslshader.cpp:2143-2150` `case kCadencePerProgram:` dispatch)
 - **意味詳細**: program 単位 (= LLGLSLShader 単位) で 1 UBO instance、program bind 時に flush
 - **source**: llglslshader.cpp:95 + setter dispatch literal
@@ -135,10 +135,10 @@ layout(std140, set = 2, binding = 3) uniform PerProgramUBO_AlphaParams
 
 - set=2 帯 4 binding、本 UBO は binding=3
 
-### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram、最多 88 件)
+### §11.2 同 cadence cluster UBO (= cadence_tag=1 PerProgram、80 件 = Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)
 
 - 本 batch 担当 PerProgram UBO 7 (= BlurLightF / CofF / ColorGrading / FsObjectIdF / FullbrightShinyV / FxaaF / GammaCorrect)
-- 他 PerProgram UBO 多数 (= ubo_metadata.inl で 88 件最大、`llglslshader.cpp:95` literal)
+- 他 PerProgram UBO 多数 (= ubo_metadata.inl で **80 件** = Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)
 
 ### §11.3 同 shader consume UBO
 

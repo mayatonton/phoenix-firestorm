@@ -141,7 +141,7 @@ layout(std140, set = 3, binding = 25) uniform ExposureFParamUBO_Legacy
 
 ### §11.2 同 cadence cluster UBO (= cadence_tag=1 per-program)
 
-- ubo_metadata.inl で cadence_tag=1 は 88 件中最大、本 UBO 含む
+- ubo_metadata.inl で cadence_tag=1 は **80 件** (= Phase 2.L0 sub-session 3 step 1 grep 確定、`llglslshader.cpp:95` source comment 「88 件最大」は historical literal)、本 UBO 含む
 
 ### §11.3 同 shader consume UBO
 

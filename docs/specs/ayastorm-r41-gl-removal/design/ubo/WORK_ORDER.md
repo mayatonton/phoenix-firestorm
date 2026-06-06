@@ -89,14 +89,16 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 
 **背景**: r41 Vulkan 化で UBO は set/binding ペアで host 識別。同 set/binding 値を持つ複数 UBO が存在する場合、program (= shader) ごとに正しい UBO を bind する必要 (= 既存 Skin_GLTFJoints 通電で既に問題が発生していた可能性)。
 
-**影響箇所** (= READINESS §3 / §4 + RELATIONS.md §8 集約):
-- set=1 binding=0 排他 = MaterialUBO (新規 10-member) と MaterialUBO_Legacy (既存) 2 UBO
-- set=2 binding=0 共有 6 UBO = PerDrawUBO_AvatarSkin / AvatarVelocity / ClipPlane / LightParams / ObjectSkin / SkinnedVelocity
-- set=3 binding 衝突 3 site:
-  - binding=0: AtmoExtraUBO_Legacy + Asset_GLTFNodes
-  - binding=1: SkyVParamUBO_Legacy + Asset_GLTFMaterials
-  - binding=2: SkyFParamUBO_Legacy + Skin_GLTFJoints
-- 合計 11 UBO に dispatch protocol 適用必要
+**影響箇所** (= READINESS §3 / §4 + RELATIONS.md §8 集約 + Phase 2.L0 sub-session 3 step 1 grep 確定):
+- **全 80 件 PerProgram cluster** (= cadence_tag=1) に dispatch protocol 適用必要
+- 内訳 (= AYA review 重点 site):
+  - set=1 binding=0 排他 = MaterialUBO (新規 10-member) と MaterialUBO_Legacy (既存) 2 UBO
+  - set=2 binding=0 共有 6 UBO = PerDrawUBO_AvatarSkin / AvatarVelocity / ClipPlane / LightParams / ObjectSkin / SkinnedVelocity (cadence_tag=2 PerDraw、AYA review 元 11 UBO 集計)
+  - set=3 binding 衝突 3 site:
+    - binding=0: AtmoExtraUBO_Legacy + Asset_GLTFNodes
+    - binding=1: SkyVParamUBO_Legacy + Asset_GLTFMaterials
+    - binding=2: SkyFParamUBO_Legacy + Skin_GLTFJoints
+- 上記 11 UBO は AYA review 重点 site、実際の不整合 site = 全 3 set 80 件 (= set=1 binding=0 排他 2 + set=2 binding=2..25 で V3A_DRAW=4 と 24 件 overflow + set=3 binding=0..62 で V3A_ASSET=3 と 54 件 overflow、step 1 doc §3.2 cross-ref)
 
 #### (1) 前提条件
 - なし (= L0 protocol、横断的に先行)
@@ -125,7 +127,7 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 - 推定工数: **M** (= 半日、既存 logic 読解 + 設計策定 + AYA review)
 
 #### (6) A 確定条件
-- 全 11 UBO (= 排他 2 + 共有 6 + 衝突 3) の dispatch protocol 仕様確定
+- 全 80 件 PerProgram cluster (= cadence_tag=1、AYA review 重点 site 11 UBO = 排他 2 + 共有 6 + 衝突 3 を内包) の dispatch protocol 仕様確定 (= Phase 2.L0 sub-session 3 step 1 grep 確定)
 - AYA literal 承認
 - (5) cold launch validation = L0 protocol 自体は実機 verify 不要、L1 以降の UBO 通電時に effective verify (= L1 UBO 通電で dispatch logic が動作確認される)
 
