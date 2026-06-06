@@ -148,7 +148,7 @@ uniform int classic_mode;
 //   declared-but-unused (η-28-C type 3 範式、frag は `spot_light_size` を別 UBO 経由で参照)。
 #ifndef PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED
 #define PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED 1
-layout(set=2, binding=5, std140) uniform PerProgramUBO_PointLightV {
+layout(set=1, binding=44, std140) uniform PerProgramUBO_PointLightV {
     vec3  center;
     float size;
 };

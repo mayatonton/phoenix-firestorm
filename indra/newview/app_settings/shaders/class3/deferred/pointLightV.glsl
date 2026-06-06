@@ -60,7 +60,7 @@ in vec3 position;
 // Deferred Light + Deferred SpotLight 2 program 共通 vertex source 救済。
 #ifndef PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED
 #define PER_PROGRAM_UBO_POINT_LIGHT_V_DEFINED 1
-layout(set=2, binding=5, std140) uniform PerProgramUBO_PointLightV {
+layout(set=1, binding=44, std140) uniform PerProgramUBO_PointLightV {
     vec3  center;
     float size;
 };
