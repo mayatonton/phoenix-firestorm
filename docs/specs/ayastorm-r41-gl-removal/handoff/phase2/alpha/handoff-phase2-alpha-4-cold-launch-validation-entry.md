@@ -92,7 +92,7 @@ Phase 2.L0 sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff
 | # | 改修内容 | 改変対象 | 想定 commit | 検証 |
 |---|---|---|---|---|
 | 4.1 | **codegen 単独走行 verify (= Claude 自走、build phase 前段)** = blueprint dir 入力で `ubo_metadata.inl` 等 emit 成功 + 80 UBO binding 整合 confirm + main.py `--verify-target-paths` で sub-session 5 改修 7 UBO 対応 actual 4-7 file 整合 verify (= phase F 動作実機 confirm) ⇒ **✅ 完了 (= 2026-06-06、§C.1 evidence record)** | 0 (= verify のみ) | 0 commit (= verify 結果 record は §C.1 追記、本 sub-step 完了 commit に同梱) | codegen tool 単独実行 + grep `ubo_metadata.inl` binding 確認 ⇒ **PASS verdict** (§C.1) |
-| 4.2 | **configure 走行 verify (= AYA 環境、Linux primary)** = AyaUboCodegen.cmake が正しく走行 + STATUS message で blueprint dir 検出 confirm + GLSL source count = 94 (= blueprint dir) 確認 | 0 (= configure のみ) | 0 commit | `develop.py configure` 走行 + STATUS 確認 |
+| 4.2 | **configure 走行 verify (= AYA 環境、Linux primary)** = AyaUboCodegen.cmake が正しく走行 + STATUS message で blueprint dir 検出 confirm + GLSL source count = 94 (= blueprint dir) 確認 ⇒ **✅ 完了 (= 2026-06-06、§C.2 evidence record)** | 0 (= configure のみ) | 0 commit (= verify 結果 record は §C.2 追記、本 sub-step 完了 commit に同梱) | `autobuild configure -A 64 -c ReleaseFS_open` 走行 + STATUS 5 件確認 ⇒ **PASS verdict** (§C.2) |
 | 4.3 | **build 走行 verify (= AYA 環境、Linux primary)** = make build success + codegen_ubo target 走行成功 + build artifact (= `build-linux-x86_64/codegen/ubo/*.inl`) 生成確認 + viewer binary 生成 OK | 0 (= build のみ) | 0 commit | make build success + grep build log |
 | 4.4 | **cold launch verify (= AYA 環境、Linux primary)** = viewer 起動 OK + Vulkan validation log 0 件 + sub-session 5 改修 7 UBO の binding 反映 runtime confirm | 0 (= 起動のみ) | 0 commit | AYAstorm log 確認 (`~/.ayastorm_x64/logs/AYAstorm.log` grep "Validation" / "UBO") |
 | 4.5 | **AYA live verify (= AYA live、視覚 regression check)** = AYA 立ち会いで sample scene + UI 機能の視覚 regression ゼロ confirm (= 原則 4 §5.4 V-1) | 0 (= 視覚 verify のみ) | 0 commit | AYA literal 「OK」承認 |
@@ -293,3 +293,106 @@ python3 scripts/ubo_codegen/main.py \
 - 4.1 commit (= 本 record 同梱) は AYA literal「commit して進めて」(= 2026-06-06) 受領で本 doc 改修を commit
 - 4.2 (= AYA 環境 configure 走行) は **AYA 立ち会い別 session** で実施 (= Claude 自走不可、Linux primary、`develop.py configure` 走行 + STATUS message で blueprint dir 検出 + GLSL source count 94 確認)
 - 本 session は 4.1 record commit で完了、次 session 開始時 4.2 着手
+
+### §C.2 sub-step 4.2 = configure 走行 verify (= 2026-06-06 完了、PASS verdict)
+
+**実施日**: 2026-06-06 (= 4.1 commit `2f5f8dc961` 直後、別 session で 4.2 着手)
+**実施方法**: Claude 自走 (= Linux primary、`autobuild configure` 走行 + log 解析、memory `feedback_log_reading` 適用で Claude が直接 log 読み、memory `feedback_root_cause_no_shortcuts` §12 sandbox 実証 protocol 適用)
+**Verdict**: ✅ **PASS** (= §4 Exit 条件 #2 第一部 (= configure 部分) 全件充足)
+
+#### §C.2.1 実行 command
+
+```sh
+cd ~/work_firestorm/phoenix-firestorm
+source .venv/bin/activate
+export AUTOBUILD_VARIABLES_FILE=$HOME/work_firestorm/fs-build-variables/variables
+autobuild configure -A 64 -c ReleaseFS_open -- \
+  --fmodstudio \
+  -DLL_TESTS:BOOL=FALSE \
+  -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE \
+  --package \
+  --chan AYAstorm-release \
+  > /tmp/aya_alpha4_4_2_configure.log 2>&1
+```
+
+実行 log = `/tmp/aya_alpha4_4_2_configure.log` (= 58 行)。
+
+#### §C.2.2 evidence 4 件
+
+**Evidence 1**: AyaUboCodegen.cmake STATUS message 5 件全件出力 (= line 44-48)
+
+```
+-- AYAstorm r41 (PA-7): UBO Codegen wired = /home/ishikawa/work_firestorm/phoenix-firestorm/indra/../scripts/ubo_codegen/main.py
+-- AYAstorm r41 (PA-7):   blueprint dir   = /home/ishikawa/work_firestorm/phoenix-firestorm/indra/newview/app_settings/shaders/aya_r41_blueprints
+-- AYAstorm r41 (PA-7):   output dir      = /home/ishikawa/work_firestorm/phoenix-firestorm/build-linux-x86_64/codegen/ubo
+-- AYAstorm r41 (PA-7):   cache file      = /home/ishikawa/work_firestorm/phoenix-firestorm/build-linux-x86_64/codegen/cache/codegen_state.json
+-- AYAstorm r41 (PA-7):   blueprint count = 94 .glsl files
+```
+
+| 軸 | 期待値 (= §3 表 4.2 row) | 実測値 | verdict |
+|---|---|---|---|
+| AyaUboCodegen.cmake 走行 | 正常走行 (= 5 STATUS 全件出力) | 5 STATUS 全件出力 | ✅ |
+| blueprint dir 検出 | `aya_r41_blueprints` literal 一致 | `.../aya_r41_blueprints` | ✅ |
+| GLSL source count | 94 (= blueprint dir) | **94 .glsl files** | ✅ (= case X 確定 source of truth literal 一致) |
+| output dir 設定 | `build-linux-x86_64/codegen/ubo` | 同左 | ✅ |
+| cache file 設定 | `codegen_state.json` 配下 | `codegen/cache/codegen_state.json` | ✅ |
+
+**Evidence 2**: glslangValidator 検出 confirm (= line 43、`AyaShaderCompile.cmake` 由来の find_program、`AyaUboCodegen.cmake` 内 `AYA_GLSLANG_VALIDATOR` 再利用判定で reuse path)
+
+```
+-- AYAstorm r41: glslangValidator = /usr/bin/glslangValidator
+```
+
+⇒ `AyaUboCodegen.cmake` §27-29 の reuse path 動作 confirm、`find_program(AYA_GLSLANG_VALIDATOR glslangValidator)` 結果が build phase の codegen_ubo target 走行に渡される。
+
+**Evidence 3**: error 0 件 + warning は autobuild --id 1 件のみ (= codegen / build 無関係)
+
+```
+Warning: no --id argument or AUTOBUILD_BUILD_ID environment variable specified;
+    using a value from the UTC date and time (261570900), which may not be unique
+```
+
+| 軸 | 期待値 | 実測値 | verdict |
+|---|---|---|---|
+| CMake Error | 0 件 | 0 件 | ✅ |
+| FATAL_ERROR | 0 件 | 0 件 | ✅ |
+| fatal error | 0 件 | 0 件 | ✅ |
+| error: | 0 件 | 0 件 | ✅ |
+| AyaUboCodegen.cmake WARNING (= glslang/spirv-cross 未検出) | 0 件 | 0 件 (= 両 tool 検出済) | ✅ |
+| autobuild --id warning | 1 件 (= 期待動作、build_id 未指定で UTC date 自動生成、codegen 無関係) | 1 件 | ✅ (= 設計通り) |
+
+**Evidence 4**: configure exit code 0 + CMake 完了 4 行 (= line 54-58)
+
+```
+-- Configuring done (2.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/ishikawa/work_firestorm/phoenix-firestorm/build-linux-x86_64
+finished
+EXIT=0
+```
+
+#### §C.2.3 §4 Exit 条件 #2 第一部 (= configure) 全件充足 verdict
+
+| 項目 (= §4 #2 configure 部分) | 充足判定 |
+|---|---|
+| configure 走行 error 0 件 | ✅ (Evidence 3、CMake Error / FATAL_ERROR / fatal error / error: 全件 no match) |
+| AyaUboCodegen.cmake 正しく走行 | ✅ (Evidence 1、STATUS 5 件全件出力 + STATUS 順序整合) |
+| blueprint dir 検出 confirm | ✅ (Evidence 1、`aya_r41_blueprints` literal 一致) |
+| GLSL source count = 94 | ✅ (Evidence 1、`blueprint count = 94 .glsl files` literal 一致 = case X 確定 source of truth) |
+| codegen_ubo target 走行成功 | △ (= configure phase では target **定義** のみ完了、実走行は 4.3 build phase = `make codegen_ubo` で trigger) |
+
+⇒ §4 Exit 条件 #2 は configure (= 4.2) + build (= 4.3) 両 phase 完走で完全充足、本 sub-step (= 4.2 configure) では configure 関連 4 項目全件 PASS + codegen_ubo target は **定義成功** で build phase 走行準備完了。
+
+#### §C.2.4 副次的 verify
+
+build dir 既存 (= 過去の build run 由来) artifact 状態 confirm:
+
+- `build-linux-x86_64/codegen/ubo/` = 既存 file 群存在 (= 前 build run 由来、4.3 build phase で再走行時の incremental cache 検査用)
+- `build-linux-x86_64/codegen/cache/codegen_state.json` = 既存 cache file 存在
+- configure phase で `file(MAKE_DIRECTORY ...)` (= AyaUboCodegen.cmake line 77-78) 実行済 = output dir + cache dir 存在 confirm
+
+#### §C.2.5 次手
+
+- 4.2 commit (= 本 record 同梱、§3 表 4.2 row update + §C.2 追記) は AYA literal「commit して進めて」(= 2026-06-06) 受領で本 doc 改修を commit
+- 4.3 (= build 走行 verify) は AYA literal「4.3 進めて」literal 受領後 `autobuild build -A 64 -c ReleaseFS_open --no-configure` 走行 + log 解析 (= codegen_ubo target 走行成功 + build artifact 生成 + viewer binary 生成 OK 確認)
+- 本 session は 4.2 record commit で完了、4.3 着手は別 sub-step
