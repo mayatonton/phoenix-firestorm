@@ -39,7 +39,7 @@
 
 | Layer | 内容 | UBO 件数目安 | verify 単位 | 着手契機 |
 |---|---|---|---|---|
-| **L0** | 横断 protocol 4 件 確立 (= 別カウント、L1-L5 各項目の前提) | 4 protocol | regression 確認のみ (= 既存通電 UBO 維持) | 本資料 §2 完成後即着手 |
+| **L0** | 横断 protocol 4 件 確立 (= 別カウント、L1-L5 各項目の前提) | 4 protocol | regression 確認 (= 既存通電 UBO 維持) + **READINESS.md update (= L0 4 protocol 解消事項反映、B 判定 31 件 → A 昇格 candidate 確定、Phase 2.L0 Exit 必須条件、AYA literal 2026-06-06)** | 本資料 §2 完成後即着手 |
 | **L1a** | 横断 protocol 影響大 UBO (= LLStaticHashedString 経由 + 独立) | **3** (= CAS / Clip / VisualizeBuffersF) | 個別 UBO (= 即 verify) | L0 完了後 |
 | **L1b** | per-shader UBO block 拡大 (= FrameViewProj / FrameLights) | **2** (= 50+ file 一括) | 一括 verify | L0 完了後、L1a 並列可 |
 | **L2** | B Tier α (= setter 特定済、minor verify) | **4** (= PbrTerrainV / AOUtil / MotionBlur / DeferredUtil) | 個別 UBO (= 即 verify) | L1 完了後 |
@@ -306,10 +306,31 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 5. **upstream merge conflict 自動検出 strategy** [L0-3 protocol-D]
 6. **sliced UBO 化が Phase 3 移管対象か Phase 2 内か** [L0-4 (7) 原則 3]
 
-#### §2.5.3 L0 完了後の C-3 着手条件
+#### §2.5.3 L0 完了後の C-3 着手条件 + Phase 2.L0 Exit 条件 (= AYA literal 2026-06-06 確定)
 
+**設計起案 phase 内 C-3 着手条件** (= 既完了):
 - 上記 AYA review 6 件完了 + protocol 仕様 4 件全件確定
 - C-3〜C-7 各項目 (3) 調査手法に L0-1〜L0-4 protocol 結果を統合 (= 各項目 sub-work で L0 protocol を呼び出し)
+
+**Phase 2 実装 phase 内 Phase 2.L0 Exit 条件** (= AYA literal 2026-06-06「READINESS.md update を Phase 2.L0 完了 Exit 条件に含める」確定):
+1. **L0-1〜L0-4 4 protocol 実装完了** (= host C++ + GLSL shader 全件通電 + cold launch validation + Linux validation layer warnings 0 件)
+2. **既存通電 UBO regression 確認** (= Phase 1.E までの通電 UBO に L0 protocol 適用による visual regression なし、visual regression ゼロ §5.4 policy 適用)
+3. **READINESS.md update**:
+   - L0 4 protocol 解消事項を §3 (C 判定 16 group) + §4 (B 判定 31 件) に反映
+   - B 判定 31 件中 → **A 昇格 candidate 確定** (= L0 protocol 経路依存の不明事項全件解消 UBO を A 昇格 list 化)
+   - C 判定 16 group → group 内 sub-cluster 単位で部分 A 昇格 candidate 確定 (= cross-UBO 同期 protocol 確定 sub-cluster のみ)
+   - 残 B/C 判定 (= L0 後も追加調査要事項あり) は各 sub-step 内 sub-work (3) で個別解消明示
+   - update 範囲 = READINESS §3 + §4 + §5 集計 + §6 着手順序ヒント
+4. **A 昇格判定基準明示** (= READINESS update 内記載):
+   - 全件 A 昇格 = L0 後の自動昇格ではない (= sub-work (6) A 確定条件達成で個別 sub-step 内最終確定)
+   - A 昇格判定 = READINESS §4 + 該当 UBO file §10 不明事項 全件解消 + sub-work (6) A 確定条件 (= setter 通電 + Vulkan validation 0 + AYA live verify + visual regression ゼロ) 達成
+5. **Phase 2.L1a/L1b/L2/L3/L4/L5 sub-step 着手 unblocking** (= READINESS update 完了で各 sub-step 着手 OK)
+
+**Phase 2.L0 Exit 確認 protocol**:
+- WORK_ORDER §2 L0-1〜L0-4 各 sub-work (6) A 確定条件達成確認
+- READINESS.md update commit 完了確認 (= update 範囲全件、AYA review)
+- handoff doc 起案 (= Phase 2.L0 complete → Phase 2.L1a 着手 separate session entry)
+- AYA literal Phase 2.L0 Exit 承認
 
 ---
 
@@ -3437,7 +3458,7 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 
 | Phase | scope | 内訳 |
 |---|---|---|
-| **Phase 2** | **全 94 UBO + L0 4 protocol 本実装** (= 1 UBO ずつ sub-step 進行、Phase 2.A / 2.B / 2.C ... 細分) | L0 4 protocol + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 UBO |
+| **Phase 2** | **全 94 UBO + L0 4 protocol 本実装** (= 1 UBO ずつ sub-step 進行、Phase 2.L0 → 2.L1a → 2.L1b → 2.L2 → 2.L3 → 2.L4 → 2.L5 順序) **Phase 2.L0 Exit 必須 = READINESS.md update (B → A 昇格 candidate 確定)** | L0 4 protocol + L1a 3 + L1b 2 + L2 4 + L3 20 + L4 62 + L5 3 = 94 UBO |
 | **Phase 3** | 3 OS 確証 (Linux) | 全 94 UBO 通電後最終 Linux 確証 + render parity |
 | **Phase 4** | 3 OS 確証 (Windows) | Windows build + 起動 + render parity (= AYA 実機) |
 | **Phase 5** | 3 OS 確証 (macOS) | macOS build + 起動 + render parity (= @t-noami 実機委任) |
@@ -3458,8 +3479,9 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 | **R-2** | pilot 通電済 (Skin/Asset/LightParams) = Phase 2 sub-step 内 本実装化 (= 別 Phase に分けない) | sub-work (1) 前提条件 + (5) 工程 task |
 | **R-3** | sub-step 命名 = Phase 2.A / 2.B / 2.C ... (= PC-N-* 体系は Phase 1.C/1.D/1.E で役目終了) | sub-work (5) 工程 task |
 | **R-4** | O3-2 採用 = OpenGL 撤廃は r42 milestone 後半 sub-phase に移管 (= r41 内 Phase 一覧に含めない)、r41 Phase 6 = release | sub-work (5) 工程 task + 原則 4 (§4.4) cross-reference |
+| **R-5** | **Phase 2.L0 Exit 条件 = READINESS.md update 完了 (= L0 4 protocol 解消事項反映 + B 判定 31 件 → A 昇格 candidate 確定 + 残 B/C 個別解消事項明示)、Phase 2.L1a 着手前必須** (= AYA literal 2026-06-06 確定) | sub-work (5) 工程 task + §2.5.3 Phase 2.L0 Exit protocol |
 
-**sub-work (7) 評価**: 各 UBO で「Phase 2 内 sub-step 着手順序確定 / Phase 範囲 violation 無し (= 全 UBO Phase 2 内に内包確認)」を確認。Phase 分割提案 (= 本 §4.3 表 Phase 2 から UBO を別 Phase に切出す提案) は §4.7 protocol 適用 (= stage 3 AYA literal 確認 escalation、AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ」 literal 違反)。
+**sub-work (7) 評価**: 各 UBO で「Phase 2 内 sub-step 着手順序確定 / Phase 範囲 violation 無し (= 全 UBO Phase 2 内に内包確認) / Phase 2.L0 Exit 後着手 (= L0 protocol 経路依存 UBO は L0 完了 + READINESS update 後)」を確認。Phase 分割提案 (= 本 §4.3 表 Phase 2 から UBO を別 Phase に切出す提案) は §4.7 protocol 適用 (= stage 3 AYA literal 確認 escalation、AYA literal 2026-06-06「全 UBO を Phase 2 のスコープ」 literal 違反)。
 
 ### §4.4 原則 4: OpenGL を殺さない (= dual-path 出荷 + `mUseUBO` runtime flag)
 

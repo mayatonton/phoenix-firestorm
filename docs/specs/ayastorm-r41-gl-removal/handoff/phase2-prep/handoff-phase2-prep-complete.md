@@ -151,7 +151,8 @@ C-1〜C-9 全完了。次の milestone は **r41 Phase 2 本実装着手** (= AY
 | 2 | 4 原則 + 視覚 regression ゼロ gate 全体構成 (= 5 軸 29 gate 評価 protocol) | WORK_ORDER §4 |
 | 3 | 各 UBO §12 (= 94 file 全件、navigation 用) | 各 UBO file 末尾 §12 |
 | 4 | Phase 2 sub-step 着手順序 (= L0 4 protocol → L1a/L1b/L2/L3/L4/L5 順、§1.3 順序判定軸 A1-A6) | WORK_ORDER §1.3 + §3.1-§3.6 + 09-phase-roadmap §2.1.1 |
-| 5 | Phase 2 sub-step 命名規約 (= Phase 2.A / 2.B / 2.C ... 細分) | WORK_ORDER §4.3 R-3 + 09-phase-roadmap §1.2 |
+| 5 | Phase 2 sub-step 命名規約 (= Phase 2.L0 → 2.L1a → 2.L1b → 2.L2 → 2.L3 → 2.L4 → 2.L5、Phase 2.A/B/C... 細分は各 sub-step 内) | WORK_ORDER §4.3 R-3 + 09-phase-roadmap §1.2 |
+| 6 | **Phase 2.L0 Exit 条件 = READINESS.md update 完了 (= L0 4 protocol 解消事項反映 + B 判定 31 件 → A 昇格 candidate 確定)** (= AYA literal 2026-06-06 確定) | WORK_ORDER §1.1 + §2.5.3 + §4.3 R-5 |
 | 6 | 全 [要 AYA 判断] マーク全件 (= 各 UBO sub-work (2) 内) | grep `\[要 AYA 判断\]` でリストアップ可能 |
 
 ### §3.3 commit timing (= AYA 確認後)
@@ -292,6 +293,6 @@ Co-Authored-By 行不在 (= memory `feedback_no_claude_coauthor` 遵守)。
 2. memory pinpoint 確認 (= project_r41_phase2_4_principles + project_ayastorm_r41_design_principles + project_r41_phase1b_vulkan_host_gate + feedback_ubo_migration_one_at_a_time + feedback_build_only_verified)
 3. AYA literal 確認 (= §3.2 最終 review check 6 項目 + commit 案 A/B/C 選択)
 4. AYA 承認後 commit 実施 (= 案 C 推奨 = 2 commit)
-5. r41 Phase 2 本実装着手判断 → Phase 2 = **全 94 UBO + L0 4 protocol 本実装** (= AYA literal 2026-06-06 確定、sub-step Phase 2.A から順次) separate session entry
+5. r41 Phase 2 本実装着手判断 → Phase 2 = **全 94 UBO + L0 4 protocol 本実装** (= AYA literal 2026-06-06 確定、sub-step Phase 2.L0 から順次、**Phase 2.L0 Exit = READINESS.md update 必須**) separate session entry
 
 **次 session 開始時の最初の AYA 確認**: 「上記要約を確認、Phase 2 前提条件 work 全完走 (= 本 session で AYA literal「全 UBO を Phase 2 のスコープ」確定反映済) を経て、Phase 2 本実装 = 全 94 UBO + L0 4 protocol 本実装 (= sub-step Phase 2.A から) separate session entry に進むで OK か?」
