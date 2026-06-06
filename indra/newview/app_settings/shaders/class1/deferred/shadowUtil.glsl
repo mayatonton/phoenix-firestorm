@@ -77,7 +77,7 @@ uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(set=3, binding=7, std140) uniform ShadowUtilParamUBO_Legacy {
+layout(set=1, binding=63, std140) uniform ShadowUtilParamUBO_Legacy {
     mat4  shadow_matrix[6];
     vec4  shadow_clip;
     vec2  shadow_res;

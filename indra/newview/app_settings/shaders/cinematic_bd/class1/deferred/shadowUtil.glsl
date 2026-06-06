@@ -102,7 +102,7 @@ uniform int sun_up_factor;
 // class1 版と byte-identical (shadow_softness 含む 12 member) で将来 C++ side binding 共有可。
 // GL #else path は元 8 bare 宣言を byte-for-byte 維持 (charter §3 #1 担保)。
 #ifdef LL_VULKAN_GLSL
-layout(set=3, binding=7, std140) uniform ShadowUtilParamUBO_Legacy {
+layout(set=1, binding=63, std140) uniform ShadowUtilParamUBO_Legacy {
     mat4  shadow_matrix[6];
     vec4  shadow_clip;
     vec2  shadow_res;
