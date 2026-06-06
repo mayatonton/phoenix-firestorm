@@ -42,7 +42,7 @@ uniform sampler2D diffuseRect;
 // (set=2, binding=2、η-3 §3.2 PerDrawUBO 範式類) で gamma 専用 UBO を declare。
 #ifndef PER_PROGRAM_UBO_GAMMA_CORRECT_DEFINED
 #define PER_PROGRAM_UBO_GAMMA_CORRECT_DEFINED 1
-layout(set=2, binding=2, std140) uniform PerProgramUBO_GammaCorrect {
+layout(set=1, binding=39, std140) uniform PerProgramUBO_GammaCorrect {
     float gamma;
     float _pad_gc0;
     float _pad_gc1;
