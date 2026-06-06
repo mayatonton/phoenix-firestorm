@@ -298,10 +298,29 @@ memory `feedback_ubo_migration_one_at_a_time` (= 「1 UBO ずつ、cold launch �
 
 ## §C. 次 step 着手契機
 
-**step 2 着手契機** = AYA literal 確認 4 件全件 OK 受領 (= §7 全 4 件)。
+**step 2 着手契機** = ✅ AYA literal 確認 4 件全件 OK 受領済 (= 2026-06-06、§7 全 4 件「1 OK / 2 A or alphabetical / 3 batch-stage / 4 将来時再判断」)。
 
-**step 2 scope**:
-- shader 側 GLSL Legacy UBO 80 件 `layout(set=N, binding=M)` 書換 (= batch-stage 想定)
-- batch 別 cold launch validation (= Linux validation layer warnings 0 件 + AYA live verify)
-- step 2 出力 doc = `handoff-phase2-l0-1-C-step2-shader-rewrite.md` 起案
-- step 3 着手承認 or step 2 内 batch 再起案
+### §C.1 step 2 sub-step 構造 (= 最重要悲報 + 悲報 3 同梱対応)
+
+step 1 で確定した悲報 (= 全 3 set 80 件不整合 + `indra/llglslshader.cpp:95` source comment 訂正持越) を組込んだ sub-step 構造:
+
+| sub-step | 内容 | `indra/` 改変 | cold launch |
+|---|---|---|---|
+| **step 2-pre1** | `indra/llglslshader.cpp:95` source comment 訂正 = `// ubo_metadata.inl で 88 件最大` → `// ubo_metadata.inl で 80 件 (Phase 2.L0 step 1 grep 確定)` 1 行修正 (= 悲報 3 対応、design/ubo/ doc 内引用箇所との literal 一致回復) | 1 file 1 行 | 不要 (= comment のみ、機能影響 0) |
+| **step 2-pre2** | shader file × UBO consume mapping 確定 = 80 件 UBO × 各 shader file `#ifdef LL_VULKAN_GLSL` block 内宣言 grep + mapping table 起案 (= 最重要悲報の前準備、同 shader file 内複数 UBO 宣言時の整合崩壊予防) | ゼロ (= grep + mapping table doc のみ) | 不要 |
+| **step 2-batch-1 (Compute)** | compute shader (`*C.glsl`) 内 UBO `layout(set=N, binding=M)` 書換 | `indra/newview/app_settings/shaders/` 配下 compute shader file | Vulkan validation 0 件 + AYA live verify |
+| **step 2-batch-2 (Vertex)** | vertex shader (`*V.glsl`) 内 UBO 書換 | 同 vertex shader file | Vulkan validation 0 件 + AYA live verify |
+| **step 2-batch-3 (Fragment)** | fragment shader (`*F.glsl`) 内 UBO 書換 (= 件数次第で batch-3a/3b/3c 分割可能性) | 同 fragment shader file | Vulkan validation 0 件 + AYA live verify |
+| **step 2-exit** | step 2 出力 doc 起案 + step 3 着手承認 (= AYA literal) | - | - |
+
+### §C.2 sub-session 4 = step 2 着手 = `indra/` 改変開始
+
+step 2 = `indra/` 改変開始 phase = memory `feedback_design_phase_no_code_write` 解除点。本 sub-session 4 entry handoff doc は別途 `handoff-phase2-l0-1-C-step2-entry.md` で起案 (= 次 session /clear → cold read で着手可能)。
+
+### §C.3 step 1 で発覚した悲報の対応工程 (= 持越記録)
+
+| 悲報 | 対応工程 | 完了状態 |
+|---|---|---|
+| **最重要 = 全 3 set 80 件不整合** | step 2 = shader 書換 batch-stage + pre2 mapping 確定 | step 2 着手で対応 |
+| 2 = 設計 doc 起案時数値確認不足の伝播 | memory `feedback_design_doc_number_literal_verify` 追加 | ✅ 完了 (= 2026-06-06 memory 追加済、sub-session 4 以降全適用) |
+| 3 = `indra/llglslshader.cpp:95` source comment 訂正持越 | step 2-pre1 で先行訂正 | step 2 着手で対応 |
