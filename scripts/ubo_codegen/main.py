@@ -36,7 +36,7 @@ import perfect_hash
 import spirv_reflect
 import std140
 from build_cache import EnvVersions
-from codegen_error import CodegenError
+from codegen_error import CodegenError, format_error
 from glsl_parser import Member, UboBlockDecl, parse_glsl
 from perfect_hash import BlockSpec
 from std140 import BlockLayout, MemberSpec, compute_layout
@@ -114,8 +114,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         prog="ubo_codegen",
         description="AYAstorm r41 UBO Codegen (Phase 1.A PA-6)",
     )
-    p.add_argument("--input", required=True, type=Path, metavar="<blueprint_path>",
-                   help="UBO blueprint source: directory (recursive *.glsl) or single .glsl file")
+    p.add_argument("--input", required=True, type=Path, nargs='+', metavar="<shader_path>",
+                   help="UBO source: one or more directories (recursive *.glsl) or single .glsl files "
+                        "(= Phase 2.α α-2 2026-06-06、複数 shader source dir 対応 = class*/ + cinematic_bd/ 入力想定)")
     p.add_argument("--output", required=True, type=Path, metavar="<header_dir>",
                    help="output directory for generated .inl headers (created if missing)")
     p.add_argument("--cache-file", type=Path, metavar="<state.json>", default=None,
@@ -133,19 +134,24 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _discover_inputs(input_path: Path, log: logging.Logger) -> List[Path]:
-    if not input_path.exists():
-        log.error("input path does not exist: %s", input_path)
-        sys.exit(EXIT_INPUT_NOT_FOUND)
-    if input_path.is_file():
-        if input_path.suffix != ".glsl":
-            log.error("input file is not .glsl: %s", input_path)
-            sys.exit(EXIT_INVALID_ARGS)
-        return [input_path]
-    if input_path.is_dir():
-        return sorted(input_path.rglob("*.glsl"))
-    log.error("input path is neither file nor directory: %s", input_path)
-    sys.exit(EXIT_INPUT_NOT_FOUND)
+def _discover_inputs(input_paths: Sequence[Path], log: logging.Logger) -> List[Path]:
+    """Discover .glsl files across one or more input paths (= Phase 2.α α-2 多入力対応)。"""
+    all_files: List[Path] = []
+    for input_path in input_paths:
+        if not input_path.exists():
+            log.error("input path does not exist: %s", input_path)
+            sys.exit(EXIT_INPUT_NOT_FOUND)
+        if input_path.is_file():
+            if input_path.suffix != ".glsl":
+                log.error("input file is not .glsl: %s", input_path)
+                sys.exit(EXIT_INVALID_ARGS)
+            all_files.append(input_path)
+        elif input_path.is_dir():
+            all_files.extend(input_path.rglob("*.glsl"))
+        else:
+            log.error("input path is neither file nor directory: %s", input_path)
+            sys.exit(EXIT_INPUT_NOT_FOUND)
+    return sorted(set(all_files))  # dedupe + deterministic order
 
 
 def _ensure_output_dir(output_dir: Path, log: logging.Logger) -> None:
@@ -219,6 +225,72 @@ def _ubo_to_block_spec(ubo: UboBlockDecl, layout: BlockLayout) -> BlockSpec:
         binding=binding,
         subset=_derive_subset(descriptor_set, binding),
     )
+
+
+# Phase 2.α α-2 (= 2026-06-06): 同名 UBO 複数 file 整合 verify
+# 設計 doc 08:72-74/96 想定 = codegen 入力 = class*/ + cinematic_bd/ 配下
+# 同 UBO が複数 GLSL で再宣言されている (= inventory:247-249 既認識):
+#   CloudsVParamUBO_Legacy (cloudsV.glsl + cloudsF.glsl)
+#   WaterVParamUBO_Legacy (waterV.glsl + waterF.glsl)
+#   ShadowUtilParamUBO_Legacy (class1 + cinematic_bd 上書き path)
+# 全 declaration が同 set/binding/layout/member であることを構造的に verify、
+# 不一致は SPIR-V binary ↔ host C++ pipeline layout mismatch の原因ゆえ即 fail。
+
+def _verify_block_match(
+    spec: BlockSpec, spec_path: str,
+    other: BlockSpec, other_path: str,
+) -> None:
+    """Verify two declarations of same-named UBO are structurally identical.
+
+    cinematic_bd/ 上書き path は同名 + 同 binding + 同 layout = legitimate dual
+    declaration として PASS、不一致は CodegenError abort。
+    """
+    if spec.descriptor_set != other.descriptor_set or spec.binding != other.binding:
+        raise CodegenError(format_error(
+            f"UBO '{spec.name}' has mismatched set/binding across files",
+            extra_lines=[
+                f"first:  set={spec.descriptor_set}, binding={spec.binding} at {spec_path}",
+                f"second: set={other.descriptor_set}, binding={other.binding} at {other_path}",
+            ],
+            block=spec.name,
+            reason="multi-file UBO declarations must share identical set/binding (= SPIR-V ↔ pipeline layout integrity)",
+            action="align layout(set=N, binding=M, std140) across all declaration sites",
+        ))
+    if spec.subset != other.subset or spec.cadence_tag != other.cadence_tag:
+        raise CodegenError(format_error(
+            f"UBO '{spec.name}' has mismatched subset/cadence across files",
+            extra_lines=[
+                f"first:  subset={spec.subset}, cadence={spec.cadence_tag} at {spec_path}",
+                f"second: subset={other.subset}, cadence={other.cadence_tag} at {other_path}",
+            ],
+            block=spec.name,
+            reason="subset/cadence are derived deterministically — divergence implies divergent set/binding (= internal contradiction)",
+        ))
+    spec_members = spec.layout.members
+    other_members = other.layout.members
+    if len(spec_members) != len(other_members):
+        raise CodegenError(format_error(
+            f"UBO '{spec.name}' has mismatched member count across files",
+            extra_lines=[
+                f"first:  {len(spec_members)} members at {spec_path}",
+                f"second: {len(other_members)} members at {other_path}",
+            ],
+            block=spec.name,
+            reason="multi-file UBO declarations must share identical std140 layout",
+            action="align block body (members + types + order) across all declaration sites",
+        ))
+    for i, (sm, om) in enumerate(zip(spec_members, other_members)):
+        if sm.name != om.name or sm.offset != om.offset or sm.size != om.size or sm.align != om.align:
+            raise CodegenError(format_error(
+                f"UBO '{spec.name}' member #{i} mismatch across files",
+                extra_lines=[
+                    f"first:  {sm.name} offset={sm.offset} size={sm.size} align={sm.align} at {spec_path}",
+                    f"second: {om.name} offset={om.offset} size={om.size} align={om.align} at {other_path}",
+                ],
+                block=spec.name,
+                member=sm.name,
+                reason="multi-file UBO member layout must be identical",
+            ))
 
 
 # --- pipeline: parse + layout + reflection verify --------------------------
@@ -373,14 +445,33 @@ def run(args: argparse.Namespace, log: logging.Logger) -> int:
         log.info("--force given, bypassing incremental cache")
 
     t_start = time.monotonic()
-    blocks: List[BlockSpec] = []
+    # Phase 2.α α-2 (= 2026-06-06): 同名 UBO 複数 file 整合 verify + dedupe
+    # design 08:72-74/96 想定 = codegen 入力 class*/ + cinematic_bd/ 配下、
+    # 同名 UBO 複数 declaration (= inventory:247-249 既認識 = CloudsV/WaterV/ShadowUtil)
+    # を構造的に verify、不一致時 CodegenError abort、verify PASS 時 1 件のみ集約。
+    blocks_by_name: Dict[str, List[Tuple[BlockSpec, str]]] = {}
     try:
         for glsl_path in inputs:
-            blocks.extend(_process_glsl_file(
+            file_blocks = _process_glsl_file(
                 glsl_path, log, args.glslang_bin, args.spirv_cross_bin, skip_spirv,
-            ))
+            )
+            for block in file_blocks:
+                blocks_by_name.setdefault(block.name, []).append((block, str(glsl_path)))
     except CodegenError as exc:
         log.error("codegen failed: %s", exc)
+        return EXIT_CODEGEN_ERROR
+
+    blocks: List[BlockSpec] = []
+    try:
+        for name, entries in blocks_by_name.items():
+            spec_block, spec_path = entries[0]
+            for other_block, other_path in entries[1:]:
+                _verify_block_match(spec_block, spec_path, other_block, other_path)
+            if len(entries) > 1:
+                log.debug("multi-file UBO '%s' verified identical across %d files", name, len(entries))
+            blocks.append(spec_block)
+    except CodegenError as exc:
+        log.error("multi-file UBO integrity check failed: %s", exc)
         return EXIT_CODEGEN_ERROR
 
     if not blocks:

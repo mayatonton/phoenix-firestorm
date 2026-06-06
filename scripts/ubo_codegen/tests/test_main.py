@@ -3,14 +3,16 @@
 
 import unittest
 
+from codegen_error import CodegenError
 from glsl_parser import Member, UboBlockDecl
 from main import (
     CADENCE_PER_DRAW,
     CADENCE_PER_PROGRAM,
     _derive_cadence,
     _ubo_to_block_spec,
+    _verify_block_match,
 )
-from std140 import BlockLayout
+from std140 import BlockLayout, MemberLayout
 
 
 class UboToBlockSpecTests(unittest.TestCase):
@@ -80,3 +82,82 @@ class DeriveCadenceTests(unittest.TestCase):
         self.assertEqual(_derive_cadence("MaterialUBO_Legacy"), CADENCE_PER_PROGRAM)
         self.assertEqual(_derive_cadence("WaterFogUBO_Legacy"), CADENCE_PER_PROGRAM)
         self.assertEqual(_derive_cadence("CloudsVParamUBO_Legacy"), CADENCE_PER_PROGRAM)
+
+
+class MultiFileIntegrityTests(unittest.TestCase):
+    """Phase 2.α α-2 (= 2026-06-06): 同名 UBO 複数 file 整合 verify。
+
+    design 08:72-74/96 想定 = codegen 入力 = class*/ + cinematic_bd/ 配下、
+    inventory:247-249 既認識の同名 UBO 複数 file declaration を構造的に verify、
+    cinematic_bd 上書き path は同 layout なら legitimate dual declaration として PASS。
+    """
+
+    def _spec(self, name, set_id, binding, members):
+        layout = BlockLayout(name=name, members=list(members))
+        ubo = UboBlockDecl(
+            block_name=name,
+            layout_qual={"std140": True, "set": set_id, "binding": binding},
+            members=[Member(name=m.name, type_str="float") for m in members],
+        )
+        return _ubo_to_block_spec(ubo, layout)
+
+    def test_matching_blocks_pass(self):
+        # 同名 UBO 2 file 同 binding/layout → verify PASS, no raise
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        spec_a = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        spec_b = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        _verify_block_match(spec_a, "waterV.glsl", spec_b, "waterF.glsl")
+
+    def test_binding_mismatch_raises(self):
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        spec_a = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        spec_b = self._spec("WaterVParamUBO_Legacy", 1, 78, [m1])
+        with self.assertRaises(CodegenError) as ctx:
+            _verify_block_match(spec_a, "waterV.glsl", spec_b, "waterF.glsl")
+        self.assertIn("set/binding", str(ctx.exception))
+
+    def test_set_mismatch_raises(self):
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        spec_a = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        spec_b = self._spec("WaterVParamUBO_Legacy", 2, 79, [m1])
+        with self.assertRaises(CodegenError) as ctx:
+            _verify_block_match(spec_a, "waterV.glsl", spec_b, "waterF.glsl")
+        self.assertIn("set/binding", str(ctx.exception))
+
+    def test_member_count_mismatch_raises(self):
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        m2 = MemberLayout(name="y", offset=4, size=4, align=4)
+        spec_a = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        spec_b = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1, m2])
+        with self.assertRaises(CodegenError) as ctx:
+            _verify_block_match(spec_a, "waterV.glsl", spec_b, "waterF.glsl")
+        self.assertIn("member count", str(ctx.exception))
+
+    def test_member_name_mismatch_raises(self):
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        m2 = MemberLayout(name="y", offset=0, size=4, align=4)
+        spec_a = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        spec_b = self._spec("WaterVParamUBO_Legacy", 1, 79, [m2])
+        with self.assertRaises(CodegenError) as ctx:
+            _verify_block_match(spec_a, "waterV.glsl", spec_b, "waterF.glsl")
+        self.assertIn("mismatch", str(ctx.exception))
+
+    def test_member_offset_mismatch_raises(self):
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        m2 = MemberLayout(name="x", offset=4, size=4, align=4)
+        spec_a = self._spec("WaterVParamUBO_Legacy", 1, 79, [m1])
+        spec_b = self._spec("WaterVParamUBO_Legacy", 1, 79, [m2])
+        with self.assertRaises(CodegenError) as ctx:
+            _verify_block_match(spec_a, "waterV.glsl", spec_b, "waterF.glsl")
+        self.assertIn("mismatch", str(ctx.exception))
+
+    def test_cinematic_bd_overlay_path_pass(self):
+        # cinematic_bd 上書き path + class1 path で同名 UBO 同 layout → PASS
+        # (= ShadowUtilParamUBO_Legacy 想定、inventory:247-249 確認済)
+        m1 = MemberLayout(name="x", offset=0, size=4, align=4)
+        spec_a = self._spec("ShadowUtilParamUBO_Legacy", 1, 63, [m1])
+        spec_b = self._spec("ShadowUtilParamUBO_Legacy", 1, 63, [m1])
+        _verify_block_match(
+            spec_a, "cinematic_bd/class1/deferred/shadowUtil.glsl",
+            spec_b, "class1/deferred/shadowUtil.glsl",
+        )
