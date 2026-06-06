@@ -103,7 +103,7 @@ out float altitude_blend_factor;
 
 // Inputs
 #ifdef LL_VULKAN_GLSL
-layout(set=3, binding=3, std140) uniform CloudsVParamUBO_Legacy {
+layout(set=1, binding=8, std140) uniform CloudsVParamUBO_Legacy {
     vec3  camPosLocal;
     float cloud_scale;
     vec3  cloud_color;

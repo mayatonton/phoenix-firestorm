@@ -76,7 +76,7 @@ layout(set=3, binding=4, std140) uniform CloudsFParamUBO_Legacy {
 //   shader-only (charter §3 #1)、C++ struct 改修不要。
 #ifndef CLOUDS_V_PARAM_UBO_LEGACY_DEFINED
 #define CLOUDS_V_PARAM_UBO_LEGACY_DEFINED 1
-layout(set=3, binding=3, std140) uniform CloudsVParamUBO_Legacy {
+layout(set=1, binding=8, std140) uniform CloudsVParamUBO_Legacy {
     vec3  camPosLocal;
     float cloud_scale;
     vec3  cloud_color;
