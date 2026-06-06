@@ -163,3 +163,13 @@ layout(std140, set = 2, binding = 4) uniform PerProgramUBO_ColorGrading
 ### §11.7 bind 順序関係
 
 - PerProgram cadence ゆえ postDeferredTonemap program bind 時 flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.10 同期)
+
+**Layer**: L4-10 sub-cluster (c) (= display correction 2 UBO、**AYAstorm r30 Cinematic Control 13 cvar 直結 = AYA 既存機能 risk 大**)
+**status**: **起案済** (= 2026-06-06 C-6-e、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.10` (= single source of truth)
+**要点**: 6 active member (color_saturation/color_contrast/color_temperature/color_brightness/color_grading_lut_intensity/color_grading_lut_enabled) + pad ×2、**AYAstorm r30 Cinematic Control 13 cvar 直結** (= memory `project_r30_cinematic_control_tuning_deferred` r30 Phase 6 で 13 cvar BD live 配線完了、本 UBO 6 member と 13 cvar 対応関係 verify 必須 [要 verify D4 突合])、setter 不明 (= postDeferredTonemap pass、`LLPipeline::renderTonemap`/`applyColorGrading` 経路想定) [要追加調査]、color_grading_lut_enabled int 値域 (= boolean 0/1 か他 enum か) [要 verify]、postDeferredTonemap.glsl:74 singleton site、cadence PerProgram 維持、**AYA 既存機能 risk 大 group** (= 本 UBO 失敗 = Cinematic Control 13 cvar 全件機能停止 risk、実装着手前 mapping 確定必須)、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=4、ただし set=2 PerDraw+PerProgram 混在帯) / §3.5.10 sub-cluster (c) GammaCorrect (= postDeferredTonemap 同 shader 内同時 consume) / sub-cluster (b) Tonemap (= r30 Cinematic Control 連動、残 7 cvar 配信先候補) / sub-cluster (d) Vignette (= post-process chain 後段、AYAstorm 視覚機能交差) / memory `project_r30_cinematic_control_tuning_deferred` (= r30 Phase 6 配線継承)

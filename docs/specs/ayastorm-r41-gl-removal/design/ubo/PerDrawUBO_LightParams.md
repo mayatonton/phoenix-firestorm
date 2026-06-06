@@ -206,3 +206,13 @@ OS-1〜OS-10 gate 照合:
 ### §11.7 bind 順序関係
 
 - per-draw cadence ゆえ毎 draw call で `bindV3aStatic` / `bindV3aRigged` 経由 set=2 帯 4 binding 同時 bind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.15 同期)
+
+**Layer**: L4-15 (= set=2 binding=0 共有残 2 UBO、**Phase 3 R5 メインターゲット**)
+**status**: **起案済** (= 2026-06-06 C-6-j、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.15` (= single source of truth)
+**要点**: 2 member (spot_light_color vec3 + spot_light_size float、1 vec4 slot tight pack)、10 file consume (= primary deferredUtil.glsl:175 + 9 file)、alias `#define color spot_light_color` + `#define size spot_light_size` で deferredUtil 後段 attach (shadowUtil 等) backward-compat、**pilot zero IS real data 通電済** (= Phase 1.E PC-N-13)、`AYAGltfRealLightParamsEnabled` cvar gate (= settings.xml Boolean default=0 Persist=1)、first-fire LL_INFOS marker (`llvkloader.cpp:6622-6638`)、writeDrawUbo 3 site (= `llvkloader.cpp:6470-6475` PC-N-1 (c) + `:6612-6617` PC-N-13 (a) + `:6870-6880` 付近 PC-N-2)、「zero IS real data」semantic = sGltfStubAssetPipeline 流用 sky_smoke 非 consume architectural truth、**Phase 3 R5 = real value 置換** (= spot_light_color/spot_light_size を実 light data へ、`LLShaderMgr::LIGHT_DIFFUSE`/`LIGHT_DEFERRED_ATTENUATION` 経由候補) [要追加調査]、AYAstorm light cvar §3.5.2 sub-cluster (c) 連動候補 [要 verify D4 突合]、cvar gate 撤去予定 (= AYAGltfRealDrawEnabled/AYAGltfMultiSkinEnabled 同位 PC-N-15c precedent)、工数 group 全体 M 内
+**関連**: L0-1 dispatch (= name-based dispatch 6 UBO 集約) / §3.5.15 sibling ClipPlane (= 同 binding=0 共有) / §3.5.8 group 4 UBO (= 同 binding=0 共有残) / §3.5.2 sub-cluster (c) PointLightF/SpotLightF/PointLightV (= AYAstorm light cvar 連動候補) / FrameLights (= light list 連動) / §3.5.16 PerDrawUBO_MultiLight (= 同 deferred lighting pipeline) / Phase 1.E PC-N-13 (= pilot 通電 commit) / Phase 3 R5 = real value 置換

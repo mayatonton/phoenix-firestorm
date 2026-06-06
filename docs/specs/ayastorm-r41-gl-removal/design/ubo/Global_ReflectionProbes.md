@@ -201,3 +201,13 @@ OS-1〜OS-10 gate 照合 (= memory `project_r41_phase2_4_principles` 原則 2):
 7. **set=0 内 dynamic offset 経路** = singleton flush 経路の VkDescriptorBufferInfo bind 詳細 (= `vkCmdBindDescriptorSets` 呼出 site verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消、確定後に「不明」記載削除 + 確定 literal 追記。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.9 同期)
+
+**Layer**: L4-9 sub-cluster (a) (= Global_ReflectionProbes 単独 SINGLETON、set=0 PerFrame 帯外 process-wide)
+**status**: **起案済** (= 2026-06-06 C-6-d、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.9` (= single source of truth)
+**要点**: shell `_shell_placeholder` vec4 → 実 reflection probe data 群置換、**SINGLETON cadence 唯一** (= `flushSingletonUbos` 別経路、`llglslshader.cpp:99` literal)、**shell 通電済 (= Phase 1.C PC-2)** = bringupTestUBO 経由 zero dummy + 5 cadence 全経路 `vkCmdBindDescriptorSets` 通電完了、shader consume 未開始、layout 不可触契約 256B/set=0/binding=3 不変、shader 接続必須 (= class3/deferred/reflectionProbeF.glsl 等候補で UBO member access 追加)、実 member 候補全件不明 (= probe count/positions/radii/HDR/atlas slot 等) [要追加調査]、reflection update fence throttle (RF) 配線必要 (= chapter 07 §12 持越項目)、ReflectionProbeUBO_Legacy との統合 vs 維持判断 [要 AYA 判断]、工数 group 全体 M-L 内
+**関連**: L0-1 dispatch (= 衝突なし set=0 binding=3) / §3.5.9 sub-cluster (b) ReflectionProbeUBO_Legacy (= 同 LLReflectionMapManager 由来候補、cadence/set 異) / sub-cluster (c) IBL mip pipeline (= probe regenerate trigger 連動) / Phase 1.C PC-2 (= shell 通電 commit) / chapter 07 §12 (= RF throttle 持越)

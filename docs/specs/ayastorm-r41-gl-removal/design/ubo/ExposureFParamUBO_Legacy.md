@@ -176,3 +176,13 @@ layout(std140, set = 3, binding = 25) uniform ExposureFParamUBO_Legacy
 5. **per-frame に近い cadence の最適化** = `noiseVec` setter は per-frame だが本 UBO 全体は per-program、frame 内 1 回 GPU upload で済むか perf verify 要
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.10 同期)
+
+**Layer**: L4-10 sub-cluster (a) (= auto-exposure chain 2 UBO、Luminance → Exposure)
+**status**: **起案済** (= 2026-06-06 C-6-e、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.10` (= single source of truth)
+**要点**: 4 member (dt + noiseVec vec2 + dynamic_exposure_params vec4 + dynamic_exposure_params2 vec4)、**shell 通電済 + write 経路本格化済** (= PA-8 + PC-7γ-1)、setter 4 site (= `pipeline.cpp:8863-8865` literal noiseVec/dynamic_exposure_params/dynamic_exposure_params2 + `:8815` dt LLStaticHashedString)、`dt` 実 setter call site 不明 [要追加調査]、`dynamic_exposure_enabled` (= `:8819` 宣言、本 UBO 外、別経路 vs gating-only) [要 verify]、auto-exposure per-frame trigger で Luminance と同期 dirty、cadence PerProgram 維持 (= frame 内 exposure pass 1 回ゆえ frame 内 1 回 GPU upload で済む)、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=25) / L0-2 LLStaticHashedString redirect (= dt 経由) / §3.5.10 sub-cluster (a) Luminance (= auto-exposure chain pair) / sub-cluster (b) Tonemap (= exposure data source 共有候補) / `pipeline.cpp:8791-8865` literal

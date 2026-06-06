@@ -169,3 +169,13 @@ OS-1〜OS-10 gate 照合:
 7. **同 shader consume UBO 完全特定** = class1/post/exoVignetteF.glsl 内同時 consume UBO 群 (= grep verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.10 同期)
+
+**Layer**: L4-10 sub-cluster (d) (= Vignette 1 UBO、exoVignette Exodus/BD derivative)
+**status**: **起案済** (= 2026-06-06 C-6-e、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.10` (= single source of truth)
+**要点**: 2 member (vignette vec3 + pad)、setter 不明 (= `uniform3fv("vignette", ...)` 経路想定) [要追加調査]、**vec3 3 component 内訳不明** (= intensity/radius/softness 等推定、shader 内 access pattern verify 要) [要追加調査]、AYAstorm r14+ 視覚表現章 / Cinematic mode vignette 関連 cvar、**exoVignette 由来 risk** (= shader `exo` prefix Exodus/BlackDragon derivative 可能性、設計原則 (1) Upstream 取り込みやすさ整合判定要) [要 verify]、exoVignetteF.glsl:42 singleton site、post-process chain 最終段 (= final display 直前 pass)、cadence PerProgram 維持、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=46) / §3.5.10 sub-cluster (b) Tonemap (= post-process chain pre-step) / sub-cluster (c) ColorGrading/GammaCorrect (= AYAstorm 視覚機能交差) / AYAstorm r14+ 視覚表現章 (= memory `project_ayastorm_visual_realism_chapter`)

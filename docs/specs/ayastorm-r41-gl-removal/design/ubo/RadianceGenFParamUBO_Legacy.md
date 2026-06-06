@@ -163,3 +163,13 @@ layout(std140, set = 3, binding = 51) uniform RadianceGenFParamUBO_Legacy
 7. **PerProgram cadence の妥当性** = mip loop dirty pattern と整合するか再設計検討要
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.9 同期)
+
+**Layer**: L4-9 sub-cluster (c) (= IBL mip pipeline 3 UBO、reflection probe regenerate + mip chain loop + probe count loop)
+**status**: **起案済** (= 2026-06-06 C-6-d、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.9` (= single source of truth)
+**要点**: 5 active member + pad ×3 (= sourceIdx/u_width/mipLevel/max_probe_lod/probe_strength)、setter sourceIdx 特定済 `llreflectionmapmanager.cpp:930` literal `gRadianceGenProgram.uniform1i(sSourceIdx, sourceIdx);` (= sSourceIdx static LLStaticHashedString 共有 IrradianceGen と)、他 4 member setter 不明 [要追加調査]、**mip chain loop dirty pattern** (= mip level 毎 dispatch、PerProgram cadence で多回 dirty pattern) → PerDraw cadence 化候補 [要 L0-4 結果反映 / 要 AYA 判断]、probe count loop で sSourceIdx 共有 (= N probe × write + flush + dispatch、perf inversion なし想定 [要 verify])、radianceGenF.glsl:42 singleton site、max_probe_lod 3 UBO 共有候補 [要 verify D4 突合]、hero probe 別 program `gHeroRadianceGenProgram` 同経路、工数 group 全体 M-L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=51) / L0-4 cadence (= mip chain loop PerDraw 降格候補) / §3.5.9 sub-cluster (c) IrradianceGen/Gaussian (= 同 IBL pipeline 連動) / sub-cluster (a) Global_ReflectionProbes (= probe regenerate trigger 連動)

@@ -188,3 +188,13 @@ layout(std140, set = 3, binding = 4) uniform CloudsFParamUBO_Legacy
 - set=3 帯 bind は `bindV3aStatic` 経路で全帯一括
 - cloud program bind 時 PerProgram cadence triple-buffer flush
 - vertex/fragment 両 stage で同 set=3 binding=3 参照 (= 複製併存パターン)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (d) (= Clouds V/F pair 2 UBO + cloudsF.glsl:79 複製併存)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 8 member (cloud_pos_density1 vec3 + blend_factor float + cloud_pos_density2 vec3 + cloud_variance float + AYA r18 cvar 2 件 + pad ×2)、sky preset 切替 trigger で WL cloud density 4 member dirty + AYA r18 volumetric clouds cvar 変化 trigger で 2 member dirty、cloud_pos_density1 reserved 登録 `llshadermgr.cpp:1622` + `llshadermgr.h:149` literal 確認、writer 全件不明 [要追加調査]、AYA r18 cvar setter 不明 [要追加調査]、本 UBO 内で CloudsVParamUBO_Legacy 複製併存 (= cloudsF.glsl:79、η-14 path G-β、両 stage 参照 SPIR-V validation 要)、blend_factor 名 sub-cluster (e) Stars/SunDisc と同名異 data source 候補 [要 verify D4 突合]、cadence PerProgram 維持、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=4) / §3.5.7 sub-cluster (d) CloudsV (= V/F pair 複製併存元) / sub-cluster (e) StarsF/SunDiscF (= blend_factor 同名 cross verify) / sub-cluster (a) FrameAtmosphere_Lighting (= 同 LLSettingsSky 連動) / AYAstorm r18 視覚表現章 (= memory `project_ayastorm_visual_realism_chapter`)

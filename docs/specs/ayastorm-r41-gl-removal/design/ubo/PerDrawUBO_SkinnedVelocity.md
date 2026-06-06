@@ -177,3 +177,13 @@ OS-1〜OS-10 gate 照合:
 ### §11.7 bind 順序関係
 
 - per-draw cadence ゆえ毎 velocity draw call で `bindV3aRigged` 経由 set=2 帯 4 binding 同時 bind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.8 同期)
+
+**Layer**: L4-8 sub-cluster (b) (= object curr/prev pair + 抽出版 2 UBO、data duplication 解消候補)
+**status**: **起案済** (= 2026-06-06 C-6-c、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.8` (= single source of truth)
+**要点**: 1 member (lastMatrixPalette_skinned_velocity[110] mat3x4 stride=48)、5376 B = PerDraw cluster 2 番目大型、ObjectSkin.lastMatrixPalette と同 data 別 UBO export、bone animation frame swap trigger で ObjectSkin と同時 dirty、**data duplication 解消候補** (= ObjectSkin UBO 直接 consume への shader 改修 vs 維持) [要 AYA 判断]、cadence PerDraw → PerSkin 昇格検討候補 [要 AYA 判断]、setter 不明 [要追加調査]、velocity-enabled draw 限定判定 logic 不明 [要追加調査]、2 file consume (= skinnedVelocityV.glsl + skinnedVelocityAlphaV.glsl、blueprint `verified identical`)、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= set=2 binding=0 共有 6 UBO) / §3.5.8 sub-cluster (b) ObjectSkin (= data duplication 統合候補) / sub-cluster (a) AvatarVelocity (= avatar 版 lastMatrixPalette 同形パターン) / sub-cluster (c) VelocityAlphaV (= 同 velocity pipeline 経路)

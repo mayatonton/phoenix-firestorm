@@ -180,3 +180,13 @@ OS-1〜OS-10 gate 照合:
 7. **同 shader consume UBO 完全特定** = class1/deferred/tonemapUtilF.glsl 内同時 consume UBO 群 (= grep verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.10 同期)
+
+**Layer**: L4-10 sub-cluster (b) (= Tonemap 1 UBO、Cinematic mode 関連)
+**status**: **起案済** (= 2026-06-06 C-6-e、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.10` (= single source of truth)
+**要点**: 4 member (exposure float + tonemap_mix float + tonemap_type int + _pad_tonemap_0)、setter 不明 [要追加調査]、tonemap util 共通 base、AYAstorm r30 Cinematic Control 13 cvar 関連候補 (= tonemap_mix / tonemap_type 経路、memory `project_r30_cinematic_control_tuning_deferred`)、exposure data source = ExposureFParamUBO_Legacy 計算結果由来 / LLEnvironment auto-exposure (= sub-cluster (a) と data source 共有可能性 [要 verify D4 突合])、cadence PerProgram 維持 (= frame 内 tonemap pass 1 回ゆえ frame 内 1 回 GPU upload で済む、auto-exposure per-frame 変化に追従可能)、tonemap_type ACES/Reinhard/Linear enum int 切替、tonemapUtilF.glsl:146 singleton site、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=10) / §3.5.10 sub-cluster (a) Exposure (= exposure data source 共有候補) / sub-cluster (c) ColorGrading/GammaCorrect (= post-process chain + r30 Cinematic Control 連動) / sub-cluster (d) Vignette (= post-process chain 後段)

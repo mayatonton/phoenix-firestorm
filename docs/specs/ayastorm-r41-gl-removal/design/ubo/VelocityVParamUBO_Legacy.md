@@ -179,3 +179,13 @@ OS-1〜OS-10 gate 照合:
 7. **MotionBlurFParamUBO_Legacy 連動経路** = motion blur post-pass で本 UBO velocity 結果 consume 経路 (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.8 同期)
+
+**Layer**: L4-8 sub-cluster (c) (= per-program velocity matrix pair 2 UBO、cadence mismatch 重大)
+**status**: **起案済** (= 2026-06-06 C-6-c、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.8` (= single source of truth)
+**要点**: 1 member (last_object_matrix mat4)、**cadence mismatch 重大** (= per-object per-frame 変化を PerProgram で運ぶ stale data、N object 描画で最後の 1 値のみ反映 = motion blur 退化)、**PerProgram → PerDraw 降格必須** (= ubo_metadata.inl cadence_tag=1 → cadence_tag=2 + set/binding 再配置) [要 AYA 判断 必須] [要 L0-4 結果反映]、setter 不明 (= `uniformMatrix4fv("last_object_matrix", ...)` grep verify 要) [要追加調査]、VelocityAlphaV (set=2 binding=19) と同 data 別 UBO duplicate [要 verify D4 突合]、velocityV.glsl singleton site、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=55) / L0-4 cadence (= PerDraw 降格必須) / §3.5.8 sub-cluster (c) VelocityAlphaV (= 同 data 別 UBO duplicate verify) / §3.3.3 group MotionBlurFParamUBO_Legacy (= motion blur post-pass 連動)

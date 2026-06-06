@@ -203,3 +203,13 @@ layout(set=2, binding=0, std140) uniform PerDrawUBO_AvatarSkin {
 
 - avatar draw call 毎に set=2 binding=0 を本 UBO の dynamic offset で rebind (= per-draw cadence 標準)
 - 同 set=2 内の他 binding=0 共有 UBO は program 切替時に layout 切替 (= ring buffer slot は同 buffer、layout のみ program で識別)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.8 同期)
+
+**Layer**: L4-8 sub-cluster (a) (= avatar curr/prev pair 2 UBO、lightning-streak fallback 必須)
+**status**: **起案済** (= 2026-06-06 C-6-c、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.8` (= single source of truth)
+**要点**: 1 member (matrixPalette[45] vec4)、bone animation frame swap trigger で AvatarVelocity (prev) と同時 dirty、setter 3 site `lldrawpool.cpp:701/737/775` AVATAR_MATRIX `uniformMatrix3x4fv` literal 確認、dedup logic `(avatar, mHash)` 維持必須 (= `lldrawpool.cpp:723`)、ring buffer 経路 (= `sDrawUboRingBufferMgr`、Phase 1.B PC-6β + PC-N-15a per-thread 配線済)、set=2 binding=0 共有 6 UBO の 1 件 (= L0-1 dispatch 経路)、cadence PerDraw 維持、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= set=2 binding=0 共有 6 UBO program 識別) / §3.5.8 sub-cluster (a) AvatarVelocity (= curr/prev pair 同期) / sub-cluster (b) ObjectSkin (= 同 set=2 binding=0 共有、skin 系類似 pattern) / §3.5.15 group ClipPlane/LightParams (= 同 binding=0 共有残)

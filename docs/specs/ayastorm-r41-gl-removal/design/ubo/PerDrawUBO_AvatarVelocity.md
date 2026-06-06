@@ -193,3 +193,13 @@ layout(set=2, binding=0, std140) uniform PerDrawUBO_AvatarVelocity {
 
 - avatar velocity draw call 毎に set=2 binding=0 を本 UBO の dynamic offset で rebind
 - AvatarSkin と velocity の bind 順序 = 不明 / verify 要 (= 同 draw call で 2 UBO 同時 bind は不可、別 draw call (= main pass + velocity pass) と推定)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.8 同期)
+
+**Layer**: L4-8 sub-cluster (a) (= avatar curr/prev pair 2 UBO、lightning-streak fallback 必須)
+**status**: **起案済** (= 2026-06-06 C-6-c、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.8` (= single source of truth)
+**要点**: 1 member (lastMatrixPalette[45] vec4)、bone animation frame swap trigger で AvatarSkin (curr) と同時 dirty、setter `lldrawpool.cpp:1021` AVATAR_LAST_MATRIX `uniformMatrix3x4fv` literal 確認、**first-frame fallback `mLastGLMp.empty() ? mGLMp : mLastGLMp` 必須遵守** (= `lldrawpool.cpp:1015` literal、lightning-streak velocity 回避担保、`motionBlurF.glsl:145` 警告「uninitialized → NaN」)、BlackDragon import (= `llshadermgr.h:386` literal Imported from BlackDragon Viewer 995a1354d8)、cadence PerDraw 維持、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= set=2 binding=0 共有 6 UBO) / §3.5.8 sub-cluster (a) AvatarSkin (= curr/prev pair 対称) / sub-cluster (b) SkinnedVelocity (= object 版 lastMatrixPalette 抽出) / `motionBlurF.glsl` (= 後段 motion blur pass)

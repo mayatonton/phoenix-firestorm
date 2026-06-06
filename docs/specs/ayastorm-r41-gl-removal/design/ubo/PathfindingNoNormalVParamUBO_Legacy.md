@@ -162,3 +162,13 @@ layout(set=3, binding=48, std140) uniform PathfindingNoNormalVParamUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - pathfinding-no-normal program 切替時 set=3 帯全 binding を一括 rebind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.13 同期)
+
+**Layer**: L4-13 (= pathfinding 2 UBO pair、no normal lighting、ambiance 削除版)
+**status**: **起案済** (= 2026-06-06 C-6-h、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.13` (= single source of truth)
+**要点**: 4 member (tint + alpha_scale + pad ×2)、setter 不明 [要追加調査]、pathfindingNoNormalV.glsl:65 singleton site、`tint` scalar (= float 3 channel 共通スケール、色付き tint なし)、tint/alpha_scale 兄弟 PathfindingV と data source 共有 [要 verify D4 突合]、debug 用途優先度低、cadence PerProgram 維持、工数 group 全体 S 内
+**関連**: L0-1 dispatch (= 衝突なし binding=48) / §3.5.13 兄弟 PathfindingV (= tint/alpha_scale 共有 setter、ambiance 追加版)

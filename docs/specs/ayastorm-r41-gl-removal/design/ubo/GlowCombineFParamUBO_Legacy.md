@@ -190,3 +190,13 @@ layout(std140, set = 3, binding = 49) uniform GlowCombineFParamUBO_Legacy
 5. **240 B dead space** = std140=16 B vs padded 256 B、Phase 2 で color grading param 追加候補
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.11 同期)
+
+**Layer**: L4-11 sub-cluster (c) (= glow combine 1 UBO、color grading post-process 後段)
+**status**: **起案済** (= 2026-06-06 C-6-f、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.11` (= single source of truth)
+**要点**: 4 member (greyscale_str + sepia_str + num_colors + pad、3 active + 1 pad)、**shell 通電済 + write 経路本格化済** (= PA-8 + PC-7γ-1)、setter 8 site 全件特定済 (= `pipeline.cpp:9589-9597` active/disable + `:10706-10715` 別 path active/disable、計 8 setter)、reserved 登録 `llshadermgr.cpp:1896-1898` `"sepia_str"` / `"greyscale_str"` / `"num_colors"` + `llshadermgr.h:417-419` DEFERRED_SEPIA_STRENGTH / DEFERRED_GREYSCALE_STRENGTH / DEFERRED_NUM_COLORS 確認、**enum comment vs reserved string 不一致** (= enum comment `sepia_strength` / `greyscale_strength` 古い表記、reserved string + blueprint member 名は `sepia_str` / `greyscale_str` で shader と一致、本 UBO scope 外修正候補) [要 AYA 判断]、`pipeline.cpp:10706-10715` shader 引数版の specific shader 不明 [要追加調査]、両 path とも PER_PROGRAM case 集約 (= shader × block_hash key で独立)、glow chain 第 4 段 (= 最終段)、cadence PerProgram 維持、工数 group 全体 M 内 (独立着手可)
+**関連**: L0-1 dispatch (= 衝突なし binding=49) / §3.5.11 sub-cluster (a) GlowExtract (= 第 1 段) / sub-cluster (b) GlowV/GlowF (= 第 2-3 段) / `pipeline.cpp:9583-9597 / :10706-10715` literal glow combine pass

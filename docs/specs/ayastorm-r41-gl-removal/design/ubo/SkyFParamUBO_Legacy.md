@@ -187,3 +187,13 @@ OS-1〜OS-10 gate 照合:
 7. **同 data source UBO 連動範囲** = sky/cloud/atmo 系 UBO の data source 共有関係 (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消、確定後に「不明」記載削除 + 確定 literal 追記。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (c) (= Sky V/F pair 2 UBO、binding=2 衝突)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 4 member (hdri_split_screen / moisture_level / droplet_radius / ice_level、全 float)、sky preset 切替 trigger で 4 member 同時 dirty、WindLight cloud microphysics + HDRI debug split-screen toggle、4 member setter 全件不明 [要追加調査]、binding=2 衝突 = Skin_GLTFJoints (PerSkin) (= skyF program は GLTF skin 不要、衝突なし推定) [要 verify L0-1 dispatch]、cadence PerProgram 維持 (= sky preset 切替 trigger ゆえ frame 内 stable)、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= binding=2 衝突 SkyF ↔ Skin_GLTFJoints) / §3.5.7 sub-cluster (c) SkyV (= V/F pair 同 sky preset 連動) / §3.5.7 sub-cluster (a) FrameAtmosphere_Lighting (= 同 LLSettingsSky owner) / sub-cluster (b) AtmoExtra (= 同 sky preset 連動 9 member)

@@ -176,3 +176,13 @@ OS-1〜OS-10 gate 照合:
 ### §11.7 bind 順序関係
 
 - per-draw cadence ゆえ毎 draw call で `bindV3aStatic` / `bindV3aRigged` 経由 set=2 帯 4 binding 同時 bind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.16 同期)
+
+**Layer**: L4-16 (= PerDrawUBO_MultiLight 1 UBO、LIGHT_COUNT permutation)
+**status**: **起案済** (= 2026-06-06 C-6-k、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.16` (= single source of truth)
+**要点**: 6 member (light vec4[16] + light_col vec4[16] + far_z + global_light_strength + pad ×2)、**768B = PerDraw 中型 size**、setter 不明 [要追加調査]、状態 = **untouched** (writeDrawUbo 0 件)、**LIGHT_COUNT permutation 16 件** (= `gDeferredMultiLightProgram[i]`、`llviewershadermgr.cpp:1756`)、host alloc 戦略 = full 16 entry alloc + smaller LIGHT_COUNT trailing 未参照 view (= shader 改修ゼロ、set=1 MaterialUBO option I precedent)、multiPointLightF.glsl:76 singleton site、set=2 binding=1 独立 (= 他 PerDraw UBO binding=0 共有とは独立)、cross-UBO 連動 (= §3.5.15 LightParams + §3.5.2 sub-cluster (c) light cvar + FrameLights data source 共有候補) [要 verify D4 突合]、cadence PerDraw 維持、工数 group 全体 S-M 内
+**関連**: L0-1 dispatch (= 衝突なし binding=1 独立) / §3.5.16 本 group / §3.5.15 LightParams (= 同 deferred lighting pipeline) / §3.5.2 sub-cluster (c) PointLightF/SpotLightF/PointLightV (= AYAstorm light cvar 連動) / FrameLights (= light array data source 共有候補)

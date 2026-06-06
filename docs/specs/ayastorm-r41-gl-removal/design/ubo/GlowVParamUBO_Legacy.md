@@ -171,3 +171,13 @@ layout(std140, set = 3, binding = 19) uniform GlowVParamUBO_Legacy
 5. **248 B dead space** = Phase 2 で glow blur param 追加候補
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.11 同期)
+
+**Layer**: L4-11 sub-cluster (b) (= glow blur V/F pair 2 UBO、horizontal/vertical 2 pass dispatch)
+**status**: **起案済** (= 2026-06-06 C-6-f、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.11` (= single source of truth)
+**要点**: 1 member (glowDelta vec2)、248B dead space、**shell 通電済 + write 経路本格化済** (= PA-8 + PC-7γ-1)、setter 2 site 全件特定済 (= `pipeline.cpp:9134` horizontal `(delta, 0)` + `:9138` vertical `(0, delta)`)、reserved 登録 `llshadermgr.cpp:1644` + `llshadermgr.h:166` GLOW_DELTA 確認、`delta` derive 元不明 (= 推定 `RenderGlowSize` cvar) [要追加調査]、**horizontal/vertical 2 pass dispatch で 2 回 GPU upload 必須** (= dirty store 連続上書き回避、flush timing 経路実装 verify 必須) [要 verify]、GlowF と V/F pair 連動 dirty trigger [要 verify]、glow chain 第 2-3 段、cadence PerProgram 維持、工数 group 全体 M 内
+**関連**: L0-1 dispatch (= 衝突なし binding=19) / §3.5.11 sub-cluster (b) GlowF (= V/F pair 連動 dirty) / sub-cluster (a) GlowExtract (= 第 1 段) / sub-cluster (c) GlowCombine (= 第 4 段)

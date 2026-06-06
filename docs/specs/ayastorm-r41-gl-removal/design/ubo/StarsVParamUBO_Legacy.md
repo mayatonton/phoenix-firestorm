@@ -167,3 +167,13 @@ OS-1〜OS-10 gate 照合:
 6. **StarsFParamUBO_Legacy.time との data source 共有** = 同 stars rendering V/F pair の time member 共有経路 (= verify 要)
 
 = 上記 6 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (e) (= Stars F/V + SunDisc + Moon 4 UBO)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 1 member (stars_v_time、float)、StarsFParamUBO_Legacy.time の V 側 rename 版 (= shader 側 nameless block member 衝突回避、underWaterF/waterFog rename pattern と同形 [要 verify])、per-frame time accumulator (= stars position animation)、cadence mismatch (= per-frame 変化を PerProgram で運ぶ stale risk) → PerFrame 降格候補 [要 L0-4 結果反映]、setter 不明 (= OpenGL setter 名前 `time` か `stars_v_time` か [要追加調査])、StarsF.time との同 data source verify 必須 [要 verify D4 突合]、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=45) / L0-4 cadence (= PerFrame 降格候補) / §3.5.7 sub-cluster (e) StarsF (= V/F pair 同 stars rendering、time/stars_v_time data source 共有 verify) / sub-cluster (a) FrameAtmosphere_Lighting (= 同 LLEnvironment day cycle 連動)

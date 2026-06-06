@@ -229,3 +229,13 @@ OS-1〜OS-10 gate 照合:
 7. **per-shader UBO block 拡大対象** = grep verify (= 現確認 6 file、残 sky / atmospheric / lighting shader での宣言状況)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (a) (= FrameAtmosphere_Lighting 単独 PerFrame、本 group 唯一の set=0 PerFrame、20 member 大気色 + post pass 集約)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 20 member 4 trigger 部分 write (= sky preset 切替 14 member / day cycle lightnorm 等 / post pass minimum_alpha・max_cof / mode flag classic_mode・cube_snapshot)、shell 通電済 + write 経路本格化済 (= Phase 1.A PA-8 + 1.C PC-7γ-1、blue_horizon setter `llsettingsvo.cpp:1057` 特定済)、他 19 member setter 不明 [要追加調査]、AYAstorm 視覚表現章機能維持 (= sky_*_scale 候補)、cadence per-frame 維持、工数 L (group 全体)
+**関連**: L0-1 dispatch (= 衝突なし set=0) / L0-3 per-shader 拡大 (= 6 file 確認済、残 sky/atmospheric 拡大) / §3.5.7 group 他 9 UBO (= sky preset + day cycle + camera move trigger 共有) / §3.5.2 group AtmoExtra (= 同 atmospheric data source 連動) / §3.5.6 group water (= sky preset 連動 4-5 UBO 別 group) / §5.4 visual regression policy

@@ -158,3 +158,13 @@ layout(std140, set = 3, binding = 17) uniform ReflectionProbeUBO_Legacy
 7. **bool transparent_surface の std140 4 B 解釈** = VkBool32 整合 verify 要
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.9 同期)
+
+**Layer**: L4-9 sub-cluster (b) (= ReflectionProbeUBO_Legacy 単独 PerProgram、reflectionProbeF.glsl singleton consume)
+**status**: **起案済** (= 2026-06-06 C-6-d、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.9` (= single source of truth)
+**要点**: 2 member (max_probe_lod float + transparent_surface bool)、**最小 size UBO** (= 8B std140 / 256B padded)、setter 不明 [要追加調査]、bool member std140 4B = VkBool32 整合 verify 要 [要 verify]、Global_ReflectionProbes との data source 共有候補 (= 同 LLReflectionMapManager、cadence 違い SINGLETON vs PerProgram) [要 AYA 判断 = 統合 vs 維持]、max_probe_lod 3 UBO 共有候補 (= RadianceGen + IrradianceGen 同名 member) [要 verify D4 突合]、reflectionProbeF.glsl:80 singleton consume、cadence PerProgram 維持、工数 group 全体 M-L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=17) / §3.5.9 sub-cluster (a) Global_ReflectionProbes (= 統合 vs 維持判断対象) / sub-cluster (c) RadianceGen/IrradianceGen (= max_probe_lod 同名共有候補) / LLReflectionMapManager (= 同 owner)

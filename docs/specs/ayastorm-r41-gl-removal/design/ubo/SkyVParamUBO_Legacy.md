@@ -178,3 +178,13 @@ OS-1〜OS-10 gate 照合:
 7. **`_pad_sky_v_legacy_0` 元 GLSL** = blueprint extract source の `class1/deferred/skyV.glsl:83` `#ifdef LL_VULKAN_GLSL` block 内 padding 由来 (= 元 shader Read verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (c) (= Sky V/F pair 2 UBO、binding=1 衝突)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 2 member (camPosLocal vec3 + pad vec3)、camera move trigger で camPosLocal 5 use site (= 本 UBO + CloudsV + CloudsF (複製) + MaterialUBO_Legacy + materialF.glsl) cross dirty、cadence mismatch 重大 (= per-frame 変化を PerProgram で運ぶ stale risk) → PerFrame 降格候補 [要 L0-4 結果反映 / 要 AYA 判断]、binding=1 衝突 = Asset_GLTFMaterials (PerAsset) [要 verify L0-1 dispatch]、setter 不明 [要追加調査]、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= binding=1 衝突 SkyV ↔ Asset_GLTFMaterials) / L0-4 cadence (= PerFrame 降格候補) / §3.5.7 sub-cluster (c) SkyF (= V/F pair 同 sky preset 連動) / sub-cluster (d) CloudsV/CloudsF (= camPosLocal cross UBO 同 data source 5 use site)

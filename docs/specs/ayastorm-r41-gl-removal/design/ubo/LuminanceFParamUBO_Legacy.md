@@ -166,3 +166,13 @@ layout(std140, set = 3, binding = 26) uniform LuminanceFParamUBO_Legacy
 5. **252 B dead space** = Phase 2 で luminance 関連 param 追加候補
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.10 同期)
+
+**Layer**: L4-10 sub-cluster (a) (= auto-exposure chain 2 UBO)
+**status**: **起案済** (= 2026-06-06 C-6-e、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.10` (= single source of truth)
+**要点**: 1 member (diffuse_luminance_scale float)、**最小 member UBO** (= 4B std140 / 256B padded、252B dead space)、**shell 通電済 + write 経路本格化済** (= PA-8 + PC-7γ-1)、setter `pipeline.cpp:8754` literal `gLuminanceProgram.uniform1f(diffuse_luminance_scale_s, diffuse_luminance_scale);` (= LLStaticHashedString name-based setter)、data source `RenderDiffuseLuminanceScale` cvar (= `pipeline.cpp:8731` literal LLCachedControl)、**LLStaticHashedString overload 版 UBO redirect 経路 verify 必須** (= L0-2 経路、name-based setter が mUniformUBOLoc index 経路に到達するか) [要 verify]、auto-exposure per-frame trigger で Exposure と同期 dirty、cadence PerProgram 維持、工数 group 全体 L 内 (S 部分、本 group 最先着手可)
+**関連**: L0-1 dispatch (= 衝突なし binding=26) / L0-2 LLStaticHashedString redirect (= 本 UBO redirect pilot) / §3.5.10 sub-cluster (a) Exposure (= auto-exposure chain pair) / `pipeline.cpp:8729-8762` literal

@@ -180,3 +180,13 @@ layout(std140, set = 3, binding = 52) uniform IrradianceGenFParamUBO_Legacy
 5. **set 3 bind 単位** = program 切替時 set 3 全 binding rebind か個別 rebind か
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.9 同期)
+
+**Layer**: L4-9 sub-cluster (c) (= IBL mip pipeline 3 UBO)
+**status**: **起案済** (= 2026-06-06 C-6-d、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.9` (= single source of truth)
+**要点**: 2 active member + pad ×2 (= sourceIdx int + max_probe_lod float)、**shell 通電済 + write 経路本格化済** (= Phase 1.A PA-8 + 1.C PC-7γ-1、`mUseUBO=false` default で不到達)、setter sourceIdx 特定済 `llreflectionmapmanager.cpp:977` literal `gIrradianceGenProgram.uniform1i(sSourceIdx, sourceIdx);` (= sSourceIdx static 共有 RadianceGen と)、max_probe_lod setter 不明 (= `llshadermgr.cpp:1834` reserved 宣言確認、実 setter call 別 site 想定) [要追加調査]、probe count loop で sSourceIdx 共有 (= N probe × write + flush + dispatch)、irradianceGenF.glsl:42 singleton site、cadence PerProgram 維持、本 group 最先着手可、工数 group 全体 M-L 内 (S 部分)
+**関連**: L0-1 dispatch (= 衝突なし binding=52) / §3.5.9 sub-cluster (c) RadianceGen (= sSourceIdx static 共有 sibling) / Gaussian (= 同 IBL pipeline 連動) / sub-cluster (b) ReflectionProbeUBO_Legacy (= max_probe_lod 同名共有候補)

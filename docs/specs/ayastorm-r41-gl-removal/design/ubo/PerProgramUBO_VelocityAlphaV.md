@@ -192,3 +192,13 @@ OS-1〜OS-10 gate 照合:
 7. **`PerDrawUBO_AvatarVelocity` / `PerDrawUBO_SkinnedVelocity` との skinned variant 関係** = avatar 系 velocity UBO は別 cadence で対応済、本 UBO は非 skinned 専用か (= verify 要)
 
 = 上記 7 項目は本 UBO file 完成時に逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.8 同期)
+
+**Layer**: L4-8 sub-cluster (c) (= per-program velocity matrix pair 2 UBO、cadence mismatch 重大)
+**status**: **起案済** (= 2026-06-06 C-6-c、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.8` (= single source of truth)
+**要点**: 1 member (last_object_matrix mat4)、**cadence mismatch 重大** (= per-draw 性質を PerProgram で運ぶ、N object 描画で最後の 1 値のみ反映)、**PerProgram → PerDraw 降格必須** [要 AYA 判断 必須] [要 L0-4 結果反映]、setter 4 site cross-pool 共有 (= `lldrawpool.cpp:845/934` + `lldrawpooltree.cpp:202` + `lldrawpoolterrain.cpp:248` literal LAST_OBJECT_MATRIX `uniformMatrix4fv`)、reserved 登録 `llshadermgr.cpp:1876` + `llshadermgr.h:395` LAST_OBJECT_MATRIX enum literal 確認、VelocityV (set=3 binding=55) と同 data 別 UBO duplicate [要 verify D4 突合]、velocityAlphaV.glsl singleton site、shader comment literal「last_object_matrix mat4 を UBO 化、本 V 単独 attach」、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=19、ただし set=2 内 PerDraw 帯ゆえ降格時 binding=0 共有候補) / L0-4 cadence (= PerDraw 降格必須) / §3.5.8 sub-cluster (c) VelocityV (= 同 data 別 UBO duplicate verify) / 4 setter site cross-pool (drawpool/tree/terrain)

@@ -168,3 +168,13 @@ OS-1〜OS-10 gate 照合:
 6. **同 data source UBO 連動範囲** = day/night blend 共通 source UBO 群 (= verify 要)
 
 = 上記 6 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (e) (= Stars F/V + SunDisc + Moon 4 UBO)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 1 member (blend_factor、float)、day cycle update trigger で per-frame 連続変化 (= cadence mismatch、PerFrame 降格候補 [要 L0-4 結果反映])、blend_factor cross UBO 共有 (= StarsF + CloudsF 同名 3 UBO 同 source 候補 [要 verify D4 突合])、setter 不明 [要追加調査]、別 program/binding ゆえ shader 側衝突なし推定 [要 verify]、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=43) / L0-4 cadence (= PerFrame 降格候補 blend_factor) / §3.5.7 sub-cluster (e) StarsF/MoonF (= day cycle cross UBO 同期) / sub-cluster (d) CloudsF (= blend_factor 同名異 source 候補 verify) / sub-cluster (a) FrameAtmosphere_Lighting (= 同 LLEnvironment day cycle 連動)

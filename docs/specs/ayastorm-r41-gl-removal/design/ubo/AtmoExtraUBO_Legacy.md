@@ -221,10 +221,29 @@ layout(std140, set = 3, binding = 0) uniform AtmoExtraUBO_Legacy
 
 ---
 
-## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 同期)
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.2 + §3.5.7 同期、同 UBO 内 member 別 dirty)
 
-**Layer**: L4-2 sub-cluster (a) (= visual_realism 2 UBO cross-write)
-**status**: **起案済** (= 2026-06-06 C-6、設計・工程 doc 化完了、実装着手前)
-**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` (= single source of truth)
-**要点**: aya_visual_realism 2 UBO cross-write (= AtmoExtra + SkinSSS)、本 UBO `aya_visual_realism_enabled` offset=24 部分 write、他 9 member (lightnorm/haze_horizon/cloud_shadow/sun_moon_glow_factor/aya_r14_*/aya_r16_*) は §3.5.7 sky/cloud group trigger、binding=0 衝突 (Asset_GLTFNodes と) L0-1 dispatch で解決、4 shader (atmosphericsFuncs/skyV/skinSSSF/cloudsV) 改変ゼロ、工数 L (group 全体)、AYA r14/r16 cvar setter 未取得 [要追加調査]
-**関連**: L0-1 dispatch (= binding=0 衝突解決) / L0-3 per-shader 拡大 (= atmosphericsFuncs snippet shader) / §3.5.7 sky/cloud group (= 9 member 共有) / §3.5.1 r20 SSS (= SkinSSS 経由交差) / §5.4 visual regression policy
+**Layer**: L4-2 sub-cluster (a) + L4-7 sub-cluster (b) (= 同 UBO 内 member 別 trigger、cross-group 配置)
+**status**: **起案済** (= 2026-06-06 C-6 + C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.2` + `§3.5.7` (= single source of truth、cross-group 同 UBO 配置)
+
+**§3.5.2 sub-cluster (a) 関与 member**: `aya_visual_realism_enabled` offset=24 (= 1 member、AYA r14+ visual_realism cvar 変化 trigger で SkinSSSPrototypeFParamUBO_Legacy と 2 UBO cross-write)
+
+**§3.5.7 sub-cluster (b) 関与 member**: 残 9 member 部分 write:
+- `lightnorm` offset=0 (= sky preset / day cycle、setter 4 site `llsettingsvo.cpp:869/875/1349` + `lldrawpoolwater.cpp:298`)
+- `haze_horizon` offset=12 (= sky preset、setter `llsettingsvo.cpp:844`)
+- `cloud_shadow` offset=16 (= sky preset、setter `llsettingsvo.cpp:849`)
+- `sun_moon_glow_factor` offset=20 (= sky preset / day cycle、setter `llsettingsvo.cpp:1071`)
+- `aya_r14_volumetric_atmosphere_enabled` offset=28 + `aya_r14_strength` offset=32 (= AYA r14 cvar、setter 不明 [要追加調査])
+- `aya_r16_aerial_perspective_enabled` offset=36 + `aya_r16_strength` offset=40 (= AYA r16 cvar、setter 不明 [要追加調査])
+- `_pad_atmo_extra_legacy_0` offset=44
+
+**要点**: 同 UBO 内 member 別 dirty 粒度設計必須 (= §3.5.1 MaterialUBO_Legacy 部分 write 設計と同型、本 UBO は 2 group 跨ぎで最も顕著)、binding=0 衝突 = Asset_GLTFNodes (PerAsset) L0-1 dispatch 経路、4 shader (= atmosphericsFuncs.glsl:85-101 起源 + skyV.glsl:112 + skinSSSF.glsl + cloudsV.glsl) 改変ゼロ維持、cadence PerProgram 維持、工数 group 全体 L 内 (= §3.5.2/§3.5.7 両 group で再計上、実装作業は 1 回)
+
+**関連**:
+- §3.5.2 group SkinSSS (= visual_realism cross-write 相手)
+- §3.5.7 group 他 9 UBO (= sky preset / day cycle / camera move / AYA r14/r16 cvar trigger 共有)
+- §3.5.1 group r20 SSS skin (= skinSSSF.glsl 同時 consume 経由交差)
+- L0-1 dispatch (= binding=0 衝突解決 AtmoExtra ↔ Asset_GLTFNodes)
+- L0-3 per-shader 拡大 (= atmosphericsFuncs snippet shader = windlight consumer 全 program 拡大対象)
+- §5.4 visual regression policy

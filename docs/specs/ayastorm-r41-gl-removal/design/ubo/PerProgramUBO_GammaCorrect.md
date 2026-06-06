@@ -158,3 +158,13 @@ layout(std140, set = 2, binding = 2) uniform PerProgramUBO_GammaCorrect
 ### §11.7 bind 順序関係
 
 - PerProgram cadence ゆえ postDeferredGammaCorrect / postDeferredTonemap program bind 時 flush
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.10 同期)
+
+**Layer**: L4-10 sub-cluster (c) (= display correction 2 UBO 共有)
+**status**: **起案済** (= 2026-06-06 C-6-e、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.10` (= single source of truth)
+**要点**: 1 active member (gamma float) + pad ×3、**2 shader file 共有** (= postDeferredGammaCorrect.glsl + postDeferredTonemap.glsl、blueprint `verified identical across 2 sample sites`)、setter 不明 (= `RenderDeferredDisplayGamma` cvar / `LLShaderMgr::DISPLAY_GAMMA` 経路想定) [要追加調査]、**2 shader UBO 共有 dispatch 確定要** (= 1 instance 2 program bind 共有 vs 別 instance、PerProgram cadence 厳密解釈) [要 AYA 判断 + L0-1 dispatch verify]、AYAstorm gamma cvar 連動可能性 (= r30 Cinematic Control 関連) [要 verify]、cadence PerProgram 維持、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=2、ただし set=2 PerDraw+PerProgram 混在帯) / §3.5.10 sub-cluster (c) ColorGrading (= postDeferredTonemap 同 shader 内同時 consume) / sub-cluster (b) Tonemap (= display correction + Cinematic Control 連動) / AYAstorm r30 Cinematic Control 13 cvar 配信先候補

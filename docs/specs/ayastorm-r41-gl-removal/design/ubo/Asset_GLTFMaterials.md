@@ -186,3 +186,13 @@ ubo_metadata.inl 上 cadence_tag=3 は 2 件 (= `llglslshader.cpp:97` literal「
 - set=3 帯 bind は asset draw 直前に `bindV3aStatic` / `bindV3aRigged` 経路 (= `llvkloader.cpp:2168, 2172` literal)
 - set=3 全帯一括 bind (= Asset binding=0/1 + Skin binding=2 同時 bind)
 - triple-buffer 経路で frame in flight 単位 update (= `sAssetUboSetV3a × FRAMES_IN_FLIGHT (=3)`、`llvkloader.cpp:905` literal)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.14 同期)
+
+**Layer**: L4-14 (= GLTF asset 2 UBO pair、Phase 3 R4 メインターゲット)
+**status**: **起案済** (= 2026-06-06 C-6-i、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.14` (= single source of truth)
+**要点**: 1 member (gltf_material_data vec4[1024])、**16384B = Vulkan 1.3 min UBO size**、**PerAsset cadence cluster 唯一 2 件の 1 つ** (= ubo_metadata.inl cadence_tag=3、`llglslshader.cpp:97` literal)、**pilot 段階通電済** (= Phase 1.C PC-7γ-3、`llglslshader.cpp:2172-2195` literal writeAssetUbo generic 経路)、UB_GLTF_MATERIALS enum + `"Asset_GLTFMaterials"` block 名 string 登録、binding=1 衝突 = SkyV (PerProgram) [要 verify L0-1]、**Phase 3 R4 メインターゲット = per-asset 本実装 + 実 PBR shader 接続**、MAX_UBO_VEC4S = 1024 vec4 (= material count > 1024 で truncate/split risk) [要 verify + 要 AYA 判断]、packing `pbrmetallicroughnessV.glsl:66-82` + F:38-42 2 file consume、updateMaterialData setter 不明 [要追加調査]、upper bound at register / runtime size at write G5-A1 規約、triple-buffer (= sAssetUboSetV3a × FRAMES_IN_FLIGHT=3)、工数 group 全体 M 内
+**関連**: L0-1 dispatch (= binding=1 衝突 SkyV (PerProgram) と PerAsset cadence 別経路) / §3.5.14 sibling Asset_GLTFNodes (= 同 LL::GLTF::Asset 由来、asset 切替時同時 dirty) / §3.5.7 sub-cluster (c) SkyV (= binding=1 衝突解消) / Phase 3 R4 = per-asset 本実装 + 実 PBR shader 接続

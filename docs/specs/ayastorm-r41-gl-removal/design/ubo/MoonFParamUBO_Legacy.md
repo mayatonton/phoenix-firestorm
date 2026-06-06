@@ -160,3 +160,13 @@ layout(set=3, binding=44, std140) uniform MoonFParamUBO_Legacy {
 ### §11.7 bind 順序関係
 
 - moon program 切替時 set=3 帯全 binding を一括 rebind (= per-program cadence 標準)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (e) (= Stars F/V + SunDisc + Moon 4 UBO、day cycle 連動)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 1 member (moon_brightness、float)、sky preset 切替 trigger で dirty、setter 特定済 = `lldrawpoolwlsky.cpp:453-455` literal + `llsettingsvo.cpp:853` literal (= 本 group 内 setter 特定済 唯一 UBO)、reserved 登録 `llshadermgr.cpp:1831` MOON_BRIGHTNESS + `llshadermgr.h:347` enum literal 確認、cadence PerProgram 維持 (= sky preset trigger ゆえ frame 内 stable)、本 group 最先着手可、工数 S (group 内)
+**関連**: L0-1 dispatch (= 衝突なし binding=44) / §3.5.7 sub-cluster (e) StarsF/StarsV/SunDiscF (= day cycle 連動 cross UBO) / sub-cluster (a) FrameAtmosphere_Lighting (= 同 LLSettingsSky 連動)

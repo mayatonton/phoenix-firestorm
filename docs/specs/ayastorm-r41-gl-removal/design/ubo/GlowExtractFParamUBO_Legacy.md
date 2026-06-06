@@ -181,3 +181,13 @@ layout(std140, set = 3, binding = 20) uniform GlowExtractFParamUBO_Legacy
 5. **vec3 + float tail packing 動作確認** = std140 規則通り offset 配置、host C++ memcpy で stride 違反なし verify 要
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.11 同期)
+
+**Layer**: L4-11 sub-cluster (a) (= glow extract 1 UBO、HDR scene → glow source 抽出)
+**status**: **起案済** (= 2026-06-06 C-6-f、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.11` (= single source of truth)
+**要点**: 5 member (lumWeights vec3 + minLuminance float + warmthWeights vec3 + maxExtractAlpha float + warmthAmount float、std140 vec3+float tail packing)、**shell 通電済 + write 経路本格化済** (= PA-8 + PC-7γ-1)、setter 5 site 全件特定済 (= `pipeline.cpp:9061-9068` literal `GLOW_MIN_LUMINANCE` / `GLOW_MAX_EXTRACT_ALPHA` / `GLOW_LUM_WEIGHTS` / `GLOW_WARMTH_WEIGHTS` / `GLOW_WARMTH_AMOUNT`)、reserved 登録 `llshadermgr.cpp:1638-1642` + `llshadermgr.h:160-164` 全件確認、`maxAlpha` local 変数 derive 元不明 [要追加調査]、`llpostprocess.cpp:39` `sLumWeights` 別 path 参照 verify [要 verify]、glow chain 第 1 段、cadence PerProgram 維持、工数 group 全体 M 内 (S 部分、独立着手可)
+**関連**: L0-1 dispatch (= 衝突なし binding=20) / §3.5.11 sub-cluster (b) GlowV/GlowF (= glow chain 第 2-3 段) / sub-cluster (c) GlowCombine (= 第 4 段) / `pipeline.cpp:9049-9099` literal glow extract pass

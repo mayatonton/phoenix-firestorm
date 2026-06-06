@@ -148,3 +148,13 @@ layout(std140, set = 3, binding = 62) uniform SMAABlendWeightsFParamUBO_Legacy
 7. **PerProgram flush 経路の VkDescriptorBufferInfo bind 詳細** = verify 要
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.12 同期)
+
+**Layer**: L4-12 sub-cluster (b) (= blend weights 1 UBO、temporal SMAA subsample index)
+**status**: **起案済** (= 2026-06-06 C-6-g、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.12` (= single source of truth)
+**要点**: 1 member (subsampleIndices vec4)、SMAA 2x/4x subsample blending 用 index、SMAABlendWeightsF.glsl:67 singleton site、setter 不明 [要追加調査]、temporal SMAA frame swap trigger で per-frame dirty pattern (= PerProgram cadence で frame 内 1 値、stale risk なし想定) [要 verify D3]、temporal SMAA enable 経路 (= AYAstorm temporal SMAA cvar 候補) [要追加調査]、subsampleIndices owner = SMAA mode (1x/2x/4x) + temporal frame index [要 verify]、cadence PerProgram 維持、工数 group 全体 S-M 内
+**関連**: L0-1 dispatch (= 衝突なし binding=62) / §3.5.12 sub-cluster (a) SMAAParam (= SMAA pipeline sibling、shared include 経由共通 consume)

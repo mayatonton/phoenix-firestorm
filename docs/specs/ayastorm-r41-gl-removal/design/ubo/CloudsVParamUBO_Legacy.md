@@ -182,3 +182,13 @@ layout(std140, set = 3, binding = 3) uniform CloudsVParamUBO_Legacy
 
 - set=3 帯 bind は `bindV3aStatic` 経路で全帯一括
 - vertex/fragment 両 stage で同 set=3 binding=3 参照 (= 複製併存パターン、Multi-stage 複製の Vulkan 仕様整合確認要)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.7 同期)
+
+**Layer**: L4-7 sub-cluster (d) (= Clouds V/F pair 2 UBO + cloudsF.glsl:79 複製併存、camPosLocal/cloud_scale 共有)
+**status**: **起案済** (= 2026-06-06 C-6-b、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.7` (= single source of truth)
+**要点**: 4 member (camPosLocal vec3 + cloud_scale float + cloud_color vec3 + pad)、起源 = cloudsV.glsl:106、η-14 path G-β 複製 cloudsF.glsl:79 で fragment 側参照 (= CLOUDS_V_PARAM_UBO_LEGACY_DEFINED guard、Vulkan 仕様 1 pipeline 内同 set/binding 両 stage 参照可能、blueprint コメント `verified identical` 担保)、camPosLocal cross UBO 5 use site (= 本 UBO + SkyV + CloudsF 複製 + MaterialUBO_Legacy + materialF.glsl)、cadence mismatch (= per-frame camPosLocal を PerProgram で運ぶ stale risk) → PerFrame 降格候補 [要 L0-4 結果反映]、cloud_scale/cloud_color/camPosLocal writer 不明 [要追加調査]、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=3) / L0-4 cadence (= PerFrame 降格候補 camPosLocal) / §3.5.7 sub-cluster (d) CloudsF (= V/F pair 複製受け側) / sub-cluster (c) SkyV (= camPosLocal cross UBO 同 source) / §3.5.5 group MaterialUBO_Legacy (= camPosLocal cross UBO 5 use site の 1 つ)

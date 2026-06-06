@@ -174,3 +174,13 @@ ubo_metadata.inl 上 cadence_tag=3 は 2 件:
 - set=3 帯 bind は asset draw 直前 `bindV3aStatic` / `bindV3aRigged` で全帯一括 (= `llvkloader.cpp:2168, 2172`)
 - triple-buffer 経路 (= `sAssetUboSetV3a × FRAMES_IN_FLIGHT (=3)`、`llvkloader.cpp:905`)
 - node update が frame 内 multi-pass で発生する場合 multi-update 経路要 (= verify 要)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.14 同期)
+
+**Layer**: L4-14 (= GLTF asset 2 UBO pair)
+**status**: **起案済** (= 2026-06-06 C-6-i、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.14` (= single source of truth)
+**要点**: 1 member (gltf_nodes vec4[1024])、**16384B = Vulkan 1.3 min UBO size**、PerAsset cadence (= cadence_tag=3)、**pilot 段階通電済** (= Phase 1.C PC-7γ-3)、UB_GLTF_NODES enum + `"Asset_GLTFNodes"` block 名 string 登録、binding=0 衝突 = AtmoExtra (PerProgram) [要 verify L0-1]、**MAX_NODES_PER_GLTF_OBJECT = 341 nodes** (= Vulkan 1.3 min 16384B/48、blueprint コメント記載、node count > 341 で truncate/split risk) [要 verify + 要 AYA 判断]、pbrmetallicroughnessV.glsl:335-338 singleton site、updateNodeData setter 不明 [要追加調査]、node animation per-frame update (= PerAsset cadence 内 frame 内複数回 write 可能性) [要 verify D3]、cross-UBO 同期 = Asset_GLTFMaterials と asset 切替時同時 dirty、工数 group 全体 M 内
+**関連**: L0-1 dispatch (= binding=0 衝突 AtmoExtra (PerProgram) と PerAsset cadence 別経路) / §3.5.14 sibling Asset_GLTFMaterials (= 同 LL::GLTF::Asset 由来) / §3.5.7 sub-cluster (b) AtmoExtra (= binding=0 衝突解消) / Phase 3 R4 = per-asset 本実装 + 実 PBR shader 接続

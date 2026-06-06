@@ -193,3 +193,13 @@ OS-1〜OS-10 gate 照合:
 ### §11.7 bind 順序関係
 
 - per-draw cadence ゆえ draw call 毎に `bindV3aStatic` / `bindV3aRigged` 経由 set=2 帯 4 binding 同時 bind (= `llvkloader.cpp:2192/2233` literal、`V3A_DRAW_SET_BINDINGS=4` 個 dynamic_offset 渡し)
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.15 同期)
+
+**Layer**: L4-15 (= set=2 binding=0 共有残 2 UBO、name-based dispatch 6 UBO 集約 group)
+**status**: **起案済** (= 2026-06-06 C-6-j、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.15` (= single source of truth)
+**要点**: 1 member (clipPlane vec4)、5 file consume (= pbropaqueF/pbrmetallicroughnessF/softenLightF/reflectionProbeF/globalF、blueprint `verified identical across 5 sample sites`)、setter 不明 (= `LLShaderMgr::CLIP_PLANE` 経由候補) [要追加調査]、data source 上流 = LLPipeline::mTransformedClip / LLViewerCamera [要追加調査]、状態 = **untouched** (writeDrawUbo 0 件)、per-draw 同値 broadcast (= per-frame 1 回計算 → 毎 draw 書込み許容、dirty 判定不要)、name-based dispatch precedent 集約 (= §3.5.8 group 4 UBO + 本 group 2 UBO = 6 UBO 同 binding=0)、cadence PerDraw 維持、工数 group 全体 M 内
+**関連**: L0-1 dispatch (= name-based dispatch 6 UBO 集約) / §3.5.15 sibling LightParams (= 同 binding=0 共有) / §3.5.8 group 4 UBO (= 同 binding=0 共有残) / FrameViewProj (= viewport/camera 連動 dirty 候補)

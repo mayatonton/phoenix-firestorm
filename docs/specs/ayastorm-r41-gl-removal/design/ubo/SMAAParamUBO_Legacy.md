@@ -156,3 +156,13 @@ layout(std140, set = 3, binding = 14) uniform SMAAParamUBO_Legacy
 7. **shell 通電 commit** = 未来作業
 
 = 上記 7 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.12 同期)
+
+**Layer**: L4-12 sub-cluster (a) (= RT metrics 1 UBO、SMAA.glsl shared include 経由 3 pass 共通)
+**status**: **起案済** (= 2026-06-06 C-6-g、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.12` (= single source of truth)
+**要点**: 1 member (SMAA_RT_METRICS vec4 = (1/w, 1/h, w, h))、SMAA.glsl shared include 経由 SMAA pass chain 3 program 共通 consume (= edge detection + blend weights + neighborhood blending、verify 要)、setter 不明 [要追加調査]、process-wide で viewer resize 時のみ実 update、**cadence 再分類検討候補** (= PerProgram → PerFrame/SINGLETON 降格、ただし shell layout 不変契約遵守) [要 L0-4 結果反映 / 要 AYA 判断]、screen res 由来 cross-UBO (= ScreenSpaceReflPostF/CASParam 等) 同時 dirty 連動候補 [要 verify D4 突合]、SMAA.glsl:41 shared include site、工数 group 全体 S-M 内
+**関連**: L0-1 dispatch (= 衝突なし binding=14) / L0-4 cadence (= PerFrame/SINGLETON 降格候補) / §3.5.12 sub-cluster (b) SMAABlendWeights (= SMAA pipeline sibling) / FrameViewProj (= screen res 同 source 候補)

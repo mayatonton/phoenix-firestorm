@@ -188,3 +188,13 @@ OS-1〜OS-10 gate 照合:
 ### §11.7 bind 順序関係
 
 - per-draw cadence ゆえ毎 rigged draw call で `bindV3aRigged` 経由 set=2 帯 4 binding 同時 bind
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.8 同期)
+
+**Layer**: L4-8 sub-cluster (b) (= object curr/prev pair + 抽出版 2 UBO、data duplication 解消候補)
+**status**: **起案済** (= 2026-06-06 C-6-c、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.8` (= single source of truth)
+**要点**: 2 member (matrixPalette[110] mat3x4 + lastMatrixPalette[110] mat3x4)、**10752 B = 全 UBO 中最大 size** (= cadence=2 PerDraw 内最大、Skin_GLTFJoints 16384 B PerSkin に次ぐ)、bone animation frame swap trigger で SkinnedVelocity と同期 dirty、**ring buffer 容量境界 risk** (= maxUniformBufferRange Vulkan minimum 16384B 範囲内だが境界近接) [要 verify]、**data duplication 罠** (= lastMatrixPalette ↔ SkinnedVelocity.lastMatrixPalette_skinned_velocity 同 data) [要 AYA 判断 = 統合 vs 維持]、cadence PerDraw → PerSkin 昇格検討候補 (= Skin_GLTFJoints 同等戦略) [要 AYA 判断]、setter 不明 [要追加調査]、MAX_JOINTS_PER_MESH_OBJECT=110 (= `lljoint.h:48`)、mat3x4 stride=48 packing 注意、工数 group 全体 L 内
+**関連**: L0-1 dispatch (= set=2 binding=0 共有 6 UBO) / §3.5.8 sub-cluster (b) SkinnedVelocity (= data duplication 統合候補) / Skin_GLTFJoints (= 別 cadence 別 set GLTF 専用、本 UBO は Legacy 専用、完全独立) / memory `project_skin_hash_collision_bom_body` (= LLMeshSkinInfo mHash bone binding)

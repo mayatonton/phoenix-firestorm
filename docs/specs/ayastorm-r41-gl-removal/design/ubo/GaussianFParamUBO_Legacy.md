@@ -166,3 +166,13 @@ layout(std140, set = 3, binding = 58) uniform GaussianFParamUBO_Legacy
 5. **240 B dead space** = std140=16 B vs padded 256 B、Phase 2 で member 追加候補となるか (= 設計原則 (1) Upstream 取り込みやすさ維持の観点で固定推奨)
 
 = 上記 5 項目は本 UBO file 完成時に grep + Read で逐次解消。
+
+---
+
+## §12. Phase 2 sub-work 進捗 (= WORK_ORDER.md §3.5.9 同期)
+
+**Layer**: L4-9 sub-cluster (c) (= IBL mip pipeline 3 UBO)
+**status**: **起案済** (= 2026-06-06 C-6-d、設計・工程 doc 化完了、実装着手前)
+**詳細・最新版**: `docs/specs/ayastorm-r41-gl-removal/design/ubo/WORK_ORDER.md §3.5.9` (= single source of truth)
+**要点**: 2 member (resScale float + direction vec2、std140 4B pad 自動挿入)、**shell 通電済 + write 経路本格化済** (= PA-8 + PC-7γ-1)、reserved 宣言 `llglslshader.cpp:1082/1088` literal `"direction"` / `"resScale"`、実 setter call grep hit せず (= `LLReflectionMapManager` 内 reflection mip generation 経路想定) [要追加調査]、`gGaussianProgram` bind callsite 不明 [要追加調査]、reflection mip blur (= separable gaussian、horizontal/vertical 2 pass) で direction 経由切替、mip chain loop で PerProgram cadence 多回 dirty → PerDraw cadence 化候補 [要 L0-4 結果反映 / 要 AYA 判断]、gaussianF.glsl:46 singleton site、240B dead space (= 最小 member UBO)、工数 group 全体 M-L 内
+**関連**: L0-1 dispatch (= 衝突なし binding=58) / L0-4 cadence (= mip chain loop PerDraw 降格候補) / §3.5.9 sub-cluster (c) IrradianceGen/RadianceGen (= 同 IBL pipeline 連動) / `gGaussianProgram` (= reflection mip 用、`llviewershadermgr.cpp:3977` "Reflection Mip Shader")
