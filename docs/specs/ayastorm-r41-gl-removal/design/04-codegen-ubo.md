@@ -62,8 +62,11 @@ LLGLSLShader::uniform4fv(name, ...) call
 | Stage 2 | 生成 C++ header の **配置 / 分割 / API 形状** を確定。3 OS 互換の細部は chapter 08 | §5 |
 | Stage 3 | runtime での name 解決の **入口 API shape** までを保証。値書込本体は chapter 06 | §6 |
 
-**含意**:
-- Codegen と glslang は **同じ GLSL 入力に対して 2 系統並列の build process**
+**含意** (= 2026-06-06 Phase 2.α α-3 案 X 確定で literal 訂正):
+- Codegen と AYAstorm shader runtime は **別 GLSL 系統並列の build process** (= 旧 literal「同じ GLSL 入力」は実装と矛盾していたため訂正、handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9.3 参照):
+  - **Codegen Python tool 入力** = `indra/newview/app_settings/shaders/aya_r41_blueprints/` 配下 (= self-contained `#version 450` + 1 file 1 UBO declaration、runtime prepend chain 不要、blueprint dir README §0 参照)
+  - **AYAstorm shader runtime compile target** = `class*/` + `cinematic_bd/` 配下 actual shader (= `loadShaderFile()` 経由 `addPermutation` / `AYASTORM_CINEMATIC` / `HAS_DIFFUSE_LOOKUP` 等 prepend chain 適用後 glCompileShader / SPIR-V 化)
+- 両者間の UBO declaration 整合は **二重 source 同期 protocol** (= §4.4 main.py `_verify_block_match` 拡張で build-time check、Phase 2.α α-3 phase F で実装) で保証、不一致時は `CodegenError` abort
 - Codegen 生成物は **build artifact のみ**、コミットしない (git ignore、chapter 08 で確定)
 - runtime での setter 実装は chapter 06 に閉じる、本 chapter は **「offset table が読める状態」までを保証**
 

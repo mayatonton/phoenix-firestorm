@@ -163,6 +163,23 @@
 
 **注 (本 §1.6 の位置付け)**: 本 §1.6 4 件は **judgement 履歴 archive** = 既消化済 = §1.1-§1.5 (= 未判断 21 件) と性質が異なる。implementation-phase 入口 (= η-29 Phase 0 計測 session) では §1.1-§1.5 のみ AYA 判断 batch session 対象、§1.6 は再判断不要 (= reference のみ)。
 
+### §1.7 Phase 2.α 案 X 確定起因 新規 6 件 (2026-06-06 record)
+
+**位置付け**: Phase 2.L0 sub-session 5 step 2-batch-0-a で発覚した二重 source 構造同期断裂を根治するため起案された Phase 2.α (= 独立 sub-phase) で **案 Y → 案 Z → 案 Z' → 案 X 連続 5 落ち** 経て確定した案 X 由来の新規 question 6 件。closed 3 件 + open 3 件。詳細 = handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9。
+
+**位置付け 2**: 本 §1.7 6 件は §1.6 4 件と同質 (= judgement 履歴 archive)、closed 3 件は確定判断 record、open 3 件は二重 source 同期 protocol formal化に伴う将来課題。
+
+| (Q) | 項目 | 判断 (= 案 X 確定) | 反映先 |
+|---|---|---|---|
+| (Q-α1) | blueprint dir 廃止可否 | **closed = 保護指示** (= AYA 指示 #5「discard しない」literal 真意 = codegen 入力 source of truth 保護、case Y 撤回根拠、commit `df38b7c994` + `f95182ded5`) | 04 §2.2 literal 訂正 + 09 §2.1.2 + handoff §D.9.3 / §D.9.4 |
+| (Q-α2) | codegen 入力 source の確定方向 | **closed = blueprint dir 単独** (= 別 GLSL 並列 build process、actual class*/ + cinematic_bd/ は runtime compile target、案 Z+Z' 撤回根拠、blueprint dir 単独走行で 94 UBO emit + parse error 0 件 evidence) | 04 §2.2 literal 訂正 + handoff §D.9.2 / §D.9.4 |
+| (Q-α3) | 二重 source 構造同期 protocol | **closed = formal化** (= main.py `_verify_block_match` 拡張で blueprint + actual 対称的整合 verify build-time check、case Z 起案契機の二重 source 構造同期断裂を構造的に解消、phase F で実装) | 04 §4.4 維持 + handoff §D.9.6 #3 + α-3 entry §3.6 phase F |
+| (Q-α4) | `_verify_block_match` 拡張時の **誤検出許容範囲** | **open** = (a) cinematic_bd 上書き path で同 layout 必須 (= 既 α-2 commit `b66ec99f72` 対応済)、(b) blueprint と actual の binding 値乖離は abort (= 二重 source 整合違反)、(c) member 順序入替も abort or warning か未確定 = phase F 実装時に protocol 確定 | phase F 実装時 |
+| (Q-α5) | UBO 新規追加時の **追加先順序** = blueprint dir 先 vs actual 先 | **open** = 設計 doc 内 protocol 未確定、両方順序 OK で build-time `_verify_block_match` 整合 verify で abort detection が default 候補、case X README §5 編集規律で「順序逆も可」literal 既記載だが将来 sub-step 起案時に確認要 | phase F or 別 sub-phase |
+| (Q-α6) | Phase 2 全 94 UBO migration 進行中 blueprint dir と actual の **対称的書換 protocol** | **open** = sub-session 5 7 UBO (= phase E で blueprint 側同期書換予定) 以降の 73 UBO 改修時の同期 protocol、actual 改修先 (= class*/ + cinematic_bd/ 改修先) と blueprint 改修先の **手順順序** + sub-step level commit 分割方針 = WORK_ORDER.md 更新時に protocol formal化候補 | WORK_ORDER.md 改修時 |
+
+**反映完了確認** (= 2026-06-06 時点): closed 3 件 = phase A-D で全件反映完了 (= revert + blueprint README + handoff §D.9 + 04 §2.2 literal 訂正 + 09 §2.1.2)。open 3 件 = phase F (= main.py `_verify_block_match` 拡張) + WORK_ORDER.md 改修時に protocol formal化予定。
+
 ---
 
 ## §2 実装 phase 入口で消化される項目 (= 判断は持越、listing のみ)

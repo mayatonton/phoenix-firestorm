@@ -117,6 +117,35 @@ UBO 項目数合計 (= 横断 protocol 除く) = 3 + 2 + 4 + 20 + 62 + 3 = **94 
 - 評価 protocol = sub-work (7) で全 94 UBO + L0 4 protocol 逐次 check (= 98 件)
 - violation 検知時 = stage 1 提案撤回 / stage 2 設計再考 / stage 3 AYA literal 確認
 
+#### §2.1.2 Phase 2.α 独立 sub-phase 起案 = 案 X 確定 (= 2026-06-06 record)
+
+**位置付け**: Phase 2.L0 sub-session 5 step 2-batch-0-a で発覚した **codegen 入力 source の二重 source 構造同期断裂** (= actual `class*/` + `cinematic_bd/` 14 file 改修済 ↔ blueprint dir 未改修) を根治するため、Phase 2.L0 freeze 中に **Phase 2.α 独立 sub-phase** を起案、AYA literal「根治最優先、Phase2.α とでも...着手」(= 2026-06-06) 受領反映。
+
+**案変遷 record** (= 同じ穴 5 連続落ち、handoff `phase2/alpha/handoff-phase2-alpha-codegen-single-source-of-truth-entry.md` §D.9 cross-ref):
+
+| 案 | 内容 | 結果 |
+|---|---|---|
+| 案 Y | blueprint 完全廃止 | 撤回 (= AYA 指示 #5 違反) |
+| 案 Z | codegen 入力切替 = `class*/` + `cinematic_bd/` + blueprint reference 降格 | 撤回 (= codegen 単独走行で parse error 第 1 階層、`MAX_JOINTS_PER_MESH_OBJECT` unresolved) |
+| 案 Z' | 案 Z + C++ runtime emulation 層追加 (= dump file + `--defines-file`) | 撤回 (= parse error 第 2 階層、`#version` + `AYASTORM_CINEMATIC` 等 prepend chain 全件 emulate scope 超過) |
+| **案 X (確定)** | **blueprint dir = codegen 入力 source of truth + `class*/` + `cinematic_bd/` = runtime compile target + 別 GLSL 並列 build process + 二重 source 同期 protocol formal化** | **確定** (= blueprint dir 単独走行で 94 .glsl → 94 UBO emit 成功 evidence、設計 doc 04 §2.2 literal 訂正、AYA 指示 #5 真意 = source of truth 保護指示) |
+
+**Phase 2.α sub-step 構造** (= 7 phase、handoff `phase2/alpha/handoff-phase2-alpha-3-cmake-blueprint-readme-propagation.md` §3.1-§3.7):
+- phase A revert (= 6 commit revert、案 Z'+ 全撤回、commit `df38b7c994`) ✅
+- phase B blueprint dir README 全面書換 (= 「codegen 入力 source of truth」literal 確定、commit `f95182ded5`) ✅
+- phase C handoff doc 2 件改訂 (= §D.9 案 X 確定 source of truth + §3 sub-step 順序再起案、commit `b06f860a77`) ✅
+- phase D 設計 doc 5 件改修 (= 04 §2.2 literal 訂正 + 09/10 案 X 反映、本 commit) ⏳ (= 進行中)
+- phase E blueprint dir 7 UBO 14 file 同期書換 (= sub-session 5 改修分の blueprint 側同期)
+- phase F main.py `_verify_block_match` 拡張 (= blueprint + actual 二重 source 整合 verify formal化)
+- phase G 波及 doc 全件 (= per-UBO doc 80+ + inventory + WORK_ORDER 等 + 全件 grep 走査残漏れ 0 件 confirm)
+
+**Phase 2.L0 freeze 維持**: sub-session 5 step 2-batch-0-a 7 commit (= `887ddb5341`〜`e5f57d57ff`) = actual class*/ + cinematic_bd/ 14 file 改修 freeze 維持、Phase 2.α 完了後 cold launch + AYA live verify で resume。
+
+**memory feedback 適用**:
+- `feedback_root_cause_no_shortcuts` §11 (= 自走精査網羅性 checklist 4 件 = 設計 doc 全文逐語 + 実装 full trace + structural property + 影響範囲)
+- `feedback_root_cause_no_shortcuts` §12 (= sandbox 実証 protocol 義務化 + 「採否ご判断ください」禁忌 + subagent 結果盲信禁止 + 設計 doc literal 誤り疑念)
+- 5 連続落ち根本原因: §11 checklist B + C 不徹底 + §12 sandbox 実証未適用 + 設計 doc 04 §2.2 literal「同じ GLSL 入力」誤りを盲信
+
 ### §2.2 Phase 依存関係 (= 前提が満たされないと開始できない、2026-06-06 AYA literal 確定 = Phase 2 全 UBO + Phase 3-6 繰上げ)
 
 ```
