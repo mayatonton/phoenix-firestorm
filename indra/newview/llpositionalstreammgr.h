@@ -598,6 +598,7 @@ private:
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for
     // {volume:1.5}) or an over-limit count, depending on kind. Empty for
     // kinds that don't have a useful payload (NoSpeakers).
+    static DistErrorKind distParseErrorToNotifyKind(DistParseError error);
     void notifyDistributedError(const LLUUID& prim_id, DistErrorKind kind,
                                 const std::string& detail);
 

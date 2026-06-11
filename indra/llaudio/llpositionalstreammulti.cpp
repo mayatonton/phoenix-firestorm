@@ -72,6 +72,26 @@ namespace
         while (p < v) p <<= 1;
         return p;
     }
+
+    const char* stream3DChannelName(LLPositionalStreamMulti::Channel ch)
+    {
+        using Ch = LLPositionalStreamMulti::Channel;
+        switch (ch)
+        {
+        case Ch::L:   return "L";
+        case Ch::R:   return "R";
+        case Ch::M:   return "M";
+        case Ch::FL:  return "FL";
+        case Ch::FR:  return "FR";
+        case Ch::C:   return "C";
+        case Ch::LFE: return "LFE";
+        case Ch::SL:  return "SL";
+        case Ch::SR:  return "SR";
+        case Ch::BL:  return "BL";
+        case Ch::BR:  return "BR";
+        }
+        return "?";
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -922,6 +942,146 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
     }
     LLPositionalStreamMulti* self = cb->self;
 
+    auto opName = [&]() -> const char*
+    {
+        switch (cb->op_kind)
+        {
+        case SpeakerCallback::OpKind::Silent:    return "Silent";
+        case SpeakerCallback::OpKind::Track:     return "Track";
+        case SpeakerCallback::OpKind::StereoSum: return "StereoSum";
+        case SpeakerCallback::OpKind::Bs775:     return "Bs775";
+        case SpeakerCallback::OpKind::Upmix:     return "Upmix";
+        }
+        return "?";
+    };
+
+    auto addCatchup = [&](size_t frames)
+    {
+        const size_t max_size = static_cast<size_t>(-1);
+        cb->catchup_frames = (cb->catchup_frames > max_size - frames)
+            ? max_size
+            : cb->catchup_frames + frames;
+    };
+
+    auto refreshUpmixParams = [&]()
+    {
+        if (cb->op_kind != SpeakerCallback::OpKind::Upmix)
+        {
+            return;
+        }
+
+        // r12 P6: refresh the live-tunable knobs (LfeCutoff / CenterBleed /
+        // RearDelayMs) from the per-stream atomic snapshot. A relaxed load is
+        // sufficient because each parameter is independently consumed.
+        const F32 lfe_fc = self->mUpmixLfeCutoffHz.load(std::memory_order_relaxed);
+        const F32 bleed  = self->mUpmixCenterBleed.load(std::memory_order_relaxed);
+        const F32 base   = self->mUpmixRearDelayBaseMs.load(std::memory_order_relaxed);
+        F32 l_ms = 0.f, r_ms = 0.f;
+        LLStereoUpmix::splitRearDelay(base, kRearDelayJitterMs, &l_ms, &r_ms);
+        cb->upmix_params.lfe_cutoff_hz   = lfe_fc;
+        cb->upmix_params.center_bleed    = bleed;
+        cb->upmix_params.rear_delay_ms_l = l_ms;
+        cb->upmix_params.rear_delay_ms_r = r_ms;
+        // r12.1: same per-callback refresh for the LFE gain.
+        cb->upmix_params.lfe_gain        = self->mLfeGain.load(std::memory_order_relaxed);
+    };
+
+    auto advanceUpmixSilence = [&](F32* dst, size_t frames)
+    {
+        if (cb->op_kind != SpeakerCallback::OpKind::Upmix || frames == 0)
+        {
+            return;
+        }
+
+        refreshUpmixParams();
+        const size_t chunk_cap =
+            std::min(kReaderChunkFrames, cb->raw_scratch.size() / 2);
+        if (chunk_cap == 0)
+        {
+            return;
+        }
+
+        F32* raw = cb->raw_scratch.data();
+        size_t advanced = 0;
+        while (advanced < frames)
+        {
+            const size_t this_chunk = std::min(frames - advanced, chunk_cap);
+            std::memset(raw, 0, this_chunk * 2 * sizeof(F32));
+            self->mUpmix.upmix2chToSpeaker(raw, dst + advanced, this_chunk,
+                                           cb->op_role_upmix,
+                                           cb->upmix_state, cb->upmix_params);
+            advanced += this_chunk;
+        }
+    };
+
+    auto accountUnderrun = [&](size_t got_frames, size_t missing_frames,
+                               const char* phase)
+    {
+        if (missing_frames == 0)
+        {
+            return;
+        }
+
+        // r8 F6 acceptance: count the underrun for the dropout metric. Done
+        // here, not in the ring methods, so a speaker whose tail reads short
+        // still registers even if the ring isn't globally empty.
+        self->mUnderrunFrames.fetch_add(static_cast<U64>(missing_frames),
+                                        std::memory_order_relaxed);
+        const U64 underrun_index =
+            self->mUnderrunCallbacks.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (underrun_index <= 16 || (underrun_index % 64) == 0)
+        {
+            const auto ch = self->mSpeakers[cb->speaker_idx].ch;
+            LL_WARNS("Stream3D") << "Stream3D sync diag: speaker underrun"
+                                  << " url=" << self->mUrl
+                                  << " speaker=" << cb->speaker_idx
+                                  << " ch=" << stream3DChannelName(ch)
+                                  << " op=" << opName()
+                                  << " source_ch=" << self->mSourceChannels
+                                  << " phase=" << phase
+                                  << " requested=" << n
+                                  << " got=" << got_frames
+                                  << " zero_fill=" << missing_frames
+                                  << " catchup_frames=" << cb->catchup_frames
+                                  << " avail_after=" << self->mRing.readAvailable(cb->speaker_idx)
+                                  << " underrun_index=" << underrun_index
+                                  << LL_ENDL;
+        }
+    };
+
+    auto drainCatchup = [&]() -> bool
+    {
+        if (cb->catchup_frames == 0)
+        {
+            return true;
+        }
+
+        const size_t requested = cb->catchup_frames;
+        const size_t skipped =
+            self->mRing.skipFrames(cb->speaker_idx, cb->catchup_frames);
+        cb->catchup_frames -= skipped;
+
+        if (cb->catchup_frames > 0)
+        {
+            advanceUpmixSilence(out, n);
+            std::memset(out, 0, n * sizeof(F32));
+            addCatchup(n);
+            accountUnderrun(0, n, "catchup");
+            return false;
+        }
+
+        LL_DEBUGS("Stream3D") << "Stream3D sync diag: reader catch-up"
+                              << " url=" << self->mUrl
+                              << " speaker=" << cb->speaker_idx
+                              << " ch=" << stream3DChannelName(self->mSpeakers[cb->speaker_idx].ch)
+                              << " op=" << opName()
+                              << " requested=" << requested
+                              << " skipped=" << skipped
+                              << " avail_after=" << self->mRing.readAvailable(cb->speaker_idx)
+                              << LL_ENDL;
+        return true;
+    };
+
     // r10 P4: dispatch the §4.2 compatibility-matrix routing pre-computed
     // for this speaker at createUserSounds(). All three of mSpeakers,
     // mSourceChannels, mDownmix are settled before the FMOD sound (and
@@ -937,21 +1097,53 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         // readers — otherwise the writer's lagging-reader bound would stall
         // the whole stream on this one speaker. No underrun is counted
         // (intentional silence is not a dropout).
-        self->mRing.skipFrames(cb->speaker_idx, n);
+        {
+            if (!drainCatchup())
+            {
+                return FMOD_OK;
+            }
+            const size_t skipped = self->mRing.skipFrames(cb->speaker_idx, n);
+            if (skipped < n)
+            {
+                addCatchup(n - skipped);
+                LL_DEBUGS("Stream3D") << "Stream3D sync diag: silent reader short-skip"
+                                      << " url=" << self->mUrl
+                                      << " speaker=" << cb->speaker_idx
+                                      << " ch=" << stream3DChannelName(self->mSpeakers[cb->speaker_idx].ch)
+                                      << " requested=" << n
+                                      << " skipped=" << skipped
+                                      << " missing=" << (n - skipped)
+                                      << " catchup_frames=" << cb->catchup_frames
+                                      << " avail_after=" << self->mRing.readAvailable(cb->speaker_idx)
+                                      << LL_ENDL;
+            }
+        }
         std::memset(out, 0, n * sizeof(F32));
         return FMOD_OK;
 
     case SpeakerCallback::OpKind::Track:
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         got = self->mRing.readFramesTrack(cb->speaker_idx, out, n,
                                           static_cast<size_t>(cb->op_track));
         break;
 
     case SpeakerCallback::OpKind::StereoSum:
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         got = self->mRing.readFramesMonoSum(cb->speaker_idx, out, n);
         break;
 
     case SpeakerCallback::OpKind::Bs775:
     {
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         // raw_scratch is sized at createUserSounds() to kReaderChunkFrames
         // × 6 floats; loop covers the rare case of a callback datalen
         // that exceeds one chunk.
@@ -974,35 +1166,17 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
 
     case SpeakerCallback::OpKind::Upmix:
     {
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         // r12 P2: parallel to Bs775 but with a 2-track raw read (ring is
         // 2-track for stereo source) and the LLStereoUpmix transform that
         // produces this speaker's role-specific 1ch output. Per-speaker
         // upmix_state carries the SL/SR delay line and the LFE biquad
         // taps; upmix_params carries the bleed / delay / LFE-cutoff tuning.
         //
-        // r12 P6: refresh the live-tunable knobs (LfeCutoff / CenterBleed /
-        // RearDelayMs) from the per-stream atomic snapshot. A relaxed load
-        // is sufficient because each parameter is independently consumed
-        // (no inter-knob ordering invariant); a value the main thread
-        // racingly stores during the load is materialised on the next
-        // chunk boundary, which the user perceives as a smooth ~20 ms
-        // ramp rather than a tearing artefact. sample_rate stays as
-        // stamped at createUserSounds() time.
-        const F32 lfe_fc = self->mUpmixLfeCutoffHz.load(std::memory_order_relaxed);
-        const F32 bleed  = self->mUpmixCenterBleed.load(std::memory_order_relaxed);
-        const F32 base   = self->mUpmixRearDelayBaseMs.load(std::memory_order_relaxed);
-        F32 l_ms = 0.f, r_ms = 0.f;
-        LLStereoUpmix::splitRearDelay(base, kRearDelayJitterMs, &l_ms, &r_ms);
-        cb->upmix_params.lfe_cutoff_hz   = lfe_fc;
-        cb->upmix_params.center_bleed    = bleed;
-        cb->upmix_params.rear_delay_ms_l = l_ms;
-        cb->upmix_params.rear_delay_ms_r = r_ms;
-        // r12.1: same per-callback refresh for the LFE gain. Read every
-        // chunk so a mid-stream {lfegain:N} edit shows up on the next
-        // chunk boundary without rebuilding the stream. Only the LFE
-        // role consumes lfe_gain in upmix2chToSpeaker(); other roles
-        // ignore it so this store is harmless on FL/FR/C/SL/SR cb's.
-        cb->upmix_params.lfe_gain        = self->mLfeGain.load(std::memory_order_relaxed);
+        refreshUpmixParams();
 
         const size_t chunk_cap = kReaderChunkFrames;
         F32* raw = cb->raw_scratch.data();
@@ -1041,13 +1215,11 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
 
     if (got < n)
     {
-        std::memset(out + got, 0, (n - got) * sizeof(F32));
-        // r8 F6 acceptance: count the underrun for the dropout metric. Done
-        // here, not in the ring methods, so a speaker whose tail reads
-        // short still registers even if the ring isn't globally empty.
-        self->mUnderrunFrames.fetch_add(static_cast<U64>(n - got),
-                                        std::memory_order_relaxed);
-        self->mUnderrunCallbacks.fetch_add(1, std::memory_order_relaxed);
+        const size_t missing = n - got;
+        advanceUpmixSilence(out + got, missing);
+        std::memset(out + got, 0, missing * sizeof(F32));
+        addCatchup(missing);
+        accountUnderrun(got, missing, "read");
     }
     return FMOD_OK;
 }
@@ -1394,24 +1566,56 @@ bool LLPositionalStreamMulti::startUserChannels()
     if (!mSpeakerRuntime.empty() && mSpeakerRuntime[0].channel)
     {
         unsigned long long parent_now = 0;
-        checkFmod(mSpeakerRuntime[0].channel->getDSPClock(nullptr, &parent_now),
-                  "Channel::getDSPClock");
+        const FMOD_RESULT clock_result =
+            mSpeakerRuntime[0].channel->getDSPClock(nullptr, &parent_now);
+        checkFmod(clock_result, "Channel::getDSPClock");
         const unsigned long long lead = static_cast<unsigned long long>(mSampleRate) / 50;
         const unsigned long long start_at = parent_now + lead;
-        for (auto& sr : mSpeakerRuntime)
+        LL_INFOS("Stream3D") << "Stream3D sync diag: scheduling multi start"
+                              << " url=" << mUrl
+                              << " speakers=" << mSpeakerRuntime.size()
+                              << " sample_rate=" << mSampleRate
+                              << " parent_now=" << parent_now
+                              << " lead=" << lead
+                              << " start_at=" << start_at
+                              << " clock_ok=" << (clock_result == FMOD_OK ? "yes" : "no")
+                              << LL_ENDL;
+        for (size_t i = 0; i < mSpeakerRuntime.size(); ++i)
         {
+            auto& sr = mSpeakerRuntime[i];
             if (sr.channel)
             {
-                checkFmod(sr.channel->setDelay(start_at, 0, false), "Channel::setDelay");
+                const FMOD_RESULT delay_result =
+                    sr.channel->setDelay(start_at, 0, false);
+                checkFmod(delay_result, "Channel::setDelay");
+                LL_DEBUGS("Stream3D") << "Stream3D sync diag: setDelay"
+                                      << " url=" << mUrl
+                                      << " speaker=" << i
+                                      << " ch=" << (i < mSpeakers.size()
+                                                       ? stream3DChannelName(mSpeakers[i].ch)
+                                                       : "?")
+                                      << " start_at=" << start_at
+                                      << " result=" << FMOD_ErrorString(delay_result)
+                                      << LL_ENDL;
             }
         }
     }
 
-    for (auto& sr : mSpeakerRuntime)
+    for (size_t i = 0; i < mSpeakerRuntime.size(); ++i)
     {
+        auto& sr = mSpeakerRuntime[i];
         if (sr.channel)
         {
-            checkFmod(sr.channel->setPaused(false), "Channel::setPaused");
+            const FMOD_RESULT paused_result = sr.channel->setPaused(false);
+            checkFmod(paused_result, "Channel::setPaused");
+            LL_DEBUGS("Stream3D") << "Stream3D sync diag: unpause"
+                                  << " url=" << mUrl
+                                  << " speaker=" << i
+                                  << " ch=" << (i < mSpeakers.size()
+                                                   ? stream3DChannelName(mSpeakers[i].ch)
+                                                   : "?")
+                                  << " result=" << FMOD_ErrorString(paused_result)
+                                  << LL_ENDL;
         }
     }
     return true;

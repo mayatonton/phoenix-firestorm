@@ -355,6 +355,12 @@ private:
         // synchronisation is needed.
         std::vector<F32> raw_scratch;
 
+        // Frames zero-filled for this speaker but not consumed from the ring
+        // yet. The next callback drops this many late source frames before
+        // producing output, so a short read cannot become permanent channel
+        // drift.
+        size_t catchup_frames = 0;
+
         // r12.1: true when the speaker's role is LFE (5.1 placement),
         // regardless of op_kind. Used by pcmReadCallback to apply the
         // per-stream mLfeGain to the LFE feed for both 5.1 native paths

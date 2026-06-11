@@ -239,7 +239,7 @@ namespace
         {
             size_t consumed = 0;
             F32 val = std::stof(s, &consumed);
-            if (consumed == 0)
+            if (consumed != s.size())
             {
                 return false;
             }
@@ -799,6 +799,28 @@ LLPositionalStreamMgr::parseDistributedStereoTag(const std::string& description)
 
     result.data = data;
     return result;
+}
+
+LLPositionalStreamMgr::DistErrorKind
+LLPositionalStreamMgr::distParseErrorToNotifyKind(DistParseError error)
+{
+    switch (error)
+    {
+    case DistParseError::BadCh:             return DistErrorKind::BadCh;
+    case DistParseError::BadRange:          return DistErrorKind::BadRange;
+    case DistParseError::BadVolume:         return DistErrorKind::BadVolume;
+    case DistParseError::EmptyUrl:          return DistErrorKind::EmptyUrl;
+    case DistParseError::BadBinaural:       return DistErrorKind::BadBinaural;
+    case DistParseError::BadUpmix:          return DistErrorKind::BadUpmix;
+    case DistParseError::BadWetGain:        return DistErrorKind::BadWetGain;
+    case DistParseError::BadLfeGain:        return DistErrorKind::BadLfeGain;
+    case DistParseError::BadSource:         return DistErrorKind::BadSource;
+    case DistParseError::ConflictingSource: return DistErrorKind::ConflictingSource;
+    case DistParseError::BadLink:           return DistErrorKind::BadLink;
+    case DistParseError::BadFace:           return DistErrorKind::BadFace;
+    case DistParseError::Ok:                break;
+    }
+    return DistErrorKind::BadCh;
 }
 
 void LLPositionalStreamMgr::onObjectPropertiesReceived(const LLUUID& id,
@@ -1367,27 +1389,7 @@ void LLPositionalStreamMgr::evaluateBinding(const LLUUID& id)
         LL_INFOS("Stream3D") << "[3dstream-stereo] parse error on " << id
                               << " (kind=" << static_cast<int>(dist.error)
                               << ", value='" << dist.bad_value << "')" << LL_ENDL;
-
-        DistErrorKind k = DistErrorKind::BadCh;
-        switch (dist.error)
-        {
-        case DistParseError::BadCh:       k = DistErrorKind::BadCh;       break;
-        case DistParseError::BadRange:    k = DistErrorKind::BadRange;    break;
-        case DistParseError::BadVolume:   k = DistErrorKind::BadVolume;   break;
-        case DistParseError::EmptyUrl:    k = DistErrorKind::EmptyUrl;    break;
-        case DistParseError::BadBinaural: k = DistErrorKind::BadBinaural; break;
-        case DistParseError::BadUpmix:    k = DistErrorKind::BadUpmix;    break;
-        case DistParseError::BadWetGain:  k = DistErrorKind::BadWetGain;  break;
-        case DistParseError::BadLfeGain:  k = DistErrorKind::BadLfeGain;  break;
-        case DistParseError::BadSource:   k = DistErrorKind::BadSource;   break;
-        case DistParseError::ConflictingSource:
-            k = DistErrorKind::ConflictingSource;
-            break;
-        case DistParseError::BadLink:     k = DistErrorKind::BadLink;     break;
-        case DistParseError::BadFace:     k = DistErrorKind::BadFace;     break;
-        case DistParseError::Ok:          break; // unreachable
-        }
-        notifyDistributedError(id, k, dist.bad_value);
+        notifyDistributedError(id, distParseErrorToNotifyKind(dist.error), dist.bad_value);
 
         // Field is malformed → treat the slot as missing and re-evaluate the
         // owning linkset, if we knew about one. (Deferred — F8.)
@@ -1443,6 +1445,19 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
     }
 
     auto root_parse = parseDistributedStereoTag(root_desc_it->second.description);
+    if (root_parse.error != DistParseError::Ok)
+    {
+        LL_INFOS("Stream3D") << "[3dstream-stereo] parse error on root "
+                              << root_id << " (kind="
+                              << static_cast<int>(root_parse.error)
+                              << ", value='" << root_parse.bad_value << "')"
+                              << LL_ENDL;
+        notifyDistributedError(root_id,
+                               distParseErrorToNotifyKind(root_parse.error),
+                               root_parse.bad_value);
+        teardownDistributedBinding(root_id);
+        return;
+    }
     if (!root_parse.data || !root_parse.data->source_kind.has_value())
     {
         // r8 F2-a constraint: source declaration must live on the root prim.
@@ -1718,6 +1733,19 @@ void LLPositionalStreamMgr::evaluateLinkset(LLUUID root_id)
             continue;
         }
         auto cparse = parseDistributedStereoTag(cdesc_it->second.description);
+        if (cparse.error != DistParseError::Ok)
+        {
+            LL_INFOS("Stream3D") << "[3dstream-stereo] parse error on child "
+                                  << child_id << " under root " << root_id
+                                  << " (kind="
+                                  << static_cast<int>(cparse.error)
+                                  << ", value='" << cparse.bad_value << "')"
+                                  << LL_ENDL;
+            notifyDistributedError(child_id,
+                                   distParseErrorToNotifyKind(cparse.error),
+                                   cparse.bad_value);
+            continue;
+        }
         if (!cparse.data) continue;
         collectSpeaker(child_id, *cparse.data);
     }
