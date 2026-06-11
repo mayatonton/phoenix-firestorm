@@ -942,19 +942,6 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
     }
     LLPositionalStreamMulti* self = cb->self;
 
-    auto opName = [&]() -> const char*
-    {
-        switch (cb->op_kind)
-        {
-        case SpeakerCallback::OpKind::Silent:    return "Silent";
-        case SpeakerCallback::OpKind::Track:     return "Track";
-        case SpeakerCallback::OpKind::StereoSum: return "StereoSum";
-        case SpeakerCallback::OpKind::Bs775:     return "Bs775";
-        case SpeakerCallback::OpKind::Upmix:     return "Upmix";
-        }
-        return "?";
-    };
-
     auto addCatchup = [&](size_t frames)
     {
         const size_t max_size = static_cast<size_t>(-1);
@@ -1014,8 +1001,7 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         }
     };
 
-    auto accountUnderrun = [&](size_t got_frames, size_t missing_frames,
-                               const char* phase)
+    auto accountUnderrun = [&](size_t missing_frames)
     {
         if (missing_frames == 0)
         {
@@ -1027,26 +1013,7 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         // still registers even if the ring isn't globally empty.
         self->mUnderrunFrames.fetch_add(static_cast<U64>(missing_frames),
                                         std::memory_order_relaxed);
-        const U64 underrun_index =
-            self->mUnderrunCallbacks.fetch_add(1, std::memory_order_relaxed) + 1;
-        if (underrun_index <= 16 || (underrun_index % 64) == 0)
-        {
-            const auto ch = self->mSpeakers[cb->speaker_idx].ch;
-            LL_WARNS("Stream3D") << "Stream3D sync diag: speaker underrun"
-                                  << " url=" << self->mUrl
-                                  << " speaker=" << cb->speaker_idx
-                                  << " ch=" << stream3DChannelName(ch)
-                                  << " op=" << opName()
-                                  << " source_ch=" << self->mSourceChannels
-                                  << " phase=" << phase
-                                  << " requested=" << n
-                                  << " got=" << got_frames
-                                  << " zero_fill=" << missing_frames
-                                  << " catchup_frames=" << cb->catchup_frames
-                                  << " avail_after=" << self->mRing.readAvailable(cb->speaker_idx)
-                                  << " underrun_index=" << underrun_index
-                                  << LL_ENDL;
-        }
+        self->mUnderrunCallbacks.fetch_add(1, std::memory_order_relaxed);
     };
 
     auto drainCatchup = [&]() -> bool
@@ -1056,7 +1023,6 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
             return true;
         }
 
-        const size_t requested = cb->catchup_frames;
         const size_t skipped =
             self->mRing.skipFrames(cb->speaker_idx, cb->catchup_frames);
         cb->catchup_frames -= skipped;
@@ -1066,19 +1032,10 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
             advanceUpmixSilence(out, n);
             std::memset(out, 0, n * sizeof(F32));
             addCatchup(n);
-            accountUnderrun(0, n, "catchup");
+            accountUnderrun(n);
             return false;
         }
 
-        LL_DEBUGS("Stream3D") << "Stream3D sync diag: reader catch-up"
-                              << " url=" << self->mUrl
-                              << " speaker=" << cb->speaker_idx
-                              << " ch=" << stream3DChannelName(self->mSpeakers[cb->speaker_idx].ch)
-                              << " op=" << opName()
-                              << " requested=" << requested
-                              << " skipped=" << skipped
-                              << " avail_after=" << self->mRing.readAvailable(cb->speaker_idx)
-                              << LL_ENDL;
         return true;
     };
 
@@ -1106,16 +1063,6 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
             if (skipped < n)
             {
                 addCatchup(n - skipped);
-                LL_DEBUGS("Stream3D") << "Stream3D sync diag: silent reader short-skip"
-                                      << " url=" << self->mUrl
-                                      << " speaker=" << cb->speaker_idx
-                                      << " ch=" << stream3DChannelName(self->mSpeakers[cb->speaker_idx].ch)
-                                      << " requested=" << n
-                                      << " skipped=" << skipped
-                                      << " missing=" << (n - skipped)
-                                      << " catchup_frames=" << cb->catchup_frames
-                                      << " avail_after=" << self->mRing.readAvailable(cb->speaker_idx)
-                                      << LL_ENDL;
             }
         }
         std::memset(out, 0, n * sizeof(F32));
@@ -1219,7 +1166,7 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         advanceUpmixSilence(out + got, missing);
         std::memset(out + got, 0, missing * sizeof(F32));
         addCatchup(missing);
-        accountUnderrun(got, missing, "read");
+        accountUnderrun(missing);
     }
     return FMOD_OK;
 }
@@ -1571,15 +1518,6 @@ bool LLPositionalStreamMulti::startUserChannels()
         checkFmod(clock_result, "Channel::getDSPClock");
         const unsigned long long lead = static_cast<unsigned long long>(mSampleRate) / 50;
         const unsigned long long start_at = parent_now + lead;
-        LL_INFOS("Stream3D") << "Stream3D sync diag: scheduling multi start"
-                              << " url=" << mUrl
-                              << " speakers=" << mSpeakerRuntime.size()
-                              << " sample_rate=" << mSampleRate
-                              << " parent_now=" << parent_now
-                              << " lead=" << lead
-                              << " start_at=" << start_at
-                              << " clock_ok=" << (clock_result == FMOD_OK ? "yes" : "no")
-                              << LL_ENDL;
         for (size_t i = 0; i < mSpeakerRuntime.size(); ++i)
         {
             auto& sr = mSpeakerRuntime[i];
@@ -1588,15 +1526,6 @@ bool LLPositionalStreamMulti::startUserChannels()
                 const FMOD_RESULT delay_result =
                     sr.channel->setDelay(start_at, 0, false);
                 checkFmod(delay_result, "Channel::setDelay");
-                LL_DEBUGS("Stream3D") << "Stream3D sync diag: setDelay"
-                                      << " url=" << mUrl
-                                      << " speaker=" << i
-                                      << " ch=" << (i < mSpeakers.size()
-                                                       ? stream3DChannelName(mSpeakers[i].ch)
-                                                       : "?")
-                                      << " start_at=" << start_at
-                                      << " result=" << FMOD_ErrorString(delay_result)
-                                      << LL_ENDL;
             }
         }
     }
@@ -1608,14 +1537,6 @@ bool LLPositionalStreamMulti::startUserChannels()
         {
             const FMOD_RESULT paused_result = sr.channel->setPaused(false);
             checkFmod(paused_result, "Channel::setPaused");
-            LL_DEBUGS("Stream3D") << "Stream3D sync diag: unpause"
-                                  << " url=" << mUrl
-                                  << " speaker=" << i
-                                  << " ch=" << (i < mSpeakers.size()
-                                                   ? stream3DChannelName(mSpeakers[i].ch)
-                                                   : "?")
-                                  << " result=" << FMOD_ErrorString(paused_result)
-                                  << LL_ENDL;
         }
     }
     return true;

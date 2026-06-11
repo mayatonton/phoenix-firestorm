@@ -187,16 +187,7 @@ URL Source 音切れ調査用の詳細診断ログは通常の実装では無効
 - `readData()` block と ring 枯渇の相関を見る場合は、`Multi pump stats` と `Multi source readData blocked` を同時に戻す
 - VBR/CVBR 無音由来の Ogg starvation を見る場合は、`FmodOgg` の starvation ログと `Stream3D` の `NOTREADY` / `buffered` を同時に戻す
 
-Channel sync 追加修正では、以下の診断ログを実装に残して runtime 状態を追えるようにした。
-
-- `Stream3D sync diag: scheduling multi start`
-- `Stream3D sync diag: setDelay`
-- `Stream3D sync diag: unpause`
-- `Stream3D sync diag: speaker underrun`
-- `Stream3D sync diag: reader catch-up`
-- `Stream3D sync diag: silent reader short-skip`
-- `[3dstream-stereo] parse error on root`
-- `[3dstream-stereo] parse error on child`
+Channel sync 追加修正では、callback hot path の詳細診断ログは通常実装に残さない。処理落ち時の実害確認は、既存の `Multi dropout` 集計ログと聴感で行う。malformed tag については、既存の parse error ログとユーザー通知で確認する。
 
 ### 0.8 本書の構成
 
@@ -1226,7 +1217,7 @@ Mac 実機確認で、URL Source の ring buffer 拡張とは別に、multi-spea
 - 次回 callback で `catchup_frames` 分を `mRing.skipFrames()` により消費し、古い PCM を後追い再生しない。
 - catch-up に必要な ring frame が不足している場合は、さらに silence を返して catch-up を継続する。
 - upmix speaker についても、catch-up / underrun 時に silence で state を進める。
-- FMOD `getDSPClock()`、`setDelay()`、`setPaused()` の診断ログを追加し、multi-speaker start scheduling を追えるようにした。
+- FMOD `getDSPClock()`、`setDelay()`、`setPaused()` の失敗検出は `checkFmod()` に任せ、通常実装では start scheduling の詳細診断ログを出さない。
 
 `LLPositionalStreamMgr` では、malformed tag によるクラッシュ防止を追加した。
 
@@ -1250,20 +1241,15 @@ Mac 実機確認で、URL Source の ring buffer 拡張とは別に、multi-spea
 
 ### 9.4 ログで確認できること
 
-追加診断ログにより、以下を runtime log から確認できる。
+通常実装に残す runtime log では、以下を確認できる。
 
 | 確認したい内容 | 見るログ |
 |---|---|
-| multi-speaker の同時 start scheduling | `Stream3D sync diag: scheduling multi start` |
-| FMOD delay 設定の成否 | `Stream3D sync diag: setDelay` |
-| FMOD unpause の成否 | `Stream3D sync diag: unpause` |
-| speaker 別 underrun の発生 | `Stream3D sync diag: speaker underrun` |
-| underrun 後の reader tail catch-up | `Stream3D sync diag: reader catch-up` |
-| catch-up frame 不足による silence 継続 | `Stream3D sync diag: silent reader short-skip` |
+| 処理落ち後に実際の zero-fill が出たか | `Multi dropout` |
 | malformed root tag | `[3dstream-stereo] parse error on root` |
 | malformed child tag | `[3dstream-stereo] parse error on child` |
 
-「処理落ち後にチャンネルごとのズレが発生するか」は、`speaker underrun` の後に `reader catch-up` が出ているかで確認できる。修正後は、underrun した speaker が古い PCM を後追い再生せず、catch-up または silence によって logical playback time を維持する。
+「処理落ち後にチャンネルごとのズレが固定化しないか」は、聴感と `Multi dropout` の発生タイミングを突き合わせて確認する。修正後は、underrun した speaker が古い PCM を後追い再生せず、catch-up または silence によって logical playback time を維持する。
 
 `[3dstream:{ch:SR}{volume::1}{range:30}]` については、`parse error on child` と `BadVolume` 系 notification が出て、該当 child が skip されることを確認する。
 
@@ -1280,11 +1266,10 @@ Suppressed exception while evaluating 3D Stream tag on <prim-id>: <what> desc="<
 ### 9.6 受け入れ確認手順
 
 1. 正常 tag で 3D Stream を enable し、FL / M など複数 channel が同時に鳴ることを確認する。
-2. Runtime log で `scheduling multi start`、`setDelay`、`unpause` が各 speaker に出ることを確認する。
-3. 軽い処理落ちを発生させ、`speaker underrun` 後に `reader catch-up` または `silent reader short-skip` が出ることを確認する。
-4. 処理落ち後も channel drift が固定化せず、3D Stream off/on なしで同期感が維持されることを確認する。
-5. 子プリムに `[3dstream:{ch:SR}{volume::1}{range:30}]` を設定し、クラッシュせず `parse error on child` と `BadVolume` 系通知になることを確認する。
-6. malformed child が skip されても、他の正常 child speaker が再生継続することを確認する。
+2. 軽い処理落ちを発生させ、`Multi dropout` が出た場合でも channel drift が固定化しないことを確認する。
+3. 処理落ち後も 3D Stream off/on なしで同期感が維持されることを確認する。
+4. 子プリムに `[3dstream:{ch:SR}{volume::1}{range:30}]` を設定し、クラッシュせず `parse error on child` と `BadVolume` 系通知になることを確認する。
+5. malformed child が skip されても、他の正常 child speaker が再生継続することを確認する。
 
 ### 9.7 残課題
 
