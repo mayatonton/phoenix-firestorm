@@ -189,6 +189,65 @@ URL Source 音切れ調査用の詳細診断ログは通常の実装では無効
 
 Channel sync 追加修正では、callback hot path の詳細診断ログは通常実装に残さない。処理落ち時の実害確認は、既存の `Multi dropout` 集計ログと聴感で行う。malformed tag については、既存の parse error ログとユーザー通知で確認する。
 
+Channel sync を再調査する場合だけ、一時的に以下の `Stream3D` 診断ログを戻す。
+
+- `Stream3D sync diag: scheduling multi start`
+  - `url`
+  - `speakers`
+  - `sample_rate`
+  - `parent_now`
+  - `lead`
+  - `start_at`
+  - `clock_ok`
+- `Stream3D sync diag: setDelay`
+  - `url`
+  - `speaker`
+  - `ch`
+  - `start_at`
+  - `result`
+- `Stream3D sync diag: unpause`
+  - `url`
+  - `speaker`
+  - `ch`
+  - `result`
+- `Stream3D sync diag: speaker underrun`
+  - `url`
+  - `speaker`
+  - `ch`
+  - `op`
+  - `source_ch`
+  - `phase`
+  - `requested`
+  - `got`
+  - `zero_fill`
+  - `catchup_frames`
+  - `avail_after`
+  - `underrun_index`
+- `Stream3D sync diag: reader catch-up`
+  - `url`
+  - `speaker`
+  - `ch`
+  - `op`
+  - `requested`
+  - `skipped`
+  - `avail_after`
+- `Stream3D sync diag: silent reader short-skip`
+  - `url`
+  - `speaker`
+  - `ch`
+  - `requested`
+  - `skipped`
+  - `missing`
+  - `catchup_frames`
+  - `avail_after`
+
+注意:
+
+- `speaker underrun` は audio callback hot path から出るため、常時有効化しない
+- `scheduling multi start` / `setDelay` / `unpause` は multi-speaker start の同時開始条件を確認する時だけ戻す
+- `reader catch-up` / `silent reader short-skip` は、処理落ち後の reader tail 補正が働いているかを確認する時だけ戻す
+- 通常PRでは、上記の詳細ログを出さず、`Multi dropout` と聴感で実害を確認する
+
 ### 0.8 本書の構成
 
 - `0`: 修正報告サマリ。提出・共有用の結論
