@@ -1,16 +1,18 @@
-# AYAstorm 3D Stream URL Source 音切れ対策 修正報告書
+# AYAstorm 3D Stream URL Source 音切れ / Channel Sync 修正報告書
 
 **作成日**: 2026-05-31
-**最終更新**: 2026-06-01
+**最終更新**: 2026-06-11
 **対象ブランチ**: `fix/ayastorm-r32-3dstream-url-buffer`
 **対象 app**: `build-darwin-universal/newview/Release/AYAstorm.app`
-**報告対象**: 3D Stream URL Source の Ogg Opus / Vorbis live stream 再生安定化
+**報告対象**: 3D Stream URL Source の Ogg Opus / Vorbis live stream 再生安定化、および multi-speaker channel sync 安定化
 **パッケージ化**: 未実施
 
 **修正対象コード**:
 - `indra/llaudio/llpositionalstreammulti.cpp`
 - `indra/llaudio/llpositionalstreammulti.h`
 - `indra/llaudio/fmod_codec_ogg.cpp`
+- `indra/newview/llpositionalstreammgr.cpp`
+- `indra/newview/llpositionalstreammgr.h`
 
 **調査対象コード**:
 - `indra/llaudio/llstreamingaudio_fmodstudio.cpp`
@@ -40,6 +42,7 @@
   - [6.18 MOAP / Dullahan / CEF 経由で同じ現象が出にくい理由](#618-moap--dullahan--cef-経由で同じ現象が出にくい理由)
 - [7. 受入条件](#7-受入条件)
 - [8. 判断ポイント](#8-判断ポイント)
+- [9. 2026-06-11 Channel Reader Tail 追加修正](#9-2026-06-11-channel-reader-tail-追加修正)
 
 ## 0. 修正報告サマリ
 
@@ -64,8 +67,10 @@ VBR/CVBR 無音で Ogg EOS page が見えていない `FMOD_ERR_FILE_EOF + 0 byt
 | NOTREADY 対策 | `FMOD_ERR_NOTREADY` は一時 starvation として扱い、ring 残量と underrun で reconnect 判断 |
 | バッファ対策 | URL Source PCM ring を `524288 frames`、target / startup prebuffer を `393216 frames` に拡張 |
 | ログ整理 | 調査用の詳細ログは本番コードから削除。再検証用ログ項目のみ本書に残す |
-| 検証結果 | arm64 Release build 成功。CBR 実ログではまだ `readData()` block と dropout が残る |
-| 残課題 | 根本対策は FMOD 同期 `readData()` 依存を外す Audio Streaming Core 化 |
+| Channel sync 対策 | speaker 別 underrun 後の reader tail catch-up を追加し、古い PCM の後追い再生を防止 |
+| malformed tag 対策 | `[3dstream:{ch:SR}{volume::1}{range:30}]` を parse error として扱い、child skip でクラッシュを防止 |
+| 検証結果 | arm64 Release build 成功。Mac 実機確認済み。CBR 実ログでは URL Source 側の `readData()` block と dropout が残る |
+| 残課題 | URL Source の根本対策は FMOD 同期 `readData()` 依存を外す Audio Streaming Core 化 |
 
 ### 0.3 現在の実装値
 
@@ -127,10 +132,12 @@ codesign --verify --deep --strict: valid
 - 配信側 CBR 化は引き続き有効な回避策。AYAstorm 側の修正は、VBR/低ビットレート無音で即 EOF 誤判定しないための耐性強化
 - CBR でも FMOD `readData()` が 3-4 秒級 block を周期的に起こす実ログがあるため、`524288 frames` ring / `393216 frames` target は短期対策であり最終解ではない
 - 2026-06-01T09:00-09:15Z の CBR 実ログでは最大 4.77 秒 block と dropout が残ったため、FMOD `readData()` 依存を外す将来設計の優先度は高い
+- FMOD `setDelay()` / `setPaused(false)` 失敗時に、multi-speaker start を中止または retry する hardening は未実装
+- linkset description の partial snapshot により、一時的に child channel が欠落するケースは別途 settle window の検討余地がある
 
 ### 0.8 再検証用ログメモ
 
-今回の詳細診断ログは通常ビルドから削除する。再度切り分けが必要になった場合だけ、一時的に以下を戻す。
+URL Source 音切れ調査用の詳細診断ログは通常ビルドから削除する。再度切り分けが必要になった場合だけ、一時的に以下を戻す。
 
 対象タグ:
 
@@ -199,12 +206,24 @@ codesign --verify --deep --strict: valid
 - `readData()` block と ring 枯渇の相関を見る場合は、`Multi pump stats` と `Multi source readData blocked` を同時に戻す
 - VBR/CVBR 無音由来の Ogg starvation を見る場合は、`FmodOgg` の starvation ログと `Stream3D` の `NOTREADY` / `buffered` を同時に戻す
 
+Channel sync 追加修正では、以下の診断ログを実装に残して runtime 状態を追えるようにした。
+
+- `Stream3D sync diag: scheduling multi start`
+- `Stream3D sync diag: setDelay`
+- `Stream3D sync diag: unpause`
+- `Stream3D sync diag: speaker underrun`
+- `Stream3D sync diag: reader catch-up`
+- `Stream3D sync diag: silent reader short-skip`
+- `[3dstream-stereo] parse error on root`
+- `[3dstream-stereo] parse error on child`
+
 ### 0.9 本書の構成
 
 - `0`: 修正報告サマリ。提出・共有用の結論
 - `1`-`4`: 調査開始時の問題定義、旧実装、原因仮説、修正方針
 - `5`-`6`: 実装計画、実測ログ、実装修正、負荷見積もり
 - `7`-`8`: 受入条件と判断ポイント
+- `9`: 2026-06-11 に追加した channel reader tail / malformed tag crash 対策
 
 以降は調査時系列を含む詳細資料として残す。
 
@@ -1231,3 +1250,113 @@ MediaRing source は `kMediaPrebufferFrames`, `kMediaTargetBufferedFrames`, `kMe
 4. ring 容量不足なのか、zero-byte policy が悪いのかを再検証用ログで分離できるか
 
 結論として、`read_bytes == 0` / `FMOD_ERR_NOTREADY` の扱いは ring 残量・underrun・FMOD state と結びつける必要がある。2026-06-01 の実測では通常音量時に EOF ではない 3-4 秒級の `readData()` block が発生しており、旧 URL Source ring `32768 frames` は明確に不足していた。現在は URL Source ring を `524288 frames` へ拡張し、定常 target を `393216 frames`、startup prebuffer も `393216 frames` とする。Ogg EOS 未検出の VBR starvation は NOTREADY として扱い、empty ring + underrun 後は `0.50 sec` で reconnect へ進める。
+
+## 9. 2026-06-11 Channel Reader Tail 追加修正
+
+### 9.1 追加事象
+
+Mac 実機確認で、URL Source の ring buffer 拡張とは別に、multi-speaker 再生時の channel sync 問題が確認された。
+
+報告された症状:
+
+- FL と M などを距離を離して配置すると、チャンネル間で聴こえ方がズレる。
+- 3D Stream を enable し直すとズレが直る。
+- enable 直後と、アバターまたはカメラを動かした後で聴こえ方が変わる。
+- 軽い処理落ちでもチャンネルごとのズレが発生する。
+- 子プリムに `[3dstream:{ch:SR}{volume::1}{range:30}]` と記述するとクラッシュする。
+
+`Stream3DEnabled` の off/on で直る点から、距離減衰や距離による音速遅延そのものではなく、3D Stream 内部の per-channel reader state または FMOD channel state がリセットされることで回復している可能性が高い。
+
+### 9.2 診断結果
+
+3D Stream の linkset multi-speaker 再生は、speaker ごとに別 HTTP stream を開く構造ではない。`LLPositionalStreamMulti` が 1 source stream を decode thread で読み、shared multi-tail ring に PCM を書き込み、各 speaker callback が同じ ring から speaker 別 reader tail で mono PCM を読む。
+
+処理落ちなどで特定 speaker の callback が必要 frame 数を ring から読めなかった場合、従来は不足分を zero-fill していた。ただし reader tail は実際に読めた分しか進まないため、不足分に相当する再生時間が logical tail に反映されない。その結果、次回 callback で古い PCM を読む余地が残り、その speaker だけが後追い再生になり得る。
+
+この状態は、3D Stream を enable し直して reader tail と FMOD channel を作り直すまで固定化される可能性がある。
+
+### 9.3 実装内容
+
+`LLPositionalStreamMulti` では、speaker 別 underrun 後の logical playback time を維持するため、`SpeakerCallback` に `catchup_frames` を追加した。
+
+実装内容:
+
+- speaker callback の underrun 時、zero-fill した不足 frame を logical playback time として記録する。
+- 次回 callback で `catchup_frames` 分を `mRing.skipFrames()` により消費し、古い PCM を後追い再生しない。
+- catch-up に必要な ring frame が不足している場合は、さらに silence を返して catch-up を継続する。
+- upmix speaker についても、catch-up / underrun 時に silence で state を進める。
+- FMOD `getDSPClock()`、`setDelay()`、`setPaused()` の診断ログを追加し、multi-speaker start scheduling を追えるようにした。
+
+`LLPositionalStreamMgr` では、malformed tag によるクラッシュ防止を追加した。
+
+実装内容:
+
+- `tryParseFloat()` を、部分 parse 許容から full parse 必須へ変更。
+- `distParseErrorToNotifyKind()` を追加し、parse error と notification kind の対応を共通化。
+- `evaluateBinding()` で parse error を明示的に notification kind へ変換。
+- `evaluateLinkset()` で root parse error と child parse error を分けて処理。
+- malformed child tag は該当 child のみ skip し、クラッシュ経路に入らないようにした。
+
+### 9.4 ログで確認できること
+
+追加診断ログにより、以下を runtime log から確認できる。
+
+| 確認したい内容 | 見るログ |
+|---|---|
+| multi-speaker の同時 start scheduling | `Stream3D sync diag: scheduling multi start` |
+| FMOD delay 設定の成否 | `Stream3D sync diag: setDelay` |
+| FMOD unpause の成否 | `Stream3D sync diag: unpause` |
+| speaker 別 underrun の発生 | `Stream3D sync diag: speaker underrun` |
+| underrun 後の reader tail catch-up | `Stream3D sync diag: reader catch-up` |
+| catch-up frame 不足による silence 継続 | `Stream3D sync diag: silent reader short-skip` |
+| malformed root tag | `[3dstream-stereo] parse error on root` |
+| malformed child tag | `[3dstream-stereo] parse error on child` |
+
+「処理落ち後にチャンネルごとのズレが発生するか」は、`speaker underrun` の後に `reader catch-up` が出ているかで確認できる。修正後は、underrun した speaker が古い PCM を後追い再生せず、catch-up または silence によって logical playback time を維持する。
+
+`[3dstream:{ch:SR}{volume::1}{range:30}]` については、`parse error on child` と `BadVolume` 系 notification が出て、該当 child が skip されることを確認する。
+
+### 9.5 検証結果
+
+arm64 app の差分ビルドは成功した。
+
+実行した build:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project build-darwin-universal/SecondLife.xcodeproj build -configuration Release -target ayastorm-bin -parallelizeTargets -jobs 8 -hideShellScriptEnvironment ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+```
+
+生成物:
+
+```text
+/Users/takayukinoami/Desktop/WorkNOW/Firestorm_Develop/phoenix-firestorm-mayatonton/build-darwin-universal/newview/Release/AYAstorm.app
+```
+
+確認結果:
+
+```text
+build-darwin-universal/newview/Release/AYAstorm.app/Contents/MacOS/AYAstorm: Mach-O 64-bit executable arm64
+```
+
+Mac 実機確認済み。universal / x86_64 build は、`libopus.dylib` が arm64-only のため link できず未完了である。これは今回修正とは別件の build environment / dependency 問題として扱う。
+
+### 9.6 受け入れ確認手順
+
+1. 正常 tag で 3D Stream を enable し、FL / M など複数 channel が同時に鳴ることを確認する。
+2. Runtime log で `scheduling multi start`、`setDelay`、`unpause` が各 speaker に出ることを確認する。
+3. 軽い処理落ちを発生させ、`speaker underrun` 後に `reader catch-up` または `silent reader short-skip` が出ることを確認する。
+4. 処理落ち後も channel drift が固定化せず、3D Stream off/on なしで同期感が維持されることを確認する。
+5. 子プリムに `[3dstream:{ch:SR}{volume::1}{range:30}]` を設定し、クラッシュせず `parse error on child` と `BadVolume` 系通知になることを確認する。
+6. malformed child が skip されても、他の正常 child speaker が再生継続することを確認する。
+
+### 9.7 残課題
+
+- FMOD `setDelay()` / `setPaused(false)` 失敗時に、start を中止するか retry する hardening。
+- linkset description の partial snapshot により一時的に child channel が欠落するケースの settle window 検討。
+- URL Source 音切れの根本対策として、FMOD 同期 `readData()` 依存を外す Audio Streaming Core 化。
+
+### 9.8 結論
+
+2026-06-11 の追加修正は、3D Stream multi-speaker の処理落ち後に channel reader tail がズレる問題と、malformed `volume::1` 指定によるクラッシュ経路の両方を対象にしている。
+
+この章をもって、`fix/ayastorm-r32-3dstream-channel-reader-tail` 側で作成した修正報告書の内容は、本 URL buffer 報告書へ統合済みとする。
