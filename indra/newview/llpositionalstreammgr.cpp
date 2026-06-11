@@ -239,7 +239,7 @@ namespace
         {
             size_t consumed = 0;
             F32 val = std::stof(s, &consumed);
-            if (consumed != s.size())
+            if (consumed != s.size() || !std::isfinite(val))
             {
                 return false;
             }
@@ -872,7 +872,34 @@ void LLPositionalStreamMgr::onObjectPropertiesReceived(const LLUUID& id,
                               << " desc=\"" << description << "\"" << LL_ENDL;
     }
 
-    evaluateBinding(id);
+    safeEvaluateBinding(id);
+}
+
+void LLPositionalStreamMgr::safeEvaluateBinding(const LLUUID& id)
+{
+    try
+    {
+        evaluateBinding(id);
+    }
+    catch (const std::exception& e)
+    {
+        auto desc_it = mDescriptionCache.find(id);
+        const std::string desc = desc_it != mDescriptionCache.end()
+            ? desc_it->second.description
+            : std::string();
+        LL_WARNS("Stream3D") << "Suppressed exception while evaluating 3D Stream tag on "
+                              << id << ": " << e.what()
+                              << " desc=\"" << desc << "\"" << LL_ENDL;
+    }
+    catch (...)
+    {
+        auto desc_it = mDescriptionCache.find(id);
+        const std::string desc = desc_it != mDescriptionCache.end()
+            ? desc_it->second.description
+            : std::string();
+        LL_WARNS("Stream3D") << "Suppressed unknown exception while evaluating 3D Stream tag on "
+                              << id << " desc=\"" << desc << "\"" << LL_ENDL;
+    }
 }
 
 void LLPositionalStreamMgr::notifyDistributedError(const LLUUID& prim_id,
@@ -1132,7 +1159,7 @@ void LLPositionalStreamMgr::onStream3DUrlPermissionResult(const std::string& url
     mSessionAllowedStream3DUrls.insert(clean_url);
     for (const LLUUID& id : mono_ids)
     {
-        evaluateBinding(id);
+        safeEvaluateBinding(id);
     }
     for (const LLUUID& root_id : dist_roots)
     {
@@ -3251,7 +3278,7 @@ void LLPositionalStreamMgr::forceRescan()
         if (!kv.second.description.empty())
         {
             ++rebind_candidates;
-            evaluateBinding(kv.first);
+            safeEvaluateBinding(kv.first);
         }
         kv.second.last_polled = 0.0;
         // r8 F8: also reset the priority retry counter so prims that the sim
@@ -3389,6 +3416,33 @@ bool LLPositionalStreamMgr::isAnyStreamPlaying() const
     for (const auto& [root_id, binding] : mDistributedBindings)
     {
         if (binding.stream && binding.stream->isPlaying())
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool LLPositionalStreamMgr::isAnyStreamStarting() const
+{
+    if (mDebugStream && mDebugStream->isStarting())
+    {
+        return true;
+    }
+    if (mDebugStereoStream && mDebugStereoStream->isStarting())
+    {
+        return true;
+    }
+    for (const auto& [id, binding] : mBindings)
+    {
+        if (binding.stream && binding.stream->isStarting())
+        {
+            return true;
+        }
+    }
+    for (const auto& [root_id, binding] : mDistributedBindings)
+    {
+        if (binding.stream && binding.stream->isStarting())
         {
             return true;
         }

@@ -108,6 +108,7 @@ public:
     void startDebug(const std::string& url, const LLVector3& world_pos);
     void stopDebug();
     bool isAnyStreamPlaying() const;
+    bool isAnyStreamStarting() const;
 
     // Stereo debug stream (driven by Stream3DDebugStereoPlay, M5-a spike).
     // Pulls PCM from a source HTTP stream and feeds two OPENUSER 3D mono
@@ -602,6 +603,7 @@ private:
     void notifyDistributedError(const LLUUID& prim_id, DistErrorKind kind,
                                 const std::string& detail);
 
+    void safeEvaluateBinding(const LLUUID& id);
     void evaluateBinding(const LLUUID& id);
     void evaluateMonoBinding(const LLUUID& id, const TagData& tag);
 

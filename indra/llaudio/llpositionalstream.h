@@ -57,6 +57,7 @@ public:
 
     bool isOpen() const { return mSound != nullptr; }
     bool isPlaying() const { return mChannel != nullptr; }
+    bool isStarting() const { return mState == State::Opening; }
     // True after FMOD reports an unrecoverable error during open OR mid-stream
     // drop. The stream releases its FMOD handles but keeps mUrl so the manager
     // can drive reconnect.

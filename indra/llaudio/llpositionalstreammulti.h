@@ -180,6 +180,11 @@ public:
 
     bool isOpen() const { return mSourceSound != nullptr; }
     bool isPlaying() const;
+    bool isStarting() const
+    {
+        const State st = mState.load(std::memory_order_acquire);
+        return st == State::Resolving || st == State::Opening || st == State::Buffering;
+    }
     bool isFailed() const { return mState.load(std::memory_order_acquire) == State::Failed; }
 
     // r9 P6: distinguish "retryable failure" (network) from "fatal format

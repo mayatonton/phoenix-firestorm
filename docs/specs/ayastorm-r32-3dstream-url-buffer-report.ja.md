@@ -1,11 +1,9 @@
 # AYAstorm 3D Stream URL Source 音切れ / Channel Sync 修正報告書
 
 **作成日**: 2026-05-31
-**最終更新**: 2026-06-11
+**最終更新**: 2026-06-12
 **対象ブランチ**: `fix/ayastorm-r32-3dstream-url-buffer`
-**対象 app**: `build-darwin-universal/newview/Release/AYAstorm.app`
 **報告対象**: 3D Stream URL Source の Ogg Opus / Vorbis live stream 再生安定化、および multi-speaker channel sync 安定化
-**パッケージ化**: 未実施
 
 **修正対象コード**:
 - `indra/llaudio/llpositionalstreammulti.cpp`
@@ -13,6 +11,7 @@
 - `indra/llaudio/fmod_codec_ogg.cpp`
 - `indra/newview/llpositionalstreammgr.cpp`
 - `indra/newview/llpositionalstreammgr.h`
+- `indra/newview/llocclusiongeometrymgr.cpp`
 
 **調査対象コード**:
 - `indra/llaudio/llstreamingaudio_fmodstudio.cpp`
@@ -23,7 +22,7 @@
   - [0.1 結論](#01-結論)
   - [0.2 修正概要](#02-修正概要)
   - [0.3 現在の実装値](#03-現在の実装値)
-  - [0.8 再検証用ログメモ](#08-再検証用ログメモ)
+  - [0.7 再検証用ログメモ](#07-再検証用ログメモ)
 - [1. 問題定義](#1-問題定義)
 - [2. 調査開始時のバッファ構造](#2-調査開始時のバッファ構造)
   - [2.1 3D Stream URL Source](#21-3d-stream-url-source)
@@ -68,8 +67,8 @@ VBR/CVBR 無音で Ogg EOS page が見えていない `FMOD_ERR_FILE_EOF + 0 byt
 | バッファ対策 | URL Source PCM ring を `524288 frames`、target / startup prebuffer を `393216 frames` に拡張 |
 | ログ整理 | 調査用の詳細ログは本番コードから削除。再検証用ログ項目のみ本書に残す |
 | Channel sync 対策 | speaker 別 underrun 後の reader tail catch-up を追加し、古い PCM の後追い再生を防止 |
-| malformed tag 対策 | `[3dstream:{ch:SR}{volume::1}{range:30}]` を parse error として扱い、child skip でクラッシュを防止 |
-| 検証結果 | arm64 Release build 成功。Mac 実機確認済み。CBR 実ログでは URL Source 側の `readData()` block と dropout が残る |
+| malformed tag 対策 | `[3dstream:{ch:SR}{volume::1}{range:30}]` を parse error として扱い、child skip と外側例外境界でクラッシュを防止 |
+| 検証結果 | 2026-06-12 Mac 実機確認済み。CBR 実ログでは URL Source 側の `readData()` block と dropout が残る |
 | 残課題 | URL Source の根本対策は FMOD 同期 `readData()` 依存を外す Audio Streaming Core 化 |
 
 ### 0.3 現在の実装値
@@ -97,35 +96,17 @@ CBR 前提では `393216 frames` で再生開始し、定常時も `393216 frame
 - CBR 前提の定常 target buffer として `393216` frames を追加
 - startup prebuffer を `393216` frames に設定
 - FMOD raw stream buffer を URL Source open 前に `163840 bytes` へ設定
-- 調査中に追加した詳細診断ログは本番コードから削除済み。再検証時に戻すログタグと項目は `0.8` に残す
+- 調査中に追加した詳細診断ログは本番コードから削除済み。再検証時に戻すログタグと項目は `0.7` に残す
 
 ### 0.5 実機ログで確認済みのこと
 
-- 新ビルドでは `ring cap 524288 frames x 6 tracks` として起動する
+- 修正後の実機ログでは `ring cap 524288 frames x 6 tracks` として起動する
 - 4 秒前後の pump 停滞で ring が残るケースもあるが、CBR 実ログでは ring が 0.17-1.8 秒程度まで落ち、dropout も発生した
 - 18:02:07Z に `Ogg feed starved ... bytes=0 eos=0` が発生し、Ogg EOS 未検出の starvation として扱えた
 - 旧 `NOTREADY` 猶予 10 秒では、ring が空になった後も数秒 zero-fill が残った
 - そのため `kNotReadyEmptyRingGraceSec` は `0.50 sec` へ短縮済み
 
-### 0.6 ビルド状態
-
-2026-06-01 に arm64 専用 app を差分ビルド済み。
-
-```text
-build-darwin-universal/newview/Release/AYAstorm.app
-```
-
-確認結果:
-
-```text
-** BUILD SUCCEEDED **
-lipo: arm64 non-fat
-codesign --verify --deep --strict: valid
-```
-
-パッケージ化はしていない。
-
-### 0.7 残リスク
+### 0.6 残リスク
 
 - 配信側が長時間 compressed bytes を完全に止める場合、AYAstorm 側だけで無音 PCM を復元することはできない
 - その場合は reconnect で復帰させるか、受信側で HTTP/Ogg demux を自前化して PCM silence を補完する必要がある
@@ -135,9 +116,9 @@ codesign --verify --deep --strict: valid
 - FMOD `setDelay()` / `setPaused(false)` 失敗時に、multi-speaker start を中止または retry する hardening は未実装
 - linkset description の partial snapshot により、一時的に child channel が欠落するケースは別途 settle window の検討余地がある
 
-### 0.8 再検証用ログメモ
+### 0.7 再検証用ログメモ
 
-URL Source 音切れ調査用の詳細診断ログは通常ビルドから削除する。再度切り分けが必要になった場合だけ、一時的に以下を戻す。
+URL Source 音切れ調査用の詳細診断ログは通常の実装では無効化する。再度切り分けが必要になった場合だけ、一時的に以下を戻す。
 
 対象タグ:
 
@@ -202,7 +183,7 @@ URL Source 音切れ調査用の詳細診断ログは通常ビルドから削除
 
 注意:
 
-- これらは検証用であり、通常ビルドへ常時入れない
+- これらは検証用であり、通常時に常時有効化しない
 - `readData()` block と ring 枯渇の相関を見る場合は、`Multi pump stats` と `Multi source readData blocked` を同時に戻す
 - VBR/CVBR 無音由来の Ogg starvation を見る場合は、`FmodOgg` の starvation ログと `Stream3D` の `NOTREADY` / `buffered` を同時に戻す
 
@@ -217,7 +198,7 @@ Channel sync 追加修正では、以下の診断ログを実装に残して run
 - `[3dstream-stereo] parse error on root`
 - `[3dstream-stereo] parse error on child`
 
-### 0.9 本書の構成
+### 0.8 本書の構成
 
 - `0`: 修正報告サマリ。提出・共有用の結論
 - `1`-`4`: 調査開始時の問題定義、旧実装、原因仮説、修正方針
@@ -584,53 +565,13 @@ VBR 無音テストで見るべき結果:
 - 異常: `buffered` が `0.20 sec` 以下へ落ち、`underrun_callbacks_delta` が増え、NOTREADY が 0.50 秒以上続く
 - 異常: `eos=1` の後の EOF zero は実終端として扱われる
 
-### 6.6 Build verification
+### 6.6 実機確認メモ
 
-2026-06-01 に arm64 専用 app としてビルド済み。
-
-生成物:
-
-```text
-build-darwin-universal/newview/Release/AYAstorm.app
-```
-
-ビルドコマンド:
-
-```text
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
-  -project build-darwin-universal/Firestorm.xcodeproj \
-  -scheme ayastorm-bin \
-  -configuration Release \
-  -derivedDataPath build-darwin-universal/DerivedData \
-  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
-```
-
-結果:
-
-```text
-** BUILD SUCCEEDED **
-```
-
-確認:
-
-```text
-lipo -info build-darwin-universal/newview/Release/AYAstorm.app/Contents/MacOS/AYAstorm
-=> Non-fat file: ... is architecture: arm64
-
-codesign --verify --deep --strict --verbose=2 build-darwin-universal/newview/Release/AYAstorm.app
-=> valid on disk
-=> satisfies its Designated Requirement
-```
-
-注意:
-
-- パッケージ化はしていない
-- 署名は ad-hoc 署名
-- 実機確認では、VBR 無音区間で `Ogg feed starved`, `Multi source not ready`, `Multi pump stats` を中心に見る
+実機確認では、VBR 無音区間で `Ogg feed starved`, `Multi source not ready`, `Multi pump stats` を中心に見る。
 
 ### 6.7 2026-06-01 runtime log follow-up
 
-修正ビルド実行後、18:02:07Z に VBR/無音系の starvation を確認した。
+修正後の実機ログでは、18:02:07Z に VBR/無音系の starvation を確認した。
 
 代表ログ:
 
@@ -699,7 +640,7 @@ Multi source readData blocked for <sec>s
 
 ### 6.9 2026-06-01 CBR test: startup wait and readData block
 
-計測入りビルドで CBR 配信を追跡した結果:
+計測ログで CBR 配信を追跡した結果:
 
 ```text
 18:35:26 openSourceStream
@@ -769,7 +710,7 @@ CBR 前提版で `kFmodStreamBufferBytes=163840`, `kTargetBufferedFrames=65536` 
 
 ### 6.11 2026-06-01 CBR retune verification
 
-`kFmodStreamBufferBytes=163840`, `kTargetBufferedFrames=131072`, `kRingFrames=262144` の arm64 build を起動して CBR 配信を追跡した。
+`kFmodStreamBufferBytes=163840`, `kTargetBufferedFrames=131072`, `kRingFrames=262144` の設定で CBR 配信を追跡した。
 
 Startup:
 
@@ -841,7 +782,7 @@ Startup:
 
 ### 6.12 2026-06-01 CBR retune verification at 196608 frames
 
-`kTargetBufferedFrames=196608`, `kRingFrames=262144` の arm64 build を起動して CBR 配信を追跡した。
+`kTargetBufferedFrames=196608`, `kRingFrames=262144` の設定で CBR 配信を追跡した。
 
 Startup:
 
@@ -891,7 +832,7 @@ ready まで約 4 秒で、startup は維持できている。
 
 ### 6.13 2026-06-01 CBR retune verification at 262144 frames
 
-`kTargetBufferedFrames=262144`, `kRingFrames=262144` の arm64 build を起動して CBR 配信を追跡した。
+`kTargetBufferedFrames=262144`, `kRingFrames=262144` の設定で CBR 配信を追跡した。
 
 Startup:
 
@@ -1292,10 +1233,20 @@ Mac 実機確認で、URL Source の ring buffer 拡張とは別に、multi-spea
 実装内容:
 
 - `tryParseFloat()` を、部分 parse 許容から full parse 必須へ変更。
+- `tryParseFloat()` で `nan` / `inf` / `-inf` を受理しないよう `std::isfinite()` を追加。
 - `distParseErrorToNotifyKind()` を追加し、parse error と notification kind の対応を共通化。
 - `evaluateBinding()` で parse error を明示的に notification kind へ変換。
 - `evaluateLinkset()` で root parse error と child parse error を分けて処理。
 - malformed child tag は該当 child のみ skip し、クラッシュ経路に入らないようにした。
+- `safeEvaluateBinding()` を追加し、ObjectProperties 受信時、URL許可後、強制再スキャン時の `evaluateBinding()` を外側で `try/catch` する。
+- 未捕捉の `std::exception` または未知例外が発生しても viewer を abort させず、`Stream3D` warning log に prim id、例外内容、Description を残す。
+
+`LLOcclusionGeometryMgr` では、同じ tag-family の数値 parser を合わせて hardening した。
+
+実装内容:
+
+- occlusion tag の `tryParseFloat()` も full parse 必須に変更。
+- `nan` / `inf` / `-inf` を occlusion gain として受理しない。
 
 ### 9.4 ログで確認できること
 
@@ -1316,29 +1267,15 @@ Mac 実機確認で、URL Source の ring buffer 拡張とは別に、multi-spea
 
 `[3dstream:{ch:SR}{volume::1}{range:30}]` については、`parse error on child` と `BadVolume` 系 notification が出て、該当 child が skip されることを確認する。
 
+未捕捉例外が残っていた場合は、viewer crash ではなく以下の warning で検出する。
+
+```text
+Suppressed exception while evaluating 3D Stream tag on <prim-id>: <what> desc="<Description>"
+```
+
 ### 9.5 検証結果
 
-arm64 app の差分ビルドは成功した。
-
-実行した build:
-
-```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project build-darwin-universal/SecondLife.xcodeproj build -configuration Release -target ayastorm-bin -parallelizeTargets -jobs 8 -hideShellScriptEnvironment ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
-```
-
-生成物:
-
-```text
-/Users/takayukinoami/Desktop/WorkNOW/Firestorm_Develop/phoenix-firestorm-mayatonton/build-darwin-universal/newview/Release/AYAstorm.app
-```
-
-確認結果:
-
-```text
-build-darwin-universal/newview/Release/AYAstorm.app/Contents/MacOS/AYAstorm: Mach-O 64-bit executable arm64
-```
-
-Mac 実機確認済み。universal / x86_64 build は、`libopus.dylib` が arm64-only のため link できず未完了である。これは今回修正とは別件の build environment / dependency 問題として扱う。
+2026-06-12 に Mac 実機確認まで完了した。malformed tag 追加 hardening 後、`{volume::1.0}` 系の誤記が viewer crash にならないことを確認済みとする。
 
 ### 9.6 受け入れ確認手順
 
@@ -1355,7 +1292,46 @@ Mac 実機確認済み。universal / x86_64 build は、`libopus.dylib` が arm6
 - linkset description の partial snapshot により一時的に child channel が欠落するケースの settle window 検討。
 - URL Source 音切れの根本対策として、FMOD 同期 `readData()` 依存を外す Audio Streaming Core 化。
 
-### 9.8 結論
+### 9.8 2026-06-11 malformed tag crash 追加調査
+
+クラッシュレポートと macOS unified log の突き合わせにより、クラッシュの直接原因は以下で確定した。
+
+```text
+terminating due to uncaught exception of type std::invalid_argument: stof: no conversion
+```
+
+クラッシュ直前の runtime log には、対象 child prim の Description として以下が残っていた。
+
+```text
+[3dstream:{ch:FL}{range:15}{volume::1.0}]
+```
+
+3D Stream tag parser は `{key:value}` の最初の `:` で key/value を分割するため、`{volume::1.0}` は `key="volume"`, `value=":1.0"` として扱われる。この値に対する `std::stof(":1.0")` が `std::invalid_argument` を投げる。
+
+現在のソースでは `tryParseFloat()` が `std::exception` を捕捉するため、この値は `BadVolume` parse error になるはずである。ただしクラッシュ実機では例外が AppKit の `-[NSApplication run]` まで到達して abort していたため、以下のどちらかが成立していたと判断する。
+
+1. 実行中 app が current source の `tryParseFloat()` guard を含んでいなかった。
+2. 同じ Description を処理する別経路に未捕捉の `std::stof` が残っていた。
+
+今回の追加修正では、局所 parser guard だけに依存せず、`evaluateBinding()` の外側に例外境界を追加した。これにより、将来 `std::stoi` / `std::stof` / その他の標準例外を投げる経路が紛れ込んでも、ObjectProperties message handler から viewer 全体へ例外が漏れない。
+
+`{volume::1.0}` の期待動作:
+
+```text
+reply: <prim-id> desc="[3dstream:{ch:FL}{range:15}{volume::1.0}]"
+[3dstream-stereo] parse error on <prim-id> (kind=BadVolume, value=':1.0')
+タグ書式エラー: volume は 0.0〜1.0 の範囲で指定してください (got ':1.0')
+```
+
+未捕捉例外が残っていた場合の期待動作:
+
+```text
+Suppressed exception while evaluating 3D Stream tag on <prim-id>: stof: no conversion desc="..."
+```
+
+どちらの場合も viewer はクラッシュしない。
+
+### 9.9 結論
 
 2026-06-11 の追加修正は、3D Stream multi-speaker の処理落ち後に channel reader tail がズレる問題と、malformed `volume::1` 指定によるクラッシュ経路の両方を対象にしている。
 

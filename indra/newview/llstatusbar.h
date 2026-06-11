@@ -353,6 +353,8 @@ private:
     S32             mSquareMetersCredit;
     S32             mSquareMetersCommitted;
     bool            mAudioStreamEnabled;
+    bool            m3DStreamSpinnerActive;
+    S32             m3DStreamSpinnerFrame;
     bool            mShowParcelIcons;
     LLPanelPresetsCameraPulldown* mPanelPresetsCameraPulldown;
     LLPanelPresetsPulldown* mPanelPresetsPulldown;

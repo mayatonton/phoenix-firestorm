@@ -88,6 +88,11 @@ public:
 
     bool isOpen() const { return mSourceSound != nullptr; }
     bool isPlaying() const { return mChannelL != nullptr || mChannelR != nullptr; }
+    bool isStarting() const
+    {
+        const State st = mState.load(std::memory_order_acquire);
+        return st == State::Opening || st == State::Buffering;
+    }
     // True after FMOD reports an unrecoverable error during open or playback.
     // The manager uses this to drive auto-reconnect (M7).
     // r7 M2: mState is atomic now since the decode thread may flip to Failed
