@@ -73,25 +73,6 @@ namespace
         return p;
     }
 
-    const char* stream3DChannelName(LLPositionalStreamMulti::Channel ch)
-    {
-        using Ch = LLPositionalStreamMulti::Channel;
-        switch (ch)
-        {
-        case Ch::L:   return "L";
-        case Ch::R:   return "R";
-        case Ch::M:   return "M";
-        case Ch::FL:  return "FL";
-        case Ch::FR:  return "FR";
-        case Ch::C:   return "C";
-        case Ch::LFE: return "LFE";
-        case Ch::SL:  return "SL";
-        case Ch::SR:  return "SR";
-        case Ch::BL:  return "BL";
-        case Ch::BR:  return "BR";
-        }
-        return "?";
-    }
 }
 
 // ---------------------------------------------------------------------------
