@@ -55,7 +55,11 @@
 #define TERRAIN_PAINT_TYPE_PBR_PAINTMAP 1
 
 #if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+#ifdef LL_VULKAN_GLSL
+layout(location = 2) in vec3 vary_vertex_normal;
+#else
 in vec3 vary_vertex_normal;
+#endif
 #endif
 
 vec3 srgb_to_linear(vec3 c);
@@ -80,6 +84,8 @@ vec3 srgb_to_linear(vec3 c);
 #define MIX_Z    1 << 5
 #define MIX_W    1 << 6
 
+#ifndef PBR_MIX_DEFINED
+#define PBR_MIX_DEFINED 1
 struct PBRMix
 {
     vec4 col;       // RGB color with alpha, linear space
@@ -95,6 +101,7 @@ struct PBRMix
     vec3 emissive;  // RGB emissive color, linear space
 #endif
 };
+#endif
 
 PBRMix init_pbr_mix()
 {
@@ -176,11 +183,14 @@ struct TerrainTriplanar
     int type;
 };
 
+#ifndef TERRAIN_MIX_DEFINED
+#define TERRAIN_MIX_DEFINED 1
 struct TerrainMix
 {
     vec4 weight;
     int type;
 };
+#endif
 
 #define TerrainMixSample vec4[4]
 #define TerrainMixSample3 vec3[4]

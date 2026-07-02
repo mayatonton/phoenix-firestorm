@@ -29,9 +29,78 @@
 
 #include "llgl.h"
 #include "llrender.h"
+#include "llvkloader.h"  // LLVKLoader::FRAMES_IN_FLIGHT 取得
 #include "llstaticstringtable.h"
 #include <boost/json.hpp>
+#include <array>         // std::array<S32, MAX_VK_BINDING> mVkBindingToEnum
+#include <cstring>
 #include <unordered_map>
+
+struct VkPipelineStateKey
+{
+    U32 color_formats[4];
+    U8  color_count;
+    U8  depth_present;
+    U8  is_swapchain_path;
+    U8  mode;
+
+    U8  cull_mode;
+
+    U8  polygon_mode;
+
+    U8  depth_clamp_enabled;
+
+    U32 line_width_bits;
+
+    U8  depth_bias_enabled;
+    U32 depth_bias_constant_bits;
+    U32 depth_bias_slope_bits;
+
+    U8  color_write_mask;
+
+    U8  depth_test_enabled;
+    U8  depth_write_enabled;
+    U8  depth_compare_op;
+
+    U8  blend_enabled;
+    U8  blend_color_src;
+    U8  blend_color_dst;
+    U8  blend_alpha_src;
+    U8  blend_alpha_dst;
+
+    U8  stencil_test_enabled;
+    U8  stencil_front_compare_op;
+    U8  stencil_front_fail_op;
+    U8  stencil_front_pass_op;
+    U8  stencil_front_depth_fail_op;
+    U8  stencil_back_compare_op;
+    U8  stencil_back_fail_op;
+    U8  stencil_back_pass_op;
+    U8  stencil_back_depth_fail_op;
+    U32 stencil_compare_mask;
+    U32 stencil_write_mask;
+    U32 stencil_reference;
+
+    bool operator==(const VkPipelineStateKey& other) const
+    {
+        return std::memcmp(this, &other, sizeof(*this)) == 0;
+    }
+};
+
+struct VkPipelineStateKeyHash
+{
+    size_t operator()(const VkPipelineStateKey& k) const noexcept
+    {
+        const unsigned char* data = reinterpret_cast<const unsigned char*>(&k);
+        U64 hash = 14695981039346656037ULL; // FNV offset basis
+        for (size_t i = 0; i < sizeof(k); ++i)
+        {
+            hash ^= data[i];
+            hash *= 1099511628211ULL;       // FNV prime
+        }
+        return static_cast<size_t>(hash);
+    }
+};
 
 class LLShaderFeatures
 {
@@ -57,13 +126,13 @@ public:
     bool hasAlphaMask = false;
     bool hasReflectionProbes = false;
     bool attachNothing = false;
-    bool hasHeroProbes = false;
     bool isPBRTerrain = false;
     bool hasTonemap = false;
     // <AYAstorm r30 P2> Gates velocityFuncV.glsl auto-attach in
     // attachShaderFeatures() so velocity-shader variants can compile.
     bool hasMotionBlur = false;
     // </AYAstorm r30 P2>
+    bool usesSMAABlendWeights = false;
 };
 
 // ============= Structure for caching shader uniforms ===============
@@ -152,14 +221,16 @@ public:
         SG_COUNT
     } eGroup;
 
+    // <AYAstorm> UniformBlock 名は GLSL block 名 (Asset_/Skin_ prefix) に追従、enum 値自体は不変。
     enum UniformBlock : GLuint
     {
         UB_REFLECTION_PROBES,   // "ReflectionProbes"
-        UB_GLTF_JOINTS,         // "GLTFJoints"
-        UB_GLTF_NODES,          // "GLTFNodes"
-        UB_GLTF_MATERIALS,      // "GLTFMaterials"
+        UB_GLTF_JOINTS,         // "Skin_GLTFJoints"
+        UB_GLTF_NODES,          // "Asset_GLTFNodes"
+        UB_GLTF_MATERIALS,      // "Asset_GLTFMaterials"
         NUM_UNIFORM_BLOCKS
     };
+    // </AYAstorm>
 
 
     static std::set<LLGLSLShader*> sInstances;
@@ -168,6 +239,13 @@ public:
 
     LLGLSLShader();
     ~LLGLSLShader();
+
+    struct StageSource
+    {
+        GLenum type;                        // GL_VERTEX_SHADER / GL_FRAGMENT_SHADER
+        std::string file_name;              // open_file_name (gpu_class 解決後)
+        std::vector<std::string> sources;   // loadShaderFile() preprocessing 後 shader_code_text[] copy
+    };
 
     static GLuint sCurBoundShader;
     static LLGLSLShader* sCurBoundShaderPtr;
@@ -237,9 +315,7 @@ public:
     void uniformMatrix4fv(const LLStaticHashedString& uniform, U32 count, GLboolean transpose, const GLfloat* v);
 
     void setMinimumAlpha(F32 minimum);
-
-    void vertexAttrib4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
-    void vertexAttrib4fv(U32 index, GLfloat* v);
+    void pushGaussianFragPC(F32 resScale, F32 dirX, F32 dirY);
 
     //GLint getUniformLocation(const std::string& uniform);
     GLint getUniformLocation(const LLStaticHashedString& uniform);
@@ -366,11 +442,83 @@ public:
     // hacky flag used for optimization in LLDrawPoolAlpha
     bool mCanBindFast = false;
 
+    bool mIsScreenSpaceCopyPass = false;
+
+    std::vector<StageSource> mStageSources;
+
+    std::vector<std::string> mVulkanAttachedVertexUtilities;
+    std::vector<std::string> mVulkanAttachedFragmentUtilities;
+
+    std::unordered_map<VkPipelineStateKey, VkPipeline, VkPipelineStateKeyHash>  mVkPipelineCache;
+
+    std::map<std::string, VkShaderModule>  mVkVertexShaderModulesPerProgram;
+    std::map<std::string, VkShaderModule>  mVkFragmentShaderModulesPerProgram;
+    VkPipelineLayout           mVkPipelineLayout      = VK_NULL_HANDLE;
+    VkDescriptorSetLayout      mVkDescriptorSetLayout = VK_NULL_HANDLE;
+
+    bool                       mVkVertexPushConstantOver64 = false;
+    bool                       mVkHasFragmentPushConstant  = false;
+
+    static constexpr U32 MAX_VK_BINDING = 128;
+    std::array<S32, MAX_VK_BINDING> mVkBindingToEnum = {};
+
+    std::array<S32, MAX_VK_BINDING> mVkBindingToEnumCanonical = {};
+
+    std::array<S32, MAX_VK_BINDING> mVkBindingToChannel = {};
+
+    enum VkBindingDeclType : U8 { VKBD_NONE = 0, VKBD_SAMPLER = 1, VKBD_UBO = 2, VKBD_BOTH = 3 };
+    std::array<U8, MAX_VK_BINDING> mVkBindingDeclaredType = {};
+
+    static constexpr U8 VKBS_VERTEX = 0x1, VKBS_FRAGMENT = 0x2;
+    std::array<U8, MAX_VK_BINDING> mVkBindingStageMask = {};
+
+    enum VkBindingSamplerDim : U8 { VKSD_2D = 0, VKSD_CUBE = 1, VKSD_CUBE_ARRAY = 2, VKSD_3D = 3 };
+    std::array<U8, MAX_VK_BINDING> mVkBindingSamplerDim = {};
+
+    U32 mVkPerProgramUBOBinding = 0;
+
+    typedef bool (*SharedUBOAccessor)(VkBuffer& out_buffer, void*& out_mapped);
+    std::array<SharedUBOAccessor, MAX_VK_BINDING> mVkBindingToUBOAccessor = {};
+
+    std::vector<VkDescriptorSetLayoutBinding> mVkLayoutBindings;
+
+    static void populateAndBindUniversalDescriptorSet();
+
+public:
+    VkDeviceSize sharedUBOBindingSize(U32 binding) const;
+    static VkDescriptorSet     sCurPerCallVkDescriptorSet;
+
+    VkBuffer                   mVkPerProgramUBO         = VK_NULL_HANDLE;
+    void*                      mVkPerProgramUBOAllocation = nullptr;
+    void*                      mVkPerProgramUBOMapped   = nullptr;
+    U32                        mVkPerProgramUBOSize     = 0;
+
+    VkBuffer                   mVkActivePerProgramUBO       = VK_NULL_HANDLE;
+    void*                      mVkActivePerProgramUBOMapped = nullptr;
+    struct PerProgramUBORingSlot
+    {
+        VkBuffer buffer     = VK_NULL_HANDLE;
+        void*    allocation = nullptr;
+        void*    mapped     = nullptr;
+    };
+    std::vector<PerProgramUBORingSlot> mVkPerProgramUBORing[3];
+    U32                        mVkPerProgramRingIdx[3]   = { 0, 0, 0 };
+    U64                        mVkPerProgramRingFrame[3] = { 0, 0, 0 };
+    void rotatePerProgramUBOSlot();
+
+    bool                       mWritePerProgramUBOMinimumAlpha = false;
+
+    bool createVkPipeline(U32 perProgramUBOSize = 0, bool needsSharedWaterVUBO = false);
+
+    VkPipeline getOrCreateVkPipelineForBoundRT(U32 mode = 0 );
+
 #if LL_PROFILER_ENABLE_RENDER_DOC
     void setLabel(const char* label);
 #endif
 
 private:
+    bool generatePerProgramSPIRV(const std::vector<StageSource>& stages);
+
     void unloadInternal();
     // This must be static because finishProfile() is called at least once
     // within a __try block. If we default its stats parameter to a temporary

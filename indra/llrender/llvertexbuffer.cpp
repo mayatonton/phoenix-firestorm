@@ -26,6 +26,9 @@
 
 #include "linden_common.h"
 
+#include <set>
+#include <map> // shader name 別 fire counter (= std::map<std::string,U32>)
+#include <cstring> // std::memcpy for mMappedData → mVkVertexMapped sync
 #include "llfasttimer.h"
 #include "llsys.h"
 #include "llvertexbuffer.h"
@@ -36,7 +39,14 @@
 #include "llshadermgr.h"
 #include "llglslshader.h"
 #include "llmemory.h"
+#include "llvkloader.h"
+#include "llrendertarget.h"
 #include <glm/gtc/type_ptr.hpp>
+
+static bool ayaUsePositiveViewport(const LLGLSLShader* sh)
+{
+    return sh && sh->mIsScreenSpaceCopyPass;
+}
 
 //Next Highest Power Of Two
 //helper function, returns first number > v that is a power of 2, or v if v is already a power of 2
@@ -619,6 +629,7 @@ void LLVertexBufferData::drawWithMatrix()
     if (mTexName)
     {
         gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mTexName);
+        gGL.getTexUnit(0)->mCurrImageGL = mImageGL;
     }
     else
     {
@@ -657,6 +668,7 @@ void LLVertexBufferData::draw()
     if (mTexName)
     {
         gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mTexName);
+        gGL.getTexUnit(0)->mCurrImageGL = mImageGL;
     }
     else
     {
@@ -921,13 +933,124 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
     llassert(mGLIndices == sGLRenderIndices);
     gGL.syncMatrices();
     STOP_GLERROR;
-    glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
-        (GLvoid*) (indices_offset * (size_t) mIndicesStride));
+    bool vk_fired = false;
     STOP_GLERROR;
+
+    if (LLVKLoader::shouldUseVulkanRender()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr)
+    {
+        VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            LLGLSLShader::populateAndBindUniversalDescriptorSet();
+            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        }
+
+        if (set_to_bind != VK_NULL_HANDLE)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd == VK_NULL_HANDLE)
+            {
+                static std::set<std::string> s_cmd_null_set_i;
+                const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
+                if (s_cmd_null_set_i.insert(sn).second)
+                {
+                    LL_WARNS("Vulkan") << "drawRange cmd NULL silent skip shader='" << sn
+                                       << "' mode=" << (S32)mode
+                                       << " (set_to_bind=alloc + sInFrame=false = present scope 外 fire)"
+                                       << " = atomic 11 真因 isolation 対象"
+                                       << LL_ENDL;
+                }
+            }
+            if (cmd != VK_NULL_HANDLE)
+            {
+                VkPipeline pipeline =
+                    LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
+                if (pipeline == VK_NULL_HANDLE)
+                {
+                    static std::set<std::string> s_pipe_fail_seti;
+                    const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
+                    if (s_pipe_fail_seti.insert(sn).second)
+                    {
+                        LL_WARNS("Vulkan") << "drawRange Pipeline NULL shader='" << sn
+                                           << "' mode=" << (S32)mode
+                                           << " (VUID-vkCmdDrawIndexed-None-08606 回避) = 個別要 fix"
+                                           << LL_ENDL;
+                    }
+                }
+                else
+                {
+                    if (LLRenderTarget::getCurrentBoundTarget() == nullptr
+                        && !LLVKLoader::isInRenderPassScope())
+                    {
+                        LLVKLoader::beginSwapchainRendering();
+                    }
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                    {
+                        const bool vk_screen_space_copy =
+                            ayaUsePositiveViewport(LLGLSLShader::sCurBoundShaderPtr);
+                        LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
+                    }
+                    VkDescriptorSet sets[2] = {
+                        LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                        set_to_bind
+                    };
+                    vkCmdBindDescriptorSets(cmd,
+                                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                            LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                            0, // first_set = 0
+                                            2,
+                                            sets,
+                                            0, nullptr);
+                    vkCmdPushConstants(cmd,
+                                       LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                       VK_SHADER_STAGE_VERTEX_BIT,
+                                       0, 64,
+                                       LLVKLoader::getCurrentModelviewMatrix());
+                    vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
+                    vk_fired = true;
+                    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+                }
+            }
+        }
+    }
+
+    if (!vk_fired)
+    {
+        if (LLVKLoader::shouldUseVulkanRender())
+        {
+            static std::set<std::string> s_vk_nopipe_drawi_shaders;
+            const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
+            if (s_vk_nopipe_drawi_shaders.insert(name).second)
+            {
+                LL_WARNS("Vulkan") << "GL fallback 廃止: Vulkan 未描画 shader='"
+                                   << name << "' (count=" << (S32)count
+                                   << ") = Vulkan pipeline 不成立 = 個別要 fix"
+                                   << LL_ENDL;
+            }
+        }
+        else
+        {
+            glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
+                (GLvoid*) (indices_offset * (size_t) mIndicesStride));
+            STOP_GLERROR;
+        }
+    }
 }
 
 void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        static std::set<std::string> s_vk_nodraw_drawfast_shaders;
+        const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
+        if (s_vk_nodraw_drawfast_shaders.insert(name).second)
+        {
+            LL_WARNS("Vulkan") << "GL fallback 廃止: drawRangeFast (GLTF scene) Vulkan 未描画 shader='"
+                               << name << "' (count=" << (S32)count << ") = Vulkan 未配備 = 個別要 fix" << LL_ENDL;
+        }
+        return;
+    }
     glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
         (GLvoid*)(indices_offset * (size_t)mIndicesStride));
 }
@@ -947,8 +1070,108 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 
     gGL.syncMatrices();
     STOP_GLERROR;
-    glDrawArrays(sGLMode[mode], first, count);
+    bool vk_fired = false;
     STOP_GLERROR;
+
+    if (LLVKLoader::shouldUseVulkanRender()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr)
+    {
+        VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            LLGLSLShader::populateAndBindUniversalDescriptorSet();
+            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        }
+
+        if (set_to_bind != VK_NULL_HANDLE)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd == VK_NULL_HANDLE)
+            {
+                static std::set<std::string> s_cmd_null_set_a;
+                const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
+                if (s_cmd_null_set_a.insert(sn).second)
+                {
+                    LL_WARNS("Vulkan") << "drawArrays cmd NULL silent skip shader='" << sn
+                                       << "' mode=" << (S32)mode
+                                       << " (set_to_bind=alloc + sInFrame=false = present scope 外 fire)"
+                                       << " = atomic 11 真因 isolation 対象"
+                                       << LL_ENDL;
+                }
+            }
+            if (cmd != VK_NULL_HANDLE)
+            {
+                VkPipeline pipeline =
+                    LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
+                if (pipeline == VK_NULL_HANDLE)
+                {
+                    static std::set<std::string> s_pipe_fail_set;
+                    const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
+                    if (s_pipe_fail_set.insert(sn).second)
+                    {
+                        LL_WARNS("Vulkan") << "drawArrays Pipeline NULL shader='" << sn
+                                           << "' mode=" << (S32)mode
+                                           << " (VUID-vkCmdDraw-None-08606 回避) = 個別要 fix"
+                                           << LL_ENDL;
+                    }
+                }
+                else
+                {
+                    if (LLRenderTarget::getCurrentBoundTarget() == nullptr
+                        && !LLVKLoader::isInRenderPassScope())
+                    {
+                        LLVKLoader::beginSwapchainRendering();
+                    }
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                    {
+                        const bool vk_screen_space_copy =
+                            ayaUsePositiveViewport(LLGLSLShader::sCurBoundShaderPtr);
+                        LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
+                    }
+                    VkDescriptorSet sets[2] = {
+                        LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                        set_to_bind
+                    };
+                    vkCmdBindDescriptorSets(cmd,
+                                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                            LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                            0, // first_set = 0
+                                            2,
+                                            sets,
+                                            0, nullptr);
+                    vkCmdPushConstants(cmd,
+                                       LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                       VK_SHADER_STAGE_VERTEX_BIT,
+                                       0, 64,
+                                       LLVKLoader::getCurrentModelviewMatrix());
+                    vkCmdDraw(cmd, count, 1, first, 0);
+                    vk_fired = true;
+                    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+                }
+            }
+        }
+    }
+
+    if (!vk_fired)
+    {
+        if (LLVKLoader::shouldUseVulkanRender())
+        {
+            static std::set<std::string> s_vk_nopipe_drawa_shaders;
+            const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
+            if (s_vk_nopipe_drawa_shaders.insert(name).second)
+            {
+                LL_WARNS("Vulkan") << "GL fallback 廃止: Vulkan 未描画 shader='"
+                                   << name << "' (count=" << (S32)count
+                                   << ") = Vulkan pipeline 不成立 = 個別要 fix"
+                                   << LL_ENDL;
+            }
+        }
+        else
+        {
+            glDrawArrays(sGLMode[mode], first, count);
+            STOP_GLERROR;
+        }
+    }
 }
 
 //static
@@ -1120,6 +1343,11 @@ void LLVertexBuffer::genBuffer(U32 size)
         mSize = size;
         sVBOPool->allocate(GL_ARRAY_BUFFER, mSize, mGLBuffer, mMappedData);
     }
+
+    if (mSize > 0 && mVkVertexBuffer == VK_NULL_HANDLE)
+    {
+        LLVKLoader::createVertexBufferVk(mSize, mVkVertexBuffer, mVkVertexAlloc, &mVkVertexMapped);
+    }
 }
 
 void LLVertexBuffer::genIndices(U32 size)
@@ -1134,6 +1362,11 @@ void LLVertexBuffer::genIndices(U32 size)
         llassert(mMappedIndexData == nullptr);
         mIndicesSize = size;
         sVBOPool->allocate(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mGLIndices, mMappedIndexData);
+    }
+
+    if (mIndicesSize > 0 && mVkIndexBuffer == VK_NULL_HANDLE)
+    {
+        LLVKLoader::createIndexBufferVk(mIndicesSize, mVkIndexBuffer, mVkIndexAlloc, &mVkIndexMapped);
     }
 }
 
@@ -1198,6 +1431,14 @@ void LLVertexBuffer::destroyGLBuffer()
         mGLBuffer = 0;
         mMappedData = nullptr;
     }
+
+    if (mVkVertexBuffer != VK_NULL_HANDLE || mVkVertexAlloc != nullptr)
+    {
+        LLVKLoader::destroyBufferVk(mVkVertexBuffer, mVkVertexAlloc);
+        mVkVertexBuffer = VK_NULL_HANDLE;
+        mVkVertexAlloc  = nullptr;
+        mVkVertexMapped = nullptr;
+    }
 }
 
 void LLVertexBuffer::destroyGLIndices()
@@ -1214,6 +1455,14 @@ void LLVertexBuffer::destroyGLIndices()
         mIndicesSize = 0;
         mGLIndices = 0;
         mMappedIndexData = nullptr;
+    }
+
+    if (mVkIndexBuffer != VK_NULL_HANDLE || mVkIndexAlloc != nullptr)
+    {
+        LLVKLoader::destroyBufferVk(mVkIndexBuffer, mVkIndexAlloc);
+        mVkIndexBuffer = VK_NULL_HANDLE;
+        mVkIndexAlloc  = nullptr;
+        mVkIndexMapped = nullptr;
     }
 }
 
@@ -1403,6 +1652,15 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
                 U32 size = tend - i + 1;
                 glBufferSubData(target, i, size, (U8*) data + (i-start));
             }
+
+            if (target == GL_ARRAY_BUFFER && mVkVertexMapped != nullptr)
+            {
+                std::memcpy((U8*)mVkVertexMapped + start, data, end - start + 1);
+            }
+            else if (target == GL_ELEMENT_ARRAY_BUFFER && mVkIndexMapped != nullptr)
+            {
+                std::memcpy((U8*)mVkIndexMapped + start, data, end - start + 1);
+            }
         }
     }
 }
@@ -1450,6 +1708,10 @@ void LLVertexBuffer::_unmapBuffer()
             glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
             sGLRenderBuffer = mGLBuffer;
             glBufferData(GL_ARRAY_BUFFER, mSize, mMappedData, GL_STATIC_DRAW);
+            if (LLVKLoader::shouldUseVulkanRender() && mVkVertexMapped != nullptr)
+            {
+                std::memcpy(mVkVertexMapped, mMappedData, mSize);
+            }
         }
         else if (mGLBuffer != sGLRenderBuffer)
         {
@@ -1470,6 +1732,10 @@ void LLVertexBuffer::_unmapBuffer()
             sGLRenderIndices = mGLIndices;
 
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData, GL_STATIC_DRAW);
+            if (LLVKLoader::shouldUseVulkanRender() && mVkIndexMapped != nullptr)
+            {
+                std::memcpy(mVkIndexMapped, mMappedIndexData, mIndicesSize);
+            }
         }
         else if (mGLIndices != sGLRenderIndices)
         {
@@ -1700,23 +1966,53 @@ void LLVertexBuffer::setBuffer()
         "Attribute mask mismatch! mTypeMask should be a superset of data_mask.  data_mask: 0x"
                 << std::hex << data_mask << " mTypeMask: 0x" << mTypeMask << " Missing: 0x" << (data_mask & ~mTypeMask) <<  std::dec);
 
-    if (sGLRenderBuffer != mGLBuffer)
+    if (!LLVKLoader::shouldUseVulkanRender())
     {
-        glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-        sGLRenderBuffer = mGLBuffer;
+        if (sGLRenderBuffer != mGLBuffer)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
+            sGLRenderBuffer = mGLBuffer;
 
-        setupVertexBuffer();
-    }
-    else if (sLastMask != data_mask)
-    {
-        setupVertexBuffer();
-        sLastMask = data_mask;
+            setupVertexBuffer();
+        }
+        else if (sLastMask != data_mask)
+        {
+            setupVertexBuffer();
+            sLastMask = data_mask;
+        }
+
+        if (mGLIndices != sGLRenderIndices)
+        {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
+            sGLRenderIndices = mGLIndices;
+        }
     }
 
-    if (mGLIndices != sGLRenderIndices)
+    if (LLVKLoader::shouldUseVulkanRender() && mVkVertexBuffer != VK_NULL_HANDLE
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr
+        && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE)
     {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-        sGLRenderIndices = mGLIndices;
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            U32 attrib_mask = LLGLSLShader::sCurBoundShaderPtr->mAttributeMask;
+            for (U32 type = 0; type < TYPE_MAX; ++type)
+            {
+                if (!(attrib_mask & (1u << type)))
+                    continue;
+                VkDeviceSize buf_offset = (type == TYPE_TEXTURE_INDEX)
+                                              ? (mOffsets[TYPE_VERTEX] + 12)
+                                              : mOffsets[type];
+                LLVKLoader::bindVertexBufferVk(cmd, mVkVertexBuffer, buf_offset, type);
+            }
+            if (mVkIndexBuffer != VK_NULL_HANDLE)
+            {
+                VkIndexType index_type = (mIndicesType == GL_UNSIGNED_INT)
+                                             ? VK_INDEX_TYPE_UINT32
+                                             : VK_INDEX_TYPE_UINT16;
+                LLVKLoader::bindIndexBufferVk(cmd, mVkIndexBuffer, 0, index_type);
+            }
+        }
     }
 
     STOP_GLERROR;

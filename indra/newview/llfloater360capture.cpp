@@ -49,6 +49,7 @@
 #include "llviewerregion.h"
 #include "llviewerwindow.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 #include <iterator>
 
@@ -191,7 +192,7 @@ void LLFloater360Capture::setSourceImageSize()
 
     // If deferred rendering is off, we need to shrink the window we capture
     // until it's smaller than the Viewer window dimensions.
-    if (!LLPipeline::sRenderDeferred)
+    if (!LLPipelineFrameContext::getInstance().isRenderingDeferred())
     {
         LLRect window_rect = gViewerWindow->getWindowRectRaw();
         S32 window_width = window_rect.getWidth();

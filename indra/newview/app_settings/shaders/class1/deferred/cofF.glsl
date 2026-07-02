@@ -25,11 +25,71 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 2) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+#else
 uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+#endif
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#define inv_proj inverse_projection_matrix
+
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(set = 1, binding = 0, std140) uniform CofF_PerProgramBind
+{
+    float focal_distance;
+    float blur_constant;
+    float tan_pixel_angle;
+    float magnification;
+#ifndef _AYA_UM_max_cof
+#define _AYA_UM_max_cof 1
+    float max_cof;
+#else
+    float _dup_CofF_max_cof;
+#endif
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_CofF__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_CofF__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_CofF__pad2;
+#endif
+};
+#else
 uniform float depth_cutoff;
 uniform float norm_cutoff;
 uniform float focal_distance;
@@ -40,8 +100,13 @@ uniform float max_cof;
 
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 float calc_cof(float depth)
 {

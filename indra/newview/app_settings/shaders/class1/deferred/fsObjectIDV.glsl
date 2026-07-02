@@ -14,10 +14,31 @@
  * $/LicenseInfo$
  */
 
-uniform mat4 modelview_matrix;
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#else
 uniform mat4 projection_matrix;
+uniform mat4 modelview_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 mat4 getObjectSkinnedTransform();
 

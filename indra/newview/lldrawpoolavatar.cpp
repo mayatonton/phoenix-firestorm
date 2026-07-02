@@ -44,7 +44,9 @@
 #include "llviewerregion.h"
 #include "noise.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
+#include "llvkloader.h"
 #include "llvovolume.h"
 #include "llvolume.h"
 #include "llappviewer.h"
@@ -176,7 +178,7 @@ void LLDrawPoolAvatar::beginDeferredPass(S32 pass)
     sSkipTransparent = true;
     is_deferred_render = true;
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     { //impostor pass does not have impostor rendering
         ++pass;
     }
@@ -202,7 +204,7 @@ void LLDrawPoolAvatar::endDeferredPass(S32 pass)
     sSkipTransparent = false;
     is_deferred_render = false;
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         ++pass;
     }
@@ -266,7 +268,7 @@ void LLDrawPoolAvatar::renderPostDeferred(S32 pass)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
     is_post_deferred_render = true;
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     { //HACK for impostors so actual pass ends up being proper pass
         render(0);
     }
@@ -386,7 +388,7 @@ void LLDrawPoolAvatar::renderShadow(S32 pass)
     }
 
     LLVOAvatar::AvatarOverallAppearance oa = avatarp->getOverallAppearance();
-    bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor();
+    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor();
     // no shadows if the shadows are causing this avatar to breach the limit.
     if (avatarp->isTooSlow() || impostor || (oa == LLVOAvatar::AOA_INVISIBLE))
     {
@@ -431,7 +433,7 @@ S32 LLDrawPoolAvatar::getNumDeferredPasses()
 void LLDrawPoolAvatar::render(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         renderAvatars(NULL, ++pass);
         return;
@@ -446,7 +448,7 @@ void LLDrawPoolAvatar::beginRenderPass(S32 pass)
     //reset vertex buffer mappings
     LLVertexBuffer::unbind();
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     { //impostor render does not have impostors or rigid rendering
         ++pass;
     }
@@ -474,7 +476,7 @@ void LLDrawPoolAvatar::endRenderPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (LLPipeline::sImpostorRender)
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         ++pass;
     }
@@ -497,13 +499,30 @@ void LLDrawPoolAvatar::beginImpostor()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (!LLPipeline::sReflectionRender)
+    if (!LLPipelineFrameContext::getInstance().isReflectionPass())
     {
         LLVOAvatar::sNumVisibleAvatars = 0;
     }
 
         gImpostorProgram.bind();
         gImpostorProgram.setMinimumAlpha(0.01f);
+
+        if (LLVKLoader::isVulkanInitialized()
+            && gImpostorProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+            && gImpostorProgram.mVkPerProgramUBOMapped != nullptr)
+        {
+            struct ImpostorF_UBO
+            {
+                F32 minimum_alpha;
+                F32 pad0;
+                F32 pad1;
+                F32 pad2;
+            };
+            ImpostorF_UBO ubo_data = {};
+            ubo_data.minimum_alpha = 0.01f;
+            memcpy(gImpostorProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        }
+        // </FS:AYA>
 
     gPipeline.enableLightsFullbright();
     sDiffuseChannel = 0;
@@ -552,7 +571,7 @@ void LLDrawPoolAvatar::beginDeferredImpostor()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (!LLPipeline::sReflectionRender)
+    if (!LLPipelineFrameContext::getInstance().isReflectionPass())
     {
         LLVOAvatar::sNumVisibleAvatars = 0;
     }
@@ -563,6 +582,23 @@ void LLDrawPoolAvatar::beginDeferredImpostor()
     sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
     sVertexProgram->bind();
     sVertexProgram->setMinimumAlpha(0.01f);
+
+    if (LLVKLoader::isVulkanInitialized()
+        && gDeferredImpostorProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+        && gDeferredImpostorProgram.mVkPerProgramUBOMapped != nullptr)
+    {
+        struct ImpostorF_UBO
+        {
+            F32 minimum_alpha;
+            F32 pad0;
+            F32 pad1;
+            F32 pad2;
+        };
+        ImpostorF_UBO ubo_data = {};
+        ubo_data.minimum_alpha = 0.01f;
+        memcpy(gDeferredImpostorProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+    }
+    // </FS:AYA>
 }
 
 void LLDrawPoolAvatar::endDeferredImpostor()
@@ -833,7 +869,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         return;
     }
 
-    bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor() && !single_avatar;
+    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor() && !single_avatar;
 
 // <FS:Beq> rendertime Tracy annotations
 {
@@ -848,7 +884,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     }
 }// <FS:Beq/> rendertime Tracy annotations
 
-    if (pass == 0 && !impostor && LLPipeline::sUnderWaterRender)
+    if (pass == 0 && !impostor && LLPipelineFrameContext::getInstance().isUnderWaterRendering())
     { //don't draw foot shadows under water
         return;
     }
@@ -863,7 +899,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     if (pass == 0)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("pass 0"); // <FS:Beq/> Tracy markup
-        if (!LLPipeline::sReflectionRender)
+        if (!LLPipelineFrameContext::getInstance().isReflectionPass())
         {
             LLVOAvatar::sNumVisibleAvatars++;
         }
@@ -872,7 +908,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         if (impostor || (LLVOAvatar::AOA_NORMAL != avatarp->getOverallAppearance() && !avatarp->needsImpostorUpdate()))
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("render impostor"); // <FS:Beq/> Tracy markup
-            if (LLPipeline::sRenderDeferred && !LLPipeline::sReflectionRender && avatarp->mImpostor.isComplete())
+            if (LLPipelineFrameContext::getInstance().isRenderingDeferred() && !LLPipelineFrameContext::getInstance().isReflectionPass() && avatarp->mImpostor.isComplete())
             {
                 // <FS:Ansariel> FIRE-9179: Crash fix
                 //if (normal_channel > -1)
@@ -898,16 +934,24 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     if (pass == 1)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("render rigid meshes (eyeballs)"); // <FS:Beq/> Tracy markup
-        // <FS:AYA r20 Phase C> per-avatar SSS skin marker for Linden body / eyeballs
         if (sVertexProgram)
         {
             GLint loc = sVertexProgram->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
             if (loc > -1)
             {
-                glUniform1f(loc, avatarp->isSSSTarget() ? 1.f : 0.f);
+                const F32 sssFlag = avatarp->isSSSTarget() ? 1.f : 0.f;
+                glUniform1f(loc, sssFlag);
+                if (LLVKLoader::isVulkanInitialized() && sVertexProgram->mVkPipelineLayout != VK_NULL_HANDLE)
+                {
+                    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                    if (cmd != VK_NULL_HANDLE)
+                    {
+                        vkCmdPushConstants(cmd, sVertexProgram->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                           68, sizeof(F32), &sssFlag);
+                    }
+                }
             }
         }
-        // </FS:AYA>
         // render rigid meshes (eyeballs) first
         avatarp->renderRigid();
         return;
@@ -937,21 +981,41 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         LLVector4 gravity(0.f, 0.f, -CLOTHING_GRAVITY_EFFECT, 0.f);
         gravity = gravity * rot_mat;
         sVertexProgram->uniform4fv(LLViewerShaderMgr::AVATAR_GRAVITY, 1, gravity.mV);
+
+        if (LLVKLoader::isVulkanInitialized()
+            && sVertexProgram == &gDeferredAvatarProgram
+            && sVertexProgram->mVkPerProgramUBO != VK_NULL_HANDLE
+            && sVertexProgram->mVkPerProgramUBOMapped != nullptr)
+        {
+            sVertexProgram->rotatePerProgramUBOSlot();
+            char* base = static_cast<char*>(sVertexProgram->mVkActivePerProgramUBOMapped);
+            memcpy(base +  0, wind.mV,       sizeof(F32) * 4);
+            memcpy(base + 16, sin_params.mV, sizeof(F32) * 4);
+            memcpy(base + 32, gravity.mV,    sizeof(F32) * 4);
+        }
     }
 
     if( !single_avatar || (avatarp == single_avatar) )
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("renderSkinned"); // <FS:Beq/> Tracy markup
-        // <FS:AYA r20 Phase C> per-avatar SSS skin marker for Linden body
         if (sVertexProgram)
         {
             GLint loc = sVertexProgram->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
             if (loc > -1)
             {
-                glUniform1f(loc, avatarp->isSSSTarget() ? 1.f : 0.f);
+                const F32 sssFlag = avatarp->isSSSTarget() ? 1.f : 0.f;
+                glUniform1f(loc, sssFlag);
+                if (LLVKLoader::isVulkanInitialized() && sVertexProgram->mVkPipelineLayout != VK_NULL_HANDLE)
+                {
+                    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                    if (cmd != VK_NULL_HANDLE)
+                    {
+                        vkCmdPushConstants(cmd, sVertexProgram->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                           68, sizeof(F32), &sssFlag);
+                    }
+                }
             }
         }
-        // </FS:AYA>
         avatarp->renderSkinned();
     }
 }
@@ -1062,7 +1126,7 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     }
 
     LLVOAvatar::AvatarOverallAppearance oa = avatarp->getOverallAppearance();
-    bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor();
+    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor();
     if (avatarp->isTooSlow() || impostor || (oa == LLVOAvatar::AOA_INVISIBLE))
     {
         return;
@@ -1106,5 +1170,4 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     avatarp->renderSkinned();
 }
 // </AYAstorm r30 P2>
-
 

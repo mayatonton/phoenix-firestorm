@@ -26,6 +26,7 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include <atomic>
 #include <sys/stat.h>
 
 #include "llviewertexturelist.h"

@@ -49,6 +49,7 @@
 
 #include "llglheaders.h"
 #include "llglslshader.h"
+#include "llvkloader.h"
 
 #include "glm/glm.hpp"
 #include <glm/gtc/matrix_access.hpp>
@@ -2460,6 +2461,94 @@ void clear_glerror()
 // Static members
 boost::unordered_map<LLGLenum, LLGLboolean> LLGLState::sStateMap;
 
+// cull face mode tracker = GL 初期 state = GL_BACK (llrender.cpp:934 で glCullFace(GL_BACK) init と整合)。
+//   setCullFaceMode() helper 経由で glCullFace 呼出と統合更新。
+GLenum LLGLState::sCullFaceMode = GL_BACK;
+
+void LLGLState::setCullFaceMode(GLenum mode)
+{
+    glCullFace(mode);
+    sCullFaceMode = mode;
+}
+
+bool LLGLState::isCullFaceEnabled()
+{
+    auto it = sStateMap.find(GL_CULL_FACE);
+    return (it != sStateMap.end()) && (it->second != GL_FALSE);
+}
+
+// GL_DEPTH_CLAMP 現在 state accessor。 GL 初期 state = disabled。
+bool LLGLState::isDepthClampEnabled()
+{
+    auto it = sStateMap.find(GL_DEPTH_CLAMP);
+    return (it != sStateMap.end()) && (it->second != GL_FALSE);
+}
+
+// GL_POLYGON_OFFSET_FILL/LINE 現在 state OR accessor。 GL 初期 state = 両方 disabled。
+bool LLGLState::isPolygonOffsetEnabled()
+{
+    auto fill_it = sStateMap.find(GL_POLYGON_OFFSET_FILL);
+    auto line_it = sStateMap.find(GL_POLYGON_OFFSET_LINE);
+    const bool fill_on = (fill_it != sStateMap.end()) && (fill_it->second != GL_FALSE);
+    const bool line_on = (line_it != sStateMap.end()) && (line_it->second != GL_FALSE);
+    return fill_on || line_on;
+}
+
+// GL_BLEND 現在 state accessor = sStateMap[GL_BLEND]。
+bool LLGLState::isBlendEnabled()
+{
+    auto it = sStateMap.find(GL_BLEND);
+    return (it != sStateMap.end()) && (it->second != GL_FALSE);
+}
+
+// polygon mode tracker = GL 初期 state = GL_FILL (= glPolygonMode 既定値、 wireframe debug 有効時のみ GL_LINE)。
+//   setPolygonMode() helper 経由で glPolygonMode 呼出と統合更新 (face = GL_FRONT_AND_BACK 統一)。
+GLenum LLGLState::sPolygonMode = GL_FILL;
+
+void LLGLState::setPolygonMode(GLenum mode)
+{
+    glPolygonMode(GL_FRONT_AND_BACK, mode);
+    sPolygonMode = mode;
+}
+
+// stencil state tracker = GL 初期 state (= glStencilFunc/Op/Mask OpenGL default = GL_ALWAYS, 0,
+//   0xFFFFFFFF / GL_KEEP, GL_KEEP, GL_KEEP / 0xFFFFFFFF)。 setStencilXxx() helper 経由で統合更新。
+GLenum LLGLState::sStencilFunc        = GL_ALWAYS;
+GLint  LLGLState::sStencilRef         = 0;
+GLuint LLGLState::sStencilCompareMask = 0xFFFFFFFFu;
+GLenum LLGLState::sStencilFailOp      = GL_KEEP;
+GLenum LLGLState::sStencilDepthFailOp = GL_KEEP;
+GLenum LLGLState::sStencilDepthPassOp = GL_KEEP;
+GLuint LLGLState::sStencilWriteMask   = 0xFFFFFFFFu;
+
+void LLGLState::setStencilFunc(GLenum func, GLint ref, GLuint mask)
+{
+    glStencilFunc(func, ref, mask);
+    sStencilFunc        = func;
+    sStencilRef         = ref;
+    sStencilCompareMask = mask;
+}
+
+void LLGLState::setStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass)
+{
+    glStencilOp(sfail, dpfail, dppass);
+    sStencilFailOp      = sfail;
+    sStencilDepthFailOp = dpfail;
+    sStencilDepthPassOp = dppass;
+}
+
+void LLGLState::setStencilMask(GLuint mask)
+{
+    glStencilMask(mask);
+    sStencilWriteMask = mask;
+}
+
+bool LLGLState::isStencilTestEnabled()
+{
+    auto it = sStateMap.find(GL_STENCIL_TEST);
+    return (it != sStateMap.end()) && (it->second != GL_FALSE);
+}
+
 GLboolean LLGLDepthTest::sDepthEnabled = GL_FALSE; // OpenGL default
 GLenum LLGLDepthTest::sDepthFunc = GL_LESS; // OpenGL default
 GLboolean LLGLDepthTest::sWriteEnabled = GL_TRUE; // OpenGL default
@@ -2819,6 +2908,22 @@ LLGLUserClipPlane::~LLGLUserClipPlane()
     disable();
 }
 
+static VkCompareOp glDepthFuncToVk(GLenum gl_func)
+{
+    switch (gl_func)
+    {
+        case GL_NEVER:    return VK_COMPARE_OP_NEVER;
+        case GL_LESS:     return VK_COMPARE_OP_LESS;
+        case GL_EQUAL:    return VK_COMPARE_OP_EQUAL;
+        case GL_LEQUAL:   return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case GL_GREATER:  return VK_COMPARE_OP_GREATER;
+        case GL_NOTEQUAL: return VK_COMPARE_OP_NOT_EQUAL;
+        case GL_GEQUAL:   return VK_COMPARE_OP_GREATER_OR_EQUAL;
+        case GL_ALWAYS:   return VK_COMPARE_OP_ALWAYS;
+        default:          return VK_COMPARE_OP_LESS;
+    }
+}
+
 LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, GLenum depth_func)
 : mPrevDepthEnabled(sDepthEnabled), mPrevDepthFunc(sDepthFunc), mPrevWriteEnabled(sWriteEnabled)
 {
@@ -2833,24 +2938,38 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
         write_enabled = GL_FALSE;
     }
 
+    VkCommandBuffer vk_cb = LLVKLoader::getCurrentCommandBuffer();
+
     if (depth_enabled != sDepthEnabled)
     {
         gGL.flush();
         if (depth_enabled) glEnable(GL_DEPTH_TEST);
         else glDisable(GL_DEPTH_TEST);
         sDepthEnabled = depth_enabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthTestEnable(vk_cb, depth_enabled ? VK_TRUE : VK_FALSE);
+        }
     }
     if (depth_func != sDepthFunc)
     {
         gGL.flush();
         glDepthFunc(depth_func);
         sDepthFunc = depth_func;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthCompareOp(vk_cb, glDepthFuncToVk(depth_func));
+        }
     }
     if (write_enabled != sWriteEnabled)
     {
         gGL.flush();
         glDepthMask(write_enabled);
         sWriteEnabled = write_enabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthWriteEnable(vk_cb, write_enabled ? VK_TRUE : VK_FALSE);
+        }
     }
 }
 
@@ -2858,24 +2977,39 @@ LLGLDepthTest::~LLGLDepthTest()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     checkState();
+
+    VkCommandBuffer vk_cb = LLVKLoader::getCurrentCommandBuffer();
+
     if (sDepthEnabled != mPrevDepthEnabled )
     {
         gGL.flush();
         if (mPrevDepthEnabled) glEnable(GL_DEPTH_TEST);
         else glDisable(GL_DEPTH_TEST);
         sDepthEnabled = mPrevDepthEnabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthTestEnable(vk_cb, mPrevDepthEnabled ? VK_TRUE : VK_FALSE);
+        }
     }
     if (sDepthFunc != mPrevDepthFunc)
     {
         gGL.flush();
         glDepthFunc(mPrevDepthFunc);
         sDepthFunc = mPrevDepthFunc;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthCompareOp(vk_cb, glDepthFuncToVk(mPrevDepthFunc));
+        }
     }
     if (sWriteEnabled != mPrevWriteEnabled )
     {
         gGL.flush();
         glDepthMask(mPrevWriteEnabled);
         sWriteEnabled = mPrevWriteEnabled;
+        if (vk_cb != VK_NULL_HANDLE)
+        {
+            vkCmdSetDepthWriteEnable(vk_cb, mPrevWriteEnabled ? VK_TRUE : VK_FALSE);
+        }
     }
 }
 
@@ -2943,52 +3077,6 @@ LLGLSquashToFarClip::~LLGLSquashToFarClip()
 }
 
 
-
-LLGLSyncFence::LLGLSyncFence()
-{
-    mSync = 0;
-}
-
-LLGLSyncFence::~LLGLSyncFence()
-{
-    if (mSync)
-    {
-        glDeleteSync(mSync);
-    }
-}
-
-void LLGLSyncFence::placeFence()
-{
-    if (mSync)
-    {
-        glDeleteSync(mSync);
-    }
-    mSync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-}
-
-bool LLGLSyncFence::isCompleted()
-{
-    bool ret = true;
-    if (mSync)
-    {
-        GLenum status = glClientWaitSync(mSync, 0, 1);
-        if (status == GL_TIMEOUT_EXPIRED)
-        {
-            ret = false;
-        }
-    }
-    return ret;
-}
-
-void LLGLSyncFence::wait()
-{
-    if (mSync)
-    {
-        while (glClientWaitSync(mSync, 0, FENCE_WAIT_TIME_NANOSECONDS) == GL_TIMEOUT_EXPIRED)
-        { //track the number of times we've waited here
-        }
-    }
-}
 
 LLGLSPipelineSkyBox::LLGLSPipelineSkyBox()
 : mCullFace(GL_CULL_FACE)

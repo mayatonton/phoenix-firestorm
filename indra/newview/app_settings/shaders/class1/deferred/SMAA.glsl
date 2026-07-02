@@ -37,7 +37,14 @@
     #define SMAA_INCLUDE_PS 1
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform SMAA_PerProgramBind
+{
+    vec4 SMAA_RT_METRICS;
+};
+#else
 uniform vec4 SMAA_RT_METRICS;
+#endif
 
 /**
  * Copyright (C) 2013 Jorge Jimenez (jorge@iryoku.com)

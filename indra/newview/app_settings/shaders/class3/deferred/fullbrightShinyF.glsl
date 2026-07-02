@@ -25,19 +25,37 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec4 vertex_color;
+layout(location = 1) in vec2 vary_texcoord0;
+#ifndef IS_HUD
+layout(location = 2) in vec3 vary_texcoord1;
+#endif
+layout(location = 3) in vec3 vary_position;
+#else
 out vec4 frag_color;
 
+in vec4 vertex_color;
+in vec2 vary_texcoord0;
+#ifndef IS_HUD
+in vec3 vary_texcoord1;
+#endif
+in vec3 vary_position;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+#ifndef HAS_DIFFUSE_LOOKUP
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#endif
+#else
 #ifndef HAS_DIFFUSE_LOOKUP
 uniform sampler2D diffuseMap;
 #endif
 
-
-in vec4 vertex_color;
-in vec2 vary_texcoord0;
-in vec3 vary_texcoord1;
-in vec3 vary_position;
-
 uniform samplerCube environmentMap;
+#endif
 
 vec3 atmosFragLighting(vec3 light, vec3 additive, vec3 atten);
 vec4 applyWaterFogViewLinear(vec3 pos, vec4 color);

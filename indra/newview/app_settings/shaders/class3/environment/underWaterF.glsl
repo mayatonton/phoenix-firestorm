@@ -23,6 +23,24 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+layout(set = 1, binding = 1) uniform sampler2D bumpMap;
+layout(set = 1, binding = 2) uniform sampler2D exclusionTex;
+#ifdef TRANSPARENT_WATER
+layout(set = 1, binding = 3) uniform sampler2D screenTex;
+#endif
+layout(set = 1, binding = 0, std140) uniform UnderWaterF_PerProgramBind
+{
+    vec3 waterFogColorLinear;
+#ifndef _AYA_UM_refScale
+#define _AYA_UM_refScale 1
+    float refScale;
+#else
+    float _dup_UnderWaterF_refScale;
+#endif
+};
+#else
 out vec4 frag_color;
 
 uniform sampler2D bumpMap;
@@ -47,12 +65,20 @@ uniform vec4 waterFogColor;
 uniform vec3 waterFogColorLinear;
 uniform float waterFogKS;
 uniform vec2 screenRes;
+#endif
 
 //bigWave is (refCoord.w, view.w);
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec4 refCoord;
+layout(location = 1) in vec4 littleWave;
+layout(location = 2) in vec4 view;
+layout(location = 3) in vec3 vary_position;
+#else
 in vec4 refCoord;
 in vec4 littleWave;
 in vec4 view;
 in vec3 vary_position;
+#endif
 
 vec4 applyWaterFogViewLinearNoClip(vec3 pos, vec4 color);
 void mirrorClip(vec3 position);

@@ -23,6 +23,16 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D texture0;
+layout(set = 1, binding = 2) uniform sampler2D texture1;
+
+layout(location = 0) in vec2 vary_texcoord0;
+layout(location = 1) in vec2 vary_texcoord1;
+layout(location = 2) in vec3 vary_position;
+#else
 out vec4 frag_color;
 
 uniform sampler2D texture0;
@@ -31,6 +41,7 @@ uniform sampler2D texture1;
 in vec2 vary_texcoord0;
 in vec2 vary_texcoord1;
 in vec3 vary_position;
+#endif
 
 void mirrorClip(vec3 pos);
 

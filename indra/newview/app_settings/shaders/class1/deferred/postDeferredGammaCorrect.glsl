@@ -25,13 +25,37 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(set = 1, binding = 0, std140) uniform PostGammaCorrect_PerProgramBind
+{
+#ifndef _AYA_UM_gamma
+#define _AYA_UM_gamma 1
+    float gamma;
+#else
+    float _dup_PostGammaCorrect_gamma;
+#endif
+};
+
+#ifndef DECL_VARY_FRAGCOORD
+#define DECL_VARY_FRAGCOORD
+layout(location = 0) in vec2 vary_fragcoord;
+#endif // DECL_VARY_FRAGCOORD
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
 
 uniform float gamma;
 uniform vec2 screen_res;
+#ifndef DECL_VARY_FRAGCOORD
+#define DECL_VARY_FRAGCOORD
 in vec2 vary_fragcoord;
+#endif // DECL_VARY_FRAGCOORD
+#endif
 
 vec3 linear_to_srgb(vec3 cl);
 

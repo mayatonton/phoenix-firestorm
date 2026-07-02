@@ -37,6 +37,11 @@
 #include "OpenGL/OpenGL.h"
 #endif
 
+#include "llvkloader.h"
+#include <glslang/Public/ShaderLang.h>
+#include <glslang/Public/ResourceLimits.h>
+#include <glslang/SPIRV/GlslangToSpv.h>
+
 // Lots of STL stuff in here, using namespace std to keep things more readable
 using std::vector;
 using std::pair;
@@ -49,6 +54,8 @@ LLShaderMgr * LLShaderMgr::sInstance = NULL;
 // flips this from AYAVisualRealismEnabled == 2 right before reloading
 // shaders. loadShaderFile() reads it to inject #define AYASTORM_CINEMATIC.
 bool LLShaderMgr::sCinematicMode = false;
+
+S32 LLShaderMgr::sSumLightsClass = 3;
 
 LLShaderMgr::LLShaderMgr()
 {
@@ -475,7 +482,89 @@ void LLShaderMgr::dumpObjectLog(GLuint ret, bool warns, const std::string& filen
     }
  }
 
-GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines, S32 texture_index_channels)
+bool LLShaderMgr::createSPIRVFromGLSL(GLenum type,
+                                      U32 source_count,
+                                      const GLchar** sources,
+                                      std::vector<unsigned int>& out_spirv,
+                                      const std::string& file_name)
+{
+    static bool s_glslang_initialized = false;
+    if (!s_glslang_initialized)
+    {
+        glslang::InitializeProcess();
+        s_glslang_initialized = true;
+    }
+
+    EShLanguage stage;
+    switch (type)
+    {
+        case GL_VERTEX_SHADER:   stage = EShLangVertex;   break;
+        case GL_FRAGMENT_SHADER: stage = EShLangFragment; break;
+        case GL_GEOMETRY_SHADER: stage = EShLangGeometry; break;
+        default:
+            LL_WARNS("Vulkan") << "createSPIRVFromGLSL: unsupported shader type 0x"
+                               << std::hex << (S32)type << std::dec << LL_ENDL;
+            return false;
+    }
+
+    std::string concatenated;
+    if (source_count > 0 && sources[0])
+    {
+        concatenated.append(sources[0]);
+    }
+    concatenated.append("#define LL_VULKAN_GLSL 1\n");
+    for (U32 i = 1; i < source_count; ++i)
+    {
+        if (sources[i])
+        {
+            concatenated.append(sources[i]);
+        }
+    }
+    if (concatenated.empty())
+    {
+        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: empty source array" << LL_ENDL;
+        return false;
+    }
+
+    glslang::TShader shader(stage);
+    const char* src_cstr = concatenated.c_str();
+    shader.setStrings(&src_cstr, 1);
+    shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, 450);
+    shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_2);
+    shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_5);
+
+    const TBuiltInResource* resources = GetDefaultResources();
+    EShMessages messages = static_cast<EShMessages>(EShMsgDefault | EShMsgVulkanRules | EShMsgSpvRules);
+
+    if (!shader.parse(resources, 450, false, messages))
+    {
+        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang parse failed for "
+                           << (file_name.empty() ? "<unknown>" : file_name) << "\n"
+                           << shader.getInfoLog() << LL_ENDL;
+        return false;
+    }
+
+    glslang::TProgram program;
+    program.addShader(&shader);
+    if (!program.link(messages))
+    {
+        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang link failed for "
+                           << (file_name.empty() ? "<unknown>" : file_name) << "\n"
+                           << program.getInfoLog() << LL_ENDL;
+        return false;
+    }
+
+    glslang::SpvOptions spv_options;
+    spv_options.generateDebugInfo = false;
+    spv_options.stripDebugInfo    = true;
+    spv_options.disableOptimizer  = false;
+    spv_options.validate          = false;
+
+    glslang::GlslangToSpv(*program.getIntermediate(stage), out_spirv, &spv_options);
+    return !out_spirv.empty();
+}
+
+GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines, S32 texture_index_channels, std::vector<std::string>* out_sources)
 {
 
 // endsure work-around for missing GLSL funcs gets propogated to feature shader files (e.g. srgbF.glsl)
@@ -745,13 +834,24 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         //uniform declartion
         for (S32 i = 0; i < texture_index_channels; ++i)
         {
-            std::string decl = llformat("uniform sampler2D tex%d;\n", i);
+            std::string decl;
+            decl += "#ifdef LL_VULKAN_GLSL\n";
+            decl += llformat("layout(set=1, binding=%d) uniform sampler2D tex%d;\n", 100 + i, i);
+            decl += "#else\n";
+            decl += llformat("uniform sampler2D tex%d;\n", i);
+            decl += "#endif\n";
             extra_code_text[extra_code_count++] = strdup(decl.c_str());
         }
 
         if (texture_index_channels > 1)
         {
-            extra_code_text[extra_code_count++] = strdup("flat in int vary_texture_index;\n");
+            std::string decl;
+            decl += "#ifdef LL_VULKAN_GLSL\n";
+            decl += "layout(location=18) flat in int vary_texture_index;\n";
+            decl += "#else\n";
+            decl += "flat in int vary_texture_index;\n";
+            decl += "#endif\n";
+            extra_code_text[extra_code_count++] = strdup(decl.c_str());
         }
 
         extra_code_text[extra_code_count++] = strdup("vec4 diffuseLookup(vec2 texcoord)\n");
@@ -801,7 +901,10 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
     }
 
     // Master definition can be found in deferredUtil.glsl
+    extra_code_text[extra_code_count++] = strdup("#ifndef GBUFFER_INFO_DEFINED\n");
+    extra_code_text[extra_code_count++] = strdup("#define GBUFFER_INFO_DEFINED 1\n");
     extra_code_text[extra_code_count++] = strdup("struct GBufferInfo { vec4 albedo; vec4 specular; vec3 normal; vec4 emissive; float gbufferFlag; float envIntensity; };\n");
+    extra_code_text[extra_code_count++] = strdup("#endif\n");
 
     //copy file into memory
     enum {
@@ -905,6 +1008,52 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 
     fclose(file);
 
+    if (out_sources && LLVKLoader::isVulkanInitialized())
+    {
+        out_sources->clear();
+        out_sources->reserve(shader_code_count);
+        for (GLuint i = 0; i < shader_code_count; ++i)
+        {
+            if (shader_code_text[i])
+            {
+                out_sources->emplace_back(shader_code_text[i]);
+            }
+            else
+            {
+                out_sources->emplace_back();
+            }
+        }
+    }
+
+    if (out_sources == nullptr && LLVKLoader::isVulkanInitialized())
+    {
+        std::vector<std::string>* cache_entry = nullptr;
+        if (type == GL_VERTEX_SHADER)
+        {
+            cache_entry = &mVertexShaderSourceCache[filename];
+        }
+        else if (type == GL_FRAGMENT_SHADER)
+        {
+            cache_entry = &mFragmentShaderSourceCache[filename];
+        }
+        if (cache_entry)
+        {
+            cache_entry->clear();
+            cache_entry->reserve(shader_code_count);
+            for (GLuint i = 0; i < shader_code_count; ++i)
+            {
+                if (shader_code_text[i])
+                {
+                    cache_entry->emplace_back(shader_code_text[i]);
+                }
+                else
+                {
+                    cache_entry->emplace_back();
+                }
+            }
+        }
+    }
+
     //create shader object
     GLuint ret = glCreateShader(type);
 
@@ -997,7 +1146,7 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         if (shader_level > 1)
         {
             shader_level--;
-            return loadShaderFile(filename, shader_level, type, defines, texture_index_channels);
+            return loadShaderFile(filename, shader_level, type, defines, texture_index_channels, out_sources);
         }
         LL_WARNS("ShaderLoading") << "Failed to load " << filename << LL_ENDL;
     }

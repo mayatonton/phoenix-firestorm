@@ -23,12 +23,19 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+layout(set = 1, binding = 51, std140) uniform DrawColor_PerShaderBind { vec4 color; };
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseMap;
 uniform vec4 color;
 
 in vec2 vary_texcoord0;
+#endif
 
 //====================================================================================================
 

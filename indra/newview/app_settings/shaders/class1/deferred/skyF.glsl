@@ -23,13 +23,62 @@
  * $/LicenseInfo$
  */
 
-// Inputs
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3  vary_HazeColor;
+layout(location = 1) in float vary_LightNormPosDot;
+#else
 in vec3 vary_HazeColor;
 in float vary_LightNormPosDot;
+#endif
 
 #ifdef HAS_HDRI
+#ifdef LL_VULKAN_GLSL
+layout(location = 2) in vec4 vary_position;
+layout(location = 3) in vec3 vary_rel_pos;
+#else
 in vec4 vary_position;
 in vec3 vary_rel_pos;
+#endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform Sky_PerProgramBind
+{
+#ifndef _AYA_UM_camPosLocal
+#define _AYA_UM_camPosLocal 1
+    vec3  camPosLocal;
+#else
+    vec3  _dup_Sky_camPosLocal;
+#endif
+#ifndef _AYA_UM_cube_snapshot
+#define _AYA_UM_cube_snapshot 1
+    int   cube_snapshot;
+#else
+    int   _dup_Sky_cube_snapshot;
+#endif
+    float moisture_level;
+    float droplet_radius;
+    float ice_level;
+    float _sky_pad0;
+#ifdef HAS_HDRI
+    float _sky_sky_hdr_scale;
+    float hdri_split_screen;
+    float _sky_pad1;
+    float _sky_pad2;
+    mat3  _sky_env_mat;
+#endif
+};
+#ifdef HAS_HDRI
+#define sky_hdr_scale _sky_sky_hdr_scale
+#define env_mat       _sky_env_mat
+#endif
+layout(set = 1, binding = 1) uniform sampler2D rainbow_map;
+layout(set = 1, binding = 2) uniform sampler2D halo_map;
+#ifdef HAS_HDRI
+layout(set = 1, binding = 3) uniform sampler2D environmentMap;
+#endif
+#else
+#ifdef HAS_HDRI
 uniform float sky_hdr_scale;
 uniform float hdri_split_screen;
 uniform mat3 env_mat;
@@ -42,8 +91,13 @@ uniform sampler2D halo_map;
 uniform float moisture_level;
 uniform float droplet_radius;
 uniform float ice_level;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 vec3 srgb_to_linear(vec3 c);
 vec3 linear_to_srgb(vec3 c);

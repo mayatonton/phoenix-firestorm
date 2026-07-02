@@ -29,6 +29,7 @@
                 height="768"
                 name="menu_stack"
                 orientation="vertical"
+                reverse_draw_order="true"
                 top="0">
     <layout_panel mouse_opaque="true"
               follows="left|right|top"

@@ -34,6 +34,7 @@
 
 #include "llgl.h"
 #include "llrender.h"
+#include "llvkloader.h"
 
 #include "llagent.h"
 #include "llagentcamera.h"
@@ -1715,6 +1716,16 @@ void LLManipTranslate::highlightIntersection(LLVector3 normal,
         static LLStaticHashedString sClipPlane("clip_plane");
         gClipProgram.uniform4fv(sClipPlane, 1, plane.v);
 
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::ClipPlane_PerShaderBind ubo_data;
+            ubo_data.clip_plane[0] = plane.v[0];
+            ubo_data.clip_plane[1] = plane.v[1];
+            ubo_data.clip_plane[2] = plane.v[2];
+            ubo_data.clip_plane[3] = plane.v[3];
+            LLVKLoader::writeCurrentClipPlaneUBO(ubo_data);
+        }
+
         bool particles = gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_PARTICLES);
         bool clouds = gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_CLOUDS);
 
@@ -1729,14 +1740,14 @@ void LLManipTranslate::highlightIntersection(LLVector3 normal,
 
         //stencil in volumes
         //glStencilOp(GL_INCR, GL_INCR, GL_INCR);
-        glCullFace(GL_FRONT);
+        LLGLState::setCullFaceMode(GL_FRONT);
         for (U32 i = 0; i < num_types; i++)
         {
             gPipeline.renderObjects(types[i], LLVertexBuffer::MAP_VERTEX, false);
         }
 
         //glStencilOp(GL_DECR, GL_DECR, GL_DECR);
-        glCullFace(GL_BACK);
+        LLGLState::setCullFaceMode(GL_BACK);
         for (U32 i = 0; i < num_types; i++)
         {
             gPipeline.renderObjects(types[i], LLVertexBuffer::MAP_VERTEX, false);
@@ -1775,14 +1786,14 @@ void LLManipTranslate::highlightIntersection(LLVector3 normal,
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
         LLGLDepthTest depth(GL_FALSE);
         //LLGLEnable stencil(GL_STENCIL_TEST);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-        glStencilFunc(GL_EQUAL, 0, stencil_mask);
+        LLGLState::setStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        LLGLState::setStencilFunc(GL_EQUAL, 0, stencil_mask);
         renderGrid(0,0,tiles,inner_color.mV[0], inner_color.mV[1], inner_color.mV[2], 0.25f);
     }
 
-    glStencilFunc(GL_ALWAYS, 255, 0xFFFFFFFF);
-    glStencilMask(0xFFFFFFFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    LLGLState::setStencilFunc(GL_ALWAYS, 255, 0xFFFFFFFF);
+    LLGLState::setStencilMask(0xFFFFFFFF);
+    LLGLState::setStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
     gGL.popMatrix();
 #endif

@@ -56,6 +56,8 @@
 class LLPrivateMemoryPool;
 class LLVertexBuffer;
 
+class LLImageGL;
+
 class LLVertexBufferData
 {
 public:
@@ -64,17 +66,19 @@ public:
         , mMode(0)
         , mCount(0)
         , mTexName(0)
+        , mImageGL(nullptr)
         , mProjection(glm::identity<glm::mat4>())
         , mModelView(glm::identity<glm::mat4>())
         , mTexture0(glm::identity<glm::mat4>())
     {}
-    LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count, U32 tex_name, const glm::mat4& model_view, const glm::mat4& projection, const glm::mat4& texture0)
+    LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count, U32 tex_name, LLImageGL* image_gl, const glm::mat4& model_view, const glm::mat4& projection, const glm::mat4& texture0)
         : mVB(buffer)
         , mMode(mode)
         , mCount(count)
         , mTexName(tex_name)
-        , mProjection(model_view)
-        , mModelView(projection)
+        , mImageGL(image_gl)
+        , mProjection(projection)
+        , mModelView(model_view)
         , mTexture0(texture0)
     {}
     void drawWithMatrix();
@@ -83,6 +87,7 @@ public:
     U8 mMode;
     U32 mCount;
     U32 mTexName;
+    LLImageGL* mImageGL;
     glm::mat4 mProjection;
     glm::mat4 mModelView;
     glm::mat4 mTexture0;
@@ -300,6 +305,13 @@ protected:
 
     std::vector<MappedRegion> mMappedVertexRegions;  // list of mMappedData byte ranges that must be sent to GL
     std::vector<MappedRegion> mMappedIndexRegions;   // list of mMappedIndexData byte ranges that must be sent to GL
+
+    VkBuffer mVkVertexBuffer = VK_NULL_HANDLE;
+    VkBuffer mVkIndexBuffer  = VK_NULL_HANDLE;
+    void*    mVkVertexAlloc  = nullptr;
+    void*    mVkIndexAlloc   = nullptr;
+    void*    mVkVertexMapped = nullptr;
+    void*    mVkIndexMapped  = nullptr;
 
 private:
     // DEPRECATED

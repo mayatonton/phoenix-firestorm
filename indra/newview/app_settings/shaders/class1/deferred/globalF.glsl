@@ -28,9 +28,25 @@
  // DO NOT declare sampler uniforms here as OS X doesn't compile
  // them out
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 18, std140) uniform GlobalF_PerProgramBind
+{
+    float mirror_flag;
+    float _globalF_pad0;
+    float _globalF_pad1;
+    float _globalF_pad2;
+#ifndef _AYA_UM_clipPlane
+#define _AYA_UM_clipPlane 1
+    vec4  clipPlane;
+#else
+    vec4  _dup_GlobalF_clipPlane;
+#endif
+};
+#else
 uniform float mirror_flag;
 uniform vec4 clipPlane;
 uniform float clipSign;
+#endif
 
 void mirrorClip(vec3 pos)
 {

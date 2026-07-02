@@ -28,14 +28,58 @@
 
 // take a luminance sample of diffuseRect and emissiveRect
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 in vec2 vary_fragcoord;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+layout(set = 1, binding = 2) uniform sampler2D emissiveRect;
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+layout(set = 1, binding = 3) uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
+#else
 uniform sampler2D diffuseRect;
 uniform sampler2D emissiveRect;
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform LuminanceF_PerProgramBind
+{
+    float diffuse_luminance_scale;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_LuminanceF__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_LuminanceF__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_LuminanceF__pad2;
+#endif
+};
+#else
 uniform float diffuse_luminance_scale;
+#endif
 
 float lum(vec3 col)
 {

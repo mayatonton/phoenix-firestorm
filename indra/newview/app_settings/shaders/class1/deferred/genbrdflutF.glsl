@@ -49,9 +49,15 @@ SOFTWARE.
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_uv;
+
+layout(location = 0) out vec4 outColor;
+#else
 in vec2 vary_uv;
 
 out vec4 outColor;
+#endif
 
 #define NUM_SAMPLES 1024u
 

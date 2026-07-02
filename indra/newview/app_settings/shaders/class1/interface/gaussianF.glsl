@@ -23,6 +23,19 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(push_constant) uniform GaussianF_FragPC
+{
+    layout(offset = 104) float resScale;
+    layout(offset = 112) vec2  direction;  // texture direction, will be <1, 0> or <0, 1>
+};
+
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
@@ -33,6 +46,7 @@ uniform float resScale;
 uniform vec2 direction;
 
 in vec2 vary_texcoord0;
+#endif
 
 // get linear depth value given a depth buffer sample d and znear and zfar values
 float linearDepth(float d, float znear, float zfar);

@@ -46,8 +46,11 @@
 #include "llviewercamera.h"
 #include "llviewertexturelist.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llspatialpartition.h"
 #include "llviewershadermgr.h"
+#include "llvkloader.h"
+#include "llimagegl.h" 
 #include "llmodel.h"
 
 //#include "llimagebmp.h"
@@ -214,7 +217,7 @@ S32 LLDrawPoolBump::numBumpPasses()
 void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
 {
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled )
+    if( cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() )
     {
         if (shader )
         {
@@ -261,7 +264,7 @@ void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& di
 void LLDrawPoolBump::unbindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
 {
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled)
+    if( cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         if (shader_level > 1)
         {
@@ -290,7 +293,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
 
     // Second pass: environment map
     shader = &gDeferredFullbrightShinyProgram;
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     {
         shader = &gHUDFullbrightShinyProgram;
     }
@@ -310,7 +313,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
 
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
 
-    if (cube_map && !LLPipeline::sReflectionProbesEnabled)
+    if (cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         // Make sure that texture coord generation happens for tex unit 1, as that's the one we use for
         // the cube map in the one pass shiny shaders
@@ -335,7 +338,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
         LLVector4 vec4(vec, gShinyOrigin.mV[3]);
         shader->uniform4fv(LLViewerShaderMgr::SHINY_ORIGIN, 1, vec4.mV);
 
-        if (LLPipeline::sReflectionProbesEnabled)
+        if (LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
         {
             gPipeline.bindReflectionProbes(*shader);
         }
@@ -390,7 +393,7 @@ void LLDrawPoolBump::endFullbrightShiny()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SHINY);
 
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled )
+    if( cube_map && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() )
     {
         cube_map->disable();
         if (shader->mFeatures.hasReflectionProbes)
@@ -524,7 +527,7 @@ void LLDrawPoolBump::renderBump(U32 pass)
     gGL.diffuseColor4f(1,1,1,1);
     /// Get rid of z-fighting with non-bump pass.
     LLGLEnable polyOffset(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(-1.0f, -1.0f);
+    gGL.setPolygonOffset(-1.0f, -1.0f);
     pushBumpBatches(pass);
 }
 
@@ -599,7 +602,7 @@ void LLDrawPoolBump::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
-    S32 num_passes = LLPipeline::sRenderingHUDs ? 1 : 2; // skip rigged pass when rendering HUDs
+    S32 num_passes = LLPipelineFrameContext::getInstance().isHUDPass() ? 1 : 2; // skip rigged pass when rendering HUDs
 
     for (int i = 0; i < num_passes; ++i)
     { // two passes -- static and rigged
@@ -792,7 +795,7 @@ LLViewerTexture* LLBumpImageList::getBrightnessDarknessImage(LLViewerFetchedText
 
 void LLBumpImageList::onSourceStandardLoaded( bool success, LLViewerFetchedTexture* src_vi, LLImageRaw* src, LLImageRaw* aux_src, S32 discard_level, bool final, void* userdata)
 {
-    if (success && LLPipeline::sRenderDeferred)
+    if (success && LLPipelineFrameContext::getInstance().isRenderingDeferred())
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
         LLPointer<LLImageRaw> nrm_image = new LLImageRaw(src->getWidth(), src->getHeight(), 4);
@@ -939,6 +942,25 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
             gNormalMapGenProgram.uniform1f(sStepX, 1.f / bump->getWidth());
             gNormalMapGenProgram.uniform1f(sStepY, 1.f / bump->getHeight());
             gNormalMapGenProgram.uniform1i(sBumpCode, bump_code);
+
+            struct NormgenF_UBO
+            {
+                F32 stepX;
+                F32 stepY;
+                F32 norm_scale;
+                S32 bump_code;
+            };
+            if (LLVKLoader::isVulkanInitialized()
+                && gNormalMapGenProgram.mVkPerProgramUBOMapped != nullptr
+                && gNormalMapGenProgram.mVkPerProgramUBOSize >= sizeof(NormgenF_UBO))
+            {
+                NormgenF_UBO ubo_data{};
+                ubo_data.stepX      = 1.f / bump->getWidth();
+                ubo_data.stepY      = 1.f / bump->getHeight();
+                ubo_data.norm_scale = gSavedSettings.getF32("RenderNormalMapScale");
+                ubo_data.bump_code  = (S32)bump_code;
+                std::memcpy(gNormalMapGenProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            }
 
             gGL.getTexUnit(0)->bind(src);
 

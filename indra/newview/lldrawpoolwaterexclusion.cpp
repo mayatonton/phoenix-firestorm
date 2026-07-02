@@ -33,6 +33,7 @@
 #include "llglcommonfunc.h"
 #include "llvoavatar.h"
 #include "lldrawpoolwater.h"
+#include "llvkloader.h"
 
 LLDrawPoolWaterExclusion::LLDrawPoolWaterExclusion() : LLRenderPass(LLDrawPool::POOL_WATEREXCLUSION)
 {
@@ -52,6 +53,11 @@ void LLDrawPoolWaterExclusion::render(S32 pass)
 
     LLGLDepthTest depth(GL_TRUE);
     gDrawColorProgram.uniform4f(LLShaderMgr::DIFFUSE_COLOR, 1, 1, 1, 1);
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        LLVKLoader::DrawColor_PerShaderBind draw_color = { 1.f, 1.f, 1.f, 1.f };
+        LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+    }
 
     LLDrawPoolWater* pwaterpool = (LLDrawPoolWater*)gPipeline.getPool(LLDrawPool::POOL_WATER);
     if (pwaterpool)
@@ -65,6 +71,11 @@ void LLDrawPoolWaterExclusion::render(S32 pass)
     }
 
     gDrawColorProgram.uniform4f(LLShaderMgr::DIFFUSE_COLOR, 0, 0, 0, 1);
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        LLVKLoader::DrawColor_PerShaderBind draw_color = { 0.f, 0.f, 0.f, 1.f };
+        LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+    }
 
     static LLStaticHashedString waterSign("waterSign");
     gDrawColorProgram.uniform1f(waterSign, 1.f);
@@ -77,3 +88,4 @@ void LLDrawPoolWaterExclusion::render(S32 pass)
         gDrawColorProgram.unbind();
     }
 }
+

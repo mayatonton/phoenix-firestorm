@@ -29,9 +29,15 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+
+layout(location = 0) out vec2 vary_texcoord0;
+#else
 in vec3 position;
 
 out vec2 vary_texcoord0;
+#endif
 
 void main()
 {

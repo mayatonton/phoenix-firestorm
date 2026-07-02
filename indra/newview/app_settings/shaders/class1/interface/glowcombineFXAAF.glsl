@@ -25,6 +25,13 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(location = 0) in vec2 vary_tc;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
@@ -32,6 +39,7 @@ uniform sampler2D diffuseRect;
 uniform vec2 screen_res;
 
 in vec2 vary_tc;
+#endif
 
 void main()
 {

@@ -16,6 +16,25 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+layout(location = 0) in vec2 vary_fragcoord;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(set = 1, binding = 0, std140) uniform RlvF_PerProgramBind
+{
+    vec4 rlvEffectParam1;   // Sphere origin (in local coordinates)
+    vec4 rlvEffectParam2;   // Min/max dist + min/max value
+    vec4 rlvEffectParam4;   // Sphere params (=color when using blend)
+    vec2 rlvEffectParam5;   // Blur direction (not used for blend)
+    vec2 _rlvF_screen_res;
+    bvec2 rlvEffectParam3;  // Min/max dist extend
+    int rlvEffectMode;      // ESphereMode
+    int _rlvF_pad0;
+};
+#define screen_res _rlvF_screen_res
+#else
 out vec4 frag_color;
 in vec2 vary_fragcoord;
 
@@ -28,6 +47,7 @@ uniform vec4 rlvEffectParam2;   // Min/max dist + min/max value
 uniform bvec2 rlvEffectParam3;  // Min/max dist extend
 uniform vec4 rlvEffectParam4;   // Sphere params (=color when using blend)
 uniform vec2 rlvEffectParam5;   // Blur direction (not used for blend)
+#endif
 
 #define SPHERE_ORIGIN       rlvEffectParam1.xyz
 #define SPHERE_DISTMIN      rlvEffectParam2.y

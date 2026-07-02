@@ -31,7 +31,17 @@ vec3 getAmblitColor();
 vec3 getAdditiveColor();
 vec3 getAtmosAttenuation();
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 11, std140) uniform WindlightLight_PerProgramBind
+{
+    float scene_light_strength;
+    float _pad_light0;
+    float _pad_light1;
+    float _pad_light2;
+};
+#else
 uniform float scene_light_strength;
+#endif
 
 vec3 atmosAmbient()
 {

@@ -29,10 +29,17 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec4 vary_cur_clip;
+layout(location = 1) in vec4 vary_last_clip;
+#else
 out vec4 frag_color;
 
 in vec4 vary_cur_clip;
 in vec4 vary_last_clip;
+#endif
 
 void main()
 {

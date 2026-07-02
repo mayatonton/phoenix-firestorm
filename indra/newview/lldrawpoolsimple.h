@@ -54,6 +54,7 @@ public:
     void endMotionBlurPass(S32 pass) override;
     void renderMotionBlur(S32 pass) override;
     // </AYAstorm r30 P2>
+
 };
 
 class LLDrawPoolGrass final : public LLRenderPass

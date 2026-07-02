@@ -33,6 +33,30 @@
 #define FRONT_BLUR 0
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(set = 1, binding = 0, std140) uniform PostF_PerProgramBind
+{
+#ifndef _AYA_UM_screen_res
+#define _AYA_UM_screen_res 1
+    vec2 screen_res;
+#else
+    vec2 _dup_PostF_screen_res;
+#endif
+#ifndef _AYA_UM_max_cof
+#define _AYA_UM_max_cof 1
+    float max_cof;
+#else
+    float _dup_PostF_max_cof;
+#endif
+    float chroma_str;
+};
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
@@ -40,13 +64,13 @@ uniform sampler2D diffuseRect;
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 uniform float max_cof;
-uniform float res_scale;
-
 // <AYAstorm r30 P4 step 1> BD chroma uniform (gated by HAS_DOF_CHROMA permutation)
+uniform float res_scale;
 uniform float chroma_str;
 // </AYAstorm r30 P4 step 1>
 
 in vec2 vary_fragcoord;
+#endif
 
 void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc)
 {

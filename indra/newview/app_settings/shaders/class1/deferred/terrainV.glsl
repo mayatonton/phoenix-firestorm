@@ -23,23 +23,74 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#define normal_matrix mat3(transpose(inverse(modelview_matrix)))
+#else
 uniform mat3 normal_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
+{
+    mat4 texture_matrix[4];
+};
+#define texture_matrix0 texture_matrix[0]
+#else
 uniform mat4 texture_matrix0;
+#endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
+uniform mat4 projection_matrix;
 uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 3) in vec2 texcoord1;
+#else
 in vec3 position;
 in vec3 normal;
-in vec4 diffuse_color;
 in vec2 texcoord1;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec3 pos;
+layout(location = 1) out vec3 vary_normal;
+layout(location = 2) out vec4 vary_texcoord0;
+layout(location = 3) out vec4 vary_texcoord1;
+#else
 out vec3 pos;
 out vec3 vary_normal;
 out vec4 vary_texcoord0;
 out vec4 vary_texcoord1;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform TerrainV_PerProgramBind
+{
+    vec4 object_plane_s;
+    vec4 object_plane_t;
+};
+#else
 uniform vec4 object_plane_s;
 uniform vec4 object_plane_t;
+#endif
 
 vec2 texgen_object(vec4 vpos, mat4 mat, vec4 tp0, vec4 tp1)
 {

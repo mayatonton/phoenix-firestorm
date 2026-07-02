@@ -93,6 +93,7 @@ if (WINDOWS)
       _CRT_NONSTDC_NO_DEPRECATE       # Allow use of sprintf etc
       _CRT_OBSOLETE_NO_WARNINGS
       _WINSOCK_DEPRECATED_NO_WARNINGS # Disable deprecated WinSock API warnings
+      VK_USE_PLATFORM_WIN32_KHR       # AYAstorm r41 Phase F-14.1 = Vulkan WSI (Win32 surface)
       )
   add_compile_options(
           /utf-8
@@ -186,6 +187,8 @@ if (LINUX)
   # our 3rd party libs may need their *own* SIGCHLD handler to work. Sigh! The
   # viewer doesn't need to catch SIGCHLD anyway.
   add_definitions(-DLL_IGNORE_SIGCHLD)
+  # AYAstorm r41 Vulkan WSI platform (XLIB); Wayland is deferred to stage 10 polish
+  add_definitions(-DVK_USE_PLATFORM_XLIB_KHR)
   if (ADDRESS_SIZE EQUAL 32)
     add_compile_options(-march=pentium4)
   endif (ADDRESS_SIZE EQUAL 32)
@@ -228,6 +231,12 @@ if (DARWIN)
   # Silence GL deprecation warnings
   add_compile_definitions(GL_SILENCE_DEPRECATION=1)
 
+  # AYAstorm r41 Phase F-14.1 = Vulkan WSI (Metal surface via MoltenVK)。
+  #   F-14.1 では surface 創出 stub (= LL_WARNS で defer log)、F-14.x で CAMetalLayer
+  #   経由 vkCreateMetalSurfaceEXT 配線。define は volk.h の surface entry table を
+  #   compile-time に有効化するため Phase F-14.1 から付ける。
+  add_compile_definitions(VK_USE_PLATFORM_METAL_EXT)
+
   set(ENABLE_SIGNING TRUE)
   set(SIGNING_IDENTITY "Developer ID Application: The Phoenix Firestorm Project, Inc." )
 endif(DARWIN)
@@ -256,3 +265,11 @@ if (LINUX OR DARWIN)
   add_compile_options(${GCC_WARNINGS})
   add_compile_options(-m${ADDRESS_SIZE})
 endif (LINUX OR DARWIN)
+
+# r41 Phase F-15.115aw (2026-06-12): F-15.115l build-time 分離 廃止 = runtime switch
+#   復活 (= AYA literal「ifdef いれるのに捨てちゃってるなら過去の git 見ればでてくる」
+#   literal scope = swapBuffers 既存 runtime gate `isVulkanInitialized() &&
+#   isVulkanPresentationEnabled()` (F-15.111 = 4051a75d7b) を全 createContext site に
+#   展開)。`include(AYAVulkanBuild)` 削除 + `AYAVulkanBuild.cmake` 削除 + llwindowsdl2
+#   8 #ifdef site → runtime check 化 = 1 binary OpenGL/Vulkan 同居 = build channel 統合
+#   (= `--chan AYAstorm-VK-release` 廃止、`--chan AYAstorm-release` 1 channel)。

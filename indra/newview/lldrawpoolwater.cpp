@@ -44,10 +44,13 @@
 #include "llvowater.h"
 #include "llworld.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llenvironment.h"
 #include "llsettingssky.h"
 #include "llsettingswater.h"
+#include "llvkloader.h"
+#include "llimagegl.h"
 
 bool LLDrawPoolWater::sSkipScreenCopy = false;
 bool LLDrawPoolWater::sNeedsReflectionUpdate = true;
@@ -119,8 +122,8 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
         // reflections and refractions
         LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
-        LLRenderTarget& src = gPipeline.mRT->screen;
-        LLRenderTarget& depth_src = gPipeline.mRT->deferredScreen;
+        LLRenderTarget& src = LLPipelineFrameContext::getInstance().getActiveRT()->screen;
+        LLRenderTarget& depth_src = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen;
         LLRenderTarget& dst = gPipeline.mWaterDis;
 
         dst.bindTarget();
@@ -136,6 +139,17 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
         gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
         dst.flush();
+    }
+
+    if (!gCubeSnapshot && gPipeline.mForwardColor.isComplete() &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT)
+    {
+        gPipeline.mForwardColor.bindTarget();
+        {
+            LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
+            glClearColor(0.f, 0.f, 0.f, 0.f);
+            gPipeline.mForwardColor.clear(GL_COLOR_BUFFER_BIT);
+        }
     }
 }
 
@@ -305,6 +319,99 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
 
     LLGLDisable cullface(GL_CULL_FACE);
 
+    if (LLVKLoader::isVulkanInitialized()
+        && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+        && shader->mVkPerProgramUBOMapped != nullptr)
+    {
+        const bool is_under_water = (shader == &gUnderWaterProgram);
+        const F32  effective_refScale = LLViewerCamera::getInstance()->cameraUnderWater()
+                                         ? pwater->getScaleBelow() : pwater->getScaleAbove();
+
+        {
+            VkBuffer dummy_buf      = VK_NULL_HANDLE;
+            void*    shared_mapped  = nullptr;
+            if (LLVKLoader::getSharedWaterVUBO(dummy_buf, shared_mapped)
+                && shared_mapped != nullptr)
+            {
+                LLVKLoader::Water_PerProgramBind vubo = {};
+                const LLVector2 wave1   = pwater->getWave1Dir();
+                const LLVector2 wave2   = pwater->getWave2Dir();
+                const LLVector3 origin  = LLViewerCamera::getInstance()->getOrigin();
+                vubo.waveDir1[0] = wave1.mV[0];
+                vubo.waveDir1[1] = wave1.mV[1];
+                vubo.waveDir2[0] = wave2.mV[0];
+                vubo.waveDir2[1] = wave2.mV[1];
+                vubo.time        = phase_time;
+                vubo.eyeVec[0]   = origin.mV[0];
+                vubo.eyeVec[1]   = origin.mV[1];
+                vubo.eyeVec[2]   = origin.mV[2];
+                vubo.waterHeight = camera_height - water_height;
+                vubo.lightDir[0] = light_dir.mV[0];
+                vubo.lightDir[1] = light_dir.mV[1];
+                vubo.lightDir[2] = light_dir.mV[2];
+                memcpy(shared_mapped, &vubo, sizeof(vubo));
+            }
+        }
+
+        if (is_under_water)
+        {
+            struct UnderWaterF_UBO
+            {
+                F32 waterFogColorLinear[3];
+                F32 refScale;
+            };
+            UnderWaterF_UBO ubo_data = {};
+            LLColor3 fog_color_linear = linearColor3(pwater->getWaterFogColor());
+            ubo_data.waterFogColorLinear[0] = fog_color_linear.mV[0];
+            ubo_data.waterFogColorLinear[1] = fog_color_linear.mV[1];
+            ubo_data.waterFogColorLinear[2] = fog_color_linear.mV[2];
+            ubo_data.refScale               = effective_refScale;
+            shader->rotatePerProgramUBOSlot();
+            memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data,
+                   llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
+        }
+        else
+        {
+            struct WaterF_UBO
+            {
+                F32 lightDir[3];
+                F32 blurMultiplier;
+                F32 specular[3];
+                F32 refScale;
+                F32 normScale[3];
+                F32 fresnelScale;
+                F32 fresnelOffset;
+                F32 blend_factor;
+                S32 classic_mode;
+                F32 _pad_waterf0;
+            };
+            WaterF_UBO ubo_data = {};
+            ubo_data.lightDir[0]     = light_dir.mV[0];
+            ubo_data.lightDir[1]     = light_dir.mV[1];
+            ubo_data.lightDir[2]     = light_dir.mV[2];
+            ubo_data.blurMultiplier  = fmaxf(0, pwater->getBlurMultiplier()) * 2;
+            ubo_data.specular[0]     = light_diffuse.mV[0];
+            ubo_data.specular[1]     = light_diffuse.mV[1];
+            ubo_data.specular[2]     = light_diffuse.mV[2];
+            ubo_data.refScale        = effective_refScale;
+            ubo_data.normScale[0]    = pwater->getNormalScale().mV[0];
+            ubo_data.normScale[1]    = pwater->getNormalScale().mV[1];
+            ubo_data.normScale[2]    = pwater->getNormalScale().mV[2];
+            ubo_data.fresnelScale    = pwater->getFresnelScale();
+            ubo_data.fresnelOffset   = pwater->getFresnelOffset();
+            ubo_data.blend_factor    = blend_factor;
+            ubo_data.classic_mode    = (psky->canAutoAdjust() && !should_auto_adjust()) ? 1 : 0;
+            ubo_data._pad_waterf0    = 0.0f;
+            shader->rotatePerProgramUBOSlot();
+            memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data,
+                   llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
+        }
+
+        gPipeline.mWaterDis.bindForShaderRead(0, false);
+        gPipeline.mWaterDis.bindForShaderRead(0, true);
+        gPipeline.mWaterExclusionMask.bindForShaderRead(0, false);
+    }
+
     // Only push the water planes once.
     // Previously we did this twice: once for void water and one for region water.
     // However, the void water and region water shaders are the same exact shader.
@@ -317,6 +424,17 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
     gPipeline.unbindDeferredShader(*shader);
 
     gGL.setColorMask(true, false);
+}
+
+void LLDrawPoolWater::endPostDeferredPass(S32 pass)
+{
+    if (!gCubeSnapshot && gPipeline.mForwardColor.isComplete() &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT)
+    {
+        gPipeline.mForwardColor.flush();
+    }
+
+    LLDrawPool::endPostDeferredPass(pass);
 }
 
 void LLDrawPoolWater::pushWaterPlanes(int pass)
@@ -356,3 +474,4 @@ void LLDrawPoolWater::onRenderWaterMipNormalChanged()
     mRenderWaterMipNormal = (bool)gSavedSettings.getBOOL("RenderWaterMipNormal");
 }
 // </FS:Zi>
+

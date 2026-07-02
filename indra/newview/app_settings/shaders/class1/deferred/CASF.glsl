@@ -31,6 +31,46 @@
 #define CAS_BETTER_DIAGONALS
 #define CAS_SLOW
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+layout(location = 0) in vec2 vary_fragcoord;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(set = 1, binding = 0, std140) uniform CasF_PerProgramBind
+{
+    vec2 out_screen_res;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    vec2 _pad0;
+#else
+    vec2 _dup_CasF__pad0;
+#endif
+    uvec4 cas_param_0;
+    uvec4 cas_param_1;
+#ifdef LEGACY_GAMMA
+#ifndef _AYA_UM_gamma
+#define _AYA_UM_gamma 1
+    float gamma;
+#else
+    float _dup_CasF_gamma;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_CasF__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_CasF__pad2;
+#endif
+    float _pad3;
+#endif
+};
+#else
 out vec4 frag_color;
 in vec2 vary_fragcoord;
 
@@ -38,6 +78,7 @@ uniform sampler2D diffuseRect;
 uniform vec2 out_screen_res;
 uniform uvec4 cas_param_0;
 uniform uvec4 cas_param_1;
+#endif
 
 vec3 srgb_to_linear(vec3 cs);
 vec3 linear_to_srgb(vec3 cl);
@@ -2547,7 +2588,9 @@ A_STATIC void CasSetup(
 #ifdef A_GPU
 
 #ifdef LEGACY_GAMMA
+#ifndef LL_VULKAN_GLSL
 uniform float gamma;
+#endif
 
 vec3 legacyGamma(vec3 color)
 {

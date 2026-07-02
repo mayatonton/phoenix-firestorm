@@ -24,16 +24,70 @@
  */
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
 /////////////////////////////////////////////////////////////////////////
 // The fragment shader for the sky
 /////////////////////////////////////////////////////////////////////////
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3  vary_CloudColorSun;
+layout(location = 1) in vec3  vary_CloudColorAmbient;
+layout(location = 2) in float vary_CloudDensity;
+layout(location = 3) in vec2  vary_texcoord0;
+layout(location = 4) in vec2  vary_texcoord1;
+layout(location = 5) in vec2  vary_texcoord2;
+layout(location = 6) in vec2  vary_texcoord3;
+layout(location = 7) in float altitude_blend_factor;
+#else
 in vec3 vary_CloudColorSun;
 in vec3 vary_CloudColorAmbient;
 in float vary_CloudDensity;
 
+in vec2 vary_texcoord0;
+in vec2 vary_texcoord1;
+in vec2 vary_texcoord2;
+in vec2 vary_texcoord3;
+in float altitude_blend_factor;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform Cloud_PerProgramBind
+{
+#ifndef _AYA_UM_camPosLocal
+#define _AYA_UM_camPosLocal 1
+    vec3  camPosLocal;
+#else
+    vec3  _dup_Cloud_camPosLocal;
+#endif
+    float _cloud_pad0;
+    vec3  cloud_color;
+    float cloud_scale_v;
+    vec3  cloud_pos_density1;
+    float _cloud_pad1;
+    vec3  cloud_pos_density2;
+    float _cloud_pad2;
+#ifndef _AYA_UM_blend_factor
+#define _AYA_UM_blend_factor 1
+    float blend_factor;
+#else
+    float _dup_Cloud_blend_factor;
+#endif
+    float cloud_scale;
+    float cloud_variance;
+    int   aya_r18_cloud_volumetric_enabled;
+    float aya_r18_strength;
+    float _cloud_pad3;
+    float _cloud_pad4;
+    float _cloud_pad5;
+};
+layout(set = 1, binding = 1) uniform sampler2D cloud_noise_texture;
+layout(set = 1, binding = 2) uniform sampler2D cloud_noise_texture_next;
+#else
 uniform sampler2D cloud_noise_texture;
 uniform sampler2D cloud_noise_texture_next;
 uniform float blend_factor;
@@ -43,12 +97,7 @@ uniform float cloud_scale;
 uniform float cloud_variance;
 uniform int aya_r18_cloud_volumetric_enabled;  // <FS:AYA r18>
 uniform float aya_r18_strength;  // <FS:AYAstorm r30 BD改善> r18 効果強度 (0=legacy / 1=volumetric、enabled 内で lerp)
-
-in vec2 vary_texcoord0;
-in vec2 vary_texcoord1;
-in vec2 vary_texcoord2;
-in vec2 vary_texcoord3;
-in float altitude_blend_factor;
+#endif
 
 vec4 cloudNoise(vec2 uv)
 {

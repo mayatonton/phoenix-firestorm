@@ -1,0 +1,83 @@
+/**
+ * @file ayaForwardFlipCompositeF.glsl
+ *
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Second Life Viewer Source Code
+ * Copyright (C) 2026, Linden Research, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
+ * $/LicenseInfo$
+ */
+
+/*[EXTRA_CODE_HERE]*/
+
+// <AYAstorm r41 forward-flip composite>
+// Composite the post-deferred forward WATER plate (mForwardColor) onto
+// mRT->screen with a VERTICAL (Y) FLIP. This is the missing Vulkan-specific
+// orientation step: opaque reaches screen through the soften fullscreen
+// resample (lands upright) whereas the forward water surface draws direct
+// (lands upside down). The water plate was rendered NEG (same depth as
+// opaque → river carving / occlusion preserved); flipping ONLY here at the
+// composite leaves depth/raster untouched, so the carving stays intact and
+// only the visible vertical position is corrected.
+//
+// Sample is taken at (x, 1 - y) to mirror the plate vertically. Coverage is
+// derived from the plate contents (water surface writes opaque color where it
+// is visible; the plate is cleared to 0 elsewhere) because the water frag
+// alpha is spec*water_mask (glow), not coverage. C++ sets the blend func to
+// (ONE, ONE_MINUS_SRC_ALPHA) so frag_color.a acts as the over-coverage:
+//   dst.rgb = water.rgb + screen.rgb * (1 - cov)
+//   dst.a   = cov       + screen.a   * (1 - cov)
+// </AYAstorm r41 forward-flip composite>
+
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
+out vec4 frag_color;
+
+uniform sampler2D diffuseRect;
+
+in vec2 vary_fragcoord;
+#endif
+
+void main()
+{
+#ifdef LL_VULKAN_GLSL
+    // Vulkan only: forward water was rasterized with a negative-height viewport
+    // (LLVKLoader::setupViewportAndScissor, applied solely on the
+    // shouldUseVulkanRender() path in llvertexbuffer.cpp) so the plate is
+    // vertically mirrored vs the soften-resampled opaque screen. Sample flipped
+    // to restore upright. The GL path applies NO such viewport flip (water lands
+    // upright), so it samples straight — preserving GL-1:1.
+    vec2 flipped = vec2(vary_fragcoord.x, 1.0 - vary_fragcoord.y);
+#else
+    vec2 flipped = vary_fragcoord;
+#endif
+    vec4 plate = texture(diffuseRect, flipped);
+
+    // Coverage = was this pixel written by the water surface? The plate is
+    // cleared to (0,0,0,0); the water surface writes non-zero color (refraction
+    // / reflection / fog blend is essentially never pure black) and/or glow
+    // alpha where it is visible.
+    float cov = step(0.0001, dot(plate.rgb, vec3(1.0)) + plate.a);
+
+    frag_color = vec4(plate.rgb, cov);
+}

@@ -23,16 +23,59 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 modelview_projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform Glow_PerProgramBind
+{
+    vec2 glowDelta;
+    float glowStrength;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_Glow__pad0;
+#endif
+};
+#else
 uniform vec2 glowDelta;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 vary_texcoord0;
+layout(location = 1) out vec4 vary_texcoord1;
+layout(location = 2) out vec4 vary_texcoord2;
+layout(location = 3) out vec4 vary_texcoord3;
+#else
 out vec4 vary_texcoord0;
 out vec4 vary_texcoord1;
 out vec4 vary_texcoord2;
 out vec4 vary_texcoord3;
+#endif
 
 void main()
 {

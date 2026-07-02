@@ -41,19 +41,47 @@
 #define FRONT_BLUR 0
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 2) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+
+// members renamed with _phqd_ prefix to avoid anonymous-block-member
+// cross-UBO conflict (screen_res / max_cof / chroma_str also appear in DeferredUtil,
+// CofF, PostF, etc.). Body access via #define macros = source-level reference
+// unchanged. GL #else branch unchanged.
+layout(set = 1, binding = 0, std140) uniform PostHQDoFF_PerProgramBind
+{
+    vec2 _phqd_screen_res;
+    float _phqd_max_cof;
+    float _phqd_chroma_str;
+};
+#define screen_res _phqd_screen_res
+#define max_cof    _phqd_max_cof
+#define chroma_str _phqd_chroma_str
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
 
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 uniform float max_cof;
 uniform float res_scale;
-
 uniform float chroma_str;
 
 in vec2 vary_fragcoord;
+#endif
 
 void dofSample(inout vec4 diff, inout float w, float min_sc, vec2 tc, float depth)
 {

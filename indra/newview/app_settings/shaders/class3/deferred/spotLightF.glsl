@@ -25,6 +25,36 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 2) uniform sampler2D lightFunc;
+layout(set = 1, binding = 3) uniform sampler2D lightMap;
+
+layout(set = 1, binding = 0, std140) uniform SpotLightPerDraw
+{
+    vec3  center;
+    float size;
+    vec3  proj_origin;
+    float falloff;
+    float shadow_fade;
+    float global_light_strength;
+    int   proj_shadow_idx;
+    int   classic_mode;
+} sl;
+#define _SL_CENTER          sl.center
+#define _SL_PROJ_ORIGIN     sl.proj_origin
+#define _SL_FALLOFF         sl.falloff
+#define _SL_SHADOW_FADE     sl.shadow_fade
+#define _SL_STRENGTH        sl.global_light_strength
+#define _SL_PROJ_SHADOW_IDX sl.proj_shadow_idx
+#define _SL_CLASSIC         sl.classic_mode
+
+layout(location = 0) in vec4 vary_fragcoord;
+#if !defined(MULTI_SPOTLIGHT)
+layout(location = 1) in vec3 trans_center;
+#endif
+#else
 out vec4 frag_color;
 
 uniform samplerCube environmentMap;
@@ -55,8 +85,8 @@ uniform vec3 center;
 #else
 in vec3 trans_center;
 #endif
-uniform float size;
 uniform vec3 color;
+uniform float size;
 uniform float falloff;
 
 in vec4 vary_fragcoord;
@@ -66,6 +96,14 @@ uniform mat4 inv_proj;
 
 //BD
 uniform float global_light_strength;
+#define _SL_CENTER          center
+#define _SL_PROJ_ORIGIN     proj_origin
+#define _SL_FALLOFF         falloff
+#define _SL_SHADOW_FADE     shadow_fade
+#define _SL_STRENGTH        global_light_strength
+#define _SL_PROJ_SHADOW_IDX proj_shadow_idx
+#define _SL_CLASSIC         classic_mode
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);
@@ -79,7 +117,11 @@ vec4 texture2DLodSpecular(vec2 tc, float lod);
 
 vec4 getPosition(vec2 pos_screen);
 
+// M_PI guard wrap
+#ifndef M_PI_DEFINED
+#define M_PI_DEFINED 1
 const float M_PI = 3.14159265;
+#endif
 
 void pbrPunctual(vec3 diffuseColor, vec3 specularColor,
                     float perceptualRoughness,
@@ -104,7 +146,7 @@ void main()
     float dist, l_dist;
     vec3 c;
 #if defined(MULTI_SPOTLIGHT)
-    c = center;
+    c = _SL_CENTER;
 #else
     c = trans_center;
 #endif
@@ -116,11 +158,11 @@ void main()
 
     float shadow = 1.0;
 
-    if (proj_shadow_idx >= 0)
+    if (_SL_PROJ_SHADOW_IDX >= 0)
     {
         vec4 shd = texture(lightMap, tc);
-        shadow = (proj_shadow_idx==0)?shd.b:shd.a;
-        shadow += shadow_fade;
+        shadow = (_SL_PROJ_SHADOW_IDX==0)?shd.b:shd.a;
+        shadow += _SL_SHADOW_FADE;
         shadow = clamp(shadow, 0.0, 1.0);
     }
 
@@ -128,13 +170,13 @@ void main()
 
     vec3 n = gb.normal;
 
-    float dist_atten = calcLegacyDistanceAttenuation(dist, falloff);
+    float dist_atten = calcLegacyDistanceAttenuation(dist, _SL_FALLOFF);
     if (dist_atten <= 0.0)
     {
         discard;
     }
 
-    lv = proj_origin-pos.xyz;
+    lv = _SL_PROJ_ORIGIN-pos.xyz;
     vec3  h, l, v = -normalize(pos);
     float nh, nl, nv, vh, lightDist;
     calcHalfVectors(lv, n, v, h, l, nh, nl, nv, vh, lightDist);
@@ -273,10 +315,10 @@ void main()
     final_color = max(final_color, vec3(0.0));
 
     //BD
-    final_color *= global_light_strength;
+    final_color *= _SL_STRENGTH;
 
     float final_scale = 1.0;
-    if (classic_mode > 0)
+    if (_SL_CLASSIC > 0)
         final_scale = 0.9;
     //output linear
     frag_color.rgb = final_color * final_scale;

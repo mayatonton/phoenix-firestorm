@@ -33,6 +33,8 @@
 #include "llselectmgr.h"
 #include "llshadermgr.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
+#include "llvkloader.h"
 
 //static
 LLFetchedGLTFMaterial LLFetchedGLTFMaterial::sDefault;
@@ -73,13 +75,23 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
     LLViewerTexture* baseColorTex = media_tex ? media_tex : mBaseColorTexture;
     LLViewerTexture* emissiveTex = media_tex ? media_tex : mEmissiveTexture;
 
-    if (!LLPipeline::sShadowRender || (mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK))
+    if (!LLPipelineFrameContext::getInstance().isShadowPass() || (mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK))
     {
         if (mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK)
         {
             min_alpha = mAlphaCutoff;
         }
         shader->uniform1f(LLShaderMgr::MINIMUM_ALPHA, min_alpha);
+
+        if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   64, sizeof(F32), &min_alpha);
+            }
+        }
     }
 
     if (baseColorTex != nullptr)
@@ -95,7 +107,7 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
     mTextureTransform[GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(base_color_packed);
     shader->uniform4fv(LLShaderMgr::TEXTURE_BASE_COLOR_TRANSFORM, 2, (F32*)base_color_packed);
 
-    if (!LLPipeline::sShadowRender)
+    if (!LLPipelineFrameContext::getInstance().isShadowPass())
     {
         if (mNormalTexture.notNull() && mNormalTexture->getDiscardLevel() <= 4)
         {
@@ -130,6 +142,24 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
         shader->uniform1f(LLShaderMgr::METALLIC_FACTOR, mMetallicFactor);
         shader->uniform3fv(LLShaderMgr::EMISSIVE_COLOR, 1, mEmissiveColor.mV);
 
+        if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                const F32 aya_sss_skin_flag = 0.f;
+                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   68, sizeof(F32), &aya_sss_skin_flag);
+                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   100, sizeof(F32), &mRoughnessFactor);
+                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   96, sizeof(F32), &mMetallicFactor);
+                const F32 emissive_pc[4] = { mEmissiveColor.mV[0], mEmissiveColor.mV[1], mEmissiveColor.mV[2], 0.f };
+                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   80, sizeof(emissive_pc), emissive_pc);
+            }
+        }
+
         F32 normal_packed[8];
         mTextureTransform[GLTF_TEXTURE_INFO_NORMAL].getPacked(normal_packed);
         shader->uniform4fv(LLShaderMgr::TEXTURE_NORMAL_TRANSFORM, 2, (F32*)normal_packed);
@@ -141,6 +171,24 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
         F32 emissive_packed[8];
         mTextureTransform[GLTF_TEXTURE_INFO_EMISSIVE].getPacked(emissive_packed);
         shader->uniform4fv(LLShaderMgr::TEXTURE_EMISSIVE_TRANSFORM, 2, (F32*)emissive_packed);
+    }
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        LLVKLoader::PBRMaterial_PerMaterial pbr_mat = {};
+        F32 base_color_packed_vk[8];
+        F32 normal_packed_vk[8];
+        F32 metallic_roughness_packed_vk[8];
+        F32 emissive_packed_vk[8];
+        mTextureTransform[GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(base_color_packed_vk);
+        mTextureTransform[GLTF_TEXTURE_INFO_NORMAL].getPacked(normal_packed_vk);
+        mTextureTransform[GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS].getPacked(metallic_roughness_packed_vk);
+        mTextureTransform[GLTF_TEXTURE_INFO_EMISSIVE].getPacked(emissive_packed_vk);
+        std::memcpy(pbr_mat.texture_base_color_transform,         base_color_packed_vk,         sizeof(pbr_mat.texture_base_color_transform));
+        std::memcpy(pbr_mat.texture_normal_transform,             normal_packed_vk,             sizeof(pbr_mat.texture_normal_transform));
+        std::memcpy(pbr_mat.texture_metallic_roughness_transform, metallic_roughness_packed_vk, sizeof(pbr_mat.texture_metallic_roughness_transform));
+        std::memcpy(pbr_mat.texture_emissive_transform,           emissive_packed_vk,           sizeof(pbr_mat.texture_emissive_transform));
+        LLVKLoader::writeCurrentPBRMaterialUBO(pbr_mat);
     }
 }
 

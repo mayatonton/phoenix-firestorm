@@ -23,13 +23,68 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
+{
+    mat4 texture_matrix[4];
+};
+#define texture_matrix0 texture_matrix[0]
+#else
 uniform mat4 texture_matrix0;
+#endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+#else
 uniform mat4 projection_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 2, std140) uniform ShadowParams_PerShaderBind
+{
+    float shadow_target_width;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_ShadowParams__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_ShadowParams__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_ShadowParams__pad2;
+#endif
+};
+#else
 uniform float shadow_target_width;
+#endif
 
 mat4 getSkinnedTransform();
 void passTextureIndex();
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 texcoord0;
+
+layout(location = 0) out float pos_w;
+layout(location = 1) out float target_pos_x;
+layout(location = 2) out vec2 vary_texcoord0;
+#else
 in vec3 position;
 in vec3 normal;
 in vec2 texcoord0;
@@ -37,6 +92,7 @@ in vec2 texcoord0;
 out float pos_w;
 out float target_pos_x;
 out vec2 vary_texcoord0;
+#endif
 
 void main()
 {

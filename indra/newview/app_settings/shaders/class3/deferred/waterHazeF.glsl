@@ -23,19 +23,37 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+// Inputs
+layout(location = 0) in vec4 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 // Inputs
 in vec4 vary_fragcoord;
+#endif
 
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);
 float getDepth(vec2 pos_screen);
 
 vec4 getWaterFogView(vec3 pos);
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform WaterHazeF_PerProgramBind
+{
+    int above_water;             // offset 0  (4 B)
+    int _waterHazeF_pad0;        // offset 4  (4 B)
+    int _waterHazeF_pad1;        // offset 8  (4 B)
+    int _waterHazeF_pad2;        // offset 12 (4 B)
+};
+layout(set = 1, binding = 1) uniform sampler2D exclusionTex;
+#else
 uniform int above_water;
 
 uniform sampler2D exclusionTex;
+#endif
 
 void main()
 {

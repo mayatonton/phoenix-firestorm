@@ -23,30 +23,72 @@
  * $/LicenseInfo$
  */
 
-uniform vec3  lightnorm;
+#ifdef LL_VULKAN_GLSL
+#ifndef WINDLIGHT_ATMOS_UBO_DEFINED
+#define WINDLIGHT_ATMOS_UBO_DEFINED 1
+layout(set = 1, binding = 8, std140) uniform WindlightAtmos_PerProgramBind
+{
+    vec3  sunlight_color;
+    int   sun_up_factor;
+    vec3  moonlight_color;
+    int   classic_mode_wl;
+#ifndef _AYA_UM_ambient_color
+#define _AYA_UM_ambient_color 1
+    vec3  ambient_color;
+#else
+    vec3  _dup_WindlightAtmos_ambient_color;
+#endif
+    int   aya_visual_realism_enabled;
+    vec3  blue_horizon;
+    int   aya_r14_volumetric_atmosphere_enabled;
+    vec3  blue_density;
+    float aya_r14_strength;
+    vec3  glow;
+    float aya_r16_strength;
+    vec3  lightnorm;
+    int   aya_r16_aerial_perspective_enabled;
+    float haze_density;
+    float density_multiplier;
+    float distance_multiplier;
+    float max_y;
+    float haze_horizon;
+    float cloud_shadow;
+    float sun_moon_glow_factor;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float _wlAtmos_pad0;
+    float _wlAtmos_pad1;
+    float _wlAtmos_pad2;
+};
+#define _classicMode classic_mode_wl
+#endif // WINDLIGHT_ATMOS_UBO_DEFINED
+#else
 uniform vec3  sunlight_color;
 uniform vec3  moonlight_color;
 uniform int   sun_up_factor;
 uniform vec3  ambient_color;
 uniform vec3  blue_horizon;
 uniform vec3  blue_density;
-uniform float haze_horizon;
 uniform float haze_density;
-uniform float cloud_shadow;
 uniform float density_multiplier;
 uniform float distance_multiplier;
 uniform float max_y;
 uniform vec3  glow;
 uniform float scene_light_strength;
-uniform float sun_moon_glow_factor;
 uniform float sky_sunlight_scale;
 uniform float sky_ambient_scale;
 uniform int classic_mode;
+uniform vec3  lightnorm;
+uniform float haze_horizon;
+uniform float cloud_shadow;
+uniform float sun_moon_glow_factor;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14> Visual Realism master switch
 uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
 uniform float aya_r14_strength;  // <FS:AYAstorm r30 BD改善> r14 効果強度 (0=OFF / 1=ON)
 uniform int aya_r16_aerial_perspective_enabled;  // <FS:AYA r16> r16 個別 switch (master 独立)
 uniform float aya_r16_strength;  // <FS:AYAstorm r30 BD改善> r16 効果強度 (0=OFF / 1=ON、enabled 内で lerp)
+#define _classicMode classic_mode
+#endif
 
 float getAmbientClamp() { return 1.0f; }
 
@@ -54,9 +96,14 @@ vec3 srgb_to_linear(vec3 col);
 vec3 linear_to_srgb(vec3 col);  // <FS:AYA r14> scene-referred 積分用
 
 // return colors in sRGB space
+int _aya_preview_neutral_atmos = 0;
 void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, out vec3 sunlit, out vec3 amblit, out vec3 additive,
                          out vec3 atten)
 {
+    int   _aya_su_eff = (_aya_preview_neutral_atmos == 1) ? 1         : sun_up_factor;
+    vec3  _aya_sl_eff = (_aya_preview_neutral_atmos == 1) ? vec3(1.0) : sunlight_color;
+    float _aya_dm_eff = (_aya_preview_neutral_atmos == 1) ? 0.0       : density_multiplier;
+
     vec3 rel_pos = inPositionEye;
 
     //(TERRAIN) limit altitude
@@ -65,7 +112,7 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     vec3  rel_pos_norm = normalize(rel_pos);
     float rel_pos_len  = length(rel_pos);
 
-    vec3  sunlight     = (sun_up_factor == 1) ? sunlight_color: moonlight_color;
+    vec3  sunlight     = (_aya_su_eff == 1) ? _aya_sl_eff: moonlight_color;
 
     // <FS:AYA r16 P1.a> aerial perspective: Rayleigh λ^-4 波長依存化 (scene 経路)
     //   値 (1.0, 2.33, 5.71) は 700/550/380 nm の λ^-4 比、Rayleigh 散乱物理近似。
@@ -90,7 +137,7 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     // <FS:AYA r16 P1.a fix> light_atten は太陽→地表の経路長依存 (= 夕焼け方向),
     //   aerial perspective (= 視線方向の散乱) とは別現象。rayleigh_w 適用を撤回。
     //   常時夕焼け化で近景まで黄ばむ副作用を回避するため。
-    vec3 light_atten = (blue_density + vec3(haze_density * 0.25)) * (density_multiplier * max_y);
+    vec3 light_atten = (blue_density + vec3(haze_density * 0.25)) * (_aya_dm_eff * max_y);
     // </FS:AYA>
     // I had thought blue_density and haze_density should have equal weighting,
     // but attenuation due to haze_density tends to seem too strong
@@ -109,7 +156,7 @@ void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, ou
     sunlight *= exp(-light_atten * above_horizon_factor);  // for sun [horizon..overhead] this maps to an exp curve [0..1]
 
     // main atmospheric scattering line integral
-    float density_dist = rel_pos_len * density_multiplier;
+    float density_dist = rel_pos_len * _aya_dm_eff;
 
     // <FS:AYA r14> altitude density: 視線終点高度に応じて空気密度を勾配化
     // 地表近くは濃く、上空ほど薄く (指数勾配)、scale_height は max_y の半分を経験値として使用
@@ -223,7 +270,7 @@ void calcAtmosphericVarsLinear(vec3 inPositionEye, vec3 norm, vec3 light_dir, ou
 
     amblit *= ambientLighting(norm, light_dir);
 
-    if (classic_mode < 1)
+    if (_classicMode < 1)
     {
         amblit = srgb_to_linear(amblit);
         amblit = vec3(dot(amblit, vec3(0.2126, 0.7152, 0.0722)));

@@ -25,11 +25,44 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+#ifndef DECL_VARY_FRAGCOORD
+#define DECL_VARY_FRAGCOORD
+layout(location = 0) in vec2 vary_fragcoord;
+#endif // DECL_VARY_FRAGCOORD
+
+layout(set = 1, binding = 2) uniform sampler3D color_grading_lut;
+
+layout(set = 1, binding = 0, std140) uniform PostTonemap_PerProgramBind
+{
+    float color_saturation;
+    float color_contrast;
+    float color_temperature;
+    float color_brightness;
+    float color_grading_lut_intensity;
+    int color_grading_lut_enabled;
+#ifdef GAMMA_CORRECT
+#ifndef _AYA_UM_gamma
+#define _AYA_UM_gamma 1
+    float gamma;
+#else
+    float _dup_PostTonemap_gamma;
+#endif
+#endif
+};
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
 
+#ifndef DECL_VARY_FRAGCOORD
+#define DECL_VARY_FRAGCOORD
 in vec2 vary_fragcoord;
+#endif // DECL_VARY_FRAGCOORD
 
 #ifdef GAMMA_CORRECT
 uniform float gamma;
@@ -43,6 +76,7 @@ uniform float color_brightness;
 uniform sampler3D color_grading_lut;
 uniform float color_grading_lut_intensity;
 uniform int color_grading_lut_enabled;
+#endif
 
 vec3 applyLUT(sampler3D lut, vec3 color, int size)
 {

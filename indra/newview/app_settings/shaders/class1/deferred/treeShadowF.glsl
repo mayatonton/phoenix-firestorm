@@ -26,6 +26,18 @@
 /*[EXTRA_CODE_HERE]*/
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(push_constant) uniform TreeShadowF_AlphaMaskPC
+{
+    layout(offset = 64) float minimum_alpha;
+};
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 out vec4 frag_color;
 
 uniform float minimum_alpha;
@@ -33,6 +45,7 @@ uniform float minimum_alpha;
 uniform sampler2D diffuseMap;
 
 in vec2 vary_texcoord0;
+#endif
 
 void main()
 {

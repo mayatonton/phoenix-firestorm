@@ -24,9 +24,25 @@
  */
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 9) in vec4 weight;
+#else
 in vec4 weight;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 45, std140) uniform AvatarSkin_PerProgramBind
+{
+#ifndef _AYA_UM_matrixPalette
+#define _AYA_UM_matrixPalette 1
+    vec4 matrixPalette[45];
+#else
+    vec4 _dup_AvatarSkin_matrixPalette[45];
+#endif
+};
+#else
 uniform vec4 matrixPalette[45];
+#endif
 
 mat4 getSkinnedTransform()
 {

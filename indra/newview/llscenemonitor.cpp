@@ -433,7 +433,7 @@ void LLSceneMonitor::calcDiffAggregate()
     LLGLDepthTest depth(true, false, GL_ALWAYS);
     if(!mDebugViewerVisible)
     {
-        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        gGL.setColorMask(false, false, false, false);
     }
 
     LLGLSLShader* cur_shader = NULL;
@@ -464,7 +464,8 @@ void LLSceneMonitor::calcDiffAggregate()
 
     if(!mDebugViewerVisible)
     {
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        // r41 Phase 1 S-6-CB-rem1 (2026-06-16): glColorMask bypass → LLRender::setColorMask 経由化。
+        gGL.setColorMask(true, true, true, true);
     }
 #endif
 }

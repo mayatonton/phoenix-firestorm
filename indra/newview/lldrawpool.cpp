@@ -26,6 +26,10 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include <mutex>
+#include <set>
+#include <tuple>
+
 #include "lldrawpool.h"
 #include "llrender.h"
 #include "llfasttimer.h"
@@ -53,6 +57,8 @@
 #include "llglcommonfunc.h"
 #include "llvoavatar.h"
 #include "llviewershadermgr.h"
+#include "llvkloader.h"
+#include "llimagegl.h"
 
 S32 LLDrawPool::sNumDrawPools = 0;
 
@@ -454,6 +460,297 @@ void LLRenderPass::renderRiggedGroup(LLSpatialGroup* group, U32 type, bool textu
     }
 }
 
+//static
+void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
+                                                    U64 gltf_materials_ubo,
+                                                    U32 gltf_materials_size,
+                                                    U64 gltf_geometry_ubo,
+                                                    U32 gltf_geometry_size)
+{
+    if (!LLVKLoader::isVulkanInitialized())
+    {
+        return;
+    }
+    LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+    if (cur == nullptr)
+    {
+        return;
+    }
+    VkSampler sampler = LLVKLoader::getStandardLinearSampler();
+    if (sampler == VK_NULL_HANDLE || cur->mVkDescriptorSetLayout == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    LLVKLoader::ScenePerDrawBindings bindings;
+    bindings.layout  = cur->mVkDescriptorSetLayout;
+    bindings.sampler = sampler;
+
+    if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
+    {
+        bindings.ubo         = cur->mVkActivePerProgramUBO;
+        bindings.ubo_binding = cur->mVkPerProgramUBOBinding;
+        bindings.ubo_size    = cur->mVkPerProgramUBOSize;
+    }
+
+    const bool is_indexed = (cur->mFeatures.mIndexedTextureChannels > 0);
+    LLImageGL*  fb_img = (LLImageGL::sDefaultGLTexture != nullptr && LLImageGL::sDefaultGLTexture->hasVkImage())
+                             ? LLImageGL::sDefaultGLTexture
+                             : LLImageGL::sWhiteImageGLp;
+    VkImageView fallback_view = VK_NULL_HANDLE;
+    if (fb_img != nullptr && fb_img->hasVkImage())
+    {
+        fallback_view = fb_img->getVkImageView();
+    }
+
+    const U32 indexed_layout_count =
+        llmin((U32)cur->mFeatures.mIndexedTextureChannels,
+              (U32)LLVKLoader::ScenePerDrawBindings::MAX_SAMPLERS);
+
+    if (params != nullptr && batch_textures && params->mTextureList.size() > 1 && is_indexed)
+    {
+        const U32 real_count = llmin((U32)params->mTextureList.size(),
+                                     indexed_layout_count);
+        for (U32 i = 0; i < indexed_layout_count; ++i)
+        {
+            VkImageView view_to_write = VK_NULL_HANDLE;
+            if (i < real_count)
+            {
+                view_to_write = gGL.getTexUnit((S32)i)->getLiveVkImageView();
+                if (view_to_write != VK_NULL_HANDLE &&
+                    (100 + i) < LLGLSLShader::MAX_VK_BINDING &&
+                    gGL.getTexUnit((S32)i)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100 + i])
+                {
+                    view_to_write = VK_NULL_HANDLE;
+                }
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    view_to_write = fallback_view;
+                }
+            }
+            else
+            {
+                view_to_write = fallback_view;
+            }
+            bindings.sampler_bindings[i] = 100 + i;
+            bindings.sampler_views[i]    = view_to_write;
+            bindings.sampler_samplers[i] = (i < real_count)
+                                               ? gGL.getTexUnit((S32)i)->getLiveVkSampler()
+                                               : VK_NULL_HANDLE;
+        }
+        bindings.sampler_count = indexed_layout_count;
+    }
+    else if (is_indexed)
+    {
+        for (U32 i = 0; i < indexed_layout_count; ++i)
+        {
+            VkImageView view_to_write = VK_NULL_HANDLE;
+            if (i == 0)
+            {
+                view_to_write = gGL.getTexUnit(0)->getLiveVkImageView();
+                if (view_to_write != VK_NULL_HANDLE &&
+                    gGL.getTexUnit(0)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100])
+                {
+                    view_to_write = VK_NULL_HANDLE;
+                }
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    view_to_write = fallback_view;
+                }
+            }
+            else
+            {
+                view_to_write = fallback_view;
+            }
+            bindings.sampler_bindings[i] = 100 + i;
+            bindings.sampler_views[i]    = view_to_write;
+            bindings.sampler_samplers[i] = (i == 0)
+                                               ? gGL.getTexUnit(0)->getLiveVkSampler()
+                                               : VK_NULL_HANDLE;
+        }
+        bindings.sampler_count = indexed_layout_count;
+    }
+    else
+    {
+        const S32 unit1 = (cur->mVkBindingToChannel[1] >= 0) ? cur->mVkBindingToChannel[1] : 0;
+        VkImageView view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
+        if (view_to_write != VK_NULL_HANDLE &&
+            gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
+        {
+            view_to_write = VK_NULL_HANDLE;
+        }
+        if (view_to_write == VK_NULL_HANDLE)
+        {
+            view_to_write = fallback_view;
+        }
+        bindings.sampler_bindings[0] = 1;
+        bindings.sampler_views[0]    = view_to_write;
+        bindings.sampler_samplers[0] = gGL.getTexUnit(unit1)->getLiveVkSampler();
+        bindings.sampler_count       = 1;
+    }
+
+    for (const auto& layout_binding : cur->mVkLayoutBindings)
+    {
+        if (layout_binding.descriptorType != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+        {
+            continue;
+        }
+        U32 N = layout_binding.binding;
+        if (N >= LLGLSLShader::MAX_VK_BINDING)
+        {
+            continue;
+        }
+        S32 channel    = cur->mVkBindingToChannel[N];
+        S32 enum_value = cur->mVkBindingToEnum[N];
+        if (enum_value == -2)
+        {
+            continue;
+        }
+        if (channel < 0 && enum_value < 0)
+        {
+            if ((cur->mVkBindingDeclaredType[N] & LLGLSLShader::VKBD_SAMPLER) == 0)
+            {
+                continue;
+            }
+        }
+        bool already_set = false;
+        for (U32 j = 0; j < bindings.sampler_count; ++j)
+        {
+            if (bindings.sampler_bindings[j] == N)
+            {
+                already_set = true;
+                break;
+            }
+        }
+        if (already_set)
+        {
+            continue;
+        }
+        if (bindings.sampler_count >= LLVKLoader::ScenePerDrawBindings::MAX_SAMPLERS)
+        {
+            break;
+        }
+
+        VkImageView view = VK_NULL_HANDLE;
+        S32 resolved_unit = -1;
+        if (channel >= 0)
+        {
+            resolved_unit = channel;
+            view = gGL.getTexUnit((S32)channel)->getLiveVkImageView();
+        }
+        else if (enum_value >= 0 && enum_value < (S32)cur->mTexture.size())
+        {
+            S32 unit = cur->mTexture[enum_value];
+            if (unit >= 0)
+            {
+                resolved_unit = unit;
+                view = gGL.getTexUnit((S32)unit)->getLiveVkImageView();
+            }
+        }
+        bool need_typed_fallback = (view == VK_NULL_HANDLE);
+        if (!need_typed_fallback && resolved_unit >= 0)
+        {
+            LLTexUnit* dim_tu = gGL.getTexUnit(resolved_unit);
+            if (dim_tu != nullptr && dim_tu->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[N])
+            {
+                need_typed_fallback = true;
+            }
+        }
+        if (need_typed_fallback)
+        {
+            const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
+            view = (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
+                 : (sdim_fb == LLGLSLShader::VKSD_CUBE)       ? LLVKLoader::getDefaultFallbackCubeVkImageView()
+                 : (sdim_fb == LLGLSLShader::VKSD_3D)         ? LLVKLoader::getDefaultFallback3DVkImageView()
+                 :                                              fallback_view;
+        }
+
+        bindings.sampler_bindings[bindings.sampler_count] = N;
+        bindings.sampler_views[bindings.sampler_count]    = view;
+        bindings.sampler_samplers[bindings.sampler_count] = (resolved_unit >= 0)
+                                                              ? gGL.getTexUnit(resolved_unit)->getLiveVkSampler()
+                                                              : VK_NULL_HANDLE;
+
+        ++bindings.sampler_count;
+    }
+
+    if (gltf_materials_ubo != 0 && gltf_materials_size > 0 &&
+        bindings.ubo_count < LLVKLoader::ScenePerDrawBindings::MAX_UBO_WRITES)
+    {
+        auto& entry = bindings.ubo_writes[bindings.ubo_count];
+        entry.binding = 7;
+        entry.buf     = reinterpret_cast<VkBuffer>(gltf_materials_ubo);
+        entry.offset  = 0;
+        entry.size    = gltf_materials_size;
+        ++bindings.ubo_count;
+    }
+    if (gltf_geometry_ubo != 0 && gltf_geometry_size > 0 &&
+        bindings.ubo_count < LLVKLoader::ScenePerDrawBindings::MAX_UBO_WRITES)
+    {
+        auto& entry = bindings.ubo_writes[bindings.ubo_count];
+        entry.binding = 44;
+        entry.buf     = reinterpret_cast<VkBuffer>(gltf_geometry_ubo);
+        entry.offset  = 0;
+        entry.size    = gltf_geometry_size;
+        ++bindings.ubo_count;
+    }
+
+    for (const auto& layout_binding : cur->mVkLayoutBindings)
+    {
+        if (layout_binding.descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+        {
+            continue;
+        }
+        U32 N = layout_binding.binding;
+        if (N >= LLGLSLShader::MAX_VK_BINDING)
+        {
+            continue;
+        }
+        if (bindings.ubo_count >= LLVKLoader::ScenePerDrawBindings::MAX_UBO_WRITES)
+        {
+            break;
+        }
+
+        VkBuffer ubo_buf = VK_NULL_HANDLE;
+        VkDeviceSize ubo_sz = 0;
+
+        if (N == 0)
+        {
+            ubo_buf = cur->mVkActivePerProgramUBO;
+            ubo_sz  = cur->mVkPerProgramUBOSize;
+        }
+        else
+        {
+            LLGLSLShader::SharedUBOAccessor accessor = cur->mVkBindingToUBOAccessor[N];
+            if (accessor)
+            {
+                void* mapped = nullptr;
+                if (accessor(ubo_buf, mapped))
+                {
+                    ubo_sz = cur->sharedUBOBindingSize(N);
+                }
+            }
+        }
+
+        if (ubo_buf != VK_NULL_HANDLE && ubo_sz > 0)
+        {
+            auto& entry = bindings.ubo_writes[bindings.ubo_count];
+            entry.binding = N;
+            entry.buf     = ubo_buf;
+            entry.offset  = 0;
+            entry.size    = ubo_sz;
+            ++bindings.ubo_count;
+        }
+    }
+
+    VkDescriptorSet per_draw_set = VK_NULL_HANDLE;
+    if (LLVKLoader::ensureScenePerDrawDescriptorSet(bindings, &per_draw_set)
+        && per_draw_set != VK_NULL_HANDLE)
+    {
+        LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
+    }
+}
+
 void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -640,16 +937,20 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
                 gGL.getTexUnit(0)->unbindFast(LLTexUnit::TT_TEXTURE);
             }
         }
+
+        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, batch_textures);
     }
     // <FS:Beq> FIRE-34518 bugsplat access violation - place guard on unchecked mVertexBuffer access
     if (params.mVertexBuffer == nullptr)
     {
         LL_WARNS() << "LLRenderPass::pushBatch: params.mVertexBuffer is nullptr. drawRange skipped." << LL_ENDL;
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
         return;
     }
     // </FS:Beq>
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     if (tex_setup)
     {
         gGL.matrixMode(LLRender::MM_TEXTURE0);
@@ -703,6 +1004,8 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
         false,
         (GLfloat*)&(mpc.mGLMp[0]));
 
+    writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+
     return true;
 }
 
@@ -738,6 +1041,8 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
             count,
             false,
             (GLfloat*)&(mpc.mGLMp[0]));
+
+        writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
     }
 
     return !skipLastSkin;
@@ -776,6 +1081,8 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
             count,
             false,
             (GLfloat*)&(mpc.mGLMp[0]));
+
+        writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
     }
 
     return !skipLastSkin;
@@ -843,6 +1150,20 @@ void LLRenderPass::pushVelocityBatches(U32 type)
 
         const LLMatrix4* last_mat = params.mLastModelMatrix ? params.mLastModelMatrix : &identity;
         LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)last_mat->mMatrix);
+
+        if (LLVKLoader::isVulkanInitialized()
+            && LLGLSLShader::sCurBoundShaderPtr
+            && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE
+            && LLGLSLShader::sCurBoundShaderPtr->mVkVertexPushConstantOver64)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                vkCmdPushConstants(cmd, LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                   VK_SHADER_STAGE_VERTEX_BIT, 64, sizeof(F32) * 16,
+                                   (const F32*)last_mat->mMatrix);
+            }
+        }
 
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
@@ -933,8 +1254,25 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
         const LLMatrix4* last_mat = params.mLastModelMatrix ? params.mLastModelMatrix : &identity;
         LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)last_mat->mMatrix);
 
+        if (LLVKLoader::isVulkanInitialized()
+            && LLGLSLShader::sCurBoundShaderPtr
+            && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE
+            && LLGLSLShader::sCurBoundShaderPtr->mVkVertexPushConstantOver64)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                vkCmdPushConstants(cmd, LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                   VK_SHADER_STAGE_VERTEX_BIT, 64, sizeof(F32) * 16,
+                                   (const F32*)last_mat->mMatrix);
+            }
+        }
+
+        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, false);
+
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 
         const LLMatrix4* current_mat = params.mModelMatrix ? params.mModelMatrix : &identity;
         if (params.mLastModelMatrix)
@@ -985,8 +1323,11 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
             gGL.getTexUnit(0)->bindFast(params.mTexture);
         }
 
+        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, false);
+
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     }
 }
 
@@ -1022,6 +1363,8 @@ bool LLRenderPass::uploadLastMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinI
         count,
         false,
         (GLfloat*)&(src[0]));
+
+    writeObjectSkinLastUBO((const F32*)&(src[0]), count);
 
     return true;
 }
@@ -1085,20 +1428,31 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
 
     applyModelMatrix(params);
 
-    // <FS:AYA r20 Phase C> per-draw SSS skin marker for PBR opaque path
-    // (no per-pool caching — GLTF batches each rebind material state).
+    // <FS:AYA r20 Phase C> per-draw SSS skin marker for PBR opaque path (= no per-pool
+    // caching = GLTF batches each rebind material state)。
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
     if (cur)
     {
         GLint loc = cur->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
         if (loc > -1)
         {
-            glUniform1f(loc, params.mIsSSSTarget ? 1.f : 0.f);
+            const F32 sssFlag = params.mIsSSSTarget ? 1.f : 0.f;
+            glUniform1f(loc, sssFlag);
+            if (LLVKLoader::isVulkanInitialized() && cur->mVkPipelineLayout != VK_NULL_HANDLE)
+            {
+                VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                if (cmd != VK_NULL_HANDLE)
+                {
+                    vkCmdPushConstants(cmd, cur->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                       68, sizeof(F32), &sssFlag);
+                }
+            }
         }
     }
     // </FS:AYA>
 
     params.mVertexBuffer->setBuffer();
+
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 
     teardown_texture_matrix(params);

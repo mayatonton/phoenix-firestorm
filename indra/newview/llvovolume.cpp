@@ -66,6 +66,7 @@
 #include "llworld.h"
 #include "llselectmgr.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llsdutil.h"
 #include "llmatrix4a.h"
 #include "llmediaentry.h"
@@ -5478,7 +5479,7 @@ bool can_batch_texture(LLFace* facep)
     //  return false;
     // }
     const auto te = facep->getTextureEntry();
-    if ( LLPipeline::sRenderDeferred && te )
+    if ( LLPipelineFrameContext::getInstance().isRenderingDeferred() && te )
     {
         auto mat = te->getMaterialParams();
         // if(mat.notNull() && (mat->getNormalID() != LLUUID::null || mat->getSpecularID() != LLUUID::null || (te->getAlpha() >0.f && te->getAlpha() < 1.f ) ) )
@@ -7270,7 +7271,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 }
             }
 
-            if (!is_alpha && LLPipeline::sRenderGlow && te->getGlow() > 0.f)
+            if (!is_alpha && LLPipelineFrameContext::getInstance().isRenderingGlow() && te->getGlow() > 0.f)
             {
                 if (gltf_mat)
                 {

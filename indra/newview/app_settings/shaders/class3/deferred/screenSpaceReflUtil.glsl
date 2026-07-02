@@ -23,16 +23,53 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef SCENEMAP_DECLARED
+#define SCENEMAP_DECLARED 1
+layout(set = 1, binding = 43) uniform sampler2D sceneMap;
+#endif // SCENEMAP_DECLARED
+layout(set = 1, binding = 47) uniform sampler2D sceneDepth;
+#else
 uniform sampler2D sceneMap;
 uniform sampler2D sceneDepth;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#define inv_proj inverse_projection_matrix
+
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(set = 1, binding = 49, std140) uniform SSRUtil_PerProgramBind
+{
+    vec2  _ssr_screen_res;
+    float iterationCount;
+    float rayStep;
+    mat4  modelview_delta;
+    mat4  inv_modelview_delta;
+    float distanceBias;
+    float depthRejectBias;
+    float adaptiveStepMultiplier;
+    float glossySampleCount;
+    vec3  _ssrUtil_pad_split;
+    float noiseSine;
+};
+#define ssr_screen_res _ssr_screen_res
+#else
 uniform vec2 screen_res;
 uniform mat4 projection_matrix;
-//uniform float zNear;
-//uniform float zFar;
 uniform mat4 inv_proj;
 uniform mat4 modelview_delta;  // should be transform from last camera space to current camera space
 uniform mat4 inv_modelview_delta;
+#define ssr_screen_res screen_res
+#endif
 
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);
 
@@ -56,6 +93,7 @@ bool isAdaptiveStepEnabled = true;
 bool isExponentialStepEnabled = true;
 bool debugDraw = false;
 
+#ifndef LL_VULKAN_GLSL
 uniform float iterationCount;
 uniform float rayStep;
 uniform float distanceBias;
@@ -63,6 +101,7 @@ uniform float depthRejectBias;
 uniform float glossySampleCount;
 uniform float adaptiveStepMultiplier;
 uniform float noiseSine;
+#endif
 
 float epsilon = 0.1;
 
@@ -184,7 +223,7 @@ bool traceScreenRay(vec3 position, vec3 reflection, out vec4 hitColor, out float
     return hit;
 }
 
-uniform vec3 POISSON3D_SAMPLES[128] = vec3[128](
+const vec3 POISSON3D_SAMPLES[128] = vec3[128](
     vec3(0.5433144, 0.1122154, 0.2501391),
     vec3(0.6575254, 0.721409, 0.16286),
     vec3(0.02888453, 0.05170321, 0.7573566),
@@ -332,7 +371,7 @@ collectedColor = vec4(1, 0, 1, 1);
 
     vec3 rayDirection = normalize(reflect(viewPos, normalize(n)));
 
-    vec2 uv2 = tc * screen_res;
+    vec2 uv2 = tc * ssr_screen_res;
     float c = (uv2.x + uv2.y) * 0.125;
     float jitter = mod( c, 1.0);
 

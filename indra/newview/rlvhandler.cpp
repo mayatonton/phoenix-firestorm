@@ -54,6 +54,7 @@
 #include "llworldmapmessage.h"          // @tpto
 #include "llviewertexturelist.h"        // @setcam_texture
 #include "pipeline.h"                   // @setsphere
+#include "llpipelineframecontext.h"
 
 // RLVa includes
 #include "rlvactions.h"
@@ -2171,7 +2172,7 @@ ERlvCmdRet RlvBehaviourHandler<RLV_BHVR_SETSPHERE>::onCommand(const RlvCommand& 
             // Rlv::forceAtmosphericShadersIfAvailable();
     // <FS:Beq> Note to Kitty, this can all go I think.
     //      // If we're not using deferred but are using Windlight shaders we need to force use of FBO and depthmap texture
-    //      if ( (!LLPipeline::sRenderDeferred) && (LLPipeline::WindLightUseAtmosShaders) && (!LLPipeline::sUseDepthTexture) )
+    //      if ( (!LLPipelineFrameContext::getInstance().isRenderingDeferred()) && (LLPipeline::WindLightUseAtmosShaders) && (!LLPipeline::sUseDepthTexture) )
     //      {
     //          LLRenderTarget::sUseFBO = true;
     //          LLPipeline::sUseDepthTexture = true;
@@ -2182,12 +2183,12 @@ ERlvCmdRet RlvBehaviourHandler<RLV_BHVR_SETSPHERE>::onCommand(const RlvCommand& 
     //          LLViewerShaderMgr::instance()->setShaders();
     //      }
     //      else
-            if (!gPipeline.mRT->deferredLight.isComplete())
+            if (!LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete())
             {
                 // In case of deferred with no shadows, no ambient occlusion, no depth of field, and no antialiasing
                 gPipeline.releaseGLBuffers();
                 gPipeline.createGLBuffers();
-                RLV_ASSERT(gPipeline.mRT->deferredLight.isComplete());
+                RLV_ASSERT(LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete());
             }
         }
         else

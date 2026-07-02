@@ -25,9 +25,53 @@
 
 // Based on https://imanolfotia.com/blog/1
 
+#ifdef LL_VULKAN_GLSL
+// sceneMap 重複宣言 (reflectionProbeF.glsl と) 回避 = #ifndef guard 先勝ち。
+#ifndef SCENEMAP_DECLARED
+#define SCENEMAP_DECLARED 1
+layout(set = 1, binding = 43) uniform sampler2D sceneMap;
+#endif // SCENEMAP_DECLARED
+layout(set = 1, binding = 47) uniform sampler2D sceneDepth;
+#else
 uniform sampler2D sceneMap;
 uniform sampler2D sceneDepth;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#define inv_proj inverse_projection_matrix
+
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(set = 1, binding = 49, std140) uniform SSRUtil_PerProgramBind
+{
+    vec2  _ssr_screen_res;
+    float iterationCount;
+    float rayStep;
+    mat4  modelview_delta;
+    mat4  inv_modelview_delta;
+    float distanceBias;
+    float depthRejectBias;
+    float adaptiveStepMultiplier;
+    float glossySampleCount;
+    vec3  splitParamsStart;
+    float noiseSine;
+    vec3  splitParamsEnd;
+    float maxZDepth;
+    float maxRoughness;
+    float _ssrUtil_pad0;
+    float _ssrUtil_pad1;
+    float _ssrUtil_pad2;
+};
+#define ssr_screen_res _ssr_screen_res
+#else
 uniform vec2 screen_res;
 uniform mat4 projection_matrix;
 uniform mat4 inv_proj;
@@ -45,6 +89,8 @@ uniform float glossySampleCount;
 uniform float noiseSine;
 uniform float maxZDepth;
 uniform float maxRoughness;
+#define ssr_screen_res screen_res
+#endif
 
 // Ray march parameters wired to AYA scalar controls.
 // distanceBias is used as hit thickness; max step is derived from max depth
@@ -223,8 +269,8 @@ float tapScreenSpaceReflection(
         if (roughness > 0.001)
         {
             float alpha = roughness * roughness;
-            float u1 = random(tc * screen_res + noiseSine + float(s) * 0.123);
-            float u2 = random(tc * screen_res * 1.7 + noiseSine + float(s) * 0.456 + 0.5);
+            float u1 = random(tc * ssr_screen_res + noiseSine + float(s) * 0.123);
+            float u2 = random(tc * ssr_screen_res * 1.7 + noiseSine + float(s) * 0.456 + 0.5);
 
             float theta = atan(alpha * sqrt(clamp(u1, 0.0, 0.9999)) / sqrt(max(1.0 - u1, 1e-6)));
             float phi = 2.0 * 3.14159265 * u2;
@@ -251,7 +297,7 @@ float tapScreenSpaceReflection(
 
         // Jitter ray origin along the surface normal (outward only) to break up step-boundary striations.
         // Each pixel gets a different offset, so concentric banding from discrete steps dissolves into noise.
-        float normalJitter = random(tc * screen_res + float(s) * 0.789) * (STEP_SIZE + -viewPos.z * 0.005);
+        float normalJitter = random(tc * ssr_screen_res + float(s) * 0.789) * (STEP_SIZE + -viewPos.z * 0.005);
         vec3 jitteredPos = biasedPos + normal * normalJitter;
         vec3 transformedJitteredPos = (inv_modelview_delta * vec4(jitteredPos, 1.0)).xyz;
         vec3 hitCoord = transformedJitteredPos;
@@ -271,7 +317,7 @@ float tapScreenSpaceReflection(
         float zFade = 1.0 - smoothstep(zFadeStart, maxZDepth, hitDepth);
 
         float rayLength = length(hitCoord - transformedJitteredPos);
-        float maxMipLevels = floor(log2(max(1.0, max(screen_res.x, screen_res.y))));
+        float maxMipLevels = floor(log2(max(1.0, max(ssr_screen_res.x, ssr_screen_res.y))));
         float distanceFactor = clamp(rayLength / maxZDepth, 0.0, 1.0);
         float effectiveRoughness = clamp(roughness + distanceFactor * roughness, 0.0, 1.0);
         float mipLevel = maxMipLevels * effectiveRoughness;

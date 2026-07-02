@@ -278,6 +278,7 @@ extern LLGLSLShader         gDeferredPostTonemapLegacyGammaCorrectProgram;
 extern LLGLSLShader         gNoPostTonemapLegacyGammaCorrectProgram;
 // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 extern LLGLSLShader         gAYAAlphaPlateCompositeProgram;
+extern LLGLSLShader         gAYAForwardFlipCompositeProgram;
 // </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 extern LLGLSLShader         gExposureProgram;
 extern LLGLSLShader         gExposureProgramNoFade;
@@ -328,6 +329,20 @@ extern LLGLSLShader         gRlvSphereProgram;
 
 // Deferred materials shaders
 extern LLGLSLShader         gDeferredMaterialProgram[LLMaterial::SHADER_COUNT*2];
+
+bool writeMaterialFPerDrawUBO(LLGLSLShader& shader, U32 i,
+                              F32 emissive_brightness, F32 env_intensity,
+                              const F32* specular_color_4f,
+                              F32 minimum_alpha, F32 aya_sss_skin_flag);
+
+bool writeMaterialFAllUBO(LLGLSLShader& shader, U32 i,
+                          F32 emissive_brightness, F32 env_intensity,
+                          const F32* specular_color_4f,
+                          F32 minimum_alpha, F32 aya_sss_skin_flag);
+
+bool writeObjectSkinUBO(LLGLSLShader& shader,
+                        const F32* matrix_palette_data, U32 joint_count);
+bool writeObjectSkinLastUBO(const F32* last_palette_data, U32 joint_count);
 
 extern LLGLSLShader         gHUDPBROpaqueProgram;
 extern LLGLSLShader         gPBRGlowProgram;

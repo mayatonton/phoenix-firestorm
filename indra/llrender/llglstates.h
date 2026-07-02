@@ -45,6 +45,14 @@ public:
     GLboolean mPrevDepthEnabled;
     GLenum mPrevDepthFunc;
     GLboolean mPrevWriteEnabled;
+
+    // GL state tracker public accessor = Vulkan path
+    //   createVkPipeline で pipeline cache key + ds.depth* 構築時 LLGLDepthTest::s* 直 read。
+    //   wrapped tracker (= LLGLDepthTest constructor/destructor 経由更新)。
+    static GLboolean isCurrentDepthEnabled() { return sDepthEnabled; }
+    static GLboolean isCurrentWriteEnabled() { return sWriteEnabled; }
+    static GLenum    getCurrentDepthFunc()   { return sDepthFunc; }
+
 private:
     static GLboolean sDepthEnabled; // defaults to GL_FALSE
     static GLenum sDepthFunc; // defaults to GL_LESS

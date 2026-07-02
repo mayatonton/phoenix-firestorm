@@ -28,10 +28,12 @@
 
 #include "llheroprobemanager.h"
 #include "llreflectionmapmanager.h"
+#include "llvkloader.h"
 #include "llviewercamera.h"
 #include "llspatialpartition.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewercontrol.h"
 #include "llenvironment.h"
@@ -75,7 +77,7 @@ LLHeroProbeManager::~LLHeroProbeManager()
 // helper class to seed octree with probes
 void LLHeroProbeManager::update()
 {
-    if (!LLPipeline::RenderMirrors || !LLPipeline::sReflectionProbesEnabled || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
+    if (!LLPipeline::RenderMirrors || !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
     {
         return;
     }
@@ -241,7 +243,7 @@ void LLHeroProbeManager::update()
 
 void LLHeroProbeManager::renderProbes()
 {
-    if (!LLPipeline::RenderMirrors || !LLPipeline::sReflectionProbesEnabled || gTeleportDisplay ||
+    if (!LLPipeline::RenderMirrors || !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() || gTeleportDisplay ||
         LLStartUp::getStartupState() < STATE_STARTED)
     {
         return;
@@ -316,11 +318,11 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
     LL_PROFILE_GPU_ZONE("hero probe update");
 
     // hacky hot-swap of camera specific render targets
-    gPipeline.mRT = &gPipeline.mHeroProbeRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mHeroProbeRT);
 
     probe->update(mRenderTarget.getWidth(), face, is_dynamic, near_clip);
 
-    gPipeline.mRT = &gPipeline.mMainRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mMainRT);
 
     S32 sourceIdx = mReflectionProbeCount;
 
@@ -356,11 +358,14 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         // perform a gaussian blur on the super sampled render before downsampling
         {
             gGaussianProgram.bind();
-            gGaussianProgram.uniform1f(resScale, 1.f / (mProbeResolution * 2));
+            gPipeline.bindDeferredHelperBindings(gGaussianProgram);
+            const F32 gaussian_res_scale = 1.f / (mProbeResolution * 2);
+            gGaussianProgram.uniform1f(resScale, gaussian_res_scale);
             S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
 
             // horizontal
             gGaussianProgram.uniform2f(direction, 1.f, 0.f);
+            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);  // horizontal
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
             mRenderTarget.bindTarget();
             gPipeline.mScreenTriangleVB->setBuffer();
@@ -369,6 +374,7 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
 
             // vertical
             gGaussianProgram.uniform2f(direction, 0.f, 1.f);
+            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);  // vertical
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
             screen_rt->bindTarget();
             gPipeline.mScreenTriangleVB->setBuffer();
@@ -380,6 +386,7 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         S32 mips = (S32)(log2((F32)mProbeResolution) + 0.5f);
 
         gReflectionMipProgram.bind();
+        gPipeline.bindDeferredHelperBindings(gReflectionMipProgram);
         S32 diffuseChannel = gReflectionMipProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
         S32 depthChannel   = gReflectionMipProgram.enableTexture(LLShaderMgr::DEFERRED_DEPTH, LLTexUnit::TT_TEXTURE);
 
@@ -416,6 +423,14 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
                 mTexture->bind(0);
 
                 glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, mip, 0, 0, sourceIdx * 6 + face, 0, 0, res, res);
+                if (LLVKLoader::isVulkanInitialized() && mTexture->hasVkImage() && mMipChain[i].hasVkImage(0))
+                {
+                    LLVKLoader::endDynamicRendering();
+                    LLVKLoader::copyColorImageToCubeArrayLayerVk(
+                        mMipChain[i].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        mTexture->getVkImage(), (U32)(sourceIdx * 6 + face), (U32)mip, (U32)res, (U32)res);
+                    mMipChain[i].resumeVkDynamicRendering();
+                }
 
                 mTexture->unbind();
             }
@@ -471,6 +486,31 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
                 gHeroRadianceGenProgram.uniform1i(sWidth, mProbeResolution);
                 gHeroRadianceGenProgram.uniform1f(sStrength, 1);
 
+                if (LLVKLoader::isVulkanInitialized()
+                    && gHeroRadianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+                    && gHeroRadianceGenProgram.mVkPerProgramUBOMapped != nullptr)
+                {
+                    struct RadianceGenF_UBO
+                    {
+                        S32 sourceIdx;
+                        F32 mipLevel;
+                        S32 u_width;
+                        F32 max_probe_lod;
+                        F32 probe_strength;
+                        F32 pad0;
+                        F32 pad1;
+                        F32 pad2;
+                    };
+                    RadianceGenF_UBO ubo_data = {};
+                    ubo_data.sourceIdx        = sourceIdx;
+                    ubo_data.mipLevel         = (F32)i;
+                    ubo_data.u_width          = mProbeResolution;
+                    ubo_data.max_probe_lod    = mMaxProbeLOD;
+                    ubo_data.probe_strength   = 1.f;
+                    gHeroRadianceGenProgram.rotatePerProgramUBOSlot();
+                    memcpy(gHeroRadianceGenProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                }
+
                 for (int cf = 0; cf < 6; ++cf)
                 {  // for each cube face
                     LLCoordFrame frame;
@@ -483,12 +523,20 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
                     mVertexBuffer->drawArrays(gGL.TRIANGLE_STRIP, 0, 4);
 
                     glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, i, 0, 0, probe->mCubeIndex * 6 + cf, 0, 0, res, res);
+                    if (LLVKLoader::isVulkanInitialized() && mTexture->hasVkImage() && mMipChain[0].hasVkImage(0))
+                    {
+                        LLVKLoader::endDynamicRendering();
+                        LLVKLoader::copyColorImageToCubeArrayLayerVk(
+                            mMipChain[0].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            mTexture->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)i, (U32)res, (U32)res);
+                        mMipChain[0].resumeVkDynamicRendering();
+                    }
                 }
 
                 if (i != mMipChain.size() - 1)
                 {
                     res /= 2;
-                    glViewport(0, 0, res, res);
+                    llSetGLViewport(0, 0, res, res);
                 }
             }
 

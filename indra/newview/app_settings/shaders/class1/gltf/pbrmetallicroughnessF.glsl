@@ -28,18 +28,90 @@
 
 // GLTF pbrMetallicRoughness implementation
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform PBRMetallicRoughnessF_PerProgramBind
+{
+    int gltf_material_id;
+#ifndef HAS_SKIN
+    int gltf_node_id;
+    int _pbrmr_pad0;
+    int _pbrmr_pad1;
+#else
+    int _pbrmr_pad0;
+    int _pbrmr_pad1;
+    int _pbrmr_pad2;
+#endif
+#if defined(ALPHA_BLEND) && !defined(UNLIT)
+#ifndef HAS_SUN_SHADOW
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3 sun_dir;
+#else
+    vec3 _dup_PBRMetallicRoughnessF_sun_dir;
+#endif
+    float _pbrmr_pad_sd;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3 moon_dir;
+#else
+    vec3 _dup_PBRMetallicRoughnessF_moon_dir;
+#endif
+    float _pbrmr_pad_md;
+#endif
+#ifndef _AYA_UM_light_position
+#define _AYA_UM_light_position 1
+    vec4 light_position[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_position[8];
+#endif
+#ifndef _AYA_UM_light_direction
+#define _AYA_UM_light_direction 1
+    vec4 light_direction[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_direction[8];
+#endif
+#ifndef _AYA_UM_light_attenuation
+#define _AYA_UM_light_attenuation 1
+    vec4 light_attenuation[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_attenuation[8];
+#endif
+#ifndef _AYA_UM_light_diffuse
+#define _AYA_UM_light_diffuse 1
+    vec4 light_diffuse[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_diffuse[8];
+#endif
+#ifndef _AYA_UM_light_deferred_attenuation
+#define _AYA_UM_light_deferred_attenuation 1
+    vec4 light_deferred_attenuation[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_deferred_attenuation[8];
+#endif
+#endif
+};
+#else
 uniform int gltf_material_id;
+#endif
 
 vec3 emissiveColor = vec3(0,0,0);
 float metallicFactor = 1.0;
 float roughnessFactor = 1.0;
 float minimum_alpha = -1.0;
 
-layout (std140) uniform GLTFMaterials
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 7, std140) uniform Asset_GLTFMaterials
 {
     // see pbrmetallicroughnessV.glsl for packing
     vec4 gltf_material_data[MAX_UBO_VEC4S];
 };
+#else
+layout (std140) uniform Asset_GLTFMaterials
+{
+    // see pbrmetallicroughnessV.glsl for packing
+    vec4 gltf_material_data[MAX_UBO_VEC4S];
+};
+#endif
 
 void unpackMaterial()
 {
@@ -56,12 +128,21 @@ void unpackMaterial()
 // ==================================
 // needed by all variants
 // ==================================
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;  //always in sRGB space
+layout(set = 1, binding = 2) uniform sampler2D emissiveMap;
+layout(location = 3) in vec3 vary_position;
+layout(location = 2) in vec4 vertex_color;
+layout(location = 0) in vec2 base_color_uv;
+layout(location = 1) in vec2 emissive_uv;
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
 uniform sampler2D emissiveMap;
 in vec3 vary_position;
 in vec4 vertex_color;
 in vec2 base_color_uv;
 in vec2 emissive_uv;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
@@ -75,7 +156,24 @@ vec3 srgb_to_linear(vec3 c);
 // needed by all lit variants
 // ==================================
 #ifndef UNLIT
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 3) uniform sampler2D normalMap;
+#else
 uniform sampler2D normalMap;
+#endif
+#endif // DECL_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 4) uniform sampler2D metallicRoughnessMap;
+layout(set = 1, binding = 5) uniform sampler2D occlusionMap;
+layout(location = 9) in vec3 vary_normal;
+layout(location = 7) in vec3 vary_tangent;
+layout(location = 8) flat in float vary_sign;
+layout(location = 4) in vec2 normal_uv;
+layout(location = 5) in vec2 metallic_roughness_uv;
+layout(location = 6) in vec2 occlusion_uv;
+#else
 uniform sampler2D metallicRoughnessMap;
 uniform sampler2D occlusionMap;
 in vec3 vary_normal;
@@ -85,6 +183,7 @@ in vec2 normal_uv;
 in vec2 metallic_roughness_uv;
 in vec2 occlusion_uv;
 #endif
+#endif
 // ==================================
 
 
@@ -92,10 +191,14 @@ in vec2 occlusion_uv;
 // needed by all alpha variants
 // ==================================
 #ifdef ALPHA_BLEND
+#ifdef LL_VULKAN_GLSL
+layout(location = 10) in vec3 vary_fragcoord;
+#else
 in vec3 vary_fragcoord;
 uniform vec4 clipPlane;
 uniform float clipSign;
-void waterClip(vec3 pos);
+#endif
+void waterClip(vec3 pos, float waterSign);
 void calcAtmosphericVarsLinear(vec3 inPositionEye, vec3 norm, vec3 light_dir, out vec3 sunlit, out vec3 amblit, out vec3 atten, out vec3 additive);
 vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
 #endif
@@ -108,12 +211,17 @@ vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
 #if defined(ALPHA_BLEND) && !defined(UNLIT)
 
 #ifdef HAS_SUN_SHADOW
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 6) uniform sampler2D lightMap;
+#else
 uniform sampler2D lightMap;
 uniform vec2 screen_res;
+#endif
 #endif
 
 // Lights
 // See: LLRender::syncLightState()
+#ifndef LL_VULKAN_GLSL
 uniform vec4 light_position[8];
 uniform vec3 light_direction[8]; // spot direction
 uniform vec4 light_attenuation[8]; // linear, quadratic, is omni, unused, See: LLPipeline::setupHWLights() and syncLightState()
@@ -123,6 +231,7 @@ uniform vec2 light_deferred_attenuation[8]; // light size and falloff
 uniform int sun_up_factor;
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);
@@ -167,9 +276,17 @@ vec3 pbrCalcPointLightOrSpotLight(vec3 diffuseColor, vec3 specularColor,
 // output definition
 // ==================================
 #if defined(ALPHA_BLEND) || defined(UNLIT)
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
+#else
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
 #else
 out vec4 frag_data[4];
+#endif
 #endif
 // ==================================
 

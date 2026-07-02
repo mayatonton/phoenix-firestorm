@@ -25,11 +25,38 @@
 
 // Implementation for when reflection probes are disabled
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 16, std140) uniform ReflectionProbe_PerProgramBind
+{
+    float reflection_probe_ambiance;
+#ifndef _AYA_UM__reflectionProbeF_pad0
+#define _AYA_UM__reflectionProbeF_pad0 1
+    float _reflectionProbeF_pad0;
+#else
+    float _dup_ReflectionProbe__reflectionProbeF_pad0;
+#endif
+#ifndef _AYA_UM__reflectionProbeF_pad1
+#define _AYA_UM__reflectionProbeF_pad1 1
+    float _reflectionProbeF_pad1;
+#else
+    float _dup_ReflectionProbe__reflectionProbeF_pad1;
+#endif
+    float _reflectionProbeF_pad2;
+#ifndef _AYA_UM_env_mat
+#define _AYA_UM_env_mat 1
+    mat3  env_mat;
+#else
+    mat3  _dup_ReflectionProbe_env_mat;
+#endif
+};
+layout(set = 1, binding = 17) uniform samplerCube environmentMap;
+#else
 uniform float reflection_probe_ambiance;
 
 uniform samplerCube environmentMap;
 
 uniform mat3 env_mat;
+#endif
 
 vec3 srgb_to_linear(vec3 c);
 vec3 linear_to_srgb(vec3 c);

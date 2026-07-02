@@ -29,15 +29,22 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
 
 in vec2 vary_fragcoord;
+#endif
 
 void main()
 {
-    vec2 tc = vary_fragcoord.xy;
-    vec4 diff = texture2D(diffuseRect, tc);
-    frag_color = diff;
+    // volumetric は additive overlay 化された (class3 参照)。
+    //   class1 = 低 shaderLevel fallback stub ゆえ散乱計算なし → additive identity (vec4(0)) を出力。
+    //   旧 diffuseRect 1:1 copy のままだと host blendFunc ONE/ONE 下で screen を二重加算する bug。
+    frag_color = vec4(0.0);
 }

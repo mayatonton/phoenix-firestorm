@@ -25,21 +25,36 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifndef TERRAIN_MIX_DEFINED
+#define TERRAIN_MIX_DEFINED 1
 struct TerrainMix
 {
     vec4 weight;
     int type;
 };
+#endif
 
 TerrainMix get_terrain_mix_weights(float alpha1, float alpha2, float alphaFinal);
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D alpha_ramp;
+
+// vary_texcoord* are used for terrain composition
+layout(location = 0) in vec4 vary_texcoord0;
+layout(location = 1) in vec4 vary_texcoord1;
+#else
 uniform sampler2D alpha_ramp;
 
 // vary_texcoord* are used for terrain composition
 in vec4 vary_texcoord0;
 in vec4 vary_texcoord1;
+#endif
 
 void main()
 {

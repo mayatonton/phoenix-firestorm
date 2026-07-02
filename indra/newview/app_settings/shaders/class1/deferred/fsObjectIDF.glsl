@@ -24,9 +24,18 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 0, std140) uniform FsObjectIDF_PerProgramBind
+{
+    vec4 object_id_packed;
+};
+#else
 out vec4 frag_color;
 
 uniform vec4 object_id_packed;
+#endif
 
 void main()
 {

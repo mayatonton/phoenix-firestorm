@@ -109,6 +109,16 @@ void LLPrimTextureList::take(LLPrimTextureList &other_list) { }
 void LLPrimTextureList::setSize(S32 new_size) { mEntryList.resize(new_size); }
 void LLPrimTextureList::setAllIDs(const LLUUID &id) { }
 LLTextureEntry * LLPrimTextureList::getTexture(const U8 index) const { return nullptr; }
+// <AYAstorm test-build guard> Stub getTextureRef (called by LLPrimitive::getTEref body
+//   but test scaffold doesn't link llprimtexturelist.cpp). Symbol-only stub via
+//   reinterpret_cast to avoid LLTextureEntry ctor/dtor link deps; safe because test
+//   never calls getTEref so the dereference is unreachable.
+LLTextureEntry& LLPrimTextureList::getTextureRef(const U8 index) const
+{
+    static char s_dummy_storage[256];
+    return *reinterpret_cast<LLTextureEntry*>(s_dummy_storage);
+}
+// </AYAstorm test-build guard>
 S32 LLPrimTextureList::size() const { return static_cast<S32>(mEntryList.size()); }
 
 class PRIMITIVE_TEST_SETUP

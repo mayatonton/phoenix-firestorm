@@ -67,6 +67,10 @@ public:
     // get number of cubemaps in the array
     U32 getCount() const { return mCount; }
 
+    VkImageView getVkImageView() const { return mImage.notNull() ? mImage->getVkImageView() : VK_NULL_HANDLE; }
+    bool        hasVkImage()    const { return mImage.notNull() && mImage->hasVkImage(); }
+    VkImage     getVkImage()    const { return mImage.notNull() ? mImage->getVkImage() : VK_NULL_HANDLE; }
+
 protected:
     friend class LLTexUnit;
     ~LLCubeMapArray();

@@ -23,9 +23,16 @@
  * $/LicenseInfo$
  */
 
+// indexedTextureV cluster helper layout(location = N) in/out 注入
+#ifdef LL_VULKAN_GLSL
+layout(location = 13) in int texture_index;
+
+layout(location = 15) flat out int vary_texture_index;
+#else
 in int texture_index;
 
 flat out int vary_texture_index;
+#endif
 
 void passTextureIndex()
 {

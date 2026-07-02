@@ -25,6 +25,31 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 2) uniform sampler2D lightFunc;
+
+layout(set = 1, binding = 0, std140) uniform PointLightPerDraw
+{
+    vec3  center;
+    float size;
+    vec3  color;
+    float falloff;
+    float global_light_strength;
+    int   classic_mode;
+    float _ppd_pad0;
+    float _ppd_pad1;
+} pl;
+#define _PL_SIZE     pl.size
+#define _PL_COLOR    pl.color
+#define _PL_FALLOFF  pl.falloff
+#define _PL_STRENGTH pl.global_light_strength
+#define _PL_CLASSIC  pl.classic_mode
+
+layout(location = 0) in vec4 vary_fragcoord;
+layout(location = 1) in vec3 trans_center;
+#else
 out vec4 frag_color;
 
 uniform sampler2D lightFunc;
@@ -34,8 +59,8 @@ uniform float sun_wash;
 
 // light params
 uniform vec3 color;
-uniform float falloff;
 uniform float size;
+uniform float falloff;
 
 in vec4 vary_fragcoord;
 in vec3 trans_center;
@@ -48,6 +73,12 @@ uniform int classic_mode;
 
 //BD
 uniform float global_light_strength;
+#define _PL_SIZE     size
+#define _PL_COLOR    color
+#define _PL_FALLOFF  falloff
+#define _PL_STRENGTH global_light_strength
+#define _PL_CLASSIC  classic_mode
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);
@@ -88,12 +119,12 @@ void main()
     float nh, nl, nv, vh, lightDist;
     calcHalfVectors(lv, n, v, h, l, nh, nl, nv, vh, lightDist);
 
-    if (lightDist >= size)
+    if (lightDist >= _PL_SIZE)
     {
         discard;
     }
-    float dist = lightDist / size;
-    float dist_atten = calcLegacyDistanceAttenuation(dist, falloff);
+    float dist = lightDist / _PL_SIZE;
+    float dist_atten = calcLegacyDistanceAttenuation(dist, _PL_FALLOFF);
 
     if (GET_GBUFFER_FLAG(gb.gbufferFlag, GBUFFER_FLAG_HAS_PBR))
     {
@@ -109,7 +140,7 @@ void main()
 
         vec3 specularColor = mix(f0, baseColor.rgb, metallic);
 
-        vec3 intensity = dist_atten * color * 3.25; // Legacy attenuation, magic number to balance with legacy materials
+        vec3 intensity = dist_atten * _PL_COLOR * 3.25; // Legacy attenuation, magic number to balance with legacy materials
 
         float nl = 0;
         vec3 diffPunc = vec3(0);
@@ -130,7 +161,7 @@ void main()
 
         float lit = nl * dist_atten;
 
-        final_color = color.rgb*lit*diffuse;
+        final_color = _PL_COLOR.rgb*lit*diffuse;
 
         if (spec.a > 0.0)
         {
@@ -144,7 +175,7 @@ void main()
             if (nh > 0.0)
             {
                 float scol = fres*texture(lightFunc, vec2(nh, spec.a)).r*gt/(nh*nl);
-                final_color += lit*scol*color.rgb*spec.rgb;
+                final_color += lit*scol*_PL_COLOR.rgb*spec.rgb;
             }
         }
 
@@ -155,10 +186,10 @@ void main()
     }
 
     //BD
-    final_color *= global_light_strength;
+    final_color *= _PL_STRENGTH;
 
     float final_scale = 1.0;
-    if (classic_mode > 0)
+    if (_PL_CLASSIC > 0)
         final_scale = 0.9;
     frag_color.rgb = max(final_color * final_scale, vec3(0));
     frag_color.a = 0.0;

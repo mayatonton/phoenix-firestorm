@@ -5,12 +5,17 @@
  * Copyright Geenz Spad, 2012
  ***********************************/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+
+layout(location = 0) out vec2 vary_fragcoord;
+#else
 in vec3 position;
-in vec2 texcoord0;
 
 out vec2 vary_fragcoord;
 
 uniform vec2 screen_res;
+#endif
 
 void main()
 {

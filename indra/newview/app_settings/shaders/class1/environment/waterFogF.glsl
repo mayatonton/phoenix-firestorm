@@ -25,10 +25,26 @@
 
 
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 14, std140) uniform WaterFog_PerProgramBind
+{
+    vec4 _wfog_waterPlane;
+    vec4 _wfog_waterFogColor;
+    float _wfog_waterFogDensity;
+    float _wfog_waterFogKS;
+    float _pad_waterfog0;
+    float _pad_waterfog1;
+};
+#define waterPlane      _wfog_waterPlane
+#define waterFogColor   _wfog_waterFogColor
+#define waterFogDensity _wfog_waterFogDensity
+#define waterFogKS      _wfog_waterFogKS
+#else
 uniform vec4 waterPlane;
 uniform vec4 waterFogColor;
 uniform float waterFogDensity;
 uniform float waterFogKS;
+#endif
 
 vec3 srgb_to_linear(vec3 col);
 vec3 linear_to_srgb(vec3 col);

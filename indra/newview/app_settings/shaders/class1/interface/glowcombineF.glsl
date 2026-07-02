@@ -25,6 +25,27 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+layout(set = 1, binding = 3) uniform sampler2D emissiveRect;
+
+layout(set = 0, binding = 10, std140) uniform GlowCombine_PerShaderBind
+{
+    float greyscale_str;
+    float sepia_str;
+    float num_colors;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_GlowCombine__pad0;
+#endif
+};
+
+layout(location = 0) in vec2 tc;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
@@ -35,6 +56,7 @@ uniform float sepia_str;
 uniform float num_colors;
 
 in vec2 tc;
+#endif
 
 void main()
 {

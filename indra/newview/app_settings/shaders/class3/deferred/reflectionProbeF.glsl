@@ -29,6 +29,59 @@
 float tapScreenSpaceReflection(int totalSamples, vec2 tc, vec3 viewPos, vec3 n, inout vec4 collectedColor, sampler2D source, float glossiness);
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 40) uniform samplerCubeArray reflectionProbes;
+layout(set = 1, binding = 41) uniform samplerCubeArray irradianceProbes;
+
+#if defined(SSR)
+#ifndef SCENEMAP_DECLARED
+#define SCENEMAP_DECLARED 1
+layout(set = 1, binding = 43) uniform sampler2D sceneMap;
+#endif // SCENEMAP_DECLARED
+#endif
+
+layout(set = 1, binding = 39, std140) uniform ReflectionProbeF_PerProgramBind
+{
+#ifndef _AYA_UM_env_mat
+#define _AYA_UM_env_mat 1
+    mat3  env_mat;
+#else
+    mat3  _dup_ReflectionProbeF_env_mat;
+#endif
+#ifndef _AYA_UM_cube_snapshot
+#define _AYA_UM_cube_snapshot 1
+    int   cube_snapshot;
+#else
+    int   _dup_ReflectionProbeF_cube_snapshot;
+#endif
+#ifndef _AYA_UM_max_probe_lod
+#define _AYA_UM_max_probe_lod 1
+    float max_probe_lod;
+#else
+    float _dup_ReflectionProbeF_max_probe_lod;
+#endif
+#ifndef _AYA_UM__reflectionProbeF_pad0
+#define _AYA_UM__reflectionProbeF_pad0 1
+    float _reflectionProbeF_pad0;
+#else
+    float _dup_ReflectionProbeF__reflectionProbeF_pad0;
+#endif
+#ifndef _AYA_UM__reflectionProbeF_pad1
+#define _AYA_UM__reflectionProbeF_pad1 1
+    float _reflectionProbeF_pad1;
+#else
+    float _dup_ReflectionProbeF__reflectionProbeF_pad1;
+#endif
+#if defined(HERO_PROBES)
+#ifndef _AYA_UM_clipPlane
+#define _AYA_UM_clipPlane 1
+    vec4  clipPlane;
+#else
+    vec4  _dup_ReflectionProbeF_clipPlane;
+#endif
+#endif
+};
+#else
 uniform samplerCubeArray   reflectionProbes;
 uniform samplerCubeArray   irradianceProbes;
 
@@ -39,10 +92,15 @@ uniform float max_probe_lod;
 uniform bool transparent_surface;
 
 uniform int classic_mode;
+#endif
 
 #define MAX_REFMAP_COUNT 256  // must match LL_MAX_REFLECTION_PROBE_COUNT
 
+#ifdef LL_VULKAN_GLSL
+layout (set = 1, binding = 38, std140) uniform ReflectionProbes
+#else
 layout (std140) uniform ReflectionProbes
+#endif
 {
     // list of OBBs for user override probes
     // box is a set of 3 planes outward facing planes and the depth of the box along that plane
@@ -82,7 +140,9 @@ layout (std140) uniform ReflectionProbes
 };
 
 // Inputs
+#ifndef LL_VULKAN_GLSL
 uniform mat3 env_mat;
+#endif
 
 // list of probeIndexes shader will actually use after "getRefIndex" is called
 // (stores refIndex/refSphere indices, NOT rerflectionProbes layer)
@@ -692,8 +752,12 @@ vec3 sampleProbeAmbient(vec3 pos, vec3 dir, vec3 amblit)
 
 #if defined(HERO_PROBES)
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 42) uniform samplerCubeArray heroProbes;
+#else
 uniform vec4 clipPlane;
 uniform samplerCubeArray   heroProbes;
+#endif
 
 void tapHeroProbe(inout vec3 glossenv, vec3 pos, vec3 norm, float glossiness)
 {

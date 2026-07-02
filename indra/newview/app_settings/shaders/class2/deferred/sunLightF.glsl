@@ -25,15 +25,33 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 //class 2, shadows, no SSAO
 
 // Inputs
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform SunLightF_PerProgramBind
+{
+    vec3  sun_dir_sunlightf;
+    float _sunLightF_pad0;
+};
+#else
 uniform vec3 sun_dir;
+#endif
+#ifndef LL_VULKAN_GLSL
 uniform float shadow_bias;
+#endif
 
 vec4 getNorm(vec2 pos_screen);
 vec4 getPosition(vec2 pos_screen);

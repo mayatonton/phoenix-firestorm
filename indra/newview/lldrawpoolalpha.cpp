@@ -43,6 +43,7 @@
 #include "llviewerobjectlist.h" // For debugging
 #include "llviewerwindow.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewerregion.h"
 #include "lldrawpoolwater.h"
@@ -51,6 +52,9 @@
 #include "llvoavatar.h"
 #include "gltfscenemanager.h"
 #include "lltoolmgr.h"
+#include "llvkloader.h"
+#include "llimagegl.h"
+#include "llfetchedgltfmaterial.h"
 
 #include "llenvironment.h"
 
@@ -108,21 +112,41 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
     }
 
     shader->bind();
+
+
     shader->uniform1f(LLShaderMgr::DISPLAY_GAMMA, (gamma > 0.1f) ? 1.0f / gamma : (1.0f / 2.2f));
 
-    if (LLPipeline::sRenderingHUDs)
+    F32 water_sign_pc = water_sign;
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     { // for HUD attachments, only the pre-water pass is executed and we never want to clip anything
         LLVector4 near_clip(0, 0, -1, 0);
         shader->uniform1f(waterSign, 1.f);
         shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, near_clip.mV);
+        // HUD は no-clip: waterSign push を 0.f に (deferredUtil.glsl waterClip `if (waterSign==0.0) return;`)
+        water_sign_pc = 0.f;
     }
     else
     {
         shader->uniform1f(waterSign, water_sign);
         shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
+        water_sign_pc = water_sign;
     }
 
-    if (LLPipeline::sImpostorRender)
+    if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
+    {
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                               72, sizeof(F32), &water_sign_pc);
+
+            const F32 aya_preview_neutral_atmos = 0.f;
+            vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                               76, sizeof(F32), &aya_preview_neutral_atmos);
+        }
+    }
+
+    if (LLPipelineFrameContext::getInstance().isImpostorPass())
     {
         shader->setMinimumAlpha(MINIMUM_IMPOSTOR_ALPHA);
     }
@@ -156,13 +180,13 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         water_sign = -1.f;
     }
 
-    if (LLPipeline::sUnderWaterRender)
+    if (LLPipelineFrameContext::getInstance().isUnderWaterRendering())
     {
         water_sign *= -1.f;
     }
 
     // prepare shaders
-    llassert(LLPipeline::sRenderDeferred);
+    llassert(LLPipelineFrameContext::getInstance().isRenderingDeferred());
 
     emissive_shader = &gDeferredEmissiveProgram;
     prepare_alpha_shader(emissive_shader, false, water_sign);
@@ -172,14 +196,50 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
 
     fullbright_shader   =
-        (LLPipeline::sImpostorRender) ? &gDeferredFullbrightAlphaMaskProgram :
-        (LLPipeline::sRenderingHUDs) ? &gHUDFullbrightAlphaMaskAlphaProgram :
+        (LLPipelineFrameContext::getInstance().isImpostorPass()) ? &gDeferredFullbrightAlphaMaskProgram :
+        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDFullbrightAlphaMaskAlphaProgram :
         &gDeferredFullbrightAlphaMaskAlphaProgram;
     prepare_alpha_shader(fullbright_shader, true, water_sign);
 
+    if (!LLVKLoader::isVulkanInitialized())
+    {
+        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
+                                << " EARLY_RETURN: Vulkan not initialized" << LL_ENDL;
+    }
+    else if (!gPipeline.mWaterExclusionMask.hasVkImage())
+    {
+        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
+                                << " EARLY_RETURN: mWaterExclusionMask.hasVkImage()=false"
+                                << LL_ENDL;
+    }
+    else if (fullbright_shader == nullptr)
+    {
+        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
+                                << " EARLY_RETURN: fullbright_shader=null" << LL_ENDL;
+    }
+    else
+    {
+        fullbright_shader->bind();
+        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
+                                << " SUCCESS_static cur=" << fullbright_shader->mName << LL_ENDL;
+        if (fullbright_shader->mRiggedVariant != nullptr &&
+            fullbright_shader->mRiggedVariant != fullbright_shader)
+        {
+            fullbright_shader->mRiggedVariant->bind();
+            LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
+                                    << " SUCCESS_rigged cur="
+                                    << fullbright_shader->mRiggedVariant->mName << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
+                                    << " mRiggedVariant=null or same as static" << LL_ENDL;
+        }
+    }
+
     simple_shader   =
-        (LLPipeline::sImpostorRender) ? &gDeferredAlphaImpostorProgram :
-        (LLPipeline::sRenderingHUDs) ? &gHUDAlphaProgram :
+        (LLPipelineFrameContext::getInstance().isImpostorPass()) ? &gDeferredAlphaImpostorProgram :
+        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDAlphaProgram :
         &gDeferredAlphaProgram;
 
     prepare_alpha_shader(simple_shader, true, water_sign); //prime simple shader (loads shadow relevant uniforms)
@@ -191,7 +251,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     }
 
     pbr_shader =
-        (LLPipeline::sRenderingHUDs) ? &gHUDPBRAlphaProgram :
+        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDPBRAlphaProgram :
         &gDeferredPBRAlphaProgram;
 
     prepare_alpha_shader(pbr_shader, true, water_sign);
@@ -200,30 +260,15 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // already being setup for rendering
     LLGLSLShader::unbind();
 
-    // <AYAstorm r30 P5 transparent-DoF C-(a)> Redirect forward alpha BLEND
-    // color writes to gPipeline.mAYAAlphaColor when DoF is on so the DoF
-    // pipeline (cofF / HQDoFF / dofCombineF) sees the opaque-only scene and
-    // blurs the bg correctly. Depth is shared with mRT->screen so alpha BLEND
-    // still depth-tests/writes against opaque z exactly as before. The
-    // separated alpha plate is composited back over the DoF result in
-    // dofCombineF. Only POST_WATER pool — PRE_WATER stays on mRT->screen
-    // (water haze / fog mixing relies on it being there).
-    // gPipeline.mRT == &mMainRT: mAYAAlphaColor's depth attachment is shared
-    // with mMainRT->deferredScreen at allocate time, so the redirect is only
-    // valid while the main RT pack is current. preview/profile/probe paths
-    // call renderPostDeferred with a non-main mRT and would mismatch depth.
-    // Build mode gate: renderDoF() in pipeline.cpp is itself skipped when
-    // inBuildMode() && !RenderDepthOfFieldInEditMode, so without matching
-    // here the alpha plate gets filled but never composited back over the
-    // DoF result — alpha BLEND surfaces vanish from the screen while edit
-    // tool is open. Keep the redirect gate aligned with renderDoF()'s gate.
+    // Forward alpha BLEND を gPipeline.mAYAAlphaColor へ redirect。
+    // POST_WATER pool + main RT 時のみ (mAYAAlphaColor の depth は mMainRT->deferredScreen
+    // と共有ゆえ non-main RT では depth mismatch、PRE_WATER は water haze/refraction が
+    // mRT->screen 依存ゆえ除外)。
     const bool use_alpha_rt =
-        !LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
-        !gCubeSnapshot && LLPipeline::RenderDepthOfField &&
-        (LLPipeline::RenderDepthOfFieldInEditMode ||
-         !LLToolMgr::getInstance()->inBuildMode()) &&
+        !LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
+        !gCubeSnapshot &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        gPipeline.mRT == &gPipeline.mMainRT &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaColor.isComplete();
 
     // <AYAstorm r30 P5 plate-clear unconditional 2026-05-23>
@@ -233,9 +278,9 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // next frame's composite. The pre-tonemap composite step (renderFinalize)
     // reads mAYAAlphaColor unconditionally, so it must start clean every
     // frame.
-    if (!LLPipeline::sImpostorRender && !LLPipeline::sRenderingHUDs &&
+    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         !gCubeSnapshot && getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        gPipeline.mRT == &gPipeline.mMainRT &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaColor.isComplete())
     {
         LL_PROFILE_GPU_ZONE("aya alpha color clear");
@@ -243,7 +288,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         {
             LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
             glClearColor(0.f, 0.f, 0.f, 0.f);
-            glClear(GL_COLOR_BUFFER_BIT);
+            gPipeline.mAYAAlphaColor.clear(GL_COLOR_BUFFER_BIT);
         }
         gPipeline.mAYAAlphaColor.flush();
     }
@@ -274,7 +319,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // POST_WATER 全 path で swap を default 化。PRE_WATER は water fog
     // 計算 (write_depth が always true) のため rigged-first を維持。HUD は
     // forwardRender 1 回のみで対象外。
-    if (!LLPipeline::sRenderingHUDs &&
+    if (!LLPipelineFrameContext::getInstance().isHUDPass() &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
         // back-to-front: non-rigged (background — windows / foliage) 先 →
@@ -286,7 +331,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     else
     {
         // PRE_WATER / HUD の元順 — water fog 整合性のため touch しない。
-        if (!LLPipeline::sRenderingHUDs)
+        if (!LLPipelineFrameContext::getInstance().isHUDPass())
         {
             forwardRender(true);
         }
@@ -323,7 +368,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // </AYAstorm r30 P3 step 5>
 
     // final pass, render to depth for depth of field effects
-    if (!LLPipeline::sImpostorRender && (LLPipeline::RenderDepthOfField || volumetric_wants_alpha_depth) && !gCubeSnapshot && !LLPipeline::sRenderingHUDs && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
+    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && (LLPipeline::RenderDepthOfField || volumetric_wants_alpha_depth) && !gCubeSnapshot && !LLPipelineFrameContext::getInstance().isHUDPass() && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
         //update depth buffer sampler
         simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
@@ -367,10 +412,10 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // grille z here would tell cofF "this pixel is subject" and prevent bg
     // blur behind grilles — exactly the regression C-(a) avoids. Skip the
     // re-injection when mAYAAlphaColor is alive.
-    if (!LLPipeline::sImpostorRender && LLPipeline::RenderDepthOfField &&
-        !gCubeSnapshot && !LLPipeline::sRenderingHUDs &&
+    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && LLPipeline::RenderDepthOfField &&
+        !gCubeSnapshot && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        gPipeline.mRT == &gPipeline.mMainRT &&
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
         gPipeline.mAYAAlphaDepth.isComplete() &&
         !gPipeline.mAYAAlphaColor.isComplete())
     {
@@ -406,7 +451,6 @@ void LLDrawPoolAlpha::forwardRender(bool rigged)
         // contribute to the alpha mask used for impostors
         || LLPipeline::sImpostorRenderAlphaDepthPass
         || getType() == LLDrawPoolAlpha::POOL_ALPHA_PRE_WATER; // needed for accurate water fog
-
 
     LLGLDepthTest depth(GL_TRUE, write_depth ? GL_TRUE : GL_FALSE);
 
@@ -605,7 +649,7 @@ bool LLDrawPoolAlpha::TexSetup(LLDrawInfo* draw, bool use_material)
     }
     else
     {
-        if (!LLPipeline::sRenderingHUDs && use_material && current_shader)
+        if (!LLPipelineFrameContext::getInstance().isHUDPass() && use_material && current_shader)
         {
             if (draw->mNormalMap)
             {
@@ -678,6 +722,7 @@ void LLDrawPoolAlpha::RestoreTexSetup(bool tex_setup)
 void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 {
     LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
+
     draw->mVertexBuffer->setBuffer();
     draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
 }
@@ -786,7 +831,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
     F32 water_height = env.getWaterHeight();
 
     bool above_water = getType() == LLDrawPool::POOL_ALPHA_POST_WATER;
-    if (LLPipeline::sUnderWaterRender)
+    if (LLPipelineFrameContext::getInstance().isUnderWaterRendering())
     {
         above_water = !above_water;
     }
@@ -806,7 +851,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
             LLSpatialBridge* bridge = group->getSpatialPartition()->asBridge();
             const LLVector4a* ext = bridge ? bridge->getSpatialExtents() : group->getExtents();
 
-            if (!LLPipeline::sRenderingHUDs) // ignore above/below water for HUD render
+            if (!LLPipelineFrameContext::getInstance().isHUDPass()) // ignore above/below water for HUD render
             {
                 if (above_water)
                 { // reject any spatial groups that have no part above water
@@ -883,10 +928,74 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     }
 
                     params.mGLTFMaterial->bind(params.mTexture);
+
+                    if (LLVKLoader::isVulkanInitialized()
+                        && target_shader->mVkPerProgramUBO != VK_NULL_HANDLE
+                        && target_shader->mVkPerProgramUBOMapped != nullptr
+                        && target_shader->mVkPerProgramUBOSize >= 32)
+                    {
+                        target_shader->rotatePerProgramUBOSlot();
+                        char* base = (char*)target_shader->mVkActivePerProgramUBOMapped;
+                        LLGLTFMaterial* gm = params.mGLTFMaterial;
+
+                        F32 mr_packed[8] = {
+                            gm->mMetallicFactor, gm->mRoughnessFactor, 0.f, 0.f,
+                            gm->mEmissiveColor.mV[0], gm->mEmissiveColor.mV[1], gm->mEmissiveColor.mV[2], 0.f,
+                        };
+                        memcpy(base + 0, mr_packed, 32);
+
+                        bool has_shadow = target_shader->mFeatures.hasShadows;
+                        U32 offset = 32;
+
+                        if (!has_shadow)
+                        {
+                            F32 sun_moon[8] = {
+                                gPipeline.mTransformedSunDir.mV[0],  gPipeline.mTransformedSunDir.mV[1],  gPipeline.mTransformedSunDir.mV[2],  0.f,
+                                gPipeline.mTransformedMoonDir.mV[0], gPipeline.mTransformedMoonDir.mV[1], gPipeline.mTransformedMoonDir.mV[2], 0.f,
+                            };
+                            memcpy(base + offset, sun_moon, 32);
+                            offset += 32;
+                        }
+
+                        F32 lp[LL_NUM_LIGHT_UNITS * 4];
+                        F32 ld[LL_NUM_LIGHT_UNITS * 3];
+                        F32 la[LL_NUM_LIGHT_UNITS * 4];
+                        F32 ldi[LL_NUM_LIGHT_UNITS * 3];
+                        F32 lda[LL_NUM_LIGHT_UNITS * 2];
+                        gGL.getLightArrayData(lp, ld, la, ldi);
+                        gGL.getLightDeferredAttenuationData(lda);
+
+                        memcpy(base + offset, lp, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+                        offset += 128;
+
+                        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+                        {
+                            F32 v[4] = { ld[i*3+0], ld[i*3+1], ld[i*3+2], 0.f };
+                            memcpy(base + offset + i * 16, v, 16);
+                        }
+                        offset += 128;
+
+                        memcpy(base + offset, la, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+                        offset += 128;
+
+                        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+                        {
+                            F32 v[4] = { ldi[i*3+0], ldi[i*3+1], ldi[i*3+2], 0.f };
+                            memcpy(base + offset + i * 16, v, 16);
+                        }
+                        offset += 128;
+
+                        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+                        {
+                            F32 v[4] = { lda[i*2+0], lda[i*2+1], 0.f, 0.f };
+                            memcpy(base + offset + i * 16, v, 16);
+                        }
+
+                    }
                 }
                 else
                 {
-                    mat = LLPipeline::sRenderingHUDs ? nullptr : params.mMaterial;
+                    mat = LLPipelineFrameContext::getInstance().isHUDPass() ? nullptr : params.mMaterial;
 
                     if (params.mFullbright)
                     {
@@ -907,7 +1016,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         light_enabled = true;
                     }
 
-                    if (LLPipeline::sRenderingHUDs)
+                    if (LLPipelineFrameContext::getInstance().isHUDPass())
                     {
                         target_shader = fullbright_shader;
                     }
@@ -965,6 +1074,33 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         current_shader->uniform4f(LLShaderMgr::SPECULAR_COLOR, spec_color.mV[VRED], spec_color.mV[VGREEN], spec_color.mV[VBLUE], spec_color.mV[VALPHA]);
                         current_shader->uniform1f(LLShaderMgr::ENVIRONMENT_INTENSITY, env_intensity);
                         current_shader->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, brightness);
+
+                        if (LLVKLoader::isVulkanInitialized())
+                        {
+                            const ptrdiff_t shader_index = current_shader - gDeferredMaterialProgram;
+                            // shader_index 16..31 = skinned variant、layout_index = shader_index % SHADER_COUNT
+                            if (shader_index >= 0 && shader_index < (ptrdiff_t)(LLMaterial::SHADER_COUNT * 2))
+                            {
+                                const U32 layout_index = (U32)(shader_index % LLMaterial::SHADER_COUNT);
+                                const U32 alpha_mode = (U32)(layout_index & 0x3);
+                                if (alpha_mode == 1) // DIFFUSE_ALPHA_MODE_BLEND
+                                {
+                                    writeMaterialFAllUBO(*current_shader, layout_index,
+                                                         brightness, env_intensity,
+                                                         spec_color.mV,
+                                                         params.mAlphaMaskCutoff,
+                                                         params.mIsSSSTarget ? 1.f : 0.f);
+                                }
+                                else
+                                {
+                                    writeMaterialFPerDrawUBO(*current_shader, layout_index,
+                                                              brightness, env_intensity,
+                                                              spec_color.mV,
+                                                              params.mAlphaMaskCutoff,
+                                                              params.mIsSSSTarget ? 1.f : 0.f);
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -979,7 +1115,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     gGL.blendFunc((LLRender::eBlendFactor) params.mBlendFuncSrc, (LLRender::eBlendFactor) params.mBlendFuncDst, mAlphaSFactor, mAlphaDFactor);
 
                     bool reset_minimum_alpha = false;
-                    if (!LLPipeline::sImpostorRender &&
+                    if (!LLPipelineFrameContext::getInstance().isImpostorPass() &&
                         params.mBlendFuncDst != LLRender::BF_SOURCE_ALPHA &&
                         params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA)
                     { // this draw call has a custom blend function that may require rendering of "invisible" fragments
@@ -988,6 +1124,58 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     }
 
                     params.mVertexBuffer->setBuffer();
+
+                    if (LLVKLoader::isVulkanInitialized() && current_shader
+                        && current_shader->mVkPerProgramUBO != VK_NULL_HANDLE
+                        && current_shader->mVkPerProgramUBOMapped != nullptr
+                        && (current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
+                            || current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))
+                    {
+                        const bool no_shadow =
+                            (current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW);
+                        const F32 cur_min_alpha = reset_minimum_alpha ? 0.f : MINIMUM_ALPHA;
+
+                        current_shader->rotatePerProgramUBOSlot();
+                        char* base = (char*)current_shader->mVkActivePerProgramUBOMapped;
+
+                        memcpy(base + 0, &cur_min_alpha, sizeof(F32));
+
+                        if (no_shadow)
+                        {
+                            F32 sun_moon[8] = {
+                                gPipeline.mTransformedSunDir.mV[0],  gPipeline.mTransformedSunDir.mV[1],  gPipeline.mTransformedSunDir.mV[2],  0.f,
+                                gPipeline.mTransformedMoonDir.mV[0], gPipeline.mTransformedMoonDir.mV[1], gPipeline.mTransformedMoonDir.mV[2], 0.f,
+                            };
+                            memcpy(base + LLVKLoader::ALPHAF_UBO_OFFSET_SUN_MOON, sun_moon, sizeof(sun_moon));
+                        }
+
+                        U32 lights_offset =
+                            no_shadow ? LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_NO_SHADOW
+                                      : LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_SHADOW;
+                        F32 lp[LL_NUM_LIGHT_UNITS * 4];
+                        F32 ld[LL_NUM_LIGHT_UNITS * 3];
+                        F32 la[LL_NUM_LIGHT_UNITS * 4];
+                        F32 ldi[LL_NUM_LIGHT_UNITS * 3];
+                        gGL.getLightArrayData(lp, ld, la, ldi);
+
+                        memcpy(base + lights_offset, lp, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+                        lights_offset += 128;
+                        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+                        {
+                            F32 v[4] = { ld[i*3+0], ld[i*3+1], ld[i*3+2], 0.f };
+                            memcpy(base + lights_offset + i * 16, v, 16);
+                        }
+                        lights_offset += 128;
+                        memcpy(base + lights_offset, la, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+                        lights_offset += 128;
+                        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+                        {
+                            F32 v[4] = { ldi[i*3+0], ldi[i*3+1], ldi[i*3+2], 0.f };
+                            memcpy(base + lights_offset + i * 16, v, 16);
+                        }
+                    }
+
+                    LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
                     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
                     stop_glerror();
 
@@ -1167,3 +1355,4 @@ void LLDrawPoolAlpha::renderMotionBlur(S32 pass)
     pushRiggedVelocityBatchesTextured(LLRenderPass::PASS_ALPHA_RIGGED);
 }
 // </AYAstorm r30 P2>
+

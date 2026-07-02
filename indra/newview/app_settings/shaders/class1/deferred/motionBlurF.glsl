@@ -29,14 +29,39 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+layout(set = 1, binding = 2) uniform sampler2D velocityMap;
+#else
 uniform sampler2D diffuseRect;
 uniform sampler2D velocityMap;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform MotionBlurF_PerProgramBind
+{
+    vec2 _mbF_screen_res;
+    int _mbF_motion_blur_strength;
+    int _motionBlurF_pad0;
+};
+#define screen_res           _mbF_screen_res
+#define motion_blur_strength _mbF_motion_blur_strength
+#else
 uniform vec2 screen_res;
 uniform int motion_blur_strength;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
 //   Cinematic — BD original: 0.5 px noise floor, no NaN/Inf guard, no

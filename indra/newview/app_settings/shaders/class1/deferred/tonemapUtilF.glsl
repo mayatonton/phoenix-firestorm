@@ -25,9 +25,23 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 25) uniform sampler2D exposureMap;
+layout(set = 1, binding = 26, std140) uniform TonemapUtilF_PerProgramBind
+{
+    float exposure;
+    float tonemap_mix;
+    int   tonemap_type;
+    float _tonemapUtilF_pad0;
+};
+#else
 uniform sampler2D exposureMap;
 uniform vec2 screen_res;
+#ifndef DECL_VARY_FRAGCOORD
+#define DECL_VARY_FRAGCOORD
 in vec2 vary_fragcoord;
+#endif // DECL_VARY_FRAGCOORD
+#endif
 
 //===============================================================
 // tone mapping taken from Khronos sample implementation
@@ -113,9 +127,11 @@ vec3 PBRNeutralToneMapping( vec3 color )
   return mix(color, newPeak * vec3(1, 1, 1), g);
 }
 
+#ifndef LL_VULKAN_GLSL
 uniform float exposure;
 uniform float tonemap_mix;
 uniform int tonemap_type;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
 //   Cinematic — BD original tonemap dispatch:
@@ -368,6 +384,9 @@ vec3 toneMapNoExposure(vec3 color)
 
 //===============================================================
 
+#ifdef LL_VULKAN_GLSL
+void debugExposure(inout vec3 color) {}
+#else
 void debugExposure(inout vec3 color)
 {
     float exp_scale = texture(exposureMap, vec2(0.5,0.5)).r;
@@ -377,3 +396,4 @@ void debugExposure(inout vec3 color)
         color = vec3(1,0,0);
     }
 }
+#endif

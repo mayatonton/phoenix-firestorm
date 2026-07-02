@@ -149,6 +149,41 @@ public:
 
     U32 getDepth(void) const { return mDepth; }
 
+    void setUseDepthCompareSampler(bool b) { mUseDepthCompareSampler = b; }
+    bool usesDepthCompareSampler() const   { return mUseDepthCompareSampler; }
+
+    U32  getInternalFormat(U32 attachment = 0) const { return mInternalFormat[attachment]; }
+    bool hasDepth() const { return mUseDepth; }
+
+    VkImageView getVkImageView(U32 attachment = 0) const
+    {
+        if (attachment < mVkTexSampleView.size() && mVkTexSampleView[attachment] != VK_NULL_HANDLE)
+        {
+            return mVkTexSampleView[attachment];
+        }
+        return (attachment < mVkTexView.size()) ? mVkTexView[attachment] : VK_NULL_HANDLE;
+    }
+    VkImageView getVkDepthView() const { return mVkDepthView; }
+
+    VkImage getVkImage(U32 attachment = 0) const
+    {
+        return (attachment < mVkTex.size()) ? mVkTex[attachment] : VK_NULL_HANDLE;
+    }
+    bool hasVkImage(U32 attachment = 0) const
+    {
+        return (attachment < mVkTex.size()) && mVkTex[attachment] != VK_NULL_HANDLE;
+    }
+    bool hasVkDepth() const { return mVkDepth != VK_NULL_HANDLE; }
+
+    VkImageLayout getVkTexLayout(U32 attachment = 0) const
+    {
+        return (attachment < mVkTexLayout.size()) ? mVkTexLayout[attachment] : VK_IMAGE_LAYOUT_UNDEFINED;
+    }
+    VkImageLayout getVkDepthLayout() const { return getCurDepthLayout(); }
+    U32 getVkTexCount() const { return (U32)mVkTex.size(); }
+
+    void bindForShaderRead(U32 attachment = 0, bool depth = false);
+
     void bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilterOptions filter_options = LLTexUnit::TFO_BILINEAR);
 
     //flush rendering operations
@@ -158,6 +193,8 @@ public:
     // If an LLRenderTarget was bound when bindTarget was called, binds that RenderTarget for rendering (maintains RT stack)
     // asserts  that this target is currently bound
     void flush();
+
+    void resumeVkDynamicRendering();
 
     //Returns TRUE if target is ready to be rendered into.
     //That is, if the target has been allocated with at least
@@ -169,10 +206,14 @@ public:
 
     static LLRenderTarget* getCurrentBoundTarget() { return sBoundTarget; }
 
+    static void clearBoundTarget(U32 mask = 0xFFFFFFFF);
+
     // *HACK
     void swapFBORefs(LLRenderTarget& other);
 
     static LLRenderTarget* sBoundTarget;
+
+    bool mIsSwapchainTarget = false;
 
 protected:
     U32 mResX;
@@ -184,10 +225,36 @@ protected:
 
     U32 mDepth;
     bool mUseDepth;
+    bool mUseDepthCompareSampler = false;
     LLTexUnit::eTextureMipGeneration mGenerateMipMaps;
     U32 mMipLevels;
 
     LLTexUnit::eTextureType mUsage;
+
+    std::vector<VkImage>     mVkTex;
+    std::vector<VkImageView> mVkTexView;
+    std::vector<VkImageView> mVkTexSampleView;
+    std::vector<void*>       mVkTexAlloc;
+    std::vector<bool>        mVkTexBorrowed;
+
+    VkImage     mVkDepth      = VK_NULL_HANDLE;
+    VkImageView mVkDepthView  = VK_NULL_HANDLE;
+    void*       mVkDepthAlloc = nullptr;
+
+    std::vector<VkImageLayout> mVkTexLayout;
+    VkImageLayout              mVkDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    LLRenderTarget*            mVkDepthLayoutOwner = nullptr;
+
+    VkImageLayout getCurDepthLayout() const
+    {
+        return mVkDepthLayoutOwner ? mVkDepthLayoutOwner->mVkDepthLayout : mVkDepthLayout;
+    }
+    void setCurDepthLayout(VkImageLayout layout)
+    {
+        if (mVkDepthLayoutOwner) { mVkDepthLayoutOwner->mVkDepthLayout = layout; }
+        else                     { mVkDepthLayout = layout; }
+    }
 };
 
 #endif

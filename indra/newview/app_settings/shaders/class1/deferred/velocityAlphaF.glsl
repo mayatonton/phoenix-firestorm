@@ -29,7 +29,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 vec4 diffuseLookup(vec2 texcoord);
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> bayerDitherDiscard
@@ -41,10 +45,17 @@ void bayerDitherDiscard(float alpha, float threshold);
 #endif
 // </FS:AYA>
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec4 vary_cur_clip;
+layout(location = 1) in vec4 vary_last_clip;
+layout(location = 2) in vec2 vary_texcoord0;
+layout(location = 3) in vec4 vertex_color;
+#else
 in vec4 vary_cur_clip;
 in vec4 vary_last_clip;
 in vec2 vary_texcoord0;
 in vec4 vertex_color;
+#endif
 
 void main()
 {

@@ -22,10 +22,32 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 10) in vec4 weight4;
+#else
 in vec4 weight4;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 46, std140) uniform ObjectSkin_PerProgramBind
+{
+#ifndef _AYA_UM_matrixPalette
+#define _AYA_UM_matrixPalette 1
+    mat3x4 matrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#else
+    mat3x4 _dup_ObjectSkin_matrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#endif
+#ifndef _AYA_UM_lastMatrixPalette
+#define _AYA_UM_lastMatrixPalette 1
+    mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#else
+    mat3x4 _dup_ObjectSkin_lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#endif
+};
+#else
 uniform mat3x4 matrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
 uniform mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#endif
 
 mat4 getObjectSkinnedTransform()
 {

@@ -26,9 +26,23 @@
 // out param funcs
 
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 9, std140) uniform WindlightSky_PerProgramBind
+{
+    vec3 sun_dir_sky;
+    float _pad_sky0;
+    vec3 moon_dir_sky;
+    float _pad_sky1;
+};
+#define _sunDirSky sun_dir_sky
+#define _moonDirSky moon_dir_sky
+#else
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int sun_up_factor;
+#define _sunDirSky sun_dir
+#define _moonDirSky moon_dir
+#endif
 
 void setSunlitColor(vec3 v);
 void setAmblitColor(vec3 v);
@@ -46,7 +60,7 @@ void calcAtmospherics(vec3 inPositionEye) {
     vec3 tmpamblit = vec3(1);
     vec3 tmpaddlit = vec3(1);
     vec3 tmpattenlit = vec3(1);
-    vec3 light_dir = (sun_up_factor == 1) ? sun_dir : moon_dir;
+    vec3 light_dir = (sun_up_factor == 1) ? _sunDirSky : _moonDirSky;
     calcAtmosphericVars(inPositionEye, light_dir, 1, tmpsunlit, tmpamblit, tmpaddlit, tmpattenlit);
     setSunlitColor(tmpsunlit);
     setAmblitColor(tmpamblit);

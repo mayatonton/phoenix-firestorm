@@ -285,8 +285,6 @@ void LLPluginClassMedia::idle(void)
             message.setValueReal("background_b", mBackgroundColor.mV[VBLUE]);
             message.setValueReal("background_a", mBackgroundColor.mV[VALPHA]);
             mPlugin->sendMessage(message);  // DO NOT just use sendMessage() here -- we want this to jump ahead of the queue.
-
-            LL_DEBUGS("Plugin") << "Sending size_change" << LL_ENDL;
         }
     }
 
@@ -492,7 +490,9 @@ bool LLPluginClassMedia::textureValid(void)
         mRequestedMediaHeight != mMediaHeight ||
         getBitsData() == NULL
     )
+    {
         return false;
+    }
 
     return true;
 }

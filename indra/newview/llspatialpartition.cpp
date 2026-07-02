@@ -44,8 +44,10 @@
 #include "llviewerregion.h"
 #include "llcamera.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llmeshrepository.h"
 #include "llrender.h"
+#include "llvkloader.h"
 #include "lldrawpool.h"
 #include "lloctree.h"
 #include "llphysicsshapebuilderutil.h"
@@ -610,7 +612,7 @@ LLSpatialGroup::LLSpatialGroup(OctreeNode* node, LLSpatialPartition* part) : LLO
 
 void LLSpatialGroup::updateDistance(LLCamera &camera)
 {
-    if (LLViewerCamera::sCurCameraID != LLViewerCamera::CAMERA_WORLD)
+    if (LLViewerCamera::getCurCameraID() != LLViewerCamera::CAMERA_WORLD)
     {
         LL_WARNS() << "Attempted to update distance for camera other than world camera!" << LL_ENDL;
         llassert(false);
@@ -1054,7 +1056,7 @@ public:
 
     virtual bool earlyFail(LLViewerOctreeGroup* base_group)
     {
-        if (LLPipeline::sReflectionRender)
+        if (LLPipelineFrameContext::getInstance().isReflectionPass())
         {
             return false;
         }
@@ -1101,7 +1103,7 @@ public:
         LL_PROFILE_ZONE_SCOPED;
         LLSpatialGroup* group = (LLSpatialGroup*)base_group;
         /*if (group->needsUpdate() ||
-            group->getVisible(LLViewerCamera::sCurCameraID) < LLDrawable::getCurrentFrame() - 1)
+            group->getVisible(LLViewerCamera::getCurCameraID()) < LLDrawable::getCurrentFrame() - 1)
         {
             group->doOcclusion(mCamera);
         }*/
@@ -1457,7 +1459,7 @@ S32 LLSpatialPartition::cull(LLCamera &camera, bool do_occlusion)
     ((LLSpatialGroup*)mOctree->getListener(0))->validate();
 #endif
 
-    if (LLPipeline::sShadowRender)
+    if (LLPipelineFrameContext::getInstance().isShadowPass())
     {
         LLOctreeCullShadow culler(&camera);
         culler.traverse(mOctree);
@@ -1678,7 +1680,7 @@ void renderOctree(LLSpatialGroup* group)
 
         {
             LLGLDepthTest gl_depth(false, false);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            LLGLState::setPolygonMode(GL_LINE);
 
             gGL.diffuseColor4f(1,0,0,group->mBuilt);
             gGL.flush();
@@ -1775,7 +1777,7 @@ void renderOctree(LLSpatialGroup* group)
                     gGL.popMatrix();
                 }
             }
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            LLGLState::setPolygonMode(GL_FILL);
             gDebugProgram.bind(); // make sure non-rigged variant is bound
             gGL.diffuseColor4f(1,1,1,1);
         }
@@ -2163,6 +2165,23 @@ void renderNormals(LLDrawable *drawablep)
 
                 shader->uniform1f(LLShaderMgr::DEBUG_NORMAL_DRAW_LENGTH, draw_length);
 
+                if (LLVKLoader::isVulkanInitialized()
+                    && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+                    && shader->mVkPerProgramUBOMapped != nullptr)
+                {
+                    struct NormalDebug_UBO
+                    {
+                        F32 debug_normal_draw_length;
+                        F32 _pad0;
+                        F32 _pad1;
+                        F32 _pad2;
+                    };
+                    NormalDebug_UBO ubo_data = {};
+                    ubo_data.debug_normal_draw_length = draw_length;
+                    std::memcpy(shader->mVkPerProgramUBOMapped, &ubo_data,
+                                llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
+                }
+
                 LLRenderPass::applyModelMatrix(&facep->getDrawable()->getRegion()->mRenderMatrix);
 
                 buf->setBuffer();
@@ -2217,10 +2236,10 @@ void renderMeshBaseHullWithOutline(LLVOVolume* volume, U32 data_mask, LLColor4& 
             gGL.diffuseColor4fv(color.mV);
             LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mBaseHullMesh.mPositions);
 
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            LLGLState::setPolygonMode(GL_LINE);
             gGL.diffuseColor4fv(line_color.mV);
             LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mBaseHullMesh.mPositions);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            LLGLState::setPolygonMode(GL_FILL);
         }
         else
         {
@@ -2273,12 +2292,12 @@ void render_hull_with_outline(LLModel::PhysicsMesh& mesh, const LLColor4& color,
 {
     gGL.diffuseColor4fv(color.mV);
     LLVertexBuffer::drawArrays(LLRender::TRIANGLES, mesh.mPositions);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    LLGLState::setPolygonMode(GL_LINE);
     gGL.setLineWidth(3.f); // <FS> Line width OGL core profile fix by Rye Mutt
     gGL.diffuseColor4fv(line_color.mV);
     LLVertexBuffer::drawArrays(LLRender::TRIANGLES, mesh.mPositions);
     gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    LLGLState::setPolygonMode(GL_FILL);
 }
 // </FS:Beq>
 
@@ -2599,7 +2618,20 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             gGL.diffuseColor4fv(color.mV);
 
             gGL.syncMatrices();
-            glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
+            if (LLVKLoader::shouldUseVulkanRender())
+            {
+                static std::set<std::string> s_vk_nodraw_phys_shaders;
+                const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
+                if (s_vk_nodraw_phys_shaders.insert(name).second)
+                {
+                    LL_WARNS("Vulkan") << "GL fallback 廃止: physics hull glDrawElements Vulkan 未描画 shader='"
+                                       << name << "' (count=" << (S32)phys_volume->mNumHullIndices << ") = Vulkan 未配備" << LL_ENDL;
+                }
+            }
+            else
+            {
+                glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
+            }
         }
         else
         {
@@ -2678,14 +2710,14 @@ void renderPhysicsShapes(LLSpatialGroup* group, bool wireframe)
                             LLVertexBuffer* buff = face->getVertexBuffer();
                             if (buff)
                             {
-                                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                                LLGLState::setPolygonMode(GL_LINE);
 
                                 buff->setBuffer();
                                 gGL.diffuseColor4f(0.2f, 0.5f, 0.3f, 0.5f);
                                 buff->draw(LLRender::TRIANGLES, buff->getNumIndices(), 0);
 
                                 gGL.diffuseColor4f(0.2f, 1.f, 0.3f, 0.75f);
-                                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                                LLGLState::setPolygonMode(GL_FILL);
                                 buff->draw(LLRender::TRIANGLES, buff->getNumIndices(), 0);
                             }
                         }
@@ -2776,7 +2808,7 @@ void renderTextureAnim(LLDrawInfo* params)
 void renderBatchSize(LLDrawInfo* params)
 {
     LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(-1.f, 1.f);
+    gGL.setPolygonOffset(-1.f, 1.f);
     LLGLSLShader* old_shader = LLGLSLShader::sCurBoundShaderPtr;
     bool bind = false;
     if (params->mAvatar)
@@ -3034,9 +3066,9 @@ void renderRaycast(LLDrawable* drawablep)
         LLVOVolume* vobj = drawablep->getVOVolume();
         if (vobj && !vobj->isDead())
         {
-            //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            //LLGLState::setPolygonMode(GL_LINE);
             //pushVerts(drawablep->getFace(gDebugRaycastFaceHit), LLVertexBuffer::MAP_VERTEX);
-            //glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            //LLGLState::setPolygonMode(GL_FILL);
 
             LLVolume* volume = vobj->getVolume();
 
@@ -3081,7 +3113,7 @@ void renderRaycast(LLDrawable* drawablep)
                     dir.setSub(end, start);
 
                     gGL.flush();
-                    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                    LLGLState::setPolygonMode(GL_LINE);
 
                     {
                         //render face positions
@@ -3100,7 +3132,7 @@ void renderRaycast(LLDrawable* drawablep)
                     }
 
                     gGL.popMatrix();
-                    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                    LLGLState::setPolygonMode(GL_FILL);
                 }
             }
         }
@@ -3688,16 +3720,16 @@ void LLSpatialPartition::renderDebug()
 
             LLGLEnable blend(GL_BLEND);
             LLGLDepthTest depth_under(GL_TRUE, GL_FALSE, GL_GREATER);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            LLGLState::setPolygonMode(GL_LINE);
             gGL.diffuseColor4f(0.5f, 0.0f, 0, 0.25f);
 
             LLGLEnable offset(GL_POLYGON_OFFSET_LINE);
-            glPolygonOffset(-1.f, -1.f);
+            gGL.setPolygonOffset(-1.f, -1.f);
 
             LLOctreeRenderXRay xray(camera);
             xray.traverse(mOctree);
 
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            LLGLState::setPolygonMode(GL_FILL);
         }
     }
     gDebugProgram.unbind();

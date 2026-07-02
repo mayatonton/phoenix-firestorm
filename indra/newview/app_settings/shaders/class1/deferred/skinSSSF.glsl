@@ -30,6 +30,27 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+layout(location = 0) in vec2 vary_fragcoord;
+
+layout(set = 1, binding = 0, std140) uniform SkinSSSF_PerProgramBind
+{
+    vec3  aya_glow_color;
+    float aya_glow_gain;
+    vec2  aya_blur_dir;
+    float aya_strength;
+    float aya_blur_radius;
+    int   _skinSSSF_aya_visual_realism_enabled;
+    int   aya_r20_skin_sss_enabled;
+    float _skinSSSF_pad0;
+    float _skinSSSF_pad1;
+};
+#define aya_visual_realism_enabled _skinSSSF_aya_visual_realism_enabled
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+layout(set = 1, binding = 2) uniform sampler2D emissiveRect;
+#else
 out vec4 frag_color;
 
 in vec2 vary_fragcoord;
@@ -50,6 +71,7 @@ uniform int       aya_r20_skin_sss_enabled;
 // uniform name avoids adding a new shader binding plumbing.
 uniform sampler2D emissiveRect;
 // </FS:AYA>
+#endif
 
 // <FS:AYA r20 Phase D world-scale blur> screen-space SSS は blur 半径が
 // pixel 固定のため、遠距離で顔輪郭ごと舐めて破綻する (近接=良 / 遠=ぼやけ
@@ -64,8 +86,17 @@ uniform sampler2D emissiveRect;
 // (近接ロールプレイ距離の見えを保つ)、1m を超えると逆スケール。
 // 上限を aya_blur_radius に固定することで、超近接 (< 1m) でも blur が
 // 暴走しないようにする。
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 24) uniform sampler2D depthMap;
+#else
 uniform sampler2D depthMap;
+#endif
+#endif // DECL_DEPTH_MAP
+#ifndef LL_VULKAN_GLSL
 uniform mat4      inv_proj;
+#endif
 // </FS:AYA>
 
 void main()

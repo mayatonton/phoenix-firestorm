@@ -25,12 +25,31 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+
+layout(set = 1, binding = 0, std140) uniform PostVisualizeBuffers_PerProgramBind
+{
+#ifndef _AYA_UM_mipLevel
+#define _AYA_UM_mipLevel 1
+    float mipLevel;
+#else
+    float _dup_PostVisualizeBuffers_mipLevel;
+#endif
+};
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
+
 uniform float mipLevel;
 
 in vec2 vary_fragcoord;
+#endif
 
 void main()
 {

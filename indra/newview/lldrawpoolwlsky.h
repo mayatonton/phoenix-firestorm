@@ -63,6 +63,8 @@ public:
 
     static void cleanupGL();
     static void restoreGL();
+
+    static void writeWindlightAtmosUBOs();
 private:
     void renderDome(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const;
 

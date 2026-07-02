@@ -23,6 +23,29 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+// Inputs
+layout(set = 1, binding = 0, std140) uniform HazeF_PerProgramBind
+{
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3  sun_dir;
+#else
+    vec3  _dup_HazeF_sun_dir;
+#endif
+    float _hazeF_pad0;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3  moon_dir;
+#else
+    vec3  _dup_HazeF_moon_dir;
+#endif
+    int   sun_up_factor_haze;
+};
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 // Inputs
@@ -30,6 +53,7 @@ uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int  sun_up_factor;
 in vec2 vary_fragcoord;
+#endif
 
 vec4 getNorm(vec2 pos_screen);
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);
@@ -40,11 +64,17 @@ float getDepth(vec2 pos_screen);
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 waterPlane;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform int cube_snapshot;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float sky_hdr_scale;
+#endif
 
 void main()
 {

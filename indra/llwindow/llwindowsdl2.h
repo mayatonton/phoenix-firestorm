@@ -127,6 +127,7 @@ public:
     /*virtual*/ bool dialogColorPicker(F32 *r, F32 *g, F32 *b);
 
     /*virtual*/ void *getPlatformWindow();
+    /*virtual*/ LLNativeWindowHandles getNativeWindowHandles() override;
     /*virtual*/ void bringToFront();
 
     /*virtual*/ void allowLanguageTextInput(LLPreeditor* preeditor, bool b);

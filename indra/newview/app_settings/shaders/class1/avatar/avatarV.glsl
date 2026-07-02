@@ -23,16 +23,44 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+#else
 uniform mat4 projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 texcoord0;
+#else
 in vec3 position;
 in vec3 normal;
 in vec2 texcoord0;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 vertex_color;
+layout(location = 1) out vec2 vary_texcoord0;
+#else
 out vec4 vertex_color;
 out vec2 vary_texcoord0;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 51, std140) uniform DrawColor_PerShaderBind { vec4 color; };
+#else
 uniform vec4 color;
+#endif
 
 vec4 calcLighting(vec3 pos, vec3 norm, vec4 color);
 mat4 getSkinnedTransform();

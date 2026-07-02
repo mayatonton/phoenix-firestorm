@@ -23,6 +23,13 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec4 vertex_color;
+layout(location = 1) in vec4 vertex_position;
+
+#else
 out vec4 frag_color;
 
 in vec4 vertex_color;
@@ -49,6 +56,7 @@ void waterClip(vec3 pos)
         }
     }
 }
+#endif
 
 void main()
 {

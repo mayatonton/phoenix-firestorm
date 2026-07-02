@@ -23,9 +23,21 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+layout(set = 1, binding = 51, std140) uniform DrawColor_PerShaderBind
+{
+#ifndef _AYA_UM_color
+#define _AYA_UM_color 1
+    vec4 color;
+#else
+    vec4 _dup_DrawColor_color;
+#endif
+};
+#else
 out vec4 frag_color;
-
 uniform vec4 color;
+#endif
 
 void main()
 {

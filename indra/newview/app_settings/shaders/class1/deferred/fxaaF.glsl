@@ -28,7 +28,11 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #define FXAA_PC 1
 //#define FXAA_GLSL_130 1
@@ -2101,14 +2105,35 @@ half4 FxaaPixelShader(
 /*==========================================================================*/
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 2) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+
+layout(set = 1, binding = 0, std140) uniform FxaaShared_PerProgramBind
+{
+    vec2 tc_scale;
+    vec2 rcp_screen_res;
+    vec4 rcp_frame_opt;
+    vec4 rcp_frame_opt2;
+};
+layout(location = 0) in vec2 vary_fragcoord;
+layout(location = 1) in vec2 vary_tc;
+#else
 uniform sampler2D diffuseMap;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
 
 uniform vec2 rcp_screen_res;
 uniform vec4 rcp_frame_opt;
 uniform vec4 rcp_frame_opt2;
 in vec2 vary_fragcoord;
 in vec2 vary_tc;
+#endif
 
 void main()
 {

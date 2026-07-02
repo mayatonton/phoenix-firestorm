@@ -23,6 +23,20 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+
+layout(location = 0) out vec2 vary_fragcoord;
+layout(location = 1) out vec2 vary_tc;
+
+layout(set = 1, binding = 0, std140) uniform FxaaShared_PerProgramBind
+{
+    vec2 tc_scale;
+    vec2 rcp_screen_res;
+    vec4 rcp_frame_opt;
+    vec4 rcp_frame_opt2;
+};
+#else
 in vec3 position;
 
 out vec2 vary_fragcoord;
@@ -31,6 +45,7 @@ out vec2 vary_tc;
 uniform vec2 tc_scale;
 
 uniform vec2 screen_res;
+#endif
 
 void main()
 {

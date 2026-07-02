@@ -25,13 +25,30 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec4 post_pos;
+layout(location = 1) in float target_pos_x;
+layout(location = 2) in vec4 vertex_color;
+layout(location = 3) in vec2 vary_texcoord0;
+#else
 out vec4 frag_color;
 
 in vec4 post_pos;
 in float target_pos_x;
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(push_constant) uniform ShadowAlphaMaskF_AlphaMaskPC
+{
+    layout(offset = 64) float minimum_alpha;
+};
+#else
 uniform float minimum_alpha;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
 #if AYASTORM_CINEMATIC

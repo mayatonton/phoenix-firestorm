@@ -120,6 +120,7 @@ public:
 
     virtual void render(S32 pass = 0) {};
     virtual void prerender() {};
+
     virtual U32 getVertexDataMask() { return 0; } // DEPRECATED -- draw pool doesn't actually determine vertex data mask any more
     virtual bool verify() const { return true; }        // Verify that all data in the draw pool is correct!
     virtual S32 getShaderLevel() const { return mShaderLevel; }
@@ -388,6 +389,12 @@ public:
     static void pushRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
     static void pushUntexturedGLTFBatch(LLDrawInfo& params);
     static void pushUntexturedRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
+
+    static void buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
+                                                 U64      gltf_materials_ubo  = 0,
+                                                 U32      gltf_materials_size = 0,
+                                                 U64      gltf_geometry_ubo   = 0,
+                                                 U32      gltf_geometry_size  = 0);
 
     void pushMaskBatches(U32 type, bool texture = true, bool batch_textures = false);
     void pushRiggedMaskBatches(U32 type, bool texture = true, bool batch_textures = false);

@@ -35,12 +35,14 @@
 #include "llversioninfo.h"
 
 #include "llrender.h"
+#include "llvkloader.h"
 #include "llenvironment.h"
 #include "llerrorcontrol.h"
 #include "llworld.h"
 #include "llsky.h"
 
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 #include "llfile.h"
 #include "llviewerwindow.h"
@@ -209,6 +211,7 @@ LLGLSLShader            gDeferredPostTonemapLegacyGammaCorrectProgram;
 LLGLSLShader            gNoPostTonemapLegacyGammaCorrectProgram;
 // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 LLGLSLShader            gAYAAlphaPlateCompositeProgram;
+LLGLSLShader            gAYAForwardFlipCompositeProgram;
 // </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
 LLGLSLShader            gDeferredPostGammaCorrectProgram;
 LLGLSLShader            gLegacyPostGammaCorrectProgram;
@@ -299,6 +302,216 @@ static void add_common_permutations(LLGLSLShader* shader)
     {
         shader->addPermutation("HAS_EMISSIVE", "1");
     }
+}
+
+namespace {
+    constexpr U32 MATERIAL_F_OFFSET_ABSENT = 0xFFFFFFFFu;
+
+    struct MaterialFLayoutOffsets
+    {
+        U32 ubo_size                   = 0;
+        U32 emissive_brightness_offset = MATERIAL_F_OFFSET_ABSENT;
+        U32 env_intensity_offset       = MATERIAL_F_OFFSET_ABSENT;
+        U32 specular_color_offset      = MATERIAL_F_OFFSET_ABSENT;
+        U32 sun_dir_offset             = MATERIAL_F_OFFSET_ABSENT;
+        U32 moon_dir_offset            = MATERIAL_F_OFFSET_ABSENT;
+        U32 light_position_offset      = MATERIAL_F_OFFSET_ABSENT;
+        U32 light_direction_offset     = MATERIAL_F_OFFSET_ABSENT;
+        U32 light_attenuation_offset   = MATERIAL_F_OFFSET_ABSENT;
+        U32 light_diffuse_offset       = MATERIAL_F_OFFSET_ABSENT;
+        U32 aya_sss_skin_flag_offset   = MATERIAL_F_OFFSET_ABSENT;
+        U32 minimum_alpha_offset       = MATERIAL_F_OFFSET_ABSENT;
+    };
+
+    MaterialFLayoutOffsets g_material_f_layouts[LLMaterial::SHADER_COUNT];
+
+    void computeMaterialFLayoutOffsets(U32 i, bool use_sun_shadow, bool has_emissive,
+                                       MaterialFLayoutOffsets& out_layout)
+    {
+        out_layout = MaterialFLayoutOffsets{};
+        out_layout.emissive_brightness_offset = 0;
+        out_layout.env_intensity_offset       = 4;
+        out_layout.specular_color_offset      = 16;
+
+        U32 cursor = 32;
+        const U32 alpha_mode = i & 0x3;
+
+        if (alpha_mode == 1) // DIFFUSE_ALPHA_MODE_BLEND
+        {
+            if (!use_sun_shadow)
+            {
+                out_layout.sun_dir_offset  = cursor;
+                out_layout.moon_dir_offset = cursor + 16;
+                cursor += 32;
+            }
+            out_layout.light_position_offset    = cursor;
+            out_layout.light_direction_offset   = cursor + 128;
+            out_layout.light_attenuation_offset = cursor + 256;
+            out_layout.light_diffuse_offset     = cursor + 384;
+            cursor += 512;
+        }
+        if (has_emissive)
+        {
+            out_layout.aya_sss_skin_flag_offset = cursor;
+            cursor += 16;
+        }
+        if (alpha_mode == 2) // DIFFUSE_ALPHA_MODE_MASK
+        {
+            out_layout.minimum_alpha_offset = cursor;
+            cursor += 16;
+        }
+        out_layout.ubo_size = cursor;
+    }
+}
+
+bool writeMaterialFPerDrawUBO(LLGLSLShader& shader, U32 i,
+                              F32 emissive_brightness, F32 env_intensity,
+                              const F32* specular_color_4f,
+                              F32 minimum_alpha, F32 aya_sss_skin_flag)
+{
+    if (!LLVKLoader::isVulkanInitialized()
+        || shader.mVkPerProgramUBO == VK_NULL_HANDLE
+        || shader.mVkPerProgramUBOMapped == nullptr
+        || i >= LLMaterial::SHADER_COUNT)
+    {
+        return false;
+    }
+    const MaterialFLayoutOffsets& layout = g_material_f_layouts[i];
+    if (layout.light_position_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        return false;
+    }
+    shader.rotatePerProgramUBOSlot();
+    char* base = static_cast<char*>(shader.mVkActivePerProgramUBOMapped);
+    memcpy(base + layout.emissive_brightness_offset, &emissive_brightness, sizeof(F32));
+    memcpy(base + layout.env_intensity_offset,       &env_intensity,       sizeof(F32));
+    memcpy(base + layout.specular_color_offset,      specular_color_4f,    sizeof(F32) * 4);
+    if (layout.minimum_alpha_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        memcpy(base + layout.minimum_alpha_offset, &minimum_alpha, sizeof(F32));
+    }
+    if (layout.aya_sss_skin_flag_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        memcpy(base + layout.aya_sss_skin_flag_offset, &aya_sss_skin_flag, sizeof(F32));
+    }
+    return true;
+}
+
+bool writeMaterialFAllUBO(LLGLSLShader& shader, U32 i,
+                          F32 emissive_brightness, F32 env_intensity,
+                          const F32* specular_color_4f,
+                          F32 minimum_alpha, F32 aya_sss_skin_flag)
+{
+    if (!LLVKLoader::isVulkanInitialized()
+        || shader.mVkPerProgramUBO == VK_NULL_HANDLE
+        || shader.mVkPerProgramUBOMapped == nullptr
+        || i >= LLMaterial::SHADER_COUNT)
+    {
+        return false;
+    }
+    const MaterialFLayoutOffsets& layout = g_material_f_layouts[i];
+    shader.rotatePerProgramUBOSlot();
+    char* base = static_cast<char*>(shader.mVkActivePerProgramUBOMapped);
+
+    memcpy(base + layout.emissive_brightness_offset, &emissive_brightness, sizeof(F32));
+    memcpy(base + layout.env_intensity_offset,       &env_intensity,       sizeof(F32));
+    memcpy(base + layout.specular_color_offset,      specular_color_4f,    sizeof(F32) * 4);
+    if (layout.minimum_alpha_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        memcpy(base + layout.minimum_alpha_offset, &minimum_alpha, sizeof(F32));
+    }
+    if (layout.aya_sss_skin_flag_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        memcpy(base + layout.aya_sss_skin_flag_offset, &aya_sss_skin_flag, sizeof(F32));
+    }
+
+    if (layout.sun_dir_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        memcpy(base + layout.sun_dir_offset,  gPipeline.mTransformedSunDir.mV,  sizeof(F32) * 3);
+    }
+    if (layout.moon_dir_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        memcpy(base + layout.moon_dir_offset, gPipeline.mTransformedMoonDir.mV, sizeof(F32) * 3);
+    }
+
+    if (layout.light_position_offset != MATERIAL_F_OFFSET_ABSENT)
+    {
+        F32 light_position[LL_NUM_LIGHT_UNITS * 4];
+        F32 light_direction[LL_NUM_LIGHT_UNITS * 3];
+        F32 light_attenuation[LL_NUM_LIGHT_UNITS * 4];
+        F32 light_diffuse[LL_NUM_LIGHT_UNITS * 3];
+        gGL.getLightArrayData(light_position, light_direction, light_attenuation, light_diffuse);
+
+        memcpy(base + layout.light_position_offset,    light_position,    sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+        memcpy(base + layout.light_attenuation_offset, light_attenuation, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+
+        for (U32 j = 0; j < LL_NUM_LIGHT_UNITS; j++)
+        {
+            memcpy(base + layout.light_direction_offset + j * 16, &light_direction[j * 3], sizeof(F32) * 3);
+            memcpy(base + layout.light_diffuse_offset   + j * 16, &light_diffuse[j * 3],   sizeof(F32) * 3);
+        }
+    }
+
+    return true;
+}
+
+bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data, U32 joint_count)
+{
+    constexpr U32 MAX_JOINTS         = 110; // LL_MAX_JOINTS_PER_MESH_OBJECT
+    constexpr U32 MAT3X4_STRIDE_BYTES = 48;
+    constexpr U32 PALETTE_BYTES      = MAX_JOINTS * MAT3X4_STRIDE_BYTES;
+
+    if (!LLVKLoader::isVulkanInitialized()
+        || matrix_palette_data == nullptr
+        || joint_count == 0)
+    {
+        return false;
+    }
+
+    void* shared_mapped = LLVKLoader::rotateObjectSkinSlotForWrite();
+    if (shared_mapped == nullptr)
+    {
+        return false;
+    }
+
+    const U32 copy_joints = std::min(joint_count, MAX_JOINTS);
+    const U32 copy_bytes  = copy_joints * MAT3X4_STRIDE_BYTES;
+    char* base = static_cast<char*>(shared_mapped);
+
+    memcpy(base, matrix_palette_data, copy_bytes);
+
+    memcpy(base + PALETTE_BYTES, matrix_palette_data, copy_bytes);
+
+    return true;
+}
+
+bool writeObjectSkinLastUBO(const F32* last_palette_data, U32 joint_count)
+{
+    constexpr U32 MAX_JOINTS          = 110; // LL_MAX_JOINTS_PER_MESH_OBJECT
+    constexpr U32 MAT3X4_STRIDE_BYTES = 48;
+    constexpr U32 PALETTE_BYTES       = MAX_JOINTS * MAT3X4_STRIDE_BYTES;
+
+    if (!LLVKLoader::isVulkanInitialized()
+        || last_palette_data == nullptr
+        || joint_count == 0)
+    {
+        return false;
+    }
+
+    VkBuffer shared_buf    = VK_NULL_HANDLE;
+    void*    shared_mapped = nullptr;
+    if (!LLVKLoader::getSharedObjectSkinUBO(shared_buf, shared_mapped)
+        || shared_mapped == nullptr)
+    {
+        return false;
+    }
+
+    const U32 copy_joints = std::min(joint_count, MAX_JOINTS);
+    const U32 copy_bytes  = copy_joints * MAT3X4_STRIDE_BYTES;
+    char* base = static_cast<char*>(shared_mapped);
+
+    memcpy(base + PALETTE_BYTES, last_palette_data, copy_bytes);
+    return true;
 }
 
 
@@ -392,6 +605,14 @@ static bool make_gltf_variants(LLGLSLShader& shader, bool use_sun_shadow)
         {
             return false;
         }
+
+        U32 ubo_size = LLVKLoader::GLTFMR_UBO_SIZE_HEADER;
+        if (alpha_blend && !unlit)
+        {
+            ubo_size = use_sun_shadow ? LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_SUNSHADOW
+                                      : LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW;
+        }
+        shader.mGLTFVariants[i].createVkPipeline(ubo_size);
     }
 
     return true;
@@ -614,6 +835,9 @@ void LLViewerShaderMgr::setShaders()
                 LLShaderMgr::sCinematicMode ? "cinematic=1" : "cinematic=0";
             hash_obj.update(AYASTORM_CINEMATIC_MODE_TAG);
             // </FS:AYA>
+            const char* const AYASTORM_BACKEND_TAG =
+                (LLVKLoader::getRenderBackendMode() != 0) ? "backend=vulkan" : "backend=gl";
+            hash_obj.update(AYASTORM_BACKEND_TAG);
             current_cache_version = hash_obj.digest();
 
             old_cache_version = LLUUID(gSavedSettings.getString("RenderShaderCacheVersion"));
@@ -646,7 +870,7 @@ void LLViewerShaderMgr::setShaders()
 
     unloadShaders();
 
-    LLPipeline::sRenderGlow = gSavedSettings.getBOOL("RenderGlow");
+    LLPipelineFrameContext::getInstance().setRenderingGlow(gSavedSettings.getBOOL("RenderGlow"));
     LLPipeline::RenderAvatarCloth = gSavedSettings.getBOOL("RenderAvatarCloth");
 
     if (gViewerWindow)
@@ -837,6 +1061,8 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     // Use the feature table to mask out the max light level to use.  Also make sure it's at least 1.
     S32 max_light_class = gSavedSettings.getS32("RenderShaderLightingMaxLevel");
     sum_lights_class = llclamp(sum_lights_class, 1, max_light_class);
+
+    LLShaderMgr::sSumLightsClass = sum_lights_class;
 
     // Load the Basic Vertex Shaders at the appropriate level.
     // (in order of shader function call depth for reference purposes, deepest level first)
@@ -1031,6 +1257,11 @@ bool LLViewerShaderMgr::loadShadersWater()
         gWaterProgram.mShaderLevel = mShaderLevel[SHADER_WATER];
         success = gWaterProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gWaterProgram.createVkPipeline(64, true);
+        }
     }
 
     if (success)
@@ -1051,6 +1282,11 @@ bool LLViewerShaderMgr::loadShadersWater()
         }
         success = gUnderWaterProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gUnderWaterProgram.createVkPipeline(16, true);
+        }
     }
 
     /// Keep track of water shader levels
@@ -1103,7 +1339,13 @@ bool LLViewerShaderMgr::loadShadersEffects()
         success = gGlowProgram.createShader();
         if (!success)
         {
-            LLPipeline::sRenderGlow = false;
+            LLPipelineFrameContext::getInstance().setRenderingGlow(false);
+        }
+        gGlowProgram.mIsScreenSpaceCopyPass = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gGlowProgram.createVkPipeline(16);
         }
     }
 
@@ -1126,7 +1368,13 @@ bool LLViewerShaderMgr::loadShadersEffects()
         success = gGlowExtractProgram.createShader();
         if (!success)
         {
-            LLPipeline::sRenderGlow = false;
+            LLPipelineFrameContext::getInstance().setRenderingGlow(false);
+        }
+        gGlowExtractProgram.mIsScreenSpaceCopyPass = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gGlowExtractProgram.createVkPipeline(48);
         }
     }
 
@@ -1136,9 +1384,14 @@ bool LLViewerShaderMgr::loadShadersEffects()
         gPostVignetteProgram.mName = "Vignette Post";
         gPostVignetteProgram.mShaderFiles.clear();
         gPostVignetteProgram.mShaderFiles.push_back(make_pair("post/exoPostBaseV.glsl", GL_VERTEX_SHADER));
+        gPostVignetteProgram.mIsScreenSpaceCopyPass = true;
         gPostVignetteProgram.mShaderFiles.push_back(make_pair("post/exoVignetteF.glsl", GL_FRAGMENT_SHADER));
         gPostVignetteProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
         success = gPostVignetteProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gPostVignetteProgram.createVkPipeline(32);
+        }
     }
 // </FS:CR>
 // <FS:Beq> Add Snapshot framing shader
@@ -1147,9 +1400,14 @@ bool LLViewerShaderMgr::loadShadersEffects()
         gPostSnapshotFrameProgram.mName = "Snapshot Frame Post";
         gPostSnapshotFrameProgram.mShaderFiles.clear();
         gPostSnapshotFrameProgram.mShaderFiles.push_back(make_pair("post/exoPostBaseV.glsl", GL_VERTEX_SHADER));
+        gPostSnapshotFrameProgram.mIsScreenSpaceCopyPass = true;
         gPostSnapshotFrameProgram.mShaderFiles.push_back(make_pair("post/snapshotFrameF.glsl", GL_FRAGMENT_SHADER));
         gPostSnapshotFrameProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
         success = gPostSnapshotFrameProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gPostSnapshotFrameProgram.createVkPipeline(48);
+        }
     }
 // </FS:Beq>
 
@@ -1309,6 +1567,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredHighlightProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         add_common_permutations(&gDeferredHighlightProgram);
         success = gDeferredHighlightProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredHighlightProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -1323,6 +1586,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredDiffuseProgram);
         success = make_rigged_variant(gDeferredDiffuseProgram, gDeferredSkinnedDiffuseProgram);
         success = success && gDeferredDiffuseProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredDiffuseProgram.createVkPipeline(0);
+            gDeferredSkinnedDiffuseProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -1336,6 +1605,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredDiffuseAlphaMaskProgram);
         success = make_rigged_variant(gDeferredDiffuseAlphaMaskProgram, gDeferredSkinnedDiffuseAlphaMaskProgram);
         success = success && gDeferredDiffuseAlphaMaskProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredDiffuseAlphaMaskProgram.createVkPipeline(16);
+            gDeferredSkinnedDiffuseAlphaMaskProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -1348,6 +1623,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredNonIndexedDiffuseAlphaMaskProgram);
         success = gDeferredNonIndexedDiffuseAlphaMaskProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredNonIndexedDiffuseAlphaMaskProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -1360,6 +1640,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram);
         success = gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -1373,6 +1658,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredBumpProgram, gDeferredSkinnedBumpProgram);
         success = success && gDeferredBumpProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredBumpProgram.createVkPipeline(16);
+            gDeferredSkinnedBumpProgram.createVkPipeline(16);
+        }
     }
 
     gDeferredMaterialProgram[1].mFeatures.hasLighting = false;
@@ -1468,6 +1759,18 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     gDeferredMaterialProgram[9+LLMaterial::SHADER_COUNT].mFeatures.hasLighting = true;
     gDeferredMaterialProgram[13+LLMaterial::SHADER_COUNT].mFeatures.hasLighting = true;
 
+    if (success && LLVKLoader::isVulkanInitialized())
+    {
+        static LLCachedControl<bool> material_emissive(gSavedSettings, "RenderEnableEmissiveBuffer", false);
+        const bool has_emissive = material_emissive;
+        for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
+        {
+            computeMaterialFLayoutOffsets(i, use_sun_shadow, has_emissive, g_material_f_layouts[i]);
+            gDeferredMaterialProgram[i].createVkPipeline(g_material_f_layouts[i].ubo_size);
+            gDeferredMaterialProgram[i + LLMaterial::SHADER_COUNT].createVkPipeline(g_material_f_layouts[i].ubo_size);
+        }
+    }
+
     if (success)
     {
         gDeferredPBROpaqueProgram.mName = "Deferred PBR Opaque Shader";
@@ -1487,6 +1790,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             success = gDeferredPBROpaqueProgram.createShader();
         }
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPBROpaqueProgram.createVkPipeline(0);
+            gDeferredSkinnedPBROpaqueProgram.createVkPipeline(0);
+        }
     }
 
     if (gSavedSettings.getBOOL("GLTFEnabled"))
@@ -1534,6 +1843,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             success = gPBRGlowProgram.createShader();
         }
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gPBRGlowProgram.createVkPipeline(0);
+            gPBRGlowSkinnedProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -1552,6 +1867,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = gHUDPBROpaqueProgram.createShader();
 
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHUDPBROpaqueProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -1605,6 +1925,18 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         shader->mRiggedVariant->mFeatures.calculatesLighting = true;
         shader->mRiggedVariant->mFeatures.hasLighting = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            shader->createVkPipeline(720);
+            if (shader->mRiggedVariant != nullptr && shader->mRiggedVariant != shader)
+            {
+                shader->mRiggedVariant->createVkPipeline(720);
+            }
+            if (shader->mRiggedVariant != nullptr && shader->mRiggedVariant != shader)
+            {
+            }
+        }
     }
 
     if (success)
@@ -1627,6 +1959,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = shader->createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            shader->createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -1661,6 +1997,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
             success = success && shader->createShader();
             llassert(success);
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                shader->createVkPipeline(0);
+            }
         }
     }
 
@@ -1675,6 +2015,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredTreeProgram);
 
         success = gDeferredTreeProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredTreeProgram.createVkPipeline(16);
+            gDeferredTreeProgram.mWritePerProgramUBOMinimumAlpha = true;
+        }
     }
 
     if (success)
@@ -1687,6 +2032,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredTreeShadowProgram.mRiggedVariant = &gDeferredSkinnedTreeShadowProgram;
         success = gDeferredTreeShadowProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredTreeShadowProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -1699,6 +2048,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSkinnedTreeShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredSkinnedTreeShadowProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredSkinnedTreeShadowProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -1714,6 +2067,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredImpostorProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredImpostorProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -1735,6 +2092,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredLightProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredLightProgram.createVkPipeline(48);
+        }
     }
 
     for (U32 i = 0; i < LL_DEFERRED_MULTI_LIGHT_COUNT; i++)
@@ -1758,6 +2119,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
             success = gDeferredMultiLightProgram[i].createShader();
             llassert(success);
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                gDeferredMultiLightProgram[i].createVkPipeline((i + 1) * 32 + 16);
+            }
         }
     }
 
@@ -1779,6 +2144,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredSpotLightProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredSpotLightProgram.createVkPipeline(48);
+        }
     }
 
     if (success)
@@ -1800,6 +2169,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredMultiSpotLightProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredMultiSpotLightProgram.createVkPipeline(48);
+        }
     }
 
     if (success)
@@ -1829,6 +2202,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredSunProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredSunProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -1846,6 +2223,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredSunProbeProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredSunProbeProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -1862,6 +2243,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredBlurLightProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredBlurLightProgram.createVkPipeline(96);
+        }
     }
 
     if (success)
@@ -1931,6 +2316,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             success = shader->createShader();
             llassert(success);
 
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                shader->createVkPipeline(560);
+                shader->mWritePerProgramUBOMinimumAlpha = true;
+            }
+
             // Hack
             shader->mFeatures.calculatesLighting = true;
             shader->mFeatures.hasLighting = true;
@@ -1995,6 +2386,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             // End Hack
             shader->mFeatures.calculatesLighting = true;
             shader->mFeatures.hasLighting = true;
+
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                shader->createVkPipeline(560);
+                shader->mWritePerProgramUBOMinimumAlpha = true;
+            }
         }
     }
 
@@ -2016,6 +2413,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredAvatarEyesProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredAvatarEyesProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2036,6 +2437,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredFullbrightProgram, gDeferredSkinnedFullbrightProgram);
         success = gDeferredFullbrightProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredFullbrightProgram.createVkPipeline(0);
+            gDeferredSkinnedFullbrightProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2057,6 +2464,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gHUDFullbrightProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHUDFullbrightProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2079,6 +2490,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredFullbrightAlphaMaskProgram, gDeferredSkinnedFullbrightAlphaMaskProgram);
         success = success && gDeferredFullbrightAlphaMaskProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredFullbrightAlphaMaskProgram.createVkPipeline(0);
+            gDeferredSkinnedFullbrightAlphaMaskProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2101,6 +2518,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gHUDFullbrightAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gHUDFullbrightAlphaMaskProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHUDFullbrightAlphaMaskProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2125,6 +2546,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredFullbrightAlphaMaskAlphaProgram, gDeferredSkinnedFullbrightAlphaMaskAlphaProgram);
         success = success && gDeferredFullbrightAlphaMaskAlphaProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredFullbrightAlphaMaskAlphaProgram.createVkPipeline(0);
+            gDeferredSkinnedFullbrightAlphaMaskAlphaProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2149,6 +2576,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gHUDFullbrightAlphaMaskAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = success && gHUDFullbrightAlphaMaskAlphaProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHUDFullbrightAlphaMaskAlphaProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2170,6 +2601,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredFullbrightShinyProgram, gDeferredSkinnedFullbrightShinyProgram);
         success = success && gDeferredFullbrightShinyProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredFullbrightShinyProgram.createVkPipeline(0);
+            gDeferredSkinnedFullbrightShinyProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2192,6 +2629,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gHUDFullbrightShinyProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHUDFullbrightShinyProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2211,6 +2652,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredEmissiveProgram, gDeferredSkinnedEmissiveProgram);
         success = success && gDeferredEmissiveProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredEmissiveProgram.createVkPipeline(0);
+            gDeferredSkinnedEmissiveProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2246,6 +2693,13 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredSoftenProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            U32 softenSize = 32;
+            if (!use_sun_shadow) softenSize += 32;
+            if (gSavedSettings.getBOOL("RenderDeferredSSAO")) softenSize += 64;
+            gDeferredSoftenProgram.createVkPipeline(softenSize);
+        }
     }
 
     if (success)
@@ -2270,6 +2724,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gHazeProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHazeProgram.createVkPipeline(32);
+        }
     }
 
     // <FS:AYA r15 P1> godrays shader: screen-space shadow-driven ray-march.
@@ -2300,6 +2758,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredGodraysProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredGodraysProgram.createVkPipeline(48);
+        }
     }
     // </FS:AYA>
 
@@ -2324,6 +2786,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredSkinSSSProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredSkinSSSProgram.createVkPipeline(48);
+        }
     }
     // </FS:AYA>
 
@@ -2349,6 +2815,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gFSObjectIDShader.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
 
         success = gFSObjectIDShader.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gFSObjectIDShader.createVkPipeline(16);
+        }
         llassert(success);
     }
     // </FS:AYA>
@@ -2376,6 +2846,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gHazeWaterProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHazeWaterProgram.createVkPipeline(16);
+        }
     }
 
 
@@ -2389,6 +2864,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredShadowProgram.mRiggedVariant = &gDeferredSkinnedShadowProgram;
         success = gDeferredShadowProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2407,6 +2887,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         // gDeferredSkinnedShadowProgram.addPermutation("DEPTH_CLAMP", "1"); // disable depth clamp for now
         success = gDeferredSkinnedShadowProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredSkinnedShadowProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2421,6 +2906,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredShadowCubeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredShadowCubeProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowCubeProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -2442,6 +2932,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredShadowFullbrightAlphaMaskProgram, gDeferredSkinnedShadowFullbrightAlphaMaskProgram);
         success = success && gDeferredShadowFullbrightAlphaMaskProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowFullbrightAlphaMaskProgram.createVkPipeline(16);
+            gDeferredSkinnedShadowFullbrightAlphaMaskProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -2456,6 +2952,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredShadowAlphaMaskProgram, gDeferredSkinnedShadowAlphaMaskProgram);
         success = success && gDeferredShadowAlphaMaskProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowAlphaMaskProgram.createVkPipeline(16);
+            gDeferredSkinnedShadowAlphaMaskProgram.createVkPipeline(16);
+        }
     }
 
 
@@ -2473,6 +2975,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredShadowGLTFAlphaMaskProgram, gDeferredSkinnedShadowGLTFAlphaMaskProgram);
         success = success && gDeferredShadowGLTFAlphaMaskProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowGLTFAlphaMaskProgram.createVkPipeline(0);
+            gDeferredSkinnedShadowGLTFAlphaMaskProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2489,6 +2997,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = make_rigged_variant(gDeferredShadowGLTFAlphaBlendProgram, gDeferredSkinnedShadowGLTFAlphaBlendProgram);
         success = success && gDeferredShadowGLTFAlphaBlendProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowGLTFAlphaBlendProgram.createVkPipeline(0);
+            gDeferredSkinnedShadowGLTFAlphaBlendProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2502,6 +3016,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredAvatarShadowProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredAvatarShadowProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2514,6 +3033,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarAlphaShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredAvatarAlphaShadowProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredAvatarAlphaShadowProgram.createVkPipeline(0);
+        }
     }
     if (success)
     {
@@ -2525,6 +3049,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarAlphaMaskShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredAvatarAlphaMaskShadowProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredAvatarAlphaMaskShadowProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2545,6 +3074,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredTerrainProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredTerrainProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredTerrainProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -2562,6 +3095,16 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredAvatarProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredAvatarProgram.createVkPipeline(48);
+            if (gDeferredAvatarProgram.mVkPerProgramUBOMapped != nullptr)
+            {
+                memset(gDeferredAvatarProgram.mVkPerProgramUBOMapped, 0,
+                       gDeferredAvatarProgram.mVkPerProgramUBOSize);
+            }
+        }
     }
 
     if (success)
@@ -2600,6 +3143,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredAvatarAlphaProgram.mFeatures.calculatesLighting = true;
         gDeferredAvatarAlphaProgram.mFeatures.hasLighting = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredAvatarAlphaProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -2615,6 +3163,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gExposureProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gExposureProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gExposureProgram.createVkPipeline(48);
+        }
     }
 
     if (success)
@@ -2629,6 +3181,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gExposureProgramNoFade.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gExposureProgramNoFade.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gExposureProgramNoFade.createVkPipeline(48);
+        }
     }
 
     if (success)
@@ -2641,6 +3197,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gLuminanceProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gLuminanceProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gLuminanceProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -2655,6 +3215,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostGammaCorrectProgram.createShader();
         llassert(success);
+        gDeferredPostGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPostGammaCorrectProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -2670,12 +3235,17 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gLegacyPostGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gLegacyPostGammaCorrectProgram.createShader();
         llassert(success);
+        gLegacyPostGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gLegacyPostGammaCorrectProgram.createVkPipeline(16);
+        }
     }
 
     // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
-    // Simple fullscreen passthrough that, with blend func set to
-    // (ONE, 1-SRC_ALPHA), overlays mAYAAlphaColor (premult linear plate) onto
-    // mRT->screen before generateLuminance / tonemap runs. Puts alpha BLEND
+    // Fullscreen composite that, with blend func set to (ONE, 1-SRC_ALPHA color)
+    // + (ZERO, 1-SRC_ALPHA alpha), overlays mAYAAlphaColor (premult linear plate)
+    // onto mRT->screen before generateLuminance / tonemap runs. Puts alpha BLEND
     // into the auto-exposure / tonemap input the same way the LMB-on-HUD path
     // does (where forward alpha was written directly to mRT->screen).
     if (success)
@@ -2689,8 +3259,31 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gAYAAlphaPlateCompositeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gAYAAlphaPlateCompositeProgram.createShader();
         llassert(success);
+        gAYAAlphaPlateCompositeProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gAYAAlphaPlateCompositeProgram.createVkPipeline(0);
+        }
     }
     // </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
+
+    if (success)
+    {
+        gAYAForwardFlipCompositeProgram.mName = "AYAstorm Forward Flip Composite";
+        gAYAForwardFlipCompositeProgram.mFeatures.isDeferred = true;
+        gAYAForwardFlipCompositeProgram.mShaderFiles.clear();
+        gAYAForwardFlipCompositeProgram.clearPermutations();
+        gAYAForwardFlipCompositeProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gAYAForwardFlipCompositeProgram.mShaderFiles.push_back(make_pair("deferred/ayaForwardFlipCompositeF.glsl", GL_FRAGMENT_SHADER));
+        gAYAForwardFlipCompositeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = gAYAForwardFlipCompositeProgram.createShader();
+        llassert(success);
+        gAYAForwardFlipCompositeProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gAYAForwardFlipCompositeProgram.createVkPipeline(0);
+        }
+    }
 
     if (success)
     {
@@ -2705,6 +3298,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostTonemapProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostTonemapProgram.createShader();
         llassert(success);
+        gDeferredPostTonemapProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPostTonemapProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -2721,6 +3319,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNoPostTonemapProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gNoPostTonemapProgram.createShader();
         llassert(success);
+        gNoPostTonemapProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gNoPostTonemapProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -2737,6 +3340,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostTonemapGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostTonemapGammaCorrectProgram.createShader();
         llassert(success);
+        gDeferredPostTonemapGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPostTonemapGammaCorrectProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -2754,6 +3362,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNoPostTonemapGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gNoPostTonemapGammaCorrectProgram.createShader();
         llassert(success);
+        gNoPostTonemapGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gNoPostTonemapGammaCorrectProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -2771,6 +3384,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostTonemapLegacyGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostTonemapLegacyGammaCorrectProgram.createShader();
         llassert(success);
+        gDeferredPostTonemapLegacyGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPostTonemapLegacyGammaCorrectProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -2789,6 +3407,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNoPostTonemapLegacyGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gNoPostTonemapLegacyGammaCorrectProgram.createShader();
         llassert(success);
+        gNoPostTonemapLegacyGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gNoPostTonemapLegacyGammaCorrectProgram.createVkPipeline(32);
+        }
     }
 
     if (success && gGLManager.mGLVersion > 3.9f)
@@ -2830,6 +3453,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     failed = true;
                     success = true;
                     break;
+                }
+                gFXAAProgram[i].mIsScreenSpaceCopyPass = true;
+                if (LLVKLoader::isVulkanInitialized())
+                {
+                    gFXAAProgram[i].createVkPipeline(48);
                 }
             }
             ++i;
@@ -2889,12 +3517,18 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     success = true;
                     break;
                 }
+                gSMAAEdgeDetectProgram[i].mIsScreenSpaceCopyPass = true;
+                if (LLVKLoader::isVulkanInitialized())
+                {
+                    gSMAAEdgeDetectProgram[i].createVkPipeline(16); 
+                }
             }
 
             if (success)
             {
                 gSMAABlendWeightsProgram[i].mName = llformat("SMAA Blending Weights (%s)", smaa_pair.second.c_str());
                 gSMAABlendWeightsProgram[i].mFeatures.isDeferred = true;
+                gSMAABlendWeightsProgram[i].mFeatures.usesSMAABlendWeights = true;
 
                 gSMAABlendWeightsProgram[i].clearPermutations();
                 gSMAABlendWeightsProgram[i].addPermutations(defines);
@@ -2914,6 +3548,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     failed = true;
                     success = true;
                     break;
+                }
+                gSMAABlendWeightsProgram[i].mIsScreenSpaceCopyPass = true;
+                if (LLVKLoader::isVulkanInitialized())
+                {
+                    gSMAABlendWeightsProgram[i].createVkPipeline(16); 
                 }
             }
 
@@ -2940,6 +3579,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     failed = true;
                     success = true;
                     break;
+                }
+                gSMAANeighborhoodBlendProgram[i].mIsScreenSpaceCopyPass = true;
+                if (LLVKLoader::isVulkanInitialized())
+                {
+                    gSMAANeighborhoodBlendProgram[i].createVkPipeline(16); 
                 }
             }
 
@@ -2972,6 +3616,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     success = true;
                     break;
                 }
+                gSMAAResolveProgram[i].mIsScreenSpaceCopyPass = true;
+                if (LLVKLoader::isVulkanInitialized())
+                {
+                    gSMAAResolveProgram[i].createVkPipeline(0);
+                }
             }
             // </AYAstorm r30 P2 step 5c>
             ++i;
@@ -3000,12 +3649,18 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gCASProgram.mShaderFiles.push_back(make_pair("deferred/CASF.glsl", GL_FRAGMENT_SHADER));
         gCASProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gCASProgram.createShader();
+        gCASProgram.mIsScreenSpaceCopyPass = true;
         // llassert(success);
         if (!success)
         {
             LL_WARNS() << "Failed to create shader '" << gCASProgram.mName << "', disabling!" << LL_ENDL;
             // continue as if this shader never happened
             success = true;
+        }
+
+        if (gCASProgram.isComplete() && LLVKLoader::isVulkanInitialized())
+        {
+            gCASProgram.createVkPipeline(48);
         }
     }
 
@@ -3021,12 +3676,18 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gCASLegacyGammaProgram.addPermutation("GAMMA_CORRECT", "1");
         gCASLegacyGammaProgram.addPermutation("LEGACY_GAMMA", "1");
         success = gCASLegacyGammaProgram.createShader();
+        gCASLegacyGammaProgram.mIsScreenSpaceCopyPass = true;
         // llassert(success);
         if (!success)
         {
             LL_WARNS() << "Failed to create shader '" << gCASProgram.mName << "', disabling!" << LL_ENDL;
             // continue as if this shader never happened
             success = true;
+        }
+
+        if (gCASLegacyGammaProgram.isComplete() && LLVKLoader::isVulkanInitialized())
+        {
+            gCASLegacyGammaProgram.createVkPipeline(64);
         }
     }
 
@@ -3041,6 +3702,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         // over stale HAS_DOF_CHROMA / FRONT_BLUR entries from the previous build).
         gDeferredPostProgram.clearPermutations();
         gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gDeferredPostProgram.mIsScreenSpaceCopyPass = true;
 
         static LLCachedControl<U32>  aya_view_mode_post(gSavedSettings, "AYAVisualRealismEnabled", 1);
         if (aya_view_mode_post == 2)
@@ -3070,6 +3732,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPostProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3082,6 +3749,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredCoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredCoFProgram.createShader();
         llassert(success);
+        gDeferredCoFProgram.mIsScreenSpaceCopyPass = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredCoFProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -3090,10 +3763,16 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredDoFCombineProgram.mFeatures.isDeferred = true;
         gDeferredDoFCombineProgram.mShaderFiles.clear();
         gDeferredDoFCombineProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gDeferredDoFCombineProgram.mIsScreenSpaceCopyPass = true;
         gDeferredDoFCombineProgram.mShaderFiles.push_back(make_pair("deferred/dofCombineF.glsl", GL_FRAGMENT_SHADER));
         gDeferredDoFCombineProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredDoFCombineProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredDoFCombineProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -3108,6 +3787,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         // cvar RenderDepthOfFieldChroma controls whether the vignette path runs.
         gDeferredPostNoDoFProgram.clearPermutations();
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
+        gDeferredPostNoDoFProgram.mIsScreenSpaceCopyPass = true;
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoDoFF.glsl", GL_FRAGMENT_SHADER));
 
         static LLCachedControl<U32>  aya_view_mode_nodof(gSavedSettings, "AYAVisualRealismEnabled", 1);
@@ -3123,6 +3803,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostNoDoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostNoDoFProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPostNoDoFProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3150,6 +3834,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostNoDoFNoiseProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostNoDoFNoiseProgram.createShader();
         llassert(success);
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredPostNoDoFNoiseProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3171,6 +3859,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gEnvironmentMapProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gEnvironmentMapProgram.createVkPipeline(96);
+        }
     }
 
     if (success)
@@ -3191,6 +3884,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredWLSkyProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredWLSkyProgram.createVkPipeline(80);
+        }
     }
 
     if (success)
@@ -3212,6 +3910,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredWLCloudProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredWLCloudProgram.createVkPipeline(96);
+        }
     }
 
     if (success)
@@ -3232,6 +3935,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredWLSunProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredWLSunProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3254,6 +3962,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredWLMoonProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredWLMoonProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -3270,6 +3983,11 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredStarProgram.createShader();
         llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredStarProgram.createVkPipeline();
+        }
     }
 
     if (success)
@@ -3281,6 +3999,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNormalMapGenProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         gNormalMapGenProgram.mShaderGroup = LLGLSLShader::SG_SKY;
         success = gNormalMapGenProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gNormalMapGenProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3291,6 +4013,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredGenBrdfLutProgram.mShaderFiles.push_back(make_pair("deferred/genbrdflutF.glsl", GL_FRAGMENT_SHADER));
         gDeferredGenBrdfLutProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredGenBrdfLutProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredGenBrdfLutProgram.createVkPipeline(0);
+        }
     }
 
     if (success) {
@@ -3302,6 +4028,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gPostScreenSpaceReflectionProgram.mFeatures.isDeferred                = true;
         gPostScreenSpaceReflectionProgram.mShaderLevel = 3;
         success = gPostScreenSpaceReflectionProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gPostScreenSpaceReflectionProgram.createVkPipeline(16);
+        }
     }
 
     if (success) {
@@ -3314,6 +4044,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredBufferVisualProgram);
 
         success = gDeferredBufferVisualProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredBufferVisualProgram.createVkPipeline(16);
+        }
     }
 
     // <AYAstorm r30 P2> Velocity buffer shaders (ported from BlackDragon Viewer, NiranV Dean,
@@ -3335,6 +4069,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gVelocityProgram.mShaderFiles.push_back(make_pair("deferred/velocityF.glsl", GL_FRAGMENT_SHADER));
         gVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gVelocityProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gVelocityProgram.createVkPipeline(0);
+        }
 
         if (success)
         {
@@ -3353,6 +4091,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                 std::to_string(LLSkinningUtil::getMaxJointCount()));
             gVelocityProgram.mRiggedVariant = &gVelocitySkinnedProgram;
             success = gVelocitySkinnedProgram.createShader();
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                gVelocitySkinnedProgram.createVkPipeline(0);
+            }
         }
     }
 
@@ -3367,6 +4109,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gVelocityAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         add_common_permutations(&gVelocityAlphaProgram);
         success = gVelocityAlphaProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gVelocityAlphaProgram.createVkPipeline(0);
+        }
 
         if (success)
         {
@@ -3383,6 +4129,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                 std::to_string(LLSkinningUtil::getMaxJointCount()));
             gVelocityAlphaProgram.mRiggedVariant = &gVelocityAlphaSkinnedProgram;
             success = gVelocityAlphaSkinnedProgram.createShader();
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                gVelocityAlphaSkinnedProgram.createVkPipeline(0);
+            }
         }
     }
 
@@ -3396,17 +4146,27 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gAvatarVelocityProgram.mShaderFiles.push_back(make_pair("deferred/avatarVelocityF.glsl", GL_FRAGMENT_SHADER));
         gAvatarVelocityProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gAvatarVelocityProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gAvatarVelocityProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
     {
         gDeferredMotionBlurProgram.mName = "AYAstorm Deferred Motion Blur Shader";
         gDeferredMotionBlurProgram.mFeatures.isDeferred = true;
+        gDeferredMotionBlurProgram.mIsScreenSpaceCopyPass = true;
         gDeferredMotionBlurProgram.mShaderFiles.clear();
         gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
         gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/motionBlurF.glsl", GL_FRAGMENT_SHADER));
         gDeferredMotionBlurProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredMotionBlurProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredMotionBlurProgram.createVkPipeline(16);
+        }
     }
     // </AYAstorm r30 P2>
 
@@ -3455,6 +4215,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         }
 
         success = gVolumetricLightProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gVolumetricLightProgram.createVkPipeline(16);
+        }
     }
     // </AYAstorm r30 P3>
 
@@ -3468,6 +4232,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gRlvSphereProgram.mShaderFiles.push_back(make_pair("deferred/rlvF.glsl", GL_FRAGMENT_SHADER));
         gRlvSphereProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gRlvSphereProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gRlvSphereProgram.createVkPipeline(80);
+        }
     }
     // [/RLV:KB]
     return success;
@@ -3498,6 +4266,11 @@ bool LLViewerShaderMgr::loadShadersObject()
                 shader[i]->unbind();
             }
         }
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gObjectBumpProgram.createVkPipeline(0);
+            gSkinnedObjectBumpProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3514,6 +4287,10 @@ bool LLViewerShaderMgr::loadShadersObject()
         gObjectAlphaMaskNoColorProgram.mShaderFiles.push_back(make_pair("objects/simpleF.glsl", GL_FRAGMENT_SHADER));
         gObjectAlphaMaskNoColorProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
         success = gObjectAlphaMaskNoColorProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gObjectAlphaMaskNoColorProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3525,6 +4302,10 @@ bool LLViewerShaderMgr::loadShadersObject()
         gImpostorProgram.mShaderFiles.push_back(make_pair("objects/impostorF.glsl", GL_FRAGMENT_SHADER));
         gImpostorProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
         success = gImpostorProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gImpostorProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3538,6 +4319,11 @@ bool LLViewerShaderMgr::loadShadersObject()
         success = gObjectPreviewProgram.createShader();
         gObjectPreviewProgram.mFeatures.hasLighting = true;
         gSkinnedObjectPreviewProgram.mFeatures.hasLighting = true;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gObjectPreviewProgram.createVkPipeline(256);
+            gSkinnedObjectPreviewProgram.createVkPipeline(256);
+        }
     }
 
     if (success)
@@ -3554,6 +4340,10 @@ bool LLViewerShaderMgr::loadShadersObject()
         gPhysicsPreviewProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
         success = gPhysicsPreviewProgram.createShader();
         gPhysicsPreviewProgram.mFeatures.hasLighting = false;
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gPhysicsPreviewProgram.createVkPipeline(0);
+        }
     }
 
     if (!success)
@@ -3599,6 +4389,11 @@ bool LLViewerShaderMgr::loadShadersAvatar()
         {
             mMaxAvatarShaderLevel = mShaderLevel[SHADER_AVATAR] = gAvatarProgram.mShaderLevel;
         }
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gAvatarProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3616,6 +4411,11 @@ bool LLViewerShaderMgr::loadShadersAvatar()
         gAvatarEyeballProgram.mShaderFiles.push_back(make_pair("avatar/eyeballF.glsl", GL_FRAGMENT_SHADER));
         gAvatarEyeballProgram.mShaderLevel = mShaderLevel[SHADER_AVATAR];
         success = gAvatarEyeballProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gAvatarEyeballProgram.createVkPipeline(0);
+        }
     }
 
     if( !success )
@@ -3642,6 +4442,12 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gHighlightProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = make_rigged_variant(gHighlightProgram, gSkinnedHighlightProgram);
         success = success && gHighlightProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHighlightProgram.createVkPipeline(0);
+            gSkinnedHighlightProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3652,6 +4458,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gHighlightNormalProgram.mShaderFiles.push_back(make_pair("interface/highlightF.glsl", GL_FRAGMENT_SHADER));
         gHighlightNormalProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gHighlightNormalProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHighlightNormalProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3662,6 +4473,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gHighlightSpecularProgram.mShaderFiles.push_back(make_pair("interface/highlightF.glsl", GL_FRAGMENT_SHADER));
         gHighlightSpecularProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gHighlightSpecularProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHighlightSpecularProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3672,6 +4488,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gUIProgram.mShaderFiles.push_back(make_pair("interface/uiF.glsl", GL_FRAGMENT_SHADER));
         gUIProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gUIProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gUIProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3682,6 +4503,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gPathfindingProgram.mShaderFiles.push_back(make_pair("interface/pathfindingF.glsl", GL_FRAGMENT_SHADER));
         gPathfindingProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gPathfindingProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gPathfindingProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3692,6 +4518,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gPathfindingNoNormalsProgram.mShaderFiles.push_back(make_pair("interface/pathfindingF.glsl", GL_FRAGMENT_SHADER));
         gPathfindingNoNormalsProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gPathfindingNoNormalsProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gPathfindingNoNormalsProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3699,6 +4530,7 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gGlowCombineProgram.mName = "Glow Combine Shader";
         gGlowCombineProgram.mShaderFiles.clear();
         gGlowCombineProgram.mShaderFiles.push_back(make_pair("interface/glowcombineV.glsl", GL_VERTEX_SHADER));
+        gGlowCombineProgram.mIsScreenSpaceCopyPass = true;
         gGlowCombineProgram.mShaderFiles.push_back(make_pair("interface/glowcombineF.glsl", GL_FRAGMENT_SHADER));
         gGlowCombineProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gGlowCombineProgram.createShader();
@@ -3709,6 +4541,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
             gGlowCombineProgram.uniform1i(sScreenMap, 1);
             gGlowCombineProgram.unbind();
         }
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gGlowCombineProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3716,6 +4553,7 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gGlowCombineFXAAProgram.mName = "Glow CombineFXAA Shader";
         gGlowCombineFXAAProgram.mShaderFiles.clear();
         gGlowCombineFXAAProgram.mShaderFiles.push_back(make_pair("interface/glowcombineFXAAV.glsl", GL_VERTEX_SHADER));
+        gGlowCombineFXAAProgram.mIsScreenSpaceCopyPass = true;
         gGlowCombineFXAAProgram.mShaderFiles.push_back(make_pair("interface/glowcombineFXAAF.glsl", GL_FRAGMENT_SHADER));
         gGlowCombineFXAAProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gGlowCombineFXAAProgram.createShader();
@@ -3725,6 +4563,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
             gGlowCombineFXAAProgram.uniform1i(sGlowMap, 0);
             gGlowCombineFXAAProgram.uniform1i(sScreenMap, 1);
             gGlowCombineFXAAProgram.unbind();
+        }
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gGlowCombineFXAAProgram.createVkPipeline(0);
         }
     }
 
@@ -3744,6 +4587,10 @@ bool LLViewerShaderMgr::loadShadersInterface()
             gTwoTextureCompareProgram.uniform1i(sTex1, 1);
             gTwoTextureCompareProgram.uniform1i(sDitherTex, 2);
         }
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gTwoTextureCompareProgram.createVkPipeline(16);
+        }
     }
 
     if (success)
@@ -3759,6 +4606,10 @@ bool LLViewerShaderMgr::loadShadersInterface()
             gOneTextureFilterProgram.bind();
             gOneTextureFilterProgram.uniform1i(sTex0, 0);
         }
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gOneTextureFilterProgram.createVkPipeline(16);
+        }
     }
 #endif
 
@@ -3772,6 +4623,10 @@ bool LLViewerShaderMgr::loadShadersInterface()
         success = gSolidColorProgram.createShader();
         if (success)
         {
+            if (LLVKLoader::isVulkanInitialized())
+            {
+                gSolidColorProgram.createVkPipeline(0);
+            }
             gSolidColorProgram.bind();
             gSolidColorProgram.uniform1i(sTex0, 0);
             gSolidColorProgram.unbind();
@@ -3787,6 +4642,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gOcclusionProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         gOcclusionProgram.mRiggedVariant = &gSkinnedOcclusionProgram;
         success = gOcclusionProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gOcclusionProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3798,6 +4658,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gSkinnedOcclusionProgram.mShaderFiles.push_back(make_pair("interface/occlusionF.glsl", GL_FRAGMENT_SHADER));
         gSkinnedOcclusionProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gSkinnedOcclusionProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gSkinnedOcclusionProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3808,6 +4673,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gOcclusionCubeProgram.mShaderFiles.push_back(make_pair("interface/occlusionF.glsl", GL_FRAGMENT_SHADER));
         gOcclusionCubeProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gOcclusionCubeProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gOcclusionCubeProgram.createVkPipeline(32);
+        }
     }
 
     if (success)
@@ -3820,6 +4690,12 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gDebugProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = make_rigged_variant(gDebugProgram, gSkinnedDebugProgram);
         success = success && gDebugProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDebugProgram.createVkPipeline(0);
+            gSkinnedDebugProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3846,6 +4722,12 @@ bool LLViewerShaderMgr::loadShadersInterface()
             }
             success = make_rigged_variant(shader, skinned_shader);
             success = success && shader.createShader();
+
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                shader.createVkPipeline(16);
+                skinned_shader.createVkPipeline(16);
+            }
         }
     }
 
@@ -3857,6 +4739,10 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gClipProgram.mShaderFiles.push_back(make_pair("interface/clipF.glsl", GL_FRAGMENT_SHADER));
         gClipProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gClipProgram.createShader();
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gClipProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3867,6 +4753,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gBenchmarkProgram.mShaderFiles.push_back(make_pair("interface/benchmarkF.glsl", GL_FRAGMENT_SHADER));
         gBenchmarkProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gBenchmarkProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gBenchmarkProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3883,6 +4774,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gReflectionProbeDisplayProgram.mShaderFiles.push_back(make_pair("interface/reflectionprobeF.glsl", GL_FRAGMENT_SHADER));
         gReflectionProbeDisplayProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gReflectionProbeDisplayProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gReflectionProbeDisplayProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3893,6 +4789,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gCopyProgram.mShaderFiles.push_back(make_pair("interface/copyF.glsl", GL_FRAGMENT_SHADER));
         gCopyProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gCopyProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gCopyProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3905,6 +4806,12 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gCopyDepthProgram.addPermutation("COPY_DEPTH", "1");
         gCopyDepthProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gCopyDepthProgram.createShader();
+        gCopyDepthProgram.mIsScreenSpaceCopyPass = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gCopyDepthProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3916,6 +4823,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gDrawColorProgram.clearPermutations();
         gDrawColorProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
         success = gDrawColorProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDrawColorProgram.createVkPipeline(0);
+        }
     }
 
     if (gSavedSettings.getBOOL("LocalTerrainPaintEnabled"))
@@ -3944,6 +4856,10 @@ bool LLViewerShaderMgr::loadShadersInterface()
                 // continue as if this shader never happened
                 success = true;
             }
+            if (success && LLVKLoader::isVulkanInitialized())
+            {
+                gPBRTerrainBakeProgram.createVkPipeline(0);
+            }
         }
     }
 
@@ -3955,6 +4871,12 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gAlphaMaskProgram.mShaderFiles.push_back(make_pair("interface/alphamaskF.glsl", GL_FRAGMENT_SHADER));
         gAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gAlphaMaskProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gAlphaMaskProgram.createVkPipeline(16);
+            gAlphaMaskProgram.mWritePerProgramUBOMinimumAlpha = true;
+        }
     }
 
     if (success)
@@ -3969,6 +4891,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gReflectionMipProgram.mShaderFiles.push_back(make_pair("interface/reflectionmipF.glsl", GL_FRAGMENT_SHADER));
         gReflectionMipProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gReflectionMipProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gReflectionMipProgram.createVkPipeline(0);
+        }
     }
 
     if (success)
@@ -3983,6 +4910,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gGaussianProgram.mShaderFiles.push_back(make_pair("interface/gaussianF.glsl", GL_FRAGMENT_SHADER));
         gGaussianProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gGaussianProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gGaussianProgram.createVkPipeline(0);
+        }
     }
 
     if (success && gGLManager.mHasCubeMapArray)
@@ -3994,6 +4926,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gRadianceGenProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         gRadianceGenProgram.addPermutation("PROBE_FILTER_SAMPLES", "32");
         success = gRadianceGenProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gRadianceGenProgram.createVkPipeline(32);
+        }
     }
 
     if (success && gGLManager.mHasCubeMapArray)
@@ -4006,6 +4943,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gHeroRadianceGenProgram.addPermutation("HERO_PROBES", "1");
         gHeroRadianceGenProgram.addPermutation("PROBE_FILTER_SAMPLES", "4");
         success                              = gHeroRadianceGenProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gHeroRadianceGenProgram.createVkPipeline(32);
+        }
     }
 
     if (success && gGLManager.mHasCubeMapArray)
@@ -4016,6 +4958,11 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gIrradianceGenProgram.mShaderFiles.push_back(make_pair("interface/irradianceGenF.glsl", GL_FRAGMENT_SHADER));
         gIrradianceGenProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gIrradianceGenProgram.createShader();
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gIrradianceGenProgram.createVkPipeline(16);
+        }
     }
 
     if( !success )

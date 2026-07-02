@@ -23,10 +23,64 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
+{
+    mat4 texture_matrix[4];
+};
+#define texture_matrix0 texture_matrix[0]
+#else
 uniform mat4 texture_matrix0;
+#endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 modelview_projection_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 7, std140) uniform StarTime_PerShaderBind
+{
+#ifndef _AYA_UM_time
+#define _AYA_UM_time 1
+    float time;
+#else
+    float _dup_StarTime_time;
+#endif
+#ifndef _AYA_UM_blend_factor
+#define _AYA_UM_blend_factor 1
+    float blend_factor;
+#else
+    float _dup_StarTime_blend_factor;
+#endif
+    float custom_alpha;
+};
+#else
 uniform float time;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 6) in vec4 diffuse_color;
+layout(location = 2) in vec2 texcoord0;
+
+layout(location = 0) out vec4 vertex_color;
+layout(location = 1) out vec2 vary_texcoord0;
+layout(location = 2) out vec2 screenpos;
+#else
 in vec3 position;
 in vec4 diffuse_color;
 in vec2 texcoord0;
@@ -34,6 +88,7 @@ in vec2 texcoord0;
 out vec4 vertex_color;
 out vec2 vary_texcoord0;
 out vec2 screenpos;
+#endif
 
 void main()
 {
@@ -52,3 +107,4 @@ void main()
     vary_texcoord0 = (texture_matrix0 * vec4(texcoord0,0,1)).xy;
     vertex_color = diffuse_color;
 }
+

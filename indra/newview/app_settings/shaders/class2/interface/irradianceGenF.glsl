@@ -26,6 +26,41 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform samplerCubeArray reflectionProbes;
+
+layout(set = 1, binding = 0, std140) uniform IrradianceGen_PerProgramBind
+{
+#ifndef _AYA_UM_sourceIdx
+#define _AYA_UM_sourceIdx 1
+    int sourceIdx;
+#else
+    int _dup_IrradianceGen_sourceIdx;
+#endif
+#ifndef _AYA_UM_max_probe_lod
+#define _AYA_UM_max_probe_lod 1
+    float max_probe_lod;
+#else
+    float _dup_IrradianceGen_max_probe_lod;
+#endif
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_IrradianceGen__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_IrradianceGen__pad1;
+#endif
+};
+
+layout(location = 0) in vec3 vary_dir;
+#else
 out vec4 frag_color;
 
 uniform samplerCubeArray   reflectionProbes;
@@ -34,6 +69,7 @@ uniform int sourceIdx;
 uniform float max_probe_lod;
 
 in vec3 vary_dir;
+#endif
 
 // Code below is derived from the Khronos GLTF Sample viewer:
 // https://github.com/KhronosGroup/glTF-Sample-Viewer/blob/master/source/shaders/ibl_filtering.frag

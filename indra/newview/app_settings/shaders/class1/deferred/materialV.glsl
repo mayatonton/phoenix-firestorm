@@ -28,46 +28,108 @@
 #define DIFFUSE_ALPHA_MODE_MASK 2
 #define DIFFUSE_ALPHA_MODE_EMISSIVE 3
 
-uniform mat4 modelview_matrix;
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 projection_matrix;
+uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
+#endif
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();
 #else
+#ifdef LL_VULKAN_GLSL
+#define normal_matrix mat3(transpose(inverse(modelview_matrix)))
+#else
 uniform mat3 normal_matrix;
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec3 vary_position;
+#else
 out vec3 vary_position;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
+{
+    mat4 texture_matrix[4];
+};
+#define texture_matrix0 texture_matrix[0]
+#else
 uniform mat4 texture_matrix0;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 6) in vec4 diffuse_color;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 texcoord0;
+#else
 in vec3 position;
 in vec4 diffuse_color;
 in vec3 normal;
 in vec2 texcoord0;
+#endif
 
 
 #ifdef HAS_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(location = 8) in vec4 tangent;
+layout(location = 3) in vec2 texcoord1;
+layout(location = 2) out vec3 vary_tangent;
+layout(location = 3) flat out float vary_sign;
+layout(location = 1) out vec3 vary_normal;
+layout(location = 4) out vec2 vary_texcoord1;
+#else
 in vec4 tangent;
 in vec2 texcoord1;
-
 out vec3 vary_tangent;
 flat out float vary_sign;
 out vec3 vary_normal;
-
 out vec2 vary_texcoord1;
+#endif
+#else
+#ifdef LL_VULKAN_GLSL
+layout(location = 1) out vec3 vary_normal;
 #else
 out vec3 vary_normal;
 #endif
+#endif
 
 #ifdef HAS_SPECULAR_MAP
+#ifdef LL_VULKAN_GLSL
+layout(location = 4) in vec2 texcoord2;
+layout(location = 5) out vec2 vary_texcoord2;
+#else
 in vec2 texcoord2;
 out vec2 vary_texcoord2;
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 6) out vec4 vertex_color;
+layout(location = 7) out vec2 vary_texcoord0;
+#else
 out vec4 vertex_color;
 out vec2 vary_texcoord0;
+#endif
 
 void main()
 {

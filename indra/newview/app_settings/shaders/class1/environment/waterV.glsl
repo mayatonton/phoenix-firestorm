@@ -23,22 +23,76 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
+uniform mat4 projection_matrix;
 uniform mat4 modelview_matrix;
-uniform mat3 normal_matrix;
 uniform mat4 modelview_projection_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+#define normal_matrix mat3(transpose(inverse(modelview_matrix)))
+#else
+uniform mat3 normal_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 
 void calcAtmospherics(vec3 inPositionEye);
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 15, std140) uniform Water_PerProgramBind
+{
+    vec2 waveDir1;
+    vec2 waveDir2;
+#ifndef _AYA_UM_time
+#define _AYA_UM_time 1
+    float time;
+#else
+    float _dup_Water_time;
+#endif
+    vec3 eyeVec;
+    float waterHeight;
+    vec3 lightDir;
+};
+#else
 uniform vec2 waveDir1;
 uniform vec2 waveDir2;
 uniform float time;
 uniform vec3 eyeVec;
 uniform float waterHeight;
 uniform vec3 lightDir;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 refCoord;
+layout(location = 1) out vec4 littleWave;
+layout(location = 2) out vec4 view;
+layout(location = 3) out vec3 vary_position;
+layout(location = 4) out vec3 vary_light_dir;
+layout(location = 5) out vec3 vary_tangent;
+layout(location = 6) out vec3 vary_normal;
+layout(location = 7) out vec2 vary_fragcoord;
+#else
 out vec4 refCoord;
 out vec4 littleWave;
 out vec4 view;
@@ -47,6 +101,7 @@ out vec3 vary_light_dir;
 out vec3 vary_tangent;
 out vec3 vary_normal;
 out vec2 vary_fragcoord;
+#endif
 
 float wave(vec2 v, float t, float f, vec2 d, float s)
 {

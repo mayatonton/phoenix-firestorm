@@ -33,25 +33,30 @@
 #include "llface.h"
 #include "llsky.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llspatialpartition.h"
 #include "llviewershadermgr.h"
 #include "llrender.h"
+#include "llvkloader.h"
 #include "gltfscenemanager.h"
 
 static LLTrace::BlockTimerStatHandle FTM_RENDER_SIMPLE_DEFERRED("Deferred Simple");
 static LLTrace::BlockTimerStatHandle FTM_RENDER_GRASS_DEFERRED("Deferred Grass");
 
 
+
 void LLDrawPoolGlow::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+
+
     LLGLSLShader* shader = &gDeferredEmissiveProgram;
 
     LLGLEnable blend(GL_BLEND);
     gGL.flush();
     /// Get rid of z-fighting with non-glow pass.
     LLGLEnable polyOffset(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(-1.0f, -1.0f);
+    gGL.setPolygonOffset(-1.0f, -1.0f);
     gGL.setSceneBlendType(LLRender::BT_ADD);
 
     LLGLDepthTest depth(GL_TRUE, GL_FALSE);
@@ -101,6 +106,7 @@ void LLDrawPoolSimple::renderDeferred(S32 pass)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SIMPLE_DEFERRED);
     LLGLDisable blend(GL_BLEND);
 
+
     //render static
     gDeferredDiffuseProgram.bind();
     pushBatches(LLRenderPass::PASS_SIMPLE, true, true);
@@ -116,6 +122,8 @@ static LLTrace::BlockTimerStatHandle FTM_RENDER_ALPHA_MASK_DEFERRED("Deferred Al
 void LLDrawPoolAlphaMask::renderDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_ALPHA_MASK_DEFERRED);
+
+
     LLGLSLShader* shader = &gDeferredDiffuseAlphaMaskProgram;
 
     //render static
@@ -137,6 +145,8 @@ LLDrawPoolGrass::LLDrawPoolGrass() :
 void LLDrawPoolGrass::renderDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+
+
     {
         gDeferredNonIndexedDiffuseAlphaMaskProgram.bind();
         gDeferredNonIndexedDiffuseAlphaMaskProgram.setMinimumAlpha(0.5f);
@@ -157,8 +167,9 @@ void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_FULLBRIGHT);
 
+
     LLGLSLShader* shader = nullptr;
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     {
         shader = &gHUDFullbrightProgram;
     }
@@ -173,7 +184,7 @@ void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
     shader->bind();
     pushBatches(LLRenderPass::PASS_FULLBRIGHT, true, true);
 
-    if (!LLPipeline::sRenderingHUDs)
+    if (!LLPipelineFrameContext::getInstance().isHUDPass())
     {
         // render rigged
         shader->bind(true);
@@ -185,12 +196,13 @@ void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_FULLBRIGHT);
 
+
     // render unrigged unlit GLTF
     LL::GLTFSceneManager::instance().render(true, false, true);
     LL::GLTFSceneManager::instance().render(true, true, true);
 
     LLGLSLShader* shader = nullptr;
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     {
         shader = &gHUDFullbrightAlphaMaskProgram;
     }
@@ -205,7 +217,7 @@ void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
     shader->bind();
     pushMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true);
 
-    if (!LLPipeline::sRenderingHUDs)
+    if (!LLPipelineFrameContext::getInstance().isHUDPass())
     {
         // render rigged
         shader->bind(true);

@@ -30,6 +30,7 @@
 #include "llsettingsvo.h"
 
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -936,6 +937,7 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
 
     shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_ANY];
     shader->uniform1f(LLShaderMgr::SCENE_LIGHT_STRENGTH, mSceneLightStrength);
+    LLPipeline::sLastSceneLightStrength = mSceneLightStrength;
 
     LLColor3 ambient(LLColor3(getTotalAmbient().mV) * r17_sun_mod);  // <FS:AYA r17> ambient も連動して朝青/夕橙シフト
 
@@ -1037,15 +1039,17 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         if (psky->getReflectionProbeAmbiance() != 0.f)
         {
             shader->uniform3fv(LLShaderMgr::AMBIENT, LLVector3(ambient.mV));
+            LLPipeline::sLastSkyHdrScale = sqrtf(g)*2.0f;
             shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, sqrtf(g)*2.0f); // use a modifier here so 1.0 maps to the "most desirable" default and the maximum value doesn't go off the rails
 
             // Low quality setting
-            if (!LLPipeline::sReflectionProbesEnabled)
+            if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
                 probe_ambiance = DEFAULT_AUTO_ADJUST_PROBE_AMBIANCE;
         }
         else if (psky->canAutoAdjust() && should_auto_adjust)
         { // auto-adjust legacy sky to take advantage of probe ambiance
             shader->uniform3fv(LLShaderMgr::AMBIENT, (ambient * auto_adjust_ambient_scale).mV);
+            LLPipeline::sLastSkyHdrScale = auto_adjust_hdr_scale;
             shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, auto_adjust_hdr_scale);
             LLColor3 blue_horizon = getBlueHorizon() * auto_adjust_blue_horizon_scale;
             LLColor3 blue_density = getBlueDensity() * auto_adjust_blue_density_scale;
@@ -1059,6 +1063,7 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         }
         else
         {
+            LLPipeline::sLastSkyHdrScale = 1.f;
             shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, 1.f);
             shader->uniform3fv(LLShaderMgr::AMBIENT, LLVector3(ambient.mV));
         }
@@ -1315,15 +1320,18 @@ void LLSettingsVOWater::applySpecial(void *ptarget, bool force)
 
         shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, waterPlane.mV);
         shader->uniform4fv(LLShaderMgr::CLIP_PLANE, glm::value_ptr(mirrorPlane));
+        LLPipeline::sLastClipPlane = LLVector4(mirrorPlane.x, mirrorPlane.y, mirrorPlane.z, mirrorPlane.w);
         LLVector4 light_direction = env.getClampedLightNorm();
 
         if (gPipeline.mHeroProbeManager.isMirrorPass())
         {
             shader->uniform1f(LLShaderMgr::MIRROR_FLAG, 1);
+            LLPipeline::sLastMirrorFlag = 1.f;
         }
         else
         {
             shader->uniform1f(LLShaderMgr::MIRROR_FLAG, 0);
+            LLPipeline::sLastMirrorFlag = 0.f;
         }
 
         F32 waterFogKS = 1.f / llmax(light_direction.mV[2], WATER_FOG_LIGHT_CLAMP);
@@ -1340,6 +1348,22 @@ void LLSettingsVOWater::applySpecial(void *ptarget, bool force)
         shader->uniform4fv(LLShaderMgr::WATER_FOGCOLOR, fog_color.mV);
 
         shader->uniform3fv(LLShaderMgr::WATER_FOGCOLOR_LINEAR, linearColor3(fog_color).mV);
+
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::WaterFog_PerProgramBind ubo_data{};
+            ubo_data.waterPlane[0]    = waterPlane.mV[0];
+            ubo_data.waterPlane[1]    = waterPlane.mV[1];
+            ubo_data.waterPlane[2]    = waterPlane.mV[2];
+            ubo_data.waterPlane[3]    = waterPlane.mV[3];
+            ubo_data.waterFogColor[0] = fog_color.mV[0];
+            ubo_data.waterFogColor[1] = fog_color.mV[1];
+            ubo_data.waterFogColor[2] = fog_color.mV[2];
+            ubo_data.waterFogColor[3] = fog_color.mV[3];
+            ubo_data.waterFogDensity  = waterFogDensity;
+            ubo_data.waterFogKS       = waterFogKS;
+            LLVKLoader::writeCurrentWaterFogUBO(ubo_data);
+        }
 
         F32 blend_factor = (F32)env.getCurrentWater()->getBlendFactor();
         shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);

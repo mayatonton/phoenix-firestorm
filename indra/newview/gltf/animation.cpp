@@ -397,6 +397,14 @@ Skin::~Skin()
     {
         glDeleteBuffers(1, &mUBO);
     }
+    if (mVkUBO != VK_NULL_HANDLE)
+    {
+        LLVKLoader::destroyBufferVk(mVkUBO, mVkUBOAllocation);
+        mVkUBO           = VK_NULL_HANDLE;
+        mVkUBOAllocation = nullptr;
+        mVkUBOMapped     = nullptr;
+        mVkUBOSize       = 0;
+    }
 }
 
 void Skin::uploadMatrixPalette(Asset& asset)
@@ -455,6 +463,20 @@ void Skin::uploadMatrixPalette(Asset& asset)
     glBindBuffer(GL_UNIFORM_BUFFER, mUBO);
     glBufferData(GL_UNIFORM_BUFFER, glmp.size() * sizeof(F32), glmp.data(), GL_STREAM_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        const U32 needed = (U32)(glmp.size() * sizeof(F32));
+        LLVKLoader::ensurePerAssetUBOVk(needed,
+                                        mVkUBO,
+                                        mVkUBOAllocation,
+                                        mVkUBOMapped,
+                                        mVkUBOSize);
+        if (mVkUBOMapped != nullptr && needed > 0)
+        {
+            memcpy(mVkUBOMapped, glmp.data(), needed);
+        }
+    }
 }
 
 bool Skin::prep(Asset& asset)

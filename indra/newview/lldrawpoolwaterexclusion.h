@@ -56,6 +56,7 @@ public:
     virtual void beginRenderPass(S32 pass) {}
     virtual void endRenderPass(S32 pass) {}
     virtual S32  getNumPasses() { return 1; }
+
 };
 
 #endif // LL_LLDRAWPOOLWATEREXCLUSION_H

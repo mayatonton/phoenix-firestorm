@@ -171,6 +171,15 @@ public:
     bool getHasGLTexture() const { return mTexName != 0; }
     LLGLuint getTexName() const { return mTexName; }
 
+    VkImageView getVkImageView() const { return mVkImageView; }
+    bool hasVkImage() const { return mVkImage != VK_NULL_HANDLE; }
+    VkImage getVkImage() const { return mVkImage; }
+    void*   getVkAllocation() const { return mVkAllocation; }
+
+    void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format);
+
+    void syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
+
     bool getIsAlphaMask() const;
 
     bool getIsResident(bool test_now = false); // not const
@@ -234,6 +243,9 @@ private:
     void freePickMask();
     bool isCompressed();
 
+    void syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
+                             S32 mip_level = 0, S32 mip_count = 1);
+
     LLPointer<LLImageRaw> mSaveData; // used for destroyGL/restoreGL
     LL::WorkQueue::weak_t mMainQueue;
     U8* mPickMask;  //downsampled bitmap approximation of alpha channel.  NULL if no alpha channel
@@ -278,6 +290,14 @@ protected:
 
     bool mExternalTexture;
 
+    VkImage     mVkImage      = VK_NULL_HANDLE;
+    VkImageView mVkImageView  = VK_NULL_HANDLE;
+    void*       mVkAllocation = nullptr;
+    U32         mVkImageWidth  = 0;
+    U32         mVkImageHeight = 0;
+    U32         mVkImageMipLevels = 1;
+    VkFormat    mVkImageFormat = VK_FORMAT_UNDEFINED;
+
     // STATICS
 public:
     static std::unordered_set<LLImageGL*> sImageList;
@@ -290,6 +310,9 @@ public:
     static U32 sUniqueCount;                // Tracks number of unique texture binds for current frame
     static bool sGlobalUseAnisotropic;
     static LLImageGL* sDefaultGLTexture ;
+    // white image LLImageGL pointer (= newview
+    //   LLViewerFetchedTexture::sWhiteImagep->getGLTexture() 経由設定)。
+    static LLImageGL* sWhiteImageGLp ;
     static bool sAutomatedTest;
     static bool sCompressTextures;          //use GL texture compression
 #if DEBUG_MISS

@@ -39,6 +39,8 @@
 #include "llviewercontrol.h"
 #include "llviewerregion.h"
 #include "llenvironment.h"
+#include "llvkloader.h"
+#include "llimagegl.h"
 
 S32 LLDrawPoolTree::sDiffTex = 0;
 static LLGLSLShader* shader = NULL;
@@ -117,6 +119,7 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
             buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
         }
     }
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 }
 
 void LLDrawPoolTree::endDeferredPass(S32 pass)
@@ -135,7 +138,7 @@ void LLDrawPoolTree::beginShadowPass(S32 pass)
 
     static LLCachedControl<F32> shadow_offset(gSavedSettings, "RenderDeferredTreeShadowOffset");
     static LLCachedControl<F32> shadow_bias(gSavedSettings, "RenderDeferredTreeShadowBias");
-    glPolygonOffset(shadow_offset(), shadow_bias());
+    gGL.setPolygonOffset(shadow_offset(), shadow_bias());
 
     LLEnvironment& environment = LLEnvironment::instance();
 
@@ -197,6 +200,20 @@ void LLDrawPoolTree::renderMotionBlur(S32 pass)
         LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
         LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
 
+        if (LLVKLoader::isVulkanInitialized()
+            && LLGLSLShader::sCurBoundShaderPtr
+            && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE
+            && LLGLSLShader::sCurBoundShaderPtr->mVkVertexPushConstantOver64)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                vkCmdPushConstants(cmd, LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                   VK_SHADER_STAGE_VERTEX_BIT, 64, sizeof(F32) * 16,
+                                   (const F32*)model_matrix->mMatrix);
+            }
+        }
+
         buff->setBuffer();
         buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
     }
@@ -208,12 +225,12 @@ void LLDrawPoolTree::endShadowPass(S32 pass)
     LL_PROFILE_ZONE_SCOPED;
 
     // <FS:PP> Attempt to speed up things a little
-    // glPolygonOffset(gSavedSettings.getF32("RenderDeferredSpotShadowOffset"),
+    // gGL.setPolygonOffset(gSavedSettings.getF32("RenderDeferredSpotShadowOffset"),
     //                  gSavedSettings.getF32("RenderDeferredSpotShadowBias"));
     static LLCachedControl<F32> RenderDeferredSpotShadowOffset(gSavedSettings, "RenderDeferredSpotShadowOffset");
     static LLCachedControl<F32> RenderDeferredSpotShadowBias(gSavedSettings, "RenderDeferredSpotShadowBias");
     // <FS:AYAstorm r30 P5 step 5 pivot 2026-05-19> Cinematic 短絡撤去、user cvar 値を使う
-    glPolygonOffset(RenderDeferredSpotShadowOffset, RenderDeferredSpotShadowBias);
+    gGL.setPolygonOffset(RenderDeferredSpotShadowOffset, RenderDeferredSpotShadowBias);
     // </FS:AYAstorm>
     // </FS:PP>
 

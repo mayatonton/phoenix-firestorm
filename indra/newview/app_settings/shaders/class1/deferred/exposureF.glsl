@@ -25,18 +25,56 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D emissiveRect;
+#ifdef USE_LAST_EXPOSURE
+layout(set = 1, binding = 2) uniform sampler2D exposureMap;
+#endif
+#else
 uniform sampler2D emissiveRect;
 #ifdef USE_LAST_EXPOSURE
 uniform sampler2D exposureMap;
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform ExposureF_PerProgramBind
+{
+    vec4 dynamic_exposure_params;
+    vec4 dynamic_exposure_params2;
+    float dt;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_ExposureF__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_ExposureF__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_ExposureF__pad2;
+#endif
+};
+#else
 uniform float dt;
 uniform vec2 noiseVec;
 
 uniform vec4 dynamic_exposure_params;
 uniform vec4 dynamic_exposure_params2;
+#endif
 
 float lum(vec3 col)
 {

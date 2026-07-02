@@ -25,14 +25,42 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform MoonF_PerProgramBind
+{
+#ifndef _AYA_UM_color
+#define _AYA_UM_color 1
+    vec4 color;
+#else
+    vec4 _dup_MoonF_color;
+#endif
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3 moon_dir;
+#else
+    vec3 _dup_MoonF_moon_dir;
+#endif
+    float moon_brightness;
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#else
 uniform vec4 color;
 uniform vec3 moon_dir;
 uniform float moon_brightness;
 uniform sampler2D diffuseMap;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 
 void main()
 {

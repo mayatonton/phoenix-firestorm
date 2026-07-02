@@ -27,8 +27,13 @@
 // Source: https://github.com/NiranV/Black-Dragon-Viewer @ indra/newview/app_settings/shaders/class1/deferred/velocityFuncV.glsl
 // License: LGPL-2.1-only (same as Second Life Viewer Source Code, no relicensing)
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 vary_cur_clip;
+layout(location = 1) out vec4 vary_last_clip;
+#else
 out vec4 vary_cur_clip;
 out vec4 vary_last_clip;
+#endif
 
 void writeVaryVelocity(vec4 pos, vec4 last_pos)
 {

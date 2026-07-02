@@ -26,6 +26,57 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform samplerCubeArray reflectionProbes;
+
+layout(set = 1, binding = 0, std140) uniform RadianceGen_PerProgramBind
+{
+#ifndef _AYA_UM_sourceIdx
+#define _AYA_UM_sourceIdx 1
+    int sourceIdx;
+#else
+    int _dup_RadianceGen_sourceIdx;
+#endif
+#ifndef _AYA_UM_mipLevel
+#define _AYA_UM_mipLevel 1
+    float mipLevel;
+#else
+    float _dup_RadianceGen_mipLevel;
+#endif
+    int u_width;
+#ifndef _AYA_UM_max_probe_lod
+#define _AYA_UM_max_probe_lod 1
+    float max_probe_lod;
+#else
+    float _dup_RadianceGen_max_probe_lod;
+#endif
+    float probe_strength;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_RadianceGen__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_RadianceGen__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_RadianceGen__pad2;
+#endif
+};
+
+layout(location = 0) in vec3 vary_dir;
+
+//uniform float roughness;
+#else
 out vec4 frag_color;
 
 uniform samplerCubeArray   reflectionProbes;
@@ -39,6 +90,7 @@ uniform float mipLevel;
 uniform int u_width;
 uniform float max_probe_lod;
 uniform float probe_strength;
+#endif
 
 
 // =============================================================================================================

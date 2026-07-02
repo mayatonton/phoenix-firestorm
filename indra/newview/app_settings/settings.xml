@@ -10361,6 +10361,23 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
     <!-- </FS:AYAstorm> -->
 
+    <!-- <FS:AYAstorm r41> VkPipelineCache disk persist 上限 (MB)。
+         ~/.ayastorm_x64/cache/pipeline_cache.bin、default 64 MB。
+         load 時 file size > max なら blob 破棄、persist 時 blob size > max なら writer 不呼出。
+         変更には viewer 再起動が必要。 -->
+    <key>AYAPipelineCacheSizeMB</key>
+    <map>
+      <key>Comment</key>
+      <string>(r41) VkPipelineCache disk persist 上限 (MB)。default=64、~/.ayastorm_x64/cache/pipeline_cache.bin。load 時 file size > max なら blob 破棄、persist 時 blob size > max なら writer 不呼出。変更には viewer 再起動が必要。</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>64</integer>
+    </map>
+    <!-- </FS:AYAstorm> -->
+
     <key>PluginInstancesLow</key>
     <map>
       <key>Comment</key>
@@ -14716,6 +14733,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <string>String</string>
       <key>Value</key>
       <string>00000000-0000-0000-0000-000000000000</string>
+    </map>
+    <key>RenderBackend</key>
+    <map>
+      <key>Comment</key>
+      <string>r41 Phase E++ atomic 3 RenderBackend cvar: 0 = GL only (= initVulkan() 入口 cvar gate で Vulkan init skip = pure GL 動作、AYA verify 確証 2026-06-13 = ログイン画面 GL 描画 + 青く点滅なし)、1 = Vulkan with GL fallback (gl_branch 構造 = drawRange/drawArrays per-call で Vulkan fire 試行 + 失敗時 GL fallback、青く点滅は Vulkan path 由来 = 私の atomic 1-7 シリーズで何かしている真因継続)、2 = Vulkan only (= GL fallback skip = 完成後)。AYA verify 確証 = mode=0 で動作正常 + 青く点滅消失 = 真因 100% Vulkan path 由来確証 + chat overlay 本来色グレー透過確証。</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>1</integer>
     </map>
     <key>RenderCASSharpness</key>
     <map>

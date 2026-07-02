@@ -27,9 +27,54 @@
 
 #define FLT_MAX 3.402823466e+38
 
-out vec4 frag_color;
-
+// M_PI guard wrap
+#ifndef M_PI_DEFINED
+#define M_PI_DEFINED 1
 const float M_PI = 3.14159265;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+#if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
+layout(set = 1, binding = 2) uniform sampler2D lightMap;
+#endif
+
+layout(set = 1, binding = 1) uniform sampler2D lightFunc;
+
+layout(set = 1, binding = 0, std140) uniform SoftenLightF_PerProgramBind
+{
+    vec4  aya_translucency_params;
+    vec3  aya_translucency_tint;
+    float sky_hdr_scale_soften;
+#ifndef HAS_SUN_SHADOW
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3  sun_dir;
+#else
+    vec3  _dup_SoftenLightF_sun_dir;
+#endif
+    float _softenLightF_pad0;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3  moon_dir;
+#else
+    vec3  _dup_SoftenLightF_moon_dir;
+#endif
+    float _softenLightF_pad1;
+#endif
+#if defined(HAS_SSAO)
+    mat3  ssao_effect_mat;
+    float ssao_irradiance_scale;
+    float ssao_irradiance_max;
+    float _softenLightF_pad2;
+    float _softenLightF_pad3;
+#endif
+};
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
+out vec4 frag_color;
 
 #if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
 uniform sampler2D lightMap;
@@ -59,6 +104,16 @@ in vec2 vary_fragcoord;
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 
+uniform vec4 waterPlane;
+uniform int cube_snapshot;
+uniform float sky_hdr_scale;
+
+// r19 Translucency: wrap-around diffuse + back-light transmission.
+// Pipeline pushes strength=0 when r19 is OFF, so helpers below short-circuit.
+uniform vec4  aya_translucency_params; // (wrap, k_back, k_view, strength)
+uniform vec3  aya_translucency_tint;   // warm skin/leaf tint (linear)
+#endif
+
 vec4 getNorm(vec2 pos_screen);
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);
 
@@ -77,17 +132,6 @@ float getDepth(vec2 pos_screen);
 
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);
-
-uniform vec4 waterPlane;
-
-uniform int cube_snapshot;
-
-uniform float sky_hdr_scale;
-
-// r19 Translucency: wrap-around diffuse + back-light transmission.
-// Pipeline pushes strength=0 when r19 is OFF, so helpers below short-circuit.
-uniform vec4  aya_translucency_params; // (wrap, k_back, k_view, strength)
-uniform vec3  aya_translucency_tint;   // warm skin/leaf tint (linear)
 
 float ayaTranslucencyWrap(float ndotl)
 {
@@ -318,4 +362,5 @@ void main()
 
     frag_color.rgb = clampHDRRange(color.rgb * final_scale); //output linear since local lights will be added to this shader's results
     frag_color.a = 0.0;
+
 }

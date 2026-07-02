@@ -31,18 +31,87 @@
 #define TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE 0
 #define TERRAIN_PAINT_TYPE_PBR_PAINTMAP 1
 
+#ifdef LL_VULKAN_GLSL
+#define normal_matrix mat3(transpose(inverse(modelview_matrix)))
+#else
 uniform mat3 normal_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
+{
+    mat4 texture_matrix[4];
+};
+#define texture_matrix0 texture_matrix[0]
+#else
 uniform mat4 texture_matrix0;
+#endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
+uniform mat4 projection_matrix;
 uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 6, std140) uniform PbrTerrain_PerShaderBind
+{
+    float region_scale;
+    vec4 terrain_texture_transforms[5];
+};
+#else
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
 uniform float region_scale;
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 8) in vec4 tangent;
+#if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+layout(location = 3) in vec2 texcoord1;
+#endif
+
+layout(location = 0) out vec3 vary_position;
+layout(location = 1) out vec3 vary_normal;
+#if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+layout(location = 2) out vec3 vary_vertex_normal; // Used by pbrterrainUtilF.glsl
+#endif
+#if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
+layout(location = 3) out vec3 vary_tangents[4];
+layout(location = 7) flat out float vary_signs[4];
+#endif
+
+// vary_texcoord* are used for terrain composition, vary_coords are used for terrain UVs
+#if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+layout(location = 11) out vec4 vary_texcoord0;
+layout(location = 12) out vec4 vary_texcoord1;
+#elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
+layout(location = 11) out vec2 vary_texcoord;
+#endif
+#if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+layout(location = 22) out vec4[10] vary_coords;
+#elif TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 1
+layout(location = 22) out vec4[2] vary_coords;
+#endif
+#else
 in vec3 position;
 in vec3 normal;
 in vec4 tangent;
-in vec4 diffuse_color;
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
 in vec2 texcoord1;
 #endif
@@ -69,11 +138,14 @@ out vec4[10] vary_coords;
 #elif TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 1
 out vec4[2] vary_coords;
 #endif
+#endif
 
 // *HACK: Each material uses only one texture transform, but the KHR texture
 // transform spec allows handling texture transforms separately for each
 // individual texture info.
+#ifndef LL_VULKAN_GLSL
 uniform vec4[5] terrain_texture_transforms;
+#endif
 
 vec2 terrain_texture_transform(vec2 vertex_texcoord, vec4[2] khr_gltf_transform);
 vec4 terrain_tangent_space_transform(vec4 vertex_tangent, vec3 vertex_normal, vec4[2] khr_gltf_transform);

@@ -53,6 +53,7 @@ class LLCullResult;
 class LLVOAvatar;
 class LLVOPartGroup;
 class LLGLSLShader;
+class LLImageGL;
 class LLDrawPoolAlpha;
 class LLSettingsSky;
 
@@ -332,8 +333,9 @@ public:
     // <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — BD lineage
     // 995a1354d8. Post-process pass between generateGlow and combineGlow;
     // gated by AYAVisualRealismEnabled == 2 (Cinematic) and
-    // RenderVolumetricLighting at the call site. Pong'ed via mPostPing/Pong.
-    void renderVolumetric(LLRenderTarget* src, LLRenderTarget* dst);
+    // RenderVolumetricLighting at the call site. additive overlay = in-place
+    // (src へ散乱加算)、ping-pong/swap なし (godrays 範式)。
+    void renderVolumetric(LLRenderTarget* src);
     // </AYAstorm r30 P3>
     void bindLightFunc(LLGLSLShader& shader);
 
@@ -342,7 +344,25 @@ public:
     void bindShadowMaps(LLGLSLShader& shader);
     void bindDeferredShaderFast(LLGLSLShader& shader);
     void bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target = nullptr, LLRenderTarget* depth_target = nullptr);
-    void setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep);
+    void bindDeferredHelperBindings(LLGLSLShader& shader, LLRenderTarget* depth_target = nullptr);
+
+    void compositeForwardFlip();
+    struct SpotProjForVk
+    {
+        F32 proj_mat[16];   // = screen_to_light (PROJECTOR_MATRIX)
+        F32 proj_p[3];      // = p1 (PROJECTOR_P)
+        F32 proj_n[3];      // = n (PROJECTOR_N)
+        F32 proj_range;     // = proj_range (PROJECTOR_RANGE)
+        F32 proj_ambiance;  // = params.mV[2] (PROJECTOR_AMBIANCE)
+        F32 proj_focus;     // = focus (PROJECTOR_FOCUS)
+        F32 proj_lod;       // = lod_range (PROJECTOR_LOD)
+    };
+    void setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
+                        F32* out_proj_origin = nullptr,
+                        F32* out_shadow_fade = nullptr,
+                        S32* out_proj_shadow_idx = nullptr,
+                        SpotProjForVk* out_proj = nullptr);
+    // </FS:AYA>
 
     void unbindDeferredShader(LLGLSLShader& shader);
 
@@ -401,6 +421,7 @@ public:
 
     void generateSunShadow(LLCamera& camera);
     LLRenderTarget* getSunShadowTarget(U32 i);
+
     LLRenderTarget* getSpotShadowTarget(U32 i);
 
     void renderHighlight(const LLViewerObject* obj, F32 fade);
@@ -821,6 +842,12 @@ public:
     static bool             sRenderingHUDs;
     static F32              sDistortionWaterClipPlaneMargin;
     static F32              sVolumeSAFrame;
+    static F32              sLastSkyHdrScale;
+
+    static F32              sLastSceneLightStrength;
+
+    static F32              sLastMirrorFlag;
+    static LLVector4        sLastClipPlane;
 
     static bool             sRenderParticles; // <FS:LO> flag to hold correct, user selected, status of particles
 // [SL:KB] - Patch: Render-TextureToggle (Catznip-4.0)
@@ -829,6 +856,18 @@ public:
     static LLVector3        sLastFocusPoint;// <FS:Beq/> FIRE-16728 focus point lock & free focus DoF 
     static bool             sDoFEnabled;// <FS:Beq/> FIRE-32023 focus point render 
     static LLTrace::EventStatHandle<S64> sStatBatchSize;
+
+    // shadow count named constants = 旧 magic number `4` / `2` / `6` literal を置換 =
+    //   Firestorm 原本由来 `shadow[4]` (= git blame Andrey Lihatskiy 2024-04-29) +
+    //   `mSpotShadow[2]` + `mSunShadowMatrix[6]` 整合維持。 sun = CSM 4 cascade + spot = 2 = total 6。
+    static constexpr U32 kSunShadowCount   = 4;
+    static constexpr U32 kSpotShadowCount  = 2;
+    static constexpr U32 kTotalShadowCount = kSunShadowCount + kSpotShadowCount;
+    // mShadowCamera[8] = sun cascade × 2 variants = index 0..kSunShadowCount-1 =
+    //   sun cascade main views + index kSunShadowCount..2*kSunShadowCount-1 =
+    //   sun cascade secondary views (pipeline.cpp の `mShadowCamera[j+4] = shadow_cam`、
+    //   j=0..3 sun cascade index ゆえ mShadowCamera[4..7] = secondary view 保存)。
+    static constexpr U32 kShadowCameraCount = 2 * kSunShadowCount;
 
     class RenderTargetPack
     {
@@ -842,7 +881,7 @@ public:
         LLRenderTarget          deferredLight;
 
         //sun shadow map
-        LLRenderTarget          shadow[4];
+        LLRenderTarget          shadow[LLPipeline::kSunShadowCount];
     };
 
     // main full resoltuion render target
@@ -863,7 +902,7 @@ public:
     // currently used render target pack
     RenderTargetPack* mRT;
 
-    LLRenderTarget          mSpotShadow[2];
+    LLRenderTarget          mSpotShadow[LLPipeline::kSpotShadowCount];
 
     LLRenderTarget          mPbrBrdfLut;
     LLRenderTarget          mWaterExclusionMask;
@@ -921,6 +960,8 @@ public:
     LLRenderTarget          mAYAAlphaColor;
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
+    LLRenderTarget          mForwardColor;
+
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR
     LLRenderTarget          mSceneMap;
@@ -963,21 +1004,20 @@ public:
     //list of currently bound reflection maps
     std::vector<LLReflectionMap*> mReflectionMaps;
 
-    std::vector<LLVector3>  mShadowFrustPoints[4];
+    std::vector<LLVector3>  mShadowFrustPoints[LLPipeline::kSunShadowCount];
     LLVector4               mShadowError;
     LLVector4               mShadowFOV;
     LLVector3               mShadowFrustOrigin[4];
-    LLCamera                mShadowCamera[8];
-    LLVector3               mShadowExtents[4][2];
+    LLCamera                mShadowCamera[LLPipeline::kShadowCameraCount];
+    LLVector3               mShadowExtents[LLPipeline::kSunShadowCount][2];
     // TODO : separate Sun Shadow and Spot Shadow matrices
-    glm::mat4               mSunShadowMatrix[6];
+    glm::mat4               mSunShadowMatrix[LLPipeline::kTotalShadowCount];
     glm::mat4               mShadowModelview[6];
     glm::mat4               mShadowProjection[6];
-    glm::mat4               mReflectionModelView;
 
-    LLPointer<LLDrawable>   mShadowSpotLight[2];
+    LLPointer<LLDrawable>   mShadowSpotLight[LLPipeline::kSpotShadowCount];
     F32                     mSpotLightFade[2];
-    LLPointer<LLDrawable>   mTargetShadowSpotLight[2];
+    LLPointer<LLDrawable>   mTargetShadowSpotLight[LLPipeline::kSpotShadowCount];
 
     LLVector4               mSunClipPlanes;
     LLVector4               mSunOrthoClipPlanes;
@@ -996,16 +1036,16 @@ public:
     LLRenderTarget              mSkySH;
 
     //noise map
-    U32                 mNoiseMap;
-    U32                 mTrueNoiseMap;
-    U32                 mLightFunc;
-    U32                 mColorGradingLUT = 0;
+    LLPointer<LLImageGL> mNoiseMap;
+    LLPointer<LLImageGL> mTrueNoiseMap;
+    LLPointer<LLImageGL> mLightFunc;
+    LLPointer<LLImageGL> mColorGradingLUT;
     std::string         mColorGradingLUTName;
 
     //smaa
-    U32                 mSMAAAreaMap = 0;
-    U32                 mSMAASearchMap = 0;
-    U32                 mSMAASampleMap = 0;
+    LLPointer<LLImageGL> mSMAAAreaMap;
+    LLPointer<LLImageGL> mSMAASearchMap;
+    LLPointer<LLImageGL> mSMAASampleMap;
 
     LLColor4            mSunDiffuse;
     LLColor4            mMoonDiffuse;

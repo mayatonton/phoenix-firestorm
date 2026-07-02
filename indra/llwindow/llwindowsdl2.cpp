@@ -36,6 +36,7 @@
 
 #include "llerror.h"
 #include "llgl.h"
+#include "llvkloader.h"
 #include "llstring.h"
 #include "lldir.h"
 #include "llfindlocale.h"
@@ -713,7 +714,9 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
     mFullscreen = fullscreen;
 
-    int sdlflags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+    // Vulkan init 成功時 = SDL_WINDOW_VULKAN、Vulkan init 失敗 / GL build 時 = SDL_WINDOW_OPENGL。
+    const bool use_vulkan_window = LLVKLoader::isVulkanInitialized();
+    int sdlflags = (use_vulkan_window ? SDL_WINDOW_VULKAN : SDL_WINDOW_OPENGL) | SDL_WINDOW_RESIZABLE;
 
     if( mFullscreen )
     {
@@ -730,42 +733,56 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     if (getenv("LL_GL_NO_STENCIL"))
         stencilBits = 0;
 
-    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, alphaBits);
-    SDL_GL_SetAttribute(SDL_GL_RED_SIZE,   redBits);
-    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, greenBits);
-    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,  blueBits);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthBits );
-
-    // We need stencil support for a few (minor) things.
-    if (stencilBits)
-        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, stencilBits);
-
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-    if (mFSAASamples > 0)
+    // GL attribute set は use_vulkan_window 時 skip
+    //   (= SDL_WINDOW_VULKAN flag では SDL_GL_* 系 API は未定義動作、Vulkan path 単独動作)。
+    if (!use_vulkan_window)
     {
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, mFSAASamples);
-    }
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, alphaBits);
+        SDL_GL_SetAttribute(SDL_GL_RED_SIZE,   redBits);
+        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, greenBits);
+        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,  blueBits);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthBits );
 
-    // <FS:Zi> Make shared context work on Linux for multithreaded OpenGL
-    SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+        // We need stencil support for a few (minor) things.
+        if (stencilBits)
+            SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, stencilBits);
+
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+        if (mFSAASamples > 0)
+        {
+            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, mFSAASamples);
+        }
+
+        // <FS:Zi> Make shared context work on Linux for multithreaded OpenGL
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+    }
     mWindow = SDL_CreateWindow( mWindowTitle.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, mSDLFlags );
 
     if( mWindow )
     {
-        mContext = SDL_GL_CreateContext( mWindow );
-
-        if( mContext == 0 )
+        // GL context create + vsync init は use_vulkan_window 時 skip = mContext=nullptr
+        //   (= Vulkan surface は initSurface で attach、vsync は VK_PRESENT_MODE_FIFO_KHR で制御)。
+        if (use_vulkan_window)
         {
-            LL_WARNS() << "Cannot create GL context " << SDL_GetError() << LL_ENDL;
-            setupFailure("GL Context creation error creation error", "Error", OSMB_OK);
-            return false;
+            mContext = nullptr;
         }
+        else
+        {
+            mContext = SDL_GL_CreateContext( mWindow );
 
-        // FIRE-32559: This *should* work, but for some reason aftrer login vsync always acts as if it's disabled, so
-        // the flag will get set again later in void LLViewerWindow::setStartupComplete() -Zi
-        toggleVSync(enable_vsync);
+            if( mContext == 0 )
+            {
+                LL_WARNS() << "Cannot create GL context " << SDL_GetError() << LL_ENDL;
+                setupFailure("GL Context creation error creation error", "Error", OSMB_OK);
+                return false;
+            }
+
+            // FIRE-32559: This *should* work, but for some reason aftrer login vsync always acts as if it's disabled, so
+            // the flag will get set again later in void LLViewerWindow::setStartupComplete() -Zi
+            toggleVSync(enable_vsync);
+        }
 
         mSurface = SDL_GetWindowSurface( mWindow );
     }
@@ -843,26 +860,31 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     // explicitly unsupported cards.
     //const char* RENDERER = (const char*) glGetString(GL_RENDERER);
 
-    SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &redBits);
-    SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &greenBits);
-    SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &blueBits);
-    SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &alphaBits);
-    SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
-    SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilBits);
+    // GL attribute query + colorBits check は use_vulkan_window 時 skip
+    //   (= GL context なし、Vulkan surface format は VkSurfaceFormatKHR 経由で query)。
+    if (!use_vulkan_window)
+    {
+        SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &redBits);
+        SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &greenBits);
+        SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &blueBits);
+        SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &alphaBits);
+        SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
+        SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilBits);
 
-    LL_INFOS() << "GL buffer:" << LL_ENDL;
-    LL_INFOS() << "  Red Bits " << S32(redBits) << LL_ENDL;
-    LL_INFOS() << "  Green Bits " << S32(greenBits) << LL_ENDL;
-    LL_INFOS() << "  Blue Bits " << S32(blueBits) << LL_ENDL;
-    LL_INFOS() << "  Alpha Bits " << S32(alphaBits) << LL_ENDL;
-    LL_INFOS() << "  Depth Bits " << S32(depthBits) << LL_ENDL;
-    LL_INFOS() << "  Stencil Bits " << S32(stencilBits) << LL_ENDL;
+        LL_INFOS() << "GL buffer:" << LL_ENDL;
+        LL_INFOS() << "  Red Bits " << S32(redBits) << LL_ENDL;
+        LL_INFOS() << "  Green Bits " << S32(greenBits) << LL_ENDL;
+        LL_INFOS() << "  Blue Bits " << S32(blueBits) << LL_ENDL;
+        LL_INFOS() << "  Alpha Bits " << S32(alphaBits) << LL_ENDL;
+        LL_INFOS() << "  Depth Bits " << S32(depthBits) << LL_ENDL;
+        LL_INFOS() << "  Stencil Bits " << S32(stencilBits) << LL_ENDL;
+    }
 
     GLint colorBits = redBits + greenBits + blueBits + alphaBits;
     // fixme: actually, it's REALLY important for picking that we get at
     // least 8 bits each of red,green,blue.  Alpha we can be a bit more
     // relaxed about if we have to.
-    if (colorBits < 32)
+    if (!use_vulkan_window && colorBits < 32)
     {
         close();
         setupFailure(
@@ -901,10 +923,15 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     }
 #endif // LL_X11
 
-    // clear screen to black right at the start so it doesn't look like a crash
-    glClearColor(0.0f, 0.0f, 0.0f ,1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    SDL_GL_SwapWindow(mWindow);
+    // initial GL clear + swap は use_vulkan_window 時 skip
+    //   (= GL context なし、Vulkan side では beginFrame で swapchain image clear)。
+    if (!use_vulkan_window)
+    {
+        // clear screen to black right at the start so it doesn't look like a crash
+        glClearColor(0.0f, 0.0f, 0.0f ,1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        SDL_GL_SwapWindow(mWindow);
+    }
 
     // start text input immediately when IME is not enabled
     if (!mIMEEnabled)
@@ -912,8 +939,13 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         SDL_StartTextInput();
     }
 
-    //make sure multisampling is disabled by default
-    glDisable(GL_MULTISAMPLE_ARB);
+    // GL multisample disable は use_vulkan_window 時 skip
+    //   (= MSAA は Vulkan side で VkPipelineMultisampleStateCreateInfo で制御)。
+    if (!use_vulkan_window)
+    {
+        //make sure multisampling is disabled by default
+        glDisable(GL_MULTISAMPLE_ARB);
+    }
 
     // Don't need to get the current gamma, since there's a call that restores it to the system defaults.
     return true;
@@ -1159,6 +1191,13 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
+    // Vulkan presentation 有効時は vkQueuePresentKHR が LLVKLoader::endFrame() で発火済ゆえ
+    //   GL `SDL_GL_SwapWindow` skip = no-op return (= dual-presentation 衝突回避)。
+    if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
+    {
+        return;
+    }
+
     if (mWindow)
     {
         SDL_GL_SwapWindow( mWindow );
@@ -2561,6 +2600,16 @@ void *LLWindowSDL::getPlatformWindow()
     return NULL;
 }
 
+LLWindow::LLNativeWindowHandles LLWindowSDL::getNativeWindowHandles()
+{
+    LLNativeWindowHandles handles;
+#if LL_X11
+    handles.native_display = mSDL_Display;
+    handles.native_window  = reinterpret_cast<void*>(static_cast<uintptr_t>(mSDL_XWindowID));
+#endif
+    return handles;
+}
+
 void LLWindowSDL::bringToFront()
 {
     // This is currently used when we are 'launched' to a specific
@@ -2685,8 +2734,15 @@ class sharedContext
         SDL_GLContext mContext;
 };
 
+// GL shared context + vsync 系 function は isVulkanInitialized() runtime check で no-op
+//   (= GL multithread context 不要、Vulkan secondary command buffer + multi queue で並列化代替、
+//   vsync は VK_PRESENT_MODE_FIFO_KHR 系で制御)。
 void* LLWindowSDL::createSharedContext()
 {
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        return nullptr;  // Vulkan path: GL shared context 不要
+    }
     sharedContext* sc = new sharedContext();
     sc->mContext = SDL_GL_CreateContext(mWindow);
     if (sc->mContext)
@@ -2717,11 +2773,21 @@ void* LLWindowSDL::createSharedContext()
 void LLWindowSDL::makeContextCurrent(void* context)
 {
     LL_PROFILER_GPU_CONTEXT;
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        (void)context;  // Vulkan path: no-op
+        return;
+    }
     SDL_GL_MakeCurrent(mWindow, ((sharedContext*)context)->mContext);
 }
 
 void LLWindowSDL::destroySharedContext(void* context)
 {
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        (void)context;  // Vulkan path: createSharedContext が nullptr 返却ゆえ context は nullptr
+        return;
+    }
     sharedContext* sc = (sharedContext*)context;
 
     SDL_GL_DeleteContext(sc->mContext);
@@ -2731,6 +2797,11 @@ void LLWindowSDL::destroySharedContext(void* context)
 
 void LLWindowSDL::toggleVSync(bool enable_vsync)
 {
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        (void)enable_vsync;  // Vulkan path: vsync は VK_PRESENT_MODE_FIFO_KHR / IMMEDIATE で制御
+        return;
+    }
     if (enable_vsync)
     {
         // try adaptive vsync first (-1) and if that fails, try regular vsync (1)

@@ -23,28 +23,71 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+#else
 uniform mat4 projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 texcoord0;
+#ifdef AVATAR_CLOTH
+layout(location = 11) in vec4 clothing;
+#endif
+#else
 in vec3 position;
 in vec3 normal;
 in vec2 texcoord0;
 #ifdef AVATAR_CLOTH
 in vec4 clothing;
 #endif
+#endif
 
 mat4 getSkinnedTransform();
 
+#ifndef LL_VULKAN_GLSL
 in vec4 weight;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec3 vary_normal;
+layout(location = 1) out vec2 vary_texcoord0;
+layout(location = 2) out vec3 vary_position;
+#else
 out vec3 vary_normal;
 out vec2 vary_texcoord0;
 out vec3 vary_position;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+#ifdef AVATAR_CLOTH
+layout(set = 1, binding = 0, std140) uniform AvatarVCloth_PerProgramBind
+{
+    vec4 gWindDir;
+    vec4 gSinWaveParams;
+    vec4 gGravity;
+};
+#endif
+#else
 #ifdef AVATAR_CLOTH
 uniform vec4 gWindDir;
 uniform vec4 gSinWaveParams;
 uniform vec4 gGravity;
+#endif
+#endif
 
+#ifdef AVATAR_CLOTH
 const vec4 gMinMaxConstants = vec4(1.0, 0.166666, 0.0083143, .00018542);     // #minimax-generated coefficients
 const vec4 gPiConstants = vec4(0.159154943, 6.28318530, 3.141592653, 1.5707963); // # {1/2PI, 2PI, PI, PI/2}
 #endif

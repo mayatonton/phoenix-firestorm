@@ -34,6 +34,7 @@
 
 #include "llerror.h"
 #include "llgl.h"
+#include "llvkloader.h"
 #include "llstring.h"
 #include "lldir.h"
 #include "indra_constants.h"
@@ -1101,6 +1102,13 @@ bool LLWindowMacOSX::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowMacOSX::swapBuffers()
 {
+    // Vulkan presentation 有効時は vkQueuePresentKHR が LLVKLoader::endFrame() で発火済ゆえ
+    //   GL `CGLFlushDrawable` skip = no-op return (= dual-presentation 衝突回避)。
+    if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
+    {
+        return;
+    }
+
     CGLFlushDrawable(mContext);
 }
 
@@ -2513,6 +2521,12 @@ void *LLWindowMacOSX::getPlatformWindow()
 {
     // NOTE: this will be NULL in fullscreen mode.  Plan accordingly.
     return (void*)mWindow;
+}
+
+LLWindow::LLNativeWindowHandles LLWindowMacOSX::getNativeWindowHandles()
+{
+    // macOS stub: native window handle 未配線、NULL pair 返却。
+    return LLNativeWindowHandles{};
 }
 
 // get a double value from a dictionary

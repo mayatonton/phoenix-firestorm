@@ -35,19 +35,10 @@
 #include "llrendertarget.h"
 #include "lltexture.h"
 #include "llshadermgr.h"
+#include "llvkloader.h"
 #include "hbxxh.h"
 #include "glm/gtc/type_ptr.hpp"
-
-#if LL_WINDOWS
-extern void APIENTRY gl_debug_callback(GLenum source,
-                                GLenum type,
-                                GLuint id,
-                                GLenum severity,
-                                GLsizei length,
-                                const GLchar* message,
-                                GLvoid* userParam)
-;
-#endif
+#include <cstring>
 
 thread_local LLRender gGL;
 
@@ -62,6 +53,12 @@ glm::mat4 gGLDeltaModelView;
 glm::mat4 gGLInverseDeltaModelView;
 
 S32 gGLViewport[4];
+
+void llSetGLViewport(S32 x, S32 y, S32 w, S32 h)
+{
+    glViewport(x, y, w, h);
+    LLVKLoader::setRenderViewport(x, y, w, h);
+}
 
 
 U32 LLRender::sUICalls = 0;
@@ -213,6 +210,12 @@ void LLTexUnit::bindFast(LLTexture* texture)
         setTextureAddressModeFast(gl_tex->mAddressMode, gl_tex->getTarget());
         setTextureFilteringOptionFast(gl_tex->mFilterOption, gl_tex->getTarget());
     }
+    mCurrImageGL = gl_tex;
+    mCurrRenderTarget = nullptr;
+    mCurrCubeMap      = nullptr;
+    mCurrCompareMode  = false;
+    mCurrAddressMode  = gl_tex->getAddressMode();
+    mCurrFilterOption = gl_tex->getFilteringOption();
 }
 
 bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
@@ -249,6 +252,12 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                         setTextureFilteringOption(gl_tex->mFilterOption);
                     }
                 }
+                mCurrImageGL = gl_tex;
+                mCurrRenderTarget = nullptr;
+                mCurrCubeMap      = nullptr;
+                mCurrCompareMode  = false;
+                mCurrAddressMode  = gl_tex->getAddressMode();
+                mCurrFilterOption = gl_tex->getFilteringOption();
             }
             else
             {
@@ -326,6 +335,13 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind, S32
         }
     }
 
+    mCurrImageGL = texture;
+    mCurrRenderTarget = nullptr;
+    mCurrCubeMap      = nullptr;
+    mCurrCompareMode  = false;
+    mCurrAddressMode  = texture->getAddressMode();
+    mCurrFilterOption = texture->getFilteringOption();
+
     stop_glerror();
 
     return true;
@@ -359,7 +375,6 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
                 setTextureAddressMode(cubeMap->mImages[0]->mAddressMode);
                 setTextureFilteringOption(cubeMap->mImages[0]->mFilterOption);
             }
-            return true;
         }
         else
         {
@@ -367,6 +382,13 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
             return false;
         }
     }
+
+    mCurrCubeMap      = cubeMap;
+    mCurrImageGL      = nullptr;
+    mCurrRenderTarget = nullptr;
+    mCurrCompareMode  = false;
+    mCurrAddressMode  = cubeMap->mImages[0]->getAddressMode();
+    mCurrFilterOption = cubeMap->mImages[0]->getFilteringOption();
     return true;
 }
 
@@ -388,7 +410,92 @@ bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth)
         bindManual(renderTarget->getUsage(), renderTarget->getTexture());
     }
 
+    mCurrRenderTarget = renderTarget;
+    mCurrRTAttachment = 0;
+    mCurrRTDepth      = bindDepth;
+    mCurrCompareMode  = bindDepth && renderTarget->usesDepthCompareSampler();
+    mCurrImageGL      = nullptr;
+    mCurrCubeMap      = nullptr;
+    mCurrAddressMode  = TAM_WRAP;
+    mCurrFilterOption = TFO_BILINEAR;
+
+    renderTarget->bindForShaderRead(mCurrRTAttachment, bindDepth);
+
     return true;
+}
+
+VkImageView LLTexUnit::getLiveVkImageView() const
+{
+    if (mCurrRenderTarget != nullptr)
+    {
+        const bool same_pass = (mCurrRenderTarget == LLRenderTarget::getCurrentBoundTarget());
+        if (same_pass)
+        {
+            return VK_NULL_HANDLE;
+        }
+        mCurrRenderTarget->bindForShaderRead(mCurrRTAttachment, mCurrRTDepth);
+        if (mCurrRTDepth)
+        {
+            return mCurrRenderTarget->hasVkDepth() ? mCurrRenderTarget->getVkDepthView()
+                                                   : VK_NULL_HANDLE;
+        }
+        return mCurrRenderTarget->hasVkImage(mCurrRTAttachment)
+                   ? mCurrRenderTarget->getVkImageView(mCurrRTAttachment)
+                   : VK_NULL_HANDLE;
+    }
+    if (mCurrCubeMap != nullptr && mCurrCubeMap->hasVkCubeImage())
+    {
+        return mCurrCubeMap->getVkCubeImageView();
+    }
+    if (mCurrImageGL != nullptr && mCurrImageGL->hasVkImage())
+    {
+        return mCurrImageGL->getVkImageView();
+    }
+    return VK_NULL_HANDLE;
+}
+
+U8 LLTexUnit::getLiveVkImageViewDim() const
+{
+    if (mCurrRenderTarget != nullptr)
+    {
+        return LLGLSLShader::VKSD_2D;
+    }
+    if (mCurrCubeMap != nullptr && mCurrCubeMap->hasVkCubeImage())
+    {
+        return LLGLSLShader::VKSD_CUBE;
+    }
+    if (mCurrImageGL != nullptr && mCurrImageGL->hasVkImage())
+    {
+        // LLImageGL backing の bind target (= setTarget で設定、 llimagegl.h:205) から判別。
+        //   reflection/hero probe の cube-array (LLCubeMapArray::bind → bind(mImage)、
+        //   mImage->setTarget(TT_CUBE_MAP_ARRAY)) も当経路。
+        switch (mCurrImageGL->getTarget())
+        {
+        case TT_CUBE_MAP:       return LLGLSLShader::VKSD_CUBE;
+        case TT_CUBE_MAP_ARRAY: return LLGLSLShader::VKSD_CUBE_ARRAY;
+        case TT_TEXTURE_3D:     return LLGLSLShader::VKSD_3D;
+        default:                return LLGLSLShader::VKSD_2D;  // TT_TEXTURE / TT_RECT_TEXTURE 等
+        }
+    }
+    return LLGLSLShader::VKSD_2D;
+}
+
+VkSampler LLTexUnit::getLiveVkSampler() const
+{
+    eTextureFilterOptions effective_filter = mCurrFilterOption;
+    if (effective_filter == TFO_ANISOTROPIC)
+    {
+        const bool global_aniso = gGLManager.mHasAnisotropic && LLImageGL::sGlobalUseAnisotropic;
+        if (!global_aniso)
+        {
+            effective_filter = TFO_TRILINEAR;
+        }
+    }
+
+    return LLVKLoader::getSamplerForState((U32)mCurrAddressMode,
+                                          (U32)effective_filter,
+                                          mHasMipMaps,
+                                          mCurrCompareMode);
 }
 
 bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
@@ -397,6 +504,8 @@ bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
     {
         return false;
     }
+
+    mCurrCompareMode = false;
 
     if(mCurrTexture != texture)
     {
@@ -407,6 +516,10 @@ bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
         mCurrTexture = texture;
         glBindTexture(sGLTextureType[type], texture);
         mHasMipMaps = hasMips;
+
+        mCurrImageGL = nullptr;
+        mCurrRenderTarget = nullptr;
+        mCurrCubeMap = nullptr;
     }
     return true;
 }
@@ -426,6 +539,9 @@ void LLTexUnit::unbind(eTextureType type)
     if (mCurrTexType == type)
     {
         mCurrTexture = 0;
+        mCurrImageGL = nullptr;
+        mCurrRenderTarget = nullptr;
+        mCurrCubeMap = nullptr;
 
         if (type == LLTexUnit::TT_TEXTURE)
         {
@@ -447,6 +563,9 @@ void LLTexUnit::unbindFast(eTextureType type)
     if (mCurrTexType == type)
     {
         mCurrTexture = 0;
+        mCurrImageGL = nullptr;
+        mCurrRenderTarget = nullptr;
+        mCurrCubeMap = nullptr;
 
         if (type == LLTexUnit::TT_TEXTURE)
         {
@@ -472,6 +591,8 @@ void LLTexUnit::setTextureAddressMode(eTextureAddressMode mode)
 
 void LLTexUnit::setTextureAddressModeFast(eTextureAddressMode mode, eTextureType tex_type)
 {
+    mCurrAddressMode = mode;
+
     glTexParameteri(sGLTextureType[tex_type], GL_TEXTURE_WRAP_S, sGLAddressMode[mode]);
     glTexParameteri(sGLTextureType[tex_type], GL_TEXTURE_WRAP_T, sGLAddressMode[mode]);
     if (tex_type == TT_CUBE_MAP || tex_type == TT_CUBE_MAP_ARRAY || tex_type == TT_TEXTURE_3D)
@@ -491,6 +612,8 @@ void LLTexUnit::setTextureFilteringOption(LLTexUnit::eTextureFilterOptions optio
 
 void LLTexUnit::setTextureFilteringOptionFast(LLTexUnit::eTextureFilterOptions option, eTextureType tex_type)
 {
+    mCurrFilterOption = option;
+
     if (option == TFO_POINT)
     {
         glTexParameteri(sGLTextureType[tex_type], GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -802,6 +925,16 @@ LLRender::LLRender()
     mMode(LLRender::TRIANGLES),
     mCurrTextureUnitIndex(0),
     mLineWidth(1.f), // <FS> Line width OGL core profile fix by Rye Mutt
+    mPolygonOffsetFactor(0.f), // init = GL default
+    mPolygonOffsetUnits(0.f),  // init = GL default
+    // blend factor init = GL default (= glBlendFunc
+    //   既定値 src=GL_ONE / dst=GL_ZERO) = BF_ONE / BF_ZERO 値。 旧 uninitialized U8 = lambda
+    //   gl_blend_factor_to_vk で BF_UNDEF (= 10) や不正値 trigger risk = LL_ERRS fatal abort
+    //   発火源ゆえ literal init で防止。
+    mCurrBlendColorSFactor(BF_ONE),
+    mCurrBlendColorDFactor(BF_ZERO),
+    mCurrBlendAlphaSFactor(BF_ONE),
+    mCurrBlendAlphaDFactor(BF_ZERO),
     // <FS:Ansariel> Don't ignore OpenGL max line width
     mMaxLineWidthSmooth(1.f),
     mMaxLineWidthAliased(1.f)
@@ -850,22 +983,13 @@ LLRender::~LLRender()
 
 bool LLRender::init(bool needs_vertex_buffer)
 {
-#if LL_WINDOWS
-    if (gGLManager.mHasDebugOutput && gDebugGL)
-    { //setup debug output callback
-        //glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_LOW_ARB, 0, NULL, GL_TRUE);
-        glDebugMessageCallback((GLDEBUGPROC) gl_debug_callback, NULL);
-        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    }
-#endif
-
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
     gGL.setAmbientLightColor(LLColor4::black);
 
-    glCullFace(GL_BACK);
+    LLGLState::setCullFaceMode(GL_BACK);
 
     // necessary for reflection maps
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
@@ -991,12 +1115,196 @@ void LLRender::syncLightState()
         shader->uniform3fv(LLShaderMgr::LIGHT_AMBIENT, 1, mAmbientLightColor.mV);
         shader->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_primary[0] ? 1 : 0);
 
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::Lights_PerProgramBind         lights_data = {};
+            LLVKLoader::LightsSpecular_PerProgramBind lights_specular_data = {};
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                lights_data.light_position[i][0] = position[i].mV[0];
+                lights_data.light_position[i][1] = position[i].mV[1];
+                lights_data.light_position[i][2] = position[i].mV[2];
+                lights_data.light_position[i][3] = position[i].mV[3];
+                lights_data.light_diffuse[i][0]  = diffuse[i].mV[0];
+                lights_data.light_diffuse[i][1]  = diffuse[i].mV[1];
+                lights_data.light_diffuse[i][2]  = diffuse[i].mV[2];
+
+                lights_specular_data.light_position[i][0]    = position[i].mV[0];
+                lights_specular_data.light_position[i][1]    = position[i].mV[1];
+                lights_specular_data.light_position[i][2]    = position[i].mV[2];
+                lights_specular_data.light_position[i][3]    = position[i].mV[3];
+                lights_specular_data.light_attenuation[i][0] = attenuation[i].mV[0];
+                lights_specular_data.light_attenuation[i][1] = attenuation[i].mV[1];
+                lights_specular_data.light_attenuation[i][2] = attenuation[i].mV[2];
+                lights_specular_data.light_attenuation[i][3] = attenuation[i].mV[3];
+                lights_specular_data.light_diffuse[i][0]     = diffuse[i].mV[0];
+                lights_specular_data.light_diffuse[i][1]     = diffuse[i].mV[1];
+                lights_specular_data.light_diffuse[i][2]     = diffuse[i].mV[2];
+            }
+            LLVKLoader::writeCurrentLightsUBO(lights_data);
+            LLVKLoader::writeCurrentLightsSpecularUBO(lights_specular_data);
+        }
+
+        if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+            && shader->mVkPerProgramUBOMapped != nullptr
+            && shader->mVkPerProgramUBOSize == 256)
+        {
+            struct Preview_UBO
+            {
+                F32 light_position[8][4];
+                F32 light_diffuse[8][4];
+            };
+            static_assert(sizeof(Preview_UBO) == 256, "Preview_UBO must be 256B std140");
+            Preview_UBO ubo_data = {};
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                ubo_data.light_position[i][0] = position[i].mV[0];
+                ubo_data.light_position[i][1] = position[i].mV[1];
+                ubo_data.light_position[i][2] = position[i].mV[2];
+                ubo_data.light_position[i][3] = position[i].mV[3];
+                ubo_data.light_diffuse[i][0] = diffuse[i].mV[0];
+                ubo_data.light_diffuse[i][1] = diffuse[i].mV[1];
+                ubo_data.light_diffuse[i][2] = diffuse[i].mV[2];
+            }
+            memcpy(shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        }
+
+        if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+            && shader->mVkPerProgramUBOMapped != nullptr
+            && (shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
+                || shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))
+        {
+            char* mapped = (char*)shader->mVkPerProgramUBOMapped;
+            U32 lights_offset =
+                (shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW)
+                ? LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_NO_SHADOW
+                : LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_SHADOW;
+
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { position[i].mV[0], position[i].mV[1], position[i].mV[2], position[i].mV[3] };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+            lights_offset += 128;
+
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { direction[i].mV[0], direction[i].mV[1], direction[i].mV[2], 0.f };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+            lights_offset += 128;
+
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { attenuation[i].mV[0], attenuation[i].mV[1], attenuation[i].mV[2], attenuation[i].mV[3] };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+            lights_offset += 128;
+
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { diffuse[i].mV[0], diffuse[i].mV[1], diffuse[i].mV[2], 0.f };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+
+        }
+
+        if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+            && shader->mVkPerProgramUBOMapped != nullptr
+            && (shader->mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_SUNSHADOW
+                || shader->mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW))
+        {
+            char* mapped = (char*)shader->mVkPerProgramUBOMapped;
+            U32 lights_offset =
+                (shader->mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW)
+                ? LLVKLoader::GLTFMR_UBO_OFFSET_LIGHTS_NOSHADOW
+                : LLVKLoader::GLTFMR_UBO_OFFSET_LIGHTS_SUNSHADOW;
+
+            // light_position[8] vec4 (128B)
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { position[i].mV[0], position[i].mV[1], position[i].mV[2], position[i].mV[3] };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+            lights_offset += 128;
+
+            // light_direction[8] vec4 (128B、 vec3 + 4B pad、 GLSL は vec4 declare)
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { direction[i].mV[0], direction[i].mV[1], direction[i].mV[2], 0.f };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+            lights_offset += 128;
+
+            // light_attenuation[8] vec4 (128B)
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { attenuation[i].mV[0], attenuation[i].mV[1], attenuation[i].mV[2], attenuation[i].mV[3] };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+            lights_offset += 128;
+
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { diffuse[i].mV[0], diffuse[i].mV[1], diffuse[i].mV[2], 0.f };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+            lights_offset += 128;
+
+            for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+            {
+                F32 v[4] = { size[i].mV[0], size[i].mV[1], 0.f, 0.f };
+                memcpy(mapped + lights_offset + i * 16, v, 16);
+            }
+
+        }
+
         if (sClassicMode)
         {
             shader->uniform3fv(LLShaderMgr::AMBIENT, 1, mAmbientLightColor.mV);
             shader->uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, 1, diffuse[0].mV);
             shader->uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, 1, diffuse_b[0].mV);
         }
+    }
+}
+
+void LLRender::getLightArrayData(F32* position_out, F32* direction_out, F32* attenuation_out, F32* diffuse_out) const
+{
+    for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+    {
+        const LLLightState* light = &mLightState[i];
+
+        // position vec4 (= syncLightState position[i] = light->mPosition)
+        position_out[i * 4 + 0] = light->mPosition.mV[0];
+        position_out[i * 4 + 1] = light->mPosition.mV[1];
+        position_out[i * 4 + 2] = light->mPosition.mV[2];
+        position_out[i * 4 + 3] = light->mPosition.mV[3];
+
+        // direction vec3 (= syncLightState direction[i] = light->mSpotDirection)
+        direction_out[i * 3 + 0] = light->mSpotDirection.mV[0];
+        direction_out[i * 3 + 1] = light->mSpotDirection.mV[1];
+        direction_out[i * 3 + 2] = light->mSpotDirection.mV[2];
+
+        // attenuation vec4 (= syncLightState attenuation[i].set(mLinearAtten, mQuadraticAtten, mSpecular.mV[2], mSpecular.mV[3]))
+        attenuation_out[i * 4 + 0] = light->mLinearAtten;
+        attenuation_out[i * 4 + 1] = light->mQuadraticAtten;
+        attenuation_out[i * 4 + 2] = light->mSpecular.mV[2];
+        attenuation_out[i * 4 + 3] = light->mSpecular.mV[3];
+
+        // diffuse vec3 (= syncLightState diffuse[i].set(light->mDiffuse.mV))
+        diffuse_out[i * 3 + 0] = light->mDiffuse.mV[0];
+        diffuse_out[i * 3 + 1] = light->mDiffuse.mV[1];
+        diffuse_out[i * 3 + 2] = light->mDiffuse.mV[2];
+    }
+}
+
+void LLRender::getLightDeferredAttenuationData(F32* size_out) const
+{
+    for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+    {
+        const LLLightState* light = &mLightState[i];
+        size_out[i * 2 + 0] = light->mSize;
+        size_out[i * 2 + 1] = light->mFalloff;
     }
 }
 
@@ -1028,6 +1336,8 @@ void LLRender::syncMatrices()
     if (shader)
     {
         bool mvp_done = false;
+        if (!LLVKLoader::shouldUseVulkanRender())
+        {
 
         U32 i = MM_MODELVIEW;
         if (mMatHash[MM_MODELVIEW] != shader->mMatHash[MM_MODELVIEW])
@@ -1141,6 +1451,50 @@ void LLRender::syncMatrices()
             }
         }
 
+        }
+
+        if (LLVKLoader::shouldUseVulkanRender())
+        {
+            LLVKLoader::PerFrameMatrixUBO perframe = {};
+            LLVKLoader::TextureMatrixUBO  texmat   = {};
+
+            const glm::mat4& proj_mat = mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]];
+            glm::mat4 vulkan_z_correction = glm::identity<glm::mat4>();
+            vulkan_z_correction[2][2] = 0.5f;
+            vulkan_z_correction[3][2] = 0.5f;
+            const glm::mat4 proj_mat_vulkan = vulkan_z_correction * proj_mat;
+
+            std::memcpy(perframe.projection_matrix,
+                        glm::value_ptr(proj_mat_vulkan),
+                        sizeof(perframe.projection_matrix));
+
+            const glm::mat4 inv_proj = glm::inverse(proj_mat);
+            std::memcpy(perframe.inverse_projection_matrix,
+                        glm::value_ptr(inv_proj),
+                        sizeof(perframe.inverse_projection_matrix));
+
+            const glm::mat4 identity = glm::identity<glm::mat4>();
+            std::memcpy(perframe.identity_matrix,
+                        glm::value_ptr(identity),
+                        sizeof(perframe.identity_matrix));
+
+            std::memcpy(perframe.last_modelview_matrix,
+                        gGLLastModelView,
+                        sizeof(perframe.last_modelview_matrix));
+
+            for (U32 tex = 0; tex < 4; ++tex)
+            {
+                const glm::mat4& tex_mat = mMatrix[MM_TEXTURE0 + tex][mMatIdx[MM_TEXTURE0 + tex]];
+                std::memcpy(texmat.texture_matrix[tex],
+                            glm::value_ptr(tex_mat),
+                            sizeof(texmat.texture_matrix[tex]));
+            }
+
+            LLVKLoader::writeCurrentPerFrameMatrixUBO(perframe, texmat);
+
+            const glm::mat4& modelview_mat = mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]];
+            LLVKLoader::pushCurrentModelviewMatrix(glm::value_ptr(modelview_mat));
+        }
 
         if (shader->mFeatures.hasLighting || shader->mFeatures.calculatesLighting || shader->mFeatures.calculatesAtmospherics)
         { //also sync light state
@@ -1485,6 +1839,61 @@ LLTexUnit* LLRender::getTexUnit(U32 index)
     }
 }
 
+void LLRender::clearStaleImageGLRefs(LLImageGL* victim)
+{
+    if (victim == nullptr)
+    {
+        return;
+    }
+    for (U32 i = 0; i < LL_NUM_TEXTURE_LAYERS; ++i)
+    {
+        if (gGL.mTexUnits[i].mCurrImageGL == victim)
+        {
+            gGL.mTexUnits[i].mCurrImageGL = nullptr;
+        }
+    }
+    if (gGL.mDummyTexUnit.mCurrImageGL == victim)
+    {
+        gGL.mDummyTexUnit.mCurrImageGL = nullptr;
+    }
+    if (sBufferDataList != nullptr)
+    {
+        for (auto& entry : *sBufferDataList)
+        {
+            if (entry.mImageGL == victim)
+            {
+                entry.mImageGL = nullptr;
+            }
+        }
+    }
+}
+
+// invalidate stale LLCubeMap* raw pointers across all LLTexUnit::mCurrCubeMap on
+//   LLCubeMap destruction (= sky environmentMap は LLVOSky::mCubeMap (LLPointer) 保持 →
+//   ~LLVOSky (region 変更/teleport の sky 再構築、 llvosky.cpp:460) で free される際の
+//   dangling use-after-free 防止 = clearStaleImageGLRefs と同 class の world transition crash)。
+//   ~LLCubeMap() 冒頭から main thread context で呼出。 gGL 32 tex unit + mDummyTexUnit を
+//   nullptr 置換のみ (= GL path 不変)。 cubemap は sBufferDataList playback entry には
+//   入らない (= LLVertexBufferData::mImageGL は LLImageGL のみ保持) ゆえ texunit のみ対象。
+void LLRender::clearStaleCubeMapRefs(LLCubeMap* victim)
+{
+    if (victim == nullptr)
+    {
+        return;
+    }
+    for (U32 i = 0; i < LL_NUM_TEXTURE_LAYERS; ++i)
+    {
+        if (gGL.mTexUnits[i].mCurrCubeMap == victim)
+        {
+            gGL.mTexUnits[i].mCurrCubeMap = nullptr;
+        }
+    }
+    if (gGL.mDummyTexUnit.mCurrCubeMap == victim)
+    {
+        gGL.mDummyTexUnit.mCurrCubeMap = nullptr;
+    }
+}
+
 LLLightState* LLRender::getLight(U32 index)
 {
     if (index < mLightState.size())
@@ -1523,6 +1932,13 @@ void LLRender::setLineWidth(F32 line_width)
     }
 }
 // </FS>
+
+void LLRender::setPolygonOffset(F32 factor, F32 units)
+{
+    mPolygonOffsetFactor = factor;
+    mPolygonOffsetUnits  = units;
+    glPolygonOffset(factor, units);
+}
 
 bool LLRender::verifyTexUnitActive(U32 unitToVerify)
 {
@@ -1657,6 +2073,7 @@ void LLRender::flush()
                     mMode,
                     count,
                     gGL.getTexUnit(0)->mCurrTexture,
+                    gGL.getTexUnit(0)->mCurrImageGL,
                     mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]],
                     mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]],
                     mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]]
@@ -1667,7 +2084,11 @@ void LLRender::flush()
                 vb = bufferfromCache(attribute_mask, count);
             }
 
+            LLGLSLShader::populateAndBindUniversalDescriptorSet();
+
             drawBuffer(vb, mMode, count);
+
+            LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
         }
         else
         {
@@ -2024,6 +2445,11 @@ void LLRender::diffuseColor3f(F32 r, F32 g, F32 b)
     if (shader)
     {
         shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, r,g,b,1.f);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::DrawColor_PerShaderBind draw_color = { r, g, b, 1.f };
+            LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+        }
     }
 }
 
@@ -2035,6 +2461,11 @@ void LLRender::diffuseColor3fv(const F32* c)
     if (shader)
     {
         shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, c[0], c[1], c[2], 1.f);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::DrawColor_PerShaderBind draw_color = { c[0], c[1], c[2], 1.f };
+            LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+        }
     }
 }
 
@@ -2046,6 +2477,11 @@ void LLRender::diffuseColor4f(F32 r, F32 g, F32 b, F32 a)
     if (shader)
     {
         shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, r,g,b,a);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::DrawColor_PerShaderBind draw_color = { r, g, b, a };
+            LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+        }
     }
 }
 
@@ -2057,6 +2493,11 @@ void LLRender::diffuseColor4fv(const F32* c)
     if (shader)
     {
         shader->uniform4fv(LLShaderMgr::DIFFUSE_COLOR, 1, c);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::DrawColor_PerShaderBind draw_color = { c[0], c[1], c[2], c[3] };
+            LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+        }
     }
 }
 
@@ -2068,6 +2509,11 @@ void LLRender::diffuseColor4ubv(const U8* c)
     if (shader)
     {
         shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, c[0]/255.f, c[1]/255.f, c[2]/255.f, c[3]/255.f);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::DrawColor_PerShaderBind draw_color = { c[0]/255.f, c[1]/255.f, c[2]/255.f, c[3]/255.f };
+            LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+        }
     }
 }
 
@@ -2079,6 +2525,11 @@ void LLRender::diffuseColor4ub(U8 r, U8 g, U8 b, U8 a)
     if (shader)
     {
         shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, r/255.f, g/255.f, b/255.f, a/255.f);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::DrawColor_PerShaderBind draw_color = { r/255.f, g/255.f, b/255.f, a/255.f };
+            LLVKLoader::writeCurrentDrawColorUBO(draw_color);
+        }
     }
 }
 

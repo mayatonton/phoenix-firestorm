@@ -25,18 +25,43 @@
 
 /*[EXTRA_CODE_HERE]*/
 
-out vec4 frag_color;
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
 
-#if !defined(HAS_DIFFUSE_LOOKUP)
-uniform sampler2D diffuseMap;
-#endif
+layout(location = 0) in vec3 vary_position;
+layout(location = 1) in vec4 vertex_color;
+layout(location = 2) in vec2 vary_texcoord0;
+#else
+out vec4 frag_color;
 
 in vec3 vary_position;
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
+#endif
 
 vec3 srgb_to_linear(vec3 cs);
 vec3 linear_to_srgb(vec3 cl);
+
+#ifdef LL_VULKAN_GLSL
+#if !defined(HAS_DIFFUSE_LOOKUP)
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#endif
+
+#if defined(HAS_ALPHA_MASK) || defined(IS_ALPHA)
+layout(push_constant) uniform FullbrightF_PC
+{
+#ifdef HAS_ALPHA_MASK
+    layout(offset = 64) float minimum_alpha;
+#endif
+#ifdef IS_ALPHA
+    layout(offset = 72) float waterSign;
+#endif
+};
+#endif
+#else
+#if !defined(HAS_DIFFUSE_LOOKUP)
+uniform sampler2D diffuseMap;
+#endif
 
 #ifdef HAS_ALPHA_MASK
 uniform float minimum_alpha;
@@ -44,7 +69,12 @@ uniform float minimum_alpha;
 
 #ifdef IS_ALPHA
 uniform vec4 waterPlane;
-void waterClip(vec3 pos);
+uniform float waterSign;
+#endif
+#endif
+
+#ifdef IS_ALPHA
+void waterClip(vec3 pos, float waterSign);
 void calcAtmosphericVars(vec3 inPositionEye, vec3 light_dir, float ambFactor, out vec3 sunlit, out vec3 amblit, out vec3 additive,
                          out vec3 atten);
 vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
@@ -56,7 +86,7 @@ void main()
 {
     mirrorClip(vary_position);
 #ifdef IS_ALPHA
-    waterClip(vary_position.xyz);
+    waterClip(vary_position.xyz, waterSign);
 #endif
 
 #ifdef HAS_DIFFUSE_LOOKUP

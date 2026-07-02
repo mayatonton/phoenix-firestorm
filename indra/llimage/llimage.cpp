@@ -728,6 +728,14 @@ U8* LLImageBase::allocateData(S32 size)
                 LL_ERRS() << "Failed to allocate image data size [" << size << "]" << LL_ENDL;
             }
         }
+        else
+        {
+            // <FS:AYA>
+            //   ll_aligned_malloc_16 は uninitialized memory alloc (= memset/calloc なし)。
+            //   memset(0) で全域 zero init し、未書込み領域の garbage 値を排除する。
+            memset(mData, 0, size);
+            // </FS:AYA>
+        }
     }
 
     if (mBadBufferAllocation)

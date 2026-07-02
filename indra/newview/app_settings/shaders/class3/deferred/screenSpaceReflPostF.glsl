@@ -25,11 +25,48 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
 
 uniform vec2 screen_res;
+#endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+#else
 uniform mat4 projection_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+#define inv_proj inverse_projection_matrix
+#else
 uniform mat4 inv_proj;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform ScreenSpaceReflPostF_PerProgramBind
+{
+    float zNear;
+    float zFar;
+    float _screenSpaceReflPostF_pad0;
+    float _screenSpaceReflPostF_pad1;
+};
+
+in vec2 vary_fragcoord;
+in vec3 camera_ray;
+
+layout(set = 1, binding = 1) uniform sampler2D specularRect;
+layout(set = 1, binding = 2) uniform sampler2D diffuseRect;
+layout(set = 1, binding = 3) uniform sampler2D diffuseMap;
+#else
 uniform float zNear;
 uniform float zFar;
 
@@ -39,6 +76,7 @@ in vec3 camera_ray;
 uniform sampler2D specularRect;
 uniform sampler2D diffuseRect;
 uniform sampler2D diffuseMap;
+#endif
 
 vec4 getNorm(vec2 screenpos);
 float getDepth(vec2 pos_screen);

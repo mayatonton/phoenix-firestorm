@@ -23,6 +23,38 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 0) out vec4 normal_g;
+#ifdef HAS_ATTRIBUTE_TANGENT
+layout(location = 8) in vec4 tangent;
+layout(location = 1) out vec4 tangent_g;
+#endif
+
+layout(set = 1, binding = 0, std140) uniform NormalDebug_PerProgramBind
+{
+    float debug_normal_draw_length;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_NormalDebug__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_NormalDebug__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_NormalDebug__pad2;
+#endif
+};
+#else
 in vec3 position;
 in vec3 normal;
 out vec4 normal_g;
@@ -32,14 +64,36 @@ out vec4 tangent_g;
 #endif
 
 uniform float debug_normal_draw_length;
+#endif
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();
 #else
+#ifdef LL_VULKAN_GLSL
+#define normal_matrix mat3(transpose(inverse(modelview_matrix)))
+#else
 uniform mat3 normal_matrix;
 #endif
+#endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#else
 uniform mat4 projection_matrix;
 uniform mat4 modelview_matrix;
+#endif
 
 // *NOTE: Should use the modelview_projection_matrix here in the non-skinned
 // case for efficiency, but opting for the simplier implementation for now as

@@ -37,6 +37,7 @@
 
 #include "llrender.h"
 #include "llglslshader.h"
+#include "llvkloader.h"
 
 #include "llglheaders.h"
 
@@ -193,13 +194,35 @@ void LLCubeMapArray::allocate(U32 resolution, U32 components, U32 count, bool us
         mImage->setFilteringOption(LLTexUnit::TFO_BILINEAR);
     }
 
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        U32 vk_mips = 1;
+        if (use_mips)
+        {
+            vk_mips = 0;
+            for (U32 r = resolution; r >= 1; r /= 2) { ++vk_mips; }
+        }
+        VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat(format);
+        if (vk_format != VK_FORMAT_UNDEFINED)
+        {
+            VkImage     vk_image = VK_NULL_HANDLE;
+            VkImageView vk_view  = VK_NULL_HANDLE;
+            void*       vk_alloc = nullptr;
+            if (LLVKLoader::createCubeArrayImageVk(resolution, count, vk_mips, vk_format,
+                                                   vk_image, vk_view, vk_alloc))
+            {
+                mImage->setExternalVkBacking(vk_image, vk_view, vk_alloc, resolution, resolution, vk_format);
+            }
+        }
+    }
+
     unbind();
 }
 
 void LLCubeMapArray::bind(S32 stage)
 {
     mTextureStage = stage;
-    gGL.getTexUnit(stage)->bindManual(LLTexUnit::TT_CUBE_MAP_ARRAY, getGLName(), mImage->getUseMipMaps());
+    gGL.getTexUnit(stage)->bind(mImage);
 }
 
 void LLCubeMapArray::unbind()

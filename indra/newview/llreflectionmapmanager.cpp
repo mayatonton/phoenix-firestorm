@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llreflectionmapmanager.h"
+#include "llvkloader.h"
 
 #include <vector>
 
@@ -34,6 +35,7 @@
 #include "llspatialpartition.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewercontrol.h"
 #include "llenvironment.h"
@@ -205,7 +207,7 @@ static bool check_priority(LLReflectionMap* a, LLReflectionMap* b)
 // helper class to seed octree with probes
 void LLReflectionMapManager::update()
 {
-    if (!LLPipeline::sReflectionProbesEnabled || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
+    if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
     {
         return;
     }
@@ -529,7 +531,7 @@ void LLReflectionMapManager::refreshSettings()
 
 LLReflectionMap* LLReflectionMapManager::addProbe(LLSpatialGroup* group)
 {
-    if (gGLManager.mGLVersion < 4.05f || !LLPipeline::sReflectionProbesEnabled)
+    if (gGLManager.mGLVersion < 4.05f || !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         return nullptr;
     }
@@ -662,7 +664,7 @@ LLReflectionMap* LLReflectionMapManager::registerSpatialGroup(LLSpatialGroup* gr
 LLReflectionMap* LLReflectionMapManager::registerViewerObject(LLViewerObject* vobj)
 {
     // <FS:Beq> [FIRE-35070] Don't register manual probes if we're not using them
-    // if (!LLPipeline::sReflectionProbesEnabled)
+    // if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     if (LLPipeline::sReflectionProbeLevel == (S32)LLReflectionMap::ProbeLevel::NONE)
     // </FS:Beq>
     {
@@ -775,7 +777,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("probe update");
     // hacky hot-swap of camera specific render targets
-    gPipeline.mRT = &gPipeline.mAuxillaryRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mAuxillaryRT);
 
     mLightScale = 1.f;
     static LLCachedControl<F32> max_local_light_ambiance(gSavedSettings, "RenderReflectionProbeMaxLocalLightAmbiance", 8.f);
@@ -804,7 +806,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         probe->update(mRenderTarget.getWidth(), face);
     }
 
-    gPipeline.mRT = &gPipeline.mMainRT;
+    LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mMainRT);
 
     S32 sourceIdx = mReflectionProbeCount;
 
@@ -841,11 +843,14 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         // perform a gaussian blur on the super sampled render before downsampling
         {
             gGaussianProgram.bind();
-            gGaussianProgram.uniform1f(resScale, 1.f / (mProbeResolution * 2));
+            gPipeline.bindDeferredHelperBindings(gGaussianProgram);
+            const F32 gaussian_res_scale = 1.f / (mProbeResolution * 2);
+            gGaussianProgram.uniform1f(resScale, gaussian_res_scale);
             S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
 
             // horizontal
             gGaussianProgram.uniform2f(direction, 1.f, 0.f);
+            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);  // horizontal
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
             mRenderTarget.bindTarget();
             gPipeline.mScreenTriangleVB->setBuffer();
@@ -854,6 +859,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
             // vertical
             gGaussianProgram.uniform2f(direction, 0.f, 1.f);
+            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);  // vertical
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
             screen_rt->bindTarget();
             gPipeline.mScreenTriangleVB->setBuffer();
@@ -896,6 +902,14 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 mTexture->bind(0);
                 //glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, mip, 0, 0, probe->mCubeIndex * 6 + face, 0, 0, res, res);
                 glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, mip, 0, 0, sourceIdx * 6 + face, 0, 0, res, res);
+                if (LLVKLoader::isVulkanInitialized() && mTexture->hasVkImage() && mMipChain[i].hasVkImage(0))
+                {
+                    LLVKLoader::endDynamicRendering();
+                    LLVKLoader::copyColorImageToCubeArrayLayerVk(
+                        mMipChain[i].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        mTexture->getVkImage(), (U32)(sourceIdx * 6 + face), (U32)mip, (U32)res, (U32)res);
+                    mMipChain[i].resumeVkDynamicRendering();
+                }
                 //if (i == 0)
                 //{
                     //glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, mip, 0, 0, probe->mCubeIndex * 6 + face, 0, 0, res, res);
@@ -943,6 +957,31 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 gRadianceGenProgram.uniform1f(sMipLevel, (GLfloat)i);
                 gRadianceGenProgram.uniform1i(sWidth, mProbeResolution);
 
+                if (LLVKLoader::isVulkanInitialized()
+                    && gRadianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+                    && gRadianceGenProgram.mVkPerProgramUBOMapped != nullptr)
+                {
+                    struct RadianceGenF_UBO
+                    {
+                        S32 sourceIdx;
+                        F32 mipLevel;
+                        S32 u_width;
+                        F32 max_probe_lod;
+                        F32 probe_strength;
+                        F32 pad0;
+                        F32 pad1;
+                        F32 pad2;
+                    };
+                    RadianceGenF_UBO ubo_data = {};
+                    ubo_data.sourceIdx        = sourceIdx;
+                    ubo_data.mipLevel         = (F32)i;
+                    ubo_data.u_width          = mProbeResolution;
+                    ubo_data.max_probe_lod    = mMaxProbeLOD;
+                    ubo_data.probe_strength   = 1.f;
+                    gRadianceGenProgram.rotatePerProgramUBOSlot();
+                    memcpy(gRadianceGenProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                }
+
                 for (int cf = 0; cf < 6; ++cf)
                 { // for each cube face
                     LLCoordFrame frame;
@@ -955,12 +994,20 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                     mVertexBuffer->drawArrays(gGL.TRIANGLE_STRIP, 0, 4);
 
                     glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, i, 0, 0, probe->mCubeIndex * 6 + cf, 0, 0, res, res);
+                    if (LLVKLoader::isVulkanInitialized() && mTexture->hasVkImage() && mMipChain[0].hasVkImage(0))
+                    {
+                        LLVKLoader::endDynamicRendering();
+                        LLVKLoader::copyColorImageToCubeArrayLayerVk(
+                            mMipChain[0].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            mTexture->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)i, (U32)res, (U32)res);
+                        mMipChain[0].resumeVkDynamicRendering();
+                    }
                 }
 
                 if (i != mMipChain.size() - 1)
                 {
                     res /= 2;
-                    glViewport(0, 0, res, res);
+                    llSetGLViewport(0, 0, res, res);
                 }
             }
 
@@ -975,6 +1022,24 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
             gIrradianceGenProgram.uniform1i(sSourceIdx, sourceIdx);
             gIrradianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mMaxProbeLOD);
+
+            if (LLVKLoader::isVulkanInitialized()
+                && gIrradianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+                && gIrradianceGenProgram.mVkPerProgramUBOMapped != nullptr)
+            {
+                struct IrradianceGenF_UBO
+                {
+                    S32 sourceIdx;
+                    F32 max_probe_lod;
+                    F32 pad0;
+                    F32 pad1;
+                };
+                IrradianceGenF_UBO ubo_data = {};
+                ubo_data.sourceIdx          = sourceIdx;
+                ubo_data.max_probe_lod      = mMaxProbeLOD;
+                gIrradianceGenProgram.rotatePerProgramUBOSlot();
+                memcpy(gIrradianceGenProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            }
 
             mVertexBuffer->setBuffer();
             int start_mip = 0;
@@ -991,7 +1056,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             {
                 int i = start_mip;
                 LL_PROFILE_GPU_ZONE("probe irradiance gen");
-                glViewport(0, 0, mMipChain[i].getWidth(), mMipChain[i].getHeight());
+                llSetGLViewport(0, 0, mMipChain[i].getWidth(), mMipChain[i].getHeight());
                 for (int cf = 0; cf < 6; ++cf)
                 { // for each cube face
                     LLCoordFrame frame;
@@ -1006,6 +1071,14 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                     S32 res = mMipChain[i].getWidth();
                     mIrradianceMaps->bind(channel);
                     glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, i - start_mip, 0, 0, probe->mCubeIndex * 6 + cf, 0, 0, res, res);
+                    if (LLVKLoader::isVulkanInitialized() && mIrradianceMaps->hasVkImage() && mMipChain[0].hasVkImage(0))
+                    {
+                        LLVKLoader::endDynamicRendering();
+                        LLVKLoader::copyColorImageToCubeArrayLayerVk(
+                            mMipChain[0].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            mIrradianceMaps->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)(i - start_mip), (U32)res, (U32)res);
+                        mMipChain[0].resumeVkDynamicRendering();
+                    }
                     mTexture->bind(channel);
                 }
             }
@@ -1083,7 +1156,7 @@ void LLReflectionMapManager::updateNeighbors(LLReflectionMap* probe)
 
 void LLReflectionMapManager::updateUniforms()
 {
-    if (!LLPipeline::sReflectionProbesEnabled)
+    if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         return;
     }
@@ -1303,6 +1376,15 @@ void LLReflectionMapManager::updateUniforms()
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
 
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        static_assert(sizeof(ReflectionProbeData) ==
+                      sizeof(LLVKLoader::ReflectionProbes_PerProgramBind),
+                      "host ReflectionProbeData must match LLVKLoader::ReflectionProbes_PerProgramBind std140 layout");
+        LLVKLoader::writeCurrentReflectionProbesUBO(
+            *reinterpret_cast<const LLVKLoader::ReflectionProbes_PerProgramBind*>(&mProbeData));
+    }
+
 #if 0
     if (!gCubeSnapshot)
     {
@@ -1321,7 +1403,7 @@ void LLReflectionMapManager::updateUniforms()
 
 void LLReflectionMapManager::setUniforms()
 {
-    if (!LLPipeline::sReflectionProbesEnabled)
+    if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         return;
     }

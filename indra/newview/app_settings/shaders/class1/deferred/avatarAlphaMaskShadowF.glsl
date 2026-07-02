@@ -23,14 +23,30 @@
  * $/LicenseInfo$
  */
 
-out vec4 frag_color;
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
 
-uniform float minimum_alpha;
-uniform sampler2D diffuseMap;
+layout(location = 1) in float target_pos_x;
+layout(location = 0) in float pos_w;
+layout(location = 2) in vec2 vary_texcoord0;
+#else
+out vec4 frag_color;
 
 in float target_pos_x;
 in float pos_w;
 in vec2 vary_texcoord0;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(push_constant) uniform AvatarAlphaMaskShadowF_AlphaMaskPC
+{
+    layout(offset = 64) float minimum_alpha;
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#else
+uniform float minimum_alpha;
+uniform sampler2D diffuseMap;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> Cinematic calls
 // bayerDitherDiscard (defined in globalF.glsl, restored in step 2).

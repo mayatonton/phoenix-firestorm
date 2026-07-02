@@ -25,6 +25,21 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+
+layout(location = 1) in vec4 vertex_color;
+layout(location = 0) in vec3 vary_normal;
+layout(location = 2) in vec2 vary_texcoord0;
+layout(location = 3) in vec3 vary_position;
+
+layout(push_constant) uniform TreeF_AlphaMaskPC
+{
+    layout(offset = 64) float minimum_alpha;
+};
+#else
 out vec4 frag_data[4];
 
 uniform sampler2D diffuseMap;
@@ -35,6 +50,7 @@ in vec2 vary_texcoord0;
 in vec3 vary_position;
 
 uniform float minimum_alpha;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);

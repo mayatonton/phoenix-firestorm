@@ -24,20 +24,61 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 // view-space sun / moon dir, set via LLPipeline::bindDeferredShader
+// atmospheric color uniforms set via LLSettingsVOSky shader binding flow
+// inverse projection for far-plane reconstruction when depth==1.0 (sky)
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#define inv_proj inverse_projection_matrix
+
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(set = 1, binding = 0, std140) uniform GodraysF_PerProgramBind
+{
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3  sun_dir;
+#else
+    vec3  _dup_GodraysF_sun_dir;
+#endif
+    float _godraysF_pad0;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3  moon_dir;
+#else
+    vec3  _dup_GodraysF_moon_dir;
+#endif
+    int   aya_r15_godrays_enabled;
+    float aya_r15_godrays_phase_exponent;
+    float aya_r15_godrays_strength;
+    float _godraysF_pad1;
+    float _godraysF_pad2;
+};
+#else
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int  sun_up_factor;
-
-// atmospheric color uniforms set via LLSettingsVOSky shader binding flow
 uniform vec3 sunlight_color;
 uniform vec3 moonlight_color;
-
-// inverse projection for far-plane reconstruction when depth==1.0 (sky)
 uniform mat4 inv_proj;
 
 // Cascaded sun shadow far-clip vector. Redeclared here so we can skip
@@ -49,13 +90,13 @@ uniform vec4 shadow_clip;
 
 // AYAstorm r15 個別 gate (AYAstorm View 無条件 ON / Cinematic は cvar opt-in)
 // <FS:AYAstorm r30 BD改善> master ではなく r15 個別 uniform を見る (Cinematic で master OFF のまま r15 だけ ON 可能)
-uniform int aya_r15_godrays_enabled;
-
 // <FS:AYAstorm r30 BD改善> r15 ビーム感 live cvar tuning
 //   phase_exponent: Mie 前方ピーク (pow(cos_theta, e))。大きいほど太陽方向に集中、ビーム感増
 //   strength: 加算強度。HDR 加算なので大きすぎると空白飛び。
+uniform int aya_r15_godrays_enabled;
 uniform float aya_r15_godrays_phase_exponent;
 uniform float aya_r15_godrays_strength;
+#endif
 
 // helpers provided by deferred/deferredUtil.glsl + deferred/shadowUtil.glsl
 float getDepth(vec2 pos_screen);
@@ -113,6 +154,7 @@ void main()
     for (int i = 0; i < N; ++i)
     {
         vec3 p = view_dir * (float(i) + jitter) * dt;
+#ifdef HAS_SUN_SHADOW
         // Skip samples that are *beyond* the cascade far split. sampleDirec-
         // tionalShadow's surface-shading semantics return 1.0 (lit) there,
         // which over-accumulates into a full-screen additive haze for us.
@@ -124,14 +166,13 @@ void main()
         // sampleDirectionalShadow returns 1.0 when lit, 0.0 when shadowed.
         // We pass light_dir as the surrogate normal so the bias / PCF use
         // a light-facing offset (no real surface normal at mid-air points).
+        float lit = sampleDirectionalShadow(p, light_dir, tc);
+#else
         // Guard: hasShadows=false (shadow detail = 0) skips shadowUtil
         // attach in llviewershadermgr, so the symbol is undefined unless
         // HAS_SUN_SHADOW is set. Fall back to fully lit so the godrays
         // pass still produces a halo (driven by phase only) without
         // breaking link.
-#ifdef HAS_SUN_SHADOW
-        float lit = sampleDirectionalShadow(p, light_dir, tc);
-#else
         float lit = 1.0;
 #endif
         // shadowUtil cascade fallthrough: when a sample sits between near

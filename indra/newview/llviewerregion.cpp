@@ -66,6 +66,8 @@
 #include "llviewerstatsrecorder.h"
 #include "llvlmanager.h"
 #include "llvlcomposition.h"
+#include "llpipelineframecontext.h" // <AYAstorm r41> sub-step 4.3-α: ScopedCameraID
+#include "llviewercamera.h"         // <AYAstorm r41> sub-step 4.3-α: sCurCameraID accessor
 #include "llvoavatarself.h"
 #include "llvocache.h"
 #include "llworld.h"
@@ -1759,8 +1761,7 @@ void LLViewerRegion::idleUpdate(F32 max_update_time)
         mPaused = false; //unpause.
     }
 
-    LLViewerCamera::eCameraID old_camera_id = LLViewerCamera::sCurCameraID;
-    LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
+    LLPipelineFrameContext::ScopedCameraID camera_scope(LLViewerCamera::CAMERA_WORLD);
 
     //reset all occluders
     mImpl->mVOCachePartition->resetOccluders();
@@ -1779,7 +1780,6 @@ void LLViewerRegion::idleUpdate(F32 max_update_time)
     mImpl->mWaitingList.clear();
     mImpl->mVisibleGroups.clear();
 
-    LLViewerCamera::sCurCameraID = old_camera_id;
     return;
 }
 

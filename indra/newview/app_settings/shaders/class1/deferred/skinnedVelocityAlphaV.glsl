@@ -29,13 +29,50 @@
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> Keep both uniform
 // sets so both main() paths link; pick at runtime via AYASTORM_CINEMATIC.
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform PushConstants
+{
+    mat4 modelview_matrix;
+    mat4 last_object_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 modelview_projection_matrix;
 uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 last_modelview_matrix;
+#endif
+// <FS:AYA r30 Phase 3.8 Cinematic mount strategy C texture_matrix0 維持>
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
+{
+    mat4 texture_matrix[4];
+};
+#define texture_matrix0 texture_matrix[0]
+#else
 uniform mat4 texture_matrix0;
+#endif
+// </FS:AYA>
 // </FS:AYA>
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 6) in vec4 diffuse_color;
+layout(location = 2) in vec2 texcoord0;
+
+layout(location = 2) out vec2 vary_texcoord0;
+layout(location = 3) out vec4 vertex_color;
+#else
 in vec3 position;
 in vec4 weight4;
 in vec4 diffuse_color;
@@ -43,8 +80,11 @@ in vec2 texcoord0;
 
 out vec2 vary_texcoord0;
 out vec4 vertex_color;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform mat3x4 lastMatrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
+#endif
 
 mat4 getObjectSkinnedTransform();
 mat4 getLastObjectSkinnedTransform();

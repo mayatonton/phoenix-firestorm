@@ -29,10 +29,18 @@
 
 #define DIFFUSE_ALPHA_MODE_BLEND    1
 
+#ifdef LL_VULKAN_GLSL
+#if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
+layout(location = 0) out vec4 frag_color;
+#else
+layout(location = 0) out vec4 frag_data[4];
+#endif
+#else
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
 out vec4 frag_color;
 #else
 out vec4 frag_data[4];
+#endif
 #endif
 
 void main()

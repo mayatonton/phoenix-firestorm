@@ -896,6 +896,9 @@ void LLFontFreetype::setSubImageLuminanceAlpha(U32 x, U32 y, U32 bitmap_num, U32
     if (0 == stride)
         stride = width;
 
+    // LUMINANCE_ALPHA: glyph density を L (byte 0) と A (byte 1) の両 channel に書く。
+    // L channel を zero-init のままにすると sample.rgb = 0 → BLACK glyph → BG dark 上で invisible。
+    // LUMINANCE_ALPHA 本来 semantic = L = A = glyph density (= grayscale font)。
     U32 i, j;
     U32 to_offset;
     U32 from_offset;
@@ -906,7 +909,9 @@ void LLFontFreetype::setSubImageLuminanceAlpha(U32 x, U32 y, U32 bitmap_num, U32
         from_offset = (height - 1 - i)*stride;
         for (j = 0; j < width; j++)
         {
-            *(target + to_offset*2 + 1) = *(data + from_offset);
+            U8 glyph_byte = *(data + from_offset);
+            *(target + to_offset*2)     = glyph_byte;
+            *(target + to_offset*2 + 1) = glyph_byte;
             to_offset++;
             from_offset++;
         }

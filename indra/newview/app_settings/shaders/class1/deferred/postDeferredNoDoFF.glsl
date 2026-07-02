@@ -29,15 +29,38 @@
 #define HAS_DOF_CHROMA 0
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 2) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+
+layout(set = 1, binding = 0, std140) uniform PostNoDoFF_PerProgramBind
+{
+    vec2 _pndff_screen_res;
+    float _pndff_chroma_str;
+};
+#define screen_res _pndff_screen_res
+#define chroma_str _pndff_chroma_str
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
 
 uniform vec2 screen_res;
 in vec2 vary_fragcoord;
 
 uniform float chroma_str;
+#endif
 
 //=================================
 // borrowed noise from:
@@ -145,6 +168,7 @@ void main()
 
     diff.rgb = clampHDRRange(diff.rgb);
     frag_color = diff;
+    frag_color.a = 1.0;
 
     gl_FragDepth = texture(depthMap, vary_fragcoord.xy).r;
 }
@@ -189,6 +213,8 @@ void main()
 
     diff.rgb = clampHDRRange(diff.rgb);
     frag_color = diff;
+    // non-cinematic 同 alpha=1.0 (= cinematic と同)。
+    frag_color.a = 1.0;
 
     gl_FragDepth = texture(depthMap, vary_fragcoord.xy).r;
 }

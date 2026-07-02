@@ -1,3 +1,28 @@
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+layout(set = 1, binding = 0, std140) uniform PostSnapshotFrame_PerProgramBind
+{
+#ifndef _AYA_UM_screen_res
+#define _AYA_UM_screen_res 1
+    vec2 screen_res;
+#else
+    vec2 _dup_PostSnapshotFrame_screen_res;
+#endif
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    vec2 _pad0;
+#else
+    vec2 _dup_PostSnapshotFrame__pad0;
+#endif
+    vec4 frame_rect; // x, y, width, height (normalized 0->1)
+    vec3 border_color;
+    float border_thickness; // in pixels
+};
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
@@ -7,6 +32,7 @@ uniform vec3 border_color;
 uniform float border_thickness; // in pixels
 
 in vec2 vary_fragcoord;
+#endif
 
 void main()
 {

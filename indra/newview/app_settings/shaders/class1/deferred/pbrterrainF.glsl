@@ -44,15 +44,20 @@
 #define MIX_Z    1 << 5
 #define MIX_W    1 << 6
 
+#ifndef TERRAIN_MIX_DEFINED
+#define TERRAIN_MIX_DEFINED 1
 struct TerrainMix
 {
     vec4 weight;
     int type;
 };
+#endif
 
 TerrainMix get_terrain_mix_weights(float alpha1, float alpha2, float alphaFinal);
 TerrainMix get_terrain_usage_from_weight3(vec3 weight3);
 
+#ifndef PBR_MIX_DEFINED
+#define PBR_MIX_DEFINED 1
 struct PBRMix
 {
     vec4 col;       // RGB color with alpha, linear space
@@ -68,6 +73,7 @@ struct PBRMix
     vec3 emissive;  // RGB emissive color, linear space
 #endif
 };
+#endif
 
 PBRMix init_pbr_mix();
 
@@ -99,8 +105,52 @@ PBRMix terrain_sample_and_multiply_pbr(
 
 PBRMix mix_pbr(PBRMix mix1, PBRMix mix2, float mix2_weight);
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
+#endif
 
+#ifdef LL_VULKAN_GLSL
+#if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+layout(set = 1, binding = 0) uniform sampler2D alpha_ramp;
+#elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
+layout(set = 1, binding = 0) uniform sampler2D paint_map;
+#endif
+
+// https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#additional-textures
+layout(set = 1, binding = 1) uniform sampler2D detail_0_base_color;
+layout(set = 1, binding = 2) uniform sampler2D detail_1_base_color;
+layout(set = 1, binding = 3) uniform sampler2D detail_2_base_color;
+layout(set = 1, binding = 4) uniform sampler2D detail_3_base_color;
+#if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
+layout(set = 1, binding = 5) uniform sampler2D detail_0_normal;
+layout(set = 1, binding = 6) uniform sampler2D detail_1_normal;
+layout(set = 1, binding = 7) uniform sampler2D detail_2_normal;
+layout(set = 1, binding = 19) uniform sampler2D detail_3_normal;
+#endif
+#if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_METALLIC_ROUGHNESS)
+layout(set = 1, binding = 20) uniform sampler2D detail_0_metallic_roughness;
+layout(set = 1, binding = 21) uniform sampler2D detail_1_metallic_roughness;
+layout(set = 1, binding = 22) uniform sampler2D detail_2_metallic_roughness;
+layout(set = 1, binding = 23) uniform sampler2D detail_3_metallic_roughness;
+#endif
+#if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_EMISSIVE)
+layout(set = 1, binding = 24) uniform sampler2D detail_0_emissive;
+layout(set = 1, binding = 25) uniform sampler2D detail_1_emissive;
+layout(set = 1, binding = 26) uniform sampler2D detail_2_emissive;
+layout(set = 1, binding = 27) uniform sampler2D detail_3_emissive;
+#endif
+
+layout(set = 1, binding = 28, std140) uniform PbrTerrainF_PerProgramBind
+{
+    vec4 baseColorFactors[4];   // See also vertex_color in pbropaqueV.glsl
+    vec4 metallicFactors;
+    vec4 roughnessFactors;
+    vec3 emissiveColors[4];
+    vec4 minimum_alphas;        // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+};
+#else
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
 uniform sampler2D alpha_ramp;
 #elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
@@ -140,7 +190,29 @@ uniform vec4 roughnessFactors;
 uniform vec3[4] emissiveColors;
 #endif
 uniform vec4 minimum_alphas; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 vary_position;
+layout(location = 1) in vec3 vary_normal;
+#if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
+layout(location = 3) in vec3 vary_tangents[4];
+layout(location = 7) flat in float vary_signs[4];
+#endif
+
+// vary_texcoord* are used for terrain composition, vary_coords are used for terrain UVs
+#if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
+layout(location = 11) in vec4 vary_texcoord0;
+layout(location = 12) in vec4 vary_texcoord1;
+#elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
+layout(location = 11) in vec2 vary_texcoord;
+#endif
+#if TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 3
+layout(location = 22) in vec4[10] vary_coords;
+#elif TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 1
+layout(location = 22) in vec4[2] vary_coords;
+#endif
+#else
 in vec3 vary_position;
 in vec3 vary_normal;
 #if (TERRAIN_PBR_DETAIL >= TERRAIN_PBR_DETAIL_NORMAL)
@@ -159,6 +231,7 @@ in vec2 vary_texcoord;
 in vec4[10] vary_coords;
 #elif TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT == 1
 in vec4[2] vary_coords;
+#endif
 #endif
 
 void mirrorClip(vec3 position);

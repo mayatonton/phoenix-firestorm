@@ -59,6 +59,7 @@
 #include "llxmltree.h"
 #include "llslurl.h"
 #include "llrender.h"
+#include "llvkloader.h"
 
 #include "stringize.h"
 
@@ -192,6 +193,7 @@
 #include "llworld.h"
 #include "llworldmapview.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llappviewer.h"
 #include "llviewerdisplay.h"
 #include "llspatialpartition.h"
@@ -2799,6 +2801,11 @@ void LLViewerWindow::reshape(S32 width, S32 height)
     {
         gWindowResized = true;
 
+        if (LLVKLoader::isVulkanInitialized() && width > 0 && height > 0)
+        {
+            LLVKLoader::notifyWindowResize((U32)width, (U32)height);
+        }
+
         // update our window rectangle
         mWindowRectRaw.mRight = mWindowRectRaw.mLeft + width;
         mWindowRectRaw.mTop = mWindowRectRaw.mBottom + height;
@@ -4603,8 +4610,8 @@ const float offset_factor = -3.0;
 void renderMeshBaseHullPhysics(LLVOVolume* volume, U32 data_mask, LLColor4& color, LLColor4& line_color)
 {
             LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            glPolygonOffset(offset_factor, offset_units);
+            LLGLState::setPolygonMode(GL_FILL);
+            gGL.setPolygonOffset(offset_factor, offset_units);
             gGL.diffuseColor4fv(color.mV);
             renderMeshBaseHullWithOutline(volume, data_mask, color, line_color);
 }
@@ -4613,8 +4620,8 @@ void renderMeshBaseHullPhysics(LLVOVolume* volume, U32 data_mask, LLColor4& colo
 void renderHullPhysics(LLModel::PhysicsMesh& mesh, const LLColor4& color, const LLColor4& line_color)
 {
     LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    glPolygonOffset(offset_factor, offset_units);
+    LLGLState::setPolygonMode(GL_FILL);
+    gGL.setPolygonOffset(offset_factor, offset_units);
     render_hull_with_outline(mesh, color, line_color);
 }
 
@@ -4643,16 +4650,16 @@ void renderMeshPhysicsTriangles(const LLColor4& color, const LLColor4& line_colo
         {
             {
                 LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-                glPolygonOffset(offset_factor, offset_units);
+                gGL.setPolygonOffset(offset_factor, offset_units);
                 gGL.diffuseColor4fv(color.mV);
                 //decomp has physics mesh, render that mesh
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                LLGLState::setPolygonMode(GL_FILL);
                 LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
             }
             {
                 LLGLEnable offset(GL_POLYGON_OFFSET_LINE);
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                glPolygonOffset(offset_factor, offset_units);
+                LLGLState::setPolygonMode(GL_LINE);
+                gGL.setPolygonOffset(offset_factor, offset_units);
                 gGL.diffuseColor4fv(line_color.mV);
                 LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
             }
@@ -4661,11 +4668,11 @@ void renderMeshPhysicsTriangles(const LLColor4& color, const LLColor4& line_colo
         {
             gGL.flush();
             {
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                LLGLState::setPolygonMode(GL_FILL);
                 gGL.diffuseColor4fv(color.mV);
                 //decomp has physics mesh, render that mesh
                 LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                LLGLState::setPolygonMode(GL_LINE);
                 gGL.diffuseColor4fv(line_color.mV);
                 LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
             }
@@ -4679,16 +4686,16 @@ void renderMeshPhysicsTriangles(const LLColor4& color, const LLColor4& line_colo
         {
             gGL.diffuseColor4fv(color.mV);
             LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            glPolygonOffset(offset_factor, offset_units);
+            LLGLState::setPolygonMode(GL_FILL);
+            gGL.setPolygonOffset(offset_factor, offset_units);
             gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
             LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
         }
         {
             gGL.diffuseColor4fv(line_color.mV);
             LLGLEnable offset(GL_POLYGON_OFFSET_LINE);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            glPolygonOffset(offset_factor, offset_units);
+            LLGLState::setPolygonMode(GL_LINE);
+            gGL.setPolygonOffset(offset_factor, offset_units);
             gGL.setLineWidth(3.f); // <FS> Line width OGL core profile fix by Rye Mutt
             LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
         }
@@ -4697,11 +4704,11 @@ void renderMeshPhysicsTriangles(const LLColor4& color, const LLColor4& line_colo
     {
         gGL.flush();
         {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            LLGLState::setPolygonMode(GL_FILL);
             gGL.diffuseColor4fv(color.mV);
             //decomp has physics mesh, render that mesh
             LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            LLGLState::setPolygonMode(GL_LINE);
             gGL.diffuseColor4fv(line_color.mV);
             gGL.setLineWidth(3.f); // <FS> Line width OGL core profile fix by Rye Mutt
             LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
@@ -4709,7 +4716,7 @@ void renderMeshPhysicsTriangles(const LLColor4& color, const LLColor4& line_colo
     }
 
     gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    LLGLState::setPolygonMode(GL_FILL);
     gGL.popMatrix();
 
     //restore the previous shader
@@ -4825,7 +4832,7 @@ void renderNonMeshHullPhysics(LLVOVolume* vovolume, LLVolume* volume, LLColor4 c
         //render hull
         // TODO: (BEQ) Find out why is this not a call to render_hull? it probably could be if the data is in the right form
 
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        LLGLState::setPolygonMode(GL_LINE);
 
         gGL.diffuseColor4fv(line_color.mV);
         LLVertexBuffer::unbind();
@@ -4835,7 +4842,7 @@ void renderNonMeshHullPhysics(LLVOVolume* vovolume, LLVolume* volume, LLColor4 c
         LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
 
         gGL.diffuseColor4fv(color.mV);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        LLGLState::setPolygonMode(GL_FILL);
         LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
     }
     else
@@ -5019,8 +5026,8 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
     else if (physicsShapeType == LLPhysicsShapeBuilderUtil::PhysicsShapeSpecification::BOX)
     {
         LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glPolygonOffset(offset_factor, offset_units);
+        LLGLState::setPolygonMode(GL_FILL);
+        gGL.setPolygonOffset(offset_factor, offset_units);
         LLVector3 center = physics_spec.getCenter();
         LLVector3 scale = physics_spec.getScale();
         LLVector3 vscale = vovolume->getScale()*2.f;
@@ -5032,8 +5039,8 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
     else if (physicsShapeType == LLPhysicsShapeBuilderUtil::PhysicsShapeSpecification::SPHERE)
     {
         LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glPolygonOffset(offset_factor, offset_units);
+        LLGLState::setPolygonMode(GL_FILL);
+        gGL.setPolygonOffset(offset_factor, offset_units);
 
         LLVolumeParams volume_params;
         volume_params.setType(LL_PCODE_PROFILE_CIRCLE_HALF, LL_PCODE_PATH_CIRCLE);
@@ -5050,8 +5057,8 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
     else if (physicsShapeType == LLPhysicsShapeBuilderUtil::PhysicsShapeSpecification::CYLINDER)
     {
         LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glPolygonOffset(offset_factor, offset_units);
+        LLGLState::setPolygonMode(GL_FILL);
+        gGL.setPolygonOffset(offset_factor, offset_units);
 
         LLVolumeParams volume_params;
         volume_params.setType(LL_PCODE_PROFILE_CIRCLE, LL_PCODE_PATH_LINE);
@@ -5074,11 +5081,11 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
         LLVolume* phys_volume = LLPrimitive::sVolumeManager->refVolume(volume_params, detail);
 
         // TODO: (BEQ) We ought to be able to use a common draw call here too?
-        glPolygonOffset(offset_factor, offset_units);
+        gGL.setPolygonOffset(offset_factor, offset_units);
 
         {
             LLGLEnable offset(GL_POLYGON_OFFSET_LINE);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            LLGLState::setPolygonMode(GL_LINE);
 
             gGL.diffuseColor4fv(line_color.mV);
             pushVerts(phys_volume); // draw the outlines
@@ -5086,7 +5093,7 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
         {
             LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
             gGL.diffuseColor4fv(color.mV);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            LLGLState::setPolygonMode(GL_FILL);
             pushVerts(phys_volume); // draw the filled boxes
         }
         LLPrimitive::sVolumeManager->unrefVolume(phys_volume);
@@ -5104,7 +5111,7 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
         {
             // TODO: (Beq) refactor this!! yet another flavour of drawing the same crap. Can we ratioanlise the arguments
             // <FS:Ansariel> Use a vbo for the static LLVertexBuffer::drawArray/Element functions; by Drake Arconis/Shyotl Kuhr
-            //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            //LLGLState::setPolygonMode(GL_LINE);
             //llassert(LLGLSLShader::sCurBoundShader != 0);
             //LLVertexBuffer::unbind();
             //glVertexPointer(3, GL_FLOAT, 16, phys_volume->mHullPoints);
@@ -5113,14 +5120,14 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
             //glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
 
             //gGL.diffuseColor4fv(color.mV);
-            //glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            //LLGLState::setPolygonMode(GL_FILL);
             //glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
             gGL.diffuseColor4fv(line_color.mV);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            LLGLState::setPolygonMode(GL_LINE);
             LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
 
             gGL.diffuseColor4fv(color.mV);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            LLGLState::setPolygonMode(GL_FILL);
             LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
             // </FS:Ansariel>
         }
@@ -5312,9 +5319,9 @@ void LLViewerWindow::renderSelections( bool for_gl_pick, bool pick_parcel_walls,
                         gSphere.render();
 
                         // Render Inside
-                        glCullFace(GL_FRONT);
+                        LLGLState::setCullFaceMode(GL_FRONT);
                         gSphere.render();
-                        glCullFace(GL_BACK);
+                        LLGLState::setCullFaceMode(GL_BACK);
 
                         gGL.popMatrix();
                     }
@@ -6238,7 +6245,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     if (!keep_window_aspect || (image_width > window_width) || (image_height > window_height))
     {
         if ((image_width <= gGLManager.mGLMaxTextureSize && image_height <= gGLManager.mGLMaxTextureSize) &&
-            (image_width > window_width || image_height > window_height) && LLPipeline::sRenderDeferred && !show_ui)
+            (image_width > window_width || image_height > window_height) && LLPipelineFrameContext::getInstance().isRenderingDeferred() && !show_ui)
         {
             // <FS:Ansariel> FIRE-15667: 24bit depth maps
             //U32 color_fmt = type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH ? GL_DEPTH_COMPONENT : GL_RGBA;
@@ -6246,8 +6253,8 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
             // </FS:Ansariel>
             if (scratch_space.allocate(image_width, image_height, color_fmt, true))
             {
-                original_width = gPipeline.mRT->deferredScreen.getWidth();
-                original_height = gPipeline.mRT->deferredScreen.getHeight();
+                original_width = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth();
+                original_height = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight();
 
                 if (gPipeline.allocateScreenBuffer(image_width, image_height))
                 {
@@ -6358,7 +6365,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                 const U32 subfield = subimage_x+(subimage_y*llceil(scale_factor));
                 display(do_rebuild, scale_factor, subfield, true);
 
-                if (!LLPipeline::sRenderDeferred)
+                if (!LLPipelineFrameContext::getInstance().isRenderingDeferred())
                 {
                     // Required for showing the GUI in snapshots and performing bloom composite overlay
                     // Call even if show_ui is false
@@ -6550,8 +6557,8 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     LLRect window_rect = getWorldViewRectRaw();
 
-    S32 original_width = LLPipeline::sRenderDeferred ? gPipeline.mRT->deferredScreen.getWidth() : gViewerWindow->getWorldViewWidthRaw();
-    S32 original_height = LLPipeline::sRenderDeferred ? gPipeline.mRT->deferredScreen.getHeight() : gViewerWindow->getWorldViewHeightRaw();
+    S32 original_width = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth() : gViewerWindow->getWorldViewWidthRaw();
+    S32 original_height = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight() : gViewerWindow->getWorldViewHeightRaw();
 
     LLRenderTarget scratch_space;
     U32 color_fmt = GL_RGBA;
@@ -6642,13 +6649,13 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, LLCubeMapArray* cubea
     // NOTE: implementation derived from LLFloater360Capture::capture360Images() and simpleSnapshot
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;
     LL_PROFILE_GPU_ZONE("cubeSnapshot");
-    llassert(LLPipeline::sRenderDeferred);
+    llassert(LLPipelineFrameContext::getInstance().isRenderingDeferred());
     llassert(!gCubeSnapshot); //assert a snapshot isn't already in progress
 
-    U32 res = gPipeline.mRT->deferredScreen.getWidth();
+    U32 res = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth();
 
-    //llassert(res <= gPipeline.mRT->deferredScreen.getWidth());
-    //llassert(res <= gPipeline.mRT->deferredScreen.getHeight());
+    //llassert(res <= LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth());
+    //llassert(res <= LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight());
 
     // save current view/camera settings so we can restore them afterwards
     S32 old_occlusion = LLPipeline::sUseOcclusion;
@@ -6899,7 +6906,7 @@ void LLViewerWindow::setup2DViewport(S32 x_offset, S32 y_offset)
     gGLViewport[1] = mWindowRectRaw.mBottom + y_offset;
     gGLViewport[2] = mWindowRectRaw.getWidth();
     gGLViewport[3] = mWindowRectRaw.getHeight();
-    glViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
+    llSetGLViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
 }
 
 
@@ -6917,7 +6924,7 @@ void LLViewerWindow::setup3DViewport(S32 x_offset, S32 y_offset)
     gGLViewport[1] = mWorldViewRectRaw.mBottom + y_offset;
     gGLViewport[2] = mWorldViewRectRaw.getWidth();
     gGLViewport[3] = mWorldViewRectRaw.getHeight();
-    glViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
+    llSetGLViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
 }
 
 void LLViewerWindow::revealIntroPanel()

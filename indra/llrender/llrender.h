@@ -226,6 +226,24 @@ public:
 
     void setHasMipMaps(bool hasMips) { mHasMipMaps = hasMips; }
 
+    LLImageGL*          mCurrImageGL = nullptr;
+
+    LLCubeMap*          mCurrCubeMap = nullptr;
+
+    LLRenderTarget*     mCurrRenderTarget = nullptr;
+    U32                 mCurrRTAttachment = 0;
+    bool                mCurrRTDepth = false;
+    bool                mCurrCompareMode = false;
+
+    VkImageView         getLiveVkImageView() const;
+
+    U8                  getLiveVkImageViewDim() const;
+
+    eTextureAddressMode   mCurrAddressMode  = TAM_WRAP;
+    eTextureFilterOptions mCurrFilterOption = TFO_ANISOTROPIC;
+
+    VkSampler           getLiveVkSampler() const;
+
 protected:
     friend class LLRender;
 
@@ -472,11 +490,40 @@ public:
                eBlendFactor alpha_sfactor, eBlendFactor alpha_dfactor);
 
     LLLightState* getLight(U32 index);
+
+    void getLightArrayData(F32* position_out, F32* direction_out, F32* attenuation_out, F32* diffuse_out) const;
+
+    void getLightDeferredAttenuationData(F32* size_out) const;
+
     void setAmbientLightColor(const LLColor4& color);
 
     void setLineWidth(F32 line_width); // <FS> Line width OGL core profile fix by Rye Mutt
+    F32  getLineWidth() const { return mLineWidth; }
+
+    void setPolygonOffset(F32 factor, F32 units);
+    F32  getPolygonOffsetFactor() const { return mPolygonOffsetFactor; }
+    F32  getPolygonOffsetUnits()  const { return mPolygonOffsetUnits; }
+
+    eBlendFactor getCurrBlendColorSFactor() const { return mCurrBlendColorSFactor; }
+    eBlendFactor getCurrBlendColorDFactor() const { return mCurrBlendColorDFactor; }
+    eBlendFactor getCurrBlendAlphaSFactor() const { return mCurrBlendAlphaSFactor; }
+    eBlendFactor getCurrBlendAlphaDFactor() const { return mCurrBlendAlphaDFactor; }
+
+    bool getColorMaskR() const { return mCurrColorMask[0]; }
+    bool getColorMaskG() const { return mCurrColorMask[1]; }
+    bool getColorMaskB() const { return mCurrColorMask[2]; }
+    bool getColorMaskA() const { return mCurrColorMask[3]; }
 
     LLTexUnit* getTexUnit(U32 index);
+
+    static void clearStaleImageGLRefs(LLImageGL* victim);
+
+    // invalidate stale LLCubeMap* raw pointers across all LLTexUnit::mCurrCubeMap on
+    // LLCubeMap destruction (= sky environmentMap は LLVOSky::mCubeMap (LLPointer) 保持 →
+    // ~LLVOSky (region 変更/teleport の sky 再構築) で free される際の mCurrCubeMap dangling
+    // use-after-free を防ぐ = clearStaleImageGLRefs と同 class)。LLCubeMap::~LLCubeMap() の
+    // 冒頭で呼出、main thread only。nullptr 置換のみ、GL path 不変。
+    static void clearStaleCubeMapRefs(LLCubeMap* victim);
 
     U32 getCurrentTexUnitIndex(void) const { return mCurrTextureUnitIndex; }
 
@@ -523,6 +570,8 @@ private:
     U32             mCurrTextureUnitIndex;
     bool                mCurrColorMask[4];
     F32             mLineWidth; // <FS> Line width OGL core profile fix by Rye Mutt
+    F32             mPolygonOffsetFactor; // glPolygonOffset factor tracker
+    F32             mPolygonOffsetUnits;  // glPolygonOffset units tracker
     // <FS:Ansariel> Don't ignore OpenGL max line width
     F32             mMaxLineWidthSmooth;
     F32             mMaxLineWidthAliased;
@@ -552,6 +601,8 @@ extern F32 gGLProjection[16];
 extern S32 gGLViewport[4];
 extern glm::mat4 gGLDeltaModelView;
 extern glm::mat4 gGLInverseDeltaModelView;
+
+void llSetGLViewport(S32 x, S32 y, S32 w, S32 h);
 
 extern thread_local LLRender gGL;
 

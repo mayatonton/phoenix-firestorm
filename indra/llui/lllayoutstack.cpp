@@ -219,7 +219,9 @@ LLLayoutStack::Params::Params()
     drag_handle_second_indent("drag_handle_second_indent", 0),
     drag_handle_thickness("drag_handle_thickness", 5),
     drag_handle_shift("drag_handle_shift", 2),
-    drag_handle_color("drag_handle_color", LLUIColorTable::instance().getColor("ResizebarBody"))
+    drag_handle_color("drag_handle_color", LLUIColorTable::instance().getColor("ResizebarBody")),
+    // per-stack draw order reverse switch
+    reverse_draw_order("reverse_draw_order", false)
 {
     addSynonym(border_size, "drag_handle_gap");
 }
@@ -241,7 +243,9 @@ LLLayoutStack::LLLayoutStack(const LLLayoutStack::Params& p)
     mDragHandleSecondIndent(p.drag_handle_second_indent),
     mDragHandleThickness(p.drag_handle_thickness),
     mDragHandleShift(p.drag_handle_shift),
-    mDragHandleColor(p.drag_handle_color())
+    mDragHandleColor(p.drag_handle_color()),
+    // per-stack draw order reverse switch init
+    mReverseDrawOrder(p.reverse_draw_order)
 {
     // <FS:Zi> Set up settings control to save sizes if not already present
     if (mSaveSizes)
@@ -284,13 +288,15 @@ void LLLayoutStack::draw()
 
     // always clip to stack itself
     LLLocalClipRect clip(getLocalRect());
-    for (LLLayoutPanel* panelp : mPanels)
+
+    // mReverseDrawOrder flag で描画 iter 方向切替 (= true で reverse iter)。
+    auto drawOnePanel = [this](LLLayoutPanel* panelp)
     {
         if ((!panelp->getVisible() || panelp->mCollapsed)
             && (panelp->mVisibleAmt < 0.001f || !mAnimate))
         {
             // essentially invisible
-            continue;
+            return;
         }
         // clip to layout rectangle, not bounding rectangle
         LLRect clip_rect = panelp->getRect();
@@ -311,6 +317,21 @@ void LLLayoutStack::draw()
         if (panelp->getResizeBar()->getVisible())
         {
             drawChild(panelp->getResizeBar());
+        }
+    };
+
+    if (mReverseDrawOrder)
+    {
+        for (auto it = mPanels.rbegin(); it != mPanels.rend(); ++it)
+        {
+            drawOnePanel(*it);
+        }
+    }
+    else
+    {
+        for (LLLayoutPanel* panelp : mPanels)
+        {
+            drawOnePanel(panelp);
         }
     }
 }

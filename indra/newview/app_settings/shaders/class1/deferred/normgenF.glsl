@@ -30,16 +30,38 @@
 // generate a normal map using an approximation of the old emboss bump map "brightness/darkness" technique
 // srcMap is a source color image, output should be a normal
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D srcMap;
+#else
 uniform sampler2D srcMap;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform NormgenF_PerProgramBind
+{
+    float stepX;
+    float stepY;
+    float norm_scale;
+    int bump_code;
+};
+#else
 uniform float stepX;
 uniform float stepY;
 uniform float norm_scale;
 uniform int bump_code;
+#endif
 
 #define BE_BRIGHTNESS 1
 #define BE_DARKNESS 2

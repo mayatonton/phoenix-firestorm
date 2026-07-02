@@ -30,6 +30,32 @@
 
 // deferred opaque implementation
 
+#ifdef LL_VULKAN_GLSL
+layout(push_constant) uniform PBROpaqueF_PushConstants
+{
+    layout(offset = 64)  float minimum_alpha;
+    layout(offset = 68)  float aya_sss_skin_flag;
+    layout(offset = 80)  vec3  emissiveColor;
+    layout(offset = 96)  float metallicFactor;
+    layout(offset = 100) float roughnessFactor;
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+layout(set = 1, binding = 2) uniform sampler2D bumpMap;
+layout(set = 1, binding = 3) uniform sampler2D emissiveMap;
+layout(set = 1, binding = 4) uniform sampler2D specularMap;
+
+layout(location = 0) out vec4 frag_data[4];
+
+layout(location = 0) in vec2 base_color_texcoord;
+layout(location = 1) in vec2 normal_texcoord;
+layout(location = 2) in vec2 metallic_roughness_texcoord;
+layout(location = 3) in vec2 emissive_texcoord;
+layout(location = 4) in vec4 vertex_color;
+layout(location = 5) in vec3 vary_tangent;
+layout(location = 6) flat in float vary_sign;
+layout(location = 7) in vec3 vary_normal;
+layout(location = 8) in vec3 vary_position;
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
 
 uniform float metallicFactor;
@@ -60,16 +86,17 @@ uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlpha
 uniform float aya_sss_skin_flag;
 // </FS:AYA>
 
-vec3 linear_to_srgb(vec3 c);
-vec3 srgb_to_linear(vec3 c);
-
 uniform vec4 clipPlane;
 uniform float clipSign;
 
+uniform mat3 normal_matrix;
+#endif
+
+vec3 linear_to_srgb(vec3 c);
+vec3 srgb_to_linear(vec3 c);
+
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
-
-uniform mat3 normal_matrix;
 
 void main()
 {
@@ -138,6 +165,21 @@ void main()
 
 // forward fullbright implementation for HUDs
 
+#ifdef LL_VULKAN_GLSL
+layout(push_constant) uniform PBROpaqueFHud_PushConstants
+{
+    layout(offset = 64) float minimum_alpha;
+    layout(offset = 80) vec3  emissiveColor;
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+layout(set = 1, binding = 2) uniform sampler2D emissiveMap;
+
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec2 base_color_texcoord;
+layout(location = 3) in vec2 emissive_texcoord;
+layout(location = 4) in vec4 vertex_color;
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
 
 uniform vec3 emissiveColor;
@@ -145,13 +187,13 @@ uniform sampler2D emissiveMap;
 
 out vec4 frag_color;
 
-in vec3 vary_position;
 in vec4 vertex_color;
 
 in vec2 base_color_texcoord;
 in vec2 emissive_texcoord;
 
 uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
 
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);

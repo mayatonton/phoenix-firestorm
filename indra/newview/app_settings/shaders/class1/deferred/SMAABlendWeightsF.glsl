@@ -25,6 +25,23 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec2 vary_texcoord0;
+layout(location = 1) in vec2 vary_pixcoord;
+layout(location = 2) in vec4 vary_offset[3];
+
+layout(set = 1, binding = 1) uniform sampler2D edgesTex;
+layout(set = 1, binding = 2) uniform sampler2D areaTex;
+layout(set = 1, binding = 3) uniform sampler2D searchTex;
+#if AYASTORM_CINEMATIC
+layout(set = 1, binding = 4, std140) uniform SMAABlendWeightsF_PerProgramBind
+{
+    vec4 subsampleIndices;
+};
+#endif
+#else
 out vec4 frag_color;
 
 in vec2 vary_texcoord0;
@@ -41,6 +58,7 @@ uniform sampler2D searchTex;
 uniform vec4 subsampleIndices;
 #endif
 // </FS:AYA>
+#endif
 
 vec4 SMAABlendingWeightCalculationPS(vec2 texcoord,
                                        vec2 pixcoord,

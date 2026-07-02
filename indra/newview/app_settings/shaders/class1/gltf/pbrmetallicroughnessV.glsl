@@ -25,11 +25,32 @@
 
 // GLTF pbrMetallicRoughness implementation
 
-uniform mat4 modelview_matrix;
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#else
 uniform mat4 projection_matrix;
+uniform mat4 modelview_matrix;
+#endif
 
 #ifdef MULTI_UV
+#ifdef LL_VULKAN_GLSL
+layout(location = 3) in vec2 texcoord1;
+#else
 in vec2 texcoord1;
+#endif
 int base_color_texcoord = 0;
 int emissive_texcoord = 0;
 #ifndef UNLIT
@@ -39,9 +60,74 @@ int occlusion_texcoord = 0;
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform PBRMetallicRoughnessF_PerProgramBind
+{
+    int gltf_material_id;
+#ifndef HAS_SKIN
+    int gltf_node_id;
+    int _pbrmr_pad0;
+    int _pbrmr_pad1;
+#else
+    int _pbrmr_pad0;
+    int _pbrmr_pad1;
+    int _pbrmr_pad2;
+#endif
+#if defined(ALPHA_BLEND) && !defined(UNLIT)
+#ifndef HAS_SUN_SHADOW
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3 sun_dir;
+#else
+    vec3 _dup_PBRMetallicRoughnessF_sun_dir;
+#endif
+    float _pbrmr_pad_sd;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3 moon_dir;
+#else
+    vec3 _dup_PBRMetallicRoughnessF_moon_dir;
+#endif
+    float _pbrmr_pad_md;
+#endif
+#ifndef _AYA_UM_light_position
+#define _AYA_UM_light_position 1
+    vec4 light_position[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_position[8];
+#endif
+#ifndef _AYA_UM_light_direction
+#define _AYA_UM_light_direction 1
+    vec4 light_direction[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_direction[8];
+#endif
+#ifndef _AYA_UM_light_attenuation
+#define _AYA_UM_light_attenuation 1
+    vec4 light_attenuation[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_attenuation[8];
+#endif
+#ifndef _AYA_UM_light_diffuse
+#define _AYA_UM_light_diffuse 1
+    vec4 light_diffuse[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_diffuse[8];
+#endif
+#ifndef _AYA_UM_light_deferred_attenuation
+#define _AYA_UM_light_deferred_attenuation 1
+    vec4 light_deferred_attenuation[8];
+#else
+    vec4 _dup_PBRMetallicRoughnessF_light_deferred_attenuation[8];
+#endif
+#endif
+};
+#else
 uniform int gltf_material_id;
+#endif
 
-layout (std140) uniform GLTFMaterials
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 7, std140) uniform Asset_GLTFMaterials
 {
     // index by gltf_material_id*12
 
@@ -58,6 +144,25 @@ layout (std140) uniform GLTFMaterials
     // packed[1] = vec4(mScale.y, texcoord, 0, 0)
     vec4 gltf_material_data[MAX_UBO_VEC4S];
 };
+#else
+layout (std140) uniform Asset_GLTFMaterials
+{
+    // index by gltf_material_id*12
+
+    // [gltf_material_id + [0-1]] -  base color transform
+    // [gltf_material_id + [2-3]] -  normal transform
+    // [gltf_material_id + [4-5]] -  metallic roughness transform
+    // [gltf_material_id + [6-7]] -  emissive transform
+    // [gltf_material_id + [8-9]] -  occlusion transform
+    // [gltf_material_id + 10]    -  emissive factor
+    // [gltf_material_id + 11]    -  .r unused, .g roughness, .b metalness, .a minimum alpha
+
+    // Transforms are packed as follows
+    // packed[0] = vec4(scale.x, scale.y, rotation, offset.x)
+    // packed[1] = vec4(mScale.y, texcoord, 0, 0)
+    vec4 gltf_material_data[MAX_UBO_VEC4S];
+};
+#endif
 
 vec4[2] texture_base_color_transform;
 vec4[2] texture_normal_transform;
@@ -116,6 +221,15 @@ void unpackTextureTransforms()
 }
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 6) in vec4 diffuse_color;
+layout(location = 2) in vec2 texcoord0;
+layout(location = 0) out vec2 base_color_uv;
+layout(location = 1) out vec2 emissive_uv;
+layout(location = 2) out vec4 vertex_color;
+layout(location = 3) out vec3 vary_position;
+#else
 in vec3 position;
 in vec4 diffuse_color;
 in vec2 texcoord0;
@@ -123,8 +237,19 @@ out vec2 base_color_uv;
 out vec2 emissive_uv;
 out vec4 vertex_color;
 out vec3 vary_position;
+#endif
 
 #ifndef UNLIT
+#ifdef LL_VULKAN_GLSL
+layout(location = 1) in vec3 normal;
+layout(location = 8) in vec4 tangent;
+layout(location = 4) out vec2 normal_uv;
+layout(location = 5) out vec2 metallic_roughness_uv;
+layout(location = 6) out vec2 occlusion_uv;
+layout(location = 7) out vec3 vary_tangent;
+layout(location = 8) flat out float vary_sign;
+layout(location = 9) out vec3 vary_normal;
+#else
 in vec3 normal;
 in vec4 tangent;
 out vec2 normal_uv;
@@ -133,6 +258,7 @@ out vec2 occlusion_uv;
 out vec3 vary_tangent;
 flat out float vary_sign;
 out vec3 vary_normal;
+#endif
 #endif
 
 vec2 gltf_texture_transform(vec2 texcoord, vec4[2] p)
@@ -190,19 +316,35 @@ vec3 gltf_tangent_space_transform(vec4 vertex_tangent, vec3 vertex_normal, vec4[
 #endif
 
 #ifdef ALPHA_BLEND
+#ifdef LL_VULKAN_GLSL
+layout(location = 10) out vec3 vary_fragcoord;
+#else
 out vec3 vary_fragcoord;
+#endif
 #endif
 
 #ifdef HAS_SKIN
 
-layout (std140) uniform GLTFJoints
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 44, std140) uniform Skin_GLTFJoints
 {
     vec4 gltf_joints[MAX_NODES_PER_GLTF_OBJECT];
 };
+#else
+layout (std140) uniform Skin_GLTFJoints
+{
+    vec4 gltf_joints[MAX_NODES_PER_GLTF_OBJECT];
+};
+#endif
 
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 12) in uvec4 joint;
+layout(location = 10) in vec4 weight4;
+#else
 in uvec4 joint;
 in vec4 weight4;
+#endif
 
 mat4 getGLTFTransform()
 {
@@ -232,12 +374,19 @@ mat4 getGLTFTransform()
 
 #else
 
-layout (std140) uniform GLTFNodes
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 44, std140) uniform Asset_GLTFNodes
+{
+    vec4 gltf_nodes[MAX_NODES_PER_GLTF_OBJECT];
+};
+#else
+layout (std140) uniform Asset_GLTFNodes
 {
     vec4 gltf_nodes[MAX_NODES_PER_GLTF_OBJECT];
 };
 
 uniform int gltf_node_id = 0;
+#endif
 
 mat4 getGLTFTransform()
 {

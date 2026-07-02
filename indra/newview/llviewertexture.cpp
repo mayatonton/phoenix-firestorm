@@ -27,6 +27,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include <atomic>
+
 #include "llviewertexture.h"
 
 // Library includes
@@ -52,6 +54,7 @@
 #include "llviewertexturelist.h"
 #include "llviewercontrol.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llappviewer.h"
 #include "llface.h"
 #include "llviewercamera.h"
@@ -486,6 +489,10 @@ void LLViewerTextureManager::cleanup()
 void LLViewerTexture::initClass()
 {
     LLImageGL::sDefaultGLTexture = LLViewerFetchedTexture::sDefaultImagep->getGLTexture();
+    if (LLViewerFetchedTexture::sWhiteImagep.notNull())
+    {
+        LLImageGL::sWhiteImageGLp = LLViewerFetchedTexture::sWhiteImagep->getGLTexture();
+    }
 
     if (sInvisiprimTexture1.isNull())
     {
@@ -1804,7 +1811,7 @@ void LLViewerFetchedTexture::processTextureStats()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     llassert(!gCubeSnapshot);  // should only be called when the main camera is active
-    llassert(!LLPipeline::sShadowRender);
+    llassert(!LLPipelineFrameContext::getInstance().isShadowPass());
 
     if(mFullyLoaded)
     {

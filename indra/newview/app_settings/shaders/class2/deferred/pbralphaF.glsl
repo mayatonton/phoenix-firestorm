@@ -27,6 +27,86 @@
 
 #ifndef IS_HUD
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform PBRAlphaF_PerProgramBind
+{
+    float metallicFactor;
+    float roughnessFactor;
+    float _pbralphaF_pad0;
+    float _pbralphaF_pad1;
+    vec3  emissiveColor;
+    float _pbralphaF_pad2;
+#ifdef HAS_ALPHA_MASK
+#ifndef _AYA_UM_minimum_alpha
+#define _AYA_UM_minimum_alpha 1
+    float minimum_alpha;
+#else
+    float _dup_PBRAlphaF_minimum_alpha;
+#endif
+    float _pbralphaF_pad3;
+    float _pbralphaF_pad4;
+    float _pbralphaF_pad5;
+#endif
+#ifndef HAS_SUN_SHADOW
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3  sun_dir;
+#else
+    vec3  _dup_PBRAlphaF_sun_dir;
+#endif
+    float _pbralphaF_pad6;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3  moon_dir;
+#else
+    vec3  _dup_PBRAlphaF_moon_dir;
+#endif
+    float _pbralphaF_pad7;
+#endif
+#ifndef _AYA_UM_light_position
+#define _AYA_UM_light_position 1
+    vec4  light_position[8];
+#else
+    vec4  _dup_PBRAlphaF_light_position[8];
+#endif
+#ifndef _AYA_UM_light_direction
+#define _AYA_UM_light_direction 1
+    vec4  light_direction[8];
+#else
+    vec4  _dup_PBRAlphaF_light_direction[8];
+#endif
+#ifndef _AYA_UM_light_attenuation
+#define _AYA_UM_light_attenuation 1
+    vec4  light_attenuation[8];
+#else
+    vec4  _dup_PBRAlphaF_light_attenuation[8];
+#endif
+#ifndef _AYA_UM_light_diffuse
+#define _AYA_UM_light_diffuse 1
+    vec4  light_diffuse[8];
+#else
+    vec4  _dup_PBRAlphaF_light_diffuse[8];
+#endif
+#ifndef _AYA_UM_light_deferred_attenuation
+#define _AYA_UM_light_deferred_attenuation 1
+    vec4  light_deferred_attenuation[8];
+#else
+    vec4  _dup_PBRAlphaF_light_deferred_attenuation[8];
+#endif
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;  // always in sRGB space
+layout(set = 1, binding = 2) uniform sampler2D bumpMap;
+layout(set = 1, binding = 3) uniform sampler2D emissiveMap;
+layout(set = 1, binding = 4) uniform sampler2D specularMap; // PBR: Packed: Occlusion, Metal, Roughness
+#if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
+layout(set = 1, binding = 5) uniform sampler2D lightMap;
+#endif
+
+layout(push_constant) uniform PBRAlphaF_FragPC {
+    layout(offset = 72) float waterSign;
+    layout(offset = 76) float aya_preview_neutral_atmos;
+};
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
 uniform sampler2D bumpMap;
 uniform sampler2D emissiveMap;
@@ -44,14 +124,46 @@ uniform int sun_up_factor;
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
 uniform int classic_mode;
-
-out vec4 frag_color;
-
-in vec3 vary_fragcoord;
+uniform float waterSign;
 
 #ifdef HAS_SUN_SHADOW
   uniform vec2 screen_res;
 #endif
+
+#ifdef HAS_ALPHA_MASK
+uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
+
+// Lights
+// See: LLRender::syncLightState()
+uniform vec4 light_position[8];
+uniform vec3 light_direction[8]; // spot direction
+uniform vec4 light_attenuation[8]; // linear, quadratic, is omni, unused, See: LLPipeline::setupHWLights() and syncLightState()
+uniform vec3 light_diffuse[8];
+uniform vec2 light_deferred_attenuation[8]; // light size and falloff
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 1) in vec3 vary_fragcoord;
+
+layout(location = 0) in vec3 vary_position;
+
+layout(location = 2) in vec2 base_color_texcoord;
+layout(location = 3) in vec2 normal_texcoord;
+layout(location = 4) in vec2 metallic_roughness_texcoord;
+layout(location = 5) in vec2 emissive_texcoord;
+
+layout(location = 6) in vec4 vertex_color;
+
+layout(location = 9) in vec3 vary_normal;
+layout(location = 7) in vec3 vary_tangent;
+layout(location = 8) flat in float vary_sign;
+#else
+out vec4 frag_color;
+
+in vec3 vary_fragcoord;
 
 in vec3 vary_position;
 
@@ -65,19 +177,7 @@ in vec4 vertex_color;
 in vec3 vary_normal;
 in vec3 vary_tangent;
 flat in float vary_sign;
-
-
-#ifdef HAS_ALPHA_MASK
-uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
 #endif
-
-// Lights
-// See: LLRender::syncLightState()
-uniform vec4 light_position[8];
-uniform vec3 light_direction[8]; // spot direction
-uniform vec4 light_attenuation[8]; // linear, quadratic, is omni, unused, See: LLPipeline::setupHWLights() and syncLightState()
-uniform vec3 light_diffuse[8];
-uniform vec2 light_deferred_attenuation[8]; // light size and falloff
 
 vec3 srgb_to_linear(vec3 c);
 vec3 linear_to_srgb(vec3 c);
@@ -92,7 +192,7 @@ void sampleReflectionProbes(inout vec3 ambenv, inout vec3 glossenv,
         vec2 tc, vec3 pos, vec3 norm, float glossiness, bool transparent, vec3 amblit_linear);
 
 void mirrorClip(vec3 pos);
-void waterClip(vec3 pos);
+void waterClip(vec3 pos, float waterSign); // waterSign 引数化
 
 void calcDiffuseSpecular(vec3 baseColor, float metallic, inout vec3 diffuseColor, inout vec3 specularColor);
 
@@ -129,10 +229,19 @@ void main()
 
     vec3 color = vec3(0,0,0);
 
+#ifdef LL_VULKAN_GLSL
+    // preview neutral atmospherics flag を atmosphericsFuncs (concatenated) の
+    //   global へ転送 = calcAtmosphericVars が override 値 (sunlight=white/sun_up=1/density=0) を
+    //   使用。 default 0 (= 主 scene) は元値ゆえ不変。
+    _aya_preview_neutral_atmos = (aya_preview_neutral_atmos > 0.5) ? 1 : 0;
+    int   _aya_eff_sun_up = (_aya_preview_neutral_atmos == 1) ? 1 : sun_up_factor;
+    vec3  light_dir   = (_aya_eff_sun_up == 1) ? sun_dir : moon_dir;
+#else
     vec3  light_dir   = (sun_up_factor == 1) ? sun_dir : moon_dir;
+#endif
     vec3  pos         = vary_position;
 
-    waterClip(pos);
+    waterClip(pos, waterSign);
 
     vec4 basecolor = texture(diffuseMap, base_color_texcoord.xy).rgba;
     basecolor.rgb = srgb_to_linear(basecolor.rgb);
@@ -222,11 +331,46 @@ void main()
 
 #else
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform PBRAlphaF_PerProgramBind
+{
+    vec3  emissiveColor;
+    float _pbralphaF_hud_pad0;
+#ifdef HAS_ALPHA_MASK
+#ifndef _AYA_UM_minimum_alpha
+#define _AYA_UM_minimum_alpha 1
+    float minimum_alpha;
+#else
+    float _dup_PBRAlphaF_minimum_alpha;
+#endif
+    float _pbralphaF_hud_pad1;
+    float _pbralphaF_hud_pad2;
+    float _pbralphaF_hud_pad3;
+#endif
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;  // always in sRGB space
+layout(set = 1, binding = 3) uniform sampler2D emissiveMap;
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
 uniform sampler2D emissiveMap;
 
 uniform vec3 emissiveColor;
 
+#ifdef HAS_ALPHA_MASK
+uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec3 vary_position;
+
+layout(location = 2) in vec2 base_color_texcoord;
+layout(location = 5) in vec2 emissive_texcoord;
+
+layout(location = 6) in vec4 vertex_color;
+#else
 out vec4 frag_color;
 
 in vec3 vary_position;
@@ -235,9 +379,6 @@ in vec2 base_color_texcoord;
 in vec2 emissive_texcoord;
 
 in vec4 vertex_color;
-
-#ifdef HAS_ALPHA_MASK
-uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
 #endif
 
 vec3 srgb_to_linear(vec3 c);

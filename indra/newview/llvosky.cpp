@@ -47,6 +47,7 @@
 #include "llviewerregion.h"
 #include "llworld.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "lldrawpoolwlsky.h"
 #include "v3colorutil.h"
 
@@ -704,7 +705,7 @@ bool LLVOSky::updateSky()
     LLHeavenBody::setInterpVal( mInterpVal );
     updateDirections(psky);
 
-    if (!mCubeMap || LLPipeline::sReflectionProbesEnabled)
+    if (!mCubeMap || LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         mCubeMapUpdateStage = NUM_CUBEMAP_FACES;
         mForceUpdate = false;
@@ -727,7 +728,7 @@ bool LLVOSky::updateSky()
             mForceUpdate = false;
         }
     }
-    else if (mCubeMapUpdateStage == NUM_CUBEMAP_FACES && !LLPipeline::sReflectionProbesEnabled)
+    else if (mCubeMapUpdateStage == NUM_CUBEMAP_FACES && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_ENVIRONMENT("updateSky - forced");
         LLSkyTex::stepCurrent();
@@ -787,7 +788,7 @@ bool LLVOSky::updateSky()
         mCubeMapUpdateStage = -1;
     }
     // run 0 to 5 faces, each face in own frame
-    else if (mCubeMapUpdateStage >= 0 && mCubeMapUpdateStage < NUM_CUBEMAP_FACES && !LLPipeline::sReflectionProbesEnabled)
+    else if (mCubeMapUpdateStage >= 0 && mCubeMapUpdateStage < NUM_CUBEMAP_FACES && !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_ENVIRONMENT("updateSky - create");
         S32 side = mCubeMapUpdateStage;

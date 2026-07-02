@@ -31,16 +31,19 @@
 #define NON_INDEXED 2
 #define NON_INDEXED_NO_COLOR 3
 
-out vec4 frag_color;
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
 
-uniform mat3 env_mat;
-uniform vec3 sun_dir;
-uniform vec3 moon_dir;
-uniform int classic_mode;
+layout(location = 0) in vec3 vary_fragcoord;
+layout(location = 1) in vec3 vary_position;
+layout(location = 3) in vec2 vary_texcoord0;
+layout(location = 4) in vec3 vary_norm;
 
-#ifdef USE_DIFFUSE_TEX
-uniform sampler2D diffuseMap;
+#ifdef USE_VERTEX_COLOR
+layout(location = 2) in vec4 vertex_color; //vertex color should be treated as sRGB
 #endif
+#else
+out vec4 frag_color;
 
 in vec3 vary_fragcoord;
 in vec3 vary_position;
@@ -50,9 +53,63 @@ in vec3 vary_norm;
 #ifdef USE_VERTEX_COLOR
 in vec4 vertex_color; //vertex color should be treated as sRGB
 #endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform AlphaF_PerProgramBind {
+    float minimum_alpha;
+    float _alphaF_pad0;
+    float _alphaF_pad1;
+    float _alphaF_pad2;
+#ifndef FOR_IMPOSTOR
+#ifndef HAS_SUN_SHADOW
+    vec3 sun_dir_alphaf;
+    float _alphaF_pad3;
+    vec3 moon_dir_alphaf;
+    float _alphaF_pad4;
+#endif
+    vec4 light_position[8];
+    vec4 light_direction[8];
+    vec4 light_attenuation[8];
+    vec4 light_diffuse[8];
+#endif
+};
+
+#ifndef FOR_IMPOSTOR
+#ifndef HAS_SUN_SHADOW
+#define _sunDirAlphaF sun_dir_alphaf
+#define _moonDirAlphaF moon_dir_alphaf
+#else
+#define _sunDirAlphaF sun_dir
+#define _moonDirAlphaF moon_dir
+#endif
+#endif
+
+#ifdef USE_DIFFUSE_TEX
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#endif
+
+#ifndef IS_AVATAR_SKIN
+layout(push_constant) uniform AlphaF_FragPC {
+    layout(offset = 72) float waterSign;
+};
+#endif
+#else
+uniform mat3 env_mat;
+uniform vec3 sun_dir;
+uniform vec3 moon_dir;
+uniform int classic_mode;
+#define _sunDirAlphaF sun_dir
+#define _moonDirAlphaF moon_dir
+
+#ifdef USE_DIFFUSE_TEX
+uniform sampler2D diffuseMap;
+#endif
 
 uniform float minimum_alpha;
-
+#ifndef IS_AVATAR_SKIN
+uniform float waterSign;
+#endif
 uniform mat4 proj_mat;
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
@@ -61,8 +118,9 @@ uniform vec4 light_position[8];
 uniform vec3 light_direction[8];
 uniform vec4 light_attenuation[8];
 uniform vec3 light_diffuse[8];
+#endif
 
-void waterClip(vec3 pos);
+void waterClip(vec3 pos, float waterSign); // waterSign 引数化
 
 vec3 srgb_to_linear(vec3 c);
 vec3 linear_to_srgb(vec3 c);
@@ -177,7 +235,7 @@ void main()
     vec4 pos = vec4(vary_position, 1.0);
 #ifndef IS_AVATAR_SKIN
     // clip against water plane unless this is a legacy avatar skin
-    waterClip(pos.xyz);
+    waterClip(pos.xyz, waterSign);
 #endif
     vec3 norm = vary_norm;
 
@@ -219,7 +277,7 @@ void main()
 
     vec4 diffuse_linear = vec4(srgb_to_linear(diffuse_srgb.rgb), diffuse_srgb.a);
 
-    vec3 light_dir = (sun_up_factor == 1) ? sun_dir: moon_dir; // TODO -- factor out "sun_up_factor" and just send in the appropriate light vector
+    vec3 light_dir = (sun_up_factor == 1) ? _sunDirAlphaF: _moonDirAlphaF; // TODO -- factor out "sun_up_factor" and just send in the appropriate light vector
 
     float final_alpha = diffuse_linear.a;
 

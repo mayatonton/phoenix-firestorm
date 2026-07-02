@@ -23,24 +23,83 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 modelview_projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 // SKY ////////////////////////////////////////////////////////////////////////
 // The vertex shader for creating the atmospheric sky
 ///////////////////////////////////////////////////////////////////////////////
 
 // Output parameters
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec3  vary_HazeColor;
+layout(location = 1) out float vary_LightNormPosDot;
+#else
 out vec3 vary_HazeColor;
 out float vary_LightNormPosDot;
+#endif
 
 #ifdef HAS_HDRI
+#ifdef LL_VULKAN_GLSL
+layout(location = 2) out vec4 vary_position;
+layout(location = 3) out vec3 vary_rel_pos;
+#else
 out vec4 vary_position;
 out vec3 vary_rel_pos;
 #endif
+#endif
 
-// Inputs
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform Sky_PerProgramBind
+{
+#ifndef _AYA_UM_camPosLocal
+#define _AYA_UM_camPosLocal 1
+    vec3  camPosLocal;
+#else
+    vec3  _dup_Sky_camPosLocal;
+#endif
+#ifndef _AYA_UM_cube_snapshot
+#define _AYA_UM_cube_snapshot 1
+    int   cube_snapshot;
+#else
+    int   _dup_Sky_cube_snapshot;
+#endif
+    float moisture_level;
+    float droplet_radius;
+    float ice_level;
+    float _sky_pad0;
+#ifdef HAS_HDRI
+    float _sky_sky_hdr_scale;
+    float hdri_split_screen;
+    float _sky_pad1;
+    float _sky_pad2;
+    mat3  _sky_env_mat;
+#endif
+};
+#else
 uniform vec3 camPosLocal;
 
 uniform vec3  lightnorm;
@@ -50,21 +109,24 @@ uniform int   sun_up_factor;
 uniform vec3  ambient_color;
 uniform vec3  blue_horizon;
 uniform vec3  blue_density;
-uniform float haze_horizon;
 uniform float haze_density;
 
-uniform float cloud_shadow;
 uniform float density_multiplier;
 uniform float distance_multiplier;
 uniform float max_y;
 
 uniform vec3  glow;
-uniform float sun_moon_glow_factor;
 
 uniform int cube_snapshot;
+uniform float haze_horizon;
+
+uniform float cloud_shadow;
+
+uniform float sun_moon_glow_factor;
 uniform int aya_visual_realism_enabled;  // <FS:AYA r14 P2.a> Visual Realism master switch
 uniform int aya_r14_volumetric_atmosphere_enabled;  // <FS:AYAstorm r30 BD改善> r14 個別 gate
 uniform float aya_r14_strength;  // <FS:AYAstorm r30 BD改善> r14 効果強度 (0=OFF / 1=ON)
+#endif
 
 // <FS:AYA r14 P2.a> vertex shader 内のインライン sRGB <-> linear helper
 // skyV.glsl は vertex shader で srgbF.glsl が attach されないため、ここで直接定義する

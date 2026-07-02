@@ -23,11 +23,18 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 2) in vec2 texcoord0;
+
+layout(location = 0) out vec2 vary_texcoord0;
+#else
 in vec3 position;
 in vec2 texcoord0;
 
 out vec2 vary_fragcoord;
 out vec2 vary_texcoord0;
+#endif
 
 void main()
 {

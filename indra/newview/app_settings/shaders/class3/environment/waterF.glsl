@@ -27,7 +27,11 @@
 
 #define WATER_MINIMAL 1
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef HAS_SUN_SHADOW
 float sampleDirectionalShadow(vec3 pos, vec3 norm, vec2 pos_screen);
@@ -80,16 +84,54 @@ vec3 pbrBaseLight(vec3 diffuseColor,
                   vec3 additive,
                   vec3 atten);
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D bumpMap;
+layout(set = 1, binding = 2) uniform sampler2D bumpMap2;
+#ifdef TRANSPARENT_WATER
+layout(set = 1, binding = 3) uniform sampler2D screenTex;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 4) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+#endif
+layout(set = 1, binding = 5) uniform sampler2D exclusionTex;
+layout(set = 1, binding = 0, std140) uniform WaterF_PerProgramBind
+{
+    vec3 lightDir_waterf;
+    float blurMultiplier;
+    vec3 specular;
+#ifndef _AYA_UM_refScale
+#define _AYA_UM_refScale 1
+    float refScale;
+#else
+    float _dup_WaterF_refScale;
+#endif
+    vec3 normScale;
+    float fresnelScale;
+    float fresnelOffset;
+#ifndef _AYA_UM_blend_factor
+#define _AYA_UM_blend_factor 1
+    float blend_factor;
+#else
+    float _dup_WaterF_blend_factor;
+#endif
+    int classic_mode_water;
+    float _pad_waterf0;
+};
+#define _classicModeWater classic_mode_water
+#define _lightDirWaterF lightDir_waterf
+#else
 uniform sampler2D bumpMap;
 uniform sampler2D bumpMap2;
 uniform float     blend_factor;
 #ifdef TRANSPARENT_WATER
 uniform sampler2D screenTex;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
 #endif
-
 uniform sampler2D exclusionTex;
-
 uniform int classic_mode;
 uniform vec3 lightDir;
 uniform vec3 specular;
@@ -99,8 +141,20 @@ uniform float kd;
 uniform vec3 normScale;
 uniform float fresnelScale;
 uniform float fresnelOffset;
+#define _classicModeWater classic_mode
+#define _lightDirWaterF lightDir
+#endif
 
 //bigWave is (refCoord.w, view.w);
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec4 refCoord;
+layout(location = 1) in vec4 littleWave;
+layout(location = 2) in vec4 view;
+layout(location = 3) in vec3 vary_position;
+layout(location = 6) in vec3 vary_normal;
+layout(location = 5) in vec3 vary_tangent;
+layout(location = 4) in vec3 vary_light_dir;
+#else
 in vec4 refCoord;
 in vec4 littleWave;
 in vec4 view;
@@ -108,6 +162,7 @@ in vec3 vary_position;
 in vec3 vary_normal;
 in vec3 vary_tangent;
 in vec3 vary_light_dir;
+#endif
 
 vec3 BlendNormal(vec3 bump1, vec3 bump2)
 {
@@ -320,7 +375,7 @@ void main()
 
     vec3 colorEmissive = vec3(0);
     float ao = 1.0;
-    vec3 light_dir = transform_normal(lightDir);
+    vec3 light_dir = transform_normal(_lightDirWaterF);
 
     float NdotV = clamp(abs(dot(norm, v)), 0.001, 1.0);
 
@@ -338,7 +393,7 @@ void main()
 
     float water_haze_scale = 4;
 
-    if (classic_mode > 0)
+    if (_classicModeWater > 0)
         water_haze_scale = 1;
 
     // This looks super janky, but we do this to restore water haze in the distance.

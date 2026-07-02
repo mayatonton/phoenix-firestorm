@@ -39,9 +39,11 @@
 #include "llgl.h"
 #include "llglslshader.h"
 #include "llrender.h"
+#include "llvkloader.h"
 #include "llwindow.h"
 #include "llframetimer.h"
 #include <unordered_set>
+#include <atomic>
 
 extern LL_COMMON_API bool on_main_thread();
 
@@ -65,6 +67,246 @@ U32 LLImageGL::sFrameCount = 0;
 static LLMutex sTexMemMutex;
 static std::unordered_map<U32, U64> sTextureAllocs;
 static U64 sTextureBytes = 0;
+
+static U16 float32ToHalf16(F32 f)
+{
+    U32 x;
+    memcpy(&x, &f, sizeof(F32));
+
+    const U32 sign     = (x >> 16) & 0x8000u;
+    const S32 exp_in   = (S32)((x >> 23) & 0xFFu);   // biased binary32 exponent (0..255)
+    const U32 mant_in  = x & 0x7FFFFFu;              // 23-bit mantissa
+
+    if (exp_in == 0xFF)
+    {
+        // Inf (mant==0) / NaN (mant!=0)。 NaN は非 0 mantissa を保持 (quiet NaN 化)。
+        return (U16)(sign | 0x7C00u | (mant_in != 0 ? 0x0200u : 0u));
+    }
+
+    // unbiased exponent を half bias (15) で再計算。
+    const S32 exp_half = exp_in - 127 + 15;
+
+    if (exp_half >= 0x1F)
+    {
+        // overflow → Inf。
+        return (U16)(sign | 0x7C00u);
+    }
+
+    if (exp_half <= 0)
+    {
+        // subnormal half または underflow。 exp_half < -10 = 最小 subnormal 未満 → signed zero。
+        if (exp_half < -10)
+        {
+            return (U16)sign;
+        }
+        // implicit leading 1 を付与して subnormal mantissa に右シフト + round-to-nearest-even。
+        const U32 mant_full = mant_in | 0x800000u;            // 24-bit
+        const U32 shift     = (U32)(14 - exp_half);           // 14..24
+        const U32 half_mant = mant_full >> shift;
+        const U32 remainder = mant_full & ((1u << shift) - 1u);
+        const U32 halfway   = 1u << (shift - 1);
+        U32 result = half_mant;
+        if (remainder > halfway || (remainder == halfway && (half_mant & 1u)))
+        {
+            ++result;   // carry は sign|result の加算で正しく最小 normal に繰り上がる。
+        }
+        return (U16)(sign | result);
+    }
+
+    // normal: mantissa 23→10 bit 丸め (round-to-nearest-even)。
+    const U32 half_mant = mant_in >> 13;
+    const U32 remainder = mant_in & 0x1FFFu;                  // 下位 13 bit
+    U32 result = (U32)(exp_half << 10) | half_mant;
+    if (remainder > 0x1000u || (remainder == 0x1000u && (half_mant & 1u)))
+    {
+        ++result;   // mantissa overflow は exponent への carry に自然伝播 (overflow 時 Inf 化)。
+    }
+    return (U16)(sign | result);
+}
+
+static U8* createVulkanFloat32ToHalf16Buffer(const U8* source_data,
+                                             U32       source_components,
+                                             U32       target_components,
+                                             U32       pixel_count,
+                                             U32&      out_size_bytes)
+{
+    out_size_bytes = 0;
+    if (source_data == nullptr || pixel_count == 0 ||
+        source_components == 0 || target_components == 0)
+    {
+        return nullptr;
+    }
+
+    const U64 target_size = (U64)target_components * 2u * (U64)pixel_count;
+    U8* buf = new (std::nothrow) U8[(size_t)target_size];
+    if (buf == nullptr)
+    {
+        LL_WARNS_ONCE("Vulkan") << "createVulkanFloat32ToHalf16Buffer: alloc failed size="
+                                << (S32)target_size << LL_ENDL;
+        return nullptr;
+    }
+
+    const F32* src = reinterpret_cast<const F32*>(source_data);
+    U16*       dst = reinterpret_cast<U16*>(buf);
+    for (U32 px = 0; px < pixel_count; ++px)
+    {
+        for (U32 c = 0; c < target_components; ++c)
+        {
+            F32 v;
+            if (c < source_components)
+            {
+                v = src[(U64)px * source_components + c];
+            }
+            else
+            {
+                v = (c == 3) ? 1.0f : 0.0f;   // alpha = opaque, 他 padding ch = 0
+            }
+            dst[(U64)px * target_components + c] = float32ToHalf16(v);
+        }
+    }
+
+    out_size_bytes = (U32)target_size;
+    return buf;
+}
+
+// 4-channel matched でも source bytes/pixel と target bytes/pixel が一致 → no-op return。
+static U8* createVulkanPaddingBuffer(const U8* source_data,
+                                     U32       source_components,
+                                     U32       source_component_bytes,  // 1 (U8) / 2 (R16/F16) / 4 (F32)
+                                     U32       target_bytes_per_pixel,
+                                     U32       pixel_count,
+                                     U32&      out_padded_size_bytes)
+{
+    out_padded_size_bytes = 0;
+    if (source_data == nullptr || pixel_count == 0 ||
+        source_components == 0 || target_bytes_per_pixel == 0)
+    {
+        return nullptr;
+    }
+
+    const U32 source_bytes_per_pixel = source_components * source_component_bytes;
+    if (source_bytes_per_pixel == target_bytes_per_pixel)
+    {
+        return nullptr;
+    }
+
+    const U64 target_size = (U64)target_bytes_per_pixel * (U64)pixel_count;
+    U8* padded = new (std::nothrow) U8[target_size];
+    if (padded == nullptr)
+    {
+        LL_WARNS_ONCE("Vulkan") << "createVulkanPaddingBuffer: alloc failed size="
+                                << (S32)target_size << LL_ENDL;
+        return nullptr;
+    }
+
+    // expand per-pixel:
+    //   target_component_count = target_bytes_per_pixel / source_component_bytes
+    //                          (= 4 ch for U8 RGBA8, 4 ch for half RGBA16F, etc.)
+    //   pad rule = source の component を target の先頭 N 個に copy、残り = (0 ... last) = opaque alpha 1。
+    const U32 target_component_count = (source_component_bytes > 0)
+                                       ? (target_bytes_per_pixel / source_component_bytes)
+                                       : 4;
+
+    // source_component_bytes per type で逐次膨張。U8 / U16 (half-float) / U32 (float) 全 cover。
+    for (U32 px = 0; px < pixel_count; ++px)
+    {
+        U8* dst_pixel = padded + (U64)px * (U64)target_bytes_per_pixel;
+        const U8* src_pixel = source_data + (U64)px * (U64)source_bytes_per_pixel;
+
+        // copy source components 先頭 N 個 (= source_components 個)
+        const U32 copy_bytes = source_components * source_component_bytes;
+        memcpy(dst_pixel, src_pixel, copy_bytes);
+
+        // 残り = (target_component_count - source_components) ch を opaque alpha 相当で埋める。
+        // U8 = 255、half (2B) = 0x3C00 (= 1.0)、float (4B) = 1.0f。
+        // ただし「matched + 0」case = 既存 source_components が L8 = 1 → target=RGBA8 4 ch では
+        // R=G=B=L (= grayscale 視認)、A=255。color3 (RGB) → RGBA は R/G/B kept + A=opaque。
+        if (source_components == 1 && target_component_count >= 3)
+        {
+            // L8 / L16 / L32F broadcast = R=G=B=L
+            for (U32 c = 1; c < 3 && c < target_component_count; ++c)
+            {
+                memcpy(dst_pixel + c * source_component_bytes, src_pixel, source_component_bytes);
+            }
+            // 4 ch target ならば A = opaque (1)
+            if (target_component_count >= 4)
+            {
+                U8* alpha_dst = dst_pixel + 3 * source_component_bytes;
+                if (source_component_bytes == 1)
+                {
+                    alpha_dst[0] = 0xFF;
+                }
+                else if (source_component_bytes == 2)
+                {
+                    // half-float 1.0 = 0x3C00 (little-endian)
+                    alpha_dst[0] = 0x00;
+                    alpha_dst[1] = 0x3C;
+                }
+                else if (source_component_bytes == 4)
+                {
+                    float one = 1.0f;
+                    memcpy(alpha_dst, &one, 4);
+                }
+            }
+        }
+        else if (source_components < target_component_count)
+        {
+            // RGB → RGBA = trailing A = opaque。他 case は 0 fill (= zero-init による静的不定値防止)。
+            for (U32 c = source_components; c < target_component_count; ++c)
+            {
+                U8* slot_dst = dst_pixel + c * source_component_bytes;
+                if (c == 3)  // alpha slot 専用 = opaque (= 1.0 / 255)
+                {
+                    if (source_component_bytes == 1)
+                    {
+                        slot_dst[0] = 0xFF;
+                    }
+                    else if (source_component_bytes == 2)
+                    {
+                        slot_dst[0] = 0x00;
+                        slot_dst[1] = 0x3C;
+                    }
+                    else if (source_component_bytes == 4)
+                    {
+                        float one = 1.0f;
+                        memcpy(slot_dst, &one, 4);
+                    }
+                    else
+                    {
+                        memset(slot_dst, 0, source_component_bytes);
+                    }
+                }
+                else
+                {
+                    memset(slot_dst, 0, source_component_bytes);
+                }
+            }
+        }
+    }
+
+    out_padded_size_bytes = (U32)target_size;
+    return padded;
+}
+
+static U32 glPixTypeToSourceComponentBytes(U32 pixtype)
+{
+    switch (pixtype)
+    {
+        case GL_UNSIGNED_BYTE:
+        case GL_BYTE:
+            return 1;
+        case GL_UNSIGNED_SHORT:
+        case GL_SHORT:
+        case GL_HALF_FLOAT:
+            return 2;
+        case GL_UNSIGNED_INT:
+        case GL_INT:
+        case GL_FLOAT:
+            return 4;
+        default:
+            return 1;  // safe default
+    }
+}
 
 // track a texture alloc on the currently bound texture.
 // asserts that no currently tracked alloc exists
@@ -141,6 +383,7 @@ S32 LLImageGL::sCount                   = 0;
 bool LLImageGL::sGlobalUseAnisotropic   = false;
 F32 LLImageGL::sLastFrameTime           = 0.f;
 LLImageGL* LLImageGL::sDefaultGLTexture = NULL ;
+LLImageGL* LLImageGL::sWhiteImageGLp   = NULL ;
 bool LLImageGL::sCompressTextures = false;
 std::unordered_set<LLImageGL*> LLImageGL::sImageList;
 
@@ -256,7 +499,12 @@ void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyz
         glGenBuffers(1, &sScratchPBO);
     }
 
-    if (thread_texture_loads || thread_media_updates)
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        LLImageGLThread::sEnabledTextures = false;
+        LLImageGLThread::sEnabledMedia = false;
+    }
+    else if (thread_texture_loads || thread_media_updates)
     {
         LLImageGLThread::createInstance(window);
         LLImageGLThread::sEnabledTextures = gGLManager.mGLVersion > 3.95f ? thread_texture_loads : false;
@@ -513,6 +761,7 @@ LLImageGL::~LLImageGL()
 {
     if (!mExternalTexture && gGLManager.mInited)
     {
+        LLRender::clearStaleImageGLRefs(this);
         LLImageGL::cleanup();
         sImageList.erase(this);
         freePickMask();
@@ -773,6 +1022,7 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
         S32 h = getHeight();
         LLImageGL::setManualImage(mTarget, 0, mFormatInternal, w, h,
             mFormatPrimary, mFormatType, (GLvoid*)data_in, mAllowCompression);
+        syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, nullptr, false);
     }
     else if (mUseMipMaps)
     {
@@ -798,6 +1048,8 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                     GLsizei tex_size = (GLsizei)dataFormatBytes(mFormatPrimary, w, h);
                     glCompressedTexImage2D(mTarget, gl_level, mFormatPrimary, w, h, 0, tex_size, (GLvoid *)data_in);
                     stop_glerror();
+                    syncVulkanMip0Image((U32)mFormatPrimary, (U32)mFormatPrimary, (U32)GL_UNSIGNED_BYTE, w, h, data_in, true,
+                                        gl_level, mMaxDiscardLevel - mCurrentDiscardLevel + 1);
                 }
                 else
                 {
@@ -808,6 +1060,8 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                     }
 
                     LLImageGL::setManualImage(mTarget, gl_level, mFormatInternal, w, h, mFormatPrimary, GL_UNSIGNED_BYTE, (GLvoid*)data_in, mAllowCompression);
+                    syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)GL_UNSIGNED_BYTE, w, h, data_in, false,
+                                        gl_level, mMaxDiscardLevel - mCurrentDiscardLevel + 1);
                     if (gl_level == 0)
                     {
                         analyzeAlpha(data_in, w, h);
@@ -856,6 +1110,16 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                                  data_in, mAllowCompression);
                     analyzeAlpha(data_in, w, h);
                     stop_glerror();
+                    S32 vk_mip_count = 1;
+                    {
+                        S32 dim = llmax(w, h);
+                        while (dim > 1) { dim >>= 1; ++vk_mip_count; }
+                    }
+                    syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, data_in, false, 0, vk_mip_count);
+                    if (mVkImage != VK_NULL_HANDLE && mVkImageMipLevels > 1)
+                    {
+                        LLVKLoader::generateMipChainBlitVk(mVkImage, (U32)w, (U32)h, mVkImageMipLevels, mVkImageFormat);
+                    }
 
                     updatePickMask(w, h, data_in);
 
@@ -955,15 +1219,13 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                         }
 
                         LLImageGL::setManualImage(mTarget, m, mFormatInternal, w, h, mFormatPrimary, mFormatType, cur_mip_data, mAllowCompression);
+                        syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, cur_mip_data, false, m, nummips);
                         if (m == 0)
                         {
                             analyzeAlpha(data_in, w, h);
-                        }
-                        stop_glerror();
-                        if (m == 0)
-                        {
                             updatePickMask(w, h, cur_mip_data);
                         }
+                        stop_glerror();
 
                         if(mFormatSwapBytes)
                         {
@@ -1001,6 +1263,7 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
             GLsizei tex_size = (GLsizei)dataFormatBytes(mFormatPrimary, w, h);
             glCompressedTexImage2D(mTarget, 0, mFormatPrimary, w, h, 0, tex_size, (GLvoid *)data_in);
             stop_glerror();
+            syncVulkanMip0Image((U32)mFormatPrimary, (U32)mFormatPrimary, (U32)GL_UNSIGNED_BYTE, w, h, data_in, true);
         }
         else
         {
@@ -1013,6 +1276,7 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
             LLImageGL::setManualImage(mTarget, 0, mFormatInternal, w, h,
                          mFormatPrimary, mFormatType, (GLvoid *)data_in, mAllowCompression);
             analyzeAlpha(data_in, w, h);
+            syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, data_in, false);
 
             updatePickMask(w, h, data_in);
 
@@ -1028,7 +1292,384 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
     }
     stop_glerror();
     mGLTextureCreated = true;
+
     return true;
+}
+
+namespace
+{
+    struct VkSyncStats
+    {
+        std::atomic<U64> calls           {0};
+        std::atomic<U64> skip_gate       {0};
+        std::atomic<U64> skip_target     {0};
+        std::atomic<U64> skip_dim        {0};
+        std::atomic<U64> skip_fmt_undef  {0};
+        std::atomic<U64> reuse_hit       {0};
+        std::atomic<U64> destroy_stale   {0};
+        std::atomic<U64> create_ok       {0};
+        std::atomic<U64> create_failed   {0};
+        std::atomic<U64> alloc_only      {0};
+        std::atomic<U64> upload_ok       {0};
+        std::atomic<U64> upload_failed   {0};
+    };
+    static VkSyncStats sVkSyncStats;
+
+    static LLMutex sVkSyncFmtUndefMutex;
+    static std::unordered_map<U32, U64> sVkSyncFmtUndefCounts;
+
+    void recordVkSyncFmtUndef(U32 fmt_src, U32 primary, bool is_compressed)
+    {
+        sVkSyncStats.skip_fmt_undef.fetch_add(1, std::memory_order_relaxed);
+        LLMutexLock lock(&sVkSyncFmtUndefMutex);
+        auto it = sVkSyncFmtUndefCounts.find(fmt_src);
+        if (it == sVkSyncFmtUndefCounts.end())
+        {
+            sVkSyncFmtUndefCounts[fmt_src] = 1;
+            LL_WARNS("VulkanUpload") << "format-undefined (first seen): fmt_src=0x"
+                                     << std::hex << fmt_src
+                                     << " primary=0x" << primary << std::dec
+                                     << " is_compressed=" << (is_compressed ? 1 : 0)
+                                     << LL_ENDL;
+        }
+        else
+        {
+            ++(it->second);
+        }
+    }
+
+    void emitVkSyncStatsSummaryIfDue(U64 calls_post)
+    {
+        if (calls_post == 0 || (calls_post % 500ULL) != 0ULL)
+        {
+            return;
+        }
+    }
+}
+
+void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
+                                    S32 w, S32 h, const void* data, bool is_compressed,
+                                    S32 mip_level, S32 mip_count)
+{
+    const U64 calls_post = sVkSyncStats.calls.fetch_add(1, std::memory_order_relaxed) + 1;
+
+    if (!LLVKLoader::shouldUseVulkanRender())
+    {
+        sVkSyncStats.skip_gate.fetch_add(1, std::memory_order_relaxed);
+        emitVkSyncStatsSummaryIfDue(calls_post);
+        return;
+    }
+    if (mTarget != GL_TEXTURE_2D || mExternalTexture)
+    {
+        sVkSyncStats.skip_target.fetch_add(1, std::memory_order_relaxed);
+        emitVkSyncStatsSummaryIfDue(calls_post);
+        return;
+    }
+    if (w <= 0 || h <= 0)
+    {
+        sVkSyncStats.skip_dim.fetch_add(1, std::memory_order_relaxed);
+        emitVkSyncStatsSummaryIfDue(calls_post);
+        return;
+    }
+
+    const U32 fmt_src = is_compressed ? primary : intformat;
+    VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat(fmt_src);
+    // BGRA byte order source (= CEF login HTML 等 = primary GL_BGRA) は B8G8R8A8 で作成 =
+    // source data byte order と image format 一致 = R/B channel swap 回避。
+    // compressed (= primary が GL_COMPRESSED_*) は本 override 非対象。
+    if (!is_compressed && primary == GL_BGRA && vk_format == VK_FORMAT_R8G8B8A8_UNORM)
+    {
+        vk_format = VK_FORMAT_B8G8R8A8_UNORM;
+    }
+    if (vk_format == VK_FORMAT_UNDEFINED)
+    {
+        recordVkSyncFmtUndef(fmt_src, primary, is_compressed);
+        emitVkSyncStatsSummaryIfDue(calls_post);
+        return;
+    }
+
+    if (mip_level == 0)
+    {
+        const U32 want_mips = (mip_count > 0) ? (U32)mip_count : 1u;
+
+        const bool can_reuse = (mVkImage != VK_NULL_HANDLE)
+                               && (mVkImageView != VK_NULL_HANDLE)
+                               && (mVkImageWidth  == (U32)w)
+                               && (mVkImageHeight == (U32)h)
+                               && (mVkImageFormat == vk_format)
+                               && (mVkImageMipLevels == want_mips);
+
+        if (can_reuse)
+        {
+            sVkSyncStats.reuse_hit.fetch_add(1, std::memory_order_relaxed);
+        }
+        else if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE ||
+                 mVkAllocation != nullptr)
+        {
+            LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+            mVkImage      = VK_NULL_HANDLE;
+            mVkImageView  = VK_NULL_HANDLE;
+            mVkAllocation = nullptr;
+            mVkImageWidth  = 0;
+            mVkImageHeight = 0;
+            mVkImageMipLevels = 1;
+            mVkImageFormat = VK_FORMAT_UNDEFINED;
+            sVkSyncStats.destroy_stale.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        if (!can_reuse)
+        {
+            if (!LLVKLoader::createTextureImageVk((U32)w, (U32)h, vk_format,
+                                                  mVkImage, mVkImageView, mVkAllocation,
+                                                  want_mips))
+            {
+                sVkSyncStats.create_failed.fetch_add(1, std::memory_order_relaxed);
+                emitVkSyncStatsSummaryIfDue(calls_post);
+                return;
+            }
+            mVkImageWidth     = (U32)w;
+            mVkImageHeight    = (U32)h;
+            mVkImageMipLevels = want_mips;
+            mVkImageFormat    = vk_format;
+            sVkSyncStats.create_ok.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+    else
+    {
+        if (mVkImage == VK_NULL_HANDLE || mVkImageView == VK_NULL_HANDLE
+            || mVkImageFormat != vk_format
+            || (U32)mip_level >= mVkImageMipLevels)
+        {
+            sVkSyncStats.skip_dim.fetch_add(1, std::memory_order_relaxed);
+            emitVkSyncStatsSummaryIfDue(calls_post);
+            return;
+        }
+    }
+
+    if (data == nullptr)
+    {
+        sVkSyncStats.alloc_only.fetch_add(1, std::memory_order_relaxed);
+        emitVkSyncStatsSummaryIfDue(calls_post);
+        return;
+    }
+
+    const void* upload_data     = data;
+    U32         upload_size     = 0;
+    U8*         padded_buffer   = nullptr;
+
+    if (is_compressed)
+    {
+        upload_size = (U32)dataFormatBytes(primary, w, h);
+    }
+    else
+    {
+        const U32 source_components       = LLVKLoader::glFormatSourceComponents(primary);
+        const U32 pixel_count             = (U32)w * (U32)h;
+
+        U32 half16_target_components = 0;
+        if (type == GL_FLOAT)
+        {
+            switch (vk_format)
+            {
+                case VK_FORMAT_R16_SFLOAT:          half16_target_components = 1; break;
+                case VK_FORMAT_R16G16_SFLOAT:       half16_target_components = 2; break;
+                case VK_FORMAT_R16G16B16A16_SFLOAT: half16_target_components = 4; break;
+                default:                            break;
+            }
+        }
+
+        if (half16_target_components != 0)
+        {
+            U32 conv_size_bytes = 0;
+            padded_buffer = createVulkanFloat32ToHalf16Buffer(
+                                (const U8*)data,
+                                source_components,
+                                half16_target_components,
+                                pixel_count,
+                                conv_size_bytes);
+
+            if (padded_buffer == nullptr)
+            {
+                LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+                mVkImage       = VK_NULL_HANDLE;
+                mVkImageView   = VK_NULL_HANDLE;
+                mVkAllocation  = nullptr;
+                mVkImageWidth  = 0;
+                mVkImageHeight = 0;
+                mVkImageFormat = VK_FORMAT_UNDEFINED;
+                sVkSyncStats.upload_failed.fetch_add(1, std::memory_order_relaxed);
+                emitVkSyncStatsSummaryIfDue(calls_post);
+                return;
+            }
+            upload_data = padded_buffer;
+            upload_size = conv_size_bytes;
+        }
+        else
+        {
+            const U32 source_component_bytes  = glPixTypeToSourceComponentBytes(type);
+            const U32 target_bytes_per_pixel  = LLVKLoader::vkFormatBytesPerPixel(vk_format);
+
+            U32 padded_size_bytes = 0;
+            padded_buffer = createVulkanPaddingBuffer(
+                                (const U8*)data,
+                                source_components,
+                                source_component_bytes,
+                                target_bytes_per_pixel,
+                                pixel_count,
+                                padded_size_bytes);
+
+            upload_data = (padded_buffer != nullptr) ? (const void*)padded_buffer : data;
+            upload_size = (padded_buffer != nullptr)
+                              ? padded_size_bytes
+                              : (U32)dataFormatBytes(primary, w, h);
+        }
+    }
+
+    if (upload_size > 0)
+    {
+        const bool upload_ok = LLVKLoader::uploadImageDataVk(
+            mVkImage, (U32)w, (U32)h, vk_format, upload_data, upload_size, (U32)mip_level);
+
+        if (!upload_ok)
+        {
+            LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+            mVkImage      = VK_NULL_HANDLE;
+            mVkImageView  = VK_NULL_HANDLE;
+            mVkAllocation = nullptr;
+            mVkImageWidth  = 0;
+            mVkImageHeight = 0;
+            mVkImageMipLevels = 1;
+            mVkImageFormat = VK_FORMAT_UNDEFINED;
+            sVkSyncStats.upload_failed.fetch_add(1, std::memory_order_relaxed);
+        }
+        else
+        {
+            sVkSyncStats.upload_ok.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    if (padded_buffer != nullptr)
+    {
+        delete[] padded_buffer;
+    }
+
+    emitVkSyncStatsSummaryIfDue(calls_post);
+}
+
+void LLImageGL::syncVulkan3DImage(U32 intformat, U32 primary, U32 type,
+                                  S32 w, S32 h, S32 depth, const void* data)
+{
+    if (!LLVKLoader::shouldUseVulkanRender())
+    {
+        return;
+    }
+    if (w <= 0 || h <= 0 || depth <= 0 || data == nullptr)
+    {
+        return;
+    }
+
+    VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat(intformat);
+    if (vk_format == VK_FORMAT_UNDEFINED)
+    {
+        LL_WARNS_ONCE("Vulkan") << "syncVulkan3DImage: unmapped GL intformat 0x"
+                                << std::hex << intformat << std::dec << LL_ENDL;
+        return;
+    }
+
+    if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE || mVkAllocation != nullptr)
+    {
+        LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+        mVkImage       = VK_NULL_HANDLE;
+        mVkImageView   = VK_NULL_HANDLE;
+        mVkAllocation  = nullptr;
+        mVkImageWidth  = 0;
+        mVkImageHeight = 0;
+        mVkImageFormat = VK_FORMAT_UNDEFINED;
+    }
+
+    if (!LLVKLoader::createTexture3DImageVk((U32)w, (U32)h, (U32)depth, vk_format,
+                                            mVkImage, mVkImageView, mVkAllocation))
+    {
+        return;
+    }
+    mVkImageWidth  = (U32)w;
+    mVkImageHeight = (U32)h;
+    mVkImageFormat = vk_format;
+
+    const U32   source_components = LLVKLoader::glFormatSourceComponents(primary);
+    const U32   pixel_count       = (U32)w * (U32)h * (U32)depth;
+    const void* upload_data       = data;
+    U32         upload_size       = 0;
+    U8*         conv_buffer       = nullptr;
+
+    U32 half16_target_components = 0;
+    if (type == GL_FLOAT)
+    {
+        switch (vk_format)
+        {
+            case VK_FORMAT_R16_SFLOAT:          half16_target_components = 1; break;
+            case VK_FORMAT_R16G16_SFLOAT:       half16_target_components = 2; break;
+            case VK_FORMAT_R16G16B16A16_SFLOAT: half16_target_components = 4; break;
+            default:                            break;
+        }
+    }
+
+    if (half16_target_components != 0)
+    {
+        conv_buffer = createVulkanFloat32ToHalf16Buffer(
+                          (const U8*)data, source_components, half16_target_components,
+                          pixel_count, upload_size);
+        if (conv_buffer == nullptr)
+        {
+            LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+            mVkImage = VK_NULL_HANDLE; mVkImageView = VK_NULL_HANDLE; mVkAllocation = nullptr;
+            mVkImageWidth = 0; mVkImageHeight = 0; mVkImageFormat = VK_FORMAT_UNDEFINED;
+            return;
+        }
+        upload_data = conv_buffer;
+    }
+    else
+    {
+        const U32 source_component_bytes = glPixTypeToSourceComponentBytes(type);
+        const U32 target_bpp             = LLVKLoader::vkFormatBytesPerPixel(vk_format);
+        U32       padded_size            = 0;
+        conv_buffer = createVulkanPaddingBuffer((const U8*)data, source_components,
+                                                source_component_bytes, target_bpp,
+                                                pixel_count, padded_size);
+        upload_data = (conv_buffer != nullptr) ? (const void*)conv_buffer : data;
+        upload_size = (conv_buffer != nullptr) ? padded_size : (target_bpp * pixel_count);
+    }
+
+    if (upload_size > 0)
+    {
+        if (!LLVKLoader::uploadImageData3DVk(mVkImage, (U32)w, (U32)h, (U32)depth,
+                                             vk_format, upload_data, upload_size))
+        {
+            LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+            mVkImage = VK_NULL_HANDLE; mVkImageView = VK_NULL_HANDLE; mVkAllocation = nullptr;
+            mVkImageWidth = 0; mVkImageHeight = 0; mVkImageFormat = VK_FORMAT_UNDEFINED;
+        }
+    }
+
+    if (conv_buffer != nullptr)
+    {
+        delete[] conv_buffer;
+    }
+}
+
+void LLImageGL::setExternalVkBacking(VkImage image, VkImageView view, void* allocation,
+                                     U32 w, U32 h, VkFormat format)
+{
+    if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE || mVkAllocation != nullptr)
+    {
+        LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+    }
+    mVkImage       = image;
+    mVkImageView   = view;
+    mVkAllocation  = allocation;
+    mVkImageWidth  = w;
+    mVkImageHeight = h;
+    mVkImageFormat = format;
 }
 
 U32 type_width_from_pixtype(U32 pixtype)
@@ -1214,6 +1855,57 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
         {
             sub_image_lines(mTarget, 0, x_pos, y_pos, width, height, mFormatPrimary, mFormatType, sub_datap, data_width);
         }
+        if (LLVKLoader::shouldUseVulkanRender() && mVkImage != VK_NULL_HANDLE)
+        {
+            bool ok = LLVKLoader::uploadImageSubregionVk(mVkImage, mVkImageFormat,
+                                                        (U32)x_pos, (U32)y_pos,
+                                                        (U32)width, (U32)height,
+                                                        datap,
+                                                        (U32)data_width, (U32)data_height);
+            if (!ok)
+            {
+                LL_WARNS("Vulkan") << "uploadImageSubregionVk failed → VK image invalidate"
+                                   << " (stale 継続回避、 次 full setImage で re-sync)"
+                                   << " image_gl=0x" << std::hex << (void*)this << std::dec
+                                   << " mVkImage=0x" << std::hex << (void*)mVkImage << std::dec
+                                   << " x=" << x_pos << " y=" << y_pos
+                                   << " w=" << width << " h=" << height
+                                   << " data=" << data_width << "x" << data_height
+                                   << LL_ENDL;
+                LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+                mVkImage          = VK_NULL_HANDLE;
+                mVkImageView      = VK_NULL_HANDLE;
+                mVkAllocation     = nullptr;
+                mVkImageWidth     = 0;
+                mVkImageHeight    = 0;
+                mVkImageMipLevels = 1;
+                mVkImageFormat    = VK_FORMAT_UNDEFINED;
+            }
+        }
+        else if (LLVKLoader::shouldUseVulkanRender())
+        {
+            const bool full_tight = (x_pos == 0 && y_pos == 0 &&
+                                     width == getWidth() && height == getHeight() &&
+                                     data_width == width && data_height == height);
+            if (full_tight && !isCompressed())
+            {
+                syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType,
+                                    width, height, datap, false);
+            }
+            else
+            {
+                LL_WARNS("Vulkan") << "setSubImage: VK storage 未alloc で sub-update 到達"
+                                   << " (先行 alloc 失敗/invalidate の二次症状) = 部分/compressed"
+                                   << " ゆえ full 復元不可 = skip、 次 full setImage で re-sync。"
+                                   << " image_gl=0x" << std::hex << (void*)this << std::dec
+                                   << " x=" << x_pos << " y=" << y_pos
+                                   << " w=" << width << " h=" << height
+                                   << " tex=" << getWidth() << "x" << getHeight()
+                                   << " data=" << data_width << "x" << data_height
+                                   << " compressed=" << (S32)isCompressed()
+                                   << LL_ENDL;
+            }
+        }
         gGL.getTexUnit(0)->disable();
         stop_glerror();
 
@@ -1227,6 +1919,7 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
         stop_glerror();
         mGLTextureCreated = true;
     }
+
     return true;
 }
 
@@ -1244,6 +1937,7 @@ bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_
         glCopyTexSubImage2D(GL_TEXTURE_2D, 0, fb_x, fb_y, x_pos, y_pos, width, height);
         mGLTextureCreated = true;
         stop_glerror();
+
         return true;
     }
     else
@@ -1256,6 +1950,7 @@ bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_
 void LLImageGL::generateTextures(S32 numTextures, U32 *textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+
     static constexpr U32 pool_size = 1024;
     static thread_local U32 name_pool[pool_size]; // pool of texture names
     static thread_local U32 name_count = 0; // number of available names in the pool
@@ -1533,6 +2228,7 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     checkActiveThread();
+
 
     if (gGLManager.mIsDisabled)
     {
@@ -1955,6 +2651,17 @@ void LLImageGL::destroyGLTexture()
         mCurrentDiscardLevel = -1 ; //invalidate mCurrentDiscardLevel.
         mTexName = 0;
         mGLTextureCreated = false ;
+    }
+
+    if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE || mVkAllocation != nullptr)
+    {
+        LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+        mVkImage      = VK_NULL_HANDLE;
+        mVkImageView  = VK_NULL_HANDLE;
+        mVkAllocation = nullptr;
+        mVkImageWidth  = 0;
+        mVkImageHeight = 0;
+        mVkImageFormat = VK_FORMAT_UNDEFINED;
     }
 }
 
@@ -2469,6 +3176,17 @@ bool LLImageGL::scaleDown(S32 desired_discard)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        static bool s_logged_scaledown_skip = false;
+        if (!s_logged_scaledown_skip)
+        {
+            s_logged_scaledown_skip = true;
+            LL_WARNS("Vulkan") << "GL fallback 廃止: LLImageGL::scaleDown GL downscale skip (Vulkan mode) = VRAM 最適化のみ無効化" << LL_ENDL;
+        }
+        return false;
+    }
+
     if (mTarget != GL_TEXTURE_2D
         || mFormatInternal == -1 // not initialized
         )
@@ -2640,6 +3358,7 @@ LLImageGLThread::LLImageGLThread(LLWindow* window)
     if( !mContext )
     {
         sEnabledTextures = false;
+        sEnabledMedia = false;
         mFinished = true;
         return;
     }

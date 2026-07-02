@@ -36,6 +36,7 @@
 
 #include "llerror.h"
 #include "llgl.h"
+#include "llvkloader.h"
 #include "llstring.h"
 #include "lldir.h"
 #include "llfindlocale.h"
@@ -1236,6 +1237,13 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
+    // Vulkan presentation 有効時は vkQueuePresentKHR が LLVKLoader::endFrame() で発火済ゆえ
+    //   GL `SDL_GL_SwapBuffers` skip = no-op return (= dual-presentation 衝突回避)。
+    if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
+    {
+        return;
+    }
+
     if (mWindow)
     {
         SDL_GL_SwapBuffers();
@@ -2878,6 +2886,16 @@ void LLWindowSDL::spawnWebBrowser(const std::string& escaped_url, bool async)
 void LLWindowSDL::openFile(const std::string& file_name)
 {
     spawnWebBrowser("file://"+file_name,TRUE);
+}
+
+LLWindow::LLNativeWindowHandles LLWindowSDL::getNativeWindowHandles()
+{
+    LLNativeWindowHandles handles;
+#if LL_X11
+    handles.native_display = mSDL_Display;
+    handles.native_window  = reinterpret_cast<void*>(static_cast<uintptr_t>(mSDL_XWindowID));
+#endif
+    return handles;
 }
 
 void *LLWindowSDL::getPlatformWindow()

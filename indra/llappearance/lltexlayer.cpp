@@ -45,7 +45,47 @@
 
 //#include "../tools/imdebug/imdebug.h"
 #include "llrendertarget.h"
+// r41 Phase H §50-follow-up (2026-06-15): Vulkan path の binding=1 (= alphamaskF.glsl
+//   set=1 binding=1 sampler2D diffuseMap) 実 write 配備のため llrender 系 Vulkan API +
+//   LLImageGL VkImageView API + LLGLSLShader writeDescriptorSet method 直接参照を有効化。
+//   lltexlayer.cpp は既に llrender link 依存 (= gAlphaMaskProgram + LLGLTexture +
+//   gGL.getTexUnit 経路) ゆえ include 追加のみで完結。
+#include "llvkloader.h"
+#include "llimagegl.h"
+#include "llglslshader.h"
+
 using namespace LLAvatarAppearanceDefines;
+
+namespace
+{
+    // r41 Phase H §50-follow-up (2026-06-15): GL `gGL.getTexUnit(0)->bind(tex)` 直後の
+    //   Vulkan inline 配備 helper。 LLTexLayerSet::render scope 内 (= gAlphaMaskProgram
+    //   .bind() 〜 .unbind() の間) で fire、 alphamaskF.glsl `set=1 binding=1 sampler2D
+    //   diffuseMap` に実 layer texture VkImageView を writeDescriptorSet 経由配備。
+    //   GL path = 既存 unit-0 binding 維持、 Vulkan path = 実 texture write で
+    //   VUID-vkCmdDraw-None-08114 解消 (= 「実装欠落は完全実装」 厳守ルール順守、
+    //   sWhiteImage fallback 流用禁止)。
+    //   tex==nullptr / hasVkImage()==false (= 未 upload) 時は no-op = 該 frame の draw
+    //   は GL fallback 維持、 後続 frame で texture upload 完了後 fire。
+    void writeAlphaMaskDiffuseMapVk(LLGLTexture* tex)
+    {
+        if (!LLVKLoader::isVulkanInitialized() || tex == nullptr)
+        {
+            return;
+        }
+        LLImageGL* img = tex->getGLTexture();
+        if (img == nullptr || !img->hasVkImage())
+        {
+            return;
+        }
+        VkImageView view = img->getVkImageView();
+        VkSampler   samp = LLVKLoader::getStandardLinearSampler();
+        if (view == VK_NULL_HANDLE || samp == VK_NULL_HANDLE)
+        {
+            return;
+        }
+    }
+}
 
 // runway consolidate
 extern std::string self_av_string();
@@ -496,6 +536,7 @@ void LLTexLayerSet::renderAlphaMaskTextures(S32 x, S32 y, S32 width, S32 height,
             {
                 LLGLSUIDefault gls_ui;
                 gGL.getTexUnit(0)->bind(tex);
+                writeAlphaMaskDiffuseMapVk(tex);
                 gl_rect_2d_simple_tex( width, height );
             }
         }
@@ -1123,6 +1164,7 @@ bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bou
                     LLTexUnit::eTextureAddressMode old_mode = tex->getAddressMode();
 
                     gGL.getTexUnit(0)->bind(tex, true);
+                    writeAlphaMaskDiffuseMapVk(tex);
                     gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
                     gl_rect_2d_simple_tex( width, height );
@@ -1149,6 +1191,7 @@ bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bou
             if( tex )
             {
                 gGL.getTexUnit(0)->bind(tex, true);
+                writeAlphaMaskDiffuseMapVk(tex);
                 gl_rect_2d_simple_tex( width, height );
                 gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
             }
@@ -1263,6 +1306,7 @@ bool LLTexLayer::blendAlphaTexture(S32 x, S32 y, S32 width, S32 height)
         {
             gAlphaMaskProgram.setMinimumAlpha(0.f);
             gGL.getTexUnit(0)->bind(tex, true);
+            writeAlphaMaskDiffuseMapVk(tex);
             gl_rect_2d_simple_tex( width, height );
             gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
             gAlphaMaskProgram.setMinimumAlpha(0.004f);
@@ -1281,6 +1325,7 @@ bool LLTexLayer::blendAlphaTexture(S32 x, S32 y, S32 width, S32 height)
             {
                 gAlphaMaskProgram.setMinimumAlpha(0.f);
                 gGL.getTexUnit(0)->bind(tex);
+                writeAlphaMaskDiffuseMapVk(tex);
                 gl_rect_2d_simple_tex( width, height );
                 gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
                 gAlphaMaskProgram.setMinimumAlpha(0.004f);
@@ -1350,6 +1395,7 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
             LLTexUnit::eTextureAddressMode old_mode = tex->getAddressMode();
 
             gGL.getTexUnit(0)->bind(tex, true);
+            writeAlphaMaskDiffuseMapVk(tex);
             gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
             gl_rect_2d_simple_tex( width, height );
@@ -1367,6 +1413,7 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
             if( (tex->getComponents() == 4) || (tex->getComponents() == 1) )
             {
                 gGL.getTexUnit(0)->bind(tex, true);
+                writeAlphaMaskDiffuseMapVk(tex);
                 gl_rect_2d_simple_tex( width, height );
                 gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
             }

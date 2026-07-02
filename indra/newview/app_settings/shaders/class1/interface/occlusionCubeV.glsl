@@ -23,12 +23,62 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 modelview_projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+
+layout(set = 1, binding = 0, std140) uniform OcclusionCube_PerProgramBind
+{
+#ifndef _AYA_UM_box_center
+#define _AYA_UM_box_center 1
+    vec3 box_center;
+#else
+    vec3 _dup_OcclusionCube_box_center;
+#endif
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_OcclusionCube__pad0;
+#endif
+#ifndef _AYA_UM_box_size
+#define _AYA_UM_box_size 1
+    vec3 box_size;
+#else
+    vec3 _dup_OcclusionCube_box_size;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_OcclusionCube__pad1;
+#endif
+};
+#else
 in vec3 position;
 
 uniform vec3 box_center;
 uniform vec3 box_size;
+#endif
 
 void main()
 {

@@ -23,15 +23,27 @@
  * $/LicenseInfo$
  */
 
-in vec2 tc;
-
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 tc;
 #if defined(COPY_DEPTH)
-uniform sampler2D depthMap;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 2) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
 #endif
-
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+layout(location = 0) out vec4 frag_color;
+#else
+in vec2 tc;
+#if defined(COPY_DEPTH)
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+#endif
 uniform sampler2D diffuseMap;
-
 out vec4 frag_color;
+#endif
 
 void main()
 {

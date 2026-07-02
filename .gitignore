@@ -18,6 +18,14 @@
 *.code-workspace
 *~
 
+# AYAstorm r41 sub-step 3.3-B-β-2: SPIR-V build artifacts in source tree
+# (.glsl は commit、.spv は build-time generate / viewer_manifest.py で deploy)
+*.spv
+
+# AYA local test artifacts (security info 含む、commit 禁止)
+# 注: root tests/ のみ excluded、indra/**/tests/ は upstream Firestorm tracked source ゆえ excluded 対象外
+/tests/
+
 # Specific paths and/or names
 CMakeCache.txt
 cmake_install.cmake
@@ -137,3 +145,14 @@ checks.json
 out_r11_venue_ir/
 out_r11_test_material/
 out_r10_test_material/
+
+# Claude Code per-checkout settings (machine-local, no upstream value)
+.claude/
+CLAUDE.md
+
+# AYAstorm r41 — local glslang source/packaging artifacts (Vulkan SPIR-V build tool,
+# not shipped in tree; install system glslang or stage out-of-tree)
+glslang-*/
+glslang_*.tar.gz
+glslang_*.tar.xz
+glslang_*.dsc

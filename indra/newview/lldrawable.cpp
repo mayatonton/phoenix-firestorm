@@ -48,6 +48,7 @@
 #include "llvosurfacepatch.h" // for debugging
 #include "llworld.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llspatialpartition.h"
 #include "llviewerobjectlist.h"
 #include "llviewerwindow.h"
@@ -879,7 +880,7 @@ void LLDrawable::updateDistance(LLCamera& camera, bool force_update)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWABLE;
 
-    if (LLViewerCamera::sCurCameraID != LLViewerCamera::CAMERA_WORLD)
+    if (LLViewerCamera::getCurCameraID() != LLViewerCamera::CAMERA_WORLD)
     {
         LL_WARNS() << "Attempted to update distance for non-world camera." << LL_ENDL;
         return;
@@ -1545,7 +1546,7 @@ void LLSpatialBridge::setVisible(LLCamera& camera_in, std::vector<LLDrawable*>* 
                 LLVOAvatar* avatarp = (LLVOAvatar*) objparent;
                 if (avatarp->isVisible())
                 {
-                    impostor = objparent->isAvatar() && !LLPipeline::sImpostorRender && ((LLVOAvatar*) objparent)->isImpostor();
+                    impostor = objparent->isAvatar() && !LLPipelineFrameContext::getInstance().isImpostorPass() && ((LLVOAvatar*) objparent)->isImpostor();
                     loaded   = objparent->isAvatar() && ((LLVOAvatar*) objparent)->isFullyLoaded();
                 }
                 else
@@ -1576,13 +1577,13 @@ void LLSpatialBridge::setVisible(LLCamera& camera_in, std::vector<LLDrawable*>* 
     size.setSub(exts[1], exts[0]);
     size.mul(0.5f);
 
-    if ((LLPipeline::sShadowRender && camera_in.AABBInFrustum(center, size)) ||
-        LLPipeline::sImpostorRender ||
+    if ((LLPipelineFrameContext::getInstance().isShadowPass() && camera_in.AABBInFrustum(center, size)) ||
+        LLPipelineFrameContext::getInstance().isImpostorPass() ||
         (camera_in.AABBInFrustumNoFarClip(center, size) &&
         AABBSphereIntersect(exts[0], exts[1], camera_in.getOrigin(), camera_in.mFrustumCornerDist)))
     {
-        if (!LLPipeline::sImpostorRender &&
-            !LLPipeline::sShadowRender &&
+        if (!LLPipelineFrameContext::getInstance().isImpostorPass() &&
+            !LLPipelineFrameContext::getInstance().isShadowPass() &&
             LLPipeline::calcPixelArea(center, size, camera_in) < FORCE_INVISIBLE_AREA)
         {
             return;
@@ -1632,7 +1633,7 @@ void LLSpatialBridge::updateDistance(LLCamera& camera_in, bool force_update)
     if (mDrawable->getVObj())
     {
         // Don't update if we are part of impostor, unles it's an impostor pass
-        if (!LLPipeline::sImpostorRender && mDrawable->getVObj()->isAttachment())
+        if (!LLPipelineFrameContext::getInstance().isImpostorPass() && mDrawable->getVObj()->isAttachment())
         {
             LLDrawable* parent = mDrawable->getParent();
             if (parent && parent->getVObj())

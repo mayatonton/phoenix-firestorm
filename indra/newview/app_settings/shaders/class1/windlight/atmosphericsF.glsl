@@ -30,7 +30,17 @@ vec3 scaleSoftClipFrag(vec3 light);
 vec3 srgb_to_linear(vec3 col);
 vec3 linear_to_srgb(vec3 col);
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 10, std140) uniform WindlightHDR_PerProgramBind
+{
+    float sky_hdr_scale;
+    float _pad_hdr0;
+    float _pad_hdr1;
+    float _pad_hdr2;
+};
+#else
 uniform float sky_hdr_scale;
+#endif
 
 vec3 atmosFragLighting(vec3 light, vec3 additive, vec3 atten)
 {

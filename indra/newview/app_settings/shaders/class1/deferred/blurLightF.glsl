@@ -25,18 +25,44 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D lightMap;
+
+layout(set = 1, binding = 0, std140) uniform BlurLightF_PerProgramBind
+{
+    vec3 _blF_kern[4];
+    vec2 _blF_delta;
+    vec2 _blF_screen_res;
+    float _blF_dist_factor;
+    float _blF_blur_size;
+    float _blF_kern_scale;
+    float _blurLightF_pad0;
+};
+#define kern        _blF_kern
+#define delta       _blF_delta
+#define screen_res  _blF_screen_res
+#define dist_factor _blF_dist_factor
+#define blur_size   _blF_blur_size
+#define kern_scale  _blF_kern_scale
+
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D lightMap;
 
+uniform vec2 screen_res;
+
 uniform float dist_factor;
 uniform float blur_size;
 uniform vec2 delta;
-uniform vec2 screen_res;
 uniform vec3 kern[4];
 uniform float kern_scale;
 
 in vec2 vary_fragcoord;
+#endif
 
 vec4 getPosition(vec2 pos_screen);
 vec4 getNorm(vec2 pos_screen);

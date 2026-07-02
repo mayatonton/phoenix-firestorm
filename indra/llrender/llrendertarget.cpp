@@ -29,6 +29,7 @@
 #include "llrendertarget.h"
 #include "llrender.h"
 #include "llgl.h"
+#include "llvkloader.h"
 
 LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
 U32 LLRenderTarget::sBytesAllocated = 0;
@@ -98,6 +99,81 @@ void LLRenderTarget::resize(U32 resx, U32 resy)
         LLImageGL::setManualImage(internal_type, 0, GL_DEPTH_COMPONENT24, mResX, mResY, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL, false);
 
         sBytesAllocated += pix_diff*4;
+    }
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        for (size_t i = 0; i < mVkTex.size(); ++i)
+        {
+            LLVKLoader::destroyImageVk(
+                mVkTex[i],
+                i < mVkTexView.size()  ? mVkTexView[i]  : VK_NULL_HANDLE,
+                i < mVkTexAlloc.size() ? mVkTexAlloc[i] : nullptr);
+            if (i < mVkTexSampleView.size() && mVkTexSampleView[i] != VK_NULL_HANDLE)
+            {
+                LLVKLoader::destroyImageVk(VK_NULL_HANDLE, mVkTexSampleView[i], nullptr);
+            }
+        }
+        mVkTex.clear();
+        mVkTexView.clear();
+        mVkTexSampleView.clear();
+        mVkTexAlloc.clear();
+        mVkTexLayout.clear();
+
+        for (size_t i = 0; i < mInternalFormat.size(); ++i)
+        {
+            VkImage     vk_image       = VK_NULL_HANDLE;
+            VkImageView vk_view        = VK_NULL_HANDLE;
+            VkImageView vk_sample_view = VK_NULL_HANDLE;
+            void*       vk_allocation  = nullptr;
+            VkFormat    vk_format      = LLVKLoader::llGlEnumToVkFormat(mInternalFormat[i]);
+            const U32 vk_mip = (mGenerateMipMaps != LLTexUnit::TMG_NONE && i == 0 && mMipLevels > 1)
+                               ? mMipLevels : 1;
+            if (!LLVKLoader::createColorAttachmentImageVk(mResX, mResY, vk_format,
+                                                          vk_image, vk_view, vk_allocation,
+                                                          vk_mip,
+                                                          (vk_mip > 1) ? &vk_sample_view : nullptr))
+            {
+                LL_WARNS("Vulkan") << "createColorAttachmentImageVk failed (resize) = NULL placeholder"
+                                   << " で index 整合維持 attachment=" << (S32)i
+                                   << " fmt=0x" << std::hex << mInternalFormat[i] << std::dec
+                                   << " vk_fmt=" << (S32)vk_format
+                                   << " res=" << (S32)mResX << "x" << (S32)mResY << LL_ENDL;
+            }
+            mVkTex.push_back(vk_image);
+            mVkTexView.push_back(vk_view);
+            mVkTexSampleView.push_back(vk_sample_view);
+            mVkTexAlloc.push_back(vk_allocation);
+            mVkTexLayout.push_back(VK_IMAGE_LAYOUT_UNDEFINED);
+        }
+
+        if (mVkDepth != VK_NULL_HANDLE)
+        {
+            if (mVkDepthAlloc != nullptr)
+            {
+                LLVKLoader::destroyImageVk(mVkDepth, mVkDepthView, mVkDepthAlloc);
+            }
+            mVkDepth            = VK_NULL_HANDLE;
+            mVkDepthView        = VK_NULL_HANDLE;
+            mVkDepthAlloc       = nullptr;
+            mVkDepthLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
+            mVkDepthLayoutOwner = nullptr;
+        }
+        if (mDepth)
+        {
+            VkImage     vk_image      = VK_NULL_HANDLE;
+            VkImageView vk_view       = VK_NULL_HANDLE;
+            void*       vk_allocation = nullptr;
+            if (LLVKLoader::createDepthAttachmentImageVk(mResX, mResY,
+                                                         VK_FORMAT_D24_UNORM_S8_UINT,
+                                                         vk_image, vk_view, vk_allocation))
+            {
+                mVkDepth      = vk_image;
+                mVkDepthView  = vk_view;
+                mVkDepthAlloc = vk_allocation;
+                mVkDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            }
+        }
     }
 }
 
@@ -177,6 +253,8 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
     }
 
     mTex.push_back(use_name);
+    // addColorAttachment と対称に internal format も記録する (mTex と整合維持)。
+    mInternalFormat.push_back(img->getPrimaryFormat());
 
     glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
@@ -200,6 +278,24 @@ void LLRenderTarget::releaseColorAttachment()
     glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
 
     mTex.clear();
+    mInternalFormat.clear();
+
+    if (LLVKLoader::isVulkanInitialized() && !mVkTex.empty())
+    {
+        LLVKLoader::destroyImageVk(
+            mVkTex[0],
+            mVkTexView.empty()  ? VK_NULL_HANDLE : mVkTexView[0],
+            mVkTexAlloc.empty() ? nullptr        : mVkTexAlloc[0]);
+        if (!mVkTexSampleView.empty() && mVkTexSampleView[0] != VK_NULL_HANDLE)
+        {
+            LLVKLoader::destroyImageVk(VK_NULL_HANDLE, mVkTexSampleView[0], nullptr);
+        }
+        mVkTex.clear();
+        mVkTexView.clear();
+        mVkTexSampleView.clear();
+        mVkTexAlloc.clear();
+        mVkTexLayout.clear();
+    }
 }
 
 bool LLRenderTarget::addColorAttachment(U32 color_fmt)
@@ -285,6 +381,34 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
     mTex.push_back(tex);
     mInternalFormat.push_back(color_fmt);
 
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        VkImage     vk_image       = VK_NULL_HANDLE;
+        VkImageView vk_view        = VK_NULL_HANDLE;
+        VkImageView vk_sample_view = VK_NULL_HANDLE;
+        void*       vk_allocation  = nullptr;
+        VkFormat    vk_format      = LLVKLoader::llGlEnumToVkFormat(color_fmt);
+        const U32 vk_mip = (mGenerateMipMaps != LLTexUnit::TMG_NONE && mVkTex.empty() && mMipLevels > 1)
+                           ? mMipLevels : 1;
+        bool ok = LLVKLoader::createColorAttachmentImageVk(mResX, mResY, vk_format,
+                                                           vk_image, vk_view, vk_allocation,
+                                                           vk_mip,
+                                                           (vk_mip > 1) ? &vk_sample_view : nullptr);
+        if (!ok)
+        {
+            LL_WARNS("Vulkan") << "createColorAttachmentImageVk failed (addColorAttachment) = NULL"
+                               << " placeholder で index 整合維持 attachment=" << (S32)mVkTex.size()
+                               << " fmt=0x" << std::hex << color_fmt << std::dec
+                               << " vk_fmt=" << (S32)vk_format
+                               << " res=" << (S32)mResX << "x" << (S32)mResY << LL_ENDL;
+        }
+        mVkTex.push_back(vk_image);
+        mVkTexView.push_back(vk_view);
+        mVkTexSampleView.push_back(vk_sample_view);
+        mVkTexAlloc.push_back(vk_allocation);
+        mVkTexLayout.push_back(VK_IMAGE_LAYOUT_UNDEFINED);
+    }
+
     if (gDebugGL)
     { //bind and unbind to validate target
         bindTarget();
@@ -313,6 +437,22 @@ bool LLRenderTarget::allocateDepth()
     {
         LL_WARNS() << "Unable to allocate depth buffer for render target." << LL_ENDL;
         return false;
+    }
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        VkImage     vk_image      = VK_NULL_HANDLE;
+        VkImageView vk_view       = VK_NULL_HANDLE;
+        void*       vk_allocation = nullptr;
+        if (LLVKLoader::createDepthAttachmentImageVk(mResX, mResY,
+                                                     VK_FORMAT_D24_UNORM_S8_UINT,
+                                                     vk_image, vk_view, vk_allocation))
+        {
+            mVkDepth      = vk_image;
+            mVkDepthView  = vk_view;
+            mVkDepthAlloc = vk_allocation;
+            mVkDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        }
     }
 
     return true;
@@ -348,6 +488,14 @@ void LLRenderTarget::shareDepthBuffer(LLRenderTarget& target)
         glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
 
         target.mUseDepth = true;
+
+        if (LLVKLoader::isVulkanInitialized() && mVkDepth != VK_NULL_HANDLE)
+        {
+            target.mVkDepth            = mVkDepth;
+            target.mVkDepthView        = mVkDepthView;
+            target.mVkDepthAlloc       = nullptr;
+            target.mVkDepthLayoutOwner = this;
+        }
     }
 }
 
@@ -414,6 +562,38 @@ void LLRenderTarget::release()
     mTex.clear();
     mInternalFormat.clear();
 
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        for (size_t i = 0; i < mVkTex.size(); ++i)
+        {
+            LLVKLoader::destroyImageVk(
+                mVkTex[i],
+                i < mVkTexView.size()  ? mVkTexView[i]  : VK_NULL_HANDLE,
+                i < mVkTexAlloc.size() ? mVkTexAlloc[i] : nullptr);
+            if (i < mVkTexSampleView.size() && mVkTexSampleView[i] != VK_NULL_HANDLE)
+            {
+                LLVKLoader::destroyImageVk(VK_NULL_HANDLE, mVkTexSampleView[i], nullptr);
+            }
+        }
+        mVkTex.clear();
+        mVkTexView.clear();
+        mVkTexSampleView.clear();
+        mVkTexAlloc.clear();
+        mVkTexLayout.clear();
+
+        // depth 所有時のみ destroy (= GL release の `if (mDepth)` 所有判定と同じ)。
+        //   共有 depth 受領側 (mVkDepthAlloc==nullptr) は destroy せず reference のみ drop。
+        if (mVkDepthAlloc != nullptr)
+        {
+            LLVKLoader::destroyImageVk(mVkDepth, mVkDepthView, mVkDepthAlloc);
+        }
+        mVkDepth            = VK_NULL_HANDLE;
+        mVkDepthView        = VK_NULL_HANDLE;
+        mVkDepthAlloc       = nullptr;
+        mVkDepthLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
+        mVkDepthLayoutOwner = nullptr;
+    }
+
     mResX = mResY = 0;
 }
 
@@ -444,12 +624,118 @@ void LLRenderTarget::bindTarget()
     }
     check_framebuffer_status();
 
-    glViewport(0, 0, mResX, mResY);
+    llSetGLViewport(0, 0, mResX, mResY);
     sCurResX = mResX;
     sCurResY = mResY;
 
     mPreviousRT = sBoundTarget;
     sBoundTarget = this;
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        U32 color_count = static_cast<U32>(mTex.size() < 4 ? mTex.size() : 4);
+
+        for (U32 i = 0; i < color_count && i < mVkTex.size(); ++i)
+        {
+            if (mVkTex[i] == VK_NULL_HANDLE || i >= mVkTexLayout.size())
+            {
+                continue;
+            }
+
+            const VkImageLayout cur = mVkTexLayout[i];
+            VkPipelineStageFlags src_stage;
+            VkAccessFlags        src_access;
+            if (cur == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+            {
+                src_stage  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                src_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            }
+            else if (cur == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            {
+                src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                src_access = VK_ACCESS_SHADER_READ_BIT;
+            }
+            else
+            {
+                src_stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                src_access = 0;
+            }
+
+            LLVKLoader::transitionImageLayoutVk(
+                mVkTex[i],
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                cur,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                src_stage,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                src_access,
+                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+            mVkTexLayout[i] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        }
+
+        if (mUseDepth && mVkDepth != VK_NULL_HANDLE)
+        {
+            const VkImageLayout cur = getCurDepthLayout();
+            VkPipelineStageFlags src_stage;
+            VkAccessFlags        src_access;
+            if (cur == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            {
+                src_stage  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+                src_access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            }
+            else if (cur == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            {
+                src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                src_access = VK_ACCESS_SHADER_READ_BIT;
+            }
+            else
+            {
+                src_stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                src_access = 0;
+            }
+
+            LLVKLoader::transitionImageLayoutVk(
+                mVkDepth,
+                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+                cur,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                src_stage,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                src_access,
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+            setCurDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        }
+
+        LLVKLoader::DynamicRenderingAttachment color_attachments[4] = {};
+        for (U32 i = 0; i < color_count; ++i)
+        {
+            color_attachments[i].image_view   = (i < mVkTexView.size()) ? mVkTexView[i] : VK_NULL_HANDLE;
+            color_attachments[i].image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            color_attachments[i].load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+            color_attachments[i].store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        }
+
+        if (mIsSwapchainTarget && color_count > 0 && LLVKLoader::isVulkanPresentationEnabled())
+        {
+            VkImageView swapchain_view = LLVKLoader::getCurrentSwapchainImageView();
+            if (swapchain_view != VK_NULL_HANDLE)
+            {
+                color_attachments[0].image_view = swapchain_view;
+            }
+        }
+
+        LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
+        depth_attachment.image_view   = mVkDepthView;
+        depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+
+        LLVKLoader::beginDynamicRendering(
+            mResX, mResY,
+            color_count > 0 ? color_attachments : nullptr,
+            color_count,
+            mUseDepth ? &depth_attachment : nullptr);
+    }
 }
 
 void LLRenderTarget::clear(U32 mask_in)
@@ -462,11 +748,14 @@ void LLRenderTarget::clear(U32 mask_in)
         mask |= GL_DEPTH_BUFFER_BIT;
 
     }
+
+    U32 effective_mask = mask & mask_in;
+
     if (mFBO)
     {
         check_framebuffer_status();
         stop_glerror();
-        glClear(mask & mask_in);
+        glClear(effective_mask);
         stop_glerror();
     }
     else
@@ -474,7 +763,73 @@ void LLRenderTarget::clear(U32 mask_in)
         LLGLEnable scissor(GL_SCISSOR_TEST);
         glScissor(0, 0, mResX, mResY);
         stop_glerror();
-        glClear(mask & mask_in);
+        glClear(effective_mask);
+    }
+
+    if (LLVKLoader::isVulkanInitialized() && LLVKLoader::isInRenderPassScope())
+    {
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            VkClearAttachment ca[5] = {};
+            U32 ca_count = 0;
+
+            if ((effective_mask & GL_COLOR_BUFFER_BIT) && !mVkTex.empty())
+            {
+                GLfloat gl_cc[4] = {0.f, 0.f, 0.f, 0.f};
+                glGetFloatv(GL_COLOR_CLEAR_VALUE, gl_cc);
+                stop_glerror();
+
+                const U32 color_count = static_cast<U32>(mVkTex.size() < 4 ? mVkTex.size() : 4);
+                for (U32 i = 0; i < color_count; ++i)
+                {
+                    ca[ca_count].aspectMask                  = VK_IMAGE_ASPECT_COLOR_BIT;
+                    ca[ca_count].colorAttachment             = i;
+                    ca[ca_count].clearValue.color.float32[0] = gl_cc[0];
+                    ca[ca_count].clearValue.color.float32[1] = gl_cc[1];
+                    ca[ca_count].clearValue.color.float32[2] = gl_cc[2];
+                    ca[ca_count].clearValue.color.float32[3] = gl_cc[3];
+                    ++ca_count;
+                }
+            }
+
+            if ((effective_mask & GL_DEPTH_BUFFER_BIT) && mUseDepth &&
+                mVkDepth != VK_NULL_HANDLE)
+            {
+                ca[ca_count].aspectMask                    = VK_IMAGE_ASPECT_DEPTH_BIT
+                                                           | VK_IMAGE_ASPECT_STENCIL_BIT;
+                ca[ca_count].clearValue.depthStencil.depth   = 1.0f;
+                ca[ca_count].clearValue.depthStencil.stencil = 0;
+                ++ca_count;
+            }
+
+            if (ca_count > 0)
+            {
+                VkClearRect rect = {};
+                rect.rect.offset    = { 0, 0 };
+                rect.rect.extent    = { mResX, mResY };
+                rect.baseArrayLayer = 0;
+                rect.layerCount     = 1;
+
+                vkCmdClearAttachments(cmd, ca_count, ca, 1, &rect);
+            }
+        }
+    }
+}
+
+// raw glClear() は現 bound FBO を clear ゆえ、現 bound LLRenderTarget (= sBoundTarget) の clear() に委譲。
+//   bound target 不在 (= default framebuffer) は GL のみ。
+void LLRenderTarget::clearBoundTarget(U32 mask)
+{
+    if (sBoundTarget)
+    {
+        sBoundTarget->clear(mask);
+    }
+    else
+    {
+        stop_glerror();
+        glClear(mask);
+        stop_glerror();
     }
 }
 
@@ -498,6 +853,55 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
 {
     gGL.getTexUnit(channel)->bindManual(mUsage, getTexture(index), filter_options == LLTexUnit::TFO_TRILINEAR || filter_options == LLTexUnit::TFO_ANISOTROPIC);
     gGL.getTexUnit(channel)->setTextureFilteringOption(filter_options);
+
+    LLTexUnit* tu = gGL.getTexUnit(channel);
+    if (tu != nullptr)
+    {
+        tu->mCurrRenderTarget = this;
+        tu->mCurrRTAttachment = index;
+        tu->mCurrRTDepth      = false;
+        tu->mCurrImageGL      = nullptr;
+    }
+
+    bindForShaderRead(index, false);
+}
+
+void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
+{
+    if (!LLVKLoader::isVulkanInitialized())
+    {
+        return;
+    }
+
+    if (attachment < mVkTex.size() && mVkTex[attachment] != VK_NULL_HANDLE &&
+        attachment < mVkTexLayout.size() &&
+        mVkTexLayout[attachment] != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
+        LLVKLoader::transitionImageLayoutVk(
+            mVkTex[attachment],
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            mVkTexLayout[attachment],
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT);
+        mVkTexLayout[attachment] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
+
+    if (depth && mVkDepth != VK_NULL_HANDLE)
+    {
+        LLVKLoader::transitionImageLayoutVk(
+            mVkDepth,
+            VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+            getCurDepthLayout(),
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT);
+        setCurDepthLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
 }
 
 void LLRenderTarget::flush()
@@ -508,11 +912,39 @@ void LLRenderTarget::flush()
     llassert(sCurFBO == mFBO);
     llassert(sBoundTarget == this);
 
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        LLVKLoader::endDynamicRendering();
+    }
+
     if (mGenerateMipMaps == LLTexUnit::TMG_AUTO)
     {
         LL_PROFILE_GPU_ZONE("rt generate mipmaps");
-        bindTexture(0, 0, LLTexUnit::TFO_TRILINEAR);
-        glGenerateMipmap(GL_TEXTURE_2D);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            if (!mVkTex.empty() && mVkTex[0] != VK_NULL_HANDLE &&
+                !mVkTexSampleView.empty() && mVkTexSampleView[0] != VK_NULL_HANDLE &&
+                mMipLevels > 1 && !mInternalFormat.empty())
+            {
+                const VkImageLayout cur = (!mVkTexLayout.empty())
+                                          ? mVkTexLayout[0]
+                                          : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                if (LLVKLoader::generateMipChainInFrameVk(
+                        mVkTex[0], (U32)mResX, (U32)mResY, mMipLevels,
+                        LLVKLoader::llGlEnumToVkFormat(mInternalFormat[0]), cur))
+                {
+                    if (!mVkTexLayout.empty())
+                    {
+                        mVkTexLayout[0] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    }
+                }
+            }
+        }
+        else
+        {
+            bindTexture(0, 0, LLTexUnit::TFO_TRILINEAR);
+            glGenerateMipmap(GL_TEXTURE_2D);
+        }
     }
 
     if (mPreviousRT)
@@ -527,12 +959,43 @@ void LLRenderTarget::flush()
         sBoundTarget = nullptr;
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         sCurFBO = 0;
-        glViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
+        llSetGLViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
         sCurResX = gGLViewport[2];
         sCurResY = gGLViewport[3];
         glReadBuffer(GL_BACK);
         glDrawBuffer(GL_BACK);
     }
+}
+
+void LLRenderTarget::resumeVkDynamicRendering()
+{
+    if (!LLVKLoader::isVulkanInitialized())
+    {
+        return;
+    }
+
+    U32 color_count = static_cast<U32>(mTex.size() < 4 ? mTex.size() : 4);
+
+    LLVKLoader::DynamicRenderingAttachment color_attachments[4] = {};
+    for (U32 i = 0; i < color_count; ++i)
+    {
+        color_attachments[i].image_view   = (i < mVkTexView.size()) ? mVkTexView[i] : VK_NULL_HANDLE;
+        color_attachments[i].image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color_attachments[i].load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        color_attachments[i].store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+    }
+
+    LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
+    depth_attachment.image_view   = mVkDepthView;
+    depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+    depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+
+    LLVKLoader::beginDynamicRendering(
+        mResX, mResY,
+        color_count > 0 ? color_attachments : nullptr,
+        color_count,
+        mUseDepth ? &depth_attachment : nullptr);
 }
 
 bool LLRenderTarget::isComplete() const

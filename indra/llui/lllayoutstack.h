@@ -66,6 +66,12 @@ public:
         //         properly when a saved size is being restored. -Zi
         Optional<bool>          save_sizes;
 
+        // per-stack draw order reverse switch
+        // = LLLayoutStack::draw() の panel iter 順を XML order (= forward) ではなく逆順に
+        //   切替えるための局所スイッチ。layout 計算 (= updateLayout) は forward iter のまま、
+        //   draw 順だけ逆転。
+        Optional<bool>          reverse_draw_order;
+
         Params();
     };
 
@@ -143,6 +149,10 @@ private:
     std::string mSizeControlName;
     LLSD mSavedSizes;
     // </FS:Zi>
+
+    // per-stack draw order reverse switch
+    // = forward iter (XML order) → reverse iter で描画順だけ逆転
+    const bool  mReverseDrawOrder;
 }; // end class LLLayoutStack
 
 

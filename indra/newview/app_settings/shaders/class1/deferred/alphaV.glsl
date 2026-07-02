@@ -27,25 +27,71 @@
 #define NON_INDEXED 2
 #define NON_INDEXED_NO_COLOR 3
 
+#ifdef LL_VULKAN_GLSL
+#define normal_matrix mat3(transpose(inverse(modelview_matrix)))
+#else
 uniform mat3 normal_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
+{
+    mat4 texture_matrix[4];
+};
+#define texture_matrix0 texture_matrix[0]
+#else
 uniform mat4 texture_matrix0;
+#endif
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 projection_matrix;
 uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+#else
 in vec3 position;
+#endif
 
 #ifdef USE_INDEXED_TEX
 void passTextureIndex();
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 1) in vec3 normal;
+#else
 in vec3 normal;
-
-#ifdef USE_VERTEX_COLOR
-in vec4 diffuse_color;
 #endif
 
+#ifdef USE_VERTEX_COLOR
+#ifdef LL_VULKAN_GLSL
+layout(location = 6) in vec4 diffuse_color;
+#else
+in vec4 diffuse_color;
+#endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location = 2) in vec2 texcoord0;
+#else
 in vec2 texcoord0;
+#endif
 
 #ifdef HAS_SKIN
 mat4 getObjectSkinnedTransform();
@@ -55,17 +101,41 @@ mat4 getSkinnedTransform();
 #endif
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec3 vary_fragcoord;
+layout(location = 1) out vec3 vary_position;
+#else
 out vec3 vary_fragcoord;
 out vec3 vary_position;
-
-#ifdef USE_VERTEX_COLOR
-out vec4 vertex_color;
 #endif
 
+#ifdef USE_VERTEX_COLOR
+#ifdef LL_VULKAN_GLSL
+layout(location = 2) out vec4 vertex_color;
+#else
+out vec4 vertex_color;
+#endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location = 3) out vec2 vary_texcoord0;
+layout(location = 4) out vec3 vary_norm;
+#else
 out vec2 vary_texcoord0;
 out vec3 vary_norm;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform AlphaV_PerProgramBind
+{
+    float near_clip;
+    float _alphaV_pad0;
+    float _alphaV_pad1;
+    float _alphaV_pad2;
+};
+#else
 uniform float near_clip;
+#endif
 
 void main()
 {

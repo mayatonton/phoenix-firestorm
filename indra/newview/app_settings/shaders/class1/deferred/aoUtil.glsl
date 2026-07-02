@@ -23,8 +23,46 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#define inv_proj inverse_projection_matrix
+
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(set = 1, binding = 22, std140) uniform AoUtil_PerProgramBind
+{
+#ifndef _AYA_UM_screen_res
+#define _AYA_UM_screen_res 1
+    vec2  screen_res;
+#else
+    vec2  _dup_AoUtil_screen_res;
+#endif
+    float ssao_radius;
+    float ssao_max_radius;
+    float ssao_factor;
+    float ssao_factor_inv;
+    float _aoUtil_pad0;
+    float _aoUtil_pad1;
+};
+
+layout(set = 1, binding = 23) uniform sampler2D noiseMap;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 24) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+#else
 uniform sampler2D   noiseMap;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D   depthMap;
+#endif // DECL_DEPTH_MAP
 
 uniform float ssao_radius;
 uniform float ssao_max_radius;
@@ -33,6 +71,8 @@ uniform float ssao_factor_inv;
 
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
+#endif
+// </FS:AYA>
 
 
 const int NUM_DIRECTIONS = 8;
@@ -49,8 +89,8 @@ float rand(vec2 p)
 
 vec2 getScreenCoordinateAo(vec2 screenpos)
 {
-    vec2 sc = screenpos.xy * 2.0;
-    return sc - vec2(1.0, 1.0);
+    vec2 sc = screenpos.xy * 2.0 - vec2(1.0, 1.0);
+    return sc;
 }
 
 float getDepthAo(vec2 pos_screen)

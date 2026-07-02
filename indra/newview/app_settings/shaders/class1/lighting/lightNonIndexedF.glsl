@@ -23,12 +23,21 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in vec4 vertex_color;
+layout(location = 1) in vec2 vary_texcoord0;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#else
 out vec4 frag_color;
 
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
 
 uniform sampler2D diffuseMap;
+#endif
 
 vec3 atmosLighting(vec3 light);
 vec3 scaleSoftClip(vec3 light);

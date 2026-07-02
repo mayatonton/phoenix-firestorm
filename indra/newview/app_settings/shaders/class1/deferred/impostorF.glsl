@@ -25,16 +25,37 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+
+layout(push_constant) uniform ImpostorF_AlphaMaskPC
+{
+    layout(offset = 64) float minimum_alpha;
+};
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+layout(set = 1, binding = 2) uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
+layout(set = 1, binding = 3) uniform sampler2D specularMap;
+
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 out vec4 frag_data[4];
 
 uniform float minimum_alpha;
 
 
 uniform sampler2D diffuseMap;
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
 uniform sampler2D specularMap;
 
 in vec2 vary_texcoord0;
+#endif
 
 vec3 linear_to_srgb(vec3 c);
 

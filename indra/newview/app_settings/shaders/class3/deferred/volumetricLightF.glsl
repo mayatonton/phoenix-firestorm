@@ -36,25 +36,47 @@
 #define GODRAYS_FADE 0
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 24) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+
+layout(location = 0) in vec2 vary_fragcoord;
+
+layout(set = 1, binding = 0, std140) uniform VolumetricLightF_PerProgramBind
+{
+    int   godray_res;
+    float godray_multiplier;
+    float falloff_multiplier;
+    float _volumetricLightF_pad0;
+};
+#else
 out vec4 frag_color;
 
 uniform sampler2D diffuseRect;
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
 
 uniform vec2 screen_res;
+uniform vec3 sun_dir;
+uniform vec3 blue_density;
+uniform float haze_density;
+uniform vec3 sunlight_color;
 
 in vec2 vary_fragcoord;
 
 uniform int godray_res;
 uniform float godray_multiplier;
 uniform float falloff_multiplier;
-uniform vec3 sun_dir;
-
-uniform vec3 blue_density;
-uniform float haze_density;
-uniform vec3 sunlight_color;
 
 uniform float seconds60;
+#endif
 
 float rand(vec2 co)
 {
@@ -92,7 +114,9 @@ vec4 getPosition(vec2 pos_screen);
 void main()
 {
     vec2 tc = vary_fragcoord.xy;
-    vec4 diff = texture(diffuseRect, tc);
+    // screen を flip する copy をやめ、散乱のみ
+    //   additive 出力 (frag_color = vec4(scattering, 0))。再構成 (getPosition/depthMap) は不触。
+    vec3 scattering = vec3(0.0);
 #ifdef HAS_SUN_SHADOW
     vec4 pos = getPosition(tc);
     float depth = texture(depthMap, tc).r;
@@ -137,10 +161,12 @@ void main()
     }
     shaftify *= fade;
 #endif
-    diff.rgb += ((shaftify * haze_weight.x) * shadamount) * sunlight_color;
+    scattering = ((shaftify * haze_weight.x) * shadamount) * sunlight_color;
 #endif // HAS_SUN_SHADOW
 
-    frag_color = diff;
+    // alpha は必ず 0 (= godraysF.glsl:252)。host blendFunc ONE/ONE + colorMask(true,false)
+    //   のもと scene buffer の alpha mask を保護。
+    frag_color = vec4(scattering, 0.0);
 }
 
 #else // AYASTORM_CINEMATIC
@@ -148,7 +174,9 @@ void main()
 void main()
 {
     vec2 tc = vary_fragcoord.xy;
-    vec4 diff = texture(diffuseRect, tc);
+    // screen を flip する copy をやめ、散乱のみ
+    //   additive 出力 (frag_color = vec4(scattering, 0))。再構成 (getPosition/depthMap) は不触。
+    vec3 scattering = vec3(0.0);
 
 #ifdef HAS_SUN_SHADOW
     vec4 pos = getPosition(tc);
@@ -194,10 +222,12 @@ void main()
     }
     shaftify *= fade;
 #endif
-    diff.rgb += ((shaftify * haze_weight.x) * shadamount) * sunlight_color;
+    scattering = ((shaftify * haze_weight.x) * shadamount) * sunlight_color;
 #endif
 
-    frag_color = diff;
+    // alpha は必ず 0 (= godraysF.glsl:252)。host blendFunc ONE/ONE + colorMask(true,false)
+    //   のもと scene buffer の alpha mask を保護。
+    frag_color = vec4(scattering, 0.0);
 }
 
 #endif // AYASTORM_CINEMATIC

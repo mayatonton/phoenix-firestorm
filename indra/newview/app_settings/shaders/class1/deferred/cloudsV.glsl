@@ -23,27 +23,91 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 modelview_projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 2) in vec2 texcoord0;
+#else
 in vec3 position;
 in vec2 texcoord0;
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // The vertex shader for creating the atmospheric sky
 ///////////////////////////////////////////////////////////////////////////////
 
 // Output parameters
-out vec3 vary_CloudColorSun;
-out vec3 vary_CloudColorAmbient;
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec3  vary_CloudColorSun;
+layout(location = 1) out vec3  vary_CloudColorAmbient;
+layout(location = 2) out float vary_CloudDensity;
+layout(location = 3) out vec2  vary_texcoord0;
+layout(location = 4) out vec2  vary_texcoord1;
+layout(location = 5) out vec2  vary_texcoord2;
+layout(location = 6) out vec2  vary_texcoord3;
+layout(location = 7) out float altitude_blend_factor;
+#else
+out vec3  vary_CloudColorSun;
+out vec3  vary_CloudColorAmbient;
 out float vary_CloudDensity;
-
-out vec2 vary_texcoord0;
-out vec2 vary_texcoord1;
-out vec2 vary_texcoord2;
-out vec2 vary_texcoord3;
+out vec2  vary_texcoord0;
+out vec2  vary_texcoord1;
+out vec2  vary_texcoord2;
+out vec2  vary_texcoord3;
 out float altitude_blend_factor;
+#endif
 
-// Inputs
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform Cloud_PerProgramBind
+{
+#ifndef _AYA_UM_camPosLocal
+#define _AYA_UM_camPosLocal 1
+    vec3  camPosLocal;
+#else
+    vec3  _dup_Cloud_camPosLocal;
+#endif
+    float _cloud_pad0;
+    vec3  cloud_color;
+    float cloud_scale_v;
+    vec3  cloud_pos_density1;
+    float _cloud_pad1;
+    vec3  cloud_pos_density2;
+    float _cloud_pad2;
+#ifndef _AYA_UM_blend_factor
+#define _AYA_UM_blend_factor 1
+    float blend_factor;
+#else
+    float _dup_Cloud_blend_factor;
+#endif
+    float cloud_scale;
+    float cloud_variance;
+    int   aya_r18_cloud_volumetric_enabled;
+    float aya_r18_strength;
+    float _cloud_pad3;
+    float _cloud_pad4;
+    float _cloud_pad5;
+};
+#define _cloudScaleV cloud_scale_v
+#else
 uniform vec3 camPosLocal;
 
 uniform vec3 lightnorm;
@@ -53,19 +117,23 @@ uniform int sun_up_factor;
 uniform vec3 ambient_color;
 uniform vec3 blue_horizon;
 uniform vec3 blue_density;
-uniform float haze_horizon;
 uniform float haze_density;
 
-uniform float cloud_shadow;
 uniform float density_multiplier;
 uniform float max_y;
 
 uniform vec3 glow;
+uniform float haze_horizon;
+
+uniform float cloud_shadow;
+
 uniform float sun_moon_glow_factor;
 
 uniform vec3 cloud_color;
 
 uniform float cloud_scale;
+#define _cloudScaleV cloud_scale
+#endif
 
 // NOTE: Keep these in sync!
 //       indra\newview\app_settings\shaders\class1\deferred\skyV.glsl
@@ -83,7 +151,7 @@ void main()
     vary_texcoord0 = vec2(-texcoord0.x, texcoord0.y);  // See: LLSettingsVOSky::applySpecial
 
     vary_texcoord0.xy -= 0.5;
-    vary_texcoord0.xy /= cloud_scale;
+    vary_texcoord0.xy /= _cloudScaleV;
     vary_texcoord0.xy += 0.5;
 
     vary_texcoord1 = vary_texcoord0;

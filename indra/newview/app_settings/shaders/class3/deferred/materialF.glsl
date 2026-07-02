@@ -34,9 +34,85 @@
 #define DIFFUSE_ALPHA_MODE_MASK     2
 #define DIFFUSE_ALPHA_MODE_EMISSIVE 3
 
+#ifndef LL_VULKAN_GLSL
 uniform float emissive_brightness;  // fullbright flag, 1.0 == fullbright, 0.0 otherwise
 uniform int sun_up_factor;
 uniform int classic_mode;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform MaterialF_PerProgramBind
+{
+    float emissive_brightness;
+    float env_intensity;
+    float _materialF_pad0;
+    float _materialF_pad1;
+    vec4  specular_color;
+#if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
+#ifndef HAS_SUN_SHADOW
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3  sun_dir;
+#else
+    vec3  _dup_MaterialF_sun_dir;
+#endif
+    float _materialF_pad2;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3  moon_dir;
+#else
+    vec3  _dup_MaterialF_moon_dir;
+#endif
+    float _materialF_pad3;
+#endif
+#ifndef _AYA_UM_light_position
+#define _AYA_UM_light_position 1
+    vec4  light_position[8];
+#else
+    vec4  _dup_MaterialF_light_position[8];
+#endif
+#ifndef _AYA_UM_light_direction
+#define _AYA_UM_light_direction 1
+    vec4  light_direction[8];
+#else
+    vec4  _dup_MaterialF_light_direction[8];
+#endif
+#ifndef _AYA_UM_light_attenuation
+#define _AYA_UM_light_attenuation 1
+    vec4  light_attenuation[8];
+#else
+    vec4  _dup_MaterialF_light_attenuation[8];
+#endif
+#ifndef _AYA_UM_light_diffuse
+#define _AYA_UM_light_diffuse 1
+    vec4  light_diffuse[8];
+#else
+    vec4  _dup_MaterialF_light_diffuse[8];
+#endif
+#endif
+#if defined(HAS_EMISSIVE)
+    float aya_sss_skin_flag;
+    float _materialF_pad4;
+    float _materialF_pad5;
+    float _materialF_pad6;
+#endif
+#if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_MASK)
+#ifndef _AYA_UM_minimum_alpha
+#define _AYA_UM_minimum_alpha 1
+    float minimum_alpha;
+#else
+    float _dup_MaterialF_minimum_alpha;
+#endif
+    float _materialF_pad7;
+    float _materialF_pad8;
+    float _materialF_pad9;
+#endif
+};
+#if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
+layout(push_constant) uniform MaterialF_FragPC {
+    layout(offset = 72) float waterSign;
+};
+#endif
+#endif
 
 vec4 applySkyAndWaterFog(vec3 pos, vec3 additive, vec3 atten, vec4 color);
 vec3 scaleSoftClipFragLinear(vec3 l);
@@ -46,17 +122,29 @@ void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float 
 vec3 srgb_to_linear(vec3 cs);
 vec3 linear_to_srgb(vec3 cs);
 
+#ifndef LL_VULKAN_GLSL
 uniform mat4 modelview_matrix;
+#endif
+#ifndef LL_VULKAN_GLSL
 uniform mat3 normal_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 vary_position;
+#else
 in vec3 vary_position;
+#endif
 
 void mirrorClip(vec3 pos);
 vec4 encodeNormal(vec3 n, float env, float gbuffer_flag);
 
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
 #ifdef HAS_SUN_SHADOW
 float sampleDirectionalShadow(vec3 pos, vec3 norm, vec2 pos_screen);
@@ -67,30 +155,46 @@ void sampleReflectionProbesLegacy(inout vec3 ambenv, inout vec3 glossenv, inout 
 void applyGlossEnv(inout vec3 color, vec3 glossenv, vec4 spec, vec3 pos, vec3 norm);
 void applyLegacyEnv(inout vec3 color, vec3 legacyenv, vec4 spec, vec3 pos, vec3 norm, float envIntensity);
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D lightFunc;
+#else
 uniform samplerCube environmentMap;
 uniform sampler2D     lightFunc;
+#endif
 
 // Inputs
+#ifndef LL_VULKAN_GLSL
 uniform vec4 morphFactor;
 uniform vec3 camPosLocal;
+#endif
+#ifndef LL_VULKAN_GLSL
 uniform mat3 env_mat;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float is_mirror;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec3 sun_dir;
 uniform vec3 moon_dir;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform mat4 proj_mat;
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform vec4 light_position[8];
 uniform vec3 light_direction[8];
 uniform vec4 light_attenuation[8];
 uniform vec3 light_diffuse[8];
+#endif
 
 float getAmbientClamp();
-void waterClip(vec3 pos);
+void waterClip(vec3 pos, float waterSign); // waterSign 引数化
 
 vec3 calcPointLightOrSpotLight(vec3 light_col, vec3 npos, vec3 diffuse, vec4 spec, vec3 v, vec3 n, vec4 lp, vec3 ln, float la, float fa, float is_pointlight, inout float glare, float ambiance)
 {
@@ -185,45 +289,89 @@ vec3 calcPointLightOrSpotLight(vec3 light_col, vec3 npos, vec3 diffuse, vec4 spe
 }
 
 #else
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+#else
 out vec4 frag_data[4];
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 2) uniform sampler2D diffuseMap;  //always in sRGB space
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
+#endif
 
 #ifdef HAS_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 3) uniform sampler2D bumpMap;
+#else
 uniform sampler2D bumpMap;
+#endif
 #endif
 
 #ifdef HAS_SPECULAR_MAP
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 4) uniform sampler2D specularMap;
+layout(location = 5) in vec2 vary_texcoord2;
+#else
 uniform sampler2D specularMap;
-
 in vec2 vary_texcoord2;
 #endif
+#endif
 
+#ifndef LL_VULKAN_GLSL
 uniform float env_intensity;
 uniform vec4 specular_color;  // specular color RGB and specular exponent (glossiness) in alpha
+#endif
 
 // <FS:AYA r20 Phase C> per-draw skin marker: 1.0 if the parent LLViewerObject
 // is on the SSS whitelist, 0.0 otherwise. Written into frag_data[3].a so the
 // screen-space SSS pass can gate its blur to skin pixels only.
+#ifndef LL_VULKAN_GLSL
 uniform float aya_sss_skin_flag;
+#endif
 // </FS:AYA>
 
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_MASK)
+#ifndef LL_VULKAN_GLSL
 uniform float minimum_alpha;
+#endif
+#endif
+
+#if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
+#ifndef LL_VULKAN_GLSL
+uniform float waterSign;
+#endif
 #endif
 
 #ifdef HAS_NORMAL_MAP
+#ifdef LL_VULKAN_GLSL
+layout(location = 1) in vec3 vary_normal;
+layout(location = 2) in vec3 vary_tangent;
+layout(location = 3) flat in float vary_sign;
+layout(location = 4) in vec2 vary_texcoord1;
+#else
 in vec3 vary_normal;
 in vec3 vary_tangent;
 flat in float vary_sign;
 in vec2 vary_texcoord1;
+#endif
+#else
+#ifdef LL_VULKAN_GLSL
+layout(location = 1) in vec3 vary_normal;
 #else
 in vec3 vary_normal;
 #endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 6) in vec4 vertex_color;
+layout(location = 7) in vec2 vary_texcoord0;
+#else
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
+#endif
 
 // get the transformed normal and apply glossiness component from normal map
 vec3 getNormal(inout float glossiness)
@@ -271,7 +419,7 @@ void alphaMask(float alpha)
 void waterClip()
 {
 #if (DIFFUSE_ALPHA_MODE == DIFFUSE_ALPHA_MODE_BLEND)
-    waterClip(vary_position.xyz);
+    waterClip(vary_position.xyz, waterSign);
 #endif
 }
 

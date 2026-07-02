@@ -28,10 +28,14 @@
 
 #include "llreflectionmap.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewerwindow.h"
 #include "llviewerregion.h"
 #include "llworld.h"
 #include "llshadermgr.h"
+#include "llglslshader.h"
+#include "llvkloader.h"
+#include <cstring>
 
 extern F32SecondsImplicit gFrameTimeSeconds;
 
@@ -58,11 +62,11 @@ void LLReflectionMap::update(U32 resolution, U32 face, bool force_dynamic, F32 n
     mLastUpdateTime = gFrameTimeSeconds;
     llassert(mCubeArray.notNull());
     llassert(mCubeIndex != -1);
-    //llassert(LLPipeline::sRenderDeferred);
+    //llassert(LLPipelineFrameContext::getInstance().isRenderingDeferred());
 
     // make sure we don't walk off the edge of the render target
-    while (resolution > gPipeline.mRT->deferredScreen.getWidth() ||
-        resolution > gPipeline.mRT->deferredScreen.getHeight())
+    while (resolution > LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth() ||
+        resolution > LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight())
     {
         resolution /= 2;
     }
@@ -402,6 +406,28 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
 
         shader->uniform3fv(LLShaderMgr::BOX_CENTER, 1, mOrigin.getF32ptr());
         shader->uniform3f(LLShaderMgr::BOX_SIZE, mRadius, mRadius, mRadius);
+
+        if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+            && shader->mVkPerProgramUBOMapped != nullptr)
+        {
+            struct OcclusionCube_UBO
+            {
+                F32 box_center[3];
+                F32 _pad0;
+                F32 box_size[3];
+                F32 _pad1;
+            };
+            OcclusionCube_UBO ubo_data = {};
+            const F32* origin = mOrigin.getF32ptr();
+            ubo_data.box_center[0] = origin[0];
+            ubo_data.box_center[1] = origin[1];
+            ubo_data.box_center[2] = origin[2];
+            ubo_data.box_size[0]   = mRadius;
+            ubo_data.box_size[1]   = mRadius;
+            ubo_data.box_size[2]   = mRadius;
+            shader->rotatePerProgramUBOSlot();
+            std::memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        }
 
         gPipeline.mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(LLViewerCamera::getInstance(), mOrigin));
 

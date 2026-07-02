@@ -23,16 +23,32 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 0) in float pos_w;
+layout(location = 1) in float target_pos_x;
+layout(location = 2) in vec2 vary_texcoord0;
+#else
 out vec4 frag_color;
-
-uniform float minimum_alpha;
-
-uniform sampler2D diffuseMap;
 
 in float pos_w;
 in float target_pos_x;
 in vec2 vary_texcoord0;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 51, std140) uniform DrawColor_PerShaderBind { vec4 color; };
+layout(push_constant) uniform AvatarAlphaShadowF_AlphaMaskPC
+{
+    layout(offset = 64) float minimum_alpha;
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#else
+uniform float minimum_alpha;
+uniform sampler2D diffuseMap;
 uniform vec4 color;
+#endif
 
 // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
 #if AYASTORM_CINEMATIC

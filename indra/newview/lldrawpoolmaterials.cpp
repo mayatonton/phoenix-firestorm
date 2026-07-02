@@ -32,6 +32,8 @@
 #include "pipeline.h"
 #include "llglcommonfunc.h"
 #include "llvoavatar.h"
+#include "llvkloader.h"
+#include "llimagegl.h"
 
 LLDrawPoolMaterials::LLDrawPoolMaterials()
 :  LLRenderPass(LLDrawPool::POOL_MATERIALS)
@@ -91,6 +93,12 @@ void LLDrawPoolMaterials::beginDeferredPass(S32 pass)
     }
 
     gPipeline.bindDeferredShader(*mShader);
+
+    if (LLVKLoader::isVulkanInitialized()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr)
+    {
+        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+    }
 }
 
 void LLDrawPoolMaterials::endDeferredPass(S32 pass)
@@ -223,7 +231,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             glUniform1f(brightness, lastFullbright);
         }
 
-        // <FS:AYA r20 Phase C> push per-draw SSS skin marker
         if (sssSkin > -1)
         {
             F32 skinFlag = params.mIsSSSTarget ? 1.f : 0.f;
@@ -231,9 +238,17 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             {
                 lastSSSSkin = skinFlag;
                 glUniform1f(sssSkin, skinFlag);
+                if (LLVKLoader::isVulkanInitialized() && mShader->mVkPipelineLayout != VK_NULL_HANDLE)
+                {
+                    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                    if (cmd != VK_NULL_HANDLE)
+                    {
+                        vkCmdPushConstants(cmd, mShader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                           68, sizeof(F32), &skinFlag);
+                    }
+                }
             }
         }
-        // </FS:AYA>
 
         if (normChannel > -1 && params.mNormalMap != lastNormalMap)
         {
@@ -262,6 +277,22 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             }
         }
 
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            const ptrdiff_t shader_index = mShader - gDeferredMaterialProgram;
+            if (shader_index >= 0 && shader_index < (ptrdiff_t)(LLMaterial::SHADER_COUNT * 2))
+            {
+                const U32 layout_index = (U32)(shader_index % LLMaterial::SHADER_COUNT);
+                writeMaterialFPerDrawUBO(*mShader, layout_index,
+                                          params.mFullbright ? 1.f : 0.f,
+                                          params.mEnvIntensity,
+                                          params.mSpecColor.mV,
+                                          params.mAlphaMaskCutoff,
+                                          params.mIsSSSTarget ? 1.f : 0.f);
+            }
+        }
+        // </FS:AYA>
+
         // upload matrix palette to shader
         if (rigged)
         {
@@ -286,11 +317,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
 
             tex_setup = true;
         }
-
-        /*if (params.mGroup)  // TOO LATE
-        {
-            params.mGroup->rebuildMesh();
-        }*/
 
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
@@ -365,3 +391,4 @@ void LLDrawPoolMaterials::renderMotionBlur(S32 pass)
     pushRiggedVelocityBatches(LLRenderPass::PASS_NORMSPEC_EMISSIVE_RIGGED);
 }
 // </AYAstorm r30 P2>
+

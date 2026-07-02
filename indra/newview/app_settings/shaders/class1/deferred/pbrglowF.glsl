@@ -27,6 +27,21 @@
 
 // forward fullbright implementation for HUDs
 
+#ifdef LL_VULKAN_GLSL
+layout(push_constant) uniform PBRGlowF_PushConstants
+{
+    layout(offset = 64) float minimum_alpha;
+    layout(offset = 80) vec3 emissiveColor;
+};
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+layout(set = 1, binding = 2) uniform sampler2D emissiveMap;
+
+layout(location = 0) out vec4 frag_color;
+
+layout(location = 2) in vec4 vertex_emissive;
+layout(location = 0) in vec2 base_color_texcoord;
+layout(location = 1) in vec2 emissive_texcoord;
+#else
 uniform sampler2D diffuseMap;  //always in sRGB space
 
 uniform vec3 emissiveColor;
@@ -34,13 +49,13 @@ uniform sampler2D emissiveMap;
 
 out vec4 frag_color;
 
-in vec3 vary_position;
 in vec4 vertex_emissive;
 
 in vec2 base_color_texcoord;
 in vec2 emissive_texcoord;
 
 uniform float minimum_alpha; // PBR alphaMode: MASK, See: mAlphaCutoff, setAlphaCutoff()
+#endif
 
 vec3 linear_to_srgb(vec3 c);
 vec3 srgb_to_linear(vec3 c);

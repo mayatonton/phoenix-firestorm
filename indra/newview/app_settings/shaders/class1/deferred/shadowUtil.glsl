@@ -23,7 +23,92 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+layout(set = 1, binding = 27) uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
+
+#if defined(SUN_SHADOW)
+layout(set = 1, binding = 32) uniform sampler2DShadow shadowMap0;
+layout(set = 1, binding = 33) uniform sampler2DShadow shadowMap1;
+layout(set = 1, binding = 34) uniform sampler2DShadow shadowMap2;
+layout(set = 1, binding = 35) uniform sampler2DShadow shadowMap3;
+#endif
+
+#if defined(SPOT_SHADOW)
+layout(set = 1, binding = 36) uniform sampler2DShadow shadowMap4;
+layout(set = 1, binding = 37) uniform sampler2DShadow shadowMap5;
+#endif
+
+layout(set = 1, binding = 31, std140) uniform ShadowUtil_PerProgramBind
+{
+    mat4  shadow_matrix[6];
+    vec4  shadow_clip;
+#ifndef _AYA_UM_sun_dir
+#define _AYA_UM_sun_dir 1
+    vec3  sun_dir;
+#else
+    vec3  _dup_ShadowUtil_sun_dir;
+#endif
+    float shadow_bias;
+#ifndef _AYA_UM_moon_dir
+#define _AYA_UM_moon_dir 1
+    vec3  moon_dir;
+#else
+    vec3  _dup_ShadowUtil_moon_dir;
+#endif
+    float shadow_offset;
+    vec2  shadow_res;
+    vec2  proj_shadow_res;
+    float shadow_softness;
+    float spot_shadow_bias;
+    float spot_shadow_offset;
+    float _shadowUtil_pad0;
+};
+#ifndef WINDLIGHT_ATMOS_UBO_DEFINED
+#define WINDLIGHT_ATMOS_UBO_DEFINED 1
+layout(set = 1, binding = 8, std140) uniform WindlightAtmos_PerProgramBind
+{
+    vec3  sunlight_color;
+    int   sun_up_factor;
+    vec3  moonlight_color;
+    int   classic_mode_wl;
+#ifndef _AYA_UM_ambient_color
+#define _AYA_UM_ambient_color 1
+    vec3  ambient_color;
+#else
+    vec3  _dup_WindlightAtmos_ambient_color;
+#endif
+    int   aya_visual_realism_enabled;
+    vec3  blue_horizon;
+    int   aya_r14_volumetric_atmosphere_enabled;
+    vec3  blue_density;
+    float aya_r14_strength;
+    vec3  glow;
+    float aya_r16_strength;
+    vec3  lightnorm;
+    int   aya_r16_aerial_perspective_enabled;
+    float haze_density;
+    float density_multiplier;
+    float distance_multiplier;
+    float max_y;
+    float haze_horizon;
+    float cloud_shadow;
+    float sun_moon_glow_factor;
+    float sky_sunlight_scale;
+    float sky_ambient_scale;
+    float _wlAtmos_pad0;
+    float _wlAtmos_pad1;
+    float _wlAtmos_pad2;
+};
+#define _classicMode classic_mode_wl
+#endif // WINDLIGHT_ATMOS_UBO_DEFINED
+#else
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 uniform sampler2D   normalMap;
+#endif // DECL_NORMAL_MAP
 
 #if defined(SUN_SHADOW)
 uniform sampler2DShadow shadowMap0;
@@ -51,6 +136,7 @@ uniform float spot_shadow_offset;
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 uniform int sun_up_factor;
+#endif
 
 float pcfShadow(sampler2DShadow shadowMap, vec3 norm, vec4 stc, float bias_mul, vec2 pos_screen, vec3 light_dir)
 {

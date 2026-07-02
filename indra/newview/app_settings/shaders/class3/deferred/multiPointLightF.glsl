@@ -25,6 +25,28 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 2) uniform sampler2D lightFunc;
+
+layout(set = 1, binding = 1, std140) uniform MultiPointLightF_PerProgramBind
+{
+    vec4 light[LIGHT_COUNT];
+    vec4 light_col[LIGHT_COUNT];
+    float far_z;
+#ifndef _AYA_UM_global_light_strength
+#define _AYA_UM_global_light_strength 1
+    float global_light_strength;
+#else
+    float _dup_MultiPointLightF_global_light_strength;
+#endif
+    float _multiPointLightF_pad0;
+    float _multiPointLightF_pad1;
+};
+
+layout(location = 0) in vec4 vary_fragcoord;
+#else
 out vec4 frag_color;
 
 uniform sampler2D     lightFunc;
@@ -32,11 +54,13 @@ uniform sampler2D     lightFunc;
 uniform vec3  env_mat[3];
 uniform float sun_wash;
 uniform int   light_count;
+
 uniform vec4  light[LIGHT_COUNT];     // .w = size; see C++ fullscreen_lights.push_back()
 uniform vec4  light_col[LIGHT_COUNT]; // .a = falloff
 
 uniform vec2  screen_res;
 uniform float far_z;
+
 uniform mat4  inv_proj;
 uniform int classic_mode;
 
@@ -44,6 +68,7 @@ uniform int classic_mode;
 uniform float global_light_strength;
 
 in vec4 vary_fragcoord;
+#endif
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);

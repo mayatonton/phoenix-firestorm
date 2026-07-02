@@ -30,7 +30,10 @@
 #include "lldrawpoolpbropaque.h"
 #include "llviewershadermgr.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "gltfscenemanager.h"
+#include "llvkloader.h"
+
 
 LLDrawPoolGLTFPBR::LLDrawPoolGLTFPBR(U32 type) :
     LLRenderPass(type)
@@ -52,7 +55,7 @@ S32 LLDrawPoolGLTFPBR::getNumDeferredPasses()
 
 void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
 {
-    llassert(!LLPipeline::sRenderingHUDs);
+    llassert(!LLPipelineFrameContext::getInstance().isHUDPass());
 
     if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
     {
@@ -75,7 +78,7 @@ S32 LLDrawPoolGLTFPBR::getNumPostDeferredPasses()
 
 void LLDrawPoolGLTFPBR::renderPostDeferred(S32 pass)
 {
-    if (LLPipeline::sRenderingHUDs)
+    if (LLPipelineFrameContext::getInstance().isHUDPass())
     {
         gHUDPBROpaqueProgram.bind();
         pushGLTFBatches(mRenderType);

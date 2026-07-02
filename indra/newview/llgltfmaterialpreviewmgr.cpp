@@ -41,6 +41,8 @@
 #include "llviewerwindow.h"
 #include "llvolumemgr.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
+#include "llvkloader.h"
 
 LLGLTFMaterialPreviewMgr gGLTFMaterialPreviewMgr;
 
@@ -432,10 +434,10 @@ bool LLGLTFPreviewTexture::render()
     LLGLDisable stencil(GL_STENCIL_TEST);
     LLGLDisable scissor(GL_SCISSOR_TEST);
     SetTemporarily<bool> no_dof(&LLPipeline::RenderDepthOfField, false);
-    SetTemporarily<bool> no_glow(&LLPipeline::sRenderGlow, false);
+    LLPipelineFrameContext::ScopedRenderingGlow no_glow(false);
     SetTemporarily<bool> no_ssr(&LLPipeline::RenderScreenSpaceReflections, false);
     SetTemporarily<U32> no_aa(&LLPipeline::RenderFSAAType, U32(0));
-    SetTemporarily<LLPipeline::RenderTargetPack*> use_auxiliary_render_target(&gPipeline.mRT, &gPipeline.mAuxillaryRT);
+    LLPipelineFrameContext::ScopedActiveRT use_auxiliary_render_target(&gPipeline.mAuxillaryRT);
 
     LLVector3 light_dir3(1.0f, 1.0f, 1.0f);
     light_dir3.normalize();
@@ -506,6 +508,21 @@ bool LLGLTFPreviewTexture::render()
 
         gPipeline.bindDeferredShader(shader);
         fixup_shader_constants(shader);
+
+        if (LLVKLoader::isVulkanInitialized() && shader.mVkPipelineLayout != VK_NULL_HANDLE)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                const F32 aya_preview_water_sign = 0.f;
+                vkCmdPushConstants(cmd, shader.mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   72, sizeof(F32), &aya_preview_water_sign);
+
+                const F32 aya_preview_neutral_atmos = 1.f;
+                vkCmdPushConstants(cmd, shader.mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   76, sizeof(F32), &aya_preview_neutral_atmos);
+            }
+        }
 
         for (PreviewSpherePart& part : preview_sphere)
         {

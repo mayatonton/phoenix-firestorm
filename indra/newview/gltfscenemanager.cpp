@@ -31,6 +31,7 @@
 #include "llappviewer.h"
 #include "lltinygltfhelper.h"
 #include "llvertexbuffer.h"
+#include "llimagegl.h"
 #include "llselectmgr.h"
 #include "llagent.h"
 #include "llnotificationsutil.h"
@@ -38,6 +39,7 @@
 #include "llvolumeoctree.h"
 #include "gltf/asset.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llviewertexturelist.h"
 #include "llimagej2c.h"
@@ -635,6 +637,74 @@ void GLTFSceneManager::render(U8 variant)
     }
 }
 
+static void writeGLTFMRPerDrawRingUBO(LLGLSLShader* sh, S32 material_id, S32 node_id, bool has_node_id)
+{
+    if (!LLVKLoader::isVulkanInitialized() || sh == nullptr
+        || sh->mVkPerProgramUBO == VK_NULL_HANDLE
+        || sh->mVkPerProgramUBOMapped == nullptr
+        || sh->mVkPerProgramUBOSize < 4)
+    {
+        return;
+    }
+    const U32 size = sh->mVkPerProgramUBOSize;
+    sh->rotatePerProgramUBOSlot();
+    char* base = (char*)sh->mVkActivePerProgramUBOMapped;
+
+    memcpy(base + 0, &material_id, sizeof(S32));
+
+    if (has_node_id && size >= 8)
+    {
+        memcpy(base + 4, &node_id, sizeof(S32));
+    }
+
+    if (size == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_SUNSHADOW
+        || size == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW)
+    {
+        const bool noshadow = (size == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW);
+
+        if (noshadow)
+        {
+            F32 sun_v[4]  = { gPipeline.mTransformedSunDir.mV[0],  gPipeline.mTransformedSunDir.mV[1],  gPipeline.mTransformedSunDir.mV[2],  0.f };
+            F32 moon_v[4] = { gPipeline.mTransformedMoonDir.mV[0], gPipeline.mTransformedMoonDir.mV[1], gPipeline.mTransformedMoonDir.mV[2], 0.f };
+            memcpy(base + LLVKLoader::GLTFMR_UBO_OFFSET_SUN_DIR,  sun_v,  16);
+            memcpy(base + LLVKLoader::GLTFMR_UBO_OFFSET_MOON_DIR, moon_v, 16);
+        }
+
+        U32 lights_offset = noshadow ? LLVKLoader::GLTFMR_UBO_OFFSET_LIGHTS_NOSHADOW
+                                     : LLVKLoader::GLTFMR_UBO_OFFSET_LIGHTS_SUNSHADOW;
+        F32 lp[LL_NUM_LIGHT_UNITS * 4];
+        F32 ld[LL_NUM_LIGHT_UNITS * 3];
+        F32 la[LL_NUM_LIGHT_UNITS * 4];
+        F32 ldi[LL_NUM_LIGHT_UNITS * 3];
+        F32 lda[LL_NUM_LIGHT_UNITS * 2];
+        gGL.getLightArrayData(lp, ld, la, ldi);
+        gGL.getLightDeferredAttenuationData(lda);
+
+        memcpy(base + lights_offset, lp, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+        lights_offset += 128;
+        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+        {
+            F32 v[4] = { ld[i*3+0], ld[i*3+1], ld[i*3+2], 0.f };
+            memcpy(base + lights_offset + i * 16, v, 16);
+        }
+        lights_offset += 128;
+        memcpy(base + lights_offset, la, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+        lights_offset += 128;
+        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+        {
+            F32 v[4] = { ldi[i*3+0], ldi[i*3+1], ldi[i*3+2], 0.f };
+            memcpy(base + lights_offset + i * 16, v, 16);
+        }
+        lights_offset += 128;
+        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+        {
+            F32 v[4] = { lda[i*2+0], lda[i*2+1], 0.f, 0.f };
+            memcpy(base + lights_offset + i * 16, v, 16);
+        }
+    }
+}
+// </FS:AYA>
+
 void GLTFSceneManager::render(Asset& asset, U8 variant)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
@@ -693,6 +763,16 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 }
 
                 glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_MATERIALS, asset.mMaterialsUBO);
+                if (LLVKLoader::isVulkanInitialized() &&
+                    !rigged &&
+                    asset.mVkMaterialsUBO != VK_NULL_HANDLE &&
+                    asset.mVkNodesUBO     != VK_NULL_HANDLE)
+                {
+                    LLRenderPass::buildAndOverrideScenePerDrawSet(
+                        nullptr, false,
+                        reinterpret_cast<U64>(asset.mVkMaterialsUBO), asset.mVkMaterialsUBOSize,
+                        reinterpret_cast<U64>(asset.mVkNodesUBO),     asset.mVkNodesUBOSize);
+                }
 
                 for (U32 i = 0; i < TEXTURE_TYPE_COUNT; ++i)
                 {
@@ -718,6 +798,15 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
             {
                 LLFetchedGLTFMaterial::sDefault.bind();
                 LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::GLTF_MATERIAL_ID, -1);
+                LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+                if (LLVKLoader::isVulkanInitialized() && sh &&
+                    sh->mVkPerProgramUBO != VK_NULL_HANDLE &&
+                    sh->mVkPerProgramUBOMapped != nullptr &&
+                    sh->mVkPerProgramUBOSize >= 4)
+                {
+                    S32 v = -1;
+                    memcpy(sh->mVkPerProgramUBOMapped, &v, sizeof(S32));
+                }
             }
 
             for (auto& pdata : batches[i].mPrimitives)
@@ -733,10 +822,30 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     llassert(node.mSkin != INVALID_INDEX);
                     Skin& skin = asset.mSkins[node.mSkin];
                     glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_JOINTS, skin.mUBO);
+                    if (LLVKLoader::isVulkanInitialized() &&
+                        skin.mVkUBO              != VK_NULL_HANDLE &&
+                        asset.mVkMaterialsUBO    != VK_NULL_HANDLE)
+                    {
+                        writeGLTFMRPerDrawRingUBO(LLGLSLShader::sCurBoundShaderPtr, mat_idx, 0, false);
+                        LLRenderPass::buildAndOverrideScenePerDrawSet(
+                            nullptr, false,
+                            reinterpret_cast<U64>(asset.mVkMaterialsUBO), asset.mVkMaterialsUBOSize,
+                            reinterpret_cast<U64>(skin.mVkUBO),           skin.mVkUBOSize);
+                    }
                 }
                 else
                 {
                     LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::GLTF_NODE_ID, pdata.mNodeIndex);
+                    if (LLVKLoader::isVulkanInitialized() &&
+                        asset.mVkMaterialsUBO != VK_NULL_HANDLE &&
+                        asset.mVkNodesUBO     != VK_NULL_HANDLE)
+                    {
+                        writeGLTFMRPerDrawRingUBO(LLGLSLShader::sCurBoundShaderPtr, mat_idx, pdata.mNodeIndex, true);
+                        LLRenderPass::buildAndOverrideScenePerDrawSet(
+                            nullptr, false,
+                            reinterpret_cast<U64>(asset.mVkMaterialsUBO), asset.mVkMaterialsUBOSize,
+                            reinterpret_cast<U64>(asset.mVkNodesUBO),     asset.mVkNodesUBOSize);
+                    }
                 }
 
                 {
@@ -773,6 +882,18 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
     {
         glActiveTexture(GL_TEXTURE0 + channel);
 
+        auto mirrorVkTexBinding = [channel](LLViewerTexture* bound_tex)
+        {
+            if (!LLVKLoader::shouldUseVulkanRender())
+                return;
+            LLImageGL* gl_tex = bound_tex ? bound_tex->getGLTexture() : nullptr;
+            if (LLTexUnit* tu = gGL.getTexUnit(channel))
+            {
+                tu->mCurrImageGL      = gl_tex;
+                tu->mCurrRenderTarget = nullptr;
+            }
+        };
+
         if (info.mIndex != INVALID_INDEX)
         {
             Texture& texture = asset.mTextures[info.mIndex];
@@ -782,6 +903,7 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gl bind texture");
                 glBindTexture(GL_TEXTURE_2D, tex->getTexName());
+                mirrorVkTexBinding(tex);
 
                 if (channel != -1 && texture.mSampler != -1)
                 { // set sampler state
@@ -803,11 +925,13 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
             else
             {
                 glBindTexture(GL_TEXTURE_2D, fallback->getTexName());
+                mirrorVkTexBinding(fallback);
             }
         }
         else
         {
             glBindTexture(GL_TEXTURE_2D, fallback->getTexName());
+            mirrorVkTexBinding(fallback);
         }
     }
 }
@@ -820,7 +944,7 @@ void GLTFSceneManager::bind(Asset& asset, Material& material)
 
     bindTexture(asset, TextureType::BASE_COLOR, material.mPbrMetallicRoughness.mBaseColorTexture, LLViewerFetchedTexture::sWhiteImagep);
 
-    if (!LLPipeline::sShadowRender)
+    if (!LLPipelineFrameContext::getInstance().isShadowPass())
     {
         bindTexture(asset, TextureType::NORMAL, material.mNormalTexture, LLViewerFetchedTexture::sFlatNormalImagep);
         bindTexture(asset, TextureType::METALLIC_ROUGHNESS, material.mPbrMetallicRoughness.mMetallicRoughnessTexture, LLViewerFetchedTexture::sWhiteImagep);
@@ -829,6 +953,14 @@ void GLTFSceneManager::bind(Asset& asset, Material& material)
     }
 
     shader->uniform1i(LLShaderMgr::GLTF_MATERIAL_ID, (GLint)(&material - &asset.mMaterials[0]));
+    if (LLVKLoader::isVulkanInitialized() &&
+        shader->mVkPerProgramUBO != VK_NULL_HANDLE &&
+        shader->mVkPerProgramUBOMapped != nullptr &&
+        shader->mVkPerProgramUBOSize >= 4)
+    {
+        S32 v = (S32)(&material - &asset.mMaterials[0]);
+        memcpy(shader->mVkPerProgramUBOMapped, &v, sizeof(S32));
+    }
 }
 
 LLMatrix4a inverse(const LLMatrix4a& mat)
@@ -1032,7 +1164,7 @@ void renderAssetDebug(LLViewerObject* obj, Asset* asset)
             if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_RAYCAST))
             {
                 gGL.flush();
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                LLGLState::setPolygonMode(GL_LINE);
 
                 // convert raycast to node local space
                 vec4 local_start = node.mAssetMatrixInv * start;
@@ -1050,7 +1182,7 @@ void renderAssetDebug(LLViewerObject* obj, Asset* asset)
                 }
 
                 gGL.flush();
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                LLGLState::setPolygonMode(GL_FILL);
             }
 #endif
             gGL.popMatrix();
@@ -1183,7 +1315,7 @@ void GLTFSceneManager::renderDebug()
                 Primitive* primitive = &asset->mMeshes[node->mMesh].mPrimitives[primitive_hit];
 
                 gGL.flush();
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                LLGLState::setPolygonMode(GL_LINE);
                 gGL.color3f(1, 0, 1);
                 drawBoxOutline(intersection, LLVector4a(0.1f, 0.1f, 0.1f, 0.f));
 
@@ -1193,7 +1325,7 @@ void GLTFSceneManager::renderDebug()
                 drawBoxOutline(listener->mBounds[0], listener->mBounds[1]);
 
                 gGL.flush();
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                LLGLState::setPolygonMode(GL_FILL);
                 gGL.popMatrix();
             }
         }

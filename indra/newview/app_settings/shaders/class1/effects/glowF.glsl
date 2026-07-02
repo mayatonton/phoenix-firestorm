@@ -23,15 +23,45 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
-uniform float glowStrength;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform Glow_PerProgramBind
+{
+    vec2 glowDelta;
+    float glowStrength;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_Glow__pad0;
+#endif
+};
+#else
+uniform float glowStrength;
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec4 vary_texcoord0;
+layout(location = 1) in vec4 vary_texcoord1;
+layout(location = 2) in vec4 vary_texcoord2;
+layout(location = 3) in vec4 vary_texcoord3;
+#else
 in vec4 vary_texcoord0;
 in vec4 vary_texcoord1;
 in vec4 vary_texcoord2;
 in vec4 vary_texcoord3;
+#endif
 
 void main()
 {

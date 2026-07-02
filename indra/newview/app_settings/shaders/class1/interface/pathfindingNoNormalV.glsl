@@ -23,8 +23,45 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(push_constant) uniform ModelviewPushConstant
+{
+    mat4 modelview_matrix;
+};
+#define modelview_projection_matrix (projection_matrix * modelview_matrix)
+#else
 uniform mat4 modelview_projection_matrix;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 6) in vec4 diffuse_color;
+
+layout(location = 0) out vec4 vertex_color;
+
+layout(set = 1, binding = 0, std140) uniform Pathfinding_PerProgramBind
+{
+    float tint;
+    float ambiance;
+    float alpha_scale;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_Pathfinding__pad0;
+#endif
+};
+#else
 in vec3 position;
 in vec4 diffuse_color;
 
@@ -32,6 +69,7 @@ out vec4 vertex_color;
 
 uniform float tint;
 uniform float alpha_scale;
+#endif
 
 void main()
 {

@@ -48,8 +48,67 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#ifdef LL_VULKAN_GLSL
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+layout(set = 1, binding = 27) uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
+layout(set = 1, binding = 24) uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
+layout(set = 1, binding = 28) uniform sampler2D projectionMap; // rgba
+layout(set = 1, binding = 29) uniform sampler2D brdfLut;
+
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#define inv_proj inverse_projection_matrix
+
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+layout(set = 1, binding = 30, std140) uniform DeferredUtil_PerProgramBind
+{
+    mat4 proj_mat;
+    vec4 waterPlane;
+    vec3 proj_n;
+    float proj_focus;
+    vec3 proj_p;
+    float proj_lod;
+#ifndef _AYA_UM_color
+#define _AYA_UM_color 1
+    vec3 color;
+#else
+    vec3 _dup_DeferredUtil_color;
+#endif
+    float size;
+#ifndef _AYA_UM_screen_res
+#define _AYA_UM_screen_res 1
+    vec2 screen_res;
+#else
+    vec2 _dup_DeferredUtil_screen_res;
+#endif
+    float proj_range;
+    float proj_ambiance;
+    float _deferredUtil_pad_waterSign;
+    int classic_mode;
+    float _deferredUtil_pad0;
+    float _deferredUtil_pad1;
+};
+#else
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
 uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
+#ifndef DECL_DEPTH_MAP
+#define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
+#endif // DECL_DEPTH_MAP
 uniform sampler2D projectionMap; // rgba
 uniform sampler2D brdfLut;
 
@@ -71,7 +130,13 @@ uniform float size; // light_size
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 
+uniform vec4 waterPlane;
+#endif
+
+#ifndef M_PI_DEFINED
+#define M_PI_DEFINED 1
 const float M_PI = 3.14159265;
+#endif
 const float ONE_OVER_PI = 0.3183098861;
 
 vec3 srgb_to_linear(vec3 cs);
@@ -156,8 +221,8 @@ bool clipProjectedLightVars(vec3 light_center, vec3 pos, out float dist, out flo
 
 vec2 getScreenCoordinate(vec2 screenpos)
 {
-    vec2 sc = screenpos.xy * 2.0;
-    return sc - vec2(1.0, 1.0);
+    vec2 sc = screenpos.xy * 2.0 - vec2(1.0, 1.0);
+    return sc;
 }
 
 vec4 getNorm(vec2 screenpos)
@@ -622,12 +687,14 @@ vec3 pbrBaseLight(vec3 diffuseColor, vec3 specularColor, float metallic, vec3 v,
     return color;
 }
 
-uniform vec4 waterPlane;
-uniform float waterSign;
-
 // discard if given position in eye space is on the wrong side of the waterPlane according to waterSign
-void waterClip(vec3 pos)
+void waterClip(vec3 pos, float waterSign)
 {
+    if (waterSign == 0.0)
+    {
+        return;
+    }
+
     // TODO: make this less branchy
     if (waterSign > 0)
     {

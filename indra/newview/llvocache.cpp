@@ -26,6 +26,7 @@
 
 #include "llviewerprecompiledheaders.h"
 #include "llvocache.h"
+#include "llviewercamera.h" // <AYAstorm r41> sub-step 4.3-α: sCurCameraID accessor
 #include "llregionhandle.h"
 #include "llviewercontrol.h"
 #include "llviewerobjectlist.h"
@@ -996,7 +997,7 @@ private:
 
 void LLVOCachePartition::selectBackObjects(LLCamera &camera, F32 pixel_threshold, bool use_occlusion)
 {
-    if(LLViewerCamera::sCurCameraID != LLViewerCamera::CAMERA_WORLD)
+    if(LLViewerCamera::getCurCameraID() != LLViewerCamera::CAMERA_WORLD)
     {
         return;
     }
@@ -1043,21 +1044,21 @@ S32 LLVOCachePartition::cull(LLCamera &camera, bool do_occlusion)
 
     ((LLViewerOctreeGroup*)mOctree->getListener(0))->rebound();
 
-    if(LLViewerCamera::sCurCameraID != LLViewerCamera::CAMERA_WORLD)
+    if(LLViewerCamera::getCurCameraID() != LLViewerCamera::CAMERA_WORLD)
     {
         return 0; //no need for those cameras.
     }
 
-    if(mCulledTime[LLViewerCamera::sCurCameraID] == LLViewerOctreeEntryData::getCurrentFrame())
+    if(mCulledTime[LLViewerCamera::getCurCameraID()] == LLViewerOctreeEntryData::getCurrentFrame())
     {
         return 0; //already culled
     }
-    mCulledTime[LLViewerCamera::sCurCameraID] = LLViewerOctreeEntryData::getCurrentFrame();
+    mCulledTime[LLViewerCamera::getCurCameraID()] = LLViewerOctreeEntryData::getCurrentFrame();
 
     if(!mCullHistory && LLViewerRegion::isViewerCameraStatic())
     {
         U32 seed = llmax(mLODPeriod >> 1, (U32)4);
-        if(LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD)
+        if(LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD)
         {
             if(!(LLViewerOctreeEntryData::getCurrentFrame() % seed))
             {
@@ -1119,7 +1120,7 @@ void LLVOCachePartition::processOccluders(LLCamera* camera)
     {
         return;
     }
-    if(LLViewerCamera::sCurCameraID != LLViewerCamera::CAMERA_WORLD)
+    if(LLViewerCamera::getCurCameraID() != LLViewerCamera::CAMERA_WORLD)
     {
         return; //no need for those cameras.
     }

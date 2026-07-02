@@ -3159,7 +3159,8 @@ bool LLViewerMediaImpl::preMediaTexUpdate(LLViewerMediaTexture*& media_tex, U8*&
             // Since we're updating this texture, we know it's playing.  Tell the texture to do its replacement magic so it gets rendered.
             media_tex->setPlaying(true);
 
-            if (mMediaSource->getDirty(&dirty_rect))
+            bool is_dirty = mMediaSource->getDirty(&dirty_rect);
+            if (is_dirty)
             {
                 // Constrain the dirty rect to be inside the texture
                 x_pos = llmax(dirty_rect.mLeft, 0);

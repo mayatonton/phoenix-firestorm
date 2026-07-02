@@ -37,6 +37,7 @@
 #include "llglheaders.h"
 #include "llvoavatar.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 
 static constexpr S32 MIN_PIXEL_AREA_3PASS_HAIR = 64*64;
 
@@ -88,11 +89,11 @@ U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
         {
             triangle_count += drawShape( pixelArea, first_pass, is_dummy );
         }
-        else if (LLPipeline::sShadowRender)
+        else if (LLPipelineFrameContext::getInstance().isShadowPass())
         {
             triangle_count += drawShape(pixelArea, first_pass, is_dummy );
         }
-        else if ( isTransparent() && !LLPipeline::sReflectionRender)
+        else if ( isTransparent() && !LLPipelineFrameContext::getInstance().isReflectionPass())
         {
             // Hair and Skirt
             if ((pixelArea > MIN_PIXEL_AREA_3PASS_HAIR))
@@ -119,13 +120,13 @@ U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
             else
             {
                 // Render Inside (no Z buffer write)
-                glCullFace(GL_FRONT);
+                LLGLState::setCullFaceMode(GL_FRONT);
                 {
                     LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE);
                     triangle_count += drawShape( pixelArea, first_pass, is_dummy  );
                 }
                 // Render Outside (write to the Z buffer)
-                glCullFace(GL_BACK);
+                LLGLState::setCullFaceMode(GL_BACK);
                 {
                     triangle_count += drawShape( pixelArea, false, is_dummy  );
                 }

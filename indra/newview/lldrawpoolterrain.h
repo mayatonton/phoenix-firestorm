@@ -80,11 +80,11 @@ public:
 protected:
     void boostTerrainDetailTextures();
 
-    void renderSimple();
+    // <AYAstorm r41> sub-step 3.4-d-3: renderSimple / renderFull2TU / renderFull4TU
+    // 3 関数 declarations を物理削除 (caller ゼロ + 段階 2 で fixed-function texgen path 死蔵)。
+    // </AYAstorm r41>
     void renderOwnership();
 
-    void renderFull2TU();
-    void renderFull4TU();
     void renderFullShader();
     void renderFullShaderTextures();
     void renderFullShaderPBR(bool use_local_materials = false);

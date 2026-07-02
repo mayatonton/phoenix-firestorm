@@ -25,16 +25,47 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_data[4];
+
+layout(location = 0) in vec4 vertex_color;
+layout(location = 1) in vec2 vary_texcoord0;
+layout(location = 2) in vec2 screenpos;
+#else
 out vec4 frag_data[4];
 
 in vec4 vertex_color;
 in vec2 vary_texcoord0;
 in vec2 screenpos;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#else
 uniform sampler2D diffuseMap;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 7, std140) uniform StarTime_PerShaderBind
+{
+#ifndef _AYA_UM_time
+#define _AYA_UM_time 1
+    float time;
+#else
+    float _dup_StarTime_time;
+#endif
+#ifndef _AYA_UM_blend_factor
+#define _AYA_UM_blend_factor 1
+    float blend_factor;
+#else
+    float _dup_StarTime_blend_factor;
+#endif
+    float custom_alpha;
+};
+#else
 uniform float blend_factor;
 uniform float custom_alpha;
 uniform float time;
+#endif
 
 float twinkle(){
     float d = fract(screenpos.x + screenpos.y);

@@ -31,9 +31,33 @@ vec3 atmosAffectDirectionalLight(float lightIntensity);
 vec3 atmosGetDiffuseSunlightColor();
 vec3 scaleDownLight(vec3 light);
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 12, std140) uniform LightsSpecular_PerProgramBind
+{
+#ifndef _AYA_UM_light_position
+#define _AYA_UM_light_position 1
+    vec4 light_position[8];
+#else
+    vec4 _dup_LightsSpecular_light_position[8];
+#endif
+#ifndef _AYA_UM_light_attenuation
+#define _AYA_UM_light_attenuation 1
+    vec4 light_attenuation[8];
+#else
+    vec4 _dup_LightsSpecular_light_attenuation[8];
+#endif
+#ifndef _AYA_UM_light_diffuse
+#define _AYA_UM_light_diffuse 1
+    vec3 light_diffuse[8];
+#else
+    vec3 _dup_LightsSpecular_light_diffuse[8];
+#endif
+};
+#else
 uniform vec4 light_position[8];
 uniform vec4 light_attenuation[8];
 uniform vec3 light_diffuse[8];
+#endif
 
 vec4 sumLightsSpecular(vec3 pos, vec3 norm, vec4 color, inout vec4 specularColor)
 {

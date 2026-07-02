@@ -29,20 +29,63 @@
 #define HAS_NOISE 0
 #endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+#if HAS_NOISE
+layout(set = 1, binding = 2) uniform sampler2D glowNoiseMap;
+#endif
+#else
 uniform sampler2D diffuseMap;
 #if HAS_NOISE
 uniform sampler2D glowNoiseMap;
-uniform vec2 screen_res;
 #endif
+#endif
+
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform GlowExtract_PerProgramBind
+{
+    vec3 lumWeights;
+    float minLuminance;
+    vec3 warmthWeights;
+    float maxExtractAlpha;
+    float warmthAmount;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_GlowExtract__pad0;
+#endif
+#if HAS_NOISE
+#ifndef _AYA_UM_screen_res
+#define _AYA_UM_screen_res 1
+    vec2 screen_res;
+#else
+    vec2 _dup_GlowExtract_screen_res;
+#endif
+#endif
+};
+#else
 uniform float minLuminance;
 uniform float maxExtractAlpha;
 uniform vec3 lumWeights;
 uniform vec3 warmthWeights;
 uniform float warmthAmount;
+#if HAS_NOISE
+uniform vec2 screen_res;
+#endif
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 in vec2 vary_texcoord0;
+#endif
 
 void main()
 {

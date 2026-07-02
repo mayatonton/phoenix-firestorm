@@ -23,11 +23,24 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+
+layout(location = 0) out vec2 vary_fragcoord;
+
+layout(set = 1, binding = 0, std140) uniform SunLightV_PerProgramBind
+{
+    vec2  screen_res_sunlightv;
+    float _sunLightV_pad0;
+    float _sunLightV_pad1;
+};
+#else
 in vec3 position;
 
 out vec2 vary_fragcoord;
 
 uniform vec2 screen_res;
+#endif
 
 void main()
 {

@@ -36,6 +36,7 @@
 #include "llgl.h"
 #include "llimagegl.h"
 #include "llrender.h"
+#include "llrendertarget.h"
 #include "llstl.h"
 #include "v4color.h"
 #include "lltexture.h"
@@ -352,6 +353,7 @@ S32 LLFontGL::render(const LLWString &wstr, S32 begin_offset, F32 x, F32 y, cons
                 (fgi->mYBitmapOffset + fgi->mHeight + PAD_UVY) * inv_height,
                 (fgi->mXBitmapOffset + fgi->mWidth) * inv_width,
                 (fgi->mYBitmapOffset - PAD_UVY) * inv_height);
+
         // snap glyph origin to whole screen pixel
         LLRectf screen_rect((F32)ll_round(cur_render_x + (F32)fgi->mXBearing),
                     (F32)ll_round(cur_render_y + (F32)fgi->mYBearing),

@@ -27,14 +27,46 @@
 // Source: https://github.com/NiranV/Black-Dragon-Viewer @ indra/newview/app_settings/shaders/class1/deferred/avatarVelocityV.glsl
 // License: LGPL-2.1-only (same as Second Life Viewer Source Code, no relicensing)
 
+#ifdef LL_VULKAN_GLSL
+#ifndef PER_FRAME_MATRIX_UBO_DEFINED
+#define PER_FRAME_MATRIX_UBO_DEFINED 1
+layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
+{
+    mat4 projection_matrix;
+    mat4 inverse_projection_matrix;
+    mat4 identity_matrix;
+    mat4 last_modelview_matrix;
+};
+#endif // PER_FRAME_MATRIX_UBO_DEFINED
+#else
 uniform mat4 projection_matrix;
+#endif
+#ifdef LL_VULKAN_GLSL
+layout(set = 0, binding = 8, std140) uniform AvatarVelocityPalette_PerShaderBind
+{
+#ifndef _AYA_UM_lastMatrixPalette
+#define _AYA_UM_lastMatrixPalette 1
+    vec4 lastMatrixPalette[45];
+#else
+    vec4 _dup_AvatarVelocityPalette_lastMatrixPalette[45];
+#endif
+};
+#else
 uniform vec4 lastMatrixPalette[45];
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec3 position;
+layout(location = 2) in vec2 texcoord0;
+
+layout(location = 2) out vec2 vary_texcoord0;
+#else
 in vec3 position;
 in vec4 weight;
 in vec2 texcoord0;
 
 out vec2 vary_texcoord0;
+#endif
 
 mat4 getSkinnedTransform();
 

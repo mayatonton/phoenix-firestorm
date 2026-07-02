@@ -568,7 +568,7 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
                 {
                     // called when selecting a face during edit of a mesh object
                     LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
-                    glPolygonOffset(-1.f, -1.f);
+                    gGL.setPolygonOffset(-1.f, -1.f);
                     gGL.multMatrix((F32*) volume->getRelativeXform().mMatrix);
                     const LLVolumeFace& vol_face = rigged->getVolumeFace(getTEOffset());
                     // <FS:Ansariel> Use a vbo for the static LLVertexBuffer::drawArray/Element functions; by Drake Arconis/Shyotl Kuhr
@@ -671,9 +671,9 @@ void LLFace::renderOneWireframe(const LLColor4 &color, F32 fogCfx, bool wirefram
         LLGLDisable depth(wireframe_selection ? 0 : GL_BLEND);
 
         LLGLEnable offset(GL_POLYGON_OFFSET_LINE);
-        glPolygonOffset(3.f, 3.f);
+        gGL.setPolygonOffset(3.f, 3.f);
         gGL.setLineWidth(5.f); // <FS> Line width OGL core profile fix by Rye Mutt
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        LLGLState::setPolygonMode(GL_LINE);
         renderFace(mDrawablep, this);
     }
 }

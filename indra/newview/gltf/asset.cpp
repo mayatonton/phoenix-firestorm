@@ -120,6 +120,34 @@ void Node::updateTransforms(Asset& asset, const mat4& parentMatrix)
     }
 }
 
+Asset::~Asset()
+{
+    if (mNodesUBO)
+    {
+        glDeleteBuffers(1, &mNodesUBO);
+    }
+    if (mMaterialsUBO)
+    {
+        glDeleteBuffers(1, &mMaterialsUBO);
+    }
+    if (mVkNodesUBO != VK_NULL_HANDLE)
+    {
+        LLVKLoader::destroyBufferVk(mVkNodesUBO, mVkNodesUBOAllocation);
+        mVkNodesUBO           = VK_NULL_HANDLE;
+        mVkNodesUBOAllocation = nullptr;
+        mVkNodesUBOMapped     = nullptr;
+        mVkNodesUBOSize       = 0;
+    }
+    if (mVkMaterialsUBO != VK_NULL_HANDLE)
+    {
+        LLVKLoader::destroyBufferVk(mVkMaterialsUBO, mVkMaterialsUBOAllocation);
+        mVkMaterialsUBO           = VK_NULL_HANDLE;
+        mVkMaterialsUBOAllocation = nullptr;
+        mVkMaterialsUBOMapped     = nullptr;
+        mVkMaterialsUBOSize       = 0;
+    }
+}
+
 void Asset::updateTransforms()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
@@ -186,6 +214,20 @@ void Asset::uploadTransforms()
     glBindBuffer(GL_UNIFORM_BUFFER, mNodesUBO);
     glBufferData(GL_UNIFORM_BUFFER, glmp.size() * sizeof(F32), glmp.data(), GL_STREAM_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        const U32 needed = (U32)(glmp.size() * sizeof(F32));
+        LLVKLoader::ensurePerAssetUBOVk(needed,
+                                        mVkNodesUBO,
+                                        mVkNodesUBOAllocation,
+                                        mVkNodesUBOMapped,
+                                        mVkNodesUBOSize);
+        if (mVkNodesUBOMapped != nullptr && needed > 0)
+        {
+            memcpy(mVkNodesUBOMapped, glmp.data(), needed);
+        }
+    }
 }
 
 void Asset::uploadMaterials()
@@ -235,6 +277,20 @@ void Asset::uploadMaterials()
     glBindBuffer(GL_UNIFORM_BUFFER, mMaterialsUBO);
     glBufferData(GL_UNIFORM_BUFFER, md.size() * sizeof(vec4), md.data(), GL_STREAM_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        const U32 needed = (U32)(md.size() * sizeof(vec4));
+        LLVKLoader::ensurePerAssetUBOVk(needed,
+                                        mVkMaterialsUBO,
+                                        mVkMaterialsUBOAllocation,
+                                        mVkMaterialsUBOMapped,
+                                        mVkMaterialsUBOSize);
+        if (mVkMaterialsUBOMapped != nullptr && needed > 0)
+        {
+            memcpy(mVkMaterialsUBOMapped, md.data(), needed);
+        }
+    }
 }
 
 S32 Asset::lineSegmentIntersect(const LLVector4a& start, const LLVector4a& end,

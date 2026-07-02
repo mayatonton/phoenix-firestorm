@@ -87,6 +87,7 @@
 #include "llurldispatcher.h"
 #include "llurlhistory.h"
 #include "llrender.h"
+#include "llvkloader.h"
 #include "llteleporthistory.h"
 #include "lltoast.h"
 #include "llsdutil_math.h"
@@ -251,6 +252,7 @@
 #include "llcallbacklist.h"
 #include "lldeferredsounds.h"
 #include "pipeline.h"
+#include "llpipelineframecontext.h"
 #include "llgesturemgr.h"
 #include "llsky.h"
 #include "llvlcomposition.h"
@@ -657,8 +659,8 @@ static void settings_to_globals()
 static void settings_modify()
 {
     LLPipeline::sRenderTransparentWater = gSavedSettings.getBOOL("RenderTransparentWater");
-    LLPipeline::sRenderDeferred = true; // false is deprecated
-    LLRenderTarget::sUseFBO             = LLPipeline::sRenderDeferred;
+    LLPipelineFrameContext::getInstance().setRenderingDeferred(true); // false is deprecated
+    LLRenderTarget::sUseFBO             = LLPipelineFrameContext::getInstance().isRenderingDeferred();
     LLVOSurfacePatch::sLODFactor        = gSavedSettings.getF32("RenderTerrainLODFactor");
     LLVOSurfacePatch::sLODFactor *= LLVOSurfacePatch::sLODFactor; //square lod factor to get exponential range of [1,4]
     gDebugGL       = gDebugGLSession || gDebugSession;
@@ -1777,6 +1779,21 @@ bool LLAppViewer::doFrame()
                 pingMainloopTimeout("Main:Display");
                 gGLActive = true;
 
+                bool vk_begin_ok = LLVKLoader::beginFrame();
+                if (!vk_begin_ok && LLVKLoader::isVulkanInitialized())
+                {
+                    static U64 s_count_begin_failed = 0;
+                    ++s_count_begin_failed;
+                    if (s_count_begin_failed == 1 || s_count_begin_failed == 10
+                        || s_count_begin_failed == 100 || s_count_begin_failed == 1000)
+                    {
+                        LL_WARNS("Vulkan") << "atomic 13.LLAppViewer beginFrame return false "
+                                              "= display() 進入時 sInFrame=false 維持 (count="
+                                           << (S64)s_count_begin_failed
+                                           << ") = scene render cmd NULL fire 候補 frame"
+                                           << LL_ENDL;
+                    }
+                }
                 display();
 
                 if (LLStartUp::getStartupState() == STATE_STARTED) // <FS:Beq/> FIRE-34590 - Bugsplat caused by updating maps before world is loaded.
@@ -1791,6 +1808,8 @@ bool LLAppViewer::doFrame()
                     FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
                     gGLActive = false;
                 }
+
+                LLVKLoader::endFrame();
 
                 if (LLViewerStatsRecorder::instanceExists())
                 {
@@ -2589,6 +2608,8 @@ bool LLAppViewer::cleanup()
     LLSingletonBase::deleteAll();
 
     LLSplashScreen::hide();
+
+    LLVKLoader::shutdownVulkan();
 
     LL_INFOS() << "Goodbye!" << LL_ENDL;
 
@@ -3765,6 +3786,8 @@ bool LLAppViewer::initWindow()
 {
     LL_INFOS("AppInit") << "Initializing window..." << LL_ENDL;
 
+    LLVKLoader::initVulkan();
+
     // store setting in a global for easy access and modification
     gHeadlessClient = gSavedSettings.getBOOL("HeadlessClient");
 
@@ -3796,6 +3819,14 @@ bool LLAppViewer::initWindow()
     gViewerWindow = new LLViewerWindow(window_params);
 
     LL_INFOS("AppInit") << "gViewerwindow created." << LL_ENDL;
+
+    if (LLVKLoader::isVulkanInitialized() && gViewerWindow && gViewerWindow->getWindow())
+    {
+        if (LLVKLoader::initSurface(gViewerWindow->getWindow()))
+        {
+            LLVKLoader::initSwapchain();
+        }
+    }
 
     // Need to load feature table before cheking to start watchdog.
     bool use_watchdog = false;

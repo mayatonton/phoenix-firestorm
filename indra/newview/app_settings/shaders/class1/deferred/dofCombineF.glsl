@@ -25,11 +25,36 @@
 
 /*[EXTRA_CODE_HERE]*/
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+#else
 out vec4 frag_color;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
+layout(set = 1, binding = 2) uniform sampler2D lightMap;
+#else
 uniform sampler2D diffuseRect;
 uniform sampler2D lightMap;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(set = 1, binding = 0, std140) uniform DofCombineF_PerProgramBind
+{
+    vec2 _dofC_screen_res;
+    vec2 _dofC_pad0;
+    float _dofC_max_cof;
+    float _dofC_res_scale;
+    float _dofC_dof_width;
+    float _dofC_dof_height;
+};
+#define screen_res _dofC_screen_res
+#define max_cof    _dofC_max_cof
+#define res_scale  _dofC_res_scale
+#define dof_width  _dofC_dof_width
+#define dof_height _dofC_dof_height
+#else
 uniform mat4 inv_proj;
 uniform vec2 screen_res;
 
@@ -37,8 +62,13 @@ uniform float max_cof;
 uniform float res_scale;
 uniform float dof_width;
 uniform float dof_height;
+#endif
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) in vec2 vary_fragcoord;
+#else
 in vec2 vary_fragcoord;
+#endif
 
 vec4 dofSample(sampler2D tex, vec2 tc)
 {

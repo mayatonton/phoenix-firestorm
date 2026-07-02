@@ -23,12 +23,43 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_VULKAN_GLSL
+layout(location = 0) out vec4 frag_color;
+
+layout(set = 1, binding = 1) uniform sampler2D tex0;
+
+layout(set = 1, binding = 0, std140) uniform OneTextureFilter_PerProgramBind
+{
+    float tolerance;
+#ifndef _AYA_UM__pad0
+#define _AYA_UM__pad0 1
+    float _pad0;
+#else
+    float _dup_OneTextureFilter__pad0;
+#endif
+#ifndef _AYA_UM__pad1
+#define _AYA_UM__pad1 1
+    float _pad1;
+#else
+    float _dup_OneTextureFilter__pad1;
+#endif
+#ifndef _AYA_UM__pad2
+#define _AYA_UM__pad2 1
+    float _pad2;
+#else
+    float _dup_OneTextureFilter__pad2;
+#endif
+};
+
+layout(location = 0) in vec2 vary_texcoord0;
+#else
 out vec4 frag_color;
 
 uniform sampler2D tex0;
 uniform float tolerance;
 
 in vec2 vary_texcoord0;
+#endif
 
 void main()
 {
