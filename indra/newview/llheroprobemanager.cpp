@@ -47,6 +47,8 @@
 extern bool gCubeSnapshot;
 extern bool gTeleportDisplay;
 
+bool gHeroProbeMirrorRender = false;
+
 // get the next highest power of two of v (or v if v is already a power of two)
 //defined in llvertexbuffer.cpp
 extern U32 nhpo2(U32 v);
@@ -263,6 +265,7 @@ void LLHeroProbeManager::renderProbes()
 
         gPipeline.mReflectionMapManager.mRadiancePass = true;
         mRenderingMirror = true;
+        gHeroProbeMirrorRender = true;
 
         S32 rate = sUpdateRate;
 
@@ -296,6 +299,7 @@ void LLHeroProbeManager::renderProbes()
         }
 
         mRenderingMirror = false;
+        gHeroProbeMirrorRender = false;
 
         gPipeline.mReflectionMapManager.mRadiancePass = radiance_pass;
 

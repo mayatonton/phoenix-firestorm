@@ -3502,6 +3502,9 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     }
 }
 
+extern bool gCubeSnapshot;
+extern bool gHeroProbeMirrorRender;
+
 VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
 {
     if (mVkPipelineLayout == VK_NULL_HANDLE)
@@ -3518,6 +3521,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     VkPipelineStateKey key;
     std::memset(&key, 0, sizeof(key));
     key.mode = static_cast<U8>(mode & 0x3Fu);
+    key.cube_snapshot = (gCubeSnapshot || gHeroProbeMirrorRender) ? 1u : 0u;
     if (rt)
     {
         color_count = rt->getNumTextures();
@@ -3763,7 +3767,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     }
     rs.polygonMode             = vk_polygon_mode;
     rs.cullMode                = vk_cull_mode;
-    rs.frontFace               = (key.is_swapchain_path == 0u)
+    rs.frontFace               = (key.is_swapchain_path == 0u && key.cube_snapshot == 0u)
                                  ? VK_FRONT_FACE_CLOCKWISE
                                  : VK_FRONT_FACE_COUNTER_CLOCKWISE;
     {

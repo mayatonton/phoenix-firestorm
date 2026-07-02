@@ -42,6 +42,7 @@ struct VkPipelineStateKey
     U8  color_count;
     U8  depth_present;
     U8  is_swapchain_path;
+    U8  cube_snapshot;
     U8  mode;
 
     U8  cull_mode;

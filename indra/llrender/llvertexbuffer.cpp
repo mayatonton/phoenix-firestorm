@@ -43,9 +43,13 @@
 #include "llrendertarget.h"
 #include <glm/gtc/type_ptr.hpp>
 
+extern bool gCubeSnapshot;
+extern bool gHeroProbeMirrorRender;
+
 static bool ayaUsePositiveViewport(const LLGLSLShader*)
 {
-    return LLRenderTarget::getCurrentBoundTarget() != nullptr;
+    return LLRenderTarget::getCurrentBoundTarget() != nullptr
+           && !gCubeSnapshot && !gHeroProbeMirrorRender;
 }
 
 //Next Highest Power Of Two
