@@ -60,18 +60,7 @@ in vec2 vary_fragcoord;
 
 void main()
 {
-#ifdef LL_VULKAN_GLSL
-    // Vulkan only: forward water was rasterized with a negative-height viewport
-    // (LLVKLoader::setupViewportAndScissor, applied solely on the
-    // shouldUseVulkanRender() path in llvertexbuffer.cpp) so the plate is
-    // vertically mirrored vs the soften-resampled opaque screen. Sample flipped
-    // to restore upright. The GL path applies NO such viewport flip (water lands
-    // upright), so it samples straight — preserving GL-1:1.
-    vec2 flipped = vec2(vary_fragcoord.x, 1.0 - vary_fragcoord.y);
-#else
-    vec2 flipped = vary_fragcoord;
-#endif
-    vec4 plate = texture(diffuseRect, flipped);
+    vec4 plate = texture(diffuseRect, vary_fragcoord);
 
     // Coverage = was this pixel written by the water surface? The plate is
     // cleared to (0,0,0,0); the water surface writes non-zero color (refraction

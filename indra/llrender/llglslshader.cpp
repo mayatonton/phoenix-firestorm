@@ -3763,7 +3763,9 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     }
     rs.polygonMode             = vk_polygon_mode;
     rs.cullMode                = vk_cull_mode;
-    rs.frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rs.frontFace               = (key.is_swapchain_path == 0u)
+                                 ? VK_FRONT_FACE_CLOCKWISE
+                                 : VK_FRONT_FACE_COUNTER_CLOCKWISE;
     {
         F32 lw_f;
         std::memcpy(&lw_f, &key.line_width_bits, sizeof(F32));

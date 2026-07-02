@@ -64,16 +64,5 @@ in vec2 vary_fragcoord;
 
 void main()
 {
-#ifdef LL_VULKAN_GLSL
-    // Vulkan only: POST_WATER forward alpha was rasterized with a negative-
-    // height viewport (LLVKLoader::setupViewportAndScissor, applied solely on
-    // the shouldUseVulkanRender() path in llvertexbuffer.cpp) so the plate is
-    // vertically mirrored vs the soften-resampled opaque screen. Sample flipped
-    // to restore upright. The GL path applies NO such viewport flip (forward
-    // alpha lands upright), so it samples straight below — preserving GL-1:1.
-    vec2 tc = vec2(vary_fragcoord.x, 1.0 - vary_fragcoord.y);
-#else
-    vec2 tc = vary_fragcoord;
-#endif
-    frag_color = texture(diffuseRect, tc);
+    frag_color = texture(diffuseRect, vary_fragcoord);
 }

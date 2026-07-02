@@ -43,9 +43,9 @@
 #include "llrendertarget.h"
 #include <glm/gtc/type_ptr.hpp>
 
-static bool ayaUsePositiveViewport(const LLGLSLShader* sh)
+static bool ayaUsePositiveViewport(const LLGLSLShader*)
 {
-    return sh && sh->mIsScreenSpaceCopyPass;
+    return LLRenderTarget::getCurrentBoundTarget() != nullptr;
 }
 
 //Next Highest Power Of Two
