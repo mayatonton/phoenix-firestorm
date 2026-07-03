@@ -264,6 +264,27 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
     check_framebuffer_status();
 
     glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat(img->getPrimaryFormat());
+        if (!img->hasVkImage())
+        {
+            VkImage     vk_image = VK_NULL_HANDLE;
+            VkImageView vk_view  = VK_NULL_HANDLE;
+            void*       vk_alloc = nullptr;
+            if (LLVKLoader::createColorAttachmentImageVk(mResX, mResY, vk_format,
+                                                         vk_image, vk_view, vk_alloc))
+            {
+                img->setExternalVkBacking(vk_image, vk_view, vk_alloc, mResX, mResY, vk_format);
+            }
+        }
+        mVkTex.push_back(img->getVkImage());
+        mVkTexView.push_back(img->getVkImageView());
+        mVkTexSampleView.push_back(VK_NULL_HANDLE);
+        mVkTexAlloc.push_back(nullptr);
+        mVkTexLayout.push_back(VK_IMAGE_LAYOUT_UNDEFINED);
+    }
 }
 
 void LLRenderTarget::releaseColorAttachment()
@@ -282,13 +303,17 @@ void LLRenderTarget::releaseColorAttachment()
 
     if (LLVKLoader::isVulkanInitialized() && !mVkTex.empty())
     {
-        LLVKLoader::destroyImageVk(
-            mVkTex[0],
-            mVkTexView.empty()  ? VK_NULL_HANDLE : mVkTexView[0],
-            mVkTexAlloc.empty() ? nullptr        : mVkTexAlloc[0]);
-        if (!mVkTexSampleView.empty() && mVkTexSampleView[0] != VK_NULL_HANDLE)
+        if (mVkTex[0] != VK_NULL_HANDLE && !mVkTexLayout.empty())
         {
-            LLVKLoader::destroyImageVk(VK_NULL_HANDLE, mVkTexSampleView[0], nullptr);
+            LLVKLoader::transitionImageLayoutVk(
+                mVkTex[0],
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                mVkTexLayout[0],
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_ACCESS_SHADER_READ_BIT);
         }
         mVkTex.clear();
         mVkTexView.clear();
