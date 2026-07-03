@@ -1083,6 +1083,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         gGL.setColorMask(true, true);
 
+        gPipeline.updateBrdfLut();
+
         LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.bindTarget();
         if (gUseWireframe)
         {

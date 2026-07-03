@@ -114,6 +114,8 @@ public:
 
     void createGLBuffers();
     void createLUTBuffers();
+    void generateBrdfLut();
+    void updateBrdfLut();
     bool loadColorGradingLUT(const std::string& filename);
 
     //allocate the largest screen buffer possible up to resX, resY
@@ -905,6 +907,7 @@ public:
     LLRenderTarget          mSpotShadow[LLPipeline::kSpotShadowCount];
 
     LLRenderTarget          mPbrBrdfLut;
+    bool                    mBrdfLutDirty = false;
     LLRenderTarget          mWaterExclusionMask;
 
     // <AYAstorm:r21.1> GPU self-rigged picker:

@@ -2095,6 +2095,30 @@ void LLPipeline::createLUTBuffers()
     }
 
     mPbrBrdfLut.allocate(512, 512, GL_RG16F);
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        mBrdfLutDirty = true;
+    }
+    else
+    {
+        generateBrdfLut();
+    }
+
+    mExposureMap.allocate(1, 1, GL_R16F);
+    mExposureMap.bindTarget();
+    glClearColor(1, 1, 1, 0);
+    mExposureMap.clear();
+    glClearColor(0, 0, 0, 0);
+    mExposureMap.flush();
+
+    mLuminanceMap.allocate(256, 256, GL_R16F, false, LLTexUnit::TT_TEXTURE, LLTexUnit::TMG_AUTO);
+
+    mLastExposure.allocate(1, 1, GL_R16F);
+}
+
+void LLPipeline::generateBrdfLut()
+{
     mPbrBrdfLut.bindTarget();
 
     if (gDeferredGenBrdfLutProgram.isComplete())
@@ -2118,17 +2142,27 @@ void LLPipeline::createLUTBuffers()
 
     gDeferredGenBrdfLutProgram.unbind();
     mPbrBrdfLut.flush();
+}
 
-    mExposureMap.allocate(1, 1, GL_R16F);
-    mExposureMap.bindTarget();
-    glClearColor(1, 1, 1, 0);
-    mExposureMap.clear();
-    glClearColor(0, 0, 0, 0);
-    mExposureMap.flush();
+void LLPipeline::updateBrdfLut()
+{
+    if (!mBrdfLutDirty)
+    {
+        return;
+    }
 
-    mLuminanceMap.allocate(256, 256, GL_R16F, false, LLTexUnit::TT_TEXTURE, LLTexUnit::TMG_AUTO);
+    if (LLVKLoader::isVulkanInitialized() && LLVKLoader::getCurrentCommandBuffer() == VK_NULL_HANDLE)
+    {
+        return;
+    }
 
-    mLastExposure.allocate(1, 1, GL_R16F);
+    if (!gDeferredGenBrdfLutProgram.isComplete())
+    {
+        return;
+    }
+
+    generateBrdfLut();
+    mBrdfLutDirty = false;
 }
 
 
