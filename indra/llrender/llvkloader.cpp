@@ -68,6 +68,8 @@ namespace
     std::string      sDeviceName;
     bool             sInitialized         = false;
 
+    VkDebugUtilsMessengerEXT sDebugMessenger = VK_NULL_HANDLE;
+
     VkCommandPool   sCommandPool   = VK_NULL_HANDLE;
     VkPipelineCache sPipelineCache = VK_NULL_HANDLE;
 
@@ -268,9 +270,6 @@ namespace
     };
     std::vector<ScenePerDrawDeferredFreeEntry> sScenePerDrawDeferredFree;
 
-    VkBuffer              sSharedWaterVUBO[FRAMES_IN_FLIGHT]            = {};
-    void*                 sSharedWaterVUBOAllocation[FRAMES_IN_FLIGHT] = {};
-    void*                 sSharedWaterVUBOMapped[FRAMES_IN_FLIGHT]     = {};
 
     VkBuffer              sSharedWindlightHDRUBO                  = VK_NULL_HANDLE;
     void*                 sSharedWindlightHDRUBOAllocation        = nullptr;
@@ -281,9 +280,6 @@ namespace
     VkBuffer              sSharedLightMinimumAlphaUBO             = VK_NULL_HANDLE;
     void*                 sSharedLightMinimumAlphaUBOAllocation   = nullptr;
     void*                 sSharedLightMinimumAlphaUBOMapped       = nullptr;
-    VkBuffer              sSharedWaterFogUBO                      = VK_NULL_HANDLE;
-    void*                 sSharedWaterFogUBOAllocation            = nullptr;
-    void*                 sSharedWaterFogUBOMapped                = nullptr;
     VkBuffer              sSharedTonemapUtilFUBO                  = VK_NULL_HANDLE;
     void*                 sSharedTonemapUtilFUBOAllocation        = nullptr;
     void*                 sSharedTonemapUtilFUBOMapped            = nullptr;
@@ -320,7 +316,10 @@ namespace
     LLVK_SHARED_UBO_RING_STORAGE(WindlightAtmos)
     LLVK_SHARED_UBO_RING_STORAGE(AoUtil)
     LLVK_SHARED_UBO_RING_STORAGE(GlobalF)
+    LLVK_SHARED_UBO_RING_STORAGE(WaterFog)
+    LLVK_SHARED_UBO_RING_STORAGE(WaterV)
     LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbe)
+    LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbes)
     LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbeF)
     LLVK_SHARED_UBO_RING_STORAGE(SSRUtil)
     LLVK_SHARED_UBO_RING_STORAGE(AvatarSkin)
@@ -336,10 +335,6 @@ namespace
     VkBuffer              sSharedPbrTerrainFUBO                   = VK_NULL_HANDLE;
     void*                 sSharedPbrTerrainFUBOAllocation         = nullptr;
     void*                 sSharedPbrTerrainFUBOMapped             = nullptr;
-
-    VkBuffer              sSharedReflectionProbesUBO              = VK_NULL_HANDLE;
-    void*                 sSharedReflectionProbesUBOAllocation    = nullptr;
-    void*                 sSharedReflectionProbesUBOMapped        = nullptr;
 
     U32 sFrameIndex = 0;
 
@@ -410,6 +405,32 @@ namespace
     DeviceLimits sDeviceLimits;
     bool         sSharedVmaBudgetLogged = false;
 
+    VKAPI_ATTR VkBool32 VKAPI_CALL vkDebugCallback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT      severity,
+        VkDebugUtilsMessageTypeFlagsEXT             types,
+        const VkDebugUtilsMessengerCallbackDataEXT* data,
+        void*                                       user_data)
+    {
+        const char* type_str = (types & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)  ? "VALIDATION" :
+                               (types & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) ? "PERF"       :
+                                                                                          "GENERAL";
+        const char* id  = (data && data->pMessageIdName) ? data->pMessageIdName : "";
+        const char* msg = (data && data->pMessage) ? data->pMessage : "";
+        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        {
+            LL_WARNS("VulkanValidation") << "[VK-ERROR][" << type_str << "][" << id << "] " << msg << LL_ENDL;
+        }
+        else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        {
+            LL_WARNS("VulkanValidation") << "[VK-WARN][" << type_str << "][" << id << "] " << msg << LL_ENDL;
+        }
+        else
+        {
+            LL_INFOS("VulkanValidation") << "[VK-INFO][" << type_str << "][" << id << "] " << msg << LL_ENDL;
+        }
+        return VK_FALSE;
+    }
+
     bool createInstance()
     {
         std::vector<const char*> layers;
@@ -425,6 +446,60 @@ namespace
 #if defined(VK_USE_PLATFORM_METAL_EXT)
         extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #endif
+
+        bool want_validation = false;
+        {
+            const char* env = getenv("AYASTORM_VK_VALIDATION");
+            want_validation = (env != nullptr && env[0] != '\0' && env[0] != '0');
+        }
+
+        bool have_validation_layer = false;
+        bool have_debug_utils       = false;
+        if (want_validation)
+        {
+            U32 layer_count = 0;
+            vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+            std::vector<VkLayerProperties> avail_layers(layer_count);
+            if (layer_count)
+            {
+                vkEnumerateInstanceLayerProperties(&layer_count, avail_layers.data());
+            }
+            for (const auto& lp : avail_layers)
+            {
+                if (strcmp(lp.layerName, "VK_LAYER_KHRONOS_validation") == 0)
+                {
+                    have_validation_layer = true;
+                    break;
+                }
+            }
+
+            U32 ext_count = 0;
+            vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
+            std::vector<VkExtensionProperties> avail_exts(ext_count);
+            if (ext_count)
+            {
+                vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, avail_exts.data());
+            }
+            for (const auto& ep : avail_exts)
+            {
+                if (strcmp(ep.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
+                {
+                    have_debug_utils = true;
+                    break;
+                }
+            }
+
+            if (have_validation_layer)
+            {
+                layers.push_back("VK_LAYER_KHRONOS_validation");
+            }
+            if (have_debug_utils)
+            {
+                extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+            }
+            LL_INFOS("VulkanValidation") << "requested=1 layer=" << (have_validation_layer ? 1 : 0)
+                                         << " debug_utils=" << (have_debug_utils ? 1 : 0) << LL_ENDL;
+        }
 
         VkApplicationInfo app_info = {};
         app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -442,6 +517,29 @@ namespace
         create_info.enabledExtensionCount = (U32)extensions.size();
         create_info.ppEnabledExtensionNames = extensions.data();
 
+        VkDebugUtilsMessengerCreateInfoEXT dbg_ci = {};
+        dbg_ci.sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+        dbg_ci.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+        dbg_ci.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+        dbg_ci.pfnUserCallback = vkDebugCallback;
+
+        VkValidationFeatureEnableEXT enabled_features[] = {
+            VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT
+        };
+        VkValidationFeaturesEXT val_features = {};
+        val_features.sType                          = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+        val_features.enabledValidationFeatureCount  = 1;
+        val_features.pEnabledValidationFeatures     = enabled_features;
+
+        if (want_validation && have_debug_utils)
+        {
+            val_features.pNext = &dbg_ci;
+            create_info.pNext  = &val_features;
+        }
+
         VkResult result = vkCreateInstance(&create_info, nullptr, &sInstance);
 
         if (result != VK_SUCCESS)
@@ -450,6 +548,15 @@ namespace
         }
 
         volkLoadInstanceOnly(sInstance);
+
+        if (want_validation && have_debug_utils && vkCreateDebugUtilsMessengerEXT != nullptr)
+        {
+            VkResult dbg_res = vkCreateDebugUtilsMessengerEXT(sInstance, &dbg_ci, nullptr, &sDebugMessenger);
+            if (dbg_res != VK_SUCCESS)
+            {
+                sDebugMessenger = VK_NULL_HANDLE;
+            }
+        }
         return true;
     }
 
@@ -2170,6 +2277,21 @@ namespace
         return true;
     }
 
+    void setVkObjectName(U64 handle, VkObjectType type, const char* name)
+    {
+        if (sDevice == VK_NULL_HANDLE || handle == 0 || name == nullptr ||
+            vkSetDebugUtilsObjectNameEXT == nullptr)
+        {
+            return;
+        }
+        VkDebugUtilsObjectNameInfoEXT info = {};
+        info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+        info.objectType   = type;
+        info.objectHandle = handle;
+        info.pObjectName  = name;
+        vkSetDebugUtilsObjectNameEXT(sDevice, &info);
+    }
+
     bool createAttachmentImageVkImpl(U32                width,
                                      U32                height,
                                      VkFormat           format,
@@ -2267,6 +2389,16 @@ namespace
         out_image      = image;
         out_view       = view;
         out_allocation = reinterpret_cast<void*>(allocation);
+
+        if (vkSetDebugUtilsObjectNameEXT != nullptr)
+        {
+            char namebuf[160];
+            snprintf(namebuf, sizeof(namebuf), "%s %ux%u fmt%d mip%u",
+                     (tag ? tag : "attImg"), width, height, (int)format,
+                     (mip_levels > 0 ? mip_levels : 1));
+            setVkObjectName((U64)image, VK_OBJECT_TYPE_IMAGE, namebuf);
+            setVkObjectName((U64)view, VK_OBJECT_TYPE_IMAGE_VIEW, namebuf);
+        }
         return true;
     }
 
@@ -2600,6 +2732,11 @@ bool initVulkan()
 
     if (!selectPhysicalDevice() || !selectQueueFamily() || !createDevice())
     {
+        if (sDebugMessenger != VK_NULL_HANDLE && vkDestroyDebugUtilsMessengerEXT != nullptr)
+        {
+            vkDestroyDebugUtilsMessengerEXT(sInstance, sDebugMessenger, nullptr);
+            sDebugMessenger = VK_NULL_HANDLE;
+        }
         if (sInstance != VK_NULL_HANDLE)
         {
             vkDestroyInstance(sInstance, nullptr);
@@ -2837,18 +2974,6 @@ void shutdownVulkan()
         }
         sSamplerCache.clear();
 
-        for (U32 wf = 0; wf < FRAMES_IN_FLIGHT; ++wf)
-        {
-            if (sSharedWaterVUBO[wf] != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
-            {
-                vmaDestroyBuffer(sAllocator, sSharedWaterVUBO[wf],
-                                 reinterpret_cast<VmaAllocation>(sSharedWaterVUBOAllocation[wf]));
-            }
-            sSharedWaterVUBO[wf]           = VK_NULL_HANDLE;
-            sSharedWaterVUBOAllocation[wf] = nullptr;
-            sSharedWaterVUBOMapped[wf]     = nullptr;
-        }
-
         auto destroy_shared_ubo = [&](VkBuffer& buf, void*& alloc, void*& mapped)
         {
             if (buf != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
@@ -2862,11 +2987,9 @@ void shutdownVulkan()
         destroy_shared_ubo(sSharedWindlightHDRUBO,      sSharedWindlightHDRUBOAllocation,      sSharedWindlightHDRUBOMapped);
         destroy_shared_ubo(sSharedWindlightLightUBO,    sSharedWindlightLightUBOAllocation,    sSharedWindlightLightUBOMapped);
         destroy_shared_ubo(sSharedLightMinimumAlphaUBO, sSharedLightMinimumAlphaUBOAllocation, sSharedLightMinimumAlphaUBOMapped);
-        destroy_shared_ubo(sSharedWaterFogUBO,          sSharedWaterFogUBOAllocation,          sSharedWaterFogUBOMapped);
         destroy_shared_ubo(sSharedTonemapUtilFUBO,      sSharedTonemapUtilFUBOAllocation,      sSharedTonemapUtilFUBOMapped);
         destroy_shared_ubo(sSharedSMAABlendWeightsFUBO, sSharedSMAABlendWeightsFUBOAllocation, sSharedSMAABlendWeightsFUBOMapped);
         destroy_shared_ubo(sSharedPbrTerrainFUBO,       sSharedPbrTerrainFUBOAllocation,       sSharedPbrTerrainFUBOMapped);
-        destroy_shared_ubo(sSharedReflectionProbesUBO,  sSharedReflectionProbesUBOAllocation,  sSharedReflectionProbesUBOMapped);
         for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
         {
             if (sPerFrameUboMemory[frame] != VK_NULL_HANDLE && sPerFrameUboMapped[frame] != nullptr)
@@ -2956,7 +3079,10 @@ void shutdownVulkan()
             LLVK_SHARED_UBO_RING_TEARDOWN(WindlightAtmos)
             LLVK_SHARED_UBO_RING_TEARDOWN(AoUtil)
             LLVK_SHARED_UBO_RING_TEARDOWN(GlobalF)
+            LLVK_SHARED_UBO_RING_TEARDOWN(WaterFog)
+            LLVK_SHARED_UBO_RING_TEARDOWN(WaterV)
             LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbe)
+            LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbes)
             LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbeF)
             LLVK_SHARED_UBO_RING_TEARDOWN(SSRUtil)
             LLVK_SHARED_UBO_RING_TEARDOWN(AvatarSkin)
@@ -3036,6 +3162,11 @@ void shutdownVulkan()
         sGraphicsQueueFamily = UINT_MAX;
     }
     shutdownSurface();
+    if (sDebugMessenger != VK_NULL_HANDLE && vkDestroyDebugUtilsMessengerEXT != nullptr)
+    {
+        vkDestroyDebugUtilsMessengerEXT(sInstance, sDebugMessenger, nullptr);
+        sDebugMessenger = VK_NULL_HANDLE;
+    }
     if (sInstance != VK_NULL_HANDLE)
     {
         vkDestroyInstance(sInstance, nullptr);
@@ -4179,34 +4310,6 @@ void ensurePerAssetUBOVk(U32       needed_size,
     }
 }
 
-bool getSharedWaterVUBO(VkBuffer& out_buffer, void*& out_mapped)
-{
-    if (!sInitialized)
-    {
-        return false;
-    }
-    const U32 f = getCurrentFrameIndex();
-    if (f >= FRAMES_IN_FLIGHT)
-    {
-        return false;
-    }
-    if (sSharedWaterVUBO[f] == VK_NULL_HANDLE)
-    {
-        if (!createBufferVkImpl(sizeof(Water_PerProgramBind),
-                                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                "getSharedWaterVUBO",
-                                sSharedWaterVUBO[f],
-                                sSharedWaterVUBOAllocation[f],
-                                &sSharedWaterVUBOMapped[f]))
-        {
-            return false;
-        }
-    }
-    out_buffer = sSharedWaterVUBO[f];
-    out_mapped = sSharedWaterVUBOMapped[f];
-    return true;
-}
-
 #define LLVK_SHARED_UBO_GETTER(BindName, StructType, StorageBuf, StorageAlloc, StorageMapped, BindingNumber) \
     bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                                   \
     {                                                                                                       \
@@ -4231,11 +4334,9 @@ bool getSharedWaterVUBO(VkBuffer& out_buffer, void*& out_mapped)
 LLVK_SHARED_UBO_GETTER(WindlightHDR,        WindlightHDR_PerProgramBind,        sSharedWindlightHDRUBO,        sSharedWindlightHDRUBOAllocation,        sSharedWindlightHDRUBOMapped,        10)
 LLVK_SHARED_UBO_GETTER(WindlightLight,      WindlightLight_PerProgramBind,      sSharedWindlightLightUBO,      sSharedWindlightLightUBOAllocation,      sSharedWindlightLightUBOMapped,      11)
 LLVK_SHARED_UBO_GETTER(LightMinimumAlpha,   LightMinimumAlpha_PerProgramBind,   sSharedLightMinimumAlphaUBO,   sSharedLightMinimumAlphaUBOAllocation,   sSharedLightMinimumAlphaUBOMapped,   13)
-LLVK_SHARED_UBO_GETTER(WaterFog,            WaterFog_PerProgramBind,            sSharedWaterFogUBO,            sSharedWaterFogUBOAllocation,            sSharedWaterFogUBOMapped,            14)
 LLVK_SHARED_UBO_GETTER(TonemapUtilF,         TonemapUtilF_PerProgramBind,         sSharedTonemapUtilFUBO,         sSharedTonemapUtilFUBOAllocation,         sSharedTonemapUtilFUBOMapped,         26)
 LLVK_SHARED_UBO_GETTER(SMAABlendWeightsF,   SMAABlendWeightsF_PerProgramBind,   sSharedSMAABlendWeightsFUBO,   sSharedSMAABlendWeightsFUBOAllocation,   sSharedSMAABlendWeightsFUBOMapped,   4)
 LLVK_SHARED_UBO_GETTER(PbrTerrainF,         PbrTerrainF_PerProgramBind,         sSharedPbrTerrainFUBO,         sSharedPbrTerrainFUBOAllocation,         sSharedPbrTerrainFUBOMapped,         28)
-LLVK_SHARED_UBO_GETTER(ReflectionProbes,    ReflectionProbes_PerProgramBind,    sSharedReflectionProbesUBO,    sSharedReflectionProbesUBOAllocation,    sSharedReflectionProbesUBOMapped,    38)
 
 #undef LLVK_SHARED_UBO_GETTER
 
@@ -4252,11 +4353,9 @@ LLVK_SHARED_UBO_GETTER(ReflectionProbes,    ReflectionProbes_PerProgramBind,    
 LLVK_SHARED_UBO_WRITER(WindlightHDR,      WindlightHDR_PerProgramBind,      sSharedWindlightHDRUBOMapped,      10)
 LLVK_SHARED_UBO_WRITER(WindlightLight,    WindlightLight_PerProgramBind,    sSharedWindlightLightUBOMapped,    11)
 LLVK_SHARED_UBO_WRITER(LightMinimumAlpha, LightMinimumAlpha_PerProgramBind, sSharedLightMinimumAlphaUBOMapped, 13)
-LLVK_SHARED_UBO_WRITER(WaterFog,          WaterFog_PerProgramBind,          sSharedWaterFogUBOMapped,          14)
 LLVK_SHARED_UBO_WRITER(TonemapUtilF,       TonemapUtilF_PerProgramBind,       sSharedTonemapUtilFUBOMapped,       26)
 LLVK_SHARED_UBO_WRITER(SMAABlendWeightsF, SMAABlendWeightsF_PerProgramBind, sSharedSMAABlendWeightsFUBOMapped, 4)
 LLVK_SHARED_UBO_WRITER(PbrTerrainF,       PbrTerrainF_PerProgramBind,       sSharedPbrTerrainFUBOMapped,       28)
-LLVK_SHARED_UBO_WRITER(ReflectionProbes,  ReflectionProbes_PerProgramBind,  sSharedReflectionProbesUBOMapped,  38)
 
 #undef LLVK_SHARED_UBO_WRITER
 
@@ -4488,7 +4587,10 @@ LLVK_SHARED_UBO_RING_IMPL(WindlightSky,     WindlightSky_PerProgramBind,     9)
 LLVK_SHARED_UBO_RING_IMPL(WindlightAtmos,   WindlightAtmos_PerProgramBind,   8)
 LLVK_SHARED_UBO_RING_IMPL(AoUtil,           AoUtil_PerProgramBind,           22)
 LLVK_SHARED_UBO_RING_IMPL(GlobalF,          GlobalF_PerProgramBind,          18)
+LLVK_SHARED_UBO_RING_IMPL(WaterFog,         WaterFog_PerProgramBind,         14)
+LLVK_SHARED_UBO_RING_IMPL(WaterV,           Water_PerProgramBind,            15)
 LLVK_SHARED_UBO_RING_IMPL(ReflectionProbe,  ReflectionProbe_PerProgramBind,  16)
+LLVK_SHARED_UBO_RING_IMPL(ReflectionProbes, ReflectionProbes_PerProgramBind, 38)
 LLVK_SHARED_UBO_RING_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind, 39)
 LLVK_SHARED_UBO_RING_IMPL(SSRUtil,          SSRUtil_PerProgramBind,          49)
 LLVK_SHARED_UBO_RING_IMPL(AvatarSkin,       AvatarSkin_PerProgramBind,       45)
@@ -6169,6 +6271,15 @@ bool createCubeArrayImageVk(U32          resolution,
     out_image      = image;
     out_view       = view;
     out_allocation = reinterpret_cast<void*>(allocation);
+
+    if (vkSetDebugUtilsObjectNameEXT != nullptr)
+    {
+        char namebuf[160];
+        snprintf(namebuf, sizeof(namebuf), "cubeArray res%u count%u mips%u fmt%d",
+                 resolution, count, mips, (int)format);
+        setVkObjectName((U64)image, VK_OBJECT_TYPE_IMAGE, namebuf);
+        setVkObjectName((U64)view, VK_OBJECT_TYPE_IMAGE_VIEW, namebuf);
+    }
     return true;
 }
 
@@ -6267,7 +6378,7 @@ bool copyColorImageToCubeArrayLayerVk(VkImage       src_image,
         bb[0].subresourceRange.layerCount     = 1;
         bb[1].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         bb[1].srcAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
-        bb[1].dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+        bb[1].dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
         bb[1].oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         bb[1].newLayout                       = src_layout;
         bb[1].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;

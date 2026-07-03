@@ -260,6 +260,7 @@ namespace LLVKLoader
                   "Water_PerProgramBind size mismatch (std140 expects 64 B)");
 
     bool     getSharedWaterVUBO(VkBuffer& out_buffer, void*& out_mapped);
+    void     writeCurrentWaterVUBO(const Water_PerProgramBind& data);
 
     struct WindlightAtmos_PerProgramBind
     {

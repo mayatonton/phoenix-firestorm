@@ -328,29 +328,23 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
                                          ? pwater->getScaleBelow() : pwater->getScaleAbove();
 
         {
-            VkBuffer dummy_buf      = VK_NULL_HANDLE;
-            void*    shared_mapped  = nullptr;
-            if (LLVKLoader::getSharedWaterVUBO(dummy_buf, shared_mapped)
-                && shared_mapped != nullptr)
-            {
-                LLVKLoader::Water_PerProgramBind vubo = {};
-                const LLVector2 wave1   = pwater->getWave1Dir();
-                const LLVector2 wave2   = pwater->getWave2Dir();
-                const LLVector3 origin  = LLViewerCamera::getInstance()->getOrigin();
-                vubo.waveDir1[0] = wave1.mV[0];
-                vubo.waveDir1[1] = wave1.mV[1];
-                vubo.waveDir2[0] = wave2.mV[0];
-                vubo.waveDir2[1] = wave2.mV[1];
-                vubo.time        = phase_time;
-                vubo.eyeVec[0]   = origin.mV[0];
-                vubo.eyeVec[1]   = origin.mV[1];
-                vubo.eyeVec[2]   = origin.mV[2];
-                vubo.waterHeight = camera_height - water_height;
-                vubo.lightDir[0] = light_dir.mV[0];
-                vubo.lightDir[1] = light_dir.mV[1];
-                vubo.lightDir[2] = light_dir.mV[2];
-                memcpy(shared_mapped, &vubo, sizeof(vubo));
-            }
+            LLVKLoader::Water_PerProgramBind vubo = {};
+            const LLVector2 wave1   = pwater->getWave1Dir();
+            const LLVector2 wave2   = pwater->getWave2Dir();
+            const LLVector3 origin  = LLViewerCamera::getInstance()->getOrigin();
+            vubo.waveDir1[0] = wave1.mV[0];
+            vubo.waveDir1[1] = wave1.mV[1];
+            vubo.waveDir2[0] = wave2.mV[0];
+            vubo.waveDir2[1] = wave2.mV[1];
+            vubo.time        = phase_time;
+            vubo.eyeVec[0]   = origin.mV[0];
+            vubo.eyeVec[1]   = origin.mV[1];
+            vubo.eyeVec[2]   = origin.mV[2];
+            vubo.waterHeight = camera_height - water_height;
+            vubo.lightDir[0] = light_dir.mV[0];
+            vubo.lightDir[1] = light_dir.mV[1];
+            vubo.lightDir[2] = light_dir.mV[2];
+            LLVKLoader::writeCurrentWaterVUBO(vubo);
         }
 
         if (is_under_water)
