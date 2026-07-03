@@ -946,6 +946,7 @@ public:
     // z (atmospherics / HQ DoF gate keep stock behaviour). Main RT only.
     LLRenderTarget          mAYAAlphaDepth;
     // </AYAstorm r30 P5 transparent-DoF L2-β>
+    LLRenderTarget          mSceneDepthCopy;
 
     // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color attachment
     // for forward alpha BLEND draws. Shares depth with mRT->screen so

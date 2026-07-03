@@ -345,6 +345,8 @@ extern bool gDebugGL;
 extern bool gCubeSnapshot;
 extern bool gSnapshotNoPost;
 
+static bool sSceneDepthCopyActive = false;
+
 bool    gAvatarBacklight = false;
 
 bool    gDebugPipeline = false;
@@ -1255,6 +1257,10 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYAAlphaDepth");
             if (!mAYAAlphaDepth.allocate(resX, resY, GL_RGBA, true)) return false;
+            if (LLVKLoader::isVulkanInitialized())
+            {
+                if (!mSceneDepthCopy.allocate(resX, resY, GL_RGBA, true)) return false;
+            }
         }
         // </AYAstorm r30 P5 transparent-DoF L2-β>
 
@@ -1757,6 +1763,7 @@ void LLPipeline::releaseScreenBuffers()
     // <AYAstorm r30 P5 transparent-DoF L2-β> alpha-aware depth for cofF.glsl
     mAYAAlphaDepth.release();
     // </AYAstorm r30 P5 transparent-DoF L2-β>
+    mSceneDepthCopy.release();
 
     // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND color RT
     mAYAAlphaColor.release();
@@ -11219,6 +11226,15 @@ void LLPipeline::bindDeferredShaderFast(LLGLSLShader& shader)
         bindDeferredShader(shader);
         shader.mCanBindFast = true;
     }
+
+    if (sSceneDepthCopyActive && LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
+    {
+        S32 dch = shader.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
+        if (dch > -1)
+        {
+            gGL.getTexUnit(dch)->bind(&mSceneDepthCopy, true);
+        }
+    }
 }
 
 void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target, LLRenderTarget* depth_target)
@@ -11263,6 +11279,10 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         if (depth_target)
         {
             gGL.getTexUnit(channel)->bind(depth_target, true);
+        }
+        else if (sSceneDepthCopyActive && LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
+        {
+            gGL.getTexUnit(channel)->bind(&mSceneDepthCopy, true);
         }
         else
         {
@@ -11950,6 +11970,27 @@ void LLPipeline::renderDeferredLighting()
 
     LLRenderTarget *screen_target         = &getFrameRT()->screen;
     LLRenderTarget* deferred_light_target = &getFrameRT()->deferredLight;
+
+    sSceneDepthCopyActive = false;
+    if (LLVKLoader::isVulkanInitialized() && !gCubeSnapshot && mSceneDepthCopy.isComplete())
+    {
+        LL_PROFILE_GPU_ZONE("scene depth copy for lighting");
+        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
+        LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
+        mSceneDepthCopy.bindTarget();
+        gCopyDepthProgram.bind();
+        S32 diff_map  = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
+        S32 depth_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
+        gGL.getTexUnit(diff_map)->bind(&depth_src);
+        gGL.getTexUnit(depth_map)->bind(&depth_src, true);
+        depth_src.bindForShaderRead(0, true);
+        gGL.setColorMask(false, false);
+        mScreenTriangleVB->setBuffer();
+        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        gGL.setColorMask(true, true);
+        mSceneDepthCopy.flush();
+        sSceneDepthCopyActive = true;
+    }
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("deferred");
@@ -12911,6 +12952,8 @@ void LLPipeline::renderDeferredLighting()
         getFrameRT()->screen.bindTarget();
     }
     // </AYAstorm r30 P5 transparent-DoF L2-β>
+
+    sSceneDepthCopyActive = false;
 
     {  // render non-deferred geometry (alpha, fullbright, glow)
         LLGLDisable blend(GL_BLEND);
@@ -14721,6 +14764,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     getFrameRT()->shadow[j].clear();
                 }
                 getFrameRT()->shadow[j].flush();
+                getFrameRT()->shadow[j].bindForShaderRead(0, true);
 
                 mShadowError.mV[j] = 0.f;
                 mShadowFOV.mV[j] = 0.f;
@@ -15009,6 +15053,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
 
             getFrameRT()->shadow[j].flush();
+            getFrameRT()->shadow[j].bindForShaderRead(0, true);
 
             if (!gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
@@ -15157,6 +15202,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 RenderSpotLight = nullptr;
 
                 mSpotShadow[i].flush();
+                mSpotShadow[i].bindForShaderRead(0, true);
             }
         }
     }
@@ -16032,6 +16078,7 @@ void LLPipeline::skipRenderingShadows()
         getFrameRT()->shadow[j].bindTarget();
         getFrameRT()->shadow[j].clear();
         getFrameRT()->shadow[j].flush();
+        getFrameRT()->shadow[j].bindForShaderRead(0, true);
     }
 }
 
