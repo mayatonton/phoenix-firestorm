@@ -332,14 +332,14 @@ void main()
     if (classic_mode > 0)
     {
         final_da = pow(final_da,1.2);
-        vec3 sun_contrib = vec3(min(final_da, shadow));
+        vec3 sun_contrib = vec3(max(min(final_da, shadow), 1.0 - final_alpha));
 
         color.rgb = srgb_to_linear(color.rgb * 0.9 + linear_to_srgb(sun_contrib) * sunlit_linear * 0.7);
         sunlit_linear = srgb_to_linear(sunlit_linear);
     }
     else
     {
-        vec3 sun_contrib = min(final_da, shadow) * sunlit_linear;
+        vec3 sun_contrib = max(min(final_da, shadow), 1.0 - final_alpha) * sunlit_linear;
         color.rgb += sun_contrib;
     }
 

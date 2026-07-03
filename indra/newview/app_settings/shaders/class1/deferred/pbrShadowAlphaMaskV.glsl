@@ -142,5 +142,5 @@ void main()
     passTextureIndex();
 
     vary_texcoord0 = texture_transform(texcoord0, texture_base_color_transform, texture_matrix0);
-    vertex_color = diffuse_color;
+    vertex_color = vec4(diffuse_color.rgb, 1.0);
 }
