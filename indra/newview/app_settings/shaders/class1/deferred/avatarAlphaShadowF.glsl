@@ -71,7 +71,7 @@ void main()
 
     if (alpha < minimum_alpha) // treat as semi-transparent
     {
-      if (fract(0.5*floor(target_pos_x / pos_w )) < 0.25)
+      if (fract(0.5*floor(gl_FragCoord.x)) < 0.25)
       {
         discard;
       }
