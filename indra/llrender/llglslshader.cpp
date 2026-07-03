@@ -3726,11 +3726,31 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
         ++vi_count;
     }
 
+    U32 attr_count = vi_count;
+    if (mAttributeMask & (1u << LLVertexBuffer::TYPE_VERTEX))
+    {
+        for (U32 type = 0; type < LLVertexBuffer::TYPE_MAX; ++type)
+        {
+            if (mAttributeMask & (1u << type))
+                continue;
+            auto fmt_stride = get_vk_format_stride(type);
+            if (fmt_stride.first == VK_FORMAT_UNDEFINED)
+                continue;
+
+            vi_attrs[attr_count].location = type;
+            vi_attrs[attr_count].binding  = LLVertexBuffer::TYPE_VERTEX;
+            vi_attrs[attr_count].format   = fmt_stride.first;
+            vi_attrs[attr_count].offset   = 0;
+
+            ++attr_count;
+        }
+    }
+
     VkPipelineVertexInputStateCreateInfo vi = {};
     vi.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vi.vertexBindingDescriptionCount   = vi_count;
     vi.pVertexBindingDescriptions      = vi_bindings;
-    vi.vertexAttributeDescriptionCount = vi_count;
+    vi.vertexAttributeDescriptionCount = attr_count;
     vi.pVertexAttributeDescriptions    = vi_attrs;
 
     VkPrimitiveTopology topology;
