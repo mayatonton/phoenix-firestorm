@@ -247,6 +247,8 @@ void main()
 
         sampleReflectionProbes(irradiance, radiance, tc, pos.xyz, gb.normal, gloss, false, amblit_linear);
 
+        irradiance = max(amblit_linear, irradiance);
+
         adjustIrradiance(irradiance, ambocc);
 
         vec3 diffuseColor;
@@ -291,6 +293,8 @@ void main()
         vec3 legacyenv = vec3(0);
 
         sampleReflectionProbesLegacy(irradiance, glossenv, legacyenv, tc, pos.xyz, gb.normal, spec.a, envIntensity, false, amblit_linear);
+
+        irradiance = max(amblit_linear, irradiance);
 
         adjustIrradiance(irradiance, ambocc);
 

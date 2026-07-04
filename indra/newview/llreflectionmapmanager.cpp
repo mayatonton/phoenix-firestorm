@@ -930,6 +930,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
     if (face == 5)
     {
         mMipChain[0].bindTarget();
+        const bool aya_prev_cube_snapshot = gCubeSnapshot;
+        gCubeSnapshot = true;
         static LLStaticHashedString sSourceIdx("sourceIdx");
 
         if (isRadiancePass())
@@ -1087,6 +1089,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         }
 
         mMipChain[0].flush();
+        gCubeSnapshot = aya_prev_cube_snapshot;
     }
 }
 
