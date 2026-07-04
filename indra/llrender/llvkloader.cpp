@@ -6367,20 +6367,21 @@ bool copyColorImageToCubeArrayLayerVk(VkImage       src_image,
     }
 
     {
-        VkImageCopy region = {};
-        region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        region.srcSubresource.mipLevel       = 0;
-        region.srcSubresource.baseArrayLayer = 0;
-        region.srcSubresource.layerCount     = 1;
-        region.srcOffset                     = {0, 0, 0};
-        region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        region.dstSubresource.mipLevel       = dst_mip;
-        region.dstSubresource.baseArrayLayer = dst_layer;
-        region.dstSubresource.layerCount     = 1;
-        region.dstOffset                     = {0, 0, 0};
-        region.extent                        = {width, height, 1};
-        vkCmdCopyImage(cmd, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       dst_cube_array, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        VkImageBlit blit = {};
+        blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.mipLevel       = 0;
+        blit.srcSubresource.baseArrayLayer = 0;
+        blit.srcSubresource.layerCount     = 1;
+        blit.srcOffsets[0]                 = { 0, 0, 0 };
+        blit.srcOffsets[1]                 = { (S32)width, (S32)height, 1 };
+        blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.mipLevel       = dst_mip;
+        blit.dstSubresource.baseArrayLayer = dst_layer;
+        blit.dstSubresource.layerCount     = 1;
+        blit.dstOffsets[0]                 = { 0, (S32)height, 0 };
+        blit.dstOffsets[1]                 = { (S32)width, 0, 1 };
+        vkCmdBlitImage(cmd, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       dst_cube_array, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
     }
 
     {
