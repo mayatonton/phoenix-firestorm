@@ -6241,21 +6241,43 @@ bool createCubeArrayImageVk(U32          resolution,
         cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(cmd, &cbbi);
+
+        VkImageSubresourceRange full_range = {};
+        full_range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        full_range.baseMipLevel   = 0;
+        full_range.levelCount     = mips;
+        full_range.baseArrayLayer = 0;
+        full_range.layerCount     = layer_count;
+
+        VkImageMemoryBarrier to_clear = {};
+        to_clear.sType                = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        to_clear.srcAccessMask        = 0;
+        to_clear.dstAccessMask        = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_clear.oldLayout            = VK_IMAGE_LAYOUT_UNDEFINED;
+        to_clear.newLayout            = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        to_clear.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+        to_clear.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+        to_clear.image                = image;
+        to_clear.subresourceRange     = full_range;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &to_clear);
+
+        VkClearColorValue black = {};
+        vkCmdClearColorImage(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                             &black, 1, &full_range);
+
         VkImageMemoryBarrier b = {};
         b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        b.srcAccessMask                   = 0;
+        b.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
         b.dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
-        b.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        b.oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         b.newLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
         b.image                           = image;
-        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        b.subresourceRange.baseMipLevel   = 0;
-        b.subresourceRange.levelCount     = mips;
-        b.subresourceRange.baseArrayLayer = 0;
-        b.subresourceRange.layerCount     = layer_count;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        b.subresourceRange                = full_range;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
         vkEndCommandBuffer(cmd);
