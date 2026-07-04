@@ -415,6 +415,8 @@ void main()
 
     vec3 v = -normalize(pos.xyz);
 
+    scol = mix(scol, 1.0, 1.0 - basecolor.a);
+
     vec3 color = pbrBaseLight(diffuseColor, specularColor, metallic, v, norm.xyz, perceptualRoughness, light_dir, sunlit_linear, scol, radiance, irradiance, emissive, orm.r, additive, atten);
 
     vec3 light = vec3(0);

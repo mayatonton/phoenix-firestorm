@@ -145,6 +145,7 @@ public:
     U32 mShaderMask = 0;
     F32  mEnvIntensity = 0.f;
     F32  mAlphaMaskCutoff = 0.5f;
+    F32  mObjectAlpha = 1.f;
 
     LLRender::eBlendFactor mBlendFuncSrc = LLRender::BF_SOURCE_ALPHA;
     LLRender::eBlendFactor  mBlendFuncDst = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;

@@ -2932,6 +2932,20 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
     }
 }
 
+void LLGLSLShader::setObjectAlpha(F32 object_alpha)
+{
+    if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
+    {
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            const F32 object_alpha_pc = object_alpha;
+            vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                               68, sizeof(F32), &object_alpha_pc);
+        }
+    }
+}
+
 void LLShaderUniforms::apply(LLGLSLShader* shader)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;

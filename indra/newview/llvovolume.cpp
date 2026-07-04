@@ -5814,6 +5814,7 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
 
         draw_info->mBump  = bump;
         draw_info->mShiny = shiny;
+        draw_info->mObjectAlpha = te ? te->getColor().mV[3] : 1.f;
 
         static const float alpha[4] =
         {

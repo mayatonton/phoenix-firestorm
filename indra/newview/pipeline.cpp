@@ -8842,6 +8842,7 @@ void LLPipeline::renderAlphaObjects(bool rigged)
                     LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
                 }
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
                 LLRenderPass::pushRiggedGLTFBatch(*pparams, lastAvatarGLTF, lastMeshIdGLTF, skipLastSkinGLTF);
             }
             else
@@ -8856,6 +8857,7 @@ void LLPipeline::renderAlphaObjects(bool rigged)
                     LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
                 }
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
                 if (mSimplePool->uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
                 {
                     mSimplePool->pushBatch(*pparams, true, true);
@@ -8876,6 +8878,7 @@ void LLPipeline::renderAlphaObjects(bool rigged)
                     LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
                 }
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
                 LLRenderPass::pushGLTFBatch(*pparams);
             }
             else
@@ -8890,6 +8893,7 @@ void LLPipeline::renderAlphaObjects(bool rigged)
                     LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
                 }
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
                 mSimplePool->pushBatch(*pparams, true, true);
             }
         }
@@ -14130,6 +14134,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
                 gDeferredShadowAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
@@ -14152,6 +14157,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
                 gDeferredShadowFullbrightAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
@@ -14190,6 +14196,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
             bool rigged = i == 1;
             gDeferredShadowGLTFAlphaMaskProgram.bind(rigged);
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
             LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
             LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
             if (LLVKLoader::isVulkanInitialized())

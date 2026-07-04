@@ -44,6 +44,12 @@ layout(push_constant) uniform AvatarAlphaShadowF_AlphaMaskPC
     layout(offset = 64) float minimum_alpha;
 };
 layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
+
+const float aya_bayer4x4[16] = float[16](
+     0.0,  8.0,  2.0, 10.0,
+    12.0,  4.0, 14.0,  6.0,
+     3.0, 11.0,  1.0,  9.0,
+    15.0,  7.0, 13.0,  5.0);
 #else
 uniform float minimum_alpha;
 uniform sampler2D diffuseMap;
@@ -64,6 +70,22 @@ void main()
 #if AYASTORM_CINEMATIC
     bayerDitherDiscard(alpha, minimum_alpha);
 #else
+#ifdef LL_VULKAN_GLSL
+    if (alpha < 0.05)
+    {
+        discard;
+    }
+    if (alpha < 0.996)
+    {
+        int bx = int(gl_FragCoord.x) & 3;
+        int by = int(gl_FragCoord.y) & 3;
+        float t = (aya_bayer4x4[by * 4 + bx] + 0.5) * (1.0 / 16.0);
+        if (alpha < t)
+        {
+            discard;
+        }
+    }
+#else
     if (alpha < 0.05) // treat as totally transparent
     {
         discard;
@@ -76,6 +98,7 @@ void main()
         discard;
       }
     }
+#endif
 #endif
     // </FS:AYA>
 

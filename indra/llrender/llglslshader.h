@@ -316,6 +316,7 @@ public:
     void uniformMatrix4fv(const LLStaticHashedString& uniform, U32 count, GLboolean transpose, const GLfloat* v);
 
     void setMinimumAlpha(F32 minimum);
+    void setObjectAlpha(F32 object_alpha);
     void pushGaussianFragPC(F32 resScale, F32 dirX, F32 dirY);
 
     //GLint getUniformLocation(const std::string& uniform);

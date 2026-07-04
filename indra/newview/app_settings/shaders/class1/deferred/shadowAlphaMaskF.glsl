@@ -45,7 +45,14 @@ in vec2 vary_texcoord0;
 layout(push_constant) uniform ShadowAlphaMaskF_AlphaMaskPC
 {
     layout(offset = 64) float minimum_alpha;
+    layout(offset = 68) float object_alpha;
 };
+
+const float aya_bayer4x4[16] = float[16](
+     0.0,  8.0,  2.0, 10.0,
+    12.0,  4.0, 14.0,  6.0,
+     3.0, 11.0,  1.0,  9.0,
+    15.0,  7.0, 13.0,  5.0);
 #else
 uniform float minimum_alpha;
 #endif
@@ -65,20 +72,33 @@ void main()
         discard;
     }
 
+#if AYASTORM_CINEMATIC
 #if !defined(IS_FULLBRIGHT)
     alpha *= vertex_color.a;
 #endif
-
-    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C>
-#if AYASTORM_CINEMATIC
     bayerDitherDiscard(alpha, minimum_alpha);
 #else
-    if (alpha < 0.05) // treat as totally transparent
+#ifdef LL_VULKAN_GLSL
+    if (object_alpha < 0.996)
+    {
+        int bx = int(gl_FragCoord.x) & 3;
+        int by = int(gl_FragCoord.y) & 3;
+        float t = (aya_bayer4x4[by * 4 + bx] + 0.5) * (1.0 / 16.0);
+        if (object_alpha < t)
+        {
+            discard;
+        }
+    }
+#else
+#if !defined(IS_FULLBRIGHT)
+    alpha *= vertex_color.a;
+#endif
+    if (alpha < 0.05)
     {
         discard;
     }
 
-    if (alpha < 0.88) // treat as semi-transparent
+    if (alpha < 0.88)
     {
         if (fract(0.5*floor(gl_FragCoord.x)) < 0.25)
         {
@@ -86,7 +106,7 @@ void main()
         }
     }
 #endif
-    // </FS:AYA>
+#endif
 
     frag_color = vec4(1,1,1,1);
 }

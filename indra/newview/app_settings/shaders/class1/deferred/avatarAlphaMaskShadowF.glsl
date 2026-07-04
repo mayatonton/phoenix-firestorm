@@ -63,6 +63,12 @@ void main()
 #if AYASTORM_CINEMATIC
     bayerDitherDiscard(alpha, minimum_alpha);
 #else
+#ifdef LL_VULKAN_GLSL
+    if (alpha < minimum_alpha)
+    {
+        discard;
+    }
+#else
     if (alpha < 0.05) // treat as totally transparent
     {
         discard;
@@ -75,6 +81,7 @@ void main()
         discard;
       }
     }
+#endif
 #endif
     // </FS:AYA>
 
