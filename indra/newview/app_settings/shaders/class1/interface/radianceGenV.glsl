@@ -54,7 +54,11 @@ out vec3 vary_dir;
 
 void main()
 {
+#ifdef LL_VULKAN_GLSL
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+#else
     gl_Position = vec4(position, 1.0);
+#endif
 
     vary_dir = vec3(modelview_matrix * vec4(position, 1.0)).xyz;
 }
