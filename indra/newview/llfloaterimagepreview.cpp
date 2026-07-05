@@ -42,6 +42,7 @@
 #include "lldrawable.h"
 #include "lldrawpoolavatar.h"
 #include "llrender.h"
+#include "llvkloader.h"
 #include "llface.h"
 #include "llfocusmgr.h"
 #include "llfilesystem.h"
@@ -1226,6 +1227,11 @@ bool LLImagePreviewSculpted::render()
 
     gObjectPreviewProgram.bind();
     gPipeline.enableLightsPreview();
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        LLVKLoader::PreviewAmbient_PerShaderBind preview_ambient = {};
+        LLVKLoader::writeCurrentPreviewAmbientUBO(preview_ambient);
+    }
 
     gGL.pushMatrix();
     const F32 SCALE = 1.25f;

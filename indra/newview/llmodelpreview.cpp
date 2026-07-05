@@ -4701,7 +4701,14 @@ bool LLModelPreview::render()
 
             if (show_physics)
             {
-                glClear(GL_DEPTH_BUFFER_BIT);
+                if (mBoundTarget != nullptr)
+                {
+                    mBoundTarget->clear(GL_DEPTH_BUFFER_BIT);
+                }
+                else
+                {
+                    glClear(GL_DEPTH_BUFFER_BIT);
+                }
 
                 for (U32 pass = 0; pass < 2; pass++)
                 {
