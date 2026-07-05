@@ -483,14 +483,14 @@ void LLFloaterImagePreview::draw()
 
             if(mImagep.notNull())
             {
-                gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mImagep->getTexName());
+                gGL.getTexUnit(0)->bind(mImagep);
             }
             else
             {
                 mImagep = LLViewerTextureManager::getLocalTexture(mRawImagep.get(), false) ;
 
                 gGL.getTexUnit(0)->unbind(mImagep->getTarget()) ;
-                gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mImagep->getTexName());
+                gGL.getTexUnit(0)->bind(mImagep);
                 stop_glerror();
 
                 gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_BILINEAR);
