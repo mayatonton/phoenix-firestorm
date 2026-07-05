@@ -3147,7 +3147,9 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         if (success && LLVKLoader::isVulkanInitialized())
         {
-            gDeferredAvatarAlphaProgram.createVkPipeline(0);
+            gDeferredAvatarAlphaProgram.createVkPipeline(use_sun_shadow ? LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
+                                                                        : LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW);
+            gDeferredAvatarAlphaProgram.mWritePerProgramUBOMinimumAlpha = true;
         }
     }
 
