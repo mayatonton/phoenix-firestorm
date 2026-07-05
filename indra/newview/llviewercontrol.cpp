@@ -1882,15 +1882,14 @@ void settings_setup_listeners()
         // </FS:AYA>
         if (LLStartUp::getStartupState() >= STATE_LOGIN_SHOW)
         {
-            // <FS:AYA r30 P5 R2> Reset overlay sentinel when leaving mode 2 so the
-            // next entry into Cinematic force-applies a fresh BD baseline. The
-            // forward transition (-> 2) is left to the next startup since all 3
-            // modes require restart per r30 P1.
-            if (mode_v != 2)
+            if (mode_v == 2)
             {
-                LLCinematicOverlay::clearOverlaySentinel();
+                LLCinematicOverlay::applyCinematicOverlay();
             }
-            // </FS:AYA>
+            else
+            {
+                LLCinematicOverlay::revertCinematicOverlay();
+            }
             LLNotificationsUtil::add("ChangeViewMode");
         }
     });

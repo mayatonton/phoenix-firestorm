@@ -22,6 +22,10 @@ namespace
     const char SENTINEL_CONTROL[]  = "AYACinematicOverlayApplied";
     const char MODE_CONTROL[]      = "AYAVisualRealismEnabled";
 
+    bool sSessionOverlayActive = false;
+    bool sInSessionRewrite     = false;
+    bool sGuardsConnected      = false;
+
     bool loadOverlayLLSD(LLSD& out)
     {
         const std::string path =
@@ -49,6 +53,67 @@ namespace
         }
         return true;
     }
+
+    void connectSessionGuards(const LLSD& overlay)
+    {
+        if (sGuardsConnected)
+        {
+            return;
+        }
+        for (LLSD::map_const_iterator it = overlay.beginMap();
+             it != overlay.endMap(); ++it)
+        {
+            LLControlVariable* ctl = gSavedSettings.getControl(it->first);
+            if (!ctl)
+            {
+                continue;
+            }
+            ctl->getValidateSignal()->connect([](LLControlVariable* control, const LLSD& new_val)
+            {
+                if (!sSessionOverlayActive || sInSessionRewrite)
+                {
+                    return true;
+                }
+                sInSessionRewrite = true;
+                control->setValue(new_val, false);
+                sInSessionRewrite = false;
+                return false;
+            });
+        }
+        sGuardsConnected = true;
+    }
+
+    void migrateContaminatedSettingsIfNeeded()
+    {
+        LLControlVariable* sentinel = gSavedSettings.getControl(SENTINEL_CONTROL);
+        if (!sentinel || !sentinel->getSaveValue().asBoolean())
+        {
+            return;
+        }
+        LLSD overlay;
+        if (!loadOverlayLLSD(overlay))
+        {
+            return;
+        }
+        S32 healed = 0;
+        for (LLSD::map_const_iterator it = overlay.beginMap();
+             it != overlay.endMap(); ++it)
+        {
+            LLControlVariable* ctl = gSavedSettings.getControl(it->first);
+            if (!ctl || ctl->isDefault())
+            {
+                continue;
+            }
+            LL_INFOS("CinematicOverlay")
+                << "Contamination heal: " << it->first
+                << " = " << ctl->getSaveValue() << " -> default" << LL_ENDL;
+            ctl->resetToDefault(true);
+            ++healed;
+        }
+        sentinel->resetToDefault(true);
+        LL_INFOS("CinematicOverlay")
+            << "Contamination heal complete: " << healed << " cvars reset to default." << LL_ENDL;
+    }
 }
 
 void LLCinematicOverlay::applyCinematicOverlay()
@@ -58,6 +123,9 @@ void LLCinematicOverlay::applyCinematicOverlay()
     {
         return;
     }
+
+    connectSessionGuards(overlay);
+    sSessionOverlayActive = true;
 
     S32 applied = 0;
     S32 skipped = 0;
@@ -76,30 +144,59 @@ void LLCinematicOverlay::applyCinematicOverlay()
             ++skipped;
             continue;
         }
-        ctl->setValue(val);
+        sInSessionRewrite = true;
+        ctl->setValue(val, false);
+        sInSessionRewrite = false;
         ++applied;
     }
 
-    gSavedSettings.setBOOL(SENTINEL_CONTROL, true);
+    LL_INFOS("CinematicOverlay")
+        << "Applied Cinematic BD overlay (session-only): " << applied
+        << " cvars set, " << skipped << " skipped." << LL_ENDL;
+}
+
+void LLCinematicOverlay::revertCinematicOverlay()
+{
+    if (!sSessionOverlayActive)
+    {
+        return;
+    }
+    sSessionOverlayActive = false;
+
+    LLSD overlay;
+    if (!loadOverlayLLSD(overlay))
+    {
+        return;
+    }
+
+    S32 reverted = 0;
+    for (LLSD::map_const_iterator it = overlay.beginMap();
+         it != overlay.endMap(); ++it)
+    {
+        LLControlVariable* ctl = gSavedSettings.getControl(it->first);
+        if (!ctl)
+        {
+            continue;
+        }
+        sInSessionRewrite = true;
+        ctl->setValue(ctl->getSaveValue(), true);
+        sInSessionRewrite = false;
+        ++reverted;
+    }
 
     LL_INFOS("CinematicOverlay")
-        << "Applied Cinematic BD overlay: " << applied << " cvars set, "
-        << skipped << " skipped." << LL_ENDL;
+        << "Reverted Cinematic BD overlay (session-only): " << reverted
+        << " cvars restored to saved values." << LL_ENDL;
 }
 
 void LLCinematicOverlay::applyCinematicOverlayIfNeeded()
 {
-    const U32  mode    = gSavedSettings.getU32(MODE_CONTROL);
-    const bool applied = gSavedSettings.getBOOL(SENTINEL_CONTROL);
-    if (mode == 2 && !applied)
+    migrateContaminatedSettingsIfNeeded();
+
+    if (gSavedSettings.getU32(MODE_CONTROL) == 2)
     {
         applyCinematicOverlay();
     }
-}
-
-void LLCinematicOverlay::clearOverlaySentinel()
-{
-    gSavedSettings.setBOOL(SENTINEL_CONTROL, false);
 }
 
 // <FS:AYAstorm> r20 SSS cvar consolidation migration.
