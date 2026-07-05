@@ -38,6 +38,10 @@ out vec2 vary_texcoord0;
 
 void main()
 {
+#ifdef LL_VULKAN_GLSL
+    gl_Position = vec4(position.x*2.0-1.0, position.y*2.0-1.0, 0.0, 1.0);
+#else
     gl_Position = vec4(position.x*2.0-1.0, position.y*2.0-1.0, -1.0, 1.0);
+#endif
     vary_texcoord0 = texcoord0;
 }
