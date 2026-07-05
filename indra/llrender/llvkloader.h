@@ -28,7 +28,7 @@ namespace LLVKLoader
 
     bool isVulkanInitialized();
 
-    bool beginFrame();
+    bool beginFrame(bool acquire_swapchain = true);
     bool endFrame();
     VkCommandBuffer getCurrentCommandBuffer();
 

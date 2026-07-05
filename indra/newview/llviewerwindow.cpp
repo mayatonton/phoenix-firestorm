@@ -6194,6 +6194,20 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     gSnapshotNoPost = no_post;
     gDisplaySwapBuffers = false;
 
+    const bool use_vk_snapshot = LLVKLoader::shouldUseVulkanRender();
+    LLRenderTarget vk_snapshot_target;
+    if (use_vk_snapshot)
+    {
+        if (LLVKLoader::getCurrentCommandBuffer() != VK_NULL_HANDLE)
+        {
+            LLVKLoader::endFrame();
+        }
+        if (!vk_snapshot_target.allocate(getWindowWidthRaw(), getWindowHeightRaw(), GL_RGBA, false))
+        {
+            return false;
+        }
+    }
+
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
     setCursor(UI_CURSOR_WAIT);
 
@@ -6245,7 +6259,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     if (!keep_window_aspect || (image_width > window_width) || (image_height > window_height))
     {
         if ((image_width <= gGLManager.mGLMaxTextureSize && image_height <= gGLManager.mGLMaxTextureSize) &&
-            (image_width > window_width || image_height > window_height) && LLPipelineFrameContext::getInstance().isRenderingDeferred() && !show_ui)
+            (image_width > window_width || image_height > window_height) && LLPipelineFrameContext::getInstance().isRenderingDeferred() && !show_ui && !use_vk_snapshot)
         {
             // <FS:Ansariel> FIRE-15667: 24bit depth maps
             //U32 color_fmt = type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH ? GL_DEPTH_COMPONENT : GL_RGBA;
@@ -6335,8 +6349,9 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     }
 
     S32 output_buffer_offset_y = 0;
+    bool vk_snapshot_ok = true;
 
-    F32 depth_conversion_factor_1 = (LLViewerCamera::getInstance()->getFar() + LLViewerCamera::getInstance()->getNear()) / (2.f * LLViewerCamera::getInstance()->getFar() * LLViewerCamera::getInstance()->getNear());
+    F32 depth_conversion_factor_1 =(LLViewerCamera::getInstance()->getFar() + LLViewerCamera::getInstance()->getNear()) / (2.f * LLViewerCamera::getInstance()->getFar() * LLViewerCamera::getInstance()->getNear());
     F32 depth_conversion_factor_2 = (LLViewerCamera::getInstance()->getFar() - LLViewerCamera::getInstance()->getNear()) / (2.f * LLViewerCamera::getInstance()->getFar() * LLViewerCamera::getInstance()->getNear());
 
     // Subimages are in fact partial rendering of the final view. This happens when the final view is bigger than the screen.
@@ -6363,14 +6378,52 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
             if (read_width && read_height)
             {
                 const U32 subfield = subimage_x+(subimage_y*llceil(scale_factor));
-                display(do_rebuild, scale_factor, subfield, true);
 
-                if (!LLPipelineFrameContext::getInstance().isRenderingDeferred())
+                bool vk_subimage_ok = false;
+                std::vector<U8> vk_subimage_pixels;
+                if (use_vk_snapshot)
                 {
-                    // Required for showing the GUI in snapshots and performing bloom composite overlay
-                    // Call even if show_ui is false
-                    render_ui(scale_factor, subfield);
-                    swap();
+                    if (LLVKLoader::beginFrame(false))
+                    {
+                        gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
+                        display(do_rebuild, scale_factor, subfield, true);
+                        if (LLRenderTarget::getCurrentBoundTarget() == &vk_snapshot_target)
+                        {
+                            vk_snapshot_target.flush();
+                        }
+                        gPipeline.mVkSnapshotRedirectTarget = nullptr;
+                        LLVKLoader::endFrame();
+
+                        if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR && vk_snapshot_target.hasVkImage(0))
+                        {
+                            vk_subimage_pixels.resize((size_t)read_width * read_height * 4);
+                            vk_subimage_ok = LLVKLoader::readbackColorImageRegionVk(
+                                vk_snapshot_target.getVkImage(0),
+                                vk_snapshot_target.getVkTexLayout(0),
+                                subimage_x_offset,
+                                subimage_y_offset,
+                                read_width,
+                                read_height,
+                                4,
+                                vk_subimage_pixels.data());
+                        }
+                    }
+                    if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR && !vk_subimage_ok)
+                    {
+                        vk_snapshot_ok = false;
+                    }
+                }
+                else
+                {
+                    display(do_rebuild, scale_factor, subfield, true);
+
+                    if (!LLPipelineFrameContext::getInstance().isRenderingDeferred())
+                    {
+                        // Required for showing the GUI in snapshots and performing bloom composite overlay
+                        // Call even if show_ui is false
+                        render_ui(scale_factor, subfield);
+                        swap();
+                    }
                 }
 
                 for (U32 out_y = 0; out_y < read_height ; out_y++)
@@ -6393,12 +6446,29 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                     {
                         if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
                         {
-                            glReadPixels(
-                                     subimage_x_offset, out_y + subimage_y_offset,
-                                     read_width, 1,
-                                     GL_RGB, GL_UNSIGNED_BYTE,
-                                     raw->getData() + output_buffer_offset
-                                     );
+                            if (use_vk_snapshot)
+                            {
+                                if (vk_subimage_ok)
+                                {
+                                    const U8* vk_src_row = vk_subimage_pixels.data() + (size_t)out_y * read_width * 4;
+                                    U8* vk_dst_row = raw->getData() + output_buffer_offset;
+                                    for (U32 i = 0; i < read_width; i++)
+                                    {
+                                        vk_dst_row[i * 3 + 0] = vk_src_row[i * 4 + 0];
+                                        vk_dst_row[i * 3 + 1] = vk_src_row[i * 4 + 1];
+                                        vk_dst_row[i * 3 + 2] = vk_src_row[i * 4 + 2];
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                glReadPixels(
+                                         subimage_x_offset, out_y + subimage_y_offset,
+                                         read_width, 1,
+                                         GL_RGB, GL_UNSIGNED_BYTE,
+                                         raw->getData() + output_buffer_offset
+                                         );
+                            }
                         }
                         // <FS:Ansariel> FIRE-15667: 24bit depth maps
                         else if (type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24)
@@ -6501,6 +6571,11 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     else if(image_width != image_buffer_x || image_height != image_buffer_y)
     {
         ret = raw->scale( image_width, image_height, false );
+    }
+
+    if (use_vk_snapshot && type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR && !vk_snapshot_ok)
+    {
+        ret = false;
     }
 
     setCursor(UI_CURSOR_ARROW);

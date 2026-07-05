@@ -11112,7 +11112,14 @@ void LLPipeline::renderFinalize()
 
     // Present the screen target.
 
-    LLVKLoader::beginSwapchainRendering();
+    if (mVkSnapshotRedirectTarget && LLVKLoader::shouldUseVulkanRender())
+    {
+        mVkSnapshotRedirectTarget->bindTarget();
+    }
+    else
+    {
+        LLVKLoader::beginSwapchainRendering();
+    }
 
     llassert(!gDeferredPostNoDoFNoiseProgram.mIsScreenSpaceCopyPass);
 

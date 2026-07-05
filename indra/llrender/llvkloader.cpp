@@ -3183,7 +3183,7 @@ void shutdownVulkan()
     }
 }
 
-bool beginFrame()
+bool beginFrame(bool acquire_swapchain)
 {
     if (!sInitialized)
     {
@@ -3214,7 +3214,7 @@ bool beginFrame()
         }
     }
 
-    if (sSwapchainRecreatePending)
+    if (sSwapchainRecreatePending && acquire_swapchain)
     {
         const U32 frames_since_last = (sLastRecreateFrame == 0)
                                           ? RECREATE_COOLDOWN_FRAMES
@@ -3242,7 +3242,8 @@ bool beginFrame()
     }
 
     sImageAcquired = false;
-    if (sVulkanPresentationEnabled &&
+    if (acquire_swapchain &&
+        sVulkanPresentationEnabled &&
         sSwapchain != VK_NULL_HANDLE &&
         sImageAvailableSemaphores[sFrameIndex] != VK_NULL_HANDLE)
     {

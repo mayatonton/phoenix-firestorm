@@ -907,6 +907,8 @@ public:
     // currently used render target pack
     RenderTargetPack* mRT;
 
+    LLRenderTarget* mVkSnapshotRedirectTarget = nullptr;
+
     LLRenderTarget          mSpotShadow[LLPipeline::kSpotShadowCount];
 
     LLRenderTarget          mPbrBrdfLut;
