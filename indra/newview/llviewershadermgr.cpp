@@ -2318,7 +2318,8 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
             if (success && LLVKLoader::isVulkanInitialized())
             {
-                shader->createVkPipeline(560);
+                shader->createVkPipeline(use_sun_shadow ? LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
+                                                        : LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW);
                 shader->mWritePerProgramUBOMinimumAlpha = true;
             }
 
