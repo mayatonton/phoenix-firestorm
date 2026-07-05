@@ -1169,7 +1169,8 @@ void LLRender::syncLightState()
             memcpy(shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
         }
 
-        if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+        if (LLVKLoader::isVulkanInitialized() && shader->mWritePerProgramUBOMinimumAlpha
+            && shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && shader->mVkPerProgramUBOMapped != nullptr
             && (shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
                 || shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))

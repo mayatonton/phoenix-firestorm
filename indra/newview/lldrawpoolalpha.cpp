@@ -1126,6 +1126,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     params.mVertexBuffer->setBuffer();
 
                     if (LLVKLoader::isVulkanInitialized() && current_shader
+                        && current_shader->mWritePerProgramUBOMinimumAlpha
                         && current_shader->mVkPerProgramUBO != VK_NULL_HANDLE
                         && current_shader->mVkPerProgramUBOMapped != nullptr
                         && (current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW

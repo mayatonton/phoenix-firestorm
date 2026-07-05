@@ -11481,7 +11481,8 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
     shader.uniform3fv(LLShaderMgr::DEFERRED_SUN_DIR, 1, mTransformedSunDir.mV);
     shader.uniform3fv(LLShaderMgr::DEFERRED_MOON_DIR, 1, mTransformedMoonDir.mV);
 
-    if (LLVKLoader::isVulkanInitialized() && shader.mVkPerProgramUBO != VK_NULL_HANDLE
+    if (LLVKLoader::isVulkanInitialized() && shader.mWritePerProgramUBOMinimumAlpha
+        && shader.mVkPerProgramUBO != VK_NULL_HANDLE
         && shader.mVkPerProgramUBOMapped != nullptr
         && shader.mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW)
     {
