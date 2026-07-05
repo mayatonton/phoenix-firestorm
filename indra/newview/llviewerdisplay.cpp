@@ -87,6 +87,7 @@
 #include "llworld.h"
 #include "pipeline.h"
 #include "llpipelineframecontext.h"
+#include "llvkloader.h"
 
 #include <boost/json.hpp>
 // [RLVa:KB] - Checked: 2011-05-22 (RLVa-1.3.1a)
@@ -1307,6 +1308,58 @@ void display_cube_face()
     }
 
     display_update_camera();
+
+    if (LLPipeline::sRenderingDefaultProbeClip && LLVKLoader::isVulkanInitialized())
+    {
+        LLViewerRegion* clip_region = gAgent.getRegion();
+        if (clip_region)
+        {
+            glm::mat4 mv = get_current_modelview();
+            glm::mat4 invtrans = glm::transpose(glm::inverse(mv));
+
+            LLVector3 o = clip_region->getOriginAgent();
+            F32 w = clip_region->getWidth();
+            F32 minx = o.mV[0], miny = o.mV[1];
+            F32 maxx = minx + w, maxy = miny + w;
+
+            glm::vec3 pnorm[4] = {
+                glm::vec3( 1.f, 0.f, 0.f),
+                glm::vec3(-1.f, 0.f, 0.f),
+                glm::vec3( 0.f, 1.f, 0.f),
+                glm::vec3( 0.f,-1.f, 0.f)
+            };
+            glm::vec3 ppt[4] = {
+                glm::vec3(minx, miny, 0.f),
+                glm::vec3(maxx, miny, 0.f),
+                glm::vec3(minx, miny, 0.f),
+                glm::vec3(minx, maxy, 0.f)
+            };
+
+            for (int p = 0; p < 4; ++p)
+            {
+                glm::vec3 enorm = glm::normalize(glm::vec3(invtrans * glm::vec4(pnorm[p], 0.f)));
+                glm::vec3 ept   = glm::vec3(mv * glm::vec4(ppt[p], 1.f));
+                LLPipeline::sRegionClipPlane[p] = LLVector4(enorm.x, enorm.y, enorm.z, -glm::dot(ept, enorm));
+            }
+
+            LLVKLoader::GlobalF_PerProgramBind gf = {};
+            gf.mirror_flag      = LLPipeline::sLastMirrorFlag;
+            gf.region_clip_flag = 1.f;
+            gf.clipPlane[0] = LLPipeline::sLastClipPlane.mV[0];
+            gf.clipPlane[1] = LLPipeline::sLastClipPlane.mV[1];
+            gf.clipPlane[2] = LLPipeline::sLastClipPlane.mV[2];
+            gf.clipPlane[3] = LLPipeline::sLastClipPlane.mV[3];
+            for (int p = 0; p < 4; ++p)
+            {
+                float* dst = (p == 0) ? gf.regionClip0 : (p == 1) ? gf.regionClip1 : (p == 2) ? gf.regionClip2 : gf.regionClip3;
+                dst[0] = LLPipeline::sRegionClipPlane[p].mV[0];
+                dst[1] = LLPipeline::sRegionClipPlane[p].mV[1];
+                dst[2] = LLPipeline::sRegionClipPlane[p].mV[2];
+                dst[3] = LLPipeline::sRegionClipPlane[p].mV[3];
+            }
+            LLVKLoader::writeCurrentGlobalFUBO(gf);
+        }
+    }
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Env Update");

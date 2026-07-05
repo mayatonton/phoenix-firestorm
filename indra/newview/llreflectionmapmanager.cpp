@@ -796,7 +796,9 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         gPipeline.andRenderTypeMask(LLPipeline::RENDER_TYPE_SKY, LLPipeline::RENDER_TYPE_WL_SKY,
             LLPipeline::RENDER_TYPE_WATER, LLPipeline::RENDER_TYPE_VOIDWATER, LLPipeline::RENDER_TYPE_CLOUDS, LLPipeline::RENDER_TYPE_TERRAIN, LLPipeline::END_RENDER_TYPES);
 
+        LLPipeline::sRenderingDefaultProbeClip = true;
         probe->update(mRenderTarget.getWidth(), face);
+        LLPipeline::sRenderingDefaultProbeClip = false;
 
         gPipeline.popRenderTypeMask();
     }

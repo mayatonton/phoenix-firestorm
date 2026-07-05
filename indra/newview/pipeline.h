@@ -851,6 +851,9 @@ public:
     static F32              sLastMirrorFlag;
     static LLVector4        sLastClipPlane;
 
+    static bool             sRenderingDefaultProbeClip;
+    static LLVector4        sRegionClipPlane[4];
+
     static bool             sRenderParticles; // <FS:LO> flag to hold correct, user selected, status of particles
 // [SL:KB] - Patch: Render-TextureToggle (Catznip-4.0)
     static bool             sRenderTextures;

@@ -361,13 +361,17 @@ namespace LLVKLoader
     struct GlobalF_PerProgramBind
     {
         float mirror_flag;
-        float _globalF_pad0;
+        float region_clip_flag;
         float _globalF_pad1;
         float _globalF_pad2;
         float clipPlane[4];
+        float regionClip0[4];
+        float regionClip1[4];
+        float regionClip2[4];
+        float regionClip3[4];
     };
-    static_assert(sizeof(GlobalF_PerProgramBind) == 32,
-                  "GlobalF_PerProgramBind must match globalF.glsl std140 layout (32 B)");
+    static_assert(sizeof(GlobalF_PerProgramBind) == 96,
+                  "GlobalF_PerProgramBind must match globalF.glsl std140 layout (96 B)");
     void writeCurrentGlobalFUBO(const GlobalF_PerProgramBind& data);
     bool getSharedGlobalFUBO(VkBuffer& out_buffer, void*& out_mapped);
 

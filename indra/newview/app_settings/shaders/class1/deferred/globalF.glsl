@@ -32,7 +32,7 @@
 layout(set = 1, binding = 18, std140) uniform GlobalF_PerProgramBind
 {
     float mirror_flag;
-    float _globalF_pad0;
+    float region_clip_flag;
     float _globalF_pad1;
     float _globalF_pad2;
 #ifndef _AYA_UM_clipPlane
@@ -41,11 +41,20 @@ layout(set = 1, binding = 18, std140) uniform GlobalF_PerProgramBind
 #else
     vec4  _dup_GlobalF_clipPlane;
 #endif
+    vec4  regionClip0;
+    vec4  regionClip1;
+    vec4  regionClip2;
+    vec4  regionClip3;
 };
 #else
 uniform float mirror_flag;
 uniform vec4 clipPlane;
 uniform float clipSign;
+uniform float region_clip_flag;
+uniform vec4 regionClip0;
+uniform vec4 regionClip1;
+uniform vec4 regionClip2;
+uniform vec4 regionClip3;
 #endif
 
 void mirrorClip(vec3 pos)
@@ -56,6 +65,13 @@ void mirrorClip(vec3 pos)
         {
                 discard;
         }
+    }
+    if (region_clip_flag > 0)
+    {
+        if ((dot(pos.xyz, regionClip0.xyz) + regionClip0.w) < 0.0) discard;
+        if ((dot(pos.xyz, regionClip1.xyz) + regionClip1.w) < 0.0) discard;
+        if ((dot(pos.xyz, regionClip2.xyz) + regionClip2.w) < 0.0) discard;
+        if ((dot(pos.xyz, regionClip3.xyz) + regionClip3.w) < 0.0) discard;
     }
 }
 

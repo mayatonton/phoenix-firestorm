@@ -483,6 +483,9 @@ F32 LLPipeline::sLastSceneLightStrength = 3.0f;
 F32         LLPipeline::sLastMirrorFlag = 0.f;
 LLVector4   LLPipeline::sLastClipPlane  = LLVector4(0.f, 0.f, 0.f, 0.f);
 
+bool        LLPipeline::sRenderingDefaultProbeClip = false;
+LLVector4   LLPipeline::sRegionClipPlane[4] = { LLVector4(0.f,0.f,0.f,0.f), LLVector4(0.f,0.f,0.f,0.f), LLVector4(0.f,0.f,0.f,0.f), LLVector4(0.f,0.f,0.f,0.f) };
+
 bool    LLPipeline::sRenderParticles; // <FS:LO> flag to hold correct, user selected, status of particles
 // [SL:KB] - Patch: Render-TextureToggle (Catznip-4.0)
 bool    LLPipeline::sRenderTextures = true;
