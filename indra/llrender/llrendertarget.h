@@ -174,6 +174,7 @@ public:
         return (attachment < mVkTex.size()) && mVkTex[attachment] != VK_NULL_HANDLE;
     }
     bool hasVkDepth() const { return mVkDepth != VK_NULL_HANDLE; }
+    VkImage getVkDepthImage() const { return mVkDepth; }
 
     VkImageLayout getVkTexLayout(U32 attachment = 0) const
     {

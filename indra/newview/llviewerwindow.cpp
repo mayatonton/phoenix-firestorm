@@ -6381,6 +6381,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
 
                 bool vk_subimage_ok = false;
                 std::vector<U8> vk_subimage_pixels;
+                std::vector<F32> vk_depth_pixels;
                 if (use_vk_snapshot)
                 {
                     if (LLVKLoader::beginFrame(false))
@@ -6411,8 +6412,23 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                                 4,
                                 vk_subimage_pixels.data());
                         }
+                        else if (type != LLSnapshotModel::SNAPSHOT_TYPE_COLOR &&
+                                 LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.hasVkDepth())
+                        {
+                            LLRenderTarget& vk_depth_src = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen;
+                            vk_depth_pixels.resize((size_t)read_width * read_height);
+                            vk_subimage_ok = LLVKLoader::readbackDepthImageRegionVk(
+                                vk_depth_src.getVkDepthImage(),
+                                vk_depth_src.getVkDepthLayout(),
+                                subimage_x_offset,
+                                subimage_y_offset,
+                                read_width,
+                                read_height,
+                                VK_FORMAT_D24_UNORM_S8_UINT,
+                                vk_depth_pixels.data());
+                        }
                     }
-                    if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR && !vk_subimage_ok)
+                    if (!vk_subimage_ok)
                     {
                         vk_snapshot_ok = false;
                     }
@@ -6478,12 +6494,24 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                         else if (type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24)
                         {
                             LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GLfloat)); // need to store floating point values
-                            glReadPixels(
-                                         subimage_x_offset, out_y + subimage_y_offset,
-                                         read_width, 1,
-                                         GL_DEPTH_COMPONENT, GL_FLOAT,
-                                         depth_line_buffer->getData()// current output pixel is beginning of buffer...
-                                         );
+                            if (use_vk_snapshot)
+                            {
+                                if (vk_subimage_ok)
+                                {
+                                    memcpy(depth_line_buffer->getData(),
+                                           vk_depth_pixels.data() + (size_t)out_y * read_width,
+                                           (size_t)read_width * sizeof(F32));
+                                }
+                            }
+                            else
+                            {
+                                glReadPixels(
+                                             subimage_x_offset, out_y + subimage_y_offset,
+                                             read_width, 1,
+                                             GL_DEPTH_COMPONENT, GL_FLOAT,
+                                             depth_line_buffer->getData()// current output pixel is beginning of buffer...
+                                             );
+                            }
 
                             for (S32 i = 0; i < (S32)read_width; i++)
                             {
@@ -6512,12 +6540,24 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                             //LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GL_FLOAT)); // need to store floating point values
                             LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GLfloat)); // need to store floating point values
                             // </FS>
-                            glReadPixels(
-                                         subimage_x_offset, out_y + subimage_y_offset,
-                                         read_width, 1,
-                                         GL_DEPTH_COMPONENT, GL_FLOAT,
-                                         depth_line_buffer->getData()// current output pixel is beginning of buffer...
-                                         );
+                            if (use_vk_snapshot)
+                            {
+                                if (vk_subimage_ok)
+                                {
+                                    memcpy(depth_line_buffer->getData(),
+                                           vk_depth_pixels.data() + (size_t)out_y * read_width,
+                                           (size_t)read_width * sizeof(F32));
+                                }
+                            }
+                            else
+                            {
+                                glReadPixels(
+                                             subimage_x_offset, out_y + subimage_y_offset,
+                                             read_width, 1,
+                                             GL_DEPTH_COMPONENT, GL_FLOAT,
+                                             depth_line_buffer->getData()// current output pixel is beginning of buffer...
+                                             );
+                            }
 
                             for (S32 i = 0; i < (S32)read_width; i++)
                             {
@@ -6577,7 +6617,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         ret = raw->scale( image_width, image_height, false );
     }
 
-    if (use_vk_snapshot && type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR && !vk_snapshot_ok)
+    if (use_vk_snapshot && !vk_snapshot_ok)
     {
         ret = false;
     }

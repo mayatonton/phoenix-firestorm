@@ -4925,7 +4925,8 @@ bool createDepthAttachmentImageVk(U32          width,
 {
     constexpr VkImageUsageFlags usage =
           VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-        | VK_IMAGE_USAGE_SAMPLED_BIT;
+        | VK_IMAGE_USAGE_SAMPLED_BIT
+        | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     return createAttachmentImageVkImpl(width, height, format,
                                        usage,
                                        VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -6786,6 +6787,184 @@ bool readbackColorImageRegionVk(VkImage       image,
     vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
 
     memcpy(out_pixels, staging_mapped, (size_t)read_size);
+    vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+    return true;
+}
+
+bool readbackDepthImageRegionVk(VkImage       image,
+                                VkImageLayout current_layout,
+                                S32           x,
+                                S32           y,
+                                U32           width,
+                                U32           height,
+                                VkFormat      format,
+                                F32*          out_depth)
+{
+    if (image == VK_NULL_HANDLE || out_depth == nullptr ||
+        width == 0 || height == 0 || x < 0 || y < 0)
+    {
+        return false;
+    }
+    if (current_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+    {
+        return false;
+    }
+    if (format != VK_FORMAT_D24_UNORM_S8_UINT &&
+        format != VK_FORMAT_X8_D24_UNORM_PACK32 &&
+        format != VK_FORMAT_D32_SFLOAT &&
+        format != VK_FORMAT_D32_SFLOAT_S8_UINT)
+    {
+        return false;
+    }
+    if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE ||
+        sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    const VkDeviceSize read_size = (VkDeviceSize)width * (VkDeviceSize)height * 4;
+
+    VkBuffer      staging_buffer     = VK_NULL_HANDLE;
+    VmaAllocation staging_allocation = VK_NULL_HANDLE;
+    void*         staging_mapped     = nullptr;
+    {
+        VkBufferCreateInfo bci = {};
+        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bci.size        = read_size;
+        bci.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo aci = {};
+        aci.usage         = VMA_MEMORY_USAGE_AUTO;
+        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                          | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        VmaAllocationInfo info = {};
+        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &staging_buffer,
+                                     &staging_allocation, &info);
+        if (r != VK_SUCCESS || staging_buffer == VK_NULL_HANDLE || info.pMappedData == nullptr)
+        {
+            if (staging_buffer != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+            }
+            return false;
+        }
+        staging_mapped = info.pMappedData;
+    }
+
+    const bool has_stencil = (format == VK_FORMAT_D24_UNORM_S8_UINT ||
+                              format == VK_FORMAT_D32_SFLOAT_S8_UINT);
+    const VkImageAspectFlags barrier_aspect =
+        has_stencil ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
+                    : VK_IMAGE_ASPECT_DEPTH_BIT;
+
+    VkCommandBufferAllocateInfo cbai = {};
+    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool        = sCommandPool;
+    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
+    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+        return false;
+    }
+
+    VkCommandBufferBeginInfo cbbi = {};
+    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &cbbi);
+
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask                   = VK_ACCESS_MEMORY_WRITE_BIT;
+        b.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+        b.oldLayout                       = current_layout;
+        b.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = image;
+        b.subresourceRange.aspectMask     = barrier_aspect;
+        b.subresourceRange.baseMipLevel   = 0;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &b);
+    }
+
+    {
+        VkBufferImageCopy region = {};
+        region.bufferOffset                    = 0;
+        region.bufferRowLength                 = 0;
+        region.bufferImageHeight               = 0;
+        region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
+        region.imageSubresource.mipLevel       = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount     = 1;
+        region.imageOffset                     = {x, y, 0};
+        region.imageExtent                     = {width, height, 1};
+        vkCmdCopyImageToBuffer(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               staging_buffer, 1, &region);
+    }
+
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+        b.dstAccessMask                   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        b.oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.newLayout                       = current_layout;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = image;
+        b.subresourceRange.aspectMask     = barrier_aspect;
+        b.subresourceRange.baseMipLevel   = 0;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &b);
+    }
+
+    vkEndCommandBuffer(cmd);
+
+    VkSubmitInfo si = {};
+    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cmd;
+    VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
+    if (sr != VK_SUCCESS)
+    {
+        vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+        vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+        return false;
+    }
+    vkQueueWaitIdle(sGraphicsQueue);
+    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+
+    const size_t texel_count = (size_t)width * (size_t)height;
+    if (format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D32_SFLOAT_S8_UINT)
+    {
+        memcpy(out_depth, staging_mapped, texel_count * sizeof(F32));
+    }
+    else
+    {
+        const U32* src = reinterpret_cast<const U32*>(staging_mapped);
+        for (size_t i = 0; i < texel_count; ++i)
+        {
+            out_depth[i] = (F32)(src[i] & 0x00FFFFFFu) / 16777215.0f;
+        }
+    }
     vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
     return true;
 }
