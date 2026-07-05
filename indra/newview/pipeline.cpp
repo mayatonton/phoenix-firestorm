@@ -10850,6 +10850,8 @@ void LLPipeline::renderFinalize()
     gGL.setColorMask(true, true);
     glClearColor(0, 0, 0, 0);
 
+    compositeForwardFlip();
+
     // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
     // <AYAstorm r41 forward-flip composite>
     // Over-blend the linear premultiplied alpha plate (mAYAAlphaColor) onto
@@ -10918,8 +10920,6 @@ void LLPipeline::renderFinalize()
         getFrameRT()->screen.flush();
     }
     // </AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
-
-    compositeForwardFlip();
 
     static LLCachedControl<bool> has_hdr(gSavedSettings, "RenderHDREnabled", true);
     bool hdr = gGLManager.mGLVersion > 4.05f && has_hdr();
