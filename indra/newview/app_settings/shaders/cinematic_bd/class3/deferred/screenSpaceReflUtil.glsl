@@ -256,95 +256,49 @@ float tapScreenSpaceReflection(
 
     vec3 perfectReflDir = normalize(reflect(viewDir, normal));
 
-    int numSamples = max(1, int(glossySampleCount));
-    vec3 accumColor = vec3(0.0);
-    float accumFade = 0.0;
-    int hits = 0;
+    vec3 reflTarget = viewPos + perfectReflDir;
+    vec3 transformedTarget = (inv_modelview_delta * vec4(reflTarget, 1.0)).xyz;
+    vec3 transformedReflDir = normalize(transformedTarget - transformedPos);
 
-    for (int s = 0; s < numSamples; s++)
-    {
-        vec3 reflectDir = perfectReflDir;
-
-        // Jitter reflection direction based on roughness (importance-sampled GGX)
-        if (roughness > 0.001)
-        {
-            float alpha = roughness * roughness;
-            float u1 = random(tc * ssr_screen_res + noiseSine + float(s) * 0.123);
-            float u2 = random(tc * ssr_screen_res * 1.7 + noiseSine + float(s) * 0.456 + 0.5);
-
-            float theta = atan(alpha * sqrt(clamp(u1, 0.0, 0.9999)) / sqrt(max(1.0 - u1, 1e-6)));
-            float phi = 2.0 * 3.14159265 * u2;
-
-            vec3 up = abs(reflectDir.y) < 0.999 ? vec3(0, 1, 0) : vec3(1, 0, 0);
-            vec3 tangent = normalize(cross(up, reflectDir));
-            vec3 bitangent = cross(reflectDir, tangent);
-
-            vec3 h = normalize(
-                sin(theta) * cos(phi) * tangent +
-                sin(theta) * sin(phi) * bitangent +
-                cos(theta) * reflectDir
-            );
-
-            reflectDir = normalize(reflect(-reflectDir, h));
-        }
-
-        vec3 reflTarget = viewPos + reflectDir;
-        vec3 transformedTarget = (inv_modelview_delta * vec4(reflTarget, 1.0)).xyz;
-        vec3 transformedReflDir = normalize(transformedTarget - transformedPos);
-
-        if (transformedReflDir.z >= 0.5)
-            continue;
-
-        // Jitter ray origin along the surface normal (outward only) to break up step-boundary striations.
-        // Each pixel gets a different offset, so concentric banding from discrete steps dissolves into noise.
-        float normalJitter = random(tc * ssr_screen_res + float(s) * 0.789) * (STEP_SIZE + -viewPos.z * 0.005);
-        vec3 jitteredPos = biasedPos + normal * normalJitter;
-        vec3 transformedJitteredPos = (inv_modelview_delta * vec4(jitteredPos, 1.0)).xyz;
-        vec3 hitCoord = transformedJitteredPos;
-        float dDepth;
-
-        vec3 result = rayMarch(transformedReflDir, hitCoord, dDepth, startDepth);
-
-        if (result.x < 0.0)
-            continue;
-
-        vec2 hitTC = result.xy;
-        float hitDepth = result.z;
-
-        float edgeFade = calculateEdgeFade(hitTC);
-
-        float zFadeStart = maxZDepth * 0.8;
-        float zFade = 1.0 - smoothstep(zFadeStart, maxZDepth, hitDepth);
-
-        float rayLength = length(hitCoord - transformedJitteredPos);
-        float maxMipLevels = floor(log2(max(1.0, max(ssr_screen_res.x, ssr_screen_res.y))));
-        float distanceFactor = clamp(rayLength / maxZDepth, 0.0, 1.0);
-        float effectiveRoughness = clamp(roughness + distanceFactor * roughness, 0.0, 1.0);
-        float mipLevel = maxMipLevels * effectiveRoughness;
-        vec4 sampledColor = textureLod(source, hitTC, mipLevel);
-
-        float rayFade = 1.0 - smoothstep(maxZDepth * 0.6, maxZDepth, rayLength);
-        float sampleFade = edgeFade * zFade * rayFade;
-
-        accumColor += sampledColor.rgb;
-        accumFade += sampleFade;
-        hits++;
-    }
-
-    if (hits == 0)
+    if (transformedReflDir.z >= 0.5)
     {
         collectedColor = vec4(0.0);
         return 0.0;
     }
 
-    accumColor /= float(numSamples);
-    accumFade /= float(numSamples);
+    vec3 hitCoord = transformedPos;
+    float dDepth;
+    vec3 result = rayMarch(transformedReflDir, hitCoord, dDepth, startDepth);
+
+    if (result.x < 0.0)
+    {
+        collectedColor = vec4(0.0);
+        return 0.0;
+    }
+
+    vec2 hitTC = result.xy;
+    float hitDepth = result.z;
+
+    float edgeFade = calculateEdgeFade(hitTC);
+
+    float zFadeStart = maxZDepth * 0.8;
+    float zFade = 1.0 - smoothstep(zFadeStart, maxZDepth, hitDepth);
+
+    float rayLength = length(hitCoord - transformedPos);
+    float maxMipLevels = floor(log2(max(1.0, max(ssr_screen_res.x, ssr_screen_res.y))));
+    float distanceFactor = clamp(rayLength / maxZDepth, 0.0, 1.0);
+    float effectiveRoughness = clamp(roughness + distanceFactor * roughness, 0.0, 1.0);
+    float mipLevel = maxMipLevels * effectiveRoughness;
+    vec4 sampledColor = textureLod(source, hitTC, mipLevel);
+
+    float rayFade = 1.0 - smoothstep(maxZDepth * 0.6, maxZDepth, rayLength);
+    float sampleFade = edgeFade * zFade * rayFade;
 
     float remappedRoughness = clamp((roughness - (maxRoughness * 0.6)) / (maxRoughness - (maxRoughness * 0.6)), 0.0, 1.0);
     float roughnessFade = 1.0 - remappedRoughness;
 
-    float combinedFade = accumFade * roughnessFade * baseEdgeFade;
+    float combinedFade = sampleFade * roughnessFade * baseEdgeFade;
 
-    collectedColor = vec4(accumColor, combinedFade);
+    collectedColor = vec4(sampledColor.rgb, combinedFade);
     return 1.0;
 }

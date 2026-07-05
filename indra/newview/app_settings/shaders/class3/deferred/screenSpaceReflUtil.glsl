@@ -360,74 +360,31 @@ vec3 getPoissonSample(int i) {
 
 float tapScreenSpaceReflection(int totalSamples, vec2 tc, vec3 viewPos, vec3 n, inout vec4 collectedColor, sampler2D source, float glossiness)
 {
-#ifdef TRANSPARENT_SURFACE
-collectedColor = vec4(1, 0, 1, 1);
-    return 0;
-#endif
     collectedColor = vec4(0);
-    int hits = 0;
-
-    float depth = -viewPos.z;
 
     vec3 rayDirection = normalize(reflect(viewPos, normalize(n)));
 
-    vec2 uv2 = tc * ssr_screen_res;
-    float c = (uv2.x + uv2.y) * 0.125;
-    float jitter = mod( c, 1.0);
-
     vec2 screenpos = 1 - abs(tc * 2 - 1);
-    float vignette = clamp((abs(screenpos.x) * abs(screenpos.y)) * 16,0, 1);
+    float vignette = clamp((abs(screenpos.x) * abs(screenpos.y)) * 16, 0, 1);
     vignette *= clamp((dot(normalize(viewPos), n) * 0.5 + 0.5) * 5.5 - 0.8, 0, 1);
 
     float zFar = 128.0;
-    vignette *= clamp(1.0+(viewPos.z/zFar), 0.0, 1.0);
-
+    vignette *= clamp(1.0 + (viewPos.z / zFar), 0.0, 1.0);
     vignette *= clamp(glossiness * 3 - 1.7, 0, 1);
 
-    vec4 hitpoint;
-
-    glossiness = 1 - glossiness;
-
-    totalSamples = int(max(glossySampleCount, glossySampleCount * glossiness * vignette));
-
-    totalSamples = max(totalSamples, 1);
-    if (glossiness < 0.35)
+    if (vignette <= 0.0)
     {
-        if (vignette > 0)
-        {
-            for (int i = 0; i < totalSamples; i++)
-            {
-                vec3 firstBasis = normalize(cross(getPoissonSample(i), rayDirection));
-                vec3 secondBasis = normalize(cross(rayDirection, firstBasis));
-                vec2 coeffs = vec2(random(tc + vec2(0, i)) + random(tc + vec2(i, 0)));
-                vec3 reflectionDirectionRandomized = rayDirection + ((firstBasis * coeffs.x + secondBasis * coeffs.y) * glossiness);
-
-                //float hitDepth;
-
-                bool hit = traceScreenRay(viewPos, normalize(reflectionDirectionRandomized), hitpoint, depth, depth, source);
-
-                hitpoint.a = 0;
-
-                if (hit)
-                {
-                    ++hits;
-                    collectedColor += hitpoint;
-                    collectedColor.a += 1;
-                }
-            }
-
-            if (hits > 0)
-            {
-                collectedColor /= hits;
-            }
-            else
-            {
-                collectedColor = vec4(0);
-            }
-        }
+        return 0.0;
     }
-    float hitAlpha = hits;
-    hitAlpha /= totalSamples;
-    collectedColor.a = hitAlpha * vignette;
-    return hits;
+
+    vec4 hitpoint = vec4(0);
+    float hitDepth = 0.0;
+    if (traceScreenRay(viewPos, rayDirection, hitpoint, hitDepth, -viewPos.z, source))
+    {
+        collectedColor.rgb = hitpoint.rgb;
+        collectedColor.a = vignette;
+        return 1.0;
+    }
+
+    return 0.0;
 }
