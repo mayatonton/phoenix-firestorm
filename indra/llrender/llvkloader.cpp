@@ -111,8 +111,10 @@ namespace
 
     S32 sVkRenderViewport[4] = {0, 0, 0, 0};
 
-    bool     sScissorEnabled = false;
-    VkRect2D sCurrentScissor = {};
+    U32 sCurrentRenderAreaHeight = 0;
+
+    bool sScissorEnabled     = false;
+    S32  sScissorRectGL[4]   = {0, 0, 0, 0};
 
     VkRenderingAttachmentInfo sSavedColorInfos[4] = {};
     U32                       sSavedColorCount    = 0;
@@ -3196,6 +3198,22 @@ bool beginFrame()
 
     sSwapchainClearedThisFrame = false;
 
+    if (sSwapchain != VK_NULL_HANDLE &&
+        sMonotonicFrameCount >= STARTUP_FRAME_GATE &&
+        sPendingResizeWidth != 0 && sPendingResizeHeight != 0)
+    {
+        if (sPendingResizeWidth == sSwapchainExtent.width &&
+            sPendingResizeHeight == sSwapchainExtent.height)
+        {
+            sPendingResizeWidth  = 0;
+            sPendingResizeHeight = 0;
+        }
+        else
+        {
+            sSwapchainRecreatePending = true;
+        }
+    }
+
     if (sSwapchainRecreatePending)
     {
         const U32 frames_since_last = (sLastRecreateFrame == 0)
@@ -4084,6 +4102,8 @@ void beginDynamicRendering(U32                               width,
     sSavedDepthInfo    = depth_info;
     sSavedRenderWidth  = width;
     sSavedRenderHeight = height;
+
+    sCurrentRenderAreaHeight = height;
 
     vkCmdBeginRendering(sCommandBuffers[sFrameIndex], &rendering_info);
     sInDynamicRendering = true;
@@ -6840,6 +6860,8 @@ void setRenderViewport(S32 x, S32 y, S32 w, S32 h)
 
 void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
 {
+    const S32 fb_height = (S32)sCurrentRenderAreaHeight;
+
     VkViewport viewport = {};
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
@@ -6853,43 +6875,43 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
     else
     {
         viewport.x      = (float)sVkRenderViewport[0];
-        viewport.y      = (float)(sVkRenderViewport[1] + sVkRenderViewport[3]);
+        viewport.y      = (float)(fb_height - sVkRenderViewport[1]);
         viewport.width  = (float)sVkRenderViewport[2];
         viewport.height = -(float)sVkRenderViewport[3];
     }
     vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-    VkRect2D scissor = {};
+    S32 sc_x, sc_y, sc_w, sc_h;
     if (sScissorEnabled)
     {
-        scissor = sCurrentScissor;
+        sc_x = sScissorRectGL[0];
+        sc_y = sScissorRectGL[1];
+        sc_w = sScissorRectGL[2];
+        sc_h = sScissorRectGL[3];
     }
     else
     {
-        scissor.offset.x      = sVkRenderViewport[0];
-        scissor.offset.y      = sVkRenderViewport[1];
-        scissor.extent.width  = (U32)sVkRenderViewport[2];
-        scissor.extent.height = (U32)sVkRenderViewport[3];
+        sc_x = sVkRenderViewport[0];
+        sc_y = sVkRenderViewport[1];
+        sc_w = sVkRenderViewport[2];
+        sc_h = sVkRenderViewport[3];
     }
+
+    VkRect2D scissor = {};
+    scissor.offset.x      = llmax(sc_x, 0);
+    scissor.offset.y      = llmax(screen_space_copy ? sc_y : fb_height - (sc_y + sc_h), 0);
+    scissor.extent.width  = (U32)llmax(sc_w, 0);
+    scissor.extent.height = (U32)llmax(sc_h, 0);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
 
 void setScissor(S32 x, S32 y, S32 w, S32 h)
 {
-    S32 window_h = gGLViewport[3];
-
-    VkRect2D scissor = {};
-    scissor.offset.x      = x;
-    scissor.offset.y      = window_h - (y + h);
-    scissor.extent.width  = (U32)llmax(w, 0);
-    scissor.extent.height = (U32)llmax(h, 0);
-
-    sCurrentScissor = scissor;
-    sScissorEnabled = true;
-
-    VkCommandBuffer cmd = getCurrentCommandBuffer();
-    if (cmd == VK_NULL_HANDLE) return;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
+    sScissorRectGL[0] = x;
+    sScissorRectGL[1] = y;
+    sScissorRectGL[2] = w;
+    sScissorRectGL[3] = h;
+    sScissorEnabled   = true;
 }
 
 void disableScissor()
@@ -6908,10 +6930,8 @@ void notifyWindowResize(U32 width, U32 height)
         return;
     }
 
-    const U32 prev_pending_w = sPendingResizeWidth;
-    const U32 prev_pending_h = sPendingResizeHeight;
-    sPendingResizeWidth      = width;
-    sPendingResizeHeight     = height;
+    sPendingResizeWidth  = width;
+    sPendingResizeHeight = height;
 
     if (sMonotonicFrameCount < STARTUP_FRAME_GATE)
     {
