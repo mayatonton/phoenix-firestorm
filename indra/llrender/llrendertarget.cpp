@@ -144,7 +144,9 @@ void LLRenderTarget::resize(U32 resx, U32 resy)
             mVkTexView.push_back(vk_view);
             mVkTexSampleView.push_back(vk_sample_view);
             mVkTexAlloc.push_back(vk_allocation);
-            mVkTexLayout.push_back(VK_IMAGE_LAYOUT_UNDEFINED);
+            mVkTexLayout.push_back(vk_image != VK_NULL_HANDLE
+                                   ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                   : VK_IMAGE_LAYOUT_UNDEFINED);
         }
 
         if (mVkDepth != VK_NULL_HANDLE)
@@ -268,6 +270,7 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
     if (LLVKLoader::isVulkanInitialized())
     {
         VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat(img->getPrimaryFormat());
+        bool vk_created_here = false;
         if (!img->hasVkImage())
         {
             VkImage     vk_image = VK_NULL_HANDLE;
@@ -277,13 +280,16 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
                                                          vk_image, vk_view, vk_alloc))
             {
                 img->setExternalVkBacking(vk_image, vk_view, vk_alloc, mResX, mResY, vk_format);
+                vk_created_here = true;
             }
         }
         mVkTex.push_back(img->getVkImage());
         mVkTexView.push_back(img->getVkImageView());
         mVkTexSampleView.push_back(VK_NULL_HANDLE);
         mVkTexAlloc.push_back(nullptr);
-        mVkTexLayout.push_back(VK_IMAGE_LAYOUT_UNDEFINED);
+        mVkTexLayout.push_back(vk_created_here
+                               ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                               : VK_IMAGE_LAYOUT_UNDEFINED);
     }
 }
 
@@ -431,7 +437,9 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
         mVkTexView.push_back(vk_view);
         mVkTexSampleView.push_back(vk_sample_view);
         mVkTexAlloc.push_back(vk_allocation);
-        mVkTexLayout.push_back(VK_IMAGE_LAYOUT_UNDEFINED);
+        mVkTexLayout.push_back(vk_image != VK_NULL_HANDLE
+                               ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                               : VK_IMAGE_LAYOUT_UNDEFINED);
     }
 
     if (gDebugGL)

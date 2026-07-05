@@ -6385,6 +6385,10 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                 {
                     if (LLVKLoader::beginFrame(false))
                     {
+                        vk_snapshot_target.bindTarget();
+                        glClearColor(0.f, 0.f, 0.f, 1.f);
+                        vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
+                        vk_snapshot_target.flush();
                         gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
                         display(do_rebuild, scale_factor, subfield, true);
                         if (LLRenderTarget::getCurrentBoundTarget() == &vk_snapshot_target)
@@ -6615,6 +6619,20 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;
     gDisplaySwapBuffers = false;
 
+    const bool use_vk_snapshot = LLVKLoader::shouldUseVulkanRender();
+    LLRenderTarget vk_snapshot_target;
+    if (use_vk_snapshot)
+    {
+        if (LLVKLoader::getCurrentCommandBuffer() != VK_NULL_HANDLE)
+        {
+            LLVKLoader::endFrame();
+        }
+        if (!vk_snapshot_target.allocate(image_width, image_height, GL_RGBA, false))
+        {
+            return false;
+        }
+    }
+
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
     setCursor(UI_CURSOR_WAIT);
 
@@ -6637,7 +6655,18 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     LLRenderTarget scratch_space;
     U32 color_fmt = GL_RGBA;
-    if (scratch_space.allocate(image_width, image_height, color_fmt, true))
+    if (use_vk_snapshot)
+    {
+        if (gPipeline.allocateScreenBuffer(image_width, image_height))
+        {
+            mWorldViewRectRaw.set(0, image_height, image_width, 0);
+        }
+        else
+        {
+            gPipeline.allocateScreenBuffer(original_width, original_height);
+        }
+    }
+    else if (scratch_space.allocate(image_width, image_height, color_fmt, true))
     {
         if (gPipeline.allocateScreenBuffer(image_width, image_height))
         {
@@ -6676,19 +6705,71 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
         const bool do_rebuild = true;
         const F32 zoom = 1.0;
         const bool for_snapshot = true;
-        display(do_rebuild, zoom, subfield, for_snapshot);
+        if (use_vk_snapshot)
+        {
+            if (LLVKLoader::beginFrame(false))
+            {
+                vk_snapshot_target.bindTarget();
+                glClearColor(0.f, 0.f, 0.f, 1.f);
+                vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
+                vk_snapshot_target.flush();
+                gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
+                display(do_rebuild, zoom, subfield, for_snapshot);
+                if (LLRenderTarget::getCurrentBoundTarget() == &vk_snapshot_target)
+                {
+                    vk_snapshot_target.flush();
+                }
+                gPipeline.mVkSnapshotRedirectTarget = nullptr;
+                LLVKLoader::endFrame();
+            }
+        }
+        else
+        {
+            display(do_rebuild, zoom, subfield, for_snapshot);
+        }
     }
 
     LLImageDataSharedLock lock(raw);
 
-    glReadPixels(
-        0, 0,
-        image_width,
-        image_height,
-        GL_RGB, GL_UNSIGNED_BYTE,
-        raw->getData()
-    );
-    stop_glerror();
+    bool vk_read_ok = false;
+    if (use_vk_snapshot)
+    {
+        if (vk_snapshot_target.hasVkImage(0))
+        {
+            std::vector<U8> vk_pixels((size_t)image_width * image_height * 4);
+            if (LLVKLoader::readbackColorImageRegionVk(
+                    vk_snapshot_target.getVkImage(0),
+                    vk_snapshot_target.getVkTexLayout(0),
+                    0, 0,
+                    image_width,
+                    image_height,
+                    4,
+                    vk_pixels.data()))
+            {
+                const U8* vk_src = vk_pixels.data();
+                U8* vk_dst = raw->getData();
+                const size_t vk_px_count = (size_t)image_width * image_height;
+                for (size_t px = 0; px < vk_px_count; px++)
+                {
+                    vk_dst[px * 3 + 0] = vk_src[px * 4 + 0];
+                    vk_dst[px * 3 + 1] = vk_src[px * 4 + 1];
+                    vk_dst[px * 3 + 2] = vk_src[px * 4 + 2];
+                }
+                vk_read_ok = true;
+            }
+        }
+    }
+    else
+    {
+        glReadPixels(
+            0, 0,
+            image_width,
+            image_height,
+            GL_RGB, GL_UNSIGNED_BYTE,
+            raw->getData()
+        );
+        stop_glerror();
+    }
 
     gDisplaySwapBuffers = false;
     gDepthDirty = true;
@@ -6710,11 +6791,14 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     gPipeline.resetDrawOrders();
     mWorldViewRectRaw = window_rect;
-    scratch_space.flush();
-    scratch_space.release();
+    if (!use_vk_snapshot)
+    {
+        scratch_space.flush();
+        scratch_space.release();
+    }
     gPipeline.allocateScreenBuffer(original_width, original_height);
 
-    return true;
+    return !use_vk_snapshot || vk_read_ok;
 }
 
 void display_cube_face();

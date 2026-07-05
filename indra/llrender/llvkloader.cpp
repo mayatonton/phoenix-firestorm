@@ -4814,11 +4814,8 @@ bool createColorAttachmentImageVk(U32          width,
     VkImageUsageFlags usage =
           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
         | VK_IMAGE_USAGE_SAMPLED_BIT
-        | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    if (mip_levels > 1)
-    {
-        usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    }
+        | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+        | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if (!createAttachmentImageVkImpl(width, height, format,
                                      usage,
                                      VK_IMAGE_ASPECT_COLOR_BIT,
@@ -4857,6 +4854,64 @@ bool createColorAttachmentImageVk(U32          width,
             return false;
         }
         out_view = attach_view;
+    }
+
+    {
+        VkCommandBufferAllocateInfo cba = {};
+        cba.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cba.commandPool        = sCommandPool;
+        cba.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cba.commandBufferCount = 1;
+        VkCommandBuffer one_cmd = VK_NULL_HANDLE;
+        vkAllocateCommandBuffers(sDevice, &cba, &one_cmd);
+        if (one_cmd != VK_NULL_HANDLE)
+        {
+            VkCommandBufferBeginInfo cbbi = {};
+            cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(one_cmd, &cbbi);
+
+            VkImageSubresourceRange full = {};
+            full.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            full.baseMipLevel   = 0;
+            full.levelCount     = (mip_levels > 0) ? mip_levels : 1;
+            full.baseArrayLayer = 0;
+            full.layerCount     = 1;
+
+            VkImageMemoryBarrier to_dst = {};
+            to_dst.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            to_dst.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            to_dst.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            to_dst.image               = out_image;
+            to_dst.subresourceRange    = full;
+            to_dst.srcAccessMask       = 0;
+            to_dst.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(one_cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &to_dst);
+
+            VkClearColorValue black = {};
+            vkCmdClearColorImage(one_cmd, out_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                 &black, 1, &full);
+
+            VkImageMemoryBarrier to_read = to_dst;
+            to_read.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            to_read.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            to_read.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            to_read.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(one_cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &to_read);
+
+            vkEndCommandBuffer(one_cmd);
+            VkSubmitInfo si = {};
+            si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            si.commandBufferCount = 1;
+            si.pCommandBuffers    = &one_cmd;
+            vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
+            vkQueueWaitIdle(sGraphicsQueue);
+            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
+        }
     }
     return true;
 }

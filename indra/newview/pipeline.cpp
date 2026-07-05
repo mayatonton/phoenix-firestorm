@@ -11157,8 +11157,17 @@ void LLPipeline::renderFinalize()
 
     {
         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-        mScreenTriangleVB->setBuffer();
-        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        if (mVkSnapshotRedirectTarget && LLVKLoader::shouldUseVulkanRender())
+        {
+            LLGLDisable snapshot_blend_off(GL_BLEND);
+            mScreenTriangleVB->setBuffer();
+            mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        }
+        else
+        {
+            mScreenTriangleVB->setBuffer();
+            mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        }
     }
 
     gDeferredPostNoDoFNoiseProgram.unbind();
