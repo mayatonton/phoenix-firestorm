@@ -3828,6 +3828,13 @@ bool LLAppViewer::initWindow()
         }
     }
 
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        gSavedSettings.setBOOL("RenderDisableVintageMode", true);
+        gSavedSettings.setBOOL("RenderEnableEmissiveBuffer", true);
+        gSavedSettings.setBOOL("RenderHDREnabled", true);
+    }
+
     // Need to load feature table before cheking to start watchdog.
     bool use_watchdog = false;
     S32 watchdog_enabled_setting = gSavedSettings.getS32("WatchdogEnabled");

@@ -51,6 +51,7 @@
 #include "llviewercontrol.h"
 #include "llviewernetwork.h" // <FS:Beq/> for LLGridManager
 #include "llviewerregion.h"
+#include "llvkloader.h"
 #include "llvoavatar.h"
 #include "llvoavatarself.h"
 #include "rlvhandler.h"
@@ -1118,6 +1119,11 @@ void FloaterQuickPrefs::refreshSettings()
         LLVector3 renderSSAOEffect = gSavedSettings.getVector3("RenderSSAOEffect");
         mSpinnerRenderSSAOEffectX->setValue(renderSSAOEffect.mV[VX]);
         mSliderRenderSSAOEffectX->setValue(renderSSAOEffect.mV[VX]);
+
+        if (LLVKLoader::shouldUseVulkanRender())
+        {
+            getChild<LLCheckBoxCtrl>("Disable_Vintage_Mode")->setEnabled(false);
+        }
     }
     // </FS:CR>
 }

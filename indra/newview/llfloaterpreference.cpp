@@ -80,6 +80,7 @@
 #include "lltrans.h"
 #include "llviewercontrol.h"
 #include "llviewercamera.h"
+#include "llvkloader.h"
 #include "llviewereventrecorder.h"
 #include "llviewermessage.h"
 #include "llviewerwindow.h"
@@ -2441,6 +2442,10 @@ void LLFloaterPreference::disableUnavailableSettings()
     exposureSlider->setEnabled(is_not_vintage);
     cas_slider->setEnabled(is_not_vintage);
 
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        getChild<LLCheckBoxCtrl>("VintageMode")->setEnabled(false);
+    }
 }
 
 void LLFloaterPreference::refresh()

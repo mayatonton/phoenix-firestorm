@@ -41,6 +41,7 @@
 #include "llvoavatar.h"
 #include "pipeline.h"
 #include "llviewercontrol.h"
+#include "llvkloader.h"
 #include "rlvactions.h"
 
 LLFloaterPreferenceGraphicsAdvanced::LLFloaterPreferenceGraphicsAdvanced(const LLSD& key)
@@ -341,6 +342,11 @@ void LLFloaterPreferenceGraphicsAdvanced::disableUnavailableSettings()
     tonemapMix->setEnabled(is_not_vintage);
     exposureSlider->setEnabled(is_not_vintage);
     cas_slider->setEnabled(is_not_vintage);
+
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        getChild<LLCheckBoxCtrl>("VintageMode")->setEnabled(false);
+    }
 }
 
 void LLFloaterPreferenceGraphicsAdvanced::refreshEnabledState()
