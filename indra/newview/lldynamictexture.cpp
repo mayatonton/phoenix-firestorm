@@ -214,6 +214,7 @@ bool LLViewerDynamicTexture::updateAllInstances()
     llassert(bake_target.getHeight() >= (U32) LLAvatarAppearanceDefines::SCRATCH_TEX_HEIGHT);
 
     preview_target.bindTarget();
+    gGL.setColorMask(true, true);
     preview_target.clear();
 
     LLGLSLShader::unbind();
