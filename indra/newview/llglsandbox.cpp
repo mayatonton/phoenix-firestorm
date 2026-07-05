@@ -36,6 +36,7 @@
 #include "llgl.h"
 #include "llrender.h"
 #include "llglheaders.h"
+#include "llvkloader.h"
 #include "llparcel.h"
 #include "llui.h"
 
@@ -1045,6 +1046,8 @@ F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, TextureHolder & t
 //-----------------------------------------------------------------------------
 F32 gpu_benchmark()
 {
+    LLVKLoader::VkRenderSuspendScope vk_render_suspend;
+
     if (gGLManager.mGLVersion < 3.3f)
     { // don't bother benchmarking venerable drivers which don't support accurate timing anyway
         return -1.f;

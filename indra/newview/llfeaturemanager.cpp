@@ -51,6 +51,7 @@
 #include "llboost.h"
 #include "llweb.h"
 #include "llviewershadermgr.h"
+#include "llvkloader.h"
 #include "llstring.h"
 #include "stringize.h"
 #include "llcorehttputil.h"
@@ -398,6 +399,8 @@ F32 logExceptionBenchmark()
     {
         // HACK - ensure that profiling is disabled
         LLGLSLShader::finishProfile();
+
+        LLVKLoader::resetVulkanRenderSuspend();
 
         // convert to C++ styled exception
         char integer_string[32];

@@ -860,6 +860,14 @@ namespace LLVKLoader
 
     U32         getRenderBackendMode();
     bool        shouldUseVulkanRender();
+    void        resetVulkanRenderSuspend();
+
+    class VkRenderSuspendScope
+    {
+    public:
+        VkRenderSuspendScope();
+        ~VkRenderSuspendScope();
+    };
 
     VkImageView getCurrentSwapchainImageView();
     VkExtent2D  getSwapchainExtent();
