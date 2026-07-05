@@ -60,10 +60,10 @@
 <llsd>
   <map>
     <key>RenderGlowIterations</key>
-    <integer>5</integer>
+    <integer>2</integer>
 
     <key>RenderGlowWidth</key>
-    <real>3.6</real>
+    <real>1.3</real>
 
     <key>RenderGlowStrength</key>
     <real>0.233</real>
