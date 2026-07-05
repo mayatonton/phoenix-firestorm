@@ -798,6 +798,15 @@ namespace LLVKLoader
                                           U32           width,
                                           U32           height);
 
+    bool readbackColorImageRegionVk(VkImage       image,
+                                    VkImageLayout current_layout,
+                                    S32           x,
+                                    S32           y,
+                                    U32           width,
+                                    U32           height,
+                                    U32           bytes_per_pixel,
+                                    void*         out_pixels);
+
     VkSampler getStandardLinearSampler();
 
     VkSampler getSamplerForState(U32 address_mode, U32 filter_option, bool has_mipmaps, bool compare = false);

@@ -20,6 +20,7 @@
 
 #include "llrendertarget.h"
 #include "llviewercontrol.h"
+#include "llvkloader.h"
 #include "llviewerjointattachment.h"
 #include "llviewerwindow.h"
 #include "llvoavatar.h"
@@ -105,9 +106,23 @@ namespace
         }
 
         GLubyte rgba[4] = {0, 0, 0, 0};
-        gPipeline.mObjectIDBuffer.bindTarget();
-        glReadPixels(mx_buf, my_buf, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-        gPipeline.mObjectIDBuffer.flush();
+        if (LLVKLoader::shouldUseVulkanRender())
+        {
+            if (!gPipeline.mObjectIDBuffer.hasVkImage(0) ||
+                !LLVKLoader::readbackColorImageRegionVk(
+                    gPipeline.mObjectIDBuffer.getVkImage(0),
+                    gPipeline.mObjectIDBuffer.getVkTexLayout(0),
+                    mx_buf, my_buf, 1, 1, 4, rgba))
+            {
+                return 0;
+            }
+        }
+        else
+        {
+            gPipeline.mObjectIDBuffer.bindTarget();
+            glReadPixels(mx_buf, my_buf, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+            gPipeline.mObjectIDBuffer.flush();
+        }
         out_read = true;
         return ((U32)rgba[0])
              | ((U32)rgba[1] << 8)
