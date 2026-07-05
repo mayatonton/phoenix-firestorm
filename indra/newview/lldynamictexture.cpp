@@ -52,7 +52,8 @@ S32 LLViewerDynamicTexture::sNumRenders = 0;
 //-----------------------------------------------------------------------------
 LLViewerDynamicTexture::LLViewerDynamicTexture(S32 width, S32 height, S32 components, EOrder order, bool clamp) :
     LLViewerTexture(width, height, components, false),
-    mClamp(clamp)
+    mClamp(clamp),
+    mBoundTarget(nullptr)
 {
     llassert((1 <= components) && (components <= 4));
 
@@ -132,10 +133,17 @@ void LLViewerDynamicTexture::preRender(bool clear_depth)
     mCamera.setView(camera->getView());
     mCamera.setNear(camera->getNear());
 
-    glViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
+    llSetGLViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
     if (clear_depth)
     {
-        glClear(GL_DEPTH_BUFFER_BIT);
+        if (mBoundTarget != nullptr)
+        {
+            mBoundTarget->clear(GL_DEPTH_BUFFER_BIT);
+        }
+        else
+        {
+            glClear(GL_DEPTH_BUFFER_BIT);
+        }
     }
 }
 
@@ -222,7 +230,7 @@ bool LLViewerDynamicTexture::updateAllInstances()
                 llassert(dynamicTexture->getFullWidth() <= width);
                 llassert(dynamicTexture->getFullHeight() <= height);
 
-                glClear(GL_DEPTH_BUFFER_BIT);
+                renderTarget.clear(GL_DEPTH_BUFFER_BIT);
 
                 gGL.color4f(1.f, 1.f, 1.f, 1.f);
                 dynamicTexture->setBoundTarget(&renderTarget);

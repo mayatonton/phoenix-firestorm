@@ -1193,7 +1193,14 @@ bool LLImagePreviewSculpted::render()
     gGL.matrixMode(LLRender::MM_MODELVIEW);
     gGL.popMatrix();
 
-    glClear(GL_DEPTH_BUFFER_BIT);
+    if (mBoundTarget != nullptr)
+    {
+        mBoundTarget->clear(GL_DEPTH_BUFFER_BIT);
+    }
+    else
+    {
+        glClear(GL_DEPTH_BUFFER_BIT);
+    }
 
     LLVector3 target_pos(0, 0, 0);
 

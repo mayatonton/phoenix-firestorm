@@ -798,6 +798,17 @@ namespace LLVKLoader
                                           U32           width,
                                           U32           height);
 
+    bool copyColorImageRegionToImage2DVk(VkImage       src_image,
+                                         VkImageLayout src_layout,
+                                         S32           src_x,
+                                         S32           src_y,
+                                         VkImage       dst_image,
+                                         VkImageLayout dst_current_layout,
+                                         S32           dst_x,
+                                         S32           dst_y,
+                                         U32           width,
+                                         U32           height);
+
     bool readbackColorImageRegionVk(VkImage       image,
                                     VkImageLayout current_layout,
                                     S32           x,

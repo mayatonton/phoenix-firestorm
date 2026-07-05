@@ -175,6 +175,8 @@ public:
     bool hasVkImage() const { return mVkImage != VK_NULL_HANDLE; }
     VkImage getVkImage() const { return mVkImage; }
     void*   getVkAllocation() const { return mVkAllocation; }
+    U32      getVkImageMipLevels() const { return mVkImageMipLevels; }
+    VkFormat getVkImageFormat() const { return mVkImageFormat; }
 
     void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format);
 

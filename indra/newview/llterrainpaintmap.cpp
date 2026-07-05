@@ -41,6 +41,7 @@
 #include "llviewerregion.h"
 #include "llviewershadermgr.h"
 #include "llviewertexture.h"
+#include "llvkloader.h"
 
 // static
 bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& region, LLViewerTexture& tex)
@@ -277,6 +278,26 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     }
     glGenerateMipmap(GL_TEXTURE_2D);
     stop_glerror();
+
+    LLImageGL* paint_img = tex.getGLTexture();
+    if (LLVKLoader::shouldUseVulkanRender() && paint_img != nullptr &&
+        paint_img->hasVkImage() && paint_img->getVkImageMipLevels() > 1)
+    {
+        const bool in_scope = LLVKLoader::isInRenderPassScope();
+        if (in_scope)
+        {
+            LLVKLoader::endDynamicRendering();
+        }
+        LLVKLoader::generateMipChainInFrameVk(paint_img->getVkImage(),
+                                              (U32)dim, (U32)dim,
+                                              paint_img->getVkImageMipLevels(),
+                                              paint_img->getVkImageFormat(),
+                                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (in_scope)
+        {
+            scratch_target.resumeVkDynamicRendering();
+        }
+    }
 
     scratch_target.flush();
 

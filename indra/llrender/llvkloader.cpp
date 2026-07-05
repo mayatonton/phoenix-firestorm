@@ -6440,6 +6440,127 @@ bool copyColorImageToCubeArrayLayerVk(VkImage       src_image,
     return true;
 }
 
+bool copyColorImageRegionToImage2DVk(VkImage       src_image,
+                                     VkImageLayout src_layout,
+                                     S32           src_x,
+                                     S32           src_y,
+                                     VkImage       dst_image,
+                                     VkImageLayout dst_current_layout,
+                                     S32           dst_x,
+                                     S32           dst_y,
+                                     U32           width,
+                                     U32           height)
+{
+    if (src_image == VK_NULL_HANDLE || dst_image == VK_NULL_HANDLE ||
+        width == 0 || height == 0 ||
+        src_x < 0 || src_y < 0 || dst_x < 0 || dst_y < 0)
+    {
+        return false;
+    }
+    if (sDevice == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkCommandBuffer cmd = getCurrentCommandBuffer();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+        b.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+        b.oldLayout                       = src_layout;
+        b.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = src_image;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = 0;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &b);
+    }
+    {
+        const bool dst_undefined = (dst_current_layout == VK_IMAGE_LAYOUT_UNDEFINED);
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask                   = dst_undefined ? 0 : VK_ACCESS_SHADER_READ_BIT;
+        b.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+        b.oldLayout                       = dst_current_layout;
+        b.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = dst_image;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = 0;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd,
+                             dst_undefined ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &b);
+    }
+
+    {
+        VkImageCopy region = {};
+        region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.srcSubresource.mipLevel       = 0;
+        region.srcSubresource.baseArrayLayer = 0;
+        region.srcSubresource.layerCount     = 1;
+        region.srcOffset                     = { src_x, src_y, 0 };
+        region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.dstSubresource.mipLevel       = 0;
+        region.dstSubresource.baseArrayLayer = 0;
+        region.dstSubresource.layerCount     = 1;
+        region.dstOffset                     = { dst_x, dst_y, 0 };
+        region.extent                        = { width, height, 1 };
+        vkCmdCopyImage(cmd, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    }
+
+    {
+        VkImageMemoryBarrier bb[2] = {};
+        bb[0].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        bb[0].srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+        bb[0].dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+        bb[0].oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        bb[0].newLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        bb[0].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        bb[0].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        bb[0].image                           = dst_image;
+        bb[0].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        bb[0].subresourceRange.baseMipLevel   = 0;
+        bb[0].subresourceRange.levelCount     = 1;
+        bb[0].subresourceRange.baseArrayLayer = 0;
+        bb[0].subresourceRange.layerCount     = 1;
+        bb[1].sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        bb[1].srcAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+        bb[1].dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+        bb[1].oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        bb[1].newLayout                       = src_layout;
+        bb[1].srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        bb[1].dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        bb[1].image                           = src_image;
+        bb[1].subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        bb[1].subresourceRange.baseMipLevel   = 0;
+        bb[1].subresourceRange.levelCount     = 1;
+        bb[1].subresourceRange.baseArrayLayer = 0;
+        bb[1].subresourceRange.layerCount     = 1;
+        const U32 bcount = (src_layout == VK_IMAGE_LAYOUT_UNDEFINED) ? 1u : 2u;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             0, 0, nullptr, 0, nullptr, bcount, bb);
+    }
+
+    return true;
+}
+
 bool readbackColorImageRegionVk(VkImage       image,
                                 VkImageLayout current_layout,
                                 S32           x,

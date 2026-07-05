@@ -39,6 +39,7 @@
 #include "llgl.h"
 #include "llglslshader.h"
 #include "llrender.h"
+#include "llrendertarget.h"
 #include "llvkloader.h"
 #include "llwindow.h"
 #include "llframetimer.h"
@@ -1937,6 +1938,87 @@ bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_
         glCopyTexSubImage2D(GL_TEXTURE_2D, 0, fb_x, fb_y, x_pos, y_pos, width, height);
         mGLTextureCreated = true;
         stop_glerror();
+
+        if (LLVKLoader::shouldUseVulkanRender() && width > 0 && height > 0)
+        {
+            LLRenderTarget* bound_target = LLRenderTarget::getCurrentBoundTarget();
+            if (bound_target != nullptr && bound_target->hasVkImage(0))
+            {
+                VkFormat src_format = LLVKLoader::llGlEnumToVkFormat(bound_target->getInternalFormat(0));
+                bool created_now = false;
+                if (src_format != VK_FORMAT_UNDEFINED
+                    && (mVkImage == VK_NULL_HANDLE
+                        || mVkImageWidth != (U32)mWidth
+                        || mVkImageHeight != (U32)mHeight
+                        || mVkImageFormat != src_format))
+                {
+                    if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE ||
+                        mVkAllocation != nullptr)
+                    {
+                        LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+                        mVkImage          = VK_NULL_HANDLE;
+                        mVkImageView      = VK_NULL_HANDLE;
+                        mVkAllocation     = nullptr;
+                        mVkImageWidth     = 0;
+                        mVkImageHeight    = 0;
+                        mVkImageMipLevels = 1;
+                        mVkImageFormat    = VK_FORMAT_UNDEFINED;
+                    }
+
+                    U32 want_mips = 1;
+                    if (mHasMipMaps)
+                    {
+                        const U32 dim = llmax((U32)mWidth, (U32)mHeight);
+                        while ((dim >> want_mips) > 0)
+                        {
+                            ++want_mips;
+                        }
+                    }
+
+                    if (LLVKLoader::createTextureImageVk((U32)mWidth, (U32)mHeight, src_format,
+                                                         mVkImage, mVkImageView, mVkAllocation,
+                                                         want_mips))
+                    {
+                        mVkImageWidth     = (U32)mWidth;
+                        mVkImageHeight    = (U32)mHeight;
+                        mVkImageMipLevels = want_mips;
+                        mVkImageFormat    = src_format;
+                        created_now = true;
+                    }
+                    else
+                    {
+                        LL_WARNS_ONCE("Vulkan") << "setSubImageFromFrameBuffer: createTextureImageVk failed"
+                                                << " w=" << (S32)mWidth << " h=" << (S32)mHeight
+                                                << " fmt=" << (S32)src_format << LL_ENDL;
+                    }
+                }
+
+                if (mVkImage != VK_NULL_HANDLE && mVkImageFormat == src_format)
+                {
+                    const bool in_scope = LLVKLoader::isInRenderPassScope();
+                    if (in_scope)
+                    {
+                        LLVKLoader::endDynamicRendering();
+                    }
+                    LLVKLoader::copyColorImageRegionToImage2DVk(
+                        bound_target->getVkImage(0), bound_target->getVkTexLayout(0),
+                        fb_x, fb_y,
+                        mVkImage,
+                        created_now ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        x_pos, y_pos, (U32)width, (U32)height);
+                    if (in_scope)
+                    {
+                        bound_target->resumeVkDynamicRendering();
+                    }
+                }
+                else if (mVkImage != VK_NULL_HANDLE)
+                {
+                    LL_WARNS_ONCE("Vulkan") << "setSubImageFromFrameBuffer: format mismatch skip"
+                                            << " tex_fmt=" << (S32)mVkImageFormat
+                                            << " rt_fmt=" << (S32)src_format << LL_ENDL;
+                }
+            }
+        }
 
         return true;
     }
