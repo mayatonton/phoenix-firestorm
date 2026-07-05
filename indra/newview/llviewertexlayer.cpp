@@ -40,9 +40,27 @@
 #include "llviewerassetupload.h"
 #include "llsdutil.h"
 #include "llfilesystem.h" // <FS:Ansariel> [Legacy Bake]
+#include "llvkloader.h"
+#include "llrendertarget.h"
 
 static const S32 BAKE_UPLOAD_ATTEMPTS = 7;
 static const F32 BAKE_UPLOAD_RETRY_DELAY = 2.f; // actual delay grows by power of 2 each attempt
+
+struct FSDeferredBakeUpload
+{
+    VkImage                 mColorImage = VK_NULL_HANDLE;
+    VkImageView             mColorView = VK_NULL_HANDLE;
+    void*                   mColorAllocation = nullptr;
+    U32                     mWidth = 0;
+    U32                     mHeight = 0;
+    LLPointer<LLImageRaw>   mPartialMask;
+    std::vector<LLTexLayerMaskCaptureRef> mPendingMaskRefs;
+};
+
+namespace
+{
+    std::vector<LLViewerTexLayerSetBuffer*> sDeferredUploadBuffers;
+}
 
 // runway consolidate
 extern std::string self_av_string();
@@ -79,6 +97,7 @@ LLViewerTexLayerSetBuffer::LLViewerTexLayerSetBuffer(LLTexLayerSet* const owner,
 
 LLViewerTexLayerSetBuffer::~LLViewerTexLayerSetBuffer()
 {
+    discardDeferredUpload();
     LLViewerTexLayerSetBuffer::sGLByteCount -= getSize();
     destroyGLTexture();
     for( S32 order = 0; order < ORDER_COUNT; order++ )
@@ -488,6 +507,7 @@ void LLViewerTexLayerSetBuffer::conditionalRestartUploadTimer()
 
 void LLViewerTexLayerSetBuffer::cancelUpload()
 {
+    discardDeferredUpload();
     mNeedsUpload = false;
     mUploadPending = false;
     mNeedsUploadTimer.pause();
@@ -621,6 +641,12 @@ void LLViewerTexLayerSetBuffer::doUpload(LLRenderTarget* bound_target)
     // until this image is sent to the server and the Avatar Appearance message is received.)
     layer_set->deleteCaches();
 
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        beginDeferredUpload(bound_target);
+        return;
+    }
+
     // Get the COLOR information from our texture
     U8* baked_color_data = new U8[ mFullWidth * mFullHeight * 4 ];
     glReadPixels(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight, GL_RGBA, GL_UNSIGNED_BYTE, baked_color_data );
@@ -634,6 +660,14 @@ void LLViewerTexLayerSetBuffer::doUpload(LLRenderTarget* bound_target)
                                     mOrigin.mX, mOrigin.mY,
                                     mFullWidth, mFullHeight, bound_target);
 
+    finishUpload(baked_color_data, baked_mask_data);
+
+    delete [] baked_color_data;
+}
+
+void LLViewerTexLayerSetBuffer::finishUpload(U8* baked_color_data, U8* baked_mask_data)
+{
+    LLViewerTexLayerSet* layer_set = getViewerTexLayerSet();
 
     // Create the baked image from our color and mask information
     const S32 baked_image_components = 5; // red green blue [bump] clothing
@@ -762,8 +796,155 @@ void LLViewerTexLayerSetBuffer::doUpload(LLRenderTarget* bound_target)
         mUploadPending = false;
         LL_INFOS() << "Unable to create baked upload file (reason: failed to write file)" << LL_ENDL;
     }
+}
+
+void LLViewerTexLayerSetBuffer::beginDeferredUpload(LLRenderTarget* bound_target)
+{
+    discardDeferredUpload();
+
+    LLViewerTexLayerSet* layer_set = getViewerTexLayerSet();
+    LLRenderTarget* target = bound_target ? bound_target : LLRenderTarget::getCurrentBoundTarget();
+    if (!target || !target->hasVkImage(0))
+    {
+        mUploadPending = false;
+        return;
+    }
+    VkFormat src_format = LLVKLoader::llGlEnumToVkFormat(target->getInternalFormat(0));
+    if (src_format == VK_FORMAT_UNDEFINED)
+    {
+        mUploadPending = false;
+        return;
+    }
+
+    FSDeferredBakeUpload* record = new FSDeferredBakeUpload;
+    record->mWidth = mFullWidth;
+    record->mHeight = mFullHeight;
+
+    bool ok = LLVKLoader::createReadbackImageVk(mFullWidth, mFullHeight, src_format,
+                                                record->mColorImage, record->mColorView, record->mColorAllocation);
+    if (ok)
+    {
+        const bool in_scope = LLVKLoader::isInRenderPassScope();
+        if (in_scope)
+        {
+            LLVKLoader::endDynamicRendering();
+        }
+        ok = LLVKLoader::copyColorImageRegionToImage2DVk(target->getVkImage(0), target->getVkTexLayout(0),
+                                                         mOrigin.mX, mOrigin.mY,
+                                                         record->mColorImage, VK_IMAGE_LAYOUT_UNDEFINED,
+                                                         0, 0, mFullWidth, mFullHeight);
+        if (in_scope)
+        {
+            target->resumeVkDynamicRendering();
+        }
+    }
+    if (!ok)
+    {
+        if (record->mColorImage != VK_NULL_HANDLE)
+        {
+            LLVKLoader::destroyImageVk(record->mColorImage, record->mColorView, record->mColorAllocation);
+        }
+        delete record;
+        mUploadPending = false;
+        return;
+    }
+
+    LLGLSUIDefault gls_ui;
+    record->mPartialMask = new LLImageRaw(mFullWidth, mFullHeight, 1);
+    U8* baked_mask_data = record->mPartialMask->getData();
+    LLTexLayer::beginMorphMaskCaptureCollection(&record->mPendingMaskRefs);
+    layer_set->gatherMorphMaskAlpha(baked_mask_data,
+                                    mOrigin.mX, mOrigin.mY,
+                                    mFullWidth, mFullHeight, bound_target);
+    LLTexLayer::endMorphMaskCaptureCollection();
+
+    mDeferredUpload = record;
+    sDeferredUploadBuffers.push_back(this);
+}
+
+void LLViewerTexLayerSetBuffer::completeDeferredUpload()
+{
+    FSDeferredBakeUpload* record = mDeferredUpload;
+    if (!record)
+    {
+        return;
+    }
+
+    bool ok = record->mPartialMask.notNull() && record->mColorImage != VK_NULL_HANDLE &&
+              record->mWidth > 0 && record->mHeight > 0;
+    U8* baked_color_data = nullptr;
+    if (ok)
+    {
+        baked_color_data = new U8[ record->mWidth * record->mHeight * 4 ];
+        ok = LLVKLoader::readbackColorImageRegionVk(record->mColorImage,
+                                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                    0, 0, record->mWidth, record->mHeight, 4,
+                                                    baked_color_data);
+    }
+    if (ok)
+    {
+        U8* baked_mask_data = record->mPartialMask->getData();
+        const U32 size = record->mWidth * record->mHeight;
+        for (const LLTexLayerMaskCaptureRef& ref : record->mPendingMaskRefs)
+        {
+            const U8* alphaData = LLTexLayer::resolveCapturedMaskAlpha(ref);
+            if (!alphaData)
+            {
+                ok = false;
+                break;
+            }
+            for (U32 i = 0; i < size; i++)
+            {
+                U8 curAlpha = baked_mask_data[i];
+                U16 resultAlpha = curAlpha;
+                resultAlpha *= ( ((U16)alphaData[i]) + 1);
+                resultAlpha = resultAlpha >> 8;
+                baked_mask_data[i] = (U8)resultAlpha;
+            }
+        }
+    }
+    if (ok)
+    {
+        finishUpload(baked_color_data, record->mPartialMask->getData());
+    }
+    else
+    {
+        mUploadPending = false;
+    }
 
     delete [] baked_color_data;
+    destroyDeferredUploadRecord();
+}
+
+void LLViewerTexLayerSetBuffer::discardDeferredUpload()
+{
+    sDeferredUploadBuffers.erase(std::remove(sDeferredUploadBuffers.begin(), sDeferredUploadBuffers.end(), this),
+                                 sDeferredUploadBuffers.end());
+    destroyDeferredUploadRecord();
+}
+
+void LLViewerTexLayerSetBuffer::destroyDeferredUploadRecord()
+{
+    if (!mDeferredUpload)
+    {
+        return;
+    }
+    if (mDeferredUpload->mColorImage != VK_NULL_HANDLE)
+    {
+        LLVKLoader::destroyImageVk(mDeferredUpload->mColorImage, mDeferredUpload->mColorView, mDeferredUpload->mColorAllocation);
+    }
+    delete mDeferredUpload;
+    mDeferredUpload = nullptr;
+}
+
+void LLViewerTexLayerSetBuffer::processDeferredUploads()
+{
+    while (!sDeferredUploadBuffers.empty())
+    {
+        LLViewerTexLayerSetBuffer* buffer = sDeferredUploadBuffers.back();
+        sDeferredUploadBuffers.pop_back();
+        buffer->completeDeferredUpload();
+    }
 }
 
 // static

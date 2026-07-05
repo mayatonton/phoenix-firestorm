@@ -5026,6 +5026,25 @@ bool createTextureImageVk(U32          width,
                                        mip_levels);
 }
 
+bool createReadbackImageVk(U32          width,
+                           U32          height,
+                           VkFormat     format,
+                           VkImage&     out_image,
+                           VkImageView& out_view,
+                           void*&       out_allocation)
+{
+    VkImageUsageFlags usage =
+          VK_IMAGE_USAGE_TRANSFER_DST_BIT
+        | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+        | VK_IMAGE_USAGE_SAMPLED_BIT;
+    return createAttachmentImageVkImpl(width, height, format,
+                                       usage,
+                                       VK_IMAGE_ASPECT_COLOR_BIT,
+                                       "createReadbackImageVk",
+                                       out_image, out_view, out_allocation,
+                                       1);
+}
+
 bool uploadImageDataVk(VkImage     image,
                        U32         width,
                        U32         height,

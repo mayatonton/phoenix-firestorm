@@ -143,6 +143,14 @@ private:
 //
 // A single texture layer.  Only exists for llvoavatarself.
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class LLTexLayer;
+
+struct LLTexLayerMaskCaptureRef
+{
+    LLTexLayer* mLayer = nullptr;
+    U32         mCacheIndex = 0;
+};
+
 class LLTexLayer : public LLTexLayerInterface
 {
 public:
@@ -170,6 +178,11 @@ public:
     /*virtual*/ void        asLLSD(LLSD& sd) const;
 
     static void             calculateTexLayerColor(const param_color_list_t &param_list, LLColor4 &net_color);
+
+    static void             processPendingMorphMaskCaptures();
+    static void             beginMorphMaskCaptureCollection(std::vector<LLTexLayerMaskCaptureRef>* collector);
+    static void             endMorphMaskCaptureCollection();
+    static const U8*        resolveCapturedMaskAlpha(const LLTexLayerMaskCaptureRef& ref);
 protected:
     LLUUID                  getUUID() const;
     typedef std::map<U32, U8*> alpha_cache_t;

@@ -54,6 +54,8 @@
 #include "llimagegl.h"
 #include "llglslshader.h"
 
+#include <set>
+
 using namespace LLAvatarAppearanceDefines;
 
 namespace
@@ -84,6 +86,107 @@ namespace
         {
             return;
         }
+    }
+
+    struct FSPendingMorphMaskCapture
+    {
+        LLTexLayer* mLayer = nullptr;
+        U32         mCacheIndex = 0;
+        S32         mWidth = 0;
+        S32         mHeight = 0;
+        VkImage     mImage = VK_NULL_HANDLE;
+        VkImageView mView = VK_NULL_HANDLE;
+        void*       mAllocation = nullptr;
+    };
+
+    std::vector<FSPendingMorphMaskCapture> sPendingMorphMaskCaptures;
+    std::vector<LLTexLayerMaskCaptureRef>* sMorphMaskCaptureCollector = nullptr;
+    std::set<LLTexLayer*>                  sLiveTexLayers;
+
+    void addToMorphMaskCaptureCollector(LLTexLayer* layer, U32 cache_index)
+    {
+        if (!sMorphMaskCaptureCollector)
+        {
+            return;
+        }
+        for (const LLTexLayerMaskCaptureRef& ref : *sMorphMaskCaptureCollector)
+        {
+            if (ref.mLayer == layer && ref.mCacheIndex == cache_index)
+            {
+                return;
+            }
+        }
+        LLTexLayerMaskCaptureRef ref;
+        ref.mLayer = layer;
+        ref.mCacheIndex = cache_index;
+        sMorphMaskCaptureCollector->push_back(ref);
+    }
+
+    void enqueueMorphMaskCaptureVk(LLTexLayer* layer, U32 cache_index, S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bound_target)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+        LLRenderTarget* target = bound_target ? bound_target : LLRenderTarget::getCurrentBoundTarget();
+        if (!target || !target->hasVkImage(0))
+        {
+            return;
+        }
+        VkFormat src_format = LLVKLoader::llGlEnumToVkFormat(target->getInternalFormat(0));
+        if (src_format == VK_FORMAT_UNDEFINED)
+        {
+            return;
+        }
+        VkImage     image = VK_NULL_HANDLE;
+        VkImageView view = VK_NULL_HANDLE;
+        void*       allocation = nullptr;
+        if (!LLVKLoader::createReadbackImageVk((U32)width, (U32)height, src_format, image, view, allocation))
+        {
+            return;
+        }
+        const bool in_scope = LLVKLoader::isInRenderPassScope();
+        if (in_scope)
+        {
+            LLVKLoader::endDynamicRendering();
+        }
+        bool copied = LLVKLoader::copyColorImageRegionToImage2DVk(target->getVkImage(0), target->getVkTexLayout(0),
+                                                                  x, y,
+                                                                  image, VK_IMAGE_LAYOUT_UNDEFINED,
+                                                                  0, 0, (U32)width, (U32)height);
+        if (in_scope)
+        {
+            target->resumeVkDynamicRendering();
+        }
+        if (!copied)
+        {
+            LLVKLoader::destroyImageVk(image, view, allocation);
+            return;
+        }
+        for (FSPendingMorphMaskCapture& entry : sPendingMorphMaskCaptures)
+        {
+            if (entry.mLayer == layer && entry.mCacheIndex == cache_index)
+            {
+                LLVKLoader::destroyImageVk(entry.mImage, entry.mView, entry.mAllocation);
+                entry.mWidth = width;
+                entry.mHeight = height;
+                entry.mImage = image;
+                entry.mView = view;
+                entry.mAllocation = allocation;
+                addToMorphMaskCaptureCollector(layer, cache_index);
+                return;
+            }
+        }
+        FSPendingMorphMaskCapture entry;
+        entry.mLayer = layer;
+        entry.mCacheIndex = cache_index;
+        entry.mWidth = width;
+        entry.mHeight = height;
+        entry.mImage = image;
+        entry.mView = view;
+        entry.mAllocation = allocation;
+        sPendingMorphMaskCaptures.push_back(entry);
+        addToMorphMaskCaptureCollector(layer, cache_index);
     }
 }
 
@@ -989,18 +1092,21 @@ LLTexLayer::LLTexLayer(LLTexLayerSet* const layer_set) :
     LLTexLayerInterface( layer_set ),
     mLocalTextureObject(NULL)
 {
+    sLiveTexLayers.insert(this);
 }
 
 LLTexLayer::LLTexLayer(const LLTexLayer &layer, LLWearable *wearable) :
     LLTexLayerInterface( layer, wearable ),
     mLocalTextureObject(NULL)
 {
+    sLiveTexLayers.insert(this);
 }
 
 LLTexLayer::LLTexLayer(const LLTexLayerTemplate &layer_template, LLLocalTextureObject *lto, LLWearable *wearable) :
     LLTexLayerInterface( layer_template, wearable ),
     mLocalTextureObject(lto)
 {
+    sLiveTexLayers.insert(this);
 }
 
 LLTexLayer::~LLTexLayer()
@@ -1016,6 +1122,114 @@ LLTexLayer::~LLTexLayer()
         ll_aligned_free_32(alpha_data);
     }
 
+    sLiveTexLayers.erase(this);
+    for (size_t i = 0; i < sPendingMorphMaskCaptures.size(); )
+    {
+        if (sPendingMorphMaskCaptures[i].mLayer == this)
+        {
+            LLVKLoader::destroyImageVk(sPendingMorphMaskCaptures[i].mImage,
+                                       sPendingMorphMaskCaptures[i].mView,
+                                       sPendingMorphMaskCaptures[i].mAllocation);
+            sPendingMorphMaskCaptures.erase(sPendingMorphMaskCaptures.begin() + i);
+        }
+        else
+        {
+            ++i;
+        }
+    }
+}
+
+void LLTexLayer::processPendingMorphMaskCaptures()
+{
+    if (sPendingMorphMaskCaptures.empty())
+    {
+        return;
+    }
+    std::vector<FSPendingMorphMaskCapture> entries;
+    entries.swap(sPendingMorphMaskCaptures);
+    for (FSPendingMorphMaskCapture& entry : entries)
+    {
+        LLTexLayer* layer = entry.mLayer;
+        if (sLiveTexLayers.find(layer) != sLiveTexLayers.end() && entry.mWidth > 0 && entry.mHeight > 0)
+        {
+            const S32 width = entry.mWidth;
+            const S32 height = entry.mHeight;
+            size_t bytes_per_pixel = 1;
+            size_t row_size        = (width + 3) & ~0x3;
+            size_t pixels          = (row_size * height);
+            size_t mem_size        = pixels * bytes_per_pixel;
+
+            U8* temp_data  = (U8*)ll_aligned_malloc_32((size_t)width * (size_t)height * 4);
+            U8* alpha_data = (U8*)ll_aligned_malloc_32(mem_size);
+            bool read_ok = (temp_data != nullptr) && (alpha_data != nullptr) &&
+                           LLVKLoader::readbackColorImageRegionVk(entry.mImage,
+                                                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                                  0, 0, (U32)width, (U32)height, 4,
+                                                                  temp_data);
+            if (read_ok)
+            {
+                U8* alpha_cursor = alpha_data;
+                U8* pixel = temp_data;
+                for (S32 i = 0; i < height; ++i)
+                {
+                    for (S32 j = 0; j < width; ++j)
+                    {
+                        *alpha_cursor++ = pixel[3];
+                        pixel += 4;
+                    }
+                }
+
+                S32 max_cache_entries = layer->getTexLayerSet()->getAvatarAppearance()->isSelf() ? 4 : 1;
+                while ((S32)layer->mAlphaCache.size() >= max_cache_entries)
+                {
+                    alpha_cache_t::iterator iter2 = layer->mAlphaCache.begin();
+                    ll_aligned_free_32(iter2->second);
+                    layer->mAlphaCache.erase(iter2);
+                }
+                alpha_cache_t::iterator existing = layer->mAlphaCache.find(entry.mCacheIndex);
+                if (existing != layer->mAlphaCache.end())
+                {
+                    ll_aligned_free_32(existing->second);
+                    layer->mAlphaCache.erase(existing);
+                }
+                layer->mAlphaCache[entry.mCacheIndex] = alpha_data;
+                alpha_data = nullptr;
+
+                layer->getTexLayerSet()->getAvatarAppearance()->dirtyMesh();
+                layer->mMorphMasksValid = true;
+                layer->getTexLayerSet()->applyMorphMask(layer->mAlphaCache[entry.mCacheIndex], width, height, 1);
+            }
+            if (alpha_data)
+            {
+                ll_aligned_free_32(alpha_data);
+            }
+            if (temp_data)
+            {
+                ll_aligned_free_32(temp_data);
+            }
+        }
+        LLVKLoader::destroyImageVk(entry.mImage, entry.mView, entry.mAllocation);
+    }
+}
+
+void LLTexLayer::beginMorphMaskCaptureCollection(std::vector<LLTexLayerMaskCaptureRef>* collector)
+{
+    sMorphMaskCaptureCollector = collector;
+}
+
+void LLTexLayer::endMorphMaskCaptureCollection()
+{
+    sMorphMaskCaptureCollector = nullptr;
+}
+
+const U8* LLTexLayer::resolveCapturedMaskAlpha(const LLTexLayerMaskCaptureRef& ref)
+{
+    if (sLiveTexLayers.find(ref.mLayer) == sLiveTexLayers.end())
+    {
+        return nullptr;
+    }
+    alpha_cache_t::const_iterator iter = ref.mLayer->mAlphaCache.find(ref.mCacheIndex);
+    return (iter == ref.mLayer->mAlphaCache.end()) ? nullptr : iter->second;
 }
 
 void LLTexLayer::asLLSD(LLSD& sd) const
@@ -1453,6 +1667,14 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
         }
 
         U32 cache_index = alpha_mask_crc.getCRC();
+
+        if (LLVKLoader::shouldUseVulkanRender())
+        {
+            enqueueMorphMaskCaptureVk(this, cache_index, x, y, width, height, bound_target);
+            mMorphMasksValid = true;
+            return;
+        }
+
         U8* alpha_data = NULL;
                 // We believe we need to generate morph masks, do not assume that the cached version is accurate.
                 // We can get bad morph masks during login, on minimize, and occasional gl errors.

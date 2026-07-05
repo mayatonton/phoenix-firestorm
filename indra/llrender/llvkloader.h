@@ -731,6 +731,13 @@ namespace LLVKLoader
                               void*&       out_allocation,
                               U32          mip_levels = 1);
 
+    bool createReadbackImageVk(U32          width,
+                               U32          height,
+                               VkFormat     format,
+                               VkImage&     out_image,
+                               VkImageView& out_view,
+                               void*&       out_allocation);
+
     bool uploadImageDataVk(VkImage     image,
                            U32         width,
                            U32         height,

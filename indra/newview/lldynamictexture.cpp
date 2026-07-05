@@ -42,6 +42,8 @@
 #include "llrender.h"
 #include "pipeline.h"
 #include "llglslshader.h"
+#include "lltexlayer.h"
+#include "llviewertexlayer.h"
 
 // static
 LLViewerDynamicTexture::instance_list_t LLViewerDynamicTexture::sInstances[ LLViewerDynamicTexture::ORDER_COUNT ];
@@ -198,6 +200,9 @@ bool LLViewerDynamicTexture::updateAllInstances()
     {
         return true;
     }
+
+    LLTexLayer::processPendingMorphMaskCaptures();
+    LLViewerTexLayerSetBuffer::processDeferredUploads();
     // <FS:Beq> Add dedicated preview target 
     // LLRenderTarget& preview_target = gPipeline.mAuxillaryRT.deferredScreen;
     LLRenderTarget& preview_target = gPipeline.mPreviewScreen; 
