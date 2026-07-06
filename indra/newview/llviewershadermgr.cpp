@@ -1961,7 +1961,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         llassert(success);
         if (success && LLVKLoader::isVulkanInitialized())
         {
-            shader->createVkPipeline(0);
+            shader->createVkPipeline(16);
         }
     }
 

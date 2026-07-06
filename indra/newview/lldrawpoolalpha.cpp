@@ -930,6 +930,20 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     params.mGLTFMaterial->bind(params.mTexture);
 
                     if (LLVKLoader::isVulkanInitialized()
+                        && target_shader == &gHUDPBRAlphaProgram
+                        && target_shader->mVkPerProgramUBO != VK_NULL_HANDLE
+                        && target_shader->mVkPerProgramUBOMapped != nullptr)
+                    {
+                        target_shader->rotatePerProgramUBOSlot();
+                        char* base = (char*)target_shader->mVkActivePerProgramUBOMapped;
+                        LLGLTFMaterial* gm = params.mGLTFMaterial;
+                        F32 emissive_packed[4] = {
+                            gm->mEmissiveColor.mV[0], gm->mEmissiveColor.mV[1], gm->mEmissiveColor.mV[2], 0.f,
+                        };
+                        memcpy(base + 0, emissive_packed, 16);
+                    }
+
+                    if (LLVKLoader::isVulkanInitialized()
                         && target_shader->mVkPerProgramUBO != VK_NULL_HANDLE
                         && target_shader->mVkPerProgramUBOMapped != nullptr
                         && target_shader->mVkPerProgramUBOSize >= 32)
