@@ -53,6 +53,8 @@ namespace LLVkUboReg
         const char* shader_name;
         const char* block_name;
         const char* kind;
+        U32 expect_pipeline_size;
+        U32 expect_block_size;
     };
 
     constexpr U32 PC_OFF_MODELVIEW            = 0;

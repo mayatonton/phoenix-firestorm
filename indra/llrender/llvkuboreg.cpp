@@ -702,48 +702,19 @@ namespace
     };
 
     const LedgerEntry kLedger[] = {
-        { "Deferred Alpha Impostor Shader",           nullptr, "V5" },
-        { "Skinned Deferred Alpha Impostor Shader",   nullptr, "V5" },
-        { "Deferred Windlight Sky Shader",            nullptr, "V5" },
-        { "Deferred Tonemap Post Process",            nullptr, "V5" },
-        { "No Post Tonemap Post Process",             nullptr, "V5" },
-        { "Deferred Tonemap Gamma Post Process",      nullptr, "V5" },
-        { "No Post Tonemap Gamma Post Process",       nullptr, "V5" },
-        { "Deferred Tonemap Legacy Gamma Post Process", nullptr, "V5" },
-        { "No Post Tonemap Legacy Gamma Post Process",  nullptr, "V5" },
-        { "Deferred Gamma Correction Post Process",   nullptr, "V5" },
-        { "Legacy Gamma Correction Post Process",     nullptr, "V5" },
-        { "RLVa Sphere Post Processing Shader",       nullptr, "V5" },
-        { "Deferred Post NoDoF Shader",               nullptr, "V5" },
-        { "Deferred Post NoDoF Noise Shader",         nullptr, "V5" },
-        { "Deferred Buffer Visualization Shader",     nullptr, "V5" },
-        { "SMAA T2x Resolve (Low)",                   nullptr, "V5" },
-        { "SMAA T2x Resolve (Medium)",                nullptr, "V5" },
-        { "SMAA T2x Resolve (High)",                  nullptr, "V5" },
-        { "SMAA T2x Resolve (Ultra)",                 nullptr, "V5" },
-        { "Alpha Mask Shader",                        nullptr, "V5" },
-        { "Deferred Bump Shader",                     nullptr, "V5" },
-        { "Deferred Diffuse Alpha Mask Shader",       nullptr, "V5" },
-        { "Deferred Diffuse Non-Indexed Alpha Mask No Color Shader", nullptr, "V5" },
-        { "Deferred Diffuse Non-Indexed Alpha Mask Shader",          nullptr, "V5" },
-        { "Deferred Impostor Shader",                 nullptr, "V5" },
-        { "Deferred Shadow Alpha Mask Shader",        nullptr, "V5" },
-        { "Deferred Shadow Fullbright Alpha Mask Shader",            nullptr, "V5" },
-        { "Deferred Tree Shader",                     nullptr, "V5" },
-        { "Deferred Tree Shadow Shader",              nullptr, "V5" },
-        { "Impostor Shader",                          nullptr, "V5" },
-        { "Skinned Deferred Bump Shader",             nullptr, "V5" },
-        { "Skinned Deferred Diffuse Alpha Mask Shader",              nullptr, "V5" },
-        { "Skinned Deferred Shadow Alpha Mask Shader",               nullptr, "V5" },
-        { "Skinned Deferred Shadow Fullbright Alpha Mask Shader",    nullptr, "V5" },
-        { nullptr, "Gaussian_PerShaderBind",             "dead" },
-        { nullptr, "LightMinimumAlpha_PerProgramBind",   "dead" },
-        { nullptr, "Asset_GLTFMaterials",                "V4" },
-        { nullptr, "Asset_GLTFNodes",                    "V4" },
-        { nullptr, "Skin_GLTFJoints",                    "V4" },
+        { "SMAA T2x Resolve (Low)",                   "SMAA_PerProgramBind", "V5", 0, 16 },
+        { "SMAA T2x Resolve (Medium)",                "SMAA_PerProgramBind", "V5", 0, 16 },
+        { "SMAA T2x Resolve (High)",                  "SMAA_PerProgramBind", "V5", 0, 16 },
+        { "SMAA T2x Resolve (Ultra)",                 "SMAA_PerProgramBind", "V5", 0, 16 },
+        { nullptr, "Gaussian_PerShaderBind",             "dead", 0, 0 },
+        { nullptr, "LightMinimumAlpha_PerProgramBind",   "dead", 0, 0 },
+        { nullptr, "Asset_GLTFMaterials",                "V4", 0, 0 },
+        { nullptr, "Asset_GLTFNodes",                    "V4", 0, 0 },
+        { nullptr, "Skin_GLTFJoints",                    "V4", 0, 0 },
     };
 
-    const LedgerEntry* ledgerMatch(const std::string& shader_name, const std::string& block_name, const char* kind)
+    const LedgerEntry* ledgerMatch(const std::string& shader_name, const std::string& block_name, const char* kind,
+                                   U32 pipeline_size, U32 block_size)
     {
         for (const LedgerEntry& le : kLedger)
         {
@@ -758,6 +729,13 @@ namespace
             if (le.block_name != nullptr && block_name != le.block_name)
             {
                 continue;
+            }
+            if (le.expect_pipeline_size != 0 || le.expect_block_size != 0)
+            {
+                if (le.expect_pipeline_size != pipeline_size || le.expect_block_size != block_size)
+                {
+                    continue;
+                }
             }
             return &le;
         }
@@ -800,14 +778,16 @@ namespace
         return s_map;
     }
 
-    void reportLedger(const LLGLSLShader& shader, const VkReflUboBlock& block, const char* kind)
+    void reportLedger(const LLGLSLShader& shader, const VkReflUboBlock& block, const char* kind, U32 pipeline_size)
     {
         std::string key = shader.mName + "|ledger|" + block.block_name + "|" + kind;
         if (logOnce(key))
         {
             LL_INFOS("UBOReg") << "UBORegLedger shader=" << shader.mName
                                << " set=" << block.set << " binding=" << block.binding
-                               << " block=" << block.block_name << " kind=" << kind << LL_ENDL;
+                               << " block=" << block.block_name << " kind=" << kind
+                               << " pipeline_size=" << pipeline_size
+                               << " block_size=" << block.block_size << LL_ENDL;
         }
     }
 
@@ -1435,7 +1415,7 @@ void reportDiff(const LLGLSLShader& shader, const VkReflUboBlock& block, const s
                     + "|" + block.block_name + "|" + member + "|" + kind;
     if (logOnce(key))
     {
-        LL_WARNS("UBOReg") << "UBORegDiff shader=" << shader.mName
+        LL_ERRS("UBOReg") << "UBORegDiff shader=" << shader.mName
                            << " set=" << block.set << " binding=" << block.binding
                            << " block=" << block.block_name << " member=" << member
                            << " kind=" << kind
@@ -1451,7 +1431,7 @@ void reportUnknown(const LLGLSLShader& shader, const VkReflUboBlock& block, cons
                     + "|" + block.block_name + "|" + member + "|" + kind;
     if (logOnce(key))
     {
-        LL_WARNS("UBOReg") << "UBORegUnknown shader=" << shader.mName
+        LL_ERRS("UBOReg") << "UBORegUnknown shader=" << shader.mName
                            << " set=" << block.set << " binding=" << block.binding
                            << " block=" << block.block_name << " member=" << member
                            << " kind=" << kind << LL_ENDL;
@@ -1488,21 +1468,21 @@ void verifyProgramLayout(LLGLSLShader& shader)
             continue;
         }
 
-        if (ledgerMatch(shader.mName, block.block_name, "dead") != nullptr)
+        if (ledgerMatch(shader.mName, block.block_name, "dead", 0, 0) != nullptr)
         {
-            reportLedger(shader, block, "dead");
+            reportLedger(shader, block, "dead", 0);
             continue;
         }
-        if (ledgerMatch(shader.mName, block.block_name, "V4") != nullptr)
+        if (ledgerMatch(shader.mName, block.block_name, "V4", 0, 0) != nullptr)
         {
-            reportLedger(shader, block, "V4");
+            reportLedger(shader, block, "V4", 0);
             continue;
         }
 
         std::string key = shader.mName + "|" + block.block_name + "|V4";
         if (logOnce(key))
         {
-            LL_WARNS("UBOReg") << "UBORegUnknown shader=" << shader.mName
+            LL_ERRS("UBOReg") << "UBORegUnknown shader=" << shader.mName
                                << " set=" << block.set << " binding=" << block.binding
                                << " block=" << block.block_name << " kind=V4" << LL_ENDL;
         }
@@ -1535,7 +1515,7 @@ void verifyProgramLayout(LLGLSLShader& shader)
         }
         else if (shared_size > 0 && (U32)shared_size > block.block_size)
         {
-            reportLedger(shader, block, "V7");
+            reportLedger(shader, block, "V7", (U32)shared_size);
         }
     }
 
@@ -1581,37 +1561,30 @@ void verifyPerProgramSize(LLGLSLShader& shader, U32 per_program_ubo_size)
             largest = &b;
         }
     }
-    if (largest != nullptr && per_program_ubo_size == largest->block_size)
-    {
-        return;
-    }
-
     if (largest == nullptr)
     {
         if (per_program_ubo_size > 0)
         {
-            if (ledgerMatch(shader.mName, "", "V5") != nullptr)
-            {
-                VkReflUboBlock none{ 1, binding, 0, "(none)", 0, {} };
-                reportLedger(shader, none, "V5");
-                return;
-            }
-            std::string key = shader.mName + "|" + std::to_string(binding) + "|(none)|V5";
-            if (logOnce(key))
-            {
-                LL_WARNS("UBOReg") << "UBORegDiff shader=" << shader.mName
-                                   << " set=1 binding=" << binding
-                                   << " block=(none) member=(block) kind=V5"
-                                   << " expect=0/" << per_program_ubo_size
-                                   << " refl=0/0 (no block declared at per-program binding)" << LL_ENDL;
-            }
+            VkReflUboBlock none{ 1, binding, 0, "(none)", 0, {} };
+            reportLedger(shader, none, "V5", per_program_ubo_size);
         }
         return;
     }
 
-    if (ledgerMatch(shader.mName, largest->block_name, "V5") != nullptr)
+    if (per_program_ubo_size == largest->block_size)
     {
-        reportLedger(shader, *largest, "V5");
+        return;
+    }
+
+    if (per_program_ubo_size > largest->block_size)
+    {
+        reportLedger(shader, *largest, "V5", per_program_ubo_size);
+        return;
+    }
+
+    if (ledgerMatch(shader.mName, largest->block_name, "V5", per_program_ubo_size, largest->block_size) != nullptr)
+    {
+        reportLedger(shader, *largest, "V5", per_program_ubo_size);
         return;
     }
 
