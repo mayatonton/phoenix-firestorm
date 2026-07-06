@@ -187,6 +187,20 @@ void LLTexUnit::disable(void)
     }
 }
 
+void LLTexUnit::vkNotifyShaderChannelBound()
+{
+    if (!LLVKLoader::isVulkanInitialized())
+    {
+        return;
+    }
+    LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+    if (sh == nullptr)
+    {
+        return;
+    }
+    sh->vkCaptureChannelBoundView(mIndex);
+}
+
 void LLTexUnit::bindFast(LLTexture* texture)
 {
     LLImageGL* gl_tex = texture->getGLTexture();
@@ -216,6 +230,7 @@ void LLTexUnit::bindFast(LLTexture* texture)
     mCurrCompareMode  = false;
     mCurrAddressMode  = gl_tex->getAddressMode();
     mCurrFilterOption = gl_tex->getFilteringOption();
+    vkNotifyShaderChannelBound();
 }
 
 bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
@@ -286,6 +301,7 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
         return false;
     }
 
+    vkNotifyShaderChannelBound();
     return true;
 }
 
@@ -344,6 +360,7 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind, S32
 
     stop_glerror();
 
+    vkNotifyShaderChannelBound();
     return true;
 }
 
@@ -389,6 +406,7 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
     mCurrCompareMode  = false;
     mCurrAddressMode  = cubeMap->mImages[0]->getAddressMode();
     mCurrFilterOption = cubeMap->mImages[0]->getFilteringOption();
+    vkNotifyShaderChannelBound();
     return true;
 }
 
@@ -421,6 +439,7 @@ bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth)
 
     renderTarget->bindForShaderRead(mCurrRTAttachment, bindDepth);
 
+    vkNotifyShaderChannelBound();
     return true;
 }
 
@@ -552,6 +571,8 @@ void LLTexUnit::unbind(eTextureType type)
             glBindTexture(sGLTextureType[type], 0);
         }
         stop_glerror();
+
+        vkNotifyShaderChannelBound();
     }
 }
 
@@ -575,6 +596,8 @@ void LLTexUnit::unbindFast(eTextureType type)
         {
             glBindTexture(sGLTextureType[type], 0);
         }
+
+        vkNotifyShaderChannelBound();
     }
 }
 

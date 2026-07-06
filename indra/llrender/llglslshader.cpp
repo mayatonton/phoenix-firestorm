@@ -379,6 +379,9 @@ void LLGLSLShader::unloadInternal()
 {
     sInstances.erase(this);
 
+    mVkEnumBoundView.clear();
+    mChannelToEnum.clear();
+
     if (LLVKLoader::isVulkanInitialized())
     {
         for (auto& kv : mVkPipelineCache)
@@ -586,6 +589,9 @@ bool LLGLSLShader::createShader()
 
     mVkReflBindingSamplerNames.clear();
 
+    mVkEnumBoundView.clear();
+    mChannelToEnum.clear();
+
     if (success && LLVKLoader::isVulkanInitialized() && !mStageSources.empty())
     {
         generatePerProgramSPIRV(mStageSources);
@@ -739,6 +745,30 @@ bool LLGLSLShader::createShader()
                 LL_ERRS("BindReg") << "BindRegViolation shader=" << mName
                     << " name=" << nb.first
                     << " bindings=" << binding_list << LL_ENDL;
+            }
+        }
+    }
+
+    if (success && LLVKLoader::isVulkanInitialized())
+    {
+        mVkEnumBoundView.assign(mTexture.size(), VkEnumBoundView());
+        mChannelToEnum.assign(LL_NUM_TEXTURE_LAYERS, -1);
+        for (U32 i = 0; i < mTexture.size(); i++)
+        {
+            S32 ch = mTexture[i];
+            if (ch > -1 && ch < (S32)mChannelToEnum.size())
+            {
+                if (mChannelToEnum[ch] == -1)
+                {
+                    mChannelToEnum[ch] = (S16)i;
+                }
+                else
+                {
+                    LL_WARNS_ONCE("BindReg") << "BindRegChannelShared shader=" << mName
+                        << " channel=" << ch
+                        << " kept=" << LLShaderMgr::instance()->mReservedUniforms[mChannelToEnum[ch]]
+                        << " dropped=" << LLShaderMgr::instance()->mReservedUniforms[i] << LL_ENDL;
+                }
             }
         }
     }
@@ -2094,6 +2124,15 @@ void LLGLSLShader::bind()
                 }
             }
         }
+
+        if (LLVKLoader::isVulkanInitialized() && !mChannelToEnum.empty())
+        {
+            const S32 snap_count = llmin(mActiveTextureChannels, (S32)mChannelToEnum.size());
+            for (S32 ch = 0; ch < snap_count; ++ch)
+            {
+                vkCaptureChannelBoundView(ch);
+            }
+        }
     }
 
     if (mUniformsDirty)
@@ -2142,6 +2181,119 @@ void LLGLSLShader::unbind(void)
     sCurBoundShaderPtr = NULL;
 }
 
+void LLGLSLShader::vkCaptureEnumBoundView(S32 uniform_enum, S32 channel)
+{
+    if (uniform_enum < 0 || uniform_enum >= (S32)mVkEnumBoundView.size())
+    {
+        return;
+    }
+    LLTexUnit* tu = gGL.getTexUnit(channel);
+    if (tu == nullptr)
+    {
+        return;
+    }
+    VkEnumBoundView& e = mVkEnumBoundView[uniform_enum];
+    e.imagep        = tu->mCurrImageGL;
+    e.cubep         = tu->mCurrCubeMap;
+    e.rtp           = tu->mCurrRenderTarget;
+    e.rt_attachment = tu->mCurrRTAttachment;
+    e.rt_depth      = tu->mCurrRTDepth;
+    e.sampler       = tu->getLiveVkSampler();
+    e.bound         = (e.imagep.notNull() || e.cubep.notNull() || e.rtp != nullptr);
+}
+
+void LLGLSLShader::vkCaptureChannelBoundView(S32 channel)
+{
+    if (channel < 0 || channel >= (S32)mChannelToEnum.size())
+    {
+        return;
+    }
+    S32 e = mChannelToEnum[channel];
+    if (e < 0)
+    {
+        return;
+    }
+    vkCaptureEnumBoundView(e, channel);
+}
+
+VkImageView LLGLSLShader::vkResolveEnumBoundView(S32 uniform_enum) const
+{
+    if (uniform_enum < 0 || uniform_enum >= (S32)mVkEnumBoundView.size())
+    {
+        return VK_NULL_HANDLE;
+    }
+    const VkEnumBoundView& e = mVkEnumBoundView[uniform_enum];
+    if (e.rtp != nullptr)
+    {
+        if (e.rtp == LLRenderTarget::getCurrentBoundTarget())
+        {
+            return VK_NULL_HANDLE;
+        }
+        e.rtp->bindForShaderRead(e.rt_attachment, e.rt_depth);
+        if (e.rt_depth)
+        {
+            return e.rtp->hasVkDepth() ? e.rtp->getVkDepthView() : VK_NULL_HANDLE;
+        }
+        return e.rtp->hasVkImage(e.rt_attachment) ? e.rtp->getVkImageView(e.rt_attachment)
+                                                  : VK_NULL_HANDLE;
+    }
+    if (e.cubep.notNull() && e.cubep->hasVkCubeImage())
+    {
+        return e.cubep->getVkCubeImageView();
+    }
+    if (e.imagep.notNull() && e.imagep->hasVkImage())
+    {
+        return e.imagep->getVkImageView();
+    }
+    return VK_NULL_HANDLE;
+}
+
+U8 LLGLSLShader::vkResolveEnumBoundDim(S32 uniform_enum) const
+{
+    if (uniform_enum < 0 || uniform_enum >= (S32)mVkEnumBoundView.size())
+    {
+        return VKSD_2D;
+    }
+    const VkEnumBoundView& e = mVkEnumBoundView[uniform_enum];
+    if (e.rtp != nullptr)
+    {
+        return VKSD_2D;
+    }
+    if (e.cubep.notNull() && e.cubep->hasVkCubeImage())
+    {
+        return VKSD_CUBE;
+    }
+    if (e.imagep.notNull() && e.imagep->hasVkImage())
+    {
+        switch (e.imagep->getTarget())
+        {
+        case LLTexUnit::TT_CUBE_MAP:       return VKSD_CUBE;
+        case LLTexUnit::TT_CUBE_MAP_ARRAY: return VKSD_CUBE_ARRAY;
+        case LLTexUnit::TT_TEXTURE_3D:     return VKSD_3D;
+        default:                           return VKSD_2D;
+        }
+    }
+    return VKSD_2D;
+}
+
+void LLGLSLShader::vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_value, VkImageView old_view)
+{
+    if (shader == nullptr || enum_value < 0 || old_view == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    static std::set<std::pair<const void*, U32>> logged_sites;
+    if (!logged_sites.insert(std::make_pair((const void*)shader, binding)).second)
+    {
+        return;
+    }
+    const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
+    std::string ename = (enum_value < (S32)reserved.size()) ? reserved[enum_value] : std::string();
+    LL_WARNS("BindReg") << "BindRegFallback shader=" << shader->mName
+        << " binding=" << binding
+        << " enum=" << enum_value << "(" << ename << ")" << LL_ENDL;
+}
+
 S32 LLGLSLShader::bindTexture(const std::string& uniform, LLTexture* texture, LLTexUnit::eTextureType mode)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
@@ -2163,11 +2315,16 @@ S32 LLGLSLShader::bindTexture(S32 uniform, LLTexture* texture, LLTexUnit::eTextu
         return -1;
     }
 
+    S32 uniform_enum = uniform;
     uniform = mTexture[uniform];
 
     if (uniform > -1)
     {
         gGL.getTexUnit(uniform)->bindFast(texture);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            vkCaptureEnumBoundView(uniform_enum, uniform);
+        }
     }
 
     return uniform;
@@ -2184,6 +2341,7 @@ S32 LLGLSLShader::bindTexture(S32 uniform, LLRenderTarget* texture, bool depth, 
         return -1;
     }
 
+    S32 uniform_enum = uniform;
     uniform = getTextureChannel(uniform);
 
     if (uniform > -1)
@@ -2203,6 +2361,11 @@ S32 LLGLSLShader::bindTexture(S32 uniform, LLRenderTarget* texture, bool depth, 
         rt_tu->mCurrRTAttachment = index;
         rt_tu->mCurrRTDepth      = depth;
         rt_tu->mCurrImageGL      = nullptr;
+
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            vkCaptureEnumBoundView(uniform_enum, uniform);
+        }
     }
 
     return uniform;
@@ -3566,6 +3729,9 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         S32 channel = cur->mVkBindingToChannel[N];
         S32 enum_value = cur->mVkBindingToEnum[N];
         S32 resolved_unit = -1;
+        const bool l3_hit = (enum_value >= 0 && enum_value < (S32)cur->mVkEnumBoundView.size()
+                             && cur->mVkEnumBoundView[enum_value].bound);
+
         if (enum_value == -2)
         {
             S32 idx_unit = (S32)N - 100;
@@ -3575,10 +3741,15 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 view = live_view((U32)idx_unit);
             }
         }
+        else if (l3_hit)
+        {
+            view = cur->vkResolveEnumBoundView(enum_value);
+        }
         else if (channel >= 0)
         {
             resolved_unit = channel;
             view = live_view((U32)channel);
+            vkWarnL3Fallback(cur, N, enum_value, view);
         }
         else
         {
@@ -3589,16 +3760,28 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 {
                     resolved_unit = unit;
                     view = live_view((U32)unit);
+                    vkWarnL3Fallback(cur, N, enum_value, view);
                 }
             }
         }
+
         bool used_fallback = (view == VK_NULL_HANDLE);
-        if (!used_fallback && resolved_unit >= 0)
+        if (!used_fallback)
         {
-            LLTexUnit* dim_tu = gGL.getTexUnit(resolved_unit);
-            if (dim_tu != nullptr && dim_tu->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[N])
+            if (l3_hit)
             {
-                used_fallback = true;
+                if (cur->vkResolveEnumBoundDim(enum_value) != cur->mVkBindingSamplerDim[N])
+                {
+                    used_fallback = true;
+                }
+            }
+            else if (resolved_unit >= 0)
+            {
+                LLTexUnit* dim_tu = gGL.getTexUnit(resolved_unit);
+                if (dim_tu != nullptr && dim_tu->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[N])
+                {
+                    used_fallback = true;
+                }
             }
         }
         if (used_fallback)
@@ -3611,7 +3794,11 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         }
 
         VkSampler binding_sampler = VK_NULL_HANDLE;
-        if (resolved_unit >= 0)
+        if (l3_hit)
+        {
+            binding_sampler = cur->mVkEnumBoundView[enum_value].sampler;
+        }
+        else if (resolved_unit >= 0)
         {
             LLTexUnit* stu = gGL.getTexUnit(resolved_unit);
             if (stu != nullptr)

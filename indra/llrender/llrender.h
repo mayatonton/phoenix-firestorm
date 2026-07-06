@@ -244,6 +244,8 @@ public:
 
     VkSampler           getLiveVkSampler() const;
 
+    void vkNotifyShaderChannelBound();
+
 protected:
     friend class LLRender;
 

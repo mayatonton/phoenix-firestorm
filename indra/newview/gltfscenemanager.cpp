@@ -891,6 +891,7 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
             {
                 tu->mCurrImageGL      = gl_tex;
                 tu->mCurrRenderTarget = nullptr;
+                tu->vkNotifyShaderChannelBound();
             }
         };
 

@@ -572,12 +572,32 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     }
     else
     {
+        const S32 enum1 = cur->mVkBindingToEnum[1];
         const S32 unit1 = (cur->mVkBindingToChannel[1] >= 0) ? cur->mVkBindingToChannel[1] : 0;
-        VkImageView view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
-        if (view_to_write != VK_NULL_HANDLE &&
-            gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
+        const bool l3_hit = (enum1 >= 0 && enum1 < (S32)cur->mVkEnumBoundView.size()
+                             && cur->mVkEnumBoundView[enum1].bound);
+        VkImageView view_to_write = VK_NULL_HANDLE;
+        VkSampler   sampler1      = VK_NULL_HANDLE;
+        if (l3_hit)
         {
-            view_to_write = VK_NULL_HANDLE;
+            view_to_write = cur->vkResolveEnumBoundView(enum1);
+            sampler1      = cur->mVkEnumBoundView[enum1].sampler;
+            if (view_to_write != VK_NULL_HANDLE &&
+                cur->vkResolveEnumBoundDim(enum1) != cur->mVkBindingSamplerDim[1])
+            {
+                view_to_write = VK_NULL_HANDLE;
+            }
+        }
+        else
+        {
+            view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
+            sampler1      = gGL.getTexUnit(unit1)->getLiveVkSampler();
+            LLGLSLShader::vkWarnL3Fallback(cur, 1, enum1, view_to_write);
+            if (view_to_write != VK_NULL_HANDLE &&
+                gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
+            {
+                view_to_write = VK_NULL_HANDLE;
+            }
         }
         if (view_to_write == VK_NULL_HANDLE)
         {
@@ -585,7 +605,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         bindings.sampler_bindings[0] = 1;
         bindings.sampler_views[0]    = view_to_write;
-        bindings.sampler_samplers[0] = gGL.getTexUnit(unit1)->getLiveVkSampler();
+        bindings.sampler_samplers[0] = sampler1;
         bindings.sampler_count       = 1;
     }
 
@@ -633,10 +653,17 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
 
         VkImageView view = VK_NULL_HANDLE;
         S32 resolved_unit = -1;
-        if (channel >= 0)
+        const bool l3_hit = (enum_value >= 0 && enum_value < (S32)cur->mVkEnumBoundView.size()
+                             && cur->mVkEnumBoundView[enum_value].bound);
+        if (l3_hit)
+        {
+            view = cur->vkResolveEnumBoundView(enum_value);
+        }
+        else if (channel >= 0)
         {
             resolved_unit = channel;
             view = gGL.getTexUnit((S32)channel)->getLiveVkImageView();
+            LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
         }
         else if (enum_value >= 0 && enum_value < (S32)cur->mTexture.size())
         {
@@ -645,15 +672,27 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             {
                 resolved_unit = unit;
                 view = gGL.getTexUnit((S32)unit)->getLiveVkImageView();
+                LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
             }
         }
+
         bool need_typed_fallback = (view == VK_NULL_HANDLE);
-        if (!need_typed_fallback && resolved_unit >= 0)
+        if (!need_typed_fallback)
         {
-            LLTexUnit* dim_tu = gGL.getTexUnit(resolved_unit);
-            if (dim_tu != nullptr && dim_tu->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[N])
+            if (l3_hit)
             {
-                need_typed_fallback = true;
+                if (cur->vkResolveEnumBoundDim(enum_value) != cur->mVkBindingSamplerDim[N])
+                {
+                    need_typed_fallback = true;
+                }
+            }
+            else if (resolved_unit >= 0)
+            {
+                LLTexUnit* dim_tu = gGL.getTexUnit(resolved_unit);
+                if (dim_tu != nullptr && dim_tu->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[N])
+                {
+                    need_typed_fallback = true;
+                }
             }
         }
         if (need_typed_fallback)
@@ -667,9 +706,11 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
 
         bindings.sampler_bindings[bindings.sampler_count] = N;
         bindings.sampler_views[bindings.sampler_count]    = view;
-        bindings.sampler_samplers[bindings.sampler_count] = (resolved_unit >= 0)
-                                                              ? gGL.getTexUnit(resolved_unit)->getLiveVkSampler()
-                                                              : VK_NULL_HANDLE;
+        bindings.sampler_samplers[bindings.sampler_count] = l3_hit
+                                                              ? cur->mVkEnumBoundView[enum_value].sampler
+                                                              : (resolved_unit >= 0)
+                                                                  ? gGL.getTexUnit(resolved_unit)->getLiveVkSampler()
+                                                                  : VK_NULL_HANDLE;
 
         ++bindings.sampler_count;
     }

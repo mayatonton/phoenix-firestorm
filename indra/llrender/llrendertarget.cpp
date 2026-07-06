@@ -897,6 +897,11 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
     }
 
     bindForShaderRead(index, false);
+
+    if (tu != nullptr)
+    {
+        tu->vkNotifyShaderChannelBound();
+    }
 }
 
 void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)

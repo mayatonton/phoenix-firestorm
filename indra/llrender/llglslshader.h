@@ -30,6 +30,8 @@
 #include "llgl.h"
 #include "llrender.h"
 #include "llvkloader.h"  // LLVKLoader::FRAMES_IN_FLIGHT 取得
+#include "llimagegl.h"
+#include "llcubemap.h"
 #include "llstaticstringtable.h"
 #include <boost/json.hpp>
 #include <array>         // std::array<S32, MAX_VK_BINDING> mVkBindingToEnum
@@ -478,6 +480,25 @@ public:
     std::array<U8, MAX_VK_BINDING> mVkBindingSamplerDim = {};
 
     std::vector<std::pair<S32, std::string>> mVkReflBindingSamplerNames;
+
+    struct VkEnumBoundView
+    {
+        LLPointer<LLImageGL> imagep;
+        LLPointer<LLCubeMap> cubep;
+        LLRenderTarget*      rtp = nullptr;
+        U32                  rt_attachment = 0;
+        bool                 rt_depth = false;
+        VkSampler            sampler = VK_NULL_HANDLE;
+        bool                 bound = false;
+    };
+    std::vector<VkEnumBoundView> mVkEnumBoundView;
+    std::vector<S16> mChannelToEnum;
+
+    void vkCaptureEnumBoundView(S32 uniform_enum, S32 channel);
+    void vkCaptureChannelBoundView(S32 channel);
+    VkImageView vkResolveEnumBoundView(S32 uniform_enum) const;
+    U8 vkResolveEnumBoundDim(S32 uniform_enum) const;
+    static void vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_value, VkImageView old_view);
 
     U32 mVkPerProgramUBOBinding = 0;
 

@@ -634,6 +634,7 @@ void LLVertexBufferData::drawWithMatrix()
     {
         gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mTexName);
         gGL.getTexUnit(0)->mCurrImageGL = mImageGL;
+        gGL.getTexUnit(0)->vkNotifyShaderChannelBound();
     }
     else
     {
@@ -673,6 +674,7 @@ void LLVertexBufferData::draw()
     {
         gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mTexName);
         gGL.getTexUnit(0)->mCurrImageGL = mImageGL;
+        gGL.getTexUnit(0)->vkNotifyShaderChannelBound();
     }
     else
     {
