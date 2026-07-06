@@ -44,15 +44,6 @@
 #include "llrendertarget.h"
 #include <glm/gtc/type_ptr.hpp>
 
-extern bool gCubeSnapshot;
-extern bool gHeroProbeMirrorRender;
-
-static bool ayaUsePositiveViewport(const LLGLSLShader*)
-{
-    return LLRenderTarget::getCurrentBoundTarget() != nullptr
-           && !gCubeSnapshot && !gHeroProbeMirrorRender;
-}
-
 //Next Highest Power Of Two
 //helper function, returns first number > v that is a power of 2, or v if v is already a power of 2
 U32 nhpo2(U32 v)
@@ -994,8 +985,9 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     }
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
                     {
-                        const bool vk_screen_space_copy =
-                            ayaUsePositiveViewport(LLGLSLShader::sCurBoundShaderPtr);
+                        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+                            LLRenderTarget::getCurrentBoundTarget() != nullptr,
+                            LLGLSLShader::vkCaptureRegimeActive());
                         LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
                     }
                     VkDescriptorSet sets[2] = {
@@ -1131,8 +1123,9 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     }
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
                     {
-                        const bool vk_screen_space_copy =
-                            ayaUsePositiveViewport(LLGLSLShader::sCurBoundShaderPtr);
+                        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+                            LLRenderTarget::getCurrentBoundTarget() != nullptr,
+                            LLGLSLShader::vkCaptureRegimeActive());
                         LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
                     }
                     VkDescriptorSet sets[2] = {

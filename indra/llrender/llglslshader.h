@@ -530,6 +530,9 @@ public:
     static void populateAndBindUniversalDescriptorSet();
 
 public:
+    static bool vkCaptureRegimeActive();
+    static bool vkUsePositiveViewport(bool render_target_bound, bool capture_regime);
+
     VkDeviceSize sharedUBOBindingSize(U32 binding) const;
     static VkDescriptorSet     sCurPerCallVkDescriptorSet;
 
