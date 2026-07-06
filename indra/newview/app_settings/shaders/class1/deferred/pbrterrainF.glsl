@@ -115,7 +115,7 @@ out vec4 frag_data[4];
 #if TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE
 layout(set = 1, binding = 0) uniform sampler2D alpha_ramp;
 #elif TERRAIN_PAINT_TYPE == TERRAIN_PAINT_TYPE_PBR_PAINTMAP
-layout(set = 1, binding = 0) uniform sampler2D paint_map;
+layout(set = 1, binding = 13) uniform sampler2D paint_map;
 #endif
 
 // https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#additional-textures

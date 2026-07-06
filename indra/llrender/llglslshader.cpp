@@ -584,92 +584,11 @@ bool LLGLSLShader::createShader()
     mVkBindingStageMask.fill(0);
     mVkBindingSamplerDim.fill(VKSD_2D);
 
-    std::vector<std::pair<S32, std::string>> vk_binding_sampler_names;
+    mVkReflBindingSamplerNames.clear();
+
     if (success && LLVKLoader::isVulkanInitialized() && !mStageSources.empty())
     {
         generatePerProgramSPIRV(mStageSources);
-
-        static const std::regex s_sampler_binding_re(
-            R"(layout\s*\(\s*set\s*=\s*1\s*,\s*binding\s*=\s*([0-9]+)\s*\)\s*uniform\s+[^;{]*?\b(sampler[A-Za-z0-9]*)\s+([A-Za-z0-9_]+))");
-
-        static const std::regex s_ubo_binding_re(
-            R"(layout\s*\(\s*set\s*=\s*1\s*,\s*binding\s*=\s*([0-9]+)\s*,\s*std140\s*\)\s*uniform\s+[A-Za-z0-9_]+)");
-
-        auto scan_chunk = [&](const std::string& chunk, U8 stage_mask)
-        {
-            auto it  = std::sregex_iterator(chunk.begin(), chunk.end(), s_sampler_binding_re);
-            auto end = std::sregex_iterator();
-            for (; it != end; ++it)
-            {
-                const std::smatch& m = *it;
-                S32 binding = atoi(m[1].str().c_str());
-                if (binding < 0 || binding >= (S32)MAX_VK_BINDING)
-                {
-                    continue;
-                }
-                vk_binding_sampler_names.emplace_back(binding, m[3].str());
-                U8& t = mVkBindingDeclaredType[binding];
-                t = (t == VKBD_NONE || t == VKBD_SAMPLER) ? (U8)VKBD_SAMPLER : (U8)VKBD_BOTH;
-                mVkBindingStageMask[binding] |= stage_mask;
-                {
-                    const std::string& stok = m[2].str();
-                    U8 dim = VKSD_2D;
-                    if (stok.find("Cube") != std::string::npos)
-                    {
-                        dim = (stok.find("Array") != std::string::npos) ? (U8)VKSD_CUBE_ARRAY : (U8)VKSD_CUBE;
-                    }
-                    else if (stok.find("3D") != std::string::npos)
-                    {
-                        dim = VKSD_3D;
-                    }
-                    mVkBindingSamplerDim[binding] = dim;
-                }
-            }
-            auto uit  = std::sregex_iterator(chunk.begin(), chunk.end(), s_ubo_binding_re);
-            for (; uit != end; ++uit)
-            {
-                const std::smatch& m = *uit;
-                S32 binding = atoi(m[1].str().c_str());
-                if (binding < 0 || binding >= (S32)MAX_VK_BINDING)
-                {
-                    continue;
-                }
-                U8& t = mVkBindingDeclaredType[binding];
-                t = (t == VKBD_NONE || t == VKBD_UBO) ? (U8)VKBD_UBO : (U8)VKBD_BOTH;
-                mVkBindingStageMask[binding] |= stage_mask;
-            }
-        };
-
-        for (const StageSource& stage : mStageSources)
-        {
-            const U8 stage_mask = (stage.type == GL_FRAGMENT_SHADER) ? VKBS_FRAGMENT
-                                : (stage.type == GL_VERTEX_SHADER)   ? VKBS_VERTEX : (U8)0;
-            for (const std::string& chunk : stage.sources)
-            {
-                scan_chunk(chunk, stage_mask);
-            }
-        }
-
-        LLShaderMgr* mgr = LLShaderMgr::instance();
-        if (mgr)
-        {
-            for (const std::string& util_file : mVulkanAttachedVertexUtilities)
-            {
-                auto cit = mgr->mVertexShaderSourceCache.find(util_file);
-                if (cit != mgr->mVertexShaderSourceCache.end())
-                {
-                    for (const std::string& chunk : cit->second) { scan_chunk(chunk, VKBS_VERTEX); }
-                }
-            }
-            for (const std::string& util_file : mVulkanAttachedFragmentUtilities)
-            {
-                auto cit = mgr->mFragmentShaderSourceCache.find(util_file);
-                if (cit != mgr->mFragmentShaderSourceCache.end())
-                {
-                    for (const std::string& chunk : cit->second) { scan_chunk(chunk, VKBS_FRAGMENT); }
-                }
-            }
-        }
     }
     mStageSources.clear();
     mStageSources.shrink_to_fit();
@@ -742,10 +661,10 @@ bool LLGLSLShader::createShader()
 
     LL_DEBUGS("GLSLTextureChannels") << mName << " has " << mActiveTextureChannels << " active texture channels" << LL_ENDL;
 
-    if (success && !vk_binding_sampler_names.empty() && mProgramObject != 0)
+    if (success && !mVkReflBindingSamplerNames.empty() && mProgramObject != 0)
     {
         const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
-        for (const auto& bn : vk_binding_sampler_names)
+        for (const auto& bn : mVkReflBindingSamplerNames)
         {
             if (bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
             {
@@ -764,6 +683,62 @@ bool LLGLSLShader::createShader()
             if (channel >= 0 && bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
             {
                 mVkBindingToChannel[bn.first] = channel;
+            }
+        }
+    }
+
+    if (success && !mVkReflBindingSamplerNames.empty())
+    {
+        auto join_names = [](const std::set<std::string>& s) -> std::string
+        {
+            std::string r;
+            for (const std::string& nm : s)
+            {
+                if (!r.empty())
+                {
+                    r += ",";
+                }
+                r += nm;
+            }
+            return r.empty() ? std::string("<none>") : r;
+        };
+
+        std::array<std::set<std::string>, MAX_VK_BINDING> refl_names;
+        std::map<std::string, std::set<S32>> refl_name_to_bindings;
+        for (const auto& bn : mVkReflBindingSamplerNames)
+        {
+            if (bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
+            {
+                refl_names[bn.first].insert(bn.second);
+                refl_name_to_bindings[bn.second].insert(bn.first);
+            }
+        }
+
+        for (S32 b = 0; b < (S32)MAX_VK_BINDING; ++b)
+        {
+            if (refl_names[b].size() > 1)
+            {
+                LL_ERRS("BindReg") << "BindRegViolation shader=" << mName
+                    << " binding=" << b
+                    << " names=" << join_names(refl_names[b]) << LL_ENDL;
+            }
+        }
+        for (const auto& nb : refl_name_to_bindings)
+        {
+            if (nb.second.size() > 1)
+            {
+                std::string binding_list;
+                for (S32 bb : nb.second)
+                {
+                    if (!binding_list.empty())
+                    {
+                        binding_list += ",";
+                    }
+                    binding_list += std::to_string(bb);
+                }
+                LL_ERRS("BindReg") << "BindRegViolation shader=" << mName
+                    << " name=" << nb.first
+                    << " bindings=" << binding_list << LL_ENDL;
             }
         }
     }
@@ -1108,6 +1083,158 @@ static S32 reflectPushConstantMaxOffsetFromSpirv(const std::vector<unsigned int>
     return (maxOffset >= 0) ? maxOffset : 0;
 }
 
+struct VkSpirvSet1Sampler
+{
+    S32 binding;
+    std::string name;
+    unsigned int dim;
+    unsigned int arrayed;
+};
+
+static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spirv,
+                                           std::vector<VkSpirvSet1Sampler>& out_samplers,
+                                           std::vector<S32>& out_ubo_bindings)
+{
+    if (spirv.size() < 5)
+    {
+        return;
+    }
+    const unsigned int* w = spirv.data();
+    const size_t n = spirv.size();
+
+    std::map<unsigned int, std::string> names;
+    std::map<unsigned int, S32> desc_sets;
+    std::map<unsigned int, S32> desc_bindings;
+    std::map<unsigned int, unsigned int> pointer_pointee;
+    std::map<unsigned int, unsigned int> sampled_image_image;
+    std::map<unsigned int, unsigned int> array_element;
+    std::map<unsigned int, std::pair<unsigned int, unsigned int>> image_dim_arrayed;
+
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        switch (opcode)
+        {
+        case 5u:
+            if (wordCount >= 3)
+            {
+                const char* s = reinterpret_cast<const char*>(&w[i + 2]);
+                const size_t maxlen = (size_t)(wordCount - 2) * sizeof(unsigned int);
+                size_t len = 0;
+                while (len < maxlen && s[len] != '\0')
+                {
+                    ++len;
+                }
+                names[w[i + 1]] = std::string(s, len);
+            }
+            break;
+        case 71u:
+            if (wordCount >= 4 && w[i + 2] == 34u)
+            {
+                desc_sets[w[i + 1]] = (S32)w[i + 3];
+            }
+            else if (wordCount >= 4 && w[i + 2] == 33u)
+            {
+                desc_bindings[w[i + 1]] = (S32)w[i + 3];
+            }
+            break;
+        case 25u:
+            if (wordCount >= 6)
+            {
+                image_dim_arrayed[w[i + 1]] = { w[i + 3], w[i + 5] };
+            }
+            break;
+        case 27u:
+            if (wordCount >= 3)
+            {
+                sampled_image_image[w[i + 1]] = w[i + 2];
+            }
+            break;
+        case 28u:
+        case 29u:
+            if (wordCount >= 3)
+            {
+                array_element[w[i + 1]] = w[i + 2];
+            }
+            break;
+        case 32u:
+            if (wordCount >= 4)
+            {
+                pointer_pointee[w[i + 1]] = w[i + 3];
+            }
+            break;
+        default:
+            break;
+        }
+        i += wordCount;
+    }
+
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        if (opcode == 59u && wordCount >= 4)
+        {
+            const unsigned int type_id = w[i + 1];
+            const unsigned int result_id = w[i + 2];
+            const unsigned int storage = w[i + 3];
+            auto sit = desc_sets.find(result_id);
+            auto bit = desc_bindings.find(result_id);
+            if (sit != desc_sets.end() && sit->second == 1 && bit != desc_bindings.end())
+            {
+                if (storage == 2u)
+                {
+                    out_ubo_bindings.push_back(bit->second);
+                }
+                else if (storage == 0u)
+                {
+                    auto pit = pointer_pointee.find(type_id);
+                    if (pit != pointer_pointee.end())
+                    {
+                        unsigned int t = pit->second;
+                        for (int guard = 0; guard < 4; ++guard)
+                        {
+                            auto ait = array_element.find(t);
+                            if (ait == array_element.end())
+                            {
+                                break;
+                            }
+                            t = ait->second;
+                        }
+                        auto siit = sampled_image_image.find(t);
+                        if (siit != sampled_image_image.end())
+                        {
+                            auto iit = image_dim_arrayed.find(siit->second);
+                            if (iit != image_dim_arrayed.end())
+                            {
+                                std::string var_name;
+                                auto nit = names.find(result_id);
+                                if (nit != names.end())
+                                {
+                                    var_name = nit->second;
+                                }
+                                out_samplers.push_back({ bit->second, var_name, iit->second.first, iit->second.second });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i += wordCount;
+    }
+}
+
 bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stages)
 {
     if (stages.empty())
@@ -1120,6 +1247,7 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     HBXXH128 program_hash_obj;
     program_hash_obj.update(std::string("vulkanize:v5_p2_inout_pair_prepass_group_fix"));
     program_hash_obj.update(std::string("auto_loc=1"));
+    program_hash_obj.update(std::string("spv_debug_names=1"));
     for (const auto& stage : stages)
     {
         program_hash_obj.update(stage.file_name);
@@ -1314,7 +1442,7 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
 
         glslang::SpvOptions spv_options;
         spv_options.generateDebugInfo = false;
-        spv_options.stripDebugInfo    = true;
+        spv_options.stripDebugInfo    = false;
         spv_options.disableOptimizer  = false;
         spv_options.validate          = false;
 
@@ -1386,6 +1514,46 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         else if (ss.type == GL_FRAGMENT_SHADER)
         {
             mVkHasFragmentPushConstant = (reflectPushConstantMaxOffsetFromSpirv(ss.spirv) >= 0);
+        }
+    }
+
+    for (const auto& ss : stage_spvs)
+    {
+        const U8 stage_mask = (ss.type == GL_FRAGMENT_SHADER) ? VKBS_FRAGMENT
+                            : (ss.type == GL_VERTEX_SHADER)   ? VKBS_VERTEX : (U8)0;
+        std::vector<VkSpirvSet1Sampler> samplers;
+        std::vector<S32> ubo_bindings;
+        reflectVkSet1BindingsFromSpirv(ss.spirv, samplers, ubo_bindings);
+        for (const auto& smp : samplers)
+        {
+            if (smp.binding < 0 || smp.binding >= (S32)MAX_VK_BINDING)
+            {
+                continue;
+            }
+            U8& t = mVkBindingDeclaredType[smp.binding];
+            t = (t == VKBD_NONE || t == VKBD_SAMPLER) ? (U8)VKBD_SAMPLER : (U8)VKBD_BOTH;
+            mVkBindingStageMask[smp.binding] |= stage_mask;
+            U8 dim = VKSD_2D;
+            if (smp.dim == 3u)
+            {
+                dim = smp.arrayed ? (U8)VKSD_CUBE_ARRAY : (U8)VKSD_CUBE;
+            }
+            else if (smp.dim == 2u)
+            {
+                dim = VKSD_3D;
+            }
+            mVkBindingSamplerDim[smp.binding] = dim;
+            mVkReflBindingSamplerNames.emplace_back(smp.binding, smp.name);
+        }
+        for (S32 ub : ubo_bindings)
+        {
+            if (ub < 0 || ub >= (S32)MAX_VK_BINDING)
+            {
+                continue;
+            }
+            U8& t = mVkBindingDeclaredType[ub];
+            t = (t == VKBD_NONE || t == VKBD_UBO) ? (U8)VKBD_UBO : (U8)VKBD_BOTH;
+            mVkBindingStageMask[ub] |= stage_mask;
         }
     }
 

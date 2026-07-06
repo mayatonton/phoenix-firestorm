@@ -172,7 +172,7 @@ layout(push_constant) uniform PBROpaqueFHud_PushConstants
     layout(offset = 80) vec3  emissiveColor;
 };
 layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
-layout(set = 1, binding = 2) uniform sampler2D emissiveMap;
+layout(set = 1, binding = 3) uniform sampler2D emissiveMap;
 
 layout(location = 0) out vec4 frag_color;
 

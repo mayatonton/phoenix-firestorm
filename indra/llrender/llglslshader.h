@@ -477,6 +477,8 @@ public:
     enum VkBindingSamplerDim : U8 { VKSD_2D = 0, VKSD_CUBE = 1, VKSD_CUBE_ARRAY = 2, VKSD_3D = 3 };
     std::array<U8, MAX_VK_BINDING> mVkBindingSamplerDim = {};
 
+    std::vector<std::pair<S32, std::string>> mVkReflBindingSamplerNames;
+
     U32 mVkPerProgramUBOBinding = 0;
 
     typedef bool (*SharedUBOAccessor)(VkBuffer& out_buffer, void*& out_mapped);
