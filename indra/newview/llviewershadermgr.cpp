@@ -2210,6 +2210,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSpotLightProgram.mFeatures.hasShadows = true;
 
         gDeferredSpotLightProgram.clearPermutations();
+        gDeferredSpotLightProgram.addPermutation("IS_SPOT", "1");
         gDeferredSpotLightProgram.mShaderFiles.push_back(make_pair("deferred/pointLightV.glsl", GL_VERTEX_SHADER));
         gDeferredSpotLightProgram.mShaderFiles.push_back(make_pair("deferred/spotLightF.glsl", GL_FRAGMENT_SHADER));
         gDeferredSpotLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
@@ -2278,7 +2279,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         llassert(success);
         if (success && LLVKLoader::isVulkanInitialized())
         {
-            gDeferredSunProgram.createVkPipeline(16);
+            gDeferredSunProgram.createVkPipeline(use_ao ? 0 : 16);
         }
     }
 

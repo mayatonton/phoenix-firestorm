@@ -58,7 +58,7 @@ in vec4 vertex_color; //vertex color should be treated as sRGB
 #ifdef LL_VULKAN_GLSL
 layout(set = 1, binding = 0, std140) uniform AlphaF_PerProgramBind {
     float minimum_alpha;
-    float _alphaF_pad0;
+    float near_clip;
     float _alphaF_pad1;
     float _alphaF_pad2;
 #ifndef FOR_IMPOSTOR

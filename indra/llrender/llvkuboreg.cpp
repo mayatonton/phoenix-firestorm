@@ -324,13 +324,6 @@ namespace
         UBOREG_M(FxaaShared_PerProgramBind, rcp_frame_opt2),
     };
 
-    constexpr MemberEntry kM_AlphaV[] = {
-        UBOREG_M(AlphaV_PerProgramBind, near_clip),
-        UBOREG_M(AlphaV_PerProgramBind, _alphaV_pad0),
-        UBOREG_M(AlphaV_PerProgramBind, _alphaV_pad1),
-        UBOREG_M(AlphaV_PerProgramBind, _alphaV_pad2),
-    };
-
     constexpr MemberEntry kM_AvatarVCloth[] = {
         UBOREG_M(AvatarVCloth_PerProgramBind, gWindDir),
         UBOREG_M(AvatarVCloth_PerProgramBind, gSinWaveParams),
@@ -465,11 +458,6 @@ namespace
         UBOREG_MN(PointLightPerDraw, pad1, "_ppd_pad1"),
     };
 
-    constexpr MemberEntry kM_PointLightV[] = {
-        UBOREG_M(PointLightV_PerProgramBind, center_plv),
-        UBOREG_M(PointLightV_PerProgramBind, size_plv),
-    };
-
     constexpr MemberEntry kM_PostF[] = {
         UBOREG_M(PostF_PerProgramBind, screen_res),
         UBOREG_M(PostF_PerProgramBind, max_cof),
@@ -579,12 +567,6 @@ namespace
         UBOREG_MN(SunLightF_PerProgramBind, pad0, "_sunLightF_pad0"),
     };
 
-    constexpr MemberEntry kM_SunLightV[] = {
-        UBOREG_M(SunLightV_PerProgramBind, screen_res_sunlightv),
-        UBOREG_M(SunLightV_PerProgramBind, _sunLightV_pad0),
-        UBOREG_M(SunLightV_PerProgramBind, _sunLightV_pad1),
-    };
-
     constexpr MemberEntry kM_TerrainV[] = {
         UBOREG_M(TerrainV_PerProgramBind, object_plane_s),
         UBOREG_M(TerrainV_PerProgramBind, object_plane_t),
@@ -620,13 +602,6 @@ namespace
         UBOREG_MN(WaterHazeF_PerProgramBind, _pad0, "_waterHazeF_pad0"),
         UBOREG_MN(WaterHazeF_PerProgramBind, _pad1, "_waterHazeF_pad1"),
         UBOREG_MN(WaterHazeF_PerProgramBind, _pad2, "_waterHazeF_pad2"),
-    };
-
-    constexpr MemberEntry kM_WaterHazeV[] = {
-        UBOREG_M(WaterHazeV_PerProgramBind, screen_res_wh),
-        UBOREG_M(WaterHazeV_PerProgramBind, above_water_wh),
-        UBOREG_M(WaterHazeV_PerProgramBind, _waterHazeV_pad0),
-        UBOREG_M(WaterHazeV_PerProgramBind, waterPlane_wh),
     };
 
 #define UBOREG_BLOCK(set, glsl_name, S, arr) \
@@ -670,7 +645,6 @@ namespace
         UBOREG_BLOCK(1, "DofCombineF_PerProgramBind",           DofCombineF_PerProgramBind,           kM_DofCombineF),
         UBOREG_BLOCK(1, "FsObjectIDF_PerProgramBind",           FsObjectIDF_PerProgramBind,           kM_FsObjectIDF),
         UBOREG_BLOCK(1, "FxaaShared_PerProgramBind",            FxaaShared_PerProgramBind,            kM_FxaaShared),
-        UBOREG_BLOCK(1, "AlphaV_PerProgramBind",                AlphaV_PerProgramBind,                kM_AlphaV),
         UBOREG_BLOCK(1, "AvatarVCloth_PerProgramBind",          AvatarVCloth_PerProgramBind,          kM_AvatarVCloth),
         UBOREG_BLOCK(1, "BlurLightF_PerProgramBind",            BlurLightF_PerProgramBind,            kM_BlurLightF),
         UBOREG_BLOCK(1, "Cloud_PerProgramBind",                 Cloud_PerProgramBind,                 kM_Cloud),
@@ -688,7 +662,6 @@ namespace
         UBOREG_BLOCK(1, "OneTextureFilter_PerProgramBind",      OneTextureFilter_PerProgramBind,      kM_OneTextureFilter),
         UBOREG_BLOCK(1, "Pathfinding_PerProgramBind",           Pathfinding_PerProgramBind,           kM_Pathfinding),
         UBOREG_BLOCK(1, "PointLightPerDraw",                    PointLightPerDraw,                    kM_PointLightPerDraw),
-        UBOREG_BLOCK(1, "PointLightV_PerProgramBind",           PointLightV_PerProgramBind,           kM_PointLightV),
         UBOREG_BLOCK(1, "PostF_PerProgramBind",                 PostF_PerProgramBind,                 kM_PostF),
         UBOREG_BLOCK(1, "PostHQDoFF_PerProgramBind",            PostF_PerProgramBind,                 kM_PostHQDoFF),
         UBOREG_BLOCK(1, "PostNoDoFF_PerProgramBind",            PostNoDoFF_PerProgramBind,            kM_PostNoDoFF),
@@ -704,13 +677,11 @@ namespace
         UBOREG_BLOCK(1, "SpotLightPerDraw",                     SpotLightPerDraw,                     kM_SpotLightPerDraw),
         UBOREG_BLOCK(1, "SunDiscF_PerProgramBind",              SunDiscF_PerProgramBind,              kM_SunDiscF),
         UBOREG_BLOCK(1, "SunLightF_PerProgramBind",             SunLightF_PerProgramBind,             kM_SunLightF),
-        UBOREG_BLOCK(1, "SunLightV_PerProgramBind",             SunLightV_PerProgramBind,             kM_SunLightV),
         UBOREG_BLOCK(1, "TerrainV_PerProgramBind",              TerrainV_PerProgramBind,              kM_TerrainV),
         UBOREG_BLOCK(1, "TwoTextureCompare_PerProgramBind",     TwoTextureCompare_PerProgramBind,     kM_TwoTextureCompare),
         UBOREG_BLOCK(1, "UnderWaterF_PerProgramBind",           UnderWaterF_PerProgramBind,           kM_UnderWaterF),
         UBOREG_BLOCK(1, "WaterF_PerProgramBind",                WaterF_PerProgramBind,                kM_WaterF),
         UBOREG_BLOCK(1, "WaterHazeF_PerProgramBind",            WaterHazeF_PerProgramBind,            kM_WaterHazeF),
-        UBOREG_BLOCK(1, "WaterHazeV_PerProgramBind",            WaterHazeV_PerProgramBind,            kM_WaterHazeV),
     };
 
 #undef UBOREG_BLOCK
@@ -899,10 +870,12 @@ namespace
         if (bs == LLVKLoader::ALPHAF_UBO_SIZE_IMPOSTOR)
         {
             expect("minimum_alpha", 0, (U32)sizeof(F32));
+            expect("near_clip", LLVKLoader::ALPHAF_UBO_OFFSET_NEAR_CLIP, (U32)sizeof(F32));
         }
         else if (bs == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW || bs == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW)
         {
             expect("minimum_alpha", 0, (U32)sizeof(F32));
+            expect("near_clip", LLVKLoader::ALPHAF_UBO_OFFSET_NEAR_CLIP, (U32)sizeof(F32));
             U32 lights_offset = LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_SHADOW;
             if (bs == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW)
             {

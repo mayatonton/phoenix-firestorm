@@ -11400,6 +11400,17 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         memcpy(mapped + LLVKLoader::ALPHAF_UBO_OFFSET_SUN_MOON, sun_moon, sizeof(sun_moon));
     }
 
+    if (LLVKLoader::isVulkanInitialized() && shader.mWritePerProgramUBOMinimumAlpha
+        && shader.mVkPerProgramUBO != VK_NULL_HANDLE
+        && shader.mVkPerProgramUBOMapped != nullptr
+        && (shader.mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
+            || shader.mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))
+    {
+        char* mapped = (char*)shader.mVkPerProgramUBOMapped;
+        const F32 near_clip_v = LLViewerCamera::getInstance()->getNear() * 2.f;
+        memcpy(mapped + LLVKLoader::ALPHAF_UBO_OFFSET_NEAR_CLIP, &near_clip_v, sizeof(F32));
+    }
+
     if (LLVKLoader::isVulkanInitialized() && shader.mVkPerProgramUBO != VK_NULL_HANDLE
         && shader.mVkPerProgramUBOMapped != nullptr
         && shader.mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW)

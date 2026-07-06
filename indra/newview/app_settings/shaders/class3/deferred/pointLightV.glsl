@@ -46,13 +46,35 @@ uniform mat4 modelview_projection_matrix;
 #endif
 
 #ifdef LL_VULKAN_GLSL
-layout(set = 1, binding = 0, std140) uniform PointLightV_PerProgramBind
+#ifdef IS_SPOT
+layout(set = 1, binding = 0, std140) uniform SpotLightPerDraw
 {
-    vec3 center_plv;
-    float size_plv;
-};
-#define _centerPLV center_plv
-#define _sizePLV size_plv
+    vec3  center;
+    float size;
+    vec3  proj_origin;
+    float falloff;
+    float shadow_fade;
+    float global_light_strength;
+    int   proj_shadow_idx;
+    int   classic_mode;
+} sl;
+#define _centerPLV sl.center
+#define _sizePLV sl.size
+#else
+layout(set = 1, binding = 0, std140) uniform PointLightPerDraw
+{
+    vec3  center;
+    float size;
+    vec3  color;
+    float falloff;
+    float global_light_strength;
+    int   classic_mode;
+    float _ppd_pad0;
+    float _ppd_pad1;
+} pl;
+#define _centerPLV pl.center
+#define _sizePLV pl.size
+#endif
 layout(location = 0) in vec3 position;
 layout(location = 0) out vec4 vary_fragcoord;
 layout(location = 1) out vec3 trans_center;

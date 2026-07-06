@@ -658,16 +658,6 @@ namespace LLVKLoader
     static_assert(sizeof(FxaaShared_PerProgramBind) == 48,
                   "FxaaShared_PerProgramBind size mismatch (std140 expects 48 B)");
 
-    struct AlphaV_PerProgramBind
-    {
-        float near_clip;
-        float _alphaV_pad0;
-        float _alphaV_pad1;
-        float _alphaV_pad2;
-    };
-    static_assert(sizeof(AlphaV_PerProgramBind) == 16,
-                  "AlphaV_PerProgramBind size mismatch (std140 expects 16 B)");
-
     struct AvatarVCloth_PerProgramBind
     {
         float gWindDir[4];
@@ -873,14 +863,6 @@ namespace LLVKLoader
     static_assert(sizeof(PointLightPerDraw) == 48,
                   "PointLightPerDraw size mismatch (std140 expects 48 B)");
 
-    struct PointLightV_PerProgramBind
-    {
-        float center_plv[3];
-        float size_plv;
-    };
-    static_assert(sizeof(PointLightV_PerProgramBind) == 16,
-                  "PointLightV_PerProgramBind size mismatch (std140 expects 16 B)");
-
     struct PostF_PerProgramBind
     {
         float screen_res[2];
@@ -1041,15 +1023,6 @@ namespace LLVKLoader
     static_assert(sizeof(SunLightF_PerProgramBind) == 16,
                   "SunLightF_PerProgramBind size mismatch (std140 expects 16 B)");
 
-    struct SunLightV_PerProgramBind
-    {
-        float screen_res_sunlightv[2];
-        float _sunLightV_pad0;
-        float _sunLightV_pad1;
-    };
-    static_assert(sizeof(SunLightV_PerProgramBind) == 16,
-                  "SunLightV_PerProgramBind size mismatch (std140 expects 16 B)");
-
     struct TerrainV_PerProgramBind
     {
         float object_plane_s[4];
@@ -1102,16 +1075,6 @@ namespace LLVKLoader
     static_assert(sizeof(WaterHazeF_PerProgramBind) == 16,
                   "WaterHazeF_PerProgramBind size mismatch (std140 expects 16 B)");
 
-    struct WaterHazeV_PerProgramBind
-    {
-        float screen_res_wh[2];
-        S32   above_water_wh;
-        float _waterHazeV_pad0;
-        float waterPlane_wh[4];
-    };
-    static_assert(sizeof(WaterHazeV_PerProgramBind) == 32,
-                  "WaterHazeV_PerProgramBind size mismatch (std140 expects 32 B)");
-
     struct CasF_PerProgramBind
     {
         float out_screen_res_uniform[2];
@@ -1129,6 +1092,7 @@ namespace LLVKLoader
     static constexpr U32 ALPHAF_UBO_SIZE_IMPOSTOR  = 16;
     static constexpr U32 ALPHAF_UBO_SIZE_SHADOW    = 528;
     static constexpr U32 ALPHAF_UBO_SIZE_NO_SHADOW = 560;
+    static constexpr U32 ALPHAF_UBO_OFFSET_NEAR_CLIP = 4;
     static constexpr U32 ALPHAF_UBO_OFFSET_SUN_MOON = 16;
     static constexpr U32 ALPHAF_UBO_OFFSET_LIGHTS_SHADOW    = 16;
     static constexpr U32 ALPHAF_UBO_OFFSET_LIGHTS_NO_SHADOW = 48;

@@ -36,14 +36,14 @@ void setAtmosAttenuation(vec3 c);
 void setAdditiveColor(vec3 c);
 
 #ifdef LL_VULKAN_GLSL
-layout(set = 1, binding = 0, std140) uniform WaterHazeV_PerProgramBind
+layout(set = 1, binding = 0, std140) uniform WaterHazeF_PerProgramBind
 {
-    vec2  screen_res_wh;
-    int   above_water_wh;
-    float _waterHazeV_pad0;
-    vec4  waterPlane_wh;
+    int above_water;             // offset 0  (4 B)
+    int _waterHazeF_pad0;        // offset 4  (4 B)
+    int _waterHazeF_pad1;        // offset 8  (4 B)
+    int _waterHazeF_pad2;        // offset 12 (4 B)
 };
-#define _aboveWaterWH above_water_wh
+#define _aboveWaterWH above_water
 #else
 uniform vec2 screen_res;
 uniform vec4 waterPlane;

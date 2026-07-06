@@ -1236,6 +1236,9 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
                         memcpy(base + 0, &cur_min_alpha, sizeof(F32));
 
+                        const F32 near_clip_v = LLViewerCamera::getInstance()->getNear() * 2.f;
+                        memcpy(base + LLVKLoader::ALPHAF_UBO_OFFSET_NEAR_CLIP, &near_clip_v, sizeof(F32));
+
                         if (no_shadow)
                         {
                             F32 sun_moon[8] = {

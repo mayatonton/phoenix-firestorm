@@ -126,12 +126,23 @@ out vec3 vary_norm;
 #endif
 
 #ifdef LL_VULKAN_GLSL
-layout(set = 1, binding = 0, std140) uniform AlphaV_PerProgramBind
-{
+layout(set = 1, binding = 0, std140) uniform AlphaF_PerProgramBind {
+    float minimum_alpha;
     float near_clip;
-    float _alphaV_pad0;
-    float _alphaV_pad1;
-    float _alphaV_pad2;
+    float _alphaF_pad1;
+    float _alphaF_pad2;
+#ifndef FOR_IMPOSTOR
+#ifndef HAS_SUN_SHADOW
+    vec3 sun_dir_alphaf;
+    float _alphaF_pad3;
+    vec3 moon_dir_alphaf;
+    float _alphaF_pad4;
+#endif
+    vec4 light_position[8];
+    vec4 light_direction[8];
+    vec4 light_attenuation[8];
+    vec4 light_diffuse[8];
+#endif
 };
 #else
 uniform float near_clip;
