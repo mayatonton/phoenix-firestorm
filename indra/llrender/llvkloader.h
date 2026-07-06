@@ -1106,6 +1106,9 @@ namespace LLVKLoader
     static constexpr U32 GLTFMR_UBO_OFFSET_LIGHTS_SUNSHADOW =  16;
     static constexpr U32 GLTFMR_UBO_OFFSET_LIGHTS_NOSHADOW  =  48;
 
+    static constexpr U32 PBRALPHAF_UBO_SIZE_SHADOW    = 672;
+    static constexpr U32 PBRALPHAF_UBO_SIZE_NO_SHADOW  = 704;
+
     void destroyBufferVk     (VkBuffer  buffer,
                               void*     allocation);
     void tickDeferredBufferFreeQueue();

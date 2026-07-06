@@ -2002,10 +2002,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         if (success && LLVKLoader::isVulkanInitialized())
         {
-            shader->createVkPipeline(720);
+            shader->createVkPipeline(use_sun_shadow ? LLVKLoader::PBRALPHAF_UBO_SIZE_SHADOW : LLVKLoader::PBRALPHAF_UBO_SIZE_NO_SHADOW);
             if (shader->mRiggedVariant != nullptr && shader->mRiggedVariant != shader)
             {
-                shader->mRiggedVariant->createVkPipeline(720);
+                shader->mRiggedVariant->createVkPipeline(use_sun_shadow ? LLVKLoader::PBRALPHAF_UBO_SIZE_SHADOW : LLVKLoader::PBRALPHAF_UBO_SIZE_NO_SHADOW);
             }
             if (shader->mRiggedVariant != nullptr && shader->mRiggedVariant != shader)
             {
