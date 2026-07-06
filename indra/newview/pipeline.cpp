@@ -5377,6 +5377,7 @@ void LLPipeline::compositeForwardFlip()
     // Restore default blend func so subsequent passes aren't surprised.
     gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_ZERO,
                   LLRender::BF_ONE, LLRender::BF_ZERO);
+    gGL.setColorMask(true, true);
 
     getFrameRT()->screen.flush();
 }
