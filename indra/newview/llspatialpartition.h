@@ -287,6 +287,23 @@ public:
         }
     };
 
+    struct CompareDepthGreaterRiggedRun
+    {
+        bool operator()(const LLSpatialGroup* const& lhs, const LLSpatialGroup* const& rhs)
+        {
+            if (lhs->mAvatarp != rhs->mAvatarp)
+            {
+                if (lhs->mDepth != rhs->mDepth)
+                {
+                    return lhs->mDepth > rhs->mDepth;
+                }
+                return lhs->mAvatarp < rhs->mAvatarp;
+            }
+
+            return lhs->mRenderOrder > rhs->mRenderOrder;
+        }
+    };
+
     typedef enum
     {
         GEOM_DIRTY              = LLViewerOctreeGroup::INVALID_STATE,

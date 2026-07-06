@@ -66,12 +66,13 @@ public:
     // </AYAstorm r30 P2>
 
     void forwardRender(bool write_depth = false);
+    void forwardRenderMerged();
     /*virtual*/ void prerender();
 
     void renderDebugAlpha();
 
     void renderGroupAlpha(LLSpatialGroup* group, U32 type, U32 mask, bool texture = true);
-    void renderAlpha(U32 mask, bool depth_only = false, bool rigged = false);
+    void renderAlpha(U32 mask, bool depth_only = false, bool rigged = false, bool unified = false);
     void renderAlphaHighlight();
 
     static bool sShowDebugAlpha;

@@ -58,6 +58,8 @@
 
 #include "llenvironment.h"
 
+#include <optional>
+
 bool LLDrawPoolAlpha::sShowDebugAlpha = false;
 bool LLDrawPoolAlpha::sShowDebugAlphaRigged = false;
 
@@ -322,11 +324,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     if (!LLPipelineFrameContext::getInstance().isHUDPass() &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
-        // back-to-front: non-rigged (background — windows / foliage) 先 →
-        // rigged (foreground — hair) 後。use_alpha_rt 時は mAYAAlphaColor
-        // 上で同じ順序で over-blend、非使用時は mRT->screen 上で同様。
-        forwardRender();
-        forwardRender(true);
+        forwardRenderMerged();
     }
     else
     {
@@ -494,6 +492,54 @@ void LLDrawPoolAlpha::forwardRender(bool rigged)
         // NOTE -- hacky call here protected by !rigged instead of alongside "forwardRender"
         // so renderDebugAlpha is executed while gls_pipeline_alpha and depth GL state
         // variables above are still in scope
+        renderDebugAlpha();
+    }
+}
+
+void LLDrawPoolAlpha::forwardRenderMerged()
+{
+    gPipeline.enableLightsDynamic();
+
+    LLGLSPipelineAlpha gls_pipeline_alpha;
+
+    gGL.setColorMask(true, true);
+
+    bool write_depth =
+        LLDrawPoolWater::sSkipScreenCopy
+        || LLPipeline::sImpostorRenderAlphaDepthPass
+        || getType() == LLDrawPoolAlpha::POOL_ALPHA_PRE_WATER;
+
+    LLGLDepthTest depth(GL_TRUE, write_depth ? GL_TRUE : GL_FALSE);
+
+    mColorSFactor = LLRender::BF_SOURCE_ALPHA;
+    mColorDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;
+    if (mForwardToAlphaRT)
+    {
+        mAlphaSFactor = LLRender::BF_ONE;
+        mAlphaDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;
+    }
+    else
+    {
+        mAlphaSFactor = LLRender::BF_ZERO;
+        mAlphaDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;
+    }
+    gGL.blendFunc(mColorSFactor, mColorDFactor, mAlphaSFactor, mAlphaDFactor);
+
+    if (mType == LLDrawPool::POOL_ALPHA_POST_WATER)
+    {
+        LLGLDepthTest gltf_depth(GL_TRUE, GL_TRUE);
+        LL::GLTFSceneManager::instance().render(false, false);
+        LL::GLTFSceneManager::instance().render(false, true);
+        LL::GLTFSceneManager::instance().render(false, false, true);
+        LL::GLTFSceneManager::instance().render(false, true, true);
+    }
+
+    renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, false, false, true);
+
+    gGL.setColorMask(true, false);
+
+    if (getType() == LLDrawPoolAlpha::POOL_ALPHA_POST_WATER)
+    {
         renderDebugAlpha();
     }
 }
@@ -802,7 +848,7 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
     }
 }
 
-void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
+void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool unified)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     bool initialized_lighting = false;
@@ -813,19 +859,47 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
     const LLGLSLShader* lastAvatarShader = nullptr;
     bool skipLastSkin = false;
 
-    LLCullResult::sg_iterator begin;
-    LLCullResult::sg_iterator end;
+    std::vector<std::pair<LLSpatialGroup*, bool>> render_groups;
 
-    if (rigged)
+    if (unified)
     {
-        begin = gPipeline.beginRiggedAlphaGroups();
-        end = gPipeline.endRiggedAlphaGroups();
+        LLCullResult::sg_iterator ai = gPipeline.beginAlphaGroups();
+        LLCullResult::sg_iterator ae = gPipeline.endAlphaGroups();
+        LLCullResult::sg_iterator ri = gPipeline.beginRiggedAlphaGroups();
+        LLCullResult::sg_iterator re = gPipeline.endRiggedAlphaGroups();
+        while (ai != ae || ri != re)
+        {
+            if (ri == re || (ai != ae && (*ai)->mDepth >= (*ri)->mDepth))
+            {
+                render_groups.emplace_back(*ai, false);
+                ++ai;
+            }
+            else
+            {
+                render_groups.emplace_back(*ri, true);
+                ++ri;
+            }
+        }
+    }
+    else if (rigged)
+    {
+        for (LLCullResult::sg_iterator i = gPipeline.beginRiggedAlphaGroups(); i != gPipeline.endRiggedAlphaGroups(); ++i)
+        {
+            render_groups.emplace_back(*i, true);
+        }
     }
     else
     {
-        begin = gPipeline.beginAlphaGroups();
-        end = gPipeline.endAlphaGroups();
+        for (LLCullResult::sg_iterator i = gPipeline.beginAlphaGroups(); i != gPipeline.endAlphaGroups(); ++i)
+        {
+            render_groups.emplace_back(*i, false);
+        }
     }
+
+    bool unified_base_write_depth =
+        LLDrawPoolWater::sSkipScreenCopy
+        || LLPipeline::sImpostorRenderAlphaDepthPass
+        || getType() == LLDrawPoolAlpha::POOL_ALPHA_PRE_WATER;
 
     LLEnvironment& env = LLEnvironment::instance();
     F32 water_height = env.getWaterHeight();
@@ -837,10 +911,16 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
     }
 
 
-    for (LLCullResult::sg_iterator i = begin; i != end; ++i)
+    for (const std::pair<LLSpatialGroup*, bool>& render_entry : render_groups)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("renderAlpha - group");
-        LLSpatialGroup* group = *i;
+        LLSpatialGroup* group = render_entry.first;
+        const bool group_rigged = render_entry.second;
+        std::optional<LLGLDepthTest> unified_depth;
+        if (unified)
+        {
+            unified_depth.emplace(GL_TRUE, (group_rigged || unified_base_write_depth) ? GL_TRUE : GL_FALSE);
+        }
         llassert(group);
         llassert(group->getSpatialPartition());
 
@@ -894,12 +974,12 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
             bool disable_cull = is_particle_or_hud_particle;
             LLGLDisable cull(disable_cull ? GL_CULL_FACE : 0);
 
-            LLSpatialGroup::drawmap_elem_t& draw_info = rigged ? group->mDrawMap[LLRenderPass::PASS_ALPHA_RIGGED] : group->mDrawMap[LLRenderPass::PASS_ALPHA];
+            LLSpatialGroup::drawmap_elem_t& draw_info = group_rigged ? group->mDrawMap[LLRenderPass::PASS_ALPHA_RIGGED] : group->mDrawMap[LLRenderPass::PASS_ALPHA];
 
             for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k)
             {
                 LLDrawInfo& params = **k;
-                if ((bool)params.mAvatar != rigged)
+                if ((bool)params.mAvatar != group_rigged)
                 {
                     continue;
                 }

@@ -4715,11 +4715,32 @@ void LLPipeline::postSort(LLCamera &camera)
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("sort alpha groups");
     if (!isFrameShadowPass())
     {
+        if (LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD && !gCubeSnapshot)
+        {
+            const LLVector3& cam_origin = camera.getOrigin();
+            const LLVector3& cam_at = camera.getAtAxis();
+            for (LLCullResult::sg_iterator iter = getFrameCull()->beginRiggedAlphaGroups(); iter != getFrameCull()->endRiggedAlphaGroups(); ++iter)
+            {
+                LLSpatialGroup* rgroup = *iter;
+                LLVOAvatar* av = rgroup->mAvatarp;
+                if (av && av->mDrawable)
+                {
+                    const LLVector3* av_box = av->getLastAnimExtents();
+                    LLVector3 center = (av_box[0] + av_box[1]) * 0.5f - cam_origin;
+                    LLVector3 half = (av_box[1] - av_box[0]) * 0.5f;
+                    rgroup->mDepth = center * cam_at
+                        - (fabsf(cam_at.mV[0]) * half.mV[0]
+                         + fabsf(cam_at.mV[1]) * half.mV[1]
+                         + fabsf(cam_at.mV[2]) * half.mV[2]);
+                }
+            }
+        }
+
         // order alpha groups by distance
         std::sort(getFrameCull()->beginAlphaGroups(), getFrameCull()->endAlphaGroups(), LLSpatialGroup::CompareDepthGreater());
 
         // order rigged alpha groups by avatar attachment order
-        std::sort(getFrameCull()->beginRiggedAlphaGroups(), getFrameCull()->endRiggedAlphaGroups(), LLSpatialGroup::CompareRenderOrder());
+        std::sort(getFrameCull()->beginRiggedAlphaGroups(), getFrameCull()->endRiggedAlphaGroups(), LLSpatialGroup::CompareDepthGreaterRiggedRun());
     }
     }
 
