@@ -943,18 +943,11 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
             gNormalMapGenProgram.uniform1f(sStepY, 1.f / bump->getHeight());
             gNormalMapGenProgram.uniform1i(sBumpCode, bump_code);
 
-            struct NormgenF_UBO
-            {
-                F32 stepX;
-                F32 stepY;
-                F32 norm_scale;
-                S32 bump_code;
-            };
             if (LLVKLoader::isVulkanInitialized()
                 && gNormalMapGenProgram.mVkPerProgramUBOMapped != nullptr
-                && gNormalMapGenProgram.mVkPerProgramUBOSize >= sizeof(NormgenF_UBO))
+                && gNormalMapGenProgram.mVkPerProgramUBOSize >= sizeof(LLVKLoader::NormgenF_PerProgramBind))
             {
-                NormgenF_UBO ubo_data{};
+                LLVKLoader::NormgenF_PerProgramBind ubo_data{};
                 ubo_data.stepX      = 1.f / bump->getWidth();
                 ubo_data.stepY      = 1.f / bump->getHeight();
                 ubo_data.norm_scale = gSavedSettings.getF32("RenderNormalMapScale");

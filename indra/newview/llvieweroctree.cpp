@@ -1290,14 +1290,7 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                         if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
                             && shader->mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct OcclusionCube_UBO
-                            {
-                                F32 box_center[3];
-                                F32 _pad0;
-                                F32 box_size[3];
-                                F32 _pad1;
-                            };
-                            OcclusionCube_UBO ubo_data = {};
+                            LLVKLoader::OcclusionCube_PerProgramBind ubo_data = {};
                             const F32* bc = bounds[0].getF32ptr();
                             ubo_data.box_center[0] = bc[0];
                             ubo_data.box_center[1] = bc[1];

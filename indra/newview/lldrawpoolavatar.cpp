@@ -47,6 +47,7 @@
 #include "llpipelineframecontext.h"
 #include "llviewershadermgr.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llvovolume.h"
 #include "llvolume.h"
 #include "llappviewer.h"
@@ -511,14 +512,7 @@ void LLDrawPoolAvatar::beginImpostor()
             && gImpostorProgram.mVkPerProgramUBO != VK_NULL_HANDLE
             && gImpostorProgram.mVkPerProgramUBOMapped != nullptr)
         {
-            struct ImpostorF_UBO
-            {
-                F32 minimum_alpha;
-                F32 pad0;
-                F32 pad1;
-                F32 pad2;
-            };
-            ImpostorF_UBO ubo_data = {};
+            LLVKLoader::ImpostorF_UBO ubo_data = {};
             ubo_data.minimum_alpha = 0.01f;
             memcpy(gImpostorProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
         }
@@ -587,14 +581,7 @@ void LLDrawPoolAvatar::beginDeferredImpostor()
         && gDeferredImpostorProgram.mVkPerProgramUBO != VK_NULL_HANDLE
         && gDeferredImpostorProgram.mVkPerProgramUBOMapped != nullptr)
     {
-        struct ImpostorF_UBO
-        {
-            F32 minimum_alpha;
-            F32 pad0;
-            F32 pad1;
-            F32 pad2;
-        };
-        ImpostorF_UBO ubo_data = {};
+        LLVKLoader::ImpostorF_UBO ubo_data = {};
         ubo_data.minimum_alpha = 0.01f;
         memcpy(gDeferredImpostorProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
     }
@@ -947,7 +934,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
                     if (cmd != VK_NULL_HANDLE)
                     {
                         vkCmdPushConstants(cmd, sVertexProgram->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                           68, sizeof(F32), &sssFlag);
+                                           LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
                     }
                 }
             }
@@ -1011,7 +998,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
                     if (cmd != VK_NULL_HANDLE)
                     {
                         vkCmdPushConstants(cmd, sVertexProgram->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                           68, sizeof(F32), &sssFlag);
+                                           LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
                     }
                 }
             }

@@ -44,6 +44,7 @@
 #endif
 
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
@@ -589,12 +590,16 @@ bool LLGLSLShader::createShader()
 
     mVkReflBindingSamplerNames.clear();
 
+    mVkReflUboBlocks.clear();
+    mVkReflPushConstants.clear();
+
     mVkEnumBoundView.clear();
     mChannelToEnum.clear();
 
     if (success && LLVKLoader::isVulkanInitialized() && !mStageSources.empty())
     {
         generatePerProgramSPIRV(mStageSources);
+        LLVkUboReg::verifyProgramLayout(*this);
     }
     mStageSources.clear();
     mStageSources.shrink_to_fit();
@@ -1265,6 +1270,301 @@ static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spir
     }
 }
 
+static void reflectVkUboLayoutsFromSpirv(const std::vector<unsigned int>& spirv,
+                                         U8 stage_mask,
+                                         std::vector<VkReflUboBlock>& out_blocks,
+                                         std::vector<VkReflUboBlock>& out_push_constants)
+{
+    if (spirv.size() < 5)
+    {
+        return;
+    }
+    const unsigned int* w = spirv.data();
+    const size_t n = spirv.size();
+
+    std::map<unsigned int, std::string> names;
+    std::map<unsigned int, std::map<unsigned int, std::string>> member_names;
+    std::map<unsigned int, S32> desc_sets;
+    std::map<unsigned int, S32> desc_bindings;
+    std::map<unsigned int, unsigned int> array_strides;
+    std::map<unsigned int, std::map<unsigned int, unsigned int>> member_offsets;
+    std::map<unsigned int, std::map<unsigned int, unsigned int>> member_matrix_strides;
+    std::map<unsigned int, unsigned int> const_values;
+    std::map<unsigned int, unsigned int> scalar_sizes;
+    std::map<unsigned int, std::pair<unsigned int, unsigned int>> vector_info;
+    std::map<unsigned int, std::pair<unsigned int, unsigned int>> matrix_info;
+    std::map<unsigned int, std::pair<unsigned int, unsigned int>> array_info;
+    std::set<unsigned int> runtime_arrays;
+    std::map<unsigned int, std::vector<unsigned int>> struct_members;
+    std::map<unsigned int, unsigned int> pointer_pointee;
+
+    auto read_string = [&](size_t word_idx, unsigned int word_count_avail) -> std::string
+    {
+        const char* s = reinterpret_cast<const char*>(&w[word_idx]);
+        const size_t maxlen = (size_t)word_count_avail * sizeof(unsigned int);
+        size_t len = 0;
+        while (len < maxlen && s[len] != '\0')
+        {
+            ++len;
+        }
+        return std::string(s, len);
+    };
+
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        switch (opcode)
+        {
+        case 5u:
+            if (wordCount >= 3)
+            {
+                names[w[i + 1]] = read_string(i + 2, wordCount - 2);
+            }
+            break;
+        case 6u:
+            if (wordCount >= 4)
+            {
+                member_names[w[i + 1]][w[i + 2]] = read_string(i + 3, wordCount - 3);
+            }
+            break;
+        case 71u:
+            if (wordCount >= 4 && w[i + 2] == 34u)
+            {
+                desc_sets[w[i + 1]] = (S32)w[i + 3];
+            }
+            else if (wordCount >= 4 && w[i + 2] == 33u)
+            {
+                desc_bindings[w[i + 1]] = (S32)w[i + 3];
+            }
+            else if (wordCount >= 4 && w[i + 2] == 6u)
+            {
+                array_strides[w[i + 1]] = w[i + 3];
+            }
+            break;
+        case 72u:
+            if (wordCount >= 5 && w[i + 3] == 35u)
+            {
+                member_offsets[w[i + 1]][w[i + 2]] = w[i + 4];
+            }
+            else if (wordCount >= 5 && w[i + 3] == 7u)
+            {
+                member_matrix_strides[w[i + 1]][w[i + 2]] = w[i + 4];
+            }
+            break;
+        case 43u:
+            if (wordCount >= 4)
+            {
+                const_values[w[i + 2]] = w[i + 3];
+            }
+            break;
+        case 20u:
+            if (wordCount >= 2)
+            {
+                scalar_sizes[w[i + 1]] = 4u;
+            }
+            break;
+        case 21u:
+        case 22u:
+            if (wordCount >= 3)
+            {
+                scalar_sizes[w[i + 1]] = w[i + 2] / 8u;
+            }
+            break;
+        case 23u:
+            if (wordCount >= 4)
+            {
+                vector_info[w[i + 1]] = { w[i + 2], w[i + 3] };
+            }
+            break;
+        case 24u:
+            if (wordCount >= 4)
+            {
+                matrix_info[w[i + 1]] = { w[i + 2], w[i + 3] };
+            }
+            break;
+        case 28u:
+            if (wordCount >= 4)
+            {
+                array_info[w[i + 1]] = { w[i + 2], w[i + 3] };
+            }
+            break;
+        case 29u:
+            runtime_arrays.insert(w[i + 1]);
+            break;
+        case 30u:
+            {
+                std::vector<unsigned int>& members = struct_members[w[i + 1]];
+                for (unsigned int m = 2; m < wordCount; ++m)
+                {
+                    members.push_back(w[i + m]);
+                }
+            }
+            break;
+        case 32u:
+            if (wordCount >= 4)
+            {
+                pointer_pointee[w[i + 1]] = w[i + 3];
+            }
+            break;
+        default:
+            break;
+        }
+        i += wordCount;
+    }
+
+    auto compute_member_size = [&](unsigned int type_id, unsigned int matrix_stride) -> U32
+    {
+        auto sit = scalar_sizes.find(type_id);
+        if (sit != scalar_sizes.end())
+        {
+            return (U32)sit->second;
+        }
+        auto vit = vector_info.find(type_id);
+        if (vit != vector_info.end())
+        {
+            auto cit = scalar_sizes.find(vit->second.first);
+            return (cit != scalar_sizes.end()) ? (U32)(vit->second.second * cit->second) : 0u;
+        }
+        auto mit = matrix_info.find(type_id);
+        if (mit != matrix_info.end())
+        {
+            return (matrix_stride != 0) ? (U32)(mit->second.second * matrix_stride) : 0u;
+        }
+        auto ait = array_info.find(type_id);
+        if (ait != array_info.end())
+        {
+            auto stride_it = array_strides.find(type_id);
+            auto len_it = const_values.find(ait->second.second);
+            if (stride_it != array_strides.end() && len_it != const_values.end())
+            {
+                return (U32)(stride_it->second * len_it->second);
+            }
+            return 0u;
+        }
+        return 0u;
+    };
+
+    auto build_block = [&](unsigned int struct_id, S32 set, S32 binding, std::vector<VkReflUboBlock>& out)
+    {
+        VkReflUboBlock block;
+        block.set = set;
+        block.binding = binding;
+        block.stage_mask = stage_mask;
+        auto nit = names.find(struct_id);
+        block.block_name = (nit != names.end()) ? nit->second : std::string();
+        block.block_size = 0;
+
+        auto smit = struct_members.find(struct_id);
+        if (smit != struct_members.end())
+        {
+            const auto& offs = member_offsets[struct_id];
+            const auto& mstrides = member_matrix_strides[struct_id];
+            const auto& mnames = member_names[struct_id];
+            bool size_complete = true;
+            U32 max_end = 0;
+            for (unsigned int idx = 0; idx < (unsigned int)smit->second.size(); ++idx)
+            {
+                auto oit = offs.find(idx);
+                if (oit == offs.end())
+                {
+                    continue;
+                }
+                VkReflUboMember member;
+                auto mnit = mnames.find(idx);
+                member.name = (mnit != mnames.end()) ? mnit->second : std::string();
+                member.offset = (U32)oit->second;
+                unsigned int mstride = 0;
+                auto msit = mstrides.find(idx);
+                if (msit != mstrides.end())
+                {
+                    mstride = msit->second;
+                }
+                member.size = compute_member_size(smit->second[idx], mstride);
+                if (member.size == 0)
+                {
+                    size_complete = false;
+                }
+                else if (member.offset + member.size > max_end)
+                {
+                    max_end = member.offset + member.size;
+                }
+                block.members.push_back(member);
+            }
+            block.block_size = size_complete ? max_end : 0u;
+        }
+
+        for (VkReflUboBlock& existing : out)
+        {
+            if (existing.set == block.set && existing.binding == block.binding
+                && existing.block_name == block.block_name)
+            {
+                bool same_layout = (existing.members.size() == block.members.size());
+                if (same_layout)
+                {
+                    for (size_t k = 0; k < block.members.size(); ++k)
+                    {
+                        if (existing.members[k].name != block.members[k].name
+                            || existing.members[k].offset != block.members[k].offset
+                            || existing.members[k].size != block.members[k].size)
+                        {
+                            same_layout = false;
+                            break;
+                        }
+                    }
+                }
+                if (same_layout)
+                {
+                    existing.stage_mask |= stage_mask;
+                    return;
+                }
+            }
+        }
+        out.push_back(std::move(block));
+    };
+
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        if (opcode == 59u && wordCount >= 4)
+        {
+            const unsigned int type_id = w[i + 1];
+            const unsigned int result_id = w[i + 2];
+            const unsigned int storage = w[i + 3];
+            auto pit = pointer_pointee.find(type_id);
+            if (pit != pointer_pointee.end())
+            {
+                if (storage == 2u)
+                {
+                    auto sit = desc_sets.find(result_id);
+                    auto bit = desc_bindings.find(result_id);
+                    if (sit != desc_sets.end() && bit != desc_bindings.end()
+                        && (sit->second == 0 || sit->second == 1))
+                    {
+                        build_block(pit->second, sit->second, bit->second, out_blocks);
+                    }
+                }
+                else if (storage == 9u)
+                {
+                    build_block(pit->second, -1, -1, out_push_constants);
+                }
+            }
+        }
+        i += wordCount;
+    }
+}
+
 bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stages)
 {
     if (stages.empty())
@@ -1450,6 +1750,12 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
 
             if (!shader->parse(resources, 450, false, messages))
             {
+                LL_WARNS("Vulkan") << "generatePerProgramSPIRV: glslang parse failed for '"
+                                   << mName << "' stage "
+                                   << (stage_type == GL_VERTEX_SHADER ? "V" :
+                                       stage_type == GL_FRAGMENT_SHADER ? "F" : "G")
+                                   << "\n" << shader->getInfoLog()
+                                   << "\n" << shader->getInfoDebugLog() << LL_ENDL;
                 return false;
             }
 
@@ -1467,6 +1773,9 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         EShMessages messages = static_cast<EShMessages>(EShMsgDefault | EShMsgVulkanRules | EShMsgSpvRules);
         if (!program.link(messages))
         {
+            LL_WARNS("Vulkan") << "generatePerProgramSPIRV: glslang link failed for '"
+                               << mName << "'\n" << program.getInfoLog()
+                               << "\n" << program.getInfoDebugLog() << LL_ENDL;
             return false;
         }
 
@@ -1485,6 +1794,11 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
                                   ss.spirv, &spv_options);
             if (ss.spirv.empty())
             {
+                LL_WARNS("Vulkan") << "generatePerProgramSPIRV: GlslangToSpv produced empty SPIR-V for '"
+                                   << mName << "' stage "
+                                   << (ss.type == GL_VERTEX_SHADER ? "V" :
+                                       ss.type == GL_FRAGMENT_SHADER ? "F" : "G")
+                                   << LL_ENDL;
                 return false;
             }
             stage_spvs.push_back(std::move(ss));
@@ -1554,6 +1868,7 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         std::vector<VkSpirvSet1Sampler> samplers;
         std::vector<S32> ubo_bindings;
         reflectVkSet1BindingsFromSpirv(ss.spirv, samplers, ubo_bindings);
+        reflectVkUboLayoutsFromSpirv(ss.spirv, stage_mask, mVkReflUboBlocks, mVkReflPushConstants);
         for (const auto& smp : samplers)
         {
             if (smp.binding < 0 || smp.binding >= (S32)MAX_VK_BINDING)
@@ -3227,7 +3542,7 @@ void LLGLSLShader::pushGaussianFragPC(F32 resScale, F32 dirX, F32 dirY)
         {
             const F32 gaussian_pc[4] = { resScale, 0.f, dirX, dirY };
             vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               104, sizeof(gaussian_pc), gaussian_pc);
+                               LLVkUboReg::PC_OFF_GAUSSIAN_RES_SCALE, sizeof(gaussian_pc), gaussian_pc);
         }
     }
 }
@@ -3245,7 +3560,7 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
         {
             const F32 minimum_alpha_pc = minimum;
             vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               64, sizeof(F32), &minimum_alpha_pc);
+                               LLVkUboReg::PC_OFF_MINIMUM_ALPHA, sizeof(F32), &minimum_alpha_pc);
         }
     }
 
@@ -3272,7 +3587,7 @@ void LLGLSLShader::setObjectAlpha(F32 object_alpha)
         {
             const F32 object_alpha_pc = object_alpha;
             vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               68, sizeof(F32), &object_alpha_pc);
+                               LLVkUboReg::PC_OFF_OBJECT_ALPHA, sizeof(F32), &object_alpha_pc);
         }
     }
 }
@@ -3325,6 +3640,7 @@ LLUUID LLGLSLShader::hash()
 
     }
     hash_obj.update(&mFeatures, sizeof(LLShaderFeatures));
+    hash_obj.update(&LLShaderMgr::sCinematicMode, sizeof(LLShaderMgr::sCinematicMode));
     hash_obj.update(gGLManager.mGLVendor);
     hash_obj.update(gGLManager.mGLRenderer);
     hash_obj.update(gGLManager.mGLVersionString);
@@ -3606,6 +3922,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
             mVkActivePerProgramUBOMapped = mVkPerProgramUBOMapped;
         }
     }
+
+    LLVkUboReg::verifyPerProgramSize(*this, perProgramUBOSize);
 
     return true;
 }

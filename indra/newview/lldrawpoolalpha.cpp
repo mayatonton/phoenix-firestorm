@@ -53,6 +53,7 @@
 #include "gltfscenemanager.h"
 #include "lltoolmgr.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llimagegl.h"
 #include "llfetchedgltfmaterial.h"
 
@@ -140,11 +141,11 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
         if (cmd != VK_NULL_HANDLE)
         {
             vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               72, sizeof(F32), &water_sign_pc);
+                               LLVkUboReg::PC_OFF_WATER_SIGN, sizeof(F32), &water_sign_pc);
 
             const F32 aya_preview_neutral_atmos = 0.f;
             vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               76, sizeof(F32), &aya_preview_neutral_atmos);
+                               LLVkUboReg::PC_OFF_PREVIEW_NEUTRAL_ATMOS, sizeof(F32), &aya_preview_neutral_atmos);
         }
     }
 

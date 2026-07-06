@@ -50,6 +50,7 @@
 #include "llviewershadermgr.h"
 #include "llrender.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llimagegl.h"
 #include "llenvironment.h"
 #include "llsettingsvo.h"
@@ -254,7 +255,7 @@ void LLDrawPoolTerrain::renderMotionBlur(S32 pass)
             if (cmd != VK_NULL_HANDLE)
             {
                 vkCmdPushConstants(cmd, LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                   VK_SHADER_STAGE_VERTEX_BIT, 64, sizeof(F32) * 16,
+                                   VK_SHADER_STAGE_VERTEX_BIT, LLVkUboReg::PC_OFF_LAST_OBJECT_MATRIX, sizeof(F32) * 16,
                                    (const F32*)model_matrix->mMatrix);
             }
         }
@@ -350,12 +351,7 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
     if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
         && shader->mVkPerProgramUBOMapped != nullptr)
     {
-        struct TerrainV_UBO
-        {
-            F32 object_plane_s[4];
-            F32 object_plane_t[4];
-        };
-        TerrainV_UBO ubo_data = {};
+        LLVKLoader::TerrainV_PerProgramBind ubo_data = {};
         ubo_data.object_plane_s[0] = tp0.mV[0];
         ubo_data.object_plane_s[1] = tp0.mV[1];
         ubo_data.object_plane_s[2] = tp0.mV[2];

@@ -33,6 +33,7 @@
 #include "llglcommonfunc.h"
 #include "llvoavatar.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llimagegl.h"
 
 LLDrawPoolMaterials::LLDrawPoolMaterials()
@@ -244,7 +245,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
                     if (cmd != VK_NULL_HANDLE)
                     {
                         vkCmdPushConstants(cmd, mShader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                           68, sizeof(F32), &skinFlag);
+                                           LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &skinFlag);
                     }
                 }
             }

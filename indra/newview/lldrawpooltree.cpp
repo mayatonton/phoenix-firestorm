@@ -40,6 +40,7 @@
 #include "llviewerregion.h"
 #include "llenvironment.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llimagegl.h"
 
 S32 LLDrawPoolTree::sDiffTex = 0;
@@ -209,7 +210,7 @@ void LLDrawPoolTree::renderMotionBlur(S32 pass)
             if (cmd != VK_NULL_HANDLE)
             {
                 vkCmdPushConstants(cmd, LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                   VK_SHADER_STAGE_VERTEX_BIT, 64, sizeof(F32) * 16,
+                                   VK_SHADER_STAGE_VERTEX_BIT, LLVkUboReg::PC_OFF_LAST_OBJECT_MATRIX, sizeof(F32) * 16,
                                    (const F32*)model_matrix->mMatrix);
             }
         }

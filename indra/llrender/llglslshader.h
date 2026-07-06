@@ -90,6 +90,23 @@ struct VkPipelineStateKey
     }
 };
 
+struct VkReflUboMember
+{
+    std::string name;
+    U32 offset;
+    U32 size;
+};
+
+struct VkReflUboBlock
+{
+    S32 set;
+    S32 binding;
+    U8 stage_mask;
+    std::string block_name;
+    U32 block_size;
+    std::vector<VkReflUboMember> members;
+};
+
 struct VkPipelineStateKeyHash
 {
     size_t operator()(const VkPipelineStateKey& k) const noexcept
@@ -480,6 +497,9 @@ public:
     std::array<U8, MAX_VK_BINDING> mVkBindingSamplerDim = {};
 
     std::vector<std::pair<S32, std::string>> mVkReflBindingSamplerNames;
+
+    std::vector<VkReflUboBlock> mVkReflUboBlocks;
+    std::vector<VkReflUboBlock> mVkReflPushConstants;
 
     struct VkEnumBoundView
     {

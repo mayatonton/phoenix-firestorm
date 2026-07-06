@@ -1172,13 +1172,7 @@ void LLRender::syncLightState()
             && shader->mVkPerProgramUBOMapped != nullptr
             && shader->mVkPerProgramUBOSize == 256)
         {
-            struct Preview_UBO
-            {
-                F32 light_position[8][4];
-                F32 light_diffuse[8][4];
-            };
-            static_assert(sizeof(Preview_UBO) == 256, "Preview_UBO must be 256B std140");
-            Preview_UBO ubo_data = {};
+            LLVKLoader::Preview_PerProgramBind ubo_data = {};
             for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
             {
                 ubo_data.light_position[i][0] = position[i].mV[0];

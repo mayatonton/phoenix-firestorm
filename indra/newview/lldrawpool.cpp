@@ -58,6 +58,7 @@
 #include "llvoavatar.h"
 #include "llviewershadermgr.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llimagegl.h"
 
 S32 LLDrawPool::sNumDrawPools = 0;
@@ -1201,7 +1202,7 @@ void LLRenderPass::pushVelocityBatches(U32 type)
             if (cmd != VK_NULL_HANDLE)
             {
                 vkCmdPushConstants(cmd, LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                   VK_SHADER_STAGE_VERTEX_BIT, 64, sizeof(F32) * 16,
+                                   VK_SHADER_STAGE_VERTEX_BIT, LLVkUboReg::PC_OFF_LAST_OBJECT_MATRIX, sizeof(F32) * 16,
                                    (const F32*)last_mat->mMatrix);
             }
         }
@@ -1304,7 +1305,7 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
             if (cmd != VK_NULL_HANDLE)
             {
                 vkCmdPushConstants(cmd, LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                   VK_SHADER_STAGE_VERTEX_BIT, 64, sizeof(F32) * 16,
+                                   VK_SHADER_STAGE_VERTEX_BIT, LLVkUboReg::PC_OFF_LAST_OBJECT_MATRIX, sizeof(F32) * 16,
                                    (const F32*)last_mat->mMatrix);
             }
         }
@@ -1485,7 +1486,7 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
                 if (cmd != VK_NULL_HANDLE)
                 {
                     vkCmdPushConstants(cmd, cur->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                       68, sizeof(F32), &sssFlag);
+                                       LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
                 }
             }
         }

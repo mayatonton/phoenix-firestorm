@@ -6156,14 +6156,7 @@ void LLPipeline::renderDebug()
                         && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                         && gPathfindingProgram.mVkPerProgramUBOMapped != nullptr)
                     {
-                        struct PathfindingV_UBO
-                        {
-                            F32 tint;
-                            F32 ambiance;
-                            F32 alpha_scale;
-                            F32 pad0;
-                        };
-                        PathfindingV_UBO ubo_data = {};
+                        LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                         ubo_data.tint        = 1.f;
                         ubo_data.ambiance    = 1.f;
                         ubo_data.alpha_scale = 1.f;
@@ -6189,8 +6182,7 @@ void LLPipeline::renderDebug()
                             && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingProgram.mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct PathfindingV_UBO { F32 tint; F32 ambiance; F32 alpha_scale; F32 pad0; };
-                            PathfindingV_UBO ubo_data = {};
+                            LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = 1.f;
                             ubo_data.alpha_scale = 0.90f;
@@ -6221,14 +6213,7 @@ void LLPipeline::renderDebug()
                         && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                         && gPathfindingProgram.mVkPerProgramUBOMapped != nullptr)
                     {
-                        struct PathfindingV_UBO
-                        {
-                            F32 tint;
-                            F32 ambiance;
-                            F32 alpha_scale;
-                            F32 pad0;
-                        };
-                        PathfindingV_UBO ubo_data = {};
+                        LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                         ubo_data.tint        = 1.f;
                         ubo_data.ambiance    = ambiance;
                         ubo_data.alpha_scale = 1.f;
@@ -6272,14 +6257,7 @@ void LLPipeline::renderDebug()
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct PathfindingV_UBO
-                            {
-                                F32 tint;
-                                F32 ambiance;
-                                F32 alpha_scale;
-                                F32 pad0;
-                            };
-                            PathfindingV_UBO ubo_data = {};
+                            LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = 1.f;
                             ubo_data.alpha_scale = 1.f;
@@ -6291,14 +6269,7 @@ void LLPipeline::renderDebug()
                             && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingProgram.mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct PathfindingV_UBO
-                            {
-                                F32 tint;
-                                F32 ambiance;
-                                F32 alpha_scale;
-                                F32 pad0;
-                            };
-                            PathfindingV_UBO ubo_data = {};
+                            LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = ambiance;
                             ubo_data.alpha_scale = 1.f;
@@ -6322,14 +6293,7 @@ void LLPipeline::renderDebug()
                             && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingProgram.mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct PathfindingV_UBO
-                            {
-                                F32 tint;
-                                F32 ambiance;
-                                F32 alpha_scale;
-                                F32 pad0;
-                            };
-                            PathfindingV_UBO ubo_data = {};
+                            LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = ambiance;
                             ubo_data.alpha_scale = 1.f;
@@ -6353,14 +6317,7 @@ void LLPipeline::renderDebug()
                             && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingProgram.mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct PathfindingV_UBO
-                            {
-                                F32 tint;
-                                F32 ambiance;
-                                F32 alpha_scale;
-                                F32 pad0;
-                            };
-                            PathfindingV_UBO ubo_data = {};
+                            LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = ambiance;
                             ubo_data.alpha_scale = 0.90f;
@@ -6510,8 +6467,7 @@ void LLPipeline::renderDebug()
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct PathfindingV_UBO { F32 tint; F32 ambiance; F32 alpha_scale; F32 pad0; };
-                            PathfindingV_UBO ubo_data = {};
+                            LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                             ubo_data.tint        = gSavedSettings.getF32("PathfindingXRayTint");
                             ubo_data.ambiance    = 1.f;
                             ubo_data.alpha_scale = gSavedSettings.getF32("PathfindingXRayOpacity");
@@ -6523,14 +6479,7 @@ void LLPipeline::renderDebug()
                             && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingProgram.mVkPerProgramUBOMapped != nullptr)
                         {
-                            struct PathfindingV_UBO
-                            {
-                                F32 tint;
-                                F32 ambiance;
-                                F32 alpha_scale;
-                                F32 pad0;
-                            };
-                            PathfindingV_UBO ubo_data = {};
+                            LLVKLoader::Pathfinding_PerProgramBind ubo_data = {};
                             ubo_data.tint        = gSavedSettings.getF32("PathfindingXRayTint");
                             ubo_data.ambiance    = gSavedSettings.getBOOL("PathfindingXRayWireframe") ? 1.f : ambiance;
                             ubo_data.alpha_scale = gSavedSettings.getF32("PathfindingXRayOpacity");
@@ -9085,14 +9034,7 @@ void LLPipeline::generateLuminance(LLRenderTarget* src, LLRenderTarget* dst)
             && gLuminanceProgram.mVkPerProgramUBO != VK_NULL_HANDLE
             && gLuminanceProgram.mVkPerProgramUBOMapped != nullptr)
         {
-            struct LuminanceF_UBO
-            {
-                F32 diffuse_luminance_scale;
-                F32 _luminanceF_pad0;
-                F32 _luminanceF_pad1;
-                F32 _luminanceF_pad2;
-            };
-            LuminanceF_UBO ubo_data = {};
+            LLVKLoader::LuminanceF_PerProgramBind ubo_data = {};
             ubo_data.diffuse_luminance_scale = (F32)diffuse_luminance_scale;
             std::memcpy(gLuminanceProgram.mVkPerProgramUBOMapped, &ubo_data,
                         llmin((U32)sizeof(ubo_data), gLuminanceProgram.mVkPerProgramUBOSize));
@@ -9223,16 +9165,7 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
             && shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && shader->mVkPerProgramUBOMapped != nullptr)
         {
-            struct ExposureF_UBO
-            {
-                F32 dynamic_exposure_params[4];
-                F32 dynamic_exposure_params2[4];
-                F32 dt;
-                F32 _exposureF_pad0;
-                F32 _exposureF_pad1;
-                F32 _exposureF_pad2;
-            };
-            ExposureF_UBO ubo_data = {};
+            LLVKLoader::ExposureF_PerProgramBind ubo_data = {};
             ubo_data.dynamic_exposure_params[0]  = (F32)dynamic_exposure_coefficient;
             ubo_data.dynamic_exposure_params[1]  = exp_min;
             ubo_data.dynamic_exposure_params[2]  = exp_max;
@@ -9377,18 +9310,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
             && shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && shader->mVkPerProgramUBOMapped != nullptr)
         {
-            struct PostTonemap_UBO
-            {
-                F32 color_saturation;
-                F32 color_contrast;
-                F32 color_temperature;
-                F32 color_brightness;
-                F32 color_grading_lut_intensity;
-                S32 color_grading_lut_enabled;
-                F32 gamma;
-                F32 _postTonemap_pad1;
-            };
-            PostTonemap_UBO ubo_data = {};
+            LLVKLoader::PostTonemap_PerProgramBind ubo_data = {};
             ubo_data.color_saturation            = gSavedSettings.getF32("RenderColorSaturation");
             ubo_data.color_contrast              = gSavedSettings.getF32("RenderColorContrast");
             ubo_data.color_temperature           = gSavedSettings.getF32("RenderColorTemperature");
@@ -9539,17 +9461,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
             {
                 src->bindForShaderRead();
 
-                struct GlowExtractF_UBO
-                {
-                    F32 lumWeights[3];
-                    F32 minLuminance;
-                    F32 warmthWeights[3];
-                    F32 maxExtractAlpha;
-                    F32 warmthAmount;
-                    F32 _pad0;
-                    F32 screen_res[2];
-                };
-                GlowExtractF_UBO ubo_data = {};
+                LLVKLoader::GlowExtract_PerProgramBind ubo_data = {};
                 ubo_data.lumWeights[0]     = lumWeights.mV[0];
                 ubo_data.lumWeights[1]     = lumWeights.mV[1];
                 ubo_data.lumWeights[2]     = lumWeights.mV[2];
@@ -9627,13 +9539,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
             {
                 glow_src->bindForShaderRead();
 
-                struct GlowF_UBO
-                {
-                    F32 glowDelta[2];
-                    F32 glowStrength;
-                    F32 _pad0;
-                };
-                GlowF_UBO ubo_data = {};
+                LLVKLoader::Glow_PerProgramBind ubo_data = {};
                 ubo_data.glowDelta[0] = delta_x;
                 ubo_data.glowDelta[1] = delta_y;
                 ubo_data.glowStrength = strength;
@@ -9707,18 +9613,7 @@ void LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
         {
             src->bindForShaderRead();
 
-            struct CasF_UBO
-            {
-                F32 out_screen_res_uniform[2];
-                F32 _pad0[2];
-                U32 cas_param_0_uniform[4];
-                U32 cas_param_1_uniform[4];
-                F32 gamma;
-                F32 _pad1;
-                F32 _pad2;
-                F32 _pad3;
-            };
-            CasF_UBO ubo_data = {};
+            LLVKLoader::CasF_PerProgramBind ubo_data = {};
             ubo_data.out_screen_res_uniform[0] = (F32)dst->getWidth();
             ubo_data.out_screen_res_uniform[1] = (F32)dst->getHeight();
             ubo_data.cas_param_0_uniform[0]    = const0[0];
@@ -9896,7 +9791,9 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
                 && edge_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                 && edge_shader.mVkPerProgramUBOMapped != nullptr)
             {
-                memcpy(edge_shader.mVkPerProgramUBOMapped, rt_metrics, sizeof(rt_metrics));
+                LLVKLoader::SMAA_PerProgramBind smaa_ubo = {};
+                memcpy(smaa_ubo.SMAA_RT_METRICS, rt_metrics, sizeof(smaa_ubo.SMAA_RT_METRICS));
+                memcpy(edge_shader.mVkPerProgramUBOMapped, &smaa_ubo, sizeof(smaa_ubo));
             }
 
             S32 channel = edge_shader.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, src->getUsage());
@@ -9946,7 +9843,9 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
                 && blend_weights_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                 && blend_weights_shader.mVkPerProgramUBOMapped != nullptr)
             {
-                memcpy(blend_weights_shader.mVkPerProgramUBOMapped, rt_metrics, sizeof(rt_metrics));
+                LLVKLoader::SMAA_PerProgramBind smaa_ubo = {};
+                memcpy(smaa_ubo.SMAA_RT_METRICS, rt_metrics, sizeof(smaa_ubo.SMAA_RT_METRICS));
+                memcpy(blend_weights_shader.mVkPerProgramUBOMapped, &smaa_ubo, sizeof(smaa_ubo));
             }
 
             if (LLVKLoader::isVulkanInitialized())
@@ -10039,7 +9938,9 @@ void LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst)
                 && blend_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                 && blend_shader.mVkPerProgramUBOMapped != nullptr)
             {
-                memcpy(blend_shader.mVkPerProgramUBOMapped, rt_metrics, sizeof(rt_metrics));
+                LLVKLoader::SMAA_PerProgramBind smaa_ubo = {};
+                memcpy(smaa_ubo.SMAA_RT_METRICS, rt_metrics, sizeof(smaa_ubo.SMAA_RT_METRICS));
+                memcpy(blend_shader.mVkPerProgramUBOMapped, &smaa_ubo, sizeof(smaa_ubo));
             }
 
             S32 diffuse_channel = blend_shader.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
@@ -10157,13 +10058,7 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
         && gDeferredPostNoDoFProgram.mVkPerProgramUBO != VK_NULL_HANDLE
         && gDeferredPostNoDoFProgram.mVkPerProgramUBOMapped != nullptr)
     {
-        struct PostNoDoFF_UBO
-        {
-            F32 screen_res[2];
-            F32 chroma_str;
-            F32 pad0;
-        };
-        PostNoDoFF_UBO ubo_data = {};
+        LLVKLoader::PostNoDoFF_PerProgramBind ubo_data = {};
         ubo_data.screen_res[0] = (F32)src->getWidth();
         ubo_data.screen_res[1] = (F32)src->getHeight();
         ubo_data.chroma_str    = nodof_chroma_str;
@@ -10284,14 +10179,7 @@ bool LLPipeline::renderVignette(LLRenderTarget* src, LLRenderTarget* dst)
         if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && shader->mVkPerProgramUBOMapped != nullptr)
         {
-            struct PostVignetteF_UBO
-            {
-                F32 screen_res[2];
-                F32 pad0[2];
-                F32 vignette[3];
-                F32 pad1;
-            };
-            PostVignetteF_UBO ubo_data = {};
+            LLVKLoader::PostVignette_PerProgramBind ubo_data = {};
             ubo_data.screen_res[0]     = (F32)dst->getWidth();
             ubo_data.screen_res[1]     = (F32)dst->getHeight();
             ubo_data.vignette[0]       = RenderVignette.mV[0];
@@ -10486,15 +10374,7 @@ bool LLPipeline::renderSnapshotFrame(LLRenderTarget* src, LLRenderTarget* dst)
     if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
         && shader->mVkPerProgramUBOMapped != nullptr)
     {
-        struct PostSnapshotFrameF_UBO
-        {
-            F32 screen_res[2];
-            F32 pad0[2];
-            F32 frame_rect[4];
-            F32 border_color[3];
-            F32 border_thickness;
-        };
-        PostSnapshotFrameF_UBO ubo_data = {};
+        LLVKLoader::PostSnapshotFrame_PerProgramBind ubo_data = {};
         ubo_data.screen_res[0]          = (F32)dst->getWidth();
         ubo_data.screen_res[1]          = (F32)dst->getHeight();
         ubo_data.frame_rect[0]          = (F32)left;
@@ -10776,13 +10656,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                     && gDeferredPostProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                     && gDeferredPostProgram.mVkPerProgramUBOMapped != nullptr)
                 {
-                    struct PostDeferredF_UBO
-                    {
-                        F32 screen_res[2];
-                        F32 max_cof;
-                        F32 chroma_str;
-                    };
-                    PostDeferredF_UBO ubo_data = {};
+                    LLVKLoader::PostF_PerProgramBind ubo_data = {};
                     ubo_data.screen_res[0] = (F32)dst->getWidth();
                     ubo_data.screen_res[1] = (F32)dst->getHeight();
                     ubo_data.max_cof       = adj_COF;
@@ -11164,13 +11038,7 @@ void LLPipeline::renderFinalize()
         && gDeferredPostNoDoFNoiseProgram.mVkPerProgramUBO != VK_NULL_HANDLE
         && gDeferredPostNoDoFNoiseProgram.mVkPerProgramUBOMapped != nullptr)
     {
-        struct PostNoDoFF_UBO
-        {
-            F32 screen_res[2];
-            F32 chroma_str;
-            F32 pad0;
-        };
-        PostNoDoFF_UBO ubo_data = {};
+        LLVKLoader::PostNoDoFF_PerProgramBind ubo_data = {};
         ubo_data.screen_res[0] = (F32)sourceBuffer->getWidth();
         ubo_data.screen_res[1] = (F32)sourceBuffer->getHeight();
         ubo_data.chroma_str    = nodof_noise_chroma_str;
@@ -12232,12 +12100,7 @@ void LLPipeline::renderDeferredLighting()
                     if (LLVKLoader::isVulkanInitialized() && sun_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                         && sun_shader.mVkPerProgramUBOMapped != nullptr)
                     {
-                        struct SunLightF_UBO
-                        {
-                            F32 sun_dir[3];
-                            F32 pad0;
-                        };
-                        SunLightF_UBO ubo_data = {};
+                        LLVKLoader::SunLightF_PerProgramBind ubo_data = {};
                         ubo_data.sun_dir[0]    = mTransformedSunDir.mV[0];
                         ubo_data.sun_dir[1]    = mTransformedSunDir.mV[1];
                         ubo_data.sun_dir[2]    = mTransformedSunDir.mV[2];
@@ -12310,17 +12173,7 @@ void LLPipeline::renderDeferredLighting()
                 && gDeferredBlurLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                 && gDeferredBlurLightProgram.mVkPerProgramUBOMapped != nullptr)
             {
-                struct BlurLightF_UBO
-                {
-                    F32 kern[4][4];   // vec3 kern[4] std140 padded to vec4 stride
-                    F32 delta[2];
-                    F32 screen_res[2];
-                    F32 dist_factor;
-                    F32 blur_size;
-                    F32 kern_scale;
-                    F32 pad0;
-                };
-                BlurLightF_UBO ubo_data = {};
+                LLVKLoader::BlurLightF_PerProgramBind ubo_data = {};
                 for (U32 i = 0; i < kern_length; ++i)
                 {
                     ubo_data.kern[i][0] = gauss[i].mV[0];
@@ -12359,17 +12212,7 @@ void LLPipeline::renderDeferredLighting()
                 && gDeferredBlurLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                 && gDeferredBlurLightProgram.mVkPerProgramUBOMapped != nullptr)
             {
-                struct BlurLightF_UBO
-                {
-                    F32 kern[4][4];
-                    F32 delta[2];
-                    F32 screen_res[2];
-                    F32 dist_factor;
-                    F32 blur_size;
-                    F32 kern_scale;
-                    F32 pad0;
-                };
-                BlurLightF_UBO ubo_data = {};
+                LLVKLoader::BlurLightF_PerProgramBind ubo_data = {};
                 for (U32 i = 0; i < kern_length; ++i)
                 {
                     ubo_data.kern[i][0] = gauss[i].mV[0];
@@ -12686,18 +12529,7 @@ void LLPipeline::renderDeferredLighting()
                             gDeferredLightProgram.rotatePerProgramUBOSlot();
                             if (gDeferredLightProgram.mVkActivePerProgramUBOMapped != nullptr)
                             {
-                                struct PointLightPerDraw_UBO
-                                {
-                                    F32 center[3];
-                                    F32 size;
-                                    F32 color[3];
-                                    F32 falloff;
-                                    F32 global_light_strength;
-                                    S32 classic_mode;
-                                    F32 pad0;
-                                    F32 pad1;
-                                };
-                                PointLightPerDraw_UBO ubo_data = {};
+                                LLVKLoader::PointLightPerDraw ubo_data = {};
                                 ubo_data.center[0]             = c[0];
                                 ubo_data.center[1]             = c[1];
                                 ubo_data.center[2]             = c[2];
@@ -12785,18 +12617,7 @@ void LLPipeline::renderDeferredLighting()
                         gDeferredSpotLightProgram.rotatePerProgramUBOSlot();
                         if (gDeferredSpotLightProgram.mVkActivePerProgramUBOMapped != nullptr)
                         {
-                            struct SpotLightPerDraw_UBO
-                            {
-                                F32 center[3];
-                                F32 size;
-                                F32 proj_origin[3];
-                                F32 falloff;
-                                F32 shadow_fade;
-                                F32 global_light_strength;
-                                S32 proj_shadow_idx;
-                                S32 classic_mode;
-                            };
-                            SpotLightPerDraw_UBO sd = {};
+                            LLVKLoader::SpotLightPerDraw sd = {};
                             sd.center[0] = c[0]; sd.center[1] = c[1]; sd.center[2] = c[2];
                             sd.size                  = s;
                             sd.proj_origin[0]        = spot_proj_origin[0];
@@ -12933,18 +12754,7 @@ void LLPipeline::renderDeferredLighting()
                         gDeferredMultiSpotLightProgram.rotatePerProgramUBOSlot();
                         if (gDeferredMultiSpotLightProgram.mVkActivePerProgramUBOMapped != nullptr)
                         {
-                            struct SpotLightPerDraw_UBO
-                            {
-                                F32 center[3];
-                                F32 size;
-                                F32 proj_origin[3];
-                                F32 falloff;
-                                F32 shadow_fade;
-                                F32 global_light_strength;
-                                S32 proj_shadow_idx;
-                                S32 classic_mode;
-                            };
-                            SpotLightPerDraw_UBO sd = {};
+                            LLVKLoader::SpotLightPerDraw sd = {};
                             sd.center[0] = tc.x; sd.center[1] = tc.y; sd.center[2] = tc.z;
                             sd.size                  = light_size_final;
                             sd.proj_origin[0]        = spot_proj_origin[0];
@@ -13158,14 +12968,7 @@ void LLPipeline::doAtmospherics()
         if (LLVKLoader::isVulkanInitialized() && haze_shader.mVkPerProgramUBO != VK_NULL_HANDLE
             && haze_shader.mVkPerProgramUBOMapped != nullptr)
         {
-            struct HazeF_UBO
-            {
-                F32 sun_dir[3];
-                F32 pad0;
-                F32 moon_dir[3];
-                S32 sun_up_factor;
-            };
-            HazeF_UBO ubo_data    = {};
+            LLVKLoader::HazeF_PerProgramBind ubo_data    = {};
             ubo_data.sun_dir[0]   = mTransformedSunDir.mV[0];
             ubo_data.sun_dir[1]   = mTransformedSunDir.mV[1];
             ubo_data.sun_dir[2]   = mTransformedSunDir.mV[2];
@@ -13237,18 +13040,7 @@ void LLPipeline::doGodrays()
         const bool r15_on = (aya_visual_realism() == 1)
                          || (aya_visual_realism() == 2 && aya_r15_in_cinematic);
 
-        struct GodraysF_UBO
-        {
-            F32 sun_dir[3];
-            F32 pad0;
-            F32 moon_dir[3];
-            S32 aya_r15_godrays_enabled;
-            F32 aya_r15_godrays_phase_exponent;
-            F32 aya_r15_godrays_strength;
-            F32 pad1;
-            F32 pad2;
-        };
-        GodraysF_UBO ubo_data        = {};
+        LLVKLoader::GodraysF_PerProgramBind ubo_data        = {};
         ubo_data.sun_dir[0]          = mTransformedSunDir.mV[0];
         ubo_data.sun_dir[1]          = mTransformedSunDir.mV[1];
         ubo_data.sun_dir[2]          = mTransformedSunDir.mV[2];
@@ -13377,19 +13169,7 @@ void LLPipeline::doSkinSSS()
             && gDeferredSkinSSSProgram.mVkPerProgramUBO != VK_NULL_HANDLE
             && gDeferredSkinSSSProgram.mVkPerProgramUBOMapped != nullptr)
         {
-            struct SkinSSSF_UBO
-            {
-                F32 aya_glow_color[3];
-                F32 aya_glow_gain;
-                F32 aya_blur_dir[2];
-                F32 aya_strength;
-                F32 aya_blur_radius;
-                S32 aya_visual_realism_enabled;
-                S32 aya_r20_skin_sss_enabled;
-                F32 pad0;
-                F32 pad1;
-            };
-            SkinSSSF_UBO ubo_data = {};
+            LLVKLoader::SkinSSSF_PerProgramBind ubo_data = {};
             ubo_data.aya_glow_color[0]            = glow_color.mV[0];
             ubo_data.aya_glow_color[1]            = glow_color.mV[1];
             ubo_data.aya_glow_color[2]            = glow_color.mV[2];
@@ -13460,19 +13240,7 @@ void LLPipeline::doSkinSSS()
             && gDeferredSkinSSSProgram.mVkPerProgramUBO != VK_NULL_HANDLE
             && gDeferredSkinSSSProgram.mVkPerProgramUBOMapped != nullptr)
         {
-            struct SkinSSSF_UBO
-            {
-                F32 aya_glow_color[3];
-                F32 aya_glow_gain;
-                F32 aya_blur_dir[2];
-                F32 aya_strength;
-                F32 aya_blur_radius;
-                S32 aya_visual_realism_enabled;
-                S32 aya_r20_skin_sss_enabled;
-                F32 pad0;
-                F32 pad1;
-            };
-            SkinSSSF_UBO ubo_data = {};
+            LLVKLoader::SkinSSSF_PerProgramBind ubo_data = {};
             ubo_data.aya_glow_color[0]            = glow_color.mV[0];
             ubo_data.aya_glow_color[1]            = glow_color.mV[1];
             ubo_data.aya_glow_color[2]            = glow_color.mV[2];
@@ -13568,14 +13336,7 @@ void LLPipeline::doWaterHaze()
             && haze_shader.mVkPerProgramUBO != VK_NULL_HANDLE
             && haze_shader.mVkPerProgramUBOMapped != nullptr)
         {
-            struct WaterHazeF_UBO
-            {
-                S32 above_water;
-                S32 _pad0;
-                S32 _pad1;
-                S32 _pad2;
-            };
-            WaterHazeF_UBO ubo_data = {};
+            LLVKLoader::WaterHazeF_PerProgramBind ubo_data = {};
             ubo_data.above_water = above_water_val;
             memcpy(haze_shader.mVkPerProgramUBOMapped, &ubo_data,
                    llmin((U32)sizeof(ubo_data), haze_shader.mVkPerProgramUBOSize));

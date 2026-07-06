@@ -410,14 +410,7 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
         if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && shader->mVkPerProgramUBOMapped != nullptr)
         {
-            struct OcclusionCube_UBO
-            {
-                F32 box_center[3];
-                F32 _pad0;
-                F32 box_size[3];
-                F32 _pad1;
-            };
-            OcclusionCube_UBO ubo_data = {};
+            LLVKLoader::OcclusionCube_PerProgramBind ubo_data = {};
             const F32* origin = mOrigin.getF32ptr();
             ubo_data.box_center[0] = origin[0];
             ubo_data.box_center[1] = origin[1];

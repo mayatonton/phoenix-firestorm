@@ -2169,14 +2169,7 @@ void renderNormals(LLDrawable *drawablep)
                     && shader->mVkPerProgramUBO != VK_NULL_HANDLE
                     && shader->mVkPerProgramUBOMapped != nullptr)
                 {
-                    struct NormalDebug_UBO
-                    {
-                        F32 debug_normal_draw_length;
-                        F32 _pad0;
-                        F32 _pad1;
-                        F32 _pad2;
-                    };
-                    NormalDebug_UBO ubo_data = {};
+                    LLVKLoader::NormalDebug_PerProgramBind ubo_data = {};
                     ubo_data.debug_normal_draw_length = draw_length;
                     std::memcpy(shader->mVkPerProgramUBOMapped, &ubo_data,
                                 llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));

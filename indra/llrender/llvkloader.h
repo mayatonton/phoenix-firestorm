@@ -658,6 +658,474 @@ namespace LLVKLoader
     static_assert(sizeof(FxaaShared_PerProgramBind) == 48,
                   "FxaaShared_PerProgramBind size mismatch (std140 expects 48 B)");
 
+    struct AlphaV_PerProgramBind
+    {
+        float near_clip;
+        float _alphaV_pad0;
+        float _alphaV_pad1;
+        float _alphaV_pad2;
+    };
+    static_assert(sizeof(AlphaV_PerProgramBind) == 16,
+                  "AlphaV_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct AvatarVCloth_PerProgramBind
+    {
+        float gWindDir[4];
+        float gSinWaveParams[4];
+        float gGravity[4];
+    };
+    static_assert(sizeof(AvatarVCloth_PerProgramBind) == 48,
+                  "AvatarVCloth_PerProgramBind size mismatch (std140 expects 48 B)");
+
+    struct BlurLightF_PerProgramBind
+    {
+        float kern[4][4];
+        float delta[2];
+        float screen_res[2];
+        float dist_factor;
+        float blur_size;
+        float kern_scale;
+        float pad0;
+    };
+    static_assert(sizeof(BlurLightF_PerProgramBind) == 96,
+                  "BlurLightF_PerProgramBind size mismatch (std140 expects 96 B)");
+
+    struct Cloud_PerProgramBind
+    {
+        float camPosLocal[3];
+        float _pad0;
+        float cloud_color[3];
+        float cloud_scale_v;
+        float cloud_pos_density1[3];
+        float _pad1;
+        float cloud_pos_density2[3];
+        float _pad2;
+        float blend_factor;
+        float cloud_scale;
+        float cloud_variance;
+        S32   aya_r18_cloud_volumetric_enabled;
+        float aya_r18_strength;
+        float _pad3;
+        float _pad4;
+        float _pad5;
+    };
+    static_assert(sizeof(Cloud_PerProgramBind) == 96,
+                  "Cloud_PerProgramBind size mismatch (std140 expects 96 B)");
+
+    struct ExposureF_PerProgramBind
+    {
+        float dynamic_exposure_params[4];
+        float dynamic_exposure_params2[4];
+        float dt;
+        float _exposureF_pad0;
+        float _exposureF_pad1;
+        float _exposureF_pad2;
+    };
+    static_assert(sizeof(ExposureF_PerProgramBind) == 48,
+                  "ExposureF_PerProgramBind size mismatch (std140 expects 48 B)");
+
+    struct GlowExtract_PerProgramBind
+    {
+        float lumWeights[3];
+        float minLuminance;
+        float warmthWeights[3];
+        float maxExtractAlpha;
+        float warmthAmount;
+        float _pad0;
+        float screen_res[2];
+    };
+    static_assert(sizeof(GlowExtract_PerProgramBind) == 48,
+                  "GlowExtract_PerProgramBind size mismatch (std140 expects 48 B)");
+
+    struct Glow_PerProgramBind
+    {
+        float glowDelta[2];
+        float glowStrength;
+        float _pad0;
+    };
+    static_assert(sizeof(Glow_PerProgramBind) == 16,
+                  "Glow_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct GodraysF_PerProgramBind
+    {
+        float sun_dir[3];
+        float pad0;
+        float moon_dir[3];
+        S32   aya_r15_godrays_enabled;
+        float aya_r15_godrays_phase_exponent;
+        float aya_r15_godrays_strength;
+        float pad1;
+        float pad2;
+    };
+    static_assert(sizeof(GodraysF_PerProgramBind) == 48,
+                  "GodraysF_PerProgramBind size mismatch (std140 expects 48 B)");
+
+    struct HazeF_PerProgramBind
+    {
+        float sun_dir[3];
+        float pad0;
+        float moon_dir[3];
+        S32   sun_up_factor;
+    };
+    static_assert(sizeof(HazeF_PerProgramBind) == 32,
+                  "HazeF_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct ImpostorF_UBO
+    {
+        float minimum_alpha;
+        float pad0;
+        float pad1;
+        float pad2;
+    };
+    static_assert(sizeof(ImpostorF_UBO) == 16,
+                  "ImpostorF_UBO size mismatch (std140 expects 16 B)");
+
+    struct IrradianceGen_PerProgramBind
+    {
+        S32   sourceIdx;
+        float max_probe_lod;
+        float pad0;
+        float pad1;
+    };
+    static_assert(sizeof(IrradianceGen_PerProgramBind) == 16,
+                  "IrradianceGen_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct LuminanceF_PerProgramBind
+    {
+        float diffuse_luminance_scale;
+        float _luminanceF_pad0;
+        float _luminanceF_pad1;
+        float _luminanceF_pad2;
+    };
+    static_assert(sizeof(LuminanceF_PerProgramBind) == 16,
+                  "LuminanceF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct MoonF_PerProgramBind
+    {
+        float color[4];
+        float moon_dir[3];
+        float moon_brightness;
+    };
+    static_assert(sizeof(MoonF_PerProgramBind) == 32,
+                  "MoonF_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct NormalDebug_PerProgramBind
+    {
+        float debug_normal_draw_length;
+        float _pad0;
+        float _pad1;
+        float _pad2;
+    };
+    static_assert(sizeof(NormalDebug_PerProgramBind) == 16,
+                  "NormalDebug_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct NormgenF_PerProgramBind
+    {
+        float stepX;
+        float stepY;
+        float norm_scale;
+        S32   bump_code;
+    };
+    static_assert(sizeof(NormgenF_PerProgramBind) == 16,
+                  "NormgenF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct OcclusionCube_PerProgramBind
+    {
+        float box_center[3];
+        float _pad0;
+        float box_size[3];
+        float _pad1;
+    };
+    static_assert(sizeof(OcclusionCube_PerProgramBind) == 32,
+                  "OcclusionCube_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct OneTextureFilter_PerProgramBind
+    {
+        float tolerance;
+        float _pad0;
+        float _pad1;
+        float _pad2;
+    };
+    static_assert(sizeof(OneTextureFilter_PerProgramBind) == 16,
+                  "OneTextureFilter_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct Pathfinding_PerProgramBind
+    {
+        float tint;
+        float ambiance;
+        float alpha_scale;
+        float pad0;
+    };
+    static_assert(sizeof(Pathfinding_PerProgramBind) == 16,
+                  "Pathfinding_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct PointLightPerDraw
+    {
+        float center[3];
+        float size;
+        float color[3];
+        float falloff;
+        float global_light_strength;
+        S32   classic_mode;
+        float pad0;
+        float pad1;
+    };
+    static_assert(sizeof(PointLightPerDraw) == 48,
+                  "PointLightPerDraw size mismatch (std140 expects 48 B)");
+
+    struct PointLightV_PerProgramBind
+    {
+        float center_plv[3];
+        float size_plv;
+    };
+    static_assert(sizeof(PointLightV_PerProgramBind) == 16,
+                  "PointLightV_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct PostF_PerProgramBind
+    {
+        float screen_res[2];
+        float max_cof;
+        float chroma_str;
+    };
+    static_assert(sizeof(PostF_PerProgramBind) == 16,
+                  "PostF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct PostNoDoFF_PerProgramBind
+    {
+        float screen_res[2];
+        float chroma_str;
+        float pad0;
+    };
+    static_assert(sizeof(PostNoDoFF_PerProgramBind) == 16,
+                  "PostNoDoFF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct PostSnapshotFrame_PerProgramBind
+    {
+        float screen_res[2];
+        float pad0[2];
+        float frame_rect[4];
+        float border_color[3];
+        float border_thickness;
+    };
+    static_assert(sizeof(PostSnapshotFrame_PerProgramBind) == 48,
+                  "PostSnapshotFrame_PerProgramBind size mismatch (std140 expects 48 B)");
+
+    struct PostTonemap_PerProgramBind
+    {
+        float color_saturation;
+        float color_contrast;
+        float color_temperature;
+        float color_brightness;
+        float color_grading_lut_intensity;
+        S32   color_grading_lut_enabled;
+        float gamma;
+        float _postTonemap_pad1;
+    };
+    static_assert(sizeof(PostTonemap_PerProgramBind) == 32,
+                  "PostTonemap_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct PostVignette_PerProgramBind
+    {
+        float screen_res[2];
+        float pad0[2];
+        float vignette[3];
+        float pad1;
+    };
+    static_assert(sizeof(PostVignette_PerProgramBind) == 32,
+                  "PostVignette_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct PostVisualizeBuffers_PerProgramBind
+    {
+        float mipLevel;
+    };
+    static_assert(sizeof(PostVisualizeBuffers_PerProgramBind) == 4,
+                  "PostVisualizeBuffers_PerProgramBind size mismatch (std140 expects 4 B)");
+
+    struct Preview_PerProgramBind
+    {
+        float light_position[8][4];
+        float light_diffuse[8][4];
+    };
+    static_assert(sizeof(Preview_PerProgramBind) == 256,
+                  "Preview_PerProgramBind size mismatch (std140 expects 256 B)");
+
+    struct RadianceGen_PerProgramBind
+    {
+        S32   sourceIdx;
+        float mipLevel;
+        S32   u_width;
+        float max_probe_lod;
+        float probe_strength;
+        float pad0;
+        float pad1;
+        float pad2;
+    };
+    static_assert(sizeof(RadianceGen_PerProgramBind) == 32,
+                  "RadianceGen_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct RlvF_PerProgramBind
+    {
+        float rlvEffectParam1[4];
+        float rlvEffectParam2[4];
+        float rlvEffectParam4[4];
+        float rlvEffectParam5[2];
+        float _rlvF_screen_res[2];
+        U32   rlvEffectParam3[2];
+        S32   rlvEffectMode;
+        S32   _rlvF_pad0;
+    };
+    static_assert(sizeof(RlvF_PerProgramBind) == 80,
+                  "RlvF_PerProgramBind size mismatch (std140 expects 80 B)");
+
+    struct ScreenSpaceReflPostF_PerProgramBind
+    {
+        float zNear;
+        float zFar;
+        float _screenSpaceReflPostF_pad0;
+        float _screenSpaceReflPostF_pad1;
+    };
+    static_assert(sizeof(ScreenSpaceReflPostF_PerProgramBind) == 16,
+                  "ScreenSpaceReflPostF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct SkinSSSF_PerProgramBind
+    {
+        float aya_glow_color[3];
+        float aya_glow_gain;
+        float aya_blur_dir[2];
+        float aya_strength;
+        float aya_blur_radius;
+        S32   aya_visual_realism_enabled;
+        S32   aya_r20_skin_sss_enabled;
+        float pad0;
+        float pad1;
+    };
+    static_assert(sizeof(SkinSSSF_PerProgramBind) == 48,
+                  "SkinSSSF_PerProgramBind size mismatch (std140 expects 48 B)");
+
+    struct SMAA_PerProgramBind
+    {
+        float SMAA_RT_METRICS[4];
+    };
+    static_assert(sizeof(SMAA_PerProgramBind) == 16,
+                  "SMAA_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct SpotLightPerDraw
+    {
+        float center[3];
+        float size;
+        float proj_origin[3];
+        float falloff;
+        float shadow_fade;
+        float global_light_strength;
+        S32   proj_shadow_idx;
+        S32   classic_mode;
+    };
+    static_assert(sizeof(SpotLightPerDraw) == 48,
+                  "SpotLightPerDraw size mismatch (std140 expects 48 B)");
+
+    struct SunDiscF_PerProgramBind
+    {
+        float blend_factor;
+        float pad0;
+        float pad1;
+        float pad2;
+    };
+    static_assert(sizeof(SunDiscF_PerProgramBind) == 16,
+                  "SunDiscF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct SunLightF_PerProgramBind
+    {
+        float sun_dir[3];
+        float pad0;
+    };
+    static_assert(sizeof(SunLightF_PerProgramBind) == 16,
+                  "SunLightF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct SunLightV_PerProgramBind
+    {
+        float screen_res_sunlightv[2];
+        float _sunLightV_pad0;
+        float _sunLightV_pad1;
+    };
+    static_assert(sizeof(SunLightV_PerProgramBind) == 16,
+                  "SunLightV_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct TerrainV_PerProgramBind
+    {
+        float object_plane_s[4];
+        float object_plane_t[4];
+    };
+    static_assert(sizeof(TerrainV_PerProgramBind) == 32,
+                  "TerrainV_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct TwoTextureCompare_PerProgramBind
+    {
+        float dither_scale;
+        float dither_scale_s;
+        float dither_scale_t;
+        float _pad0;
+    };
+    static_assert(sizeof(TwoTextureCompare_PerProgramBind) == 16,
+                  "TwoTextureCompare_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct UnderWaterF_PerProgramBind
+    {
+        float waterFogColorLinear[3];
+        float refScale;
+    };
+    static_assert(sizeof(UnderWaterF_PerProgramBind) == 16,
+                  "UnderWaterF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct WaterF_PerProgramBind
+    {
+        float lightDir[3];
+        float blurMultiplier;
+        float specular[3];
+        float refScale;
+        float normScale[3];
+        float fresnelScale;
+        float fresnelOffset;
+        float blend_factor;
+        S32   classic_mode;
+        float _pad_waterf0;
+    };
+    static_assert(sizeof(WaterF_PerProgramBind) == 64,
+                  "WaterF_PerProgramBind size mismatch (std140 expects 64 B)");
+
+    struct WaterHazeF_PerProgramBind
+    {
+        S32 above_water;
+        S32 _pad0;
+        S32 _pad1;
+        S32 _pad2;
+    };
+    static_assert(sizeof(WaterHazeF_PerProgramBind) == 16,
+                  "WaterHazeF_PerProgramBind size mismatch (std140 expects 16 B)");
+
+    struct WaterHazeV_PerProgramBind
+    {
+        float screen_res_wh[2];
+        S32   above_water_wh;
+        float _waterHazeV_pad0;
+        float waterPlane_wh[4];
+    };
+    static_assert(sizeof(WaterHazeV_PerProgramBind) == 32,
+                  "WaterHazeV_PerProgramBind size mismatch (std140 expects 32 B)");
+
+    struct CasF_PerProgramBind
+    {
+        float out_screen_res_uniform[2];
+        float _pad0[2];
+        U32   cas_param_0_uniform[4];
+        U32   cas_param_1_uniform[4];
+        float gamma;
+        float _pad1;
+        float _pad2;
+        float _pad3;
+    };
+    static_assert(sizeof(CasF_PerProgramBind) == 64,
+                  "CasF_PerProgramBind size mismatch (std140 expects 64 B)");
+
     static constexpr U32 ALPHAF_UBO_SIZE_IMPOSTOR  = 16;
     static constexpr U32 ALPHAF_UBO_SIZE_SHADOW    = 528;
     static constexpr U32 ALPHAF_UBO_SIZE_NO_SHADOW = 560;

@@ -349,12 +349,7 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
 
         if (is_under_water)
         {
-            struct UnderWaterF_UBO
-            {
-                F32 waterFogColorLinear[3];
-                F32 refScale;
-            };
-            UnderWaterF_UBO ubo_data = {};
+            LLVKLoader::UnderWaterF_PerProgramBind ubo_data = {};
             LLColor3 fog_color_linear = linearColor3(pwater->getWaterFogColor());
             ubo_data.waterFogColorLinear[0] = fog_color_linear.mV[0];
             ubo_data.waterFogColorLinear[1] = fog_color_linear.mV[1];
@@ -366,20 +361,7 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
         }
         else
         {
-            struct WaterF_UBO
-            {
-                F32 lightDir[3];
-                F32 blurMultiplier;
-                F32 specular[3];
-                F32 refScale;
-                F32 normScale[3];
-                F32 fresnelScale;
-                F32 fresnelOffset;
-                F32 blend_factor;
-                S32 classic_mode;
-                F32 _pad_waterf0;
-            };
-            WaterF_UBO ubo_data = {};
+            LLVKLoader::WaterF_PerProgramBind ubo_data = {};
             ubo_data.lightDir[0]     = light_dir.mV[0];
             ubo_data.lightDir[1]     = light_dir.mV[1];
             ubo_data.lightDir[2]     = light_dir.mV[2];

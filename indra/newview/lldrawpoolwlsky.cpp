@@ -537,27 +537,7 @@ void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 
         if (LLVKLoader::isVulkanInitialized() && cloudshader->mVkPerProgramUBO != VK_NULL_HANDLE
             && cloudshader->mVkPerProgramUBOMapped != nullptr)
         {
-            struct Cloud_UBO
-            {
-                F32 camPosLocal[3];
-                F32 _pad0;
-                F32 cloud_color[3];
-                F32 cloud_scale_v;
-                F32 cloud_pos_density1[3];
-                F32 _pad1;
-                F32 cloud_pos_density2[3];
-                F32 _pad2;
-                F32 blend_factor;
-                F32 cloud_scale;
-                F32 cloud_variance;
-                S32 aya_r18_cloud_volumetric_enabled;
-                F32 aya_r18_strength;
-                F32 _pad3;
-                F32 _pad4;
-                F32 _pad5;
-            };
-            static_assert(sizeof(Cloud_UBO) == 96, "Cloud_UBO size mismatch (std140 96 B、cloudsV/cloudsF Cloud_PerProgramBind と byte 一致必須)");
-            Cloud_UBO ubo_data = {};
+            LLVKLoader::Cloud_PerProgramBind ubo_data = {};
 
             ubo_data.camPosLocal[0] = 0.f;
             ubo_data.camPosLocal[1] = camHeightLocal;
@@ -671,14 +651,7 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
                 if (LLVKLoader::isVulkanInitialized() && sun_shader->mVkPerProgramUBO != VK_NULL_HANDLE
                     && sun_shader->mVkPerProgramUBOMapped != nullptr)
                 {
-                    struct SunDiscF_UBO
-                    {
-                        F32 blend_factor;
-                        F32 pad0;
-                        F32 pad1;
-                        F32 pad2;
-                    };
-                    SunDiscF_UBO ubo_data = {};
+                    LLVKLoader::SunDiscF_PerProgramBind ubo_data = {};
                     ubo_data.blend_factor = blend_factor;
                     memcpy(sun_shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
                 }
@@ -736,13 +709,7 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
             if (LLVKLoader::isVulkanInitialized() && moon_shader->mVkPerProgramUBO != VK_NULL_HANDLE
                 && moon_shader->mVkPerProgramUBOMapped != nullptr)
             {
-                struct MoonF_UBO
-                {
-                    F32 color[4];
-                    F32 moon_dir[3];
-                    F32 moon_brightness;
-                };
-                MoonF_UBO ubo_data = {};
+                LLVKLoader::MoonF_PerProgramBind ubo_data = {};
                 ubo_data.color[0]      = color.mV[0];
                 ubo_data.color[1]      = color.mV[1];
                 ubo_data.color[2]      = color.mV[2];

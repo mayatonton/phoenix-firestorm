@@ -37,6 +37,7 @@ set(llrender_SOURCE_FILES
     llvertexbuffer.cpp
     llglcommonfunc.cpp
     llvkloader.cpp
+    llvkuboreg.cpp
     volk.c
     )
     
@@ -71,6 +72,7 @@ set(llrender_HEADER_FILES
     llvertexbuffer.h
     llglcommonfunc.h
     llvkloader.h
+    llvkuboreg.h
     volk.h
     )
 

@@ -15,12 +15,26 @@
 #include "llsd.h"
 #include "llsdserialize.h"
 #include "llviewercontrol.h"
+#include "llviewershadermgr.h"
 
 namespace
 {
     const char OVERLAY_FILENAME[]  = "settings_cinematic_bd.xml";
     const char SENTINEL_CONTROL[]  = "AYACinematicOverlayApplied";
     const char MODE_CONTROL[]      = "AYAVisualRealismEnabled";
+
+    struct ShaderReloadSuppressScope
+    {
+        bool mPrev;
+        ShaderReloadSuppressScope() : mPrev(LLViewerShaderMgr::sSkipReload)
+        {
+            LLViewerShaderMgr::sSkipReload = true;
+        }
+        ~ShaderReloadSuppressScope()
+        {
+            LLViewerShaderMgr::sSkipReload = mPrev;
+        }
+    };
 
     bool sSessionOverlayActive = false;
     bool sInSessionRewrite     = false;
@@ -118,6 +132,7 @@ namespace
 
 void LLCinematicOverlay::applyCinematicOverlay()
 {
+    ShaderReloadSuppressScope suppress_shader_reload;
     LLSD overlay;
     if (!loadOverlayLLSD(overlay))
     {
@@ -157,6 +172,7 @@ void LLCinematicOverlay::applyCinematicOverlay()
 
 void LLCinematicOverlay::revertCinematicOverlay()
 {
+    ShaderReloadSuppressScope suppress_shader_reload;
     if (!sSessionOverlayActive)
     {
         return;

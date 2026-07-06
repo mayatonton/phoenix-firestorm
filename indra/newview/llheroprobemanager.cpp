@@ -494,18 +494,7 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
                     && gHeroRadianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                     && gHeroRadianceGenProgram.mVkPerProgramUBOMapped != nullptr)
                 {
-                    struct RadianceGenF_UBO
-                    {
-                        S32 sourceIdx;
-                        F32 mipLevel;
-                        S32 u_width;
-                        F32 max_probe_lod;
-                        F32 probe_strength;
-                        F32 pad0;
-                        F32 pad1;
-                        F32 pad2;
-                    };
-                    RadianceGenF_UBO ubo_data = {};
+                    LLVKLoader::RadianceGen_PerProgramBind ubo_data = {};
                     ubo_data.sourceIdx        = sourceIdx;
                     ubo_data.mipLevel         = (F32)i;
                     ubo_data.u_width          = mProbeResolution;

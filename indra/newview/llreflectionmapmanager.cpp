@@ -965,18 +965,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                     && gRadianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                     && gRadianceGenProgram.mVkPerProgramUBOMapped != nullptr)
                 {
-                    struct RadianceGenF_UBO
-                    {
-                        S32 sourceIdx;
-                        F32 mipLevel;
-                        S32 u_width;
-                        F32 max_probe_lod;
-                        F32 probe_strength;
-                        F32 pad0;
-                        F32 pad1;
-                        F32 pad2;
-                    };
-                    RadianceGenF_UBO ubo_data = {};
+                    LLVKLoader::RadianceGen_PerProgramBind ubo_data = {};
                     ubo_data.sourceIdx        = sourceIdx;
                     ubo_data.mipLevel         = (F32)i;
                     ubo_data.u_width          = mProbeResolution;
@@ -1031,14 +1020,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 && gIrradianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                 && gIrradianceGenProgram.mVkPerProgramUBOMapped != nullptr)
             {
-                struct IrradianceGenF_UBO
-                {
-                    S32 sourceIdx;
-                    F32 max_probe_lod;
-                    F32 pad0;
-                    F32 pad1;
-                };
-                IrradianceGenF_UBO ubo_data = {};
+                LLVKLoader::IrradianceGen_PerProgramBind ubo_data = {};
                 ubo_data.sourceIdx          = sourceIdx;
                 ubo_data.max_probe_lod      = mMaxProbeLOD;
                 gIrradianceGenProgram.rotatePerProgramUBOSlot();

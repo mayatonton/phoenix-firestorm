@@ -40,6 +40,7 @@
 #include "llglslshader.h"
 #include "llmemory.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llrendertarget.h"
 #include <glm/gtc/type_ptr.hpp>
 
@@ -1011,7 +1012,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     vkCmdPushConstants(cmd,
                                        LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                        VK_SHADER_STAGE_VERTEX_BIT,
-                                       0, 64,
+                                       LLVkUboReg::PC_OFF_MODELVIEW, 64,
                                        LLVKLoader::getCurrentModelviewMatrix());
                     vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
                     vk_fired = true;
@@ -1148,7 +1149,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     vkCmdPushConstants(cmd,
                                        LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                        VK_SHADER_STAGE_VERTEX_BIT,
-                                       0, 64,
+                                       LLVkUboReg::PC_OFF_MODELVIEW, 64,
                                        LLVKLoader::getCurrentModelviewMatrix());
                     vkCmdDraw(cmd, count, 1, first, 0);
                     vk_fired = true;

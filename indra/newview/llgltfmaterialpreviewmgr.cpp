@@ -43,6 +43,7 @@
 #include "pipeline.h"
 #include "llpipelineframecontext.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 
 LLGLTFMaterialPreviewMgr gGLTFMaterialPreviewMgr;
 
@@ -523,11 +524,11 @@ bool LLGLTFPreviewTexture::render()
             {
                 const F32 aya_preview_water_sign = 0.f;
                 vkCmdPushConstants(cmd, shader.mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   72, sizeof(F32), &aya_preview_water_sign);
+                                   LLVkUboReg::PC_OFF_WATER_SIGN, sizeof(F32), &aya_preview_water_sign);
 
                 const F32 aya_preview_neutral_atmos = 1.f;
                 vkCmdPushConstants(cmd, shader.mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   76, sizeof(F32), &aya_preview_neutral_atmos);
+                                   LLVkUboReg::PC_OFF_PREVIEW_NEUTRAL_ATMOS, sizeof(F32), &aya_preview_neutral_atmos);
             }
         }
 

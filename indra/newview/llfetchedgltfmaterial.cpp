@@ -35,6 +35,7 @@
 #include "pipeline.h"
 #include "llpipelineframecontext.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 
 //static
 LLFetchedGLTFMaterial LLFetchedGLTFMaterial::sDefault;
@@ -89,7 +90,7 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
             if (cmd != VK_NULL_HANDLE)
             {
                 vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   64, sizeof(F32), &min_alpha);
+                                   LLVkUboReg::PC_OFF_MINIMUM_ALPHA, sizeof(F32), &min_alpha);
             }
         }
     }
@@ -149,14 +150,14 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
             {
                 const F32 aya_sss_skin_flag = 0.f;
                 vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   68, sizeof(F32), &aya_sss_skin_flag);
+                                   LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &aya_sss_skin_flag);
                 vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   100, sizeof(F32), &mRoughnessFactor);
+                                   LLVkUboReg::PC_OFF_ROUGHNESS, sizeof(F32), &mRoughnessFactor);
                 vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   96, sizeof(F32), &mMetallicFactor);
+                                   LLVkUboReg::PC_OFF_METALLIC, sizeof(F32), &mMetallicFactor);
                 const F32 emissive_pc[4] = { mEmissiveColor.mV[0], mEmissiveColor.mV[1], mEmissiveColor.mV[2], 0.f };
                 vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   80, sizeof(emissive_pc), emissive_pc);
+                                   LLVkUboReg::PC_OFF_EMISSIVE_COLOR, sizeof(emissive_pc), emissive_pc);
             }
         }
 

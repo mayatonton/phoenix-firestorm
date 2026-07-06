@@ -36,6 +36,7 @@
 
 #include "llrender.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llenvironment.h"
 #include "llerrorcontrol.h"
 #include "llworld.h"
@@ -361,6 +362,77 @@ namespace {
             cursor += 16;
         }
         out_layout.ubo_size = cursor;
+    }
+
+    void verifyMaterialFVariant(const LLGLSLShader& shader, const VkReflUboBlock& block)
+    {
+        std::map<std::string, const VkReflUboMember*> refl;
+        for (const VkReflUboMember& m : block.members)
+        {
+            refl[LLVkUboReg::normalizeMemberName(block.block_name, m.name)] = &m;
+        }
+        const bool has_lights = refl.count("light_position") != 0;
+        const bool has_sun    = refl.count("sun_dir") != 0;
+        const bool has_sss    = refl.count("aya_sss_skin_flag") != 0;
+        const bool has_mask   = refl.count("minimum_alpha") != 0;
+        const U32 alpha_mode  = has_lights ? 1u : (has_mask ? 2u : 0u);
+
+        MaterialFLayoutOffsets layout;
+        computeMaterialFLayoutOffsets(alpha_mode, !has_sun, has_sss, layout);
+
+        std::set<std::string> expected;
+        auto expect = [&](const char* n, U32 off, U32 sz)
+        {
+            expected.insert(n);
+            auto it = refl.find(n);
+            if (it == refl.end())
+            {
+                LLVkUboReg::reportDiff(shader, block, n, "V2", off, sz, 0, 0);
+                return;
+            }
+            const VkReflUboMember* rm = it->second;
+            if (rm->offset != off || (rm->size != 0 && sz != 0 && rm->size != sz))
+            {
+                LLVkUboReg::reportDiff(shader, block, n, "V1", off, sz, rm->offset, rm->size);
+            }
+        };
+
+        expect("emissive_brightness", layout.emissive_brightness_offset, (U32)sizeof(F32));
+        expect("env_intensity", layout.env_intensity_offset, (U32)sizeof(F32));
+        expect("specular_color", layout.specular_color_offset, (U32)sizeof(F32) * 4);
+        if (has_lights)
+        {
+            if (has_sun)
+            {
+                expect("sun_dir", layout.sun_dir_offset, (U32)sizeof(F32) * 3);
+                expect("moon_dir", layout.moon_dir_offset, (U32)sizeof(F32) * 3);
+            }
+            expect("light_position", layout.light_position_offset, 128);
+            expect("light_direction", layout.light_direction_offset, 128);
+            expect("light_attenuation", layout.light_attenuation_offset, 128);
+            expect("light_diffuse", layout.light_diffuse_offset, 128);
+        }
+        if (has_sss)
+        {
+            expect("aya_sss_skin_flag", layout.aya_sss_skin_flag_offset, (U32)sizeof(F32));
+        }
+        if (has_mask && alpha_mode == 2)
+        {
+            expect("minimum_alpha", layout.minimum_alpha_offset, (U32)sizeof(F32));
+        }
+
+        if (block.block_size != 0 && block.block_size != layout.ubo_size)
+        {
+            LLVkUboReg::reportDiff(shader, block, "(block)", "V1", 0, layout.ubo_size, 0, block.block_size);
+        }
+        for (const auto& kv : refl)
+        {
+            if (expected.count(kv.first) == 0
+                && kv.first.compare(0, strlen("_materialF_pad"), "_materialF_pad") != 0)
+            {
+                LLVkUboReg::reportUnknown(shader, block, kv.first, "V3");
+            }
+        }
     }
 }
 
@@ -800,6 +872,8 @@ void LLViewerShaderMgr::setShaders()
         LL_INFOS("ShaderLoading") << "Not supported hardware/software" << LL_ENDL;
         return;
     }
+
+    LLVkUboReg::registerVariantVerifier("MaterialF_PerProgramBind", verifyMaterialFVariant);
 
     // <FS:AYA r30 Phase 3.8> Cinematic mount: latch sCinematicMode from
     // AYAVisualRealismEnabled before loadShaderFile is invoked anywhere
