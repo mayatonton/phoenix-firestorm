@@ -24,6 +24,7 @@
 #include "llvoavatarself.h"
 #include "pipeline.h"
 #include "llpipelineframecontext.h"
+#include "llvkloader.h"
 
 #include "rlveffects.h"
 #include "rlvhandler.h"
@@ -330,6 +331,46 @@ void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
     // Pass effect params
     const glm::vec4 effectParams(glm::make_vec4(m_Params.get().mV));
     pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM4, 1, glm::value_ptr(effectParams));
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        memcpy(mVkUboParam1, glm::value_ptr(posSphereOriginGl), sizeof(F32) * 4);
+        memcpy(mVkUboParam2, glm::value_ptr(sphereParams),      sizeof(F32) * 4);
+        memcpy(mVkUboParam4, glm::value_ptr(effectParams),      sizeof(F32) * 4);
+        mVkUboScreenRes[0] = (F32)LLPipelineFrameContext::getInstance().getActiveRT()->screen.getWidth();
+        mVkUboScreenRes[1] = (F32)LLPipelineFrameContext::getInstance().getActiveRT()->screen.getHeight();
+        mVkUboParam3[0] = (eDistExtend & (int)ESphereDistExtend::Min) ? 1u : 0u;
+        mVkUboParam3[1] = (eDistExtend & (int)ESphereDistExtend::Max) ? 1u : 0u;
+        mVkUboMode = llclamp((int)m_eMode, 0, (int)ESphereMode::Count);
+    }
+}
+
+void RlvSphereEffect::writeVkPerProgramUBO(LLGLSLShader* pShader, F32 blurDirX, F32 blurDirY) const
+{
+    if (!LLVKLoader::isVulkanInitialized()
+        || pShader->mVkPerProgramUBO == VK_NULL_HANDLE
+        || pShader->mVkPerProgramUBOMapped == nullptr)
+    {
+        return;
+    }
+
+    pShader->rotatePerProgramUBOSlot();
+    char* base = static_cast<char*>(pShader->mVkActivePerProgramUBOMapped);
+    if (base == nullptr)
+    {
+        return;
+    }
+
+    const F32 param5[2] = { blurDirX, blurDirY };
+    const S32 pad0 = 0;
+    memcpy(base +  0, mVkUboParam1,    sizeof(F32) * 4);
+    memcpy(base + 16, mVkUboParam2,    sizeof(F32) * 4);
+    memcpy(base + 32, mVkUboParam4,    sizeof(F32) * 4);
+    memcpy(base + 48, param5,          sizeof(F32) * 2);
+    memcpy(base + 56, mVkUboScreenRes, sizeof(F32) * 2);
+    memcpy(base + 64, mVkUboParam3,    sizeof(U32) * 2);
+    memcpy(base + 72, &mVkUboMode,     sizeof(S32));
+    memcpy(base + 76, &pad0,           sizeof(S32));
 }
 
 void RlvSphereEffect::renderPass(LLGLSLShader* pShader, const LLShaderEffectParams* pParams) const
@@ -392,13 +433,16 @@ void RlvSphereEffect::run(const LLVisualEffectParams* pParams)
             case ESphereMode::Blend:
             case ESphereMode::ChromaticAberration:
             case ESphereMode::Pixelate:
+                writeVkPerProgramUBO(&gRlvSphereProgram, 0.f, 0.f);
                 renderPass(&gRlvSphereProgram, pShaderParams);
                 break;
             case ESphereMode::Blur:
             case ESphereMode::BlurVariable:
                 gRlvSphereProgram.uniform2f(LLShaderMgr::RLV_EFFECT_PARAM5, 1.f, 0.f);
+                writeVkPerProgramUBO(&gRlvSphereProgram, 1.f, 0.f);
                 renderPass(&gRlvSphereProgram, pShaderParams);
                 gRlvSphereProgram.uniform2f(LLShaderMgr::RLV_EFFECT_PARAM5, 0.f, 1.f);
+                writeVkPerProgramUBO(&gRlvSphereProgram, 0.f, 1.f);
                 renderPass(&gRlvSphereProgram, pShaderParams);
                 break;
             default:

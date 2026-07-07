@@ -87,6 +87,7 @@ public:
 protected:
     void renderPass(LLGLSLShader* pShader, const LLShaderEffectParams* pParams) const;
     void setShaderUniforms(LLGLSLShader* pShader);
+    void writeVkPerProgramUBO(LLGLSLShader* pShader, F32 blurDirX, F32 blurDirY) const;
 
     /*
      * Member variables
@@ -104,6 +105,13 @@ protected:
     LLTweenableValueLerp<float>     m_nValueMin;
     LLTweenableValueLerp<float>     m_nValueMax;
     float                           m_nTweenDuration;
+
+    F32 mVkUboParam1[4]   = {};
+    F32 mVkUboParam2[4]   = {};
+    F32 mVkUboParam4[4]   = {};
+    F32 mVkUboScreenRes[2] = {};
+    U32 mVkUboParam3[2]   = {};
+    S32 mVkUboMode         = 0;
 };
 
 // ====================================================================================
