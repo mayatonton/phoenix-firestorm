@@ -1041,12 +1041,64 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
 {
     if (LLVKLoader::shouldUseVulkanRender())
     {
-        static std::set<std::string> s_vk_nodraw_drawfast_shaders;
-        const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
-        if (s_vk_nodraw_drawfast_shaders.insert(name).second)
+        bool vk_fired = false;
+        if (LLGLSLShader::sCurBoundShaderPtr != nullptr)
         {
-            LL_WARNS("Vulkan") << "GL fallback 廃止: drawRangeFast (GLTF scene) Vulkan 未描画 shader='"
-                               << name << "' (count=" << (S32)count << ") = Vulkan 未配備 = 個別要 fix" << LL_ENDL;
+            VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+            if (set_to_bind == VK_NULL_HANDLE)
+            {
+                LLGLSLShader::populateAndBindUniversalDescriptorSet();
+                set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+            }
+            if (set_to_bind != VK_NULL_HANDLE)
+            {
+                VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                if (cmd != VK_NULL_HANDLE)
+                {
+                    VkPipeline pipeline =
+                        LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
+                    if (pipeline != VK_NULL_HANDLE)
+                    {
+                        if (LLRenderTarget::getCurrentBoundTarget() == nullptr
+                            && !LLVKLoader::isInRenderPassScope())
+                        {
+                            LLVKLoader::beginSwapchainRendering();
+                        }
+                        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                        {
+                            const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+                                LLRenderTarget::getCurrentBoundTarget() != nullptr,
+                                LLGLSLShader::vkCaptureRegimeActive());
+                            LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
+                        }
+                        VkDescriptorSet sets[2] = {
+                            LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                            set_to_bind
+                        };
+                        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                                0, 2, sets, 0, nullptr);
+                        vkCmdPushConstants(cmd,
+                                           LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                           VK_SHADER_STAGE_VERTEX_BIT,
+                                           LLVkUboReg::PC_OFF_MODELVIEW, 64,
+                                           LLVKLoader::getCurrentModelviewMatrix());
+                        vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
+                        vk_fired = true;
+                        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+                    }
+                }
+            }
+        }
+        if (!vk_fired)
+        {
+            static std::set<std::string> s_vk_nodraw_drawfast_shaders;
+            const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
+            if (s_vk_nodraw_drawfast_shaders.insert(name).second)
+            {
+                LL_WARNS("Vulkan") << "GL fallback 廃止: drawRangeFast (GLTF scene) Vulkan 未描画 shader='"
+                                   << name << "' (count=" << (S32)count << ") = Vulkan 未配備 = 個別要 fix" << LL_ENDL;
+            }
         }
         return;
     }

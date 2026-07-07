@@ -330,13 +330,11 @@ namespace
     LLVK_SHARED_UBO_RING_STORAGE(LightsSpecular)
     LLVK_SHARED_UBO_RING_STORAGE(PBRMaterial)
     LLVK_SHARED_UBO_RING_STORAGE(DrawColor)
+    LLVK_SHARED_UBO_RING_STORAGE(PbrTerrainF)
     #undef LLVK_SHARED_UBO_RING_STORAGE
     VkBuffer              sSharedSMAABlendWeightsFUBO             = VK_NULL_HANDLE;
     void*                 sSharedSMAABlendWeightsFUBOAllocation   = nullptr;
     void*                 sSharedSMAABlendWeightsFUBOMapped       = nullptr;
-    VkBuffer              sSharedPbrTerrainFUBO                   = VK_NULL_HANDLE;
-    void*                 sSharedPbrTerrainFUBOAllocation         = nullptr;
-    void*                 sSharedPbrTerrainFUBOMapped             = nullptr;
 
     U32 sFrameIndex = 0;
 
@@ -2992,7 +2990,6 @@ void shutdownVulkan()
         destroy_shared_ubo(sSharedLightMinimumAlphaUBO, sSharedLightMinimumAlphaUBOAllocation, sSharedLightMinimumAlphaUBOMapped);
         destroy_shared_ubo(sSharedTonemapUtilFUBO,      sSharedTonemapUtilFUBOAllocation,      sSharedTonemapUtilFUBOMapped);
         destroy_shared_ubo(sSharedSMAABlendWeightsFUBO, sSharedSMAABlendWeightsFUBOAllocation, sSharedSMAABlendWeightsFUBOMapped);
-        destroy_shared_ubo(sSharedPbrTerrainFUBO,       sSharedPbrTerrainFUBOAllocation,       sSharedPbrTerrainFUBOMapped);
         for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
         {
             if (sPerFrameUboMemory[frame] != VK_NULL_HANDLE && sPerFrameUboMapped[frame] != nullptr)
@@ -3094,6 +3091,7 @@ void shutdownVulkan()
             LLVK_SHARED_UBO_RING_TEARDOWN(LightsSpecular)
             LLVK_SHARED_UBO_RING_TEARDOWN(PBRMaterial)
             LLVK_SHARED_UBO_RING_TEARDOWN(DrawColor)
+            LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrainF)
             #undef LLVK_SHARED_UBO_RING_TEARDOWN
         }
         if (sPerFrameDescriptorSetLayout != VK_NULL_HANDLE)
@@ -4358,7 +4356,6 @@ LLVK_SHARED_UBO_GETTER(WindlightLight,      WindlightLight_PerProgramBind,      
 LLVK_SHARED_UBO_GETTER(LightMinimumAlpha,   LightMinimumAlpha_PerProgramBind,   sSharedLightMinimumAlphaUBO,   sSharedLightMinimumAlphaUBOAllocation,   sSharedLightMinimumAlphaUBOMapped,   13)
 LLVK_SHARED_UBO_GETTER(TonemapUtilF,         TonemapUtilF_PerProgramBind,         sSharedTonemapUtilFUBO,         sSharedTonemapUtilFUBOAllocation,         sSharedTonemapUtilFUBOMapped,         26)
 LLVK_SHARED_UBO_GETTER(SMAABlendWeightsF,   SMAABlendWeightsF_PerProgramBind,   sSharedSMAABlendWeightsFUBO,   sSharedSMAABlendWeightsFUBOAllocation,   sSharedSMAABlendWeightsFUBOMapped,   4)
-LLVK_SHARED_UBO_GETTER(PbrTerrainF,         PbrTerrainF_PerProgramBind,         sSharedPbrTerrainFUBO,         sSharedPbrTerrainFUBOAllocation,         sSharedPbrTerrainFUBOMapped,         28)
 
 #undef LLVK_SHARED_UBO_GETTER
 
@@ -4377,7 +4374,6 @@ LLVK_SHARED_UBO_WRITER(WindlightLight,    WindlightLight_PerProgramBind,    sSha
 LLVK_SHARED_UBO_WRITER(LightMinimumAlpha, LightMinimumAlpha_PerProgramBind, sSharedLightMinimumAlphaUBOMapped, 13)
 LLVK_SHARED_UBO_WRITER(TonemapUtilF,       TonemapUtilF_PerProgramBind,       sSharedTonemapUtilFUBOMapped,       26)
 LLVK_SHARED_UBO_WRITER(SMAABlendWeightsF, SMAABlendWeightsF_PerProgramBind, sSharedSMAABlendWeightsFUBOMapped, 4)
-LLVK_SHARED_UBO_WRITER(PbrTerrainF,       PbrTerrainF_PerProgramBind,       sSharedPbrTerrainFUBOMapped,       28)
 
 #undef LLVK_SHARED_UBO_WRITER
 
@@ -4620,6 +4616,7 @@ LLVK_SHARED_UBO_RING_IMPL(Lights,           Lights_PerProgramBind,           12)
 LLVK_SHARED_UBO_RING_IMPL(LightsSpecular,   LightsSpecular_PerProgramBind,   12)
 LLVK_SHARED_UBO_RING_IMPL(PBRMaterial,      PBRMaterial_PerMaterial,         48)
 LLVK_SHARED_UBO_RING_IMPL(DrawColor,        DrawColor_PerShaderBind,         51)
+LLVK_SHARED_UBO_RING_IMPL(PbrTerrainF,      PbrTerrainF_PerProgramBind,      28)
 #undef LLVK_SHARED_UBO_RING_IMPL
 
 static bool ensureObjectSkinRingSlot(U32 f, U32 idx)

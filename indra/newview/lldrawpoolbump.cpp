@@ -932,6 +932,7 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
 
             LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
             gNormalMapGenProgram.bind();
+            gNormalMapGenProgram.rotatePerProgramUBOSlot();
 
             static LLStaticHashedString sNormScale("norm_scale");
             static LLStaticHashedString sStepX("stepX");
@@ -944,7 +945,7 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
             gNormalMapGenProgram.uniform1i(sBumpCode, bump_code);
 
             if (LLVKLoader::isVulkanInitialized()
-                && gNormalMapGenProgram.mVkPerProgramUBOMapped != nullptr
+                && gNormalMapGenProgram.mVkActivePerProgramUBOMapped != nullptr
                 && gNormalMapGenProgram.mVkPerProgramUBOSize >= sizeof(LLVKLoader::NormgenF_PerProgramBind))
             {
                 LLVKLoader::NormgenF_PerProgramBind ubo_data{};
@@ -952,7 +953,7 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
                 ubo_data.stepY      = 1.f / bump->getHeight();
                 ubo_data.norm_scale = gSavedSettings.getF32("RenderNormalMapScale");
                 ubo_data.bump_code  = (S32)bump_code;
-                std::memcpy(gNormalMapGenProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                std::memcpy(gNormalMapGenProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
             }
 
             gGL.getTexUnit(0)->bind(src);

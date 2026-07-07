@@ -829,8 +829,7 @@ void LLRenderTarget::clear(U32 mask_in)
             if ((effective_mask & GL_DEPTH_BUFFER_BIT) && mUseDepth &&
                 mVkDepth != VK_NULL_HANDLE)
             {
-                ca[ca_count].aspectMask                    = VK_IMAGE_ASPECT_DEPTH_BIT
-                                                           | VK_IMAGE_ASPECT_STENCIL_BIT;
+                ca[ca_count].aspectMask                    = VK_IMAGE_ASPECT_DEPTH_BIT;
                 ca[ca_count].clearValue.depthStencil.depth   = 1.0f;
                 ca[ca_count].clearValue.depthStencil.stencil = 0;
                 ++ca_count;
