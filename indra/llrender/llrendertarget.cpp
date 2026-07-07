@@ -1089,6 +1089,5 @@ void LLRenderTarget::swapFBORefs(LLRenderTarget& other)
     std::swap(mVkTexView, other.mVkTexView);
     std::swap(mVkTexSampleView, other.mVkTexSampleView);
     std::swap(mVkTexAlloc, other.mVkTexAlloc);
-    std::swap(mVkTexBorrowed, other.mVkTexBorrowed);
     std::swap(mVkTexLayout, other.mVkTexLayout);
 }

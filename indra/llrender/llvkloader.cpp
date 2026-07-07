@@ -149,9 +149,7 @@ namespace
     constexpr VkDeviceSize CLIPPLANE_UBO_SIZE        = sizeof(ClipPlane_PerShaderBind);
     constexpr VkDeviceSize GLOWCOMBINE_UBO_OFFSET    = 3072;
     constexpr VkDeviceSize GLOWCOMBINE_UBO_SIZE      = sizeof(GlowCombine_PerShaderBind);
-    constexpr VkDeviceSize GAUSSIAN_UBO_OFFSET       = 3328;
-    constexpr VkDeviceSize GAUSSIAN_UBO_SIZE         = sizeof(Gaussian_PerShaderBind);
-    constexpr VkDeviceSize UBO_BUFFER_SIZE_FRAME     = GAUSSIAN_UBO_OFFSET + GAUSSIAN_UBO_SIZE;
+    constexpr VkDeviceSize UBO_BUFFER_SIZE_FRAME     = GLOWCOMBINE_UBO_OFFSET + GLOWCOMBINE_UBO_SIZE;
 
     VkDescriptorSetLayout sPerFrameDescriptorSetLayout            = VK_NULL_HANDLE;
     VkBuffer              sPerFrameUboBuffer[FRAMES_IN_FLIGHT]    = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
@@ -277,9 +275,6 @@ namespace
     VkBuffer              sSharedWindlightLightUBO                = VK_NULL_HANDLE;
     void*                 sSharedWindlightLightUBOAllocation      = nullptr;
     void*                 sSharedWindlightLightUBOMapped          = nullptr;
-    VkBuffer              sSharedLightMinimumAlphaUBO             = VK_NULL_HANDLE;
-    void*                 sSharedLightMinimumAlphaUBOAllocation   = nullptr;
-    void*                 sSharedLightMinimumAlphaUBOMapped       = nullptr;
     VkBuffer              sSharedTonemapUtilFUBO                  = VK_NULL_HANDLE;
     void*                 sSharedTonemapUtilFUBOAllocation        = nullptr;
     void*                 sSharedTonemapUtilFUBOMapped            = nullptr;
@@ -1535,7 +1530,7 @@ namespace
 
     bool createPerFrameDescriptorSetLayout()
     {
-        VkDescriptorSetLayoutBinding bindings[11] = {};
+        VkDescriptorSetLayoutBinding bindings[10] = {};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -1586,14 +1581,9 @@ namespace
         bindings[9].descriptorCount = 1;
         bindings[9].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[10].binding         = 11;
-        bindings[10].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[10].descriptorCount = 1;
-        bindings[10].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
-
         VkDescriptorSetLayoutCreateInfo info = {};
         info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        info.bindingCount = 11;
+        info.bindingCount = 10;
         info.pBindings    = bindings;
 
         VkResult result = vkCreateDescriptorSetLayout(sDevice, &info, nullptr, &sPerFrameDescriptorSetLayout);
@@ -1664,7 +1654,7 @@ namespace
     void writePerFrameSetBindings(VkDescriptorSet set, U32 frame, VkBuffer matrixBuf, VkDeviceSize matrixOffset)
     {
         struct BindSpec { U32 binding; VkBuffer buf; VkDeviceSize off; VkDeviceSize range; };
-        const BindSpec specs[11] = {
+        const BindSpec specs[10] = {
             { 0,  matrixBuf,                 matrixOffset,                       PERFRAME_UBO_SIZE },
             { 1,  matrixBuf,                 matrixOffset + PERFRAME_UBO_SIZE,   TEXTURE_UBO_SIZE },
             { 2,  sPerFrameUboBuffer[frame], SHADOW_UBO_OFFSET,                  SHADOW_UBO_SIZE },
@@ -1675,12 +1665,11 @@ namespace
             { 8,  sPerFrameUboBuffer[frame], AVATAR_VELOCITY_PALETTE_UBO_OFFSET, AVATAR_VELOCITY_PALETTE_UBO_SIZE },
             { 9,  sPerFrameUboBuffer[frame], CLIPPLANE_UBO_OFFSET,               CLIPPLANE_UBO_SIZE },
             { 10, sPerFrameUboBuffer[frame], GLOWCOMBINE_UBO_OFFSET,             GLOWCOMBINE_UBO_SIZE },
-            { 11, sPerFrameUboBuffer[frame], GAUSSIAN_UBO_OFFSET,                GAUSSIAN_UBO_SIZE },
         };
 
-        VkDescriptorBufferInfo infos[11]  = {};
-        VkWriteDescriptorSet   writes[11] = {};
-        for (U32 i = 0; i < 11; ++i)
+        VkDescriptorBufferInfo infos[10]  = {};
+        VkWriteDescriptorSet   writes[10] = {};
+        for (U32 i = 0; i < 10; ++i)
         {
             infos[i].buffer = specs[i].buf;
             infos[i].offset = specs[i].off;
@@ -1693,7 +1682,7 @@ namespace
             writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[i].pBufferInfo     = &infos[i];
         }
-        vkUpdateDescriptorSets(sDevice, 11, writes, 0, nullptr);
+        vkUpdateDescriptorSets(sDevice, 10, writes, 0, nullptr);
     }
 
     bool createMatrixRingChunk(U32 frame)
@@ -2980,7 +2969,6 @@ void shutdownVulkan()
         };
         destroy_shared_ubo(sSharedWindlightHDRUBO,      sSharedWindlightHDRUBOAllocation,      sSharedWindlightHDRUBOMapped);
         destroy_shared_ubo(sSharedWindlightLightUBO,    sSharedWindlightLightUBOAllocation,    sSharedWindlightLightUBOMapped);
-        destroy_shared_ubo(sSharedLightMinimumAlphaUBO, sSharedLightMinimumAlphaUBOAllocation, sSharedLightMinimumAlphaUBOMapped);
         destroy_shared_ubo(sSharedTonemapUtilFUBO,      sSharedTonemapUtilFUBOAllocation,      sSharedTonemapUtilFUBOMapped);
         destroy_shared_ubo(sSharedSMAABlendWeightsFUBO, sSharedSMAABlendWeightsFUBOAllocation, sSharedSMAABlendWeightsFUBOMapped);
         for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
@@ -3975,18 +3963,6 @@ void writeCurrentGlowCombineUBO(const GlowCombine_PerShaderBind& data)
 
 }
 
-void writeCurrentGaussianUBO(const Gaussian_PerShaderBind& data)
-{
-    if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
-    {
-        return;
-    }
-    std::memcpy(static_cast<U8*>(sPerFrameUboMapped[sFrameIndex]) + GAUSSIAN_UBO_OFFSET,
-                &data,
-                sizeof(Gaussian_PerShaderBind));
-
-}
-
 float sCurrentModelviewMatrix[16] = {
     1.0f, 0.0f, 0.0f, 0.0f,
     0.0f, 1.0f, 0.0f, 0.0f,
@@ -4335,7 +4311,6 @@ void ensurePerAssetUBOVk(U32       needed_size,
 
 LLVK_SHARED_UBO_GETTER(WindlightHDR,        WindlightHDR_PerProgramBind,        sSharedWindlightHDRUBO,        sSharedWindlightHDRUBOAllocation,        sSharedWindlightHDRUBOMapped,        10)
 LLVK_SHARED_UBO_GETTER(WindlightLight,      WindlightLight_PerProgramBind,      sSharedWindlightLightUBO,      sSharedWindlightLightUBOAllocation,      sSharedWindlightLightUBOMapped,      11)
-LLVK_SHARED_UBO_GETTER(LightMinimumAlpha,   LightMinimumAlpha_PerProgramBind,   sSharedLightMinimumAlphaUBO,   sSharedLightMinimumAlphaUBOAllocation,   sSharedLightMinimumAlphaUBOMapped,   13)
 LLVK_SHARED_UBO_GETTER(TonemapUtilF,         TonemapUtilF_PerProgramBind,         sSharedTonemapUtilFUBO,         sSharedTonemapUtilFUBOAllocation,         sSharedTonemapUtilFUBOMapped,         26)
 LLVK_SHARED_UBO_GETTER(SMAABlendWeightsF,   SMAABlendWeightsF_PerProgramBind,   sSharedSMAABlendWeightsFUBO,   sSharedSMAABlendWeightsFUBOAllocation,   sSharedSMAABlendWeightsFUBOMapped,   4)
 
@@ -4353,7 +4328,6 @@ LLVK_SHARED_UBO_GETTER(SMAABlendWeightsF,   SMAABlendWeightsF_PerProgramBind,   
 
 LLVK_SHARED_UBO_WRITER(WindlightHDR,      WindlightHDR_PerProgramBind,      sSharedWindlightHDRUBOMapped,      10)
 LLVK_SHARED_UBO_WRITER(WindlightLight,    WindlightLight_PerProgramBind,    sSharedWindlightLightUBOMapped,    11)
-LLVK_SHARED_UBO_WRITER(LightMinimumAlpha, LightMinimumAlpha_PerProgramBind, sSharedLightMinimumAlphaUBOMapped, 13)
 LLVK_SHARED_UBO_WRITER(TonemapUtilF,       TonemapUtilF_PerProgramBind,       sSharedTonemapUtilFUBOMapped,       26)
 LLVK_SHARED_UBO_WRITER(SMAABlendWeightsF, SMAABlendWeightsF_PerProgramBind, sSharedSMAABlendWeightsFUBOMapped, 4)
 

@@ -180,17 +180,6 @@ namespace LLVKLoader
 
     void writeCurrentGlowCombineUBO(const GlowCombine_PerShaderBind& data);
 
-    struct Gaussian_PerShaderBind
-    {
-        float resScale;
-        float _pad0;
-        float direction[2];
-    };
-    static_assert(sizeof(Gaussian_PerShaderBind) == 16,
-                  "Gaussian_PerShaderBind size mismatch (std140 expects 16 B)");
-
-    void writeCurrentGaussianUBO(const Gaussian_PerShaderBind& data);
-
     void pushCurrentModelviewMatrix(const float modelview_matrix[16]);
 
     struct DynamicRenderingAttachment
@@ -332,18 +321,6 @@ namespace LLVKLoader
                   "WindlightLight_PerProgramBind size mismatch (std140 expects 16 B)");
     void writeCurrentWindlightLightUBO(const WindlightLight_PerProgramBind& data);
     bool getSharedWindlightLightUBO(VkBuffer& out_buffer, void*& out_mapped);
-
-    struct LightMinimumAlpha_PerProgramBind
-    {
-        float minimum_alpha;
-        float _pad0;
-        float _pad1;
-        float _pad2;
-    };
-    static_assert(sizeof(LightMinimumAlpha_PerProgramBind) == 16,
-                  "LightMinimumAlpha_PerProgramBind size mismatch (std140 expects 16 B)");
-    void writeCurrentLightMinimumAlphaUBO(const LightMinimumAlpha_PerProgramBind& data);
-    bool getSharedLightMinimumAlphaUBO(VkBuffer& out_buffer, void*& out_mapped);
 
     struct WaterFog_PerProgramBind
     {

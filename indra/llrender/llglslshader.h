@@ -478,7 +478,6 @@ public:
     VkDescriptorSetLayout      mVkDescriptorSetLayout = VK_NULL_HANDLE;
 
     bool                       mVkVertexPushConstantOver64 = false;
-    bool                       mVkHasFragmentPushConstant  = false;
 
     static constexpr U32 MAX_VK_BINDING = 128;
     std::array<S32, MAX_VK_BINDING> mVkBindingToEnum = {};

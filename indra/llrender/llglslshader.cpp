@@ -1847,17 +1847,12 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     }
 
     mVkVertexPushConstantOver64 = false;
-    mVkHasFragmentPushConstant  = false;
     for (const auto& ss : stage_spvs)
     {
         if (ss.type == GL_VERTEX_SHADER)
         {
             const S32 vpc_max = reflectPushConstantMaxOffsetFromSpirv(ss.spirv);
             mVkVertexPushConstantOver64 = (vpc_max >= 64);
-        }
-        else if (ss.type == GL_FRAGMENT_SHADER)
-        {
-            mVkHasFragmentPushConstant = (reflectPushConstantMaxOffsetFromSpirv(ss.spirv) >= 0);
         }
     }
 
@@ -3564,13 +3559,6 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
         }
     }
 
-    if (LLVKLoader::isVulkanInitialized())
-    {
-        LLVKLoader::LightMinimumAlpha_PerProgramBind data = {};
-        data.minimum_alpha = minimum;
-        LLVKLoader::writeCurrentLightMinimumAlphaUBO(data);
-    }
-
     if (LLVKLoader::isVulkanInitialized() && mWritePerProgramUBOMinimumAlpha
         && mVkPerProgramUBO != VK_NULL_HANDLE && mVkPerProgramUBOMapped != nullptr)
     {
@@ -3731,7 +3719,6 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     {
         add_ubo(12, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedLightsUBO);
     }
-    add_ubo    (13, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedLightMinimumAlphaUBO);
     add_ubo    (14, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedWaterFogUBO);
     if (needsSharedWaterVUBO)
     {
@@ -3976,7 +3963,6 @@ VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
         case 12: return mFeatures.isSpecular
                             ? sizeof(LLVKLoader::LightsSpecular_PerProgramBind)
                             : sizeof(LLVKLoader::Lights_PerProgramBind);
-        case 13: return sizeof(LLVKLoader::LightMinimumAlpha_PerProgramBind);
         case 14: return sizeof(LLVKLoader::WaterFog_PerProgramBind);
         case 15: return sizeof(LLVKLoader::Water_PerProgramBind);
         case 16: return sizeof(LLVKLoader::ReflectionProbe_PerProgramBind);

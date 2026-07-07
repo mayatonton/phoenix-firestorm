@@ -236,7 +236,6 @@ protected:
     std::vector<VkImageView> mVkTexView;
     std::vector<VkImageView> mVkTexSampleView;
     std::vector<void*>       mVkTexAlloc;
-    std::vector<bool>        mVkTexBorrowed;
 
     VkImage     mVkDepth      = VK_NULL_HANDLE;
     VkImageView mVkDepthView  = VK_NULL_HANDLE;

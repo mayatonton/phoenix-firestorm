@@ -706,8 +706,6 @@ namespace
         { "SMAA T2x Resolve (Medium)",                "SMAA_PerProgramBind", "V5", 0, 16 },
         { "SMAA T2x Resolve (High)",                  "SMAA_PerProgramBind", "V5", 0, 16 },
         { "SMAA T2x Resolve (Ultra)",                 "SMAA_PerProgramBind", "V5", 0, 16 },
-        { nullptr, "Gaussian_PerShaderBind",             "dead", 0, 0 },
-        { nullptr, "LightMinimumAlpha_PerProgramBind",   "dead", 0, 0 },
         { nullptr, "Asset_GLTFMaterials",                "V4", 0, 0 },
         { nullptr, "Asset_GLTFNodes",                    "V4", 0, 0 },
         { nullptr, "Skin_GLTFJoints",                    "V4", 0, 0 },

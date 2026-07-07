@@ -14040,10 +14040,6 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
         }
     }
 
-    gDeferredShadowCubeProgram.bind();
-    gGLLastMatrix = NULL;
-    gGL.loadMatrix(gGLModelView);
-
     gGL.setColorMask(true, true);
 
     gGL.matrixMode(LLRender::MM_PROJECTION);
