@@ -3752,6 +3752,7 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     if (mFeatures.isPBRTerrain)
     {
         add_ubo    (28, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedPbrTerrainFUBO);
+        add_ubo    (52, VK_SHADER_STAGE_VERTEX_BIT,   LLVKLoader::getSharedPbrTerrainUBO);
     }
     else
     {
@@ -3992,6 +3993,7 @@ VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
         case 48: return sizeof(LLVKLoader::PBRMaterial_PerMaterial);
         case 49: return sizeof(LLVKLoader::SSRUtil_PerProgramBind);
         case 51: return sizeof(LLVKLoader::DrawColor_PerShaderBind);
+        case 52: return sizeof(LLVKLoader::PbrTerrain_PerShaderBind);
         default: return 0;
     }
 }

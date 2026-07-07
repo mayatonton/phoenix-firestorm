@@ -612,7 +612,7 @@ namespace
         UBOREG_BLOCK(0, "TextureMatrixUBO",                     TextureMatrixUBO,                     kM_TextureMatrixUBO),
         UBOREG_BLOCK(0, "ShadowParams_PerShaderBind",           ShadowParams_PerShaderBind,           kM_ShadowParams),
         UBOREG_BLOCK(0, "PreviewAmbient_PerShaderBind",         PreviewAmbient_PerShaderBind,         kM_PreviewAmbient),
-        UBOREG_BLOCK(0, "PbrTerrain_PerShaderBind",             PbrTerrain_PerShaderBind,             kM_PbrTerrain),
+        UBOREG_BLOCK(1, "PbrTerrain_PerShaderBind",             PbrTerrain_PerShaderBind,             kM_PbrTerrain),
         UBOREG_BLOCK(0, "StarTime_PerShaderBind",               StarTime_PerShaderBind,               kM_StarTime),
         UBOREG_BLOCK(0, "AvatarVelocityPalette_PerShaderBind",  AvatarVelocityPalette_PerShaderBind,  kM_AvatarVelocityPalette),
         UBOREG_BLOCK(0, "ClipPlane_PerShaderBind",              ClipPlane_PerShaderBind,              kM_ClipPlane),

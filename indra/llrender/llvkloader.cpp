@@ -141,8 +141,6 @@ namespace
     constexpr VkDeviceSize PREVIEWAMBIENT_UBO_SIZE   = sizeof(PreviewAmbient_PerShaderBind);
     constexpr VkDeviceSize DRAWCOLOR_UBO_OFFSET      = 1280;
     constexpr VkDeviceSize DRAWCOLOR_UBO_SIZE        = sizeof(DrawColor_PerShaderBind);
-    constexpr VkDeviceSize PBRTERRAIN_UBO_OFFSET     = 1536;
-    constexpr VkDeviceSize PBRTERRAIN_UBO_SIZE       = sizeof(PbrTerrain_PerShaderBind);
     constexpr VkDeviceSize STARTIME_UBO_OFFSET       = 1792;
     constexpr VkDeviceSize STARTIME_UBO_SIZE         = sizeof(StarTime_PerShaderBind);
     constexpr VkDeviceSize AVATAR_VELOCITY_PALETTE_UBO_OFFSET = 2048;
@@ -331,6 +329,7 @@ namespace
     LLVK_SHARED_UBO_RING_STORAGE(PBRMaterial)
     LLVK_SHARED_UBO_RING_STORAGE(DrawColor)
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrainF)
+    LLVK_SHARED_UBO_RING_STORAGE(PbrTerrain)
     #undef LLVK_SHARED_UBO_RING_STORAGE
     VkBuffer              sSharedSMAABlendWeightsFUBO             = VK_NULL_HANDLE;
     void*                 sSharedSMAABlendWeightsFUBOAllocation   = nullptr;
@@ -1536,7 +1535,7 @@ namespace
 
     bool createPerFrameDescriptorSetLayout()
     {
-        VkDescriptorSetLayoutBinding bindings[12] = {};
+        VkDescriptorSetLayoutBinding bindings[11] = {};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -1567,39 +1566,34 @@ namespace
         bindings[5].descriptorCount = 1;
         bindings[5].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[6].binding         = 6;
+        bindings[6].binding         = 7;
         bindings[6].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[6].descriptorCount = 1;
-        bindings[6].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[6].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[7].binding         = 7;
+        bindings[7].binding         = 8;
         bindings[7].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[7].descriptorCount = 1;
-        bindings[7].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[7].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
 
-        bindings[8].binding         = 8;
+        bindings[8].binding         = 9;
         bindings[8].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[8].descriptorCount = 1;
-        bindings[8].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[8].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[9].binding         = 9;
+        bindings[9].binding         = 10;
         bindings[9].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[9].descriptorCount = 1;
         bindings[9].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[10].binding         = 10;
+        bindings[10].binding         = 11;
         bindings[10].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[10].descriptorCount = 1;
         bindings[10].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[11].binding         = 11;
-        bindings[11].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[11].descriptorCount = 1;
-        bindings[11].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
-
         VkDescriptorSetLayoutCreateInfo info = {};
         info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        info.bindingCount = 12;
+        info.bindingCount = 11;
         info.pBindings    = bindings;
 
         VkResult result = vkCreateDescriptorSetLayout(sDevice, &info, nullptr, &sPerFrameDescriptorSetLayout);
@@ -1669,25 +1663,24 @@ namespace
 
     void writePerFrameSetBindings(VkDescriptorSet set, U32 frame, VkBuffer matrixBuf, VkDeviceSize matrixOffset)
     {
-        struct BindSpec { VkBuffer buf; VkDeviceSize off; VkDeviceSize range; };
-        const BindSpec specs[12] = {
-            { matrixBuf,                 matrixOffset,                       PERFRAME_UBO_SIZE },
-            { matrixBuf,                 matrixOffset + PERFRAME_UBO_SIZE,   TEXTURE_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], SHADOW_UBO_OFFSET,                  SHADOW_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], PBRMATERIAL_UBO_OFFSET,             PBRMATERIAL_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], PREVIEWAMBIENT_UBO_OFFSET,          PREVIEWAMBIENT_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], DRAWCOLOR_UBO_OFFSET,               DRAWCOLOR_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], PBRTERRAIN_UBO_OFFSET,              PBRTERRAIN_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], STARTIME_UBO_OFFSET,                STARTIME_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], AVATAR_VELOCITY_PALETTE_UBO_OFFSET, AVATAR_VELOCITY_PALETTE_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], CLIPPLANE_UBO_OFFSET,               CLIPPLANE_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], GLOWCOMBINE_UBO_OFFSET,             GLOWCOMBINE_UBO_SIZE },
-            { sPerFrameUboBuffer[frame], GAUSSIAN_UBO_OFFSET,                GAUSSIAN_UBO_SIZE },
+        struct BindSpec { U32 binding; VkBuffer buf; VkDeviceSize off; VkDeviceSize range; };
+        const BindSpec specs[11] = {
+            { 0,  matrixBuf,                 matrixOffset,                       PERFRAME_UBO_SIZE },
+            { 1,  matrixBuf,                 matrixOffset + PERFRAME_UBO_SIZE,   TEXTURE_UBO_SIZE },
+            { 2,  sPerFrameUboBuffer[frame], SHADOW_UBO_OFFSET,                  SHADOW_UBO_SIZE },
+            { 3,  sPerFrameUboBuffer[frame], PBRMATERIAL_UBO_OFFSET,             PBRMATERIAL_UBO_SIZE },
+            { 4,  sPerFrameUboBuffer[frame], PREVIEWAMBIENT_UBO_OFFSET,          PREVIEWAMBIENT_UBO_SIZE },
+            { 5,  sPerFrameUboBuffer[frame], DRAWCOLOR_UBO_OFFSET,               DRAWCOLOR_UBO_SIZE },
+            { 7,  sPerFrameUboBuffer[frame], STARTIME_UBO_OFFSET,                STARTIME_UBO_SIZE },
+            { 8,  sPerFrameUboBuffer[frame], AVATAR_VELOCITY_PALETTE_UBO_OFFSET, AVATAR_VELOCITY_PALETTE_UBO_SIZE },
+            { 9,  sPerFrameUboBuffer[frame], CLIPPLANE_UBO_OFFSET,               CLIPPLANE_UBO_SIZE },
+            { 10, sPerFrameUboBuffer[frame], GLOWCOMBINE_UBO_OFFSET,             GLOWCOMBINE_UBO_SIZE },
+            { 11, sPerFrameUboBuffer[frame], GAUSSIAN_UBO_OFFSET,                GAUSSIAN_UBO_SIZE },
         };
 
-        VkDescriptorBufferInfo infos[12]  = {};
-        VkWriteDescriptorSet   writes[12] = {};
-        for (U32 i = 0; i < 12; ++i)
+        VkDescriptorBufferInfo infos[11]  = {};
+        VkWriteDescriptorSet   writes[11] = {};
+        for (U32 i = 0; i < 11; ++i)
         {
             infos[i].buffer = specs[i].buf;
             infos[i].offset = specs[i].off;
@@ -1695,12 +1688,12 @@ namespace
 
             writes[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[i].dstSet          = set;
-            writes[i].dstBinding      = i;
+            writes[i].dstBinding      = specs[i].binding;
             writes[i].descriptorCount = 1;
             writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[i].pBufferInfo     = &infos[i];
         }
-        vkUpdateDescriptorSets(sDevice, 12, writes, 0, nullptr);
+        vkUpdateDescriptorSets(sDevice, 11, writes, 0, nullptr);
     }
 
     bool createMatrixRingChunk(U32 frame)
@@ -3092,6 +3085,7 @@ void shutdownVulkan()
             LLVK_SHARED_UBO_RING_TEARDOWN(PBRMaterial)
             LLVK_SHARED_UBO_RING_TEARDOWN(DrawColor)
             LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrainF)
+            LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrain)
             #undef LLVK_SHARED_UBO_RING_TEARDOWN
         }
         if (sPerFrameDescriptorSetLayout != VK_NULL_HANDLE)
@@ -3945,18 +3939,6 @@ void writeCurrentPreviewAmbientUBO(const PreviewAmbient_PerShaderBind& data)
 
 }
 
-void writeCurrentPbrTerrainUBO(const PbrTerrain_PerShaderBind& data)
-{
-    if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
-    {
-        return;
-    }
-    std::memcpy(static_cast<U8*>(sPerFrameUboMapped[sFrameIndex]) + PBRTERRAIN_UBO_OFFSET,
-                &data,
-                sizeof(PbrTerrain_PerShaderBind));
-
-}
-
 void writeCurrentStarTimeUBO(const StarTime_PerShaderBind& data)
 {
     if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
@@ -4617,6 +4599,7 @@ LLVK_SHARED_UBO_RING_IMPL(LightsSpecular,   LightsSpecular_PerProgramBind,   12)
 LLVK_SHARED_UBO_RING_IMPL(PBRMaterial,      PBRMaterial_PerMaterial,         48)
 LLVK_SHARED_UBO_RING_IMPL(DrawColor,        DrawColor_PerShaderBind,         51)
 LLVK_SHARED_UBO_RING_IMPL(PbrTerrainF,      PbrTerrainF_PerProgramBind,      28)
+LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52)
 #undef LLVK_SHARED_UBO_RING_IMPL
 
 static bool ensureObjectSkinRingSlot(U32 f, U32 idx)

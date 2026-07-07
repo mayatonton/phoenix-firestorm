@@ -67,7 +67,7 @@ uniform mat4 modelview_matrix;
 uniform mat4 modelview_projection_matrix;
 #endif
 #ifdef LL_VULKAN_GLSL
-layout(set = 0, binding = 6, std140) uniform PbrTerrain_PerShaderBind
+layout(set = 1, binding = 52, std140) uniform PbrTerrain_PerShaderBind
 {
     float region_scale;
     vec4 terrain_texture_transforms[5];

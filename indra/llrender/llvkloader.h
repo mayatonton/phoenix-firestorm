@@ -138,6 +138,7 @@ namespace LLVKLoader
                   "PbrTerrain_PerShaderBind size mismatch (std140 expects 96 B)");
 
     void writeCurrentPbrTerrainUBO(const PbrTerrain_PerShaderBind& data);
+    bool getSharedPbrTerrainUBO(VkBuffer& out_buffer, void*& out_mapped);
 
     struct StarTime_PerShaderBind
     {
