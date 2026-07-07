@@ -5234,7 +5234,7 @@ void LLViewerWindow::renderSelections( bool for_gl_pick, bool pick_parcel_walls,
                     gDebugProgram.bind();
                 }
                 gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE); // no textures needed
-                glClearColor(0, 0, 0, 0); // bg black
+                gGL.setClearColor(0, 0, 0, 0); // bg black
                 gGL.setColorMask(true, true); // write color and alpha info
                 gGL.color4f(1.f, 1.f, 1.f, 0.5);
                 gGL.matrixMode(LLRender::MM_MODELVIEW);
@@ -6387,7 +6387,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                     if (LLVKLoader::beginFrame(false))
                     {
                         vk_snapshot_target.bindTarget();
-                        glClearColor(0.f, 0.f, 0.f, 1.f);
+                        gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
                         vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
                         vk_snapshot_target.flush();
                         gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
@@ -6750,7 +6750,7 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
             if (LLVKLoader::beginFrame(false))
             {
                 vk_snapshot_target.bindTarget();
-                glClearColor(0.f, 0.f, 0.f, 1.f);
+                gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
                 vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
                 vk_snapshot_target.flush();
                 gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;

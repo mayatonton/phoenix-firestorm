@@ -2110,9 +2110,9 @@ void LLPipeline::createLUTBuffers()
 
     mExposureMap.allocate(1, 1, GL_R16F);
     mExposureMap.bindTarget();
-    glClearColor(1, 1, 1, 0);
+    gGL.setClearColor(1, 1, 1, 0);
     mExposureMap.clear();
-    glClearColor(0, 0, 0, 0);
+    gGL.setClearColor(0, 0, 0, 0);
     mExposureMap.flush();
 
     mLuminanceMap.allocate(256, 256, GL_R16F, false, LLTexUnit::TT_TEXTURE, LLTexUnit::TMG_AUTO);
@@ -6224,7 +6224,7 @@ void LLPipeline::renderDebug()
                     {
                         const LLColor4 clearColor = gSavedSettings.getColor4("PathfindingNavMeshClear");
                         gGL.setColorMask(true, true);
-                        glClearColor(clearColor.mV[0],clearColor.mV[1],clearColor.mV[2],0);
+                        gGL.setClearColor(clearColor.mV[0],clearColor.mV[1],clearColor.mV[2],0);
                         glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // no stencil -- deprecated | GL_STENCIL_BUFFER_BIT);
                         gGL.setColorMask(true, false);
                         LLGLState::setPolygonMode(GL_FILL);
@@ -9559,7 +9559,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
     else // !isFrameRenderingGlow(), skip the glow ping-pong and just clear the result target
     {
         mGlow[1].bindTarget();
-        glClearColor(0.f, 0.f, 0.f, 0.f);
+        gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
         mGlow[1].clear(GL_COLOR_BUFFER_BIT);
         mGlow[1].flush();
     }
@@ -10744,7 +10744,7 @@ void LLPipeline::renderFinalize()
     enableLightsFullbright();
 
     gGL.setColorMask(true, true);
-    glClearColor(0, 0, 0, 0);
+    gGL.setClearColor(0, 0, 0, 0);
 
     compositeForwardFlip();
 
@@ -11579,7 +11579,11 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     GLfloat previous_clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
     GLint previous_cull_face_mode = GL_BACK;
     glGetBooleanv(GL_COLOR_WRITEMASK, previous_color_mask);
-    glGetFloatv(GL_COLOR_CLEAR_VALUE, previous_clear_color);
+    const F32* cur_cc = gGL.getClearColor();
+    previous_clear_color[0] = cur_cc[0];
+    previous_clear_color[1] = cur_cc[1];
+    previous_clear_color[2] = cur_cc[2];
+    previous_clear_color[3] = cur_cc[3];
     glGetIntegerv(GL_CULL_FACE_MODE, &previous_cull_face_mode);
 
     mObjectIDBuffer.bindTarget();
@@ -11589,7 +11593,7 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     // LLRender's cached mask stays in sync with the actual GL state.
     gGL.setColorMask(false, false, false, false);
     gGL.setColorMask(true, true, true, true);
-    glClearColor(0.f, 0.f, 0.f, 0.f);
+    gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
     LLRenderTarget::clearBoundTarget(GL_COLOR_BUFFER_BIT);
 
     // Depth shared with deferredScreen — test only, no write.
@@ -11693,7 +11697,7 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
 
     if (over_budget)
     {
-        glClearColor(0.f, 0.f, 0.f, 0.f);
+        gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
         // mObjectIDBuffer over-budget reset = 同上 (bound target clear 委譲)。
         LLRenderTarget::clearBoundTarget(GL_COLOR_BUFFER_BIT);
     }
@@ -11704,10 +11708,7 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
                      previous_color_mask[1] == GL_TRUE,
                      previous_color_mask[2] == GL_TRUE,
                      previous_color_mask[3] == GL_TRUE);
-    glClearColor(previous_clear_color[0],
-                 previous_clear_color[1],
-                 previous_clear_color[2],
-                 previous_clear_color[3]);
+    gGL.setClearColor(previous_clear_color[0], previous_clear_color[1], previous_clear_color[2], previous_clear_color[3]);
     // glCullFace 直呼出 → LLGLState::setCullFaceMode 経由
     LLGLState::setCullFaceMode(previous_cull_face_mode);
 
@@ -12100,9 +12101,9 @@ void LLPipeline::renderDeferredLighting()
 
                     bindDeferredShader(sun_shader, deferred_light_target);
                     mScreenTriangleVB->setBuffer();
-                    glClearColor(1, 1, 1, 1);
+                    gGL.setClearColor(1, 1, 1, 1);
                     deferred_light_target->clear(GL_COLOR_BUFFER_BIT);
-                    glClearColor(0, 0, 0, 0);
+                    gGL.setClearColor(0, 0, 0, 0);
 
                     sun_shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
                                                   (GLfloat)deferred_light_target->getWidth(),
@@ -12150,9 +12151,9 @@ void LLPipeline::renderDeferredLighting()
             }
             // blur lightmap
             screen_target->bindTarget();
-            glClearColor(1, 1, 1, 1);
+            gGL.setClearColor(1, 1, 1, 1);
             screen_target->clear(GL_COLOR_BUFFER_BIT);
-            glClearColor(0, 0, 0, 0);
+            gGL.setClearColor(0, 0, 0, 0);
 
             bindDeferredShader(gDeferredBlurLightProgram);
 
@@ -12262,7 +12263,7 @@ void LLPipeline::renderDeferredLighting()
         }
         screen_target->bindTarget();
         // clear color buffer here - zeroing alpha (glow) is important or it will accumulate against sky
-        glClearColor(0, 0, 0, 0);
+        gGL.setClearColor(0, 0, 0, 0);
         screen_target->clear(GL_COLOR_BUFFER_BIT);
 
         if (RenderDeferredAtmospheric)
@@ -13387,12 +13388,12 @@ void LLPipeline::doWaterHaze()
 void LLPipeline::doWaterExclusionMask()
 {
     mWaterExclusionMask.bindTarget();
-    glClearColor(1, 1, 1, 1);
+    gGL.setClearColor(1, 1, 1, 1);
     mWaterExclusionMask.clear();
     mWaterExclusionPool->render();
 
     mWaterExclusionMask.flush();
-    glClearColor(0, 0, 0, 0);
+    gGL.setClearColor(0, 0, 0, 0);
 }
 
 void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
@@ -15407,7 +15408,7 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
         gGL.loadMatrix(glm::value_ptr(mat));
         set_current_modelview(mat);
 
-        glClearColor(0.0f,0.0f,0.0f,0.0f);
+        gGL.setClearColor(0.0f,0.0f,0.0f,0.0f);
         gGL.setColorMask(true, true);
 
         // get the number of pixels per angle

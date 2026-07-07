@@ -428,7 +428,7 @@ bool LLGLTFPreviewTexture::render()
 
     if (!mShouldRender) { return false; }
 
-    glClearColor(0, 0, 0, 0);
+    gGL.setClearColor(0, 0, 0, 0);
     if (mBoundTarget != nullptr)
     {
         mBoundTarget->clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

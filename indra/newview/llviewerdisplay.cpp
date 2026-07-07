@@ -913,7 +913,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             }
 
             gGL.setColorMask(true, true);
-            glClearColor(0.f, 0.f, 0.f, 0.f);
+            gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
 
             LLGLState::checkStates();
 
@@ -1027,7 +1027,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         if(gUseWireframe)
         {
-            glClearColor(0.5f, 0.5f, 0.5f, 0.f);
+            gGL.setClearColor(0.5f, 0.5f, 0.5f, 0.f);
             glClear(GL_COLOR_BUFFER_BIT);
         }
 
@@ -1090,11 +1090,11 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (gUseWireframe)
         {
             constexpr F32 g = 0.5f;
-            glClearColor(g, g, g, 1.f);
+            gGL.setClearColor(g, g, g, 1.f);
         }
         else
         {
-            glClearColor(1, 0, 1, 1);
+            gGL.setClearColor(1, 0, 1, 1);
         }
         LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
 
@@ -1380,7 +1380,7 @@ void display_cube_face()
 
     gGL.setColorMask(true, true);
 
-    glClearColor(0.f, 0.f, 0.f, 0.f);
+    gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
     gPipeline.generateSunShadow(*LLViewerCamera::getInstance());
 
     glClear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
@@ -1412,11 +1412,11 @@ void display_cube_face()
     LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.bindTarget();
     if (gUseWireframe)
     {
-        glClearColor(0.5f, 0.5f, 0.5f, 1.f);
+        gGL.setClearColor(0.5f, 0.5f, 0.5f, 1.f);
     }
     else
     {
-        glClearColor(1.f, 0.f, 1.f, 1.f);
+        gGL.setClearColor(1.f, 0.f, 1.f, 1.f);
     }
     LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
 

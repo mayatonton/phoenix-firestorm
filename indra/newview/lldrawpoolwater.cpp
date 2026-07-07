@@ -147,7 +147,7 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
         gPipeline.mForwardColor.bindTarget();
         {
             LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
-            glClearColor(0.f, 0.f, 0.f, 0.f);
+            gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
             gPipeline.mForwardColor.clear(GL_COLOR_BUFFER_BIT);
         }
     }

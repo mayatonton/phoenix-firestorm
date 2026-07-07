@@ -978,6 +978,11 @@ LLRender::LLRender()
         mCurrColorMask[i] = true;
     }
 
+    for (U32 i = 0; i < 4; i++)
+    {
+        mClearColor[i] = 0.f;
+    }
+
     mCurrBlendColorSFactor = BF_UNDEF;
     mCurrBlendAlphaSFactor = BF_UNDEF;
     mCurrBlendColorDFactor = BF_UNDEF;
@@ -1773,6 +1778,16 @@ void LLRender::setColorMask(bool writeColorR, bool writeColorG, bool writeColorB
                     writeColorB ? GL_TRUE : GL_FALSE,
                     writeAlpha ? GL_TRUE : GL_FALSE);
     }
+}
+
+void LLRender::setClearColor(F32 r, F32 g, F32 b, F32 a)
+{
+    mClearColor[0] = r;
+    mClearColor[1] = g;
+    mClearColor[2] = b;
+    mClearColor[3] = a;
+
+    glClearColor(r, g, b, a);
 }
 
 void LLRender::setSceneBlendType(eBlendType type)

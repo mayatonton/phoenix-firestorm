@@ -516,6 +516,9 @@ public:
     bool getColorMaskB() const { return mCurrColorMask[2]; }
     bool getColorMaskA() const { return mCurrColorMask[3]; }
 
+    void setClearColor(F32 r, F32 g, F32 b, F32 a);
+    const F32* getClearColor() const { return mClearColor; }
+
     LLTexUnit* getTexUnit(U32 index);
 
     static void clearStaleImageGLRefs(LLImageGL* victim);
@@ -571,6 +574,7 @@ private:
     U32             mMode;
     U32             mCurrTextureUnitIndex;
     bool                mCurrColorMask[4];
+    F32                 mClearColor[4];
     F32             mLineWidth; // <FS> Line width OGL core profile fix by Rye Mutt
     F32             mPolygonOffsetFactor; // glPolygonOffset factor tracker
     F32             mPolygonOffsetUnits;  // glPolygonOffset units tracker

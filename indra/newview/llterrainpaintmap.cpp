@@ -90,7 +90,7 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     stop_glerror();
 
     scratch_target.bindTarget();
-    glClearColor(0, 0, 0, 0);
+    gGL.setClearColor(0, 0, 0, 0);
     scratch_target.clear();
 
     // Render terrain heightmap to paint map via shader

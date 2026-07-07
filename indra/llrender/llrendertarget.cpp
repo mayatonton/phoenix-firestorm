@@ -809,9 +809,7 @@ void LLRenderTarget::clear(U32 mask_in)
 
             if ((effective_mask & GL_COLOR_BUFFER_BIT) && !mVkTex.empty())
             {
-                GLfloat gl_cc[4] = {0.f, 0.f, 0.f, 0.f};
-                glGetFloatv(GL_COLOR_CLEAR_VALUE, gl_cc);
-                stop_glerror();
+                const F32* gl_cc = gGL.getClearColor();
 
                 const U32 color_count = static_cast<U32>(mVkTex.size() < 4 ? mVkTex.size() : 4);
                 for (U32 i = 0; i < color_count; ++i)
