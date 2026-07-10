@@ -1,3 +1,15 @@
+#
+# Copyright (C) 2025-2026 Ishikawa AYA (github: mayatonton, mayatonton1994@gmail.com)
+#
+# このファイルは Ishikawa AYA が新規に作成した独自著作物である。
+# 著作権は Ishikawa AYA が保持し、パブリックドメインには置かない。
+# All rights reserved by the author except as licensed below.
+#
+# Licensed under the GNU Lesser General Public License, version 2.1
+# (same license as the Firestorm Viewer). See the LICENSE file for details.
+#
+# 光の国のひとたちと共にわたしはここにいる　彩
+#
 import xml.etree.ElementTree as ET, copy, sys
 
 REPO = "indra/newview/app_settings/settings.xml"

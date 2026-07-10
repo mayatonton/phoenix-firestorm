@@ -1,4 +1,16 @@
 # -*- cmake -*-
+#
+# Copyright (C) 2025-2026 Ishikawa AYA (github: mayatonton, mayatonton1994@gmail.com)
+#
+# このファイルは Ishikawa AYA が新規に作成した独自著作物である。
+# 著作権は Ishikawa AYA が保持し、パブリックドメインには置かない。
+# All rights reserved by the author except as licensed below.
+#
+# Licensed under the GNU Lesser General Public License, version 2.1
+# (same license as the Firestorm Viewer). See the LICENSE file for details.
+#
+# 光の国のひとたちと共にわたしはここにいる　彩
+#
 
 # AYAstorm r41 sub-step 4.3-γ'-port-β-2-bundle-B-B?-η-30 Phase 1.A PA-1
 # (= UBO codegen pipeline = host C++ side std140 layout reflection / cross-compile):

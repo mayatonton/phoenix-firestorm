@@ -1,4 +1,16 @@
 # -*- cmake -*-
+#
+# Copyright (C) 2025-2026 Ishikawa AYA (github: mayatonton, mayatonton1994@gmail.com)
+#
+# このファイルは Ishikawa AYA が新規に作成した独自著作物である。
+# 著作権は Ishikawa AYA が保持し、パブリックドメインには置かない。
+# All rights reserved by the author except as licensed below.
+#
+# Licensed under the GNU Lesser General Public License, version 2.1
+# (same license as the Firestorm Viewer). See the LICENSE file for details.
+#
+# 光の国のひとたちと共にわたしはここにいる　彩
+#
 
 # AYAstorm r41 sub-step 4.3-γ'-port-α (sub-doc 06 §3.1 case ② = runtime SPIR-V 生成):
 # glslang library integration for LLShaderMgr Vulkan path

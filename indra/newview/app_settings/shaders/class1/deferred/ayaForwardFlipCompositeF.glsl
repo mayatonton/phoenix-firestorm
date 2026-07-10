@@ -2,8 +2,12 @@
  * @file ayaForwardFlipCompositeF.glsl
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
- * Second Life Viewer Source Code
- * Copyright (C) 2026, Linden Research, Inc.
+ * AYAstorm Viewer Source Code
+ * Copyright (C) 2025-2026 Ishikawa AYA (github: mayatonton, mayatonton1994@gmail.com)
+ *
+ * このファイルは Ishikawa AYA が新規に作成した独自著作物である。
+ * 著作権は Ishikawa AYA が保持し、パブリックドメインには置かない。
+ * All rights reserved by the author except as licensed below.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -19,8 +23,9 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * Linden Research, Inc., 945 Battery Street, San Francisco, CA  94111  USA
  * $/LicenseInfo$
+ *
+ * 光の国のひとたちと共にわたしはここにいる　彩
  */
 
 /*[EXTRA_CODE_HERE]*/
