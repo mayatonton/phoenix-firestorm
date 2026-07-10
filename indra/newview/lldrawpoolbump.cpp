@@ -988,6 +988,27 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
         gGL.getTexUnit(0)->bind(bump);
         glGenerateMipmap(GL_TEXTURE_2D);
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
+
+        LLImageGL* bimg = bump->getGLTexture();
+        if (LLVKLoader::shouldUseVulkanRender() && bimg != nullptr &&
+            bimg->hasVkImage() && bimg->getVkImageMipLevels() > 1)
+        {
+            const bool in_scope = LLVKLoader::isInRenderPassScope();
+            LLRenderTarget* bound = in_scope ? LLRenderTarget::getCurrentBoundTarget() : nullptr;
+            if (in_scope)
+            {
+                LLVKLoader::endDynamicRendering();
+            }
+            LLVKLoader::generateMipChainInFrameVk(bimg->getVkImage(),
+                                                  (U32)bimg->getWidth(), (U32)bimg->getHeight(),
+                                                  bimg->getVkImageMipLevels(),
+                                                  bimg->getVkImageFormat(),
+                                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            if (in_scope && bound != nullptr)
+            {
+                bound->resumeVkDynamicRendering();
+            }
+        }
     }
 
     iter->second = bump; // derefs (and deletes) old image

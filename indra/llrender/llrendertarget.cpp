@@ -275,10 +275,16 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
             VkImage     vk_image = VK_NULL_HANDLE;
             VkImageView vk_view  = VK_NULL_HANDLE;
             void*       vk_alloc = nullptr;
-            if (LLVKLoader::createColorAttachmentImageVk(mResX, mResY, vk_format,
-                                                         vk_image, vk_view, vk_alloc))
+            U32 mip_levels = 1;
+            if (img->getUseMipMaps())
             {
-                img->setExternalVkBacking(vk_image, vk_view, vk_alloc, mResX, mResY, vk_format);
+                U32 maxdim = llmax(mResX, mResY);
+                while (maxdim > 1) { maxdim >>= 1; ++mip_levels; }
+            }
+            if (LLVKLoader::createColorAttachmentImageVk(mResX, mResY, vk_format,
+                                                         vk_image, vk_view, vk_alloc, mip_levels))
+            {
+                img->setExternalVkBacking(vk_image, vk_view, vk_alloc, mResX, mResY, vk_format, mip_levels);
                 vk_created_here = true;
             }
         }

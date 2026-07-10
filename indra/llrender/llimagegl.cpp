@@ -1580,18 +1580,19 @@ void LLImageGL::syncVulkan3DImage(U32 intformat, U32 primary, U32 type,
 }
 
 void LLImageGL::setExternalVkBacking(VkImage image, VkImageView view, void* allocation,
-                                     U32 w, U32 h, VkFormat format)
+                                     U32 w, U32 h, VkFormat format, U32 mip_levels)
 {
     if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE || mVkAllocation != nullptr)
     {
         LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
     }
-    mVkImage       = image;
-    mVkImageView   = view;
-    mVkAllocation  = allocation;
-    mVkImageWidth  = w;
-    mVkImageHeight = h;
-    mVkImageFormat = format;
+    mVkImage         = image;
+    mVkImageView     = view;
+    mVkAllocation    = allocation;
+    mVkImageWidth    = w;
+    mVkImageHeight   = h;
+    mVkImageFormat   = format;
+    mVkImageMipLevels = mip_levels;
 }
 
 U32 type_width_from_pixtype(U32 pixtype)

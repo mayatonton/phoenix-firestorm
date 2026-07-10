@@ -177,7 +177,7 @@ public:
     U32      getVkImageMipLevels() const { return mVkImageMipLevels; }
     VkFormat getVkImageFormat() const { return mVkImageFormat; }
 
-    void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format);
+    void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format, U32 mip_levels = 1);
 
     void syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
 
