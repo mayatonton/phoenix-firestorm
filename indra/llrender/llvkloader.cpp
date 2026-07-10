@@ -164,6 +164,7 @@ namespace
     std::unordered_map<U32, VkSampler> sSamplerCache;
     bool                     sSamplerAnisotropyEnabled               = false;
     float                    sMaxSamplerAnisotropy                   = 1.0f;
+    bool                     sGeometryShaderEnabled                  = false;
 
     bool                     sProvokingVertexLastEnabled             = false;
 
@@ -671,6 +672,16 @@ namespace
         if (supported_features.fillModeNonSolid)
         {
             enabled_features.fillModeNonSolid = VK_TRUE;
+        }
+
+        if (supported_features.geometryShader)
+        {
+            enabled_features.geometryShader = VK_TRUE;
+            sGeometryShaderEnabled = true;
+        }
+        else
+        {
+            sGeometryShaderEnabled = false;
         }
 
         if (supported_features.samplerAnisotropy)
@@ -4982,6 +4993,137 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
     return true;
 }
 
+bool downscaleImageVk(VkImage      src_image,
+                      U32          src_mip,
+                      U32          src_w,
+                      U32          src_h,
+                      U32          dst_w,
+                      U32          dst_h,
+                      VkFormat     format,
+                      U32          dst_mip_levels,
+                      VkImage&     out_image,
+                      VkImageView& out_view,
+                      void*&       out_allocation)
+{
+    out_image      = VK_NULL_HANDLE;
+    out_view       = VK_NULL_HANDLE;
+    out_allocation = nullptr;
+
+    if (src_image == VK_NULL_HANDLE || src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0
+        || format == VK_FORMAT_UNDEFINED)
+    {
+        return false;
+    }
+    if (sDevice == VK_NULL_HANDLE || sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    const U32 mip_levels = (dst_mip_levels > 0) ? dst_mip_levels : 1;
+
+    VkImage     new_image = VK_NULL_HANDLE;
+    VkImageView new_view  = VK_NULL_HANDLE;
+    void*       new_alloc = nullptr;
+    if (!createTextureImageVk(dst_w, dst_h, format, new_image, new_view, new_alloc, mip_levels))
+    {
+        return false;
+    }
+
+    VkCommandBufferAllocateInfo cbai = {};
+    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool        = sCommandPool;
+    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    {
+        destroyImageVk(new_image, new_view, new_alloc);
+        return false;
+    }
+    VkCommandBufferBeginInfo cbbi = {};
+    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &cbbi);
+
+    auto image_barrier = [&](VkImage img, U32 level, VkImageLayout oldL, VkImageLayout newL,
+                             VkAccessFlags srcA, VkAccessFlags dstA,
+                             VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.image                           = img;
+        b.oldLayout                       = oldL;
+        b.newLayout                       = newL;
+        b.srcAccessMask                   = srcA;
+        b.dstAccessMask                   = dstA;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = level;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
+    };
+
+    image_barrier(src_image, src_mip,
+                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                  VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    image_barrier(new_image, 0,
+                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                  0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    VkImageBlit blit = {};
+    blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.srcSubresource.mipLevel       = src_mip;
+    blit.srcSubresource.baseArrayLayer = 0;
+    blit.srcSubresource.layerCount     = 1;
+    blit.srcOffsets[0]                 = { 0, 0, 0 };
+    blit.srcOffsets[1]                 = { (S32)src_w, (S32)src_h, 1 };
+    blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.dstSubresource.mipLevel       = 0;
+    blit.dstSubresource.baseArrayLayer = 0;
+    blit.dstSubresource.layerCount     = 1;
+    blit.dstOffsets[0]                 = { 0, 0, 0 };
+    blit.dstOffsets[1]                 = { (S32)dst_w, (S32)dst_h, 1 };
+    vkCmdBlitImage(cmd,
+                   src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   new_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1, &blit, VK_FILTER_LINEAR);
+
+    image_barrier(new_image, 0,
+                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                  VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+    vkEndCommandBuffer(cmd);
+
+    VkSubmitInfo si = {};
+    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cmd;
+    if (vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE) != VK_SUCCESS)
+    {
+        vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+        destroyImageVk(new_image, new_view, new_alloc);
+        return false;
+    }
+    vkQueueWaitIdle(sGraphicsQueue);
+    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+
+    if (mip_levels > 1)
+    {
+        generateMipChainBlitVk(new_image, dst_w, dst_h, mip_levels, format);
+    }
+
+    out_image      = new_image;
+    out_view       = new_view;
+    out_allocation = new_alloc;
+    return true;
+}
+
 bool generateMipChainInFrameVk(VkImage        image,
                                U32            base_w,
                                U32            base_h,
@@ -6465,6 +6607,11 @@ VkSampler getSamplerForState(U32 address_mode, U32 filter_option, bool has_mipma
 bool isProvokingVertexLastEnabled()
 {
     return sProvokingVertexLastEnabled;
+}
+
+bool isGeometryShaderEnabledVk()
+{
+    return sGeometryShaderEnabled;
 }
 
 void transitionImageLayoutVk(VkImage              image,

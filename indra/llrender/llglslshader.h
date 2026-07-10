@@ -470,6 +470,7 @@ public:
 
     std::map<std::string, VkShaderModule>  mVkVertexShaderModulesPerProgram;
     std::map<std::string, VkShaderModule>  mVkFragmentShaderModulesPerProgram;
+    std::map<std::string, VkShaderModule>  mVkGeometryShaderModulesPerProgram;
     VkPipelineLayout           mVkPipelineLayout      = VK_NULL_HANDLE;
     VkDescriptorSetLayout      mVkDescriptorSetLayout = VK_NULL_HANDLE;
 

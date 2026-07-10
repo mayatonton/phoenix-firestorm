@@ -931,6 +931,85 @@ void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
     }
 }
 
+bool LLRenderTarget::copyContentsInFrameVk(LLRenderTarget& source)
+{
+    if (!LLVKLoader::isVulkanInitialized())
+    {
+        return false;
+    }
+
+    if (mVkTex.empty() || mVkTex[0] == VK_NULL_HANDLE ||
+        source.mVkTex.empty() || source.mVkTex[0] == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkImageLayout src_layout = source.mVkTexLayout.empty()
+                               ? VK_IMAGE_LAYOUT_UNDEFINED
+                               : source.mVkTexLayout[0];
+    VkImageLayout dst_layout = mVkTexLayout.empty()
+                               ? VK_IMAGE_LAYOUT_UNDEFINED
+                               : mVkTexLayout[0];
+
+    LLVKLoader::transitionImageLayoutVk(
+        source.mVkTex[0], VK_IMAGE_ASPECT_COLOR_BIT,
+        src_layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+
+    LLVKLoader::transitionImageLayoutVk(
+        mVkTex[0], VK_IMAGE_ASPECT_COLOR_BIT,
+        dst_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+
+    VkImageBlit blit = {};
+    blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.srcSubresource.mipLevel       = 0;
+    blit.srcSubresource.baseArrayLayer = 0;
+    blit.srcSubresource.layerCount     = 1;
+    blit.srcOffsets[0]                 = { 0, 0, 0 };
+    blit.srcOffsets[1]                 = { (S32)source.mResX, (S32)source.mResY, 1 };
+    blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.dstSubresource.mipLevel       = 0;
+    blit.dstSubresource.baseArrayLayer = 0;
+    blit.dstSubresource.layerCount     = 1;
+    blit.dstOffsets[0]                 = { 0, 0, 0 };
+    blit.dstOffsets[1]                 = { (S32)mResX, (S32)mResY, 1 };
+    vkCmdBlitImage(cmd,
+                   source.mVkTex[0], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   mVkTex[0], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1, &blit, VK_FILTER_LINEAR);
+
+    LLVKLoader::transitionImageLayoutVk(
+        source.mVkTex[0], VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT);
+    if (!source.mVkTexLayout.empty())
+    {
+        source.mVkTexLayout[0] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
+
+    LLVKLoader::transitionImageLayoutVk(
+        mVkTex[0], VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    if (!mVkTexLayout.empty())
+    {
+        mVkTexLayout[0] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
+
+    return true;
+}
+
 void LLRenderTarget::flush()
 {
     LL_PROFILE_GPU_ZONE("rt flush");

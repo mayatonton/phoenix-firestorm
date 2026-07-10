@@ -409,6 +409,14 @@ void LLGLSLShader::unloadInternal()
             }
         }
         mVkFragmentShaderModulesPerProgram.clear();
+        for (auto& kv : mVkGeometryShaderModulesPerProgram)
+        {
+            if (kv.second != VK_NULL_HANDLE)
+            {
+                LLVKLoader::destroyShaderModuleVk(kv.second);
+            }
+        }
+        mVkGeometryShaderModulesPerProgram.clear();
         if (mVkPipelineLayout != VK_NULL_HANDLE)
         {
             LLVKLoader::destroyPipelineLayoutVk(mVkPipelineLayout);
@@ -1843,6 +1851,10 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         else if (stage.type == GL_FRAGMENT_SHADER)
         {
             mVkFragmentShaderModulesPerProgram[stage.file_name] = vk_module;
+        }
+        else if (stage.type == GL_GEOMETRY_SHADER)
+        {
+            mVkGeometryShaderModulesPerProgram[stage.file_name] = vk_module;
         }
     }
 
@@ -4336,6 +4348,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
 
     VkShaderModule vert_module = VK_NULL_HANDLE;
     VkShaderModule frag_module = VK_NULL_HANDLE;
+    VkShaderModule geom_module = VK_NULL_HANDLE;
     for (const auto& sf : mShaderFiles)
     {
         if (sf.second == GL_VERTEX_SHADER)
@@ -4348,6 +4361,11 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
             auto fit = mVkFragmentShaderModulesPerProgram.find(sf.first);
             if (fit != mVkFragmentShaderModulesPerProgram.end()) frag_module = fit->second;
         }
+        else if (sf.second == GL_GEOMETRY_SHADER)
+        {
+            auto git = mVkGeometryShaderModulesPerProgram.find(sf.first);
+            if (git != mVkGeometryShaderModulesPerProgram.end()) geom_module = git->second;
+        }
     }
     if (vert_module == VK_NULL_HANDLE || frag_module == VK_NULL_HANDLE)
     {
@@ -4355,15 +4373,26 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
         return VK_NULL_HANDLE;
     }
 
-    VkPipelineShaderStageCreateInfo stages[2] = {};
-    stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].module = vert_module;
-    stages[0].pName  = "main";
-    stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].module = frag_module;
-    stages[1].pName  = "main";
+    VkPipelineShaderStageCreateInfo stages[3] = {};
+    uint32_t stage_count = 0;
+    stages[stage_count].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[stage_count].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[stage_count].module = vert_module;
+    stages[stage_count].pName  = "main";
+    ++stage_count;
+    if (geom_module != VK_NULL_HANDLE && LLVKLoader::isGeometryShaderEnabledVk())
+    {
+        stages[stage_count].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[stage_count].stage  = VK_SHADER_STAGE_GEOMETRY_BIT;
+        stages[stage_count].module = geom_module;
+        stages[stage_count].pName  = "main";
+        ++stage_count;
+    }
+    stages[stage_count].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[stage_count].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[stage_count].module = frag_module;
+    stages[stage_count].pName  = "main";
+    ++stage_count;
 
     auto get_vk_format_stride = [](U32 type) -> std::pair<VkFormat, U32> {
         switch (type)
@@ -4578,7 +4607,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     VkGraphicsPipelineCreateInfo ci = {};
     ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     ci.pNext               = &rendering_info;
-    ci.stageCount          = 2;
+    ci.stageCount          = stage_count;
     ci.pStages             = stages;
     ci.pVertexInputState   = &vi;
     ci.pInputAssemblyState = &ia;

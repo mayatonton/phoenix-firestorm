@@ -181,6 +181,9 @@ public:
 
     void syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
 
+    void syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
+                             S32 mip_level = 0, S32 mip_count = 1);
+
     bool getIsAlphaMask() const;
 
     bool getIsResident(bool test_now = false); // not const
@@ -243,9 +246,6 @@ private:
     U32 createPickMask(S32 pWidth, S32 pHeight);
     void freePickMask();
     bool isCompressed();
-
-    void syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
-                             S32 mip_level = 0, S32 mip_count = 1);
 
     LLPointer<LLImageRaw> mSaveData; // used for destroyGL/restoreGL
     LL::WorkQueue::weak_t mMainQueue;

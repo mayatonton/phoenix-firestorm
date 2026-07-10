@@ -49,7 +49,14 @@ LLReflectionMap::~LLReflectionMap()
 {
     if (mOcclusionQuery)
     {
-        glDeleteQueries(1, &mOcclusionQuery);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::releaseOcclusionQueryVk(mOcclusionQuery);
+        }
+        else
+        {
+            glDeleteQueries(1, &mOcclusionQuery);
+        }
     }
 }
 
@@ -373,33 +380,69 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
     if (mOcclusionQuery == 0)
     { // no query was previously issued, allocate one and issue
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("rmdo - glGenQueries");
-        glGenQueries(1, &mOcclusionQuery);
-        do_query = true;
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            do_query = true;
+        }
+        else
+        {
+            glGenQueries(1, &mOcclusionQuery);
+            do_query = true;
+        }
     }
     else
     { // query was previously issued, check it and only issue a new query
         // if previous query is available
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("rmdo - glGetQueryObject");
-        GLuint result = 0;
-        glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT_AVAILABLE, &result);
-
-        if (result > 0)
+        if (LLVKLoader::isVulkanInitialized())
         {
-            do_query = true;
-            glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT, &result);
-            mOccluded = result == 0;
-            mOcclusionPendingFrames = 0;
+            bool     vk_available = false;
+            uint64_t vk_samples   = 0;
+            LLVKLoader::getOcclusionQueryResultVk(mOcclusionQuery, vk_available, vk_samples);
+
+            if (vk_available)
+            {
+                do_query = true;
+                mOccluded = vk_samples == 0;
+                mOcclusionPendingFrames = 0;
+            }
+            else
+            {
+                mOcclusionPendingFrames++;
+            }
         }
         else
         {
-            mOcclusionPendingFrames++;
+            GLuint result = 0;
+            glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT_AVAILABLE, &result);
+
+            if (result > 0)
+            {
+                do_query = true;
+                glGetQueryObjectuiv(mOcclusionQuery, GL_QUERY_RESULT, &result);
+                mOccluded = result == 0;
+                mOcclusionPendingFrames = 0;
+            }
+            else
+            {
+                mOcclusionPendingFrames++;
+            }
         }
     }
 
     if (do_query)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("rmdo - push query");
-        glBeginQuery(GL_ANY_SAMPLES_PASSED, mOcclusionQuery);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::releaseOcclusionQueryVk(mOcclusionQuery);
+            mOcclusionQuery = LLVKLoader::acquireOcclusionQueryVk();
+            LLVKLoader::cmdBeginOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), mOcclusionQuery);
+        }
+        else
+        {
+            glBeginQuery(GL_ANY_SAMPLES_PASSED, mOcclusionQuery);
+        }
 
         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
@@ -423,7 +466,14 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
 
         gPipeline.mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(LLViewerCamera::getInstance(), mOrigin));
 
-        glEndQuery(GL_ANY_SAMPLES_PASSED);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::cmdEndOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), mOcclusionQuery);
+        }
+        else
+        {
+            glEndQuery(GL_ANY_SAMPLES_PASSED);
+        }
     }
 #endif
 }

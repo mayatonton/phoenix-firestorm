@@ -957,6 +957,9 @@ public:
     LLRenderTarget          mPostPingMap;
     LLRenderTarget          mPostPongMap;
 
+    LLRenderTarget*         mLastPresentedLdrRT = nullptr;
+    LLRenderTarget*         getLastPresentedLdrRT() const { return mLastPresentedLdrRT; }
+
     // FXAA helper target
     LLRenderTarget          mFXAAMap;
     LLRenderTarget          mSMAABlendBuffer;

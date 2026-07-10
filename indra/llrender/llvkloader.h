@@ -1142,6 +1142,18 @@ namespace LLVKLoader
 
     bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format);
 
+    bool downscaleImageVk(VkImage      src_image,
+                          U32          src_mip,
+                          U32          src_w,
+                          U32          src_h,
+                          U32          dst_w,
+                          U32          dst_h,
+                          VkFormat     format,
+                          U32          dst_mip_levels,
+                          VkImage&     out_image,
+                          VkImageView& out_view,
+                          void*&       out_allocation);
+
     bool createTexture3DImageVk(U32          width,
                                 U32          height,
                                 U32          depth,
@@ -1229,6 +1241,8 @@ namespace LLVKLoader
     VkSampler getSamplerForState(U32 address_mode, U32 filter_option, bool has_mipmaps, bool compare = false);
 
     bool isProvokingVertexLastEnabled();
+
+    bool isGeometryShaderEnabledVk();
 
     void transitionImageLayoutVk(VkImage              image,
                                  VkImageAspectFlags   aspect_mask,

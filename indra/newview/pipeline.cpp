@@ -8934,6 +8934,16 @@ void LLPipeline::visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 
     else
         gDeferredBufferVisualProgram.uniform1f(mipLevel, 8);
 
+    if (LLVKLoader::isVulkanInitialized()
+        && gDeferredBufferVisualProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+        && gDeferredBufferVisualProgram.mVkPerProgramUBOMapped != nullptr)
+    {
+        LLVKLoader::PostVisualizeBuffers_PerProgramBind ubo_data = {};
+        ubo_data.mipLevel = (RenderBufferVisualization != 4) ? 0.f : 8.f;
+        std::memcpy(gDeferredBufferVisualProgram.mVkPerProgramUBOMapped, &ubo_data,
+                    llmin((U32)sizeof(ubo_data), gDeferredBufferVisualProgram.mVkPerProgramUBOSize));
+    }
+
     mScreenTriangleVB->setBuffer();
     mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
     gDeferredBufferVisualProgram.unbind();
@@ -10844,6 +10854,7 @@ void LLPipeline::renderFinalize()
 
     sourceBuffer = auxActiveBuffer;
     // </FS:Beq>
+    mLastPresentedLdrRT = sourceBuffer;
     if (RenderBufferVisualization > -1)
     {
         switch (RenderBufferVisualization)

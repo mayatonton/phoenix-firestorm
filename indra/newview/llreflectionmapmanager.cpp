@@ -85,9 +85,22 @@ void load_exr(const std::string& filename)
 
         LLImageGLMemory::alloc_tex_image(width, height, GL_RGB16F, 1);
 
+        S32 vk_mip_count = 1;
+        {
+            S32 dim = llmax(width, height);
+            while (dim > 1) { dim >>= 1; ++vk_mip_count; }
+        }
+        gEXRImage->syncVulkanMip0Image(GL_RGB16F, GL_RGBA, GL_FLOAT, width, height, out, false, 0, vk_mip_count);
+
         free(out); // release memory of image data
 
         glGenerateMipmap(GL_TEXTURE_2D);
+
+        if (gEXRImage->getVkImage() != VK_NULL_HANDLE && gEXRImage->getVkImageMipLevels() > 1)
+        {
+            LLVKLoader::generateMipChainBlitVk(gEXRImage->getVkImage(), (U32)width, (U32)height,
+                                               gEXRImage->getVkImageMipLevels(), gEXRImage->getVkImageFormat());
+        }
 
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
 

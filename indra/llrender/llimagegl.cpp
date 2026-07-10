@@ -3180,17 +3180,6 @@ bool LLImageGL::scaleDown(S32 desired_discard)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
-    if (LLVKLoader::shouldUseVulkanRender())
-    {
-        static bool s_logged_scaledown_skip = false;
-        if (!s_logged_scaledown_skip)
-        {
-            s_logged_scaledown_skip = true;
-            LL_WARNS("Vulkan") << "GL fallback 廃止: LLImageGL::scaleDown GL downscale skip (Vulkan mode) = VRAM 最適化のみ無効化" << LL_ENDL;
-        }
-        return false;
-    }
-
     if (mTarget != GL_TEXTURE_2D
         || mFormatInternal == -1 // not initialized
         )
@@ -3209,6 +3198,41 @@ bool LLImageGL::scaleDown(S32 desired_discard)
 
     S32 desired_width = getWidth(desired_discard);
     S32 desired_height = getHeight(desired_discard);
+
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        if (mVkImage == VK_NULL_HANDLE || mVkImageFormat == VK_FORMAT_UNDEFINED)
+        {
+            return false;
+        }
+
+        const U32 src_mip    = (U32)llmin(mip, (S32)mVkImageMipLevels - 1);
+        const S32 src_width  = llmax(1, (S32)(mVkImageWidth  >> src_mip));
+        const S32 src_height = llmax(1, (S32)(mVkImageHeight >> src_mip));
+
+        U32 dst_mips = 1;
+        if (mHasMipMaps)
+        {
+            S32 dim = llmax(desired_width, desired_height);
+            while (dim > 1) { dim >>= 1; ++dst_mips; }
+        }
+
+        VkImage     new_image = VK_NULL_HANDLE;
+        VkImageView new_view  = VK_NULL_HANDLE;
+        void*       new_alloc = nullptr;
+        if (!LLVKLoader::downscaleImageVk(mVkImage, src_mip, (U32)src_width, (U32)src_height,
+                                          (U32)desired_width, (U32)desired_height, mVkImageFormat,
+                                          dst_mips, new_image, new_view, new_alloc))
+        {
+            return false;
+        }
+
+        setExternalVkBacking(new_image, new_view, new_alloc,
+                             (U32)desired_width, (U32)desired_height, mVkImageFormat, dst_mips);
+
+        mCurrentDiscardLevel = desired_discard;
+        return true;
+    }
 
     if (gGLManager.mDownScaleMethod == 0)
     { // use an FBO to downscale the texture

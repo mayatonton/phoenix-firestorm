@@ -26,6 +26,7 @@
 
 #include "llviewerprecompiledheaders.h"
 #include "llrendertarget.h"
+#include "llvkloader.h"
 #include "llscenemonitor.h"
 #include "llviewerwindow.h"
 #include "llviewerdisplay.h"
@@ -311,16 +312,27 @@ void LLSceneMonitor::capture()
 
         LLRenderTarget& cur_target = getCaptureTarget();
 
-        U32 old_FBO = LLRenderTarget::sCurFBO;
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLRenderTarget* src = gPipeline.getLastPresentedLdrRT();
+            if (src && src->hasVkImage(0) && cur_target.hasVkImage(0))
+            {
+                cur_target.copyContentsInFrameVk(*src);
+            }
+        }
+        else
+        {
+            U32 old_FBO = LLRenderTarget::sCurFBO;
 
-        gGL.getTexUnit(0)->bind(&cur_target);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); //point to the main frame buffer.
+            gGL.getTexUnit(0)->bind(&cur_target);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); //point to the main frame buffer.
 
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, cur_target.getWidth(), cur_target.getHeight()); //copy the content
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, cur_target.getWidth(), cur_target.getHeight()); //copy the content
 
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBindFramebuffer(GL_FRAMEBUFFER, old_FBO);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, old_FBO);
+        }
 
         mDiffState = NEED_DIFF;
     }
@@ -377,6 +389,18 @@ void LLSceneMonitor::compare()
     gTwoTextureCompareProgram.uniform1f(sDitherScale, mDitherScale);
     gTwoTextureCompareProgram.uniform1f(sDitherScaleS, mDitherScaleS);
     gTwoTextureCompareProgram.uniform1f(sDitherScaleT, mDitherScaleT);
+
+    if (LLVKLoader::isVulkanInitialized()
+        && gTwoTextureCompareProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+        && gTwoTextureCompareProgram.mVkPerProgramUBOMapped != nullptr)
+    {
+        LLVKLoader::TwoTextureCompare_PerProgramBind ubo_data = {};
+        ubo_data.dither_scale   = mDitherScale;
+        ubo_data.dither_scale_s = mDitherScaleS;
+        ubo_data.dither_scale_t = mDitherScaleT;
+        std::memcpy(gTwoTextureCompareProgram.mVkPerProgramUBOMapped, &ubo_data,
+                    llmin((U32)sizeof(ubo_data), gTwoTextureCompareProgram.mVkPerProgramUBOSize));
+    }
 
     gGL.getTexUnit(0)->activate();
     gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
@@ -442,16 +466,40 @@ void LLSceneMonitor::calcDiffAggregate()
     gOneTextureFilterProgram.bind();
     gOneTextureFilterProgram.uniform1f(sTolerance, mDiffTolerance);
 
+    if (LLVKLoader::isVulkanInitialized()
+        && gOneTextureFilterProgram.mVkPerProgramUBO != VK_NULL_HANDLE
+        && gOneTextureFilterProgram.mVkPerProgramUBOMapped != nullptr)
+    {
+        LLVKLoader::OneTextureFilter_PerProgramBind ubo_data = {};
+        ubo_data.tolerance = mDiffTolerance;
+        std::memcpy(gOneTextureFilterProgram.mVkPerProgramUBOMapped, &ubo_data,
+                    llmin((U32)sizeof(ubo_data), gOneTextureFilterProgram.mVkPerProgramUBOSize));
+    }
+
     if(mDiffState == EXECUTE_DIFF)
     {
-        glBeginQuery(GL_SAMPLES_PASSED, mQueryObject);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::cmdBeginOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), mQueryObject);
+        }
+        else
+        {
+            glBeginQuery(GL_SAMPLES_PASSED, mQueryObject);
+        }
     }
 
     gl_draw_scaled_target(0, 0, S32(mDiff->getWidth() * mDiffPixelRatio), S32(mDiff->getHeight() * mDiffPixelRatio), mDiff);
 
     if(mDiffState == EXECUTE_DIFF)
     {
-        glEndQuery(GL_SAMPLES_PASSED);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::cmdEndOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), mQueryObject);
+        }
+        else
+        {
+            glEndQuery(GL_SAMPLES_PASSED);
+        }
         mDiffState = WAIT_ON_RESULT;
     }
 
@@ -482,12 +530,25 @@ void LLSceneMonitor::fetchQueryResult()
         mDiffState = WAITING_FOR_NEXT_DIFF;
 
         GLuint available = 0;
-        glGetQueryObjectuiv(mQueryObject, GL_QUERY_RESULT_AVAILABLE, &available);
+        GLuint count = 0;
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            bool     vk_available = false;
+            uint64_t vk_samples   = 0;
+            LLVKLoader::getOcclusionQueryResultVk(mQueryObject, vk_available, vk_samples);
+            available = vk_available ? 1 : 0;
+            count     = (GLuint)vk_samples;
+        }
+        else
+        {
+            glGetQueryObjectuiv(mQueryObject, GL_QUERY_RESULT_AVAILABLE, &available);
+            if(available)
+            {
+                glGetQueryObjectuiv(mQueryObject, GL_QUERY_RESULT, &count);
+            }
+        }
         if(available)
         {
-            GLuint count = 0;
-            glGetQueryObjectuiv(mQueryObject, GL_QUERY_RESULT, &count);
-
             mDiffResult = sqrtf(count * 0.5f / (mDiff->getWidth() * mDiff->getHeight() * mDiffPixelRatio * mDiffPixelRatio)); //0.5 -> (front face + back face)
 
             LL_DEBUGS("SceneMonitor") << "Frame difference: " << mDiffResult << LL_ENDL;
