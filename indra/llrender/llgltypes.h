@@ -36,17 +36,6 @@ typedef F32 LLGLfloat;
 typedef F64 LLGLdouble;
 typedef U8 LLGLboolean;
 
-// AYAstorm r41 段階 1: Vulkan 型 alias 並走追加 (placeholder typedef)
-// 段階 2-5 の per-file port で type 一貫性確保 (charter §2 領域 2-5)
 #include "volk.h"
-
-typedef VkBuffer        LLVkBuffer;
-typedef VkImage         LLVkImage;
-typedef VkImageView     LLVkImageView;
-typedef VkDeviceMemory  LLVkDeviceMemory;
-typedef VkSampler       LLVkSampler;
-typedef VkShaderModule  LLVkShaderModule;
-typedef VkPipeline      LLVkPipeline;
-typedef VkFormat        LLVkFormat;
 
 #endif

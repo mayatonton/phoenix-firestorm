@@ -362,7 +362,6 @@ void RlvSphereEffect::writeVkPerProgramUBO(LLGLSLShader* pShader, F32 blurDirX, 
     }
 
     const F32 param5[2] = { blurDirX, blurDirY };
-    const S32 pad0 = 0;
     memcpy(base +  0, mVkUboParam1,    sizeof(F32) * 4);
     memcpy(base + 16, mVkUboParam2,    sizeof(F32) * 4);
     memcpy(base + 32, mVkUboParam4,    sizeof(F32) * 4);
@@ -370,7 +369,6 @@ void RlvSphereEffect::writeVkPerProgramUBO(LLGLSLShader* pShader, F32 blurDirX, 
     memcpy(base + 56, mVkUboScreenRes, sizeof(F32) * 2);
     memcpy(base + 64, mVkUboParam3,    sizeof(U32) * 2);
     memcpy(base + 72, &mVkUboMode,     sizeof(S32));
-    memcpy(base + 76, &pad0,           sizeof(S32));
 }
 
 void RlvSphereEffect::renderPass(LLGLSLShader* pShader, const LLShaderEffectParams* pParams) const
@@ -424,7 +422,6 @@ void RlvSphereEffect::run(const LLVisualEffectParams* pParams)
         LLGLDepthTest depth(GL_FALSE, GL_FALSE);
 
         gRlvSphereProgram.bind();
-        gPipeline.bindDeferredHelperBindings(gRlvSphereProgram);  // r41 軸 1 A1-14 central hook = RLV sphere isDeferred=true cluster
         setShaderUniforms(&gRlvSphereProgram);
 
         const LLShaderEffectParams* pShaderParams = static_cast<const LLShaderEffectParams*>(pParams);

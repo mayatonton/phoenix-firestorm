@@ -2583,7 +2583,6 @@ bool LLAgent::needsRenderHead()
 // [RLVa:KB] - Checked: RLVa-2.0.2
     return ((LLVOAvatar::sVisibleInFirstPerson && LLPipelineFrameContext::getInstance().isReflectionPass()) || (mShowAvatar && !gAgentCamera.cameraMouselook())) && (!gRlvHandler.hasBehaviour(RLV_BHVR_SHOWSELFHEAD));
 // [/RLVa:KB]
-//  return (LLVOAvatar::sVisibleInFirstPerson && LLPipelineFrameContext::getInstance().isReflectionPass()) || (mShowAvatar && !gAgentCamera.cameraMouselook());
 }
 
 //-----------------------------------------------------------------------------

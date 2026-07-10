@@ -133,18 +133,10 @@ Asset::~Asset()
     if (mVkNodesUBO != VK_NULL_HANDLE)
     {
         LLVKLoader::destroyBufferVk(mVkNodesUBO, mVkNodesUBOAllocation);
-        mVkNodesUBO           = VK_NULL_HANDLE;
-        mVkNodesUBOAllocation = nullptr;
-        mVkNodesUBOMapped     = nullptr;
-        mVkNodesUBOSize       = 0;
     }
     if (mVkMaterialsUBO != VK_NULL_HANDLE)
     {
         LLVKLoader::destroyBufferVk(mVkMaterialsUBO, mVkMaterialsUBOAllocation);
-        mVkMaterialsUBO           = VK_NULL_HANDLE;
-        mVkMaterialsUBOAllocation = nullptr;
-        mVkMaterialsUBOMapped     = nullptr;
-        mVkMaterialsUBOSize       = 0;
     }
 }
 

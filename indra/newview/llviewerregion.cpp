@@ -66,8 +66,8 @@
 #include "llviewerstatsrecorder.h"
 #include "llvlmanager.h"
 #include "llvlcomposition.h"
-#include "llpipelineframecontext.h" // <AYAstorm r41> sub-step 4.3-α: ScopedCameraID
-#include "llviewercamera.h"         // <AYAstorm r41> sub-step 4.3-α: sCurCameraID accessor
+#include "llpipelineframecontext.h"
+#include "llviewercamera.h"
 #include "llvoavatarself.h"
 #include "llvocache.h"
 #include "llworld.h"

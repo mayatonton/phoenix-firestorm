@@ -1237,8 +1237,6 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
-    // Vulkan presentation 有効時は vkQueuePresentKHR が LLVKLoader::endFrame() で発火済ゆえ
-    //   GL `SDL_GL_SwapBuffers` skip = no-op return (= dual-presentation 衝突回避)。
     if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
     {
         return;

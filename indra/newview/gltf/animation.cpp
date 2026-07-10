@@ -400,10 +400,6 @@ Skin::~Skin()
     if (mVkUBO != VK_NULL_HANDLE)
     {
         LLVKLoader::destroyBufferVk(mVkUBO, mVkUBOAllocation);
-        mVkUBO           = VK_NULL_HANDLE;
-        mVkUBOAllocation = nullptr;
-        mVkUBOMapped     = nullptr;
-        mVkUBOSize       = 0;
     }
 }
 

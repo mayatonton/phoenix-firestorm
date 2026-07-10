@@ -523,11 +523,6 @@ public:
 
     static void clearStaleImageGLRefs(LLImageGL* victim);
 
-    // invalidate stale LLCubeMap* raw pointers across all LLTexUnit::mCurrCubeMap on
-    // LLCubeMap destruction (= sky environmentMap は LLVOSky::mCubeMap (LLPointer) 保持 →
-    // ~LLVOSky (region 変更/teleport の sky 再構築) で free される際の mCurrCubeMap dangling
-    // use-after-free を防ぐ = clearStaleImageGLRefs と同 class)。LLCubeMap::~LLCubeMap() の
-    // 冒頭で呼出、main thread only。nullptr 置換のみ、GL path 不変。
     static void clearStaleCubeMapRefs(LLCubeMap* victim);
 
     U32 getCurrentTexUnitIndex(void) const { return mCurrTextureUnitIndex; }
@@ -576,8 +571,8 @@ private:
     bool                mCurrColorMask[4];
     F32                 mClearColor[4];
     F32             mLineWidth; // <FS> Line width OGL core profile fix by Rye Mutt
-    F32             mPolygonOffsetFactor; // glPolygonOffset factor tracker
-    F32             mPolygonOffsetUnits;  // glPolygonOffset units tracker
+    F32             mPolygonOffsetFactor;
+    F32             mPolygonOffsetUnits;
     // <FS:Ansariel> Don't ignore OpenGL max line width
     F32             mMaxLineWidthSmooth;
     F32             mMaxLineWidthAliased;

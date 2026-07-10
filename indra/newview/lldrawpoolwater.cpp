@@ -383,7 +383,6 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
                    llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
         }
 
-        gPipeline.mWaterDis.bindForShaderRead(0, false);
         gPipeline.mWaterDis.bindForShaderRead(0, true);
         gPipeline.mWaterExclusionMask.bindForShaderRead(0, false);
     }

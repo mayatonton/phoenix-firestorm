@@ -174,7 +174,6 @@ public:
     VkImageView getVkImageView() const { return mVkImageView; }
     bool hasVkImage() const { return mVkImage != VK_NULL_HANDLE; }
     VkImage getVkImage() const { return mVkImage; }
-    void*   getVkAllocation() const { return mVkAllocation; }
     U32      getVkImageMipLevels() const { return mVkImageMipLevels; }
     VkFormat getVkImageFormat() const { return mVkImageFormat; }
 
@@ -312,8 +311,6 @@ public:
     static U32 sUniqueCount;                // Tracks number of unique texture binds for current frame
     static bool sGlobalUseAnisotropic;
     static LLImageGL* sDefaultGLTexture ;
-    // white image LLImageGL pointer (= newview
-    //   LLViewerFetchedTexture::sWhiteImagep->getGLTexture() 経由設定)。
     static LLImageGL* sWhiteImageGLp ;
     static bool sAutomatedTest;
     static bool sCompressTextures;          //use GL texture compression

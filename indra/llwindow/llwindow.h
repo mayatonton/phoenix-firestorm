@@ -174,10 +174,6 @@ public:
 // return a platform-specific window reference (HWND on Windows, WindowRef on the Mac, Gtk window on Linux)
     virtual void *getPlatformWindow() = 0;
 
-    // AYAstorm r41 Phase F-14.1: native window handles for Vulkan surface creation.
-    //   native_display = X11 Display* on Linux / nullptr on Windows + macOS
-    //   native_window  = (void*)(uintptr_t)X11 Window on Linux / HWND on Windows
-    //                  / CAMetalLayer* on macOS (F-14.x で MoltenVK 配線、F-14.1 では stub)
     struct LLNativeWindowHandles
     {
         void* native_display = nullptr;

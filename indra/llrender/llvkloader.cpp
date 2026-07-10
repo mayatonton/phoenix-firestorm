@@ -65,7 +65,6 @@ namespace
     VkDevice         sDevice              = VK_NULL_HANDLE;
     VkQueue          sGraphicsQueue       = VK_NULL_HANDLE;
     U32              sGraphicsQueueFamily = UINT_MAX;
-    std::string      sDeviceName;
     bool             sInitialized         = false;
 
     VkDebugUtilsMessengerEXT sDebugMessenger = VK_NULL_HANDLE;
@@ -79,18 +78,12 @@ namespace
     std::queue<uint32_t> sOcclusionQueryFree;
 
     VkSurfaceKHR sSurface           = VK_NULL_HANDLE;
-    bool         sPresentSupported  = false;
 
     VkSwapchainKHR           sSwapchain           = VK_NULL_HANDLE;
     std::vector<VkImage>     sSwapchainImages;
     std::vector<VkImageView> sSwapchainImageViews;
     VkFormat                 sSwapchainFormat     = VK_FORMAT_UNDEFINED;
     VkExtent2D               sSwapchainExtent     = {0, 0};
-
-    VkRenderPass   sRenderPass         = VK_NULL_HANDLE;
-    VkImage        sOffscreenImage     = VK_NULL_HANDLE;
-    VkDeviceMemory sOffscreenMemory    = VK_NULL_HANDLE;
-    VkImageView    sOffscreenImageView = VK_NULL_HANDLE;
 
     VkImage        sDefaultFallbackImage     = VK_NULL_HANDLE;
     VkDeviceMemory sDefaultFallbackMemory    = VK_NULL_HANDLE;
@@ -104,7 +97,6 @@ namespace
     VkImage        sDefaultFallback3DImage     = VK_NULL_HANDLE;
     VkImageView    sDefaultFallback3DImageView = VK_NULL_HANDLE;
     void*          sDefaultFallback3DAlloc     = nullptr;
-    VkFramebuffer  sFramebuffer        = VK_NULL_HANDLE;
     bool           sInFrame            = false;
 
     bool sInDynamicRendering = false;
@@ -123,14 +115,8 @@ namespace
     U32                       sSavedRenderWidth   = 0;
     U32                       sSavedRenderHeight  = 0;
 
-    constexpr U32      OFFSCREEN_WIDTH  = 64;
-    constexpr U32      OFFSCREEN_HEIGHT = 64;
-    constexpr VkFormat OFFSCREEN_FORMAT = VK_FORMAT_R8G8B8A8_UNORM;
-
     VmaAllocator sAllocator = VK_NULL_HANDLE;
-    constexpr VkDeviceSize PERFRAME_UBO_OFFSET       = 0;
     constexpr VkDeviceSize PERFRAME_UBO_SIZE         = sizeof(PerFrameMatrixUBO);
-    constexpr VkDeviceSize TEXTURE_UBO_OFFSET        = 256;
     constexpr VkDeviceSize TEXTURE_UBO_SIZE          = sizeof(TextureMatrixUBO);
     constexpr VkDeviceSize MATRIX_RING_SLOT_SIZE     = PERFRAME_UBO_SIZE + TEXTURE_UBO_SIZE;
     constexpr VkDeviceSize SHADOW_UBO_OFFSET         = 512;
@@ -389,16 +375,9 @@ namespace
 
     struct DeviceLimits
     {
-        U32  maxBoundDescriptorSets             = 0;
-        U32  maxPushConstantsSize               = 0;
-        U32  maxPerStageDescriptorSampledImages = 0;
-        U32  maxColorAttachments                = 0;
-        U32  maxDescriptorSetSamplers           = 0;
         bool memoryBudgetSupported              = false;
-        U32  minUniformBufferOffsetAlignment    = 0;
     };
     DeviceLimits sDeviceLimits;
-    bool         sSharedVmaBudgetLogged = false;
 
     VKAPI_ATTR VkBool32 VKAPI_CALL vkDebugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT      severity,
@@ -581,7 +560,6 @@ namespace
 
         VkPhysicalDevice best = VK_NULL_HANDLE;
         int best_score = -1;
-        std::string best_name;
 
         for (auto dev : devices)
         {
@@ -599,7 +577,6 @@ namespace
             {
                 best_score = score;
                 best = dev;
-                best_name = props.deviceName;
             }
         }
 
@@ -609,7 +586,6 @@ namespace
         }
 
         sPhysicalDevice = best;
-        sDeviceName = best_name;
         return true;
     }
 
@@ -652,19 +628,6 @@ namespace
             }
         }
         sDeviceLimits.memoryBudgetSupported = mem_budget_supported;
-
-        VkPhysicalDeviceProperties2 props2 = {};
-        props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-
-        vkGetPhysicalDeviceProperties2(sPhysicalDevice, &props2);
-
-        const VkPhysicalDeviceLimits& l = props2.properties.limits;
-        sDeviceLimits.maxBoundDescriptorSets             = l.maxBoundDescriptorSets;
-        sDeviceLimits.maxPushConstantsSize               = l.maxPushConstantsSize;
-        sDeviceLimits.maxPerStageDescriptorSampledImages = l.maxPerStageDescriptorSampledImages;
-        sDeviceLimits.maxColorAttachments                = l.maxColorAttachments;
-        sDeviceLimits.maxDescriptorSetSamplers           = l.maxDescriptorSetSamplers;
-        sDeviceLimits.minUniformBufferOffsetAlignment    = (U32)l.minUniformBufferOffsetAlignment;
 
         return true;
     }
@@ -899,69 +862,6 @@ namespace
         alloc_info.commandBufferCount = FRAMES_IN_FLIGHT;
 
         result = vkAllocateCommandBuffers(sDevice, &alloc_info, sCommandBuffers);
-        if (result != VK_SUCCESS)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    bool createOffscreenImage()
-    {
-        VkImageCreateInfo image_info = {};
-        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image_info.imageType = VK_IMAGE_TYPE_2D;
-        image_info.format = OFFSCREEN_FORMAT;
-        image_info.extent = { OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, 1 };
-        image_info.mipLevels = 1;
-        image_info.arrayLayers = 1;
-        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        image_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        VkResult result = vkCreateImage(sDevice, &image_info, nullptr, &sOffscreenImage);
-        if (result != VK_SUCCESS)
-        {
-            return false;
-        }
-
-        VkMemoryRequirements mem_req;
-        vkGetImageMemoryRequirements(sDevice, sOffscreenImage, &mem_req);
-
-        S32 mem_type = findMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        if (mem_type < 0)
-        {
-            return false;
-        }
-
-        VkMemoryAllocateInfo alloc_info = {};
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = mem_req.size;
-        alloc_info.memoryTypeIndex = (U32)mem_type;
-
-        result = vkAllocateMemory(sDevice, &alloc_info, nullptr, &sOffscreenMemory);
-        if (result != VK_SUCCESS)
-        {
-            return false;
-        }
-
-        vkBindImageMemory(sDevice, sOffscreenImage, sOffscreenMemory, 0);
-
-        VkImageViewCreateInfo view_info = {};
-        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        view_info.image = sOffscreenImage;
-        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view_info.format = OFFSCREEN_FORMAT;
-        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        view_info.subresourceRange.baseMipLevel = 0;
-        view_info.subresourceRange.levelCount = 1;
-        view_info.subresourceRange.baseArrayLayer = 0;
-        view_info.subresourceRange.layerCount = 1;
-
-        result = vkCreateImageView(sDevice, &view_info, nullptr, &sOffscreenImageView);
         if (result != VK_SUCCESS)
         {
             return false;
@@ -1322,63 +1222,6 @@ namespace
         return true;
     }
 
-    bool createRenderPass()
-    {
-        VkAttachmentDescription color_attachment = {};
-        color_attachment.format = OFFSCREEN_FORMAT;
-        color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkAttachmentReference color_ref = {};
-        color_ref.attachment = 0;
-        color_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkSubpassDescription subpass = {};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &color_ref;
-
-        VkRenderPassCreateInfo rp_info = {};
-        rp_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        rp_info.attachmentCount = 1;
-        rp_info.pAttachments = &color_attachment;
-        rp_info.subpassCount = 1;
-        rp_info.pSubpasses = &subpass;
-
-        VkResult result = vkCreateRenderPass(sDevice, &rp_info, nullptr, &sRenderPass);
-        if (result != VK_SUCCESS)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    bool createFramebuffer()
-    {
-        VkFramebufferCreateInfo fb_info = {};
-        fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        fb_info.renderPass = sRenderPass;
-        fb_info.attachmentCount = 1;
-        fb_info.pAttachments = &sOffscreenImageView;
-        fb_info.width = OFFSCREEN_WIDTH;
-        fb_info.height = OFFSCREEN_HEIGHT;
-        fb_info.layers = 1;
-
-        VkResult result = vkCreateFramebuffer(sDevice, &fb_info, nullptr, &sFramebuffer);
-        if (result != VK_SUCCESS)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
     namespace pcache
     {
         using CacheBlob = std::vector<uint8_t>;
@@ -1497,35 +1340,6 @@ namespace
         }
 
         return true;
-    }
-
-    void logVmaBudgetSmoke()
-    {
-        if (sSharedVmaBudgetLogged || sAllocator == VK_NULL_HANDLE)
-        {
-            return;
-        }
-        sSharedVmaBudgetLogged = true;
-
-        const VkPhysicalDeviceMemoryProperties* mem_props = nullptr;
-        vmaGetMemoryProperties(sAllocator, &mem_props);
-        const U32 heap_count = mem_props ? mem_props->memoryHeapCount : 0;
-
-        if (heap_count == 0)
-        {
-            return;
-        }
-
-        std::vector<VmaBudget> budgets(heap_count);
-        vmaGetHeapBudgets(sAllocator, budgets.data());
-
-        for (U32 i = 0; i < heap_count; ++i)
-        {
-            const VmaBudget& b = budgets[i];
-            const U64 heap_size = mem_props->memoryHeaps[i].size;
-            const bool is_device_local =
-                (mem_props->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
-        }
     }
 
     bool createPerFrameDescriptorSetLayout()
@@ -2037,64 +1851,6 @@ namespace
         }
     }
 
-    VkFilter llGlEnumToVkFilterImpl(U32 ll_gl_filter)
-    {
-        switch (ll_gl_filter)
-        {
-            case 0x2600: return VK_FILTER_NEAREST;
-            case 0x2601: return VK_FILTER_LINEAR;
-            case 0x2700: return VK_FILTER_NEAREST;
-            case 0x2701: return VK_FILTER_LINEAR;
-            case 0x2702: return VK_FILTER_NEAREST;
-            case 0x2703: return VK_FILTER_LINEAR;
-            default:     return VK_FILTER_LINEAR;
-        }
-    }
-
-    VkSamplerMipmapMode llGlEnumToVkMipmapModeImpl(U32 ll_gl_filter)
-    {
-        switch (ll_gl_filter)
-        {
-            case 0x2700: return VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            case 0x2701: return VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            case 0x2702: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            case 0x2703: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            default:     return VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        }
-    }
-
-    VkSamplerAddressMode llGlEnumToVkWrapImpl(U32 ll_gl_wrap)
-    {
-        switch (ll_gl_wrap)
-        {
-            case 0x2901: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            case 0x812F: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            case 0x812D: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-            case 0x8370: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-            case 0x2900: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            default:     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        }
-    }
-
-    VkBlendFactor llGlEnumToVkBlendFactorImpl(U32 ll_gl_blend)
-    {
-        switch (ll_gl_blend)
-        {
-            case 0x0000: return VK_BLEND_FACTOR_ZERO;
-            case 0x0001: return VK_BLEND_FACTOR_ONE;
-            case 0x0300: return VK_BLEND_FACTOR_SRC_COLOR;
-            case 0x0301: return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-            case 0x0302: return VK_BLEND_FACTOR_SRC_ALPHA;
-            case 0x0303: return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            case 0x0304: return VK_BLEND_FACTOR_DST_ALPHA;
-            case 0x0305: return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-            case 0x0306: return VK_BLEND_FACTOR_DST_COLOR;
-            case 0x0307: return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-            case 0x0308: return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
-            default:     return VK_BLEND_FACTOR_ONE;
-        }
-    }
-
     VkCompareOp llGlEnumToVkCompareOpImpl(U32 ll_gl_func)
     {
         switch (ll_gl_func)
@@ -2108,17 +1864,6 @@ namespace
             case 0x0206: return VK_COMPARE_OP_GREATER_OR_EQUAL;
             case 0x0207: return VK_COMPARE_OP_ALWAYS;
             default:     return VK_COMPARE_OP_LESS;
-        }
-    }
-
-    VkCullModeFlags llGlEnumToVkCullModeImpl(U32 ll_gl_cull)
-    {
-        switch (ll_gl_cull)
-        {
-            case 0x0404: return VK_CULL_MODE_FRONT_BIT;
-            case 0x0405: return VK_CULL_MODE_BACK_BIT;
-            case 0x0408: return VK_CULL_MODE_FRONT_AND_BACK;
-            default:     return VK_CULL_MODE_NONE;
         }
     }
 
@@ -2205,7 +1950,6 @@ namespace
 
     bool createBufferVkImpl(U32                 size_bytes,
                             VkBufferUsageFlags  usage,
-                            const char*         tag,
                             VkBuffer&           out_buffer,
                             void*&              out_allocation,
                             void**              out_mapped)
@@ -2706,8 +2450,6 @@ bool initVulkan()
         return false;
     }
 
-    U32 instance_version = volkGetInstanceVersion();
-
     if (!createInstance())
     {
         return false;
@@ -2734,8 +2476,7 @@ bool initVulkan()
         return false;
     }
 
-    if (!createCommandPool() || !createOffscreenImage() || !createDefaultFallbackImage() ||
-        !createRenderPass() || !createFramebuffer() || !createPipelineCache())
+    if (!createCommandPool() || !createDefaultFallbackImage() || !createPipelineCache())
     {
         shutdownVulkan();
         return false;
@@ -2780,8 +2521,6 @@ bool initVulkan()
         shutdownVulkan();
         return false;
     }
-
-    logVmaBudgetSmoke();
 
     sInitialized = true;
     return true;
@@ -2836,26 +2575,6 @@ void shutdownVulkan()
 
         destroySwapchain();
 
-        if (sFramebuffer != VK_NULL_HANDLE)
-        {
-            vkDestroyFramebuffer(sDevice, sFramebuffer, nullptr);
-            sFramebuffer = VK_NULL_HANDLE;
-        }
-        if (sOffscreenImageView != VK_NULL_HANDLE)
-        {
-            vkDestroyImageView(sDevice, sOffscreenImageView, nullptr);
-            sOffscreenImageView = VK_NULL_HANDLE;
-        }
-        if (sOffscreenImage != VK_NULL_HANDLE)
-        {
-            vkDestroyImage(sDevice, sOffscreenImage, nullptr);
-            sOffscreenImage = VK_NULL_HANDLE;
-        }
-        if (sOffscreenMemory != VK_NULL_HANDLE)
-        {
-            vkFreeMemory(sDevice, sOffscreenMemory, nullptr);
-            sOffscreenMemory = VK_NULL_HANDLE;
-        }
         if (sDefaultFallbackImageView != VK_NULL_HANDLE)
         {
             vkDestroyImageView(sDevice, sDefaultFallbackImageView, nullptr);
@@ -2906,11 +2625,6 @@ void shutdownVulkan()
                             reinterpret_cast<VmaAllocation>(sDefaultFallback3DAlloc));
             sDefaultFallback3DImage = VK_NULL_HANDLE;
             sDefaultFallback3DAlloc = nullptr;
-        }
-        if (sRenderPass != VK_NULL_HANDLE)
-        {
-            vkDestroyRenderPass(sDevice, sRenderPass, nullptr);
-            sRenderPass = VK_NULL_HANDLE;
         }
 
         for (VkDescriptorPool pool : sPerFrameRingPools)
@@ -3137,7 +2851,6 @@ void shutdownVulkan()
             vmaDestroyAllocator(sAllocator);
             sAllocator = VK_NULL_HANDLE;
         }
-        sSharedVmaBudgetLogged = false;
 
         vkDestroyDevice(sDevice, nullptr);
         sDevice = VK_NULL_HANDLE;
@@ -3155,7 +2868,6 @@ void shutdownVulkan()
         vkDestroyInstance(sInstance, nullptr);
         sInstance = VK_NULL_HANDLE;
         sPhysicalDevice = VK_NULL_HANDLE;
-        sDeviceName.clear();
     }
     if (sInitialized)
     {
@@ -3385,11 +3097,6 @@ VkCommandBuffer getCurrentCommandBuffer()
     return sInFrame ? sCommandBuffers[sFrameIndex] : VK_NULL_HANDLE;
 }
 
-bool isOcclusionQueryVkAvailable()
-{
-    return sOcclusionQueryPool != VK_NULL_HANDLE && sHostQueryResetEnabled;
-}
-
 uint32_t acquireOcclusionQueryVk()
 {
     if (sOcclusionQueryPool == VK_NULL_HANDLE || sOcclusionQueryFree.empty())
@@ -3463,11 +3170,6 @@ VkDevice getDevice()
     return sDevice;
 }
 
-VkPipelineCache getPipelineCache()
-{
-    return sPipelineCache;
-}
-
 VkPipelineLayout createStandardPipelineLayout(
     const VkDescriptorSetLayout* descriptor_set_layouts,
     U32                          descriptor_set_layout_count,
@@ -3534,11 +3236,6 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     U32 clamped_count = b.sampler_count;
     if (clamped_count > ScenePerDrawBindings::MAX_SAMPLERS)
     {
-        static bool s_warned_overflow = false;
-        if (!s_warned_overflow)
-        {
-            s_warned_overflow = true;
-        }
         clamped_count = ScenePerDrawBindings::MAX_SAMPLERS;
     }
 
@@ -3565,18 +3262,6 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     {
         key.ubo_write_bindings[i] = b.ubo_writes[i].binding;
         key.ubo_write_bufs[i]     = b.ubo_writes[i].buf;
-    }
-
-    {
-        static bool s_logged_swhite = false;
-        if (!s_logged_swhite && LLImageGL::sWhiteImageGLp != nullptr)
-        {
-            VkImageView swhite_view = LLImageGL::sWhiteImageGLp->getVkImageView();
-            if (swhite_view != VK_NULL_HANDLE)
-            {
-                s_logged_swhite = true;
-            }
-        }
     }
 
     auto cache_it = sScenePerDrawCache.find(key);
@@ -4171,34 +3856,9 @@ VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat)
     return llGlEnumToVkFormatImpl(ll_gl_intformat);
 }
 
-VkFilter llGlEnumToVkFilter(U32 ll_gl_filter)
-{
-    return llGlEnumToVkFilterImpl(ll_gl_filter);
-}
-
-VkSamplerMipmapMode llGlEnumToVkMipmapMode(U32 ll_gl_filter)
-{
-    return llGlEnumToVkMipmapModeImpl(ll_gl_filter);
-}
-
-VkSamplerAddressMode llGlEnumToVkWrap(U32 ll_gl_wrap)
-{
-    return llGlEnumToVkWrapImpl(ll_gl_wrap);
-}
-
-VkBlendFactor llGlEnumToVkBlendFactor(U32 ll_gl_blend)
-{
-    return llGlEnumToVkBlendFactorImpl(ll_gl_blend);
-}
-
 VkCompareOp llGlEnumToVkCompareOp(U32 ll_gl_func)
 {
     return llGlEnumToVkCompareOpImpl(ll_gl_func);
-}
-
-VkCullModeFlags llGlEnumToVkCullMode(U32 ll_gl_cull)
-{
-    return llGlEnumToVkCullModeImpl(ll_gl_cull);
 }
 
 VkStencilOp llGlEnumToVkStencilOp(U32 ll_gl_op)
@@ -4223,7 +3883,6 @@ bool createVertexBufferVk(U32       size_bytes,
 {
     return createBufferVkImpl(size_bytes,
                               VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                              "createVertexBufferVk",
                               out_buffer, out_allocation, out_mapped);
 }
 
@@ -4234,7 +3893,6 @@ bool createIndexBufferVk(U32       size_bytes,
 {
     return createBufferVkImpl(size_bytes,
                               VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                              "createIndexBufferVk",
                               out_buffer, out_allocation, out_mapped);
 }
 
@@ -4245,7 +3903,6 @@ bool createPerProgramUBOVk(U32       size_bytes,
 {
     return createBufferVkImpl(size_bytes,
                               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                              "createPerProgramUBOVk",
                               out_buffer, out_allocation, out_mapped);
 }
 
@@ -4278,7 +3935,6 @@ void ensurePerAssetUBOVk(U32       needed_size,
     void* mapped_ptr = nullptr;
     if (createBufferVkImpl(needed_size,
                            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                           "ensurePerAssetUBOVk",
                            inout_buffer,
                            inout_allocation,
                            &mapped_ptr))
@@ -4296,7 +3952,6 @@ void ensurePerAssetUBOVk(U32       needed_size,
         {                                                                                                   \
             if (!createBufferVkImpl(sizeof(StructType),                                                     \
                                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,                                     \
-                                    "getShared" #BindName "UBO",                                            \
                                     StorageBuf,                                                             \
                                     StorageAlloc,                                                           \
                                     &StorageMapped))                                                        \
@@ -5060,7 +4715,6 @@ bool createReadbackImageVk(U32          width,
 bool uploadImageDataVk(VkImage     image,
                        U32         width,
                        U32         height,
-                       VkFormat    format,
                        const void* data,
                        U32         data_size_bytes,
                        U32         mip_level)
@@ -5328,133 +4982,6 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
     return true;
 }
 
-bool generateCubeMipChainBlitVk(VkImage image, U32 resolution, U32 mip_count, VkFormat format)
-{
-    if (image == VK_NULL_HANDLE || resolution == 0 || mip_count <= 1)
-    {
-        return false;
-    }
-    if (sDevice == VK_NULL_HANDLE || sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
-    {
-        return false;
-    }
-
-    VkFormatProperties fp = {};
-    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
-    {
-        return false;
-    }
-
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
-    {
-        return false;
-    }
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
-
-    auto mip_barrier = [&](U32 level, VkImageLayout oldL, VkImageLayout newL,
-                           VkAccessFlags srcA, VkAccessFlags dstA,
-                           VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
-    {
-        VkImageMemoryBarrier b = {};
-        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        b.image                           = image;
-        b.oldLayout                       = oldL;
-        b.newLayout                       = newL;
-        b.srcAccessMask                   = srcA;
-        b.dstAccessMask                   = dstA;
-        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        b.subresourceRange.baseMipLevel   = level;
-        b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.baseArrayLayer = 0;
-        b.subresourceRange.layerCount     = 6;
-        vkCmdPipelineBarrier(cmd, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
-    };
-
-    S32 mw = (S32)resolution;
-    S32 mh = (S32)resolution;
-    for (U32 i = 1; i < mip_count; ++i)
-    {
-        const S32 dw = (mw > 1) ? (mw / 2) : 1;
-        const S32 dh = (mh > 1) ? (mh / 2) : 1;
-
-        mip_barrier(i - 1,
-                    (i == 1) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    (i == 1) ? VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT,
-                    VK_ACCESS_TRANSFER_READ_BIT,
-                    (i == 1) ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT);
-        mip_barrier(i,
-                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-        VkImageBlit blits[6] = {};
-        for (U32 f = 0; f < 6; ++f)
-        {
-            blits[f].srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            blits[f].srcSubresource.mipLevel       = i - 1;
-            blits[f].srcSubresource.baseArrayLayer = f;
-            blits[f].srcSubresource.layerCount     = 1;
-            blits[f].srcOffsets[0]                 = { 0, 0, 0 };
-            blits[f].srcOffsets[1]                 = { mw, mh, 1 };
-            blits[f].dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            blits[f].dstSubresource.mipLevel       = i;
-            blits[f].dstSubresource.baseArrayLayer = f;
-            blits[f].dstSubresource.layerCount     = 1;
-            blits[f].dstOffsets[0]                 = { 0, 0, 0 };
-            blits[f].dstOffsets[1]                 = { dw, dh, 1 };
-        }
-        vkCmdBlitImage(cmd,
-                       image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                       6, blits, VK_FILTER_LINEAR);
-
-        mw = dw;
-        mh = dh;
-    }
-
-    for (U32 i = 0; i < mip_count; ++i)
-    {
-        const bool is_last = (i == mip_count - 1);
-        mip_barrier(i,
-                    is_last ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    is_last ? VK_ACCESS_TRANSFER_WRITE_BIT : VK_ACCESS_TRANSFER_READ_BIT,
-                    VK_ACCESS_SHADER_READ_BIT,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-    }
-
-    vkEndCommandBuffer(cmd);
-
-    VkSubmitInfo si = {};
-    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers    = &cmd;
-    VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
-    if (sr != VK_SUCCESS)
-    {
-        vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
-        return false;
-    }
-    vkQueueWaitIdle(sGraphicsQueue);
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
-
-    return true;
-}
-
 bool generateMipChainInFrameVk(VkImage        image,
                                U32            base_w,
                                U32            base_h,
@@ -5647,11 +5174,9 @@ bool uploadImageData3DVk(VkImage     image,
                          U32         width,
                          U32         height,
                          U32         depth,
-                         VkFormat    format,
                          const void* data,
                          U32         data_size_bytes)
 {
-    (void)format;
     if (image == VK_NULL_HANDLE || data == nullptr || data_size_bytes == 0 ||
         width == 0 || height == 0 || depth == 0)
     {
@@ -6044,7 +5569,6 @@ bool createCubeImageVk(U32          resolution,
 
 bool uploadCubeImageDataVk(VkImage           image,
                            U32               resolution,
-                           VkFormat          format,
                            const void* const face_data[6],
                            U32               face_size_bytes)
 {
@@ -7071,21 +6595,6 @@ bool initSurface(LLWindow* window)
         return false;
     }
 
-
-    VkBool32 present_supported = VK_FALSE;
-    VkResult qres = vkGetPhysicalDeviceSurfaceSupportKHR(sPhysicalDevice,
-                                                          sGraphicsQueueFamily,
-                                                          sSurface,
-                                                          &present_supported);
-    if (qres == VK_SUCCESS && present_supported)
-    {
-        sPresentSupported = true;
-    }
-    else
-    {
-        sPresentSupported = false;
-    }
-
     return true;
 }
 
@@ -7096,7 +6605,6 @@ void shutdownSurface()
         vkDestroySurfaceKHR(sInstance, sSurface, nullptr);
         sSurface = VK_NULL_HANDLE;
     }
-    sPresentSupported = false;
 }
 
 VkSurfaceKHR getSurface()
@@ -7163,29 +6671,6 @@ VkRenderSuspendScope::~VkRenderSuspendScope()
     {
         --sVulkanRenderSuspendCount;
     }
-}
-
-VkImageView getCurrentSwapchainImageView()
-{
-    if (!sImageAcquired)
-    {
-        return VK_NULL_HANDLE;
-    }
-    if (sAcquiredImageIndex >= (U32)sSwapchainImageViews.size())
-    {
-        return VK_NULL_HANDLE;
-    }
-    return sSwapchainImageViews[sAcquiredImageIndex];
-}
-
-VkExtent2D getSwapchainExtent()
-{
-    return sSwapchainExtent;
-}
-
-U32 getCurrentSwapchainImageIndex()
-{
-    return sAcquiredImageIndex;
 }
 
 VkFormat getSwapchainFormat()

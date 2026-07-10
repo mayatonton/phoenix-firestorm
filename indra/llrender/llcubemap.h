@@ -76,13 +76,6 @@ public:
 
     void destroyGL();
 
-    // r41 Phase H §50-followup-5 (2026-06-15): Vulkan parity storage for samplerCube
-    //   environmentMap (= class2/deferred/reflectionProbeF.glsl set=1 binding=17
-    //   source、 pipeline.cpp:11955-12003 class2 fallback dispatch site で使用)。
-    //   GL path の `LLImageGL::createGLTexture` + `setSubImage` 6 face callsite 直後
-    //   inline で `createCubeImageVk` + `uploadCubeImageDataVk` を呼出して並走配備。
-    //   pipeline.cpp での `shader.writeDescriptorSet(17, getVkCubeImageView(), sampler)`
-    //   配備で binding=17 -None-08114 解消。
     VkImageView getVkCubeImageView() const { return mVkCubeImageView; }
     bool hasVkCubeImage() const { return mVkCubeImage != VK_NULL_HANDLE; }
 
@@ -98,12 +91,6 @@ protected:
     S32 mTextureStage;
     S32 mMatrixStage;
 
-    // r41 Phase H §50-followup-5 (2026-06-15): Vulkan VkImageCube storage members
-    //   (= 6 face VK_IMAGE_TYPE_2D + arrayLayers=6 + VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT、
-    //   view は VK_IMAGE_VIEW_TYPE_CUBE)。 createCubeImageVk で create + image_view、
-    //   uploadCubeImageDataVk で 6 face staging upload。 ~LLCubeMap で vmaDestroyImage +
-    //   vkDestroyImageView。 同 size + 同 format の re-upload では destroy 不要、 layout
-    //   transition は uploadCubeImageDataVk 内 SHADER_READ_ONLY_OPTIMAL 終端。
     VkImage     mVkCubeImage      = VK_NULL_HANDLE;
     VkImageView mVkCubeImageView  = VK_NULL_HANDLE;
     void*       mVkCubeAllocation = nullptr;

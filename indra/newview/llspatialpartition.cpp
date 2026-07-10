@@ -3059,9 +3059,7 @@ void renderRaycast(LLDrawable* drawablep)
         LLVOVolume* vobj = drawablep->getVOVolume();
         if (vobj && !vobj->isDead())
         {
-            //LLGLState::setPolygonMode(GL_LINE);
             //pushVerts(drawablep->getFace(gDebugRaycastFaceHit), LLVertexBuffer::MAP_VERTEX);
-            //LLGLState::setPolygonMode(GL_FILL);
 
             LLVolume* volume = vobj->getVolume();
 

@@ -38,9 +38,6 @@
 #endif
 
 #include "llvkloader.h"
-#include <glslang/Public/ShaderLang.h>
-#include <glslang/Public/ResourceLimits.h>
-#include <glslang/SPIRV/GlslangToSpv.h>
 
 // Lots of STL stuff in here, using namespace std to keep things more readable
 using std::vector;
@@ -481,88 +478,6 @@ void LLShaderMgr::dumpObjectLog(GLuint ret, bool warns, const std::string& filen
         LL_SHADER_LOADING_WARNS() << "\n" << log << LL_ENDL;
     }
  }
-
-bool LLShaderMgr::createSPIRVFromGLSL(GLenum type,
-                                      U32 source_count,
-                                      const GLchar** sources,
-                                      std::vector<unsigned int>& out_spirv,
-                                      const std::string& file_name)
-{
-    static bool s_glslang_initialized = false;
-    if (!s_glslang_initialized)
-    {
-        glslang::InitializeProcess();
-        s_glslang_initialized = true;
-    }
-
-    EShLanguage stage;
-    switch (type)
-    {
-        case GL_VERTEX_SHADER:   stage = EShLangVertex;   break;
-        case GL_FRAGMENT_SHADER: stage = EShLangFragment; break;
-        case GL_GEOMETRY_SHADER: stage = EShLangGeometry; break;
-        default:
-            LL_WARNS("Vulkan") << "createSPIRVFromGLSL: unsupported shader type 0x"
-                               << std::hex << (S32)type << std::dec << LL_ENDL;
-            return false;
-    }
-
-    std::string concatenated;
-    if (source_count > 0 && sources[0])
-    {
-        concatenated.append(sources[0]);
-    }
-    concatenated.append("#define LL_VULKAN_GLSL 1\n");
-    for (U32 i = 1; i < source_count; ++i)
-    {
-        if (sources[i])
-        {
-            concatenated.append(sources[i]);
-        }
-    }
-    if (concatenated.empty())
-    {
-        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: empty source array" << LL_ENDL;
-        return false;
-    }
-
-    glslang::TShader shader(stage);
-    const char* src_cstr = concatenated.c_str();
-    shader.setStrings(&src_cstr, 1);
-    shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, 450);
-    shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_2);
-    shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_5);
-
-    const TBuiltInResource* resources = GetDefaultResources();
-    EShMessages messages = static_cast<EShMessages>(EShMsgDefault | EShMsgVulkanRules | EShMsgSpvRules);
-
-    if (!shader.parse(resources, 450, false, messages))
-    {
-        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang parse failed for "
-                           << (file_name.empty() ? "<unknown>" : file_name) << "\n"
-                           << shader.getInfoLog() << LL_ENDL;
-        return false;
-    }
-
-    glslang::TProgram program;
-    program.addShader(&shader);
-    if (!program.link(messages))
-    {
-        LL_WARNS("Vulkan") << "createSPIRVFromGLSL: glslang link failed for "
-                           << (file_name.empty() ? "<unknown>" : file_name) << "\n"
-                           << program.getInfoLog() << LL_ENDL;
-        return false;
-    }
-
-    glslang::SpvOptions spv_options;
-    spv_options.generateDebugInfo = false;
-    spv_options.stripDebugInfo    = true;
-    spv_options.disableOptimizer  = false;
-    spv_options.validate          = false;
-
-    glslang::GlslangToSpv(*program.getIntermediate(stage), out_spirv, &spv_options);
-    return !out_spirv.empty();
-}
 
 GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines, S32 texture_index_channels, std::vector<std::string>* out_sources)
 {

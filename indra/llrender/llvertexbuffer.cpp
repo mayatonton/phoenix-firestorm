@@ -27,8 +27,8 @@
 #include "linden_common.h"
 
 #include <set>
-#include <map> // shader name 別 fire counter (= std::map<std::string,U32>)
-#include <cstring> // std::memcpy for mMappedData → mVkVertexMapped sync
+#include <map>
+#include <cstring>
 #include "llfasttimer.h"
 #include "llsys.h"
 #include "llvertexbuffer.h"
@@ -932,7 +932,6 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
     gGL.syncMatrices();
     STOP_GLERROR;
     bool vk_fired = false;
-    STOP_GLERROR;
 
     if (LLVKLoader::shouldUseVulkanRender()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
@@ -997,7 +996,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     vkCmdBindDescriptorSets(cmd,
                                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                            0, // first_set = 0
+                                            0,
                                             2,
                                             sets,
                                             0, nullptr);
@@ -1122,7 +1121,6 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
     gGL.syncMatrices();
     STOP_GLERROR;
     bool vk_fired = false;
-    STOP_GLERROR;
 
     if (LLVKLoader::shouldUseVulkanRender()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
@@ -1187,7 +1185,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     vkCmdBindDescriptorSets(cmd,
                                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                            0, // first_set = 0
+                                            0,
                                             2,
                                             sets,
                                             0, nullptr);
@@ -2041,16 +2039,14 @@ void LLVertexBuffer::setBuffer()
     }
 
     if (LLVKLoader::shouldUseVulkanRender() && mVkVertexBuffer != VK_NULL_HANDLE
-        && LLGLSLShader::sCurBoundShaderPtr != nullptr
         && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE)
     {
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
         if (cmd != VK_NULL_HANDLE)
         {
-            U32 attrib_mask = LLGLSLShader::sCurBoundShaderPtr->mAttributeMask;
             for (U32 type = 0; type < TYPE_MAX; ++type)
             {
-                if (!(attrib_mask & (1u << type)))
+                if (!(data_mask & (1u << type)))
                     continue;
                 VkDeviceSize buf_offset = (type == TYPE_TEXTURE_INDEX)
                                               ? (mOffsets[TYPE_VERTEX] + 12)

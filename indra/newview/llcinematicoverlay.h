@@ -2,26 +2,6 @@
  * @file llcinematicoverlay.h
  * @brief AYAstorm r30 BD full port Phase 5 R2: Cinematic mode BD-parity cvar overlay.
  *
- * Loads `app_settings/settings_cinematic_bd.xml` (flat LLSD map of
- * cvar -> BD canonical value) and applies those values into `gSavedSettings`
- * as unsaved session values (LLControlVariable::setValue(v, false)) when
- * AYAVisualRealismEnabled == 2 (Cinematic).
- *
- * Application policy (session-only, no persistence):
- *   - Startup with mode 2       -> apply overlay as session values
- *   - Mode switch 0/1 -> 2      -> apply overlay as session values
- *   - Mode switch 2 -> 0/1      -> revert to user saved values
- *
- * Session values live at LLControlVariable::mValues[2+] and are structurally
- * excluded from getSaveValue()/saveToFile, so user settings can never be
- * contaminated regardless of crash timing. While the overlay is active, a
- * validate-signal guard on every overlay cvar rewrites any persistent
- * setValue attempt (floater sliders, D-buttons, quickprefs, command line)
- * into a session setValue, so mode-2 tunings are session-scoped by design.
- *
- * The legacy persistent sentinel `AYACinematicOverlayApplied` is retired; a
- * one-shot startup migration detects it and heals previously contaminated
- * user settings (evidence-logged resetToDefault of every overlay key).
  *
  * Architecture rationale: see
  *   docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §3.4
@@ -31,16 +11,10 @@
 
 namespace LLCinematicOverlay
 {
-    // Apply BD-parity values from settings_cinematic_bd.xml as unsaved
-    // session values and arm the session guard.
     void applyCinematicOverlay();
 
-    // Runs the contamination-heal migration, then applies the overlay when
-    // AYAVisualRealismEnabled == 2. Safe to call from initConfiguration.
     void applyCinematicOverlayIfNeeded();
 
-    // Disarm the session guard and restore every overlay cvar to its user
-    // saved value (normalizes the value stack to [default, saved]).
     void revertCinematicOverlay();
 
     // <FS:AYAstorm> r20 SSS cvar consolidation migration. Runs once on

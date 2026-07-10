@@ -5111,7 +5111,6 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
         {
             // TODO: (Beq) refactor this!! yet another flavour of drawing the same crap. Can we ratioanlise the arguments
             // <FS:Ansariel> Use a vbo for the static LLVertexBuffer::drawArray/Element functions; by Drake Arconis/Shyotl Kuhr
-            //LLGLState::setPolygonMode(GL_LINE);
             //llassert(LLGLSLShader::sCurBoundShader != 0);
             //LLVertexBuffer::unbind();
             //glVertexPointer(3, GL_FLOAT, 16, phys_volume->mHullPoints);
@@ -5120,7 +5119,6 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
             //glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
 
             //gGL.diffuseColor4fv(color.mV);
-            //LLGLState::setPolygonMode(GL_FILL);
             //glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
             gGL.diffuseColor4fv(line_color.mV);
             LLGLState::setPolygonMode(GL_LINE);
@@ -6852,9 +6850,6 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, LLCubeMapArray* cubea
     llassert(!gCubeSnapshot); //assert a snapshot isn't already in progress
 
     U32 res = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth();
-
-    //llassert(res <= LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth());
-    //llassert(res <= LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight());
 
     // save current view/camera settings so we can restore them afterwards
     S32 old_occlusion = LLPipeline::sUseOcclusion;

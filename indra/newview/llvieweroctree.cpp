@@ -1168,8 +1168,6 @@ void LLOcclusionCullingGroup::checkOcclusion()
                     LL_PROFILE_ZONE_NAMED_CATEGORY_OCTREE("co - query result");
                     if (vk_path)
                     {
-                        // available なら sample 数で判定。 timeout だが未 available = result 未確定ゆえ
-                        //   visible 扱い (query_result=1) で誤 cull 回避 (= 次 cycle で確定)。
                         query_result = vk_available ? (GLuint)(vk_samples > 0 ? 1 : 0) : 1;
                     }
                     else

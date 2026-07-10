@@ -703,7 +703,6 @@ static void writeGLTFMRPerDrawRingUBO(LLGLSLShader* sh, S32 material_id, S32 nod
         }
     }
 }
-// </FS:AYA>
 
 void GLTFSceneManager::render(Asset& asset, U8 variant)
 {
@@ -763,16 +762,6 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 }
 
                 glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_MATERIALS, asset.mMaterialsUBO);
-                if (LLVKLoader::isVulkanInitialized() &&
-                    !rigged &&
-                    asset.mVkMaterialsUBO != VK_NULL_HANDLE &&
-                    asset.mVkNodesUBO     != VK_NULL_HANDLE)
-                {
-                    LLRenderPass::buildAndOverrideScenePerDrawSet(
-                        nullptr, false,
-                        reinterpret_cast<U64>(asset.mVkMaterialsUBO), asset.mVkMaterialsUBOSize,
-                        reinterpret_cast<U64>(asset.mVkNodesUBO),     asset.mVkNodesUBOSize);
-                }
 
                 for (U32 i = 0; i < TEXTURE_TYPE_COUNT; ++i)
                 {

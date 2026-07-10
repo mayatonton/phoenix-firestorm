@@ -4234,7 +4234,6 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
             return VK_NULL_HANDLE;
         }
         color_count            = 1;
-        has_depth              = false;
         color_formats[0]       = swap_format;
         depth_format           = VK_FORMAT_UNDEFINED;
         key.color_count        = 1u;
@@ -4495,8 +4494,6 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     ms.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    bool is_swapchain_path = (rt == nullptr);
-
     VkPipelineDepthStencilStateCreateInfo ds = {};
     ds.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     ds.depthTestEnable  = key.depth_test_enabled  ? VK_TRUE : VK_FALSE;
@@ -4593,8 +4590,6 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     ci.pDynamicState       = &dyn;
     ci.layout              = mVkPipelineLayout;
     ci.renderPass          = VK_NULL_HANDLE;
-
-    const U64 key_hash = static_cast<U64>(VkPipelineStateKeyHash{}(key));
 
     VkPipeline pipeline = VK_NULL_HANDLE;
     if (!LLVKLoader::compileGraphicsPipeline(ci, pipeline))

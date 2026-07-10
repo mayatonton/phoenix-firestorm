@@ -83,10 +83,6 @@ void LLScreenClipRect::updateScissorRegion()
 {
     if (sClipRectStack.empty())
     {
-        // clip stack 空 = clip 無し = GL は GL_SCISSOR_TEST 無効 (= mScissorState LLGLEnable の
-        //   RAII restore が担う)。Vulkan は dynamic state ゆえ scissor tracker を明示的に無効化
-        //   (= 次 per-draw setupViewportAndScissor が full render viewport に戻す) = GL の
-        //   persistent scissor 無効と 1:1。未配備時は per-draw full set のまま漏れ続ける defect。
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::disableScissor();
@@ -104,9 +100,6 @@ void LLScreenClipRect::updateScissorRegion()
     y = llfloor(rect.mBottom * LLUI::getScaleFactor().mV[VY]);
     w = llmax(0, llceil(rect.getWidth() * LLUI::getScaleFactor().mV[VX])) + 1;
     h = llmax(0, llceil(rect.getHeight() * LLUI::getScaleFactor().mV[VY])) + 1;
-    // OpenGL/Vulkan dual path scissor dispatch。
-    // = Vulkan VkRect2D extent は inclusive-exclusive 半開区間 semantics ゆえ +1 padding 不要。
-    //   GL glScissor 互換の +1 boundary 補正 (= 上の w/h) は GL path のみ、Vulkan path は raw w/h 使用。
     if (LLVKLoader::isVulkanInitialized())
     {
         S32 w_vk = llmax(0, llceil(rect.getWidth() * LLUI::getScaleFactor().mV[VX]));

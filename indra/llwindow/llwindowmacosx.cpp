@@ -1102,8 +1102,6 @@ bool LLWindowMacOSX::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowMacOSX::swapBuffers()
 {
-    // Vulkan presentation 有効時は vkQueuePresentKHR が LLVKLoader::endFrame() で発火済ゆえ
-    //   GL `CGLFlushDrawable` skip = no-op return (= dual-presentation 衝突回避)。
     if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
     {
         return;
@@ -2525,7 +2523,6 @@ void *LLWindowMacOSX::getPlatformWindow()
 
 LLWindow::LLNativeWindowHandles LLWindowMacOSX::getNativeWindowHandles()
 {
-    // macOS stub: native window handle 未配線、NULL pair 返却。
     return LLNativeWindowHandles{};
 }
 

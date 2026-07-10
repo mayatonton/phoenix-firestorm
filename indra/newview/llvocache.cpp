@@ -26,7 +26,7 @@
 
 #include "llviewerprecompiledheaders.h"
 #include "llvocache.h"
-#include "llviewercamera.h" // <AYAstorm r41> sub-step 4.3-α: sCurCameraID accessor
+#include "llviewercamera.h"
 #include "llregionhandle.h"
 #include "llviewercontrol.h"
 #include "llviewerobjectlist.h"

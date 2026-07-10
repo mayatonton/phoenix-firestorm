@@ -485,15 +485,12 @@ U8 LLTexUnit::getLiveVkImageViewDim() const
     }
     if (mCurrImageGL != nullptr && mCurrImageGL->hasVkImage())
     {
-        // LLImageGL backing の bind target (= setTarget で設定、 llimagegl.h:205) から判別。
-        //   reflection/hero probe の cube-array (LLCubeMapArray::bind → bind(mImage)、
-        //   mImage->setTarget(TT_CUBE_MAP_ARRAY)) も当経路。
         switch (mCurrImageGL->getTarget())
         {
         case TT_CUBE_MAP:       return LLGLSLShader::VKSD_CUBE;
         case TT_CUBE_MAP_ARRAY: return LLGLSLShader::VKSD_CUBE_ARRAY;
         case TT_TEXTURE_3D:     return LLGLSLShader::VKSD_3D;
-        default:                return LLGLSLShader::VKSD_2D;  // TT_TEXTURE / TT_RECT_TEXTURE 等
+        default:                return LLGLSLShader::VKSD_2D;
         }
     }
     return LLGLSLShader::VKSD_2D;
@@ -948,12 +945,8 @@ LLRender::LLRender()
     mMode(LLRender::TRIANGLES),
     mCurrTextureUnitIndex(0),
     mLineWidth(1.f), // <FS> Line width OGL core profile fix by Rye Mutt
-    mPolygonOffsetFactor(0.f), // init = GL default
-    mPolygonOffsetUnits(0.f),  // init = GL default
-    // blend factor init = GL default (= glBlendFunc
-    //   既定値 src=GL_ONE / dst=GL_ZERO) = BF_ONE / BF_ZERO 値。 旧 uninitialized U8 = lambda
-    //   gl_blend_factor_to_vk で BF_UNDEF (= 10) や不正値 trigger risk = LL_ERRS fatal abort
-    //   発火源ゆえ literal init で防止。
+    mPolygonOffsetFactor(0.f),
+    mPolygonOffsetUnits(0.f),
     mCurrBlendColorSFactor(BF_ONE),
     mCurrBlendColorDFactor(BF_ZERO),
     mCurrBlendAlphaSFactor(BF_ONE),
@@ -1243,7 +1236,6 @@ void LLRender::syncLightState()
                 ? LLVKLoader::GLTFMR_UBO_OFFSET_LIGHTS_NOSHADOW
                 : LLVKLoader::GLTFMR_UBO_OFFSET_LIGHTS_SUNSHADOW;
 
-            // light_position[8] vec4 (128B)
             for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
             {
                 F32 v[4] = { position[i].mV[0], position[i].mV[1], position[i].mV[2], position[i].mV[3] };
@@ -1251,7 +1243,6 @@ void LLRender::syncLightState()
             }
             lights_offset += 128;
 
-            // light_direction[8] vec4 (128B、 vec3 + 4B pad、 GLSL は vec4 declare)
             for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
             {
                 F32 v[4] = { direction[i].mV[0], direction[i].mV[1], direction[i].mV[2], 0.f };
@@ -1259,7 +1250,6 @@ void LLRender::syncLightState()
             }
             lights_offset += 128;
 
-            // light_attenuation[8] vec4 (128B)
             for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
             {
                 F32 v[4] = { attenuation[i].mV[0], attenuation[i].mV[1], attenuation[i].mV[2], attenuation[i].mV[3] };
@@ -1297,24 +1287,20 @@ void LLRender::getLightArrayData(F32* position_out, F32* direction_out, F32* att
     {
         const LLLightState* light = &mLightState[i];
 
-        // position vec4 (= syncLightState position[i] = light->mPosition)
         position_out[i * 4 + 0] = light->mPosition.mV[0];
         position_out[i * 4 + 1] = light->mPosition.mV[1];
         position_out[i * 4 + 2] = light->mPosition.mV[2];
         position_out[i * 4 + 3] = light->mPosition.mV[3];
 
-        // direction vec3 (= syncLightState direction[i] = light->mSpotDirection)
         direction_out[i * 3 + 0] = light->mSpotDirection.mV[0];
         direction_out[i * 3 + 1] = light->mSpotDirection.mV[1];
         direction_out[i * 3 + 2] = light->mSpotDirection.mV[2];
 
-        // attenuation vec4 (= syncLightState attenuation[i].set(mLinearAtten, mQuadraticAtten, mSpecular.mV[2], mSpecular.mV[3]))
         attenuation_out[i * 4 + 0] = light->mLinearAtten;
         attenuation_out[i * 4 + 1] = light->mQuadraticAtten;
         attenuation_out[i * 4 + 2] = light->mSpecular.mV[2];
         attenuation_out[i * 4 + 3] = light->mSpecular.mV[3];
 
-        // diffuse vec3 (= syncLightState diffuse[i].set(light->mDiffuse.mV))
         diffuse_out[i * 3 + 0] = light->mDiffuse.mV[0];
         diffuse_out[i * 3 + 1] = light->mDiffuse.mV[1];
         diffuse_out[i * 3 + 2] = light->mDiffuse.mV[2];
@@ -1901,13 +1887,6 @@ void LLRender::clearStaleImageGLRefs(LLImageGL* victim)
     }
 }
 
-// invalidate stale LLCubeMap* raw pointers across all LLTexUnit::mCurrCubeMap on
-//   LLCubeMap destruction (= sky environmentMap は LLVOSky::mCubeMap (LLPointer) 保持 →
-//   ~LLVOSky (region 変更/teleport の sky 再構築、 llvosky.cpp:460) で free される際の
-//   dangling use-after-free 防止 = clearStaleImageGLRefs と同 class の world transition crash)。
-//   ~LLCubeMap() 冒頭から main thread context で呼出。 gGL 32 tex unit + mDummyTexUnit を
-//   nullptr 置換のみ (= GL path 不変)。 cubemap は sBufferDataList playback entry には
-//   入らない (= LLVertexBufferData::mImageGL は LLImageGL のみ保持) ゆえ texunit のみ対象。
 void LLRender::clearStaleCubeMapRefs(LLCubeMap* victim)
 {
     if (victim == nullptr)

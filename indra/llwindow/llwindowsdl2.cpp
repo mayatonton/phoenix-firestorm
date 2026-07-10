@@ -714,7 +714,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
     mFullscreen = fullscreen;
 
-    // Vulkan init 成功時 = SDL_WINDOW_VULKAN、Vulkan init 失敗 / GL build 時 = SDL_WINDOW_OPENGL。
     const bool use_vulkan_window = LLVKLoader::isVulkanInitialized();
     int sdlflags = (use_vulkan_window ? SDL_WINDOW_VULKAN : SDL_WINDOW_OPENGL) | SDL_WINDOW_RESIZABLE;
 
@@ -733,8 +732,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     if (getenv("LL_GL_NO_STENCIL"))
         stencilBits = 0;
 
-    // GL attribute set は use_vulkan_window 時 skip
-    //   (= SDL_WINDOW_VULKAN flag では SDL_GL_* 系 API は未定義動作、Vulkan path 単独動作)。
     if (!use_vulkan_window)
     {
         SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, alphaBits);
@@ -762,8 +759,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
     if( mWindow )
     {
-        // GL context create + vsync init は use_vulkan_window 時 skip = mContext=nullptr
-        //   (= Vulkan surface は initSurface で attach、vsync は VK_PRESENT_MODE_FIFO_KHR で制御)。
         if (use_vulkan_window)
         {
             mContext = nullptr;
@@ -860,8 +855,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     // explicitly unsupported cards.
     //const char* RENDERER = (const char*) glGetString(GL_RENDERER);
 
-    // GL attribute query + colorBits check は use_vulkan_window 時 skip
-    //   (= GL context なし、Vulkan surface format は VkSurfaceFormatKHR 経由で query)。
     if (!use_vulkan_window)
     {
         SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &redBits);
@@ -923,8 +916,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     }
 #endif // LL_X11
 
-    // initial GL clear + swap は use_vulkan_window 時 skip
-    //   (= GL context なし、Vulkan side では beginFrame で swapchain image clear)。
     if (!use_vulkan_window)
     {
         // clear screen to black right at the start so it doesn't look like a crash
@@ -939,8 +930,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         SDL_StartTextInput();
     }
 
-    // GL multisample disable は use_vulkan_window 時 skip
-    //   (= MSAA は Vulkan side で VkPipelineMultisampleStateCreateInfo で制御)。
     if (!use_vulkan_window)
     {
         //make sure multisampling is disabled by default
@@ -1191,8 +1180,6 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
-    // Vulkan presentation 有効時は vkQueuePresentKHR が LLVKLoader::endFrame() で発火済ゆえ
-    //   GL `SDL_GL_SwapWindow` skip = no-op return (= dual-presentation 衝突回避)。
     if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
     {
         return;
@@ -2734,14 +2721,11 @@ class sharedContext
         SDL_GLContext mContext;
 };
 
-// GL shared context + vsync 系 function は isVulkanInitialized() runtime check で no-op
-//   (= GL multithread context 不要、Vulkan secondary command buffer + multi queue で並列化代替、
-//   vsync は VK_PRESENT_MODE_FIFO_KHR 系で制御)。
 void* LLWindowSDL::createSharedContext()
 {
     if (LLVKLoader::isVulkanInitialized())
     {
-        return nullptr;  // Vulkan path: GL shared context 不要
+        return nullptr;
     }
     sharedContext* sc = new sharedContext();
     sc->mContext = SDL_GL_CreateContext(mWindow);
@@ -2775,7 +2759,7 @@ void LLWindowSDL::makeContextCurrent(void* context)
     LL_PROFILER_GPU_CONTEXT;
     if (LLVKLoader::isVulkanInitialized())
     {
-        (void)context;  // Vulkan path: no-op
+        (void)context;
         return;
     }
     SDL_GL_MakeCurrent(mWindow, ((sharedContext*)context)->mContext);
@@ -2785,7 +2769,7 @@ void LLWindowSDL::destroySharedContext(void* context)
 {
     if (LLVKLoader::isVulkanInitialized())
     {
-        (void)context;  // Vulkan path: createSharedContext が nullptr 返却ゆえ context は nullptr
+        (void)context;
         return;
     }
     sharedContext* sc = (sharedContext*)context;
@@ -2799,7 +2783,7 @@ void LLWindowSDL::toggleVSync(bool enable_vsync)
 {
     if (LLVKLoader::isVulkanInitialized())
     {
-        (void)enable_vsync;  // Vulkan path: vsync は VK_PRESENT_MODE_FIFO_KHR / IMMEDIATE で制御
+        (void)enable_vsync;
         return;
     }
     if (enable_vsync)

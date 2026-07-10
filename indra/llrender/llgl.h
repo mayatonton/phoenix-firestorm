@@ -248,22 +248,13 @@ public:
     //  writeAlpha - whether or not writing to alpha channel is expected
     static void checkStates(GLboolean writeAlpha = GL_TRUE);
 
-    // cull face mode tracker = glCullFace(GL_FRONT/BACK/FRONT_AND_BACK) で渡された最新 mode を
-    //   静的記録。 GL 初期 state = GL_BACK。 setCullFaceMode() = glCullFace + tracker 更新統合 helper。
     static GLenum sCullFaceMode;
     static void setCullFaceMode(GLenum mode);
-    static bool  isCullFaceEnabled();        // == sStateMap[GL_CULL_FACE] の public accessor
+    static bool  isCullFaceEnabled();
 
-    // polygon mode tracker = glPolygonMode(GL_FRONT_AND_BACK, GL_FILL/GL_LINE) で渡された最新 mode を
-    //   静的記録。 GL 初期 state = GL_FILL。 setPolygonMode() = glPolygonMode + tracker 更新統合 helper。
     static GLenum sPolygonMode;
-    static void setPolygonMode(GLenum mode);  // face = GL_FRONT_AND_BACK 固定
+    static void setPolygonMode(GLenum mode);
 
-    // stencil state tracker = glStencilFunc/Op/Mask で渡された最新 state を静的記録。
-    //   GL 初期 state = sStencilFunc=GL_ALWAYS, sStencilRef=0, sStencilCompareMask=0xFFFFFFFF,
-    //   sStencilFailOp/DepthFailOp/DepthPassOp=GL_KEEP, sStencilWriteMask=0xFFFFFFFF (=
-    //   glStencilFunc/Op/Mask OpenGL default 一致)。 front/back 共通。
-    //   setStencilFunc/Op/Mask = glStencilXxx + tracker 更新統合 helper。
     static GLenum sStencilFunc;
     static GLint  sStencilRef;
     static GLuint sStencilCompareMask;
@@ -274,16 +265,13 @@ public:
     static void setStencilFunc(GLenum func, GLint ref, GLuint mask);
     static void setStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass);
     static void setStencilMask(GLuint mask);
-    static bool  isStencilTestEnabled();      // == sStateMap[GL_STENCIL_TEST]
+    static bool  isStencilTestEnabled();
 
-    // depth clamp state accessor = GL_DEPTH_CLAMP の現在状態 (= sStateMap[GL_DEPTH_CLAMP]) を返す。
-    static bool  isDepthClampEnabled();       // == sStateMap[GL_DEPTH_CLAMP]
+    static bool  isDepthClampEnabled();
 
-    // polygon offset enable state accessor = sStateMap[GL_POLYGON_OFFSET_FILL/LINE] の OR 結果を返す。
-    static bool  isPolygonOffsetEnabled();    // == sStateMap[GL_POLYGON_OFFSET_FILL] || sStateMap[GL_POLYGON_OFFSET_LINE]
+    static bool  isPolygonOffsetEnabled();
 
-    // GL_BLEND state accessor = sStateMap[GL_BLEND] を返す。
-    static bool  isBlendEnabled();            // == sStateMap[GL_BLEND]
+    static bool  isBlendEnabled();
 
 protected:
     static boost::unordered_map<LLGLenum, LLGLboolean> sStateMap;

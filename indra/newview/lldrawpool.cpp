@@ -1470,8 +1470,6 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
 
     applyModelMatrix(params);
 
-    // <FS:AYA r20 Phase C> per-draw SSS skin marker for PBR opaque path (= no per-pool
-    // caching = GLTF batches each rebind material state)。
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
     if (cur)
     {

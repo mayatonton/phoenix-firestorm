@@ -194,9 +194,7 @@ void LLCinematicOverlay::revertCinematicOverlay()
         {
             continue;
         }
-        sInSessionRewrite = true;
         ctl->setValue(ctl->getSaveValue(), true);
-        sInSessionRewrite = false;
         ++reverted;
     }
 

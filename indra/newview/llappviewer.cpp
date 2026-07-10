@@ -3290,11 +3290,6 @@ bool LLAppViewer::initConfiguration()
     // </FS:AYAstorm>
 
     // <FS:AYA r30 P5 R2> Apply Cinematic BD-parity overlay after all settings
-    // layers are loaded (Default -> Session -> User). Heals legacy sentinel
-    // contamination first, then applies the overlay as unsaved session values
-    // when AYAVisualRealismEnabled == 2 (never persisted). See
-    // docs/specs/ayastorm-r30-p5-bd-ui-binding-audit-spec.md §3.4 and
-    // llcinematicoverlay.h.
     LLCinematicOverlay::applyCinematicOverlayIfNeeded();
     // </FS:AYA>
 

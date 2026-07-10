@@ -35,7 +35,7 @@
 #include "llaudioengine.h" // For debugging.
 #include "llocclusiongeometrymgr.h" // r13: OBB occlusion debug overlay.
 #include "llerror.h"
-#include "llfile.h" // AYAstorm TEMP DIAG (phantom-building bisection): llofstream for post-deferred pool dump.
+#include "llfile.h"
 #include "llviewercontrol.h"
 #include "llfasttimer.h"
 #include "llfontgl.h"
@@ -76,7 +76,7 @@
 #include "llhudtext.h"
 #include "lllightconstants.h"
 #include "llmeshrepository.h"
-#include "llpipelineframecontext.h" // per-frame state aggregation
+#include "llpipelineframecontext.h"
 #include "llpipelinelistener.h"
 #include "llresmgr.h"
 #include "llselectmgr.h"
@@ -445,18 +445,13 @@ std::vector<std::pair<F32, F32>> LLPipeline::sParcelOwnerTagAltRanges;
 bool    LLPipeline::sBakeSunlight = false;
 bool    LLPipeline::sNoAlpha = false;
 bool    LLPipeline::sUseFarClip = true;
-bool    LLPipeline::sShadowRender = false;
-bool    LLPipeline::sRenderGlow = false;
-bool    LLPipeline::sReflectionRender = false;
 bool    LLPipeline::sDistortionRender = false;
-bool    LLPipeline::sImpostorRender = false;
 bool    LLPipeline::sImpostorRenderAlphaDepthPass = false;
 // <AYAstorm r30 P2>
 bool    LLPipeline::sT2xJitterEnabled = false;
 bool    LLPipeline::sVelocityRender = false;
 // </AYAstorm r30 P2>
 bool    LLPipeline::sShowJellyDollAsImpostor = true;
-bool    LLPipeline::sUnderWaterRender = false;
 bool    LLPipeline::sTextureBindTest = false;
 bool    LLPipeline::sRenderAttachedLights = true;
 // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD-verbatim attached-light split (Cinematic only)
@@ -465,11 +460,8 @@ bool    LLPipeline::sRenderOwnAttachedLights = true;
 bool    LLPipeline::sRenderDeferredLights = true;
 // </FS:AYAstorm:r30-bd-port>
 bool    LLPipeline::sRenderAttachedParticles = true;
-bool    LLPipeline::sRenderDeferred = false;
-bool    LLPipeline::sReflectionProbesEnabled = false;
 S32     LLPipeline::sReflectionProbeLevel = (S32)LLReflectionMap::ProbeLevel::NONE; // <FS:Beq/> [FIRE-35070] Address progressive FPS loss.
 S32     LLPipeline::sVisibleLightCount = 0;
-bool    LLPipeline::sRenderingHUDs;
 F32     LLPipeline::sDistortionWaterClipPlaneMargin = 1.0125f;
 LLVector3 LLPipeline::sLastFocusPoint={};// <FS:Beq/> FIRE-16728 focus point lock & free focus DoF 
 bool    LLPipeline::sDoFEnabled = false;
@@ -494,12 +486,6 @@ bool    LLPipeline::sRenderTextures = true;
 // EventHost API LLPipeline listener.
 static LLPipelineListener sPipelineListener;
 
-// <AYAstorm> Cull result is now owned by LLPipelineFrameContext (see grabReferences /
-// clearReferences for lifecycle wiring). The mRT class member pointer is likewise
-// aggregated into LLPipelineFrameContext (see LLPipeline::init() and
-// allocateScreenBufferInternal() for setActiveRT call sites). The mRT field
-// declaration in pipeline.h remains as a dead member. File-local helpers below keep
-// caller sites concise.
 namespace
 {
     inline LLCullResult* getFrameCull()
@@ -512,14 +498,12 @@ namespace
         return LLPipelineFrameContext::getInstance().getActiveRT();
     }
 
-    // pass-specific read helpers (file-local)
     inline bool isFrameShadowPass()     { return LLPipelineFrameContext::getInstance().isShadowPass(); }
     inline bool isFrameReflectionPass() { return LLPipelineFrameContext::getInstance().isReflectionPass(); }
     inline bool isFrameImpostorPass()   { return LLPipelineFrameContext::getInstance().isImpostorPass(); }
     inline bool isFrameHUDPass()        { return LLPipelineFrameContext::getInstance().isHUDPass(); }
     inline bool isFrameDoFPass()        { return LLPipelineFrameContext::getInstance().isDoFPass(); }
 
-    // frame-global read helpers (file-local)
     inline bool isFrameRenderingGlow()           { return LLPipelineFrameContext::getInstance().isRenderingGlow(); }
     inline bool isFrameRenderingDeferred()       { return LLPipelineFrameContext::getInstance().isRenderingDeferred(); }
     inline bool isFrameUnderWaterRendering()     { return LLPipelineFrameContext::getInstance().isUnderWaterRendering(); }
@@ -543,7 +527,6 @@ namespace
         return pa;
     }
 }
-// </AYAstorm>
 
 void validate_framebuffer_object();
 
@@ -1285,19 +1268,12 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         }
         // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
-        // <AYAstorm r41 forward-flip composite> Dedicated color RT for the
-        // post-deferred forward WATER surface. RGBA16F to match getFrameRT()->screen
-        // (HDR). depth=false — borrow deferredScreen's depth so the water
-        // surface depth-tests/writes against opaque geometry unchanged (river
-        // carving preserved). Allocated unconditionally for the main RT (NOT
-        // DoF-gated) — orientation is always-on. Main RT only.
         if (getFrameRT() == &mMainRT)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("ForwardColor");
             if (!mForwardColor.allocate(resX, resY, GL_RGBA16F, false)) return false;
             getFrameRT()->deferredScreen.shareDepthBuffer(mForwardColor);
         }
-        // </AYAstorm r41 forward-flip composite>
 
         if (RenderFSAAType > 0)
         {
@@ -1772,9 +1748,7 @@ void LLPipeline::releaseScreenBuffers()
     mAYAAlphaColor.release();
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
-    // <AYAstorm r41 forward-flip composite> forward water color plate
     mForwardColor.release();
-    // </AYAstorm r41 forward-flip composite>
 }
 
 void LLPipeline::releaseSunShadowTarget(U32 index)
@@ -1845,12 +1819,10 @@ void LLPipeline::createGLBuffers()
             noise[i].mV[2] = ll_frand()*scaler+1.f-scaler/2.f;
         }
 
-        mNoiseMap = new LLImageGL(false /*usemipmaps*/, false /*allow_compression*/);
+        mNoiseMap = new LLImageGL(false, false);
         mNoiseMap->setExplicitFormat(GL_RGB16F, GL_RGB, GL_FLOAT);
         mNoiseMap->setSize(noiseRes, noiseRes, 3);
         mNoiseMap->createGLTexture(0, (const U8*)noise, false, 0);
-        // filter = 旧 raw-texname 経路と同じ (= TFO_POINT)。 address mode は未設定 =
-        //   LLImageGL default TAM_WRAP (= 旧 GL default GL_REPEAT 等価)。 bound 中ゆえ即適用。
         gGL.getTexUnit(0)->bind(mNoiseMap);
         mNoiseMap->setFilteringOption(LLTexUnit::TFO_POINT);
     }
@@ -1864,7 +1836,7 @@ void LLPipeline::createGLBuffers()
             noise[i] = ll_frand()*2.0f-1.0f;
         }
 
-        mTrueNoiseMap = new LLImageGL(false /*usemipmaps*/, false /*allow_compression*/);
+        mTrueNoiseMap = new LLImageGL(false, false);
         mTrueNoiseMap->setExplicitFormat(GL_RGB16F, GL_RGB, GL_FLOAT);
         mTrueNoiseMap->setSize(noiseRes, noiseRes, 3);
         mTrueNoiseMap->createGLTexture(0, (const U8*)noise, false, 0);
@@ -1882,7 +1854,7 @@ void LLPipeline::createGLBuffers()
             memcpy(&tempBuffer[y * AREATEX_PITCH], areaTexBytes + srcY * AREATEX_PITCH, AREATEX_PITCH);
         }
 
-        mSMAAAreaMap = new LLImageGL(false /*usemipmaps*/, false /*allow_compression*/);
+        mSMAAAreaMap = new LLImageGL(false, false);
         mSMAAAreaMap->setExplicitFormat(GL_RG8, GL_RG, GL_UNSIGNED_BYTE);
         mSMAAAreaMap->setSize(AREATEX_WIDTH, AREATEX_HEIGHT, 2);
         mSMAAAreaMap->createGLTexture(0, (const U8*)tempBuffer.data(), false, 0);
@@ -1901,7 +1873,7 @@ void LLPipeline::createGLBuffers()
             memcpy(&tempBuffer[y * SEARCHTEX_PITCH], searchTexBytes + srcY * SEARCHTEX_PITCH, SEARCHTEX_PITCH);
         }
 
-        mSMAASearchMap = new LLImageGL(false /*usemipmaps*/, false /*allow_compression*/);
+        mSMAASearchMap = new LLImageGL(false, false);
         mSMAASearchMap->setExplicitFormat(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
         mSMAASearchMap->setSize(SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 1);
         mSMAASearchMap->createGLTexture(0, (const U8*)tempBuffer.data(), false, 0);
@@ -1935,7 +1907,7 @@ void LLPipeline::createGLBuffers()
             default:
                 return;
             };
-            mSMAASampleMap = new LLImageGL(false /*usemipmaps*/, false /*allow_compression*/);
+            mSMAASampleMap = new LLImageGL(false, false);
             mSMAASampleMap->setExplicitFormat(GL_RGB, format, GL_UNSIGNED_BYTE);
             mSMAASampleMap->setSize(raw_image->getWidth(), raw_image->getHeight(), raw_image->getComponents());
             mSMAASampleMap->createGLTexture(0, (const U8*)raw_image->getData(), false, 0);
@@ -2007,7 +1979,7 @@ bool LLPipeline::loadColorGradingLUT(const std::string& filename)
         return false;
     }
 
-    mColorGradingLUT = new LLImageGL(lut_size, lut_size, 3, false /*usemipmaps*/);
+    mColorGradingLUT = new LLImageGL(lut_size, lut_size, 3, false);
     U32 lut_texname = 0;
     LLImageGL::generateTextures(1, &lut_texname);
     mColorGradingLUT->setTexName(lut_texname);
@@ -2080,14 +2052,10 @@ void LLPipeline::createLUTBuffers()
             pix_format = GL_R32F;
         }
 #endif
-        mLightFunc = new LLImageGL(false /*usemipmaps*/, false /*allow_compression*/);
+        mLightFunc = new LLImageGL(false, false);
         mLightFunc->setExplicitFormat(pix_format, GL_RED, GL_FLOAT);
         mLightFunc->setSize(lightResX, lightResY, 1);
         mLightFunc->createGLTexture(0, (const U8*)ls, false, 0);
-        // GL filter/wrap = 旧 raw-texname 経路と同じ (= MAG_LINEAR / MIN_NEAREST / CLAMP)。
-        //   setAddressMode/setFilteringOption は bound 中ゆえ即適用 + mTexOptionsDirty clear
-        //   (= llimagegl.cpp setFilteringOption impl) ゆえ後続 bind の filter 再適用が manual
-        //   MIN_NEAREST override を clobber しない。
         gGL.getTexUnit(0)->bind(mLightFunc);
         mLightFunc->setAddressMode(LLTexUnit::TAM_CLAMP);
         mLightFunc->setFilteringOption(LLTexUnit::TFO_TRILINEAR);
@@ -2859,19 +2827,13 @@ F32 LLPipeline::calcPixelArea(const LLVector4a& center, const LLVector4a& size, 
 
 void LLPipeline::grabReferences(LLCullResult& result)
 {
-    // <AYAstorm> frame context lifecycle entry + cull result aggregation through LLPipelineFrameContext.
-    LLPipelineFrameContext::getInstance().beginFrameContext();
     LLPipelineFrameContext::getInstance().setCullResult(&result);
-    // </AYAstorm>
 }
 
 void LLPipeline::clearReferences()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    // <AYAstorm> clear cull pointer + frame context exit.
     LLPipelineFrameContext::getInstance().setCullResult(nullptr);
-    LLPipelineFrameContext::getInstance().endFrameContext();
-    // </AYAstorm>
     mGroupSaveQ1.clear();
 }
 
@@ -3969,7 +3931,6 @@ void LLPipeline::shiftObjects(const LLVector3 &offset)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     assertInitialized();
 
-    // shiftObjects depth reset = bound target clear 委譲 (bound 不在時は GL のみ)。
     LLRenderTarget::clearBoundTarget(GL_DEPTH_BUFFER_BIT);
     gDepthDirty = true;
 
@@ -5125,7 +5086,6 @@ void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* 
     dst->bindTarget();
 
     gDeferredMotionBlurProgram.bind();
-    bindDeferredHelperBindings(gDeferredMotionBlurProgram);  // central hook = isDeferred=true cluster
 
 
     gDeferredMotionBlurProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
@@ -5174,9 +5134,8 @@ void LLPipeline::renderVolumetric(LLRenderTarget* src)
     src->bindTarget();
     llSetGLViewport(0, 0, src->getWidth(), src->getHeight());
 
-    gGL.setColorMask(true, false);  // alpha 保護維持 (godraysF.glsl:249-252 alpha mask)
+    gGL.setColorMask(true, false);
 
-    // additive blend (BF_ONE/ONE、godrays doGodrays と同型)。
     LLGLEnable blend(GL_BLEND);
     gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE);
 
@@ -5366,24 +5325,13 @@ void LLPipeline::compositeForwardFlip()
 
     getFrameRT()->screen.bindTarget();
 
-    // Write RGB only — NOT alpha. screen.a is the scene glow channel (consumed
-    // by the glow/bloom + auto-exposure path). The coverage we use for the RGB
-    // over-blend is 1 across the whole water surface; writing that into screen.a
-    // floods the water with max glow → bloom + exposure feedback flicker. The
-    // coverage still serves as the RGB blend's SRC_ALPHA factor (colorMask gates
-    // only what is written, not the blend factors), so RGB composites correctly
-    // while the glow channel is left exactly as the scene wrote it.
     gGL.setColorMask(true, false);
 
     LLGLEnable blend_on(GL_BLEND);
-    // Premultiplied "over" composite of the water plate onto the opaque scene,
-    // using frag_color.a as coverage (RGB only; alpha not written):
-    //   dst.rgb = water.rgb + screen.rgb * (1 - cov)
     gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_ONE_MINUS_SOURCE_ALPHA,
                   LLRender::BF_ONE, LLRender::BF_ONE_MINUS_SOURCE_ALPHA);
 
     gAYAForwardFlipCompositeProgram.bind();
-    bindDeferredHelperBindings(gAYAForwardFlipCompositeProgram);
 
     gAYAForwardFlipCompositeProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mForwardColor, false, LLTexUnit::TFO_POINT);
 
@@ -5395,7 +5343,6 @@ void LLPipeline::compositeForwardFlip()
 
     gAYAForwardFlipCompositeProgram.unbind();
 
-    // Restore default blend func so subsequent passes aren't surprised.
     gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_ZERO,
                   LLRender::BF_ONE, LLRender::BF_ZERO);
     gGL.setColorMask(true, true);
@@ -6717,7 +6664,7 @@ void LLPipeline::renderDebug()
                     continue;
                 }
 
-                gGL.color4fv(col+(i - LLPipeline::kSunShadowCount)*4);  // i-kSunShadowCount = secondary view index、 末尾 *4 = vec4 stride (= col[] 4-comp RGBA)
+                gGL.color4fv(col+(i - LLPipeline::kSunShadowCount)*4);
 
                 gGL.begin(LLRender::TRIANGLE_STRIP);
                 gGL.vertex3fv(frust[0].mV); gGL.vertex3fv(frust[4].mV);
@@ -9088,11 +9035,6 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
         }
 
         shader->bind();
-        // bindDeferredHelperBindings call =
-        //   gExposureProgram / gExposureProgramNoFade (= isDeferred=true = deferredUtil.glsl
-        //   attach = binding 24/27/29 declare 含む) は bindDeferredShader 経由しない直 bind
-        //   path ゆえ central hook 経由で binding 19/20/21/24/27/29 write 配備。
-        bindDeferredHelperBindings(*shader);
 
         S32 channel = shader->enableTexture(LLShaderMgr::DEFERRED_EMISSIVE);
         if (channel > -1)
@@ -9235,11 +9177,6 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         }
 
         shader->bind();
-        // bindDeferredHelperBindings call =
-        //   tonemap cluster (= gDeferredPostTonemapProgram + variants 計 6 件、
-        //   isDeferred=true = deferredUtil.glsl attach) は bindDeferredShader 経由しない
-        //   直 bind path ゆえ central hook 経由で binding 19/20/21/24/27/29 write 配備。
-        bindDeferredHelperBindings(*shader);
 
         S32 channel = 0;
 
@@ -9350,7 +9287,6 @@ void LLPipeline::gammaCorrect(LLRenderTarget* src, LLRenderTarget* dst)
             gDeferredPostGammaCorrectProgram;
 
         shader.bind();
-        bindDeferredHelperBindings(shader);
 
         if (LLVKLoader::isVulkanInitialized()
             && shader.mVkPerProgramUBOMapped != nullptr
@@ -9543,7 +9479,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
                 ubo_data.glowDelta[0] = delta_x;
                 ubo_data.glowDelta[1] = delta_y;
                 ubo_data.glowStrength = strength;
-                gGlowProgram.rotatePerProgramUBOSlot(); // per-iter ring (ping-pong glowDelta last-write-wins 回避)
+                gGlowProgram.rotatePerProgramUBOSlot();
                 memcpy(gGlowProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
             }
 
@@ -9691,7 +9627,6 @@ void LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
 
             shader = &gFXAAProgram[fsaa_quality];
             shader->bind();
-            bindDeferredHelperBindings(*shader);
 
             channel = shader->enableTexture(LLShaderMgr::DIFFUSE_MAP, mFXAAMap.getUsage());
             if (channel > -1)
@@ -9785,7 +9720,6 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
             dest.clear(GL_COLOR_BUFFER_BIT);
 
             edge_shader.bind();
-            bindDeferredHelperBindings(edge_shader);
             edge_shader.uniform4fv(sSmaaRTMetrics, 1, rt_metrics);
             if (LLVKLoader::isVulkanInitialized()
                 && edge_shader.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -9837,7 +9771,6 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
             dest.clear(GL_COLOR_BUFFER_BIT);
 
             blend_weights_shader.bind();
-            bindDeferredHelperBindings(blend_weights_shader);
             blend_weights_shader.uniform4fv(sSmaaRTMetrics, 1, rt_metrics);
             if (LLVKLoader::isVulkanInitialized()
                 && blend_weights_shader.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -9932,7 +9865,6 @@ void LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst)
             bound_target->clear(GL_COLOR_BUFFER_BIT);
 
             blend_shader.bind();
-            bindDeferredHelperBindings(blend_shader);
             blend_shader.uniform4fv(sSmaaRTMetrics, 1, rt_metrics);
             if (LLVKLoader::isVulkanInitialized()
                 && blend_shader.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -9995,7 +9927,6 @@ void LLPipeline::resolveSMAAT2x(LLRenderTarget* src, LLRenderTarget* dst)
 
     LLGLSLShader& shader = gSMAAResolveProgram[q];
     shader.bind();
-    bindDeferredHelperBindings(shader);  // central hook = SMAA resolve cluster
 
     // Current SMAA'd frame goes to diffuseRect (DEFERRED_DIFFUSE), matching
     // our SMAAResolveF.glsl's "uniform sampler2D diffuseRect" declaration.
@@ -10040,7 +9971,6 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
     dst->bindTarget();
 
     gDeferredPostNoDoFProgram.bind();
-    bindDeferredHelperBindings(gDeferredPostNoDoFProgram);  // central hook = isDeferred=true cluster
 
     gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
     gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &getFrameRT()->deferredScreen, true);
@@ -10063,18 +9993,6 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
         ubo_data.screen_res[1] = (F32)src->getHeight();
         ubo_data.chroma_str    = nodof_chroma_str;
         memcpy(gDeferredPostNoDoFProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
-        VkSampler sampler = LLVKLoader::getStandardLinearSampler();
-        if (sampler != VK_NULL_HANDLE)
-        {
-            VkImageView diffuse_view = src->getVkImageView();
-            if (diffuse_view != VK_NULL_HANDLE)
-            {
-            }
-            VkImageView depth_view = getFrameRT()->deferredScreen.getVkDepthView();
-            if (depth_view != VK_NULL_HANDLE)
-            {
-            }
-        }
     }
 
     {
@@ -10562,7 +10480,6 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 getFrameRT()->deferredLight.bindTarget();
 
                 gDeferredCoFProgram.bind();
-                bindDeferredHelperBindings(gDeferredCoFProgram);  // central hook
 
 
                 gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
@@ -10630,7 +10547,6 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gGL.setColorMask(true, false);
 
                 gDeferredPostProgram.bind();
-                bindDeferredHelperBindings(gDeferredPostProgram);
 
 
                 gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &getFrameRT()->deferredLight, LLTexUnit::TFO_POINT);
@@ -10679,7 +10595,6 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 llSetGLViewport(0, 0, dst->getWidth(), dst->getHeight());
 
                 gDeferredDoFCombineProgram.bind();
-                bindDeferredHelperBindings(gDeferredDoFCombineProgram);
 
 
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
@@ -10749,23 +10664,7 @@ void LLPipeline::renderFinalize()
     compositeForwardFlip();
 
     // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
-    // <AYAstorm r41 forward-flip composite>
     // Over-blend the linear premultiplied alpha plate (mAYAAlphaColor) onto
-    // getFrameRT()->screen with a VERTICAL (Y) FLIP, BEFORE generateLuminance /
-    // tonemap. The plate now always holds POST_WATER forward alpha (the redirect
-    // in lldrawpoolalpha.cpp is no longer DoF-gated) drawn NEG (upside-down vs
-    // the soften-resampled opaque scene); ayaAlphaPlateCompositeF.glsl samples
-    // it flipped so the visible orientation is corrected here at the single
-    // composite without touching depth/raster (same flip mechanism water uses
-    // for mForwardColor). Compositing pre-tonemap also makes alpha BLEND
-    // brightness feed HDR auto-exposure (generateLuminance → generateExposure →
-    // tonemap) — without it exposure would calibrate on the opaque-only scene
-    // and mismatch. The plate is NOT composited inside dofCombineF; this is the
-    // only composite, so the flip is applied exactly once. mAYAAlphaColor is
-    // cleared unconditionally at the start of the forward alpha pass
-    // (lldrawpoolalpha.cpp) so when no alpha is redirected (HUD / impostor /
-    // cube / non-main RT) the texture is all-zeros and this pass is a no-op.
-    // </AYAstorm r41 forward-flip composite>
     if (mAYAAlphaColor.isComplete() && gAYAAlphaPlateCompositeProgram.isComplete())
     {
         LL_PROFILE_GPU_ZONE("aya plate pre-tonemap composite");
@@ -10791,11 +10690,6 @@ void LLPipeline::renderFinalize()
                       LLRender::BF_ZERO, LLRender::BF_ONE_MINUS_SOURCE_ALPHA);
 
         gAYAAlphaPlateCompositeProgram.bind();
-        // bindDeferredHelperBindings call =
-        //   gAYAAlphaPlateCompositeProgram (= isDeferred=true llviewershadermgr.cpp:4424 =
-        //   deferredUtil.glsl attach) は bindDeferredShader 経由しない直 bind path ゆえ
-        //   central hook 経由で binding 19/20/21/24/27/29 write 配備。
-        bindDeferredHelperBindings(gAYAAlphaPlateCompositeProgram);
 
 
         gAYAAlphaPlateCompositeProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, &mAYAAlphaColor, false, LLTexUnit::TFO_POINT);
@@ -10850,24 +10744,12 @@ void LLPipeline::renderFinalize()
     LLRenderTarget* sourceBuffer = &mPostPingMap;
     LLRenderTarget* targetBuffer = &mPostPongMap;
 
-    // <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — historic AY
-    // Cinematic-only gate. r30 BD full port では Cinematic = pure BD = no
-    // volumetric (spec §3.1 phase3.5-ay-only: RenderVolumetricLighting BD_NOOP=false)。
-    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> dispatch helper 経由で
-    // Cinematic では false を返し、gate (true && false) = false で発火しない。
-    // mode 0/1 は元から aya_view_mode==2 short-circuit で発火しない。
-    // 結果として block 全体が常に no-op (BD parity)、構造は spec dependency
-    // 明示のため維持。
     if (LLPipeline::isCinematicMode()
         && gSavedSettings.getBOOL("RenderVolumetricLighting")
         && !gCubeSnapshot)
     {
-        // volumetric は additive overlay 化 = in-place (src へ加算)。
-        //   copy/ping-pong でなくなったため swap 廃止 = flip 寄与ゼロ。
         renderVolumetric(sourceBuffer);
     }
-    // </FS:AYAstorm>
-    // </AYAstorm r30 P3 step 4>
 
     combineGlow(sourceBuffer, targetBuffer);
     std::swap(sourceBuffer, targetBuffer);
@@ -11017,10 +10899,7 @@ void LLPipeline::renderFinalize()
         LLVKLoader::beginSwapchainRendering();
     }
 
-    llassert(!gDeferredPostNoDoFNoiseProgram.mIsScreenSpaceCopyPass);
-
     gDeferredPostNoDoFNoiseProgram.bind(); // Add noise as part of final render to screen pass to avoid damaging other post effects
-    bindDeferredHelperBindings(gDeferredPostNoDoFNoiseProgram);
 
     // Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems.
     gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, sourceBuffer);
@@ -11099,33 +10978,6 @@ void LLPipeline::bindLightFunc(LLGLSLShader& shader)
     if (channel > -1)
     {
         mPbrBrdfLut.bindTexture(0, channel);
-    }
-}
-
-void LLPipeline::bindDeferredHelperBindings(LLGLSLShader& shader, LLRenderTarget* depth_target)
-{
-    if (!LLVKLoader::isVulkanInitialized())
-    {
-        return;
-    }
-    VkSampler sampler = LLVKLoader::getStandardLinearSampler();
-    if (sampler == VK_NULL_HANDLE)
-    {
-        return;
-    }
-    LLRenderTarget* deferred_target = &getFrameRT()->deferredScreen;
-    VkImageView gbuf0 = deferred_target->getVkImageView(0);
-    VkImageView gbuf1 = deferred_target->getVkImageView(1);
-    VkImageView gbuf2 = deferred_target->getVkImageView(2);
-    VkImageView gbuf3 = deferred_target->getVkImageView(3);
-    VkImageView depth_view = (depth_target != nullptr) ? depth_target->getVkDepthView()
-                                                       : deferred_target->getVkDepthView();
-    if (depth_view != VK_NULL_HANDLE)
-    {
-    }
-    VkImageView brdf_view = mPbrBrdfLut.getVkImageView(0);
-    if (brdf_view != VK_NULL_HANDLE)
-    {
     }
 }
 
@@ -11285,10 +11137,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     stop_glerror();
 
-    // mSunShadowMatrix unrolled [0..5] → loop + named constant
-    //   = mat4 16 component × kTotalShadowCount (= sun 4 + spot 2 = 6) = 96 F32 packed
-    //   = 旧 unrolled `mat[i + N*16]` literal index と同 index。 末尾
-    //   uniformMatrix4fv 第 2 arg count も kTotalShadowCount = 6。
     F32 mat[16 * LLPipeline::kTotalShadowCount];
     for (U32 i = 0; i < 16; i++)
     {
@@ -11557,19 +11405,8 @@ namespace
 
 bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
                                                      U32 max_draw_calls,
-                                                     U32 max_triangles,
-                                                     U32* out_draw_calls,
-                                                     U32* out_triangles,
-                                                     bool* out_over_budget,
-                                                     U32* out_attempted_draw_calls,
-                                                     U32* out_attempted_triangles)
+                                                     U32 max_triangles)
 {
-    if (out_draw_calls) *out_draw_calls = 0;
-    if (out_triangles) *out_triangles = 0;
-    if (out_over_budget) *out_over_budget = false;
-    if (out_attempted_draw_calls) *out_attempted_draw_calls = 0;
-    if (out_attempted_triangles) *out_attempted_triangles = 0;
-
     if (!target_avatar || target_avatar->isDead()) return false;
     if (!mObjectIDBuffer.isComplete()) return false;
 
@@ -11602,7 +11439,6 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     // Cull pinned to BACK to match deferred opaque (back-facing collar
     // interiors must not write IDs at chin pixels).
     LLGLEnable    cull (GL_CULL_FACE);
-    // glCullFace 直呼出 → LLGLState::setCullFaceMode 経由
     LLGLState::setCullFaceMode(GL_BACK);
 
     gFSObjectIDShader.bind();
@@ -11617,8 +11453,6 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     bool skipLastSkin = false;
     U32 draw_calls = 0;
     U32 triangles = 0;
-    U32 attempted_draw_calls = 0;
-    U32 attempted_triangles = 0;
     bool over_budget = false;
 
     for (U32 pass_type : kFSRiggedPasses)
@@ -11645,8 +11479,6 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
 
             const U32 next_draw_calls = draw_calls + 1;
             const U32 next_triangles = triangles + (info->mCount / 3);
-            attempted_draw_calls = next_draw_calls;
-            attempted_triangles = next_triangles;
             if ((max_draw_calls > 0 && next_draw_calls > max_draw_calls) ||
                 (max_triangles > 0 && next_triangles > max_triangles))
             {
@@ -11698,7 +11530,6 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     if (over_budget)
     {
         gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
-        // mObjectIDBuffer over-budget reset = 同上 (bound target clear 委譲)。
         LLRenderTarget::clearBoundTarget(GL_COLOR_BUFFER_BIT);
     }
 
@@ -11709,14 +11540,8 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
                      previous_color_mask[2] == GL_TRUE,
                      previous_color_mask[3] == GL_TRUE);
     gGL.setClearColor(previous_clear_color[0], previous_clear_color[1], previous_clear_color[2], previous_clear_color[3]);
-    // glCullFace 直呼出 → LLGLState::setCullFaceMode 経由
     LLGLState::setCullFaceMode(previous_cull_face_mode);
 
-    if (out_draw_calls) *out_draw_calls = draw_calls;
-    if (out_triangles) *out_triangles = triangles;
-    if (out_over_budget) *out_over_budget = over_budget;
-    if (out_attempted_draw_calls) *out_attempted_draw_calls = attempted_draw_calls;
-    if (out_attempted_triangles) *out_attempted_triangles = attempted_triangles;
     return !over_budget;
 }
 
@@ -11864,19 +11689,7 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
         return;
     }
 
-    U32 draw_calls = 0;
-    U32 triangles = 0;
-    U32 attempted_draw_calls = 0;
-    U32 attempted_triangles = 0;
-    bool over_budget = false;
-    if (renderRiggedObjectIDBufferForAvatar(target_avatar,
-                                            kMaxDrawCalls,
-                                            kMaxTriangles,
-                                            &draw_calls,
-                                            &triangles,
-                                            &over_budget,
-                                            &attempted_draw_calls,
-                                            &attempted_triangles))
+    if (renderRiggedObjectIDBufferForAvatar(target_avatar, kMaxDrawCalls, kMaxTriangles))
     {
         sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::Other;
         sFSOtherRiggedPickerRenderGeneration = sFSOtherRiggedPickerArmGeneration;
@@ -11886,9 +11699,6 @@ void LLPipeline::renderOtherRiggedObjectIDBuffer()
         sFSRiggedPickerObjectIDBufferOwner = FSRiggedPickerObjectIDBufferOwner::None;
         sFSOtherRiggedPickerRenderGeneration = 0;
     }
-    (void)attempted_draw_calls;
-    (void)attempted_triangles;
-    (void)over_budget;
 }
 // </AYAstorm:r21.1>
 
@@ -12323,7 +12133,7 @@ void LLPipeline::renderDeferredLighting()
                 && soften_shader.mVkPerProgramUBOMapped != nullptr)
             {
                 const U32 ubo_size = soften_shader.mVkPerProgramUBOSize;
-                const bool has_sun_moon = (ubo_size == 64 || ubo_size == 128);  // !HAS_SUN_SHADOW
+                const bool has_sun_moon = (ubo_size == 64 || ubo_size == 128);
                 const bool has_ssao     = (ubo_size == 96 || ubo_size == 128);
 
                 F32 ubo_buffer[32] = {};

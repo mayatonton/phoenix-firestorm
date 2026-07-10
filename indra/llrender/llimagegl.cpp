@@ -75,52 +75,46 @@ static U16 float32ToHalf16(F32 f)
     memcpy(&x, &f, sizeof(F32));
 
     const U32 sign     = (x >> 16) & 0x8000u;
-    const S32 exp_in   = (S32)((x >> 23) & 0xFFu);   // biased binary32 exponent (0..255)
-    const U32 mant_in  = x & 0x7FFFFFu;              // 23-bit mantissa
+    const S32 exp_in   = (S32)((x >> 23) & 0xFFu);
+    const U32 mant_in  = x & 0x7FFFFFu;
 
     if (exp_in == 0xFF)
     {
-        // Inf (mant==0) / NaN (mant!=0)。 NaN は非 0 mantissa を保持 (quiet NaN 化)。
         return (U16)(sign | 0x7C00u | (mant_in != 0 ? 0x0200u : 0u));
     }
 
-    // unbiased exponent を half bias (15) で再計算。
     const S32 exp_half = exp_in - 127 + 15;
 
     if (exp_half >= 0x1F)
     {
-        // overflow → Inf。
         return (U16)(sign | 0x7C00u);
     }
 
     if (exp_half <= 0)
     {
-        // subnormal half または underflow。 exp_half < -10 = 最小 subnormal 未満 → signed zero。
         if (exp_half < -10)
         {
             return (U16)sign;
         }
-        // implicit leading 1 を付与して subnormal mantissa に右シフト + round-to-nearest-even。
-        const U32 mant_full = mant_in | 0x800000u;            // 24-bit
-        const U32 shift     = (U32)(14 - exp_half);           // 14..24
+        const U32 mant_full = mant_in | 0x800000u;
+        const U32 shift     = (U32)(14 - exp_half);
         const U32 half_mant = mant_full >> shift;
         const U32 remainder = mant_full & ((1u << shift) - 1u);
         const U32 halfway   = 1u << (shift - 1);
         U32 result = half_mant;
         if (remainder > halfway || (remainder == halfway && (half_mant & 1u)))
         {
-            ++result;   // carry は sign|result の加算で正しく最小 normal に繰り上がる。
+            ++result;
         }
         return (U16)(sign | result);
     }
 
-    // normal: mantissa 23→10 bit 丸め (round-to-nearest-even)。
     const U32 half_mant = mant_in >> 13;
-    const U32 remainder = mant_in & 0x1FFFu;                  // 下位 13 bit
+    const U32 remainder = mant_in & 0x1FFFu;
     U32 result = (U32)(exp_half << 10) | half_mant;
     if (remainder > 0x1000u || (remainder == 0x1000u && (half_mant & 1u)))
     {
-        ++result;   // mantissa overflow は exponent への carry に自然伝播 (overflow 時 Inf 化)。
+        ++result;
     }
     return (U16)(sign | result);
 }
@@ -160,7 +154,7 @@ static U8* createVulkanFloat32ToHalf16Buffer(const U8* source_data,
             }
             else
             {
-                v = (c == 3) ? 1.0f : 0.0f;   // alpha = opaque, 他 padding ch = 0
+                v = (c == 3) ? 1.0f : 0.0f;
             }
             dst[(U64)px * target_components + c] = float32ToHalf16(v);
         }
@@ -170,10 +164,9 @@ static U8* createVulkanFloat32ToHalf16Buffer(const U8* source_data,
     return buf;
 }
 
-// 4-channel matched でも source bytes/pixel と target bytes/pixel が一致 → no-op return。
 static U8* createVulkanPaddingBuffer(const U8* source_data,
                                      U32       source_components,
-                                     U32       source_component_bytes,  // 1 (U8) / 2 (R16/F16) / 4 (F32)
+                                     U32       source_component_bytes,
                                      U32       target_bytes_per_pixel,
                                      U32       pixel_count,
                                      U32&      out_padded_size_bytes)
@@ -200,36 +193,24 @@ static U8* createVulkanPaddingBuffer(const U8* source_data,
         return nullptr;
     }
 
-    // expand per-pixel:
-    //   target_component_count = target_bytes_per_pixel / source_component_bytes
-    //                          (= 4 ch for U8 RGBA8, 4 ch for half RGBA16F, etc.)
-    //   pad rule = source の component を target の先頭 N 個に copy、残り = (0 ... last) = opaque alpha 1。
     const U32 target_component_count = (source_component_bytes > 0)
                                        ? (target_bytes_per_pixel / source_component_bytes)
                                        : 4;
 
-    // source_component_bytes per type で逐次膨張。U8 / U16 (half-float) / U32 (float) 全 cover。
     for (U32 px = 0; px < pixel_count; ++px)
     {
         U8* dst_pixel = padded + (U64)px * (U64)target_bytes_per_pixel;
         const U8* src_pixel = source_data + (U64)px * (U64)source_bytes_per_pixel;
 
-        // copy source components 先頭 N 個 (= source_components 個)
         const U32 copy_bytes = source_components * source_component_bytes;
         memcpy(dst_pixel, src_pixel, copy_bytes);
 
-        // 残り = (target_component_count - source_components) ch を opaque alpha 相当で埋める。
-        // U8 = 255、half (2B) = 0x3C00 (= 1.0)、float (4B) = 1.0f。
-        // ただし「matched + 0」case = 既存 source_components が L8 = 1 → target=RGBA8 4 ch では
-        // R=G=B=L (= grayscale 視認)、A=255。color3 (RGB) → RGBA は R/G/B kept + A=opaque。
         if (source_components == 1 && target_component_count >= 3)
         {
-            // L8 / L16 / L32F broadcast = R=G=B=L
             for (U32 c = 1; c < 3 && c < target_component_count; ++c)
             {
                 memcpy(dst_pixel + c * source_component_bytes, src_pixel, source_component_bytes);
             }
-            // 4 ch target ならば A = opaque (1)
             if (target_component_count >= 4)
             {
                 U8* alpha_dst = dst_pixel + 3 * source_component_bytes;
@@ -239,7 +220,6 @@ static U8* createVulkanPaddingBuffer(const U8* source_data,
                 }
                 else if (source_component_bytes == 2)
                 {
-                    // half-float 1.0 = 0x3C00 (little-endian)
                     alpha_dst[0] = 0x00;
                     alpha_dst[1] = 0x3C;
                 }
@@ -252,11 +232,10 @@ static U8* createVulkanPaddingBuffer(const U8* source_data,
         }
         else if (source_components < target_component_count)
         {
-            // RGB → RGBA = trailing A = opaque。他 case は 0 fill (= zero-init による静的不定値防止)。
             for (U32 c = source_components; c < target_component_count; ++c)
             {
                 U8* slot_dst = dst_pixel + c * source_component_bytes;
-                if (c == 3)  // alpha slot 専用 = opaque (= 1.0 / 255)
+                if (c == 3)
                 {
                     if (source_component_bytes == 1)
                     {
@@ -305,7 +284,7 @@ static U32 glPixTypeToSourceComponentBytes(U32 pixtype)
         case GL_FLOAT:
             return 4;
         default:
-            return 1;  // safe default
+            return 1;
     }
 }
 
@@ -1299,29 +1278,11 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
 
 namespace
 {
-    struct VkSyncStats
-    {
-        std::atomic<U64> calls           {0};
-        std::atomic<U64> skip_gate       {0};
-        std::atomic<U64> skip_target     {0};
-        std::atomic<U64> skip_dim        {0};
-        std::atomic<U64> skip_fmt_undef  {0};
-        std::atomic<U64> reuse_hit       {0};
-        std::atomic<U64> destroy_stale   {0};
-        std::atomic<U64> create_ok       {0};
-        std::atomic<U64> create_failed   {0};
-        std::atomic<U64> alloc_only      {0};
-        std::atomic<U64> upload_ok       {0};
-        std::atomic<U64> upload_failed   {0};
-    };
-    static VkSyncStats sVkSyncStats;
-
     static LLMutex sVkSyncFmtUndefMutex;
     static std::unordered_map<U32, U64> sVkSyncFmtUndefCounts;
 
     void recordVkSyncFmtUndef(U32 fmt_src, U32 primary, bool is_compressed)
     {
-        sVkSyncStats.skip_fmt_undef.fetch_add(1, std::memory_order_relaxed);
         LLMutexLock lock(&sVkSyncFmtUndefMutex);
         auto it = sVkSyncFmtUndefCounts.find(fmt_src);
         if (it == sVkSyncFmtUndefCounts.end())
@@ -1339,45 +1300,27 @@ namespace
         }
     }
 
-    void emitVkSyncStatsSummaryIfDue(U64 calls_post)
-    {
-        if (calls_post == 0 || (calls_post % 500ULL) != 0ULL)
-        {
-            return;
-        }
-    }
 }
 
 void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                                     S32 w, S32 h, const void* data, bool is_compressed,
                                     S32 mip_level, S32 mip_count)
 {
-    const U64 calls_post = sVkSyncStats.calls.fetch_add(1, std::memory_order_relaxed) + 1;
-
     if (!LLVKLoader::shouldUseVulkanRender())
     {
-        sVkSyncStats.skip_gate.fetch_add(1, std::memory_order_relaxed);
-        emitVkSyncStatsSummaryIfDue(calls_post);
         return;
     }
     if (mTarget != GL_TEXTURE_2D || mExternalTexture)
     {
-        sVkSyncStats.skip_target.fetch_add(1, std::memory_order_relaxed);
-        emitVkSyncStatsSummaryIfDue(calls_post);
         return;
     }
     if (w <= 0 || h <= 0)
     {
-        sVkSyncStats.skip_dim.fetch_add(1, std::memory_order_relaxed);
-        emitVkSyncStatsSummaryIfDue(calls_post);
         return;
     }
 
     const U32 fmt_src = is_compressed ? primary : intformat;
     VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat(fmt_src);
-    // BGRA byte order source (= CEF login HTML 等 = primary GL_BGRA) は B8G8R8A8 で作成 =
-    // source data byte order と image format 一致 = R/B channel swap 回避。
-    // compressed (= primary が GL_COMPRESSED_*) は本 override 非対象。
     if (!is_compressed && primary == GL_BGRA && vk_format == VK_FORMAT_R8G8B8A8_UNORM)
     {
         vk_format = VK_FORMAT_B8G8R8A8_UNORM;
@@ -1385,7 +1328,6 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     if (vk_format == VK_FORMAT_UNDEFINED)
     {
         recordVkSyncFmtUndef(fmt_src, primary, is_compressed);
-        emitVkSyncStatsSummaryIfDue(calls_post);
         return;
     }
 
@@ -1400,12 +1342,8 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                                && (mVkImageFormat == vk_format)
                                && (mVkImageMipLevels == want_mips);
 
-        if (can_reuse)
-        {
-            sVkSyncStats.reuse_hit.fetch_add(1, std::memory_order_relaxed);
-        }
-        else if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE ||
-                 mVkAllocation != nullptr)
+        if (!can_reuse && (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE ||
+                           mVkAllocation != nullptr))
         {
             LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
             mVkImage      = VK_NULL_HANDLE;
@@ -1415,7 +1353,6 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
             mVkImageHeight = 0;
             mVkImageMipLevels = 1;
             mVkImageFormat = VK_FORMAT_UNDEFINED;
-            sVkSyncStats.destroy_stale.fetch_add(1, std::memory_order_relaxed);
         }
 
         if (!can_reuse)
@@ -1424,15 +1361,12 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                                                   mVkImage, mVkImageView, mVkAllocation,
                                                   want_mips))
             {
-                sVkSyncStats.create_failed.fetch_add(1, std::memory_order_relaxed);
-                emitVkSyncStatsSummaryIfDue(calls_post);
                 return;
             }
             mVkImageWidth     = (U32)w;
             mVkImageHeight    = (U32)h;
             mVkImageMipLevels = want_mips;
             mVkImageFormat    = vk_format;
-            sVkSyncStats.create_ok.fetch_add(1, std::memory_order_relaxed);
         }
     }
     else
@@ -1441,16 +1375,12 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
             || mVkImageFormat != vk_format
             || (U32)mip_level >= mVkImageMipLevels)
         {
-            sVkSyncStats.skip_dim.fetch_add(1, std::memory_order_relaxed);
-            emitVkSyncStatsSummaryIfDue(calls_post);
             return;
         }
     }
 
     if (data == nullptr)
     {
-        sVkSyncStats.alloc_only.fetch_add(1, std::memory_order_relaxed);
-        emitVkSyncStatsSummaryIfDue(calls_post);
         return;
     }
 
@@ -1498,8 +1428,6 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                 mVkImageWidth  = 0;
                 mVkImageHeight = 0;
                 mVkImageFormat = VK_FORMAT_UNDEFINED;
-                sVkSyncStats.upload_failed.fetch_add(1, std::memory_order_relaxed);
-                emitVkSyncStatsSummaryIfDue(calls_post);
                 return;
             }
             upload_data = padded_buffer;
@@ -1529,7 +1457,7 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     if (upload_size > 0)
     {
         const bool upload_ok = LLVKLoader::uploadImageDataVk(
-            mVkImage, (U32)w, (U32)h, vk_format, upload_data, upload_size, (U32)mip_level);
+            mVkImage, (U32)w, (U32)h, upload_data, upload_size, (U32)mip_level);
 
         if (!upload_ok)
         {
@@ -1541,11 +1469,6 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
             mVkImageHeight = 0;
             mVkImageMipLevels = 1;
             mVkImageFormat = VK_FORMAT_UNDEFINED;
-            sVkSyncStats.upload_failed.fetch_add(1, std::memory_order_relaxed);
-        }
-        else
-        {
-            sVkSyncStats.upload_ok.fetch_add(1, std::memory_order_relaxed);
         }
     }
 
@@ -1553,8 +1476,6 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     {
         delete[] padded_buffer;
     }
-
-    emitVkSyncStatsSummaryIfDue(calls_post);
 }
 
 void LLImageGL::syncVulkan3DImage(U32 intformat, U32 primary, U32 type,
@@ -1644,7 +1565,7 @@ void LLImageGL::syncVulkan3DImage(U32 intformat, U32 primary, U32 type,
     if (upload_size > 0)
     {
         if (!LLVKLoader::uploadImageData3DVk(mVkImage, (U32)w, (U32)h, (U32)depth,
-                                             vk_format, upload_data, upload_size))
+                                             upload_data, upload_size))
         {
             LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
             mVkImage = VK_NULL_HANDLE; mVkImageView = VK_NULL_HANDLE; mVkAllocation = nullptr;

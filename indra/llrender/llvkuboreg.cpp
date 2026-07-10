@@ -1466,11 +1466,6 @@ void verifyProgramLayout(LLGLSLShader& shader)
             continue;
         }
 
-        if (ledgerMatch(shader.mName, block.block_name, "dead", 0, 0) != nullptr)
-        {
-            reportLedger(shader, block, "dead", 0);
-            continue;
-        }
         if (ledgerMatch(shader.mName, block.block_name, "V4", 0, 0) != nullptr)
         {
             reportLedger(shader, block, "V4", 0);

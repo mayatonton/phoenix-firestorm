@@ -337,7 +337,7 @@ namespace {
         U32 cursor = 32;
         const U32 alpha_mode = i & 0x3;
 
-        if (alpha_mode == 1) // DIFFUSE_ALPHA_MODE_BLEND
+        if (alpha_mode == 1)
         {
             if (!use_sun_shadow)
             {
@@ -356,7 +356,7 @@ namespace {
             out_layout.aya_sss_skin_flag_offset = cursor;
             cursor += 16;
         }
-        if (alpha_mode == 2) // DIFFUSE_ALPHA_MODE_MASK
+        if (alpha_mode == 2)
         {
             out_layout.minimum_alpha_offset = cursor;
             cursor += 16;
@@ -529,7 +529,7 @@ bool writeMaterialFAllUBO(LLGLSLShader& shader, U32 i,
 
 bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data, U32 joint_count)
 {
-    constexpr U32 MAX_JOINTS         = 110; // LL_MAX_JOINTS_PER_MESH_OBJECT
+    constexpr U32 MAX_JOINTS         = 110;
     constexpr U32 MAT3X4_STRIDE_BYTES = 48;
     constexpr U32 PALETTE_BYTES      = MAX_JOINTS * MAT3X4_STRIDE_BYTES;
 
@@ -559,7 +559,7 @@ bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data
 
 bool writeObjectSkinLastUBO(const F32* last_palette_data, U32 joint_count)
 {
-    constexpr U32 MAX_JOINTS          = 110; // LL_MAX_JOINTS_PER_MESH_OBJECT
+    constexpr U32 MAX_JOINTS          = 110;
     constexpr U32 MAT3X4_STRIDE_BYTES = 48;
     constexpr U32 PALETTE_BYTES       = MAX_JOINTS * MAT3X4_STRIDE_BYTES;
 
@@ -1415,8 +1415,6 @@ bool LLViewerShaderMgr::loadShadersEffects()
         {
             LLPipelineFrameContext::getInstance().setRenderingGlow(false);
         }
-        gGlowProgram.mIsScreenSpaceCopyPass = true;
-
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gGlowProgram.createVkPipeline(16);
@@ -1444,8 +1442,6 @@ bool LLViewerShaderMgr::loadShadersEffects()
         {
             LLPipelineFrameContext::getInstance().setRenderingGlow(false);
         }
-        gGlowExtractProgram.mIsScreenSpaceCopyPass = true;
-
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gGlowExtractProgram.createVkPipeline(48);
@@ -1458,7 +1454,6 @@ bool LLViewerShaderMgr::loadShadersEffects()
         gPostVignetteProgram.mName = "Vignette Post";
         gPostVignetteProgram.mShaderFiles.clear();
         gPostVignetteProgram.mShaderFiles.push_back(make_pair("post/exoPostBaseV.glsl", GL_VERTEX_SHADER));
-        gPostVignetteProgram.mIsScreenSpaceCopyPass = true;
         gPostVignetteProgram.mShaderFiles.push_back(make_pair("post/exoVignetteF.glsl", GL_FRAGMENT_SHADER));
         gPostVignetteProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
         success = gPostVignetteProgram.createShader();
@@ -1474,7 +1469,6 @@ bool LLViewerShaderMgr::loadShadersEffects()
         gPostSnapshotFrameProgram.mName = "Snapshot Frame Post";
         gPostSnapshotFrameProgram.mShaderFiles.clear();
         gPostSnapshotFrameProgram.mShaderFiles.push_back(make_pair("post/exoPostBaseV.glsl", GL_VERTEX_SHADER));
-        gPostSnapshotFrameProgram.mIsScreenSpaceCopyPass = true;
         gPostSnapshotFrameProgram.mShaderFiles.push_back(make_pair("post/snapshotFrameF.glsl", GL_FRAGMENT_SHADER));
         gPostSnapshotFrameProgram.mShaderLevel = mShaderLevel[SHADER_EFFECT];
         success = gPostSnapshotFrameProgram.createShader();
@@ -2006,9 +2000,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             if (shader->mRiggedVariant != nullptr && shader->mRiggedVariant != shader)
             {
                 shader->mRiggedVariant->createVkPipeline(use_sun_shadow ? LLVKLoader::PBRALPHAF_UBO_SIZE_SHADOW : LLVKLoader::PBRALPHAF_UBO_SIZE_NO_SHADOW);
-            }
-            if (shader->mRiggedVariant != nullptr && shader->mRiggedVariant != shader)
-            {
             }
         }
     }
@@ -3293,7 +3284,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostGammaCorrectProgram.createShader();
         llassert(success);
-        gDeferredPostGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredPostGammaCorrectProgram.createVkPipeline(16);
@@ -3313,7 +3303,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gLegacyPostGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gLegacyPostGammaCorrectProgram.createShader();
         llassert(success);
-        gLegacyPostGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gLegacyPostGammaCorrectProgram.createVkPipeline(16);
@@ -3321,9 +3310,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     }
 
     // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
-    // Fullscreen composite that, with blend func set to (ONE, 1-SRC_ALPHA color)
-    // + (ZERO, 1-SRC_ALPHA alpha), overlays mAYAAlphaColor (premult linear plate)
-    // onto mRT->screen before generateLuminance / tonemap runs. Puts alpha BLEND
     // into the auto-exposure / tonemap input the same way the LMB-on-HUD path
     // does (where forward alpha was written directly to mRT->screen).
     if (success)
@@ -3337,7 +3323,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gAYAAlphaPlateCompositeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gAYAAlphaPlateCompositeProgram.createShader();
         llassert(success);
-        gAYAAlphaPlateCompositeProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gAYAAlphaPlateCompositeProgram.createVkPipeline(0);
@@ -3356,7 +3341,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gAYAForwardFlipCompositeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gAYAForwardFlipCompositeProgram.createShader();
         llassert(success);
-        gAYAForwardFlipCompositeProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gAYAForwardFlipCompositeProgram.createVkPipeline(0);
@@ -3376,7 +3360,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostTonemapProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostTonemapProgram.createShader();
         llassert(success);
-        gDeferredPostTonemapProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredPostTonemapProgram.createVkPipeline(32);
@@ -3397,7 +3380,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNoPostTonemapProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gNoPostTonemapProgram.createShader();
         llassert(success);
-        gNoPostTonemapProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gNoPostTonemapProgram.createVkPipeline(32);
@@ -3418,7 +3400,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostTonemapGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostTonemapGammaCorrectProgram.createShader();
         llassert(success);
-        gDeferredPostTonemapGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredPostTonemapGammaCorrectProgram.createVkPipeline(32);
@@ -3440,7 +3421,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNoPostTonemapGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gNoPostTonemapGammaCorrectProgram.createShader();
         llassert(success);
-        gNoPostTonemapGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gNoPostTonemapGammaCorrectProgram.createVkPipeline(32);
@@ -3462,7 +3442,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredPostTonemapLegacyGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredPostTonemapLegacyGammaCorrectProgram.createShader();
         llassert(success);
-        gDeferredPostTonemapLegacyGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredPostTonemapLegacyGammaCorrectProgram.createVkPipeline(32);
@@ -3485,7 +3464,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gNoPostTonemapLegacyGammaCorrectProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gNoPostTonemapLegacyGammaCorrectProgram.createShader();
         llassert(success);
-        gNoPostTonemapLegacyGammaCorrectProgram.mIsScreenSpaceCopyPass = true;
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gNoPostTonemapLegacyGammaCorrectProgram.createVkPipeline(32);
@@ -3532,7 +3510,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     success = true;
                     break;
                 }
-                gFXAAProgram[i].mIsScreenSpaceCopyPass = true;
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     gFXAAProgram[i].createVkPipeline(48);
@@ -3595,7 +3572,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     success = true;
                     break;
                 }
-                gSMAAEdgeDetectProgram[i].mIsScreenSpaceCopyPass = true;
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     gSMAAEdgeDetectProgram[i].createVkPipeline(16); 
@@ -3627,7 +3603,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     success = true;
                     break;
                 }
-                gSMAABlendWeightsProgram[i].mIsScreenSpaceCopyPass = true;
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     gSMAABlendWeightsProgram[i].createVkPipeline(16); 
@@ -3658,7 +3633,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     success = true;
                     break;
                 }
-                gSMAANeighborhoodBlendProgram[i].mIsScreenSpaceCopyPass = true;
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     gSMAANeighborhoodBlendProgram[i].createVkPipeline(16); 
@@ -3694,7 +3668,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
                     success = true;
                     break;
                 }
-                gSMAAResolveProgram[i].mIsScreenSpaceCopyPass = true;
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     gSMAAResolveProgram[i].createVkPipeline(0);
@@ -3727,7 +3700,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gCASProgram.mShaderFiles.push_back(make_pair("deferred/CASF.glsl", GL_FRAGMENT_SHADER));
         gCASProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gCASProgram.createShader();
-        gCASProgram.mIsScreenSpaceCopyPass = true;
         // llassert(success);
         if (!success)
         {
@@ -3754,7 +3726,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gCASLegacyGammaProgram.addPermutation("GAMMA_CORRECT", "1");
         gCASLegacyGammaProgram.addPermutation("LEGACY_GAMMA", "1");
         success = gCASLegacyGammaProgram.createShader();
-        gCASLegacyGammaProgram.mIsScreenSpaceCopyPass = true;
         // llassert(success);
         if (!success)
         {
@@ -3780,8 +3751,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         // over stale HAS_DOF_CHROMA / FRONT_BLUR entries from the previous build).
         gDeferredPostProgram.clearPermutations();
         gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredPostProgram.mIsScreenSpaceCopyPass = true;
-
         static LLCachedControl<U32>  aya_view_mode_post(gSavedSettings, "AYAVisualRealismEnabled", 1);
         if (aya_view_mode_post == 2)
         {
@@ -3827,8 +3796,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredCoFProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredCoFProgram.createShader();
         llassert(success);
-        gDeferredCoFProgram.mIsScreenSpaceCopyPass = true;
-
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredCoFProgram.createVkPipeline(32);
@@ -3841,7 +3808,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredDoFCombineProgram.mFeatures.isDeferred = true;
         gDeferredDoFCombineProgram.mShaderFiles.clear();
         gDeferredDoFCombineProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredDoFCombineProgram.mIsScreenSpaceCopyPass = true;
         gDeferredDoFCombineProgram.mShaderFiles.push_back(make_pair("deferred/dofCombineF.glsl", GL_FRAGMENT_SHADER));
         gDeferredDoFCombineProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         success = gDeferredDoFCombineProgram.createShader();
@@ -3865,7 +3831,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         // cvar RenderDepthOfFieldChroma controls whether the vignette path runs.
         gDeferredPostNoDoFProgram.clearPermutations();
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
-        gDeferredPostNoDoFProgram.mIsScreenSpaceCopyPass = true;
         gDeferredPostNoDoFProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoDoFF.glsl", GL_FRAGMENT_SHADER));
 
         static LLCachedControl<U32>  aya_view_mode_nodof(gSavedSettings, "AYAVisualRealismEnabled", 1);
@@ -4235,7 +4200,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredMotionBlurProgram.mName = "AYAstorm Deferred Motion Blur Shader";
         gDeferredMotionBlurProgram.mFeatures.isDeferred = true;
-        gDeferredMotionBlurProgram.mIsScreenSpaceCopyPass = true;
         gDeferredMotionBlurProgram.mShaderFiles.clear();
         gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredNoTCV.glsl", GL_VERTEX_SHADER));
         gDeferredMotionBlurProgram.mShaderFiles.push_back(make_pair("deferred/motionBlurF.glsl", GL_FRAGMENT_SHADER));
@@ -4608,7 +4572,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gGlowCombineProgram.mName = "Glow Combine Shader";
         gGlowCombineProgram.mShaderFiles.clear();
         gGlowCombineProgram.mShaderFiles.push_back(make_pair("interface/glowcombineV.glsl", GL_VERTEX_SHADER));
-        gGlowCombineProgram.mIsScreenSpaceCopyPass = true;
         gGlowCombineProgram.mShaderFiles.push_back(make_pair("interface/glowcombineF.glsl", GL_FRAGMENT_SHADER));
         gGlowCombineProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gGlowCombineProgram.createShader();
@@ -4631,7 +4594,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gGlowCombineFXAAProgram.mName = "Glow CombineFXAA Shader";
         gGlowCombineFXAAProgram.mShaderFiles.clear();
         gGlowCombineFXAAProgram.mShaderFiles.push_back(make_pair("interface/glowcombineFXAAV.glsl", GL_VERTEX_SHADER));
-        gGlowCombineFXAAProgram.mIsScreenSpaceCopyPass = true;
         gGlowCombineFXAAProgram.mShaderFiles.push_back(make_pair("interface/glowcombineFXAAF.glsl", GL_FRAGMENT_SHADER));
         gGlowCombineFXAAProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gGlowCombineFXAAProgram.createShader();
@@ -4884,8 +4846,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gCopyDepthProgram.addPermutation("COPY_DEPTH", "1");
         gCopyDepthProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gCopyDepthProgram.createShader();
-        gCopyDepthProgram.mIsScreenSpaceCopyPass = true;
-
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gCopyDepthProgram.createVkPipeline(0);

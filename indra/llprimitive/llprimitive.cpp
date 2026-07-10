@@ -41,15 +41,10 @@
 #include "llmaterialid.h"
 #include "llsdutil.h"
 // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD RenderEnableFullbright (global).
-// <AYAstorm test-build guard> Skip newview-side gSavedSettings dep for unit tests
-//   (PROJECT_llprimitive_TEST_llprimitive linker fix; LL_TEST macro is defined by
-//   LL_ADD_PROJECT_UNIT_TESTS macro). Test build never exercises packTEMessage
-//   / applyParsedTEMessage paths, so skipping BD branch keeps test scaffolding minimal.
 #ifndef LL_TEST
 #include "llcontrol.h"
 extern LLControlGroup gSavedSettings;
 #endif
-// </AYAstorm test-build guard>
 // </FS:AYAstorm:r30-bd-port>
 
 /**

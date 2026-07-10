@@ -255,7 +255,6 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
     }
 
     mTex.push_back(use_name);
-    // addColorAttachment と対称に internal format も記録する (mTex と整合維持)。
     mInternalFormat.push_back(img->getPrimaryFormat());
 
     glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
@@ -614,8 +613,6 @@ void LLRenderTarget::release()
         mVkTexAlloc.clear();
         mVkTexLayout.clear();
 
-        // depth 所有時のみ destroy (= GL release の `if (mDepth)` 所有判定と同じ)。
-        //   共有 depth 受領側 (mVkDepthAlloc==nullptr) は destroy せず reference のみ drop。
         if (mVkDepthAlloc != nullptr)
         {
             LLVKLoader::destroyImageVk(mVkDepth, mVkDepthView, mVkDepthAlloc);
@@ -748,15 +745,6 @@ void LLRenderTarget::bindTarget()
             color_attachments[i].store_op     = VK_ATTACHMENT_STORE_OP_STORE;
         }
 
-        if (mIsSwapchainTarget && color_count > 0 && LLVKLoader::isVulkanPresentationEnabled())
-        {
-            VkImageView swapchain_view = LLVKLoader::getCurrentSwapchainImageView();
-            if (swapchain_view != VK_NULL_HANDLE)
-            {
-                color_attachments[0].image_view = swapchain_view;
-            }
-        }
-
         LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
         depth_attachment.image_view   = mVkDepthView;
         depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -847,8 +835,6 @@ void LLRenderTarget::clear(U32 mask_in)
     }
 }
 
-// raw glClear() は現 bound FBO を clear ゆえ、現 bound LLRenderTarget (= sBoundTarget) の clear() に委譲。
-//   bound target 不在 (= default framebuffer) は GL のみ。
 void LLRenderTarget::clearBoundTarget(U32 mask)
 {
     if (sBoundTarget)

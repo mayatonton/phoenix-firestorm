@@ -226,7 +226,6 @@ void LLDrawPoolTree::endShadowPass(S32 pass)
     LL_PROFILE_ZONE_SCOPED;
 
     // <FS:PP> Attempt to speed up things a little
-    // gGL.setPolygonOffset(gSavedSettings.getF32("RenderDeferredSpotShadowOffset"),
     //                  gSavedSettings.getF32("RenderDeferredSpotShadowBias"));
     static LLCachedControl<F32> RenderDeferredSpotShadowOffset(gSavedSettings, "RenderDeferredSpotShadowOffset");
     static LLCachedControl<F32> RenderDeferredSpotShadowBias(gSavedSettings, "RenderDeferredSpotShadowBias");

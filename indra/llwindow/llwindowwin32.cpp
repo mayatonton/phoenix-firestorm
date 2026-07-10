@@ -3870,8 +3870,6 @@ bool LLWindowWin32::resetDisplayResolution()
 
 void LLWindowWin32::swapBuffers()
 {
-    // Vulkan presentation 有効時は vkQueuePresentKHR が LLVKLoader::endFrame() で発火済ゆえ
-    //   GL `SwapBuffers` skip = no-op return (= dual-presentation 衝突回避)。
     if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_WIN32("GPU Collect");
@@ -4135,9 +4133,6 @@ void *LLWindowWin32::getPlatformWindow()
 
 LLWindow::LLNativeWindowHandles LLWindowWin32::getNativeWindowHandles()
 {
-    // Win32 native handles for vkCreateWin32SurfaceKHR.
-    //   native_display = HINSTANCE (= module handle)
-    //   native_window  = HWND
     LLNativeWindowHandles handles;
     handles.native_display = (void*)GetModuleHandle(NULL);
     handles.native_window  = (void*)mWindowHandle;

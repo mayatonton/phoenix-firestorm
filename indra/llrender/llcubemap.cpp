@@ -62,10 +62,6 @@ LLCubeMap::LLCubeMap(bool init_as_srgb)
 
 LLCubeMap::~LLCubeMap()
 {
-    // bind 中 texunit の mCurrCubeMap raw pointer を無効化 (= 本 cube destroy 後の dangling 防止)。
-    //   sky environmentMap は LLVOSky::mCubeMap (= LLPointer) で保持され、 ~LLVOSky
-    //   (= region 変更/teleport で sky object 再構築、 llvosky.cpp:460) で free される =
-    //   world transition 中に texunit に残った mCurrCubeMap が dangling 化する class。
     LLRender::clearStaleCubeMapRefs(this);
 
     if (mVkCubeImageView != VK_NULL_HANDLE || mVkCubeImage != VK_NULL_HANDLE)
@@ -178,7 +174,6 @@ void LLCubeMap::initGLData()
 
     if (LLVKLoader::isVulkanInitialized())
     {
-        // 同 resolution + 同 format で既配備の場合 destroy 不要 (= re-upload 経路)
         const VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
         if (mVkCubeImage == VK_NULL_HANDLE ||
             mVkCubeResolution != RESOLUTION ||
@@ -208,7 +203,7 @@ void LLCubeMap::initGLData()
                 face_data[gl_to_vk[i]] = mRawImages[i]->getData();
             }
             const U32 face_size_bytes = RESOLUTION * RESOLUTION * 4;
-            LLVKLoader::uploadCubeImageDataVk(mVkCubeImage, RESOLUTION, format,
+            LLVKLoader::uploadCubeImageDataVk(mVkCubeImage, RESOLUTION,
                                               face_data, face_size_bytes);
         }
     }
@@ -275,53 +270,6 @@ void LLCubeMap::initEnvironmentMap(const std::vector<LLPointer<LLImageRaw> >& ra
     glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
     gGL.getTexUnit(0)->disable();
     disable();
-
-    if (LLVKLoader::isVulkanInitialized() && components == 4)
-    {
-        const VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
-        if (mVkCubeImage == VK_NULL_HANDLE ||
-            mVkCubeResolution != resolution ||
-            mVkCubeFormat != format)
-        {
-            if (mVkCubeImageView != VK_NULL_HANDLE)
-            {
-                LLVKLoader::destroyImageVk(mVkCubeImage, mVkCubeImageView, mVkCubeAllocation);
-                mVkCubeImage = VK_NULL_HANDLE;
-                mVkCubeImageView = VK_NULL_HANDLE;
-                mVkCubeAllocation = nullptr;
-            }
-            U32 vk_mip_count = 1;
-            {
-                U32 dim = resolution;
-                while (dim > 1) { dim >>= 1; ++vk_mip_count; }
-            }
-            if (LLVKLoader::createCubeImageVk(resolution, format, vk_mip_count,
-                                              mVkCubeImage, mVkCubeImageView,
-                                              mVkCubeAllocation))
-            {
-                mVkCubeResolution = resolution;
-                mVkCubeFormat     = format;
-            }
-        }
-        if (mVkCubeImage != VK_NULL_HANDLE)
-        {
-            static const U32 gl_to_vk[6] = { 1, 0, 3, 2, 5, 4 };
-            const void* face_data[6] = { nullptr };
-            for (int i = 0; i < 6; ++i)
-            {
-                face_data[gl_to_vk[i]] = mRawImages[i]->getData();
-            }
-            const U32 face_size_bytes = resolution * resolution * 4;
-            LLVKLoader::uploadCubeImageDataVk(mVkCubeImage, resolution, format,
-                                              face_data, face_size_bytes);
-            U32 vk_mip_count = 1;
-            {
-                U32 dim = resolution;
-                while (dim > 1) { dim >>= 1; ++vk_mip_count; }
-            }
-            LLVKLoader::generateCubeMipChainBlitVk(mVkCubeImage, resolution, vk_mip_count, format);
-        }
-    }
 }
 
 void LLCubeMap::generateMipMaps()

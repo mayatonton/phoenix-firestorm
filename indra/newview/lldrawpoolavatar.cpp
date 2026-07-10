@@ -508,16 +508,6 @@ void LLDrawPoolAvatar::beginImpostor()
         gImpostorProgram.bind();
         gImpostorProgram.setMinimumAlpha(0.01f);
 
-        if (LLVKLoader::isVulkanInitialized()
-            && gImpostorProgram.mVkPerProgramUBO != VK_NULL_HANDLE
-            && gImpostorProgram.mVkPerProgramUBOMapped != nullptr)
-        {
-            LLVKLoader::ImpostorF_UBO ubo_data = {};
-            ubo_data.minimum_alpha = 0.01f;
-            memcpy(gImpostorProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
-        }
-        // </FS:AYA>
-
     gPipeline.enableLightsFullbright();
     sDiffuseChannel = 0;
 }
@@ -576,16 +566,6 @@ void LLDrawPoolAvatar::beginDeferredImpostor()
     sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
     sVertexProgram->bind();
     sVertexProgram->setMinimumAlpha(0.01f);
-
-    if (LLVKLoader::isVulkanInitialized()
-        && gDeferredImpostorProgram.mVkPerProgramUBO != VK_NULL_HANDLE
-        && gDeferredImpostorProgram.mVkPerProgramUBOMapped != nullptr)
-    {
-        LLVKLoader::ImpostorF_UBO ubo_data = {};
-        ubo_data.minimum_alpha = 0.01f;
-        memcpy(gDeferredImpostorProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
-    }
-    // </FS:AYA>
 }
 
 void LLDrawPoolAvatar::endDeferredImpostor()

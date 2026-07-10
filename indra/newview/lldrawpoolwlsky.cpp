@@ -155,141 +155,130 @@ void LLDrawPoolWLSky::writeWindlightAtmosUBOs()
         return;
     }
 
+    LLVKLoader::WindlightAtmos_PerProgramBind ubo_data = {};
+
+    LLColor3 sunlight     = psky->getSunlightColor();
+    LLColor3 moonlight    = psky->getMoonlightColor();
+    LLColor4 totalAmbient = psky->getTotalAmbient();
+    LLColor3 blue_horizon = psky->getBlueHorizon();
+    LLColor3 blue_density = psky->getBlueDensity();
+    LLColor3 glow         = psky->getGlow();
+    LLVector3 light_norm  = LLVector3(LLEnvironment::instance().getClampedLightNorm().mV);
+
+    LLColor3 r17_sun_mod = LLSettingsVOSky::getR17SunModulator(light_norm, psky.get());
+    sunlight.mV[0]     *= r17_sun_mod.mV[0];
+    sunlight.mV[1]     *= r17_sun_mod.mV[1];
+    sunlight.mV[2]     *= r17_sun_mod.mV[2];
+    totalAmbient.mV[0] *= r17_sun_mod.mV[0];
+    totalAmbient.mV[1] *= r17_sun_mod.mV[1];
+    totalAmbient.mV[2] *= r17_sun_mod.mV[2];
+
     {
-        if (LLVKLoader::isVulkanInitialized())
+        bool irradiance_pass_aa = gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass();
+        static LLCachedControl<bool> should_auto_adjust_aa(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+        if (!irradiance_pass_aa && psky->getReflectionProbeAmbiance() == 0.f
+            && psky->canAutoAdjust() && should_auto_adjust_aa())
         {
-            LLVKLoader::WindlightAtmos_PerProgramBind ubo_data = {};
-
-            LLColor3 sunlight     = psky->getSunlightColor();
-            LLColor3 moonlight    = psky->getMoonlightColor();
-            LLColor4 totalAmbient = psky->getTotalAmbient();
-            LLColor3 blue_horizon = psky->getBlueHorizon();
-            LLColor3 blue_density = psky->getBlueDensity();
-            LLColor3 glow         = psky->getGlow();
-            LLVector3 light_norm  = LLVector3(LLEnvironment::instance().getClampedLightNorm().mV);
-
-            // r17 sun color-temperature modulator: sunlight + ambient のみに乗算
-            LLColor3 r17_sun_mod = LLSettingsVOSky::getR17SunModulator(light_norm, psky.get());
-            sunlight.mV[0]     *= r17_sun_mod.mV[0];
-            sunlight.mV[1]     *= r17_sun_mod.mV[1];
-            sunlight.mV[2]     *= r17_sun_mod.mV[2];
-            totalAmbient.mV[0] *= r17_sun_mod.mV[0];
-            totalAmbient.mV[1] *= r17_sun_mod.mV[1];
-            totalAmbient.mV[2] *= r17_sun_mod.mV[2];
-
-            // auto-adjust legacy sky color scaling: gate は !irradiance_pass &&
-            // getReflectionProbeAmbiance()==0 && canAutoAdjust() && RenderSkyAutoAdjustLegacy
-            {
-                bool irradiance_pass_aa = gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass();
-                static LLCachedControl<bool> should_auto_adjust_aa(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-                if (!irradiance_pass_aa && psky->getReflectionProbeAmbiance() == 0.f
-                    && psky->canAutoAdjust() && should_auto_adjust_aa())
-                {
-                    static LLCachedControl<F32> auto_adjust_ambient_scale(gSavedSettings, "RenderSkyAutoAdjustAmbientScale", 0.75f);
-                    static LLCachedControl<F32> auto_adjust_blue_horizon_scale(gSavedSettings, "RenderSkyAutoAdjustBlueHorizonScale", 1.f);
-                    static LLCachedControl<F32> auto_adjust_blue_density_scale(gSavedSettings, "RenderSkyAutoAdjustBlueDensityScale", 1.f);
-                    static LLCachedControl<F32> auto_adjust_sun_color_scale(gSavedSettings, "RenderSkyAutoAdjustSunColorScale", 1.f);
-                    F32 amb_s = (F32)auto_adjust_ambient_scale;
-                    F32 sun_s = (F32)auto_adjust_sun_color_scale;
-                    F32 bh_s  = (F32)auto_adjust_blue_horizon_scale;
-                    F32 bd_s  = (F32)auto_adjust_blue_density_scale;
-                    totalAmbient.mV[0] *= amb_s; totalAmbient.mV[1] *= amb_s; totalAmbient.mV[2] *= amb_s;
-                    sunlight.mV[0]     *= sun_s; sunlight.mV[1]     *= sun_s; sunlight.mV[2]     *= sun_s;
-                    blue_horizon.mV[0] *= bh_s;  blue_horizon.mV[1] *= bh_s;  blue_horizon.mV[2] *= bh_s;
-                    blue_density.mV[0] *= bd_s;  blue_density.mV[1] *= bd_s;  blue_density.mV[2] *= bd_s;
-                }
-            }
-
-            // irradiance pass: blue_horizon/blue_density を calcHSL で lightness 化して脱色
-            static LLCachedControl<bool> desaturate_irradiance(gSavedSettings, "RenderDesaturateIrradiance", true);
-            if (desaturate_irradiance && gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass())
-            {
-                F32 h, s, l;
-                blue_horizon.calcHSL(&h, &s, &l);
-                blue_horizon.mV[0] = blue_horizon.mV[1] = blue_horizon.mV[2] = l;
-                blue_density.calcHSL(&h, &s, &l);
-                blue_density.mV[0] = blue_density.mV[1] = blue_density.mV[2] = l;
-            }
-
-            // irradiance pass: ambient を 0 に (probe に ambient を二重計上しない)
-            if (gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass())
-            {
-                totalAmbient.mV[0] = totalAmbient.mV[1] = totalAmbient.mV[2] = 0.f;
-            }
-
-            ubo_data.sunlight_color[0] = sunlight.mV[0];
-            ubo_data.sunlight_color[1] = sunlight.mV[1];
-            ubo_data.sunlight_color[2] = sunlight.mV[2];
-            ubo_data.sun_up_factor     = psky->getIsSunUp() ? 1 : 0;
-
-            ubo_data.moonlight_color[0] = moonlight.mV[0];
-            ubo_data.moonlight_color[1] = moonlight.mV[1];
-            ubo_data.moonlight_color[2] = moonlight.mV[2];
-            // classic_mode = canAutoAdjust() && !RenderSkyAutoAdjustLegacy
-            static LLCachedControl<bool> should_auto_adjust_wl(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-            ubo_data.classic_mode_wl    = (psky->canAutoAdjust() && !should_auto_adjust_wl()) ? 1 : 0;
-
-            ubo_data.ambient_color[0] = totalAmbient.mV[0];
-            ubo_data.ambient_color[1] = totalAmbient.mV[1];
-            ubo_data.ambient_color[2] = totalAmbient.mV[2];
-
-            static LLCachedControl<U32> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
-            ubo_data.aya_visual_realism_enabled = (aya_visual_realism() == 1) ? 1 : 0;
-
-            ubo_data.blue_horizon[0] = blue_horizon.mV[0];
-            ubo_data.blue_horizon[1] = blue_horizon.mV[1];
-            ubo_data.blue_horizon[2] = blue_horizon.mV[2];
-
-            static LLCachedControl<bool> aya_r14_vol(gSavedSettings, "AYAR14VolumetricAtmosphereInCinematicEnabled", false);
-            bool r14_on = (aya_visual_realism() == 1) || (aya_visual_realism() == 2 && aya_r14_vol);
-            ubo_data.aya_r14_volumetric_atmosphere_enabled = r14_on ? 1 : 0;
-
-            ubo_data.blue_density[0] = blue_density.mV[0];
-            ubo_data.blue_density[1] = blue_density.mV[1];
-            ubo_data.blue_density[2] = blue_density.mV[2];
-
-            static LLCachedControl<F32> aya_r14_strength(gSavedSettings, "AYAR14Strength", 1.0f);
-            ubo_data.aya_r14_strength = llclamp((F32)aya_r14_strength, 0.f, 1.f);
-
-            ubo_data.glow[0] = glow.mV[0];
-            ubo_data.glow[1] = glow.mV[1];
-            ubo_data.glow[2] = glow.mV[2];
-
-            static LLCachedControl<F32> aya_r16_strength(gSavedSettings, "AYAR16AerialPerspectiveStrength", 1.0f);
-            ubo_data.aya_r16_strength = llclamp((F32)aya_r16_strength, 0.f, 1.f);
-
-            ubo_data.lightnorm[0] = light_norm.mV[0];
-            ubo_data.lightnorm[1] = light_norm.mV[1];
-            ubo_data.lightnorm[2] = light_norm.mV[2];
-
-            static LLCachedControl<bool> aya_r16_aerial(gSavedSettings, "AYAR16AerialPerspectiveEnabled", true);
-            static LLCachedControl<bool> aya_r16_in_cinematic(gSavedSettings, "AYAR16AerialPerspectiveInCinematicEnabled", false);
-            bool r16_on = (aya_visual_realism() == 1 && aya_r16_aerial)
-                       || (aya_visual_realism() == 2 && aya_r16_in_cinematic);
-            ubo_data.aya_r16_aerial_perspective_enabled = r16_on ? 1 : 0;
-
-            ubo_data.haze_density         = (F32)psky->getHazeDensity();
-            ubo_data.density_multiplier   = (F32)psky->getDensityMultiplier();
-            ubo_data.distance_multiplier  = (F32)psky->getDistanceMultiplier();
-            ubo_data.max_y                = (F32)psky->getMaxY();
-            ubo_data.haze_horizon         = (F32)psky->getHazeHorizon();
-            ubo_data.cloud_shadow         = (F32)psky->getCloudShadow();
-            ubo_data.sun_moon_glow_factor = (F32)psky->getSunMoonGlowFactor();
-
-            static LLCachedControl<bool> hdr(gSavedSettings, "RenderHDREnabled");
-            static LLCachedControl<F32> sunlight_scale(gSavedSettings, "RenderSkySunlightScale", 1.5f);
-            static LLCachedControl<F32> sunlight_hdr_scale(gSavedSettings, "RenderHDRSkySunlightScale", 1.5f);
-            static LLCachedControl<F32> ambient_scale(gSavedSettings, "RenderSkyAmbientScale", 1.5f);
-            ubo_data.sky_sunlight_scale = hdr ? (F32)sunlight_hdr_scale : (F32)sunlight_scale;
-            ubo_data.sky_ambient_scale  = (F32)ambient_scale;
-
-            LLVKLoader::writeCurrentWindlightAtmosUBO(ubo_data);
-
-            LLVKLoader::WindlightHDR_PerProgramBind hdr_data = {};
-            hdr_data.sky_hdr_scale = LLPipeline::sLastSkyHdrScale;
-            LLVKLoader::writeCurrentWindlightHDRUBO(hdr_data);
+            static LLCachedControl<F32> auto_adjust_ambient_scale(gSavedSettings, "RenderSkyAutoAdjustAmbientScale", 0.75f);
+            static LLCachedControl<F32> auto_adjust_blue_horizon_scale(gSavedSettings, "RenderSkyAutoAdjustBlueHorizonScale", 1.f);
+            static LLCachedControl<F32> auto_adjust_blue_density_scale(gSavedSettings, "RenderSkyAutoAdjustBlueDensityScale", 1.f);
+            static LLCachedControl<F32> auto_adjust_sun_color_scale(gSavedSettings, "RenderSkyAutoAdjustSunColorScale", 1.f);
+            F32 amb_s = (F32)auto_adjust_ambient_scale;
+            F32 sun_s = (F32)auto_adjust_sun_color_scale;
+            F32 bh_s  = (F32)auto_adjust_blue_horizon_scale;
+            F32 bd_s  = (F32)auto_adjust_blue_density_scale;
+            totalAmbient.mV[0] *= amb_s; totalAmbient.mV[1] *= amb_s; totalAmbient.mV[2] *= amb_s;
+            sunlight.mV[0]     *= sun_s; sunlight.mV[1]     *= sun_s; sunlight.mV[2]     *= sun_s;
+            blue_horizon.mV[0] *= bh_s;  blue_horizon.mV[1] *= bh_s;  blue_horizon.mV[2] *= bh_s;
+            blue_density.mV[0] *= bd_s;  blue_density.mV[1] *= bd_s;  blue_density.mV[2] *= bd_s;
         }
     }
+
+    static LLCachedControl<bool> desaturate_irradiance(gSavedSettings, "RenderDesaturateIrradiance", true);
+    if (desaturate_irradiance && gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass())
+    {
+        F32 h, s, l;
+        blue_horizon.calcHSL(&h, &s, &l);
+        blue_horizon.mV[0] = blue_horizon.mV[1] = blue_horizon.mV[2] = l;
+        blue_density.calcHSL(&h, &s, &l);
+        blue_density.mV[0] = blue_density.mV[1] = blue_density.mV[2] = l;
+    }
+
+    if (gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass())
+    {
+        totalAmbient.mV[0] = totalAmbient.mV[1] = totalAmbient.mV[2] = 0.f;
+    }
+
+    ubo_data.sunlight_color[0] = sunlight.mV[0];
+    ubo_data.sunlight_color[1] = sunlight.mV[1];
+    ubo_data.sunlight_color[2] = sunlight.mV[2];
+    ubo_data.sun_up_factor     = psky->getIsSunUp() ? 1 : 0;
+
+    ubo_data.moonlight_color[0] = moonlight.mV[0];
+    ubo_data.moonlight_color[1] = moonlight.mV[1];
+    ubo_data.moonlight_color[2] = moonlight.mV[2];
+    static LLCachedControl<bool> should_auto_adjust_wl(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+    ubo_data.classic_mode_wl    = (psky->canAutoAdjust() && !should_auto_adjust_wl()) ? 1 : 0;
+
+    ubo_data.ambient_color[0] = totalAmbient.mV[0];
+    ubo_data.ambient_color[1] = totalAmbient.mV[1];
+    ubo_data.ambient_color[2] = totalAmbient.mV[2];
+
+    static LLCachedControl<U32> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
+    ubo_data.aya_visual_realism_enabled = (aya_visual_realism() == 1) ? 1 : 0;
+
+    ubo_data.blue_horizon[0] = blue_horizon.mV[0];
+    ubo_data.blue_horizon[1] = blue_horizon.mV[1];
+    ubo_data.blue_horizon[2] = blue_horizon.mV[2];
+
+    static LLCachedControl<bool> aya_r14_vol(gSavedSettings, "AYAR14VolumetricAtmosphereInCinematicEnabled", false);
+    bool r14_on = (aya_visual_realism() == 1) || (aya_visual_realism() == 2 && aya_r14_vol);
+    ubo_data.aya_r14_volumetric_atmosphere_enabled = r14_on ? 1 : 0;
+
+    ubo_data.blue_density[0] = blue_density.mV[0];
+    ubo_data.blue_density[1] = blue_density.mV[1];
+    ubo_data.blue_density[2] = blue_density.mV[2];
+
+    static LLCachedControl<F32> aya_r14_strength(gSavedSettings, "AYAR14Strength", 1.0f);
+    ubo_data.aya_r14_strength = llclamp((F32)aya_r14_strength, 0.f, 1.f);
+
+    ubo_data.glow[0] = glow.mV[0];
+    ubo_data.glow[1] = glow.mV[1];
+    ubo_data.glow[2] = glow.mV[2];
+
+    static LLCachedControl<F32> aya_r16_strength(gSavedSettings, "AYAR16AerialPerspectiveStrength", 1.0f);
+    ubo_data.aya_r16_strength = llclamp((F32)aya_r16_strength, 0.f, 1.f);
+
+    ubo_data.lightnorm[0] = light_norm.mV[0];
+    ubo_data.lightnorm[1] = light_norm.mV[1];
+    ubo_data.lightnorm[2] = light_norm.mV[2];
+
+    static LLCachedControl<bool> aya_r16_aerial(gSavedSettings, "AYAR16AerialPerspectiveEnabled", true);
+    static LLCachedControl<bool> aya_r16_in_cinematic(gSavedSettings, "AYAR16AerialPerspectiveInCinematicEnabled", false);
+    bool r16_on = (aya_visual_realism() == 1 && aya_r16_aerial)
+               || (aya_visual_realism() == 2 && aya_r16_in_cinematic);
+    ubo_data.aya_r16_aerial_perspective_enabled = r16_on ? 1 : 0;
+
+    ubo_data.haze_density         = (F32)psky->getHazeDensity();
+    ubo_data.density_multiplier   = (F32)psky->getDensityMultiplier();
+    ubo_data.distance_multiplier  = (F32)psky->getDistanceMultiplier();
+    ubo_data.max_y                = (F32)psky->getMaxY();
+    ubo_data.haze_horizon         = (F32)psky->getHazeHorizon();
+    ubo_data.cloud_shadow         = (F32)psky->getCloudShadow();
+    ubo_data.sun_moon_glow_factor = (F32)psky->getSunMoonGlowFactor();
+
+    static LLCachedControl<bool> hdr(gSavedSettings, "RenderHDREnabled");
+    static LLCachedControl<F32> sunlight_scale(gSavedSettings, "RenderSkySunlightScale", 1.5f);
+    static LLCachedControl<F32> sunlight_hdr_scale(gSavedSettings, "RenderHDRSkySunlightScale", 1.5f);
+    static LLCachedControl<F32> ambient_scale(gSavedSettings, "RenderSkyAmbientScale", 1.5f);
+    ubo_data.sky_sunlight_scale = hdr ? (F32)sunlight_hdr_scale : (F32)sunlight_scale;
+    ubo_data.sky_ambient_scale  = (F32)ambient_scale;
+
+    LLVKLoader::writeCurrentWindlightAtmosUBO(ubo_data);
+
+    LLVKLoader::WindlightHDR_PerProgramBind hdr_data = {};
+    hdr_data.sky_hdr_scale = LLPipeline::sLastSkyHdrScale;
+    LLVKLoader::writeCurrentWindlightHDRUBO(hdr_data);
 }
 
 void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 camHeightLocal) const

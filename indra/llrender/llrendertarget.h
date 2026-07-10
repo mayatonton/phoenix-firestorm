@@ -181,7 +181,6 @@ public:
         return (attachment < mVkTexLayout.size()) ? mVkTexLayout[attachment] : VK_IMAGE_LAYOUT_UNDEFINED;
     }
     VkImageLayout getVkDepthLayout() const { return getCurDepthLayout(); }
-    U32 getVkTexCount() const { return (U32)mVkTex.size(); }
 
     void bindForShaderRead(U32 attachment = 0, bool depth = false);
 
@@ -213,8 +212,6 @@ public:
     void swapFBORefs(LLRenderTarget& other);
 
     static LLRenderTarget* sBoundTarget;
-
-    bool mIsSwapchainTarget = false;
 
 protected:
     U32 mResX;

@@ -55,8 +55,8 @@
 #include "m4math.h"
 #include "llmatrix4a.h"
 #include "llperfstats.h"
-#include "llvkloader.h" // r41 Phase G-6 (2026-06-13): ScenePerDrawBindings + ensureScenePerDrawDescriptorSet
-#include "llimagegl.h"  // r41 Phase G-6 (2026-06-13): sWhiteImageGLp / sDefaultGLTexture fallback access
+#include "llvkloader.h"
+#include "llimagegl.h"
 
 #if !LL_DARWIN && !LL_LINUX
 extern PFNGLWEIGHTPOINTERARBPROC glWeightPointerARB;

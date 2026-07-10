@@ -335,8 +335,6 @@ public:
     // <AYAstorm r30 P3 step 4> Volumetric Lighting (godrays) — BD lineage
     // 995a1354d8. Post-process pass between generateGlow and combineGlow;
     // gated by AYAVisualRealismEnabled == 2 (Cinematic) and
-    // RenderVolumetricLighting at the call site. additive overlay = in-place
-    // (src へ散乱加算)、ping-pong/swap なし (godrays 範式)。
     void renderVolumetric(LLRenderTarget* src);
     // </AYAstorm r30 P3>
     void bindLightFunc(LLGLSLShader& shader);
@@ -346,25 +344,23 @@ public:
     void bindShadowMaps(LLGLSLShader& shader);
     void bindDeferredShaderFast(LLGLSLShader& shader);
     void bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target = nullptr, LLRenderTarget* depth_target = nullptr);
-    void bindDeferredHelperBindings(LLGLSLShader& shader, LLRenderTarget* depth_target = nullptr);
 
     void compositeForwardFlip();
     struct SpotProjForVk
     {
-        F32 proj_mat[16];   // = screen_to_light (PROJECTOR_MATRIX)
-        F32 proj_p[3];      // = p1 (PROJECTOR_P)
-        F32 proj_n[3];      // = n (PROJECTOR_N)
-        F32 proj_range;     // = proj_range (PROJECTOR_RANGE)
-        F32 proj_ambiance;  // = params.mV[2] (PROJECTOR_AMBIANCE)
-        F32 proj_focus;     // = focus (PROJECTOR_FOCUS)
-        F32 proj_lod;       // = lod_range (PROJECTOR_LOD)
+        F32 proj_mat[16];
+        F32 proj_p[3];
+        F32 proj_n[3];
+        F32 proj_range;
+        F32 proj_ambiance;
+        F32 proj_focus;
+        F32 proj_lod;
     };
     void setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
                         F32* out_proj_origin = nullptr,
                         F32* out_shadow_fade = nullptr,
                         S32* out_proj_shadow_idx = nullptr,
                         SpotProjForVk* out_proj = nullptr);
-    // </FS:AYA>
 
     void unbindDeferredShader(LLGLSLShader& shader);
 
@@ -578,12 +574,7 @@ private:
     bool updateDrawableGeom(LLDrawable* drawable);
     bool renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
                                              U32 max_draw_calls,
-                                             U32 max_triangles,
-                                             U32* out_draw_calls = nullptr,
-                                             U32* out_triangles = nullptr,
-                                             bool* out_over_budget = nullptr,
-                                             U32* out_attempted_draw_calls = nullptr,
-                                             U32* out_attempted_triangles = nullptr);
+                                             U32 max_triangles);
     void assertInitializedDoError();
     bool assertInitialized() { const bool is_init = isInit(); if (!is_init) assertInitializedDoError(); return is_init; };
     void connectRefreshCachedSettingsSafe(const std::string name);
@@ -811,12 +802,9 @@ public:
     static bool             sBakeSunlight;
     static bool             sNoAlpha;
     static bool             sUseFarClip;
-    static bool             sShadowRender;
     static bool             sDynamicLOD;
     static bool             sPickAvatar;
-    static bool             sReflectionRender;
     static bool             sDistortionRender;
-    static bool             sImpostorRender;
     static bool             sImpostorRenderAlphaDepthPass;
     // <AYAstorm r30 P2> True while SMAA T2x projection jitter is active
     // (Cinematic mode only, mainline 3D scene only). Sub-RT passes
@@ -825,8 +813,6 @@ public:
     static bool             sT2xJitterEnabled;
     // </AYAstorm r30 P2>
     static bool             sShowJellyDollAsImpostor;
-    static bool             sUnderWaterRender;
-    static bool             sRenderGlow;
     static bool             sTextureBindTest;
     static bool             sRenderAttachedLights;
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD-verbatim attached-light split (Cinematic only)
@@ -835,13 +821,10 @@ public:
     static bool             sRenderDeferredLights;
     // </FS:AYAstorm:r30-bd-port>
     static bool             sRenderAttachedParticles;
-    static bool             sRenderDeferred;
-    static bool             sReflectionProbesEnabled;
     // <FS:Beq> [FIRE-35070] Address gradual slowdown issue
     static S32              sReflectionProbeLevel;
     // </FS:Beq>
     static S32              sVisibleLightCount;
-    static bool             sRenderingHUDs;
     static F32              sDistortionWaterClipPlaneMargin;
     static F32              sVolumeSAFrame;
     static F32              sLastSkyHdrScale;
@@ -862,16 +845,9 @@ public:
     static bool             sDoFEnabled;// <FS:Beq/> FIRE-32023 focus point render 
     static LLTrace::EventStatHandle<S64> sStatBatchSize;
 
-    // shadow count named constants = 旧 magic number `4` / `2` / `6` literal を置換 =
-    //   Firestorm 原本由来 `shadow[4]` (= git blame Andrey Lihatskiy 2024-04-29) +
-    //   `mSpotShadow[2]` + `mSunShadowMatrix[6]` 整合維持。 sun = CSM 4 cascade + spot = 2 = total 6。
     static constexpr U32 kSunShadowCount   = 4;
     static constexpr U32 kSpotShadowCount  = 2;
     static constexpr U32 kTotalShadowCount = kSunShadowCount + kSpotShadowCount;
-    // mShadowCamera[8] = sun cascade × 2 variants = index 0..kSunShadowCount-1 =
-    //   sun cascade main views + index kSunShadowCount..2*kSunShadowCount-1 =
-    //   sun cascade secondary views (pipeline.cpp の `mShadowCamera[j+4] = shadow_cam`、
-    //   j=0..3 sun cascade index ゆえ mShadowCamera[4..7] = secondary view 保存)。
     static constexpr U32 kShadowCameraCount = 2 * kSunShadowCount;
 
     class RenderTargetPack
@@ -903,9 +879,6 @@ public:
 
     // Auxillary render target pack scaled to the hero probe's per-face size.
     RenderTargetPack mHeroProbeRT;
-
-    // currently used render target pack
-    RenderTargetPack* mRT;
 
     LLRenderTarget* mVkSnapshotRedirectTarget = nullptr;
 

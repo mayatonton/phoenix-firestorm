@@ -664,7 +664,6 @@ LLReflectionMap* LLReflectionMapManager::registerSpatialGroup(LLSpatialGroup* gr
 LLReflectionMap* LLReflectionMapManager::registerViewerObject(LLViewerObject* vobj)
 {
     // <FS:Beq> [FIRE-35070] Don't register manual probes if we're not using them
-    // if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
     if (LLPipeline::sReflectionProbeLevel == (S32)LLReflectionMap::ProbeLevel::NONE)
     // </FS:Beq>
     {
@@ -845,14 +844,13 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         // perform a gaussian blur on the super sampled render before downsampling
         {
             gGaussianProgram.bind();
-            gPipeline.bindDeferredHelperBindings(gGaussianProgram);
             const F32 gaussian_res_scale = 1.f / (mProbeResolution * 2);
             gGaussianProgram.uniform1f(resScale, gaussian_res_scale);
             S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
 
             // horizontal
             gGaussianProgram.uniform2f(direction, 1.f, 0.f);
-            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);  // horizontal
+            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
             mRenderTarget.bindTarget();
             gPipeline.mScreenTriangleVB->setBuffer();
@@ -861,7 +859,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
             // vertical
             gGaussianProgram.uniform2f(direction, 0.f, 1.f);
-            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);  // vertical
+            gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
             screen_rt->bindTarget();
             gPipeline.mScreenTriangleVB->setBuffer();

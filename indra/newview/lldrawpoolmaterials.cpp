@@ -94,12 +94,6 @@ void LLDrawPoolMaterials::beginDeferredPass(S32 pass)
     }
 
     gPipeline.bindDeferredShader(*mShader);
-
-    if (LLVKLoader::isVulkanInitialized()
-        && LLGLSLShader::sCurBoundShaderPtr != nullptr)
-    {
-        LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
-    }
 }
 
 void LLDrawPoolMaterials::endDeferredPass(S32 pass)
@@ -239,15 +233,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             {
                 lastSSSSkin = skinFlag;
                 glUniform1f(sssSkin, skinFlag);
-                if (LLVKLoader::isVulkanInitialized() && mShader->mVkPipelineLayout != VK_NULL_HANDLE)
-                {
-                    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-                    if (cmd != VK_NULL_HANDLE)
-                    {
-                        vkCmdPushConstants(cmd, mShader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                           LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &skinFlag);
-                    }
-                }
             }
         }
 
@@ -292,7 +277,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
                                           params.mIsSSSTarget ? 1.f : 0.f);
             }
         }
-        // </FS:AYA>
 
         // upload matrix palette to shader
         if (rigged)

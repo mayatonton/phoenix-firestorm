@@ -29,12 +29,12 @@
 
 #include "llgl.h"
 #include "llrender.h"
-#include "llvkloader.h"  // LLVKLoader::FRAMES_IN_FLIGHT 取得
+#include "llvkloader.h"
 #include "llimagegl.h"
 #include "llcubemap.h"
 #include "llstaticstringtable.h"
 #include <boost/json.hpp>
-#include <array>         // std::array<S32, MAX_VK_BINDING> mVkBindingToEnum
+#include <array>
 #include <cstring>
 #include <unordered_map>
 
@@ -112,11 +112,11 @@ struct VkPipelineStateKeyHash
     size_t operator()(const VkPipelineStateKey& k) const noexcept
     {
         const unsigned char* data = reinterpret_cast<const unsigned char*>(&k);
-        U64 hash = 14695981039346656037ULL; // FNV offset basis
+        U64 hash = 14695981039346656037ULL;
         for (size_t i = 0; i < sizeof(k); ++i)
         {
             hash ^= data[i];
-            hash *= 1099511628211ULL;       // FNV prime
+            hash *= 1099511628211ULL;
         }
         return static_cast<size_t>(hash);
     }
@@ -241,16 +241,14 @@ public:
         SG_COUNT
     } eGroup;
 
-    // <AYAstorm> UniformBlock 名は GLSL block 名 (Asset_/Skin_ prefix) に追従、enum 値自体は不変。
     enum UniformBlock : GLuint
     {
         UB_REFLECTION_PROBES,   // "ReflectionProbes"
-        UB_GLTF_JOINTS,         // "Skin_GLTFJoints"
-        UB_GLTF_NODES,          // "Asset_GLTFNodes"
-        UB_GLTF_MATERIALS,      // "Asset_GLTFMaterials"
+        UB_GLTF_JOINTS,
+        UB_GLTF_NODES,
+        UB_GLTF_MATERIALS,
         NUM_UNIFORM_BLOCKS
     };
-    // </AYAstorm>
 
 
     static std::set<LLGLSLShader*> sInstances;
@@ -262,9 +260,9 @@ public:
 
     struct StageSource
     {
-        GLenum type;                        // GL_VERTEX_SHADER / GL_FRAGMENT_SHADER
-        std::string file_name;              // open_file_name (gpu_class 解決後)
-        std::vector<std::string> sources;   // loadShaderFile() preprocessing 後 shader_code_text[] copy
+        GLenum type;
+        std::string file_name;
+        std::vector<std::string> sources;
     };
 
     static GLuint sCurBoundShader;
@@ -462,8 +460,6 @@ public:
 
     // hacky flag used for optimization in LLDrawPoolAlpha
     bool mCanBindFast = false;
-
-    bool mIsScreenSpaceCopyPass = false;
 
     std::vector<StageSource> mStageSources;
 

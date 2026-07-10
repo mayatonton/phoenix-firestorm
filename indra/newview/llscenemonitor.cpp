@@ -464,7 +464,6 @@ void LLSceneMonitor::calcDiffAggregate()
 
     if(!mDebugViewerVisible)
     {
-        // r41 Phase 1 S-6-CB-rem1 (2026-06-16): glColorMask bypass → LLRender::setColorMask 経由化。
         gGL.setColorMask(true, true, true, true);
     }
 #endif

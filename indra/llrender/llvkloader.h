@@ -32,7 +32,6 @@ namespace LLVKLoader
     bool endFrame();
     VkCommandBuffer getCurrentCommandBuffer();
 
-    bool     isOcclusionQueryVkAvailable();
     uint32_t acquireOcclusionQueryVk();
     void     releaseOcclusionQueryVk(uint32_t handle);
     void     cmdBeginOcclusionQueryVk(VkCommandBuffer cmd, uint32_t handle);
@@ -46,7 +45,6 @@ namespace LLVKLoader
     void setRenderViewport(S32 x, S32 y, S32 w, S32 h);
 
     VkDevice         getDevice();
-    VkPipelineCache  getPipelineCache();
 
     VkPipelineLayout createStandardPipelineLayout(
         const VkDescriptorSetLayout* descriptor_set_layouts,
@@ -204,12 +202,7 @@ namespace LLVKLoader
 
     VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat);
 
-    VkFilter             llGlEnumToVkFilter     (U32 ll_gl_filter);
-    VkSamplerMipmapMode  llGlEnumToVkMipmapMode (U32 ll_gl_filter);
-    VkSamplerAddressMode llGlEnumToVkWrap       (U32 ll_gl_wrap);
-    VkBlendFactor        llGlEnumToVkBlendFactor(U32 ll_gl_blend);
     VkCompareOp          llGlEnumToVkCompareOp  (U32 ll_gl_func);
-    VkCullModeFlags      llGlEnumToVkCullMode   (U32 ll_gl_cull);
     VkStencilOp          llGlEnumToVkStencilOp  (U32 ll_gl_op);
     U32                  vkFormatBytesPerPixel  (VkFormat format);
     U32                  glFormatSourceComponents(U32 ll_gl_format);
@@ -738,16 +731,6 @@ namespace LLVKLoader
     static_assert(sizeof(HazeF_PerProgramBind) == 32,
                   "HazeF_PerProgramBind size mismatch (std140 expects 32 B)");
 
-    struct ImpostorF_UBO
-    {
-        float minimum_alpha;
-        float pad0;
-        float pad1;
-        float pad2;
-    };
-    static_assert(sizeof(ImpostorF_UBO) == 16,
-                  "ImpostorF_UBO size mismatch (std140 expects 16 B)");
-
     struct IrradianceGen_PerProgramBind
     {
         S32   sourceIdx;
@@ -1074,7 +1057,6 @@ namespace LLVKLoader
     static constexpr U32 ALPHAF_UBO_OFFSET_SUN_MOON = 16;
     static constexpr U32 ALPHAF_UBO_OFFSET_LIGHTS_SHADOW    = 16;
     static constexpr U32 ALPHAF_UBO_OFFSET_LIGHTS_NO_SHADOW = 48;
-    static constexpr U32 ALPHAF_UBO_LIGHT_ARRAYS_SIZE = 512;
 
     static constexpr U32 GLTFMR_UBO_SIZE_HEADER          =  16;
     static constexpr U32 GLTFMR_UBO_SIZE_ALPHA_SUNSHADOW = 656;
@@ -1154,14 +1136,11 @@ namespace LLVKLoader
     bool uploadImageDataVk(VkImage     image,
                            U32         width,
                            U32         height,
-                           VkFormat    format,
                            const void* data,
                            U32         data_size_bytes,
                            U32         mip_level = 0);
 
     bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format);
-
-    bool generateCubeMipChainBlitVk(VkImage image, U32 resolution, U32 mip_count, VkFormat format);
 
     bool createTexture3DImageVk(U32          width,
                                 U32          height,
@@ -1175,7 +1154,6 @@ namespace LLVKLoader
                              U32         width,
                              U32         height,
                              U32         depth,
-                             VkFormat    format,
                              const void* data,
                              U32         data_size_bytes);
 
@@ -1198,7 +1176,6 @@ namespace LLVKLoader
 
     bool uploadCubeImageDataVk(VkImage           image,
                                U32               resolution,
-                               VkFormat          format,
                                const void* const face_data[6],
                                U32               face_size_bytes);
 
@@ -1281,10 +1258,6 @@ namespace LLVKLoader
         VkRenderSuspendScope();
         ~VkRenderSuspendScope();
     };
-
-    VkImageView getCurrentSwapchainImageView();
-    VkExtent2D  getSwapchainExtent();
-    U32         getCurrentSwapchainImageIndex();
 
     VkFormat    getSwapchainFormat();
 

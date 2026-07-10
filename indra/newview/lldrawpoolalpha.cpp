@@ -125,14 +125,12 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
         LLVector4 near_clip(0, 0, -1, 0);
         shader->uniform1f(waterSign, 1.f);
         shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, near_clip.mV);
-        // HUD は no-clip: waterSign push を 0.f に (deferredUtil.glsl waterClip `if (waterSign==0.0) return;`)
         water_sign_pc = 0.f;
     }
     else
     {
         shader->uniform1f(waterSign, water_sign);
         shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
-        water_sign_pc = water_sign;
     }
 
     if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
@@ -204,42 +202,6 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         &gDeferredFullbrightAlphaMaskAlphaProgram;
     prepare_alpha_shader(fullbright_shader, true, water_sign);
 
-    if (!LLVKLoader::isVulkanInitialized())
-    {
-        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
-                                << " EARLY_RETURN: Vulkan not initialized" << LL_ENDL;
-    }
-    else if (!gPipeline.mWaterExclusionMask.hasVkImage())
-    {
-        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
-                                << " EARLY_RETURN: mWaterExclusionMask.hasVkImage()=false"
-                                << LL_ENDL;
-    }
-    else if (fullbright_shader == nullptr)
-    {
-        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
-                                << " EARLY_RETURN: fullbright_shader=null" << LL_ENDL;
-    }
-    else
-    {
-        fullbright_shader->bind();
-        LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
-                                << " SUCCESS_static cur=" << fullbright_shader->mName << LL_ENDL;
-        if (fullbright_shader->mRiggedVariant != nullptr &&
-            fullbright_shader->mRiggedVariant != fullbright_shader)
-        {
-            fullbright_shader->mRiggedVariant->bind();
-            LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
-                                    << " SUCCESS_rigged cur="
-                                    << fullbright_shader->mRiggedVariant->mName << LL_ENDL;
-        }
-        else
-        {
-            LL_WARNS_ONCE("Vulkan") << "F-15.116 Phase 3.B.diag alpha_pool"
-                                    << " mRiggedVariant=null or same as static" << LL_ENDL;
-        }
-    }
-
     simple_shader   =
         (LLPipelineFrameContext::getInstance().isImpostorPass()) ? &gDeferredAlphaImpostorProgram :
         (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDAlphaProgram :
@@ -263,10 +225,6 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // already being setup for rendering
     LLGLSLShader::unbind();
 
-    // Forward alpha BLEND を gPipeline.mAYAAlphaColor へ redirect。
-    // POST_WATER pool + main RT 時のみ (mAYAAlphaColor の depth は mMainRT->deferredScreen
-    // と共有ゆえ non-main RT では depth mismatch、PRE_WATER は water haze/refraction が
-    // mRT->screen 依存ゆえ除外)。
     const bool use_alpha_rt =
         !LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         !gCubeSnapshot &&
@@ -932,7 +890,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
             LLSpatialBridge* bridge = group->getSpatialPartition()->asBridge();
             const LLVector4a* ext = bridge ? bridge->getSpatialExtents() : group->getExtents();
 
-            if (!LLPipelineFrameContext::getInstance().isHUDPass()) // ignore above/below water for HUD render
+            if (!LLPipelineFrameContext::getInstance().isHUDPass())
             {
                 if (above_water)
                 { // reject any spatial groups that have no part above water
@@ -1173,12 +1131,11 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         if (LLVKLoader::isVulkanInitialized())
                         {
                             const ptrdiff_t shader_index = current_shader - gDeferredMaterialProgram;
-                            // shader_index 16..31 = skinned variant、layout_index = shader_index % SHADER_COUNT
                             if (shader_index >= 0 && shader_index < (ptrdiff_t)(LLMaterial::SHADER_COUNT * 2))
                             {
                                 const U32 layout_index = (U32)(shader_index % LLMaterial::SHADER_COUNT);
                                 const U32 alpha_mode = (U32)(layout_index & 0x3);
-                                if (alpha_mode == 1) // DIFFUSE_ALPHA_MODE_BLEND
+                                if (alpha_mode == 1)
                                 {
                                     writeMaterialFAllUBO(*current_shader, layout_index,
                                                          brightness, env_intensity,
