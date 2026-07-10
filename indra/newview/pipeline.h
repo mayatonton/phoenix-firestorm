@@ -898,7 +898,7 @@ public:
     // <AYAstorm:r21.1> GPU self-rigged picker:
     // RGBA8 buffer where rigged attachments of gAgentAvatarp are re-rendered
     // with their LocalID packed into 4 bytes (R=byte0 .. A=byte3). Shares the
-    // depth buffer with mRT->deferredScreen so it agrees pixel-for-pixel with
+    // depth buffer with getFrameRT()->deferredScreen so it agrees pixel-for-pixel with
     // the real scene. Right-click picker reads the byte quad at the mouse
     // pixel, recombines it into a U32 LocalID, and resolves it by walking
     // gAgentAvatarp's attachment tree (see fsselfriggedpicker.cpp). ID 0
@@ -909,7 +909,7 @@ public:
 
     // <AYAstorm r30 P2> Velocity buffer for Cinematic mode (imported from
     // BD 995a1354d8). Two-channel RG16F = per-pixel NDC delta written by
-    // the velocity render pass. Shares depth with mRT->deferredScreen so
+    // the velocity render pass. Shares depth with getFrameRT()->deferredScreen so
     // the velocity pass agrees pixel-for-pixel with the gbuffer without
     // re-writing depth. mSMAAHistory holds the previous frame's
     // post-resolve color for SMAA T2x temporal reprojection. Both are
@@ -937,10 +937,10 @@ public:
     LLRenderTarget          mSceneDepthCopy;
 
     // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color attachment
-    // for forward alpha BLEND draws. Shares depth with mRT->screen so
+    // for forward alpha BLEND draws. Shares depth with getFrameRT()->screen so
     // depth test / depth occlusion against opaque geometry still works,
-    // but color writes land in a separate RT instead of mRT->screen.
-    // After DoF runs on the opaque-only mRT->screen (= bg through alpha
+    // but color writes land in a separate RT instead of getFrameRT()->screen.
+    // After DoF runs on the opaque-only getFrameRT()->screen (= bg through alpha
     // pixels is correctly blurred), this RT is composited over the DoF
     // result in dofCombineF so alpha geometry (hair, grilles, foliage)
     // overlays the blurred bg. Resolves the L1/L2 compositional

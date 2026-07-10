@@ -1,6 +1,6 @@
 /**
 * @file llpipelineframecontext.h
-* @brief AYAstorm r41 LLPipeline frame context — per-frame state aggregation (sub-doc 04)
+* @brief LLPipeline frame context — per-frame state aggregation
 *
 * $LicenseInfo:firstyear=2026&license=viewerlgpl$
 * AYAstorm Viewer Source Code

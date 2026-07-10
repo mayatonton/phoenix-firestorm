@@ -2485,6 +2485,14 @@ namespace
 
 }
 
+static void           tickScenePerDrawDescriptorCache();
+static void           endSwapchainRendering();
+static VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes);
+static void           tickDeferredBufferFreeQueue();
+static void           tickDeferredImageFreeQueue();
+static void           tickDeferredObjectFreeQueue();
+static void           shutdownSurface();
+
 bool initVulkan()
 {
     if (sInitialized)

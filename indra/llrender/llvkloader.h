@@ -205,8 +205,6 @@ namespace LLVKLoader
                                const DynamicRenderingAttachment* depth_attachment);
     void endDynamicRendering();
 
-    VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes);
-
     VkShaderModule loadSpirvShaderModuleFromMemory(const std::vector<unsigned int>& spirv);
 
     VkFormat llGlEnumToVkFormat(U32 ll_gl_intformat);
@@ -1080,13 +1078,10 @@ namespace LLVKLoader
 
     void destroyBufferVk     (VkBuffer  buffer,
                               void*     allocation);
-    void tickDeferredBufferFreeQueue();
-    void tickDeferredImageFreeQueue();
     void destroyPipelineVk           (VkPipeline            pipeline);
     void destroyShaderModuleVk       (VkShaderModule        shader_module);
     void destroyPipelineLayoutVk     (VkPipelineLayout      pipeline_layout);
     void destroyDescriptorSetLayoutVk(VkDescriptorSetLayout descriptor_set_layout);
-    void tickDeferredObjectFreeQueue();
 
     void bindVertexBufferVk(VkCommandBuffer cmd_buf,
                             VkBuffer        buffer,
@@ -1263,7 +1258,6 @@ namespace LLVKLoader
                                  VkAccessFlags        dst_access_mask);
 
     bool         initSurface(LLWindow* window);
-    void         shutdownSurface();
     VkSurfaceKHR getSurface();
 
     bool           initSwapchain();
@@ -1285,7 +1279,6 @@ namespace LLVKLoader
     VkFormat    getSwapchainFormat();
 
     void        beginSwapchainRendering();
-    void        endSwapchainRendering();
 
     bool        isInRenderPassScope();
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);
@@ -1323,7 +1316,6 @@ namespace LLVKLoader
 
     bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& bindings,
                                          VkDescriptorSet*            out_set);
-    void tickScenePerDrawDescriptorCache();
 
     void notifyWindowResize(U32 width, U32 height);
 
