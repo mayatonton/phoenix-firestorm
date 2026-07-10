@@ -2604,27 +2604,10 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
         if (phys_volume->mHullPoints && phys_volume->mHullIndices)
         {
 
-            llassert(LLGLSLShader::sCurBoundShader != 0);
-            LLVertexBuffer::unbind();
-            glVertexPointer(3, GL_FLOAT, 16, phys_volume->mHullPoints);
-
             gGL.diffuseColor4fv(color.mV);
 
-            gGL.syncMatrices();
-            if (LLVKLoader::shouldUseVulkanRender())
-            {
-                static std::set<std::string> s_vk_nodraw_phys_shaders;
-                const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
-                if (s_vk_nodraw_phys_shaders.insert(name).second)
-                {
-                    LL_WARNS("Vulkan") << "GL fallback 廃止: physics hull glDrawElements Vulkan 未描画 shader='"
-                                       << name << "' (count=" << (S32)phys_volume->mNumHullIndices << ") = Vulkan 未配備" << LL_ENDL;
-                }
-            }
-            else
-            {
-                glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
-            }
+            LLVertexBuffer::unbind();
+            LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
         }
         else
         {
