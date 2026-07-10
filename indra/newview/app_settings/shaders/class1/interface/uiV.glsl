@@ -46,6 +46,7 @@ layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
 layout(push_constant) uniform ModelviewPushConstant
 {
     mat4 modelview_matrix;
+    float point_size;
 };
 #define modelview_projection_matrix (projection_matrix * modelview_matrix)
 #else
@@ -73,5 +74,8 @@ void main()
     gl_Position = modelview_projection_matrix * vec4(position, 1);
     vary_texcoord0 =  (texture_matrix0 * vec4(texcoord0,0,1)).xy;
     vertex_color = diffuse_color;
+#ifdef LL_VULKAN_GLSL
+    gl_PointSize = point_size;
+#endif
 }
 

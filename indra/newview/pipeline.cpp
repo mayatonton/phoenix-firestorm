@@ -50,6 +50,7 @@
 #include "llglheaders.h"
 #include "llrender.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include "llstartup.h"
 #include "llwindow.h"   // swapBuffers()
 
@@ -6172,7 +6173,7 @@ void LLPipeline::renderDebug()
                         const LLColor4 clearColor = gSavedSettings.getColor4("PathfindingNavMeshClear");
                         gGL.setColorMask(true, true);
                         gGL.setClearColor(clearColor.mV[0],clearColor.mV[1],clearColor.mV[2],0);
-                        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // no stencil -- deprecated | GL_STENCIL_BUFFER_BIT);
+                        LLRenderTarget::clearBoundTarget(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // no stencil -- deprecated | GL_STENCIL_BUFFER_BIT);
                         gGL.setColorMask(true, false);
                         LLGLState::setPolygonMode(GL_FILL);
                     }
@@ -6459,6 +6460,16 @@ void LLPipeline::renderDebug()
         gGL.getTexUnit(0)->bind(LLViewerFetchedTexture::sWhiteImagep, true);
 
         glPointSize(8.f);
+        if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                F32 ps = 8.f;
+                vkCmdPushConstants(cmd, gUIProgram.mVkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                                   LLVkUboReg::PC_OFF_POINT_SIZE, sizeof(F32), &ps);
+            }
+        }
         LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
         gGL.begin(LLRender::POINTS);
@@ -6484,6 +6495,16 @@ void LLPipeline::renderDebug()
         gGL.end();
         gGL.flush();
         glPointSize(1.f);
+        if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                F32 ps = 1.f;
+                vkCmdPushConstants(cmd, gUIProgram.mVkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                                   LLVkUboReg::PC_OFF_POINT_SIZE, sizeof(F32), &ps);
+            }
+        }
     }
 
     // Debug stuff.
@@ -6699,6 +6720,16 @@ void LLPipeline::renderDebug()
                     //render visible point cloud
                     gGL.flush();
                     glPointSize(8.f);
+                    if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
+                    {
+                        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                        if (cmd != VK_NULL_HANDLE)
+                        {
+                            F32 ps = 8.f;
+                            vkCmdPushConstants(cmd, gUIProgram.mVkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                                               LLVkUboReg::PC_OFF_POINT_SIZE, sizeof(F32), &ps);
+                        }
+                    }
                     gGL.begin(LLRender::POINTS);
 
                     F32* c = col+i*4;
@@ -6713,6 +6744,16 @@ void LLPipeline::renderDebug()
 
                     gGL.flush();
                     glPointSize(1.f);
+                    if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
+                    {
+                        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                        if (cmd != VK_NULL_HANDLE)
+                        {
+                            F32 ps = 1.f;
+                            vkCmdPushConstants(cmd, gUIProgram.mVkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                                               LLVkUboReg::PC_OFF_POINT_SIZE, sizeof(F32), &ps);
+                        }
+                    }
 
                     LLVector3* ext = mShadowExtents[i];
                     LLVector3 pos = (ext[0]+ext[1])*0.5f;

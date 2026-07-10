@@ -30,6 +30,8 @@ namespace LLVKLoader
 
     bool beginFrame(bool acquire_swapchain = true);
     bool endFrame();
+    bool beginOffscreenFrameVk();
+    void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();
 
     uint32_t acquireOcclusionQueryVk();

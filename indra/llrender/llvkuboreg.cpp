@@ -688,6 +688,7 @@ namespace
 
     const PcEntry kPcTable[] = {
         { "modelview_matrix",          LLVkUboReg::PC_OFF_MODELVIEW,            (U32)sizeof(F32) * 16 },
+        { "point_size",                LLVkUboReg::PC_OFF_POINT_SIZE,           (U32)sizeof(F32) },
         { "last_object_matrix",        LLVkUboReg::PC_OFF_LAST_OBJECT_MATRIX,   (U32)sizeof(F32) * 16 },
         { "minimum_alpha",             LLVkUboReg::PC_OFF_MINIMUM_ALPHA,        (U32)sizeof(F32) },
         { "aya_sss_skin_flag",         LLVkUboReg::PC_OFF_SSS_SKIN_FLAG,        (U32)sizeof(F32) },

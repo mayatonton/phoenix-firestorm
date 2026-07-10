@@ -125,6 +125,7 @@
 #include "llfontfreetype.h"
 #include "llgesturemgr.h"
 #include "llglheaders.h"
+#include <glm/gtc/packing.hpp>
 #include "llhudmanager.h"
 #include "llhudobject.h"
 #include "llhudview.h"
@@ -867,14 +868,51 @@ public:
         if (debug_show_color == 1 && !LLRender::sNsightDebugSupport) // <FS:minerjr> Which causes an exception when in RelWithDebug
         // </FS:minerjr>
         {
-            U8 color[4];
+            U8 color[4] = { 0, 0, 0, 0 };
             LLCoordGL coord = gViewerWindow->getCurrentMouse();
 
             // Convert x,y to raw pixel coords
             S32 x_raw = (S32)llround(coord.mX * gViewerWindow->getWindowWidthRaw() / (F32) gViewerWindow->getWindowWidthScaled());
             S32 y_raw = (S32)llround(coord.mY * gViewerWindow->getWindowHeightRaw() / (F32) gViewerWindow->getWindowHeightScaled());
 
-            glReadPixels(x_raw, y_raw, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, color);
+            if (LLVKLoader::isVulkanInitialized())
+            {
+                LLRenderTarget* rt = gPipeline.getLastPresentedLdrRT();
+                if (rt && rt->hasVkImage(0))
+                {
+                    S32 vk_x = llclamp(x_raw, 0, (S32)rt->getWidth() - 1);
+                    S32 vk_y = llclamp((S32)rt->getHeight() - 1 - y_raw, 0, (S32)rt->getHeight() - 1);
+                    U32 fmt = rt->getInternalFormat(0);
+                    U32 bpp = (fmt == GL_RGBA || fmt == GL_RGBA8) ? 4 : ((fmt == GL_RGBA16F) ? 8 : 0);
+                    if (bpp != 0)
+                    {
+                        U8 raw_px[8] = { 0 };
+                        if (LLVKLoader::readbackColorImageRegionVk(rt->getVkImage(0), rt->getVkTexLayout(0), vk_x, vk_y, 1, 1, bpp, raw_px))
+                        {
+                            if (bpp == 4)
+                            {
+                                color[0] = raw_px[0];
+                                color[1] = raw_px[1];
+                                color[2] = raw_px[2];
+                                color[3] = raw_px[3];
+                            }
+                            else
+                            {
+                                const U16* half_px = (const U16*)raw_px;
+                                for (S32 c = 0; c < 4; ++c)
+                                {
+                                    F32 v = glm::unpackHalf1x16(half_px[c]);
+                                    color[c] = (U8)(llclamp(v, 0.f, 1.f) * 255.f + 0.5f);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                glReadPixels(x_raw, y_raw, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, color);
+            }
             addText(xpos, ypos, llformat("Pixel <%1d, %1d> R:%1d G:%1d B:%1d A:%1d", x_raw, y_raw, color[0], color[1], color[2], color[3]));
             ypos += y_inc;
         }

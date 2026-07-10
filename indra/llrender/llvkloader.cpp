@@ -3158,6 +3158,77 @@ bool endFrame()
     return true;
 }
 
+bool beginOffscreenFrameVk()
+{
+    if (!sInitialized)
+    {
+        return false;
+    }
+    if (sInFrame)
+    {
+        return false;
+    }
+
+    if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
+                                            VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
+    }
+
+    if (sFrameIndex < FRAMES_IN_FLIGHT)
+    {
+        sMatrixRingUsedThisFrame[sFrameIndex] = 0;
+        sMatrixRingHasCurrent[sFrameIndex]    = false;
+    }
+
+    vkResetCommandBuffer(sCommandBuffers[sFrameIndex], 0);
+
+    VkCommandBufferBeginInfo begin_info = {};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    VkResult result = vkBeginCommandBuffer(sCommandBuffers[sFrameIndex], &begin_info);
+    if (result != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    sInFrame = true;
+    return true;
+}
+
+void endOffscreenFrameVk()
+{
+    if (!sInitialized || !sInFrame)
+    {
+        return;
+    }
+
+    if (sInDynamicRendering)
+    {
+        vkCmdEndRendering(sCommandBuffers[sFrameIndex]);
+        sInDynamicRendering = false;
+    }
+
+    VkResult result = vkEndCommandBuffer(sCommandBuffers[sFrameIndex]);
+    if (result != VK_SUCCESS)
+    {
+        sInFrame = false;
+        return;
+    }
+
+    VkSubmitInfo submit_info = {};
+    submit_info.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers    = &sCommandBuffers[sFrameIndex];
+
+    vkQueueSubmit(sGraphicsQueue, 1, &submit_info, sInFlightFences[sFrameIndex]);
+    vkQueueWaitIdle(sGraphicsQueue);
+
+    sInFrame = false;
+}
+
 VkCommandBuffer getCurrentCommandBuffer()
 {
     return sInFrame ? sCommandBuffers[sFrameIndex] : VK_NULL_HANDLE;

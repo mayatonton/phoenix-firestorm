@@ -58,6 +58,7 @@ namespace LLVkUboReg
     };
 
     constexpr U32 PC_OFF_MODELVIEW            = 0;
+    constexpr U32 PC_OFF_POINT_SIZE           = 64;
     constexpr U32 PC_OFF_LAST_OBJECT_MATRIX   = 64;
     constexpr U32 PC_OFF_MINIMUM_ALPHA        = 64;
     constexpr U32 PC_OFF_SSS_SKIN_FLAG        = 68;

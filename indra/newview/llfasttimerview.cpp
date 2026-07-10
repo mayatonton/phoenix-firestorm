@@ -36,6 +36,7 @@
 #include "llimagepng.h"
 #include "llrender.h"
 #include "llrendertarget.h"
+#include "llvkloader.h"
 #include "lllocalcliprect.h"
 #include "lllayoutstack.h"
 #include "llmath.h"
@@ -467,15 +468,39 @@ void LLFastTimerView::onClose(bool app_quitting)
     // </FS:Ansariel>
 }
 
-void saveChart(const std::string& label, const char* suffix, LLImageRaw* scratch)
+void saveChart(const std::string& label, const char* suffix, LLImageRaw* scratch, LLRenderTarget& buffer)
 {
     // disable use of glReadPixels which messes up nVidia nSight graphics debugging
     if (!LLRender::sNsightDebugSupport)
     {
         LLImageDataSharedLock lock(scratch);
 
-        //read result back into raw image
-        glReadPixels(0, 0, 1024, 512, GL_RGB, GL_UNSIGNED_BYTE, scratch->getData());
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            const U32 w = 1024, h = 512;
+            std::vector<U8> rgba((size_t)w * h * 4);
+            if (LLVKLoader::readbackColorImageRegionVk(buffer.getVkImage(0), buffer.getVkTexLayout(0),
+                                                       0, 0, w, h, 4, rgba.data()))
+            {
+                U8* dst = scratch->getData();
+                for (U32 row = 0; row < h; ++row)
+                {
+                    const U8* src = rgba.data() + (size_t)(h - 1 - row) * w * 4;
+                    U8* d = dst + (size_t)row * w * 3;
+                    for (U32 x = 0; x < w; ++x)
+                    {
+                        d[x * 3 + 0] = src[x * 4 + 0];
+                        d[x * 3 + 1] = src[x * 4 + 1];
+                        d[x * 3 + 2] = src[x * 4 + 2];
+                    }
+                }
+            }
+        }
+        else
+        {
+            //read result back into raw image
+            glReadPixels(0, 0, 1024, 512, GL_RGB, GL_UNSIGNED_BYTE, scratch->getData());
+        }
 
         //write results to disk
         LLPointer<LLImagePNG> result = new LLImagePNG();
@@ -542,7 +567,12 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
     //render charts
     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
 
-    buffer.bindTarget();
+    const bool vk = LLVKLoader::isVulkanInitialized();
+
+    if (!vk)
+    {
+        buffer.bindTarget();
+    }
 
     for (std::set<std::string>::iterator iter = chart_names.begin(); iter != chart_names.end(); ++iter)
     {
@@ -633,6 +663,12 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
         //====================================
         // basic
         //====================================
+        if (vk)
+        {
+            LLVKLoader::beginOffscreenFrameVk();
+            buffer.bindTarget();
+        }
+
         buffer.clear();
 
         last_p.clear();
@@ -678,11 +714,26 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
             gGL.flush();
         }
 
-        saveChart(label, "time", scratch);
+        if (vk)
+        {
+            buffer.flush();
+            LLVKLoader::endOffscreenFrameVk();
+            saveChart(label, "time", scratch, buffer);
+        }
+        else
+        {
+            saveChart(label, "time", scratch, buffer);
+        }
 
         //======================================
         // calls
         //======================================
+        if (vk)
+        {
+            LLVKLoader::beginOffscreenFrameVk();
+            buffer.bindTarget();
+        }
+
         buffer.clear();
 
         last_p.clear();
@@ -721,11 +772,26 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
             gGL.flush();
         }
 
-        saveChart(label, "calls", scratch);
+        if (vk)
+        {
+            buffer.flush();
+            LLVKLoader::endOffscreenFrameVk();
+            saveChart(label, "calls", scratch, buffer);
+        }
+        else
+        {
+            saveChart(label, "calls", scratch, buffer);
+        }
 
         //======================================
         // execution
         //======================================
+        if (vk)
+        {
+            LLVKLoader::beginOffscreenFrameVk();
+            buffer.bindTarget();
+        }
+
         buffer.clear();
 
         gGL.color3fv(base_col.mV);
@@ -769,10 +835,22 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
             gGL.flush();
         }
 
-        saveChart(label, "execution", scratch);
+        if (vk)
+        {
+            buffer.flush();
+            LLVKLoader::endOffscreenFrameVk();
+            saveChart(label, "execution", scratch, buffer);
+        }
+        else
+        {
+            saveChart(label, "execution", scratch, buffer);
+        }
     }
 
-    buffer.flush();
+    if (!vk)
+    {
+        buffer.flush();
+    }
 
     gGL.popMatrix();
     gGL.matrixMode(LLRender::MM_MODELVIEW);
