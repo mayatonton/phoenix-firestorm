@@ -119,6 +119,7 @@
 #include "llsdserialize.h"
 #include "llrendersphere.h"
 #include "llskinningutil.h"
+#include "llvkloader.h"
 
 #include "llperfstats.h"
 
@@ -12816,14 +12817,7 @@ void LLVOAvatar::calculateUpdateRenderComplexity()
             LLPerfStats::tunables.userFPSTuningStrategy != LLPerfStats::TUNE_SCENE_ONLY &&
             !isVisuallyMuted())
         {
-            LLUUID id = getID(); // <== use id to make sure this avatar didn't get deleted between frames
-            LL::WorkQueue::getInstance("mainloop")->post([this, id]()
-                {
-                    if (gObjectList.findObject(id) != nullptr)
-                    {
-                        gPipeline.profileAvatar(this);
-                    }
-                });
+            gPipeline.enqueueProfileAvatar(getID());
         }
     }
 }
@@ -13176,6 +13170,23 @@ bool LLVOAvatar::isTextureVisible(LLAvatarAppearanceDefines::ETextureIndex type,
 
 void LLVOAvatar::placeProfileQuery()
 {
+    if (LLVKLoader::isVulkanInitialized() && LLVKLoader::isTimestampSupportedVk())
+    {
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            if (mVkGPUTimestampHandle == 0)
+            {
+                mVkGPUTimestampHandle = LLVKLoader::acquireTimestampPairVk();
+            }
+            if (mVkGPUTimestampHandle != 0)
+            {
+                LLVKLoader::cmdWriteTimestampBeginVk(cmd, mVkGPUTimestampHandle);
+            }
+        }
+        return;
+    }
+
     if (mGPUTimerQuery == 0)
     {
         glGenQueries(1, &mGPUTimerQuery);
@@ -13186,6 +13197,58 @@ void LLVOAvatar::placeProfileQuery()
 
 void LLVOAvatar::readProfileQuery(S32 retries)
 {
+    if (LLVKLoader::isVulkanInitialized() && LLVKLoader::isTimestampSupportedVk())
+    {
+        if (mVkGPUTimestampHandle == 0)
+        {
+            return;
+        }
+
+        if (!mGPUProfilePending)
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                LLVKLoader::cmdWriteTimestampEndVk(cmd, mVkGPUTimestampHandle);
+            }
+            mGPUProfilePending = true;
+        }
+
+        bool     avail      = false;
+        uint64_t elapsed_ns = 0;
+        LLVKLoader::getTimestampElapsedNsVk(mVkGPUTimestampHandle, avail, elapsed_ns);
+
+        if (avail || --retries <= 0)
+        {
+            mGPURenderTime = avail ? ((F32)elapsed_ns / 1000000.f) : 0.f;
+            mGPUProfilePending = false;
+            LLVKLoader::releaseTimestampPairVk(mVkGPUTimestampHandle);
+            mVkGPUTimestampHandle = 0;
+
+            setDebugText(llformat("%d", (S32)(mGPURenderTime * 1000.f)));
+        }
+        else
+        {
+            const LLUUID id = getID();
+
+            LL::WorkQueue::getInstance("mainloop")->post([id, retries]
+            {
+                LLViewerObject* object = gObjectList.findObject(id);
+                if (object
+                    && !object->isDead()
+                    && object->isAvatar())
+                {
+                    LLVOAvatar* avatar = (LLVOAvatar*)object;
+                    if (avatar)
+                    {
+                        avatar->readProfileQuery(retries);
+                    }
+                }
+            });
+        }
+        return;
+    }
+
     if (!mGPUProfilePending)
     {
         glEndQuery(GL_TIME_ELAPSED);

@@ -592,6 +592,7 @@ private:
 
     // profile handle
     U32 mGPUTimerQuery = 0;
+    uint32_t mVkGPUTimestampHandle = 0;
 
     // profile results
 

@@ -1572,7 +1572,11 @@ void LLManipTranslate::renderSnapGuides()
                 //LLGLDisable stencil(GL_STENCIL_TEST);
                 {
                     LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE, GL_GREATER);
-                    gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, getGridTexName());
+                    getGridTexName();
+                    if (sGridTex.notNull())
+                    {
+                        gGL.getTexUnit(0)->bind(sGridTex);
+                    }
                     gGL.flush();
                     gGL.blendFunc(LLRender::BF_ZERO, LLRender::BF_ONE_MINUS_SOURCE_ALPHA);
                     renderGrid(u,v,tiles,0.9f, 0.9f, 0.9f,a*0.15f);
@@ -1586,7 +1590,11 @@ void LLManipTranslate::renderSnapGuides()
                     renderGrid(u,v,tiles,0.0f, 0.0f, 0.0f,a*0.16f);
 
                     //draw grid top
-                    gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, getGridTexName());
+                    getGridTexName();
+                    if (sGridTex.notNull())
+                    {
+                        gGL.getTexUnit(0)->bind(sGridTex);
+                    }
                     renderGrid(u,v,tiles,1,1,1,a);
 
                     gGL.popMatrix();

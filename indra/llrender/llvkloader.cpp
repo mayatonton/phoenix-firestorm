@@ -77,6 +77,13 @@ namespace
     bool                 sHostQueryResetEnabled  = false;
     std::queue<uint32_t> sOcclusionQueryFree;
 
+    VkQueryPool          sTimestampQueryPool     = VK_NULL_HANDLE;
+    U32                  sTimestampPairCapacity  = 0;
+    bool                 sTimestampSupported     = false;
+    float                sTimestampPeriodNs      = 0.0f;
+    U32                  sTimestampValidBits     = 0;
+    std::queue<uint32_t> sTimestampPairFree;
+
     VkSurfaceKHR sSurface           = VK_NULL_HANDLE;
 
     VkSwapchainKHR           sSwapchain           = VK_NULL_HANDLE;
@@ -602,6 +609,7 @@ namespace
             if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
             {
                 sGraphicsQueueFamily = i;
+                sTimestampValidBits  = families[i].timestampValidBits;
                 return true;
             }
         }
@@ -863,6 +871,41 @@ namespace
             else
             {
                 sOcclusionQueryPool = VK_NULL_HANDLE;
+            }
+        }
+
+        {
+            VkPhysicalDeviceProperties ts_props = {};
+            vkGetPhysicalDeviceProperties(sPhysicalDevice, &ts_props);
+            sTimestampPeriodNs = ts_props.limits.timestampPeriod;
+
+            if (sHostQueryResetEnabled && sTimestampValidBits > 0 && sTimestampPeriodNs > 0.0f)
+            {
+                const U32 pair_capacity = 256;
+                VkQueryPoolCreateInfo tqp_info = {};
+                tqp_info.sType      = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+                tqp_info.queryType  = VK_QUERY_TYPE_TIMESTAMP;
+                tqp_info.queryCount = pair_capacity * 2;
+                VkResult tqp_result = vkCreateQueryPool(sDevice, &tqp_info, nullptr, &sTimestampQueryPool);
+                if (tqp_result == VK_SUCCESS)
+                {
+                    sTimestampPairCapacity = pair_capacity;
+                    vkResetQueryPool(sDevice, sTimestampQueryPool, 0, tqp_info.queryCount);
+                    for (U32 i = 0; i < sTimestampPairCapacity; ++i)
+                    {
+                        sTimestampPairFree.push(i);
+                    }
+                    sTimestampSupported = true;
+                }
+                else
+                {
+                    sTimestampQueryPool = VK_NULL_HANDLE;
+                    sTimestampSupported = false;
+                }
+            }
+            else
+            {
+                sTimestampSupported = false;
             }
         }
 
@@ -2847,6 +2890,18 @@ void shutdownVulkan()
             std::swap(sOcclusionQueryFree, empty);
         }
 
+        if (sTimestampQueryPool != VK_NULL_HANDLE)
+        {
+            vkDestroyQueryPool(sDevice, sTimestampQueryPool, nullptr);
+            sTimestampQueryPool    = VK_NULL_HANDLE;
+            sTimestampPairCapacity = 0;
+            std::queue<uint32_t> empty;
+            std::swap(sTimestampPairFree, empty);
+        }
+        sTimestampSupported = false;
+        sTimestampValidBits = 0;
+        sTimestampPeriodNs  = 0.0f;
+
         if (sCommandPool != VK_NULL_HANDLE)
         {
             vkDestroyCommandPool(sDevice, sCommandPool, nullptr);
@@ -3167,6 +3222,77 @@ bool getOcclusionQueryResultVk(uint32_t handle, bool& available, uint64_t& sampl
     {
         available = true;
         samples   = results[0];
+    }
+    return true;
+}
+
+bool isTimestampSupportedVk()
+{
+    return sTimestampSupported;
+}
+
+uint32_t acquireTimestampPairVk()
+{
+    if (sTimestampQueryPool == VK_NULL_HANDLE || !sTimestampSupported || sTimestampPairFree.empty())
+    {
+        return 0;
+    }
+    uint32_t index = sTimestampPairFree.front();
+    sTimestampPairFree.pop();
+    vkResetQueryPool(sDevice, sTimestampQueryPool, index * 2, 2);
+    return index + 1;
+}
+
+void releaseTimestampPairVk(uint32_t handle)
+{
+    if (handle == 0 || sTimestampQueryPool == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    uint32_t index = handle - 1;
+    if (index < sTimestampPairCapacity)
+    {
+        sTimestampPairFree.push(index);
+    }
+}
+
+void cmdWriteTimestampBeginVk(VkCommandBuffer cmd, uint32_t handle)
+{
+    if (handle == 0 || cmd == VK_NULL_HANDLE || sTimestampQueryPool == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, sTimestampQueryPool, (handle - 1) * 2);
+}
+
+void cmdWriteTimestampEndVk(VkCommandBuffer cmd, uint32_t handle)
+{
+    if (handle == 0 || cmd == VK_NULL_HANDLE || sTimestampQueryPool == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, sTimestampQueryPool, (handle - 1) * 2 + 1);
+}
+
+bool getTimestampElapsedNsVk(uint32_t handle, bool& available, uint64_t& elapsed_ns)
+{
+    available  = false;
+    elapsed_ns = 0;
+    if (handle == 0 || sTimestampQueryPool == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    uint32_t index = handle - 1;
+    uint64_t results[4] = { 0, 0, 0, 0 };
+    VkResult r = vkGetQueryPoolResults(sDevice, sTimestampQueryPool, index * 2, 2,
+                                       sizeof(results), results, sizeof(uint64_t) * 2,
+                                       VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    if (r == VK_SUCCESS && results[1] != 0 && results[3] != 0)
+    {
+        uint64_t mask = (sTimestampValidBits >= 64) ? ~0ull : ((1ull << sTimestampValidBits) - 1);
+        uint64_t diff = (results[2] - results[0]) & mask;
+        elapsed_ns = (uint64_t)((double)diff * (double)sTimestampPeriodNs);
+        available  = true;
     }
     return true;
 }

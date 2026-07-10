@@ -14994,14 +14994,42 @@ void LLPipeline::profileAvatar(LLVOAvatar* avatar, bool profile_attachments)
                 LLViewerObject* attached_object = attachment_iter->get();
                 if (attached_object)
                 {
-                    // use gDebugProgram to do the GPU queries
-                    gDebugProgram.clearStats();
-                    gDebugProgram.placeProfileQuery(true);
+                    if (LLVKLoader::isVulkanInitialized() && LLVKLoader::isTimestampSupportedVk())
+                    {
+                        const LLUUID aid = attached_object->getID();
+                        if (mPendingAttachmentProfiles.find(aid) != mPendingAttachmentProfiles.end())
+                        {
+                            continue;
+                        }
+                        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                        uint32_t h = LLVKLoader::acquireTimestampPairVk();
+                        if (cmd != VK_NULL_HANDLE && h != 0)
+                        {
+                            LLVKLoader::cmdWriteTimestampBeginVk(cmd, h);
+                            generateImpostor(avatar, false, true, attached_object);
+                            LLVKLoader::cmdWriteTimestampEndVk(cmd, h);
+                            mPendingAttachmentProfiles[aid] = h;
+                        }
+                        else
+                        {
+                            if (h != 0)
+                            {
+                                LLVKLoader::releaseTimestampPairVk(h);
+                            }
+                            generateImpostor(avatar, false, true, attached_object);
+                        }
+                    }
+                    else
+                    {
+                        // use gDebugProgram to do the GPU queries
+                        gDebugProgram.clearStats();
+                        gDebugProgram.placeProfileQuery(true);
 
-                    generateImpostor(avatar, false, true, attached_object);
-                    gDebugProgram.readProfileQuery(true, true);
+                        generateImpostor(avatar, false, true, attached_object);
+                        gDebugProgram.readProfileQuery(true, true);
 
-                    attached_object->mGPURenderTime = gDebugProgram.mTimeElapsed / 1000000.f;
+                        attached_object->mGPURenderTime = gDebugProgram.mTimeElapsed / 1000000.f;
+                    }
                 }
             }
         }
@@ -15012,6 +15040,59 @@ void LLPipeline::profileAvatar(LLVOAvatar* avatar, bool profile_attachments)
     if (cur_shader)
     {
         cur_shader->bind();
+    }
+}
+
+void LLPipeline::enqueueProfileAvatar(const LLUUID& id)
+{
+    if (mPendingProfileSet.insert(id).second)
+    {
+        mPendingProfileAvatars.push_back(id);
+    }
+}
+
+void LLPipeline::drainPendingProfileAvatars(S32 max_count)
+{
+    for (S32 i = 0; i < max_count && !mPendingProfileAvatars.empty(); ++i)
+    {
+        LLUUID id = mPendingProfileAvatars.front();
+        mPendingProfileAvatars.pop_front();
+        mPendingProfileSet.erase(id);
+
+        LLViewerObject* obj = gObjectList.findObject(id);
+        if (obj && !obj->isDead() && obj->isAvatar())
+        {
+            LLVOAvatar* av = (LLVOAvatar*)obj;
+            if (!av->isControlAvatar() && !av->isTooSlow())
+            {
+                profileAvatar(av);
+            }
+        }
+    }
+}
+
+void LLPipeline::drainPendingAttachmentProfiles()
+{
+    for (std::unordered_map<LLUUID, uint32_t>::iterator it = mPendingAttachmentProfiles.begin();
+         it != mPendingAttachmentProfiles.end();)
+    {
+        bool available = false;
+        uint64_t ns = 0;
+        LLVKLoader::getTimestampElapsedNsVk(it->second, available, ns);
+        if (available)
+        {
+            LLViewerObject* obj = gObjectList.findObject(it->first);
+            if (obj)
+            {
+                obj->mGPURenderTime = (F32)ns / 1000000.f;
+            }
+            LLVKLoader::releaseTimestampPairVk(it->second);
+            it = mPendingAttachmentProfiles.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
     }
 }
 

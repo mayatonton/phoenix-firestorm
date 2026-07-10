@@ -38,6 +38,13 @@ namespace LLVKLoader
     void     cmdEndOcclusionQueryVk(VkCommandBuffer cmd, uint32_t handle);
     bool     getOcclusionQueryResultVk(uint32_t handle, bool& available, uint64_t& samples);
 
+    bool     isTimestampSupportedVk();
+    uint32_t acquireTimestampPairVk();
+    void     releaseTimestampPairVk(uint32_t handle);
+    void     cmdWriteTimestampBeginVk(VkCommandBuffer cmd, uint32_t handle);
+    void     cmdWriteTimestampEndVk(VkCommandBuffer cmd, uint32_t handle);
+    bool     getTimestampElapsedNsVk(uint32_t handle, bool& available, uint64_t& elapsed_ns);
+
     void setScissor(S32 x, S32 y, S32 w, S32 h);
 
     void disableScissor();

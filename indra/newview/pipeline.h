@@ -44,6 +44,9 @@
 #include <stack>
 #include <utility>
 #include <vector>
+#include <deque>
+#include <unordered_map>
+#include <cstdint>
 
 class LLViewerTexture;
 class LLFace;
@@ -149,6 +152,10 @@ public:
     // perform a profile of the given avatar
     // if profile_attachments is true, run a profile for each attachment
     void profileAvatar(LLVOAvatar* avatar, bool profile_attachments = false);
+
+    void enqueueProfileAvatar(const LLUUID& id);
+    void drainPendingProfileAvatars(S32 max_count);
+    void drainPendingAttachmentProfiles();
 
     // generate an impostor for the given avatar
     //  preview_avatar - if true, a preview window render is being performed
@@ -1202,6 +1209,10 @@ public:
     std::vector<LLFace*>        mHighlightFaces;    // highlight faces on physical objects
 protected:
     std::vector<LLFace*>        mSelectedFaces;
+
+    std::deque<LLUUID>          mPendingProfileAvatars;
+    std::set<LLUUID>            mPendingProfileSet;
+    std::unordered_map<LLUUID, uint32_t> mPendingAttachmentProfiles;
 
     class DebugBlip
     {

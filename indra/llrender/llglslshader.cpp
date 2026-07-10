@@ -272,6 +272,23 @@ void LLGLSLShader::placeProfileQuery(bool for_runtime)
 {
     if (sProfileEnabled || for_runtime)
     {
+        if (LLVKLoader::isVulkanInitialized() && LLVKLoader::isTimestampSupportedVk())
+        {
+            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (cmd != VK_NULL_HANDLE)
+            {
+                if (mVkTimestampHandle == 0)
+                {
+                    mVkTimestampHandle = LLVKLoader::acquireTimestampPairVk();
+                }
+                if (mVkTimestampHandle != 0)
+                {
+                    LLVKLoader::cmdWriteTimestampBeginVk(cmd, mVkTimestampHandle);
+                }
+            }
+            return;
+        }
+
         if (mTimerQuery == 0)
         {
             glGenQueries(1, &mSamplesQuery);
@@ -293,6 +310,39 @@ bool LLGLSLShader::readProfileQuery(bool for_runtime, bool force_read)
 {
     if ((sProfileEnabled || for_runtime) && sCanProfile)
     {
+        if (LLVKLoader::isVulkanInitialized() && LLVKLoader::isTimestampSupportedVk())
+        {
+            if (mVkTimestampHandle == 0)
+            {
+                return true;
+            }
+
+            if (!mProfilePending)
+            {
+                VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+                if (cmd != VK_NULL_HANDLE)
+                {
+                    LLVKLoader::cmdWriteTimestampEndVk(cmd, mVkTimestampHandle);
+                }
+                mProfilePending = for_runtime;
+            }
+
+            bool     avail      = false;
+            uint64_t elapsed_ns = 0;
+            LLVKLoader::getTimestampElapsedNsVk(mVkTimestampHandle, avail, elapsed_ns);
+
+            if (mProfilePending && for_runtime && !force_read && !avail)
+            {
+                return false;
+            }
+
+            mTimeElapsed += elapsed_ns;
+            mProfilePending = false;
+            LLVKLoader::releaseTimestampPairVk(mVkTimestampHandle);
+            mVkTimestampHandle = 0;
+            return true;
+        }
+
         if (!mProfilePending)
         {
             glEndQuery(GL_TIME_ELAPSED);

@@ -1167,6 +1167,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (!for_snapshot)
         {
             render_ui();
+            gPipeline.drainPendingProfileAvatars(2);
+            gPipeline.drainPendingAttachmentProfiles();
             swap();
         }
 

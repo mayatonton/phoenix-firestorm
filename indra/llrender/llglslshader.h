@@ -425,6 +425,7 @@ public:
     U32 mTimerQuery;
     U32 mSamplesQuery;
     U32 mPrimitivesQuery;
+    uint32_t mVkTimestampHandle = 0;
 
     U64 mTimeElapsed;
     static U64 sTotalTimeElapsed;
