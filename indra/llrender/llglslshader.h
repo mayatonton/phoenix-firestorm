@@ -339,8 +339,6 @@ public:
     GLint getUniformLocation(const LLStaticHashedString& uniform);
     GLint getUniformLocation(U32 index);
 
-    GLint mapUniformTextureChannel(GLint location, GLenum type, GLint size, S32 uniform_enum);
-
     void clearPermutations();
     void addPermutation(std::string name, std::string value);
     void addPermutations(const std::map<std::string, std::string>& defines)
@@ -473,8 +471,6 @@ public:
     std::array<S32, MAX_VK_BINDING> mVkBindingToEnumCanonical = {};
 
     std::array<S32, MAX_VK_BINDING> mVkBindingToChannel = {};
-
-    std::array<S32, MAX_VK_BINDING> mVkBindingToChannelShadow = {};
 
     enum VkBindingDeclType : U8 { VKBD_NONE = 0, VKBD_SAMPLER = 1, VKBD_UBO = 2, VKBD_BOTH = 3 };
     std::array<U8, MAX_VK_BINDING> mVkBindingDeclaredType = {};

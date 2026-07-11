@@ -645,8 +645,6 @@ bool LLGLSLShader::createShader()
 
     mVkBindingToChannel.fill(-1);
 
-    mVkBindingToChannelShadow.fill(-1);
-
     mVkBindingToEnumCanonical.fill(-1);
 
     mVkBindingDeclaredType.fill(VKBD_NONE);
@@ -713,19 +711,12 @@ bool LLGLSLShader::createShader()
         bind();
         S32 channel_count = mFeatures.mIndexedTextureChannels;
 
-        for (S32 i = 0; i < channel_count; i++)
-        {
-            LLStaticHashedString uniName(llformat("tex%d", i));
-            uniform1i(uniName, i);
-        }
-
         //adjust any texture channels that might have been overwritten
         for (U32 i = 0; i < mTexture.size(); i++)
         {
             if (mTexture[i] > -1)
             {
                 S32 new_tex = mTexture[i] + channel_count;
-                uniform1i(i, new_tex);
                 mTexture[i] = new_tex;
             }
         }
@@ -761,125 +752,18 @@ bool LLGLSLShader::createShader()
         }
     }
 
-    if (success && !mVkReflBindingSamplerNames.empty() && mProgramObject != 0)
-    {
-        for (const auto& bn : mVkReflBindingSamplerNames)
-        {
-            S32 loc = glGetUniformLocation(mProgramObject, bn.second.c_str());
-            if (loc < 0)
-            {
-                continue;
-            }
-            GLint channel = -1;
-            glGetUniformiv(mProgramObject, loc, &channel);
-            if (channel >= 0 && bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
-            {
-                mVkBindingToChannel[bn.first] = channel;
-            }
-        }
-    }
-
     if (success && !mVkReflBindingSamplerNames.empty())
     {
-        std::set<S32> refl_enums;
         for (const auto& bn : mVkReflBindingSamplerNames)
         {
-            if (bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
-            {
-                if (!mVkBindingSamplerUsed[bn.first])
-                {
-                    continue;
-                }
-                S32 e = mVkBindingToEnumCanonical[bn.first];
-                if (e >= 0)
-                {
-                    refl_enums.insert(e);
-                }
-            }
-        }
-
-        std::map<S32, S32> shadow_ch;
-        S32 next_ch = 0;
-        const S32 diffuse_enum = LLShaderMgr::DIFFUSE_MAP;
-        if (refl_enums.count(diffuse_enum))
-        {
-            shadow_ch[diffuse_enum] = 0;
-            next_ch = 1;
-        }
-        for (S32 e : refl_enums)
-        {
-            if (e == diffuse_enum)
+            if (bn.first < 0 || bn.first >= (S32)MAX_VK_BINDING)
             {
                 continue;
             }
-            shadow_ch[e] = next_ch++;
-        }
-
-        for (const auto& bn : mVkReflBindingSamplerNames)
-        {
-            if (bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
+            S32 e = mVkBindingToEnumCanonical[bn.first];
+            if (e >= 0 && e < (S32)mTexture.size() && mTexture[e] >= 0)
             {
-                S32 e = mVkBindingToEnumCanonical[bn.first];
-                auto it = shadow_ch.find(e);
-                if (e >= 0 && it != shadow_ch.end())
-                {
-                    mVkBindingToChannelShadow[bn.first] = it->second;
-                }
-            }
-        }
-
-        if (mProgramObject != 0)
-        {
-            const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
-            auto ename = [&](S32 e) -> std::string
-            {
-                return (e >= 0 && e < (S32)reserved.size()) ? reserved[e] : std::string("?");
-            };
-
-            std::string chan_diffs;
-            std::string refl_only;
-            std::string gl_only;
-
-            for (const auto& kv : shadow_ch)
-            {
-                S32 e = kv.first;
-                S32 sc = kv.second;
-                S32 gc = (e >= 0 && e < (S32)mTexture.size()) ? mTexture[e] : -1;
-                if (gc < 0)
-                {
-                    refl_only += (refl_only.empty() ? "" : ",") + ename(e);
-                }
-                else if (gc != sc)
-                {
-                    chan_diffs += (chan_diffs.empty() ? "" : "; ") + ename(e)
-                        + " gl=" + std::to_string(gc) + " shadow=" + std::to_string(sc);
-                }
-            }
-
-            for (S32 e = 0; e < (S32)mTexture.size(); ++e)
-            {
-                if (mTexture[e] > -1 && shadow_ch.find(e) == shadow_ch.end())
-                {
-                    gl_only += (gl_only.empty() ? "" : ",") + ename(e);
-                }
-            }
-
-            if (!chan_diffs.empty() || !refl_only.empty() || !gl_only.empty())
-            {
-                std::string msg = "VK sampler channel shadow divergence '" + mName + "'";
-                if (!chan_diffs.empty())
-                {
-                    msg += " chan[" + chan_diffs + "]";
-                }
-                if (!refl_only.empty())
-                {
-                    msg += " reflOnly[" + refl_only + "]";
-                }
-                if (!gl_only.empty())
-                {
-                    msg += " glOnly[" + gl_only + "]";
-                }
-                LL_WARNS("Vulkan") << msg << LL_ENDL;
+                mVkBindingToChannel[bn.first] = mTexture[e];
             }
         }
     }
@@ -2477,11 +2361,6 @@ void LLGLSLShader::mapUniform(GLint index)
             {
                 //found it
                 mUniform[i] = location;
-                mTexture[i] = mapUniformTextureChannel(location, type, size, i);
-                if (mTexture[i] != -1)
-                {
-                    LL_DEBUGS("GLSLTextureChannels") << name << " assigned to texture channel " << mTexture[i] << LL_ENDL;
-                }
                 return;
             }
         }
@@ -2506,62 +2385,6 @@ void LLGLSLShader::addConstant(const LLGLSLShader::eShaderConsts shader_const)
 void LLGLSLShader::removePermutation(std::string name)
 {
     mDefines.erase(name);
-}
-
-GLint LLGLSLShader::mapUniformTextureChannel(GLint location, GLenum type, GLint size, S32 uniform_enum)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    if ((type >= GL_SAMPLER_1D && type <= GL_SAMPLER_2D_RECT_SHADOW) ||
-        type == GL_SAMPLER_2D_MULTISAMPLE ||
-        type == GL_SAMPLER_CUBE_MAP_ARRAY)
-    {   //this here is a texture
-        if (!mVkReflEnumChannel.empty()
-            && uniform_enum >= 0 && uniform_enum < (S32)mVkReflEnumChannel.size()
-            && mVkReflEnumChannel[uniform_enum] >= 0)
-        {
-            GLint channel = mVkReflEnumChannel[uniform_enum];
-            if (size == 1)
-            {
-                glUniform1i(location, channel);
-            }
-            else
-            {
-                GLint chans[16];
-                llassert(size <= 16);
-                size = llmin(size, 16);
-                for (int i = 0; i < size; ++i)
-                {
-                    chans[i] = channel + i;
-                }
-                glUniform1iv(location, size, chans);
-            }
-            mActiveTextureChannels = llmax(mActiveTextureChannels, channel + size);
-            return channel;
-        }
-
-        GLint ret = mActiveTextureChannels;
-        if (size == 1)
-        {
-            glUniform1i(location, mActiveTextureChannels);
-            mActiveTextureChannels++;
-        }
-        else
-        {
-            //is array of textures, make sequential after this texture
-            GLint channel[16]; // <=== only support up to 16 texture channels
-            llassert(size <= 16);
-            size = llmin(size, 16);
-            for (int i = 0; i < size; ++i)
-            {
-                channel[i] = mActiveTextureChannels++;
-            }
-            glUniform1iv(location, size, channel);
-        }
-
-        return ret;
-    }
-    return -1;
 }
 
 bool LLGLSLShader::mapUniforms()
@@ -2621,6 +2444,15 @@ bool LLGLSLShader::mapUniforms()
             }
             mVkReflEnumChannel[e] = next_ch++;
         }
+
+        for (U32 i = 0; i < mTexture.size() && i < mVkReflEnumChannel.size(); ++i)
+        {
+            mTexture[i] = mVkReflEnumChannel[i];
+            if (mTexture[i] > -1)
+            {
+                mActiveTextureChannels = llmax(mActiveTextureChannels, mTexture[i] + 1);
+            }
+        }
     }
 
     bind();
@@ -2629,135 +2461,11 @@ bool LLGLSLShader::mapUniforms()
     GLint activeCount;
     glGetProgramiv(mProgramObject, GL_ACTIVE_UNIFORMS, &activeCount);
 
-    //........................................................................................................................................
-    //........................................................................................
-
-    /*
-    EXPLANATION:
-    This is part of code is temporary because as the final result the mapUniform() should be rewrited.
-    But it's a huge a volume of work which is need to be a more carefully performed for avoid possible
-    regression's (i.e. it should be formalized a separate ticket in JIRA).
-
-    RESON:
-    The reason of this code is that SL engine is very sensitive to fact that "diffuseMap" should be appear
-    first as uniform parameter which is should get 0-"texture channel" index (see mapUniformTextureChannel() and mActiveTextureChannels)
-    it influence to which is texture matrix will be updated during rendering.
-
-    But, order of indexe's of uniform variables is not defined and GLSL compiler can change it as want
-    , even if the "diffuseMap" will be appear and use first in shader code.
-
-    As example where this situation appear see: "Deferred Material Shader 28/29/30/31"
-    And tickets: MAINT-4165, MAINT-4839, MAINT-3568, MAINT-6437
-
-    --- davep TODO -- pretty sure the entire block here is superstitious and that the uniform index has nothing to do with the texture channel
-                texture channel should follow the uniform VALUE
-    */
-
-
-    S32 diffuseMap = glGetUniformLocation(mProgramObject, "diffuseMap");
-    S32 specularMap = glGetUniformLocation(mProgramObject, "specularMap");
-    S32 bumpMap = glGetUniformLocation(mProgramObject, "bumpMap");
-    S32 altDiffuseMap = glGetUniformLocation(mProgramObject, "altDiffuseMap");
-    S32 environmentMap = glGetUniformLocation(mProgramObject, "environmentMap");
-    S32 reflectionMap = glGetUniformLocation(mProgramObject, "reflectionMap");
-
-    std::set<S32> skip_index;
-
-    if (-1 != diffuseMap && (-1 != specularMap || -1 != bumpMap || -1 != environmentMap || -1 != altDiffuseMap))
-    {
-        GLenum type;
-        GLsizei length;
-        GLint size = -1;
-        char name[1024];
-
-        diffuseMap = altDiffuseMap = specularMap = bumpMap = environmentMap = -1;
-
-        for (S32 i = 0; i < activeCount; i++)
-        {
-            name[0] = '\0';
-
-            glGetActiveUniform(mProgramObject, i, 1024, &length, &size, &type, (GLchar*)name);
-
-            if (-1 == diffuseMap && std::string(name) == "diffuseMap")
-            {
-                diffuseMap = i;
-                continue;
-            }
-
-            if (-1 == specularMap && std::string(name) == "specularMap")
-            {
-                specularMap = i;
-                continue;
-            }
-
-            if (-1 == bumpMap && std::string(name) == "bumpMap")
-            {
-                bumpMap = i;
-                continue;
-            }
-
-            if (-1 == environmentMap && std::string(name) == "environmentMap")
-            {
-                environmentMap = i;
-                continue;
-            }
-
-            if (-1 == reflectionMap && std::string(name) == "reflectionMap")
-            {
-                reflectionMap = i;
-                continue;
-            }
-
-            if (-1 == altDiffuseMap && std::string(name) == "altDiffuseMap")
-            {
-                altDiffuseMap = i;
-                continue;
-            }
-        }
-
-        bool specularDiff = specularMap < diffuseMap && -1 != specularMap;
-        bool bumpLessDiff = bumpMap < diffuseMap && -1 != bumpMap;
-        bool envLessDiff = environmentMap < diffuseMap && -1 != environmentMap;
-        bool refLessDiff = reflectionMap < diffuseMap && -1 != reflectionMap;
-
-        if (specularDiff || bumpLessDiff || envLessDiff || refLessDiff)
-        {
-            mapUniform(diffuseMap);
-            skip_index.insert(diffuseMap);
-
-            if (-1 != specularMap) {
-                mapUniform(specularMap);
-                skip_index.insert(specularMap);
-            }
-
-            if (-1 != bumpMap) {
-                mapUniform(bumpMap);
-                skip_index.insert(bumpMap);
-            }
-
-            if (-1 != environmentMap) {
-                mapUniform(environmentMap);
-                skip_index.insert(environmentMap);
-            }
-
-            if (-1 != reflectionMap) {
-                mapUniform(reflectionMap);
-                skip_index.insert(reflectionMap);
-            }
-        }
-    }
-
-    //........................................................................................
-
     for (S32 i = 0; i < activeCount; i++)
     {
-        //........................................................................................
-        if (skip_index.end() != skip_index.find(i)) continue;
-        //........................................................................................
-
         mapUniform(i);
     }
-    //........................................................................................................................................
+
 
     // Set up block binding, in a way supported by Apple (rather than binding = 1 in .glsl).
     // See slide 35 and more of https://docs.huihoo.com/apple/wwdc/2011/session_420__advances_in_opengl_for_mac_os_x_lion.pdf
