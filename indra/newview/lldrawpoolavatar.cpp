@@ -308,9 +308,8 @@ void LLDrawPoolAvatar::beginShadowPass(S32 pass)
         sVertexProgram = &gDeferredAvatarAlphaShadowProgram;
 
         // bind diffuse tex so we can reference the alpha channel...
-        S32 loc = sVertexProgram->getUniformLocation(LLViewerShaderMgr::DIFFUSE_MAP);
         sDiffuseChannel = 0;
-        if (loc != -1)
+        if (sVertexProgram->hasReflectedUniform(LLViewerShaderMgr::DIFFUSE_MAP))
         {
             sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
         }
@@ -328,9 +327,8 @@ void LLDrawPoolAvatar::beginShadowPass(S32 pass)
         sVertexProgram = &gDeferredAvatarAlphaMaskShadowProgram;
 
         // bind diffuse tex so we can reference the alpha channel...
-        S32 loc = sVertexProgram->getUniformLocation(LLViewerShaderMgr::DIFFUSE_MAP);
         sDiffuseChannel = 0;
-        if (loc != -1)
+        if (sVertexProgram->hasReflectedUniform(LLViewerShaderMgr::DIFFUSE_MAP))
         {
             sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
         }
@@ -903,11 +901,9 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("render rigid meshes (eyeballs)"); // <FS:Beq/> Tracy markup
         if (sVertexProgram)
         {
-            GLint loc = sVertexProgram->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
-            if (loc > -1)
+            if (sVertexProgram->hasReflectedUniform(LLShaderMgr::AYA_SSS_SKIN_FLAG))
             {
                 const F32 sssFlag = avatarp->isSSSTarget() ? 1.f : 0.f;
-                glUniform1f(loc, sssFlag);
                 if (LLVKLoader::isVulkanInitialized() && sVertexProgram->mVkPipelineLayout != VK_NULL_HANDLE)
                 {
                     VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -967,11 +963,9 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("renderSkinned"); // <FS:Beq/> Tracy markup
         if (sVertexProgram)
         {
-            GLint loc = sVertexProgram->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
-            if (loc > -1)
+            if (sVertexProgram->hasReflectedUniform(LLShaderMgr::AYA_SSS_SKIN_FLAG))
             {
                 const F32 sssFlag = avatarp->isSSSTarget() ? 1.f : 0.f;
-                glUniform1f(loc, sssFlag);
                 if (LLVKLoader::isVulkanInitialized() && sVertexProgram->mVkPipelineLayout != VK_NULL_HANDLE)
                 {
                     VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();

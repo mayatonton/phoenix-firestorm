@@ -339,6 +339,8 @@ public:
     GLint getUniformLocation(const LLStaticHashedString& uniform);
     GLint getUniformLocation(U32 index);
 
+    bool hasReflectedUniform(S32 reserved_enum) const;
+
     void clearPermutations();
     void addPermutation(std::string name, std::string value);
     void addPermutations(const std::map<std::string, std::string>& defines)

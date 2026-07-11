@@ -3326,6 +3326,49 @@ void LLGLSLShader::uniformMatrix4fv(U32 index, U32 count, GLboolean transpose, c
     }
 }
 
+bool LLGLSLShader::hasReflectedUniform(S32 reserved_enum) const
+{
+    const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
+    if (reserved_enum < 0 || reserved_enum >= (S32)reserved.size())
+    {
+        return false;
+    }
+    const std::string& name = reserved[reserved_enum];
+
+    for (const VkReflUboBlock& pc : mVkReflPushConstants)
+    {
+        for (const VkReflUboMember& m : pc.members)
+        {
+            if (m.name == name)
+            {
+                return true;
+            }
+        }
+    }
+    for (const VkReflUboBlock& ubo : mVkReflUboBlocks)
+    {
+        for (const VkReflUboMember& m : ubo.members)
+        {
+            if (m.name == name)
+            {
+                return true;
+            }
+        }
+    }
+    for (const std::pair<S32, std::string>& bn : mVkReflBindingSamplerNames)
+    {
+        if (bn.second == name)
+        {
+            return true;
+        }
+    }
+    if (reserved_enum < (S32)mTexture.size() && mTexture[reserved_enum] >= 0)
+    {
+        return true;
+    }
+    return false;
+}
+
 GLint LLGLSLShader::getUniformLocation(const LLStaticHashedString& uniform)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;

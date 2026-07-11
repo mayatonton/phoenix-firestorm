@@ -1473,11 +1473,9 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
     if (cur)
     {
-        GLint loc = cur->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
-        if (loc > -1)
+        if (cur->hasReflectedUniform(LLShaderMgr::AYA_SSS_SKIN_FLAG))
         {
             const F32 sssFlag = params.mIsSSSTarget ? 1.f : 0.f;
-            glUniform1f(loc, sssFlag);
             if (LLVKLoader::isVulkanInitialized() && cur->mVkPipelineLayout != VK_NULL_HANDLE)
             {
                 VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
