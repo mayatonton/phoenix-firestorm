@@ -686,43 +686,6 @@ void LLSettingsVOSky::updateSettings()
     gSky.setMoonScale(getMoonScale());
 }
 
-void draw_color(LLShaderUniforms* shader, const LLColor3& col, S32 shader_key)
-{
-    // always identify as a radiance pass if desaturating irradiance is disabled
-    static LLCachedControl<bool> desaturate_irradiance(gSavedSettings, "RenderDesaturateIrradiance", true);
-
-    LLVector4 vect4(col.mV[0], col.mV[1], col.mV[2]);
-
-    if (desaturate_irradiance && gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass())
-    { // maximize and remove tinting if this is an irradiance map render pass and the parameter feeds into the sky background color
-        auto max_vec = [](LLVector4 col)
-        {
-            LLColor3 color(col);
-            F32 h, s, l;
-            color.calcHSL(&h, &s, &l);
-
-            col.mV[0] = col.mV[1] = col.mV[2] = l;
-            return col;
-        };
-
-        switch (shader_key)
-        {
-        case LLShaderMgr::BLUE_HORIZON:
-        case LLShaderMgr::BLUE_DENSITY:
-            vect4 = max_vec(vect4);
-            break;
-        }
-    }
-
-    //_WARNS("RIDER") << "pushing '" << (*it).first << "' as " << vect4 << LL_ENDL;
-    shader->uniform3fv(shader_key, LLVector3(vect4.mV));
-}
-
-inline void draw_real(LLShaderUniforms* shader, F32 value, S32 shader_key)
-{
-    shader->uniform1f(shader_key, value);
-}
-
 // <FS:AYA r17> Color Temperature helper (revert: P1.a 復活)
 //   Tanner Helland 2012 Kelvin→RGB 公開式で太陽 elevation から物理 Kelvin を派生し、
 //   preset 色に乗ずる modulator (= kelvin_rgb(K) / kelvin_rgb(6500K)) を返す。
@@ -835,26 +798,6 @@ LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const L
 
 void LLSettingsVOSky::applyToUniforms(void* ptarget)
 {
-    LLShaderUniforms* shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_ANY];
-
-    draw_color(shader, getAmbientColor(), LLShaderMgr::AMBIENT);
-    draw_color(shader, getBlueDensity(), LLShaderMgr::BLUE_DENSITY);
-    draw_color(shader, getBlueHorizon(), LLShaderMgr::BLUE_HORIZON);
-    draw_real(shader, getHazeDensity(), LLShaderMgr::HAZE_DENSITY);
-    draw_real(shader, getHazeHorizon(), LLShaderMgr::HAZE_HORIZON);
-    draw_real(shader, getDensityMultiplier(), LLShaderMgr::DENSITY_MULTIPLIER);
-    draw_real(shader, getDistanceMultiplier(), LLShaderMgr::DISTANCE_MULTIPLIER);
-    draw_color(shader, getCloudPosDensity2(), LLShaderMgr::CLOUD_POS_DENSITY2);
-    draw_real(shader, getCloudScale(), LLShaderMgr::CLOUD_SCALE);
-    draw_real(shader, getCloudShadow(), LLShaderMgr::CLOUD_SHADOW);
-    draw_real(shader, getCloudVariance(), LLShaderMgr::CLOUD_VARIANCE);
-    draw_color(shader, getGlow(), LLShaderMgr::GLOW);
-    draw_real(shader, getMaxY(), LLShaderMgr::MAX_Y);
-    draw_real(shader, getMoonBrightness(), LLShaderMgr::MOON_BRIGHTNESS);
-    draw_real(shader, getSkyMoistureLevel(), LLShaderMgr::MOISTURE_LEVEL);
-    draw_real(shader, getSkyDropletRadius(), LLShaderMgr::DROPLET_RADIUS);
-    draw_real(shader, getSkyIceLevel(), LLShaderMgr::ICE_LEVEL);
-    draw_real(shader, getReflectionProbeAmbiance(), LLShaderMgr::REFLECTION_PROBE_AMBIANCE);
 }
 
 void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
@@ -863,16 +806,6 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     LLVector3 light_direction = LLVector3(LLEnvironment::instance().getClampedLightNorm().mV);
 
     bool irradiance_pass = gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass();
-
-    LLShaderUniforms* shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_DEFAULT];
-    {
-        shader->uniform3fv(LLViewerShaderMgr::LIGHTNORM, light_direction);
-        shader->uniform3fv(LLShaderMgr::WL_CAMPOSLOCAL, LLViewerCamera::getInstance()->getOrigin());
-    }
-
-    shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_SKY];
-
-    shader->uniform3fv(LLViewerShaderMgr::LIGHTNORM, light_direction);
 
     // Legacy? SETTING_CLOUD_SCROLL_RATE("cloud_scroll_rate")
     LLVector4 vect_c_p_d1(mCloudPosDensity1.mV[0], mCloudPosDensity1.mV[1], mCloudPosDensity1.mV[2]);
@@ -885,7 +818,6 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     // * indra\newview\app_settings\shaders\class1\deferred\cloudsV.glsl
     cloud_scroll[0] = -cloud_scroll[0];
     vect_c_p_d1 += cloud_scroll;
-    shader->uniform3fv(LLShaderMgr::CLOUD_POS_DENSITY1, LLVector3(vect_c_p_d1.mV));
 
     LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
 
@@ -900,14 +832,6 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
 
     // TODO -- make these getters return vec3s
     LLVector3 sun_light_color = LLVector3((psky->getSunlightColor() * r17_sun_mod).mV);  // <FS:AYA r17>
-    LLVector3 moon_light_color = LLVector3(psky->getMoonlightColor().mV);
-
-    shader->uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, sun_light_color);
-    shader->uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, moon_light_color);
-
-    // <FS:AYA r17/r18> CLOUD_COLOR も r17 modulator を乗せる (r18 B 軸 復活): 夕焼け時に雲のオレンジが深まる
-    shader->uniform3fv(LLShaderMgr::CLOUD_COLOR, LLVector3((psky->getCloudColor() * r17_sun_mod).mV));
-    // </FS:AYA>
 
     // <FS:AYA r18> Cloud Volumetric A 軸: slab raymarch を有効化する shader uniform を push。
     //   AYAR18CloudVolumetricEnabled が OFF なら 0 で flat path。
@@ -918,12 +842,7 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         static LLCachedControl<bool> aya_r18_cloud_vol(gSavedSettings, "AYAR18CloudVolumetricEnabled", true);
         // <FS:AYAstorm r30 BD 改善> Cinematic mode 個別 opt-in
         static LLCachedControl<bool> aya_r18_in_cinematic(gSavedSettings, "AYAR18CloudVolumetricInCinematicEnabled", false);
-        bool is_legacy_midday = (psky && psky->getAssetId() == LLEnvironment::KNOWN_SKY_LEGACY_MIDDAY);
-        // mode 1 (AYAstorm View): 既存 cvar に従う / mode 2 (Cinematic): InCinematic cvar (default OFF)
-        bool r18_on = ((aya_master() == 1 && aya_r18_cloud_vol)
-                    || (aya_master() == 2 && aya_r18_in_cinematic)) && !is_legacy_midday;
         // </FS:AYAstorm>
-        shader->uniform1i(LLShaderMgr::AYA_R18_CLOUD_VOLUMETRIC_ENABLED, r18_on ? 1 : 0);
     }
     // </FS:AYA>
 
@@ -931,12 +850,9 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     //   r18 enabled 評価とは独立に常時 push、shader 側で gate 内 lerp。
     {
         static LLCachedControl<F32> aya_r18_strength(gSavedSettings, "AYAR18CloudVolumetricStrength", 1.0f);
-        shader->uniform1f(LLShaderMgr::AYA_R18_STRENGTH, llclamp((F32)aya_r18_strength, 0.f, 1.f));
     }
     // </FS:AYAstorm>
 
-    shader = &((LLShaderUniforms*)ptarget)[LLGLSLShader::SG_ANY];
-    shader->uniform1f(LLShaderMgr::SCENE_LIGHT_STRENGTH, mSceneLightStrength);
     LLPipeline::sLastSceneLightStrength = mSceneLightStrength;
 
     LLColor3 ambient(LLColor3(getTotalAmbient().mV) * r17_sun_mod);  // <FS:AYA r17> ambient も連動して朝青/夕橙シフト
@@ -963,33 +879,24 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         psky->setTonemapMix(tonemap_mix_setting);
     }
 
-    shader->uniform1f(LLShaderMgr::SKY_SUNLIGHT_SCALE, hdr ? sunlight_hdr_scale : sunlight_scale);
-    shader->uniform1f(LLShaderMgr::SKY_AMBIENT_SCALE, ambient_scale);
-    shader->uniform1i(LLShaderMgr::CLASSIC_MODE, classic_mode);
-
     // <FS:AYA r14> Visual Realism master switch — altitude density 等の物理ベース atmospherics 新経路を有効化
     //   cvar 型は U32 (0=Firestorm View / 1=AYAstorm View / 2=Cinematic)。combo_box との binding を確実にするため bool ではなく U32 で読む。
     static LLCachedControl<U32> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
     // <FS:AYAstorm r30 BD改善> mode 2 (Cinematic) では個別 InCinematic cvar で各 r14-r20 効果を opt-in。
     //   master uniform AYA_VISUAL_REALISM_ENABLED 自体は mode==1 のみ true を保つ (skinSSSF 旧 path 互換 / r14-r15 等は個別 uniform に分岐)。
-    bool aya_view = (aya_visual_realism() == 1);
     // </FS:AYAstorm>
-    shader->uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, aya_view ? 1 : 0);
     // </FS:AYA>
 
     // <FS:AYAstorm r30 BD改善> r14 Volumetric Atmosphere + Sun Dazzle 個別 uniform
     //   AYAstorm View は無条件 ON (個別 cvar 持たないため)、Cinematic は AYAR14VolumetricAtmosphereInCinematicEnabled で opt-in。
     {
         static LLCachedControl<bool> aya_r14_in_cinematic(gSavedSettings, "AYAR14VolumetricAtmosphereInCinematicEnabled", false);
-        bool r14_on = aya_view || (aya_visual_realism() == 2 && aya_r14_in_cinematic);
-        shader->uniform1i(LLShaderMgr::AYA_R14_VOLUMETRIC_ATMOSPHERE_ENABLED, r14_on ? 1 : 0);
     }
     // </FS:AYAstorm>
 
     // <FS:AYAstorm r30 BD改善> r14 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
     {
         static LLCachedControl<F32> aya_r14_strength(gSavedSettings, "AYAR14Strength", 1.0f);
-        shader->uniform1f(LLShaderMgr::AYA_R14_STRENGTH, llclamp((F32)aya_r14_strength, 0.f, 1.f));
     }
     // </FS:AYAstorm>
 
@@ -998,13 +905,9 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     //   実際の dispatch (doGodrays) は pipeline.cpp 側でも mode/cvar 評価される。
     {
         static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
-        bool r15_on = aya_view || (aya_visual_realism() == 2 && aya_r15_in_cinematic);
-        shader->uniform1i(LLShaderMgr::AYA_R15_GODRAYS_ENABLED, r15_on ? 1 : 0);
 
         static LLCachedControl<F32> aya_r15_phase_exp(gSavedSettings, "AYAR15GodraysPhaseExponent", 16.0f);
         static LLCachedControl<F32> aya_r15_strength(gSavedSettings, "AYAR15GodraysStrength", 0.15f);
-        shader->uniform1f(LLShaderMgr::AYA_R15_GODRAYS_PHASE_EXPONENT, (F32)aya_r15_phase_exp);
-        shader->uniform1f(LLShaderMgr::AYA_R15_GODRAYS_STRENGTH, (F32)aya_r15_strength);
     }
     // </FS:AYAstorm>
 
@@ -1013,70 +916,36 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
     //   <FS:AYAstorm r30 BD改善> Cinematic mode 個別 opt-in
     static LLCachedControl<bool> aya_r16_aerial(gSavedSettings, "AYAR16AerialPerspectiveEnabled", true);
     static LLCachedControl<bool> aya_r16_in_cinematic(gSavedSettings, "AYAR16AerialPerspectiveInCinematicEnabled", false);
-    bool r16_on = (aya_view && aya_r16_aerial)
-               || (aya_visual_realism() == 2 && aya_r16_in_cinematic);
-    shader->uniform1i(LLShaderMgr::AYA_R16_AERIAL_PERSPECTIVE_ENABLED, r16_on ? 1 : 0);
     // </FS:AYA>
 
     // <FS:AYAstorm r30 BD改善> r16 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
     //   r16 enabled 評価とは独立に常時 push、shader 側で gate 内 lerp。
     {
         static LLCachedControl<F32> aya_r16_strength(gSavedSettings, "AYAR16AerialPerspectiveStrength", 1.0f);
-        shader->uniform1f(LLShaderMgr::AYA_R16_STRENGTH, llclamp((F32)aya_r16_strength, 0.f, 1.f));
     }
     // </FS:AYAstorm>
 
     LLRender::sClassicMode = classic_mode;
 
-    F32 probe_ambiance = getReflectionProbeAmbiance();
-
     if (irradiance_pass)
     { // during an irradiance map update, disable ambient lighting (direct lighting only) and desaturate sky color (avoid tinting the world blue)
-        shader->uniform3fv(LLShaderMgr::AMBIENT, LLVector3::zero.mV);
     }
     else
     {
         if (psky->getReflectionProbeAmbiance() != 0.f)
         {
-            shader->uniform3fv(LLShaderMgr::AMBIENT, LLVector3(ambient.mV));
             LLPipeline::sLastSkyHdrScale = sqrtf(g)*2.0f;
-            shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, sqrtf(g)*2.0f); // use a modifier here so 1.0 maps to the "most desirable" default and the maximum value doesn't go off the rails
-
-            // Low quality setting
-            if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
-                probe_ambiance = DEFAULT_AUTO_ADJUST_PROBE_AMBIANCE;
         }
         else if (psky->canAutoAdjust() && should_auto_adjust)
         { // auto-adjust legacy sky to take advantage of probe ambiance
-            shader->uniform3fv(LLShaderMgr::AMBIENT, (ambient * auto_adjust_ambient_scale).mV);
             LLPipeline::sLastSkyHdrScale = auto_adjust_hdr_scale;
-            shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, auto_adjust_hdr_scale);
-            LLColor3 blue_horizon = getBlueHorizon() * auto_adjust_blue_horizon_scale;
-            LLColor3 blue_density = getBlueDensity() * auto_adjust_blue_density_scale;
             sun_light_color = sun_light_color * auto_adjust_sun_color_scale;
-
-            shader->uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, sun_light_color.mV);
-            shader->uniform3fv(LLShaderMgr::BLUE_DENSITY, blue_density.mV);
-            shader->uniform3fv(LLShaderMgr::BLUE_HORIZON, blue_horizon.mV);
-
-            probe_ambiance = sAutoAdjustProbeAmbiance;
         }
         else
         {
             LLPipeline::sLastSkyHdrScale = 1.f;
-            shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, 1.f);
-            shader->uniform3fv(LLShaderMgr::AMBIENT, LLVector3(ambient.mV));
         }
     }
-
-    shader->uniform1f(LLShaderMgr::REFLECTION_PROBE_AMBIANCE, probe_ambiance);
-
-    shader->uniform1i(LLShaderMgr::SUN_UP_FACTOR, getIsSunUp() ? 1 : 0);
-    shader->uniform1f(LLShaderMgr::SUN_MOON_GLOW_FACTOR, getSunMoonGlowFactor());
-    shader->uniform1f(LLShaderMgr::DENSITY_MULTIPLIER, getDensityMultiplier());
-    shader->uniform1f(LLShaderMgr::DISTANCE_MULTIPLIER, getDistanceMultiplier());
-
-    shader->uniform1f(LLShaderMgr::GAMMA, g);
 }
 
 LLSettingsSky::parammapping_t LLSettingsVOSky::getParameterMap() const
@@ -1277,9 +1146,6 @@ void LLSettingsVOWater::applySpecial(void *ptarget, bool force)
 
     LLEnvironment& env = LLEnvironment::instance();
 
-    auto group = LLGLSLShader::SG_ANY;
-    LLShaderUniforms* shader = &((LLShaderUniforms*)ptarget)[group];
-
     {
         F32 water_height = env.getWaterHeight();
 
@@ -1318,36 +1184,26 @@ void LLSettingsVOWater::applySpecial(void *ptarget, bool force)
 
         LLDrawPoolAlpha::sWaterPlane = waterPlane;
 
-        shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, waterPlane.mV);
-        shader->uniform4fv(LLShaderMgr::CLIP_PLANE, glm::value_ptr(mirrorPlane));
         LLPipeline::sLastClipPlane = LLVector4(mirrorPlane.x, mirrorPlane.y, mirrorPlane.z, mirrorPlane.w);
         LLVector4 light_direction = env.getClampedLightNorm();
 
         if (gPipeline.mHeroProbeManager.isMirrorPass())
         {
-            shader->uniform1f(LLShaderMgr::MIRROR_FLAG, 1);
             LLPipeline::sLastMirrorFlag = 1.f;
         }
         else
         {
-            shader->uniform1f(LLShaderMgr::MIRROR_FLAG, 0);
             LLPipeline::sLastMirrorFlag = 0.f;
         }
 
         F32 waterFogKS = 1.f / llmax(light_direction.mV[2], WATER_FOG_LIGHT_CLAMP);
 
-        shader->uniform1f(LLShaderMgr::WATER_FOGKS, waterFogKS);
-
         F32 eyedepth = LLViewerCamera::getInstance()->getOrigin().mV[2] - water_height;
         bool underwater = (eyedepth <= 0.0f);
 
         F32 waterFogDensity = env.getCurrentWater()->getModifiedWaterFogDensity(underwater);
-        shader->uniform1f(LLShaderMgr::WATER_FOGDENSITY, waterFogDensity);
 
         LLColor4 fog_color(env.getCurrentWater()->getWaterFogColor());
-        shader->uniform4fv(LLShaderMgr::WATER_FOGCOLOR, fog_color.mV);
-
-        shader->uniform3fv(LLShaderMgr::WATER_FOGCOLOR_LINEAR, linearColor3(fog_color).mV);
 
         if (LLVKLoader::isVulkanInitialized())
         {
@@ -1365,11 +1221,6 @@ void LLSettingsVOWater::applySpecial(void *ptarget, bool force)
             LLVKLoader::writeCurrentWaterFogUBO(ubo_data);
         }
 
-        F32 blend_factor = (F32)env.getCurrentWater()->getBlendFactor();
-        shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
-
-        // update to normal lightnorm, water shader itself will use rotated lightnorm as necessary
-        shader->uniform3fv(LLShaderMgr::LIGHTNORM, light_direction.mV);
     }
 }
 
