@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<floater
+ bg_alpha_image="Window_NoTitle_Background"
+ bg_opaque_image="Window_NoTitle_Foreground"
+ can_close="false"
+ can_drag_on_left="true"
+ can_minimize="false"
+ can_resize="false"
+ header_height="0"
+ height="176"
+ layout="topleft"
+ name="aya_update"
+ positioning="centered"
+ save_rect="false"
+ show_title="false"
+ single_instance="true"
+ title=""
+ width="626">
+
+    <panel
+     background_visible="true"
+     bg_alpha_color="0.03 0.04 0.05 0.97"
+     border="true"
+     follows="all"
+     height="176"
+     layout="topleft"
+     left="0"
+     name="aya_update_panel"
+     top="0"
+     width="626">
+
+        <text
+         follows="left|top|right"
+         font="SansSerifHugeBold"
+         halign="center"
+         height="40"
+         layout="topleft"
+         left="24"
+         name="aya_update_title"
+         text_color="White"
+         top="22"
+         width="578">
+AYAstorm update available
+        </text>
+
+        <text
+         follows="left|top|right"
+         font="SansSerifLarge"
+         halign="center"
+         height="48"
+         layout="topleft"
+         left="24"
+         name="aya_update_message"
+         text_color="LtGray_50"
+         top="66"
+         width="578">
+Latest: -
+Current: -
+        </text>
+
+        <button
+         follows="left|top"
+         font="SansSerifBold"
+         height="38"
+         label="OK"
+         layout="topleft"
+         left="228"
+         name="aya_update_ok_btn"
+         top="122"
+         visible="false"
+         width="170">
+            <button.commit_callback function="AYAUpdate.Later"/>
+        </button>
+
+        <button
+         follows="left|top"
+         font="SansSerifBold"
+         height="38"
+         label="View Update"
+         layout="topleft"
+         left="78"
+         name="aya_update_open_btn"
+         top="122"
+         width="170">
+            <button.commit_callback function="AYAUpdate.Open"/>
+        </button>
+
+        <button
+         follows="left|top"
+         font="SansSerifBold"
+         height="38"
+         label="Later"
+         layout="topleft"
+         left_pad="22"
+         name="aya_update_later_btn"
+         top="122"
+         width="110">
+            <button.commit_callback function="AYAUpdate.Later"/>
+        </button>
+
+        <button
+         follows="left|top"
+         font="SansSerifBold"
+         height="38"
+         label="Skip Version"
+         layout="topleft"
+         left_pad="22"
+         name="aya_update_skip_btn"
+         top="122"
+         width="160">
+            <button.commit_callback function="AYAUpdate.Skip"/>
+        </button>
+    </panel>
+</floater>

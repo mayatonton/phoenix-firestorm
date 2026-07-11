@@ -3954,6 +3954,7 @@ LLSD LLAppViewer::getViewerInfo() const
                                          versionInfo.getPatch(), stringize(versionInfo.getBuild()));
     info["VIEWER_VERSION_STR"] = versionInfo.getVersion();
     info["VIEWER_VERSION_LL"] = versionInfo.getLLViewerVersion(); // <FS:PP>
+    info["AYASTORM_DISPLAY_VERSION"] = versionInfo.getAYAstormDisplayVersion();
     info["BUILD_DATE"] = __DATE__;
     info["BUILD_TIME"] = __TIME__;
     info["CHANNEL"] = versionInfo.getChannel();
@@ -4034,7 +4035,25 @@ LLSD LLAppViewer::getViewerInfo() const
     //    url += LLURI::escape(versionInfo.getVersion()) + ".html";
     //}
     //info["VIEWER_RELEASE_NOTES_URL"] = url;
-    std::string url = LLTrans::getString("RELEASE_NOTES_BASE_URL") + LLURI::escape(versionInfo.getVersion());
+    const std::string ayastorm_repo_url = "https://github.com/mayatonton/phoenix-firestorm";
+    const std::string ayastorm_release_tag = versionInfo.getAYAstormReleaseTag();
+    std::string url;
+    if (!ayastorm_release_tag.empty() && ayastorm_release_tag != "dev")
+    {
+        url = ayastorm_repo_url + "/releases/tag/" + LLURI::escapePathAndData(ayastorm_release_tag);
+    }
+    else
+    {
+        const std::string source_branch = versionInfo.getAYAstormSourceBranch();
+        if (!source_branch.empty() && source_branch != "dev")
+        {
+            url = ayastorm_repo_url + "/tree/" + LLURI::escapePathAndData(source_branch);
+        }
+        else
+        {
+            url = ayastorm_repo_url + "/releases";
+        }
+    }
     info["VIEWER_RELEASE_NOTES_URL"] = url;
     // </FS:Ansariel>
 

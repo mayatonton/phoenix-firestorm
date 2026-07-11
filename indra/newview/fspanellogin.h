@@ -33,9 +33,12 @@
 #include "llpointer.h"          // LLPointer<>
 #include "llmediactrl.h"    // LLMediaCtrlObserver
 
+#include <boost/signals2/connection.hpp>
+
 class LLLineEditor;
 class LLSLURL;
 class LLCredential;
+class LLAyastormUpdateChecker;
 
 class FSPanelLogin:
     public LLPanel,
@@ -99,6 +102,9 @@ private:
     void onLocationSLURL();
     void onUsernameTextChanged();
     void syncShowHidePasswordButton();          // Update which button is shown based on mShowPassword
+    void startAYAUpdateCheck();
+    void showAYAUpdateBanner();
+    void hideAYAUpdateBanner();
 
     static void onClickConnect(void*);
     static void onClickNewAccount(void*);
@@ -112,10 +118,14 @@ private:
     static void onClickGridMgrHelp(void*);
     static void onClickGridBuilder(void*);
     static void onShowHidePasswordClick(void*);
+    static void onClickAYAUpdateOpen(void*);
+    static void onClickAYAUpdateLater(void*);
+    static void onClickAYAUpdateSkip(void*);
     static std::string credentialName();
 
 private:
     boost::signals2::connection mGridListChangedCallbackConnection;
+    boost::signals2::connection mAYAUpdateCallbackConnection;
 
     void updateLoginButtons();
 
