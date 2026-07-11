@@ -4254,7 +4254,7 @@ bool LLViewerShaderMgr::loadShadersObject()
         success = make_rigged_variant(gObjectBumpProgram, gSkinnedObjectBumpProgram);
         success = success && gObjectBumpProgram.createShader();
         if (success)
-        { //lldrawpoolbump assumes "texture0" has channel 0 and "texture1" has channel 1
+        {
             LLGLSLShader* shader[] = { &gObjectBumpProgram, &gSkinnedObjectBumpProgram };
             for (int i = 0; i < 2; ++i)
             {

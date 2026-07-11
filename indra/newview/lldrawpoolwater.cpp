@@ -269,13 +269,6 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
     F32 sunAngle = llmax(0.f, light_dir.mV[1]);
     F32 scaledAngle = 1.f - sunAngle;
 
-    if (LLViewerCamera::getInstance()->cameraUnderWater())
-    {
-    }
-    else
-    {
-    }
-
     LLGLDisable cullface(GL_CULL_FACE);
 
     if (LLVKLoader::isVulkanInitialized()

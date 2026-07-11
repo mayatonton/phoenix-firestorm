@@ -388,20 +388,6 @@ LLTrace::BlockTimerStatHandle FTM_RENDER_UI_2D("2D");
 
 static LLTrace::BlockTimerStatHandle FTM_STATESORT_DRAWABLE("Sort Drawables");
 
-static LLStaticHashedString sTint("tint");
-static LLStaticHashedString sAmbiance("ambiance");
-static LLStaticHashedString sAlphaScale("alpha_scale");
-static LLStaticHashedString sNormMat("norm_mat");
-static LLStaticHashedString sOffset("offset");
-static LLStaticHashedString sScreenRes("screenRes");
-static LLStaticHashedString sDelta("delta");
-static LLStaticHashedString sDistFactor("dist_factor");
-static LLStaticHashedString sKern("kern");
-static LLStaticHashedString sKernScale("kern_scale");
-static LLStaticHashedString sSSRMaxDepth("maxZDepth");
-static LLStaticHashedString sSSRMaxRoughness("maxRoughness");
-static LLStaticHashedString sSmaaRTMetrics("SMAA_RT_METRICS");
-
 //----------------------------------------
 
 void drawBox(const LLVector4a& c, const LLVector4a& r);
@@ -9045,7 +9031,6 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
             }
         }
 
-        static LLStaticHashedString dynamic_exposure_e("dynamic_exposure_enabled");
         static LLCachedControl<bool> should_auto_adjust(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
         static LLCachedControl<bool> dynamic_exposure_enabled(gSavedSettings, "RenderDynamicExposureEnabled", true);
         static LLCachedControl<F32> dynamic_exposure_coefficient(gSavedSettings, "RenderDynamicExposureCoefficient", 0.175f);
@@ -9319,9 +9304,6 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
         F32 warmthAmount = RenderGlowWarmthAmount;
         LLVector3 lumWeights = RenderGlowLumWeights;
         LLVector3 warmthWeights = RenderGlowWarmthWeights;
-
-        // <FS:AYAstorm r30 P4> Honor RenderGlowMinLuminance instead of hardcoded gate.
-        // </FS:AYAstorm r30 P4>
 
         if (RenderGlowNoise)
         {
@@ -11041,24 +11023,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     bindReflectionProbes(shader);
 
-    /*if (gCubeSnapshot)
-    { // we only really care about the first two values, but the shader needs increasing separation between clip planes
-        shader.uniform4f(LLShaderMgr::DEFERRED_SHADOW_CLIP, 1.f, 64.f, 128.f, 256.f);
-    }
-    else*/
-    {
-    }
-
-// <FS:WW> Compute scale factor to match AO appearance between view and snapshot.
-    //shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_RADIUS, RenderSSAOScale);
-    //shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_MAX_RADIUS, (GLfloat)RenderSSAOMaxScale);
-    // </FS:WW>
-
-    // This matrix scales (proj of color onto <1/rt(3),1/rt(3),1/rt(3)>) by
-    // value factor, and scales remainder by saturation factor
-
-    //F32 shadow_offset_error = 1.f + RenderShadowOffsetError * fabsf(LLViewerCamera::getInstance()->getOrigin().mV[2]);
-
     if (LLVKLoader::isVulkanInitialized() && shader.mWritePerProgramUBOMinimumAlpha
         && shader.mVkPerProgramUBO != VK_NULL_HANDLE
         && shader.mVkPerProgramUBOMapped != nullptr
@@ -11093,19 +11057,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         memcpy(mapped + LLVKLoader::GLTFMR_UBO_OFFSET_SUN_DIR,  sun_v,  16);
         memcpy(mapped + LLVKLoader::GLTFMR_UBO_OFFSET_MOON_DIR, moon_v, 16);
     }
-
-    // auto adjust legacy sun color if needed
-
-    // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live deferred uniforms (Cinematic only).
-    // BD pipeline.cpp:8965-8972 verbatim. Non-Cinematic modes get neutral defaults
-    // (light strength 1.0 / sepia 0 / greyscale 0 / num colors 1 = noop).
-    if (isCinematicMode())
-    {
-    }
-    else
-    {
-    }
-    // </FS:AYAstorm:r30-bd-port>
 }
 
 
@@ -11229,9 +11180,6 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
     LLGLState::setCullFaceMode(GL_BACK);
 
     gFSObjectIDShader.bind();
-
-
-    static LLStaticHashedString sObjectIDPacked("object_id_packed");
 
     // uploadMatrixPalette caches the last (avatar, mesh) pair to skip redundant
     // GPU uploads for back-to-back DrawInfos with the same skin.
@@ -12673,8 +12621,6 @@ void LLPipeline::doSkinSSS()
         // so the shader can per-pixel scale blur radius by eye distance.
         shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
         // </FS:AYA>
-        // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
-        // </FS:AYAstorm>
 
         if (LLVKLoader::isVulkanInitialized()
             && gDeferredSkinSSSProgram.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -12735,8 +12681,6 @@ void LLPipeline::doSkinSSS()
         // for per-pixel blur-radius scaling in skinSSSF.
         shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
         // </FS:AYA>
-        // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
-        // </FS:AYAstorm>
 
         if (LLVKLoader::isVulkanInitialized()
             && gDeferredSkinSSSProgram.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -12984,9 +12928,6 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
         {
             *out_shadow_fade = 1.f - mSpotLightFade[s_idx];
         }
-    }
-    else
-    {
     }
 
     // make sure we're not already targeting the same spot light with both shadow maps

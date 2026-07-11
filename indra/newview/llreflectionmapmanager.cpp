@@ -847,9 +847,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         gGL.flush();
         U32 res = mProbeResolution * 2;
 
-        static LLStaticHashedString znear("znear");
-        static LLStaticHashedString zfar("zfar");
-
         LLRenderTarget* screen_rt = &gPipeline.mAuxillaryRT.screen;
 
         // perform a gaussian blur on the super sampled render before downsampling

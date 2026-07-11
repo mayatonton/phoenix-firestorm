@@ -117,9 +117,6 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
     { // for HUD attachments, only the pre-water pass is executed and we never want to clip anything
         water_sign_pc = 0.f;
     }
-    else
-    {
-    }
 
     if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
     {

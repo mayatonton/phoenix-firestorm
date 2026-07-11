@@ -803,72 +803,17 @@ void LLSettingsVOSky::applyToUniforms(void* ptarget)
 void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-    LLVector3 light_direction = LLVector3(LLEnvironment::instance().getClampedLightNorm().mV);
 
     bool irradiance_pass = gCubeSnapshot && !gPipeline.mReflectionMapManager.isRadiancePass();
 
-    // Legacy? SETTING_CLOUD_SCROLL_RATE("cloud_scroll_rate")
-    LLVector4 vect_c_p_d1(mCloudPosDensity1.mV[0], mCloudPosDensity1.mV[1], mCloudPosDensity1.mV[2]);
-    LLVector4 cloud_scroll( LLEnvironment::instance().getCloudScrollDelta() );
-
-    // SL-13084 EEP added support for custom cloud textures -- flip them horizontally to match the preview of Clouds > Cloud Scroll
-    // Keep in Sync!
-    // * indra\newview\llsettingsvo.cpp
-    // * indra\newview\app_settings\shaders\class2\windlight\cloudsV.glsl
-    // * indra\newview\app_settings\shaders\class1\deferred\cloudsV.glsl
-    cloud_scroll[0] = -cloud_scroll[0];
-    vect_c_p_d1 += cloud_scroll;
-
     LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
-
-    // <FS:AYA r17> Color Temperature (revert: P1.a 復活): 太陽 elevation から派生する Kelvin modulator を
-    //   sky path (SUNLIGHT_COLOR / AMBIENT / CLOUD_COLOR) に適用。scene path (LLPipeline::mSunDiffuse)
-    //   は pipeline.cpp::setupHWLights で同じ helper を呼ぶため、sky と scene で同色温度が適用される設計。
-    //   moon は r17 v1 では未対応 (sun elevation 派生の K カーブを moon に流用すると不自然)。
-    //   「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) では helper 内で asset UUID 一致 pinpoint
-    //   除外で no-op に落ち、PBR 前 noon 再現 preset の意図を歪めない。
-    LLColor3 r17_sun_mod = LLSettingsVOSky::getR17SunModulator(light_direction, psky.get());
-    // </FS:AYA>
-
-    // TODO -- make these getters return vec3s
-    LLVector3 sun_light_color = LLVector3((psky->getSunlightColor() * r17_sun_mod).mV);  // <FS:AYA r17>
-
-    // <FS:AYA r18> Cloud Volumetric A 軸: slab raymarch を有効化する shader uniform を push。
-    //   AYAR18CloudVolumetricEnabled が OFF なら 0 で flat path。
-    //   master は U32 (0=Firestorm View / 1=AYAstorm View)、combo_box と確実に binding させる。
-    //   「昼間(レガシー)」(KNOWN_SKY_LEGACY_MIDDAY) は PBR 前 noon 再現 preset の意図を歪めないよう pinpoint 除外。
-    {
-        static LLCachedControl<U32> aya_master(gSavedSettings, "AYAVisualRealismEnabled", 1);
-        static LLCachedControl<bool> aya_r18_cloud_vol(gSavedSettings, "AYAR18CloudVolumetricEnabled", true);
-        // <FS:AYAstorm r30 BD 改善> Cinematic mode 個別 opt-in
-        static LLCachedControl<bool> aya_r18_in_cinematic(gSavedSettings, "AYAR18CloudVolumetricInCinematicEnabled", false);
-        // </FS:AYAstorm>
-    }
-    // </FS:AYA>
-
-    // <FS:AYAstorm r30 BD改善> r18 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
-    //   r18 enabled 評価とは独立に常時 push、shader 側で gate 内 lerp。
-    {
-        static LLCachedControl<F32> aya_r18_strength(gSavedSettings, "AYAR18CloudVolumetricStrength", 1.0f);
-    }
-    // </FS:AYAstorm>
 
     LLPipeline::sLastSceneLightStrength = mSceneLightStrength;
 
-    LLColor3 ambient(LLColor3(getTotalAmbient().mV) * r17_sun_mod);  // <FS:AYA r17> ambient も連動して朝青/夕橙シフト
-
     F32 g = getGamma();
 
-    static LLCachedControl<bool> hdr(gSavedSettings, "RenderHDREnabled");
     static LLCachedControl<bool> should_auto_adjust(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-    static LLCachedControl<F32> auto_adjust_ambient_scale(gSavedSettings, "RenderSkyAutoAdjustAmbientScale", 0.75f);
     static LLCachedControl<F32> auto_adjust_hdr_scale(gSavedSettings, "RenderSkyAutoAdjustHDRScale", 2.f);
-    static LLCachedControl<F32> auto_adjust_blue_horizon_scale(gSavedSettings, "RenderSkyAutoAdjustBlueHorizonScale", 1.f);
-    static LLCachedControl<F32> auto_adjust_blue_density_scale(gSavedSettings, "RenderSkyAutoAdjustBlueDensityScale", 1.f);
-    static LLCachedControl<F32> auto_adjust_sun_color_scale(gSavedSettings, "RenderSkyAutoAdjustSunColorScale", 1.f);
-    static LLCachedControl<F32> sunlight_scale(gSavedSettings, "RenderSkySunlightScale", 1.5f);
-    static LLCachedControl<F32> sunlight_hdr_scale(gSavedSettings, "RenderHDRSkySunlightScale", 1.5f);
-    static LLCachedControl<F32> ambient_scale(gSavedSettings, "RenderSkyAmbientScale", 1.5f);
     static LLCachedControl<F32> tonemap_mix_setting(gSavedSettings, "RenderTonemapMix", 1.f);
 
     // sky is a "classic" sky following pre SL 7.0 shading
@@ -879,58 +824,9 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         psky->setTonemapMix(tonemap_mix_setting);
     }
 
-    // <FS:AYA r14> Visual Realism master switch — altitude density 等の物理ベース atmospherics 新経路を有効化
-    //   cvar 型は U32 (0=Firestorm View / 1=AYAstorm View / 2=Cinematic)。combo_box との binding を確実にするため bool ではなく U32 で読む。
-    static LLCachedControl<U32> aya_visual_realism(gSavedSettings, "AYAVisualRealismEnabled", 1);
-    // <FS:AYAstorm r30 BD改善> mode 2 (Cinematic) では個別 InCinematic cvar で各 r14-r20 効果を opt-in。
-    //   master uniform AYA_VISUAL_REALISM_ENABLED 自体は mode==1 のみ true を保つ (skinSSSF 旧 path 互換 / r14-r15 等は個別 uniform に分岐)。
-    // </FS:AYAstorm>
-    // </FS:AYA>
-
-    // <FS:AYAstorm r30 BD改善> r14 Volumetric Atmosphere + Sun Dazzle 個別 uniform
-    //   AYAstorm View は無条件 ON (個別 cvar 持たないため)、Cinematic は AYAR14VolumetricAtmosphereInCinematicEnabled で opt-in。
-    {
-        static LLCachedControl<bool> aya_r14_in_cinematic(gSavedSettings, "AYAR14VolumetricAtmosphereInCinematicEnabled", false);
-    }
-    // </FS:AYAstorm>
-
-    // <FS:AYAstorm r30 BD改善> r14 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
-    {
-        static LLCachedControl<F32> aya_r14_strength(gSavedSettings, "AYAR14Strength", 1.0f);
-    }
-    // </FS:AYAstorm>
-
-    // <FS:AYAstorm r30 BD改善> r15 Godrays 個別 uniform (godraysF が参照)
-    //   AYAstorm View は無条件 ON、Cinematic は AYAR15GodraysInCinematicEnabled で opt-in。
-    //   実際の dispatch (doGodrays) は pipeline.cpp 側でも mode/cvar 評価される。
-    {
-        static LLCachedControl<bool> aya_r15_in_cinematic(gSavedSettings, "AYAR15GodraysInCinematicEnabled", false);
-
-        static LLCachedControl<F32> aya_r15_phase_exp(gSavedSettings, "AYAR15GodraysPhaseExponent", 16.0f);
-        static LLCachedControl<F32> aya_r15_strength(gSavedSettings, "AYAR15GodraysStrength", 0.15f);
-    }
-    // </FS:AYAstorm>
-
-    // <FS:AYA r16> Aerial Perspective: 個別 switch を master AND で gate
-    //   master OFF (Firestorm View) で r16 効果も停止、master ON 前提で個別に r16 のみ OFF 可能。
-    //   <FS:AYAstorm r30 BD改善> Cinematic mode 個別 opt-in
-    static LLCachedControl<bool> aya_r16_aerial(gSavedSettings, "AYAR16AerialPerspectiveEnabled", true);
-    static LLCachedControl<bool> aya_r16_in_cinematic(gSavedSettings, "AYAR16AerialPerspectiveInCinematicEnabled", false);
-    // </FS:AYA>
-
-    // <FS:AYAstorm r30 BD改善> r16 強度 lerp scalar (0=OFF 相当 / 1=現状 ON 相当)
-    //   r16 enabled 評価とは独立に常時 push、shader 側で gate 内 lerp。
-    {
-        static LLCachedControl<F32> aya_r16_strength(gSavedSettings, "AYAR16AerialPerspectiveStrength", 1.0f);
-    }
-    // </FS:AYAstorm>
-
     LLRender::sClassicMode = classic_mode;
 
-    if (irradiance_pass)
-    { // during an irradiance map update, disable ambient lighting (direct lighting only) and desaturate sky color (avoid tinting the world blue)
-    }
-    else
+    if (!irradiance_pass)
     {
         if (psky->getReflectionProbeAmbiance() != 0.f)
         {
@@ -939,7 +835,6 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         else if (psky->canAutoAdjust() && should_auto_adjust)
         { // auto-adjust legacy sky to take advantage of probe ambiance
             LLPipeline::sLastSkyHdrScale = auto_adjust_hdr_scale;
-            sun_light_color = sun_light_color * auto_adjust_sun_color_scale;
         }
         else
         {
