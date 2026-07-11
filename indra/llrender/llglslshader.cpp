@@ -575,6 +575,7 @@ bool LLGLSLShader::createShader()
     // Create program
     mProgramObject = glCreateProgram();
     mComplete = (mProgramObject != 0);
+    mVkComplete = false;
     if (mProgramObject == 0)
     {
         // Shouldn't happen if shader related extensions, like ARB_vertex_shader, exist.
@@ -654,7 +655,7 @@ bool LLGLSLShader::createShader()
 
     if (success && LLVKLoader::isVulkanInitialized() && !mStageSources.empty())
     {
-        generatePerProgramSPIRV(mStageSources);
+        mVkComplete = generatePerProgramSPIRV(mStageSources);
         LLVkUboReg::verifyProgramLayout(*this);
     }
     mStageSources.clear();
@@ -851,6 +852,24 @@ bool LLGLSLShader::createShader()
 #if LL_PROFILER_ENABLE_RENDER_DOC
     setLabel(mName.c_str());
 #endif
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        const bool gl_complete = mComplete;
+        mComplete = mVkComplete;
+        success = mVkComplete;
+
+        if (gl_complete != mVkComplete)
+        {
+            static std::set<std::string> sVkDivergenceWarned;
+            if (sVkDivergenceWarned.insert(mName).second)
+            {
+                LL_WARNS("Vulkan") << "VK shader completion divergence '" << mName
+                                   << "' gl_complete=" << (gl_complete ? 1 : 0)
+                                   << " vk_complete=" << (mVkComplete ? 1 : 0) << LL_ENDL;
+            }
+        }
+    }
 
     return success;
 }

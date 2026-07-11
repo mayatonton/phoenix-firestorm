@@ -283,6 +283,7 @@ public:
 
     GLuint mProgramObject;
     bool mComplete = false;
+    bool mVkComplete = false;
     U32 mAttributeMask;  //mask of which reserved attributes are set (lines up with LLVertexBuffer::getTypeMask())
     std::vector<GLint> mTexture;
     S32 mActiveTextureChannels;
