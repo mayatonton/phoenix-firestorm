@@ -108,7 +108,6 @@ public:
 
     static void initClass(LLWindow* window);
     static void cleanupClass();
-    static void setupClientArrays(U32 data_mask);
     static void drawArrays(U32 mode, const std::vector<LLVector3>& pos);
     static void drawElements(U32 mode, const LLVector4a* pos, const LLVector2* tc, U32 num_indices, const U16* indicesp);
 
@@ -341,7 +340,6 @@ public:
     static const U32 sGLMode[LLRender::NUM_MODES];
     static U32 sGLRenderBuffer;
     static U32 sGLRenderIndices;
-    static U32 sLastMask;
     static U32 sVertexCount;
 };
 

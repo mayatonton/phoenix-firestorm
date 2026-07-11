@@ -229,8 +229,6 @@ public:
     bool createShader();
     bool attachFragmentObject(std::string object);
     bool attachVertexObject(std::string object);
-    void attachObject(GLuint object);
-    void attachObjects(GLuint* objects = NULL, S32 count = 0);
     bool mapAttributes();
     bool mapUniforms();
 
@@ -266,7 +264,6 @@ public:
     S32 bindTexture(S32 uniform, LLRenderTarget* texture, bool depth = false, LLTexUnit::eTextureFilterOptions mode = LLTexUnit::TFO_BILINEAR, U32 index = 0);
     S32 unbindTexture(S32 uniform, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
 
-    bool link(bool suppress_errors = false);
     void bind();
     //helper to conditionally bind mRiggedVariant instead of this
     void bind(bool rigged);
@@ -281,10 +278,8 @@ public:
     U32 mMatHash[LLRender::NUM_MATRIX_MODES];
     U32 mLightHash;
 
-    GLuint mProgramObject;
     bool mComplete = false;
     bool mVkComplete = false;
-    U32 mAttributeMask;  //mask of which reserved attributes are set (lines up with LLVertexBuffer::getTypeMask())
     std::vector<GLint> mTexture;
     S32 mActiveTextureChannels;
     S32 mShaderLevel;
@@ -296,7 +291,6 @@ public:
     defines_map_t mDefines;
     static defines_map_t sGlobalDefines;
     LLUUID mShaderHash;
-    bool mUsingBinaryProgram = false;
 
     //statistics for profiling shader performance
     bool mProfilePending = false;

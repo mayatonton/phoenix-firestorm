@@ -424,6 +424,14 @@ public:
         AYA_ALPHA_PLATE_ENABLED,            //  "aya_alpha_plate_enabled"
         // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
+        TEX0,
+        TEX1,
+        DITHER_TEX,
+        TEXTURE0,
+        TEXTURE1,
+        PREDICATION_TEX,
+        SRC_MAP,
+
         END_RESERVED_UNIFORMS
     } eGLSLReservedUniforms;
     // clang-format on
@@ -436,7 +444,6 @@ public:
     bool attachShaderFeatures(LLGLSLShader * shader);
     void dumpObjectLog(GLuint ret, bool warns = true, const std::string& filename = "");
     void dumpShaderSource(U32 shader_code_count, GLchar** shader_code_text);
-    bool    linkProgramObject(GLuint obj, bool suppress_errors = false);
     bool    validateProgramObject(GLuint obj);
     GLuint loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1, std::vector<std::string>* out_sources = nullptr);
 
@@ -456,9 +463,6 @@ public:
     void initShaderCache(bool enabled, const LLUUID& old_cache_version, const LLUUID& current_cache_version, bool second_instance);
     void clearShaderCache();
     void persistShaderCacheMetadata();
-
-    bool loadCachedProgramBinary(LLGLSLShader* shader);
-    bool saveCachedProgramBinary(LLGLSLShader* shader);
 
 public:
     // Map of shader names to compiled

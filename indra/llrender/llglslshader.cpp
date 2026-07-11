@@ -392,9 +392,7 @@ bool LLGLSLShader::readProfileQuery(bool for_runtime, bool force_read)
 
 
 LLGLSLShader::LLGLSLShader()
-    : mProgramObject(0),
-    mAttributeMask(0),
-    mActiveTextureChannels(0),
+    : mActiveTextureChannels(0),
     mShaderLevel(0),
     mShaderGroup(SG_DEFAULT),
     mFeatures(),
@@ -502,31 +500,6 @@ void LLGLSLShader::unloadInternal()
     stop_glerror();
     mTexture.clear();
 
-    if (mProgramObject)
-    {
-        GLuint obj[1024];
-        GLsizei count = 0;
-        glGetAttachedShaders(mProgramObject, 1024, &count, obj);
-
-        for (GLsizei i = 0; i < count; i++)
-        {
-            glDetachShader(mProgramObject, obj[i]);
-        }
-
-        for (GLsizei i = 0; i < count; i++)
-        {
-            if (glIsShader(obj[i]))
-            {
-                glDeleteShader(obj[i]);
-            }
-        }
-
-        glDeleteProgram(mProgramObject);
-
-        mProgramObject = 0;
-        mComplete = false;
-    }
-
     if (mTimerQuery)
     {
         glDeleteQueries(1, &mTimerQuery);
@@ -572,26 +545,14 @@ bool LLGLSLShader::createShader()
 
     mShaderHash = hash();
 
-    // Create program
-    mProgramObject = glCreateProgram();
-    mComplete = (mProgramObject != 0);
+    mComplete = false;
     mVkComplete = false;
-    if (mProgramObject == 0)
-    {
-        // Shouldn't happen if shader related extensions, like ARB_vertex_shader, exist.
-        LL_SHADER_LOADING_WARNS() << "Failed to create handle for shader: " << mName << LL_ENDL;
-        unloadInternal();
-        return false;
-    }
 
     bool success = true;
 
-    mUsingBinaryProgram =  LLShaderMgr::instance()->loadCachedProgramBinary(this);
-
     const bool collect_for_vulkan = LLVKLoader::isVulkanInitialized();
-    const bool need_source_collect = (!mUsingBinaryProgram) || collect_for_vulkan;
 
-    if (need_source_collect)
+    if (collect_for_vulkan)
     {
 #if DEBUG_SHADER_INCLUDES
         fprintf(stderr, "--- %s ---\n", mName.c_str());
@@ -606,22 +567,15 @@ bool LLGLSLShader::createShader()
             std::vector<std::string> stage_sources;
             GLuint shaderhandle = LLShaderMgr::instance()->loadShaderFile((*fileIter).first, mShaderLevel, (*fileIter).second, &mDefines, mFeatures.mIndexedTextureChannels, collect_for_vulkan ? &stage_sources : nullptr);
             LL_DEBUGS("ShaderLoading") << "SHADER FILE: " << (*fileIter).first << " mShaderLevel=" << mShaderLevel << LL_ENDL;
+            if (collect_for_vulkan && !stage_sources.empty())
+            {
+                mStageSources.push_back({ (*fileIter).second, (*fileIter).first, std::move(stage_sources) });
+            }
             if (shaderhandle)
             {
-                if (!mUsingBinaryProgram)
-                {
-                    attachObject(shaderhandle);
-                }
-                else
-                {
-                    glDeleteShader(shaderhandle);
-                }
-                if (collect_for_vulkan && !stage_sources.empty())
-                {
-                    mStageSources.push_back({ (*fileIter).second, (*fileIter).first, std::move(stage_sources) });
-                }
+                glDeleteShader(shaderhandle);
             }
-            else if (!mUsingBinaryProgram)
+            else
             {
                 success = false;
             }
@@ -672,14 +626,6 @@ bool LLGLSLShader::createShader()
     if (success)
     {
         success = mapUniforms();
-    }
-    if (success && mVkAttributeMaskValid && mVkAttributeMask != mAttributeMask)
-    {
-        LL_WARNS("Vulkan") << "VK vertex input mask mismatch '" << mName << "' "
-                           << llformat("vk=0x%08x gl=0x%08x diff=0x%08x",
-                                       mVkAttributeMask, mAttributeMask,
-                                       (mVkAttributeMask ^ mAttributeMask))
-                           << LL_ENDL;
     }
     if (!success)
     {
@@ -855,20 +801,8 @@ bool LLGLSLShader::createShader()
 
     if (LLVKLoader::isVulkanInitialized())
     {
-        const bool gl_complete = mComplete;
         mComplete = mVkComplete;
         success = mVkComplete;
-
-        if (gl_complete != mVkComplete)
-        {
-            static std::set<std::string> sVkDivergenceWarned;
-            if (sVkDivergenceWarned.insert(mName).second)
-            {
-                LL_WARNS("Vulkan") << "VK shader completion divergence '" << mName
-                                   << "' gl_complete=" << (gl_complete ? 1 : 0)
-                                   << " vk_complete=" << (mVkComplete ? 1 : 0) << LL_ENDL;
-            }
-        }
     }
 
     return success;
@@ -2146,41 +2080,14 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     return true;
 }
 
-#if DEBUG_SHADER_INCLUDES
-void dumpAttachObject(const char* func_name, GLuint program_object, const std::string& object_path)
-{
-    GLchar* info_log;
-    GLint      info_len_expect = 0;
-    GLint      info_len_actual = 0;
-
-    glGetShaderiv(program_object, GL_INFO_LOG_LENGTH, , &info_len_expect);
-    fprintf(stderr, " * %-20s(), log size: %d, %s\n", func_name, info_len_expect, object_path.c_str());
-
-    if (info_len_expect > 0)
-    {
-        fprintf(stderr, " ========== %s() ========== \n", func_name);
-        info_log = new GLchar[info_len_expect];
-        glGetProgramInfoLog(program_object, info_len_expect, &info_len_actual, info_log);
-        fprintf(stderr, "%s\n", info_log);
-        delete[] info_log;
-    }
-}
-#endif // DEBUG_SHADER_INCLUDES
-
 bool LLGLSLShader::attachVertexObject(std::string object_path)
 {
+    if (LLVKLoader::isVulkanInitialized() && LLShaderMgr::instance()->mVertexShaderSourceCache.count(object_path) > 0)
+    {
+        mVulkanAttachedVertexUtilities.push_back(object_path);
+    }
     if (LLShaderMgr::instance()->mVertexShaderObjects.count(object_path) > 0)
     {
-        stop_glerror();
-        glAttachShader(mProgramObject, LLShaderMgr::instance()->mVertexShaderObjects[object_path]);
-#if DEBUG_SHADER_INCLUDES
-        dumpAttachObject("attachVertexObject", mProgramObject, object_path);
-#endif // DEBUG_SHADER_INCLUDES
-        stop_glerror();
-        if (LLVKLoader::isVulkanInitialized())
-        {
-            mVulkanAttachedVertexUtilities.push_back(object_path);
-        }
         return true;
     }
     else
@@ -2192,21 +2099,13 @@ bool LLGLSLShader::attachVertexObject(std::string object_path)
 
 bool LLGLSLShader::attachFragmentObject(std::string object_path)
 {
-    if(mUsingBinaryProgram)
-        return true;
+    if (LLVKLoader::isVulkanInitialized() && LLShaderMgr::instance()->mFragmentShaderSourceCache.count(object_path) > 0)
+    {
+        mVulkanAttachedFragmentUtilities.push_back(object_path);
+    }
 
     if (LLShaderMgr::instance()->mFragmentShaderObjects.count(object_path) > 0)
     {
-        stop_glerror();
-        glAttachShader(mProgramObject, LLShaderMgr::instance()->mFragmentShaderObjects[object_path]);
-#if DEBUG_SHADER_INCLUDES
-        dumpAttachObject("attachFragmentObject", mProgramObject, object_path);
-#endif // DEBUG_SHADER_INCLUDES
-        stop_glerror();
-        if (LLVKLoader::isVulkanInitialized())
-        {
-            mVulkanAttachedFragmentUtilities.push_back(object_path);
-        }
         return true;
     }
     else
@@ -2216,77 +2115,11 @@ bool LLGLSLShader::attachFragmentObject(std::string object_path)
     }
 }
 
-void LLGLSLShader::attachObject(GLuint object)
-{
-    if(mUsingBinaryProgram)
-        return;
-
-    if (object != 0)
-    {
-        stop_glerror();
-        glAttachShader(mProgramObject, object);
-#if DEBUG_SHADER_INCLUDES
-        std::string object_path("???");
-        dumpAttachObject("attachObject", mProgramObject, object_path);
-#endif // DEBUG_SHADER_INCLUDES
-        stop_glerror();
-    }
-    else
-    {
-        LL_SHADER_LOADING_WARNS() << "Attempting to attach non existing shader object. " << LL_ENDL;
-    }
-}
-
-void LLGLSLShader::attachObjects(GLuint* objects, S32 count)
-{
-    if(mUsingBinaryProgram)
-        return;
-
-    for (S32 i = 0; i < count; i++)
-    {
-        attachObject(objects[i]);
-    }
-}
-
 bool LLGLSLShader::mapAttributes()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
 
-    bool res = true;
-    if (!mUsingBinaryProgram)
-    {
-        //before linking, make sure reserved attributes always have consistent locations
-        for (U32 i = 0; i < LLShaderMgr::instance()->mReservedAttribs.size(); i++)
-        {
-            const char* name = LLShaderMgr::instance()->mReservedAttribs[i].c_str();
-            glBindAttribLocation(mProgramObject, i, (const GLchar*)name);
-        }
-
-        //link the program
-        res = link();
-    }
-
-    if (res)
-    { //read back channel locations
-
-        mAttributeMask = 0;
-
-        //read back reserved channels first
-        for (U32 i = 0; i < LLShaderMgr::instance()->mReservedAttribs.size(); i++)
-        {
-            const char* name = LLShaderMgr::instance()->mReservedAttribs[i].c_str();
-            S32 index = glGetAttribLocation(mProgramObject, (const GLchar*)name);
-            if (index != -1)
-            {
-                mAttributeMask |= 1 << i;
-                LL_DEBUGS("ShaderUniform") << "Attribute " << name << " assigned to channel " << index << LL_ENDL;
-            }
-        }
-
-        return true;
-    }
-
-    return false;
+    return true;
 }
 
 void LLGLSLShader::clearPermutations()
@@ -2372,54 +2205,12 @@ bool LLGLSLShader::mapUniforms()
         }
     }
 
-    // Set up block binding, in a way supported by Apple (rather than binding = 1 in .glsl).
-    // See slide 35 and more of https://docs.huihoo.com/apple/wwdc/2011/session_420__advances_in_opengl_for_mac_os_x_lion.pdf
-    const char* ubo_names[] =
-    {
-        "ReflectionProbes", // UB_REFLECTION_PROBES
-        "GLTFJoints",       // UB_GLTF_JOINTS
-        "GLTFNodes",        // UB_GLTF_NODES
-        "GLTFMaterials",    // UB_GLTF_MATERIALS
-    };
-
-    llassert(LL_ARRAY_SIZE(ubo_names) == NUM_UNIFORM_BLOCKS);
-
-    for (U32 i = 0; i < NUM_UNIFORM_BLOCKS; ++i)
-    {
-        GLuint UBOBlockIndex = glGetUniformBlockIndex(mProgramObject, ubo_names[i]);
-        if (UBOBlockIndex != GL_INVALID_INDEX)
-        {
-            glUniformBlockBinding(mProgramObject, UBOBlockIndex, i);
-        }
-    }
-
     return res;
-}
-
-bool LLGLSLShader::link(bool suppress_errors)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    bool success = LLShaderMgr::instance()->linkProgramObject(mProgramObject, suppress_errors);
-
-    if (!success && !suppress_errors)
-    {
-        LLShaderMgr::instance()->dumpObjectLog(mProgramObject, !success, mName);
-    }
-
-    if (success)
-    {
-        LLShaderMgr::instance()->saveCachedProgramBinary(this);
-    }
-
-    return success;
 }
 
 void LLGLSLShader::bind()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    llassert_always(mProgramObject != 0);
 
     gGL.flush();
 
@@ -2430,10 +2221,8 @@ void LLGLSLShader::bind()
             sCurBoundShaderPtr->readProfileQuery();
         }
         LLVertexBuffer::unbind();
-        glUseProgram(mProgramObject);
         sCurBoundShaderPtr = this;
         placeProfileQuery();
-        LLVertexBuffer::setupClientArrays(mAttributeMask);
 
         sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 
@@ -2495,7 +2284,6 @@ void LLGLSLShader::unbind(void)
         sCurBoundShaderPtr->readProfileQuery();
     }
 
-    glUseProgram(0);
     sCurBoundShaderPtr = NULL;
 }
 
@@ -2901,7 +2689,6 @@ LLUUID LLGLSLShader::hash()
 
 #if LL_PROFILER_ENABLE_RENDER_DOC
 void LLGLSLShader::setLabel(const char* label) {
-    LL_LABEL_OBJECT_GL(GL_PROGRAM, mProgramObject, strlen(label), label);
 }
 #endif
 
@@ -3673,7 +3460,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     VkVertexInputAttributeDescription vi_attrs[LLVertexBuffer::TYPE_MAX] = {};
     U32 vi_count = 0;
 
-    const U32 vk_attr_mask = mVkAttributeMaskValid ? mVkAttributeMask : mAttributeMask;
+    const U32 vk_attr_mask = mVkAttributeMask;
 
     for (U32 type = 0; type < LLVertexBuffer::TYPE_MAX; ++type)
     {

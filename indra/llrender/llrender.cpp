@@ -1919,7 +1919,7 @@ void LLRender::flush()
 
             LLVertexBuffer *vb;
 
-            U32 attribute_mask = LLGLSLShader::sCurBoundShaderPtr->mAttributeMask;
+            U32 attribute_mask = LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask;
 
             if (sBufferDataList)
             {
@@ -2256,7 +2256,7 @@ void LLRender::texCoord2fv(const GLfloat* tc)
 
 void LLRender::color4ub(const GLubyte& r, const GLubyte& g, const GLubyte& b, const GLubyte& a)
 {
-    if (!LLGLSLShader::sCurBoundShaderPtr || LLGLSLShader::sCurBoundShaderPtr->mAttributeMask & LLVertexBuffer::MAP_COLOR)
+    if (!LLGLSLShader::sCurBoundShaderPtr || LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask & LLVertexBuffer::MAP_COLOR)
     {
         mColorsp[mCount] = LLColor4U(r,g,b,a);
     }

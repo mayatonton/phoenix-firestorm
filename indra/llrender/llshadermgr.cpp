@@ -1070,39 +1070,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
     return ret;
 }
 
-bool LLShaderMgr::linkProgramObject(GLuint obj, bool suppress_errors)
-{
-    //check for errors
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_SHADER("glLinkProgram");
-        glLinkProgram(obj);
-    }
-
-    GLint success = GL_TRUE;
-
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_SHADER("glsl check link status");
-        glGetProgramiv(obj, GL_LINK_STATUS, &success);
-        if (!suppress_errors && success == GL_FALSE)
-        {
-            //an error occured, print log
-            LL_SHADER_LOADING_WARNS() << "GLSL Linker Error:" << LL_ENDL;
-            dumpObjectLog(obj, true, "linker");
-            return success;
-        }
-    }
-
-    std::string log = get_program_log(obj);
-    LLStringUtil::toLower(log);
-    if (log.find("software") != std::string::npos)
-    {
-        LL_SHADER_LOADING_WARNS() << "GLSL Linker: Running in Software:" << LL_ENDL;
-        success = GL_FALSE;
-        suppress_errors = false;
-    }
-    return success;
-}
-
 bool LLShaderMgr::validateProgramObject(GLuint obj)
 {
     //check program validity against current GL
@@ -1236,86 +1203,6 @@ void LLShaderMgr::persistShaderCacheMetadata()
     }
     LLSDSerialize::toBinary(out, outstream);
     outstream.close();
-}
-
-bool LLShaderMgr::loadCachedProgramBinary(LLGLSLShader* shader)
-{
-    if (!mShaderCacheEnabled) return false;
-
-    glProgramParameteri(shader->mProgramObject, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
-
-    auto binary_iter = mShaderBinaryCache.find(shader->mShaderHash);
-    if (binary_iter != mShaderBinaryCache.end())
-    {
-        std::string in_path = gDirUtilp->add(mShaderCacheDir, shader->mShaderHash.asString() + ".shaderbin");
-        auto& shader_info = binary_iter->second;
-        if (shader_info.mBinaryLength > 0)
-        {
-            std::vector<U8> in_data;
-            in_data.resize(shader_info.mBinaryLength);
-
-            LLUniqueFile filep = LLFile::fopen(in_path, "rb");
-            if (filep)
-            {
-                size_t result = fread(in_data.data(), sizeof(U8), in_data.size(), filep);
-                filep.close();
-
-                if (result == in_data.size())
-                {
-                    GLenum error = glGetError(); // Clear current error
-                    glProgramBinary(shader->mProgramObject, shader_info.mBinaryFormat, in_data.data(), shader_info.mBinaryLength);
-
-                    error = glGetError();
-                    GLint success = GL_TRUE;
-                    glGetProgramiv(shader->mProgramObject, GL_LINK_STATUS, &success);
-                    if (error == GL_NO_ERROR && success == GL_TRUE)
-                    {
-                        binary_iter->second.mLastUsedTime = (F32)LLTimer::getTotalSeconds();
-                        LL_INFOS() << "Loaded cached binary for shader: " << shader->mName << LL_ENDL;
-                        return true;
-                    }
-                }
-            }
-        }
-        //an error occured, normally we would print log but in this case it means the shader needs recompiling.
-        LL_INFOS() << "Failed to load cached binary for shader: " << shader->mName << " falling back to compilation" << LL_ENDL;
-        LLFile::remove(in_path);
-        mShaderBinaryCache.erase(binary_iter);
-    }
-    return false;
-}
-
-bool LLShaderMgr::saveCachedProgramBinary(LLGLSLShader* shader)
-{
-    if (!mShaderCacheEnabled) return true;
-
-    ProgramBinaryData binary_info = ProgramBinaryData();
-    glGetProgramiv(shader->mProgramObject, GL_PROGRAM_BINARY_LENGTH, &binary_info.mBinaryLength);
-    if (binary_info.mBinaryLength > 0)
-    {
-        std::vector<U8> program_binary;
-        program_binary.resize(binary_info.mBinaryLength);
-
-        GLenum error = glGetError(); // Clear current error
-        glGetProgramBinary(shader->mProgramObject, static_cast<GLsizei>(program_binary.size() * sizeof(U8)), nullptr, &binary_info.mBinaryFormat, program_binary.data());
-        error = glGetError();
-        if (error == GL_NO_ERROR)
-        {
-            std::string out_path = gDirUtilp->add(mShaderCacheDir, shader->mShaderHash.asString() + ".shaderbin");
-            LLUniqueFile outfile = LLFile::fopen(out_path, "wb");
-            if (outfile)
-            {
-                fwrite(program_binary.data(), sizeof(U8), program_binary.size(), outfile);
-                outfile.close();
-
-                binary_info.mLastUsedTime = (F32)LLTimer::getTotalSeconds();
-
-                mShaderBinaryCache.insert_or_assign(shader->mShaderHash, binary_info);
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 //virtual
@@ -1737,6 +1624,14 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("aya_alpha_plate");
     mReservedUniforms.push_back("aya_alpha_plate_enabled");
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
+
+    mReservedUniforms.push_back("tex0");
+    mReservedUniforms.push_back("tex1");
+    mReservedUniforms.push_back("dither_tex");
+    mReservedUniforms.push_back("texture0");
+    mReservedUniforms.push_back("texture1");
+    mReservedUniforms.push_back("predicationTex");
+    mReservedUniforms.push_back("srcMap");
 
     llassert(mReservedUniforms.size() == END_RESERVED_UNIFORMS);
 

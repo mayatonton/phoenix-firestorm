@@ -103,7 +103,7 @@ void LLRenderSphere::renderGGL()
     }
 
 
-    if (LLGLSLShader::sCurBoundShaderPtr->mAttributeMask == LLVertexBuffer::MAP_VERTEX)
+    if (LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask == LLVertexBuffer::MAP_VERTEX)
     { // shader expects only vertex positions in vertex buffer, use fast path
         mVertexBuffer->setBuffer();
         mVertexBuffer->drawRange(LLRender::TRIANGLES, 0, mVertexBuffer->getNumVerts(), mVertexBuffer->getNumIndices(), 0);

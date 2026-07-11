@@ -690,7 +690,6 @@ U64 LLVertexBuffer::getBytesAllocated()
 //static
 U32 LLVertexBuffer::sGLRenderBuffer = 0;
 U32 LLVertexBuffer::sGLRenderIndices = 0;
-U32 LLVertexBuffer::sLastMask = 0;
 U32 LLVertexBuffer::sVertexCount = 0;
 
 
@@ -743,37 +742,6 @@ const U32 LLVertexBuffer::sGLMode[LLRender::NUM_MODES] =
     GL_LINE_STRIP,
     GL_LINE_LOOP,
 };
-
-//static
-void LLVertexBuffer::setupClientArrays(U32 data_mask)
-{
-    if (sLastMask != data_mask)
-    {
-        for (U32 i = 0; i < TYPE_MAX; ++i)
-        {
-            S32 loc = i;
-
-            U32 mask = 1 << i;
-
-            if (sLastMask & (1 << i))
-            { //was enabled
-                if (!(data_mask & mask))
-                { //needs to be disabled
-                    glDisableVertexAttribArray(loc);
-                }
-            }
-            else
-            {   //was disabled
-                if (data_mask & mask)
-                { //needs to be enabled
-                    glEnableVertexAttribArray(loc);
-                }
-            }
-        }
-    }
-
-    sLastMask = data_mask;
-}
 
 //static
 void LLVertexBuffer::drawArrays(U32 mode, const std::vector<LLVector3>& pos)
@@ -1996,7 +1964,7 @@ void LLVertexBuffer::setBuffer()
     // a shader must be bound
     llassert(LLGLSLShader::sCurBoundShaderPtr);
 
-    U32 data_mask = LLGLSLShader::sCurBoundShaderPtr->mAttributeMask;
+    U32 data_mask = LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask;
 
     // this Vertex Buffer must provide all necessary attributes for currently bound shader
     llassert_msg((data_mask & mTypeMask) == data_mask,
@@ -2006,9 +1974,7 @@ void LLVertexBuffer::setBuffer()
     if (LLVKLoader::shouldUseVulkanRender() && mVkVertexBuffer != VK_NULL_HANDLE
         && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE)
     {
-        const U32 vk_data_mask = LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMaskValid
-                                     ? LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask
-                                     : data_mask;
+        const U32 vk_data_mask = LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask;
 
         llassert_msg((vk_data_mask & mTypeMask) == vk_data_mask,
             "VK attribute mask mismatch! mTypeMask should be a superset of vk_data_mask.  vk_data_mask: 0x"
