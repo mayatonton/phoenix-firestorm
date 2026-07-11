@@ -4253,15 +4253,6 @@ bool LLViewerShaderMgr::loadShadersObject()
         gObjectBumpProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
         success = make_rigged_variant(gObjectBumpProgram, gSkinnedObjectBumpProgram);
         success = success && gObjectBumpProgram.createShader();
-        if (success)
-        {
-            LLGLSLShader* shader[] = { &gObjectBumpProgram, &gSkinnedObjectBumpProgram };
-            for (int i = 0; i < 2; ++i)
-            {
-                shader[i]->bind();
-                shader[i]->unbind();
-            }
-        }
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gObjectBumpProgram.createVkPipeline(0);
@@ -4529,11 +4520,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gGlowCombineProgram.mShaderFiles.push_back(make_pair("interface/glowcombineF.glsl", GL_FRAGMENT_SHADER));
         gGlowCombineProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gGlowCombineProgram.createShader();
-        if (success)
-        {
-            gGlowCombineProgram.bind();
-            gGlowCombineProgram.unbind();
-        }
 
         if (success && LLVKLoader::isVulkanInitialized())
         {
@@ -4549,11 +4535,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         gGlowCombineFXAAProgram.mShaderFiles.push_back(make_pair("interface/glowcombineFXAAF.glsl", GL_FRAGMENT_SHADER));
         gGlowCombineFXAAProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         success = gGlowCombineFXAAProgram.createShader();
-        if (success)
-        {
-            gGlowCombineFXAAProgram.bind();
-            gGlowCombineFXAAProgram.unbind();
-        }
 
         if (success && LLVKLoader::isVulkanInitialized())
         {
@@ -4613,8 +4594,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
             {
                 gSolidColorProgram.createVkPipeline(0);
             }
-            gSolidColorProgram.bind();
-            gSolidColorProgram.unbind();
         }
     }
 

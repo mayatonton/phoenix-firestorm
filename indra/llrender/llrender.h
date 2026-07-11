@@ -546,7 +546,6 @@ public:
     static bool sGLCoreProfile;
     static bool sNsightDebugSupport;
     static LLVector2 sUIGLScaleFactor;
-    static bool sClassicMode; // classic sky mode active
 
 private:
     friend class LLLightState;

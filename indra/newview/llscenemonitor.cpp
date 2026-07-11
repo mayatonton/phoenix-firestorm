@@ -343,7 +343,6 @@ bool LLSceneMonitor::needsUpdate() const
     return mDiffState == NEED_DIFF;
 }
 
-
 void LLSceneMonitor::compare()
 {
 #ifdef LL_WINDOWS

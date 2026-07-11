@@ -2466,7 +2466,6 @@ bool LLGLSLShader::mapUniforms()
         mapUniform(i);
     }
 
-
     // Set up block binding, in a way supported by Apple (rather than binding = 1 in .glsl).
     // See slide 35 and more of https://docs.huihoo.com/apple/wwdc/2011/session_420__advances_in_opengl_for_mac_os_x_lion.pdf
     const char* ubo_names[] =

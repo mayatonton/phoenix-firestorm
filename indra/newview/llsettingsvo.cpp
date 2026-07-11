@@ -824,8 +824,6 @@ void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
         psky->setTonemapMix(tonemap_mix_setting);
     }
 
-    LLRender::sClassicMode = classic_mode;
-
     if (!irradiance_pass)
     {
         if (psky->getReflectionProbeAmbiance() != 0.f)
