@@ -129,7 +129,6 @@ public:
     // 1 - update LLVertexBuffer::sTypeSize
     // 2 - update LLVertexBuffer::vb_type_name
     // 3 - add a strider accessor
-    // 4 - modify LLVertexBuffer::setupVertexBuffer
     // 6 - modify LLViewerShaderMgr::mReservedAttribs
 
     // clang-format off
@@ -174,8 +173,6 @@ protected:
     friend class LLRender;
 
     ~LLVertexBuffer(); // use unref()
-
-    void setupVertexBuffer();
 
     void    genBuffer(U32 size);
     void    genIndices(U32 size);
