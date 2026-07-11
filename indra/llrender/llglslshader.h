@@ -233,46 +233,10 @@ public:
     void attachObjects(GLuint* objects = NULL, S32 count = 0);
     bool mapAttributes();
     bool mapUniforms();
-    void mapUniform(GLint index);
-    void uniform1i(U32 index, GLint i);
-    void uniform1f(U32 index, GLfloat v);
-    void fastUniform1f(U32 index, GLfloat v);
-    void uniform2f(U32 index, GLfloat x, GLfloat y);
-    void uniform3f(U32 index, GLfloat x, GLfloat y, GLfloat z);
-    void uniform4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
-    void uniform1iv(U32 index, U32 count, const GLint* i);
-    void uniform4iv(U32 index, U32 count, const GLint* i);
-    void uniform1fv(U32 index, U32 count, const GLfloat* v);
-    void uniform2fv(U32 index, U32 count, const GLfloat* v);
-    void uniform3fv(U32 index, U32 count, const GLfloat* v);
-    void uniform4fv(U32 index, U32 count, const GLfloat* v);
-    void uniform4uiv(U32 index, U32 count, const GLuint* v);
-    void uniform2i(const LLStaticHashedString& uniform, GLint i, GLint j);
-    void uniformMatrix2fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-    void uniformMatrix3fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-    void uniformMatrix3x4fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-    void uniformMatrix4fv(U32 index, U32 count, GLboolean transpose, const GLfloat* v);
-    void uniform1i(const LLStaticHashedString& uniform, GLint i);
-    void uniform1iv(const LLStaticHashedString& uniform, U32 count, const GLint* v);
-    void uniform4iv(const LLStaticHashedString& uniform, U32 count, const GLint* v);
-    void uniform1f(const LLStaticHashedString& uniform, GLfloat v);
-    void uniform2f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y);
-    void uniform3f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y, GLfloat z);
-    void uniform4f(const LLStaticHashedString& uniform, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
-    void uniform1fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v);
-    void uniform2fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v);
-    void uniform3fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v);
-    void uniform4fv(const LLStaticHashedString& uniform, U32 count, const GLfloat* v);
-    void uniform4uiv(const LLStaticHashedString& uniform, U32 count, const GLuint* v);
-    void uniformMatrix4fv(const LLStaticHashedString& uniform, U32 count, GLboolean transpose, const GLfloat* v);
 
     void setMinimumAlpha(F32 minimum);
     void setObjectAlpha(F32 object_alpha);
     void pushGaussianFragPC(F32 resScale, F32 dirX, F32 dirY);
-
-    //GLint getUniformLocation(const std::string& uniform);
-    GLint getUniformLocation(const LLStaticHashedString& uniform);
-    GLint getUniformLocation(U32 index);
 
     bool hasReflectedUniform(S32 reserved_enum) const;
 
@@ -298,11 +262,8 @@ public:
 
     // bindTexture returns the texture unit we've bound the texture to.
     // You can reuse the return value to unbind a texture when required.
-    S32 bindTexture(const std::string& uniform, LLTexture* texture, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
     S32 bindTexture(S32 uniform, LLTexture* texture, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
-    S32 bindTexture(const std::string& uniform, LLRenderTarget* texture, bool depth = false, LLTexUnit::eTextureFilterOptions mode = LLTexUnit::TFO_BILINEAR);
     S32 bindTexture(S32 uniform, LLRenderTarget* texture, bool depth = false, LLTexUnit::eTextureFilterOptions mode = LLTexUnit::TFO_BILINEAR, U32 index = 0);
-    S32 unbindTexture(const std::string& uniform, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
     S32 unbindTexture(S32 uniform, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
 
     bool link(bool suppress_errors = false);
@@ -323,12 +284,7 @@ public:
     GLuint mProgramObject;
     bool mComplete = false;
     U32 mAttributeMask;  //mask of which reserved attributes are set (lines up with LLVertexBuffer::getTypeMask())
-    std::vector<GLint> mUniform;   //lookup table of uniform enum to uniform location
-    LLStaticStringTable<GLint> mUniformMap; //lookup map of uniform name to uniform location
-    typedef std::unordered_map<GLint, LLVector4> uniform_value_map_t;
-    uniform_value_map_t mValue; //lookup map of uniform location to last known value
     std::vector<GLint> mTexture;
-    S32 mTotalUniformSize;
     S32 mActiveTextureChannels;
     S32 mShaderLevel;
     S32 mShaderGroup; // see LLGLSLShader::eGroup
