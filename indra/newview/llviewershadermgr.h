@@ -132,8 +132,6 @@ public:
 
     /* virtual */ std::string getCinematicShaderDirPrefix(void);
 
-    /* virtual */ void updateShaderUniforms(LLGLSLShader * shader);
-
 private:
     // the list of shaders we need to propagate parameters to.
     std::vector<LLGLSLShader *> mShaderList;

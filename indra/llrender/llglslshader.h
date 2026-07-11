@@ -155,71 +155,6 @@ public:
     bool usesSMAABlendWeights = false;
 };
 
-// ============= Structure for caching shader uniforms ===============
-class LLGLSLShader;
-
-class LLShaderUniforms
-{
-public:
-
-    template<typename T>
-    struct UniformSetting
-    {
-        S32 mUniform{ 0 };
-        T mValue{};
-    };
-
-    typedef UniformSetting<S32> IntSetting;
-    typedef UniformSetting<F32> FloatSetting;
-    typedef UniformSetting<LLVector4> VectorSetting;
-    typedef UniformSetting<LLVector3> Vector3Setting;
-
-    void clear()
-    {
-        mIntegers.resize(0);
-        mFloats.resize(0);
-        mVectors.resize(0);
-        mVector3s.resize(0);
-    }
-
-    void uniform1i(S32 index, S32 value)
-    {
-        mIntegers.push_back({ index, value });
-    }
-
-    void uniform1f(S32 index, F32 value)
-    {
-        mFloats.push_back({ index, value });
-    }
-
-    void uniform4fv(S32 index, const LLVector4& value)
-    {
-        mVectors.push_back({ index, value });
-    }
-
-    void uniform4fv(S32 index, const F32* value)
-    {
-        mVectors.push_back({ index, LLVector4(value) });
-    }
-
-    void uniform3fv(S32 index, const LLVector3& value)
-    {
-        mVector3s.push_back({ index, value });
-    }
-
-    void uniform3fv(S32 index, const F32* value)
-    {
-        mVector3s.push_back({ index, LLVector3(value) });
-    }
-
-    void apply(LLGLSLShader* shader);
-
-
-    std::vector<IntSetting> mIntegers;
-    std::vector<FloatSetting> mFloats;
-    std::vector<VectorSetting> mVectors;
-    std::vector<Vector3Setting> mVector3s;
-};
 class LLGLSLShader
 {
 public:
@@ -397,7 +332,6 @@ public:
     S32 mActiveTextureChannels;
     S32 mShaderLevel;
     S32 mShaderGroup; // see LLGLSLShader::eGroup
-    bool mUniformsDirty;
     LLShaderFeatures mFeatures;
     std::vector< std::pair< std::string, GLenum > > mShaderFiles;
     std::string mName;

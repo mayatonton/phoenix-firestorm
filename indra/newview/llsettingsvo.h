@@ -121,8 +121,7 @@ protected:
 
     virtual void    updateSettings() override;
 
-    virtual void    applyToUniforms(void*) override;
-    virtual void    applySpecial(void *, bool) override;
+    virtual void    applySpecial() override;
 
     virtual parammapping_t getParameterMap() const override;
 
@@ -150,8 +149,7 @@ protected:
     LLSettingsVOWater();
 
     virtual void    updateSettings() override;
-    virtual void    applyToUniforms(void*) override;
-    virtual void    applySpecial(void *, bool) override;
+    virtual void    applySpecial() override;
 
     virtual parammapping_t getParameterMap() const override;
 

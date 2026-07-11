@@ -796,11 +796,7 @@ LLColor3 LLSettingsVOSky::getR17SunModulator(const LLVector3& lightnorm, const L
 }
 // </FS:AYA>
 
-void LLSettingsVOSky::applyToUniforms(void* ptarget)
-{
-}
-
-void LLSettingsVOSky::applySpecial(void *ptarget, bool force)
+void LLSettingsVOSky::applySpecial()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
 
@@ -1028,12 +1024,7 @@ LLSD LLSettingsVOWater::convertToLegacy(const LLSettingsWater::ptr_t &pwater)
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
 
-void LLSettingsVOWater::applyToUniforms(void*)
-{
-
-}
-
-void LLSettingsVOWater::applySpecial(void *ptarget, bool force)
+void LLSettingsVOWater::applySpecial()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
 

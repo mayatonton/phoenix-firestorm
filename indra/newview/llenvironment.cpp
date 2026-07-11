@@ -1780,22 +1780,6 @@ void LLEnvironment::update(const LLViewerCamera * cam)
     }
 
     updateSettingsUniforms();
-
-    LLViewerShaderMgr::shader_iter shaders_iter, end_shaders;
-    end_shaders = LLViewerShaderMgr::instance()->endShaders();
-    for (shaders_iter = LLViewerShaderMgr::instance()->beginShaders(); shaders_iter != end_shaders; ++shaders_iter)
-    {
-        shaders_iter->mUniformsDirty = true;
-        if (shaders_iter->mRiggedVariant)
-        {
-            shaders_iter->mRiggedVariant->mUniformsDirty = true;
-        }
-
-        for (auto& variant : shaders_iter->mGLTFVariants)
-        {
-            variant.mUniformsDirty = true;
-        }
-    }
 }
 
 void LLEnvironment::updateCloudScroll()
@@ -1822,40 +1806,11 @@ void LLEnvironment::updateCloudScroll()
 
 }
 
-// static
-void LLEnvironment::updateGLVariablesForSettings(LLShaderUniforms* uniforms, const LLSettingsBase::ptr_t &psetting)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    for (int i = 0; i < LLGLSLShader::SG_COUNT; ++i)
-    {
-        uniforms[i].clear();
-    }
-    //_WARNS("RIDER") << "----------------------------------------------------------------" << LL_ENDL;
-
-    psetting->applyToUniforms(uniforms);
-    psetting->applySpecial(uniforms);
-}
-
-void LLEnvironment::updateShaderUniforms(LLGLSLShader* shader)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    // apply uniforms that should be applied to all shaders
-    mSkyUniforms[LLGLSLShader::SG_ANY].apply(shader);
-    mWaterUniforms[LLGLSLShader::SG_ANY].apply(shader);
-
-    // apply uniforms specific to the given shader's shader group
-    auto group = shader->mShaderGroup;
-    mSkyUniforms[group].apply(shader);
-    mWaterUniforms[group].apply(shader);
-}
-
 void LLEnvironment::updateSettingsUniforms()
 {
     if (mCurrentEnvironment->getWater())
     {
-        updateGLVariablesForSettings(mWaterUniforms, mCurrentEnvironment->getWater());
+        mCurrentEnvironment->getWater()->applySpecial();
     }
     else
     {
@@ -1863,7 +1818,7 @@ void LLEnvironment::updateSettingsUniforms()
     }
     if (mCurrentEnvironment->getSky())
     {
-        updateGLVariablesForSettings(mSkyUniforms, mCurrentEnvironment->getSky());
+        mCurrentEnvironment->getSky()->applySpecial();
     }
     else
     {

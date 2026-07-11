@@ -453,9 +453,6 @@ public:
     virtual std::string getCinematicShaderDirPrefix(void) { return std::string(); }
     // </FS:AYA>
 
-    // Implemented in the application to actually update out of date uniforms for a particular shader
-    virtual void updateShaderUniforms(LLGLSLShader * shader) = 0; // Pure Virtual
-
     void initShaderCache(bool enabled, const LLUUID& old_cache_version, const LLUUID& current_cache_version, bool second_instance);
     void clearShaderCache();
     void persistShaderCacheMetadata();

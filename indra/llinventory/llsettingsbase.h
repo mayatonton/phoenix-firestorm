@@ -374,8 +374,7 @@ protected:
     virtual validation_list_t getValidationList() const = 0;
 
     // Apply settings.
-    virtual void applyToUniforms(void *) { };
-    virtual void applySpecial(void*, bool force = false) { };
+    virtual void applySpecial() { };
 
     virtual parammapping_t getParameterMap() const { return parammapping_t(); }
 

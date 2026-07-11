@@ -404,7 +404,6 @@ LLGLSLShader::LLGLSLShader()
     mShaderLevel(0),
     mShaderGroup(SG_DEFAULT),
     mFeatures(),
-    mUniformsDirty(false),
     mTimerQuery(0),
     mSamplesQuery(0),
     mPrimitivesQuery(0)
@@ -2557,12 +2556,6 @@ void LLGLSLShader::bind()
         }
     }
 
-    if (mUniformsDirty)
-    {
-        LLShaderMgr::instance()->updateShaderUniforms(this);
-        mUniformsDirty = false;
-    }
-
     llassert_always(sCurBoundShaderPtr != nullptr);
     llassert_always(sCurBoundShaderPtr == this);
 }
@@ -3717,30 +3710,6 @@ void LLGLSLShader::setObjectAlpha(F32 object_alpha)
             vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
                                LLVkUboReg::PC_OFF_OBJECT_ALPHA, sizeof(F32), &object_alpha_pc);
         }
-    }
-}
-
-void LLShaderUniforms::apply(LLGLSLShader* shader)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-    for (auto& uniform : mIntegers)
-    {
-        shader->uniform1i(uniform.mUniform, uniform.mValue);
-    }
-
-    for (auto& uniform : mFloats)
-    {
-        shader->uniform1f(uniform.mUniform, uniform.mValue);
-    }
-
-    for (auto& uniform : mVectors)
-    {
-        shader->uniform4fv(uniform.mUniform, 1, uniform.mValue.mV);
-    }
-
-    for (auto& uniform : mVector3s)
-    {
-        shader->uniform3fv(uniform.mUniform, 1, uniform.mValue.mV);
     }
 }
 

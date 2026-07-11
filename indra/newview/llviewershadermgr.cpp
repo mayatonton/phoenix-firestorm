@@ -4951,11 +4951,6 @@ std::string LLViewerShaderMgr::getCinematicShaderDirPrefix(void)
 }
 // </FS:AYA>
 
-void LLViewerShaderMgr::updateShaderUniforms(LLGLSLShader * shader)
-{
-    LLEnvironment::instance().updateShaderUniforms(shader);
-}
-
 LLViewerShaderMgr::shader_iter LLViewerShaderMgr::beginShaders() const
 {
     return mShaderList.begin();
