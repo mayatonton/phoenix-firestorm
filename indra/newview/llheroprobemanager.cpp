@@ -351,11 +351,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         gGL.flush();
         U32 res = mProbeResolution * 2;
 
-        static LLStaticHashedString resScale("resScale");
-        static LLStaticHashedString direction("direction");
-        static LLStaticHashedString znear("znear");
-        static LLStaticHashedString zfar("zfar");
-
         LLRenderTarget *screen_rt = &gPipeline.mHeroProbeRT.screen;
         LLRenderTarget *depth_rt  = &gPipeline.mHeroProbeRT.deferredScreen;
 
@@ -363,11 +358,9 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         {
             gGaussianProgram.bind();
             const F32 gaussian_res_scale = 1.f / (mProbeResolution * 2);
-            gGaussianProgram.uniform1f(resScale, gaussian_res_scale);
             S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
 
             // horizontal
-            gGaussianProgram.uniform2f(direction, 1.f, 0.f);
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
             mRenderTarget.bindTarget();
@@ -376,7 +369,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
             mRenderTarget.flush();
 
             // vertical
-            gGaussianProgram.uniform2f(direction, 0.f, 1.f);
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
             screen_rt->bindTarget();
@@ -406,10 +398,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
             }
 
             gGL.getTexUnit(depthChannel)->bind(depth_rt, true);
-
-            gReflectionMipProgram.uniform1f(resScale, 1.f / (mProbeResolution * 2));
-            gReflectionMipProgram.uniform1f(znear, probe->getNearClip());
-            gReflectionMipProgram.uniform1f(zfar, MAX_FAR_CLIP);
 
             gPipeline.mScreenTriangleVB->setBuffer();
             gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -460,7 +448,6 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
     sourceIdx += 1;
     {
         mMipChain[0].bindTarget();
-        static LLStaticHashedString sSourceIdx("sourceIdx");
 
         {
             // generate radiance map (even if this is not the irradiance map, we need the mip chain for the irradiance map)
@@ -469,25 +456,11 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
 
             S32 channel = gHeroRadianceGenProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES, LLTexUnit::TT_CUBE_MAP_ARRAY);
             mTexture->bind(channel);
-            gHeroRadianceGenProgram.uniform1i(sSourceIdx, sourceIdx);
-            gHeroRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mMaxProbeLOD);
-            gHeroRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_STRENGTH, mHeroProbeStrength);
-
             U32 res = mMipChain[0].getWidth();
 
             for (int i = 0; i < mMipChain.size() / 4; ++i)
             {
                 LL_PROFILE_GPU_ZONE("hero probe radiance gen");
-                static LLStaticHashedString sMipLevel("mipLevel");
-                static LLStaticHashedString sRoughness("roughness");
-                static LLStaticHashedString sWidth("u_width");
-                static LLStaticHashedString sStrength("probe_strength");
-
-                gHeroRadianceGenProgram.uniform1f(sRoughness, (F32) i / (F32) (mMipChain.size() - 1));
-                gHeroRadianceGenProgram.uniform1f(sMipLevel, (GLfloat)i);
-                gHeroRadianceGenProgram.uniform1i(sWidth, mProbeResolution);
-                gHeroRadianceGenProgram.uniform1f(sStrength, 1);
-
                 if (LLVKLoader::isVulkanInitialized()
                     && gHeroRadianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                     && gHeroRadianceGenProgram.mVkPerProgramUBOMapped != nullptr)

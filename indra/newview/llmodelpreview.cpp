@@ -4553,7 +4553,6 @@ bool LLModelPreview::render()
 
     gGL.loadIdentity();
     gPipeline.enableLightsPreview();
-    gObjectPreviewProgram.uniform4fv(LLShaderMgr::AMBIENT, 1, LLPipeline::PreviewAmbientColor.mV); // <FS:Beq> pass ambient setting to shader
     if (LLVKLoader::isVulkanInitialized())
     {
         LLVKLoader::PreviewAmbient_PerShaderBind preview_ambient = {};

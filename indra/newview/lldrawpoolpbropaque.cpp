@@ -111,9 +111,6 @@ void LLDrawPoolGLTFPBR::beginMotionBlurPass(S32 pass)
     LLGLSLShader& shader = (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
         ? gVelocityAlphaProgram : gVelocityProgram;
     shader.bind();
-    shader.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    shader.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    shader.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
 }
 
 void LLDrawPoolGLTFPBR::endMotionBlurPass(S32 pass)
@@ -139,9 +136,6 @@ void LLDrawPoolGLTFPBR::renderMotionBlur(S32 pass)
 
     LLGLSLShader& shader = alpha_mask ? gVelocityAlphaProgram : gVelocityProgram;
     shader.bind(true);
-    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    LLGLSLShader::sCurBoundShaderPtr->uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
     if (alpha_mask)
         pushRiggedVelocityBatchesTextured(mRenderType + 1);
     else

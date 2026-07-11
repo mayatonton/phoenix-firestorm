@@ -146,20 +146,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
     LLCullResult::drawinfo_iterator end = gPipeline.endRenderMap(type);
 
-    F32 lastIntensity = 0.f;
-    F32 lastFullbright = 0.f;
-    F32 lastMinimumAlpha = 0.f;
-    LLVector4 lastSpecular = LLVector4(0, 0, 0, 0);
-
-    GLint intensity = mShader->getUniformLocation(LLShaderMgr::ENVIRONMENT_INTENSITY);
-    GLint brightness = mShader->getUniformLocation(LLShaderMgr::EMISSIVE_BRIGHTNESS);
-    GLint minAlpha = mShader->getUniformLocation(LLShaderMgr::MINIMUM_ALPHA);
-    GLint specular = mShader->getUniformLocation(LLShaderMgr::SPECULAR_COLOR);
-    // <FS:AYA r20 Phase C> per-draw SSS skin marker, sourced from LLDrawInfo::mIsSSSTarget
-    GLint sssSkin = mShader->getUniformLocation(LLShaderMgr::AYA_SSS_SKIN_FLAG);
-    F32 lastSSSSkin = -1.f;
-    // </FS:AYA>
-
     GLint diffuseChannel = mShader->enableTexture(LLShaderMgr::DIFFUSE_MAP);
     GLint specChannel = mShader->enableTexture(LLShaderMgr::SPECULAR_MAP);
     GLint normChannel = mShader->enableTexture(LLShaderMgr::BUMP_MAP);
@@ -169,26 +155,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     LLTexture* lastDiffuse = nullptr;
 
     gGL.getTexUnit(diffuseChannel)->unbindFast(LLTexUnit::TT_TEXTURE);
-
-    if (intensity > -1)
-    {
-        glUniform1f(intensity, lastIntensity);
-    }
-
-    if (brightness > -1)
-    {
-        glUniform1f(brightness, lastFullbright);
-    }
-
-    if (minAlpha > -1)
-    {
-        glUniform1f(minAlpha, lastMinimumAlpha);
-    }
-
-    if (specular > -1)
-    {
-        glUniform4fv(specular, 1, lastSpecular.mV);
-    }
 
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -200,41 +166,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         LLDrawInfo& params = **i;
 
         LLCullResult::increment_iterator(i, end);
-
-        if (specular > -1 && params.mSpecColor != lastSpecular)
-        {
-            lastSpecular = params.mSpecColor;
-            glUniform4fv(specular, 1, lastSpecular.mV);
-        }
-
-        if (intensity != -1 && lastIntensity != params.mEnvIntensity)
-        {
-            lastIntensity = params.mEnvIntensity;
-            glUniform1f(intensity, lastIntensity);
-        }
-
-        if (minAlpha > -1 && lastMinimumAlpha != params.mAlphaMaskCutoff)
-        {
-            lastMinimumAlpha = params.mAlphaMaskCutoff;
-            glUniform1f(minAlpha, lastMinimumAlpha);
-        }
-
-        F32 fullbright = params.mFullbright ? 1.f : 0.f;
-        if (brightness > -1 && lastFullbright != fullbright)
-        {
-            lastFullbright = fullbright;
-            glUniform1f(brightness, lastFullbright);
-        }
-
-        if (sssSkin > -1)
-        {
-            F32 skinFlag = params.mIsSSSTarget ? 1.f : 0.f;
-            if (lastSSSSkin != skinFlag)
-            {
-                lastSSSSkin = skinFlag;
-                glUniform1f(sssSkin, skinFlag);
-            }
-        }
 
         if (normChannel > -1 && params.mNormalMap != lastNormalMap)
         {

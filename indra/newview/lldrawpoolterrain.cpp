@@ -178,9 +178,6 @@ void LLDrawPoolTerrain::beginShadowPass(S32 pass)
     LLFacePool::beginRenderPass(pass);
     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
     gDeferredShadowProgram.bind();
-
-    LLEnvironment& environment = LLEnvironment::instance();
-    gDeferredShadowProgram.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
 }
 
 void LLDrawPoolTerrain::endShadowPass(S32 pass)
@@ -217,9 +214,6 @@ void LLDrawPoolTerrain::beginMotionBlurPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
-    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    gVelocityProgram.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
 }
 
 void LLDrawPoolTerrain::endMotionBlurPass(S32 pass)
@@ -243,9 +237,6 @@ void LLDrawPoolTerrain::renderMotionBlur(S32 pass)
         LLMatrix4* model_matrix = &(drawable->getRegion()->mRenderMatrix);
         llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
         LLRenderPass::applyModelMatrix(model_matrix);
-        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
-        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
-
         if (LLVKLoader::isVulkanInitialized()
             && LLGLSLShader::sCurBoundShaderPtr
             && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE
@@ -344,9 +335,6 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
 
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     llassert(shader);
-
-    shader->uniform4fv(LLShaderMgr::OBJECT_PLANE_S, 1, tp0.mV);
-    shader->uniform4fv(LLShaderMgr::OBJECT_PLANE_T, 1, tp1.mV);
 
     if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
         && shader->mVkPerProgramUBOMapped != nullptr)
@@ -584,7 +572,6 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
     constexpr U32 vec4_size = 4;
     const U32 transform_vec4_count = (transform_param_count + (vec4_size - 1)) / vec4_size;
     llassert(transform_vec4_count == 5); // If false, need to update shader
-    shader->uniform4fv(LLShaderMgr::TERRAIN_TEXTURE_TRANSFORMS, transform_vec4_count, (F32*)transforms_packed);
 
     LLSettingsWater::ptr_t pwater = LLEnvironment::instance().getCurrentWater();
 
@@ -612,7 +599,6 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
         gGL.getTexUnit(paint_map)->bind(tex_paint_map);
         gGL.getTexUnit(paint_map)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
-        shader->uniform1f(LLShaderMgr::REGION_SCALE, regionp->getWidth());
     }
 
     if (LLVKLoader::isVulkanInitialized())
@@ -653,18 +639,6 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
         }
         minimum_alphas[i] = min_alpha;
     }
-    shader->uniform4fv(LLShaderMgr::TERRAIN_BASE_COLOR_FACTORS, terrain_material_count, (F32*)base_color_factors);
-    if (sPBRDetailMode >= TERRAIN_PBR_DETAIL_METALLIC_ROUGHNESS)
-    {
-        shader->uniform4f(LLShaderMgr::TERRAIN_METALLIC_FACTORS, metallic_factors[0], metallic_factors[1], metallic_factors[2], metallic_factors[3]);
-        shader->uniform4f(LLShaderMgr::TERRAIN_ROUGHNESS_FACTORS, roughness_factors[0], roughness_factors[1], roughness_factors[2], roughness_factors[3]);
-    }
-    if (sPBRDetailMode >= TERRAIN_PBR_DETAIL_EMISSIVE)
-    {
-        shader->uniform3fv(LLShaderMgr::TERRAIN_EMISSIVE_COLORS, terrain_material_count, (F32*)emissive_colors);
-    }
-    shader->uniform4f(LLShaderMgr::TERRAIN_MINIMUM_ALPHAS, minimum_alphas[0], minimum_alphas[1], minimum_alphas[2], minimum_alphas[3]);
-
     if (LLVKLoader::isVulkanInitialized())
     {
         LLVKLoader::PbrTerrainF_PerProgramBind pbr_terrainF = {};

@@ -446,9 +446,6 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
 
         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
-        shader->uniform3fv(LLShaderMgr::BOX_CENTER, 1, mOrigin.getF32ptr());
-        shader->uniform3f(LLShaderMgr::BOX_SIZE, mRadius, mRadius, mRadius);
-
         if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && shader->mVkPerProgramUBOMapped != nullptr)
         {

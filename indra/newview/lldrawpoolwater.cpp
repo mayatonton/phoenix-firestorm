@@ -251,8 +251,6 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
 
     shader->bindTexture(LLShaderMgr::WATER_EXCLUSIONTEX, &gPipeline.mWaterExclusionMask);
 
-    shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
-
     F32      fog_density = pwater->getModifiedWaterFogDensity(underwater);
 
     shader->bindTexture(LLShaderMgr::WATER_SCREENTEX, &gPipeline.mWaterDis);
@@ -265,56 +263,17 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
 
     F32 water_height = environment.getWaterHeight();
     F32 camera_height = LLViewerCamera::getInstance()->getOrigin().mV[2];
-    shader->uniform1f(LLShaderMgr::WATER_WATERHEIGHT, camera_height - water_height);
-    shader->uniform1f(LLShaderMgr::WATER_TIME, phase_time);
-    shader->uniform3fv(LLShaderMgr::WATER_EYEVEC, 1, LLViewerCamera::getInstance()->getOrigin().mV);
-
-    shader->uniform3fv(LLShaderMgr::WATER_SPECULAR, 1, light_diffuse.mV);
-
-    shader->uniform2fv(LLShaderMgr::WATER_WAVE_DIR1, 1, pwater->getWave1Dir().mV);
-    shader->uniform2fv(LLShaderMgr::WATER_WAVE_DIR2, 1, pwater->getWave2Dir().mV);
-
-    shader->uniform3fv(LLShaderMgr::WATER_LIGHT_DIR, 1, light_dir.mV);
-
-    shader->uniform3fv(LLShaderMgr::WATER_NORM_SCALE, 1, pwater->getNormalScale().mV);
-    shader->uniform1f(LLShaderMgr::WATER_FRESNEL_SCALE, pwater->getFresnelScale());
-    shader->uniform1f(LLShaderMgr::WATER_FRESNEL_OFFSET, pwater->getFresnelOffset());
-    shader->uniform1f(LLShaderMgr::WATER_BLUR_MULTIPLIER, fmaxf(0, pwater->getBlurMultiplier()) * 2);
-
-    static LLStaticHashedString s_exposure("exposure");
-    static LLStaticHashedString tonemap_mix("tonemap_mix");
-    static LLStaticHashedString tonemap_type("tonemap_type");
-
-    static LLCachedControl<F32> exposure(gSavedSettings, "RenderExposure", 1.f);
-
-    F32 e = llclamp(exposure(), 0.5f, 4.f);
 
     static LLCachedControl<bool> should_auto_adjust(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-
-    shader->uniform1f(s_exposure, e);
-    static LLCachedControl<U32> tonemap_type_setting(gSavedSettings, "RenderTonemapType", 0U);
-    shader->uniform1i(tonemap_type, tonemap_type_setting);
-    shader->uniform1f(tonemap_mix, psky->getTonemapMix(should_auto_adjust()));
 
     F32 sunAngle = llmax(0.f, light_dir.mV[1]);
     F32 scaledAngle = 1.f - sunAngle;
 
-    shader->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up ? 1 : 0);
-
-    // SL-15861 This was changed from getRotatedLightNorm() as it was causing
-    // lightnorm in shaders\class1\windlight\atmosphericsFuncs.glsl in have inconsistent additive lighting for 180 degrees of the FOV.
-    LLVector4 rotated_light_direction = LLEnvironment::instance().getClampedLightNorm();
-    shader->uniform3fv(LLViewerShaderMgr::LIGHTNORM, 1, rotated_light_direction.mV);
-
-    shader->uniform3fv(LLShaderMgr::WL_CAMPOSLOCAL, 1, LLViewerCamera::getInstance()->getOrigin().mV);
-
     if (LLViewerCamera::getInstance()->cameraUnderWater())
     {
-        shader->uniform1f(LLShaderMgr::WATER_REFSCALE, pwater->getScaleBelow());
     }
     else
     {
-        shader->uniform1f(LLShaderMgr::WATER_REFSCALE, pwater->getScaleAbove());
     }
 
     LLGLDisable cullface(GL_CULL_FACE);

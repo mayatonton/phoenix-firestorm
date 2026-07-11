@@ -2163,8 +2163,6 @@ void renderNormals(LLDrawable *drawablep)
                 }
                 shader->bind();
 
-                shader->uniform1f(LLShaderMgr::DEBUG_NORMAL_DRAW_LENGTH, draw_length);
-
                 if (LLVKLoader::isVulkanInitialized()
                     && shader->mVkPerProgramUBO != VK_NULL_HANDLE
                     && shader->mVkPerProgramUBOMapped != nullptr)

@@ -100,11 +100,6 @@ S32 LLDrawPoolAlpha::getNumPostDeferredPasses()
 // set some common parameters on the given shader to prepare for alpha rendering
 static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment, F32 water_sign)
 {
-    static LLCachedControl<F32> displayGamma(gSavedSettings, "RenderDeferredDisplayGamma");
-    F32 gamma = displayGamma;
-
-    static LLStaticHashedString waterSign("waterSign");
-
     // Does this deferred shader need environment uniforms set such as sun_dir, etc. ?
     // NOTE: We don't actually need a gbuffer since we are doing forward rendering (for transparency) post deferred rendering
     // TODO: bindDeferredShader() probably should have the updating of the environment uniforms factored out into updateShaderEnvironmentUniforms()
@@ -117,20 +112,13 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
     shader->bind();
 
 
-    shader->uniform1f(LLShaderMgr::DISPLAY_GAMMA, (gamma > 0.1f) ? 1.0f / gamma : (1.0f / 2.2f));
-
     F32 water_sign_pc = water_sign;
     if (LLPipelineFrameContext::getInstance().isHUDPass())
     { // for HUD attachments, only the pre-water pass is executed and we never want to clip anything
-        LLVector4 near_clip(0, 0, -1, 0);
-        shader->uniform1f(waterSign, 1.f);
-        shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, near_clip.mV);
         water_sign_pc = 0.f;
     }
     else
     {
-        shader->uniform1f(waterSign, water_sign);
-        shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
     }
 
     if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
@@ -726,8 +714,6 @@ void LLDrawPoolAlpha::RestoreTexSetup(bool tex_setup)
 
 void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 {
-    LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
-
     draw->mVertexBuffer->setBuffer();
     draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
 }
@@ -736,7 +722,6 @@ void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
 {
     emissive_shader->bind();
-    emissive_shader->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
 
     for (LLDrawInfo* draw : emissives)
     {
@@ -765,7 +750,6 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
     LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
     LLGLSLShader* shader = emissive_shader->mRiggedVariant;
     shader->bind();
-    shader->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
 
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -1124,10 +1108,6 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
                     if (current_shader)
                     {
-                        current_shader->uniform4f(LLShaderMgr::SPECULAR_COLOR, spec_color.mV[VRED], spec_color.mV[VGREEN], spec_color.mV[VBLUE], spec_color.mV[VALPHA]);
-                        current_shader->uniform1f(LLShaderMgr::ENVIRONMENT_INTENSITY, env_intensity);
-                        current_shader->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, brightness);
-
                         if (LLVKLoader::isVulkanInitialized())
                         {
                             const ptrdiff_t shader_index = current_shader - gDeferredMaterialProgram;
@@ -1387,9 +1367,6 @@ void LLDrawPoolAlpha::beginMotionBlurPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityAlphaProgram.bind();
-    gVelocityAlphaProgram.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    gVelocityAlphaProgram.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    gVelocityAlphaProgram.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
 }
 
 void LLDrawPoolAlpha::endMotionBlurPass(S32 pass)
@@ -1405,9 +1382,6 @@ void LLDrawPoolAlpha::renderMotionBlur(S32 pass)
     pushVelocityBatchesTextured(LLRenderPass::PASS_ALPHA);
 
     gVelocityAlphaProgram.bind(true);
-    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    LLGLSLShader::sCurBoundShaderPtr->uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
     pushRiggedVelocityBatchesTextured(LLRenderPass::PASS_ALPHA_RIGGED);
 }
 // </AYAstorm r30 P2>

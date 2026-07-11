@@ -1111,8 +1111,6 @@ void LLRender::syncLightState()
         LLVector3 direction[LL_NUM_LIGHT_UNITS];
         LLVector4 attenuation[LL_NUM_LIGHT_UNITS];
         LLVector3 diffuse[LL_NUM_LIGHT_UNITS];
-        LLVector3 diffuse_b[LL_NUM_LIGHT_UNITS];
-        bool      sun_primary[LL_NUM_LIGHT_UNITS];
         LLVector2 size[LL_NUM_LIGHT_UNITS];
 
         for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
@@ -1123,18 +1121,8 @@ void LLRender::syncLightState()
             direction[i] = light->mSpotDirection;
             attenuation[i].set(light->mLinearAtten, light->mQuadraticAtten, light->mSpecular.mV[2], light->mSpecular.mV[3]);
             diffuse[i].set(light->mDiffuse.mV);
-            diffuse_b[i].set(light->mDiffuseB.mV);
-            sun_primary[i] = light->mSunIsPrimary;
             size[i].set(light->mSize, light->mFalloff);
         }
-
-        shader->uniform4fv(LLShaderMgr::LIGHT_POSITION, LL_NUM_LIGHT_UNITS, position[0].mV);
-        shader->uniform3fv(LLShaderMgr::LIGHT_DIRECTION, LL_NUM_LIGHT_UNITS, direction[0].mV);
-        shader->uniform4fv(LLShaderMgr::LIGHT_ATTENUATION, LL_NUM_LIGHT_UNITS, attenuation[0].mV);
-        shader->uniform2fv(LLShaderMgr::LIGHT_DEFERRED_ATTENUATION, LL_NUM_LIGHT_UNITS, size[0].mV);
-        shader->uniform3fv(LLShaderMgr::LIGHT_DIFFUSE, LL_NUM_LIGHT_UNITS, diffuse[0].mV);
-        shader->uniform3fv(LLShaderMgr::LIGHT_AMBIENT, 1, mAmbientLightColor.mV);
-        shader->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_primary[0] ? 1 : 0);
 
         if (LLVKLoader::isVulkanInitialized())
         {
@@ -1274,9 +1262,6 @@ void LLRender::syncLightState()
 
         if (sClassicMode)
         {
-            shader->uniform3fv(LLShaderMgr::AMBIENT, 1, mAmbientLightColor.mV);
-            shader->uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, 1, diffuse[0].mV);
-            shader->uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, 1, diffuse_b[0].mV);
         }
     }
 }
@@ -2320,7 +2305,6 @@ void LLRender::diffuseColor3f(F32 r, F32 g, F32 b)
 
     if (shader)
     {
-        shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, r,g,b,1.f);
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::DrawColor_PerShaderBind draw_color = { r, g, b, 1.f };
@@ -2336,7 +2320,6 @@ void LLRender::diffuseColor3fv(const F32* c)
 
     if (shader)
     {
-        shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, c[0], c[1], c[2], 1.f);
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::DrawColor_PerShaderBind draw_color = { c[0], c[1], c[2], 1.f };
@@ -2352,7 +2335,6 @@ void LLRender::diffuseColor4f(F32 r, F32 g, F32 b, F32 a)
 
     if (shader)
     {
-        shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, r,g,b,a);
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::DrawColor_PerShaderBind draw_color = { r, g, b, a };
@@ -2368,7 +2350,6 @@ void LLRender::diffuseColor4fv(const F32* c)
 
     if (shader)
     {
-        shader->uniform4fv(LLShaderMgr::DIFFUSE_COLOR, 1, c);
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::DrawColor_PerShaderBind draw_color = { c[0], c[1], c[2], c[3] };
@@ -2384,7 +2365,6 @@ void LLRender::diffuseColor4ubv(const U8* c)
 
     if (shader)
     {
-        shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, c[0]/255.f, c[1]/255.f, c[2]/255.f, c[3]/255.f);
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::DrawColor_PerShaderBind draw_color = { c[0]/255.f, c[1]/255.f, c[2]/255.f, c[3]/255.f };
@@ -2400,7 +2380,6 @@ void LLRender::diffuseColor4ub(U8 r, U8 g, U8 b, U8 a)
 
     if (shader)
     {
-        shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, r/255.f, g/255.f, b/255.f, a/255.f);
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::DrawColor_PerShaderBind draw_color = { r/255.f, g/255.f, b/255.f, a/255.f };

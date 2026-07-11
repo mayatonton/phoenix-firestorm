@@ -52,13 +52,6 @@
 #include "lljoint.h"
 #include "llskinningutil.h"
 
-static LLStaticHashedString sTexture0("texture0");
-static LLStaticHashedString sTexture1("texture1");
-static LLStaticHashedString sTex0("tex0");
-static LLStaticHashedString sTex1("tex1");
-static LLStaticHashedString sDitherTex("dither_tex");
-static LLStaticHashedString sGlowMap("glowMap");
-static LLStaticHashedString sScreenMap("screenMap");
 
 // Lots of STL stuff in here, using namespace std to keep things more readable
 using std::vector;
@@ -4266,8 +4259,6 @@ bool LLViewerShaderMgr::loadShadersObject()
             for (int i = 0; i < 2; ++i)
             {
                 shader[i]->bind();
-                shader[i]->uniform1i(sTexture0, 0);
-                shader[i]->uniform1i(sTexture1, 1);
                 shader[i]->unbind();
             }
         }
@@ -4541,8 +4532,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         if (success)
         {
             gGlowCombineProgram.bind();
-            gGlowCombineProgram.uniform1i(sGlowMap, 0);
-            gGlowCombineProgram.uniform1i(sScreenMap, 1);
             gGlowCombineProgram.unbind();
         }
 
@@ -4563,8 +4552,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         if (success)
         {
             gGlowCombineFXAAProgram.bind();
-            gGlowCombineFXAAProgram.uniform1i(sGlowMap, 0);
-            gGlowCombineFXAAProgram.uniform1i(sScreenMap, 1);
             gGlowCombineFXAAProgram.unbind();
         }
 
@@ -4586,9 +4573,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         if (success)
         {
             gTwoTextureCompareProgram.bind();
-            gTwoTextureCompareProgram.uniform1i(sTex0, 0);
-            gTwoTextureCompareProgram.uniform1i(sTex1, 1);
-            gTwoTextureCompareProgram.uniform1i(sDitherTex, 2);
         }
         if (success && LLVKLoader::isVulkanInitialized())
         {
@@ -4607,7 +4591,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
         if (success)
         {
             gOneTextureFilterProgram.bind();
-            gOneTextureFilterProgram.uniform1i(sTex0, 0);
         }
         if (success && LLVKLoader::isVulkanInitialized())
         {
@@ -4631,7 +4614,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
                 gSolidColorProgram.createVkPipeline(0);
             }
             gSolidColorProgram.bind();
-            gSolidColorProgram.uniform1i(sTex0, 0);
             gSolidColorProgram.unbind();
         }
     }

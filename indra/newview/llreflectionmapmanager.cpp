@@ -847,8 +847,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         gGL.flush();
         U32 res = mProbeResolution * 2;
 
-        static LLStaticHashedString resScale("resScale");
-        static LLStaticHashedString direction("direction");
         static LLStaticHashedString znear("znear");
         static LLStaticHashedString zfar("zfar");
 
@@ -858,11 +856,9 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         {
             gGaussianProgram.bind();
             const F32 gaussian_res_scale = 1.f / (mProbeResolution * 2);
-            gGaussianProgram.uniform1f(resScale, gaussian_res_scale);
             S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
 
             // horizontal
-            gGaussianProgram.uniform2f(direction, 1.f, 0.f);
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
             mRenderTarget.bindTarget();
@@ -871,7 +867,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             mRenderTarget.flush();
 
             // vertical
-            gGaussianProgram.uniform2f(direction, 0.f, 1.f);
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
             screen_rt->bindTarget();
@@ -899,8 +894,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 gGL.getTexUnit(diffuseChannel)->bind(&(mMipChain[i - 1]));
             }
 
-
-            gReflectionMipProgram.uniform1f(resScale, 1.f/(mProbeResolution*2));
 
             gPipeline.mScreenTriangleVB->setBuffer();
             gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -945,7 +938,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         mMipChain[0].bindTarget();
         const bool aya_prev_cube_snapshot = gCubeSnapshot;
         gCubeSnapshot = true;
-        static LLStaticHashedString sSourceIdx("sourceIdx");
 
         if (isRadiancePass())
         {
@@ -955,23 +947,11 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
             S32 channel = gRadianceGenProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES, LLTexUnit::TT_CUBE_MAP_ARRAY);
             mTexture->bind(channel);
-            gRadianceGenProgram.uniform1i(sSourceIdx, sourceIdx);
-            gRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mMaxProbeLOD);
-            gRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_STRENGTH, 1.f);
-
             U32 res = mMipChain[0].getWidth();
 
             for (int i = 0; i < mMipChain.size(); ++i)
             {
                 LL_PROFILE_GPU_ZONE("probe radiance gen");
-                static LLStaticHashedString sMipLevel("mipLevel");
-                static LLStaticHashedString sRoughness("roughness");
-                static LLStaticHashedString sWidth("u_width");
-
-                gRadianceGenProgram.uniform1f(sRoughness, (F32)i / (F32)(mMipChain.size() - 1));
-                gRadianceGenProgram.uniform1f(sMipLevel, (GLfloat)i);
-                gRadianceGenProgram.uniform1i(sWidth, mProbeResolution);
-
                 if (LLVKLoader::isVulkanInitialized()
                     && gRadianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                     && gRadianceGenProgram.mVkPerProgramUBOMapped != nullptr)
@@ -1024,9 +1004,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             gIrradianceGenProgram.bind();
             S32 channel = gIrradianceGenProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES, LLTexUnit::TT_CUBE_MAP_ARRAY);
             mTexture->bind(channel);
-
-            gIrradianceGenProgram.uniform1i(sSourceIdx, sourceIdx);
-            gIrradianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mMaxProbeLOD);
 
             if (LLVKLoader::isVulkanInitialized()
                 && gIrradianceGenProgram.mVkPerProgramUBO != VK_NULL_HANDLE

@@ -343,9 +343,6 @@ bool LLSceneMonitor::needsUpdate() const
     return mDiffState == NEED_DIFF;
 }
 
-static LLStaticHashedString sDitherScale("dither_scale");
-static LLStaticHashedString sDitherScaleS("dither_scale_s");
-static LLStaticHashedString sDitherScaleT("dither_scale_t");
 
 void LLSceneMonitor::compare()
 {
@@ -385,10 +382,6 @@ void LLSceneMonitor::compare()
     mDiff->clear();
 
     gTwoTextureCompareProgram.bind();
-
-    gTwoTextureCompareProgram.uniform1f(sDitherScale, mDitherScale);
-    gTwoTextureCompareProgram.uniform1f(sDitherScaleS, mDitherScaleS);
-    gTwoTextureCompareProgram.uniform1f(sDitherScaleT, mDitherScaleT);
 
     if (LLVKLoader::isVulkanInitialized()
         && gTwoTextureCompareProgram.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -437,8 +430,6 @@ void LLSceneMonitor::compare()
 #endif
 }
 
-static LLStaticHashedString sTolerance("tolerance");
-
 //calculate Diff aggregate information in GPU, and enable gl occlusion query to capture it.
 void LLSceneMonitor::calcDiffAggregate()
 {
@@ -464,8 +455,6 @@ void LLSceneMonitor::calcDiffAggregate()
 
     cur_shader = LLGLSLShader::sCurBoundShaderPtr;
     gOneTextureFilterProgram.bind();
-    gOneTextureFilterProgram.uniform1f(sTolerance, mDiffTolerance);
-
     if (LLVKLoader::isVulkanInitialized()
         && gOneTextureFilterProgram.mVkPerProgramUBO != VK_NULL_HANDLE
         && gOneTextureFilterProgram.mVkPerProgramUBOMapped != nullptr)

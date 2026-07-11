@@ -934,16 +934,13 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         wind = wind * rot_mat;
         wind.mV[VW] = avatarp->mWindVec.mV[VW];
 
-        sVertexProgram->uniform4fv(LLViewerShaderMgr::AVATAR_WIND, 1, wind.mV);
         F32 phase = -1.f * (avatarp->mRipplePhase);
 
         F32 freq = 7.f + (noise1(avatarp->mRipplePhase) * 2.f);
         LLVector4 sin_params(freq, freq, freq, phase);
-        sVertexProgram->uniform4fv(LLViewerShaderMgr::AVATAR_SINWAVE, 1, sin_params.mV);
 
         LLVector4 gravity(0.f, 0.f, -CLOTHING_GRAVITY_EFFECT, 0.f);
         gravity = gravity * rot_mat;
-        sVertexProgram->uniform4fv(LLViewerShaderMgr::AVATAR_GRAVITY, 1, gravity.mV);
 
         if (LLVKLoader::isVulkanInitialized()
             && sVertexProgram == &gDeferredAvatarProgram
@@ -1044,10 +1041,6 @@ void LLDrawPoolAvatar::beginMotionBlurPass(S32 pass)
         sRenderingSkinned = true;
         sVertexProgram->bind();
     }
-
-    sVertexProgram->uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    sVertexProgram->uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    sVertexProgram->uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
 
     gGL.diffuseColor4f(1, 1, 1, 1);
 }

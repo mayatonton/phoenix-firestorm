@@ -82,8 +82,6 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
         {
             min_alpha = mAlphaCutoff;
         }
-        shader->uniform1f(LLShaderMgr::MINIMUM_ALPHA, min_alpha);
-
         if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
         {
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -103,10 +101,6 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
     {
         shader->bindTexture(LLShaderMgr::DIFFUSE_MAP, LLViewerFetchedTexture::sWhiteImagep);
     }
-
-    F32 base_color_packed[8];
-    mTextureTransform[GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(base_color_packed);
-    shader->uniform4fv(LLShaderMgr::TEXTURE_BASE_COLOR_TRANSFORM, 2, (F32*)base_color_packed);
 
     if (!LLPipelineFrameContext::getInstance().isShadowPass())
     {
@@ -139,10 +133,6 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
 
         // NOTE: base color factor is baked into vertex stream
 
-        shader->uniform1f(LLShaderMgr::ROUGHNESS_FACTOR, mRoughnessFactor);
-        shader->uniform1f(LLShaderMgr::METALLIC_FACTOR, mMetallicFactor);
-        shader->uniform3fv(LLShaderMgr::EMISSIVE_COLOR, 1, mEmissiveColor.mV);
-
         if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
         {
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -161,17 +151,6 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
             }
         }
 
-        F32 normal_packed[8];
-        mTextureTransform[GLTF_TEXTURE_INFO_NORMAL].getPacked(normal_packed);
-        shader->uniform4fv(LLShaderMgr::TEXTURE_NORMAL_TRANSFORM, 2, (F32*)normal_packed);
-
-        F32 metallic_roughness_packed[8];
-        mTextureTransform[GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS].getPacked(metallic_roughness_packed);
-        shader->uniform4fv(LLShaderMgr::TEXTURE_METALLIC_ROUGHNESS_TRANSFORM, 2, (F32*)metallic_roughness_packed);
-
-        F32 emissive_packed[8];
-        mTextureTransform[GLTF_TEXTURE_INFO_EMISSIVE].getPacked(emissive_packed);
-        shader->uniform4fv(LLShaderMgr::TEXTURE_EMISSIVE_TRANSFORM, 2, (F32*)emissive_packed);
     }
 
     if (LLVKLoader::isVulkanInitialized())

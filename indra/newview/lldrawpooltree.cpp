@@ -141,10 +141,7 @@ void LLDrawPoolTree::beginShadowPass(S32 pass)
     static LLCachedControl<F32> shadow_bias(gSavedSettings, "RenderDeferredTreeShadowBias");
     gGL.setPolygonOffset(shadow_offset(), shadow_bias());
 
-    LLEnvironment& environment = LLEnvironment::instance();
-
     gDeferredTreeShadowProgram.bind();
-    gDeferredTreeShadowProgram.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
     gDeferredTreeShadowProgram.setMinimumAlpha(0.5f);
 }
 
@@ -167,9 +164,6 @@ void LLDrawPoolTree::beginMotionBlurPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
-    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    gVelocityProgram.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
 }
 
 void LLDrawPoolTree::endMotionBlurPass(S32 pass)
@@ -198,9 +192,6 @@ void LLDrawPoolTree::renderMotionBlur(S32 pass)
         LLMatrix4* model_matrix = &(drawable->getRegion()->mRenderMatrix);
         llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
         LLRenderPass::applyModelMatrix(model_matrix);
-        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
-        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)model_matrix->mMatrix);
-
         if (LLVKLoader::isVulkanInitialized()
             && LLGLSLShader::sCurBoundShaderPtr
             && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE

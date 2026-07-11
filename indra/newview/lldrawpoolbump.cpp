@@ -221,14 +221,6 @@ void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& di
     {
         if (shader )
         {
-            LLMatrix4 mat;
-            mat.initRows(LLVector4(gGLModelView+0),
-                         LLVector4(gGLModelView+4),
-                         LLVector4(gGLModelView+8),
-                         LLVector4(gGLModelView+12));
-            LLVector3 vec = LLVector3(gShinyOrigin) * mat;
-            LLVector4 vec4(vec, gShinyOrigin.mV[3]);
-            shader->uniform4fv(LLViewerShaderMgr::SHINY_ORIGIN, 1, vec4.mV);
             if (shader_level > 1)
             {
                 cube_map->setMatrix(1);
@@ -327,16 +319,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
     }
 
     {
-        LLMatrix4 mat;
-        mat.initRows(LLVector4(gGLModelView+0),
-                     LLVector4(gGLModelView+4),
-                     LLVector4(gGLModelView+8),
-                     LLVector4(gGLModelView+12));
         shader->bind();
-
-        LLVector3 vec = LLVector3(gShinyOrigin) * mat;
-        LLVector4 vec4(vec, gShinyOrigin.mV[3]);
-        shader->uniform4fv(LLViewerShaderMgr::SHINY_ORIGIN, 1, vec4.mV);
 
         if (LLPipelineFrameContext::getInstance().isReflectionProbesEnabled())
         {
@@ -934,16 +917,6 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
             gNormalMapGenProgram.bind();
             gNormalMapGenProgram.rotatePerProgramUBOSlot();
 
-            static LLStaticHashedString sNormScale("norm_scale");
-            static LLStaticHashedString sStepX("stepX");
-            static LLStaticHashedString sStepY("stepY");
-            static LLStaticHashedString sBumpCode("bump_code");
-
-            gNormalMapGenProgram.uniform1f(sNormScale, gSavedSettings.getF32("RenderNormalMapScale"));
-            gNormalMapGenProgram.uniform1f(sStepX, 1.f / bump->getWidth());
-            gNormalMapGenProgram.uniform1f(sStepY, 1.f / bump->getHeight());
-            gNormalMapGenProgram.uniform1i(sBumpCode, bump_code);
-
             if (LLVKLoader::isVulkanInitialized()
                 && gNormalMapGenProgram.mVkActivePerProgramUBOMapped != nullptr
                 && gNormalMapGenProgram.mVkPerProgramUBOSize >= sizeof(LLVKLoader::NormgenF_PerProgramBind))
@@ -1132,9 +1105,6 @@ void LLDrawPoolBump::beginMotionBlurPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
-    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    gVelocityProgram.uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    gVelocityProgram.uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
 }
 
 void LLDrawPoolBump::endMotionBlurPass(S32 pass)
@@ -1150,9 +1120,6 @@ void LLDrawPoolBump::renderMotionBlur(S32 pass)
     pushVelocityBatches(LLRenderPass::PASS_BUMP);
 
     gVelocityProgram.bind(true);
-    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_MODELVIEW_MATRIX, 1, GL_FALSE, gGLLastModelView);
-    LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::CURRENT_MODELVIEW_MATRIX, 1, GL_FALSE, gGLModelView);
-    LLGLSLShader::sCurBoundShaderPtr->uniform4f(LLShaderMgr::VIEWPORT, (F32)gGLViewport[0], (F32)gGLViewport[1], (F32)gGLViewport[2], (F32)gGLViewport[3]);
     pushRiggedVelocityBatches(LLRenderPass::PASS_BUMP_RIGGED);
 }
 // </AYAstorm r30 P2>

@@ -50,8 +50,6 @@
 
 extern bool gCubeSnapshot;
 
-static LLStaticHashedString sCamPosLocal("camPosLocal");
-static LLStaticHashedString sCustomAlpha("custom_alpha");
 
 static LLGLSLShader* cloud_shader = NULL;
 static LLGLSLShader* sky_shader   = NULL;
@@ -122,8 +120,6 @@ void LLDrawPoolWLSky::renderDome(const LLVector3& camPosLocal, F32 camHeightLoca
     gGL.translatef(0.f,-camHeightLocal, 0.f);
 
     // Draw WL Sky
-    shader->uniform3f(sCamPosLocal, 0.f, camHeightLocal, 0.f);
-
     gSky.mVOWLSkyp->drawDome();
 
     gGL.matrixMode(LLRender::MM_MODELVIEW);
@@ -306,14 +302,9 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
             static LLCachedControl<F32> hdri_exposure(gSavedSettings, "RenderHDRIExposure", 0.0f);
             static LLCachedControl<F32> hdri_rotation(gSavedSettings, "RenderHDRIRotation", 0.f);
             static LLCachedControl<F32> hdri_split(gSavedSettings, "RenderHDRISplitScreen", 1.f);
-            static LLStaticHashedString hdri_split_screen("hdri_split_screen");
 
             LLMatrix3 rot;
             rot.setRot(0.f, hdri_rotation*DEG_TO_RAD, 0.f);
-
-            sky_shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, powf(2.f, hdri_exposure));
-            sky_shader->uniformMatrix3fv(LLShaderMgr::DEFERRED_ENV_MAT, 1, GL_FALSE, (F32*) rot.mMatrix);
-            sky_shader->uniform1f(hdri_split_screen, gCubeSnapshot ? 1.f : hdri_split);
 
             if (LLVKLoader::isVulkanInitialized()
                 && sky_shader->mVkPerProgramUBO != VK_NULL_HANDLE
@@ -338,8 +329,6 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
 
         LLGLSPipelineDepthTestSkyBox sky(true, true);
 
-        sky_shader->uniform1i(LLShaderMgr::CUBE_SNAPSHOT, gCubeSnapshot ? 1 : 0);
-
         LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
 
         LLDrawPoolWLSky::writeWindlightAtmosUBOs();
@@ -360,14 +349,6 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
             moisture_level = 0.0f;
             ice_level      = 0.0f;
         }
-
-        sky_shader->uniform1f(LLShaderMgr::MOISTURE_LEVEL, moisture_level);
-        sky_shader->uniform1f(LLShaderMgr::DROPLET_RADIUS, droplet_radius);
-        sky_shader->uniform1f(LLShaderMgr::ICE_LEVEL, ice_level);
-
-        sky_shader->uniform1f(LLShaderMgr::SUN_MOON_GLOW_FACTOR, psky->getSunMoonGlowFactor());
-
-        sky_shader->uniform1i(LLShaderMgr::SUN_UP_FACTOR, psky->getIsSunUp() ? 1 : 0);
 
         if (LLVKLoader::isVulkanInitialized() && sky_shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && sky_shader->mVkPerProgramUBOMapped != nullptr)
@@ -438,17 +419,11 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
     gGL.pushMatrix();
     gGL.translatef(camPosLocal.mV[0], camPosLocal.mV[1], camPosLocal.mV[2]);
     gGL.rotatef(gFrameTimeSeconds*0.01f, 0.f, 0.f, 1.f);
-    gDeferredStarProgram.uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
-
     if (LLPipelineFrameContext::getInstance().isReflectionPass())
     {
         star_alpha = 1.0f;
     }
-    gDeferredStarProgram.uniform1f(sCustomAlpha, star_alpha);
-
     sStarTime = (F32)LLFrameTimer::getElapsedSeconds() * 0.5f;
-
-    gDeferredStarProgram.uniform1f(LLShaderMgr::WATER_TIME, sStarTime);
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -518,10 +493,6 @@ void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 
                 cloudshader->bindTexture(LLShaderMgr::CLOUD_NOISE_MAP_NEXT, cloud_noise_next, LLTexUnit::TT_TEXTURE);
             }
         }
-
-        cloudshader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
-        cloudshader->uniform1f(LLShaderMgr::CLOUD_VARIANCE, cloud_variance);
-        cloudshader->uniform1f(LLShaderMgr::SUN_MOON_GLOW_FACTOR, psky->getSunMoonGlowFactor());
 
         if (LLVKLoader::isVulkanInitialized() && cloudshader->mVkPerProgramUBO != VK_NULL_HANDLE
             && cloudshader->mVkPerProgramUBOMapped != nullptr)
@@ -632,11 +603,6 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
                     sun_shader->bindTexture(LLShaderMgr::ALTERNATE_DIFFUSE_MAP, tex_b, LLTexUnit::TT_TEXTURE);
                 }
 
-                LLColor4 color(gSky.mVOSkyp->getSun().getInterpColor());
-
-                sun_shader->uniform4fv(LLShaderMgr::DIFFUSE_COLOR, 1, color.mV);
-                sun_shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
-
                 if (LLVKLoader::isVulkanInitialized() && sun_shader->mVkPerProgramUBO != VK_NULL_HANDLE
                     && sun_shader->mVkPerProgramUBOMapped != nullptr)
                 {
@@ -688,12 +654,6 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
             LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
 
             F32 moon_brightness = (float)psky->getMoonBrightness();
-
-            moon_shader->uniform1f(LLShaderMgr::MOON_BRIGHTNESS, moon_brightness);
-            moon_shader->uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, 1, gSky.mVOSkyp->getMoon().getColor().mV);
-            moon_shader->uniform4fv(LLShaderMgr::DIFFUSE_COLOR, 1, color.mV);
-            //moon_shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
-            moon_shader->uniform3fv(LLShaderMgr::DEFERRED_MOON_DIR, 1, psky->getMoonDirection().mV); // shader: moon_dir
 
             if (LLVKLoader::isVulkanInitialized() && moon_shader->mVkPerProgramUBO != VK_NULL_HANDLE
                 && moon_shader->mVkPerProgramUBOMapped != nullptr)

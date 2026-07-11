@@ -5091,11 +5091,8 @@ void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* 
 
     gDeferredMotionBlurProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src);
     gDeferredMotionBlurProgram.bindTexture(LLShaderMgr::DEFERRED_VELOCITY, &mVelocityMap);
-    gDeferredMotionBlurProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-        (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
 
     static LLCachedControl<S32> blur_strength(gSavedSettings, "RenderMotionBlurStrength", 32);
-    gDeferredMotionBlurProgram.uniform1i(LLShaderMgr::MOTION_BLUR_STRENGTH, (S32)blur_strength);
 
     if (LLVKLoader::isVulkanInitialized()
         && gDeferredMotionBlurProgram.mVkPerProgramUBOMapped != nullptr
@@ -5142,16 +5139,9 @@ void LLPipeline::renderVolumetric(LLRenderTarget* src)
 
     bindDeferredShader(gVolumetricLightProgram);
 
-    gVolumetricLightProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-        (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
-
     static LLCachedControl<U32> godray_res(gSavedSettings, "RenderVolumetricLightingResolution", 16);
     static LLCachedControl<F32> godray_mult(gSavedSettings, "RenderVolumetricLightingMultiplier", 4.0f);
     static LLCachedControl<F32> falloff_mult(gSavedSettings, "RenderVolumetricLightingFalloffMultiplier", 2.0f);
-
-    gVolumetricLightProgram.uniform1i(LLShaderMgr::GODRAY_RES, (S32)godray_res);
-    gVolumetricLightProgram.uniform1f(LLShaderMgr::GODRAY_MULTIPLIER, (F32)godray_mult);
-    gVolumetricLightProgram.uniform1f(LLShaderMgr::FALLOFF_MULTIPLIER, (F32)falloff_mult);
 
     if (LLVKLoader::isVulkanInitialized()
         && gVolumetricLightProgram.mVkPerProgramUBOMapped != nullptr
@@ -6096,9 +6086,6 @@ void LLPipeline::renderDebug()
                 if ( pathfindingCharacter->getVisible() || gAgentCamera.cameraMouselook() )
                 {
                     gPathfindingProgram.bind();
-                    gPathfindingProgram.uniform1f(sTint, 1.f);
-                    gPathfindingProgram.uniform1f(sAmbiance, 1.f);
-                    gPathfindingProgram.uniform1f(sAlphaScale, 1.f);
 
                     if (LLVKLoader::isVulkanInitialized()
                         && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -6123,7 +6110,6 @@ void LLPipeline::renderDebug()
                         llPathingLibInstance->renderSimpleShapeCapsuleID( gGL, id, pos, rot );
                         gGL.setColorMask(true, false);
                         LLGLEnable blend(GL_BLEND);
-                        gPathfindingProgram.uniform1f(sAlphaScale, 0.90f);
                         llPathingLibInstance->renderSimpleShapeCapsuleID( gGL, id, pos, rot );
                         gPathfindingProgram.bind();
                         if (LLVKLoader::isVulkanInitialized()
@@ -6152,10 +6138,6 @@ void LLPipeline::renderDebug()
                     F32 ambiance = gSavedSettings.getF32("PathfindingAmbiance");
 
                     gPathfindingProgram.bind();
-
-                    gPathfindingProgram.uniform1f(sTint, 1.f);
-                    gPathfindingProgram.uniform1f(sAmbiance, ambiance);
-                    gPathfindingProgram.uniform1f(sAlphaScale, 1.f);
 
                     if (LLVKLoader::isVulkanInitialized()
                         && gPathfindingProgram.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -6189,7 +6171,6 @@ void LLPipeline::renderDebug()
                         if ( pathfindingConsole->isRenderWorld() )
                         {
                             LLGLEnable blend(GL_BLEND);
-                            gPathfindingProgram.uniform1f(sAlphaScale, 0.66f);
                             llPathingLibInstance->renderNavMesh();
                         }
                         else
@@ -6199,8 +6180,6 @@ void LLPipeline::renderDebug()
 
                         //render edges
                         gPathfindingNoNormalsProgram.bind();
-                        gPathfindingNoNormalsProgram.uniform1f(sTint, 1.f);
-                        gPathfindingNoNormalsProgram.uniform1f(sAlphaScale, 1.f);
                         if (LLVKLoader::isVulkanInitialized()
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBOMapped != nullptr)
@@ -6257,7 +6236,6 @@ void LLPipeline::renderDebug()
                         gGL.setColorMask(true, false);
                         //render the bookends
                         LLGLEnable blend(GL_BLEND);
-                        gPathfindingProgram.uniform1f(sAlphaScale, 0.90f);
                         llPathingLibInstance->renderPathBookend( gGL, LLPathingLib::LLPL_START );
                         llPathingLibInstance->renderPathBookend( gGL, LLPathingLib::LLPL_END );
                         gPathfindingProgram.bind();
@@ -6276,7 +6254,6 @@ void LLPipeline::renderDebug()
                     if ( pathfindingConsole->isRenderWaterPlane() )
                     {
                         LLGLEnable blend(GL_BLEND);
-                        gPathfindingProgram.uniform1f(sAlphaScale, 0.90f);
                         llPathingLibInstance->renderSimpleShapes( gGL, gAgent.getRegion()->getWaterHeight() );
                     }
                 //physics/exclusion shapes
@@ -6319,8 +6296,6 @@ void LLPipeline::renderDebug()
                             LLGLEnable blend(GL_BLEND);
 
                             {
-                                gPathfindingProgram.uniform1f(sAmbiance, ambiance);
-
                                 { //draw solid overlay
                                     LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
                                     llPathingLibInstance->renderNavMeshShapesVBO( render_order[i] );
@@ -6334,8 +6309,6 @@ void LLPipeline::renderDebug()
 
                                 if (pathfindingConsole->isRenderXRay())
                                 {
-                                    gPathfindingProgram.uniform1f(sTint, gSavedSettings.getF32("PathfindingXRayTint"));
-                                    gPathfindingProgram.uniform1f(sAlphaScale, gSavedSettings.getF32("PathfindingXRayOpacity"));
                                     LLGLEnable blend(GL_BLEND);
                                     LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_GREATER);
 
@@ -6343,13 +6316,11 @@ void LLPipeline::renderDebug()
 
                                     if (gSavedSettings.getBOOL("PathfindingXRayWireframe"))
                                     { //draw hidden wireframe as darker and less opaque
-                                        gPathfindingProgram.uniform1f(sAmbiance, 1.f);
                                         llPathingLibInstance->renderNavMeshShapesVBO( render_order[i] );
                                     }
                                     else
                                     {
                                         LLGLState::setPolygonMode(GL_FILL);
-                                        gPathfindingProgram.uniform1f(sAmbiance, ambiance);
                                         llPathingLibInstance->renderNavMeshShapesVBO( render_order[i] );
                                         LLGLState::setPolygonMode(GL_LINE);
                                     }
@@ -6357,9 +6328,6 @@ void LLPipeline::renderDebug()
 
                                 { //draw visible wireframe as brighter, thicker and more opaque
                                     gGL.setPolygonOffset(offset, offset);
-                                    gPathfindingProgram.uniform1f(sAmbiance, 1.f);
-                                    gPathfindingProgram.uniform1f(sTint, 1.f);
-                                    gPathfindingProgram.uniform1f(sAlphaScale, 1.f);
 
                                     gGL.setLineWidth(gSavedSettings.getF32("PathfindingLineWidth")); // <FS> Line width OGL core profile fix by Rye Mutt
                                     LLGLDisable blendOut(GL_BLEND);
@@ -6391,26 +6359,19 @@ void LLPipeline::renderDebug()
                         gGL.setLineWidth(2.0f); // <FS> Line width OGL core profile fix by Rye Mutt
                         LLGLEnable cull(GL_CULL_FACE);
 
-                        gPathfindingProgram.uniform1f(sTint, gSavedSettings.getF32("PathfindingXRayTint"));
-                        gPathfindingProgram.uniform1f(sAlphaScale, gSavedSettings.getF32("PathfindingXRayOpacity"));
-
                         if (gSavedSettings.getBOOL("PathfindingXRayWireframe"))
                         { //draw hidden wireframe as darker and less opaque
                             LLGLState::setPolygonMode(GL_LINE);
-                            gPathfindingProgram.uniform1f(sAmbiance, 1.f);
                             llPathingLibInstance->renderNavMesh();
                             LLGLState::setPolygonMode(GL_FILL);
                         }
                         else
                         {
-                            gPathfindingProgram.uniform1f(sAmbiance, ambiance);
                             llPathingLibInstance->renderNavMesh();
                         }
 
                         //render edges
                         gPathfindingNoNormalsProgram.bind();
-                        gPathfindingNoNormalsProgram.uniform1f(sTint, gSavedSettings.getF32("PathfindingXRayTint"));
-                        gPathfindingNoNormalsProgram.uniform1f(sAlphaScale, gSavedSettings.getF32("PathfindingXRayOpacity"));
                         if (LLVKLoader::isVulkanInitialized()
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                             && gPathfindingNoNormalsProgram.mVkPerProgramUBOMapped != nullptr)
@@ -8764,7 +8725,6 @@ void LLPipeline::renderAlphaObjects(bool rigged)
     assertInitialized();
     gGL.loadMatrix(gGLModelView);
     gGLLastMatrix = NULL;
-    S32 sun_up = LLEnvironment::instance().getIsSunUp() ? 1 : 0;
     U32 target_width = LLRenderTarget::sCurResX;
     U32 type = LLRenderPass::PASS_ALPHA;
     // for gDeferredShadowAlphaMaskProgram
@@ -8795,8 +8755,6 @@ void LLPipeline::renderAlphaObjects(bool rigged)
             if (pparams->mGLTFMaterial)
             {
                 gDeferredShadowGLTFAlphaBlendProgram.bind(rigged);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
@@ -8810,8 +8768,6 @@ void LLPipeline::renderAlphaObjects(bool rigged)
             else
             {
                 gDeferredShadowAlphaMaskProgram.bind(rigged);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
@@ -8831,8 +8787,6 @@ void LLPipeline::renderAlphaObjects(bool rigged)
             if (pparams->mGLTFMaterial)
             {
                 gDeferredShadowGLTFAlphaBlendProgram.bind(rigged);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
@@ -8846,8 +8800,6 @@ void LLPipeline::renderAlphaObjects(bool rigged)
             else
             {
                 gDeferredShadowAlphaMaskProgram.bind(rigged);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
@@ -8969,12 +8921,6 @@ void LLPipeline::visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 
     gDeferredBufferVisualProgram.bind();
     gDeferredBufferVisualProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, false, LLTexUnit::TFO_BILINEAR, bufferIndex);
 
-    static LLStaticHashedString mipLevel("mipLevel");
-    if (RenderBufferVisualization != 4)
-        gDeferredBufferVisualProgram.uniform1f(mipLevel, 0);
-    else
-        gDeferredBufferVisualProgram.uniform1f(mipLevel, 8);
-
     if (LLVKLoader::isVulkanInitialized()
         && gDeferredBufferVisualProgram.mVkPerProgramUBO != VK_NULL_HANDLE
         && gDeferredBufferVisualProgram.mVkPerProgramUBOMapped != nullptr)
@@ -9024,9 +8970,6 @@ void LLPipeline::generateLuminance(LLRenderTarget* src, LLRenderTarget* dst)
             // bind the normal map to get the environment mask
             getFrameRT()->deferredScreen.bindTexture(2, channel, LLTexUnit::TFO_POINT);
         }
-
-        static LLStaticHashedString diffuse_luminance_scale_s("diffuse_luminance_scale");
-        gLuminanceProgram.uniform1f(diffuse_luminance_scale_s, diffuse_luminance_scale);
 
         if (LLVKLoader::isVulkanInitialized()
             && gLuminanceProgram.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -9102,10 +9045,6 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
             }
         }
 
-        static LLStaticHashedString dt("dt");
-        static LLStaticHashedString noiseVec("noiseVec");
-        static LLStaticHashedString dynamic_exposure_params("dynamic_exposure_params");
-        static LLStaticHashedString dynamic_exposure_params2("dynamic_exposure_params2");
         static LLStaticHashedString dynamic_exposure_e("dynamic_exposure_enabled");
         static LLCachedControl<bool> should_auto_adjust(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
         static LLCachedControl<bool> dynamic_exposure_enabled(gSavedSettings, "RenderDynamicExposureEnabled", true);
@@ -9148,11 +9087,6 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
                 }
             }
         }
-
-        shader->uniform1f(dt, gFrameIntervalSeconds);
-        shader->uniform2f(noiseVec, ll_frand() * 2.0f - 1.0f, ll_frand() * 2.0f - 1.0f);
-        shader->uniform4f(dynamic_exposure_params, dynamic_exposure_coefficient, exp_min, exp_max, dynamic_exposure_speed_error);
-        shader->uniform4f(dynamic_exposure_params2, sky->getHDROffset(should_auto_adjust()), exp_min, exp_max, dynamic_exposure_speed_target);
 
         if (LLVKLoader::isVulkanInitialized()
             && shader->mVkPerProgramUBO != VK_NULL_HANDLE
@@ -9235,23 +9169,13 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
 
         shader->bindTexture(LLShaderMgr::EXPOSURE_MAP, &mExposureMap);
 
-        shader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
-
         static LLCachedControl<F32> exposure(gSavedSettings, "RenderExposure", 1.f);
 
         F32 e = llclamp(exposure(), 0.5f, 4.f);
 
-        static LLStaticHashedString s_exposure("exposure");
-        static LLStaticHashedString tonemap_mix("tonemap_mix");
-        static LLStaticHashedString tonemap_type("tonemap_type");
-
-        shader->uniform1f(s_exposure, e);
-
-        shader->uniform1i(tonemap_type, tonemap_type_setting);
         F32 mix_val = force_tonemap
             ? gSavedSettings.getF32("RenderTonemapMix")
             : psky->getTonemapMix(should_auto_adjust());
-        shader->uniform1f(tonemap_mix, mix_val);
 
         if (LLVKLoader::isVulkanInitialized())
         {
@@ -9267,15 +9191,6 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         // shader 側は uniform 受領は必須 (BD でも tonemap shader が宣言)
         // のため値で no-op (saturation/contrast=1.0, brightness/temperature=0.0)。
         // spec §3.1 phase3.5-ay-only Category A。
-        shader->uniform1f(LLShaderMgr::COLOR_SATURATION,
-            gSavedSettings.getF32("RenderColorSaturation"));
-        shader->uniform1f(LLShaderMgr::COLOR_CONTRAST,
-            gSavedSettings.getF32("RenderColorContrast"));
-        shader->uniform1f(LLShaderMgr::COLOR_TEMPERATURE,
-            gSavedSettings.getF32("RenderColorTemperature"));
-        shader->uniform1f(LLShaderMgr::COLOR_BRIGHTNESS,
-            gSavedSettings.getF32("RenderColorBrightness"));
-
         // Reload 3D LUT if setting changed
         {
             // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic では
@@ -9289,9 +9204,6 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         S32 lut_channel = shader->enableTexture(LLShaderMgr::COLOR_GRADING_LUT, LLTexUnit::TT_TEXTURE_3D);
         if (lut_channel > -1 && mColorGradingLUT.notNull())
             gGL.getTexUnit(lut_channel)->bind(mColorGradingLUT);
-        shader->uniform1i(LLShaderMgr::COLOR_GRADING_LUT_ENABLED, (mColorGradingLUT.notNull()) ? 1 : 0);
-        shader->uniform1f(LLShaderMgr::COLOR_GRADING_LUT_INTENSITY,
-            gSavedSettings.getF32("RenderColorGradingLUTIntensity"));
         // </FS:AYAstorm>
 
         if (LLVKLoader::isVulkanInitialized()
@@ -9352,7 +9264,6 @@ void LLPipeline::gammaCorrect(LLRenderTarget* src, LLRenderTarget* dst)
         }
 
         shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, false, LLTexUnit::TFO_POINT);
-        shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -9410,14 +9321,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
         LLVector3 warmthWeights = RenderGlowWarmthWeights;
 
         // <FS:AYAstorm r30 P4> Honor RenderGlowMinLuminance instead of hardcoded gate.
-        gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MIN_LUMINANCE, RenderGlowMinLuminance);
         // </FS:AYAstorm r30 P4>
-        gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_MAX_EXTRACT_ALPHA, maxAlpha);
-        gGlowExtractProgram.uniform3f(LLShaderMgr::GLOW_LUM_WEIGHTS, lumWeights.mV[0], lumWeights.mV[1],
-            lumWeights.mV[2]);
-        gGlowExtractProgram.uniform3f(LLShaderMgr::GLOW_WARMTH_WEIGHTS, warmthWeights.mV[0], warmthWeights.mV[1],
-            warmthWeights.mV[2]);
-        gGlowExtractProgram.uniform1f(LLShaderMgr::GLOW_WARMTH_AMOUNT, warmthAmount);
 
         if (RenderGlowNoise)
         {
@@ -9427,9 +9331,6 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
                 gGL.getTexUnit(channel)->bind(mTrueNoiseMap);
                 gGL.getTexUnit(channel)->setTextureFilteringOption(LLTexUnit::TFO_POINT);
             }
-            gGlowExtractProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-                                          (GLfloat)mGlow[2].getWidth(),
-                                          (GLfloat)mGlow[2].getHeight());
         }
 
         {
@@ -9488,7 +9389,6 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
         F32 strength = RenderGlowStrength;
 
         gGlowProgram.bind();
-        gGlowProgram.uniform1f(LLShaderMgr::GLOW_STRENGTH, strength);
 
         for (S32 i = 0; i < kernel; i++)
         {
@@ -9518,8 +9418,6 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
                 delta_x = 0.f;
                 delta_y = delta;
             }
-            gGlowProgram.uniform2f(LLShaderMgr::GLOW_DELTA, delta_x, delta_y);
-
             if (LLVKLoader::isVulkanInitialized()
                 && gGlowProgram.mVkPerProgramUBO != VK_NULL_HANDLE
                 && gGlowProgram.mVkPerProgramUBOMapped != nullptr)
@@ -9578,21 +9476,12 @@ void LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
     sharpen_shader->bind();
 
     {
-        static LLStaticHashedString cas_param_0("cas_param_0");
-        static LLStaticHashedString cas_param_1("cas_param_1");
-        static LLStaticHashedString out_screen_res("out_screen_res");
-
         varAU4(const0);
         varAU4(const1);
         CasSetup(const0, const1,
             cas_sharpness(),             // Sharpness tuning knob (0.0 to 1.0).
             (AF1)src->getWidth(), (AF1)src->getHeight(),  // Input size.
             (AF1)dst->getWidth(), (AF1)dst->getHeight()); // Output size.
-
-        sharpen_shader->uniform4uiv(cas_param_0, 1, const0);
-        sharpen_shader->uniform4uiv(cas_param_1, 1, const1);
-
-        sharpen_shader->uniform2f(out_screen_res, (AF1)dst->getWidth(), (AF1)dst->getHeight());
 
         if (LLVKLoader::isVulkanInitialized()
             && sharpen_shader->mVkPerProgramUBO != VK_NULL_HANDLE
@@ -9694,13 +9583,6 @@ void LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
 
             F32 scale_x = (F32)width / mFXAAMap.getWidth();
             F32 scale_y = (F32)height / mFXAAMap.getHeight();
-            shader->uniform2f(LLShaderMgr::FXAA_TC_SCALE, scale_x, scale_y);
-            shader->uniform2f(LLShaderMgr::FXAA_RCP_SCREEN_RES, 1.f / width * scale_x, 1.f / height * scale_y);
-            shader->uniform4f(LLShaderMgr::FXAA_RCP_FRAME_OPT, -0.5f / width * scale_x, -0.5f / height * scale_y,
-                0.5f / width * scale_x, 0.5f / height * scale_y);
-            shader->uniform4f(LLShaderMgr::FXAA_RCP_FRAME_OPT2, -2.f / width * scale_x, -2.f / height * scale_y,
-                2.f / width * scale_x, 2.f / height * scale_y);
-
             if (LLVKLoader::isVulkanInitialized()
                 && shader->mVkPerProgramUBOMapped != nullptr
                 && shader->mVkPerProgramUBOSize >= sizeof(LLVKLoader::FxaaShared_PerProgramBind))
@@ -9771,7 +9653,6 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
             dest.clear(GL_COLOR_BUFFER_BIT);
 
             edge_shader.bind();
-            edge_shader.uniform4fv(sSmaaRTMetrics, 1, rt_metrics);
             if (LLVKLoader::isVulkanInitialized()
                 && edge_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                 && edge_shader.mVkPerProgramUBOMapped != nullptr)
@@ -9822,7 +9703,6 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
             dest.clear(GL_COLOR_BUFFER_BIT);
 
             blend_weights_shader.bind();
-            blend_weights_shader.uniform4fv(sSmaaRTMetrics, 1, rt_metrics);
             if (LLVKLoader::isVulkanInitialized()
                 && blend_weights_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                 && blend_weights_shader.mVkPerProgramUBOMapped != nullptr)
@@ -9916,7 +9796,6 @@ void LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst)
             bound_target->clear(GL_COLOR_BUFFER_BIT);
 
             blend_shader.bind();
-            blend_shader.uniform4fv(sSmaaRTMetrics, 1, rt_metrics);
             if (LLVKLoader::isVulkanInitialized()
                 && blend_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                 && blend_shader.mVkPerProgramUBOMapped != nullptr)
@@ -10030,8 +9909,6 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic で chroma 完全 OFF
     // (BD_NOOP=0.0f)。spec §3.1 phase3.5-ay-only Category A。
     const F32 nodof_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
-    gDeferredPostNoDoFProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
-    gDeferredPostNoDoFProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, nodof_chroma_str);
     // </FS:AYAstorm>
     // </AYAstorm r30 P4 step 4>
 
@@ -10087,9 +9964,6 @@ void LLPipeline::combineGlow(LLRenderTarget* src, LLRenderTarget* dst)
             glow_sepia_str     = 0.0f;
             glow_num_colors    = 1.0f;
         }
-        gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, glow_greyscale_str);
-        gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH,     glow_sepia_str);
-        gGlowCombineProgram.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS,         glow_num_colors);
         // </FS:AYAstorm:r30-bd-port>
         if (LLVKLoader::isVulkanInitialized())
         {
@@ -10135,15 +10009,6 @@ bool LLPipeline::renderVignette(LLRenderTarget* src, LLRenderTarget* dst)
         {
             LL_ERRS("vignette") << "Failed to bind diffuse texture" << LL_ENDL;
         }
-
-        shader->uniform2f(
-            LLShaderMgr::DEFERRED_SCREEN_RES,
-            (GLfloat)dst->getWidth(),
-            (GLfloat)dst->getHeight());
-        shader->uniform3fv(
-            LLShaderMgr::RENDER_VIGNETTE,
-            1,
-            RenderVignette.mV);
 
         if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && shader->mVkPerProgramUBOMapped != nullptr)
@@ -10318,27 +10183,7 @@ bool LLPipeline::renderSnapshotFrame(LLRenderTarget* src, LLRenderTarget* dst)
         LL_ERRS("snapshot_frame") << "Failed to bind diffuse texture" << LL_ENDL;
     }
 
-    shader->uniform2f(
-        LLShaderMgr::DEFERRED_SCREEN_RES,
-        (GLfloat)dst->getWidth(),
-        (GLfloat)dst->getHeight());
-
     // Assuming frame_rect is a static or accessible variable containing the frame dimensions
-    shader->uniform4f(
-        LLShaderMgr::SNAPSHOT_FRAME_RECT,
-        (GLfloat)left,
-        (GLfloat)top,
-        (GLfloat)right,
-        (GLfloat)bottom);
-
-    shader->uniform3fv(
-        LLShaderMgr::SNAPSHOT_BORDER_COLOR,
-        1,
-        border_color().mV);
-
-    shader->uniform1f(
-        LLShaderMgr::SNAPSHOT_BORDER_THICKNESS,
-        (GLfloat)border_thickness);
 
     if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
         && shader->mVkPerProgramUBOMapped != nullptr)
@@ -10549,22 +10394,13 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredCoFProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, cof_depth_src, true);
                 // </AYAstorm r30 P5 transparent-DoF L2-β>
 
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DEFERRED_DEPTH_CUTOFF, RenderEdgeDepthCutoff);
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DEFERRED_NORM_CUTOFF, RenderEdgeNormCutoff);
-                gDeferredCoFProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_FOCAL_DISTANCE, -subject_distance / 1000.f);
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_BLUR_CONSTANT, blur_constant);
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
                 // gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_TAN_PIXEL_ANGLE, tanf(1.f / LLDrawable::sCurPixelAngle));
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_TAN_PIXEL_ANGLE, tanf(1.f / LLDrawable::sCurPixelAngle) * screen_to_target_scale_factor);
                 // </FS:Beq>
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_MAGNIFICATION, magnification);
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
                 // gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, CameraMaxCoF);
                 // divide by the screen->target ratio so tha a larger target (ratio < 1) has a higher MaxCoF value
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, adj_COF);
                 // </FS:Beq>
-                gDeferredCoFProgram.uniform1f(LLShaderMgr::DOF_RES_SCALE, CameraDoFResScale);
 
                 if (LLVKLoader::isVulkanInitialized()
                     && gDeferredCoFProgram.mVkPerProgramUBOMapped != nullptr
@@ -10605,17 +10441,13 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredPostProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &getFrameRT()->deferredScreen, true);
                 // </AYAstorm r30 P4 step 4>
 
-                gDeferredPostProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
                 // gDeferredPostProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, CameraMaxCoF);
-                gDeferredPostProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, adj_COF);
                 // </FS:Beq>
-                gDeferredPostProgram.uniform1f(LLShaderMgr::DOF_RES_SCALE, CameraDoFResScale);
 
                 // <AYAstorm r30 P4 step 4> BD chroma_str (HAS_DOF_CHROMA permutation, no-op otherwise)
                 // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic BD parity (0.0f)。spec §3.1。
                 const F32 dof_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
-                gDeferredPostProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, dof_chroma_str);
                 // </FS:AYAstorm>
                 // </AYAstorm r30 P4 step 4>
 
@@ -10651,14 +10483,9 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, LLTexUnit::TFO_POINT);
                 gDeferredDoFCombineProgram.bindTexture(LLShaderMgr::DEFERRED_LIGHT, &getFrameRT()->deferredLight, LLTexUnit::TFO_POINT);
 
-                gDeferredDoFCombineProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)dst->getWidth(), (GLfloat)dst->getHeight());
                 // <FS:Beq> FIRE-13989 DOF should be equivalent in all resolutions of the same rendered image
                 // gDeferredDoFCombineProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, CameraMaxCoF);
-                gDeferredDoFCombineProgram.uniform1f(LLShaderMgr::DOF_MAX_COF, adj_COF);
                 // </FS:Beq>
-                gDeferredDoFCombineProgram.uniform1f(LLShaderMgr::DOF_RES_SCALE, CameraDoFResScale);
-                gDeferredDoFCombineProgram.uniform1f(LLShaderMgr::DOF_WIDTH, (dof_width - 1) / (F32)src->getWidth());
-                gDeferredDoFCombineProgram.uniform1f(LLShaderMgr::DOF_HEIGHT, (dof_height - 1) / (F32)src->getHeight());
 
                 if (LLVKLoader::isVulkanInitialized()
                     && gDeferredDoFCombineProgram.mVkPerProgramUBOMapped != nullptr
@@ -10957,11 +10784,9 @@ void LLPipeline::renderFinalize()
     gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, sourceBuffer);
     gDeferredPostNoDoFNoiseProgram.bindTexture(LLShaderMgr::DEFERRED_DEPTH, &getFrameRT()->deferredScreen, true);
 
-    gDeferredPostNoDoFNoiseProgram.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)sourceBuffer->getWidth(), (GLfloat)sourceBuffer->getHeight());
     // <AYAstorm r30 P4 step 4> BD chroma_str (vignette path runs when HAS_DOF_CHROMA==0)
     // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic BD parity (0.0f)。spec §3.1。
     const F32 nodof_noise_chroma_str = gSavedSettings.getF32("RenderChromaStrength");
-    gDeferredPostNoDoFNoiseProgram.uniform1f(LLShaderMgr::DEFERRED_CHROMA_STRENGTH, nodof_noise_chroma_str);
     // </FS:AYAstorm>
     // </AYAstorm r30 P4 step 4>
 
@@ -11149,14 +10974,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         gGL.getTexUnit(channel)->bind(&mExposureMap);
     }
 
-    if (shader.getUniformLocation(LLShaderMgr::VIEWPORT) != -1)
-    {
-        shader.uniform4f(LLShaderMgr::VIEWPORT, (F32) gGLViewport[0],
-                                    (F32) gGLViewport[1],
-                                    (F32) gGLViewport[2],
-                                    (F32) gGLViewport[3]);
-    }
-
     channel = shader.enableTexture(LLShaderMgr::DEFERRED_NOISE);
     if (channel > -1)
     {
@@ -11189,17 +11006,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     stop_glerror();
 
-    F32 mat[16 * LLPipeline::kTotalShadowCount];
-    for (U32 i = 0; i < 16; i++)
-    {
-        for (U32 j = 0; j < LLPipeline::kTotalShadowCount; j++)
-        {
-            mat[i + j * 16] = glm::value_ptr(mSunShadowMatrix[j])[i];
-        }
-    }
-
-    shader.uniformMatrix4fv(LLShaderMgr::DEFERRED_SHADOW_MATRIX, LLPipeline::kTotalShadowCount, false, mat);
-
     stop_glerror();
 
     if (!isFrameReflectionProbesEnabled())
@@ -11219,8 +11025,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
             F32 mat[] = { m[0], m[1], m[2],
                           m[4], m[5], m[6],
                           m[8], m[9], m[10] };
-
-            shader.uniformMatrix3fv(LLShaderMgr::DEFERRED_ENV_MAT, 1, true, mat);
 
             if (LLVKLoader::isVulkanInitialized())
             {
@@ -11243,49 +11047,17 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
     }
     else*/
     {
-        shader.uniform4fv(LLShaderMgr::DEFERRED_SHADOW_CLIP, 1, mSunClipPlanes.mV);
     }
-    shader.uniform1f(LLShaderMgr::DEFERRED_SUN_WASH, RenderDeferredSunWash);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SHADOW_NOISE, RenderShadowNoise);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SHADOW_SOFTNESS, RenderShadowSoftness);
-    shader.uniform1f(LLShaderMgr::DEFERRED_BLUR_SIZE, RenderShadowBlurSize);
 
 // <FS:WW> Compute scale factor to match AO appearance between view and snapshot.
-    F32 screen_to_target_scale_factor = (F32)gViewerWindow->getWindowHeightRaw() / deferred_target->getHeight();
     //shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_RADIUS, RenderSSAOScale);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_RADIUS, RenderSSAOScale / screen_to_target_scale_factor);
     //shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_MAX_RADIUS, (GLfloat)RenderSSAOMaxScale);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_MAX_RADIUS, RenderSSAOMaxScale / screen_to_target_scale_factor);
     // </FS:WW>
 
-    F32 ssao_factor = RenderSSAOFactor;
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_FACTOR, ssao_factor);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_FACTOR_INV, 1.0f/ssao_factor);
-
-    LLVector3 ssao_effect = RenderSSAOEffect;
-
-    F32 matrix_diag = (ssao_effect[0] + 2.0f*ssao_effect[1])/3.0f;
-    F32 matrix_nondiag = (ssao_effect[0] - ssao_effect[1])/3.0f;
     // This matrix scales (proj of color onto <1/rt(3),1/rt(3),1/rt(3)>) by
     // value factor, and scales remainder by saturation factor
-    F32 ssao_effect_mat[] = {   matrix_diag, matrix_nondiag, matrix_nondiag,
-                                matrix_nondiag, matrix_diag, matrix_nondiag,
-                                matrix_nondiag, matrix_nondiag, matrix_diag};
-    shader.uniformMatrix3fv(LLShaderMgr::DEFERRED_SSAO_EFFECT_MAT, 1, GL_FALSE, ssao_effect_mat);
 
     //F32 shadow_offset_error = 1.f + RenderShadowOffsetError * fabsf(LLViewerCamera::getInstance()->getOrigin().mV[2]);
-    F32 shadow_bias_error = RenderShadowBiasError * fabsf(LLViewerCamera::getInstance()->getOrigin().mV[2])/3000.f;
-    F32 shadow_bias       = RenderShadowBias + shadow_bias_error;
-
-    shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)deferred_target->getWidth(), (GLfloat)deferred_target->getHeight());
-    shader.uniform1f(LLShaderMgr::DEFERRED_NEAR_CLIP, LLViewerCamera::getInstance()->getNear()*2.f);
-    shader.uniform1f (LLShaderMgr::DEFERRED_SHADOW_OFFSET, RenderShadowOffset); //*shadow_offset_error);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SHADOW_BIAS, shadow_bias);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SPOT_SHADOW_OFFSET, RenderSpotShadowOffset);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SPOT_SHADOW_BIAS, RenderSpotShadowBias);
-
-    shader.uniform3fv(LLShaderMgr::DEFERRED_SUN_DIR, 1, mTransformedSunDir.mV);
-    shader.uniform3fv(LLShaderMgr::DEFERRED_MOON_DIR, 1, mTransformedMoonDir.mV);
 
     if (LLVKLoader::isVulkanInitialized() && shader.mWritePerProgramUBOMinimumAlpha
         && shader.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -11322,53 +11094,16 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         memcpy(mapped + LLVKLoader::GLTFMR_UBO_OFFSET_MOON_DIR, moon_v, 16);
     }
 
-    shader.uniform2f(LLShaderMgr::DEFERRED_SHADOW_RES, (GLfloat)getFrameRT()->shadow[0].getWidth(), (GLfloat)getFrameRT()->shadow[0].getHeight());
-    shader.uniform2f(LLShaderMgr::DEFERRED_PROJ_SHADOW_RES, (GLfloat)mSpotShadow[0].getWidth(), (GLfloat)mSpotShadow[0].getHeight());
-    shader.uniform1f(LLShaderMgr::DEFERRED_DEPTH_CUTOFF, RenderEdgeDepthCutoff);
-    shader.uniform1f(LLShaderMgr::DEFERRED_NORM_CUTOFF, RenderEdgeNormCutoff);
-
-    shader.uniformMatrix4fv(LLShaderMgr::MODELVIEW_DELTA_MATRIX, 1, GL_FALSE, glm::value_ptr(gGLDeltaModelView));
-    shader.uniformMatrix4fv(LLShaderMgr::INVERSE_MODELVIEW_DELTA_MATRIX, 1, GL_FALSE, glm::value_ptr(gGLInverseDeltaModelView));
-
-    shader.uniform1i(LLShaderMgr::CUBE_SNAPSHOT, gCubeSnapshot ? 1 : 0);
-
-    if (shader.getUniformLocation(LLShaderMgr::DEFERRED_NORM_MATRIX) >= 0)
-    {
-        glm::mat4 norm_mat = glm::transpose(glm::inverse(get_current_modelview()));
-        shader.uniformMatrix4fv(LLShaderMgr::DEFERRED_NORM_MATRIX, 1, false, glm::value_ptr(norm_mat));
-    }
-
     // auto adjust legacy sun color if needed
-    static LLCachedControl<bool> should_auto_adjust(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-    static LLCachedControl<F32> auto_adjust_sun_color_scale(gSavedSettings, "RenderSkyAutoAdjustSunColorScale", 1.f);
-    LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
-    LLColor3 sun_diffuse(mSunDiffuse.mV);
-    if (should_auto_adjust && psky->canAutoAdjust())
-    {
-        sun_diffuse *= auto_adjust_sun_color_scale;
-    }
-
-    shader.uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, 1, sun_diffuse.mV);
-    shader.uniform3fv(LLShaderMgr::MOONLIGHT_COLOR, 1, mMoonDiffuse.mV);
-
-    shader.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mReflectionMapManager.mMaxProbeLOD);
 
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2/3: BD live deferred uniforms (Cinematic only).
     // BD pipeline.cpp:8965-8972 verbatim. Non-Cinematic modes get neutral defaults
     // (light strength 1.0 / sepia 0 / greyscale 0 / num colors 1 = noop).
     if (isCinematicMode())
     {
-        shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, RenderGlobalLightStrength);
-        shader.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, RenderGreyscaleStrength);
-        shader.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, RenderSepiaStrength);
-        shader.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, (GLfloat)RenderNumColors);
     }
     else
     {
-        shader.uniform1f(LLShaderMgr::DEFERRED_LIGHT_STRENGTH, 1.0f);
-        shader.uniform1f(LLShaderMgr::DEFERRED_GREYSCALE_STRENGTH, 0.0f);
-        shader.uniform1f(LLShaderMgr::DEFERRED_SEPIA_STRENGTH, 0.0f);
-        shader.uniform1f(LLShaderMgr::DEFERRED_NUM_COLORS, 1.0f);
     }
     // </FS:AYAstorm:r30-bd-port>
 }
@@ -11542,8 +11277,6 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
             F32 g = ((id >>  8) & 0xff) / 255.f;
             F32 b = ((id >> 16) & 0xff) / 255.f;
             F32 a = ((id >> 24) & 0xff) / 255.f;
-            gFSObjectIDShader.uniform4f(sObjectIDPacked, r, g, b, a);
-
             if (LLVKLoader::isVulkanInitialized()
                 && gFSObjectIDShader.mVkPerProgramUBOMapped != nullptr
                 && gFSObjectIDShader.mVkPerProgramUBOSize >= sizeof(LLVKLoader::FsObjectIDF_PerProgramBind))
@@ -11967,10 +11700,6 @@ void LLPipeline::renderDeferredLighting()
                     deferred_light_target->clear(GL_COLOR_BUFFER_BIT);
                     gGL.setClearColor(0, 0, 0, 0);
 
-                    sun_shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-                                                  (GLfloat)deferred_light_target->getWidth(),
-                                                  (GLfloat)deferred_light_target->getHeight());
-
                     if (LLVKLoader::isVulkanInitialized() && sun_shader.mVkPerProgramUBO != VK_NULL_HANDLE
                         && sun_shader.mVkPerProgramUBOMapped != nullptr)
                     {
@@ -12037,11 +11766,6 @@ void LLPipeline::renderDeferredLighting()
                 x += 1.f;
             }
 
-            gDeferredBlurLightProgram.uniform2f(sDelta, 1.f, 0.f);
-            gDeferredBlurLightProgram.uniform1f(sDistFactor, dist_factor);
-            gDeferredBlurLightProgram.uniform3fv(sKern, kern_length, gauss[0].mV);
-            gDeferredBlurLightProgram.uniform1f(sKernScale, blur_size * (kern_length / 2.f - 0.5f));
-
             LLRenderTarget* blur_deferred_target_p1 = &getFrameRT()->deferredScreen;
             if (LLVKLoader::isVulkanInitialized()
                 && gDeferredBlurLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -12078,8 +11802,6 @@ void LLPipeline::renderDeferredLighting()
             bindDeferredShader(gDeferredBlurLightProgram, screen_target);
 
             deferred_light_target->bindTarget();
-
-            gDeferredBlurLightProgram.uniform2f(sDelta, 0.f, 1.f);
 
             LLRenderTarget* blur_deferred_target_p2 = &getFrameRT()->deferredScreen;
             if (LLVKLoader::isVulkanInitialized()
@@ -12139,46 +11861,6 @@ void LLPipeline::renderDeferredLighting()
 
             static LLCachedControl<F32> ssao_scale(gSavedSettings, "RenderSSAOIrradianceScale", 0.5f);
             static LLCachedControl<F32> ssao_max(gSavedSettings, "RenderSSAOIrradianceMax", 0.25f);
-            static LLStaticHashedString ssao_scale_str("ssao_irradiance_scale");
-            static LLStaticHashedString ssao_max_str("ssao_irradiance_max");
-
-            soften_shader.uniform1f(ssao_scale_str, ssao_scale);
-            soften_shader.uniform1f(ssao_max_str, ssao_max);
-
-            // --- AYAstorm r19 Translucency: push wrap+transmit params to softenLightF ---
-            {
-                static LLCachedControl<U32>  aya_realism_r19(gSavedSettings, "AYAVisualRealismEnabled", 1);
-                static LLCachedControl<bool> aya_r19_enabled(gSavedSettings, "AYAR19TranslucencyEnabled", true);
-                static LLCachedControl<U32>  aya_r19_tier(gSavedSettings, "AYAR19TranslucencyIntensity", 1);
-                static LLStaticHashedString  s_r19_params("aya_translucency_params");
-                static LLStaticHashedString  s_r19_tint("aya_translucency_tint");
-
-                // (wrap, k_back, k_view, strength) — tier 0 = OFF (strength 0 -> shader short-circuit)
-                static const F32 r19_table[4][4] = {
-                    { 0.00f, 1.0f, 1.0f, 0.0f }, // 0=OFF
-                    { 0.15f, 2.0f, 4.0f, 0.6f }, // 1=控えめ (default)
-                    { 0.25f, 1.5f, 3.0f, 1.0f }, // 2=標準
-                    { 0.35f, 1.2f, 2.5f, 1.5f }, // 3=強め
-                };
-                // <FS:AYAstorm r30 BD改善> AYAstorm View は既存 cvar、Cinematic は InCinematic cvar で opt-in。
-                //   tier 自体は AYAR19TranslucencyIntensity (1..3) を共有 (Cinematic 専用 tier は持たない、A/B 判断に集中)。
-                static LLCachedControl<bool> aya_r19_in_cinematic(gSavedSettings, "AYAR19TranslucencyInCinematicEnabled", false);
-                bool r19_active = (aya_realism_r19() == 1 && aya_r19_enabled())
-                               || (aya_realism_r19() == 2 && aya_r19_in_cinematic);
-                U32 tier = r19_active ? llmin<U32>(aya_r19_tier(), 3u) : 0u;
-                // </FS:AYAstorm>
-                soften_shader.uniform4fv(s_r19_params, 1, r19_table[tier]);
-                // warm linear tint approximating skin/leaf transmission color
-                const F32 r19_tint[3] = { 1.00f, 0.78f, 0.62f };
-                soften_shader.uniform3fv(s_r19_tint, 1, r19_tint);
-            }
-
-            LLEnvironment &environment = LLEnvironment::instance();
-
-            soften_shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
-            soften_shader.uniform3fv(LLShaderMgr::LIGHTNORM, 1, environment.getClampedLightNorm().mV);
-
-            soften_shader.uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
 
             if (LLVKLoader::isVulkanInitialized()
                 && soften_shader.mVkPerProgramUBO != VK_NULL_HANDLE
@@ -12391,12 +12073,6 @@ void LLPipeline::renderDeferredLighting()
                             continue;
                         }
 
-                        gDeferredLightProgram.uniform3fv(LLShaderMgr::LIGHT_CENTER, 1, c);
-                        gDeferredLightProgram.uniform1f(LLShaderMgr::LIGHT_SIZE, s);
-                        gDeferredLightProgram.uniform3fv(LLShaderMgr::DIFFUSE_COLOR, 1, col.mV);
-                        gDeferredLightProgram.uniform1f(LLShaderMgr::LIGHT_FALLOFF, volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF));
-                        gDeferredLightProgram.uniform1i(LLShaderMgr::CLASSIC_MODE, (psky->canAutoAdjust()) ? 1 : 0);
-
                         if (LLVKLoader::isVulkanInitialized()
                             && gDeferredLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE)
                         {
@@ -12479,12 +12155,6 @@ void LLPipeline::renderDeferredLighting()
                     // send light color to shader in linear space
                     LLColor3 col = volume->getLightLinearColor() * light_scale;
 
-                    gDeferredSpotLightProgram.uniform3fv(LLShaderMgr::LIGHT_CENTER, 1, c);
-                    gDeferredSpotLightProgram.uniform1f(LLShaderMgr::LIGHT_SIZE, s);
-                    gDeferredSpotLightProgram.uniform3fv(LLShaderMgr::DIFFUSE_COLOR, 1, col.mV);
-                    gDeferredSpotLightProgram.uniform1f(LLShaderMgr::LIGHT_FALLOFF, volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF));
-                    gDeferredSpotLightProgram.uniform1i(LLShaderMgr::CLASSIC_MODE, (psky->canAutoAdjust()) ? 1 : 0);
-
                     if (LLVKLoader::isVulkanInitialized()
                         && gDeferredSpotLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE)
                     {
@@ -12558,11 +12228,6 @@ void LLPipeline::renderDeferredLighting()
                     {
                         U32 idx = count - 1;
                         bindDeferredShader(gDeferredMultiLightProgram[idx]);
-                        gDeferredMultiLightProgram[idx].uniform1i(LLShaderMgr::MULTI_LIGHT_COUNT, count);
-                        gDeferredMultiLightProgram[idx].uniform4fv(LLShaderMgr::MULTI_LIGHT, count, (GLfloat*)light);
-                        gDeferredMultiLightProgram[idx].uniform4fv(LLShaderMgr::MULTI_LIGHT_COL, count, (GLfloat*)col);
-                        gDeferredMultiLightProgram[idx].uniform1f(LLShaderMgr::MULTI_LIGHT_FAR_Z, far_z);
-                        gDeferredMultiLightProgram[idx].uniform1i(LLShaderMgr::CLASSIC_MODE, (psky->canAutoAdjust()) ? 1 : 0);
                         if (LLVKLoader::isVulkanInitialized()
                             && gDeferredMultiLightProgram[idx].mVkPerProgramUBO != VK_NULL_HANDLE)
                         {
@@ -12615,12 +12280,6 @@ void LLPipeline::renderDeferredLighting()
 
                     // send light color to shader in linear space
                     LLColor3 col = volume->getLightLinearColor() * light_scale;
-
-                    gDeferredMultiSpotLightProgram.uniform3fv(LLShaderMgr::LIGHT_CENTER, 1, glm::value_ptr(tc));
-                    gDeferredMultiSpotLightProgram.uniform1f(LLShaderMgr::LIGHT_SIZE, light_size_final);
-                    gDeferredMultiSpotLightProgram.uniform3fv(LLShaderMgr::DIFFUSE_COLOR, 1, col.mV);
-                    gDeferredMultiSpotLightProgram.uniform1f(LLShaderMgr::LIGHT_FALLOFF, light_falloff_final);
-                    gDeferredMultiSpotLightProgram.uniform1i(LLShaderMgr::CLASSIC_MODE, (psky->canAutoAdjust()) ? 1 : 0);
 
                     if (LLVKLoader::isVulkanInitialized()
                         && gDeferredMultiSpotLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE)
@@ -12834,10 +12493,6 @@ void LLPipeline::doAtmospherics()
         bindDeferredShader(haze_shader, nullptr, &mWaterDis);
 
         LLEnvironment& environment = LLEnvironment::instance();
-        haze_shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
-        haze_shader.uniform3fv(LLShaderMgr::LIGHTNORM, 1, environment.getClampedLightNorm().mV);
-
-        haze_shader.uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
 
         if (LLVKLoader::isVulkanInitialized() && haze_shader.mVkPerProgramUBO != VK_NULL_HANDLE
             && haze_shader.mVkPerProgramUBOMapped != nullptr)
@@ -12899,9 +12554,6 @@ void LLPipeline::doGodrays()
     bindDeferredShader(shader);
 
     LL_PROFILE_GPU_ZONE("godrays");
-
-    LLEnvironment& environment = LLEnvironment::instance();
-    shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
 
     if (LLVKLoader::isVulkanInitialized() && shader.mVkPerProgramUBO != VK_NULL_HANDLE
         && shader.mVkPerProgramUBOMapped != nullptr)
@@ -12990,12 +12642,6 @@ void LLPipeline::doSkinSSS()
     const LLColor4 glow_color = sss_glow_color();
     // </FS:AYA>
 
-    static LLStaticHashedString s_blur_dir("aya_blur_dir");
-    static LLStaticHashedString s_strength("aya_strength");
-    static LLStaticHashedString s_blur_radius("aya_blur_radius");
-    static LLStaticHashedString s_glow_gain("aya_glow_gain");    // <FS:AYA r20 Phase D>
-    static LLStaticHashedString s_glow_color("aya_glow_color");  // <FS:AYA r20 Phase D>
-
     LLGLDepthTest depth(GL_FALSE, GL_FALSE);
     gGL.setColorMask(true, true);
 
@@ -13027,16 +12673,7 @@ void LLPipeline::doSkinSSS()
         // so the shader can per-pixel scale blur radius by eye distance.
         shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
         // </FS:AYA>
-        shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-            (GLfloat)getFrameRT()->screen.getWidth(), (GLfloat)getFrameRT()->screen.getHeight());
-        shader.uniform2f(s_blur_dir, 1.0f, 0.0f);
-        shader.uniform1f(s_strength, 1.0f);
-        shader.uniform1f(s_blur_radius, blur_radius);
-        shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
-        shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
         // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
-        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, 1);
-        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, 1);
         // </FS:AYAstorm>
 
         if (LLVKLoader::isVulkanInitialized()
@@ -13098,16 +12735,7 @@ void LLPipeline::doSkinSSS()
         // for per-pixel blur-radius scaling in skinSSSF.
         shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
         // </FS:AYA>
-        shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-            (GLfloat)getFrameRT()->screen.getWidth(), (GLfloat)getFrameRT()->screen.getHeight());
-        shader.uniform2f(s_blur_dir, 0.0f, 1.0f);
-        shader.uniform1f(s_strength, strength);
-        shader.uniform1f(s_blur_radius, blur_radius);
-        shader.uniform1f(s_glow_gain, glow_gain);  // <FS:AYA r20 Phase D>
-        shader.uniform3f(s_glow_color, glow_color.mV[0], glow_color.mV[1], glow_color.mV[2]);  // <FS:AYA r20 Phase D>
         // <FS:AYAstorm r30 BD改善> r20_active で gate 済、shader 側互換のため両 uniform を 1 で push
-        shader.uniform1i(LLShaderMgr::AYA_VISUAL_REALISM_ENABLED, 1);
-        shader.uniform1i(LLShaderMgr::AYA_R20_SKIN_SSS_ENABLED, 1);
         // </FS:AYAstorm>
 
         if (LLVKLoader::isVulkanInitialized()
@@ -13198,11 +12826,7 @@ void LLPipeline::doWaterHaze()
         LL_PROFILE_GPU_ZONE("haze");
         bindDeferredShader(haze_shader, nullptr, &mWaterDis);
 
-        haze_shader.uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
-
-        static LLStaticHashedString above_water_str("above_water");
         const S32 above_water_val = isFrameUnderWaterRendering() ? -1 : 1;
-        haze_shader.uniform1i(above_water_str, above_water_val);
 
         haze_shader.bindTexture(LLShaderMgr::WATER_EXCLUSIONTEX, &mWaterExclusionMask);
 
@@ -13319,13 +12943,6 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
     F32 proj_range = far_clip - near_clip;
     glm::mat4 light_proj = glm::perspective(fovy, aspect, near_clip, far_clip);
     screen_to_light = sGlNdcToSampleBias * light_proj * screen_to_light;
-    shader.uniformMatrix4fv(LLShaderMgr::PROJECTOR_MATRIX, 1, false, glm::value_ptr(screen_to_light));
-    shader.uniform1f(LLShaderMgr::PROJECTOR_NEAR, near_clip);
-    shader.uniform3fv(LLShaderMgr::PROJECTOR_P, 1, glm::value_ptr(p1));
-    shader.uniform3fv(LLShaderMgr::PROJECTOR_N, 1, glm::value_ptr(n));
-    shader.uniform3fv(LLShaderMgr::PROJECTOR_ORIGIN, 1, glm::value_ptr(screen_origin));
-    shader.uniform1f(LLShaderMgr::PROJECTOR_RANGE, proj_range);
-    shader.uniform1f(LLShaderMgr::PROJECTOR_AMBIANCE, params.mV[2]);
     if (out_proj_origin)
     {
         out_proj_origin[0] = screen_origin.x;
@@ -13352,7 +12969,6 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
         }
     }
 
-    shader.uniform1i(LLShaderMgr::PROJECTOR_SHADOW_INDEX, s_idx);
     if (out_proj_shadow_idx)
     {
         *out_proj_shadow_idx = s_idx;
@@ -13364,7 +12980,6 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
     }
     if (s_idx >= 0)
     {
-        shader.uniform1f(LLShaderMgr::PROJECTOR_SHADOW_FADE, 1.f-mSpotLightFade[s_idx]);
         if (out_shadow_fade)
         {
             *out_shadow_fade = 1.f - mSpotLightFade[s_idx];
@@ -13372,7 +12987,6 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
     }
     else
     {
-        shader.uniform1f(LLShaderMgr::PROJECTOR_SHADOW_FADE, 1.f);
     }
 
     // make sure we're not already targeting the same spot light with both shadow maps
@@ -13423,9 +13037,6 @@ void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep,
 
             F32 lod_range = logf((F32)img->getWidth())/logf(2.f);
 
-            shader.uniform1f(LLShaderMgr::PROJECTOR_FOCUS, focus);
-            shader.uniform1f(LLShaderMgr::PROJECTOR_LOD, lod_range);
-            shader.uniform1f(LLShaderMgr::PROJECTOR_AMBIENT_LOD, llclamp((proj_range-focus)/proj_range*lod_range, 0.f, 1.f));
             if (out_proj)
             {
                 out_proj->proj_focus = focus;
@@ -13500,8 +13111,6 @@ void LLPipeline::setEnvMat(LLGLSLShader& shader)
                     m[4], m[5], m[6],
                     m[8], m[9], m[10] };
 
-    shader.uniformMatrix3fv(LLShaderMgr::DEFERRED_ENV_MAT, 1, true, mat);
-
     if (LLVKLoader::isVulkanInitialized())
     {
         LLSettingsSky::ptr_t psky_ref = LLEnvironment::instance().getCurrentSky();
@@ -13574,23 +13183,13 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
     }
 
 
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSR_ITR_COUNT, (GLfloat)RenderScreenSpaceReflectionIterations);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSR_DIST_BIAS, RenderScreenSpaceReflectionDistanceBias);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSR_RAY_STEP, RenderScreenSpaceReflectionRayStep);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSR_GLOSSY_SAMPLES, (GLfloat)RenderScreenSpaceReflectionGlossySamples);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSR_REJECT_BIAS, RenderScreenSpaceReflectionDepthRejectBias);
     mPoissonOffset++;
 
     if (mPoissonOffset > 128 - RenderScreenSpaceReflectionGlossySamples)
         mPoissonOffset = 0;
 
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSR_NOISE_SINE, (GLfloat)mPoissonOffset);
-    shader.uniform1f(LLShaderMgr::DEFERRED_SSR_ADAPTIVE_STEP_MULT, RenderScreenSpaceReflectionAdaptiveStepMultiplier);
-
     static LLCachedControl<F32> ssr_max_depth(gSavedSettings, "RenderScreenSpaceReflectionMaxDepth", 256.f);
     static LLCachedControl<F32> ssr_max_roughness(gSavedSettings, "RenderScreenSpaceReflectionMaxRoughness", 1.f);
-    shader.uniform1f(sSSRMaxDepth, llmax(1.f, (F32)ssr_max_depth));
-    shader.uniform1f(sSSRMaxRoughness, llclamp((F32)ssr_max_roughness, 0.001f, 1.f));
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -13799,7 +13398,6 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha");
         LL_PROFILE_GPU_ZONE("shadow alpha");
-        const S32 sun_up = LLEnvironment::instance().getIsSunUp() ? 1 : 0;
         U32 target_width = LLRenderTarget::sCurResX;
 
         for (int i = 0; i < 2; ++i)
@@ -13812,8 +13410,6 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
                 gDeferredShadowAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
                 LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
@@ -13835,8 +13431,6 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
                 gDeferredShadowFullbrightAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
                 LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
                 if (LLVKLoader::isVulkanInitialized())
                 {
                     LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
@@ -13874,8 +13468,6 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
             gDeferredShadowGLTFAlphaMaskProgram.bind(rigged);
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
             LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
-            LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-            LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
             if (LLVKLoader::isVulkanInitialized())
             {
                 LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};

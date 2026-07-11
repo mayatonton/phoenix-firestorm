@@ -1191,8 +1191,6 @@ void LLRenderPass::pushVelocityBatches(U32 type)
         applyModelMatrix(params);
 
         const LLMatrix4* last_mat = params.mLastModelMatrix ? params.mLastModelMatrix : &identity;
-        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)last_mat->mMatrix);
-
         if (LLVKLoader::isVulkanInitialized()
             && LLGLSLShader::sCurBoundShaderPtr
             && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE
@@ -1294,8 +1292,6 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
         }
 
         const LLMatrix4* last_mat = params.mLastModelMatrix ? params.mLastModelMatrix : &identity;
-        LLGLSLShader::sCurBoundShaderPtr->uniformMatrix4fv(LLShaderMgr::LAST_OBJECT_MATRIX, 1, GL_FALSE, (GLfloat*)last_mat->mMatrix);
-
         if (LLVKLoader::isVulkanInitialized()
             && LLGLSLShader::sCurBoundShaderPtr
             && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE

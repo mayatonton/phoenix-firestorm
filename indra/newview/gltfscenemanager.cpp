@@ -786,7 +786,6 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
             else
             {
                 LLFetchedGLTFMaterial::sDefault.bind();
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::GLTF_MATERIAL_ID, -1);
                 LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
                 if (LLVKLoader::isVulkanInitialized() && sh &&
                     sh->mVkPerProgramUBO != VK_NULL_HANDLE &&
@@ -824,7 +823,6 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 }
                 else
                 {
-                    LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::GLTF_NODE_ID, pdata.mNodeIndex);
                     if (LLVKLoader::isVulkanInitialized() &&
                         asset.mVkMaterialsUBO != VK_NULL_HANDLE &&
                         asset.mVkNodesUBO     != VK_NULL_HANDLE)
@@ -942,7 +940,6 @@ void GLTFSceneManager::bind(Asset& asset, Material& material)
         bindTexture(asset, TextureType::EMISSIVE, material.mEmissiveTexture, LLViewerFetchedTexture::sWhiteImagep);
     }
 
-    shader->uniform1i(LLShaderMgr::GLTF_MATERIAL_ID, (GLint)(&material - &asset.mMaterials[0]));
     if (LLVKLoader::isVulkanInitialized() &&
         shader->mVkPerProgramUBO != VK_NULL_HANDLE &&
         shader->mVkPerProgramUBOMapped != nullptr &&

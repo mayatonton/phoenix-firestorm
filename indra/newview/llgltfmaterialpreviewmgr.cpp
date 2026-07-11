@@ -385,11 +385,6 @@ PreviewSphere& get_preview_sphere(LLPointer<LLFetchedGLTFMaterial>& material, co
 // Final, direct modifications to shader constants, just before render
 void fixup_shader_constants(LLGLSLShader& shader)
 {
-    // Sunlight intensity of 0 no matter what
-    shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, 1);
-    shader.uniform3fv(LLShaderMgr::SUNLIGHT_COLOR, 1, LLColor3::white.mV);
-    shader.uniform1f(LLShaderMgr::DENSITY_MULTIPLIER, 0.0f);
-
     // Ignore sun shadow (if enabled)
     for (U32 i = 0; i < 6; i++)
     {

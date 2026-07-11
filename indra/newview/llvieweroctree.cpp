@@ -1280,11 +1280,6 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
                         llassert(shader);
 
-                        shader->uniform3fv(LLShaderMgr::BOX_CENTER, 1, bounds[0].getF32ptr());
-                        shader->uniform3f(LLShaderMgr::BOX_SIZE, bounds[1][0]+SG_OCCLUSION_FUDGE,
-                                                                 bounds[1][1]+SG_OCCLUSION_FUDGE,
-                                                                 bounds[1][2]+OCCLUSION_FUDGE_Z);
-
                         if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
                             && shader->mVkPerProgramUBOMapped != nullptr)
                         {

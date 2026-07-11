@@ -300,8 +300,6 @@ ERlvCmdRet RlvSphereEffect::onValueMaxChanged(const LLUUID& idRlvObj, const boos
 
 void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
 {
-    pShader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)LLPipelineFrameContext::getInstance().getActiveRT()->screen.getWidth(), (GLfloat)LLPipelineFrameContext::getInstance().getActiveRT()->screen.getHeight());
-    pShader->uniform1i(LLShaderMgr::RLV_EFFECT_MODE, llclamp((int)m_eMode, 0, (int)ESphereMode::Count));
     // Pass the sphere origin to the shader
     LLVector4 posSphereOrigin;
     switch (m_eOrigin)
@@ -317,20 +315,16 @@ void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
     glm::vec4 posSphereOriginGl(glm::make_vec4(posSphereOrigin.mV));
     const glm::mat4 mvMatrix(get_current_modelview());
     posSphereOriginGl = mvMatrix * posSphereOriginGl;
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM1, 1, glm::value_ptr(posSphereOriginGl));
 
     // Pack min/max distance and alpha together
     float nDistMin = m_nDistanceMin.get(), nDistMax = m_nDistanceMax.get();
     const glm::vec4 sphereParams(m_nValueMin.get(), nDistMin, m_nValueMax.get(), (nDistMax >= nDistMin) ? nDistMax : nDistMin);
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM2, 1, glm::value_ptr(sphereParams));
 
     // Pass dist extend
     int eDistExtend = (int)m_eDistExtend;
-    pShader->uniform2f(LLShaderMgr::RLV_EFFECT_PARAM3, (GLfloat)(eDistExtend & (int)ESphereDistExtend::Min), (GLfloat)(eDistExtend & (int)ESphereDistExtend::Max));
 
     // Pass effect params
     const glm::vec4 effectParams(glm::make_vec4(m_Params.get().mV));
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM4, 1, glm::value_ptr(effectParams));
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -435,10 +429,8 @@ void RlvSphereEffect::run(const LLVisualEffectParams* pParams)
                 break;
             case ESphereMode::Blur:
             case ESphereMode::BlurVariable:
-                gRlvSphereProgram.uniform2f(LLShaderMgr::RLV_EFFECT_PARAM5, 1.f, 0.f);
                 writeVkPerProgramUBO(&gRlvSphereProgram, 1.f, 0.f);
                 renderPass(&gRlvSphereProgram, pShaderParams);
-                gRlvSphereProgram.uniform2f(LLShaderMgr::RLV_EFFECT_PARAM5, 0.f, 1.f);
                 writeVkPerProgramUBO(&gRlvSphereProgram, 0.f, 1.f);
                 renderPass(&gRlvSphereProgram, pShaderParams);
                 break;
