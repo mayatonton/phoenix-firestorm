@@ -137,7 +137,6 @@ LLGLSLShader        gImpostorProgram;
 // Effects Shaders
 LLGLSLShader            gGlowProgram;
 LLGLSLShader            gGlowExtractProgram;
-LLGLSLShader            gPostScreenSpaceReflectionProgram;
 LLGLSLShader            gPostVignetteProgram;   // <FS:CR> Import Vignette from Exodus
 LLGLSLShader            gPostSnapshotFrameProgram;   // <FS:Beq/> Add Snapshot frame guide
 
@@ -175,7 +174,6 @@ LLGLSLShader            gDeferredBlurLightProgram;
 LLGLSLShader            gDeferredSoftenProgram;
 LLGLSLShader            gDeferredShadowProgram;
 LLGLSLShader            gDeferredSkinnedShadowProgram;
-LLGLSLShader            gDeferredShadowCubeProgram;
 LLGLSLShader            gDeferredShadowAlphaMaskProgram;
 LLGLSLShader            gDeferredSkinnedShadowAlphaMaskProgram;
 LLGLSLShader            gDeferredShadowGLTFAlphaMaskProgram;
@@ -1518,7 +1516,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSoftenProgram.unload();
         gDeferredShadowProgram.unload();
         gDeferredSkinnedShadowProgram.unload();
-        gDeferredShadowCubeProgram.unload();
         gDeferredShadowAlphaMaskProgram.unload();
         gDeferredSkinnedShadowAlphaMaskProgram.unload();
         gDeferredShadowGLTFAlphaMaskProgram.unload();
@@ -2963,25 +2960,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
     if (success)
     {
-        gDeferredShadowCubeProgram.mName = "Deferred Shadow Cube Shader";
-        gDeferredShadowCubeProgram.mFeatures.isDeferred = true;
-        gDeferredShadowCubeProgram.mFeatures.hasShadows = true;
-        gDeferredShadowCubeProgram.mShaderFiles.clear();
-        gDeferredShadowCubeProgram.mShaderFiles.push_back(make_pair("deferred/shadowCubeV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowCubeProgram.mShaderFiles.push_back(make_pair("deferred/shadowF.glsl", GL_FRAGMENT_SHADER));
-        // gDeferredShadowCubeProgram.addPermutation("DEPTH_CLAMP", "1");
-        gDeferredShadowCubeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        success = gDeferredShadowCubeProgram.createShader();
-        llassert(success);
-
-        if (success && LLVKLoader::isVulkanInitialized())
-        {
-            gDeferredShadowCubeProgram.createVkPipeline(32);
-        }
-    }
-
-    if (success)
-    {
         gDeferredShadowFullbrightAlphaMaskProgram.mName = "Deferred Shadow Fullbright Alpha Mask Shader";
         gDeferredShadowFullbrightAlphaMaskProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
 
@@ -4059,21 +4037,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredGenBrdfLutProgram.createVkPipeline(0);
-        }
-    }
-
-    if (success) {
-        gPostScreenSpaceReflectionProgram.mName = "Screen Space Reflection Post";
-        gPostScreenSpaceReflectionProgram.mShaderFiles.clear();
-        gPostScreenSpaceReflectionProgram.mShaderFiles.push_back(make_pair("deferred/screenSpaceReflPostV.glsl", GL_VERTEX_SHADER));
-        gPostScreenSpaceReflectionProgram.mShaderFiles.push_back(make_pair("deferred/screenSpaceReflPostF.glsl", GL_FRAGMENT_SHADER));
-        gPostScreenSpaceReflectionProgram.mFeatures.hasScreenSpaceReflections = true;
-        gPostScreenSpaceReflectionProgram.mFeatures.isDeferred                = true;
-        gPostScreenSpaceReflectionProgram.mShaderLevel = 3;
-        success = gPostScreenSpaceReflectionProgram.createShader();
-        if (success && LLVKLoader::isVulkanInitialized())
-        {
-            gPostScreenSpaceReflectionProgram.createVkPipeline(16);
         }
     }
 

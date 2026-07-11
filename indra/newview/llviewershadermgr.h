@@ -214,7 +214,6 @@ extern LLGLSLShader         gAvatarEyeballProgram;
 extern LLGLSLShader         gImpostorProgram;
 
 // Post Process Shaders
-extern LLGLSLShader         gPostScreenSpaceReflectionProgram;
 extern LLGLSLShader         gPostVignetteProgram;   // <FS:CR> Import Vignette from Exodus
 extern LLGLSLShader         gPostSnapshotFrameProgram;   // <FS:Beq/> Snapshot Frame overlay
 
@@ -247,7 +246,6 @@ extern LLGLSLShader         gDeferredBlurLightProgram;
 extern LLGLSLShader         gDeferredAvatarProgram;
 extern LLGLSLShader         gDeferredSoftenProgram;
 extern LLGLSLShader         gDeferredShadowProgram;
-extern LLGLSLShader         gDeferredShadowCubeProgram;
 extern LLGLSLShader         gDeferredShadowAlphaMaskProgram;
 extern LLGLSLShader         gDeferredShadowGLTFAlphaMaskProgram;
 extern LLGLSLShader         gDeferredShadowGLTFAlphaBlendProgram;

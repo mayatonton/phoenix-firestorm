@@ -507,7 +507,6 @@ void LLGLSLShader::unloadInternal()
     }
 
     stop_glerror();
-    mAttribute.clear();
     mTexture.clear();
     mUniform.clear();
 
@@ -2372,13 +2371,6 @@ bool LLGLSLShader::mapAttributes()
         res = link();
     }
 
-    mAttribute.clear();
-#if LL_RELEASE_WITH_DEBUG_INFO
-    mAttribute.resize(LLShaderMgr::instance()->mReservedAttribs.size(), { -1, NULL });
-#else
-    mAttribute.resize(LLShaderMgr::instance()->mReservedAttribs.size(), -1);
-#endif
-
     if (res)
     { //read back channel locations
 
@@ -2391,11 +2383,6 @@ bool LLGLSLShader::mapAttributes()
             S32 index = glGetAttribLocation(mProgramObject, (const GLchar*)name);
             if (index != -1)
             {
-#if LL_RELEASE_WITH_DEBUG_INFO
-                mAttribute[i] = { index, name };
-#else
-                mAttribute[i] = index;
-#endif
                 mAttributeMask |= 1 << i;
                 LL_DEBUGS("ShaderUniform") << "Attribute " << name << " assigned to channel " << index << LL_ENDL;
             }
@@ -3673,20 +3660,6 @@ GLint LLGLSLShader::getUniformLocation(U32 index)
     }
 
     return ret;
-}
-
-GLint LLGLSLShader::getAttribLocation(U32 attrib)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    if (attrib < mAttribute.size())
-    {
-        return mAttribute[attrib];
-    }
-    else
-    {
-        return -1;
-    }
 }
 
 void LLGLSLShader::uniform1i(const LLStaticHashedString& uniform, GLint v)

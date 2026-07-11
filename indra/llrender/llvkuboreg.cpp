@@ -528,13 +528,6 @@ namespace
         UBOREG_M(RlvF_PerProgramBind, _rlvF_pad0),
     };
 
-    constexpr MemberEntry kM_ScreenSpaceReflPostF[] = {
-        UBOREG_M(ScreenSpaceReflPostF_PerProgramBind, zNear),
-        UBOREG_M(ScreenSpaceReflPostF_PerProgramBind, zFar),
-        UBOREG_M(ScreenSpaceReflPostF_PerProgramBind, _screenSpaceReflPostF_pad0),
-        UBOREG_M(ScreenSpaceReflPostF_PerProgramBind, _screenSpaceReflPostF_pad1),
-    };
-
     constexpr MemberEntry kM_SkinSSSF[] = {
         UBOREG_M(SkinSSSF_PerProgramBind, aya_glow_color),
         UBOREG_M(SkinSSSF_PerProgramBind, aya_glow_gain),
@@ -665,7 +658,6 @@ namespace
         UBOREG_BLOCK(1, "NormalDebug_PerProgramBind",           NormalDebug_PerProgramBind,           kM_NormalDebug),
         UBOREG_BLOCK(1, "NormgenF_PerProgramBind",              NormgenF_PerProgramBind,              kM_NormgenF),
         UBOREG_BLOCK(1, "OcclusionCube_PerProgramBind",         OcclusionCube_PerProgramBind,         kM_OcclusionCube),
-        UBOREG_BLOCK(1, "ShadowCube_PerProgramBind",            OcclusionCube_PerProgramBind,         kM_OcclusionCube),
         UBOREG_BLOCK(1, "OneTextureFilter_PerProgramBind",      OneTextureFilter_PerProgramBind,      kM_OneTextureFilter),
         UBOREG_BLOCK(1, "Pathfinding_PerProgramBind",           Pathfinding_PerProgramBind,           kM_Pathfinding),
         UBOREG_BLOCK(1, "PointLightPerDraw",                    PointLightPerDraw,                    kM_PointLightPerDraw),
@@ -678,7 +670,6 @@ namespace
         UBOREG_BLOCK(1, "Preview_PerProgramBind",               Preview_PerProgramBind,               kM_Preview),
         UBOREG_BLOCK(1, "RadianceGen_PerProgramBind",           RadianceGen_PerProgramBind,           kM_RadianceGen),
         UBOREG_BLOCK(1, "RlvF_PerProgramBind",                  RlvF_PerProgramBind,                  kM_RlvF),
-        UBOREG_BLOCK(1, "ScreenSpaceReflPostF_PerProgramBind",  ScreenSpaceReflPostF_PerProgramBind,  kM_ScreenSpaceReflPostF),
         UBOREG_BLOCK(1, "SkinSSSF_PerProgramBind",              SkinSSSF_PerProgramBind,              kM_SkinSSSF),
         UBOREG_BLOCK(1, "SMAA_PerProgramBind",                  SMAA_PerProgramBind,                  kM_SMAA),
         UBOREG_BLOCK(1, "SpotLightPerDraw",                     SpotLightPerDraw,                     kM_SpotLightPerDraw),

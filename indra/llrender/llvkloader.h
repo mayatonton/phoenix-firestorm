@@ -935,16 +935,6 @@ namespace LLVKLoader
     static_assert(sizeof(RlvF_PerProgramBind) == 80,
                   "RlvF_PerProgramBind size mismatch (std140 expects 80 B)");
 
-    struct ScreenSpaceReflPostF_PerProgramBind
-    {
-        float zNear;
-        float zFar;
-        float _screenSpaceReflPostF_pad0;
-        float _screenSpaceReflPostF_pad1;
-    };
-    static_assert(sizeof(ScreenSpaceReflPostF_PerProgramBind) == 16,
-                  "ScreenSpaceReflPostF_PerProgramBind size mismatch (std140 expects 16 B)");
-
     struct SkinSSSF_PerProgramBind
     {
         float aya_glow_color[3];
