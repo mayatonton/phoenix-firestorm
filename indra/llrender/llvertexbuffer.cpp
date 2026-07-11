@@ -2041,12 +2041,20 @@ void LLVertexBuffer::setBuffer()
     if (LLVKLoader::shouldUseVulkanRender() && mVkVertexBuffer != VK_NULL_HANDLE
         && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE)
     {
+        const U32 vk_data_mask = LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMaskValid
+                                     ? LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask
+                                     : data_mask;
+
+        llassert_msg((vk_data_mask & mTypeMask) == vk_data_mask,
+            "VK attribute mask mismatch! mTypeMask should be a superset of vk_data_mask.  vk_data_mask: 0x"
+                    << std::hex << vk_data_mask << " mTypeMask: 0x" << mTypeMask << " Missing: 0x" << (vk_data_mask & ~mTypeMask) << std::dec);
+
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
         if (cmd != VK_NULL_HANDLE)
         {
             for (U32 type = 0; type < TYPE_MAX; ++type)
             {
-                if (!(data_mask & (1u << type)))
+                if (!(vk_data_mask & (1u << type)))
                     continue;
                 VkDeviceSize buf_offset = (type == TYPE_TEXTURE_INDEX)
                                               ? (mOffsets[TYPE_VERTEX] + 12)

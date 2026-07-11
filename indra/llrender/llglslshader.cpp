@@ -72,7 +72,6 @@ using std::pair;
 using std::make_pair;
 using std::string;
 
-GLuint LLGLSLShader::sCurBoundShader = 0;
 LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 
 VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
@@ -430,6 +429,11 @@ void LLGLSLShader::unloadInternal()
 {
     sInstances.erase(this);
 
+    if (sCurBoundShaderPtr == this)
+    {
+        sCurBoundShaderPtr = NULL;
+    }
+
     mVkEnumBoundView.clear();
     mChannelToEnum.clear();
 
@@ -529,6 +533,7 @@ void LLGLSLShader::unloadInternal()
         glDeleteProgram(mProgramObject);
 
         mProgramObject = 0;
+        mComplete = false;
     }
 
     if (mTimerQuery)
@@ -578,6 +583,7 @@ bool LLGLSLShader::createShader()
 
     // Create program
     mProgramObject = glCreateProgram();
+    mComplete = (mProgramObject != 0);
     if (mProgramObject == 0)
     {
         // Shouldn't happen if shader related extensions, like ARB_vertex_shader, exist.
@@ -640,11 +646,14 @@ bool LLGLSLShader::createShader()
 
     mVkBindingToChannel.fill(-1);
 
+    mVkBindingToChannelShadow.fill(-1);
+
     mVkBindingToEnumCanonical.fill(-1);
 
     mVkBindingDeclaredType.fill(VKBD_NONE);
     mVkBindingStageMask.fill(0);
     mVkBindingSamplerDim.fill(VKSD_2D);
+    mVkBindingSamplerUsed.fill(false);
 
     mVkReflBindingSamplerNames.clear();
 
@@ -673,6 +682,14 @@ bool LLGLSLShader::createShader()
     if (success)
     {
         success = mapUniforms();
+    }
+    if (success && mVkAttributeMaskValid && mVkAttributeMask != mAttributeMask)
+    {
+        LL_WARNS("Vulkan") << "VK vertex input mask mismatch '" << mName << "' "
+                           << llformat("vk=0x%08x gl=0x%08x diff=0x%08x",
+                                       mVkAttributeMask, mAttributeMask,
+                                       (mVkAttributeMask ^ mAttributeMask))
+                           << LL_ENDL;
     }
     if (!success)
     {
@@ -730,7 +747,7 @@ bool LLGLSLShader::createShader()
 
     LL_DEBUGS("GLSLTextureChannels") << mName << " has " << mActiveTextureChannels << " active texture channels" << LL_ENDL;
 
-    if (success && !mVkReflBindingSamplerNames.empty() && mProgramObject != 0)
+    if (success && !mVkReflBindingSamplerNames.empty())
     {
         const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
         for (const auto& bn : mVkReflBindingSamplerNames)
@@ -742,6 +759,13 @@ bool LLGLSLShader::createShader()
                     if (reserved[ri] == bn.second) { mVkBindingToEnumCanonical[bn.first] = ri; break; }
                 }
             }
+        }
+    }
+
+    if (success && !mVkReflBindingSamplerNames.empty() && mProgramObject != 0)
+    {
+        for (const auto& bn : mVkReflBindingSamplerNames)
+        {
             S32 loc = glGetUniformLocation(mProgramObject, bn.second.c_str());
             if (loc < 0)
             {
@@ -752,6 +776,111 @@ bool LLGLSLShader::createShader()
             if (channel >= 0 && bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
             {
                 mVkBindingToChannel[bn.first] = channel;
+            }
+        }
+    }
+
+    if (success && !mVkReflBindingSamplerNames.empty())
+    {
+        std::set<S32> refl_enums;
+        for (const auto& bn : mVkReflBindingSamplerNames)
+        {
+            if (bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
+            {
+                if (!mVkBindingSamplerUsed[bn.first])
+                {
+                    continue;
+                }
+                S32 e = mVkBindingToEnumCanonical[bn.first];
+                if (e >= 0)
+                {
+                    refl_enums.insert(e);
+                }
+            }
+        }
+
+        std::map<S32, S32> shadow_ch;
+        S32 next_ch = 0;
+        const S32 diffuse_enum = LLShaderMgr::DIFFUSE_MAP;
+        if (refl_enums.count(diffuse_enum))
+        {
+            shadow_ch[diffuse_enum] = 0;
+            next_ch = 1;
+        }
+        for (S32 e : refl_enums)
+        {
+            if (e == diffuse_enum)
+            {
+                continue;
+            }
+            shadow_ch[e] = next_ch++;
+        }
+
+        for (const auto& bn : mVkReflBindingSamplerNames)
+        {
+            if (bn.first >= 0 && bn.first < (S32)MAX_VK_BINDING)
+            {
+                S32 e = mVkBindingToEnumCanonical[bn.first];
+                auto it = shadow_ch.find(e);
+                if (e >= 0 && it != shadow_ch.end())
+                {
+                    mVkBindingToChannelShadow[bn.first] = it->second;
+                }
+            }
+        }
+
+        if (mProgramObject != 0)
+        {
+            const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
+            auto ename = [&](S32 e) -> std::string
+            {
+                return (e >= 0 && e < (S32)reserved.size()) ? reserved[e] : std::string("?");
+            };
+
+            std::string chan_diffs;
+            std::string refl_only;
+            std::string gl_only;
+
+            for (const auto& kv : shadow_ch)
+            {
+                S32 e = kv.first;
+                S32 sc = kv.second;
+                S32 gc = (e >= 0 && e < (S32)mTexture.size()) ? mTexture[e] : -1;
+                if (gc < 0)
+                {
+                    refl_only += (refl_only.empty() ? "" : ",") + ename(e);
+                }
+                else if (gc != sc)
+                {
+                    chan_diffs += (chan_diffs.empty() ? "" : "; ") + ename(e)
+                        + " gl=" + std::to_string(gc) + " shadow=" + std::to_string(sc);
+                }
+            }
+
+            for (S32 e = 0; e < (S32)mTexture.size(); ++e)
+            {
+                if (mTexture[e] > -1 && shadow_ch.find(e) == shadow_ch.end())
+                {
+                    gl_only += (gl_only.empty() ? "" : ",") + ename(e);
+                }
+            }
+
+            if (!chan_diffs.empty() || !refl_only.empty() || !gl_only.empty())
+            {
+                std::string msg = "VK sampler channel shadow divergence '" + mName + "'";
+                if (!chan_diffs.empty())
+                {
+                    msg += " chan[" + chan_diffs + "]";
+                }
+                if (!refl_only.empty())
+                {
+                    msg += " reflOnly[" + refl_only + "]";
+                }
+                if (!gl_only.empty())
+                {
+                    msg += " glOnly[" + gl_only + "]";
+                }
+                LL_WARNS("Vulkan") << msg << LL_ENDL;
             }
         }
     }
@@ -1183,6 +1312,147 @@ struct VkSpirvSet1Sampler
     unsigned int dim;
     unsigned int arrayed;
 };
+
+static U32 reflectVertexInputMaskFromSpirv(const std::vector<unsigned int>& spirv)
+{
+    if (spirv.size() < 5)
+    {
+        return 0;
+    }
+    const unsigned int* w = spirv.data();
+    const size_t n = spirv.size();
+
+    std::map<unsigned int, S32> locations;
+    std::set<unsigned int> usedPointers;
+
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        if (opcode == 71u && wordCount >= 4 && w[i + 2] == 30u)
+        {
+            locations[w[i + 1]] = (S32)w[i + 3];
+        }
+        else if (opcode == 61u && wordCount >= 4)
+        {
+            usedPointers.insert(w[i + 3]);
+        }
+        else if ((opcode == 65u || opcode == 66u || opcode == 67u || opcode == 70u) && wordCount >= 4)
+        {
+            usedPointers.insert(w[i + 3]);
+        }
+        else if ((opcode == 63u || opcode == 64u) && wordCount >= 3)
+        {
+            usedPointers.insert(w[i + 2]);
+        }
+        i += wordCount;
+    }
+
+    U32 mask = 0;
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        if (opcode == 59u && wordCount >= 4 && w[i + 3] == 1u &&
+            usedPointers.find(w[i + 2]) != usedPointers.end())
+        {
+            auto lit = locations.find(w[i + 2]);
+            if (lit != locations.end() && lit->second >= 0 && lit->second < 32)
+            {
+                mask |= (1u << lit->second);
+            }
+        }
+        i += wordCount;
+    }
+    return mask;
+}
+
+static void reflectUsedSet1SamplerBindingsFromSpirv(const std::vector<unsigned int>& spirv,
+                                                    std::set<S32>& out_used_bindings)
+{
+    if (spirv.size() < 5)
+    {
+        return;
+    }
+    const unsigned int* w = spirv.data();
+    const size_t n = spirv.size();
+
+    std::map<unsigned int, S32> desc_sets;
+    std::map<unsigned int, S32> desc_bindings;
+    std::set<unsigned int> usedPointers;
+
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        if (opcode == 71u && wordCount >= 4 && w[i + 2] == 34u)
+        {
+            desc_sets[w[i + 1]] = (S32)w[i + 3];
+        }
+        else if (opcode == 71u && wordCount >= 4 && w[i + 2] == 33u)
+        {
+            desc_bindings[w[i + 1]] = (S32)w[i + 3];
+        }
+        else if (opcode == 61u && wordCount >= 4)
+        {
+            usedPointers.insert(w[i + 3]);
+        }
+        else if ((opcode == 65u || opcode == 66u || opcode == 67u || opcode == 70u) && wordCount >= 4)
+        {
+            usedPointers.insert(w[i + 3]);
+        }
+        else if ((opcode == 63u || opcode == 64u) && wordCount >= 3)
+        {
+            usedPointers.insert(w[i + 2]);
+        }
+        else if (opcode == 57u && wordCount >= 5)
+        {
+            for (unsigned int a = 4; a < wordCount; ++a)
+            {
+                usedPointers.insert(w[i + a]);
+            }
+        }
+        i += wordCount;
+    }
+
+    for (size_t i = 5; i < n; )
+    {
+        const unsigned int instr = w[i];
+        const unsigned int wordCount = instr >> 16;
+        const unsigned int opcode = instr & 0xFFFFu;
+        if (wordCount == 0 || i + wordCount > n)
+        {
+            break;
+        }
+        if (opcode == 59u && wordCount >= 4 && w[i + 3] == 0u)
+        {
+            const unsigned int result_id = w[i + 2];
+            auto sit = desc_sets.find(result_id);
+            auto bit = desc_bindings.find(result_id);
+            if (sit != desc_sets.end() && sit->second == 1 && bit != desc_bindings.end() &&
+                usedPointers.find(result_id) != usedPointers.end())
+            {
+                out_used_bindings.insert(bit->second);
+            }
+        }
+        i += wordCount;
+    }
+}
 
 static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spirv,
                                            std::vector<VkSpirvSet1Sampler>& out_samplers,
@@ -1918,6 +2188,17 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         }
     }
 
+    mVkAttributeMask = 0;
+    mVkAttributeMaskValid = false;
+    for (const auto& ss : stage_spvs)
+    {
+        if (ss.type == GL_VERTEX_SHADER)
+        {
+            mVkAttributeMask = reflectVertexInputMaskFromSpirv(ss.spirv);
+            mVkAttributeMaskValid = true;
+        }
+    }
+
     for (const auto& ss : stage_spvs)
     {
         const U8 stage_mask = (ss.type == GL_FRAGMENT_SHADER) ? VKBS_FRAGMENT
@@ -1926,6 +2207,15 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         std::vector<S32> ubo_bindings;
         reflectVkSet1BindingsFromSpirv(ss.spirv, samplers, ubo_bindings);
         reflectVkUboLayoutsFromSpirv(ss.spirv, stage_mask, mVkReflUboBlocks, mVkReflPushConstants);
+        std::set<S32> used_sampler_bindings;
+        reflectUsedSet1SamplerBindingsFromSpirv(ss.spirv, used_sampler_bindings);
+        for (S32 ub : used_sampler_bindings)
+        {
+            if (ub >= 0 && ub < (S32)MAX_VK_BINDING)
+            {
+                mVkBindingSamplerUsed[ub] = true;
+            }
+        }
         for (const auto& smp : samplers)
         {
             if (smp.binding < 0 || smp.binding >= (S32)MAX_VK_BINDING)
@@ -2200,7 +2490,7 @@ void LLGLSLShader::mapUniform(GLint index)
             {
                 //found it
                 mUniform[i] = location;
-                mTexture[i] = mapUniformTextureChannel(location, type, size);
+                mTexture[i] = mapUniformTextureChannel(location, type, size, i);
                 if (mTexture[i] != -1)
                 {
                     LL_DEBUGS("GLSLTextureChannels") << name << " assigned to texture channel " << mTexture[i] << LL_ENDL;
@@ -2231,7 +2521,7 @@ void LLGLSLShader::removePermutation(std::string name)
     mDefines.erase(name);
 }
 
-GLint LLGLSLShader::mapUniformTextureChannel(GLint location, GLenum type, GLint size)
+GLint LLGLSLShader::mapUniformTextureChannel(GLint location, GLenum type, GLint size, S32 uniform_enum)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
 
@@ -2239,6 +2529,30 @@ GLint LLGLSLShader::mapUniformTextureChannel(GLint location, GLenum type, GLint 
         type == GL_SAMPLER_2D_MULTISAMPLE ||
         type == GL_SAMPLER_CUBE_MAP_ARRAY)
     {   //this here is a texture
+        if (!mVkReflEnumChannel.empty()
+            && uniform_enum >= 0 && uniform_enum < (S32)mVkReflEnumChannel.size()
+            && mVkReflEnumChannel[uniform_enum] >= 0)
+        {
+            GLint channel = mVkReflEnumChannel[uniform_enum];
+            if (size == 1)
+            {
+                glUniform1i(location, channel);
+            }
+            else
+            {
+                GLint chans[16];
+                llassert(size <= 16);
+                size = llmin(size, 16);
+                for (int i = 0; i < size; ++i)
+                {
+                    chans[i] = channel + i;
+                }
+                glUniform1iv(location, size, chans);
+            }
+            mActiveTextureChannels = llmax(mActiveTextureChannels, channel + size);
+            return channel;
+        }
+
         GLint ret = mActiveTextureChannels;
         if (size == 1)
         {
@@ -2278,6 +2592,49 @@ bool LLGLSLShader::mapUniforms()
     //initialize arrays
     mUniform.resize(LLShaderMgr::instance()->mReservedUniforms.size(), -1);
     mTexture.resize(LLShaderMgr::instance()->mReservedUniforms.size(), -1);
+
+    mVkReflEnumChannel.clear();
+    if (LLVKLoader::isVulkanInitialized() && !mVkReflBindingSamplerNames.empty())
+    {
+        const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
+        std::set<S32> refl_enums;
+        for (const auto& bn : mVkReflBindingSamplerNames)
+        {
+            if (bn.first < 0 || bn.first >= (S32)MAX_VK_BINDING)
+            {
+                continue;
+            }
+            if (!mVkBindingSamplerUsed[bn.first])
+            {
+                continue;
+            }
+            for (S32 ri = 0; ri < (S32)reserved.size(); ++ri)
+            {
+                if (reserved[ri] == bn.second)
+                {
+                    refl_enums.insert(ri);
+                    break;
+                }
+            }
+        }
+
+        mVkReflEnumChannel.assign(reserved.size(), -1);
+        S32 next_ch = 0;
+        const S32 diffuse_enum = LLShaderMgr::DIFFUSE_MAP;
+        if (refl_enums.count(diffuse_enum))
+        {
+            mVkReflEnumChannel[diffuse_enum] = 0;
+            next_ch = 1;
+        }
+        for (S32 e : refl_enums)
+        {
+            if (e == diffuse_enum)
+            {
+                continue;
+            }
+            mVkReflEnumChannel[e] = next_ch++;
+        }
+    }
 
     bind();
 
@@ -2469,7 +2826,7 @@ void LLGLSLShader::bind()
 
     gGL.flush();
 
-    if (sCurBoundShader != mProgramObject)  // Don't re-bind current shader
+    if (sCurBoundShaderPtr != this)  // Don't re-bind current shader
     {
         if (sCurBoundShaderPtr)
         {
@@ -2477,7 +2834,6 @@ void LLGLSLShader::bind()
         }
         LLVertexBuffer::unbind();
         glUseProgram(mProgramObject);
-        sCurBoundShader = mProgramObject;
         sCurBoundShaderPtr = this;
         placeProfileQuery();
         LLVertexBuffer::setupClientArrays(mAttributeMask);
@@ -2514,7 +2870,7 @@ void LLGLSLShader::bind()
     }
 
     llassert_always(sCurBoundShaderPtr != nullptr);
-    llassert_always(sCurBoundShader == mProgramObject);
+    llassert_always(sCurBoundShaderPtr == this);
 }
 
 void LLGLSLShader::bind(U8 variant)
@@ -2549,7 +2905,6 @@ void LLGLSLShader::unbind(void)
     }
 
     glUseProgram(0);
-    sCurBoundShader = 0;
     sCurBoundShaderPtr = NULL;
 }
 
@@ -4471,9 +4826,11 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     VkVertexInputAttributeDescription vi_attrs[LLVertexBuffer::TYPE_MAX] = {};
     U32 vi_count = 0;
 
+    const U32 vk_attr_mask = mVkAttributeMaskValid ? mVkAttributeMask : mAttributeMask;
+
     for (U32 type = 0; type < LLVertexBuffer::TYPE_MAX; ++type)
     {
-        if (!(mAttributeMask & (1u << type)))
+        if (!(vk_attr_mask & (1u << type)))
             continue;
         auto fmt_stride = get_vk_format_stride(type);
         if (fmt_stride.first == VK_FORMAT_UNDEFINED)
@@ -4492,11 +4849,11 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     }
 
     U32 attr_count = vi_count;
-    if (mAttributeMask & (1u << LLVertexBuffer::TYPE_VERTEX))
+    if (vk_attr_mask & (1u << LLVertexBuffer::TYPE_VERTEX))
     {
         for (U32 type = 0; type < LLVertexBuffer::TYPE_MAX; ++type)
         {
-            if (mAttributeMask & (1u << type))
+            if (vk_attr_mask & (1u << type))
                 continue;
             auto fmt_stride = get_vk_format_stride(type);
             if (fmt_stride.first == VK_FORMAT_UNDEFINED)

@@ -42,16 +42,13 @@ mat4 getSkinnedTransform();
 
 #ifdef LL_VULKAN_GLSL
 layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
 #else
 in vec3 position;
-in vec3 normal;
 #endif
 
 void main()
 {
     vec4 pos;
-    vec3 norm;
 
     vec4 pos_in = vec4(position.xyz, 1.0);
     mat4 trans = getSkinnedTransform();
@@ -59,11 +56,6 @@ void main()
     pos.y = dot(trans[1], pos_in);
     pos.z = dot(trans[2], pos_in);
     pos.w = 1.0;
-
-    norm.x = dot(trans[0].xyz, normal);
-    norm.y = dot(trans[1].xyz, normal);
-    norm.z = dot(trans[2].xyz, normal);
-    norm = normalize(norm);
 
     pos = projection_matrix * pos;
     gl_Position = pos;

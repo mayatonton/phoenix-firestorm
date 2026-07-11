@@ -4875,7 +4875,7 @@ void renderNonMeshHullPhysics(LLVOVolume* vovolume, LLVolume* volume, LLColor4 c
         gGL.diffuseColor4fv(line_color.mV);
         LLVertexBuffer::unbind();
 
-        llassert(LLGLSLShader::sCurBoundShader != 0);
+        llassert(LLGLSLShader::sCurBoundShaderPtr != nullptr);
 
         LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
 

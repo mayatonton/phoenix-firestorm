@@ -265,7 +265,6 @@ public:
         std::vector<std::string> sources;
     };
 
-    static GLuint sCurBoundShader;
     static LLGLSLShader* sCurBoundShaderPtr;
     static S32 sIndexedTextureChannels;
 
@@ -341,7 +340,7 @@ public:
     GLint getUniformLocation(U32 index);
 
     GLint getAttribLocation(U32 attrib);
-    GLint mapUniformTextureChannel(GLint location, GLenum type, GLint size);
+    GLint mapUniformTextureChannel(GLint location, GLenum type, GLint size, S32 uniform_enum);
 
     void clearPermutations();
     void addPermutation(std::string name, std::string value);
@@ -377,7 +376,7 @@ public:
     //helper to conditionally bind mRiggedVariant instead of this
     void bind(bool rigged);
 
-    bool isComplete() const { return mProgramObject != 0; }
+    bool isComplete() const { return mComplete; }
 
     LLUUID hash();
 
@@ -388,6 +387,7 @@ public:
     U32 mLightHash;
 
     GLuint mProgramObject;
+    bool mComplete = false;
 #if LL_RELEASE_WITH_DEBUG_INFO
     struct attr_name
     {
@@ -477,12 +477,17 @@ public:
 
     bool                       mVkVertexPushConstantOver64 = false;
 
+    U32                        mVkAttributeMask = 0;
+    bool                       mVkAttributeMaskValid = false;
+
     static constexpr U32 MAX_VK_BINDING = 128;
     std::array<S32, MAX_VK_BINDING> mVkBindingToEnum = {};
 
     std::array<S32, MAX_VK_BINDING> mVkBindingToEnumCanonical = {};
 
     std::array<S32, MAX_VK_BINDING> mVkBindingToChannel = {};
+
+    std::array<S32, MAX_VK_BINDING> mVkBindingToChannelShadow = {};
 
     enum VkBindingDeclType : U8 { VKBD_NONE = 0, VKBD_SAMPLER = 1, VKBD_UBO = 2, VKBD_BOTH = 3 };
     std::array<U8, MAX_VK_BINDING> mVkBindingDeclaredType = {};
@@ -493,7 +498,11 @@ public:
     enum VkBindingSamplerDim : U8 { VKSD_2D = 0, VKSD_CUBE = 1, VKSD_CUBE_ARRAY = 2, VKSD_3D = 3 };
     std::array<U8, MAX_VK_BINDING> mVkBindingSamplerDim = {};
 
+    std::array<bool, MAX_VK_BINDING> mVkBindingSamplerUsed = {};
+
     std::vector<std::pair<S32, std::string>> mVkReflBindingSamplerNames;
+
+    std::vector<S32> mVkReflEnumChannel;
 
     std::vector<VkReflUboBlock> mVkReflUboBlocks;
     std::vector<VkReflUboBlock> mVkReflPushConstants;
