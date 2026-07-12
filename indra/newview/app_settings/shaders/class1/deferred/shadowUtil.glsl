@@ -144,7 +144,6 @@ float pcfShadow(sampler2DShadow shadowMap, vec3 norm, vec4 stc, float bias_mul, 
     float offset = shadow_bias * bias_mul;
     stc.xyz /= stc.w;
     stc.z += offset * 2.0;
-    stc.x = floor(stc.x*shadow_res.x + fract(pos_screen.y*shadow_res.y))/shadow_res.x; // add some chaotic jitter to X sample pos according to Y to disguise the snapping going on here
     float cs = texture(shadowMap, stc.xyz);
     float shadow = cs * 4.0;
     shadow += texture(shadowMap, stc.xyz+vec3( 1.5*shadow_softness/shadow_res.x,  0.5*shadow_softness/shadow_res.y, 0.0));
@@ -162,8 +161,6 @@ float pcfSpotShadow(sampler2DShadow shadowMap, vec4 stc, float bias_scale, vec2 
 #if defined(SPOT_SHADOW)
     stc.xyz /= stc.w;
     stc.z += spot_shadow_bias * bias_scale;
-    stc.x = floor(proj_shadow_res.x * stc.x + fract(pos_screen.y*0.666666666)) / proj_shadow_res.x; // snap
-
     float cs = texture(shadowMap, stc.xyz);
     float shadow = cs;
 

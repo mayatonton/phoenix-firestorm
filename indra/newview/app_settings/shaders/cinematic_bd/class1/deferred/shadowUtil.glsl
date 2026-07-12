@@ -440,8 +440,6 @@ float nonpcfShadow(sampler2DShadow shadowMap, vec4 stc, vec2 pos_screen, float s
     stc.xyz /= stc.w;
     stc.z += bias;
 
-    stc.x = floor(stc.x*shad_res + fract(pos_screen.y)) * recip_shadow_res;
-
     float cs = texture(shadowMap, stc.xyz);
     float shadow = cs * 4.0;
     return shadow;
