@@ -351,7 +351,41 @@ using namespace LLImageGLMemory;
 // static
 U64 LLImageGL::getTextureBytesAllocated()
 {
-    return sTextureBytes;
+    return getVkTextureBytesAllocated();
+}
+
+U64 LLImageGL::getVkTextureBytesAllocated()
+{
+    U64 total = 0;
+    for (auto& glimage : sImageList)
+    {
+        if (!glimage || glimage->mVkImage == VK_NULL_HANDLE)
+        {
+            continue;
+        }
+
+        U32 bpp = LLVKLoader::vkFormatBytesPerPixel(glimage->mVkImageFormat);
+        if (bpp == 0)
+        {
+            continue;
+        }
+
+        U32 w    = glimage->mVkImageWidth;
+        U32 h    = glimage->mVkImageHeight;
+        U32 mips = glimage->mVkImageMipLevels;
+        if (mips == 0)
+        {
+            mips = 1;
+        }
+
+        for (U32 m = 0; m < mips; ++m)
+        {
+            U32 mw = llmax(1u, w >> m);
+            U32 mh = llmax(1u, h >> m);
+            total += (U64)mw * (U64)mh * (U64)bpp;
+        }
+    }
+    return total;
 }
 
 //statics
@@ -1000,8 +1034,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
     {
         S32 w = getWidth();
         S32 h = getHeight();
-        LLImageGL::setManualImage(mTarget, 0, mFormatInternal, w, h,
-            mFormatPrimary, mFormatType, (GLvoid*)data_in, mAllowCompression);
         syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, nullptr, false);
     }
     else if (mUseMipMaps)
@@ -1025,21 +1057,11 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                 }
                 if (is_compressed)
                 {
-                    GLsizei tex_size = (GLsizei)dataFormatBytes(mFormatPrimary, w, h);
-                    glCompressedTexImage2D(mTarget, gl_level, mFormatPrimary, w, h, 0, tex_size, (GLvoid *)data_in);
-                    stop_glerror();
                     syncVulkanMip0Image((U32)mFormatPrimary, (U32)mFormatPrimary, (U32)GL_UNSIGNED_BYTE, w, h, data_in, true,
                                         gl_level, mMaxDiscardLevel - mCurrentDiscardLevel + 1);
                 }
                 else
                 {
-                    if(mFormatSwapBytes)
-                    {
-                        glPixelStorei(GL_UNPACK_SWAP_BYTES, 1);
-                        stop_glerror();
-                    }
-
-                    LLImageGL::setManualImage(mTarget, gl_level, mFormatInternal, w, h, mFormatPrimary, GL_UNSIGNED_BYTE, (GLvoid*)data_in, mAllowCompression);
                     syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)GL_UNSIGNED_BYTE, w, h, data_in, false,
                                         gl_level, mMaxDiscardLevel - mCurrentDiscardLevel + 1);
                     if (gl_level == 0)
@@ -1047,14 +1069,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                         analyzeAlpha(data_in, w, h);
                     }
                     updatePickMask(w, h, data_in);
-
-                    if(mFormatSwapBytes)
-                    {
-                        glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
-                        stop_glerror();
-                    }
-
-                    stop_glerror();
                 }
                 stop_glerror();
             }
@@ -1065,29 +1079,11 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
             {
                 stop_glerror();
                 {
-                    if(mFormatSwapBytes)
-                    {
-                        glPixelStorei(GL_UNPACK_SWAP_BYTES, 1);
-                        stop_glerror();
-                    }
-
                     S32 w = getWidth(mCurrentDiscardLevel);
                     S32 h = getHeight(mCurrentDiscardLevel);
 
                     mMipLevels = wpo2(llmax(w, h));
 
-                    //use legacy mipmap generation mode (note: making this condional can cause rendering issues)
-                    // -- but making it not conditional triggers deprecation warnings when core profile is enabled
-                    //      (some rendering issues while core profile is enabled are acceptable at this point in time)
-                    if (!LLRender::sGLCoreProfile)
-                    {
-                        glTexParameteri(mTarget, GL_GENERATE_MIPMAP, GL_TRUE);
-                    }
-
-                    LLImageGL::setManualImage(mTarget, 0, mFormatInternal,
-                                 w, h,
-                                 mFormatPrimary, mFormatType,
-                                 data_in, mAllowCompression);
                     analyzeAlpha(data_in, w, h);
                     stop_glerror();
                     S32 vk_mip_count = 1;
@@ -1102,19 +1098,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                     }
 
                     updatePickMask(w, h, data_in);
-
-                    if(mFormatSwapBytes)
-                    {
-                        glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
-                        stop_glerror();
-                    }
-
-                    if (LLRender::sGLCoreProfile)
-                    {
-                        LL_PROFILE_GPU_ZONE("generate mip map");
-                        glGenerateMipmap(mTarget);
-                    }
-                    stop_glerror();
                 }
             }
             else
@@ -1192,13 +1175,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                     llassert(w > 0 && h > 0 && cur_mip_data);
                     (void)cur_mip_data;
                     {
-                        if(mFormatSwapBytes)
-                        {
-                            glPixelStorei(GL_UNPACK_SWAP_BYTES, 1);
-                            stop_glerror();
-                        }
-
-                        LLImageGL::setManualImage(mTarget, m, mFormatInternal, w, h, mFormatPrimary, mFormatType, cur_mip_data, mAllowCompression);
                         syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, cur_mip_data, false, m, nummips);
                         if (m == 0)
                         {
@@ -1206,12 +1182,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                             updatePickMask(w, h, cur_mip_data);
                         }
                         stop_glerror();
-
-                        if(mFormatSwapBytes)
-                        {
-                            glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
-                            stop_glerror();
-                        }
                     }
                     if (prev_mip_data && prev_mip_data != data_in)
                     {
@@ -1240,34 +1210,16 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
         S32 h = getHeight();
         if (is_compressed)
         {
-            GLsizei tex_size = (GLsizei)dataFormatBytes(mFormatPrimary, w, h);
-            glCompressedTexImage2D(mTarget, 0, mFormatPrimary, w, h, 0, tex_size, (GLvoid *)data_in);
-            stop_glerror();
             syncVulkanMip0Image((U32)mFormatPrimary, (U32)mFormatPrimary, (U32)GL_UNSIGNED_BYTE, w, h, data_in, true);
         }
         else
         {
-            if(mFormatSwapBytes)
-            {
-                glPixelStorei(GL_UNPACK_SWAP_BYTES, 1);
-                stop_glerror();
-            }
-
-            LLImageGL::setManualImage(mTarget, 0, mFormatInternal, w, h,
-                         mFormatPrimary, mFormatType, (GLvoid *)data_in, mAllowCompression);
             analyzeAlpha(data_in, w, h);
             syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, data_in, false);
 
             updatePickMask(w, h, data_in);
 
             stop_glerror();
-
-            if(mFormatSwapBytes)
-            {
-                glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
-                stop_glerror();
-            }
-
         }
     }
     stop_glerror();
@@ -1750,34 +1702,6 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
         }
 
 
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, data_width);
-        stop_glerror();
-
-        if(mFormatSwapBytes)
-        {
-            glPixelStorei(GL_UNPACK_SWAP_BYTES, 1);
-            stop_glerror();
-        }
-
-        const U8* sub_datap = datap + (y_pos * data_width + x_pos) * getComponents();
-        // Update the GL texture
-        bool res = gGL.getTexUnit(0)->bindManual(mBindTarget, tex_name);
-        if (!res) LL_ERRS() << "LLImageGL::setSubImage(): bindTexture failed" << LL_ENDL;
-        stop_glerror();
-
-        const bool use_sub_image = should_stagger_image_set(isCompressed());
-        if (!use_sub_image)
-        {
-            // *TODO: Why does this work here, in setSubImage, but not in
-            // setManualImage? Maybe because it only gets called with the
-            // dimensions of the full image?  Or because the image is never
-            // compressed?
-            glTexSubImage2D(mTarget, 0, x_pos, y_pos, width, height, mFormatPrimary, mFormatType, sub_datap);
-        }
-        else
-        {
-            sub_image_lines(mTarget, 0, x_pos, y_pos, width, height, mFormatPrimary, mFormatType, sub_datap, data_width);
-        }
         if (LLVKLoader::shouldUseVulkanRender() && mVkImage != VK_NULL_HANDLE)
         {
             bool ok = LLVKLoader::uploadImageSubregionVk(mVkImage, mVkImageFormat,
@@ -1829,17 +1753,6 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
                                    << LL_ENDL;
             }
         }
-        gGL.getTexUnit(0)->disable();
-        stop_glerror();
-
-        if(mFormatSwapBytes)
-        {
-            glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
-            stop_glerror();
-        }
-
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        stop_glerror();
         mGLTextureCreated = true;
     }
 
