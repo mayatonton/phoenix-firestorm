@@ -58,7 +58,7 @@ mat4 getObjectSkinnedTransform();
 #endif
 
 #ifdef LL_VULKAN_GLSL
-layout(set = 0, binding = 2, std140) uniform ShadowParams_PerShaderBind
+layout(set = 1, binding = 53, std140) uniform ShadowParams_PerShaderBind
 {
     float shadow_target_width;
 #ifndef _AYA_UM__pad0

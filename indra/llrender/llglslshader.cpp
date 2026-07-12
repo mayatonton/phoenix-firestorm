@@ -3839,6 +3839,7 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     add_ubo    (48, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedPBRMaterialUBO);
     add_ubo    (49, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedSSRUtilUBO);
     add_ubo    (51, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedDrawColorUBO);
+    add_ubo    (53, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedShadowParamsUBO);
     add_sampler(50, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::DEFERRED_LIGHTFUNC);
 
     if (mFeatures.mIndexedTextureChannels > 0)

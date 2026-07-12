@@ -107,6 +107,7 @@ namespace LLVKLoader
                   "ShadowParams_PerShaderBind size mismatch (std140 expects 16 B)");
 
     void writeCurrentShadowParamsUBO(const ShadowParams_PerShaderBind& data);
+    bool getSharedShadowParamsUBO(VkBuffer& out_buffer, void*& out_mapped);
 
     struct PBRMaterial_PerMaterial
     {

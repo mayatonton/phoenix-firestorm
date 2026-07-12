@@ -71,7 +71,7 @@ uniform vec4[2] texture_base_color_transform;
 vec2 texture_transform(vec2 vertex_texcoord, vec4[2] khr_gltf_transform, mat4 sl_animation_transform);
 
 #ifdef LL_VULKAN_GLSL
-layout(set = 0, binding = 2, std140) uniform ShadowParams_PerShaderBind
+layout(set = 1, binding = 53, std140) uniform ShadowParams_PerShaderBind
 {
     float shadow_target_width;
 #ifndef _AYA_UM__pad0

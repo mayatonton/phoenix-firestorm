@@ -326,6 +326,7 @@ namespace
     LLVK_SHARED_UBO_RING_STORAGE(DrawColor)
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrainF)
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrain)
+    LLVK_SHARED_UBO_RING_STORAGE(ShadowParams)
     #undef LLVK_SHARED_UBO_RING_STORAGE
     VkBuffer              sSharedSMAABlendWeightsFUBO             = VK_NULL_HANDLE;
     void*                 sSharedSMAABlendWeightsFUBOAllocation   = nullptr;
@@ -3811,18 +3812,6 @@ void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data, const TextureM
 
 }
 
-void writeCurrentShadowParamsUBO(const ShadowParams_PerShaderBind& data)
-{
-    if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
-    {
-        return;
-    }
-    std::memcpy(static_cast<U8*>(sPerFrameUboMapped[sFrameIndex]) + SHADOW_UBO_OFFSET,
-                &data,
-                sizeof(ShadowParams_PerShaderBind));
-
-}
-
 void writeCurrentPreviewAmbientUBO(const PreviewAmbient_PerShaderBind& data)
 {
     if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
@@ -4452,6 +4441,7 @@ LLVK_SHARED_UBO_RING_IMPL(PBRMaterial,      PBRMaterial_PerMaterial,         48)
 LLVK_SHARED_UBO_RING_IMPL(DrawColor,        DrawColor_PerShaderBind,         51)
 LLVK_SHARED_UBO_RING_IMPL(PbrTerrainF,      PbrTerrainF_PerProgramBind,      28)
 LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52)
+LLVK_SHARED_UBO_RING_IMPL(ShadowParams,     ShadowParams_PerShaderBind,      53)
 #undef LLVK_SHARED_UBO_RING_IMPL
 
 static bool ensureObjectSkinRingSlot(U32 f, U32 idx)
