@@ -416,8 +416,6 @@ S32 LLImageGL::sMaxCategories = 1 ;
 
 //optimization for when we don't need to calculate mIsMask
 bool LLImageGL::sSkipAnalyzeAlpha;
-U32  LLImageGL::sScratchPBO = 0;
-U32  LLImageGL::sScratchPBOSize = 0;
 U32* LLImageGL::sManualScratch = nullptr;
 
 
@@ -425,73 +423,6 @@ U32* LLImageGL::sManualScratch = nullptr;
 //****************************************************************************************************
 //End for texture auditing use only
 //****************************************************************************************************
-
-//**************************************************************************************
-//below are functions for debug use
-//do not delete them even though they are not currently being used.
-
-void LLImageGL::checkTexSize(bool forced) const
-{
-    if ((forced || gDebugGL) && mTarget == GL_TEXTURE_2D)
-    {
-        {
-            //check viewport
-            GLint vp[4] ;
-            glGetIntegerv(GL_VIEWPORT, vp) ;
-            llcallstacks << "viewport: " << vp[0] << " : " << vp[1] << " : " << vp[2] << " : " << vp[3] << llcallstacksendl ;
-        }
-
-        GLint texname;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &texname);
-        bool error = false;
-        if (texname != mTexName)
-        {
-            LL_INFOS() << "Bound: " << texname << " Should bind: " << mTexName << " Default: " << LLImageGL::sDefaultGLTexture->getTexName() << LL_ENDL;
-
-            error = true;
-            if (gDebugSession)
-            {
-                gFailLog << "Invalid texture bound!" << std::endl;
-            }
-            else
-            {
-                LL_ERRS() << "Invalid texture bound!" << LL_ENDL;
-            }
-        }
-        stop_glerror() ;
-        LLGLint x = 0, y = 0 ;
-        glGetTexLevelParameteriv(mTarget, 0, GL_TEXTURE_WIDTH, (GLint*)&x);
-        glGetTexLevelParameteriv(mTarget, 0, GL_TEXTURE_HEIGHT, (GLint*)&y) ;
-        stop_glerror() ;
-        llcallstacks << "w: " << x << " h: " << y << llcallstacksendl ;
-
-        if(!x || !y)
-        {
-            return ;
-        }
-        if(x != (mWidth >> mCurrentDiscardLevel) || y != (mHeight >> mCurrentDiscardLevel))
-        {
-            error = true;
-            if (gDebugSession)
-            {
-                gFailLog << "wrong texture size and discard level!" <<
-                    mWidth << " Height: " << mHeight << " Current Level: " << (S32)mCurrentDiscardLevel << std::endl;
-            }
-            else
-            {
-                LL_ERRS() << "wrong texture size and discard level: width: " <<
-                    mWidth << " Height: " << mHeight << " Current Level: " << (S32)mCurrentDiscardLevel << LL_ENDL ;
-            }
-        }
-
-        if (error)
-        {
-            ll_fail("LLImageGL::checkTexSize failed.");
-        }
-    }
-}
-//end of debug functions
-//**************************************************************************************
 
 //----------------------------------------------------------------------------
 bool is_little_endian()
@@ -507,11 +438,6 @@ void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyz
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     sSkipAnalyzeAlpha = skip_analyze_alpha;
-
-    if (sScratchPBO == 0)
-    {
-        glGenBuffers(1, &sScratchPBO);
-    }
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -547,12 +473,6 @@ void LLImageGL::cleanupClass()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     LLImageGLThread::deleteSingleton();
-    if (sScratchPBO != 0)
-    {
-        glDeleteBuffers(1, &sScratchPBO);
-        sScratchPBO = 0;
-        sScratchPBOSize = 0;
-    }
 
     delete[] sManualScratch;
 }
@@ -2578,7 +2498,7 @@ bool LLImageGL::getIsResident(bool test_now)
     {
         if (mTexName != 0)
         {
-            glAreTexturesResident(1, (GLuint*)&mTexName, &mIsResident);
+            mIsResident = (mTexName != 0);
         }
         else
         {
@@ -3090,80 +3010,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
         return true;
     }
 
-    if (gGLManager.mDownScaleMethod == 0)
-    { // use an FBO to downscale the texture
-        glViewport(0, 0, desired_width, desired_height);
-
-        // draw a full screen triangle
-        if (gGL.getTexUnit(0)->bind(this, true, true))
-        {
-            glDrawArrays(GL_TRIANGLES, 0, 3);
-
-            free_tex_image(mTexName);
-            glTexImage2D(mTarget, 0, mFormatInternal, desired_width, desired_height, 0, mFormatPrimary, mFormatType, nullptr);
-            glCopyTexSubImage2D(mTarget, 0, 0, 0, 0, 0, desired_width, desired_height);
-            alloc_tex_image(desired_width, desired_height, mFormatInternal, 1);
-
-            mTexOptionsDirty = true;
-
-            if (mHasMipMaps)
-            { // generate mipmaps if needed
-                LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("scaleDown - glGenerateMipmap");
-                gGL.getTexUnit(0)->bind(this);
-                glGenerateMipmap(mTarget);
-                gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-            }
-        }
-        else
-        {
-            LL_WARNS_ONCE("LLImageGL") << "Failed to bind texture for downscaling." << LL_ENDL;
-            return false;
-        }
-    }
-    else
-    { // use a PBO to downscale the texture
-        U64 size = getBytes(desired_discard);
-        llassert(size <= 2048 * 2048 * 4); // we shouldn't be using this method to downscale huge textures, but it'll work
-        gGL.getTexUnit(0)->bind(this, false, true);
-
-        if (sScratchPBO == 0)
-        {
-            glGenBuffers(1, &sScratchPBO);
-            sScratchPBOSize = 0;
-        }
-
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, sScratchPBO);
-
-        if (size > sScratchPBOSize)
-        {
-            glBufferData(GL_PIXEL_PACK_BUFFER, size, NULL, GL_STREAM_COPY);
-            sScratchPBOSize = (U32)size;
-        }
-
-        glGetTexImage(mTarget, mip, mFormatPrimary, mFormatType, nullptr);
-
-        free_tex_image(mTexName);
-
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sScratchPBO);
-        glTexImage2D(mTarget, 0, mFormatInternal, desired_width, desired_height, 0, mFormatPrimary, mFormatType, nullptr);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
-        alloc_tex_image(desired_width, desired_height, mFormatInternal, 1);
-
-        if (mHasMipMaps)
-        {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("scaleDown - glGenerateMipmap");
-            glGenerateMipmap(mTarget);
-        }
-
-        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-    }
-
-    mCurrentDiscardLevel = desired_discard;
-
-    return true;
+    return false;
 }
 
 

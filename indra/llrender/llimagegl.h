@@ -205,8 +205,6 @@ public:
 // [/RLVa:KB]
 //  bool getMask(const LLVector2 &tc);
 
-    void checkTexSize(bool forced = false) const ;
-
     // Sets the addressing mode used to sample the texture
     //  (such as wrapping, mirrored wrapping, and clamp)
     // Note: this actually gets set the next time the texture is bound.
@@ -331,8 +329,6 @@ public:
 private:
     static S32 sMaxCategories;
     static bool sSkipAnalyzeAlpha;
-    static U32 sScratchPBO;
-    static U32 sScratchPBOSize;
     static U32* sManualScratch;
 
     //the flag to allow to call readBackRaw(...).
