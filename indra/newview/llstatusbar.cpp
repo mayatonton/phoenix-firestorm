@@ -197,6 +197,8 @@ LLStatusBar::LLStatusBar(const LLRect& rect)
     mSearchPanel(NULL),         // Panel for filtering
     mPathfindingFlashOn(true),  // <FS:Zi> Pathfinding rebake functions
     mAudioStreamEnabled(false), // <FS:Zi> Media/Stream separation
+    m3DStreamSpinnerActive(false),
+    m3DStreamSpinnerFrame(0),
     mRebakeStuck(false),        // <FS:LO> FIRE-7639 - Stop the blinking after a while
     mNearbyIcons(false),        // <FS:Ansariel> Script debug
     mIconPresetsGraphic(NULL),
@@ -780,8 +782,44 @@ void LLStatusBar::refresh()
                               media_inst->isParcelMediaPlaying());
     mMediaToggle->setValue(!any_media_playing);
 
+    const bool stream3d_playing = LLPositionalStreamMgr::instance().isAnyStreamPlaying();
+    const bool stream3d_starting = gSavedSettings.getBOOL("Stream3DEnabled") &&
+                                   !stream3d_playing &&
+                                   LLPositionalStreamMgr::instance().isAnyStreamStarting();
+    const bool show_stream3d_spinner = stream3d_starting && m3DStreamToggle->getVisible();
     m3DStreamToggle->setEnabled(true);
-    m3DStreamToggle->setValue(!LLPositionalStreamMgr::instance().isAnyStreamPlaying());
+    if (show_stream3d_spinner)
+    {
+        const S32 frame = (static_cast<S32>(LLTimer::getElapsedSeconds() * 12.0) % 12) + 1;
+        if (!m3DStreamSpinnerActive || m3DStreamSpinnerFrame != frame)
+        {
+            LLUIImagePtr image = LLUI::getUIImage(llformat("Progress_%d", frame));
+            m3DStreamToggle->setImageSelected(image);
+            m3DStreamToggle->setImageUnselected(image);
+            m3DStreamToggle->setImageHoverSelected(image);
+            m3DStreamToggle->setImageHoverUnselected(image);
+            m3DStreamToggle->setImagePressed(image);
+            m3DStreamSpinnerActive = true;
+            m3DStreamSpinnerFrame = frame;
+        }
+        // Keep the button in its unselected drawing path while buffering so
+        // the selected pressed image cannot briefly flash the normal icon.
+        m3DStreamToggle->setValue(false);
+    }
+    else
+    {
+        if (m3DStreamSpinnerActive)
+        {
+            m3DStreamToggle->setImageSelected(LLUI::getUIImage("3dstream_Off"));
+            m3DStreamToggle->setImageUnselected(LLUI::getUIImage("Pause_Off"));
+            m3DStreamToggle->setImageHoverSelected(LLUI::getUIImage("3dstream_Over"));
+            m3DStreamToggle->setImageHoverUnselected(LLUI::getUIImage("Pause_Over"));
+            m3DStreamToggle->setImagePressed(LLUI::getUIImage("Pause_Press"));
+            m3DStreamSpinnerActive = false;
+            m3DStreamSpinnerFrame = 0;
+        }
+        m3DStreamToggle->setValue(!stream3d_playing);
+    }
 
     // <FS:Zi> Media/Stream separation
     static LLCachedControl<bool> audio_streaming_music(gSavedSettings, "AudioStreamingMusic");
@@ -1813,7 +1851,6 @@ void LLStatusBar::updateVolumeControlsVisibility(const LLSD& data)
     mStreamToggle->setVisible(showVolumeControls);
     mMediaToggle->setVisible(showVolumeControls);
     m3DStreamToggle->setVisible(showVolumeControls);
-
     LLRect rect = mTimeMediaPanel->getRect();
     rect.translate(cVolumeIconsWidth * translateFactor, 0);
     rect.mRight -= cVolumeIconsWidth * translateFactor;

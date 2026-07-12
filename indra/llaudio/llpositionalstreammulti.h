@@ -180,6 +180,11 @@ public:
 
     bool isOpen() const { return mSourceSound != nullptr; }
     bool isPlaying() const;
+    bool isStarting() const
+    {
+        const State st = mState.load(std::memory_order_acquire);
+        return st == State::Resolving || st == State::Opening || st == State::Buffering;
+    }
     bool isFailed() const { return mState.load(std::memory_order_acquire) == State::Failed; }
 
     // r9 P6: distinguish "retryable failure" (network) from "fatal format
@@ -354,6 +359,12 @@ private:
         // accessed by the FMOD mixer thread for this one speaker, so no
         // synchronisation is needed.
         std::vector<F32> raw_scratch;
+
+        // Frames zero-filled for this speaker but not consumed from the ring
+        // yet. The next callback drops this many late source frames before
+        // producing output, so a short read cannot become permanent channel
+        // drift.
+        size_t catchup_frames = 0;
 
         // r12.1: true when the speaker's role is LFE (5.1 placement),
         // regardless of op_kind. Used by pcmReadCallback to apply the
@@ -547,6 +558,14 @@ private:
     // and let the manager's reconnect cascade rebuild us. Reset on any
     // successful (non-zero) read.
     F64 mZeroFillStreakStart = 0.0;
+    U64 mZeroFillStartUnderrunCallbacks = 0;
+
+    // VBR-silence tolerance: the custom Ogg codec can report NOTREADY when a
+    // live stream has not yet supplied the next compressed page. Do not treat
+    // that as EOF, but keep enough state to reconnect if it becomes a real
+    // no-progress stall while playback is underrunning.
+    F64 mNotReadyStreakStart = 0.0;
+    U64 mNotReadyStartUnderrunCallbacks = 0;
 
     // r8 F6 acceptance instrumentation: count frames the FMOD mixer callback
     // had to zero-fill because the ring drained (decode thread fell behind
@@ -559,8 +578,14 @@ private:
     F64 mPlayingStartTime = 0.0;
     F64 mLastUnderrunLogTime = 0.0;
 
-    static constexpr size_t kPrebufferFrames = 4096;
-    static constexpr size_t kRingFrames      = 1 << 15; // ~0.74 s at 44.1 kHz
+    static constexpr size_t kPrebufferFrames = 393216; // startup: ~8.19 s at 48 kHz
+    static constexpr size_t kRingFrames      = 1 << 19; // capacity: ~10.92 s at 48 kHz
+    static constexpr size_t kTargetBufferedFrames = 393216; // steady target: ~8.19 s at 48 kHz
+    // FMOD's network/Ogg side buffers compressed bytes, not decoded PCM. Keep
+    // this close to Parcel Music's raw-byte buffering: large enough to ride
+    // normal network jitter, but not so large that live stream startup waits
+    // tens of seconds before OPENSTATE_READY.
+    static constexpr U32 kFmodStreamBufferBytes = 163840;
     // Media source is already decoded and should stay close to the MOAP
     // video clock. Keep a much shallower queue than URL streams, whose
     // network jitter buffering is intentionally larger.
@@ -579,10 +604,14 @@ private:
     // ~1s of pumpSource failures (200 Hz pump) before declaring the stream
     // dead. Generous so brief network hiccups don't trip a teardown.
     static constexpr int kMaxReadFailStreak  = 200;
-    // r10.x: how long pumpSource may keep returning OK-with-0-bytes before
-    // we declare the transport dead. Generous to ride out decoder warmup
-    // and brief upstream stalls; mgr's reconnect cascade picks up after.
+    // r10.x/r34: zero-byte reads are only fatal once the playback ring has
+    // drained enough to affect listeners. This keeps reconnect buffer-aware
+    // instead of throwing away already-decoded PCM.
+    static constexpr F64 kZeroFillMinBufferedSec = 0.20;
+    static constexpr F64 kZeroFillEmptyRingGraceSec = 0.50;
+    // Final safety valve for sustained OK-with-0-byte reads.
     static constexpr F64 kZeroFillStreakLimit = 10.0;
+    static constexpr F64 kNotReadyEmptyRingGraceSec = 0.50;
     // r8 F6: skip the first second after Playing transition to discount
     // prebuffer warmup; emit the rolling counter every 10s thereafter.
     static constexpr F64 kUnderrunWarmupSec  = 1.0;
