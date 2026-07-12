@@ -71,19 +71,12 @@ void load_exr(const std::string& filename)
     int ret =  LoadEXRWithLayer(&out, &width, &height, filename.c_str(), /* layername */ nullptr, &err);
     if (ret == TINYEXR_SUCCESS)
     {
-        U32 texName = 0;
-        LLImageGL::generateTextures(1, &texName);
-
-        gEXRImage = new LLImageGL(texName, 4, GL_TEXTURE_2D, GL_RGB16F, GL_RGB16F, GL_FLOAT, LLTexUnit::TAM_CLAMP);
+        gEXRImage = new LLImageGL(0, 4, GL_TEXTURE_2D, GL_RGB16F, GL_RGB16F, GL_FLOAT, LLTexUnit::TAM_CLAMP);
         gEXRImage->setHasMipMaps(true);
         gEXRImage->setUseMipMaps(true);
         gEXRImage->setFilteringOption(LLTexUnit::TFO_TRILINEAR);
 
         gGL.getTexUnit(0)->bind(gEXRImage);
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGBA, GL_FLOAT, out);
-
-        LLImageGLMemory::alloc_tex_image(width, height, GL_RGB16F, 1);
 
         S32 vk_mip_count = 1;
         {
@@ -93,8 +86,6 @@ void load_exr(const std::string& filename)
         gEXRImage->syncVulkanMip0Image(GL_RGB16F, GL_RGBA, GL_FLOAT, width, height, out, false, 0, vk_mip_count);
 
         free(out); // release memory of image data
-
-        glGenerateMipmap(GL_TEXTURE_2D);
 
         if (gEXRImage->getVkImage() != VK_NULL_HANDLE && gEXRImage->getVkImageMipLevels() > 1)
         {

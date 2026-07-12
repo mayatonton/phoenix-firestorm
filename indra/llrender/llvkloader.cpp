@@ -5393,6 +5393,108 @@ bool downscaleImageVk(VkImage      src_image,
     return true;
 }
 
+bool blitCubeArrayVk(VkImage       src,
+                     VkImageLayout src_layout,
+                     U32           src_res,
+                     VkImage       dst,
+                     VkImageLayout dst_layout,
+                     U32           dst_res,
+                     U32           layer_count)
+{
+    if (src == VK_NULL_HANDLE || dst == VK_NULL_HANDLE
+        || src_res == 0 || dst_res == 0 || layer_count == 0)
+    {
+        return false;
+    }
+    if (sDevice == VK_NULL_HANDLE || sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkCommandBufferAllocateInfo cbai = {};
+    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool        = sCommandPool;
+    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    {
+        return false;
+    }
+    VkCommandBufferBeginInfo cbbi = {};
+    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &cbbi);
+
+    auto image_barrier = [&](VkImage img, VkImageLayout oldL, VkImageLayout newL,
+                             VkAccessFlags srcA, VkAccessFlags dstA,
+                             VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.image                           = img;
+        b.oldLayout                       = oldL;
+        b.newLayout                       = newL;
+        b.srcAccessMask                   = srcA;
+        b.dstAccessMask                   = dstA;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = 0;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = layer_count;
+        vkCmdPipelineBarrier(cmd, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
+    };
+
+    image_barrier(src, src_layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                  VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    image_barrier(dst, dst_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                  VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    VkImageBlit blit = {};
+    blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.srcSubresource.mipLevel       = 0;
+    blit.srcSubresource.baseArrayLayer = 0;
+    blit.srcSubresource.layerCount     = layer_count;
+    blit.srcOffsets[0]                 = { 0, 0, 0 };
+    blit.srcOffsets[1]                 = { (S32)src_res, (S32)src_res, 1 };
+    blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.dstSubresource.mipLevel       = 0;
+    blit.dstSubresource.baseArrayLayer = 0;
+    blit.dstSubresource.layerCount     = layer_count;
+    blit.dstOffsets[0]                 = { 0, 0, 0 };
+    blit.dstOffsets[1]                 = { (S32)dst_res, (S32)dst_res, 1 };
+    vkCmdBlitImage(cmd,
+                   src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1, &blit, VK_FILTER_LINEAR);
+
+    image_barrier(src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src_layout,
+                  VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    image_barrier(dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dst_layout,
+                  VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+    vkEndCommandBuffer(cmd);
+
+    VkSubmitInfo si = {};
+    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cmd;
+    if (vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE) != VK_SUCCESS)
+    {
+        vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+        return false;
+    }
+    vkQueueWaitIdle(sGraphicsQueue);
+    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+    return true;
+}
+
 bool generateMipChainInFrameVk(VkImage        image,
                                U32            base_w,
                                U32            base_h,
@@ -6176,7 +6278,7 @@ bool createCubeArrayImageVk(U32          resolution,
     ici.arrayLayers   = layer_count;
     ici.samples       = VK_SAMPLE_COUNT_1_BIT;
     ici.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    ici.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ici.usage         = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     ici.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 

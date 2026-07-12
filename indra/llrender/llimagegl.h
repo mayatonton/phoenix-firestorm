@@ -48,14 +48,6 @@ class LLWindow;
 #define BYTES_TO_MEGA_BYTES(x) ((x) >> 20)
 #define MEGA_BYTES_TO_BYTES(x) ((x) << 20)
 
-namespace LLImageGLMemory
-{
-    void alloc_tex_image(U32 width, U32 height, U32 intformat, U32 count);
-    void free_tex_image(U32 texName);
-    void free_tex_images(U32 count, const U32* texNames);
-    void free_cur_tex_image();
-}
-
 //============================================================================
 class LLImageGL : public LLRefCount
 {
@@ -130,7 +122,7 @@ public:
         S32 category = sMaxCategories-1, bool defer_copy = false, LLGLuint* tex_name = nullptr);
     bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, S32 usename = 0, bool defer_copy = false, LLGLuint* tex_name = nullptr);
     void setImage(const LLImageRaw* imageraw);
-    bool setImage(const U8* data_in, bool data_hasmips = false, S32 usename = 0);
+    bool setImage(const U8* data_in, bool data_hasmips = false);
     // *TODO: This function may not work if the textures is compressed (i.e.
     // RenderCompressTextures is 0). Partial image updates do not work on
     // compressed textures.
@@ -170,7 +162,7 @@ public:
     LLGLenum getPrimaryFormat() const { return mFormatPrimary; }
     LLGLenum getFormatType() const { return mFormatType; }
 
-    bool getHasGLTexture() const { return mTexName != 0; }
+    bool getHasGLTexture() const { return mVkImage != VK_NULL_HANDLE; }
     LLGLuint getTexName() const { return mTexName; }
 
     VkImageView getVkImageView() const { return mVkImageView; }

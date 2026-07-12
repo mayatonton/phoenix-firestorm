@@ -353,9 +353,9 @@ void LLVertexBufferData::drawWithMatrix()
         return;
     }
 
-    if (mTexName)
+    if (mImageGL)
     {
-        gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mTexName);
+        gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, 0);
         gGL.getTexUnit(0)->mCurrImageGL = mImageGL;
         gGL.getTexUnit(0)->vkNotifyShaderChannelBound();
     }
@@ -393,9 +393,9 @@ void LLVertexBufferData::draw()
         return;
     }
 
-    if (mTexName)
+    if (mImageGL)
     {
-        gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, mTexName);
+        gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, 0);
         gGL.getTexUnit(0)->mCurrImageGL = mImageGL;
         gGL.getTexUnit(0)->vkNotifyShaderChannelBound();
     }

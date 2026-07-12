@@ -1967,20 +1967,8 @@ bool LLPipeline::loadColorGradingLUT(const std::string& filename)
     }
 
     mColorGradingLUT = new LLImageGL(lut_size, lut_size, 3, false);
-    U32 lut_texname = 0;
-    LLImageGL::generateTextures(1, &lut_texname);
-    mColorGradingLUT->setTexName(lut_texname);
     mColorGradingLUT->setTarget(GL_TEXTURE_3D, LLTexUnit::TT_TEXTURE_3D);
-    gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE_3D, lut_texname);
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGB16F,
-        lut_size, lut_size, lut_size, 0, GL_RGB, GL_FLOAT, lut_data.data());
     mColorGradingLUT->syncVulkan3DImage(GL_RGB16F, GL_RGB, GL_FLOAT, lut_size, lut_size, lut_size, lut_data.data());
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE_3D);
 
     mColorGradingLUTName = filename;
     LL_INFOS("LUT") << "Loaded color grading LUT: " << path << LL_ENDL;
@@ -5657,10 +5645,6 @@ void LLPipeline::renderSnapshotGuidesOverlay()
     if (!LLViewerFetchedTexture::sWhiteImagep.isNull())
     {
         gGL.getTexUnit(0)->bind(LLViewerFetchedTexture::sWhiteImagep);
-    }
-    else
-    {
-        gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, LLTexUnit::sWhiteTexture);
     }
 
     gGL.matrixMode(LLRender::MM_PROJECTION);

@@ -43,8 +43,6 @@
 
 //#pragma optimize("", off)
 
-using namespace LLImageGLMemory;
-
 // MUST match order of OpenGL face-layers
 GLenum LLCubeMapArray::sTargets[6] =
 {
@@ -116,23 +114,11 @@ LLCubeMapArray::LLCubeMapArray(LLCubeMapArray& lhs, U32 width, U32 count) : mTex
 
     // Copy each cubemap from the incoming array to the new array
     U32 min_count = std::min(count, lhs.mCount);
-    for (U32 i = 0; i < min_count * 6; ++i)
+    if (LLVKLoader::shouldUseVulkanRender()
+        && lhs.mImage->hasVkImage() && mImage->hasVkImage())
     {
-        U32 src_resolution = lhs.mWidth;
-        U32 dst_resolution = mWidth;
-        {
-            GLint components = GL_RGB;
-            if (mImage->getComponents() == 4)
-                components = GL_RGBA;
-            // GLint format = GL_RGB; // <FS:Beq/> unused
-
-            // Handle different resolutions by scaling the image
-            LLPointer<LLImageRaw> src_image = new LLImageRaw(lhs.mWidth, lhs.mWidth, lhs.mImage->getComponents());
-            glGetTexImage(GL_TEXTURE_CUBE_MAP_ARRAY, 0, components, GL_UNSIGNED_BYTE, src_image->getData());
-
-            LLPointer<LLImageRaw> scaled_image = src_image->scaled(mWidth, mWidth);
-            glTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, 0, 0, 0, i, mWidth, mWidth, 1, components, GL_UNSIGNED_BYTE, scaled_image->getData());
-        }
+        LLVKLoader::blitCubeArrayVk(lhs.mImage->getVkImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, lhs.mWidth,
+                                    mImage->getVkImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, mWidth, min_count * 6);
     }
 }
 
@@ -158,30 +144,12 @@ void LLCubeMapArray::allocate(U32 resolution, U32 components, U32 count, bool us
     mImage->setHasMipMaps(use_mips);
 
     bind(0);
-    free_cur_tex_image();
 
     U32 format = components == 4 ? GL_RGBA16F : GL_R11F_G11F_B10F;
     if (!hdr)
     {
         format = components == 4 ? GL_RGBA8 : GL_RGB8;
     }
-    U32 mip = 0;
-    U32 mip_resolution = resolution;
-    while (mip_resolution >= 1)
-    {
-        glTexImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, mip, format, mip_resolution, mip_resolution, count * 6, 0,
-            GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-
-        if (!use_mips)
-        {
-            break;
-        }
-        mip_resolution /= 2;
-        ++mip;
-    }
-
-    alloc_tex_image(resolution, resolution, format, count * 6);
-
     mImage->setAddressMode(LLTexUnit::TAM_CLAMP);
 
     if (use_mips)

@@ -65,17 +65,15 @@ public:
         : mVB(nullptr)
         , mMode(0)
         , mCount(0)
-        , mTexName(0)
         , mImageGL(nullptr)
         , mProjection(glm::identity<glm::mat4>())
         , mModelView(glm::identity<glm::mat4>())
         , mTexture0(glm::identity<glm::mat4>())
     {}
-    LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count, U32 tex_name, LLImageGL* image_gl, const glm::mat4& model_view, const glm::mat4& projection, const glm::mat4& texture0)
+    LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count, LLImageGL* image_gl, const glm::mat4& model_view, const glm::mat4& projection, const glm::mat4& texture0)
         : mVB(buffer)
         , mMode(mode)
         , mCount(count)
-        , mTexName(tex_name)
         , mImageGL(image_gl)
         , mProjection(projection)
         , mModelView(model_view)
@@ -86,7 +84,6 @@ public:
     LLPointer<LLVertexBuffer> mVB;
     U8 mMode;
     U32 mCount;
-    U32 mTexName;
     LLImageGL* mImageGL;
     glm::mat4 mProjection;
     glm::mat4 mModelView;

@@ -126,16 +126,25 @@ void FSManipTranslateJoint::restoreGL()
 
     destroyGL();
     sGridTex = LLViewerTextureManager::getLocalTexture();
-    if (!sGridTex->createGLTexture())
+    LLImageGL* grid_imagep = sGridTex->getGLTexture();
+    if (grid_imagep == nullptr)
     {
         sGridTex = nullptr;
         return;
     }
 
-    GLuint* d = new GLuint[rez * rez];
+    U32 total_mips = 0;
+    for (U32 r = rez; r >= 1; r >>= 1)
+    {
+        ++total_mips;
+    }
 
-    gGL.getTexUnit(0)->bindManual(LLTexUnit::TT_TEXTURE, sGridTex->getTexName(), true);
-    gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_TRILINEAR);
+    grid_imagep->setUseMipMaps(true);
+    grid_imagep->setHasMipMaps(true);
+    grid_imagep->setAddressMode(LLTexUnit::TAM_WRAP);
+    grid_imagep->setFilteringOption(LLTexUnit::TFO_TRILINEAR);
+
+    GLuint* d = new GLuint[rez * rez];
 
     while (rez >= 1)
     {
@@ -228,7 +237,7 @@ void FSManipTranslateJoint::restoreGL()
                 }
             }
         }
-        LLImageGL::setManualImage(GL_TEXTURE_2D, mip, GL_RGBA, rez, rez, GL_RGBA, GL_UNSIGNED_BYTE, d);
+        grid_imagep->syncVulkanMip0Image(GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, rez, rez, d, false, (S32)mip, (S32)total_mips);
         rez = rez >> 1;
         mip++;
     }

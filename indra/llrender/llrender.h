@@ -64,7 +64,6 @@ class LLTexUnit
 {
     friend class LLRender;
 public:
-    static U32 sWhiteTexture;
 
     typedef enum
     {
@@ -171,7 +170,7 @@ public:
 
     // Binds the LLImageGL to this texture unit
     // (automatically enables the unit for the LLImageGL's texture type)
-    bool bind(LLImageGL* texture, bool for_rendering = false, bool forceBind = false, S32 usename = 0);
+    bool bind(LLImageGL* texture, bool for_rendering = false, bool forceBind = false);
     bool bind(LLTexture* texture, bool for_rendering = false, bool forceBind = false);
 
     // bind implementation for inner loops
@@ -220,8 +219,6 @@ public:
 
     static U32 getInternalType(eTextureType type);
 
-    U32 getCurrTexture(void) { return mCurrTexture; }
-
     eTextureType getCurrType(void) { return mCurrTexType; }
 
     void setHasMipMaps(bool hasMips) { mHasMipMaps = hasMips; }
@@ -250,7 +247,6 @@ protected:
     friend class LLRender;
 
     S32                 mIndex;
-    U32                 mCurrTexture;
     eTextureType        mCurrTexType;
     bool                mHasMipMaps;
 

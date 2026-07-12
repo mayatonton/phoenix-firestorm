@@ -1210,6 +1210,14 @@ namespace LLVKLoader
                                           U32           height,
                                           U32           src_y = 0);
 
+    bool blitCubeArrayVk(VkImage       src,
+                         VkImageLayout src_layout,
+                         U32           src_res,
+                         VkImage       dst,
+                         VkImageLayout dst_layout,
+                         U32           dst_res,
+                         U32           layer_count);
+
     bool copyColorImageRegionToImage2DVk(VkImage       src_image,
                                          VkImageLayout src_layout,
                                          S32           src_x,

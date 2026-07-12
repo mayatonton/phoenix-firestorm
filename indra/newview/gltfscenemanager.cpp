@@ -890,7 +890,6 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
             if (tex)
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gl bind texture");
-                glBindTexture(GL_TEXTURE_2D, tex->getTexName());
                 mirrorVkTexBinding(tex);
 
                 if (channel != -1 && texture.mSampler != -1)
@@ -912,13 +911,11 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
             }
             else
             {
-                glBindTexture(GL_TEXTURE_2D, fallback->getTexName());
                 mirrorVkTexBinding(fallback);
             }
         }
         else
         {
-            glBindTexture(GL_TEXTURE_2D, fallback->getTexName());
             mirrorVkTexBinding(fallback);
         }
     }

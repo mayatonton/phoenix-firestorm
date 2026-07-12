@@ -173,14 +173,6 @@ void display_startup()
 
     gPipeline.updateGL();
 
-    // Written as branch to appease GCC which doesn't like different
-    // pointer types across ternary ops
-    //
-    if (!LLViewerFetchedTexture::sWhiteImagep.isNull())
-    {
-    LLTexUnit::sWhiteTexture = LLViewerFetchedTexture::sWhiteImagep->getTexName();
-    }
-
     LLGLSDefault gls_default;
 
     // Required for HTML update in login screen
@@ -883,7 +875,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLDrawable::incrementVisible();
 
         LLSpatialGroup::sNoDelete = true;
-        LLTexUnit::sWhiteTexture = LLViewerFetchedTexture::sWhiteImagep->getTexName();
 
         S32 occlusion = LLPipeline::sUseOcclusion;
         if (gDepthDirty)
