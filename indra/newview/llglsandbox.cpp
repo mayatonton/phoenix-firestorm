@@ -65,6 +65,8 @@
 #include "pipeline.h"
 #include "llspatialpartition.h"
 #include "llviewershadermgr.h"
+#include "llviewertexture.h"
+#include "llimage.h"
 // [RLVa:KB] - Checked: 2010-04-11 (RLVa-1.2.0e)
 #include "rlvactions.h"
 #include "rlvhandler.h"
@@ -927,72 +929,7 @@ void LLSky::renderSunMoonBeacons(const LLVector3& pos_agent, const LLVector3& di
 
 }
 
-//-----------------------------------------------------------------------------
-// gpu_benchmark() helper classes
-//-----------------------------------------------------------------------------
-
-// This helper class is used to ensure that each generateTextures() call
-// is matched by a corresponding deleteTextures() call. It also handles
-// the bindManual() calls using those textures.
-class TextureHolder
-{
-public:
-    TextureHolder(U32 unit, U32 size) :
-        texUnit(gGL.getTexUnit(unit)),
-        source(size)            // preallocate vector
-    {
-        // takes (count, pointer)
-        // &vector[0] gets pointer to contiguous array
-        LLImageGL::generateTextures(static_cast<S32>(source.size()), &source[0]);
-    }
-
-    ~TextureHolder()
-    {
-        // unbind
-        if (texUnit)
-        {
-                texUnit->unbind(LLTexUnit::TT_TEXTURE);
-        }
-        // ensure that we delete these textures regardless of how we exit
-        LLImageGL::deleteTextures(static_cast<S32>(source.size()), &source[0]);
-    }
-
-    bool bind(U32 index)
-    {
-        if (texUnit) // should always be there with dummy (-1), but just in case
-        {
-            return texUnit->bindManual(LLTexUnit::TT_TEXTURE, source[index]);
-        }
-        return false;
-    }
-
-private:
-    // capture which LLTexUnit we're going to use
-    LLTexUnit* texUnit;
-
-    // use std::vector for implicit resource management
-    std::vector<U32> source;
-};
-
-class ShaderBinder
-{
-public:
-    ShaderBinder(LLGLSLShader& shader) :
-        mShader(shader)
-    {
-        mShader.bind();
-    }
-    ~ShaderBinder()
-    {
-        mShader.unbind();
-    }
-
-private:
-    LLGLSLShader& mShader;
-};
-
-
-F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, TextureHolder & texHolder, U32 textures_count, LLVertexBuffer * buff, F32 &seconds)
+F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, std::vector<LLPointer<LLViewerTexture> > & textures, LLVertexBuffer * buff, F32 &seconds)
 {
     // run GPU timer benchmark
 
@@ -1022,9 +959,9 @@ F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, TextureHolder & t
     gBenchmarkProgram.bind();
     for (S32 c = 0; c < samples; ++c)
     {
-        for (U32 i = 0; i < textures_count; ++i)
+        for (U32 i = 0; i < textures.size(); ++i)
         {
-            texHolder.bind(i);
+            gBenchmarkProgram.bindTexture(LLShaderMgr::DIFFUSE_MAP, textures[i]);
             buff->setBuffer();
             buff->drawArrays(LLRender::TRIANGLES, 0, 3);
         }
@@ -1064,7 +1001,7 @@ F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, TextureHolder & t
     seconds = (F32)(elapsed_ns / 1000000000.0);
 
     F64 pixels_per_draw = (F64)dest[0].getWidth() * (F64)dest[0].getHeight();
-    F64 samples_drawn   = pixels_per_draw * (F64)samples * (F64)textures_count;
+    F64 samples_drawn   = pixels_per_draw * (F64)samples * (F64)textures.size();
     F64 gpixels_drawn   = samples_drawn / 1000000000.0;
     F32 samples_sec     = (F32)(gpixels_drawn / seconds);
     return samples_sec * 4;
@@ -1095,6 +1032,10 @@ F32 gpu_benchmark()
         {
             return -1.f;
         }
+        if (gBenchmarkProgram.isComplete() && LLVKLoader::isVulkanInitialized())
+        {
+            gBenchmarkProgram.createVkPipeline(0);
+        }
     }
 
     LLGLDisable blend(GL_BLEND);
@@ -1115,11 +1056,12 @@ F32 gpu_benchmark()
     const F32 time_limit = 30.f;
 
     std::vector<LLRenderTarget> dest(count);
-    TextureHolder texHolder(0, count);
+    std::vector<LLPointer<LLViewerTexture> > textures;
     std::vector<F32> results;
 
     //build a random texture
-    U8* pixels = new U8[res*res*4];
+    LLPointer<LLImageRaw> raw = new LLImageRaw(res, res, 4);
+    U8* pixels = raw->getData();
 
     for (U32 i = 0; i < res*res*4; ++i)
     {
@@ -1138,36 +1080,30 @@ F32 gpu_benchmark()
         {
             LL_WARNS("Benchmark") << "Failed to allocate render target." << LL_ENDL;
             // abandon the benchmark test
-            delete[] pixels;
             return -1.f;
         }
         dest[i].bindTarget();
         dest[i].clear();
         dest[i].flush();
 
-        if (!texHolder.bind(i))
+        LLPointer<LLViewerTexture> tex = LLViewerTextureManager::getLocalTexture(raw.get(), false);
+        if (tex.isNull() || tex->getGLTexture() == nullptr || !tex->getGLTexture()->hasVkImage())
         {
-            // can use a dummy value mDummyTexUnit = new LLTexUnit(-1);
-            LL_WARNS("Benchmark") << "Failed to bind tex unit." << LL_ENDL;
+            LL_WARNS("Benchmark") << "Failed to allocate benchmark texture." << LL_ENDL;
             // abandon the benchmark test
-            delete[] pixels;
             return -1.f;
         }
-        LLImageGL::setManualImage(GL_TEXTURE_2D, 0, GL_RGBA, res,res,GL_RGBA, GL_UNSIGNED_BYTE, pixels);
         // disable mipmaps and use point filtering to cause cache misses
-        gGL.getTexUnit(0)->setHasMipMaps(false);
-        gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_POINT);
+        tex->setFilteringOption(LLTexUnit::TFO_POINT);
+        textures.push_back(tex);
 
         if (alloc_timer.getElapsedTimeF32() > time_limit)
         {
             // abandon the benchmark test
             LL_WARNS("Benchmark") << "Allocation operation took longer then 30 seconds, stopping." << LL_ENDL;
-            delete[] pixels;
             return -1.f;
         }
     }
-
-    delete [] pixels;
 
     //make a dummy triangle to draw with
     LLPointer<LLVertexBuffer> buff = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX);
@@ -1202,13 +1138,19 @@ F32 gpu_benchmark()
 
     // run GPU timer benchmark twice
     F32 seconds = 0;
-    F32 gbps = shader_timer_benchmark(dest, texHolder, count, buff.get(), seconds);
+    F32 gbps = shader_timer_benchmark(dest, textures, buff.get(), seconds);
 
-    LL_INFOS("Benchmark") << "Memory bandwidth, 1st run is " << llformat("%.3f", gbps) << " GB/sec according to ARB_timer_query, total time " << seconds << " seconds" << LL_ENDL;
+    LL_INFOS("Benchmark") << "Memory bandwidth, 1st run is " << llformat("%.3f", gbps) << " GB/sec according to VK timestamp, total time " << seconds << " seconds" << LL_ENDL;
 
-    gbps = shader_timer_benchmark(dest, texHolder, count, buff.get(), seconds);
+    gbps = shader_timer_benchmark(dest, textures, buff.get(), seconds);
 
-    LL_INFOS("Benchmark") << "Memory bandwidth, final run is " << llformat("%.3f", gbps) << " GB/sec according to ARB_timer_query, total time " << seconds << " seconds" << LL_ENDL;
+    LL_INFOS("Benchmark") << "Memory bandwidth, final run is " << llformat("%.3f", gbps) << " GB/sec according to VK timestamp, total time " << seconds << " seconds" << LL_ENDL;
+
+    S32 diffuse_channel = gBenchmarkProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
+    if (diffuse_channel >= 0)
+    {
+        gGL.getTexUnit(diffuse_channel)->unbind(LLTexUnit::TT_TEXTURE);
+    }
 
     return gbps;
 }

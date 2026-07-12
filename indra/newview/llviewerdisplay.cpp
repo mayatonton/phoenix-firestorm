@@ -172,6 +172,8 @@ void display_startup()
 
     gPipeline.updateGL();
 
+    bool vk_began_frame = LLVKLoader::isVulkanInitialized() && LLVKLoader::beginFrame();
+
     LLGLSDefault gls_default;
 
     // Required for HTML update in login screen
@@ -206,6 +208,11 @@ void display_startup()
 
     if (gViewerWindow && gViewerWindow->getWindow())
     gViewerWindow->getWindow()->swapBuffers();
+
+    if (vk_began_frame)
+    {
+        LLVKLoader::endFrame();
+    }
 
     glClear(GL_DEPTH_BUFFER_BIT);
 }
