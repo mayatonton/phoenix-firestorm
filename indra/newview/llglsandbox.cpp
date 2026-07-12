@@ -931,21 +931,6 @@ void LLSky::renderSunMoonBeacons(const LLVector3& pos_agent, const LLVector3& di
 // gpu_benchmark() helper classes
 //-----------------------------------------------------------------------------
 
-// This struct is used to ensure that once we call initProfile(), it will
-// definitely be matched by a corresponding call to finishProfile(). It's
-// a struct rather than a class simply because every member is public.
-struct ShaderProfileHelper
-{
-    ShaderProfileHelper()
-    {
-        LLGLSLShader::initProfile();
-    }
-    ~ShaderProfileHelper()
-    {
-        LLGLSLShader::finishProfile();
-    }
-};
-
 // This helper class is used to ensure that each generateTextures() call
 // is matched by a corresponding deleteTextures() call. It also handles
 // the bindManual() calls using those textures.
@@ -1014,30 +999,75 @@ F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, TextureHolder & t
     //number of samples to take
     const S32 samples = 64;
 
+    uint32_t ts = 0;
+    bool have_ts = LLVKLoader::isTimestampSupportedVk();
+
+    LLVKLoader::beginOffscreenFrameVk();
+
+    if (have_ts)
     {
-        ShaderProfileHelper initProfile;
-        dest[0].bindTarget();
-        gBenchmarkProgram.bind();
-        for (S32 c = 0; c < samples; ++c)
+        ts = LLVKLoader::acquireTimestampPairVk();
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (ts != 0 && cmd != VK_NULL_HANDLE)
         {
-            for (U32 i = 0; i < textures_count; ++i)
-            {
-                texHolder.bind(i);
-                buff->setBuffer();
-                buff->drawArrays(LLRender::TRIANGLES, 0, 3);
-            }
+            LLVKLoader::cmdWriteTimestampBeginVk(cmd, ts);
         }
-        gBenchmarkProgram.unbind();
-        dest[0].flush();
+        else
+        {
+            have_ts = false;
+        }
     }
 
-    F32 ms = gBenchmarkProgram.mTimeElapsed / 1000000.f;
-    seconds = ms / 1000.f;
+    dest[0].bindTarget();
+    gBenchmarkProgram.bind();
+    for (S32 c = 0; c < samples; ++c)
+    {
+        for (U32 i = 0; i < textures_count; ++i)
+        {
+            texHolder.bind(i);
+            buff->setBuffer();
+            buff->drawArrays(LLRender::TRIANGLES, 0, 3);
+        }
+    }
+    gBenchmarkProgram.unbind();
+    dest[0].flush();
 
-    F64 samples_drawn = (F64)gBenchmarkProgram.mSamplesDrawn;
-    F64 gpixels_drawn = samples_drawn / 1000000000.0;
-    F32 samples_sec = (F32)(gpixels_drawn / seconds);
-    return samples_sec * 4;  // 4 bytes per sample
+    if (have_ts)
+    {
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            LLVKLoader::cmdWriteTimestampEndVk(cmd, ts);
+        }
+    }
+
+    LLVKLoader::endOffscreenFrameVk();
+
+    F64 elapsed_ns = 0.0;
+    if (ts != 0)
+    {
+        bool avail = false;
+        uint64_t ns = 0;
+        LLVKLoader::getTimestampElapsedNsVk(ts, avail, ns);
+        if (avail)
+        {
+            elapsed_ns = (F64)ns;
+        }
+        LLVKLoader::releaseTimestampPairVk(ts);
+    }
+
+    if (elapsed_ns <= 0.0)
+    {
+        return -1.f;
+    }
+
+    seconds = (F32)(elapsed_ns / 1000000000.0);
+
+    F64 pixels_per_draw = (F64)dest[0].getWidth() * (F64)dest[0].getHeight();
+    F64 samples_drawn   = pixels_per_draw * (F64)samples * (F64)textures_count;
+    F64 gpixels_drawn   = samples_drawn / 1000000000.0;
+    F32 samples_sec     = (F32)(gpixels_drawn / seconds);
+    return samples_sec * 4;
 }
 
 //-----------------------------------------------------------------------------
@@ -1046,8 +1076,6 @@ F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, TextureHolder & t
 //-----------------------------------------------------------------------------
 F32 gpu_benchmark()
 {
-    LLVKLoader::VkRenderSuspendScope vk_render_suspend;
-
     if (gGLManager.mGLVersion < 3.3f)
     { // don't bother benchmarking venerable drivers which don't support accurate timing anyway
         return -1.f;
