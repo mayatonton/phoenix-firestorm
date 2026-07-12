@@ -4678,7 +4678,6 @@ bool LLModelPreview::render()
 
                     // Zero this variable for an obligatory buffer initialization
                     // See https://github.com/secondlife/viewer/issues/912
-                    LLVertexBuffer::sGLRenderBuffer = 0;
                     LLVertexBuffer* buffer = mVertexBuffer[mPreviewLOD][model][i];
                     buffer->setBuffer();
                     buffer->drawRange(LLRender::TRIANGLES, 0, buffer->getNumVerts() - 1, buffer->getNumIndices(), 0);
@@ -4815,7 +4814,6 @@ bool LLModelPreview::render()
 
                                     // Zero this variable for an obligatory buffer initialization
                                     // See https://github.com/secondlife/viewer/issues/912
-                                    LLVertexBuffer::sGLRenderBuffer = 0;
                                     LLVertexBuffer* buffer = mVertexBuffer[LLModel::LOD_PHYSICS][model][i];
                                     buffer->setBuffer();
                                     buffer->drawRange(LLRender::TRIANGLES, 0, buffer->getNumVerts() - 1, buffer->getNumIndices(), 0);
@@ -4887,7 +4885,6 @@ bool LLModelPreview::render()
                                     {
                                         // Zero this variable for an obligatory buffer initialization
                                         // See https://github.com/secondlife/viewer/issues/912
-                                        LLVertexBuffer::sGLRenderBuffer = 0;
                                         LLVertexBuffer* buffer = mVertexBuffer[LLModel::LOD_PHYSICS][model][v];
                                         buffer->setBuffer();
                                         LLStrider<LLVector3> pos_strider;
@@ -5040,7 +5037,6 @@ bool LLModelPreview::render()
 
                             // Zero this variable for an obligatory buffer initialization
                             // See https://github.com/secondlife/viewer/issues/912
-                            LLVertexBuffer::sGLRenderBuffer = 0;
                             LLVertexBuffer* buffer = mVertexBuffer[mPreviewLOD][model][i];
                             buffer->setBuffer();
                             buffer->draw(LLRender::TRIANGLES, buffer->getNumIndices(), 0);

@@ -77,253 +77,8 @@ struct CompareMappedRegion
     }
 };
 
-#define ENABLE_GL_WORK_QUEUE 0
-
-#if ENABLE_GL_WORK_QUEUE
-
-#define THREAD_COUNT 1
-
-//============================================================================
-
-// High performance WorkQueue for usage in real-time rendering work
-class GLWorkQueue
-{
-public:
-    using Work = std::function<void()>;
-
-    GLWorkQueue();
-
-    void post(const Work& value);
-
-    size_t size();
-
-    bool done();
-
-    // Get the next element from the queue
-    Work pop();
-
-    void runOne();
-
-    bool runPending();
-
-    void runUntilClose();
-
-    void close();
-
-    bool isClosed();
-
-    void syncGL();
-
-private:
-    std::mutex mMutex;
-    std::condition_variable mCondition;
-    std::queue<Work> mQueue;
-    bool mClosed = false;
-};
-
-GLWorkQueue::GLWorkQueue()
-{
-
-}
-
-void GLWorkQueue::syncGL()
-{
-    /*if (mSync)
-    {
-        std::lock_guard<std::mutex> lock(mMutex);
-        glWaitSync(mSync, 0, GL_TIMEOUT_IGNORED);
-        mSync = 0;
-    }*/
-}
-
-size_t GLWorkQueue::size()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-    std::lock_guard<std::mutex> lock(mMutex);
-    return mQueue.size();
-}
-
-bool GLWorkQueue::done()
-{
-    return size() == 0 && isClosed();
-}
-
-void GLWorkQueue::post(const GLWorkQueue::Work& value)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-    {
-        std::lock_guard<std::mutex> lock(mMutex);
-        mQueue.push(std::move(value));
-    }
-
-    mCondition.notify_one();
-}
-
-// Get the next element from the queue
-GLWorkQueue::Work GLWorkQueue::pop()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-    // Lock the mutex
-    {
-        std::unique_lock<std::mutex> lock(mMutex);
-
-        // Wait for a new element to become available or for the queue to close
-        {
-            mCondition.wait(lock, [=] { return !mQueue.empty() || mClosed; });
-        }
-    }
-
-    Work ret;
-
-    {
-        std::lock_guard<std::mutex> lock(mMutex);
-
-        // Get the next element from the queue
-        if (mQueue.size() > 0)
-        {
-            ret = mQueue.front();
-            mQueue.pop();
-        }
-        else
-        {
-            ret = []() {};
-        }
-    }
-
-    return ret;
-}
-
-void GLWorkQueue::runOne()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-    Work w = pop();
-    w();
-    //mSync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-}
-
-void GLWorkQueue::runUntilClose()
-{
-    while (!isClosed())
-    {
-        runOne();
-    }
-}
-
-void GLWorkQueue::close()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-    {
-        std::lock_guard<std::mutex> lock(mMutex);
-        mClosed = true;
-    }
-
-    mCondition.notify_all();
-}
-
-bool GLWorkQueue::isClosed()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_THREAD;
-    std::lock_guard<std::mutex> lock(mMutex);
-    return mClosed;
-}
-
-#include "llwindow.h"
-
-class LLGLWorkerThread : public LLThread
-{
-public:
-    LLGLWorkerThread(const std::string& name, GLWorkQueue* queue, LLWindow* window)
-        : LLThread(name)
-    {
-        mWindow = window;
-        mContext = mWindow->createSharedContext();
-        mQueue = queue;
-    }
-
-    void run() override
-    {
-        mWindow->makeContextCurrent(mContext);
-        gGL.init(false);
-        LL_PROFILER_GPU_CONTEXT_NS("LLGLWorker Context", 18);
-        mQueue->runUntilClose();
-        gGL.shutdown();
-        mWindow->destroySharedContext(mContext);
-    }
-
-    GLWorkQueue* mQueue;
-    LLWindow* mWindow;
-    void* mContext = nullptr;
-};
-
-
-static LLGLWorkerThread* sVBOThread[THREAD_COUNT];
-static GLWorkQueue* sQueue = nullptr;
-
-#endif
-
 //============================================================================
 // Pool of reusable VertexBuffer state
-
-// batch calls to glGenBuffers
-static GLuint gen_buffer()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-
-    GLuint ret = 0;
-    constexpr U32 pool_size = 4096;
-
-    thread_local static GLuint sNamePool[pool_size];
-    thread_local static U32 sIndex = 0;
-
-    if (sIndex == 0)
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("gen buffer");
-        sIndex = pool_size;
-#if !LL_DARWIN
-        if (!gGLManager.mIsAMD)
-        {
-            glGenBuffers(pool_size, sNamePool);
-        }
-        else
-#endif
-        { // work around for AMD driver bug
-            for (U32 i = 0; i < pool_size; ++i)
-            {
-                glGenBuffers(1, sNamePool + i);
-            }
-        }
-    }
-
-    ret = sNamePool[--sIndex];
-    return ret;
-}
-
-static void delete_buffers(S32 count, GLuint* buffers)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-    // wait a few frames before actually deleting the buffers to avoid
-    // synchronization issues with the GPU
-    static std::vector<GLuint> sFreeList[4];
-
-    if (gGLManager.mInited)
-    {
-        U32 idx = LLImageGL::sFrameCount % 4;
-
-        for (S32 i = 0; i < count; ++i)
-        {
-            sFreeList[idx].push_back(buffers[i]);
-        }
-
-        idx = (LLImageGL::sFrameCount + 3) % 4;
-
-        if (!sFreeList[idx].empty())
-        {
-            glDeleteBuffers((GLsizei)sFreeList[idx].size(), sFreeList[idx].data());
-            sFreeList[idx].resize(0);
-        }
-    }
-}
-
 
 #define ANALYZE_VBO_POOL 0
 
@@ -332,8 +87,8 @@ class LLVBOPool
 {
     public:
     virtual ~LLVBOPool() = default;
-    virtual void allocate(GLenum type, U32 size, GLuint& name, U8*& data) = 0;
-    virtual void free(GLenum type, U32 size, GLuint name, U8* data) = 0;
+    virtual void allocate(GLenum type, U32 size, U8*& data) = 0;
+    virtual void free(GLenum type, U32 size, U8* data) = 0;
     virtual U64 getVramBytesUsed() = 0;
 };
 
@@ -349,12 +104,11 @@ public:
         return mAllocated;
     }
 
-    void allocate(GLenum type, U32 size, GLuint& name, U8*& data) override
+    void allocate(GLenum type, U32 size, U8*& data) override
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         STOP_GLERROR;
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
-        llassert(name == 0); // non zero name indicates a gl name that wasn't freed
         llassert(data == nullptr);  // non null data indicates a buffer that wasn't freed
         llassert(size >= 2);  // any buffer size smaller than a single index is nonsensical
 
@@ -369,7 +123,7 @@ public:
         }
     }
 
-    void free(GLenum type, U32 size, GLuint name, U8* data) override
+    void free(GLenum type, U32 size, U8* data) override
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
@@ -382,11 +136,6 @@ public:
 
         mAllocated -= size;
         STOP_GLERROR;
-        if (name)
-        {
-            delete_buffers(1, &name);
-        }
-        STOP_GLERROR;
     }
 };
 
@@ -398,7 +147,6 @@ public:
     struct Entry
     {
         U8* mData;
-        GLuint mGLName;
         Time mAge;
     };
 
@@ -436,11 +184,10 @@ public:
         size += block_size - (size % block_size);
     }
 
-    void allocate(GLenum type, U32 size, GLuint& name, U8*& data) override
+    void allocate(GLenum type, U32 size, U8*& data) override
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
-        llassert(name == 0); // non zero name indicates a gl name that wasn't freed
         llassert(data == nullptr);  // non null data indicates a buffer that wasn't freed
         llassert(size >= 2);  // any buffer size smaller than a single index is nonsensical
 
@@ -457,17 +204,6 @@ public:
             LL_PROFILE_GPU_ZONE("vbo alloc");
 
             mMisses++;
-            name = gen_buffer();
-            glBindBuffer(type, name);
-            glBufferData(type, size, nullptr, GL_DYNAMIC_DRAW);
-            if (type == GL_ELEMENT_ARRAY_BUFFER)
-            {
-                LLVertexBuffer::sGLRenderIndices = name;
-            }
-            else
-            {
-                LLVertexBuffer::sGLRenderBuffer = name;
-            }
 
             data = (U8*)ll_aligned_malloc_16(size);
         }
@@ -479,7 +215,6 @@ public:
 
             std::list<Entry>& entries = iter->second;
             Entry& entry = entries.back();
-            name = entry.mGLName;
             data = entry.mData;
 
             entries.pop_back();
@@ -492,12 +227,11 @@ public:
         clean();
     }
 
-    void free(GLenum type, U32 size, GLuint name, U8* data) override
+    void free(GLenum type, U32 size, U8* data) override
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
         llassert(size >= 2);
-        llassert(name != 0);
         llassert(data != nullptr);
 
         clean();
@@ -516,12 +250,12 @@ public:
         if (iter == pool.end())
         {
             std::list<Entry> newlist;
-            newlist.push_front({ data, name, std::chrono::steady_clock::now() });
+            newlist.push_front({ data, std::chrono::steady_clock::now() });
             pool[size] = newlist;
         }
         else
         {
-            iter->second.push_front({ data, name, std::chrono::steady_clock::now() });
+            iter->second.push_front({ data, std::chrono::steady_clock::now() });
         }
 
     }
@@ -555,7 +289,6 @@ public:
                     LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vbo cache timeout");
                     auto& entry = entries.back();
                     ll_aligned_free_16(entry.mData);
-                    delete_buffers(1, &entry.mGLName);
                     llassert(mReserved >= iter->first);
                     mReserved -= iter->first;
                     entries.pop_back();
@@ -591,7 +324,6 @@ public:
             for (auto& entry : entries.second)
             {
                 ll_aligned_free_16(entry.mData);
-                delete_buffers(1, &entry.mGLName);
             }
         }
 
@@ -600,7 +332,6 @@ public:
             for (auto& entry : entries.second)
             {
                 ll_aligned_free_16(entry.mData);
-                delete_buffers(1, &entry.mGLName);
             }
         }
 
@@ -688,8 +419,6 @@ U64 LLVertexBuffer::getBytesAllocated()
 //============================================================================
 //
 //static
-U32 LLVertexBuffer::sGLRenderBuffer = 0;
-U32 LLVertexBuffer::sGLRenderIndices = 0;
 U32 LLVertexBuffer::sVertexCount = 0;
 
 
@@ -876,7 +605,6 @@ bool LLVertexBuffer::validateRange(U32 start, U32 end, U32 count, U32 indices_of
 
 #if LL_PROFILER_ENABLE_RENDER_DOC
 void LLVertexBuffer::setLabel(const char* label) {
-    LL_LABEL_OBJECT_GL(GL_BUFFER, mGLBuffer, strlen(label), label);
 }
 #endif
 
@@ -895,8 +623,6 @@ void LLVertexBuffer::clone(LLVertexBuffer& target) const
 void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
     llassert(validateRange(start, end, count, indices_offset));
-    llassert(mGLBuffer == sGLRenderBuffer);
-    llassert(mGLIndices == sGLRenderIndices);
     gGL.syncMatrices();
     STOP_GLERROR;
     bool vk_fired = false;
@@ -1075,8 +801,6 @@ void LLVertexBuffer::draw(U32 mode, U32 count, U32 indices_offset) const
 void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 {
     llassert(first + count <= mNumVerts);
-    llassert(mGLBuffer == sGLRenderBuffer);
-    llassert(mGLIndices == sGLRenderIndices);
 
     gGL.syncMatrices();
     STOP_GLERROR;
@@ -1194,27 +918,12 @@ void LLVertexBuffer::initClass(LLWindow* window)
         LL_INFOS() << "VBO Pooling Enabled" << LL_ENDL;
         sVBOPool = new LLDefaultVBOPool();
     }
-
-#if ENABLE_GL_WORK_QUEUE
-    sQueue = new GLWorkQueue();
-
-    for (int i = 0; i < THREAD_COUNT; ++i)
-    {
-        sVBOThread[i] = new LLGLWorkerThread("VBO Worker", sQueue, window);
-        sVBOThread[i]->start();
-    }
-#endif
 }
 
 //static
 void LLVertexBuffer::unbind()
 {
     STOP_GLERROR;
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    STOP_GLERROR;
-    sGLRenderBuffer = 0;
-    sGLRenderIndices = 0;
 }
 
 //static
@@ -1224,19 +933,6 @@ void LLVertexBuffer::cleanupClass()
 
     delete sVBOPool;
     sVBOPool = nullptr;
-
-#if ENABLE_GL_WORK_QUEUE
-    sQueue->close();
-    for (int i = 0; i < THREAD_COUNT; ++i)
-    {
-        sVBOThread[i]->shutdown();
-        delete sVBOThread[i];
-        sVBOThread[i] = nullptr;
-    }
-
-    delete sQueue;
-    sQueue = nullptr;
-#endif
 }
 
 //----------------------------------------------------------------------------
@@ -1342,11 +1038,10 @@ void LLVertexBuffer::genBuffer(U32 size)
     if (sVBOPool)
     {
         llassert(mSize == 0);
-        llassert(mGLBuffer == 0);
         llassert(mMappedData == nullptr);
 
         mSize = size;
-        sVBOPool->allocate(GL_ARRAY_BUFFER, mSize, mGLBuffer, mMappedData);
+        sVBOPool->allocate(GL_ARRAY_BUFFER, mSize, mMappedData);
     }
 
     if (mSize > 0 && mVkVertexBuffer == VK_NULL_HANDLE)
@@ -1363,10 +1058,9 @@ void LLVertexBuffer::genIndices(U32 size)
     if (sVBOPool)
     {
         llassert(mIndicesSize == 0);
-        llassert(mGLIndices == 0);
         llassert(mMappedIndexData == nullptr);
         mIndicesSize = size;
-        sVBOPool->allocate(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mGLIndices, mMappedIndexData);
+        sVBOPool->allocate(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData);
     }
 
     if (mIndicesSize > 0 && mVkIndexBuffer == VK_NULL_HANDLE)
@@ -1377,7 +1071,7 @@ void LLVertexBuffer::genIndices(U32 size)
 
 bool LLVertexBuffer::createGLBuffer(U32 size)
 {
-    if (mGLBuffer || mMappedData)
+    if (mMappedData)
     {
         destroyGLBuffer();
     }
@@ -1400,7 +1094,7 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
 
 bool LLVertexBuffer::createGLIndices(U32 size)
 {
-    if (mGLIndices)
+    if (mMappedIndexData)
     {
         destroyGLIndices();
     }
@@ -1423,17 +1117,16 @@ bool LLVertexBuffer::createGLIndices(U32 size)
 
 void LLVertexBuffer::destroyGLBuffer()
 {
-    if (mGLBuffer || mMappedData)
+    if (mMappedData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         //llassert(sVBOPool);
         if (sVBOPool)
         {
-            sVBOPool->free(GL_ARRAY_BUFFER, mSize, mGLBuffer, mMappedData);
+            sVBOPool->free(GL_ARRAY_BUFFER, mSize, mMappedData);
         }
 
         mSize = 0;
-        mGLBuffer = 0;
         mMappedData = nullptr;
     }
 
@@ -1448,17 +1141,16 @@ void LLVertexBuffer::destroyGLBuffer()
 
 void LLVertexBuffer::destroyGLIndices()
 {
-    if (mGLIndices || mMappedIndexData)
+    if (mMappedIndexData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
         //llassert(sVBOPool);
         if (sVBOPool)
         {
-            sVBOPool->free(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mGLIndices, mMappedIndexData);
+            sVBOPool->free(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData);
         }
 
         mIndicesSize = 0;
-        mGLIndices = 0;
         mMappedIndexData = nullptr;
     }
 
@@ -1618,7 +1310,6 @@ U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32 count)
 }
 
 // flush the given byte range
-//  target -- "target" parameter for glBufferSubData
 //  start -- first byte to copy
 //  end -- last byte to copy (NOT last byte + 1)
 //  data -- data to be flushed
@@ -1637,27 +1328,8 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
     }
     else
     {
-        llassert(target == GL_ARRAY_BUFFER ? sGLRenderBuffer == mGLBuffer : sGLRenderIndices == mGLIndices);
-
-        // skip mapped data and stream to GPU via glBufferSubData
         if (end != 0)
         {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("glBufferSubData");
-            LL_PROFILE_ZONE_NUM(start);
-            LL_PROFILE_ZONE_NUM(end);
-            LL_PROFILE_ZONE_NUM(end-start);
-
-            constexpr U32 block_size = 65536;
-
-            for (U32 i = start; i <= end; i += block_size)
-            {
-                //LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("glBufferSubData block");
-                //LL_PROFILE_GPU_ZONE("glBufferSubData");
-                U32 tend = llmin(i + block_size, end);
-                U32 size = tend - i + 1;
-                glBufferSubData(target, i, size, (U8*) data + (i-start));
-            }
-
             if (target == GL_ARRAY_BUFFER && mVkVertexMapped != nullptr)
             {
                 std::memcpy((U8*)mVkVertexMapped + start, data, end - start + 1);
@@ -1705,47 +1377,19 @@ void LLVertexBuffer::_unmapBuffer()
         STOP_GLERROR;
         if (mMappedData)
         {
-            if (mGLBuffer)
-            {
-                delete_buffers(1, &mGLBuffer);
-            }
-            mGLBuffer = gen_buffer();
-            glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-            sGLRenderBuffer = mGLBuffer;
-            glBufferData(GL_ARRAY_BUFFER, mSize, mMappedData, GL_STATIC_DRAW);
             if (LLVKLoader::shouldUseVulkanRender() && mVkVertexMapped != nullptr)
             {
                 std::memcpy(mVkVertexMapped, mMappedData, mSize);
             }
         }
-        else if (mGLBuffer != sGLRenderBuffer)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-            sGLRenderBuffer = mGLBuffer;
-        }
         STOP_GLERROR;
 
         if (mMappedIndexData)
         {
-            if (mGLIndices)
-            {
-                delete_buffers(1, &mGLIndices);
-            }
-
-            mGLIndices = gen_buffer();
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-            sGLRenderIndices = mGLIndices;
-
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData, GL_STATIC_DRAW);
             if (LLVKLoader::shouldUseVulkanRender() && mVkIndexMapped != nullptr)
             {
                 std::memcpy(mVkIndexMapped, mMappedIndexData, mIndicesSize);
             }
-        }
-        else if (mGLIndices != sGLRenderIndices)
-        {
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-            sGLRenderIndices = mGLIndices;
         }
         STOP_GLERROR;
     }
@@ -1754,12 +1398,6 @@ void LLVertexBuffer::_unmapBuffer()
         if (!mMappedVertexRegions.empty())
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("unmapBuffer - vertex");
-
-            if (sGLRenderBuffer != mGLBuffer)
-            {
-                glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-                sGLRenderBuffer = mGLBuffer;
-            }
 
             U32 start = 0;
             U32 end = 0;
@@ -1789,11 +1427,6 @@ void LLVertexBuffer::_unmapBuffer()
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("unmapBuffer - index");
 
-            if (mGLIndices != sGLRenderIndices)
-            {
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-                sGLRenderIndices = mGLIndices;
-            }
             U32 start = 0;
             U32 end = 0;
 

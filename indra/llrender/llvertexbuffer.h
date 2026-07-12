@@ -283,8 +283,6 @@ public:
     void clone(LLVertexBuffer& target) const;
 
 protected:
-    U32     mGLBuffer = 0;      // GL VBO handle
-    U32     mGLIndices = 0;     // GL IBO handle
     U32     mNumVerts = 0;      // Number of vertices allocated
     U32     mNumIndices = 0;    // Number of indices allocated
     U32     mIndicesType = GL_UNSIGNED_SHORT; // type of indices in index buffer
@@ -338,8 +336,6 @@ public:
     static U64 getBytesAllocated();
     static const U32 sTypeSize[TYPE_MAX];
     static const U32 sGLMode[LLRender::NUM_MODES];
-    static U32 sGLRenderBuffer;
-    static U32 sGLRenderIndices;
     static U32 sVertexCount;
 };
 
