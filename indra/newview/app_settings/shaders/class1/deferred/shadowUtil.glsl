@@ -138,19 +138,35 @@ uniform vec2 screen_res;
 uniform int sun_up_factor;
 #endif
 
+const vec2 kAyaPcfTaps[8] = vec2[](
+    vec2(-0.7292, -0.6619), vec2(-0.3457,  0.0937),
+    vec2( 0.2957, -0.9155), vec2( 0.5347, -0.2453),
+    vec2(-0.1379,  0.7648), vec2( 0.7462,  0.4720),
+    vec2(-0.8451,  0.1875), vec2( 0.2861,  0.9082));
+
+float ayaPcf9(sampler2DShadow shadowMap, vec3 stc, vec2 radius)
+{
+    float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    float ang = ign * 6.28318530718;
+    vec2 rot = vec2(cos(ang), sin(ang));
+
+    float shadow = texture(shadowMap, stc);
+    for (int i = 0; i < 8; ++i)
+    {
+        vec2 p = kAyaPcfTaps[i];
+        vec2 o = vec2(p.x * rot.x - p.y * rot.y, p.x * rot.y + p.y * rot.x) * radius;
+        shadow += texture(shadowMap, stc + vec3(o, 0.0));
+    }
+    return shadow * (1.0 / 9.0);
+}
+
 float pcfShadow(sampler2DShadow shadowMap, vec3 norm, vec4 stc, float bias_mul, vec2 pos_screen, vec3 light_dir)
 {
 #if defined(SUN_SHADOW)
     float offset = shadow_bias * bias_mul;
     stc.xyz /= stc.w;
     stc.z += offset * 2.0;
-    float cs = texture(shadowMap, stc.xyz);
-    float shadow = cs * 4.0;
-    shadow += texture(shadowMap, stc.xyz+vec3( 1.5*shadow_softness/shadow_res.x,  0.5*shadow_softness/shadow_res.y, 0.0));
-    shadow += texture(shadowMap, stc.xyz+vec3( 0.5*shadow_softness/shadow_res.x, -1.5*shadow_softness/shadow_res.y, 0.0));
-    shadow += texture(shadowMap, stc.xyz+vec3(-1.5*shadow_softness/shadow_res.x, -0.5*shadow_softness/shadow_res.y, 0.0));
-    shadow += texture(shadowMap, stc.xyz+vec3(-0.5*shadow_softness/shadow_res.x,  1.5*shadow_softness/shadow_res.y, 0.0));
-    return clamp(shadow * 0.125, 0.0, 1.0);
+    return clamp(ayaPcf9(shadowMap, stc.xyz, 2.0 * shadow_softness / shadow_res), 0.0, 1.0);
 #else
     return 1.0;
 #endif
@@ -161,17 +177,7 @@ float pcfSpotShadow(sampler2DShadow shadowMap, vec4 stc, float bias_scale, vec2 
 #if defined(SPOT_SHADOW)
     stc.xyz /= stc.w;
     stc.z += spot_shadow_bias * bias_scale;
-    float cs = texture(shadowMap, stc.xyz);
-    float shadow = cs;
-
-    vec2 off = 1.0/proj_shadow_res;
-    off.y *= 1.5;
-
-    shadow += texture(shadowMap, stc.xyz+vec3(off.x*2.0, off.y, 0.0));
-    shadow += texture(shadowMap, stc.xyz+vec3(off.x, -off.y, 0.0));
-    shadow += texture(shadowMap, stc.xyz+vec3(-off.x, off.y, 0.0));
-    shadow += texture(shadowMap, stc.xyz+vec3(-off.x*2.0, -off.y, 0.0));
-    return shadow*0.2;
+    return clamp(ayaPcf9(shadowMap, stc.xyz, 1.5 / proj_shadow_res), 0.0, 1.0);
 #else
     return 1.0;
 #endif
