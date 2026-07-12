@@ -499,8 +499,7 @@ void LLFloaterImagePreview::draw()
                 gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
                 if (mAvatarPreview)
                 {
-                    mAvatarPreview->setTexture(mImagep->getTexName());
-                    mSculptedPreview->setTexture(mImagep->getTexName());
+                    mAvatarPreview->setTexture(mImagep);
                 }
             }
 
@@ -893,8 +892,6 @@ LLImagePreviewAvatar::LLImagePreviewAvatar(S32 width, S32 height) : LLViewerDyna
 
     mDummyAvatar = (LLVOAvatar*)gObjectList.createObjectViewer(LL_PCODE_LEGACY_AVATAR, gAgent.getRegion(), LLViewerObject::CO_FLAG_UI_AVATAR);
     mDummyAvatar->mSpecialRenderMode = 2;
-
-    mTextureName = 0;
 }
 
 
@@ -915,7 +912,7 @@ void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const
     // clear out existing test mesh
     if (mTargetMesh)
     {
-        mTargetMesh->setTestTexture(0);
+        mTargetMesh->setTestTexture(nullptr);
     }
 
     if (male)
@@ -933,7 +930,7 @@ void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const
     mDummyAvatar->mRoot->setVisible(false, true);
 
     mTargetMesh = dynamic_cast<LLViewerJointMesh*>(mDummyAvatar->mRoot->findJoint(mesh_name));
-    mTargetMesh->setTestTexture(mTextureName);
+    mTargetMesh->setTestTexture(mTexturep);
     mTargetMesh->setVisible(true, false);
     mCameraDistance = distance;
     mCameraZoom = 1.f;
@@ -953,7 +950,7 @@ void LLImagePreviewAvatar::clearPreviewTexture(const std::string& mesh_name)
         // clear out existing test mesh
         if (mesh)
         {
-            mesh->setTestTexture(0);
+            mesh->setTestTexture(nullptr);
         }
     }
 }
@@ -1077,7 +1074,6 @@ LLImagePreviewSculpted::LLImagePreviewSculpted(S32 width, S32 height) : LLViewer
     mCameraYaw = 0.f;
     mCameraPitch = 0.f;
     mCameraZoom = 1.f;
-    mTextureName = 0;
 
     LLVolumeParams volume_params;
     volume_params.setType(LL_PCODE_PROFILE_CIRCLE, LL_PCODE_PATH_CIRCLE);

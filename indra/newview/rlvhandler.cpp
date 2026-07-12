@@ -2169,19 +2169,6 @@ ERlvCmdRet RlvBehaviourHandler<RLV_BHVR_SETSPHERE>::onCommand(const RlvCommand& 
         {
             LLVfxManager::instance().addEffect(new RlvSphereEffect(rlvCmd.getObjectID()));
 
-            // Rlv::forceAtmosphericShadersIfAvailable();
-    // <FS:Beq> Note to Kitty, this can all go I think.
-    //      // If we're not using deferred but are using Windlight shaders we need to force use of FBO and depthmap texture
-    //      {
-    //          LLRenderTarget::sUseFBO = true;
-    //          LLPipeline::sUseDepthTexture = true;
-
-    //          gPipeline.releaseGLBuffers();
-    //          gPipeline.createGLBuffers();
-    //          gPipeline.resetVertexBuffers();
-    //          LLViewerShaderMgr::instance()->setShaders();
-    //      }
-    //      else
             if (!LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete())
             {
                 // In case of deferred with no shadows, no ambient occlusion, no depth of field, and no antialiasing

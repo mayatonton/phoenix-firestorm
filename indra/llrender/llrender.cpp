@@ -378,7 +378,6 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
     return true;
 }
 
-// LLRenderTarget is unavailible on the mapserver since it uses FBOs.
 bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth)
 {
     if (mIndex < 0) return false;
@@ -387,14 +386,10 @@ bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth)
 
     if (bindDepth)
     {
-        llassert(renderTarget->getDepth()); // target MUST have a depth buffer attachment
+        llassert(renderTarget->hasDepth()); // target MUST have a depth buffer attachment
+    }
 
-        bindManual(renderTarget->getUsage(), renderTarget->getDepth());
-    }
-    else
-    {
-        bindManual(renderTarget->getUsage(), renderTarget->getTexture());
-    }
+    bindManual(renderTarget->getUsage(), 0);
 
     mCurrRenderTarget = renderTarget;
     mCurrRTAttachment = 0;

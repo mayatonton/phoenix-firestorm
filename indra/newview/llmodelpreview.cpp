@@ -234,7 +234,6 @@ LLModelPreview::LLModelPreview(S32 width, S32 height, LLFloater* fmp)
     mCameraYaw = 0.f;
     mCameraPitch = 0.f;
     mCameraZoom = 1.f;
-    mTextureName = 0;
     mPreviewLOD = 0;
     mMaxTriangleLimit = 0;
     mDirty = false;

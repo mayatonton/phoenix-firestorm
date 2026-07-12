@@ -2441,7 +2441,7 @@ S32 LLGLSLShader::bindTexture(S32 uniform, LLRenderTarget* texture, bool depth, 
         }
         else {
             bool has_mips = mode == LLTexUnit::TFO_TRILINEAR || mode == LLTexUnit::TFO_ANISOTROPIC;
-            gGL.getTexUnit(uniform)->bindManual(texture->getUsage(), texture->getTexture(index), has_mips);
+            gGL.getTexUnit(uniform)->bindManual(texture->getUsage(), 0, has_mips);
         }
 
         gGL.getTexUnit(uniform)->setTextureFilteringOption(mode);

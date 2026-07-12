@@ -515,8 +515,6 @@ namespace
     }
 }
 
-void validate_framebuffer_object();
-
 // Add color attachments for deferred rendering
 // target -- RenderTarget to add attachments to
 bool addDeferredAttachments(LLRenderTarget& target, bool for_impostor = false)
@@ -8851,33 +8849,6 @@ void apply_cube_face_rotation(U32 face)
     }
 }
 
-void validate_framebuffer_object()
-{
-    GLenum status;
-    status = glCheckFramebufferStatus(GL_FRAMEBUFFER_EXT);
-    switch(status)
-    {
-        case GL_FRAMEBUFFER_COMPLETE:
-            //framebuffer OK, no error.
-            break;
-        case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-            // frame buffer not OK: probably means unsupported depth buffer format
-            LL_ERRS() << "Framebuffer Incomplete Missing Attachment." << LL_ENDL;
-            break;
-        case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-            // frame buffer not OK: probably means unsupported depth buffer format
-            LL_ERRS() << "Framebuffer Incomplete Attachment." << LL_ENDL;
-            break;
-        case GL_FRAMEBUFFER_UNSUPPORTED:
-            /* choose different formats */
-            LL_ERRS() << "Framebuffer unsupported." << LL_ENDL;
-            break;
-        default:
-            LL_ERRS() << "Unknown framebuffer status." << LL_ENDL;
-            break;
-    }
-}
-
 void LLPipeline::bindScreenToTexture()
 {
 
@@ -10793,13 +10764,6 @@ void LLPipeline::renderFinalize()
     {
         renderPhysicsDisplay();
     }
-
-    /*if (LLRenderTarget::sUseFBO && !gCubeSnapshot)
-    { // copy depth buffer from getFrameRT()->screen to framebuffer
-        LLRenderTarget::copyContentsToFramebuffer(getFrameRT()->screen, 0, 0, getFrameRT()->screen.getWidth(), getFrameRT()->screen.getHeight(), 0, 0,
-                                                  getFrameRT()->screen.getWidth(), getFrameRT()->screen.getHeight(),
-                                                  GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
-    }*/
 
     LLVertexBuffer::unbind();
 

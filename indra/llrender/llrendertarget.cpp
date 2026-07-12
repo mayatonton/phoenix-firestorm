@@ -34,9 +34,6 @@
 LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
 U32 LLRenderTarget::sBytesAllocated = 0;
 
-bool LLRenderTarget::sUseFBO = false;
-
-
 extern S32 gGLViewport[4];
 
 U32 LLRenderTarget::sCurResX = 0;
@@ -45,7 +42,6 @@ U32 LLRenderTarget::sCurResY = 0;
 LLRenderTarget::LLRenderTarget() :
     mResX(0),
     mResY(0),
-    mDepth(0),
     mUseDepth(false),
     mUsage(LLTexUnit::TT_TEXTURE)
 {
@@ -64,21 +60,13 @@ void LLRenderTarget::resize(U32 resx, U32 resy)
     mResX = resx;
     mResY = resy;
 
-    llassert(mInternalFormat.size() == mTex.size());
-
-    for (U32 i = 0; i < mTex.size(); ++i)
+    for (U32 i = 0; i < mInternalFormat.size(); ++i)
     { //resize color attachments
-        gGL.getTexUnit(0)->bindManual(mUsage, mTex[i]);
-        LLImageGL::setManualImage(LLTexUnit::getInternalType(mUsage), 0, mInternalFormat[i], mResX, mResY, GL_RGBA, GL_UNSIGNED_BYTE, NULL, false);
         sBytesAllocated += pix_diff*4;
     }
 
-    if (mDepth)
+    if (mOwnDepth)
     {
-        gGL.getTexUnit(0)->bindManual(mUsage, mDepth);
-        U32 internal_type = LLTexUnit::getInternalType(mUsage);
-        LLImageGL::setManualImage(internal_type, 0, GL_DEPTH_COMPONENT24, mResX, mResY, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL, false);
-
         sBytesAllocated += pix_diff*4;
     }
 
@@ -142,7 +130,7 @@ void LLRenderTarget::resize(U32 resx, U32 resy)
             mVkDepthLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
             mVkDepthLayoutOwner = nullptr;
         }
-        if (mDepth)
+        if (mOwnDepth)
         {
             VkImage     vk_image      = VK_NULL_HANDLE;
             VkImageView vk_view       = VK_NULL_HANDLE;
@@ -191,11 +179,7 @@ bool LLRenderTarget::allocate(U32 resx, U32 resy, U32 color_fmt, bool depth, LLT
 
     if (depth)
     {
-        if (!allocateDepth())
-        {
-            LL_WARNS() << "Failed to allocate depth buffer for render target." << LL_ENDL;
-            return false;
-        }
+        allocateDepth();
     }
 
     mAllocated = true;
@@ -203,25 +187,18 @@ bool LLRenderTarget::allocate(U32 resx, U32 resy, U32 color_fmt, bool depth, LLT
     return addColorAttachment(color_fmt);
 }
 
-void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
+void LLRenderTarget::setColorAttachment(LLImageGL* img)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     llassert(img != nullptr); // img must not be null
-    llassert(sUseFBO); // FBO support must be enabled
-    llassert(mDepth == 0); // depth buffers not supported with this mode
-    llassert(mTex.empty()); // mTex must be empty with this mode (binding target should be done via LLImageGL)
+    llassert(!mOwnDepth); // depth buffers not supported with this mode
+    llassert(mInternalFormat.empty()); // attachments must be empty with this mode
     llassert(!isBoundInStack());
 
     mResX = img->getWidth();
     mResY = img->getHeight();
     mUsage = img->getTarget();
 
-    if (use_name == 0)
-    {
-        use_name = img->getTexName();
-    }
-
-    mTex.push_back(use_name);
     mInternalFormat.push_back(img->getPrimaryFormat());
 
     if (LLVKLoader::isVulkanInitialized())
@@ -262,10 +239,9 @@ void LLRenderTarget::releaseColorAttachment()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     llassert(!isBoundInStack());
-    llassert(mTex.size() == 1); //cannot use releaseColorAttachment with LLRenderTarget managed color targets
+    llassert(mInternalFormat.size() == 1); //cannot use releaseColorAttachment with LLRenderTarget managed color targets
     llassert(mAllocated);
 
-    mTex.clear();
     mInternalFormat.clear();
 
     if (LLVKLoader::isVulkanInitialized() && !mVkTex.empty())
@@ -300,7 +276,7 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
         return true;
     }
 
-    U32 offset = static_cast<U32>(mTex.size());
+    U32 offset = static_cast<U32>(mInternalFormat.size());
 
     if( offset >= 4 )
     {
@@ -313,52 +289,8 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
         return false;
     }
 
-    U32 tex;
-    LLImageGL::generateTextures(1, &tex);
-    gGL.getTexUnit(0)->bindManual(mUsage, tex);
-
-    stop_glerror();
-
-
-    {
-        clear_glerror();
-        LLImageGL::setManualImage(LLTexUnit::getInternalType(mUsage), 0, color_fmt, mResX, mResY, GL_RGBA, GL_UNSIGNED_BYTE, NULL, false);
-        if (glGetError() != GL_NO_ERROR)
-        {
-            LL_WARNS() << "Could not allocate color buffer for render target." << LL_ENDL;
-            return false;
-        }
-    }
-
     sBytesAllocated += mResX*mResY*4;
 
-    stop_glerror();
-
-
-    if (offset == 0)
-    { //use bilinear filtering on single texture render targets that aren't multisampled
-        gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_BILINEAR);
-        stop_glerror();
-    }
-    else
-    { //don't filter data attachments
-        gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_POINT);
-        stop_glerror();
-    }
-
-    if (mUsage != LLTexUnit::TT_RECT_TEXTURE)
-    {
-        gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_MIRROR);
-        stop_glerror();
-    }
-    else
-    {
-        // ATI doesn't support mirrored repeat for rectangular textures.
-        gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
-        stop_glerror();
-    }
-
-    mTex.push_back(tex);
     mInternalFormat.push_back(color_fmt);
 
     if (LLVKLoader::isVulkanInitialized())
@@ -395,25 +327,12 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
     return true;
 }
 
-bool LLRenderTarget::allocateDepth()
+void LLRenderTarget::allocateDepth()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-    LLImageGL::generateTextures(1, &mDepth);
-    gGL.getTexUnit(0)->bindManual(mUsage, mDepth);
-
-    U32 internal_type = LLTexUnit::getInternalType(mUsage);
-    stop_glerror();
-    clear_glerror();
-    LLImageGL::setManualImage(internal_type, 0, GL_DEPTH_COMPONENT24, mResX, mResY, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL, false);
-    gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_POINT);
+    mOwnDepth = true;
 
     sBytesAllocated += mResX*mResY*4;
-
-    if (glGetError() != GL_NO_ERROR)
-    {
-        LL_WARNS() << "Unable to allocate depth buffer for render target." << LL_ENDL;
-        return false;
-    }
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -430,8 +349,6 @@ bool LLRenderTarget::allocateDepth()
             mVkDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         }
     }
-
-    return true;
 }
 
 void LLRenderTarget::shareDepthBuffer(LLRenderTarget& target)
@@ -440,10 +357,10 @@ void LLRenderTarget::shareDepthBuffer(LLRenderTarget& target)
 
     if (!mAllocated || !target.mAllocated)
     {
-        LL_ERRS() << "Cannot share depth buffer between non FBO render targets." << LL_ENDL;
+        LL_ERRS() << "Cannot share depth buffer between unallocated render targets." << LL_ENDL;
     }
 
-    if (target.mDepth)
+    if (target.mOwnDepth)
     {
         LL_ERRS() << "Attempting to override existing depth buffer.  Detach existing buffer first." << LL_ENDL;
     }
@@ -453,7 +370,7 @@ void LLRenderTarget::shareDepthBuffer(LLRenderTarget& target)
         LL_ERRS() << "Attempting to override existing shared depth buffer. Detach existing buffer first." << LL_ENDL;
     }
 
-    if (mDepth)
+    if (mOwnDepth)
     {
         target.mUseDepth = true;
 
@@ -472,11 +389,9 @@ void LLRenderTarget::release()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     llassert(!isBoundInStack());
 
-    if (mDepth)
+    if (mOwnDepth)
     {
-        LLImageGL::deleteTextures(1, &mDepth);
-
-        mDepth = 0;
+        mOwnDepth = false;
 
         sBytesAllocated -= mResX*mResY*4;
     }
@@ -485,25 +400,8 @@ void LLRenderTarget::release()
         mUseDepth = false;
     }
 
-    // Detach any extra color buffers (e.g. SRGB spec buffers)
-    //
-    if (mTex.size() > 1)
-    {
-        size_t z;
-        for (z = mTex.size() - 1; z >= 1; z--)
-        {
-            sBytesAllocated -= mResX*mResY*4;
-            LLImageGL::deleteTextures(1, &mTex[z]);
-        }
-    }
+    sBytesAllocated -= mResX*mResY*4*static_cast<U32>(mInternalFormat.size());
 
-    if (mTex.size() > 0)
-    {
-        sBytesAllocated -= mResX*mResY*4;
-        LLImageGL::deleteTextures(1, &mTex[0]);
-    }
-
-    mTex.clear();
     mInternalFormat.clear();
 
     if (LLVKLoader::isVulkanInitialized())
@@ -555,7 +453,7 @@ void LLRenderTarget::bindTarget()
 
     if (LLVKLoader::isVulkanInitialized())
     {
-        U32 color_count = static_cast<U32>(mTex.size() < 4 ? mTex.size() : 4);
+        U32 color_count = static_cast<U32>(mInternalFormat.size() < 4 ? mInternalFormat.size() : 4);
 
         for (U32 i = 0; i < color_count && i < mVkTex.size(); ++i)
         {
@@ -720,25 +618,15 @@ void LLRenderTarget::clearBoundTarget(U32 mask)
     }
 }
 
-U32 LLRenderTarget::getTexture(U32 attachment) const
-{
-    if (attachment >= mTex.size())
-    {
-        LL_WARNS() << "Invalid attachment index " << attachment << " for size " << mTex.size() << LL_ENDL;
-        llassert(false);
-        return 0;
-    }
-    return mTex[attachment];
-}
-
 U32 LLRenderTarget::getNumTextures() const
 {
-    return static_cast<U32>(mTex.size());
+    return static_cast<U32>(mInternalFormat.size());
 }
 
 void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilterOptions filter_options)
 {
-    gGL.getTexUnit(channel)->bindManual(mUsage, getTexture(index), filter_options == LLTexUnit::TFO_TRILINEAR || filter_options == LLTexUnit::TFO_ANISOTROPIC);
+    llassert(index < mInternalFormat.size());
+    gGL.getTexUnit(channel)->bindManual(mUsage, 0, filter_options == LLTexUnit::TFO_TRILINEAR || filter_options == LLTexUnit::TFO_ANISOTROPIC);
     gGL.getTexUnit(channel)->setTextureFilteringOption(filter_options);
 
     LLTexUnit* tu = gGL.getTexUnit(channel);
@@ -935,7 +823,7 @@ void LLRenderTarget::resumeVkDynamicRendering()
         return;
     }
 
-    U32 color_count = static_cast<U32>(mTex.size() < 4 ? mTex.size() : 4);
+    U32 color_count = static_cast<U32>(mInternalFormat.size() < 4 ? mInternalFormat.size() : 4);
 
     LLVKLoader::DynamicRenderingAttachment color_attachments[4] = {};
     for (U32 i = 0; i < color_count; ++i)
@@ -961,7 +849,7 @@ void LLRenderTarget::resumeVkDynamicRendering()
 
 bool LLRenderTarget::isComplete() const
 {
-    return !mTex.empty() || mDepth;
+    return !mInternalFormat.empty() || mOwnDepth;
 }
 
 void LLRenderTarget::getViewport(S32* viewport)
@@ -995,18 +883,14 @@ void LLRenderTarget::swapFBORefs(LLRenderTarget& other)
     llassert(!other.isBoundInStack());
 
     // Must be same type
-    llassert(sUseFBO == other.sUseFBO);
     llassert(mResX == other.mResX);
     llassert(mResY == other.mResY);
     llassert(mInternalFormat == other.mInternalFormat);
-    llassert(mTex.size() == other.mTex.size());
-    llassert(mDepth == other.mDepth);
+    llassert(mOwnDepth == other.mOwnDepth);
     llassert(mUseDepth == other.mUseDepth);
     llassert(mGenerateMipMaps == other.mGenerateMipMaps);
     llassert(mMipLevels == other.mMipLevels);
     llassert(mUsage == other.mUsage);
-
-    std::swap(mTex, other.mTex);
 
     std::swap(mVkTex, other.mVkTex);
     std::swap(mVkTexView, other.mVkTexView);

@@ -207,7 +207,6 @@
 #include "lltracker.h"
 #include "llviewerparcelmgr.h"
 #include "llworldmapview.h"
-#include "llpostprocess.h"
 
 #include "lldebugview.h"
 #include "llconsole.h"
@@ -660,7 +659,6 @@ static void settings_modify()
 {
     LLPipeline::sRenderTransparentWater = gSavedSettings.getBOOL("RenderTransparentWater");
     LLPipelineFrameContext::getInstance().setRenderingDeferred(true); // false is deprecated
-    LLRenderTarget::sUseFBO             = LLPipelineFrameContext::getInstance().isRenderingDeferred();
     LLVOSurfacePatch::sLODFactor        = gSavedSettings.getF32("RenderTerrainLODFactor");
     LLVOSurfacePatch::sLODFactor *= LLVOSurfacePatch::sLODFactor; //square lod factor to get exponential range of [1,4]
     gDebugGL       = gDebugGLSession || gDebugSession;
@@ -2270,8 +2268,6 @@ bool LLAppViewer::cleanup()
     LLViewerObject::cleanupVOClasses();
 
     SUBSYSTEM_CLEANUP(LLAvatarAppearance);
-
-    SUBSYSTEM_CLEANUP(LLPostProcess);
 
     LLTracker::cleanupInstance();
 

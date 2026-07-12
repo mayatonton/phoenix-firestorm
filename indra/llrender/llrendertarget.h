@@ -27,13 +27,11 @@
 #ifndef LL_LLRENDERTARGET_H
 #define LL_LLRENDERTARGET_H
 
-// LLRenderTarget is unavailible on the mapserver since it uses FBOs.
-
 #include "llgl.h"
 #include "llrender.h"
 
 /*
- Wrapper around OpenGL framebuffer objects for use in render-to-texture
+ Render-to-texture target backed by Vulkan images.
 
  SAMPLE USAGE:
 
@@ -61,8 +59,6 @@
 class LLRenderTarget
 {
 public:
-    // Whether or not to use FBO implementation
-    static bool sUseFBO;
     static U32 sBytesAllocated;
     static U32 sCurResX;
     static U32 sCurResY;
@@ -90,17 +86,16 @@ public:
     //point this render target at a particular LLImageGL
     //   Intended usage:
     //      LLRenderTarget target;
-    //      target.addColorAttachment(image);
+    //      target.setColorAttachment(image);
     //      target.bindTarget();
-    //      < issue GL calls>
+    //      < issue draw calls>
     //      target.flush();
     //      target.releaseColorAttachment();
     //
     // attachment -- LLImageGL to render into
-    // use_name -- optional texture name to target instead of attachment->getTexName()
     // NOTE: setColorAttachment and releaseColorAttachment cannot be used in conjuction with
     // addColorAttachment, allocateDepth, resize, etc.
-    void setColorAttachment(LLImageGL* attachment, LLGLuint use_name = 0);
+    void setColorAttachment(LLImageGL* attachment);
 
     // detach from current color attachment
     void releaseColorAttachment();
@@ -109,8 +104,8 @@ public:
     //limit of 4 color attachments per render target
     bool addColorAttachment(U32 color_fmt);
 
-    //allocate a depth texture
-    bool allocateDepth();
+    //allocate a depth attachment
+    void allocateDepth();
 
     //share depth buffer with provided render target
     void shareDepthBuffer(LLRenderTarget& target);
@@ -143,10 +138,7 @@ public:
 
     LLTexUnit::eTextureType getUsage(void) const { return mUsage; }
 
-    U32 getTexture(U32 attachment = 0) const;
     U32 getNumTextures() const;
-
-    U32 getDepth(void) const { return mDepth; }
 
     void setUseDepthCompareSampler(bool b) { mUseDepthCompareSampler = b; }
     bool usesDepthCompareSampler() const   { return mUseDepthCompareSampler; }
@@ -217,12 +209,11 @@ public:
 protected:
     U32 mResX;
     U32 mResY;
-    std::vector<U32> mTex;
     std::vector<U32> mInternalFormat;
     bool mAllocated = false;
     LLRenderTarget* mPreviousRT = nullptr;
 
-    U32 mDepth;
+    bool mOwnDepth = false;
     bool mUseDepth;
     bool mUseDepthCompareSampler = false;
     LLTexUnit::eTextureMipGeneration mGenerateMipMaps;

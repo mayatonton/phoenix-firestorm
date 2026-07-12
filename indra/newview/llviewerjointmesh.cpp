@@ -258,9 +258,9 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
     llassert( !(mTexture.notNull() && mLayerSet) );  // mutually exclusive
 
     LLViewerTexLayerSet *layerset = dynamic_cast<LLViewerTexLayerSet*>(mLayerSet);
-    if (mTestImageName)
+    if (mTestTexture.notNull())
     {
-        gGL.getTexUnit(diffuse_channel)->bindManual(LLTexUnit::TT_TEXTURE, mTestImageName);
+        gGL.getTexUnit(diffuse_channel)->bind(mTestTexture);
 
         if (mIsTransparent)
         {

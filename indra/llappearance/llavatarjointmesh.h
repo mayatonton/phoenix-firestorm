@@ -67,7 +67,7 @@ protected:
     F32                         mShiny;         // shiny value
     LLPointer<LLGLTexture>      mTexture;       // ptr to a global texture
     LLTexLayerSet*              mLayerSet;      // ptr to a layer set owned by the avatar
-    U32                         mTestImageName;     // handle to a temporary texture for previewing uploads
+    LLPointer<LLGLTexture>      mTestTexture;   // temporary texture for previewing uploads
     LLPolyMesh*                 mMesh;          // ptr to a global polymesh
     bool                        mCullBackFaces; // true by default
     LLFace*                     mFace;          // ptr to a face w/ AGP copy of mesh
@@ -80,8 +80,6 @@ protected:
 
 public:
     static bool                 sPipelineRender;
-    //RN: this is here for testing purposes
-    static U32                  sClothingMaskImageName;
     static LLColor4             sClothingInnerColor;
 
 public:
@@ -106,7 +104,7 @@ public:
 
     bool hasGLTexture() const;
 
-    void setTestTexture( U32 name ) { mTestImageName = name; }
+    void setTestTexture( LLGLTexture* texture ) { mTestTexture = texture; }
 
     // Sets layer set responsible for a dynamic shape texture (takes precedence over normal texture)
     void setLayerSet( LLTexLayerSet* layer_set );
