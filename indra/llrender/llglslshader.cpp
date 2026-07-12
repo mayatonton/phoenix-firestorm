@@ -4296,11 +4296,12 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
         {
             return VK_NULL_HANDLE;
         }
+        const bool swap_depth  = LLVKLoader::hasSwapchainDepth();
         color_count            = 1;
         color_formats[0]       = swap_format;
-        depth_format           = VK_FORMAT_UNDEFINED;
+        depth_format           = swap_depth ? VK_FORMAT_D24_UNORM_S8_UINT : VK_FORMAT_UNDEFINED;
         key.color_count        = 1u;
-        key.depth_present      = 0u;
+        key.depth_present      = swap_depth ? 1u : 0u;
         key.is_swapchain_path  = 1u;
         key.color_formats[0]   = static_cast<U32>(swap_format);
     }

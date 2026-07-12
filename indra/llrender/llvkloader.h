@@ -1287,6 +1287,8 @@ namespace LLVKLoader
 
     VkFormat    getSwapchainFormat();
 
+    bool        hasSwapchainDepth();
+
     void        beginSwapchainRendering();
 
     bool        isInRenderPassScope();

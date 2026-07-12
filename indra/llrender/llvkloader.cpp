@@ -354,6 +354,11 @@ namespace
 
     bool sSwapchainClearedThisFrame  = false;
 
+    VkImage       sSwapchainDepthImage  = VK_NULL_HANDLE;
+    VkImageView   sSwapchainDepthView   = VK_NULL_HANDLE;
+    void*         sSwapchainDepthAlloc  = nullptr;
+    VkImageLayout sSwapchainDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
     bool sSwapchainRecreatePending = false;
     U32  sPendingResizeWidth       = 0;
     U32  sPendingResizeHeight      = 0;
@@ -2418,6 +2423,20 @@ namespace
             }
         }
 
+        if (sSwapchainDepthImage != VK_NULL_HANDLE)
+        {
+            destroyImageVk(sSwapchainDepthImage, sSwapchainDepthView, sSwapchainDepthAlloc);
+            sSwapchainDepthImage = VK_NULL_HANDLE;
+            sSwapchainDepthView  = VK_NULL_HANDLE;
+            sSwapchainDepthAlloc = nullptr;
+        }
+        sSwapchainDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        createDepthAttachmentImageVk(extent.width, extent.height,
+                                     VK_FORMAT_D24_UNORM_S8_UINT,
+                                     sSwapchainDepthImage,
+                                     sSwapchainDepthView,
+                                     sSwapchainDepthAlloc);
+
         return true;
     }
 
@@ -2430,6 +2449,10 @@ namespace
             sSwapchain = VK_NULL_HANDLE;
             sSwapchainFormat = VK_FORMAT_UNDEFINED;
             sSwapchainExtent = {0, 0};
+            sSwapchainDepthImage  = VK_NULL_HANDLE;
+            sSwapchainDepthView   = VK_NULL_HANDLE;
+            sSwapchainDepthAlloc  = nullptr;
+            sSwapchainDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             return;
         }
         for (VkImageView& view : sSwapchainImageViews)
@@ -2442,6 +2465,15 @@ namespace
         }
         sSwapchainImageViews.clear();
         sSwapchainImages.clear();
+
+        if (sSwapchainDepthImage != VK_NULL_HANDLE)
+        {
+            destroyImageVk(sSwapchainDepthImage, sSwapchainDepthView, sSwapchainDepthAlloc);
+        }
+        sSwapchainDepthImage  = VK_NULL_HANDLE;
+        sSwapchainDepthView   = VK_NULL_HANDLE;
+        sSwapchainDepthAlloc  = nullptr;
+        sSwapchainDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
         if (sSwapchain != VK_NULL_HANDLE)
         {
@@ -3991,10 +4023,12 @@ void beginSwapchainRendering()
         sInDynamicRendering = false;
     }
 
+    const bool first_use_this_frame = !sSwapchainClearedThisFrame;
+
     DynamicRenderingAttachment color = {};
     color.image_view   = sSwapchainImageViews[sAcquiredImageIndex];
     color.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    if (!sSwapchainClearedThisFrame)
+    if (first_use_this_frame)
     {
         color.load_op      = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
@@ -4012,8 +4046,42 @@ void beginSwapchainRendering()
         color.clear_value  = {};
     }
 
+    DynamicRenderingAttachment depth = {};
+    if (sSwapchainDepthView != VK_NULL_HANDLE)
+    {
+        if (sSwapchainDepthLayout != VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            transitionImageLayoutVk(
+                sSwapchainDepthImage,
+                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+                sSwapchainDepthLayout,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                0,
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+            sSwapchainDepthLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        }
+        depth.image_view   = sSwapchainDepthView;
+        depth.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        if (first_use_this_frame)
+        {
+            depth.load_op                          = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            depth.clear_value                      = {};
+            depth.clear_value.depthStencil.depth   = 1.0f;
+            depth.clear_value.depthStencil.stencil = 0;
+        }
+        else
+        {
+            depth.load_op     = VK_ATTACHMENT_LOAD_OP_LOAD;
+            depth.clear_value = {};
+        }
+    }
+
     beginDynamicRendering(sSwapchainExtent.width, sSwapchainExtent.height,
-                          &color, 1, nullptr);
+                          &color, 1,
+                          sSwapchainDepthView != VK_NULL_HANDLE ? &depth : nullptr);
 
 }
 
@@ -7026,6 +7094,11 @@ VkRenderSuspendScope::~VkRenderSuspendScope()
 VkFormat getSwapchainFormat()
 {
     return sSwapchainFormat;
+}
+
+bool hasSwapchainDepth()
+{
+    return sSwapchainDepthView != VK_NULL_HANDLE;
 }
 
 bool isInRenderPassScope()
