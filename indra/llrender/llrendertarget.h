@@ -64,7 +64,6 @@ public:
     // Whether or not to use FBO implementation
     static bool sUseFBO;
     static U32 sBytesAllocated;
-    static U32 sCurFBO;
     static U32 sCurResX;
     static U32 sCurResY;
 
@@ -220,7 +219,7 @@ protected:
     U32 mResY;
     std::vector<U32> mTex;
     std::vector<U32> mInternalFormat;
-    U32 mFBO;
+    bool mAllocated = false;
     LLRenderTarget* mPreviousRT = nullptr;
 
     U32 mDepth;

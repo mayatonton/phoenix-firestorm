@@ -34,25 +34,7 @@
 LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
 U32 LLRenderTarget::sBytesAllocated = 0;
 
-void check_framebuffer_status()
-{
-    if (gDebugGL)
-    {
-        GLenum status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
-        switch (status)
-        {
-        case GL_FRAMEBUFFER_COMPLETE:
-            break;
-        default:
-            LL_WARNS() << "check_framebuffer_status failed -- " << std::hex << status << LL_ENDL;
-            ll_fail("check_framebuffer_status failed");
-            break;
-        }
-    }
-}
-
 bool LLRenderTarget::sUseFBO = false;
-U32 LLRenderTarget::sCurFBO = 0;
 
 
 extern S32 gGLViewport[4];
@@ -63,7 +45,6 @@ U32 LLRenderTarget::sCurResY = 0;
 LLRenderTarget::LLRenderTarget() :
     mResX(0),
     mResY(0),
-    mFBO(0),
     mDepth(0),
     mUseDepth(false),
     mUsage(LLTexUnit::TT_TEXTURE)
@@ -217,16 +198,7 @@ bool LLRenderTarget::allocate(U32 resx, U32 resy, U32 color_fmt, bool depth, LLT
         }
     }
 
-    glGenFramebuffers(1, (GLuint *) &mFBO);
-
-    if (mDepth)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, LLTexUnit::getInternalType(mUsage), mDepth, 0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
-    }
+    mAllocated = true;
 
     return addColorAttachment(color_fmt);
 }
@@ -240,11 +212,6 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
     llassert(mTex.empty()); // mTex must be empty with this mode (binding target should be done via LLImageGL)
     llassert(!isBoundInStack());
 
-    if (mFBO == 0)
-    {
-        glGenFramebuffers(1, (GLuint*)&mFBO);
-    }
-
     mResX = img->getWidth();
     mResY = img->getHeight();
     mUsage = img->getTarget();
@@ -256,15 +223,6 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
 
     mTex.push_back(use_name);
     mInternalFormat.push_back(img->getPrimaryFormat());
-
-    glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-            LLTexUnit::getInternalType(mUsage), use_name, 0);
-        stop_glerror();
-
-    check_framebuffer_status();
-
-    glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -296,6 +254,8 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img, LLGLuint use_name)
                                ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                                : VK_IMAGE_LAYOUT_UNDEFINED);
     }
+
+    mAllocated = true;
 }
 
 void LLRenderTarget::releaseColorAttachment()
@@ -303,11 +263,7 @@ void LLRenderTarget::releaseColorAttachment()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     llassert(!isBoundInStack());
     llassert(mTex.size() == 1); //cannot use releaseColorAttachment with LLRenderTarget managed color targets
-    llassert(mFBO != 0);  // mFBO must be valid
-
-    glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, LLTexUnit::getInternalType(mUsage), 0, 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
+    llassert(mAllocated);
 
     mTex.clear();
     mInternalFormat.clear();
@@ -352,9 +308,8 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
         llassert( offset < 4 );
         return false;
     }
-    if( offset > 0 && (mFBO == 0) )
+    if( offset > 0 && !mAllocated )
     {
-        llassert(  mFBO != 0 );
         return false;
     }
 
@@ -403,17 +358,6 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
         stop_glerror();
     }
 
-    if (mFBO)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0+offset,
-            LLTexUnit::getInternalType(mUsage), tex, 0);
-
-        check_framebuffer_status();
-
-        glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
-    }
-
     mTex.push_back(tex);
     mInternalFormat.push_back(color_fmt);
 
@@ -445,12 +389,6 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
         mVkTexLayout.push_back(vk_image != VK_NULL_HANDLE
                                ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                                : VK_IMAGE_LAYOUT_UNDEFINED);
-    }
-
-    if (gDebugGL)
-    { //bind and unbind to validate target
-        bindTarget();
-        flush();
     }
 
 
@@ -500,7 +438,7 @@ void LLRenderTarget::shareDepthBuffer(LLRenderTarget& target)
 {
     llassert(!isBoundInStack());
 
-    if (!mFBO || !target.mFBO)
+    if (!mAllocated || !target.mAllocated)
     {
         LL_ERRS() << "Cannot share depth buffer between non FBO render targets." << LL_ENDL;
     }
@@ -517,14 +455,6 @@ void LLRenderTarget::shareDepthBuffer(LLRenderTarget& target)
 
     if (mDepth)
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, target.mFBO);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, LLTexUnit::getInternalType(mUsage), mDepth, 0);
-
-        check_framebuffer_status();
-
-        glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
-
         target.mUseDepth = true;
 
         if (LLVKLoader::isVulkanInitialized() && mVkDepth != VK_NULL_HANDLE)
@@ -550,45 +480,21 @@ void LLRenderTarget::release()
 
         sBytesAllocated -= mResX*mResY*4;
     }
-    // else if (mFBO)
-    if (mFBO)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
-
-        if (mUseDepth)
-        { //detach shared depth buffer
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, LLTexUnit::getInternalType(mUsage), 0, 0);
-            mUseDepth = false;
-        }
-
-        glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
+    if (mUseDepth)
+    { //detach shared depth buffer
+        mUseDepth = false;
     }
 
     // Detach any extra color buffers (e.g. SRGB spec buffers)
     //
-    if (mFBO && (mTex.size() > 1))
+    if (mTex.size() > 1)
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
         size_t z;
         for (z = mTex.size() - 1; z >= 1; z--)
         {
             sBytesAllocated -= mResX*mResY*4;
-            glFramebufferTexture2D(GL_FRAMEBUFFER, static_cast<GLenum>(GL_COLOR_ATTACHMENT0+z), LLTexUnit::getInternalType(mUsage), 0, 0);
             LLImageGL::deleteTextures(1, &mTex[z]);
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, sCurFBO);
-    }
-
-    if (mFBO)
-    {
-        if (mFBO == sCurFBO)
-        {
-            sCurFBO = 0;
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        }
-
-        glDeleteFramebuffers(1, (GLuint *) &mFBO);
-        mFBO = 0;
     }
 
     if (mTex.size() > 0)
@@ -631,34 +537,14 @@ void LLRenderTarget::release()
     }
 
     mResX = mResY = 0;
+    mAllocated = false;
 }
 
 void LLRenderTarget::bindTarget()
 {
     LL_PROFILE_GPU_ZONE("bindTarget");
-    llassert(mFBO);
+    llassert(mAllocated);
     llassert(!isBoundInStack());
-
-    glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
-    sCurFBO = mFBO;
-
-    //setup multiple render targets
-    GLenum drawbuffers[] = {GL_COLOR_ATTACHMENT0,
-                            GL_COLOR_ATTACHMENT1,
-                            GL_COLOR_ATTACHMENT2,
-                            GL_COLOR_ATTACHMENT3};
-
-    if (mTex.empty())
-    { //no color buffer to draw to
-        glDrawBuffer(GL_NONE);
-        glReadBuffer(GL_NONE);
-    }
-    else
-    {
-        glDrawBuffers(static_cast<GLsizei>(mTex.size()), drawbuffers);
-        glReadBuffer(GL_COLOR_ATTACHMENT0);
-    }
-    check_framebuffer_status();
 
     llSetGLViewport(0, 0, mResX, mResY);
     sCurResX = mResX;
@@ -768,7 +654,7 @@ void LLRenderTarget::bindTarget()
 void LLRenderTarget::clear(U32 mask_in)
 {
     LL_PROFILE_GPU_ZONE("clear");
-    llassert(mFBO);
+    llassert(mAllocated);
     U32 mask = GL_COLOR_BUFFER_BIT;
     if (mUseDepth)
     {
@@ -777,21 +663,6 @@ void LLRenderTarget::clear(U32 mask_in)
     }
 
     U32 effective_mask = mask & mask_in;
-
-    if (mFBO)
-    {
-        check_framebuffer_status();
-        stop_glerror();
-        glClear(effective_mask);
-        stop_glerror();
-    }
-    else
-    {
-        LLGLEnable scissor(GL_SCISSOR_TEST);
-        glScissor(0, 0, mResX, mResY);
-        stop_glerror();
-        glClear(effective_mask);
-    }
 
     if (LLVKLoader::isVulkanInitialized() && LLVKLoader::isInRenderPassScope())
     {
@@ -846,12 +717,6 @@ void LLRenderTarget::clearBoundTarget(U32 mask)
     if (sBoundTarget)
     {
         sBoundTarget->clear(mask);
-    }
-    else
-    {
-        stop_glerror();
-        glClear(mask);
-        stop_glerror();
     }
 }
 
@@ -1014,8 +879,7 @@ void LLRenderTarget::flush()
 {
     LL_PROFILE_GPU_ZONE("rt flush");
     gGL.flush();
-    llassert(mFBO);
-    llassert(sCurFBO == mFBO);
+    llassert(mAllocated);
     llassert(sBoundTarget == this);
 
     if (LLVKLoader::isVulkanInitialized())
@@ -1046,11 +910,6 @@ void LLRenderTarget::flush()
                 }
             }
         }
-        else
-        {
-            bindTexture(0, 0, LLTexUnit::TFO_TRILINEAR);
-            glGenerateMipmap(GL_TEXTURE_2D);
-        }
     }
 
     if (mPreviousRT)
@@ -1063,13 +922,9 @@ void LLRenderTarget::flush()
     else
     {
         sBoundTarget = nullptr;
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        sCurFBO = 0;
         llSetGLViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
         sCurResX = gGLViewport[2];
         sCurResY = gGLViewport[3];
-        glReadBuffer(GL_BACK);
-        glDrawBuffer(GL_BACK);
     }
 }
 
@@ -1131,13 +986,11 @@ bool LLRenderTarget::isBoundInStack() const
 void LLRenderTarget::swapFBORefs(LLRenderTarget& other)
 {
     // Must be initialized
-    llassert(mFBO);
-    llassert(other.mFBO);
+    llassert(mAllocated);
+    llassert(other.mAllocated);
 
     // Must be unbound
     // *NOTE: mPreviousRT can be non-null even if this target is unbound - presumably for debugging purposes?
-    llassert(sCurFBO != mFBO);
-    llassert(sCurFBO != other.mFBO);
     llassert(!isBoundInStack());
     llassert(!other.isBoundInStack());
 
@@ -1153,7 +1006,6 @@ void LLRenderTarget::swapFBORefs(LLRenderTarget& other)
     llassert(mMipLevels == other.mMipLevels);
     llassert(mUsage == other.mUsage);
 
-    std::swap(mFBO, other.mFBO);
     std::swap(mTex, other.mTex);
 
     std::swap(mVkTex, other.mVkTex);
