@@ -1768,99 +1768,90 @@ bool LLImageGL::setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S3
 // Copy sub image from frame buffer
 bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_pos, S32 width, S32 height)
 {
-    if (gGL.getTexUnit(0)->bind(this, false, true))
+    mGLTextureCreated = true;
+
+    if (LLVKLoader::shouldUseVulkanRender() && width > 0 && height > 0)
     {
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, fb_x, fb_y, x_pos, y_pos, width, height);
-        mGLTextureCreated = true;
-        stop_glerror();
-
-        if (LLVKLoader::shouldUseVulkanRender() && width > 0 && height > 0)
+        LLRenderTarget* bound_target = LLRenderTarget::getCurrentBoundTarget();
+        if (bound_target != nullptr && bound_target->hasVkImage(0))
         {
-            LLRenderTarget* bound_target = LLRenderTarget::getCurrentBoundTarget();
-            if (bound_target != nullptr && bound_target->hasVkImage(0))
+            VkFormat src_format = LLVKLoader::llGlEnumToVkFormat(bound_target->getInternalFormat(0));
+            bool created_now = false;
+            if (src_format != VK_FORMAT_UNDEFINED
+                && (mVkImage == VK_NULL_HANDLE
+                    || mVkImageWidth != (U32)mWidth
+                    || mVkImageHeight != (U32)mHeight
+                    || mVkImageFormat != src_format))
             {
-                VkFormat src_format = LLVKLoader::llGlEnumToVkFormat(bound_target->getInternalFormat(0));
-                bool created_now = false;
-                if (src_format != VK_FORMAT_UNDEFINED
-                    && (mVkImage == VK_NULL_HANDLE
-                        || mVkImageWidth != (U32)mWidth
-                        || mVkImageHeight != (U32)mHeight
-                        || mVkImageFormat != src_format))
+                if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE ||
+                    mVkAllocation != nullptr)
                 {
-                    if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE ||
-                        mVkAllocation != nullptr)
-                    {
-                        LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
-                        mVkImage          = VK_NULL_HANDLE;
-                        mVkImageView      = VK_NULL_HANDLE;
-                        mVkAllocation     = nullptr;
-                        mVkImageWidth     = 0;
-                        mVkImageHeight    = 0;
-                        mVkImageMipLevels = 1;
-                        mVkImageFormat    = VK_FORMAT_UNDEFINED;
-                    }
+                    LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+                    mVkImage          = VK_NULL_HANDLE;
+                    mVkImageView      = VK_NULL_HANDLE;
+                    mVkAllocation     = nullptr;
+                    mVkImageWidth     = 0;
+                    mVkImageHeight    = 0;
+                    mVkImageMipLevels = 1;
+                    mVkImageFormat    = VK_FORMAT_UNDEFINED;
+                }
 
-                    U32 want_mips = 1;
-                    if (mHasMipMaps)
+                U32 want_mips = 1;
+                if (mHasMipMaps)
+                {
+                    const U32 dim = llmax((U32)mWidth, (U32)mHeight);
+                    while ((dim >> want_mips) > 0)
                     {
-                        const U32 dim = llmax((U32)mWidth, (U32)mHeight);
-                        while ((dim >> want_mips) > 0)
-                        {
-                            ++want_mips;
-                        }
-                    }
-
-                    if (LLVKLoader::createTextureImageVk((U32)mWidth, (U32)mHeight, src_format,
-                                                         mVkImage, mVkImageView, mVkAllocation,
-                                                         want_mips))
-                    {
-                        mVkImageWidth     = (U32)mWidth;
-                        mVkImageHeight    = (U32)mHeight;
-                        mVkImageMipLevels = want_mips;
-                        mVkImageFormat    = src_format;
-                        created_now = true;
-                    }
-                    else
-                    {
-                        LL_WARNS_ONCE("Vulkan") << "setSubImageFromFrameBuffer: createTextureImageVk failed"
-                                                << " w=" << (S32)mWidth << " h=" << (S32)mHeight
-                                                << " fmt=" << (S32)src_format << LL_ENDL;
+                        ++want_mips;
                     }
                 }
 
-                if (mVkImage != VK_NULL_HANDLE && mVkImageFormat == src_format)
+                if (LLVKLoader::createTextureImageVk((U32)mWidth, (U32)mHeight, src_format,
+                                                     mVkImage, mVkImageView, mVkAllocation,
+                                                     want_mips))
                 {
-                    const bool in_scope = LLVKLoader::isInRenderPassScope();
-                    if (in_scope)
-                    {
-                        LLVKLoader::endDynamicRendering();
-                    }
-                    LLVKLoader::copyColorImageRegionToImage2DVk(
-                        bound_target->getVkImage(0), bound_target->getVkTexLayout(0),
-                        fb_x, fb_y,
-                        mVkImage,
-                        created_now ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        x_pos, y_pos, (U32)width, (U32)height);
-                    if (in_scope)
-                    {
-                        bound_target->resumeVkDynamicRendering();
-                    }
+                    mVkImageWidth     = (U32)mWidth;
+                    mVkImageHeight    = (U32)mHeight;
+                    mVkImageMipLevels = want_mips;
+                    mVkImageFormat    = src_format;
+                    created_now = true;
                 }
-                else if (mVkImage != VK_NULL_HANDLE)
+                else
                 {
-                    LL_WARNS_ONCE("Vulkan") << "setSubImageFromFrameBuffer: format mismatch skip"
-                                            << " tex_fmt=" << (S32)mVkImageFormat
-                                            << " rt_fmt=" << (S32)src_format << LL_ENDL;
+                    LL_WARNS_ONCE("Vulkan") << "setSubImageFromFrameBuffer: createTextureImageVk failed"
+                                            << " w=" << (S32)mWidth << " h=" << (S32)mHeight
+                                            << " fmt=" << (S32)src_format << LL_ENDL;
                 }
             }
-        }
 
-        return true;
+            if (mVkImage != VK_NULL_HANDLE && mVkImageFormat == src_format)
+            {
+                const bool in_scope = LLVKLoader::isInRenderPassScope();
+                if (in_scope)
+                {
+                    LLVKLoader::endDynamicRendering();
+                }
+                LLVKLoader::copyColorImageRegionToImage2DVk(
+                    bound_target->getVkImage(0), bound_target->getVkTexLayout(0),
+                    fb_x, fb_y,
+                    mVkImage,
+                    created_now ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    x_pos, y_pos, (U32)width, (U32)height);
+                if (in_scope)
+                {
+                    bound_target->resumeVkDynamicRendering();
+                }
+            }
+            else if (mVkImage != VK_NULL_HANDLE)
+            {
+                LL_WARNS_ONCE("Vulkan") << "setSubImageFromFrameBuffer: format mismatch skip"
+                                        << " tex_fmt=" << (S32)mVkImageFormat
+                                        << " rt_fmt=" << (S32)src_format << LL_ENDL;
+            }
+        }
     }
-    else
-    {
-        return false;
-    }
+
+    return true;
 }
 
 // static
@@ -2360,42 +2351,6 @@ void LLImageGL::syncToMainThread(LLGLuint new_tex_name)
     LL_PROFILE_ZONE_SCOPED;
     llassert(!on_main_thread());
 
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("cglt - sync");
-        if (gGLManager.mIsNVIDIA)
-        {
-            // wait for texture upload to finish before notifying main thread
-            // upload is complete
-            auto sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-            glFlush();
-            glClientWaitSync(sync, 0, GL_TIMEOUT_IGNORED);
-            glDeleteSync(sync);
-        }
-        else
-        {
-            // post a sync to the main thread (will execute before tex name swap lambda below)
-            // glFlush calls here are partly superstitious and partly backed by observation
-            // on AMD hardware
-            glFlush();
-            auto sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-            glFlush();
-            LL::WorkQueue::postMaybe(
-                mMainQueue,
-                [=]()
-                {
-                    LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("cglt - wait sync");
-                    {
-                        LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("glWaitSync");
-                        glWaitSync(sync, 0, GL_TIMEOUT_IGNORED);
-                    }
-                    {
-                        LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("glDeleteSync");
-                        glDeleteSync(sync);
-                    }
-                });
-        }
-    }
-
     ref();
     LL::WorkQueue::postMaybe(
         mMainQueue,
@@ -2438,119 +2393,107 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
 
     S32 gl_discard = discard_level - mCurrentDiscardLevel;
 
-    //explicitly unbind texture
-    gGL.getTexUnit(0)->unbind(mBindTarget);
-    llverify(gGL.getTexUnit(0)->bindManual(mBindTarget, mTexName));
-
-    //debug code, leave it there commented.
-    //checkTexSize() ;
-
-    LLGLint glwidth = 0;
-    glGetTexLevelParameteriv(mTarget, gl_discard, GL_TEXTURE_WIDTH, (GLint*)&glwidth);
-    if (glwidth == 0)
+    if (gl_discard != 0 || mVkImage == VK_NULL_HANDLE)
     {
-        // No mip data smaller than current discard level
         return false;
     }
 
-    S32 width = getWidth(discard_level);
-    S32 height = getHeight(discard_level);
     S32 ncomponents = getComponents();
-    if (ncomponents == 0)
+    if (ncomponents < 1 || ncomponents > 4)
     {
         return false;
     }
-    if(width < glwidth)
+
+    const U32 vk_width  = mVkImageWidth;
+    const U32 vk_height = mVkImageHeight;
+    if (vk_width == 0 || vk_height == 0)
     {
-        LL_WARNS() << "texture size is smaller than it should be." << LL_ENDL ;
-        LL_WARNS() << "width: " << width << " glwidth: " << glwidth << " mWidth: " << mWidth <<
-            " mCurrentDiscardLevel: " << (S32)mCurrentDiscardLevel << " discard_level: " << (S32)discard_level << LL_ENDL ;
-        return false ;
+        return false;
     }
 
-    if (width <= 0 || width > 2048 || height <= 0 || height > 2048 || ncomponents < 1 || ncomponents > 4)
+    S32 src_nc = 0;
+    bool src_bgra = false;
+    switch (mVkImageFormat)
     {
-        LL_ERRS() << llformat("LLImageGL::readBackRaw: bogus params: %d x %d x %d",width,height,ncomponents) << LL_ENDL;
+        case VK_FORMAT_R8G8B8A8_UNORM:
+        case VK_FORMAT_R8G8B8A8_SRGB:
+        case VK_FORMAT_R8G8B8A8_SNORM:
+            src_nc = 4; src_bgra = false; break;
+        case VK_FORMAT_B8G8R8A8_UNORM:
+        case VK_FORMAT_B8G8R8A8_SRGB:
+            src_nc = 4; src_bgra = true; break;
+        case VK_FORMAT_R8G8_UNORM:
+        case VK_FORMAT_R8G8_SNORM:
+            src_nc = 2; src_bgra = false; break;
+        case VK_FORMAT_R8_UNORM:
+        case VK_FORMAT_R8_SNORM:
+            src_nc = 1; src_bgra = false; break;
+        default:
+            src_nc = 0; break;
     }
 
-    LLGLint is_compressed = 0;
-    if (compressed_ok)
+    const U32 vk_bpp = LLVKLoader::vkFormatBytesPerPixel(mVkImageFormat);
+    if (src_nc == 0 || vk_bpp != (U32)src_nc)
     {
-        glGetTexLevelParameteriv(mTarget, is_compressed, GL_TEXTURE_COMPRESSED, (GLint*)&is_compressed);
+        LL_WARNS_ONCE("Vulkan") << "readBackRaw: unsupported Vk format for readback fmt="
+                                << (S32)mVkImageFormat << LL_ENDL;
+        return false;
     }
-
-    //-----------------------------------------------------------------------------------------------
-    GLenum error ;
-    while((error = glGetError()) != GL_NO_ERROR)
-    {
-        LL_WARNS() << "GL Error happens before reading back texture. Error code: " << error << LL_ENDL ;
-    }
-    //-----------------------------------------------------------------------------------------------
 
     LLImageDataLock lock(imageraw);
 
-    if (is_compressed)
+    if (!imageraw->allocateDataSize((S32)vk_width, (S32)vk_height, ncomponents))
     {
-        LLGLint glbytes;
-        glGetTexLevelParameteriv(mTarget, gl_discard, GL_TEXTURE_COMPRESSED_IMAGE_SIZE, (GLint*)&glbytes);
-        if(!imageraw->allocateDataSize(width, height, ncomponents, glbytes))
-        {
-            constexpr S64 MAX_GL_BYTES = 2048 * 2048;
-            if (glbytes > 0 && glbytes <= MAX_GL_BYTES)
-            {
-                LLError::LLUserWarningMsg::showOutOfMemory();
-                LL_ERRS() << "Memory allocation failed for reading back texture. Data size: " << glbytes << LL_ENDL;
-            }
-            else
-            {
-                LL_WARNS() << "Memory allocation failed for reading back texture. Data size is: " << glbytes << LL_ENDL;
-                LL_WARNS() << "width: " << width << "height: " << height << "components: " << ncomponents << LL_ENDL;
-            }
-            return false ;
-        }
-
-        glGetCompressedTexImage(mTarget, gl_discard, (GLvoid*)(imageraw->getData()));
-        //stop_glerror();
-    }
-    else
-    {
-        if(!imageraw->allocateDataSize(width, height, ncomponents))
-        {
-            constexpr F32 MAX_IMAGE_SIZE = 2048 * 2048;
-            F32 size = (F32)width * (F32)height * (F32)ncomponents;
-            if (size > 0 && size <= MAX_IMAGE_SIZE)
-            {
-                LLError::LLUserWarningMsg::showOutOfMemory();
-                LL_ERRS() << "Memory allocation failed for reading back texture. Data size: " << size << LL_ENDL;
-            }
-            else
-            {
-                LL_WARNS() << "Memory allocation failed for reading back texture." << LL_ENDL;
-                LL_WARNS() << "width: " << width << "height: " << height << "components: " << ncomponents << LL_ENDL;
-            }
-            return false ;
-        }
-
-        glGetTexImage(GL_TEXTURE_2D, gl_discard, mFormatPrimary, mFormatType, (GLvoid*)(imageraw->getData()));
-        //stop_glerror();
+        LL_WARNS() << "Memory allocation failed for reading back texture." << LL_ENDL;
+        LL_WARNS() << "width: " << (S32)vk_width << "height: " << (S32)vk_height << "components: " << ncomponents << LL_ENDL;
+        return false;
     }
 
-    //-----------------------------------------------------------------------------------------------
-    if((error = glGetError()) != GL_NO_ERROR)
-    {
-        LL_WARNS() << "GL Error happens after reading back texture. Error code: " << error << LL_ENDL ;
-        imageraw->deleteData() ;
+    const size_t px_count = (size_t)vk_width * (size_t)vk_height;
+    std::vector<U8> vk_pixels((size_t)vk_bpp * px_count);
 
-        while((error = glGetError()) != GL_NO_ERROR)
+    if (!LLVKLoader::readbackColorImageRegionVk(mVkImage,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            0, 0, vk_width, vk_height, vk_bpp, vk_pixels.data()))
+    {
+        imageraw->deleteData();
+        return false;
+    }
+
+    U8* dst = imageraw->getData();
+    if (dst == nullptr)
+    {
+        return false;
+    }
+
+    for (size_t p = 0; p < px_count; ++p)
+    {
+        const U8* s = &vk_pixels[p * vk_bpp];
+        U8 r, g, b, a;
+        if (src_bgra)
         {
-            LL_WARNS() << "GL Error happens after reading back texture. Error code: " << error << LL_ENDL ;
+            b = s[0]; g = s[1]; r = s[2]; a = s[3];
+        }
+        else
+        {
+            r = s[0];
+            g = (src_nc > 1) ? s[1] : (U8)0;
+            b = (src_nc > 2) ? s[2] : (U8)0;
+            a = (src_nc > 3) ? s[3] : (U8)255;
         }
 
-        return false ;
+        U8* d = &dst[p * (size_t)ncomponents];
+        switch (ncomponents)
+        {
+            case 1: d[0] = r; break;
+            case 2: d[0] = r; d[1] = g; break;
+            case 3: d[0] = r; d[1] = g; d[2] = b; break;
+            case 4: d[0] = r; d[1] = g; d[2] = b; d[3] = a; break;
+            default: break;
+        }
     }
-    //-----------------------------------------------------------------------------------------------
 
-    return true ;
+    return true;
 }
 
 void LLImageGL::destroyGLTexture()
