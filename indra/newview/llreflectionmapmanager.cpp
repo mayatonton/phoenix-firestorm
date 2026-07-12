@@ -1003,7 +1003,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                         LLVKLoader::endDynamicRendering();
                         LLVKLoader::copyColorImageToCubeArrayLayerVk(
                             mMipChain[0].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            mTexture->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)i, (U32)res, (U32)res);
+                            mTexture->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)i, (U32)res, (U32)res,
+                            (U32)(mMipChain[0].getHeight() - res));
                         mMipChain[0].resumeVkDynamicRendering();
                     }
                 }
@@ -1073,7 +1074,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                         LLVKLoader::endDynamicRendering();
                         LLVKLoader::copyColorImageToCubeArrayLayerVk(
                             mMipChain[0].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            mIrradianceMaps->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)(i - start_mip), (U32)res, (U32)res);
+                            mIrradianceMaps->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)(i - start_mip), (U32)res, (U32)res,
+                            (U32)(mMipChain[0].getHeight() - res));
                         mMipChain[0].resumeVkDynamicRendering();
                     }
                     mTexture->bind(channel);

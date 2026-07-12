@@ -519,7 +519,8 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
                         LLVKLoader::endDynamicRendering();
                         LLVKLoader::copyColorImageToCubeArrayLayerVk(
                             mMipChain[0].getVkImage(0), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            mTexture->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)i, (U32)res, (U32)res);
+                            mTexture->getVkImage(), (U32)(probe->mCubeIndex * 6 + cf), (U32)i, (U32)res, (U32)res,
+                            (U32)(mMipChain[0].getWidth() - res));
                         mMipChain[0].resumeVkDynamicRendering();
                     }
                 }

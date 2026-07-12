@@ -6240,7 +6240,8 @@ bool copyColorImageToCubeArrayLayerVk(VkImage       src_image,
                                       U32           dst_layer,
                                       U32           dst_mip,
                                       U32           width,
-                                      U32           height)
+                                      U32           height,
+                                      U32           src_y)
 {
     if (src_image == VK_NULL_HANDLE || dst_cube_array == VK_NULL_HANDLE ||
         width == 0 || height == 0)
@@ -6301,8 +6302,8 @@ bool copyColorImageToCubeArrayLayerVk(VkImage       src_image,
         blit.srcSubresource.mipLevel       = 0;
         blit.srcSubresource.baseArrayLayer = 0;
         blit.srcSubresource.layerCount     = 1;
-        blit.srcOffsets[0]                 = { 0, 0, 0 };
-        blit.srcOffsets[1]                 = { (S32)width, (S32)height, 1 };
+        blit.srcOffsets[0]                 = { 0, (S32)src_y, 0 };
+        blit.srcOffsets[1]                 = { (S32)width, (S32)(src_y + height), 1 };
         blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.mipLevel       = dst_mip;
         blit.dstSubresource.baseArrayLayer = dst_layer;

@@ -1216,7 +1216,8 @@ namespace LLVKLoader
                                           U32           dst_layer,
                                           U32           dst_mip,
                                           U32           width,
-                                          U32           height);
+                                          U32           height,
+                                          U32           src_y = 0);
 
     bool copyColorImageRegionToImage2DVk(VkImage       src_image,
                                          VkImageLayout src_layout,
