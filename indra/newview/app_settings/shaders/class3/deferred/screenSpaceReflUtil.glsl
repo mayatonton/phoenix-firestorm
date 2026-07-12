@@ -116,7 +116,6 @@ float getLinearDepth(vec2 tc)
 
 bool traceScreenRay(vec3 position, vec3 reflection, out vec4 hitColor, out float hitDepth, float depth, sampler2D textureFrame)
 {
-    // transform position and reflection into same coordinate frame as the sceneMap and sceneDepth
     reflection += position;
     position = (inv_modelview_delta * vec4(position, 1)).xyz;
     reflection = (inv_modelview_delta * vec4(reflection, 1)).xyz;
@@ -124,103 +123,88 @@ bool traceScreenRay(vec3 position, vec3 reflection, out vec4 hitColor, out float
 
     depth = -position.z;
 
+    float maxStepLen = 4.0;
     vec3 step = rayStep * reflection;
+    vec3 prevPosition = position;
     vec3 marchingPosition = position + step;
-    float delta;
-    float depthFromScreen;
     vec2 screenPosition;
-    bool hit = false;
     hitColor = vec4(0);
 
-    int i = 0;
-    if (depth > depthRejectBias)
+    if (depth <= depthRejectBias)
     {
-        for (; i < iterationCount && !hit; i++)
-        {
-            screenPosition = generateProjectedPosition(marchingPosition);
-            if (screenPosition.x > 1 || screenPosition.x < 0 ||
-                screenPosition.y > 1 || screenPosition.y < 0)
-            {
-                hit = false;
-                break;
-            }
-            depthFromScreen = getLinearDepth(screenPosition);
-            delta = abs(marchingPosition.z) - depthFromScreen;
-
-            if (depth < depthFromScreen + epsilon && depth > depthFromScreen - epsilon)
-            {
-                break;
-            }
-
-            if (abs(delta) < distanceBias)
-            {
-                vec4 color = vec4(1);
-                if(debugDraw)
-                    color = vec4( 0.5+ sign(delta)/2,0.3,0.5- sign(delta)/2, 0);
-                hitColor = texture(sceneMap, screenPosition) * color;
-                hitDepth = depthFromScreen;
-                hit = true;
-                break;
-            }
-            if (isBinarySearchEnabled && delta > 0)
-            {
-                break;
-            }
-            if (isAdaptiveStepEnabled)
-            {
-                float directionSign = sign(abs(marchingPosition.z) - depthFromScreen);
-                //this is sort of adapting step, should prevent lining reflection by doing sort of iterative converging
-                //some implementation doing it by binary search, but I found this idea more cheaty and way easier to implement
-                step = step * (1.0 - rayStep * max(directionSign, 0.0));
-                marchingPosition += step * (-directionSign);
-            }
-            else
-            {
-                marchingPosition += step;
-            }
-
-            if (isExponentialStepEnabled)
-            {
-                step *= adaptiveStepMultiplier;
-            }
-        }
-        if(isBinarySearchEnabled)
-        {
-            for(; i < iterationCount && !hit; i++)
-            {
-                step *= 0.5;
-                marchingPosition = marchingPosition - step * sign(delta);
-
-                screenPosition = generateProjectedPosition(marchingPosition);
-                if (screenPosition.x > 1 || screenPosition.x < 0 ||
-                    screenPosition.y > 1 || screenPosition.y < 0)
-                {
-                    hit = false;
-                    break;
-                }
-                depthFromScreen = getLinearDepth(screenPosition);
-                delta = abs(marchingPosition.z) - depthFromScreen;
-
-                if (depth < depthFromScreen + epsilon && depth > depthFromScreen - epsilon)
-                {
-                    break;
-                }
-
-                if (abs(delta) < distanceBias && depthFromScreen != (depth - distanceBias))
-                {
-                    vec4 color = vec4(1);
-                    if(debugDraw)
-                        color = vec4( 0.5+ sign(delta)/2,0.3,0.5- sign(delta)/2, 0);
-                    hitColor = texture(sceneMap, screenPosition) * color;
-                    hitDepth = depthFromScreen;
-                    hit = true;
-                    break;
-                }
-            }
-        }
+        return false;
     }
 
-    return hit;
+    for (int i = 0; i < int(iterationCount); i++)
+    {
+        screenPosition = generateProjectedPosition(marchingPosition);
+        bool offscreen = (screenPosition.x > 1 || screenPosition.x < 0 ||
+                          screenPosition.y > 1 || screenPosition.y < 0);
+        bool crossed = offscreen;
+        if (!offscreen)
+        {
+            float delta = abs(marchingPosition.z) - getLinearDepth(screenPosition);
+            crossed = (delta > 0.0 && delta <= length(step) * 1.5);
+        }
+
+        if (crossed)
+        {
+            vec3 lo = prevPosition;
+            vec3 hi = marchingPosition;
+            for (int j = 0; j < 12; j++)
+            {
+                vec3 mid = (lo + hi) * 0.5;
+                vec2 tc2 = generateProjectedPosition(mid);
+                if (tc2.x < 0 || tc2.x > 1 || tc2.y < 0 || tc2.y > 1)
+                {
+                    hi = mid;
+                    continue;
+                }
+                if (abs(mid.z) - getLinearDepth(tc2) > 0.0)
+                {
+                    hi = mid;
+                }
+                else
+                {
+                    lo = mid;
+                }
+            }
+            vec2 tch = generateProjectedPosition(hi);
+            if (tch.x >= 0 && tch.x <= 1 && tch.y >= 0 && tch.y <= 1)
+            {
+                float dh = getLinearDepth(tch);
+                float dd = abs(hi.z) - dh;
+                if (dd >= 0.0 && dd <= max(distanceBias, 0.02))
+                {
+                    vec3 ahead = hi + (hi - lo) * 4.0 + normalize(reflection) * 0.05;
+                    vec2 tca = generateProjectedPosition(ahead);
+                    bool graze = false;
+                    if (tca.x >= 0 && tca.x <= 1 && tca.y >= 0 && tca.y <= 1)
+                    {
+                        graze = (abs(ahead.z) - getLinearDepth(tca)) < 0.0;
+                    }
+                    if (!graze)
+                    {
+                        hitColor = texture(sceneMap, tch);
+                        hitDepth = dh;
+                        return true;
+                    }
+                    marchingPosition = ahead;
+                }
+            }
+            if (offscreen)
+            {
+                return false;
+            }
+        }
+
+        prevPosition = marchingPosition;
+        float ns = min(length(step) * adaptiveStepMultiplier, maxStepLen);
+        step = normalize(step) * ns;
+        marchingPosition += step;
+    }
+
+    return false;
 }
 
 const vec3 POISSON3D_SAMPLES[128] = vec3[128](
