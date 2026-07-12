@@ -957,13 +957,8 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
             }
         }
 
-        // generate mipmap
-        gGL.getTexUnit(0)->bind(bump);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-
         LLImageGL* bimg = bump->getGLTexture();
-        if (LLVKLoader::shouldUseVulkanRender() && bimg != nullptr &&
+        if (bimg != nullptr &&
             bimg->hasVkImage() && bimg->getVkImageMipLevels() > 1)
         {
             const bool in_scope = LLVKLoader::isInRenderPassScope();

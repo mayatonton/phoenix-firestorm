@@ -10751,7 +10751,7 @@ void LLPipeline::renderFinalize()
 
     // Present the screen target.
 
-    if (mVkSnapshotRedirectTarget && LLVKLoader::shouldUseVulkanRender())
+    if (mVkSnapshotRedirectTarget)
     {
         mVkSnapshotRedirectTarget->bindTarget();
     }
@@ -10785,7 +10785,7 @@ void LLPipeline::renderFinalize()
 
     {
         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-        if (mVkSnapshotRedirectTarget && LLVKLoader::shouldUseVulkanRender())
+        if (mVkSnapshotRedirectTarget)
         {
             LLGLDisable snapshot_blend_off(GL_BLEND);
             mScreenTriangleVB->setBuffer();

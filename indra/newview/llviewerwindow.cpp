@@ -6230,18 +6230,14 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     gSnapshotNoPost = no_post;
     gDisplaySwapBuffers = false;
 
-    const bool use_vk_snapshot = LLVKLoader::shouldUseVulkanRender();
     LLRenderTarget vk_snapshot_target;
-    if (use_vk_snapshot)
+    if (LLVKLoader::getCurrentCommandBuffer() != VK_NULL_HANDLE)
     {
-        if (LLVKLoader::getCurrentCommandBuffer() != VK_NULL_HANDLE)
-        {
-            LLVKLoader::endFrame();
-        }
-        if (!vk_snapshot_target.allocate(getWindowWidthRaw(), getWindowHeightRaw(), GL_RGBA, false))
-        {
-            return false;
-        }
+        LLVKLoader::endFrame();
+    }
+    if (!vk_snapshot_target.allocate(getWindowWidthRaw(), getWindowHeightRaw(), GL_RGBA, false))
+    {
+        return false;
     }
 
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
@@ -6285,55 +6281,14 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         setBalanceVisible(show_balance);
     }
 
-    S32 original_width = 0;
-    S32 original_height = 0;
-    bool reset_deferred = false;
-
-    LLRenderTarget scratch_space;
-
     F32 scale_factor = 1.0f ;
     if (!keep_window_aspect || (image_width > window_width) || (image_height > window_height))
     {
-        if ((image_width <= gGLManager.mGLMaxTextureSize && image_height <= gGLManager.mGLMaxTextureSize) &&
-            (image_width > window_width || image_height > window_height) && LLPipelineFrameContext::getInstance().isRenderingDeferred() && !show_ui && !use_vk_snapshot)
-        {
-            // <FS:Ansariel> FIRE-15667: 24bit depth maps
-            //U32 color_fmt = type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH ? GL_DEPTH_COMPONENT : GL_RGBA;
-            U32 color_fmt = (type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH || type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24) ? GL_DEPTH_COMPONENT : GL_RGBA;
-            // </FS:Ansariel>
-            if (scratch_space.allocate(image_width, image_height, color_fmt, true))
-            {
-                original_width = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth();
-                original_height = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight();
-
-                if (gPipeline.allocateScreenBuffer(image_width, image_height))
-                {
-                    window_width = image_width;
-                    window_height = image_height;
-                    snapshot_width = image_width;
-                    snapshot_height = image_height;
-                    reset_deferred = true;
-                    mWorldViewRectRaw.set(0, image_height, image_width, 0);
-                    LLViewerCamera::getInstance()->setViewHeightInPixels( mWorldViewRectRaw.getHeight() );
-                    LLViewerCamera::getInstance()->setAspect( getWorldViewAspectRatio() );
-                    scratch_space.bindTarget();
-                }
-                else
-                {
-                    scratch_space.release();
-                    gPipeline.allocateScreenBuffer(original_width, original_height);
-                }
-            }
-        }
-
-        if (!reset_deferred)
-        {
-            // if image cropping or need to enlarge the scene, compute a scale_factor
-            F32 ratio = llmin( (F32)window_width / image_width , (F32)window_height / image_height) ;
-            snapshot_width  = (S32)(ratio * image_width) ;
-            snapshot_height = (S32)(ratio * image_height) ;
-            scale_factor = llmax(1.0f, 1.0f / ratio) ;
-        }
+        // if image cropping or need to enlarge the scene, compute a scale_factor
+        F32 ratio = llmin( (F32)window_width / image_width , (F32)window_height / image_height) ;
+        snapshot_width  = (S32)(ratio * image_width) ;
+        snapshot_height = (S32)(ratio * image_height) ;
+        scale_factor = llmax(1.0f, 1.0f / ratio) ;
     }
 
     if (show_ui && scale_factor > 1.f)
@@ -6418,7 +6373,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                 bool vk_subimage_ok = false;
                 std::vector<U8> vk_subimage_pixels;
                 std::vector<F32> vk_depth_pixels;
-                if (use_vk_snapshot)
                 {
                     if (LLVKLoader::beginFrame(false))
                     {
@@ -6469,18 +6423,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                         vk_snapshot_ok = false;
                     }
                 }
-                else
-                {
-                    display(do_rebuild, scale_factor, subfield, true);
-
-                    if (!LLPipelineFrameContext::getInstance().isRenderingDeferred())
-                    {
-                        // Required for showing the GUI in snapshots and performing bloom composite overlay
-                        // Call even if show_ui is false
-                        render_ui(scale_factor, subfield);
-                        swap();
-                    }
-                }
 
                 for (U32 out_y = 0; out_y < read_height ; out_y++)
                 {
@@ -6502,51 +6444,27 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                     {
                         if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
                         {
-                            if (use_vk_snapshot)
+                            if (vk_subimage_ok)
                             {
-                                if (vk_subimage_ok)
+                                const U8* vk_src_row = vk_subimage_pixels.data() + (size_t)out_y * read_width * 4;
+                                U8* vk_dst_row = raw->getData() + output_buffer_offset;
+                                for (U32 i = 0; i < read_width; i++)
                                 {
-                                    const U8* vk_src_row = vk_subimage_pixels.data() + (size_t)out_y * read_width * 4;
-                                    U8* vk_dst_row = raw->getData() + output_buffer_offset;
-                                    for (U32 i = 0; i < read_width; i++)
-                                    {
-                                        vk_dst_row[i * 3 + 0] = vk_src_row[i * 4 + 0];
-                                        vk_dst_row[i * 3 + 1] = vk_src_row[i * 4 + 1];
-                                        vk_dst_row[i * 3 + 2] = vk_src_row[i * 4 + 2];
-                                    }
+                                    vk_dst_row[i * 3 + 0] = vk_src_row[i * 4 + 0];
+                                    vk_dst_row[i * 3 + 1] = vk_src_row[i * 4 + 1];
+                                    vk_dst_row[i * 3 + 2] = vk_src_row[i * 4 + 2];
                                 }
-                            }
-                            else
-                            {
-                                glReadPixels(
-                                         subimage_x_offset, out_y + subimage_y_offset,
-                                         read_width, 1,
-                                         GL_RGB, GL_UNSIGNED_BYTE,
-                                         raw->getData() + output_buffer_offset
-                                         );
                             }
                         }
                         // <FS:Ansariel> FIRE-15667: 24bit depth maps
                         else if (type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24)
                         {
                             LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GLfloat)); // need to store floating point values
-                            if (use_vk_snapshot)
+                            if (vk_subimage_ok)
                             {
-                                if (vk_subimage_ok)
-                                {
-                                    memcpy(depth_line_buffer->getData(),
-                                           vk_depth_pixels.data() + (size_t)out_y * read_width,
-                                           (size_t)read_width * sizeof(F32));
-                                }
-                            }
-                            else
-                            {
-                                glReadPixels(
-                                             subimage_x_offset, out_y + subimage_y_offset,
-                                             read_width, 1,
-                                             GL_DEPTH_COMPONENT, GL_FLOAT,
-                                             depth_line_buffer->getData()// current output pixel is beginning of buffer...
-                                             );
+                                memcpy(depth_line_buffer->getData(),
+                                       vk_depth_pixels.data() + (size_t)out_y * read_width,
+                                       (size_t)read_width * sizeof(F32));
                             }
 
                             for (S32 i = 0; i < (S32)read_width; i++)
@@ -6576,23 +6494,11 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                             //LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GL_FLOAT)); // need to store floating point values
                             LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GLfloat)); // need to store floating point values
                             // </FS>
-                            if (use_vk_snapshot)
+                            if (vk_subimage_ok)
                             {
-                                if (vk_subimage_ok)
-                                {
-                                    memcpy(depth_line_buffer->getData(),
-                                           vk_depth_pixels.data() + (size_t)out_y * read_width,
-                                           (size_t)read_width * sizeof(F32));
-                                }
-                            }
-                            else
-                            {
-                                glReadPixels(
-                                             subimage_x_offset, out_y + subimage_y_offset,
-                                             read_width, 1,
-                                             GL_DEPTH_COMPONENT, GL_FLOAT,
-                                             depth_line_buffer->getData()// current output pixel is beginning of buffer...
-                                             );
+                                memcpy(depth_line_buffer->getData(),
+                                       vk_depth_pixels.data() + (size_t)out_y * read_width,
+                                       (size_t)read_width * sizeof(F32));
                             }
 
                             for (S32 i = 0; i < (S32)read_width; i++)
@@ -6653,7 +6559,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         ret = raw->scale( image_width, image_height, false );
     }
 
-    if (use_vk_snapshot && !vk_snapshot_ok)
+    if (!vk_snapshot_ok)
     {
         ret = false;
     }
@@ -6670,17 +6576,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         gPipeline.resetDrawOrders();
     }
 
-    if (reset_deferred)
-    {
-        mWorldViewRectRaw = window_rect;
-        LLViewerCamera::getInstance()->setViewHeightInPixels( mWorldViewRectRaw.getHeight() );
-        LLViewerCamera::getInstance()->setAspect( getWorldViewAspectRatio() );
-        scratch_space.flush();
-        scratch_space.release();
-        gPipeline.allocateScreenBuffer(original_width, original_height);
-
-    }
-
     if (high_res)
     {
         send_agent_resume();
@@ -6695,18 +6590,14 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;
     gDisplaySwapBuffers = false;
 
-    const bool use_vk_snapshot = LLVKLoader::shouldUseVulkanRender();
     LLRenderTarget vk_snapshot_target;
-    if (use_vk_snapshot)
+    if (LLVKLoader::getCurrentCommandBuffer() != VK_NULL_HANDLE)
     {
-        if (LLVKLoader::getCurrentCommandBuffer() != VK_NULL_HANDLE)
-        {
-            LLVKLoader::endFrame();
-        }
-        if (!vk_snapshot_target.allocate(image_width, image_height, GL_RGBA, false))
-        {
-            return false;
-        }
+        LLVKLoader::endFrame();
+    }
+    if (!vk_snapshot_target.allocate(image_width, image_height, GL_RGBA, false))
+    {
+        return false;
     }
 
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
@@ -6729,32 +6620,13 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
     S32 original_width = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth() : gViewerWindow->getWorldViewWidthRaw();
     S32 original_height = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight() : gViewerWindow->getWorldViewHeightRaw();
 
-    LLRenderTarget scratch_space;
-    U32 color_fmt = GL_RGBA;
-    if (use_vk_snapshot)
+    if (gPipeline.allocateScreenBuffer(image_width, image_height))
     {
-        if (gPipeline.allocateScreenBuffer(image_width, image_height))
-        {
-            mWorldViewRectRaw.set(0, image_height, image_width, 0);
-        }
-        else
-        {
-            gPipeline.allocateScreenBuffer(original_width, original_height);
-        }
+        mWorldViewRectRaw.set(0, image_height, image_width, 0);
     }
-    else if (scratch_space.allocate(image_width, image_height, color_fmt, true))
+    else
     {
-        if (gPipeline.allocateScreenBuffer(image_width, image_height))
-        {
-            mWorldViewRectRaw.set(0, image_height, image_width, 0);
-
-            scratch_space.bindTarget();
-        }
-        else
-        {
-            scratch_space.release();
-            gPipeline.allocateScreenBuffer(original_width, original_height);
-        }
+        gPipeline.allocateScreenBuffer(original_width, original_height);
     }
 
     // we render the scene more than once since this helps
@@ -6781,70 +6653,49 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
         const bool do_rebuild = true;
         const F32 zoom = 1.0;
         const bool for_snapshot = true;
-        if (use_vk_snapshot)
+        if (LLVKLoader::beginFrame(false))
         {
-            if (LLVKLoader::beginFrame(false))
-            {
-                vk_snapshot_target.bindTarget();
-                gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
-                vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
-                vk_snapshot_target.flush();
-                gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
-                display(do_rebuild, zoom, subfield, for_snapshot);
-                if (LLRenderTarget::getCurrentBoundTarget() == &vk_snapshot_target)
-                {
-                    vk_snapshot_target.flush();
-                }
-                gPipeline.mVkSnapshotRedirectTarget = nullptr;
-                LLVKLoader::endFrame();
-            }
-        }
-        else
-        {
+            vk_snapshot_target.bindTarget();
+            gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
+            vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
+            vk_snapshot_target.flush();
+            gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
             display(do_rebuild, zoom, subfield, for_snapshot);
+            if (LLRenderTarget::getCurrentBoundTarget() == &vk_snapshot_target)
+            {
+                vk_snapshot_target.flush();
+            }
+            gPipeline.mVkSnapshotRedirectTarget = nullptr;
+            LLVKLoader::endFrame();
         }
     }
 
     LLImageDataSharedLock lock(raw);
 
     bool vk_read_ok = false;
-    if (use_vk_snapshot)
+    if (vk_snapshot_target.hasVkImage(0))
     {
-        if (vk_snapshot_target.hasVkImage(0))
+        std::vector<U8> vk_pixels((size_t)image_width * image_height * 4);
+        if (LLVKLoader::readbackColorImageRegionVk(
+                vk_snapshot_target.getVkImage(0),
+                vk_snapshot_target.getVkTexLayout(0),
+                0, 0,
+                image_width,
+                image_height,
+                4,
+                vk_pixels.data()))
         {
-            std::vector<U8> vk_pixels((size_t)image_width * image_height * 4);
-            if (LLVKLoader::readbackColorImageRegionVk(
-                    vk_snapshot_target.getVkImage(0),
-                    vk_snapshot_target.getVkTexLayout(0),
-                    0, 0,
-                    image_width,
-                    image_height,
-                    4,
-                    vk_pixels.data()))
+            const U8* vk_src = vk_pixels.data();
+            U8* vk_dst = raw->getData();
+            const size_t vk_px_count = (size_t)image_width * image_height;
+            for (size_t px = 0; px < vk_px_count; px++)
             {
-                const U8* vk_src = vk_pixels.data();
-                U8* vk_dst = raw->getData();
-                const size_t vk_px_count = (size_t)image_width * image_height;
-                for (size_t px = 0; px < vk_px_count; px++)
-                {
-                    vk_dst[px * 3 + 0] = vk_src[px * 4 + 0];
-                    vk_dst[px * 3 + 1] = vk_src[px * 4 + 1];
-                    vk_dst[px * 3 + 2] = vk_src[px * 4 + 2];
-                }
-                vk_read_ok = true;
+                vk_dst[px * 3 + 0] = vk_src[px * 4 + 0];
+                vk_dst[px * 3 + 1] = vk_src[px * 4 + 1];
+                vk_dst[px * 3 + 2] = vk_src[px * 4 + 2];
             }
+            vk_read_ok = true;
         }
-    }
-    else
-    {
-        glReadPixels(
-            0, 0,
-            image_width,
-            image_height,
-            GL_RGB, GL_UNSIGNED_BYTE,
-            raw->getData()
-        );
-        stop_glerror();
     }
 
     gDisplaySwapBuffers = false;
@@ -6867,14 +6718,9 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     gPipeline.resetDrawOrders();
     mWorldViewRectRaw = window_rect;
-    if (!use_vk_snapshot)
-    {
-        scratch_space.flush();
-        scratch_space.release();
-    }
     gPipeline.allocateScreenBuffer(original_width, original_height);
 
-    return !use_vk_snapshot || vk_read_ok;
+    return vk_read_ok;
 }
 
 void display_cube_face();

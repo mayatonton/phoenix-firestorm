@@ -1268,13 +1268,6 @@ namespace LLVKLoader
     bool        shouldUseVulkanRender();
     void        resetVulkanRenderSuspend();
 
-    class VkRenderSuspendScope
-    {
-    public:
-        VkRenderSuspendScope();
-        ~VkRenderSuspendScope();
-    };
-
     VkFormat    getSwapchainFormat();
 
     bool        hasSwapchainDepth();

@@ -106,22 +106,13 @@ namespace
         }
 
         GLubyte rgba[4] = {0, 0, 0, 0};
-        if (LLVKLoader::shouldUseVulkanRender())
+        if (!gPipeline.mObjectIDBuffer.hasVkImage(0) ||
+            !LLVKLoader::readbackColorImageRegionVk(
+                gPipeline.mObjectIDBuffer.getVkImage(0),
+                gPipeline.mObjectIDBuffer.getVkTexLayout(0),
+                mx_buf, my_buf, 1, 1, 4, rgba))
         {
-            if (!gPipeline.mObjectIDBuffer.hasVkImage(0) ||
-                !LLVKLoader::readbackColorImageRegionVk(
-                    gPipeline.mObjectIDBuffer.getVkImage(0),
-                    gPipeline.mObjectIDBuffer.getVkTexLayout(0),
-                    mx_buf, my_buf, 1, 1, 4, rgba))
-            {
-                return 0;
-            }
-        }
-        else
-        {
-            gPipeline.mObjectIDBuffer.bindTarget();
-            glReadPixels(mx_buf, my_buf, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-            gPipeline.mObjectIDBuffer.flush();
+            return 0;
         }
         out_read = true;
         return ((U32)rgba[0])

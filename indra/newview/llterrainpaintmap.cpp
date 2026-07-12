@@ -276,11 +276,10 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     {
         LL_WARNS() << "Failed to copy framebuffer to paintmap" << LL_ENDL;
     }
-    glGenerateMipmap(GL_TEXTURE_2D);
     stop_glerror();
 
     LLImageGL* paint_img = tex.getGLTexture();
-    if (LLVKLoader::shouldUseVulkanRender() && paint_img != nullptr &&
+    if (paint_img != nullptr &&
         paint_img->hasVkImage() && paint_img->getVkImageMipLevels() > 1)
     {
         const bool in_scope = LLVKLoader::isInRenderPassScope();

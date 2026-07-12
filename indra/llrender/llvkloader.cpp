@@ -350,7 +350,6 @@ namespace
     U32  sAcquiredImageIndex         = 0;
     bool sImageAcquired              = false;
     bool sVulkanPresentationEnabled  = true;
-    S32  sVulkanRenderSuspendCount   = 0;
 
     bool sSwapchainClearedThisFrame  = false;
 
@@ -7070,25 +7069,11 @@ U32 getRenderBackendMode()
 
 bool shouldUseVulkanRender()
 {
-    return sVulkanRenderSuspendCount == 0 && isVulkanInitialized() && getRenderBackendMode() != 0;
+    return isVulkanInitialized() && getRenderBackendMode() != 0;
 }
 
 void resetVulkanRenderSuspend()
 {
-    sVulkanRenderSuspendCount = 0;
-}
-
-VkRenderSuspendScope::VkRenderSuspendScope()
-{
-    ++sVulkanRenderSuspendCount;
-}
-
-VkRenderSuspendScope::~VkRenderSuspendScope()
-{
-    if (sVulkanRenderSuspendCount > 0)
-    {
-        --sVulkanRenderSuspendCount;
-    }
 }
 
 VkFormat getSwapchainFormat()

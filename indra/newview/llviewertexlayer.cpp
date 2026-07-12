@@ -641,28 +641,7 @@ void LLViewerTexLayerSetBuffer::doUpload(LLRenderTarget* bound_target)
     // until this image is sent to the server and the Avatar Appearance message is received.)
     layer_set->deleteCaches();
 
-    if (LLVKLoader::shouldUseVulkanRender())
-    {
-        beginDeferredUpload(bound_target);
-        return;
-    }
-
-    // Get the COLOR information from our texture
-    U8* baked_color_data = new U8[ mFullWidth * mFullHeight * 4 ];
-    glReadPixels(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight, GL_RGBA, GL_UNSIGNED_BYTE, baked_color_data );
-    stop_glerror();
-
-    // Get the MASK information from our texture
-    LLGLSUIDefault gls_ui;
-    LLPointer<LLImageRaw> baked_mask_image = new LLImageRaw(mFullWidth, mFullHeight, 1 );
-    U8* baked_mask_data = baked_mask_image->getData();
-    layer_set->gatherMorphMaskAlpha(baked_mask_data,
-                                    mOrigin.mX, mOrigin.mY,
-                                    mFullWidth, mFullHeight, bound_target);
-
-    finishUpload(baked_color_data, baked_mask_data);
-
-    delete [] baked_color_data;
+    beginDeferredUpload(bound_target);
 }
 
 void LLViewerTexLayerSetBuffer::finishUpload(U8* baked_color_data, U8* baked_mask_data)
