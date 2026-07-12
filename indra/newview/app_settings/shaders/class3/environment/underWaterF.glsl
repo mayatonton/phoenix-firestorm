@@ -86,7 +86,7 @@ void mirrorClip(vec3 position);
 void main()
 {
     mirrorClip(vary_position);
-    vec2 screen_tc = (refCoord.xy/refCoord.z) * 0.5 + 0.5;
+    vec2 screen_tc = gl_FragCoord.xy / vec2(textureSize(exclusionTex, 0));
     float water_mask = texture(exclusionTex, screen_tc).r;
 
     vec4 color;

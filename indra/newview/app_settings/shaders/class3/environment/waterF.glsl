@@ -260,7 +260,7 @@ void main()
     generateWaveNormals(wave1, wave2, wave3);
 
     float dmod = sqrt(dist);
-    vec2 distort = (refCoord.xy/refCoord.z) * 0.5 + 0.5;
+    vec2 distort = gl_FragCoord.xy / vec2(textureSize(exclusionTex, 0));
 
     vec3 wavef = (wave1 + wave2 * 0.4 + wave3 * 0.6) * 0.5;
 
