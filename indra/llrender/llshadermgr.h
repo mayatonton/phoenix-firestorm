@@ -442,9 +442,7 @@ public:
     virtual void initAttribsAndUniforms(void);
 
     bool attachShaderFeatures(LLGLSLShader * shader);
-    void dumpObjectLog(GLuint ret, bool warns = true, const std::string& filename = "");
     void dumpShaderSource(U32 shader_code_count, GLchar** shader_code_text);
-    bool    validateProgramObject(GLuint obj);
     GLuint loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1, std::vector<std::string>* out_sources = nullptr);
 
     // Implemented in the application to actually point to the shader directory.
@@ -465,10 +463,6 @@ public:
     void persistShaderCacheMetadata();
 
 public:
-    // Map of shader names to compiled
-    std::map<std::string, GLuint> mVertexShaderObjects;
-    std::map<std::string, GLuint> mFragmentShaderObjects;
-
     std::map<std::string, std::vector<std::string>> mVertexShaderSourceCache;
     std::map<std::string, std::vector<std::string>> mFragmentShaderSourceCache;
 

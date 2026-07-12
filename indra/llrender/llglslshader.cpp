@@ -62,8 +62,6 @@
 
 extern LLControlGroup gSavedSettings;
 
- // Print-print list of shader included source files that are linked together via glAttachShader()
- // i.e. On macOS / OSX the AMD GLSL linker will display an error if a varying is left in an undefined state.
 #define DEBUG_SHADER_INCLUDES 0
 
 // Lots of STL stuff in here, using namespace std to keep things more readable
@@ -565,17 +563,13 @@ bool LLGLSLShader::createShader()
         for (; fileIter != mShaderFiles.end(); fileIter++)
         {
             std::vector<std::string> stage_sources;
-            GLuint shaderhandle = LLShaderMgr::instance()->loadShaderFile((*fileIter).first, mShaderLevel, (*fileIter).second, &mDefines, mFeatures.mIndexedTextureChannels, collect_for_vulkan ? &stage_sources : nullptr);
+            GLuint loaded = LLShaderMgr::instance()->loadShaderFile((*fileIter).first, mShaderLevel, (*fileIter).second, &mDefines, mFeatures.mIndexedTextureChannels, collect_for_vulkan ? &stage_sources : nullptr);
             LL_DEBUGS("ShaderLoading") << "SHADER FILE: " << (*fileIter).first << " mShaderLevel=" << mShaderLevel << LL_ENDL;
             if (collect_for_vulkan && !stage_sources.empty())
             {
                 mStageSources.push_back({ (*fileIter).second, (*fileIter).first, std::move(stage_sources) });
             }
-            if (shaderhandle)
-            {
-                glDeleteShader(shaderhandle);
-            }
-            else
+            if (!loaded)
             {
                 success = false;
             }
@@ -2086,7 +2080,7 @@ bool LLGLSLShader::attachVertexObject(std::string object_path)
     {
         mVulkanAttachedVertexUtilities.push_back(object_path);
     }
-    if (LLShaderMgr::instance()->mVertexShaderObjects.count(object_path) > 0)
+    if (LLShaderMgr::instance()->mVertexShaderSourceCache.count(object_path) > 0)
     {
         return true;
     }
@@ -2104,7 +2098,7 @@ bool LLGLSLShader::attachFragmentObject(std::string object_path)
         mVulkanAttachedFragmentUtilities.push_back(object_path);
     }
 
-    if (LLShaderMgr::instance()->mFragmentShaderObjects.count(object_path) > 0)
+    if (LLShaderMgr::instance()->mFragmentShaderSourceCache.count(object_path) > 0)
     {
         return true;
     }

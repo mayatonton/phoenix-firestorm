@@ -926,10 +926,6 @@ void LLViewerShaderMgr::setShaders()
 
     reentrance = true;
 
-    // Make sure the compiled shader map is cleared before we recompile shaders.
-    mVertexShaderObjects.clear();
-    mFragmentShaderObjects.clear();
-
     initAttribsAndUniforms();
     gPipeline.releaseGLBuffers();
 

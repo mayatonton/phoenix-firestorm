@@ -388,64 +388,6 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
 //============================================================================
 // Load Shader
 
-static std::string get_shader_log(GLuint ret)
-{
-    std::string res;
-
-    //get log length
-    GLint length;
-    glGetShaderiv(ret, GL_INFO_LOG_LENGTH, &length);
-    if (length > 0)
-    {
-        //the log could be any size, so allocate appropriately
-        GLchar* log = new GLchar[length];
-        glGetShaderInfoLog(ret, length, &length, log);
-        res = std::string((char *)log);
-        delete[] log;
-    }
-    // <FS:LO> Fix intel GLSL compiler spitting out "No errors." instead of an empty string like others do when there are no errors, causing log spam.
-    if(!strcmp(res.c_str(),"No errors.\n"))
-    {
-        res = "";
-    }
-    // </FS:LO>
-    return res;
-}
-
-static std::string get_program_log(GLuint ret)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-    std::string res;
-
-    //get log length
-    GLint length;
-    glGetProgramiv(ret, GL_INFO_LOG_LENGTH, &length);
-    if (length > 0)
-    {
-        //the log could be any size, so allocate appropriately
-        GLchar* log = new GLchar[length];
-        glGetProgramInfoLog(ret, length, &length, log);
-        res = std::string((char*)log);
-        delete[] log;
-    }
-    return res;
-}
-
-// get the info log for the given object, be it a shader or program object
-// NOTE: ret MUST be a shader OR a program object
-static std::string get_object_log(GLuint ret)
-{
-    if (glIsProgram(ret))
-    {
-        return get_program_log(ret);
-    }
-    else
-    {
-        llassert(glIsShader(ret));
-        return get_shader_log(ret);
-    }
-}
-
 //dump shader source for debugging
 void LLShaderMgr::dumpShaderSource(U32 shader_code_count, GLchar** shader_code_text)
 {
@@ -461,23 +403,6 @@ void LLShaderMgr::dumpShaderSource(U32 shader_code_count, GLchar** shader_code_t
     }
     LL_CONT << LL_ENDL;
 }
-
-void LLShaderMgr::dumpObjectLog(GLuint ret, bool warns, const std::string& filename)
-{
-    std::string log;
-    log = get_object_log(ret);
-    std::string fname = filename;
-    if (filename.empty())
-    {
-        fname = "unknown shader file";
-    }
-
-    if (log.length() > 0)
-    {
-        LL_SHADER_LOADING_WARNS() << "Shader loading from " << fname << LL_ENDL;
-        LL_SHADER_LOADING_WARNS() << "\n" << log << LL_ENDL;
-    }
- }
 
 GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines, S32 texture_index_channels, std::vector<std::string>* out_sources)
 {
@@ -969,124 +894,16 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         }
     }
 
-    //create shader object
-    GLuint ret = glCreateShader(type);
-
-    error = glGetError();
-    if (error != GL_NO_ERROR)
-    {
-        LL_WARNS("ShaderLoading") << "GL ERROR in glCreateShader: " << error << " for file: " << open_file_name << LL_ENDL;
-        if (ret)
-        {
-            glDeleteShader(ret); //no longer need handle
-            ret = 0;
-        }
-    }
-
-    //load source
-    if (ret)
-    {
-        LL_DEBUGS("ShaderLoading") << "glCreateShader done" << LL_ENDL;
-        glShaderSource(ret, shader_code_count, (const GLchar**)shader_code_text, NULL);
-
-        error = glGetError();
-        if (error != GL_NO_ERROR)
-        {
-            LL_WARNS("ShaderLoading") << "GL ERROR in glShaderSource: " << error << " for file: " << open_file_name << LL_ENDL;
-            glDeleteShader(ret); //no longer need handle
-            ret = 0;
-        }
-    }
-
-    //compile source
-    if (ret)
-    {
-        LL_DEBUGS("ShaderLoading") << "glShaderSource done" << U32(ret) << LL_ENDL;
-        glCompileShader(ret);
-
-        error = glGetError();
-        if (error != GL_NO_ERROR)
-        {
-            LL_WARNS("ShaderLoading") << "GL ERROR in glCompileShader: " << error << " for file: " << open_file_name << LL_ENDL;
-            glDeleteShader(ret); //no longer need handle
-            ret = 0;
-        }
-    }
-
-    if (error == GL_NO_ERROR)
-    {
-        //check for errors
-        LL_DEBUGS("ShaderLoading") << "glCompileShader done" << U32(ret) << LL_ENDL;
-        GLint success = GL_TRUE;
-        glGetShaderiv(ret, GL_COMPILE_STATUS, &success);
-
-        error = glGetError();
-        if (error != GL_NO_ERROR || success == GL_FALSE)
-        {
-            //an error occured, print log
-            LL_WARNS("ShaderLoading") << "GLSL Compilation Error:" << LL_ENDL;
-            dumpObjectLog(ret, true, open_file_name);
-            dumpShaderSource(shader_code_count, shader_code_text);
-            glDeleteShader(ret); //no longer need handle
-            ret = 0;
-        }
-    }
-    else
-    {
-        LL_DEBUGS("ShaderLoading") << "loadShaderFile() completed, ret: " << U32(ret) << LL_ENDL;
-        ret = 0;
-    }
-    stop_glerror();
-
     //free memory
     for (GLuint i = 0; i < shader_code_count; i++)
     {
         free(shader_code_text[i]);
     }
 
-    //successfully loaded, save results
-    if (ret)
-    {
-        // Add shader file to map
-        if (type == GL_VERTEX_SHADER) {
-            mVertexShaderObjects[filename] = ret;
-        }
-        else if (type == GL_FRAGMENT_SHADER) {
-            mFragmentShaderObjects[filename] = ret;
-        }
-        shader_level = try_gpu_class;
-    }
-    else
-    {
-        if (shader_level > 1)
-        {
-            shader_level--;
-            return loadShaderFile(filename, shader_level, type, defines, texture_index_channels, out_sources);
-        }
-        LL_WARNS("ShaderLoading") << "Failed to load " << filename << LL_ENDL;
-    }
+    shader_level = try_gpu_class;
 
-    LL_DEBUGS("ShaderLoading") << "loadShaderFile() completed, ret: " << U32(ret) << LL_ENDL;
-    return ret;
-}
-
-bool LLShaderMgr::validateProgramObject(GLuint obj)
-{
-    //check program validity against current GL
-    glValidateProgram(obj);
-    GLint success = GL_TRUE;
-    glGetProgramiv(obj, GL_LINK_STATUS, &success);
-    if (success == GL_FALSE)
-    {
-        LL_SHADER_LOADING_WARNS() << "GLSL program not valid: " << LL_ENDL;
-        dumpObjectLog(obj);
-    }
-    else
-    {
-        dumpObjectLog(obj, false);
-    }
-
-    return success;
+    LL_DEBUGS("ShaderLoading") << "loadShaderFile() completed" << LL_ENDL;
+    return 1;
 }
 
 void LLShaderMgr::initShaderCache(bool enabled, const LLUUID& old_cache_version, const LLUUID& current_cache_version, bool second_instance)
