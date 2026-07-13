@@ -6822,7 +6822,7 @@ void LLAppViewer::forceErrorOSSpecificException()
 void LLAppViewer::forceErrorDriverCrash()
 {
     LL_WARNS() << "Forcing a deliberate driver crash" << LL_ENDL;
-    glDeleteTextures(1, NULL);
+    vkDestroyBuffer(LLVKLoader::getDevice(), (VkBuffer)(uintptr_t)0xDEADBEEF, nullptr);
 }
 
 // <FS:Ansariel> Wrongly merged back in by LL

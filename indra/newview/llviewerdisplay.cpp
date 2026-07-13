@@ -190,7 +190,6 @@ void display_startup()
     }
 
 
-    glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
     LLGLSUIDefault gls_ui;
     gPipeline.disableLights();
 
@@ -210,8 +209,6 @@ void display_startup()
     {
         LLVKLoader::endFrame();
     }
-
-    glClear(GL_DEPTH_BUFFER_BIT);
 }
 
 void display_update_camera()
@@ -477,7 +474,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LL_DEBUGS("Window") << "Resizing window" << LL_ENDL;
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Resize Window");
         gGL.flush();
-        glClear(GL_COLOR_BUFFER_BIT);
         gViewerWindow->getWindow()->swapBuffers();
         LLPipeline::refreshCachedSettings();
         gPipeline.resizeScreenTexture();
@@ -799,7 +795,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (LLViewerDynamicTexture::updateAllInstances())
         {
             gGL.setColorMask(true, true);
-            glClear(GL_DEPTH_BUFFER_BIT);
         }
     }
 
@@ -918,7 +913,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                 gViewerWindow->setup3DViewport();
 
             }
-            glClear(GL_DEPTH_BUFFER_BIT);
         }
 
         //////////////////////////////////////
@@ -997,7 +991,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if(gUseWireframe)
         {
             gGL.setClearColor(0.5f, 0.5f, 0.5f, 0.f);
-            glClear(GL_COLOR_BUFFER_BIT);
         }
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderStart");
@@ -1350,8 +1343,6 @@ void display_cube_face()
 
     gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
     gPipeline.generateSunShadow(*LLViewerCamera::getInstance());
-
-    glClear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
 
     {
         LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
@@ -1984,8 +1975,6 @@ void render_ui_2d()
                 last_rect.mBottom = LLRect::tCoordType(last_rect.mBottom / ui_scale_factor.mV[1]);
 
                 LLRect clip_rect(last_rect);
-
-                glClear(GL_COLOR_BUFFER_BIT);
 
                 gViewerWindow->draw();
             }

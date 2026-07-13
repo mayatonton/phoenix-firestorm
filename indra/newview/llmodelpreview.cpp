@@ -4701,10 +4701,6 @@ bool LLModelPreview::render()
                 {
                     mBoundTarget->clear(GL_DEPTH_BUFFER_BIT);
                 }
-                else
-                {
-                    glClear(GL_DEPTH_BUFFER_BIT);
-                }
 
                 for (U32 pass = 0; pass < 2; pass++)
                 {
@@ -4842,7 +4838,6 @@ bool LLModelPreview::render()
                         // glPointSize(PREVIEW_DEG_POINT_SIZE);
                         // gPipeline.enableLightsFullbright();
                         gGL.setLineWidth(deg_edge_width());
-                        glPointSize(deg_point_size());
                         // gPipeline.enableLightsFullbright(); // This may need to be restored when I fined the cause of the black rendering
                         // </FS:Beq>
                         //show degenerate triangles
@@ -4921,7 +4916,6 @@ bool LLModelPreview::render()
                             gGL.popMatrix();
                         }
                         gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
-                        glPointSize(1.f);
                         gPipeline.enableLightsPreview();
                         gGL.setSceneBlendType(LLRender::BT_ALPHA);
                     }

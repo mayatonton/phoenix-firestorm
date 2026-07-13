@@ -558,22 +558,10 @@ void LLHeroProbeManager::updateUniforms()
 void LLHeroProbeManager::renderDebug()
 {
     gDebugProgram.bind();
-    // <FS:Beq> Add a bit more metadata to the probe debug view
-    std::map<LLSpatialGroup*, int>  groupCount;
-    std::map<LLViewerObject*, int>  objCount;
-    std::map<F32*,            int>  locCount;
 
-    for (LLReflectionMap* probe : mProbes)
-    {
-        if (!probe->isRelevant()) continue;
-        groupCount[ probe->mGroup ]++;
-        objCount[ probe->mViewerObject ]++;
-        locCount[ probe->mOrigin.getF32ptr() ]++;
-    }
-    // </FS:Beq>
     for (auto& probe : mProbes)
     {
-        renderReflectionProbe(probe, groupCount, objCount, locCount);    // <FS:Beq/> Add a bit more metadata to the probe debug view
+        renderReflectionProbe(probe);
     }
 
     gDebugProgram.unbind();

@@ -1369,7 +1369,7 @@ void LLReflectionMapManager::setUniforms()
 }
 
 
-void renderReflectionProbe(LLReflectionMap* probe, std::map<LLSpatialGroup*, int> groupCount, std::map<LLViewerObject*, int> objCount, std::map<F32*, int> locCount)
+void renderReflectionProbe(LLReflectionMap* probe)
 {
     if (probe->isRelevant())
     {
@@ -1406,10 +1406,6 @@ void renderReflectionProbe(LLReflectionMap* probe, std::map<LLSpatialGroup*, int
         gGL.flush();
 
         // --- New: draw a point at the probe origin color-coded by type ---
-        bool dupByGroup = (probe->mGroup       && groupCount[ probe->mGroup       ] > 1);
-        bool dupByObject= (probe->mViewerObject && objCount[ probe->mViewerObject ] > 1);
-        bool dupByLoc   = (                   locCount[ probe->mOrigin.getF32ptr()] > 1);
-
         const bool is_manual    = probe->mViewerObject != nullptr;
         const bool is_automatic = (probe->mGroup != nullptr) && !is_manual;
         // terrain/water is when neither manual nor automatic
@@ -1431,13 +1427,6 @@ void renderReflectionProbe(LLReflectionMap* probe, std::map<LLSpatialGroup*, int
             gGL.diffuseColor4f(0.f, 1.f, 0.f, 1.f);
         }
 
-        // use a bigger dot if *any* duplicate condition is true
-        const float normalSize = 9.f;
-        const float bigSize    = 18.f;
-        float pointSize = (dupByGroup || dupByObject || dupByLoc)
-                            ? bigSize
-                            : normalSize;
-        glPointSize(pointSize);
         gGL.begin(gGL.POINTS);
         gGL.vertex3fv(po);
         gGL.end();
@@ -1495,21 +1484,10 @@ void renderReflectionProbe(LLReflectionMap* probe, std::map<LLSpatialGroup*, int
 void LLReflectionMapManager::renderDebug()
 {
     gDebugProgram.bind();
-    
-    std::map<LLSpatialGroup*, int>  groupCount;
-    std::map<LLViewerObject*, int>  objCount;
-    std::map<F32*,            int>  locCount;
 
-    for (LLReflectionMap* probe : mProbes)
-    {
-        if (!probe->isRelevant()) continue;
-        groupCount[ probe->mGroup ]++;
-        objCount[ probe->mViewerObject ]++;
-        locCount[ probe->mOrigin.getF32ptr() ]++;
-    }
     for (auto& probe : mProbes)
     {
-        renderReflectionProbe(probe, groupCount, objCount, locCount);
+        renderReflectionProbe(probe);
     }
 
     gDebugProgram.unbind();

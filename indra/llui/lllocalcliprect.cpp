@@ -105,10 +105,6 @@ void LLScreenClipRect::updateScissorRegion()
         S32 h_vk = llmax(0, llceil(rect.getHeight() * LLUI::getScaleFactor().mV[VY]));
         LLVKLoader::setScissor(x, y, w_vk, h_vk);
     }
-    else
-    {
-        glScissor( x,y,w,h );
-    }
 }
 
 //---------------------------------------------------------------------------

@@ -142,10 +142,6 @@ void LLViewerDynamicTexture::preRender(bool clear_depth)
         {
             mBoundTarget->clear(GL_DEPTH_BUFFER_BIT);
         }
-        else
-        {
-            glClear(GL_DEPTH_BUFFER_BIT);
-        }
     }
 }
 

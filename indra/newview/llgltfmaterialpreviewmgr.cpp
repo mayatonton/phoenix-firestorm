@@ -428,10 +428,6 @@ bool LLGLTFPreviewTexture::render()
     {
         mBoundTarget->clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
-    else
-    {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    }
 
     LLGLDepthTest(GL_FALSE);
     LLGLDisable stencil(GL_STENCIL_TEST);

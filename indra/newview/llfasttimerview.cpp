@@ -496,12 +496,6 @@ void saveChart(const std::string& label, const char* suffix, LLImageRaw* scratch
                 }
             }
         }
-        else
-        {
-            //read result back into raw image
-            glReadPixels(0, 0, 1024, 512, GL_RGB, GL_UNSIGNED_BYTE, scratch->getData());
-        }
-
         //write results to disk
         LLPointer<LLImagePNG> result = new LLImagePNG();
         result->encode(scratch, 0.f);

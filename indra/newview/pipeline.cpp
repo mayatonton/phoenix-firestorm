@@ -1418,8 +1418,6 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
                 gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
                 gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
                 shadow_target->setUseDepthCompareSampler(true);
             }
         }
@@ -1436,8 +1434,6 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
                 gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
                 gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
                 shadow_target->setUseDepthCompareSampler(true);
             }
         }
@@ -2019,8 +2015,6 @@ void LLPipeline::createLUTBuffers()
         gGL.getTexUnit(0)->bind(mLightFunc);
         mLightFunc->setAddressMode(LLTexUnit::TAM_CLAMP);
         mLightFunc->setFilteringOption(LLTexUnit::TFO_TRILINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
         delete [] ls;
     }
@@ -6349,7 +6343,6 @@ void LLPipeline::renderDebug()
 
         gGL.getTexUnit(0)->bind(LLViewerFetchedTexture::sWhiteImagep, true);
 
-        glPointSize(8.f);
         if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
         {
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -6384,7 +6377,6 @@ void LLPipeline::renderDebug()
         }
         gGL.end();
         gGL.flush();
-        glPointSize(1.f);
         if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
         {
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -6609,7 +6601,6 @@ void LLPipeline::renderDebug()
                 {
                     //render visible point cloud
                     gGL.flush();
-                    glPointSize(8.f);
                     if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
                     {
                         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -6633,7 +6624,6 @@ void LLPipeline::renderDebug()
                     gGL.end();
 
                     gGL.flush();
-                    glPointSize(1.f);
                     if (LLVKLoader::isVulkanInitialized() && gUIProgram.mVkPipelineLayout != VK_NULL_HANDLE)
                     {
                         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -11046,16 +11036,18 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
 
     gGL.flush();
 
-    GLboolean previous_color_mask[4] = { GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE };
+    GLboolean previous_color_mask[4] = {
+        (GLboolean)(gGL.getColorMaskR() ? GL_TRUE : GL_FALSE),
+        (GLboolean)(gGL.getColorMaskG() ? GL_TRUE : GL_FALSE),
+        (GLboolean)(gGL.getColorMaskB() ? GL_TRUE : GL_FALSE),
+        (GLboolean)(gGL.getColorMaskA() ? GL_TRUE : GL_FALSE) };
     GLfloat previous_clear_color[4] = { 0.f, 0.f, 0.f, 0.f };
-    GLint previous_cull_face_mode = GL_BACK;
-    glGetBooleanv(GL_COLOR_WRITEMASK, previous_color_mask);
+    GLint previous_cull_face_mode = LLGLState::sCullFaceMode;
     const F32* cur_cc = gGL.getClearColor();
     previous_clear_color[0] = cur_cc[0];
     previous_clear_color[1] = cur_cc[1];
     previous_clear_color[2] = cur_cc[2];
     previous_clear_color[3] = cur_cc[3];
-    glGetIntegerv(GL_CULL_FACE_MODE, &previous_cull_face_mode);
 
     mObjectIDBuffer.bindTarget();
     // gbuffer3 has no alpha in default LL config (project memory
@@ -12902,18 +12894,12 @@ void LLPipeline::unbindDeferredShader(LLGLSLShader &shader)
 
     for (U32 i = 0; i < 4; i++)
     {
-        if (shader.disableTexture(LLShaderMgr::DEFERRED_SHADOW0+i) > -1)
-        {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-        }
+        shader.disableTexture(LLShaderMgr::DEFERRED_SHADOW0+i);
     }
 
     for (U32 i = 4; i < 6; i++)
     {
-        if (shader.disableTexture(LLShaderMgr::DEFERRED_SHADOW0+i) > -1)
-        {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-        }
+        shader.disableTexture(LLShaderMgr::DEFERRED_SHADOW0+i);
     }
 
     shader.disableTexture(LLShaderMgr::DEFERRED_NOISE);
@@ -14838,12 +14824,6 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
 
     if (!for_profile)
     { //create alpha mask based on depth buffer (grey out if muted)
-        if (isFrameRenderingDeferred())
-        {
-            GLuint buff = GL_COLOR_ATTACHMENT0;
-            glDrawBuffers(1, &buff);
-        }
-
         LLGLDisable blend(GL_BLEND);
 
         if (visually_muted || too_complex)

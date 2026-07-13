@@ -457,10 +457,6 @@ void LLSceneMonitor::calcDiffAggregate()
         {
             LLVKLoader::cmdBeginOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), mQueryObject);
         }
-        else
-        {
-            glBeginQuery(GL_SAMPLES_PASSED, mQueryObject);
-        }
     }
 
     gl_draw_scaled_target(0, 0, S32(mDiff->getWidth() * mDiffPixelRatio), S32(mDiff->getHeight() * mDiffPixelRatio), mDiff);
@@ -470,10 +466,6 @@ void LLSceneMonitor::calcDiffAggregate()
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::cmdEndOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), mQueryObject);
-        }
-        else
-        {
-            glEndQuery(GL_SAMPLES_PASSED);
         }
         mDiffState = WAIT_ON_RESULT;
     }
@@ -513,14 +505,6 @@ void LLSceneMonitor::fetchQueryResult()
             LLVKLoader::getOcclusionQueryResultVk(mQueryObject, vk_available, vk_samples);
             available = vk_available ? 1 : 0;
             count     = (GLuint)vk_samples;
-        }
-        else
-        {
-            glGetQueryObjectuiv(mQueryObject, GL_QUERY_RESULT_AVAILABLE, &available);
-            if(available)
-            {
-                glGetQueryObjectuiv(mQueryObject, GL_QUERY_RESULT, &count);
-            }
         }
         if(available)
         {
