@@ -249,16 +249,10 @@ float tapScreenSpaceReflection(
         return 0.0;
     }
 
-    // Bias the ray origin along the normal, scaled by distance.
-    // Prevents grazing-angle rays from scraping the originating surface
-    // at distance where depth precision breaks down.
-    float depthBias = max(0.01, -viewPos.z * DEPTH_BIAS);
-    vec3 biasedPos = viewPos - normal * depthBias;
-
-    vec3 transformedPos = (inv_modelview_delta * vec4(biasedPos, 1.0)).xyz;
+    vec3 transformedPos = (inv_modelview_delta * vec4(viewPos, 1.0)).xyz;
     float startDepth = -transformedPos.z;
 
-    if (startDepth > maxZDepth)
+    if (startDepth <= DEPTH_BIAS || startDepth > maxZDepth)
     {
         collectedColor = vec4(0.0);
         return 0.0;
