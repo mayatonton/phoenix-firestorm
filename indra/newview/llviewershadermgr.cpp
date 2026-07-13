@@ -1304,6 +1304,7 @@ bool LLViewerShaderMgr::loadShadersWater()
         gWaterProgram.mShaderFiles.push_back(make_pair("environment/waterV.glsl", GL_VERTEX_SHADER));
         gWaterProgram.mShaderFiles.push_back(make_pair("environment/waterF.glsl", GL_FRAGMENT_SHADER));
         gWaterProgram.clearPermutations();
+        gWaterProgram.addPermutation("SSR_EXCLUDE_WATER", "1");
         if (LLPipeline::sRenderTransparentWater)
         {
             gWaterProgram.addPermutation("TRANSPARENT_WATER", "1");

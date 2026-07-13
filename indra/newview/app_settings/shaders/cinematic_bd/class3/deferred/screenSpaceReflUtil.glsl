@@ -279,6 +279,15 @@ float tapScreenSpaceReflection(
         return 0.0;
     }
 
+#ifdef SSR_EXCLUDE_WATER
+    vec3 waterUpPrev = normalize(last_modelview_matrix[2].xyz);
+    if (abs(dot(waterUpPrev, hitCoord - transformedPos)) < 0.25)
+    {
+        collectedColor = vec4(0.0);
+        return 0.0;
+    }
+#endif
+
     float edgeFade = calculateEdgeFade(hitTC);
 
     float zFadeStart = maxZDepth * 0.8;
