@@ -93,14 +93,10 @@ uniform float maxRoughness;
 #endif
 
 // Ray march parameters wired to AYA scalar controls.
-// distanceBias is used as hit thickness; max step is derived from max depth
-// and iteration count so rayStep/Iterations still control reach.
+// distanceBias is used as hit thickness; maxZDepth caps ray travel distance.
 #define STEP_SIZE       rayStep
 #define STEP_GROWTH     adaptiveStepMultiplier
-#define MAX_STEP_SIZE   max(STEP_SIZE, maxZDepth / max(iterationCount, 1.0))
-#define MAX_THICKNESS   max(distanceBias, STEP_SIZE * 0.5)
 #define DEPTH_BIAS      depthRejectBias
-const int   BINARY_STEPS    = 8;
 
 vec4 getPositionWithDepth(vec2 pos_screen, float depth);
 
@@ -123,76 +119,90 @@ float getLinearDepth(vec2 tc)
     return -pos.z;
 }
 
-vec3 binarySearch(vec3 dir, inout vec3 hitCoord, inout float dDepth)
+bool traceScreenRay(vec3 position, vec3 direction, out vec2 hitTC, out float hitDepth, out vec3 hitPos)
 {
-    float depth;
-    float initialStepLen = length(dir);
-
-    for (int i = 0; i < BINARY_STEPS; i++)
-    {
-        vec2 projectedCoord = generateProjectedPosition(hitCoord);
-        depth = getLinearDepth(projectedCoord);
-        dDepth = abs(hitCoord.z) - depth;
-
-        dir *= 0.5;
-        if (dDepth > 0.0)
-            hitCoord -= dir;
-        else
-            hitCoord += dir;
-    }
-
-    vec2 projectedCoord = generateProjectedPosition(hitCoord);
-
-    // After 8 binary steps, precision is initialStep / 256.
-    // Scale acceptance with depth — precision degrades at distance.
-    float depthScale = max(1.0, depth * 0.01);
-    float maxError = max(initialStepLen * 0.1, 0.05) * depthScale;
-    if (abs(dDepth) > maxError)
-        return vec3(-1.0, -1.0, depth);
-
-    return vec3(projectedCoord, depth);
-}
-
-vec3 rayMarch(vec3 dir, inout vec3 hitCoord, out float dDepth, float startDepth)
-{
-    dir *= STEP_SIZE;
+    float maxStepLen = 4.0;
+    vec3 step = STEP_SIZE * direction;
+    vec3 prevPosition = position;
+    vec3 marchingPosition = position + step;
+    vec2 screenPosition;
 
     for (int i = 0; i < int(iterationCount); i++)
     {
-        hitCoord += dir;
-
-        vec2 projectedCoord = generateProjectedPosition(hitCoord);
-
-        if (projectedCoord.x < 0.0 || projectedCoord.x > 1.0 ||
-            projectedCoord.y < 0.0 || projectedCoord.y > 1.0)
-            return vec3(-1.0);
-
-        float depth = getLinearDepth(projectedCoord);
-        dDepth = abs(hitCoord.z) - depth;
-
-        if (i < 1)
-            continue;
-
-        if (depth > maxZDepth)
-            return vec3(-1.0);
-
-        if (dDepth > 0.0)
+        if (length(marchingPosition - position) > maxZDepth)
         {
-            float stepLen = length(dir);
-            float thickness = max(MAX_THICKNESS, stepLen * 1.5);
-            if (dDepth > thickness)
-            {
-                dir = normalize(dir) * min(stepLen * STEP_GROWTH, MAX_STEP_SIZE);
-                continue;
-            }
-            return binarySearch(dir, hitCoord, dDepth);
+            return false;
         }
 
-        // Grow step but cap at max to avoid skipping geometry
-        dir = normalize(dir) * min(length(dir) * STEP_GROWTH, MAX_STEP_SIZE);
+        screenPosition = generateProjectedPosition(marchingPosition);
+        bool offscreen = (screenPosition.x > 1 || screenPosition.x < 0 ||
+                          screenPosition.y > 1 || screenPosition.y < 0);
+        bool crossed = offscreen;
+        if (!offscreen)
+        {
+            float delta = abs(marchingPosition.z) - getLinearDepth(screenPosition);
+            crossed = (delta > 0.0 && delta <= length(step) * 1.5);
+        }
+
+        if (crossed)
+        {
+            vec3 lo = prevPosition;
+            vec3 hi = marchingPosition;
+            for (int j = 0; j < 12; j++)
+            {
+                vec3 mid = (lo + hi) * 0.5;
+                vec2 tc2 = generateProjectedPosition(mid);
+                if (tc2.x < 0 || tc2.x > 1 || tc2.y < 0 || tc2.y > 1)
+                {
+                    hi = mid;
+                    continue;
+                }
+                if (abs(mid.z) - getLinearDepth(tc2) > 0.0)
+                {
+                    hi = mid;
+                }
+                else
+                {
+                    lo = mid;
+                }
+            }
+            vec2 tch = generateProjectedPosition(hi);
+            if (tch.x >= 0 && tch.x <= 1 && tch.y >= 0 && tch.y <= 1)
+            {
+                float dh = getLinearDepth(tch);
+                float dd = abs(hi.z) - dh;
+                if (dd >= 0.0 && dd <= max(distanceBias, 0.02))
+                {
+                    vec3 ahead = hi + (hi - lo) * 4.0 + direction * 0.05;
+                    vec2 tca = generateProjectedPosition(ahead);
+                    bool graze = false;
+                    if (tca.x >= 0 && tca.x <= 1 && tca.y >= 0 && tca.y <= 1)
+                    {
+                        graze = (abs(ahead.z) - getLinearDepth(tca)) < 0.0;
+                    }
+                    if (!graze)
+                    {
+                        hitTC = tch;
+                        hitDepth = dh;
+                        hitPos = hi;
+                        return true;
+                    }
+                    marchingPosition = ahead;
+                }
+            }
+            if (offscreen)
+            {
+                return false;
+            }
+        }
+
+        prevPosition = marchingPosition;
+        float ns = min(length(step) * STEP_GROWTH, maxStepLen);
+        step = normalize(step) * ns;
+        marchingPosition += step;
     }
 
-    return vec3(-1.0);
+    return false;
 }
 
 float calculateEdgeFade(vec2 screenPos)
@@ -266,18 +276,14 @@ float tapScreenSpaceReflection(
         return 0.0;
     }
 
-    vec3 hitCoord = transformedPos;
-    float dDepth;
-    vec3 result = rayMarch(transformedReflDir, hitCoord, dDepth, startDepth);
-
-    if (result.x < 0.0)
+    vec2 hitTC;
+    float hitDepth;
+    vec3 hitCoord;
+    if (!traceScreenRay(transformedPos, transformedReflDir, hitTC, hitDepth, hitCoord))
     {
         collectedColor = vec4(0.0);
         return 0.0;
     }
-
-    vec2 hitTC = result.xy;
-    float hitDepth = result.z;
 
     float edgeFade = calculateEdgeFade(hitTC);
 
