@@ -400,6 +400,13 @@ namespace
     };
     std::vector<PendingObjectFree> sPendingObjectFrees;
 
+    struct PendingCmdFree
+    {
+        VkCommandBuffer cmd;
+        U32             enqueue_frame;
+    };
+    std::vector<PendingCmdFree> sPendingCmdFrees;
+
     struct DeviceLimits
     {
         bool memoryBudgetSupported              = false;
@@ -2572,6 +2579,8 @@ static VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_siz
 static void           tickDeferredBufferFreeQueue();
 static void           tickDeferredImageFreeQueue();
 static void           tickDeferredObjectFreeQueue();
+static void           tickDeferredCmdFreeQueue();
+static void           enqueueDeferredCmdFree(VkCommandBuffer cmd);
 static void           shutdownSurface();
 
 bool initVulkan()
@@ -2715,6 +2724,14 @@ void shutdownVulkan()
             }
         }
         sPendingObjectFrees.clear();
+        if (sCommandPool != VK_NULL_HANDLE)
+        {
+            for (auto& pending : sPendingCmdFrees)
+            {
+                vkFreeCommandBuffers(sDevice, sCommandPool, 1, &pending.cmd);
+            }
+        }
+        sPendingCmdFrees.clear();
 
         destroySwapchain();
 
@@ -3128,6 +3145,7 @@ bool beginFrame(bool acquire_swapchain)
     tickDeferredBufferFreeQueue();
     tickDeferredImageFreeQueue();
     tickDeferredObjectFreeQueue();
+    tickDeferredCmdFreeQueue();
 
     tickScenePerDrawDescriptorCache();
 
@@ -4688,6 +4706,39 @@ void tickDeferredBufferFreeQueue()
     }
 }
 
+void enqueueDeferredCmdFree(VkCommandBuffer cmd)
+{
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    PendingCmdFree pending;
+    pending.cmd           = cmd;
+    pending.enqueue_frame = sMonotonicFrameCount;
+    sPendingCmdFrees.push_back(pending);
+}
+
+void tickDeferredCmdFreeQueue()
+{
+    if (sDevice == VK_NULL_HANDLE || sCommandPool == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    auto it = sPendingCmdFrees.begin();
+    while (it != sPendingCmdFrees.end())
+    {
+        if (it->enqueue_frame + FRAMES_IN_FLIGHT <= sMonotonicFrameCount)
+        {
+            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &it->cmd);
+            it = sPendingCmdFrees.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
 void bindVertexBufferVk(VkCommandBuffer cmd_buf, VkBuffer buffer, VkDeviceSize offset, U32 firstBinding)
 {
     if (cmd_buf == VK_NULL_HANDLE || buffer == VK_NULL_HANDLE)
@@ -5173,10 +5224,8 @@ bool uploadImageDataVk(VkImage     image,
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
-
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
-    vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+    enqueueDeferredCmdFree(cmd);
+    destroyBufferVk(staging_buffer, staging_allocation);
     return true;
 }
 
@@ -5298,8 +5347,7 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+    enqueueDeferredCmdFree(cmd);
 
     return true;
 }
@@ -5421,8 +5469,7 @@ bool downscaleImageVk(VkImage      src_image,
         destroyImageVk(new_image, new_view, new_alloc);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+    enqueueDeferredCmdFree(cmd);
 
     if (mip_levels > 1)
     {
@@ -5532,8 +5579,7 @@ bool blitCubeArrayVk(VkImage       src,
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+    enqueueDeferredCmdFree(cmd);
     return true;
 }
 
@@ -5865,10 +5911,8 @@ bool uploadImageData3DVk(VkImage     image,
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
-
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
-    vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+    enqueueDeferredCmdFree(cmd);
+    destroyBufferVk(staging_buffer, staging_allocation);
     return true;
 }
 
@@ -6035,10 +6079,8 @@ bool uploadImageSubregionVk(VkImage     image,
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
-
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
-    vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+    enqueueDeferredCmdFree(cmd);
+    destroyBufferVk(staging_buffer, staging_allocation);
     return true;
 }
 
@@ -6277,10 +6319,8 @@ bool uploadCubeImageDataVk(VkImage           image,
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
-
-    vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
-    vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+    enqueueDeferredCmdFree(cmd);
+    destroyBufferVk(staging_buffer, staging_allocation);
     return true;
 }
 
