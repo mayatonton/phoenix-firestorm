@@ -331,6 +331,15 @@ bool LLAgent::isActionAllowed(const LLSD& sdname)
 
     if (param == "speak")
     {
+        // <FS:AYA> Never lock the user out of turning the mic OFF: if the mic is
+        // currently open (Speak lit), keep the button clickable even when the
+        // voice connection / parcel checks below would disable it. Otherwise a
+        // mid-session voice failure leaves Speak stuck on with no way to release.
+        if (LLVoiceClient::getInstance()->getUserPTTState())
+        {
+            return true;
+        }
+        // </FS:AYA>
         bool allow_agent_voice = false;
         LLVoiceChannel* channel = LLVoiceChannel::getCurrentVoiceChannel();
         if (channel != NULL)
