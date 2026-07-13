@@ -906,9 +906,7 @@ void LLFontFreetype::setSubImageLuminanceAlpha(U32 x, U32 y, U32 bitmap_num, U32
         from_offset = (height - 1 - i)*stride;
         for (j = 0; j < width; j++)
         {
-            U8 glyph_byte = *(data + from_offset);
-            *(target + to_offset*2)     = glyph_byte;
-            *(target + to_offset*2 + 1) = glyph_byte;
+            *(target + to_offset*2 + 1) = *(data + from_offset);
             to_offset++;
             from_offset++;
         }
