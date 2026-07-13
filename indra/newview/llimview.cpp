@@ -593,6 +593,18 @@ void on_new_message(const LLSD& msg)
 void startConferenceCoro(std::string url,
     LLUUID tempSessionId, LLUUID creatorId, LLUUID otherParticipantId, LLSD agents)
 {
+    if (url.empty())
+    {
+        LL_WARNS("LLIMModel") << "ChatSessionRequest capability is empty; using deprecated conference start path for session "
+                              << tempSessionId << LL_ENDL;
+        start_deprecated_conference_chat(
+            tempSessionId,
+            creatorId,
+            otherParticipantId,
+            agents);
+        return;
+    }
+
     LLCore::HttpRequest::policy_t httpPolicy(LLCore::HttpRequest::DEFAULT_POLICY_ID);
     LLCoreHttpUtil::HttpCoroutineAdapter::ptr_t
         httpAdapter = std::make_shared<LLCoreHttpUtil::HttpCoroutineAdapter>("ConferenceChatStart", httpPolicy);
@@ -620,7 +632,8 @@ void startConferenceCoro(std::string url,
 
     if (!status)
     {
-        LL_WARNS("LLIMModel") << "Failed to start conference" << LL_ENDL;
+        LL_WARNS("LLIMModel") << "Failed to start conference request, status: " << status.toTerseString()
+                              << " (" << status.toString() << ")" << LL_ENDL;
         //try an "old school" way.
         // *TODO: What about other error status codes?  4xx 5xx?
         if (status == LLCore::HttpStatus(HTTP_BAD_REQUEST))
@@ -630,6 +643,11 @@ void startConferenceCoro(std::string url,
                 creatorId,
                 otherParticipantId,
                 agents);
+        }
+        else if (gIMMgr)
+        {
+            static const std::string error_string("generic_request_error");
+            gIMMgr->showSessionStartError(error_string, tempSessionId);
         }
 
         //else throw an error back to the client?
@@ -5276,4 +5294,3 @@ LLHTTPRegistration<LLViewerChatterBoxSessionUpdate>
 LLHTTPRegistration<LLViewerChatterBoxInvitation>
     gHTTPRegistrationMessageChatterBoxInvitation(
         "/message/ChatterBoxInvitation");
-
