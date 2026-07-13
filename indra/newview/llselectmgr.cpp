@@ -6571,7 +6571,6 @@ void LLSelectMgr::updateSilhouettes()
         //gGLSPipelineSelection.set();
 
         //mSilhouetteImagep->bindTexture();
-        //glAlphaFunc(GL_GREATER, sHighlightAlphaTest);
 
         std::set<LLViewerObject*> roots;
 
@@ -6764,7 +6763,6 @@ void LLSelectMgr::updateSelectionSilhouette(LLObjectSelectionHandle object_handl
         //gGLSPipelineSelection.set();
 
         //mSilhouetteImagep->bindTexture();
-        //glAlphaFunc(GL_GREATER, sHighlightAlphaTest);
 
         for (S32 pass = 0; pass < 2; pass++)
         {

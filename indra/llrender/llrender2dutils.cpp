@@ -1793,17 +1793,6 @@ void LLRender2D::loadIdentity()
 // static
 void LLRender2D::setLineWidth(F32 width)
 {
-    // <FS> Line width OGL core profile fix by Rye Mutt
-    //gGL.flush();
-    //// If outside the allowed range, glLineWidth fails with "invalid value".
-    //// On Darwin, the range is [1, 1].
-    //static GLfloat range[2]{0.0};
-    //if (range[1] == 0)
-    //{
-    //    glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, range);
-    //}
-    //width *= lerp(LLRender::sUIGLScaleFactor.mV[VX], LLRender::sUIGLScaleFactor.mV[VY], 0.5f);
-    //glLineWidth(llclamp(width, range[0], range[1]));
     gGL.setLineWidth(width * lerp(LLRender::sUIGLScaleFactor.mV[VX], LLRender::sUIGLScaleFactor.mV[VY], 0.5f));
 }
 

@@ -1692,7 +1692,6 @@ void LLManipTranslate::highlightIntersection(LLVector3 normal,
     static const U32 num_types = LL_ARRAY_SIZE(types);
 
     GLuint stencil_mask = 0xFFFFFFFF;
-    //stencil in volumes
 
     gGL.flush();
 
@@ -1702,13 +1701,8 @@ void LLManipTranslate::highlightIntersection(LLVector3 normal,
     }
 
     {
-        //glStencilMask(stencil_mask); //deprecated
-        //glClearStencil(1);
-        //glClear(GL_STENCIL_BUFFER_BIT);
         LLGLEnable cull_face(GL_CULL_FACE);
-        //LLGLEnable stencil(GL_STENCIL_TEST);
         LLGLDepthTest depth (GL_TRUE, GL_FALSE, GL_ALWAYS);
-        //glStencilFunc(GL_ALWAYS, 0, stencil_mask);
         gGL.setColorMask(false, false);
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
 
@@ -1747,15 +1741,12 @@ void LLManipTranslate::highlightIntersection(LLVector3 normal,
             LLPipeline::toggleRenderType(LLPipeline::RENDER_TYPE_CLOUDS);
         }
 
-        //stencil in volumes
-        //glStencilOp(GL_INCR, GL_INCR, GL_INCR);
         LLGLState::setCullFaceMode(GL_FRONT);
         for (U32 i = 0; i < num_types; i++)
         {
             gPipeline.renderObjects(types[i], LLVertexBuffer::MAP_VERTEX, false);
         }
 
-        //glStencilOp(GL_DECR, GL_DECR, GL_DECR);
         LLGLState::setCullFaceMode(GL_BACK);
         for (U32 i = 0; i < num_types; i++)
         {
@@ -1794,7 +1785,6 @@ void LLManipTranslate::highlightIntersection(LLVector3 normal,
     {
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
         LLGLDepthTest depth(GL_FALSE);
-        //LLGLEnable stencil(GL_STENCIL_TEST);
         LLGLState::setStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
         LLGLState::setStencilFunc(GL_EQUAL, 0, stencil_mask);
         renderGrid(0,0,tiles,inner_color.mV[0], inner_color.mV[1], inner_color.mV[2], 0.25f);

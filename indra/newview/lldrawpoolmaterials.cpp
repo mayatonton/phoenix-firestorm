@@ -30,7 +30,6 @@
 #include "lldrawpoolmaterials.h"
 #include "llviewershadermgr.h"
 #include "pipeline.h"
-#include "llglcommonfunc.h"
 #include "llvoavatar.h"
 #include "llvkloader.h"
 #include "llvkuboreg.h"

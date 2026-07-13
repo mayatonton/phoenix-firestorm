@@ -48,7 +48,6 @@
 #include "llviewerregion.h"
 #include "lldrawpoolwater.h"
 #include "llspatialpartition.h"
-#include "llglcommonfunc.h"
 #include "llvoavatar.h"
 #include "gltfscenemanager.h"
 #include "lltoolmgr.h"

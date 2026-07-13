@@ -571,19 +571,7 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
                     gGL.setPolygonOffset(-1.f, -1.f);
                     gGL.multMatrix((F32*) volume->getRelativeXform().mMatrix);
                     const LLVolumeFace& vol_face = rigged->getVolumeFace(getTEOffset());
-                    // <FS:Ansariel> Use a vbo for the static LLVertexBuffer::drawArray/Element functions; by Drake Arconis/Shyotl Kuhr
-                    //LLVertexBuffer::unbind();
-                    //glVertexPointer(3, GL_FLOAT, 16, vol_face.mPositions);
-                    //if (vol_face.mTexCoords)
-                    //{
-                    //  glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-                    //  glTexCoordPointer(2, GL_FLOAT, 8, vol_face.mTexCoords);
-                    //}
-                    //gGL.syncMatrices();
-                    //glDrawElements(GL_TRIANGLES, vol_face.mNumIndices, GL_UNSIGNED_SHORT, vol_face.mIndices);
-                    //glDisableClientState(GL_TEXTURE_COORD_ARRAY);
                     LLVertexBuffer::drawElements(LLRender::TRIANGLES, vol_face.mPositions, vol_face.mTexCoords, vol_face.mNumIndices, vol_face.mIndices);
-                    // </FS:Ansariel>
                 }
             }
 #endif

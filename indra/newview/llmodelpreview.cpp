@@ -4835,7 +4835,6 @@ bool LLModelPreview::render()
                     {
                         // <FS:Beq> restore older functionality lost in lab importer
                         // gGL.setLineWidth(PREVIEW_DEG_EDGE_WIDTH); // <FS> Line width OGL core profile fix by Rye Mutt
-                        // glPointSize(PREVIEW_DEG_POINT_SIZE);
                         // gPipeline.enableLightsFullbright();
                         gGL.setLineWidth(deg_edge_width());
                         // gPipeline.enableLightsFullbright(); // This may need to be restored when I fined the cause of the black rendering

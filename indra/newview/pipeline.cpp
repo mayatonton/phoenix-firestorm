@@ -4804,11 +4804,6 @@ void render_hud_elements()
 
     LLGLSUIDefault gls_ui;
 
-    //LLGLEnable stencil(GL_STENCIL_TEST);
-    //glStencilFunc(GL_ALWAYS, 255, 0xFFFFFFFF);
-    //glStencilMask(0xFFFFFFFF);
-    //glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
     gUIProgram.bind();
     gGL.color4f(1, 1, 1, 1);
     LLGLDepthTest depth(GL_TRUE, GL_FALSE);
@@ -6078,7 +6073,7 @@ void LLPipeline::renderDebug()
                         const LLColor4 clearColor = gSavedSettings.getColor4("PathfindingNavMeshClear");
                         gGL.setColorMask(true, true);
                         gGL.setClearColor(clearColor.mV[0],clearColor.mV[1],clearColor.mV[2],0);
-                        LLRenderTarget::clearBoundTarget(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // no stencil -- deprecated | GL_STENCIL_BUFFER_BIT);
+                        LLRenderTarget::clearBoundTarget(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
                         gGL.setColorMask(true, false);
                         LLGLState::setPolygonMode(GL_FILL);
                     }
@@ -9525,10 +9520,7 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
         LLGLDepthTest    depth(GL_FALSE, GL_FALSE);
 
         static LLCachedControl<bool> use_sample(gSavedSettings, "RenderSMAAUseSample", false);
-        //static LLCachedControl<bool> use_stencil(gSavedSettings, "RenderSMAAUseStencil", true);
         {
-            //LLGLState stencil(GL_STENCIL_TEST, use_stencil);
-
             // Bind setup:
             LLRenderTarget& dest = mFXAAMap;
             LLGLSLShader& edge_shader = gSMAAEdgeDetectProgram[fsaa_quality];
@@ -9561,12 +9553,6 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
                 gGL.getTexUnit(channel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
             }
 
-            //if (use_stencil)
-            //{
-            //    glStencilFunc(GL_ALWAYS, 1, 0xFF);
-            //    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-            //    glStencilMask(0xFF);
-            //}
             mScreenTriangleVB->setBuffer();
             mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
@@ -9577,8 +9563,6 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
         }
 
         {
-            //LLGLState stencil(GL_STENCIL_TEST, use_stencil);
-
             // Bind setup:
             LLRenderTarget& dest = mSMAABlendBuffer;
             LLGLSLShader& blend_weights_shader = gSMAABlendWeightsProgram[fsaa_quality];
@@ -9627,17 +9611,8 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
                 gGL.getTexUnit(search_tex_channel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
             }
 
-            //if (use_stencil)
-            //{
-            //    glStencilFunc(GL_EQUAL, 1, 0xFF);
-            //    glStencilMask(0x00);
-            //}
             mScreenTriangleVB->setBuffer();
             mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            //if (use_stencil)
-            //{
-            //    glStencilFunc(GL_ALWAYS, 0, 0xFF);
-            //}
             blend_weights_shader.unbind();
             dest.flush();
             gGL.getTexUnit(edge_tex_channel)->unbindFast(LLTexUnit::TT_TEXTURE);
@@ -9667,11 +9642,8 @@ void LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst)
         LLGLDepthTest    depth(GL_FALSE, GL_FALSE);
 
         static LLCachedControl<bool> use_sample(gSavedSettings, "RenderSMAAUseSample", false);
-        //static LLCachedControl<bool> use_stencil(gSavedSettings, "RenderSMAAUseStencil", true);
 
         {
-            //LLGLDisable stencil(GL_STENCIL_TEST);
-
             // Bind setup:
             LLRenderTarget* bound_target = dst;
             LLGLSLShader& blend_shader = gSMAANeighborhoodBlendProgram[fsaa_quality];

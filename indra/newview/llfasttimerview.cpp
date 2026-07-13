@@ -1155,7 +1155,6 @@ void LLFastTimerView::drawLineGraph()
         {
             // <FS> Line width OGL core profile fix by Rye Mutt
             //gGL.flush();
-            //glLineWidth(3);
             gGL.setLineWidth(3.f);
         }
 
@@ -1218,7 +1217,6 @@ void LLFastTimerView::drawLineGraph()
         {
             // <FS> Line width OGL core profile fix by Rye Mutt
             //gGL.flush();
-            //glLineWidth(1);
             gGL.setLineWidth(1.f);
         }
 

@@ -2833,7 +2833,6 @@ void LLViewerWindow::reshape(S32 width, S32 height)
         mWindowRectRaw.mRight = mWindowRectRaw.mLeft + width;
         mWindowRectRaw.mTop = mWindowRectRaw.mBottom + height;
 
-        //glViewport(0, 0, width, height );
 
         LLViewerCamera * camera = LLViewerCamera::getInstance(); // simpleton, might not exist
         if (height > 0 && camera)
@@ -5131,16 +5130,6 @@ void renderOnePhysicsShape(LLViewerObject* objectp)
             // We have the hull details so just draw them
         {
             // TODO: (Beq) refactor this!! yet another flavour of drawing the same crap. Can we ratioanlise the arguments
-            // <FS:Ansariel> Use a vbo for the static LLVertexBuffer::drawArray/Element functions; by Drake Arconis/Shyotl Kuhr
-            //llassert(LLGLSLShader::sCurBoundShader != 0);
-            //LLVertexBuffer::unbind();
-            //glVertexPointer(3, GL_FLOAT, 16, phys_volume->mHullPoints);
-            //gGL.diffuseColor4fv(line_color.mV);
-            //gGL.syncMatrices();
-            //glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
-
-            //gGL.diffuseColor4fv(color.mV);
-            //glDrawElements(GL_TRIANGLES, phys_volume->mNumHullIndices, GL_UNSIGNED_SHORT, phys_volume->mHullIndices);
             gGL.diffuseColor4fv(line_color.mV);
             LLGLState::setPolygonMode(GL_LINE);
             LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);

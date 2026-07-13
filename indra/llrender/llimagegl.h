@@ -64,7 +64,6 @@ public:
 
     static U64 getVkTextureBytesAllocated();
 
-    // These 2 functions replace glGenTextures() and glDeleteTextures()
 
     // Size calculation
     static S32 dataFormatBits(S32 dataformat);
@@ -270,7 +269,7 @@ protected:
     LLGLint  mFormatInternal; // = GL internalformat
     LLGLenum mFormatPrimary;  // = GL format (pixel data format)
     LLGLenum mFormatType;
-    bool     mFormatSwapBytes;// if true, use glPixelStorei(GL_UNPACK_SWAP_BYTES, 1)
+    bool     mFormatSwapBytes;
 
     bool mExternalTexture;
 

@@ -151,7 +151,6 @@ void LLCubeMapArray::allocate(U32 resolution, U32 components, U32 count, bool us
     if (use_mips)
     {
         mImage->setFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
-        //glGenerateMipmap(GL_TEXTURE_CUBE_MAP_ARRAY);  // <=== latest AMD drivers do not appreciate this method of allocating mipmaps
     }
     else
     {

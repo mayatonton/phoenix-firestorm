@@ -54,7 +54,6 @@
 #include "llviewercamera.h"
 #include "lldrawpoolwlsky.h"
 #include "llglslshader.h"
-#include "llglcommonfunc.h"
 #include "llvoavatar.h"
 #include "llviewershadermgr.h"
 #include "llvkloader.h"

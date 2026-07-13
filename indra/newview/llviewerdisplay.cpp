@@ -995,42 +995,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderStart");
 
-        //// render frontmost floater opaque for occlusion culling purposes
-        //LLFloater* frontmost_floaterp = gFloaterView->getFrontmost();
-        //// assumes frontmost floater with focus is opaque
-        //if (frontmost_floaterp && gFocusMgr.childHasKeyboardFocus(frontmost_floaterp))
-        //{
-        //  gGL.matrixMode(LLRender::MM_MODELVIEW);
-        //  gGL.pushMatrix();
-        //  {
-        //      gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-
-        //      glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
-        //      gGL.loadIdentity();
-
-        //      LLRect floater_rect = frontmost_floaterp->calcScreenRect();
-        //      // deflate by one pixel so rounding errors don't occlude outside of floater extents
-        //      floater_rect.stretch(-1);
-        //      LLRectf floater_3d_rect((F32)floater_rect.mLeft / (F32)gViewerWindow->getWindowWidthScaled(),
-        //                              (F32)floater_rect.mTop / (F32)gViewerWindow->getWindowHeightScaled(),
-        //                              (F32)floater_rect.mRight / (F32)gViewerWindow->getWindowWidthScaled(),
-        //                              (F32)floater_rect.mBottom / (F32)gViewerWindow->getWindowHeightScaled());
-        //      floater_3d_rect.translate(-0.5f, -0.5f);
-        //      gGL.translatef(0.f, 0.f, -LLViewerCamera::getInstance()->getNear());
-        //      gGL.scalef(LLViewerCamera::getInstance()->getNear() * LLViewerCamera::getInstance()->getAspect() / sinf(LLViewerCamera::getInstance()->getView()), LLViewerCamera::getInstance()->getNear() / sinf(LLViewerCamera::getInstance()->getView()), 1.f);
-        //      gGL.color4fv(LLColor4::white.mV);
-        //      gGL.begin(LLVertexBuffer::QUADS);
-        //      {
-        //          gGL.vertex3f(floater_3d_rect.mLeft, floater_3d_rect.mBottom, 0.f);
-        //          gGL.vertex3f(floater_3d_rect.mLeft, floater_3d_rect.mTop, 0.f);
-        //          gGL.vertex3f(floater_3d_rect.mRight, floater_3d_rect.mTop, 0.f);
-        //          gGL.vertex3f(floater_3d_rect.mRight, floater_3d_rect.mBottom, 0.f);
-        //      }
-        //      gGL.end();
-        //      glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        //  }
-        //  gGL.popMatrix();
-        //}
 
         LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
 

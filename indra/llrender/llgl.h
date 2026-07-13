@@ -143,28 +143,18 @@ class LLMatrix4;
 
 void rotate_quat(LLQuaternion& rotation);
 
-////////////////////////
-//
-// Note: U32's are GLEnum's...
-//
-
-// This is a class for GL state management
-
 /*
-    GL STATE MANAGEMENT DESCRIPTION
-
     LLGLState and its two subclasses, LLGLEnable and LLGLDisable, manage the current
-    enable/disable states of the GL to prevent redundant setting of state within a
+    enable/disable render states to prevent redundant setting of state within a
     render path or the accidental corruption of what state the next path expects.
+    The tracked state map feeds the Vulkan pipeline key.
 
-    Essentially, wherever you would call glEnable set a state and then
-    subsequently reset it by calling glDisable (or vice versa), make an instance of
-    LLGLEnable with the state you want to set, and assume it will be restored to its
-    original state when that instance of LLGLEnable is destroyed.  It is good practice
-    to exploit stack frame controls for optimal setting/unsetting and readability of
-    code.  In llglstates.h, there are a collection of helper classes that define groups
-    of enables/disables that can cause multiple states to be set with the creation of
-    one instance.
+    Make an instance of LLGLEnable with the state you want to set, and assume it
+    will be restored to its original state when that instance of LLGLEnable is
+    destroyed.  It is good practice to exploit stack frame controls for optimal
+    setting/unsetting and readability of code.  In llglstates.h, there are a
+    collection of helper classes that define groups of enables/disables that can
+    cause multiple states to be set with the creation of one instance.
 
     Sample usage:
 
@@ -184,16 +174,15 @@ void rotate_quat(LLQuaternion& rotation);
     is useful:
 
     {
-        LLGLEnable blend(blend_hud ? GL_GL_BLEND: 0);
+        LLGLEnable blend(blend_hud ? GL_BLEND : 0);
         renderHUD();
     }
 
     A LLGLState initialized with a parameter of 0 does nothing.
 
-    LLGLState works by maintaining a map of the current GL states, and ignoring redundant
+    LLGLState works by maintaining a map of the current states, and ignoring redundant
     enables/disables.  If a redundant call is attempted, it becomes a noop, otherwise,
     it is set in the constructor and reset in the destructor.
-
 */
 
 class LLGLState

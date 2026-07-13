@@ -2862,49 +2862,6 @@ void renderTexelDensity(LLDrawable* drawable)
         gGL.matrixMode(LLRender::MM_MODELVIEW);
     }
 
-    //S32 num_textures = llmax(1, (S32)params->mTextureList.size());
-
-    //for (S32 i = 0; i < num_textures; i++)
-    //{
-    //  LLViewerTexture* texturep = params->mTextureList.empty() ? params->mTexture.get() : params->mTextureList[i].get();
-    //  if (texturep == NULL) continue;
-
-    //  LLMatrix4 checkboard_matrix;
-    //  S32 discard_level = -1;
-    //  switch(LLViewerTexture::sDebugTexelsMode)
-    //  {
-    //  case LLViewerTexture::DEBUG_TEXELS_CURRENT:
-    //      discard_level = -1;
-    //      break;
-    //  case LLViewerTexture::DEBUG_TEXELS_DESIRED:
-    //      {
-    //          LLViewerFetchedTexture* fetched_texturep = dynamic_cast<LLViewerFetchedTexture*>(texturep);
-    //          discard_level = fetched_texturep ? fetched_texturep->getDesiredDiscardLevel() : -1;
-    //          break;
-    //      }
-    //  default:
-    //  case LLViewerTexture::DEBUG_TEXELS_FULL:
-    //      discard_level = 0;
-    //      break;
-    //  }
-
-    //  checkboard_matrix.initScale(LLVector3(texturep->getWidth(discard_level) / 8, texturep->getHeight(discard_level) / 8, 1.f));
-    //  gGL.getTexUnit(i)->activate();
-
-    //  glMatrixMode(GL_TEXTURE);
-    //  glPushMatrix();
-    //  glLoadIdentity();
-    //  //gGL.matrixMode(LLRender::MM_TEXTURE);
-    //  glLoadMatrixf((GLfloat*) checkboard_matrix.mMatrix);
-
-    //  gGL.getTexUnit(i)->bind(LLViewerTexture::sCheckerBoardImagep, true);
-
-    //  pushVerts(params, LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_COLOR | LLVertexBuffer::MAP_NORMAL );
-
-    //  glPopMatrix();
-    //  glMatrixMode(GL_MODELVIEW);
-    //  //gGL.matrixMode(LLRender::MM_MODELVIEW);
-    //}
 }
 
 

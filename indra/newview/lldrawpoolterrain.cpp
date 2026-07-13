@@ -194,10 +194,7 @@ void LLDrawPoolTerrain::renderShadow(S32 pass)
     {
         return;
     }
-    //LLGLEnable offset(GL_POLYGON_OFFSET);
-    //glCullFace(GL_FRONT);
     drawLoop();
-    //glCullFace(GL_BACK);
 }
 
 // <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,
