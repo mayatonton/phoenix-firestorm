@@ -249,7 +249,6 @@ protected:
     eTextureType        mCurrTexType;
     bool                mHasMipMaps;
 
-    void debugTextureUnit(void);
     GLint getTextureSource(eTextureBlendSrc src);
     GLint getTextureSourceType(eTextureBlendSrc src, bool isAlpha = false);
 };
@@ -523,10 +522,6 @@ public:
     U32 getCurrentTexUnitIndex(void) const { return mCurrTextureUnitIndex; }
 
     bool verifyTexUnitActive(U32 unitToVerify);
-
-    void debugTexUnits(void);
-
-    void clearErrors();
 
     struct Vertex
     {

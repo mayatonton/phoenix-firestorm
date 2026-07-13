@@ -178,6 +178,7 @@ namespace
     std::unordered_map<U32, VkSampler> sSamplerCache;
     bool                     sSamplerAnisotropyEnabled               = false;
     float                    sMaxSamplerAnisotropy                   = 1.0f;
+    float                    sMaxLineWidth                           = 1.0f;
     bool                     sGeometryShaderEnabled                  = false;
 
     bool                     sProvokingVertexLastEnabled             = false;
@@ -682,6 +683,13 @@ namespace
         if (supported_features.wideLines)
         {
             enabled_features.wideLines = VK_TRUE;
+            VkPhysicalDeviceProperties lw_props = {};
+            vkGetPhysicalDeviceProperties(sPhysicalDevice, &lw_props);
+            sMaxLineWidth = lw_props.limits.lineWidthRange[1];
+        }
+        else
+        {
+            sMaxLineWidth = 1.0f;
         }
 
         if (supported_features.imageCubeArray)
@@ -7199,6 +7207,11 @@ void setRenderViewport(S32 x, S32 y, S32 w, S32 h)
     sVkRenderViewport[1] = y;
     sVkRenderViewport[2] = w;
     sVkRenderViewport[3] = h;
+}
+
+F32 getMaxLineWidth()
+{
+    return sMaxLineWidth;
 }
 
 void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)

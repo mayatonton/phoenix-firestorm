@@ -56,7 +56,6 @@ S32 gGLViewport[4];
 
 void llSetGLViewport(S32 x, S32 y, S32 w, S32 h)
 {
-    glViewport(x, y, w, h);
     LLVKLoader::setRenderViewport(x, y, w, h);
 }
 
@@ -124,8 +123,6 @@ void LLTexUnit::refreshState(void)
     // and we reset the cached tex unit state
 
     gGL.flush();
-
-    glActiveTexture(GL_TEXTURE0 + mIndex);
 }
 
 void LLTexUnit::activate(void)
@@ -135,7 +132,6 @@ void LLTexUnit::activate(void)
     if ((S32)gGL.mCurrTextureUnitIndex != mIndex || gGL.mDirty)
     {
         gGL.flush();
-        glActiveTexture(GL_TEXTURE0 + mIndex);
         gGL.mCurrTextureUnitIndex = mIndex;
     }
 }
@@ -631,21 +627,6 @@ GLint LLTexUnit::getTextureSourceType(eTextureBlendSrc src, bool isAlpha)
     }
 }
 
-// Useful for debugging that you've manually assigned a texture operation to the correct
-// texture unit based on the currently set active texture in opengl.
-void LLTexUnit::debugTextureUnit(void)
-{
-    if (mIndex < 0) return;
-
-    GLint activeTexture;
-    glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
-    if ((GL_TEXTURE0 + mIndex) != activeTexture)
-    {
-        U32 set_unit = (activeTexture - GL_TEXTURE0);
-        LL_WARNS() << "Incorrect Texture Unit!  Expected: " << set_unit << " Actual: " << mIndex << LL_ENDL;
-    }
-}
-
 LLLightState::LLLightState(S32 index)
 : mIndex(index),
   mEnabled(false),
@@ -876,42 +857,18 @@ LLRender::~LLRender()
 
 bool LLRender::init(bool needs_vertex_buffer)
 {
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
     gGL.setAmbientLightColor(LLColor4::black);
 
     LLGLState::setCullFaceMode(GL_BACK);
-
-    // necessary for reflection maps
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-
-#if LL_WINDOWS
-    if (glGenVertexArrays == nullptr)
-    {
-        return false;
-    }
-#endif
-
-    { //bind a dummy vertex array object so we're core profile compliant
-        U32 ret;
-        glGenVertexArrays(1, &ret);
-        glBindVertexArray(ret);
-    }
 
     if (needs_vertex_buffer)
     {
         initVertexBuffer();
     }
 
-    // <FS:Ansariel> Don't ignore OpenGL max line width
-    GLfloat range[2];
-    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, range);
-    mMaxLineWidthAliased = range[1];
-    glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, range);
-    mMaxLineWidthSmooth = range[1];
-    // </FS:Ansariel>
+    mMaxLineWidthAliased = LLVKLoader::getMaxLineWidth();
+    mMaxLineWidthSmooth  = mMaxLineWidthAliased;
 
     return true;
 }
@@ -1469,11 +1426,6 @@ void LLRender::setColorMask(bool writeColorR, bool writeColorG, bool writeColorB
         mCurrColorMask[1] = writeColorG;
         mCurrColorMask[2] = writeColorB;
         mCurrColorMask[3] = writeAlpha;
-
-        glColorMask(writeColorR ? GL_TRUE : GL_FALSE,
-                    writeColorG ? GL_TRUE : GL_FALSE,
-                    writeColorB ? GL_TRUE : GL_FALSE,
-                    writeAlpha ? GL_TRUE : GL_FALSE);
     }
 }
 
@@ -1483,8 +1435,6 @@ void LLRender::setClearColor(F32 r, F32 g, F32 b, F32 a)
     mClearColor[1] = g;
     mClearColor[2] = b;
     mClearColor[3] = a;
-
-    glClearColor(r, g, b, a);
 }
 
 void LLRender::setSceneBlendType(eBlendType type)
@@ -1530,7 +1480,6 @@ void LLRender::blendFunc(eBlendFactor sfactor, eBlendFactor dfactor)
         mCurrBlendColorDFactor = dfactor;
         mCurrBlendAlphaDFactor = dfactor;
         flush();
-        glBlendFunc(sGLBlendFactor[sfactor], sGLBlendFactor[dfactor]);
     }
 }
 
@@ -1550,9 +1499,6 @@ void LLRender::blendFunc(eBlendFactor color_sfactor, eBlendFactor color_dfactor,
         mCurrBlendColorDFactor = color_dfactor;
         mCurrBlendAlphaDFactor = alpha_dfactor;
         flush();
-
-        glBlendFuncSeparate(sGLBlendFactor[color_sfactor], sGLBlendFactor[color_dfactor],
-                           sGLBlendFactor[alpha_sfactor], sGLBlendFactor[alpha_dfactor]);
     }
 }
 
@@ -1642,7 +1588,7 @@ void LLRender::setLineWidth(F32 line_width)
 {
     if (line_width > 1.f)
     {
-        line_width = llmin(line_width, glIsEnabled(GL_LINE_SMOOTH) ? mMaxLineWidthSmooth : mMaxLineWidthAliased);
+        line_width = llmin(line_width, mMaxLineWidthAliased);
     }
     if (mLineWidth != line_width || mDirty)
     {
@@ -1651,7 +1597,6 @@ void LLRender::setLineWidth(F32 line_width)
             flush();
         }
         mLineWidth = line_width;
-        glLineWidth(line_width);
     }
 }
 // </FS>
@@ -1660,7 +1605,6 @@ void LLRender::setPolygonOffset(F32 factor, F32 units)
 {
     mPolygonOffsetFactor = factor;
     mPolygonOffsetUnits  = units;
-    glPolygonOffset(factor, units);
 }
 
 bool LLRender::verifyTexUnitActive(U32 unitToVerify)
@@ -1673,14 +1617,6 @@ bool LLRender::verifyTexUnitActive(U32 unitToVerify)
     {
         LL_WARNS() << "TexUnit currently active: " << mCurrTextureUnitIndex << " (expecting " << unitToVerify << ")" << LL_ENDL;
         return false;
-    }
-}
-
-void LLRender::clearErrors()
-{
-    while (glGetError())
-    {
-        //loop until no more error flags left
     }
 }
 
@@ -2248,38 +2184,6 @@ void LLRender::diffuseColor4ub(U8 r, U8 g, U8 b, U8 a)
     }
 }
 
-
-void LLRender::debugTexUnits(void)
-{
-    LL_INFOS("TextureUnit") << "Active TexUnit: " << mCurrTextureUnitIndex << LL_ENDL;
-    std::string active_enabled = "false";
-    for (U32 i = 0; i < mTexUnits.size(); i++)
-    {
-        if (getTexUnit(i)->mCurrTexType != LLTexUnit::TT_NONE)
-        {
-            if (i == mCurrTextureUnitIndex) active_enabled = "true";
-            LL_INFOS("TextureUnit") << "TexUnit: " << i << " Enabled" << LL_ENDL;
-            LL_INFOS("TextureUnit") << "Enabled As: " ;
-            switch (getTexUnit(i)->mCurrTexType)
-            {
-                case LLTexUnit::TT_TEXTURE:
-                    LL_CONT << "Texture 2D";
-                    break;
-                case LLTexUnit::TT_RECT_TEXTURE:
-                    LL_CONT << "Texture Rectangle";
-                    break;
-                case LLTexUnit::TT_CUBE_MAP:
-                    LL_CONT << "Cube Map";
-                    break;
-                default:
-                    LL_CONT << "ARGH!!! NONE!";
-                    break;
-            }
-            LL_CONT << ", Texture Bound: " << getTexUnit(i)->mCurrImageGL << LL_ENDL;
-        }
-    }
-    LL_INFOS("TextureUnit") << "Active TexUnit Enabled : " << active_enabled << LL_ENDL;
-}
 
 glm::mat4 get_current_modelview()
 {

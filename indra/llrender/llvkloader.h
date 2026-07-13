@@ -60,6 +60,8 @@ namespace LLVKLoader
 
     void setRenderViewport(S32 x, S32 y, S32 w, S32 h);
 
+    F32 getMaxLineWidth();
+
     VkDevice         getDevice();
 
     VkPipelineLayout createStandardPipelineLayout(
