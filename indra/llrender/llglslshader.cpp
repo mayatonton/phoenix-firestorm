@@ -706,7 +706,7 @@ namespace {
         (void)s_initialized;
     }
 
-    EShLanguage glToGlslangStage(GLenum type)
+    EShLanguage toGlslangStage(GLenum type)
     {
         switch (type)
         {
@@ -1720,7 +1720,7 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
             }
             const std::vector<size_t>& stage_indices = stage_it->second;
 
-            EShLanguage lang = glToGlslangStage(stage_type);
+            EShLanguage lang = toGlslangStage(stage_type);
             if (lang == EShLangCount)
             {
                 return false;

@@ -2030,7 +2030,7 @@ namespace
         }
     }
 
-    U32 glFormatSourceComponentsImpl(U32 ll_gl_format)
+    U32 llGlFormatSourceComponentsImpl(U32 ll_gl_format)
     {
         switch (ll_gl_format)
         {
@@ -4192,9 +4192,9 @@ U32 vkFormatBytesPerPixel(VkFormat format)
     return vkFormatBytesPerPixelImpl(format);
 }
 
-U32 glFormatSourceComponents(U32 ll_gl_format)
+U32 llGlFormatSourceComponents(U32 ll_gl_format)
 {
-    return glFormatSourceComponentsImpl(ll_gl_format);
+    return llGlFormatSourceComponentsImpl(ll_gl_format);
 }
 
 bool createVertexBufferVk(U32       size_bytes,

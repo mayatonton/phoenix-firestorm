@@ -58,11 +58,6 @@
 #include "llvkloader.h"
 #include "llimagegl.h"
 
-#if !LL_DARWIN && !LL_LINUX
-extern PFNGLWEIGHTPOINTERARBPROC glWeightPointerARB;
-extern PFNGLWEIGHTFVARBPROC glWeightfvARB;
-extern PFNGLVERTEXBLENDARBPROC glVertexBlendARB;
-#endif
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------

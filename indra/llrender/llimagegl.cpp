@@ -261,7 +261,7 @@ static U8* createVulkanPaddingBuffer(const U8* source_data,
     return padded;
 }
 
-static U32 glPixTypeToSourceComponentBytes(U32 pixtype)
+static U32 pixTypeToSourceComponentBytes(U32 pixtype)
 {
     switch (pixtype)
     {
@@ -1166,7 +1166,7 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     }
     else
     {
-        const U32 source_components       = LLVKLoader::glFormatSourceComponents(primary);
+        const U32 source_components       = LLVKLoader::llGlFormatSourceComponents(primary);
         const U32 pixel_count             = (U32)w * (U32)h;
 
         U32 half16_target_components = 0;
@@ -1207,7 +1207,7 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
         }
         else
         {
-            const U32 source_component_bytes  = glPixTypeToSourceComponentBytes(type);
+            const U32 source_component_bytes  = pixTypeToSourceComponentBytes(type);
             const U32 target_bytes_per_pixel  = LLVKLoader::vkFormatBytesPerPixel(vk_format);
 
             U32 padded_size_bytes = 0;
@@ -1290,7 +1290,7 @@ void LLImageGL::syncVulkan3DImage(U32 intformat, U32 primary, U32 type,
     mVkImageHeight = (U32)h;
     mVkImageFormat = vk_format;
 
-    const U32   source_components = LLVKLoader::glFormatSourceComponents(primary);
+    const U32   source_components = LLVKLoader::llGlFormatSourceComponents(primary);
     const U32   pixel_count       = (U32)w * (U32)h * (U32)depth;
     const void* upload_data       = data;
     U32         upload_size       = 0;
@@ -1324,7 +1324,7 @@ void LLImageGL::syncVulkan3DImage(U32 intformat, U32 primary, U32 type,
     }
     else
     {
-        const U32 source_component_bytes = glPixTypeToSourceComponentBytes(type);
+        const U32 source_component_bytes = pixTypeToSourceComponentBytes(type);
         const U32 target_bpp             = LLVKLoader::vkFormatBytesPerPixel(vk_format);
         U32       padded_size            = 0;
         conv_buffer = createVulkanPaddingBuffer((const U8*)data, source_components,

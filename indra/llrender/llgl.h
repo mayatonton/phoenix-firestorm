@@ -409,10 +409,6 @@ extern bool gNonInteractive;
 #define glDeleteRenderbuffers glDeleteRenderbuffersEXT
 #endif
 
-#ifndef GL_COLOR_ATTACHMENT
-#define GL_COLOR_ATTACHMENT GL_COLOR_ATTACHMENT_EXT
-#endif
-
 #ifndef GL_COLOR_ATTACHMENT0
 #define GL_COLOR_ATTACHMENT0 GL_COLOR_ATTACHMENT0_EXT
 #endif

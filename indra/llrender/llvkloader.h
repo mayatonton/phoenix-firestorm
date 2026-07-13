@@ -246,7 +246,7 @@ namespace LLVKLoader
     VkCompareOp          llGlEnumToVkCompareOp  (U32 ll_gl_func);
     VkStencilOp          llGlEnumToVkStencilOp  (U32 ll_gl_op);
     U32                  vkFormatBytesPerPixel  (VkFormat format);
-    U32                  glFormatSourceComponents(U32 ll_gl_format);
+    U32                  llGlFormatSourceComponents(U32 ll_gl_format);
 
     bool createVertexBufferVk(U32     size_bytes,
                               VkBuffer& out_buffer,
