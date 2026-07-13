@@ -591,7 +591,6 @@ private:
     S32         mNumInitFaces; //number of faces generated when creating the avatar drawable, does not inculde splitted faces due to long vertex buffer.
 
     // profile handle
-    U32 mGPUTimerQuery = 0;
     uint32_t mVkGPUTimestampHandle = 0;
 
     // profile results

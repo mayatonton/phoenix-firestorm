@@ -567,11 +567,9 @@ LLPipeline::LLPipeline() :
 
     mInitialized(false),
     mShadersLoaded(false),
-    mTransformFeedbackPrimitives(0),
     mRenderDebugFeatureMask(0),
     mRenderDebugMask(0),
     mOldRenderDebugMask(0),
-    mMeshDirtyQueryObject(0),
     mGroupQ1Locked(false),
     mResetVertexBuffers(false),
     mLastRebuildPool(NULL),
@@ -961,11 +959,6 @@ void LLPipeline::destroyGL()
 
     releaseGLBuffers();
 
-    if (mMeshDirtyQueryObject)
-    {
-        glDeleteQueries(1, &mMeshDirtyQueryObject);
-        mMeshDirtyQueryObject = 0;
-    }
 }
 
 void LLPipeline::requestResizeScreenTexture()
@@ -4612,20 +4605,6 @@ void LLPipeline::postSort(LLCamera &camera)
     }
     }
 
-    /*bool use_transform_feedback = gTransformPositionProgram.mProgramObject && !mMeshDirtyGroup.empty();
-
-    if (use_transform_feedback)
-    { //place a query around potential transform feedback code for synchronization
-        mTransformFeedbackPrimitives = 0;
-
-        if (!mMeshDirtyQueryObject)
-        {
-            glGenQueries(1, &mMeshDirtyQueryObject);
-        }
-
-        glBeginQuery(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, mMeshDirtyQueryObject);
-    }*/
-
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("rebuild delayed upd groups");
     // pack vertex buffers for groups that chose to delay their updates
@@ -4638,10 +4617,6 @@ void LLPipeline::postSort(LLCamera &camera)
     }
     }
 
-    /*if (use_transform_feedback)
-    {
-        glEndQuery(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
-    }*/
 
     mMeshDirtyGroup.clear();
 
