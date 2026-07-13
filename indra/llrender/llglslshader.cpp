@@ -238,28 +238,6 @@ void LLGLSLShader::dumpStats(boost::json::object& stats)
     stats.emplace("triangles", mTrianglesDrawn);
 }
 
-//static
-void LLGLSLShader::startProfile()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-    if (sProfileEnabled && sCurBoundShaderPtr)
-    {
-        sCurBoundShaderPtr->placeProfileQuery();
-    }
-
-}
-
-//static
-void LLGLSLShader::stopProfile()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-
-    if (sProfileEnabled && sCurBoundShaderPtr)
-    {
-        sCurBoundShaderPtr->unbind();
-    }
-}
-
 void LLGLSLShader::placeProfileQuery(bool for_runtime)
 {
     if (sProfileEnabled || for_runtime)
@@ -279,21 +257,6 @@ void LLGLSLShader::placeProfileQuery(bool for_runtime)
                 }
             }
             return;
-        }
-
-        if (mTimerQuery == 0)
-        {
-            glGenQueries(1, &mSamplesQuery);
-            glGenQueries(1, &mTimerQuery);
-            glGenQueries(1, &mPrimitivesQuery);
-        }
-
-        glBeginQuery(GL_TIME_ELAPSED, mTimerQuery);
-
-        if (!for_runtime)
-        {
-            glBeginQuery(GL_SAMPLES_PASSED, mSamplesQuery);
-            glBeginQuery(GL_PRIMITIVES_GENERATED, mPrimitivesQuery);
         }
     }
 }
@@ -334,54 +297,6 @@ bool LLGLSLShader::readProfileQuery(bool for_runtime, bool force_read)
             mVkTimestampHandle = 0;
             return true;
         }
-
-        if (!mProfilePending)
-        {
-            glEndQuery(GL_TIME_ELAPSED);
-            if (!for_runtime)
-            {
-                glEndQuery(GL_SAMPLES_PASSED);
-                glEndQuery(GL_PRIMITIVES_GENERATED);
-            }
-            mProfilePending = for_runtime;
-        }
-
-        if (mProfilePending && for_runtime && !force_read)
-        {
-            GLuint64 result = 0;
-            glGetQueryObjectui64v(mTimerQuery, GL_QUERY_RESULT_AVAILABLE, &result);
-
-            if (result != GL_TRUE)
-            {
-                return false;
-            }
-        }
-
-        GLuint64 time_elapsed = 0;
-        glGetQueryObjectui64v(mTimerQuery, GL_QUERY_RESULT, &time_elapsed);
-        mTimeElapsed += time_elapsed;
-        mProfilePending = false;
-
-        if (!for_runtime)
-        {
-            GLuint64 samples_passed = 0;
-            glGetQueryObjectui64v(mSamplesQuery, GL_QUERY_RESULT, &samples_passed);
-
-            GLuint64 primitives_generated = 0;
-            glGetQueryObjectui64v(mPrimitivesQuery, GL_QUERY_RESULT, &primitives_generated);
-            sTotalTimeElapsed += time_elapsed;
-
-            sTotalSamplesDrawn += samples_passed;
-            mSamplesDrawn += samples_passed;
-
-            U32 tri_count = (U32)primitives_generated / 3;
-
-            mTrianglesDrawn += tri_count;
-            sTotalTrianglesDrawn += tri_count;
-
-            sTotalBinds++;
-            mBinds++;
-        }
     }
 
     return true;
@@ -393,10 +308,7 @@ LLGLSLShader::LLGLSLShader()
     : mActiveTextureChannels(0),
     mShaderLevel(0),
     mShaderGroup(SG_DEFAULT),
-    mFeatures(),
-    mTimerQuery(0),
-    mSamplesQuery(0),
-    mPrimitivesQuery(0)
+    mFeatures()
 {
 
 }
@@ -496,19 +408,6 @@ void LLGLSLShader::unloadInternal()
     }
 
     mTexture.clear();
-
-    if (mTimerQuery)
-    {
-        glDeleteQueries(1, &mTimerQuery);
-        mTimerQuery = 0;
-    }
-
-    if (mSamplesQuery)
-    {
-        glDeleteQueries(1, &mSamplesQuery);
-        mSamplesQuery = 0;
-    }
-
 }
 
 bool LLGLSLShader::createShader()

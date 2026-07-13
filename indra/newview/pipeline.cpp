@@ -14487,14 +14487,7 @@ void LLPipeline::profileAvatar(LLVOAvatar* avatar, bool profile_attachments)
                     }
                     else
                     {
-                        // use gDebugProgram to do the GPU queries
-                        gDebugProgram.clearStats();
-                        gDebugProgram.placeProfileQuery(true);
-
                         generateImpostor(avatar, false, true, attached_object);
-                        gDebugProgram.readProfileQuery(true, true);
-
-                        attached_object->mGPURenderTime = gDebugProgram.mTimeElapsed / 1000000.f;
                     }
                 }
             }

@@ -209,9 +209,6 @@ public:
     static void initProfile();
     static void finishProfile(boost::json::value& stats=sDefaultStats);
 
-    static void startProfile();
-    static void stopProfile();
-
     void unload();
     void clearStats();
     void dumpStats(boost::json::object& stats);
@@ -294,9 +291,6 @@ public:
 
     //statistics for profiling shader performance
     bool mProfilePending = false;
-    U32 mTimerQuery;
-    U32 mSamplesQuery;
-    U32 mPrimitivesQuery;
     uint32_t mVkTimestampHandle = 0;
 
     U64 mTimeElapsed;
