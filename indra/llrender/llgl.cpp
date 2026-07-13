@@ -2176,7 +2176,6 @@ GLenum LLGLState::sCullFaceMode = GL_BACK;
 
 void LLGLState::setCullFaceMode(GLenum mode)
 {
-    glCullFace(mode);
     sCullFaceMode = mode;
 }
 
@@ -2211,7 +2210,6 @@ GLenum LLGLState::sPolygonMode = GL_FILL;
 
 void LLGLState::setPolygonMode(GLenum mode)
 {
-    glPolygonMode(GL_FRONT_AND_BACK, mode);
     sPolygonMode = mode;
 }
 
@@ -2225,7 +2223,6 @@ GLuint LLGLState::sStencilWriteMask   = 0xFFFFFFFFu;
 
 void LLGLState::setStencilFunc(GLenum func, GLint ref, GLuint mask)
 {
-    glStencilFunc(func, ref, mask);
     sStencilFunc        = func;
     sStencilRef         = ref;
     sStencilCompareMask = mask;
@@ -2233,7 +2230,6 @@ void LLGLState::setStencilFunc(GLenum func, GLint ref, GLuint mask)
 
 void LLGLState::setStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass)
 {
-    glStencilOp(sfail, dpfail, dppass);
     sStencilFailOp      = sfail;
     sStencilDepthFailOp = dpfail;
     sStencilDepthPassOp = dppass;
@@ -2241,7 +2237,6 @@ void LLGLState::setStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass)
 
 void LLGLState::setStencilMask(GLuint mask)
 {
-    glStencilMask(mask);
     sStencilWriteMask = mask;
 }
 
@@ -2263,7 +2258,6 @@ void LLGLState::initClass()
 
     //make sure multisample defaults to disabled
     sStateMap[GL_MULTISAMPLE] = GL_FALSE;
-    glDisable(GL_MULTISAMPLE);
 }
 
 //static
@@ -2300,13 +2294,11 @@ void LLGLState::setEnabled(S32 enabled)
     else if (enabled == ENABLED_STATE && sStateMap[mState] != GL_TRUE)
     {
         gGL.flush();
-        glEnable(mState);
         sStateMap[mState] = GL_TRUE;
     }
     else if (enabled == DISABLED_STATE && sStateMap[mState] != GL_FALSE)
     {
         gGL.flush();
-        glDisable(mState);
         sStateMap[mState] = GL_FALSE;
     }
     mIsEnabled = enabled;
@@ -2320,16 +2312,7 @@ LLGLState::~LLGLState()
         if (mIsEnabled != mWasEnabled)
         {
             gGL.flush();
-            if (mWasEnabled)
-            {
-                glEnable(mState);
-                sStateMap[mState] = GL_TRUE;
-            }
-            else
-            {
-                glDisable(mState);
-                sStateMap[mState] = GL_FALSE;
-            }
+            sStateMap[mState] = mWasEnabled ? GL_TRUE : GL_FALSE;
         }
     }
 }
@@ -2545,20 +2528,16 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
     if (depth_enabled != sDepthEnabled)
     {
         gGL.flush();
-        if (depth_enabled) glEnable(GL_DEPTH_TEST);
-        else glDisable(GL_DEPTH_TEST);
         sDepthEnabled = depth_enabled;
     }
     if (depth_func != sDepthFunc)
     {
         gGL.flush();
-        glDepthFunc(depth_func);
         sDepthFunc = depth_func;
     }
     if (write_enabled != sWriteEnabled)
     {
         gGL.flush();
-        glDepthMask(write_enabled);
         sWriteEnabled = write_enabled;
     }
 }
@@ -2570,20 +2549,16 @@ LLGLDepthTest::~LLGLDepthTest()
     if (sDepthEnabled != mPrevDepthEnabled )
     {
         gGL.flush();
-        if (mPrevDepthEnabled) glEnable(GL_DEPTH_TEST);
-        else glDisable(GL_DEPTH_TEST);
         sDepthEnabled = mPrevDepthEnabled;
     }
     if (sDepthFunc != mPrevDepthFunc)
     {
         gGL.flush();
-        glDepthFunc(mPrevDepthFunc);
         sDepthFunc = mPrevDepthFunc;
     }
     if (sWriteEnabled != mPrevWriteEnabled )
     {
         gGL.flush();
-        glDepthMask(mPrevWriteEnabled);
         sWriteEnabled = mPrevWriteEnabled;
     }
 }
