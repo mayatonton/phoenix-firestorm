@@ -62,15 +62,8 @@ namespace
     std::vector<LLViewerTexLayerSetBuffer*> sDeferredUploadBuffers;
 }
 
-// runway consolidate
 extern std::string self_av_string();
 
-//-----------------------------------------------------------------------------
-// LLViewerTexLayerSetBuffer
-// The composite image that a LLViewerTexLayerSet writes to.  Each LLViewerTexLayerSet has one.
-//-----------------------------------------------------------------------------
-
-// static
 S32 LLViewerTexLayerSetBuffer::sGLByteCount = 0;
 
 LLViewerTexLayerSetBuffer::LLViewerTexLayerSetBuffer(LLTexLayerSet* const owner,
@@ -106,25 +99,21 @@ LLViewerTexLayerSetBuffer::~LLViewerTexLayerSetBuffer()
     }
 }
 
-//virtual
 S8 LLViewerTexLayerSetBuffer::getType() const
 {
     return LLViewerDynamicTexture::LL_TEX_LAYER_SET_BUFFER ;
 }
 
-//virtual
 void LLViewerTexLayerSetBuffer::restoreGLTexture()
 {
     LLViewerDynamicTexture::restoreGLTexture() ;
 }
 
-//virtual
 void LLViewerTexLayerSetBuffer::destroyGLTexture()
 {
     LLViewerDynamicTexture::destroyGLTexture() ;
 }
 
-// static
 void LLViewerTexLayerSetBuffer::dumpTotalByteCount()
 {
     LL_INFOS() << "Composite System GL Buffers: " << (LLViewerTexLayerSetBuffer::sGLByteCount/1024) << "KB" << LL_ENDL;
@@ -148,7 +137,6 @@ void LLViewerTexLayerSetBuffer::restartUpdateTimer()
     mNeedsUpdateTimer.start();
 }
 
-// virtual
 bool LLViewerTexLayerSetBuffer::needsRender()
 {
     llassert(mTexLayerSet->getAvatarAppearance() == gAgentAvatarp);
@@ -185,7 +173,6 @@ bool LLViewerTexLayerSetBuffer::needsRender()
     return getViewerTexLayerSet()->isLocalTextureDataAvailable();
 }
 
-// virtual
 void LLViewerTexLayerSetBuffer::preRenderTexLayerSet()
 {
     LLTexLayerSetBuffer::preRenderTexLayerSet();
@@ -194,7 +181,6 @@ void LLViewerTexLayerSetBuffer::preRenderTexLayerSet()
     LLViewerDynamicTexture::preRender(false);
 }
 
-// virtual
 void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
 {
 
@@ -202,7 +188,6 @@ void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
     LLViewerDynamicTexture::postRender(success);
 }
 
-// virtual
 // <FS:Ansariel> [Legacy Bake]
 //void LLViewerTexLayerSetBuffer::midRenderTexLayerSet(bool success)
 void LLViewerTexLayerSetBuffer::midRenderTexLayerSet(bool success, LLRenderTarget* bound_target)
@@ -342,18 +327,12 @@ void LLViewerTexLayerSetBuffer::doUpdate()
     }
 }
 
-//-----------------------------------------------------------------------------
-// LLViewerTexLayerSet
-// An ordered set of texture layers that get composited into a single texture.
-//-----------------------------------------------------------------------------
-
 LLViewerTexLayerSet::LLViewerTexLayerSet(LLAvatarAppearance* const appearance) :
     LLTexLayerSet(appearance),
     mUpdatesEnabled( false )
 {
 }
 
-// virtual
 LLViewerTexLayerSet::~LLViewerTexLayerSet()
 {
 }
@@ -373,7 +352,6 @@ bool LLViewerTexLayerSet::isLocalTextureDataFinal() const
     return getAvatar()->isLocalTextureDataFinal(this);
 }
 
-// virtual
 void LLViewerTexLayerSet::requestUpdate()
 {
     if( mUpdatesEnabled )
@@ -389,7 +367,6 @@ void LLViewerTexLayerSet::updateComposite()
     getViewerComposite()->requestUpdateImmediate();
 }
 
-// virtual
 void LLViewerTexLayerSet::createComposite()
 {
     if(!mComposite)
@@ -463,12 +440,8 @@ const std::string LLViewerTexLayerSetBuffer::dumpTextureInfo() const
 
 
 // <FS:Ansariel> [Legacy Bake]
-//-----------------------------------------------------------------------------
 // Legacy baking
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 // LLBakedUploadData()
-//-----------------------------------------------------------------------------
 LLBakedUploadData::LLBakedUploadData(const LLVOAvatarSelf* avatar,
                                      LLViewerTexLayerSet* layerset,
                                      const LLUUID& id,
@@ -926,7 +899,6 @@ void LLViewerTexLayerSetBuffer::processDeferredUploads()
     }
 }
 
-// static
 void LLViewerTexLayerSetBuffer::onTextureUploadComplete(const LLUUID& uuid,
                                                   void* userdata,
                                                   S32 result,

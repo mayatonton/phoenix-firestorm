@@ -105,7 +105,6 @@ void maybe_unlock_display(void)
 
 
 #if LL_X11
-// static
 Window LLWindowSDL::get_SDL_XWindowID(void)
 {
     if (gWindowImplementation) {
@@ -114,7 +113,6 @@ Window LLWindowSDL::get_SDL_XWindowID(void)
     return None;
 }
 
-//static
 Display* LLWindowSDL::get_SDL_Display(void)
 {
     if (gWindowImplementation) {
@@ -425,7 +423,6 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
     else
         mWindowTitle = title;
 
-    // Create the GL context and set it up for windowed or fullscreen, as appropriate.
     if(createContext(x, y, width, height, 32, fullscreen, enable_vsync))
     {
         gGLManager.initGL();
@@ -743,13 +740,11 @@ void LLWindowSDL::hide()
     // *FIX: What to do with SDL?
 }
 
-//virtual
 void LLWindowSDL::minimize()
 {
     // *FIX: What to do with SDL?
 }
 
-//virtual
 void LLWindowSDL::restore()
 {
     // *FIX: What to do with SDL?
@@ -956,7 +951,6 @@ void LLWindowSDL::setMouseClipping( bool b )
     //SDL_WM_GrabInput(b ? SDL_GRAB_ON : SDL_GRAB_OFF);
 }
 
-// virtual
 void LLWindowSDL::setMinSize(U32 min_width, U32 min_height, bool enforce_immediately)
 {
     LLWindow::setMinSize(min_width, min_height, enforce_immediately);
@@ -1513,7 +1507,6 @@ finally:
 }
 
 
-// virtual
 void LLWindowSDL::processMiscNativeEvents()
 {
 #if LL_GLIB
@@ -2334,7 +2327,6 @@ void LLWindowSDL::bringToFront()
 #endif // LL_X11
 }
 
-//static
 std::vector<std::string> LLWindowSDL::getDynamicFallbackFontList()
 {
     // Use libfontconfig to find us a nice ordered list of fallback fonts

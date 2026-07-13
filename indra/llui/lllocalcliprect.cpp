@@ -54,7 +54,6 @@ LLScreenClipRect::~LLScreenClipRect()
     }
 }
 
-//static
 void LLScreenClipRect::pushClipRect(const LLRect& rect)
 {
     LLRect combined_clip_rect = rect;
@@ -72,13 +71,11 @@ void LLScreenClipRect::pushClipRect(const LLRect& rect)
     sClipRectStack.push(combined_clip_rect);
 }
 
-//static
 void LLScreenClipRect::popClipRect()
 {
     sClipRectStack.pop();
 }
 
-//static
 void LLScreenClipRect::updateScissorRegion()
 {
     if (sClipRectStack.empty())
@@ -90,26 +87,20 @@ void LLScreenClipRect::updateScissorRegion()
         return;
     }
 
-    // finish any deferred calls in the old clipping region
     gGL.flush();
 
     LLRect rect = sClipRectStack.top();
-    S32 x,y,w,h;
-    x = llfloor(rect.mLeft * LLUI::getScaleFactor().mV[VX]);
-    y = llfloor(rect.mBottom * LLUI::getScaleFactor().mV[VY]);
-    w = llmax(0, llceil(rect.getWidth() * LLUI::getScaleFactor().mV[VX])) + 1;
-    h = llmax(0, llceil(rect.getHeight() * LLUI::getScaleFactor().mV[VY])) + 1;
     if (LLVKLoader::isVulkanInitialized())
     {
+        S32 x = llfloor(rect.mLeft * LLUI::getScaleFactor().mV[VX]);
+        S32 y = llfloor(rect.mBottom * LLUI::getScaleFactor().mV[VY]);
         S32 w_vk = llmax(0, llceil(rect.getWidth() * LLUI::getScaleFactor().mV[VX]));
         S32 h_vk = llmax(0, llceil(rect.getHeight() * LLUI::getScaleFactor().mV[VY]));
         LLVKLoader::setScissor(x, y, w_vk, h_vk);
     }
 }
 
-//---------------------------------------------------------------------------
 // LLLocalClipRect
-//---------------------------------------------------------------------------
 LLLocalClipRect::LLLocalClipRect(const LLRect& rect, bool enabled /* = true */)
 :   LLScreenClipRect(LLRect(rect.mLeft + LLFontGL::sCurOrigin.mX,
                     rect.mTop + LLFontGL::sCurOrigin.mY,

@@ -36,8 +36,6 @@ public:
     LLShaderMgr();
     virtual ~LLShaderMgr();
 
-    // Note: although you can use statically hashed strings to just bind a random uniform, it's generally preferably that you use this.
-    // Always document what the actual shader uniform is next to the shader uniform in this struct.
     // clang-format off
     typedef enum
     {                                       // Shader uniform name, set in LLShaderMgr::initAttribsAndUniforms()
@@ -331,7 +329,6 @@ public:
         SUN_SIZE,                           //  "sun_size"
         FOG_COLOR,                          //  "fog_color"
 
-        // precomputed textures
         TRANSMITTANCE_TEX,                  //  "transmittance_texture"
         SCATTER_TEX,                        //  "scattering_texture"
         SINGLE_MIE_SCATTER_TEX,             //  "single_mie_scattering_texture"
@@ -436,7 +433,6 @@ public:
     } eGLSLReservedUniforms;
     // clang-format on
 
-    // singleton pattern implementation
     static LLShaderMgr * instance();
 
     virtual void initAttribsAndUniforms(void);
@@ -445,8 +441,7 @@ public:
     void dumpShaderSource(U32 shader_code_count, GLchar** shader_code_text);
     GLuint loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines = NULL, S32 texture_index_channels = -1, std::vector<std::string>* out_sources = nullptr);
 
-    // Implemented in the application to actually point to the shader directory.
-    virtual std::string getShaderDirPrefix(void) = 0; // Pure Virtual
+    virtual std::string getShaderDirPrefix(void) = 0;
 
     // <FS:AYA r30 Phase 3.8 step 4> Cinematic mount strategy D: when
     // sCinematicMode is true, loadShaderFile() probes this prefix first

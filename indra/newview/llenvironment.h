@@ -42,11 +42,9 @@
 
 #include <array>
 
-//-------------------------------------------------------------------------
 class LLViewerCamera;
 class LLParcel;
 
-//-------------------------------------------------------------------------
 class LLEnvironment : public LLSimpleton<LLEnvironment>
 {
     LOG_CLASS(LLEnvironment);
@@ -131,7 +129,6 @@ public:
 
     void                        update(const LLViewerCamera * cam);
 
-    // prepare settings to be applied to shaders (call whenever settings are updated)
     void                        updateSettingsUniforms();
 
     void                        setSelectedEnvironment(EnvSelection_t env, LLSettingsBase::Seconds transition = TRANSITION_DEFAULT, bool forced = false);
@@ -180,25 +177,18 @@ public:
     void                        saveBeaconsState();
     void                        revertBeaconsState();
 
-    // Returns either sun or moon direction (depending on which is up and stronger)
-    // Light direction in +x right, +z up, +y at internal coord sys
-    LLVector3                   getLightDirection() const; // returns sun or moon depending on which is up
+    LLVector3                   getLightDirection() const;
     LLVector3                   getSunDirection() const;
     LLVector3                   getMoonDirection() const;
 
-    // Returns light direction converted to CFR coord system
-    LLVector4                   getLightDirectionCFR() const; // returns sun or moon depending on which is up
+    LLVector4                   getLightDirectionCFR() const;
     LLVector4                   getSunDirectionCFR() const;
     LLVector4                   getMoonDirectionCFR() const;
 
-    // Returns light direction converted to OGL coord system
-    // and clamped above -0.1f in Y to avoid render artifacts in sky shaders
-    LLVector4                   getClampedLightNorm() const; // returns sun or moon depending on which is up
+    LLVector4                   getClampedLightNorm() const;
     LLVector4                   getClampedSunNorm() const;
     LLVector4                   getClampedMoonNorm() const;
 
-    // Returns light direction converted to OGL coord system
-    // and rotated by last cam yaw needed by water rendering shaders
     LLVector4                   getRotatedLightNorm() const;
 
     static LLSettingsWater::ptr_t createWaterFromLegacyPreset(const std::string filename, LLSD &messages);
@@ -229,7 +219,6 @@ public:
     F32                         getRegionProgress() const                   { return (mEnvironments[ENV_REGION]) ? mEnvironments[ENV_REGION]->getProgress() : -1.0f; }
     void                        adjustRegionOffset(F32 adjust);     // only used on legacy regions, to better sync the viewer with other agents
 
-    //-------------------------------------------
     connection_t                setEnvironmentChanged(env_changed_fn cb)    { return mSignalEnvChanged.connect(cb); }
 
     void                        requestRegion(environment_apply_fn cb = environment_apply_fn());

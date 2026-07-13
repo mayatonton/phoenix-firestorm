@@ -100,7 +100,6 @@ const F32 SKIN_WEIGHT_CAMERA_DISTANCE = 16.f;
 
 #include "glod/glod.h" // <FS:Beq/> More flexible LOD generation
 // <FS:Beq> mesh loader suffix configuration
-//static
 const std::array<std::string,5> LLModelPreview::sSuffixVarNames
 {
     "FSMeshLowestLodSuffix",
@@ -206,9 +205,7 @@ static bool FindModel(const LLModelLoader::scene& scene, const std::string& name
     return false;
 }
 
-//-----------------------------------------------------------------------------
 // LLModelPreview
-//-----------------------------------------------------------------------------
 
 LLModelPreview::LLModelPreview(S32 width, S32 height, LLFloater* fmp)
     : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE, false), LLMutex()
@@ -4070,9 +4067,7 @@ void LLModelPreview::update()
     }
 }
 
-//-----------------------------------------------------------------------------
 // createPreviewAvatar
-//-----------------------------------------------------------------------------
 void LLModelPreview::createPreviewAvatar(void)
 {
     mPreviewAvatar = (LLVOAvatar*)gObjectList.createObjectViewer(LL_PCODE_LEGACY_AVATAR, gAgent.getRegion(), LLViewerObject::CO_FLAG_UI_AVATAR);
@@ -4095,7 +4090,6 @@ void LLModelPreview::createPreviewAvatar(void)
     }
 }
 
-//static
 U32 LLModelPreview::countRootModels(LLModelLoader::model_list models)
 {
     U32 root_models = 0;
@@ -4299,9 +4293,7 @@ void LLModelPreview::addEmptyFace(LLModel* pTarget)
 
 }
 
-//-----------------------------------------------------------------------------
 // render()
-//-----------------------------------------------------------------------------
 // Todo: we shouldn't be setting all those UI elements on render.
 // Note: Render happens each frame with skinned avatars
 bool LLModelPreview::render()
@@ -5111,17 +5103,13 @@ void LLModelPreview::renderGroundPlane(float z_offset)
 }
 
 
-//-----------------------------------------------------------------------------
 // refresh()
-//-----------------------------------------------------------------------------
 void LLModelPreview::refresh()
 {
     mNeedsUpdate = true;
 }
 
-//-----------------------------------------------------------------------------
 // rotate()
-//-----------------------------------------------------------------------------
 void LLModelPreview::rotate(F32 yaw_radians, F32 pitch_radians)
 {
     mCameraYaw = mCameraYaw + yaw_radians;
@@ -5129,9 +5117,7 @@ void LLModelPreview::rotate(F32 yaw_radians, F32 pitch_radians)
     mCameraPitch = llclamp(mCameraPitch + pitch_radians, F_PI_BY_TWO * -0.8f, F_PI_BY_TWO * 0.8f);
 }
 
-//-----------------------------------------------------------------------------
 // zoom()
-//-----------------------------------------------------------------------------
 void LLModelPreview::zoom(F32 zoom_amt)
 {
     F32 new_zoom = mCameraZoom + zoom_amt;
@@ -5199,7 +5185,6 @@ void LLModelPreview::warnTextureScaling()
     }
 }
 
-//static
 void LLModelPreview::textureLoadedCallback(
     bool success,
     LLViewerFetchedTexture *src_vi,
@@ -5242,7 +5227,6 @@ void LLModelPreview::textureLoadedCallback(
     }
 }
 
-// static
 bool LLModelPreview::lodQueryCallback()
 {
     // not the best solution, but model preview belongs to floater

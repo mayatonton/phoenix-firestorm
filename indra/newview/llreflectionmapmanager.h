@@ -170,9 +170,6 @@ private:
     // initialize mCubeFree array to default values
     void initCubeFree();
 
-    // Just does a bulk clear of all of the cubemaps.
-    void clearCubeMaps();
-
     // delete the probe with the given index in mProbes
     void deleteProbe(U32 i);
 

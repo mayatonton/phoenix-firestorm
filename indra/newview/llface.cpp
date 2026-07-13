@@ -125,10 +125,6 @@ void planarProjection(LLVector2 &tc, const LLVector4a& normal,
     tc.mV[0] = 1.0f+((binormal.dot3(vec).getF32())*2 - 0.5f);
 }
 
-////////////////////
-//
-// LLFace implementation
-//
 
 void LLFace::init(LLDrawable* drawablep, LLViewerObject* objp)
 {
@@ -254,7 +250,6 @@ void LLFace::setPool(LLFacePool* new_pool, LLViewerTexture *texturep)
 
     if (new_pool != mDrawPoolp)
     {
-        // Remove from old pool
         if (mDrawPoolp)
         {
             mDrawPoolp->removeFace(this);
@@ -266,7 +261,6 @@ void LLFace::setPool(LLFacePool* new_pool, LLViewerTexture *texturep)
         }
         mGeomIndex = 0;
 
-        // Add to new pool
         if (new_pool)
         {
             new_pool->addFace(this);
@@ -467,7 +461,6 @@ void LLFace::setIndicesIndex(S32 idx)
     }
 }
 
-//============================================================================
 
 U16 LLFace::getGeometryAvatar(
                         LLStrider<LLVector3> &vertices,
@@ -566,7 +559,6 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
                 LLRiggedVolume* rigged = volume->getRiggedVolume();
                 if (rigged)
                 {
-                    // called when selecting a face during edit of a mesh object
                     LLGLEnable offset(GL_POLYGON_OFFSET_FILL);
                     gGL.setPolygonOffset(-1.f, -1.f);
                     gGL.multMatrix((F32*) volume->getRelativeXform().mMatrix);
@@ -578,8 +570,6 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
         }
         else
         {
-            // cheaters sometimes prosper...
-            //
             LLVertexBuffer* vertex_buffer = mVertexBuffer.get();
             // To display selection markers (white squares with the rounded cross at the center)
             // on faces with GLTF textures we use a spectal vertex buffer with other transforms
@@ -590,7 +580,6 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
                     vertex_buffer = mVertexBufferGLTF.get();
                 }
             }
-            // Draw the selection marker using the correctly chosen vertex buffer
             if (vertex_buffer)
             {
                 vertex_buffer->setBuffer();
@@ -744,10 +733,8 @@ void LLFace::printDebugInfo() const
 #endif
 }
 
-// Transform the texture coordinates for this face.
 static void xform(LLVector2 &tex_coord, F32 cosAng, F32 sinAng, F32 offS, F32 offT, F32 magS, F32 magT)
 {
-    // New, good way
     F32 s = tex_coord.mV[0];
     F32 t = tex_coord.mV[1];
 
@@ -2456,18 +2443,7 @@ F32 LLFace::adjustPartialOverlapPixelArea(F32 cos_angle_to_view_dir, F32 radius 
 
     if(d + radius > screen_radius + 5.f)
     {
-        //----------------------------------------------
-        //calculate the intersection area of two circles
-        //F32 radius_square = radius * radius ;
-        //F32 d_square = d * d ;
-        //F32 screen_radius_square = screen_radius * screen_radius ;
-        //face_area =
-        //  radius_square * acosf((d_square + radius_square - screen_radius_square)/(2 * d * radius)) +
-        //  screen_radius_square * acosf((d_square + screen_radius_square - radius_square)/(2 * d * screen_radius)) -
-        //  0.5f * sqrtf((-d + radius + screen_radius) * (d + radius - screen_radius) * (d - radius + screen_radius) * (d + radius + screen_radius)) ;
-        //----------------------------------------------
-
-        //the above calculation is too expensive
+        //the exact intersection area calculation is too expensive
         //the below is a good estimation: bounding box of the bounding sphere:
         F32 alpha = 1.f;
         if (!is_approx_zero(radius)) // radius can be something like -1e-10
@@ -2486,7 +2462,6 @@ const F32 FACE_IMPORTANCE_TO_CAMERA_OVER_DISTANCE[FACE_IMPORTANCE_LEVEL][2] = //
 const F32 FACE_IMPORTANCE_TO_CAMERA_OVER_ANGLE[FACE_IMPORTANCE_LEVEL][2] =    //{cos(angle), importance_weight}
     {{0.985f /*cos(10 degrees)*/, 1.0f}, {0.94f /*cos(20 degrees)*/, 0.8f}, {0.866f /*cos(30 degrees)*/, 0.64f}, {0.0f, 0.36f}} ;
 
-//static
 F32 LLFace::calcImportanceToCamera(F32 cos_angle_to_view_dir, F32 dist)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_FACE;
@@ -2518,7 +2493,6 @@ F32 LLFace::calcImportanceToCamera(F32 cos_angle_to_view_dir, F32 dist)
     return importance ;
 }
 
-//static
 F32 LLFace::adjustPixelArea(F32 importance, F32 pixel_area)
 {
     if(pixel_area > LLViewerTexture::sMaxSmallImageSize)
@@ -2618,7 +2592,6 @@ const LLMatrix4& LLFace::getRenderMatrix() const
     return mDrawablep->getRenderMatrix();
 }
 
-//============================================================================
 // From llface.inl
 
 S32 LLFace::getColors(LLStrider<LLColor4U> &colors)

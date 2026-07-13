@@ -41,9 +41,6 @@
 
 #include "llglheaders.h"
 
-//#pragma optimize("", off)
-
-// MUST match order of OpenGL face-layers
 GLenum LLCubeMapArray::sTargets[6] =
 {
     GL_TEXTURE_CUBE_MAP_POSITIVE_X,
@@ -109,10 +106,8 @@ LLCubeMapArray::LLCubeMapArray(LLCubeMapArray& lhs, U32 width, U32 count) : mTex
     mWidth = width;
     mCount = count;
 
-    // Allocate a new cubemap array with the same criteria as the incoming cubemap array
     allocate(mWidth, lhs.mImage->getComponents(), count, lhs.mImage->getUseMipMaps(), lhs.mHDR);
 
-    // Copy each cubemap from the incoming array to the new array
     U32 min_count = std::min(count, lhs.mCount);
     if (LLVKLoader::shouldUseVulkanRender()
         && lhs.mImage->hasVkImage() && mImage->hasVkImage())

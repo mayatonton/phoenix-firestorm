@@ -62,9 +62,6 @@
 
 S32 LLDrawPool::sNumDrawPools = 0;
 
-//=============================
-// Draw Pool Implementation
-//=============================
 LLDrawPool *LLDrawPool::createPool(const U32 type, LLViewerTexture *tex0)
 {
     LLDrawPool *poolp = NULL;
@@ -157,125 +154,102 @@ LLViewerTexture *LLDrawPool::getDebugTexture()
     return NULL;
 }
 
-//virtual
 void LLDrawPool::beginRenderPass( S32 pass )
 {
 }
 
-//virtual
 S32  LLDrawPool::getNumPasses()
 {
     return 1;
 }
 
-//virtual
 void LLDrawPool::beginDeferredPass(S32 pass)
 {
 
 }
 
-//virtual
 void LLDrawPool::endDeferredPass(S32 pass)
 {
 
 }
 
-//virtual
 S32 LLDrawPool::getNumDeferredPasses()
 {
     return 0;
 }
 
-//virtual
 void LLDrawPool::renderDeferred(S32 pass)
 {
 
 }
 
-//virtual
 void LLDrawPool::beginPostDeferredPass(S32 pass)
 {
 
 }
 
-//virtual
 void LLDrawPool::endPostDeferredPass(S32 pass)
 {
 
 }
 
-//virtual
 S32 LLDrawPool::getNumPostDeferredPasses()
 {
     return 0;
 }
 
-//virtual
 void LLDrawPool::renderPostDeferred(S32 pass)
 {
 
 }
 
-//virtual
 void LLDrawPool::endRenderPass( S32 pass )
 {
-    //make sure channel 0 is active channel
     gGL.getTexUnit(0)->activate();
 }
 
-//virtual
 void LLDrawPool::beginShadowPass(S32 pass)
 {
 
 }
 
-//virtual
 void LLDrawPool::endShadowPass(S32 pass)
 {
 
 }
 
-//virtual
 S32 LLDrawPool::getNumShadowPasses()
 {
     return 0;
 }
 
-//virtual
 void LLDrawPool::renderShadow(S32 pass)
 {
 
 }
 
 // <AYAstorm r30 P2> Velocity-buffer pass defaults (BD lineage).
-//virtual
 void LLDrawPool::beginMotionBlurPass(S32 pass)
 {
 
 }
 
-//virtual
 void LLDrawPool::endMotionBlurPass(S32 pass)
 {
 
 }
 
-//virtual
 S32 LLDrawPool::getNumMotionBlurPasses()
 {
     return 0;
 }
 
-//virtual
 void LLDrawPool::renderMotionBlur(S32 pass)
 {
 
 }
 // </AYAstorm r30 P2>
 
-//=============================
-// Face Pool Implementation
-//=============================
 LLFacePool::LLFacePool(const U32 type)
 : LLDrawPool(type)
 {
@@ -304,14 +278,12 @@ void LLFacePool::enqueue(LLFace* facep)
     mDrawFace.push_back(facep);
 }
 
-// virtual
 bool LLFacePool::addFace(LLFace *facep)
 {
     addFaceReference(facep);
     return true;
 }
 
-// virtual
 bool LLFacePool::removeFace(LLFace *facep)
 {
     removeFaceReference(facep);
@@ -410,9 +382,6 @@ void LLFacePool::LLOverrideFaceColor::setColor(F32 r, F32 g, F32 b, F32 a)
 }
 
 
-//=============================
-// Render Pass Implementation
-//=============================
 LLRenderPass::LLRenderPass(const U32 type)
 : LLDrawPool(type)
 {
@@ -460,7 +429,6 @@ void LLRenderPass::renderRiggedGroup(LLSpatialGroup* group, U32 type, bool textu
     }
 }
 
-//static
 void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
                                                     U64 gltf_materials_ubo,
                                                     U32 gltf_materials_size,
@@ -1015,14 +983,12 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 }
 
-// static
 bool LLRenderPass::uploadMatrixPalette(LLDrawInfo& params)
 {
     // upload matrix palette to shader
     return uploadMatrixPalette(params.mAvatar, params.mSkinInfo);
 }
 
-//static
 bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo) // <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
@@ -1045,8 +1011,6 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
     return true;
 }
 
-// Returns true if rendering should proceed
-//static
 bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
@@ -1079,8 +1043,6 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
     return !skipLastSkin;
 }
 
-// Returns true if rendering should proceed
-//static
 bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, const LLGLSLShader*& lastAvatarShader, bool& skipLastSkin)// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
@@ -1353,7 +1315,6 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
     }
 }
 
-//static
 bool LLRenderPass::uploadLastMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo)
 {
     if (!avatar || !skinInfo)
@@ -1429,7 +1390,6 @@ void LLRenderPass::pushUntexturedGLTFBatches(U32 type)
     }
 }
 
-// static
 void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
 {
     auto& mat = params.mGLTFMaterial;
@@ -1471,7 +1431,6 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
     teardown_texture_matrix(params);
 }
 
-// static
 void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
 {
     auto& mat = params.mGLTFMaterial;
@@ -1535,7 +1494,6 @@ void LLRenderPass::pushUntexturedRiggedGLTFBatches(U32 type)
 }
 
 
-// static
 void LLRenderPass::pushRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)
 {
     if (uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
@@ -1544,7 +1502,6 @@ void LLRenderPass::pushRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& la
     }
 }
 
-// static
 void LLRenderPass::pushUntexturedRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)
 {
     if (uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))

@@ -24,9 +24,6 @@
  * $/LicenseInfo$
  */
 
-//-----------------------------------------------------------------------------
-// Header Files
-//-----------------------------------------------------------------------------
 #include "llviewerprecompiledheaders.h"
 
 #include "llfasttimer.h"
@@ -59,47 +56,23 @@
 #include "llimagegl.h"
 
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-// LLViewerJointMesh
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-
-
-//-----------------------------------------------------------------------------
-// LLViewerJointMesh()
-//-----------------------------------------------------------------------------
 LLViewerJointMesh::LLViewerJointMesh()
     :
     LLAvatarJointMesh()
 {
 }
 
-
-//-----------------------------------------------------------------------------
-// ~LLViewerJointMesh()
-// Class Destructor
-//-----------------------------------------------------------------------------
 LLViewerJointMesh::~LLViewerJointMesh()
 {
 }
 
 const S32 NUM_AXES = 3;
 
-// register layoud
-// rotation X 0-n
-// rotation Y 0-n
-// rotation Z 0-n
-// pivot parent 0-n -- child = n+1
-
 static LLMatrix4    gJointMatUnaligned[32];
 static LLMatrix4a   gJointMatAligned[32];
 static LLMatrix3    gJointRotUnaligned[32];
 static LLVector4    gJointPivot[32];
 
-//-----------------------------------------------------------------------------
-// uploadJointMatrices()
-//-----------------------------------------------------------------------------
 void LLViewerJointMesh::uploadJointMatrices()
 {
     S32 joint_num;
@@ -107,7 +80,6 @@ void LLViewerJointMesh::uploadJointMatrices()
     LLDrawPool *poolp = mFace ? mFace->getPool() : NULL;
     bool hardware_skinning = (poolp && poolp->getShaderLevel() > 0);
 
-    //calculate joint matrices
     for (joint_num = 0; joint_num < reference_mesh->mJointRenderData.size(); joint_num++)
     {
         LLMatrix4 joint_mat = *reference_mesh->mJointRenderData[joint_num]->mWorldMatrix;
@@ -123,7 +95,6 @@ void LLViewerJointMesh::uploadJointMatrices()
     bool last_pivot_uploaded{ false };
     S32 j = 0;
 
-    //upload joint pivots
     for (joint_num = 0; joint_num < reference_mesh->mJointRenderData.size(); joint_num++)
     {
         LLSkinJoint *sj = reference_mesh->mJointRenderData[joint_num]->mSkinJoint;
@@ -149,7 +120,6 @@ void LLViewerJointMesh::uploadJointMatrices()
         }
     }
 
-    //add pivot point into transform
     for (S32 i = 0; i < j; i++)
     {
         LLVector3 pivot;
@@ -158,7 +128,6 @@ void LLViewerJointMesh::uploadJointMatrices()
         gJointMatUnaligned[i].translate(pivot);
     }
 
-    // upload matrices
     if (hardware_skinning)
     {
         GLfloat mat[45*4];
@@ -195,11 +164,6 @@ void LLViewerJointMesh::uploadJointMatrices()
     }
 }
 
-//--------------------------------------------------------------------
-// DrawElementsBLEND and utility code
-//--------------------------------------------------------------------
-
-// compare_int is used by the qsort function to sort the index array
 int compare_int(const void *a, const void *b)
 {
     if (*(U32*)a < *(U32*)b)
@@ -213,9 +177,6 @@ int compare_int(const void *a, const void *b)
     else return 0;
 }
 
-//--------------------------------------------------------------------
-// LLViewerJointMesh::drawShape()
-//--------------------------------------------------------------------
 U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -232,17 +193,10 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
     S32 diffuse_channel = LLDrawPoolAvatar::sDiffuseChannel;
 
 
-    //----------------------------------------------------------------
-    // setup current color
-    //----------------------------------------------------------------
     if (is_dummy)
         gGL.diffuseColor4fv(LLVOAvatar::getDummyColor().mV);
     else
         gGL.diffuseColor4fv(mColor.mV);
-
-    //----------------------------------------------------------------
-    // setup current texture
-    //----------------------------------------------------------------
     llassert( !(mTexture.notNull() && mLayerSet) );  // mutually exclusive
 
     LLViewerTexLayerSet *layerset = dynamic_cast<LLViewerTexLayerSet*>(mLayerSet);
@@ -315,15 +269,9 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
     return triangle_count;
 }
 
-//-----------------------------------------------------------------------------
-// updateFaceSizes()
-//-----------------------------------------------------------------------------
 void LLViewerJointMesh::updateFaceSizes(U32 &num_vertices, U32& num_indices, F32 pixel_area)
 {
-    //bump num_vertices to next multiple of 4
     num_vertices = (num_vertices + 0x3) & ~0x3;
-
-    // Do a pre-alloc pass to determine sizes of data.
     if (mMesh && mValid)
     {
         mMesh->mFaceVertexOffset = num_vertices;
@@ -338,13 +286,8 @@ void LLViewerJointMesh::updateFaceSizes(U32 &num_vertices, U32& num_indices, F32
     }
 }
 
-//-----------------------------------------------------------------------------
-// updateFaceData()
-//-----------------------------------------------------------------------------
-
 void LLViewerJointMesh::updateFaceData(LLFace *face, F32 pixel_area, bool damp_wind, bool terse_update)
 {
-    //IF THIS FUNCTION BREAKS, SEE LLPOLYMESH CONSTRUCTOR AND CHECK ALIGNMENT OF INPUT ARRAYS
 
     mFace = face;
 
@@ -373,7 +316,6 @@ void LLViewerJointMesh::updateFaceData(LLFace *face, F32 pixel_area, bool damp_w
     LLStrider<LLVector4a> clothing_weightsp;
     LLStrider<U16> indicesp;
 
-    // Copy data into the faces from the polymesh data.
     if (mMesh && mValid)
     {
         const U32 num_verts = mMesh->getNumVertices();
@@ -405,11 +347,6 @@ void LLViewerJointMesh::updateFaceData(LLFace *face, F32 pixel_area, bool damp_w
                 F32* vw = (F32*) vertex_weightsp.get();
                 F32* cw = (F32*) clothing_weightsp.get();
 
-                //S32 tc_size = (num_verts*2*sizeof(F32)+0xF) & ~0xF;
-                //LLVector4a::memcpyNonAliased16(tc, (F32*) mMesh->getTexCoords(), tc_size);
-                //S32 vw_size = (num_verts*sizeof(F32)+0xF) & ~0xF;
-                //LLVector4a::memcpyNonAliased16(vw, (F32*) mMesh->getWeights(), vw_size);
-
                 // Both allocated in LLPolyMeshSharedData::allocateVertexData(unsigned int)
 
                 memcpy(tc, mMesh->getTexCoords(), num_verts*2*sizeof(F32) );
@@ -437,9 +374,7 @@ void LLViewerJointMesh::updateFaceData(LLFace *face, F32 pixel_area, bool damp_w
 
 
 
-//-----------------------------------------------------------------------------
 // updateLOD()
-//-----------------------------------------------------------------------------
 bool LLViewerJointMesh::updateLOD(F32 pixel_area, bool activate)
 {
     bool valid = mValid;
@@ -447,13 +382,11 @@ bool LLViewerJointMesh::updateLOD(F32 pixel_area, bool activate)
     return (valid != activate);
 }
 
-// static
 void LLViewerJointMesh::updateGeometry(LLFace *mFace, LLPolyMesh *mMesh)
 {
     LLStrider<LLVector3> o_vertices;
     LLStrider<LLVector3> o_normals;
 
-    //get vertex and normal striders
     LLVertexBuffer* buffer = mFace->getVertexBuffer();
     buffer->getVertexStrider(o_vertices,  0);
     buffer->getNormalStrider(o_normals,   0);
@@ -479,7 +412,6 @@ void LLViewerJointMesh::updateGeometry(LLFace *mFace, LLPolyMesh *mMesh)
 
         if (w != 0.f)
         {
-            // blend between matrices and apply
             gBlendMat.setLerp(gJointMatAligned[joint+0],
                               gJointMatAligned[joint+1], w);
 
@@ -525,5 +457,3 @@ void LLViewerJointMesh::dump()
         LL_INFOS() << "Usable LOD " << mName << LL_ENDL;
     }
 }
-
-// End

@@ -53,9 +53,7 @@ LLDrawPoolTree::LLDrawPoolTree(LLViewerTexture *texturep) :
     mTexturep->setAddressMode(LLTexUnit::TAM_WRAP);
 }
 
-//============================================
 // deferred implementation
-//============================================
 void LLDrawPoolTree::beginDeferredPass(S32 pass)
 {
     LL_RECORD_BLOCK_TIME(FTM_RENDER_TREES);
@@ -130,9 +128,7 @@ void LLDrawPoolTree::endDeferredPass(S32 pass)
     shader->unbind();
 }
 
-//============================================
 // shadow implementation
-//============================================
 void LLDrawPoolTree::beginShadowPass(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;

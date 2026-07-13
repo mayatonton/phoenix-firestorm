@@ -73,7 +73,6 @@ namespace
 
 bool LLWindowMacOSX::sUseMultGL = false;
 
-//static
 void LLWindowMacOSX::setUseMultGL(bool use_mult_gl)
 {
     bool was_enabled = sUseMultGL;
@@ -901,14 +900,12 @@ void LLWindowMacOSX::hide()
     setMouseClipping(false);
 }
 
-//virtual
 void LLWindowMacOSX::minimize()
 {
     setMouseClipping(false);
     showCursor();
 }
 
-//virtual
 void LLWindowMacOSX::restore()
 {
     show();
@@ -2699,14 +2696,12 @@ std::vector<std::string> LLWindowMacOSX::getDisplaysResolutionList()
     return resolution_list;
 }
 
-//static
 std::vector<std::string> LLWindowMacOSX::getDynamicFallbackFontList()
 {
     // Fonts previously in getFontListSans() have moved to fonts.xml.
     return std::vector<std::string>();
 }
 
-// static
 MASK LLWindowMacOSX::modifiersToMask(S16 modifiers)
 {
     MASK mask = 0;

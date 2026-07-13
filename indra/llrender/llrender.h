@@ -2,10 +2,6 @@
  * @file llrender.h
  * @brief LLRender definition
  *
- *  This class acts as a wrapper for OpenGL calls.
- *  The goal of this class is to minimize the number of api calls due to legacy rendering
- *  code, to define an interface for a multiple rendering API abstraction of the UI
- *  rendering, and to abstract out direct rendering calls in a way that is cleaner and easier to maintain.
  *
  * $LicenseInfo:firstyear=2001&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -31,8 +27,6 @@
 
 #ifndef LL_LLGLRENDER_H
 #define LL_LLGLRENDER_H
-
-//#include "linden_common.h"
 
 #include "v2math.h"
 #include "v3math.h"
@@ -67,156 +61,69 @@ public:
 
     typedef enum
     {
-        TT_TEXTURE = 0,         // Standard 2D Texture
-        TT_RECT_TEXTURE,        // Non power of 2 texture
-        TT_CUBE_MAP,            // 6-sided cube map texture
-        TT_CUBE_MAP_ARRAY,      // Array of cube maps
-        TT_MULTISAMPLE_TEXTURE, // see GL_ARB_texture_multisample
-        TT_TEXTURE_3D,          // standard 3D Texture
-        TT_NONE,                // No texture type is currently enabled
+        TT_TEXTURE = 0,
+        TT_RECT_TEXTURE,
+        TT_CUBE_MAP,
+        TT_CUBE_MAP_ARRAY,
+        TT_MULTISAMPLE_TEXTURE,
+        TT_TEXTURE_3D,
+        TT_NONE,
     } eTextureType;
 
     typedef enum
     {
-        TAM_WRAP = 0,           // Standard 2D Texture
-        TAM_MIRROR,             // Non power of 2 texture
-        TAM_CLAMP               // No texture type is currently enabled
+        TAM_WRAP = 0,
+        TAM_MIRROR,
+        TAM_CLAMP
     } eTextureAddressMode;
 
     typedef enum
-    {   // Note: If mipmapping or anisotropic are not enabled or supported it should fall back gracefully
-        TFO_POINT = 0,          // Equal to: min=point, mag=point, mip=none.
-        TFO_BILINEAR,           // Equal to: min=linear, mag=linear, mip=point.
-        TFO_TRILINEAR,          // Equal to: min=linear, mag=linear, mip=linear.
-        TFO_ANISOTROPIC         // Equal to: min=anisotropic, max=anisotropic, mip=linear.
+    {
+        TFO_POINT = 0,
+        TFO_BILINEAR,
+        TFO_TRILINEAR,
+        TFO_ANISOTROPIC
     } eTextureFilterOptions;
 
     typedef enum
     {
-        TMG_NONE = 0,           // Mipmaps are not automatically generated for this texture.
-        TMG_AUTO,               // Mipmaps are automatically generated for this texture.
-        TMG_MANUAL              // Mipmaps are manually generated for this texture.
+        TMG_NONE = 0,
+        TMG_AUTO,
+        TMG_MANUAL
     } eTextureMipGeneration;
-
-    typedef enum
-    {
-        TB_REPLACE = 0,
-        TB_ADD,
-        TB_MULT,
-        TB_MULT_X2,
-        TB_ALPHA_BLEND,
-        TB_COMBINE          // Doesn't need to be set directly, setTexture___Blend() set TB_COMBINE automatically
-    } eTextureBlendType;
-
-    typedef enum
-    {
-        TBO_REPLACE = 0,            // Use Source 1
-        TBO_MULT,                   // Multiply: ( Source1 * Source2 )
-        TBO_MULT_X2,                // Multiply then scale by 2:  ( 2.0 * ( Source1 * Source2 ) )
-        TBO_MULT_X4,                // Multiply then scale by 4:  ( 4.0 * ( Source1 * Source2 ) )
-        TBO_ADD,                    // Add: ( Source1 + Source2 )
-        TBO_ADD_SIGNED,             // Add then subtract 0.5: ( ( Source1 + Source2 ) - 0.5 )
-        TBO_SUBTRACT,               // Subtract Source2 from Source1: ( Source1 - Source2 )
-        TBO_LERP_VERT_ALPHA,        // Interpolate based on Vertex Alpha (VA): ( Source1 * VA + Source2 * (1-VA) )
-        TBO_LERP_TEX_ALPHA,         // Interpolate based on Texture Alpha (TA): ( Source1 * TA + Source2 * (1-TA) )
-        TBO_LERP_PREV_ALPHA,        // Interpolate based on Previous Alpha (PA): ( Source1 * PA + Source2 * (1-PA) )
-        TBO_LERP_CONST_ALPHA        // Interpolate based on Const Alpha (CA): ( Source1 * CA + Source2 * (1-CA) )
-    } eTextureBlendOp;
-
-    typedef enum
-    {
-        TBS_PREV_COLOR = 0,         // Color from the previous texture stage
-        TBS_PREV_ALPHA,
-        TBS_ONE_MINUS_PREV_COLOR,
-        TBS_ONE_MINUS_PREV_ALPHA,
-        TBS_TEX_COLOR,              // Color from the texture bound to this stage
-        TBS_TEX_ALPHA,
-        TBS_ONE_MINUS_TEX_COLOR,
-        TBS_ONE_MINUS_TEX_ALPHA,
-        TBS_VERT_COLOR,             // The vertex color currently set
-        TBS_VERT_ALPHA,
-        TBS_ONE_MINUS_VERT_COLOR,
-        TBS_ONE_MINUS_VERT_ALPHA,
-        TBS_CONST_COLOR,            // The constant color value currently set
-        TBS_CONST_ALPHA,
-        TBS_ONE_MINUS_CONST_COLOR,
-        TBS_ONE_MINUS_CONST_ALPHA
-    } eTextureBlendSrc;
-
-    typedef enum
-    {
-        TCS_LINEAR = 0,
-        TCS_SRGB
-    } eTextureColorSpace;
 
     LLTexUnit(S32 index = -1);
 
-    // Refreshes renderer state of the texture unit to the cached values
-    // Needed when the render context has changed and invalidated the current state
     void refreshState(void);
 
-    // returns the index of this texture unit
     S32 getIndex(void) const { return mIndex; }
 
-    // Sets this tex unit to be the currently active one
     void activate(void);
 
-    // Enables this texture unit for the given texture type
-    // (automatically disables any previously enabled texture type)
     void enable(eTextureType type);
 
-    // Disables the current texture unit
     void disable(void);
 
-    // Binds the LLImageGL to this texture unit
-    // (automatically enables the unit for the LLImageGL's texture type)
     bool bind(LLImageGL* texture, bool for_rendering = false, bool forceBind = false);
     bool bind(LLTexture* texture, bool for_rendering = false, bool forceBind = false);
 
-    // bind implementation for inner loops
-    // makes the following assumptions:
-    //  - No need for gGL.flush()
-    //  - texture is not null
-    //  - This texture is not being bound redundantly
-    //  - USE_SRGB_DECODE is disabled
-    //  - mTexOptionsDirty is false
-    //  -
     void bindFast(LLTexture* texture);
 
-    // Binds a cubemap to this texture unit
-    // (automatically enables the texture unit for cubemaps)
     bool bind(LLCubeMap* cubeMap);
 
-    // Binds a render target to this texture unit
-    // (automatically enables the texture unit for the RT's texture type)
     bool bind(LLRenderTarget * renderTarget, bool bindDepth = false);
 
-    // Manually binds a texture to the texture unit
-    // (automatically enables the tex unit for the given texture type)
     bool bindManual(eTextureType type, U32 texture, bool hasMips = false);
 
-    // Unbinds the currently bound texture of the given type
-    // (only if there's a texture of the given type currently bound)
     void unbind(eTextureType type);
 
-    // Fast but unsafe version of unbind
     void unbindFast(eTextureType type);
 
-    // Sets the addressing mode used to sample the texture
-    // Warning: this stays set for the bound texture forever,
-    // make sure you want to permanently change the address mode  for the bound texture.
     void setTextureAddressMode(eTextureAddressMode mode);
-    // MUST already be active and bound
     void setTextureAddressModeFast(eTextureAddressMode mode, eTextureType tex_type);
 
-    // Sets the filtering options used to sample the texture
-    // Warning: this stays set for the bound texture forever,
-    // make sure you want to permanently change the filtering for the bound texture.
     void setTextureFilteringOption(LLTexUnit::eTextureFilterOptions option);
-    // MUST already be active and bound
     void setTextureFilteringOptionFast(LLTexUnit::eTextureFilterOptions option, eTextureType tex_type);
-
-    static U32 getInternalType(eTextureType type);
 
     eTextureType getCurrType(void) { return mCurrTexType; }
 
@@ -248,9 +155,6 @@ protected:
     S32                 mIndex;
     eTextureType        mCurrTexType;
     bool                mHasMipMaps;
-
-    GLint getTextureSource(eTextureBlendSrc src);
-    GLint getTextureSourceType(eTextureBlendSrc src, bool isAlpha = false);
 };
 
 class LLLightState
@@ -305,17 +209,14 @@ public:
 
     enum eTexIndex : U8
     {
-        // Channels for material textures
         DIFFUSE_MAP            = 0,
         ALTERNATE_DIFFUSE_MAP  = 1,
         NORMAL_MAP             = 1,
         SPECULAR_MAP           = 2,
-        // Channels for PBR textures
         BASECOLOR_MAP          = 3,
         METALLIC_ROUGHNESS_MAP = 4,
         GLTF_NORMAL_MAP        = 5,
         EMISSIVE_MAP           = 6,
-        // Total number of channels
         NUM_TEXTURE_CHANNELS   = 7,
     };
 
@@ -355,15 +256,13 @@ public:
     {
         BT_ALPHA = 0,
         BT_ADD,
-        BT_ADD_WITH_ALPHA,  // Additive blend modulated by the fragment's alpha.
+        BT_ADD_WITH_ALPHA,
         BT_MULT,
         BT_MULT_ALPHA,
         BT_MULT_X2,
         BT_REPLACE
     };
 
-    // WARNING:  this MUST match the LL_PART_BF enum in LLPartData, so set values explicitly in case someone
-    // decides to add more or reorder them
     enum eBlendFactor : U8
     {
         BF_ONE = 0,
@@ -398,8 +297,6 @@ public:
     void resetVertexBuffer();
     void shutdown();
 
-    // Refreshes renderer state to the cached values
-    // Needed when the render context has changed and invalidated the current state
     void refreshState(void);
 
     void translatef(const GLfloat& x, const GLfloat& y, const GLfloat& z);
@@ -431,7 +328,6 @@ public:
 
     void flush();
 
-    // if list is set, will store buffers in list for later use, if list isn't set, will use cache
     void beginList(std::list<LLVertexBufferData> *list);
     void endList();
 
@@ -479,9 +375,7 @@ public:
     void setColorMask(bool writeColorR, bool writeColorG, bool writeColorB, bool writeAlpha);
     void setSceneBlendType(eBlendType type);
 
-    // applies blend func to both color and alpha
     void blendFunc(eBlendFactor sfactor, eBlendFactor dfactor);
-    // applies separate blend functions to color and alpha
     void blendFunc(eBlendFactor color_sfactor, eBlendFactor color_dfactor,
                eBlendFactor alpha_sfactor, eBlendFactor alpha_dfactor);
 
@@ -533,7 +427,6 @@ public:
 public:
     static U32 sUICalls;
     static U32 sUIVerts;
-    static bool sGLCoreProfile;
     static bool sNsightDebugSupport;
     static LLVector2 sUIGLScaleFactor;
 
@@ -596,14 +489,11 @@ void llSetGLViewport(S32 x, S32 y, S32 w, S32 h);
 
 extern thread_local LLRender gGL;
 
-// This rotation matrix moves the default OpenGL reference frame
-// (-Z at, Y up) to Cory's favorite reference frame (X at, Z up)
-const F32 OGL_TO_CFR_ROTATION[16] = {  0.f,  0.f, -1.f,  0.f,   // -Z becomes X
-                                      -1.f,  0.f,  0.f,  0.f,   // -X becomes Y
-                                       0.f,  1.f,  0.f,  0.f,   //  Y becomes Z
+const F32 OGL_TO_CFR_ROTATION[16] = {  0.f,  0.f, -1.f,  0.f,
+                                      -1.f,  0.f,  0.f,  0.f,
+                                       0.f,  1.f,  0.f,  0.f,
                                        0.f,  0.f,  0.f,  1.f };
 
-glm::mat4 copy_matrix(F32* src);
 glm::mat4 get_current_modelview();
 glm::mat4 get_current_projection();
 glm::mat4 get_last_modelview();
@@ -615,7 +505,6 @@ void set_current_projection(const glm::mat4& mat);
 void set_last_modelview(const glm::mat4& mat);
 void set_last_projection(const glm::mat4& mat);
 
-// glh compat
 glm::vec3 mul_mat4_vec3(const glm::mat4& mat, const glm::vec3& vec);
 
 #define LL_SHADER_LOADING_WARNS(...) LL_WARNS()

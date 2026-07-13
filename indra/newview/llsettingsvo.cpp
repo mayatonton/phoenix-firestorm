@@ -71,13 +71,11 @@
 
 extern bool gCubeSnapshot;
 
-//=========================================================================
 namespace
 {
     LLSD ensure_array_4(LLSD in, F32 fill);
     LLSD read_legacy_preset_data(const std::string &name, const std::string& path, LLSD  &messages);
 
-    //-------------------------------------------------------------------------
     class LLSettingsInventoryCB : public LLInventoryCallback
     {
     public:
@@ -93,11 +91,9 @@ namespace
         callback_t  mCbfn;
     };
 
-    //-------------------------------------------------------------------------
 }
 
 
-//=========================================================================
 void LLSettingsVOBase::createNewInventoryItem(LLSettingsType::type_e stype, const LLUUID& parent_id, std::function<void(const LLUUID&)> created_cb)
 {
     inventory_result_fn cb = NULL;
@@ -445,7 +441,6 @@ LLSettingsBase::ptr_t LLSettingsVOBase::createFromLLSD(const LLSD &settings)
 
 }
 
-//=========================================================================
 LLSettingsVOSky::LLSettingsVOSky(const LLSD &data, bool isAdvanced)
 : LLSettingsSky(data)
 , m_isAdvanced(isAdvanced)
@@ -458,7 +453,6 @@ LLSettingsVOSky::LLSettingsVOSky()
 {
 }
 
-//-------------------------------------------------------------------------
 LLSettingsSky::ptr_t LLSettingsVOSky::buildSky(LLSD settings)
 {
     LLSettingsSky::validation_list_t validations = LLSettingsSky::validationList();
@@ -655,7 +649,6 @@ LLSD LLSettingsVOSky::convertToLegacy(const LLSettingsSky::ptr_t &psky, bool isA
    return legacy;
 }
 
-//-------------------------------------------------------------------------
 void LLSettingsVOSky::updateSettings()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_ENVIRONMENT;
@@ -812,7 +805,6 @@ void LLSettingsVOSky::applySpecial()
     static LLCachedControl<F32> auto_adjust_hdr_scale(gSavedSettings, "RenderSkyAutoAdjustHDRScale", 2.f);
     static LLCachedControl<F32> tonemap_mix_setting(gSavedSettings, "RenderTonemapMix", 1.f);
 
-    // sky is a "classic" sky following pre SL 7.0 shading
     bool classic_mode = psky->canAutoAdjust() && !should_auto_adjust();
 
     if (!classic_mode)
@@ -827,7 +819,7 @@ void LLSettingsVOSky::applySpecial()
             LLPipeline::sLastSkyHdrScale = sqrtf(g)*2.0f;
         }
         else if (psky->canAutoAdjust() && should_auto_adjust)
-        { // auto-adjust legacy sky to take advantage of probe ambiance
+        {
             LLPipeline::sLastSkyHdrScale = auto_adjust_hdr_scale;
         }
         else
@@ -881,10 +873,8 @@ LLSettingsSky::parammapping_t LLSettingsVOSky::getParameterMap() const
     return param_map;
 }
 
-//=========================================================================
 const F32 LLSettingsVOWater::WATER_FOG_LIGHT_CLAMP(0.3f);
 
-//-------------------------------------------------------------------------
 LLSettingsVOWater::LLSettingsVOWater(const LLSD &data) :
     LLSettingsWater(data)
 {
@@ -910,7 +900,6 @@ LLSettingsWater::ptr_t LLSettingsVOWater::buildWater(LLSD settings)
     return std::make_shared<LLSettingsVOWater>(settings);
 }
 
-//-------------------------------------------------------------------------
 LLSettingsWater::ptr_t LLSettingsVOWater::buildFromLegacyPreset(const std::string &name, const LLSD &oldsettings, LLSD &messages)
 {
     LLSD newsettings(LLSettingsWater::translateLegacySettings(oldsettings));
@@ -1021,8 +1010,6 @@ LLSD LLSettingsVOWater::convertToLegacy(const LLSettingsWater::ptr_t &pwater)
 
     return legacy;
 }
-//-------------------------------------------------------------------------
-//-------------------------------------------------------------------------
 
 void LLSettingsVOWater::applySpecial()
 {
@@ -1042,7 +1029,6 @@ void LLSettingsVOWater::applySpecial()
             }
         }
 
-        //transform water plane to eye space
         glm::vec3 norm(0.f, 0.f, 1.f);
         glm::vec3 p(0.f, 0.f, water_height);
 
@@ -1130,7 +1116,6 @@ LLSettingsWater::parammapping_t LLSettingsVOWater::getParameterMap() const
     return param_map;
 }
 
-//=========================================================================
 LLSettingsVODay::LLSettingsVODay(const LLSD &data):
     LLSettingsDay(data)
 {}
@@ -1156,7 +1141,6 @@ LLSettingsDay::ptr_t LLSettingsVODay::buildDay(LLSD settings)
     return pday;
 }
 
-//-------------------------------------------------------------------------
 LLSettingsDay::ptr_t LLSettingsVODay::buildFromLegacyPreset(const std::string &name, const std::string &path, const LLSD &oldsettings, LLSD &messages)
 {
     LLSD newsettings(defaults());
@@ -1546,7 +1530,6 @@ LLSettingsWaterPtr_t LLSettingsVODay::buildWater(LLSD settings) const
     return LLSettingsWater::ptr_t();
 }
 
-//=========================================================================
 namespace
 {
     LLSD ensure_array_4(LLSD in, F32 fill)
@@ -1579,7 +1562,6 @@ namespace
         return fixedname;
     }
 
-    //---------------------------------------------------------------------
     LLSD read_legacy_preset_data(const std::string &name, const std::string& path, LLSD &messages)
     {
         llifstream xml_file;

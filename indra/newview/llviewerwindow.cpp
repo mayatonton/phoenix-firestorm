@@ -1983,13 +1983,11 @@ void LLViewerWindow::handlePauseWatchdog(LLWindow *window)
     LLAppViewer::instance()->pauseMainloopTimeout();
 }
 
-//virtual
 std::string LLViewerWindow::translateString(const char* tag)
 {
     return LLTrans::getString( std::string(tag) );
 }
 
-//virtual
 std::string LLViewerWindow::translateString(const char* tag,
         const std::map<std::string, std::string>& args)
 {
@@ -2160,7 +2158,6 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     //
     LL_DEBUGS("Window") << "Loading feature tables." << LL_ENDL;
 
-    // Initialize OpenGL Renderer
     LLVertexBuffer::initClass(mWindow);
     LL_INFOS("RenderInit") << "LLVertexBuffer initialization done." << LL_ENDL ;
     if (!gGL.init(true))
@@ -2718,9 +2715,6 @@ void LLViewerWindow::shutdownViews()
 
 void LLViewerWindow::shutdownGL()
 {
-    //--------------------------------------------------------
-    // Shutdown GL cleanly.  Order is very important here.
-    //--------------------------------------------------------
     LLFontGL::destroyDefaultFonts();
     SUBSYSTEM_CLEANUP(LLFontManager);
 
@@ -4648,9 +4642,6 @@ void renderHullPhysics(LLModel::PhysicsMesh& mesh, const LLColor4& color, const 
 // Draw a physics shape with the edges highlighted in 'line_color'
 void renderMeshPhysicsTriangles(const LLColor4& color, const LLColor4& line_color, LLVolume* vol, LLModel::Decomposition * decomp)
 {
-// Not required here, we already disable this in the outer scope
-//  LLGLDisable multisample(LLPipeline::RenderFSAASamples > 0 ? GL_MULTISAMPLE_ARB : 0);
-
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
     if (shader)
@@ -5231,9 +5222,7 @@ void LLViewerWindow::renderSelections( bool for_gl_pick, bool pick_parcel_walls,
 
             if (showPhysicsShapeInEdit)
             {
-                // setup opengl common parameters before we iterate over each object
                 gGL.pushMatrix();
-                //Need to because crash on ATI 3800 (and similar cards) MAINT-5018
                 LLGLDisable multisample(LLPipeline::RenderFSAAType > 0 ? GL_MULTISAMPLE_ARB : 0);
                 LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
                 if (shader)
@@ -6078,7 +6067,6 @@ void LLViewerWindow::resetSnapshotLoc()
     gSavedPerAccountSettings.setString("SnapshotBaseDir", std::string());
 }
 
-// static
 void LLViewerWindow::movieSize(S32 new_width, S32 new_height)
 {
     // <FS:TS> FIRE-6182: Set Window Size sets random size each time
@@ -7277,7 +7265,6 @@ void LLViewerWindow::calcDisplayScale()
     }
 }
 
-//static
 LLRect  LLViewerWindow::calcScaledRect(const LLRect & rect, const LLVector2& display_scale)
 {
     LLRect res = rect;
@@ -7424,7 +7411,6 @@ LLRect LLViewerWindow::getChatConsoleRect()
 //    }
 //}
 // </FS:Ansariel>
-//----------------------------------------------------------------------------
 
 
 void LLViewerWindow::setUIVisibility(bool visible)
@@ -7762,7 +7748,6 @@ void LLPickInfo::getSurfaceInfo()
     }
 }
 
-//static
 bool LLPickInfo::isFlora(LLViewerObject* object)
 {
     if (!object) return false;

@@ -41,7 +41,6 @@
 class LLInventoryItem;
 class LLGLSLShader;
 
-//=========================================================================
 class LLSettingsVOBase : public LLSettingsBase
 {
 public:
@@ -84,7 +83,6 @@ private:
     static void     onAssetDownloadComplete(const LLUUID &asset_id, S32 status, LLExtStat ext_status, asset_download_fn callback);
 };
 
-//=========================================================================
 class LLSettingsVOSky : public LLSettingsSky
 {
 public:
@@ -129,7 +127,6 @@ protected:
     F32 mSceneLightStrength = 3.0f;
 };
 
-//=========================================================================
 class LLSettingsVOWater : public LLSettingsWater
 {
 public:
@@ -159,7 +156,6 @@ private:
 
 };
 
-//=========================================================================
 class LLSettingsVODay : public LLSettingsDay
 {
 public:

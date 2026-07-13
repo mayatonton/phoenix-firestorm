@@ -43,7 +43,6 @@
 #include "llviewertexture.h"
 #include "llvkloader.h"
 
-// static
 bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& region, LLViewerTexture& tex)
 {
     llassert(tex.getComponents() == 3);

@@ -406,9 +406,6 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
     gGL.getTexUnit(detail1)->disable();
     gGL.getTexUnit(detail1)->activate();
 
-    //----------------------------------------------------------------------------
-    // Restore Texture Unit 0 defaults
-
     gGL.getTexUnit(detail0)->unbind(LLTexUnit::TT_TEXTURE);
     gGL.getTexUnit(detail0)->enable(LLTexUnit::TT_TEXTURE);
     gGL.getTexUnit(detail0)->activate();
@@ -750,7 +747,6 @@ void LLDrawPoolTerrain::hilightParcelOwners()
 
 }
 
-//============================================================================
 
 void LLDrawPoolTerrain::renderOwnership()
 {

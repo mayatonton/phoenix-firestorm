@@ -41,11 +41,8 @@ public:
     LLViewerShaderMgr();
     /* virtual */ ~LLViewerShaderMgr();
 
-    // Add shaders to mShaderList for later uniform propagation
-    // Will assert on redundant shader entries in debug builds
     void finalizeShaderList();
 
-    // singleton pattern implementation
     static LLViewerShaderMgr * instance();
     static void releaseInstance();
 
@@ -54,9 +51,6 @@ public:
     void unloadShaders();
     S32  getShaderLevel(S32 type);
 
-    // loadBasicShaders in case of a failure returns
-    // name of a file error happened at, otherwise
-    // returns an empty string
     std::string loadBasicShaders();
     bool loadShadersEffects();
     bool loadShadersDeferred();
@@ -82,8 +76,6 @@ public:
         SHADER_COUNT
     };
 
-    // simple model of forward iterator
-    // http://www.sgi.com/tech/stl/ForwardIterator.html
     class shader_iter
     {
     private:
@@ -133,10 +125,9 @@ public:
     /* virtual */ std::string getCinematicShaderDirPrefix(void);
 
 private:
-    // the list of shaders we need to propagate parameters to.
     std::vector<LLGLSLShader *> mShaderList;
 
-}; //LLViewerShaderMgr
+};
 
 inline bool operator == (LLViewerShaderMgr::shader_iter const & a, LLViewerShaderMgr::shader_iter const & b)
 {
@@ -150,7 +141,6 @@ inline bool operator != (LLViewerShaderMgr::shader_iter const & a, LLViewerShade
 
 extern LLVector4            gShinyOrigin;
 
-//utility shaders
 extern LLGLSLShader         gOcclusionProgram;
 extern LLGLSLShader         gOcclusionCubeProgram;
 extern LLGLSLShader         gGlowCombineProgram;
@@ -177,26 +167,21 @@ extern LLGLSLShader         gCopyDepthProgram;
 extern LLGLSLShader         gPBRTerrainBakeProgram;
 extern LLGLSLShader         gDrawColorProgram;
 
-//output tex0[tc0] - tex1[tc1]
 extern LLGLSLShader         gTwoTextureCompareProgram;
-//discard some fragments based on user-set color tolerance
 extern LLGLSLShader         gOneTextureFilterProgram;
 
 
-//object shaders
 extern LLGLSLShader     gObjectPreviewProgram;
 extern LLGLSLShader        gPhysicsPreviewProgram;
 extern LLGLSLShader     gObjectBumpProgram;
 extern LLGLSLShader        gSkinnedObjectBumpProgram;
 extern LLGLSLShader     gObjectAlphaMaskNoColorProgram;
 
-//environment shaders
 extern LLGLSLShader         gWaterProgram;
 extern LLGLSLShader         gUnderWaterProgram;
 extern LLGLSLShader         gGlowProgram;
 extern LLGLSLShader         gGlowExtractProgram;
 
-//interface shaders
 extern LLGLSLShader         gHighlightProgram;
 extern LLGLSLShader         gHighlightNormalProgram;
 extern LLGLSLShader         gHighlightSpecularProgram;
@@ -206,16 +191,13 @@ extern LLGLSLShader         gDeferredHighlightProgram;
 extern LLGLSLShader         gPathfindingProgram;
 extern LLGLSLShader         gPathfindingNoNormalsProgram;
 
-// avatar shader handles
 extern LLGLSLShader         gAvatarProgram;
 extern LLGLSLShader         gAvatarEyeballProgram;
 extern LLGLSLShader         gImpostorProgram;
 
-// Post Process Shaders
 extern LLGLSLShader         gPostVignetteProgram;   // <FS:CR> Import Vignette from Exodus
 extern LLGLSLShader         gPostSnapshotFrameProgram;   // <FS:Beq/> Snapshot Frame overlay
 
-// Deferred rendering shaders
 extern LLGLSLShader         gDeferredImpostorProgram;
 extern LLGLSLShader         gDeferredDiffuseProgram;
 extern LLGLSLShader         gDeferredDiffuseAlphaMaskProgram;

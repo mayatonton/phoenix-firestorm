@@ -33,10 +33,6 @@
 
 class LLImageRaw;
 
-//
-//this the parent for the class LLViewerTexture
-//through the following virtual functions, the class LLViewerTexture can be reached from /llrender.
-//
 class LLGLTexture : public LLTexture
 {
 public:
@@ -70,7 +66,6 @@ public:
         BOOST_MAP_VISIBLE   ,
         BOOST_MAX_LEVEL,
 
-        //other texture Categories
         LOCAL = BOOST_MAX_LEVEL,
         AVATAR_SCRATCH_TEX,
         DYNAMIC_TEX,
@@ -81,9 +76,9 @@ public:
 
     typedef enum
     {
-        DELETED = 0,         //removed from memory
-        ACTIVE,              //just being used, can become inactive if not being used for a certain time (10 seconds).
-        NO_DELETE = 99       //stay in memory, can not be removed.
+        DELETED = 0,
+        ACTIVE,
+        NO_DELETE = 99
     } LLGLTextureState;
 
 protected:
@@ -95,7 +90,7 @@ public:
     LLGLTexture(const LLImageRaw* raw, bool usemipmaps) ;
     LLGLTexture(const U32 width, const U32 height, const U8 components, bool usemipmaps) ;
 
-    virtual void dump();    // debug info to LL_INFOS()
+    virtual void dump();
 
     virtual const LLUUID& getID() const;
 
@@ -112,22 +107,11 @@ public:
     void generateGLTexture() ;
     void destroyGLTexture() ;
 
-    //---------------------------------------------------------------------------------------------
-    //functions to access LLImageGL
-    //---------------------------------------------------------------------------------------------
     /*virtual*/S32         getWidth(S32 discard_level = -1) const;
     /*virtual*/S32         getHeight(S32 discard_level = -1) const;
 
     bool       hasGLTexture() const ;
 
-    // Create a GL Texture from an image raw
-    // discard_level - mip level, 0 for highest resultion mip
-    // imageraw - the image to copy from
-    // usename - explicit GL name override
-    // to_create - set to false to force gl texture to not be created
-    // category - LLGLTexture category for this LLGLTexture
-    // defer_copy - set to true to allocate GL texture but NOT initialize with imageraw data
-    // tex_name - if not null, will be set to the GL name of the texture created
     bool       createGLTexture(S32 discard_level, const LLImageRaw* imageraw, bool to_create = true, S32 category = LLGLTexture::OTHER, bool defer_copy = false);
 
     void       setFilteringOption(LLTexUnit::eTextureFilterOptions option);
@@ -151,7 +135,6 @@ public:
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
     bool       getMask(const LLVector2 &tc) const;
 // [/RLVa:KB]
-//  bool       getMask(const LLVector2 &tc);
     F32        getTimePassedSinceLastBound();
     bool       getMissed() const ;
     bool       isJustBound()const ;
@@ -160,17 +143,11 @@ public:
     bool       isGLTextureCreated() const ;
     LLGLTextureState getTextureState() const { return mTextureState; }
 
-    //---------------------------------------------------------------------------------------------
-    //end of functions to access LLImageGL
-    //---------------------------------------------------------------------------------------------
-
-    //-----------------
     /*virtual*/ void setActive() ;
     void forceActive() ;
     void setNoDelete() ;
     void dontDiscard() { mDontDiscard = 1; mTextureState = NO_DELETE; }
     bool getDontDiscard() const { return mDontDiscard; }
-    //-----------------
 
 private:
     void cleanup();
@@ -183,7 +160,7 @@ public:
     /*virtual*/ LLImageGL* getGLTexture() const ;
 
 protected:
-    S32 mBoostLevel;                // enum describing priority level
+    S32 mBoostLevel;
     // <FS:minerjr> [FIRE-36016] - Re-added Store/Restore boost levels of selected objects
     S32 mPrevBoostLevel;            // enum describing priority level (Previous Value for BOOST_SELECTION restore)
     // </FS:minerjr> [FIRE-36016]

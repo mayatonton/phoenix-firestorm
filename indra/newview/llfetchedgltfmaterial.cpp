@@ -37,7 +37,6 @@
 #include "llvkloader.h"
 #include "llvkuboreg.h"
 
-//static
 LLFetchedGLTFMaterial LLFetchedGLTFMaterial::sDefault;
 
 LLFetchedGLTFMaterial::LLFetchedGLTFMaterial()

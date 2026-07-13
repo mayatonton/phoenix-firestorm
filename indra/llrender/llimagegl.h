@@ -48,24 +48,14 @@ class LLWindow;
 #define BYTES_TO_MEGA_BYTES(x) ((x) >> 20)
 #define MEGA_BYTES_TO_BYTES(x) ((x) << 20)
 
-//============================================================================
 class LLImageGL : public LLRefCount
 {
     friend class LLTexUnit;
 public:
 
-    // call once per frame
-
-    // Get an estimate of how many bytes have been allocated in vram for textures.
-    // Does not include mipmaps.
-    // NOTE: multiplying this number by two gives a good estimate for total
-    // video memory usage based on testing in lagland against an NVIDIA GPU.
     static U64 getTextureBytesAllocated();
-
     static U64 getVkTextureBytesAllocated();
 
-
-    // Size calculation
     static S32 dataFormatBits(S32 dataformat);
     static S64 dataFormatBytes(S32 dataformat, S32 width, S32 height);
     static S32 dataFormatComponents(S32 dataformat);
@@ -74,18 +64,12 @@ public:
     F32 getTimePassedSinceLastBound();
     void forceUpdateBindStats(void) const;
 
-    // needs to be called every frame
     static void updateStats(F32 current_time);
-
-    // cleanup GL state
     static void destroyGL();
     static void dirtyTexOptions();
 
     static bool checkSize(S32 width, S32 height);
 
-    //for server side use only.
-    // Not currently necessary for LLImageGL, but required in some derived classes,
-    // so include for compatability
     static bool create(LLPointer<LLImageGL>& dest, bool usemipmaps = true);
     static bool create(LLPointer<LLImageGL>& dest, U32 width, U32 height, U8 components, bool usemipmaps = true);
     static bool create(LLPointer<LLImageGL>& dest, const LLImageRaw* imageraw, bool usemipmaps = true);
@@ -95,7 +79,6 @@ public:
     LLImageGL(U32 width, U32 height, U8 components, bool usemipmaps = true, bool allow_compression = true);
     LLImageGL(const LLImageRaw* imageraw, bool usemipmaps = true, bool allow_compression = true);
 
-    // For wrapping textures created via GL elsewhere with our API only. Use with caution.
     LLImageGL(U32 components, LLGLenum target, LLGLint  formatInternal, LLGLenum formatPrimary, LLGLenum formatType, LLTexUnit::eTextureAddressMode addressMode);
 
 protected:
@@ -117,16 +100,10 @@ public:
     bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, bool defer_copy = false);
     void setImage(const LLImageRaw* imageraw);
     bool setImage(const U8* data_in, bool data_hasmips = false);
-    // *TODO: This function may not work if the textures is compressed (i.e.
-    // RenderCompressTextures is 0). Partial image updates do not work on
-    // compressed textures.
     bool setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
     bool setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
     bool setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_pos, S32 width, S32 height);
 
-    // wait for gl commands to finish on current thread and push
-
-    // Read back a raw image for this discard level, if it exists
     bool readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compressed_ok) const;
     void destroyGLTexture();
     void forceToInvalidateGLTexture();
@@ -137,8 +114,6 @@ public:
     S32  getDiscardLevel() const        { return mCurrentDiscardLevel; }
     S32  getMaxDiscardLevel() const     { return mMaxDiscardLevel; }
 
-    // override the current discard level
-    // should only be used for local textures where you know exactly what you're doing
     void setDiscardLevel(S32 level) { mCurrentDiscardLevel = level; }
 
     S32  getCurrentWidth() const { return mWidth ;}
@@ -186,24 +161,16 @@ public:
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
     bool getMask(const LLVector2 &tc) const;
 // [/RLVa:KB]
-//  bool getMask(const LLVector2 &tc);
-
-    // Sets the addressing mode used to sample the texture
-    //  (such as wrapping, mirrored wrapping, and clamp)
-    // Note: this actually gets set the next time the texture is bound.
     void setAddressMode(LLTexUnit::eTextureAddressMode mode);
     LLTexUnit::eTextureAddressMode getAddressMode(void) const { return mAddressMode; }
 
-    // Sets the filtering options used to sample the texture
-    //  (such as point sampling, bilinear interpolation, mipmapping, and anisotropic filtering)
-    // Note: this actually gets set the next time the texture is bound.
     void setFilteringOption(LLTexUnit::eTextureFilterOptions option);
     LLTexUnit::eTextureFilterOptions getFilteringOption(void) const { return mFilterOption; }
 
     LLGLenum getTexTarget()const { return mTarget; }
 
     void init(bool usemipmaps, bool allow_compression);
-    virtual void cleanup(); // Clean up the LLImageGL so it can be reinitialized.  Be careful when using this in derived class destructors
+    virtual void cleanup();
 
     void setNeedsAlphaAndPickMask(bool need_mask);
 
@@ -213,30 +180,24 @@ public:
     void checkActiveThread();
 #endif
 
-    // scale down to the desired discard level using GPU
-    // returns true if texture was scaled down
-    // desired discard will be clamped to max discard
-    // if desired discard is less than or equal to current discard, no scaling will occur
-    // only works for GL_TEXTURE_2D target
     bool scaleDown(S32 desired_discard);
 
 public:
-    // Various GL/Rendering options
     S64Bytes mTextureMemory;
-    mutable F32  mLastBindTime; // last time this was bound, by discard level
+    mutable F32  mLastBindTime;
 
 private:
     U32 createPickMask(S32 pWidth, S32 pHeight);
     void freePickMask();
     bool isCompressed();
 
-    LLPointer<LLImageRaw> mSaveData; // used for destroyGL/restoreGL
+    LLPointer<LLImageRaw> mSaveData;
     LL::WorkQueue::weak_t mMainQueue;
-    U8* mPickMask;  //downsampled bitmap approximation of alpha channel.  NULL if no alpha channel
+    U8* mPickMask;
     U16 mPickMaskWidth;
     U16 mPickMaskHeight;
     S8 mUseMipMaps;
-    bool mHasExplicitFormat; // If false (default), GL format is f(mComponents)
+    bool mHasExplicitFormat;
     bool mAutoGenMips = false;
 
     bool mIsMask;
@@ -252,8 +213,8 @@ private:
     bool mAllowCompression;
 
 protected:
-    LLGLenum mTarget;       // Normally GL_TEXTURE2D, sometimes something else (ex. cube maps)
-    LLTexUnit::eTextureType mBindTarget;    // Normally TT_TEXTURE, sometimes something else (ex. cube maps)
+    LLGLenum mTarget;
+    LLTexUnit::eTextureType mBindTarget;
     bool mHasMipMaps;
     S32 mMipLevels;
 
@@ -263,11 +224,11 @@ protected:
     S8 mMaxDiscardLevel;
 
     bool    mTexOptionsDirty;
-    LLTexUnit::eTextureAddressMode      mAddressMode;   // Defaults to TAM_WRAP
-    LLTexUnit::eTextureFilterOptions    mFilterOption;  // Defaults to TFO_ANISOTROPIC
+    LLTexUnit::eTextureAddressMode      mAddressMode;
+    LLTexUnit::eTextureFilterOptions    mFilterOption;
 
-    LLGLint  mFormatInternal; // = GL internalformat
-    LLGLenum mFormatPrimary;  // = GL format (pixel data format)
+    LLGLint  mFormatInternal;
+    LLGLenum mFormatPrimary;
     LLGLenum mFormatType;
     bool     mFormatSwapBytes;
 
@@ -281,20 +242,18 @@ protected:
     U32         mVkImageMipLevels = 1;
     VkFormat    mVkImageFormat = VK_FORMAT_UNDEFINED;
 
-    // STATICS
 public:
     static std::unordered_set<LLImageGL*> sImageList;
     static S32 sCount;
     static F32 sLastFrameTime;
 
-    // Global memory statistics
-    static U32 sBindCount;                  // Tracks number of texture binds for current frame
-    static U32 sUniqueCount;                // Tracks number of unique texture binds for current frame
+    static U32 sBindCount;
+    static U32 sUniqueCount;
     static bool sGlobalUseAnisotropic;
     static LLImageGL* sDefaultGLTexture ;
     static LLImageGL* sWhiteImageGLp ;
     static bool sAutomatedTest;
-    static bool sCompressTextures;          //use GL texture compression
+    static bool sCompressTextures;
 #if DEBUG_MISS
     bool mMissed; // Missed on last bind?
     bool getMissed() const { return mMissed; };
@@ -310,13 +269,9 @@ private:
     static S32 sMaxCategories;
     static bool sSkipAnalyzeAlpha;
 
-    //the flag to allow to call readBackRaw(...).
-    //can be removed if we do not use that function at all.
     static bool sAllowReadBackRaw ;
 //
-//****************************************************************************************************
 //The below for texture auditing use only
-//****************************************************************************************************
 private:
     S32 mCategory ;
 public:
@@ -325,17 +280,13 @@ public:
 
 
 
-    //for debug use: show texture size distribution
-    //----------------------------------------
     static S32 sCurTexSizeBar ;
     static S32 sCurTexPickSize ;
 
     static void setCurTexSizebar(S32 index, bool set_pick_size = true) ;
     static void resetCurTexSizebar();
 
-//****************************************************************************************************
 //End of definitions for texture auditing use only
-//****************************************************************************************************
 
 };
 

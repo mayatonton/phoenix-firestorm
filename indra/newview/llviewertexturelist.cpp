@@ -1589,7 +1589,6 @@ LLPointer<LLImageJ2C> LLViewerTextureList::convertToUploadFile(LLPointer<LLImage
 ///////////////////////////////////////////////////////////////////////////////
 
 // <FS:Ansariel> OpenSim compatibility
-// static
 void LLViewerTextureList::receiveImageHeader(LLMessageSystem *msg, void **user_data)
 {
     static LLCachedControl<bool> log_texture_traffic(gSavedSettings,"LogTextureNetworkTraffic", false) ;
@@ -1661,7 +1660,6 @@ void LLViewerTextureList::receiveImageHeader(LLMessageSystem *msg, void **user_d
     }
 }
 
-// static
 void LLViewerTextureList::receiveImagePacket(LLMessageSystem *msg, void **user_data)
 {
     static LLCachedControl<bool> log_texture_traffic(gSavedSettings,"LogTextureNetworkTraffic", false) ;
@@ -1736,7 +1734,6 @@ void LLViewerTextureList::receiveImagePacket(LLMessageSystem *msg, void **user_d
 // </FS:Ansariel>
 
 // We've been that the asset server does not contain the requested image id.
-// static
 void LLViewerTextureList::processImageNotInDatabase(LLMessageSystem *msg,void **user_data)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -1885,7 +1882,6 @@ LLUIImagePtr LLUIImageList::preloadUIImage(const std::string& name, const std::s
     return loadUIImageByName(name, filename, use_mips, scale_rect, clip_rect, LLGLTexture::BOOST_UI, scale_style);
 }
 
-//static
 void LLUIImageList::onUIImageLoaded( bool success, LLViewerFetchedTexture *src_vi, LLImageRaw* src, LLImageRaw* src_aux, S32 discard_level, bool final, void* user_data )
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;

@@ -104,12 +104,12 @@ void LLRenderSphere::renderGGL()
 
 
     if (LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask == LLVertexBuffer::MAP_VERTEX)
-    { // shader expects only vertex positions in vertex buffer, use fast path
+    {
         mVertexBuffer->setBuffer();
         mVertexBuffer->drawRange(LLRender::TRIANGLES, 0, mVertexBuffer->getNumVerts(), mVertexBuffer->getNumIndices(), 0);
     }
     else
-    { //shader wants colors in the vertex stream, use slow path
+    {
         gGL.begin(LLRender::TRIANGLES);
         for (S32 lat_i = 0; lat_i < LATITUDE_SLICES; lat_i++)
         {

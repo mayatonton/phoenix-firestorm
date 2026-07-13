@@ -92,9 +92,7 @@ LLDrawPoolFullbrightAlphaMask::LLDrawPoolFullbrightAlphaMask() :
 {
 }
 
-//===============================
 //DEFERRED IMPLEMENTATION
-//===============================
 
 S32 LLDrawPoolSimple::getNumDeferredPasses()
 {

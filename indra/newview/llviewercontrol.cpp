@@ -805,12 +805,6 @@ static bool handleHeroProbeResolutionChanged(const LLSD &newvalue)
     return true;
 }
 
-static bool handleRenderDebugPipelineChanged(const LLSD& newvalue)
-{
-    gDebugPipeline = newvalue.asBoolean();
-    return true;
-}
-
 static bool handleRenderResolutionDivisorChanged(const LLSD&)
 {
     gResizeScreenTexture = true;
@@ -1601,7 +1595,6 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderDynamicLOD", handleRenderDynamicLODChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderVSyncEnable", handleVSyncChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderDeferredNoise", handleReleaseGLBufferChanged);
-    setting_setup_signal_listener(gSavedSettings, "RenderDebugPipeline", handleRenderDebugPipelineChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderResolutionDivisor", handleRenderResolutionDivisorChanged);
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
     setting_setup_signal_listener(gSavedSettings, "RenderResolutionMultiplier", handleRenderResolutionDivisorChanged);

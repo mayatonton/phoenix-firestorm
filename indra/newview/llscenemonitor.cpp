@@ -45,18 +45,6 @@
 
 LLSceneMonitorView* gSceneMonitorView = NULL;
 
-//
-//The procedures of monitoring when the scene finishes loading visually,
-//i.e., no pixel differences among frames, are:
-//1, freeze all dynamic objects and avatars;
-//2, (?) disable all sky and water;
-//3, capture frames periodically, by calling "capture()";
-//4, compute pixel differences between two latest captured frames, by calling "compare()", results are stored at mDiff;
-//5, compute the number of pixels in mDiff above some tolerance threshold in GPU, by calling "calcDiffAggregate()";
-//6, use gl occlusion query to fetch the result from GPU, by calling "fetchQueryResult()";
-//END.
-//
-
 LLSceneMonitor::LLSceneMonitor() :
     mEnabled(false),
     mDiff(NULL),
@@ -105,7 +93,6 @@ void LLSceneMonitor::reset()
 void LLSceneMonitor::generateDitheringTexture(S32 width, S32 height)
 {
 #if 1
-    //4 * 4 matrix
     mDitherMatrixWidth = 4;
     S32 dither_matrix[4][4] =
     {
@@ -117,7 +104,6 @@ void LLSceneMonitor::generateDitheringTexture(S32 width, S32 height)
 
     mDitherScale = 255.f / 17;
 #else
-    //8 * 8 matrix
     mDitherMatrixWidth = 16;
     S32 dither_matrix[16][16] =
     {
@@ -226,26 +212,21 @@ void LLSceneMonitor::freezeScene()
         return;
     }
 
-    // freeze all avatars
     for (LLCharacter* character : LLCharacter::sInstances)
     {
         freezeAvatar((LLCharacter*)character);
     }
 
-    // freeze everything else
     gSavedSettings.setBOOL("FreezeTime", true);
 
-    //disable sky, water and clouds
     gPipeline.clearRenderTypeMask(LLPipeline::RENDER_TYPE_SKY, LLPipeline::RENDER_TYPE_WL_SKY,
         LLPipeline::RENDER_TYPE_WATER, LLPipeline::RENDER_TYPE_CLOUDS, LLPipeline::END_RENDER_TYPES);
 
-    //disable particle system
     LLViewerPartSim::getInstance()->enable(false);
 }
 
 void LLSceneMonitor::unfreezeScene()
 {
-    //thaw all avatars
     mAvatarPauseHandles.clear();
 
     if(mDiffState == VIEWER_QUITTING)
@@ -253,14 +234,11 @@ void LLSceneMonitor::unfreezeScene()
         return;
     }
 
-    // thaw everything else
     gSavedSettings.setBOOL("FreezeTime", false);
 
-    //enable sky, water and clouds
     gPipeline.setRenderTypeMask(LLPipeline::RENDER_TYPE_SKY, LLPipeline::RENDER_TYPE_WL_SKY,
         LLPipeline::RENDER_TYPE_WATER, LLPipeline::RENDER_TYPE_CLOUDS, LLPipeline::END_RENDER_TYPES);
 
-    //enable particle system
     LLViewerPartSim::getInstance()->enable(true);
 }
 
@@ -416,7 +394,6 @@ void LLSceneMonitor::compare()
 #endif
 }
 
-//calculate Diff aggregate information in GPU, and enable gl occlusion query to capture it.
 void LLSceneMonitor::calcDiffAggregate()
 {
 #ifdef LL_WINDOWS
@@ -533,7 +510,6 @@ void LLSceneMonitor::fetchQueryResult()
     }
 }
 
-//dump results to a file _scene_xmonitor_results.csv
 void LLSceneMonitor::dumpToFile(const std::string &file_name)
 {
     if (!hasResults()) return;
@@ -685,9 +661,6 @@ void LLSceneMonitor::dumpToFile(const std::string &file_name)
     }
 }
 
-//-------------------------------------------------------------------------------------------------------------
-//definition of class LLSceneMonitorView
-//-------------------------------------------------------------------------------------------------------------
 LLSceneMonitorView::LLSceneMonitorView(const LLRect& rect)
     :   LLFloater(LLSD())
 {
@@ -752,13 +725,11 @@ void LLSceneMonitorView::draw()
     new_rect.setLeftTopAndSize(getRect().mLeft, getRect().mTop, width, height);
     setRect(new_rect);
 
-    //draw background
     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
     gl_rect_2d(0, getRect().getHeight(), getRect().getWidth(), 0, LLColor4(0.f, 0.f, 0.f, 0.25f));
 
     LLSceneMonitor::getInstance()->calcDiffAggregate();
 
-    //show some texts
     LLColor4 color = LLColor4::white;
     S32 line_height = LLFontGL::getFontMonospace()->getLineHeight();
 

@@ -188,18 +188,15 @@
 #include "llworldmapmessage.h"
 #include "llxfermanager.h"
 #include "pipeline.h"
-#include "llappviewer.h"
 #include "llayaudit.h" // <FS:AYAstorm r30 P4>
 #include "llfasttimerview.h"
 #include "llfloatermap.h"
-#include "llweb.h"
 #include "llvoiceclient.h"
 #include "llnamelistctrl.h"
 #include "llnamebox.h"
 #include "llnameeditor.h"
 #include "llagentlanguage.h"
 #include "llwearable.h"
-#include "llinventorybridge.h"
 #include "llappearancemgr.h"
 #include "llavatariconctrl.h"
 #include "llvoicechannel.h"
@@ -820,12 +817,6 @@ bool idle_startup()
             LLNotificationsUtil::add(gViewerWindow->getInitAlert());
         }
 
-        //-------------------------------------------------
-        // Init the SOCKS 5 proxy if the user has configured
-        // one. We need to do this early in case the user
-        // is using SOCKS for HTTP so we get the login
-        // screen and HTTP tables via SOCKS.
-        //-------------------------------------------------
         LLStartUp::startLLProxy();
 
         gSavedSettings.setS32("LastFeatureVersion", LLFeatureManager::getInstance()->getVersion());
@@ -1090,11 +1081,6 @@ bool idle_startup()
             LLStartUp::setStartSLURL(LLStartUp::getStartSLURLString());
         }
 // </AW: opensim>
-
-        //-------------------------------------------------
-        // Init audio, which may be needed for prefs dialog
-        // or audio cues in connection UI.
-        //-------------------------------------------------
 
         if (false == gSavedSettings.getBOOL("NoAudio"))
         {
@@ -1673,10 +1659,6 @@ bool idle_startup()
         // <FS:Ansariel> [FS Persisted Avatar Render Settings]
         //LLRenderMuteList::getInstance()->loadFromFile();
 
-        //-------------------------------------------------
-        // Handle startup progress screen
-        //-------------------------------------------------
-
         // on startup the user can request to go to their home,
         // their last location, or some URL "-url //sim/x/y[/z]"
         // All accounts have both a home and a last location, and we don't support
@@ -2028,9 +2010,6 @@ bool idle_startup()
     }
     // </FS:Ansariel>
 
-    //---------------------------------------------------------------------
-    // World Init
-    //---------------------------------------------------------------------
     if (STATE_WORLD_INIT == LLStartUp::getStartupState())
     {
         set_startup_status(0.30f, LLTrans::getString("LoginInitializingWorld"), gAgent.mMOTD);
@@ -2148,10 +2127,6 @@ bool idle_startup()
     }
 
 
-    //---------------------------------------------------------------------
-    // Load QuickTime/GStreamer and other multimedia engines, can be slow.
-    // Do it while we're waiting on the network for our seed capability. JC
-    //---------------------------------------------------------------------
     if (STATE_MULTIMEDIA_INIT == LLStartUp::getStartupState())
     {
         LLStartUp::multimediaInit();
@@ -2169,9 +2144,6 @@ bool idle_startup()
         return false;
     }
 
-    //---------------------------------------------------------------------
-    // Wait for Seed Cap Grant
-    //---------------------------------------------------------------------
     if(STATE_SEED_GRANTED_WAIT == LLStartUp::getStartupState())
     {
         LLViewerRegion *regionp = LLWorld::getInstance()->getRegionFromHandle(gFirstSimHandle);
@@ -2242,10 +2214,6 @@ bool idle_startup()
     }
 
 
-    //---------------------------------------------------------------------
-    // Seed Capability Granted
-    // no newMessage calls should happen before this point
-    //---------------------------------------------------------------------
     if (STATE_SEED_CAP_GRANTED == LLStartUp::getStartupState())
     {
         do_startup_frame();
@@ -2486,9 +2454,6 @@ bool idle_startup()
         return false;
     }
 
-    //---------------------------------------------------------------------
-    // World Wait
-    //---------------------------------------------------------------------
     if(STATE_WORLD_WAIT == LLStartUp::getStartupState())
     {
         LL_DEBUGS("AppInit") << "Waiting for simulator ack...." << LL_ENDL;
@@ -2501,9 +2466,6 @@ bool idle_startup()
         return false;
     }
 
-    //---------------------------------------------------------------------
-    // Agent Send
-    //---------------------------------------------------------------------
     if (STATE_AGENT_SEND == LLStartUp::getStartupState())
     {
         LL_DEBUGS("AppInit") << "Connecting to region..." << LL_ENDL;
@@ -2559,9 +2521,6 @@ bool idle_startup()
         return false;
     }
 
-    //---------------------------------------------------------------------
-    // Agent Wait
-    //---------------------------------------------------------------------
     if (STATE_AGENT_WAIT == LLStartUp::getStartupState())
     {
         do_startup_frame();
@@ -2597,9 +2556,6 @@ bool idle_startup()
         return false;
     }
 
-    //---------------------------------------------------------------------
-    // Inventory Send
-    //---------------------------------------------------------------------
     if (STATE_INVENTORY_SEND == LLStartUp::getStartupState())
     {
         LL_PROFILE_ZONE_NAMED("State inventory send")
@@ -2823,9 +2779,6 @@ bool idle_startup()
         return false;
     }
 
-    //---------------------------------------------------------------------
-    // STATE_INVENTORY_CALLBACKS
-    //---------------------------------------------------------------------
     if (STATE_INVENTORY_CALLBACKS  == LLStartUp::getStartupState())
     {
         if (!LLInventoryModel::isSysFoldersReady())
@@ -2892,9 +2845,6 @@ bool idle_startup()
     }
 
 
-    //---------------------------------------------------------------------
-    // Misc
-    //---------------------------------------------------------------------
     if (STATE_MISC == LLStartUp::getStartupState())
     {
         // We have a region, and just did a big inventory download.
@@ -4031,19 +3981,16 @@ std::string get_screen_filename(const std::string& pattern)
     }
 }
 
-//static
 std::string LLStartUp::getScreenLastFilename()
 {
     return get_screen_filename(SCREEN_LAST_FILENAME);
 }
 
-//static
 std::string LLStartUp::getScreenHomeFilename()
 {
     return get_screen_filename(SCREEN_HOME_FILENAME);
 }
 
-//static
 void LLStartUp::loadInitialOutfit( const std::string& outfit_folder_name,
                                    const std::string& gender_name )
 {
@@ -4149,7 +4096,6 @@ void release_start_screen()
 }
 
 
-// static
 std::string LLStartUp::startupStateToString(EStartupState state)
 {
 #define RTNENUM(E) case E: return #E
@@ -4191,7 +4137,6 @@ std::string LLStartUp::startupStateToString(EStartupState state)
 #undef RTNENUM
 }
 
-// static
 void LLStartUp::setStartupState( EStartupState state )
 {
     LL_INFOS("AppInit") << getStartupStateString() << " --> " << startupStateToString(state) << LL_ENDL;
@@ -4258,7 +4203,6 @@ void reset_login()
     store->clearSertCache();
 }
 
-//---------------------------------------------------------------------------
 
 // Initialize all plug-ins except the web browser (which was initialized
 // early, before the login screen). JC
@@ -4393,7 +4337,6 @@ void LLStartUp::setStartSLURL(const LLSLURL& slurl)
   FSPanelLogin::onUpdateStartSLURL(sStartSLURL);
 }
 
-// static
 LLSLURL& LLStartUp::getStartSLURL()
 {
     return sStartSLURL;
@@ -5304,7 +5247,6 @@ void transition_back_to_login_panel(const std::string& emsg)
 }
 
 // <FS:KC> FIRE-18250: Option to disable default eye movement
-//static
 void update_static_eyes()
 {
     if (gSavedPerAccountSettings.getBOOL("FSStaticEyes"))

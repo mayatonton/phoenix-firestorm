@@ -73,9 +73,6 @@ protected:
  **                    INHERITED
  **/
 
-    //--------------------------------------------------------------------
-    // LLViewerObject interface and related
-    //--------------------------------------------------------------------
 public:
     boost::signals2::connection                   mRegionChangedSlot;
 
@@ -83,9 +80,6 @@ public:
     /*virtual*/ void        updateRegion(LLViewerRegion *regionp);
     /*virtual*/ void        idleUpdate(LLAgent &agent, const F64 &time);
 
-    //--------------------------------------------------------------------
-    // LLCharacter interface and related
-    //--------------------------------------------------------------------
 public:
     /*virtual*/ bool        hasMotionFromSource(const LLUUID& source_id);
     /*virtual*/ void        stopMotionFromSource(const LLUUID& source_id);
@@ -132,23 +126,14 @@ public:
         virtual bool    isBuddy() const { return false; }
     /*virtual*/ bool    isValid() const; // use isAgentAvatarValid, it's fuller
 
-    //--------------------------------------------------------------------
-    // Updates
-    //--------------------------------------------------------------------
 public:
     /*virtual*/ bool    updateCharacter(LLAgent &agent);
     /*virtual*/ void    idleUpdateTractorBeam();
     bool                checkStuckAppearance();
 
-    //--------------------------------------------------------------------
-    // Loading state
-    //--------------------------------------------------------------------
 public:
     /*virtual*/ bool    getHasMissingParts() const;
 
-    //--------------------------------------------------------------------
-    // Region state
-    //--------------------------------------------------------------------
     void            resetRegionCrossingTimer()  { mRegionCrossingTimer.reset(); }
     // <FS:Ansariel> FIRE-12004: Attachments getting lost on TP
     void            setIsCrossingRegion(bool is_crossing) { mIsCrossingRegion = is_crossing; }
@@ -172,18 +157,12 @@ private:
  **                    RENDERING
  **/
 
-    //--------------------------------------------------------------------
-    // Render beam
-    //--------------------------------------------------------------------
 protected:
     bool        needsRenderBeam();
 private:
     LLPointer<LLHUDEffectSpiral> mBeam;
     LLFrameTimer mBeamTimer;
 
-    //--------------------------------------------------------------------
-    // LLVOAvatar Constants
-    //--------------------------------------------------------------------
 public:
     /*virtual*/ LLViewerTexture::EBoostLevel    getAvatarBoostLevel() const { return LLGLTexture::BOOST_AVATAR_SELF; }
     /*virtual*/ LLViewerTexture::EBoostLevel    getAvatarBakedBoostLevel() const { return LLGLTexture::BOOST_AVATAR_BAKED_SELF; }
@@ -198,9 +177,6 @@ public:
  **                    TEXTURES
  **/
 
-    //--------------------------------------------------------------------
-    // Loading status
-    //--------------------------------------------------------------------
 public:
     // <FS:Ansariel> [Legacy Bake]
     /*virtual*/ bool    hasPendingBakedUploads() const;
@@ -216,9 +192,6 @@ public:
     /*virtual*/ bool    isTextureVisible(LLAvatarAppearanceDefines::ETextureIndex type, LLViewerWearable *wearable) const;
 
 
-    //--------------------------------------------------------------------
-    // Local Textures
-    //--------------------------------------------------------------------
 public:
     bool                getLocalTextureGL(LLAvatarAppearanceDefines::ETextureIndex type, LLViewerTexture** image_gl_pp, U32 index) const;
     LLViewerFetchedTexture* getLocalTextureGL(LLAvatarAppearanceDefines::ETextureIndex type, U32 index) const;
@@ -239,9 +212,6 @@ private:
     /*virtual*/ LLViewerTexture* getImage(const U8 te, const U32 index) const;
 
 
-    //--------------------------------------------------------------------
-    // Baked textures
-    //--------------------------------------------------------------------
 public:
     LLAvatarAppearanceDefines::ETextureIndex getBakedTE(const LLViewerTexLayerSet* layerset ) const;
     //-- SUNSHINE CLEANUP - dead? or update to just call request appearance update?
@@ -255,9 +225,6 @@ public:
 protected:
     /*virtual*/ void    removeMissingBakedTextures();
 
-    //--------------------------------------------------------------------
-    // Layers
-    //--------------------------------------------------------------------
 public:
     // <FS:Ansariel> [Legacy Bake]
     void                requestLayerSetUploads();
@@ -268,9 +235,6 @@ public:
     LLViewerTexLayerSet* getLayerSet(LLAvatarAppearanceDefines::ETextureIndex index) const;
 
 
-    //--------------------------------------------------------------------
-    // Composites
-    //--------------------------------------------------------------------
 public:
     // <FS:Ansariel> [Legacy Bake]
     ///* virtual */ void    invalidateComposite(LLTexLayerSet* layerset);
@@ -284,13 +248,6 @@ public:
 
     const LLUUID&       grabBakedTexture(LLAvatarAppearanceDefines::EBakedTextureIndex baked_index) const;
     bool                canGrabBakedTexture(LLAvatarAppearanceDefines::EBakedTextureIndex baked_index) const;
-
-
-    //--------------------------------------------------------------------
-    // Scratch textures (used for compositing)
-    //--------------------------------------------------------------------
-public:
-private:
 
 /**                    Textures
  **                                                                            **
@@ -319,9 +276,6 @@ public:
 protected:
     U32 getNumWearables(LLAvatarAppearanceDefines::ETextureIndex i) const;
 
-    //--------------------------------------------------------------------
-    // Attachments
-    //--------------------------------------------------------------------
 public:
     void                updateAttachmentVisibility(U32 camera_mode);
     bool                isWearingAttachment(const LLUUID& inv_item_id) const;
@@ -344,9 +298,6 @@ public:
 // [RLVa:KB] - Checked: 2012-07-28 (RLVa-1.4.7)
     attachment_signal_t* mAttachmentSignal;
 // [/RLVa:KB]
-    //--------------------------------------------------------------------
-    // HUDs
-    //--------------------------------------------------------------------
 private:
     LLViewerJoint*      mScreenp; // special purpose joint for HUD attachments
 
@@ -363,10 +314,6 @@ public:
     static void     onCustomizeStart(bool disable_camera_switch = false);
     static void     onCustomizeEnd(bool disable_camera_switch = false);
     LLPointer<LLInventoryCallback> mEndCustomizeCallback;
-
-    //--------------------------------------------------------------------
-    // Visibility
-    //--------------------------------------------------------------------
 
     /* virtual */ bool shouldRenderRigged() const;
 
@@ -395,17 +342,11 @@ protected:
  **                    DIAGNOSTICS
  **/
 
-    //--------------------------------------------------------------------
-    // General
-    //--------------------------------------------------------------------
 public:
     static void     dumpTotalLocalTextureByteCount();
     void            dumpLocalTextures() const;
     void            dumpWearableInfo(LLAPRFile& outfile);
 
-    //--------------------------------------------------------------------
-    // Avatar Rez Metrics
-    //--------------------------------------------------------------------
 public:
     struct LLAvatarTexData
     {

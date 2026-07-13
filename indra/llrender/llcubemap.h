@@ -33,7 +33,6 @@
 
 class LLVector3;
 
-// Environment map hack!
 class LLCubeMap : public LLRefCount
 {
     bool mIssRGB;

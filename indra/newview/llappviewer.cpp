@@ -190,7 +190,6 @@
 
 // The files below handle dependencies from cleanup.
 #include "llkeyframemotion.h"
-#include "llworldmap.h"
 #include "llhudmanager.h"
 #include "lltoolmgr.h"
 #include "llassetstorage.h"
@@ -218,7 +217,6 @@
 
 #include "llworld.h"
 #include "llhudeffecttrail.h"
-#include "llslurl.h"
 #include "llurlregistry.h"
 #include "llwatchdog.h"
 
@@ -289,7 +287,6 @@ using namespace LL;
 // If a global symbol reference seems valid, it will be included
 // via header files above.
 
-//----------------------------------------------------------------------------
 // llviewernetwork.h
 #include "llviewernetwork.h"
 // define a self-registering event API object
@@ -324,7 +321,6 @@ static LLAppViewerListener sAppViewerListener(LLAppViewer::instance);
 
 ////// Windows-specific includes to the bottom - nasty defines in these pollute the preprocessor
 //
-//----------------------------------------------------------------------------
 // viewer.cpp - these are only used in viewer, should be easily moved.
 
 #if LL_DARWIN
@@ -446,7 +442,6 @@ const std::string ERROR_MARKER_FILE_NAME(SAFE_FILE_NAME_PREFIX + ".error_marker"
 const std::string LOGOUT_MARKER_FILE_NAME(SAFE_FILE_NAME_PREFIX + ".logout_marker"); //FS orig modified LL
 static std::string gLaunchFileOnQuit;
 
-//----------------------------------------------------------------------------
 
 // List of entries from strings.xml to always replace
 static std::set<std::string> default_trans_args;
@@ -509,9 +504,7 @@ struct SettingsFiles : public LLInitParam::Block<SettingsFiles>
 };
 
 
-//----------------------------------------------------------------------------
 // Metrics logging control constants
-//----------------------------------------------------------------------------
 static const F32 METRICS_INTERVAL_DEFAULT = 600.0;
 static const F32 METRICS_INTERVAL_QA = 30.0;
 static F32 app_metrics_interval = METRICS_INTERVAL_DEFAULT;
@@ -619,11 +612,6 @@ static void settings_to_globals()
 {
     LLSurface::setTextureSize(gSavedSettings.getU32("RegionTextureSize"));
 
-#if LL_DARWIN
-    LLRender::sGLCoreProfile = true;
-#else
-    LLRender::sGLCoreProfile = gSavedSettings.getBOOL("RenderGLContextCoreProfile");
-#endif
     LLRender::sNsightDebugSupport = gSavedSettings.getBOOL("RenderNsightDebugSupport");
     LLImageGL::sGlobalUseAnisotropic    = gSavedSettings.getBOOL("RenderAnisotropic");
     LLImageGL::sCompressTextures        = gSavedSettings.getBOOL("RenderCompressTextures");
@@ -662,7 +650,6 @@ static void settings_modify()
     LLVOSurfacePatch::sLODFactor        = gSavedSettings.getF32("RenderTerrainLODFactor");
     LLVOSurfacePatch::sLODFactor *= LLVOSurfacePatch::sLODFactor; //square lod factor to get exponential range of [1,4]
     gDebugGL       = gDebugGLSession || gDebugSession;
-    gDebugPipeline = gSavedSettings.getBOOL("RenderDebugPipeline");
 }
 
 class LLFastTimerLogThread : public LLThread
@@ -729,21 +716,18 @@ public:
 };
 // </FS:TJ>
 
-//virtual
 bool LLAppViewer::initSLURLHandler()
 {
     // does nothing unless subclassed
     return false;
 }
 
-//virtual
 bool LLAppViewer::sendURLToOtherInstance(const std::string& url)
 {
     // does nothing unless subclassed
     return false;
 }
 
-//----------------------------------------------------------------------------
 // LLAppViewer definition
 
 // Static members.
@@ -1496,9 +1480,6 @@ void LLAppViewer::overrideDetectedHardware()
 
 void LLAppViewer::initMaxHeapSize()
 {
-    //set the max heap size.
-    //here is some info regarding to the max heap size:
-    //------------------------------------------------------------------------------------------
     // OS       | setting | SL address bits | max manageable memory space | max heap size
     // Win 32   | default | 32-bit          | 2GB                         | < 1.7GB
     // Win 32   | /3G     | 32-bit          | 3GB                         | < 1.7GB or 2.7GB
@@ -1506,8 +1487,6 @@ void LLAppViewer::initMaxHeapSize()
     //Linux 32  |HUGEMEM  | 32-bit          | 4GB                         | < 3.7GB
     //64-bit OS |default  | 32-bit          | 4GB                         | < 3.7GB
     //64-bit OS |default  | 64-bit          | N/A (> 4GB)                 | N/A (> 4GB)
-    //------------------------------------------------------------------------------------------
-    //currently SL is built under 32-bit setting, we set its max heap size no more than 1.6 GB.
 
  #if !defined(LL_X86_64) && !defined(LL_ARM64)
     F32Gigabytes max_heap_size_gb = (F32Gigabytes)gSavedSettings.getF32("MaxHeapSize") ;
@@ -3762,7 +3741,6 @@ bool LLAppViewer::meetsRequirementsForMaximizedStart()
     return maximizedOk;
 }
 
-// virtual
 void LLAppViewer::sendOutOfDiskSpaceNotification()
 {
     LL_WARNS() << "Out of disk space notification requested" << LL_ENDL;
@@ -4639,7 +4617,6 @@ void getFileList()
 }
 #endif
 
-// static
 void LLAppViewer::recordMarkerVersion(LLAPRFile& marker_file)
 {
     std::string marker_version(LLVersionInfo::instance().getChannelAndVersion());
@@ -5205,7 +5182,6 @@ void LLAppViewer::migrateCacheDirectory()
 #endif // LL_WINDOWS || LL_DARWIN
 }
 
-//static
 U32 LLAppViewer::getTextureCacheVersion()
 {
     // Viewer texture cache version, change if the texture cache format changes.
@@ -5217,7 +5193,6 @@ U32 LLAppViewer::getTextureCacheVersion()
     return TEXTURE_CACHE_VERSION ;
 }
 
-//static
 U32 LLAppViewer::getDiskCacheVersion()
 {
     // Viewer disk cache version intorduced in Simple Cache Viewer, change if the cache format changes.
@@ -5226,7 +5201,6 @@ U32 LLAppViewer::getDiskCacheVersion()
     return DISK_CACHE_VERSION ;
 }
 
-//static
 U32 LLAppViewer::getObjectCacheVersion()
 {
     // Viewer object cache version, change if object update
@@ -7081,13 +7055,11 @@ void LLAppViewer::handleLoginComplete()
     mSavePerAccountSettings=true;
 }
 
-//virtual
 void LLAppViewer::setMasterSystemAudioMute(bool mute)
 {
     gSavedSettings.setBOOL("MuteAudio", mute);
 }
 
-//virtual
 bool LLAppViewer::getMasterSystemAudioMute()
 {
     // <FS:Ansariel> Replace frequently called gSavedSettings
@@ -7097,9 +7069,7 @@ bool LLAppViewer::getMasterSystemAudioMute()
     // </FS:Ansariel>
 }
 
-//----------------------------------------------------------------------------
 // Metrics-related methods (static and otherwise)
-//----------------------------------------------------------------------------
 
 /**
  * LLViewerAssetStats collects data on a per-region (as defined by the agent's

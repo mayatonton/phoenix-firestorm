@@ -24,11 +24,6 @@
  * $/LicenseInfo$
  */
 
-// This file sets some global GL parameters, and implements some
-// useful functions for GL operations.
-
-#define GLH_EXT_SINGLE_FILE
-
 #include "linden_common.h"
 
 #include "llsys.h"
@@ -102,10 +97,6 @@ void ll_close_fail_log()
 {
     gFailLog.close();
 }
-
-LLMatrix4 gGLObliqueProjectionInverse;
-
-#define LL_GL_NAME_POOLING 0
 
 std::list<LLGLUpdate*> LLGLUpdate::sGLQ;
 
@@ -325,14 +316,12 @@ std::string LLGLManager::getRawGLString()
 
 void LLGLManager::asLLSD(LLSD& info)
 {
-    // Currently these are duplicates of fields in "system".
     info["gpu_vendor"] = mGLVendorShort;
     info["gpu_version"] = mDriverVersionVendorString;
     info["opengl_version"] = mGLVersionString;
 
     info["vram"] = LLSD::Integer(mVRAM);
 
-    // OpenGL limits
     info["max_samples"] = mMaxSamples;
     info["num_texture_image_units"] =  mNumTextureImageUnits;
     info["max_sample_mask_words"] = mMaxSampleMaskWords;
@@ -343,8 +332,7 @@ void LLGLManager::asLLSD(LLSD& info)
     info["max_index_range"] = mGLMaxIndexRange;
     info["max_texture_size"] = mGLMaxTextureSize;
 
-    // Which vendor
-    info["is_ati"] = mIsAMD;  // note, do not rename is_ati to is_amd without coordinating with DW
+    info["is_ati"] = mIsAMD;
     info["is_nvidia"] = mIsNVIDIA;
     info["is_intel"] = mIsIntel;
 
@@ -366,12 +354,6 @@ void rotate_quat(LLQuaternion& rotation)
     gGL.rotatef(angle_radians * RAD_TO_DEG, x, y, z);
 }
 
-///////////////////////////////////////////////////////////////
-//
-// LLGLState
-//
-
-// Static members
 boost::unordered_map<LLGLenum, LLGLboolean> LLGLState::sStateMap;
 
 GLenum LLGLState::sCullFaceMode = GL_BACK;
@@ -448,28 +430,21 @@ bool LLGLState::isStencilTestEnabled()
     return (it != sStateMap.end()) && (it->second != GL_FALSE);
 }
 
-GLboolean LLGLDepthTest::sDepthEnabled = GL_FALSE; // OpenGL default
-GLenum LLGLDepthTest::sDepthFunc = GL_LESS; // OpenGL default
-GLboolean LLGLDepthTest::sWriteEnabled = GL_TRUE; // OpenGL default
+GLboolean LLGLDepthTest::sDepthEnabled = GL_FALSE;
+GLenum LLGLDepthTest::sDepthFunc = GL_LESS;
+GLboolean LLGLDepthTest::sWriteEnabled = GL_TRUE;
 
-//static
 void LLGLState::initClass()
 {
     sStateMap[GL_DITHER] = GL_TRUE;
-    // sStateMap[GL_TEXTURE_2D] = GL_TRUE;
-
-    //make sure multisample defaults to disabled
     sStateMap[GL_MULTISAMPLE] = GL_FALSE;
 }
 
-//static
 void LLGLState::restoreGL()
 {
     sStateMap.clear();
     initClass();
 }
-
-///////////////////////////////////////////////////////////////////////
 
 LLGLState::LLGLState(LLGLenum state, S32 enabled) :
     mState(state), mWasEnabled(false), mIsEnabled(false)
@@ -519,11 +494,8 @@ LLGLState::~LLGLState()
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 void LLGLManager::initGLStates()
 {
-    //gl states moved to classes in llglstates.h
     LLGLState::initClass();
 }
 
@@ -536,7 +508,6 @@ LLGLUserClipPlane::LLGLUserClipPlane(const LLPlane& p, const glm::mat4& modelvie
         mModelview = modelview;
         mProjection = projection;
 
-        //flip incoming LLPlane to get consistent behavior compared to frustum culling
         setPlane(-p[0], -p[1], -p[2], -p[3]);
     }
 }
@@ -561,7 +532,7 @@ void LLGLUserClipPlane::setPlane(F32 a, F32 b, F32 c, F32 d)
     glm::vec4 oplane(a,b,c,d);
     glm::vec4 cplane = invtrans_MVP * oplane;
 
-    cplane /= fabs(cplane[2]); // normalize such that depth is not scaled
+    cplane /= fabs(cplane[2]);
     cplane[3] -= 1;
 
     if(cplane[2] < 0)
@@ -573,7 +544,6 @@ void LLGLUserClipPlane::setPlane(F32 a, F32 b, F32 c, F32 d)
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.pushMatrix();
     gGL.loadMatrix(glm::value_ptr(newP));
-    gGLObliqueProjectionInverse = LLMatrix4(glm::value_ptr(glm::transpose(glm::inverse(newP))));
     gGL.matrixMode(LLRender::MM_MODELVIEW);
 }
 
@@ -588,9 +558,7 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
     if (!depth_enabled)
-    { // always disable depth writes if depth testing is disabled
-      // GL spec defines this as a requirement, but some implementations allow depth writes with testing disabled
-      // The proper way to write to depth buffer with testing disabled is to enable testing and use a depth_func of GL_ALWAYS
+    {
         write_enabled = GL_FALSE;
     }
 

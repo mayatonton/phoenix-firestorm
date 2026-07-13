@@ -75,10 +75,8 @@
 
 #include <vector>
 
-// Height of the yellow selection highlight posts for land
 constexpr F32 PARCEL_POST_HEIGHT = 0.666f;
 
-// Returns true if you got at least one object
 void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
 {
 // [RLVa:KB] - @edit* and @interact
@@ -138,7 +136,6 @@ void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
 
     if (!grow_selection && !shrink_selection)
     {
-        // nothing to do
         return;
     }
 
@@ -148,7 +145,6 @@ void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
     S32 center_x = (left + right) / 2;
     S32 center_y = (top + bottom) / 2;
 
-    // save drawing mode
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.pushMatrix();
 
@@ -158,7 +154,6 @@ void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
     // </FS:Ansariel>
     if (limit_select_distance)
     {
-        // ...select distance from control
         LLVector3 relative_av_pos = av_pos;
         relative_av_pos -= camera.getOrigin();
 
@@ -192,7 +187,6 @@ void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
         camera.setFar(new_far);
         camera.setNear(new_near);
 
-        // Usurp these two
         limit_select_distance = true;
         select_dist_squared = s_nFartouchDist * s_nFartouchDist;
     }
@@ -219,7 +213,6 @@ void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
                     LLSelectMgr::getInstance()->unhighlightObjectOnly(vobjp);
                     break;
                   case 1:
-                    // check vertices
                     if (!LLViewerCamera::getInstance()->areVertsVisible(vobjp, LLSelectMgr::sRectSelectInclusive))
                     {
                         LLSelectMgr::getInstance()->unhighlightObjectOnly(vobjp);
@@ -284,7 +277,6 @@ void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
                 switch (result)
                 {
                 case 1:
-                    // check vertices
                     if (camera.areVertsVisible(vobjp, LLSelectMgr::sRectSelectInclusive))
                     {
                         LLSelectMgr::getInstance()->highlightObjectOnly(vobjp);
@@ -300,12 +292,10 @@ void LLToolSelectRect::handleRectangleSelection(S32 x, S32 y, MASK mask)
         }
     }
 
-    // restore drawing mode
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.popMatrix();
     gGL.matrixMode(LLRender::MM_MODELVIEW);
 
-    // restore camera
     camera.setFar(old_far_plane);
     camera.setNear(old_near_plane);
     gViewerWindow->setup3DRender();
@@ -998,10 +988,8 @@ F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, std::vector<LLPoi
     return samples_sec * 4;
 }
 
-//-----------------------------------------------------------------------------
 // gpu_benchmark()
 //  returns measured memory bandwidth of GPU in gigabytes per second
-//-----------------------------------------------------------------------------
 F32 gpu_benchmark()
 {
     if (gGLManager.mGLVersion < 3.3f)

@@ -139,7 +139,6 @@ LLManipTranslate::LLManipTranslate( LLToolComposite* composite )
     }
 }
 
-//static
 void LLManipTranslate::destroyGL()
 {
     if (sGridTex)
@@ -148,7 +147,6 @@ void LLManipTranslate::destroyGL()
     }
 }
 
-//static
 void LLManipTranslate::restoreGL()
 {
     //generate grid texture
@@ -1149,35 +1147,8 @@ void LLManipTranslate::renderSnapGuides()
 
     LLViewerObject *first_object = first_node->getObject();
 
-    //pick appropriate projection plane for snap rulers according to relative camera position
     if (mManipPart >= LL_X_ARROW && mManipPart <= LL_Z_ARROW)
     {
-        LLVector3 normal;
-        LLColor4 inner_color;
-        LLManip::EManipPart temp_manip = mManipPart;
-        switch (mManipPart)
-        {
-        case LL_X_ARROW:
-            normal.setVec(1,0,0);
-            inner_color.setVec(0,1,1,line_alpha);
-            mManipPart = LL_YZ_PLANE;
-            break;
-        case LL_Y_ARROW:
-            normal.setVec(0,1,0);
-            inner_color.setVec(1,0,1,line_alpha);
-            mManipPart = LL_XZ_PLANE;
-            break;
-        case LL_Z_ARROW:
-            normal.setVec(0,0,1);
-            inner_color.setVec(1,1,0,line_alpha);
-            mManipPart = LL_XY_PLANE;
-            break;
-        default:
-            break;
-        }
-
-        highlightIntersection(normal, selection_center, grid_rotation, inner_color);
-        mManipPart = temp_manip;
         getManipAxis(first_object, mManipPart, translate_axis);
 
         LLVector3 at_axis_abs;
@@ -1489,11 +1460,7 @@ void LLManipTranslate::renderSnapGuides()
     }
     else
     {
-        // render gridlines for planar snapping
-
         F32 u = 0, v = 0;
-        LLColor4 inner_color;
-        LLVector3 normal;
         LLVector3 grid_center = selection_center - grid_origin;
         F32 usc = 1;
         F32 vsc = 1;
@@ -1507,31 +1474,24 @@ void LLManipTranslate::renderSnapGuides()
             v = grid_center.mV[VZ];
             usc = grid_scale.mV[VY];
             vsc = grid_scale.mV[VZ];
-            inner_color.setVec(0,1,1,line_alpha);
-            normal.setVec(1,0,0);
             break;
         case LL_XZ_PLANE:
             u = grid_center.mV[VX];
             v = grid_center.mV[VZ];
             usc = grid_scale.mV[VX];
             vsc = grid_scale.mV[VZ];
-            inner_color.setVec(1,0,1,line_alpha);
-            normal.setVec(0,1,0);
             break;
         case LL_XY_PLANE:
             u = grid_center.mV[VX];
             v = grid_center.mV[VY];
             usc = grid_scale.mV[VX];
             vsc = grid_scale.mV[VY];
-            inner_color.setVec(1,1,0,line_alpha);
-            normal.setVec(0,0,1);
             break;
         default:
             break;
         }
 
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-        highlightIntersection(normal, selection_center, grid_rotation, inner_color);
 
         gGL.pushMatrix();
 
@@ -1563,11 +1523,9 @@ void LLManipTranslate::renderSnapGuides()
         float a = line_alpha;
 
         {
-            //draw grid behind objects
             LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE);
 
             {
-                //LLGLDisable stencil(GL_STENCIL_TEST);
                 {
                     LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE, GL_GREATER);
                     if (sGridTex.isNull())
@@ -1586,11 +1544,9 @@ void LLManipTranslate::renderSnapGuides()
                 }
 
                 {
-                    //draw black overlay
                     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
                     renderGrid(u,v,tiles,0.0f, 0.0f, 0.0f,a*0.16f);
 
-                    //draw grid top
                     if (sGridTex.isNull())
                     {
                         restoreGL();
@@ -1671,131 +1627,6 @@ void LLManipTranslate::renderGrid(F32 x, F32 y, F32 size, F32 r, F32 g, F32 b, F
     }
 
 
-}
-
-void LLManipTranslate::highlightIntersection(LLVector3 normal,
-                                             LLVector3 selection_center,
-                                             LLQuaternion grid_rotation,
-                                             LLColor4 inner_color)
-{
-#if 0 // DEPRECATED
-    if (!gSavedSettings.getBOOL("GridCrossSections"))
-    {
-        return;
-    }
-
-
-    LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
-
-
-    static const U32 types[] = { LLRenderPass::PASS_SIMPLE, LLRenderPass::PASS_ALPHA, LLRenderPass::PASS_FULLBRIGHT, LLRenderPass::PASS_SHINY };
-    static const U32 num_types = LL_ARRAY_SIZE(types);
-
-    GLuint stencil_mask = 0xFFFFFFFF;
-
-    gGL.flush();
-
-    if (shader)
-    {
-        gClipProgram.bind();
-    }
-
-    {
-        LLGLEnable cull_face(GL_CULL_FACE);
-        LLGLDepthTest depth (GL_TRUE, GL_FALSE, GL_ALWAYS);
-        gGL.setColorMask(false, false);
-        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-
-        gGL.diffuseColor4f(1,1,1,1);
-
-        //setup clip plane
-        normal = normal * grid_rotation;
-        if (normal * (LLViewerCamera::getInstance()->getOrigin()-selection_center) < 0)
-        {
-            normal = -normal;
-        }
-        F32 d = -(selection_center * normal);
-        glm::vec4 plane(normal.mV[0], normal.mV[1], normal.mV[2], d );
-
-        plane = glm::inverse(gGL.getModelviewMatrix()) * plane;
-
-        if (LLVKLoader::isVulkanInitialized())
-        {
-            LLVKLoader::ClipPlane_PerShaderBind ubo_data;
-            ubo_data.clip_plane[0] = plane.v[0];
-            ubo_data.clip_plane[1] = plane.v[1];
-            ubo_data.clip_plane[2] = plane.v[2];
-            ubo_data.clip_plane[3] = plane.v[3];
-            LLVKLoader::writeCurrentClipPlaneUBO(ubo_data);
-        }
-
-        bool particles = gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_PARTICLES);
-        bool clouds = gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_CLOUDS);
-
-        if (particles)
-        {
-            LLPipeline::toggleRenderType(LLPipeline::RENDER_TYPE_PARTICLES);
-        }
-        if (clouds)
-        {
-            LLPipeline::toggleRenderType(LLPipeline::RENDER_TYPE_CLOUDS);
-        }
-
-        LLGLState::setCullFaceMode(GL_FRONT);
-        for (U32 i = 0; i < num_types; i++)
-        {
-            gPipeline.renderObjects(types[i], LLVertexBuffer::MAP_VERTEX, false);
-        }
-
-        LLGLState::setCullFaceMode(GL_BACK);
-        for (U32 i = 0; i < num_types; i++)
-        {
-            gPipeline.renderObjects(types[i], LLVertexBuffer::MAP_VERTEX, false);
-        }
-
-        if (particles)
-        {
-            LLPipeline::toggleRenderType(LLPipeline::RENDER_TYPE_PARTICLES);
-        }
-        if (clouds)
-        {
-            LLPipeline::toggleRenderType(LLPipeline::RENDER_TYPE_CLOUDS);
-        }
-
-        gGL.setColorMask(true, false);
-    }
-    gGL.color4f(1,1,1,1);
-
-    gGL.pushMatrix();
-
-    F32 x,y,z,angle_radians;
-    grid_rotation.getAngleAxis(&angle_radians, &x, &y, &z);
-    gGL.translatef(selection_center.mV[VX], selection_center.mV[VY], selection_center.mV[VZ]);
-    gGL.rotatef(angle_radians * RAD_TO_DEG, x, y, z);
-
-    F32 sz = mGridSizeMeters;
-    F32 tiles = sz;
-
-    if (shader)
-    {
-        shader->bind();
-    }
-
-    //draw volume/plane intersections
-    {
-        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-        LLGLDepthTest depth(GL_FALSE);
-        LLGLState::setStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-        LLGLState::setStencilFunc(GL_EQUAL, 0, stencil_mask);
-        renderGrid(0,0,tiles,inner_color.mV[0], inner_color.mV[1], inner_color.mV[2], 0.25f);
-    }
-
-    LLGLState::setStencilFunc(GL_ALWAYS, 255, 0xFFFFFFFF);
-    LLGLState::setStencilMask(0xFFFFFFFF);
-    LLGLState::setStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
-    gGL.popMatrix();
-#endif
 }
 
 void LLManipTranslate::renderText()
@@ -2325,7 +2156,6 @@ void LLManipTranslate::renderGridVert(F32 x_trans, F32 y_trans, F32 r, F32 g, F3
 
 }
 
-// virtual
 bool LLManipTranslate::canAffectSelection()
 {
     bool can_move = mObjectSelection->getObjectCount() != 0;

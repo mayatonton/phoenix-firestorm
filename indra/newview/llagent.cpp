@@ -274,9 +274,6 @@ private:
 
 };
 
-//--------------------------------------------------------------------
-// Statics
-//
 
 /// minimum time after setting away state before coming back based on movement
 const F32 LLAgent::MIN_AFK_TIME = 10.0f;
@@ -322,7 +319,6 @@ void LLAgent::setCanEditParcel() // called via mParcelChangedSignal
     gAgent.mCanEditParcel = can_edit;
 }
 
-// static
 bool LLAgent::isActionAllowed(const LLSD& sdname)
 {
     bool retval = false;
@@ -378,7 +374,6 @@ bool LLAgent::isActionAllowed(const LLSD& sdname)
     return retval;
 }
 
-// static
 void LLAgent::pressMicrophone(const LLSD& name)
 {
     LLFirstUse::speak(false);
@@ -386,19 +381,16 @@ void LLAgent::pressMicrophone(const LLSD& name)
      LLVoiceClient::getInstance()->inputUserControlState(true);
 }
 
-// static
 void LLAgent::releaseMicrophone(const LLSD& name)
 {
     LLVoiceClient::getInstance()->inputUserControlState(false);
 }
 
-// static
 void LLAgent::toggleMicrophone(const LLSD& name)
 {
     LLVoiceClient::getInstance()->toggleUserPTTState();
 }
 
-// static
 bool LLAgent::isMicrophoneOn(const LLSD& sdname)
 {
     return LLVoiceClient::getInstance()->getUserPTTState();
@@ -416,9 +408,7 @@ bool LLAgent::isMicrophoneOn(const LLSD& sdname)
 
 // JC - Please try to make this order match the order in the header
 // file.  Otherwise it's hard to find variables that aren't initialized.
-//-----------------------------------------------------------------------------
 // LLAgent()
-//-----------------------------------------------------------------------------
 LLAgent::LLAgent() :
     mGroupPowers(0),
     mHideGroupTitle(false),
@@ -562,9 +552,7 @@ void LLAgent::updateFSAlwaysFly(const LLSD &data)
 // </FS> Ignore prejump and always fly
 
 // Requires gSavedSettings to be initialized.
-//-----------------------------------------------------------------------------
 // init()
-//-----------------------------------------------------------------------------
 void LLAgent::init()
 {
     mMoveTimer.start();
@@ -613,9 +601,7 @@ void LLAgent::init()
     mInitialized = true;
 }
 
-//-----------------------------------------------------------------------------
 // cleanup()
-//-----------------------------------------------------------------------------
 void LLAgent::cleanup()
 {
     mRegionp = NULL;
@@ -631,9 +617,7 @@ void LLAgent::cleanup()
     }
 }
 
-//-----------------------------------------------------------------------------
 // LLAgent()
-//-----------------------------------------------------------------------------
 LLAgent::~LLAgent()
 {
     cleanup();
@@ -653,9 +637,7 @@ LLAgent::~LLAgent()
 
 // Handle any actions that need to be performed when the main app gains focus
 // (such as through alt-tab).
-//-----------------------------------------------------------------------------
 // onAppFocusGained()
-//-----------------------------------------------------------------------------
 void LLAgent::onAppFocusGained()
 {
 //  if (CAMERA_MODE_MOUSELOOK == gAgentCamera.getCameraMode())
@@ -766,9 +748,7 @@ void LLAgent::ageChat()
     }
 }
 
-//-----------------------------------------------------------------------------
 // moveAt()
-//-----------------------------------------------------------------------------
 void LLAgent::moveAt(S32 direction, bool reset)
 {
     LLUIUsage::instance().logCommand("Agent.MoveAt");
@@ -799,9 +779,7 @@ void LLAgent::moveAt(S32 direction, bool reset)
     }
 }
 
-//-----------------------------------------------------------------------------
 // moveAtNudge()
-//-----------------------------------------------------------------------------
 void LLAgent::moveAtNudge(S32 direction)
 {
     mMoveTimer.reset();
@@ -827,9 +805,7 @@ void LLAgent::moveAtNudge(S32 direction)
 // </FS:CR>
 }
 
-//-----------------------------------------------------------------------------
 // moveLeft()
-//-----------------------------------------------------------------------------
 void LLAgent::moveLeft(S32 direction)
 {
     mMoveTimer.reset();
@@ -855,9 +831,7 @@ void LLAgent::moveLeft(S32 direction)
 // </FS:CR>
 }
 
-//-----------------------------------------------------------------------------
 // moveLeftNudge()
-//-----------------------------------------------------------------------------
 void LLAgent::moveLeftNudge(S32 direction)
 {
     mMoveTimer.reset();
@@ -883,9 +857,7 @@ void LLAgent::moveLeftNudge(S32 direction)
 // </FS:CR>
 }
 
-//-----------------------------------------------------------------------------
 // moveUp()
-//-----------------------------------------------------------------------------
 void LLAgent::moveUp(S32 direction)
 {
 // [RLVa:KB] - Checked: RLVa-2.2 (@jump)
@@ -930,9 +902,7 @@ void LLAgent::moveUp(S32 direction)
     // </FS:Ansariel>
 }
 
-//-----------------------------------------------------------------------------
 // moveYaw()
-//-----------------------------------------------------------------------------
 void LLAgent::moveYaw(F32 mag, bool reset_view)
 {
     gAgentCamera.setYawKey(mag);
@@ -964,9 +934,7 @@ void LLAgent::moveYaw(F32 mag, bool reset_view)
     }
 }
 
-//-----------------------------------------------------------------------------
 // movePitch()
-//-----------------------------------------------------------------------------
 void LLAgent::movePitch(F32 mag)
 {
     gAgentCamera.setPitchKey(mag);
@@ -1018,9 +986,7 @@ bool LLAgent::getFlying() const
     return mControlFlags & AGENT_CONTROL_FLY;
 }
 
-//-----------------------------------------------------------------------------
 // setFlying()
-//-----------------------------------------------------------------------------
 void LLAgent::setFlying(bool fly, bool fail_sound)
 {
     if (isAgentAvatarValid())
@@ -1080,10 +1046,7 @@ void LLAgent::setFlying(bool fly, bool fail_sound)
 }
 
 // UI based mechanism of setting fly state
-//-----------------------------------------------------------------------------
 // toggleFlying()
-//-----------------------------------------------------------------------------
-// static
 void LLAgent::toggleFlying()
 {
     if ( gAgent.mAutoPilot )
@@ -1110,7 +1073,6 @@ void LLAgent::toggleFlying()
 // </FS:CR>
 }
 
-// static
 bool LLAgent::enableFlying()
 {
     // <FS:Zi> Fix "Agent.enableFlying" function for menu entry and toolbar button
@@ -1128,7 +1090,6 @@ bool LLAgent::enableFlying()
     // </FS:Zi>
 }
 
-// static
 bool LLAgent::isSitting()
 {
     bool sitting = false;
@@ -1163,7 +1124,6 @@ boost::signals2::connection LLAgent::addParcelChangedCallback(parcel_changed_cal
     return mParcelChangedSignal.connect(cb);
 }
 
-// static
 void LLAgent::capabilityReceivedCallback(const LLUUID &region_id, LLViewerRegion *regionp)
 {   // Changed regions and now have the region capabilities
     if (regionp)
@@ -1184,9 +1144,7 @@ void LLAgent::capabilityReceivedCallback(const LLUUID &region_id, LLViewerRegion
     }
 }
 
-//-----------------------------------------------------------------------------
 // setRegion()
-//-----------------------------------------------------------------------------
 void LLAgent::setRegion(LLViewerRegion *regionp)
 {
     llassert(regionp);
@@ -1326,9 +1284,7 @@ void LLAgent::setRegion(LLViewerRegion *regionp)
     mRegionChangedSignal();
 }
 
-//-----------------------------------------------------------------------------
 // getRegion()
-//-----------------------------------------------------------------------------
 LLViewerRegion *LLAgent::getRegion() const
 {
     return mRegionp;
@@ -1356,9 +1312,7 @@ void LLAgent::removeRegionChangedCallback(boost::signals2::connection callback)
     mRegionChangedSignal.disconnect(callback);
 }
 
-//-----------------------------------------------------------------------------
 // inPrelude()
-//-----------------------------------------------------------------------------
 bool LLAgent::inPrelude()
 {
     return mRegionp && mRegionp->isPrelude();
@@ -1372,18 +1326,14 @@ std::string LLAgent::getRegionCapability(const std::string &name)
     return mRegionp->getCapability(name);
 }
 
-//-----------------------------------------------------------------------------
 // canManageEstate()
-//-----------------------------------------------------------------------------
 
 bool LLAgent::canManageEstate() const
 {
     return mRegionp && mRegionp->canManageEstate();
 }
 
-//-----------------------------------------------------------------------------
 // sendMessage()
-//-----------------------------------------------------------------------------
 void LLAgent::sendMessage()
 {
     if (gDisconnected)
@@ -1399,9 +1349,7 @@ void LLAgent::sendMessage()
     gMessageSystem->sendMessage(mRegionp->getHost());
 }
 
-//-----------------------------------------------------------------------------
 // sendReliableMessage()
-//-----------------------------------------------------------------------------
 void LLAgent::sendReliableMessage()
 {
     if (gDisconnected)
@@ -1417,9 +1365,7 @@ void LLAgent::sendReliableMessage()
     gMessageSystem->sendReliable(mRegionp->getHost());
 }
 
-//-----------------------------------------------------------------------------
 // getVelocity()
-//-----------------------------------------------------------------------------
 LLVector3 LLAgent::getVelocity() const
 {
     if (isAgentAvatarValid())
@@ -1432,9 +1378,7 @@ LLVector3 LLAgent::getVelocity() const
     }
 }
 
-//-----------------------------------------------------------------------------
 // setPositionAgent()
-//-----------------------------------------------------------------------------
 void LLAgent::setPositionAgent(const LLVector3 &pos_agent)
 {
     if (!pos_agent.isFinite())
@@ -1471,9 +1415,7 @@ void LLAgent::setPositionAgent(const LLVector3 &pos_agent)
     }
 }
 
-//-----------------------------------------------------------------------------
 // getPositionGlobal()
-//-----------------------------------------------------------------------------
 const LLVector3d &LLAgent::getPositionGlobal() const
 {
     if (isAgentAvatarValid() && !gAgentAvatarp->mDrawable.isNull())
@@ -1488,9 +1430,7 @@ const LLVector3d &LLAgent::getPositionGlobal() const
     return mPositionGlobal;
 }
 
-//-----------------------------------------------------------------------------
 // getPositionAgent()
-//-----------------------------------------------------------------------------
 const LLVector3 &LLAgent::getPositionAgent()
 {
     if (isAgentAvatarValid())
@@ -1513,25 +1453,19 @@ boost::signals2::connection LLAgent::whenPositionChanged(position_signal_t::slot
     return mOnPositionChanged.connect(fn);
 }
 
-//-----------------------------------------------------------------------------
 // getRegionsVisited()
-//-----------------------------------------------------------------------------
 S32 LLAgent::getRegionsVisited() const
 {
     return static_cast<S32>(mRegionsVisited.size());
 }
 
-//-----------------------------------------------------------------------------
 // getDistanceTraveled()
-//-----------------------------------------------------------------------------
 F64 LLAgent::getDistanceTraveled() const
 {
     return mDistanceTraveled;
 }
 
-//-----------------------------------------------------------------------------
 // getPosAgentFromGlobal()
-//-----------------------------------------------------------------------------
 LLVector3 LLAgent::getPosAgentFromGlobal(const LLVector3d &pos_global) const
 {
     LLVector3 pos_agent;
@@ -1539,9 +1473,7 @@ LLVector3 LLAgent::getPosAgentFromGlobal(const LLVector3d &pos_global) const
     return pos_agent;
 }
 
-//-----------------------------------------------------------------------------
 // getPosGlobalFromAgent()
-//-----------------------------------------------------------------------------
 LLVector3d LLAgent::getPosGlobalFromAgent(const LLVector3 &pos_agent) const
 {
     LLVector3d pos_agent_d;
@@ -1559,9 +1491,7 @@ void LLAgent::sitDown()
     setControlFlags(AGENT_CONTROL_SIT_ON_GROUND);
 }
 
-//-----------------------------------------------------------------------------
 // resetAxes()
-//-----------------------------------------------------------------------------
 void LLAgent::resetAxes()
 {
     mFrameAgent.resetAxes();
@@ -1569,9 +1499,7 @@ void LLAgent::resetAxes()
 
 // Copied from LLCamera::setOriginAndLookAt
 // Look_at must be unit vector
-//-----------------------------------------------------------------------------
 // resetAxes()
-//-----------------------------------------------------------------------------
 void LLAgent::resetAxes(const LLVector3 &look_at)
 {
     LLVector3   skyward = getReferenceUpVector();
@@ -1595,41 +1523,31 @@ void LLAgent::resetAxes(const LLVector3 &look_at)
     mFrameAgent.setAxes(look_at, left, up);
 }
 
-//-----------------------------------------------------------------------------
 // rotate()
-//-----------------------------------------------------------------------------
 void LLAgent::rotate(F32 angle, const LLVector3 &axis)
 {
     mFrameAgent.rotate(angle, axis);
 }
 
-//-----------------------------------------------------------------------------
 // rotate()
-//-----------------------------------------------------------------------------
 void LLAgent::rotate(F32 angle, F32 x, F32 y, F32 z)
 {
     mFrameAgent.rotate(angle, x, y, z);
 }
 
-//-----------------------------------------------------------------------------
 // rotate()
-//-----------------------------------------------------------------------------
 void LLAgent::rotate(const LLMatrix3 &matrix)
 {
     mFrameAgent.rotate(matrix);
 }
 
-//-----------------------------------------------------------------------------
 // rotate()
-//-----------------------------------------------------------------------------
 void LLAgent::rotate(const LLQuaternion &quaternion)
 {
     mFrameAgent.rotate(quaternion);
 }
 
-//-----------------------------------------------------------------------------
 // getReferenceUpVector()
-//-----------------------------------------------------------------------------
 LLVector3 LLAgent::getReferenceUpVector()
 {
     // this vector is in the coordinate frame of the avatar's parent object, or the world if none
@@ -1656,9 +1574,7 @@ LLVector3 LLAgent::getReferenceUpVector()
 }
 
 // Radians, positive is forward into ground
-//-----------------------------------------------------------------------------
 // pitch()
-//-----------------------------------------------------------------------------
 void LLAgent::pitch(F32 angle)
 {
     // don't let user pitch if pointed almost all the way down or up
@@ -1698,17 +1614,13 @@ void LLAgent::pitch(F32 angle)
     }
 }
 
-//-----------------------------------------------------------------------------
 // roll()
-//-----------------------------------------------------------------------------
 void LLAgent::roll(F32 angle)
 {
     mFrameAgent.roll(angle);
 }
 
-//-----------------------------------------------------------------------------
 // yaw()
-//-----------------------------------------------------------------------------
 void LLAgent::yaw(F32 angle)
 {
     if (!rotateGrabbed())
@@ -1718,17 +1630,13 @@ void LLAgent::yaw(F32 angle)
 }
 
 // Returns a quat that represents the rotation of the agent in the absolute frame
-//-----------------------------------------------------------------------------
 // getQuat()
-//-----------------------------------------------------------------------------
 LLQuaternion LLAgent::getQuat() const
 {
     return mFrameAgent.getQuaternion();
 }
 
-//-----------------------------------------------------------------------------
 // getControlFlags()
-//-----------------------------------------------------------------------------
 U32 LLAgent::getControlFlags()
 {
     // <FS> Ignore prejump and always fly
@@ -1744,25 +1652,19 @@ U32 LLAgent::getControlFlags()
     // </FS>
 }
 
-//-----------------------------------------------------------------------------
 // setControlFlags()
-//-----------------------------------------------------------------------------
 void LLAgent::setControlFlags(U32 mask)
 {
     mControlFlags |= mask;
 }
 
-//-----------------------------------------------------------------------------
 // clearControlFlags()
-//-----------------------------------------------------------------------------
 void LLAgent::clearControlFlags(U32 mask)
 {
     mControlFlags &= ~mask;
 }
 
-//-----------------------------------------------------------------------------
 // resetControlFlags()
-//-----------------------------------------------------------------------------
 void LLAgent::resetControlFlags()
 {
     // reset all of the ephemeral flags
@@ -1770,9 +1672,7 @@ void LLAgent::resetControlFlags()
     mControlFlags &= AGENT_CONTROL_AWAY | AGENT_CONTROL_FLY | AGENT_CONTROL_MOUSELOOK;
 }
 
-//-----------------------------------------------------------------------------
 // setAFK()
-//-----------------------------------------------------------------------------
 void LLAgent::setAFK()
 {
     if (gNonInteractive || !gAgent.getRegion())
@@ -1800,9 +1700,7 @@ void LLAgent::setAFK()
     }
 }
 
-//-----------------------------------------------------------------------------
 // clearAFK()
-//-----------------------------------------------------------------------------
 void LLAgent::clearAFK()
 {
     gAwayTriggerTimer.reset();
@@ -1831,17 +1729,13 @@ void LLAgent::clearAFK()
     gAgent.setIsAfkSitting(false);
 }
 
-//-----------------------------------------------------------------------------
 // getAFK()
-//-----------------------------------------------------------------------------
 bool LLAgent::getAFK() const
 {
     return (mControlFlags & AGENT_CONTROL_AWAY) != 0;
 }
 
-//-----------------------------------------------------------------------------
 // setDoNotDisturb()
-//-----------------------------------------------------------------------------
 void LLAgent::setDoNotDisturb(bool pIsDoNotDisturb)
 {
     bool isDoNotDisturbSwitchedOff = (mIsDoNotDisturb && !pIsDoNotDisturb);
@@ -1855,33 +1749,25 @@ void LLAgent::setDoNotDisturb(bool pIsDoNotDisturb)
     gIMMgr->updateDNDMessageStatus();
 }
 
-//-----------------------------------------------------------------------------
 // isDoNotDisturb()
-//-----------------------------------------------------------------------------
 bool LLAgent::isDoNotDisturb() const
 {
     return mIsDoNotDisturb;
 }
 
-//-----------------------------------------------------------------------------
 // setAutorespond()
-//-----------------------------------------------------------------------------
 void LLAgent::setAutorespond()
 {
     selectAutorespond(true);
 }
 
-//-----------------------------------------------------------------------------
 // clearAutorespond()
-//-----------------------------------------------------------------------------
 void LLAgent::clearAutorespond()
 {
     selectAutorespond(false);
 }
 
-//-----------------------------------------------------------------------------
 // selectAutorespond()
-//-----------------------------------------------------------------------------
 void LLAgent::selectAutorespond(bool selected)
 {
     LL_INFOS() << "Setting autorespond mode to " << selected << LL_ENDL;
@@ -1901,33 +1787,25 @@ void LLAgent::selectAutorespond(bool selected)
     //}
 }
 
-//-----------------------------------------------------------------------------
 // getAutorespond()
-//-----------------------------------------------------------------------------
 bool LLAgent::getAutorespond() const
 {
     return mIsAutorespond;
 }
 
-//-----------------------------------------------------------------------------
 // setAutorespondNonFriends()
-//-----------------------------------------------------------------------------
 void LLAgent::setAutorespondNonFriends()
 {
     selectAutorespondNonFriends(true);
 }
 
-//-----------------------------------------------------------------------------
 // clearAutorespondNonFriends()
-//-----------------------------------------------------------------------------
 void LLAgent::clearAutorespondNonFriends()
 {
     selectAutorespondNonFriends(false);
 }
 
-//-----------------------------------------------------------------------------
 // selectAutorespondNonFriends()
-//-----------------------------------------------------------------------------
 void LLAgent::selectAutorespondNonFriends(bool selected)
 {
     LL_INFOS() << "Setting autorespond non-friends mode to " << selected << LL_ENDL;
@@ -1947,9 +1825,7 @@ void LLAgent::selectAutorespondNonFriends(bool selected)
     //}
 }
 
-//-----------------------------------------------------------------------------
 // getAutorespondNonFriends()
-//-----------------------------------------------------------------------------
 bool LLAgent::getAutorespondNonFriends() const
 {
     return mIsAutorespondNonFriends;
@@ -1957,25 +1833,19 @@ bool LLAgent::getAutorespondNonFriends() const
 
 // <FS:PP> FIRE-1245: Option to block/reject teleport offers
 
-//-----------------------------------------------------------------------------
 // setRejectTeleportOffers()
-//-----------------------------------------------------------------------------
 void LLAgent::setRejectTeleportOffers()
 {
     selectRejectTeleportOffers(true);
 }
 
-//-----------------------------------------------------------------------------
 // clearRejectTeleportOffers()
-//-----------------------------------------------------------------------------
 void LLAgent::clearRejectTeleportOffers()
 {
     selectRejectTeleportOffers(false);
 }
 
-//-----------------------------------------------------------------------------
 // selectRejectTeleportOffers()
-//-----------------------------------------------------------------------------
 void LLAgent::selectRejectTeleportOffers(bool selected)
 {
     LL_INFOS() << "Setting rejecting teleport offers mode to " << selected << LL_ENDL;
@@ -1983,9 +1853,7 @@ void LLAgent::selectRejectTeleportOffers(bool selected)
     gSavedPerAccountSettings.setBOOL("FSRejectTeleportOffersMode", selected);
 }
 
-//-----------------------------------------------------------------------------
 // getRejectTeleportOffers()
-//-----------------------------------------------------------------------------
 bool LLAgent::getRejectTeleportOffers() const
 {
     return mIsRejectTeleportOffers;
@@ -1995,25 +1863,19 @@ bool LLAgent::getRejectTeleportOffers() const
 
 // <FS:PP> FIRE-15233: Automatic friendship request refusal
 
-//-----------------------------------------------------------------------------
 // setRejectFriendshipRequests()
-//-----------------------------------------------------------------------------
 void LLAgent::setRejectFriendshipRequests()
 {
     selectRejectFriendshipRequests(true);
 }
 
-//-----------------------------------------------------------------------------
 // clearRejectFriendshipRequests()
-//-----------------------------------------------------------------------------
 void LLAgent::clearRejectFriendshipRequests()
 {
     selectRejectFriendshipRequests(false);
 }
 
-//-----------------------------------------------------------------------------
 // selectRejectFriendshipRequests()
-//-----------------------------------------------------------------------------
 void LLAgent::selectRejectFriendshipRequests(bool selected)
 {
     LL_INFOS() << "Setting rejecting friendship requests mode to " << selected << LL_ENDL;
@@ -2021,9 +1883,7 @@ void LLAgent::selectRejectFriendshipRequests(bool selected)
     gSavedPerAccountSettings.setBOOL("FSRejectFriendshipRequestsMode", selected);
 }
 
-//-----------------------------------------------------------------------------
 // getRejectFriendshipRequests()
-//-----------------------------------------------------------------------------
 bool LLAgent::getRejectFriendshipRequests() const
 {
     return mIsRejectFriendshipRequests;
@@ -2033,25 +1893,19 @@ bool LLAgent::getRejectFriendshipRequests() const
 
 // <FS:PP> Option to block/reject all group invites
 
-//-----------------------------------------------------------------------------
 // setRejectAllGroupInvites()
-//-----------------------------------------------------------------------------
 void LLAgent::setRejectAllGroupInvites()
 {
     selectRejectAllGroupInvites(true);
 }
 
-//-----------------------------------------------------------------------------
 // clearRejectAllGroupInvites()
-//-----------------------------------------------------------------------------
 void LLAgent::clearRejectAllGroupInvites()
 {
     selectRejectAllGroupInvites(false);
 }
 
-//-----------------------------------------------------------------------------
 // selectRejectAllGroupInvites()
-//-----------------------------------------------------------------------------
 void LLAgent::selectRejectAllGroupInvites(bool selected)
 {
     LL_INFOS() << "Setting rejecting group invites mode to " << selected << LL_ENDL;
@@ -2059,9 +1913,7 @@ void LLAgent::selectRejectAllGroupInvites(bool selected)
     gSavedPerAccountSettings.setBOOL("FSRejectAllGroupInvitesMode", selected);
 }
 
-//-----------------------------------------------------------------------------
 // getRejectAllGroupInvites()
-//-----------------------------------------------------------------------------
 bool LLAgent::getRejectAllGroupInvites() const
 {
     return mIsRejectAllGroupInvites;
@@ -2069,9 +1921,7 @@ bool LLAgent::getRejectAllGroupInvites() const
 
 // </FS:PP> Option to block/reject all group invites
 
-//-----------------------------------------------------------------------------
 // startAutoPilotGlobal()
-//-----------------------------------------------------------------------------
 void LLAgent::startAutoPilotGlobal(
     const LLVector3d &target_global,
     const std::string& behavior_name,
@@ -2174,9 +2024,7 @@ void LLAgent::startAutoPilotGlobal(
     mAutoPilotNoProgressFrameCount = 0;
 }
 
-//-----------------------------------------------------------------------------
 // setAutoPilotTargetGlobal
-//-----------------------------------------------------------------------------
 void LLAgent::setAutoPilotTargetGlobal(const LLVector3d &target_global)
 {
     if (mAutoPilot)
@@ -2202,9 +2050,7 @@ void LLAgent::setAutoPilotTargetGlobal(const LLVector3d &target_global)
     }
 }
 
-//-----------------------------------------------------------------------------
 // startFollowPilot()
-//-----------------------------------------------------------------------------
 void LLAgent::startFollowPilot(const LLUUID &leader_id, bool allow_flying, F32 stop_distance)
 {
     mLeaderID = leader_id;
@@ -2227,9 +2073,7 @@ void LLAgent::startFollowPilot(const LLUUID &leader_id, bool allow_flying, F32 s
                          allow_flying);
 }
 
-//-----------------------------------------------------------------------------
 // stopAutoPilot()
-//-----------------------------------------------------------------------------
 void LLAgent::stopAutoPilot(bool user_cancel)
 {
     if (mAutoPilot)
@@ -2269,9 +2113,7 @@ void LLAgent::stopAutoPilot(bool user_cancel)
 }
 
 // Returns necessary agent pitch and yaw changes, radians.
-//-----------------------------------------------------------------------------
 // autoPilot()
-//-----------------------------------------------------------------------------
 void LLAgent::autoPilot(F32 *delta_yaw)
 {
     if (mAutoPilot)
@@ -2456,9 +2298,7 @@ void LLAgent::autoPilot(F32 *delta_yaw)
     }
 }
 
-//-----------------------------------------------------------------------------
 // propagate()
-//-----------------------------------------------------------------------------
 void LLAgent::propagate(const F32 dt)
 {
     // Update UI based on agent motion
@@ -2511,9 +2351,7 @@ void LLAgent::propagate(const F32 dt)
     gAgentCamera.clearGeneralKeys();
 }
 
-//-----------------------------------------------------------------------------
 // updateAgentPosition()
-//-----------------------------------------------------------------------------
 void LLAgent::updateAgentPosition(const F32 dt, const F32 yaw_radians, const S32 mouse_x, const S32 mouse_y)
 {
     static LLCachedControl<F32> hint_timeout(gSavedSettings, "NotMovingHintTimeout");
@@ -2570,9 +2408,7 @@ std::ostream& operator<<(std::ostream &s, const LLAgent &agent)
 
 // true if your own avatar needs to be rendered.  Usually only
 // in third person and build.
-//-----------------------------------------------------------------------------
 // needsRenderAvatar()
-//-----------------------------------------------------------------------------
 bool LLAgent::needsRenderAvatar()
 {
 //  if (gAgentCamera.cameraMouselook() && !LLVOAvatar::sVisibleInFirstPerson)
@@ -2594,9 +2430,7 @@ bool LLAgent::needsRenderHead()
 // [/RLVa:KB]
 }
 
-//-----------------------------------------------------------------------------
 // startTyping()
-//-----------------------------------------------------------------------------
 void LLAgent::startTyping()
 {
 // [RLVa:KB] - @redirchat
@@ -2635,9 +2469,7 @@ void LLAgent::startTyping()
     // </FS:Ansariel> [FS Communication UI]
 }
 
-//-----------------------------------------------------------------------------
 // stopTyping()
-//-----------------------------------------------------------------------------
 void LLAgent::stopTyping()
 {
     if (mRenderState & AGENT_STATE_TYPING)
@@ -2652,25 +2484,19 @@ void LLAgent::stopTyping()
     }
 }
 
-//-----------------------------------------------------------------------------
 // setRenderState()
-//-----------------------------------------------------------------------------
 void LLAgent::setRenderState(U8 newstate)
 {
     mRenderState |= newstate;
 }
 
-//-----------------------------------------------------------------------------
 // clearRenderState()
-//-----------------------------------------------------------------------------
 void LLAgent::clearRenderState(U8 clearstate)
 {
     mRenderState &= ~clearstate;
 }
 
-//-----------------------------------------------------------------------------
 // getRenderState()
-//-----------------------------------------------------------------------------
 U8 LLAgent::getRenderState()
 {
     // *FIX: don't do stuff in a getter!  This is infinite loop city!
@@ -2693,12 +2519,8 @@ U8 LLAgent::getRenderState()
     return mRenderState;
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 
-//-----------------------------------------------------------------------------
 // endAnimationUpdateUI()
-//-----------------------------------------------------------------------------
 void LLAgent::endAnimationUpdateUI()
 {
     if (LLApp::isExiting()
@@ -2876,9 +2698,6 @@ void LLAgent::endAnimationUpdateUI()
         LLFloaterCamera::onAvatarEditingAppearance(false);
     }
 
-    //---------------------------------------------------------------------
-    // Set up UI for mode we're entering
-    //---------------------------------------------------------------------
     if (gAgentCamera.getCameraMode() == CAMERA_MODE_MOUSELOOK)
     {
         // <FS:PP> FIRE-8868: Show UI in mouselook
@@ -3072,9 +2891,7 @@ boost::signals2::connection LLAgent::setMouselookModeOutCallback( const camera_s
     return mMouselookModeOutSignal->connect(cb);
 }
 
-//-----------------------------------------------------------------------------
 // heardChat()
-//-----------------------------------------------------------------------------
 void LLAgent::heardChat(const LLUUID& id)
 {
     // log text and voice chat to speaker mgr
@@ -3382,7 +3199,6 @@ bool LLAgent::isAdult() const
     return mAgentAccess->isAdult();
 }
 
-//static
 int LLAgent::convertTextToMaturity(char text)
 {
     return LLAgentAccess::convertTextToMaturity(text);
@@ -3676,7 +3492,6 @@ void LLAgent::handleMaturity(const LLSD &pNewValue)
     sendMaturityPreferenceToServer(static_cast<U8>(pNewValue.asInteger()));
 }
 
-//----------------------------------------------------------------------------
 
 void LLAgent::buildFullname(std::string& name) const
 {
@@ -4165,7 +3980,6 @@ void update_group_floaters(const LLUUID& group_id)
     gAgent.fireEvent(new LLOldEvents::LLEvent(&gAgent, "new group"), "");
 }
 
-// static
 void LLAgent::processAgentDropGroup(LLMessageSystem *msg, void **)
 {
     LLUUID  agent_id;
@@ -4301,7 +4115,6 @@ LLHTTPRegistration<LLAgentDropGroupViewerNode>
     gHTTPRegistrationAgentDropGroupViewerNode(
         "/message/AgentDropGroup");
 
-// static
 void LLAgent::processAgentGroupDataUpdate(LLMessageSystem *msg, void **)
 {
     LLUUID  agent_id;
@@ -4423,7 +4236,6 @@ class LLAgentGroupDataUpdateViewerNode : public LLHTTPNode
 LLHTTPRegistration<LLAgentGroupDataUpdateViewerNode >
     gHTTPRegistrationAgentGroupDataUpdateViewerNode ("/message/AgentGroupDataUpdate");
 
-// static
 void LLAgent::processAgentDataUpdate(LLMessageSystem *msg, void **)
 {
     LLUUID  agent_id;
@@ -4534,7 +4346,6 @@ void LLAgent::processAgentDataUpdate(LLMessageSystem *msg, void **)
     gAgent.fireEvent(new LLOldEvents::LLEvent(&gAgent, "update grouptitle list"), "");
 }
 
-// static
 void LLAgent::processScriptControlChange(LLMessageSystem *msg, void **)
 {
     S32 block_count = msg->getNumberOfBlocks("Data");
@@ -4597,7 +4408,6 @@ void LLAgent::processScriptControlChange(LLMessageSystem *msg, void **)
 }
 
 /*
-// static
 void LLAgent::processControlTake(LLMessageSystem *msg, void **)
 {
     U32 controls;
@@ -4630,7 +4440,6 @@ void LLAgent::processControlTake(LLMessageSystem *msg, void **)
     }
 }
 
-// static
 void LLAgent::processControlRelease(LLMessageSystem *msg, void **)
 {
     U32 controls;
@@ -4736,9 +4545,7 @@ void LLAgent::clearVisualParams(void *data)
     }
 }
 
-//---------------------------------------------------------------------------
 // Teleport
-//---------------------------------------------------------------------------
 // <FS:TT> Client LSL Bridge
 bool LLAgent::teleportBridgeLocal(LLVector3& pos_local)
 {
@@ -5940,7 +5747,6 @@ void LLAgent::sendAgentUpdateUserInfoMessage(bool im_via_email, const std::strin
 
 }
 // end deprecated
-//------
 
 void LLAgent::observeFriends()
 {
@@ -6046,7 +5852,6 @@ const void LLAgent::getTeleportSourceSLURL(LLSLURL& slurl) const
     slurl = *mTeleportSourceSLURL;
 }
 
-// static
 void LLAgent::dumpGroupInfo()
 {
     LL_INFOS() << "group   " << gAgent.mGroupName << LL_ENDL;
@@ -6129,9 +5934,7 @@ LLAgentQueryManager::~LLAgentQueryManager()
 }
 // </FS:Ansariel> [Legacy Bake]
 
-//-----------------------------------------------------------------------------
 // LLTeleportRequest
-//-----------------------------------------------------------------------------
 
 LLTeleportRequest::LLTeleportRequest()
     : mStatus(kPending)
@@ -6178,9 +5981,7 @@ void LLTeleportRequest::toOstream(std::ostream& os) const
     os << "status " << statusName(mStatus) << "(" << mStatus << ")";
 }
 
-//-----------------------------------------------------------------------------
 // LLTeleportRequestViaLandmark
-//-----------------------------------------------------------------------------
 LLTeleportRequestViaLandmark::LLTeleportRequestViaLandmark(const LLUUID &pLandmarkId, bool log)
     : LLTeleportRequest()
     , mLandmarkId(pLandmarkId)
@@ -6225,9 +6026,7 @@ void LLTeleportRequestViaLandmark::restartTeleport()
     LL_INFOS("Teleport") << "LLTeleportRequestViaLandmark::restartTeleport, " << *this << LL_ENDL;
     gAgent.doTeleportViaLandmark(getLandmarkId());
 }
-//-----------------------------------------------------------------------------
 // LLTeleportRequestViaLure
-//-----------------------------------------------------------------------------
 
 LLTeleportRequestViaLure::LLTeleportRequestViaLure(const LLUUID& pLureId, bool pIsLureGodLike)
     : LLTeleportRequestViaLandmark(pLureId, false),
@@ -6275,9 +6074,7 @@ void LLTeleportRequestViaLure::startTeleport()
     gAgent.doTeleportViaLure(getLandmarkId(), isLureGodLike());
 }
 
-//-----------------------------------------------------------------------------
 // LLTeleportRequestViaLocation
-//-----------------------------------------------------------------------------
 
 LLTeleportRequestViaLocation::LLTeleportRequestViaLocation(const LLVector3d &pPosGlobal)
     : LLTeleportRequest(),
@@ -6313,9 +6110,7 @@ void LLTeleportRequestViaLocation::restartTeleport()
     gAgent.doTeleportViaLocation(getPosGlobal());
 }
 
-//-----------------------------------------------------------------------------
 // LLTeleportRequestViaLocationLookAt
-//-----------------------------------------------------------------------------
 
 // [RLVa:KB] - Checked: RLVa-2.0.0
 LLTeleportRequestViaLocationLookAt::LLTeleportRequestViaLocationLookAt(const LLVector3d &pPosGlobal, const LLVector3& look_at)
@@ -6365,9 +6160,7 @@ void LLTeleportRequestViaLocationLookAt::restartTeleport()
 
 
 // <FS:Ansariel> [Legacy Bake]
-//-----------------------------------------------------------------------------
 // Legacy baking
-//-----------------------------------------------------------------------------
 void LLAgent::handleServerBakeRegionTransition(const LLUUID& region_id)
 {
     LL_INFOS() << "called" << LL_ENDL;
@@ -6390,7 +6183,6 @@ void LLAgent::handleServerBakeRegionTransition(const LLUUID& region_id)
     }
 }
 
-//static
 void LLAgent::processAgentCachedTextureResponse(LLMessageSystem *mesgsys, void **user_data)
 {
     gAgentQueryManager.mNumPendingQueries--;
@@ -6505,9 +6297,7 @@ void LLAgent::dumpSentAppearance(const std::string& dump_prefix)
     }
 }
 
-//-----------------------------------------------------------------------------
 // sendAgentSetAppearance()
-//-----------------------------------------------------------------------------
 void LLAgent::sendAgentSetAppearance()
 {
     if (gAgentQueryManager.mNumPendingQueries > 0)

@@ -170,7 +170,6 @@ void show_window_creation_error(const std::string& title)
     LL_WARNS("Window") << title << LL_ENDL;
 }
 
-//static
 bool LLWindowWin32::sIsClassRegistered = false;
 
 bool    LLWindowWin32::sLanguageTextInputAllowed = true;
@@ -211,87 +210,73 @@ public:
     static bool     notifyIME(HIMC himc, DWORD action, DWORD index, DWORD value);
 };
 
-// static
 bool    LLWinImm::isIME(HKL hkl)
 {
     return ImmIsIME(hkl);
 }
 
-// static
 HIMC        LLWinImm::getContext(HWND hwnd)
 {
     return ImmGetContext(hwnd);
 }
 
-//static
 bool        LLWinImm::releaseContext(HWND hwnd, HIMC himc)
 {
     return ImmReleaseContext(hwnd, himc);
 }
 
-// static
 bool        LLWinImm::getOpenStatus(HIMC himc)
 {
     return ImmGetOpenStatus(himc);
 }
 
-// static
 bool        LLWinImm::setOpenStatus(HIMC himc, bool status)
 {
     return ImmSetOpenStatus(himc, status);
 }
 
-// static
 bool        LLWinImm::getConversionStatus(HIMC himc, LPDWORD conversion, LPDWORD sentence)
 {
     return ImmGetConversionStatus(himc, conversion, sentence);
 }
 
-// static
 bool        LLWinImm::setConversionStatus(HIMC himc, DWORD conversion, DWORD sentence)
 {
     return ImmSetConversionStatus(himc, conversion, sentence);
 }
 
-// static
 bool        LLWinImm::getCompositionWindow(HIMC himc, LPCOMPOSITIONFORM form)
 {
     return ImmGetCompositionWindow(himc, form);
 }
 
-// static
 bool        LLWinImm::setCompositionWindow(HIMC himc, LPCOMPOSITIONFORM form)
 {
     return ImmSetCompositionWindow(himc, form);
 }
 
 
-// static
 LONG        LLWinImm::getCompositionString(HIMC himc, DWORD index, LPVOID data, DWORD length)
 {
     return ImmGetCompositionString(himc, index, data, length);
 }
 
 
-// static
 bool        LLWinImm::setCompositionString(HIMC himc, DWORD index, LPVOID pComp, DWORD compLength, LPVOID pRead, DWORD readLength)
 {
     return ImmSetCompositionString(himc, index, pComp, compLength, pRead, readLength);
 }
 
-// static
 bool        LLWinImm::setCompositionFont(HIMC himc, LPLOGFONTW pFont)
 {
     return ImmSetCompositionFont(himc, pFont);
 }
 
-// static
 bool        LLWinImm::setCandidateWindow(HIMC himc, LPCANDIDATEFORM form)
 {
     return ImmSetCandidateWindow(himc, form);
 }
 
-// static
 bool        LLWinImm::notifyIME(HIMC himc, DWORD action, DWORD index, DWORD value)
 {
     return ImmNotifyIME(himc, action, index, value);
@@ -717,10 +702,6 @@ LLWindowWin32::LLWindowWin32(LLWindowCallbacks* callbacks,
         sIsClassRegistered = true;
     }
 
-    //-----------------------------------------------------------------------
-    // Get the current refresh rate
-    //-----------------------------------------------------------------------
-
     DEVMODE dev_mode;
     ::ZeroMemory(&dev_mode, sizeof(DEVMODE));
     dev_mode.dmSize = sizeof(DEVMODE);
@@ -735,11 +716,6 @@ LLWindowWin32::LLWindowWin32(LLWindowCallbacks* callbacks,
         current_refresh = 60;
     }
     mRefreshRate = current_refresh;
-    //-----------------------------------------------------------------------
-    // Drop resolution and go fullscreen
-    // use a display mode with our desired size and depth, with a refresh
-    // rate as close at possible to the users' default
-    //-----------------------------------------------------------------------
     if (mFullscreen)
     {
         bool success = false;
@@ -872,9 +848,6 @@ LLWindowWin32::LLWindowWin32(LLWindowCallbacks* callbacks,
 
     LL_INFOS("Window") << "Total Display Devices: " << display_index << LL_ENDL;
 
-    //-----------------------------------------------------------------------
-    // Create GL drawing context
-    //-----------------------------------------------------------------------
     LLCoordScreen windowPos(x,y);
     LLCoordScreen windowSize(window_rect.right - window_rect.left,
                              window_rect.bottom - window_rect.top);
@@ -940,7 +913,6 @@ void LLWindowWin32::hide()
     ShowWindow(mWindowHandle, SW_HIDE);
 }
 
-//virtual
 void LLWindowWin32::minimize()
 {
     setMouseClipping(false);
@@ -948,7 +920,6 @@ void LLWindowWin32::minimize()
     ShowWindow(mWindowHandle, SW_MINIMIZE);
 }
 
-//virtual
 void LLWindowWin32::restore()
 {
     ShowWindow(mWindowHandle, SW_RESTORE);
@@ -3426,7 +3397,6 @@ void LLSplashScreenWin32::hideImpl()
 }
 
 
-// static
 LRESULT CALLBACK LLSplashScreenWin32::windowProc(HWND h_wnd, UINT u_msg,
                                             WPARAM w_param, LPARAM l_param)
 {
@@ -4226,7 +4196,6 @@ bool LLWindowWin32::handleImeRequests(WPARAM request, LPARAM param, LRESULT *res
     return false;
 }
 
-//static
 void LLWindowWin32::setDPIAwareness()
 {
     HMODULE hShcore = LoadLibrary(L"shcore.dll");
@@ -4342,13 +4311,11 @@ F32 LLWindowWin32::getSystemUISize()
     return scale_value;
 }
 
-//static
 std::vector<std::string> LLWindowWin32::getDisplaysResolutionList()
 {
     return sMonitorInfo.getResolutionsList();
 }
 
-//static
 std::vector<std::string> LLWindowWin32::getDynamicFallbackFontList()
 {
     // Fonts previously in getFontListSans() have moved to fonts.xml.

@@ -62,7 +62,6 @@
 #include "llsky.h"
 #include "llspatialpartition.h"
 #include "llstartup.h"
-#include "llstartup.h"
 #include "lltooldraganddrop.h"
 #include "lltoolfocus.h"
 #include "lltoolmgr.h"
@@ -614,13 +613,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     {
         LLGLSLShader::initProfile();
     }
-
-    //LLGLState::verify(false);
-
-    /////////////////////////////////////////////////
-    //
-    // Update GL Texture statistics (used for discard logic?)
-    //
 
     LLAppViewer::instance()->pingMainloopTimeout("Display:TextureStats");
 

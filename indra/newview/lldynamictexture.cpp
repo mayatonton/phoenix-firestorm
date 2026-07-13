@@ -28,11 +28,9 @@
 
 #include "lldynamictexture.h"
 
-// Linden library includes
 #include "llglheaders.h"
-#include "llwindow.h"           // getPosition()
+#include "llwindow.h"
 
-// Viewer includes
 #include "llviewerwindow.h"
 #include "llviewercamera.h"
 #include "llviewercontrol.h"
@@ -45,13 +43,9 @@
 #include "lltexlayer.h"
 #include "llviewertexlayer.h"
 
-// static
 LLViewerDynamicTexture::instance_list_t LLViewerDynamicTexture::sInstances[ LLViewerDynamicTexture::ORDER_COUNT ];
 S32 LLViewerDynamicTexture::sNumRenders = 0;
 
-//-----------------------------------------------------------------------------
-// LLViewerDynamicTexture()
-//-----------------------------------------------------------------------------
 LLViewerDynamicTexture::LLViewerDynamicTexture(S32 width, S32 height, S32 components, EOrder order, bool clamp) :
     LLViewerTexture(width, height, components, false),
     mClamp(clamp),
@@ -65,9 +59,6 @@ LLViewerDynamicTexture::LLViewerDynamicTexture(S32 width, S32 height, S32 compon
     LLViewerDynamicTexture::sInstances[ order ].insert(this);
 }
 
-//-----------------------------------------------------------------------------
-// LLViewerDynamicTexture()
-//-----------------------------------------------------------------------------
 LLViewerDynamicTexture::~LLViewerDynamicTexture()
 {
     for( S32 order = 0; order < ORDER_COUNT; order++ )
@@ -76,15 +67,11 @@ LLViewerDynamicTexture::~LLViewerDynamicTexture()
     }
 }
 
-//virtual
 S8 LLViewerDynamicTexture::getType() const
 {
     return LLViewerTexture::DYNAMIC_TEXTURE ;
 }
 
-//-----------------------------------------------------------------------------
-// generateGLTexture()
-//-----------------------------------------------------------------------------
 void LLViewerDynamicTexture::generateGLTexture()
 {
     LLViewerTexture::generateGLTexture() ;
@@ -108,26 +95,18 @@ void LLViewerDynamicTexture::generateGLTexture(LLGLint internal_format, LLGLenum
     mGLTexturep->setGLTextureCreated(false);
 }
 
-//-----------------------------------------------------------------------------
-// render()
-//-----------------------------------------------------------------------------
 bool LLViewerDynamicTexture::render()
 {
     return false;
 }
 
-//-----------------------------------------------------------------------------
-// preRender()
-//-----------------------------------------------------------------------------
 void LLViewerDynamicTexture::preRender(bool clear_depth)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
 
-     //use the bottom left corner
     mOrigin.set(0, 0);
 
     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-    // Set up camera
     LLViewerCamera* camera = LLViewerCamera::getInstance();
     mCamera.setOrigin(*camera);
     mCamera.setAxes(*camera);
@@ -145,9 +124,6 @@ void LLViewerDynamicTexture::preRender(bool clear_depth)
     }
 }
 
-//-----------------------------------------------------------------------------
-// postRender()
-//-----------------------------------------------------------------------------
 void LLViewerDynamicTexture::postRender(bool success)
 {
     {
@@ -170,10 +146,8 @@ void LLViewerDynamicTexture::postRender(bool success)
         }
     }
 
-    // restore viewport
     gViewerWindow->setup2DViewport();
 
-    // restore camera
     LLViewerCamera* camera = LLViewerCamera::getInstance();
     camera->setOrigin(mCamera);
     camera->setAxes(mCamera);
@@ -182,11 +156,6 @@ void LLViewerDynamicTexture::postRender(bool success)
     camera->setNear(mCamera.getNear());
 }
 
-//-----------------------------------------------------------------------------
-// static
-// updateDynamicTextures()
-// Calls update on each dynamic texture.  Calls each group in order: "first," then "middle," then "last."
-//-----------------------------------------------------------------------------
 bool LLViewerDynamicTexture::updateAllInstances()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
@@ -287,10 +256,6 @@ bool LLViewerDynamicTexture::updateAllInstances()
     return ret;
 }
 
-//-----------------------------------------------------------------------------
-// static
-// destroyGL()
-//-----------------------------------------------------------------------------
 void LLViewerDynamicTexture::destroyGL()
 {
     for( S32 order = 0; order < ORDER_COUNT; order++ )
@@ -304,10 +269,6 @@ void LLViewerDynamicTexture::destroyGL()
     }
 }
 
-//-----------------------------------------------------------------------------
-// static
-// restoreGL()
-//-----------------------------------------------------------------------------
 void LLViewerDynamicTexture::restoreGL()
 {
     if (gGLManager.mIsDisabled)

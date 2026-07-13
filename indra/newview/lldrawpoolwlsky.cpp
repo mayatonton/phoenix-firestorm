@@ -725,12 +725,10 @@ void LLDrawPoolWLSky::resetDrawOrders()
 {
 }
 
-//static
 void LLDrawPoolWLSky::cleanupGL()
 {
 }
 
-//static
 void LLDrawPoolWLSky::restoreGL()
 {
 }

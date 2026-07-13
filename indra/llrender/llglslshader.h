@@ -158,7 +158,6 @@ public:
 class LLGLSLShader
 {
 public:
-    // NOTE: Keep gShaderConsts and LLGLSLShader::ShaderConsts_e in sync!
     enum eShaderConsts
     {
         SHADER_CONST_CLOUD_MOON_DEPTH
@@ -166,11 +165,10 @@ public:
         , NUM_SHADER_CONSTS
     };
 
-    // enum primarily used to control application sky settings uniforms
     typedef enum
     {
-        SG_DEFAULT = 0,  // not sky or water specific
-        SG_SKY,  //
+        SG_DEFAULT = 0,
+        SG_SKY,
         SG_WATER,
         SG_ANY,
         SG_COUNT
@@ -213,14 +211,7 @@ public:
     void clearStats();
     void dumpStats(boost::json::object& stats);
 
-    // place query objects for profiling if profiling is enabled
-    // if for_runtime is true, will place timer query only whether or not profiling is enabled
     void placeProfileQuery(bool for_runtime = false);
-
-    // Readback query objects if profiling is enabled
-    // If for_runtime is true, will readback timer query iff query is available
-    // Will return false if a query is pending (try again later)
-    // If force_read is true, will force an immediate readback (severe performance penalty)
     bool readProfileQuery(bool for_runtime = false, bool force_read = false);
 
     bool createShader();
@@ -245,24 +236,14 @@ public:
 
     void addConstant(const LLGLSLShader::eShaderConsts shader_const);
 
-    //enable/disable texture channel for specified uniform
-    //if given texture uniform is active in the shader,
-    //the corresponding channel will be active upon return
-    //returns channel texture is enabled in from [0-MAX)
     S32 enableTexture(S32 uniform, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
     S32 disableTexture(S32 uniform, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
-
-    // get the texture channel of the given uniform, or -1 if uniform is not used as a texture
     S32 getTextureChannel(S32 uniform) const;
-
-    // bindTexture returns the texture unit we've bound the texture to.
-    // You can reuse the return value to unbind a texture when required.
     S32 bindTexture(S32 uniform, LLTexture* texture, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
     S32 bindTexture(S32 uniform, LLRenderTarget* texture, bool depth = false, LLTexUnit::eTextureFilterOptions mode = LLTexUnit::TFO_BILINEAR, U32 index = 0);
     S32 unbindTexture(S32 uniform, LLTexUnit::eTextureType mode = LLTexUnit::TT_TEXTURE);
 
     void bind();
-    //helper to conditionally bind mRiggedVariant instead of this
     void bind(bool rigged);
 
     bool isComplete() const { return mComplete; }
@@ -280,16 +261,15 @@ public:
     std::vector<GLint> mTexture;
     S32 mActiveTextureChannels;
     S32 mShaderLevel;
-    S32 mShaderGroup; // see LLGLSLShader::eGroup
+    S32 mShaderGroup;
     LLShaderFeatures mFeatures;
     std::vector< std::pair< std::string, GLenum > > mShaderFiles;
     std::string mName;
-    typedef std::map<std::string, std::string> defines_map_t; //NOTE: this must be an ordered map to maintain hash consistency
+    typedef std::map<std::string, std::string> defines_map_t;
     defines_map_t mDefines;
     static defines_map_t sGlobalDefines;
     LLUUID mShaderHash;
 
-    //statistics for profiling shader performance
     bool mProfilePending = false;
     uint32_t mVkTimestampHandle = 0;
 
@@ -302,14 +282,8 @@ public:
     U32 mBinds;
     static U32 sTotalBinds;
 
-    // this pointer should be set to whichever shader represents this shader's rigged variant
     LLGLSLShader* mRiggedVariant = nullptr;
 
-    // variants for use by GLTF renderer
-    // bit 0 = alpha mode blend (1) or opaque (0)
-    // bit 1 = rigged (1) or static (0)
-    // bit 2 = unlit (1) or lit (0)
-    // bit 3 = single (0) or multi (1) uv coordinates
     struct GLTFVariant
     {
         constexpr static U8 ALPHA_BLEND = 1;
@@ -322,10 +296,8 @@ public:
 
     std::vector<LLGLSLShader> mGLTFVariants;
 
-    //helper to bind GLTF variant
     void bind(U8 variant);
 
-    // hacky flag used for optimization in LLDrawPoolAlpha
     bool mCanBindFast = false;
 
     std::vector<StageSource> mStageSources;
@@ -445,11 +417,8 @@ private:
     static boost::json::value sDefaultStats;
 };
 
-//UI shader (declared here so llui_libtest will link properly)
 extern LLGLSLShader         gUIProgram;
-//output vec4(color.rgb,color.a*tex0[tc0].a)
 extern LLGLSLShader         gSolidColorProgram;
-//Alpha mask shader (declared here so llappearance can access properly)
 extern LLGLSLShader         gAlphaMaskProgram;
 
 #if LL_PROFILER_ENABLE_RENDER_DOC

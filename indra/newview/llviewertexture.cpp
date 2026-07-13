@@ -31,7 +31,6 @@
 
 #include "llviewertexture.h"
 
-// Library includes
 #include "llmath.h"
 #include "llerror.h"
 #include "llgl.h"
@@ -47,7 +46,6 @@
 #include "v4coloru.h"
 #include "llnotificationsutil.h"
 
-// viewer includes
 #include "llimagegl.h"
 #include "lldrawpool.h"
 #include "lltexturefetch.h"
@@ -66,9 +64,6 @@
 #include "lltexturecache.h"
 #include "llviewerwindow.h"
 #include "llwindow.h"
-///////////////////////////////////////////////////////////////////////////////
-
-// statics
 LLPointer<LLViewerTexture>        LLViewerTexture::sNullImagep = nullptr;
 LLPointer<LLViewerTexture>        LLViewerTexture::sBlackImagep = nullptr;
 LLPointer<LLViewerTexture>        LLViewerTexture::sCheckerBoardImagep = nullptr;
@@ -120,10 +115,6 @@ LLUUID LLViewerTexture::sInvisiprimTexture2 = LLUUID::null;
 #define TEX_INVISIPRIM2 "38b86f85-2575-52a9-a531-23108d8da837"
 
 
-//----------------------------------------------------------------------------------------------
-//namespace: LLViewerTextureAccess
-//----------------------------------------------------------------------------------------------
-
 LLLoadedCallbackEntry::LLLoadedCallbackEntry(loaded_callback_func cb,
                       S32 discard_level,
                       bool need_imageraw, // Needs image raw for the callback
@@ -157,7 +148,6 @@ void LLLoadedCallbackEntry::removeTexture(LLViewerFetchedTexture* tex)
     }
 }
 
-//static
 void LLLoadedCallbackEntry::cleanUpCallbackList(LLLoadedCallbackEntry::source_callback_list_t* callback_list)
 {
     //clear texture callbacks.
@@ -327,7 +317,6 @@ LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTextureFromFile(
     return gTextureList.getImageFromFile(filename, f_type, usemipmaps, boost_priority, texture_type, internal_format, primary_format, force_id);
 }
 
-//static
 LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTextureFromUrl(const std::string& url,
                                      FTType f_type,
                                      bool usemipmaps,
@@ -341,13 +330,11 @@ LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTextureFromUrl(const s
     return gTextureList.getImageFromUrl(url, f_type, usemipmaps, boost_priority, texture_type, internal_format, primary_format, force_id);
 }
 
-//static
 LLImageRaw* LLViewerTextureManager::getRawImageFromMemory(const U8* data, U32 size, std::string_view mimetype)
 {
     return gTextureList.getRawImageFromMemory(data, size, mimetype);
 }
 
-//static
 LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTextureFromMemory(const U8* data, U32 size, std::string_view mimetype)
 {
     return gTextureList.getImageFromMemory(data, size, mimetype);
@@ -358,7 +345,6 @@ LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTextureFromHost(const 
     return gTextureList.getImageFromHost(image_id, f_type, host);
 }
 
-// Create a bridge to the viewer texture manager.
 class LLViewerTextureManagerBridge : public LLTextureManagerBridge
 {
     /*virtual*/ LLPointer<LLGLTexture> getLocalTexture(bool usemipmaps = true, bool generate_gl_tex = true)
@@ -479,11 +465,6 @@ void LLViewerTextureManager::cleanup()
     LLViewerMediaTexture::cleanUpClass();
 }
 
-//----------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------
-//start of LLViewerTexture
-//----------------------------------------------------------------------------------------------
-// static
 void LLViewerTexture::initClass()
 {
     LLImageGL::sDefaultGLTexture = LLViewerFetchedTexture::sDefaultImagep->getGLTexture();
@@ -502,7 +483,6 @@ void LLViewerTexture::initClass()
     }
 }
 
-//static
 void LLViewerTexture::updateClass()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -670,7 +650,6 @@ void LLViewerTexture::updateClass()
     LLViewerTexture::sFreezeImageUpdates = false;
 }
 
-//static
 U32Megabytes LLViewerTexture::getFreeSystemMemory()
 {
     static LLFrameTimer timer;
@@ -695,13 +674,11 @@ S32Megabytes get_render_free_main_memory_treshold()
     return MIN_FREE_MAIN_MEMORY;
 }
 
-//static
 bool LLViewerTexture::isSystemMemoryLow()
 {
     return getFreeSystemMemory() < get_render_free_main_memory_treshold();
 }
 
-//static
 bool LLViewerTexture::isSystemMemoryCritical()
 {
     return getFreeSystemMemory() < get_render_free_main_memory_treshold() / 2;
@@ -722,7 +699,6 @@ F32 LLViewerTexture::getSystemMemoryBudgetFactor()
 }
 
 //end of static functions
-//-------------------------------------------------------------------------------------------
 const U32 LLViewerTexture::sCurrentFileVersion = 1;
 
 LLViewerTexture::LLViewerTexture(bool usemipmaps) :
@@ -768,7 +744,6 @@ LLViewerTexture::~LLViewerTexture()
     sImageCount--;
 }
 
-// virtual
 void LLViewerTexture::init(bool firstinit)
 {
     mMaxVirtualSize = 0.f;
@@ -790,7 +765,6 @@ void LLViewerTexture::init(bool firstinit)
     mImageQueue = LL::WorkQueue::getInstance("LLImageGL");
 }
 
-//virtual
 S8 LLViewerTexture::getType() const
 {
     return LLViewerTexture::LOCAL_TEXTURE;
@@ -810,7 +784,6 @@ void LLViewerTexture::cleanup()
     mVolumeList[LLRender::SCULPT_TEX].clear();
 }
 
-// virtual
 void LLViewerTexture::dump()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -894,13 +867,11 @@ bool LLViewerTexture::bindDefaultImage(S32 stage)
     return res;
 }
 
-//virtual
 bool LLViewerTexture::isMissingAsset()const
 {
     return false;
 }
 
-//virtual
 void LLViewerTexture::forceImmediateUpdate()
 {
 }
@@ -927,19 +898,16 @@ void LLViewerTexture::resetTextureStats()
     mMaxVirtualSizeResetCounter = 0;
 }
 
-//virtual
 F32 LLViewerTexture::getMaxVirtualSize()
 {
     return mMaxVirtualSize;
 }
 
-//virtual
 void LLViewerTexture::setKnownDrawSize(S32 width, S32 height)
 {
     //nothing here.
 }
 
-//virtual
 void LLViewerTexture::addFace(U32 ch, LLFace* facep)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -955,7 +923,6 @@ void LLViewerTexture::addFace(U32 ch, LLFace* facep)
     mLastFaceListUpdateTimer.reset();
 }
 
-//virtual
 void LLViewerTexture::removeFace(U32 ch, LLFace* facep)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -996,7 +963,6 @@ S32 LLViewerTexture::getNumFaces(U32 ch) const
 }
 
 
-//virtual
 void LLViewerTexture::addVolume(U32 ch, LLVOVolume* volumep)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -1010,7 +976,6 @@ void LLViewerTexture::addVolume(U32 ch, LLVOVolume* volumep)
     mLastVolumeListUpdateTimer.reset();
 }
 
-//virtual
 void LLViewerTexture::removeVolume(U32 ch, LLVOVolume* volumep)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -1096,13 +1061,11 @@ bool LLViewerTexture::isInvisiprim() const
     return isInvisiprim(mID);
 }
 
-//static
 bool LLViewerTexture::isInvisiprim(const LLUUID& id)
 {
     return (id == sInvisiprimTexture1) || (id == sInvisiprimTexture2);
 }
 
-//virtual
 void LLViewerTexture::updateBindStatsForTester()
 {
     LLTexturePipelineTester* tester = (LLTexturePipelineTester*)LLMetricPerformanceTesterBasic::getTester(sTesterName);
@@ -1112,9 +1075,7 @@ void LLViewerTexture::updateBindStatsForTester()
     }
 }
 
-//----------------------------------------------------------------------------------------------
 //end of LLViewerTexture
-//----------------------------------------------------------------------------------------------
 
 const std::string& fttype_to_string(const FTType& fttype)
 {
@@ -1137,11 +1098,7 @@ const std::string& fttype_to_string(const FTType& fttype)
     return ftt_error;
 }
 
-//----------------------------------------------------------------------------------------------
-//start of LLViewerFetchedTexture
-//----------------------------------------------------------------------------------------------
 
-//static
 LLViewerFetchedTexture* LLViewerFetchedTexture::getSmokeImage()
 {
     if (sSmokeImagep.isNull())
@@ -1261,7 +1218,6 @@ LLViewerFetchedTexture::~LLViewerFetchedTexture()
     cleanup();
 }
 
-//virtual
 S8 LLViewerFetchedTexture::getType() const
 {
     return LLViewerTexture::FETCHED_TEXTURE;
@@ -1401,7 +1357,6 @@ bool LLViewerFetchedTexture::isFullyLoaded() const
 }
 
 
-// virtual
 void LLViewerFetchedTexture::dump()
 {
     LLViewerTexture::dump();
@@ -1766,7 +1721,6 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
 }
 
 // Call with 0,0 to turn this feature off.
-//virtual
 void LLViewerFetchedTexture::setKnownDrawSize(S32 width, S32 height)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -1803,7 +1757,6 @@ void LLViewerFetchedTexture::setDebugText(const std::string& text)
 
 extern bool gCubeSnapshot;
 
-//virtual
 void LLViewerFetchedTexture::processTextureStats()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -1895,7 +1848,6 @@ void LLViewerFetchedTexture::processTextureStats()
     }
 }
 
-//============================================================================
 
 void LLViewerFetchedTexture::updateVirtualSize()
 {
@@ -2844,7 +2796,6 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
     return res;
 }
 
-//virtual
 void LLViewerFetchedTexture::forceImmediateUpdate()
 {
     //only immediately update a deleted texture which is now being re-used.
@@ -3071,13 +3022,8 @@ F32 LLViewerFetchedTexture::getElapsedLastReferencedSavedRawImageTime() const
     return sCurrentTime - mLastReferencedSavedRawImageTime;
 }
 
-//----------------------------------------------------------------------------------------------
 //end of LLViewerFetchedTexture
-//----------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------
-//start of LLViewerLODTexture
-//----------------------------------------------------------------------------------------------
 LLViewerLODTexture::LLViewerLODTexture(const LLUUID& id, FTType f_type, const LLHost& host, bool usemipmaps)
     : LLViewerFetchedTexture(id, f_type, host, usemipmaps)
 {
@@ -3095,7 +3041,6 @@ void LLViewerLODTexture::init(bool firstinit)
     mTexelsPerImage = 64*64;
 }
 
-//virtual
 S8 LLViewerLODTexture::getType() const
 {
     return LLViewerTexture::LOD_TEXTURE;
@@ -3107,7 +3052,6 @@ bool LLViewerLODTexture::isUpdateFrozen()
 }
 
 // This is gauranteed to get called periodically for every texture
-//virtual
 void LLViewerLODTexture::processTextureStats()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -3249,14 +3193,8 @@ bool LLViewerLODTexture::scaleDown()
     return true;
 }
 
-//----------------------------------------------------------------------------------------------
 //end of LLViewerLODTexture
-//----------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------
-//start of LLViewerMediaTexture
-//----------------------------------------------------------------------------------------------
-//static
 void LLViewerMediaTexture::updateClass()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -3287,7 +3225,6 @@ void LLViewerMediaTexture::updateClass()
     }
 }
 
-//static
 void LLViewerMediaTexture::removeMediaImplFromTexture(const LLUUID& media_id)
 {
     LLViewerMediaTexture* media_tex = findMediaTexture(media_id);
@@ -3297,13 +3234,11 @@ void LLViewerMediaTexture::removeMediaImplFromTexture(const LLUUID& media_id)
     }
 }
 
-//static
 void LLViewerMediaTexture::cleanUpClass()
 {
     sMediaMap.clear();
 }
 
-//static
 LLViewerMediaTexture* LLViewerMediaTexture::findMediaTexture(const LLUUID& media_id)
 {
     media_map_t::iterator iter = sMediaMap.find(media_id);
@@ -3350,7 +3285,6 @@ LLViewerMediaTexture::LLViewerMediaTexture(const LLUUID& id, bool usemipmaps, LL
     }
 }
 
-//virtual
 LLViewerMediaTexture::~LLViewerMediaTexture()
 {
     LLViewerTexture* tex = gTextureList.findImage(mID, TEX_LIST_STANDARD);
@@ -3380,7 +3314,6 @@ void LLViewerMediaTexture::setUseMipMaps(bool mipmap)
     }
 }
 
-//virtual
 S8 LLViewerMediaTexture::getType() const
 {
     return LLViewerTexture::MEDIA_TEXTURE;
@@ -3523,7 +3456,6 @@ void LLViewerMediaTexture::removeMediaFromFace(LLFace* facep)
     }
 }
 
-//virtual
 void LLViewerMediaTexture::addFace(U32 ch, LLFace* facep)
 {
     LLViewerTexture::addFace(ch, facep);
@@ -3562,7 +3494,6 @@ void LLViewerMediaTexture::addFace(U32 ch, LLFace* facep)
     }
 }
 
-//virtual
 //void LLViewerMediaTexture::removeFace(U32 ch, LLFace* facep)
 // [SL:KB] - Patch: Render-TextureToggle (Catznip-5.2)
 void LLViewerMediaTexture::removeFace(U32 channel, LLFace* facep)
@@ -3769,7 +3700,6 @@ void LLViewerMediaTexture::setPlaying(bool playing)
     return;
 }
 
-//virtual
 F32 LLViewerMediaTexture::getMaxVirtualSize()
 {
     if(LLFrameTimer::getFrameCount() == mUpdateVirtualSizeTime)
@@ -3824,13 +3754,8 @@ F32 LLViewerMediaTexture::getMaxVirtualSize()
 
     return mMaxVirtualSize;
 }
-//----------------------------------------------------------------------------------------------
 //end of LLViewerMediaTexture
-//----------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------
-//start of LLTexturePipelineTester
-//----------------------------------------------------------------------------------------------
 LLTexturePipelineTester::LLTexturePipelineTester() : LLMetricPerformanceTesterWithSession(sTesterName)
 {
     addMetric("TotalBytesLoaded");
@@ -3921,7 +3846,6 @@ void LLTexturePipelineTester::reset()
     mEndTimeLoadingSculpties = 0.0f;
 }
 
-//virtual
 void LLTexturePipelineTester::outputTestRecord(LLSD *sd)
 {
     std::string currentLabel = getCurrentLabelName();
@@ -4018,7 +3942,6 @@ void LLTexturePipelineTester::updateStablizingTime()
     mTotalStablizingTime = 0.f;
 }
 
-//virtual
 void LLTexturePipelineTester::compareTestSessions(llofstream* os)
 {
     LLTexturePipelineTester::LLTextureTestSession* base_sessionp = dynamic_cast<LLTexturePipelineTester::LLTextureTestSession*>(mBaseSessionp);
@@ -4082,7 +4005,6 @@ void LLTexturePipelineTester::compareTestSessions(llofstream* os)
     }
 }
 
-//virtual
 LLMetricPerformanceTesterWithSession::LLTestSession* LLTexturePipelineTester::loadTestSession(LLSD* log)
 {
     LLTexturePipelineTester::LLTextureTestSession* sessionp = new LLTexturePipelineTester::LLTextureTestSession();
@@ -4217,7 +4139,5 @@ void LLTexturePipelineTester::LLTextureTestSession::reset()
 
     mInstantPerformanceListCounter = 0;
 }
-//----------------------------------------------------------------------------------------------
 //end of LLTexturePipelineTester
-//----------------------------------------------------------------------------------------------
 

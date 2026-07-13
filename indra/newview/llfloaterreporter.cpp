@@ -91,10 +91,7 @@
 
 const std::string SCREEN_PREV_FILENAME = "screen_report_last.png";
 
-//=========================================================================
-//-----------------------------------------------------------------------------
 // Support classes
-//-----------------------------------------------------------------------------
 class LLARScreenShotUploader : public LLResourceUploadInfo
 {
 public:
@@ -135,14 +132,9 @@ LLUUID LLARScreenShotUploader::finishUpload(LLSD &result)
 }
 
 
-//=========================================================================
-//-----------------------------------------------------------------------------
 // Globals
-//-----------------------------------------------------------------------------
 
-//-----------------------------------------------------------------------------
 // Member functions
-//-----------------------------------------------------------------------------
 
 LLFloaterReporter::LLFloaterReporter(const LLSD& key)
 :   LLFloater(key),
@@ -161,7 +153,6 @@ LLFloaterReporter::LLFloaterReporter(const LLSD& key)
     gIdleCallbacks.addFunction(onIdle, this);
 }
 
-// virtual
 bool LLFloaterReporter::postBuild()
 {
     LLSLURL slurl;
@@ -235,7 +226,6 @@ bool LLFloaterReporter::postBuild()
     return true;
 }
 
-// virtual
 LLFloaterReporter::~LLFloaterReporter()
 {
     if (mAvatarNameCacheConnection.connected())
@@ -487,7 +477,6 @@ void LLFloaterReporter::requestAbuseCategoriesCoro(std::string url, LLHandle<LLF
     combo->selectNthItem(selection);
 }
 
-// static
 void LLFloaterReporter::onClickSend(void *userdata)
 {
     LLFloaterReporter *self = (LLFloaterReporter *)userdata;
@@ -551,7 +540,6 @@ void LLFloaterReporter::onClickSend(void *userdata)
 }
 
 
-// static
 void LLFloaterReporter::onClickCancel(void *userdata)
 {
     LLFloaterReporter *self = (LLFloaterReporter *)userdata;
@@ -567,7 +555,6 @@ void LLFloaterReporter::onClickCancel(void *userdata)
 }
 
 
-// static
 void LLFloaterReporter::onClickObjPicker(void *userdata)
 {
     LLFloaterReporter *self = (LLFloaterReporter *)userdata;
@@ -582,7 +569,6 @@ void LLFloaterReporter::onClickObjPicker(void *userdata)
 }
 
 
-// static
 void LLFloaterReporter::closePickTool(void *userdata)
 {
     LLFloaterReporter *self = (LLFloaterReporter *)userdata;
@@ -597,7 +583,6 @@ void LLFloaterReporter::closePickTool(void *userdata)
 }
 
 
-// static
 void LLFloaterReporter::showFromMenu(EReportType report_type)
 {
     if (COMPLAINT_REPORT != report_type)
@@ -617,7 +602,6 @@ void LLFloaterReporter::showFromMenu(EReportType report_type)
     }
 }
 
-// static
 void LLFloaterReporter::show(const LLUUID& object_id, const std::string& avatar_name, const LLUUID& experience_id)
 {
     LLFloaterReporter* reporter_floater = LLFloaterReg::findTypedInstance<LLFloaterReporter>("reporter");
@@ -661,19 +645,16 @@ void LLFloaterReporter::showFromExperience( const LLUUID& experience_id )
 }
 
 
-// static
 void LLFloaterReporter::showFromObject(const LLUUID& object_id, const LLUUID& experience_id)
 {
     show(object_id, LLStringUtil::null, experience_id);
 }
 
-// static
 void LLFloaterReporter::showFromAvatar(const LLUUID& avatar_id, const std::string avatar_name)
 {
     show(avatar_id, avatar_name);
 }
 
-// static
 void LLFloaterReporter::showFromChat(const LLUUID& avatar_id, const std::string& avatar_name, const std::string& time, const std::string& description)
 {
     show(avatar_id, avatar_name);
@@ -1013,7 +994,6 @@ void LLFloaterReporter::uploadImage()
 }
 
 
-// static
 void LLFloaterReporter::uploadDoneCallback(const LLUUID &uuid, void *user_data, S32 result, LLExtStat ext_status) // StoreAssetData callback (fixed)
 {
     LLUploadDialog::modalUploadFinished();

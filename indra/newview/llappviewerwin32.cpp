@@ -1201,7 +1201,6 @@ bool LLAppViewerWin32::restoreErrorTrap()
     return true; // we don't check for handler collisions on windows, so just say they're ok
 }
 
-//virtual
 bool LLAppViewerWin32::sendURLToOtherInstance(const std::string& url)
 {
     wchar_t window_class[256]; /* Flawfinder: ignore */   // Assume max length < 255 chars.

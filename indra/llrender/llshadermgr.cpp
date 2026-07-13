@@ -39,7 +39,6 @@
 
 #include "llvkloader.h"
 
-// Lots of STL stuff in here, using namespace std to keep things more readable
 using std::vector;
 using std::pair;
 using std::make_pair;
@@ -63,7 +62,6 @@ LLShaderMgr::~LLShaderMgr()
 {
 }
 
-// static
 LLShaderMgr * LLShaderMgr::instance()
 {
     if(NULL == sInstance)
@@ -83,11 +81,6 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
     {
         return true;
     }
-    //////////////////////////////////////
-    // Attach Vertex Shader Features First
-    //////////////////////////////////////
-
-    // NOTE order of shader object attaching is VERY IMPORTANT!!!
     if (features->calculatesAtmospherics || features->hasGamma || features->isDeferred)
     {
         if (!shader->attachVertexObject("windlight/atmosphericsVarsV.glsl"))
@@ -148,7 +141,7 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
-    // NOTE order of shader object attaching is VERY IMPORTANT!!!
+
     if (features->calculatesAtmospherics)
     {
         if (!shader->attachVertexObject("environment/srgbF.glsl")) // NOTE -- "F" suffix is superfluous here, there is nothing fragment specific in srgbF
@@ -199,12 +192,6 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         return false;
     }
 
-    ///////////////////////////////////////
-    // Attach Fragment Shader Features Next
-    ///////////////////////////////////////
-
-    // NOTE order of shader object attaching is VERY IMPORTANT!!!
-
     if (!shader->attachFragmentObject("deferred/globalF.glsl"))
     {
         return false;
@@ -234,7 +221,6 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
-    // we want this BEFORE shadows and AO because those facilities use pos/norm access
     if (features->isDeferred || features->hasReflectionProbes)
     {
         if (!shader->attachFragmentObject("deferred/deferredUtil.glsl"))
@@ -319,7 +305,7 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
-    // NOTE order of shader object attaching is VERY IMPORTANT!!!
+
     if (features->hasAtmospherics)
     {
         if (!shader->attachFragmentObject("environment/waterFogF.glsl"))
@@ -385,10 +371,6 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
     return true;
 }
 
-//============================================================================
-// Load Shader
-
-//dump shader source for debugging
 void LLShaderMgr::dumpShaderSource(U32 shader_code_count, GLchar** shader_code_text)
 {
     char num_str[16]; // U32 = max 10 digits
@@ -407,7 +389,6 @@ void LLShaderMgr::dumpShaderSource(U32 shader_code_count, GLchar** shader_code_t
 GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_level, GLenum type, std::map<std::string, std::string>* defines, S32 texture_index_channels, std::vector<std::string>* out_sources)
 {
 
-// endsure work-around for missing GLSL funcs gets propogated to feature shader files (e.g. srgbF.glsl)
 #if LL_DARWIN
     if (!gGLManager.mIsApple && defines)
     {
@@ -422,7 +403,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
     }
 
 
-    //read in from file
     LLFILE* file = NULL;
 
     S32 try_gpu_class = shader_level;
@@ -433,7 +413,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 #if 0  // WIP -- try to come up with a way to fallback to an error shader without needing debug stubs all over the place in the shader tree
     if (shader_level == -1)
     {
-        // use "error" fallback
         if (type == GL_VERTEX_SHADER)
         {
             open_file_name = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "shaders/errorV.glsl");
@@ -449,7 +428,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
     else
 #endif
     {
-        //find the most relevant file
         // <FS:AYA r30 Phase 3.8 step 4> Cinematic strategy D path probe.
         // When sCinematicMode is true, probe getCinematicShaderDirPrefix()
         // first at each gpu_class tier. Files present there override the
@@ -459,7 +437,7 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         std::string cinematic_prefix = sCinematicMode ? getCinematicShaderDirPrefix() : std::string();
         // </FS:AYA>
         for (gpu_class = try_gpu_class; gpu_class > 0; gpu_class--)
-        {   //search from the current gpu class down to class 1 to find the most relevant shader
+        {
 
             // <FS:AYA r30 Phase 3.8 step 4>
             if (!cinematic_prefix.empty())
@@ -577,9 +555,7 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
             }
             else
             {
-                //set version to 1.40
                 shader_code_text[shader_code_count++] = strdup("#version 140\n");
-                //some implementations of GLSL 1.30 require integer precision be explicitly declared
                 extra_code_text[extra_code_count++] = strdup("precision mediump int;\n");
                 extra_code_text[extra_code_count++] = strdup("precision highp float;\n");
             }
@@ -595,8 +571,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         extra_code_text[extra_code_count++] = strdup("#define VERTEX_SHADER 1\n");
     }
 
-    // Use alpha float to store bit flags
-    // See: C++: addDeferredAttachment(), shader: frag_data[2]
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_FLAG_SKIP_ATMOS   0.0 \n"); // atmo kill
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_FLAG_HAS_ATMOS    0.34\n"); // bit 0
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_FLAG_HAS_PBR      0.67\n"); // bit 1
@@ -628,8 +602,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 
     if (texture_index_channels > 0 && type == GL_FRAGMENT_SHADER)
     {
-        //use specified number of texture channels for indexed texture rendering
-
         /* prepend shader code that looks like this:
 
         uniform sampler2D tex0;
@@ -663,7 +635,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 
         extra_code_text[extra_code_count++] = strdup("#define HAS_DIFFUSE_LOOKUP\n");
 
-        //uniform declartion
         for (S32 i = 0; i < texture_index_channels; ++i)
         {
             std::string decl;
@@ -713,7 +684,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
                 extra_code_text[extra_code_count++] = strdup("\tswitch (vary_texture_index)\n");
                 extra_code_text[extra_code_count++] = strdup("\t{\n");
 
-                //switch body
                 for (S32 i = 0; i < texture_index_channels; ++i)
                 {
                     std::string case_str = llformat("\t\tcase %d: return texture(tex%d, texcoord);\n", i, i);
@@ -726,19 +696,16 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
             }
         }
         else
-        { //should never get here.  Indexed texture rendering requires GLSL 1.30 or later
-            // (for passing integers between vertex and fragment shaders)
+        {
             LL_ERRS() << "Indexed texture rendering requires GLSL 1.30 or later." << LL_ENDL;
         }
     }
 
-    // Master definition can be found in deferredUtil.glsl
     extra_code_text[extra_code_count++] = strdup("#ifndef GBUFFER_INFO_DEFINED\n");
     extra_code_text[extra_code_count++] = strdup("#define GBUFFER_INFO_DEFINED 1\n");
     extra_code_text[extra_code_count++] = strdup("struct GBufferInfo { vec4 albedo; vec4 specular; vec3 normal; vec4 emissive; float gbufferFlag; float envIntensity; };\n");
     extra_code_text[extra_code_count++] = strdup("#endif\n");
 
-    //copy file into memory
     enum {
           flag_write_to_out_of_extra_block_area = 0x01
         , flag_extra_block_marker_was_found = 0x02
@@ -773,7 +740,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         {
             if(!(flag_write_to_out_of_extra_block_area & flags))
             {
-                //shift
                 for(GLuint to = start_shader_code, from = extra_code_count + start_shader_code;
                     from < shader_code_count; ++to, ++from)
                 {
@@ -783,7 +749,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
                 shader_code_count -= extra_code_count;
             }
 
-            //copy extra code
             for(GLuint n = 0; n < extra_code_count
                 && shader_code_count < (LL_ARRAY_SIZE(shader_code_text) - LL_ARRAY_SIZE(extra_code_text)); ++n)
             {
@@ -886,7 +851,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         }
     }
 
-    //free memory
     for (GLuint i = 0; i < shader_code_count; i++)
     {
         free(shader_code_text[i]);
@@ -922,7 +886,6 @@ void LLShaderMgr::initShaderCache(bool enabled, const LLUUID& old_cache_version,
 
             llifstream instream(meta_out_path, std::ifstream::in | std::ifstream::binary);
             LLSD in_data;
-            // todo: this is likely very expensive to parse, should use binary
             LLSDSerialize::fromBinary(in_data, instream, LLSDSerialize::SIZE_UNLIMITED);
             instream.close();
 
@@ -973,10 +936,6 @@ void LLShaderMgr::persistShaderCacheMetadata()
     LL_INFOS("ShaderMgr") << "Persisting shader cache metadata to disk" << LL_ENDL;
 
     LLSD out;
-    // Settings and shader cache get saved at different time, thus making
-    // RenderShaderCacheVersion unreliable when running multiple viewer
-    // instances, or for cases where viewer crashes before saving settings.
-    // Dupplicate version to the cache itself.
     out["version"] = mShaderCacheVersion;
     out["shaders"] = LLSD::emptyMap();
     LLSD &shaders = out["shaders"];
@@ -1014,10 +973,8 @@ void LLShaderMgr::persistShaderCacheMetadata()
     outstream.close();
 }
 
-//virtual
 void LLShaderMgr::initAttribsAndUniforms()
 {
-    //MUST match order of enum in LLVertexBuffer.h
     mReservedAttribs.push_back("position");
     mReservedAttribs.push_back("normal");
     mReservedAttribs.push_back("texcoord0");
@@ -1033,7 +990,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedAttribs.push_back("joint");
     mReservedAttribs.push_back("texture_index");
 
-    //matrix state
     mReservedUniforms.push_back("modelview_matrix");
     mReservedUniforms.push_back("projection_matrix");
     mReservedUniforms.push_back("inv_proj");
@@ -1181,7 +1137,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("minimum_alpha");
     mReservedUniforms.push_back("emissive_brightness");
 
-    // Deferred
     mReservedUniforms.push_back("shadow_matrix");
     mReservedUniforms.push_back("env_mat");
     mReservedUniforms.push_back("shadow_clip");

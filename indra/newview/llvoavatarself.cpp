@@ -139,21 +139,11 @@ struct LocalTextureData
     LLTextureEntry *mTexEntry;
 };
 
-//-----------------------------------------------------------------------------
-// Callback data
-//-----------------------------------------------------------------------------
-
-
 /**
  **
  ** End LLVOAvatarSelf Support classes
  **                                                                             **
  *********************************************************************************/
-
-
-//-----------------------------------------------------------------------------
-// Static Data
-//-----------------------------------------------------------------------------
 
 
 /*********************************************************************************
@@ -334,7 +324,6 @@ bool LLVOAvatarSelf::checkStuckAppearance()
     return LLApp::isExiting();
 }
 
-// virtual
 void LLVOAvatarSelf::markDead()
 {
     mBeam = NULL;
@@ -394,9 +383,6 @@ bool LLVOAvatarSelf::buildSkeletonSelf(const LLAvatarSkeletonInfo *info)
 
 bool LLVOAvatarSelf::buildMenus()
 {
-    //-------------------------------------------------------------------------
-    // build the attach and detach menus
-    //-------------------------------------------------------------------------
     gAttachBodyPartPieMenus[0] = NULL;
 
     LLContextMenu::Params params;
@@ -464,9 +450,6 @@ bool LLVOAvatarSelf::buildMenus()
     gDetachBodyPartPieMenus[8] = LLUICtrlFactory::create<LLContextMenu>(params);
 
 // <FS:Zi> Pie menu
-    //-------------------------------------------------------------------------
-    // build the attach and detach pie menus
-    //-------------------------------------------------------------------------
     PieMenu::Params pieParams;
     pieParams.visible(false);
 
@@ -985,7 +968,6 @@ LLVOAvatarSelf::~LLVOAvatarSelf()
  **                                                                             **
  *********************************************************************************/
 
-// virtual
 bool LLVOAvatarSelf::updateCharacter(LLAgent &agent)
 {
     // update screen joint size
@@ -1001,7 +983,6 @@ bool LLVOAvatarSelf::updateCharacter(LLAgent &agent)
     return LLVOAvatar::updateCharacter(agent);
 }
 
-// virtual
 bool LLVOAvatarSelf::isValid() const
 {
     // <FS:Ansariel> Skip unregistering attachments during shutdown
@@ -1009,7 +990,6 @@ bool LLVOAvatarSelf::isValid() const
     return ((getRegion() != NULL) && !isDead() && !LLApp::isExiting());
 }
 
-// virtual
 void LLVOAvatarSelf::idleUpdate(LLAgent &agent, const F64 &time)
 {
     if (isAgentAvatarValid())
@@ -1026,7 +1006,6 @@ void LLVOAvatarSelf::idleUpdate(LLAgent &agent, const F64 &time)
     }
 }
 
-// virtual
 LLJoint* LLVOAvatarSelf::getJoint(std::string_view name)
 {
     std::lock_guard lock(mJointMapMutex);
@@ -1048,14 +1027,12 @@ LLJoint* LLVOAvatarSelf::getJoint(std::string_view name)
 }
 
 
-//virtual
 void LLVOAvatarSelf::renderJoints()
 {
     std::lock_guard lock(mJointMapMutex);
     LLVOAvatar::renderJoints();
 }
 
-// virtual
 // <FS:Ansariel> [Legacy Bake]
 //bool LLVOAvatarSelf::setVisualParamWeight(const LLVisualParam *which_param, F32 weight)
 bool LLVOAvatarSelf::setVisualParamWeight(const LLVisualParam *which_param, F32 weight, bool upload_bake)
@@ -1070,7 +1047,6 @@ bool LLVOAvatarSelf::setVisualParamWeight(const LLVisualParam *which_param, F32 
     return setParamWeight(param,weight,upload_bake);
 }
 
-// virtual
 // <FS:Ansariel> [Legacy Bake]
 //bool LLVOAvatarSelf::setVisualParamWeight(const char* param_name, F32 weight)
 bool LLVOAvatarSelf::setVisualParamWeight(const char* param_name, F32 weight, bool upload_bake)
@@ -1085,7 +1061,6 @@ bool LLVOAvatarSelf::setVisualParamWeight(const char* param_name, F32 weight, bo
     return setParamWeight(param,weight,upload_bake);
 }
 
-// virtual
 // <FS:Ansariel> [Legacy Bake]
 //bool LLVOAvatarSelf::setVisualParamWeight(const LLViewerVisualParam *param, F32 weight)
 bool LLVOAvatarSelf::setVisualParamWeight(S32 index, F32 weight, bool upload_bake)
@@ -1162,7 +1137,6 @@ void LLVOAvatarSelf::idleUpdateAppearanceAnimation()
 
 }
 
-// virtual
 void LLVOAvatarSelf::requestStopMotion(LLMotion* motion)
 {
     // Only agent avatars should handle the stop motion notifications.
@@ -1171,14 +1145,12 @@ void LLVOAvatarSelf::requestStopMotion(LLMotion* motion)
     gAgent.requestStopMotion(motion);
 }
 
-// virtual
 bool LLVOAvatarSelf::hasMotionFromSource(const LLUUID& source_id)
 {
     AnimSourceIterator motion_it = mAnimationSources.find(source_id);
     return motion_it != mAnimationSources.end();
 }
 
-// virtual
 void LLVOAvatarSelf::stopMotionFromSource(const LLUUID& source_id)
 {
     for (AnimSourceIterator motion_it = mAnimationSources.find(source_id); motion_it != mAnimationSources.end(); )
@@ -1221,7 +1193,6 @@ void LLVOAvatarSelf::setLocalTextureTE(U8 te, LLViewerTexture* image, U32 index)
     setTEImage(te, image);
 }
 
-//virtual
 void LLVOAvatarSelf::removeMissingBakedTextures()
 {
     bool removed = false;
@@ -1292,7 +1263,6 @@ void LLVOAvatarSelf::onSimulatorFeaturesReceived(const LLUUID& region_id)
     checkBOMRebakeRequired();// <FS:Beq/> BOM we may have stale cache, rebake may be needed
 }
 
-//virtual
 void LLVOAvatarSelf::updateRegion(LLViewerRegion *regionp)
 {
     // Save the global position
@@ -1345,10 +1315,7 @@ void LLVOAvatarSelf::updateRegion(LLViewerRegion *regionp)
     setIsCrossingRegion(false); // <FS:Ansariel> FIRE-12004: Attachments getting lost on TP
 }
 
-//--------------------------------------------------------------------
 // draw tractor (selection) beam when editing objects
-//--------------------------------------------------------------------
-//virtual
 void LLVOAvatarSelf::idleUpdateTractorBeam()
 {
     LLColor4U rgb = gLggBeamMaps.getCurrentColor(LLColor4U(gAgent.getEffectColor()));
@@ -1422,10 +1389,7 @@ void LLVOAvatarSelf::idleUpdateTractorBeam()
     }
 }
 
-//-----------------------------------------------------------------------------
 // restoreMeshData()
-//-----------------------------------------------------------------------------
-// virtual
 void LLVOAvatarSelf::restoreMeshData()
 {
     //LL_INFOS() << "Restoring" << LL_ENDL;
@@ -1439,9 +1403,7 @@ void LLVOAvatarSelf::restoreMeshData()
 
 
 
-//-----------------------------------------------------------------------------
 // updateAttachmentVisibility()
-//-----------------------------------------------------------------------------
 void LLVOAvatarSelf::updateAttachmentVisibility(U32 camera_mode)
 {
     for (attachment_map_t::iterator iter = mAttachmentPoints.begin();
@@ -1497,11 +1459,9 @@ void LLVOAvatarSelf::updateAttachmentVisibility(U32 camera_mode)
     }
 }
 
-//-----------------------------------------------------------------------------
 // updatedWearable( LLWearableType::EType type )
 // forces an update to any baked textures relevant to type.
 // will force an upload of the resulting bake if the second parameter is true
-//-----------------------------------------------------------------------------
 // <FS:Ansariel> [Legacy Bake]
 //void LLVOAvatarSelf::wearableUpdated(LLWearableType::EType type)
 void LLVOAvatarSelf::wearableUpdated(LLWearableType::EType type, bool upload_result)
@@ -1546,9 +1506,7 @@ void LLVOAvatarSelf::wearableUpdated(LLWearableType::EType type, bool upload_res
     // <FS:Ansariel> [Legacy Bake]
 }
 
-//-----------------------------------------------------------------------------
 // isWearingAttachment()
-//-----------------------------------------------------------------------------
 bool LLVOAvatarSelf::isWearingAttachment(const LLUUID& inv_item_id) const
 {
     const LLUUID& base_inv_item_id = gInventory.getLinkedItemID(inv_item_id);
@@ -1565,9 +1523,7 @@ bool LLVOAvatarSelf::isWearingAttachment(const LLUUID& inv_item_id) const
     return false;
 }
 
-//-----------------------------------------------------------------------------
 // getWornAttachment()
-//-----------------------------------------------------------------------------
 LLViewerObject* LLVOAvatarSelf::getWornAttachment(const LLUUID& inv_item_id)
 {
     const LLUUID& base_inv_item_id = gInventory.getLinkedItemID(inv_item_id);
@@ -1636,7 +1592,6 @@ bool LLVOAvatarSelf::getAttachedPointName(const LLUUID& inv_item_id, std::string
     return false;
 }
 
-//virtual
 const LLViewerJointAttachment *LLVOAvatarSelf::attachObject(LLViewerObject *viewer_object)
 {
     const LLViewerJointAttachment *attachment = LLVOAvatar::attachObject(viewer_object);
@@ -1690,7 +1645,6 @@ const LLViewerJointAttachment *LLVOAvatarSelf::attachObject(LLViewerObject *view
     return attachment;
 }
 
-//virtual
 bool LLVOAvatarSelf::detachObject(LLViewerObject *viewer_object)
 {
     const LLUUID attachment_id = viewer_object->getAttachmentItemID();
@@ -1800,7 +1754,6 @@ bool LLVOAvatarSelf::hasAttachmentsInTrash()
     return false;
 }
 
-// static
 bool LLVOAvatarSelf::detachAttachmentIntoInventory(const LLUUID &item_id)
 {
     LLInventoryItem* item = gInventory.getItem(item_id);
@@ -1845,7 +1798,6 @@ U32 LLVOAvatarSelf::getNumWearables(LLAvatarAppearanceDefines::ETextureIndex i) 
     return gAgentWearables.getWearableCount(type);
 }
 
-// virtual
 void LLVOAvatarSelf::localTextureLoaded(bool success, LLViewerFetchedTexture *src_vi, LLImageRaw* src_raw, LLImageRaw* aux_src, S32 discard_level, bool final, void* userdata)
 {
 
@@ -1894,7 +1846,6 @@ void LLVOAvatarSelf::localTextureLoaded(bool success, LLViewerFetchedTexture *sr
     }
 }
 
-// virtual
 bool LLVOAvatarSelf::getLocalTextureGL(ETextureIndex type, LLViewerTexture** tex_pp, U32 index) const
 {
     *tex_pp = NULL;
@@ -1943,11 +1894,9 @@ const LLUUID& LLVOAvatarSelf::getLocalTextureID(ETextureIndex type, U32 index) c
 }
 
 
-//-----------------------------------------------------------------------------
 // isLocalTextureDataAvailable()
 // Returns true if at least the lowest quality discard level exists for every texture
 // in the layerset.
-//-----------------------------------------------------------------------------
 bool LLVOAvatarSelf::isLocalTextureDataAvailable(const LLViewerTexLayerSet* layerset) const
 {
     /* if (layerset == mBakedTextureDatas[BAKED_HEAD].mTexLayerSet)
@@ -1981,12 +1930,9 @@ bool LLVOAvatarSelf::isLocalTextureDataAvailable(const LLViewerTexLayerSet* laye
     return false;
 }
 
-//-----------------------------------------------------------------------------
-// virtual
 // isLocalTextureDataFinal()
 // Returns true if the highest quality discard level exists for every texture
 // in the layerset.
-//-----------------------------------------------------------------------------
 bool LLVOAvatarSelf::isLocalTextureDataFinal(const LLViewerTexLayerSet* layerset) const
 {
     // <FS:Ansariel> Replace frequently called gSavedSettings
@@ -2091,7 +2037,6 @@ bool LLVOAvatarSelf::isTextureDefined(LLAvatarAppearanceDefines::ETextureIndex t
     return isDefined;
 }
 
-//virtual
 bool LLVOAvatarSelf::isTextureVisible(LLAvatarAppearanceDefines::ETextureIndex type, U32 index) const
 {
     if (isIndexBakedTexture(type))
@@ -2104,7 +2049,6 @@ bool LLVOAvatarSelf::isTextureVisible(LLAvatarAppearanceDefines::ETextureIndex t
             || (LLDrawPoolAlpha::sShowDebugAlpha);
 }
 
-//virtual
 bool LLVOAvatarSelf::isTextureVisible(LLAvatarAppearanceDefines::ETextureIndex type, LLViewerWearable *wearable) const
 {
     if (isIndexBakedTexture(type))
@@ -2170,9 +2114,7 @@ void LLVOAvatarSelf::invalidateAll()
     //mDebugSelfLoadTimer.reset();
 }
 
-//-----------------------------------------------------------------------------
 // setCompositeUpdatesEnabled()
-//-----------------------------------------------------------------------------
 void LLVOAvatarSelf::setCompositeUpdatesEnabled( bool b )
 {
     for (U32 i = 0; i < mBakedTextureDatas.size(); i++)
@@ -2227,7 +2169,6 @@ void LLVOAvatarSelf::updateComposites()
     }
 }
 
-// virtual
 S32 LLVOAvatarSelf::getLocalDiscardLevel(ETextureIndex type, U32 wearable_index) const
 {
     if (!isIndexLocalTexture(type)) return false;
@@ -2251,7 +2192,6 @@ S32 LLVOAvatarSelf::getLocalDiscardLevel(ETextureIndex type, U32 wearable_index)
     return 0;
 }
 
-// virtual
 // Counts the memory footprint of local textures.
 void LLVOAvatarSelf::getLocalTextureByteCount(S32* gl_bytes) const
 {
@@ -2280,7 +2220,6 @@ void LLVOAvatarSelf::getLocalTextureByteCount(S32* gl_bytes) const
     }
 }
 
-// virtual
 void LLVOAvatarSelf::setLocalTexture(ETextureIndex type, LLViewerTexture* src_tex, bool baked_version_ready, U32 index)
 {
     if (!isIndexLocalTexture(type)) return;
@@ -2357,7 +2296,6 @@ void LLVOAvatarSelf::setLocalTexture(ETextureIndex type, LLViewerTexture* src_te
     setBakedReady(type,baked_version_ready,index);
 }
 
-//virtual
 void LLVOAvatarSelf::setBakedReady(LLAvatarAppearanceDefines::ETextureIndex type, bool baked_version_exists, U32 index)
 {
     if (!isIndexLocalTexture(type)) return;
@@ -2369,7 +2307,6 @@ void LLVOAvatarSelf::setBakedReady(LLAvatarAppearanceDefines::ETextureIndex type
 }
 
 
-// virtual
 void LLVOAvatarSelf::dumpLocalTextures() const
 {
     LL_INFOS() << "Local Textures:" << LL_ENDL;
@@ -2430,10 +2367,7 @@ void LLVOAvatarSelf::dumpLocalTextures() const
     }
 }
 
-//-----------------------------------------------------------------------------
-// static
 // onLocalTextureLoaded()
-//-----------------------------------------------------------------------------
 
 void LLVOAvatarSelf::onLocalTextureLoaded(bool success, LLViewerFetchedTexture *src_vi, LLImageRaw* src_raw, LLImageRaw* aux_src, S32 discard_level, bool final, void* userdata)
 {
@@ -2476,7 +2410,6 @@ void LLVOAvatarSelf::onLocalTextureLoaded(bool success, LLViewerFetchedTexture *
 }
 
 
-// static
 void LLVOAvatarSelf::dumpTotalLocalTextureByteCount()
 {
     S32 gl_bytes = 0;
@@ -3075,10 +3008,8 @@ LLLocalTextureObject* LLVOAvatarSelf::getLocalTextureObject(LLAvatarAppearanceDe
     return NULL;
 }
 
-//-----------------------------------------------------------------------------
 // getBakedTE()
 // Used by the LayerSet.  (Layer sets don't in general know what textures depend on them.)
-//-----------------------------------------------------------------------------
 ETextureIndex LLVOAvatarSelf::getBakedTE( const LLViewerTexLayerSet* layerset ) const
 {
     for (U32 i = 0; i < mBakedTextureDatas.size(); i++)
@@ -3204,9 +3135,7 @@ void LLVOAvatarSelf::forceBakeAllTextures(bool slam_for_debug)
     updateMeshTextures();
 }
 
-//-----------------------------------------------------------------------------
 // requestLayerSetUpdate()
-//-----------------------------------------------------------------------------
 void LLVOAvatarSelf::requestLayerSetUpdate(ETextureIndex index )
 {
     /* switch(index)
@@ -3260,7 +3189,6 @@ LLViewerTexLayerSet* LLVOAvatarSelf::getLayerSet(EBakedTextureIndex baked_index)
 
 
 
-// static
 void LLVOAvatarSelf::onCustomizeStart(bool disable_camera_switch)
 {
     if (isAgentAvatarValid())
@@ -3284,7 +3212,6 @@ void LLVOAvatarSelf::onCustomizeStart(bool disable_camera_switch)
     }
 }
 
-// static
 void LLVOAvatarSelf::onCustomizeEnd(bool disable_camera_switch)
 {
 
@@ -3316,7 +3243,6 @@ void LLVOAvatarSelf::onCustomizeEnd(bool disable_camera_switch)
     }
 }
 
-// virtual
 bool LLVOAvatarSelf::shouldRenderRigged() const
 {
     return gAgent.needsRenderAvatar();
@@ -3404,9 +3330,7 @@ bool LLVOAvatarSelf::sendAppearanceMessage(LLMessageSystem *mesgsys) const
     return success;
 }
 
-//------------------------------------------------------------------------
 // sendHoverHeight()
-//------------------------------------------------------------------------
 void LLVOAvatarSelf::sendHoverHeight() const
 {
     std::string url = gAgent.getRegionCapability("AgentPreferences");
@@ -3442,9 +3366,7 @@ void LLVOAvatarSelf::setHoverOffset(const LLVector3& hover_offset, bool send_upd
     }
 }
 
-//------------------------------------------------------------------------
 // needsRenderBeam()
-//------------------------------------------------------------------------
 bool LLVOAvatarSelf::needsRenderBeam()
 {
     // <FS:Ansariel> Prefer custom FS lookat privacy code
@@ -3517,10 +3439,7 @@ F32 LLVOAvatarSelf::getAvatarOffset() /*const*/
 // [/RLVa:KB]
 
 // <FS:Ansariel> [Legacy Bake]
-//-----------------------------------------------------------------------------
 // Legacy baking
-//-----------------------------------------------------------------------------
-//virtual
 U32  LLVOAvatarSelf::processUpdateMessage(LLMessageSystem *mesgsys,
                                                      void **user_data,
                                                      U32 block_num,
@@ -3541,9 +3460,7 @@ bool LLVOAvatarSelf::isBakedTextureFinal(const LLAvatarAppearanceDefines::EBaked
     return !layerset_buffer->uploadNeeded();
 }
 
-//-----------------------------------------------------------------------------
 // requestLayerSetUploads()
-//-----------------------------------------------------------------------------
 void LLVOAvatarSelf::requestLayerSetUploads()
 {
     for (U32 i = 0; i < mBakedTextureDatas.size(); i++)
@@ -3563,7 +3480,6 @@ void LLVOAvatarSelf::requestLayerSetUpload(LLAvatarAppearanceDefines::EBakedText
     }
 }
 
-// virtual
 bool LLVOAvatarSelf::hasPendingBakedUploads() const
 {
     // <FS:Beq> BOMOS constrain uploads for non-BOM.
@@ -3633,10 +3549,8 @@ void LLVOAvatarSelf::setNewBakedTexture(LLAvatarAppearanceDefines::EBakedTexture
 }
 
 
-//-----------------------------------------------------------------------------
 // setNewBakedTexture()
 // A new baked texture has been successfully uploaded and we can start using it now.
-//-----------------------------------------------------------------------------
 void LLVOAvatarSelf::setNewBakedTexture( ETextureIndex te, const LLUUID& uuid )
 {
     // Baked textures live on other sims.
@@ -3701,10 +3615,8 @@ void LLVOAvatarSelf::setNewBakedTexture( ETextureIndex te, const LLUUID& uuid )
     }
 }
 
-//-----------------------------------------------------------------------------
 // setCachedBakedTexture()
 // A baked texture id was received from a cache query, make it active
-//-----------------------------------------------------------------------------
 void LLVOAvatarSelf::setCachedBakedTexture( ETextureIndex te, const LLUUID& uuid )
 {
     setTETexture( te, uuid );
@@ -3723,7 +3635,6 @@ void LLVOAvatarSelf::setCachedBakedTexture( ETextureIndex te, const LLUUID& uuid
     }
 }
 
-// static
 void LLVOAvatarSelf::processRebakeAvatarTextures(LLMessageSystem* msg, void**)
 {
     LLUUID texture_id;

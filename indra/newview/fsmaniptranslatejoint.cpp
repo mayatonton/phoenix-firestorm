@@ -97,7 +97,6 @@ void FSManipTranslateJoint::setJoint(LLJoint* joint)
     mJoint = joint;
 }
 
-//static
 void FSManipTranslateJoint::destroyGL()
 {
     if (sGridTex)
@@ -106,7 +105,6 @@ void FSManipTranslateJoint::destroyGL()
     }
 }
 
-//static
 void FSManipTranslateJoint::restoreGL()
 {
     //generate grid texture
@@ -1219,7 +1217,6 @@ bool FSManipTranslateJoint::isMoveableJoint()
     return true;
 }
 
-// virtual
 bool FSManipTranslateJoint::canAffectSelection()
 {
     return isAvatarJointSafeToUse();

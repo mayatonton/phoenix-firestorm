@@ -380,7 +380,6 @@ void GLTFSceneManager::addGLTFObject(LLViewerObject* obj, LLUUID gltf_id)
     gAssetStorage->getAssetData(gltf_id, LLAssetType::AT_GLTF, onGLTFLoadComplete, obj);
 }
 
-//static
 void GLTFSceneManager::onGLTFBinLoadComplete(const LLUUID& id, LLAssetType::EType asset_type, void* user_data, S32 status, LLExtStat ext_status)
 {
     LLAppViewer::instance()->postToMainCoro([=]()
@@ -428,7 +427,6 @@ void GLTFSceneManager::onGLTFBinLoadComplete(const LLUUID& id, LLAssetType::ETyp
         });
 }
 
-//static
 void GLTFSceneManager::onGLTFLoadComplete(const LLUUID& id, LLAssetType::EType asset_type, void* user_data, S32 status, LLExtStat ext_status)
 {
     LLViewerObject* obj = (LLViewerObject*)user_data;

@@ -53,17 +53,11 @@
 #include "llimagegl.h" 
 #include "llmodel.h"
 
-//#include "llimagebmp.h"
-//#include "../tools/imdebug/imdebug.h"
-
-// static
 LLStandardBumpmap gStandardBumpmapList[TEM_BUMPMAP_COUNT];
 LLRenderTarget LLBumpImageList::sRenderTarget;
 
-// static
 U32 LLStandardBumpmap::sStandardBumpmapCount = 0;
 
-// static
 LLBumpImageList gBumpImageList;
 
 const S32 STD_BUMP_LATEST_FILE_VERSION = 1;
@@ -80,19 +74,16 @@ static S32 diffuse_channel = -1;
 static S32 bump_channel = -1;
 static bool shiny = false;
 
-// static
 void LLStandardBumpmap::shutdown()
 {
     LLStandardBumpmap::destroyGL();
 }
 
-// static
 void LLStandardBumpmap::restoreGL()
 {
     addstandard();
 }
 
-// static
 void LLStandardBumpmap::addstandard()
 {
     if(!gTextureList.isInitialized())
@@ -172,7 +163,6 @@ void LLStandardBumpmap::addstandard()
     fclose( file );
 }
 
-// static
 void LLStandardBumpmap::clear()
 {
     LL_INFOS() << "Clearing standard bumpmaps." << LL_ENDL;
@@ -184,7 +174,6 @@ void LLStandardBumpmap::clear()
     sStandardBumpmapCount = 0;
 }
 
-// static
 void LLStandardBumpmap::destroyGL()
 {
     clear();
@@ -206,14 +195,12 @@ void LLDrawPoolBump::prerender()
     mShaderLevel = LLViewerShaderMgr::instance()->getShaderLevel(LLViewerShaderMgr::SHADER_OBJECT);
 }
 
-// static
 S32 LLDrawPoolBump::numBumpPasses()
 {
     return 1;
 }
 
 
-//static
 void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
 {
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
@@ -252,7 +239,6 @@ void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& di
     }
 }
 
-//static
 void LLDrawPoolBump::unbindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
 {
     LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
@@ -407,7 +393,6 @@ void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, bool texture =
 }
 
 
-// static
 bool LLDrawPoolBump::bindBumpMap(LLDrawInfo& params, S32 channel)
 {
     U8 bump_code = params.mBump;
@@ -415,7 +400,6 @@ bool LLDrawPoolBump::bindBumpMap(LLDrawInfo& params, S32 channel)
     return bindBumpMap(bump_code, params.mTexture, channel);
 }
 
-//static
 bool LLDrawPoolBump::bindBumpMap(LLFace* face, S32 channel)
 {
     const LLTextureEntry* te = face->getTextureEntry();
@@ -428,7 +412,6 @@ bool LLDrawPoolBump::bindBumpMap(LLFace* face, S32 channel)
     return false;
 }
 
-//static
 bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture, S32 channel)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -479,7 +462,6 @@ bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture, S32 cha
     return false;
 }
 
-//static
 void LLDrawPoolBump::beginBump()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_BUMP);
@@ -499,7 +481,6 @@ void LLDrawPoolBump::beginBump()
     gGL.setSceneBlendType(LLRender::BT_MULT_X2);
 }
 
-//static
 void LLDrawPoolBump::renderBump(U32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_BUMP);
@@ -512,7 +493,6 @@ void LLDrawPoolBump::renderBump(U32 pass)
     pushBumpBatches(pass);
 }
 
-//static
 void LLDrawPoolBump::endBump(U32 pass)
 {
     LLGLSLShader::unbind();
@@ -601,12 +581,6 @@ void LLDrawPoolBump::renderPostDeferred(S32 pass)
     }
 }
 
-
-////////////////////////////////////////////////////////////////
-// List of bump-maps created from other textures.
-
-
-//const LLUUID TEST_BUMP_ID("3d33eaf2-459c-6f97-fd76-5fce3fc29447");
 
 void LLBumpImageList::init()
 {
@@ -697,7 +671,6 @@ void LLBumpImageList::updateImages()
 
             if( destroy )
             {
-                //LL_INFOS() << "*** Destroying bright " << (void*)image << LL_ENDL;
                 iter = mBrightnessEntries.erase(iter);   // deletes the image thanks to reference counting
                 continue;
             }
@@ -726,7 +699,6 @@ void LLBumpImageList::updateImages()
 
             if( destroy )
             {
-                //LL_INFOS() << "*** Destroying dark " << (void*)image << LL_ENDL;;
                 mDarknessEntries.erase(curiter);  // deletes the image thanks to reference counting
             }
         }
@@ -855,7 +827,6 @@ void LLBumpImageList::generateNormalMapFromAlpha(LLImageRaw* src, LLImageRaw* nr
     }
 }
 
-// static
 void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_code)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -871,7 +842,6 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
         iter = entries_list.find(src_id);
     }
 
-    //---------------------------------------------------
     // immediately assign bump to a smart pointer in case some local smart pointer
     // accidentally releases it.
     LLPointer<LLViewerTexture> bump = iter->second;
@@ -971,8 +941,7 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
         }
     }
 
-    iter->second = bump; // derefs (and deletes) old image
-    //---------------------------------------------------
+    iter->second = bump;
 
 }
 

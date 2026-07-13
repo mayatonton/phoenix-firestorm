@@ -197,10 +197,8 @@ private:
     param_alpha_info_list_t     mParamAlphaInfoList;
 };
 
-//-----------------------------------------------------------------------------
 // LLTexLayerSetBuffer
 // The composite image that a LLViewerTexLayerSet writes to.  Each LLViewerTexLayerSet has one.
-//-----------------------------------------------------------------------------
 
 LLTexLayerSetBuffer::LLTexLayerSetBuffer(LLTexLayerSet* const owner) :
     mTexLayerSet(owner)
@@ -232,14 +230,12 @@ void LLTexLayerSetBuffer::popProjection() const
     gGL.popMatrix();
 }
 
-// virtual
 void LLTexLayerSetBuffer::preRenderTexLayerSet()
 {
     // Set up an ortho projection
     pushProjection();
 }
 
-// virtual
 void LLTexLayerSetBuffer::postRenderTexLayerSet(bool success)
 {
     popProjection();
@@ -279,10 +275,8 @@ bool LLTexLayerSetBuffer::renderTexLayerSet(LLRenderTarget* bound_target)
     return success;
 }
 
-//-----------------------------------------------------------------------------
 // LLTexLayerSetInfo
 // An ordered set of texture layers that get composited into a single texture.
-//-----------------------------------------------------------------------------
 
 LLTexLayerSetInfo::LLTexLayerSetInfo() :
     mBodyRegion( "" ),
@@ -364,10 +358,8 @@ void LLTexLayerSetInfo::createVisualParams(LLAvatarAppearance *appearance)
     }
 }
 
-//-----------------------------------------------------------------------------
 // LLTexLayerSet
 // An ordered set of texture layers that get composited into a single texture.
-//-----------------------------------------------------------------------------
 
 bool LLTexLayerSet::sHasCaches = false;
 
@@ -379,7 +371,6 @@ LLTexLayerSet::LLTexLayerSet(LLAvatarAppearance* const appearance) :
 {
 }
 
-// virtual
 LLTexLayerSet::~LLTexLayerSet()
 {
     deleteCaches();
@@ -390,9 +381,7 @@ LLTexLayerSet::~LLTexLayerSet()
     mMaskLayerList.clear();
 }
 
-//-----------------------------------------------------------------------------
 // setInfo
-//-----------------------------------------------------------------------------
 
 bool LLTexLayerSet::setInfo(const LLTexLayerSetInfo *info)
 {
@@ -435,9 +424,7 @@ bool LLTexLayerSet::setInfo(const LLTexLayerSetInfo *info)
 }
 
 #if 0 // obsolete
-//-----------------------------------------------------------------------------
 // parseData
-//-----------------------------------------------------------------------------
 
 bool LLTexLayerSet::parseData(LLXmlTreeNode* node)
 {
@@ -672,9 +659,7 @@ void LLTexLayerSet::invalidateMorphMasks()
 }
 
 
-//-----------------------------------------------------------------------------
 // LLTexLayerInfo
-//-----------------------------------------------------------------------------
 LLTexLayerInfo::LLTexLayerInfo() :
     mWriteAllChannels( false ),
     mRenderPass(LLTexLayer::RP_COLOR),
@@ -1039,7 +1024,6 @@ LLViewerVisualParam* LLTexLayerInterface::getVisualParamPtr(S32 index) const
     return result;
 }
 
-//-----------------------------------------------------------------------------
 // LLTexLayer
 // A single texture layer, consisting of:
 //      * color, consisting of either
@@ -1051,7 +1035,6 @@ LLViewerVisualParam* LLTexLayerInterface::getVisualParamPtr(S32 index) const
 //          * a GUID
 //          * a texture entry index (TE)
 //      * (optional) one or more alpha parameters (weighted alpha textures)
-//-----------------------------------------------------------------------------
 LLTexLayer::LLTexLayer(LLTexLayerSet* const layer_set) :
     LLTexLayerInterface( layer_set ),
     mLocalTextureObject(NULL)
@@ -1202,16 +1185,13 @@ void LLTexLayer::asLLSD(LLSD& sd) const
     sd["id"] = getUUID();
 }
 
-//-----------------------------------------------------------------------------
 // setInfo
-//-----------------------------------------------------------------------------
 
 bool LLTexLayer::setInfo(const LLTexLayerInfo* info, LLWearable* wearable  )
 {
     return LLTexLayerInterface::setInfo(info, wearable);
 }
 
-//static
 void LLTexLayer::calculateTexLayerColor(const param_color_list_t &param_list, LLColor4 &net_color)
 {
     for (const LLTexLayerParamColor* param : param_list)
@@ -1248,9 +1228,6 @@ void LLTexLayer::calculateTexLayerColor(const param_color_list_t &param_list, LL
 
 bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bound_target)
 {
-    // *TODO: Is this correct?
-    //gPipeline.disableLights();
-
     LLColor4 net_color;
     bool color_specified = findNetColor(&net_color);
 
@@ -1595,8 +1572,6 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
         }
     }
 
-    // Draw a rectangle with the layer color to multiply the alpha by that color's alpha.
-    // Note: we're still using gGL.blendFunc( GL_DST_ALPHA, GL_ZERO );
     if ( !is_approx_equal(layer_color.mV[VALPHA], 1.f) )
     {
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
@@ -1693,7 +1668,6 @@ LLUUID LLTexLayer::getUUID() const
 }
 
 
-//-----------------------------------------------------------------------------
 // LLTexLayerTemplate
 // A single texture layer, consisting of:
 //      * color, consisting of either
@@ -1705,7 +1679,6 @@ LLUUID LLTexLayer::getUUID() const
 //          * a GUID
 //          * a texture entry index (TE)
 //      * (optional) one or more alpha parameters (weighted alpha textures)
-//-----------------------------------------------------------------------------
 LLTexLayerTemplate::LLTexLayerTemplate(LLTexLayerSet* layer_set, LLAvatarAppearance* const appearance) :
     LLTexLayerInterface(layer_set),
     mAvatarAppearance( appearance )
@@ -1722,9 +1695,7 @@ LLTexLayerTemplate::~LLTexLayerTemplate()
 {
 }
 
-//-----------------------------------------------------------------------------
 // setInfo
-//-----------------------------------------------------------------------------
 
 /*virtual*/ bool LLTexLayerTemplate::setInfo(const LLTexLayerInfo* info, LLWearable* wearable  )
 {
@@ -1879,9 +1850,7 @@ LLTexLayer* LLTexLayerTemplate::getLayer(U32 i) const
 }
 
 
-//-----------------------------------------------------------------------------
 // finds a specific layer based on a passed in name
-//-----------------------------------------------------------------------------
 LLTexLayerInterface*  LLTexLayerSet::findLayerByName(const std::string& name)
 {
     for (LLTexLayerInterface* layer : mLayerList)
@@ -1921,9 +1890,7 @@ void LLTexLayerSet::cloneTemplates(LLLocalTextureObject *lto, LLAvatarAppearance
         }
     }
 }
-//-----------------------------------------------------------------------------
 // LLTexLayerStaticImageList
-//-----------------------------------------------------------------------------
 
 LLTexLayerStaticImageList::LLTexLayerStaticImageList() :
     mGLBytes(0),

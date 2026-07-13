@@ -1,6 +1,6 @@
 /**
  * @file llrendertarget.h
- * @brief Off screen render target abstraction.  Loose wrapper for GL_EXT_framebuffer_objects.
+ * @brief Off screen render target abstraction.
  *
  * $LicenseInfo:firstyear=2001&license=viewerlgpl$
  * Second Life Viewer Source Code

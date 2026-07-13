@@ -89,9 +89,7 @@ constexpr U8 ALPHA_EMPTY_THRESHOLD = 253;
 constexpr F32 ALPHA_EMPTY_THRESHOLD_RATIO = 0.999f;
 // </FS:Zi>
 
-//-----------------------------------------------------------------------------
 // LLFloaterImagePreview()
-//-----------------------------------------------------------------------------
 LLFloaterImagePreview::LLFloaterImagePreview(const LLSD& args) :
     LLFloaterNameDesc(args),
 
@@ -104,9 +102,7 @@ LLFloaterImagePreview::LLFloaterImagePreview(const LLSD& args) :
     loadImage(mFilenameAndPath);
 }
 
-//-----------------------------------------------------------------------------
 // postBuild()
-//-----------------------------------------------------------------------------
 bool LLFloaterImagePreview::postBuild()
 {
     if (!LLFloaterNameDesc::postBuild())
@@ -296,17 +292,13 @@ void LLFloaterImagePreview::onBtnUpload()
 }
 // </FS:Zi>
 
-//-----------------------------------------------------------------------------
 // getExpectedUploadCost()
-//-----------------------------------------------------------------------------
 S32 LLFloaterImagePreview::getExpectedUploadCost() const
 {
     return LLAgentBenefitsMgr::current().getTextureUploadCost(mRawImagep);
 }
 
-//-----------------------------------------------------------------------------
 // LLFloaterImagePreview()
-//-----------------------------------------------------------------------------
 LLFloaterImagePreview::~LLFloaterImagePreview()
 {
     // <FS:Zi> detect and strip empty alpha layers from images on upload
@@ -321,10 +313,7 @@ LLFloaterImagePreview::~LLFloaterImagePreview()
     mImagep = NULL ;
 }
 
-//static
-//-----------------------------------------------------------------------------
 // onPreviewTypeCommit()
-//-----------------------------------------------------------------------------
 void    LLFloaterImagePreview::onPreviewTypeCommit(LLUICtrl* ctrl, void* userdata)
 {
     LLFloaterImagePreview *fp =(LLFloaterImagePreview *)userdata;
@@ -382,9 +371,7 @@ void    LLFloaterImagePreview::onPreviewTypeCommit(LLUICtrl* ctrl, void* userdat
 }
 
 
-//-----------------------------------------------------------------------------
 // clearAllPreviewTextures()
-//-----------------------------------------------------------------------------
 void LLFloaterImagePreview::clearAllPreviewTextures()
 {
     if (mAvatarPreview)
@@ -399,9 +386,7 @@ void LLFloaterImagePreview::clearAllPreviewTextures()
     }
 }
 
-//-----------------------------------------------------------------------------
 // onBtnOK()
-//-----------------------------------------------------------------------------
 void LLFloaterImagePreview::onBtnOK()
 {
     getChildView("ok_btn")->setEnabled(false); // don't allow inadvertent extra uploads
@@ -463,9 +448,7 @@ void LLFloaterImagePreview::onBtnOK()
     closeFloater(false);
 }
 
-//-----------------------------------------------------------------------------
 // draw()
-//-----------------------------------------------------------------------------
 void LLFloaterImagePreview::draw()
 {
     LLFloater::draw();
@@ -596,9 +579,7 @@ void LLFloaterImagePreview::draw()
 }
 
 
-//-----------------------------------------------------------------------------
 // loadImage()
-//-----------------------------------------------------------------------------
 bool LLFloaterImagePreview::loadImage(const std::string& src_filename)
 {
     try
@@ -700,9 +681,7 @@ bool LLFloaterImagePreview::loadImage(const std::string& src_filename)
     return true;
 }
 
-//-----------------------------------------------------------------------------
 // handleMouseDown()
-//-----------------------------------------------------------------------------
 bool LLFloaterImagePreview::handleMouseDown(S32 x, S32 y, MASK mask)
 {
     if (mPreviewRect.pointInRect(x, y))
@@ -718,9 +697,7 @@ bool LLFloaterImagePreview::handleMouseDown(S32 x, S32 y, MASK mask)
     return LLFloater::handleMouseDown(x, y, mask);
 }
 
-//-----------------------------------------------------------------------------
 // handleMouseUp()
-//-----------------------------------------------------------------------------
 bool LLFloaterImagePreview::handleMouseUp(S32 x, S32 y, MASK mask)
 {
     gFocusMgr.setMouseCapture(nullptr);
@@ -728,9 +705,7 @@ bool LLFloaterImagePreview::handleMouseUp(S32 x, S32 y, MASK mask)
     return LLFloater::handleMouseUp(x, y, mask);
 }
 
-//-----------------------------------------------------------------------------
 // handleHover()
-//-----------------------------------------------------------------------------
 bool LLFloaterImagePreview::handleHover(S32 x, S32 y, MASK mask)
 {
     MASK local_mask = mask & ~MASK_ALT;
@@ -848,9 +823,7 @@ bool LLFloaterImagePreview::handleHover(S32 x, S32 y, MASK mask)
     return true;
 }
 
-//-----------------------------------------------------------------------------
 // handleScrollWheel()
-//-----------------------------------------------------------------------------
 bool LLFloaterImagePreview::handleScrollWheel(S32 x, S32 y, S32 clicks)
 {
     if (mPreviewRect.pointInRect(x, y) && mAvatarPreview)
@@ -865,19 +838,14 @@ bool LLFloaterImagePreview::handleScrollWheel(S32 x, S32 y, S32 clicks)
     return true;
 }
 
-//-----------------------------------------------------------------------------
 // onMouseCaptureLost()
-//-----------------------------------------------------------------------------
-// static
 void LLFloaterImagePreview::onMouseCaptureLostImagePreview(LLMouseHandler* handler)
 {
     gViewerWindow->showCursor();
 }
 
 
-//-----------------------------------------------------------------------------
 // LLImagePreviewAvatar
-//-----------------------------------------------------------------------------
 LLImagePreviewAvatar::LLImagePreviewAvatar(S32 width, S32 height) : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE, false)
 {
     mNeedsUpdate = true;
@@ -898,7 +866,6 @@ LLImagePreviewAvatar::~LLImagePreviewAvatar()
     mDummyAvatar->markDead();
 }
 
-//virtual
 S8 LLImagePreviewAvatar::getType() const
 {
     return LLViewerDynamicTexture::LL_IMAGE_PREVIEW_AVATAR ;
@@ -937,9 +904,7 @@ void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const
     mCameraOffset.clearVec();
 }
 
-//-----------------------------------------------------------------------------
 // clearPreviewTexture()
-//-----------------------------------------------------------------------------
 void LLImagePreviewAvatar::clearPreviewTexture(const std::string& mesh_name)
 {
     if (mDummyAvatar)
@@ -953,9 +918,7 @@ void LLImagePreviewAvatar::clearPreviewTexture(const std::string& mesh_name)
     }
 }
 
-//-----------------------------------------------------------------------------
 // update()
-//-----------------------------------------------------------------------------
 bool LLImagePreviewAvatar::render()
 {
     mNeedsUpdate = false;
@@ -1027,17 +990,13 @@ bool LLImagePreviewAvatar::render()
     return true;
 }
 
-//-----------------------------------------------------------------------------
 // refresh()
-//-----------------------------------------------------------------------------
 void LLImagePreviewAvatar::refresh()
 {
     mNeedsUpdate = true;
 }
 
-//-----------------------------------------------------------------------------
 // rotate()
-//-----------------------------------------------------------------------------
 void LLImagePreviewAvatar::rotate(F32 yaw_radians, F32 pitch_radians)
 {
     mCameraYaw = mCameraYaw + yaw_radians;
@@ -1045,9 +1004,7 @@ void LLImagePreviewAvatar::rotate(F32 yaw_radians, F32 pitch_radians)
     mCameraPitch = llclamp(mCameraPitch + pitch_radians, F_PI_BY_TWO * -0.8f, F_PI_BY_TWO * 0.8f);
 }
 
-//-----------------------------------------------------------------------------
 // zoom()
-//-----------------------------------------------------------------------------
 void LLImagePreviewAvatar::zoom(F32 zoom_amt)
 {
     mCameraZoom = llclamp(mCameraZoom + zoom_amt, 1.f, 10.f);
@@ -1060,9 +1017,7 @@ void LLImagePreviewAvatar::pan(F32 right, F32 up)
 }
 
 
-//-----------------------------------------------------------------------------
 // LLImagePreviewSculpted
-//-----------------------------------------------------------------------------
 
 LLImagePreviewSculpted::LLImagePreviewSculpted(S32 width, S32 height) : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE, false)
 {
@@ -1085,7 +1040,6 @@ LLImagePreviewSculpted::~LLImagePreviewSculpted()
 {
 }
 
-//virtual
 S8 LLImagePreviewSculpted::getType() const
 {
     return LLViewerDynamicTexture::LL_IMAGE_PREVIEW_SCULPTED ;
@@ -1155,9 +1109,7 @@ void LLImagePreviewSculpted::setPreviewTarget(LLImageRaw* imagep, F32 distance)
 }
 
 
-//-----------------------------------------------------------------------------
 // render()
-//-----------------------------------------------------------------------------
 bool LLImagePreviewSculpted::render()
 {
     mNeedsUpdate = false;
@@ -1237,17 +1189,13 @@ bool LLImagePreviewSculpted::render()
     return true;
 }
 
-//-----------------------------------------------------------------------------
 // refresh()
-//-----------------------------------------------------------------------------
 void LLImagePreviewSculpted::refresh()
 {
     mNeedsUpdate = true;
 }
 
-//-----------------------------------------------------------------------------
 // rotate()
-//-----------------------------------------------------------------------------
 void LLImagePreviewSculpted::rotate(F32 yaw_radians, F32 pitch_radians)
 {
     mCameraYaw = mCameraYaw + yaw_radians;
@@ -1255,9 +1203,7 @@ void LLImagePreviewSculpted::rotate(F32 yaw_radians, F32 pitch_radians)
     mCameraPitch = llclamp(mCameraPitch + pitch_radians, F_PI_BY_TWO * -0.8f, F_PI_BY_TWO * 0.8f);
 }
 
-//-----------------------------------------------------------------------------
 // zoom()
-//-----------------------------------------------------------------------------
 void LLImagePreviewSculpted::zoom(F32 zoom_amt)
 {
     mCameraZoom = llclamp(mCameraZoom + zoom_amt, 1.f, 10.f);

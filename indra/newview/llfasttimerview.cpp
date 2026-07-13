@@ -508,7 +508,6 @@ void saveChart(const std::string& label, const char* suffix, LLImageRaw* scratch
     }
 }
 
-//static
 void LLFastTimerView::exportCharts(const std::string& base, const std::string& target)
 {
     //allocate render target for drawing charts
@@ -654,9 +653,6 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
 
         LLVector3 last_p;
 
-        //====================================
-        // basic
-        //====================================
         if (vk)
         {
             LLVKLoader::beginOffscreenFrameVk();
@@ -719,9 +715,6 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
             saveChart(label, "time", scratch, buffer);
         }
 
-        //======================================
-        // calls
-        //======================================
         if (vk)
         {
             LLVKLoader::beginOffscreenFrameVk();
@@ -777,9 +770,6 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
             saveChart(label, "calls", scratch, buffer);
         }
 
-        //======================================
-        // execution
-        //======================================
         if (vk)
         {
             LLVKLoader::beginOffscreenFrameVk();
@@ -851,7 +841,6 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
     gGL.popMatrix();
 }
 
-//static
 LLSD LLFastTimerView::analyzePerformanceLogDefault(std::istream& is)
 {
     LLSD ret;
@@ -914,7 +903,6 @@ LLSD LLFastTimerView::analyzePerformanceLogDefault(std::istream& is)
 
 }
 
-//static
 void LLFastTimerView::doAnalysisDefault(std::string baseline, std::string target, std::string output)
 {
     // Open baseline and current target, exit if one is inexistent
@@ -1007,7 +995,6 @@ void LLFastTimerView::doAnalysisDefault(std::string baseline, std::string target
     os.close();
 }
 
-//static
 void LLFastTimerView::outputAllMetrics()
 {
     if (LLMetricPerformanceTesterBasic::hasMetricPerformanceTesters())
@@ -1021,7 +1008,6 @@ void LLFastTimerView::outputAllMetrics()
     }
 }
 
-//static
 void LLFastTimerView::doAnalysis(std::string baseline, std::string target, std::string output)
 {
     if(BlockTimer::sLog)

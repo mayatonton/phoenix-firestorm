@@ -49,8 +49,6 @@ extern bool gTeleportDisplay;
 
 bool gHeroProbeMirrorRender = false;
 
-// get the next highest power of two of v (or v if v is already a power of two)
-//defined in llvertexbuffer.cpp
 extern U32 nhpo2(U32 v);
 
 static void touch_default_probe(LLReflectionMap* probe)
@@ -76,7 +74,6 @@ LLHeroProbeManager::~LLHeroProbeManager()
     mNearestHero = nullptr;
 }
 
-// helper class to seed octree with probes
 void LLHeroProbeManager::update()
 {
     if (!LLPipeline::RenderMirrors || !LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
@@ -138,7 +135,6 @@ void LLHeroProbeManager::update()
 
     if (mHeroVOList.size() > 0)
     {
-        // Find our nearest hero candidate.
         float last_distance = 99999.f;
         float camera_center_distance = 99999.f;
         mNearestHero = nullptr;
@@ -187,7 +183,6 @@ void LLHeroProbeManager::update()
             }
         }
 
-        // Don't even try to do anything if we didn't find a single mirror present.
         if (!probe_present)
             return;
 
@@ -213,9 +208,6 @@ void LLHeroProbeManager::update()
 
             probe_pos.load3(point.mV);
 
-            // Detect visible faces of a cube based on camera direction and distance
-
-            // Define the cube faces
             static LLVector3 cubeFaces[6] = {
                 LLVector3(1, 0, 0),
                 LLVector3(-1, 0, 0),
@@ -338,7 +330,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
     LLGLDisable cull(GL_CULL_FACE);
     LLGLDisable blend(GL_BLEND);
 
-    // downsample to placeholder map
     {
         gGL.matrixMode(gGL.MM_MODELVIEW);
         gGL.pushMatrix();
@@ -354,13 +345,11 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         LLRenderTarget *screen_rt = &gPipeline.mHeroProbeRT.screen;
         LLRenderTarget *depth_rt  = &gPipeline.mHeroProbeRT.deferredScreen;
 
-        // perform a gaussian blur on the super sampled render before downsampling
         {
             gGaussianProgram.bind();
             const F32 gaussian_res_scale = 1.f / (mProbeResolution * 2);
             S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
 
-            // horizontal
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
             mRenderTarget.bindTarget();
@@ -368,7 +357,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
             gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
             mRenderTarget.flush();
 
-            // vertical
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
             screen_rt->bindTarget();
@@ -587,7 +575,6 @@ void LLHeroProbeManager::initReflectionMaps()
 
         static LLCachedControl<bool> render_hdr(gSavedSettings, "RenderHDREnabled", true);
 
-        // store mReflectionProbeCount+2 cube maps, final two cube maps are used for render target and radiance map generation source)
         mTexture->allocate(mProbeResolution, 3, mReflectionProbeCount + 2, true, render_hdr);
 
         if (mDefaultProbe.isNull())
@@ -598,8 +585,6 @@ void LLHeroProbeManager::initReflectionMaps()
         }
 
         llassert(mProbes[0] == mDefaultProbe);
-
-        // For hero probes, we treat this as the main mirror probe.
 
         mDefaultProbe->mCubeIndex = 0;
         mDefaultProbe->mCubeArray = mTexture;
@@ -671,7 +656,6 @@ bool LLHeroProbeManager::registerViewerObject(LLVOVolume* drawablep)
 
     if (std::find(mHeroVOList.begin(), mHeroVOList.end(), drawablep) == mHeroVOList.end())
     {
-        // Probe isn't in our list for consideration.  Add it.
         mHeroVOList.push_back(drawablep);
         return true;
     }

@@ -32,7 +32,6 @@
 #include "llfasttimer.h"
 #include "llsys.h"
 #include "llvertexbuffer.h"
-// #include "llrender.h"
 #include "llglheaders.h"
 #include "llrender.h"
 #include "llvector4a.h"
@@ -44,8 +43,6 @@
 #include "llrendertarget.h"
 #include <glm/gtc/type_ptr.hpp>
 
-//Next Highest Power Of Two
-//helper function, returns first number > v that is a power of 2, or v if v is already a power of 2
 U32 nhpo2(U32 v)
 {
     U32 r = 1;
@@ -55,8 +52,6 @@ U32 nhpo2(U32 v)
     return r;
 }
 
-//which power of 2 is i?
-//assumes i is a power of 2 > 0
 U32 wpo2(U32 i)
 {
     llassert(i > 0);
@@ -77,12 +72,9 @@ struct CompareMappedRegion
     }
 };
 
-//============================================================================
-// Pool of reusable VertexBuffer state
 
 #define ANALYZE_VBO_POOL 0
 
-// VBO Pool interface
 class LLVBOPool
 {
     public:
@@ -92,8 +84,6 @@ class LLVBOPool
     virtual U64 getVramBytesUsed() = 0;
 };
 
-// VBO Pool for Apple GPUs (as in M1/M2 etc, not Intel macs)
-// Effectively disables VBO pooling
 class LLAppleVBOPool final: public LLVBOPool
 {
 public:
@@ -115,8 +105,6 @@ public:
 
         { //allocate a new buffer
             LL_PROFILE_GPU_ZONE("vbo alloc");
-            // ON OS X, we don't allocate a VBO until the last possible moment
-            // in unmapBuffer
             data = (U8*) ll_aligned_malloc_16(size);
         }
     }
@@ -136,7 +124,6 @@ public:
     }
 };
 
-// VBO Pool for GPUs that benefit from VBO pooling
 class LLDefaultVBOPool final : public LLVBOPool
 {
 public:
@@ -170,13 +157,8 @@ public:
         return mAllocated + mReserved;
     }
 
-    // increase the size to some common value (e.g. a power of two) to increase hit rate
     void adjustSize(U32& size)
     {
-        // size = nhpo2(size);  // (193/303)/580 MB (distributed/allocated)/reserved in VBO Pool. Overhead: 66 percent. Hit rate: 77 percent
-
-        //(245/276)/385 MB (distributed/allocated)/reserved in VBO Pool. Overhead: 57 percent. Hit rate: 69 percent
-        //(187/209)/397 MB (distributed/allocated)/reserved in VBO Pool. Overhead: 112 percent. Hit rate: 76 percent
         U32 block_size = llmax(nhpo2(size) / 8, (U32) 16);
         size += block_size - (size % block_size);
     }
@@ -257,7 +239,6 @@ public:
 
     }
 
-    // clean periodically (clean gets called for every alloc/free)
     void clean()
     {
         mTouchCount++;
@@ -346,7 +327,6 @@ void LLVertexBufferData::drawWithMatrix()
     if (!mVB)
     {
         llassert(false);
-        // Not supposed to happen, check buffer generation
         return;
     }
 
@@ -386,7 +366,6 @@ void LLVertexBufferData::draw()
     if (!mVB)
     {
         llassert(false);
-        // Not supposed to happen, check buffer generation
         return;
     }
 
@@ -405,21 +384,16 @@ void LLVertexBufferData::draw()
     mVB->drawArrays(mMode, 0, mCount);
 }
 
-//============================================================================
 
-//static
 U64 LLVertexBuffer::getBytesAllocated()
 {
     return sVBOPool ? sVBOPool->getVramBytesUsed() : 0;
 }
 
-//============================================================================
 //
-//static
 U32 LLVertexBuffer::sVertexCount = 0;
 
 
-//NOTE: each component must be AT LEAST 4 bytes in size to avoid a performance penalty on AMD hardware
 const U32 LLVertexBuffer::sTypeSize[LLVertexBuffer::TYPE_MAX] =
 {
     sizeof(LLVector4), // TYPE_VERTEX,
@@ -469,7 +443,6 @@ const U32 LLVertexBuffer::sGLMode[LLRender::NUM_MODES] =
     GL_LINE_LOOP,
 };
 
-//static
 void LLVertexBuffer::drawArrays(U32 mode, const std::vector<LLVector3>& pos)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
@@ -482,7 +455,6 @@ void LLVertexBuffer::drawArrays(U32 mode, const std::vector<LLVector3>& pos)
     gGL.flush();
 }
 
-//static
 void LLVertexBuffer::drawElements(U32 mode, const LLVector4a* pos, const LLVector2* tc, U32 num_indices, const U16* indicesp)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
@@ -897,7 +869,6 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
     }
 }
 
-//static
 void LLVertexBuffer::initClass(LLWindow* window)
 {
     llassert(sVBOPool == nullptr);
@@ -914,12 +885,10 @@ void LLVertexBuffer::initClass(LLWindow* window)
     }
 }
 
-//static
 void LLVertexBuffer::unbind()
 {
 }
 
-//static
 void LLVertexBuffer::cleanupClass()
 {
     unbind();
@@ -928,7 +897,6 @@ void LLVertexBuffer::cleanupClass()
     sVBOPool = nullptr;
 }
 
-//----------------------------------------------------------------------------
 
 LLVertexBuffer::LLVertexBuffer(U32 typemask)
 :   LLRefCount(),
@@ -945,7 +913,6 @@ LLVertexBuffer::LLVertexBuffer(U32 typemask)
 // NOTE: must not be LLPointer<LLVertexBuffer> to avoid breaking non-ref-counted LLVertexBuffer instances
 static std::vector<LLVertexBuffer*> sMappedBuffers;
 
-//static
 void LLVertexBuffer::flushBuffers()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
@@ -959,7 +926,6 @@ void LLVertexBuffer::flushBuffers()
     sMappedBuffers.resize(0);
 }
 
-//static
 U32 LLVertexBuffer::calcOffsets(const U32& typemask, U32* offsets, U32 num_vertices)
 {
     U32 offset = 0;
@@ -982,7 +948,6 @@ U32 LLVertexBuffer::calcOffsets(const U32& typemask, U32* offsets, U32 num_verti
     return offset;
 }
 
-//static
 U32 LLVertexBuffer::calcVertexSize(const U32& typemask)
 {
     U32 size = 0;
@@ -999,7 +964,6 @@ U32 LLVertexBuffer::calcVertexSize(const U32& typemask)
 }
 
 // protected, use unref()
-//virtual
 LLVertexBuffer::~LLVertexBuffer()
 {
     if (mMapped)
@@ -1021,7 +985,6 @@ LLVertexBuffer::~LLVertexBuffer()
     }
 };
 
-//----------------------------------------------------------------------------
 
 void LLVertexBuffer::genBuffer(U32 size)
 {
@@ -1207,7 +1170,6 @@ bool LLVertexBuffer::allocateBuffer(U32 nverts, U32 nindices)
     return success;
 }
 
-//----------------------------------------------------------------------------
 
 // if no gap between region and given range exists, expand region to cover given range and return true
 // otherwise return false
@@ -1441,7 +1403,6 @@ void LLVertexBuffer::_unmapBuffer()
     }
 }
 
-//----------------------------------------------------------------------------
 
 template <class T,LLVertexBuffer::AttributeType type> struct VertexBufferStrider
 {
@@ -1564,7 +1525,6 @@ bool LLVertexBuffer::getClothWeightStrider(LLStrider<LLVector4a>& strider, U32 i
 }
 // </FS:Ansariel>
 
-//----------------------------------------------------------------------------
 
 
 // Set for rendering

@@ -25,8 +25,6 @@
  */
 
 
-// TODO: create 2 classes for images w/ and w/o discard levels?
-
 #include "linden_common.h"
 
 #include "llimagegl.h"
@@ -52,11 +50,8 @@ extern LL_COMMON_API bool on_main_thread();
 #define checkActiveThread()
 #endif
 
-//----------------------------------------------------------------------------
 const F32 MIN_TEXTURE_LIFETIME = 10.f;
 
-//which power of 2 is i?
-//assumes i is a power of 2 > 0
 U32 wpo2(U32 i);
 
 
@@ -281,7 +276,6 @@ static U32 pixTypeToSourceComponentBytes(U32 pixtype)
     }
 }
 
-// static
 U64 LLImageGL::getTextureBytesAllocated()
 {
     return getVkTextureBytesAllocated();
@@ -321,8 +315,6 @@ U64 LLImageGL::getVkTextureBytesAllocated()
     return total;
 }
 
-//statics
-
 U32 LLImageGL::sUniqueCount             = 0;
 U32 LLImageGL::sBindCount               = 0;
 S32 LLImageGL::sCount                   = 0;
@@ -338,25 +330,12 @@ std::unordered_set<LLImageGL*> LLImageGL::sImageList;
 bool LLImageGLThread::sEnabledTextures = false;
 bool LLImageGLThread::sEnabledMedia = false;
 
-//****************************************************************************************************
-//The below for texture auditing use only
-//****************************************************************************************************
-//-----------------------
-//debug use
 S32 LLImageGL::sCurTexSizeBar = -1 ;
 S32 LLImageGL::sCurTexPickSize = -1 ;
 S32 LLImageGL::sMaxCategories = 1 ;
 
-//optimization for when we don't need to calculate mIsMask
 bool LLImageGL::sSkipAnalyzeAlpha;
 
-
-//------------------------
-//****************************************************************************************************
-//End for texture auditing use only
-//****************************************************************************************************
-
-//----------------------------------------------------------------------------
 bool is_little_endian()
 {
     S32 a = 0x12345678;
@@ -365,7 +344,6 @@ bool is_little_endian()
     return (*c == 0x78) ;
 }
 
-//static
 void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyze_alpha /* = false */, bool thread_texture_loads /* = false */, bool thread_media_updates /* = false */)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -384,7 +362,6 @@ void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyz
     }
 }
 
-//static
 void LLImageGL::cleanupClass()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -392,7 +369,6 @@ void LLImageGL::cleanupClass()
 }
 
 
-//static
 S32 LLImageGL::dataFormatBits(S32 dataformat)
 {
     switch (dataformat)
@@ -449,7 +425,6 @@ S32 LLImageGL::dataFormatBits(S32 dataformat)
     }
 }
 
-//static
 S64 LLImageGL::dataFormatBytes(S32 dataformat, S32 width, S32 height)
 {
     switch (dataformat)
@@ -471,7 +446,6 @@ S64 LLImageGL::dataFormatBytes(S32 dataformat, S32 width, S32 height)
     return aligned;
 }
 
-//static
 S32 LLImageGL::dataFormatComponents(S32 dataformat)
 {
     switch (dataformat)
@@ -499,18 +473,16 @@ S32 LLImageGL::dataFormatComponents(S32 dataformat)
     }
 }
 
-//----------------------------------------------------------------------------
 
-// static
+
 void LLImageGL::updateStats(F32 current_time)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     sLastFrameTime = current_time;
 }
 
-//----------------------------------------------------------------------------
 
-//static
+
 void LLImageGL::destroyGL()
 {
     for (S32 stage = 0; stage < gGLManager.mNumTextureImageUnits; stage++)
@@ -519,7 +491,6 @@ void LLImageGL::destroyGL()
     }
 }
 
-//static
 void LLImageGL::dirtyTexOptions()
 {
     for (auto& glimage : sImageList)
@@ -528,31 +499,30 @@ void LLImageGL::dirtyTexOptions()
     }
 
 }
-//----------------------------------------------------------------------------
 
-//for server side use only.
-//static
+
+
 bool LLImageGL::create(LLPointer<LLImageGL>& dest, bool usemipmaps)
 {
     dest = new LLImageGL(usemipmaps);
     return true;
 }
 
-//for server side use only.
+
 bool LLImageGL::create(LLPointer<LLImageGL>& dest, U32 width, U32 height, U8 components, bool usemipmaps)
 {
     dest = new LLImageGL(width, height, components, usemipmaps);
     return true;
 }
 
-//for server side use only.
+
 bool LLImageGL::create(LLPointer<LLImageGL>& dest, const LLImageRaw* imageraw, bool usemipmaps)
 {
     dest = new LLImageGL(imageraw, usemipmaps);
     return true;
 }
 
-//----------------------------------------------------------------------------
+
 
 LLImageGL::LLImageGL(bool usemipmaps/* = true*/, bool allow_compression/* = true*/)
 :   mSaveData(0), mExternalTexture(false)
@@ -620,10 +590,6 @@ void LLImageGL::init(bool usemipmaps, bool allow_compression)
     mActiveThread = LLThread::currentID();
 #endif
 
-    // keep these members in the same order as declared in llimagehl.h
-    // so that it is obvious by visual inspection if we forgot to
-    // init a field.
-
     mTextureMemory = S64Bytes(0);
     mLastBindTime = 0.f;
 
@@ -670,7 +636,6 @@ void LLImageGL::init(bool usemipmaps, bool allow_compression)
 
     mCategory = -1;
 
-    // Sometimes we have to post work for the main thread.
     mMainQueue = LL::WorkQueue::getInstance("mainloop");
 }
 
@@ -685,10 +650,8 @@ void LLImageGL::cleanup()
     mSaveData = NULL; // deletes data
 }
 
-//----------------------------------------------------------------------------
 
-//this function is used to check the size of a texture image.
-//so dim should be a positive number
+
 static bool check_power_of_two(S32 dim)
 {
     if(dim < 0)
@@ -702,7 +665,6 @@ static bool check_power_of_two(S32 dim)
     return !(dim & (dim - 1)) ;
 }
 
-//static
 bool LLImageGL::checkSize(S32 width, S32 height)
 {
     return check_power_of_two(width) && check_power_of_two(height);
@@ -712,7 +674,6 @@ bool LLImageGL::setSize(S32 width, S32 height, S32 ncomponents, S32 discard_leve
 {
     if (width != mWidth || height != mHeight || ncomponents != mComponents)
     {
-        // Check if dimensions are a power of two!
         if (!checkSize(width, height))
         {
             LL_WARNS() << llformat("Texture has non power of two dimension: %dx%d",width,height) << LL_ENDL;
@@ -751,9 +712,8 @@ bool LLImageGL::setSize(S32 width, S32 height, S32 ncomponents, S32 discard_leve
     return true;
 }
 
-//----------------------------------------------------------------------------
 
-// virtual
+
 void LLImageGL::dump()
 {
     LL_INFOS() << "mMaxDiscardLevel " << S32(mMaxDiscardLevel)
@@ -778,7 +738,7 @@ void LLImageGL::dump()
             << LL_ENDL;
 }
 
-//----------------------------------------------------------------------------
+
 void LLImageGL::forceUpdateBindStats(void) const
 {
     mLastBindTime = sLastFrameTime;
@@ -794,7 +754,6 @@ bool LLImageGL::updateBindStats() const
         sBindCount++;
         if (mLastBindTime != sLastFrameTime)
         {
-            // we haven't accounted for this texture yet this frame
             sUniqueCount++;
             mLastBindTime = sLastFrameTime;
 
@@ -811,8 +770,6 @@ F32 LLImageGL::getTimePassedSinceLastBound()
 
 void LLImageGL::setExplicitFormat( LLGLint internal_format, LLGLenum primary_format, LLGLenum type_format, bool swap_bytes )
 {
-    // Note: must be called before createTexture()
-    // Note: it's up to the caller to ensure that the format matches the number of components.
     mHasExplicitFormat = true;
     mFormatInternal = internal_format;
     mFormatPrimary = primary_format;
@@ -825,7 +782,7 @@ void LLImageGL::setExplicitFormat( LLGLint internal_format, LLGLenum primary_for
     calcAlphaChannelOffsetAndStride() ;
 }
 
-//----------------------------------------------------------------------------
+
 
 void LLImageGL::setImage(const LLImageRaw* imageraw)
 {
@@ -845,7 +802,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
 
     if (mUseMipMaps)
     {
-        //set has mip maps to true before binding image so tex parameters get set properly
         gGL.getTexUnit(0)->unbind(mBindTarget);
 
         mHasMipMaps = true;
@@ -867,8 +823,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
     {
         if (data_hasmips)
         {
-            // NOTE: data_in points to largest image; smaller images
-            // are stored BEFORE the largest image
             for (S32 d=mCurrentDiscardLevel; d<=mMaxDiscardLevel; d++)
             {
 
@@ -926,8 +880,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
             }
             else
             {
-                // Create mips by hand
-                // ~4x faster than gluBuild2DMipmaps
                 S32 width = getWidth(mCurrentDiscardLevel);
                 S32 height = getHeight(mCurrentDiscardLevel);
                 S32 nummips = mMaxDiscardLevel - mCurrentDiscardLevel + 1;
@@ -1494,7 +1446,6 @@ bool LLImageGL::setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S3
     return setSubImage(imageraw->getData(), imageraw->getWidth(), imageraw->getHeight(), x_pos, y_pos, width, height, force_fast_update);
 }
 
-// Copy sub image from frame buffer
 bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_pos, S32 width, S32 height)
 {
     mGLTextureCreated = true;
@@ -1611,14 +1562,12 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, b
     }
     discard_level = llmin(discard_level, MAX_DISCARD_LEVEL);
 
-    // Actual image width/height = raw image width/height * 2^discard_level
     S32 raw_w = imageraw->getWidth() ;
     S32 raw_h = imageraw->getHeight() ;
 
     S32 w = raw_w << discard_level;
     S32 h = raw_h << discard_level;
 
-    // setSize may call destroyGLTexture if the size does not match
     if (!setSize(w, h, imageraw->getComponents(), discard_level))
     {
         LL_WARNS() << "Trying to create a texture with incorrect dimensions!" << LL_ENDL;
@@ -1640,13 +1589,11 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, b
         switch (mComponents)
         {
         case 1:
-            // Use luminance alpha (for fonts)
             mFormatInternal = GL_LUMINANCE8;
             mFormatPrimary = GL_LUMINANCE;
             mFormatType = GL_UNSIGNED_BYTE;
             break;
         case 2:
-            // Use luminance alpha (for fonts)
             mFormatInternal = GL_LUMINANCE8_ALPHA8;
             mFormatPrimary = GL_LUMINANCE_ALPHA;
             mFormatType = GL_UNSIGNED_BYTE;
@@ -1668,7 +1615,7 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, b
         calcAlphaChannelOffsetAndStride() ;
     }
 
-    if(!to_create) //not create a gl texture
+    if(!to_create)
     {
         destroyGLTexture();
         mCurrentDiscardLevel = discard_level;
@@ -1683,7 +1630,6 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, b
 }
 
 bool LLImageGL::createGLTexture(S32 discard_level, const U8* data_in, bool data_hasmips, bool defer_copy)
-// Call with void data, vmem is allocated but unitialized
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     LL_PROFILE_GPU_ZONE("createGLTexture");
@@ -1714,7 +1660,6 @@ bool LLImageGL::createGLTexture(S32 discard_level, const U8* data_in, bool data_
         && mVkImage != VK_NULL_HANDLE && discard_level == mCurrentDiscardLevel)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("cglt - early setImage");
-        // This will only be true if the size has not changed
         return setImage(data_in, data_hasmips);
     }
 
@@ -1733,17 +1678,14 @@ bool LLImageGL::createGLTexture(S32 discard_level, const U8* data_in, bool data_
         }
     }
 
-    // Set texture options to our defaults.
     gGL.getTexUnit(0)->setHasMipMaps(mHasMipMaps);
     gGL.getTexUnit(0)->setTextureAddressMode(mAddressMode);
     gGL.getTexUnit(0)->setTextureFilteringOption(mFilterOption);
 
-    // things will break if we don't unbind after creation
     gGL.getTexUnit(0)->unbind(mBindTarget);
 
     mTextureMemory = (S64Bytes)getMipBytes(mCurrentDiscardLevel);
 
-    // mark this as bound at this point, so we don't throw it out immediately
     mLastBindTime = sLastFrameTime;
 
     checkActiveThread();
@@ -1893,12 +1835,11 @@ void LLImageGL::destroyGLTexture()
         {
             mTextureMemory = (S64Bytes)0;
         }
-        mCurrentDiscardLevel = -1 ; //invalidate mCurrentDiscardLevel.
+        mCurrentDiscardLevel = -1 ;
         mGLTextureCreated = false ;
     }
 }
 
-//force to invalidate the gl texture, most likely a sculpty texture
 void LLImageGL::forceToInvalidateGLTexture()
 {
     checkActiveThread();
@@ -1908,11 +1849,11 @@ void LLImageGL::forceToInvalidateGLTexture()
     }
     else
     {
-        mCurrentDiscardLevel = -1 ; //invalidate mCurrentDiscardLevel.
+        mCurrentDiscardLevel = -1 ;
     }
 }
 
-//----------------------------------------------------------------------------
+
 
 void LLImageGL::setAddressMode(LLTexUnit::eTextureAddressMode mode)
 {
@@ -2139,11 +2080,6 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
     U32 sample[16];
     memset(sample, 0, sizeof(U32)*16);
 
-    // generate histogram of quantized alpha.
-    // also add-in the histogram of a 2x2 box-sampled version.  The idea is
-    // this will mid-skew the data (and thus increase the chances of not
-    // being used as a mask) from high-frequency alpha maps which
-    // suffer the worst from aliasing when used as alpha masks.
     if (w >= 2 && h >= 2)
     {
         llassert(w % 2 == 0);
@@ -2191,13 +2127,6 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
         }
     }
 
-    // if more than 1/16th of alpha samples are mid-range, this
-    // shouldn't be treated as a 1-bit mask
-
-    // also, if all of the alpha samples are clumped on one half
-    // of the range (but not at an absolute extreme), then consider
-    // this to be an intentional effect and don't treat as a mask.
-
     U32 midrangetotal = 0;
     for (U32 i = 2; i < 13; i++)
     {
@@ -2226,7 +2155,7 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
     }
 }
 
-//----------------------------------------------------------------------------
+
 U32 LLImageGL::createPickMask(S32 pWidth, S32 pHeight)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -2245,7 +2174,7 @@ U32 LLImageGL::createPickMask(S32 pWidth, S32 pHeight)
     return size;
 }
 
-//----------------------------------------------------------------------------
+
 void LLImageGL::freePickMask()
 {
     if (mPickMask != NULL)
@@ -2259,7 +2188,6 @@ void LLImageGL::freePickMask()
 bool LLImageGL::isCompressed()
 {
     llassert(mFormatPrimary != 0);
-    // *NOTE: Not all compressed formats are included here.
     bool is_compressed = false;
     switch (mFormatPrimary)
     {
@@ -2277,7 +2205,7 @@ bool LLImageGL::isCompressed()
     return is_compressed;
 }
 
-//----------------------------------------------------------------------------
+
 void LLImageGL::updatePickMask(S32 width, S32 height, const U8* data_in)
 {
     if(!mNeedsAlphaAndPickMask)
@@ -2289,7 +2217,6 @@ void LLImageGL::updatePickMask(S32 width, S32 height, const U8* data_in)
         ((mFormatPrimary != GL_RGBA)
       && (mFormatPrimary != GL_SRGB_ALPHA)))
     {
-        //cannot generate a pick mask for this texture
         freePickMask();
         return;
     }
@@ -2323,7 +2250,6 @@ void LLImageGL::updatePickMask(S32 width, S32 height, const U8* data_in)
     }
 }
 
-//bool LLImageGL::getMask(const LLVector2 &tc)
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
 bool LLImageGL::getMask(const LLVector2 &tc) const
 // [/RLVa:KB]
@@ -2342,8 +2268,6 @@ bool LLImageGL::getMask(const LLVector2 &tc) const
         {
             LL_WARNS_ONCE("render") << "Ugh, non-finite u/v in mask pick" << LL_ENDL;
             u = v = 0.f;
-            // removing assert per EXT-4388
-            // llassert(false);
         }
 
         if (LL_UNLIKELY(u < 0.f || u > 1.f ||
@@ -2351,8 +2275,6 @@ bool LLImageGL::getMask(const LLVector2 &tc) const
         {
             LL_WARNS_ONCE("render") << "Ugh, u/v out of range in image mask pick" << LL_ENDL;
             u = v = 0.f;
-            // removing assert per EXT-4388
-            // llassert(false);
         }
 
         S32 x = llfloor(u * mPickMaskWidth);
@@ -2459,7 +2381,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
 }
 
 
-//----------------------------------------------------------------------------
+
 #if LL_IMAGEGL_THREAD_CHECK
 void LLImageGL::checkActiveThread()
 {
@@ -2467,7 +2389,7 @@ void LLImageGL::checkActiveThread()
 }
 #endif
 
-//----------------------------------------------------------------------------
+
 
 
 LLImageGLThread::LLImageGLThread(LLWindow* window)

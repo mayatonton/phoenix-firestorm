@@ -42,13 +42,11 @@
 
 thread_local LLRender gGL;
 
-// Handy copies of last good GL matrices
 F32 gGLModelView[16];
 F32 gGLLastModelView[16];
 F32 gGLLastProjection[16];
 F32 gGLProjection[16];
 
-// transform from last frame's camera space to this frame's camera space (and inverse)
 glm::mat4 gGLDeltaModelView;
 glm::mat4 gGLInverseDeltaModelView;
 
@@ -62,7 +60,6 @@ void llSetGLViewport(S32 x, S32 y, S32 w, S32 h)
 
 U32 LLRender::sUICalls = 0;
 U32 LLRender::sUIVerts = 0;
-bool LLRender::sGLCoreProfile = false;
 bool LLRender::sNsightDebugSupport = false;
 LLVector2 LLRender::sUIGLScaleFactor = LLVector2(1.f, 1.f);
 
@@ -75,33 +72,7 @@ struct LLVBCache
 static std::unordered_map<U64, LLVBCache> sVBCache;
 static thread_local std::list<LLVertexBufferData> *sBufferDataList = nullptr;
 
-static const GLenum sGLTextureType[] =
-{
-    GL_TEXTURE_2D,
-    GL_TEXTURE_RECTANGLE,
-    GL_TEXTURE_CUBE_MAP,
-    GL_TEXTURE_CUBE_MAP_ARRAY,
-    GL_TEXTURE_2D_MULTISAMPLE,
-    GL_TEXTURE_3D
-};
-
 const U32 immediate_mask = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_COLOR | LLVertexBuffer::MAP_TEXCOORD0;
-
-static const GLenum sGLBlendFactor[] =
-{
-    GL_ONE,
-    GL_ZERO,
-    GL_DST_COLOR,
-    GL_SRC_COLOR,
-    GL_ONE_MINUS_DST_COLOR,
-    GL_ONE_MINUS_SRC_COLOR,
-    GL_DST_ALPHA,
-    GL_SRC_ALPHA,
-    GL_ONE_MINUS_DST_ALPHA,
-    GL_ONE_MINUS_SRC_ALPHA,
-
-    GL_ZERO // 'BF_UNDEF'
-};
 
 LLTexUnit::LLTexUnit(S32 index)
     : mCurrTexType(TT_NONE),
@@ -111,17 +82,8 @@ LLTexUnit::LLTexUnit(S32 index)
     llassert_always(index < (S32)LL_NUM_TEXTURE_LAYERS);
 }
 
-//static
-U32 LLTexUnit::getInternalType(eTextureType type)
-{
-    return sGLTextureType[type];
-}
-
 void LLTexUnit::refreshState(void)
 {
-    // We set dirty to true so that the tex unit knows to ignore caching
-    // and we reset the cached tex unit state
-
     gGL.flush();
 }
 
@@ -145,7 +107,7 @@ void LLTexUnit::enable(eTextureType type)
         activate();
         if (mCurrTexType != TT_NONE && !gGL.mDirty)
         {
-            disable(); // Force a disable of a previous texture type if it's enabled.
+            disable();
         }
         mCurrTexType = type;
 
@@ -186,7 +148,6 @@ void LLTexUnit::bindFast(LLTexture* texture)
     if (!gl_tex->hasVkImage())
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("MISSING TEXTURE");
-        //if deleted, will re-generate it immediately
         texture->forceImmediateUpdate();
         gl_tex->forceUpdateBindStats();
         texture->bindDefaultImage(mIndex);
@@ -246,7 +207,6 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
             }
             else
             {
-                //if deleted, will re-generate it immediately
                 texture->forceImmediateUpdate() ;
 
                 gl_tex->forceUpdateBindStats() ;
@@ -267,7 +227,7 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
         }
     }
     else
-    { // mIndex < 0
+    {
         return false;
     }
 
@@ -490,12 +450,9 @@ void LLTexUnit::unbind(eTextureType type)
 
     if (mIndex < 0) return;
 
-    //always flush and activate for consistency
-    //   some code paths assume unbind always flushes and sets the active texture
     gGL.flush();
     activate();
 
-    // Disabled caching of binding state.
     if (mCurrTexType == type)
     {
         mCurrImageGL = nullptr;
@@ -510,7 +467,6 @@ void LLTexUnit::unbindFast(eTextureType type)
 {
     activate();
 
-    // Disabled caching of binding state.
     if (mCurrTexType == type)
     {
         mCurrImageGL = nullptr;
@@ -549,82 +505,6 @@ void LLTexUnit::setTextureFilteringOption(LLTexUnit::eTextureFilterOptions optio
 void LLTexUnit::setTextureFilteringOptionFast(LLTexUnit::eTextureFilterOptions option, eTextureType tex_type)
 {
     mCurrFilterOption = option;
-}
-
-GLint LLTexUnit::getTextureSource(eTextureBlendSrc src)
-{
-    switch(src)
-    {
-        // All four cases should return the same value.
-        case TBS_PREV_COLOR:
-        case TBS_PREV_ALPHA:
-        case TBS_ONE_MINUS_PREV_COLOR:
-        case TBS_ONE_MINUS_PREV_ALPHA:
-            return GL_PREVIOUS;
-
-        // All four cases should return the same value.
-        case TBS_TEX_COLOR:
-        case TBS_TEX_ALPHA:
-        case TBS_ONE_MINUS_TEX_COLOR:
-        case TBS_ONE_MINUS_TEX_ALPHA:
-            return GL_TEXTURE;
-
-        // All four cases should return the same value.
-        case TBS_VERT_COLOR:
-        case TBS_VERT_ALPHA:
-        case TBS_ONE_MINUS_VERT_COLOR:
-        case TBS_ONE_MINUS_VERT_ALPHA:
-            return GL_PRIMARY_COLOR;
-
-        // All four cases should return the same value.
-        case TBS_CONST_COLOR:
-        case TBS_CONST_ALPHA:
-        case TBS_ONE_MINUS_CONST_COLOR:
-        case TBS_ONE_MINUS_CONST_ALPHA:
-            return GL_CONSTANT;
-
-        default:
-            LL_WARNS() << "Unknown eTextureBlendSrc: " << src << ".  Using Vertex Color instead." << LL_ENDL;
-            return GL_PRIMARY_COLOR;
-    }
-}
-
-GLint LLTexUnit::getTextureSourceType(eTextureBlendSrc src, bool isAlpha)
-{
-    switch(src)
-    {
-        // All four cases should return the same value.
-        case TBS_PREV_COLOR:
-        case TBS_TEX_COLOR:
-        case TBS_VERT_COLOR:
-        case TBS_CONST_COLOR:
-            return (isAlpha) ? GL_SRC_ALPHA: GL_SRC_COLOR;
-
-        // All four cases should return the same value.
-        case TBS_PREV_ALPHA:
-        case TBS_TEX_ALPHA:
-        case TBS_VERT_ALPHA:
-        case TBS_CONST_ALPHA:
-            return GL_SRC_ALPHA;
-
-        // All four cases should return the same value.
-        case TBS_ONE_MINUS_PREV_COLOR:
-        case TBS_ONE_MINUS_TEX_COLOR:
-        case TBS_ONE_MINUS_VERT_COLOR:
-        case TBS_ONE_MINUS_CONST_COLOR:
-            return (isAlpha) ? GL_ONE_MINUS_SRC_ALPHA : GL_ONE_MINUS_SRC_COLOR;
-
-        // All four cases should return the same value.
-        case TBS_ONE_MINUS_PREV_ALPHA:
-        case TBS_ONE_MINUS_TEX_ALPHA:
-        case TBS_ONE_MINUS_VERT_ALPHA:
-        case TBS_ONE_MINUS_CONST_ALPHA:
-            return GL_ONE_MINUS_SRC_ALPHA;
-
-        default:
-            LL_WARNS() << "Unknown eTextureBlendSrc: " << src << ".  Using Source Color or Alpha instead." << LL_ENDL;
-            return (isAlpha) ? GL_SRC_ALPHA: GL_SRC_COLOR;
-    }
 }
 
 LLLightState::LLLightState(S32 index)
@@ -725,10 +605,8 @@ void LLLightState::setSpecular(const LLColor4& specular)
 
 void LLLightState::setPosition(const LLVector4& position)
 {
-    //always set position because modelview matrix may have changed
     ++gGL.mLightHash;
     mPosition = position;
-    //transform position by current modelview matrix
     glm::vec4 pos(position);
     pos = gGL.getModelviewMatrix() * pos;
     mPosition.set(glm::value_ptr(pos));
@@ -781,10 +659,7 @@ void LLLightState::setSpotCutoff(const F32& cutoff)
 
 void LLLightState::setSpotDirection(const LLVector3& direction)
 {
-    //always set direction because modelview matrix may have changed
     ++gGL.mLightHash;
-
-    //transform direction by current modelview matrix
     glm::vec3 dir(direction);
     const glm::mat3 mat(gGL.getModelviewMatrix());
     dir = mat * dir;
@@ -878,7 +753,6 @@ void LLRender::initVertexBuffer()
     llassert_always(mBuffer.isNull()) ;
     mBuffer = new LLVertexBuffer(immediate_mask);
     // <FS:Ansariel> Warn in case of allocation failure
-    //mBuffer->allocateBuffer(4096, 0);
     if (!mBuffer->allocateBuffer(4096, 0))
     {
         // If this doesn't work, we're knee-deep in trouble!
@@ -1175,7 +1049,7 @@ void LLRender::syncMatrices()
         }
 
         if (shader->mFeatures.hasLighting || shader->mFeatures.calculatesLighting || shader->mFeatures.calculatesAtmospherics)
-        { //also sync light state
+        {
             syncLightState();
         }
     }
@@ -1277,13 +1151,10 @@ void LLRender::matrixMode(eMatrixMode mode)
     if (mode == MM_TEXTURE)
     {
         U32 tex_index = gGL.getCurrentTexUnitIndex();
-        // the shaders don't actually reference anything beyond texture_matrix0/1 outside of terrain rendering
         llassert(tex_index <= 3);
         mode = eMatrixMode(MM_TEXTURE0 + tex_index);
         if (mode > MM_TEXTURE3)
         {
-            // getCurrentTexUnitIndex() can go as high as 32 (LL_NUM_TEXTURE_LAYERS)
-            // Large value will result in a crash at mMatrix
             LL_WARNS_ONCE() << "Attempted to assign matrix mode out of bounds: " << mode << LL_ENDL;
             mode = MM_TEXTURE0;
         }
@@ -1295,7 +1166,7 @@ void LLRender::matrixMode(eMatrixMode mode)
 LLRender::eMatrixMode LLRender::getMatrixMode()
 {
     if (mMatrixMode >= MM_TEXTURE0 && mMatrixMode <= MM_TEXTURE3)
-    { //always return MM_TEXTURE if current matrix mode points at any texture matrix
+    {
         return MM_TEXTURE;
     }
 
@@ -1668,7 +1539,6 @@ void LLRender::end()
     if (mCount == 0)
     {
         return;
-        //IMM_ERRS << "GL begin and end called with no vertices specified." << LL_ENDL;
     }
 
     if ((mMode != LLRender::LINES &&
@@ -1693,7 +1563,6 @@ void LLRender::flush()
             sUIVerts += mCount;
         }
 
-        //store mCount in a local variable to avoid re-entrance (drawArrays may call flush)
         U32 count = mCount;
 
         if (mMode == LLRender::TRIANGLES)
@@ -1749,7 +1618,6 @@ void LLRender::flush()
         }
         else
         {
-            // mBuffer is present in main thread and not present in an image thread
             LL_ERRS() << "A flush call from outside main rendering thread" << LL_ENDL;
         }
 
@@ -1781,21 +1649,11 @@ LLVertexBuffer* LLRender::bufferfromCache(U32 attribute_mask, U32 count)
 
     U64 vhash = hash.digest();
 
-    // check the VB cache before making a new vertex buffer
-    // This is a giant hack to deal with (mostly) our terrible UI rendering code
-    // that was built on top of OpenGL immediate mode.  Huge performance wins
-    // can be had by not uploading geometry to VRAM unless absolutely necessary.
-    // Most of our usage of the "immediate mode" style draw calls is actually
-    // sending the same geometry over and over again.
-    // To leverage this, we maintain a running hash of the vertex stream being
-    // built up before a flush, and then check that hash against a VB
-    // cache just before creating a vertex buffer in VRAM
     std::unordered_map<U64, LLVBCache>::iterator cache = sVBCache.find(vhash);
 
     if (cache != sVBCache.end())
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb cache hit");
-        // cache hit, just use the cached buffer
         vb = cache->second.vb;
         cache->second.touched = std::chrono::steady_clock::now();
     }
@@ -1815,7 +1673,6 @@ LLVertexBuffer* LLRender::bufferfromCache(U32 attribute_mask, U32 count)
             auto now = std::chrono::steady_clock::now();
 
             using namespace std::chrono_literals;
-            // every 1024 misses, clean the cache of any VBs that haven't been touched in the last second
             for (std::unordered_map<U64, LLVBCache>::iterator iter = sVBCache.begin(); iter != sVBCache.end(); )
             {
                 if (now - iter->second.touched > 1s)
@@ -1876,9 +1733,8 @@ void LLRender::resetStriders(S32 count)
 
 void LLRender::vertex3f(const GLfloat& x, const GLfloat& y, const GLfloat& z)
 {
-    //the range of mVerticesp, mColorsp and mTexcoordsp is [0, 4095]
     if (mCount > 2048)
-    { //break when buffer gets reasonably full to keep GL command buffers happy and avoid overflow below
+    {
         switch (mMode)
         {
             case LLRender::POINTS: flush(); break;
@@ -1889,7 +1745,6 @@ void LLRender::vertex3f(const GLfloat& x, const GLfloat& y, const GLfloat& z)
 
     if (mCount > 4094)
     {
-    //  LL_WARNS() << "GL immediate mode overflow.  Some geometry not drawn." << LL_ENDL;
         return;
     }
 
@@ -1954,7 +1809,6 @@ void LLRender::vertexBatchPreTransformed(const LLVector4a* verts, S32 vert_count
 {
     if (mCount + vert_count > 4094)
     {
-        //  LL_WARNS() << "GL immediate mode overflow.  Some geometry not drawn." << LL_ENDL;
         return;
     }
 
@@ -1967,7 +1821,7 @@ void LLRender::vertexBatchPreTransformed(const LLVector4a* verts, S32 vert_count
         mColorsp[mCount] = mColorsp[mCount-1];
     }
 
-    if( mCount > 0 ) // ND: Guard against crashes if mCount is zero, yes it can happen
+    if( mCount > 0 )
         mVerticesp[mCount] = mVerticesp[mCount-1];
 }
 
@@ -1975,7 +1829,6 @@ void LLRender::vertexBatchPreTransformed(const LLVector4a* verts, const LLVector
 {
     if (mCount + vert_count > 4094)
     {
-        //  LL_WARNS() << "GL immediate mode overflow.  Some geometry not drawn." << LL_ENDL;
         return;
     }
 
@@ -1999,7 +1852,6 @@ void LLRender::vertexBatchPreTransformed(const LLVector4a* verts, const LLVector
 {
     if (mCount + vert_count > 4094)
     {
-        //  LL_WARNS() << "GL immediate mode overflow.  Some geometry not drawn." << LL_ENDL;
         return;
     }
 
@@ -2062,7 +1914,7 @@ void LLRender::color4ub(const GLubyte& r, const GLubyte& g, const GLubyte& b, co
         mColorsp[mCount] = LLColor4U(r,g,b,a);
     }
     else
-    { //not using shaders or shader reads color from a uniform
+    {
         diffuseColor4ub(r,g,b,a);
     }
 }
@@ -2236,42 +2088,10 @@ void set_last_projection(const glm::mat4& mat)
 
 glm::vec3 mul_mat4_vec3(const glm::mat4& mat, const glm::vec3& vec)
 {
-#if 1 // SIMD path results in strange crashes. Fall back to scalar for now.
     const float w = vec[0] * mat[0][3] + vec[1] * mat[1][3] + vec[2] * mat[2][3] + mat[3][3];
     return glm::vec3(
        (vec[0] * mat[0][0] + vec[1] * mat[1][0] + vec[2] * mat[2][0] + mat[3][0]) / w,
        (vec[0] * mat[0][1] + vec[1] * mat[1][1] + vec[2] * mat[2][1] + mat[3][1]) / w,
        (vec[0] * mat[0][2] + vec[1] * mat[1][2] + vec[2] * mat[2][2] + mat[3][2]) / w
     );
-#else
-    LLVector4a x, y, z, s, t, p, q;
-
-    x.splat(vec.x);
-    y.splat(vec.y);
-    z.splat(vec.z);
-
-    s.splat<3>(mat[0].data);
-    t.splat<3>(mat[1].data);
-    p.splat<3>(mat[2].data);
-    q.splat<3>(mat[3].data);
-
-    s.mul(x);
-    t.mul(y);
-    p.mul(z);
-    q.add(s);
-    t.add(p);
-    q.add(t);
-
-    x.mul(mat[0].data);
-    y.mul(mat[1].data);
-    z.mul(mat[2].data);
-
-    x.add(y);
-    z.add(mat[3].data);
-    LLVector4a res;
-    res.load3(glm::value_ptr(vec));
-    res.setAdd(x, z);
-    res.div(q);
-    return glm::make_vec3(res.getF32ptr());
-#endif
 }

@@ -64,7 +64,6 @@ extern LLControlGroup gSavedSettings;
 
 #define DEBUG_SHADER_INCLUDES 0
 
-// Lots of STL stuff in here, using namespace std to keep things more readable
 using std::vector;
 using std::pair;
 using std::make_pair;
@@ -86,18 +85,15 @@ U64 LLGLSLShader::sTotalSamplesDrawn = 0;
 U32 LLGLSLShader::sTotalBinds = 0;
 boost::json::value LLGLSLShader::sDefaultStats;
 
-//UI shader -- declared here so llui_libtest will link properly
 LLGLSLShader    gUIProgram;
 LLGLSLShader    gSolidColorProgram;
 
-// NOTE: Keep gShaderConsts* and LLGLSLShader::ShaderConsts_e in sync!
 const std::string gShaderConstsKey[LLGLSLShader::NUM_SHADER_CONSTS] =
 {
       "LL_SHADER_CONST_CLOUD_MOON_DEPTH"
     , "LL_SHADER_CONST_STAR_DEPTH"
 };
 
-// NOTE: Keep gShaderConsts* and LLGLSLShader::ShaderConsts_e in sync!
 const std::string gShaderConstsVal[LLGLSLShader::NUM_SHADER_CONSTS] =
 {
       "0.99998" // SHADER_CONST_CLOUD_MOON_DEPTH // SL-14113
@@ -105,11 +101,6 @@ const std::string gShaderConstsVal[LLGLSLShader::NUM_SHADER_CONSTS] =
 };
 
 
-//===============================
-// LLGLSL Shader implementation
-//===============================
-
-//static
 void LLGLSLShader::initProfile()
 {
     sProfileEnabled = true;
@@ -133,7 +124,6 @@ struct LLGLSLShaderCompareTimeElapsed
     }
 };
 
-//static
 void LLGLSLShader::finishProfile(boost::json::value& statsv)
 {
     sProfileEnabled = false;
@@ -418,7 +408,6 @@ bool LLGLSLShader::createShader()
 
     sInstances.insert(this);
 
-    //reloading, reset matrix hash values
     for (U32 i = 0; i < LLRender::NUM_MATRIX_MODES; ++i)
     {
         mMatHash[i] = 0xFFFFFFFF;
@@ -430,7 +419,6 @@ bool LLGLSLShader::createShader()
 #if LL_DARWIN
     if(!gGLManager.mIsApple)
     {
-        // work-around missing mix(vec3,vec3,bvec3)
         mDefines["OLD_SELECT"] = "1";
     }
 #endif
@@ -452,7 +440,6 @@ bool LLGLSLShader::createShader()
 
         mStageSources.clear();
 
-        //compile new source
         vector< pair<string, GLenum> >::iterator fileIter = mShaderFiles.begin();
         for (; fileIter != mShaderFiles.end(); fileIter++)
         {
@@ -471,7 +458,6 @@ bool LLGLSLShader::createShader()
 
     }
 
-    // Attach existing objects
     if (!LLShaderMgr::instance()->attachShaderFeatures(this))
     {
         unloadInternal();
@@ -506,7 +492,6 @@ bool LLGLSLShader::createShader()
     mVulkanAttachedVertexUtilities.shrink_to_fit();
     mVulkanAttachedFragmentUtilities.clear();
     mVulkanAttachedFragmentUtilities.shrink_to_fit();
-    // Map attributes and uniforms
     if (success)
     {
         success = mapAttributes();
@@ -519,7 +504,6 @@ bool LLGLSLShader::createShader()
     {
         LL_SHADER_LOADING_WARNS() << "Failed to link shader: " << mName << LL_ENDL;
 
-        // Try again using a lower shader level;
         if (mShaderLevel > 0)
         {
             LL_SHADER_LOADING_WARNS() << "Failed to link using shader level " << mShaderLevel << " trying again using shader level " << (mShaderLevel - 1) << LL_ENDL;
@@ -528,17 +512,15 @@ bool LLGLSLShader::createShader()
         }
         else
         {
-            // Give up and unload shader.
             unloadInternal();
         }
     }
     else if (mFeatures.mIndexedTextureChannels > 0)
-    { //override texture channels for indexed texture rendering
+    {
         llassert(mFeatures.mIndexedTextureChannels == LLGLSLShader::sIndexedTextureChannels); // these numbers must always match
         bind();
         S32 channel_count = mFeatures.mIndexedTextureChannels;
 
-        //adjust any texture channels that might have been overwritten
         for (U32 i = 0; i < mTexture.size(); i++)
         {
             if (mTexture[i] > -1)
@@ -548,16 +530,12 @@ bool LLGLSLShader::createShader()
             }
         }
 
-        // get the true number of active texture channels
         mActiveTextureChannels = channel_count;
         for (auto& tex : mTexture)
         {
             mActiveTextureChannels = llmax(mActiveTextureChannels, tex + 1);
         }
 
-        // when indexed texture channels are used, enforce an upper limit of 16
-        // this should act as a canary in the coal mine for adding textures
-        // and breaking machines that are limited to 16 texture channels
         llassert(mActiveTextureChannels <= 16);
         unbind();
     }
@@ -2038,7 +2016,6 @@ bool LLGLSLShader::mapUniforms()
 
     mActiveTextureChannels = 0;
     mTexture.clear();
-    //initialize arrays
     mTexture.resize(LLShaderMgr::instance()->mReservedUniforms.size(), -1);
 
     mVkReflEnumChannel.clear();
@@ -2417,14 +2394,12 @@ S32 LLGLSLShader::disableTexture(S32 uniform, LLTexUnit::eTextureType mode)
     S32 index = mTexture[uniform];
     if (index < 0)
     {
-        // Invalid texture index - nothing to disable
         return index;
     }
 
     LLTexUnit* tex_unit = gGL.getTexUnit(index);
     if (!tex_unit)
     {
-        // Invalid texture unit
         LL_WARNS_ONCE("Shader") << "Invalid texture unit at index: " << index << LL_ENDL;
         return index;
     }

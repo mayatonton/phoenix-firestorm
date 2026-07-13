@@ -794,7 +794,6 @@ void LLHUDText::shift(const LLVector3& offset)
     mPositionAgent += offset;
 }
 
-//static
 // called when UI scale changes, to flush font width caches
 void LLHUDText::reshape()
 {
@@ -811,7 +810,6 @@ void LLHUDText::reshape()
     }
 }
 
-//============================================================================
 
 F32 LLHUDText::LLHUDTextSegment::getWidth(const LLFontGL* font)
 {
@@ -843,7 +841,6 @@ void LLHUDText::refreshAllObjectText(EObjectTextFilter eObjFilter)
 // [/RLVa:KB]
 
 // <FS:Ansariel> FIRE-17393: Control HUD text fading by options
-// static
 void LLHUDText::onFadeSettingsChanged()
 {
     for (TextObjectIterator it = sTextObjects.begin(); it != sTextObjects.end(); ++it)

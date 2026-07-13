@@ -36,19 +36,13 @@
 #include "llvkloader.h"
 #include <cstring>
 
-//-----------------------------------------------------------------------------------
-//static variables definitions
-//-----------------------------------------------------------------------------------
-U32 LLViewerOctreeEntryData::sCurVisible = 10; //reserve the low numbers for special use.
+U32 LLViewerOctreeEntryData::sCurVisible = 10;
 bool LLViewerOctreeDebug::sInDebug = false;
 
 static LLTrace::CountStatHandle<S32> sOcclusionQueries("occlusion_queries", "Number of occlusion queries executed"),
                                      sNumObjectsOccluded("occluded_objects", "Count of objects being occluded by a query"),
                                      sNumObjectsUnoccluded("unoccluded_objects", "Count of objects being unoccluded by a query");
 
-//-----------------------------------------------------------------------------------
-//some global functions definitions
-//-----------------------------------------------------------------------------------
 typedef enum
 {
     b000 = 0x00,
@@ -104,7 +98,6 @@ U8* get_box_fan_indices_ptr(LLCamera* camera, const LLVector4a& center)
     return (U8*) (sOcclusionIndices+cypher*8);
 }
 
-//create a vertex buffer for efficiently rendering cubes
 LLVertexBuffer* ll_create_cube_vb(U32 type_mask)
 {
     LLVertexBuffer* ret = new LLVertexBuffer(type_mask);
@@ -230,9 +223,6 @@ S32 AABBSphereIntersectR2(const LLVector4a& min, const LLVector4a& max, const LL
     return 1;
 }
 
-//-----------------------------------------------------------------------------------
-//class LLViewerOctreeEntry definitions
-//-----------------------------------------------------------------------------------
 LLViewerOctreeEntry::LLViewerOctreeEntry()
 :   mGroup(NULL),
     mBinRadius(0.f),
@@ -256,7 +246,6 @@ LLViewerOctreeEntry::~LLViewerOctreeEntry()
 
 void LLViewerOctreeEntry::addData(LLViewerOctreeEntryData* data)
 {
-    //llassert(mData[data->getDataType()] == NULL);
     llassert(data != NULL);
 
     mData[data->getDataType()] = data;
@@ -264,8 +253,6 @@ void LLViewerOctreeEntry::addData(LLViewerOctreeEntryData* data)
 
 void LLViewerOctreeEntry::removeData(LLViewerOctreeEntryData* data)
 {
-    //llassert(data->getDataType() != LLVOCACHEENTRY); //can not remove VOCache entry
-
     if(!mData[data->getDataType()])
     {
         return;
@@ -312,9 +299,6 @@ void LLViewerOctreeEntry::setGroup(LLViewerOctreeGroup* group)
     mGroup = group;
 }
 
-//-----------------------------------------------------------------------------------
-//class LLViewerOctreeEntryData definitions
-//-----------------------------------------------------------------------------------
 LLViewerOctreeEntryData::~LLViewerOctreeEntryData()
 {
     if(mEntry)
@@ -329,7 +313,6 @@ LLViewerOctreeEntryData::LLViewerOctreeEntryData(LLViewerOctreeEntry::eEntryData
 {
 }
 
-//virtual
 void LLViewerOctreeEntryData::setOctreeEntry(LLViewerOctreeEntry* entry)
 {
     llassert_always(mEntry.isNull());
@@ -381,7 +364,6 @@ const LLVector4a* LLViewerOctreeEntryData::getSpatialExtents() const
     return mEntry->getSpatialExtents();
 }
 
-//virtual
 void LLViewerOctreeEntryData::setGroup(LLViewerOctreeGroup* group)
 {
     mEntry->setGroup(group);
@@ -404,7 +386,6 @@ const LLVector4a& LLViewerOctreeEntryData::getPositionGroup() const
     return mEntry->getPositionGroup();
 }
 
-//virtual
 bool LLViewerOctreeEntryData::isVisible() const
 {
     if(mEntry)
@@ -414,7 +395,6 @@ bool LLViewerOctreeEntryData::isVisible() const
     return false;
 }
 
-//virtual
 bool LLViewerOctreeEntryData::isRecentlyVisible() const
 {
     if(!mEntry)
@@ -450,13 +430,8 @@ void LLViewerOctreeEntryData::resetVisible() const
         mEntry->mVisible = 0;
     }
 }
-//-----------------------------------------------------------------------------------
-//class LLViewerOctreeGroup definitions
-//-----------------------------------------------------------------------------------
-
 LLViewerOctreeGroup::~LLViewerOctreeGroup()
 {
-    //empty here
 }
 
 LLViewerOctreeGroup::LLViewerOctreeGroup(OctreeNode* node)
@@ -515,7 +490,6 @@ bool LLViewerOctreeGroup::removeFromGroup(LLViewerOctreeEntry* entry)
     return true;
 }
 
-//virtual
 void LLViewerOctreeGroup::unbound()
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -544,7 +518,6 @@ void LLViewerOctreeGroup::unbound()
     }
 }
 
-//virtual
 void LLViewerOctreeGroup::rebound()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_OCTREE;
@@ -558,7 +531,6 @@ void LLViewerOctreeGroup::rebound()
         LLViewerOctreeGroup* group = (LLViewerOctreeGroup*) mOctreeNode->getChild(0)->getListener(0);
         group->rebound();
 
-        //copy single child's bounding box
         mBounds[0] = group->mBounds[0];
         mBounds[1] = group->mBounds[1];
         mExtents[0] = group->mExtents[0];
@@ -579,11 +551,9 @@ void LLViewerOctreeGroup::rebound()
         LLViewerOctreeGroup* group = (LLViewerOctreeGroup*) mOctreeNode->getChild(0)->getListener(0);
         group->clearState(SKIP_FRUSTUM_CHECK);
         group->rebound();
-        //initialize to first child
         newMin = group->mExtents[0];
         newMax = group->mExtents[1];
 
-        //first, rebound children
         for (U32 i = 1; i < mOctreeNode->getChildCount(); i++)
         {
             group = (LLViewerOctreeGroup*) mOctreeNode->getChild(i)->getListener(0);
@@ -609,7 +579,6 @@ void LLViewerOctreeGroup::rebound()
     return;
 }
 
-//virtual
 void LLViewerOctreeGroup::handleInsertion(const TreeNode* node, LLViewerOctreeEntry* obj)
 {
     obj->setGroup(this);
@@ -617,7 +586,6 @@ void LLViewerOctreeGroup::handleInsertion(const TreeNode* node, LLViewerOctreeEn
     setState(OBJECT_DIRTY);
 }
 
-//virtual
 void LLViewerOctreeGroup::handleRemoval(const TreeNode* node, LLViewerOctreeEntry* obj)
 {
     unbound();
@@ -626,7 +594,6 @@ void LLViewerOctreeGroup::handleRemoval(const TreeNode* node, LLViewerOctreeEntr
     obj->setGroup(NULL); //this could cause *this* pointer to be destroyed. So no more function calls after this.
 }
 
-//virtual
 void LLViewerOctreeGroup::handleDestruction(const TreeNode* node)
 {
     if (isDead())
@@ -645,10 +612,8 @@ void LLViewerOctreeGroup::handleDestruction(const TreeNode* node)
     mOctreeNode = NULL;
 }
 
-//virtual
 void LLViewerOctreeGroup::handleStateChange(const TreeNode* node)
 {
-    //drop bounding box upon state change
     if (mOctreeNode != node)
     {
         mOctreeNode = (OctreeNode*) node;
@@ -656,7 +621,6 @@ void LLViewerOctreeGroup::handleStateChange(const TreeNode* node)
     unbound();
 }
 
-//virtual
 void LLViewerOctreeGroup::handleChildAddition(const OctreeNode* parent, OctreeNode* child)
 {
     if (child->getListenerCount() == 0)
@@ -673,7 +637,6 @@ void LLViewerOctreeGroup::handleChildAddition(const OctreeNode* parent, OctreeNo
     ((LLViewerOctreeGroup*)child->getListener(0))->unbound();
 }
 
-//virtual
 void LLViewerOctreeGroup::handleChildRemoval(const OctreeNode* parent, const OctreeNode* child)
 {
     unbound();
@@ -701,7 +664,6 @@ LLViewerOctreeGroup* LLViewerOctreeGroup::getParent()
     return NULL;
 }
 
-//virtual
 bool LLViewerOctreeGroup::boundObjects(bool empty, LLVector4a& minOut, LLVector4a& maxOut)
 {
     const OctreeNode* node = mOctreeNode;
@@ -719,10 +681,9 @@ bool LLViewerOctreeGroup::boundObjects(bool empty, LLVector4a& minOut, LLVector4
     LLVector4a& newMax = mObjectExtents[1];
 
     if (hasState(OBJECT_DIRTY))
-    { //calculate new bounding box
+    {
         clearState(OBJECT_DIRTY);
 
-        //initialize bounding box to first element
         OctreeNode::const_element_iter i = node->getDataBegin();
         LLViewerOctreeEntry* entry = *i;
         const LLVector4a* minMax = entry->getSpatialExtents();
@@ -759,13 +720,11 @@ bool LLViewerOctreeGroup::boundObjects(bool empty, LLVector4a& minOut, LLVector4
     return true;
 }
 
-//virtual
 bool LLViewerOctreeGroup::isVisible() const
 {
     return mVisible[LLViewerCamera::getCurCameraID()] >= LLViewerOctreeEntryData::getCurrentFrame();
 }
 
-//virtual
 bool LLViewerOctreeGroup::isRecentlyVisible() const
 {
     return false;
@@ -789,9 +748,6 @@ void LLViewerOctreeGroup::checkStates()
 #endif
 }
 
-//-------------------------------------------------------------------------------------------
-//occulsion culling functions and classes
-//-------------------------------------------------------------------------------------------
 std::set<U32> LLOcclusionCullingGroup::sPendingQueries;
 
 U32 LLOcclusionCullingGroup::getNewOcclusionQueryObjectName()
@@ -810,9 +766,6 @@ void LLOcclusionCullingGroup::releaseOcclusionQueryObjectName(GLuint name)
     }
 }
 
-//=====================================
-//      Occlusion State Set/Clear
-//=====================================
 class LLSpatialSetOcclusionState : public OctreeTraveler
 {
 public:
@@ -887,7 +840,6 @@ bool LLOcclusionCullingGroup::isAnyRecentlyVisible() const
     return (LLDrawable::getCurrentFrame() - mAnyVisible) < MIN_VIS_FRAME_RANGE ;
 }
 
-//virtual
 void LLOcclusionCullingGroup::handleChildAddition(const OctreeNode* parent, OctreeNode* child)
 {
     if (!child->hasListeners())
@@ -1106,7 +1058,6 @@ void LLOcclusionCullingGroup::checkOcclusion()
         {   // delete the query to avoid holding onto hundreds of pending queries
             releaseOcclusionQueryObjectName(mOcclusionQuery[LLViewerCamera::getCurCameraID()]);
             mOcclusionQuery[LLViewerCamera::getCurCameraID()] = 0;
-            // mark non-occluded
             clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
             clearOcclusionState(QUERY_PENDING | DISCARD_QUERY);
         }
@@ -1151,8 +1102,6 @@ void LLOcclusionCullingGroup::checkOcclusion()
     else if (mSpatialPartition->isOcclusionEnabled() && isOcclusionState(LLOcclusionCullingGroup::OCCLUDED))
     {   //check occlusion has been issued for occluded node that has not had a query issued
         assert_states_valid(this);
-        //clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
-        assert_states_valid(this);
     }
 }
 
@@ -1161,7 +1110,6 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
     LL_PROFILE_ZONE_SCOPED_CATEGORY_OCTREE;
     if (mSpatialPartition->isOcclusionEnabled() && LLPipeline::sUseOcclusion > 1)
     {
-        //move mBounds to the agent space if necessary
         LLVector4a bounds[2];
         bounds[0] = mBounds[0];
         bounds[1] = mBounds[1];
@@ -1212,13 +1160,10 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                     {
                         LL_PROFILE_ZONE_NAMED_CATEGORY_OCTREE("doOcclusion - push");
 
-                        //store which frame this query was issued on
                         mOcclusionIssued[LLViewerCamera::getCurCameraID()] = gFrameCount;
 
                         {
                             LL_PROFILE_ZONE_NAMED_CATEGORY_OCTREE("glBeginQuery");
-
-                            //get an occlusion query that hasn't been used in awhile
                             releaseOcclusionQueryObjectName(mOcclusionQuery[LLViewerCamera::getCurCameraID()]);
                             mOcclusionQuery[LLViewerCamera::getCurCameraID()] = getNewOcclusionQueryObjectName();
                             LLVKLoader::cmdBeginOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(),
@@ -1289,13 +1234,6 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
         }
     }
 }
-//-------------------------------------------------------------------------------------------
-//end of occulsion culling functions and classes
-//-------------------------------------------------------------------------------------------
-
-//-----------------------------------------------------------------------------------
-//class LLViewerOctreePartition definitions
-//-----------------------------------------------------------------------------------
 LLViewerOctreePartition::LLViewerOctreePartition() :
     mRegionp(NULL),
     mOcclusionEnabled(true),
@@ -1327,17 +1265,11 @@ bool LLViewerOctreePartition::isOcclusionEnabled()
 }
 
 
-//-----------------------------------------------------------------------------------
-//class LLViewerOctreeCull definitions
-//-----------------------------------------------------------------------------------
-
-//virtual
 bool LLViewerOctreeCull::earlyFail(LLViewerOctreeGroup* group)
 {
     return false;
 }
 
-//virtual
 void LLViewerOctreeCull::traverse(const OctreeNode* n)
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -1369,7 +1301,6 @@ void LLViewerOctreeCull::traverse(const OctreeNode* n)
     }
 }
 
-//------------------------------------------
 //agent space group culling
 S32 LLViewerOctreeCull::AABBInFrustumNoFarClipGroupBounds(const LLViewerOctreeGroup* group)
 {
@@ -1385,9 +1316,7 @@ S32 LLViewerOctreeCull::AABBInFrustumGroupBounds(const LLViewerOctreeGroup* grou
 {
     return mCamera->AABBInFrustum(group->mBounds[0], group->mBounds[1]);
 }
-//------------------------------------------
 
-//------------------------------------------
 //agent space object set culling
 S32 LLViewerOctreeCull::AABBInFrustumNoFarClipObjectBounds(const LLViewerOctreeGroup* group)
 {
@@ -1403,9 +1332,7 @@ S32 LLViewerOctreeCull::AABBInFrustumObjectBounds(const LLViewerOctreeGroup* gro
 {
     return mCamera->AABBInFrustum(group->mObjectBounds[0], group->mObjectBounds[1]);
 }
-//------------------------------------------
 
-//------------------------------------------
 //local regional space group culling
 S32 LLViewerOctreeCull::AABBInRegionFrustumNoFarClipGroupBounds(const LLViewerOctreeGroup* group)
 {
@@ -1421,9 +1348,7 @@ S32 LLViewerOctreeCull::AABBRegionSphereIntersectGroupExtents(const LLViewerOctr
 {
     return AABBSphereIntersect(group->mExtents[0], group->mExtents[1], mCamera->getOrigin() - shift, mCamera->mFrustumCornerDist);
 }
-//------------------------------------------
 
-//------------------------------------------
 //local regional space object culling
 S32 LLViewerOctreeCull::AABBInRegionFrustumObjectBounds(const LLViewerOctreeGroup* group)
 {
@@ -1439,7 +1364,6 @@ S32 LLViewerOctreeCull::AABBRegionSphereIntersectObjectExtents(const LLViewerOct
 {
     return AABBSphereIntersect(group->mObjectExtents[0], group->mObjectExtents[1], mCamera->getOrigin() - shift, mCamera->mFrustumCornerDist);
 }
-//------------------------------------------
 //check if the objects projection large enough
 
 bool LLViewerOctreeCull::checkProjectionArea(const LLVector4a& center, const LLVector4a& size, const LLVector3& shift, F32 pixel_threshold, F32 near_radius)
@@ -1464,7 +1388,6 @@ bool LLViewerOctreeCull::checkProjectionArea(const LLVector4a& center, const LLV
     return squared_rad / distance > pixel_threshold;
 }
 
-//virtual
 bool LLViewerOctreeCull::checkObjects(const OctreeNode* branch, const LLViewerOctreeGroup* group)
 {
     if (branch->getElementCount() == 0) //no elements
@@ -1483,17 +1406,14 @@ bool LLViewerOctreeCull::checkObjects(const OctreeNode* branch, const LLViewerOc
     return true;
 }
 
-//virtual
 void LLViewerOctreeCull::preprocess(LLViewerOctreeGroup* group)
 {
 }
 
-//virtual
 void LLViewerOctreeCull::processGroup(LLViewerOctreeGroup* group)
 {
 }
 
-//virtual
 void LLViewerOctreeCull::visit(const OctreeNode* branch)
 {
     LLViewerOctreeGroup* group = (LLViewerOctreeGroup*) branch->getListener(0);
@@ -1506,9 +1426,6 @@ void LLViewerOctreeCull::visit(const OctreeNode* branch)
     }
 }
 
-//--------------------------------------------------------------
-//class LLViewerOctreeDebug
-//virtual
 void LLViewerOctreeDebug::visit(const OctreeNode* branch)
 {
 #if 0
@@ -1522,7 +1439,6 @@ void LLViewerOctreeDebug::visit(const OctreeNode* branch)
     processGroup(group);
 }
 
-//virtual
 void LLViewerOctreeDebug::processGroup(LLViewerOctreeGroup* group)
 {
 #if 0
@@ -1548,4 +1464,3 @@ void LLViewerOctreeDebug::processGroup(LLViewerOctreeGroup* group)
     LL_INFOS() << "ObjectExtents: " << vec[0] << " : " << vec[1] << LL_ENDL;
 #endif
 }
-//--------------------------------------------------------------

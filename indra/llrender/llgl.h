@@ -27,8 +27,6 @@
 #ifndef LL_LLGL_H
 #define LL_LLGL_H
 
-// This file contains various stuff for handling gl extensions and other gl related stuff.
-
 #include <functional>
 #include <string>
 #include <boost/unordered_map.hpp>
@@ -61,7 +59,6 @@ void ll_close_fail_log();
 
 class LLSD;
 
-// Manage GL extensions...
 class LLGLManager
 {
 public:
@@ -70,12 +67,11 @@ public:
     bool initGL();
     void shutdownGL();
 
-    std::string getRawGLString(); // For sending to simulator
+    std::string getRawGLString();
 
     bool mInited;
     bool mIsDisabled;
 
-    // OpenGL limits
     S32 mMaxSamples;
     S32 mNumTextureImageUnits;
     S32 mMaxSampleMaskWords;
@@ -97,27 +93,24 @@ public:
     bool mIsIntel;
     bool mIsApple = false;
 
-    // hints to the render pipe
-    U32 mDownScaleMethod = 0; // see settings.xml RenderDownScaleMethod
+    U32 mDownScaleMethod = 0;
 
 #if LL_DARWIN
-    // Needed to distinguish problem cards on older Macs that break with Materials
     bool mIsMobileGF;
 #endif
 
-    // Whether this version of GL is good enough for SL to use
     bool mHasRequirements;
 
     S32 mDriverVersionMajor;
     S32 mDriverVersionMinor;
     S32 mDriverVersionRelease;
-    F32 mGLVersion; // e.g = 1.4
+    F32 mGLVersion;
     S32 mGLSLVersionMajor;
     S32 mGLSLVersionMinor;
     std::string mDriverVersionVendorString;
     std::string mGLVersionString;
 
-    U32 mVRAM; // VRAM in MB
+    U32 mVRAM;
     S32 mVRAMDetected; // <FS:Beq/> The amount detected/reported by the OS/Drivers. If different to mVRAM there is an override in place.
     std::string getGLInfoString();
     void printGLInfoString();
@@ -125,11 +118,8 @@ public:
 
     void asLLSD(LLSD& info);
 
-    // In ALL CAPS
     std::string mGLVendor;
     std::string mGLVendorShort;
-
-    // In ALL CAPS
     std::string mGLRenderer;
 
 private:
@@ -142,48 +132,6 @@ class LLQuaternion;
 class LLMatrix4;
 
 void rotate_quat(LLQuaternion& rotation);
-
-/*
-    LLGLState and its two subclasses, LLGLEnable and LLGLDisable, manage the current
-    enable/disable render states to prevent redundant setting of state within a
-    render path or the accidental corruption of what state the next path expects.
-    The tracked state map feeds the Vulkan pipeline key.
-
-    Make an instance of LLGLEnable with the state you want to set, and assume it
-    will be restored to its original state when that instance of LLGLEnable is
-    destroyed.  It is good practice to exploit stack frame controls for optimal
-    setting/unsetting and readability of code.  In llglstates.h, there are a
-    collection of helper classes that define groups of enables/disables that can
-    cause multiple states to be set with the creation of one instance.
-
-    Sample usage:
-
-    //disable lighting for rendering hud objects
-    //INCORRECT USAGE
-    LLGLEnable blend(GL_BLEND);
-    renderHUD();
-    LLGLDisable blend(GL_BLEND);
-
-    //CORRECT USAGE
-    {
-        LLGLEnable blend(GL_BLEND);
-        renderHUD();
-    }
-
-    If a state is to be set on a conditional, the following mechanism
-    is useful:
-
-    {
-        LLGLEnable blend(blend_hud ? GL_BLEND : 0);
-        renderHUD();
-    }
-
-    A LLGLState initialized with a parameter of 0 does nothing.
-
-    LLGLState works by maintaining a map of the current states, and ignoring redundant
-    enables/disables.  If a redundant call is attempted, it becomes a noop, otherwise,
-    it is set in the constructor and reset in the destructor.
-*/
 
 class LLGLState
 {
@@ -232,7 +180,6 @@ protected:
     bool mIsEnabled;
 };
 
-// New LLGLState class wrappers that don't depend on actual GL flags.
 class LLGLEnableBlending : public LLGLState
 {
 public:
@@ -245,7 +192,6 @@ public:
     LLGLEnableAlphaReject(bool enable);
 };
 
-// Enable with functor
 class LLGLEnableFunc : LLGLState
 {
 public:
@@ -259,32 +205,18 @@ public:
     }
 };
 
-/// TODO: Being deprecated.
 class LLGLEnable : public LLGLState
 {
 public:
     LLGLEnable(LLGLenum state) : LLGLState(state, ENABLED_STATE) {}
 };
 
-/// TODO: Being deprecated.
 class LLGLDisable : public LLGLState
 {
 public:
     LLGLDisable(LLGLenum state) : LLGLState(state, DISABLED_STATE) {}
 };
 
-/*
-  Store and modify projection matrix to create an oblique
-  projection that clips to the specified plane.  Oblique
-  projections alter values in the depth buffer, so this
-  class should not be used mid-renderpass.
-
-  Restores projection matrix on destruction.
-  GL_MODELVIEW_MATRIX is active whenever program execution
-  leaves this class.
-  Does not stack.
-  Caches inverse of projection matrix used in gGLObliqueProjectionInverse
-*/
 class LLGLUserClipPlane
 {
 public:
@@ -349,85 +281,9 @@ public:
     virtual void updateGL() = 0;
 };
 
-const U32 FENCE_WAIT_TIME_NANOSECONDS = 1000;  //1 ms
-
-class LLGLFence
-{
-public:
-    virtual ~LLGLFence()
-    {
-    }
-
-    virtual void placeFence() = 0;
-    virtual bool isCompleted() = 0;
-    virtual void wait() = 0;
-};
-
-
-extern LLMatrix4 gGLObliqueProjectionInverse;
-
 #include "llglstates.h"
 
 extern bool gHeadlessClient;
 extern bool gNonInteractive;
-
-// Deal with changing glext.h definitions for newer SDK versions, specifically
-// with MAC OSX 10.5 -> 10.6
-
-
-#ifndef GL_DEPTH_ATTACHMENT
-#define GL_DEPTH_ATTACHMENT GL_DEPTH_ATTACHMENT_EXT
-#endif
-
-#ifndef GL_STENCIL_ATTACHMENT
-#define GL_STENCIL_ATTACHMENT GL_STENCIL_ATTACHMENT_EXT
-#endif
-
-#ifndef GL_FRAMEBUFFER
-#define GL_FRAMEBUFFER GL_FRAMEBUFFER_EXT
-#define GL_DRAW_FRAMEBUFFER GL_DRAW_FRAMEBUFFER_EXT
-#define GL_READ_FRAMEBUFFER GL_READ_FRAMEBUFFER_EXT
-#define GL_FRAMEBUFFER_COMPLETE GL_FRAMEBUFFER_COMPLETE_EXT
-#define GL_FRAMEBUFFER_UNSUPPORTED GL_FRAMEBUFFER_UNSUPPORTED_EXT
-#define GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT_EXT
-#define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT_EXT
-#define glGenFramebuffers glGenFramebuffersEXT
-#define glBindFramebuffer glBindFramebufferEXT
-#define glCheckFramebufferStatus glCheckFramebufferStatusEXT
-#define glBlitFramebuffer glBlitFramebufferEXT
-#define glDeleteFramebuffers glDeleteFramebuffersEXT
-#define glFramebufferRenderbuffer glFramebufferRenderbufferEXT
-#define glFramebufferTexture2D glFramebufferTexture2DEXT
-#endif
-
-#ifndef GL_RENDERBUFFER
-#define GL_RENDERBUFFER GL_RENDERBUFFER_EXT
-#define glGenRenderbuffers glGenRenderbuffersEXT
-#define glBindRenderbuffer glBindRenderbufferEXT
-#define glRenderbufferStorage glRenderbufferStorageEXT
-#define glRenderbufferStorageMultisample glRenderbufferStorageMultisampleEXT
-#define glDeleteRenderbuffers glDeleteRenderbuffersEXT
-#endif
-
-#ifndef GL_COLOR_ATTACHMENT0
-#define GL_COLOR_ATTACHMENT0 GL_COLOR_ATTACHMENT0_EXT
-#endif
-
-#ifndef GL_COLOR_ATTACHMENT1
-#define GL_COLOR_ATTACHMENT1 GL_COLOR_ATTACHMENT1_EXT
-#endif
-
-#ifndef GL_COLOR_ATTACHMENT2
-#define GL_COLOR_ATTACHMENT2 GL_COLOR_ATTACHMENT2_EXT
-#endif
-
-#ifndef GL_COLOR_ATTACHMENT3
-#define GL_COLOR_ATTACHMENT3 GL_COLOR_ATTACHMENT3_EXT
-#endif
-
-
-#ifndef GL_DEPTH24_STENCIL8
-#define GL_DEPTH24_STENCIL8 GL_DEPTH24_STENCIL8_EXT
-#endif
 
 #endif // LL_LLGL_H

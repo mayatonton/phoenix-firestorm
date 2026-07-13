@@ -163,7 +163,6 @@ public:
     //  specific_attachment - specific attachment to profile, or nullptr to profile entire avatar
     void generateImpostor(LLVOAvatar* avatar, bool preview_avatar = false, bool for_profile = false, LLViewerObject* specific_attachment = nullptr);
 
-    void bindScreenToTexture();
     void renderFinalize();
     void copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget* dst);
     void generateLuminance(LLRenderTarget* src, LLRenderTarget* dst);
@@ -289,7 +288,6 @@ public:
     void updateGeom(F32 max_dtime);
     void updateGL();
     void rebuildPriorityGroups();
-    void rebuildGroups();
     void clearRebuildGroups();
     void clearRebuildDrawables();
 
@@ -421,8 +419,6 @@ public:
 
     // Generate the water exclusion surface mask.
     void doWaterExclusionMask();
-
-    void postDeferredGammaCorrect(LLRenderTarget* screen_target);
 
     void generateSunShadow(LLCamera& camera);
     LLRenderTarget* getSunShadowTarget(U32 i);
@@ -747,11 +743,6 @@ public:
 
     LLSpatialPartition* getSpatialPartition(LLViewerObject* vobj);
 
-    void updateCamera(bool reset = false);
-
-    LLVector3               mFlyCamPosition;
-    LLQuaternion            mFlyCamRotation;
-
     bool                     mBackfaceCull;
     S32                      mMatrixOpCount;
     S32                      mTextureMatrixOps;
@@ -980,10 +971,6 @@ public:
     // 2k bom scratch target
     LLRenderTarget          mBakeMap;
 
-    LLCullResult            mSky;
-    LLCullResult            mReflectedObjects;
-    LLCullResult            mRefractedObjects;
-
     //utility buffers for rendering post effects
     LLPointer<LLVertexBuffer> mDeferredVB;
 
@@ -1012,8 +999,6 @@ public:
     LLPointer<LLDrawable>   mTargetShadowSpotLight[LLPipeline::kSpotShadowCount];
 
     LLVector4               mSunClipPlanes;
-    LLVector4               mSunOrthoClipPlanes;
-    LLVector2               mScreenScale;
 
     //water distortion texture (refraction)
     LLRenderTarget              mWaterDis;
@@ -1023,9 +1008,6 @@ public:
 
     //texture for making the glow
     LLRenderTarget              mGlow[3];
-
-    // texture for SH indirect sky contribution
-    LLRenderTarget              mSkySH;
 
     //noise map
     LLPointer<LLImageGL> mNoiseMap;
@@ -1043,7 +1025,6 @@ public:
     LLColor4            mMoonDiffuse;
     LLVector4           mSunDir;
     LLVector4           mMoonDir;
-    bool                mNeedsShadowTargetClear;
 
     LLVector4           mTransformedSunDir;
     LLVector4           mTransformedMoonDir;
@@ -1403,7 +1384,6 @@ void render_bbox(const LLVector3 &min, const LLVector3 &max);
 void render_hud_elements();
 
 extern LLPipeline gPipeline;
-extern bool gDebugPipeline;
 extern const LLMatrix4* gGLLastMatrix;
 
 #endif

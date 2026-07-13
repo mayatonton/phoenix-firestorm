@@ -142,7 +142,6 @@
 #include "llfloatercamera.h"
 #include "lluilistener.h"
 #include "llappearancemgr.h"
-#include "lltrans.h"
 #include "lltoolgrab.h"
 #include "llwindow.h"
 #include "llpathfindingmanager.h"
@@ -183,7 +182,6 @@
 #include "llfloaterpreference.h"
 #include "llkeyconflict.h"
 #include "lllogininstance.h"
-#include "llscenemonitor.h"
 #include "llsdserialize.h"
 #include "lltexturecache.h"
 #include "llvovolume.h"
@@ -470,7 +468,6 @@ void LLMenuParcelObserver::changed()
 
 void initialize_menus();
 
-//-----------------------------------------------------------------------------
 // Initialize main menus
 //
 // HOW TO NAME MENUS:
@@ -480,7 +477,6 @@ void initialize_menus();
 // Items that lead to dialog boxes end in "..."
 //
 // Break up groups of more than 6 items with separators
-//-----------------------------------------------------------------------------
 
 void set_merchant_SLM_menu();
 
@@ -3199,9 +3195,7 @@ class LLAdminOnSaveState: public view_listener_t
 };
 
 
-//-----------------------------------------------------------------------------
 // cleanup_menus()
-//-----------------------------------------------------------------------------
 void cleanup_menus()
 {
     delete gSLMMenuUpdater;
@@ -3269,9 +3263,7 @@ void cleanup_menus()
     gMenuHolder = NULL;
 }
 
-//-----------------------------------------------------------------------------
 // Object pie menu
-//-----------------------------------------------------------------------------
 
 // <FS:Ansariel> FIRE-6970/FIRE-6998: Optional permanent derendering of multiple objects
 void derenderObject(bool permanent)
@@ -4002,9 +3994,7 @@ void handle_object_inspect()
     */
 }
 
-//---------------------------------------------------------------------------
 // Land pie menu
-//---------------------------------------------------------------------------
 class LLLandBuild : public view_listener_t
 {
     bool handleEvent(const LLSD& userdata)
@@ -4203,9 +4193,7 @@ bool enable_has_attachments()
     return false;
 }
 
-//---------------------------------------------------------------------------
 // Avatar pie menu
-//---------------------------------------------------------------------------
 //void handle_follow(void *userdata)
 //{
 //  // follow a given avatar by ID
@@ -4508,9 +4496,7 @@ class LLAvatarReportAbuse : public view_listener_t
 };
 
 
-//---------------------------------------------------------------------------
 // Parcel freeze, eject, etc.
-//---------------------------------------------------------------------------
 //bool callback_freeze(const LLSD& notification, const LLSD& response)
 //{
 //  LLUUID avatar_id = notification["payload"]["avatar_id"].asUUID();
@@ -5780,9 +5766,7 @@ class LLLandCanSit : public view_listener_t
     }
 };
 
-//-------------------------------------------------------------------
 // Help menu functions
-//-------------------------------------------------------------------
 
 //
 // Major mode switching
@@ -9137,7 +9121,6 @@ protected:
 
 LLObjectSelectionHandle LLObjectAttachToAvatar::sObjectSelection;
 
-// static
 void LLObjectAttachToAvatar::onNearAttachObject(bool success, void *user_data)
 {
     if (!user_data) return;
@@ -9172,7 +9155,6 @@ void LLObjectAttachToAvatar::onNearAttachObject(bool success, void *user_data)
     delete cb_data;
 }
 
-// static
 void LLObjectAttachToAvatar::confirmReplaceAttachment(S32 option, LLViewerJointAttachment* attachment_point)
 {
     if (option == 0/*YES*/)

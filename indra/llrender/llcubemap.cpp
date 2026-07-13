@@ -79,7 +79,6 @@ void LLCubeMap::initGL()
 
     if (LLCubeMap::sUseCubeMaps)
     {
-        // Not initialized, do stuff.
         if (mImages[0].isNull())
         {
             for (int i = 0; i < 6; i++)
@@ -114,7 +113,6 @@ void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages
     bool flip_y[6] =    { true,  true,  true,  false, true,  true  };
     bool transpose[6] = { false, false, false, false, true,  true  };
 
-    // Yes, I know that this is inefficient! - djs 08/08/02
     for (int i = 0; i < 6; i++)
     {
         LLImageDataSharedLock lockIn(rawimages[i]);
@@ -306,10 +304,7 @@ void LLCubeMap::setMatrix(S32 stage)
 
     if (mMatrixStage < 0) return;
 
-    //if (stage > 0)
-    {
-        gGL.getTexUnit(stage)->activate();
-    }
+    gGL.getTexUnit(stage)->activate();
 
     LLVector3 x(gGLModelView+0);
     LLVector3 y(gGLModelView+4);
@@ -324,29 +319,16 @@ void LLCubeMap::setMatrix(S32 stage)
     gGL.pushMatrix();
     gGL.loadMatrix((F32 *)trans.mMatrix);
     gGL.matrixMode(LLRender::MM_MODELVIEW);
-
-    /*if (stage > 0)
-    {
-        gGL.getTexUnit(0)->activate();
-    }*/
 }
 
 void LLCubeMap::restoreMatrix()
 {
     if (mMatrixStage < 0) return;
 
-    //if (mMatrixStage > 0)
-    {
-        gGL.getTexUnit(mMatrixStage)->activate();
-    }
+    gGL.getTexUnit(mMatrixStage)->activate();
     gGL.matrixMode(LLRender::MM_TEXTURE);
     gGL.popMatrix();
     gGL.matrixMode(LLRender::MM_MODELVIEW);
-
-    /*if (mMatrixStage > 0)
-    {
-        gGL.getTexUnit(0)->activate();
-    }*/
 }
 
 

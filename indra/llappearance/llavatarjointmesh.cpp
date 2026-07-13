@@ -24,9 +24,7 @@
  * $/LicenseInfo$
  */
 
-//-----------------------------------------------------------------------------
 // Header Files
-//-----------------------------------------------------------------------------
 #include "linden_common.h"
 #include "llfasttimer.h"
 #include "llrender.h"
@@ -45,9 +43,7 @@
 // spine joints, or other new joints internal to the original
 // skeleton, and unknown to the system avatar.
 
-//-----------------------------------------------------------------------------
 // getBaseSkeletonAncestor()
-//-----------------------------------------------------------------------------
 LLAvatarJoint *getBaseSkeletonAncestor(LLAvatarJoint* joint)
 {
     LLJoint *ancestor = joint->getParent();
@@ -59,9 +55,7 @@ LLAvatarJoint *getBaseSkeletonAncestor(LLAvatarJoint* joint)
     return (LLAvatarJoint*) ancestor;
 }
 
-//-----------------------------------------------------------------------------
 // totalSkinOffset()
-//-----------------------------------------------------------------------------
 LLVector3 totalSkinOffset(LLAvatarJoint *joint)
 {
     LLVector3 totalOffset;
@@ -76,32 +70,22 @@ LLVector3 totalSkinOffset(LLAvatarJoint *joint)
     return totalOffset;
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 // LLAvatarJointMesh::LLSkinJoint
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 
-//-----------------------------------------------------------------------------
 // LLSkinJoint
-//-----------------------------------------------------------------------------
 LLSkinJoint::LLSkinJoint()
 {
     mJoint       = NULL;
 }
 
-//-----------------------------------------------------------------------------
 // ~LLSkinJoint
-//-----------------------------------------------------------------------------
 LLSkinJoint::~LLSkinJoint()
 {
     mJoint = NULL;
 }
 
 
-//-----------------------------------------------------------------------------
 // LLSkinJoint::setupSkinJoint()
-//-----------------------------------------------------------------------------
 bool LLSkinJoint::setupSkinJoint( LLAvatarJoint *joint)
 {
     // find the named joint
@@ -123,18 +107,12 @@ bool LLSkinJoint::setupSkinJoint( LLAvatarJoint *joint)
 }
 
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 // LLAvatarJointMesh
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 
 bool LLAvatarJointMesh::sPipelineRender = false;
 LLColor4 LLAvatarJointMesh::sClothingInnerColor;
 
-//-----------------------------------------------------------------------------
 // LLAvatarJointMesh()
-//-----------------------------------------------------------------------------
 LLAvatarJointMesh::LLAvatarJointMesh()
     :
     mTexture( NULL ),
@@ -165,10 +143,8 @@ LLAvatarJointMesh::LLAvatarJointMesh()
 }
 
 
-//-----------------------------------------------------------------------------
 // ~LLAvatarJointMesh()
 // Class Destructor
-//-----------------------------------------------------------------------------
 LLAvatarJointMesh::~LLAvatarJointMesh()
 {
     mMesh = NULL;
@@ -177,9 +153,7 @@ LLAvatarJointMesh::~LLAvatarJointMesh()
 }
 
 
-//-----------------------------------------------------------------------------
 // LLAvatarJointMesh::allocateSkinData()
-//-----------------------------------------------------------------------------
 bool LLAvatarJointMesh::allocateSkinData( U32 numSkinJoints )
 {
     mSkinJoints = new LLSkinJoint[ numSkinJoints ];
@@ -187,9 +161,7 @@ bool LLAvatarJointMesh::allocateSkinData( U32 numSkinJoints )
     return true;
 }
 
-//-----------------------------------------------------------------------------
 // LLAvatarJointMesh::freeSkinData()
-//-----------------------------------------------------------------------------
 void LLAvatarJointMesh::freeSkinData()
 {
     mNumSkinJoints = 0;
@@ -197,9 +169,7 @@ void LLAvatarJointMesh::freeSkinData()
     mSkinJoints = NULL;
 }
 
-//--------------------------------------------------------------------
 // LLAvatarJointMesh::getColor()
-//--------------------------------------------------------------------
 void LLAvatarJointMesh::getColor( F32 *red, F32 *green, F32 *blue, F32 *alpha )
 {
     *red   = mColor[0];
@@ -208,9 +178,7 @@ void LLAvatarJointMesh::getColor( F32 *red, F32 *green, F32 *blue, F32 *alpha )
     *alpha = mColor[3];
 }
 
-//--------------------------------------------------------------------
 // LLAvatarJointMesh::setColor()
-//--------------------------------------------------------------------
 void LLAvatarJointMesh::setColor( F32 red, F32 green, F32 blue, F32 alpha )
 {
     mColor[0] = red;
@@ -225,17 +193,13 @@ void LLAvatarJointMesh::setColor( const LLColor4& color )
 }
 
 
-//--------------------------------------------------------------------
 // LLAvatarJointMesh::getTexture()
-//--------------------------------------------------------------------
 //LLViewerTexture *LLAvatarJointMesh::getTexture()
 //{
 //  return mTexture;
 //}
 
-//--------------------------------------------------------------------
 // LLAvatarJointMesh::setTexture()
-//--------------------------------------------------------------------
 void LLAvatarJointMesh::setTexture( LLGLTexture *texture )
 {
     mTexture = texture;
@@ -255,10 +219,8 @@ bool LLAvatarJointMesh::hasGLTexture() const
     return mTexture.notNull() && mTexture->hasGLTexture();
 }
 
-//--------------------------------------------------------------------
 // LLAvatarJointMesh::setLayerSet()
 // Sets the shape texture (takes precedence over normal texture)
-//--------------------------------------------------------------------
 void LLAvatarJointMesh::setLayerSet( LLTexLayerSet* layer_set )
 {
     mLayerSet = layer_set;
@@ -276,17 +238,13 @@ bool LLAvatarJointMesh::hasComposite() const
 }
 
 
-//--------------------------------------------------------------------
 // LLAvatarJointMesh::getMesh()
-//--------------------------------------------------------------------
 LLPolyMesh *LLAvatarJointMesh::getMesh()
 {
     return mMesh;
 }
 
-//-----------------------------------------------------------------------------
 // LLAvatarJointMesh::setMesh()
-//-----------------------------------------------------------------------------
 void LLAvatarJointMesh::setMesh( LLPolyMesh *mesh )
 {
     // set the mesh pointer
@@ -332,9 +290,7 @@ void LLAvatarJointMesh::setMesh( LLPolyMesh *mesh )
 
 }
 
-//-----------------------------------------------------------------------------
 // setupJoint()
-//-----------------------------------------------------------------------------
 void LLAvatarJointMesh::setupJoint(LLAvatarJoint* current_joint)
 {
     U32 sj;

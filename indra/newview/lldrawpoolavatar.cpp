@@ -76,8 +76,6 @@ F32 LLDrawPoolAvatar::sMinimumAlpha = 0.2f;
 static bool is_deferred_render = false;
 static bool is_post_deferred_render = false;
 
-extern bool gUseGLPick;
-
 F32 CLOTHING_GRAVITY_EFFECT = 0.7f;
 F32 CLOTHING_ACCEL_FORCE_FACTOR = 0.2f;
 
@@ -123,7 +121,6 @@ LLDrawPoolAvatar::~LLDrawPoolAvatar()
     }
 }
 
-// virtual
 bool LLDrawPoolAvatar::isDead()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
@@ -166,9 +163,7 @@ LLMatrix4& LLDrawPoolAvatar::getModelView()
     return ret;
 }
 
-//-----------------------------------------------------------------------------
 // render()
-//-----------------------------------------------------------------------------
 
 
 
@@ -980,9 +975,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
 
 static LLTrace::BlockTimerStatHandle FTM_RIGGED_VBO("Rigged VBO");
 
-//-----------------------------------------------------------------------------
 // getDebugTexture()
-//-----------------------------------------------------------------------------
 LLViewerTexture *LLDrawPoolAvatar::getDebugTexture()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;

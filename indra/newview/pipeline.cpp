@@ -30,7 +30,6 @@
 
 #include <unordered_map>
 
-// library includes
 #include "llimagepng.h"
 #include "llaudioengine.h" // For debugging.
 #include "llocclusiongeometrymgr.h" // r13: OBB occlusion debug overlay.
@@ -54,7 +53,6 @@
 #include "llstartup.h"
 #include "llwindow.h"   // swapBuffers()
 
-// newview includes
 #include "llagent.h"
 #include "llagentcamera.h"
 #include "llappviewer.h"
@@ -137,8 +135,6 @@
 // [/RLVa:KB]
 
 #include "llenvironment.h"
-
-#include "llenvironment.h"
 #include "llsettingsvo.h"
 
 #include "SMAAAreaTex.h"
@@ -209,7 +205,6 @@ static void notifyDoFSkippedOnce(const std::string& message)
     LLNotificationsUtil::add("ChatSystemMessageTip", args);
 }
 
-//cached settings
 bool LLPipeline::WindLightUseAtmosShaders;
 bool LLPipeline::RenderDeferred;
 F32 LLPipeline::RenderDeferredSunWash;
@@ -325,7 +320,6 @@ S32 LLPipeline::RenderHeroProbeConservativeUpdateMultiplier;
 bool LLPipeline::RenderAvatarCloth;
 LLTrace::EventStatHandle<S64> LLPipeline::sStatBatchSize("renderbatchsize");
 
-// const U32 LLPipeline::MAX_PREVIEW_WIDTH = 512;
 constexpr U32 LLPipeline::MAX_PREVIEW_WIDTH = 2048;
 constexpr U32 LLPipeline::MAX_PREVIEW_HEIGHT = 2048;
 
@@ -350,7 +344,6 @@ static bool sSceneDepthCopyActive = false;
 
 bool    gAvatarBacklight = false;
 
-bool    gDebugPipeline = false;
 LLPipeline gPipeline;
 const LLMatrix4* gGLLastMatrix = NULL;
 
@@ -388,7 +381,6 @@ LLTrace::BlockTimerStatHandle FTM_RENDER_UI_2D("2D");
 
 static LLTrace::BlockTimerStatHandle FTM_STATESORT_DRAWABLE("Sort Drawables");
 
-//----------------------------------------
 
 void drawBox(const LLVector4a& c, const LLVector4a& r);
 void drawBoxOutline(const LLVector3& pos, const LLVector3& size);
@@ -396,7 +388,6 @@ U32 nhpo2(U32 v);
 LLVertexBuffer* ll_create_cube_vb(U32 type_mask);
 
 void display_update_camera();
-//----------------------------------------
 
 S32     LLPipeline::sCompiles = 0;
 
@@ -946,7 +937,6 @@ void LLPipeline::cleanup()
     mHeroProbeManager.cleanup();
 }
 
-//============================================================================
 
 void LLPipeline::destroyGL()
 {
@@ -1442,13 +1432,11 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
     return true;
 }
 
-//static
 void LLPipeline::updateRenderTransparentWater()
 {
     sRenderTransparentWater = gSavedSettings.getBOOL("RenderTransparentWater");
 }
 
-// static
 void LLPipeline::refreshCachedSettings()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
@@ -2138,7 +2126,6 @@ void LLPipeline::assertInitializedDoError()
     LL_ERRS() << "LLPipeline used when uninitialized." << LL_ENDL;
 }
 
-//============================================================================
 
 void LLPipeline::enableShadows(const bool enable_shadows)
 {
@@ -2318,14 +2305,12 @@ LLDrawPool *LLPipeline::getPool(const U32 type, LLViewerTexture *tex0)
 }
 
 
-// static
 LLDrawPool* LLPipeline::getPoolFromTE(const LLTextureEntry* te, LLViewerTexture* imagep)
 {
     U32 type = getPoolTypeFromTE(te, imagep);
     return gPipeline.getPool(type, imagep);
 }
 
-//static
 U32 LLPipeline::getPoolTypeFromTE(const LLTextureEntry* te, LLViewerTexture* imagep)
 {
     if (!te || !imagep)
@@ -2462,7 +2447,6 @@ void LLPipeline::unlinkDrawable(LLDrawable *drawable)
     }
 }
 
-//static
 void LLPipeline::removeMutedAVsLights(LLVOAvatar* muted_avatar)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -2732,7 +2716,6 @@ void LLPipeline::updateMove()
 // Culling and occlusion testing
 /////////////////////////////////////////////////////////////////////////////
 
-//static
 F32 LLPipeline::calcPixelArea(LLVector3 center, LLVector3 size, LLCamera &camera)
 {
     llassert(!gCubeSnapshot); // shouldn't be doing ANY of this during cube snap shots
@@ -2754,7 +2737,6 @@ F32 LLPipeline::calcPixelArea(LLVector3 center, LLVector3 size, LLCamera &camera
     return radius*radius * F_PI;
 }
 
-//static
 F32 LLPipeline::calcPixelArea(const LLVector4a& center, const LLVector4a& size, LLCamera &camera)
 {
     LLVector4a origin;
@@ -3031,7 +3013,6 @@ bool LLPipeline::getVisibleExtents(LLCamera& camera, LLVector3& min, LLVector3& 
 
 static LLTrace::BlockTimerStatHandle FTM_CULL("Object Culling");
 
-// static
 bool LLPipeline::isWaterClip()
 {
     // We always pretend that we're not clipping water when rendering mirrors.
@@ -3045,7 +3026,6 @@ bool LLPipeline::isWaterClip()
 // した getRenderCvar* helper は R3 で撤去済)。本 isCinematicMode のみ残し、
 // Cinematic 専用機能 (Volumetric Lighting / Motion Blur / DoF chain 等) の
 // gate 判定に使用する。
-// static
 bool LLPipeline::isCinematicMode()
 {
     static LLCachedControl<U32> aya_view_mode(gSavedSettings, "AYAVisualRealismEnabled", 1);
@@ -4940,7 +4920,6 @@ void LLPipeline::renderHighlights()
     }
 }
 
-//debug use
 U32 LLPipeline::sCurRenderPoolType = 0 ;
 
 // <AYAstorm r30 P2> Velocity pass (BD lineage). Bind mVelocityMap, clear, run
@@ -5318,10 +5297,6 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 
     pool_set_t::iterator iter1 = mPools.begin();
 
-    if (gDebugGL || gDebugPipeline)
-    {
-    }
-
     // turn off atmospherics and water haze for low detail reflection probe
     static LLCachedControl<S32> probe_level(gSavedSettings, "RenderReflectionProbeLevel", 0);
     bool low_detail_probe = probe_level == 0 && gCubeSnapshot;
@@ -5413,10 +5388,6 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
                 }
                 poolp->endPostDeferredPass(i);
                 LLVertexBuffer::unbind();
-
-                if (gDebugGL || gDebugPipeline)
-                {
-                }
             }
         }
         else
@@ -7107,7 +7078,6 @@ void LLPipeline::resetDrawOrders()
     }
 }
 
-//============================================================================
 // Once-per-frame setup of hardware lights,
 // including sun/moon, avatar backlight, and up to 6 local lights
 
@@ -7851,7 +7821,6 @@ void LLPipeline::disableLights()
     enableLights(0); // no lighting (full bright)
 }
 
-//============================================================================
 
 class LLMenuItemGL;
 class LLInvFVBridge;
@@ -8031,7 +8000,6 @@ void LLPipeline::setLight(LLDrawable *drawablep, bool is_light)
     }
 }
 
-//static
 void LLPipeline::toggleRenderType(U32 type)
 {
     gPipeline.mRenderTypeEnabled[type] = !gPipeline.mRenderTypeEnabled[type];
@@ -8041,26 +8009,22 @@ void LLPipeline::toggleRenderType(U32 type)
     }
 }
 
-//static
 void LLPipeline::toggleRenderTypeControl(U32 type)
 {
     gPipeline.toggleRenderType(type);
 }
 
-//static
 bool LLPipeline::hasRenderTypeControl(U32 type)
 {
     return gPipeline.hasRenderType(type);
 }
 
 // Allows UI items labeled "Hide foo" instead of "Show foo"
-//static
 bool LLPipeline::toggleRenderTypeControlNegated(S32 type)
 {
     return !gPipeline.hasRenderType(type);
 }
 
-//static
 void LLPipeline::toggleRenderDebug(U64 bit)
 {
     if (gPipeline.hasRenderDebugMask(bit))
@@ -8075,20 +8039,17 @@ void LLPipeline::toggleRenderDebug(U64 bit)
 }
 
 
-//static
 bool LLPipeline::toggleRenderDebugControl(U64 bit)
 {
     return gPipeline.hasRenderDebugMask(bit);
 }
 
-//static
 void LLPipeline::toggleRenderDebugFeature(U32 bit)
 {
     gPipeline.mRenderDebugFeatureMask ^= bit;
 }
 
 
-//static
 bool LLPipeline::toggleRenderDebugFeatureControl(U32 bit)
 {
     return gPipeline.hasRenderDebugFeatureMask(bit);
@@ -8122,145 +8083,121 @@ void LLPipeline::popRenderDebugFeatureMask()
     mRenderDebugFeatureStack.pop();
 }
 
-// static
 void LLPipeline::setRenderScriptedBeacons(bool val)
 {
     sRenderScriptedBeacons = val;
 }
 
-// static
 void LLPipeline::toggleRenderScriptedBeacons()
 {
     sRenderScriptedBeacons = !sRenderScriptedBeacons;
 }
 
-// static
 bool LLPipeline::getRenderScriptedBeacons()
 {
     return sRenderScriptedBeacons;
 }
 
-// static
 void LLPipeline::setRenderScriptedTouchBeacons(bool val)
 {
     sRenderScriptedTouchBeacons = val;
 }
 
-// static
 void LLPipeline::toggleRenderScriptedTouchBeacons()
 {
     sRenderScriptedTouchBeacons = !sRenderScriptedTouchBeacons;
 }
 
-// static
 bool LLPipeline::getRenderScriptedTouchBeacons()
 {
     return sRenderScriptedTouchBeacons;
 }
 
-// static
 void LLPipeline::setRenderMOAPBeacons(bool val)
 {
     sRenderMOAPBeacons = val;
 }
 
-// static
 void LLPipeline::toggleRenderMOAPBeacons()
 {
     sRenderMOAPBeacons = !sRenderMOAPBeacons;
 }
 
-// static
 bool LLPipeline::getRenderMOAPBeacons()
 {
     return sRenderMOAPBeacons;
 }
 
-// static
 void LLPipeline::setRenderPhysicalBeacons(bool val)
 {
     sRenderPhysicalBeacons = val;
 }
 
-// static
 void LLPipeline::toggleRenderPhysicalBeacons()
 {
     sRenderPhysicalBeacons = !sRenderPhysicalBeacons;
 }
 
-// static
 bool LLPipeline::getRenderPhysicalBeacons()
 {
     return sRenderPhysicalBeacons;
 }
 
-// static
 void LLPipeline::setRenderParticleBeacons(bool val)
 {
     sRenderParticleBeacons = val;
 }
 
-// static
 void LLPipeline::toggleRenderParticleBeacons()
 {
     sRenderParticleBeacons = !sRenderParticleBeacons;
 }
 
-// static
 bool LLPipeline::getRenderParticleBeacons()
 {
     return sRenderParticleBeacons;
 }
 
-// static
 void LLPipeline::setRenderSoundBeacons(bool val)
 {
     sRenderSoundBeacons = val;
 }
 
-// static
 void LLPipeline::toggleRenderSoundBeacons()
 {
     sRenderSoundBeacons = !sRenderSoundBeacons;
 }
 
-// static
 bool LLPipeline::getRenderSoundBeacons()
 {
     return sRenderSoundBeacons;
 }
 
-// static
 void LLPipeline::setRenderBeacons(bool val)
 {
     sRenderBeacons = val;
 }
 
-// static
 void LLPipeline::toggleRenderBeacons()
 {
     sRenderBeacons = !sRenderBeacons;
 }
 
-// static
 bool LLPipeline::getRenderBeacons()
 {
     return sRenderBeacons;
 }
 
-// static
 void LLPipeline::setRenderHighlights(bool val)
 {
     sRenderHighlight = val;
 }
 
-// static
 void LLPipeline::toggleRenderHighlights()
 {
     sRenderHighlight = !sRenderHighlight;
 }
 
-// static
 bool LLPipeline::getRenderHighlights()
 {
     return sRenderHighlight;
@@ -8283,7 +8220,6 @@ bool LLPipeline::getRenderRegionCornerBeacons()
 }
 // </FS:PP>
 
-// static
 void LLPipeline::setRenderHighlightTextureChannel(LLRender::eTexIndex channel)
 {
     if (channel != sRenderHighlightTextureChannel)
@@ -8789,11 +8725,6 @@ void apply_cube_face_rotation(U32 face)
             gGL.rotatef(180, 0, 0, 1);
         break;
     }
-}
-
-void LLPipeline::bindScreenToTexture()
-{
-
 }
 
 static LLTrace::BlockTimerStatHandle FTM_RENDER_BLOOM("Bloom");

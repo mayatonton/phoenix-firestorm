@@ -237,7 +237,6 @@ LLColor4 LLAtmospherics::calcSkyColorInDir(const LLSettingsSky::ptr_t &psky, Atm
         return col;
     }
 
-    // undo OGL_TO_CFR_ROTATION and negate vertical direction.
     LLVector3 Pn = LLVector3(-dir[1] , -dir[2], -dir[0]);
 
     //calculates hazeColor

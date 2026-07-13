@@ -73,8 +73,6 @@ const char FEATURE_TABLE_FILENAME[] = "featuretable_linux.txt";
 const char FEATURE_TABLE_FILENAME[] = "featuretable.txt";
 #endif
 
-#if 0                               // consuming code in #if 0 below
-#endif
 LLFeatureInfo::LLFeatureInfo(const std::string& name, const bool available, const F32 level)
     : mValid(true), mName(name), mAvailable(available), mRecommendedLevel(level)
 {

@@ -79,8 +79,6 @@
 #include "llvieweraudio.h"
 #include "llcorehttputil.h"
 
-#include "llfloaterwebcontent.h"    // for handling window close requests and geometry change requests in media browser windows.
-
 #include <boost/bind.hpp>   // for SkinFolder listener
 #include <boost/signals2.hpp>
 
@@ -240,7 +238,6 @@ LLViewerMedia::~LLViewerMedia()
     }
 }
 
-// static
 void LLViewerMedia::initSingleton()
 {
     gIdleCallbacks.addFunction(LLViewerMedia::onIdle, NULL);
@@ -563,7 +560,6 @@ LLViewerMedia::impl_list &LLViewerMedia::getPriorityList()
     return sViewerMediaImplList;
 }
 
-// static
 // This is the predicate function used to sort sViewerMediaImplList by priority.
 bool LLViewerMedia::priorityComparitor(const LLViewerMediaImpl* i1, const LLViewerMediaImpl* i2)
 {
@@ -1108,7 +1104,6 @@ bool LLViewerMedia::isParcelAudioPlaying()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// static
 void LLViewerMedia::authSubmitCallback(const LLSD& notification, const LLSD& response)
 {
     LLViewerMedia::getInstance()->onAuthSubmit(notification, response);
@@ -1306,7 +1301,6 @@ void LLViewerMedia::setOpenIDCookie(const std::string& url)
     }
 }
 
-//static
 void LLViewerMedia::getOpenIDCookieCoro(std::string url)
 {
     LLCore::HttpRequest::policy_t httpPolicy(LLCore::HttpRequest::DEFAULT_POLICY_ID);
@@ -2421,7 +2415,6 @@ void LLViewerMediaImpl::mouseMove(S32 x, S32 y, MASK mask)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-//static
 void LLViewerMediaImpl::scaleTextureCoords(const LLVector2& texture_coords, S32 *x, S32 *y)
 {
     F32 texture_x = texture_coords.mV[VX];
@@ -3737,7 +3730,6 @@ void LLViewerMediaImpl::handleMediaEvent(LLPluginClassMedia* plugin, LLPluginCla
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 void
 LLViewerMediaImpl::undo()
 {
@@ -3746,7 +3738,6 @@ LLViewerMediaImpl::undo()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 bool
 LLViewerMediaImpl::canUndo() const
 {
@@ -3757,7 +3748,6 @@ LLViewerMediaImpl::canUndo() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 void
 LLViewerMediaImpl::redo()
 {
@@ -3766,7 +3756,6 @@ LLViewerMediaImpl::redo()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 bool
 LLViewerMediaImpl::canRedo() const
 {
@@ -3777,7 +3766,6 @@ LLViewerMediaImpl::canRedo() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 void
 LLViewerMediaImpl::cut()
 {
@@ -3786,7 +3774,6 @@ LLViewerMediaImpl::cut()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 bool
 LLViewerMediaImpl::canCut() const
 {
@@ -3797,7 +3784,6 @@ LLViewerMediaImpl::canCut() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 void
 LLViewerMediaImpl::copy()
 {
@@ -3806,7 +3792,6 @@ LLViewerMediaImpl::copy()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 bool
 LLViewerMediaImpl::canCopy() const
 {
@@ -3817,7 +3802,6 @@ LLViewerMediaImpl::canCopy() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 void
 LLViewerMediaImpl::paste()
 {
@@ -3826,7 +3810,6 @@ LLViewerMediaImpl::paste()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 bool
 LLViewerMediaImpl::canPaste() const
 {
@@ -3837,7 +3820,6 @@ LLViewerMediaImpl::canPaste() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 void
 LLViewerMediaImpl::doDelete()
 {
@@ -3846,7 +3828,6 @@ LLViewerMediaImpl::doDelete()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 bool
 LLViewerMediaImpl::canDoDelete() const
 {
@@ -3857,7 +3838,6 @@ LLViewerMediaImpl::canDoDelete() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 void
 LLViewerMediaImpl::selectAll()
 {
@@ -3866,7 +3846,6 @@ LLViewerMediaImpl::selectAll()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// virtual
 bool
 LLViewerMediaImpl::canSelectAll() const
 {
@@ -4289,7 +4268,6 @@ bool LLViewerMediaImpl::isAttachedToAnotherAvatar() const
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //
-//static
 bool LLViewerMediaImpl::isObjectAttachedToAnotherAvatar(LLVOVolume *obj)
 {
     bool result = false;
@@ -4339,7 +4317,6 @@ LLNotificationPtr LLViewerMediaImpl::getCurrentNotification() const
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //
-// static
 bool LLViewerMediaImpl::isObjectInAgentParcel(LLVOVolume *obj)
 {
     return (LLViewerParcelMgr::getInstance()->inAgentParcel(obj->getPositionGlobal()));

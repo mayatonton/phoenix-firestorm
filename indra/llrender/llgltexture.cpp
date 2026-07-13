@@ -47,7 +47,6 @@ LLGLTexture::LLGLTexture(const LLImageRaw* raw, bool usemipmaps)
 {
     init();
     mUseMipMaps = usemipmaps ;
-    // Create an empty image of the specified size and width
     mGLTexturep = new LLImageGL(raw, usemipmaps) ;
     mFullWidth = mGLTexturep->getWidth();
     mFullHeight = mGLTexturep->getHeight();
@@ -87,7 +86,6 @@ void LLGLTexture::cleanup()
     }
 }
 
-// virtual
 void LLGLTexture::dump()
 {
     if(mGLTexturep)
@@ -138,7 +136,6 @@ void LLGLTexture::setActive()
     }
 }
 
-//set the texture to stay in memory
 void LLGLTexture::setNoDelete()
 {
     mTextureState = NO_DELETE ;
@@ -193,14 +190,14 @@ void LLGLTexture::setFilteringOption(LLTexUnit::eTextureFilterOptions option)
     mGLTexturep->setFilteringOption(option) ;
 }
 
-//virtual
+
 S32 LLGLTexture::getWidth(S32 discard_level) const
 {
     llassert(mGLTexturep.notNull()) ;
     return mGLTexturep->getWidth(discard_level) ;
 }
 
-//virtual
+
 S32 LLGLTexture::getHeight(S32 discard_level) const
 {
     llassert(mGLTexturep.notNull()) ;
@@ -312,7 +309,6 @@ bool LLGLTexture::getIsAlphaMask() const
     return mGLTexturep->getIsAlphaMask() ;
 }
 
-//bool LLGLTexture::getMask(const LLVector2 &tc)
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
 bool LLGLTexture::getMask(const LLVector2 &tc) const
 // [/RLVa:KB]

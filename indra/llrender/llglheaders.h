@@ -28,7 +28,6 @@
 #define LL_LLGLHEADERS_H
 
 #if LL_DARWIN
-//----------------------------------------------------------------------------
 // LL_DARWIN
 
 #define GL_GLEXT_LEGACY

@@ -53,7 +53,6 @@
 #include "llskinningutil.h"
 
 
-// Lots of STL stuff in here, using namespace std to keep things more readable
 using std::vector;
 using std::pair;
 using std::make_pair;
@@ -66,13 +65,11 @@ LLVector4           gShinyOrigin;
 
 S32 clamp_terrain_mapping(S32 mapping)
 {
-    // 1 = "flat", 2 not implemented, 3 = triplanar mapping
     mapping = llclamp(mapping, 1, 3);
     if (mapping == 2) { mapping = 1; }
     return mapping;
 }
 
-//utility shaders
 LLGLSLShader    gOcclusionProgram;
 LLGLSLShader    gSkinnedOcclusionProgram;
 LLGLSLShader    gOcclusionCubeProgram;
@@ -98,7 +95,6 @@ LLGLSLShader    gCopyDepthProgram;
 LLGLSLShader    gPBRTerrainBakeProgram;
 LLGLSLShader    gDrawColorProgram;
 
-//object shaders
 LLGLSLShader        gObjectPreviewProgram;
 LLGLSLShader        gSkinnedObjectPreviewProgram;
 LLGLSLShader        gPhysicsPreviewProgram;
@@ -107,11 +103,9 @@ LLGLSLShader        gObjectBumpProgram;
 LLGLSLShader        gSkinnedObjectBumpProgram;
 LLGLSLShader        gObjectAlphaMaskNoColorProgram;
 
-//environment shaders
 LLGLSLShader        gWaterProgram;
 LLGLSLShader        gUnderWaterProgram;
 
-//interface shaders
 LLGLSLShader        gHighlightProgram;
 LLGLSLShader        gSkinnedHighlightProgram;
 LLGLSLShader        gHighlightNormalProgram;
@@ -122,18 +116,15 @@ LLGLSLShader        gDeferredHighlightProgram;
 LLGLSLShader        gPathfindingProgram;
 LLGLSLShader        gPathfindingNoNormalsProgram;
 
-//avatar shader handles
 LLGLSLShader        gAvatarProgram;
 LLGLSLShader        gAvatarEyeballProgram;
 LLGLSLShader        gImpostorProgram;
 
-// Effects Shaders
 LLGLSLShader            gGlowProgram;
 LLGLSLShader            gGlowExtractProgram;
 LLGLSLShader            gPostVignetteProgram;   // <FS:CR> Import Vignette from Exodus
 LLGLSLShader            gPostSnapshotFrameProgram;   // <FS:Beq/> Add Snapshot frame guide
 
-// Deferred rendering shaders
 LLGLSLShader            gDeferredImpostorProgram;
 LLGLSLShader            gDeferredDiffuseProgram;
 LLGLSLShader            gDeferredDiffuseAlphaMaskProgram;
@@ -254,7 +245,6 @@ LLGLSLShader            gVolumetricLightProgram;
 LLGLSLShader            gRlvSphereProgram;
 // [/RLVa:KB]
 
-// Deferred materials shaders
 LLGLSLShader            gDeferredMaterialProgram[LLMaterial::SHADER_COUNT*2];
 LLGLSLShader            gHUDPBROpaqueProgram;
 LLGLSLShader            gPBRGlowProgram;
@@ -269,7 +259,6 @@ LLGLSLShader            gDeferredPBRTerrainProgram[TERRAIN_PAINT_TYPE_COUNT];
 LLGLSLShader            gGLTFPBRMetallicRoughnessProgram;
 
 
-//helper for making a rigged variant of a given shader
 static bool make_rigged_variant(LLGLSLShader& shader, LLGLSLShader& riggedShader)
 {
     riggedShader.mName = llformat("Skinned %s", shader.mName.c_str());
@@ -639,8 +628,7 @@ static bool make_gltf_variant(LLGLSLShader& shader, LLGLSLShader& variant, bool 
         bool success = variant.createShader();
         llassert(success);
 
-        // Alpha Shader Hack
-        // See: LLRender::syncMatrices()
+
         variant.mFeatures.calculatesLighting = true;
         variant.mFeatures.hasLighting = true;
 
@@ -682,8 +670,6 @@ static bool make_gltf_variants(LLGLSLShader& shader, bool use_sun_shadow)
 }
 
 #ifdef SHOW_ASSERT
-// return true if there are no redundant shaders in the given vector
-// also checks for redundant variants
 static bool no_redundant_shaders(const std::vector<LLGLSLShader*>& shaders)
 {
     std::set<std::string> names;
@@ -803,7 +789,6 @@ void LLViewerShaderMgr::finalizeShaderList()
     llassert(no_redundant_shaders(mShaderList));
 }
 
-// static
 LLViewerShaderMgr * LLViewerShaderMgr::instance()
 {
     if(NULL == sInstance)
@@ -814,7 +799,6 @@ LLViewerShaderMgr * LLViewerShaderMgr::instance()
     return static_cast<LLViewerShaderMgr*>(sInstance);
 }
 
-// static
 void LLViewerShaderMgr::releaseInstance()
 {
     if (sInstance != NULL)
@@ -833,7 +817,6 @@ void LLViewerShaderMgr::initAttribsAndUniforms(void)
 }
 
 
-//============================================================================
 // Set Levels
 
 S32 LLViewerShaderMgr::getShaderLevel(S32 type)
@@ -841,7 +824,6 @@ S32 LLViewerShaderMgr::getShaderLevel(S32 type)
     return mShaderLevel[type];
 }
 
-//============================================================================
 // Shader Management
 
 void LLViewerShaderMgr::setShaders()
@@ -1973,8 +1955,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         }
         llassert(success);
 
-        // Alpha Shader Hack
-        // See: LLRender::syncMatrices()
+
         shader->mFeatures.calculatesLighting = true;
         shader->mFeatures.hasLighting = true;
 

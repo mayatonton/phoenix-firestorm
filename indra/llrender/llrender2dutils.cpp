@@ -59,12 +59,10 @@ bool ui_point_in_rect(S32 x, S32 y, S32 left, S32 top, S32 right, S32 bottom)
 }
 
 
-// Puts GL into 2D drawing mode by turning off lighting, setting to an
-// orthographic projection, etc.
 void gl_state_for_2d(S32 width, S32 height)
 {
-    F32 window_width = (F32) width;//gViewerWindow->getWindowWidth();
-    F32 window_height = (F32) height;//gViewerWindow->getWindowHeight();
+    F32 window_width = (F32) width;
+    F32 window_height = (F32) height;
 
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.loadIdentity();
@@ -1756,7 +1754,6 @@ LLRender2D::~LLRender2D()
     }
 }
 
-// static
 void LLRender2D::translate(F32 x, F32 y, F32 z)
 {
     gGL.translateUI(x,y,z);
@@ -1765,14 +1762,12 @@ void LLRender2D::translate(F32 x, F32 y, F32 z)
     LLFontGL::sCurDepth += z;
 }
 
-// static
 void LLRender2D::pushMatrix()
 {
     gGL.pushUIMatrix();
     LLFontGL::sOriginStack.push_back(std::make_pair(LLFontGL::sCurOrigin, LLFontGL::sCurDepth));
 }
 
-// static
 void LLRender2D::popMatrix()
 {
     gGL.popUIMatrix();
@@ -1781,7 +1776,6 @@ void LLRender2D::popMatrix()
     LLFontGL::sOriginStack.pop_back();
 }
 
-// static
 void LLRender2D::loadIdentity()
 {
     gGL.loadUIIdentity();
@@ -1790,7 +1784,6 @@ void LLRender2D::loadIdentity()
     LLFontGL::sCurDepth = 0.f;
 }
 
-// static
 void LLRender2D::setLineWidth(F32 width)
 {
     gGL.setLineWidth(width * lerp(LLRender::sUIGLScaleFactor.mV[VX], LLRender::sUIGLScaleFactor.mV[VY], 0.5f));
@@ -1816,7 +1809,6 @@ LLPointer<LLUIImage> LLRender2D::getUIImage(const std::string& name, S32 priorit
         return NULL;
 }
 
-// static
 void LLRender2D::resetProvider()
 {
     if (LLRender2D::instanceExists())

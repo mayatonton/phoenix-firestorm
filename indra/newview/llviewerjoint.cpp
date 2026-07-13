@@ -24,9 +24,7 @@
  * $/LicenseInfo$
  */
 
-//-----------------------------------------------------------------------------
 // Header Files
-//-----------------------------------------------------------------------------
 #include "llviewerprecompiledheaders.h"
 
 #include "llviewerjoint.h"
@@ -41,10 +39,8 @@
 
 static constexpr S32 MIN_PIXEL_AREA_3PASS_HAIR = 64*64;
 
-//-----------------------------------------------------------------------------
 // LLViewerJoint()
 // Class Constructors
-//-----------------------------------------------------------------------------
 LLViewerJoint::LLViewerJoint() :
     LLAvatarJoint()
 { }
@@ -57,33 +53,22 @@ LLViewerJoint::LLViewerJoint(const std::string &name, LLJoint *parent) :
     LLAvatarJoint(name, parent)
 { }
 
-//-----------------------------------------------------------------------------
 // ~LLViewerJoint()
 // Class Destructor
-//-----------------------------------------------------------------------------
 LLViewerJoint::~LLViewerJoint()
 {
 }
 
-//--------------------------------------------------------------------
 // render()
-//--------------------------------------------------------------------
 U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
 {
 
     U32 triangle_count = 0;
 
-    //----------------------------------------------------------------
-    // ignore invisible objects
-    //----------------------------------------------------------------
     if ( mValid )
     {
 
 
-        //----------------------------------------------------------------
-        // if object is transparent, defer it, otherwise
-        // give the joint subclass a chance to draw itself
-        //----------------------------------------------------------------
         if ( is_dummy )
         {
             triangle_count += drawShape( pixelArea, first_pass, is_dummy );
@@ -138,9 +123,6 @@ U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
         }
     }
 
-    //----------------------------------------------------------------
-    // render children
-    //----------------------------------------------------------------
     for (LLJoint* j : mChildren)
     {
         // LLViewerJoint is derived from LLAvatarJoint,
@@ -161,9 +143,7 @@ U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
     return triangle_count;
 }
 
-//--------------------------------------------------------------------
 // drawShape()
-//--------------------------------------------------------------------
 U32 LLViewerJoint::drawShape( F32 pixelArea, bool first_pass, bool is_dummy )
 {
     return 0;

@@ -27,8 +27,6 @@
 #ifndef LL_LLWINDOWSDL2_H
 #define LL_LLWINDOWSDL2_H
 
-// Simple Directmedia Layer (http://libsdl.org/) implementation of LLWindow class
-
 #include "llwindow.h"
 #include "lltimer.h"
 

@@ -1154,7 +1154,6 @@ bool RlvHandler::onGC()
     return (0 != m_Objects.size()); // GC will kill itself if it has nothing to do
 }
 
-// static
 void RlvHandler::cleanupClass()
 {
     gRlvHandler.cleanup();

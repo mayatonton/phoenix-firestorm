@@ -702,7 +702,6 @@ LLViewerTexture* LLSnapshotLivePreview::getBigThumbnailImage()
 
 // Called often. Checks whether it's time to grab a new snapshot and if so, does it.
 // Returns true if new snapshot generated, false otherwise.
-//static
 bool LLSnapshotLivePreview::onIdle( void* snapshot_preview )
 {
     LLSnapshotLivePreview* previewp = (LLSnapshotLivePreview*)snapshot_preview;

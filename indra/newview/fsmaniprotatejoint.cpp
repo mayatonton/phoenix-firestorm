@@ -194,7 +194,6 @@ bool FSManipRotateJoint::isMouseOverJoint(S32 mouseX, S32 mouseY, const LLVector
 //static 
 std::unordered_map<std::string, LLVector3> FSManipRotateJoint::sReferenceUpVectors = {};
 
-//static
 const std::vector<std::string_view> FSManipRotateJoint::sSelectableJoints = 
 {
     // head, torso, legs
@@ -792,7 +791,6 @@ void FSManipRotateJoint::renderAxes(const LLVector3& agent_space_center, F32 siz
     gGL.popMatrix();
 }
 
-//static
 std::string FSManipRotateJoint::getManipPartString(EManipPart part)
 {
     switch (part)

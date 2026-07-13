@@ -24,17 +24,14 @@
  * $/LicenseInfo$
  */
 
-//THIS HEADER SHOULD ONLY BE INCLUDED FROM llgl.h
 #ifndef LL_LLGLSTATES_H
 #define LL_LLGLSTATES_H
 
 #include "llimagegl.h"
 
-//----------------------------------------------------------------------------
 
 class LLGLDepthTest
 {
-    // Enabled by default
 public:
     LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled = GL_TRUE, GLenum depth_func = GL_LEQUAL);
 
@@ -49,12 +46,11 @@ public:
     static GLenum    getCurrentDepthFunc()   { return sDepthFunc; }
 
 private:
-    static GLboolean sDepthEnabled; // defaults to GL_FALSE
-    static GLenum sDepthFunc; // defaults to GL_LESS
-    static GLboolean sWriteEnabled; // defaults to GL_TRUE
+    static GLboolean sDepthEnabled;
+    static GLenum sDepthFunc;
+    static GLboolean sWriteEnabled;
 };
 
-//----------------------------------------------------------------------------
 
 class LLGLSDefault
 {
@@ -62,9 +58,7 @@ protected:
     LLGLDisable mBlend, mCullFace;
 public:
     LLGLSDefault()
-        :
-        // Disable
-        mBlend(GL_BLEND),
+        : mBlend(GL_BLEND),
         mCullFace(GL_CULL_FACE)
     { }
 };
@@ -81,7 +75,6 @@ public:
     { }
 };
 
-//----------------------------------------------------------------------------
 
 class LLGLSUIDefault
 {
@@ -97,7 +90,6 @@ public:
     {}
 };
 
-//----------------------------------------------------------------------------
 
 class LLGLSPipeline
 {
@@ -111,7 +103,7 @@ public:
     { }
 };
 
-class LLGLSPipelineAlpha // : public LLGLSPipeline
+class LLGLSPipelineAlpha
 {
 protected:
     LLGLEnable mBlend;
@@ -167,6 +159,5 @@ public:
     { }
 };
 
-//----------------------------------------------------------------------------
 
 #endif

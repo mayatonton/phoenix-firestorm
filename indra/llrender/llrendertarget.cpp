@@ -54,14 +54,13 @@ LLRenderTarget::~LLRenderTarget()
 
 void LLRenderTarget::resize(U32 resx, U32 resy)
 {
-    //for accounting, get the number of pixels added/subtracted
     S32 pix_diff = (resx*resy)-(mResX*mResY);
 
     mResX = resx;
     mResY = resy;
 
     for (U32 i = 0; i < mInternalFormat.size(); ++i)
-    { //resize color attachments
+    {
         sBytesAllocated += pix_diff*4;
     }
 
@@ -802,8 +801,6 @@ void LLRenderTarget::flush()
 
     if (mPreviousRT)
     {
-        // a bit hacky -- pop the RT stack back two frames and push
-        // the previous frame back on to play nice with the GL state machine
         sBoundTarget = mPreviousRT->mPreviousRT;
         mPreviousRT->bindTarget();
     }
@@ -873,16 +870,10 @@ bool LLRenderTarget::isBoundInStack() const
 
 void LLRenderTarget::swapFBORefs(LLRenderTarget& other)
 {
-    // Must be initialized
     llassert(mAllocated);
     llassert(other.mAllocated);
-
-    // Must be unbound
-    // *NOTE: mPreviousRT can be non-null even if this target is unbound - presumably for debugging purposes?
     llassert(!isBoundInStack());
     llassert(!other.isBoundInStack());
-
-    // Must be same type
     llassert(mResX == other.mResX);
     llassert(mResY == other.mResY);
     llassert(mInternalFormat == other.mInternalFormat);

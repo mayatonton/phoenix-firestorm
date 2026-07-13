@@ -133,8 +133,6 @@ extern bool gTeleportDisplay;
 
 static U32 sUpdateCount = 0;
 
-// get the next highest power of two of v (or v if v is already a power of two)
-//defined in llvertexbuffer.cpp
 extern U32 nhpo2(U32 v);
 
 static void touch_default_probe(LLReflectionMap* probe)
@@ -182,33 +180,30 @@ static F32 update_score(LLReflectionMap* p)
 static bool check_priority(LLReflectionMap* a, LLReflectionMap* b)
 {
     if (a->mCubeIndex == -1)
-    { // not a candidate for updating
+    {
         return false;
     }
     else if (b->mCubeIndex == -1)
-    { // b is not a candidate for updating, a is higher priority by default
+    {
         return true;
     }
     else if (!a->mComplete && !b->mComplete)
-    { //neither probe is complete, use distance
+    {
         return a->mDistance < b->mDistance;
     }
     else if (a->mComplete && b->mComplete)
-    { //both probes are complete, use update_score metric
+    {
         return update_score(a) > update_score(b);
     }
 
-    // a or b is not complete,
     if (sUpdateCount % 3 == 0)
     { // every third update, allow complete probes to cut in line in front of non-complete probes to avoid spammy probe generators from deadlocking scheduler (SL-20258))
         return !b->mComplete;
     }
 
-    // prioritize incomplete probe
     return b->mComplete;
 }
 
-// helper class to seed octree with probes
 void LLReflectionMapManager::update()
 {
     if (!LLPipelineFrameContext::getInstance().isReflectionProbesEnabled() || gTeleportDisplay || LLStartUp::getStartupState() < STATE_STARTED)
@@ -254,7 +249,6 @@ void LLReflectionMapManager::update()
 
             if (mRenderReflectionProbeDynamicAllocation > 1)
             {
-                // Round mDynamicProbeCount to the nearest increment of 16
                 mDynamicProbeCount = ((mDynamicProbeCount + mRenderReflectionProbeDynamicAllocation / 2) / mRenderReflectionProbeDynamicAllocation) * 16;
                 mDynamicProbeCount = llclamp(mDynamicProbeCount, 1, mRenderReflectionProbeCount);
             }
@@ -303,7 +297,6 @@ void LLReflectionMapManager::update()
     LLVector4a camera_pos;
     camera_pos.load3(LLViewerCamera::instance().getOrigin().mV);
 
-    // process kill list
     for (auto& probe : mKillList)
     {
         auto const & iter = std::find(mProbes.begin(), mProbes.end(), probe);
@@ -315,7 +308,6 @@ void LLReflectionMapManager::update()
 
     mKillList.clear();
 
-    // process create list
     for (auto& probe : mCreateList)
     {
         mProbes.push_back(probe);
@@ -344,22 +336,18 @@ void LLReflectionMapManager::update()
         doProbeUpdate();
     }
 
-    // update distance to camera for all probes
     std::sort(mProbes.begin()+1, mProbes.end(), CompareProbeDistance());
     llassert(mProbes[0] == mDefaultProbe);
     llassert(mProbes[0]->mCubeArray == mTexture);
     llassert(mProbes[0]->mCubeIndex == 0);
 
-    // make sure we're assigning cube slots to the closest probes
-
-    // first free any cube indices for distant probes
     for (U32 i = mReflectionProbeCount; i < mProbes.size(); ++i)
     {
         LLReflectionMap* probe = mProbes[i];
         llassert(probe != nullptr);
 
         if (probe && probe->mCubeIndex != -1 && mUpdatingProbe != probe)
-        { // free this index
+        {
             mCubeFree.push_back(probe->mCubeIndex);
 
             probe->mCubeArray = nullptr;
@@ -369,12 +357,10 @@ void LLReflectionMapManager::update()
         }
     }
 
-    // next distribute the free indices
     U32 count = llmin(mReflectionProbeCount, (U32)mProbes.size());
 
     for (U32 i = 1; i < count && !mCubeFree.empty(); ++i)
     {
-        // find the closest probe that needs a cube index
         LLReflectionMap* probe = mProbes[i];
 
         if (probe->mCubeIndex == -1)
@@ -408,7 +394,7 @@ void LLReflectionMapManager::update()
 
         if (probe != mDefaultProbe)
         {
-            if (probe->mViewerObject) //make sure probes track the viewer objects they are attached to
+            if (probe->mViewerObject)
             {
                 probe->mOrigin.load3(probe->mViewerObject->getPositionAgent().mV);
             }
@@ -504,7 +490,6 @@ void LLReflectionMapManager::update()
       oldestProbe = mDefaultProbe;
     }
 
-    // switch to updating the next oldest probe
     if (!did_update && oldestProbe != nullptr)
     {
         LLReflectionMap* probe = oldestProbe;
@@ -598,7 +583,7 @@ void LLReflectionMapManager::getReflectionMaps(std::vector<LLReflectionMap*>& ma
     U32 lastIdx = 0;
     for (U32 i = 0; count < maps.size() && i < mProbes.size(); ++i)
     {
-        mProbes[i]->mLastBindTime = gFrameTimeSeconds; // something wants to use this probe, indicate it's been requested
+        mProbes[i]->mLastBindTime = gFrameTimeSeconds;
         if (mProbes[i]->mCubeIndex != -1)
         {
             if (!mProbes[i]->mOccluded && mProbes[i]->mComplete)
@@ -616,7 +601,6 @@ void LLReflectionMapManager::getReflectionMaps(std::vector<LLReflectionMap*>& ma
         lastIdx = i;
     }
 
-    // set remaining probe indices to -1
     for (U32 i = lastIdx+1; i < mProbes.size(); ++i)
     {
         mProbes[i]->mProbeIndex = -1;
@@ -632,7 +616,6 @@ void LLReflectionMapManager::getReflectionMaps(std::vector<LLReflectionMap*>& ma
         maps[i]->mProbeIndex = i;
     }
 
-    // null terminate list
     if (count < maps.size())
     {
         maps[count] = nullptr;
@@ -712,7 +695,7 @@ void LLReflectionMapManager::deleteProbe(U32 i)
     llassert(probe != mDefaultProbe);
 
     if (probe->mCubeIndex != -1)
-    { // mark the cube index used by this probe as being free
+    {
         mCubeFree.push_back(probe->mCubeIndex);
     }
     if (mUpdatingProbe == probe)
@@ -721,7 +704,6 @@ void LLReflectionMapManager::deleteProbe(U32 i)
         mUpdatingFace = 0;
     }
 
-    // remove from any Neighbors lists
     for (auto& other : probe->mNeighbors)
     {
         auto const & iter = std::find(other->mNeighbors.begin(), other->mNeighbors.end(), probe);
@@ -795,7 +777,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
         gPipeline.pushRenderTypeMask();
 
-        //only render sky, water, terrain, and clouds
         gPipeline.andRenderTypeMask(LLPipeline::RENDER_TYPE_SKY, LLPipeline::RENDER_TYPE_WL_SKY,
             LLPipeline::RENDER_TYPE_WATER, LLPipeline::RENDER_TYPE_VOIDWATER, LLPipeline::RENDER_TYPE_CLOUDS, LLPipeline::RENDER_TYPE_TERRAIN, LLPipeline::END_RENDER_TYPES);
 
@@ -825,7 +806,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
     LLGLDisable cull(GL_CULL_FACE);
     LLGLDisable blend(GL_BLEND);
 
-    // downsample to placeholder map
     {
         gGL.matrixMode(gGL.MM_MODELVIEW);
         gGL.pushMatrix();
@@ -840,13 +820,11 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
         LLRenderTarget* screen_rt = &gPipeline.mAuxillaryRT.screen;
 
-        // perform a gaussian blur on the super sampled render before downsampling
         {
             gGaussianProgram.bind();
             const F32 gaussian_res_scale = 1.f / (mProbeResolution * 2);
             S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, LLTexUnit::TT_TEXTURE);
 
-            // horizontal
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
             mRenderTarget.bindTarget();
@@ -854,7 +832,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
             mRenderTarget.flush();
 
-            // vertical
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
             screen_rt->bindTarget();
@@ -902,9 +879,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                         mTexture->getVkImage(), (U32)(sourceIdx * 6 + face), (U32)mip, (U32)res, (U32)res);
                     mMipChain[i].resumeVkDynamicRendering();
                 }
-                //if (i == 0)
-                //{
-                //}
                 mTexture->unbind();
             }
             mMipChain[i].flush();
@@ -952,7 +926,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 }
 
                 for (int cf = 0; cf < 6; ++cf)
-                { // for each cube face
+                {
                     LLCoordFrame frame;
                     frame.lookAt(LLVector3(0, 0, 0), LLCubeMapArray::sClipToCubeLookVecs[cf], LLCubeMapArray::sClipToCubeUpVecs[cf]);
 
@@ -984,7 +958,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         }
         else
         {
-            //generate irradiance map
             gIrradianceGenProgram.bind();
             S32 channel = gIrradianceGenProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES, LLTexUnit::TT_CUBE_MAP_ARRAY);
             mTexture->bind(channel);
@@ -1002,7 +975,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
             mVertexBuffer->setBuffer();
             int start_mip = 0;
-            // find the mip target to start with based on irradiance map resolution
             for (start_mip = 0; start_mip < mMipChain.size(); ++start_mip)
             {
                 if (mMipChain[start_mip].getWidth() == LL_IRRADIANCE_MAP_RESOLUTION)
@@ -1011,13 +983,12 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 }
             }
 
-            //for (int i = start_mip; i < mMipChain.size(); ++i)
             {
                 int i = start_mip;
                 LL_PROFILE_GPU_ZONE("probe irradiance gen");
                 llSetGLViewport(0, 0, mMipChain[i].getWidth(), mMipChain[i].getHeight());
                 for (int cf = 0; cf < 6; ++cf)
-                { // for each cube face
+                {
                     LLCoordFrame frame;
                     frame.lookAt(LLVector3(0, 0, 0), LLCubeMapArray::sClipToCubeLookVecs[cf], LLCubeMapArray::sClipToCubeUpVecs[cf]);
 
@@ -1082,21 +1053,19 @@ void LLReflectionMapManager::updateNeighbors(LLReflectionMap* probe)
         return;
     }
 
-    //remove from existing neighbors
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("rmmun - clear");
 
         for (auto& other : probe->mNeighbors)
         {
             auto const & iter = std::find(other->mNeighbors.begin(), other->mNeighbors.end(), probe);
-            llassert(iter != other->mNeighbors.end()); // <--- bug davep if this ever happens, something broke badly
+            llassert(iter != other->mNeighbors.end());
             other->mNeighbors.erase(iter);
         }
 
         probe->mNeighbors.clear();
     }
 
-    // search for new neighbors
     if (probe->isRelevant())
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("rmmun - search");
@@ -1139,7 +1108,6 @@ void LLReflectionMapManager::updateUniforms()
         minDepth[i] = FLT_MAX;
     }
 
-    // load modelview matrix into matrix 4a
     LLMatrix4a modelview;
     modelview.loadu(gGLModelView);
     LLVector4a oa; // scratch space for transformed origin
@@ -1193,7 +1161,7 @@ void LLReflectionMapManager::updateUniforms()
         llassert(refmap->mProbeIndex == count);
         llassert(mReflectionMaps[refmap->mProbeIndex] == refmap);
 
-        llassert(refmap->mCubeIndex >= 0); // should always be  true, if not, getReflectionMaps is bugged
+        llassert(refmap->mCubeIndex >= 0);
 
         {
             if (refmap->mViewerObject && refmap->mViewerObject->getVolume())
@@ -1222,8 +1190,6 @@ void LLReflectionMapManager::updateUniforms()
         mProbeData.refIndex[count][1] = nc / 4;
         mProbeData.refIndex[count][3] = refmap->mPriority;
 
-        // for objects that are reflection probes, use the volume as the influence volume of the probe
-        // only possibile influence volumes are boxes and spheres, so detect boxes and treat everything else as spheres
         if (refmap->getBox(mProbeData.refBox[count]))
         { // negate priority to indicate this probe has a box influence volume
             mProbeData.refIndex[count][3] = -mProbeData.refIndex[count][3];
@@ -1237,15 +1203,13 @@ void LLReflectionMapManager::updateUniforms()
 
         S32 ni = nc; // neighbor ("index") - index into refNeighbor to write indices for current reflection probe's neighbors
         {
-            //LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("rmmsu - refNeighbors");
-            //pack neghbor list
             const U32 max_neighbors = 64;
             U32 neighbor_count = 0;
 
             for (auto& neighbor : refmap->mNeighbors)
             {
                 if (ni >= 4096)
-                { // out of space
+                {
                     break;
                 }
 
@@ -1255,7 +1219,6 @@ void LLReflectionMapManager::updateUniforms()
                     continue;
                 }
 
-                // this neighbor may be sampled
                 mProbeData.refNeighbor[ni++] = idx;
 
                 neighbor_count++;
@@ -1268,14 +1231,12 @@ void LLReflectionMapManager::updateUniforms()
 
         if (nc == ni)
         {
-            //no neighbors, tag as empty
             mProbeData.refIndex[count][1] = -1;
         }
         else
         {
             mProbeData.refIndex[count][2] = ni - nc;
 
-            // move the cursor forward
             nc = ni;
             if (nc % 4 != 0)
             { // jump to next power of 4 for compatibility with ivec4
@@ -1314,8 +1275,6 @@ void LLReflectionMapManager::updateUniforms()
     mProbeData.refmapCount = count;
 
     gPipeline.mHeroProbeManager.updateUniforms();
-
-    // Get the hero data.
 
     mProbeData.heroBox = gPipeline.mHeroProbeManager.mHeroData.heroBox;
     mProbeData.heroSphere = gPipeline.mHeroProbeManager.mHeroData.heroSphere;
@@ -1400,11 +1359,8 @@ void renderReflectionProbe(LLReflectionMap* probe)
         gGL.end();
         gGL.flush();
 
-        // --- New: draw a point at the probe origin color-coded by type ---
         const bool is_manual    = probe->mViewerObject != nullptr;
         const bool is_automatic = (probe->mGroup != nullptr) && !is_manual;
-        // terrain/water is when neither manual nor automatic
-        // const bool is_terrain   = !is_manual && !is_automatic;
 
         if (is_manual)
         {
@@ -1522,8 +1478,6 @@ void LLReflectionMapManager::initReflectionMaps()
 
                 static LLCachedControl<bool> render_hdr(gSavedSettings, "RenderHDREnabled", true);
 
-                // store mReflectionProbeCount+2 cube maps, final two cube maps are used for render target and radiance map generation
-                // source)
                 mTexture->allocate(mProbeResolution, 3, mReflectionProbeCount + 2, true, render_hdr);
 
                 mIrradianceMaps = new LLCubeMapArray();
@@ -1531,7 +1485,6 @@ void LLReflectionMapManager::initReflectionMaps()
             }
         }
 
-        // reset probe state
         mUpdatingFace = 0;
         mUpdatingProbe = nullptr;
         mRadiancePass = false;

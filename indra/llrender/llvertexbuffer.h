@@ -42,17 +42,6 @@
 
 #define LL_MAX_VERTEX_ATTRIB_LOCATION 64
 
-//============================================================================
-// NOTES
-// Threading:
-//  All constructors should take an 'create' paramater which should only be
-//  'true' when called from the main thread. Otherwise createGLBuffer() will
-//  be called as soon as getVertexPointer(), etc is called (which MUST ONLY be
-//  called from the main (i.e OpenGL) thread)
-
-
-//============================================================================
-// base class
 class LLPrivateMemoryPool;
 class LLVertexBuffer;
 
@@ -110,15 +99,10 @@ public:
 
     static void unbind(); //unbind any bound vertex buffer
 
-    //get the size of a vertex with the given typemask
     static U32 calcVertexSize(const U32& typemask);
 
-    //get the size of a buffer with the given typemask and vertex count
-    //fill offsets with the offset of each vertex component array into the buffer
-    // indexed by the following enum
     static U32 calcOffsets(const U32& typemask, U32* offsets, U32 num_vertices);
 
-    // flush any pending mapped buffers
     static void flushBuffers();
 
     //WARNING -- when updating these enums you MUST
@@ -182,10 +166,8 @@ protected:
 public:
     LLVertexBuffer(U32 typemask);
 
-    // allocate buffer
     bool    allocateBuffer(U32 nverts, U32 nindices);
 
-    // map for data access (see also getFooStrider below)
     U8*     mapVertexBuffer(AttributeType type, U32 index, S32 count = -1);
     U8*     mapIndexBuffer(U32 index, S32 count = -1);
 
@@ -260,8 +242,6 @@ public:
     U8* getMappedIndices() const            { return mMappedIndexData; }
     U32 getOffset(AttributeType type) const { return mOffsets[type]; }
 
-    // these functions assume (and assert on) the current VBO being bound
-    // Detailed error checking can be enabled by setting gDebugGL to true
     void draw(U32 mode, U32 count, U32 indices_offset) const;
     void drawArrays(U32 mode, U32 offset, U32 count) const;
     void drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const;

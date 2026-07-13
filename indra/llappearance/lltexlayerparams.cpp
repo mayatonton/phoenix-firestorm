@@ -37,9 +37,7 @@
 #include "llwearable.h"
 #include "llfasttimer.h"
 
-//-----------------------------------------------------------------------------
 // LLTexLayerParam
-//-----------------------------------------------------------------------------
 LLTexLayerParam::LLTexLayerParam(LLTexLayerInterface *layer)
     : LLViewerVisualParam(),
     mTexLayer(layer),
@@ -83,14 +81,10 @@ bool LLTexLayerParam::setInfo(LLViewerVisualParamInfo *info, bool add_to_appeara
 }
 
 
-//-----------------------------------------------------------------------------
 // LLTexLayerParamAlpha
-//-----------------------------------------------------------------------------
 
-// static
 LLTexLayerParamAlpha::param_alpha_ptr_list_t LLTexLayerParamAlpha::sInstances;
 
-// static
 void LLTexLayerParamAlpha::dumpCacheByteCount()
 {
     S32 gl_bytes = 0;
@@ -98,7 +92,6 @@ void LLTexLayerParamAlpha::dumpCacheByteCount()
     LL_INFOS() << "Processed Alpha Texture Cache GL:" << (gl_bytes/1024) << "KB" << LL_ENDL;
 }
 
-// static
 void LLTexLayerParamAlpha::getCacheByteCount(S32* gl_bytes)
 {
     *gl_bytes = 0;
@@ -388,9 +381,7 @@ bool LLTexLayerParamAlpha::render(S32 x, S32 y, S32 width, S32 height)
     return success;
 }
 
-//-----------------------------------------------------------------------------
 // LLTexLayerParamAlphaInfo
-//-----------------------------------------------------------------------------
 LLTexLayerParamAlphaInfo::LLTexLayerParamAlphaInfo() :
     mMultiplyBlend(false),
     mSkipIfZeroWeight(false),
@@ -565,9 +556,7 @@ void LLTexLayerParamColor::animate(F32 delta, bool upload_bake)
     }
 }
 
-//-----------------------------------------------------------------------------
 // LLTexLayerParamColorInfo
-//-----------------------------------------------------------------------------
 LLTexLayerParamColorInfo::LLTexLayerParamColorInfo() :
     mOperation(LLTexLayerParamColor::OP_ADD),
     mNumColors(0)

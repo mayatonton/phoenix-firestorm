@@ -69,7 +69,6 @@
 #include "fscommon.h"
 #include "llviewernetwork.h"
 
-//=========================================================================
 namespace
 {
     const std::string KEY_ENVIRONMENT("environment");
@@ -107,13 +106,11 @@ namespace
 
     const std::string LOCAL_ENV_STORAGE_FILE("local_environment_data.bin");
 
-    //---------------------------------------------------------------------
     LLTrace::BlockTimerStatHandle   FTM_ENVIRONMENT_UPDATE("Update Environment Tick");
 
     LLSettingsBase::Seconds         DEFAULT_UPDATE_THRESHOLD(10.0);
     const LLSettingsBase::Seconds   MINIMUM_SPANLENGTH(0.01f);
 
-    //---------------------------------------------------------------------
     inline LLSettingsBase::TrackPosition get_wrapping_distance(LLSettingsBase::TrackPosition begin, LLSettingsBase::TrackPosition end)
     {
         if (begin < end)
@@ -193,7 +190,6 @@ namespace
         return static_cast<LLSettingsBase::BlendFactor>(start / spanlength);
     }
 
-    //---------------------------------------------------------------------
     class LLTrackBlenderLoopingTime : public LLSettingsBlenderTimeDelta
     {
     public:
@@ -735,7 +731,6 @@ namespace
     typedef LLSettingsInjected<LLSettingsVOSky>   LLSettingsInjectedSky;
     typedef LLSettingsInjected<LLSettingsVOWater> LLSettingsInjectedWater;
 
-    //=====================================================================
     class DayInjection : public LLEnvironment::DayInstance
     {
         friend class InjectedTransition;
@@ -813,7 +808,6 @@ namespace
 
 }
 
-//=========================================================================
 const F64Seconds LLEnvironment::TRANSITION_INSTANT(0.0f);
 const F64Seconds LLEnvironment::TRANSITION_FAST(1.0f);
 const F64Seconds LLEnvironment::TRANSITION_DEFAULT(5.0f);
@@ -855,7 +849,6 @@ std::string env_selection_to_string(LLEnvironment::EnvSelection_t sel)
 #undef RTNENUM
 }
 
-//-------------------------------------------------------------------------
 LLEnvironment::LLEnvironment():
     mCloudScrollDelta(),
     mCloudScrollPaused(false),
@@ -1133,7 +1126,6 @@ void LLEnvironment::onParcelChange()
     requestParcel(parcel_id);
 }
 
-//-------------------------------------------------------------------------
 F32 LLEnvironment::getCamHeight() const
 {
     auto sky = mCurrentEnvironment ? mCurrentEnvironment->getSky() : nullptr;
@@ -1158,7 +1150,6 @@ bool LLEnvironment::getIsMoonUp() const
     return sky && sky->getIsMoonUp();
 }
 
-//-------------------------------------------------------------------------
 void LLEnvironment::setSelectedEnvironment(LLEnvironment::EnvSelection_t env, LLSettingsBase::Seconds transition, bool forced)
 {
 // [RLVa:KB] - Checked: RLVa-2.4 (@setenv)
@@ -1755,7 +1746,6 @@ LLVector4 LLEnvironment::getRotatedLightNorm() const
 
 extern bool gCubeSnapshot;
 
-//-------------------------------------------------------------------------
 void LLEnvironment::update(const LLViewerCamera * cam)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_ENVIRONMENT; //LL_RECORD_BLOCK_TIME(FTM_ENVIRONMENT_UPDATE);
@@ -1924,7 +1914,6 @@ void LLEnvironment::adjustRegionOffset(F32 adjust)
     }
 }
 
-//=========================================================================
 void LLEnvironment::requestRegion(environment_apply_fn cb)
 {
     requestParcel(INVALID_PARCEL_ID, cb);
@@ -2299,7 +2288,6 @@ void LLEnvironment::coroResetEnvironment(S32 parcel_id, S32 track_no, environmen
 }
 
 
-//=========================================================================
 
 LLEnvironment::EnvironmentInfo::EnvironmentInfo():
     mParcelId(INVALID_PARCEL_ID),
@@ -2428,7 +2416,6 @@ LLEnvironment::EnvironmentInfo::ptr_t LLEnvironment::EnvironmentInfo::extractLeg
     return pinfo;
 }
 
-//=========================================================================
 LLSettingsWater::ptr_t LLEnvironment::createWaterFromLegacyPreset(const std::string filename, LLSD &messages)
 {
     std::string name(gDirUtilp->getBaseFileName(filename, true));
@@ -2549,7 +2536,6 @@ S32 LLEnvironment::calculateSkyTrackForAltitude(F64 altitude)
     return std::min(static_cast<S32>(std::distance(mTrackAltitudes.begin(), it)), 4);
 }
 
-//-------------------------------------------------------------------------
 void LLEnvironment::handleEnvironmentPush(LLSD &message)
 {
     // Log the experience message
@@ -2714,7 +2700,6 @@ void LLEnvironment::listenExperiencePump(const LLSD &message)
     }
 }
 
-//=========================================================================
 LLEnvironment::DayInstance::DayInstance(EnvSelection_t env) :
     mDayCycle(),
     mSky(),
@@ -2910,7 +2895,6 @@ void LLEnvironment::DayInstance::animate()
     }
 }
 
-//-------------------------------------------------------------------------
 LLEnvironment::DayTransition::DayTransition(const LLSettingsSky::ptr_t &skystart,
     const LLSettingsWater::ptr_t &waterstart, LLEnvironment::DayInstance::ptr_t &end, LLSettingsDay::Seconds time) :
     DayInstance(ENV_NONE),
@@ -3214,7 +3198,6 @@ void LLEnvironment::revertBeaconsState()
     }
 }
 
-//=========================================================================
 LLTrackBlenderLoopingManual::LLTrackBlenderLoopingManual(const LLSettingsBase::ptr_t &target, const LLSettingsDay::ptr_t &day, S32 trackno) :
         LLSettingsBlender(target, LLSettingsBase::ptr_t(), LLSettingsBase::ptr_t()),
         mDay(day),
@@ -3286,7 +3269,6 @@ F64 LLTrackBlenderLoopingManual::getSpanLength(const LLSettingsDay::TrackBound_t
     return get_wrapping_distance((*bounds.first).first, (*bounds.second).first);
 }
 
-//=========================================================================
 namespace
 {
     DayInjection::DayInjection(LLEnvironment::EnvSelection_t env):

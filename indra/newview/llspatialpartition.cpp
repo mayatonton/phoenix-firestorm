@@ -577,9 +577,7 @@ void LLSpatialGroup::clearState(U32 state, S32 mode)
     }
 }
 
-//======================================
 //      Octree Listener Implementation
-//======================================
 
 LLSpatialGroup::LLSpatialGroup(OctreeNode* node, LLSpatialPartition* part) : LLOcclusionCullingGroup(node, part),
     mObjectBoxSize(1.f),
@@ -835,7 +833,6 @@ void LLSpatialGroup::handleChildAddition(const OctreeNode* parent, OctreeNode* c
     assert_states_valid(this);
 }
 
-//virtual
 void LLSpatialGroup::rebound()
 {
     if (!isDirty())
@@ -922,7 +919,6 @@ void LLSpatialGroup::destroyGLState(bool keep_occlusion)
     }
 }
 
-//==============================================
 
 LLSpatialPartition::LLSpatialPartition(U32 data_mask, bool render_by_group, LLViewerRegion* regionp)
 : mRenderByGroup(render_by_group), mBridge(NULL)
