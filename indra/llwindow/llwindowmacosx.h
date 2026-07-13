@@ -108,6 +108,7 @@ public:
 
     void *getPlatformWindow() override;
     LLNativeWindowHandles getNativeWindowHandles() override;
+    void* mMetalLayer = nullptr;
     void bringToFront() override {};
 
     void allowLanguageTextInput(LLPreeditor *preeditor, bool b) override;

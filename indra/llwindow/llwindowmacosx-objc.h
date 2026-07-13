@@ -104,6 +104,10 @@ void setTitleCocoa(NSWindowRef window, const std::string &title);   // <FS:CR> S
 
 NSWindowRef createNSWindow(int x, int y, int width, int height);
 
+typedef void *MetalLayerRef;
+MetalLayerRef createMetalLayerForWindow(NSWindowRef window);
+void updateMetalLayerDrawableSize(MetalLayerRef layer, NSWindowRef window);
+
 #include <OpenGL/OpenGL.h>
 
 GLViewRef createOpenGLView(NSWindowRef window, unsigned int samples, bool vsync);

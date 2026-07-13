@@ -7145,7 +7145,21 @@ bool initSurface(LLWindow* window)
         return false;
     }
 #elif defined(VK_USE_PLATFORM_METAL_EXT)
-    return false;
+    if (handles.native_window)
+    {
+        VkMetalSurfaceCreateInfoEXT ci = {};
+        ci.sType  = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
+        ci.pLayer = static_cast<const CAMetalLayer*>(handles.native_window);
+        if (vkCreateMetalSurfaceEXT == nullptr)
+        {
+            return false;
+        }
+        result = vkCreateMetalSurfaceEXT(sInstance, &ci, nullptr, &sSurface);
+    }
+    else
+    {
+        return false;
+    }
 #else
     return false;
 #endif

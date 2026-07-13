@@ -418,6 +418,10 @@ void callResize(unsigned int width, unsigned int height)
     {
         gWindowImplementation->getCallbacks()->handleResize(gWindowImplementation, width, height);
     }
+    if (gWindowImplementation && gWindowImplementation->mMetalLayer)
+    {
+        updateMetalLayerDrawableSize(gWindowImplementation->mMetalLayer, gWindowImplementation->getWindow());
+    }
 }
 
 void callMouseMoved(float *pos, MASK mask)
@@ -2522,7 +2526,17 @@ void *LLWindowMacOSX::getPlatformWindow()
 
 LLWindow::LLNativeWindowHandles LLWindowMacOSX::getNativeWindowHandles()
 {
-    return LLNativeWindowHandles{};
+    LLNativeWindowHandles handles;
+    if (mWindow != NULL)
+    {
+        if (mMetalLayer == nullptr)
+        {
+            mMetalLayer = createMetalLayerForWindow(mWindow);
+        }
+        handles.native_display = (void*)mWindow;
+        handles.native_window  = mMetalLayer;
+    }
+    return handles;
 }
 
 // get a double value from a dictionary

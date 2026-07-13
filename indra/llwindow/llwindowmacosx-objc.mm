@@ -27,6 +27,7 @@
 
 #include <AppKit/AppKit.h>
 #include <Cocoa/Cocoa.h>
+#import <QuartzCore/CAMetalLayer.h>
 #include <errno.h>
 #include "llopenglview-objc.h"
 #include "llwindowmacosx-objc.h"
@@ -229,6 +230,44 @@ NSWindowRef createNSWindow(int x, int y, int width, int height)
     [window setAcceptsMouseMovedEvents:TRUE];
     [window setRestorable:FALSE]; // Viewer manages state from own settings
     return window;
+}
+
+MetalLayerRef createMetalLayerForWindow(NSWindowRef window)
+{
+    LLNSWindow *ns_window = (LLNSWindow*)window;
+    NSView *view = [ns_window contentView];
+    if (view == nil)
+    {
+        return nil;
+    }
+
+    CAMetalLayer *layer = [CAMetalLayer layer];
+    layer.contentsScale = [ns_window backingScaleFactor];
+    layer.frame = [view bounds];
+    layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+
+    [view setWantsLayer:YES];
+    [[view layer] addSublayer:layer];
+
+    NSSize backing = [view convertSizeToBacking:[view bounds].size];
+    layer.drawableSize = CGSizeMake(backing.width, backing.height);
+
+    return (MetalLayerRef)layer;
+}
+
+void updateMetalLayerDrawableSize(MetalLayerRef layer_ref, NSWindowRef window)
+{
+    CAMetalLayer *layer = (CAMetalLayer*)layer_ref;
+    LLNSWindow *ns_window = (LLNSWindow*)window;
+    NSView *view = [ns_window contentView];
+    if (layer == nil || view == nil)
+    {
+        return;
+    }
+    layer.contentsScale = [ns_window backingScaleFactor];
+    layer.frame = [view bounds];
+    NSSize backing = [view convertSizeToBacking:[view bounds].size];
+    layer.drawableSize = CGSizeMake(backing.width, backing.height);
 }
 
 GLViewRef createOpenGLView(NSWindowRef window, unsigned int samples, bool vsync)
