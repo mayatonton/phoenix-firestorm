@@ -206,7 +206,6 @@ protected:
 
     SDL_Window* mWindow;
     SDL_Surface* mSurface;
-    SDL_GLContext mContext;
     SDL_Cursor* mSDLCursors[UI_CURSOR_COUNT];
     LLPreeditor* mPreeditor;
     bool mIMEEnabled;

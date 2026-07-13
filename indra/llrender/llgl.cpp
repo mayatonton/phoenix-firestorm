@@ -109,11 +109,6 @@ LLMatrix4 gGLObliqueProjectionInverse;
 
 std::list<LLGLUpdate*> LLGLUpdate::sGLQ;
 
-#if LL_WINDOWS
-PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = nullptr;
-PFNWGLSWAPINTERVALEXTPROC    wglSwapIntervalEXT = nullptr;
-#endif
-
 LLGLManager gGLManager;
 
 LLGLManager::LLGLManager() :
@@ -144,43 +139,6 @@ LLGLManager::LLGLManager() :
     mGLMaxIndexRange(0)
 {
 }
-
-//---------------------------------------------------------------------
-// Global initialization for GL
-//---------------------------------------------------------------------
-#if LL_WINDOWS && !LL_MESA_HEADLESS
-void LLGLManager::initWGL()
-{
-    if (!glh_init_extensions("WGL_ARB_pixel_format"))
-    {
-        LL_WARNS("RenderInit") << "No ARB pixel format extensions" << LL_ENDL;
-    }
-
-    if (ExtensionExists("WGL_ARB_create_context",gGLHExts.mSysExts))
-    {
-        GLH_EXT_NAME(wglCreateContextAttribsARB) = (PFNWGLCREATECONTEXTATTRIBSARBPROC)GLH_EXT_GET_PROC_ADDRESS("wglCreateContextAttribsARB");
-    }
-    else
-    {
-        LL_WARNS("RenderInit") << "No ARB create context extensions" << LL_ENDL;
-    }
-
-    if (ExtensionExists("WGL_EXT_swap_control", gGLHExts.mSysExts))
-    {
-        GLH_EXT_NAME(wglSwapIntervalEXT) = (PFNWGLSWAPINTERVALEXTPROC)GLH_EXT_GET_PROC_ADDRESS("wglSwapIntervalEXT");
-    }
-
-    if( !glh_init_extensions("WGL_ARB_pbuffer") )
-    {
-        LL_WARNS("RenderInit") << "No ARB WGL PBuffer extensions" << LL_ENDL;
-    }
-
-    if( !glh_init_extensions("WGL_ARB_render_texture") )
-    {
-        LL_WARNS("RenderInit") << "No ARB WGL render texture extensions" << LL_ENDL;
-    }
-}
-#endif
 
 static std::string sRawGLString;
 

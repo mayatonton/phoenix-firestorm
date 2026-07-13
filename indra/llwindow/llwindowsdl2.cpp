@@ -398,9 +398,7 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
     gKeyboard->setCallbacks(callbacks);
     // Note that we can't set up key-repeat until after SDL has init'd video
 
-    // Ignore use_gl for now, only used for drones on PC
     mWindow = NULL;
-    mContext = {};
     mNeedsResize = false;
     mOverrideAspectRatio = 0.f;
     mGrabbyKeyFlags = 0;
@@ -465,145 +463,6 @@ static SDL_Surface *Load_BMP_Resource(const char *basename)
 
     return SDL_LoadBMP(path_buffer);
 }
-
-#if LL_X11
-// This is an XFree86/XOrg-specific hack for detecting the amount of Video RAM
-// on this machine.  It works by searching /var/log/var/log/Xorg.?.log or
-// /var/log/XFree86.?.log for a ': (VideoRAM ?|Memory): (%d+) kB' regex, where
-// '?' is the X11 display number derived from $DISPLAY
-static int x11_detect_VRAM_kb_fp(FILE *fp, const char *prefix_str)
-{
-    const int line_buf_size = 1000;
-    char line_buf[line_buf_size];
-    while (fgets(line_buf, line_buf_size, fp))
-    {
-        //LL_DEBUGS() << "XLOG: " << line_buf << LL_ENDL;
-
-        // Why the ad-hoc parser instead of using a regex?  Our
-        // favourite regex implementation - libboost_regex - is
-        // quite a heavy and troublesome dependency for the client, so
-        // it seems a shame to introduce it for such a simple task.
-        // *FIXME: libboost_regex is a dependency now anyway, so we may
-        // as well use it instead of this hand-rolled nonsense.
-        const char *part1_template = prefix_str;
-        const char part2_template[] = " kB";
-        char *part1 = strstr(line_buf, part1_template);
-        if (part1) // found start of matching line
-        {
-            part1 = &part1[strlen(part1_template)]; // -> after
-            char *part2 = strstr(part1, part2_template);
-            if (part2) // found end of matching line
-            {
-                // now everything between part1 and part2 is
-                // supposed to be numeric, describing the
-                // number of kB of Video RAM supported
-                int rtn = 0;
-                for (; part1 < part2; ++part1)
-                {
-                    if (*part1 < '0' || *part1 > '9')
-                    {
-                        // unexpected char, abort parse
-                        rtn = 0;
-                        break;
-                    }
-                    rtn *= 10;
-                    rtn += (*part1) - '0';
-                }
-                if (rtn > 0)
-                {
-                    // got the kB number.  return it now.
-                    return rtn;
-                }
-            }
-        }
-    }
-    return 0; // 'could not detect'
-}
-
-static int x11_detect_VRAM_kb()
-{
-    std::string x_log_location("/var/log/");
-    std::string fname;
-    int rtn = 0; // 'could not detect'
-    int display_num = 0;
-    FILE *fp;
-    char *display_env = getenv("DISPLAY"); // e.g. :0 or :0.0 or :1.0 etc
-    // parse DISPLAY number so we can go grab the right log file
-    if (display_env[0] == ':' &&
-        display_env[1] >= '0' && display_env[1] <= '9')
-    {
-        display_num = display_env[1] - '0';
-    }
-
-    // *TODO: we could be smarter and see which of Xorg/XFree86 has the
-    // freshest time-stamp.
-
-    // Try Xorg log first
-    fname = x_log_location;
-    fname += "Xorg.";
-    fname += ('0' + display_num);
-    fname += ".log";
-    fp = fopen(fname.c_str(), "r");
-    if (fp)
-    {
-        LL_INFOS() << "Looking in " << fname
-            << " for VRAM info..." << LL_ENDL;
-        rtn = x11_detect_VRAM_kb_fp(fp, ": VideoRAM: ");
-        fclose(fp);
-        if (0 == rtn)
-        {
-            fp = fopen(fname.c_str(), "r");
-            if (fp)
-            {
-                rtn = x11_detect_VRAM_kb_fp(fp, ": Video RAM: ");
-                fclose(fp);
-                if (0 == rtn)
-                {
-                    fp = fopen(fname.c_str(), "r");
-                    if (fp)
-                    {
-                        rtn = x11_detect_VRAM_kb_fp(fp, ": Memory: ");
-                        fclose(fp);
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        LL_INFOS() << "Could not open " << fname
-            << " - skipped." << LL_ENDL;
-        // Try old XFree86 log otherwise
-        fname = x_log_location;
-        fname += "XFree86.";
-        fname += ('0' + display_num);
-        fname += ".log";
-        fp = fopen(fname.c_str(), "r");
-        if (fp)
-        {
-            LL_INFOS() << "Looking in " << fname
-                << " for VRAM info..." << LL_ENDL;
-            rtn = x11_detect_VRAM_kb_fp(fp, ": VideoRAM: ");
-            fclose(fp);
-            if (0 == rtn)
-            {
-                fp = fopen(fname.c_str(), "r");
-                if (fp)
-                {
-                    rtn = x11_detect_VRAM_kb_fp(fp, ": Memory: ");
-                    fclose(fp);
-                }
-            }
-        }
-        else
-        {
-            LL_INFOS() << "Could not open " << fname
-                << " - skipped." << LL_ENDL;
-        }
-    }
-    return rtn;
-}
-#endif // LL_X11
 
 void LLWindowSDL::setTitle(const std::string &title)
 {
@@ -713,8 +572,7 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
     mFullscreen = fullscreen;
 
-    const bool use_vulkan_window = LLVKLoader::isVulkanInitialized();
-    int sdlflags = (use_vulkan_window ? SDL_WINDOW_VULKAN : SDL_WINDOW_OPENGL) | SDL_WINDOW_RESIZABLE;
+    int sdlflags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
 
     if( mFullscreen )
     {
@@ -724,60 +582,10 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
     mSDLFlags = sdlflags;
 
-    GLint redBits{8}, greenBits{8}, blueBits{8}, alphaBits{8};
-
-    GLint depthBits{(bits <= 16) ? 16 : 24}, stencilBits{8};
-
-    if (getenv("LL_GL_NO_STENCIL"))
-        stencilBits = 0;
-
-    if (!use_vulkan_window)
-    {
-        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, alphaBits);
-        SDL_GL_SetAttribute(SDL_GL_RED_SIZE,   redBits);
-        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, greenBits);
-        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,  blueBits);
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthBits );
-
-        // We need stencil support for a few (minor) things.
-        if (stencilBits)
-            SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, stencilBits);
-
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-        if (mFSAASamples > 0)
-        {
-            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, mFSAASamples);
-        }
-
-        // <FS:Zi> Make shared context work on Linux for multithreaded OpenGL
-        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
-    }
     mWindow = SDL_CreateWindow( mWindowTitle.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, mSDLFlags );
 
     if( mWindow )
     {
-        if (use_vulkan_window)
-        {
-            mContext = nullptr;
-        }
-        else
-        {
-            mContext = SDL_GL_CreateContext( mWindow );
-
-            if( mContext == 0 )
-            {
-                LL_WARNS() << "Cannot create GL context " << SDL_GetError() << LL_ENDL;
-                setupFailure("GL Context creation error creation error", "Error", OSMB_OK);
-                return false;
-            }
-
-            // FIRE-32559: This *should* work, but for some reason aftrer login vsync always acts as if it's disabled, so
-            // the flag will get set again later in void LLViewerWindow::setStartupComplete() -Zi
-            toggleVSync(enable_vsync);
-        }
-
         mSurface = SDL_GetWindowSurface( mWindow );
     }
 
@@ -830,66 +638,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         bmpsurface = NULL;
     }
 
-    // Detect video memory size.
-# if LL_X11
-    gGLManager.mVRAM = x11_detect_VRAM_kb() / 1024;
-    if (gGLManager.mVRAM != 0)
-    {
-        LL_INFOS() << "X11 log-parser detected " << gGLManager.mVRAM << "MB VRAM." << LL_ENDL;
-    } else
-# endif // LL_X11
-    {
-        // fallback to letting SDL detect VRAM.
-        // note: I've not seen SDL's detection ever actually find
-        // VRAM != 0, but if SDL *does* detect it then that's a bonus.
-        gGLManager.mVRAM = 0;
-        if (gGLManager.mVRAM != 0)
-        {
-            LL_INFOS() << "SDL detected " << gGLManager.mVRAM << "MB VRAM." << LL_ENDL;
-        }
-    }
-    // If VRAM is not detected, that is handled later
-
-    // *TODO: Now would be an appropriate time to check for some
-    // explicitly unsupported cards.
-    //const char* RENDERER = (const char*) glGetString(GL_RENDERER);
-
-    if (!use_vulkan_window)
-    {
-        SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &redBits);
-        SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &greenBits);
-        SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE, &blueBits);
-        SDL_GL_GetAttribute(SDL_GL_ALPHA_SIZE, &alphaBits);
-        SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
-        SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilBits);
-
-        LL_INFOS() << "GL buffer:" << LL_ENDL;
-        LL_INFOS() << "  Red Bits " << S32(redBits) << LL_ENDL;
-        LL_INFOS() << "  Green Bits " << S32(greenBits) << LL_ENDL;
-        LL_INFOS() << "  Blue Bits " << S32(blueBits) << LL_ENDL;
-        LL_INFOS() << "  Alpha Bits " << S32(alphaBits) << LL_ENDL;
-        LL_INFOS() << "  Depth Bits " << S32(depthBits) << LL_ENDL;
-        LL_INFOS() << "  Stencil Bits " << S32(stencilBits) << LL_ENDL;
-    }
-
-    GLint colorBits = redBits + greenBits + blueBits + alphaBits;
-    // fixme: actually, it's REALLY important for picking that we get at
-    // least 8 bits each of red,green,blue.  Alpha we can be a bit more
-    // relaxed about if we have to.
-    if (!use_vulkan_window && colorBits < 32)
-    {
-        close();
-        setupFailure(
-            "Second Life requires True Color (32-bit) to run in a window.\n"
-            "Please go to Control Panels -> Display -> Settings and\n"
-            "set the screen to 32-bit color.\n"
-            "Alternately, if you choose to run fullscreen, Second Life\n"
-            "will automatically adjust the screen each time it runs.",
-            "Error",
-            OSMB_OK);
-        return false;
-    }
-
 #if LL_X11
     /* Grab the window manager specific information */
     SDL_SysWMinfo info;
@@ -915,24 +663,10 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     }
 #endif // LL_X11
 
-    if (!use_vulkan_window)
-    {
-        // clear screen to black right at the start so it doesn't look like a crash
-        glClearColor(0.0f, 0.0f, 0.0f ,1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        SDL_GL_SwapWindow(mWindow);
-    }
-
     // start text input immediately when IME is not enabled
     if (!mIMEEnabled)
     {
         SDL_StartTextInput();
-    }
-
-    if (!use_vulkan_window)
-    {
-        //make sure multisampling is disabled by default
-        glDisable(GL_MULTISAMPLE_ARB);
     }
 
     // Don't need to get the current gamma, since there's a call that restores it to the system defaults.
@@ -977,7 +711,6 @@ void LLWindowSDL::destroyContext()
     Unlock_Display = NULL;
 #endif // LL_X11
 
-    // Clean up remaining GL state before blowing away window
     LL_INFOS() << "shutdownGL begins" << LL_ENDL;
     gGLManager.shutdownGL();
     LL_INFOS() << "SDL_QuitSS/VID begins" << LL_ENDL;
@@ -1177,15 +910,6 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
-    if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
-    {
-        return;
-    }
-
-    if (mWindow)
-    {
-        SDL_GL_SwapWindow( mWindow );
-    }
 }
 
 U32 LLWindowSDL::getFSAASamples()
@@ -2711,103 +2435,25 @@ std::vector<std::string> LLWindowSDL::getDynamicFallbackFontList()
     return rtns;
 }
 
-// <FS:Zi> Make shared context work on Linux for multithreaded OpenGL
-class sharedContext
-{
-    public:
-        SDL_GLContext mContext;
-};
-
 void* LLWindowSDL::createSharedContext()
 {
-    if (LLVKLoader::isVulkanInitialized())
-    {
-        return nullptr;
-    }
-    sharedContext* sc = new sharedContext();
-    sc->mContext = SDL_GL_CreateContext(mWindow);
-    if (sc->mContext)
-    {
-        SDL_GL_SetSwapInterval(0);
-        SDL_GL_MakeCurrent(mWindow, mContext);
-
-        LLCoordScreen size;
-        if (getSize(&size))
-        {
-            // tickle window size to fix font going blocky on login screen since SDL 2.24.0
-            size.mX--;
-            setSize(size);
-            size.mX++;
-            setSize(size);
-        }
-
-        LL_DEBUGS() << "Creating shared OpenGL context successful!" << LL_ENDL;
-
-        return (void*)sc;
-    }
-
-    LL_WARNS() << "Creating shared OpenGL context failed!" << LL_ENDL;
-
     return nullptr;
 }
 
 void LLWindowSDL::makeContextCurrent(void* context)
 {
     LL_PROFILER_GPU_CONTEXT;
-    if (LLVKLoader::isVulkanInitialized())
-    {
-        (void)context;
-        return;
-    }
-    SDL_GL_MakeCurrent(mWindow, ((sharedContext*)context)->mContext);
+    (void)context;
 }
 
 void LLWindowSDL::destroySharedContext(void* context)
 {
-    if (LLVKLoader::isVulkanInitialized())
-    {
-        (void)context;
-        return;
-    }
-    sharedContext* sc = (sharedContext*)context;
-
-    SDL_GL_DeleteContext(sc->mContext);
-
-    delete sc;
+    (void)context;
 }
 
 void LLWindowSDL::toggleVSync(bool enable_vsync)
 {
-    if (LLVKLoader::isVulkanInitialized())
-    {
-        (void)enable_vsync;
-        return;
-    }
-    if (enable_vsync)
-    {
-        // try adaptive vsync first (-1) and if that fails, try regular vsync (1)
-        if (SDL_GL_SetSwapInterval(-1) == -1)
-        {
-            LL_INFOS() << "Failed to enable adaptive vsync, trying regular vsync" << LL_ENDL;
-            if (SDL_GL_SetSwapInterval(1) == -1)
-            {
-                LL_WARNS() << "Failed to enable vsync" << LL_ENDL;
-            }
-            else
-            {
-                LL_DEBUGS() << "Vsync enabled" << LL_ENDL;
-            }
-        }
-        else
-        {
-            LL_DEBUGS() << "Adaptive vsync enabled" << LL_ENDL;
-        }
-    }
-    else
-    {
-        SDL_GL_SetSwapInterval(0);
-        LL_DEBUGS() << "Vsync disabled" << LL_ENDL;
-    }
+    (void)enable_vsync;
 }
 // </FS:Zi>
 

@@ -523,145 +523,6 @@ static SDL_Surface *Load_BMP_Resource(const char *basename)
     return SDL_LoadBMP(path_buffer);
 }
 
-#if LL_X11
-// This is an XFree86/XOrg-specific hack for detecting the amount of Video RAM
-// on this machine.  It works by searching /var/log/var/log/Xorg.?.log or
-// /var/log/XFree86.?.log for a ': (VideoRAM ?|Memory): (%d+) kB' regex, where
-// '?' is the X11 display number derived from $DISPLAY
-static int x11_detect_VRAM_kb_fp(FILE *fp, const char *prefix_str)
-{
-    const int line_buf_size = 1000;
-    char line_buf[line_buf_size];
-    while (fgets(line_buf, line_buf_size, fp))
-    {
-        //LL_DEBUGS() << "XLOG: " << line_buf << LL_ENDL;
-
-        // Why the ad-hoc parser instead of using a regex?  Our
-        // favourite regex implementation - libboost_regex - is
-        // quite a heavy and troublesome dependency for the client, so
-        // it seems a shame to introduce it for such a simple task.
-        // *FIXME: libboost_regex is a dependency now anyway, so we may
-        // as well use it instead of this hand-rolled nonsense.
-        const char *part1_template = prefix_str;
-        const char part2_template[] = " kB";
-        char *part1 = strstr(line_buf, part1_template);
-        if (part1) // found start of matching line
-        {
-            part1 = &part1[strlen(part1_template)]; // -> after
-            char *part2 = strstr(part1, part2_template);
-            if (part2) // found end of matching line
-            {
-                // now everything between part1 and part2 is
-                // supposed to be numeric, describing the
-                // number of kB of Video RAM supported
-                int rtn = 0;
-                for (; part1 < part2; ++part1)
-                {
-                    if (*part1 < '0' || *part1 > '9')
-                    {
-                        // unexpected char, abort parse
-                        rtn = 0;
-                        break;
-                    }
-                    rtn *= 10;
-                    rtn += (*part1) - '0';
-                }
-                if (rtn > 0)
-                {
-                    // got the kB number.  return it now.
-                    return rtn;
-                }
-            }
-        }
-    }
-    return 0; // 'could not detect'
-}
-
-static int x11_detect_VRAM_kb()
-{
-    std::string x_log_location("/var/log/");
-    std::string fname;
-    int rtn = 0; // 'could not detect'
-    int display_num = 0;
-    FILE *fp;
-    char *display_env = getenv("DISPLAY"); // e.g. :0 or :0.0 or :1.0 etc
-    // parse DISPLAY number so we can go grab the right log file
-    if (display_env[0] == ':' &&
-        display_env[1] >= '0' && display_env[1] <= '9')
-    {
-        display_num = display_env[1] - '0';
-    }
-
-    // *TODO: we could be smarter and see which of Xorg/XFree86 has the
-    // freshest time-stamp.
-
-    // Try Xorg log first
-    fname = x_log_location;
-    fname += "Xorg.";
-    fname += ('0' + display_num);
-    fname += ".log";
-    fp = fopen(fname.c_str(), "r");
-    if (fp)
-    {
-        LL_INFOS() << "Looking in " << fname
-            << " for VRAM info..." << LL_ENDL;
-        rtn = x11_detect_VRAM_kb_fp(fp, ": VideoRAM: ");
-        fclose(fp);
-        if (0 == rtn)
-        {
-            fp = fopen(fname.c_str(), "r");
-            if (fp)
-            {
-                rtn = x11_detect_VRAM_kb_fp(fp, ": Video RAM: ");
-                fclose(fp);
-                if (0 == rtn)
-                {
-                    fp = fopen(fname.c_str(), "r");
-                    if (fp)
-                    {
-                        rtn = x11_detect_VRAM_kb_fp(fp, ": Memory: ");
-                        fclose(fp);
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        LL_INFOS() << "Could not open " << fname
-            << " - skipped." << LL_ENDL;
-        // Try old XFree86 log otherwise
-        fname = x_log_location;
-        fname += "XFree86.";
-        fname += ('0' + display_num);
-        fname += ".log";
-        fp = fopen(fname.c_str(), "r");
-        if (fp)
-        {
-            LL_INFOS() << "Looking in " << fname
-                << " for VRAM info..." << LL_ENDL;
-            rtn = x11_detect_VRAM_kb_fp(fp, ": VideoRAM: ");
-            fclose(fp);
-            if (0 == rtn)
-            {
-                fp = fopen(fname.c_str(), "r");
-                if (fp)
-                {
-                    rtn = x11_detect_VRAM_kb_fp(fp, ": Memory: ");
-                    fclose(fp);
-                }
-            }
-        }
-        else
-        {
-            LL_INFOS() << "Could not open " << fname
-                << " - skipped." << LL_ENDL;
-        }
-    }
-    return rtn;
-}
-#endif // LL_X11
-
 void LLWindowSDL::setTitle(const std::string &title)
 {
     SDL_WM_SetCaption(title.c_str(), title.c_str());
@@ -740,34 +601,11 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         bmpsurface = NULL;
     }
 
-    // note: these SetAttributes make Tom's 9600-on-AMD64 fail to
-    // get a visual, but it's broken anyway when it does, and without
-    // these SetAttributes we might easily get an avoidable substandard
-    // visual to work with on most other machines.
-    SDL_GL_SetAttribute(SDL_GL_RED_SIZE,  8);
-    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE,8);
-    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, (bits <= 16) ? 16 : 24);
-    // We need stencil support for a few (minor) things.
-    if (!getenv("LL_GL_NO_STENCIL"))
-        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, (bits <= 16) ? 1 : 8);
-
-        // *FIX: try to toggle vsync here?
-
     mFullscreen = fullscreen;
 
-    int sdlflags = SDL_OPENGL | SDL_RESIZABLE | SDL_ANYFORMAT;
+    int sdlflags = SDL_RESIZABLE | SDL_ANYFORMAT;
 
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-    if (mFSAASamples > 0)
-    {
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, mFSAASamples);
-    }
-
-        mSDLFlags = sdlflags;
+    mSDLFlags = sdlflags;
 
     if (mFullscreen)
     {
@@ -822,11 +660,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         }
 
         mWindow = SDL_SetVideoMode(width, height, bits, sdlflags | SDL_FULLSCREEN);
-        if (!mWindow && bits > 16)
-        {
-            SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-            mWindow = SDL_SetVideoMode(width, height, bits, sdlflags | SDL_FULLSCREEN);
-        }
 
         if (mWindow)
         {
@@ -866,11 +699,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
 
         LL_INFOS() << "createContext: creating window " << width << "x" << height << "x" << bits << LL_ENDL;
         mWindow = SDL_SetVideoMode(width, height, bits, sdlflags);
-        if (!mWindow && bits > 16)
-        {
-            SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-            mWindow = SDL_SetVideoMode(width, height, bits, sdlflags);
-        }
 
         if (!mWindow)
         {
@@ -882,82 +710,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     {
         LL_INFOS() << "createContext: SKIPPING - !fullscreen, but +mWindow " << width << "x" << height << "x" << bits << LL_ENDL;
     }
-
-    // Detect video memory size.
-# if LL_X11
-    gGLManager.mVRAM = x11_detect_VRAM_kb() / 1024;
-    if (gGLManager.mVRAM != 0)
-    {
-        LL_INFOS() << "X11 log-parser detected " << gGLManager.mVRAM << "MB VRAM." << LL_ENDL;
-    } else
-# endif // LL_X11
-    {
-        // fallback to letting SDL detect VRAM.
-        // note: I've not seen SDL's detection ever actually find
-        // VRAM != 0, but if SDL *does* detect it then that's a bonus.
-        gGLManager.mVRAM = video_info->video_mem / 1024;
-        if (gGLManager.mVRAM != 0)
-        {
-            LL_INFOS() << "SDL detected " << gGLManager.mVRAM << "MB VRAM." << LL_ENDL;
-        }
-    }
-    // If VRAM is not detected, that is handled later
-
-    // *TODO: Now would be an appropriate time to check for some
-    // explicitly unsupported cards.
-    //const char* RENDERER = (const char*) glGetString(GL_RENDERER);
-
-    GLint depthBits, stencilBits, redBits, greenBits, blueBits, alphaBits;
-
-    glGetIntegerv(GL_RED_BITS, &redBits);
-    glGetIntegerv(GL_GREEN_BITS, &greenBits);
-    glGetIntegerv(GL_BLUE_BITS, &blueBits);
-    glGetIntegerv(GL_ALPHA_BITS, &alphaBits);
-    glGetIntegerv(GL_DEPTH_BITS, &depthBits);
-    glGetIntegerv(GL_STENCIL_BITS, &stencilBits);
-
-    LL_INFOS() << "GL buffer:" << LL_ENDL;
-        LL_INFOS() << "  Red Bits " << S32(redBits) << LL_ENDL;
-        LL_INFOS() << "  Green Bits " << S32(greenBits) << LL_ENDL;
-        LL_INFOS() << "  Blue Bits " << S32(blueBits) << LL_ENDL;
-    LL_INFOS()  << "  Alpha Bits " << S32(alphaBits) << LL_ENDL;
-    LL_INFOS()  << "  Depth Bits " << S32(depthBits) << LL_ENDL;
-    LL_INFOS()  << "  Stencil Bits " << S32(stencilBits) << LL_ENDL;
-
-    GLint colorBits = redBits + greenBits + blueBits + alphaBits;
-    // fixme: actually, it's REALLY important for picking that we get at
-    // least 8 bits each of red,green,blue.  Alpha we can be a bit more
-    // relaxed about if we have to.
-    if (colorBits < 32)
-    {
-        close();
-        setupFailure(
-            "Second Life requires True Color (32-bit) to run in a window.\n"
-            "Please go to Control Panels -> Display -> Settings and\n"
-            "set the screen to 32-bit color.\n"
-            "Alternately, if you choose to run fullscreen, Second Life\n"
-            "will automatically adjust the screen each time it runs.",
-            "Error",
-            OSMB_OK);
-        return false;
-    }
-
-#if 0  // *FIX: we're going to brave it for now...
-    if (alphaBits < 8)
-    {
-        close();
-        setupFailure(
-            "Second Life is unable to run because it can't get an 8 bit alpha\n"
-            "channel.  Usually this is due to video card driver issues.\n"
-            "Please make sure you have the latest video card drivers installed.\n"
-            "Also be sure your monitor is set to True Color (32-bit) in\n"
-            "Control Panels -> Display -> Settings.\n"
-            "If you continue to receive this message, contact customer service.",
-            "Error",
-            OSMB_OK);
-        return false;
-    }
-#endif
 
 #if LL_X11
     /* Grab the window manager specific information */
@@ -986,9 +738,6 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
     }
 #endif // LL_X11
 
-
-    //make sure multisampling is disabled by default
-    glDisable(GL_MULTISAMPLE_ARB);
 
     // We need to do this here, once video is init'd
     if (-1 == SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
@@ -1234,15 +983,6 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
-    if (LLVKLoader::shouldUseVulkanRender() && LLVKLoader::isVulkanPresentationEnabled())
-    {
-        return;
-    }
-
-    if (mWindow)
-    {
-        SDL_GL_SwapBuffers();
-    }
 }
 
 U32 LLWindowSDL::getFSAASamples()
@@ -1645,7 +1385,7 @@ LLWindow::LLWindowResolution* LLWindowSDL::getSupportedResolutions(S32 &num_reso
         mSupportedResolutions = new LLWindowResolution[MAX_NUM_RESOLUTIONS];
         mNumSupportedResolutions = 0;
 
-        SDL_Rect **modes = SDL_ListModes(NULL, SDL_OPENGL | SDL_FULLSCREEN);
+        SDL_Rect **modes = SDL_ListModes(NULL, SDL_FULLSCREEN);
         if ( (modes != NULL) && (modes != ((SDL_Rect **) -1)) )
         {
             int count = 0;

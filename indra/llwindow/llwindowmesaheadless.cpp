@@ -74,5 +74,4 @@ LLWindowMesaHeadless::~LLWindowMesaHeadless()
 
 void LLWindowMesaHeadless::swapBuffers()
 {
-    glFinish();
 }

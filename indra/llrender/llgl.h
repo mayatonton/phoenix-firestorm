@@ -70,10 +70,6 @@ public:
     bool initGL();
     void shutdownGL();
 
-#if LL_WINDOWS
-    void initWGL(); // Initializes stupid WGL extensions
-#endif
-
     std::string getRawGLString(); // For sending to simulator
 
     bool mInited;
