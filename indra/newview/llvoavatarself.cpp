@@ -154,8 +154,6 @@ struct LocalTextureData
 //-----------------------------------------------------------------------------
 // Static Data
 //-----------------------------------------------------------------------------
-S32Bytes LLVOAvatarSelf::sScratchTexBytes(0);
-std::map< LLGLenum, LLGLuint*> LLVOAvatarSelf::sScratchTexNames;
 
 
 /*********************************************************************************
@@ -3469,32 +3467,6 @@ bool LLVOAvatarSelf::needsRenderBeam()
         is_touching_or_grabbing = false;
     }
     return is_touching_or_grabbing || (getAttachmentState() & AGENT_STATE_EDITING && LLSelectMgr::getInstance()->shouldShowSelection());
-}
-
-// static
-void LLVOAvatarSelf::deleteScratchTextures()
-{
-    for(std::map< LLGLenum, LLGLuint*>::iterator it = sScratchTexNames.begin(), end_it = sScratchTexNames.end();
-        it != end_it;
-        ++it)
-    {
-        LLImageGL::deleteTextures(1, (U32 *)it->second );
-        stop_glerror();
-    }
-
-    if( sScratchTexBytes.value() )
-    {
-        LL_DEBUGS() << "Clearing Scratch Textures " << (S32Kilobytes)sScratchTexBytes << LL_ENDL;
-
-        delete_and_clear(sScratchTexNames);
-        sScratchTexBytes = S32Bytes(0);
-    }
-}
-
-// static
-void LLVOAvatarSelf::dumpScratchTextureByteCount()
-{
-    LL_INFOS() << "Scratch Texture GL: " << (sScratchTexBytes/1024) << "KB" << LL_ENDL;
 }
 
 void LLVOAvatarSelf::dumpWearableInfo(LLAPRFile& outfile)

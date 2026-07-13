@@ -71,7 +71,7 @@ void load_exr(const std::string& filename)
     int ret =  LoadEXRWithLayer(&out, &width, &height, filename.c_str(), /* layername */ nullptr, &err);
     if (ret == TINYEXR_SUCCESS)
     {
-        gEXRImage = new LLImageGL(0, 4, GL_TEXTURE_2D, GL_RGB16F, GL_RGB16F, GL_FLOAT, LLTexUnit::TAM_CLAMP);
+        gEXRImage = new LLImageGL(4, GL_TEXTURE_2D, GL_RGB16F, GL_RGB16F, GL_FLOAT, LLTexUnit::TAM_CLAMP);
         gEXRImage->setHasMipMaps(true);
         gEXRImage->setUseMipMaps(true);
         gEXRImage->setFilteringOption(LLTexUnit::TFO_TRILINEAR);

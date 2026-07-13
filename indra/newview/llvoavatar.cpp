@@ -1043,11 +1043,6 @@ void LLVOAvatar::deleteLayerSetCaches(bool clearAll)
                 mBakedTextureDatas[i].mTexLayerSet->deleteCaches();
             }
         }
-        if (mBakedTextureDatas[i].mMaskTexName)
-        {
-            LLImageGL::deleteTextures(1, (GLuint*)&(mBakedTextureDatas[i].mMaskTexName));
-            mBakedTextureDatas[i].mMaskTexName = 0 ;
-        }
     }
 }
 
@@ -1259,7 +1254,6 @@ void LLVOAvatar::deleteCachedImages(bool clearAll)
         }
         LLViewerTexLayerSet::sHasCaches = false;
     }
-    LLVOAvatarSelf::deleteScratchTextures();
     LLTexLayerStaticImageList::getInstance()->deleteCachedImages();
 }
 

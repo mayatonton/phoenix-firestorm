@@ -72,7 +72,6 @@ public:
     // NOTE: Cube Map MUST already be resident in VRAM
     void generateMipMaps();
 
-    GLuint getGLName();
 
     void destroyGL();
 

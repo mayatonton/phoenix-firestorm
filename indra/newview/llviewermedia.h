@@ -277,7 +277,7 @@ public:
 
     void update();
     bool preMediaTexUpdate(LLViewerMediaTexture*& media_tex, U8*& data, S32& data_width, S32& data_height, S32& x_pos, S32& y_pos, S32& width, S32& height);
-    void doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* data, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool sync);
+    void doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* data, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height);
     void updateImagesMediaStreams();
     LLUUID getMediaTextureID() const;
     LLPluginAudioRingHeader* getAudioRingForStream3D() const;

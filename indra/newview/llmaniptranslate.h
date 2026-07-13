@@ -50,7 +50,6 @@ public:
     LLManipTranslate( LLToolComposite* composite );
     virtual ~LLManipTranslate();
 
-    static  U32     getGridTexName() ;
     static  void    destroyGL();
     static  void    restoreGL();
     virtual bool    handleMouseDown(S32 x, S32 y, MASK mask);

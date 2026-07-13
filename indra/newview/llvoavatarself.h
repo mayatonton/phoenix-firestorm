@@ -290,10 +290,7 @@ public:
     // Scratch textures (used for compositing)
     //--------------------------------------------------------------------
 public:
-    static void     deleteScratchTextures();
 private:
-    static S32Bytes sScratchTexBytes;
-    static std::map< LLGLenum, LLGLuint*> sScratchTexNames;
 
 /**                    Textures
  **                                                                            **
@@ -404,7 +401,6 @@ protected:
 public:
     static void     dumpTotalLocalTextureByteCount();
     void            dumpLocalTextures() const;
-    static void     dumpScratchTextureByteCount();
     void            dumpWearableInfo(LLAPRFile& outfile);
 
     //--------------------------------------------------------------------

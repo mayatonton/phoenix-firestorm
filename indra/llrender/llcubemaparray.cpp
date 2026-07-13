@@ -128,16 +128,12 @@ LLCubeMapArray::~LLCubeMapArray()
 
 void LLCubeMapArray::allocate(U32 resolution, U32 components, U32 count, bool use_mips, bool hdr)
 {
-    U32 texname = 0;
     mWidth = resolution;
     mCount = count;
 
     mHDR = hdr;
 
-    LLImageGL::generateTextures(1, &texname);
-
     mImage = new LLImageGL(resolution, resolution, components, use_mips);
-    mImage->setTexName(texname);
     mImage->setTarget(sTargets[0], LLTexUnit::TT_CUBE_MAP_ARRAY);
 
     mImage->setUseMipMaps(use_mips);
@@ -197,11 +193,6 @@ void LLCubeMapArray::unbind()
 {
     gGL.getTexUnit(mTextureStage)->unbind(LLTexUnit::TT_CUBE_MAP_ARRAY);
     mTextureStage = -1;
-}
-
-GLuint LLCubeMapArray::getGLName()
-{
-    return mImage->getTexName();
 }
 
 void LLCubeMapArray::destroyGL()

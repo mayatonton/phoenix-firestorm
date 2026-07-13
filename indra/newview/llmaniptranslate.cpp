@@ -140,17 +140,6 @@ LLManipTranslate::LLManipTranslate( LLToolComposite* composite )
 }
 
 //static
-U32 LLManipTranslate::getGridTexName()
-{
-    if(sGridTex.isNull())
-    {
-        restoreGL() ;
-    }
-
-    return sGridTex.isNull() ? 0 : sGridTex->getTexName() ;
-}
-
-//static
 void LLManipTranslate::destroyGL()
 {
     if (sGridTex)
@@ -1581,7 +1570,10 @@ void LLManipTranslate::renderSnapGuides()
                 //LLGLDisable stencil(GL_STENCIL_TEST);
                 {
                     LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE, GL_GREATER);
-                    getGridTexName();
+                    if (sGridTex.isNull())
+                    {
+                        restoreGL();
+                    }
                     if (sGridTex.notNull())
                     {
                         gGL.getTexUnit(0)->bind(sGridTex);
@@ -1599,7 +1591,10 @@ void LLManipTranslate::renderSnapGuides()
                     renderGrid(u,v,tiles,0.0f, 0.0f, 0.0f,a*0.16f);
 
                     //draw grid top
-                    getGridTexName();
+                    if (sGridTex.isNull())
+                    {
+                        restoreGL();
+                    }
                     if (sGridTex.notNull())
                     {
                         gGL.getTexUnit(0)->bind(sGridTex);

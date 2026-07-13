@@ -55,7 +55,6 @@ class LLImageGL : public LLRefCount
 public:
 
     // call once per frame
-    static void updateClass();
 
     // Get an estimate of how many bytes have been allocated in vram for textures.
     // Does not include mipmaps.
@@ -66,8 +65,6 @@ public:
     static U64 getVkTextureBytesAllocated();
 
     // These 2 functions replace glGenTextures() and glDeleteTextures()
-    static void generateTextures(S32 numTextures, U32 *textures);
-    static void deleteTextures(S32 numTextures, const U32 *textures);
 
     // Size calculation
     static S32 dataFormatBits(S32 dataformat);
@@ -100,7 +97,7 @@ public:
     LLImageGL(const LLImageRaw* imageraw, bool usemipmaps = true, bool allow_compression = true);
 
     // For wrapping textures created via GL elsewhere with our API only. Use with caution.
-    LLImageGL(LLGLuint mTexName, U32 components, LLGLenum target, LLGLint  formatInternal, LLGLenum formatPrimary, LLGLenum formatType, LLTexUnit::eTextureAddressMode addressMode);
+    LLImageGL(U32 components, LLGLenum target, LLGLint  formatInternal, LLGLenum formatPrimary, LLGLenum formatType, LLTexUnit::eTextureAddressMode addressMode);
 
 protected:
     virtual ~LLImageGL();
@@ -115,24 +112,20 @@ public:
     void setComponents(S32 ncomponents) { mComponents = (S8)ncomponents ;}
     void setAllowCompression(bool allow) { mAllowCompression = allow; }
 
-    static void setManualImage(U32 target, S32 miplevel, S32 intformat, S32 width, S32 height, U32 pixformat, U32 pixtype, const void *pixels, bool allow_compression = true);
 
-    bool createGLTexture() ;
-    bool createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S32 usename = 0, bool to_create = true,
-        S32 category = sMaxCategories-1, bool defer_copy = false, LLGLuint* tex_name = nullptr);
-    bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, S32 usename = 0, bool defer_copy = false, LLGLuint* tex_name = nullptr);
+    bool createGLTexture(S32 discard_level, const LLImageRaw* imageraw, bool to_create = true,
+        S32 category = sMaxCategories-1, bool defer_copy = false);
+    bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, bool defer_copy = false);
     void setImage(const LLImageRaw* imageraw);
     bool setImage(const U8* data_in, bool data_hasmips = false);
     // *TODO: This function may not work if the textures is compressed (i.e.
     // RenderCompressTextures is 0). Partial image updates do not work on
     // compressed textures.
-    bool setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false, LLGLuint use_name = 0);
-    bool setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false, LLGLuint use_name = 0);
+    bool setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
+    bool setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
     bool setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_pos, S32 width, S32 height);
 
     // wait for gl commands to finish on current thread and push
-    // a lambda to main thread to swap mNewTexName and mTexName
-    void syncToMainThread(LLGLuint new_tex_name);
 
     // Read back a raw image for this discard level, if it exists
     bool readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compressed_ok) const;
@@ -163,7 +156,6 @@ public:
     LLGLenum getFormatType() const { return mFormatType; }
 
     bool getHasGLTexture() const { return mVkImage != VK_NULL_HANDLE; }
-    LLGLuint getTexName() const { return mTexName; }
 
     VkImageView getVkImageView() const { return mVkImageView; }
     bool hasVkImage() const { return mVkImage != VK_NULL_HANDLE; }
@@ -254,7 +246,6 @@ private:
     S8   mAlphaOffset ;
 
     bool     mGLTextureCreated ;
-    LLGLuint mTexName;
     U16      mWidth;
     U16      mHeight;
     S8       mCurrentDiscardLevel;
@@ -295,7 +286,6 @@ protected:
 public:
     static std::unordered_set<LLImageGL*> sImageList;
     static S32 sCount;
-    static U32 sFrameCount;
     static F32 sLastFrameTime;
 
     // Global memory statistics
@@ -315,13 +305,11 @@ public:
 
 public:
     static void initClass(LLWindow* window, S32 num_catagories, bool skip_analyze_alpha = false, bool thread_texture_loads = false, bool thread_media_updates = false);
-    static void allocateConversionBuffer();
     static void cleanupClass() ;
 
 private:
     static S32 sMaxCategories;
     static bool sSkipAnalyzeAlpha;
-    static U32* sManualScratch;
 
     //the flag to allow to call readBackRaw(...).
     //can be removed if we do not use that function at all.
@@ -336,10 +324,7 @@ public:
     void setCategory(S32 category) {mCategory = category;}
     S32  getCategory()const {return mCategory;}
 
-    void setTexName(GLuint texName) { mTexName = texName; }
 
-    //similar to setTexName, but will call deleteTextures on mTexName if mTexName is not 0 or texname
-    void syncTexName(LLGLuint texname);
 
     //for debug use: show texture size distribution
     //----------------------------------------

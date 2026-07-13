@@ -3120,7 +3120,7 @@ void LLViewerMediaImpl::update()
 #if LL_IMAGEGL_THREAD_CHECK
                     media_tex->getGLTexture()->mActiveThread = LLThread::currentID();
 #endif
-                    doMediaTexUpdate(media_tex, data, data_width, data_height, x_pos, y_pos, width, height, true);
+                    doMediaTexUpdate(media_tex, data, data_width, data_height, x_pos, y_pos, width, height);
                 },
                 [=, this]() // callback to main thread
                 {
@@ -3134,7 +3134,7 @@ void LLViewerMediaImpl::update()
         }
         else
         {
-            doMediaTexUpdate(media_tex, data, data_width, data_height, x_pos, y_pos, width, height, false); // otherwise, update on main thread
+            doMediaTexUpdate(media_tex, data, data_width, data_height, x_pos, y_pos, width, height); // otherwise, update on main thread
         }
     }
 }
@@ -3190,7 +3190,7 @@ bool LLViewerMediaImpl::preMediaTexUpdate(LLViewerMediaTexture*& media_tex, U8*&
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-void LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* data, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool sync)
+void LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* data, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MEDIA;
     LLCoros::LockType lock(mLock); // don't allow media source tear-down during update
@@ -3198,29 +3198,13 @@ void LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* da
     // wrap "data" in an LLImageRaw but do NOT make a copy
     LLPointer<LLImageRaw> raw = new LLImageRaw(data, media_tex->getWidth(), media_tex->getHeight(), media_tex->getComponents(), true);
 
-    // *NOTE: Recreating the GL texture each media update may seem wasteful
-    // (note the texture creation in preMediaTexUpdate), however, it apparently
-    // prevents GL calls from blocking, due to poor bookkeeping of state of
-    // updated textures by the OpenGL implementation. (Windows 10/Nvidia)
-    // -Cosmic,2023-04-04
-    // Allocate GL texture based on LLImageRaw but do NOT copy to GL
-    LLGLuint tex_name = 0;
-    if (!media_tex->createGLTexture(0, raw, 0, true, LLGLTexture::OTHER, true, &tex_name))
+    if (!media_tex->createGLTexture(0, raw, true, LLGLTexture::OTHER, true))
     {
         LL_WARNS("Media") << "Failed to create media texture" << LL_ENDL;
     }
 
-    // copy just the subimage covered by the image raw to GL
-    media_tex->setSubImage(data, data_width, data_height, x_pos, y_pos, width, height, tex_name);
-
-    if (sync)
-    {
-        media_tex->getGLTexture()->syncToMainThread(tex_name);
-    }
-    else
-    {
-        media_tex->getGLTexture()->syncTexName(tex_name);
-    }
+    // copy just the subimage covered by the image raw
+    media_tex->setSubImage(data, data_width, data_height, x_pos, y_pos, width, height);
 
     // release the data pointer before freeing raw so LLImageRaw destructor doesn't
     // free memory at data pointer

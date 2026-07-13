@@ -351,7 +351,7 @@ public:
     //call to determine if createTexture is necessary
     bool preCreateTexture(S32 usename = 0);
      // ONLY call from LLViewerTextureList or ImageGL background thread
-    bool createTexture(S32 usename = 0);
+    bool createTexture();
     void postCreateTexture();
     void scheduleCreateTexture();
 

@@ -98,17 +98,6 @@ void FSManipTranslateJoint::setJoint(LLJoint* joint)
 }
 
 //static
-U32 FSManipTranslateJoint::getGridTexName()
-{
-    if (sGridTex.isNull())
-    {
-        restoreGL();
-    }
-
-    return sGridTex.isNull() ? 0 : sGridTex->getTexName();
-}
-
-//static
 void FSManipTranslateJoint::destroyGL()
 {
     if (sGridTex)

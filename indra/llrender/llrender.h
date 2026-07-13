@@ -177,7 +177,6 @@ public:
     // makes the following assumptions:
     //  - No need for gGL.flush()
     //  - texture is not null
-    //  - gl_tex->getTexName() is not zero
     //  - This texture is not being bound redundantly
     //  - USE_SRGB_DECODE is disabled
     //  - mTexOptionsDirty is false

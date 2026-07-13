@@ -1807,7 +1807,7 @@ void LLPipeline::createGLBuffers()
         mNoiseMap = new LLImageGL(false, false);
         mNoiseMap->setExplicitFormat(GL_RGB16F, GL_RGB, GL_FLOAT);
         mNoiseMap->setSize(noiseRes, noiseRes, 3);
-        mNoiseMap->createGLTexture(0, (const U8*)noise, false, 0);
+        mNoiseMap->createGLTexture(0, (const U8*)noise, false);
         gGL.getTexUnit(0)->bind(mNoiseMap);
         mNoiseMap->setFilteringOption(LLTexUnit::TFO_POINT);
     }
@@ -1824,7 +1824,7 @@ void LLPipeline::createGLBuffers()
         mTrueNoiseMap = new LLImageGL(false, false);
         mTrueNoiseMap->setExplicitFormat(GL_RGB16F, GL_RGB, GL_FLOAT);
         mTrueNoiseMap->setSize(noiseRes, noiseRes, 3);
-        mTrueNoiseMap->createGLTexture(0, (const U8*)noise, false, 0);
+        mTrueNoiseMap->createGLTexture(0, (const U8*)noise, false);
         gGL.getTexUnit(0)->bind(mTrueNoiseMap);
         mTrueNoiseMap->setFilteringOption(LLTexUnit::TFO_POINT);
     }
@@ -1842,7 +1842,7 @@ void LLPipeline::createGLBuffers()
         mSMAAAreaMap = new LLImageGL(false, false);
         mSMAAAreaMap->setExplicitFormat(GL_RG8, GL_RG, GL_UNSIGNED_BYTE);
         mSMAAAreaMap->setSize(AREATEX_WIDTH, AREATEX_HEIGHT, 2);
-        mSMAAAreaMap->createGLTexture(0, (const U8*)tempBuffer.data(), false, 0);
+        mSMAAAreaMap->createGLTexture(0, (const U8*)tempBuffer.data(), false);
         gGL.getTexUnit(0)->bind(mSMAAAreaMap);
         mSMAAAreaMap->setFilteringOption(LLTexUnit::TFO_BILINEAR);
         mSMAAAreaMap->setAddressMode(LLTexUnit::TAM_CLAMP);
@@ -1861,7 +1861,7 @@ void LLPipeline::createGLBuffers()
         mSMAASearchMap = new LLImageGL(false, false);
         mSMAASearchMap->setExplicitFormat(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
         mSMAASearchMap->setSize(SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 1);
-        mSMAASearchMap->createGLTexture(0, (const U8*)tempBuffer.data(), false, 0);
+        mSMAASearchMap->createGLTexture(0, (const U8*)tempBuffer.data(), false);
         gGL.getTexUnit(0)->bind(mSMAASearchMap);
         mSMAASearchMap->setFilteringOption(LLTexUnit::TFO_BILINEAR);
         mSMAASearchMap->setAddressMode(LLTexUnit::TAM_CLAMP);
@@ -1895,7 +1895,7 @@ void LLPipeline::createGLBuffers()
             mSMAASampleMap = new LLImageGL(false, false);
             mSMAASampleMap->setExplicitFormat(GL_RGB, format, GL_UNSIGNED_BYTE);
             mSMAASampleMap->setSize(raw_image->getWidth(), raw_image->getHeight(), raw_image->getComponents());
-            mSMAASampleMap->createGLTexture(0, (const U8*)raw_image->getData(), false, 0);
+            mSMAASampleMap->createGLTexture(0, (const U8*)raw_image->getData(), false);
             stop_glerror();
             gGL.getTexUnit(0)->bind(mSMAASampleMap);
             mSMAASampleMap->setFilteringOption(LLTexUnit::TFO_BILINEAR);
@@ -2028,7 +2028,7 @@ void LLPipeline::createLUTBuffers()
         mLightFunc = new LLImageGL(false, false);
         mLightFunc->setExplicitFormat(pix_format, GL_RED, GL_FLOAT);
         mLightFunc->setSize(lightResX, lightResY, 1);
-        mLightFunc->createGLTexture(0, (const U8*)ls, false, 0);
+        mLightFunc->createGLTexture(0, (const U8*)ls, false);
         gGL.getTexUnit(0)->bind(mLightFunc);
         mLightFunc->setAddressMode(LLTexUnit::TAM_CLAMP);
         mLightFunc->setFilteringOption(LLTexUnit::TFO_TRILINEAR);
