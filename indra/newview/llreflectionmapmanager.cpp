@@ -1328,19 +1328,6 @@ void LLReflectionMapManager::updateUniforms()
     mProbeData.heroMipCount   = gPipeline.mHeroProbeManager.mHeroData.heroMipCount;
     mProbeData.heroProbeCount = gPipeline.mHeroProbeManager.mHeroData.heroProbeCount;
 
-    //copy mProbeData into uniform buffer object
-    if (mUBO == 0)
-    {
-        glGenBuffers(1, &mUBO);
-    }
-
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("rmmsu - update buffer");
-        glBindBuffer(GL_UNIFORM_BUFFER, mUBO);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(ReflectionProbeData), &mProbeData, GL_STREAM_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    }
-
     if (LLVKLoader::isVulkanInitialized())
     {
         static_assert(sizeof(ReflectionProbeData) ==
@@ -1349,6 +1336,8 @@ void LLReflectionMapManager::updateUniforms()
         LLVKLoader::writeCurrentReflectionProbesUBO(
             *reinterpret_cast<const LLVKLoader::ReflectionProbes_PerProgramBind*>(&mProbeData));
     }
+
+    mProbeDataValid = true;
 
 #if 0
     if (!gCubeSnapshot)
@@ -1373,11 +1362,10 @@ void LLReflectionMapManager::setUniforms()
         return;
     }
 
-    if (mUBO == 0)
+    if (!mProbeDataValid)
     {
         updateUniforms();
     }
-    glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_REFLECTION_PROBES, mUBO);
 }
 
 
@@ -1653,8 +1641,7 @@ void LLReflectionMapManager::cleanup()
     mDefaultProbe = nullptr;
     mUpdatingProbe = nullptr;
 
-    glDeleteBuffers(1, &mUBO);
-    mUBO = 0;
+    mProbeDataValid = false;
 
     // note: also called on teleport (not just shutdown), so make sure we're in a good "starting" state
     initCubeFree();

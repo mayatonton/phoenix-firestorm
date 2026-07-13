@@ -223,7 +223,7 @@ private:
     std::vector<LLPointer<LLReflectionMap> > mCreateList;
 
     // handle to UBO
-    U32 mUBO = 0;
+    bool mProbeDataValid = false;
 
     // list of maps being used for rendering
     std::vector<LLReflectionMap*> mReflectionMaps;
