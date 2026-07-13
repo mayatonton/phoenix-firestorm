@@ -180,6 +180,12 @@ namespace
     float                    sMaxSamplerAnisotropy                   = 1.0f;
     float                    sMaxLineWidth                           = 1.0f;
     bool                     sGeometryShaderEnabled                  = false;
+    bool                     sImageCubeArrayEnabled                  = false;
+
+    VkPhysicalDeviceProperties sPhysicalDeviceProperties             = {};
+    std::string                sDriverName;
+    std::string                sDriverInfo;
+    U32                        sDeviceLocalMemoryMB                  = 0;
 
     bool                     sProvokingVertexLastEnabled             = false;
 
@@ -607,6 +613,39 @@ namespace
         }
 
         sPhysicalDevice = best;
+
+        vkGetPhysicalDeviceProperties(sPhysicalDevice, &sPhysicalDeviceProperties);
+
+        {
+            VkPhysicalDeviceDriverProperties driver_props = {};
+            driver_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+
+            VkPhysicalDeviceProperties2 props2 = {};
+            props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            props2.pNext = &driver_props;
+
+            vkGetPhysicalDeviceProperties2(sPhysicalDevice, &props2);
+
+            sDriverName = driver_props.driverName;
+            sDriverInfo = driver_props.driverInfo;
+        }
+
+        {
+            VkPhysicalDeviceMemoryProperties mem_props = {};
+            vkGetPhysicalDeviceMemoryProperties(sPhysicalDevice, &mem_props);
+
+            VkDeviceSize largest_device_local = 0;
+            for (U32 i = 0; i < mem_props.memoryHeapCount; i++)
+            {
+                if ((mem_props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) &&
+                    mem_props.memoryHeaps[i].size > largest_device_local)
+                {
+                    largest_device_local = mem_props.memoryHeaps[i].size;
+                }
+            }
+            sDeviceLocalMemoryMB = (U32)(largest_device_local / (1024 * 1024));
+        }
+
         return true;
     }
 
@@ -683,9 +722,7 @@ namespace
         if (supported_features.wideLines)
         {
             enabled_features.wideLines = VK_TRUE;
-            VkPhysicalDeviceProperties lw_props = {};
-            vkGetPhysicalDeviceProperties(sPhysicalDevice, &lw_props);
-            sMaxLineWidth = lw_props.limits.lineWidthRange[1];
+            sMaxLineWidth = sPhysicalDeviceProperties.limits.lineWidthRange[1];
         }
         else
         {
@@ -695,6 +732,7 @@ namespace
         if (supported_features.imageCubeArray)
         {
             enabled_features.imageCubeArray = VK_TRUE;
+            sImageCubeArrayEnabled = true;
         }
 
         if (supported_features.fillModeNonSolid)
@@ -716,9 +754,7 @@ namespace
         {
             enabled_features.samplerAnisotropy = VK_TRUE;
             sSamplerAnisotropyEnabled = true;
-            VkPhysicalDeviceProperties dev_props = {};
-            vkGetPhysicalDeviceProperties(sPhysicalDevice, &dev_props);
-            sMaxSamplerAnisotropy = dev_props.limits.maxSamplerAnisotropy;
+            sMaxSamplerAnisotropy = sPhysicalDeviceProperties.limits.maxSamplerAnisotropy;
         }
         else
         {
@@ -895,9 +931,7 @@ namespace
         }
 
         {
-            VkPhysicalDeviceProperties ts_props = {};
-            vkGetPhysicalDeviceProperties(sPhysicalDevice, &ts_props);
-            sTimestampPeriodNs = ts_props.limits.timestampPeriod;
+            sTimestampPeriodNs = sPhysicalDeviceProperties.limits.timestampPeriod;
 
             if (sHostQueryResetEnabled && sTimestampValidBits > 0 && sTimestampPeriodNs > 0.0f)
             {
@@ -7212,6 +7246,37 @@ void setRenderViewport(S32 x, S32 y, S32 w, S32 h)
 F32 getMaxLineWidth()
 {
     return sMaxLineWidth;
+}
+
+bool getDeviceCapsVk(DeviceCapsVk& out)
+{
+    if (sPhysicalDevice == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    const VkPhysicalDeviceProperties& props = sPhysicalDeviceProperties;
+
+    out.device_name                         = props.deviceName;
+    out.driver_name                         = sDriverName;
+    out.driver_info                         = sDriverInfo;
+    out.vendor_id                           = props.vendorID;
+    out.api_version_major                   = VK_API_VERSION_MAJOR(props.apiVersion);
+    out.api_version_minor                   = VK_API_VERSION_MINOR(props.apiVersion);
+    out.device_local_memory_mb              = sDeviceLocalMemoryMB;
+    out.max_image_dimension_2d              = props.limits.maxImageDimension2D;
+    out.max_uniform_buffer_range            = props.limits.maxUniformBufferRange;
+    out.max_per_stage_sampled_images        = props.limits.maxPerStageDescriptorSampledImages;
+    out.max_vertex_output_components        = props.limits.maxVertexOutputComponents;
+    out.max_sample_mask_words               = props.limits.maxSampleMaskWords;
+    out.framebuffer_color_sample_counts     = (U32)props.limits.framebufferColorSampleCounts;
+    out.framebuffer_depth_sample_counts     = (U32)props.limits.framebufferDepthSampleCounts;
+    out.sampled_image_integer_sample_counts = (U32)props.limits.sampledImageIntegerSampleCounts;
+    out.max_sampler_anisotropy              = sMaxSamplerAnisotropy;
+    out.sampler_anisotropy_enabled          = sSamplerAnisotropyEnabled;
+    out.image_cube_array_enabled            = sImageCubeArrayEnabled;
+
+    return true;
 }
 
 void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)

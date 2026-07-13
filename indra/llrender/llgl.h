@@ -93,16 +93,8 @@ public:
     S32 mMaxUniformBlockSize = 0;
     S32 mMaxVaryingVectors = 0;
 
-    // GL 4.x capabilities
     bool mHasCubeMapArray = false;
-    bool mHasDebugOutput = false;
-    bool mHasTransformFeedback = false;
     bool mHasAnisotropic = false;
-
-    // Vendor-specific extensions
-    bool mHasAMDAssociations = false;
-    bool mHasNVXGpuMemoryInfo = false;
-    bool mHasATIMemInfo = false;
 
     bool mIsAMD;
     bool mIsNVIDIA;
@@ -145,7 +137,6 @@ public:
     std::string mGLRenderer;
 
 private:
-    void initExtensions();
     void initGLStates();
 };
 
@@ -391,8 +382,6 @@ public:
 extern LLMatrix4 gGLObliqueProjectionInverse;
 
 #include "llglstates.h"
-
-void parse_gl_version( S32* major, S32* minor, S32* release, std::string* vendor_specific, std::string* version_string );
 
 extern bool gHeadlessClient;
 extern bool gNonInteractive;

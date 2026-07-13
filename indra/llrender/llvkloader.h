@@ -24,6 +24,7 @@
 
 #include "volk.h"
 
+#include <string>
 #include <vector>
 
 class LLWindow;
@@ -61,6 +62,29 @@ namespace LLVKLoader
     void setRenderViewport(S32 x, S32 y, S32 w, S32 h);
 
     F32 getMaxLineWidth();
+
+    struct DeviceCapsVk
+    {
+        std::string device_name;
+        std::string driver_name;
+        std::string driver_info;
+        U32         vendor_id                       = 0;
+        U32         api_version_major               = 0;
+        U32         api_version_minor               = 0;
+        U32         device_local_memory_mb          = 0;
+        U32         max_image_dimension_2d          = 0;
+        U32         max_uniform_buffer_range        = 0;
+        U32         max_per_stage_sampled_images    = 0;
+        U32         max_vertex_output_components    = 0;
+        U32         max_sample_mask_words           = 0;
+        U32         framebuffer_color_sample_counts = 0;
+        U32         framebuffer_depth_sample_counts = 0;
+        U32         sampled_image_integer_sample_counts = 0;
+        F32         max_sampler_anisotropy          = 1.0f;
+        bool        sampler_anisotropy_enabled      = false;
+        bool        image_cube_array_enabled        = false;
+    };
+    bool getDeviceCapsVk(DeviceCapsVk& out);
 
     VkDevice         getDevice();
 

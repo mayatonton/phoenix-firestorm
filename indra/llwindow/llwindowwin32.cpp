@@ -4960,8 +4960,8 @@ void LLWindowWin32::LLWindowWin32Thread::checkDXMem()
 {
     if (!mGLReady || mGotGLBuffer) { return; }
 
-    if ((gGLManager.mHasAMDAssociations || gGLManager.mHasNVXGpuMemoryInfo) && gGLManager.mVRAM != 0)
-    { // OpenGL already told us the memory budget, don't ask DX
+    if (gGLManager.mVRAM != 0)
+    {
         mGotGLBuffer = true;
         return;
     }
