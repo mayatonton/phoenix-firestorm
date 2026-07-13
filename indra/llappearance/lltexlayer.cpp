@@ -430,7 +430,6 @@ bool LLTexLayerSet::setInfo(const LLTexLayerSetInfo *info)
 
     requestUpdate();
 
-    stop_glerror();
 
     return true;
 }
@@ -519,7 +518,6 @@ bool LLTexLayerSet::render( S32 x, S32 y, S32 width, S32 height, LLRenderTarget*
 
         renderAlphaMaskTextures(x, y, width, height, bound_target, false);
 
-        stop_glerror();
     }
     else
     {
@@ -1252,7 +1250,6 @@ bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bou
 {
     // *TODO: Is this correct?
     //gPipeline.disableLights();
-    stop_glerror();
 
     LLColor4 net_color;
     bool color_specified = findNetColor(&net_color);
@@ -1398,7 +1395,6 @@ bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bou
         // Restore standard blend func value
         gGL.flush();
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
-        stop_glerror();
     }
 
     if( !success )

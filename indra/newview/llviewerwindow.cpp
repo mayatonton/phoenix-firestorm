@@ -2727,24 +2727,19 @@ void LLViewerWindow::shutdownGL()
     //--------------------------------------------------------
     LLFontGL::destroyDefaultFonts();
     SUBSYSTEM_CLEANUP(LLFontManager);
-    stop_glerror();
 
     gSky.cleanup();
-    stop_glerror();
 
     LL_INFOS() << "Cleaning up pipeline" << LL_ENDL;
     gPipeline.cleanup();
-    stop_glerror();
 
     //MUST clean up pipeline before cleaning up wearables
     LL_INFOS() << "Cleaning up wearables" << LL_ENDL;
     LLWearableList::instance().cleanup() ;
 
     gTextureList.shutdown();
-    stop_glerror();
 
     gBumpImageList.shutdown();
-    stop_glerror();
 
     LLWorldMapView::cleanupTextures();
 
@@ -2758,7 +2753,6 @@ void LLViewerWindow::shutdownGL()
 
     LL_INFOS() << "Stopping GL during shutdown" << LL_ENDL;
     stopGL();
-    stop_glerror();
 
     gGL.shutdown();
 
@@ -3046,7 +3040,6 @@ void LLViewerWindow::draw()
 //#if LL_DEBUG
     LLView::sIsDrawing = true;
 //#endif
-    stop_glerror();
 
     LLUI::setLineWidth(1.f);
 
@@ -3217,7 +3210,6 @@ void LLViewerWindow::draw()
         if( fsShowMouselookInstructions && (gAgentCamera.cameraMouselook() || LLFloaterCamera::inFreeCameraMode()) )
         {
             drawMouselookInstructions();
-            stop_glerror();
         }
 
         // Draw all nested UI views.
@@ -5225,7 +5217,6 @@ void LLViewerWindow::renderSelections( bool for_gl_pick, bool pick_parcel_walls,
     {
         LLSelectMgr::getInstance()->renderSilhouettes(for_hud);
 
-        stop_glerror();
 
         // <FS:Beq> Additions to display/tools in edit mode
         if (LLToolMgr::getInstance()->inEdit() && selection->getSelectType() != SELECT_TYPE_HUD)
@@ -5420,7 +5411,6 @@ void LLViewerWindow::renderSelections( bool for_gl_pick, bool pick_parcel_walls,
 
             gGL.matrixMode(LLRender::MM_MODELVIEW);
             gGL.popMatrix();
-            stop_glerror();
         }
     }
 }
@@ -6513,7 +6503,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                 }
             }
             output_buffer_offset_x += subimage_x_offset;
-            stop_glerror();
         }
         output_buffer_offset_y += subimage_y_offset;
     }
@@ -7146,24 +7135,18 @@ void LLViewerWindow::stopGL()
         LLAppViewer::getTextureFetch()->pause();
 
         gSky.destroyGL();
-        stop_glerror();
 
         LLManipTranslate::destroyGL() ;
-        stop_glerror();
 
         gBumpImageList.destroyGL();
-        stop_glerror();
 
         LLFontGL::destroyAllGL();
-        stop_glerror();
 
         LLVOAvatar::destroyGL();
-        stop_glerror();
 
         LLVOPartGroup::destroyGL();
 
         LLViewerDynamicTexture::destroyGL();
-        stop_glerror();
 
         if (gPipeline.isInit())
         {
@@ -7173,10 +7156,8 @@ void LLViewerWindow::stopGL()
         gBox.cleanupGL();
 
         gTextureList.destroyGL();
-        stop_glerror();
 
         gGLManager.mIsDisabled = true;
-        stop_glerror();
 
         //unload shader's
         while (LLGLSLShader::sInstances.size())

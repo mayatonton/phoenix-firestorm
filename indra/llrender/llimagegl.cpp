@@ -525,7 +525,6 @@ void LLImageGL::dirtyTexOptions()
     for (auto& glimage : sImageList)
     {
         glimage->mTexOptionsDirty = true;
-        stop_glerror();
     }
 
 }
@@ -898,14 +897,12 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
                     }
                     updatePickMask(w, h, data_in);
                 }
-                stop_glerror();
             }
         }
         else if (!is_compressed)
         {
             if (mAutoGenMips)
             {
-                stop_glerror();
                 {
                     S32 w = getWidth(mCurrentDiscardLevel);
                     S32 h = getHeight(mCurrentDiscardLevel);
@@ -913,7 +910,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
                     mMipLevels = wpo2(llmax(w, h));
 
                     analyzeAlpha(data_in, w, h);
-                    stop_glerror();
                     S32 vk_mip_count = 1;
                     {
                         S32 dim = llmax(w, h);
@@ -967,7 +963,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
                         U8* new_data = new(std::nothrow) U8[bytes];
                         if (!new_data)
                         {
-                            stop_glerror();
 
                             if (prev_mip_data)
                             {
@@ -1009,7 +1004,6 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
                             analyzeAlpha(data_in, w, h);
                             updatePickMask(w, h, cur_mip_data);
                         }
-                        stop_glerror();
                     }
                     if (prev_mip_data && prev_mip_data != data_in)
                     {
@@ -1047,10 +1041,8 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
 
             updatePickMask(w, h, data_in);
 
-            stop_glerror();
         }
     }
-    stop_glerror();
     mGLTextureCreated = true;
 
     return true;
@@ -1604,7 +1596,6 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, b
     }
 
     llassert(gGLManager.mInited);
-    stop_glerror();
 
     if (!imageraw || imageraw->isBufferInvalid())
     {
@@ -1709,7 +1700,6 @@ bool LLImageGL::createGLTexture(S32 discard_level, const U8* data_in, bool data_
         llassert(data_in);
     }
 
-    stop_glerror();
 
     if (discard_level < 0)
     {
@@ -1951,7 +1941,6 @@ void LLImageGL::setFilteringOption(LLTexUnit::eTextureFilterOptions option)
     {
         gGL.getTexUnit(gGL.getCurrentTexUnitIndex())->setTextureFilteringOption(option);
         mTexOptionsDirty = false;
-        stop_glerror();
     }
 }
 

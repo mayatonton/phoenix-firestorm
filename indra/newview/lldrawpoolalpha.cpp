@@ -1210,7 +1210,6 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
                     LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
                     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-                    stop_glerror();
 
                     if (reset_minimum_alpha)
                     {

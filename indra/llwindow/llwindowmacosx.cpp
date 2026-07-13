@@ -245,7 +245,6 @@ LLWindowMacOSX::LLWindowMacOSX(LLWindowCallbacks* callbacks,
     }
 
     mCallbacks = callbacks;
-    stop_glerror();
 
 
 }

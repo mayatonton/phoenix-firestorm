@@ -156,28 +156,6 @@ class LLMatrix4;
 
 void rotate_quat(LLQuaternion& rotation);
 
-void flush_glerror(); // Flush GL errors when we know we're handling them correctly.
-
-void log_glerror();
-void assert_glerror();
-
-void clear_glerror();
-
-
-# define stop_glerror() assert_glerror()
-# define llglassertok() assert_glerror()
-
-// stop_glerror is still needed on OS X but has performance implications
-// use macro below to conditionally add stop_glerror to non-release builds
-// on OS X
-#if LL_DARWIN && !LL_RELEASE_FOR_DOWNLOAD
-#define STOP_GLERROR stop_glerror()
-#else
-#define STOP_GLERROR
-#endif
-
-#define llglassertok_always() assert_glerror()
-
 ////////////////////////
 //
 // Note: U32's are GLEnum's...
@@ -229,9 +207,6 @@ void clear_glerror();
     enables/disables.  If a redundant call is attempted, it becomes a noop, otherwise,
     it is set in the constructor and reset in the destructor.
 
-    For debugging GL state corruption, running with debug enabled will trigger asserts
-    if the existing GL state does not match the expected GL state.
-
 */
 
 class LLGLState
@@ -239,14 +214,6 @@ class LLGLState
 public:
     static void initClass();
     static void restoreGL();
-
-    static void resetTextureStates();
-    static void dumpStates();
-
-    // make sure GL blend function, GL states, and GL color mask match
-    // what we expect
-    //  writeAlpha - whether or not writing to alpha channel is expected
-    static void checkStates(GLboolean writeAlpha = GL_TRUE);
 
     static GLenum sCullFaceMode;
     static void setCullFaceMode(GLenum mode);
@@ -425,14 +392,10 @@ extern LLMatrix4 gGLObliqueProjectionInverse;
 
 #include "llglstates.h"
 
-void init_glstates();
-
 void parse_gl_version( S32* major, S32* minor, S32* release, std::string* vendor_specific, std::string* version_string );
 
-extern bool gClothRipple;
 extern bool gHeadlessClient;
 extern bool gNonInteractive;
-extern bool gGLActive;
 
 // Deal with changing glext.h definitions for newer SDK versions, specifically
 // with MAC OSX 10.5 -> 10.6

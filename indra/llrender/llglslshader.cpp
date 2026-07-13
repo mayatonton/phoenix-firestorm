@@ -495,7 +495,6 @@ void LLGLSLShader::unloadInternal()
         mVkActivePerProgramUBOMapped = nullptr;
     }
 
-    stop_glerror();
     mTexture.clear();
 
     if (mTimerQuery)
@@ -510,10 +509,6 @@ void LLGLSLShader::unloadInternal()
         mSamplesQuery = 0;
     }
 
-    //hack to make apple not complain
-    glGetError();
-
-    stop_glerror();
 }
 
 bool LLGLSLShader::createShader()

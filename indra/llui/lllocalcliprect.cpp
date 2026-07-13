@@ -94,7 +94,6 @@ void LLScreenClipRect::updateScissorRegion()
     gGL.flush();
 
     LLRect rect = sClipRectStack.top();
-    stop_glerror();
     S32 x,y,w,h;
     x = llfloor(rect.mLeft * LLUI::getScaleFactor().mV[VX]);
     y = llfloor(rect.mBottom * LLUI::getScaleFactor().mV[VY]);
@@ -110,7 +109,6 @@ void LLScreenClipRect::updateScissorRegion()
     {
         glScissor( x,y,w,h );
     }
-    stop_glerror();
 }
 
 //---------------------------------------------------------------------------

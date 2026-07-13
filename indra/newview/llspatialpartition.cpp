@@ -2001,7 +2001,6 @@ void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
         gGL.flush();
         gGL.setLineWidth(llmax(4.f*sinf(gFrameTimeSeconds*2.f)+1.f, 1.f)); // <FS> Line width OGL core profile fix by Rye Mutt
         //gGL.setLineWidth(4.f*(sinf(gFrameTimeSeconds*2.f)*0.25f+0.75f)); // <FS> Line width OGL core profile fix by Rye Mutt
-        stop_glerror();
         drawBoxOutline(pos,size);
         gGL.flush();
         gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
@@ -3255,12 +3254,10 @@ public:
         if (!mCamera || mCamera->AABBInFrustumNoFarClip(bounds[0], bounds[1]))
         {
             node->accept(this);
-            stop_glerror();
 
             for (U32 i = 0; i < node->getChildCount(); i++)
             {
                 traverse(node->getChild(i));
-                stop_glerror();
             }
 
             //draw tight fit bounding boxes for spatial group
@@ -3270,7 +3267,6 @@ public:
                 group->rebuildMesh();
 
                 renderOctree(group);
-                stop_glerror();
             }
         }
     }
@@ -3427,12 +3423,10 @@ public:
         if (!mCamera || mCamera->AABBInFrustumNoFarClip(bounds[0], bounds[1]))
         {
             node->accept(this);
-            stop_glerror();
 
             for (U32 i = 0; i < node->getChildCount(); i++)
             {
                 traverse(node->getChild(i));
-                stop_glerror();
             }
 
             //render visibility wireframe
@@ -3446,7 +3440,6 @@ public:
                 gGLLastMatrix = NULL;
                 gGL.loadMatrix(gGLModelView);
                 renderXRay(group, mCamera);
-                stop_glerror();
                 gGLLastMatrix = NULL;
                 gGL.popMatrix();
             }
@@ -3473,12 +3466,10 @@ public:
         if (!mCamera || mCamera->AABBInFrustumNoFarClip(bounds[0], bounds[1]))
         {
             node->accept(this);
-            stop_glerror();
 
             for (U32 i = 0; i < node->getChildCount(); i++)
             {
                 traverse(node->getChild(i));
-                stop_glerror();
             }
 
             group->rebuildGeom();

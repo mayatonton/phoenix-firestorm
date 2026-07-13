@@ -2429,11 +2429,9 @@ bool idle_startup()
         // Initialize global class data needed for surfaces (i.e. textures)
         LL_DEBUGS("AppInit") << "Initializing sky..." << LL_ENDL;
         // Initialize all of the viewer object classes for the first time (doing things like texture fetches.
-        LLGLState::checkStates();
 
         gSky.init();
 
-        LLGLState::checkStates();
 
         do_startup_frame();
 

@@ -241,7 +241,6 @@ void LLCubeMap::initEnvironmentMap(const std::vector<LLPointer<LLImageRaw> >& ra
         }
 
         mImages[i]->setAddressMode(LLTexUnit::TAM_CLAMP);
-        stop_glerror();
 
         mImages[i]->setSubImage(mRawImages[i], 0, 0, resolution, resolution);
     }

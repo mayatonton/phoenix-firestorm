@@ -7053,7 +7053,6 @@ void LLSelectMgr::renderSilhouettes(bool for_hud)
         gGL.matrixMode(LLRender::MM_MODELVIEW);
         gGL.popMatrix();
         gGL.popUIMatrix();
-        stop_glerror();
     }
 
     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);

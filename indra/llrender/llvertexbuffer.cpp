@@ -107,7 +107,6 @@ public:
     void allocate(GLenum type, U32 size, U8*& data) override
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        STOP_GLERROR;
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
         llassert(data == nullptr);  // non null data indicates a buffer that wasn't freed
         llassert(size >= 2);  // any buffer size smaller than a single index is nonsensical
@@ -119,7 +118,6 @@ public:
             // ON OS X, we don't allocate a VBO until the last possible moment
             // in unmapBuffer
             data = (U8*) ll_aligned_malloc_16(size);
-            STOP_GLERROR;
         }
     }
 
@@ -135,7 +133,6 @@ public:
         }
 
         mAllocated -= size;
-        STOP_GLERROR;
     }
 };
 
@@ -507,7 +504,6 @@ void LLVertexBuffer::drawElements(U32 mode, const LLVector4a* pos, const LLVecto
     }
     // </FS:Ansariel>
 
-    STOP_GLERROR;
 
     gGL.syncMatrices();
 
@@ -624,7 +620,6 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
 {
     llassert(validateRange(start, end, count, indices_offset));
     gGL.syncMatrices();
-    STOP_GLERROR;
     bool vk_fired = false;
 
     if (LLVKLoader::shouldUseVulkanRender()
@@ -803,7 +798,6 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
     llassert(first + count <= mNumVerts);
 
     gGL.syncMatrices();
-    STOP_GLERROR;
     bool vk_fired = false;
 
     if (LLVKLoader::shouldUseVulkanRender()
@@ -923,7 +917,6 @@ void LLVertexBuffer::initClass(LLWindow* window)
 //static
 void LLVertexBuffer::unbind()
 {
-    STOP_GLERROR;
 }
 
 //static
@@ -1322,7 +1315,6 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
         // _mapBuffer to tag the buffer for flushing to GL
         _mapBuffer();
         LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb memcpy");
-        STOP_GLERROR;
         // copy into mapped buffer
         memcpy(dst+start, data, end-start+1);
     }
@@ -1358,7 +1350,6 @@ void LLVertexBuffer::_mapBuffer()
 
 void LLVertexBuffer::_unmapBuffer()
 {
-    STOP_GLERROR;
     if (!mMapped)
     {
         return;
@@ -1374,7 +1365,6 @@ void LLVertexBuffer::_unmapBuffer()
 
     if (gGLManager.mIsApple)
     {
-        STOP_GLERROR;
         if (mMappedData)
         {
             if (LLVKLoader::shouldUseVulkanRender() && mVkVertexMapped != nullptr)
@@ -1382,7 +1372,6 @@ void LLVertexBuffer::_unmapBuffer()
                 std::memcpy(mVkVertexMapped, mMappedData, mSize);
             }
         }
-        STOP_GLERROR;
 
         if (mMappedIndexData)
         {
@@ -1391,7 +1380,6 @@ void LLVertexBuffer::_unmapBuffer()
                 std::memcpy(mVkIndexMapped, mMappedIndexData, mIndicesSize);
             }
         }
-        STOP_GLERROR;
     }
     else
     {
@@ -1582,7 +1570,6 @@ bool LLVertexBuffer::getClothWeightStrider(LLStrider<LLVector4a>& strider, U32 i
 // Set for rendering
 void LLVertexBuffer::setBuffer()
 {
-    STOP_GLERROR;
 
     if (mMapped)
     {
@@ -1635,7 +1622,6 @@ void LLVertexBuffer::setBuffer()
         }
     }
 
-    STOP_GLERROR;
 }
 
 void LLVertexBuffer::setPositionData(const LLVector4a* data)

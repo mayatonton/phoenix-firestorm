@@ -501,7 +501,6 @@ void LLAtmospherics::updateFog(const F32 distance, const LLVector3& tosun_in)
 
     LLDrawPoolWater::sWaterFogEnd = fog_distance*2.2f;
 
-    stop_glerror();
 }
 
 // Functions used a lot.

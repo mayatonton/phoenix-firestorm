@@ -2518,7 +2518,6 @@ void LLVOAvatar::buildCharacter()
     processAnimationStateChanges();
 
     mIsBuilt = true;
-    stop_glerror();
 
     mMeshValid = true;
 }
@@ -6999,7 +6998,6 @@ void LLVOAvatar::processAnimationStateChanges()
         }
     }
 
-    stop_glerror();
 }
 
 

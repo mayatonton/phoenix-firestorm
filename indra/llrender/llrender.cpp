@@ -214,7 +214,6 @@ void LLTexUnit::bindFast(LLTexture* texture)
 bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    stop_glerror();
     if (mIndex >= 0)
     {
         gGL.flush();
@@ -282,7 +281,6 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
 
 bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
 {
-    stop_glerror();
     if (mIndex < 0) return false;
 
     if(!texture)
@@ -297,27 +295,21 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
         {
             return bind(LLImageGL::sDefaultGLTexture) ;
         }
-        stop_glerror();
         return false ;
     }
 
     if ((mCurrImageGL != texture) || forceBind)
     {
         gGL.flush();
-        stop_glerror();
         activate();
-        stop_glerror();
         enable(texture->getTarget());
-        stop_glerror();
         texture->updateBindStats();
         mHasMipMaps = texture->mHasMipMaps;
         if (texture->mTexOptionsDirty)
         {
-            stop_glerror();
             texture->mTexOptionsDirty = false;
             setTextureAddressMode(texture->mAddressMode);
             setTextureFilteringOption(texture->mFilterOption);
-            stop_glerror();
         }
     }
 
@@ -328,7 +320,6 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     mCurrAddressMode  = texture->getAddressMode();
     mCurrFilterOption = texture->getFilteringOption();
 
-    stop_glerror();
 
     vkNotifyShaderChannelBound();
     return true;
@@ -500,7 +491,6 @@ bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
 
 void LLTexUnit::unbind(eTextureType type)
 {
-    stop_glerror();
 
     if (mIndex < 0) return;
 
@@ -515,7 +505,6 @@ void LLTexUnit::unbind(eTextureType type)
         mCurrImageGL = nullptr;
         mCurrRenderTarget = nullptr;
         mCurrCubeMap = nullptr;
-        stop_glerror();
 
         vkNotifyShaderChannelBound();
     }
@@ -919,10 +908,8 @@ bool LLRender::init(bool needs_vertex_buffer)
     // <FS:Ansariel> Don't ignore OpenGL max line width
     GLfloat range[2];
     glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, range);
-    stop_glerror();
     mMaxLineWidthAliased = range[1];
     glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, range);
-    stop_glerror();
     mMaxLineWidthSmooth = range[1];
     // </FS:Ansariel>
 
@@ -932,7 +919,6 @@ bool LLRender::init(bool needs_vertex_buffer)
 void LLRender::initVertexBuffer()
 {
     llassert_always(mBuffer.isNull()) ;
-    stop_glerror();
     mBuffer = new LLVertexBuffer(immediate_mask);
     // <FS:Ansariel> Warn in case of allocation failure
     //mBuffer->allocateBuffer(4096, 0);
@@ -944,7 +930,6 @@ void LLRender::initVertexBuffer()
     mBuffer->getVertexStrider(mVerticesp);
     mBuffer->getTexCoord0Strider(mTexcoordsp);
     mBuffer->getColorStrider(mColorsp);
-    stop_glerror();
 }
 
 void LLRender::resetVertexBuffer()
@@ -1183,7 +1168,6 @@ void LLRender::getLightDeferredAttenuationData(F32* size_out) const
 
 void LLRender::syncMatrices()
 {
-    STOP_GLERROR;
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
 
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
@@ -1238,7 +1222,6 @@ void LLRender::syncMatrices()
             syncLightState();
         }
     }
-    STOP_GLERROR;
 }
 
 void LLRender::translatef(const GLfloat& x, const GLfloat& y, const GLfloat& z)
@@ -1763,7 +1746,6 @@ void LLRender::end()
 
 void LLRender::flush()
 {
-    STOP_GLERROR;
     if (mCount > 0)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;

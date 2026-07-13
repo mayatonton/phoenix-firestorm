@@ -1203,7 +1203,6 @@ bool LLAppViewer::init()
     //
     // Initialize the window
     //
-    gGLActive = true;
     initWindow();
     LL_INFOS("InitInfo") << "Window is initialized." << LL_ENDL ;
     // <FS:Beq> allow detected hardware to be overridden.
@@ -1356,8 +1355,6 @@ bool LLAppViewer::init()
         LL_WARNS() << "Error initializing SecHandlers: " << ex.what() << LL_ENDL;
         LLNotificationsUtil::add("CorruptedProtectedDataStore");
     }
-
-    gGLActive = false;
 
     // <FS:Ansariel> Disable updater
 ////#if LL_RELEASE_FOR_DOWNLOAD
@@ -1775,7 +1772,6 @@ bool LLAppViewer::doFrame()
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df Display");
                 pingMainloopTimeout("Main:Display");
-                gGLActive = true;
 
                 bool vk_begin_ok = LLVKLoader::beginFrame();
                 if (!vk_begin_ok && LLVKLoader::isVulkanInitialized())
@@ -1804,7 +1800,6 @@ bool LLAppViewer::doFrame()
                     LLFloaterSimpleSnapshot::update();
                     LLFloaterFlickr::update(); // <FS:Beq/> FIRE-35002 - Flickr preview not updating whne opened directly from tool tray icon
                     FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
-                    gGLActive = false;
                 }
 
                 LLVKLoader::endFrame();
@@ -3890,7 +3885,6 @@ bool LLAppViewer::initWindow()
     gPipeline.init();
     LL_INFOS("AppInit") << "gPipeline Initialized" << LL_ENDL;
 
-    stop_glerror();
     gViewerWindow->initGLDefaults();
 
     gSavedSettings.setBOOL("RenderInitError", false);
@@ -5883,13 +5877,10 @@ void LLAppViewer::idle()
     if (LLStartUp::getStartupState() < STATE_STARTED)
     {
         // Skip rest if idle startup returns false (essentially, no world yet)
-        gGLActive = true;
         if (!idle_startup())
         {
-            gGLActive = false;
             return;
         }
-        gGLActive = false;
     }
 
 
@@ -6257,7 +6248,6 @@ void LLAppViewer::idle()
     // forcibly quit if it has taken too long
     if (mQuitRequested)
     {
-        gGLActive = true;
         idleShutdown();
     }
 }

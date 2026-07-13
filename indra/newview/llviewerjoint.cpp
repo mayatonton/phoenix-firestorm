@@ -70,7 +70,6 @@ LLViewerJoint::~LLViewerJoint()
 //--------------------------------------------------------------------
 U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
 {
-    stop_glerror();
 
     U32 triangle_count = 0;
 

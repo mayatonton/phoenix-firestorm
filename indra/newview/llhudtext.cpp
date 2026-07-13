@@ -763,7 +763,6 @@ void LLHUDText::markDead()
 
 void LLHUDText::renderAllHUD()
 {
-    LLGLState::checkStates();
 
     {
         LLGLDepthTest depth(GL_FALSE, GL_FALSE);
@@ -778,7 +777,6 @@ void LLHUDText::renderAllHUD()
 
     LLVertexBuffer::unbind();
 
-    LLGLState::checkStates();
 }
 
 void LLHUDText::shiftAll(const LLVector3& offset)

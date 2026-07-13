@@ -493,7 +493,6 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
         setCursor( UI_CURSOR_ARROW );
     }
 
-    stop_glerror();
 
     // Stash an object pointer for OSMessageBox()
     gWindowImplementation = this;
@@ -1008,7 +1007,6 @@ bool LLWindowSDL::switchContext(bool fullscreen, const LLCoordScreen &size, bool
     bool result = true;
 
     LL_INFOS() << "switchContext, fullscreen=" << fullscreen << LL_ENDL;
-    stop_glerror();
     if(needsRebuild)
     {
         destroyContext();
@@ -1023,7 +1021,6 @@ bool LLWindowSDL::switchContext(bool fullscreen, const LLCoordScreen &size, bool
         }
     }
 
-    stop_glerror();
 
     return result;
 }

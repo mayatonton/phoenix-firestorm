@@ -462,7 +462,6 @@ void LLViewerTextureManager::init()
 
 void LLViewerTextureManager::cleanup()
 {
-    stop_glerror();
 
     delete gTextureManagerBridgep;
     LLImageGL::sDefaultGLTexture = NULL;
@@ -886,7 +885,6 @@ bool LLViewerTexture::bindDefaultImage(S32 stage)
     {
         LL_WARNS() << "LLViewerTexture::bindDefaultImage failed." << LL_ENDL;
     }
-    stop_glerror();
 
     LLTexturePipelineTester* tester = (LLTexturePipelineTester*)LLMetricPerformanceTesterBasic::getTester(sTesterName);
     if (tester)
