@@ -756,13 +756,6 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     gPipeline.bindDeferredShader(gGLTFPBRMetallicRoughnessProgram.mGLTFVariants[variant]);
                 }
 
-                if (!rigged)
-                {
-                    glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_NODES, asset.mNodesUBO);
-                }
-
-                glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_MATERIALS, asset.mMaterialsUBO);
-
                 for (U32 i = 0; i < TEXTURE_TYPE_COUNT; ++i)
                 {
                     mLastTexture[i] = -2;
@@ -809,7 +802,6 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - bind skin");
                     llassert(node.mSkin != INVALID_INDEX);
                     Skin& skin = asset.mSkins[node.mSkin];
-                    glBindBufferBase(GL_UNIFORM_BUFFER, LLGLSLShader::UB_GLTF_JOINTS, skin.mUBO);
                     if (LLVKLoader::isVulkanInitialized() &&
                         skin.mVkUBO              != VK_NULL_HANDLE &&
                         asset.mVkMaterialsUBO    != VK_NULL_HANDLE)
@@ -867,8 +859,6 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
 
     if (channel > -1)
     {
-        glActiveTexture(GL_TEXTURE0 + channel);
-
         auto mirrorVkTexBinding = [channel](LLViewerTexture* bound_tex)
         {
             if (!LLVKLoader::shouldUseVulkanRender())
@@ -889,25 +879,7 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
             LLViewerTexture* tex = asset.mImages[texture.mSource].mTexture;
             if (tex)
             {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gl bind texture");
                 mirrorVkTexBinding(tex);
-
-                if (channel != -1 && texture.mSampler != -1)
-                { // set sampler state
-                    Sampler& sampler = asset.mSamplers[texture.mSampler];
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampler.mWrapS);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampler.mWrapT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampler.mMagFilter);
-
-                    // NOTE: do not set min filter.  Always respect client preference for min filter
-                }
-                else
-                {
-                    // set default sampler state
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                }
             }
             else
             {

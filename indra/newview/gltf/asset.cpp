@@ -122,14 +122,6 @@ void Node::updateTransforms(Asset& asset, const mat4& parentMatrix)
 
 Asset::~Asset()
 {
-    if (mNodesUBO)
-    {
-        glDeleteBuffers(1, &mNodesUBO);
-    }
-    if (mMaterialsUBO)
-    {
-        glDeleteBuffers(1, &mMaterialsUBO);
-    }
     if (mVkNodesUBO != VK_NULL_HANDLE)
     {
         LLVKLoader::destroyBufferVk(mVkNodesUBO, mVkNodesUBOAllocation);
@@ -198,15 +190,6 @@ void Asset::uploadTransforms()
         mp[idx + 11] = m[14];
     }
 
-    if (mNodesUBO == 0)
-    {
-        glGenBuffers(1, &mNodesUBO);
-    }
-
-    glBindBuffer(GL_UNIFORM_BUFFER, mNodesUBO);
-    glBufferData(GL_UNIFORM_BUFFER, glmp.size() * sizeof(F32), glmp.data(), GL_STREAM_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
     if (LLVKLoader::isVulkanInitialized())
     {
         const U32 needed = (U32)(glmp.size() * sizeof(F32));
@@ -260,15 +243,6 @@ void Asset::uploadMaterials()
             material.mPbrMetallicRoughness.mMetallicFactor,
             min_alpha);
     }
-
-    if (mMaterialsUBO == 0)
-    {
-        glGenBuffers(1, &mMaterialsUBO);
-    }
-
-    glBindBuffer(GL_UNIFORM_BUFFER, mMaterialsUBO);
-    glBufferData(GL_UNIFORM_BUFFER, md.size() * sizeof(vec4), md.data(), GL_STREAM_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     if (LLVKLoader::isVulkanInitialized())
     {

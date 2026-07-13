@@ -393,10 +393,6 @@ const Animation& Animation::operator=(const Value& src)
 
 Skin::~Skin()
 {
-    if (mUBO)
-    {
-        glDeleteBuffers(1, &mUBO);
-    }
     if (mVkUBO != VK_NULL_HANDLE)
     {
         LLVKLoader::destroyBufferVk(mVkUBO, mVkUBOAllocation);
@@ -409,11 +405,6 @@ void Skin::uploadMatrixPalette(Asset& asset)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
 
     U32 max_joints = LLSkinningUtil::getMaxGLTFJointCount();
-
-    if (mUBO == 0)
-    {
-        glGenBuffers(1, &mUBO);
-    }
 
     size_t joint_count = llmin<size_t>(max_joints, mJoints.size());
 
@@ -455,10 +446,6 @@ void Skin::uploadMatrixPalette(Asset& asset)
         mp[idx + 10] = m[10];
         mp[idx + 11] = m[14];
     }
-
-    glBindBuffer(GL_UNIFORM_BUFFER, mUBO);
-    glBufferData(GL_UNIFORM_BUFFER, glmp.size() * sizeof(F32), glmp.data(), GL_STREAM_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     if (LLVKLoader::isVulkanInitialized())
     {

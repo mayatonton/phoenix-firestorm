@@ -237,7 +237,6 @@ namespace LL
             S32 mInverseBindMatrices = INVALID_INDEX;
             S32 mSkeleton = INVALID_INDEX;
 
-            U32 mUBO = 0;
             VkBuffer mVkUBO            = VK_NULL_HANDLE;
             void*    mVkUBOAllocation  = nullptr;
             void*    mVkUBOMapped      = nullptr;
@@ -394,12 +393,6 @@ namespace LL
             // 0 - single sided
             // 1 - double sided
             RenderData mRenderData[2];
-
-            // UBO for storing node transforms
-            U32 mNodesUBO = 0;
-
-            // UBO for storing material data
-            U32 mMaterialsUBO = 0;
 
             VkBuffer mVkNodesUBO              = VK_NULL_HANDLE;
             void*    mVkNodesUBOAllocation    = nullptr;
