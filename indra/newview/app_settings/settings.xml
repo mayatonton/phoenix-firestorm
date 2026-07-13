@@ -9943,6 +9943,107 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>1</integer>
     </map>
+
+    <!-- <FS:AYA> r32 update notification: login-screen native banner driven by GitHub Releases. -->
+    <key>AYAUpdateNotifyEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: Enables the login-screen native update notification banner. The check is a non-blocking anonymous GET to the configured GitHub Releases endpoint.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>AYAUpdateNotifyEndpoint</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: GitHub Releases list API endpoint used for update notification. The viewer filters the response by AYAstorm release family/tag rule instead of using /releases/latest.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>https://api.github.com/repos/mayatonton/phoenix-firestorm/releases?per_page=30</string>
+    </map>
+    <key>AYAUpdateNotifyIncludePrerelease</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: When true, prerelease GitHub Releases can be considered for the login update banner. Draft releases are always ignored.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAUpdateNotifyCheckIntervalHours</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: Minimum interval between GitHub release checks. 0 means check every login-panel construction.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAUpdateNotifyLastChecked</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: Unix timestamp of the last update-notification check.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAUpdateNotifyLastNotifiedTag</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: Last GitHub release tag opened from the login update banner.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string></string>
+    </map>
+    <key>AYAUpdateNotifySkippedTag</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: GitHub release tag skipped by the user from the login update banner.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string></string>
+    </map>
+    <key>AYAUpdateNotifyForceDevBuild</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: Allows update notification checks when the embedded local release tag is dev or otherwise unparsable. Intended for implementation verification only.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAUpdateNotifyLocalTagOverride</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm r32: Test-only override for the local release tag used by the update checker. Empty uses the build-embedded AYASTORM_RELEASE_TAG. Set locally during verification when a dev build must display the banner against the real GitHub Releases endpoint.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string></string>
+    </map>
     <!-- </FS:AYA> -->
 
     <!-- <FS:AYA> r30 P5 R2: Cinematic mode BD-parity overlay 適用状態 sentinel。

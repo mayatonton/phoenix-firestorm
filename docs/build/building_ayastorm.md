@@ -35,6 +35,29 @@ cd ~/work_ayastorm
 git clone https://github.com/FirestormViewer/fs-build-variables.git
 ```
 
+### 3.1 Release tag を埋め込む場合
+
+AYAstorm r32 以降の update notification は、build に埋め込まれた `AYASTORM_RELEASE_TAG` と GitHub Releases の tag を比較します。Release 配布物を作る場合は、必ず release tag を埋め込んでください。
+
+tag が付いた commit から configure する場合は、CMake が自動検出します。
+
+```bash
+git checkout REPLACE_WITH_RELEASE_TAG
+```
+
+tag checkout ではない CI / source archive から build する場合は、configure 時に明示します。
+
+```bash
+export AYA_RELEASE_TAG="REPLACE_WITH_RELEASE_TAG"
+-DAYASTORM_RELEASE_TAG=REPLACE_WITH_RELEASE_TAG
+```
+
+`-bugfix-N` 形式も対応しています。例えば `v7.2.4-ayastorm-r32-bugfix-2` は viewer 内では `AYAstorm r32.2` として扱われます。
+
+`autobuild.xml` には release tag を固定値として直書きしません。`autobuild.xml` は共通の build configuration 定義なので、release ごとに変わる値は `autobuild configure` の `--` 後に CMake 引数として渡すか、CI / build script の変数から渡してください。
+
+build tree を再利用する場合、既存の CMake cache が `dev` のままだと、コンパイル / リンク / パッケージングだけを再実行しても release tag は更新されません。tag を変更した場合、または `-DAYASTORM_RELEASE_TAG=...` を変更した場合は configure を再実行してください。
+
 ### 4. Python仮想環境とautobuildのセットアップ（一度だけ）
 
 ```bash
@@ -51,6 +74,9 @@ pip install -r requirements.txt
 ```bash
 source ~/work_ayastorm/phoenix-firestorm/.venv/bin/activate
 export AUTOBUILD_VARIABLES_FILE=$HOME/work_ayastorm/fs-build-variables/variables
+
+# Release build only. Dev build では空のままでよい。
+export AYA_RELEASE_TAG=""
 ```
 
 ### 6. FMODのセットアップ（一度だけ）
@@ -81,8 +107,15 @@ autobuild installables edit fmodstudio platform=linux64 \
 
 ```bash
 cd ~/work_ayastorm/phoenix-firestorm
-autobuild configure -A 64 -c ReleaseFS_open --   --fmodstudio -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
+autobuild configure -A 64 -c ReleaseFS_open -- \
+  --fmodstudio \
+  -DLL_TESTS:BOOL=FALSE \
+  ${AYA_RELEASE_TAG:+-DAYASTORM_RELEASE_TAG="$AYA_RELEASE_TAG"} \
+  --package \
+  --chan AYAstorm-release
 ```
+
+開発ビルドでは `-DAYASTORM_RELEASE_TAG=...` を省略できます。その場合は `dev` として扱われます。
 
 ### 8. ビルド
 
@@ -91,7 +124,14 @@ autobuild build -A 64 -c ReleaseFS_open --no-configure
 ```
 
 ### 9. キャッシュの削除 & インストール
-autobuild configure -A 64 -c ReleaseFS_open --   --fmodstudio -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
+
+```bash
+autobuild configure -A 64 -c ReleaseFS_open -- \
+  --fmodstudio \
+  -DLL_TESTS:BOOL=FALSE \
+  ${AYA_RELEASE_TAG:+-DAYASTORM_RELEASE_TAG="$AYA_RELEASE_TAG"} \
+  --package \
+  --chan AYAstorm-release
 autobuild build -A 64 -c ReleaseFS_open
 
 cd ~/work_ayastorm/phoenix-firestorm/build-linux-x86_64/newview/packaged
@@ -99,6 +139,7 @@ rm -rf ~/ayastorm/
 rm -rf ~/.local/share/applications/ayastorm-viewer.desktop
 ./install.sh
 rm -rf ~/.ayastorm_x64/cache/
+```
 
 ### 10. 実行
 ```bash
@@ -158,6 +199,29 @@ cd c:\work_ayastorm
 git clone https://github.com/FirestormViewer/fs-build-variables.git
 ```
 
+### 2.1 Release tag を埋め込む場合
+
+AYAstorm r32 以降の update notification は、build に埋め込まれた `AYASTORM_RELEASE_TAG` と GitHub Releases の tag を比較します。Release 配布物を作る場合は、必ず release tag を埋め込んでください。
+
+tag が付いた commit から configure する場合は、CMake が自動検出します。
+
+```cmd
+git checkout REPLACE_WITH_RELEASE_TAG
+```
+
+tag checkout ではない CI / source archive から build する場合は、configure 時に明示します。
+
+```cmd
+set AYA_RELEASE_TAG=REPLACE_WITH_RELEASE_TAG
+-DAYASTORM_RELEASE_TAG=REPLACE_WITH_RELEASE_TAG
+```
+
+`-bugfix-N` 形式も対応しています。例えば `v7.2.4-ayastorm-r32-bugfix-2` は viewer 内では `AYAstorm r32.2` として扱われます。
+
+`autobuild.xml` には release tag を固定値として直書きしません。`autobuild.xml` は共通の build configuration 定義なので、release ごとに変わる値は `autobuild configure` の `--` 後に CMake 引数として渡すか、CI / build script の変数から渡してください。
+
+build tree を再利用する場合、既存の CMake cache が `dev` のままだと、コンパイル / リンク / パッケージングだけを再実行しても release tag は更新されません。tag を変更した場合、または `-DAYASTORM_RELEASE_TAG=...` を変更した場合は configure を再実行してください。
+
 ### 3. autobuildのセットアップ（一度だけ）
 
 ```cmd
@@ -175,6 +239,10 @@ set AUTOBUILD_VSVER=170
 set AUTOBUILD_VARIABLES_FILE=c:\work_ayastorm\fs-build-variables\variables
 set PATH=C:\cygwin64\bin;%PATH%
 set AUTOBUILD_CONFIG_FILE=my_autobuild.xml
+rem Release build only. Dev build では未設定のままでよい。
+rem Example: set "AYA_RELEASE_TAG=v7.2.4-ayastorm-r32-bugfix-2"
+set "AYA_RELEASE_TAG_ARG="
+if defined AYA_RELEASE_TAG set "AYA_RELEASE_TAG_ARG=-DAYASTORM_RELEASE_TAG=%AYA_RELEASE_TAG%"
 ```
 
 > `my_autobuild.xml` はFMODセットアップ後に作成されます。
@@ -212,8 +280,10 @@ autobuild installables edit fmodstudio platform=windows64 ^
 ```cmd
 cd c:\work_ayastorm\phoenix-firestorm
 rmdir /s /q build-vc170-64
-autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
+autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio -DLL_TESTS:BOOL=FALSE %AYA_RELEASE_TAG_ARG% --package --chan AYAstorm-release
 ```
+
+開発ビルドでは `-DAYASTORM_RELEASE_TAG=...` を省略できます。その場合は `dev` として扱われます。
 
 ### 7. ビルド (Legacy)
 
@@ -235,7 +305,7 @@ Phoenix-FirestormOS-Ayastorm-release_LEGACY-7-2-4-80621_Setup.exe
 ```cmd
 cd c:\work_ayastorm\phoenix-firestorm
 rmdir /s /q build-vc170-64
-autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio --avx2 -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
+autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio --avx2 -DLL_TESTS:BOOL=FALSE %AYA_RELEASE_TAG_ARG% --package --chan AYAstorm-release
 ```
 
 ### 10. ビルド (AVX2)
@@ -250,4 +320,3 @@ autobuild build -A 64 -c ReleaseFS_AVX2 --no-configure
 c:\work_ayastorm\phoenix-firestorm\build-vc170-64\newview\Release\
 Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-80621_Setup.exe
 ```
-

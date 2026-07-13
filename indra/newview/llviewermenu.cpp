@@ -35,6 +35,7 @@
 
 // linden library includes
 #include "llavatarnamecache.h"  // IDEVO (I Are Not Men!)
+#include "llbutton.h"
 #include "llcombobox.h"
 #include "llcoros.h"
 #include "llfloaterreg.h"
@@ -109,11 +110,13 @@
 #include "llsceneview.h"
 #include "llscenemonitor.h"
 #include "llselectmgr.h"
+#include "llayaupdatechecker.h"
 #include "llayaskinsss.h"        // <FS:AYA r20 Phase E> per-attachment SSS whitelist mutators
 #include "llsidepanelappearance.h"
 #include "llspellcheckmenuhandler.h"
 #include "llstatusbar.h"
 #include "llterrainpaintmap.h"
+#include "lltextbox.h"
 #include "lltextureview.h"
 #include "lltoolbarview.h"
 #include "lltoolcomp.h"
@@ -10226,6 +10229,143 @@ class AYAResetCinematic : public view_listener_t
 };
 // </FS:AYAstorm r30 P4>
 
+// <FS:AYAstorm r32> Manual update check from AYAstorm Controls.
+void closeAYAUpdateFloater()
+{
+    if (LLFloater* floater = LLFloaterReg::findInstance("aya_update"))
+    {
+        floater->closeFloater();
+    }
+}
+
+enum class AYAUpdatePanelMode
+{
+    UPDATE_AVAILABLE,
+    MESSAGE_ONLY
+};
+
+void showAYAUpdatePanel(const std::string& title_text,
+                        const std::string& message_text,
+                        AYAUpdatePanelMode mode)
+{
+    LLFloater* floater = LLFloaterReg::showInstance("aya_update");
+    if (!floater)
+    {
+        return;
+    }
+
+    if (LLTextBox* title = floater->findChild<LLTextBox>("aya_update_title"))
+    {
+        title->setValue(title_text);
+    }
+    if (LLTextBox* message = floater->findChild<LLTextBox>("aya_update_message"))
+    {
+        message->setValue(message_text);
+    }
+
+    const bool update_available = (mode == AYAUpdatePanelMode::UPDATE_AVAILABLE);
+    if (LLButton* button = floater->findChild<LLButton>("aya_update_ok_btn"))
+    {
+        button->setVisible(!update_available);
+    }
+    if (LLButton* button = floater->findChild<LLButton>("aya_update_open_btn"))
+    {
+        button->setVisible(update_available);
+    }
+    if (LLButton* button = floater->findChild<LLButton>("aya_update_later_btn"))
+    {
+        button->setVisible(update_available);
+    }
+    if (LLButton* button = floater->findChild<LLButton>("aya_update_skip_btn"))
+    {
+        button->setVisible(update_available);
+    }
+}
+
+void showAYAUpdateFloater(const LLAyastormUpdateChecker::UpdateInfo& update)
+{
+    showAYAUpdatePanel("AYAstorm update available",
+                       "Latest: " + update.latest_tag + "\nCurrent: " + update.current_tag,
+                       AYAUpdatePanelMode::UPDATE_AVAILABLE);
+}
+
+void showAYAUpdateMessagePanel(const std::string& title_text, const std::string& message_text)
+{
+    showAYAUpdatePanel(title_text, message_text, AYAUpdatePanelMode::MESSAGE_ONLY);
+}
+
+void onAYAUpdateManualCheckResult(const LLAyastormUpdateChecker::CheckResult& result)
+{
+    switch (result.status)
+    {
+        case LLAyastormUpdateChecker::CheckStatus::UPDATE_AVAILABLE:
+            showAYAUpdateFloater(result.update);
+            break;
+        case LLAyastormUpdateChecker::CheckStatus::UP_TO_DATE:
+            showAYAUpdateMessagePanel("AYAstorm is up to date",
+                                      "Current: " + result.update.current_tag + "\nLatest: " +
+                                      result.update.latest_tag);
+            break;
+        case LLAyastormUpdateChecker::CheckStatus::IN_PROGRESS:
+            showAYAUpdateMessagePanel("AYAstorm update check",
+                                      result.message.empty()
+                                          ? "AYAstorm update check is already running."
+                                          : result.message);
+            break;
+        case LLAyastormUpdateChecker::CheckStatus::DISABLED:
+        case LLAyastormUpdateChecker::CheckStatus::FAILED:
+        default:
+            showAYAUpdateMessagePanel("AYAstorm update check failed",
+                                      result.message.empty()
+                                          ? "See AYAUpdate log output for details."
+                                          : result.message);
+            break;
+    }
+}
+
+class AYAUpdateCheck : public view_listener_t
+{
+    bool handleEvent(const LLSD&)
+    {
+        static boost::signals2::connection sConnection =
+            LLAyastormUpdateChecker::instance().addCheckCallback(&onAYAUpdateManualCheckResult);
+        (void)sConnection;
+        showAYAUpdateMessagePanel("Checking for updates", "Contacting GitHub Releases...");
+        LLAyastormUpdateChecker::instance().checkNow();
+        return true;
+    }
+};
+
+class AYAUpdateOpen : public view_listener_t
+{
+    bool handleEvent(const LLSD&)
+    {
+        LLAyastormUpdateChecker::instance().openReleasePage();
+        closeAYAUpdateFloater();
+        return true;
+    }
+};
+
+class AYAUpdateLater : public view_listener_t
+{
+    bool handleEvent(const LLSD&)
+    {
+        closeAYAUpdateFloater();
+        return true;
+    }
+};
+
+class AYAUpdateSkip : public view_listener_t
+{
+    bool handleEvent(const LLSD&)
+    {
+        LLAyastormUpdateChecker::instance().skipCurrentVersion();
+        closeAYAUpdateFloater();
+        return true;
+    }
+};
+// </FS:AYAstorm r32>
+
 // <FS:AYA r20 → r30> Skin SSS tab callbacks (Preferences > Graphics から AYAstorm Controls に移設)
 // XUI usage:
 //   <check_box.commit_callback function="AYASSSToggleLock"/>  (sss_whitelist_lock)
@@ -13467,6 +13607,13 @@ void initialize_menus()
     // <FS:AYAstorm r30 P4> D-button for Cinematic Controls
     view_listener_t::addMenu(new AYAResetCinematic(), "AYAResetCinematic");
     // </FS:AYAstorm r30 P4>
+
+    // <FS:AYAstorm r32> Manual update check from AYAstorm Controls
+    view_listener_t::addMenu(new AYAUpdateCheck(), "AYAUpdate.Check");
+    view_listener_t::addMenu(new AYAUpdateOpen(), "AYAUpdate.Open");
+    view_listener_t::addMenu(new AYAUpdateLater(), "AYAUpdate.Later");
+    view_listener_t::addMenu(new AYAUpdateSkip(), "AYAUpdate.Skip");
+    // </FS:AYAstorm r32>
 
     // <FS:AYA r20 → r30> Skin SSS tab callbacks (Preferences > Graphics から移設)
     view_listener_t::addMenu(new AYASSSToggleLock(), "AYASSSToggleLock");

@@ -52,6 +52,9 @@
         <!-- =================== Tab 1: General =================== -->
         <panel border="false" follows="left|top" label="General" layout="topleft" left="1" name="tab_general" top="0" height="427" width="488">
             <text follows="left|top" layout="topleft" name="T_GeneralMaster" top="8"   left="8"  width="472" height="18" font="SansSerif">Master switches (AYAstorm preset defaults)</text>
+            <button follows="left|top" layout="topleft" name="aya_update_check_btn" top="6" left="352" width="128" height="24" label="Update Check" tool_tip="Check GitHub Releases for a newer AYAstorm build">
+                <button.commit_callback function="AYAUpdate.Check"/>
+            </button>
 
             <check_box follows="left|top" layout="topleft" name="cb_DeferredSSAO"        control_name="RenderDeferredSSAO"       top="32"  left="36" width="406" height="20" label="Screen Space Ambient Occlusion (SSAO)" tool_tip="Approximate contact shadows / ambient darkening."/>
             <button    follows="left|top" layout="topleft" name="d_DeferredSSAO"         top="32"  left="12" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="RenderDeferredSSAO"/></button>

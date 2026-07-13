@@ -632,7 +632,11 @@ if [ $WANTS_BUILD -eq $TRUE ] ; then
         else
             JOBS="-jobs $JOBS"
         fi
-        xcodebuild -configuration $BTYPE -project Firestorm.xcodeproj $JOBS 2>&1 | tee -a "$LOG"
+        if [ ! -d "SecondLife.xcodeproj" ] ; then
+            echo "Build failed! SecondLife.xcodeproj not found"
+            exit 1
+        fi
+        xcodebuild -configuration $BTYPE -project SecondLife.xcodeproj $JOBS 2>&1 | tee -a "$LOG"
         build_status=${PIPESTATUS[0]}
     elif [ $TARGET_PLATFORM == "linux" ] ; then
         if [ $JOBS == "0" ] ; then

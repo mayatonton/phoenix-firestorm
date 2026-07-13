@@ -28,6 +28,65 @@
     top="18"
     height="598"
     width="1024" />
+  <panel
+    name="aya_update_banner"
+    visible="false"
+    follows="top"
+    left="202"
+    top="285"
+    height="160"
+    width="620"
+    background_visible="true"
+    bg_alpha_color="0.03 0.04 0.05 0.97"
+    border_visible="true">
+    <text
+      name="aya_update_title"
+      left="24"
+      top="18"
+      width="572"
+      height="40"
+      font="SansSerifHugeBold"
+      halign="center"
+      text_color="White">
+AYAstorm update available
+    </text>
+    <text
+      name="aya_update_message"
+      left="24"
+      top="58"
+      width="572"
+      height="46"
+      font="SansSerifLarge"
+      halign="center"
+      text_color="LtGray_50">
+Latest: -
+Current: -
+    </text>
+    <button
+      name="aya_update_open_btn"
+      follows="top"
+      left="70"
+      top="112"
+      width="170"
+      height="38"
+      label="View Update" />
+    <button
+      name="aya_update_later_btn"
+      follows="top"
+      left_pad="20"
+      top_delta="0"
+      width="110"
+      height="38"
+      label="Later" />
+    <button
+      name="aya_update_skip_btn"
+      follows="top"
+      left_pad="20"
+      top_delta="0"
+      width="160"
+      height="38"
+      label="Skip Version" />
+  </panel>
   <layout_stack
   follows="left|right|bottom"
   height="152"
@@ -66,7 +125,7 @@
     halign="center"
     text_color="EmphasisColor"
     name="aya_brand_line1">
-AYAstorm r31.2
+AYAstorm dev
   </text>
   <text
     left="0"
@@ -77,7 +136,7 @@ AYAstorm r31.2
     halign="center"
     text_color="LtGray_50"
     name="aya_brand_line2">
-based on FS 7.2.4
+based on FS
   </text>
   <!-- </FS:AYA> -->
 
