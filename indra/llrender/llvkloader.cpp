@@ -60,6 +60,9 @@ extern S32 gGLViewport[4];
 #  pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 #include "vk_mem_alloc.h"
+
+extern bool gCubeSnapshot;
+extern bool gHeroProbeMirrorRender;
 #if defined(__GNUC__) || defined(__clang__)
 #  pragma GCC diagnostic pop
 #endif
@@ -3318,6 +3321,7 @@ bool endFrame()
                                    << " shadow=" << gVkPerf.draws_pass[1]
                                    << " occl=" << gVkPerf.draws_pass[2]
                                    << " probe=" << gVkPerf.draws_pass[3]
+                                   << " hero=" << gVkPerf.draws_pass[4]
                                    << " | shmap " << gVkPerf.draws_shadow_map[0]
                                    << "/" << gVkPerf.draws_shadow_map[1]
                                    << "/" << gVkPerf.draws_shadow_map[2]
@@ -7921,8 +7925,9 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
                                 VkDescriptorSet set0, VkDescriptorSet set1,
                                 U32 dyn_count, const U32* offsets)
 {
-    const U32 pass_bucket = LLGLSLShader::vkCaptureRegimeActive() ? 3u
-                            : (gVkPerfPassTag < 4u ? gVkPerfPassTag : 0u);
+    const U32 pass_bucket = gHeroProbeMirrorRender ? 4u
+                            : gCubeSnapshot ? 3u
+                            : (gVkPerfPassTag < 3u ? gVkPerfPassTag : 0u);
     ++gVkPerf.draws_pass[pass_bucket];
     if (pass_bucket == 1u)
     {

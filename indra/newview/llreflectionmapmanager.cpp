@@ -467,11 +467,23 @@ void LLReflectionMapManager::update()
         // lighting values etc
         bool radiance_pass = isRadiancePass();
         mRadiancePass = mRealtimeRadiancePass;
-        for (U32 i = 0; i < 6; ++i)
+
+        static const U32 s_rt_faces = []() -> U32 {
+            const char* e = getenv("AYASTORM_PROBE_RT_FACES");
+            const S32 v = (e != nullptr) ? atoi(e) : 2;
+            return (v == 1 || v == 2 || v == 3 || v == 6) ? (U32)v : 6u;
+        }();
+
+        for (U32 i = 0; i < s_rt_faces; ++i)
         {
-            updateProbeFace(closestDynamic, i);
+            updateProbeFace(closestDynamic, mRealtimeFace);
+            mRealtimeFace = (mRealtimeFace + 1) % 6;
+            if (mRealtimeFace == 0)
+            {
+                mRealtimeRadiancePass = !mRealtimeRadiancePass;
+                mRadiancePass = mRealtimeRadiancePass;
+            }
         }
-        mRealtimeRadiancePass = !mRealtimeRadiancePass;
 
         // restore "isRadiancePass"
         mRadiancePass = radiance_pass;

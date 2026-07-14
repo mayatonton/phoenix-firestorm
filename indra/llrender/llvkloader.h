@@ -1337,7 +1337,7 @@ namespace LLVKLoader
         U64 populate      = 0;
         U64 syncmat_call  = 0;
         U64 syncmat_build = 0;
-        U64 draws_pass[4] = {};
+        U64 draws_pass[5] = {};
         U64 draws_shadow_map[6] = {};
         U64 shadow_cull = 0;
         U64 shadow_rigged = 0;

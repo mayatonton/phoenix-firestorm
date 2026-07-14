@@ -238,6 +238,7 @@ private:
     // Realtime probes should update all six sides of the irradiance map on "odd" frames and all six sides of the
     // radiance map on "even" frames.
     bool mRealtimeRadiancePass = false;
+    U32 mRealtimeFace = 0;
 
     LLPointer<LLReflectionMap> mDefaultProbe;  // default reflection probe to fall back to for pixels with no probe influences (should always be at cube index 0)
 
