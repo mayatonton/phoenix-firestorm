@@ -380,6 +380,7 @@ public:
     static constexpr U32       MAX_VK_DYNAMIC_BINDINGS = 8;
     static U32                 sCurPerCallVkDynamicOffsets[MAX_VK_DYNAMIC_BINDINGS];
     static bool                sCurPerCallVkOffsetsDirty;
+    static U32                 sCurPerCallVkSetShape;
     static void vkRefreshDynamicOffsetsForDraw();
 
     VkBuffer                   mVkPerProgramUBO         = VK_NULL_HANDLE;

@@ -1317,6 +1317,7 @@ void LLImageGL::setExternalVkBacking(VkImage image, VkImageView view, void* allo
     mVkImageHeight   = h;
     mVkImageFormat   = format;
     mVkImageMipLevels = mip_levels;
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 }
 
 bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update /* = false */)

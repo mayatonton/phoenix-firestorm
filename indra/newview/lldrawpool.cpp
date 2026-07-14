@@ -450,6 +450,21 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         return;
     }
 
+    const bool is_indexed = (cur->mFeatures.mIndexedTextureChannels > 0);
+    const U32 indexed_layout_count =
+        llmin((U32)cur->mFeatures.mIndexedTextureChannels,
+              (U32)LLVKLoader::ScenePerDrawBindings::MAX_SAMPLERS);
+    const U32 set_shape = (params != nullptr && batch_textures && params->mTextureList.size() > 1 && is_indexed)
+                              ? llmin((U32)params->mTextureList.size(), indexed_layout_count)
+                              : (is_indexed ? 1u : 0u);
+
+    if (gltf_materials_ubo == 0 && gltf_geometry_ubo == 0
+        && LLGLSLShader::sCurPerCallVkDescriptorSet != VK_NULL_HANDLE
+        && LLGLSLShader::sCurPerCallVkSetShape == set_shape)
+    {
+        return;
+    }
+
     LLVKLoader::ScenePerDrawBindings bindings;
     bindings.layout       = cur->mVkDescriptorSetLayout;
     bindings.sampler      = sampler;
@@ -467,7 +482,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
     }
 
-    const bool is_indexed = (cur->mFeatures.mIndexedTextureChannels > 0);
     LLImageGL*  fb_img = (LLImageGL::sDefaultGLTexture != nullptr && LLImageGL::sDefaultGLTexture->hasVkImage())
                              ? LLImageGL::sDefaultGLTexture
                              : LLImageGL::sWhiteImageGLp;
@@ -476,10 +490,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     {
         fallback_view = fb_img->getVkImageView();
     }
-
-    const U32 indexed_layout_count =
-        llmin((U32)cur->mFeatures.mIndexedTextureChannels,
-              (U32)LLVKLoader::ScenePerDrawBindings::MAX_SAMPLERS);
 
     if (params != nullptr && batch_textures && params->mTextureList.size() > 1 && is_indexed)
     {
@@ -779,6 +789,9 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
         std::memcpy(LLGLSLShader::sCurPerCallVkDynamicOffsets, dyn_offsets, sizeof(dyn_offsets));
         LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
+        LLGLSLShader::sCurPerCallVkSetShape = (gltf_materials_ubo == 0 && gltf_geometry_ubo == 0)
+                                                  ? set_shape
+                                                  : 0xFFFFFFFFu;
     }
 }
 
@@ -975,13 +988,11 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     if (params.mVertexBuffer == nullptr)
     {
         LL_WARNS() << "LLRenderPass::pushBatch: params.mVertexBuffer is nullptr. drawRange skipped." << LL_ENDL;
-        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
         return;
     }
     // </FS:Beq>
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     if (tex_setup)
     {
         gGL.matrixMode(LLRender::MM_TEXTURE0);

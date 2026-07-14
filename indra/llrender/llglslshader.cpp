@@ -74,6 +74,7 @@ LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
 bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
+U32 LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
 
 namespace
 {
@@ -3334,6 +3335,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
         std::memcpy(LLGLSLShader::sCurPerCallVkDynamicOffsets, dyn_offsets, sizeof(dyn_offsets));
         LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
+        LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
     }
 }
 

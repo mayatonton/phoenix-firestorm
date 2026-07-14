@@ -5480,12 +5480,17 @@ bool createTextureImageVk(U32          width,
     {
         usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
-    return createAttachmentImageVkImpl(width, height, format,
-                                       usage,
-                                       VK_IMAGE_ASPECT_COLOR_BIT,
-                                       "createTextureImageVk",
-                                       out_image, out_view, out_allocation,
-                                       mip_levels);
+    const bool created = createAttachmentImageVkImpl(width, height, format,
+                                                     usage,
+                                                     VK_IMAGE_ASPECT_COLOR_BIT,
+                                                     "createTextureImageVk",
+                                                     out_image, out_view, out_allocation,
+                                                     mip_levels);
+    if (created)
+    {
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    }
+    return created;
 }
 
 bool createReadbackImageVk(U32          width,
@@ -6153,6 +6158,7 @@ bool createTexture3DImageVk(U32          width,
     out_image      = image;
     out_view       = view;
     out_allocation = reinterpret_cast<void*>(allocation);
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     return true;
 }
 

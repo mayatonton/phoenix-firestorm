@@ -153,6 +153,15 @@ void LLTexUnit::bindFast(LLTexture* texture)
         gl_tex->forceUpdateBindStats();
         texture->bindDefaultImage(mIndex);
     }
+    const bool same_state = (mCurrImageGL == gl_tex)
+                            && mCurrRenderTarget == nullptr
+                            && mCurrCubeMap == nullptr
+                            && !mCurrCompareMode
+                            && gl_tex->hasVkImage()
+                            && !gl_tex->mTexOptionsDirty
+                            && mHasMipMaps == gl_tex->mHasMipMaps
+                            && mCurrAddressMode == gl_tex->getAddressMode()
+                            && mCurrFilterOption == gl_tex->getFilteringOption();
     mHasMipMaps = gl_tex->mHasMipMaps;
     if (gl_tex->mTexOptionsDirty)
     {
@@ -166,7 +175,18 @@ void LLTexUnit::bindFast(LLTexture* texture)
     mCurrCompareMode  = false;
     mCurrAddressMode  = gl_tex->getAddressMode();
     mCurrFilterOption = gl_tex->getFilteringOption();
-    vkNotifyShaderChannelBound();
+    if (same_state)
+    {
+        LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+        if (sh != nullptr && LLVKLoader::isVulkanInitialized())
+        {
+            sh->vkCaptureChannelBoundView(mIndex);
+        }
+    }
+    else
+    {
+        vkNotifyShaderChannelBound();
+    }
 }
 
 bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
