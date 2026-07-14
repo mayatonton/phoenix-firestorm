@@ -672,31 +672,23 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                             bound_rt->resumeVkDynamicRendering();
                         }
                     }
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                    LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
                     {
                         const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
                             LLRenderTarget::getCurrentBoundTarget() != nullptr,
                             LLGLSLShader::vkCaptureRegimeActive());
                         LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
                     }
-                    VkDescriptorSet sets[2] = {
-                        LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                        set_to_bind
-                    };
                     const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
-                    vkCmdBindDescriptorSets(cmd,
-                                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                            0,
-                                            2,
-                                            sets,
-                                            dyn_count,
-                                            dyn_count ? LLGLSLShader::sCurPerCallVkDynamicOffsets : nullptr);
-                    vkCmdPushConstants(cmd,
-                                       LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                       VK_SHADER_STAGE_VERTEX_BIT,
-                                       LLVkUboReg::PC_OFF_MODELVIEW, 64,
-                                       LLVKLoader::getCurrentModelviewMatrix());
+                    LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
+                                                           LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                                           LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                                                           set_to_bind,
+                                                           dyn_count,
+                                                           LLGLSLShader::sCurPerCallVkDynamicOffsets);
+                    LLVKLoader::pushModelviewOnce(cmd,
+                                                  LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                                  LLVKLoader::getCurrentModelviewMatrix());
                     vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
                     ++sVkDrawCallCount;
                     vk_fired = true;
@@ -769,28 +761,23 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                                 bound_rt->resumeVkDynamicRendering();
                             }
                         }
-                        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                        LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
                         {
                             const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
                                 LLRenderTarget::getCurrentBoundTarget() != nullptr,
                                 LLGLSLShader::vkCaptureRegimeActive());
                             LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
                         }
-                        VkDescriptorSet sets[2] = {
-                            LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                            set_to_bind
-                        };
                         const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
-                        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                0, 2, sets,
-                                                dyn_count,
-                                                dyn_count ? LLGLSLShader::sCurPerCallVkDynamicOffsets : nullptr);
-                        vkCmdPushConstants(cmd,
-                                           LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                           VK_SHADER_STAGE_VERTEX_BIT,
-                                           LLVkUboReg::PC_OFF_MODELVIEW, 64,
-                                           LLVKLoader::getCurrentModelviewMatrix());
+                        LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
+                                                               LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                                               LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                                                               set_to_bind,
+                                                               dyn_count,
+                                                               LLGLSLShader::sCurPerCallVkDynamicOffsets);
+                        LLVKLoader::pushModelviewOnce(cmd,
+                                                      LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                                      LLVKLoader::getCurrentModelviewMatrix());
                         vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
                         ++sVkDrawCallCount;
                         vk_fired = true;
@@ -907,31 +894,23 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                             bound_rt->resumeVkDynamicRendering();
                         }
                     }
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                    LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
                     {
                         const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
                             LLRenderTarget::getCurrentBoundTarget() != nullptr,
                             LLGLSLShader::vkCaptureRegimeActive());
                         LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
                     }
-                    VkDescriptorSet sets[2] = {
-                        LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                        set_to_bind
-                    };
                     const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
-                    vkCmdBindDescriptorSets(cmd,
-                                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                            0,
-                                            2,
-                                            sets,
-                                            dyn_count,
-                                            dyn_count ? LLGLSLShader::sCurPerCallVkDynamicOffsets : nullptr);
-                    vkCmdPushConstants(cmd,
-                                       LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                       VK_SHADER_STAGE_VERTEX_BIT,
-                                       LLVkUboReg::PC_OFF_MODELVIEW, 64,
-                                       LLVKLoader::getCurrentModelviewMatrix());
+                    LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
+                                                           LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                                           LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                                                           set_to_bind,
+                                                           dyn_count,
+                                                           LLGLSLShader::sCurPerCallVkDynamicOffsets);
+                    LLVKLoader::pushModelviewOnce(cmd,
+                                                  LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
+                                                  LLVKLoader::getCurrentModelviewMatrix());
                     vkCmdDraw(cmd, count, 1, first, 0);
                     ++sVkDrawCallCount;
                     vk_fired = true;

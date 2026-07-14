@@ -1315,6 +1315,39 @@ namespace LLVKLoader
     bool        isInRenderPassScope();
     bool        isImageViewActivePassAttachment(VkImageView view);
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);
+    void        bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline);
+    void        bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
+                                           VkDescriptorSet set0, VkDescriptorSet set1,
+                                           U32 dyn_count, const U32* offsets);
+    void        pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float* mv16);
+    bool        perFrameMatrixNeedsWrite();
+
+    struct VkPerfCounters
+    {
+        U64 pipe_bind     = 0;
+        U64 pipe_skip     = 0;
+        U64 desc_bind     = 0;
+        U64 desc_skip     = 0;
+        U64 mv_push       = 0;
+        U64 mv_skip       = 0;
+        U64 vp_set        = 0;
+        U64 vp_skip       = 0;
+        U64 set_build     = 0;
+        U64 set_reuse     = 0;
+        U64 populate      = 0;
+        U64 syncmat_call  = 0;
+        U64 syncmat_build = 0;
+        U64 draws_pass[4] = {};
+    };
+    extern VkPerfCounters gVkPerf;
+    extern U32 gVkPerfPassTag;
+
+    struct VkPerfPassScope
+    {
+        U32 mPrev;
+        VkPerfPassScope(U32 tag) : mPrev(gVkPerfPassTag) { gVkPerfPassTag = tag; }
+        ~VkPerfPassScope() { gVkPerfPassTag = mPrev; }
+    };
 
     const float* getCurrentModelviewMatrix();
 

@@ -745,6 +745,7 @@ LLRender::LLRender()
         mMatIdx[i] = 0;
         mMatHash[i] = 0;
         mCurMatHash[i] = 0xFFFFFFFF;
+        mVkSyncedMatHash[i] = 0xFFFFFFFF;
     }
 
     mLightHash = 0;
@@ -1032,42 +1033,59 @@ void LLRender::syncMatrices()
     {
         if (LLVKLoader::shouldUseVulkanRender())
         {
-            LLVKLoader::PerFrameMatrixUBO perframe = {};
-            LLVKLoader::TextureMatrixUBO  texmat   = {};
-
-            const glm::mat4& proj_mat = mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]];
-            glm::mat4 vulkan_z_correction = glm::identity<glm::mat4>();
-            vulkan_z_correction[2][2] = 0.5f;
-            vulkan_z_correction[3][2] = 0.5f;
-            const glm::mat4 proj_mat_vulkan = vulkan_z_correction * proj_mat;
-
-            std::memcpy(perframe.projection_matrix,
-                        glm::value_ptr(proj_mat_vulkan),
-                        sizeof(perframe.projection_matrix));
-
-            const glm::mat4 inv_proj = glm::inverse(proj_mat);
-            std::memcpy(perframe.inverse_projection_matrix,
-                        glm::value_ptr(inv_proj),
-                        sizeof(perframe.inverse_projection_matrix));
-
-            const glm::mat4 identity = glm::identity<glm::mat4>();
-            std::memcpy(perframe.identity_matrix,
-                        glm::value_ptr(identity),
-                        sizeof(perframe.identity_matrix));
-
-            std::memcpy(perframe.last_modelview_matrix,
-                        gGLLastModelView,
-                        sizeof(perframe.last_modelview_matrix));
-
-            for (U32 tex = 0; tex < 4; ++tex)
+            ++LLVKLoader::gVkPerf.syncmat_call;
+            const bool mats_dirty = LLVKLoader::perFrameMatrixNeedsWrite()
+                                    || mVkSyncedMatHash[MM_PROJECTION] != mMatHash[MM_PROJECTION]
+                                    || mVkSyncedMatHash[MM_TEXTURE0] != mMatHash[MM_TEXTURE0]
+                                    || mVkSyncedMatHash[MM_TEXTURE1] != mMatHash[MM_TEXTURE1]
+                                    || mVkSyncedMatHash[MM_TEXTURE2] != mMatHash[MM_TEXTURE2]
+                                    || mVkSyncedMatHash[MM_TEXTURE3] != mMatHash[MM_TEXTURE3];
+            if (mats_dirty)
             {
-                const glm::mat4& tex_mat = mMatrix[MM_TEXTURE0 + tex][mMatIdx[MM_TEXTURE0 + tex]];
-                std::memcpy(texmat.texture_matrix[tex],
-                            glm::value_ptr(tex_mat),
-                            sizeof(texmat.texture_matrix[tex]));
-            }
+                ++LLVKLoader::gVkPerf.syncmat_build;
+                LLVKLoader::PerFrameMatrixUBO perframe = {};
+                LLVKLoader::TextureMatrixUBO  texmat   = {};
 
-            LLVKLoader::writeCurrentPerFrameMatrixUBO(perframe, texmat);
+                const glm::mat4& proj_mat = mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]];
+                glm::mat4 vulkan_z_correction = glm::identity<glm::mat4>();
+                vulkan_z_correction[2][2] = 0.5f;
+                vulkan_z_correction[3][2] = 0.5f;
+                const glm::mat4 proj_mat_vulkan = vulkan_z_correction * proj_mat;
+
+                std::memcpy(perframe.projection_matrix,
+                            glm::value_ptr(proj_mat_vulkan),
+                            sizeof(perframe.projection_matrix));
+
+                const glm::mat4 inv_proj = glm::inverse(proj_mat);
+                std::memcpy(perframe.inverse_projection_matrix,
+                            glm::value_ptr(inv_proj),
+                            sizeof(perframe.inverse_projection_matrix));
+
+                const glm::mat4 identity = glm::identity<glm::mat4>();
+                std::memcpy(perframe.identity_matrix,
+                            glm::value_ptr(identity),
+                            sizeof(perframe.identity_matrix));
+
+                std::memcpy(perframe.last_modelview_matrix,
+                            gGLLastModelView,
+                            sizeof(perframe.last_modelview_matrix));
+
+                for (U32 tex = 0; tex < 4; ++tex)
+                {
+                    const glm::mat4& tex_mat = mMatrix[MM_TEXTURE0 + tex][mMatIdx[MM_TEXTURE0 + tex]];
+                    std::memcpy(texmat.texture_matrix[tex],
+                                glm::value_ptr(tex_mat),
+                                sizeof(texmat.texture_matrix[tex]));
+                }
+
+                LLVKLoader::writeCurrentPerFrameMatrixUBO(perframe, texmat);
+
+                mVkSyncedMatHash[MM_PROJECTION] = mMatHash[MM_PROJECTION];
+                mVkSyncedMatHash[MM_TEXTURE0]   = mMatHash[MM_TEXTURE0];
+                mVkSyncedMatHash[MM_TEXTURE1]   = mMatHash[MM_TEXTURE1];
+                mVkSyncedMatHash[MM_TEXTURE2]   = mMatHash[MM_TEXTURE2];
+                mVkSyncedMatHash[MM_TEXTURE3]   = mMatHash[MM_TEXTURE3];
+            }
 
             const glm::mat4& modelview_mat = mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]];
             LLVKLoader::pushCurrentModelviewMatrix(glm::value_ptr(modelview_mat));

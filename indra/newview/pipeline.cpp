@@ -3181,6 +3181,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("doOcclusion");
     llassert(!gCubeSnapshot);
+    LLVKLoader::VkPerfPassScope perf_pass_scope(2);
 
     if (isFrameReflectionProbesEnabled() && sUseOcclusion > 1 && !isFrameShadowPass() && !gCubeSnapshot)
     {
@@ -13567,6 +13568,8 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_GEN_SUN_SHADOW);
     LL_PROFILE_GPU_ZONE("generateSunShadow");
+
+    LLVKLoader::VkPerfPassScope perf_pass_scope(1);
 
     LLDisableOcclusionCulling no_occlusion;
 

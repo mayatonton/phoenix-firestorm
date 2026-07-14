@@ -1114,6 +1114,7 @@ void LLOcclusionCullingGroup::checkOcclusion()
 void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* shift)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_OCTREE;
+    LLVKLoader::VkPerfPassScope perf_pass_scope(2);
     if (mSpatialPartition->isOcclusionEnabled() && LLPipeline::sUseOcclusion > 1)
     {
         LLVector4a bounds[2];

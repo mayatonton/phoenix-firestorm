@@ -349,6 +349,7 @@ bool LLReflectionMap::isRelevant() const
 void LLReflectionMap::doOcclusion(const LLVector4a& eye)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    LLVKLoader::VkPerfPassScope perf_pass_scope(2);
     if (LLGLSLShader::sProfileEnabled)
     {
         return;

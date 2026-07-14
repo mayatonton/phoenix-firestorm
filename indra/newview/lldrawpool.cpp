@@ -462,6 +462,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         && LLGLSLShader::sCurPerCallVkDescriptorSet != VK_NULL_HANDLE
         && LLGLSLShader::sCurPerCallVkSetShape == set_shape)
     {
+        ++LLVKLoader::gVkPerf.set_reuse;
         return;
     }
 
@@ -792,6 +793,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         LLGLSLShader::sCurPerCallVkSetShape = (gltf_materials_ubo == 0 && gltf_geometry_ubo == 0)
                                                   ? set_shape
                                                   : 0xFFFFFFFFu;
+        ++LLVKLoader::gVkPerf.set_build;
     }
 }
 

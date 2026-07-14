@@ -39,6 +39,7 @@
 #include <memory>
 #include <unordered_map>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <set>
 #include <queue>
@@ -173,6 +174,18 @@ namespace
     bool  sMatrixRingHasCurrent[FRAMES_IN_FLIGHT]    = { false, false, false };
     float sMatrixRingCurrentProj[FRAMES_IN_FLIGHT][16] = {};
     float sMatrixRingCurrentTexmat[FRAMES_IN_FLIGHT][64] = {};
+
+    VkPipeline       sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
+    VkPipelineLayout sLastDescLayout   = VK_NULL_HANDLE;
+    VkDescriptorSet  sLastDescSet0     = VK_NULL_HANDLE;
+    VkDescriptorSet  sLastDescSet1     = VK_NULL_HANDLE;
+    U32              sLastDescDynCount = 0;
+    U32              sLastDescOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
+    VkPipelineLayout sLastMvLayout     = VK_NULL_HANDLE;
+    float            sLastMv[16]       = {};
+    VkViewport       sLastViewport     = {};
+    VkRect2D         sLastScissor      = {};
+    bool             sViewportScissorValid = false;
 
     VkSampler             sStandardLinearSampler                  = VK_NULL_HANDLE;
 
@@ -3134,6 +3147,14 @@ bool beginFrame(bool acquire_swapchain)
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
 
+    sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
+    sLastDescLayout            = VK_NULL_HANDLE;
+    sLastDescSet0              = VK_NULL_HANDLE;
+    sLastDescSet1              = VK_NULL_HANDLE;
+    sLastDescDynCount          = 0;
+    sLastMvLayout              = VK_NULL_HANDLE;
+    sViewportScissorValid      = false;
+
     sSwapchainClearedThisFrame = false;
 
     if (sSwapchain != VK_NULL_HANDLE &&
@@ -3249,11 +3270,59 @@ bool beginFrame(bool acquire_swapchain)
     return true;
 }
 
+VkPerfCounters gVkPerf;
+U32 gVkPerfPassTag = 0;
+
 bool endFrame()
 {
     if (!sInitialized || !sInFrame)
     {
         return false;
+    }
+
+    static const F64 s_perf_interval = []() -> F64 {
+        const char* e = getenv("AYASTORM_PERF_LOG");
+        if (e == nullptr)
+        {
+            return 0.0;
+        }
+        const F64 v = atof(e);
+        return (v > 0.0) ? v : 5.0;
+    }();
+    if (s_perf_interval > 0.0)
+    {
+        static std::chrono::steady_clock::time_point s_last_emit = std::chrono::steady_clock::now();
+        static U32 s_last_frame = sMonotonicFrameCount;
+        const auto now = std::chrono::steady_clock::now();
+        const F64 elapsed = std::chrono::duration<F64>(now - s_last_emit).count();
+        if (elapsed >= s_perf_interval)
+        {
+            const U32 frames = sMonotonicFrameCount - s_last_frame;
+            if (frames > 0)
+            {
+                const U64 draws = gVkPerf.desc_bind + gVkPerf.desc_skip;
+                LL_INFOS("VkPerf") << "frames=" << frames
+                                   << " fps=" << ((F64)frames / elapsed)
+                                   << " avg_ms=" << (elapsed * 1000.0 / (F64)frames)
+                                   << " draws/f=" << (draws / frames)
+                                   << " | emit/skip: pipe " << gVkPerf.pipe_bind << "/" << gVkPerf.pipe_skip
+                                   << " desc " << gVkPerf.desc_bind << "/" << gVkPerf.desc_skip
+                                   << " push " << gVkPerf.mv_push << "/" << gVkPerf.mv_skip
+                                   << " vp " << gVkPerf.vp_set << "/" << gVkPerf.vp_skip
+                                   << " | set build=" << gVkPerf.set_build
+                                   << " reuse=" << gVkPerf.set_reuse
+                                   << " populate=" << gVkPerf.populate
+                                   << " | syncmat " << gVkPerf.syncmat_build << "/" << gVkPerf.syncmat_call
+                                   << " | pass scene=" << gVkPerf.draws_pass[0]
+                                   << " shadow=" << gVkPerf.draws_pass[1]
+                                   << " occl=" << gVkPerf.draws_pass[2]
+                                   << " probe=" << gVkPerf.draws_pass[3]
+                                   << LL_ENDL;
+            }
+            gVkPerf = VkPerfCounters();
+            s_last_emit  = now;
+            s_last_frame = sMonotonicFrameCount;
+        }
     }
 
     endSwapchainRendering();
@@ -7789,7 +7858,6 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
         viewport.width  = (float)sVkRenderViewport[2];
         viewport.height = -(float)sVkRenderViewport[3];
     }
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
 
     S32 sc_x, sc_y, sc_w, sc_h;
     if (sScissorEnabled)
@@ -7812,7 +7880,90 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
     scissor.offset.y      = llmax(screen_space_copy ? sc_y : fb_height - (sc_y + sc_h), 0);
     scissor.extent.width  = (U32)llmax(sc_w, 0);
     scissor.extent.height = (U32)llmax(sc_h, 0);
+
+    if (sViewportScissorValid
+        && std::memcmp(&viewport, &sLastViewport, sizeof(viewport)) == 0
+        && std::memcmp(&scissor, &sLastScissor, sizeof(scissor)) == 0)
+    {
+        ++gVkPerf.vp_skip;
+        return;
+    }
+    ++gVkPerf.vp_set;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
+    sLastViewport         = viewport;
+    sLastScissor          = scissor;
+    sViewportScissorValid = true;
+}
+
+void bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline)
+{
+    if (pipeline == sLastBoundGraphicsPipeline)
+    {
+        ++gVkPerf.pipe_skip;
+        return;
+    }
+    ++gVkPerf.pipe_bind;
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    sLastBoundGraphicsPipeline = pipeline;
+}
+
+void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
+                                VkDescriptorSet set0, VkDescriptorSet set1,
+                                U32 dyn_count, const U32* offsets)
+{
+    const U32 pass_bucket = LLGLSLShader::vkCaptureRegimeActive() ? 3u
+                            : (gVkPerfPassTag < 4u ? gVkPerfPassTag : 0u);
+    ++gVkPerf.draws_pass[pass_bucket];
+    if (layout == sLastDescLayout
+        && set0 == sLastDescSet0
+        && set1 == sLastDescSet1
+        && dyn_count == sLastDescDynCount
+        && (dyn_count == 0 || std::memcmp(offsets, sLastDescOffsets, dyn_count * sizeof(U32)) == 0))
+    {
+        ++gVkPerf.desc_skip;
+        return;
+    }
+    ++gVkPerf.desc_bind;
+    VkDescriptorSet sets[2] = { set0, set1 };
+    vkCmdBindDescriptorSets(cmd,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            layout,
+                            0,
+                            2,
+                            sets,
+                            dyn_count,
+                            dyn_count ? offsets : nullptr);
+    sLastDescLayout   = layout;
+    sLastDescSet0     = set0;
+    sLastDescSet1     = set1;
+    sLastDescDynCount = dyn_count;
+    if (dyn_count > 0)
+    {
+        std::memcpy(sLastDescOffsets, offsets, dyn_count * sizeof(U32));
+    }
+}
+
+void pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float* mv16)
+{
+    if (layout == sLastMvLayout && std::memcmp(mv16, sLastMv, sizeof(sLastMv)) == 0)
+    {
+        ++gVkPerf.mv_skip;
+        return;
+    }
+    ++gVkPerf.mv_push;
+    vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 64, mv16);
+    sLastMvLayout = layout;
+    std::memcpy(sLastMv, mv16, sizeof(sLastMv));
+}
+
+bool perFrameMatrixNeedsWrite()
+{
+    if (!sInitialized || sFrameIndex >= FRAMES_IN_FLIGHT)
+    {
+        return false;
+    }
+    return !sMatrixRingHasCurrent[sFrameIndex];
 }
 
 void setScissor(S32 x, S32 y, S32 w, S32 h)

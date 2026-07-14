@@ -2120,7 +2120,7 @@ void LLGLSLShader::bind()
                 VkPipeline pipeline = getOrCreateVkPipelineForBoundRT();
                 if (pipeline != VK_NULL_HANDLE)
                 {
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                    LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
                 }
             }
         }
@@ -3336,6 +3336,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         std::memcpy(LLGLSLShader::sCurPerCallVkDynamicOffsets, dyn_offsets, sizeof(dyn_offsets));
         LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
         LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
+        ++LLVKLoader::gVkPerf.populate;
     }
 }
 

@@ -443,6 +443,7 @@ private:
     U32 mMatHash[NUM_MATRIX_MODES];
     glm::mat4 mMatrix[NUM_MATRIX_MODES][LL_MATRIX_STACK_DEPTH];
     U32 mCurMatHash[NUM_MATRIX_MODES];
+    U32 mVkSyncedMatHash[NUM_MATRIX_MODES];
     U32 mLightHash;
     LLColor4 mAmbientLightColor;
 
