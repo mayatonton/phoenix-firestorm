@@ -4,7 +4,7 @@
 if (NOT DEFINED VIEWER_SHORT_VERSION) # will be true in indra/, false in indra/newview/
     # <FS:Ansariel> Use own version file to avoid LL's year-as-major-version thing
     # set(VIEWER_VERSION_BASE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/newview/VIEWER_VERSION.txt")
-    set(VIEWER_VERSION_BASE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/newview/VIEWER_VERSION_FS.txt")
+    set(VIEWER_VERSION_BASE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/newview/VIEWER_VERSION_AYA.txt")
 
     if ( EXISTS ${VIEWER_VERSION_BASE_FILE} )
         file(STRINGS ${VIEWER_VERSION_BASE_FILE} VIEWER_SHORT_VERSION REGEX "^[0-9]+\\.[0-9]+\\.[0-9]+")
@@ -56,6 +56,13 @@ if (NOT DEFINED VIEWER_SHORT_VERSION) # will be true in indra/, false in indra/n
         message(STATUS "Upstream viewer version: ${VIEWER_VERSION_LL}")
     endif ()
     # </FS:PP>
+
+    set(VIEWER_VERSION_FS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/newview/VIEWER_VERSION_FS.txt")
+    if (EXISTS ${VIEWER_VERSION_FS_FILE})
+        file(STRINGS ${VIEWER_VERSION_FS_FILE} VIEWER_VERSION_FS LIMIT_COUNT 1)
+        string(STRIP "${VIEWER_VERSION_FS}" VIEWER_VERSION_FS)
+        message(STATUS "Firestorm base version: ${VIEWER_VERSION_FS}")
+    endif ()
 
     set(VIEWER_CHANNEL_VERSION_DEFINES
         "LL_VIEWER_CHANNEL=${VIEWER_CHANNEL}"

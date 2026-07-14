@@ -401,11 +401,10 @@ if [ -z $CHANNEL ] ; then
         else
             CHANNEL="private-`hostname`"
         fi
-        CHANNEL="Firestorm-$CHANNEL"
+        CHANNEL="AYAstorm-$CHANNEL"
     fi
 else
     CHANNEL=`echo $CHANNEL | sed -e "s/[^a-zA-Z0-9\-]*//g"` # strip out difficult characters from channel
-    CHANNEL="Firestorm-$CHANNEL"
 fi
 
 if [ \( $WANTS_CLEAN -eq $TRUE \) -a \( $WANTS_BUILD -eq $FALSE \) ] ; then

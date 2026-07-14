@@ -49,6 +49,7 @@
 #include "llviewertexturelist.h"
 #include "llviewerwindow.h"
 #include "llappviewer.h"
+#include "llversioninfo.h"
 #include "llweb.h"
 #include "lluictrlfactory.h"
 // <FS:Ansariel> [FS Login Panel]
@@ -157,7 +158,7 @@ bool LLProgressView::postBuild()
     mLayoutMOTD = getChild<LLView>("panel_motd");
     mLayoutMOTDRectInitial = mLayoutMOTD->getRect();
 
-    getChild<LLTextBox>("title_text")->setText(LLStringExplicit(LLAppViewer::instance()->getSecondLifeTitle()));
+    getChild<LLTextBox>("title_text")->setText(LLStringExplicit("AYAstorm VK r" + LLVersionInfo::getInstance()->getShortVersion()));
 
     getChild<LLTextBox>("message_text")->setClickedCallback(onClickMessage, this);
 

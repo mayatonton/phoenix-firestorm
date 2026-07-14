@@ -76,6 +76,8 @@ public:
 
     std::string getLLViewerVersion() const; // <FS:PP>
 
+    std::string getFSViewerVersion() const;
+
     /// return the viewer version and channel as a string
     /// like "Second Life Release 2.0.0.200030"
     std::string getChannelAndVersion();

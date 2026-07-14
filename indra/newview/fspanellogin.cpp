@@ -309,6 +309,15 @@ FSPanelLogin::FSPanelLogin(const LLRect &rect,
                                    LLVersionInfo::getInstance()->getShortVersion().c_str(),
                                    LLVersionInfo::getInstance()->getBuild());
 
+    if (LLTextBox* brand_line1 = findChild<LLTextBox>("aya_brand_line1"))
+    {
+        brand_line1->setText("AYAstorm VK r" + LLVersionInfo::getInstance()->getShortVersion());
+    }
+    if (LLTextBox* brand_line2 = findChild<LLTextBox>("aya_brand_line2"))
+    {
+        brand_line2->setText("based on FS " + LLVersionInfo::getInstance()->getFSViewerVersion());
+    }
+
     LLTextBox* forgot_password_text = getChild<LLTextBox>("forgot_password_text");
     forgot_password_text->setClickedCallback(onClickForgotPassword, NULL);
 

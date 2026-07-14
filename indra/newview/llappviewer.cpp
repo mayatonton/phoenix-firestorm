@@ -3949,6 +3949,7 @@ LLSD LLAppViewer::getViewerInfo() const
                                          versionInfo.getPatch(), stringize(versionInfo.getBuild()));
     info["VIEWER_VERSION_STR"] = versionInfo.getVersion();
     info["VIEWER_VERSION_LL"] = versionInfo.getLLViewerVersion(); // <FS:PP>
+    info["VIEWER_VERSION_FS"] = versionInfo.getFSViewerVersion();
     info["BUILD_DATE"] = __DATE__;
     info["BUILD_TIME"] = __TIME__;
     info["CHANNEL"] = versionInfo.getChannel();
