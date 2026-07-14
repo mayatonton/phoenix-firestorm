@@ -225,6 +225,7 @@ namespace LLVKLoader
 
     bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset, void*& out_mapped);
     VkBuffer getPerDrawUBOArenaBuffer();
+    bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off);
 
     struct DynamicRenderingAttachment
     {
@@ -1320,11 +1321,11 @@ namespace LLVKLoader
     struct ScenePerDrawBindings
     {
         static constexpr U32 MAX_SAMPLERS = 35;
-        static constexpr U32 MAX_UBO_WRITES = 24;
+        static constexpr U32 MAX_UBO_WRITES = 28;
 
         VkDescriptorSetLayout layout      = VK_NULL_HANDLE;
 
-        U32                   dynamic_count = 0;
+        U64                   dynamic_mask = 0;
 
         VkBuffer              ubo         = VK_NULL_HANDLE;
         U32                   ubo_binding = 0;

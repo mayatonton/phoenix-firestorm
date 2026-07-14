@@ -72,7 +72,7 @@ using std::string;
 LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 
 VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-U32 LLGLSLShader::sCurPerCallVkDynamicOffset = 0;
+U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;
 U32 LLGLSLShader::sMaxGLTFNodes = 0;
@@ -398,6 +398,8 @@ void LLGLSLShader::unloadInternal()
         mVkActivePerProgramUBOMapped = nullptr;
         mVkPerProgramShadow.clear();
         mVkSet1DynamicCount        = 0;
+        mVkDynamicBindingMask      = 0;
+        mVkDynamicBindings.clear();
         mVkPerProgramUBOGeneration = 0;
         mVkPerProgramUBOBaseMapped = nullptr;
     }
@@ -2680,8 +2682,10 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     add_ubo    (38, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedReflectionProbesUBO);
     add_sampler(43, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::SCENE_MAP);
     add_ubo    (44, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
-    add_ubo    (45, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedAvatarSkinUBO);
-    add_ubo    (46, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedObjectSkinUBO);
+    add_ubo    (45, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedAvatarSkinUBO,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+    add_ubo    (46, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedObjectSkinUBO,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_sampler(47, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::SCENE_DEPTH);
     if (mFeatures.hasReflectionProbes)
     {
@@ -2697,10 +2701,13 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
             add_sampler(42, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::HERO_PROBE, VKSD_CUBE_ARRAY);
         }
     }
-    add_ubo    (48, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedPBRMaterialUBO);
+    add_ubo    (48, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedPBRMaterialUBO,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_ubo    (49, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedSSRUtilUBO);
-    add_ubo    (51, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedDrawColorUBO);
-    add_ubo    (53, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedShadowParamsUBO);
+    add_ubo    (51, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedDrawColorUBO,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+    add_ubo    (53, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedShadowParamsUBO,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_sampler(50, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::DEFERRED_LIGHTFUNC);
 
     if (mFeatures.mIndexedTextureChannels > 0)
@@ -2779,14 +2786,22 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
 
     mVkLayoutBindings = bindings;
 
-    mVkSet1DynamicCount = 0;
+    mVkSet1DynamicCount   = 0;
+    mVkDynamicBindingMask = 0;
+    mVkDynamicBindings.clear();
     for (const auto& b : bindings)
     {
         if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
         {
             ++mVkSet1DynamicCount;
+            if (b.binding < 64)
+            {
+                mVkDynamicBindingMask |= (1ull << b.binding);
+            }
+            mVkDynamicBindings.push_back(b.binding);
         }
     }
+    std::sort(mVkDynamicBindings.begin(), mVkDynamicBindings.end());
 
     VkDescriptorSetLayoutCreateInfo dsl_info = {};
     dsl_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -2905,6 +2920,72 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
     }
 }
 
+bool LLGLSLShader::vkCollectDynamicUBOWrites(LLGLSLShader*                     cur,
+                                             LLVKLoader::ScenePerDrawBindings& bindings,
+                                             U32                               per_program_dynamic_offset,
+                                             U32*                              out_offsets)
+{
+    U32 idx = 0;
+    for (U32 db : cur->mVkDynamicBindings)
+    {
+        if (idx >= MAX_VK_DYNAMIC_BINDINGS)
+        {
+            break;
+        }
+        U32          off  = 0;
+        VkBuffer     dbuf = VK_NULL_HANDLE;
+        VkDeviceSize dsz  = 0;
+        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
+        {
+            off = per_program_dynamic_offset;
+            bool have = (bindings.ubo != VK_NULL_HANDLE && bindings.ubo_binding == 0);
+            for (U32 i = 0; !have && i < bindings.ubo_count; ++i)
+            {
+                if (bindings.ubo_writes[i].binding == 0 && bindings.ubo_writes[i].buf != VK_NULL_HANDLE)
+                {
+                    have = true;
+                }
+            }
+            if (!have)
+            {
+                dbuf = LLVKLoader::getPerDrawUBOArenaBuffer();
+                dsz  = 64;
+                off  = 0;
+            }
+        }
+        else
+        {
+            U32 doff = 0;
+            if (LLVKLoader::getSharedDynamicUBOForBinding(db, dbuf, doff) && dbuf != VK_NULL_HANDLE)
+            {
+                dsz = cur->sharedUBOBindingSize(db);
+                off = doff;
+            }
+            else
+            {
+                dbuf = LLVKLoader::getPerDrawUBOArenaBuffer();
+                dsz  = 64;
+                off  = 0;
+            }
+        }
+        if (dbuf != VK_NULL_HANDLE && dsz > 0)
+        {
+            if (bindings.ubo_count >= LLVKLoader::ScenePerDrawBindings::MAX_UBO_WRITES)
+            {
+                return false;
+            }
+            auto& entry = bindings.ubo_writes[bindings.ubo_count];
+            entry.binding = db;
+            entry.buf     = dbuf;
+            entry.offset  = 0;
+            entry.size    = dsz;
+            ++bindings.ubo_count;
+        }
+        out_offsets[idx++] = off;
+    }
+    return true;
+}
+
 bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset)
 {
     out_buf    = VK_NULL_HANDLE;
@@ -2989,12 +3070,11 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     }
 
     LLVKLoader::ScenePerDrawBindings bindings;
-    bindings.layout        = cur->mVkDescriptorSetLayout;
-    bindings.sampler       = sampler;
-    bindings.dynamic_count = cur->mVkSet1DynamicCount;
+    bindings.layout       = cur->mVkDescriptorSetLayout;
+    bindings.sampler      = sampler;
+    bindings.dynamic_mask = cur->mVkDynamicBindingMask;
 
-    U32  per_draw_dynamic_offset = 0;
-    bool wrote_dynamic0          = false;
+    U32 per_program_dynamic_offset = 0;
 
     VkImageView fallback_view = LLVKLoader::getDefaultFallbackVkImageView();
 
@@ -3143,9 +3223,13 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 ubo_sz = cur->mVkPerProgramUBOSize;
                 if (N == 0)
                 {
-                    per_draw_dynamic_offset = pp_off;
+                    per_program_dynamic_offset = pp_off;
                 }
             }
+        }
+        else if (N < 64 && ((cur->mVkDynamicBindingMask >> N) & 1))
+        {
+            continue;
         }
         else
         {
@@ -3164,10 +3248,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 
         if (ubo_provided)
         {
-            if (N == 0)
-            {
-                wrote_dynamic0 = true;
-            }
             auto& entry = bindings.ubo_writes[bindings.ubo_count];
             entry.binding = N;
             entry.buf     = ubo_buf;
@@ -3177,19 +3257,10 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         }
     }
 
-    if (bindings.dynamic_count > 0 && !wrote_dynamic0
-        && bindings.ubo_count < LLVKLoader::ScenePerDrawBindings::MAX_UBO_WRITES)
+    U32 dyn_offsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
+    if (!vkCollectDynamicUBOWrites(cur, bindings, per_program_dynamic_offset, dyn_offsets))
     {
-        VkBuffer arena = LLVKLoader::getPerDrawUBOArenaBuffer();
-        if (arena != VK_NULL_HANDLE)
-        {
-            auto& entry = bindings.ubo_writes[bindings.ubo_count];
-            entry.binding = 0;
-            entry.buf     = arena;
-            entry.offset  = 0;
-            entry.size    = 64;
-            ++bindings.ubo_count;
-        }
+        return;
     }
 
     VkDescriptorSet per_draw_set = VK_NULL_HANDLE;
@@ -3197,7 +3268,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         && per_draw_set != VK_NULL_HANDLE)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
-        LLGLSLShader::sCurPerCallVkDynamicOffset = per_draw_dynamic_offset;
+        std::memcpy(LLGLSLShader::sCurPerCallVkDynamicOffsets, dyn_offsets, sizeof(dyn_offsets));
     }
 }
 

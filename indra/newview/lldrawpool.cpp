@@ -451,15 +451,15 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     }
 
     LLVKLoader::ScenePerDrawBindings bindings;
-    bindings.layout        = cur->mVkDescriptorSetLayout;
-    bindings.sampler       = sampler;
-    bindings.dynamic_count = cur->mVkSet1DynamicCount;
+    bindings.layout       = cur->mVkDescriptorSetLayout;
+    bindings.sampler      = sampler;
+    bindings.dynamic_mask = cur->mVkDynamicBindingMask;
 
-    U32 per_draw_dynamic_offset = 0;
+    U32 per_program_dynamic_offset = 0;
     if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
     {
         VkBuffer pp_buf = VK_NULL_HANDLE;
-        if (cur->vkResolvePerProgramForDraw(pp_buf, per_draw_dynamic_offset))
+        if (cur->vkResolvePerProgramForDraw(pp_buf, per_program_dynamic_offset))
         {
             bindings.ubo         = pp_buf;
             bindings.ubo_binding = cur->mVkPerProgramUBOBinding;
@@ -738,6 +738,10 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 ubo_sz  = bindings.ubo_size;
             }
         }
+        else if (N < 64 && ((cur->mVkDynamicBindingMask >> N) & 1))
+        {
+            continue;
+        }
         else
         {
             LLGLSLShader::SharedUBOAccessor accessor = cur->mVkBindingToUBOAccessor[N];
@@ -762,31 +766,10 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
     }
 
-    if (bindings.dynamic_count > 0
-        && !(bindings.ubo != VK_NULL_HANDLE && bindings.ubo_binding == 0))
+    U32 dyn_offsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
+    if (!LLGLSLShader::vkCollectDynamicUBOWrites(cur, bindings, per_program_dynamic_offset, dyn_offsets))
     {
-        bool has_dyn0_write = false;
-        for (U32 i = 0; i < bindings.ubo_count; ++i)
-        {
-            if (bindings.ubo_writes[i].binding == 0 && bindings.ubo_writes[i].buf != VK_NULL_HANDLE)
-            {
-                has_dyn0_write = true;
-                break;
-            }
-        }
-        if (!has_dyn0_write && bindings.ubo_count < LLVKLoader::ScenePerDrawBindings::MAX_UBO_WRITES)
-        {
-            VkBuffer arena = LLVKLoader::getPerDrawUBOArenaBuffer();
-            if (arena != VK_NULL_HANDLE)
-            {
-                auto& entry = bindings.ubo_writes[bindings.ubo_count];
-                entry.binding = 0;
-                entry.buf     = arena;
-                entry.offset  = 0;
-                entry.size    = 64;
-                ++bindings.ubo_count;
-            }
-        }
+        return;
     }
 
     VkDescriptorSet per_draw_set = VK_NULL_HANDLE;
@@ -794,7 +777,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         && per_draw_set != VK_NULL_HANDLE)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
-        LLGLSLShader::sCurPerCallVkDynamicOffset = per_draw_dynamic_offset;
+        std::memcpy(LLGLSLShader::sCurPerCallVkDynamicOffsets, dyn_offsets, sizeof(dyn_offsets));
     }
 }
 

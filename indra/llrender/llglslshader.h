@@ -377,7 +377,8 @@ public:
 
     VkDeviceSize sharedUBOBindingSize(U32 binding) const;
     static VkDescriptorSet     sCurPerCallVkDescriptorSet;
-    static U32                 sCurPerCallVkDynamicOffset;
+    static constexpr U32       MAX_VK_DYNAMIC_BINDINGS = 8;
+    static U32                 sCurPerCallVkDynamicOffsets[MAX_VK_DYNAMIC_BINDINGS];
 
     VkBuffer                   mVkPerProgramUBO         = VK_NULL_HANDLE;
     void*                      mVkPerProgramUBOAllocation = nullptr;
@@ -398,10 +399,16 @@ public:
     void rotatePerProgramUBOSlot();
 
     U32                        mVkSet1DynamicCount        = 0;
+    U64                        mVkDynamicBindingMask      = 0;
+    std::vector<U32>           mVkDynamicBindings;
     U64                        mVkPerProgramUBOGeneration = 0;
     void*                      mVkPerProgramUBOBaseMapped = nullptr;
     std::vector<U8>            mVkPerProgramShadow;
     bool vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset);
+    static bool vkCollectDynamicUBOWrites(LLGLSLShader*                     cur,
+                                          LLVKLoader::ScenePerDrawBindings& bindings,
+                                          U32                               per_program_dynamic_offset,
+                                          U32*                              out_offsets);
 
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 

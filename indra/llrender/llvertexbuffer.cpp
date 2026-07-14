@@ -686,7 +686,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                                             2,
                                             sets,
                                             dyn_count,
-                                            dyn_count ? &LLGLSLShader::sCurPerCallVkDynamicOffset : nullptr);
+                                            dyn_count ? LLGLSLShader::sCurPerCallVkDynamicOffsets : nullptr);
                     vkCmdPushConstants(cmd,
                                        LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                        VK_SHADER_STAGE_VERTEX_BIT,
@@ -776,7 +776,7 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                                                 LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                 0, 2, sets,
                                                 dyn_count,
-                                                dyn_count ? &LLGLSLShader::sCurPerCallVkDynamicOffset : nullptr);
+                                                dyn_count ? LLGLSLShader::sCurPerCallVkDynamicOffsets : nullptr);
                         vkCmdPushConstants(cmd,
                                            LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                            VK_SHADER_STAGE_VERTEX_BIT,
@@ -913,7 +913,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                                             2,
                                             sets,
                                             dyn_count,
-                                            dyn_count ? &LLGLSLShader::sCurPerCallVkDynamicOffset : nullptr);
+                                            dyn_count ? LLGLSLShader::sCurPerCallVkDynamicOffsets : nullptr);
                     vkCmdPushConstants(cmd,
                                        LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                        VK_SHADER_STAGE_VERTEX_BIT,

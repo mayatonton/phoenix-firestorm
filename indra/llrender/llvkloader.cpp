@@ -27,6 +27,7 @@
 #include "llcontrol.h"
 #include "llwindow.h"
 #include "llimagegl.h"
+#include "llglslshader.h"
 
 #include <vector>
 #include <string>
@@ -325,15 +326,10 @@ namespace
     LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbes)
     LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbeF)
     LLVK_SHARED_UBO_RING_STORAGE(SSRUtil)
-    LLVK_SHARED_UBO_RING_STORAGE(AvatarSkin)
-    LLVK_SHARED_UBO_RING_STORAGE(ObjectSkin)
     LLVK_SHARED_UBO_RING_STORAGE(Lights)
     LLVK_SHARED_UBO_RING_STORAGE(LightsSpecular)
-    LLVK_SHARED_UBO_RING_STORAGE(PBRMaterial)
-    LLVK_SHARED_UBO_RING_STORAGE(DrawColor)
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrainF)
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrain)
-    LLVK_SHARED_UBO_RING_STORAGE(ShadowParams)
     #undef LLVK_SHARED_UBO_RING_STORAGE
     VkBuffer              sSharedSMAABlendWeightsFUBO             = VK_NULL_HANDLE;
     void*                 sSharedSMAABlendWeightsFUBOAllocation   = nullptr;
@@ -3013,15 +3009,10 @@ void shutdownVulkan()
             LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbes)
             LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbeF)
             LLVK_SHARED_UBO_RING_TEARDOWN(SSRUtil)
-            LLVK_SHARED_UBO_RING_TEARDOWN(AvatarSkin)
-            LLVK_SHARED_UBO_RING_TEARDOWN(ObjectSkin)
             LLVK_SHARED_UBO_RING_TEARDOWN(Lights)
             LLVK_SHARED_UBO_RING_TEARDOWN(LightsSpecular)
-            LLVK_SHARED_UBO_RING_TEARDOWN(PBRMaterial)
-            LLVK_SHARED_UBO_RING_TEARDOWN(DrawColor)
             LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrainF)
             LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrain)
-            LLVK_SHARED_UBO_RING_TEARDOWN(ShadowParams)
             #undef LLVK_SHARED_UBO_RING_TEARDOWN
 
             PerDrawUBOArena& arena = sPerDrawUBOArena[frame];
@@ -3719,6 +3710,39 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         return true;
     }
 
+    constexpr size_t SCENE_PER_DRAW_CACHE_MAX_ENTRIES = 50000;
+    if (sScenePerDrawCache.size() >= SCENE_PER_DRAW_CACHE_MAX_ENTRIES)
+    {
+        U32 evicted = 0;
+        for (auto lru_it = sScenePerDrawLRUOrder.begin();
+             lru_it != sScenePerDrawLRUOrder.end() && evicted < 64; )
+        {
+            auto cit = sScenePerDrawCache.find(*lru_it);
+            if (cit == sScenePerDrawCache.end())
+            {
+                lru_it = sScenePerDrawLRUOrder.erase(lru_it);
+                continue;
+            }
+            if (cit->second.last_used_monotonic_frame + FRAMES_IN_FLIGHT <= sMonotonicFrameCount)
+            {
+                ScenePerDrawDeferredFreeEntry deferred = {};
+                for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+                {
+                    deferred.sets[i] = cit->second.sets[i];
+                }
+                deferred.pool_index    = cit->second.pool_index;
+                deferred.enqueue_frame = sMonotonicFrameCount;
+                sScenePerDrawDeferredFree.push_back(deferred);
+
+                sScenePerDrawCache.erase(cit);
+                lru_it = sScenePerDrawLRUOrder.erase(lru_it);
+                ++evicted;
+                continue;
+            }
+            break;
+        }
+    }
+
     VkDescriptorSetLayout layouts[FRAMES_IN_FLIGHT];
     for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
@@ -3825,7 +3849,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
             writes[write_count].dstBinding      = b.ubo_binding;
             writes[write_count].dstArrayElement = 0;
             writes[write_count].descriptorCount = 1;
-            writes[write_count].descriptorType  = (b.dynamic_count > 0 && b.ubo_binding == 0)
+            writes[write_count].descriptorType  = (b.ubo_binding < 64 && ((b.dynamic_mask >> b.ubo_binding) & 1))
                                                       ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
                                                       : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[write_count].pBufferInfo     = &ubo_info;
@@ -3871,7 +3895,8 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 {
                     continue;
                 }
-                const bool is_dynamic0 = (b.dynamic_count > 0 && b.ubo_writes[i].binding == 0);
+                const U32  wb          = b.ubo_writes[i].binding;
+                const bool is_dynamic0 = (wb < 64 && ((b.dynamic_mask >> wb) & 1));
                 ubo_w_infos[ubo_w_count].buffer = b.ubo_writes[i].buf;
                 ubo_w_infos[ubo_w_count].offset = b.ubo_writes[i].offset;
                 ubo_w_infos[ubo_w_count].range  = b.ubo_writes[i].size;
@@ -4782,69 +4807,136 @@ LLVK_SHARED_UBO_RING_IMPL(ReflectionProbe,  ReflectionProbe_PerProgramBind,  16)
 LLVK_SHARED_UBO_RING_IMPL(ReflectionProbes, ReflectionProbes_PerProgramBind, 38)
 LLVK_SHARED_UBO_RING_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind, 39)
 LLVK_SHARED_UBO_RING_IMPL(SSRUtil,          SSRUtil_PerProgramBind,          49)
-LLVK_SHARED_UBO_RING_IMPL(AvatarSkin,       AvatarSkin_PerProgramBind,       45)
 LLVK_SHARED_UBO_RING_IMPL(Lights,           Lights_PerProgramBind,           12)
 LLVK_SHARED_UBO_RING_IMPL(LightsSpecular,   LightsSpecular_PerProgramBind,   12)
-LLVK_SHARED_UBO_RING_IMPL(PBRMaterial,      PBRMaterial_PerMaterial,         48)
-LLVK_SHARED_UBO_RING_IMPL(DrawColor,        DrawColor_PerShaderBind,         51)
 LLVK_SHARED_UBO_RING_IMPL(PbrTerrainF,      PbrTerrainF_PerProgramBind,      28)
 LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52)
-LLVK_SHARED_UBO_RING_IMPL(ShadowParams,     ShadowParams_PerShaderBind,      53)
 #undef LLVK_SHARED_UBO_RING_IMPL
 
-static bool ensureObjectSkinRingSlot(U32 f, U32 idx)
+#define LLVK_SHARED_UBO_DYNAMIC_IMPL(BindName, StructType)                                              \
+    static StructType s##BindName##Shadow;                                                              \
+    static U64 s##BindName##WriteGen = 1;                                                               \
+    static U64 s##BindName##UpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };                       \
+    static U64 s##BindName##UpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };                                   \
+    static U32 s##BindName##UpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                   \
+    static VkBuffer s##BindName##UpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE }; \
+    void writeCurrent##BindName##UBO(const StructType& data)                                            \
+    {                                                                                                  \
+        s##BindName##Shadow = data;                                                                     \
+        ++s##BindName##WriteGen;                                                                        \
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;                                      \
+    }                                                                                                  \
+    static bool ensure##BindName##Uploaded(VkBuffer& out_buf, U32& out_off)                             \
+    {                                                                                                  \
+        out_buf = VK_NULL_HANDLE;                                                                       \
+        out_off = 0;                                                                                    \
+        if (!sInitialized)                                                                              \
+        {                                                                                              \
+            return false;                                                                               \
+        }                                                                                              \
+        const U32 f = sFrameIndex;                                                                      \
+        if (f >= FRAMES_IN_FLIGHT)                                                                      \
+        {                                                                                              \
+            return false;                                                                               \
+        }                                                                                              \
+        if (s##BindName##UpFrame[f] != sMonotonicFrameCount                                             \
+            || s##BindName##UpGen[f] != s##BindName##WriteGen)                                          \
+        {                                                                                              \
+            VkBuffer b = VK_NULL_HANDLE;                                                                \
+            U32      o = 0;                                                                             \
+            void*    p = nullptr;                                                                       \
+            if (!allocPerDrawUBOSlice((U32)sizeof(StructType), b, o, p))                                \
+            {                                                                                          \
+                return false;                                                                           \
+            }                                                                                          \
+            std::memcpy(p, &s##BindName##Shadow, sizeof(StructType));                                   \
+            s##BindName##UpBuf[f]    = b;                                                               \
+            s##BindName##UpOffset[f] = o;                                                               \
+            s##BindName##UpFrame[f]  = sMonotonicFrameCount;                                            \
+            s##BindName##UpGen[f]    = s##BindName##WriteGen;                                           \
+        }                                                                                              \
+        out_buf = s##BindName##UpBuf[f];                                                                \
+        out_off = s##BindName##UpOffset[f];                                                             \
+        return true;                                                                                   \
+    }                                                                                                  \
+    bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                              \
+    {                                                                                                  \
+        out_buffer = VK_NULL_HANDLE;                                                                    \
+        out_mapped = &s##BindName##Shadow;                                                              \
+        return true;                                                                                   \
+    }
+LLVK_SHARED_UBO_DYNAMIC_IMPL(AvatarSkin,   AvatarSkin_PerProgramBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(PBRMaterial,  PBRMaterial_PerMaterial)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(DrawColor,    DrawColor_PerShaderBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(ShadowParams, ShadowParams_PerShaderBind)
+#undef LLVK_SHARED_UBO_DYNAMIC_IMPL
+
+static ObjectSkin_PerProgramBind sObjectSkinShadow;
+static U64 sObjectSkinWriteGen = 1;
+static U64 sObjectSkinUpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };
+static U64 sObjectSkinUpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };
+static U32 sObjectSkinUpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+static VkBuffer sObjectSkinUpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+
+static bool ensureObjectSkinUploaded(VkBuffer& out_buf, U32& out_off)
 {
-    while (sObjectSkinRing[f].size() <= (size_t)idx)
+    out_buf = VK_NULL_HANDLE;
+    out_off = 0;
+    if (!sInitialized)
     {
-        DeferredUtilOverrideSlot slot;
-        if (!createPerProgramUBOVk((U32)sizeof(ObjectSkin_PerProgramBind), slot.buffer, slot.allocation, &slot.mapped))
+        return false;
+    }
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return false;
+    }
+    if (sObjectSkinUpFrame[f] != sMonotonicFrameCount || sObjectSkinUpGen[f] != sObjectSkinWriteGen)
+    {
+        VkBuffer b = VK_NULL_HANDLE;
+        U32      o = 0;
+        void*    p = nullptr;
+        if (!allocPerDrawUBOSlice((U32)sizeof(ObjectSkin_PerProgramBind), b, o, p))
         {
             return false;
         }
-        sObjectSkinRing[f].push_back(slot);
+        std::memcpy(p, &sObjectSkinShadow, sizeof(ObjectSkin_PerProgramBind));
+        sObjectSkinUpBuf[f]    = b;
+        sObjectSkinUpOffset[f] = o;
+        sObjectSkinUpFrame[f]  = sMonotonicFrameCount;
+        sObjectSkinUpGen[f]    = sObjectSkinWriteGen;
     }
+    out_buf = sObjectSkinUpBuf[f];
+    out_off = sObjectSkinUpOffset[f];
     return true;
+}
+
+bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
+{
+    switch (binding)
+    {
+        case 45: return ensureAvatarSkinUploaded(out_buf, out_off);
+        case 46: return ensureObjectSkinUploaded(out_buf, out_off);
+        case 48: return ensurePBRMaterialUploaded(out_buf, out_off);
+        case 51: return ensureDrawColorUploaded(out_buf, out_off);
+        case 53: return ensureShadowParamsUploaded(out_buf, out_off);
+        default: return false;
+    }
 }
 
 void* rotateObjectSkinSlotForWrite()
 {
     if (!sInitialized) return nullptr;
-    const U32 f = sFrameIndex;
-    if (f >= FRAMES_IN_FLIGHT) return nullptr;
-    if (sObjectSkinRingFrame[f] != sMonotonicFrameCount)
-    {
-        sObjectSkinRingFrame[f] = sMonotonicFrameCount;
-        sObjectSkinRingIdx[f]   = 0;
-    }
-    const U32 idx = sObjectSkinRingIdx[f];
-    if (!ensureObjectSkinRingSlot(f, idx)) return nullptr;
-    sObjectSkinRingIdx[f] = idx + 1;
-    DeferredUtilOverrideSlot& slot = sObjectSkinRing[f][idx];
-    sCurObjectSkinBuf[f]    = slot.buffer;
-    sCurObjectSkinMapped[f] = slot.mapped;
-    return slot.mapped;
+    ++sObjectSkinWriteGen;
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    return &sObjectSkinShadow;
 }
 
 bool getSharedObjectSkinUBO(VkBuffer& out_buffer, void*& out_mapped)
 {
     if (!sInitialized) return false;
-    const U32 f = sFrameIndex;
-    if (f >= FRAMES_IN_FLIGHT) return false;
-    if (sObjectSkinRingFrame[f] != sMonotonicFrameCount)
-    {
-        sObjectSkinRingFrame[f] = sMonotonicFrameCount;
-        sObjectSkinRingIdx[f]   = 0;
-        sCurObjectSkinBuf[f]    = VK_NULL_HANDLE;
-        sCurObjectSkinMapped[f] = nullptr;
-    }
-    if (sCurObjectSkinBuf[f] == VK_NULL_HANDLE)
-    {
-        if (!ensureObjectSkinRingSlot(f, 0)) return false;
-        sCurObjectSkinBuf[f]    = sObjectSkinRing[f][0].buffer;
-        sCurObjectSkinMapped[f] = sObjectSkinRing[f][0].mapped;
-    }
-    out_buffer = sCurObjectSkinBuf[f];
-    out_mapped = sCurObjectSkinMapped[f];
+    out_buffer = VK_NULL_HANDLE;
+    out_mapped = &sObjectSkinShadow;
     return true;
 }
 
