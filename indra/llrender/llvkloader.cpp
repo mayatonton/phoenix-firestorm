@@ -3272,6 +3272,7 @@ bool beginFrame(bool acquire_swapchain)
 
 VkPerfCounters gVkPerf;
 U32 gVkPerfPassTag = 0;
+U32 gVkPerfShadowMapIndex = 0;
 
 bool endFrame()
 {
@@ -3317,6 +3318,13 @@ bool endFrame()
                                    << " shadow=" << gVkPerf.draws_pass[1]
                                    << " occl=" << gVkPerf.draws_pass[2]
                                    << " probe=" << gVkPerf.draws_pass[3]
+                                   << " | shmap " << gVkPerf.draws_shadow_map[0]
+                                   << "/" << gVkPerf.draws_shadow_map[1]
+                                   << "/" << gVkPerf.draws_shadow_map[2]
+                                   << "/" << gVkPerf.draws_shadow_map[3]
+                                   << " spot " << gVkPerf.draws_shadow_map[4]
+                                   << "/" << gVkPerf.draws_shadow_map[5]
+                                   << " culled=" << gVkPerf.shadow_cull
                                    << LL_ENDL;
             }
             gVkPerf = VkPerfCounters();
@@ -7915,6 +7923,10 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
     const U32 pass_bucket = LLGLSLShader::vkCaptureRegimeActive() ? 3u
                             : (gVkPerfPassTag < 4u ? gVkPerfPassTag : 0u);
     ++gVkPerf.draws_pass[pass_bucket];
+    if (pass_bucket == 1u)
+    {
+        ++gVkPerf.draws_shadow_map[gVkPerfShadowMapIndex < 6u ? gVkPerfShadowMapIndex : 5u];
+    }
     if (layout == sLastDescLayout
         && set0 == sLastDescSet0
         && set1 == sLastDescSet1

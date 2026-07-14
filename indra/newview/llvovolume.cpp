@@ -5786,6 +5786,15 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         info->mCount += facep->getIndicesCount();
         info->mEnd += facep->getGeomCount();
 
+        if (info->mBoundRadius >= 0.f)
+        {
+            info->mBatchExtents[0].setMin(info->mBatchExtents[0], facep->mExtents[0]);
+            info->mBatchExtents[1].setMax(info->mBatchExtents[1], facep->mExtents[1]);
+            LLVector4a diag;
+            diag.setSub(info->mBatchExtents[1], info->mBatchExtents[0]);
+            info->mBoundRadius = diag.getLength3().getF32() * 0.5f;
+        }
+
         if (index < FACE_DO_NOT_BATCH_TEXTURES && index >= info->mTextureList.size())
         {
             info->mTextureList.resize(index+1);
@@ -5811,6 +5820,14 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         // a stable place to read/write the previous frame's object matrix.
         draw_info->mLastModelMatrix = &facep->getDrawable()->mLastVelocityMatrix;
         // </AYAstorm r30 P2>
+
+        draw_info->mBatchExtents[0] = facep->mExtents[0];
+        draw_info->mBatchExtents[1] = facep->mExtents[1];
+        {
+            LLVector4a diag;
+            diag.setSub(facep->mExtents[1], facep->mExtents[0]);
+            draw_info->mBoundRadius = diag.getLength3().getF32() * 0.5f;
+        }
 
         draw_info->mBump  = bump;
         draw_info->mShiny = shiny;

@@ -382,6 +382,21 @@ void LLFacePool::LLOverrideFaceColor::setColor(F32 r, F32 g, F32 b, F32 a)
 }
 
 
+F32 LLRenderPass::sShadowBatchCullRadius = 0.f;
+
+static inline bool vkShadowCullBatch(const LLDrawInfo& params)
+{
+    if (LLRenderPass::sShadowBatchCullRadius > 0.f
+        && params.mBoundRadius >= 0.f
+        && params.mBoundRadius < LLRenderPass::sShadowBatchCullRadius
+        && params.mAvatar.isNull())
+    {
+        ++LLVKLoader::gVkPerf.shadow_cull;
+        return true;
+    }
+    return false;
+}
+
 LLRenderPass::LLRenderPass(const U32 type)
 : LLDrawPool(type)
 {
@@ -944,7 +959,7 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     llassert(texture);
 
-    if (!params.mCount)
+    if (!params.mCount || vkShadowCullBatch(params))
     {
         return;
     }
@@ -1007,7 +1022,7 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
-    if (!params.mCount)
+    if (!params.mCount || vkShadowCullBatch(params))
     {
         return;
     }
@@ -1427,6 +1442,10 @@ void LLRenderPass::pushUntexturedGLTFBatches(U32 type)
 
 void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
 {
+    if (vkShadowCullBatch(params))
+    {
+        return;
+    }
     auto& mat = params.mGLTFMaterial;
 
     if (mat.notNull())
@@ -1468,6 +1487,10 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
 
 void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
 {
+    if (vkShadowCullBatch(params))
+    {
+        return;
+    }
     auto& mat = params.mGLTFMaterial;
 
     LLGLDisable cull_face(mat->mDoubleSided ? GL_CULL_FACE : 0);

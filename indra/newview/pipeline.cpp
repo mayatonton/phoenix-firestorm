@@ -13831,6 +13831,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     {
         for (S32 j = 0; j < (gCubeSnapshot ? 2 : 4); j++)
         {
+            LLVKLoader::gVkPerfShadowMapIndex = (U32)j;
             if (!hasRenderDebugMask(RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
                 mShadowFrustPoints[j].clear();
@@ -14181,8 +14182,21 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             getFrameRT()->shadow[j].clear();
 
             {
+                static const F32 s_cull_texels = []() -> F32 {
+                    const char* e = getenv("AYASTORM_SHADOW_CULL_TEXELS");
+                    return (e != nullptr) ? (F32)atof(e) : 1.0f;
+                }();
+                const F32 split_span = llmax(max.mV[0] - min.mV[0], max.mV[2] - min.mV[2]);
+                const F32 map_res = (F32)getFrameRT()->shadow[j].getWidth();
+                LLRenderPass::sShadowBatchCullRadius =
+                    (s_cull_texels > 0.f && split_span > 0.f && map_res > 0.f)
+                        ? s_cull_texels * split_span / map_res
+                        : 0.f;
+
                 static LLCullResult result[4];
                 renderShadow(view[j], proj[j], shadow_cam, result[j], true);
+
+                LLRenderPass::sShadowBatchCullRadius = 0.f;
             }
 
             getFrameRT()->shadow[j].flush();
@@ -14330,6 +14344,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 RenderSpotLight = drawable;
 
+                LLVKLoader::gVkPerfShadowMapIndex = 4u + (U32)i;
                 renderShadow(view[i + 4], proj[i + 4], shadow_cam, result[i], false);
 
                 RenderSpotLight = nullptr;

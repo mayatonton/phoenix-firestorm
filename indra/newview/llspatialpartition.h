@@ -140,6 +140,9 @@ public:
 
     std::vector<LLPointer<LLViewerTexture> > mTextureList;
 
+    LLVector4a mBatchExtents[2];
+    F32 mBoundRadius = -1.f;
+
     LLUUID mMaterialID; // id of LLGLTFMaterial or LLMaterial applied to this draw info
 
     U32 mShaderMask = 0;
