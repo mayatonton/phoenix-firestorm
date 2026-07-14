@@ -72,6 +72,7 @@ using std::string;
 LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 
 VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+U32 LLGLSLShader::sCurPerCallVkDynamicOffset = 0;
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;
 U32 LLGLSLShader::sMaxGLTFNodes = 0;
@@ -395,6 +396,10 @@ void LLGLSLShader::unloadInternal()
         }
         mVkActivePerProgramUBO       = VK_NULL_HANDLE;
         mVkActivePerProgramUBOMapped = nullptr;
+        mVkPerProgramShadow.clear();
+        mVkSet1DynamicCount        = 0;
+        mVkPerProgramUBOGeneration = 0;
+        mVkPerProgramUBOBaseMapped = nullptr;
     }
 
     mTexture.clear();
@@ -2500,9 +2505,10 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
     }
 
     if (LLVKLoader::isVulkanInitialized() && mWritePerProgramUBOMinimumAlpha
-        && mVkPerProgramUBO != VK_NULL_HANDLE && mVkPerProgramUBOMapped != nullptr)
+        && mVkPerProgramUBO != VK_NULL_HANDLE && mVkActivePerProgramUBOMapped != nullptr)
     {
-        std::memcpy(mVkPerProgramUBOMapped, &minimum, sizeof(F32));
+        std::memcpy(mVkActivePerProgramUBOMapped, &minimum, sizeof(F32));
+        ++mVkPerProgramUBOGeneration;
     }
 }
 
@@ -2575,11 +2581,12 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     mVkBindingToEnum.fill(-1);
     mVkBindingToUBOAccessor.fill(nullptr);
 
-    auto add_ubo = [&](U32 binding, VkShaderStageFlags stage, LLGLSLShader::SharedUBOAccessor accessor)
+    auto add_ubo = [&](U32 binding, VkShaderStageFlags stage, LLGLSLShader::SharedUBOAccessor accessor,
+                       VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
     {
         VkDescriptorSetLayoutBinding b = {};
         b.binding         = binding;
-        b.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        b.descriptorType  = type;
         b.descriptorCount = 1;
         b.stageFlags      = stage;
         bindings.push_back(b);
@@ -2608,7 +2615,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         }
     };
 
-    add_ubo    (0,  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+    add_ubo    (0,  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_sampler(1,  VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::DIFFUSE_MAP);
     add_sampler(2,  VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::BUMP_MAP);
     add_sampler(3,  VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::SPECULAR_MAP);
@@ -2707,7 +2715,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     {
         if (b.binding >= MAX_VK_BINDING) continue;
         U8 declared = mVkBindingDeclaredType[b.binding];
-        if (declared == VKBD_SAMPLER && b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+        if (declared == VKBD_SAMPLER && (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                                         || b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC))
         {
             b.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             mVkBindingToUBOAccessor[b.binding] = nullptr;
@@ -2770,6 +2779,15 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
 
     mVkLayoutBindings = bindings;
 
+    mVkSet1DynamicCount = 0;
+    for (const auto& b : bindings)
+    {
+        if (b.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+        {
+            ++mVkSet1DynamicCount;
+        }
+    }
+
     VkDescriptorSetLayoutCreateInfo dsl_info = {};
     dsl_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     dsl_info.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -2822,8 +2840,15 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
                                               &mVkPerProgramUBOMapped))
         {
             mVkPerProgramUBOSize = perProgramUBOSize;
+            mVkPerProgramUBOBaseMapped   = mVkPerProgramUBOMapped;
             mVkActivePerProgramUBO       = mVkPerProgramUBO;
             mVkActivePerProgramUBOMapped = mVkPerProgramUBOMapped;
+            if (mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0)
+            {
+                mVkPerProgramShadow.assign(perProgramUBOSize, 0);
+                mVkPerProgramUBOMapped       = mVkPerProgramShadow.data();
+                mVkActivePerProgramUBOMapped = mVkPerProgramShadow.data();
+            }
         }
     }
 
@@ -2836,6 +2861,15 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
 {
     if (mVkPerProgramUBOSize == 0 || !LLVKLoader::isVulkanInitialized())
     {
+        return;
+    }
+    if (mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0)
+    {
+        ++mVkPerProgramUBOGeneration;
+        if (sCurBoundShaderPtr == this)
+        {
+            sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        }
         return;
     }
     const U32 f = LLVKLoader::getCurrentFrameIndex();
@@ -2869,6 +2903,38 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
     {
         sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     }
+}
+
+bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset)
+{
+    out_buf    = VK_NULL_HANDLE;
+    out_offset = 0;
+    if (mVkPerProgramUBOSize == 0 || mVkPerProgramUBO == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (mVkPerProgramUBOBinding != 0 || mVkSet1DynamicCount == 0
+        || mVkPerProgramShadow.size() < mVkPerProgramUBOSize)
+    {
+        out_buf = mVkActivePerProgramUBO;
+        return out_buf != VK_NULL_HANDLE;
+    }
+    VkBuffer arena = VK_NULL_HANDLE;
+    U32      aoff  = 0;
+    void*    aptr  = nullptr;
+    if (LLVKLoader::allocPerDrawUBOSlice(mVkPerProgramUBOSize, arena, aoff, aptr))
+    {
+        std::memcpy(aptr, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
+        out_buf    = arena;
+        out_offset = aoff;
+        return true;
+    }
+    if (mVkPerProgramUBOBaseMapped != nullptr)
+    {
+        std::memcpy(mVkPerProgramUBOBaseMapped, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
+    }
+    out_buf = mVkPerProgramUBO;
+    return true;
 }
 
 VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
@@ -2923,8 +2989,12 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     }
 
     LLVKLoader::ScenePerDrawBindings bindings;
-    bindings.layout  = cur->mVkDescriptorSetLayout;
-    bindings.sampler = sampler;
+    bindings.layout        = cur->mVkDescriptorSetLayout;
+    bindings.sampler       = sampler;
+    bindings.dynamic_count = cur->mVkSet1DynamicCount;
+
+    U32  per_draw_dynamic_offset = 0;
+    bool wrote_dynamic0          = false;
 
     VkImageView fallback_view = LLVKLoader::getDefaultFallbackVkImageView();
 
@@ -3047,7 +3117,8 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 
     for (const auto& layout_binding : cur->mVkLayoutBindings)
     {
-        if (layout_binding.descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+        if (layout_binding.descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+            && layout_binding.descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
         {
             continue;
         }
@@ -3066,8 +3137,15 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 
         if (N == cur->mVkPerProgramUBOBinding)
         {
-            ubo_buf = cur->mVkActivePerProgramUBO;
-            ubo_sz  = cur->mVkPerProgramUBOSize;
+            U32 pp_off = 0;
+            if (cur->vkResolvePerProgramForDraw(ubo_buf, pp_off))
+            {
+                ubo_sz = cur->mVkPerProgramUBOSize;
+                if (N == 0)
+                {
+                    per_draw_dynamic_offset = pp_off;
+                }
+            }
         }
         else
         {
@@ -3086,6 +3164,10 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 
         if (ubo_provided)
         {
+            if (N == 0)
+            {
+                wrote_dynamic0 = true;
+            }
             auto& entry = bindings.ubo_writes[bindings.ubo_count];
             entry.binding = N;
             entry.buf     = ubo_buf;
@@ -3095,11 +3177,27 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         }
     }
 
+    if (bindings.dynamic_count > 0 && !wrote_dynamic0
+        && bindings.ubo_count < LLVKLoader::ScenePerDrawBindings::MAX_UBO_WRITES)
+    {
+        VkBuffer arena = LLVKLoader::getPerDrawUBOArenaBuffer();
+        if (arena != VK_NULL_HANDLE)
+        {
+            auto& entry = bindings.ubo_writes[bindings.ubo_count];
+            entry.binding = 0;
+            entry.buf     = arena;
+            entry.offset  = 0;
+            entry.size    = 64;
+            ++bindings.ubo_count;
+        }
+    }
+
     VkDescriptorSet per_draw_set = VK_NULL_HANDLE;
     if (LLVKLoader::ensureScenePerDrawDescriptorSet(bindings, &per_draw_set)
         && per_draw_set != VK_NULL_HANDLE)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
+        LLGLSLShader::sCurPerCallVkDynamicOffset = per_draw_dynamic_offset;
     }
 }
 

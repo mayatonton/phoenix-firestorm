@@ -223,6 +223,9 @@ namespace LLVKLoader
 
     void pushCurrentModelviewMatrix(const float modelview_matrix[16]);
 
+    bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset, void*& out_mapped);
+    VkBuffer getPerDrawUBOArenaBuffer();
+
     struct DynamicRenderingAttachment
     {
         VkImageView         image_view;
@@ -1320,6 +1323,8 @@ namespace LLVKLoader
         static constexpr U32 MAX_UBO_WRITES = 24;
 
         VkDescriptorSetLayout layout      = VK_NULL_HANDLE;
+
+        U32                   dynamic_count = 0;
 
         VkBuffer              ubo         = VK_NULL_HANDLE;
         U32                   ubo_binding = 0;

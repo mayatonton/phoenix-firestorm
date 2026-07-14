@@ -377,6 +377,7 @@ public:
 
     VkDeviceSize sharedUBOBindingSize(U32 binding) const;
     static VkDescriptorSet     sCurPerCallVkDescriptorSet;
+    static U32                 sCurPerCallVkDynamicOffset;
 
     VkBuffer                   mVkPerProgramUBO         = VK_NULL_HANDLE;
     void*                      mVkPerProgramUBOAllocation = nullptr;
@@ -395,6 +396,12 @@ public:
     U32                        mVkPerProgramRingIdx[3]   = { 0, 0, 0 };
     U64                        mVkPerProgramRingFrame[3] = { 0, 0, 0 };
     void rotatePerProgramUBOSlot();
+
+    U32                        mVkSet1DynamicCount        = 0;
+    U64                        mVkPerProgramUBOGeneration = 0;
+    void*                      mVkPerProgramUBOBaseMapped = nullptr;
+    std::vector<U8>            mVkPerProgramShadow;
+    bool vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset);
 
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 

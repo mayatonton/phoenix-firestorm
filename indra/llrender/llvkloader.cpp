@@ -339,6 +339,19 @@ namespace
     void*                 sSharedSMAABlendWeightsFUBOAllocation   = nullptr;
     void*                 sSharedSMAABlendWeightsFUBOMapped       = nullptr;
 
+    struct PerDrawUBOArena
+    {
+        VkBuffer     buffer           = VK_NULL_HANDLE;
+        void*        allocation       = nullptr;
+        void*        mapped           = nullptr;
+        VkDeviceSize capacity         = 0;
+        VkDeviceSize cursor           = 0;
+        U64          frame            = ~0ull;
+        VkDeviceSize pending_capacity = 0;
+    };
+    PerDrawUBOArena sPerDrawUBOArena[FRAMES_IN_FLIGHT];
+    constexpr VkDeviceSize PER_DRAW_UBO_ARENA_INITIAL = 4 * 1024 * 1024;
+
     U32 sFrameIndex = 0;
 
     VkCommandBuffer sCommandBuffers[FRAMES_IN_FLIGHT] = {
@@ -1788,17 +1801,19 @@ namespace
         }
         *out_pool = VK_NULL_HANDLE;
 
-        VkDescriptorPoolSize pool_sizes[2] = {};
+        VkDescriptorPoolSize pool_sizes[3] = {};
         pool_sizes[0].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         pool_sizes[0].descriptorCount = SCENE_PER_DRAW_POOL_GROWTH_SAMPLERS;
         pool_sizes[1].type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         pool_sizes[1].descriptorCount = SCENE_PER_DRAW_POOL_GROWTH_UBOS;
+        pool_sizes[2].type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        pool_sizes[2].descriptorCount = SCENE_PER_DRAW_POOL_GROWTH_SETS;
 
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         pool_info.maxSets       = SCENE_PER_DRAW_POOL_GROWTH_SETS;
-        pool_info.poolSizeCount = 2;
+        pool_info.poolSizeCount = 3;
         pool_info.pPoolSizes    = pool_sizes;
 
         VkResult result = vkCreateDescriptorPool(sDevice, &pool_info, nullptr, out_pool);
@@ -3006,7 +3021,15 @@ void shutdownVulkan()
             LLVK_SHARED_UBO_RING_TEARDOWN(DrawColor)
             LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrainF)
             LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrain)
+            LLVK_SHARED_UBO_RING_TEARDOWN(ShadowParams)
             #undef LLVK_SHARED_UBO_RING_TEARDOWN
+
+            PerDrawUBOArena& arena = sPerDrawUBOArena[frame];
+            if (arena.buffer != VK_NULL_HANDLE)
+            {
+                destroyBufferVk(arena.buffer, arena.allocation);
+            }
+            arena = PerDrawUBOArena();
         }
         if (sPerFrameDescriptorSetLayout != VK_NULL_HANDLE)
         {
@@ -3802,7 +3825,9 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
             writes[write_count].dstBinding      = b.ubo_binding;
             writes[write_count].dstArrayElement = 0;
             writes[write_count].descriptorCount = 1;
-            writes[write_count].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            writes[write_count].descriptorType  = (b.dynamic_count > 0 && b.ubo_binding == 0)
+                                                      ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+                                                      : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[write_count].pBufferInfo     = &ubo_info;
             ++write_count;
         }
@@ -3846,6 +3871,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 {
                     continue;
                 }
+                const bool is_dynamic0 = (b.dynamic_count > 0 && b.ubo_writes[i].binding == 0);
                 ubo_w_infos[ubo_w_count].buffer = b.ubo_writes[i].buf;
                 ubo_w_infos[ubo_w_count].offset = b.ubo_writes[i].offset;
                 ubo_w_infos[ubo_w_count].range  = b.ubo_writes[i].size;
@@ -3855,7 +3881,9 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 ubo_w_writes[ubo_w_count].dstBinding      = b.ubo_writes[i].binding;
                 ubo_w_writes[ubo_w_count].dstArrayElement = 0;
                 ubo_w_writes[ubo_w_count].descriptorCount = 1;
-                ubo_w_writes[ubo_w_count].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                ubo_w_writes[ubo_w_count].descriptorType  = is_dynamic0
+                                                                ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+                                                                : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
                 ubo_w_writes[ubo_w_count].pBufferInfo     = &ubo_w_infos[ubo_w_count];
                 ++ubo_w_count;
             }
@@ -4349,6 +4377,93 @@ bool createPerProgramUBOVk(U32       size_bytes,
     return createBufferVkImpl(size_bytes,
                               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                               out_buffer, out_allocation, out_mapped);
+}
+
+static bool ensurePerDrawUBOArenaCurrent(PerDrawUBOArena& a)
+{
+    if (a.frame != sMonotonicFrameCount)
+    {
+        a.frame  = sMonotonicFrameCount;
+        a.cursor = 0;
+        if (a.buffer == VK_NULL_HANDLE || a.pending_capacity > a.capacity)
+        {
+            VkDeviceSize want = llmax(a.pending_capacity, PER_DRAW_UBO_ARENA_INITIAL);
+            if (a.buffer != VK_NULL_HANDLE)
+            {
+                destroyBufferVk(a.buffer, a.allocation);
+                a.buffer     = VK_NULL_HANDLE;
+                a.allocation = nullptr;
+                a.mapped     = nullptr;
+                a.capacity   = 0;
+            }
+            void* mapped = nullptr;
+            if (createBufferVkImpl((U32)want,
+                                   VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                   a.buffer, a.allocation, &mapped))
+            {
+                a.mapped   = mapped;
+                a.capacity = want;
+            }
+            a.pending_capacity = 0;
+        }
+    }
+    return (a.buffer != VK_NULL_HANDLE && a.mapped != nullptr);
+}
+
+bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset, void*& out_mapped)
+{
+    out_buffer = VK_NULL_HANDLE;
+    out_offset = 0;
+    out_mapped = nullptr;
+    if (!sInitialized || size_bytes == 0)
+    {
+        return false;
+    }
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return false;
+    }
+    PerDrawUBOArena& a = sPerDrawUBOArena[f];
+    if (!ensurePerDrawUBOArenaCurrent(a))
+    {
+        return false;
+    }
+    VkDeviceSize align = sPhysicalDeviceProperties.limits.minUniformBufferOffsetAlignment;
+    if (align < 16)
+    {
+        align = 16;
+    }
+    const VkDeviceSize off = (a.cursor + align - 1) & ~(align - 1);
+    if (off + size_bytes > a.capacity)
+    {
+        a.pending_capacity = llmax(a.pending_capacity, llmax(a.capacity * 2, off + size_bytes));
+        return false;
+    }
+    a.cursor   = off + size_bytes;
+    out_buffer = a.buffer;
+    out_offset = (U32)off;
+    out_mapped = (U8*)a.mapped + off;
+    return true;
+}
+
+VkBuffer getPerDrawUBOArenaBuffer()
+{
+    if (!sInitialized)
+    {
+        return VK_NULL_HANDLE;
+    }
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return VK_NULL_HANDLE;
+    }
+    PerDrawUBOArena& a = sPerDrawUBOArena[f];
+    if (!ensurePerDrawUBOArenaCurrent(a))
+    {
+        return VK_NULL_HANDLE;
+    }
+    return a.buffer;
 }
 
 void ensurePerAssetUBOVk(U32       needed_size,

@@ -678,13 +678,15 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                         LLVKLoader::getCurrentPerFrameDescriptorSet(),
                         set_to_bind
                     };
+                    const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
                     vkCmdBindDescriptorSets(cmd,
                                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                             0,
                                             2,
                                             sets,
-                                            0, nullptr);
+                                            dyn_count,
+                                            dyn_count ? &LLGLSLShader::sCurPerCallVkDynamicOffset : nullptr);
                     vkCmdPushConstants(cmd,
                                        LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                        VK_SHADER_STAGE_VERTEX_BIT,
@@ -769,9 +771,12 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                             LLVKLoader::getCurrentPerFrameDescriptorSet(),
                             set_to_bind
                         };
+                        const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
                         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                                 LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                0, 2, sets, 0, nullptr);
+                                                0, 2, sets,
+                                                dyn_count,
+                                                dyn_count ? &LLGLSLShader::sCurPerCallVkDynamicOffset : nullptr);
                         vkCmdPushConstants(cmd,
                                            LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                            VK_SHADER_STAGE_VERTEX_BIT,
@@ -900,13 +905,15 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                         LLVKLoader::getCurrentPerFrameDescriptorSet(),
                         set_to_bind
                     };
+                    const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
                     vkCmdBindDescriptorSets(cmd,
                                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                             0,
                                             2,
                                             sets,
-                                            0, nullptr);
+                                            dyn_count,
+                                            dyn_count ? &LLGLSLShader::sCurPerCallVkDynamicOffset : nullptr);
                     vkCmdPushConstants(cmd,
                                        LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                        VK_SHADER_STAGE_VERTEX_BIT,
