@@ -3261,19 +3261,22 @@ void LLPipeline::doOcclusion(LLCamera& camera)
 
                     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
                     if (LLVKLoader::isVulkanInitialized() && shader != nullptr
-                        && shader->mVkPerProgramUBO != VK_NULL_HANDLE
-                        && shader->mVkPerProgramUBOMapped != nullptr)
+                        && shader->mVkPipelineLayout != VK_NULL_HANDLE)
                     {
-                        LLVKLoader::OcclusionCube_PerProgramBind ubo_data = {};
-                        const LLVector3& o = camera.getOrigin();
-                        ubo_data.box_center[0] = o.mV[0];
-                        ubo_data.box_center[1] = o.mV[1];
-                        ubo_data.box_center[2] = o.mV[2];
-                        ubo_data.box_size[0]   = 64.f;
-                        ubo_data.box_size[1]   = 64.f;
-                        ubo_data.box_size[2]   = 64.f;
-                        shader->rotatePerProgramUBOSlot();
-                        std::memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                        VkCommandBuffer pc_cmd = LLVKLoader::getCurrentCommandBuffer();
+                        if (pc_cmd != VK_NULL_HANDLE)
+                        {
+                            LLVKLoader::OcclusionCube_PushConstant pc_data = {};
+                            const LLVector3& o = camera.getOrigin();
+                            pc_data.box_center[0] = o.mV[0];
+                            pc_data.box_center[1] = o.mV[1];
+                            pc_data.box_center[2] = o.mV[2];
+                            pc_data.box_size[0]   = 64.f;
+                            pc_data.box_size[1]   = 64.f;
+                            pc_data.box_size[2]   = 64.f;
+                            vkCmdPushConstants(pc_cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                                               LLVkUboReg::PC_OFF_BOX_CENTER, sizeof(pc_data), &pc_data);
+                        }
                     }
 
                     {

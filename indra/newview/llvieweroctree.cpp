@@ -34,6 +34,7 @@
 #include "llviewershadermgr.h"
 #include "lldrawpoolwater.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include <cstring>
 
 U32 LLViewerOctreeEntryData::sCurVisible = 10;
@@ -1184,19 +1185,23 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
                         llassert(shader);
 
-                        if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
-                            && shader->mVkPerProgramUBOMapped != nullptr)
+                        if (LLVKLoader::isVulkanInitialized() && shader != nullptr
+                            && shader->mVkPipelineLayout != VK_NULL_HANDLE)
                         {
-                            LLVKLoader::OcclusionCube_PerProgramBind ubo_data = {};
-                            const F32* bc = bounds[0].getF32ptr();
-                            ubo_data.box_center[0] = bc[0];
-                            ubo_data.box_center[1] = bc[1];
-                            ubo_data.box_center[2] = bc[2];
-                            ubo_data.box_size[0]   = bounds[1][0] + SG_OCCLUSION_FUDGE;
-                            ubo_data.box_size[1]   = bounds[1][1] + SG_OCCLUSION_FUDGE;
-                            ubo_data.box_size[2]   = bounds[1][2] + OCCLUSION_FUDGE_Z;
-                            shader->rotatePerProgramUBOSlot();
-                            std::memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            VkCommandBuffer pc_cmd = LLVKLoader::getCurrentCommandBuffer();
+                            if (pc_cmd != VK_NULL_HANDLE)
+                            {
+                                LLVKLoader::OcclusionCube_PushConstant pc_data = {};
+                                const F32* bc = bounds[0].getF32ptr();
+                                pc_data.box_center[0] = bc[0];
+                                pc_data.box_center[1] = bc[1];
+                                pc_data.box_center[2] = bc[2];
+                                pc_data.box_size[0]   = bounds[1][0] + SG_OCCLUSION_FUDGE;
+                                pc_data.box_size[1]   = bounds[1][1] + SG_OCCLUSION_FUDGE;
+                                pc_data.box_size[2]   = bounds[1][2] + OCCLUSION_FUDGE_Z;
+                                vkCmdPushConstants(pc_cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                                                   LLVkUboReg::PC_OFF_BOX_CENTER, sizeof(pc_data), &pc_data);
+                            }
                         }
 
                         if (!use_depth_clamp && mSpatialPartition->mDrawableType == LLPipeline::RENDER_TYPE_VOIDWATER)

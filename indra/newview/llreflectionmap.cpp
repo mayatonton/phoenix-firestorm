@@ -35,6 +35,7 @@
 #include "llshadermgr.h"
 #include "llglslshader.h"
 #include "llvkloader.h"
+#include "llvkuboreg.h"
 #include <cstring>
 
 extern F32SecondsImplicit gFrameTimeSeconds;
@@ -416,19 +417,23 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
 
         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
-        if (LLVKLoader::isVulkanInitialized() && shader->mVkPerProgramUBO != VK_NULL_HANDLE
-            && shader->mVkPerProgramUBOMapped != nullptr)
+        if (LLVKLoader::isVulkanInitialized() && shader != nullptr
+            && shader->mVkPipelineLayout != VK_NULL_HANDLE)
         {
-            LLVKLoader::OcclusionCube_PerProgramBind ubo_data = {};
-            const F32* origin = mOrigin.getF32ptr();
-            ubo_data.box_center[0] = origin[0];
-            ubo_data.box_center[1] = origin[1];
-            ubo_data.box_center[2] = origin[2];
-            ubo_data.box_size[0]   = mRadius;
-            ubo_data.box_size[1]   = mRadius;
-            ubo_data.box_size[2]   = mRadius;
-            shader->rotatePerProgramUBOSlot();
-            std::memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            VkCommandBuffer pc_cmd = LLVKLoader::getCurrentCommandBuffer();
+            if (pc_cmd != VK_NULL_HANDLE)
+            {
+                LLVKLoader::OcclusionCube_PushConstant pc_data = {};
+                const F32* origin = mOrigin.getF32ptr();
+                pc_data.box_center[0] = origin[0];
+                pc_data.box_center[1] = origin[1];
+                pc_data.box_center[2] = origin[2];
+                pc_data.box_size[0]   = mRadius;
+                pc_data.box_size[1]   = mRadius;
+                pc_data.box_size[2]   = mRadius;
+                vkCmdPushConstants(pc_cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                                   LLVkUboReg::PC_OFF_BOX_CENTER, sizeof(pc_data), &pc_data);
+            }
         }
 
         gPipeline.mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(LLViewerCamera::getInstance(), mOrigin));

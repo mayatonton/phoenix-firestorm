@@ -433,13 +433,6 @@ namespace
         UBOREG_M(NormgenF_PerProgramBind, bump_code),
     };
 
-    constexpr MemberEntry kM_OcclusionCube[] = {
-        UBOREG_M(OcclusionCube_PerProgramBind, box_center),
-        UBOREG_M(OcclusionCube_PerProgramBind, _pad0),
-        UBOREG_M(OcclusionCube_PerProgramBind, box_size),
-        UBOREG_M(OcclusionCube_PerProgramBind, _pad1),
-    };
-
     constexpr MemberEntry kM_OneTextureFilter[] = {
         UBOREG_M(OneTextureFilter_PerProgramBind, tolerance),
         UBOREG_M(OneTextureFilter_PerProgramBind, _pad0),
@@ -657,7 +650,6 @@ namespace
         UBOREG_BLOCK(1, "MoonF_PerProgramBind",                 MoonF_PerProgramBind,                 kM_MoonF),
         UBOREG_BLOCK(1, "NormalDebug_PerProgramBind",           NormalDebug_PerProgramBind,           kM_NormalDebug),
         UBOREG_BLOCK(1, "NormgenF_PerProgramBind",              NormgenF_PerProgramBind,              kM_NormgenF),
-        UBOREG_BLOCK(1, "OcclusionCube_PerProgramBind",         OcclusionCube_PerProgramBind,         kM_OcclusionCube),
         UBOREG_BLOCK(1, "OneTextureFilter_PerProgramBind",      OneTextureFilter_PerProgramBind,      kM_OneTextureFilter),
         UBOREG_BLOCK(1, "Pathfinding_PerProgramBind",           Pathfinding_PerProgramBind,           kM_Pathfinding),
         UBOREG_BLOCK(1, "PointLightPerDraw",                    PointLightPerDraw,                    kM_PointLightPerDraw),
@@ -698,6 +690,8 @@ namespace
         { "roughnessFactor",           LLVkUboReg::PC_OFF_ROUGHNESS,            (U32)sizeof(F32) },
         { "resScale",                  LLVkUboReg::PC_OFF_GAUSSIAN_RES_SCALE,   (U32)sizeof(F32) },
         { "direction",                 LLVkUboReg::PC_OFF_GAUSSIAN_DIRECTION,   (U32)sizeof(F32) * 2 },
+        { "box_center",                LLVkUboReg::PC_OFF_BOX_CENTER,           (U32)sizeof(F32) * 3 },
+        { "box_size",                  LLVkUboReg::PC_OFF_BOX_SIZE,             (U32)sizeof(F32) * 3 },
     };
 
     const LedgerEntry kLedger[] = {

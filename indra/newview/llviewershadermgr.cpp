@@ -4618,7 +4618,7 @@ bool LLViewerShaderMgr::loadShadersInterface()
 
         if (success && LLVKLoader::isVulkanInitialized())
         {
-            gOcclusionCubeProgram.createVkPipeline(32);
+            gOcclusionCubeProgram.createVkPipeline(0);
         }
     }
 

@@ -77,6 +77,8 @@ namespace LLVkUboReg
     constexpr U32 PC_OFF_ROUGHNESS            = 100;
     constexpr U32 PC_OFF_GAUSSIAN_RES_SCALE   = 104;
     constexpr U32 PC_OFF_GAUSSIAN_DIRECTION   = 112;
+    constexpr U32 PC_OFF_BOX_CENTER           = 64;
+    constexpr U32 PC_OFF_BOX_SIZE             = 80;
 
     constexpr MemberEntry mat3Entry(const char* glsl_name, U32 off0, U32 off1, U32 off2, U32 col_size)
     {

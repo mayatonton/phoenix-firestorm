@@ -821,15 +821,15 @@ namespace LLVKLoader
     static_assert(sizeof(NormgenF_PerProgramBind) == 16,
                   "NormgenF_PerProgramBind size mismatch (std140 expects 16 B)");
 
-    struct OcclusionCube_PerProgramBind
+    struct OcclusionCube_PushConstant
     {
         float box_center[3];
         float _pad0;
         float box_size[3];
         float _pad1;
     };
-    static_assert(sizeof(OcclusionCube_PerProgramBind) == 32,
-                  "OcclusionCube_PerProgramBind size mismatch (std140 expects 32 B)");
+    static_assert(sizeof(OcclusionCube_PushConstant) == 32,
+                  "OcclusionCube_PushConstant size mismatch (std430 push constant expects 32 B)");
 
     struct OneTextureFilter_PerProgramBind
     {
