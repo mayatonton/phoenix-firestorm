@@ -2316,6 +2316,7 @@ S32 LLGLSLShader::bindTexture(S32 uniform, LLRenderTarget* texture, bool depth, 
         }
 
         gGL.getTexUnit(uniform)->setTextureFilteringOption(mode);
+        gGL.getTexUnit(uniform)->setTextureAddressMode(LLTexUnit::TAM_WRAP);
 
         LLTexUnit* rt_tu = gGL.getTexUnit(uniform);
         rt_tu->mCurrRenderTarget = texture;

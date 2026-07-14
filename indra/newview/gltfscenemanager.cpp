@@ -861,12 +861,9 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
         {
             if (!LLVKLoader::shouldUseVulkanRender())
                 return;
-            LLImageGL* gl_tex = bound_tex ? bound_tex->getGLTexture() : nullptr;
             if (LLTexUnit* tu = gGL.getTexUnit(channel))
             {
-                tu->mCurrImageGL      = gl_tex;
-                tu->mCurrRenderTarget = nullptr;
-                tu->vkNotifyShaderChannelBound();
+                tu->bind(bound_tex);
             }
         };
 

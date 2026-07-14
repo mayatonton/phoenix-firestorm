@@ -627,6 +627,7 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
     llassert(index < mInternalFormat.size());
     gGL.getTexUnit(channel)->bindManual(mUsage, 0, filter_options == LLTexUnit::TFO_TRILINEAR || filter_options == LLTexUnit::TFO_ANISOTROPIC);
     gGL.getTexUnit(channel)->setTextureFilteringOption(filter_options);
+    gGL.getTexUnit(channel)->setTextureAddressMode(LLTexUnit::TAM_WRAP);
 
     LLTexUnit* tu = gGL.getTexUnit(channel);
     if (tu != nullptr)
