@@ -645,6 +645,14 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
     }
 }
 
+bool LLRenderTarget::isVkActivePassAttachment(U32 attachment, bool depth) const
+{
+    VkImageView view = depth ? mVkDepthView
+                             : (attachment < mVkTexView.size() ? mVkTexView[attachment]
+                                                               : VK_NULL_HANDLE);
+    return LLVKLoader::isImageViewActivePassAttachment(view);
+}
+
 void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
 {
     if (!LLVKLoader::isVulkanInitialized())
@@ -654,7 +662,9 @@ void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
 
     if (attachment < mVkTex.size() && mVkTex[attachment] != VK_NULL_HANDLE &&
         attachment < mVkTexLayout.size() &&
-        mVkTexLayout[attachment] != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        mVkTexLayout[attachment] != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+        !LLVKLoader::isImageViewActivePassAttachment(
+            attachment < mVkTexView.size() ? mVkTexView[attachment] : VK_NULL_HANDLE))
     {
         LLVKLoader::transitionImageLayoutVk(
             mVkTex[attachment],
@@ -668,7 +678,9 @@ void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
         mVkTexLayout[attachment] = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
-    if (depth && mVkDepth != VK_NULL_HANDLE)
+    if (depth && mVkDepth != VK_NULL_HANDLE &&
+        getCurDepthLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+        !LLVKLoader::isImageViewActivePassAttachment(mVkDepthView))
     {
         LLVKLoader::transitionImageLayoutVk(
             mVkDepth,

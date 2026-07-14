@@ -1309,6 +1309,7 @@ namespace LLVKLoader
     void        beginSwapchainRendering();
 
     bool        isInRenderPassScope();
+    bool        isImageViewActivePassAttachment(VkImageView view);
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);
 
     const float* getCurrentModelviewMatrix();

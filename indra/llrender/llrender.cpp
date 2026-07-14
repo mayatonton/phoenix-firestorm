@@ -358,7 +358,8 @@ VkImageView LLTexUnit::getLiveVkImageView() const
     if (mCurrRenderTarget != nullptr)
     {
         const bool same_pass = (mCurrRenderTarget == LLRenderTarget::getCurrentBoundTarget());
-        if (same_pass)
+        if (same_pass ||
+            mCurrRenderTarget->isVkActivePassAttachment(mCurrRTAttachment, mCurrRTDepth))
         {
             return VK_NULL_HANDLE;
         }

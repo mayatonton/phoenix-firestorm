@@ -392,6 +392,7 @@ U64 LLVertexBuffer::getBytesAllocated()
 
 //
 U32 LLVertexBuffer::sVertexCount = 0;
+U32 LLVertexBuffer::sVkDrawCallCount = 0;
 
 
 const U32 LLVertexBuffer::sTypeSize[LLVertexBuffer::TYPE_MAX] =
@@ -604,6 +605,18 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
             set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
         }
 
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            static U32 s_null_set_skips = 0;
+            ++s_null_set_skips;
+            if ((s_null_set_skips & (s_null_set_skips - 1)) == 0)
+            {
+                LL_WARNS("Vulkan") << "draw skipped: per-call descriptor NULL shader='"
+                                   << LLGLSLShader::sCurBoundShaderPtr->mName
+                                   << "' total_skips=" << s_null_set_skips << LL_ENDL;
+            }
+        }
+
         if (set_to_bind != VK_NULL_HANDLE)
         {
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -638,10 +651,25 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                 }
                 else
                 {
-                    if (LLRenderTarget::getCurrentBoundTarget() == nullptr
-                        && !LLVKLoader::isInRenderPassScope())
+                    if (!LLVKLoader::isInRenderPassScope())
                     {
-                        LLVKLoader::beginSwapchainRendering();
+                        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+                        if (bound_rt == nullptr)
+                        {
+                            LLVKLoader::beginSwapchainRendering();
+                        }
+                        else
+                        {
+                            static U32 s_rt_resume_count = 0;
+                            ++s_rt_resume_count;
+                            if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
+                            {
+                                LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
+                                                   << " shader='" << (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("?"))
+                                                   << "' count=" << s_rt_resume_count << LL_ENDL;
+                            }
+                            bound_rt->resumeVkDynamicRendering();
+                        }
                     }
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
                     {
@@ -667,6 +695,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                                        LLVkUboReg::PC_OFF_MODELVIEW, 64,
                                        LLVKLoader::getCurrentModelviewMatrix());
                     vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
+                    ++sVkDrawCallCount;
                     vk_fired = true;
                     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                 }
@@ -713,10 +742,25 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                         LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
                     if (pipeline != VK_NULL_HANDLE)
                     {
-                        if (LLRenderTarget::getCurrentBoundTarget() == nullptr
-                            && !LLVKLoader::isInRenderPassScope())
+                        if (!LLVKLoader::isInRenderPassScope())
                         {
-                            LLVKLoader::beginSwapchainRendering();
+                            LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+                            if (bound_rt == nullptr)
+                            {
+                                LLVKLoader::beginSwapchainRendering();
+                            }
+                            else
+                            {
+                                static U32 s_rt_resume_count = 0;
+                                ++s_rt_resume_count;
+                                if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
+                                {
+                                    LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
+                                                       << " shader='" << (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("?"))
+                                                       << "' count=" << s_rt_resume_count << LL_ENDL;
+                                }
+                                bound_rt->resumeVkDynamicRendering();
+                            }
                         }
                         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
                         {
@@ -738,6 +782,7 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                                            LLVkUboReg::PC_OFF_MODELVIEW, 64,
                                            LLVKLoader::getCurrentModelviewMatrix());
                         vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
+                        ++sVkDrawCallCount;
                         vk_fired = true;
                         LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                     }
@@ -782,6 +827,18 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
             set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
         }
 
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            static U32 s_null_set_skips = 0;
+            ++s_null_set_skips;
+            if ((s_null_set_skips & (s_null_set_skips - 1)) == 0)
+            {
+                LL_WARNS("Vulkan") << "draw skipped: per-call descriptor NULL shader='"
+                                   << LLGLSLShader::sCurBoundShaderPtr->mName
+                                   << "' total_skips=" << s_null_set_skips << LL_ENDL;
+            }
+        }
+
         if (set_to_bind != VK_NULL_HANDLE)
         {
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -816,10 +873,25 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                 }
                 else
                 {
-                    if (LLRenderTarget::getCurrentBoundTarget() == nullptr
-                        && !LLVKLoader::isInRenderPassScope())
+                    if (!LLVKLoader::isInRenderPassScope())
                     {
-                        LLVKLoader::beginSwapchainRendering();
+                        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+                        if (bound_rt == nullptr)
+                        {
+                            LLVKLoader::beginSwapchainRendering();
+                        }
+                        else
+                        {
+                            static U32 s_rt_resume_count = 0;
+                            ++s_rt_resume_count;
+                            if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
+                            {
+                                LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
+                                                   << " shader='" << (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("?"))
+                                                   << "' count=" << s_rt_resume_count << LL_ENDL;
+                            }
+                            bound_rt->resumeVkDynamicRendering();
+                        }
                     }
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
                     {
@@ -845,6 +917,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                                        LLVkUboReg::PC_OFF_MODELVIEW, 64,
                                        LLVKLoader::getCurrentModelviewMatrix());
                     vkCmdDraw(cmd, count, 1, first, 0);
+                    ++sVkDrawCallCount;
                     vk_fired = true;
                     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                 }

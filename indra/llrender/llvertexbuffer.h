@@ -314,6 +314,7 @@ public:
     static const U32 sTypeSize[TYPE_MAX];
     static const U32 sGLMode[LLRender::NUM_MODES];
     static U32 sVertexCount;
+    static U32 sVkDrawCallCount;
 };
 
 #if LL_PROFILER_ENABLE_RENDER_DOC

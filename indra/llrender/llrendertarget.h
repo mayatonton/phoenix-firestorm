@@ -175,6 +175,8 @@ public:
 
     void bindForShaderRead(U32 attachment = 0, bool depth = false);
 
+    bool isVkActivePassAttachment(U32 attachment = 0, bool depth = false) const;
+
     bool copyContentsInFrameVk(LLRenderTarget& source);
 
     void bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilterOptions filter_options = LLTexUnit::TFO_BILINEAR);

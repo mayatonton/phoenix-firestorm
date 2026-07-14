@@ -2864,6 +2864,10 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
     mVkPerProgramRingIdx[f]       = idx + 1;
     mVkActivePerProgramUBO        = mVkPerProgramUBORing[f][idx].buffer;
     mVkActivePerProgramUBOMapped  = mVkPerProgramUBORing[f][idx].mapped;
+    if (sCurBoundShaderPtr == this)
+    {
+        sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    }
 }
 
 VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
@@ -2895,6 +2899,7 @@ VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
         case 49: return sizeof(LLVKLoader::SSRUtil_PerProgramBind);
         case 51: return sizeof(LLVKLoader::DrawColor_PerShaderBind);
         case 52: return sizeof(LLVKLoader::PbrTerrain_PerShaderBind);
+        case 53: return sizeof(LLVKLoader::ShadowParams_PerShaderBind);
         default: return 0;
     }
 }
@@ -2984,6 +2989,11 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                     vkWarnL3Fallback(cur, N, enum_value, view);
                 }
             }
+        }
+
+        if (view != VK_NULL_HANDLE && LLVKLoader::isImageViewActivePassAttachment(view))
+        {
+            view = VK_NULL_HANDLE;
         }
 
         bool used_fallback = (view == VK_NULL_HANDLE);
