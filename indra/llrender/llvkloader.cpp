@@ -3325,6 +3325,7 @@ bool endFrame()
                                    << " spot " << gVkPerf.draws_shadow_map[4]
                                    << "/" << gVkPerf.draws_shadow_map[5]
                                    << " culled=" << gVkPerf.shadow_cull
+                                   << " rigged=" << gVkPerf.shadow_rigged
                                    << LL_ENDL;
             }
             gVkPerf = VkPerfCounters();

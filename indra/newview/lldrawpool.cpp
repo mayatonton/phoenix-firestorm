@@ -386,13 +386,19 @@ F32 LLRenderPass::sShadowBatchCullRadius = 0.f;
 
 static inline bool vkShadowCullBatch(const LLDrawInfo& params)
 {
-    if (LLRenderPass::sShadowBatchCullRadius > 0.f
-        && params.mBoundRadius >= 0.f
-        && params.mBoundRadius < LLRenderPass::sShadowBatchCullRadius
-        && params.mAvatar.isNull())
+    if (LLRenderPass::sShadowBatchCullRadius > 0.f)
     {
-        ++LLVKLoader::gVkPerf.shadow_cull;
-        return true;
+        if (params.mAvatar.notNull())
+        {
+            ++LLVKLoader::gVkPerf.shadow_rigged;
+            return false;
+        }
+        if (params.mBoundRadius >= 0.f
+            && params.mBoundRadius < LLRenderPass::sShadowBatchCullRadius)
+        {
+            ++LLVKLoader::gVkPerf.shadow_cull;
+            return true;
+        }
     }
     return false;
 }

@@ -13829,9 +13829,36 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     }
     else
     {
+        static const bool s_shadow_rr = []() -> bool {
+            const char* e = getenv("AYASTORM_SHADOW_RR");
+            return (e == nullptr) || (atof(e) != 0.0);
+        }();
+        static U32 s_shadow_frame = 0;
+        static bool s_cascade_valid[4] = { false, false, false, false };
+        static U32 s_cascade_res[4] = { 0, 0, 0, 0 };
+        if (!gCubeSnapshot)
+        {
+            ++s_shadow_frame;
+        }
+
         for (S32 j = 0; j < (gCubeSnapshot ? 2 : 4); j++)
         {
             LLVKLoader::gVkPerfShadowMapIndex = (U32)j;
+
+            if (s_shadow_rr && !gCubeSnapshot && j >= 2)
+            {
+                const U32 cur_res = getFrameRT()->shadow[j].getWidth();
+                const bool cadence_skip = (j == 2) ? ((s_shadow_frame % 2u) != 0u)
+                                                   : ((s_shadow_frame % 4u) != 1u);
+                if (cadence_skip && s_cascade_valid[j] && s_cascade_res[j] == cur_res)
+                {
+                    view[j] = mShadowModelview[j];
+                    proj[j] = mShadowProjection[j];
+                    mSunShadowMatrix[j] = sGlNdcToSampleBias * proj[j] * view[j] * inv_view;
+                    continue;
+                }
+            }
+
             if (!hasRenderDebugMask(RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
                 mShadowFrustPoints[j].clear();
@@ -14197,6 +14224,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 renderShadow(view[j], proj[j], shadow_cam, result[j], true);
 
                 LLRenderPass::sShadowBatchCullRadius = 0.f;
+
+                if (!gCubeSnapshot)
+                {
+                    s_cascade_valid[j] = true;
+                    s_cascade_res[j]   = getFrameRT()->shadow[j].getWidth();
+                }
             }
 
             getFrameRT()->shadow[j].flush();
