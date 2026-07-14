@@ -4178,6 +4178,16 @@ void beginDynamicRendering(U32                               width,
 
     if (valid_color_count == 0 && !has_depth)
     {
+        static U32 s_no_attachment_begins = 0;
+        ++s_no_attachment_begins;
+        if ((s_no_attachment_begins & (s_no_attachment_begins - 1)) == 0)
+        {
+            LL_WARNS("Vulkan") << "beginDynamicRendering: 有効 attachment ゼロで begin 不能 = 直前の pass が開いたままなら後続 draw は誤 target に落ちる"
+                               << " req=" << width << "x" << height
+                               << " colors=" << color_count
+                               << " in_pass=" << (sInDynamicRendering ? 1 : 0)
+                               << " count=" << s_no_attachment_begins << LL_ENDL;
+        }
         return;
     }
 

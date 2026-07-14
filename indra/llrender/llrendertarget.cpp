@@ -204,27 +204,35 @@ void LLRenderTarget::setColorAttachment(LLImageGL* img)
     {
         VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat(img->getPrimaryFormat());
         bool vk_created_here = false;
-        if (!img->hasVkImage())
+        VkImage     vk_image       = VK_NULL_HANDLE;
+        VkImageView vk_view        = VK_NULL_HANDLE;
+        VkImageView vk_sample_view = VK_NULL_HANDLE;
+        void*       vk_alloc       = nullptr;
+        U32 mip_levels = 1;
+        if (img->getUseMipMaps())
         {
-            VkImage     vk_image = VK_NULL_HANDLE;
-            VkImageView vk_view  = VK_NULL_HANDLE;
-            void*       vk_alloc = nullptr;
-            U32 mip_levels = 1;
-            if (img->getUseMipMaps())
-            {
-                U32 maxdim = llmax(mResX, mResY);
-                while (maxdim > 1) { maxdim >>= 1; ++mip_levels; }
-            }
-            if (LLVKLoader::createColorAttachmentImageVk(mResX, mResY, vk_format,
-                                                         vk_image, vk_view, vk_alloc, mip_levels))
-            {
-                img->setExternalVkBacking(vk_image, vk_view, vk_alloc, mResX, mResY, vk_format, mip_levels);
-                vk_created_here = true;
-            }
+            U32 maxdim = llmax(mResX, mResY);
+            while (maxdim > 1) { maxdim >>= 1; ++mip_levels; }
+        }
+        if (LLVKLoader::createColorAttachmentImageVk(mResX, mResY, vk_format,
+                                                     vk_image, vk_view, vk_alloc, mip_levels,
+                                                     (mip_levels > 1) ? &vk_sample_view : nullptr))
+        {
+            img->setExternalVkBacking(vk_image,
+                                      (vk_sample_view != VK_NULL_HANDLE) ? vk_sample_view : vk_view,
+                                      vk_alloc, mResX, mResY, vk_format, mip_levels);
+            vk_created_here = true;
+        }
+        else
+        {
+            LL_WARNS("Vulkan") << "setColorAttachment: createColorAttachmentImageVk failed"
+                               << " res=" << (S32)mResX << "x" << (S32)mResY
+                               << " vk_fmt=" << (S32)vk_format
+                               << " mips=" << (S32)mip_levels << LL_ENDL;
         }
         mVkTex.push_back(img->getVkImage());
-        mVkTexView.push_back(img->getVkImageView());
-        mVkTexSampleView.push_back(VK_NULL_HANDLE);
+        mVkTexView.push_back(vk_created_here ? vk_view : img->getVkImageView());
+        mVkTexSampleView.push_back(vk_created_here ? vk_sample_view : VK_NULL_HANDLE);
         mVkTexAlloc.push_back(nullptr);
         mVkTexLayout.push_back(vk_created_here
                                ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
@@ -256,6 +264,12 @@ void LLRenderTarget::releaseColorAttachment()
                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                 VK_ACCESS_SHADER_READ_BIT);
+        }
+        if (!mVkTexSampleView.empty() && mVkTexSampleView[0] != VK_NULL_HANDLE
+            && !mVkTexView.empty() && mVkTexView[0] != VK_NULL_HANDLE
+            && mVkTexView[0] != mVkTexSampleView[0])
+        {
+            LLVKLoader::destroyImageVk(VK_NULL_HANDLE, mVkTexView[0], nullptr);
         }
         mVkTex.clear();
         mVkTexView.clear();
