@@ -49,19 +49,20 @@ Date: 2026-07-15 / 対象 branch: `dev/ayastorm-vk-3os` / 静的監査 base: `4c
 以下は実装担当者が最初に開く箇所と変更方針を固定するための handoff。変更自体は未実施であり、実機結果も **OPEN**。
 
 1. **instance portability — `indra/llrender/llvkloader.cpp:createInstance()` (`455-569`)**
-   - 現在の instance-extension 列挙(`497-511`)は `want_validation` の条件内にある。portability 判定は validation の ON/OFF と無関係なので、共通の extension 列挙へ分離する。
+   - 現在の instance-extension 列挙(`497-511`)は `want_validation` の条件内にある。portability 判定は validation の ON/OFF と無関係なので分離する。ただし Windows/Linux に不要な Loader query を増やさないよう、portability 用の列挙と判定は `VK_USE_PLATFORM_METAL_EXT` 内だけで行う。
    - `VK_USE_PLATFORM_METAL_EXT` かつ Loader が `VK_KHR_portability_enumeration` を公開する場合に、`extensions` へ `VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME` を追加する。
    - 同じ判定結果を保持し、`vkCreateInstance()` 前に `create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR` を設定する。非対応 Loader や非 macOS では有効化しない。
    - `vkCreateInstance()` 失敗時は `VkResult` と有効化した extension を log に残す。現状の `return false` だけでは Loader/ICD/portability の切り分けができない。
 2. **device portability — `indra/llrender/llvkloader.cpp:createDevice()` (`716-899`)**
-   - 既存の device-extension 列挙(`811-825`)で `VK_KHR_portability_subset` の公開有無を記録する。
-   - 公開された場合だけ、`vkCreateDevice()` 前の `device_extensions` に `VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME` を追加する。通常の Vulkan device へ無条件追加しない。
+   - `VK_USE_PLATFORM_METAL_EXT` 内で、既存の device-extension 列挙(`811-825`)から `VK_KHR_portability_subset` の公開有無を記録する。
+   - 公開された場合だけ、`vkCreateDevice()` 前の `device_extensions` に追加する。通常の Vulkan device や他 OS へ無条件追加しない。
+   - **header の注意**: `VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME` は Khronos の `vulkan_beta.h` 側にあり、現 HEAD は `VK_ENABLE_BETA_EXTENSIONS` を定義していない(`indra/llrender/volk.h:214-216`)。extension 名だけが必要なら Metal guard 内の局所定数 `"VK_KHR_portability_subset"` を使う。beta header を採用する場合も `VK_ENABLE_BETA_EXTENSIONS` を全 OS 共通には定義せず、macOS target に限定して理由を記録する。
    - `vkCreateDevice()` 失敗時は `VkResult` と有効化した device extensions を log に残す。
 3. **初期化 stage log — `indra/llrender/llvkloader.cpp:initVulkan()` (`2629-2665`)**
    - `selectPhysicalDevice() || selectQueueFamily() || createDevice()` の連結判定を、失敗 stage を特定できる形に分ける。
    - `vkEnumeratePhysicalDevices()` が 0 件の場合は、Loader path・ICD discovery・portability flag を確認対象として log に明示する。
 4. **bundle packaging — macOS 配布系**
-   - `indra/cmake/Vulkan.cmake:15-28`: build-time header の入手元と固定 versionを定義し、runtime libraryをリンクしない現行 volk 方針との境界を明示する。
+   - `indra/cmake/Vulkan.cmake:15-28`: この module は全 OS から読み込まれる(`indra/llrender/CMakeLists.txt:5-6`)。build-time header の入手元と固定 versionを追加するときは `if (DARWIN)` で分離し、Windows/Linux の既存 `find_package(Vulkan REQUIRED)` と include pathを変えない。runtime libraryをリンクしない現行 volk 方針との境界も明示する。
    - `indra/newview/viewer_manifest.py:1591-1617`: `Contents/Frameworks` へ `libvulkan.dylib` と `libMoltenVK.dylib` をコピーする処理を追加する。
    - 同 manifest で `MoltenVK_icd.json` を app bundle 内へ配置し、JSON の `library_path` と Loader の driver-discovery path が bundle 内で完結するようにする。
    - `indra/newview/CMakeLists.txt:2869-2878`: 既存 `@executable_path/../Frameworks` runpath が採用した配置と一致するか確認し、必要な場合だけ変更する。
@@ -71,6 +72,24 @@ Date: 2026-07-15 / 対象 branch: `dev/ayastorm-vk-3os` / 静的監査 base: `4c
    - configure 例と期待値を `AYAstorm-VK-release`、固定した SDK/MoltenVK、packaging手順に更新する。ただし実装・実機 gateが固まる前に「VERIFIED手順」として書かない。
 
 `initSurface()` の Metal branch(`indra/llrender/llvkloader.cpp:7294-7365`)は CAMetalLayer を受け取る配線が既にあるため、portability対応の最初の編集対象ではない。まず instance/device 列挙と Loader/ICD packaging を通し、その後に surface 実機結果で再評価する。
+
+### 3.2 Windows/Linux への影響境界(**実読 VERIFIED / build OPEN**)
+
+`llvkloader.cpp` と `Vulkan.cmake` は 3 OS 共有なので、portability を「macOSでだけ有効にする」だけでは不十分。**他 OS ではコンパイル対象にも実行経路にも入れない境界**を次のように固定する。
+
+| 変更箇所 | Windows/Linux で意図する結果 | 必須の分離 |
+|---|---|---|
+| instance extension / flag | extension list・`VkInstanceCreateInfo::flags`とも変更なし | `VK_USE_PLATFORM_METAL_EXT` 内で公開確認・追加・flag設定を完結 |
+| device portability subset | device extension list変更なし | Metal guard内かつ、選択deviceが公開した場合だけ追加。beta定数を共有コードへ無条件に出さない |
+| `Vulkan.cmake` | 既存SDK/header探索を維持 | macOS用header取得・固定versionだけを `if (DARWIN)` に限定 |
+| bundle / runpath / license | package内容変更なし | `Darwin_x86_64_Manifest` と既存 `if (DARWIN)` 節だけを編集 |
+| 初期化stage log | 必要なら3 OS共通で診断改善 | 呼出順・short-circuit・失敗時cleanupを変えず、log追加だけにする |
+
+- platform define は Windows=`VK_USE_PLATFORM_WIN32_KHR`、Linux=`VK_USE_PLATFORM_XLIB_KHR`、macOS=`VK_USE_PLATFORM_METAL_EXT`(`indra/cmake/00-Common.cmake:88-97,190-191,234-238`)。
+- portability enumeration/flagを共有経路で無条件に有効化すると、非対応Loaderではinstance作成失敗、portability ICDが存在する環境では列挙device増加の可能性がある。現device選択はtype score中心(`indra/llrender/llvkloader.cpp:584-630`)なので、他OSで候補を増やさない。
+- macOS packagingの編集先は `Darwin_x86_64_Manifest`(`indra/newview/viewer_manifest.py:1234-1236`)および `if (DARWIN)`(`indra/newview/CMakeLists.txt:2839`以降)に限定する。
+- 一次資料: [Khronos Vulkan `vulkan.h`](https://github.com/KhronosGroup/Vulkan-Headers/blob/main/include/vulkan/vulkan.h)、[`vulkan_beta.h`](https://github.com/KhronosGroup/Vulkan-Headers/blob/main/include/vulkan/vulkan_beta.h)。
+- Windows/Linux の configure・compile・起動は未実施なので **OPEN**。少なくとも両OSでbuildし、従来deviceが選択され、有効化extension一覧が変わっていないことをgateにする。
 
 ## 4. 既知の罠(Linux 側で実際に踏んだもの)
 
