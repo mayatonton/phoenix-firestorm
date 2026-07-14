@@ -74,6 +74,13 @@ LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
 bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
+
+namespace
+{
+    LLGLSLShader*      sVkPipeMemoShader = nullptr;
+    VkPipelineStateKey sVkPipeMemoKey;
+    VkPipeline         sVkPipeMemoPipe = VK_NULL_HANDLE;
+}
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;
 U32 LLGLSLShader::sMaxGLTFNodes = 0;
@@ -332,6 +339,11 @@ void LLGLSLShader::unloadInternal()
 
     if (LLVKLoader::isVulkanInitialized())
     {
+        if (sVkPipeMemoShader == this)
+        {
+            sVkPipeMemoShader = nullptr;
+            sVkPipeMemoPipe   = VK_NULL_HANDLE;
+        }
         for (auto& kv : mVkPipelineCache)
         {
             if (kv.second != VK_NULL_HANDLE)
@@ -3477,9 +3489,21 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     key.depth_write_enabled = LLGLDepthTest::isCurrentWriteEnabled() ? 1u : 0u;
     key.depth_compare_op    = static_cast<U8>(LLVKLoader::llGlEnumToVkCompareOp(LLGLDepthTest::getCurrentDepthFunc()));
 
+    if (sVkPipeMemoShader == this && sVkPipeMemoPipe != VK_NULL_HANDLE
+        && std::memcmp(&sVkPipeMemoKey, &key, sizeof(key)) == 0)
+    {
+        return sVkPipeMemoPipe;
+    }
+
     auto it = mVkPipelineCache.find(key);
     if (it != mVkPipelineCache.end())
     {
+        if (it->second != VK_NULL_HANDLE)
+        {
+            sVkPipeMemoShader = this;
+            sVkPipeMemoKey    = key;
+            sVkPipeMemoPipe   = it->second;
+        }
         return it->second;
     }
 
@@ -3767,5 +3791,8 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     }
 
     mVkPipelineCache[key] = pipeline;
+    sVkPipeMemoShader = this;
+    sVkPipeMemoKey    = key;
+    sVkPipeMemoPipe   = pipeline;
     return pipeline;
 }
