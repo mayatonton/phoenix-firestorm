@@ -367,6 +367,7 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
     if (o.getLength3().getF32() < dist)
     { // eye is inside radius, don't attempt to occlude
         mOccluded = false;
+        mOcclusionZeroStreak = 0;
         return;
     }
 
@@ -386,7 +387,18 @@ void LLReflectionMap::doOcclusion(const LLVector4a& eye)
         if (vk_available)
         {
             do_query = true;
-            mOccluded = vk_samples == 0;
+            if (vk_samples == 0)
+            {
+                if (mOcclusionZeroStreak < 3)
+                {
+                    ++mOcclusionZeroStreak;
+                }
+            }
+            else
+            {
+                mOcclusionZeroStreak = 0;
+            }
+            mOccluded = (mOcclusionZeroStreak >= 3);
             mOcclusionPendingFrames = 0;
         }
         else

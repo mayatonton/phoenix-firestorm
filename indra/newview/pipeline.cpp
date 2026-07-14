@@ -3203,26 +3203,6 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         gGL.setColorMask(true, true);
     }
 
-    if (isFrameReflectionProbesEnabled() && sUseOcclusion > 1 && !isFrameShadowPass() && !gCubeSnapshot)
-    {
-        gGL.setColorMask(false, false);
-        LLGLDepthTest depth(GL_TRUE, GL_FALSE);
-        LLGLDisable cull(GL_CULL_FACE);
-
-        gOcclusionCubeProgram.bind();
-
-        if (mCubeVB.isNull())
-        { //cube VB will be used for issuing occlusion queries
-            mCubeVB = ll_create_cube_vb(LLVertexBuffer::MAP_VERTEX);
-        }
-        mCubeVB->setBuffer();
-
-        mHeroProbeManager.doOcclusion();
-        gOcclusionCubeProgram.unbind();
-
-        gGL.setColorMask(true, true);
-    }
-
     if (LLPipeline::sUseOcclusion > 1 &&
         (getFrameCull()->hasOcclusionGroups() || LLVOCachePartition::sNeedsOcclusionCheck))
     {
@@ -3243,6 +3223,70 @@ void LLPipeline::doOcclusion(LLCamera& camera)
             mCubeVB = ll_create_cube_vb(LLVertexBuffer::MAP_VERTEX);
         }
         mCubeVB->setBuffer();
+
+        {
+            static U32  s_sentinel_q       = 0;
+            static bool s_sentinel_pending = false;
+
+            uint64_t sent_samples = 0;
+            bool     sent_avail   = false;
+            if (s_sentinel_pending && s_sentinel_q)
+            {
+                LLVKLoader::getOcclusionQueryResultVk(s_sentinel_q, sent_avail, sent_samples);
+            }
+
+            if (!s_sentinel_pending || sent_avail)
+            {
+                if (sent_avail)
+                {
+                    if (sent_samples == 0)
+                    {
+                        static U32 s_sentinel_zero_count = 0;
+                        ++s_sentinel_zero_count;
+                        if ((s_sentinel_zero_count & (s_sentinel_zero_count - 1)) == 0)
+                        {
+                            LL_WARNS("RenderDrop") << "occlusion sentinel returned 0 samples"
+                                                   << " (query/pass machinery suspect, count="
+                                                   << s_sentinel_zero_count << ")" << LL_ENDL;
+                        }
+                    }
+                }
+
+                LLVKLoader::releaseOcclusionQueryVk(s_sentinel_q);
+                s_sentinel_q       = LLVKLoader::acquireOcclusionQueryVk();
+                s_sentinel_pending = false;
+                if (s_sentinel_q != 0)
+                {
+                    LLVKLoader::cmdBeginOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), s_sentinel_q);
+
+                    LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+                    if (LLVKLoader::isVulkanInitialized() && shader != nullptr
+                        && shader->mVkPerProgramUBO != VK_NULL_HANDLE
+                        && shader->mVkPerProgramUBOMapped != nullptr)
+                    {
+                        LLVKLoader::OcclusionCube_PerProgramBind ubo_data = {};
+                        const LLVector3& o = camera.getOrigin();
+                        ubo_data.box_center[0] = o.mV[0];
+                        ubo_data.box_center[1] = o.mV[1];
+                        ubo_data.box_center[2] = o.mV[2];
+                        ubo_data.box_size[0]   = 64.f;
+                        ubo_data.box_size[1]   = 64.f;
+                        ubo_data.box_size[2]   = 64.f;
+                        shader->rotatePerProgramUBOSlot();
+                        std::memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                    }
+
+                    {
+                        LLGLDepthTest sentinel_depth(GL_FALSE, GL_FALSE);
+                        mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, 0);
+                        mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, 56);
+                    }
+
+                    LLVKLoader::cmdEndOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(), s_sentinel_q);
+                    s_sentinel_pending = true;
+                }
+            }
+        }
 
         for (LLCullResult::sg_iterator iter = getFrameCull()->beginOcclusionGroups(); iter != getFrameCull()->endOcclusionGroups(); ++iter)
         {
@@ -5105,6 +5149,17 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
         gGLInverseDeltaModelView = n;
     }
 
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        LLVKLoader::GlobalF_PerProgramBind gf = {};
+        gf.mirror_flag  = mHeroProbeManager.isMirrorPass() ? 1.f : 0.f;
+        gf.clipPlane[0] = LLPipeline::sLastClipPlane.mV[0];
+        gf.clipPlane[1] = LLPipeline::sLastClipPlane.mV[1];
+        gf.clipPlane[2] = LLPipeline::sLastClipPlane.mV[2];
+        gf.clipPlane[3] = LLPipeline::sLastClipPlane.mV[3];
+        LLVKLoader::writeCurrentGlobalFUBO(gf);
+    }
+
     bool occlude = LLPipeline::sUseOcclusion > 1 && do_occlusion && !LLGLSLShader::sProfileEnabled;
 
     setupHWLights();
@@ -5180,6 +5235,7 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
                     LLVertexBuffer::unbind();
 
                 }
+
             }
             else
             {
@@ -5194,6 +5250,46 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
                 }
             }
             iter1 = iter2;
+        }
+
+        if (!gCubeSnapshot)
+        {
+            static U32 s_draw_total_history[64] = {};
+            static U32 s_draw_history_pos       = 0;
+            static U32 s_draw_history_filled    = 0;
+            static U32 s_deferred_draws_prev    = 0;
+
+            const U32 frame_total = LLVertexBuffer::sVkDrawCallCount - s_deferred_draws_prev;
+            s_deferred_draws_prev = LLVertexBuffer::sVkDrawCallCount;
+
+            U64 sum = 0;
+            for (U32 i = 0; i < s_draw_history_filled; ++i)
+            {
+                sum += s_draw_total_history[i];
+            }
+            const U32 avg = s_draw_history_filled ? (U32)(sum / s_draw_history_filled) : 0;
+
+            if (s_draw_history_filled >= 32 && avg > 100 && frame_total * 5 < avg &&
+                getFrameCull()->getVisibleGroupsSize() > 500)
+            {
+                static U32 s_collapse_count = 0;
+                ++s_collapse_count;
+                if ((s_collapse_count & (s_collapse_count - 1)) == 0)
+                {
+                    LL_WARNS("RenderDrop") << "deferred draw collapse:"
+                                           << " frame_draws=" << frame_total
+                                           << " rolling_avg=" << avg
+                                           << " vis_groups=" << getFrameCull()->getVisibleGroupsSize()
+                                           << " (count=" << s_collapse_count << ")" << LL_ENDL;
+                }
+            }
+
+            s_draw_total_history[s_draw_history_pos] = frame_total;
+            s_draw_history_pos = (s_draw_history_pos + 1) & 63;
+            if (s_draw_history_filled < 64)
+            {
+                ++s_draw_history_filled;
+            }
         }
 
         gGLLastMatrix = NULL;

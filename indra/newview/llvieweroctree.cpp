@@ -1099,6 +1099,11 @@ void LLOcclusionCullingGroup::checkOcclusion()
             }
         }
     }
+    else if (!mOcclusionQuery[LLViewerCamera::getCurCameraID()] && isOcclusionState(QUERY_PENDING))
+    {
+        clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
+        clearOcclusionState(QUERY_PENDING | DISCARD_QUERY);
+    }
     else if (mSpatialPartition->isOcclusionEnabled() && isOcclusionState(LLOcclusionCullingGroup::OCCLUDED))
     {   //check occlusion has been issued for occluded node that has not had a query issued
         assert_states_valid(this);
@@ -1166,6 +1171,12 @@ void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* sh
                             LL_PROFILE_ZONE_NAMED_CATEGORY_OCTREE("glBeginQuery");
                             releaseOcclusionQueryObjectName(mOcclusionQuery[LLViewerCamera::getCurCameraID()]);
                             mOcclusionQuery[LLViewerCamera::getCurCameraID()] = getNewOcclusionQueryObjectName();
+                            if (mOcclusionQuery[LLViewerCamera::getCurCameraID()] == 0)
+                            {
+                                clearOcclusionState(LLOcclusionCullingGroup::OCCLUDED, LLOcclusionCullingGroup::STATE_MODE_DIFF);
+                                clearOcclusionState(QUERY_PENDING | DISCARD_QUERY);
+                                return;
+                            }
                             LLVKLoader::cmdBeginOcclusionQueryVk(LLVKLoader::getCurrentCommandBuffer(),
                                                                  mOcclusionQuery[LLViewerCamera::getCurCameraID()]);
                         }

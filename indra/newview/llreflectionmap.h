@@ -143,6 +143,7 @@ public:
     GLuint mOcclusionQuery = 0;
     bool mOccluded = false;
     U32 mOcclusionPendingFrames = 0;
+    U32 mOcclusionZeroStreak = 0;
 
     ProbeType mType;
 };
