@@ -3474,19 +3474,25 @@ void releaseOcclusionQueryVk(uint32_t handle)
 
 void tickDeferredQueryReleaseQueue()
 {
-    auto it = sPendingOcclusionQueryReleases.begin();
-    while (it != sPendingOcclusionQueryReleases.end())
+    size_t w = 0;
+    const size_t n = sPendingOcclusionQueryReleases.size();
+    for (size_t r = 0; r < n; ++r)
     {
-        if (it->enqueue_frame <= sLastCompletedMonotonic)
+        PendingQueryRelease& e = sPendingOcclusionQueryReleases[r];
+        if (e.enqueue_frame <= sLastCompletedMonotonic)
         {
-            sOcclusionQueryFree.push(it->index);
-            it = sPendingOcclusionQueryReleases.erase(it);
+            sOcclusionQueryFree.push(e.index);
         }
         else
         {
-            ++it;
+            if (w != r)
+            {
+                sPendingOcclusionQueryReleases[w] = e;
+            }
+            ++w;
         }
     }
+    sPendingOcclusionQueryReleases.resize(w);
 }
 
 void cmdBeginOcclusionQueryVk(VkCommandBuffer cmd, uint32_t handle)
@@ -3996,25 +4002,31 @@ void tickScenePerDrawDescriptorCache()
     {
         return;
     }
-    auto it = sScenePerDrawDeferredFree.begin();
-    while (it != sScenePerDrawDeferredFree.end())
+    size_t w = 0;
+    const size_t n = sScenePerDrawDeferredFree.size();
+    for (size_t r = 0; r < n; ++r)
     {
-        if (it->enqueue_frame <= sLastCompletedMonotonic)
+        ScenePerDrawDeferredFreeEntry& e = sScenePerDrawDeferredFree[r];
+        if (e.enqueue_frame <= sLastCompletedMonotonic)
         {
-            VkDescriptorPool target_pool = (it->pool_index < sScenePerDrawDescriptorPools.size())
-                                               ? sScenePerDrawDescriptorPools[it->pool_index]
+            VkDescriptorPool target_pool = (e.pool_index < sScenePerDrawDescriptorPools.size())
+                                               ? sScenePerDrawDescriptorPools[e.pool_index]
                                                : VK_NULL_HANDLE;
             if (target_pool != VK_NULL_HANDLE)
             {
-                vkFreeDescriptorSets(sDevice, target_pool, FRAMES_IN_FLIGHT, it->sets);
+                vkFreeDescriptorSets(sDevice, target_pool, FRAMES_IN_FLIGHT, e.sets);
             }
-            it = sScenePerDrawDeferredFree.erase(it);
         }
         else
         {
-            ++it;
+            if (w != r)
+            {
+                sScenePerDrawDeferredFree[w] = e;
+            }
+            ++w;
         }
     }
+    sScenePerDrawDeferredFree.resize(w);
 }
 
 U32 getCurrentFrameIndex()
@@ -5018,19 +5030,25 @@ void tickDeferredBufferFreeQueue()
     {
         return;
     }
-    auto it = sPendingBufferFrees.begin();
-    while (it != sPendingBufferFrees.end())
+    size_t w = 0;
+    const size_t n = sPendingBufferFrees.size();
+    for (size_t r = 0; r < n; ++r)
     {
-        if (it->enqueue_frame <= sLastCompletedMonotonic)
+        PendingBufferFree& e = sPendingBufferFrees[r];
+        if (e.enqueue_frame <= sLastCompletedMonotonic)
         {
-            vmaDestroyBuffer(sAllocator, it->buffer, it->allocation);
-            it = sPendingBufferFrees.erase(it);
+            vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
         }
         else
         {
-            ++it;
+            if (w != r)
+            {
+                sPendingBufferFrees[w] = e;
+            }
+            ++w;
         }
     }
+    sPendingBufferFrees.resize(w);
 }
 
 bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation)
@@ -5104,24 +5122,30 @@ void tickOneShotFreeQueue()
     {
         return;
     }
-    auto it = sPendingOneShotFrees.begin();
-    while (it != sPendingOneShotFrees.end())
+    size_t w = 0;
+    const size_t n = sPendingOneShotFrees.size();
+    for (size_t r = 0; r < n; ++r)
     {
-        if (vkGetFenceStatus(sDevice, it->fence) == VK_SUCCESS)
+        PendingOneShotFree& e = sPendingOneShotFrees[r];
+        if (vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
         {
-            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &it->cmd);
-            if (it->buffer != VK_NULL_HANDLE || it->allocation != VK_NULL_HANDLE)
+            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &e.cmd);
+            if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
             {
-                vmaDestroyBuffer(sAllocator, it->buffer, it->allocation);
+                vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
             }
-            sSubmitFencePool.push_back(it->fence);
-            it = sPendingOneShotFrees.erase(it);
+            sSubmitFencePool.push_back(e.fence);
         }
         else
         {
-            ++it;
+            if (w != r)
+            {
+                sPendingOneShotFrees[w] = e;
+            }
+            ++w;
         }
     }
+    sPendingOneShotFrees.resize(w);
 }
 
 void bindVertexBufferVk(VkCommandBuffer cmd_buf, VkBuffer buffer, VkDeviceSize offset, U32 firstBinding)
@@ -5323,26 +5347,32 @@ void tickDeferredImageFreeQueue()
     {
         return;
     }
-    auto it = sPendingImageFrees.begin();
-    while (it != sPendingImageFrees.end())
+    size_t w = 0;
+    const size_t n = sPendingImageFrees.size();
+    for (size_t r = 0; r < n; ++r)
     {
-        if (it->enqueue_frame <= sLastCompletedMonotonic)
+        PendingImageFree& e = sPendingImageFrees[r];
+        if (e.enqueue_frame <= sLastCompletedMonotonic)
         {
-            if (it->view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
+            if (e.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
             {
-                vkDestroyImageView(sDevice, it->view, nullptr);
+                vkDestroyImageView(sDevice, e.view, nullptr);
             }
-            if (it->image != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
+            if (e.image != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
             {
-                vmaDestroyImage(sAllocator, it->image, it->allocation);
+                vmaDestroyImage(sAllocator, e.image, e.allocation);
             }
-            it = sPendingImageFrees.erase(it);
         }
         else
         {
-            ++it;
+            if (w != r)
+            {
+                sPendingImageFrees[w] = e;
+            }
+            ++w;
         }
     }
+    sPendingImageFrees.resize(w);
 }
 
 void destroyPipelineVk(VkPipeline pipeline)
@@ -5399,34 +5429,40 @@ void tickDeferredObjectFreeQueue()
     {
         return;
     }
-    auto it = sPendingObjectFrees.begin();
-    while (it != sPendingObjectFrees.end())
+    size_t w = 0;
+    const size_t n = sPendingObjectFrees.size();
+    for (size_t r = 0; r < n; ++r)
     {
-        if (it->enqueue_frame <= sLastCompletedMonotonic)
+        PendingObjectFree& e = sPendingObjectFrees[r];
+        if (e.enqueue_frame <= sLastCompletedMonotonic)
         {
-            if (it->pipeline != VK_NULL_HANDLE)
+            if (e.pipeline != VK_NULL_HANDLE)
             {
-                vkDestroyPipeline(sDevice, it->pipeline, nullptr);
+                vkDestroyPipeline(sDevice, e.pipeline, nullptr);
             }
-            if (it->shader_module != VK_NULL_HANDLE)
+            if (e.shader_module != VK_NULL_HANDLE)
             {
-                vkDestroyShaderModule(sDevice, it->shader_module, nullptr);
+                vkDestroyShaderModule(sDevice, e.shader_module, nullptr);
             }
-            if (it->pipeline_layout != VK_NULL_HANDLE)
+            if (e.pipeline_layout != VK_NULL_HANDLE)
             {
-                vkDestroyPipelineLayout(sDevice, it->pipeline_layout, nullptr);
+                vkDestroyPipelineLayout(sDevice, e.pipeline_layout, nullptr);
             }
-            if (it->descriptor_set_layout != VK_NULL_HANDLE)
+            if (e.descriptor_set_layout != VK_NULL_HANDLE)
             {
-                vkDestroyDescriptorSetLayout(sDevice, it->descriptor_set_layout, nullptr);
+                vkDestroyDescriptorSetLayout(sDevice, e.descriptor_set_layout, nullptr);
             }
-            it = sPendingObjectFrees.erase(it);
         }
         else
         {
-            ++it;
+            if (w != r)
+            {
+                sPendingObjectFrees[w] = e;
+            }
+            ++w;
         }
     }
+    sPendingObjectFrees.resize(w);
 }
 
 bool createTextureImageVk(U32          width,
