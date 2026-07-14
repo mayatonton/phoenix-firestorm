@@ -44,6 +44,34 @@ Date: 2026-07-15 / 対象 branch: `dev/ayastorm-vk-3os` / 静的監査 base: `4c
 - Vulkan Loader + ICD 方式では、instance 作成時に `VK_KHR_portability_enumeration` と `VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR`、device が公開する場合は `VK_KHR_portability_subset` の有効化が必要。現 HEAD にはないため **OPEN** とする。
 - portability の一次資料: [MoltenVK README](https://github.com/KhronosGroup/MoltenVK/blob/main/README.md)、[VK_KHR_portability_enumeration](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_portability_enumeration.html)。
 
+### 3.1 portability / packaging の具体的な修正対象(**OPEN**)
+
+以下は実装担当者が最初に開く箇所と変更方針を固定するための handoff。変更自体は未実施であり、実機結果も **OPEN**。
+
+1. **instance portability — `indra/llrender/llvkloader.cpp:createInstance()` (`455-569`)**
+   - 現在の instance-extension 列挙(`497-511`)は `want_validation` の条件内にある。portability 判定は validation の ON/OFF と無関係なので、共通の extension 列挙へ分離する。
+   - `VK_USE_PLATFORM_METAL_EXT` かつ Loader が `VK_KHR_portability_enumeration` を公開する場合に、`extensions` へ `VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME` を追加する。
+   - 同じ判定結果を保持し、`vkCreateInstance()` 前に `create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR` を設定する。非対応 Loader や非 macOS では有効化しない。
+   - `vkCreateInstance()` 失敗時は `VkResult` と有効化した extension を log に残す。現状の `return false` だけでは Loader/ICD/portability の切り分けができない。
+2. **device portability — `indra/llrender/llvkloader.cpp:createDevice()` (`716-899`)**
+   - 既存の device-extension 列挙(`811-825`)で `VK_KHR_portability_subset` の公開有無を記録する。
+   - 公開された場合だけ、`vkCreateDevice()` 前の `device_extensions` に `VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME` を追加する。通常の Vulkan device へ無条件追加しない。
+   - `vkCreateDevice()` 失敗時は `VkResult` と有効化した device extensions を log に残す。
+3. **初期化 stage log — `indra/llrender/llvkloader.cpp:initVulkan()` (`2629-2665`)**
+   - `selectPhysicalDevice() || selectQueueFamily() || createDevice()` の連結判定を、失敗 stage を特定できる形に分ける。
+   - `vkEnumeratePhysicalDevices()` が 0 件の場合は、Loader path・ICD discovery・portability flag を確認対象として log に明示する。
+4. **bundle packaging — macOS 配布系**
+   - `indra/cmake/Vulkan.cmake:15-28`: build-time header の入手元と固定 versionを定義し、runtime libraryをリンクしない現行 volk 方針との境界を明示する。
+   - `indra/newview/viewer_manifest.py:1591-1617`: `Contents/Frameworks` へ `libvulkan.dylib` と `libMoltenVK.dylib` をコピーする処理を追加する。
+   - 同 manifest で `MoltenVK_icd.json` を app bundle 内へ配置し、JSON の `library_path` と Loader の driver-discovery path が bundle 内で完結するようにする。
+   - `indra/newview/CMakeLists.txt:2869-2878`: 既存 `@executable_path/../Frameworks` runpath が採用した配置と一致するか確認し、必要な場合だけ変更する。
+   - `indra/newview/licenses-mac.txt` に、固定した MoltenVK / Vulkan Loader 配布物のライセンス表記を追加する。
+   - package後に `file` / `lipo -archs` / `otool -L` / `codesign --verify --deep --strict --verbose=2` で、architecture・参照先・署名を確認する。
+5. **build 文書 — `docs/build/building_ayastorm_macos.md:157-185`**
+   - configure 例と期待値を `AYAstorm-VK-release`、固定した SDK/MoltenVK、packaging手順に更新する。ただし実装・実機 gateが固まる前に「VERIFIED手順」として書かない。
+
+`initSurface()` の Metal branch(`indra/llrender/llvkloader.cpp:7294-7365`)は CAMetalLayer を受け取る配線が既にあるため、portability対応の最初の編集対象ではない。まず instance/device 列挙と Loader/ICD packaging を通し、その後に surface 実機結果で再評価する。
+
 ## 4. 既知の罠(Linux 側で実際に踏んだもの)
 
 - **識別子に `Status` を使わない**。Linux の Xlib が `#define Status int` を漏らすため、共有コードに `Status` という型/変数名を入れると Linux ビルドが壊れる。3 OS 共有コードを編集するときは必ず順守。
