@@ -829,6 +829,7 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - push vb");
 
                     primitive.mVertexBuffer->drawRangeFast(primitive.mGLMode, primitive.mVertexOffset, primitive.mVertexOffset + primitive.getVertexCount() - 1, primitive.getIndexCount(), primitive.mIndexOffset);
+                    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                 }
             }
         }

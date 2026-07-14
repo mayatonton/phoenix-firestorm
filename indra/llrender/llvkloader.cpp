@@ -3131,6 +3131,9 @@ bool beginFrame(bool acquire_swapchain)
         return false;
     }
 
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
+
     sSwapchainClearedThisFrame = false;
 
     if (sSwapchain != VK_NULL_HANDLE &&
@@ -4783,6 +4786,7 @@ void clearDeferredUtilOverrideSlot()
         std::memcpy(slot.mapped, &data, sizeof(StructType));                                           \
         sCur##BindName##Buf[f]    = slot.buffer;                                                       \
         sCur##BindName##Mapped[f] = slot.mapped;                                                       \
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;                                     \
     }                                                                                                  \
     bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                             \
     {                                                                                                  \
@@ -4834,7 +4838,7 @@ LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52)
     {                                                                                                  \
         s##BindName##Shadow = data;                                                                     \
         ++s##BindName##WriteGen;                                                                        \
-        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;                                      \
+        LLGLSLShader::sCurPerCallVkOffsetsDirty = true;                                                 \
     }                                                                                                  \
     static bool ensure##BindName##Uploaded(VkBuffer& out_buf, U32& out_off)                             \
     {                                                                                                  \
@@ -4938,7 +4942,7 @@ void* rotateObjectSkinSlotForWrite()
 {
     if (!sInitialized) return nullptr;
     ++sObjectSkinWriteGen;
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
     return &sObjectSkinShadow;
 }
 
@@ -5304,6 +5308,7 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
     {
         return;
     }
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     PendingImageFree pending;
     pending.image         = image;
     pending.view          = view;

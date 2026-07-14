@@ -778,6 +778,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
         std::memcpy(LLGLSLShader::sCurPerCallVkDynamicOffsets, dyn_offsets, sizeof(dyn_offsets));
+        LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
     }
 }
 

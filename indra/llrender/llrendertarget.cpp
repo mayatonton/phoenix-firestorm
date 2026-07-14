@@ -30,6 +30,7 @@
 #include "llrender.h"
 #include "llgl.h"
 #include "llvkloader.h"
+#include "llglslshader.h"
 
 LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
 U32 LLRenderTarget::sBytesAllocated = 0;
@@ -464,6 +465,8 @@ void LLRenderTarget::bindTarget()
     mPreviousRT = sBoundTarget;
     sBoundTarget = this;
 
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+
     if (LLVKLoader::isVulkanInitialized())
     {
         U32 color_count = static_cast<U32>(mInternalFormat.size() < 4 ? mInternalFormat.size() : 4);
@@ -795,6 +798,8 @@ void LLRenderTarget::flush()
     gGL.flush();
     llassert(mAllocated);
     llassert(sBoundTarget == this);
+
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 
     if (LLVKLoader::isVulkanInitialized())
     {

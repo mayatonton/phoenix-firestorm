@@ -73,6 +73,7 @@ LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 
 VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
+bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;
 U32 LLGLSLShader::sMaxGLTFNodes = 0;
@@ -2511,6 +2512,10 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
     {
         std::memcpy(mVkActivePerProgramUBOMapped, &minimum, sizeof(F32));
         ++mVkPerProgramUBOGeneration;
+        if (sCurBoundShaderPtr == this)
+        {
+            sCurPerCallVkOffsetsDirty = true;
+        }
     }
 }
 
@@ -2883,7 +2888,7 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
         ++mVkPerProgramUBOGeneration;
         if (sCurBoundShaderPtr == this)
         {
-            sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+            sCurPerCallVkOffsetsDirty = true;
         }
         return;
     }
@@ -2984,6 +2989,53 @@ bool LLGLSLShader::vkCollectDynamicUBOWrites(LLGLSLShader*                     c
         out_offsets[idx++] = off;
     }
     return true;
+}
+
+void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
+{
+    LLGLSLShader* cur = sCurBoundShaderPtr;
+    if (cur == nullptr)
+    {
+        sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        return;
+    }
+    U32 idx = 0;
+    for (U32 db : cur->mVkDynamicBindings)
+    {
+        if (idx >= MAX_VK_DYNAMIC_BINDINGS)
+        {
+            break;
+        }
+        U32 off = 0;
+        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
+        {
+            if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
+            {
+                VkBuffer pp_buf = VK_NULL_HANDLE;
+                if (!cur->vkResolvePerProgramForDraw(pp_buf, off))
+                {
+                    sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+                    return;
+                }
+            }
+        }
+        else
+        {
+            VkBuffer dbuf = VK_NULL_HANDLE;
+            U32      doff = 0;
+            if (LLVKLoader::getSharedDynamicUBOForBinding(db, dbuf, doff) && dbuf != VK_NULL_HANDLE)
+            {
+                off = doff;
+            }
+            else
+            {
+                sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+                return;
+            }
+        }
+        sCurPerCallVkDynamicOffsets[idx++] = off;
+    }
+    sCurPerCallVkOffsetsDirty = false;
 }
 
 bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset)
@@ -3269,6 +3321,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
         std::memcpy(LLGLSLShader::sCurPerCallVkDynamicOffsets, dyn_offsets, sizeof(dyn_offsets));
+        LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
     }
 }
 

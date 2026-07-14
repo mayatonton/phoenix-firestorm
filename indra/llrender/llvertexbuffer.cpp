@@ -595,6 +595,11 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
     {
         VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
+        {
+            LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
+            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        }
         if (set_to_bind == VK_NULL_HANDLE)
         {
             LLGLSLShader::populateAndBindUniversalDescriptorSet();
@@ -695,7 +700,6 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
                     ++sVkDrawCallCount;
                     vk_fired = true;
-                    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                 }
             }
         }
@@ -726,6 +730,11 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
         if (LLGLSLShader::sCurBoundShaderPtr != nullptr)
         {
             VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+            if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
+            {
+                LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
+                set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+            }
             if (set_to_bind == VK_NULL_HANDLE)
             {
                 LLGLSLShader::populateAndBindUniversalDescriptorSet();
@@ -785,7 +794,6 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                         vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
                         ++sVkDrawCallCount;
                         vk_fired = true;
-                        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                     }
                 }
             }
@@ -822,6 +830,11 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
     {
         VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
+        {
+            LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
+            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        }
         if (set_to_bind == VK_NULL_HANDLE)
         {
             LLGLSLShader::populateAndBindUniversalDescriptorSet();
@@ -922,7 +935,6 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     vkCmdDraw(cmd, count, 1, first, 0);
                     ++sVkDrawCallCount;
                     vk_fired = true;
-                    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                 }
             }
         }

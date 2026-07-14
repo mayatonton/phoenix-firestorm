@@ -132,6 +132,7 @@ void LLTexUnit::vkNotifyShaderChannelBound()
     {
         return;
     }
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
     if (sh == nullptr)
     {
@@ -443,6 +444,7 @@ bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
     mCurrImageGL = nullptr;
     mCurrRenderTarget = nullptr;
     mCurrCubeMap = nullptr;
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     return true;
 }
 
@@ -492,6 +494,7 @@ void LLTexUnit::setTextureAddressMode(eTextureAddressMode mode)
 void LLTexUnit::setTextureAddressModeFast(eTextureAddressMode mode, eTextureType tex_type)
 {
     mCurrAddressMode = mode;
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 }
 
 void LLTexUnit::setTextureFilteringOption(LLTexUnit::eTextureFilterOptions option)
@@ -506,6 +509,7 @@ void LLTexUnit::setTextureFilteringOption(LLTexUnit::eTextureFilterOptions optio
 void LLTexUnit::setTextureFilteringOptionFast(LLTexUnit::eTextureFilterOptions option, eTextureType tex_type)
 {
     mCurrFilterOption = option;
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 }
 
 LLLightState::LLLightState(S32 index)
@@ -1398,6 +1402,7 @@ void LLRender::clearStaleImageGLRefs(LLImageGL* victim)
         if (gGL.mTexUnits[i].mCurrImageGL == victim)
         {
             gGL.mTexUnits[i].mCurrImageGL = nullptr;
+            LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
         }
     }
     if (gGL.mDummyTexUnit.mCurrImageGL == victim)
@@ -1427,6 +1432,7 @@ void LLRender::clearStaleCubeMapRefs(LLCubeMap* victim)
         if (gGL.mTexUnits[i].mCurrCubeMap == victim)
         {
             gGL.mTexUnits[i].mCurrCubeMap = nullptr;
+            LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
         }
     }
     if (gGL.mDummyTexUnit.mCurrCubeMap == victim)
