@@ -345,7 +345,7 @@ static bool sSceneDepthCopyActive = false;
 bool    gAvatarBacklight = false;
 
 LLPipeline gPipeline;
-const LLMatrix4* gGLLastMatrix = NULL;
+thread_local const LLMatrix4* gGLLastMatrix = NULL;
 
 LLTrace::BlockTimerStatHandle FTM_RENDER_GEOMETRY("Render Geometry");
 LLTrace::BlockTimerStatHandle FTM_RENDER_GRASS("Grass");

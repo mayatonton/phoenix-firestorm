@@ -126,21 +126,21 @@ namespace
     void*          sDefaultFallback3DAlloc     = nullptr;
     bool           sInFrame            = false;
 
-    bool sInDynamicRendering = false;
+    thread_local bool sInDynamicRendering = false;
 
-    S32 sVkRenderViewport[4] = {0, 0, 0, 0};
+    thread_local S32 sVkRenderViewport[4] = {0, 0, 0, 0};
 
-    U32 sCurrentRenderAreaHeight = 0;
+    thread_local U32 sCurrentRenderAreaHeight = 0;
 
-    bool sScissorEnabled     = false;
-    S32  sScissorRectGL[4]   = {0, 0, 0, 0};
+    thread_local bool sScissorEnabled     = false;
+    thread_local S32  sScissorRectGL[4]   = {0, 0, 0, 0};
 
-    VkRenderingAttachmentInfo sSavedColorInfos[4] = {};
-    U32                       sSavedColorCount    = 0;
-    VkRenderingAttachmentInfo sSavedDepthInfo     = {};
-    bool                      sSavedHasDepth      = false;
-    U32                       sSavedRenderWidth   = 0;
-    U32                       sSavedRenderHeight  = 0;
+    thread_local VkRenderingAttachmentInfo sSavedColorInfos[4] = {};
+    thread_local U32                       sSavedColorCount    = 0;
+    thread_local VkRenderingAttachmentInfo sSavedDepthInfo     = {};
+    thread_local bool                      sSavedHasDepth      = false;
+    thread_local U32                       sSavedRenderWidth   = 0;
+    thread_local U32                       sSavedRenderHeight  = 0;
 
     VmaAllocator sAllocator = VK_NULL_HANDLE;
     constexpr VkDeviceSize PERFRAME_UBO_SIZE         = sizeof(PerFrameMatrixUBO);
@@ -186,17 +186,19 @@ namespace
     float sMatrixRingCurrentProj[FRAMES_IN_FLIGHT][16] = {};
     float sMatrixRingCurrentTexmat[FRAMES_IN_FLIGHT][64] = {};
 
-    VkPipeline       sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
-    VkPipelineLayout sLastDescLayout   = VK_NULL_HANDLE;
-    VkDescriptorSet  sLastDescSet0     = VK_NULL_HANDLE;
-    VkDescriptorSet  sLastDescSet1     = VK_NULL_HANDLE;
-    U32              sLastDescDynCount = 0;
-    U32              sLastDescOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
-    VkPipelineLayout sLastMvLayout     = VK_NULL_HANDLE;
-    float            sLastMv[16]       = {};
-    VkViewport       sLastViewport     = {};
-    VkRect2D         sLastScissor      = {};
-    bool             sViewportScissorValid = false;
+    thread_local VkPipeline       sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
+    thread_local VkPipelineLayout sLastDescLayout   = VK_NULL_HANDLE;
+    thread_local VkDescriptorSet  sLastDescSet0     = VK_NULL_HANDLE;
+    thread_local VkDescriptorSet  sLastDescSet1     = VK_NULL_HANDLE;
+    thread_local U32              sLastDescDynCount = 0;
+    thread_local U32              sLastDescOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
+    thread_local VkPipelineLayout sLastMvLayout     = VK_NULL_HANDLE;
+    thread_local float            sLastMv[16]       = {};
+    thread_local VkViewport       sLastViewport     = {};
+    thread_local VkRect2D         sLastScissor      = {};
+    thread_local bool             sViewportScissorValid = false;
+
+    thread_local VkCommandBuffer  tRecordCmdOverride = VK_NULL_HANDLE;
 
     bool vkCmdMemoEnabled()
     {
@@ -454,6 +456,15 @@ namespace
 
     U32 sLastCompletedMonotonic = 0;
     U32 sFrameSubmittedMonotonic[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+
+    VkCommandBuffer currentRecordCmd()
+    {
+        if (tRecordCmdOverride != VK_NULL_HANDLE)
+        {
+            return tRecordCmdOverride;
+        }
+        return sInFrame ? sCommandBuffers[sFrameIndex] : VK_NULL_HANDLE;
+    }
 
     enum : U32
     {
@@ -2922,7 +2933,7 @@ static void           tickDeferredQueryReleaseQueue();
 static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation);
 static void           tickOneShotFreeQueue();
 static void           shutdownSurface();
-extern float          sCurrentModelviewMatrix[16];
+extern thread_local float sCurrentModelviewMatrix[16];
 
 bool initVulkan()
 {
@@ -3812,7 +3823,7 @@ void endOffscreenFrameVk()
 
 VkCommandBuffer getCurrentCommandBuffer()
 {
-    return sInFrame ? sCommandBuffers[sFrameIndex] : VK_NULL_HANDLE;
+    return currentRecordCmd();
 }
 
 uint32_t acquireOcclusionQueryVk()
@@ -4509,7 +4520,7 @@ void writeCurrentGlowCombineUBO(const GlowCombine_PerShaderBind& data)
 
 }
 
-float sCurrentModelviewMatrix[16] = {
+thread_local float sCurrentModelviewMatrix[16] = {
     1.0f, 0.0f, 0.0f, 0.0f,
     0.0f, 1.0f, 0.0f, 0.0f,
     0.0f, 0.0f, 1.0f, 0.0f,
@@ -4518,7 +4529,7 @@ float sCurrentModelviewMatrix[16] = {
 
 void pushCurrentModelviewMatrix(const float modelview_matrix[16])
 {
-    if (!sInitialized || !sInFrame || sCommandBuffers[sFrameIndex] == VK_NULL_HANDLE)
+    if (!sInitialized || currentRecordCmd() == VK_NULL_HANDLE)
     {
         return;
     }
@@ -4539,7 +4550,8 @@ void beginDynamicRendering(U32                               width,
                            U32                               color_count,
                            const DynamicRenderingAttachment* depth_attachment)
 {
-    if (!sInitialized || !sInFrame || sCommandBuffers[sFrameIndex] == VK_NULL_HANDLE)
+    VkCommandBuffer rec_cmd = currentRecordCmd();
+    if (!sInitialized || rec_cmd == VK_NULL_HANDLE)
     {
         return;
     }
@@ -4603,7 +4615,7 @@ void beginDynamicRendering(U32                               width,
 
     if (sInDynamicRendering)
     {
-        vkCmdEndRendering(sCommandBuffers[sFrameIndex]);
+        vkCmdEndRendering(rec_cmd);
         sInDynamicRendering = false;
     }
 
@@ -4619,19 +4631,20 @@ void beginDynamicRendering(U32                               width,
 
     sCurrentRenderAreaHeight = height;
 
-    vkCmdBeginRendering(sCommandBuffers[sFrameIndex], &rendering_info);
+    vkCmdBeginRendering(rec_cmd, &rendering_info);
     sInDynamicRendering = true;
 }
 
 void endDynamicRendering()
 {
-    if (!sInitialized || !sInFrame || sCommandBuffers[sFrameIndex] == VK_NULL_HANDLE ||
+    VkCommandBuffer rec_cmd = currentRecordCmd();
+    if (!sInitialized || rec_cmd == VK_NULL_HANDLE ||
         !sInDynamicRendering)
     {
         return;
     }
 
-    vkCmdEndRendering(sCommandBuffers[sFrameIndex]);
+    vkCmdEndRendering(rec_cmd);
     sInDynamicRendering = false;
 }
 
@@ -7794,7 +7807,8 @@ void transitionImageLayoutVk(VkImage              image,
         return;
     }
 
-    if (!sInFrame || sCommandBuffers[sFrameIndex] == VK_NULL_HANDLE)
+    VkCommandBuffer rec_cmd = currentRecordCmd();
+    if (rec_cmd == VK_NULL_HANDLE)
     {
         if (sDevice == VK_NULL_HANDLE || sCommandPool == VK_NULL_HANDLE ||
             sGraphicsQueue == VK_NULL_HANDLE)
@@ -7861,7 +7875,7 @@ void transitionImageLayoutVk(VkImage              image,
     U32                  mem_barrier_count = 0;
     if (was_rendering)
     {
-        vkCmdEndRendering(sCommandBuffers[sFrameIndex]);
+        vkCmdEndRendering(rec_cmd);
         sInDynamicRendering = false;
 
         const VkPipelineStageFlags attachment_stages =
@@ -7881,7 +7895,7 @@ void transitionImageLayoutVk(VkImage              image,
         mem_barrier_count = 1;
     }
 
-    vkCmdPipelineBarrier(sCommandBuffers[sFrameIndex],
+    vkCmdPipelineBarrier(rec_cmd,
                          rec_src_stage, rec_dst_stage,
                          0,
                          mem_barrier_count, mem_barrier_count ? &attachment_sync : nullptr,
@@ -7910,7 +7924,7 @@ void transitionImageLayoutVk(VkImage              image,
         resume_info.pDepthAttachment      = (sSavedHasDepth ? &depth_resume : nullptr);
         resume_info.pStencilAttachment    = nullptr;
 
-        vkCmdBeginRendering(sCommandBuffers[sFrameIndex], &resume_info);
+        vkCmdBeginRendering(rec_cmd, &resume_info);
         sInDynamicRendering = true;
     }
 }

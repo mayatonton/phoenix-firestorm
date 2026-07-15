@@ -1384,6 +1384,6 @@ void render_bbox(const LLVector3 &min, const LLVector3 &max);
 void render_hud_elements();
 
 extern LLPipeline gPipeline;
-extern const LLMatrix4* gGLLastMatrix;
+extern thread_local const LLMatrix4* gGLLastMatrix;
 
 #endif

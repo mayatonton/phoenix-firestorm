@@ -69,18 +69,18 @@ using std::pair;
 using std::make_pair;
 using std::string;
 
-LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
+thread_local LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 
-VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
-bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
-U32 LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
+thread_local VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+thread_local U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
+thread_local bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
+thread_local U32 LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
 
 namespace
 {
-    LLGLSLShader*      sVkPipeMemoShader = nullptr;
-    VkPipelineStateKey sVkPipeMemoKey;
-    VkPipeline         sVkPipeMemoPipe = VK_NULL_HANDLE;
+    thread_local LLGLSLShader*      sVkPipeMemoShader = nullptr;
+    thread_local VkPipelineStateKey sVkPipeMemoKey;
+    thread_local VkPipeline         sVkPipeMemoPipe = VK_NULL_HANDLE;
 }
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;

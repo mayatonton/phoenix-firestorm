@@ -198,7 +198,7 @@ public:
         std::vector<std::string> sources;
     };
 
-    static LLGLSLShader* sCurBoundShaderPtr;
+    static thread_local LLGLSLShader* sCurBoundShaderPtr;
     static S32 sIndexedTextureChannels;
 
     static U32 sMaxGLTFMaterials;
@@ -376,11 +376,11 @@ public:
     static bool vkUsePositiveViewport(bool render_target_bound, bool capture_regime);
 
     VkDeviceSize sharedUBOBindingSize(U32 binding) const;
-    static VkDescriptorSet     sCurPerCallVkDescriptorSet;
+    static thread_local VkDescriptorSet sCurPerCallVkDescriptorSet;
     static constexpr U32       MAX_VK_DYNAMIC_BINDINGS = 8;
-    static U32                 sCurPerCallVkDynamicOffsets[MAX_VK_DYNAMIC_BINDINGS];
-    static bool                sCurPerCallVkOffsetsDirty;
-    static U32                 sCurPerCallVkSetShape;
+    static thread_local U32    sCurPerCallVkDynamicOffsets[MAX_VK_DYNAMIC_BINDINGS];
+    static thread_local bool   sCurPerCallVkOffsetsDirty;
+    static thread_local U32    sCurPerCallVkSetShape;
     static void vkRefreshDynamicOffsetsForDraw();
 
     VkBuffer                   mVkPerProgramUBO         = VK_NULL_HANDLE;
