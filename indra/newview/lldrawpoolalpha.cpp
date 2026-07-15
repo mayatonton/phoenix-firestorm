@@ -295,17 +295,10 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // shooting through. Extend the existing DoF alpha-depth gate to also
     // fire when Cinematic + RenderVolumetricLighting is on. BD lineage:
     // lldrawpoolalpha.cpp:210-226 in BlackDragon 995a1354d8 (BD OR'd the two
-    // pipeline statics directly; AYAstorm reads via LLCachedControl since
-    // RenderVolumetricLighting isn't promoted to a static cvar here).
-    // <FS:AYAstorm r30 BD full port Phase 3.7 cat 02> RenderVolumetricLighting
-    // を dispatch helper 経由で読む。Cinematic では BD default (false) を返す
-    // ため volumetric_wants_alpha_depth は必ず false → BD parity (BD は
-    // volumetric OFF default + r18 stack 全 disable)。mode 0/1 は従来通り
-    // aya_view_mode==2 で gate されているので発火しない。spec §3.1 phase3.5-ay-only。
+    // pipeline statics directly).
     const bool volumetric_wants_alpha_depth =
         LLPipeline::isCinematicMode()
         && gSavedSettings.getBOOL("RenderVolumetricLighting");
-    // </FS:AYAstorm>
     // </AYAstorm r30 P3 step 5>
 
     // final pass, render to depth for depth of field effects
@@ -900,6 +893,11 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
             bool is_particle_or_hud_particle = group->getSpatialPartition()->mPartitionType == LLViewerRegion::PARTITION_PARTICLE
                                                       || group->getSpatialPartition()->mPartitionType == LLViewerRegion::PARTITION_HUD_PARTICLE;
+
+            if (depth_only && is_particle_or_hud_particle)
+            {
+                continue;
+            }
 
             // <FS:LO> Dont suspend partical processing while particles are hidden, just skip over drawing them
             if(!(gPipeline.sRenderParticles) && (
