@@ -190,6 +190,15 @@ namespace
     VkRect2D         sLastScissor      = {};
     bool             sViewportScissorValid = false;
 
+    bool vkCmdMemoEnabled()
+    {
+        static const bool s_enabled = []() -> bool {
+            const char* e = getenv("AYASTORM_VKCMD_MEMO");
+            return (e == nullptr) || (atof(e) != 0.0);
+        }();
+        return s_enabled;
+    }
+
     VkSampler             sStandardLinearSampler                  = VK_NULL_HANDLE;
 
     std::unordered_map<U32, VkSampler> sSamplerCache;
@@ -7897,7 +7906,8 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
     scissor.extent.width  = (U32)llmax(sc_w, 0);
     scissor.extent.height = (U32)llmax(sc_h, 0);
 
-    if (sViewportScissorValid
+    if (vkCmdMemoEnabled()
+        && sViewportScissorValid
         && std::memcmp(&viewport, &sLastViewport, sizeof(viewport)) == 0
         && std::memcmp(&scissor, &sLastScissor, sizeof(scissor)) == 0)
     {
@@ -7914,7 +7924,7 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
 
 void bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline)
 {
-    if (pipeline == sLastBoundGraphicsPipeline)
+    if (vkCmdMemoEnabled() && pipeline == sLastBoundGraphicsPipeline)
     {
         ++gVkPerf.pipe_skip;
         return;
@@ -7936,7 +7946,8 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
     {
         ++gVkPerf.draws_shadow_map[gVkPerfShadowMapIndex < 6u ? gVkPerfShadowMapIndex : 5u];
     }
-    if (layout == sLastDescLayout
+    if (vkCmdMemoEnabled()
+        && layout == sLastDescLayout
         && set0 == sLastDescSet0
         && set1 == sLastDescSet1
         && dyn_count == sLastDescDynCount
@@ -7967,7 +7978,7 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
 
 void pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float* mv16)
 {
-    if (layout == sLastMvLayout && std::memcmp(mv16, sLastMv, sizeof(sLastMv)) == 0)
+    if (vkCmdMemoEnabled() && layout == sLastMvLayout && std::memcmp(mv16, sLastMv, sizeof(sLastMv)) == 0)
     {
         ++gVkPerf.mv_skip;
         return;
