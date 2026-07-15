@@ -43,6 +43,10 @@
 #include <mutex>
 #include <set>
 #include <queue>
+#include <algorithm>
+#include <condition_variable>
+#include <deque>
+#include <thread>
 #include <pthread.h>
 #if LL_LINUX
 #include <cstdio>
@@ -403,7 +407,7 @@ namespace
     void*         sSwapchainDepthAlloc  = nullptr;
     VkImageLayout sSwapchainDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    bool sSwapchainRecreatePending = false;
+    std::atomic<bool> sSwapchainRecreatePending{false};
     U32  sPendingResizeWidth       = 0;
     U32  sPendingResizeHeight      = 0;
     U32  sMonotonicFrameCount      = 0;
@@ -450,6 +454,279 @@ namespace
 
     U32 sLastCompletedMonotonic = 0;
     U32 sFrameSubmittedMonotonic[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+
+    enum : U32
+    {
+        PE_SLOT_IDLE      = 0,
+        PE_SLOT_PENDING   = 1,
+        PE_SLOT_SUBMITTED = 2,
+        PE_SLOT_FAILED    = 3
+    };
+
+    struct PEPresentTarget
+    {
+        VkSwapchainKHR swapchain      = VK_NULL_HANDLE;
+        U32            image_index    = 0;
+        VkSemaphore    wait_semaphore = VK_NULL_HANDLE;
+    };
+
+    struct PESyncPoint
+    {
+        std::mutex              m;
+        std::condition_variable cv;
+        bool                    done   = false;
+        VkResult                result = VK_ERROR_UNKNOWN;
+    };
+
+    struct PEJob
+    {
+        VkCommandBuffer cmd              = VK_NULL_HANDLE;
+        VkFence         fence            = VK_NULL_HANDLE;
+        VkSemaphore     wait_semaphore   = VK_NULL_HANDLE;
+        VkSemaphore     signal_semaphore = VK_NULL_HANDLE;
+        std::vector<PEPresentTarget> presents;
+        bool            is_frame   = false;
+        bool            is_oneshot = false;
+        bool            wait_idle  = false;
+        U32             slot       = 0;
+        PESyncPoint*    sync       = nullptr;
+    };
+
+    std::atomic<U32>        sPESlotState[FRAMES_IN_FLIGHT] = {};
+    std::mutex              sPESlotMutex;
+    std::condition_variable sPESlotCv;
+
+    std::mutex              sPEQueueMutex;
+    std::condition_variable sPEQueueCv;
+    std::deque<PEJob>       sPEJobs;
+    bool                    sPEBusy          = false;
+    bool                    sPEStopRequested = false;
+    bool                    sPERunning       = false;
+    bool                    sPEThreaded      = false;
+    std::thread             sPEThread;
+
+    std::mutex              sSwapchainAccessMutex;
+
+    std::mutex              sPEFailedMutex;
+    std::vector<VkFence>    sPEFailedOneShotFences;
+
+    std::atomic<U64>        sPESubmitUs{0};
+    std::atomic<U64>        sPEPresentUs{0};
+
+    void peExecute(PEJob& job)
+    {
+        VkSubmitInfo si = {};
+        si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        if (job.cmd != VK_NULL_HANDLE)
+        {
+            si.commandBufferCount = 1;
+            si.pCommandBuffers    = &job.cmd;
+        }
+        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        if (job.wait_semaphore != VK_NULL_HANDLE)
+        {
+            si.waitSemaphoreCount = 1;
+            si.pWaitSemaphores    = &job.wait_semaphore;
+            si.pWaitDstStageMask  = &wait_stage;
+        }
+        if (job.signal_semaphore != VK_NULL_HANDLE)
+        {
+            si.signalSemaphoreCount = 1;
+            si.pSignalSemaphores    = &job.signal_semaphore;
+        }
+
+        const auto t0 = std::chrono::steady_clock::now();
+        VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, job.fence);
+        if (sr == VK_SUCCESS && job.wait_idle)
+        {
+            vkQueueWaitIdle(sGraphicsQueue);
+        }
+        sPESubmitUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+
+        if (job.is_frame)
+        {
+            {
+                std::lock_guard<std::mutex> lk(sPESlotMutex);
+                sPESlotState[job.slot].store((sr == VK_SUCCESS) ? PE_SLOT_SUBMITTED : PE_SLOT_FAILED);
+            }
+            sPESlotCv.notify_all();
+        }
+        else if (sr != VK_SUCCESS && job.is_oneshot && job.fence != VK_NULL_HANDLE)
+        {
+            std::lock_guard<std::mutex> lk(sPEFailedMutex);
+            sPEFailedOneShotFences.push_back(job.fence);
+        }
+
+        if (sr != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "PresentEngine submit failed sr=" << (S32)sr
+                               << " frame=" << (job.is_frame ? 1 : 0) << LL_ENDL;
+        }
+        else
+        {
+            for (PEPresentTarget& t : job.presents)
+            {
+                if (t.swapchain == VK_NULL_HANDLE)
+                {
+                    continue;
+                }
+                VkPresentInfoKHR present_info = {};
+                present_info.sType          = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+                present_info.swapchainCount = 1;
+                present_info.pSwapchains    = &t.swapchain;
+                present_info.pImageIndices  = &t.image_index;
+                if (t.wait_semaphore != VK_NULL_HANDLE)
+                {
+                    present_info.waitSemaphoreCount = 1;
+                    present_info.pWaitSemaphores    = &t.wait_semaphore;
+                }
+                const auto p0 = std::chrono::steady_clock::now();
+                VkResult pr;
+                {
+                    std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
+                    pr = vkQueuePresentKHR(sGraphicsQueue, &present_info);
+                }
+                sPEPresentUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - p0).count();
+                if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
+                {
+                    sSwapchainRecreatePending = true;
+                }
+            }
+        }
+
+        if (job.sync != nullptr)
+        {
+            {
+                std::lock_guard<std::mutex> lk(job.sync->m);
+                job.sync->done   = true;
+                job.sync->result = sr;
+            }
+            job.sync->cv.notify_all();
+        }
+    }
+
+    void peThreadMain()
+    {
+#if LL_LINUX
+        pthread_setname_np(pthread_self(), "aya-present");
+#endif
+        for (;;)
+        {
+            PEJob job;
+            {
+                std::unique_lock<std::mutex> lk(sPEQueueMutex);
+                sPEQueueCv.wait(lk, [] { return sPEStopRequested || !sPEJobs.empty(); });
+                if (sPEJobs.empty())
+                {
+                    return;
+                }
+                job = std::move(sPEJobs.front());
+                sPEJobs.pop_front();
+                sPEBusy = true;
+            }
+            peExecute(job);
+            {
+                std::lock_guard<std::mutex> lk(sPEQueueMutex);
+                sPEBusy = false;
+            }
+            sPEQueueCv.notify_all();
+        }
+    }
+
+    void peEnqueue(PEJob&& job)
+    {
+        if (!sPERunning)
+        {
+            peExecute(job);
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lk(sPEQueueMutex);
+            sPEJobs.push_back(std::move(job));
+        }
+        sPEQueueCv.notify_one();
+    }
+
+    VkResult peSubmitBlocking(VkCommandBuffer cmd, VkFence fence, bool wait_idle)
+    {
+        PESyncPoint sync;
+        PEJob job;
+        job.cmd       = cmd;
+        job.fence     = fence;
+        job.wait_idle = wait_idle;
+        job.sync      = &sync;
+        if (!sPERunning)
+        {
+            peExecute(job);
+            return sync.result;
+        }
+        {
+            std::lock_guard<std::mutex> lk(sPEQueueMutex);
+            sPEJobs.push_back(std::move(job));
+        }
+        sPEQueueCv.notify_one();
+        std::unique_lock<std::mutex> lk(sync.m);
+        sync.cv.wait(lk, [&] { return sync.done; });
+        return sync.result;
+    }
+
+    bool peWaitSlotSubmitted(U32 slot)
+    {
+        for (;;)
+        {
+            const U32 st = sPESlotState[slot].load();
+            if (st != PE_SLOT_PENDING)
+            {
+                return st == PE_SLOT_SUBMITTED;
+            }
+            std::unique_lock<std::mutex> lk(sPESlotMutex);
+            sPESlotCv.wait(lk, [slot] { return sPESlotState[slot].load() != PE_SLOT_PENDING; });
+        }
+    }
+
+    void peDrain()
+    {
+        if (!sPERunning)
+        {
+            return;
+        }
+        std::unique_lock<std::mutex> lk(sPEQueueMutex);
+        sPEQueueCv.wait(lk, [] { return sPEJobs.empty() && !sPEBusy; });
+    }
+
+    void peStart()
+    {
+        const char* e = getenv("AYASTORM_MT_THREADS");
+        sPEThreaded = (e == nullptr) || (atoi(e) > 1);
+        if (!sPEThreaded)
+        {
+            return;
+        }
+        sPEStopRequested = false;
+        sPERunning       = true;
+        sPEThread        = std::thread(peThreadMain);
+    }
+
+    void peStop()
+    {
+        if (!sPERunning)
+        {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lk(sPEQueueMutex);
+            sPEStopRequested = true;
+        }
+        sPEQueueCv.notify_all();
+        if (sPEThread.joinable())
+        {
+            sPEThread.join();
+        }
+        sPERunning  = false;
+        sPEThreaded = false;
+    }
 
     struct PendingQueryRelease
     {
@@ -1161,12 +1438,7 @@ namespace
 
             vkEndCommandBuffer(one_cmd);
 
-            VkSubmitInfo si = {};
-            si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            si.commandBufferCount = 1;
-            si.pCommandBuffers    = &one_cmd;
-            vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
-            vkQueueWaitIdle(sGraphicsQueue);
+            peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
 
             vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
             vkDestroyBuffer(sDevice, staging_buf, nullptr);
@@ -1243,12 +1515,7 @@ namespace
                              0, 0, nullptr, 0, nullptr, 1, &to_read);
 
         vkEndCommandBuffer(one_cmd);
-        VkSubmitInfo si = {};
-        si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        si.commandBufferCount = 1;
-        si.pCommandBuffers    = &one_cmd;
-        vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
-        vkQueueWaitIdle(sGraphicsQueue);
+        peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
 
         return true;
@@ -1310,12 +1577,7 @@ namespace
                              0, 0, nullptr, 0, nullptr, 1, &to_read);
 
         vkEndCommandBuffer(one_cmd);
-        VkSubmitInfo si = {};
-        si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        si.commandBufferCount = 1;
-        si.pCommandBuffers    = &one_cmd;
-        vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
-        vkQueueWaitIdle(sGraphicsQueue);
+        peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
 
         return true;
@@ -1377,12 +1639,7 @@ namespace
                              0, 0, nullptr, 0, nullptr, 1, &to_read);
 
         vkEndCommandBuffer(one_cmd);
-        VkSubmitInfo si = {};
-        si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        si.commandBufferCount = 1;
-        si.pCommandBuffers    = &one_cmd;
-        vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
-        vkQueueWaitIdle(sGraphicsQueue);
+        peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
 
         return true;
@@ -2621,6 +2878,7 @@ namespace
             return false;
         }
 
+        peDrain();
         vkDeviceWaitIdle(sDevice);
         for (VkImageView& view : sSwapchainImageViews)
         {
@@ -2757,12 +3015,15 @@ bool initVulkan()
         return false;
     }
 
+    peStart();
+
     sInitialized = true;
     return true;
 }
 
 void shutdownVulkan()
 {
+    peStop();
     if (sDevice != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(sDevice);
@@ -3205,16 +3466,21 @@ bool beginFrame(bool acquire_swapchain)
 
     sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT;
 
+    const bool slot_submitted = peWaitSlotSubmitted(sFrameIndex);
     if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
     {
-        vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
-                                            VK_TRUE, UINT64_MAX);
-        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
-        if (sFrameSubmittedMonotonic[sFrameIndex] > sLastCompletedMonotonic)
+        if (slot_submitted)
         {
-            sLastCompletedMonotonic = sFrameSubmittedMonotonic[sFrameIndex];
+            vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
+                                                VK_TRUE, UINT64_MAX);
+            if (sFrameSubmittedMonotonic[sFrameIndex] > sLastCompletedMonotonic)
+            {
+                sLastCompletedMonotonic = sFrameSubmittedMonotonic[sFrameIndex];
+            }
         }
+        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
     }
+    sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
     {
@@ -3228,10 +3494,14 @@ bool beginFrame(bool acquire_swapchain)
         sSwapchain != VK_NULL_HANDLE &&
         sImageAvailableSemaphores[sFrameIndex] != VK_NULL_HANDLE)
     {
-        VkResult acquire_res = vkAcquireNextImageKHR(sDevice, sSwapchain, UINT64_MAX,
-                                                      sImageAvailableSemaphores[sFrameIndex],
-                                                      VK_NULL_HANDLE,
-                                                      &sAcquiredImageIndex);
+        VkResult acquire_res;
+        {
+            std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
+            acquire_res = vkAcquireNextImageKHR(sDevice, sSwapchain, UINT64_MAX,
+                                                sImageAvailableSemaphores[sFrameIndex],
+                                                VK_NULL_HANDLE,
+                                                &sAcquiredImageIndex);
+        }
         if (acquire_res == VK_SUCCESS || acquire_res == VK_SUBOPTIMAL_KHR)
         {
             sImageAcquired = true;
@@ -3343,6 +3613,9 @@ bool endFrame()
                                    << "/" << gVkPerf.draws_shadow_map[5]
                                    << " culled=" << gVkPerf.shadow_cull
                                    << " rigged=" << gVkPerf.shadow_rigged
+                                   << " | pe sub_ms=" << ((F64)sPESubmitUs.exchange(0) / 1000.0)
+                                   << " prs_ms=" << ((F64)sPEPresentUs.exchange(0) / 1000.0)
+                                   << " mt=" << (sPEThreaded ? 1 : 0)
                                    << LL_ENDL;
             }
             gVkPerf = VkPerfCounters();
@@ -3430,63 +3703,27 @@ bool endFrame()
     }
 
     {
-        VkSubmitInfo submit_info = {};
-        submit_info.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers    = &sCommandBuffers[sFrameIndex];
-
-        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        PEJob job;
+        job.is_frame = true;
+        job.slot     = sFrameIndex;
+        job.cmd      = sCommandBuffers[sFrameIndex];
+        job.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
         {
-            submit_info.waitSemaphoreCount   = 1;
-            submit_info.pWaitSemaphores      = &sImageAvailableSemaphores[sFrameIndex];
-            submit_info.pWaitDstStageMask    = &wait_stage;
-            submit_info.signalSemaphoreCount = 1;
-            submit_info.pSignalSemaphores    = &sRenderFinishedSemaphores[sFrameIndex];
-
-        }
-        else
-        {
-            submit_info.waitSemaphoreCount   = 0;
-            submit_info.pWaitSemaphores      = nullptr;
-            submit_info.pWaitDstStageMask    = nullptr;
-            submit_info.signalSemaphoreCount = 0;
-            submit_info.pSignalSemaphores    = nullptr;
-
-        }
-
-        VkResult submit_res = vkQueueSubmit(sGraphicsQueue, 1, &submit_info,
-                                            sInFlightFences[sFrameIndex]);
-        if (submit_res != VK_SUCCESS)
-        {
-            sInFrame = false;
-            sImageAcquired = false;
-            return false;
+            job.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
+            job.signal_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+            if (sSwapchain != VK_NULL_HANDLE)
+            {
+                PEPresentTarget target;
+                target.swapchain      = sSwapchain;
+                target.image_index    = sAcquiredImageIndex;
+                target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                job.presents.push_back(target);
+            }
         }
         sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
-    }
-
-    if (sImageAcquired && sSwapchain != VK_NULL_HANDLE)
-    {
-        VkPresentInfoKHR present_info = {};
-        present_info.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        present_info.waitSemaphoreCount = 1;
-        present_info.pWaitSemaphores    = &sRenderFinishedSemaphores[sFrameIndex];
-        present_info.swapchainCount     = 1;
-        present_info.pSwapchains        = &sSwapchain;
-        present_info.pImageIndices      = &sAcquiredImageIndex;
-        present_info.pResults           = nullptr;
-
-
-        VkResult present_res = vkQueuePresentKHR(sGraphicsQueue, &present_info);
-        if (present_res == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            sSwapchainRecreatePending = true;
-        }
-        else if (present_res == VK_SUBOPTIMAL_KHR)
-        {
-            sSwapchainRecreatePending = true;
-        }
+        sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
+        peEnqueue(std::move(job));
     }
 
     sImageAcquired = false;
@@ -3505,16 +3742,21 @@ bool beginOffscreenFrameVk()
         return false;
     }
 
+    const bool slot_submitted = peWaitSlotSubmitted(sFrameIndex);
     if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
     {
-        vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
-                                            VK_TRUE, UINT64_MAX);
-        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
-        if (sFrameSubmittedMonotonic[sFrameIndex] > sLastCompletedMonotonic)
+        if (slot_submitted)
         {
-            sLastCompletedMonotonic = sFrameSubmittedMonotonic[sFrameIndex];
+            vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
+                                                VK_TRUE, UINT64_MAX);
+            if (sFrameSubmittedMonotonic[sFrameIndex] > sLastCompletedMonotonic)
+            {
+                sLastCompletedMonotonic = sFrameSubmittedMonotonic[sFrameIndex];
+            }
         }
+        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
     }
+    sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
     {
@@ -3558,13 +3800,7 @@ void endOffscreenFrameVk()
         return;
     }
 
-    VkSubmitInfo submit_info = {};
-    submit_info.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers    = &sCommandBuffers[sFrameIndex];
-
-    vkQueueSubmit(sGraphicsQueue, 1, &submit_info, sInFlightFences[sFrameIndex]);
-    vkQueueWaitIdle(sGraphicsQueue);
+    peSubmitBlocking(sCommandBuffers[sFrameIndex], sInFlightFences[sFrameIndex], true);
     sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
     if (sMonotonicFrameCount > sLastCompletedMonotonic)
     {
@@ -5202,9 +5438,9 @@ void tickDeferredBufferFreeQueue()
 bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation)
 {
     tickOneShotFreeQueue();
-    if (sPendingOneShotFrees.size() > 256)
+    for (U32 i = 0; i < 20 && sPendingOneShotFrees.size() > 256; ++i)
     {
-        vkWaitForFences(sDevice, 1, &sPendingOneShotFrees.front().fence, VK_TRUE, UINT64_MAX);
+        vkWaitForFences(sDevice, 1, &sPendingOneShotFrees.front().fence, VK_TRUE, 100000000ull);
         tickOneShotFreeQueue();
     }
 
@@ -5225,34 +5461,23 @@ bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation
         }
     }
 
-    VkSubmitInfo si = {};
-    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers    = &cmd;
-    VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, fence);
-    if (sr != VK_SUCCESS)
-    {
-        if (fence != VK_NULL_HANDLE)
-        {
-            sSubmitFencePool.push_back(fence);
-        }
-        vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
-        if (staging_buffer != VK_NULL_HANDLE || staging_allocation != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
-        }
-        return false;
-    }
-
     if (fence == VK_NULL_HANDLE)
     {
-        vkQueueWaitIdle(sGraphicsQueue);
+        VkResult sr = peSubmitBlocking(cmd, VK_NULL_HANDLE, true);
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
         if (staging_buffer != VK_NULL_HANDLE || staging_allocation != VK_NULL_HANDLE)
         {
             vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         }
-        return true;
+        return sr == VK_SUCCESS;
+    }
+
+    {
+        PEJob job;
+        job.cmd        = cmd;
+        job.fence      = fence;
+        job.is_oneshot = true;
+        peEnqueue(std::move(job));
     }
 
     PendingOneShotFree pending;
@@ -5270,12 +5495,19 @@ void tickOneShotFreeQueue()
     {
         return;
     }
+    std::vector<VkFence> failed;
+    {
+        std::lock_guard<std::mutex> lk(sPEFailedMutex);
+        failed.swap(sPEFailedOneShotFences);
+    }
     size_t w = 0;
     const size_t n = sPendingOneShotFrees.size();
     for (size_t r = 0; r < n; ++r)
     {
         PendingOneShotFree& e = sPendingOneShotFrees[r];
-        if (vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
+        const bool submit_failed = !failed.empty() &&
+            std::find(failed.begin(), failed.end(), e.fence) != failed.end();
+        if (submit_failed || vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
         {
             vkFreeCommandBuffers(sDevice, sCommandPool, 1, &e.cmd);
             if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
@@ -5444,12 +5676,7 @@ bool createColorAttachmentImageVk(U32          width,
                                  0, 0, nullptr, 0, nullptr, 1, &to_read);
 
             vkEndCommandBuffer(one_cmd);
-            VkSubmitInfo si = {};
-            si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            si.commandBufferCount = 1;
-            si.pCommandBuffers    = &one_cmd;
-            vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
-            vkQueueWaitIdle(sGraphicsQueue);
+            peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
             vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
         }
     }
@@ -6951,12 +7178,7 @@ bool createCubeArrayImageVk(U32          resolution,
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
         vkEndCommandBuffer(cmd);
-        VkSubmitInfo si = {};
-        si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        si.commandBufferCount = 1;
-        si.pCommandBuffers    = &cmd;
-        vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
-        vkQueueWaitIdle(sGraphicsQueue);
+        peSubmitBlocking(cmd, VK_NULL_HANDLE, true);
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
     }
 
@@ -7347,18 +7569,13 @@ bool readbackColorImageRegionVk(VkImage       image,
 
     vkEndCommandBuffer(cmd);
 
-    VkSubmitInfo si = {};
-    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers    = &cmd;
-    VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
+    VkResult sr = peSubmitBlocking(cmd, VK_NULL_HANDLE, true);
     if (sr != VK_SUCCESS)
     {
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
     vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
 
     memcpy(out_pixels, staging_mapped, (size_t)read_size);
@@ -7513,18 +7730,13 @@ bool readbackDepthImageRegionVk(VkImage       image,
 
     vkEndCommandBuffer(cmd);
 
-    VkSubmitInfo si = {};
-    si.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers    = &cmd;
-    VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, VK_NULL_HANDLE);
+    VkResult sr = peSubmitBlocking(cmd, VK_NULL_HANDLE, true);
     if (sr != VK_SUCCESS)
     {
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-    vkQueueWaitIdle(sGraphicsQueue);
     vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
 
     const size_t texel_count = (size_t)width * (size_t)height;

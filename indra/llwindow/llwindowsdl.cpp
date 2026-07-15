@@ -461,6 +461,8 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
     mFSAASamples = fsaa_samples;
 
 #if LL_X11
+    static const int sX11ThreadsReady = XInitThreads();
+    (void)sX11ThreadsReady;
     mSDL_XWindowID = None;
     mSDL_Display = NULL;
 #endif // LL_X11
