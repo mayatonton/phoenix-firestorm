@@ -44,6 +44,10 @@
 #include <set>
 #include <queue>
 #include <pthread.h>
+#if LL_LINUX
+#include <cstdio>
+#include <sys/resource.h>
+#endif
 
 extern LLControlGroup gSavedSettings;
 
@@ -3342,6 +3346,59 @@ bool endFrame()
                                    << LL_ENDL;
             }
             gVkPerf = VkPerfCounters();
+#if LL_LINUX
+            {
+                static U64 s_prev_busy[32]  = {};
+                static U64 s_prev_total[32] = {};
+                static U64 s_prev_thread_us = 0;
+                FILE* f = fopen("/proc/stat", "r");
+                if (f != nullptr)
+                {
+                    std::string cpu_line;
+                    char lbuf[256];
+                    while (fgets(lbuf, sizeof(lbuf), f) != nullptr)
+                    {
+                        U32 idx = 0;
+                        unsigned long long u, n, s, i, w, irq, sirq, st;
+                        if (sscanf(lbuf, "cpu%u %llu %llu %llu %llu %llu %llu %llu %llu",
+                                   &idx, &u, &n, &s, &i, &w, &irq, &sirq, &st) == 9
+                            && idx < 32)
+                        {
+                            const U64 busy  = u + n + s + irq + sirq + st;
+                            const U64 total = busy + i + w;
+                            const U64 db = busy - s_prev_busy[idx];
+                            const U64 dt = total - s_prev_total[idx];
+                            s_prev_busy[idx]  = busy;
+                            s_prev_total[idx] = total;
+                            if (dt > 0)
+                            {
+                                char pb[8];
+                                snprintf(pb, sizeof(pb), "%s%u", cpu_line.empty() ? "" : "/",
+                                         (U32)(db * 100 / dt));
+                                cpu_line += pb;
+                            }
+                        }
+                    }
+                    fclose(f);
+
+                    struct rusage ru;
+                    U32 main_pct = 0;
+                    if (getrusage(RUSAGE_THREAD, &ru) == 0)
+                    {
+                        const U64 thread_us = (U64)ru.ru_utime.tv_sec * 1000000ull + ru.ru_utime.tv_usec
+                                            + (U64)ru.ru_stime.tv_sec * 1000000ull + ru.ru_stime.tv_usec;
+                        const F64 wall_us = elapsed * 1000000.0;
+                        if (s_prev_thread_us > 0 && wall_us > 0)
+                        {
+                            main_pct = (U32)llclamp((F64)(thread_us - s_prev_thread_us) * 100.0 / wall_us, 0.0, 100.0);
+                        }
+                        s_prev_thread_us = thread_us;
+                    }
+
+                    LL_INFOS("VkPerf") << "cpu main=" << main_pct << "% cores=" << cpu_line << LL_ENDL;
+                }
+            }
+#endif
             s_last_emit  = now;
             s_last_frame = sMonotonicFrameCount;
         }
