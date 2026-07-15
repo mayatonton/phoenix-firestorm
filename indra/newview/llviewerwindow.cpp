@@ -715,7 +715,7 @@ public:
             addText(xpos, ypos, llformat("%d/%d Objects Active", gObjectList.getNumActiveObjects(), gObjectList.getNumObjects()));
             ypos += y_inc;
 
-            addText(xpos, ypos, llformat("%d Matrix Ops", gPipeline.mMatrixOpCount));
+            addText(xpos, ypos, llformat("%d Matrix Ops", gPipeline.mMatrixOpCount.load()));
             ypos += y_inc;
 
             addText(xpos, ypos, llformat("%d Texture Matrix Ops", gPipeline.mTextureMatrixOps));

@@ -42,8 +42,8 @@
 
 thread_local LLRender gGL;
 
-F32 gGLModelView[16];
-F32 gGLLastModelView[16];
+thread_local F32 gGLModelView[16];
+thread_local F32 gGLLastModelView[16];
 F32 gGLLastProjection[16];
 F32 gGLProjection[16];
 

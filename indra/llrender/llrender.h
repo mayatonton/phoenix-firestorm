@@ -478,8 +478,8 @@ private:
     std::vector<LLVector4a, boost::alignment::aligned_allocator<LLVector4a, 16> > mUIScale;
 };
 
-extern F32 gGLModelView[16];
-extern F32 gGLLastModelView[16];
+extern thread_local F32 gGLModelView[16];
+extern thread_local F32 gGLLastModelView[16];
 extern F32 gGLLastProjection[16];
 extern F32 gGLProjection[16];
 extern S32 gGLViewport[4];

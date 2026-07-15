@@ -354,9 +354,9 @@ void rotate_quat(LLQuaternion& rotation)
     gGL.rotatef(angle_radians * RAD_TO_DEG, x, y, z);
 }
 
-boost::unordered_map<LLGLenum, LLGLboolean> LLGLState::sStateMap;
+thread_local boost::unordered_map<LLGLenum, LLGLboolean> LLGLState::sStateMap;
 
-GLenum LLGLState::sCullFaceMode = GL_BACK;
+thread_local GLenum LLGLState::sCullFaceMode = GL_BACK;
 
 void LLGLState::setCullFaceMode(GLenum mode)
 {
@@ -390,20 +390,20 @@ bool LLGLState::isBlendEnabled()
     return (it != sStateMap.end()) && (it->second != GL_FALSE);
 }
 
-GLenum LLGLState::sPolygonMode = GL_FILL;
+thread_local GLenum LLGLState::sPolygonMode = GL_FILL;
 
 void LLGLState::setPolygonMode(GLenum mode)
 {
     sPolygonMode = mode;
 }
 
-GLenum LLGLState::sStencilFunc        = GL_ALWAYS;
-GLint  LLGLState::sStencilRef         = 0;
-GLuint LLGLState::sStencilCompareMask = 0xFFFFFFFFu;
-GLenum LLGLState::sStencilFailOp      = GL_KEEP;
-GLenum LLGLState::sStencilDepthFailOp = GL_KEEP;
-GLenum LLGLState::sStencilDepthPassOp = GL_KEEP;
-GLuint LLGLState::sStencilWriteMask   = 0xFFFFFFFFu;
+thread_local GLenum LLGLState::sStencilFunc        = GL_ALWAYS;
+thread_local GLint  LLGLState::sStencilRef         = 0;
+thread_local GLuint LLGLState::sStencilCompareMask = 0xFFFFFFFFu;
+thread_local GLenum LLGLState::sStencilFailOp      = GL_KEEP;
+thread_local GLenum LLGLState::sStencilDepthFailOp = GL_KEEP;
+thread_local GLenum LLGLState::sStencilDepthPassOp = GL_KEEP;
+thread_local GLuint LLGLState::sStencilWriteMask   = 0xFFFFFFFFu;
 
 void LLGLState::setStencilFunc(GLenum func, GLint ref, GLuint mask)
 {
@@ -430,9 +430,9 @@ bool LLGLState::isStencilTestEnabled()
     return (it != sStateMap.end()) && (it->second != GL_FALSE);
 }
 
-GLboolean LLGLDepthTest::sDepthEnabled = GL_FALSE;
-GLenum LLGLDepthTest::sDepthFunc = GL_LESS;
-GLboolean LLGLDepthTest::sWriteEnabled = GL_TRUE;
+thread_local GLboolean LLGLDepthTest::sDepthEnabled = GL_FALSE;
+thread_local GLenum LLGLDepthTest::sDepthFunc = GL_LESS;
+thread_local GLboolean LLGLDepthTest::sWriteEnabled = GL_TRUE;
 
 void LLGLState::initClass()
 {

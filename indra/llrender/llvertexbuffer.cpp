@@ -388,7 +388,7 @@ U64 LLVertexBuffer::getBytesAllocated()
 
 //
 U32 LLVertexBuffer::sVertexCount = 0;
-U32 LLVertexBuffer::sVkDrawCallCount = 0;
+std::atomic<U32> LLVertexBuffer::sVkDrawCallCount{0};
 
 
 const U32 LLVertexBuffer::sTypeSize[LLVertexBuffer::TYPE_MAX] =

@@ -81,6 +81,7 @@ namespace
     thread_local LLGLSLShader*      sVkPipeMemoShader = nullptr;
     thread_local VkPipelineStateKey sVkPipeMemoKey;
     thread_local VkPipeline         sVkPipeMemoPipe = VK_NULL_HANDLE;
+    std::mutex                      sVkPipelineCacheMutex;
 }
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;
@@ -345,14 +346,17 @@ void LLGLSLShader::unloadInternal()
             sVkPipeMemoShader = nullptr;
             sVkPipeMemoPipe   = VK_NULL_HANDLE;
         }
-        for (auto& kv : mVkPipelineCache)
         {
-            if (kv.second != VK_NULL_HANDLE)
+            std::lock_guard<std::mutex> lk(sVkPipelineCacheMutex);
+            for (auto& kv : mVkPipelineCache)
             {
-                LLVKLoader::destroyPipelineVk(kv.second);
+                if (kv.second != VK_NULL_HANDLE)
+                {
+                    LLVKLoader::destroyPipelineVk(kv.second);
+                }
             }
+            mVkPipelineCache.clear();
         }
-        mVkPipelineCache.clear();
         for (auto& kv : mVkVertexShaderModulesPerProgram)
         {
             if (kv.second != VK_NULL_HANDLE)
@@ -2102,13 +2106,17 @@ void LLGLSLShader::bind()
 
     if (sCurBoundShaderPtr != this)  // Don't re-bind current shader
     {
-        if (sCurBoundShaderPtr)
+        const bool record_job = LLVKLoader::isRecordJobActive();
+        if (sCurBoundShaderPtr && !record_job)
         {
             sCurBoundShaderPtr->readProfileQuery();
         }
         LLVertexBuffer::unbind();
         sCurBoundShaderPtr = this;
-        placeProfileQuery();
+        if (!record_job)
+        {
+            placeProfileQuery();
+        }
 
         sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 
@@ -2125,7 +2133,7 @@ void LLGLSLShader::bind()
             }
         }
 
-        if (LLVKLoader::isVulkanInitialized() && !mChannelToEnum.empty())
+        if (LLVKLoader::isVulkanInitialized() && !mChannelToEnum.empty() && !record_job)
         {
             const S32 snap_count = llmin(mActiveTextureChannels, (S32)mChannelToEnum.size());
             for (S32 ch = 0; ch < snap_count; ++ch)
@@ -3117,10 +3125,36 @@ VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
     }
 }
 
+void LLGLSLShader::resetPerThreadRecordState()
+{
+    if (sCurBoundShaderPtr)
+    {
+        sCurBoundShaderPtr = nullptr;
+    }
+    sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    std::memset(sCurPerCallVkDynamicOffsets, 0, sizeof(sCurPerCallVkDynamicOffsets));
+    sCurPerCallVkOffsetsDirty = false;
+    sCurPerCallVkSetShape     = 0xFFFFFFFFu;
+    sVkPipeMemoShader = nullptr;
+    sVkPipeMemoPipe   = VK_NULL_HANDLE;
+}
+
 void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 {
     if (!LLVKLoader::isVulkanInitialized())
     {
+        return;
+    }
+    if (LLVKLoader::isRecordJobActive())
+    {
+        static std::atomic<U32> s_record_populate_hits{0};
+        const U32 n = ++s_record_populate_hits;
+        if ((n & (n - 1)) == 0)
+        {
+            LL_WARNS("Vulkan") << "populateAndBindUniversalDescriptorSet called in record job (seed lost) shader='"
+                               << (sCurBoundShaderPtr ? sCurBoundShaderPtr->mName : std::string("?"))
+                               << "' count=" << n << LL_ENDL;
+        }
         return;
     }
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
@@ -3498,6 +3532,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
         return sVkPipeMemoPipe;
     }
 
+    std::lock_guard<std::mutex> cache_lock(sVkPipelineCacheMutex);
     auto it = mVkPipelineCache.find(key);
     if (it != mVkPipelineCache.end())
     {

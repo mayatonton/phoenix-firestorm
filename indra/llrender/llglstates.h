@@ -46,9 +46,9 @@ public:
     static GLenum    getCurrentDepthFunc()   { return sDepthFunc; }
 
 private:
-    static GLboolean sDepthEnabled;
-    static GLenum sDepthFunc;
-    static GLboolean sWriteEnabled;
+    static thread_local GLboolean sDepthEnabled;
+    static thread_local GLenum sDepthFunc;
+    static thread_local GLboolean sWriteEnabled;
 };
 
 

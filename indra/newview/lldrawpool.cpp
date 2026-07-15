@@ -382,7 +382,7 @@ void LLFacePool::LLOverrideFaceColor::setColor(F32 r, F32 g, F32 b, F32 a)
 }
 
 
-F32 LLRenderPass::sShadowBatchCullRadius = 0.f;
+thread_local F32 LLRenderPass::sShadowBatchCullRadius = 0.f;
 
 static inline bool vkShadowCullBatch(const LLDrawInfo& params)
 {
@@ -1033,6 +1033,20 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
         return;
     }
 
+    if (LLVKLoader::isRecordJobActive()
+        && (params.mVertexBuffer == nullptr || params.mVertexBuffer->isMapped()))
+    {
+        static std::atomic<U32> s_worker_vb_skips{0};
+        const U32 n = ++s_worker_vb_skips;
+        if ((n & (n - 1)) == 0)
+        {
+            LL_WARNS("Vulkan") << "record job skipped batch (vb "
+                               << (params.mVertexBuffer == nullptr ? "null" : "mapped")
+                               << ") count=" << n << LL_ENDL;
+        }
+        return;
+    }
+
     applyModelMatrix(params);
 
     params.mVertexBuffer->setBuffer();
@@ -1497,6 +1511,13 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
     {
         return;
     }
+
+    if (LLVKLoader::isRecordJobActive()
+        && (params.mVertexBuffer == nullptr || params.mVertexBuffer->isMapped()))
+    {
+        return;
+    }
+
     auto& mat = params.mGLTFMaterial;
 
     LLGLDisable cull_face(mat->mDoubleSided ? GL_CULL_FACE : 0);

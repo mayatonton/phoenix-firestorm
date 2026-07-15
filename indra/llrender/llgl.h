@@ -139,20 +139,20 @@ public:
     static void initClass();
     static void restoreGL();
 
-    static GLenum sCullFaceMode;
+    static thread_local GLenum sCullFaceMode;
     static void setCullFaceMode(GLenum mode);
     static bool  isCullFaceEnabled();
 
-    static GLenum sPolygonMode;
+    static thread_local GLenum sPolygonMode;
     static void setPolygonMode(GLenum mode);
 
-    static GLenum sStencilFunc;
-    static GLint  sStencilRef;
-    static GLuint sStencilCompareMask;
-    static GLenum sStencilFailOp;
-    static GLenum sStencilDepthFailOp;
-    static GLenum sStencilDepthPassOp;
-    static GLuint sStencilWriteMask;
+    static thread_local GLenum sStencilFunc;
+    static thread_local GLint  sStencilRef;
+    static thread_local GLuint sStencilCompareMask;
+    static thread_local GLenum sStencilFailOp;
+    static thread_local GLenum sStencilDepthFailOp;
+    static thread_local GLenum sStencilDepthPassOp;
+    static thread_local GLuint sStencilWriteMask;
     static void setStencilFunc(GLenum func, GLint ref, GLuint mask);
     static void setStencilOp(GLenum sfail, GLenum dpfail, GLenum dppass);
     static void setStencilMask(GLuint mask);
@@ -165,7 +165,7 @@ public:
     static bool  isBlendEnabled();
 
 protected:
-    static boost::unordered_map<LLGLenum, LLGLboolean> sStateMap;
+    static thread_local boost::unordered_map<LLGLenum, LLGLboolean> sStateMap;
 
 public:
     enum { CURRENT_STATE = -2, DISABLED_STATE = 0, ENABLED_STATE = 1 };

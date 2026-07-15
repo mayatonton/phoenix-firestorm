@@ -396,7 +396,7 @@ public:
                                                  U64      gltf_geometry_ubo   = 0,
                                                  U32      gltf_geometry_size  = 0);
 
-    static F32 sShadowBatchCullRadius;
+    static thread_local F32 sShadowBatchCullRadius;
 
     void pushMaskBatches(U32 type, bool texture = true, bool batch_textures = false);
     void pushRiggedMaskBatches(U32 type, bool texture = true, bool batch_textures = false);

@@ -24,6 +24,8 @@
 
 #include "volk.h"
 
+#include <atomic>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -41,6 +43,12 @@ namespace LLVKLoader
     bool beginOffscreenFrameVk();
     void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();
+
+    U32  recordWorkerCount();
+    bool isRecordJobActive();
+    bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body);
+    void joinRecordJobs();
+    void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image);
 
     uint32_t acquireOcclusionQueryVk();
     void     releaseOcclusionQueryVk(uint32_t handle);
@@ -1324,27 +1332,38 @@ namespace LLVKLoader
 
     struct VkPerfCounters
     {
-        U64 pipe_bind     = 0;
-        U64 pipe_skip     = 0;
-        U64 desc_bind     = 0;
-        U64 desc_skip     = 0;
-        U64 mv_push       = 0;
-        U64 mv_skip       = 0;
-        U64 vp_set        = 0;
-        U64 vp_skip       = 0;
-        U64 set_build     = 0;
-        U64 set_reuse     = 0;
-        U64 populate      = 0;
-        U64 syncmat_call  = 0;
-        U64 syncmat_build = 0;
-        U64 draws_pass[5] = {};
-        U64 draws_shadow_map[6] = {};
-        U64 shadow_cull = 0;
-        U64 shadow_rigged = 0;
+        std::atomic<U64> pipe_bind{0};
+        std::atomic<U64> pipe_skip{0};
+        std::atomic<U64> desc_bind{0};
+        std::atomic<U64> desc_skip{0};
+        std::atomic<U64> mv_push{0};
+        std::atomic<U64> mv_skip{0};
+        std::atomic<U64> vp_set{0};
+        std::atomic<U64> vp_skip{0};
+        std::atomic<U64> set_build{0};
+        std::atomic<U64> set_reuse{0};
+        std::atomic<U64> populate{0};
+        std::atomic<U64> syncmat_call{0};
+        std::atomic<U64> syncmat_build{0};
+        std::atomic<U64> draws_pass[5] = {};
+        std::atomic<U64> draws_shadow_map[6] = {};
+        std::atomic<U64> shadow_cull{0};
+        std::atomic<U64> shadow_rigged{0};
+
+        void reset()
+        {
+            pipe_bind = 0; pipe_skip = 0; desc_bind = 0; desc_skip = 0;
+            mv_push = 0; mv_skip = 0; vp_set = 0; vp_skip = 0;
+            set_build = 0; set_reuse = 0; populate = 0;
+            syncmat_call = 0; syncmat_build = 0;
+            for (auto& v : draws_pass) v = 0;
+            for (auto& v : draws_shadow_map) v = 0;
+            shadow_cull = 0; shadow_rigged = 0;
+        }
     };
     extern VkPerfCounters gVkPerf;
-    extern U32 gVkPerfPassTag;
-    extern U32 gVkPerfShadowMapIndex;
+    extern thread_local U32 gVkPerfPassTag;
+    extern thread_local U32 gVkPerfShadowMapIndex;
 
     struct VkPerfPassScope
     {

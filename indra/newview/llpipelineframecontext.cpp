@@ -25,7 +25,7 @@
 
 LLPipelineFrameContext& LLPipelineFrameContext::getInstance()
 {
-    static LLPipelineFrameContext sInstance;
+    static thread_local LLPipelineFrameContext sInstance;
     return sInstance;
 }
 

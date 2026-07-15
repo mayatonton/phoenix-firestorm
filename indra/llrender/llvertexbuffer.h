@@ -35,6 +35,7 @@
 #include "llstrider.h"
 #include "llrender.h"
 #include "lltrace.h"
+#include <atomic>
 #include <set>
 #include <vector>
 #include <list>
@@ -310,11 +311,13 @@ private:
 
 public:
 
+    bool isMapped() const { return mMapped; }
+
     static U64 getBytesAllocated();
     static const U32 sTypeSize[TYPE_MAX];
     static const U32 sGLMode[LLRender::NUM_MODES];
     static U32 sVertexCount;
-    static U32 sVkDrawCallCount;
+    static std::atomic<U32> sVkDrawCallCount;
 };
 
 #if LL_PROFILER_ENABLE_RENDER_DOC

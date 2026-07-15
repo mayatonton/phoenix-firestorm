@@ -206,7 +206,9 @@ public:
     // *HACK
     void swapFBORefs(LLRenderTarget& other);
 
-    static LLRenderTarget* sBoundTarget;
+    void setVkDepthLayout(VkImageLayout layout) { setCurDepthLayout(layout); }
+
+    static thread_local LLRenderTarget* sBoundTarget;
 
 protected:
     U32 mResX;

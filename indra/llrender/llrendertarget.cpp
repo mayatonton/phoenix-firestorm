@@ -32,7 +32,7 @@
 #include "llvkloader.h"
 #include "llglslshader.h"
 
-LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
+thread_local LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
 U32 LLRenderTarget::sBytesAllocated = 0;
 
 extern S32 gGLViewport[4];

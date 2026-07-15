@@ -41,6 +41,7 @@
 #include "llreflectionmapmanager.h"
 #include "llheroprobemanager.h"
 
+#include <atomic>
 #include <stack>
 #include <utility>
 #include <vector>
@@ -427,7 +428,7 @@ public:
 
     void renderHighlight(const LLViewerObject* obj, F32 fade);
 
-    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp);
+    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp, bool mt_split_static = false);
     void renderSelectedFaces(const LLColor4& color);
     void renderHighlights();
     bool renderVignette(LLRenderTarget* src, LLRenderTarget* dst);
@@ -744,7 +745,7 @@ public:
     LLSpatialPartition* getSpatialPartition(LLViewerObject* vobj);
 
     bool                     mBackfaceCull;
-    S32                      mMatrixOpCount;
+    std::atomic<S32>         mMatrixOpCount;
     S32                      mTextureMatrixOps;
     S32                      mNumVisibleNodes;
 

@@ -503,6 +503,7 @@ namespace
 
     struct PEJob
     {
+        std::vector<VkCommandBuffer> pre_cmds;
         VkCommandBuffer cmd              = VK_NULL_HANDLE;
         VkFence         fence            = VK_NULL_HANDLE;
         VkSemaphore     wait_semaphore   = VK_NULL_HANDLE;
@@ -540,7 +541,18 @@ namespace
     {
         VkSubmitInfo si = {};
         si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        if (job.cmd != VK_NULL_HANDLE)
+        std::vector<VkCommandBuffer> submit_cmds;
+        if (!job.pre_cmds.empty())
+        {
+            submit_cmds = job.pre_cmds;
+            if (job.cmd != VK_NULL_HANDLE)
+            {
+                submit_cmds.push_back(job.cmd);
+            }
+            si.commandBufferCount = (U32)submit_cmds.size();
+            si.pCommandBuffers    = submit_cmds.data();
+        }
+        else if (job.cmd != VK_NULL_HANDLE)
         {
             si.commandBufferCount = 1;
             si.pCommandBuffers    = &job.cmd;
@@ -749,6 +761,249 @@ namespace
         }
         sPERunning  = false;
         sPEThreaded = false;
+    }
+
+    struct RecordJob
+    {
+        std::function<void(VkCommandBuffer)> body;
+        U32                                  seq = 0;
+    };
+
+    struct RecordLaneCmds
+    {
+        VkCommandPool                pool[FRAMES_IN_FLIGHT] = {};
+        std::vector<VkCommandBuffer> bufs[FRAMES_IN_FLIGHT];
+        U32                          used[FRAMES_IN_FLIGHT] = {};
+        U32                          reset_frame[FRAMES_IN_FLIGHT] = { ~0u, ~0u, ~0u };
+    };
+    RecordLaneCmds sRecordLaneCmds[MAX_RECORD_LANES];
+
+    std::mutex               sRWQueueMutex;
+    std::condition_variable  sRWQueueCv;
+    std::deque<RecordJob>    sRWJobs;
+    bool                     sRWStopRequested = false;
+    std::vector<std::thread> sRWThreads;
+    bool                     sRWStarted = false;
+
+    std::mutex                   sRWDoneMutex;
+    std::condition_variable      sRWDoneCv;
+    U32                          sRWDispatched = 0;
+    U32                          sRWCompleted  = 0;
+    std::vector<VkCommandBuffer> sRWFrameCmds;
+    std::vector<VkCommandBuffer> sPendingPreFrameCmds;
+
+    thread_local bool tInRecordJob = false;
+
+    U32 rwDesiredWorkerCount()
+    {
+        static const U32 s_count = []() -> U32 {
+            const char* e = getenv("AYASTORM_MT_THREADS");
+            if (e != nullptr && atoi(e) <= 1)
+            {
+                return 0;
+            }
+            const U32 hw  = (U32)std::thread::hardware_concurrency();
+            const U32 cap = (hw > 2) ? (hw - 2) : 1u;
+            U32 want = 4u;
+            if (e != nullptr)
+            {
+                const int v = atoi(e) - 1;
+                want = (v > 0) ? (U32)v : 1u;
+            }
+            return llmin(llmin(want, 4u), cap);
+        }();
+        return s_count;
+    }
+
+    void rwResetRecordThreadLocals()
+    {
+        sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
+        sLastDescLayout            = VK_NULL_HANDLE;
+        sLastDescSet0              = VK_NULL_HANDLE;
+        sLastDescSet1              = VK_NULL_HANDLE;
+        sLastDescDynCount          = 0;
+        sLastMvLayout              = VK_NULL_HANDLE;
+        sViewportScissorValid      = false;
+        sInDynamicRendering        = false;
+        sSavedColorCount           = 0;
+        sSavedHasDepth             = false;
+        sScissorEnabled            = false;
+        for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+        {
+            sMatrixRingHasCurrent[f] = false;
+        }
+    }
+
+    VkCommandBuffer rwAcquireLaneCmd()
+    {
+        const U32 lane = tRecordLaneIndex;
+        const U32 f    = sFrameIndex;
+        if (lane >= MAX_RECORD_LANES || f >= FRAMES_IN_FLIGHT || sDevice == VK_NULL_HANDLE)
+        {
+            return VK_NULL_HANDLE;
+        }
+        RecordLaneCmds& lc = sRecordLaneCmds[lane];
+        if (lc.pool[f] == VK_NULL_HANDLE)
+        {
+            VkCommandPoolCreateInfo ci = {};
+            ci.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            ci.queueFamilyIndex = sGraphicsQueueFamily;
+            if (vkCreateCommandPool(sDevice, &ci, nullptr, &lc.pool[f]) != VK_SUCCESS)
+            {
+                return VK_NULL_HANDLE;
+            }
+        }
+        if (lc.reset_frame[f] != sMonotonicFrameCount)
+        {
+            vkResetCommandPool(sDevice, lc.pool[f], 0);
+            lc.used[f]        = 0;
+            lc.reset_frame[f] = sMonotonicFrameCount;
+        }
+        if (lc.used[f] == (U32)lc.bufs[f].size())
+        {
+            VkCommandBufferAllocateInfo ai = {};
+            ai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            ai.commandPool        = lc.pool[f];
+            ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            ai.commandBufferCount = 1;
+            VkCommandBuffer nb = VK_NULL_HANDLE;
+            if (vkAllocateCommandBuffers(sDevice, &ai, &nb) != VK_SUCCESS || nb == VK_NULL_HANDLE)
+            {
+                return VK_NULL_HANDLE;
+            }
+            lc.bufs[f].push_back(nb);
+        }
+        VkCommandBuffer cmd = lc.bufs[f][lc.used[f]];
+        ++lc.used[f];
+        VkCommandBufferBeginInfo bi = {};
+        bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(cmd, &bi) != VK_SUCCESS)
+        {
+            return VK_NULL_HANDLE;
+        }
+        return cmd;
+    }
+
+    void rwExecute(RecordJob& job)
+    {
+        VkCommandBuffer cmd = rwAcquireLaneCmd();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            rwResetRecordThreadLocals();
+            LLGLSLShader::resetPerThreadRecordState();
+            tInRecordJob       = true;
+            tRecordCmdOverride = cmd;
+            job.body(cmd);
+            if (sInDynamicRendering)
+            {
+                vkCmdEndRendering(cmd);
+                sInDynamicRendering = false;
+            }
+            tRecordCmdOverride = VK_NULL_HANDLE;
+            tInRecordJob       = false;
+            if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "record job vkEndCommandBuffer failed lane=" << tRecordLaneIndex << LL_ENDL;
+                cmd = VK_NULL_HANDLE;
+            }
+            rwResetRecordThreadLocals();
+            LLGLSLShader::resetPerThreadRecordState();
+        }
+        else
+        {
+            LL_WARNS("Vulkan") << "record job cmd acquire failed lane=" << tRecordLaneIndex << LL_ENDL;
+        }
+        {
+            std::lock_guard<std::mutex> lk(sRWDoneMutex);
+            if (job.seq >= (U32)sRWFrameCmds.size())
+            {
+                sRWFrameCmds.resize(job.seq + 1, VK_NULL_HANDLE);
+            }
+            sRWFrameCmds[job.seq] = cmd;
+            ++sRWCompleted;
+        }
+        sRWDoneCv.notify_all();
+    }
+
+    void rwThreadMain(U32 lane)
+    {
+#if LL_LINUX
+        char nm[16];
+        snprintf(nm, sizeof(nm), "aya-rec%u", lane);
+        pthread_setname_np(pthread_self(), nm);
+#endif
+        tRecordLaneIndex = lane;
+        for (;;)
+        {
+            RecordJob job;
+            {
+                std::unique_lock<std::mutex> lk(sRWQueueMutex);
+                sRWQueueCv.wait(lk, [] { return sRWStopRequested || !sRWJobs.empty(); });
+                if (sRWJobs.empty())
+                {
+                    return;
+                }
+                job = std::move(sRWJobs.front());
+                sRWJobs.pop_front();
+            }
+            rwExecute(job);
+        }
+    }
+
+    void rwStart()
+    {
+        if (sRWStarted)
+        {
+            return;
+        }
+        sRWStarted = true;
+        const U32 n = rwDesiredWorkerCount();
+        for (U32 i = 0; i < n; ++i)
+        {
+            sRWThreads.emplace_back(rwThreadMain, i + 1);
+        }
+    }
+
+    void rwStop()
+    {
+        if (!sRWStarted)
+        {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lk(sRWQueueMutex);
+            sRWStopRequested = true;
+        }
+        sRWQueueCv.notify_all();
+        for (std::thread& t : sRWThreads)
+        {
+            if (t.joinable())
+            {
+                t.join();
+            }
+        }
+        sRWThreads.clear();
+        sRWStarted       = false;
+        sRWStopRequested = false;
+    }
+
+    void rwDestroyLanePools()
+    {
+        for (RecordLaneCmds& lc : sRecordLaneCmds)
+        {
+            for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+            {
+                if (lc.pool[f] != VK_NULL_HANDLE)
+                {
+                    vkDestroyCommandPool(sDevice, lc.pool[f], nullptr);
+                    lc.pool[f] = VK_NULL_HANDLE;
+                }
+                lc.bufs[f].clear();
+                lc.used[f]        = 0;
+                lc.reset_frame[f] = ~0u;
+            }
+        }
     }
 
     struct PendingQueryRelease
@@ -3070,10 +3325,12 @@ bool initVulkan()
 
 void shutdownVulkan()
 {
+    rwStop();
     peStop();
     if (sDevice != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(sDevice);
+        rwDestroyLanePools();
 
         if (sAllocator != VK_NULL_HANDLE)
         {
@@ -3614,8 +3871,90 @@ bool beginFrame(bool acquire_swapchain)
 }
 
 VkPerfCounters gVkPerf;
-U32 gVkPerfPassTag = 0;
-U32 gVkPerfShadowMapIndex = 0;
+thread_local U32 gVkPerfPassTag = 0;
+thread_local U32 gVkPerfShadowMapIndex = 0;
+
+U32 recordWorkerCount()
+{
+    return rwDesiredWorkerCount();
+}
+
+bool isRecordJobActive()
+{
+    return tInRecordJob;
+}
+
+bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body)
+{
+    if (!sInitialized || !sInFrame || tInRecordJob || !body)
+    {
+        return false;
+    }
+    rwStart();
+    RecordJob job;
+    job.body = std::move(body);
+    job.seq  = sRWDispatched;
+    ++sRWDispatched;
+    if (sRWThreads.empty())
+    {
+        rwExecute(job);
+        return true;
+    }
+    {
+        std::lock_guard<std::mutex> lk(sRWQueueMutex);
+        sRWJobs.push_back(std::move(job));
+    }
+    sRWQueueCv.notify_one();
+    return true;
+}
+
+void joinRecordJobs()
+{
+    if (sRWDispatched == 0)
+    {
+        return;
+    }
+    {
+        std::unique_lock<std::mutex> lk(sRWDoneMutex);
+        sRWDoneCv.wait(lk, [] { return sRWCompleted >= sRWDispatched; });
+    }
+    for (VkCommandBuffer c : sRWFrameCmds)
+    {
+        if (c != VK_NULL_HANDLE)
+        {
+            sPendingPreFrameCmds.push_back(c);
+        }
+    }
+    sRWFrameCmds.clear();
+    sRWDispatched = 0;
+    sRWCompleted  = 0;
+}
+
+void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image)
+{
+    if (cmd == VK_NULL_HANDLE || depth_image == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    VkImageMemoryBarrier b = {};
+    b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    b.oldLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    b.newLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+    b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+    b.image                           = depth_image;
+    b.srcAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    b.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    b.subresourceRange.baseMipLevel   = 0;
+    b.subresourceRange.levelCount     = 1;
+    b.subresourceRange.baseArrayLayer = 0;
+    b.subresourceRange.layerCount     = 1;
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &b);
+}
 
 bool endFrame()
 {
@@ -3644,38 +3983,39 @@ bool endFrame()
             const U32 frames = sMonotonicFrameCount - s_last_frame;
             if (frames > 0)
             {
-                const U64 draws = gVkPerf.desc_bind + gVkPerf.desc_skip;
+                const U64 draws = gVkPerf.desc_bind.load() + gVkPerf.desc_skip.load();
                 LL_INFOS("VkPerf") << "frames=" << frames
                                    << " fps=" << ((F64)frames / elapsed)
                                    << " avg_ms=" << (elapsed * 1000.0 / (F64)frames)
                                    << " draws/f=" << (draws / frames)
-                                   << " | emit/skip: pipe " << gVkPerf.pipe_bind << "/" << gVkPerf.pipe_skip
-                                   << " desc " << gVkPerf.desc_bind << "/" << gVkPerf.desc_skip
-                                   << " push " << gVkPerf.mv_push << "/" << gVkPerf.mv_skip
-                                   << " vp " << gVkPerf.vp_set << "/" << gVkPerf.vp_skip
-                                   << " | set build=" << gVkPerf.set_build
-                                   << " reuse=" << gVkPerf.set_reuse
-                                   << " populate=" << gVkPerf.populate
-                                   << " | syncmat " << gVkPerf.syncmat_build << "/" << gVkPerf.syncmat_call
-                                   << " | pass scene=" << gVkPerf.draws_pass[0]
-                                   << " shadow=" << gVkPerf.draws_pass[1]
-                                   << " occl=" << gVkPerf.draws_pass[2]
-                                   << " probe=" << gVkPerf.draws_pass[3]
-                                   << " hero=" << gVkPerf.draws_pass[4]
-                                   << " | shmap " << gVkPerf.draws_shadow_map[0]
-                                   << "/" << gVkPerf.draws_shadow_map[1]
-                                   << "/" << gVkPerf.draws_shadow_map[2]
-                                   << "/" << gVkPerf.draws_shadow_map[3]
-                                   << " spot " << gVkPerf.draws_shadow_map[4]
-                                   << "/" << gVkPerf.draws_shadow_map[5]
-                                   << " culled=" << gVkPerf.shadow_cull
-                                   << " rigged=" << gVkPerf.shadow_rigged
+                                   << " | emit/skip: pipe " << gVkPerf.pipe_bind.load() << "/" << gVkPerf.pipe_skip.load()
+                                   << " desc " << gVkPerf.desc_bind.load() << "/" << gVkPerf.desc_skip.load()
+                                   << " push " << gVkPerf.mv_push.load() << "/" << gVkPerf.mv_skip.load()
+                                   << " vp " << gVkPerf.vp_set.load() << "/" << gVkPerf.vp_skip.load()
+                                   << " | set build=" << gVkPerf.set_build.load()
+                                   << " reuse=" << gVkPerf.set_reuse.load()
+                                   << " populate=" << gVkPerf.populate.load()
+                                   << " | syncmat " << gVkPerf.syncmat_build.load() << "/" << gVkPerf.syncmat_call.load()
+                                   << " | pass scene=" << gVkPerf.draws_pass[0].load()
+                                   << " shadow=" << gVkPerf.draws_pass[1].load()
+                                   << " occl=" << gVkPerf.draws_pass[2].load()
+                                   << " probe=" << gVkPerf.draws_pass[3].load()
+                                   << " hero=" << gVkPerf.draws_pass[4].load()
+                                   << " | shmap " << gVkPerf.draws_shadow_map[0].load()
+                                   << "/" << gVkPerf.draws_shadow_map[1].load()
+                                   << "/" << gVkPerf.draws_shadow_map[2].load()
+                                   << "/" << gVkPerf.draws_shadow_map[3].load()
+                                   << " spot " << gVkPerf.draws_shadow_map[4].load()
+                                   << "/" << gVkPerf.draws_shadow_map[5].load()
+                                   << " culled=" << gVkPerf.shadow_cull.load()
+                                   << " rigged=" << gVkPerf.shadow_rigged.load()
                                    << " | pe sub_ms=" << ((F64)sPESubmitUs.exchange(0) / 1000.0)
                                    << " prs_ms=" << ((F64)sPEPresentUs.exchange(0) / 1000.0)
                                    << " mt=" << (sPEThreaded ? 1 : 0)
+                                   << " rw=" << recordWorkerCount()
                                    << LL_ENDL;
             }
-            gVkPerf = VkPerfCounters();
+            gVkPerf.reset();
 #if LL_LINUX
             {
                 static U64 s_prev_busy[32]  = {};
@@ -3763,6 +4103,8 @@ bool endFrame()
         PEJob job;
         job.is_frame = true;
         job.slot     = sFrameIndex;
+        job.pre_cmds = std::move(sPendingPreFrameCmds);
+        sPendingPreFrameCmds.clear();
         job.cmd      = sCommandBuffers[sFrameIndex];
         job.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
@@ -3857,7 +4199,30 @@ void endOffscreenFrameVk()
         return;
     }
 
-    peSubmitBlocking(sCommandBuffers[sFrameIndex], sInFlightFences[sFrameIndex], true);
+    {
+        PESyncPoint sync;
+        PEJob job;
+        job.pre_cmds  = std::move(sPendingPreFrameCmds);
+        sPendingPreFrameCmds.clear();
+        job.cmd       = sCommandBuffers[sFrameIndex];
+        job.fence     = sInFlightFences[sFrameIndex];
+        job.wait_idle = true;
+        job.sync      = &sync;
+        if (!sPERunning)
+        {
+            peExecute(job);
+        }
+        else
+        {
+            {
+                std::lock_guard<std::mutex> lk(sPEQueueMutex);
+                sPEJobs.push_back(std::move(job));
+            }
+            sPEQueueCv.notify_one();
+            std::unique_lock<std::mutex> lk(sync.m);
+            sync.cv.wait(lk, [&] { return sync.done; });
+        }
+    }
     sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
     if (sMonotonicFrameCount > sLastCompletedMonotonic)
     {
