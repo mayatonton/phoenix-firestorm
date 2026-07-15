@@ -7754,12 +7754,15 @@ void setVulkanPresentationEnabled(bool enabled)
 
 U32 getRenderBackendMode()
 {
-    U32 mode = 1;
-    if (gSavedSettings.controlExists("RenderBackend"))
-    {
-        mode = gSavedSettings.getU32("RenderBackend");
-    }
-    return mode;
+    static const U32 s_mode = []() -> U32 {
+        U32 mode = 1;
+        if (gSavedSettings.controlExists("RenderBackend"))
+        {
+            mode = gSavedSettings.getU32("RenderBackend");
+        }
+        return mode;
+    }();
+    return s_mode;
 }
 
 bool shouldUseVulkanRender()

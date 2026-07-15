@@ -278,7 +278,16 @@ static U32 pixTypeToSourceComponentBytes(U32 pixtype)
 
 U64 LLImageGL::getTextureBytesAllocated()
 {
-    return getVkTextureBytesAllocated();
+    static U64     s_cached_bytes = 0;
+    static LLTimer s_cache_timer;
+    static bool    s_cached_once = false;
+    if (!s_cached_once || s_cache_timer.getElapsedTimeF32() > 1.f)
+    {
+        s_cached_bytes = getVkTextureBytesAllocated();
+        s_cache_timer.reset();
+        s_cached_once = true;
+    }
+    return s_cached_bytes;
 }
 
 U64 LLImageGL::getVkTextureBytesAllocated()
