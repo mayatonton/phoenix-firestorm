@@ -199,6 +199,8 @@ public:
     // Returns true if this RenderTarget is bound somewhere in the stack
     bool isBoundInStack() const;
 
+    bool wasWrittenThisFrame() const;
+
     static LLRenderTarget* getCurrentBoundTarget() { return sBoundTarget; }
 
     static void clearBoundTarget(U32 mask = 0xFFFFFFFF);
@@ -213,6 +215,7 @@ public:
 protected:
     U32 mResX;
     U32 mResY;
+    U32 mLastBoundMonotonicFrame = 0;
     std::vector<U32> mInternalFormat;
     bool mAllocated = false;
     LLRenderTarget* mPreviousRT = nullptr;

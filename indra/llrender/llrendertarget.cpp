@@ -458,6 +458,8 @@ void LLRenderTarget::bindTarget()
     llassert(mAllocated);
     llassert(!isBoundInStack());
 
+    mLastBoundMonotonicFrame = LLVKLoader::getMonotonicFrameCount();
+
     llSetGLViewport(0, 0, mResX, mResY);
     sCurResX = mResX;
     sCurResY = mResY;
@@ -898,6 +900,11 @@ bool LLRenderTarget::isBoundInStack() const
     }
 
     return cur == this;
+}
+
+bool LLRenderTarget::wasWrittenThisFrame() const
+{
+    return mLastBoundMonotonicFrame == LLVKLoader::getMonotonicFrameCount();
 }
 
 void LLRenderTarget::swapFBORefs(LLRenderTarget& other)

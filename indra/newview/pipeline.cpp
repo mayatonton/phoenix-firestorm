@@ -5312,6 +5312,10 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 
 void LLPipeline::compositeForwardFlip()
 {
+    if (!mForwardColor.wasWrittenThisFrame())
+    {
+        return;
+    }
     if (!mForwardColor.isComplete() || !gAYAForwardFlipCompositeProgram.isComplete())
     {
         return;
