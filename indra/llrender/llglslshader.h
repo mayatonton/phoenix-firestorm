@@ -369,6 +369,9 @@ public:
 
     std::vector<VkDescriptorSetLayoutBinding> mVkLayoutBindings;
 
+    std::vector<U8> mVkAccessorBindingList;
+    bool            mVkAccessorBindingListBuilt = false;
+
     static void populateAndBindUniversalDescriptorSet();
 
 public:

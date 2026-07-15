@@ -3874,6 +3874,9 @@ VkPerfCounters gVkPerf;
 thread_local U32 gVkPerfPassTag = 0;
 thread_local U32 gVkPerfShadowMapIndex = 0;
 
+std::atomic<U64> gVkPerDrawTopologyGen{1};
+std::atomic<U64> gVkPerDrawEvictionGen{1};
+
 U32 recordWorkerCount()
 {
     return rwDesiredWorkerCount();
@@ -3994,6 +3997,8 @@ bool endFrame()
                                    << " vp " << gVkPerf.vp_set.load() << "/" << gVkPerf.vp_skip.load()
                                    << " | set build=" << gVkPerf.set_build.load()
                                    << " reuse=" << gVkPerf.set_reuse.load()
+                                   << " memo=" << gVkPerf.set_memo.load()
+                                   << "/" << gVkPerf.set_memo_fill.load()
                                    << " populate=" << gVkPerf.populate.load()
                                    << " | syncmat " << gVkPerf.syncmat_build.load() << "/" << gVkPerf.syncmat_call.load()
                                    << " | pass scene=" << gVkPerf.draws_pass[0].load()
@@ -4534,7 +4539,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         return true;
     }
 
-    constexpr size_t SCENE_PER_DRAW_CACHE_MAX_ENTRIES = 50000;
+    constexpr size_t SCENE_PER_DRAW_CACHE_MAX_ENTRIES = 150000;
     if (lane.cache.size() >= SCENE_PER_DRAW_CACHE_MAX_ENTRIES)
     {
         U32 evicted = 0;
@@ -4564,6 +4569,10 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 continue;
             }
             break;
+        }
+        if (evicted > 0)
+        {
+            ++gVkPerDrawEvictionGen;
         }
     }
 
@@ -4631,6 +4640,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
 
                 lane.cache.erase(cit);
                 lru_it = lane.lru.erase(lru_it);
+                ++gVkPerDrawEvictionGen;
                 evicted = true;
                 break;
             }
@@ -5274,6 +5284,7 @@ static bool ensurePerDrawUBOArenaCurrent(PerDrawUBOArena& a)
                 a.capacity = want;
             }
             a.pending_capacity = 0;
+            ++gVkPerDrawTopologyGen;
         }
     }
     return (a.buffer != VK_NULL_HANDLE && a.mapped != nullptr);

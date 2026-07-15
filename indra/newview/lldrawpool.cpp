@@ -487,6 +487,67 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         return;
     }
 
+    const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1
+                                && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
+    const U32  memo_frame    = LLVKLoader::getCurrentFrameIndex();
+    U64        memo_sig      = 0;
+
+    if (memo_eligible)
+    {
+        for (U32 i = 0; i < set_shape; ++i)
+        {
+            LLTexUnit* tu = gGL.getTexUnit((S32)i);
+            memo_sig = memo_sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->getLiveVkImageView();
+            memo_sig = memo_sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->getLiveVkSampler();
+            memo_sig = memo_sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->mCurrImageGL;
+        }
+
+        if (params->mVkSetMemoShader == cur
+            && params->mVkSetMemoShape == set_shape
+            && params->mVkSetMemoSet[memo_frame] != nullptr
+            && params->mVkSetMemoTexSig == memo_sig
+            && cur->mVkAccessorBindingListBuilt
+            && params->mVkSetMemoTopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
+            && params->mVkSetMemoEvictGen == LLVKLoader::gVkPerDrawEvictionGen.load(std::memory_order_relaxed))
+        {
+            U64 ring_sig = 0;
+            for (U8 b : cur->mVkAccessorBindingList)
+            {
+                VkBuffer rb = VK_NULL_HANDLE;
+                void*    rm = nullptr;
+                LLGLSLShader::SharedUBOAccessor accessor = cur->mVkBindingToUBOAccessor[b];
+                if (accessor)
+                {
+                    accessor(rb, rm);
+                }
+                ring_sig = ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)rb;
+            }
+            bool memo_valid = (ring_sig == params->mVkSetMemoRingSig[memo_frame]);
+            for (U8 i = 0; i < params->mVkSetMemoL3Count && memo_valid; ++i)
+            {
+                const S16 e = params->mVkSetMemoL3Enums[i];
+                memo_valid = (e >= 0 && e < (S16)cur->mVkEnumBoundView.size()
+                              && (void*)cur->vkResolveEnumBoundView(e) == params->mVkSetMemoL3Views[i]);
+            }
+            if (memo_valid)
+            {
+                LLGLSLShader::sCurPerCallVkDescriptorSet =
+                    (VkDescriptorSet)params->mVkSetMemoSet[memo_frame];
+                LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
+                LLGLSLShader::sCurPerCallVkSetShape     = set_shape;
+                ++LLVKLoader::gVkPerf.set_memo;
+                return;
+            }
+        }
+    }
+
+    bool memo_fill     = memo_eligible;
+    U64  memo_ring_sig = 0;
+    const bool build_accessor_list = !cur->mVkAccessorBindingListBuilt;
+    U8   memo_l3_cnt   = 0;
+    S16  memo_l3_enums[6] = {};
+    void* memo_l3_views[6] = {};
+
     LLVKLoader::ScenePerDrawBindings bindings;
     bindings.layout       = cur->mVkDescriptorSetLayout;
     bindings.sampler      = sampler;
@@ -664,12 +725,29 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         if (l3_hit)
         {
             view = cur->vkResolveEnumBoundView(enum_value);
+            if (memo_fill)
+            {
+                if (memo_l3_cnt < 6)
+                {
+                    memo_l3_enums[memo_l3_cnt] = (S16)enum_value;
+                    memo_l3_views[memo_l3_cnt] = (void*)view;
+                    ++memo_l3_cnt;
+                }
+                else
+                {
+                    memo_fill = false;
+                }
+            }
         }
         else if (channel >= 0)
         {
             resolved_unit = channel;
             view = gGL.getTexUnit((S32)channel)->getLiveVkImageView();
             LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
+            if (view != VK_NULL_HANDLE)
+            {
+                memo_fill = false;
+            }
         }
         else if (enum_value >= 0 && enum_value < (S32)cur->mTexture.size())
         {
@@ -679,6 +757,10 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 resolved_unit = unit;
                 view = gGL.getTexUnit((S32)unit)->getLiveVkImageView();
                 LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
+                if (view != VK_NULL_HANDLE)
+                {
+                    memo_fill = false;
+                }
             }
         }
 
@@ -784,6 +866,11 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 {
                     ubo_sz = cur->sharedUBOBindingSize(N);
                 }
+                if (build_accessor_list && N < 256)
+                {
+                    cur->mVkAccessorBindingList.push_back((U8)N);
+                }
+                memo_ring_sig = memo_ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)ubo_buf;
             }
         }
 
@@ -796,6 +883,11 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             entry.size    = ubo_sz;
             ++bindings.ubo_count;
         }
+    }
+
+    if (build_accessor_list)
+    {
+        cur->mVkAccessorBindingListBuilt = true;
     }
 
     U32 dyn_offsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
@@ -815,6 +907,44 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                                                   ? set_shape
                                                   : 0xFFFFFFFFu;
         ++LLVKLoader::gVkPerf.set_build;
+
+        if (memo_fill
+            && (bindings.ubo == VK_NULL_HANDLE
+                || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer()))
+        {
+            const U64 topo_gen  = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
+            const U64 evict_gen = LLVKLoader::gVkPerDrawEvictionGen.load(std::memory_order_relaxed);
+            const bool header_same =
+                params->mVkSetMemoShader == cur
+                && params->mVkSetMemoShape == set_shape
+                && params->mVkSetMemoTexSig == memo_sig
+                && params->mVkSetMemoTopoGen == topo_gen
+                && params->mVkSetMemoEvictGen == evict_gen
+                && params->mVkSetMemoL3Count == memo_l3_cnt
+                && std::memcmp(params->mVkSetMemoL3Enums, memo_l3_enums, sizeof(memo_l3_enums)) == 0
+                && std::memcmp(params->mVkSetMemoL3Views, memo_l3_views, sizeof(memo_l3_views)) == 0;
+            if (!header_same)
+            {
+                params->mVkSetMemoShader   = cur;
+                params->mVkSetMemoShape    = set_shape;
+                params->mVkSetMemoTexSig   = memo_sig;
+                params->mVkSetMemoTopoGen  = topo_gen;
+                params->mVkSetMemoEvictGen = evict_gen;
+                params->mVkSetMemoL3Count   = memo_l3_cnt;
+                std::memcpy(params->mVkSetMemoL3Enums, memo_l3_enums, sizeof(memo_l3_enums));
+                std::memcpy(params->mVkSetMemoL3Views, memo_l3_views, sizeof(memo_l3_views));
+                params->mVkSetMemoSet[0] = nullptr;
+                params->mVkSetMemoSet[1] = nullptr;
+                params->mVkSetMemoSet[2] = nullptr;
+            }
+            params->mVkSetMemoRingSig[memo_frame] = memo_ring_sig;
+            params->mVkSetMemoSet[memo_frame] = (void*)per_draw_set;
+            ++LLVKLoader::gVkPerf.set_memo_fill;
+        }
+        else if (params != nullptr)
+        {
+            params->mVkSetMemoShader = nullptr;
+        }
     }
 }
 

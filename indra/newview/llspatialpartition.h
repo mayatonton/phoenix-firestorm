@@ -56,6 +56,7 @@ class LLViewerOctreePartition;
 class LLSpatialPartition;
 class LLSpatialBridge;
 class LLSpatialGroup;
+class LLGLSLShader;
 class LLViewerRegion;
 class LLReflectionMap;
 
@@ -142,6 +143,17 @@ public:
 
     LLVector4a mBatchExtents[2];
     F32 mBoundRadius = -1.f;
+
+    LLGLSLShader* mVkSetMemoShader = nullptr;
+    U64   mVkSetMemoTopoGen = 0;
+    U64   mVkSetMemoEvictGen = 0;
+    U64   mVkSetMemoTexSig = 0;
+    void* mVkSetMemoSet[3] = {};
+    U64   mVkSetMemoRingSig[3] = {};
+    void* mVkSetMemoL3Views[6] = {};
+    S16   mVkSetMemoL3Enums[6] = {};
+    U32   mVkSetMemoShape = 0;
+    U8    mVkSetMemoL3Count = 0;
 
     LLUUID mMaterialID; // id of LLGLTFMaterial or LLMaterial applied to this draw info
 

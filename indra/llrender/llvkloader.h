@@ -1342,6 +1342,8 @@ namespace LLVKLoader
         std::atomic<U64> vp_skip{0};
         std::atomic<U64> set_build{0};
         std::atomic<U64> set_reuse{0};
+        std::atomic<U64> set_memo{0};
+        std::atomic<U64> set_memo_fill{0};
         std::atomic<U64> populate{0};
         std::atomic<U64> syncmat_call{0};
         std::atomic<U64> syncmat_build{0};
@@ -1354,7 +1356,7 @@ namespace LLVKLoader
         {
             pipe_bind = 0; pipe_skip = 0; desc_bind = 0; desc_skip = 0;
             mv_push = 0; mv_skip = 0; vp_set = 0; vp_skip = 0;
-            set_build = 0; set_reuse = 0; populate = 0;
+            set_build = 0; set_reuse = 0; set_memo = 0; set_memo_fill = 0; populate = 0;
             syncmat_call = 0; syncmat_build = 0;
             for (auto& v : draws_pass) v = 0;
             for (auto& v : draws_shadow_map) v = 0;
@@ -1364,6 +1366,9 @@ namespace LLVKLoader
     extern VkPerfCounters gVkPerf;
     extern thread_local U32 gVkPerfPassTag;
     extern thread_local U32 gVkPerfShadowMapIndex;
+
+    extern std::atomic<U64> gVkPerDrawTopologyGen;
+    extern std::atomic<U64> gVkPerDrawEvictionGen;
 
     struct VkPerfPassScope
     {

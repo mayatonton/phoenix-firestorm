@@ -390,7 +390,10 @@ void LLGLSLShader::unloadInternal()
         {
             LLVKLoader::destroyDescriptorSetLayoutVk(mVkDescriptorSetLayout);
             mVkDescriptorSetLayout = VK_NULL_HANDLE;
+            ++LLVKLoader::gVkPerDrawTopologyGen;
         }
+        mVkAccessorBindingList.clear();
+        mVkAccessorBindingListBuilt = false;
         if (mVkPerProgramUBO != VK_NULL_HANDLE)
         {
             LLVKLoader::destroyBufferVk(mVkPerProgramUBO, mVkPerProgramUBOAllocation);
