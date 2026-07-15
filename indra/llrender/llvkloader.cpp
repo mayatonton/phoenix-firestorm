@@ -228,7 +228,6 @@ namespace
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SETS     = 50000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SAMPLERS = 250000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_UBOS     = 50000;
-    std::vector<VkDescriptorPool>  sScenePerDrawDescriptorPools;
 
     struct ScenePerDrawCacheKey
     {
@@ -301,16 +300,24 @@ namespace
         U32                                          last_used_monotonic_frame;
         U32                                          pool_index;
     };
-    std::unordered_map<ScenePerDrawCacheKey, ScenePerDrawCacheEntry, ScenePerDrawCacheKeyHash> sScenePerDrawCache;
-    std::list<ScenePerDrawCacheKey>                                                            sScenePerDrawLRUOrder;
-
     struct ScenePerDrawDeferredFreeEntry
     {
         VkDescriptorSet sets[FRAMES_IN_FLIGHT];
         U32             pool_index;
         U32             enqueue_frame;
     };
-    std::vector<ScenePerDrawDeferredFreeEntry> sScenePerDrawDeferredFree;
+
+    constexpr U32 MAX_RECORD_LANES = 8;
+    thread_local U32 tRecordLaneIndex = 0;
+
+    struct PerDrawDescLane
+    {
+        std::vector<VkDescriptorPool> pools;
+        std::unordered_map<ScenePerDrawCacheKey, ScenePerDrawCacheEntry, ScenePerDrawCacheKeyHash> cache;
+        std::list<ScenePerDrawCacheKey> lru;
+        std::vector<ScenePerDrawDeferredFreeEntry> deferred_free;
+    };
+    PerDrawDescLane sPerDrawDescLanes[MAX_RECORD_LANES];
 
 
     VkBuffer              sSharedWindlightHDRUBO                  = VK_NULL_HANDLE;
@@ -376,12 +383,13 @@ namespace
         void*        allocation       = nullptr;
         void*        mapped           = nullptr;
         VkDeviceSize capacity         = 0;
-        VkDeviceSize cursor           = 0;
+        std::atomic<VkDeviceSize> cursor{0};
         U64          frame            = ~0ull;
         VkDeviceSize pending_capacity = 0;
     };
     PerDrawUBOArena sPerDrawUBOArena[FRAMES_IN_FLIGHT];
     constexpr VkDeviceSize PER_DRAW_UBO_ARENA_INITIAL = 4 * 1024 * 1024;
+    std::mutex sPerDrawArenaGrowthMutex;
 
     U32 sFrameIndex = 0;
 
@@ -3010,7 +3018,7 @@ bool initVulkan()
         VkDescriptorPool initial_pool = VK_NULL_HANDLE;
         if (createScenePerDrawDescriptorPool(&initial_pool))
         {
-            sScenePerDrawDescriptorPools.push_back(initial_pool);
+            sPerDrawDescLanes[0].pools.push_back(initial_pool);
         }
     }
 
@@ -3174,17 +3182,20 @@ void shutdownVulkan()
             sMatrixRingHasCurrent[frame]    = false;
         }
 
-        for (VkDescriptorPool pool : sScenePerDrawDescriptorPools)
+        for (PerDrawDescLane& lane : sPerDrawDescLanes)
         {
-            if (pool != VK_NULL_HANDLE)
+            for (VkDescriptorPool pool : lane.pools)
             {
-                vkDestroyDescriptorPool(sDevice, pool, nullptr);
+                if (pool != VK_NULL_HANDLE)
+                {
+                    vkDestroyDescriptorPool(sDevice, pool, nullptr);
+                }
             }
+            lane.pools.clear();
+            lane.cache.clear();
+            lane.lru.clear();
+            lane.deferred_free.clear();
         }
-        sScenePerDrawDescriptorPools.clear();
-        sScenePerDrawCache.clear();
-        sScenePerDrawLRUOrder.clear();
-        sScenePerDrawDeferredFree.clear();
 
         if (sStandardLinearSampler != VK_NULL_HANDLE)
         {
@@ -3321,7 +3332,13 @@ void shutdownVulkan()
             {
                 destroyBufferVk(arena.buffer, arena.allocation);
             }
-            arena = PerDrawUBOArena();
+            arena.buffer           = VK_NULL_HANDLE;
+            arena.allocation       = nullptr;
+            arena.mapped           = nullptr;
+            arena.capacity         = 0;
+            arena.cursor           = 0;
+            arena.frame            = ~0ull;
+            arena.pending_capacity = 0;
         }
         if (sPerFrameDescriptorSetLayout != VK_NULL_HANDLE)
         {
@@ -4066,7 +4083,16 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     }
     *out_set = VK_NULL_HANDLE;
 
-    if (!sInitialized || sScenePerDrawDescriptorPools.empty() ||
+    PerDrawDescLane& lane = sPerDrawDescLanes[tRecordLaneIndex];
+    if (sInitialized && lane.pools.empty())
+    {
+        VkDescriptorPool lazy_pool = VK_NULL_HANDLE;
+        if (createScenePerDrawDescriptorPool(&lazy_pool))
+        {
+            lane.pools.push_back(lazy_pool);
+        }
+    }
+    if (!sInitialized || lane.pools.empty() ||
         b.layout == VK_NULL_HANDLE || b.sampler == VK_NULL_HANDLE)
     {
         return false;
@@ -4103,28 +4129,28 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         key.ubo_write_bufs[i]     = b.ubo_writes[i].buf;
     }
 
-    auto cache_it = sScenePerDrawCache.find(key);
-    if (cache_it != sScenePerDrawCache.end())
+    auto cache_it = lane.cache.find(key);
+    if (cache_it != lane.cache.end())
     {
-        sScenePerDrawLRUOrder.erase(cache_it->second.lru_pos);
-        sScenePerDrawLRUOrder.push_back(key);
-        cache_it->second.lru_pos                   = std::prev(sScenePerDrawLRUOrder.end());
+        lane.lru.erase(cache_it->second.lru_pos);
+        lane.lru.push_back(key);
+        cache_it->second.lru_pos                   = std::prev(lane.lru.end());
         cache_it->second.last_used_monotonic_frame = sMonotonicFrameCount;
         *out_set = cache_it->second.sets[getCurrentFrameIndex()];
         return true;
     }
 
     constexpr size_t SCENE_PER_DRAW_CACHE_MAX_ENTRIES = 50000;
-    if (sScenePerDrawCache.size() >= SCENE_PER_DRAW_CACHE_MAX_ENTRIES)
+    if (lane.cache.size() >= SCENE_PER_DRAW_CACHE_MAX_ENTRIES)
     {
         U32 evicted = 0;
-        for (auto lru_it = sScenePerDrawLRUOrder.begin();
-             lru_it != sScenePerDrawLRUOrder.end() && evicted < 64; )
+        for (auto lru_it = lane.lru.begin();
+             lru_it != lane.lru.end() && evicted < 64; )
         {
-            auto cit = sScenePerDrawCache.find(*lru_it);
-            if (cit == sScenePerDrawCache.end())
+            auto cit = lane.cache.find(*lru_it);
+            if (cit == lane.cache.end())
             {
-                lru_it = sScenePerDrawLRUOrder.erase(lru_it);
+                lru_it = lane.lru.erase(lru_it);
                 continue;
             }
             if (cit->second.last_used_monotonic_frame + FRAMES_IN_FLIGHT <= sMonotonicFrameCount)
@@ -4136,10 +4162,10 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 }
                 deferred.pool_index    = cit->second.pool_index;
                 deferred.enqueue_frame = sMonotonicFrameCount;
-                sScenePerDrawDeferredFree.push_back(deferred);
+                lane.deferred_free.push_back(deferred);
 
-                sScenePerDrawCache.erase(cit);
-                lru_it = sScenePerDrawLRUOrder.erase(lru_it);
+                lane.cache.erase(cit);
+                lru_it = lane.lru.erase(lru_it);
                 ++evicted;
                 continue;
             }
@@ -4176,9 +4202,9 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
 
     auto try_alloc_any_pool = [&]() -> bool
     {
-        for (U32 pi = 0; pi < sScenePerDrawDescriptorPools.size(); ++pi)
+        for (U32 pi = 0; pi < lane.pools.size(); ++pi)
         {
-            if (try_alloc_in_pool(sScenePerDrawDescriptorPools[pi]))
+            if (try_alloc_in_pool(lane.pools[pi]))
             {
                 alloc_pool_index = pi;
                 return true;
@@ -4190,12 +4216,12 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     if (!try_alloc_any_pool())
     {
         bool evicted = false;
-        for (auto lru_it = sScenePerDrawLRUOrder.begin(); lru_it != sScenePerDrawLRUOrder.end(); )
+        for (auto lru_it = lane.lru.begin(); lru_it != lane.lru.end(); )
         {
-            auto cit = sScenePerDrawCache.find(*lru_it);
-            if (cit == sScenePerDrawCache.end())
+            auto cit = lane.cache.find(*lru_it);
+            if (cit == lane.cache.end())
             {
-                lru_it = sScenePerDrawLRUOrder.erase(lru_it);
+                lru_it = lane.lru.erase(lru_it);
                 continue;
             }
             if (cit->second.last_used_monotonic_frame + FRAMES_IN_FLIGHT <= sMonotonicFrameCount)
@@ -4207,10 +4233,10 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 }
                 deferred.pool_index    = cit->second.pool_index;
                 deferred.enqueue_frame = sMonotonicFrameCount;
-                sScenePerDrawDeferredFree.push_back(deferred);
+                lane.deferred_free.push_back(deferred);
 
-                sScenePerDrawCache.erase(cit);
-                lru_it = sScenePerDrawLRUOrder.erase(lru_it);
+                lane.cache.erase(cit);
+                lru_it = lane.lru.erase(lru_it);
                 evicted = true;
                 break;
             }
@@ -4224,12 +4250,12 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
             {
                 return false;
             }
-            sScenePerDrawDescriptorPools.push_back(new_pool);
+            lane.pools.push_back(new_pool);
             if (!try_alloc_in_pool(new_pool))
             {
                 return false;
             }
-            alloc_pool_index = (U32)(sScenePerDrawDescriptorPools.size() - 1);
+            alloc_pool_index = (U32)(lane.pools.size() - 1);
         }
     }
 
@@ -4375,16 +4401,16 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         }
     }
 
-    sScenePerDrawLRUOrder.push_back(key);
+    lane.lru.push_back(key);
     ScenePerDrawCacheEntry entry = {};
     for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
         entry.sets[i] = new_sets[i];
     }
-    entry.lru_pos                   = std::prev(sScenePerDrawLRUOrder.end());
+    entry.lru_pos                   = std::prev(lane.lru.end());
     entry.last_used_monotonic_frame = sMonotonicFrameCount;
     entry.pool_index                = alloc_pool_index;
-    sScenePerDrawCache.emplace(key, entry);
+    lane.cache.emplace(key, entry);
 
 
     *out_set = entry.sets[getCurrentFrameIndex()];
@@ -4397,31 +4423,34 @@ void tickScenePerDrawDescriptorCache()
     {
         return;
     }
-    size_t w = 0;
-    const size_t n = sScenePerDrawDeferredFree.size();
-    for (size_t r = 0; r < n; ++r)
+    for (PerDrawDescLane& lane : sPerDrawDescLanes)
     {
-        ScenePerDrawDeferredFreeEntry& e = sScenePerDrawDeferredFree[r];
-        if (e.enqueue_frame <= sLastCompletedMonotonic)
+        size_t w = 0;
+        const size_t n = lane.deferred_free.size();
+        for (size_t r = 0; r < n; ++r)
         {
-            VkDescriptorPool target_pool = (e.pool_index < sScenePerDrawDescriptorPools.size())
-                                               ? sScenePerDrawDescriptorPools[e.pool_index]
-                                               : VK_NULL_HANDLE;
-            if (target_pool != VK_NULL_HANDLE)
+            ScenePerDrawDeferredFreeEntry& e = lane.deferred_free[r];
+            if (e.enqueue_frame <= sLastCompletedMonotonic)
             {
-                vkFreeDescriptorSets(sDevice, target_pool, FRAMES_IN_FLIGHT, e.sets);
+                VkDescriptorPool target_pool = (e.pool_index < lane.pools.size())
+                                                   ? lane.pools[e.pool_index]
+                                                   : VK_NULL_HANDLE;
+                if (target_pool != VK_NULL_HANDLE)
+                {
+                    vkFreeDescriptorSets(sDevice, target_pool, FRAMES_IN_FLIGHT, e.sets);
+                }
+            }
+            else
+            {
+                if (w != r)
+                {
+                    lane.deferred_free[w] = e;
+                }
+                ++w;
             }
         }
-        else
-        {
-            if (w != r)
-            {
-                sScenePerDrawDeferredFree[w] = e;
-            }
-            ++w;
-        }
+        lane.deferred_free.resize(w);
     }
-    sScenePerDrawDeferredFree.resize(w);
 }
 
 U32 getCurrentFrameIndex()
@@ -4881,13 +4910,23 @@ bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset,
     {
         align = 16;
     }
-    const VkDeviceSize off = (a.cursor + align - 1) & ~(align - 1);
-    if (off + size_bytes > a.capacity)
+    VkDeviceSize expected = a.cursor.load(std::memory_order_relaxed);
+    VkDeviceSize off;
+    for (;;)
     {
-        a.pending_capacity = llmax(a.pending_capacity, llmax(a.capacity * 2, off + size_bytes));
-        return false;
+        off = (expected + align - 1) & ~(align - 1);
+        const VkDeviceSize next = off + size_bytes;
+        if (next > a.capacity)
+        {
+            std::lock_guard<std::mutex> lk(sPerDrawArenaGrowthMutex);
+            a.pending_capacity = llmax(a.pending_capacity, llmax(a.capacity * 2, next));
+            return false;
+        }
+        if (a.cursor.compare_exchange_weak(expected, next, std::memory_order_relaxed))
+        {
+            break;
+        }
     }
-    a.cursor   = off + size_bytes;
     out_buffer = a.buffer;
     out_offset = (U32)off;
     out_mapped = (U8*)a.mapped + off;
