@@ -176,15 +176,19 @@ namespace
         VkDeviceMemory memory = VK_NULL_HANDLE;
         void*          mapped = nullptr;
     };
+    constexpr U32 MATRIX_RING_MAX_SLOTS  = 16384;
+    constexpr U32 MATRIX_RING_MAX_CHUNKS = MATRIX_RING_MAX_SLOTS / MATRIX_RING_CHUNK_SLOTS;
     std::vector<MatrixRingChunk> sMatrixRingChunks[FRAMES_IN_FLIGHT];
     std::vector<VkDescriptorSet> sPerFrameRingSets[FRAMES_IN_FLIGHT];
+    std::atomic<U32>             sPerFrameRingSetCount[FRAMES_IN_FLIGHT] = {};
+    std::mutex                   sMatrixRingGrowthMutex;
     std::vector<VkDescriptorPool> sPerFrameRingPools;
     U32   sRingPoolUsedInLast = 0;
-    U32   sMatrixRingUsedThisFrame[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
-    U32   sMatrixRingCurrentSlot[FRAMES_IN_FLIGHT]   = { 0, 0, 0 };
-    bool  sMatrixRingHasCurrent[FRAMES_IN_FLIGHT]    = { false, false, false };
-    float sMatrixRingCurrentProj[FRAMES_IN_FLIGHT][16] = {};
-    float sMatrixRingCurrentTexmat[FRAMES_IN_FLIGHT][64] = {};
+    std::atomic<U32> sMatrixRingUsedThisFrame[FRAMES_IN_FLIGHT] = {};
+    thread_local U32   sMatrixRingCurrentSlot[FRAMES_IN_FLIGHT]   = { 0, 0, 0 };
+    thread_local bool  sMatrixRingHasCurrent[FRAMES_IN_FLIGHT]    = { false, false, false };
+    thread_local float sMatrixRingCurrentProj[FRAMES_IN_FLIGHT][16] = {};
+    thread_local float sMatrixRingCurrentTexmat[FRAMES_IN_FLIGHT][64] = {};
 
     thread_local VkPipeline       sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
     thread_local VkPipelineLayout sLastDescLayout   = VK_NULL_HANDLE;
@@ -2028,6 +2032,24 @@ namespace
 
     bool ensurePerFrameMatrixSlot(U32 frame, U32 slot)
     {
+        if (slot >= MATRIX_RING_MAX_SLOTS)
+        {
+            static U32 s_ring_cap_hits = 0;
+            ++s_ring_cap_hits;
+            if ((s_ring_cap_hits & (s_ring_cap_hits - 1)) == 0)
+            {
+                LL_WARNS("Vulkan") << "matrix ring slot cap reached (slot=" << slot
+                                   << " cap=" << MATRIX_RING_MAX_SLOTS
+                                   << " hits=" << s_ring_cap_hits << ")" << LL_ENDL;
+            }
+            return false;
+        }
+        std::lock_guard<std::mutex> lk(sMatrixRingGrowthMutex);
+        if (sPerFrameRingSets[frame].capacity() < MATRIX_RING_MAX_SLOTS)
+        {
+            sPerFrameRingSets[frame].reserve(MATRIX_RING_MAX_SLOTS);
+            sMatrixRingChunks[frame].reserve(MATRIX_RING_MAX_CHUNKS);
+        }
         while (sPerFrameRingSets[frame].size() <= (size_t)slot)
         {
             const U32 new_slot = (U32)sPerFrameRingSets[frame].size();
@@ -2036,6 +2058,10 @@ namespace
 
             while (sMatrixRingChunks[frame].size() <= (size_t)chunk)
             {
+                if (sMatrixRingChunks[frame].size() >= MATRIX_RING_MAX_CHUNKS)
+                {
+                    return false;
+                }
                 if (!createMatrixRingChunk(frame))
                 {
                     return false;
@@ -2052,6 +2078,8 @@ namespace
                                      sMatrixRingChunks[frame][chunk].buffer,
                                      (VkDeviceSize)within * MATRIX_RING_SLOT_SIZE);
             sPerFrameRingSets[frame].push_back(set);
+            sPerFrameRingSetCount[frame].store((U32)sPerFrameRingSets[frame].size(),
+                                               std::memory_order_release);
         }
         return true;
     }
@@ -3177,6 +3205,7 @@ void shutdownVulkan()
         for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
         {
             sPerFrameRingSets[frame].clear();
+            sPerFrameRingSetCount[frame]    = 0;
             sMatrixRingUsedThisFrame[frame] = 0;
             sMatrixRingCurrentSlot[frame]   = 0;
             sMatrixRingHasCurrent[frame]    = false;
@@ -4481,12 +4510,11 @@ void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data, const TextureM
         return;
     }
 
-    const U32 slot = sMatrixRingUsedThisFrame[f];
+    const U32 slot = sMatrixRingUsedThisFrame[f].fetch_add(1, std::memory_order_relaxed);
     if (!ensurePerFrameMatrixSlot(f, slot))
     {
         return;
     }
-    sMatrixRingUsedThisFrame[f] = slot + 1;
 
     const U32 chunk  = slot / MATRIX_RING_CHUNK_SLOTS;
     const U32 within = slot % MATRIX_RING_CHUNK_SLOTS;
@@ -5602,12 +5630,13 @@ VkDescriptorSet getCurrentPerFrameDescriptorSet()
         return VK_NULL_HANDLE;
     }
     const U32 f = sFrameIndex;
-    if (sPerFrameRingSets[f].empty())
+    const U32 count = sPerFrameRingSetCount[f].load(std::memory_order_acquire);
+    if (count == 0)
     {
         return VK_NULL_HANDLE;
     }
     U32 slot = sMatrixRingHasCurrent[f] ? sMatrixRingCurrentSlot[f] : 0;
-    if (slot >= sPerFrameRingSets[f].size())
+    if (slot >= count)
     {
         slot = 0;
     }
