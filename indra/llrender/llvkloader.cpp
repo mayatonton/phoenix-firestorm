@@ -299,11 +299,13 @@ namespace
     };
     struct ScenePerDrawCacheEntry
     {
-        VkDescriptorSet                              sets[FRAMES_IN_FLIGHT];
+        VkDescriptorSet                              sets[FRAMES_IN_FLIGHT] = {};
         std::list<ScenePerDrawCacheKey>::iterator    lru_pos;
-        U32                                          last_used_monotonic_frame;
-        U32                                          pool_index;
+        U32                                          last_used_monotonic_frame = 0;
+        U32                                          pool_index = 0;
+        std::atomic<U32>                             refs{0};
     };
+    U64 sScenePerDrawCacheEpoch = 1;
     struct ScenePerDrawDeferredFreeEntry
     {
         VkDescriptorSet sets[FRAMES_IN_FLIGHT];
@@ -3468,6 +3470,7 @@ void shutdownVulkan()
             sMatrixRingHasCurrent[frame]    = false;
         }
 
+        ++sScenePerDrawCacheEpoch;
         for (PerDrawDescLane& lane : sPerDrawDescLanes)
         {
             for (VkDescriptorPool pool : lane.pools)
@@ -3875,7 +3878,27 @@ thread_local U32 gVkPerfPassTag = 0;
 thread_local U32 gVkPerfShadowMapIndex = 0;
 
 std::atomic<U64> gVkPerDrawTopologyGen{1};
-std::atomic<U64> gVkPerDrawEvictionGen{1};
+
+U64 getScenePerDrawCacheEpoch()
+{
+    return sScenePerDrawCacheEpoch;
+}
+
+void pinScenePerDrawEntry(void* token)
+{
+    if (token != nullptr)
+    {
+        static_cast<ScenePerDrawCacheEntry*>(token)->refs.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+void releaseScenePerDrawEntry(void* token, U64 epoch)
+{
+    if (token != nullptr && epoch == sScenePerDrawCacheEpoch)
+    {
+        static_cast<ScenePerDrawCacheEntry*>(token)->refs.fetch_sub(1, std::memory_order_relaxed);
+    }
+}
 
 U32 recordWorkerCount()
 {
@@ -4474,13 +4497,18 @@ VkDescriptorSetLayout getPerFrameDescriptorSetLayout()
 }
 
 bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
-                                     VkDescriptorSet*            out_set)
+                                     VkDescriptorSet*            out_set,
+                                     void**                      out_token)
 {
     if (!out_set)
     {
         return false;
     }
     *out_set = VK_NULL_HANDLE;
+    if (out_token)
+    {
+        *out_token = nullptr;
+    }
 
     PerDrawDescLane& lane = sPerDrawDescLanes[tRecordLaneIndex];
     if (sInitialized && lane.pools.empty())
@@ -4535,6 +4563,10 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         lane.lru.push_back(key);
         cache_it->second.lru_pos                   = std::prev(lane.lru.end());
         cache_it->second.last_used_monotonic_frame = sMonotonicFrameCount;
+        if (out_token)
+        {
+            *out_token = &cache_it->second;
+        }
         *out_set = cache_it->second.sets[getCurrentFrameIndex()];
         return true;
     }
@@ -4543,13 +4575,22 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     if (lane.cache.size() >= SCENE_PER_DRAW_CACHE_MAX_ENTRIES)
     {
         U32 evicted = 0;
+        U32 scanned = 0;
         for (auto lru_it = lane.lru.begin();
-             lru_it != lane.lru.end() && evicted < 64; )
+             lru_it != lane.lru.end() && evicted < 64 && scanned < 256; ++scanned)
         {
             auto cit = lane.cache.find(*lru_it);
             if (cit == lane.cache.end())
             {
                 lru_it = lane.lru.erase(lru_it);
+                continue;
+            }
+            if (cit->second.refs.load(std::memory_order_relaxed) > 0)
+            {
+                auto next_it = std::next(lru_it);
+                lane.lru.splice(lane.lru.end(), lane.lru, lru_it);
+                cit->second.lru_pos = std::prev(lane.lru.end());
+                lru_it = next_it;
                 continue;
             }
             if (cit->second.last_used_monotonic_frame + FRAMES_IN_FLIGHT <= sMonotonicFrameCount)
@@ -4569,10 +4610,6 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 continue;
             }
             break;
-        }
-        if (evicted > 0)
-        {
-            ++gVkPerDrawEvictionGen;
         }
     }
 
@@ -4627,7 +4664,8 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 lru_it = lane.lru.erase(lru_it);
                 continue;
             }
-            if (cit->second.last_used_monotonic_frame + FRAMES_IN_FLIGHT <= sMonotonicFrameCount)
+            if (cit->second.refs.load(std::memory_order_relaxed) == 0 &&
+                cit->second.last_used_monotonic_frame + FRAMES_IN_FLIGHT <= sMonotonicFrameCount)
             {
                 ScenePerDrawDeferredFreeEntry deferred = {};
                 for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
@@ -4640,7 +4678,6 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
 
                 lane.cache.erase(cit);
                 lru_it = lane.lru.erase(lru_it);
-                ++gVkPerDrawEvictionGen;
                 evicted = true;
                 break;
             }
@@ -4806,7 +4843,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     }
 
     lane.lru.push_back(key);
-    ScenePerDrawCacheEntry entry = {};
+    ScenePerDrawCacheEntry& entry = lane.cache.try_emplace(key).first->second;
     for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
         entry.sets[i] = new_sets[i];
@@ -4814,9 +4851,11 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     entry.lru_pos                   = std::prev(lane.lru.end());
     entry.last_used_monotonic_frame = sMonotonicFrameCount;
     entry.pool_index                = alloc_pool_index;
-    lane.cache.emplace(key, entry);
 
-
+    if (out_token)
+    {
+        *out_token = &entry;
+    }
     *out_set = entry.sets[getCurrentFrameIndex()];
     return true;
 }

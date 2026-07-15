@@ -507,8 +507,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             && params->mVkSetMemoSet[memo_frame] != nullptr
             && params->mVkSetMemoTexSig == memo_sig
             && cur->mVkAccessorBindingListBuilt
-            && params->mVkSetMemoTopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
-            && params->mVkSetMemoEvictGen == LLVKLoader::gVkPerDrawEvictionGen.load(std::memory_order_relaxed))
+            && params->mVkSetMemoTopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed))
         {
             U64 ring_sig = 0;
             for (U8 b : cur->mVkAccessorBindingList)
@@ -897,7 +896,9 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     }
 
     VkDescriptorSet per_draw_set = VK_NULL_HANDLE;
-    if (LLVKLoader::ensureScenePerDrawDescriptorSet(bindings, &per_draw_set)
+    void*           memo_token   = nullptr;
+    if (LLVKLoader::ensureScenePerDrawDescriptorSet(bindings, &per_draw_set,
+                                                    memo_eligible ? &memo_token : nullptr)
         && per_draw_set != VK_NULL_HANDLE)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
@@ -909,33 +910,37 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         ++LLVKLoader::gVkPerf.set_build;
 
         if (memo_fill
+            && memo_token != nullptr
             && (bindings.ubo == VK_NULL_HANDLE
                 || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer()))
         {
             const U64 topo_gen  = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
-            const U64 evict_gen = LLVKLoader::gVkPerDrawEvictionGen.load(std::memory_order_relaxed);
             const bool header_same =
                 params->mVkSetMemoShader == cur
                 && params->mVkSetMemoShape == set_shape
                 && params->mVkSetMemoTexSig == memo_sig
                 && params->mVkSetMemoTopoGen == topo_gen
-                && params->mVkSetMemoEvictGen == evict_gen
                 && params->mVkSetMemoL3Count == memo_l3_cnt
                 && std::memcmp(params->mVkSetMemoL3Enums, memo_l3_enums, sizeof(memo_l3_enums)) == 0
                 && std::memcmp(params->mVkSetMemoL3Views, memo_l3_views, sizeof(memo_l3_views)) == 0;
             if (!header_same)
             {
+                params->clearVkSetMemoPins();
                 params->mVkSetMemoShader   = cur;
                 params->mVkSetMemoShape    = set_shape;
                 params->mVkSetMemoTexSig   = memo_sig;
                 params->mVkSetMemoTopoGen  = topo_gen;
-                params->mVkSetMemoEvictGen = evict_gen;
                 params->mVkSetMemoL3Count   = memo_l3_cnt;
                 std::memcpy(params->mVkSetMemoL3Enums, memo_l3_enums, sizeof(memo_l3_enums));
                 std::memcpy(params->mVkSetMemoL3Views, memo_l3_views, sizeof(memo_l3_views));
-                params->mVkSetMemoSet[0] = nullptr;
-                params->mVkSetMemoSet[1] = nullptr;
-                params->mVkSetMemoSet[2] = nullptr;
+            }
+            if (params->mVkSetMemoEntryTok[memo_frame] != memo_token)
+            {
+                LLVKLoader::releaseScenePerDrawEntry(params->mVkSetMemoEntryTok[memo_frame],
+                                                     params->mVkSetMemoPinEpoch);
+                LLVKLoader::pinScenePerDrawEntry(memo_token);
+                params->mVkSetMemoEntryTok[memo_frame] = memo_token;
+                params->mVkSetMemoPinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
             }
             params->mVkSetMemoRingSig[memo_frame] = memo_ring_sig;
             params->mVkSetMemoSet[memo_frame] = (void*)per_draw_set;
@@ -943,6 +948,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         else if (params != nullptr)
         {
+            params->clearVkSetMemoPins();
             params->mVkSetMemoShader = nullptr;
         }
     }

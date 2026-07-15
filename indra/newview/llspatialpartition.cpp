@@ -4030,9 +4030,20 @@ LLDrawInfo::LLDrawInfo(U16 start, U16 end, U32 count, U32 offset,
 
 LLDrawInfo::~LLDrawInfo()
 {
+    clearVkSetMemoPins();
     if (gDebugGL)
     {
         gPipeline.checkReferences(this);
+    }
+}
+
+void LLDrawInfo::clearVkSetMemoPins()
+{
+    for (U32 i = 0; i < 3; ++i)
+    {
+        LLVKLoader::releaseScenePerDrawEntry(mVkSetMemoEntryTok[i], mVkSetMemoPinEpoch);
+        mVkSetMemoEntryTok[i] = nullptr;
+        mVkSetMemoSet[i]      = nullptr;
     }
 }
 

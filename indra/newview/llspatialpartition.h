@@ -146,14 +146,17 @@ public:
 
     LLGLSLShader* mVkSetMemoShader = nullptr;
     U64   mVkSetMemoTopoGen = 0;
-    U64   mVkSetMemoEvictGen = 0;
     U64   mVkSetMemoTexSig = 0;
     void* mVkSetMemoSet[3] = {};
+    void* mVkSetMemoEntryTok[3] = {};
+    U64   mVkSetMemoPinEpoch = 0;
     U64   mVkSetMemoRingSig[3] = {};
     void* mVkSetMemoL3Views[6] = {};
     S16   mVkSetMemoL3Enums[6] = {};
     U32   mVkSetMemoShape = 0;
     U8    mVkSetMemoL3Count = 0;
+
+    void clearVkSetMemoPins();
 
     LLUUID mMaterialID; // id of LLGLTFMaterial or LLMaterial applied to this draw info
 

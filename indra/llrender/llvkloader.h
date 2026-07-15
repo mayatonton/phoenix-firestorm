@@ -1368,7 +1368,6 @@ namespace LLVKLoader
     extern thread_local U32 gVkPerfShadowMapIndex;
 
     extern std::atomic<U64> gVkPerDrawTopologyGen;
-    extern std::atomic<U64> gVkPerDrawEvictionGen;
 
     struct VkPerfPassScope
     {
@@ -1411,7 +1410,12 @@ namespace LLVKLoader
     };
 
     bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& bindings,
-                                         VkDescriptorSet*            out_set);
+                                         VkDescriptorSet*            out_set,
+                                         void**                      out_token = nullptr);
+
+    U64  getScenePerDrawCacheEpoch();
+    void pinScenePerDrawEntry(void* token);
+    void releaseScenePerDrawEntry(void* token, U64 epoch);
 
     void notifyWindowResize(U32 width, U32 height);
 
