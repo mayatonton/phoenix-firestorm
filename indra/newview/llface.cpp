@@ -40,6 +40,7 @@
 
 #include "lldrawpoolavatar.h"
 #include "lldrawpoolbump.h"
+#include "llspatialpartition.h"
 #include "llgl.h"
 #include "llrender.h"
 #include "lllightconstants.h"
@@ -2164,6 +2165,944 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
 
 
     return true;
+}
+
+LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
+                                             LLVertexBuffer* buffer,
+                                             const LLMatrix4& mat_vert_in,
+                                             const LLMatrix3& mat_norm_in,
+                                             U16 index_offset,
+                                             U32 geom_index,
+                                             U32 indices_index)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_FACE;
+
+    if (buffer == nullptr || mVObjp.isNull() || mDrawablep == NULL)
+    {
+        return GEO_FILL_FAIL;
+    }
+
+    LLVolume* volumep = mVObjp->getVolume();
+    if (volumep == nullptr)
+    {
+        return GEO_FILL_FAIL;
+    }
+    const LLVolume& volume = *volumep;
+    const S32 face_index = mTEOffset;
+
+    if (face_index < 0 || face_index >= volume.getNumVolumeFaces())
+    {
+        if (gDebugGL)
+        {
+            LL_WARNS() << "Face index is out of bounds!" << LL_ENDL;
+        }
+        return GEO_FILL_FAIL;
+    }
+
+    bool rigged = isState(RIGGED);
+    const LLVolumeFace& vf = volume.getVolumeFace(face_index);
+    S32 num_vertices = (S32)vf.mNumVertices;
+    S32 num_indices = (S32)vf.mNumIndices;
+
+    if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_OCTREE))
+    {
+        updateRebuildFlags();
+    }
+
+    num_vertices = llclamp(num_vertices, (S32)0, (S32)mGeomCount);
+    num_indices = llclamp(num_indices, (S32)0, (S32)mIndicesCount);
+
+    if (num_indices + (S32)indices_index > (S32)buffer->getNumIndices())
+    {
+        LL_WARNS() << "Index buffer overflow!" << LL_ENDL;
+        return GEO_FILL_FAIL;
+    }
+    if (num_vertices + (S32)geom_index > (S32)buffer->getNumVerts())
+    {
+        LL_WARNS() << "Vertex buffer overflow!" << LL_ENDL;
+        return GEO_FILL_FAIL;
+    }
+
+    const LLTextureEntry* tep = mVObjp->getTE(face_index);
+    llassert(tep);
+    if (!tep)
+    {
+        return GEO_FILL_FAIL;
+    }
+
+    LLGLTFMaterial* gltf_mat = tep->getGLTFRenderMaterial();
+    if (!tep->isSelected() && mVertexBufferGLTF.notNull())
+    {
+        mVertexBufferGLTF = nullptr;
+    }
+
+    bool global_volume = mDrawablep->getVOVolume()->isVolumeGlobal();
+    LLVector3 scale;
+    if (global_volume)
+    {
+        scale.setVec(1, 1, 1);
+    }
+    else
+    {
+        scale = mVObjp->getScale();
+    }
+
+    bool rebuild_normal = buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL);
+    bool rebuild_tangent = buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT);
+    bool rebuild_weights = buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4);
+    bool rebuild_emissive = buffer->hasDataType(LLVertexBuffer::TYPE_EMISSIVE);
+
+    const U8 bump_code = tep->getBumpmap();
+
+    bool is_static = mDrawablep->isStatic();
+    if (is_static)
+    {
+        setState(GLOBAL);
+    }
+    else
+    {
+        clearState(GLOBAL);
+    }
+
+    LLColor4U color = tep->getColor();
+    if (tep->getGLTFRenderMaterial())
+    {
+        color = tep->getGLTFRenderMaterial()->mBaseColor;
+    }
+
+    if (!isInAlphaPool() && tep->getGLTFRenderMaterial() == nullptr)
+    {
+        LLMaterial* cmat = tep->getMaterialParams().get();
+
+        bool shiny_in_alpha = false;
+        if (!cmat || cmat->getSpecularID().isNull())
+        {
+            shiny_in_alpha = true;
+        }
+
+        if (shiny_in_alpha)
+        {
+            static const GLfloat SHININESS_TO_ALPHA[4] =
+            {
+                0.0000f,
+                0.25f,
+                0.5f,
+                0.75f
+            };
+            llassert(tep->getShiny() <= 3);
+            color.mV[3] = U8(SHININESS_TO_ALPHA[tep->getShiny()] * 255);
+        }
+    }
+
+    LLMaterial* mat = tep->getMaterialParams().get();
+
+    F32 r = 0, os = 0, ot = 0, ms = 0, mt = 0, cos_ang = 0, sin_ang = 0;
+
+    constexpr S32 XFORM_NONE = 0;
+    constexpr S32 XFORM_BLINNPHONG_COLOR = 1;
+    constexpr S32 XFORM_BLINNPHONG_NORMAL = 1 << 1;
+    constexpr S32 XFORM_BLINNPHONG_SPECULAR = 1 << 2;
+
+    S32 xforms = XFORM_NONE;
+    if (!gltf_mat)
+    {
+        r = tep->getRotation();
+        tep->getOffset(&os, &ot);
+        tep->getScale(&ms, &mt);
+
+        cos_ang = cos(r);
+        sin_ang = sin(r);
+
+        if (cos_ang != 1.f ||
+            sin_ang != 0.f ||
+            os != 0.f ||
+            ot != 0.f ||
+            ms != 1.f ||
+            mt != 1.f)
+        {
+            xforms |= XFORM_BLINNPHONG_COLOR;
+        }
+        if (mat)
+        {
+            F32 r_norm = 0, os_norm = 0, ot_norm = 0, ms_norm = 0, mt_norm = 0, cos_ang_norm = 0, sin_ang_norm = 0;
+            mat->getNormalOffset(os_norm, ot_norm);
+            mat->getNormalRepeat(ms_norm, mt_norm);
+            r_norm = mat->getNormalRotation();
+            cos_ang_norm = cos(r_norm);
+            sin_ang_norm = sin(r_norm);
+            if (cos_ang_norm != 1.f ||
+                sin_ang_norm != 0.f ||
+                os_norm != 0.f ||
+                ot_norm != 0.f ||
+                ms_norm != 1.f ||
+                mt_norm != 1.f)
+            {
+                xforms |= XFORM_BLINNPHONG_NORMAL;
+            }
+        }
+        if (mat)
+        {
+            F32 r_spec = 0, os_spec = 0, ot_spec = 0, ms_spec = 0, mt_spec = 0, cos_ang_spec = 0, sin_ang_spec = 0;
+            mat->getSpecularOffset(os_spec, ot_spec);
+            mat->getSpecularRepeat(ms_spec, mt_spec);
+            r_spec = mat->getSpecularRotation();
+            cos_ang_spec = cos(r_spec);
+            sin_ang_spec = sin(r_spec);
+            if (cos_ang_spec != 1.f ||
+                sin_ang_spec != 0.f ||
+                os_spec != 0.f ||
+                ot_spec != 0.f ||
+                ms_spec != 1.f ||
+                mt_spec != 1.f)
+            {
+                xforms |= XFORM_BLINNPHONG_SPECULAR;
+            }
+        }
+    }
+
+    const LLMeshSkinInfo* skin = nullptr;
+    if (rigged)
+    {
+        skin = mSkinInfo;
+        if (skin == nullptr)
+        {
+            return GEO_FILL_FAIL;
+        }
+        out.mMatVert = skin->mBindShapeMatrix;
+    }
+    else
+    {
+        out.mMatVert.loadu(mat_vert_in);
+    }
+
+    if (rebuild_normal || rebuild_tangent)
+    {
+        if (rigged)
+        {
+            glm::mat4 m = glm::make_mat4((F32*)skin->mBindShapeMatrix.getF32ptr());
+            m = glm::transpose(glm::inverse(m));
+            out.mMatNormal.loadu(glm::value_ptr(m));
+        }
+        else
+        {
+            out.mMatNormal.loadu(mat_norm_in);
+        }
+    }
+
+    LLVector4a binormal_dir(-sin_ang, cos_ang, 0.f);
+    LLVector4a bump_s_primary_light_ray(0.f, 0.f, 0.f);
+    LLVector4a bump_t_primary_light_ray(0.f, 0.f, 0.f);
+
+    LLQuaternion bump_quat;
+    if (mDrawablep->isActive())
+    {
+        bump_quat = LLQuaternion(mDrawablep->getRenderMatrix());
+    }
+
+    if (bump_code)
+    {
+        if (!LLVolumeGeometryManager::geoEnsureTangents(volumep, face_index))
+        {
+            return GEO_FILL_DEFER;
+        }
+        F32 offset_multiple;
+        switch (bump_code)
+        {
+            case BE_NO_BUMP:
+            offset_multiple = 0.f;
+            break;
+            case BE_BRIGHTNESS:
+            case BE_DARKNESS:
+            if (mTexture[LLRender::DIFFUSE_MAP].notNull() && mTexture[LLRender::DIFFUSE_MAP]->hasGLTexture())
+            {
+                S32 cur_discard = mTexture[LLRender::DIFFUSE_MAP]->getDiscardLevel();
+                S32 max_size = llmax(mTexture[LLRender::DIFFUSE_MAP]->getWidth(), mTexture[LLRender::DIFFUSE_MAP]->getHeight());
+                max_size <<= cur_discard;
+                const F32 ARTIFICIAL_OFFSET = 2.f;
+                offset_multiple = ARTIFICIAL_OFFSET / (F32)max_size;
+            }
+            else
+            {
+                offset_multiple = 1.f/256;
+            }
+            break;
+
+            default:
+            offset_multiple = 1.f / 256;
+            break;
+        }
+
+        F32 s_scale = tep->getScaleS();
+        F32 t_scale = tep->getScaleT();
+
+        LLVector3   sun_ray  = gSky.mVOSkyp->mBumpSunDir;
+        LLVector3   moon_ray = gSky.mVOSkyp->getMoon().getDirection();
+        LLVector3& primary_light_ray = (sun_ray.mV[VZ] > 0) ? sun_ray : moon_ray;
+
+        bump_s_primary_light_ray.load3((offset_multiple * s_scale * primary_light_ray).mV);
+        bump_t_primary_light_ray.load3((offset_multiple * t_scale * primary_light_ray).mV);
+    }
+
+    U8 texgen = tep->getTexGen();
+    if (texgen != LLTextureEntry::TEX_GEN_DEFAULT)
+    {
+        if (!LLVolumeGeometryManager::geoEnsureTangents(volumep, face_index))
+        {
+            return GEO_FILL_DEFER;
+        }
+    }
+
+    U8 tex_mode = 0;
+    bool tex_anim = false;
+
+    LLVOVolume* vobj = (LLVOVolume*)mVObjp.get();
+    tex_mode = vobj->mTexAnimMode;
+
+    if (vobj->mTextureAnimp)
+    {
+        tex_anim = true;
+    }
+
+    if (isState(TEXTURE_ANIM))
+    {
+        if (!tex_mode)
+        {
+            clearState(TEXTURE_ANIM);
+        }
+        else
+        {
+            os = ot = 0.f;
+            r = 0.f;
+            cos_ang = 1.f;
+            sin_ang = 0.f;
+            ms = mt = 1.f;
+
+            xforms = XFORM_NONE;
+        }
+
+        if (getVirtualSize() >= MIN_TEX_ANIM_SIZE)
+        {
+            tex_mode = 0;
+        }
+    }
+
+    LLVector4a scalea;
+    scalea.load3(scale.mV);
+
+    bool do_bump = bump_code && buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1);
+
+    if ((mat || gltf_mat) && !do_bump)
+    {
+        do_bump = buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1)
+               || buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD2);
+    }
+
+    bool do_tex_mat = tex_mode && mTextureMatrix && !gltf_mat;
+
+    out.mDoTC = buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0);
+    out.mPlanar = (texgen == LLTextureEntry::TEX_GEN_PLANAR);
+    out.mDoTexMat = do_tex_mat;
+    out.mExpTexMat = (tex_mode && mTextureMatrix);
+    if (mTextureMatrix)
+    {
+        out.mTexMat = *mTextureMatrix;
+    }
+    out.mScale = scalea;
+
+    if (!do_bump)
+    {
+        out.mExpensiveTC = false;
+        out.mCheapXform = (xforms != XFORM_NONE);
+        out.mTC[0].mEnabled = true;
+        out.mTC[0].mXform = out.mCheapXform;
+        out.mTC[0].mCos = cos_ang;
+        out.mTC[0].mSin = sin_ang;
+        out.mTC[0].mOs = os;
+        out.mTC[0].mOt = ot;
+        out.mTC[0].mMs = ms;
+        out.mTC[0].mMt = mt;
+        out.mDstTC[0] = buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_TEXCOORD0, geom_index);
+    }
+    else
+    {
+        out.mExpensiveTC = true;
+        bool do_bump_final = do_bump;
+        if (mat && !mat->getNormalID().isNull())
+        {
+            do_bump_final = false;
+        }
+
+        out.mTC[0].mEnabled = true;
+        out.mTC[0].mXform = (xforms & XFORM_BLINNPHONG_COLOR) != XFORM_NONE;
+        out.mTC[0].mCos = cos_ang;
+        out.mTC[0].mSin = sin_ang;
+        out.mTC[0].mOs = os;
+        out.mTC[0].mOt = ot;
+        out.mTC[0].mMs = ms;
+        out.mTC[0].mMt = mt;
+        out.mDstTC[0] = buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_TEXCOORD0, geom_index);
+
+        if (buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1))
+        {
+            if (mat && !tex_anim)
+            {
+                r = mat->getNormalRotation();
+                mat->getNormalOffset(os, ot);
+                mat->getNormalRepeat(ms, mt);
+
+                cos_ang = cos(r);
+                sin_ang = sin(r);
+            }
+            out.mTC[1].mEnabled = true;
+            out.mTC[1].mXform = (xforms & XFORM_BLINNPHONG_NORMAL) != XFORM_NONE;
+            out.mTC[1].mCos = cos_ang;
+            out.mTC[1].mSin = sin_ang;
+            out.mTC[1].mOs = os;
+            out.mTC[1].mOt = ot;
+            out.mTC[1].mMs = ms;
+            out.mTC[1].mMt = mt;
+            out.mDstTC[1] = buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_TEXCOORD1, geom_index);
+        }
+
+        if (buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD2))
+        {
+            if (mat && !tex_anim)
+            {
+                r = mat->getSpecularRotation();
+                mat->getSpecularOffset(os, ot);
+                mat->getSpecularRepeat(ms, mt);
+
+                cos_ang = cos(r);
+                sin_ang = sin(r);
+            }
+            out.mTC[2].mEnabled = true;
+            out.mTC[2].mXform = (xforms & XFORM_BLINNPHONG_SPECULAR) != XFORM_NONE;
+            out.mTC[2].mCos = cos_ang;
+            out.mTC[2].mSin = sin_ang;
+            out.mTC[2].mOs = os;
+            out.mTC[2].mOt = ot;
+            out.mTC[2].mMs = ms;
+            out.mTC[2].mMt = mt;
+            out.mDstTC[2] = buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_TEXCOORD2, geom_index);
+        }
+
+        out.mDoBumpOffset = ((!mat && !gltf_mat) && do_bump_final);
+        if (out.mDoBumpOffset)
+        {
+            if (!LLVolumeGeometryManager::geoEnsureTangents(volumep, face_index))
+            {
+                return GEO_FILL_DEFER;
+            }
+            out.mBinormalDir = binormal_dir;
+            out.mBumpSRay = bump_s_primary_light_ray;
+            out.mBumpTRay = bump_t_primary_light_ray;
+            out.mBumpActive = mDrawablep->isActive();
+            out.mBumpQuat = bump_quat;
+        }
+    }
+
+    if (rebuild_tangent)
+    {
+        if (!LLVolumeGeometryManager::geoEnsureTangents(volumep, face_index))
+        {
+            return GEO_FILL_DEFER;
+        }
+    }
+
+    S32 index = mTextureIndex < FACE_DO_NOT_BATCH_TEXTURES ? mTextureIndex : 0;
+    F32 val = 0.f;
+    S32* vp = (S32*)&val;
+    *vp = index;
+    llassert(index < LLGLSLShader::sIndexedTextureChannels);
+    out.mTexIdxF = val;
+
+    out.mColorRGBA = color.asRGBA();
+
+    out.mDoNormal = rebuild_normal;
+    out.mDoTangent = rebuild_tangent;
+    out.mDoWeights = rebuild_weights && (vf.mWeights != nullptr);
+    out.mDoEmissive = rebuild_emissive;
+    if (rebuild_emissive)
+    {
+        U8 glow = (U8)llclamp((S32)(tep->getGlow() * 255), 0, 255);
+        LLColor4U glow4u = LLColor4U(0, 0, 0, glow);
+        out.mGlowRGBA = glow4u.asRGBA();
+    }
+
+    out.mDstIndex = buffer->getVkIndexWritePtr(indices_index);
+    out.mDstPos = buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_VERTEX, geom_index);
+    out.mDstNormal = rebuild_normal ? buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_NORMAL, geom_index) : nullptr;
+    out.mDstTangent = rebuild_tangent ? buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_TANGENT, geom_index) : nullptr;
+    out.mDstWeights = out.mDoWeights ? buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_WEIGHT4, geom_index) : nullptr;
+    out.mDstColor = buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ? buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_COLOR, geom_index) : nullptr;
+    out.mDstEmissive = rebuild_emissive ? buffer->getVkVertexWritePtr(LLVertexBuffer::TYPE_EMISSIVE, geom_index) : nullptr;
+
+    if (out.mDstPos == nullptr || out.mDstIndex == nullptr)
+    {
+        LL_WARNS_ONCE() << "geo fill has no mega slice destination" << LL_ENDL;
+        return GEO_FILL_FAIL;
+    }
+
+    out.mVolume = volumep;
+    out.mFaceIndex = face_index;
+    out.mNumVertices = num_vertices;
+    out.mNumIndices = num_indices;
+    out.mIndexOffset = index_offset;
+    out.mGeomCount = mGeomCount;
+
+    mTexExtents[0].setVec(0, 0);
+    mTexExtents[1].setVec(1, 1);
+    xform(mTexExtents[0], cos_ang, sin_ang, os, ot, ms, mt);
+    xform(mTexExtents[1], cos_ang, sin_ang, os, ot, ms, mt);
+
+    F32 es = vf.mTexCoordExtents[1].mV[0] - vf.mTexCoordExtents[0].mV[0];
+    F32 et = vf.mTexCoordExtents[1].mV[1] - vf.mTexCoordExtents[0].mV[1];
+    mTexExtents[0][0] *= es;
+    mTexExtents[1][0] *= es;
+    mTexExtents[0][1] *= et;
+    mTexExtents[1][1] *= et;
+
+    return GEO_FILL_OK;
+}
+
+void LLFace::runVkGeoFill(LLGeoFaceFill& f)
+{
+    if (f.mVolume.isNull() || f.mFaceIndex < 0 || f.mFaceIndex >= f.mVolume->getNumVolumeFaces())
+    {
+        return;
+    }
+    const LLVolumeFace& vf = f.mVolume->getVolumeFace(f.mFaceIndex);
+    const S32 num_vertices = f.mNumVertices;
+    const S32 num_indices = f.mNumIndices;
+
+    if (f.mDstIndex != nullptr)
+    {
+        volatile __m128i* dst = (__m128i*)f.mDstIndex;
+        __m128i* src = (__m128i*)vf.mIndices;
+        __m128i offset = _mm_set1_epi16(f.mIndexOffset);
+
+        S32 end = num_indices / 8;
+
+        for (S32 i = 0; i < end; i++)
+        {
+            __m128i res = _mm_add_epi16(src[i], offset);
+            _mm_storeu_si128((__m128i*)dst++, res);
+        }
+
+        U16* idx = (U16*)dst;
+        for (S32 i = end * 8; i < num_indices; ++i)
+        {
+            *idx++ = vf.mIndices[i] + f.mIndexOffset;
+        }
+    }
+
+    if (f.mDoTC && f.mDstTC[0] != nullptr && vf.mTexCoords != nullptr)
+    {
+        if (!f.mExpensiveTC)
+        {
+            if (!f.mPlanar)
+            {
+                if (!f.mDoTexMat)
+                {
+                    if (!f.mCheapXform)
+                    {
+                        S32 tc_size = (num_vertices * 2 * sizeof(F32));
+                        if (tc_size > 0)
+                        {
+                            LLVector4a::memcpyNonAliased16((F32*)f.mDstTC[0], (F32*)vf.mTexCoords, tc_size);
+                        }
+                    }
+                    else
+                    {
+                        F32* dst = (F32*)f.mDstTC[0];
+                        LLVector4a* src = (LLVector4a*)vf.mTexCoords;
+
+                        LLVector4a trans;
+                        trans.splat(-0.5f);
+
+                        LLVector4a rot0;
+                        rot0.set(f.mTC[0].mCos, -f.mTC[0].mSin, f.mTC[0].mCos, -f.mTC[0].mSin);
+
+                        LLVector4a rot1;
+                        rot1.set(f.mTC[0].mSin, f.mTC[0].mCos, f.mTC[0].mSin, f.mTC[0].mCos);
+
+                        LLVector4a scale;
+                        scale.set(f.mTC[0].mMs, f.mTC[0].mMt, f.mTC[0].mMs, f.mTC[0].mMt);
+
+                        LLVector4a offset;
+                        offset.set(f.mTC[0].mOs + 0.5f, f.mTC[0].mOt + 0.5f, f.mTC[0].mOs + 0.5f, f.mTC[0].mOt + 0.5f);
+
+                        LLVector4Logical mask;
+                        mask.clear();
+                        mask.setElement<2>();
+                        mask.setElement<3>();
+
+                        S32 count = num_vertices / 2 + num_vertices % 2;
+
+                        for (S32 i = 0; i < count; i++)
+                        {
+                            LLVector4a res = *src++;
+                            xform4a(res, trans, mask, rot0, rot1, offset, scale);
+                            res.store4a(dst);
+                            dst += 4;
+                        }
+                    }
+                }
+                else
+                {
+                    LLVector2* dst = (LLVector2*)f.mDstTC[0];
+                    for (S32 i = 0; i < num_vertices; i++)
+                    {
+                        LLVector2 tc(vf.mTexCoords[i]);
+
+                        LLVector3 tmp(tc.mV[0], tc.mV[1], 0.f);
+                        tmp = tmp * f.mTexMat;
+                        tc.mV[0] = tmp.mV[0];
+                        tc.mV[1] = tmp.mV[1];
+                        *dst++ = tc;
+                    }
+                }
+            }
+            else
+            {
+                LLVector2* dst = (LLVector2*)f.mDstTC[0];
+                if (f.mDoTexMat)
+                {
+                    for (S32 i = 0; i < num_vertices; i++)
+                    {
+                        LLVector2 tc(vf.mTexCoords[i]);
+                        LLVector4a& norm = vf.mNormals[i];
+                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a vec = vf.mPositions[i];
+                        vec.mul(f.mScale);
+                        planarProjection(tc, norm, center, vec);
+
+                        LLVector3 tmp(tc.mV[0], tc.mV[1], 0.f);
+                        tmp = tmp * f.mTexMat;
+                        tc.mV[0] = tmp.mV[0];
+                        tc.mV[1] = tmp.mV[1];
+
+                        *dst++ = tc;
+                    }
+                }
+                else if (f.mCheapXform)
+                {
+                    for (S32 i = 0; i < num_vertices; i++)
+                    {
+                        LLVector2 tc(vf.mTexCoords[i]);
+                        LLVector4a& norm = vf.mNormals[i];
+                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a vec = vf.mPositions[i];
+                        vec.mul(f.mScale);
+                        planarProjection(tc, norm, center, vec);
+
+                        xform(tc, f.mTC[0].mCos, f.mTC[0].mSin, f.mTC[0].mOs, f.mTC[0].mOt, f.mTC[0].mMs, f.mTC[0].mMt);
+
+                        *dst++ = tc;
+                    }
+                }
+                else
+                {
+                    for (S32 i = 0; i < num_vertices; i++)
+                    {
+                        LLVector2 tc(vf.mTexCoords[i]);
+                        LLVector4a& norm = vf.mNormals[i];
+                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a vec = vf.mPositions[i];
+                        vec.mul(f.mScale);
+                        planarProjection(tc, norm, center, vec);
+
+                        *dst++ = tc;
+                    }
+                }
+            }
+        }
+        else
+        {
+            std::vector<LLVector2> bump_scratch;
+
+            for (U32 ch = 0; ch < 3; ++ch)
+            {
+                if (!f.mTC[ch].mEnabled || f.mDstTC[ch] == nullptr)
+                {
+                    continue;
+                }
+                const LLGeoFaceFill::TCChannel& c = f.mTC[ch];
+                LLVector2* dst = (LLVector2*)f.mDstTC[ch];
+                const bool keep_scratch = f.mDoBumpOffset && ch == 1;
+                if (keep_scratch)
+                {
+                    bump_scratch.resize(num_vertices);
+                }
+
+                if (f.mPlanar)
+                {
+                    for (S32 i = 0; i < num_vertices; i++)
+                    {
+                        LLVector2 tc(vf.mTexCoords[i]);
+                        LLVector4a& norm = vf.mNormals[i];
+                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a vec = vf.mPositions[i];
+
+                        vec.mul(f.mScale);
+
+                        planarProjection(tc, norm, center, vec);
+
+                        if (f.mExpTexMat)
+                        {
+                            LLVector3 tmp(tc.mV[0], tc.mV[1], 0.f);
+                            tmp = tmp * f.mTexMat;
+                            tc.mV[0] = tmp.mV[0];
+                            tc.mV[1] = tmp.mV[1];
+                        }
+                        else if (c.mXform)
+                        {
+                            xform(tc, c.mCos, c.mSin, c.mOs, c.mOt, c.mMs, c.mMt);
+                        }
+
+                        if (keep_scratch)
+                        {
+                            bump_scratch[i] = tc;
+                        }
+                        *dst++ = tc;
+                    }
+                }
+                else
+                {
+                    for (S32 i = 0; i < num_vertices; i++)
+                    {
+                        LLVector2 tc(vf.mTexCoords[i]);
+
+                        if (f.mExpTexMat)
+                        {
+                            LLVector3 tmp(tc.mV[0], tc.mV[1], 0.f);
+                            tmp = tmp * f.mTexMat;
+                            tc.mV[0] = tmp.mV[0];
+                            tc.mV[1] = tmp.mV[1];
+                        }
+                        else if (c.mXform)
+                        {
+                            xform(tc, c.mCos, c.mSin, c.mOs, c.mOt, c.mMs, c.mMt);
+                        }
+
+                        if (keep_scratch)
+                        {
+                            bump_scratch[i] = tc;
+                        }
+                        *dst++ = tc;
+                    }
+                }
+            }
+
+            if (f.mDoBumpOffset && f.mDstTC[1] != nullptr && vf.mTangents != nullptr && !bump_scratch.empty())
+            {
+                LLVector2* dst = (LLVector2*)f.mDstTC[1];
+                for (S32 i = 0; i < num_vertices; i++)
+                {
+                    LLVector4a tangent = vf.mTangents[i];
+
+                    LLVector4a binorm;
+                    binorm.setCross3(vf.mNormals[i], tangent);
+                    binorm.mul(tangent.getF32ptr()[3]);
+
+                    LLMatrix4a tangent_to_object;
+                    tangent_to_object.setRows(tangent, binorm, vf.mNormals[i]);
+                    LLVector4a t;
+                    tangent_to_object.rotate(f.mBinormalDir, t);
+                    LLVector4a binormal;
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+// </FS:Zi>
+                    f.mMatNormal.rotate(t, binormal);
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic pop
+#endif
+// </FS:Zi>
+
+                    if (f.mBumpActive)
+                    {
+                        LLVector3 t3;
+                        t3.set(binormal.getF32ptr());
+                        t3 *= f.mBumpQuat;
+                        binormal.load3(t3.mV);
+                    }
+
+                    binormal.normalize3fast();
+
+                    LLVector2 tc = bump_scratch[i];
+                    tc += LLVector2(f.mBumpSRay.dot3(tangent).getF32(), f.mBumpTRay.dot3(binormal).getF32());
+
+                    *dst++ = tc;
+                }
+            }
+        }
+    }
+
+    if (f.mDstPos != nullptr && num_vertices > 0)
+    {
+        LLVector4a* src = vf.mPositions;
+        LLVector4a* end = src + num_vertices;
+
+        F32* dst = (F32*)f.mDstPos;
+        F32* end_f32 = dst + f.mGeomCount * 4;
+
+        LLVector4a res0;
+
+        LLVector4a texIdx;
+
+        LLVector4Logical mask;
+        mask.clear();
+        mask.setElement<3>();
+
+        texIdx.set(0, 0, 0, f.mTexIdxF);
+
+        LLVector4a tmp;
+
+        while (src < end)
+        {
+            f.mMatVert.affineTransform(*src++, res0);
+            tmp.setSelectWithMask(mask, texIdx, res0);
+            tmp.store4a((F32*)dst);
+            dst += 4;
+        }
+
+        while (dst < end_f32)
+        {
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+// </FS:Zi>
+            res0.store4a((F32*)dst);
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic pop
+#endif
+// </FS:Zi>
+            dst += 4;
+        }
+    }
+
+    if (f.mDoNormal && f.mDstNormal != nullptr && vf.mNormals != nullptr)
+    {
+        F32* normals = (F32*)f.mDstNormal;
+        LLVector4a* src = vf.mNormals;
+        LLVector4a* end = src + num_vertices;
+
+        while (src < end)
+        {
+            LLVector4a normal;
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+// </FS:Zi>
+            f.mMatNormal.rotate(*src++, normal);
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic pop
+#endif
+// </FS:Zi>
+            normal.store4a(normals);
+            normals += 4;
+        }
+    }
+
+    if (f.mDoTangent && f.mDstTangent != nullptr && vf.mTangents != nullptr)
+    {
+        F32* tangents = (F32*)f.mDstTangent;
+
+        LLVector4Logical mask;
+        mask.clear();
+        mask.setElement<3>();
+
+        LLVector4a* src = vf.mTangents;
+        LLVector4a* end = vf.mTangents + num_vertices;
+
+        while (src < end)
+        {
+            LLVector4a tangent_out;
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+// </FS:Zi>
+            f.mMatNormal.rotate(*src, tangent_out);
+// <FS:Zi> GCC12 warning: maybe-uninitialized - probably bogus
+#if defined(__GNUC__) && (__GNUC__ >= 12)
+#pragma GCC diagnostic pop
+#endif
+// </FS:Zi>
+            tangent_out.setSelectWithMask(mask, *src, tangent_out);
+            tangent_out.store4a(tangents);
+
+            src++;
+            tangents += 4;
+        }
+    }
+
+    if (f.mDoWeights && f.mDstWeights != nullptr && vf.mWeights != nullptr)
+    {
+        F32* dst = (F32*)f.mDstWeights;
+        for (S32 i = 0; i < num_vertices; ++i)
+        {
+            vf.mWeights[i].store4a(dst);
+            dst += 4;
+        }
+    }
+
+    if (f.mDstColor != nullptr)
+    {
+        LLVector4a src;
+
+        U32 vec[4];
+        vec[0] = vec[1] = vec[2] = vec[3] = f.mColorRGBA;
+
+        src.loadua((F32*)vec);
+
+        F32* dst = (F32*)f.mDstColor;
+        S32 num_vecs = num_vertices / 4;
+        if (num_vertices % 4 > 0)
+        {
+            ++num_vecs;
+        }
+
+        for (S32 i = 0; i < num_vecs; i++)
+        {
+            src.store4a(dst);
+            dst += 4;
+        }
+    }
+
+    if (f.mDoEmissive && f.mDstEmissive != nullptr)
+    {
+        LLVector4a src;
+
+        U32 vec[4];
+        vec[0] = vec[1] = vec[2] = vec[3] = f.mGlowRGBA;
+
+        src.loadua((F32*)vec);
+
+        F32* dst = (F32*)f.mDstEmissive;
+        S32 num_vecs = num_vertices / 4;
+        if (num_vertices % 4 > 0)
+        {
+            ++num_vecs;
+        }
+
+        for (S32 i = 0; i < num_vecs; i++)
+        {
+            src.store4a(dst);
+            dst += 4;
+        }
+    }
 }
 
 void LLFace::renderIndexed()

@@ -31,6 +31,13 @@
 #include "llvovolume.h"
 
 #include <sstream>
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "llviewercontrol.h"
 #include "lldir.h"
@@ -2294,6 +2301,14 @@ bool LLVOVolume::lodOrSculptChanged(LLDrawable *drawable, bool &compiled, bool &
 bool LLVOVolume::updateGeometry(LLDrawable *drawable)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
+
+    {
+        LLSpatialGroup* geo_group = drawable ? drawable->getSpatialGroup() : nullptr;
+        if (geo_group && geo_group->mVkGeoInflight)
+        {
+            return false;
+        }
+    }
 
     if (mDrawable->isState(LLDrawable::REBUILD_RIGGED))
     {
@@ -5587,9 +5602,409 @@ void LLVolumeGeometryManager::freeFaces()
     }
 }
 
+struct LLGeoFaceApply
+{
+    LLPointer<LLDrawable> mDrawable;
+    LLFace* mFace = nullptr;
+    S32 mTEOffset = 0;
+    LLPointer<LLVertexBuffer> mBuffer;
+    U16 mGeomIndex = 0;
+    U32 mIndicesIndex = 0;
+    U32 mGeomCount = 0;
+    U32 mIndicesCount = 0;
+    bool mFieldsApplied = false;
+    bool mAllocFailed = false;
+    std::vector<U32> mPasses;
+};
+
+struct LLGeoStagedRebuild
+{
+    bool mInline = false;
+    bool mDefer = false;
+    std::vector<LLGeoFaceApply> mFaces;
+    std::vector<LLGeoFaceFill> mFills;
+    std::vector<std::pair<U32, LLSpatialGroup::buffer_texture_map_t> > mBufferMaps;
+};
+
+namespace
+{
+    enum EGeoJobState : U32
+    {
+        GEO_JOB_QUEUED = 0,
+        GEO_JOB_EXECUTING,
+        GEO_JOB_DONE,
+    };
+
+    struct LLGeoRebuildJob
+    {
+        LLPointer<LLSpatialGroup> mGroup;
+        LLGeoStagedRebuild mStaged;
+        std::vector<LLPointer<LLVolume> > mPinned;
+        U64 mBytes = 0;
+        std::atomic<U32> mState{ GEO_JOB_QUEUED };
+    };
+
+    LLGeoFaceApply* sGeoCurrentApply = nullptr;
+
+    std::mutex sGeoJobMutex;
+    std::condition_variable sGeoJobCv;
+    std::deque<LLGeoRebuildJob*> sGeoJobQueue;
+    std::mutex sGeoPublishMutex;
+    std::deque<LLGeoRebuildJob*> sGeoPublishQueue;
+    std::thread sGeoWorkerThread;
+    bool sGeoWorkerRunning = false;
+    bool sGeoWorkerQuit = false;
+
+    std::vector<LLGeoRebuildJob*> sGeoInflight;
+    std::unordered_map<LLVolume*, U32> sGeoVolumePins;
+
+    constexpr U64 GEO_INFLIGHT_BYTE_CAP = 512ull << 20;
+
+    bool geoVolumePinned(LLVolume* volume)
+    {
+        auto it = sGeoVolumePins.find(volume);
+        return it != sGeoVolumePins.end() && it->second > 0;
+    }
+
+    bool geoJobPinsVolume(const LLGeoRebuildJob* job, const LLVolume* volume)
+    {
+        for (const LLPointer<LLVolume>& v : job->mPinned)
+        {
+            if (v.get() == volume)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void geoWorkerMain()
+    {
+#if LL_LINUX
+        pthread_setname_np(pthread_self(), "aya-geoup");
+#endif
+        for (;;)
+        {
+            LLGeoRebuildJob* job = nullptr;
+            {
+                std::unique_lock<std::mutex> lk(sGeoJobMutex);
+                sGeoJobCv.wait(lk, [] { return sGeoWorkerQuit || !sGeoJobQueue.empty(); });
+                if (sGeoWorkerQuit)
+                {
+                    return;
+                }
+                job = sGeoJobQueue.front();
+                sGeoJobQueue.pop_front();
+            }
+
+            job->mState.store(GEO_JOB_EXECUTING);
+            for (LLGeoFaceFill& fill : job->mStaged.mFills)
+            {
+                LLFace::runVkGeoFill(fill);
+            }
+            job->mState.store(GEO_JOB_DONE);
+
+            {
+                std::lock_guard<std::mutex> lk(sGeoPublishMutex);
+                sGeoPublishQueue.push_back(job);
+            }
+        }
+    }
+
+    void geoWorkerStopHook()
+    {
+        LLVolumeGeometryManager::stopGeoWorker();
+    }
+
+    bool startGeoWorker()
+    {
+        if (sGeoWorkerRunning)
+        {
+            return true;
+        }
+        LLVKLoader::setVkGeoWorkerStopHook(&geoWorkerStopHook);
+        sGeoWorkerQuit = false;
+        sGeoWorkerThread = std::thread(&geoWorkerMain);
+        sGeoWorkerRunning = true;
+        return true;
+    }
+
+    void geoUnpinJob(LLGeoRebuildJob* job)
+    {
+        for (const LLPointer<LLVolume>& v : job->mPinned)
+        {
+            auto it = sGeoVolumePins.find(v.get());
+            if (it != sGeoVolumePins.end() && --(it->second) == 0)
+            {
+                sGeoVolumePins.erase(it);
+            }
+        }
+        for (size_t i = 0; i < sGeoInflight.size(); ++i)
+        {
+            if (sGeoInflight[i] == job)
+            {
+                sGeoInflight[i] = sGeoInflight.back();
+                sGeoInflight.pop_back();
+                break;
+            }
+        }
+        if (LLVKLoader::gVkGeoInflightBytes.load() >= job->mBytes)
+        {
+            LLVKLoader::gVkGeoInflightBytes.fetch_sub(job->mBytes);
+        }
+        else
+        {
+            LLVKLoader::gVkGeoInflightBytes.store(0);
+        }
+    }
+
+    bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged)
+    {
+        for (const LLGeoFaceApply& e : staged.mFaces)
+        {
+            LLDrawable* drawablep = e.mDrawable.get();
+            if (drawablep == nullptr || drawablep->isDead())
+            {
+                return false;
+            }
+            if (e.mTEOffset < 0 || e.mTEOffset >= drawablep->getNumFaces())
+            {
+                return false;
+            }
+            if (drawablep->getFace(e.mTEOffset) != e.mFace)
+            {
+                return false;
+            }
+            if (!e.mFieldsApplied && !e.mAllocFailed)
+            {
+                if ((U32)e.mFace->getGeomCount() != e.mGeomCount ||
+                    (U32)e.mFace->getIndicesCount() != e.mIndicesCount)
+                {
+                    return false;
+                }
+            }
+        }
+
+        group->clearDrawMap();
+
+        for (LLGeoFaceApply& e : staged.mFaces)
+        {
+            LLFace* facep = e.mFace;
+
+            if (e.mAllocFailed)
+            {
+                if (!e.mFieldsApplied)
+                {
+                    facep->setVertexBuffer(nullptr);
+                    facep->setSize(0, 0);
+                }
+                continue;
+            }
+
+            if (!e.mFieldsApplied)
+            {
+                facep->setIndicesIndex(e.mIndicesIndex);
+                facep->setGeomIndex(e.mGeomIndex);
+                facep->setVertexBuffer(e.mBuffer);
+            }
+
+            for (U32 pass : e.mPasses)
+            {
+                LLVolumeGeometryManager::registerFace(group, facep, pass);
+            }
+        }
+
+        for (auto& bm : staged.mBufferMaps)
+        {
+            group->mBufferMap[bm.first].clear();
+            for (auto& it : bm.second)
+            {
+                group->mBufferMap[bm.first][it.first] = it.second;
+            }
+        }
+
+        LLVKBucket::patchGroup(group);
+        return true;
+    }
+}
+
+bool LLVolumeGeometryManager::geoWorkerEnabled()
+{
+    static const bool s_enabled = []() -> bool {
+        return LLVKLoader::isVulkanInitialized() && LLVKLoader::recordWorkerCount() > 0;
+    }();
+    return s_enabled;
+}
+
+bool LLVolumeGeometryManager::geoEnsureTangents(LLVolume* volume, S32 face_index)
+{
+    if (volume == nullptr || face_index < 0 || face_index >= volume->getNumVolumeFaces())
+    {
+        return false;
+    }
+    if (volume->getVolumeFace(face_index).mTangents != nullptr)
+    {
+        return true;
+    }
+    if (geoVolumePinned(volume))
+    {
+        for (LLGeoRebuildJob* job : sGeoInflight)
+        {
+            if (geoJobPinsVolume(job, volume) && job->mState.load() == GEO_JOB_QUEUED)
+            {
+                return false;
+            }
+        }
+        for (LLGeoRebuildJob* job : sGeoInflight)
+        {
+            while (geoJobPinsVolume(job, volume) && job->mState.load() != GEO_JOB_DONE)
+            {
+                std::this_thread::yield();
+            }
+        }
+    }
+    volume->genTangents(face_index);
+    return true;
+}
+
+bool LLVolumeGeometryManager::geoVolumeReady(LLVolume* volume)
+{
+    if (volume == nullptr || !geoVolumePinned(volume))
+    {
+        return true;
+    }
+    for (LLGeoRebuildJob* job : sGeoInflight)
+    {
+        if (geoJobPinsVolume(job, volume) && job->mState.load() == GEO_JOB_QUEUED)
+        {
+            return false;
+        }
+    }
+    for (LLGeoRebuildJob* job : sGeoInflight)
+    {
+        while (geoJobPinsVolume(job, volume) && job->mState.load() != GEO_JOB_DONE)
+        {
+            std::this_thread::yield();
+        }
+    }
+    return true;
+}
+
+void LLVolumeGeometryManager::stopGeoWorker()
+{
+    if (!sGeoWorkerRunning)
+    {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(sGeoJobMutex);
+        sGeoWorkerQuit = true;
+    }
+    sGeoJobCv.notify_all();
+    if (sGeoWorkerThread.joinable())
+    {
+        sGeoWorkerThread.join();
+    }
+    sGeoWorkerRunning = false;
+
+    auto discard = [](LLGeoRebuildJob* job)
+    {
+        if (job->mGroup.notNull())
+        {
+            job->mGroup->mVkGeoInflight = false;
+        }
+        delete job;
+    };
+
+    {
+        std::lock_guard<std::mutex> lk(sGeoJobMutex);
+        while (!sGeoJobQueue.empty())
+        {
+            discard(sGeoJobQueue.front());
+            sGeoJobQueue.pop_front();
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lk(sGeoPublishMutex);
+        while (!sGeoPublishQueue.empty())
+        {
+            discard(sGeoPublishQueue.front());
+            sGeoPublishQueue.pop_front();
+        }
+    }
+    sGeoInflight.clear();
+    sGeoVolumePins.clear();
+    LLVKLoader::gVkGeoInflightBytes.store(0);
+}
+
+void LLVolumeGeometryManager::drainGeoPublishQueue()
+{
+    LLTimer pub_timer;
+    bool any = false;
+    for (;;)
+    {
+        LLGeoRebuildJob* job = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(sGeoPublishMutex);
+            if (sGeoPublishQueue.empty())
+            {
+                break;
+            }
+            job = sGeoPublishQueue.front();
+            sGeoPublishQueue.pop_front();
+        }
+        any = true;
+
+        LLSpatialGroup* group = job->mGroup.get();
+        bool applied = false;
+        if (group != nullptr && !group->isDead())
+        {
+            applied = applyGeoStaged(group, job->mStaged);
+        }
+
+        geoUnpinJob(job);
+
+        if (group != nullptr)
+        {
+            group->mVkGeoInflight = false;
+            if (!group->isDead())
+            {
+                if (!applied)
+                {
+                    group->setState(LLSpatialGroup::GEOM_DIRTY);
+                }
+                if (group->hasState(LLSpatialGroup::GEOM_DIRTY))
+                {
+                    gPipeline.markRebuild(group);
+                }
+            }
+        }
+
+        if (applied)
+        {
+            ++LLVKLoader::gVkPerf.geo_pub;
+        }
+        else
+        {
+            ++LLVKLoader::gVkPerf.geo_dis;
+        }
+
+        delete job;
+    }
+    if (any)
+    {
+        LLVKLoader::gVkPerf.geo_pub_us.fetch_add((U64)(pub_timer.getElapsedTimeF64() * 1000000.0));
+    }
+}
+
 void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep, U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
+    if (sGeoCurrentApply != nullptr)
+    {
+        sGeoCurrentApply->mPasses.push_back(type);
+        return;
+    }
     // <FS:Ansariel> Can't do anything about it anyway - stop spamming the log
     //if (   type == LLRenderPass::PASS_ALPHA
     //  && facep->getTextureEntry()->getMaterialParams().notNull()
@@ -5971,6 +6386,20 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         return;
     }
 
+    if (group->mVkGeoInflight)
+    {
+        return;
+    }
+
+    if (geoWorkerEnabled()
+        && group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY)
+        && !group->isHUDGroup()
+        && LLVKLoader::gVkGeoInflightBytes.load() > GEO_INFLIGHT_BYTE_CAP)
+    {
+        ++LLVKLoader::gVkPerf.geo_defer;
+        return;
+    }
+
     if (group->changeLOD())
     {
         group->mLastUpdateDistance = group->mDistance;
@@ -6014,7 +6443,8 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     const LLVector4a* bounds = group->getObjectBounds();
     group->mObjectBoxSize = bounds[1].getLength3().getF32();
 
-    group->clearDrawMap();
+    LLGeoStagedRebuild staged;
+    bool group_has_selected = false;
 
     U32 fullbright_count[2] = { 0 };
     U32 bump_count[2] = { 0 };
@@ -6070,6 +6500,8 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
             {
                 continue;
             }
+
+            group_has_selected = group_has_selected || vobj->isSelected();
 
             // HACK -- brute force this check every time a drawable gets rebuilt
             S32 num_tex = llmin(vobj->getNumTEs(), drawablep->getNumFaces());
@@ -6498,20 +6930,22 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
     U32 geometryBytes = 0;
 
+    staged.mInline = !geoWorkerEnabled() || group->isHUDGroup() || group_has_selected;
+
     // generate render batches for static geometry
     U32 extra_mask = LLVertexBuffer::MAP_TEXTURE_INDEX;
     bool alpha_sort = true;
     bool rigged = false;
-    for (int i = 0; i < 2; ++i) //two sets, static and rigged)
+    for (int i = 0; i < 2 && !staged.mDefer; ++i) //two sets, static and rigged)
     {
-        geometryBytes += genDrawInfo(group, simple_mask | extra_mask, sSimpleFaces[i], simple_count[i], false, batch_textures, rigged);
-        geometryBytes += genDrawInfo(group, fullbright_mask | extra_mask, sFullbrightFaces[i], fullbright_count[i], false, batch_textures, rigged);
-        geometryBytes += genDrawInfo(group, alpha_mask | extra_mask, sAlphaFaces[i], alpha_count[i], alpha_sort, batch_textures, rigged);
-        geometryBytes += genDrawInfo(group, bump_mask | extra_mask, sBumpFaces[i], bump_count[i], false, false, rigged);
-        geometryBytes += genDrawInfo(group, norm_mask | extra_mask, sNormFaces[i], norm_count[i], false, false, rigged);
-        geometryBytes += genDrawInfo(group, spec_mask | extra_mask, sSpecFaces[i], spec_count[i], false, false, rigged);
-        geometryBytes += genDrawInfo(group, normspec_mask | extra_mask, sNormSpecFaces[i], normspec_count[i], false, false, rigged);
-        geometryBytes += genDrawInfo(group, pbr_mask | extra_mask, sPbrFaces[i], pbr_count[i], false, false, rigged);
+        geometryBytes += genDrawInfo(group, simple_mask | extra_mask, sSimpleFaces[i], simple_count[i], false, batch_textures, rigged, &staged);
+        geometryBytes += genDrawInfo(group, fullbright_mask | extra_mask, sFullbrightFaces[i], fullbright_count[i], false, batch_textures, rigged, &staged);
+        geometryBytes += genDrawInfo(group, alpha_mask | extra_mask, sAlphaFaces[i], alpha_count[i], alpha_sort, batch_textures, rigged, &staged);
+        geometryBytes += genDrawInfo(group, bump_mask | extra_mask, sBumpFaces[i], bump_count[i], false, false, rigged, &staged);
+        geometryBytes += genDrawInfo(group, norm_mask | extra_mask, sNormFaces[i], norm_count[i], false, false, rigged, &staged);
+        geometryBytes += genDrawInfo(group, spec_mask | extra_mask, sSpecFaces[i], spec_count[i], false, false, rigged, &staged);
+        geometryBytes += genDrawInfo(group, normspec_mask | extra_mask, sNormSpecFaces[i], normspec_count[i], false, false, rigged, &staged);
+        geometryBytes += genDrawInfo(group, pbr_mask | extra_mask, sPbrFaces[i], pbr_count[i], false, false, rigged, &staged);
 
         // for rigged set, add weights and disable alpha sorting (rigged items use depth buffer)
         extra_mask |= LLVertexBuffer::MAP_WEIGHT4;
@@ -6519,6 +6953,12 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     }
 
     group->mGeometryBytes = geometryBytes;
+
+    if (staged.mDefer)
+    {
+        ++LLVKLoader::gVkPerf.geo_defer;
+        return;
+    }
 
     {
         //drawables have been rebuilt, clear rebuild status
@@ -6534,14 +6974,61 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
     group->mLastUpdateTime = gFrameTimeSeconds;
     group->mBuilt = 1.f;
-    LLVKBucket::patchGroup(group);
     group->clearState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY);
+
+    if (staged.mInline || staged.mFills.empty())
+    {
+        applyGeoStaged(group, staged);
+        ++LLVKLoader::gVkPerf.geo_inl;
+        return;
+    }
+
+    startGeoWorker();
+    if (!sGeoWorkerRunning)
+    {
+        applyGeoStaged(group, staged);
+        ++LLVKLoader::gVkPerf.geo_inl;
+        return;
+    }
+
+    LLGeoRebuildJob* job = new LLGeoRebuildJob();
+    job->mGroup = group;
+    job->mStaged = std::move(staged);
+    job->mBytes = geometryBytes;
+
+    {
+        std::unordered_set<LLVolume*> seen;
+        for (LLGeoFaceFill& fill : job->mStaged.mFills)
+        {
+            LLVolume* v = fill.mVolume.get();
+            if (v != nullptr && seen.insert(v).second)
+            {
+                job->mPinned.push_back(fill.mVolume);
+                ++sGeoVolumePins[v];
+            }
+        }
+    }
+
+    sGeoInflight.push_back(job);
+    LLVKLoader::gVkGeoInflightBytes.fetch_add(job->mBytes);
+    group->mVkGeoInflight = true;
+
+    {
+        std::lock_guard<std::mutex> lk(sGeoJobMutex);
+        sGeoJobQueue.push_back(job);
+    }
+    sGeoJobCv.notify_one();
+    ++LLVKLoader::gVkPerf.geo_enq;
 }
 
 void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
     llassert(group);
+    if (group && group->mVkGeoInflight)
+    {
+        return;
+    }
     if (group && group->hasState(LLSpatialGroup::MESH_DIRTY) && !group->hasState(LLSpatialGroup::GEOM_DIRTY))
     {
         {
@@ -6584,6 +7071,15 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
                             LLVertexBuffer* buff = face->getVertexBuffer();
                             if (buff)
                             {
+                                const LLTextureEntry* te_check = face->getTextureEntry();
+                                bool needs_tangents = (buff->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0
+                                    || (te_check != nullptr
+                                        && (te_check->getBumpmap()
+                                            || te_check->getTexGen() != LLTextureEntry::TEX_GEN_DEFAULT));
+                                if (needs_tangents && !geoEnsureTangents(vobj->getVolume(), face->getTEOffset()))
+                                {
+                                    return;
+                                }
                                 if (!face->getGeometryVolume(*volume, // volume
                                     face->getTEOffset(),              // face_index
                                     vobj->getRelativeXform(),         // mat_vert_in
@@ -6675,11 +7171,16 @@ struct CompareBatchBreakerRigged
     }
 };
 
-U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace** faces, U32 face_count, bool distance_sort, bool batch_textures, bool rigged)
+U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace** faces, U32 face_count, bool distance_sort, bool batch_textures, bool rigged, LLGeoStagedRebuild* staged)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 
     U32 geometryBytes = 0;
+
+    if (staged != nullptr && staged->mDefer)
+    {
+        return 0;
+    }
 
     //calculate maximum number of vertices to store in a single buffer
     static LLCachedControl<S32> max_vbo_size(gSavedSettings, "RenderMaxVBOSize", 512);
@@ -6903,22 +7404,60 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
         U32 indices_index = 0;
         U16 index_offset = 0;
 
+        const bool fill_inline = (staged == nullptr) || staged->mInline || flexi;
+
         while (face_iter < i)
         {
             //update face indices for new buffer
             facep = *face_iter;
 
+            LLGeoFaceApply* apply = nullptr;
+            if (staged != nullptr)
+            {
+                staged->mFaces.emplace_back();
+                apply = &staged->mFaces.back();
+                apply->mDrawable = facep->getDrawable();
+                apply->mFace = facep;
+                apply->mTEOffset = facep->getTEOffset();
+                apply->mBuffer = buffer;
+                apply->mGeomIndex = index_offset;
+                apply->mIndicesIndex = indices_index;
+                apply->mGeomCount = facep->getGeomCount();
+                apply->mIndicesCount = facep->getIndicesCount();
+            }
+
             if (buffer.isNull())
             {
                 // Bulk allocation failed
-                facep->setVertexBuffer(buffer);
-                facep->setSize(0, 0); // mark as no geometry
+                if (apply != nullptr)
+                {
+                    apply->mAllocFailed = true;
+                    if (fill_inline)
+                    {
+                        facep->setVertexBuffer(buffer);
+                        facep->setSize(0, 0);
+                        apply->mFieldsApplied = true;
+                    }
+                }
+                else
+                {
+                    facep->setVertexBuffer(buffer);
+                    facep->setSize(0, 0); // mark as no geometry
+                }
                 ++face_iter;
                 continue;
             }
-            facep->setIndicesIndex(indices_index);
-            facep->setGeomIndex(index_offset);
-            facep->setVertexBuffer(buffer);
+
+            if (fill_inline)
+            {
+                facep->setIndicesIndex(indices_index);
+                facep->setGeomIndex(index_offset);
+                facep->setVertexBuffer(buffer);
+                if (apply != nullptr)
+                {
+                    apply->mFieldsApplied = true;
+                }
+            }
 
             if (batch_textures && facep->getTextureIndex() == FACE_DO_NOT_BATCH_TEXTURES)
             {
@@ -6941,10 +7480,45 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 
                     U32 te_idx = facep->getTEOffset();
 
-                    if (!facep->getGeometryVolume(*volume, te_idx,
-                        vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(), index_offset,true))
+                    if (fill_inline)
                     {
-                        LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
+                        if (staged != nullptr)
+                        {
+                            const LLTextureEntry* te_check = facep->getTextureEntry();
+                            bool needs_tangents = (mask & LLVertexBuffer::MAP_TANGENT) != 0
+                                || (te_check != nullptr
+                                    && (te_check->getBumpmap()
+                                        || te_check->getTexGen() != LLTextureEntry::TEX_GEN_DEFAULT));
+                            if (needs_tangents && !geoEnsureTangents(volume, te_idx))
+                            {
+                                staged->mDefer = true;
+                            }
+                        }
+                        if (staged == nullptr || !staged->mDefer)
+                        {
+                            if (!facep->getGeometryVolume(*volume, te_idx,
+                                vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(), index_offset,true))
+                            {
+                                LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        staged->mFills.emplace_back();
+                        LLFace::EGeoFillBuild built = facep->buildVkGeoFill(staged->mFills.back(), buffer,
+                            vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(),
+                            index_offset, index_offset, indices_index);
+                        if (built == LLFace::GEO_FILL_DEFER)
+                        {
+                            staged->mFills.pop_back();
+                            staged->mDefer = true;
+                        }
+                        else if (built == LLFace::GEO_FILL_FAIL)
+                        {
+                            staged->mFills.pop_back();
+                            LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
+                        }
                     }
 
                     if (drawablep->isState(LLDrawable::ANIMATED_CHILD))
@@ -6954,8 +7528,15 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 }
             }
 
+            if (staged != nullptr && staged->mDefer)
+            {
+                return geometryBytes;
+            }
+
             index_offset += facep->getGeomCount();
             indices_index += facep->getIndicesCount();
+
+            sGeoCurrentApply = apply;
 
             //append face to appropriate render batch
 
@@ -7110,7 +7691,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                     }
                     U32 mask = mat->getShaderMask(alpha_mode, is_alpha);
 
-                    U32 vb_mask = facep->getVertexBuffer()->getTypeMask();
+                    U32 vb_mask = buffer->getTypeMask();
 
                     // HACK - this should also never happen, but sometimes we get here and the material thinks it has a specmap now
                     // even though it didn't appear to have a specmap when the face was added to the list of faces
@@ -7303,14 +7884,23 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 }
             }
 
+            sGeoCurrentApply = nullptr;
+
             ++face_iter;
         }
     }
 
-    group->mBufferMap[mask].clear();
-    for (LLSpatialGroup::buffer_texture_map_t::iterator i = buffer_map[mask].begin(); i != buffer_map[mask].end(); ++i)
+    if (staged != nullptr)
     {
-        group->mBufferMap[mask][i->first] = i->second;
+        staged->mBufferMaps.emplace_back(mask, buffer_map[mask]);
+    }
+    else
+    {
+        group->mBufferMap[mask].clear();
+        for (LLSpatialGroup::buffer_texture_map_t::iterator i = buffer_map[mask].begin(); i != buffer_map[mask].end(); ++i)
+        {
+            group->mBufferMap[mask][i->first] = i->second;
+        }
     }
 
     return geometryBytes;

@@ -322,6 +322,25 @@ public:
 
     const LLVKLoader::MegaSliceV& getVkVertexSlice() const { return mVkVertexSlice; }
     const LLVKLoader::MegaSliceI& getVkIndexSlice() const { return mVkIndexSlice; }
+
+    U8* getVkVertexWritePtr(AttributeType type, U32 index) const
+    {
+        if (mVkVertexSlice.mapped == nullptr || !(mTypeMask & (1u << type)))
+        {
+            return nullptr;
+        }
+        return mVkVertexSlice.mapped + mVkVertexSlice.region_offsets[type]
+             + (size_t)(mVkVertexSlice.first + index) * sTypeSize[type];
+    }
+
+    U8* getVkIndexWritePtr(U32 index) const
+    {
+        if (mVkIndexSlice.mapped == nullptr)
+        {
+            return nullptr;
+        }
+        return mVkIndexSlice.mapped + mVkIndexSlice.offset + (size_t)index * sizeof(U16);
+    }
     U32 getIndicesType() const { return mIndicesType; }
     U32 getIndicesStride() const { return mIndicesStride; }
 

@@ -61,6 +61,7 @@
 #include "llvolume.h"
 #include "llvolumemgr.h"
 #include "llvovolume.h"
+#include "llspatialpartition.h"
 #include "llworld.h"
 #include "material_codes.h"
 #include "pipeline.h"
@@ -3445,7 +3446,12 @@ void LLMeshRepoThread::notifyLoadedMeshes()
             {
                 if (mesh.mVolume->getNumVolumeFaces() > 0)
                 {
-                    gMeshRepo.notifyMeshLoaded(mesh.mMeshParams, mesh.mVolume, mesh.mLOD);
+                    if (!gMeshRepo.notifyMeshLoaded(mesh.mMeshParams, mesh.mVolume, mesh.mLOD))
+                    {
+                        mLoadedMutex->lock();
+                        mLoadedQ.push_back(mesh);
+                        mLoadedMutex->unlock();
+                    }
                 }
                 else
                 {
@@ -4919,7 +4925,7 @@ void LLMeshRepository::notifyDecompositionReceived(LLModel::Decomposition* decom
     }
 }
 
-void LLMeshRepository::notifyMeshLoaded(const LLVolumeParams& mesh_params, LLVolume* volume, S32 lod)
+bool LLMeshRepository::notifyMeshLoaded(const LLVolumeParams& mesh_params, LLVolume* volume, S32 lod)
 { //called from main thread
 
     //get list of objects waiting to be notified this mesh is loaded
@@ -4940,6 +4946,11 @@ void LLMeshRepository::notifyMeshLoaded(const LLVolumeParams& mesh_params, LLVol
             LLVolume* sys_volume = LLPrimitive::getVolumeManager()->refVolume(mesh_params, detail);
             if (sys_volume)
             {
+                if (!LLVolumeGeometryManager::geoVolumeReady(sys_volume))
+                {
+                    LLPrimitive::getVolumeManager()->unrefVolume(sys_volume);
+                    return false;
+                }
                 sys_volume->copyVolumeFaces(volume);
                 sys_volume->setMeshAssetLoaded(true);
                 LLPrimitive::getVolumeManager()->unrefVolume(sys_volume);
@@ -4964,6 +4975,7 @@ void LLMeshRepository::notifyMeshLoaded(const LLVolumeParams& mesh_params, LLVol
 
         LLViewerStatsRecorder::instance().meshLoaded();
     }
+    return true;
 }
 
 void LLMeshRepository::notifyMeshUnavailable(const LLVolumeParams& mesh_params, S32 request_lod, S32 volume_lod)

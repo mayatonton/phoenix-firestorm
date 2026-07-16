@@ -1208,6 +1208,7 @@ namespace LLVKLoader
     void texWorkerMarkThread();
     void texWorkerShutdown();
     void setVkTexWorkerStopHook(void (*fn)());
+    void setVkGeoWorkerStopHook(void (*fn)());
     bool uploadTextureOneShotVk(U32          width,
                                 U32          height,
                                 VkFormat     format,
@@ -1437,6 +1438,12 @@ namespace LLVKLoader
         std::atomic<U64> tex_enq{0};
         std::atomic<U64> tex_pub{0};
         std::atomic<U64> tex_fail{0};
+        std::atomic<U64> geo_enq{0};
+        std::atomic<U64> geo_pub{0};
+        std::atomic<U64> geo_pub_us{0};
+        std::atomic<U64> geo_dis{0};
+        std::atomic<U64> geo_inl{0};
+        std::atomic<U64> geo_defer{0};
 
         void reset()
         {
@@ -1455,9 +1462,11 @@ namespace LLVKLoader
             rigged_rec = 0;
             for (auto& v : phase_us) v = 0;
             tex_enq = 0; tex_pub = 0; tex_fail = 0;
+            geo_enq = 0; geo_pub = 0; geo_pub_us = 0; geo_dis = 0; geo_inl = 0; geo_defer = 0;
         }
     };
     extern VkPerfCounters gVkPerf;
+    extern std::atomic<U64> gVkGeoInflightBytes;
     extern thread_local U32 gVkPerfPassTag;
     extern thread_local U32 gVkPerfShadowMapIndex;
 

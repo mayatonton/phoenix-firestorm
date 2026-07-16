@@ -838,6 +838,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update Geom");
             LLVKLoader::VkPerfPhaseScope ph(4);
             const F32 max_geom_update_time = 0.005f*10.f*gFrameIntervalSeconds.value(); // 50 ms/second update time
+            LLVolumeGeometryManager::drainGeoPublishQueue();
             gPipeline.createObjects(max_geom_update_time);
             gPipeline.processPartitionQ();
             gPipeline.updateGeom(max_geom_update_time);

@@ -11,7 +11,7 @@
 
 ### 0.1 ガン = 単一 main thread 直列パイプライン + per-frame 時間予算の配給制
 
-実測: `cpu main=95%・他 19 コアは一桁%` = 20 コア機が実質 1 コア動作。main に直列で刺さっているもの: emission ×4 pass(camera/shadow/probe/鏡)・texture 生成/upload(予算 2〜5ms/frame = llviewerdisplay.cpp:934)・geometry rebuild(予算 50ms/秒)・avatar bake(LLTexLayer)・updateImages・object 更新(idle)。
+実測: `cpu main=95%・他 19 コアは一桁%` = 20 コア機が実質 1 コア動作。main に直列で刺さっているもの: emission ×4 pass(camera/shadow/probe/鏡)・texture 生成/upload(予算 2〜5ms/frame = llviewerdisplay.cpp:934)・geometry rebuild(50ms/秒予算は createObjects のみ = pipeline.cpp:2494。updateGeom の mBuildQ1 と postSort の可視 dirty group rebuild は無予算で frame 内直列全量実行 = 嵐がそのまま frame time になる)・avatar bake(LLTexLayer)・updateImages・object 更新(idle)。
 
 **毒の本体 = 全 throughput が fps に結合**していること。予算が per-frame なので、fps 低下 → texture/rebuild の毎秒処理量低下 → 重い状態が長引く → fps 低いまま(自己絞殺ループ)。「HUD/アバター完全表示 60 秒(キャッシュ有)」と「crowd 7〜13fps」は同一病理の 2 症状。
 
@@ -61,7 +61,7 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 | 段 | 内容 | 消える病理 | gate | 依存 |
 |---|---|---|---|---|
 | **T1** | **texture 生成/upload の worker 常駐化**: mCreateTextureList を予算なしで worker queue へ。worker = vmaCreateImage → staging 書込 → copy cmd(worker 専用 CommandPool)→ peEnqueue。mip は 1 texture 1 cmd に集約。publish は main が frame 頭で drain(field 差替 + updateVkHeapSlot + postCreateTexture)。one-shot の fence pool/free queue に mutex。backpressure は worker 側へ | 予算配給制・main の img 4ms・upload 単価(mip 毎 submit) | **HUD/アバター完全表示 60 秒 → 1 桁秒(AYA 体感計測)**+ ph 表 img≈0 + 視覚同一 + validation 0 | なし(即着手可) |
-| **T2** | **geometry rebuild の worker 化**: genVolumeGeometry/genDrawInfo を worker job 化(基本設計 §3 の worker 仕事①)。mega-buffer 書込の同期(pool は main 前提 = §1.2)をこの段で設計 | rebuild 予算 50ms/秒・TP/ロード時の gupd/patch 嵐 | ロード中の fps 崩れ幅縮小 + 視覚同一 + validation 0 | T1(one-shot mutex・publish 様式を共有) |
+| **T2** | **geometry rebuild の worker 化**: `LLVolumeGeometryManager::rebuildGeom`/`genDrawInfo` の頂点 fill(`LLFace::getGeometryVolume` の loop 群)を worker job 化(基本設計 §3 の worker 仕事①。genVolumeGeometry という関数は HEAD に不存在 = 実体はこの 3 者)。mega-buffer 書込の同期(pool は main 前提 = §1.2)をこの段で設計 | rebuild 嵐の frame 直列刺さり(postSort/updateGeom)・TP/ロード時の gupd/sort 嵐 | ロード中の fps 崩れ幅縮小 + 視覚同一 + validation 0。**gate 解釈**: T2 後の gupd 残余には geometry publish 簿記(VkPerf geo 欄 pub_ms)を含む = T1 の img 残余と同型。gupd≈0 判定は `gupd − geo pub_ms` で行う | T1(one-shot mutex・publish 様式を共有) |
 | **T3** | **avatar bake(LLTexLayer 合成)の main 離脱** | idle/img 内の bake 時間・アバター表示遅延の残り | アバター表示時間 + 視覚同一 | T1 |
 | **T4** | **decode 供給の増強 + 優先度是正**(opj 並列度・self-avatar/HUD の優先) | decode 律速・優先度飢餓 | キャッシュ消去後の表示時間 | T1 と独立(readonly 調査は並列可) |
 | **T5** | **idle 9.5ms の分解と処置**(object 更新/interp/network の実測分解 → 処置は分解結果で起案) | 未帰属の render 外 main 時間 | 分解表の提出(処置は別決裁) | なし(計測のみ・並列可) |

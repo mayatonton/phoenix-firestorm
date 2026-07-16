@@ -516,6 +516,7 @@ namespace
     VkCommandPool                   sTexWorkerCommandPool = VK_NULL_HANDLE;
     thread_local bool               tTexWorkerThread = false;
     void (*sTexWorkerStopHook)()   = nullptr;
+    void (*sGeoWorkerStopHook)()   = nullptr;
 
     U32 sLastCompletedMonotonic = 0;
     U32 sFrameSubmittedMonotonic[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
@@ -3641,6 +3642,12 @@ bool initVulkan()
 
 void shutdownVulkan()
 {
+    if (sGeoWorkerStopHook != nullptr)
+    {
+        void (*hook)() = sGeoWorkerStopHook;
+        sGeoWorkerStopHook = nullptr;
+        hook();
+    }
     if (sTexWorkerStopHook != nullptr)
     {
         void (*hook)() = sTexWorkerStopHook;
@@ -4214,6 +4221,7 @@ bool beginFrame(bool acquire_swapchain)
 }
 
 VkPerfCounters gVkPerf;
+std::atomic<U64> gVkGeoInflightBytes{0};
 thread_local U32 gVkPerfPassTag = 0;
 thread_local U32 gVkPerfShadowMapIndex = 0;
 
@@ -4366,6 +4374,13 @@ bool endFrame()
                                    << " pub=" << gVkPerf.tex_pub.load()
                                    << " fail=" << gVkPerf.tex_fail.load()
                                    << " stg_mb=" << (sOneShotStagingBytes.load() >> 20)
+                                   << " | geo enq=" << gVkPerf.geo_enq.load()
+                                   << " pub=" << gVkPerf.geo_pub.load()
+                                   << " pub_ms=" << (gVkPerf.geo_pub_us.load() / 1000.0)
+                                   << " dis=" << gVkPerf.geo_dis.load()
+                                   << " inl=" << gVkPerf.geo_inl.load()
+                                   << " defer=" << gVkPerf.geo_defer.load()
+                                   << " mb=" << (gVkGeoInflightBytes.load() >> 20)
                                    << " | fam " << [](){ std::string s;
                                         for (U32 i = 0; i < 24; ++i) {
                                             const U64 us = gVkPerf.fam_us[i].load();
@@ -6477,6 +6492,11 @@ void texWorkerMarkThread()
 void setVkTexWorkerStopHook(void (*fn)())
 {
     sTexWorkerStopHook = fn;
+}
+
+void setVkGeoWorkerStopHook(void (*fn)())
+{
+    sGeoWorkerStopHook = fn;
 }
 
 void texWorkerShutdown()
