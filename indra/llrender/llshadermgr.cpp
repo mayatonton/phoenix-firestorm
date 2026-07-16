@@ -635,6 +635,38 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 
         extra_code_text[extra_code_count++] = strdup("#define HAS_DIFFUSE_LOOKUP\n");
 
+        const bool use_bindless_heap = LLVKLoader::isBindlessActiveVk() && texture_index_channels <= 4;
+
+        if (use_bindless_heap)
+        {
+            extra_code_text[extra_code_count++] =
+                strdup("layout(set=2, binding=0) uniform sampler2D ayaTexHeap[];\n");
+            extra_code_text[extra_code_count++] =
+                strdup("layout(set=1, binding=54, std140) uniform AyaTexSlotsBlock { uvec4 ayaTexSlots; };\n");
+
+            if (texture_index_channels > 1)
+            {
+                extra_code_text[extra_code_count++] =
+                    strdup("layout(location=18) flat in int vary_texture_index;\n");
+            }
+
+            extra_code_text[extra_code_count++] = strdup("vec4 diffuseLookup(vec2 texcoord)\n");
+            extra_code_text[extra_code_count++] = strdup("{\n");
+            if (texture_index_channels == 1)
+            {
+                extra_code_text[extra_code_count++] =
+                    strdup("\treturn texture(ayaTexHeap[nonuniformEXT(ayaTexSlots.x)], texcoord);\n");
+            }
+            else
+            {
+                extra_code_text[extra_code_count++] =
+                    strdup("\treturn texture(ayaTexHeap[nonuniformEXT(ayaTexSlots[vary_texture_index])], texcoord);\n");
+            }
+            extra_code_text[extra_code_count++] = strdup("}\n");
+        }
+
+        if (!use_bindless_heap)
+        {
         for (S32 i = 0; i < texture_index_channels; ++i)
         {
             std::string decl;
@@ -698,6 +730,7 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         else
         {
             LL_ERRS() << "Indexed texture rendering requires GLSL 1.30 or later." << LL_ENDL;
+        }
         }
     }
 

@@ -314,6 +314,7 @@ public:
     VkDescriptorSetLayout      mVkDescriptorSetLayout = VK_NULL_HANDLE;
 
     bool                       mVkVertexPushConstantOver64 = false;
+    bool                       mVkUsesBindlessHeap         = false;
 
     U32                        mVkAttributeMask = 0;
     bool                       mVkAttributeMaskValid = false;

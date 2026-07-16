@@ -194,6 +194,7 @@ namespace
     thread_local VkPipelineLayout sLastDescLayout   = VK_NULL_HANDLE;
     thread_local VkDescriptorSet  sLastDescSet0     = VK_NULL_HANDLE;
     thread_local VkDescriptorSet  sLastDescSet1     = VK_NULL_HANDLE;
+    thread_local VkDescriptorSet  sLastDescSet2     = VK_NULL_HANDLE;
     thread_local U32              sLastDescDynCount = 0;
     thread_local U32              sLastDescOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
     thread_local VkPipelineLayout sLastMvLayout     = VK_NULL_HANDLE;
@@ -233,6 +234,20 @@ namespace
     U32                      sBindlessHeapCapacity                   = 0;
     bool                     sMultiDrawIndirectEnabled               = false;
     bool                     sDrawIndirectFirstInstanceEnabled       = false;
+
+    VkDescriptorSetLayout    sBindlessHeapLayout                     = VK_NULL_HANDLE;
+    VkDescriptorPool         sBindlessHeapPool                       = VK_NULL_HANDLE;
+    VkDescriptorSet          sBindlessHeapSet                        = VK_NULL_HANDLE;
+    U32                      sBindlessHeapCount                      = 0;
+    U32                      sBindlessSlotNext                       = 1;
+    std::vector<U32>         sBindlessSlotFreeList;
+    bool                     sBindlessActive                         = false;
+    struct PendingSlotFree
+    {
+        U32 slot;
+        U32 enqueue_frame;
+    };
+    std::vector<PendingSlotFree> sPendingSlotFrees;
 
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SETS     = 50000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SAMPLERS = 250000;
@@ -828,6 +843,7 @@ namespace
         sLastDescLayout            = VK_NULL_HANDLE;
         sLastDescSet0              = VK_NULL_HANDLE;
         sLastDescSet1              = VK_NULL_HANDLE;
+        sLastDescSet2              = VK_NULL_HANDLE;
         sLastDescDynCount          = 0;
         sLastMvLayout              = VK_NULL_HANDLE;
         sViewportScissorValid      = false;
@@ -2000,6 +2016,153 @@ namespace
         peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
         vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
 
+        return true;
+    }
+
+    void bindlessWriteSlotInternal(U32 slot, VkImageView view, VkSampler sampler)
+    {
+        if (!sBindlessActive || slot >= sBindlessHeapCount || sDevice == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        if (view == VK_NULL_HANDLE)
+        {
+            view = sDefaultFallbackImageView;
+        }
+        if (sampler == VK_NULL_HANDLE)
+        {
+            sampler = sStandardLinearSampler;
+        }
+        VkDescriptorImageInfo ii = {};
+        ii.sampler     = sampler;
+        ii.imageView   = view;
+        ii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkWriteDescriptorSet w = {};
+        w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        w.dstSet          = sBindlessHeapSet;
+        w.dstBinding      = 0;
+        w.dstArrayElement = slot;
+        w.descriptorCount = 1;
+        w.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w.pImageInfo      = &ii;
+        vkUpdateDescriptorSets(sDevice, 1, &w, 0, nullptr);
+    }
+
+    void destroyBindlessHeap()
+    {
+        if (sDevice == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        if (sBindlessHeapPool != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(sDevice, sBindlessHeapPool, nullptr);
+            sBindlessHeapPool = VK_NULL_HANDLE;
+        }
+        if (sBindlessHeapLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(sDevice, sBindlessHeapLayout, nullptr);
+            sBindlessHeapLayout = VK_NULL_HANDLE;
+        }
+        sBindlessHeapSet   = VK_NULL_HANDLE;
+        sBindlessHeapCount = 0;
+        sBindlessSlotNext  = 1;
+        sBindlessSlotFreeList.clear();
+        sPendingSlotFrees.clear();
+        sBindlessActive = false;
+    }
+
+    bool createBindlessHeap()
+    {
+        sBindlessActive = false;
+        if (!sBindlessCapable || sBindlessHeapCapacity == 0)
+        {
+            return true;
+        }
+        {
+            const char* e = getenv("AYASTORM_BINDLESS");
+            if (e && atoi(e) == 0)
+            {
+                LL_INFOS("Vulkan") << "VKBindless: disabled by AYASTORM_BINDLESS=0" << LL_ENDL;
+                return true;
+            }
+        }
+
+        const U32 count = sBindlessHeapCapacity;
+
+        VkDescriptorSetLayoutBinding b = {};
+        b.binding         = 0;
+        b.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        b.descriptorCount = count;
+        b.stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkDescriptorBindingFlags bind_flags =
+              VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
+            | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
+            | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT
+            | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+        VkDescriptorSetLayoutBindingFlagsCreateInfo bf = {};
+        bf.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+        bf.bindingCount  = 1;
+        bf.pBindingFlags = &bind_flags;
+
+        VkDescriptorSetLayoutCreateInfo li = {};
+        li.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        li.pNext        = &bf;
+        li.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+        li.bindingCount = 1;
+        li.pBindings    = &b;
+
+        if (vkCreateDescriptorSetLayout(sDevice, &li, nullptr, &sBindlessHeapLayout) != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "VKBindless: heap layout creation failed (staying inactive)" << LL_ENDL;
+            sBindlessHeapLayout = VK_NULL_HANDLE;
+            return true;
+        }
+
+        VkDescriptorPoolSize ps = {};
+        ps.type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ps.descriptorCount = count;
+
+        VkDescriptorPoolCreateInfo pi = {};
+        pi.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pi.flags         = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        pi.maxSets       = 1;
+        pi.poolSizeCount = 1;
+        pi.pPoolSizes    = &ps;
+
+        if (vkCreateDescriptorPool(sDevice, &pi, nullptr, &sBindlessHeapPool) != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "VKBindless: heap pool creation failed (staying inactive)" << LL_ENDL;
+            destroyBindlessHeap();
+            return true;
+        }
+
+        VkDescriptorSetVariableDescriptorCountAllocateInfo vc = {};
+        vc.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+        vc.descriptorSetCount = 1;
+        vc.pDescriptorCounts  = &count;
+
+        VkDescriptorSetAllocateInfo ai = {};
+        ai.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        ai.pNext              = &vc;
+        ai.descriptorPool     = sBindlessHeapPool;
+        ai.descriptorSetCount = 1;
+        ai.pSetLayouts        = &sBindlessHeapLayout;
+
+        if (vkAllocateDescriptorSets(sDevice, &ai, &sBindlessHeapSet) != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "VKBindless: heap set allocation failed (staying inactive)" << LL_ENDL;
+            destroyBindlessHeap();
+            return true;
+        }
+
+        sBindlessHeapCount = count;
+        sBindlessSlotNext  = 1;
+        sBindlessActive    = true;
+        bindlessWriteSlotInternal(0, VK_NULL_HANDLE, VK_NULL_HANDLE);
+        LL_INFOS("Vulkan") << "VKBindless: heap active count=" << count << LL_ENDL;
         return true;
     }
 
@@ -3391,6 +3554,8 @@ bool initVulkan()
         return false;
     }
 
+    createBindlessHeap();
+
     if (!createSyncObjects())
     {
         shutdownVulkan();
@@ -3712,6 +3877,7 @@ void shutdownVulkan()
             vkDestroyDescriptorSetLayout(sDevice, sPerFrameDescriptorSetLayout, nullptr);
             sPerFrameDescriptorSetLayout = VK_NULL_HANDLE;
         }
+        destroyBindlessHeap();
 
         if (sPipelineCache != VK_NULL_HANDLE && pcache::sInitialized)
         {
@@ -5894,6 +6060,12 @@ static bool ensureObjectSkinUploaded(VkBuffer& out_buf, U32& out_off)
     return true;
 }
 
+static thread_local U32 tBindlessTexSlotsOffset  = 0;
+static thread_local U32 tBindlessTexSlotsFrame   = 0xFFFFFFFFu;
+static thread_local U32 tBindlessTexSlotsLast[4] = {};
+
+bool ensureBindlessTexSlotsUploaded(VkBuffer& out_buf, U32& out_off);
+
 bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
 {
     switch (binding)
@@ -5903,8 +6075,51 @@ bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
         case 48: return ensurePBRMaterialUploaded(out_buf, out_off);
         case 51: return ensureDrawColorUploaded(out_buf, out_off);
         case 53: return ensureShadowParamsUploaded(out_buf, out_off);
+        case 54: return ensureBindlessTexSlotsUploaded(out_buf, out_off);
         default: return false;
     }
+}
+
+bool ensureBindlessTexSlotsUploaded(VkBuffer& out_buf, U32& out_off)
+{
+    if (tBindlessTexSlotsFrame != sMonotonicFrameCount)
+    {
+        VkBuffer buf    = VK_NULL_HANDLE;
+        U32      off    = 0;
+        void*    mapped = nullptr;
+        if (!allocPerDrawUBOSlice(16, buf, off, mapped) || mapped == nullptr)
+        {
+            return false;
+        }
+        std::memset(mapped, 0, 16);
+        tBindlessTexSlotsOffset = off;
+        tBindlessTexSlotsFrame  = sMonotonicFrameCount;
+        std::memset(tBindlessTexSlotsLast, 0, sizeof(tBindlessTexSlotsLast));
+    }
+    out_buf = getPerDrawUBOArenaBuffer();
+    out_off = tBindlessTexSlotsOffset;
+    return out_buf != VK_NULL_HANDLE;
+}
+
+void writeBindlessTexSlots(const U32* slots4)
+{
+    if (tBindlessTexSlotsFrame == sMonotonicFrameCount
+        && std::memcmp(tBindlessTexSlotsLast, slots4, 16) == 0)
+    {
+        return;
+    }
+    VkBuffer buf    = VK_NULL_HANDLE;
+    U32      off    = 0;
+    void*    mapped = nullptr;
+    if (!allocPerDrawUBOSlice(16, buf, off, mapped) || mapped == nullptr)
+    {
+        return;
+    }
+    std::memcpy(mapped, slots4, 16);
+    tBindlessTexSlotsOffset = off;
+    tBindlessTexSlotsFrame  = sMonotonicFrameCount;
+    std::memcpy(tBindlessTexSlotsLast, slots4, 16);
+    LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
 }
 
 void* rotateObjectSkinSlotForWrite()
@@ -6322,6 +6537,29 @@ void tickDeferredImageFreeQueue()
         }
     }
     sPendingImageFrees.resize(w);
+
+    {
+        size_t sw = 0;
+        const size_t sn = sPendingSlotFrees.size();
+        for (size_t r = 0; r < sn; ++r)
+        {
+            PendingSlotFree& e = sPendingSlotFrees[r];
+            if (e.enqueue_frame <= sLastCompletedMonotonic)
+            {
+                bindlessWriteSlotInternal(e.slot, VK_NULL_HANDLE, VK_NULL_HANDLE);
+                sBindlessSlotFreeList.push_back(e.slot);
+            }
+            else
+            {
+                if (sw != r)
+                {
+                    sPendingSlotFrees[sw] = e;
+                }
+                ++sw;
+            }
+        }
+        sPendingSlotFrees.resize(sw);
+    }
 }
 
 void destroyPipelineVk(VkPipeline pipeline)
@@ -8374,6 +8612,63 @@ bool isDrawIndirectFirstInstanceEnabledVk()
     return sDrawIndirectFirstInstanceEnabled;
 }
 
+bool isBindlessActiveVk()
+{
+    return sBindlessActive;
+}
+
+U32 bindlessAcquireSlot(VkImageView view, VkSampler sampler)
+{
+    if (!sBindlessActive)
+    {
+        return BINDLESS_INVALID_SLOT;
+    }
+    U32 slot;
+    if (!sBindlessSlotFreeList.empty())
+    {
+        slot = sBindlessSlotFreeList.back();
+        sBindlessSlotFreeList.pop_back();
+    }
+    else if (sBindlessSlotNext < sBindlessHeapCount)
+    {
+        slot = sBindlessSlotNext++;
+    }
+    else
+    {
+        static bool warned = false;
+        if (!warned)
+        {
+            LL_WARNS("Vulkan") << "VKBindless: heap exhausted (count=" << sBindlessHeapCount << ")" << LL_ENDL;
+            warned = true;
+        }
+        return BINDLESS_INVALID_SLOT;
+    }
+    bindlessWriteSlotInternal(slot, view, sampler);
+    return slot;
+}
+
+void bindlessReleaseSlotDeferred(U32 slot)
+{
+    if (!sBindlessActive || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= sBindlessHeapCount)
+    {
+        return;
+    }
+    PendingSlotFree p;
+    p.slot          = slot;
+    p.enqueue_frame = sMonotonicFrameCount;
+    sPendingSlotFrees.push_back(p);
+}
+
+VkDescriptorSetLayout getBindlessHeapLayout()
+{
+    return sBindlessHeapLayout;
+}
+
+VkDescriptorSet getBindlessHeapSet()
+{
+    return sBindlessHeapSet;
+}
+
 void transitionImageLayoutVk(VkImage              image,
                              VkImageAspectFlags   aspect_mask,
                              VkImageLayout        old_layout,
@@ -8810,10 +9105,19 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
     {
         ++gVkPerf.draws_shadow_map[gVkPerfShadowMapIndex < 6u ? gVkPerfShadowMapIndex : 5u];
     }
+    VkDescriptorSet set2 = VK_NULL_HANDLE;
+    {
+        LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+        if (sh != nullptr && sh->mVkUsesBindlessHeap)
+        {
+            set2 = sBindlessHeapSet;
+        }
+    }
     if (vkCmdMemoEnabled()
         && layout == sLastDescLayout
         && set0 == sLastDescSet0
         && set1 == sLastDescSet1
+        && set2 == sLastDescSet2
         && dyn_count == sLastDescDynCount
         && (dyn_count == 0 || std::memcmp(offsets, sLastDescOffsets, dyn_count * sizeof(U32)) == 0))
     {
@@ -8821,18 +9125,19 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
         return;
     }
     ++gVkPerf.desc_bind;
-    VkDescriptorSet sets[2] = { set0, set1 };
+    VkDescriptorSet sets[3] = { set0, set1, set2 };
     vkCmdBindDescriptorSets(cmd,
                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                             layout,
                             0,
-                            2,
+                            (set2 != VK_NULL_HANDLE) ? 3u : 2u,
                             sets,
                             dyn_count,
                             dyn_count ? offsets : nullptr);
     sLastDescLayout   = layout;
     sLastDescSet0     = set0;
     sLastDescSet1     = set1;
+    sLastDescSet2     = set2;
     sLastDescDynCount = dyn_count;
     if (dyn_count > 0)
     {

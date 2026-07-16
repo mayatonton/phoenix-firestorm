@@ -137,6 +137,9 @@ public:
     U32      getVkImageMipLevels() const { return mVkImageMipLevels; }
     VkFormat getVkImageFormat() const { return mVkImageFormat; }
 
+    U32  getVkHeapSlot() const { return mVkHeapSlot; }
+    void updateVkHeapSlot();
+
     void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format, U32 mip_levels = 1);
 
     void syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
@@ -241,6 +244,10 @@ protected:
     U32         mVkImageHeight = 0;
     U32         mVkImageMipLevels = 1;
     VkFormat    mVkImageFormat = VK_FORMAT_UNDEFINED;
+
+    U32         mVkHeapSlot        = 0xFFFFFFFFu;
+    VkImageView mVkHeapSlotView    = VK_NULL_HANDLE;
+    VkSampler   mVkHeapSlotSampler = VK_NULL_HANDLE;
 
 public:
     static std::unordered_set<LLImageGL*> sImageList;

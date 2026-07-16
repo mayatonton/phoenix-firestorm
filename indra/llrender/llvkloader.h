@@ -1301,6 +1301,27 @@ namespace LLVKLoader
 
     bool isDrawIndirectFirstInstanceEnabledVk();
 
+    constexpr U32 BINDLESS_INVALID_SLOT = 0xFFFFFFFFu;
+
+    bool isBindlessActiveVk();
+
+    U32  bindlessAcquireSlot(VkImageView view, VkSampler sampler);
+
+    void bindlessReleaseSlotDeferred(U32 slot);
+
+    VkDescriptorSetLayout getBindlessHeapLayout();
+
+    VkDescriptorSet getBindlessHeapSet();
+
+    void writeBindlessTexSlots(const U32* slots4);
+
+    struct AyaTexSlots_PerDrawBind
+    {
+        U32 ayaTexSlots[4];
+    };
+    static_assert(sizeof(AyaTexSlots_PerDrawBind) == 16,
+                  "AyaTexSlots_PerDrawBind size mismatch (std140 expects 16 B)");
+
     void transitionImageLayoutVk(VkImage              image,
                                  VkImageAspectFlags   aspect_mask,
                                  VkImageLayout        old_layout,
@@ -1389,7 +1410,7 @@ namespace LLVKLoader
     struct ScenePerDrawBindings
     {
         static constexpr U32 MAX_SAMPLERS = 35;
-        static constexpr U32 MAX_UBO_WRITES = 28;
+        static constexpr U32 MAX_UBO_WRITES = 30;
 
         VkDescriptorSetLayout layout      = VK_NULL_HANDLE;
 

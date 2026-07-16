@@ -394,6 +394,7 @@ void LLGLSLShader::unloadInternal()
         }
         mVkAccessorBindingList.clear();
         mVkAccessorBindingListBuilt = false;
+        mVkUsesBindlessHeap = false;
         if (mVkPerProgramUBO != VK_NULL_HANDLE)
         {
             LLVKLoader::destroyBufferVk(mVkPerProgramUBO, mVkPerProgramUBOAllocation);
@@ -1735,6 +1736,10 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
             std::string concatenated;
             concatenated.append("#version 460\n");
             concatenated.append("#extension GL_KHR_vulkan_glsl : enable\n");
+            if (LLVKLoader::isBindlessActiveVk())
+            {
+                concatenated.append("#extension GL_EXT_nonuniform_qualifier : enable\n");
+            }
             concatenated.append("#define LL_VULKAN_GLSL 1\n");
 
             const std::vector<std::string>* utility_files = nullptr;
@@ -2739,11 +2744,21 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_sampler(50, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::DEFERRED_LIGHTFUNC);
 
+    mVkUsesBindlessHeap = false;
     if (mFeatures.mIndexedTextureChannels > 0)
     {
-        for (S32 i = 0; i < mFeatures.mIndexedTextureChannels && i < 8; ++i)
+        if (LLVKLoader::isBindlessActiveVk() && mFeatures.mIndexedTextureChannels <= 4)
         {
-            add_sampler(100 + i, VK_SHADER_STAGE_FRAGMENT_BIT, -2);
+            mVkUsesBindlessHeap = true;
+            add_ubo(54, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+        }
+        else
+        {
+            for (S32 i = 0; i < mFeatures.mIndexedTextureChannels && i < 8; ++i)
+            {
+                add_sampler(100 + i, VK_SHADER_STAGE_FRAGMENT_BIT, -2);
+            }
         }
     }
 
@@ -2803,7 +2818,7 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         {
             if (mVkBindingDeclaredType[bnd] == VKBD_UBO
                 && mVkBindingToUBOAccessor[bnd] == nullptr
-                && bnd != 7 && bnd != 44
+                && bnd != 7 && bnd != 44 && bnd != 54
                 && (stage_want == 0 || (mVkBindingStageMask[bnd] & stage_want)))
             {
                 mVkPerProgramUBOBinding = bnd;
@@ -2843,10 +2858,25 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         return false;
     }
 
-    VkDescriptorSetLayout set_layouts[2] = {
+    VkDescriptorSetLayout set_layouts[3] = {
         LLVKLoader::getPerFrameDescriptorSetLayout(),
-        mVkDescriptorSetLayout
+        mVkDescriptorSetLayout,
+        VK_NULL_HANDLE
     };
+    U32 set_layout_count = 2;
+    if (mVkUsesBindlessHeap)
+    {
+        VkDescriptorSetLayout heap_layout = LLVKLoader::getBindlessHeapLayout();
+        if (heap_layout != VK_NULL_HANDLE)
+        {
+            set_layouts[2]   = heap_layout;
+            set_layout_count = 3;
+        }
+        else
+        {
+            mVkUsesBindlessHeap = false;
+        }
+    }
 
     VkPushConstantRange pc_ranges[2] = {};
     U32 pc_range_count;
@@ -2868,7 +2898,7 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         pc_range_count = 2;
     }
 
-    mVkPipelineLayout = LLVKLoader::createStandardPipelineLayout(set_layouts, 2, pc_ranges, pc_range_count);
+    mVkPipelineLayout = LLVKLoader::createStandardPipelineLayout(set_layouts, set_layout_count, pc_ranges, pc_range_count);
     if (mVkPipelineLayout == VK_NULL_HANDLE)
     {
         vkDestroyDescriptorSetLayout(dev, mVkDescriptorSetLayout, nullptr);
@@ -3124,6 +3154,7 @@ VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
         case 51: return sizeof(LLVKLoader::DrawColor_PerShaderBind);
         case 52: return sizeof(LLVKLoader::PbrTerrain_PerShaderBind);
         case 53: return sizeof(LLVKLoader::ShadowParams_PerShaderBind);
+        case 54: return 16;
         default: return 0;
     }
 }
@@ -3177,6 +3208,27 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     bindings.dynamic_mask = cur->mVkDynamicBindingMask;
 
     U32 per_program_dynamic_offset = 0;
+
+    if (cur->mVkUsesBindlessHeap)
+    {
+        U32 slots[4] = { 0, 0, 0, 0 };
+        const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
+        for (U32 i = 0; i < n; ++i)
+        {
+            LLImageGL* gl = gGL.getTexUnit((S32)i)->mCurrImageGL;
+            if (gl != nullptr && gl->hasVkImage()
+                && gl->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+            {
+                slots[i] = gl->getVkHeapSlot();
+            }
+            else if (LLImageGL::sDefaultGLTexture != nullptr
+                     && LLImageGL::sDefaultGLTexture->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+            {
+                slots[i] = LLImageGL::sDefaultGLTexture->getVkHeapSlot();
+            }
+        }
+        LLVKLoader::writeBindlessTexSlots(slots);
+    }
 
     VkImageView fallback_view = LLVKLoader::getDefaultFallbackVkImageView();
 

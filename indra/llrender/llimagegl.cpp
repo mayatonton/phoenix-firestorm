@@ -591,6 +591,11 @@ LLImageGL::~LLImageGL()
         freePickMask();
         sCount--;
     }
+    if (mVkHeapSlot != 0xFFFFFFFFu)
+    {
+        LLVKLoader::bindlessReleaseSlotDeferred(mVkHeapSlot);
+        mVkHeapSlot = 0xFFFFFFFFu;
+    }
 }
 
 void LLImageGL::init(bool usemipmaps, bool allow_compression)
@@ -1086,6 +1091,7 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
             mVkImageHeight = 0;
             mVkImageMipLevels = 1;
             mVkImageFormat = VK_FORMAT_UNDEFINED;
+            updateVkHeapSlot();
         }
 
         if (!can_reuse)
@@ -1100,6 +1106,7 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
             mVkImageHeight    = (U32)h;
             mVkImageMipLevels = want_mips;
             mVkImageFormat    = vk_format;
+            updateVkHeapSlot();
         }
     }
     else
@@ -1161,6 +1168,7 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                 mVkImageWidth  = 0;
                 mVkImageHeight = 0;
                 mVkImageFormat = VK_FORMAT_UNDEFINED;
+                updateVkHeapSlot();
                 return;
             }
             upload_data = padded_buffer;
@@ -1202,6 +1210,7 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
             mVkImageHeight = 0;
             mVkImageMipLevels = 1;
             mVkImageFormat = VK_FORMAT_UNDEFINED;
+            updateVkHeapSlot();
         }
     }
 
@@ -1327,6 +1336,49 @@ void LLImageGL::setExternalVkBacking(VkImage image, VkImageView view, void* allo
     mVkImageFormat   = format;
     mVkImageMipLevels = mip_levels;
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    updateVkHeapSlot();
+}
+
+void LLImageGL::updateVkHeapSlot()
+{
+    if (!LLVKLoader::isBindlessActiveVk())
+    {
+        return;
+    }
+    if (mTarget != GL_TEXTURE_2D)
+    {
+        return;
+    }
+    VkSampler smp = VK_NULL_HANDLE;
+    if (mVkImageView != VK_NULL_HANDLE)
+    {
+        smp = LLVKLoader::getSamplerForState((U32)mAddressMode, (U32)mFilterOption, mHasMipMaps, false);
+        if (mVkHeapSlot != LLVKLoader::BINDLESS_INVALID_SLOT
+            && mVkHeapSlotView == mVkImageView
+            && mVkHeapSlotSampler == smp)
+        {
+            return;
+        }
+    }
+    else if (mVkHeapSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
+    {
+        return;
+    }
+    const U32 old_slot = mVkHeapSlot;
+    if (mVkImageView != VK_NULL_HANDLE)
+    {
+        mVkHeapSlot = LLVKLoader::bindlessAcquireSlot(mVkImageView, smp);
+    }
+    else
+    {
+        mVkHeapSlot = LLVKLoader::BINDLESS_INVALID_SLOT;
+    }
+    mVkHeapSlotView    = mVkImageView;
+    mVkHeapSlotSampler = smp;
+    if (old_slot != LLVKLoader::BINDLESS_INVALID_SLOT)
+    {
+        LLVKLoader::bindlessReleaseSlotDeferred(old_slot);
+    }
 }
 
 bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update /* = false */)
@@ -1418,6 +1470,7 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
                 mVkImageHeight    = 0;
                 mVkImageMipLevels = 1;
                 mVkImageFormat    = VK_FORMAT_UNDEFINED;
+                updateVkHeapSlot();
             }
         }
         else if (LLVKLoader::shouldUseVulkanRender())
@@ -1837,6 +1890,7 @@ void LLImageGL::destroyGLTexture()
         mVkImageWidth  = 0;
         mVkImageHeight = 0;
         mVkImageFormat = VK_FORMAT_UNDEFINED;
+        updateVkHeapSlot();
     }
 
     if (had_texture)
@@ -1871,6 +1925,7 @@ void LLImageGL::setAddressMode(LLTexUnit::eTextureAddressMode mode)
     {
         mTexOptionsDirty = true;
         mAddressMode = mode;
+        updateVkHeapSlot();
     }
 
     if (gGL.getTexUnit(gGL.getCurrentTexUnitIndex())->mCurrImageGL == this)
@@ -1886,6 +1941,7 @@ void LLImageGL::setFilteringOption(LLTexUnit::eTextureFilterOptions option)
     {
         mTexOptionsDirty = true;
         mFilterOption = option;
+        updateVkHeapSlot();
     }
 
     if (mVkImage != VK_NULL_HANDLE && gGL.getTexUnit(gGL.getCurrentTexUnitIndex())->mCurrImageGL == this)

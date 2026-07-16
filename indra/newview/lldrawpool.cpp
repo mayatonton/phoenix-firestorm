@@ -479,6 +479,43 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                               ? llmin((U32)params->mTextureList.size(), indexed_layout_count)
                               : (is_indexed ? 1u : 0u);
 
+    if (cur->mVkUsesBindlessHeap)
+    {
+        auto heap_slot_for = [](LLImageGL* gl) -> U32
+        {
+            if (gl != nullptr && gl->hasVkImage()
+                && gl->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+            {
+                return gl->getVkHeapSlot();
+            }
+            LLImageGL* def = LLImageGL::sDefaultGLTexture;
+            if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+            {
+                return def->getVkHeapSlot();
+            }
+            return 0;
+        };
+        U32 slots[4] = { 0, 0, 0, 0 };
+        if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
+        {
+            const U32 n = llmin((U32)params->mTextureList.size(), 4u);
+            for (U32 i = 0; i < n; ++i)
+            {
+                LLTexture* t = params->mTextureList[i].get();
+                slots[i] = heap_slot_for(t ? t->getGLTexture() : nullptr);
+            }
+        }
+        else if (params != nullptr && params->mTexture.notNull())
+        {
+            slots[0] = heap_slot_for(params->mTexture->getGLTexture());
+        }
+        else
+        {
+            slots[0] = heap_slot_for(gGL.getTexUnit(0)->mCurrImageGL);
+        }
+        LLVKLoader::writeBindlessTexSlots(slots);
+    }
+
     if (gltf_materials_ubo == 0 && gltf_geometry_ubo == 0
         && LLGLSLShader::sCurPerCallVkDescriptorSet != VK_NULL_HANDLE
         && LLGLSLShader::sCurPerCallVkSetShape == set_shape)
