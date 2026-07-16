@@ -57,12 +57,12 @@ per-frame(×1/frame):
 - **追い風**: indexed batch shader 群は既に「sampler 配列 + per-vertex index」で描いている(mIndexedTextureChannels 経路)= これは bindless の局所形。global heap への一般化は自然拡張であって新規発明ではない。
 - **前提工事**: device 生成(llvkloader.cpp:1326-1483)に `VkPhysicalDeviceVulkan12Features` chain を追加 — `descriptorIndexing` / `runtimeDescriptorArray` / `descriptorBindingPartiallyBound` / `descriptorBindingSampledImageUpdateAfterBind` / `descriptorBindingUpdateUnusedWhilePending` / `shaderSampledImageArrayNonUniformIndexing`。heap 上限は `maxDescriptorSetUpdateAfterBindSampledImages` から決定(desktop 目標 64k・下限 fallback §6)。
 
-### 1.2 Mega vertex/index buffer(柱 2)
+### 1.2 Mega vertex/index buffer(柱 2)— M3 で実装済(2026-07-16 gate PASS)
 
-- **単一(vertex format ごと)の大 VkBuffer プール + suballocation**。LLVertexBuffer は「自分の VkBuffer」を持たず、pool 内の `{offset, size}` slice を持つ。
-- **bind は bucket 境界で 1 回**。同一 pool 内の全 batch は `vertexOffset`/`firstIndex` の違いだけで描ける = per-draw の setBuffer ループ(attribute 数ぶんの再 bind)が消える。
-- **書込は mapped 直書き**: 現行の「CPU heap 副本(mMappedData)→ VK buffer」二重持ち(先送り台帳 既載)を解消し、rebuild が staging(HOST_VISIBLE ring)へ直接書いて GPU copy。CPU read 消費者(strider read 系)の洗い出しを移行段 M3 の前提調査とする。
-- **解放規律**: slice の free は frame fence 遅延。断片化は size-class free-list + 世代 compaction(idle 時に古い region を詰め直す job・worker 向き)。
+- **実装形**: SoA chunked pool(llvkloader.cpp `megabuf*` 族・pool key = 頂点 typemask)。chunk = 1 VkBuffer 内に attribute 別の連続 region(容量 64K 頂点 → ×2 成長 → 上限 1M。index chunk = 1MB→16MB)。**slice = 頂点単位の範囲 [first, first+count)(4 頂点 align)を全 attribute region で共有** = `vkCmdDrawIndexed(vertexOffset=first, firstIndex=slice基点+offset)` で描く。LLVertexBuffer は slice handle(MegaSliceV/I)のみ保有。
+- **bind は chunk 切替時のみ**: bind 引数が slice 非依存(region base 固定)のため bindVertexBufferVk/bindIndexBufferVk の thread_local (cmd,frame) memo が per-draw re-bind を吸収(実測 vbbind 97.8% skip)。
+- **書込 = transient staging**: CPU 副本は map〜unmap 間だけ生存(pool 5s age-out)。**不変条件: map で flag した region は同一 map pass 内に全書きする**(書けない buffer は `setStagingPersistent(true)` を宣言 = 現在 llmodelpreview の preview 島のみ。違反すると staging のゴミが flush される)。
+- **解放規律**: slice free は frame fence 遅延(`tickMegaFreeQueue` = sLastCompletedMonotonic 準拠)+ 隣接 merge。断片化 compaction と空 chunk 縮退は未実装(M6 の worker job 候補)。pool は main thread 前提・lock なし(worker 化する段で同期を入れる)。
 - **10 年配当**: mega-buffer 上の suballocation は将来の ray tracing BLAS 構築・mesh shader 化の前提形でもある。
 
 ### 1.3 Per-draw SSBO(柱 3)— 2026-07-16 実トレースで改訂
