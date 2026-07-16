@@ -12,11 +12,33 @@
 # 光の国のひとたちと共にわたしはここにいる　彩
 #
 
-# AYAstorm r41 Vulkan integration module
-# - System libvulkan-dev (header) is required at build time.
-# - libvulkan-1.so is NOT linked: volk (in indra/llrender/) does dlopen at runtime.
+# AYAstorm Vulkan integration module
+# - macOS uses the pinned vulkan_sdk_macos prebuilt for headers and the Loader.
+# - Windows/Linux keep their existing system Vulkan SDK discovery.
+# - The Loader found here is not linked: volk (in indra/llrender/) loads it at runtime.
 
 include(Prebuilt)
+
+if (DARWIN)
+    use_prebuilt_binary(vulkan_sdk_macos)
+
+    set(VulkanSDKMacOS_INCLUDE_DIR "${LIBS_PREBUILT_DIR}/include")
+    set(VulkanSDKMacOS_LOADER_LIBRARY
+        "${LIBS_PREBUILT_DIR}/lib/release/libvulkan.dylib")
+
+    if (NOT EXISTS "${VulkanSDKMacOS_INCLUDE_DIR}/vulkan/vulkan.h" OR
+        NOT EXISTS "${VulkanSDKMacOS_LOADER_LIBRARY}")
+        message(FATAL_ERROR
+            "vulkan_sdk_macos must provide include/vulkan/vulkan.h and "
+            "lib/release/libvulkan.dylib")
+    endif()
+
+    set(Vulkan_INCLUDE_DIR "${VulkanSDKMacOS_INCLUDE_DIR}" CACHE PATH
+        "Vulkan headers from vulkan_sdk_macos" FORCE)
+    set(Vulkan_LIBRARY "${VulkanSDKMacOS_LOADER_LIBRARY}" CACHE FILEPATH
+        "Vulkan Loader from vulkan_sdk_macos" FORCE)
+endif()
+
 include(FindVulkan)
 
 if (NOT Vulkan_FOUND)
