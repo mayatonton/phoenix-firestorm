@@ -21,13 +21,13 @@ macOSの製品対象architectureは **Apple Silicon arm64のみ** とする。Un
 
 | 項目 | 証拠 | 作業状態 | 根拠 |
 |---|---|---|---|
-| plan / integration base | **VERIFIED** | **IN_PROGRESS** | 実装sourceは`dev/ayastorm-vk-3os@444612c9d0`。PR targetは`dev/ayastorm-vk-premt@e7747fb267`で、target側14 commitと共有Vulkan変更が重複するため、`e7747fb267`直上の`feat/macos-moltenvk-premt`へhunk単位で移植する |
-| renderer mode | **VERIFIED** | **NOT_STARTED** | `llvkloader.cpp:7409-7422`は`0`と非`0`だけを区別し、`llvertexbuffer.cpp:588-939`にはGL fallbackがない。既存setting commentはHEADと不一致 |
-| portability enumeration/subset | **VERIFIED** | **IN_PROGRESS** | `llvkloader.cpp:471-512,577-583,862-923,985-1000`へMetal限定で実装し、Loader経由の実機runでinstance enumerationとdevice subsetの有効化を確認 |
+| plan / integration base | **VERIFIED** | **IN_PROGRESS** | `dev/ayastorm-vk-premt@e7747fb267`直上の`feat/macos-moltenvk-premt`へmacOS責任範囲を移植済み。共有renderer/lifecycle変更は除外した |
+| renderer mode | **VERIFIED** | **NOT_STARTED** | `llvkloader.cpp:8331-8346`は`0`と非`0`だけを区別する。主要draw pathにGL fallbackはない |
+| portability enumeration/subset | **VERIFIED** | **IN_PROGRESS** | `llvkloader.cpp:510-681,828-1104`へMetal限定で実装。移植後compileはVERIFIED、実機request/enableはOPEN |
 | presentation readiness / present queue | **VERIFIED** | **IN_PROGRESS** | `llappviewer.cpp:initWindow()`はVulkan/surface/swapchain失敗を返し、`LLAppViewer::init()`もその戻り値を検査する。surface present support query、stage別log、partial-init rollbackはOPEN |
 | macOS Vulkan dependency | **VERIFIED** | **IN_PROGRESS** | `Vulkan.cmake:22-40`と`Glslang.cmake:30-39`でlocal `vulkan_sdk_macos` packageをDarwin限定入力として使用。正式package公開とtracked `autobuild.xml`はOPEN |
-| Loader / MoltenVK packaging | **VERIFIED** | **IN_PROGRESS** | `viewer_manifest.py:1594-1601,1687-1714`でLoader、MoltenVK、bundle相対ICDを配置し、arm64 appの署名と環境overrideなし起動を確認。license追加はOPEN |
-| macOS build / runtime | **VERIFIED** | **IN_PROGRESS** | 旧baseではarm64 `ALL_BUILD`、1x/2x表示、modal hit、resize収束を確認。cache復旧差分を含む同一arm64 executableの後続runはlogin success、initial simulator、movement complete、WebRTC terminate、Vulkan shutdown、`Goodbye!` / `status: stopped`へ到達した。validation layer無効runで、`dev/ayastorm-vk-premt`移植後の再build/runはOPEN |
+| Loader / MoltenVK packaging | **VERIFIED** | **IN_PROGRESS** | `viewer_manifest.py:1600-1601,1688-1713`でLoader、MoltenVK、bundle相対ICDを配置。移植後appのstagingとdeep/strict署名検証は成功。license追加はOPEN |
+| macOS build / runtime | **VERIFIED** | **IN_PROGRESS** | 移植後のRelease `ayastorm-bin` arm64 full buildとapp stagingはexit 0。旧baseでは1x/2x表示、modal hit、resize収束、ログインから正常終了まで確認。移植後runtimeはOPEN |
 
 開発者固有のOS状態、toolの絶対path、空き容量、local checkout、作業logはtracked documentへ記載しない。再現可能な結論だけを、実行commandと必要なversion条件へ一般化して反映する。
 
@@ -38,7 +38,7 @@ macOSの製品対象architectureは **Apple Silicon arm64のみ** とする。Un
 | 項目 | Evidence | Execution | 再現可能な結論 |
 |---|---|---|---|
 | SDK / MoltenVK入力 | **VERIFIED** | **IN_PROGRESS** | Vulkan SDK 1.4.350.1と、cloneからbuildしたMoltenVK 1.4.2をlocal darwin64 packageへ固定。arm64 Loader/MoltenVK/glslangを検査済み |
-| configure / compile | **VERIFIED** | **IN_PROGRESS** | macOS configure成功。portability/Retina等を含む時点の`ARCHS=arm64 ONLY_ACTIVE_ARCH=YES`の`ALL_BUILD`はexit 0、build log SHA-256=`01f1ba294eb3d1d817e9cee96b28135277eb7bdcc687c50206d85155c4786e2f`。その後のpipeline cache recovery差分は`llrender` compileとviewer linkのみ成功し、最終manifestは`llbase`未解決で失敗。現source全体と`dev/ayastorm-vk-premt`移植後のfull buildはOPEN |
+| configure / compile | **VERIFIED** | **IN_PROGRESS** | `CMAKE_OSX_ARCHITECTURES=arm64`でconfigure済み。移植後sourceのRelease `ayastorm-bin` full buildとapp stagingはexit 0、build log SHA-256=`caca76ae14a29b3f056d4f1bfadbef5492c5bfcbf60abf0dfd4a2ea2b4846fa7`。`PACKAGE=OFF`projectのため`llpackage` / DMGはOPEN |
 | arm64 artifact | **VERIFIED** | **IN_PROGRESS** | main executableはarm64-only。Loader/MoltenVKはarm64を含むUniversal入力で、ICD JSON parseとbundle相対path、deep/strict署名を確認。既存のVivox 3点とVLC SIMD plugin 6点はx86_64-onlyのため、完全native arm64配布として扱うかはOPEN |
 | bundle discovery | **VERIFIED** | **IN_PROGRESS** | driver関連と`DYLD_*` overrideをunsetしたapp起動で、bundle内Loader、ICD、MoltenVKからApple GPUを作成 |
 | portability | **VERIFIED** | **IN_PROGRESS** | Loader経由でenumeration extension/flagをrequestし、instance成功後にenabledを記録。selected deviceがsubsetを広告した場合だけdevice extensionをrequestし、device成功後にenabledを記録 |
@@ -52,14 +52,14 @@ macOSの製品対象architectureは **Apple Silicon arm64のみ** とする。Un
 | 分類 | 状態 | 根拠 |
 |---|---|---|
 | 表示寸法 | **VERIFIED** | 実機スクリーンショットは5120x2830 pixelで、描画内容は概ね左下2560 pixel幅に収まり、残りが黒。起動logではscreen targetを2560x1387、resize後に2560x1421 / 2560x1368で確保 |
-| resize後のframe開始 | **VERIFIED** | resize直後から`LLAppViewer::doFrame()`の`beginFrame return false`がcount=1、10、100まで継続。`llvkloader.cpp:3385-3409`はpending resizeとswapchain extentが一致しないとrecreateしてfalseを返す |
-| Metal drawable | **VERIFIED (source)** | `llwindowmacosx-objc.mm:244-253,267-270`は`backingScaleFactor`と`convertSizeToBacking()`から`CAMetalLayer::drawableSize`を設定する |
+| resize後のframe開始 | **VERIFIED on old base** | 修正前runでは`beginFrame return false`が継続した。現sourceはpending resizeを`llvkloader.cpp:3447-3496`で比較・消費する。移植後runtimeはOPEN |
+| Metal drawable | **VERIFIED (source)** | `llwindowmacosx-objc.mm:237-276`は`backingScaleFactor`と`convertSizeToBacking()`から`CAMetalLayer::drawableSize`を設定する |
 | HiDPI setting境界 | **VERIFIED** | 最新runはcommand line overrideなし、user settingsにも`RenderHiDPI` overrideがなく、既定値は0(`settings.xml:11431-11440`)。`llappviewer.cpp:640-643`はこの値を`gHiDPISupport`へ反映する一方、Metal layer作成・更新は同flagを参照せず常にwindowのbacking scaleを使う |
-| viewer resize / input | **VERIFIED (source)** | `llopenglview-objc.mm:168-171`はbacking変換したresizeを通知し、`339-425`はmouse位置をbacking変換してC++へ渡す。`llviewerwindow.cpp:1141-1148,1547-1553`は受取座標を`mDisplayScale`で割る |
-| swapchain収束 | **VERIFIED (source)** | `createSwapchain()`は`caps.currentExtent`を優先し、未固定時は1280x720を使う(`llvkloader.cpp:2629-2644`)。`recreateSwapchain()`は成功後もpending width/heightを実extentへ同期せず(`2805-2841`)、次の`beginFrame()`で再比較する |
+| viewer resize / input | **VERIFIED (source)** | `llopenglview-objc.mm:149-184`はbacking変換したresizeを通知し、`358-420`はmouse位置をbacking変換してC++へ渡す。`llviewerwindow.cpp:1141-1148,1547-1553`は受取座標を`mDisplayScale`で割る |
+| swapchain収束 | **VERIFIED (source)** | `createSwapchain()`はfixed extentまたはpending drawableを選択し、成功時にpending値を消費する(`llvkloader.cpp:2665-2851`)。`recreateSwapchain()`は旧swapchainを新規作成成功後に破棄する(`2898-2959`) |
 | 2倍不一致の直接原因 | **VERIFIED boundary / OPEN runtime tuple** | viewer側HiDPI設定が0でもMetal layerだけがbacking scaleを強制する境界不整合は実読確認済み。live runの`NSView bounds`、`CAMetalLayer.drawableSize`、`caps.currentExtent`、`sSwapchainExtent`、pending resize、最終viewportを同一frameで記録していないため、2560と5120が確定する最終runtime値は追加logで採取する |
 | ログイン操作不能 | **CLAIMED / modal VERIFIED** | 実機利用者の操作不能報告は再現入力log未採取。添付画面中央にはWeb browser確認modalが表示され、logも同alertを記録している。このmodal表示中に背面のログインbuttonが操作不能なのは仕様どおり。modalのOK/Cancel自体が操作不能か、dismiss後もログインbuttonが外れるかを別々に再現する |
-| 一瞬のピンク表示 | **VERIFIED / OPEN** | 中断直前runで起動直後の全window magenta frameを画像捕捉。swapchain初回clearは黒(`llvkloader.cpp:4454-4468`)で、world deferred pathのmagenta clear(`llviewerdisplay.cpp:1005-1015,1326-1335`)もログイン前経路へ直接結び付けられないため、生成元はOPEN |
+| 一瞬のピンク表示 | **VERIFIED / OPEN** | 旧base runで起動直後の全window magenta frameを画像捕捉。swapchain初回clearは黒(`llvkloader.cpp:4668-4672`)で、world deferred pathのmagenta clear(`llviewerdisplay.cpp:1005-1015,1326-1335`)もログイン前経路へ直接結び付けられないため、生成元はOPEN |
 
 **2026-07-16修正後snapshot:** `RenderHiDPI=0`では初期2560x1387、10回の連続resizeで2302x1245 / 2179x1245へ各回収束し、modal buttonを左clickで操作できた。`RenderHiDPI=1`では初期4358x2490、1回のresize後4096x2490へ収束し、MoltenVKはcontents scale 2.0を報告、同じscreen位置のmodal buttonを操作できた。両runとも全window表示と正常終了を確認した。修正点はCocoa event/viewer/CAMetalLayerの1x/2x単位統一、Vulkan drawable専用resize通知、実測extent選択、成功後のpending消費である。約1/2寸法表示、modal hit-test、再作成loopはログイン前P0の停止条件から外す。
 
@@ -84,17 +84,17 @@ macOSの製品対象architectureは **Apple Silicon arm64のみ** とする。Un
 
 | 項目 | Evidence | Execution | 中断時点の事実 |
 |---|---|---|---|
-| pipeline cache recovery | **VERIFIED** | **IN_PROGRESS** | 中断中。`llvkloader.cpp:createPipelineCache()` (`1652-1733`)はpersisted blob失敗時だけ`.rejected`へ隔離し、empty cacheを1回再試行。実機で8,959,058 bytes、`result=-3`、`empty_retry result=0`、`STATE_LOGIN_WAIT`を確認 |
-| shutdown buffer sweep | **VERIFIED** | **IN_PROGRESS** | 中断中。`llvertexbuffer.cpp`のlive registry (`325-333`)と`cleanupClass()` sweep (`971-1015`)で中断直前runは`registered=49 live=49`から`remaining=0` |
-| resume app | **VERIFIED** | **IN_PROGRESS** | 中断中。main executableはarm64-only、UUID=`D67271A2-C346-35F9-9811-2E5AAF8F484C`、SHA-256=`2c9bae389aa993b35937206d345da9a197a9fc81268fa78054cacab1b0465446`。ad-hoc deep/strict署名合格、overrideなしでログイン画面へ到達 |
-| latest product-like run | **VERIFIED** | **IN_PROGRESS** | 同一UUIDの後続runはlogin success、initial simulator、movement complete、`Terminating WebRTC`、Vulkan shutdown、`Goodbye!`、`status: stopped`へ到達し残留processなし。`[VK-ERROR]`、VUID、`mvk-error`、`main0_out`は0件だがvalidation layer無効。sampler上限超過は8件 |
-| latest packaging | **VERIFIED** | **IN_PROGRESS** | 中断中。cache復旧差分のarm64 `llrender` compileとviewer linkは成功。Xcode targetの最終manifestはPythonが`llbase`を解決できず失敗。再開時はrepo venvのsite-packagesをbuild environmentへ指定する。link済みbundleをad-hoc再署名して上記runに使用 |
+| pipeline cache recovery | **VERIFIED on old base** | **NOT_STARTED** | 旧baseの実機では復旧を確認したが、現targetの`llvkloader.cpp:createPipelineCache()` (`1638-1657`)はその変更を含まない。本PRから除外 |
+| shutdown buffer sweep | **VERIFIED on old base** | **NOT_STARTED** | 旧baseの実機ではsweepを確認したが、現targetの`llvertexbuffer.cpp:959-965`はその変更を含まない。本PRから除外 |
+| resume app | **VERIFIED** | **IN_PROGRESS** | 旧baseのmain executableはarm64-onlyで、ad-hoc deep/strict署名合格、overrideなしでログイン画面へ到達 |
+| latest product-like run | **VERIFIED** | **IN_PROGRESS** | 旧baseの後続runはlogin success、initial simulator、movement complete、Vulkan shutdown、`Goodbye!`、`status: stopped`へ到達。移植後runtimeはOPEN |
+| latest packaging | **VERIFIED** | **IN_PROGRESS** | 移植後のarm64 full viewer build、app staging、Loader/MoltenVK/ICD検査、deep/strict署名まで成功。`llpackage` / DMG / notarizationはOPEN |
 | fragment output | **VERIFIED** | **NOT_STARTED** | 中断中。ログイン後runの24件はMoltenVK MSL `main0_out`でcolor attributeが明示されないERROR。共通入力は`layout(location = 0) out vec4 frag_data[4];`、変換境界は`llglslshader.cpp:vulkanizeStageSource()` (`709-920`)。恒久修正は未実装 |
 | pink frame | **VERIFIED** | **NOT_STARTED** | 中断中。起動直後の全window magenta frameを画像捕捉。生成render pass/attachment/clearは未特定 |
-| shutdown crash | **VERIFIED** | **IN_PROGRESS** | 2026-07-16 11:40、incident=`4E57A208-FDDE-4291-B100-98246D098836`、UUID=`D67271A2-C346-35F9-9811-2E5AAF8F484C`で`SIGSEGV`。faulting audio thread先頭は`LLWebRTCLogSink::OnLogMessage()`。同一UUIDの後続runは正常終了したため、根因と再現条件はOPEN |
-| PR integration | **VERIFIED** | **IN_PROGRESS** | `origin/dev/ayastorm-vk-premt@e7747fb267`を取得し、その直上に`feat/macos-moltenvk-premt`を用意。現在diffをそのままmergeすると共有Vulkan挙動とtarget側14 commitが混在するため、PR作成は移植・再gateまでBLOCKED |
+| shutdown crash | **VERIFIED** | **IN_PROGRESS** | 旧baseの1 runで`SIGSEGV`を記録。faulting audio thread先頭は`LLWebRTCLogSink::OnLogMessage()`。同じbinaryの後続runは正常終了したため、根因と再現条件はOPEN |
+| PR integration | **VERIFIED** | **IN_PROGRESS** | `origin/dev/ayastorm-vk-premt@e7747fb267`直上へmacOS責任範囲を移植し、Draft PRを作成。arm64 build/stagingはVERIFIED、runtimeとmerge/release gateはOPEN |
 
-**再開時の順序:** `dev/ayastorm-vk-premt@e7747fb267`へmacOS責任範囲をhunk単位で移植 → 共有resize依存を非Darwin無変更へ再構成 → repo venvを使ってarm64 viewer/manifestをbuild → cache再生成 → fragment outputとsampler上限をvalidation付きで診断 → ログインとチャット文字 → 正常終了/device destroy → shutdown crash再現監査 → pink frame trace → resize/minimize/fullscreen/display gate。`LLVoiceClient::terminate()`のinstance条件(`llvoiceclient.cpp:306-315`)は強い監査候補だが、後続正常終了だけで根因解消としない。共有変更のLinux/Windows gateはOPENのまま明示する。
+**再開時の順序:** 移植後appを製品相当環境で起動 → bundle Loader/MoltenVKの実load path → ログイン画面とチャット文字 → 正常終了/device destroy → validation付きでfragment outputとsampler上限を診断 → shutdown crash再現監査 → pink frame trace → resize/minimize/fullscreen/display gate。共有変更のLinux/Windows gateはOPENのまま明示する。
 
 ## 2. 固定する設計境界
 

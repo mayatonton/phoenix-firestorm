@@ -8,6 +8,8 @@ Output example: `Phoenix-FirestormOS-AYAstorm-release_arm64-<version>-<build-id>
 
 2026-07-16時点で`vulkan_sdk_macos`はtracked `autobuild.xml`へ未登録です。そのためclean checkout単独ではconfigureできず、正式artifactの公開とtracked metadata反映までmerge / release gateは **OPEN** です。local検証では以下の固定archiveを開発チームから取得し、git-ignoredの`my_autobuild.xml`へ登録してください。開発者固有の絶対pathをtrackedファイルへ追加しないでください。
 
+同日の`dev/ayastorm-vk-premt`直上での検証は、`PACKAGE=OFF`の生成済みprojectから`ayastorm-bin`をarm64でbuildし、app bundleのstagingまで成功しています。以下の`--package` / `llpackage` / DMG手順は正式package入力を用いたrelease gateとして残しますが、このsnapshotでは未実行のため **OPEN** です。
+
 ## 前提
 
 - macOS 15.x
@@ -279,8 +281,8 @@ test -L "$APP/Contents/Frameworks/libvulkan.dylib"
 test "$(readlink "$APP/Contents/Frameworks/libvulkan.dylib")" = "libvulkan.1.dylib"
 test -L "$APP/Contents/Frameworks/libvulkan.1.dylib"
 test "$(readlink "$APP/Contents/Frameworks/libvulkan.1.dylib")" = "libvulkan.1.4.350.dylib"
-lipo -verify_arch arm64 "$APP/Contents/Frameworks/libvulkan.1.4.350.dylib"
-lipo -verify_arch arm64 "$APP/Contents/Frameworks/libMoltenVK.dylib"
+lipo "$APP/Contents/Frameworks/libvulkan.1.4.350.dylib" -verify_arch arm64
+lipo "$APP/Contents/Frameworks/libMoltenVK.dylib" -verify_arch arm64
 otool -L "$APP/Contents/MacOS/AYAstorm"
 otool -D "$APP/Contents/Frameworks/libvulkan.dylib"
 otool -D "$APP/Contents/Frameworks/libMoltenVK.dylib"
@@ -355,6 +357,9 @@ hdiutil detach -force /dev/diskX
 
 ```bash
 env \
+  -u AYASTORM_VK_VALIDATION \
+  -u VK_LOADER_DEBUG \
+  -u MVK_CONFIG_LOG_LEVEL \
   -u VK_DRIVER_FILES \
   -u VK_ICD_FILENAMES \
   -u VK_ADD_DRIVER_FILES \
