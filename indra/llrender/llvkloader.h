@@ -1293,6 +1293,14 @@ namespace LLVKLoader
 
     bool isGeometryShaderEnabledVk();
 
+    bool isBindlessCapableVk();
+
+    U32  getBindlessHeapCapacityVk();
+
+    bool isMultiDrawIndirectEnabledVk();
+
+    bool isDrawIndirectFirstInstanceEnabledVk();
+
     void transitionImageLayoutVk(VkImage              image,
                                  VkImageAspectFlags   aspect_mask,
                                  VkImageLayout        old_layout,

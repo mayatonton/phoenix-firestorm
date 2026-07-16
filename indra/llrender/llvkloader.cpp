@@ -229,6 +229,11 @@ namespace
 
     bool                     sProvokingVertexLastEnabled             = false;
 
+    bool                     sBindlessCapable                        = false;
+    U32                      sBindlessHeapCapacity                   = 0;
+    bool                     sMultiDrawIndirectEnabled               = false;
+    bool                     sDrawIndirectFirstInstanceEnabled       = false;
+
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SETS     = 50000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SAMPLERS = 250000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_UBOS     = 50000;
@@ -1471,9 +1476,76 @@ namespace
             }
         }
 
+        bool allow_vk12 = true;
+        {
+            const char* e = getenv("AYASTORM_VK12");
+            if (e && atoi(e) == 0)
+            {
+                allow_vk12 = false;
+            }
+        }
+
+        VkPhysicalDeviceVulkan12Features vk12_features_enable = {};
+        vk12_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        if (allow_vk12)
+        {
+            VkPhysicalDeviceVulkan12Features vk12_query = {};
+            vk12_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+            VkPhysicalDeviceFeatures2 vk12_f2 = {};
+            vk12_f2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            vk12_f2.pNext = &vk12_query;
+            vkGetPhysicalDeviceFeatures2(sPhysicalDevice, &vk12_f2);
+
+            const bool bindless_ok =
+                vk12_query.runtimeDescriptorArray &&
+                vk12_query.shaderSampledImageArrayNonUniformIndexing &&
+                vk12_query.descriptorBindingPartiallyBound &&
+                vk12_query.descriptorBindingSampledImageUpdateAfterBind &&
+                vk12_query.descriptorBindingUpdateUnusedWhilePending &&
+                vk12_query.descriptorBindingVariableDescriptorCount;
+
+            if (bindless_ok)
+            {
+                vk12_features_enable.runtimeDescriptorArray                    = VK_TRUE;
+                vk12_features_enable.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+                vk12_features_enable.descriptorBindingPartiallyBound           = VK_TRUE;
+                vk12_features_enable.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+                vk12_features_enable.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+                vk12_features_enable.descriptorBindingVariableDescriptorCount  = VK_TRUE;
+                sBindlessCapable = true;
+
+                VkPhysicalDeviceVulkan12Properties vk12_props = {};
+                vk12_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+                VkPhysicalDeviceProperties2 vk12_p2 = {};
+                vk12_p2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+                vk12_p2.pNext = &vk12_props;
+                vkGetPhysicalDeviceProperties2(sPhysicalDevice, &vk12_p2);
+                sBindlessHeapCapacity = llmin(vk12_props.maxDescriptorSetUpdateAfterBindSampledImages, 65536u);
+            }
+
+            if (supported_features.multiDrawIndirect)
+            {
+                enabled_features.multiDrawIndirect = VK_TRUE;
+                sMultiDrawIndirectEnabled = true;
+            }
+            if (supported_features.drawIndirectFirstInstance)
+            {
+                enabled_features.drawIndirectFirstInstance = VK_TRUE;
+                sDrawIndirectFirstInstanceEnabled = true;
+            }
+        }
+
         VkDeviceCreateInfo device_info = {};
         device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        device_info.pNext = &dr_features_enable;
+        if (sBindlessCapable)
+        {
+            vk12_features_enable.pNext = &dr_features_enable;
+            device_info.pNext = &vk12_features_enable;
+        }
+        else
+        {
+            device_info.pNext = &dr_features_enable;
+        }
         device_info.queueCreateInfoCount = 1;
         device_info.pQueueCreateInfos = &queue_info;
         device_info.enabledExtensionCount = (U32)device_extensions.size();
@@ -1485,6 +1557,12 @@ namespace
         {
             return false;
         }
+
+        LL_INFOS("Vulkan") << "VKCaps: bindless=" << (sBindlessCapable ? 1 : 0)
+                           << " heap=" << sBindlessHeapCapacity
+                           << " mdi=" << (sMultiDrawIndirectEnabled ? 1 : 0)
+                           << " mdi_fi=" << (sDrawIndirectFirstInstanceEnabled ? 1 : 0)
+                           << LL_ENDL;
 
         volkLoadDevice(sDevice);
         vkGetDeviceQueue(sDevice, sGraphicsQueueFamily, 0, &sGraphicsQueue);
@@ -8274,6 +8352,26 @@ bool isProvokingVertexLastEnabled()
 bool isGeometryShaderEnabledVk()
 {
     return sGeometryShaderEnabled;
+}
+
+bool isBindlessCapableVk()
+{
+    return sBindlessCapable;
+}
+
+U32 getBindlessHeapCapacityVk()
+{
+    return sBindlessHeapCapacity;
+}
+
+bool isMultiDrawIndirectEnabledVk()
+{
+    return sMultiDrawIndirectEnabled;
+}
+
+bool isDrawIndirectFirstInstanceEnabledVk()
+{
+    return sDrawIndirectFirstInstanceEnabled;
 }
 
 void transitionImageLayoutVk(VkImage              image,
