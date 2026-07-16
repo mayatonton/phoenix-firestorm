@@ -19,7 +19,7 @@ per-draw(crowd で ×50k/frame・全て main 1 本):
 | 仕事 | 実体 | VK-native での姿 |
 |---|---|---|
 | descriptor set 構築/照合 | buildAndOverride(35 sampler + 28 UBO key)+ cache + memo 3 署名 | **消滅**(bindless: draw は index を持つだけ) |
-| matrix 同期 | syncMatrices hash 5 本照合 + ring push | **消滅**(transform は per-draw SSBO・変化時のみ書く) |
+| matrix 同期 | syncMatrices hash 5 本照合 + ring push | 実トレースで再分類(§1.3 改訂): 静的の model 行列は per-region 共有 1 本で per-draw データは不存在。現行 memo 維持・M6 掃除で縮退 |
 | pipeline 照合 | key 30+ field + memo | **消滅**(pipeline ソート済み bucket = 切替は境界のみ) |
 | VB bind | setBuffer = attribute 数ぶん vkCmdBindVertexBuffers(4-8 本)+ index bind を毎 draw 無条件再発行(llvertexbuffer.cpp:1633-1648) | **bucket 毎 1 回**(mega-buffer suballocation) |
 | texture 解決 | bindFast 状態比較 + capture/notify(llrender.cpp:144-190)+ getLiveVkImageView/Sampler | **消滅**(bindless table 常駐・texunit 機構ごと退役) |
@@ -65,13 +65,12 @@ per-frame(×1/frame):
 - **解放規律**: slice の free は frame fence 遅延。断片化は size-class free-list + 世代 compaction(idle 時に古い region を詰め直す job・worker 向き)。
 - **10 年配当**: mega-buffer 上の suballocation は将来の ray tracing BLAS 構築・mesh shader 化の前提形でもある。
 
-### 1.3 Per-draw SSBO(柱 3)
+### 1.3 Per-draw SSBO(柱 3)— 2026-07-16 実トレースで改訂
 
-- **DrawData の大配列**(SSBO・per-frame ring ではなく **永続 + dirty 書換**): `{ mat4x3 transform, U32 material_index, U32 tex_index[N], flags… }`。draw は **draw-ID 1 個**で自分の DrawData を引く。
-- material は別配列(MaterialData)へ正規化(同一 material の重複を排除)。
-- **書換規律**: 静的 object は rebuild 時のみ・動的 object は移動/変形イベント時のみ(updateMove/updateGeom 経路が書き手)。camera 行列は per-frame UBO 1 本のみ = **syncMatrices の per-draw 照合が消える**。
-- **draw-ID の運搬**: `firstInstance` に draw-ID を載せ shader は `gl_InstanceIndex` で読む(instanceCount=1)。追加 feature 不要・MoltenVK 互換・MDI でも 1 draw 1 record で自然に成立。
-- rigged(avatar skin palette)は既存 ObjectSkin 系の shadow/ring を DrawData 参照(palette index)へ寄せる。第一波では現行経路を温存してよい(§5)。
+- **transform は DrawData に持たない(改訂)**。実トレース(llvovolume.cpp:5654-5677)により per-draw transform の実態が確定: 静的 world = **per-region の共有行列 1 本**(頂点は rebuild 時に region 空間へ焼き込み済み)/ rigged = null(skin palette が担う)/ 動的 = per-drawable(毎フレーム動く物 = 保持不能)。よって「per-draw の transform データ」は静的世界に存在せず、SSBO 化は誰も救わない。modelview は現行機構(per-region PC + memo)を維持し、M4 bucket は (pass, pipeline, region) で切ることで per-record transform なしで MDI と両立する。
+- **DrawData の実体 = `{ uvec4 tex_slots }`(+後続段で material)**。永続 SSBO・slot は LLDrawInfo が保有(lazy 取得・dtor で fence 遅延解放)・**slot immutable**(内容変更 = 新 slot 発行 + 旧 slot fence 遅延解放 = heap slot と同一の寿命規律。in-flight frame との race を構造的に排除)。
+- **draw-ID の運搬**: `vkCmdDrawIndexed(firstInstance = slot)` → VS `gl_InstanceIndex` → flat varying → FS が SSBO[draw_id] を引く。追加 feature 不要・MoltenVK 互換・MDI でも 1 record 1 slot で自然に成立。M1 の binding54(dynamic UBO 運搬)はこの段で退役(kill switch fallback として温存)。
+- LLDrawInfo を経ない draw(populate 経路)は per-frame scratch 領域(SSBO 末尾を frame slot 3 分割)から一時 slot を取る。
 
 ### 1.4 整合性(fence の事実のみ)
 
@@ -83,7 +82,7 @@ per-frame(×1/frame):
 
 ### 2.1 永続 bucket(pipeline ソート済み draw stream)
 
-- **bucket = (pass, pipeline, mega-buffer pool) をキーとする永続配列**。要素 = `DrawRecord { firstIndex, indexCount, vertexOffset, drawID }`(= VkDrawIndexedIndirectCommand と同形に置く)。
+- **bucket = (pass, pipeline, region, mega-buffer pool) をキーとする永続配列**(region を含めるのは per-record transform を不要にするため = §1.3 改訂)。要素 = `DrawRecord { firstIndex, indexCount, vertexOffset, drawID }`(= VkDrawIndexedIndirectCommand と同形に置く)。
 - **構築はイベント駆動**: LLSpatialGroup の rebuild(GEOM_DIRTY 決着 = genDrawInfo 出力)時に、その group 由来の DrawRecord 群を bucket へ **patch**(group 単位の連続 range を予約し差し替え)。毎フレームの render map 再構築(postSort 8b)は bucketized pass について **消滅**。
 - **可視性は record を消さない**: 可視 flag(または indirect の instanceCount 0/1)で表現し、cull 結果の反映を「配列の再構築」でなく「bit の書換」にする。第一段は CPU が octree cull 結果を bitset で反映・後段で GPU culling(§2.3)へ委譲。
 - **描画 emission**: pass 内で bucket を回し、bucket 境界でのみ pipeline bind + VB bind → `vkCmdDrawIndexedIndirect(count = bucket size)`。multiDrawIndirect 未使用の中間段では CPU loop の vkCmdDrawIndexed でも同じ bucket 構造で動く(移行を段にできる根拠)。
@@ -160,7 +159,7 @@ worker pool の新しい仕事(優先順): ① geometry rebuild(genVolumeGeometr
 |---|---|---|---|
 | **M0** | device 前提工事: Vulkan12Features chain(descriptorIndexing 系)+ multiDrawIndirect 要求(**全て optional 検出・未対応でも従来動作**)。caps 公開のみ・消費者なし | なし(無風段) | 起動可否そのもの。3 OS の caps ログ採取 |
 | **M1** | global texture heap 新設 + **indexed batch shader family を heap 消費に切替**(diffuse 系 index を DrawData でなくまず既存 per-vertex index のまま heap 化) | 当該 family の per-draw set 構築・Strike 10 memo | `AYASTORM_BINDLESS=0`。誤 texture・白置換・streaming 中の slot 差替 |
-| **M2** | per-draw SSBO(transform+material+tex index)+ draw-ID(firstInstance)。scene 不透明系から | syncMatrices per-draw・per-program rotate(scene 分)・modelview PC | `AYASTORM_DRAWDATA=0`。物が吹き飛ぶ系(行列)・material 化け |
+| **M2** | per-draw SSBO(**tex_slots のみ** = §1.3 改訂)+ draw-ID(firstInstance→gl_InstanceIndex)。binding54 退役 | per-draw の slots arena 書込/dynamic offset(M1 運搬)・MDI への per-record 供給路を確立 | `AYASTORM_DRAWDATA=0`(binding54 経路へ fallback)。誤テクスチャ・batch 単位の模様混線 |
 | **M3** | mega-buffer suballocation + mapped 直書き(CPU 副本解消)。strider read 消費者の洗い出しが前提調査 | per-draw VB bind ループ・VB 二重持ち RAM | `AYASTORM_MEGABUF=0`。geometry 化け・rebuild 競合 |
 | **M4** | 永続 bucket(静的不透明 + shadow static)+ dirty patch 配線。emission は CPU loop のまま | **render map 再構築(8b)**・pool loop の当該 pass 分・pipeline per-draw 照合 | `AYASTORM_BUCKETS=0`。物の出現/消滅遅れ(dirty 配線漏れ)・LOD 切替 |
 | **M5** | multi-draw indirect + GPU frustum/HiZ culling(compute) | vkCmdDrawIndexed ×N(静的分)・occlusion query 機構・octree cull の毎フレーム可視判定 | `AYASTORM_INDIRECT=0`。物陰の物体・水面下 cull・probe |
