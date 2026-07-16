@@ -72,6 +72,7 @@
 #include "llvocache.h"
 #include "llworld.h"
 #include "llspatialpartition.h"
+#include "llvkbucket.h"
 #include "stringize.h"
 #include "llviewercontrol.h"
 #include "llsdserialize.h"
@@ -795,6 +796,8 @@ LLViewerRegion::~LLViewerRegion()
     LLHTTPSender::clearSender(mImpl->mHost);
 #endif
     std::for_each(mImpl->mObjectPartition.begin(), mImpl->mObjectPartition.end(), DeletePointer());
+
+    LLVKBucket::onRegionDestroyed(this);
 
     {
         LL_RECORD_BLOCK_TIME(FTM_SAVE_REGION_CACHE);

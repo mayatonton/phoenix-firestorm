@@ -18,6 +18,7 @@
 
 #include "llpointer.h"
 #include "llspatialpartition.h"
+#include "llvkloader.h"
 #include "pipeline.h"
 
 #include <vector>
@@ -39,12 +40,27 @@ namespace LLVKBucket
         std::vector<LLPointer<LLDrawInfo> > mRecords;
     };
 
+    struct TplChunkSpan
+    {
+        U32 mFirst = 0;
+        U32 mCount = 0;
+        LLDrawInfo* mRep = nullptr;
+    };
+
     struct Bucket
     {
         U32 mPass = 0;
         LLViewerRegion* mRegion = nullptr;
         std::vector<Range> mRanges;
         std::vector<U32> mFreeSlots;
+        bool mTplDirty = true;
+        std::vector<VkDrawIndexedIndirectCommand> mTplCommands;
+        std::vector<U32> mTplGroupIds;
+        std::vector<F32> mTplRadius;
+        std::vector<LLDrawInfo*> mTplRecords;
+        std::vector<LLDrawInfo*> mTplDyn;
+        std::vector<U32> mTplDynGroupIds;
+        std::vector<TplChunkSpan> mTplChunkSpans;
     };
 
     bool isBucketizedPass(U32 pass);
@@ -54,6 +70,8 @@ namespace LLVKBucket
     void patchGroup(LLSpatialGroup* group);
     void evictGroup(LLSpatialGroup* group);
     void onGroupDestroyed(LLSpatialGroup* group);
+    void onRegionDestroyed(LLViewerRegion* region);
+    void rebuildTemplateIfDirty(Bucket& bucket);
 
     const std::vector<Bucket*>& bucketsForPass(U32 pass);
     const std::vector<U64>* currentVisBits();

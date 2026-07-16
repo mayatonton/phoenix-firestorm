@@ -19,8 +19,10 @@
 
 #include "lldrawpool.h"
 #include "llpipelineframecontext.h"
+#include "llviewerregion.h"
 #include "llvkloader.h"
 
+#include <algorithm>
 #include <array>
 #include <memory>
 
@@ -197,6 +199,10 @@ void patchGroup(LLSpatialGroup* group)
     }
 
     group->mVkBucketIndexCount = total_index_count;
+    for (const std::pair<Bucket*, U32>& slot : group->mVkBucketSlots)
+    {
+        slot.first->mTplDirty = true;
+    }
     ++LLVKLoader::gVkPerf.bkt_patch;
 }
 
@@ -207,12 +213,38 @@ void evictGroup(LLSpatialGroup* group)
         Range& range = slot.first->mRanges[slot.second];
         range.mRecords.clear();
         range.mIndexCount = 0;
+        slot.first->mTplDirty = true;
     }
     group->mVkBucketIndexCount = 0;
 }
 
+namespace
+{
+    void reclaimDeadBuckets()
+    {
+        auto& all = allBuckets();
+        for (size_t i = 0; i < all.size(); )
+        {
+            Bucket* bucket = all[i].get();
+            if (bucket->mRegion == nullptr
+                && bucket->mFreeSlots.size() == bucket->mRanges.size())
+            {
+                std::vector<Bucket*>& vec = byPass()[bucket->mPass];
+                vec.erase(std::remove(vec.begin(), vec.end(), bucket), vec.end());
+                all[i] = std::move(all.back());
+                all.pop_back();
+            }
+            else
+            {
+                ++i;
+            }
+        }
+    }
+}
+
 void onGroupDestroyed(LLSpatialGroup* group)
 {
+    bool dead_region = false;
     for (const std::pair<Bucket*, U32>& slot : group->mVkBucketSlots)
     {
         Range& range = slot.first->mRanges[slot.second];
@@ -220,6 +252,8 @@ void onGroupDestroyed(LLSpatialGroup* group)
         range.mIndexCount = 0;
         range.mGroupId = INVALID_GROUP_ID;
         slot.first->mFreeSlots.push_back(slot.second);
+        slot.first->mTplDirty = true;
+        dead_region |= (slot.first->mRegion == nullptr);
     }
     group->mVkBucketSlots.clear();
 
@@ -229,6 +263,136 @@ void onGroupDestroyed(LLSpatialGroup* group)
         group->mVkBucketGroupId = INVALID_GROUP_ID;
     }
     group->mVkBucketIndexCount = 0;
+
+    if (dead_region)
+    {
+        reclaimDeadBuckets();
+    }
+}
+
+void onRegionDestroyed(LLViewerRegion* region)
+{
+    for (const std::unique_ptr<Bucket>& up : allBuckets())
+    {
+        Bucket* bucket = up.get();
+        if (bucket->mRegion == region)
+        {
+            bucket->mRegion   = nullptr;
+            bucket->mTplDirty = true;
+            bucket->mTplCommands.clear();
+            bucket->mTplGroupIds.clear();
+            bucket->mTplRadius.clear();
+            bucket->mTplRecords.clear();
+            bucket->mTplDyn.clear();
+            bucket->mTplDynGroupIds.clear();
+            bucket->mTplChunkSpans.clear();
+        }
+    }
+    reclaimDeadBuckets();
+}
+
+void rebuildTemplateIfDirty(Bucket& bucket)
+{
+    if (!bucket.mTplDirty)
+    {
+        return;
+    }
+    bucket.mTplDirty = false;
+    bucket.mTplCommands.clear();
+    bucket.mTplGroupIds.clear();
+    bucket.mTplRadius.clear();
+    bucket.mTplRecords.clear();
+    bucket.mTplDyn.clear();
+    bucket.mTplDynGroupIds.clear();
+    bucket.mTplChunkSpans.clear();
+
+    const LLMatrix4* region_matrix = bucket.mRegion ? &bucket.mRegion->mRenderMatrix : nullptr;
+
+    struct StaticEntry
+    {
+        LLVertexBuffer* mVB;
+        LLDrawInfo*     mInfo;
+        U32             mGroupId;
+    };
+    static std::vector<StaticEntry> s_statics;
+    s_statics.clear();
+
+    for (Range& range : bucket.mRanges)
+    {
+        for (LLPointer<LLDrawInfo>& ptr : range.mRecords)
+        {
+            LLDrawInfo* info = ptr.get();
+            LLVertexBuffer* vb = info->mVertexBuffer.get();
+            bool is_static = vb != nullptr
+                && info->mCount > 0
+                && region_matrix != nullptr
+                && info->mModelMatrix == region_matrix
+                && info->mTextureMatrix == nullptr
+                && info->mAvatar.isNull()
+                && vb->getVkVertexSlice().buffer != VK_NULL_HANDLE
+                && vb->getVkIndexSlice().buffer != VK_NULL_HANDLE;
+            if (is_static)
+            {
+                s_statics.push_back({ vb, info, range.mGroupId });
+            }
+            else
+            {
+                bucket.mTplDyn.push_back(info);
+                bucket.mTplDynGroupIds.push_back(range.mGroupId);
+            }
+        }
+    }
+
+    std::stable_sort(s_statics.begin(), s_statics.end(),
+        [](const StaticEntry& a, const StaticEntry& b)
+        {
+            const uintptr_t avb = (uintptr_t)a.mVB->getVkVertexSlice().buffer;
+            const uintptr_t bvb = (uintptr_t)b.mVB->getVkVertexSlice().buffer;
+            if (avb != bvb) return avb < bvb;
+            const uintptr_t aib = (uintptr_t)a.mVB->getVkIndexSlice().buffer;
+            const uintptr_t bib = (uintptr_t)b.mVB->getVkIndexSlice().buffer;
+            if (aib != bib) return aib < bib;
+            return a.mVB->getIndicesType() < b.mVB->getIndicesType();
+        });
+
+    for (const StaticEntry& entry : s_statics)
+    {
+        LLVertexBuffer* vb = entry.mVB;
+        const LLVKLoader::MegaSliceV& vs = vb->getVkVertexSlice();
+        const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
+
+        TplChunkSpan* chunk = bucket.mTplChunkSpans.empty()
+                                  ? nullptr
+                                  : &bucket.mTplChunkSpans.back();
+        LLVertexBuffer* rep_vb = chunk ? chunk->mRep->mVertexBuffer.get() : nullptr;
+        if (rep_vb == nullptr
+            || rep_vb->getVkVertexSlice().buffer != vs.buffer
+            || rep_vb->getVkIndexSlice().buffer != is.buffer
+            || rep_vb->getIndicesType() != vb->getIndicesType())
+        {
+            TplChunkSpan fresh;
+            fresh.mFirst = (U32)bucket.mTplCommands.size();
+            fresh.mCount = 0;
+            fresh.mRep   = entry.mInfo;
+            bucket.mTplChunkSpans.push_back(fresh);
+            chunk = &bucket.mTplChunkSpans.back();
+        }
+        ++chunk->mCount;
+
+        LLDrawInfo* info = entry.mInfo;
+        VkDrawIndexedIndirectCommand cmd;
+        cmd.indexCount    = info->mCount;
+        cmd.instanceCount = 1;
+        cmd.firstIndex    = is.offset / vb->getIndicesStride() + info->mOffset;
+        cmd.vertexOffset  = (S32)vs.first;
+        cmd.firstInstance = (info->mVkDrawDataSlot != 0xFFFFFFFFu)
+                                ? info->mVkDrawDataSlot
+                                : 0;
+        bucket.mTplCommands.push_back(cmd);
+        bucket.mTplGroupIds.push_back(entry.mGroupId);
+        bucket.mTplRadius.push_back(info->mBoundRadius);
+        bucket.mTplRecords.push_back(info);
+    }
 }
 
 const std::vector<Bucket*>& bucketsForPass(U32 pass)

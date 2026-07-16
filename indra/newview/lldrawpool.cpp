@@ -49,6 +49,7 @@
 #include "lldrawpoolwaterexclusion.h"
 #include "llface.h"
 #include "llviewerobjectlist.h" // For debug listing.
+#include "llviewerregion.h"
 #include "pipeline.h"
 #include "llvkbucket.h"
 #include "llspatialpartition.h"
@@ -1036,10 +1037,185 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
 void LLRenderPass::pushUntexturedBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    if (LLVKBucket::emitActive(type)
+        && LLVKLoader::isIndirectDrawEnabled()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr
+        && !LLVKLoader::isRecordJobActive())
+    {
+        const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+        if (bits != nullptr)
+        {
+            for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
+            {
+                pushIndirectBucket(*bucket, *bits);
+            }
+            return;
+        }
+    }
     LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
         pushUntexturedBatch(params);
     });
+}
+
+static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkDeviceSize ring_offset)
+{
+    LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+    VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+    if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
+    {
+        LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
+        set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+    }
+    if (set_to_bind == VK_NULL_HANDLE)
+    {
+        LLGLSLShader::populateAndBindUniversalDescriptorSet();
+        set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+    }
+    if (set_to_bind == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
+    if (pipeline == VK_NULL_HANDLE)
+    {
+        static std::set<std::string> s_mdi_pipe_fail;
+        if (s_mdi_pipe_fail.insert(shader->mName).second)
+        {
+            LL_WARNS("Vulkan") << "pushIndirectSpans pipeline NULL shader='" << shader->mName
+                               << "' = 個別要 fix" << LL_ENDL;
+        }
+        return false;
+    }
+    if (!LLVKLoader::isInRenderPassScope())
+    {
+        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+        if (bound_rt == nullptr)
+        {
+            LLVKLoader::beginSwapchainRendering();
+        }
+        else
+        {
+            bound_rt->resumeVkDynamicRendering();
+        }
+    }
+    LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
+    {
+        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+            LLRenderTarget::getCurrentBoundTarget() != nullptr,
+            LLGLSLShader::vkCaptureRegimeActive());
+        LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
+    }
+    LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
+                                           shader->mVkPipelineLayout,
+                                           LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                                           set_to_bind,
+                                           shader->mVkSet1DynamicCount,
+                                           LLGLSLShader::sCurPerCallVkDynamicOffsets);
+    LLVKLoader::pushModelviewOnce(cmd,
+                                  shader->mVkPipelineLayout,
+                                  LLVKLoader::getCurrentModelviewMatrix());
+    for (const LLVKBucket::TplChunkSpan& span : bucket.mTplChunkSpans)
+    {
+        span.mRep->mVertexBuffer->setBuffer();
+        vkCmdDrawIndexedIndirect(cmd, ring_buf,
+                                 ring_offset + (VkDeviceSize)span.mFirst * sizeof(VkDrawIndexedIndirectCommand),
+                                 span.mCount,
+                                 sizeof(VkDrawIndexedIndirectCommand));
+        ++LLVKLoader::gVkPerf.mdi_call;
+    }
+    return true;
+}
+
+void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits)
+{
+    LLVKBucket::rebuildTemplateIfDirty(bucket);
+    if (bucket.mTplCommands.empty() && bucket.mTplDyn.empty())
+    {
+        return;
+    }
+
+    auto id_visible = [&](U32 id) -> bool
+    {
+        return id != LLVKBucket::INVALID_GROUP_ID
+            && (id >> 6) < vis_bits.size()
+            && (vis_bits[id >> 6] & (1ULL << (id & 63))) != 0;
+    };
+
+    bool any_visible = false;
+    for (const LLVKBucket::Range& range : bucket.mRanges)
+    {
+        if (!range.mRecords.empty() && id_visible(range.mGroupId))
+        {
+            any_visible = true;
+            break;
+        }
+    }
+    if (!any_visible)
+    {
+        return;
+    }
+
+    const size_t n = bucket.mTplCommands.size();
+    if (n > 0 && bucket.mRegion != nullptr)
+    {
+        const F32 cull_radius = sShadowBatchCullRadius;
+        VkBuffer     ring_buf    = VK_NULL_HANDLE;
+        VkDeviceSize ring_offset = 0;
+        void*        ring_mapped = nullptr;
+        if (LLVKLoader::indirectRingAlloc((U32)n, ring_buf, ring_offset, ring_mapped))
+        {
+            applyModelMatrix(&bucket.mRegion->mRenderMatrix);
+            gGL.syncMatrices();
+            VkDrawIndexedIndirectCommand* cmds = (VkDrawIndexedIndirectCommand*)ring_mapped;
+            std::memcpy(cmds, bucket.mTplCommands.data(),
+                        n * sizeof(VkDrawIndexedIndirectCommand));
+            U64 zeroed = 0;
+            for (size_t c = 0; c < n; ++c)
+            {
+                bool vis = id_visible(bucket.mTplGroupIds[c]);
+                if (vis && cull_radius > 0.f)
+                {
+                    const F32 r = bucket.mTplRadius[c];
+                    vis = !(r >= 0.f && r < cull_radius);
+                }
+                if (!vis)
+                {
+                    cmds[c].instanceCount = 0;
+                    ++zeroed;
+                }
+            }
+            LLVKLoader::gVkPerf.mdi_zero += zeroed;
+            if (pushIndirectSpans(bucket, ring_buf, ring_offset))
+            {
+                LLVKLoader::gVkPerf.mdi_rec += (U64)n - zeroed;
+            }
+        }
+        else
+        {
+            for (size_t c = 0; c < n; ++c)
+            {
+                if (id_visible(bucket.mTplGroupIds[c]))
+                {
+                    pushUntexturedBatch(*bucket.mTplRecords[c]);
+                }
+            }
+        }
+    }
+
+    for (size_t d = 0; d < bucket.mTplDyn.size(); ++d)
+    {
+        if (id_visible(bucket.mTplDynGroupIds[d]))
+        {
+            pushUntexturedBatch(*bucket.mTplDyn[d]);
+            ++LLVKLoader::gVkPerf.mdi_dyn;
+        }
+    }
 }
 
 void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures)

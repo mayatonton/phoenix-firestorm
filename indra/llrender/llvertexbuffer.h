@@ -320,6 +320,11 @@ public:
 
     bool isMapped() const { return mMapped; }
 
+    const LLVKLoader::MegaSliceV& getVkVertexSlice() const { return mVkVertexSlice; }
+    const LLVKLoader::MegaSliceI& getVkIndexSlice() const { return mVkIndexSlice; }
+    U32 getIndicesType() const { return mIndicesType; }
+    U32 getIndicesStride() const { return mIndicesStride; }
+
     static U64 getBytesAllocated();
     static const U32 sTypeSize[TYPE_MAX];
     static const U32 sGLMode[LLRender::NUM_MODES];

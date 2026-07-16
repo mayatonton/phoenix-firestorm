@@ -262,6 +262,13 @@ namespace
     U32                      sDrawDataScratchFrame                   = 0xFFFFFFFFu;
     thread_local U32         tCurrentDrawDataID                      = 0;
 
+    constexpr U32            INDIRECT_RING_COMMANDS_PER_FRAME        = 524288;
+    VkBuffer                 sIndirectRingBuffer                     = VK_NULL_HANDLE;
+    void*                    sIndirectRingAllocation                 = nullptr;
+    U8*                      sIndirectRingMapped                     = nullptr;
+    U32                      sIndirectRingCursor                     = 0;
+    U32                      sIndirectRingFrame                      = 0xFFFFFFFFu;
+
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SETS     = 50000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SAMPLERS = 250000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_UBOS     = 50000;
@@ -3930,6 +3937,15 @@ void shutdownVulkan()
             vkDestroyDescriptorSetLayout(sDevice, sPerFrameDescriptorSetLayout, nullptr);
             sPerFrameDescriptorSetLayout = VK_NULL_HANDLE;
         }
+        if (sIndirectRingBuffer != VK_NULL_HANDLE)
+        {
+            destroyBufferVk(sIndirectRingBuffer, sIndirectRingAllocation);
+            sIndirectRingBuffer     = VK_NULL_HANDLE;
+            sIndirectRingAllocation = nullptr;
+            sIndirectRingMapped     = nullptr;
+            sIndirectRingCursor     = 0;
+            sIndirectRingFrame      = 0xFFFFFFFFu;
+        }
         destroyBindlessHeap();
 
         if (sPipelineCache != VK_NULL_HANDLE && pcache::sInitialized)
@@ -4315,6 +4331,11 @@ bool endFrame()
                                    << " range=" << gVkPerf.bkt_range.load()
                                    << " rec=" << gVkPerf.bkt_rec.load()
                                    << " skip=" << gVkPerf.bkt_skip.load()
+                                   << " | mdi call=" << gVkPerf.mdi_call.load()
+                                   << " rec=" << gVkPerf.mdi_rec.load()
+                                   << " zero=" << gVkPerf.mdi_zero.load()
+                                   << " dyn=" << gVkPerf.mdi_dyn.load()
+                                   << " full=" << gVkPerf.mdi_full.load()
                                    << " | mega " << [](){ U64 c,cap,use; megabufStats(c,cap,use);
                                         return llformat("chunks=%llu used=%.1f/%.1fMB",
                                             (unsigned long long)c, use/1048576.0, cap/1048576.0); }()
@@ -8956,6 +8977,72 @@ bool isMultiDrawIndirectEnabledVk()
 bool isDrawIndirectFirstInstanceEnabledVk()
 {
     return sDrawIndirectFirstInstanceEnabled;
+}
+
+bool isIndirectDrawEnabled()
+{
+    static const bool s_switch = []()
+    {
+        const char* e = getenv("AYASTORM_INDIRECT");
+        return (e == nullptr) || (atoi(e) != 0);
+    }();
+    return s_switch && sMultiDrawIndirectEnabled && sDrawIndirectFirstInstanceEnabled;
+}
+
+bool indirectRingAlloc(U32 count, VkBuffer& out_buffer, VkDeviceSize& out_offset, void*& out_mapped)
+{
+    if (count == 0 || count > INDIRECT_RING_COMMANDS_PER_FRAME)
+    {
+        ++gVkPerf.mdi_full;
+        return false;
+    }
+    if (sIndirectRingBuffer == VK_NULL_HANDLE)
+    {
+        if (sDevice == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+        void* mapped = nullptr;
+        if (!createBufferVkImpl(FRAMES_IN_FLIGHT * INDIRECT_RING_COMMANDS_PER_FRAME
+                                    * (U32)sizeof(VkDrawIndexedIndirectCommand),
+                                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                                sIndirectRingBuffer, sIndirectRingAllocation, &mapped, true)
+            || mapped == nullptr)
+        {
+            static bool warned = false;
+            if (!warned)
+            {
+                LL_WARNS("Vulkan") << "VKIndirect: ring buffer creation failed" << LL_ENDL;
+                warned = true;
+            }
+            if (sIndirectRingBuffer != VK_NULL_HANDLE)
+            {
+                destroyBufferVk(sIndirectRingBuffer, sIndirectRingAllocation);
+                sIndirectRingBuffer     = VK_NULL_HANDLE;
+                sIndirectRingAllocation = nullptr;
+            }
+            return false;
+        }
+        sIndirectRingMapped = reinterpret_cast<U8*>(mapped);
+    }
+    if (sIndirectRingFrame != sMonotonicFrameCount)
+    {
+        sIndirectRingFrame  = sMonotonicFrameCount;
+        sIndirectRingCursor = 0;
+    }
+    if (sIndirectRingCursor + count > INDIRECT_RING_COMMANDS_PER_FRAME)
+    {
+        ++gVkPerf.mdi_full;
+        return false;
+    }
+    const U32 region = (sFrameIndex < FRAMES_IN_FLIGHT) ? sFrameIndex : 0;
+    const U64 base   = ((U64)region * INDIRECT_RING_COMMANDS_PER_FRAME + sIndirectRingCursor)
+                     * sizeof(VkDrawIndexedIndirectCommand);
+    sIndirectRingCursor += count;
+    out_buffer = sIndirectRingBuffer;
+    out_offset = (VkDeviceSize)base;
+    out_mapped = sIndirectRingMapped + base;
+    return true;
 }
 
 bool isBindlessActiveVk()

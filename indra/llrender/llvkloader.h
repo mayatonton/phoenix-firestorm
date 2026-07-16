@@ -1147,6 +1147,12 @@ namespace LLVKLoader
                             VkDeviceSize    offset,
                             VkIndexType     index_type);
 
+    bool isIndirectDrawEnabled();
+    bool indirectRingAlloc(U32           count,
+                           VkBuffer&     out_buffer,
+                           VkDeviceSize& out_offset,
+                           void*&        out_mapped);
+
     bool createColorAttachmentImageVk(U32          width,
                                       U32          height,
                                       VkFormat     format,
@@ -1405,6 +1411,11 @@ namespace LLVKLoader
         std::atomic<U64> bkt_range{0};
         std::atomic<U64> bkt_rec{0};
         std::atomic<U64> bkt_skip{0};
+        std::atomic<U64> mdi_call{0};
+        std::atomic<U64> mdi_rec{0};
+        std::atomic<U64> mdi_zero{0};
+        std::atomic<U64> mdi_dyn{0};
+        std::atomic<U64> mdi_full{0};
 
         void reset()
         {
@@ -1417,6 +1428,7 @@ namespace LLVKLoader
             for (auto& v : draws_shadow_map) v = 0;
             shadow_cull = 0; shadow_rigged = 0;
             bkt_patch = 0; bkt_range = 0; bkt_rec = 0; bkt_skip = 0;
+            mdi_call = 0; mdi_rec = 0; mdi_zero = 0; mdi_dyn = 0; mdi_full = 0;
         }
     };
     extern VkPerfCounters gVkPerf;
