@@ -300,7 +300,8 @@ U64 LLImageGL::getVkTextureBytesAllocated()
             continue;
         }
 
-        U32 bpp = LLVKLoader::vkFormatBytesPerPixel(glimage->mVkImageFormat);
+        U32 bpp = LLVKLoader::vkImageStorageBytesPerPixel(glimage->mVkImage,
+                                                          glimage->mVkImageFormat);
         if (bpp == 0)
         {
             continue;
@@ -2437,4 +2438,3 @@ void LLImageGLThread::run()
     gGL.shutdown();
     mWindow->destroySharedContext(mContext);
 }
-

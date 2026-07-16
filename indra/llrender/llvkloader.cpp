@@ -19,6 +19,10 @@
 * 光の国のひとたちと共にわたしはここにいる　彩
 */
 
+#if defined(VK_USE_PLATFORM_METAL_EXT) && !defined(VK_ENABLE_BETA_EXTENSIONS)
+#define VK_ENABLE_BETA_EXTENSIONS
+#endif
+
 #include "linden_common.h"
 #include "llvkloader.h"
 
@@ -28,6 +32,10 @@
 #include "llwindow.h"
 #include "llimagegl.h"
 #include "llglslshader.h"
+
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+#include <vulkan/vulkan_beta.h>
+#endif
 
 #include <vector>
 #include <string>
@@ -58,6 +66,10 @@ extern S32 gGLViewport[4];
 #  pragma GCC diagnostic ignored "-Wunused-parameter"
 #  pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #  pragma GCC diagnostic ignored "-Wunused-function"
+#  if defined(__clang__) && defined(LL_DARWIN)
+#    pragma clang diagnostic ignored "-Wnullability-completeness"
+#    pragma clang diagnostic ignored "-Wunused-private-field"
+#  endif
 #endif
 #include "vk_mem_alloc.h"
 
@@ -207,6 +219,15 @@ namespace
     float                    sMaxLineWidth                           = 1.0f;
     bool                     sGeometryShaderEnabled                  = false;
     bool                     sImageCubeArrayEnabled                  = false;
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    bool                     sImageViewFormatSwizzleEnabled          = true;
+    struct LegacySwizzleEmulation
+    {
+        VkFormat logical_format = VK_FORMAT_UNDEFINED;
+        VkFormat storage_format = VK_FORMAT_UNDEFINED;
+    };
+    std::unordered_map<VkImage, LegacySwizzleEmulation> sLegacySwizzleEmulatedImages;
+#endif
 
     VkPhysicalDeviceProperties sPhysicalDeviceProperties             = {};
     std::string                sDriverName;
@@ -500,6 +521,46 @@ namespace
 #endif
 #if defined(VK_USE_PLATFORM_METAL_EXT)
         extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+
+        bool have_portability_enumeration = false;
+        {
+            U32 ext_count = 0;
+            VkResult ext_result = vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
+            std::vector<VkExtensionProperties> avail_exts;
+            if (ext_result == VK_SUCCESS && ext_count > 0)
+            {
+                avail_exts.resize(ext_count);
+                ext_result = vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, avail_exts.data());
+            }
+            if (ext_result == VK_SUCCESS)
+            {
+                for (const auto& ep : avail_exts)
+                {
+                    if (std::strcmp(ep.extensionName, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0)
+                    {
+                        have_portability_enumeration = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                LL_WARNS("Vulkan") << "Vulkan Loader portability enumeration available=0 requested=0: "
+                                    << "vkEnumerateInstanceExtensionProperties failed with VkResult="
+                                    << ext_result << LL_ENDL;
+                return false;
+            }
+        }
+        if (!have_portability_enumeration)
+        {
+            LL_WARNS("Vulkan") << "Vulkan Loader portability enumeration available=0 requested=0; "
+                                << "continuing without request" << LL_ENDL;
+        }
+        else
+        {
+            extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+            LL_INFOS("Vulkan") << "Vulkan Loader portability enumeration available=1 requested=1" << LL_ENDL;
+        }
 #endif
 
         bool want_validation = false;
@@ -566,6 +627,12 @@ namespace
 
         VkInstanceCreateInfo create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        if (have_portability_enumeration)
+        {
+            create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        }
+#endif
         create_info.pApplicationInfo = &app_info;
         create_info.enabledLayerCount = (U32)layers.size();
         create_info.ppEnabledLayerNames = layers.data();
@@ -599,9 +666,20 @@ namespace
 
         if (result != VK_SUCCESS)
         {
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+            LL_WARNS("Vulkan") << "vkCreateInstance failed with VkResult=" << result
+                                << " portability_enumeration_requested="
+                                << (have_portability_enumeration ? 1 : 0) << LL_ENDL;
+#endif
             return false;
         }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        if (have_portability_enumeration)
+        {
+            LL_INFOS("Vulkan") << "Vulkan Loader portability enumeration enabled=1" << LL_ENDL;
+        }
+#endif
         volkLoadInstanceOnly(sInstance);
 
         if (want_validation && have_debug_utils && vkCreateDebugUtilsMessengerEXT != nullptr)
@@ -841,11 +919,35 @@ namespace
 
         bool device_fault_supported = false;
         bool provoking_vertex_supported = false;
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        constexpr const char* PORTABILITY_SUBSET_EXTENSION_NAME = "VK_KHR_portability_subset";
+        bool portability_subset_supported = false;
+        VkPhysicalDevicePortabilitySubsetFeaturesKHR portability_features_enable = {};
+        portability_features_enable.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR;
+#endif
         {
             U32 ext_count = 0;
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+            VkResult ext_result = vkEnumerateDeviceExtensionProperties(sPhysicalDevice, nullptr, &ext_count, nullptr);
+            std::vector<VkExtensionProperties> exts;
+            if (ext_result == VK_SUCCESS && ext_count > 0)
+            {
+                exts.resize(ext_count);
+                ext_result = vkEnumerateDeviceExtensionProperties(sPhysicalDevice, nullptr, &ext_count, exts.data());
+            }
+            if (ext_result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "Selected device portability subset available=0 requested=0: "
+                                    << "vkEnumerateDeviceExtensionProperties failed with VkResult="
+                                    << ext_result << LL_ENDL;
+                return false;
+            }
+#else
             vkEnumerateDeviceExtensionProperties(sPhysicalDevice, nullptr, &ext_count, nullptr);
             std::vector<VkExtensionProperties> exts(ext_count);
             vkEnumerateDeviceExtensionProperties(sPhysicalDevice, nullptr, &ext_count, exts.data());
+#endif
             for (const auto& e : exts)
             {
                 if (std::strcmp(e.extensionName, "VK_EXT_device_fault") == 0)
@@ -856,8 +958,65 @@ namespace
                 {
                     provoking_vertex_supported = true;
                 }
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+                else if (std::strcmp(e.extensionName, PORTABILITY_SUBSET_EXTENSION_NAME) == 0)
+                {
+                    portability_subset_supported = true;
+                }
+#endif
             }
         }
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        if (portability_subset_supported)
+        {
+            device_extensions.push_back(PORTABILITY_SUBSET_EXTENSION_NAME);
+
+            VkPhysicalDevicePortabilitySubsetFeaturesKHR portability_features_query = {};
+            portability_features_query.sType =
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR;
+            VkPhysicalDeviceFeatures2 portability_features2_query = {};
+            portability_features2_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            portability_features2_query.pNext = &portability_features_query;
+            vkGetPhysicalDeviceFeatures2(sPhysicalDevice, &portability_features2_query);
+            portability_features_enable.imageViewFormatSwizzle =
+                portability_features_query.imageViewFormatSwizzle;
+            portability_features_enable.mutableComparisonSamplers =
+                portability_features_query.mutableComparisonSamplers;
+            portability_features_enable.triangleFans =
+                portability_features_query.triangleFans;
+            sImageViewFormatSwizzleEnabled =
+                portability_features_enable.imageViewFormatSwizzle == VK_TRUE;
+
+            // The renderer uses triangle-fan pipelines and updates descriptors with
+            // both comparison and non-comparison samplers. There is no loader-local
+            // substitute for either portability feature.
+            if (portability_features_query.triangleFans != VK_TRUE ||
+                portability_features_query.mutableComparisonSamplers != VK_TRUE)
+            {
+                LL_WARNS("Vulkan")
+                    << "Selected portability device lacks required features: triangleFans="
+                    << (portability_features_query.triangleFans == VK_TRUE ? 1 : 0)
+                    << " mutableComparisonSamplers="
+                    << (portability_features_query.mutableComparisonSamplers == VK_TRUE ? 1 : 0)
+                    << LL_ENDL;
+                return false;
+            }
+        }
+        else
+        {
+            sImageViewFormatSwizzleEnabled = true;
+        }
+        LL_INFOS("Vulkan") << "Selected device portability subset available="
+                            << (portability_subset_supported ? 1 : 0)
+                            << " requested=" << (portability_subset_supported ? 1 : 0)
+                            << " imageViewFormatSwizzle="
+                            << (sImageViewFormatSwizzleEnabled ? 1 : 0)
+                            << " triangleFans="
+                            << (portability_features_enable.triangleFans == VK_TRUE ? 1 : 0)
+                            << " mutableComparisonSamplers="
+                            << (portability_features_enable.mutableComparisonSamplers == VK_TRUE ? 1 : 0)
+                            << LL_ENDL;
+#endif
         if (device_fault_supported)
         {
             device_extensions.push_back("VK_EXT_device_fault");
@@ -910,6 +1069,14 @@ namespace
             }
         }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        if (portability_subset_supported)
+        {
+            portability_features_enable.pNext = dr_features_enable.pNext;
+            dr_features_enable.pNext = &portability_features_enable;
+        }
+#endif
+
         VkDeviceCreateInfo device_info = {};
         device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_info.pNext = &dr_features_enable;
@@ -922,9 +1089,20 @@ namespace
         VkResult result = vkCreateDevice(sPhysicalDevice, &device_info, nullptr, &sDevice);
         if (result != VK_SUCCESS)
         {
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+            LL_WARNS("Vulkan") << "vkCreateDevice failed with VkResult=" << result
+                                << " portability_subset_requested="
+                                << (portability_subset_supported ? 1 : 0) << LL_ENDL;
+#endif
             return false;
         }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        if (portability_subset_supported)
+        {
+            LL_INFOS("Vulkan") << "Selected device portability subset enabled=1" << LL_ENDL;
+        }
+#endif
         volkLoadDevice(sDevice);
         vkGetDeviceQueue(sDevice, sGraphicsQueueFamily, 0, &sGraphicsQueue);
 
@@ -2086,6 +2264,67 @@ namespace
         }
     }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    bool checkedImageByteSize(U32 width, U32 height, U32 bytes_per_pixel,
+                              VkDeviceSize& out_size)
+    {
+        out_size = 0;
+        if (width == 0 || height == 0 || bytes_per_pixel == 0)
+        {
+            return false;
+        }
+
+        const VkDeviceSize pixel_count = (VkDeviceSize)width * (VkDeviceSize)height;
+        if (pixel_count > UINT64_MAX / (VkDeviceSize)bytes_per_pixel)
+        {
+            return false;
+        }
+        out_size = pixel_count * (VkDeviceSize)bytes_per_pixel;
+        return out_size <= (VkDeviceSize)SIZE_MAX;
+    }
+
+    bool validBlitMipRange(U32 base_w, U32 base_h, U32 mip_count)
+    {
+        if (base_w == 0 || base_h == 0 || mip_count <= 1 ||
+            base_w > (U32)INT_MAX || base_h > (U32)INT_MAX)
+        {
+            return false;
+        }
+
+        U32 max_mip_count = 1;
+        U32 extent = llmax(base_w, base_h);
+        while (extent > 1)
+        {
+            extent >>= 1;
+            ++max_mip_count;
+        }
+        return mip_count <= max_mip_count;
+    }
+
+    bool supportsLinearImageBlit(VkFormat format)
+    {
+        VkFormatProperties properties = {};
+        vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &properties);
+        constexpr VkFormatFeatureFlags required =
+            VK_FORMAT_FEATURE_BLIT_SRC_BIT |
+            VK_FORMAT_FEATURE_BLIT_DST_BIT |
+            VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+        return (properties.optimalTilingFeatures & required) == required;
+    }
+
+    const LegacySwizzleEmulation* findLegacySwizzleEmulation(VkImage image)
+    {
+        const auto found = sLegacySwizzleEmulatedImages.find(image);
+        return found == sLegacySwizzleEmulatedImages.end() ? nullptr : &found->second;
+    }
+
+    VkFormat imageStorageFormat(VkImage image, VkFormat logical_format)
+    {
+        const LegacySwizzleEmulation* emulation = findLegacySwizzleEmulation(image);
+        return emulation ? emulation->storage_format : logical_format;
+    }
+#endif
+
     U32 llGlFormatSourceComponentsImpl(U32 ll_gl_format)
     {
         switch (ll_gl_format)
@@ -2270,14 +2509,24 @@ namespace
         const bool is_attachment =
             (usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
                       | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0;
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        if (sImageViewFormatSwizzleEnabled &&
+            !is_attachment && format == VK_FORMAT_R8_UNORM)
+#else
         if (!is_attachment && format == VK_FORMAT_R8_UNORM)
+#endif
         {
             vci.components.r = VK_COMPONENT_SWIZZLE_R;
             vci.components.g = VK_COMPONENT_SWIZZLE_R;
             vci.components.b = VK_COMPONENT_SWIZZLE_R;
             vci.components.a = VK_COMPONENT_SWIZZLE_R;
         }
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        else if (sImageViewFormatSwizzleEnabled &&
+                 !is_attachment && format == VK_FORMAT_R8G8_UNORM)
+#else
         else if (!is_attachment && format == VK_FORMAT_R8G8_UNORM)
+#endif
         {
             vci.components.r = VK_COMPONENT_SWIZZLE_R;
             vci.components.g = VK_COMPONENT_SWIZZLE_R;
@@ -2453,6 +2702,36 @@ namespace
 
         VkPresentModeKHR chosen_present_mode = VK_PRESENT_MODE_FIFO_KHR;
 
+#if LL_DARWIN
+        const U32 requested_width  = sPendingResizeWidth;
+        const U32 requested_height = sPendingResizeHeight;
+        const bool surface_has_fixed_extent = caps.currentExtent.width != UINT32_MAX;
+
+        VkExtent2D extent;
+        if (surface_has_fixed_extent)
+        {
+            extent = caps.currentExtent;
+        }
+        else
+        {
+            U32 w = requested_width  > 0 ? requested_width  : 1280;
+            U32 h = requested_height > 0 ? requested_height : 720;
+            if (w < caps.minImageExtent.width)  w = caps.minImageExtent.width;
+            if (h < caps.minImageExtent.height) h = caps.minImageExtent.height;
+            if (w > caps.maxImageExtent.width)  w = caps.maxImageExtent.width;
+            if (h > caps.maxImageExtent.height) h = caps.maxImageExtent.height;
+            extent.width  = w;
+            extent.height = h;
+        }
+
+        LL_INFOS("Vulkan") << "Swapchain extent requested="
+                            << requested_width << 'x' << requested_height
+                            << " current=" << caps.currentExtent.width << 'x'
+                            << caps.currentExtent.height
+                            << " current_is_fixed=" << (surface_has_fixed_extent ? 1 : 0)
+                            << " selected=" << extent.width << 'x' << extent.height
+                            << LL_ENDL;
+#else
         VkExtent2D extent;
         if (caps.currentExtent.width != UINT32_MAX)
         {
@@ -2469,6 +2748,7 @@ namespace
             extent.width  = w;
             extent.height = h;
         }
+#endif
 
         U32 image_count = caps.minImageCount + 1;
         if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
@@ -2562,6 +2842,12 @@ namespace
                                      sSwapchainDepthView,
                                      sSwapchainDepthAlloc);
 
+#if LL_DARWIN
+        // The created extent is authoritative; retaining a fixed-extent request
+        // would otherwise trigger the same recreation after every cooldown.
+        sPendingResizeWidth  = 0;
+        sPendingResizeHeight = 0;
+#endif
         return true;
     }
 
@@ -2641,7 +2927,11 @@ namespace
             vkDestroySwapchainKHR(sDevice, old_swapchain, nullptr);
         }
 
+#if LL_DARWIN
+        sSwapchainRecreatePending = !ok;
+#else
         sSwapchainRecreatePending = false;
+#endif
         sLastRecreateFrame        = sMonotonicFrameCount;
 
 
@@ -3143,6 +3433,15 @@ void shutdownVulkan()
         volkFinalize();
         sInitialized = false;
     }
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    sImageViewFormatSwizzleEnabled = true;
+    sLegacySwizzleEmulatedImages.clear();
+#endif
+#if LL_DARWIN
+    sSwapchainRecreatePending = false;
+    sPendingResizeWidth       = 0;
+    sPendingResizeHeight      = 0;
+#endif
 }
 
 bool beginFrame(bool acquire_swapchain)
@@ -4485,6 +4784,16 @@ U32 vkFormatBytesPerPixel(VkFormat format)
     return vkFormatBytesPerPixelImpl(format);
 }
 
+U32 vkImageStorageBytesPerPixel(VkImage image, VkFormat logical_format)
+{
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    return vkFormatBytesPerPixelImpl(imageStorageFormat(image, logical_format));
+#else
+    (void)image;
+    return vkFormatBytesPerPixelImpl(logical_format);
+#endif
+}
+
 U32 llGlFormatSourceComponents(U32 ll_gl_format)
 {
     return llGlFormatSourceComponentsImpl(ll_gl_format);
@@ -5423,6 +5732,9 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
     {
         return;
     }
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    sLegacySwizzleEmulatedImages.erase(image);
+#endif
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     PendingImageFree pending;
     pending.image         = image;
@@ -5571,12 +5883,31 @@ bool createTextureImageVk(U32          width,
     {
         usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    VkFormat storage_format = format;
+    if (!sImageViewFormatSwizzleEnabled &&
+        (format == VK_FORMAT_R8_UNORM || format == VK_FORMAT_R8G8_UNORM))
+    {
+        storage_format = VK_FORMAT_R8G8B8A8_UNORM;
+    }
+
+    const bool created = createAttachmentImageVkImpl(width, height, storage_format,
+#else
     const bool created = createAttachmentImageVkImpl(width, height, format,
+#endif
                                                      usage,
                                                      VK_IMAGE_ASPECT_COLOR_BIT,
                                                      "createTextureImageVk",
                                                      out_image, out_view, out_allocation,
                                                      mip_levels);
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    if (created && storage_format != format)
+    {
+        sLegacySwizzleEmulatedImages[out_image] = {format, storage_format};
+        LL_DEBUGS_ONCE("Vulkan") << "R/RG sampled textures use RGBA8 storage because "
+                                  << "imageViewFormatSwizzle is unavailable" << LL_ENDL;
+    }
+#endif
     if (created)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
@@ -5620,13 +5951,51 @@ bool uploadImageDataVk(VkImage     image,
         return false;
     }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    const void* upload_data = data;
+    U32 upload_size_bytes = data_size_bytes;
+    std::vector<U8> expanded_data;
+    const LegacySwizzleEmulation* emulation = findLegacySwizzleEmulation(image);
+    if (emulation)
+    {
+        const U32 source_components =
+            emulation->logical_format == VK_FORMAT_R8_UNORM ? 1u : 2u;
+        const U64 pixel_count = (U64)width * (U64)height;
+        const U64 expected_size = pixel_count * source_components;
+        if (expected_size != data_size_bytes || pixel_count > UINT32_MAX / 4u)
+        {
+            LL_WARNS("Vulkan") << "uploadImageDataVk: invalid legacy swizzle payload size="
+                                << data_size_bytes << " expected=" << expected_size << LL_ENDL;
+            return false;
+        }
+
+        expanded_data.resize((size_t)pixel_count * 4u);
+        const U8* src = static_cast<const U8*>(data);
+        for (U64 pixel = 0; pixel < pixel_count; ++pixel)
+        {
+            const U8 r = src[pixel * source_components];
+            U8* dst = expanded_data.data() + pixel * 4u;
+            dst[0] = r;
+            dst[1] = r;
+            dst[2] = r;
+            dst[3] = source_components == 1 ? r : src[pixel * source_components + 1u];
+        }
+        upload_data = expanded_data.data();
+        upload_size_bytes = (U32)expanded_data.size();
+    }
+#endif
+
     VkBuffer      staging_buffer     = VK_NULL_HANDLE;
     VmaAllocation staging_allocation = VK_NULL_HANDLE;
     void*         staging_mapped     = nullptr;
     {
         VkBufferCreateInfo bci = {};
         bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        bci.size        = upload_size_bytes;
+#else
         bci.size        = data_size_bytes;
+#endif
         bci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -5651,7 +6020,11 @@ bool uploadImageDataVk(VkImage     image,
         staging_mapped = info.pMappedData;
     }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    memcpy(staging_mapped, upload_data, upload_size_bytes);
+#else
     memcpy(staging_mapped, data, data_size_bytes);
+#endif
 
     VkCommandBufferAllocateInfo cbai = {};
     cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -5736,7 +6109,11 @@ bool uploadImageDataVk(VkImage     image,
 
 bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format)
 {
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    if (image == VK_NULL_HANDLE || !validBlitMipRange(base_w, base_h, mip_count))
+#else
     if (image == VK_NULL_HANDLE || mip_count <= 1 || base_w == 0 || base_h == 0)
+#endif
     {
         return false;
     }
@@ -5745,9 +6122,20 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
         return false;
     }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    const LegacySwizzleEmulation* emulation = findLegacySwizzleEmulation(image);
+    if (emulation && emulation->logical_format != format)
+    {
+        LL_WARNS("Vulkan") << "generateMipChainBlitVk: logical format mismatch" << LL_ENDL;
+        return false;
+    }
+    format = imageStorageFormat(image, format);
+    if (!supportsLinearImageBlit(format))
+#else
     VkFormatProperties fp = {};
     vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
     if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+#endif
     {
         return false;
     }
@@ -5861,8 +6249,15 @@ bool downscaleImageVk(VkImage      src_image,
     out_view       = VK_NULL_HANDLE;
     out_allocation = nullptr;
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    if (src_image == VK_NULL_HANDLE || src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0
+        || format == VK_FORMAT_UNDEFINED
+        || src_w > (U32)INT_MAX || src_h > (U32)INT_MAX
+        || dst_w > (U32)INT_MAX || dst_h > (U32)INT_MAX)
+#else
     if (src_image == VK_NULL_HANDLE || src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0
         || format == VK_FORMAT_UNDEFINED)
+#endif
     {
         return false;
     }
@@ -5872,6 +6267,19 @@ bool downscaleImageVk(VkImage      src_image,
     }
 
     const U32 mip_levels = (dst_mip_levels > 0) ? dst_mip_levels : 1;
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    if (mip_levels > 1 && !validBlitMipRange(dst_w, dst_h, mip_levels))
+    {
+        return false;
+    }
+
+    const LegacySwizzleEmulation* src_emulation = findLegacySwizzleEmulation(src_image);
+    if (src_emulation && src_emulation->logical_format != format)
+    {
+        LL_WARNS("Vulkan") << "downscaleImageVk: source logical format mismatch" << LL_ENDL;
+        return false;
+    }
+#endif
 
     VkImage     new_image = VK_NULL_HANDLE;
     VkImageView new_view  = VK_NULL_HANDLE;
@@ -5880,6 +6288,18 @@ bool downscaleImageVk(VkImage      src_image,
     {
         return false;
     }
+
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    const VkFormat src_storage_format = imageStorageFormat(src_image, format);
+    const VkFormat dst_storage_format = imageStorageFormat(new_image, format);
+    if (src_storage_format != dst_storage_format || !supportsLinearImageBlit(src_storage_format))
+    {
+        LL_WARNS("Vulkan") << "downscaleImageVk: incompatible or non-blittable storage formats"
+                            << LL_ENDL;
+        destroyImageVk(new_image, new_view, new_alloc);
+        return false;
+    }
+#endif
 
     VkCommandBufferAllocateInfo cbai = {};
     cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -5964,7 +6384,15 @@ bool downscaleImageVk(VkImage      src_image,
 
     if (mip_levels > 1)
     {
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        if (!generateMipChainBlitVk(new_image, dst_w, dst_h, mip_levels, format))
+        {
+            destroyImageVk(new_image, new_view, new_alloc);
+            return false;
+        }
+#else
         generateMipChainBlitVk(new_image, dst_w, dst_h, mip_levels, format);
+#endif
     }
 
     out_image      = new_image;
@@ -6071,7 +6499,11 @@ bool generateMipChainInFrameVk(VkImage        image,
                                VkFormat       format,
                                VkImageLayout  mip0_src_layout)
 {
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    if (image == VK_NULL_HANDLE || !validBlitMipRange(base_w, base_h, mip_count))
+#else
     if (image == VK_NULL_HANDLE || mip_count <= 1 || base_w == 0 || base_h == 0)
+#endif
     {
         return false;
     }
@@ -6081,9 +6513,20 @@ bool generateMipChainInFrameVk(VkImage        image,
         return false;
     }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    const LegacySwizzleEmulation* emulation = findLegacySwizzleEmulation(image);
+    if (emulation && emulation->logical_format != format)
+    {
+        LL_WARNS("Vulkan") << "generateMipChainInFrameVk: logical format mismatch" << LL_ENDL;
+        return false;
+    }
+    format = imageStorageFormat(image, format);
+    if (!supportsLinearImageBlit(format))
+#else
     VkFormatProperties fp = {};
     vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
     if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+#endif
     {
         return false;
     }
@@ -6399,7 +6842,13 @@ bool uploadImageSubregionVk(VkImage     image,
     {
         return false;
     }
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    if (sub_width > data_width || sub_height > data_height ||
+        x_pos > data_width - sub_width || y_pos > data_height - sub_height ||
+        x_pos > (U32)INT_MAX || y_pos > (U32)INT_MAX)
+#else
     if (x_pos + sub_width > data_width || y_pos + sub_height > data_height)
+#endif
     {
         return false;
     }
@@ -6409,6 +6858,44 @@ bool uploadImageSubregionVk(VkImage     image,
         return false;
     }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    const LegacySwizzleEmulation* emulation = findLegacySwizzleEmulation(image);
+    const bool emulate_legacy_swizzle = emulation != nullptr;
+    if (emulation && emulation->logical_format != format)
+    {
+        LL_WARNS("Vulkan") << "uploadImageSubregionVk: logical format mismatch" << LL_ENDL;
+        return false;
+    }
+    const VkFormat source_format = emulation ? emulation->logical_format : format;
+    const U32 source_bytes_per_pixel = vkFormatBytesPerPixelImpl(source_format);
+    if (source_bytes_per_pixel == 0)
+    {
+        return false;
+    }
+    const U32 storage_bytes_per_pixel =
+        vkFormatBytesPerPixelImpl(emulation ? emulation->storage_format : source_format);
+    VkDeviceSize staging_size = 0;
+    VkDeviceSize source_size = 0;
+    if (!checkedImageByteSize(sub_width, sub_height, storage_bytes_per_pixel, staging_size) ||
+        !checkedImageByteSize(data_width, data_height, source_bytes_per_pixel, source_size))
+    {
+        return false;
+    }
+    const VkDeviceSize sub_row_size = (VkDeviceSize)sub_width * storage_bytes_per_pixel;
+    const VkDeviceSize data_row_size = (VkDeviceSize)data_width * source_bytes_per_pixel;
+    const VkDeviceSize source_base_offset =
+        ((VkDeviceSize)y_pos * data_width + x_pos) * source_bytes_per_pixel;
+    const VkDeviceSize source_copy_end = source_base_offset +
+        (VkDeviceSize)(sub_height - 1) * data_row_size +
+        (VkDeviceSize)sub_width * source_bytes_per_pixel;
+    if (source_copy_end > source_size || sub_row_size > SIZE_MAX ||
+        data_row_size > SIZE_MAX || source_base_offset > SIZE_MAX)
+    {
+        return false;
+    }
+    const size_t sub_row_bytes = (size_t)sub_row_size;
+    const size_t data_row_bytes = (size_t)data_row_size;
+#else
     const U32 bytes_per_pixel = vkFormatBytesPerPixelImpl(format);
     if (bytes_per_pixel == 0)
     {
@@ -6417,6 +6904,7 @@ bool uploadImageSubregionVk(VkImage     image,
     const U32 sub_row_bytes  = sub_width * bytes_per_pixel;
     const U32 data_row_bytes = data_width * bytes_per_pixel;
     const U32 staging_size   = sub_row_bytes * sub_height;
+#endif
 
     VkBuffer      staging_buffer     = VK_NULL_HANDLE;
     VmaAllocation staging_allocation = VK_NULL_HANDLE;
@@ -6450,6 +6938,29 @@ bool uploadImageSubregionVk(VkImage     image,
     }
 
     {
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+        const U8* src_base = (const U8*)data + (size_t)source_base_offset;
+        U8*       dst      = (U8*)staging_mapped;
+        for (U32 row = 0; row < sub_height; ++row)
+        {
+            const U8* src_row = src_base + row * data_row_bytes;
+            U8* dst_row = dst + row * sub_row_bytes;
+            if (!emulate_legacy_swizzle)
+            {
+                memcpy(dst_row, src_row, sub_row_bytes);
+                continue;
+            }
+            for (U32 pixel = 0; pixel < sub_width; ++pixel)
+            {
+                const U8* src_pixel = src_row + pixel * source_bytes_per_pixel;
+                U8* dst_pixel = dst_row + pixel * 4u;
+                dst_pixel[0] = src_pixel[0];
+                dst_pixel[1] = src_pixel[0];
+                dst_pixel[2] = src_pixel[0];
+                dst_pixel[3] = source_bytes_per_pixel == 1 ? src_pixel[0] : src_pixel[1];
+            }
+        }
+#else
         const U8* src_base = (const U8*)data + (y_pos * data_width + x_pos) * bytes_per_pixel;
         U8*       dst      = (U8*)staging_mapped;
         for (U32 row = 0; row < sub_height; ++row)
@@ -6458,6 +6969,7 @@ bool uploadImageSubregionVk(VkImage     image,
                    src_base + row * data_row_bytes,
                    sub_row_bytes);
         }
+#endif
     }
 
     VkCommandBufferAllocateInfo cbai = {};
@@ -7180,7 +7692,34 @@ bool readbackColorImageRegionVk(VkImage       image,
         return false;
     }
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    U32 staging_bytes_per_pixel = bytes_per_pixel;
+    const LegacySwizzleEmulation* emulation = findLegacySwizzleEmulation(image);
+    if (emulation)
+    {
+        const U32 logical_bytes_per_pixel = vkFormatBytesPerPixelImpl(emulation->logical_format);
+        staging_bytes_per_pixel = vkFormatBytesPerPixelImpl(emulation->storage_format);
+        if (staging_bytes_per_pixel == 0 ||
+            (bytes_per_pixel != logical_bytes_per_pixel &&
+             bytes_per_pixel != staging_bytes_per_pixel))
+        {
+            LL_WARNS("Vulkan") << "readbackColorImageRegionVk: unsupported legacy swizzle "
+                                << "bytes-per-pixel=" << bytes_per_pixel
+                                << " logical=" << logical_bytes_per_pixel
+                                << " storage=" << staging_bytes_per_pixel << LL_ENDL;
+            return false;
+        }
+    }
+    VkDeviceSize read_size = 0;
+    VkDeviceSize output_size = 0;
+    if (!checkedImageByteSize(width, height, staging_bytes_per_pixel, read_size) ||
+        !checkedImageByteSize(width, height, bytes_per_pixel, output_size))
+    {
+        return false;
+    }
+#else
     const VkDeviceSize read_size = (VkDeviceSize)width * (VkDeviceSize)height * (VkDeviceSize)bytes_per_pixel;
+#endif
 
     VkBuffer      staging_buffer     = VK_NULL_HANDLE;
     VmaAllocation staging_allocation = VK_NULL_HANDLE;
@@ -7304,7 +7843,35 @@ bool readbackColorImageRegionVk(VkImage       image,
     vkQueueWaitIdle(sGraphicsQueue);
     vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
 
+#if defined(VK_USE_PLATFORM_METAL_EXT)
+    if (emulation && bytes_per_pixel != staging_bytes_per_pixel)
+    {
+        const U8* src = static_cast<const U8*>(staging_mapped);
+        U8* dst = static_cast<U8*>(out_pixels);
+        const size_t pixel_count = (size_t)width * (size_t)height;
+        if (bytes_per_pixel == 1)
+        {
+            for (size_t pixel = 0; pixel < pixel_count; ++pixel)
+            {
+                dst[pixel] = src[pixel * staging_bytes_per_pixel];
+            }
+        }
+        else
+        {
+            for (size_t pixel = 0; pixel < pixel_count; ++pixel)
+            {
+                dst[pixel * 2] = src[pixel * staging_bytes_per_pixel];
+                dst[pixel * 2 + 1] = src[pixel * staging_bytes_per_pixel + 3];
+            }
+        }
+    }
+    else
+    {
+        memcpy(out_pixels, staging_mapped, (size_t)output_size);
+    }
+#else
     memcpy(out_pixels, staging_mapped, (size_t)read_size);
+#endif
     vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
     return true;
 }
@@ -8014,6 +8581,13 @@ void disableScissor()
 
 void notifyWindowResize(U32 width, U32 height)
 {
+#if LL_DARWIN
+    // LLViewerWindow::reshape() receives viewer/UI coordinates on macOS.
+    // The CAMetalLayer bridge reports its pixel-scaled drawable size through
+    // notifyDrawableResize().
+    (void)width;
+    (void)height;
+#else
     if (!sInitialized)
     {
         return;
@@ -8037,8 +8611,44 @@ void notifyWindowResize(U32 width, U32 height)
     }
 
     sSwapchainRecreatePending = true;
+#endif
 
 }
+
+#if LL_DARWIN
+void notifyDrawableResize(U32 width, U32 height)
+{
+    if (width == 0 || height == 0)
+    {
+        return;
+    }
+
+    sPendingResizeWidth  = width;
+    sPendingResizeHeight = height;
+
+    // Retain the drawable measurement for initial swapchain selection even if
+    // Cocoa configures the CAMetalLayer before Vulkan creates its surface.
+    if (!sInitialized || sSurface == VK_NULL_HANDLE || sSwapchain == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    if (sMonotonicFrameCount < STARTUP_FRAME_GATE)
+    {
+        return;
+    }
+
+    if (width == sSwapchainExtent.width && height == sSwapchainExtent.height)
+    {
+        sPendingResizeWidth  = 0;
+        sPendingResizeHeight = 0;
+        return;
+    }
+
+    sSwapchainRecreatePending = true;
+
+}
+#endif
 
 VkImageView getDefaultFallbackVkImageView()
 {

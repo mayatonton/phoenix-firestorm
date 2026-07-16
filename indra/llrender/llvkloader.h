@@ -250,6 +250,7 @@ namespace LLVKLoader
     VkCompareOp          llGlEnumToVkCompareOp  (U32 ll_gl_func);
     VkStencilOp          llGlEnumToVkStencilOp  (U32 ll_gl_op);
     U32                  vkFormatBytesPerPixel  (VkFormat format);
+    U32                  vkImageStorageBytesPerPixel(VkImage image, VkFormat logical_format);
     U32                  llGlFormatSourceComponents(U32 ll_gl_format);
 
     bool createVertexBufferVk(U32     size_bytes,
@@ -1390,6 +1391,9 @@ namespace LLVKLoader
                                          VkDescriptorSet*            out_set);
 
     void notifyWindowResize(U32 width, U32 height);
+#if LL_DARWIN
+    void notifyDrawableResize(U32 width, U32 height);
+#endif
 
     VkImageView getDefaultFallbackVkImageView();
     VkImageView getDefaultFallbackCubeArrayVkImageView();
