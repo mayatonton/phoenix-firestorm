@@ -502,11 +502,20 @@ namespace
     {
         VkFence         fence      = VK_NULL_HANDLE;
         VkCommandBuffer cmd        = VK_NULL_HANDLE;
+        VkCommandPool   pool       = VK_NULL_HANDLE;
         VkBuffer        buffer     = VK_NULL_HANDLE;
         VmaAllocation   allocation = VK_NULL_HANDLE;
+        U32             staging_bytes = 0;
     };
     std::vector<PendingOneShotFree> sPendingOneShotFrees;
     std::vector<VkFence>            sSubmitFencePool;
+    std::mutex                      sOneShotMutex;
+    std::vector<VkCommandBuffer>    sRetiredMainOneShotCmds;
+    std::vector<VkCommandBuffer>    sRetiredTexOneShotCmds;
+    std::atomic<U64>                sOneShotStagingBytes{0};
+    VkCommandPool                   sTexWorkerCommandPool = VK_NULL_HANDLE;
+    thread_local bool               tTexWorkerThread = false;
+    void (*sTexWorkerStopHook)()   = nullptr;
 
     U32 sLastCompletedMonotonic = 0;
     U32 sFrameSubmittedMonotonic[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
@@ -3525,6 +3534,8 @@ static void           tickDeferredObjectFreeQueue();
 void                  tickMegaFreeQueue();
 static void           tickDeferredQueryReleaseQueue();
 static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation);
+static bool           submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
+                                              VmaAllocation staging_allocation, U32 staging_bytes);
 static void           tickOneShotFreeQueue();
 static void           shutdownSurface();
 extern thread_local float sCurrentModelviewMatrix[16];
@@ -3630,8 +3641,15 @@ bool initVulkan()
 
 void shutdownVulkan()
 {
+    if (sTexWorkerStopHook != nullptr)
+    {
+        void (*hook)() = sTexWorkerStopHook;
+        sTexWorkerStopHook = nullptr;
+        hook();
+    }
     rwStop();
     peStop();
+    texWorkerShutdown();
     if (sDevice != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(sDevice);
@@ -3680,7 +3698,8 @@ void shutdownVulkan()
         sPendingOcclusionQueryReleases.clear();
         for (auto& pending : sPendingOneShotFrees)
         {
-            if (sCommandPool != VK_NULL_HANDLE && pending.cmd != VK_NULL_HANDLE)
+            if (pending.cmd != VK_NULL_HANDLE && pending.pool != VK_NULL_HANDLE &&
+                pending.pool == sCommandPool)
             {
                 vkFreeCommandBuffers(sDevice, sCommandPool, 1, &pending.cmd);
             }
@@ -3695,6 +3714,13 @@ void shutdownVulkan()
             }
         }
         sPendingOneShotFrees.clear();
+        if (sCommandPool != VK_NULL_HANDLE && !sRetiredMainOneShotCmds.empty())
+        {
+            vkFreeCommandBuffers(sDevice, sCommandPool,
+                                 (U32)sRetiredMainOneShotCmds.size(), sRetiredMainOneShotCmds.data());
+        }
+        sRetiredMainOneShotCmds.clear();
+        sRetiredTexOneShotCmds.clear();
         for (VkFence pooled_fence : sSubmitFencePool)
         {
             vkDestroyFence(sDevice, pooled_fence, nullptr);
@@ -4336,6 +4362,10 @@ bool endFrame()
                                    << " zero=" << gVkPerf.mdi_zero.load()
                                    << " dyn=" << gVkPerf.mdi_dyn.load()
                                    << " full=" << gVkPerf.mdi_full.load()
+                                   << " | tex enq=" << gVkPerf.tex_enq.load()
+                                   << " pub=" << gVkPerf.tex_pub.load()
+                                   << " fail=" << gVkPerf.tex_fail.load()
+                                   << " stg_mb=" << (sOneShotStagingBytes.load() >> 20)
                                    << " | fam " << [](){ std::string s;
                                         for (U32 i = 0; i < 24; ++i) {
                                             const U64 us = gVkPerf.fam_us[i].load();
@@ -6237,18 +6267,79 @@ void tickDeferredBufferFreeQueue()
 
 bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation)
 {
+    return submitOneShotVkFromPool(cmd, sCommandPool, staging_buffer, staging_allocation, 0);
+}
+
+bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
+                             VmaAllocation staging_allocation, U32 staging_bytes)
+{
     tickOneShotFreeQueue();
-    for (U32 i = 0; i < 20 && sPendingOneShotFrees.size() > 256; ++i)
+    const U64 byte_cap = tTexWorkerThread ? (256ull << 20) : ~0ull;
+    for (U32 i = 0; i < 20; ++i)
     {
-        vkWaitForFences(sDevice, 1, &sPendingOneShotFrees.front().fence, VK_TRUE, 100000000ull);
+        bool over = false;
+        PendingOneShotFree wait_entry;
+        bool have_entry = false;
+        {
+            std::lock_guard<std::mutex> lk(sOneShotMutex);
+            over = sPendingOneShotFrees.size() > 256
+                   || sOneShotStagingBytes.load() > byte_cap;
+            if (over && !sPendingOneShotFrees.empty())
+            {
+                wait_entry = sPendingOneShotFrees.front();
+                sPendingOneShotFrees.erase(sPendingOneShotFrees.begin());
+                have_entry = true;
+            }
+        }
+        if (!over)
+        {
+            break;
+        }
+        if (!have_entry)
+        {
+            break;
+        }
+        vkWaitForFences(sDevice, 1, &wait_entry.fence, VK_TRUE, 100000000ull);
+        if (vkGetFenceStatus(sDevice, wait_entry.fence) == VK_SUCCESS)
+        {
+            if (wait_entry.buffer != VK_NULL_HANDLE || wait_entry.allocation != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, wait_entry.buffer, wait_entry.allocation);
+            }
+            sOneShotStagingBytes.fetch_sub(wait_entry.staging_bytes);
+            std::lock_guard<std::mutex> lk(sOneShotMutex);
+            sSubmitFencePool.push_back(wait_entry.fence);
+            if (wait_entry.cmd != VK_NULL_HANDLE)
+            {
+                if (wait_entry.pool == sTexWorkerCommandPool && sTexWorkerCommandPool != VK_NULL_HANDLE)
+                {
+                    sRetiredTexOneShotCmds.push_back(wait_entry.cmd);
+                }
+                else
+                {
+                    sRetiredMainOneShotCmds.push_back(wait_entry.cmd);
+                }
+            }
+        }
+        else
+        {
+            std::lock_guard<std::mutex> lk(sOneShotMutex);
+            sPendingOneShotFrees.insert(sPendingOneShotFrees.begin(), wait_entry);
+        }
         tickOneShotFreeQueue();
     }
 
     VkFence fence = VK_NULL_HANDLE;
-    if (!sSubmitFencePool.empty())
     {
-        fence = sSubmitFencePool.back();
-        sSubmitFencePool.pop_back();
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        if (!sSubmitFencePool.empty())
+        {
+            fence = sSubmitFencePool.back();
+            sSubmitFencePool.pop_back();
+        }
+    }
+    if (fence != VK_NULL_HANDLE)
+    {
         vkResetFences(sDevice, 1, &fence);
     }
     else
@@ -6264,7 +6355,7 @@ bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation
     if (fence == VK_NULL_HANDLE)
     {
         VkResult sr = peSubmitBlocking(cmd, VK_NULL_HANDLE, true);
-        vkFreeCommandBuffers(sDevice, sCommandPool, 1, &cmd);
+        vkFreeCommandBuffers(sDevice, pool, 1, &cmd);
         if (staging_buffer != VK_NULL_HANDLE || staging_allocation != VK_NULL_HANDLE)
         {
             vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
@@ -6281,11 +6372,17 @@ bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation
     }
 
     PendingOneShotFree pending;
-    pending.fence      = fence;
-    pending.cmd        = cmd;
-    pending.buffer     = staging_buffer;
-    pending.allocation = staging_allocation;
-    sPendingOneShotFrees.push_back(pending);
+    pending.fence         = fence;
+    pending.cmd           = cmd;
+    pending.pool          = pool;
+    pending.buffer        = staging_buffer;
+    pending.allocation    = staging_allocation;
+    pending.staging_bytes = staging_bytes;
+    sOneShotStagingBytes.fetch_add(staging_bytes);
+    {
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        sPendingOneShotFrees.push_back(pending);
+    }
     return true;
 }
 
@@ -6300,32 +6397,351 @@ void tickOneShotFreeQueue()
         std::lock_guard<std::mutex> lk(sPEFailedMutex);
         failed.swap(sPEFailedOneShotFences);
     }
-    size_t w = 0;
-    const size_t n = sPendingOneShotFrees.size();
-    for (size_t r = 0; r < n; ++r)
+    std::vector<VkCommandBuffer> free_now;
+    const VkCommandPool free_pool = tTexWorkerThread ? sTexWorkerCommandPool : sCommandPool;
     {
-        PendingOneShotFree& e = sPendingOneShotFrees[r];
-        const bool submit_failed = !failed.empty() &&
-            std::find(failed.begin(), failed.end(), e.fence) != failed.end();
-        if (submit_failed || vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        size_t w = 0;
+        const size_t n = sPendingOneShotFrees.size();
+        for (size_t r = 0; r < n; ++r)
         {
-            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &e.cmd);
-            if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
+            PendingOneShotFree& e = sPendingOneShotFrees[r];
+            const bool submit_failed = !failed.empty() &&
+                std::find(failed.begin(), failed.end(), e.fence) != failed.end();
+            if (submit_failed || vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
             {
-                vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
+                if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
+                }
+                sOneShotStagingBytes.fetch_sub(e.staging_bytes);
+                sSubmitFencePool.push_back(e.fence);
+                if (e.cmd != VK_NULL_HANDLE)
+                {
+                    if (e.pool == sTexWorkerCommandPool && sTexWorkerCommandPool != VK_NULL_HANDLE)
+                    {
+                        sRetiredTexOneShotCmds.push_back(e.cmd);
+                    }
+                    else
+                    {
+                        sRetiredMainOneShotCmds.push_back(e.cmd);
+                    }
+                }
             }
-            sSubmitFencePool.push_back(e.fence);
+            else
+            {
+                if (w != r)
+                {
+                    sPendingOneShotFrees[w] = e;
+                }
+                ++w;
+            }
+        }
+        sPendingOneShotFrees.resize(w);
+        if (tTexWorkerThread)
+        {
+            free_now.swap(sRetiredTexOneShotCmds);
         }
         else
         {
-            if (w != r)
-            {
-                sPendingOneShotFrees[w] = e;
-            }
-            ++w;
+            free_now.swap(sRetiredMainOneShotCmds);
         }
     }
-    sPendingOneShotFrees.resize(w);
+    if (!free_now.empty() && free_pool != VK_NULL_HANDLE)
+    {
+        vkFreeCommandBuffers(sDevice, free_pool, (U32)free_now.size(), free_now.data());
+    }
+}
+
+bool texWorkerInit()
+{
+    if (sDevice == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (sTexWorkerCommandPool != VK_NULL_HANDLE)
+    {
+        return true;
+    }
+    VkCommandPoolCreateInfo ci = {};
+    ci.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    ci.queueFamilyIndex = sGraphicsQueueFamily;
+    return vkCreateCommandPool(sDevice, &ci, nullptr, &sTexWorkerCommandPool) == VK_SUCCESS;
+}
+
+void texWorkerMarkThread()
+{
+    tTexWorkerThread = true;
+}
+
+void setVkTexWorkerStopHook(void (*fn)())
+{
+    sTexWorkerStopHook = fn;
+}
+
+void texWorkerShutdown()
+{
+    if (sTexWorkerCommandPool == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    for (;;)
+    {
+        PendingOneShotFree e;
+        bool have = false;
+        {
+            std::lock_guard<std::mutex> lk(sOneShotMutex);
+            for (size_t i = 0; i < sPendingOneShotFrees.size(); ++i)
+            {
+                if (sPendingOneShotFrees[i].pool == sTexWorkerCommandPool)
+                {
+                    e = sPendingOneShotFrees[i];
+                    sPendingOneShotFrees.erase(sPendingOneShotFrees.begin() + i);
+                    have = true;
+                    break;
+                }
+            }
+        }
+        if (!have)
+        {
+            break;
+        }
+        vkWaitForFences(sDevice, 1, &e.fence, VK_TRUE, 1000000000ull);
+        if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
+        }
+        sOneShotStagingBytes.fetch_sub(e.staging_bytes);
+        {
+            std::lock_guard<std::mutex> lk(sOneShotMutex);
+            sSubmitFencePool.push_back(e.fence);
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        sRetiredTexOneShotCmds.clear();
+    }
+    vkDestroyCommandPool(sDevice, sTexWorkerCommandPool, nullptr);
+    sTexWorkerCommandPool = VK_NULL_HANDLE;
+}
+
+bool uploadTextureOneShotVk(U32          width,
+                            U32          height,
+                            VkFormat     format,
+                            const void*  data,
+                            U32          data_size_bytes,
+                            U32&         mip_count,
+                            VkImage&     out_image,
+                            VkImageView& out_view,
+                            void*&       out_allocation)
+{
+    out_image      = VK_NULL_HANDLE;
+    out_view       = VK_NULL_HANDLE;
+    out_allocation = nullptr;
+    if (!tTexWorkerThread || sTexWorkerCommandPool == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (data == nullptr || data_size_bytes == 0 || width == 0 || height == 0)
+    {
+        return false;
+    }
+    if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    U32 mips = (mip_count > 0) ? mip_count : 1;
+    if (mips > 1)
+    {
+        VkFormatProperties fp = {};
+        vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
+        if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+        {
+            mips = 1;
+        }
+    }
+    mip_count = mips;
+
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    if (mips > 1)
+    {
+        usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
+    VkImage     image      = VK_NULL_HANDLE;
+    VkImageView view       = VK_NULL_HANDLE;
+    void*       allocation = nullptr;
+    if (!createAttachmentImageVkImpl(width, height, format, usage,
+                                     VK_IMAGE_ASPECT_COLOR_BIT,
+                                     "texWorkerUpload",
+                                     image, view, allocation, mips))
+    {
+        return false;
+    }
+
+    VkBuffer      staging_buffer     = VK_NULL_HANDLE;
+    VmaAllocation staging_allocation = VK_NULL_HANDLE;
+    void*         staging_mapped     = nullptr;
+    {
+        VkBufferCreateInfo bci = {};
+        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bci.size        = data_size_bytes;
+        bci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo aci = {};
+        aci.usage         = VMA_MEMORY_USAGE_AUTO;
+        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                          | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        VmaAllocationInfo info = {};
+        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &staging_buffer,
+                                     &staging_allocation, &info);
+        if (r != VK_SUCCESS || staging_buffer == VK_NULL_HANDLE || info.pMappedData == nullptr)
+        {
+            if (staging_buffer != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+            }
+            vkDestroyImageView(sDevice, view, nullptr);
+            vmaDestroyImage(sAllocator, image, reinterpret_cast<VmaAllocation>(allocation));
+            return false;
+        }
+        staging_mapped = info.pMappedData;
+    }
+
+    memcpy(staging_mapped, data, data_size_bytes);
+
+    VkCommandBufferAllocateInfo cbai = {};
+    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool        = sTexWorkerCommandPool;
+    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+        vkDestroyImageView(sDevice, view, nullptr);
+        vmaDestroyImage(sAllocator, image, reinterpret_cast<VmaAllocation>(allocation));
+        return false;
+    }
+
+    VkCommandBufferBeginInfo cbbi = {};
+    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &cbbi);
+
+    auto mip_barrier = [&](U32 level, VkImageLayout oldL, VkImageLayout newL,
+                           VkAccessFlags srcA, VkAccessFlags dstA,
+                           VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.image                           = image;
+        b.oldLayout                       = oldL;
+        b.newLayout                       = newL;
+        b.srcAccessMask                   = srcA;
+        b.dstAccessMask                   = dstA;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = level;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
+    };
+
+    mip_barrier(0,
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    {
+        VkBufferImageCopy region = {};
+        region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel       = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount     = 1;
+        region.imageExtent                     = {width, height, 1};
+        vkCmdCopyBufferToImage(cmd, staging_buffer, image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    }
+
+    if (mips > 1)
+    {
+        S32 mw = (S32)width;
+        S32 mh = (S32)height;
+        for (U32 i = 1; i < mips; ++i)
+        {
+            const S32 dw = (mw > 1) ? (mw / 2) : 1;
+            const S32 dh = (mh > 1) ? (mh / 2) : 1;
+
+            mip_barrier(i - 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            mip_barrier(i,
+                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+            VkImageBlit blit = {};
+            blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.srcSubresource.mipLevel       = i - 1;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount     = 1;
+            blit.srcOffsets[0]                 = { 0, 0, 0 };
+            blit.srcOffsets[1]                 = { mw, mh, 1 };
+            blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.dstSubresource.mipLevel       = i;
+            blit.dstSubresource.baseArrayLayer = 0;
+            blit.dstSubresource.layerCount     = 1;
+            blit.dstOffsets[0]                 = { 0, 0, 0 };
+            blit.dstOffsets[1]                 = { dw, dh, 1 };
+            vkCmdBlitImage(cmd,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &blit, VK_FILTER_LINEAR);
+
+            mw = dw;
+            mh = dh;
+        }
+
+        for (U32 i = 0; i < mips; ++i)
+        {
+            const bool is_last = (i == mips - 1);
+            mip_barrier(i,
+                        is_last ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        is_last ? VK_ACCESS_TRANSFER_WRITE_BIT : VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        }
+    }
+    else
+    {
+        mip_barrier(0,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
+
+    vkEndCommandBuffer(cmd);
+
+    if (!submitOneShotVkFromPool(cmd, sTexWorkerCommandPool, staging_buffer, staging_allocation, data_size_bytes))
+    {
+        vkDestroyImageView(sDevice, view, nullptr);
+        vmaDestroyImage(sAllocator, image, reinterpret_cast<VmaAllocation>(allocation));
+        return false;
+    }
+
+    out_image      = image;
+    out_view       = view;
+    out_allocation = allocation;
+    return true;
 }
 
 namespace

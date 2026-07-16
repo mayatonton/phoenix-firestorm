@@ -1204,6 +1204,20 @@ namespace LLVKLoader
 
     bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format);
 
+    bool texWorkerInit();
+    void texWorkerMarkThread();
+    void texWorkerShutdown();
+    void setVkTexWorkerStopHook(void (*fn)());
+    bool uploadTextureOneShotVk(U32          width,
+                                U32          height,
+                                VkFormat     format,
+                                const void*  data,
+                                U32          data_size_bytes,
+                                U32&         mip_count,
+                                VkImage&     out_image,
+                                VkImageView& out_view,
+                                void*&       out_allocation);
+
     bool downscaleImageVk(VkImage      src_image,
                           U32          src_mip,
                           U32          src_w,
@@ -1420,6 +1434,9 @@ namespace LLVKLoader
         std::atomic<U64> fam_draws[24] = {};
         std::atomic<U64> rigged_rec{0};
         std::atomic<U64> phase_us[16] = {};
+        std::atomic<U64> tex_enq{0};
+        std::atomic<U64> tex_pub{0};
+        std::atomic<U64> tex_fail{0};
 
         void reset()
         {
@@ -1437,6 +1454,7 @@ namespace LLVKLoader
             for (auto& v : fam_draws) v = 0;
             rigged_rec = 0;
             for (auto& v : phase_us) v = 0;
+            tex_enq = 0; tex_pub = 0; tex_fail = 0;
         }
     };
     extern VkPerfCounters gVkPerf;

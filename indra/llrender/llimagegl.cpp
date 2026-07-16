@@ -1386,6 +1386,306 @@ void LLImageGL::updateVkHeapSlot()
     }
 }
 
+bool LLImageGL::buildVkUploadJob(LLVkTexUploadJob& job, S32 discard_level, const LLImageRaw* imageraw) const
+{
+    if (!LLVKLoader::shouldUseVulkanRender())
+    {
+        return false;
+    }
+    if (mTarget != GL_TEXTURE_2D || mExternalTexture)
+    {
+        return false;
+    }
+    if (imageraw == nullptr || imageraw->isBufferInvalid())
+    {
+        return false;
+    }
+
+    if (discard_level < 0)
+    {
+        discard_level = mCurrentDiscardLevel;
+    }
+    if (discard_level < 0)
+    {
+        return false;
+    }
+    discard_level = llmin(discard_level, MAX_DISCARD_LEVEL);
+
+    const S32 raw_w = imageraw->getWidth();
+    const S32 raw_h = imageraw->getHeight();
+    if (raw_w <= 0 || raw_h <= 0)
+    {
+        return false;
+    }
+    const S32 full_w = raw_w << discard_level;
+    const S32 full_h = raw_h << discard_level;
+    if (!checkSize(full_w, full_h))
+    {
+        return false;
+    }
+
+    const S8 components = (S8)imageraw->getComponents();
+
+    LLGLint  fmt_int  = 0;
+    LLGLenum fmt_prim = 0;
+    LLGLenum fmt_type = 0;
+    const bool explicit_ok = mHasExplicitFormat &&
+                             !((mFormatPrimary == GL_RGBA && components < 4) ||
+                               (mFormatPrimary == GL_RGB  && components < 3));
+    if (explicit_ok)
+    {
+        fmt_int  = mFormatInternal;
+        fmt_prim = mFormatPrimary;
+        fmt_type = mFormatType;
+    }
+    else
+    {
+        switch (components)
+        {
+        case 1:
+            fmt_int  = GL_LUMINANCE8;
+            fmt_prim = GL_LUMINANCE;
+            fmt_type = GL_UNSIGNED_BYTE;
+            break;
+        case 2:
+            fmt_int  = GL_LUMINANCE8_ALPHA8;
+            fmt_prim = GL_LUMINANCE_ALPHA;
+            fmt_type = GL_UNSIGNED_BYTE;
+            break;
+        case 3:
+            fmt_int  = GL_RGB8;
+            fmt_prim = GL_RGB;
+            fmt_type = GL_UNSIGNED_BYTE;
+            break;
+        case 4:
+            fmt_int  = GL_RGBA8;
+            fmt_prim = GL_RGBA;
+            fmt_type = GL_UNSIGNED_BYTE;
+            break;
+        default:
+            return false;
+        }
+    }
+
+    if (fmt_type != GL_UNSIGNED_BYTE)
+    {
+        return false;
+    }
+    switch (fmt_prim)
+    {
+    case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+    case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT:
+    case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
+    case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT:
+    case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
+    case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
+        return false;
+    default:
+        break;
+    }
+
+    VkFormat vk_format = LLVKLoader::llGlEnumToVkFormat((U32)fmt_int);
+    if (fmt_prim == GL_BGRA && vk_format == VK_FORMAT_R8G8B8A8_UNORM)
+    {
+        vk_format = VK_FORMAT_B8G8R8A8_UNORM;
+    }
+    if (vk_format == VK_FORMAT_UNDEFINED)
+    {
+        return false;
+    }
+
+    U32 mip_count = 1;
+    if (mUseMipMaps)
+    {
+        S32 dim = llmax(raw_w, raw_h);
+        while (dim > 1)
+        {
+            dim >>= 1;
+            ++mip_count;
+        }
+    }
+
+    bool needs_mask = mNeedsAlphaAndPickMask && !sSkipAnalyzeAlpha;
+    S8 alpha_stride = -1;
+    S8 alpha_offset = -1;
+    if (needs_mask)
+    {
+        switch (fmt_prim)
+        {
+        case GL_LUMINANCE:
+        case GL_ALPHA:
+            alpha_stride = 1;
+            break;
+        case GL_LUMINANCE_ALPHA:
+            alpha_stride = 2;
+            break;
+        case GL_RED:
+        case GL_RGB:
+        case GL_SRGB:
+            needs_mask = false;
+            break;
+        case GL_RGBA:
+        case GL_SRGB_ALPHA:
+        case GL_BGRA_EXT:
+            alpha_stride = 4;
+            break;
+        default:
+            break;
+        }
+        alpha_offset = alpha_stride - 1;
+        if (alpha_stride < 1 || alpha_offset < 0)
+        {
+            needs_mask = false;
+        }
+    }
+
+    job.mDiscard    = discard_level;
+    job.mRawWidth   = raw_w;
+    job.mRawHeight  = raw_h;
+    job.mFullWidth  = full_w;
+    job.mFullHeight = full_h;
+    job.mComponents = components;
+    job.mFormatInternal = fmt_int;
+    job.mFormatPrimary  = fmt_prim;
+    job.mFormatType     = fmt_type;
+    job.mVkFormat   = vk_format;
+    job.mMipCount   = mip_count;
+    job.mUseMipMaps = mUseMipMaps != 0;
+    job.mNeedsAlphaAndPickMask = needs_mask;
+    job.mAlphaStride = alpha_stride;
+    job.mAlphaOffset = alpha_offset;
+    return true;
+}
+
+bool LLImageGL::runVkUploadJob(LLVkTexUploadJob& job, const U8* data)
+{
+    job.mOk = false;
+    if (data == nullptr)
+    {
+        return false;
+    }
+
+    const U32 pixel_count       = (U32)job.mRawWidth * (U32)job.mRawHeight;
+    const U32 source_components = LLVKLoader::llGlFormatSourceComponents(job.mFormatPrimary);
+    const U32 target_bpp        = LLVKLoader::vkFormatBytesPerPixel(job.mVkFormat);
+
+    U32 padded_size = 0;
+    U8* padded = createVulkanPaddingBuffer(data, source_components, 1, target_bpp,
+                                           pixel_count, padded_size);
+    const void* upload_data = (padded != nullptr) ? (const void*)padded : (const void*)data;
+    const U32   upload_size = (padded != nullptr)
+                                  ? padded_size
+                                  : (U32)dataFormatBytes(job.mFormatPrimary, job.mRawWidth, job.mRawHeight);
+
+    bool ok = false;
+    if (upload_size > 0)
+    {
+        ok = LLVKLoader::uploadTextureOneShotVk((U32)job.mRawWidth, (U32)job.mRawHeight,
+                                                job.mVkFormat, upload_data, upload_size,
+                                                job.mMipCount,
+                                                job.mImage, job.mView, job.mAllocation);
+    }
+    if (padded != nullptr)
+    {
+        delete[] padded;
+    }
+    if (!ok)
+    {
+        return false;
+    }
+
+    if (job.mNeedsAlphaAndPickMask)
+    {
+        job.mIsMask = computeIsMask(data, (U32)job.mRawWidth, (U32)job.mRawHeight,
+                                    job.mAlphaStride, job.mAlphaOffset);
+        job.mHasMaskResult = true;
+        if (job.mFormatType == GL_UNSIGNED_BYTE &&
+            (job.mFormatPrimary == GL_RGBA || job.mFormatPrimary == GL_SRGB_ALPHA))
+        {
+            job.mPickMask = buildPickMask(job.mRawWidth, job.mRawHeight, data,
+                                          job.mPickMaskWidth, job.mPickMaskHeight);
+        }
+    }
+
+    job.mOk = true;
+    return true;
+}
+
+void LLImageGL::applyVkUploadJob(LLVkTexUploadJob& job)
+{
+    setSize(job.mFullWidth, job.mFullHeight, job.mComponents, job.mDiscard);
+    mCurrentDiscardLevel = (S8)job.mDiscard;
+
+    if (mHasExplicitFormat &&
+        ((mFormatPrimary == GL_RGBA && mComponents < 4) ||
+         (mFormatPrimary == GL_RGB  && mComponents < 3)))
+    {
+        mHasExplicitFormat = false;
+    }
+    mFormatInternal = job.mFormatInternal;
+    mFormatPrimary  = job.mFormatPrimary;
+    mFormatType     = job.mFormatType;
+    calcAlphaChannelOffsetAndStride();
+
+    if (job.mUseMipMaps)
+    {
+        mAutoGenMips = true;
+        mHasMipMaps = true;
+        mTexOptionsDirty = true;
+        setFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
+        mMipLevels = wpo2(llmax(job.mRawWidth, job.mRawHeight));
+    }
+    else
+    {
+        mHasMipMaps = false;
+        mMipLevels = 0;
+    }
+
+    if (mVkImage != VK_NULL_HANDLE || mVkImageView != VK_NULL_HANDLE || mVkAllocation != nullptr)
+    {
+        LLVKLoader::destroyImageVk(mVkImage, mVkImageView, mVkAllocation);
+    }
+    mVkImage          = job.mImage;
+    mVkImageView      = job.mView;
+    mVkAllocation     = job.mAllocation;
+    mVkImageWidth     = (U32)job.mRawWidth;
+    mVkImageHeight    = (U32)job.mRawHeight;
+    mVkImageMipLevels = job.mMipCount;
+    mVkImageFormat    = job.mVkFormat;
+    job.mImage      = VK_NULL_HANDLE;
+    job.mView       = VK_NULL_HANDLE;
+    job.mAllocation = nullptr;
+    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    updateVkHeapSlot();
+
+    if (job.mHasMaskResult)
+    {
+        mIsMask = job.mIsMask;
+    }
+    if (job.mNeedsAlphaAndPickMask)
+    {
+        freePickMask();
+        if (job.mPickMask != nullptr)
+        {
+            mPickMask       = job.mPickMask;
+            mPickMaskWidth  = job.mPickMaskWidth;
+            mPickMaskHeight = job.mPickMaskHeight;
+            job.mPickMask   = nullptr;
+        }
+    }
+
+    setCategory(job.mCategory);
+    mGLTextureCreated = true;
+
+    gGL.getTexUnit(0)->setHasMipMaps(mHasMipMaps);
+    gGL.getTexUnit(0)->setTextureAddressMode(mAddressMode);
+    gGL.getTexUnit(0)->setTextureFilteringOption(mFilterOption);
+    gGL.getTexUnit(0)->unbind(mBindTarget);
+
+    mTextureMemory = (S64Bytes)getMipBytes(mCurrentDiscardLevel);
+    mLastBindTime = sLastFrameTime;
+}
+
 bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update /* = false */)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -2136,13 +2436,8 @@ void LLImageGL::calcAlphaChannelOffsetAndStride()
     }
 }
 
-void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
+bool LLImageGL::computeIsMask(const void* data_in, U32 w, U32 h, S8 alpha_stride, S8 alpha_offset)
 {
-    if(sSkipAnalyzeAlpha || !mNeedsAlphaAndPickMask)
-    {
-        return ;
-    }
-
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
     U32 length = w * h;
@@ -2155,7 +2450,7 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
     {
         llassert(w % 2 == 0);
         llassert(h % 2 == 0);
-        const GLubyte* rowstart = ((const GLubyte*) data_in) + mAlphaOffset;
+        const GLubyte* rowstart = ((const GLubyte*) data_in) + alpha_offset;
         for (U32 y = 0; y < h; y += 2)
         {
             const GLubyte* current = rowstart;
@@ -2163,14 +2458,14 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
             {
                 const U32 s1 = current[0];
                 alphatotal += s1;
-                const U32 s2 = current[w * mAlphaStride];
+                const U32 s2 = current[w * alpha_stride];
                 alphatotal += s2;
-                current += mAlphaStride;
+                current += alpha_stride;
                 const U32 s3 = current[0];
                 alphatotal += s3;
-                const U32 s4 = current[w * mAlphaStride];
+                const U32 s4 = current[w * alpha_stride];
                 alphatotal += s4;
-                current += mAlphaStride;
+                current += alpha_stride;
 
                 ++sample[s1/16];
                 ++sample[s2/16];
@@ -2182,19 +2477,19 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
                 sample[asum/(16*4)] += 4;
             }
 
-            rowstart += 2 * w * mAlphaStride;
+            rowstart += 2 * w * alpha_stride;
         }
         length *= 2; // we sampled everything twice, essentially
     }
     else
     {
-        const GLubyte* current = ((const GLubyte*) data_in) + mAlphaOffset;
+        const GLubyte* current = ((const GLubyte*) data_in) + alpha_offset;
         for (U32 i = 0; i < length; i++)
         {
             const U32 s1 = *current;
             alphatotal += s1;
             ++sample[s1/16];
-            current += mAlphaStride;
+            current += alpha_stride;
         }
     }
 
@@ -2218,31 +2513,19 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
         (lowerhalftotal == length && alphatotal != 0) || // all close to transparent but not all totally transparent, or
         (upperhalftotal == length && alphatotal != 255*length)) // all close to opaque but not all totally opaque
     {
-        mIsMask = false; // not suitable for masking
+        return false; // not suitable for masking
     }
-    else
-    {
-        mIsMask = true;
-    }
+    return true;
 }
 
-
-U32 LLImageGL::createPickMask(S32 pWidth, S32 pHeight)
+void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
 {
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    freePickMask();
-    U32 pick_width = pWidth/2 + 1;
-    U32 pick_height = pHeight/2 + 1;
+    if(sSkipAnalyzeAlpha || !mNeedsAlphaAndPickMask)
+    {
+        return ;
+    }
 
-    U32 size = pick_width * pick_height;
-    size = (size + 7) / 8; // pixelcount-to-bits
-    mPickMask = new U8[size];
-    mPickMaskWidth = pick_width - 1;
-    mPickMaskHeight = pick_height - 1;
-
-    memset(mPickMask, 0, sizeof(U8) * size);
-
-    return size;
+    mIsMask = computeIsMask(data_in, w, h, mAlphaStride, mAlphaOffset);
 }
 
 
@@ -2277,6 +2560,49 @@ bool LLImageGL::isCompressed()
 }
 
 
+U8* LLImageGL::buildPickMask(S32 width, S32 height, const U8* data_in, U16& out_width, U16& out_height)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    const U32 pick_width = width/2 + 1;
+    const U32 pick_height = height/2 + 1;
+
+    U32 size = pick_width * pick_height;
+    size = (size + 7) / 8; // pixelcount-to-bits
+    U8* mask = new (std::nothrow) U8[size];
+    if (mask == nullptr)
+    {
+        out_width = 0;
+        out_height = 0;
+        return nullptr;
+    }
+    memset(mask, 0, sizeof(U8) * size);
+    out_width = (U16)(pick_width - 1);
+    out_height = (U16)(pick_height - 1);
+
+    U32 pick_bit = 0;
+
+    for (S32 y = 0; y < height; y += 2)
+    {
+        for (S32 x = 0; x < width; x += 2)
+        {
+            U8 alpha = data_in[(y*width+x)*4+3];
+
+            if (alpha > 32)
+            {
+                U32 pick_idx = pick_bit/8;
+                U32 pick_offset = pick_bit%8;
+                llassert(pick_idx < size);
+
+                mask[pick_idx] |= 1 << pick_offset;
+            }
+
+            ++pick_bit;
+        }
+    }
+
+    return mask;
+}
+
 void LLImageGL::updatePickMask(S32 width, S32 height, const U8* data_in)
 {
     if(!mNeedsAlphaAndPickMask)
@@ -2292,32 +2618,12 @@ void LLImageGL::updatePickMask(S32 width, S32 height, const U8* data_in)
         return;
     }
 
-
-#ifdef SHOW_ASSERT
-    const U32 pickSize = createPickMask(width, height);
-#else // SHOW_ASSERT
-    createPickMask(width, height);
-#endif // SHOW_ASSERT
-
-    U32 pick_bit = 0;
-
-    for (S32 y = 0; y < height; y += 2)
+    freePickMask();
+    mPickMask = buildPickMask(width, height, data_in, mPickMaskWidth, mPickMaskHeight);
+    if (mPickMask == nullptr)
     {
-        for (S32 x = 0; x < width; x += 2)
-        {
-            U8 alpha = data_in[(y*width+x)*4+3];
-
-            if (alpha > 32)
-            {
-                U32 pick_idx = pick_bit/8;
-                U32 pick_offset = pick_bit%8;
-                llassert(pick_idx < pickSize);
-
-                mPickMask[pick_idx] |= 1 << pick_offset;
-            }
-
-            ++pick_bit;
-        }
+        mPickMaskWidth = 0;
+        mPickMaskHeight = 0;
     }
 }
 

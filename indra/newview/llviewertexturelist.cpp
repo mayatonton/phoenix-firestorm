@@ -28,6 +28,9 @@
 
 #include <atomic>
 #include <sys/stat.h>
+#if LL_LINUX
+#include <pthread.h>
+#endif
 
 #include "llviewertexturelist.h"
 
@@ -63,6 +66,7 @@
 #include "llviewerdisplay.h"
 #include "llviewerwindow.h"
 #include "llprogressview.h"
+#include "llvkloader.h"
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -296,6 +300,7 @@ void LLViewerTextureList::shutdown()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     LL_WARNS() << "Shutdown called" << LL_ENDL;
+    stopTexWorker();
     // clear out preloads
     mImagePreloads.clear();
 
@@ -1123,6 +1128,20 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
     LLTimer create_timer;
 
+    bool worker = texWorkerEnabled();
+    if (worker)
+    {
+        drainTexPublishQueue();
+        startTexWorker();
+        worker = mTexWorkerRunning;
+    }
+
+    if (worker)
+    {
+        enqueueTexCreateJobs();
+    }
+    else
+    {
     while (!mCreateTextureList.empty())
     {
         LLViewerFetchedTexture* imagep = mCreateTextureList.front();
@@ -1157,6 +1176,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         {
             break;
         }
+    }
     }
 
     if (!mDownScaleQueue.empty() && gPipeline.mDownResMap.isComplete())
@@ -1203,6 +1223,236 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     }
 
     return create_timer.getElapsedTimeF32();
+}
+
+bool LLViewerTextureList::texWorkerEnabled()
+{
+    static const bool s_enabled = []() -> bool {
+        return LLVKLoader::isVulkanInitialized() && LLVKLoader::recordWorkerCount() > 0;
+    }();
+    return s_enabled;
+}
+
+void LLViewerTextureList::texWorkerStopHook()
+{
+    gTextureList.stopTexWorker();
+}
+
+void LLViewerTextureList::startTexWorker()
+{
+    if (mTexWorkerRunning)
+    {
+        return;
+    }
+    if (!LLVKLoader::texWorkerInit())
+    {
+        return;
+    }
+    LLVKLoader::setVkTexWorkerStopHook(&LLViewerTextureList::texWorkerStopHook);
+    mTexWorkerQuit = false;
+    mTexWorkerThread = std::thread([this] { texWorkerMain(); });
+    mTexWorkerRunning = true;
+}
+
+void LLViewerTextureList::stopTexWorker()
+{
+    if (!mTexWorkerRunning)
+    {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(mTexJobMutex);
+        mTexWorkerQuit = true;
+    }
+    mTexJobCv.notify_all();
+    if (mTexWorkerThread.joinable())
+    {
+        mTexWorkerThread.join();
+    }
+    mTexWorkerRunning = false;
+
+    {
+        std::lock_guard<std::mutex> lk(mTexJobMutex);
+        while (!mTexJobQueue.empty())
+        {
+            TexCreateJobEntry entry = std::move(mTexJobQueue.front());
+            mTexJobQueue.pop_front();
+            if (entry.mTexture.notNull())
+            {
+                entry.mTexture->mCreatePending = false;
+            }
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lk(mTexPublishMutex);
+        while (!mTexPublishQueue.empty())
+        {
+            TexCreateJobEntry entry = std::move(mTexPublishQueue.front());
+            mTexPublishQueue.pop_front();
+            if (entry.mJob.mImage != VK_NULL_HANDLE || entry.mJob.mView != VK_NULL_HANDLE ||
+                entry.mJob.mAllocation != nullptr)
+            {
+                LLVKLoader::destroyImageVk(entry.mJob.mImage, entry.mJob.mView, entry.mJob.mAllocation);
+                entry.mJob.mImage      = VK_NULL_HANDLE;
+                entry.mJob.mView       = VK_NULL_HANDLE;
+                entry.mJob.mAllocation = nullptr;
+            }
+            if (entry.mTexture.notNull())
+            {
+                entry.mTexture->mCreatePending = false;
+            }
+        }
+    }
+
+    LLVKLoader::texWorkerShutdown();
+}
+
+void LLViewerTextureList::texWorkerMain()
+{
+#if LL_LINUX
+    pthread_setname_np(pthread_self(), "aya-texup");
+#endif
+    LLVKLoader::texWorkerMarkThread();
+    for (;;)
+    {
+        TexCreateJobEntry entry;
+        {
+            std::unique_lock<std::mutex> lk(mTexJobMutex);
+            mTexJobCv.wait(lk, [this] { return mTexWorkerQuit || !mTexJobQueue.empty(); });
+            if (mTexWorkerQuit)
+            {
+                return;
+            }
+            entry = std::move(mTexJobQueue.front());
+            mTexJobQueue.pop_front();
+        }
+
+        const U8* data = entry.mRawImage.notNull() ? entry.mRawImage->getData() : nullptr;
+        LLImageGL::runVkUploadJob(entry.mJob, data);
+
+        {
+            std::lock_guard<std::mutex> lk(mTexPublishMutex);
+            mTexPublishQueue.push_back(std::move(entry));
+        }
+    }
+}
+
+void LLViewerTextureList::enqueueTexCreateJobs()
+{
+    bool queued = false;
+    while (!mCreateTextureList.empty())
+    {
+        LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
+        mCreateTextureList.pop();
+        llassert(imagep->mCreatePending);
+
+        bool redundant_load = imagep->hasGLTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
+        if (redundant_load)
+        {
+            imagep->postCreateTexture();
+            imagep->mCreatePending = false;
+            continue;
+        }
+
+        LLImageGL* gl = imagep->getGLTexture();
+        LLImageRaw* raw = imagep->getRawImage();
+        TexCreateJobEntry entry;
+        const bool built = gl != nullptr && raw != nullptr &&
+                           gl->buildVkUploadJob(entry.mJob, imagep->getRawImageLevel(), raw);
+        if (!built)
+        {
+            imagep->createTexture();
+            imagep->postCreateTexture();
+            imagep->mCreatePending = false;
+
+            if (imagep->hasGLTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
+               (imagep->getDesiredDiscardLevel() <= MAX_DISCARD_LEVEL))
+            {
+                LL_WARNS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
+                imagep->scaleDown();
+            }
+            continue;
+        }
+
+        entry.mJob.mCategory = imagep->getBoostLevel();
+        entry.mTexture  = imagep;
+        entry.mGLImage  = gl;
+        entry.mRawImage = raw;
+        {
+            std::lock_guard<std::mutex> lk(mTexJobMutex);
+            mTexJobQueue.push_back(std::move(entry));
+        }
+        queued = true;
+        ++LLVKLoader::gVkPerf.tex_enq;
+    }
+    if (queued)
+    {
+        mTexJobCv.notify_one();
+    }
+}
+
+void LLViewerTextureList::drainTexPublishQueue()
+{
+    for (;;)
+    {
+        TexCreateJobEntry entry;
+        {
+            std::lock_guard<std::mutex> lk(mTexPublishMutex);
+            if (mTexPublishQueue.empty())
+            {
+                break;
+            }
+            entry = std::move(mTexPublishQueue.front());
+            mTexPublishQueue.pop_front();
+        }
+
+        LLViewerFetchedTexture* imagep = entry.mTexture.get();
+        LLImageGL* gl = entry.mGLImage.get();
+        if (imagep == nullptr || gl == nullptr)
+        {
+            if (entry.mJob.mImage != VK_NULL_HANDLE || entry.mJob.mView != VK_NULL_HANDLE ||
+                entry.mJob.mAllocation != nullptr)
+            {
+                LLVKLoader::destroyImageVk(entry.mJob.mImage, entry.mJob.mView, entry.mJob.mAllocation);
+                entry.mJob.mImage      = VK_NULL_HANDLE;
+                entry.mJob.mView       = VK_NULL_HANDLE;
+                entry.mJob.mAllocation = nullptr;
+            }
+            continue;
+        }
+
+        if (!entry.mJob.mOk)
+        {
+            imagep->postCreateTexture();
+            imagep->mCreatePending = false;
+            ++LLVKLoader::gVkPerf.tex_fail;
+            continue;
+        }
+
+        bool redundant_load = imagep->hasGLTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
+        if (redundant_load)
+        {
+            LLVKLoader::destroyImageVk(entry.mJob.mImage, entry.mJob.mView, entry.mJob.mAllocation);
+            entry.mJob.mImage      = VK_NULL_HANDLE;
+            entry.mJob.mView       = VK_NULL_HANDLE;
+            entry.mJob.mAllocation = nullptr;
+            imagep->postCreateTexture();
+            imagep->mCreatePending = false;
+            continue;
+        }
+
+        gl->applyVkUploadJob(entry.mJob);
+        imagep->postCreateTexture();
+        imagep->mCreatePending = false;
+        ++LLVKLoader::gVkPerf.tex_pub;
+
+        if (imagep->hasGLTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
+           (imagep->getDesiredDiscardLevel() <= MAX_DISCARD_LEVEL))
+        {
+            LL_WARNS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
+            imagep->scaleDown();
+        }
+    }
 }
 
 F32 LLViewerTextureList::updateImagesLoadingFastCache(F32 max_time)
