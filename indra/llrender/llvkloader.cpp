@@ -517,6 +517,7 @@ namespace
     thread_local bool               tTexWorkerThread = false;
     void (*sTexWorkerStopHook)()   = nullptr;
     void (*sGeoWorkerStopHook)()   = nullptr;
+    void (*sBakeWorkerStopHook)()  = nullptr;
 
     U32 sLastCompletedMonotonic = 0;
     U32 sFrameSubmittedMonotonic[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
@@ -3642,6 +3643,12 @@ bool initVulkan()
 
 void shutdownVulkan()
 {
+    if (sBakeWorkerStopHook != nullptr)
+    {
+        void (*hook)() = sBakeWorkerStopHook;
+        sBakeWorkerStopHook = nullptr;
+        hook();
+    }
     if (sGeoWorkerStopHook != nullptr)
     {
         void (*hook)() = sGeoWorkerStopHook;
@@ -4381,6 +4388,10 @@ bool endFrame()
                                    << " inl=" << gVkPerf.geo_inl.load()
                                    << " defer=" << gVkPerf.geo_defer.load()
                                    << " mb=" << (gVkGeoInflightBytes.load() >> 20)
+                                   << " | bake enq=" << gVkPerf.bake_enq.load()
+                                   << " pub=" << gVkPerf.bake_pub.load()
+                                   << " defer=" << gVkPerf.bake_defer.load()
+                                   << " drain_ms=" << (gVkPerf.bake_drain_us.load() / 1000.0)
                                    << " | fam " << [](){ std::string s;
                                         for (U32 i = 0; i < 24; ++i) {
                                             const U64 us = gVkPerf.fam_us[i].load();
@@ -5274,6 +5285,11 @@ U32 getCurrentFrameIndex()
 U32 getMonotonicFrameCount()
 {
     return sMonotonicFrameCount;
+}
+
+U32 getLastCompletedMonotonic()
+{
+    return sLastCompletedMonotonic;
 }
 
 void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data, const TextureMatrixUBO& texdata)
@@ -6497,6 +6513,11 @@ void setVkTexWorkerStopHook(void (*fn)())
 void setVkGeoWorkerStopHook(void (*fn)())
 {
     sGeoWorkerStopHook = fn;
+}
+
+void setVkBakeWorkerStopHook(void (*fn)())
+{
+    sBakeWorkerStopHook = fn;
 }
 
 void texWorkerShutdown()
@@ -9067,6 +9088,134 @@ bool copyColorImageRegionToImage2DVk(VkImage       src_image,
         const U32 bcount = (src_layout == VK_IMAGE_LAYOUT_UNDEFINED) ? 1u : 2u;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, bcount, bb);
+    }
+
+    return true;
+}
+
+bool createReadbackBufferVk(U32       bytes,
+                            VkBuffer& out_buffer,
+                            void*&    out_allocation,
+                            void*&    out_mapped)
+{
+    out_buffer     = VK_NULL_HANDLE;
+    out_allocation = nullptr;
+    out_mapped     = nullptr;
+    if (bytes == 0 || sAllocator == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkBufferCreateInfo bci = {};
+    bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bci.size        = bytes;
+    bci.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo aci = {};
+    aci.usage         = VMA_MEMORY_USAGE_AUTO;
+    aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+                      | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                      | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    VkBuffer      buffer     = VK_NULL_HANDLE;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+    VmaAllocationInfo info = {};
+    VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &buffer, &allocation, &info);
+    if (r != VK_SUCCESS || buffer == VK_NULL_HANDLE || info.pMappedData == nullptr)
+    {
+        if (buffer != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(sAllocator, buffer, allocation);
+        }
+        return false;
+    }
+    out_buffer     = buffer;
+    out_allocation = allocation;
+    out_mapped     = info.pMappedData;
+    return true;
+}
+
+bool copyColorImageRegionToBufferVk(VkImage       src_image,
+                                    VkImageLayout src_layout,
+                                    S32           src_x,
+                                    S32           src_y,
+                                    U32           width,
+                                    U32           height,
+                                    VkBuffer      dst_buffer)
+{
+    if (src_image == VK_NULL_HANDLE || dst_buffer == VK_NULL_HANDLE ||
+        width == 0 || height == 0 || src_x < 0 || src_y < 0)
+    {
+        return false;
+    }
+    if (src_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+    {
+        return false;
+    }
+    if (sDevice == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkCommandBuffer cmd = getCurrentCommandBuffer();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+        b.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+        b.oldLayout                       = src_layout;
+        b.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = src_image;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = 0;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &b);
+    }
+
+    {
+        VkBufferImageCopy region = {};
+        region.bufferOffset                    = 0;
+        region.bufferRowLength                 = 0;
+        region.bufferImageHeight               = 0;
+        region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel       = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount     = 1;
+        region.imageOffset                     = {src_x, src_y, 0};
+        region.imageExtent                     = {width, height, 1};
+        vkCmdCopyImageToBuffer(cmd, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               dst_buffer, 1, &region);
+    }
+
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.srcAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+        b.dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+        b.oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.newLayout                       = src_layout;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = src_image;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = 0;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
     return true;

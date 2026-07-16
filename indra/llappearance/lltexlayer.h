@@ -87,6 +87,7 @@ public:
     void                    requestUpdate();
     virtual void            gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target) = 0;
     bool                    hasAlphaParams() const      { return !mParamAlphaList.empty(); }
+    virtual bool            collectVkAlphaWork(std::vector<LLTexLayerParamAlpha*>& to_enqueue) { return true; }
 
     ERenderPass             getRenderPass() const;
     bool                    isVisibilityMask() const;
@@ -128,6 +129,7 @@ public:
     /*virtual*/ void        setHasMorph(bool newval);
     /*virtual*/ void        deleteCaches();
     /*virtual*/ bool        isInvisibleAlphaMask() const;
+    /*virtual*/ bool        collectVkAlphaWork(std::vector<LLTexLayerParamAlpha*>& to_enqueue);
 protected:
     U32                     updateWearableCache() const;
     LLTexLayer*             getLayer(U32 i) const;
@@ -183,6 +185,8 @@ public:
     static void             beginMorphMaskCaptureCollection(std::vector<LLTexLayerMaskCaptureRef>* collector);
     static void             endMorphMaskCaptureCollection();
     static const U8*        resolveCapturedMaskAlpha(const LLTexLayerMaskCaptureRef& ref);
+    static bool             isLiveLayer(const LLTexLayer* layer);
+    /*virtual*/ bool        collectVkAlphaWork(std::vector<LLTexLayerParamAlpha*>& to_enqueue);
 protected:
     LLUUID                  getUUID() const;
     typedef std::map<U32, U8*> alpha_cache_t;
@@ -216,6 +220,7 @@ public:
     void                        renderAlphaMaskTextures(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bound_target = nullptr, bool forceClear = false);
 
     bool                        isBodyRegion(const std::string& region) const;
+    bool                        collectVkAlphaWork(std::vector<LLTexLayerParamAlpha*>& to_enqueue);
     void                        applyMorphMask(const U8* tex_data, S32 width, S32 height, S32 num_components);
     bool                        isMorphValid() const;
     virtual void                requestUpdate() = 0;

@@ -34,6 +34,7 @@
 class LLVOAvatarSelf;
 class LLViewerTexLayerSetBuffer;
 struct FSDeferredBakeUpload;
+struct FSBakeEncodeJob;
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // LLViewerTexLayerSet
@@ -135,17 +136,25 @@ public:
                                                     void* userdata,
                                                     S32 result, LLExtStat ext_status);
     static void             processDeferredUploads();
+    static bool             bakeWorkerEnabled();
+    static bool             startBakeWorker();
+    static void             stopBakeWorker();
+    static void             drainBakeWorkerPublish();
 protected:
     bool                    isReadyToUpload() const;
     void                    doUpload(LLRenderTarget* bound_target);                     // Does a read back and upload.
     void                    finishUpload(U8* baked_color_data, U8* baked_mask_data);
     void                    conditionalRestartUploadTimer();
 private:
+    static void             bakeWorkerStopHook();
+    static void             bakeWorkerMain();
     void                    beginDeferredUpload(LLRenderTarget* bound_target);
-    void                    completeDeferredUpload();
+    bool                    tryCompleteDeferredUpload(U32 completed_frame);
+    void                    publishEncodedUpload(FSBakeEncodeJob& job);
     void                    discardDeferredUpload();
     void                    destroyDeferredUploadRecord();
     FSDeferredBakeUpload*   mDeferredUpload = nullptr;
+    U32                     mDeferredUploadGen = 0;
     bool                    mNeedsUpload;                   // Whether we need to send our baked textures to the server
     U32                     mNumLowresUploads;              // Number of times we've sent a lowres version of our baked textures to the server
     bool                    mUploadPending;                 // Whether we have received back the new baked textures

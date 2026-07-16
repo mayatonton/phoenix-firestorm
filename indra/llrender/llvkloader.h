@@ -126,6 +126,7 @@ namespace LLVKLoader
 
     U32 getCurrentFrameIndex();
     U32 getMonotonicFrameCount();
+    U32 getLastCompletedMonotonic();
 
     void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data, const TextureMatrixUBO& texdata);
 
@@ -1209,6 +1210,7 @@ namespace LLVKLoader
     void texWorkerShutdown();
     void setVkTexWorkerStopHook(void (*fn)());
     void setVkGeoWorkerStopHook(void (*fn)());
+    void setVkBakeWorkerStopHook(void (*fn)());
     bool uploadTextureOneShotVk(U32          width,
                                 U32          height,
                                 VkFormat     format,
@@ -1312,6 +1314,19 @@ namespace LLVKLoader
                                     U32           height,
                                     U32           bytes_per_pixel,
                                     void*         out_pixels);
+
+    bool createReadbackBufferVk(U32       bytes,
+                                VkBuffer& out_buffer,
+                                void*&    out_allocation,
+                                void*&    out_mapped);
+
+    bool copyColorImageRegionToBufferVk(VkImage       src_image,
+                                        VkImageLayout src_layout,
+                                        S32           src_x,
+                                        S32           src_y,
+                                        U32           width,
+                                        U32           height,
+                                        VkBuffer      dst_buffer);
 
     bool readbackDepthImageRegionVk(VkImage       image,
                                     VkImageLayout current_layout,
@@ -1444,6 +1459,10 @@ namespace LLVKLoader
         std::atomic<U64> geo_dis{0};
         std::atomic<U64> geo_inl{0};
         std::atomic<U64> geo_defer{0};
+        std::atomic<U64> bake_enq{0};
+        std::atomic<U64> bake_pub{0};
+        std::atomic<U64> bake_defer{0};
+        std::atomic<U64> bake_drain_us{0};
 
         void reset()
         {
@@ -1463,6 +1482,7 @@ namespace LLVKLoader
             for (auto& v : phase_us) v = 0;
             tex_enq = 0; tex_pub = 0; tex_fail = 0;
             geo_enq = 0; geo_pub = 0; geo_pub_us = 0; geo_dis = 0; geo_inl = 0; geo_defer = 0;
+            bake_enq = 0; bake_pub = 0; bake_defer = 0; bake_drain_us = 0;
         }
     };
     extern VkPerfCounters gVkPerf;

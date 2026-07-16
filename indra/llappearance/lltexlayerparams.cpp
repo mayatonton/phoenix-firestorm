@@ -37,6 +37,8 @@
 #include "llwearable.h"
 #include "llfasttimer.h"
 
+#include <algorithm>
+
 // LLTexLayerParam
 LLTexLayerParam::LLTexLayerParam(LLTexLayerInterface *layer)
     : LLViewerVisualParam(),
@@ -379,6 +381,111 @@ bool LLTexLayerParamAlpha::render(S32 x, S32 y, S32 width, S32 height)
     }
 
     return success;
+}
+
+bool LLTexLayerParamAlpha::needsVkAlphaGen()
+{
+    if (!mTexLayer)
+    {
+        return false;
+    }
+    LLTexLayerParamAlphaInfo* info = (LLTexLayerParamAlphaInfo*)getInfo();
+    if (info->mStaticImageFileName.empty() || mStaticImageInvalid)
+    {
+        return false;
+    }
+    if (getSkip())
+    {
+        return false;
+    }
+    if (mStaticImageTGA.isNull())
+    {
+        return true;
+    }
+    if (!mCachedProcessedTexture ||
+        mCachedProcessedTexture->getWidth() != mStaticImageTGA->getWidth() ||
+        mCachedProcessedTexture->getHeight() != mStaticImageTGA->getHeight())
+    {
+        return true;
+    }
+    F32 effective_weight = (mTexLayer->getTexLayerSet()->getAvatarAppearance()->getSex() & getSex()) ? mCurWeight : getDefaultWeight();
+    return effective_weight != mCachedEffectiveWeight;
+}
+
+bool LLTexLayerParamAlpha::buildVkAlphaGenJob(LLVkAlphaGenJob& out)
+{
+    if (!mTexLayer)
+    {
+        return false;
+    }
+    LLTexLayerParamAlphaInfo* info = (LLTexLayerParamAlphaInfo*)getInfo();
+    if (info->mStaticImageFileName.empty() || mStaticImageInvalid)
+    {
+        return false;
+    }
+    if (mStaticImageTGA.isNull())
+    {
+        mStaticImageTGA = LLTexLayerStaticImageList::getInstance()->getImageTGA(info->mStaticImageFileName);
+        LLTexLayerSet::sHasCaches |= mStaticImageTGA.notNull();
+        if (mStaticImageTGA.isNull())
+        {
+            LL_WARNS() << "Unable to load static file: " << info->mStaticImageFileName << LL_ENDL;
+            mStaticImageInvalid = true;
+            return false;
+        }
+    }
+    out.mParam  = this;
+    out.mTGA    = mStaticImageTGA;
+    out.mRaw    = new LLImageRaw;
+    out.mDomain = info->mDomain;
+    out.mWeight = (mTexLayer->getTexLayerSet()->getAvatarAppearance()->getSex() & getSex()) ? mCurWeight : getDefaultWeight();
+    out.mOk     = false;
+    mVkAlphaJobPending = true;
+    return true;
+}
+
+// static
+void LLTexLayerParamAlpha::runVkAlphaGenJob(LLVkAlphaGenJob& job)
+{
+    job.mOk = job.mTGA.notNull() && job.mRaw.notNull() &&
+              job.mTGA->decodeAndProcess(job.mRaw, job.mDomain, job.mWeight);
+}
+
+void LLTexLayerParamAlpha::applyVkAlphaGenJob(LLVkAlphaGenJob& job)
+{
+    mVkAlphaJobPending = false;
+    if (job.mTGA.isNull())
+    {
+        return;
+    }
+    mCachedEffectiveWeight = job.mWeight;
+    if (!mCachedProcessedTexture)
+    {
+        llassert(gTextureManagerBridgep);
+        mCachedProcessedTexture = gTextureManagerBridgep->getLocalTexture(job.mTGA->getWidth(), job.mTGA->getHeight(), 1, false);
+        LLTexLayerSet::sHasCaches |= mCachedProcessedTexture.notNull();
+        if (mCachedProcessedTexture)
+        {
+            mCachedProcessedTexture->setExplicitFormat(GL_ALPHA8, GL_ALPHA);
+        }
+    }
+    if (job.mOk && mCachedProcessedTexture && job.mRaw.notNull())
+    {
+        if (!mCachedProcessedTexture->createGLTexture(0, job.mRaw))
+        {
+            LL_WARNS() << "Failed to create GL texture for image: " << mCachedProcessedTexture->getID() << LL_ENDL;
+        }
+        gGL.getTexUnit(0)->bind(mCachedProcessedTexture);
+        mCachedProcessedTexture->setAddressMode(LLTexUnit::TAM_CLAMP);
+        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
+        mNeedsCreateTexture = false;
+    }
+}
+
+// static
+bool LLTexLayerParamAlpha::isLiveInstance(LLTexLayerParamAlpha* param)
+{
+    return std::find(sInstances.begin(), sInstances.end(), param) != sInstances.end();
 }
 
 // LLTexLayerParamAlphaInfo

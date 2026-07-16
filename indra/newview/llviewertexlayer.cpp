@@ -30,6 +30,7 @@
 
 #include "llagent.h"
 #include "llimagej2c.h"
+#include "llimagetga.h"
 #include "llnotificationsutil.h"
 #include "llviewerregion.h"
 #include "llglslshader.h"
@@ -43,23 +44,146 @@
 #include "llvkloader.h"
 #include "llrendertarget.h"
 
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <set>
+#include <thread>
+
 static const S32 BAKE_UPLOAD_ATTEMPTS = 7;
 static const F32 BAKE_UPLOAD_RETRY_DELAY = 2.f; // actual delay grows by power of 2 each attempt
 
 struct FSDeferredBakeUpload
 {
-    VkImage                 mColorImage = VK_NULL_HANDLE;
-    VkImageView             mColorView = VK_NULL_HANDLE;
+    VkBuffer                mColorBuffer = VK_NULL_HANDLE;
     void*                   mColorAllocation = nullptr;
+    void*                   mColorMapped = nullptr;
+    U32                     mSubmitFrame = 0;
+    U32                     mDrainAttempts = 0;
     U32                     mWidth = 0;
     U32                     mHeight = 0;
     LLPointer<LLImageRaw>   mPartialMask;
     std::vector<LLTexLayerMaskCaptureRef> mPendingMaskRefs;
 };
 
+struct FSBakeEncodeJob
+{
+    LLViewerTexLayerSetBuffer* mBuffer = nullptr;
+    U32                     mUploadGen = 0;
+    U32                     mWidth = 0;
+    U32                     mHeight = 0;
+    std::vector<U8>         mColor;
+    std::vector<U8>         mMask;
+    LLTransactionID         mTID;
+    LLAssetID               mAssetID;
+    bool                    mIsHighestRes = false;
+    bool                    mWroteFile = false;
+    bool                    mOk = false;
+    std::string             mAssetData;
+};
+
 namespace
 {
     std::vector<LLViewerTexLayerSetBuffer*> sDeferredUploadBuffers;
+    std::set<LLViewerTexLayerSetBuffer*>    sLiveBakeBuffers;
+
+    bool                        sBakeWorkerRunning = false;
+    bool                        sBakeWorkerQuit = false;
+    std::thread                 sBakeWorkerThread;
+    std::mutex                  sBakeJobMutex;
+    std::condition_variable     sBakeJobCv;
+    std::deque<LLVkAlphaGenJob> sAlphaJobQueue;
+    std::deque<FSBakeEncodeJob> sEncodeJobQueue;
+    std::mutex                  sBakePublishMutex;
+    std::deque<LLVkAlphaGenJob> sAlphaPublishQueue;
+    std::deque<FSBakeEncodeJob> sEncodePublishQueue;
+
+    void enqueueAlphaGenJob(LLVkAlphaGenJob&& job)
+    {
+        {
+            std::lock_guard<std::mutex> lk(sBakeJobMutex);
+            sAlphaJobQueue.push_back(std::move(job));
+        }
+        sBakeJobCv.notify_one();
+        ++LLVKLoader::gVkPerf.bake_enq;
+    }
+
+    void enqueueBakeEncodeJob(FSBakeEncodeJob&& job)
+    {
+        {
+            std::lock_guard<std::mutex> lk(sBakeJobMutex);
+            sEncodeJobQueue.push_back(std::move(job));
+        }
+        sBakeJobCv.notify_one();
+        ++LLVKLoader::gVkPerf.bake_enq;
+    }
+
+    void runBakeEncodeJob(FSBakeEncodeJob& job)
+    {
+        job.mOk = false;
+        const U32 w = job.mWidth;
+        const U32 h = job.mHeight;
+        if (w == 0 || h == 0 ||
+            job.mColor.size() < (size_t)w * h * 4 || job.mMask.size() < (size_t)w * h)
+        {
+            return;
+        }
+
+        const S32 baked_image_components = 5; // red green blue [bump] clothing
+        LLPointer<LLImageRaw> baked_image = new LLImageRaw(w, h, baked_image_components);
+        U8* baked_image_data = baked_image->getData();
+        const U8* baked_color_data = job.mColor.data();
+        const U8* baked_mask_data = job.mMask.data();
+        S32 i = 0;
+        for (U32 u = 0; u < w; u++)
+        {
+            for (U32 v = 0; v < h; v++)
+            {
+                baked_image_data[5*i + 0] = baked_color_data[4*i + 0];
+                baked_image_data[5*i + 1] = baked_color_data[4*i + 1];
+                baked_image_data[5*i + 2] = baked_color_data[4*i + 2];
+                baked_image_data[5*i + 3] = baked_color_data[4*i + 3]; // alpha should be correct for eyelashes.
+                baked_image_data[5*i + 4] = baked_mask_data[i];
+                i++;
+            }
+        }
+
+        LLPointer<LLImageJ2C> compressedImage = new LLImageJ2C;
+        const char* comment_text = LINDEN_J2C_COMMENT_PREFIX "RGBHM"; // writes into baked_color_data. 5 channels (rgb, heightfield/alpha, mask)
+        if (!compressedImage->encode(baked_image, comment_text))
+        {
+            return;
+        }
+        LLFileSystem up_file(job.mAssetID, LLAssetType::AT_TEXTURE, LLFileSystem::WRITE);
+        if (!up_file.write(compressedImage->getData(), compressedImage->getDataSize()))
+        {
+            return;
+        }
+        job.mWroteFile = true;
+
+        // Read back the file and validate.
+        bool valid = false;
+        LLPointer<LLImageJ2C> integrity_test = new LLImageJ2C;
+        LLFileSystem file(job.mAssetID, LLAssetType::AT_TEXTURE);
+        S32 file_size = file.getSize();
+        U8* data = integrity_test->allocateData(file_size);
+        if (data)
+        {
+            file.read(data, file_size);
+            job.mAssetData.append(reinterpret_cast<char const*>(data), file_size);
+            valid = integrity_test->validate(data, file_size); // integrity_test will delete 'data'
+        }
+        else
+        {
+            integrity_test->setLastError("Unable to read entire file");
+        }
+        if (!valid)
+        {
+            job.mAssetData.clear();
+            return;
+        }
+        job.mOk = true;
+    }
 }
 
 extern std::string self_av_string();
@@ -83,6 +207,7 @@ LLViewerTexLayerSetBuffer::LLViewerTexLayerSetBuffer(LLTexLayerSet* const owner,
     mGLTexturep->setNeedsAlphaAndPickMask(false);
 
     LLViewerTexLayerSetBuffer::sGLByteCount += getSize();
+    sLiveBakeBuffers.insert(this);
     // <FS:Ansariel> [Legacy Bake]
     mNeedsUploadTimer.start();
     mNeedsUpdateTimer.start();
@@ -90,6 +215,7 @@ LLViewerTexLayerSetBuffer::LLViewerTexLayerSetBuffer(LLTexLayerSet* const owner,
 
 LLViewerTexLayerSetBuffer::~LLViewerTexLayerSetBuffer()
 {
+    sLiveBakeBuffers.erase(this);
     discardDeferredUpload();
     LLViewerTexLayerSetBuffer::sGLByteCount -= getSize();
     destroyGLTexture();
@@ -170,7 +296,31 @@ bool LLViewerTexLayerSetBuffer::needsRender()
     }
 
     // Render if we have at least minimal level of detail for each local texture.
-    return getViewerTexLayerSet()->isLocalTextureDataAvailable();
+    if (!getViewerTexLayerSet()->isLocalTextureDataAvailable())
+    {
+        return false;
+    }
+
+    if (bakeWorkerEnabled() && startBakeWorker())
+    {
+        std::vector<LLTexLayerParamAlpha*> stale;
+        const bool params_ready = getViewerTexLayerSet()->collectVkAlphaWork(stale);
+        for (LLTexLayerParamAlpha* param : stale)
+        {
+            LLVkAlphaGenJob job;
+            if (param->buildVkAlphaGenJob(job))
+            {
+                enqueueAlphaGenJob(std::move(job));
+            }
+        }
+        if (!params_ready)
+        {
+            ++LLVKLoader::gVkPerf.bake_defer;
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void LLViewerTexLayerSetBuffer::preRenderTexLayerSet()
@@ -480,6 +630,7 @@ void LLViewerTexLayerSetBuffer::conditionalRestartUploadTimer()
 
 void LLViewerTexLayerSetBuffer::cancelUpload()
 {
+    ++mDeferredUploadGen;
     discardDeferredUpload();
     mNeedsUpload = false;
     mUploadPending = false;
@@ -772,8 +923,8 @@ void LLViewerTexLayerSetBuffer::beginDeferredUpload(LLRenderTarget* bound_target
     record->mWidth = mFullWidth;
     record->mHeight = mFullHeight;
 
-    bool ok = LLVKLoader::createReadbackImageVk(mFullWidth, mFullHeight, src_format,
-                                                record->mColorImage, record->mColorView, record->mColorAllocation);
+    bool ok = LLVKLoader::createReadbackBufferVk((U32)mFullWidth * (U32)mFullHeight * 4,
+                                                 record->mColorBuffer, record->mColorAllocation, record->mColorMapped);
     if (ok)
     {
         const bool in_scope = LLVKLoader::isInRenderPassScope();
@@ -781,10 +932,10 @@ void LLViewerTexLayerSetBuffer::beginDeferredUpload(LLRenderTarget* bound_target
         {
             LLVKLoader::endDynamicRendering();
         }
-        ok = LLVKLoader::copyColorImageRegionToImage2DVk(target->getVkImage(0), target->getVkTexLayout(0),
-                                                         mOrigin.mX, mOrigin.mY,
-                                                         record->mColorImage, VK_IMAGE_LAYOUT_UNDEFINED,
-                                                         0, 0, mFullWidth, mFullHeight);
+        ok = LLVKLoader::copyColorImageRegionToBufferVk(target->getVkImage(0), target->getVkTexLayout(0),
+                                                        mOrigin.mX, mOrigin.mY,
+                                                        mFullWidth, mFullHeight,
+                                                        record->mColorBuffer);
         if (in_scope)
         {
             target->resumeVkDynamicRendering();
@@ -792,14 +943,15 @@ void LLViewerTexLayerSetBuffer::beginDeferredUpload(LLRenderTarget* bound_target
     }
     if (!ok)
     {
-        if (record->mColorImage != VK_NULL_HANDLE)
+        if (record->mColorBuffer != VK_NULL_HANDLE)
         {
-            LLVKLoader::destroyImageVk(record->mColorImage, record->mColorView, record->mColorAllocation);
+            LLVKLoader::destroyBufferVk(record->mColorBuffer, record->mColorAllocation);
         }
         delete record;
         mUploadPending = false;
         return;
     }
+    record->mSubmitFrame = LLVKLoader::getMonotonicFrameCount();
 
     LLGLSUIDefault gls_ui;
     record->mPartialMask = new LLImageRaw(mFullWidth, mFullHeight, 1);
@@ -814,24 +966,44 @@ void LLViewerTexLayerSetBuffer::beginDeferredUpload(LLRenderTarget* bound_target
     sDeferredUploadBuffers.push_back(this);
 }
 
-void LLViewerTexLayerSetBuffer::completeDeferredUpload()
+bool LLViewerTexLayerSetBuffer::tryCompleteDeferredUpload(U32 completed_frame)
 {
     FSDeferredBakeUpload* record = mDeferredUpload;
     if (!record)
     {
-        return;
+        return true;
+    }
+    if (record->mSubmitFrame > completed_frame)
+    {
+        return false;
     }
 
-    bool ok = record->mPartialMask.notNull() && record->mColorImage != VK_NULL_HANDLE &&
+    bool ok = record->mPartialMask.notNull() && record->mColorMapped != nullptr &&
               record->mWidth > 0 && record->mHeight > 0;
-    U8* baked_color_data = nullptr;
     if (ok)
     {
-        baked_color_data = new U8[ record->mWidth * record->mHeight * 4 ];
-        ok = LLVKLoader::readbackColorImageRegionVk(record->mColorImage,
-                                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                                    0, 0, record->mWidth, record->mHeight, 4,
-                                                    baked_color_data);
+        bool wait = false;
+        for (const LLTexLayerMaskCaptureRef& ref : record->mPendingMaskRefs)
+        {
+            const U8* alphaData = LLTexLayer::resolveCapturedMaskAlpha(ref);
+            if (!alphaData)
+            {
+                if (LLTexLayer::isLiveLayer(ref.mLayer) && record->mDrainAttempts < 120)
+                {
+                    wait = true;
+                }
+                else
+                {
+                    ok = false;
+                }
+                break;
+            }
+        }
+        if (wait)
+        {
+            ++record->mDrainAttempts;
+            return false;
+        }
     }
     if (ok)
     {
@@ -857,15 +1029,38 @@ void LLViewerTexLayerSetBuffer::completeDeferredUpload()
     }
     if (ok)
     {
-        finishUpload(baked_color_data, record->mPartialMask->getData());
+        if (bakeWorkerEnabled() && startBakeWorker())
+        {
+            FSBakeEncodeJob job;
+            job.mBuffer    = this;
+            job.mUploadGen = mDeferredUploadGen;
+            job.mWidth     = record->mWidth;
+            job.mHeight    = record->mHeight;
+            const U8* color = (const U8*)record->mColorMapped;
+            job.mColor.assign(color, color + (size_t)record->mWidth * record->mHeight * 4);
+            const U8* mask = record->mPartialMask->getData();
+            job.mMask.assign(mask, mask + (size_t)record->mWidth * record->mHeight);
+            job.mTID.generate();
+            job.mAssetID = job.mTID.makeAssetID(gAgent.getSecureSessionID());
+            job.mIsHighestRes = getViewerTexLayerSet()->isLocalTextureDataFinal();
+            enqueueBakeEncodeJob(std::move(job));
+        }
+        else
+        {
+            const size_t color_bytes = (size_t)record->mWidth * record->mHeight * 4;
+            U8* baked_color_data = new U8[ color_bytes ];
+            memcpy(baked_color_data, record->mColorMapped, color_bytes);
+            finishUpload(baked_color_data, record->mPartialMask->getData());
+            delete [] baked_color_data;
+        }
     }
     else
     {
         mUploadPending = false;
     }
 
-    delete [] baked_color_data;
     destroyDeferredUploadRecord();
+    return true;
 }
 
 void LLViewerTexLayerSetBuffer::discardDeferredUpload()
@@ -881,9 +1076,9 @@ void LLViewerTexLayerSetBuffer::destroyDeferredUploadRecord()
     {
         return;
     }
-    if (mDeferredUpload->mColorImage != VK_NULL_HANDLE)
+    if (mDeferredUpload->mColorBuffer != VK_NULL_HANDLE)
     {
-        LLVKLoader::destroyImageVk(mDeferredUpload->mColorImage, mDeferredUpload->mColorView, mDeferredUpload->mColorAllocation);
+        LLVKLoader::destroyBufferVk(mDeferredUpload->mColorBuffer, mDeferredUpload->mColorAllocation);
     }
     delete mDeferredUpload;
     mDeferredUpload = nullptr;
@@ -891,11 +1086,277 @@ void LLViewerTexLayerSetBuffer::destroyDeferredUploadRecord()
 
 void LLViewerTexLayerSetBuffer::processDeferredUploads()
 {
-    while (!sDeferredUploadBuffers.empty())
+    if (sDeferredUploadBuffers.empty())
     {
-        LLViewerTexLayerSetBuffer* buffer = sDeferredUploadBuffers.back();
-        sDeferredUploadBuffers.pop_back();
-        buffer->completeDeferredUpload();
+        return;
+    }
+    const U32 completed = LLVKLoader::getLastCompletedMonotonic();
+    std::vector<LLViewerTexLayerSetBuffer*> pending;
+    pending.swap(sDeferredUploadBuffers);
+    for (LLViewerTexLayerSetBuffer* buffer : pending)
+    {
+        if (!buffer->tryCompleteDeferredUpload(completed))
+        {
+            sDeferredUploadBuffers.push_back(buffer);
+        }
+    }
+}
+
+// static
+bool LLViewerTexLayerSetBuffer::bakeWorkerEnabled()
+{
+    static const bool s_enabled = []() -> bool {
+        return LLVKLoader::isVulkanInitialized() && LLVKLoader::recordWorkerCount() > 0;
+    }();
+    return s_enabled;
+}
+
+// static
+void LLViewerTexLayerSetBuffer::bakeWorkerStopHook()
+{
+    stopBakeWorker();
+}
+
+// static
+bool LLViewerTexLayerSetBuffer::startBakeWorker()
+{
+    if (sBakeWorkerRunning)
+    {
+        return true;
+    }
+    LLVKLoader::setVkBakeWorkerStopHook(&LLViewerTexLayerSetBuffer::bakeWorkerStopHook);
+    sBakeWorkerQuit = false;
+    sBakeWorkerThread = std::thread([] { bakeWorkerMain(); });
+    sBakeWorkerRunning = true;
+    return true;
+}
+
+// static
+void LLViewerTexLayerSetBuffer::stopBakeWorker()
+{
+    if (!sBakeWorkerRunning)
+    {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(sBakeJobMutex);
+        sBakeWorkerQuit = true;
+    }
+    sBakeJobCv.notify_all();
+    if (sBakeWorkerThread.joinable())
+    {
+        sBakeWorkerThread.join();
+    }
+    sBakeWorkerRunning = false;
+    sBakeWorkerQuit = false;
+
+    {
+        std::lock_guard<std::mutex> lk(sBakeJobMutex);
+        for (LLVkAlphaGenJob& job : sAlphaJobQueue)
+        {
+            if (job.mParam != nullptr && LLTexLayerParamAlpha::isLiveInstance(job.mParam))
+            {
+                job.mParam->clearVkAlphaJobPending();
+            }
+        }
+        sAlphaJobQueue.clear();
+        sEncodeJobQueue.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lk(sBakePublishMutex);
+        for (LLVkAlphaGenJob& job : sAlphaPublishQueue)
+        {
+            if (job.mParam != nullptr && LLTexLayerParamAlpha::isLiveInstance(job.mParam))
+            {
+                job.mParam->clearVkAlphaJobPending();
+            }
+        }
+        sAlphaPublishQueue.clear();
+        sEncodePublishQueue.clear();
+    }
+}
+
+// static
+void LLViewerTexLayerSetBuffer::bakeWorkerMain()
+{
+#if LL_LINUX
+    pthread_setname_np(pthread_self(), "aya-bake");
+#endif
+    for (;;)
+    {
+        LLVkAlphaGenJob alpha_job;
+        FSBakeEncodeJob encode_job;
+        S32 kind = 0;
+        {
+            std::unique_lock<std::mutex> lk(sBakeJobMutex);
+            sBakeJobCv.wait(lk, [] { return sBakeWorkerQuit || !sAlphaJobQueue.empty() || !sEncodeJobQueue.empty(); });
+            if (sBakeWorkerQuit)
+            {
+                return;
+            }
+            if (!sAlphaJobQueue.empty())
+            {
+                alpha_job = std::move(sAlphaJobQueue.front());
+                sAlphaJobQueue.pop_front();
+                kind = 1;
+            }
+            else
+            {
+                encode_job = std::move(sEncodeJobQueue.front());
+                sEncodeJobQueue.pop_front();
+                kind = 2;
+            }
+        }
+        if (kind == 1)
+        {
+            LLTexLayerParamAlpha::runVkAlphaGenJob(alpha_job);
+            std::lock_guard<std::mutex> lk(sBakePublishMutex);
+            sAlphaPublishQueue.push_back(std::move(alpha_job));
+        }
+        else
+        {
+            runBakeEncodeJob(encode_job);
+            std::lock_guard<std::mutex> lk(sBakePublishMutex);
+            sEncodePublishQueue.push_back(std::move(encode_job));
+        }
+    }
+}
+
+// static
+void LLViewerTexLayerSetBuffer::drainBakeWorkerPublish()
+{
+    for (;;)
+    {
+        LLVkAlphaGenJob job;
+        bool have = false;
+        {
+            std::lock_guard<std::mutex> lk(sBakePublishMutex);
+            if (!sAlphaPublishQueue.empty())
+            {
+                job = std::move(sAlphaPublishQueue.front());
+                sAlphaPublishQueue.pop_front();
+                have = true;
+            }
+        }
+        if (!have)
+        {
+            break;
+        }
+        if (job.mParam != nullptr && LLTexLayerParamAlpha::isLiveInstance(job.mParam))
+        {
+            job.mParam->applyVkAlphaGenJob(job);
+            ++LLVKLoader::gVkPerf.bake_pub;
+        }
+    }
+    for (;;)
+    {
+        FSBakeEncodeJob job;
+        bool have = false;
+        {
+            std::lock_guard<std::mutex> lk(sBakePublishMutex);
+            if (!sEncodePublishQueue.empty())
+            {
+                job = std::move(sEncodePublishQueue.front());
+                sEncodePublishQueue.pop_front();
+                have = true;
+            }
+        }
+        if (!have)
+        {
+            break;
+        }
+        LLViewerTexLayerSetBuffer* buffer = job.mBuffer;
+        if (buffer != nullptr && sLiveBakeBuffers.find(buffer) != sLiveBakeBuffers.end() &&
+            buffer->mDeferredUploadGen == job.mUploadGen &&
+            isAgentAvatarValid() && buffer->mTexLayerSet->hasComposite())
+        {
+            buffer->publishEncodedUpload(job);
+            ++LLVKLoader::gVkPerf.bake_pub;
+        }
+        else if (job.mWroteFile)
+        {
+            LLFileSystem::removeFile(job.mAssetID, LLAssetType::AT_TEXTURE);
+        }
+    }
+}
+
+void LLViewerTexLayerSetBuffer::publishEncodedUpload(FSBakeEncodeJob& job)
+{
+    LLViewerTexLayerSet* layer_set = getViewerTexLayerSet();
+    if (!job.mOk)
+    {
+        mUploadPending = false;
+        if (job.mWroteFile)
+        {
+            LLFileSystem::removeFile(job.mAssetID, LLAssetType::AT_TEXTURE);
+            LL_INFOS() << "Unable to create baked upload file (reason: corrupted)." << LL_ENDL;
+        }
+        else
+        {
+            LL_INFOS() << "Unable to create baked upload file (reason: failed to write file)" << LL_ENDL;
+        }
+        return;
+    }
+
+    const bool highest_lod = job.mIsHighestRes;
+    // Baked_upload_data is owned by the responder and deleted after the request completes.
+    LLBakedUploadData* baked_upload_data = new LLBakedUploadData(gAgentAvatarp,
+                                                                 layer_set,
+                                                                 job.mAssetID,
+                                                                 highest_lod);
+    // upload ID is used to avoid overlaps, e.g. when the user rapidly makes two changes outside of Face Edit.
+    mUploadID = job.mAssetID;
+
+    // Upload the image
+    const std::string url = gAgent.getRegionCapability("UploadBakedTexture");
+    if(!url.empty()
+        && !LLPipeline::sForceOldBakedUpload // toggle debug setting UploadBakedTexOld to change between the new caps method and old method
+        && (mUploadFailCount < (BAKE_UPLOAD_ATTEMPTS - 1))) // Try last ditch attempt via asset store if cap upload is failing.
+    {
+        // The responder will call LLViewerTexLayerSetBuffer::onTextureUploadComplete()
+        LLResourceUploadInfo::ptr_t uploadInfo(new FSTexlayerUpload( mUploadID, baked_upload_data, job.mAssetData ) );
+        LLViewerAssetUpload::EnqueueInventoryUpload(url, uploadInfo);
+
+        LL_INFOS() << "Baked texture upload via capability of " << mUploadID << " to " << url << LL_ENDL;
+    }
+    else
+    {
+        gAssetStorage->storeAssetData(job.mTID,
+                                      LLAssetType::AT_TEXTURE,
+                                      LLViewerTexLayerSetBuffer::onTextureUploadComplete,
+                                      baked_upload_data,
+                                      true,     // temp_file
+                                      true,     // is_priority
+                                      true);    // store_local
+        LL_INFOS() << "Baked texture upload via Asset Store." <<  LL_ENDL;
+    }
+
+    if (highest_lod)
+    {
+        // Sending the final LOD for the baked texture.  All done, pause
+        // the upload timer so we know how long it took.
+        mNeedsUpload = false;
+        mNeedsUploadTimer.pause();
+    }
+    else
+    {
+        // Sending a lower level LOD for the baked texture.  Restart the upload timer.
+        mNumLowresUploads++;
+        mNeedsUploadTimer.unpause();
+        mNeedsUploadTimer.reset();
+    }
+
+    // Print out notification that we uploaded this texture.
+    if (gSavedSettings.getBOOL("DebugAvatarRezTime"))
+    {
+        const std::string lod_str = highest_lod ? "HighRes" : "LowRes";
+        LLSD args;
+        args["EXISTENCE"] = llformat("%d",(U32)layer_set->getAvatar()->debugGetExistenceTimeElapsedF32());
+        args["TIME"] = llformat("%d",(U32)mNeedsUploadTimer.getElapsedTimeF32());
+        args["BODYREGION"] = layer_set->getBodyRegionName();
+        args["RESOLUTION"] = lod_str;
+        LLNotificationsUtil::add("AvatarRezSelfBakedTextureUploadNotification",args);
+        LL_DEBUGS("Avatar") << self_av_string() << "Uploading [ name: " << layer_set->getBodyRegionName() << " res:" << lod_str << " time:" << (U32)mNeedsUploadTimer.getElapsedTimeF32() << " ]" << LL_ENDL;
     }
 }
 

@@ -64,6 +64,18 @@ protected:
 // LLTexLayerParamAlpha
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class LLTexLayerParamAlpha;
+
+struct LLVkAlphaGenJob
+{
+    LLTexLayerParamAlpha*  mParam = nullptr;
+    LLPointer<LLImageTGA>  mTGA;
+    LLPointer<LLImageRaw>  mRaw;
+    F32                    mDomain = 0.f;
+    F32                    mWeight = 0.f;
+    bool                   mOk = false;
+};
+
 LL_ALIGN_PREFIX(16)
 class alignas(16) LLTexLayerParamAlpha : public LLTexLayerParam
 {
@@ -107,6 +119,14 @@ public:
     void                    deleteCaches();
     bool                    getMultiplyBlend() const;
 
+    bool                    needsVkAlphaGen();
+    bool                    isVkAlphaJobPending() const     { return mVkAlphaJobPending; }
+    void                    clearVkAlphaJobPending()        { mVkAlphaJobPending = false; }
+    bool                    buildVkAlphaGenJob(LLVkAlphaGenJob& out);
+    static void             runVkAlphaGenJob(LLVkAlphaGenJob& job);
+    void                    applyVkAlphaGenJob(LLVkAlphaGenJob& job);
+    static bool             isLiveInstance(LLTexLayerParamAlpha* param);
+
 private:
     LLTexLayerParamAlpha(const LLTexLayerParamAlpha& pOther);
 
@@ -115,6 +135,7 @@ private:
     LLPointer<LLImageRaw>   mStaticImageRaw;
     std::atomic<bool>       mNeedsCreateTexture;
     bool                    mStaticImageInvalid;
+    bool                    mVkAlphaJobPending = false;
     LL_ALIGN_16(LLVector4a              mAvgDistortionVec);
     F32                     mCachedEffectiveWeight;
 

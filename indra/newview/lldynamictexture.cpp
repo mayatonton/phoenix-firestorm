@@ -42,6 +42,7 @@
 #include "llglslshader.h"
 #include "lltexlayer.h"
 #include "llviewertexlayer.h"
+#include "llvkloader.h"
 
 LLViewerDynamicTexture::instance_list_t LLViewerDynamicTexture::sInstances[ LLViewerDynamicTexture::ORDER_COUNT ];
 S32 LLViewerDynamicTexture::sNumRenders = 0;
@@ -166,8 +167,13 @@ bool LLViewerDynamicTexture::updateAllInstances()
         return true;
     }
 
-    LLTexLayer::processPendingMorphMaskCaptures();
-    LLViewerTexLayerSetBuffer::processDeferredUploads();
+    {
+        LLTimer bake_drain_timer;
+        LLViewerTexLayerSetBuffer::drainBakeWorkerPublish();
+        LLTexLayer::processPendingMorphMaskCaptures();
+        LLViewerTexLayerSetBuffer::processDeferredUploads();
+        LLVKLoader::gVkPerf.bake_drain_us += (U64)(bake_drain_timer.getElapsedTimeF64() * 1000000.0);
+    }
     // <FS:Beq> Add dedicated preview target 
     // LLRenderTarget& preview_target = gPipeline.mAuxillaryRT.deferredScreen;
     LLRenderTarget& preview_target = gPipeline.mPreviewScreen; 
