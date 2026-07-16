@@ -4556,24 +4556,17 @@ void LLPipeline::postSort(LLCamera &camera)
             continue;
         }
 
-        const bool bucket_mode = LLVKBucket::enabled();
-        const bool bucket_skip_push = bucket_mode;
-
-        if (bucket_mode)
+        getFrameCull()->setBucketVisible(group);
+        if (group->mVkBucketIndexCount > 0 &&
+            !isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
         {
-            getFrameCull()->setBucketVisible(group);
-            if (group->mVkBucketIndexCount > 0 &&
-                !isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
-            {
-                addTrianglesDrawn(group->mVkBucketIndexCount);
-            }
+            addTrianglesDrawn(group->mVkBucketIndexCount);
         }
 
         for (LLSpatialGroup::draw_map_t::iterator j = group->mDrawMap.begin(); j != group->mDrawMap.end(); ++j)
         {
             LLSpatialGroup::drawmap_elem_t &src_vec = j->second;
-            const bool bucketized = LLVKBucket::isBucketizedPass(j->first);
-            if (bucket_skip_push && bucketized)
+            if (LLVKBucket::isBucketizedPass(j->first))
             {
                 continue;
             }
@@ -4582,16 +4575,10 @@ void LLPipeline::postSort(LLCamera &camera)
                 continue;
             }
 
-            const bool count_bucket_push = bucketized;
-
             for (LLSpatialGroup::drawmap_elem_t::iterator k = src_vec.begin(); k != src_vec.end(); ++k)
             {
                 LLDrawInfo *info = *k;
 
-                if (count_bucket_push)
-                {
-                    ++LLVKLoader::gVkPerf.bkt_rpush;
-                }
                 getFrameCull()->pushDrawInfo(j->first, info);
                 if (!isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
                 {

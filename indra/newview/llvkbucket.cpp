@@ -136,15 +136,6 @@ namespace
     }
 }
 
-bool enabled()
-{
-    static const bool s_enabled = []() -> bool {
-        const char* e = getenv("AYASTORM_BUCKETS");
-        return !(e != nullptr && e[0] == '0');
-    }();
-    return s_enabled;
-}
-
 bool isBucketizedPass(U32 pass)
 {
     static const std::array<bool, LLRenderPass::NUM_RENDER_TYPES> s_lut = []() {
@@ -160,8 +151,7 @@ bool isBucketizedPass(U32 pass)
 
 bool emitActive(U32 pass)
 {
-    return enabled()
-        && isBucketizedPass(pass)
+    return isBucketizedPass(pass)
         && gPipeline.hasRenderType(pass);
 }
 

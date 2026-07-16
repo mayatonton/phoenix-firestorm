@@ -47,7 +47,6 @@ namespace LLVKBucket
         std::vector<U32> mFreeSlots;
     };
 
-    bool enabled();
     bool isBucketizedPass(U32 pass);
     bool emitActive(U32 pass);
     U32  visWordCount();
