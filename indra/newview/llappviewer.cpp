@@ -2784,6 +2784,10 @@ void LLAppViewer::initLoggingAndGetLastDuration()
 
     LLError::LLUserWarningMsg::setHandler(errorHandler);
 
+#if !LL_WINDOWS
+    LLApp::setFatalSignalTracePath(gDirUtilp->getExpandedFilename(LL_PATH_LOGS, "stack_trace.log"));
+#endif
+
 
     if (mSecondInstance)
     {

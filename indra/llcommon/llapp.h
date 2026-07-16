@@ -109,6 +109,10 @@ public:
      */
     bool parseCommandOptions(int argc, char** argv);
 
+#if !LL_WINDOWS
+    static void setFatalSignalTracePath(const std::string& path);
+#endif
+
     /**
      * @brief Parse Unicode command line options and insert them into
      * application command line options.

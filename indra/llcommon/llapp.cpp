@@ -55,6 +55,75 @@
 #ifndef LL_WINDOWS
 # include <signal.h>
 # include <unistd.h> // for fork()
+# include <execinfo.h>
+# include <fcntl.h>
+
+namespace
+{
+    char sFatalSignalTracePath[1024] = { 0 };
+
+    void writeFatalSignalTrace(int signum)
+    {
+        void* frames[128];
+        const int frame_count = backtrace(frames, 128);
+
+        char head[64];
+        int len = 0;
+        const char* prefix = "==== FATAL SIGNAL ";
+        while (*prefix != 0 && len < 40)
+        {
+            head[len++] = *prefix++;
+        }
+        int v = signum;
+        char digits[16];
+        int d = 0;
+        if (v <= 0)
+        {
+            digits[d++] = '0';
+        }
+        while (v > 0 && d < 15)
+        {
+            digits[d++] = (char)('0' + (v % 10));
+            v /= 10;
+        }
+        while (d > 0)
+        {
+            head[len++] = digits[--d];
+        }
+        const char* suffix = " ====\n";
+        while (*suffix != 0 && len < 63)
+        {
+            head[len++] = *suffix++;
+        }
+
+        if (sFatalSignalTracePath[0] != 0)
+        {
+            int fd = open(sFatalSignalTracePath, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (fd >= 0)
+            {
+                ssize_t unused = write(fd, head, len);
+                (void)unused;
+                backtrace_symbols_fd(frames, frame_count, fd);
+                close(fd);
+            }
+        }
+        ssize_t unused = write(2, head, len);
+        (void)unused;
+        backtrace_symbols_fd(frames, frame_count, 2);
+    }
+}
+
+void LLApp::setFatalSignalTracePath(const std::string& path)
+{
+    size_t n = path.size();
+    if (n >= sizeof(sFatalSignalTracePath))
+    {
+        n = sizeof(sFatalSignalTracePath) - 1;
+    }
+    memcpy(sFatalSignalTracePath, path.c_str(), n);
+    sFatalSignalTracePath[n] = 0;
+}
+
 void setup_signals();
 void default_unix_signal_handler(int signum, siginfo_t *info, void *);
 
@@ -519,6 +588,9 @@ void setup_signals()
     sigemptyset( &act.sa_mask );
     act.sa_flags = SA_SIGINFO;
 
+    void* prime[1];
+    backtrace(prime, 1);
+
     // Synchronous signals
 #   ifndef LL_BUGSPLAT
     sigaction(SIGABRT, &act, NULL);
@@ -625,6 +697,7 @@ void default_unix_signal_handler(int signum, siginfo_t *info, void *)
         {
             LL_WARNS() << "Signal handler - Got SIGABRT, terminating" << LL_ENDL;
         }
+        writeFatalSignalTrace(signum);
         clear_signals();
         raise(signum);
         return;
@@ -658,6 +731,7 @@ void default_unix_signal_handler(int signum, siginfo_t *info, void *)
             signum == SIGSEGV ||
             signum == SIGQUIT)
         {
+            writeFatalSignalTrace(signum);
             if (signum == LL_SMACKDOWN_SIGNAL)
             {
                 // Smackdown treated just like any other app termination, for now
