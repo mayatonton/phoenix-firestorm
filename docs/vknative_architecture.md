@@ -42,7 +42,7 @@ per-frame(×1/frame):
 2. **「bind」という概念を per-draw 経路から消す。** texture / VB / descriptor / pipeline の全てについて、draw が運ぶのは index のみ。
 3. **CPU は draw を数え直さない。** 可視性の決定は保持され、最終的に GPU が数える(indirect)。
 4. **順序が意味を持つ pass(alpha)だけが順序コストを払う。** 不透明系に順序保証のコストを課さない。
-5. **全機構に kill switch。** 段ごとに旧経路へ即時 fallback できない工事は始めない(big-bang 禁止)。
+5. **工事中は kill switch・決着したら即削除。** 段の実装〜gate の間だけ退化モードへ即時 fallback できる形で工事し(big-bang 禁止)、gate PASS 後に switch ごと刈る(§5 運用)。
 
 ---
 
@@ -153,13 +153,15 @@ worker pool の新しい仕事(優先順): ① geometry rebuild(genVolumeGeometr
 
 ## 5. 移行戦略(最重要・strangler 方式)
 
-**大原則: 全段 kill switch 付き・段ごとに AYA gate・動く viewer を一度も壊さない。big-bang 全取っ替え禁止。**
+**大原則: 段ごとに AYA gate・動く viewer を一度も壊さない。big-bang 全取っ替え禁止。**
+
+**kill switch 運用(AYA 決定 2026-07-16 改訂)**: kill switch は「実装〜gate の切り分け用足場」であり恒久 fallback ではない。**当該段の gate PASS 後、次段に入る前に switch と退化経路を削除する**(= 一番安全に捨てられる日に捨てる。恒久二経路・dead fallback の堆積を作らない)。switch は旧コード併存でなく新機構の退化モード(パラメータ退化)として実装し、分岐点を最小にする。M0-M2 の switch 3 本(`AYASTORM_VK12` / `AYASTORM_BINDLESS` / `AYASTORM_DRAWDATA`)と binding54 fallback 経路はこの決定により撤去済み。
 
 | 段 | 内容 | 消える仕事 | kill switch / gate 見所 |
 |---|---|---|---|
 | **M0** | device 前提工事: Vulkan12Features chain(descriptorIndexing 系)+ multiDrawIndirect 要求(**全て optional 検出・未対応でも従来動作**)。caps 公開のみ・消費者なし | なし(無風段) | 起動可否そのもの。3 OS の caps ログ採取 |
-| **M1** | global texture heap 新設 + **indexed batch shader family を heap 消費に切替**(diffuse 系 index を DrawData でなくまず既存 per-vertex index のまま heap 化) | 当該 family の per-draw set 構築・Strike 10 memo | `AYASTORM_BINDLESS=0`。誤 texture・白置換・streaming 中の slot 差替 |
-| **M2** | per-draw SSBO(**tex_slots のみ** = §1.3 改訂)+ draw-ID(firstInstance→gl_InstanceIndex)。binding54 退役 | per-draw の slots arena 書込/dynamic offset(M1 運搬)・MDI への per-record 供給路を確立 | `AYASTORM_DRAWDATA=0`(binding54 経路へ fallback)。誤テクスチャ・batch 単位の模様混線 |
+| **M1** | global texture heap 新設 + **indexed batch shader family を heap 消費に切替**(diffuse 系 index を DrawData でなくまず既存 per-vertex index のまま heap 化) | 当該 family の per-draw set 構築・Strike 10 memo | switch 撤去済。誤 texture・白置換・streaming 中の slot 差替 |
+| **M2** | per-draw SSBO(**tex_slots のみ** = §1.3 改訂)+ draw-ID(firstInstance→gl_InstanceIndex)。binding54 退役 | per-draw の slots arena 書込/dynamic offset(M1 運搬)・MDI への per-record 供給路を確立 | switch・binding54 とも撤去済。誤テクスチャ・batch 単位の模様混線 |
 | **M3** | mega-buffer suballocation + mapped 直書き(CPU 副本解消)。strider read 消費者の洗い出しが前提調査 | per-draw VB bind ループ・VB 二重持ち RAM | `AYASTORM_MEGABUF=0`。geometry 化け・rebuild 競合 |
 | **M4** | 永続 bucket(静的不透明 + shadow static)+ dirty patch 配線。emission は CPU loop のまま | **render map 再構築(8b)**・pool loop の当該 pass 分・pipeline per-draw 照合 | `AYASTORM_BUCKETS=0`。物の出現/消滅遅れ(dirty 配線漏れ)・LOD 切替 |
 | **M5** | multi-draw indirect + GPU frustum/HiZ culling(compute) | vkCmdDrawIndexed ×N(静的分)・occlusion query 機構・octree cull の毎フレーム可視判定 | `AYASTORM_INDIRECT=0`。物陰の物体・水面下 cull・probe |

@@ -1183,9 +1183,9 @@ std::string LLViewerShaderMgr::loadBasicShaders()
         attribs["HERO_PROBES"] = "1";
     }
 
-    if (LLVKLoader::isBindlessDrawDataActiveVk())
+    if (LLVKLoader::isBindlessActiveVk())
     {
-        attribs["AYA_BINDLESS_DRAWDATA"] = "1";
+        attribs["AYA_BINDLESS"] = "1";
     }
 
     { // PBR terrain

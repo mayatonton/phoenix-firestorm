@@ -1313,10 +1313,6 @@ namespace LLVKLoader
 
     VkDescriptorSet getBindlessHeapSet();
 
-    void writeBindlessTexSlots(const U32* slots4);
-
-    bool isBindlessDrawDataActiveVk();
-
     U32  drawDataAcquireSlot(const U32* slots4);
 
     void drawDataReleaseSlotDeferred(U32 slot);
@@ -1326,13 +1322,6 @@ namespace LLVKLoader
     void setCurrentDrawDataID(U32 id);
 
     U32  getCurrentDrawDataID();
-
-    struct AyaTexSlots_PerDrawBind
-    {
-        U32 ayaTexSlots[4];
-    };
-    static_assert(sizeof(AyaTexSlots_PerDrawBind) == 16,
-                  "AyaTexSlots_PerDrawBind size mismatch (std140 expects 16 B)");
 
     void transitionImageLayoutVk(VkImage              image,
                                  VkImageAspectFlags   aspect_mask,

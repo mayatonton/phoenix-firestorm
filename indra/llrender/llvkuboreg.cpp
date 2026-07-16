@@ -50,10 +50,6 @@ namespace
         UBOREG_M(TextureMatrixUBO, texture_matrix),
     };
 
-    constexpr MemberEntry kM_AyaTexSlots[] = {
-        UBOREG_M(AyaTexSlots_PerDrawBind, ayaTexSlots),
-    };
-
     constexpr MemberEntry kM_ShadowParams[] = {
         UBOREG_M(ShadowParams_PerShaderBind, shadow_target_width),
         UBOREG_M(ShadowParams_PerShaderBind, _pad0),
@@ -608,7 +604,6 @@ namespace
         UBOREG_BLOCK(0, "PerFrameMatrixUBO",                    PerFrameMatrixUBO,                    kM_PerFrameMatrixUBO),
         UBOREG_BLOCK(0, "TextureMatrixUBO",                     TextureMatrixUBO,                     kM_TextureMatrixUBO),
         UBOREG_BLOCK(1, "ShadowParams_PerShaderBind",           ShadowParams_PerShaderBind,           kM_ShadowParams),
-        UBOREG_BLOCK(1, "AyaTexSlotsBlock",                     AyaTexSlots_PerDrawBind,              kM_AyaTexSlots),
         UBOREG_BLOCK(0, "PreviewAmbient_PerShaderBind",         PreviewAmbient_PerShaderBind,         kM_PreviewAmbient),
         UBOREG_BLOCK(1, "PbrTerrain_PerShaderBind",             PbrTerrain_PerShaderBind,             kM_PbrTerrain),
         UBOREG_BLOCK(0, "StarTime_PerShaderBind",               StarTime_PerShaderBind,               kM_StarTime),

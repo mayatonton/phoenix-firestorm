@@ -2750,11 +2750,6 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         if (LLVKLoader::isBindlessActiveVk() && mFeatures.mIndexedTextureChannels <= 4)
         {
             mVkUsesBindlessHeap = true;
-            if (!LLVKLoader::isBindlessDrawDataActiveVk())
-            {
-                add_ubo(54, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr,
-                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
-            }
         }
         else
         {
@@ -2821,7 +2816,7 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         {
             if (mVkBindingDeclaredType[bnd] == VKBD_UBO
                 && mVkBindingToUBOAccessor[bnd] == nullptr
-                && bnd != 7 && bnd != 44 && bnd != 54
+                && bnd != 7 && bnd != 44
                 && (stage_want == 0 || (mVkBindingStageMask[bnd] & stage_want)))
             {
                 mVkPerProgramUBOBinding = bnd;
@@ -3157,7 +3152,6 @@ VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
         case 51: return sizeof(LLVKLoader::DrawColor_PerShaderBind);
         case 52: return sizeof(LLVKLoader::PbrTerrain_PerShaderBind);
         case 53: return sizeof(LLVKLoader::ShadowParams_PerShaderBind);
-        case 54: return 16;
         default: return 0;
     }
 }
@@ -3230,14 +3224,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 slots[i] = LLImageGL::sDefaultGLTexture->getVkHeapSlot();
             }
         }
-        if (LLVKLoader::isBindlessDrawDataActiveVk())
-        {
-            LLVKLoader::setCurrentDrawDataID(LLVKLoader::drawDataWriteScratch(slots));
-        }
-        else
-        {
-            LLVKLoader::writeBindlessTexSlots(slots);
-        }
+        LLVKLoader::setCurrentDrawDataID(LLVKLoader::drawDataWriteScratch(slots));
     }
 
     VkImageView fallback_view = LLVKLoader::getDefaultFallbackVkImageView();

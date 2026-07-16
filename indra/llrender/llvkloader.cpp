@@ -252,7 +252,6 @@ namespace
     constexpr U32            DRAWDATA_TOTAL_SLOTS                    = 1048576;
     constexpr U32            DRAWDATA_SCRATCH_PER_FRAME              = 32768;
     constexpr U32            DRAWDATA_PERSISTENT_SLOTS               = DRAWDATA_TOTAL_SLOTS - 3 * DRAWDATA_SCRATCH_PER_FRAME;
-    bool                     sDrawDataActive                         = false;
     VkBuffer                 sDrawDataBuffer                         = VK_NULL_HANDLE;
     void*                    sDrawDataAllocation                     = nullptr;
     U32*                     sDrawDataMapped                         = nullptr;
@@ -1506,18 +1505,8 @@ namespace
             }
         }
 
-        bool allow_vk12 = true;
-        {
-            const char* e = getenv("AYASTORM_VK12");
-            if (e && atoi(e) == 0)
-            {
-                allow_vk12 = false;
-            }
-        }
-
         VkPhysicalDeviceVulkan12Features vk12_features_enable = {};
         vk12_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-        if (allow_vk12)
         {
             VkPhysicalDeviceVulkan12Features vk12_query = {};
             vk12_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -2082,7 +2071,6 @@ namespace
             sDrawDataAllocation = nullptr;
             sDrawDataMapped     = nullptr;
         }
-        sDrawDataActive   = false;
         sDrawDataSlotNext = 1;
         sDrawDataSlotFreeList.clear();
         sPendingDrawDataSlotFrees.clear();
@@ -2110,14 +2098,6 @@ namespace
         if (!sBindlessCapable || sBindlessHeapCapacity == 0)
         {
             return true;
-        }
-        {
-            const char* e = getenv("AYASTORM_BINDLESS");
-            if (e && atoi(e) == 0)
-            {
-                LL_INFOS("Vulkan") << "VKBindless: disabled by AYASTORM_BINDLESS=0" << LL_ENDL;
-                return true;
-            }
         }
 
         const U32 count = sBindlessHeapCapacity;
@@ -2221,14 +2201,12 @@ namespace
                 w.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                 w.pBufferInfo     = &bi;
                 vkUpdateDescriptorSets(sDevice, 1, &w, 0, nullptr);
-
-                const char* dde = getenv("AYASTORM_DRAWDATA");
-                sDrawDataActive = !(dde && atoi(dde) == 0);
             }
             else
             {
-                LL_WARNS("Vulkan") << "VKBindless: DrawData buffer creation failed (drawdata inactive)" << LL_ENDL;
-                sDrawDataActive = false;
+                LL_WARNS("Vulkan") << "VKBindless: DrawData buffer creation failed (heap inactive)" << LL_ENDL;
+                destroyBindlessHeap();
+                return true;
             }
         }
 
@@ -2236,8 +2214,7 @@ namespace
         sBindlessSlotNext  = 1;
         sBindlessActive    = true;
         bindlessWriteSlotInternal(0, VK_NULL_HANDLE, VK_NULL_HANDLE);
-        LL_INFOS("Vulkan") << "VKBindless: heap active count=" << count
-                           << " drawdata=" << (sDrawDataActive ? 1 : 0) << LL_ENDL;
+        LL_INFOS("Vulkan") << "VKBindless: heap active count=" << count << LL_ENDL;
         return true;
     }
 
@@ -6135,12 +6112,6 @@ static bool ensureObjectSkinUploaded(VkBuffer& out_buf, U32& out_off)
     return true;
 }
 
-static thread_local U32 tBindlessTexSlotsOffset  = 0;
-static thread_local U32 tBindlessTexSlotsFrame   = 0xFFFFFFFFu;
-static thread_local U32 tBindlessTexSlotsLast[4] = {};
-
-bool ensureBindlessTexSlotsUploaded(VkBuffer& out_buf, U32& out_off);
-
 bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
 {
     switch (binding)
@@ -6150,51 +6121,8 @@ bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
         case 48: return ensurePBRMaterialUploaded(out_buf, out_off);
         case 51: return ensureDrawColorUploaded(out_buf, out_off);
         case 53: return ensureShadowParamsUploaded(out_buf, out_off);
-        case 54: return ensureBindlessTexSlotsUploaded(out_buf, out_off);
         default: return false;
     }
-}
-
-bool ensureBindlessTexSlotsUploaded(VkBuffer& out_buf, U32& out_off)
-{
-    if (tBindlessTexSlotsFrame != sMonotonicFrameCount)
-    {
-        VkBuffer buf    = VK_NULL_HANDLE;
-        U32      off    = 0;
-        void*    mapped = nullptr;
-        if (!allocPerDrawUBOSlice(16, buf, off, mapped) || mapped == nullptr)
-        {
-            return false;
-        }
-        std::memset(mapped, 0, 16);
-        tBindlessTexSlotsOffset = off;
-        tBindlessTexSlotsFrame  = sMonotonicFrameCount;
-        std::memset(tBindlessTexSlotsLast, 0, sizeof(tBindlessTexSlotsLast));
-    }
-    out_buf = getPerDrawUBOArenaBuffer();
-    out_off = tBindlessTexSlotsOffset;
-    return out_buf != VK_NULL_HANDLE;
-}
-
-void writeBindlessTexSlots(const U32* slots4)
-{
-    if (tBindlessTexSlotsFrame == sMonotonicFrameCount
-        && std::memcmp(tBindlessTexSlotsLast, slots4, 16) == 0)
-    {
-        return;
-    }
-    VkBuffer buf    = VK_NULL_HANDLE;
-    U32      off    = 0;
-    void*    mapped = nullptr;
-    if (!allocPerDrawUBOSlice(16, buf, off, mapped) || mapped == nullptr)
-    {
-        return;
-    }
-    std::memcpy(mapped, slots4, 16);
-    tBindlessTexSlotsOffset = off;
-    tBindlessTexSlotsFrame  = sMonotonicFrameCount;
-    std::memcpy(tBindlessTexSlotsLast, slots4, 16);
-    LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
 }
 
 void* rotateObjectSkinSlotForWrite()
@@ -8766,14 +8694,9 @@ VkDescriptorSet getBindlessHeapSet()
     return sBindlessHeapSet;
 }
 
-bool isBindlessDrawDataActiveVk()
-{
-    return sDrawDataActive;
-}
-
 U32 drawDataAcquireSlot(const U32* slots4)
 {
-    if (!sDrawDataActive || sDrawDataMapped == nullptr)
+    if (sDrawDataMapped == nullptr)
     {
         return BINDLESS_INVALID_SLOT;
     }
@@ -8803,7 +8726,7 @@ U32 drawDataAcquireSlot(const U32* slots4)
 
 void drawDataReleaseSlotDeferred(U32 slot)
 {
-    if (!sDrawDataActive || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= DRAWDATA_PERSISTENT_SLOTS)
+    if (sDrawDataMapped == nullptr || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= DRAWDATA_PERSISTENT_SLOTS)
     {
         return;
     }
@@ -8819,7 +8742,7 @@ static thread_local U32 tDrawDataScratchMemoVals[4] = {};
 
 U32 drawDataWriteScratch(const U32* slots4)
 {
-    if (!sDrawDataActive || sDrawDataMapped == nullptr)
+    if (sDrawDataMapped == nullptr)
     {
         return 0;
     }
