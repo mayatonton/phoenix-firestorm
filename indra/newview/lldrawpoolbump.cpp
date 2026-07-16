@@ -46,6 +46,7 @@
 #include "llviewercamera.h"
 #include "llviewertexturelist.h"
 #include "pipeline.h"
+#include "llvkbucket.h"
 #include "llpipelineframecontext.h"
 #include "llspatialpartition.h"
 #include "llviewershadermgr.h"
@@ -520,19 +521,13 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
         gGL.getTexUnit(bump_channel)->unbind(LLTexUnit::TT_TEXTURE);
 
         U32 type = rigged ? LLRenderPass::PASS_BUMP_RIGGED : LLRenderPass::PASS_BUMP;
-        LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
-        LLCullResult::drawinfo_iterator end = gPipeline.endRenderMap(type);
 
         const LLVOAvatar* lastAvatar = nullptr;
         U64 lastMeshId = 0;
         bool skipLastSkin = false;
 
-        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
         {
-            LLDrawInfo& params = **i;
-
-            LLCullResult::increment_iterator(i, end);
-
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(params.mAlphaMaskCutoff);
             LLDrawPoolBump::bindBumpMap(params, bump_channel);
 
@@ -547,7 +542,7 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
             {
                 pushBumpBatch(params, true, false);
             }
-        }
+        });
 
         LLGLSLShader::sCurBoundShaderPtr->disableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
         LLGLSLShader::sCurBoundShaderPtr->disableTexture(LLViewerShaderMgr::BUMP_MAP);

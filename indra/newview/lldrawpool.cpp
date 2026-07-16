@@ -50,6 +50,7 @@
 #include "llface.h"
 #include "llviewerobjectlist.h" // For debug listing.
 #include "pipeline.h"
+#include "llvkbucket.h"
 #include "llspatialpartition.h"
 #include "llviewercamera.h"
 #include "lldrawpoolwlsky.h"
@@ -1021,15 +1022,10 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     if (texture)
     {
-        auto* begin = gPipeline.beginRenderMap(type);
-        auto* end = gPipeline.endRenderMap(type);
-        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
         {
-            LLDrawInfo* pparams = *i;
-            LLCullResult::increment_iterator(i, end);
-
-            pushBatch(*pparams, texture, batch_textures);
-        }
+            pushBatch(params, texture, batch_textures);
+        });
     }
     else
     {
@@ -1040,15 +1036,10 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
 void LLRenderPass::pushUntexturedBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
-        LLDrawInfo* pparams = *i;
-        LLCullResult::increment_iterator(i, end);
-
-        pushUntexturedBatch(*pparams);
-    }
+        pushUntexturedBatch(params);
+    });
 }
 
 void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures)
@@ -1381,23 +1372,17 @@ void LLRenderPass::pushVelocityBatches(U32 type)
     static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
     static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
 
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end   = gPipeline.endRenderMap(type);
-
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
-        LLDrawInfo& params = **i;
-        LLCullResult::increment_iterator(i, end);
-
         if (!params.mVertexBuffer.notNull())
         {
-            continue;
+            return;
         }
 
         if (params.mAttachedToAvatar.notNull() &&
             (params.mAttachedToAvatar->isSelf() ? !self_blur : !others_blur))
         {
-            continue;
+            return;
         }
 
         LLGLDisable cull_face(params.mGLTFMaterial && params.mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
@@ -1427,7 +1412,7 @@ void LLRenderPass::pushVelocityBatches(U32 type)
         {
             *params.mLastModelMatrix = *current_mat;
         }
-    }
+    });
 }
 
 void LLRenderPass::pushRiggedVelocityBatches(U32 type)

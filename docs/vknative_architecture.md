@@ -83,10 +83,10 @@ per-frame(×1/frame):
 ### 2.1 永続 bucket(pipeline ソート済み draw stream)
 
 - **bucket = (pass, pipeline, region, mega-buffer pool) をキーとする永続配列**(region を含めるのは per-record transform を不要にするため = §1.3 改訂)。要素 = `DrawRecord { firstIndex, indexCount, vertexOffset, drawID }`(= VkDrawIndexedIndirectCommand と同形に置く)。
-- **構築はイベント駆動**: LLSpatialGroup の rebuild(GEOM_DIRTY 決着 = genDrawInfo 出力)時に、その group 由来の DrawRecord 群を bucket へ **patch**(group 単位の連続 range を予約し差し替え)。毎フレームの render map 再構築(postSort 8b)は bucketized pass について **消滅**。
-- **可視性は record を消さない**: 可視 flag(または indirect の instanceCount 0/1)で表現し、cull 結果の反映を「配列の再構築」でなく「bit の書換」にする。第一段は CPU が octree cull 結果を bitset で反映・後段で GPU culling(§2.3)へ委譲。
-- **描画 emission**: pass 内で bucket を回し、bucket 境界でのみ pipeline bind + VB bind → `vkCmdDrawIndexedIndirect(count = bucket size)`。multiDrawIndirect 未使用の中間段では CPU loop の vkCmdDrawIndexed でも同じ bucket 構造で動く(移行を段にできる根拠)。
-- **対象 pass(第一波)**: 静的不透明系 = simple/fullbright/bump/materials 不透明/PBR 不透明/terrain/tree + shadow static(MT-2b の worker 対象と同じ 13 types)。**動的(rigged)・alpha・水・HUD は対象外**(従来 emission・ただし柱 1-3 の per-draw 費削減は全部乗る)。
+- **構築はイベント駆動(M4a 実装済)**: patch 点 = mDrawMap を書く者と同一(不変条件「bucket は mDrawMap の写像」)= `LLVolumeGeometryManager::rebuildGeom` / 基底 `rebuildGeom` の決着点で group 単位に差し替え・evict = `clearDrawMap` 1 hook(rebuild 開始・removeObject・群死・destroyGLState を全被覆)。実装 = `llvkbucket.h/.cpp`(key=(pass, region)・Range = group 毎の `LLPointer<LLDrawInfo>` 配列・slot 再利用)。毎フレームの render map 再構築(postSort 8b)は bucketized pass について **消滅**(実測 VkPerf `bkt rpush=0`)。
+- **可視性は record を消さない(M4a 実装済)**: 可視 flag は **LLCullResult 付属の per-cull bitset**(postSort が occlusion/surface-area filter 通過 group の bit を立てる)。group 側 `mVisible` stamp は probe(cube snapshot)が CAMERA_WORLD の ID を流用するため可視 flag に使えない(実トレースで確定した罠)。後段で GPU culling(§2.3)へ委譲。
+- **描画 emission**: pass 内で bucket を回し、bucket 境界でのみ pipeline bind + VB bind → `vkCmdDrawIndexedIndirect(count = bucket size)`。multiDrawIndirect 未使用の中間段では CPU loop の vkCmdDrawIndexed でも同じ bucket 構造で動く(移行を段にできる根拠)。M4a の emission = `LLVKBucket::forEachSource`(供給源選択ヘルパ・各 site のループ本体は 1 つ)。
+- **対象 pass(第一波 = `LLVKBucket::kBucketizedPasses` に一本化)**: MT-2b worker 対象と同一の 13 types(simple/fullbright/shiny/bump/fullbright shiny + materials 非 MASK 8 種)。**terrain/tree は render map 非経由**(face pool・stateSort が毎フレーム enqueue = pipeline.cpp:4286)につき対象外 → M6 の pool loop 骨格置換で再判定(先送り台帳)。GLTF_PBR・*_MASK 系・GRASS・GLOW = 第二波候補。**rigged・alpha・水は従来 emission**(柱 1-3 の per-draw 費削減は全部乗る)。HUD は bucket 経路に乗る(HUD cull の bitset で分離)。動的(active drawable)の 13-pass record は bucket に同居(emission chain 同一・static/dynamic の分離は M5 の MDI 化で record flag により行う)。
 
 ### 2.2 alpha(順序必須)の扱い
 
@@ -163,7 +163,7 @@ worker pool の新しい仕事(優先順): ① geometry rebuild(genVolumeGeometr
 | **M1** | global texture heap 新設 + **indexed batch shader family を heap 消費に切替**(diffuse 系 index を DrawData でなくまず既存 per-vertex index のまま heap 化) | 当該 family の per-draw set 構築・Strike 10 memo | switch 撤去済。誤 texture・白置換・streaming 中の slot 差替 |
 | **M2** | per-draw SSBO(**tex_slots のみ** = §1.3 改訂)+ draw-ID(firstInstance→gl_InstanceIndex)。binding54 退役 | per-draw の slots arena 書込/dynamic offset(M1 運搬)・MDI への per-record 供給路を確立 | switch・binding54 とも撤去済。誤テクスチャ・batch 単位の模様混線 |
 | **M3** | mega-buffer suballocation + mapped 直書き(CPU 副本解消)。strider read 消費者の洗い出しが前提調査 | per-draw VB bind ループ・VB 二重持ち RAM | switch 撤去済(gate PASS 2026-07-16・実測 vbbind 97.8% skip)。geometry 化け・rebuild 競合 |
-| **M4** | 永続 bucket(静的不透明 + shadow static)+ dirty patch 配線。emission は CPU loop のまま | **render map 再構築(8b)**・pool loop の当該 pass 分・pipeline per-draw 照合 | `AYASTORM_BUCKETS=0`。物の出現/消滅遅れ(dirty 配線漏れ)・LOD 切替 |
+| **M4** | 永続 bucket(静的不透明 + shadow static)+ dirty patch 配線。emission は CPU loop のまま。**M4a(camera 側)= 2026-07-16 gate PASS**・M4b = shadow 側 + MT-2b static split 退役 | **render map 再構築(8b)**・pool loop の当該 pass 分・pipeline per-draw 照合 | `AYASTORM_BUCKETS=0`。物の出現/消滅遅れ(dirty 配線漏れ)・LOD 切替 |
 | **M5** | multi-draw indirect + GPU frustum/HiZ culling(compute) | vkCmdDrawIndexed ×N(静的分)・occlusion query 機構・octree cull の毎フレーム可視判定 | `AYASTORM_INDIRECT=0`。物陰の物体・水面下 cull・probe |
 | **M6** | frame graph 表駆動 barrier + worker の更新 job 化(rebuild/upload/compaction)+ 旧経路の物理削除 | 手動 layout 簿記・MT-2b record worker(転用) | 段別。最後に旧経路削除の等価全数照合(GL 削除時と同じ「全数照合」規律) |
 

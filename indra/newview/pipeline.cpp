@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "pipeline.h"
+#include "llvkbucket.h"
 
 #include <unordered_map>
 
@@ -4555,23 +4556,42 @@ void LLPipeline::postSort(LLCamera &camera)
             continue;
         }
 
-        if (group->hasState(LLSpatialGroup::NEW_DRAWINFO) && group->hasState(LLSpatialGroup::GEOM_DIRTY) && !gCubeSnapshot)
-        {  // no way this group is going to be drawable without a rebuild
-            group->rebuildGeom();
+        const bool bucket_mode = LLVKBucket::enabled();
+        const bool bucket_skip_push = bucket_mode && !isFrameShadowPass();
+
+        if (bucket_mode)
+        {
+            getFrameCull()->setBucketVisible(group);
+            if (group->mVkBucketIndexCount > 0 &&
+                !isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
+            {
+                addTrianglesDrawn(group->mVkBucketIndexCount);
+            }
         }
 
         for (LLSpatialGroup::draw_map_t::iterator j = group->mDrawMap.begin(); j != group->mDrawMap.end(); ++j)
         {
             LLSpatialGroup::drawmap_elem_t &src_vec = j->second;
+            const bool bucketized = LLVKBucket::isBucketizedPass(j->first);
+            if (bucket_skip_push && bucketized)
+            {
+                continue;
+            }
             if (!hasRenderType(j->first))
             {
                 continue;
             }
 
+            const bool count_bucket_push = bucketized && !isFrameShadowPass();
+
             for (LLSpatialGroup::drawmap_elem_t::iterator k = src_vec.begin(); k != src_vec.end(); ++k)
             {
                 LLDrawInfo *info = *k;
 
+                if (count_bucket_push)
+                {
+                    ++LLVKLoader::gVkPerf.bkt_rpush;
+                }
                 getFrameCull()->pushDrawInfo(j->first, info);
                 if (!isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
                 {
@@ -13119,22 +13139,6 @@ static LLTrace::BlockTimerStatHandle FTM_SHADOW_ALPHA_TREE("Alpha Tree");
 static LLTrace::BlockTimerStatHandle FTM_SHADOW_ALPHA_GRASS("Alpha Grass");
 static LLTrace::BlockTimerStatHandle FTM_SHADOW_FULLBRIGHT_ALPHA_MASKED("Fullbright Alpha Masked");
 
-static const U32 sShadowStaticTypes[] = {
-    LLRenderPass::PASS_SIMPLE,
-    LLRenderPass::PASS_FULLBRIGHT,
-    LLRenderPass::PASS_SHINY,
-    LLRenderPass::PASS_BUMP,
-    LLRenderPass::PASS_FULLBRIGHT_SHINY,
-    LLRenderPass::PASS_MATERIAL,
-    LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE,
-    LLRenderPass::PASS_SPECMAP,
-    LLRenderPass::PASS_SPECMAP_EMISSIVE,
-    LLRenderPass::PASS_NORMMAP,
-    LLRenderPass::PASS_NORMMAP_EMISSIVE,
-    LLRenderPass::PASS_NORMSPEC,
-    LLRenderPass::PASS_NORMSPEC_EMISSIVE
-};
-
 namespace
 {
     struct ShadowRecordCtx
@@ -13248,7 +13252,7 @@ namespace
             LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
             LLGLSLShader::sCurPerCallVkSetShape     = ctx.seed_shape;
 
-            for (U32 type : sShadowStaticTypes)
+            for (U32 type : LLVKBucket::kBucketizedPasses)
             {
                 gPipeline.renderObjects(type, false, false, false);
             }
@@ -13310,8 +13314,8 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 
     // List of render pass types that use the prim volume as the shadow,
     // ignoring textures.
-    const U32* types = sShadowStaticTypes;
-    const U32 types_count = sizeof(sShadowStaticTypes) / sizeof(sShadowStaticTypes[0]);
+    const U32* types = LLVKBucket::kBucketizedPasses;
+    const U32 types_count = LLVKBucket::kBucketizedPassCount;
 
     LLGLEnable cull(GL_CULL_FACE);
 
@@ -14470,7 +14474,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     bool dispatched = false;
                     if (shadow_seed.valid)
                     {
-                        for (U32 type : sShadowStaticTypes)
+                        for (U32 type : LLVKBucket::kBucketizedPasses)
                         {
                             auto* pb = result[j].beginRenderMap(type);
                             auto* pe = result[j].endRenderMap(type);

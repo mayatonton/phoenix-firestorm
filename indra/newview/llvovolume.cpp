@@ -66,6 +66,7 @@
 #include "llworld.h"
 #include "llselectmgr.h"
 #include "pipeline.h"
+#include "llvkbucket.h"
 #include "llpipelineframecontext.h"
 #include "llsdutil.h"
 #include "llmatrix4a.h"
@@ -6533,6 +6534,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
     group->mLastUpdateTime = gFrameTimeSeconds;
     group->mBuilt = 1.f;
+    LLVKBucket::patchGroup(group);
     group->clearState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY);
 }
 

@@ -1402,6 +1402,11 @@ namespace LLVKLoader
         std::atomic<U64> draws_shadow_map[6] = {};
         std::atomic<U64> shadow_cull{0};
         std::atomic<U64> shadow_rigged{0};
+        std::atomic<U64> bkt_rpush{0};
+        std::atomic<U64> bkt_patch{0};
+        std::atomic<U64> bkt_range{0};
+        std::atomic<U64> bkt_rec{0};
+        std::atomic<U64> bkt_skip{0};
 
         void reset()
         {
@@ -1413,6 +1418,7 @@ namespace LLVKLoader
             for (auto& v : draws_pass) v = 0;
             for (auto& v : draws_shadow_map) v = 0;
             shadow_cull = 0; shadow_rigged = 0;
+            bkt_rpush = 0; bkt_patch = 0; bkt_range = 0; bkt_rec = 0; bkt_skip = 0;
         }
     };
     extern VkPerfCounters gVkPerf;

@@ -30,6 +30,7 @@
 #include "lldrawpoolmaterials.h"
 #include "llviewershadermgr.h"
 #include "pipeline.h"
+#include "llvkbucket.h"
 #include "llvoavatar.h"
 #include "llvkloader.h"
 #include "llvkuboreg.h"
@@ -142,9 +143,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         type += 1;
     }
 
-    LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
-    LLCullResult::drawinfo_iterator end = gPipeline.endRenderMap(type);
-
     GLint diffuseChannel = mShader->enableTexture(LLShaderMgr::DIFFUSE_MAP);
     GLint specChannel = mShader->enableTexture(LLShaderMgr::SPECULAR_MAP);
     GLint normChannel = mShader->enableTexture(LLShaderMgr::BUMP_MAP);
@@ -159,12 +157,9 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
 
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_MATERIAL("materials draw loop");
-        LLDrawInfo& params = **i;
-
-        LLCullResult::increment_iterator(i, end);
 
         if (normChannel > -1 && params.mNormalMap != lastNormalMap)
         {
@@ -213,7 +208,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         {
             if (!uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
             {
-                continue;
+                return;
             }
         }
 
@@ -242,7 +237,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             gGL.loadIdentity();
             gGL.matrixMode(LLRender::MM_MODELVIEW);
         }
-    }
+    });
 }
 
 // <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,

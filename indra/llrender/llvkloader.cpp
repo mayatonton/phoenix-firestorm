@@ -4337,6 +4337,11 @@ bool endFrame()
                                    << "/" << gVkPerf.draws_shadow_map[5].load()
                                    << " culled=" << gVkPerf.shadow_cull.load()
                                    << " rigged=" << gVkPerf.shadow_rigged.load()
+                                   << " | bkt rpush=" << gVkPerf.bkt_rpush.load()
+                                   << " patch=" << gVkPerf.bkt_patch.load()
+                                   << " range=" << gVkPerf.bkt_range.load()
+                                   << " rec=" << gVkPerf.bkt_rec.load()
+                                   << " skip=" << gVkPerf.bkt_skip.load()
                                    << " | mega " << [](){ U64 c,cap,use; megabufStats(c,cap,use);
                                         return llformat("chunks=%llu used=%.1f/%.1fMB",
                                             (unsigned long long)c, use/1048576.0, cap/1048576.0); }()

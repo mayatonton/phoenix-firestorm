@@ -47,6 +47,7 @@
 #include "llpipelineframecontext.h"
 #include "llmeshrepository.h"
 #include "llrender.h"
+#include "llvkbucket.h"
 #include "llvkloader.h"
 #include "lldrawpool.h"
 #include "lloctree.h"
@@ -136,11 +137,13 @@ LLSpatialGroup::~LLSpatialGroup()
     sNodeCount--;
 
     clearDrawMap();
+    LLVKBucket::onGroupDestroyed(this);
 }
 
 void LLSpatialGroup::clearDrawMap()
 {
     mDrawMap.clear();
+    LLVKBucket::evictGroup(this);
 }
 
 bool LLSpatialGroup::isHUDGroup()
@@ -400,6 +403,7 @@ void LLSpatialPartition::rebuildGeom(LLSpatialGroup* group)
     }
 
     group->mLastUpdateTime = gFrameTimeSeconds;
+    LLVKBucket::patchGroup(group);
     group->clearState(LLSpatialGroup::GEOM_DIRTY);
 }
 
@@ -4164,6 +4168,23 @@ void LLCullResult::clear()
         mRenderMapSize[i] = 0;
         mRenderMapEnd[i] = &render_map.front();
     }
+
+    mBucketVisBits.assign(LLVKBucket::visWordCount(), 0);
+}
+
+void LLCullResult::setBucketVisible(const LLSpatialGroup* group)
+{
+    const U32 id = group->mVkBucketGroupId;
+    if (id == LLVKBucket::INVALID_GROUP_ID)
+    {
+        return;
+    }
+    const U32 word = id >> 6;
+    if (word >= mBucketVisBits.size())
+    {
+        mBucketVisBits.resize(word + 1, 0);
+    }
+    mBucketVisBits[word] |= 1ULL << (id & 63);
 }
 
 LLCullResult::sg_iterator LLCullResult::beginVisibleGroups()

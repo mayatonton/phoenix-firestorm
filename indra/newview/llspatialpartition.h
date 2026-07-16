@@ -60,6 +60,11 @@ class LLGLSLShader;
 class LLViewerRegion;
 class LLReflectionMap;
 
+namespace LLVKBucket
+{
+    struct Bucket;
+}
+
 void pushVerts(LLFace* face);
 //<FS:BEQ> Make helper functions externally visible for use from viewerwindow
 void pushVerts(LLVolume* volume);
@@ -429,6 +434,10 @@ public:
     U32 mRenderOrder = 0;
     // Reflection Probe associated with this node (if any)
     LLPointer<LLReflectionMap> mReflectionProbe = nullptr;
+
+    U32 mVkBucketGroupId = 0xFFFFFFFFu;
+    U32 mVkBucketIndexCount = 0;
+    std::vector<std::pair<LLVKBucket::Bucket*, U32> > mVkBucketSlots;
 } LL_ALIGN_POSTFIX(16);
 
 class LLGeometryManager
@@ -604,6 +613,9 @@ public:
     void pushBridge(LLSpatialBridge* bridge);
     void pushDrawInfo(U32 type, LLDrawInfo* draw_info);
 
+    void setBucketVisible(const LLSpatialGroup* group);
+    const std::vector<U64>& bucketVisBits() const { return mBucketVisBits; }
+
     U32 getVisibleGroupsSize()      { return mVisibleGroupsSize; }
     U32 getAlphaGroupsSize()        { return mAlphaGroupsSize; }
     U32 getRiggedAlphaGroupsSize() { return mRiggedAlphaGroupsSize; }
@@ -654,6 +666,7 @@ private:
     U32                 mRenderMapAllocated[LLRenderPass::NUM_RENDER_TYPES];
     drawinfo_iterator mRenderMapEnd[LLRenderPass::NUM_RENDER_TYPES];
 
+    std::vector<U64>    mBucketVisBits;
 };
 
 
