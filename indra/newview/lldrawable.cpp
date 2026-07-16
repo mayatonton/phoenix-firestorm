@@ -195,6 +195,11 @@ void LLDrawable::destroy()
         LL_ERRS() << "Illegal deletion of LLDrawable!" << LL_ENDL;
     }*/
 
+    if (LLSpatialGroup* group = getSpatialGroup())
+    {
+        group->stripDrawRecords(this);
+    }
+
     std::for_each(mFaces.begin(), mFaces.end(), DeletePointer());
     mFaces.clear();
 
@@ -262,6 +267,11 @@ bool LLDrawable::isLight() const
 void LLDrawable::cleanupReferences()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWABLE;
+
+    if (LLSpatialGroup* group = getSpatialGroup())
+    {
+        group->stripDrawRecords(this);
+    }
 
     std::for_each(mFaces.begin(), mFaces.end(), DeletePointer());
     mFaces.clear();
@@ -491,6 +501,11 @@ void LLDrawable::mergeFaces(LLDrawable* src)
 
 void LLDrawable::deleteFaces(S32 offset, S32 count)
 {
+    if (LLSpatialGroup* group = getSpatialGroup())
+    {
+        group->stripDrawRecords(this);
+    }
+
     face_list_t::iterator face_begin = mFaces.begin() + offset;
     face_list_t::iterator face_end = face_begin + count;
 

@@ -146,6 +146,41 @@ void LLSpatialGroup::clearDrawMap()
     LLVKBucket::evictGroup(this);
 }
 
+void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep)
+{
+    if (drawablep == nullptr || mDrawMap.empty())
+    {
+        return;
+    }
+    bool removed = false;
+    for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); ++it)
+    {
+        drawmap_elem_t& vec = it->second;
+        size_t w = 0;
+        for (size_t r = 0; r < vec.size(); ++r)
+        {
+            if (vec[r].notNull() && vec[r]->mSrcDrawable.get() == drawablep)
+            {
+                removed = true;
+                continue;
+            }
+            if (w != r)
+            {
+                vec[w] = vec[r];
+            }
+            ++w;
+        }
+        if (w != vec.size())
+        {
+            vec.resize(w);
+        }
+    }
+    if (removed)
+    {
+        LLVKBucket::patchGroup(this);
+    }
+}
+
 bool LLSpatialGroup::isHUDGroup()
 {
     return getSpatialPartition() && getSpatialPartition()->isHUDPartition() ;

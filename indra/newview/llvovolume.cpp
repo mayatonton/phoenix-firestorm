@@ -6232,6 +6232,7 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         draw_vec.push_back(draw_info);
         draw_info->mTextureMatrix = tex_mat;
         draw_info->mModelMatrix = model_mat;
+        draw_info->mSrcDrawable = drawable;
         // <AYAstorm r30 P2> Hook up per-drawable storage so the velocity pass has
         // a stable place to read/write the previous frame's object matrix.
         draw_info->mLastModelMatrix = &facep->getDrawable()->mLastVelocityMatrix;

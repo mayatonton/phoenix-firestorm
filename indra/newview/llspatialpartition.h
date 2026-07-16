@@ -128,6 +128,7 @@ public:
 
     LLPointer<LLVOAvatar> mAvatar = nullptr;
     LLConstPointer<LLMeshSkinInfo> mSkinInfo;// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
+    LLPointer<LLDrawable> mSrcDrawable;
 
     // <AYAstorm r30 P2> Wearer avatar for attachments (rigged AND static). mAvatar
     // is only populated for rigged faces, so static prim attachments (classic prim
@@ -354,6 +355,7 @@ public:
     bool isHUDGroup() ;
 
     void clearDrawMap();
+    void stripDrawRecords(LLDrawable* drawablep);
     void validate();
     void validateDrawMap();
 
