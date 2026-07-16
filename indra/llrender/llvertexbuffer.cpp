@@ -281,7 +281,6 @@ public:
 };
 
 static LLVBOPool* sVBOPool = nullptr;
-static bool sMegaBufEnabled = true;
 
 void LLVertexBufferData::drawWithMatrix()
 {
@@ -902,11 +901,7 @@ void LLVertexBuffer::initClass(LLWindow* window)
     llassert(sVBOPool == nullptr);
     sVBOPool = new LLDefaultVBOPool();
 
-    const char* e = getenv("AYASTORM_MEGABUF");
-    sMegaBufEnabled = !(e && atoi(e) == 0);
     LLVKLoader::megabufInit(sTypeSize, TYPE_TEXTURE_INDEX);
-    LL_INFOS() << "VB megabuf: " << (sMegaBufEnabled ? "on (transient staging + shared chunks)"
-                                                     : "off (AYASTORM_MEGABUF=0: persistent staging + exclusive chunks)") << LL_ENDL;
 }
 
 void LLVertexBuffer::unbind()
@@ -1022,7 +1017,7 @@ void LLVertexBuffer::genBuffer(U32 size)
 
     if (mSize > 0 && mVkVertexSlice.buffer == VK_NULL_HANDLE)
     {
-        LLVKLoader::megabufAcquireVertex(mTypeMask, mNumVerts, !sMegaBufEnabled, mVkVertexSlice);
+        LLVKLoader::megabufAcquireVertex(mTypeMask, mNumVerts, mVkVertexSlice);
     }
 }
 
@@ -1036,7 +1031,7 @@ void LLVertexBuffer::genIndices(U32 size)
 
     if (mIndicesSize > 0 && mVkIndexSlice.buffer == VK_NULL_HANDLE)
     {
-        LLVKLoader::megabufAcquireIndex(mIndicesSize, !sMegaBufEnabled, mVkIndexSlice);
+        LLVKLoader::megabufAcquireIndex(mIndicesSize, mVkIndexSlice);
     }
 }
 
@@ -1456,7 +1451,7 @@ void LLVertexBuffer::_unmapBuffer()
         }
     }
 
-    if (sMegaBufEnabled && !mStagingPersistent)
+    if (!mStagingPersistent)
     {
         releaseVertexStaging();
         releaseIndexStaging();

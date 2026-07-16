@@ -260,16 +260,6 @@ namespace LLVKLoader
     U32                  vkFormatBytesPerPixel  (VkFormat format);
     U32                  llGlFormatSourceComponents(U32 ll_gl_format);
 
-    bool createVertexBufferVk(U32     size_bytes,
-                              VkBuffer& out_buffer,
-                              void*&    out_allocation,
-                              void**    out_mapped);
-
-    bool createIndexBufferVk (U32     size_bytes,
-                              VkBuffer& out_buffer,
-                              void*&    out_allocation,
-                              void**    out_mapped);
-
     bool createPerProgramUBOVk(U32     size_bytes,
                               VkBuffer& out_buffer,
                               void*&    out_allocation,
@@ -1140,9 +1130,9 @@ namespace LLVKLoader
 
     void megabufInit(const U32* type_sizes, U32 type_count);
     void megabufShutdown();
-    bool megabufAcquireVertex(U32 typemask, U32 nverts, bool exclusive, MegaSliceV& out);
+    bool megabufAcquireVertex(U32 typemask, U32 nverts, MegaSliceV& out);
     void megabufReleaseVertex(const MegaSliceV& slice);
-    bool megabufAcquireIndex(U32 size_bytes, bool exclusive, MegaSliceI& out);
+    bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out);
     void megabufReleaseIndex(const MegaSliceI& slice);
     void megabufStats(U64& chunks, U64& capacity_bytes, U64& used_bytes);
 

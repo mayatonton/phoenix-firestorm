@@ -162,7 +162,7 @@ worker pool の新しい仕事(優先順): ① geometry rebuild(genVolumeGeometr
 | **M0** | device 前提工事: Vulkan12Features chain(descriptorIndexing 系)+ multiDrawIndirect 要求(**全て optional 検出・未対応でも従来動作**)。caps 公開のみ・消費者なし | なし(無風段) | 起動可否そのもの。3 OS の caps ログ採取 |
 | **M1** | global texture heap 新設 + **indexed batch shader family を heap 消費に切替**(diffuse 系 index を DrawData でなくまず既存 per-vertex index のまま heap 化) | 当該 family の per-draw set 構築・Strike 10 memo | switch 撤去済。誤 texture・白置換・streaming 中の slot 差替 |
 | **M2** | per-draw SSBO(**tex_slots のみ** = §1.3 改訂)+ draw-ID(firstInstance→gl_InstanceIndex)。binding54 退役 | per-draw の slots arena 書込/dynamic offset(M1 運搬)・MDI への per-record 供給路を確立 | switch・binding54 とも撤去済。誤テクスチャ・batch 単位の模様混線 |
-| **M3** | mega-buffer suballocation + mapped 直書き(CPU 副本解消)。strider read 消費者の洗い出しが前提調査 | per-draw VB bind ループ・VB 二重持ち RAM | `AYASTORM_MEGABUF=0`。geometry 化け・rebuild 競合 |
+| **M3** | mega-buffer suballocation + mapped 直書き(CPU 副本解消)。strider read 消費者の洗い出しが前提調査 | per-draw VB bind ループ・VB 二重持ち RAM | switch 撤去済(gate PASS 2026-07-16・実測 vbbind 97.8% skip)。geometry 化け・rebuild 競合 |
 | **M4** | 永続 bucket(静的不透明 + shadow static)+ dirty patch 配線。emission は CPU loop のまま | **render map 再構築(8b)**・pool loop の当該 pass 分・pipeline per-draw 照合 | `AYASTORM_BUCKETS=0`。物の出現/消滅遅れ(dirty 配線漏れ)・LOD 切替 |
 | **M5** | multi-draw indirect + GPU frustum/HiZ culling(compute) | vkCmdDrawIndexed ×N(静的分)・occlusion query 機構・octree cull の毎フレーム可視判定 | `AYASTORM_INDIRECT=0`。物陰の物体・水面下 cull・probe |
 | **M6** | frame graph 表駆動 barrier + worker の更新 job 化(rebuild/upload/compaction)+ 旧経路の物理削除 | 手動 layout 簿記・MT-2b record worker(転用) | 段別。最後に旧経路削除の等価全数照合(GL 削除時と同じ「全数照合」規律) |

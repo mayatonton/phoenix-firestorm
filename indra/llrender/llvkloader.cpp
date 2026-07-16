@@ -5570,26 +5570,6 @@ U32 llGlFormatSourceComponents(U32 ll_gl_format)
     return llGlFormatSourceComponentsImpl(ll_gl_format);
 }
 
-bool createVertexBufferVk(U32       size_bytes,
-                          VkBuffer& out_buffer,
-                          void*&    out_allocation,
-                          void**    out_mapped)
-{
-    return createBufferVkImpl(size_bytes,
-                              VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                              out_buffer, out_allocation, out_mapped, true);
-}
-
-bool createIndexBufferVk(U32       size_bytes,
-                         VkBuffer& out_buffer,
-                         void*&    out_allocation,
-                         void**    out_mapped)
-{
-    return createBufferVkImpl(size_bytes,
-                              VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                              out_buffer, out_allocation, out_mapped, true);
-}
-
 bool createPerProgramUBOVk(U32       size_bytes,
                            VkBuffer& out_buffer,
                            void*&    out_allocation,
@@ -6337,7 +6317,6 @@ namespace
         U32      capacity   = 0;
         U32      used       = 0;
         U32      byte_size  = 0;
-        bool     exclusive  = false;
         bool     vertex     = false;
         U32      region_offsets[16] = {};
         std::vector<std::pair<U32, U32>> free_ranges;
@@ -6422,47 +6401,32 @@ namespace
         }
     }
 
-    MegaChunk* megaNewChunk(U32 typemask, U32 min_capacity, bool vertex_chunk, bool exclusive)
+    MegaChunk* megaNewChunk(U32 typemask, U32 min_capacity, bool vertex_chunk)
     {
         MegaChunk* c = new MegaChunk();
         c->typemask  = typemask;
-        c->exclusive = exclusive;
         c->vertex    = vertex_chunk;
 
         U32 bytes;
         if (vertex_chunk)
         {
-            if (exclusive)
+            U32 grow = MEGA_V_CHUNK_INITIAL;
+            auto& pool = sMegaVertexPools[typemask];
+            if (!pool.empty())
             {
-                c->capacity = min_capacity;
+                grow = llmin(pool.back()->capacity * 2, MEGA_V_CHUNK_MAX);
             }
-            else
-            {
-                U32 grow = MEGA_V_CHUNK_INITIAL;
-                auto& pool = sMegaVertexPools[typemask];
-                if (!pool.empty())
-                {
-                    grow = llmin(pool.back()->capacity * 2, MEGA_V_CHUNK_MAX);
-                }
-                c->capacity = llmax(grow, min_capacity);
-            }
+            c->capacity = llmax(grow, min_capacity);
             bytes = megaVertexChunkBytes(typemask, c->capacity, c->region_offsets);
         }
         else
         {
-            if (exclusive)
+            U32 grow = MEGA_I_CHUNK_INITIAL;
+            if (!sMegaIndexPool.empty())
             {
-                c->capacity = min_capacity;
+                grow = llmin(sMegaIndexPool.back()->capacity * 2, MEGA_I_CHUNK_MAX);
             }
-            else
-            {
-                U32 grow = MEGA_I_CHUNK_INITIAL;
-                if (!sMegaIndexPool.empty())
-                {
-                    grow = llmin(sMegaIndexPool.back()->capacity * 2, MEGA_I_CHUNK_MAX);
-                }
-                c->capacity = llmax(grow, min_capacity);
-            }
+            c->capacity = llmax(grow, min_capacity);
             bytes = c->capacity;
         }
         c->byte_size = bytes;
@@ -6485,25 +6449,15 @@ namespace
         c->free_ranges.push_back({ 0, c->capacity });
         c->id = sMegaChunkNextId++;
         sMegaChunksById[c->id] = c;
-        if (!exclusive)
+        if (vertex_chunk)
         {
-            if (vertex_chunk)
-            {
-                sMegaVertexPools[typemask].push_back(c);
-            }
-            else
-            {
-                sMegaIndexPool.push_back(c);
-            }
+            sMegaVertexPools[typemask].push_back(c);
+        }
+        else
+        {
+            sMegaIndexPool.push_back(c);
         }
         return c;
-    }
-
-    void megaDestroyChunk(MegaChunk* c)
-    {
-        destroyBufferVk(c->buffer, c->allocation);
-        sMegaChunksById.erase(c->id);
-        delete c;
     }
 }
 
@@ -6526,30 +6480,27 @@ void megabufShutdown()
     sMegaIndexPool.clear();
 }
 
-bool megabufAcquireVertex(U32 typemask, U32 nverts, bool exclusive, MegaSliceV& out)
+bool megabufAcquireVertex(U32 typemask, U32 nverts, MegaSliceV& out)
 {
     out = MegaSliceV();
     if (nverts == 0 || sMegaTypeSizes.empty())
     {
         return false;
     }
-    const U32 count = exclusive ? nverts : ((nverts + 3u) & ~3u);
+    const U32 count = (nverts + 3u) & ~3u;
     MegaChunk* chunk = nullptr;
     U32 first = 0;
-    if (!exclusive)
+    for (MegaChunk* c : sMegaVertexPools[typemask])
     {
-        for (MegaChunk* c : sMegaVertexPools[typemask])
+        if (megaAllocRange(c, count, first))
         {
-            if (megaAllocRange(c, count, first))
-            {
-                chunk = c;
-                break;
-            }
+            chunk = c;
+            break;
         }
     }
     if (chunk == nullptr)
     {
-        chunk = megaNewChunk(typemask, count, true, exclusive);
+        chunk = megaNewChunk(typemask, count, true);
         if (chunk == nullptr || !megaAllocRange(chunk, count, first))
         {
             return false;
@@ -6573,30 +6524,27 @@ void megabufReleaseVertex(const MegaSliceV& slice)
     sPendingMegaFrees.push_back({ slice.chunk, slice.first, slice.count, sMonotonicFrameCount });
 }
 
-bool megabufAcquireIndex(U32 size_bytes, bool exclusive, MegaSliceI& out)
+bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out)
 {
     out = MegaSliceI();
     if (size_bytes == 0)
     {
         return false;
     }
-    const U32 count = exclusive ? size_bytes : ((size_bytes + 3u) & ~3u);
+    const U32 count = (size_bytes + 3u) & ~3u;
     MegaChunk* chunk = nullptr;
     U32 first = 0;
-    if (!exclusive)
+    for (MegaChunk* c : sMegaIndexPool)
     {
-        for (MegaChunk* c : sMegaIndexPool)
+        if (megaAllocRange(c, count, first))
         {
-            if (megaAllocRange(c, count, first))
-            {
-                chunk = c;
-                break;
-            }
+            chunk = c;
+            break;
         }
     }
     if (chunk == nullptr)
     {
-        chunk = megaNewChunk(0, count, false, exclusive);
+        chunk = megaNewChunk(0, count, false);
         if (chunk == nullptr || !megaAllocRange(chunk, count, first))
         {
             return false;
@@ -6631,15 +6579,7 @@ void tickMegaFreeQueue()
             auto it = sMegaChunksById.find(e.chunk);
             if (it != sMegaChunksById.end())
             {
-                MegaChunk* c = it->second;
-                if (c->exclusive)
-                {
-                    megaDestroyChunk(c);
-                }
-                else
-                {
-                    megaFreeRange(c, e.first, e.count);
-                }
+                megaFreeRange(it->second, e.first, e.count);
             }
         }
         else
