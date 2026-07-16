@@ -29,6 +29,7 @@
 
 #include "llviewerobject.h"
 #include "xform.h"
+#include <vector>
 
 class LLFace;
 class LLDrawPool;
@@ -77,7 +78,17 @@ public:
 
     void updateMesh();
 
-    void destroyVB() { mReferenceBuffer = NULL; }
+    struct ReferenceMesh
+    {
+        std::vector<LLVector3> mVertices;
+        std::vector<LLVector3> mNormals;
+        std::vector<LLVector2> mTexCoords;
+        std::vector<LLColor4U> mColors;
+        std::vector<U16>       mIndices;
+        bool empty() const { return mVertices.empty(); }
+    };
+
+    void destroyVB() { mReferenceMesh = ReferenceMesh(); }
 
     void appendMesh(LLStrider<LLVector3>& vertices,
                          LLStrider<LLVector3>& normals,
@@ -159,7 +170,7 @@ protected:
     LLVector3       mTrunkBend;     // Accumulated wind (used for blowing trees)
     LLVector3       mWind;
 
-    LLPointer<LLVertexBuffer> mReferenceBuffer; //reference geometry for generating tree mesh
+    ReferenceMesh mReferenceMesh; //reference geometry for generating tree mesh
     LLPointer<LLViewerFetchedTexture> mTreeImagep;  // Pointer to proper tree image
 
     U8              mSpecies;       // Species of tree

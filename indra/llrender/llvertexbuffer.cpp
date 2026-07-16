@@ -84,46 +84,6 @@ class LLVBOPool
     virtual U64 getVramBytesUsed() = 0;
 };
 
-class LLAppleVBOPool final: public LLVBOPool
-{
-public:
-    U64 mAllocated = 0;
-
-    U64 getVramBytesUsed() override
-    {
-        return mAllocated;
-    }
-
-    void allocate(GLenum type, U32 size, U8*& data) override
-    {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
-        llassert(data == nullptr);  // non null data indicates a buffer that wasn't freed
-        llassert(size >= 2);  // any buffer size smaller than a single index is nonsensical
-
-        mAllocated += size;
-
-        { //allocate a new buffer
-            LL_PROFILE_GPU_ZONE("vbo alloc");
-            data = (U8*) ll_aligned_malloc_16(size);
-        }
-    }
-
-    void free(GLenum type, U32 size, U8* data) override
-    {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
-        llassert(size >= 2);
-
-        if (data)
-        {
-            ll_aligned_free_16(data);
-        }
-
-        mAllocated -= size;
-    }
-};
-
 class LLDefaultVBOPool final : public LLVBOPool
 {
 public:
@@ -321,6 +281,7 @@ public:
 };
 
 static LLVBOPool* sVBOPool = nullptr;
+static bool sTransientStaging = true;
 
 void LLVertexBufferData::drawWithMatrix()
 {
@@ -939,17 +900,11 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 void LLVertexBuffer::initClass(LLWindow* window)
 {
     llassert(sVBOPool == nullptr);
+    sVBOPool = new LLDefaultVBOPool();
 
-    if (gGLManager.mIsApple)
-    {
-        LL_INFOS() << "VBO Pooling Disabled" << LL_ENDL;
-        sVBOPool = new LLAppleVBOPool();
-    }
-    else
-    {
-        LL_INFOS() << "VBO Pooling Enabled" << LL_ENDL;
-        sVBOPool = new LLDefaultVBOPool();
-    }
+    const char* e = getenv("AYASTORM_MEGABUF");
+    sTransientStaging = !(e && atoi(e) == 0);
+    LL_INFOS() << "VB staging: " << (sTransientStaging ? "transient" : "persistent (AYASTORM_MEGABUF=0)") << LL_ENDL;
 }
 
 void LLVertexBuffer::unbind()
@@ -1056,16 +1011,10 @@ LLVertexBuffer::~LLVertexBuffer()
 void LLVertexBuffer::genBuffer(U32 size)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-    llassert(sVBOPool);
+    llassert(mSize == 0);
+    llassert(mMappedData == nullptr);
 
-    if (sVBOPool)
-    {
-        llassert(mSize == 0);
-        llassert(mMappedData == nullptr);
-
-        mSize = size;
-        sVBOPool->allocate(GL_ARRAY_BUFFER, mSize, mMappedData);
-    }
+    mSize = size;
 
     if (mSize > 0 && mVkVertexBuffer == VK_NULL_HANDLE)
     {
@@ -1076,15 +1025,10 @@ void LLVertexBuffer::genBuffer(U32 size)
 void LLVertexBuffer::genIndices(U32 size)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-    llassert(sVBOPool);
+    llassert(mIndicesSize == 0);
+    llassert(mMappedIndexData == nullptr);
 
-    if (sVBOPool)
-    {
-        llassert(mIndicesSize == 0);
-        llassert(mMappedIndexData == nullptr);
-        mIndicesSize = size;
-        sVBOPool->allocate(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData);
-    }
+    mIndicesSize = size;
 
     if (mIndicesSize > 0 && mVkIndexBuffer == VK_NULL_HANDLE)
     {
@@ -1094,7 +1038,7 @@ void LLVertexBuffer::genIndices(U32 size)
 
 bool LLVertexBuffer::createGLBuffer(U32 size)
 {
-    if (mMappedData)
+    if (mSize > 0)
     {
         destroyGLBuffer();
     }
@@ -1104,20 +1048,13 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
         return true;
     }
 
-    bool success = true;
-
     genBuffer(size);
-
-    if (!mMappedData)
-    {
-        success = false;
-    }
-    return success;
+    return true;
 }
 
 bool LLVertexBuffer::createGLIndices(U32 size)
 {
-    if (mMappedIndexData)
+    if (mIndicesSize > 0)
     {
         destroyGLIndices();
     }
@@ -1127,31 +1064,41 @@ bool LLVertexBuffer::createGLIndices(U32 size)
         return true;
     }
 
-    bool success = true;
-
     genIndices(size);
-
-    if (!mMappedIndexData)
-    {
-        success = false;
-    }
-    return success;
+    return true;
 }
 
-void LLVertexBuffer::destroyGLBuffer()
+void LLVertexBuffer::releaseVertexStaging()
 {
     if (mMappedData)
     {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        //llassert(sVBOPool);
         if (sVBOPool)
         {
             sVBOPool->free(GL_ARRAY_BUFFER, mSize, mMappedData);
         }
-
-        mSize = 0;
         mMappedData = nullptr;
     }
+    mMappedVertexRegions.clear();
+}
+
+void LLVertexBuffer::releaseIndexStaging()
+{
+    if (mMappedIndexData)
+    {
+        if (sVBOPool)
+        {
+            sVBOPool->free(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData);
+        }
+        mMappedIndexData = nullptr;
+    }
+    mMappedIndexRegions.clear();
+}
+
+void LLVertexBuffer::destroyGLBuffer()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
+    releaseVertexStaging();
+    mSize = 0;
 
     if (mVkVertexBuffer != VK_NULL_HANDLE || mVkVertexAlloc != nullptr)
     {
@@ -1164,18 +1111,9 @@ void LLVertexBuffer::destroyGLBuffer()
 
 void LLVertexBuffer::destroyGLIndices()
 {
-    if (mMappedIndexData)
-    {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        //llassert(sVBOPool);
-        if (sVBOPool)
-        {
-            sVBOPool->free(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData);
-        }
-
-        mIndicesSize = 0;
-        mMappedIndexData = nullptr;
-    }
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
+    releaseIndexStaging();
+    mIndicesSize = 0;
 
     if (mVkIndexBuffer != VK_NULL_HANDLE || mVkIndexAlloc != nullptr)
     {
@@ -1256,18 +1194,40 @@ bool expand_region(LLVertexBuffer::MappedRegion& region, U32 start, U32 end)
 }
 
 
+U8* LLVertexBuffer::ensureVertexStaging()
+{
+    if (mMappedData == nullptr && mSize > 0 && sVBOPool)
+    {
+        sVBOPool->allocate(GL_ARRAY_BUFFER, mSize, mMappedData);
+    }
+    return mMappedData;
+}
+
+U8* LLVertexBuffer::ensureIndexStaging()
+{
+    if (mMappedIndexData == nullptr && mIndicesSize > 0 && sVBOPool)
+    {
+        sVBOPool->allocate(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData);
+    }
+    return mMappedIndexData;
+}
+
 // Map for data access
 U8* LLVertexBuffer::mapVertexBuffer(LLVertexBuffer::AttributeType type, U32 index, S32 count)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
     _mapBuffer();
 
+    if (ensureVertexStaging() == nullptr)
+    {
+        return nullptr;
+    }
+
     if (count == -1)
     {
         count = mNumVerts - index;
     }
 
-    if (!gGLManager.mIsApple)
     {
         U32 start = mOffsets[type] + sTypeSize[type] * index;
         U32 end = start + sTypeSize[type] * count-1;
@@ -1299,12 +1259,16 @@ U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32 count)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
     _mapBuffer();
 
+    if (ensureIndexStaging() == nullptr)
+    {
+        return nullptr;
+    }
+
     if (count == -1)
     {
         count = mNumIndices-index;
     }
 
-    if (!gGLManager.mIsApple)
     {
         U32 start = sizeof(U16) * index;
         U32 end = start + sizeof(U16) * count-1;
@@ -1331,6 +1295,38 @@ U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32 count)
     return mMappedIndexData + sizeof(U16)*index;
 }
 
+void LLVertexBuffer::zeroVertexData()
+{
+    if (mSize == 0)
+    {
+        return;
+    }
+    _mapBuffer();
+    if (ensureVertexStaging() == nullptr)
+    {
+        return;
+    }
+    memset(mMappedData, 0, mSize);
+    mMappedVertexRegions.clear();
+    mMappedVertexRegions.push_back({ 0, mSize - 1 });
+}
+
+void LLVertexBuffer::zeroIndexData()
+{
+    if (mIndicesSize == 0)
+    {
+        return;
+    }
+    _mapBuffer();
+    if (ensureIndexStaging() == nullptr)
+    {
+        return;
+    }
+    memset(mMappedIndexData, 0, mIndicesSize);
+    mMappedIndexRegions.clear();
+    mMappedIndexRegions.push_back({ 0, mIndicesSize - 1 });
+}
+
 // flush the given byte range
 //  start -- first byte to copy
 //  end -- last byte to copy (NOT last byte + 1)
@@ -1338,27 +1334,15 @@ U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32 count)
 //  dst -- mMappedData or mMappedIndexData
 void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8* dst)
 {
-    if (gGLManager.mIsApple)
+    if (end != 0)
     {
-        // on OS X, flush_vbo doesn't actually write to the GL buffer, so be sure to call
-        // _mapBuffer to tag the buffer for flushing to GL
-        _mapBuffer();
-        LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb memcpy");
-        // copy into mapped buffer
-        memcpy(dst+start, data, end-start+1);
-    }
-    else
-    {
-        if (end != 0)
+        if (target == GL_ARRAY_BUFFER && mVkVertexMapped != nullptr)
         {
-            if (target == GL_ARRAY_BUFFER && mVkVertexMapped != nullptr)
-            {
-                std::memcpy((U8*)mVkVertexMapped + start, data, end - start + 1);
-            }
-            else if (target == GL_ELEMENT_ARRAY_BUFFER && mVkIndexMapped != nullptr)
-            {
-                std::memcpy((U8*)mVkIndexMapped + start, data, end - start + 1);
-            }
+            std::memcpy((U8*)mVkVertexMapped + start, data, end - start + 1);
+        }
+        else if (target == GL_ELEMENT_ARRAY_BUFFER && mVkIndexMapped != nullptr)
+        {
+            std::memcpy((U8*)mVkIndexMapped + start, data, end - start + 1);
         }
     }
 }
@@ -1392,25 +1376,6 @@ void LLVertexBuffer::_unmapBuffer()
         }
     };
 
-    if (gGLManager.mIsApple)
-    {
-        if (mMappedData)
-        {
-            if (LLVKLoader::shouldUseVulkanRender() && mVkVertexMapped != nullptr)
-            {
-                std::memcpy(mVkVertexMapped, mMappedData, mSize);
-            }
-        }
-
-        if (mMappedIndexData)
-        {
-            if (LLVKLoader::shouldUseVulkanRender() && mVkIndexMapped != nullptr)
-            {
-                std::memcpy(mVkIndexMapped, mMappedIndexData, mIndicesSize);
-            }
-        }
-    }
-    else
     {
         if (!mMappedVertexRegions.empty())
         {
@@ -1467,6 +1432,12 @@ void LLVertexBuffer::_unmapBuffer()
             flush_vbo(GL_ELEMENT_ARRAY_BUFFER, start, end, (U8*)mMappedIndexData + start, mMappedIndexData);
             mMappedIndexRegions.clear();
         }
+    }
+
+    if (sTransientStaging && !mStagingPersistent)
+    {
+        releaseVertexStaging();
+        releaseIndexStaging();
     }
 }
 

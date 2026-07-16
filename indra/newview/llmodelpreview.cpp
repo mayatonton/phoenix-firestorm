@@ -1984,6 +1984,7 @@ void LLModelPreview::genGlodLODs(S32 which_lod, U32 decimation, bool enforce_tri
                 type_mask = mVertexBuffer[5][base][i]->getTypeMask();
 
                 LLPointer<LLVertexBuffer> buff = new LLVertexBuffer(type_mask);
+                buff->setStagingPersistent(true);
 
                 if (sizes[i * 2 + 1] > 0 && sizes[i * 2] > 0)
                 {
@@ -2038,14 +2039,8 @@ void LLModelPreview::genGlodLODs(S32 which_lod, U32 decimation, bool enforce_tri
                     // This face was eliminated or we failed to allocate buffer,
                     // attempt to create a dummy triangle (one vertex, 3 indices, all 0)
                     buff->allocateBuffer(1, 3);
-                    memset((U8*)buff->getMappedData(), 0, buff->getSize());
-                    // <FS:ND> Fix when running with opengl core profile
-                    //memset((U8*)buff->getIndicesPointer(), 0, buff->getIndicesSize());
-                    LLStrider< U16 > index_strider;
-                    buff->getIndexStrider( index_strider );
-
-                    memset( (U8*)index_strider.get(), 0, buff->getIndicesSize() );
-                    // </FS:ND>
+                    buff->zeroVertexData();
+                    buff->zeroIndexData();
                 }
 
                 buff->validateRange(0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
@@ -3917,6 +3912,7 @@ void LLModelPreview::genBuffers(S32 lod, bool include_skin_weights)
             }
 
             vb = new LLVertexBuffer(mask);
+            vb->setStagingPersistent(true);
 
             if (!vb->allocateBuffer(num_vertices, num_indices))
             {
@@ -4261,10 +4257,11 @@ void LLModelPreview::addEmptyFace(LLModel* pTarget)
     U32 type_mask = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_NORMAL | LLVertexBuffer::MAP_TEXCOORD0;
 
     LLPointer<LLVertexBuffer> buff = new LLVertexBuffer(type_mask);
+    buff->setStagingPersistent(true);
 
     buff->allocateBuffer(1, 3);
-    memset((U8*)buff->getMappedData(), 0, buff->getSize());
-    memset((U8*)buff->getMappedIndices(), 0, buff->getIndicesSize());
+    buff->zeroVertexData();
+    buff->zeroIndexData();
 
     buff->validateRange(0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
 

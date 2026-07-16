@@ -2670,8 +2670,8 @@ void LLVOAvatar::updateMeshData()
                     // Attempt to create a dummy triangle (one vertex, 3 indices, all 0)
                     facep->setSize(1, 3);
                     buff->allocateBuffer(1, 3);
-                    memset((U8*) buff->getMappedData(), 0, buff->getSize());
-                    memset((U8*) buff->getMappedIndices(), 0, buff->getIndicesSize());
+                    buff->zeroVertexData();
+                    buff->zeroIndexData();
                 }
                 facep->setVertexBuffer(buff);
             }
@@ -2691,8 +2691,8 @@ void LLVOAvatar::updateMeshData()
                         // Attempt to create a dummy triangle (one vertex, 3 indices, all 0)
                         facep->setSize(1, 3);
                         buff->allocateBuffer(1, 3);
-                        memset((U8*) buff->getMappedData(), 0, buff->getSize());
-                        memset((U8*) buff->getMappedIndices(), 0, buff->getIndicesSize());
+                        buff->zeroVertexData();
+                        buff->zeroIndexData();
                     }
                 }
             }

@@ -163,16 +163,6 @@ public:
                             bool no_debug_assert = false,
                             bool rebuild_for_gltf = false);
 
-    // For avatar
-    U16          getGeometryAvatar(
-                                    LLStrider<LLVector3> &vertices,
-                                    LLStrider<LLVector3> &normals,
-                                    LLStrider<LLVector2> &texCoords,
-                                    LLStrider<F32>       &vertex_weights,
-                                    // <FS:Ansariel> Vectorized Weight4Strider and ClothWeightStrider by Drake Arconis
-                                    //LLStrider<LLVector4> &clothing_weights);
-                                    LLStrider<LLVector4a> &clothing_weights);
-
     // For volumes, etc.
     U16             getGeometry(LLStrider<LLVector3> &vertices,
                                 LLStrider<LLVector3> &normals,

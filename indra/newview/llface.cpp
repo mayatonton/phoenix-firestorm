@@ -462,28 +462,6 @@ void LLFace::setIndicesIndex(S32 idx)
 }
 
 
-U16 LLFace::getGeometryAvatar(
-                        LLStrider<LLVector3> &vertices,
-                        LLStrider<LLVector3> &normals,
-                        LLStrider<LLVector2> &tex_coords,
-                        LLStrider<F32>       &vertex_weights,
-                        // <FS:Ansariel> Vectorized Weight4Strider and ClothWeightStrider by Drake Arconis
-                        //LLStrider<LLVector4> &clothing_weights)
-                        LLStrider<LLVector4a> &clothing_weights)
-                        // </FS:Ansariel>
-{
-    if (mVertexBuffer.notNull())
-    {
-        mVertexBuffer->getVertexStrider      (vertices, mGeomIndex, mGeomCount);
-        mVertexBuffer->getNormalStrider      (normals, mGeomIndex, mGeomCount);
-        mVertexBuffer->getTexCoord0Strider    (tex_coords, mGeomIndex, mGeomCount);
-        mVertexBuffer->getWeightStrider(vertex_weights, mGeomIndex, mGeomCount);
-        mVertexBuffer->getClothWeightStrider(clothing_weights, mGeomIndex, mGeomCount);
-    }
-
-    return mGeomIndex;
-}
-
 U16 LLFace::getGeometry(LLStrider<LLVector3> &vertices, LLStrider<LLVector3> &normals,
                         LLStrider<LLVector2> &tex_coords, LLStrider<U16> &indicesp)
 {

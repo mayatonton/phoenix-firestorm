@@ -382,7 +382,7 @@ void LLVOTree::idleUpdate(LLAgent &agent, const F64 &time)
     trunk_LOD = llmax(trunk_LOD, LLVolumeLODGroup::NUM_LODS - cur_detail - 1);
     trunk_LOD = llmin(trunk_LOD, sMAX_NUM_TREE_LOD_LEVELS);
 
-    if (mReferenceBuffer.isNull())
+    if (mReferenceMesh.empty())
     {
         gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_ALL);
     }
@@ -505,7 +505,7 @@ bool LLVOTree::updateGeometry(LLDrawable *drawable)
 
     if(mTrunkLOD >= sMAX_NUM_TREE_LOD_LEVELS) //do not display the tree.
     {
-        mReferenceBuffer = NULL ;
+        destroyVB();
         LLFace * facep = drawable->getFace(0);
         if (facep)
         {
@@ -515,7 +515,7 @@ bool LLVOTree::updateGeometry(LLDrawable *drawable)
     }
 
     if (mDrawable->getFace(0) &&
-        (mReferenceBuffer.isNull() || !mDrawable->getFace(0)->getVertexBuffer()))
+        (mReferenceMesh.empty() || !mDrawable->getFace(0)->getVertexBuffer()))
     {
         const F32 SRR3 = 0.577350269f; // sqrt(1/3)
         const F32 SRR2 = 0.707106781f; // sqrt(1/2)
@@ -544,27 +544,17 @@ bool LLVOTree::updateGeometry(LLDrawable *drawable)
             max_vertices += sLODVertexCount[lod];
         }
 
-        mReferenceBuffer = new LLVertexBuffer(LLDrawPoolTree::VERTEX_DATA_MASK);
-        if (!mReferenceBuffer->allocateBuffer(max_vertices, max_indices))
-        {
-            LL_WARNS() << "Failed to allocate Vertex Buffer on update to "
-                << max_vertices << " vertices and "
-                << max_indices << " indices" << LL_ENDL;
-            mReferenceBuffer = NULL; //unref
-            return true;
-        }
+        mReferenceMesh.mVertices.resize(max_vertices);
+        mReferenceMesh.mNormals.resize(max_vertices);
+        mReferenceMesh.mTexCoords.resize(max_vertices);
+        mReferenceMesh.mColors.resize(max_vertices);
+        mReferenceMesh.mIndices.resize(max_indices);
 
-        LLStrider<LLVector3> vertices;
-        LLStrider<LLVector3> normals;
-        LLStrider<LLColor4U> colors;
-        LLStrider<LLVector2> tex_coords;
-        LLStrider<U16> indicesp;
-
-        mReferenceBuffer->getVertexStrider(vertices);
-        mReferenceBuffer->getNormalStrider(normals);
-        mReferenceBuffer->getTexCoord0Strider(tex_coords);
-        mReferenceBuffer->getColorStrider(colors);
-        mReferenceBuffer->getIndexStrider(indicesp);
+        LLStrider<LLVector3> vertices(mReferenceMesh.mVertices.data());
+        LLStrider<LLVector3> normals(mReferenceMesh.mNormals.data());
+        LLStrider<LLColor4U> colors(mReferenceMesh.mColors.data());
+        LLStrider<LLVector2> tex_coords(mReferenceMesh.mTexCoords.data());
+        LLStrider<U16> indicesp(mReferenceMesh.mIndices.data());
 
         S32 vertex_count = 0;
         S32 index_count = 0;
@@ -868,7 +858,6 @@ bool LLVOTree::updateGeometry(LLDrawable *drawable)
             slices /= 2;
         }
 
-        mReferenceBuffer->unmapBuffer();
         llassert(vertex_count == max_vertices);
         llassert(index_count == max_indices);
 #ifndef SHOW_ASSERT
@@ -938,11 +927,10 @@ void LLVOTree::updateMesh()
             << vert_count << " vertices and "
             << index_count << " indices" << LL_ENDL;
         buff->allocateBuffer(1, 3);
-        memset((U8*)buff->getMappedData(), 0, buff->getSize());
-        memset((U8*)buff->getMappedIndices(), 0, buff->getIndicesSize());
+        buff->zeroVertexData();
+        buff->zeroIndexData();
         facep->setSize(1, 3);
         facep->setVertexBuffer(buff);
-        mReferenceBuffer->unmapBuffer();
         buff->unmapBuffer();
         return;
     }
@@ -964,7 +952,6 @@ void LLVOTree::updateMesh()
 
     genBranchPipeline(vertices, normals, tex_coords, colors, indices, idx_offset, scale_mat, mTrunkLOD, stop_depth, mDepth, mTrunkDepth, 1.0, mTwist, droop, mBranches, alpha);
 
-    mReferenceBuffer->unmapBuffer();
     buff->unmapBuffer();
 }
 
@@ -981,17 +968,11 @@ void LLVOTree::appendMesh(LLStrider<LLVector3>& vertices,
                          S32 index_count,
                          S32 index_offset)
 {
-    LLStrider<LLVector3> v;
-    LLStrider<LLVector3> n;
-    LLStrider<LLVector2> t;
-    LLStrider<LLColor4U> c;
-    LLStrider<U16> idx;
-
-    mReferenceBuffer->getVertexStrider(v);
-    mReferenceBuffer->getNormalStrider(n);
-    mReferenceBuffer->getTexCoord0Strider(t);
-    mReferenceBuffer->getColorStrider(c);
-    mReferenceBuffer->getIndexStrider(idx);
+    LLStrider<LLVector3> v(mReferenceMesh.mVertices.data());
+    LLStrider<LLVector3> n(mReferenceMesh.mNormals.data());
+    LLStrider<LLVector2> t(mReferenceMesh.mTexCoords.data());
+    LLStrider<LLColor4U> c(mReferenceMesh.mColors.data());
+    LLStrider<U16> idx(mReferenceMesh.mIndices.data());
 
     //copy/transform vertices into mesh - check
     for (S32 i = 0; i < vert_count; i++)

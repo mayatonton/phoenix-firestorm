@@ -72,7 +72,6 @@ struct LLVBCache
 static std::unordered_map<U64, LLVBCache> sVBCache;
 static thread_local std::list<LLVertexBufferData> *sBufferDataList = nullptr;
 
-const U32 immediate_mask = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_COLOR | LLVertexBuffer::MAP_TEXCOORD0;
 
 LLTexUnit::LLTexUnit(S32 index)
     : mCurrTexType(TT_NONE),
@@ -776,22 +775,29 @@ bool LLRender::init(bool needs_vertex_buffer)
 
 void LLRender::initVertexBuffer()
 {
-    llassert_always(mBuffer.isNull()) ;
-    mBuffer = new LLVertexBuffer(immediate_mask);
-    // <FS:Ansariel> Warn in case of allocation failure
-    if (!mBuffer->allocateBuffer(4096, 0))
-    {
-        // If this doesn't work, we're knee-deep in trouble!
-        LL_WARNS() << "Failed to allocate Vertex Buffer for common rendering" << LL_ENDL;
-    }
-    mBuffer->getVertexStrider(mVerticesp);
-    mBuffer->getTexCoord0Strider(mTexcoordsp);
-    mBuffer->getColorStrider(mColorsp);
+    llassert_always(mScratchVerts == nullptr);
+    mScratchVerts     = (LLVector4a*) ll_aligned_malloc_16(4096 * sizeof(LLVector4a));
+    mScratchTexcoords = (LLVector2*)  ll_aligned_malloc_16(4096 * sizeof(LLVector2));
+    mScratchColors    = (LLColor4U*)  ll_aligned_malloc_16(4096 * sizeof(LLColor4U));
+    mVerticesp = mScratchVerts;
+    mVerticesp.setStride(0);
+    mTexcoordsp = mScratchTexcoords;
+    mTexcoordsp.setStride(0);
+    mColorsp = mScratchColors;
+    mColorsp.setStride(0);
 }
 
 void LLRender::resetVertexBuffer()
 {
-    mBuffer = NULL;
+    ll_aligned_free_16(mScratchVerts);
+    ll_aligned_free_16(mScratchTexcoords);
+    ll_aligned_free_16(mScratchColors);
+    mScratchVerts     = nullptr;
+    mScratchTexcoords = nullptr;
+    mScratchColors    = nullptr;
+    mVerticesp = (LLVector4a*) nullptr;
+    mTexcoordsp = (LLVector2*) nullptr;
+    mColorsp = (LLColor4U*) nullptr;
 }
 
 void LLRender::shutdown()
@@ -1630,7 +1636,7 @@ void LLRender::flush()
 
         mCount = 0;
 
-        if (mBuffer)
+        if (mScratchVerts)
         {
 
             LLVertexBuffer *vb;

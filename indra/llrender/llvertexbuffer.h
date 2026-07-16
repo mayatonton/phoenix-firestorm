@@ -161,6 +161,10 @@ protected:
     bool    createGLIndices(U32 size);
     void    destroyGLBuffer();
     void    destroyGLIndices();
+    U8*     ensureVertexStaging();
+    U8*     ensureIndexStaging();
+    void    releaseVertexStaging();
+    void    releaseIndexStaging();
     bool    updateNumVerts(U32 nverts);
     bool    updateNumIndices(U32 nindices);
 
@@ -171,6 +175,11 @@ public:
 
     U8*     mapVertexBuffer(AttributeType type, U32 index, S32 count = -1);
     U8*     mapIndexBuffer(U32 index, S32 count = -1);
+
+    void    zeroVertexData();
+    void    zeroIndexData();
+
+    void    setStagingPersistent(bool persistent) { mStagingPersistent = persistent; }
 
     // synonym for flushBuffers
     void    unmapBuffer();
@@ -308,6 +317,7 @@ private:
     // add to set of mapped buffers
     void _mapBuffer();
     bool mMapped = false;
+    bool mStagingPersistent = false;
 
 public:
 

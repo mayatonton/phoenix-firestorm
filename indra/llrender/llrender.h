@@ -461,7 +461,9 @@ private:
     F32             mMaxLineWidthAliased;
     // </FS:Ansariel>
 
-    LLPointer<LLVertexBuffer>   mBuffer;
+    LLVector4a*                 mScratchVerts = nullptr;
+    LLVector2*                  mScratchTexcoords = nullptr;
+    LLColor4U*                  mScratchColors = nullptr;
     LLStrider<LLVector4a>       mVerticesp;
     LLStrider<LLVector2>        mTexcoordsp;
     LLStrider<LLColor4U>        mColorsp;

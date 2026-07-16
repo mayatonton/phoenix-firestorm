@@ -322,11 +322,11 @@ void LLViewerJointMesh::updateFaceData(LLFace *face, F32 pixel_area, bool damp_w
 
         if (num_verts)
         {
-            face->getVertexBuffer()->getIndexStrider(indicesp);
-            face->getGeometryAvatar(verticesp, normalsp, tex_coordsp, vertex_weightsp, clothing_weightsp);
+            LLVertexBuffer* buffer = face->getVertexBuffer();
+            const U32 vert_base = face->getGeomIndex() + mMesh->mFaceVertexOffset;
 
-            verticesp += mMesh->mFaceVertexOffset;
-            normalsp += mMesh->mFaceVertexOffset;
+            buffer->getVertexStrider(verticesp, vert_base, num_verts);
+            buffer->getNormalStrider(normalsp, vert_base, num_verts);
 
             F32* v = (F32*) verticesp.get();
             F32* n = (F32*) normalsp.get();
@@ -339,9 +339,9 @@ void LLViewerJointMesh::updateFaceData(LLFace *face, F32 pixel_area, bool damp_w
 
             if (!terse_update)
             {
-                vertex_weightsp += mMesh->mFaceVertexOffset;
-                clothing_weightsp += mMesh->mFaceVertexOffset;
-                tex_coordsp += mMesh->mFaceVertexOffset;
+                buffer->getTexCoord0Strider(tex_coordsp, vert_base, num_verts);
+                buffer->getWeightStrider(vertex_weightsp, vert_base, num_verts);
+                buffer->getClothWeightStrider(clothing_weightsp, vert_base, num_verts);
 
                 F32* tc = (F32*) tex_coordsp.get();
                 F32* vw = (F32*) vertex_weightsp.get();
@@ -357,7 +357,7 @@ void LLViewerJointMesh::updateFaceData(LLFace *face, F32 pixel_area, bool damp_w
 
             const U32 idx_count = mMesh->getNumFaces()*3;
 
-            indicesp += mMesh->mFaceIndexOffset;
+            buffer->getIndexStrider(indicesp, face->getIndicesStart() + mMesh->mFaceIndexOffset, idx_count);
 
             U16* __restrict idx = indicesp.get();
             S32* __restrict src_idx = (S32*) mMesh->getFaces();
@@ -388,8 +388,8 @@ void LLViewerJointMesh::updateGeometry(LLFace *mFace, LLPolyMesh *mMesh)
     LLStrider<LLVector3> o_normals;
 
     LLVertexBuffer* buffer = mFace->getVertexBuffer();
-    buffer->getVertexStrider(o_vertices,  0);
-    buffer->getNormalStrider(o_normals,   0);
+    buffer->getVertexStrider(o_vertices, mMesh->mFaceVertexOffset, mMesh->getNumVertices());
+    buffer->getNormalStrider(o_normals, mMesh->mFaceVertexOffset, mMesh->getNumVertices());
 
     F32* __restrict vert = o_vertices[0].mV;
     F32* __restrict norm = o_normals[0].mV;
@@ -397,10 +397,6 @@ void LLViewerJointMesh::updateGeometry(LLFace *mFace, LLPolyMesh *mMesh)
     const F32* __restrict weights = mMesh->getWeights();
     const LLVector4a* __restrict coords = (LLVector4a*) mMesh->getCoords();
     const LLVector4a* __restrict normals = (LLVector4a*) mMesh->getNormals();
-
-    U32 offset = mMesh->mFaceVertexOffset*4;
-    vert += offset;
-    norm += offset;
 
     for (U32 index = 0; index < mMesh->getNumVertices(); index++)
     {
