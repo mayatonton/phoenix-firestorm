@@ -413,13 +413,22 @@ void callDoubleClick(float *pos, MASK mask)
 
 void callResize(unsigned int width, unsigned int height)
 {
+    CGSize drawable_size = CGSizeMake(width, height);
+    if (gWindowImplementation && gWindowImplementation->mMetalLayer)
+    {
+        // Make the CAMetalLayer authoritative before viewer reshape can request
+        // a Vulkan swapchain resize.
+        drawable_size = updateMetalLayerDrawableSize(gWindowImplementation->mMetalLayer,
+                                                      gWindowImplementation->getWindow());
+    }
     if (gWindowImplementation && gWindowImplementation->getCallbacks())
     {
         gWindowImplementation->getCallbacks()->handleResize(gWindowImplementation, width, height);
     }
-    if (gWindowImplementation && gWindowImplementation->mMetalLayer)
+    if (drawable_size.width > 0.0 && drawable_size.height > 0.0)
     {
-        updateMetalLayerDrawableSize(gWindowImplementation->mMetalLayer, gWindowImplementation->getWindow());
+        LLVKLoader::notifyDrawableResize((U32)ll_round(drawable_size.width),
+                                         (U32)ll_round(drawable_size.height));
     }
 }
 
@@ -2529,6 +2538,12 @@ LLWindow::LLNativeWindowHandles LLWindowMacOSX::getNativeWindowHandles()
         if (mMetalLayer == nullptr)
         {
             mMetalLayer = createMetalLayerForWindow(mWindow);
+        }
+        const CGSize drawable_size = updateMetalLayerDrawableSize(mMetalLayer, mWindow);
+        if (drawable_size.width > 0.0 && drawable_size.height > 0.0)
+        {
+            LLVKLoader::notifyDrawableResize((U32)ll_round(drawable_size.width),
+                                             (U32)ll_round(drawable_size.height));
         }
         handles.native_display = (void*)mWindow;
         handles.native_window  = mMetalLayer;

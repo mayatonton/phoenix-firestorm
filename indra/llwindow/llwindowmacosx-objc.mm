@@ -33,6 +33,8 @@
 #include "llwindowmacosx-objc.h"
 #include "llappdelegate-objc.h"
 
+extern bool gHiDPISupport;
+
 /*
  * These functions are broken out into a separate file because the
  * objective-C typedef for 'BOOL' conflicts with the one in
@@ -242,32 +244,36 @@ MetalLayerRef createMetalLayerForWindow(NSWindowRef window)
     }
 
     CAMetalLayer *layer = [CAMetalLayer layer];
-    layer.contentsScale = [ns_window backingScaleFactor];
-    layer.frame = [view bounds];
     layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
 
     [view setWantsLayer:YES];
     [[view layer] addSublayer:layer];
-
-    NSSize backing = [view convertSizeToBacking:[view bounds].size];
-    layer.drawableSize = CGSizeMake(backing.width, backing.height);
+    updateMetalLayerDrawableSize((MetalLayerRef)layer, window);
 
     return (MetalLayerRef)layer;
 }
 
-void updateMetalLayerDrawableSize(MetalLayerRef layer_ref, NSWindowRef window)
+CGSize updateMetalLayerDrawableSize(MetalLayerRef layer_ref, NSWindowRef window)
 {
     CAMetalLayer *layer = (CAMetalLayer*)layer_ref;
     LLNSWindow *ns_window = (LLNSWindow*)window;
     NSView *view = [ns_window contentView];
     if (layer == nil || view == nil)
     {
-        return;
+        return CGSizeZero;
     }
-    layer.contentsScale = [ns_window backingScaleFactor];
+
+    const NSSize view_size = [view bounds].size;
+    const NSSize drawable_size = gHiDPISupport
+                                     ? [view convertSizeToBacking:view_size]
+                                     : view_size;
+
+    // RenderHiDPI=false deliberately keeps a 1x drawable which Core Animation
+    // scales to the Retina backing store, matching the legacy NSOpenGL surface.
+    layer.contentsScale = gHiDPISupport ? [ns_window backingScaleFactor] : 1.0;
     layer.frame = [view bounds];
-    NSSize backing = [view convertSizeToBacking:[view bounds].size];
-    layer.drawableSize = CGSizeMake(backing.width, backing.height);
+    layer.drawableSize = CGSizeMake(drawable_size.width, drawable_size.height);
+    return layer.drawableSize;
 }
 
 GLViewRef createOpenGLView(NSWindowRef window, unsigned int samples, bool vsync)
@@ -300,7 +306,9 @@ unsigned long getVramSize(GLViewRef view)
 
 float getDeviceUnitSize(GLViewRef view)
 {
-    return [(LLOpenGLView*)view convertSizeToBacking:NSMakeSize(1, 1)].width;
+    return gHiDPISupport
+               ? [(LLOpenGLView*)view convertSizeToBacking:NSMakeSize(1, 1)].width
+               : 1.0f;
 }
 
 CGRect getContentViewRect(NSWindowRef window)
@@ -310,7 +318,8 @@ CGRect getContentViewRect(NSWindowRef window)
 
 CGRect getBackingViewRect(NSWindowRef window, GLViewRef view)
 {
-    return [(NSOpenGLView*)view convertRectToBacking:[[(LLNSWindow*)window contentView] bounds]];
+    const CGRect view_rect = [[(LLNSWindow*)window contentView] bounds];
+    return gHiDPISupport ? [(NSOpenGLView*)view convertRectToBacking:view_rect] : view_rect;
 }
 
 void getWindowSize(NSWindowRef window, float* size)

@@ -106,7 +106,7 @@ NSWindowRef createNSWindow(int x, int y, int width, int height);
 
 typedef void *MetalLayerRef;
 MetalLayerRef createMetalLayerForWindow(NSWindowRef window);
-void updateMetalLayerDrawableSize(MetalLayerRef layer, NSWindowRef window);
+CGSize updateMetalLayerDrawableSize(MetalLayerRef layer, NSWindowRef window);
 
 #include <OpenGL/OpenGL.h>
 
