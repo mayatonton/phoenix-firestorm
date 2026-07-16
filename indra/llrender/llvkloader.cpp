@@ -4336,6 +4336,29 @@ bool endFrame()
                                    << " zero=" << gVkPerf.mdi_zero.load()
                                    << " dyn=" << gVkPerf.mdi_dyn.load()
                                    << " full=" << gVkPerf.mdi_full.load()
+                                   << " | fam " << [](){ std::string s;
+                                        for (U32 i = 0; i < 24; ++i) {
+                                            const U64 us = gVkPerf.fam_us[i].load();
+                                            const U64 d  = gVkPerf.fam_draws[i].load();
+                                            if (us != 0 || d != 0) {
+                                                s += llformat("%u=%lluus/%llud ", i,
+                                                    (unsigned long long)us, (unsigned long long)d);
+                                            }
+                                        }
+                                        s += llformat("rig=%llu",
+                                            (unsigned long long)gVkPerf.rigged_rec.load());
+                                        return s; }()
+                                   << " | ph " << [](){ std::string s;
+                                        static const char* names[16] = {
+                                            "idle","disp","probe","hero","gupd","cull","shad","imp",
+                                            "img","sort","geom","light","ui","swap","x14","x15" };
+                                        for (U32 i = 0; i < 16; ++i) {
+                                            const U64 us = gVkPerf.phase_us[i].load();
+                                            if (us != 0) {
+                                                s += llformat("%s=%.1f ", names[i], us / 1000.0);
+                                            }
+                                        }
+                                        return s; }()
                                    << " | mega " << [](){ U64 c,cap,use; megabufStats(c,cap,use);
                                         return llformat("chunks=%llu used=%.1f/%.1fMB",
                                             (unsigned long long)c, use/1048576.0, cap/1048576.0); }()
@@ -8977,6 +9000,25 @@ bool isMultiDrawIndirectEnabledVk()
 bool isDrawIndirectFirstInstanceEnabledVk()
 {
     return sDrawIndirectFirstInstanceEnabled;
+}
+
+static U64 phaseNowUs()
+{
+    return (U64)std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+VkPerfPhaseScope::VkPerfPhaseScope(U32 idx)
+: mT0(phaseNowUs()), mIdx(idx)
+{
+}
+
+VkPerfPhaseScope::~VkPerfPhaseScope()
+{
+    if (mIdx < 16)
+    {
+        gVkPerf.phase_us[mIdx] += phaseNowUs() - mT0;
+    }
 }
 
 bool isIndirectDrawEnabled()

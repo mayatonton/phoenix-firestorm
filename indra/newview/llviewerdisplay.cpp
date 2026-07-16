@@ -802,6 +802,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update hero probes");
             LL_PROFILE_GPU_ZONE("hero manager")
+            LLVKLoader::VkPerfPhaseScope ph(3);
             gPipeline.mHeroProbeManager.update();
             gPipeline.mHeroProbeManager.renderProbes();
         }
@@ -835,6 +836,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update Geom");
+            LLVKLoader::VkPerfPhaseScope ph(4);
             const F32 max_geom_update_time = 0.005f*10.f*gFrameIntervalSeconds.value(); // 50 ms/second update time
             gPipeline.createObjects(max_geom_update_time);
             gPipeline.processPartitionQ();
@@ -862,7 +864,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         static LLCullResult result;
         LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
         LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
-        gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
+        {
+            LLVKLoader::VkPerfPhaseScope ph(5);
+            gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
+        }
 
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:Swap");
@@ -884,6 +889,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                 if (gFrameCount > 1 && !for_snapshot)
                 { //for some reason, ATI 4800 series will error out if you
                   //try to generate a shadow before the first frame is through
+                    LLVKLoader::VkPerfPhaseScope ph(6);
                     gPipeline.generateSunShadow(*LLViewerCamera::getInstance());
                 }
 
@@ -894,7 +900,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                 glm::mat4 mod = get_current_modelview();
                 llSetGLViewport(0,0,512,512);
 
-                LLVOAvatar::updateImpostors();
+                {
+                    LLVKLoader::VkPerfPhaseScope ph(7);
+                    LLVOAvatar::updateImpostors();
+                }
 
                 set_current_projection(proj);
                 set_current_modelview(mod);
@@ -918,6 +927,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         {
             LL_PROFILE_ZONE_NAMED("Update Images");
+            LLVKLoader::VkPerfPhaseScope ph(8);
 
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Class");
@@ -955,6 +965,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLAppViewer::instance()->pingMainloopTimeout("Display:StateSort");
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 4")
+            LLVKLoader::VkPerfPhaseScope ph(9);
             LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
             gPipeline.stateSort(camera, result); // <FS:Ansariel> Factor out calls to getInstance
 
@@ -1047,6 +1058,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             }
 
             gGL.setColorMask(true, true);
+            LLVKLoader::VkPerfPhaseScope ph(10);
             gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance(), true);
         }
 
@@ -1069,6 +1081,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
         {
+            LLVKLoader::VkPerfPhaseScope ph(11);
             gPipeline.renderDeferredLighting();
         }
 
@@ -1082,9 +1095,13 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderUI");
         if (!for_snapshot)
         {
-            render_ui();
-            gPipeline.drainPendingProfileAvatars(2);
-            gPipeline.drainPendingAttachmentProfiles();
+            {
+                LLVKLoader::VkPerfPhaseScope ph(12);
+                render_ui();
+                gPipeline.drainPendingProfileAvatars(2);
+                gPipeline.drainPendingAttachmentProfiles();
+            }
+            LLVKLoader::VkPerfPhaseScope ph(13);
             swap();
         }
 

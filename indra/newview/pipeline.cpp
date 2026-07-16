@@ -340,6 +340,7 @@ extern bool gDisplaySwapBuffers;
 extern bool gDebugGL;
 extern bool gCubeSnapshot;
 extern bool gSnapshotNoPost;
+extern bool gHeroProbeMirrorRender;
 
 static bool sSceneDepthCopyActive = false;
 
@@ -5228,6 +5229,11 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
                 gGLLastMatrix = NULL;
                 gGL.loadMatrix(gGLModelView);
 
+                const bool fam_track = !gCubeSnapshot && !gHeroProbeMirrorRender
+                                       && cur_type < LLDrawPool::NUM_POOL_TYPES;
+                const U64 fam_t0 = fam_track ? (U64)LLTimer::getTotalTime() : 0;
+                const U32 fam_d0 = LLVertexBuffer::sVkDrawCallCount.load();
+
                 for( S32 i = 0; i < poolp->getNumDeferredPasses(); i++ )
                 {
                     LLVertexBuffer::unbind();
@@ -5247,6 +5253,11 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 
                 }
 
+                if (fam_track)
+                {
+                    LLVKLoader::gVkPerf.fam_us[cur_type] += (U64)LLTimer::getTotalTime() - fam_t0;
+                    LLVKLoader::gVkPerf.fam_draws[cur_type] += LLVertexBuffer::sVkDrawCallCount.load() - fam_d0;
+                }
             }
             else
             {
@@ -5483,6 +5494,11 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             gGLLastMatrix = NULL;
             gGL.loadMatrix(gGLModelView);
 
+            const bool fam_track = !gCubeSnapshot && !gHeroProbeMirrorRender
+                                   && cur_type < LLDrawPool::NUM_POOL_TYPES;
+            const U64 fam_t0 = fam_track ? (U64)LLTimer::getTotalTime() : 0;
+            const U32 fam_d0 = LLVertexBuffer::sVkDrawCallCount.load();
+
             for( S32 i = 0; i < poolp->getNumPostDeferredPasses(); i++ )
             {
                 LLVertexBuffer::unbind();
@@ -5499,6 +5515,12 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
                 }
                 poolp->endPostDeferredPass(i);
                 LLVertexBuffer::unbind();
+            }
+
+            if (fam_track)
+            {
+                LLVKLoader::gVkPerf.fam_us[cur_type] += (U64)LLTimer::getTotalTime() - fam_t0;
+                LLVKLoader::gVkPerf.fam_draws[cur_type] += LLVertexBuffer::sVkDrawCallCount.load() - fam_d0;
             }
         }
         else

@@ -264,7 +264,7 @@ void LLHeroProbeManager::renderProbes()
         // rate must be divisor of 6 (1, 2, 3, or 6)
         if (rate < 1)
         {
-            rate = 1;
+            rate = 6;
         }
         else if (rate > 3)
         {

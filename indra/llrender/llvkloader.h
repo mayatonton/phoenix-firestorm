@@ -1416,6 +1416,10 @@ namespace LLVKLoader
         std::atomic<U64> mdi_zero{0};
         std::atomic<U64> mdi_dyn{0};
         std::atomic<U64> mdi_full{0};
+        std::atomic<U64> fam_us[24] = {};
+        std::atomic<U64> fam_draws[24] = {};
+        std::atomic<U64> rigged_rec{0};
+        std::atomic<U64> phase_us[16] = {};
 
         void reset()
         {
@@ -1429,6 +1433,10 @@ namespace LLVKLoader
             shadow_cull = 0; shadow_rigged = 0;
             bkt_patch = 0; bkt_range = 0; bkt_rec = 0; bkt_skip = 0;
             mdi_call = 0; mdi_rec = 0; mdi_zero = 0; mdi_dyn = 0; mdi_full = 0;
+            for (auto& v : fam_us) v = 0;
+            for (auto& v : fam_draws) v = 0;
+            rigged_rec = 0;
+            for (auto& v : phase_us) v = 0;
         }
     };
     extern VkPerfCounters gVkPerf;
@@ -1442,6 +1450,14 @@ namespace LLVKLoader
         U32 mPrev;
         VkPerfPassScope(U32 tag) : mPrev(gVkPerfPassTag) { gVkPerfPassTag = tag; }
         ~VkPerfPassScope() { gVkPerfPassTag = mPrev; }
+    };
+
+    struct VkPerfPhaseScope
+    {
+        U64 mT0;
+        U32 mIdx;
+        VkPerfPhaseScope(U32 idx);
+        ~VkPerfPhaseScope();
     };
 
     const float* getCurrentModelviewMatrix();

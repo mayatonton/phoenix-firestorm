@@ -1268,6 +1268,7 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
 
             if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
             {
+                ++LLVKLoader::gVkPerf.rigged_rec;
                 pushBatch(*pparams, texture, batch_textures);
             }
         }
@@ -1293,6 +1294,7 @@ void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
 
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
+            ++LLVKLoader::gVkPerf.rigged_rec;
             pushUntexturedBatch(*pparams);
         }
     }
@@ -1332,6 +1334,7 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
 
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
+            ++LLVKLoader::gVkPerf.rigged_rec;
             pushBatch(*pparams, texture, batch_textures);
         }
     }
