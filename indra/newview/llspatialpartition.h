@@ -59,6 +59,7 @@ class LLSpatialGroup;
 class LLGLSLShader;
 class LLViewerRegion;
 class LLReflectionMap;
+class LLImageGL;
 
 namespace LLVKBucket
 {
@@ -163,6 +164,11 @@ public:
 
     U32   mVkDrawDataSlot = 0xFFFFFFFFu;
     U32   mVkDrawDataSlots[4] = {};
+
+    LLVKBucket::Bucket* mVkTplBucket = nullptr;
+    U32   mVkTplCmdIndex = 0;
+    bool  mVkSlotSubscribed = false;
+    std::vector<LLImageGL*> mVkSubbedImages;
 
     void clearVkSetMemoPins();
 

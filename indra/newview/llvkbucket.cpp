@@ -18,13 +18,16 @@
 #include "llvkbucket.h"
 
 #include "lldrawpool.h"
+#include "llimagegl.h"
 #include "llpipelineframecontext.h"
 #include "llviewerregion.h"
+#include "llviewertexture.h"
 #include "llvkloader.h"
 
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <unordered_map>
 
 namespace LLVKBucket
 {
@@ -149,6 +152,12 @@ bool isBucketizedPass(U32 pass)
         return lut;
     }();
     return pass < LLRenderPass::NUM_RENDER_TYPES && s_lut[pass];
+}
+
+bool isCameraMdiPass(U32 pass)
+{
+    return pass == LLRenderPass::PASS_SIMPLE
+        || pass == LLRenderPass::PASS_FULLBRIGHT;
 }
 
 bool emitActive(U32 pass)
@@ -291,6 +300,171 @@ void onRegionDestroyed(LLViewerRegion* region)
     reclaimDeadBuckets();
 }
 
+namespace
+{
+    std::unordered_map<LLImageGL*, std::vector<LLDrawInfo*> > sSlotSubscribers;
+
+    U32 heapSlotFor(LLTexture* t)
+    {
+        LLImageGL* gl = (t != nullptr) ? t->getGLTexture() : nullptr;
+        if (gl != nullptr && gl->hasVkImage()
+            && gl->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+        {
+            return gl->getVkHeapSlot();
+        }
+        LLImageGL* def = LLImageGL::sDefaultGLTexture;
+        if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+        {
+            return def->getVkHeapSlot();
+        }
+        return 0;
+    }
+
+    void computeRecordSlots(LLDrawInfo* info, U32* slots)
+    {
+        slots[0] = slots[1] = slots[2] = slots[3] = 0;
+        if (info->mTextureList.size() > 1)
+        {
+            const U32 n = llmin((U32)info->mTextureList.size(), 4u);
+            for (U32 i = 0; i < n; ++i)
+            {
+                slots[i] = heapSlotFor(info->mTextureList[i].get());
+            }
+        }
+        else if (info->mTexture.notNull())
+        {
+            slots[0] = heapSlotFor(info->mTexture.get());
+        }
+        else
+        {
+            slots[0] = heapSlotFor(nullptr);
+        }
+    }
+
+    bool ensureRecordDrawDataSlot(LLDrawInfo* info)
+    {
+        U32 slots[4];
+        computeRecordSlots(info, slots);
+        if (info->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT
+            || std::memcmp(info->mVkDrawDataSlots, slots, 16) != 0)
+        {
+            const U32 ns = LLVKLoader::drawDataAcquireSlot(slots);
+            if (ns == LLVKLoader::BINDLESS_INVALID_SLOT)
+            {
+                return info->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT;
+            }
+            if (info->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
+            {
+                LLVKLoader::drawDataReleaseSlotDeferred(info->mVkDrawDataSlot);
+            }
+            info->mVkDrawDataSlot = ns;
+            std::memcpy(info->mVkDrawDataSlots, slots, 16);
+        }
+        return true;
+    }
+
+    void onImageSlotChanged(LLImageGL* image)
+    {
+        auto it = sSlotSubscribers.find(image);
+        if (it == sSlotSubscribers.end())
+        {
+            return;
+        }
+        for (LLDrawInfo* info : it->second)
+        {
+            if (!ensureRecordDrawDataSlot(info))
+            {
+                continue;
+            }
+            Bucket* bucket = info->mVkTplBucket;
+            if (bucket != nullptr && !bucket->mTplDirty
+                && info->mVkTplCmdIndex < bucket->mTplRecords.size()
+                && bucket->mTplRecords[info->mVkTplCmdIndex] == info)
+            {
+                bucket->mTplCommands[info->mVkTplCmdIndex].firstInstance = info->mVkDrawDataSlot;
+            }
+        }
+    }
+
+    bool subscribeRecordTextures(LLDrawInfo* info)
+    {
+        if (info->mVkSlotSubscribed)
+        {
+            return true;
+        }
+        if (LLImageGL::sVkSlotChangeHook == nullptr)
+        {
+            LLImageGL::sVkSlotChangeHook = &onImageSlotChanged;
+        }
+        bool all_present = true;
+        auto add = [info, &all_present](LLTexture* t)
+        {
+            LLImageGL* gl = (t != nullptr) ? t->getGLTexture() : nullptr;
+            if (gl == nullptr)
+            {
+                all_present = false;
+                return;
+            }
+            for (LLImageGL* seen : info->mVkSubbedImages)
+            {
+                if (seen == gl)
+                {
+                    return;
+                }
+            }
+            sSlotSubscribers[gl].push_back(info);
+            info->mVkSubbedImages.push_back(gl);
+        };
+        if (info->mTextureList.size() > 1)
+        {
+            const U32 n = llmin((U32)info->mTextureList.size(), 4u);
+            for (U32 i = 0; i < n; ++i)
+            {
+                add(info->mTextureList[i].get());
+            }
+        }
+        else if (info->mTexture.notNull())
+        {
+            add(info->mTexture.get());
+        }
+        if (!all_present)
+        {
+            unsubscribeRecord(info);
+            return false;
+        }
+        info->mVkSlotSubscribed = true;
+        return true;
+    }
+}
+
+void unsubscribeRecord(LLDrawInfo* info)
+{
+    for (LLImageGL* gl : info->mVkSubbedImages)
+    {
+        auto it = sSlotSubscribers.find(gl);
+        if (it == sSlotSubscribers.end())
+        {
+            continue;
+        }
+        std::vector<LLDrawInfo*>& subs = it->second;
+        for (size_t i = 0; i < subs.size(); ++i)
+        {
+            if (subs[i] == info)
+            {
+                subs[i] = subs.back();
+                subs.pop_back();
+                break;
+            }
+        }
+        if (subs.empty())
+        {
+            sSlotSubscribers.erase(it);
+        }
+    }
+    info->mVkSubbedImages.clear();
+    info->mVkSlotSubscribed = false;
+}
+
 void rebuildTemplateIfDirty(Bucket& bucket)
 {
     if (!bucket.mTplDirty)
@@ -307,6 +481,7 @@ void rebuildTemplateIfDirty(Bucket& bucket)
     bucket.mTplChunkSpans.clear();
 
     const LLMatrix4* region_matrix = bucket.mRegion ? &bucket.mRegion->mRenderMatrix : nullptr;
+    const bool camera_mdi = isCameraMdiPass(bucket.mPass);
 
     struct StaticEntry
     {
@@ -331,12 +506,18 @@ void rebuildTemplateIfDirty(Bucket& bucket)
                 && info->mAvatar.isNull()
                 && vb->getVkVertexSlice().buffer != VK_NULL_HANDLE
                 && vb->getVkIndexSlice().buffer != VK_NULL_HANDLE;
+            if (is_static && camera_mdi)
+            {
+                is_static = ensureRecordDrawDataSlot(info)
+                         && subscribeRecordTextures(info);
+            }
             if (is_static)
             {
                 s_statics.push_back({ vb, info, range.mGroupId });
             }
             else
             {
+                info->mVkTplBucket = nullptr;
                 bucket.mTplDyn.push_back(info);
                 bucket.mTplDynGroupIds.push_back(range.mGroupId);
             }
@@ -380,6 +561,8 @@ void rebuildTemplateIfDirty(Bucket& bucket)
         ++chunk->mCount;
 
         LLDrawInfo* info = entry.mInfo;
+        info->mVkTplBucket   = &bucket;
+        info->mVkTplCmdIndex = (U32)bucket.mTplCommands.size();
         VkDrawIndexedIndirectCommand cmd;
         cmd.indexCount    = info->mCount;
         cmd.instanceCount = 1;

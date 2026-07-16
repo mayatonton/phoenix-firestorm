@@ -369,7 +369,7 @@ public:
     static void applyModelMatrix(const LLMatrix4* model_matrix);
     void pushBatches(U32 type, bool texture = true, bool batch_textures = false);
     void pushUntexturedBatches(U32 type);
-    void pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits);
+    void pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured);
 
     void pushRiggedBatches(U32 type, bool texture = true, bool batch_textures = false);
     void pushUntexturedRiggedBatches(U32 type);

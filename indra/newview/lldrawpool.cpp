@@ -1023,6 +1023,24 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     if (texture)
     {
+        if (LLVKBucket::isCameraMdiPass(type)
+            && LLVKBucket::emitActive(type)
+            && LLVKLoader::isIndirectDrawEnabled()
+            && batch_textures
+            && LLGLSLShader::sCurBoundShaderPtr != nullptr
+            && LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap
+            && !LLVKLoader::isRecordJobActive())
+        {
+            const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+            if (bits != nullptr)
+            {
+                for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
+                {
+                    pushIndirectBucket(*bucket, *bits, true);
+                }
+                return;
+            }
+        }
         LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
         {
             pushBatch(params, texture, batch_textures);
@@ -1047,7 +1065,7 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
         {
             for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
             {
-                pushIndirectBucket(*bucket, *bits);
+                pushIndirectBucket(*bucket, *bits, false);
             }
             return;
         }
@@ -1132,7 +1150,7 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
     return true;
 }
 
-void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits)
+void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured)
 {
     LLVKBucket::rebuildTemplateIfDirty(bucket);
     if (bucket.mTplCommands.empty() && bucket.mTplDyn.empty())
@@ -1202,7 +1220,14 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
             {
                 if (id_visible(bucket.mTplGroupIds[c]))
                 {
-                    pushUntexturedBatch(*bucket.mTplRecords[c]);
+                    if (textured)
+                    {
+                        pushBatch(*bucket.mTplRecords[c], true, true);
+                    }
+                    else
+                    {
+                        pushUntexturedBatch(*bucket.mTplRecords[c]);
+                    }
                 }
             }
         }
@@ -1212,7 +1237,14 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
     {
         if (id_visible(bucket.mTplDynGroupIds[d]))
         {
-            pushUntexturedBatch(*bucket.mTplDyn[d]);
+            if (textured)
+            {
+                pushBatch(*bucket.mTplDyn[d], true, true);
+            }
+            else
+            {
+                pushUntexturedBatch(*bucket.mTplDyn[d]);
+            }
             ++LLVKLoader::gVkPerf.mdi_dyn;
         }
     }

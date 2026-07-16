@@ -64,8 +64,11 @@ namespace LLVKBucket
     };
 
     bool isBucketizedPass(U32 pass);
+    bool isCameraMdiPass(U32 pass);
     bool emitActive(U32 pass);
     U32  visWordCount();
+
+    void unsubscribeRecord(LLDrawInfo* info);
 
     void patchGroup(LLSpatialGroup* group);
     void evictGroup(LLSpatialGroup* group);

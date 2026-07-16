@@ -331,6 +331,7 @@ S32 LLImageGL::sCount                   = 0;
 bool LLImageGL::sGlobalUseAnisotropic   = false;
 F32 LLImageGL::sLastFrameTime           = 0.f;
 LLImageGL* LLImageGL::sDefaultGLTexture = NULL ;
+void (*LLImageGL::sVkSlotChangeHook)(LLImageGL*) = nullptr;
 LLImageGL* LLImageGL::sWhiteImageGLp   = NULL ;
 bool LLImageGL::sCompressTextures = false;
 std::unordered_set<LLImageGL*> LLImageGL::sImageList;
@@ -1378,6 +1379,10 @@ void LLImageGL::updateVkHeapSlot()
     if (old_slot != LLVKLoader::BINDLESS_INVALID_SLOT)
     {
         LLVKLoader::bindlessReleaseSlotDeferred(old_slot);
+    }
+    if (mVkHeapSlot != old_slot && sVkSlotChangeHook != nullptr)
+    {
+        sVkSlotChangeHook(this);
     }
 }
 
